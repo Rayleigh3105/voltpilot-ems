@@ -33,8 +33,10 @@ import (
 const (
 	// maxZeile: länger ist keine Zeile des Schalters.
 	maxZeile = 128
-	// maxOffen: so viele Fragen bearbeitet die Stelle höchstens zugleich.
-	maxOffen = 8192
+	// maxOffen: so viele Fragen bearbeitet die Stelle höchstens zugleich - das
+	// Doppelte dessen, was der Schalter an Verbindungen annimmt. Mehr kann ein
+	// Schalter, der sich an seine Grenzen hält, nie offen haben.
+	maxOffen = 2 * maxVerbindungen
 	// maxAntwort: größer ist keine Antwort (acht Schlüssel zu 4096 Bit sind rund 6 kB).
 	maxAntwort = 64 * 1024
 )

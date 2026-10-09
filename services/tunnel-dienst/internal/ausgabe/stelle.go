@@ -35,6 +35,13 @@ const (
 	// nft-Aufruf je Box; eine gemeinsame Lesung für alle, die gleichzeitig
 	// fragen, genügt.
 	frischeVorgabe = 2 * time.Second
+	// restSprung: ändert sich das Ende eines Fensters um mehr als das, während
+	// eine Anfrage offen ist, wird sie beantwortet, auch wenn die Liste
+	// dieselbe ist. Die Box führt die Frist selbst und soll kein Fenster
+	// überdauern, das neu gesetzt wurde. Der Dienst setzt ein Element erst ab
+	// 10 s Abweichung neu (dienst.Toleranz); zwei Lesungen desselben Elements
+	// liegen höchstens eine Sekunde auseinander.
+	restSprung = 5 * time.Second
 	// maxBoxen: mehr Boxen merkt sich die Stelle nicht (Schutz des Speichers).
 	maxBoxen = 65536
 
@@ -227,9 +234,11 @@ func (s *Stelle) liste(st *stand, box netip.Addr, b *bild) (liste []posten, naec
 
 // Frage beantwortet die Anfrage einer Box. kennt ist der Prüfwert, den die
 // Box schon hat: solange die Liste denselben trägt, bleibt die Anfrage bis zu
-// warte lang offen. Je Box ist nur eine Anfrage offen; eine neuere löst die
-// ältere ab (eine Box, die neu gestartet ist, wartet nicht auf ihre alte
-// Verbindung).
+// warte lang offen. Vorher endet sie, wenn die Liste eine andere wird, ein
+// Eintrag abläuft oder das Ende eines Fensters neu gesetzt wird.
+//
+// Je Box ist nur eine Anfrage offen; eine neuere löst die ältere ab (eine
+// Box, die neu gestartet ist, wartet nicht auf ihre alte Verbindung).
 func (s *Stelle) Frage(ctx context.Context, box netip.Addr, warte time.Duration, kennt string) Antwort {
 	if !soll.IstHost(s.BoxNetz, box) {
 		return Antwort{http.StatusForbidden, []byte("keine Box-Adresse\n")}
@@ -263,6 +272,7 @@ func (s *Stelle) Frage(ctx context.Context, box netip.Addr, warte time.Duration,
 	}()
 
 	ende := time.Now().Add(warte)
+	var zuerst map[string]time.Time // Zugang -> Ende des Fensters bei der ersten Lesung
 	for {
 		s.mu.Lock()
 		wecker, st := s.wecker, s.stand
@@ -284,7 +294,20 @@ func (s *Stelle) Frage(ctx context.Context, box netip.Addr, warte time.Duration,
 			eintraege[i] = p.Eintrag
 		}
 		rest := time.Until(ende)
-		if kennt == "" || kennt != Pruefwert(eintraege) || rest <= 0 {
+		gesprungen := false
+		if zuerst == nil {
+			zuerst = map[string]time.Time{}
+			for _, p := range liste {
+				zuerst[p.Zugang] = p.bis
+			}
+		} else {
+			for _, p := range liste {
+				if d := p.bis.Sub(zuerst[p.Zugang]); d > restSprung || d < -restSprung {
+					gesprungen = true
+				}
+			}
+		}
+		if kennt == "" || kennt != Pruefwert(eintraege) || rest <= 0 || gesprungen {
 			s.gibAus(box, st, liste)
 			return Antwort{http.StatusOK, Text(eintraege)}
 		}

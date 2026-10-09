@@ -431,6 +431,48 @@ func TestOffeneAnfrageEndetMitDemAblaufDesFensters(t *testing.T) {
 	}
 }
 
+// Wird ein Fenster neu gesetzt (verlängert oder gekürzt), während die Anfrage
+// offen ist, kommt die Antwort sofort - bei gleicher Liste und gleichem
+// Prüfwert, aber mit der neuen Restlaufzeit. Die Box führt die Frist selbst.
+func TestOffeneAnfrageErfaehrtEineNeueRestlaufzeit(t *testing.T) {
+	for name, neu := range map[string]time.Duration{"verlängert": 2 * time.Hour, "gekürzt": 10 * time.Minute} {
+		s, m, log := neueStelle(t)
+		s.SetzeStand(gueltig(t, key1))
+		m.setze(map[abgleich.Paar]time.Duration{paar(tech1, box1): time.Hour})
+		pw, _ := zerlege(t, sofort(s, box1).Text)
+		antwort := make(chan Antwort, 1)
+		go func() { antwort <- s.Frage(context.Background(), box1, 30*time.Second, pw) }()
+		time.Sleep(50 * time.Millisecond)
+
+		// Eine Lesung, die um die Schwankung einer Sekunde abweicht, ist keine Änderung.
+		m.setze(map[abgleich.Paar]time.Duration{paar(tech1, box1): time.Hour - time.Second})
+		s.Geaendert()
+		select {
+		case a := <-antwort:
+			t.Fatalf("%s: schon bei einer Sekunde Abweichung beantwortet: %q", name, a.Text)
+		case <-time.After(200 * time.Millisecond):
+		}
+
+		m.setze(map[abgleich.Paar]time.Duration{paar(tech1, box1): neu})
+		s.Geaendert()
+		select {
+		case a := <-antwort:
+			pwNeu, zeilen := zerlege(t, a.Text)
+			sek := int(neu/time.Second) - 1
+			if len(zeilen) != 1 || pwNeu != pw || !strings.HasPrefix(zeilen[0], fmt.Sprintf("schluessel %d t1 ", sek)) &&
+				!strings.HasPrefix(zeilen[0], fmt.Sprintf("schluessel %d t1 ", sek+1)) {
+				t.Fatalf("%s: %q (Prüfwert %s, vorher %s)", name, zeilen, pwNeu, pw)
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatalf("%s: die offene Anfrage erfährt die neue Restlaufzeit nicht", name)
+		}
+		// Derselbe Schlüssel bleibt ausgegeben: keine neue Zeile im Journal.
+		if n := strings.Count(log.String(), "Schlüssel ausgegeben"); n != 1 {
+			t.Fatalf("%s: %d Zeilen im Journal", name, n)
+		}
+	}
+}
+
 // Je Box ist nur eine Anfrage offen: eine neuere löst die ältere ab.
 func TestEineOffeneAnfrageJeBox(t *testing.T) {
 	s, _, _ := neueStelle(t)
