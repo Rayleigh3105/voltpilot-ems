@@ -126,16 +126,30 @@ class FernwartungRegelnTest {
         FernwartungService.Soll soll = new FernwartungService.Soll(1, Instant.parse("2026-10-07T14:00:00Z"),
                 "10.10.16.0/20", "10.10.32.0/24",
                 List.of(new FernwartungService.SollPeer("box", box, "edge-zay5sdd",
-                                "jUg9DePFPkIQ+KNIAXqSEuVTw2UNHwbUH/HPFK5HiEM=", "10.10.16.2"),
+                                "jUg9DePFPkIQ+KNIAXqSEuVTw2UNHwbUH/HPFK5HiEM=", "10.10.16.2", null),
                         new FernwartungService.SollPeer("techniker", techniker, "Max (Laptop)",
-                                "FY4LLXFaOvh8LPZu/gA4AeS2WJjXkuOUPB4hlxBI8/Y=", "10.10.32.2")),
+                                "FY4LLXFaOvh8LPZu/gA4AeS2WJjXkuOUPB4hlxBI8/Y=", "10.10.32.2",
+                                SshSchluesselTest.vektorSchluessel()),
+                        new FernwartungService.SollPeer("techniker", UUID.randomUUID(), "Werkstatt-Tablet",
+                                "Pgf4aS+67rz4HdSHuy8KKgm5e/UP3xnrMWJskXaZB9c=", "10.10.32.3", null)),
                 List.of(new FernwartungService.SollFenster(UUID.randomUUID(), box, techniker,
                         Instant.parse("2026-10-07T13:30:00Z"), Instant.parse("2026-10-07T17:30:00Z"))));
         JsonNode ist = json.readTree(json.writeValueAsString(soll));
         JsonNode vektor = json.readTree(Files.readString(VEKTOR));
 
         assertThat(felder(ist)).isEqualTo(felder(vektor));
-        assertThat(felder(ist.get("peers").get(0))).isEqualTo(felder(vektor.get("peers").get(0)));
+        // Je Art: eine Box trägt nie einen SSH-Schlüssel, ein Techniker mit
+        // hinterlegtem Schlüssel das Zusatzfeld sshPublicKey.
+        JsonNode vektorBox = vektor.get("peers").get(0);
+        JsonNode vektorTechniker = vektor.get("peers").get(2);
+        assertThat(vektorBox.get("art").asText()).isEqualTo("box");
+        assertThat(vektorTechniker.get("art").asText()).isEqualTo("techniker");
+        assertThat(felder(ist.get("peers").get(0))).isEqualTo(felder(vektorBox))
+                .containsExactly("adresse", "art", "id", "kennung", "publicKey");
+        assertThat(felder(ist.get("peers").get(1))).isEqualTo(felder(vektorTechniker))
+                .containsExactly("adresse", "art", "id", "kennung", "publicKey", "sshPublicKey");
+        // Ohne hinterlegten Schlüssel FEHLT das Feld; es steht nie als null da.
+        assertThat(felder(ist.get("peers").get(2))).isEqualTo(felder(vektorBox));
         assertThat(felder(ist.get("fenster").get(0))).isEqualTo(felder(vektor.get("fenster").get(0)));
         assertThat(ist.get("version").asInt()).isEqualTo(vektor.get("version").asInt());
         // Zeitpunkte als ISO-8601-Text, nie als Zahl.
@@ -147,6 +161,11 @@ class FernwartungRegelnTest {
             Ipv4Netz netz = Ipv4Netz.parse(vektor.get("box".equals(peer.get("art").asText())
                     ? "boxNetz" : "technikerNetz").asText());
             assertThat(netz.enthaelt(Ipv4Netz.adresse(peer.get("adresse").asText()))).isTrue();
+            if (peer.has("sshPublicKey")) {
+                assertThat(peer.get("art").asText()).isEqualTo("techniker");
+                assertThat(SshSchluessel.gespeichert(peer.get("sshPublicKey").asText()))
+                        .as("der Vektor trägt einen annehmbaren Schlüssel in Normalform").isPresent();
+            }
         }
     }
 

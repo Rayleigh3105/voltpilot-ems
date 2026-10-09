@@ -40,12 +40,20 @@ type Soll struct {
 }
 
 // Peer ist ein WireGuard-Peer: eine Box oder ein Techniker-Zugang.
+//
+// SSHPublicKey ist der öffentliche SSH-Schlüssel eines Technikers, mit dem er
+// sich im offenen Fenster an der Box anmeldet ("ssh-rsa <Base64>", ohne
+// Kommentar). Die API liefert das Feld nur an einem Techniker-Peer mit
+// hinterlegtem Schlüssel. Dieser Dienst liest es bisher nur mit: für WireGuard
+// und die Firewall spielt es keine Rolle, und Pruefe reicht es nicht weiter.
+// Wer es an eine Box ausgibt, muss es vorher selbst prüfen.
 type Peer struct {
-	Art       string `json:"art"`
-	ID        string `json:"id"`
-	Kennung   string `json:"kennung"`
-	PublicKey string `json:"publicKey"`
-	Adresse   string `json:"adresse"`
+	Art          string `json:"art"`
+	ID           string `json:"id"`
+	Kennung      string `json:"kennung"`
+	PublicKey    string `json:"publicKey"`
+	Adresse      string `json:"adresse"`
+	SSHPublicKey string `json:"sshPublicKey,omitempty"`
 }
 
 // Fenster ist ein offenes Fernwartungsfenster; es verweist über die IDs auf

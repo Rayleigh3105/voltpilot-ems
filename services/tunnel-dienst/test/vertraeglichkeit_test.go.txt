@@ -1,0 +1,96 @@
+package dienst
+
+// Gehört zu test/vertraeglichkeit.sh und läuft NICHT in diesem Stand: das
+// Skript legt die Datei in das Paket internal/dienst eines ÄLTEREN Standes und
+// benutzt dessen Testaufbau (aufbau, wgErsatz, fwErsatz, quelleErsatz).
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"reflect"
+	"testing"
+
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/tunnel-dienst/internal/soll"
+)
+
+func heutigerVektor(t *testing.T) []byte {
+	t.Helper()
+	daten, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "docs", "contracts", "heutiger-soll.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return daten
+}
+
+// bekannt entfernt aus dem Vektor alles, was dieser (ältere) Stand nicht
+// kennt: einmal durch seine eigenen Strukturen und zurück.
+func bekannt(t *testing.T, daten []byte) []byte {
+	t.Helper()
+	s, err := soll.Lies(daten)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ohne, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ohne
+}
+
+func TestVertraeglichkeitDerHeutigeVektorWirdUmgesetztWieOhneDieNeuenFelder(t *testing.T) {
+	neu := heutigerVektor(t)
+	ohne := bekannt(t, neu)
+
+	// Die Probe ist nur etwas wert, wenn der Vektor diesem Stand wirklich
+	// Unbekanntes enthält.
+	if _, err := soll.LiesStreng(neu); err == nil {
+		t.Log("Hinweis: der heutige Vektor enthält kein Feld, das dieser Stand nicht kennt")
+	} else {
+		t.Logf("dieser Stand kennt nicht: %v", err)
+	}
+
+	// Der Vektor trägt ein Fenster von 13:30 bis 17:30 am 07.10.2026; die
+	// Test-Uhr des Aufbaus steht auf 14:00 desselben Tages.
+	dNeu, _, wgNeu, fwNeu, qNeu := aufbau(t)
+	qNeu.daten = neu
+	eNeu := dNeu.Lauf(context.Background())
+	if eNeu.Fehler != nil || !eNeu.Frisch || len(eNeu.Befunde) != 0 {
+		t.Fatalf("der heutige Vektor wird nicht sauber umgesetzt: %+v", eNeu)
+	}
+	if len(wgNeu.peers) != 3 || !fwNeu.offen("10.10.32.2", "10.10.16.2") {
+		t.Fatalf("Peers %v, Fenster %v", wgNeu.peers, fwNeu.bis)
+	}
+
+	dOhne, _, wgOhne, fwOhne, qOhne := aufbau(t)
+	qOhne.daten = ohne
+	eOhne := dOhne.Lauf(context.Background())
+	if eOhne.Fehler != nil || !eOhne.Frisch {
+		t.Fatalf("%+v", eOhne)
+	}
+	if !reflect.DeepEqual(eNeu.Plan, eOhne.Plan) || !reflect.DeepEqual(wgNeu.peers, wgOhne.peers) ||
+		!reflect.DeepEqual(fwNeu.bis, fwOhne.bis) {
+		t.Fatalf("mit den neuen Feldern entsteht ein anderer Stand:\n%+v\n%+v", eNeu.Plan, eOhne.Plan)
+	}
+
+	// Zweiter Lauf: nichts zu tun, wie immer.
+	if e := dNeu.Lauf(context.Background()); e.Fehler != nil || !e.Plan.Leer() {
+		t.Fatalf("zweiter Lauf: %+v", e)
+	}
+
+	// Der Zwischenstand auf der Platte trägt die neuen Felder mit; `status`
+	// und der Wiederanlauf nach einem Neustart ohne API lesen ihn trotzdem.
+	s, err := LiesZwischenstand(dNeu.Zustand)
+	if err != nil || len(s.Peers) != 3 {
+		t.Fatalf("Zwischenstand: %+v %v", s, err)
+	}
+	dNeustart, _, wgNeustart, _, qNeustart := aufbau(t)
+	dNeustart.Zustand = dNeu.Zustand
+	qNeustart.err = errors.New("API nicht erreichbar")
+	dNeustart.Lauf(context.Background())
+	if !reflect.DeepEqual(wgNeustart.peers, wgNeu.peers) {
+		t.Fatalf("Wiederanlauf: %v statt %v", wgNeustart.peers, wgNeu.peers)
+	}
+}

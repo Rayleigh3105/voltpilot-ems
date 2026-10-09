@@ -1,9 +1,11 @@
 package soll
 
 import (
+	"encoding/json"
 	"net/netip"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -36,6 +38,43 @@ func TestVertragsvektorWirdStrengGelesenUndIstGueltig(t *testing.T) {
 	}
 	if !f.Ende.Equal(time.Date(2026, 10, 7, 17, 30, 0, 0, time.UTC)) {
 		t.Fatalf("Ende %s", f.Ende)
+	}
+	// Der SSH-Schlüssel steht nur am Techniker-Peer und kommt unverändert an.
+	for _, p := range s.Peers {
+		hat := strings.HasPrefix(p.SSHPublicKey, "ssh-rsa AAAAB3NzaC1yc2EA")
+		if hat != (p.Art == ArtTechniker) {
+			t.Fatalf("Peer %s (%s): sshPublicKey %q", p.Kennung, p.Art, p.SSHPublicKey)
+		}
+	}
+}
+
+// Der SSH-Schlüssel ist ein Zusatz: mit ihm, ohne ihn und mit einem
+// unbrauchbaren Wert gilt für WireGuard und die Firewall derselbe Stand.
+func TestSSHSchluesselAendertNichtsAmGeprueftenStand(t *testing.T) {
+	stand := func(ssh string) Gueltig {
+		s := basisSoll()
+		s.Peers = []Peer{
+			{Art: "box", ID: "b1", Kennung: "box", PublicKey: keyA, Adresse: "10.10.16.2"},
+			{Art: "techniker", ID: "t1", Kennung: "tech", PublicKey: keyB, Adresse: "10.10.32.2", SSHPublicKey: ssh},
+		}
+		jetzt := time.Date(2026, 10, 9, 8, 0, 0, 0, time.UTC)
+		s.Fenster = []Fenster{{ID: "f1", BoxID: "b1", TechnikerID: "t1", Beginn: jetzt, Ende: jetzt.Add(time.Hour)}}
+		g, befunde, err := Pruefe(s, netze)
+		if err != nil || len(befunde) != 0 {
+			t.Fatalf("ssh=%q: %v %v", ssh, err, befunde)
+		}
+		return g
+	}
+	ohne := stand("")
+	for _, ssh := range []string{"ssh-rsa AAAAB3NzaC1yc2EAAAADAQAB", "kein schluessel"} {
+		if !reflect.DeepEqual(stand(ssh), ohne) {
+			t.Fatalf("ssh=%q ändert den geprüften Stand", ssh)
+		}
+	}
+	// Ohne Schlüssel fehlt das Feld, wie es die API liefert.
+	roh, err := json.Marshal(Peer{Art: "box", ID: "b1"})
+	if err != nil || strings.Contains(string(roh), "sshPublicKey") {
+		t.Fatalf("%s %v", roh, err)
 	}
 }
 

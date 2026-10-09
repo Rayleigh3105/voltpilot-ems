@@ -6589,7 +6589,13 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
     post:
       tags: [fernwartung]
-      summary: Techniker-Zugang anlegen; der Schlüssel entsteht auf dem Gerät des Technikers.
+      summary: Techniker-Zugang anlegen; die Schlüssel entstehen auf dem Gerät des Technikers.
+      description: >
+        `publicKey` ist der öffentliche WireGuard-Schlüssel (Pflicht).
+        `sshPublicKey` ist freiwillig: der öffentliche SSH-Schlüssel, mit dem
+        sich der Techniker im offenen Fenster an der Box anmeldet; Regeln wie
+        bei `PUT …/techniker/{id}/ssh-schluessel`. Ohne ihn öffnet ein Fenster
+        für diesen Zugang nur den Netzweg.
       requestBody:
         required: true
         content:
@@ -6601,6 +6607,7 @@ paths:
                 name: { type: string, maxLength: 80 }
                 publicKey: { type: string }
                 notiz: { type: string, maxLength: 500 }
+                sshPublicKey: { type: string, description: "Eine Zeile `ssh-rsa AAAA… [Kommentar]`, 2048 bis 4096 Bit." }
       responses:
         "201":
           description: Angelegt, Adresse aus dem Techniker-Netz zugeteilt; mit Server-Seite für die Gerätekonfiguration.
@@ -6611,10 +6618,64 @@ paths:
                 properties:
                   techniker: { $ref: "#/components/schemas/FernwartungTechniker" }
                   server: { $ref: "#/components/schemas/FernwartungServer" }
-        "400": { $ref: "#/components/responses/BadRequest" }
+        "400": { description: "Name, WireGuard-Schlüssel oder SSH-Schlüssel nicht annehmbar; `message` nennt den Grund." }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
         "409": { description: "Schlüssel schon vergeben (auch der eines gelöschten Zugangs) oder Netz voll." }
+  /api/v1/admin/fernwartung/techniker/{id}/ssh-schluessel:
+    put:
+      tags: [fernwartung]
+      summary: Öffentlichen SSH-Schlüssel eines Techniker-Zugangs setzen oder ersetzen.
+      description: >
+        Fenster-Schlüssel, Schritt 1: Der Schlüssel steht am Zugang und geht im
+        Soll-Stand an den Tunnel-Dienst (`sshPublicKey` am Techniker-Peer).
+        Angenommen wird nur `ssh-rsa` mit 2048 bis 4096 Bit, als eine Zeile ohne
+        Optionen davor; der Dropbear der Boxen nimmt nichts anderes an. Ein
+        Ed25519-, ECDSA- oder FIDO-Schlüssel wird mit dem Befehl abgelehnt, der
+        einen passenden erzeugt (`ssh-keygen -t rsa -b 3072`). Der Kommentar wird
+        verworfen; gespeichert und geliefert wird die Normalform
+        `ssh-rsa <Base64>`, dazu der Fingerabdruck wie bei `ssh-keygen -lf`.
+        Derselbe Schlüssel noch einmal ändert nichts. Sonst bekommt das
+        Protokoll den Eintrag `techniker_ssh_schluessel_gesetzt`.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sshPublicKey]
+              properties:
+                sshPublicKey: { type: string, description: "Eine Zeile `ssh-rsa AAAA… [Kommentar]`." }
+      responses:
+        "200":
+          description: Gesetzt oder unverändert.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungTechniker" }
+        "400": { description: "Kein annehmbarer Schlüssel; `message` nennt den Grund und bei falschem Typ oder zu kurzem Schlüssel den Befehl." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Unbekannter oder gelöschter Zugang. }
+    delete:
+      tags: [fernwartung]
+      summary: SSH-Schlüssel eines Techniker-Zugangs entfernen (idempotent).
+      description: >
+        Fenster für diesen Zugang öffnen danach nur noch den Netzweg. Das
+        Protokoll bekommt den Eintrag `techniker_ssh_schluessel_entfernt`, wenn
+        ein Schlüssel hinterlegt war.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Entfernt oder schon ohne Schlüssel.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungTechniker" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Unbekannter oder gelöschter Zugang. }
   /api/v1/admin/fernwartung/techniker/{id}:
     delete:
       tags: [fernwartung]
@@ -26313,6 +26374,16 @@ components:
         notiz: { type: string, nullable: true }
         angelegtAm: { type: string, format: date-time }
         geaendertAm: { type: string, format: date-time }
+        sshPublicKey:
+          type: string
+          nullable: true
+          description: Öffentlicher SSH-Schlüssel in Normalform (`ssh-rsa <Base64>`, ohne Kommentar); null, wenn keiner hinterlegt ist.
+        sshFingerabdruck:
+          type: string
+          nullable: true
+          example: "SHA256:TDOx3bpPNtPLIdd+juZoGcDMz3ZRCklaP5G6aBrp9Zc"
+          description: Fingerabdruck wie bei `ssh-keygen -lf`; null ohne SSH-Schlüssel.
+        sshBits: { type: integer, nullable: true, example: 3072, description: Länge des RSA-Schlüssels; null ohne SSH-Schlüssel. }
     FernwartungProtokollEintrag:
       type: object
       properties:
@@ -26323,6 +26394,7 @@ components:
           type: string
           enum: [box_schluessel_hinterlegt, box_schluessel_getauscht, box_gesperrt, box_entsperrt,
                  techniker_angelegt, techniker_gesperrt, techniker_entsperrt, techniker_geloescht,
+                 techniker_ssh_schluessel_gesetzt, techniker_ssh_schluessel_entfernt,
                  fenster_geoeffnet, fenster_geschlossen]
         edgeRef: { type: string, nullable: true }
         technikerId: { type: string, format: uuid, nullable: true }
@@ -26348,6 +26420,13 @@ components:
               kennung: { type: string, description: Box-Referenz bzw. Name des Zugangs. }
               publicKey: { type: string }
               adresse: { type: string, description: IPv4 ohne Präfix; der Peer bekommt genau diese /32. }
+              sshPublicKey:
+                type: string
+                description: >
+                  Nur an einem Techniker-Peer mit hinterlegtem SSH-Schlüssel,
+                  sonst fehlt das Feld: `ssh-rsa <Base64>` ohne Kommentar.
+                  Additiv seit dem 09.10.2026, die Version bleibt 1; ein
+                  Dienst, der das Feld nicht kennt, überliest es.
         fenster:
           type: array
           items:

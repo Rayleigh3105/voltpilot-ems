@@ -1,5 +1,6 @@
 package com.voltpilot.api.fernwartung;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.fernwartung.FernwartungRepository.DienstAbruf;
@@ -65,8 +66,13 @@ public class FernwartungService {
     public record Hinterlegt(Ergebnis ergebnis, Zugang box) {
     }
 
-    /** Ein Peer im Soll-Stand des Tunnel-Dienstes. */
-    public record SollPeer(String art, UUID id, String kennung, String publicKey, String adresse) {
+    /**
+     * Ein Peer im Soll-Stand des Tunnel-Dienstes. {@code sshPublicKey} steht
+     * nur an einem Techniker-Peer mit hinterlegtem SSH-Schlüssel; sonst fehlt
+     * das Feld ganz. Additiv, die Soll-Version bleibt 1.
+     */
+    public record SollPeer(String art, UUID id, String kennung, String publicKey, String adresse,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String sshPublicKey) {
     }
 
     /** Ein offenes Fenster im Soll-Stand: verweist auf Peers über ihre {@code id}. */
@@ -184,7 +190,7 @@ public class FernwartungService {
             }
             if (vorhanden.isEmpty()) {
                 String adresse = freieAdresse(props.boxNetzwerk(), "Box-Netz");
-                UUID id = repo.zugangAnlegen(ART_BOX, edgeRef, null, schluessel, adresse, bemerkung,
+                UUID id = repo.zugangAnlegen(ART_BOX, edgeRef, null, schluessel, adresse, bemerkung, null,
                         akteur.sub());
                 repo.protokollieren(akteur.sub(), akteur.name(), "box_schluessel_hinterlegt", id, null, null,
                         details("edgeRef", edgeRef, "publicKey", WireguardSchluessel.kurz(schluessel),
@@ -221,27 +227,76 @@ public class FernwartungService {
     // ── Techniker ─────────────────────────────────────────────────────────
 
     /**
-     * Einen Techniker-Zugang anlegen: der Techniker erzeugt sein Schlüsselpaar
-     * auf seinem Gerät, hier landet nur der öffentliche Teil.
+     * Einen Techniker-Zugang anlegen: der Techniker erzeugt seine Schlüssel
+     * auf seinem Gerät, hier landen nur die öffentlichen Teile.
+     *
+     * <p>{@code sshPublicKey} ist freiwillig. Ohne ihn öffnet ein Fenster für
+     * diesen Zugang nur den Netzweg; anmelden kann sich an der Box dann nur,
+     * wessen Schlüssel dort schon liegt.
      */
-    public Zugang technikerAnlegen(String name, String publicKey, String notiz, Akteur akteur) {
+    public Zugang technikerAnlegen(String name, String publicKey, String sshPublicKey, String notiz,
+            Akteur akteur) {
         String anzeigename = name == null ? "" : name.trim();
         if (anzeigename.isEmpty() || anzeigename.length() > 80) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Der Name des Zugangs muss 1 bis 80 Zeichen haben.");
         }
         String schluessel = schluesselOder400(publicKey);
+        SshSchluessel.Geprueft ssh = sshPublicKey == null || sshPublicKey.isBlank() ? null
+                : sshOder400(sshPublicKey);
         return repo.schreibend(() -> {
             repo.zugangMitSchluessel(schluessel).ifPresent(z -> {
                 throw new ResponseStatusException(HttpStatus.CONFLICT, schluesselVergeben(z));
             });
             String adresse = freieAdresse(props.technikerNetzwerk(), "Techniker-Netz");
             UUID id = repo.zugangAnlegen(ART_TECHNIKER, null, anzeigename, schluessel, adresse,
-                    leerZuNull(notiz), akteur.sub());
+                    leerZuNull(notiz), ssh == null ? null : ssh.zeile(), akteur.sub());
             repo.protokollieren(akteur.sub(), akteur.name(), "techniker_angelegt", null, id, null,
                     details("name", anzeigename, "publicKey", WireguardSchluessel.kurz(schluessel),
-                            "adresse", adresse));
+                            "adresse", adresse, "sshFingerabdruck", ssh == null ? null : ssh.fingerabdruck()));
             return repo.zugang(id).orElseThrow();
+        });
+    }
+
+    /**
+     * Den öffentlichen SSH-Schlüssel eines Techniker-Zugangs setzen oder
+     * ersetzen. Derselbe Schlüssel noch einmal ändert nichts und steht nicht
+     * im Protokoll. Geht auch an einem gesperrten Zugang: er steht ohnehin
+     * nicht im Soll-Stand, und nach dem Entsperren gilt der neue Schlüssel.
+     */
+    public Zugang technikerSshSchluesselSetzen(UUID id, String sshPublicKey, Akteur akteur) {
+        SshSchluessel.Geprueft ssh = sshOder400(sshPublicKey);
+        return repo.schreibend(() -> {
+            Zugang zugang = technikerOder404(id);
+            Optional<SshSchluessel.Geprueft> vorher = zugang.ssh();
+            if (ssh.zeile().equals(zugang.sshPublicKey())) {
+                return zugang;
+            }
+            repo.sshSchluesselSetzen(zugang.id(), ssh.zeile(), akteur.sub());
+            repo.protokollieren(akteur.sub(), akteur.name(), "techniker_ssh_schluessel_gesetzt", null,
+                    zugang.id(), null, details("name", zugang.name(), "fingerabdruck", ssh.fingerabdruck(),
+                            "bits", String.valueOf(ssh.bits()),
+                            "vorher", vorher.map(SshSchluessel.Geprueft::fingerabdruck).orElse(null)));
+            return repo.zugang(zugang.id()).orElseThrow();
+        });
+    }
+
+    /**
+     * Den SSH-Schlüssel eines Techniker-Zugangs entfernen. Fenster für diesen
+     * Zugang öffnen danach wieder nur den Netzweg. Ohne hinterlegten Schlüssel
+     * ändert sich nichts.
+     */
+    public Zugang technikerSshSchluesselEntfernen(UUID id, Akteur akteur) {
+        return repo.schreibend(() -> {
+            Zugang zugang = technikerOder404(id);
+            if (zugang.sshPublicKey() == null) {
+                return zugang;
+            }
+            repo.sshSchluesselSetzen(zugang.id(), null, akteur.sub());
+            repo.protokollieren(akteur.sub(), akteur.name(), "techniker_ssh_schluessel_entfernt", null,
+                    zugang.id(), null, details("name", zugang.name(), "fingerabdruck",
+                            zugang.ssh().map(SshSchluessel.Geprueft::fingerabdruck).orElse(null)));
+            return repo.zugang(zugang.id()).orElseThrow();
         });
     }
 
@@ -359,6 +414,11 @@ public class FernwartungService {
      * nicht darin - der Dienst öffnet nur, was ein frisch abgeholter Stand
      * jetzt verlangt, und nie etwas aus einem Zwischenspeicher.
      *
+     * <p>Ein Techniker-Peer trägt zusätzlich seinen öffentlichen SSH-Schlüssel,
+     * wenn einer hinterlegt ist. Der Tunnel-Dienst gibt ihn später an die Box
+     * weiter, solange ein Fenster für dieses Paar offen ist; für den Netzweg
+     * spielt er keine Rolle.
+     *
      * <p>Merkt sich den Abruf je Dienst-Kennung: das Portal zeigt so, ob der
      * Dienst überhaupt abholt. Das ist keine Aussage über die Wirkung.
      */
@@ -366,7 +426,9 @@ public class FernwartungService {
         Instant jetzt = jetzt();
         List<SollPeer> peers = repo.aktiveZugaenge().stream()
                 .map(z -> new SollPeer(z.art(), z.id(),
-                        ART_BOX.equals(z.art()) ? z.edgeRef() : z.name(), z.publicKey(), z.adresse()))
+                        ART_BOX.equals(z.art()) ? z.edgeRef() : z.name(), z.publicKey(), z.adresse(),
+                        ART_TECHNIKER.equals(z.art())
+                                ? z.ssh().map(SshSchluessel.Geprueft::zeile).orElse(null) : null))
                 .toList();
         List<SollFenster> fenster = repo.offeneUndGeplanteFenster(jetzt).stream()
                 .filter(f -> f.offen(jetzt))
@@ -460,6 +522,15 @@ public class FernwartungService {
                     "Das ist kein öffentlicher WireGuard-Schlüssel (44 Zeichen Base64, endet auf „=\").");
         }
         return schluessel;
+    }
+
+    /** Die Meldung der Prüfung geht unverändert ans Portal; sie nennt bei Bedarf den Befehl. */
+    private static SshSchluessel.Geprueft sshOder400(String sshPublicKey) {
+        try {
+            return SshSchluessel.pruefe(sshPublicKey);
+        } catch (SshSchluessel.Ungueltig e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
     }
 
     /**
