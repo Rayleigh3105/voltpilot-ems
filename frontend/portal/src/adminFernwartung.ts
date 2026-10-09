@@ -493,9 +493,6 @@ export function sshText(t: Pick<FernwartungTechniker, 'sshFingerabdruck' | 'sshB
   return t.sshBits ? `${t.sshFingerabdruck} (RSA ${t.sshBits})` : t.sshFingerabdruck;
 }
 
-/** Was im Portal steht, wenn ein Zugang keinen SSH-Schlüssel hat. */
-export const NUR_NETZWEG = 'nur Netzweg';
-
 /**
  * Was die Seite über den SSH-Schlüssel ehrlich dazusagt: Das Portal gibt ihn
  * weiter, aber ob eine Box ihn holt, liegt nicht am Portal.
@@ -511,11 +508,13 @@ export function nurNetzwegSatz(name: string): string {
   return `Dieses Fenster öffnet nur den Netzweg. Der Zugang „${name}“ hat keinen SSH-Schlüssel; an der Box anmelden kann sich damit nur, wessen Schlüssel dort schon liegt.`;
 }
 
-export interface FensterAnmeldung {
-  befehle: SshBefehle;
+/** Ein offenes Fenster aus Sicht der Anmeldung: trägt sein Zugang einen SSH-Schlüssel? */
+export interface FensterSchluessel {
+  fensterId: string;
+  technikerName: string;
   /**
-   * Trägt der Zugang einen SSH-Schlüssel? `unbekannt`, wenn der Zugang nicht
-   * in der geladenen Liste steht - das ist kein „fehlt".
+   * `unbekannt`, wenn der Zugang nicht in der geladenen Liste steht - das ist
+   * kein „fehlt".
    */
   schluessel: 'vorhanden' | 'fehlt' | 'unbekannt';
   /** Fingerabdruck des SSH-Schlüssels am Zugang, sonst null. */
@@ -525,44 +524,55 @@ export interface FensterAnmeldung {
   ton: Ton;
 }
 
-/**
- * Was der Techniker für ein OFFENES Fenster braucht: die Befehle und die
- * ehrliche Auskunft, ob sein Zugang einen SSH-Schlüssel trägt. Für geplante
- * und beendete Fenster gibt es nichts anzumelden: null.
- */
-export function fensterAnmeldung(
-  f: FernwartungFenster,
-  boxAdresse: string,
-  techniker: FernwartungTechniker[],
-): FensterAnmeldung | null {
-  if (f.zustand !== 'offen') return null;
-  const befehle = sshBefehle(boxAdresse);
+export interface BoxAnmeldung {
+  /** Die Befehle hängen nur an der Box: sie gelten für jedes ihrer offenen Fenster. */
+  befehle: SshBefehle;
+  /** Je offenem Fenster ein Eintrag, zuerst endend zuerst. */
+  fenster: FensterSchluessel[];
+}
+
+function fensterSchluessel(f: FernwartungFenster, techniker: FernwartungTechniker[]): FensterSchluessel {
+  const basis = { fensterId: f.id, technikerName: f.technikerName };
   const t = techniker.find((x) => x.id === f.technikerId);
   if (!t) {
     return {
-      befehle,
+      ...basis,
       schluessel: 'unbekannt',
       fingerabdruck: null,
       ton: 'off',
-      satz: `Ob „${f.technikerName}“ einen SSH-Schlüssel hinterlegt hat, ist hier nicht bekannt.`,
+      satz: `„${f.technikerName}“: Ob der Zugang einen SSH-Schlüssel hinterlegt hat, ist hier nicht bekannt.`,
     };
   }
   if (!t.sshFingerabdruck) {
     return {
-      befehle,
+      ...basis,
       schluessel: 'fehlt',
       fingerabdruck: null,
       ton: 'warn',
-      satz: `Nur Netzweg: „${f.technikerName}“ hat keinen SSH-Schlüssel. Anmelden kann sich nur, wessen Schlüssel schon auf der Box liegt.`,
+      satz: `„${f.technikerName}“: nur Netzweg. Der Zugang hat keinen SSH-Schlüssel; anmelden kann sich nur, wessen Schlüssel schon auf der Box liegt.`,
     };
   }
   return {
-    befehle,
+    ...basis,
     schluessel: 'vorhanden',
     fingerabdruck: t.sshFingerabdruck,
     ton: 'ok',
-    satz: `Anmeldung mit dem SSH-Schlüssel ${t.sshFingerabdruck}, sobald die Box ihn abgeholt hat oder wenn er schon auf ihr liegt.`,
+    satz: `„${f.technikerName}“: Anmeldung mit dem SSH-Schlüssel ${t.sshFingerabdruck}, sobald die Box ihn abgeholt hat oder wenn er schon auf ihr liegt.`,
   };
+}
+
+/**
+ * Was ein Techniker für die OFFENEN Fenster einer Box braucht: die fertigen
+ * Befehle und je Fenster die ehrliche Auskunft, ob sein Zugang einen
+ * SSH-Schlüssel trägt. Ohne offenes Fenster gibt es nichts anzumelden: null
+ * (geplante Fenster zählen nicht).
+ */
+export function boxAnmeldung(box: FernwartungBox, techniker: FernwartungTechniker[]): BoxAnmeldung | null {
+  const offen = box.laufendeFenster
+    .filter((f) => f.zustand === 'offen')
+    .sort((a, b) => a.ende.localeCompare(b.ende));
+  if (offen.length === 0) return null;
+  return { befehle: sshBefehle(box.adresse), fenster: offen.map((f) => fensterSchluessel(f, techniker)) };
 }
 
 export const SSH_ERZEUGEN_KURZ = 'ssh-keygen -t rsa -b 3072';

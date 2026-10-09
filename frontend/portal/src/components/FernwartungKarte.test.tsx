@@ -146,7 +146,7 @@ describe('FernwartungKarte (Box-Seite, nur Plattform-Schicht)', () => {
     const anmeldung = await screen.findByTestId('fw-anmeldung');
     expect(anmeldung).toHaveTextContent('ssh -i ~/.ssh/id_rsa_voltpilot -p 2222 -L 8484:127.0.0.1:8484 root@10.10.16.2');
     expect(screen.getByTestId('fw-anmeldung-vorhanden')).toHaveTextContent(
-      'SHA256:TDOx3bpPNtPLIdd+juZoGcDMz3ZRCklaP5G6aBrp9Zc',
+      '„Max (Laptop)“: Anmeldung mit dem SSH-Schlüssel SHA256:TDOx3bpPNtPLIdd+juZoGcDMz3ZRCklaP5G6aBrp9Zc',
     );
   });
 });

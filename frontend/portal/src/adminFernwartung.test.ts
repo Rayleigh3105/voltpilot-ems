@@ -7,7 +7,7 @@ import {
   boxOrt,
   dauerOptionen,
   dauerText,
-  fensterAnmeldung,
+  boxAnmeldung,
   fensterTeile,
   fensterText,
   loeschbar,
@@ -386,37 +386,48 @@ describe('SSH-Schlüssel des Technikers (Fenster-Schlüssel, Schritt 1)', () => 
     });
   });
 
-  it('ein offenes Fenster zeigt die Befehle und sagt, ob der Zugang einen SSH-Schlüssel trägt', () => {
-    const mit = fensterAnmeldung(fenster(), '10.10.16.2', [techMitSsh()]);
-    expect(mit?.schluessel).toBe('vorhanden');
-    expect(mit?.fingerabdruck).toBe(FINGERABDRUCK);
-    expect(mit?.ton).toBe('ok');
-    expect(mit?.befehle.ssh).toContain('root@10.10.16.2');
-    // Das Portal verspricht die Anmeldung nicht: die Box muss den Schlüssel erst haben.
-    expect(mit?.satz).toContain(FINGERABDRUCK);
-    expect(mit?.satz).toMatch(/sobald die Box ihn abgeholt hat oder wenn er schon auf ihr liegt/);
-
-    const ohne = fensterAnmeldung(fenster(), '10.10.16.2', [tech()]);
-    expect(ohne?.schluessel).toBe('fehlt');
-    expect(ohne?.ton).toBe('warn');
-    expect(ohne?.satz).toBe(
-      'Nur Netzweg: „Max (Laptop)“ hat keinen SSH-Schlüssel. Anmelden kann sich nur, wessen Schlüssel schon auf der Box liegt.',
+  it('zu den offenen Fenstern einer Box gibt es die Befehle und je Fenster die Auskunft zum SSH-Schlüssel', () => {
+    const kim = tech({ id: 't2', name: 'Kim (Tablet)', adresse: '10.10.32.3' });
+    const a = boxAnmeldung(
+      box({
+        laufendeFenster: [
+          fenster({ id: 'spaet', ende: '2026-10-07T15:00:00Z' }),
+          fenster({ id: 'frueh', technikerId: 't2', technikerName: 'Kim (Tablet)', ende: '2026-10-07T13:00:00Z' }),
+          fenster({ id: 'morgen', zustand: 'geplant', beginn: '2026-10-08T08:00:00Z' }),
+        ],
+      }),
+      [techMitSsh(), kim],
     );
-    // Der Netzweg ist offen: die Befehle stehen trotzdem da.
-    expect(ohne?.befehle.webApp).toContain('-L 8484:127.0.0.1:8484');
+    // Die Befehle hängen nur an der Box: einmal, nicht je Fenster.
+    expect(a?.befehle.ssh).toBe('ssh -i ~/.ssh/id_rsa_voltpilot -p 2222 root@10.10.16.2');
+    expect(a?.befehle.webApp).toContain('-L 8484:127.0.0.1:8484');
+    // Nur die offenen Fenster, das zuerst endende zuerst.
+    expect(a?.fenster.map((f) => [f.fensterId, f.schluessel, f.ton])).toEqual([
+      ['frueh', 'fehlt', 'warn'],
+      ['spaet', 'vorhanden', 'ok'],
+    ]);
+    expect(a?.fenster[0].satz).toBe(
+      '„Kim (Tablet)“: nur Netzweg. Der Zugang hat keinen SSH-Schlüssel; anmelden kann sich nur, wessen Schlüssel schon auf der Box liegt.',
+    );
+    // Das Portal verspricht die Anmeldung nicht: die Box muss den Schlüssel erst haben.
+    expect(a?.fenster[1].fingerabdruck).toBe(FINGERABDRUCK);
+    expect(a?.fenster[1].satz).toBe(
+      `„Max (Laptop)“: Anmeldung mit dem SSH-Schlüssel ${FINGERABDRUCK}, sobald die Box ihn abgeholt hat oder wenn er schon auf ihr liegt.`,
+    );
   });
 
   it('unbekannt ist nicht „fehlt": ohne den Zugang in der Liste behauptet die Zeile nichts', () => {
-    const a = fensterAnmeldung(fenster(), '10.10.16.2', []);
-    expect(a?.schluessel).toBe('unbekannt');
-    expect(a?.ton).toBe('off');
-    expect(a?.satz).toMatch(/nicht bekannt/);
-    expect(a?.satz).not.toMatch(/Nur Netzweg/);
+    const a = boxAnmeldung(box({ laufendeFenster: [fenster()] }), []);
+    expect(a?.fenster[0].schluessel).toBe('unbekannt');
+    expect(a?.fenster[0].ton).toBe('off');
+    expect(a?.fenster[0].satz).toMatch(/nicht bekannt/);
+    expect(a?.fenster[0].satz).not.toMatch(/nur Netzweg/);
   });
 
-  it('geplante und beendete Fenster haben nichts anzumelden', () => {
+  it('ohne offenes Fenster gibt es nichts anzumelden', () => {
+    expect(boxAnmeldung(box(), [techMitSsh()])).toBeNull();
     for (const zustand of ['geplant', 'geschlossen', 'abgesagt', 'abgelaufen'] as const) {
-      expect(fensterAnmeldung(fenster({ zustand }), '10.10.16.2', [techMitSsh()])).toBeNull();
+      expect(boxAnmeldung(box({ laufendeFenster: [fenster({ zustand })] }), [techMitSsh()])).toBeNull();
     }
   });
 

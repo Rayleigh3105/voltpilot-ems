@@ -10,7 +10,7 @@
  * Nur Plattform-Admins (O3: der Kunde sieht die Fenster nicht). Alle
  * Ableitungen stehen im reinen `adminFernwartung.ts`.
  */
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
@@ -21,7 +21,7 @@ import {
   abrufLage,
   aktionLabel,
   boxOrt,
-  fensterAnmeldung,
+  boxAnmeldung,
   fensterTeile,
   fensterTon,
   loeschbar,
@@ -47,7 +47,7 @@ import {
   TechnikerDialog,
   TechnikerKonfigAnzeige,
 } from '../../components/FernwartungDialoge';
-import { FensterAnmeldungZeile, SshSchluesselDialog } from '../../components/FernwartungSsh';
+import { BoxAnmeldungBlock, SshSchluesselDialog } from '../../components/FernwartungSsh';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import { Modal } from '../../../designsystem/components/shell/Modal';
 import { fernwartungHash, parseFernwartungBox } from '../../nav';
@@ -205,8 +205,11 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                     <tbody>
                       {sortierteBoxen.map((b) => {
                         const sperre = oeffnenSperre(b, techniker);
+                        const anmeldung = boxAnmeldung(b, techniker);
+                        const gewaehlt = b.edgeRef === boxFilter ? ' vp-fw-gewaehlt' : '';
                         return (
-                          <tr key={b.id} className={b.edgeRef === boxFilter ? 'vp-fw-gewaehlt' : undefined}>
+                          <Fragment key={b.id}>
+                          <tr className={`${anmeldung ? 'vp-fw-hat-unterzeile' : ''}${gewaehlt}` || undefined}>
                             <td data-label="Box">
                               <span className="vp-cell-main">
                                 <span>
@@ -224,34 +227,27 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                                 </span>
                               </span>
                             </td>
-                            <td
-                              data-label="Fernwartung"
-                              className={b.laufendeFenster.some((f) => f.zustand === 'offen') ? 'vp-fw-zelle-fenster' : undefined}
-                            >
+                            <td data-label="Fernwartung">
                               {b.laufendeFenster.length === 0 ? (
                                 <span className="vp-muted">kein Fenster</span>
                               ) : (
                                 <ul className="vp-fw-fenster">
-                                  {b.laufendeFenster.map((f) => {
-                                    const anmeldung = fensterAnmeldung(f, b.adresse, techniker);
-                                    return (
-                                      <li key={f.id}>
-                                        <Badge variant={fensterTon(f.zustand)} dot>
-                                          {fensterTeile(f, jetzt).zustand}
-                                        </Badge>
-                                        <span>{fensterTeile(f, jetzt).text}</span>
-                                        <Button
-                                          variant="ghost"
-                                          size="sm"
-                                          disabled={busy}
-                                          onClick={() => setSchliessen(f)}
-                                        >
-                                          {f.zustand === 'geplant' ? 'Absagen' : 'Schließen'}
-                                        </Button>
-                                        {anmeldung && <FensterAnmeldungZeile anmeldung={anmeldung} />}
-                                      </li>
-                                    );
-                                  })}
+                                  {b.laufendeFenster.map((f) => (
+                                    <li key={f.id}>
+                                      <Badge variant={fensterTon(f.zustand)} dot>
+                                        {fensterTeile(f, jetzt).zustand}
+                                      </Badge>
+                                      <span>{fensterTeile(f, jetzt).text}</span>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        disabled={busy}
+                                        onClick={() => setSchliessen(f)}
+                                      >
+                                        {f.zustand === 'geplant' ? 'Absagen' : 'Schließen'}
+                                      </Button>
+                                    </li>
+                                  ))}
                                 </ul>
                               )}
                             </td>
@@ -292,6 +288,15 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                               </div>
                             </td>
                           </tr>
+                          {anmeldung && (
+                            // Gehört zur Box-Zeile darüber: die Befehle brauchen die ganze Breite.
+                            <tr className={`vp-fw-unterzeile${gewaehlt}`}>
+                              <td colSpan={4}>
+                                <BoxAnmeldungBlock anmeldung={anmeldung} boxRef={b.edgeRef} />
+                              </td>
+                            </tr>
+                          )}
+                          </Fragment>
                         );
                       })}
                     </tbody>

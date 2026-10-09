@@ -127,14 +127,18 @@ tr.vp-fw-gewaehlt > td {
   flex: 0 0 auto;
 }
 
-/* Anmeldung in der Zeile eines offenen Fensters: die fertigen Befehle. */
+/* Anmeldung zu den offenen Fenstern einer Box: die fertigen Befehle. */
 .vp-fw-anmeldung {
-  flex: 1 0 100%;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  padding: 0.25rem 0 0.35rem;
+  gap: 0.4rem;
+}
+
+.vp-fw-anmeldung-titel {
+  font-size: var(--vp-text-meta);
+  font-weight: 600;
+  color: var(--vp-text-dark);
 }
 
 .vp-fw-anmeldung-zeile {
@@ -159,12 +163,31 @@ tr.vp-fw-gewaehlt > td {
   min-width: 0;
 }
 
-.vp-fw-anmeldung-satz {
+.vp-fw-anmeldung-fenster {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.vp-fw-anmeldung-fenster > li {
   margin: 0;
 }
 
-.vp-fw-anmeldung-satz.vp-alert {
+.vp-fw-anmeldung-fenster > li.vp-alert {
   padding: var(--vp-space-2) var(--vp-space-3);
+}
+
+/* Die Unterzeile gehört zur Box-Zeile darüber: kein Strich dazwischen. */
+.vp-table tr.vp-fw-hat-unterzeile > td {
+  border-bottom: none;
+}
+
+.vp-table tr.vp-fw-unterzeile > td {
+  padding-top: 0;
 }
 
 /* SSH-Schlüssel eingeben und erzeugen. */
@@ -244,13 +267,40 @@ tr.vp-fw-gewaehlt > td {
 }
 
 @media (max-width: 720px) {
-  /* Am Telefon steht die Beschriftung ÜBER den Befehlen, nicht daneben: sonst
-     bliebe für eine Befehlszeile nur die halbe Breite. */
-  .vp-table.responsive td.vp-fw-zelle-fenster,
+  /* Am Telefon sind die Tabellenzeilen Karten: die Unterzeile schließt ohne
+     Fuge an die Karte ihrer Box an. */
+  .vp-table.responsive tr.vp-fw-hat-unterzeile {
+    margin-bottom: 0;
+    border-bottom: none;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+  }
+  .vp-table.responsive tr.vp-fw-unterzeile {
+    border-top: none;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    padding-top: 0;
+  }
+  .vp-table.responsive tr.vp-fw-unterzeile > td {
+    display: block;
+  }
+  .vp-table.responsive tr.vp-fw-unterzeile > td::before {
+    content: none;
+  }
+  /* Der Fingerabdruck steht UNTER seiner Beschriftung, nicht daneben. */
   .vp-table.responsive td.vp-fw-zelle-ssh {
     flex-direction: column;
     align-items: stretch;
     gap: var(--vp-space-1);
+  }
+  /* Der Befehl bekommt die ganze Breite, der Kopier-Knopf steht darunter. */
+  .vp-fw-befehl {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.1rem;
+  }
+  .vp-fw-befehl > code {
+    flex: 1 1 100%;
   }
   .vp-fw-anmeldung-zeile {
     grid-template-columns: minmax(0, 1fr);

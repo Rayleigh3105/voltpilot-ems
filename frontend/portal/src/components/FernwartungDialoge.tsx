@@ -18,7 +18,6 @@ import {
   boxBefehl,
   dauerOptionen,
   nurNetzwegSatz,
-  NUR_NETZWEG,
   schluesselGueltig,
   sshSchluesselPruefen,
   sshText,
@@ -129,7 +128,7 @@ export function FensterDialog({
     <Modal
       open
       onClose={onClose}
-      title={`Fernwartung öffnen · ${box.edgeRef}`}
+      title="Fernwartung öffnen"
       icon={<Kopf icon="lock" />}
       footer={
         <>
@@ -142,6 +141,10 @@ export function FensterDialog({
         </>
       }
     >
+      {/* Die Box steht hier und nicht im Titel: der ist einzeilig und schnitte sie am Telefon ab. */}
+      <p className="vp-fw-umbruch" style={{ marginTop: 0 }} data-testid="fw-fenster-box">
+        Box {box.edgeRef} ({box.adresse})
+      </p>
       <p className="vp-note" style={{ marginTop: 0 }}>
         Der Techniker erreicht die Box über den Wartungstunnel nur in diesem Zeitfenster; danach
         schließt der Server den Weg von selbst. {UNBEKANNT_SATZ}
@@ -467,8 +470,8 @@ export function TechnikerDialog({
             <SshFingerabdruck techniker={antwort.techniker} />
           ) : (
             <p className="vp-alert vp-alert-warn" style={{ margin: 0 }} data-testid="fw-techniker-ohne-ssh">
-              Kein SSH-Schlüssel hinterlegt: Fenster für diesen Zugang öffnen {NUR_NETZWEG}. Er lässt sich
-              später am Zugang unter „SSH-Schlüssel“ nachtragen.
+              Kein SSH-Schlüssel hinterlegt: Fenster für diesen Zugang öffnen nur den Netzweg. Er lässt
+              sich später am Zugang unter „SSH-Schlüssel“ nachtragen.
             </p>
           )}
         </div>

@@ -359,11 +359,15 @@ describe('FernwartungPage', () => {
       expect(screen.getByTestId('fw-ssh-stand')).toHaveTextContent(/Abholen können ihn die Boxen noch nicht/);
     });
 
-    it('in der Zeile eines offenen Fensters stehen die fertigen Befehle für SSH und die Web-App', async () => {
-      fernwartungBoxen.mockResolvedValue([box({ laufendeFenster: [offenesFenster()] })]);
+    it('zur Zeile eines offenen Fensters stehen die fertigen Befehle für SSH und die Web-App', async () => {
+      fernwartungBoxen.mockResolvedValue([box({ laufendeFenster: [offenesFenster()] }), box({ id: 'b2', edgeRef: 'edge-k7m2xq3', adresse: '10.10.16.3' })]);
       render(<FernwartungPage />);
       const boxen = await screen.findByTestId('fw-boxen');
+      // Nur die Box mit offenem Fenster bekommt die Befehle, gleich unter ihrer Zeile.
       const anmeldung = within(boxen).getByTestId('fw-anmeldung');
+      expect(anmeldung).toHaveAttribute('data-box', 'edge-zay5sdd');
+      const zeile = within(boxen).getByText('edge-zay5sdd').closest('tr') as HTMLElement;
+      expect(zeile.nextElementSibling).toBe(anmeldung.closest('tr'));
       expect(within(anmeldung).getByText('ssh -i ~/.ssh/id_rsa_voltpilot -p 2222 root@10.10.16.2')).toBeInTheDocument();
       expect(
         within(anmeldung).getByText('ssh -i ~/.ssh/id_rsa_voltpilot -p 2222 -L 8484:127.0.0.1:8484 root@10.10.16.2'),
@@ -371,10 +375,12 @@ describe('FernwartungPage', () => {
       expect(within(anmeldung).getByText('http://127.0.0.1:8484')).toBeInTheDocument();
       expect(within(anmeldung).getByRole('button', { name: 'SSH-Befehl kopieren' })).toBeEnabled();
       expect(within(anmeldung).getByRole('button', { name: 'Befehl für die Web-App kopieren' })).toBeEnabled();
-      expect(within(anmeldung).getByTestId('fw-anmeldung-vorhanden')).toHaveTextContent(FINGERABDRUCK);
+      expect(within(anmeldung).getByTestId('fw-anmeldung-vorhanden')).toHaveTextContent(
+        `„Max (Laptop)“: Anmeldung mit dem SSH-Schlüssel ${FINGERABDRUCK}`,
+      );
     });
 
-    it('ein Fenster für einen Zugang ohne SSH-Schlüssel heißt „nur Netzweg", ein geplantes zeigt keine Befehle', async () => {
+    it('ein Fenster für einen Zugang ohne SSH-Schlüssel heißt „nur Netzweg", ein geplantes zählt nicht', async () => {
       fernwartungBoxen.mockResolvedValue([
         box({
           laufendeFenster: [
@@ -382,13 +388,23 @@ describe('FernwartungPage', () => {
             offenesFenster({ id: 'f2', zustand: 'geplant', beginn: new Date(Date.now() + 3_600_000).toISOString() }),
           ],
         }),
+        box({
+          id: 'b2',
+          edgeRef: 'edge-k7m2xq3',
+          adresse: '10.10.16.3',
+          laufendeFenster: [offenesFenster({ id: 'f3', edgeRef: 'edge-k7m2xq3', zustand: 'geplant' })],
+        }),
       ]);
       render(<FernwartungPage />);
       const boxen = await screen.findByTestId('fw-boxen');
       expect(within(boxen).getAllByTestId('fw-anmeldung')).toHaveLength(1);
-      expect(within(boxen).getByTestId('fw-anmeldung-fehlt')).toHaveTextContent(
-        'Nur Netzweg: „Werkstatt-Tablet“ hat keinen SSH-Schlüssel.',
+      const anmeldung = within(boxen).getByTestId('fw-anmeldung');
+      expect(within(anmeldung).getAllByRole('listitem')).toHaveLength(1);
+      expect(within(anmeldung).getByTestId('fw-anmeldung-fehlt')).toHaveTextContent(
+        '„Werkstatt-Tablet“: nur Netzweg. Der Zugang hat keinen SSH-Schlüssel',
       );
+      // Der Netzweg ist offen: die Befehle stehen trotzdem da.
+      expect(within(anmeldung).getByText('ssh -i ~/.ssh/id_rsa_voltpilot -p 2222 root@10.10.16.2')).toBeInTheDocument();
     });
 
     it('sagt beim Öffnen eines Fensters, dass es ohne SSH-Schlüssel nur den Netzweg öffnet', async () => {
@@ -512,7 +528,7 @@ describe('FernwartungPage', () => {
           sshPublicKey: null,
         }),
       );
-      expect(await within(dialog).findByTestId('fw-techniker-ohne-ssh')).toHaveTextContent('nur Netzweg');
+      expect(await within(dialog).findByTestId('fw-techniker-ohne-ssh')).toHaveTextContent('öffnen nur den Netzweg');
     });
 
     it('das Protokoll nennt gesetzte und entfernte SSH-Schlüssel mit Fingerabdruck', async () => {

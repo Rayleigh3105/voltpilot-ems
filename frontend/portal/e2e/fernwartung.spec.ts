@@ -192,27 +192,31 @@ test('Fernwartung: ein offenes Fenster zeigt die fertigen Befehle, ohne SSH-Schl
   await expect(kim).toContainText('Fenster öffnen nur den Netzweg');
   await expect(page.getByTestId('fw-ssh-stand')).toContainText('Abholen können ihn die Boxen noch nicht');
 
-  // Die Box mit zwei offenen Fenstern: eines mit SSH-Schlüssel, eines nur Netzweg.
-  const pilot = page.getByTestId('fw-boxen').locator('tr').filter({ hasText: 'edge-zay5sdd' });
-  const anmeldungen = pilot.getByTestId('fw-anmeldung');
-  await expect(anmeldungen).toHaveCount(2);
-  const mit = anmeldungen.nth(0);
+  // Die Box mit zwei offenen Fenstern: die Befehle einmal, je Fenster ein Satz.
+  const boxen = page.getByTestId('fw-boxen');
+  await expect(boxen.getByTestId('fw-anmeldung')).toHaveCount(1);
+  const mit = boxen.locator('[data-testid="fw-anmeldung"][data-box="edge-zay5sdd"]');
   await expect(mit.getByText('ssh -i ~/.ssh/id_rsa_voltpilot -p 2222 root@10.10.16.2', { exact: true })).toBeVisible();
   await expect(
     mit.getByText('ssh -i ~/.ssh/id_rsa_voltpilot -p 2222 -L 8484:127.0.0.1:8484 root@10.10.16.2', { exact: true }),
   ).toBeVisible();
   await expect(mit).toContainText('danach im Browser: http://127.0.0.1:8484');
-  await expect(mit.getByTestId('fw-anmeldung-vorhanden')).toContainText('SHA256:TDOx3bpPNtPLIdd+juZoGcDMz3ZRCklaP5G6aBrp9Zc');
-  const ohne = anmeldungen.nth(1);
-  await expect(ohne.getByTestId('fw-anmeldung-fehlt')).toContainText('Nur Netzweg: „Kim (Tablet)“ hat keinen SSH-Schlüssel.');
-  // Der Netzweg ist offen: die Befehle stehen auch dort.
-  await expect(ohne.getByText('ssh -i ~/.ssh/id_rsa_voltpilot -p 2222 root@10.10.16.2', { exact: true })).toBeVisible();
+  await expect(mit.getByTestId('fw-anmeldung-vorhanden')).toContainText(
+    '„Alex (Laptop)“: Anmeldung mit dem SSH-Schlüssel SHA256:TDOx3bpPNtPLIdd+juZoGcDMz3ZRCklaP5G6aBrp9Zc',
+  );
+  await expect(mit.getByTestId('fw-anmeldung-fehlt')).toContainText('„Kim (Tablet)“: nur Netzweg. Der Zugang hat keinen SSH-Schlüssel');
 
   // Nichts abgeschnitten: Befehle, Sätze und Fingerabdruck brechen um, statt überzustehen.
-  await nichtAbgeschnitten(pilot.locator('.vp-fw-befehl > code'));
-  await nichtAbgeschnitten(pilot.locator('.vp-fw-anmeldung-satz'));
+  await nichtAbgeschnitten(mit.locator('.vp-fw-befehl > code'));
+  await nichtAbgeschnitten(mit.locator('.vp-fw-anmeldung-fenster > li'));
   await nichtAbgeschnitten(zugaenge.locator('.vp-fw-fingerabdruck'));
   await nichtAbgeschnitten(page.getByTestId('fw-ssh-stand'));
+  // Am breiten Schirm passt jeder Befehl in eine Zeile.
+  if ((page.viewportSize()?.width ?? 0) >= 1200) {
+    for (const hoehe of await mit.locator('.vp-fw-befehl > code').evaluateAll((els) => els.map((el) => el.getBoundingClientRect().height))) {
+      expect(hoehe).toBeLessThan(40);
+    }
+  }
 
   // Kopieren meldet sich zurück und lässt die Seite ganz.
   const kopieren = mit.getByRole('button', { name: 'SSH-Befehl kopieren' });
@@ -226,6 +230,8 @@ test('Fernwartung: ein offenes Fenster zeigt die fertigen Befehle, ohne SSH-Schl
   await dialog.getByRole('combobox', { name: /Techniker-Zugang/ }).click();
   await expect(page.getByRole('option', { name: /Kim \(Tablet\)/ })).toContainText('ohne SSH-Schlüssel');
   await page.getByRole('option', { name: /Kim \(Tablet\)/ }).click();
+  await expect(dialog.getByTestId('fw-fenster-box')).toHaveText('Box edge-k7m2xq3 (10.10.16.3)');
+  await nichtAbgeschnitten(dialog.getByRole('heading', { name: 'Fernwartung öffnen' }));
   const warnung = dialog.getByTestId('fw-fenster-nur-netzweg');
   await expect(warnung).toContainText('Dieses Fenster öffnet nur den Netzweg. Der Zugang „Kim (Tablet)“ hat keinen SSH-Schlüssel');
   await nichtAbgeschnitten(warnung);
@@ -233,8 +239,9 @@ test('Fernwartung: ein offenes Fenster zeigt die fertigen Befehle, ohne SSH-Schl
   await dialog.getByLabel('Grund *').fill('Zähler prüfen');
   await dialog.getByRole('button', { name: 'Fenster öffnen' }).click();
   await expect(dialog).not.toBeVisible();
-  await expect(frei.getByTestId('fw-anmeldung-fehlt')).toContainText('Nur Netzweg');
-  await expect(frei.getByText('ssh -i ~/.ssh/id_rsa_voltpilot -p 2222 root@10.10.16.3', { exact: true })).toBeVisible();
+  const neu = boxen.locator('[data-testid="fw-anmeldung"][data-box="edge-k7m2xq3"]');
+  await expect(neu.getByTestId('fw-anmeldung-fehlt')).toContainText('„Kim (Tablet)“: nur Netzweg');
+  await expect(neu.getByText('ssh -i ~/.ssh/id_rsa_voltpilot -p 2222 root@10.10.16.3', { exact: true })).toBeVisible();
 
   const ueberlauf = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(ueberlauf).toBeLessThanOrEqual(0);
@@ -253,7 +260,7 @@ test('Fernwartung: der SSH-Schlüssel wird am Zugang hinterlegt, geprüft, erset
   const ausloeser = kim.getByRole('button', { name: 'SSH-Schlüssel' });
   await ausloeser.click();
   const dialog = page.getByRole('dialog');
-  await expect(dialog.getByRole('heading', { name: 'SSH-Schlüssel des Zugangs' })).toBeVisible();
+  await expect(dialog.getByRole('heading', { name: 'SSH-Schlüssel', exact: true })).toBeVisible();
   await expect(dialog).toContainText('Zugang „Kim (Tablet)“ (10.10.32.5)');
   await expect(dialog.getByTestId('fw-ssh-aktuell')).toContainText('Kein SSH-Schlüssel hinterlegt');
 
@@ -265,7 +272,7 @@ test('Fernwartung: der SSH-Schlüssel wird am Zugang hinterlegt, geprüft, erset
   await expect(erzeugen.getByText('ssh-keygen -t rsa -b 3072 -f ~/.ssh/id_rsa_voltpilot', { exact: true })).toBeVisible();
   await expect(erzeugen.getByText('cat ~/.ssh/id_rsa_voltpilot.pub', { exact: true })).toBeVisible();
   await nichtAbgeschnitten(erzeugen.locator('.vp-fw-befehl > code'));
-  await nichtAbgeschnitten(dialog.getByRole('heading', { name: 'SSH-Schlüssel des Zugangs' }));
+  await nichtAbgeschnitten(dialog.getByRole('heading', { name: 'SSH-Schlüssel', exact: true }));
 
   // Leer: Fehler am Feld, Fokus im Feld.
   const feld = dialog.getByLabel(/Öffentlicher SSH-Schlüssel/);
@@ -298,7 +305,7 @@ test('Fernwartung: der SSH-Schlüssel wird am Zugang hinterlegt, geprüft, erset
   // Liste, Fensterzeile und Protokoll folgen.
   await expect(kim).toContainText(neu.fingerabdruck);
   await expect(kim).toContainText('RSA 2048');
-  const pilot = page.getByTestId('fw-boxen').locator('tr').filter({ hasText: 'edge-zay5sdd' });
+  const pilot = page.getByTestId('fw-boxen').locator('[data-testid="fw-anmeldung"][data-box="edge-zay5sdd"]');
   await expect(pilot.getByTestId('fw-anmeldung-fehlt')).toHaveCount(0);
   await expect(pilot.getByTestId('fw-anmeldung-vorhanden')).toHaveCount(2);
   const gesetzt = page.getByTestId('fw-protokoll').locator('tr').filter({ hasText: 'SSH-Schlüssel gesetzt' });

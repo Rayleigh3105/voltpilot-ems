@@ -12,12 +12,11 @@ import { Modal } from '../../designsystem/components/shell/Modal';
 import { ApiError } from '../api';
 import { adminApi } from '../admin/adminApi';
 import {
-  NUR_NETZWEG,
   SSH_ERZEUGEN,
   SSH_STAND_SATZ,
   sshSchluesselPruefen,
   sshText,
-  type FensterAnmeldung,
+  type BoxAnmeldung,
   type FernwartungTechniker,
 } from '../adminFernwartung';
 
@@ -181,12 +180,14 @@ export function SshFingerabdruck({ techniker }: { techniker: FernwartungTechnike
 }
 
 /**
- * In der Zeile eines offenen Fensters: die fertigen Befehle und der Satz, ob
- * der Zugang einen SSH-Schlüssel trägt oder das Fenster nur den Netzweg öffnet.
+ * Zu den offenen Fenstern einer Box: die fertigen Befehle (sie hängen nur an
+ * der Box) und je Fenster der Satz, ob der Zugang einen SSH-Schlüssel trägt
+ * oder das Fenster nur den Netzweg öffnet.
  */
-export function FensterAnmeldungZeile({ anmeldung }: { anmeldung: FensterAnmeldung }) {
+export function BoxAnmeldungBlock({ anmeldung, boxRef }: { anmeldung: BoxAnmeldung; boxRef: string }) {
   return (
-    <div className="vp-fw-anmeldung" data-testid="fw-anmeldung">
+    <div className="vp-fw-anmeldung" data-testid="fw-anmeldung" data-box={boxRef}>
+      <span className="vp-fw-anmeldung-titel">Anmelden im offenen Fenster</span>
       <div className="vp-fw-anmeldung-zeile">
         <span className="vp-fw-anmeldung-was">SSH</span>
         <Befehl text={anmeldung.befehle.ssh} was="SSH-Befehl" />
@@ -200,12 +201,17 @@ export function FensterAnmeldungZeile({ anmeldung }: { anmeldung: FensterAnmeldu
           </span>
         </div>
       </div>
-      <p
-        className={`vp-fw-anmeldung-satz vp-fw-umbruch${anmeldung.ton === 'warn' ? ' vp-alert vp-alert-warn' : ' vp-note'}`}
-        data-testid={`fw-anmeldung-${anmeldung.schluessel}`}
-      >
-        {anmeldung.satz}
-      </p>
+      <ul className="vp-fw-anmeldung-fenster">
+        {anmeldung.fenster.map((f) => (
+          <li
+            key={f.fensterId}
+            className={`vp-fw-umbruch${f.ton === 'warn' ? ' vp-alert vp-alert-warn' : ' vp-note'}`}
+            data-testid={`fw-anmeldung-${f.schluessel}`}
+          >
+            {f.satz}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -310,7 +316,7 @@ export function SshSchluesselDialog({
     <Modal
       open
       onClose={onClose}
-      title="SSH-Schlüssel des Zugangs"
+      title="SSH-Schlüssel"
       icon={
         <IconTile category="primary" size={40}>
           <Icon name="shield" size={20} />
@@ -350,7 +356,7 @@ export function SshSchluesselDialog({
               </div>
             ) : (
               <p className="vp-alert vp-alert-warn" style={{ margin: 0 }} data-testid="fw-ssh-aktuell">
-                Kein SSH-Schlüssel hinterlegt: Fenster für diesen Zugang öffnen {NUR_NETZWEG}.
+                Kein SSH-Schlüssel hinterlegt: Fenster für diesen Zugang öffnen nur den Netzweg.
               </p>
             )}
             <SshSchluesselFeld
