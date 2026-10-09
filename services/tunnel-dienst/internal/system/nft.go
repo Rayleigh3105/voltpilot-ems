@@ -27,6 +27,8 @@ type Regeln struct {
 	MaxFenster time.Duration
 	// VerbindungenProtokollieren: neue Techniker-Verbindungen ins Kernel-Log.
 	VerbindungenProtokollieren bool
+	// SchluesselPort: TCP-Port der Schlüsselausgabe; 0 = keine Regel dafür.
+	SchluesselPort int
 }
 
 // Menge heißt die nft-Menge der offenen Fenster.
@@ -74,9 +76,25 @@ func (r Regeln) koerper() string {
 	fmt.Fprintf(&b, "\t}\n")
 	fmt.Fprintf(&b, "\tchain eingang_wartung {\n")
 	fmt.Fprintf(&b, "\t\ticmp type echo-request limit rate 5/second accept\n")
+	if r.SchluesselPort != 0 {
+		// Schlüsselausgabe: Box -> Server-Adresse im Techniker-Netz, dieser eine
+		// Port. "ct direction original" lässt nur Verbindungen durch, die die
+		// Box aufgebaut hat: ohne das käme auch die Antwort einer Box auf eine
+		// Verbindung an, die der Server von diesem Port aus zu ihr aufbaut -
+		// und der Server soll keine Box erreichen.
+		fmt.Fprintf(&b, "\t\tip saddr %s ip daddr %s tcp dport %d ct direction original accept\n",
+			box, SchluesselAdresse(r.TechnikerNetz), r.SchluesselPort)
+	}
 	fmt.Fprintf(&b, "\t\tcounter drop\n")
 	fmt.Fprintf(&b, "\t}\n")
 	return b.String()
+}
+
+// SchluesselAdresse ist die Adresse, auf der die Schlüsselausgabe lauscht: die
+// Server-Adresse im TECHNIKER-Netz. Eine Box erreicht nur sie, weil ihr
+// Tunnel nur das Techniker-Netz als erlaubtes Netz führt.
+func SchluesselAdresse(technikerNetz netip.Prefix) netip.Addr {
+	return technikerNetz.Masked().Addr().Next()
 }
 
 // Kennung ist der Prüfwert der Basis; er steht im Kommentar der Menge
@@ -97,7 +115,8 @@ func (r Regeln) Kennung() string {
 //   - Box -> Techniker nur Antworten, ebenfalls nur bei offenem Fenster.
 //   - Box <-> Box, Box -> anderswohin (Internet, altes VPN), Techniker <->
 //     Techniker: verworfen.
-//   - Zum Server selbst aus dem Tunnel: nur Ping.
+//   - Zum Server selbst aus dem Tunnel: nur Ping - und, wenn eingestellt, von
+//     einer Box zur Schlüsselausgabe.
 //
 // Die Menge hat Ablaufzeiten: ein Fenster schließt im Kernel, auch wenn API
 // oder Dienst ausfallen.

@@ -2,6 +2,8 @@ package system
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"net/netip"
 	"strings"
@@ -109,6 +111,53 @@ func TestBasisRegelnSindEngGeschnitten(t *testing.T) {
 	}
 	if regeln().Kennung() == r.Kennung() {
 		t.Error("eine andere Basis braucht eine andere Kennung")
+	}
+}
+
+// Ohne eingestellten Port der Schlüsselausgabe ist die Basis Byte für Byte
+// die bisherige: das neue Programm allein lädt die Tabelle nicht neu und
+// schließt kein Fenster. Der Prüfwert ist der der Datei
+// /etc/nftables.d/voltpilot-wartung.nft auf der Wartungs-VM (Gesamttest vom
+// 09.10.2026, Vorgaben der Konfiguration).
+func TestBasisOhneSchluesselPortBleibtBytegleich(t *testing.T) {
+	summe := sha256.Sum256([]byte(regeln().Basis()))
+	if got := hex.EncodeToString(summe[:]); got != "843670416808eb06284a86423206c21c96a74ae3fe2098dc37d1ce95fe218add" {
+		t.Fatalf("die Basis ohne Schlüsselausgabe hat sich geändert (%s): offene Fenster schlössen beim ersten Lauf", got)
+	}
+	if strings.Contains(regeln().Basis(), "8022") || strings.Contains(regeln().Basis(), "ct direction") {
+		t.Fatal("ohne Port keine Regel für die Schlüsselausgabe")
+	}
+}
+
+// Mit Port kommt genau EINE Regel dazu: Box-Netz -> Server-Adresse im
+// Techniker-Netz, dieser Port, nur von der Box aufgebaute Verbindungen. Der
+// Prüfwert der Basis ändert sich; beim ersten Lauf wird die Tabelle neu geladen.
+func TestBasisMitSchluesselPort(t *testing.T) {
+	ohne := regeln()
+	mit := regeln()
+	mit.SchluesselPort = 8022
+	regel := "\t\tip saddr 10.10.16.0/20 ip daddr 10.10.32.1 tcp dport 8022 ct direction original accept\n"
+	if got := strings.Replace(mit.Basis(), regel, "", 1); got != strings.Replace(ohne.Basis(), ohne.Kennung(), mit.Kennung(), 1) {
+		t.Fatalf("mehr als die eine Regel geändert:\n%s", mit.Basis())
+	}
+	if mit.Kennung() == ohne.Kennung() {
+		t.Fatal("eine andere Basis braucht eine andere Kennung")
+	}
+	// Die Regel steht in der Kette für den Verkehr zum Server selbst, vor dem
+	// abschließenden drop - nicht in der Weiterleitung.
+	b := mit.Basis()
+	kette := b[strings.Index(b, "chain eingang_wartung {"):]
+	if !strings.Contains(kette, "icmp type echo-request limit rate 5/second accept\n"+regel+"\t\tcounter drop\n") {
+		t.Fatalf("Kette eingang_wartung:\n%s", kette)
+	}
+	if strings.Count(b, "8022") != 1 {
+		t.Fatal("der Port steht nur in dieser einen Regel")
+	}
+	// Ein anderer Port, ein anderes Techniker-Netz: Adresse und Port folgen.
+	mit.SchluesselPort = 9000
+	mit.TechnikerNetz = netip.MustParsePrefix("10.20.0.0/16")
+	if !strings.Contains(mit.Basis(), "ip saddr 10.10.16.0/20 ip daddr 10.20.0.1 tcp dport 9000 ct direction original accept") {
+		t.Fatalf("%s", mit.Basis())
 	}
 }
 
