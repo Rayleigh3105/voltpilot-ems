@@ -61,13 +61,13 @@ Historie umschreiben" — nicht „die alte api muss beim Start brechen".
 | Rückweg-Übung gelaufen (NW-8) | `rueckweg.json`, `wiederherstellung_ms` bekannt; Flyway-Stand und Q01 bytegleich | `rueckweg.sh` |
 | WAL-Archiv läuft, Basis-Backup < 24 h | `bash tools/backup/vp-db-backup-check.sh` | Q15, Konzept E2 |
 | Bus-Aufbewahrung ≥ Fenster + Rückweg + Reserve, als Zahl notiert | Betreiber-Notiz | Regel D5 |
-| **PR 37 (gitops, IP-10) gemergt und ausgerollt — mindestens einen Tag vorher** | ein Sync, ein api-Neustart auf dem **alten** Schema, beobachtet; alle 27 Schalter ausdrücklich gesetzt (§12) | siehe 2.2 |
+| **PR 37 (gitops, IP-10) gemergt und ausgerollt — mindestens einen Tag vorher**, in der Kette 37 → 38 → 39, dazu PR 42 und PR 41 | ein Sync, ein api-Neustart auf dem **alten** Schema, beobachtet; alle 27 Schalter ausdrücklich gesetzt (§12) | siehe 2.2 |
 | Die zwei Platzhalter aus PR 37 gesetzt | siehe 2.3 (der Dauerläufer-Tenant erst nach Schritt 10, §14) | |
-| Seit dem Merge nach `main` kein Dispatch auf `main` | kein Actions-Lauf auf `main` nach dem Merge-Commit | §2.9 |
-| Images für `${UEMS_SHA}` gebaut, **ohne** Tag-Bump | neun Images in der Registry; gitops ohne neuen `ci(images)`-Commit | §2.10 |
+| Seit dem Merge nach `main` kein Dispatch auf `main`, außer dem einen Bau-Lauf ohne Tag-Bump | kein weiterer Actions-Lauf auf `main` nach dem Merge-Commit | §2.9, §2.10 |
+| Images für `${UEMS_SHA}` gebaut, **ohne** Tag-Bump (Bau-Lauf nach R4, offen beim Captain) | neun Images in der Registry; gitops ohne neuen `ci(images)`-Commit | §2.10 |
 | Kundennachricht 48 h vorher raus | §10 | Schritt 1 |
 | Support-Weg einmal gegangen (F6) | §11 | Schritt 1 |
-| Box-Release zurückgehalten bis nach Schritt 10 | kein Box-Update mit dem neuen Laufzeitstand vor dem api-Deploy | §2.8, PR 1143 |
+| Box-Release zurückgehalten bis nach Schritt 10; NW-3 gegen ein Box-Bild vom Merge-Stand gefahren | kein Box-Update mit dem neuen Laufzeitstand vor dem api-Deploy; NW-3-Protokoll des Merge-Stands | §2.8, PR 1143 |
 
 ### 2.2 PR 37 gehört **vor** das Fenster, nicht hinein
 
@@ -88,6 +88,23 @@ derselbe Neustart genau der Fehlstart, den Änderung **a** verhindern soll.
 (gitops PR 42). PR 42 geht zusammen mit PR 37 am Vortag hinaus, im selben beobachteten Sync. Vorher
 lesend prüfen: `kubectl -n voltpilot-prod logs deploy/ingest | grep -i 'authentication failed'`.
 Nach dem Sync meldet der ingest kein `authentication failed` mehr.
+
+**Die Reihenfolge am Vortag (Stand Bereitschaftsbericht vom 05.10.2026, §3.3).** Alle fünf PRs
+mergt der Captain, niemand sonst:
+
+| Reihenfolge | gitops-PR | Ziel | Inhalt |
+|---|---|---|---|
+| 1 | PR 37 | `main` | 27 UEMS-Schalter, Sync-Wellen, Scrape, Betriebsalarme, `uems-betrieb.md` |
+| 2 | PR 38 | Zweig von PR 37 | Box-Sicht Gemeinsame Steuerung in der Überwachung |
+| 3 | PR 39 | Zweig von PR 38 | fehlende Regeln Gemeinsame Steuerung |
+| 4 | PR 42 | `main` | ingest bekommt `POSTGRES_PASSWORD` (B9) |
+| 5 | PR 41 | `main` | Sicherungsalarm `VoltPilotSicherungZuAlt` für die geparkte Datenebene, ohne Cluster-Wirkung |
+
+PR 38 und PR 39 sind aufeinander gestapelt, darum die Kette 37 → 38 → 39. Der Bericht hat die fünf
+in dieser Folge an gitops `e448fbf` probeweise zusammengeführt: 0 Konflikte. ⧉ gitops `main` ist
+seither weitergewandert (§2.6); die Probe am Vortag wiederholen. Der eine beobachtete Sync und der
+eine api-Neustart auf dem alten Schema gelten für alle fünf zusammen. Die Regel oben gilt danach
+unverändert: bis Schritt 2 kein weiterer Commit.
 
 ### 2.3 Die zwei Platzhalter aus PR 37
 
@@ -157,7 +174,7 @@ auf der Produktionshardware zutrifft. Die Kopie ist eine andere Maschine.
 
 ```sh
 export UEMS_SHA=…                 # der Merge-Commit uems -> main, Baum = G0-Stand (siehe unten)
-export ALT_SHA=8b8b6a03bcf757a241d60567080259ccb2163422   # Beispiel: Stand 26.09.2026 (gitops 211b71a)
+export ALT_SHA=8667d673d000b8407e8887d8dc41e46bb856ebf4   # Beispiel: Stand 09.10.2026 (gitops 6fd1dc3)
 export NS=voltpilot-prod          # Namespace (apps/voltpilot/overlays/prod/namespace.yaml)
 export APP=voltpilot-prod         # Argo-CD-Application (clusters/prod/apps/voltpilot.yaml)
 export GITOPS=…                   # lokaler Klon von mamotec/gitops, Zweig main
@@ -167,13 +184,19 @@ export PUNKT=…                    # Name des Wiederherstellungspunkts, in Schr
 ⧉ `ALT_SHA` ist der Wert, der am Tag **tatsächlich** im `images:`-Block steht — vor dem
 Fenster ablesen, nicht aus diesem Dokument übernehmen.
 
-**Warum das Beispiel nicht mehr `4aa1e7fb3` heißt.** Das war der Stand vom 16.09.2026.
-Produktion läuft seit dem 25.09.2026 auf `8b8b6a03b` (gitops `211b71a`, „ci(images):
-voltpilot-ems@8b8b6a03b“) und hat dabei `V20260924120000` angewandt. Ein Image vom 16.09.
-kennt diese Version nicht. Gerade der Rückweg R4 setzt die Images auf `ALT_SHA`: Auf `main`
-gibt es keinen Start-Wächter (§9.1), die alte api würde die Historie still „reparieren“
-(DELETE-Marker, Befund W1), und die Flotte stünde auf einem Stand, der 62 `main`-Commits
-zurückdreht, darunter die Deye-Sicherheit (#1226).
+**Warum das Beispiel nicht mehr `8b8b6a03b` heißt.** Das war der Stand vom 26.09.2026 (davor
+`4aa1e7fb3`, 16.09.2026). Produktion steht seit dem 08.10.2026 auf `8667d673d` (gitops `6fd1dc3`,
+„ci(images): voltpilot-ems@8667d673d…“, `apps/voltpilot/overlays/prod/kustomization.yaml`,
+`newTag` des api-Image). Dieses Image trägt 173 Migrationen, die jüngste ist `V20261007163700`
+(Fernwartung); seit `8b8b6a03b` sind `V20260929120000`, `V20261006120000`, `V20261007120000` und
+`V20261007163700` dazugekommen. Ein Image vom 26.09. kennt diese vier Versionen nicht. Gerade der
+Rückweg R4 setzt die Images auf `ALT_SHA`: Auf `main` gibt es keinen Start-Wächter (§9.1), die
+alte api würde die Historie still „reparieren“ (DELETE-Marker, Befund W1), und die Flotte stünde
+auf einem Stand, der 112 `main`-Commits zurückdreht.
+
+`main` ist schon wieder weiter als Produktion (Stand 09.10.2026: `d59bb91c8`, drei Commits nach
+`8667d673d`, darunter `V20261008213500`). Jeder weitere Deploy von `main` vor dem Fenster
+verschiebt `ALT_SHA` und den Flyway-Stand, den R3 erwartet.
 
 **`${UEMS_SHA}` ist der Merge-Commit, nicht der `uems`-Commit.** Bis zum Merge ist der
 G0-Stand ein Commit auf `uems`. Gebaut und ausgerollt wird, was auf `main` steht: der
@@ -216,11 +239,14 @@ der synthetische Satz hat keine Auswahlzeilen mit `entity_id` und keine `measure
 
 #### Was seit der Generalprobe dazukam
 
-Der Rollout-Satz hat heute (Stand `f694b5252`, nach dem Nachzug PR 1287) **134 Migrationen**:
-135 Dateien unter `services/api/src/main/resources/db/migration`, die nicht in
-`main-migrations.txt` stehen, eine davon `V20260922236500…sql.conf`. Seit dem Generalprobe-Stand
-`02a23ce59` kamen **26** dazu, außerdem `V20260924120000` aus `main` (in Produktion schon
-angewandt):
+Der Rollout-Satz hat heute (Stand `7f875011f`, nach dem Nachzug PR 1468) **140 Migrationen**:
+141 Dateien unter `services/api/src/main/resources/db/migration`, die nicht in
+`main-migrations.txt` stehen, eine davon `V20260922236500…sql.conf`. Der Zweig trägt 314
+Migrationen, `main` 174. Seit dem Generalprobe-Stand `02a23ce59` kamen **32** dazu: 26 bis zum
+Stand `f694b5252` (27.09.2026) und 6 seither. Aus `main` kamen in derselben Zeit sechs, die nicht
+zum Rollout-Satz gehören: `V20260924120000`, `V20260929120000`, `V20261006120000`,
+`V20261007120000` und `V20261007163700` (alle fünf in Produktion angewandt) sowie
+`V20261008213500` (auf `main`, am 09.10.2026 noch nicht ausgerollt, §2.6). Die 26 bis zum 27.09.:
 
 - `V20260924…`: `050000` wago_soll · `061500` verbund_anteile_einspeisung_unbegrenzt · `071500`
   bezugsbasis · `071945` leistungsvergleich_vorlage · `192700` wetter_archiv_bezug · `200500`
@@ -234,11 +260,22 @@ angewandt):
   `223000` mandant_loeschnachweis · `234500` protokolle_mit_dem_mandanten_loeschen
 - `V20260926…`: `001500` akteur_rolle_einsicht · `004700` rollups_nur_fuer_lebende_mandanten
 
-Was sie an Bestehendem ändern:
+Die 6 seit dem 27.09.:
+
+- `V20261005220000` wiedervorlage_zaehlerablesung · `V20261006213000` verbesserung_kurs_lage ·
+  `V20261007004500` nachweisen_teil_vermerk · `V20261007014500` dokument_fassung_original ·
+  `V20261007120100` massnahme_art · `V20261007150000` nachweisen_mappe
+
+Was die 32 an Bestehendem ändern:
 
 - **`device_measurement_sample`:** nur `V20260926001500` (Tabelle oben). Sie schreibt keine
-  Zeile, liest die Tabelle aber beim `VALIDATE` einmal ganz. Keine andere der 26 ändert die
+  Zeile, liest die Tabelle aber beim `VALIDATE` einmal ganz. Keine andere der 32 ändert die
   Tabelle oder liest sie beim Migrieren.
+- **Die 6 seit dem 27.09.** fassen keine Tabelle an, die in Produktion steht: drei neue Tabellen
+  (`energiemanagement_teil_vermerk`, `energiemanagement_mappe`, `energiemanagement_mappe_abruf`),
+  Spalten an `massnahme` und `energiemanagement_dokument_fassung` (beide selbst erst Teil des
+  Rollout-Satzes, in Produktion also leer) und neue Wörter in `energiemanagement_vokabular` und
+  `verbesserung_vokabular`.
 - **`V20260926004700`** ersetzt nur Prozedur-Körper und ruft keine Prozedur auf (unten).
 - **Bestandstabellen:** `tenant` (`V20260925170000`: drei nullbare Spalten, `tenant_beendet_chk`
   und der Trigger `tenant_beendet_einmalig` vor jedem UPDATE); `geraet` und `geraet_teil`
@@ -246,7 +283,7 @@ Was sie an Bestehendem ändern:
   UEMS-Tabellen, die schon auf `main` stehen (`V20260926001500`, nur weiter, nie enger).
 - **Alles andere** sind neue Tabellen, Funktionen und Wörter in bestehenden Vokabularen.
 
-Die Generalprobe an der Kopie läuft am G0-Stand und misst die 26 ohnehin mit (§2.4).
+Die Generalprobe an der Kopie läuft am G0-Stand und misst die 32 ohnehin mit (§2.4).
 
 #### Ersetzte Prozeduren
 
@@ -343,6 +380,11 @@ Grenzen: `docs/agents/root/uems-messplan-nach-box-update.md`.
 > nicht; die neue api liefert beim Start nach. Tor GA, Punkt `NW-3u`, verlangt dafür den grünen
 > Bericht von `MessplanNachBoxUpdateApiTest`.
 
+**Vor dem Tag: NW-3 am Merge-Stand.** Das Box-Bild, das getaggt wird, muss vorher NW-3 bestanden
+haben. Gefahren wird es gegen ein Bild vom Merge-Stand (`core_ref` und `palette_ref` = SHA, noch
+ohne Tag; Paket `vp-uems-nw3-edge-2026-09-6`, läuft am 09.10.2026). Erst mit grünem Protokoll wird
+getaggt. Fehlt das Protokoll am Rollout-Tag, wartet das Box-Release, das api-Fenster nicht.
+
 **NW-3 an den ausgelieferten Paaren: hingenommen am 27.09.2026.** Zwei Befunde bleiben bis zum
 Box-Release stehen. Der Captain hat beide hingenommen; der Tor-Prüfer führt sie unter G1 als
 „hingenommen“, nicht als offen:
@@ -359,15 +401,22 @@ Box-Release stehen. Der Captain hat beide hingenommen; der Tor-Prüfer führt si
 
 Jeder andere rote Punkt eines NW-3-Protokolls bleibt offen.
 
-**Der Name des nächsten Box-Release.** Er darf **nicht** `edge-2026.09.5` heißen, auch wenn der
-Generalprobe-Bericht (§6.4) genau diesen Namen vorschlägt. Den Tag hat `main` am 24.09.2026 schon
-vergeben (`1b6b79175`, „Deye-Sicherheit vor dem Box-Release“, #1226), signiert und
-veröffentlicht, mit Palette `2026.08.26.3` und Katalog `2026.09.11.1`. Den nächsten freien Namen am
-Tag mit `git tag -l 'edge-*'` bestimmen. Beim Taggen nachziehen:
+**Der Name des nächsten Box-Release: `edge-2026.10.x`.** Er darf weder `edge-2026.09.5` noch
+`edge-2026.09.6` heißen, auch wenn der Generalprobe-Bericht (§6.4) `09.5` vorschlägt. Beide Tags
+hat `main` schon vergeben, signiert und veröffentlicht: `edge-2026.09.5` am 24.09.2026
+(`1b6b79175`, „Deye-Sicherheit vor dem Box-Release“, #1226, Palette `2026.08.26.3`, Katalog
+`2026.09.11.1`) und `edge-2026.09.6` am 29.09.2026 (`becfa44e4`, #1307). Die Ziffer hinter
+`2026.10.` am Tag mit `git tag -l 'edge-*'` bestimmen. Beim Taggen nachziehen:
 
 - `KATALOGSTAND` in `tools/edge-simulator/uems_szenarien.py` (Z. 45, heute `2026.08.26.3`) auf
   den Stand des neuen Release;
 - `tools/nw3-box-image/paare.json` um das neue Paar (NW-3 gegen das neue Image, Tor GA).
+
+**`paare.json` führt `edge-2026.09.6` noch nicht.** Die Datei nennt am Stand `7f875011f` nur
+`edge-2026.09.4` und `edge-2026.09.5`, und `docs/rollout/` hat nur für diese beiden ein Protokoll.
+`09.6` ist veröffentlicht; ob es im Feld läuft, sagt Q07. Nach dem NW-3-Lauf oben wird die Liste
+um `edge-2026.09.6` ergänzt, mit eigenem Protokoll `nw3-protokoll-edge-2026.09.6.json`; NW-3 unter
+G1 verlangt je Paar eines.
 
 ### 2.9 Zwischen Merge und Fenster
 
@@ -377,8 +426,17 @@ nur per `workflow_dispatch` (`deploy.yaml:23-24`, `deploy-fast.yaml:20-21`). Jed
 um. Das wäre das UEMS-Rollout ohne Nullstand, ohne Wiederherstellungspunkt und ohne
 Kundennachricht. Allein am 24. und 25.09.2026 gab es 14 solcher Produktions-Deploys.
 
+**Der Tag-Bump läuft nur von `main`.** Der Job „Bump gitops image tags“ trägt in beiden Dateien
+`if: github.ref == 'refs/heads/main'` (`deploy.yaml:384`, `deploy-fast.yaml:155`). Ein Dispatch
+nimmt die Workflow-Datei des gewählten Zweigs; auf `uems` laufen die Builds, der Bump wird
+übersprungen (`skipped`, nicht rot). Den Gleichschritt beider Dateien prüft
+`tools/deploy/test-gitops-bump-workflow.sh`. Ein Bau auf `uems` stellt die Produktion also nicht
+mehr um. Die Sperre schützt den Zweig, **nicht** `main` nach dem Merge: dort gilt der Deploy-Stopp
+unten und für den einen Bau-Lauf der Token-Entzug (§2.10).
+
 - **Entschieden am 27.09.2026 (Bereitschaftsbericht B1):** erst den Fenster-Termin festlegen
-  (Fenster in der Woche vom 28.09. bis 04.10.2026, der Tag steht noch aus). G0 früh einfrieren, vor
+  (die damals genannte Woche vom 28.09. bis 04.10.2026 ist verstrichen; den Termin setzt der
+  Captain neu). G0 früh einfrieren, vor
   der Generalprobe; danach nimmt `uems` nichts mehr auf. Den Merge-Akt spät legen (am Vortag oder
   am Tag des Fensters), Merge-Commit baumgleich zum G0-Stand (§2.6), und **vom Merge bis Schritt 2
   kein Dispatch auf `main`**. Ein dringender `main`-Fix in dieser Zeit fährt mit dem Rollout mit
@@ -386,28 +444,45 @@ Kundennachricht. Allein am 24. und 25.09.2026 gab es 14 solcher Produktions-Depl
 - **Entschieden am 27.09.2026 (Bereitschaftsbericht B7):** PR 1258 (Anmelde-Zeile) und PR 1268
   (Passwort 12 Zeichen) werden nicht allein nach `main` gemergt. Sie fahren mit `uems` mit, das
   ihre Köpfe schon trägt, und werden nach dem Merge geschlossen.
+- **Entschieden am 09.10.2026:** `uems` geht allein nach `main`. Der Rollout-Satz dieses
+  Drehbuchs ist genau der Stand von `uems`.
 
-**`main-migrations.txt` nicht fortschreiben.** Die Datei
-(`services/api/src/test/resources/migration/main-migrations.txt`) beschreibt den Stand der
-Produktion: 169 Migrationen am Stand `8b8b6a03b`. `update-main-migrations.py` liest `origin/main`;
-nach dem Merge hielte es alle Migrationen des Zweigs für „main“, und der Produktionssatz der
-Wächter (`UemsProduktionsreihenfolgeMigrationTest`) wäre falsch. Fortgeschrieben wird erst nach dem
+**`main-migrations.txt` nach dem Merge nicht fortschreiben.** Die Datei
+(`services/api/src/test/resources/migration/main-migrations.txt`) beschreibt den Stand von `main`
+vor dem Merge: 174 Migrationen am Stand `db32a784c` (Nachzug PR 1468). Das ist eine mehr, als das
+Produktions-Image `8667d673d` trägt (173, ohne `V20261008213500`, §2.6). Bis zum Merge zieht jeder
+Nachzug `main` → `uems` die Datei mit. `update-main-migrations.py` liest `origin/main`; nach dem
+Merge hielte es alle Migrationen des Zweigs für „main“, und der Produktionssatz der Wächter
+(`UemsProduktionsreihenfolgeMigrationTest`) wäre falsch. Fortgeschrieben wird erst nach dem
 Rollout, auf den ausgerollten Stand.
 
 ### 2.10 Images bauen ohne Tag-Bump
 
 C1–C3 (§4) setzen die Tags **von Hand und getrennt**: zuerst die api, Writer, ingest, Portal und
 die übrigen erst mit C3. Der Bau-Workflow tut das Gegenteil. Sein Job „Bump gitops image tags“
-(`deploy.yaml:375-377`, `deploy-fast.yaml:147-148`) schreibt nach dem Bau **alle neun** Tags in
-**einem** Commit auf gitops `main`. Er überspringt nur dann sauber, wenn das Secret
-`GITOPS_PUSH_TOKEN` fehlt (`deploy-fast.yaml:184-194`: „der gitops-Tag-Bump wird UEBERSPRUNGEN“,
-nichts geklont, committet oder gepusht).
+(`deploy.yaml:376-384`, `deploy-fast.yaml:147-155`) schreibt nach dem Bau **alle neun** Tags in
+**einem** Commit auf gitops `main`. Von `main` aus überspringt er nur dann sauber, wenn das Secret
+`GITOPS_PUSH_TOKEN` fehlt (`deploy-fast.yaml:190-197`, `deploy.yaml:419-426`: „der gitops-Tag-Bump
+wird UEBERSPRUNGEN“, nichts geklont, committet oder gepusht). Die Zweig-Sperre (§2.9) hilft hier
+nicht: der Bau-Lauf für `${UEMS_SHA}` läuft auf `main`.
 
-- **Entschieden am 27.09.2026 (Bereitschaftsbericht B2):** vor dem Bau-Dispatch das
+- **Entschieden am 27.09.2026 (Bereitschaftsbericht B2), gilt weiter:** vor dem Bau-Dispatch das
   Secret `GITOPS_PUSH_TOKEN` entziehen oder umbenennen (Forgejo › voltpilot-ems › Settings ›
-  Actions › Secrets). Dann `deploy.yaml` auf `main` dispatchen; er fährt vor dem Bau die
-  Test-Matrix, `deploy-fast.yaml` hat kein Test-Gate. Alle neun Images grün abwarten. C1–C3 laufen
-  danach von Hand wie in §4. Das Secret kommt **nach Schritt 10** zurück.
+  Actions › Secrets). Alle neun Images grün abwarten. C1–C3 laufen danach von Hand wie in §4. Das
+  Secret kommt **nach Schritt 10** zurück.
+- **Offen beim Captain (R4, Bereitschaftsbericht vom 05.10.2026): welcher Bau-Lauf.** Bis zum
+  Entscheid gilt keine der beiden Varianten als gewählt.
+
+| | Variante A | Variante B |
+|---|---|---|
+| Workflow | „Build & Deploy (fast, no tests)“, `deploy-fast.yaml`, auf `main` | „Build & Deploy“, `deploy.yaml`, auf `main` |
+| Test-Gate | keines | Test-Matrix vor dem Bau; der api-Job ist `./mvnw -B test` mit `timeout-minutes: 45` (`deploy.yaml:34`, `:111`) |
+| Testbeleg | die Gesamtläufe und die Tor-Nachweise am baumgleichen G0-Stand (§2.6) | die Matrix im Lauf selbst, zusätzlich zu den Gesamtläufen |
+| Zu bedenken | der Bau selbst prüft nichts; der Beleg hängt ganz am G0-Stand | laut Bericht: in 300 Forgejo-Aufträgen (14.09. bis 04.10.) lief kein „Test (…)“-Auftrag; die api-Suite braucht nach der Messung des Berichts ≈ 2,5 h. Bricht die Matrix ab, gibt es keine Images, und das Fenster beginnt nicht |
+| Token | entzogen | entzogen |
+
+Der Bericht nennt als dritte Möglichkeit, Variante B vorher einmal an einem Wegwerf-Zweig zu
+fahren (dort überspringt der Bump ohnehin, §2.9) und danach zwischen A und B zu wählen.
 
 **Beleg:** Die Zusammenfassung des Laufs meldet „gitops-Tag-Bump uebersprungen“;
 `git -C "$GITOPS" log -1 --format=%s origin/main` zeigt keinen neuen `ci(images)`-Commit; die neun
@@ -467,6 +542,11 @@ innerhalb ihres Sync-Intervalls übernimmt, bevor Schritt 2 beginnt.
 
 Alle drei liegen im Zweig `fm/vp-uems-b14-ip10-gitops` (PR 37) bzw. auf `main`, nachdem
 PR 37 gemergt ist. Die Datei- und Feldnamen sind an diesem Zweig gegengelesen.
+
+„Stand von PR 37“ heißt am Rollout-Tag: gitops `main` nach dem Vortag, also nach PR 37 → 38 → 39,
+PR 42 und PR 41 (§2.2). C1 bis C3 sind die ersten Commits danach. ⧉ Gegengelesen sind die Diffs
+unten nur am Zweig von PR 37. Vor C1 an gitops `main` bestätigen, dass der `images:`-Block und die
+Replika-Patches dort so stehen, wie die Diffs sie voraussetzen.
 
 ### C1 — vorbereitend: neues api-Image **und** Nullstand ⟲ geändert gegenüber §5.3
 
@@ -708,7 +788,7 @@ Die Dauer soll der Generalprobe entsprechen (Rubrik A). **Scheitert eine Migrati
 Zum Vergleich die Generalprobe vom 23.09.2026 (Bericht Teil 1 und §7, synthetischer Bestand,
 Stand `02a23ce59`): die damals 108 neuen Migrationen in 24,1 s, api bereit nach **54 s** bei
 2,8 Mio. Samples, ≈ **71 s** bei 6 Mio., je weitere Sample-Zeile ≈ **5,3 µs** mehr. Der
-Rollout-Satz hat heute **134** Migrationen; die 26 seither dazugekommenen hat diese Probe nicht
+Rollout-Satz hat heute **140** Migrationen; die 32 seither dazugekommenen hat diese Probe nicht
 gemessen (§2.7, „Was seit der Generalprobe dazukam“). Die zwei langen Migrationen sind
 `V20260916180000` und `V20260922236500`, dazu der ungemessene CHECK-Tausch `V20260926001500`
 (§2.7); sie in `flyway_schema_history` (`execution_time`) zuerst ansehen, wenn der Start deutlich
@@ -872,7 +952,7 @@ läuft (in `live-realm-import.md` steht `<namespace>`).
 |---|---|---|---|
 | 1 | Kundennachricht 48 h vorher, F6 geprobt | Nachricht raus, Checkliste | Fenster verschieben |
 | — | Merge-Commit = `UEMS_SHA`, baumgleich zu G0; seitdem kein Dispatch auf `main` (§2.6, §2.9) | Baum-Vergleich; Actions ohne Lauf | Fenster verschieben |
-| — | Images für `UEMS_SHA` bauen, **ohne** Tag-Bump (§2.10) | neun Images; gitops ohne `ci(images)`-Commit | Fenster verschieben |
+| — | Images für `UEMS_SHA` bauen, **ohne** Tag-Bump (§2.10, Bau-Lauf nach R4) | neun Images; gitops ohne `ci(images)`-Commit | Fenster verschieben |
 | — | Sync-Klammer zu (F1) | `syncPolicy` ohne `automated` | Fenster verschieben |
 | 2 | C1: neues api-Image **+** api/Writer auf 0, syncen | Soll = `UEMS_SHA` und 0/0 | Fenster abbrechen |
 | 3 | Writer steht | Pod-Liste leer, RS 0 | → R |
@@ -884,9 +964,27 @@ läuft (in `live-realm-import.md` steht `<namespace>`).
 | 9 | Rauchprobe (4 Proben) | alle vier grün | → R |
 | 9b | **Z08 erneut** | 0 Marker, Zeilenzahl unverändert | → R · bei Markern: §8 |
 | 10 | **Go:** Portal öffnen, Klammer auf (F2), `GITOPS_PUSH_TOKEN` zurück | — | ab hier nur vorwärts |
-| danach | **Box-Release** an die Boxen, direkt nach Schritt 10 (§2.8, B10), Tag ≠ `edge-2026.09.5` | Boxen quittieren den heutigen Katalogstand | Release anhalten |
+| danach | **Box-Release** an die Boxen, direkt nach Schritt 10 (§2.8, B10), Tag `edge-2026.10.x`, NW-3 am Merge-Stand vorher grün | Boxen quittieren den heutigen Katalogstand | Release anhalten |
 | danach | **Live-Realm härten** und SMTP/Reset (§5, nach Schritt 10) | `pruefen` Exit 0, Bestätigungszeile | Rückweg aus `live-realm-import.md` |
 | danach | Dauerläufer einrichten, Platzhalter setzen (§14) | Kundenbereich angelegt, UUID in gitops | Kundenbereich bleibt intern |
+
+### 6.1 Die Tage davor und danach
+
+Die Tabelle oben ist der Rollout-Tag. Diese ordnet ihn in die Woche ein, für den Schritt `uems` →
+`main` (aus dem Bereitschaftsbericht vom 05.10.2026, §5.3). T0 ist der Tag des Fensters; den
+Termin setzt der Captain. Nach `main` mergt niemand ohne sein Wort.
+
+| Wann | Schritt | Wer | Rückweg |
+|---|---|---|---|
+| T−7 … T−3 | G0: Stand `uems` einfrieren; Gesamtläufe grün, alle Suiten; Tor-Nachweise am G0-Stand | Crew | – |
+| T−3 … T−2 | M-1 Bestandsblatt (Q01/Q07/Q14/Q15), NW-1/NW-8 an der Kopie, NW-5, NW-6, Pilotkunden, F6, L6 | Captain | – |
+| T−2 (48 h) | Kundennachricht und Release-Notiz (§10, Schritt 1) | Captain | – |
+| T−1 | gitops PR 37 → 38 → 39, PR 42, PR 41 (§2.2); api-Neustart auf altem Schema beobachten; danach gitops still | Captain | Revert des gitops-Merges |
+| T−1 abends | `GITOPS_PUSH_TOKEN` entziehen; Merge `uems` → `main` (Baum = G0, §2.6); Bau-Lauf nach R4 (§2.10), neun Images grün, „gitops-Tag-Bump uebersprungen“ | Captain | Revert des Merge-Commits, noch nichts ausgerollt |
+| T0 | Drehbuch Schritte 1–10 (`ALT_SHA` am Tag ablesen) | Captain | R1–R6, nur bis Schritt 10 |
+| T0 nach Schritt 10 | Auto-Sync zurück, Token zurück; Live-Realm härten und SMTP/Reset; Dauerläufer (§14, M6) | Captain | – |
+| T0 nach Schritt 10 | Box-Release `edge-2026.10.x` (§2.8), wenn NW-3 am Merge-Stand grün ist | Captain | Rollout je Box im Portal |
+| T+1 06:10 | erster Abruf des Wetter-Archivs (§15) | Captain sieht nach | Schalter `VOLTPILOT_UEMS_WETTER_ARCHIV_ENABLED=false` |
 
 ---
 
@@ -926,7 +1024,7 @@ psql "$VP_DB_URL" -Atc "SELECT count(*), max(version::numeric) FROM flyway_schem
 ```
 
 **Erwartet:** der Flyway-Stand **vor** der Migration (also `ALT_SHA`-Stand; am Stand
-`8b8b6a03b` höchste Version `20260924120000`), und **Q01** des Vorher-Blatts bytegleich zum
+`8667d673d` höchste Version `20261007163700`), und **Q01** des Vorher-Blatts bytegleich zum
 notierten
 Fingerabdruck. Das ist genau die Zusicherung, die `rueckweg.sh` in der Übung prüft
 (Exit 31: „Flyway-Stand oder Q01 am Rückweg abweichend").
@@ -1148,13 +1246,19 @@ E1 = B **alle** am selben Tag betrifft, muss die Nachricht es nennen (B9).
 >   ändert sich nichts.
 > - **Standort anlegen** und **Messen & Auswerten**. Damit können Sie Zähler und weitere
 >   Messstellen aufnehmen, Kennzahlen bilden und Berichte erzeugen.
-> - **Benutzerverwaltung** unter Ihrem Namen oben rechts, unter Unternehmen und
->   Einstellungen.
+> - **Benutzerverwaltung** unter Ihrem Namen oben rechts, unter „Benutzer“.
 >
 > An Ihren Zahlen, Ihrer Steuerung und Ihren Fahrplänen ändert sich dadurch nichts. Beim
 > ersten Aufruf nach der Wartung lädt das Portal einmal neu.
 >
 > Bei Fragen erreichen Sie uns unter <Support-Weg>.
+
+**Stand des Wortlauts.** Der Text oben ist der Entwurf zum Termin vom 30.09.2026, berichtigt nur
+im Menüweg (Konto-Menü → „Benutzer“; „Unternehmen und Einstellungen“ gibt es im Portal nicht,
+Bericht `vp-uems-kundennachricht-0930`). Ein neuer Entwurf für den Schritt `uems` → `main` folgt
+als eigenes Paket nach den Entscheiden des Captains (Bereitschaftsbericht vom 05.10.2026, A8); am
+09.10.2026 liegt er noch nicht im Repository. Sobald er da ist, gilt er, und dieser Absatz verweist
+auf ihn.
 
 **Was der Text bewusst nicht behauptet:** dass sich „nichts ändert". Mit E1 = B sieht jeder
 Kunde ab diesem Tag dieselben Einstiege; wer das verschweigt, bekommt Rückfragen von Leuten,
@@ -1287,6 +1391,14 @@ mehr (`…_zustand` sagt `aus`), damit aus dem Not-Aus kein Daueralarm wird.
   Wortlaut, `.forgejo/workflows/deploy.yaml` und `deploy-fast.yaml`,
   `infra/prod/keycloak/live-realm-import.md`, `RegistrationRequest`, `UemsLaeuferMelder.KATALOG`,
   die Box-Tags `edge-2026.09.*`, `tools/freigabe/pruefe_tor.py` (`stand_des_laufs`, #1288).
+- Stand `7f875011f` (09.10.2026, nach dem Nachzug PR 1468) und Bereitschaftsbericht vom 05.10.2026
+  (`/Users/mvogt/…/vp-release-bereitschaft-1005/report.md`, §5.2, §5.3), eingeschränkt auf den
+  Schritt `uems` → `main`: Migrationsliste gegen `main` und `main-migrations.txt` (140), das
+  Produktions-Image aus gitops `main` `6fd1dc3` (`8667d673d`), die Zweig-Sperre am Tag-Bump in
+  beiden Workflow-Dateien, die Box-Tags bis `edge-2026.09.6` und `paare.json`. Nachgezählt und
+  unverändert: 27 Schalter in `application.yml` (§12, Liste gleich), 20 Einträge in
+  `UemsLaeuferMelder.KATALOG` (16 getaktete und vier Start-Läufer), `Alle 20 Läufer` in
+  `UemsBestandSteuerungAusEinemStueckTest`.
 
 **Nicht gegenlesbar auf einer Entwicklungsmaschine** (alles mit ⧉ markiert): jede Ausgabe
 eines echten Clusters, die echten Dauern an Produktionsdaten, der Name des produktiven
