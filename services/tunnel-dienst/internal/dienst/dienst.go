@@ -2,8 +2,9 @@
 // abholen, prüfen, abgleichen, umsetzen.
 //
 // Die Haltung bei Störungen ist immer dieselbe: im Zweifel nichts öffnen.
-//   - API nicht erreichbar oder Soll ungültig: der letzte Stand bleibt, kein
-//     neues Fenster. Offene Fenster laufen im Kernel von selbst ab.
+//   - API nicht erreichbar, Anmeldung abgelehnt oder Soll ungültig: der letzte
+//     Stand bleibt, kein neues Fenster. Offene Fenster laufen im Kernel von
+//     selbst ab.
 //   - Firewall-Basis nicht sicherbar: keine Änderung an Peers.
 //   - Zu viele Peers sollen auf einmal weg: keiner wird entfernt, Alarm.
 //   - Neustart ohne erreichbare API: Peers aus dem Zwischenstand, nie Fenster.
@@ -21,6 +22,7 @@ import (
 	"time"
 
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/tunnel-dienst/internal/abgleich"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/tunnel-dienst/internal/quelle"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/tunnel-dienst/internal/soll"
 )
 
@@ -116,6 +118,11 @@ func (d *Dienst) Lauf(ctx context.Context) Ergebnis {
 		if !d.wiederanlaufGeprueft {
 			d.wiederanlaufGeprueft = true
 			d.wiederanlauf(ctx)
+		}
+		if errors.Is(err, quelle.ErrAnmeldungAbgelehnt) {
+			// Kein Ausfall, sondern falsche Zugangsdaten: eigener Wortlaut,
+			// die Wirkung ist dieselbe.
+			return d.fehlschlag(jetzt, fmt.Errorf("%w - letzter Stand bleibt, nichts Neues wird geöffnet", err))
 		}
 		return d.fehlschlag(jetzt, fmt.Errorf("API nicht erreichbar - letzter Stand bleibt, nichts Neues wird geöffnet: %w", err))
 	}
@@ -264,9 +271,14 @@ func (d *Dienst) wende(ctx context.Context, plan abgleich.Plan, g soll.Gueltig) 
 
 func (d *Dienst) fehlschlag(jetzt time.Time, err error) Ergebnis {
 	d.fehlerInFolge++
-	if d.fehlerInFolge >= AlarmNachFehlern {
+	switch {
+	case d.fehlerInFolge >= AlarmNachFehlern:
 		d.Log.Error("ALARM: Fehlläufe in Folge", "anzahl", d.fehlerInFolge, "fehler", err)
-	} else {
+	case errors.Is(err, quelle.ErrAnmeldungAbgelehnt):
+		// Vergeht nicht von selbst: sofort als Fehler, nicht erst als Alarm
+		// nach AlarmNachFehlern Läufen.
+		d.Log.Error("Lauf ohne Änderung", "fehler", err)
+	default:
 		d.Log.Warn("Lauf ohne Änderung", "fehler", err)
 	}
 	d.status(jetzt, err, -1, -1, time.Time{})

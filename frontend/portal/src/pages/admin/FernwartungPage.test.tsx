@@ -10,6 +10,8 @@ const fernwartungFensterOeffnen = vi.fn();
 const fernwartungFensterSchliessen = vi.fn();
 const fernwartungSchluessel = vi.fn();
 const fernwartungBoxSperren = vi.fn();
+const fernwartungTechnikerLoeschen = vi.fn();
+const fernwartungTechnikerEntsperren = vi.fn();
 
 vi.mock('../../admin/adminApi', () => ({
   adminApi: {
@@ -21,6 +23,8 @@ vi.mock('../../admin/adminApi', () => ({
     fernwartungFensterSchliessen: (id: string) => fernwartungFensterSchliessen(id),
     fernwartungSchluessel: (ref: string, i: unknown) => fernwartungSchluessel(ref, i),
     fernwartungBoxSperren: (ref: string) => fernwartungBoxSperren(ref),
+    fernwartungTechnikerLoeschen: (id: string) => fernwartungTechnikerLoeschen(id),
+    fernwartungTechnikerEntsperren: (id: string) => fernwartungTechnikerEntsperren(id),
   },
 }));
 
@@ -189,6 +193,105 @@ describe('FernwartungPage', () => {
       notiz: null,
     });
     expect(within(dialog).getByText(/service-tunnel\.sh root@<box> 10\.10\.16\.2 51820/)).toBeInTheDocument();
+  });
+
+  describe('Techniker-Zugang löschen', () => {
+    // Der Fall des Kapitäns: derselbe Name zweimal, der alte gesperrt.
+    const alt = {
+      ...max,
+      id: 't0',
+      publicKey: 'Pgf4aS+67rz4HdSHuy8KKgm5e/UP3xnrMWJskXaZB9c=',
+      publicKeyKurz: 'Pgf4aS+6…ZB9c=',
+      adresse: '10.10.32.3',
+      status: 'gesperrt',
+    };
+
+    function zeile(tabelle: HTMLElement, adresse: string): HTMLElement {
+      return within(tabelle).getByText(adresse).closest('tr') as HTMLElement;
+    }
+
+    beforeEach(() => {
+      fernwartungTechniker.mockResolvedValue([max, alt]);
+      fernwartungTechnikerLoeschen.mockResolvedValue(undefined);
+    });
+
+    it('bietet „Löschen" nur am gesperrten Zugang an', async () => {
+      render(<FernwartungPage />);
+      const tabelle = await screen.findByTestId('fw-techniker');
+      expect(within(zeile(tabelle, '10.10.32.3')).getByRole('button', { name: 'Löschen' })).toBeEnabled();
+      expect(within(zeile(tabelle, '10.10.32.3')).getByRole('button', { name: 'Entsperren' })).toBeEnabled();
+      expect(within(zeile(tabelle, '10.10.32.2')).queryByRole('button', { name: 'Löschen' })).toBeNull();
+      expect(within(zeile(tabelle, '10.10.32.2')).getByRole('button', { name: 'Sperren' })).toBeEnabled();
+    });
+
+    it('fragt mit einem Satz nach, löscht erst auf Bestätigung und lädt die Liste neu', async () => {
+      render(<FernwartungPage />);
+      const tabelle = await screen.findByTestId('fw-techniker');
+      fireEvent.click(within(zeile(tabelle, '10.10.32.3')).getByRole('button', { name: 'Löschen' }));
+
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByText('Zugang löschen?')).toBeInTheDocument();
+      expect(
+        within(dialog).getByText(
+          'Der gesperrte Zugang „Max (Laptop)“ (10.10.32.3, Pgf4aS+6…ZB9c=) verschwindet endgültig aus allen Listen und lässt sich nicht wiederherstellen.',
+        ),
+      ).toBeInTheDocument();
+      expect(within(dialog).getByTestId('confirm-consequences')).toHaveTextContent(/bleiben vergeben/);
+      expect(fernwartungTechnikerLoeschen).not.toHaveBeenCalled();
+
+      // Die API liefert den gelöschten Zugang danach nicht mehr.
+      fernwartungTechniker.mockResolvedValue([max]);
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Endgültig löschen' }));
+      await waitFor(() => expect(fernwartungTechnikerLoeschen).toHaveBeenCalledWith('t0'));
+      await waitFor(() => expect(within(screen.getByTestId('fw-techniker')).queryByText('10.10.32.3')).toBeNull());
+      expect(within(screen.getByTestId('fw-techniker')).getByText('10.10.32.2')).toBeInTheDocument();
+      expect(within(screen.getByTestId('fw-techniker')).getAllByText('Max (Laptop)')).toHaveLength(1);
+    });
+
+    it('Abbrechen löscht nichts', async () => {
+      render(<FernwartungPage />);
+      const tabelle = await screen.findByTestId('fw-techniker');
+      fireEvent.click(within(zeile(tabelle, '10.10.32.3')).getByRole('button', { name: 'Löschen' }));
+      const dialog = await screen.findByRole('dialog');
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Abbrechen' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect(fernwartungTechnikerLoeschen).not.toHaveBeenCalled();
+      expect(within(screen.getByTestId('fw-techniker')).getByText('10.10.32.3')).toBeInTheDocument();
+    });
+
+    it('zeigt die Ablehnung des Servers und lässt den Zugang stehen', async () => {
+      fernwartungTechnikerLoeschen.mockRejectedValue(
+        new ApiError(409, 'Der Zugang „Max (Laptop)" ist aktiv. Erst sperren, dann löschen.'),
+      );
+      render(<FernwartungPage />);
+      const tabelle = await screen.findByTestId('fw-techniker');
+      fireEvent.click(within(zeile(tabelle, '10.10.32.3')).getByRole('button', { name: 'Löschen' }));
+      fireEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Endgültig löschen' }));
+      expect(await screen.findByText(/Erst sperren, dann löschen/)).toBeInTheDocument();
+      expect(within(screen.getByTestId('fw-techniker')).getByText('10.10.32.3')).toBeInTheDocument();
+    });
+
+    it('das Protokoll nennt den gelöschten Zugang weiter beim Namen', async () => {
+      fernwartungTechniker.mockResolvedValue([max]);
+      fernwartungProtokoll.mockResolvedValue([
+        {
+          id: 'p9',
+          zeit: new Date().toISOString(),
+          akteur: 'admin',
+          aktion: 'techniker_geloescht',
+          edgeRef: null,
+          technikerId: 't0',
+          technikerName: 'Max (Laptop)',
+          fensterId: null,
+          details: { name: 'Max (Laptop)', adresse: '10.10.32.3', publicKey: 'Pgf4aS+6…ZB9c=' },
+        },
+      ]);
+      render(<FernwartungPage />);
+      const protokoll = await screen.findByTestId('fw-protokoll');
+      expect(within(protokoll).getByText('Techniker-Zugang gelöscht')).toBeInTheDocument();
+      expect(within(protokoll).getByText('Max (Laptop)')).toBeInTheDocument();
+      expect(within(protokoll).getByText('10.10.32.3 · Pgf4aS+6…ZB9c= · bleiben vergeben')).toBeInTheDocument();
+    });
   });
 
   it('warnt, wenn der Tunnel-Dienst nicht abholt', async () => {

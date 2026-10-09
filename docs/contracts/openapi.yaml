@@ -6576,10 +6576,10 @@ paths:
   /api/v1/admin/fernwartung/techniker:
     get:
       tags: [fernwartung]
-      summary: Alle Techniker-Zugänge.
+      summary: Alle Techniker-Zugänge, ohne gelöschte.
       responses:
         "200":
-          description: Zugänge nach Tunnel-Adresse.
+          description: Aktive und gesperrte Zugänge nach Tunnel-Adresse.
           content:
             application/json:
               schema:
@@ -6614,7 +6614,27 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
-        "409": { description: Schlüssel schon vergeben oder Netz voll. }
+        "409": { description: "Schlüssel schon vergeben (auch der eines gelöschten Zugangs) oder Netz voll." }
+  /api/v1/admin/fernwartung/techniker/{id}:
+    delete:
+      tags: [fernwartung]
+      summary: Gesperrten Techniker-Zugang löschen (endgültig).
+      description: >
+        Nur aus dem Zustand `gesperrt`. Der Zugang fehlt danach in jeder Liste
+        und Auswahl und lässt sich nicht mehr entsperren. Seine Tunnel-Adresse
+        und sein öffentlicher Schlüssel bleiben dauerhaft vergeben und werden
+        nie wieder zugeteilt. Frühere Fenster- und Protokolleinträge bleiben
+        lesbar und nennen ihn weiter beim Namen; das Protokoll bekommt den
+        Eintrag `techniker_geloescht`. Für den Tunnel-Dienst ändert sich nichts:
+        ein gesperrter Zugang steht schon nicht mehr im Soll-Stand.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Gelöscht. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Unbekannter oder bereits gelöschter Zugang. }
+        "409": { description: "Der Zugang ist aktiv - erst sperren, dann löschen." }
   /api/v1/admin/fernwartung/techniker/{id}/sperren:
     post:
       tags: [fernwartung]
@@ -26302,8 +26322,8 @@ components:
         aktion:
           type: string
           enum: [box_schluessel_hinterlegt, box_schluessel_getauscht, box_gesperrt, box_entsperrt,
-                 techniker_angelegt, techniker_gesperrt, techniker_entsperrt, fenster_geoeffnet,
-                 fenster_geschlossen]
+                 techniker_angelegt, techniker_gesperrt, techniker_entsperrt, techniker_geloescht,
+                 fenster_geoeffnet, fenster_geschlossen]
         edgeRef: { type: string, nullable: true }
         technikerId: { type: string, format: uuid, nullable: true }
         technikerName: { type: string, nullable: true }

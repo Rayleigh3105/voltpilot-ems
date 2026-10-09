@@ -23,6 +23,8 @@ import {
   boxOrt,
   fensterTeile,
   fensterTon,
+  loeschbar,
+  loeschenRueckfrage,
   oeffnenSperre,
   protokollDetail,
   serverLage,
@@ -70,6 +72,7 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
   const [technikerOffen, setTechnikerOffen] = useState(false);
   const [konfigFuer, setKonfigFuer] = useState<FernwartungTechniker | null>(null);
   const [sperrziel, setSperrziel] = useState<Sperrziel | null>(null);
+  const [loeschziel, setLoeschziel] = useState<FernwartungTechniker | null>(null);
   const [schliessen, setSchliessen] = useState<FernwartungFenster | null>(null);
   const [jetzt, setJetzt] = useState(() => new Date());
 
@@ -364,6 +367,16 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                                 >
                                   {t.status === 'gesperrt' ? 'Entsperren' : 'Sperren'}
                                 </Button>
+                                {loeschbar(t) && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={busy}
+                                    onClick={() => setLoeschziel(t)}
+                                  >
+                                    Löschen
+                                  </Button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -447,6 +460,22 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                 : adminApi.fernwartungTechnikerSperren(ziel.techniker.id),
             'Sperren fehlgeschlagen.',
           );
+        }}
+      />
+      <ConfirmDialog
+        open={loeschziel != null}
+        title={loeschziel ? loeschenRueckfrage(loeschziel).titel : ''}
+        intro={loeschziel ? loeschenRueckfrage(loeschziel).satz : ''}
+        consequences={loeschziel ? loeschenRueckfrage(loeschziel).folgen : []}
+        confirmLabel="Endgültig löschen"
+        tone="danger"
+        busy={busy}
+        onCancel={() => setLoeschziel(null)}
+        onConfirm={() => {
+          const ziel = loeschziel;
+          setLoeschziel(null);
+          if (!ziel) return;
+          void aktion(() => adminApi.fernwartungTechnikerLoeschen(ziel.id), 'Löschen fehlgeschlagen.');
         }}
       />
       <ConfirmDialog

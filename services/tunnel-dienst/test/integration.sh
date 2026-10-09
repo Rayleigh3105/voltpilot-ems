@@ -107,7 +107,7 @@ fenster() { echo "{\"id\":\"$1\",\"boxId\":\"$2\",\"technikerId\":\"t1\",\"begin
 schritt "Bauen"
 docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e GOCACHE=/tmp/gocache -e CGO_ENABLED=0 -e GOFLAGS=-buildvcs=false \
   -v "$MODUL":/src:ro -v "$BIN":/out -w /src golang:1.24 \
-  sh -c 'go build -o /out/vp-tunnel-dienst ./cmd/vp-tunnel-dienst && go build -o /out/attrappe ./test/attrappe'
+  sh -c 'go build -ldflags "-X main.version=probe-1a2b3c" -o /out/vp-tunnel-dienst ./cmd/vp-tunnel-dienst && go build -o /out/attrappe ./test/attrappe'
 if ! docker image inspect "$BILD" >/dev/null 2>&1; then
   # shellcheck disable=SC2086
   if [ "$BASIS" = alpine ]; then
@@ -161,6 +161,10 @@ soll ""
 if einmal; then ok "Lauf erfolgreich"; else falsch "Lauf erfolgreich"; fi
 [ "$(peers)" = 3 ] && ok "3 Peers auf wg-wartung" || falsch "3 Peers auf wg-wartung (ist: $(peers))"
 x server nft list table inet voltpilot_wartung >/dev/null 2>&1 && ok "Tabelle voltpilot_wartung angelegt" || falsch "Tabelle angelegt"
+[ "$(x server /opt/vptd/vp-tunnel-dienst version)" = "vp-tunnel-dienst Version probe-1a2b3c" ] && ok "version nennt den beim Bau gesetzten Stand" || falsch "version nennt den beim Bau gesetzten Stand"
+st="$(x server /opt/vptd/vp-tunnel-dienst status 2>&1 || true)"
+echo "$st" | grep -q "Version probe-1a2b3c" && ok "status nennt die Version" || falsch "status nennt die Version"
+echo "$st" | grep -q "Firewall-Basis stimmt: ja" && ok "status: Firewall-Basis stimmt" || falsch "status: Firewall-Basis stimmt"
 ping_ja box1 10.10.16.1 "Box erreicht den Server (Handshake, nur Ping)"
 ping_ja tech 10.10.16.1 "Techniker erreicht den Server (Handshake, nur Ping)"
 ping_nein tech 10.10.16.2 "Techniker -> Box ohne Fenster: Ping verworfen"
@@ -221,6 +225,7 @@ x server grep -q "API nicht erreichbar" /srv/log && ok "Grund im Log" || falsch 
 schritt "6. Neustart der VM ohne API: Peers aus dem Zwischenstand, nie ein Fenster"
 x server sh -c 'ip link del wg-wartung; nft flush ruleset'
 wg_server
+x server /opt/vptd/vp-tunnel-dienst status 2>&1 | grep -q "Firewall-Basis stimmt: nein" && ok "status erkennt die fehlende Basis" || falsch "status erkennt die fehlende Basis"
 if einmal; then falsch "Lauf meldet Fehler"; else ok "Lauf meldet Fehler (API aus)"; fi
 [ "$(peers)" = 3 ] && ok "3 Peers wiederhergestellt" || falsch "Peers wiederhergestellt (ist: $(peers))"
 x server nft list table inet voltpilot_wartung >/dev/null 2>&1 && ok "Basis wieder geladen" || falsch "Basis wieder geladen"
@@ -257,6 +262,16 @@ einmal -e VP_TUNNEL_MAX_ENTFERNEN=2
 x server grep -q "ALARM" /srv/log && ok "Alarm im Log" || falsch "Alarm im Log"
 einmal -e VP_TUNNEL_MAX_ENTFERNEN=3
 [ "$(peers)" = 0 ] && ok "mit ausdrücklich erhöhtem Wert entfernt" || falsch "entfernt (ist: $(peers))"
+
+schritt "10. Anmeldung abgelehnt (falsches Secret): eigene Meldung, nichts geht auf"
+soll "$(fenster f4 b1 300)"
+x server sh -c 'echo falsch > /srv/falsch && chmod 600 /srv/falsch'
+if einmal -e VP_TUNNEL_CLIENT_SECRET_FILE=/srv/falsch; then falsch "Lauf meldet Fehler"; else ok "Lauf meldet Fehler (Secret falsch)"; fi
+x server tail -n 3 /srv/log | grep "Anmeldung abgelehnt: Client oder Secret prüfen" | grep -q "level=ERROR" &&
+  ok "Meldung sofort als Fehler im Log" || falsch "Meldung sofort als Fehler im Log"
+x server tail -n 3 /srv/log | grep -q "API nicht erreichbar" && falsch "nicht als unerreichbare API gemeldet" || ok "nicht als unerreichbare API gemeldet"
+[ "$(elemente)" = 0 ] && ok "kein Fenster mit abgelehnter Anmeldung" || falsch "kein Fenster mit abgelehnter Anmeldung (ist: $(elemente))"
+[ "$(peers)" = 0 ] && ok "Peers unverändert" || falsch "Peers unverändert (ist: $(peers))"
 
 schritt "Ergebnis"
 echo "  $OK ok, $FEHLER Fehler (nft $(x server nft --version | cut -d' ' -f2), Kernel $(uname -r))"

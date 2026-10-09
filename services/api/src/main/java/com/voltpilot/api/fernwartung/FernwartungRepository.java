@@ -18,7 +18,8 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Die Tabellen der Fernwartung (Migration V20261007163700) an der dedizierten
+ * Die Tabellen der Fernwartung (Migrationen V20261007163700 und
+ * V20261008213500) an der dedizierten
  * BYPASSRLS-Rolle {@code voltpilot_admin} - dasselbe Muster wie
  * {@code EdgeReleaseRepository}. Erreichbar nur aus platform-admin-Routen und
  * der Leseroute des Tunnel-Dienstes.
@@ -67,6 +68,11 @@ public class FernwartungRepository {
 
         public boolean aktiv() {
             return "aktiv".equals(status);
+        }
+
+        /** Gelöscht: für das Portal weg; Adresse und Schlüssel bleiben vergeben. */
+        public boolean geloescht() {
+            return "geloescht".equals(status);
         }
     }
 
@@ -125,8 +131,10 @@ public class FernwartungRepository {
 
     // ── Zugänge ───────────────────────────────────────────────────────────
 
+    /** Die Zugänge einer Art, wie das Portal sie zeigt: ohne gelöschte. */
     public List<Zugang> zugaenge(String art) {
-        return jdbc.query(ZUGANG_SELECT + "WHERE z.art = ? ORDER BY z.tunnel_adresse",
+        return jdbc.query(ZUGANG_SELECT + "WHERE z.art = ? AND z.status <> 'geloescht' "
+                        + "ORDER BY z.tunnel_adresse",
                 FernwartungRepository::zugang, art);
     }
 
@@ -140,11 +148,13 @@ public class FernwartungRepository {
                 FernwartungRepository::zugang, edgeRef).stream().findFirst();
     }
 
+    /** Auch ein gelöschter Zugang: die Regeln müssen ihn erkennen können. */
     public Optional<Zugang> zugang(UUID id) {
         return jdbc.query(ZUGANG_SELECT + "WHERE z.id = ?", FernwartungRepository::zugang, id)
                 .stream().findFirst();
     }
 
+    /** Auch ein gelöschter Zugang: sein Schlüssel bleibt vergeben. */
     public Optional<Zugang> zugangMitSchluessel(String publicKey) {
         return jdbc.query(ZUGANG_SELECT + "WHERE z.public_key = ?", FernwartungRepository::zugang, publicKey)
                 .stream().findFirst();
@@ -161,7 +171,7 @@ public class FernwartungRepository {
                 Boolean.class, externalRef, externalRef));
     }
 
-    /** Alle belegten Adressen in {@code netz}, auch gesperrter Zugänge (keine Wiedervergabe). */
+    /** Alle belegten Adressen in {@code netz}, auch gesperrter und gelöschter Zugänge (keine Wiedervergabe). */
     public Set<Integer> belegteAdressen(Ipv4Netz netz) {
         List<String> adressen = jdbc.query(
                 "SELECT host(tunnel_adresse) FROM fernwartung_zugang WHERE tunnel_adresse <<= ?::inet",
