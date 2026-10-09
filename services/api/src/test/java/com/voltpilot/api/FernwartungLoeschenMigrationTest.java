@@ -36,6 +36,7 @@ import org.testcontainers.utility.DockerImageName;
 class FernwartungLoeschenMigrationTest {
 
     private static final String STAND_VORHER = "20261007163700";
+    private static final String VERSION = "20261008213500";
     private static final String MIGRATION = "/db/migration/V20261008213500__fernwartung_zugang_loeschen.sql";
 
     private static final String BOX = "11111111-1111-4111-8111-111111111111";
@@ -59,7 +60,7 @@ class FernwartungLoeschenMigrationTest {
     void dieMigrationKommtAufEinerBenutztenDatenbankAnUndHaeltDieLoeschregel() throws Exception {
         // 1. Der Stand vor dieser Migration, mit Zeilen aus dem Betrieb.
         flyway().target(STAND_VORHER).load().migrate();
-        assertThat(angewandt("20261008213500")).isFalse();
+        assertThat(angewandt(VERSION)).isFalse();
         exec("INSERT INTO fernwartung_zugang (id, art, edge_ref, public_key, tunnel_adresse, status, "
                 + "angelegt_von, geaendert_von) VALUES ('" + BOX + "', 'box', 'edge-zay5sdd', '" + KEY_BOX
                 + "', '10.10.16.2/32', 'gesperrt', 'admin', 'admin')");
@@ -81,8 +82,10 @@ class FernwartungLoeschenMigrationTest {
         String vorher = abbild();
 
         // 2. Die Migration kommt an. Keine Zeile geht verloren oder ändert sich.
-        flyway().load().migrate();
-        assertThat(angewandt("20261008213500")).isTrue();
+        //    Bis zu IHRER Version, nicht weiter: spätere Migrationen (etwa die
+        //    Spalte ssh_public_key aus V20261009074500) haben ihren eigenen Test.
+        flyway().target(VERSION).load().migrate();
+        assertThat(angewandt(VERSION)).isTrue();
         assertThat(abbild()).isEqualTo(vorher);
 
         // 3. Wiederholbar: ein zweiter Lauf desselben SQL ändert nichts und bricht nicht.

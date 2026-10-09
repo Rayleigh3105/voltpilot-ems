@@ -48,6 +48,10 @@
   gap: 0.35rem;
 }
 
+.vp-fw-fenster {
+  min-width: 0;
+}
+
 .vp-fw-fenster li {
   display: flex;
   flex-wrap: wrap;
@@ -86,6 +90,146 @@ tr.vp-fw-gewaehlt > td {
   max-width: 100%;
 }
 
+/* Lange, unteilbare Texte (Fingerabdruck, Namen): umbrechen statt abschneiden. */
+.vp-fw-umbruch,
+.vp-fw-fingerabdruck {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.vp-fw-fingerabdruck {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82rem;
+}
+
+/* Eine Befehlszeile mit ihrem Kopier-Knopf. */
+.vp-fw-befehl {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  min-width: 0;
+  position: relative;
+}
+
+.vp-fw-befehl > code {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.3rem 0.5rem;
+  border-radius: 8px;
+  background: var(--vp-bg-light);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.vp-fw-befehl > .vp-btn {
+  flex: 0 0 auto;
+}
+
+/* Anmeldung in der Zeile eines offenen Fensters: die fertigen Befehle. */
+.vp-fw-anmeldung {
+  flex: 1 0 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.25rem 0 0.35rem;
+}
+
+.vp-fw-anmeldung-zeile {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr);
+  align-items: start;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.vp-fw-anmeldung-was {
+  padding-top: 0.3rem;
+  font-size: var(--vp-text-meta);
+  font-weight: 600;
+  color: var(--vp-text-muted);
+}
+
+.vp-fw-anmeldung-web {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.vp-fw-anmeldung-satz {
+  margin: 0;
+}
+
+.vp-fw-anmeldung-satz.vp-alert {
+  padding: var(--vp-space-2) var(--vp-space-3);
+}
+
+/* SSH-Schlüssel eingeben und erzeugen. */
+.vp-fw-sshfeld {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.vp-fw-sshfeld textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--vp-field-border);
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-white, #fff);
+  color: var(--vp-text-dark);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  resize: vertical;
+  overflow-wrap: anywhere;
+}
+
+.vp-fw-sshfeld textarea:focus-visible {
+  outline: none;
+  border-color: var(--vp-action);
+  box-shadow: 0 0 0 3px var(--vp-focus-ring);
+}
+
+.vp-fw-sshfeld textarea[aria-invalid='true'] {
+  border-color: var(--vp-industry-end);
+}
+
+.vp-fw-sshfeld .vp-field-help,
+.vp-fw-erzeugen .vp-field-help {
+  font-size: var(--vp-text-meta);
+  color: var(--vp-text-muted);
+}
+
+.vp-fw-erzeugen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2);
+  min-width: 0;
+}
+
+.vp-fw-erzeugen-system {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.vp-fw-ssh-stand {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-space-2);
+  min-width: 0;
+}
+
 /* Karte auf der Box-Seite. */
 .vp-fw-karte {
   display: flex;
@@ -100,6 +244,21 @@ tr.vp-fw-gewaehlt > td {
 }
 
 @media (max-width: 720px) {
+  /* Am Telefon steht die Beschriftung ÜBER den Befehlen, nicht daneben: sonst
+     bliebe für eine Befehlszeile nur die halbe Breite. */
+  .vp-table.responsive td.vp-fw-zelle-fenster,
+  .vp-table.responsive td.vp-fw-zelle-ssh {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--vp-space-1);
+  }
+  .vp-fw-anmeldung-zeile {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.1rem;
+  }
+  .vp-fw-anmeldung-was {
+    padding-top: 0;
+  }
   .vp-fw-aktionen {
     justify-content: flex-start;
   }

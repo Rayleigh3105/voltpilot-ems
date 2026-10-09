@@ -21,6 +21,7 @@ import {
   abrufLage,
   aktionLabel,
   boxOrt,
+  fensterAnmeldung,
   fensterTeile,
   fensterTon,
   loeschbar,
@@ -28,6 +29,7 @@ import {
   oeffnenSperre,
   protokollDetail,
   serverLage,
+  SSH_STAND_SATZ,
   UNBEKANNT_SATZ,
   ZUSTIMMUNG_SATZ,
   zeitpunkt,
@@ -45,6 +47,7 @@ import {
   TechnikerDialog,
   TechnikerKonfigAnzeige,
 } from '../../components/FernwartungDialoge';
+import { FensterAnmeldungZeile, SshSchluesselDialog } from '../../components/FernwartungSsh';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import { Modal } from '../../../designsystem/components/shell/Modal';
 import { fernwartungHash, parseFernwartungBox } from '../../nav';
@@ -71,6 +74,7 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
   const [schluesselOffen, setSchluesselOffen] = useState(false);
   const [technikerOffen, setTechnikerOffen] = useState(false);
   const [konfigFuer, setKonfigFuer] = useState<FernwartungTechniker | null>(null);
+  const [sshFuer, setSshFuer] = useState<FernwartungTechniker | null>(null);
   const [sperrziel, setSperrziel] = useState<Sperrziel | null>(null);
   const [loeschziel, setLoeschziel] = useState<FernwartungTechniker | null>(null);
   const [schliessen, setSchliessen] = useState<FernwartungFenster | null>(null);
@@ -220,27 +224,34 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                                 </span>
                               </span>
                             </td>
-                            <td data-label="Fernwartung">
+                            <td
+                              data-label="Fernwartung"
+                              className={b.laufendeFenster.some((f) => f.zustand === 'offen') ? 'vp-fw-zelle-fenster' : undefined}
+                            >
                               {b.laufendeFenster.length === 0 ? (
                                 <span className="vp-muted">kein Fenster</span>
                               ) : (
                                 <ul className="vp-fw-fenster">
-                                  {b.laufendeFenster.map((f) => (
-                                    <li key={f.id}>
-                                      <Badge variant={fensterTon(f.zustand)} dot>
-                                        {fensterTeile(f, jetzt).zustand}
-                                      </Badge>
-                                      <span>{fensterTeile(f, jetzt).text}</span>
-                                      <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        disabled={busy}
-                                        onClick={() => setSchliessen(f)}
-                                      >
-                                        {f.zustand === 'geplant' ? 'Absagen' : 'Schließen'}
-                                      </Button>
-                                    </li>
-                                  ))}
+                                  {b.laufendeFenster.map((f) => {
+                                    const anmeldung = fensterAnmeldung(f, b.adresse, techniker);
+                                    return (
+                                      <li key={f.id}>
+                                        <Badge variant={fensterTon(f.zustand)} dot>
+                                          {fensterTeile(f, jetzt).zustand}
+                                        </Badge>
+                                        <span>{fensterTeile(f, jetzt).text}</span>
+                                        <Button
+                                          variant="ghost"
+                                          size="sm"
+                                          disabled={busy}
+                                          onClick={() => setSchliessen(f)}
+                                        >
+                                          {f.zustand === 'geplant' ? 'Absagen' : 'Schließen'}
+                                        </Button>
+                                        {anmeldung && <FensterAnmeldungZeile anmeldung={anmeldung} />}
+                                      </li>
+                                    );
+                                  })}
                                 </ul>
                               )}
                             </td>
@@ -303,6 +314,9 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                 Zugang anlegen
               </Button>
             </div>
+            <p className="vp-note" style={{ margin: 0 }} data-testid="fw-ssh-stand">
+              {SSH_STAND_SATZ}
+            </p>
             {techniker.length === 0 ? (
               <Card padding="lg" radius="lg">
                 <EmptyState
@@ -319,6 +333,7 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                       <tr>
                         <th>Zugang</th>
                         <th>Tunnel</th>
+                        <th>SSH-Schlüssel</th>
                         <th>Status</th>
                         <th aria-label="Aktionen" />
                       </tr>
@@ -342,6 +357,19 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                                 </span>
                               </span>
                             </td>
+                            <td data-label="SSH-Schlüssel" className="vp-fw-zelle-ssh">
+                              {t.sshFingerabdruck ? (
+                                <span className="vp-cell-main">
+                                  <span className="vp-fw-fingerabdruck">{t.sshFingerabdruck}</span>
+                                  {t.sshBits && <span className="vp-cell-sub">RSA {t.sshBits}</span>}
+                                </span>
+                              ) : (
+                                <span className="vp-cell-main">
+                                  <span className="vp-muted">keiner</span>
+                                  <span className="vp-cell-sub">Fenster öffnen nur den Netzweg</span>
+                                </span>
+                              )}
+                            </td>
                             <td data-label="Status">
                               <Badge variant={t.status === 'aktiv' ? 'ok' : 'off'} dot>
                                 {t.status}
@@ -351,6 +379,9 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                               <div className="vp-fw-aktionen">
                                 <Button variant="ghost" size="sm" onClick={() => setKonfigFuer(t)}>
                                   Konfiguration
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={() => setSshFuer(t)}>
+                                  SSH-Schlüssel
                                 </Button>
                                 <Button
                                   variant="ghost"
@@ -430,6 +461,11 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
           <TechnikerKonfigAnzeige techniker={konfigFuer} server={uebersicht.server} />
         </Modal>
       )}
+      <SshSchluesselDialog
+        techniker={sshFuer}
+        onClose={() => setSshFuer(null)}
+        onFertig={() => void laden()}
+      />
       <ConfirmDialog
         open={sperrziel != null}
         title={
