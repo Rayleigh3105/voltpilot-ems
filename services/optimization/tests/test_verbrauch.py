@@ -525,6 +525,32 @@ def test_integrieren_verlangt_die_energie_jedes_teils():
         verbrauch.momentanwert_aus_teilperioden([ohne], von, von + timedelta(hours=1), kadenz, True)
 
 
+def test_h2_ereignisgetriebene_burstkadenz_ueberschreitet_die_erwartung_nie_die_abdeckung():
+    """H2 (vp-prod-safety §4.6, echte Produktionsdaten): ein ereignisgetriebener Kanal (Vorbild
+    Deye "work-mode", Mess-Selektion 300 s) sendet bei jedem Zustandswechsel ZUSAETZLICH zur
+    periodischen Kadenz - an der echten Produktionskopie kamen so 4-5 gute Werte statt der
+    erwarteten 3 in einer Viertelstunde an (``erhalten > erwartet``). Ungeklemmt lieferte
+    ``_mit_abdeckung`` dafuer ``abdeckung_prozent > 100`` und der Java-Zwilling verletzte
+    ``messreihe_viertelstunde_abdeckung_chk``. Ohne den ``min(100, ...)``-Klemmwert ist dieser
+    Test rot (``abdeckung_prozent == 166``)."""
+    von = verbrauch._zeit("2026-12-10T10:00:00+00:00")
+    kadenz = timedelta(seconds=300)
+    # Periodisch 10:00/10:05/10:10 (erwartet = 900 s / 300 s = 3) plus zwei Zustandswechsel
+    # mitten im Fenster (10:02:30, 10:07:45) -> erhalten = 5, genau das reale Muster.
+    roh = [
+        verbrauch.Rohwert(von, Decimal(1)),
+        verbrauch.Rohwert(von + timedelta(seconds=150), Decimal(2)),
+        verbrauch.Rohwert(von + timedelta(seconds=300), Decimal(2)),
+        verbrauch.Rohwert(von + timedelta(seconds=465), Decimal(1)),
+        verbrauch.Rohwert(von + timedelta(seconds=600), Decimal(1)),
+    ]
+    teil = verbrauch.momentanwert_teil(roh, von, von + _VIERTELSTUNDE, kadenz)
+    ergebnis = teil.teil.ergebnis
+    assert ergebnis["erhalten"] == 5
+    assert ergebnis["erwartet"] == 3
+    assert ergebnis["abdeckung_prozent"] == 100
+
+
 def test_rechenrauschen_kippt_keine_rundungsgrenze():
     """Die Summe 28-stelliger Teil-Energien trägt Rauschen: 24,11249…9 darf nicht auf 24,112 kippen (F3)."""
     assert verbrauch._runde_energie(Decimal("24.11249999999999999999999999")) == Decimal("24.113")
