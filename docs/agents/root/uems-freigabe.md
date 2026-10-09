@@ -67,7 +67,7 @@ Wer sie als Tor behandelt, baut eine Sperre, die es mit E1 = B nicht gibt.
   Start-Wächter auf `main` ist **offen** — das Drehbuch ist mit und ohne ihn fahrbar
   ([Drehbuch §9.1](../../rollout/uems-erste-freigabe.md)).
 - **Z08 ist der Schadensmelder dazu.** Ein Generalprobe-Lauf mit
-  `geloescht_markiert > 0` oder `fehlgeschlagen > 0` ist kein bestandener Lauf, auch nicht
+  `geloescht_offen > 0` oder `fehlgeschlagen > 0` ist kein bestandener Lauf, auch nicht
   mit sonst grünen Zahlen. Exit 26 hat Vorrang vor allem anderen.
 - **gitops PR 37 gehört mindestens einen Tag VOR das Fenster**, nie hinein: die ConfigMap
   bekommt einen neuen Hash und startet die api neu — harmlos auf dem **alten** Schema, im

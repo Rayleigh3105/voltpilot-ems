@@ -65,7 +65,7 @@
     {
       "clientId": "voltpilot-tunnel-dienst",
       "name": "VoltPilot Tunnel-Dienst",
-      "description": "Service account of the maintenance tunnel service on the Wartungs-VM. Client credentials only: no login, no browser flow, no password grant - the token carries tunnel-dienst and nothing else. Ships DISABLED: enable it only after setting VP_TUNNEL_DIENST_SECRET (infra/prod/keycloak/README.md).",
+      "description": "Service account of the maintenance tunnel service (Wartungs-VM). Client credentials only, no login or password grant; the token carries tunnel-dienst only. Ships DISABLED: enable after setting VP_TUNNEL_DIENST_SECRET (infra/prod/keycloak/README.md).",
       "enabled": false,
       "protocol": "openid-connect",
       "publicClient": false,

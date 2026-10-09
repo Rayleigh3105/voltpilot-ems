@@ -69,9 +69,12 @@ gesät. Pflege der Liste und die einmalige Prüfsummenänderung der noch nicht p
 `V20260916150000`: [Produktionsreihenfolge](agents/root/uems-migration-produktionsreihenfolge.md).
 
 Die `SelfHealingFlywayMigrationStrategy` prüft vor Migration und jeder Reparatur lesend die
-Historie: unbekannte angewandte Kernversionen (`FUTURE_*` und `MISSING_*`) sowie physische
-`DELETE`-Marker verweigern den Start. Auch eine unlesbare Diagnose bricht ab. Ein älteres Image
-kann so keine neuere Historie reparieren und danach Bereitschaft melden. Eine datenbankweite
+Historie: unbekannte angewandte Kernversionen (`FUTURE_*` und `MISSING_*`) sowie offene physische
+`DELETE`-Marker verweigern den Start. Auch eine unlesbare Diagnose bricht ab.
+Geheilt und damit zulässig ist ein Marker nur, wenn die jüngste Zeile seiner Version eine erfolgreiche `SQL`-Neuanwendung mit gleicher Prüfsumme, Beschreibung und gleichem Skript ist.
+So steht es seit dem 02.08.2026 in der Produktion: 15 Marker auf drei Versionen, jeder identisch neu angewandt, von Builds ohne Wächter.
+Die Neuausführung liegt dort in der Vergangenheit; ein offener Marker verweigert weiter und verhindert so genau diese Neuausführung.
+Ein älteres Image kann so keine neuere Historie reparieren und danach Bereitschaft melden. Eine datenbankweite
 Advisory-Sperre hält Diagnose und Flyway-Aufrufe für alle Starts mit dieser Strategie zusammen;
 ihr Schlüssel bleibt über Releases stabil. Sie liegt auf einer separaten lesenden Transaktion,
 die auch bei Startabbruch endet. Manuelle Flyway-Aufrufe und alte Builds ohne Wächter nehmen
@@ -113,7 +116,8 @@ UEMS-Umstieg bleibt daher der nachgewiesene Nullbestand von API/Writer im Wartun
 API/Writer anhalten, Befund sichern und geübten Rückweg auf den Wiederherstellungspunkt nutzen.
 
 Nachweise: `FlywayStartupGuardTest` (vollständiger main-Satz → UEMS → alter Start ohne Schreibzugriff
-→ neuer Start, kanonischer Historienfingerabdruck), `SelfHealingFlywayMigrationStrategyTest`,
+→ neuer Start, kanonischer Historienfingerabdruck; Produktionsmuster der geheilten Marker und jede
+Abweichung davon), `SelfHealingFlywayMigrationStrategyTest`,
 `FlywayIgnoreMissingBootTest`, `FlywayOutOfOrderBootTest`, `BetriebsabfragenBlaetterTest`.
 
 ## Betrieb und Änderungspunkte

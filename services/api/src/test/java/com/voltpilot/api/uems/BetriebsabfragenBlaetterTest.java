@@ -204,11 +204,51 @@ class BetriebsabfragenBlaetterTest {
                         assertThat(rs.getLong("sql_erfolgreich")).isEqualTo(sqlCount);
                         assertThat(rs.getLong("geloescht_markiert")).isEqualTo(2);
                         assertThat(rs.getLong("versionen_geloescht")).isEqualTo(1);
+                        assertThat(rs.getLong("geloescht_offen")).as("jüngste Zeile ist DELETE").isEqualTo(2);
                     }
                 }
             }
             s.execute("ROLLBACK");
         }
+    }
+
+    @Test
+    void nachherBlattUnterscheidetGeheilteVonOffenenDeleteMarkern() throws Exception {
+        try (Connection c = verbindung("uems"); Statement s = c.createStatement()) {
+            s.execute("CREATE TEMP TABLE flyway_schema_history AS TABLE public.flyway_schema_history");
+            // Das Muster der Produktion (02.08.2026): DELETE, danach identisch neu angewandt.
+            String ersteVersion = "(SELECT version FROM flyway_schema_history WHERE type='SQL' ORDER BY installed_rank LIMIT 1)";
+            for (String art : List.of("DELETE", "SQL", "DELETE", "SQL")) {
+                s.executeUpdate("""
+                        INSERT INTO flyway_schema_history
+                        SELECT (SELECT max(installed_rank)+1 FROM flyway_schema_history), version, description,
+                               '%s', script, checksum, installed_by, installed_on, 0, true
+                        FROM flyway_schema_history WHERE version = %s AND type='SQL' ORDER BY installed_rank LIMIT 1
+                        """.formatted(art, ersteVersion));
+            }
+            assertThat(z08(s)).containsEntry("geloescht_markiert", 2L).containsEntry("geloescht_offen", 0L)
+                    .containsEntry("versionen_geloescht", 1L).containsEntry("fehlgeschlagen", 0L);
+            // Eine Neuanwendung mit anderer Prüfsumme heilt nicht.
+            s.executeUpdate("""
+                    INSERT INTO flyway_schema_history
+                    SELECT (SELECT max(installed_rank)+1 FROM flyway_schema_history), version, description,
+                           'SQL', script, checksum # 1, installed_by, installed_on, 0, true
+                    FROM flyway_schema_history WHERE version = %s AND type='SQL' ORDER BY installed_rank LIMIT 1
+                    """.formatted(ersteVersion));
+            assertThat(z08(s)).containsEntry("geloescht_markiert", 2L).containsEntry("geloescht_offen", 2L);
+        }
+    }
+
+    private static Map<String, Long> z08(Statement s) throws Exception {
+        Abfrage z08 = lies(NACHHER).stream().filter(q -> q.kennung().equals("Z08#1")).findFirst().orElseThrow();
+        Map<String, Long> werte = new LinkedHashMap<>();
+        try (ResultSet rs = s.executeQuery(z08.sql())) {
+            assertThat(rs.next()).isTrue();
+            for (int i = 1; i <= rs.getMetaData().getColumnCount(); i++) {
+                werte.put(rs.getMetaData().getColumnName(i), rs.getLong(i));
+            }
+        }
+        return werte;
     }
 
     @Test

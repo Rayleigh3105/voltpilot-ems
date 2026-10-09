@@ -6,6 +6,9 @@ import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakUser;
 import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.metrics.UemsLaeuferMelder;
 import com.voltpilot.api.tenant.TenantContext;
+import jakarta.annotation.PreDestroy;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -42,7 +45,14 @@ import org.springframework.stereotype.Component;
  *   <li><b>blockiert den Start nie</b> — der Lauf geht in einem eigenen (virtuellen) Thread: Keycloak ist ein
  *       anderes System, und ein hängender Aufruf darf weder die übrigen Start-Hörer noch den Dienst
  *       aufhalten. Weist Keycloak einen Kundenbereich ab, geht es mit dem nächsten weiter; ist Keycloak nicht
- *       erreichbar, endet der Lauf mit EINER Meldung, und der nächste Start versucht es wieder.</li>
+ *       erreichbar, endet der Versuch mit EINER Meldung.</li>
+ *   <li><b>wiederholt, bis er einmal gelang</b> (Befund B2 der Produktionsprüfung 09.10.2026) - jeder
+ *       Kundenbereich, der scheiterte (Keycloak weg, abgewiesen, Übernahme gescheitert), kommt nach einer Pause
+ *       wieder dran: {@link #ERSTE_PAUSE}, dann doppelt so lang bis {@link #LAENGSTE_PAUSE}. Nur diese
+ *       Kundenbereiche, nie ein gelungener: ein Wiederholungsversuch tut genau, was ein gelungener erster Lauf
+ *       getan hätte, nur später - kein Recht darüber hinaus. Bis dahin trägt die Bestandsregel E12 jedes
+ *       Bestandskonto (Anfrage und {@code /me}); ohne Wiederholung bliebe der Stichtag bis zum nächsten Neustart
+ *       offen.</li>
  *   <li><b>abschaltbar</b> — {@code voltpilot.uems.zugriff-bestand.enabled}: in Produktion AN (application.yml,
  *       „ein Flag hat die Vorgabe AN"), im Testlauf AUS (surefire). Wer ihn prüft, ruft {@link #lauf()}
  *       selbst. Der Schalter nimmt nur den Start-Lauf, nie das Anlage-Ereignis.</li>
@@ -57,12 +67,13 @@ public class ZugriffBestandLaeufer {
      * Was ein Lauf tat (für das Log und die Tests).
      *
      * @param stichtageNeu Kundenbereiche, deren Bestand dieser Lauf abgeschlossen hat (Befund E12)
+     * @param offen Kundenbereiche, die ein weiterer Versuch braucht: gescheitert oder nach dem Abbruch nicht erreicht
      */
     public record Lauf(int kundenbereiche, int konten, int benutzerNeu, int zuweisungenNeu, int fehler,
-            int stichtageNeu) {
+            int stichtageNeu, List<UUID> offen) {
 
         public Lauf(int kundenbereiche, int konten, int benutzerNeu, int zuweisungenNeu, int fehler) {
-            this(kundenbereiche, konten, benutzerNeu, zuweisungenNeu, fehler, 0);
+            this(kundenbereiche, konten, benutzerNeu, zuweisungenNeu, fehler, 0, List.of());
         }
 
         public boolean geaendert() {
@@ -70,9 +81,23 @@ public class ZugriffBestandLaeufer {
         }
     }
 
+    /** Die Pause vor dem ersten Wiederholungsversuch; jede weitere verdoppelt sich bis {@link #LAENGSTE_PAUSE}. */
+    static final Duration ERSTE_PAUSE = Duration.ofSeconds(30);
+
+    /** Länger wartet der Läufer nie zwischen zwei Versuchen. */
+    static final Duration LAENGSTE_PAUSE = Duration.ofMinutes(5);
+
+    /** Wie der Läufer zwischen zwei Versuchen wartet; Tests geben eine eigene. */
+    @FunctionalInterface
+    interface Pause {
+        void warten(Duration dauer) throws InterruptedException;
+    }
+
     private final JdbcTemplate adminJdbc;
     private final KeycloakAdminClient keycloak;
     private final ZugriffBestand bestand;
+    private volatile Pause pause = Thread::sleep;
+    private volatile Thread hintergrund;
 
     /**
      * AP-14 IP-9: der Betriebs-Melder (§3.5, Schicht „Übernahme“). Nachgereicht statt in den
@@ -111,29 +136,76 @@ public class ZugriffBestandLaeufer {
             log.info("UEMS-Bestandsübernahme der Zugriffe abgeschaltet (voltpilot.uems.zugriff-bestand.enabled=false)");
             return;
         }
-        Thread.ofVirtual().name("uems-zugriff-bestand").start(this::imHintergrund);
+        starten();
+    }
+
+    /** Startet den Lauf samt Wiederholungen im Hintergrund - der Schalter ist {@link #beimStart}s Sache. */
+    Thread starten() {
+        Thread t = Thread.ofVirtual().name("uems-zugriff-bestand").start(this::imHintergrund);
+        hintergrund = t;
+        return t;
+    }
+
+    /** Beim Herunterfahren: eine wartende Wiederholung endet, statt gegen geschlossene Verbindungen zu laufen. */
+    @PreDestroy
+    void beenden() {
+        Thread t = hintergrund;
+        if (t != null) {
+            t.interrupt();
+        }
+    }
+
+    void pauseStellen(Pause pause) {
+        this.pause = pause;
     }
 
     private void imHintergrund() {
-        try {
-            Lauf l = lauf();
-            melder.bestandGelaufen(UemsLaeuferMelder.BESTAND_RECHTE, l.kundenbereiche(), l.fehler());
-            if (l.geaendert() || l.fehler() > 0 || l.stichtageNeu() > 0) {
-                log.info("UEMS-Bestandsübernahme der Zugriffe: {} Kundenbereich(e), {} Konto/Konten, {} Spiegel neu, "
-                        + "{} Kundenadministrator(en) zugewiesen, {} Bestand/Bestände abgeschlossen, {} Fehler",
-                        l.kundenbereiche(), l.konten(), l.benutzerNeu(), l.zuweisungenNeu(), l.stichtageNeu(),
-                        l.fehler());
+        List<UUID> nur = null; // null = alle Kundenbereiche
+        Duration warte = ERSTE_PAUSE;
+        while (true) {
+            List<UUID> offen;
+            try {
+                Lauf l = nur == null ? lauf() : laufFuer(nur);
+                // Gescheitert heißt: braucht einen weiteren Versuch - auch die nach einem Abbruch nicht erreichten.
+                melder.bestandGelaufen(UemsLaeuferMelder.BESTAND_RECHTE, l.kundenbereiche(), l.offen().size());
+                if (l.geaendert() || l.fehler() > 0 || l.stichtageNeu() > 0) {
+                    log.info("UEMS-Bestandsübernahme der Zugriffe: {} Kundenbereich(e), {} Konto/Konten, {} Spiegel "
+                            + "neu, {} Kundenadministrator(en) zugewiesen, {} Bestand/Bestände abgeschlossen, {} Fehler",
+                            l.kundenbereiche(), l.konten(), l.benutzerNeu(), l.zuweisungenNeu(), l.stichtageNeu(),
+                            l.fehler());
+                }
+                offen = l.offen();
+            } catch (RuntimeException e) {
+                // Eine Übernahme darf die api nie am Dienen hindern; ohne Ergebnis bleibt alles offen.
+                melder.fehler(UemsLaeuferMelder.BESTAND_RECHTE);
+                log.error("UEMS-Bestandsübernahme der Zugriffe gescheitert: {}", e.toString(), e);
+                offen = nur;
             }
-        } catch (RuntimeException e) {
-            // Eine Übernahme darf die api nie am Dienen hindern.
-            melder.fehler(UemsLaeuferMelder.BESTAND_RECHTE);
-            log.error("UEMS-Bestandsübernahme der Zugriffe gescheitert: {}", e.toString(), e);
+            if (offen != null && offen.isEmpty()) {
+                return;
+            }
+            log.warn("UEMS-Bestandsübernahme der Zugriffe: {} Kundenbereich(e) offen, nächster Versuch in {} s",
+                    offen == null ? "alle" : offen.size(), warte.toSeconds());
+            try {
+                pause.warten(warte);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            nur = offen;
+            Duration doppelt = warte.multipliedBy(2);
+            warte = doppelt.compareTo(LAENGSTE_PAUSE) > 0 ? LAENGSTE_PAUSE : doppelt;
         }
     }
 
     /** Ein Lauf über alle Kundenbereiche, ältester zuerst. Wirft nie je Kundenbereich. */
     public Lauf lauf() {
-        List<UUID> kundenbereiche = adminJdbc.queryForList("SELECT id FROM tenant ORDER BY created_at, id", UUID.class);
+        return laufFuer(adminJdbc.queryForList("SELECT id FROM tenant ORDER BY created_at, id", UUID.class));
+    }
+
+    /** Ein Lauf über genau diese Kundenbereiche, in dieser Folge - die Wiederholung der offenen. */
+    private Lauf laufFuer(List<UUID> kundenbereiche) {
+        List<UUID> offen = new ArrayList<>();
         int konten = 0;
         int neu = 0;
         int zuweisungen = 0;
@@ -146,12 +218,15 @@ public class ZugriffBestandLaeufer {
                 liste = keycloak.listUsersForTenant(tenant);
             } catch (KeycloakAdminException e) {
                 fehler++;
+                offen.add(tenant);
                 log.warn("UEMS-Zugriff: Keycloak lehnt die Konten des Kundenbereichs {} ab: {}", tenant, e.getMessage());
                 continue;
             } catch (RuntimeException e) {
                 fehler++;
-                log.warn("UEMS-Zugriff: Keycloak nicht erreichbar, der Lauf endet und der nächste Start versucht es "
-                        + "wieder: {}", e.toString());
+                // Dieser und jeder noch nicht erreichte Kundenbereich kommt mit dem nächsten Versuch.
+                offen.addAll(kundenbereiche.subList(kundenbereiche.indexOf(tenant), kundenbereiche.size()));
+                log.warn("UEMS-Zugriff: Keycloak nicht erreichbar, der Versuch endet und wird wiederholt: {}",
+                        e.toString());
                 break;
             }
             // Der Stichtag (Befund E12) sagt: DIESER Bestand ist vollständig übernommen. Eine an der Obergrenze
@@ -174,12 +249,13 @@ public class ZugriffBestandLaeufer {
                 }
             } catch (RuntimeException e) {
                 fehler++;
+                offen.add(tenant);
                 log.error("UEMS-Zugriff: Bestandsübernahme für Kundenbereich {} gescheitert, nichts übernommen: {}",
                         tenant, e.toString(), e);
             } finally {
                 TenantContext.clear();
             }
         }
-        return new Lauf(kundenbereiche.size(), konten, neu, zuweisungen, fehler, stichtage);
+        return new Lauf(kundenbereiche.size(), konten, neu, zuweisungen, fehler, stichtage, List.copyOf(offen));
     }
 }

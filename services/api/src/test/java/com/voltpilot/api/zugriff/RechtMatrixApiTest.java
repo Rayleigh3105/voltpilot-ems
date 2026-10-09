@@ -965,8 +965,11 @@ class RechtMatrixApiTest {
                     .path("actions").path("SoftReset").asBoolean()).isTrue();
             JsonNode me = MAPPER.readTree(ruf(HttpMethod.GET, "/api/v1/me", bestand, false, null)
                     .getResponse().getContentAsString(StandardCharsets.UTF_8));
-            // /me zeigt ausschließlich echte Zuweisungen; die bestehende Selbstauskunft bleibt unverändert.
-            assertThat(me.path("standorte")).isEmpty();
+            // Befund B2: /me zeigt, was jede Route erlaubt - bis zum Stichtag das Bestands-Recht (E12), sonst sähe
+            // ein Bestandskunde „Kein Standort zugewiesen", solange der Start-Lauf Keycloak nicht erreicht.
+            assertThat(me.path("unternehmensweit").asBoolean()).isTrue();
+            assertThat(me.path("rollen").toString()).isEqualTo("[\"kundenadministrator\"]");
+            assertThat(me.path("standorte")).isNotEmpty();
             assertThat(ruf(HttpMethod.GET, fremdeStufe, bestand, false, null).getResponse().getStatus()).isEqualTo(404);
 
             // Der Stichtag ist die vorhandene Übernahme-Markierung, kein Vergleich mit der Wanduhr.

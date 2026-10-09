@@ -5,9 +5,11 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
 import java.util.stream.Collectors;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.ErrorCode;
@@ -23,13 +25,21 @@ import org.springframework.core.env.Environment;
 
 /**
  * Fail closed before migration or repair when this build does not know an applied
- * core migration, or the history contains a core DELETE marker. An older image
+ * core migration, or the history contains an open core DELETE marker. An older image
  * must never rewrite a newer database's history or become ready on that schema.
  * The diagnosis is read-only; an unreadable diagnosis also prevents startup.
  * An explicit developer exception requires the sole active profile local AND
  * voltpilot.flyway.startwaechter=nur-warnen. It warns and retains the previous
  * Flyway behaviour, including potentially destructive repair of future entries.
  * Without that profile, the switch alone can never relax this guard.
+ *
+ * <p>A DELETE marker is healed, and only then accepted, when the latest history row
+ * of its version is a successful SQL re-application with the identical checksum,
+ * description and script. Builds without this guard left exactly that pattern in
+ * production (02.08.2026, 15 markers on three versions). Its re-execution lies in the
+ * past, so refusing it protects nothing; an open marker (latest row DELETE, or a
+ * different re-application) still refuses, which is what prevents the re-execution.
+ * Unknown applied versions (FUTURE/MISSING) refuse regardless of any marker.
  *
  * <p>Known missing development seeds are the explicit exception below. For known
  * migrations, checksum/description/type drift still receives one loud repair and
@@ -130,11 +140,15 @@ public class SelfHealingFlywayMigrationStrategy implements FlywayMigrationStrate
     }
 
     private void migrateWithStartupLock(Flyway flyway) {
-        requireCompatibleHistory(flyway);
+        Set<String> healed = requireCompatibleHistory(flyway).healedVersions();
+        if (!healed.isEmpty()) {
+            log.info("Flyway-Startwächter: geheilte DELETE-Marker akzeptiert (jüngste Zeile der Version ist "
+                    + "eine identische, erfolgreiche Neuanwendung). Versionen: {}", String.join(", ", healed));
+        }
         try {
             flyway.migrate();
         } catch (FlywayValidateException validationFailure) {
-            MigrationInfo[] diagnosed = requireCompatibleHistory(flyway);
+            MigrationInfo[] diagnosed = requireCompatibleHistory(flyway).migrations();
             List<String> outOfOrder = outOfOrderMigrations(diagnosed);
             if (!outOfOrder.isEmpty()) {
                 log.error(
@@ -171,22 +185,33 @@ public class SelfHealingFlywayMigrationStrategy implements FlywayMigrationStrate
         requireCompatibleHistory(flyway);
     }
 
+    /** The accepted diagnosis: Flyway's view plus the versions whose DELETE markers are healed. */
+    private record Diagnosis(MigrationInfo[] migrations, Set<String> healedVersions) {}
+
+    /** The physical DELETE markers: open ones refuse the start, healed versions are accepted. */
+    private record DeleteMarkers(List<String> open, Set<String> healedVersions) {}
+
     /** No migration/repair is allowed when even the read-only diagnosis fails. */
-    private MigrationInfo[] requireCompatibleHistory(Flyway flyway) {
+    private Diagnosis requireCompatibleHistory(Flyway flyway) {
         MigrationInfo[] migrations;
+        DeleteMarkers markers;
         List<String> incompatible = new ArrayList<>();
         try {
             migrations = flyway.info().all();
+            // Read the physical markers as well: info() describes the effective state,
+            // which can hide an earlier DELETE when a version was subsequently reapplied.
+            markers = deleteMarkers(flyway);
             for (MigrationInfo migration : migrations) {
                 String version = migration.getVersion() == null ? null : migration.getVersion().getVersion();
-                if (UNKNOWN_APPLIED.contains(migration.getState())
+                // Only the superseded rows of a healed version are excused, never FUTURE/MISSING.
+                boolean healed = migration.getState() == MigrationState.DELETED
+                        && markers.healedVersions().contains(version);
+                if (UNKNOWN_APPLIED.contains(migration.getState()) && !healed
                         && !optionalDevSeed(version, migration.getScript())) {
                     incompatible.add(version + " (" + migration.getState() + ")");
                 }
             }
-            // Read the physical markers as well: info() describes the effective state,
-            // which can hide an earlier DELETE when a version was subsequently reapplied.
-            incompatible.addAll(deletedCoreMigrations(flyway));
+            incompatible.addAll(markers.open());
         } catch (RuntimeException | SQLException diagnosisFailed) {
             String message = "Flyway-Start verweigert: Migrationshistorie nicht sicher lesbar. "
                     + "Nicht reparieren, nicht starten; Datenbankverbindung und Historie prüfen.";
@@ -203,7 +228,7 @@ public class SelfHealingFlywayMigrationStrategy implements FlywayMigrationStrate
                         + "FUTURE-Versionen können bei repair() als DELETE markiert werden; "
                         + "vorhandene DELETE-Marker können erneute SQL-Ausführung und Fehler verursachen. "
                         + "Kein Kompatibilitätsnachweis, keine Freigabe für Produktionsdaten.", diagnosis);
-                return migrations;
+                return new Diagnosis(migrations, markers.healedVersions());
             }
             String message = "Flyway-Start verweigert: " + diagnosis
                     + ". Nicht reparieren, nicht starten; richtiges Image "
@@ -213,14 +238,14 @@ public class SelfHealingFlywayMigrationStrategy implements FlywayMigrationStrate
             log.error(message);
             throw new FlywayException(message);
         }
-        return migrations;
+        return new Diagnosis(migrations, markers.healedVersions());
     }
 
     private static boolean optionalDevSeed(String version, String script) {
         return version != null && script != null && script.equals(OPTIONAL_DEV_SEEDS.get(version));
     }
 
-    private List<String> deletedCoreMigrations(Flyway flyway) throws SQLException {
+    private DeleteMarkers deleteMarkers(Flyway flyway) throws SQLException {
         var config = flyway.getConfiguration();
         try (Connection connection = config.getDataSource().getConnection()) {
             connection.setReadOnly(true);
@@ -236,21 +261,38 @@ public class SelfHealingFlywayMigrationStrategy implements FlywayMigrationStrate
                 try (var result = exists.executeQuery()) {
                     result.next();
                     if (result.getString(1) == null) {
-                        return List.of();
+                        return new DeleteMarkers(List.of(), Set.of());
                     }
                 }
             }
-            List<String> deleted = new ArrayList<>();
+            // Healed = the LATEST row of the version is a successful SQL re-application identical
+            // to the marker. A marker without version, a later DELETE, a failed or different
+            // re-application (checksum, description or script) stays open.
+            List<String> open = new ArrayList<>();
+            Set<String> healed = new TreeSet<>();
+            Set<String> openVersions = new HashSet<>();
             try (var statement = connection.createStatement();
-                    var rows = statement.executeQuery("SELECT version, script FROM " + table
-                            + " WHERE type = 'DELETE' ORDER BY installed_rank")) {
+                    var rows = statement.executeQuery("SELECT d.version, d.script, coalesce(l.type = 'SQL' "
+                            + "AND l.success AND l.checksum = d.checksum AND l.description = d.description "
+                            + "AND l.script = d.script, false) FROM " + table + " d LEFT JOIN LATERAL ("
+                            + "SELECT r.type, r.success, r.checksum, r.description, r.script FROM " + table
+                            + " r WHERE r.version = d.version ORDER BY r.installed_rank DESC LIMIT 1) l ON true "
+                            + "WHERE d.type = 'DELETE' ORDER BY d.installed_rank")) {
                 while (rows.next()) {
-                    if (!optionalDevSeed(rows.getString(1), rows.getString(2))) {
-                        deleted.add(rows.getString(1) + " (DELETE)");
+                    String version = rows.getString(1);
+                    if (optionalDevSeed(version, rows.getString(2))) {
+                        continue;
+                    }
+                    if (rows.getBoolean(3)) {
+                        healed.add(version);
+                    } else {
+                        open.add(version + " (DELETE)");
+                        openVersions.add(version);
                     }
                 }
             }
-            return deleted;
+            healed.removeAll(openVersions);
+            return new DeleteMarkers(open, healed);
         }
     }
 

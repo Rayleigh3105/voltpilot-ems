@@ -52,7 +52,10 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>Der Aufrufer als {@link Benutzer} des Vertrags:
  * <ul>
- *   <li>Kundenkonto: JEDE seiner Zuweisungen im Kundenbereich (wirksame, künftige, beendete — für „wirkt ab").</li>
+ *   <li>Kundenkonto: JEDE seiner Zuweisungen im Kundenbereich (wirksame, künftige, beendete - für „wirkt ab").
+ *       Ein Bestandskonto (E12: nie zugewiesen, Kundenbereich noch ohne Stichtag) ist Kundenadministrator - dasselbe
+ *       {@link RechtPruefung#BESTANDSRECHT}, das jede Route prüft. Sonst sähe ein Bestandskunde „Kein Standort
+ *       zugewiesen", solange der Start-Lauf Keycloak nicht erreicht (Befund B2), obwohl jede Route ihn bedient.</li>
  *   <li>Partner/Plattform über {@code X-Kundenbereich}: nur die Unterstützungen, die ihn hineinlassen.</li>
  *   <li>Plattform am Umschalter ({@code X-Tenant-Id}, bis IP-8): wie heute {@link KorrekturRechte#benutzer} —
  *       VoltPilot-Unterstützung mandantenweit.</li>
@@ -177,6 +180,9 @@ public class Selbstauskunft {
         Optional<BenutzerSpiegel> spiegel = zugriffe.spiegel(sub);
         String name = spiegel.map(BenutzerSpiegel::anzeigename).orElse(tokenName);
         KontoZustand zustand = spiegel.map(BenutzerSpiegel::zustand).orElse(KontoZustand.AKTIV);
+        if (z.zugang() == Zugang.KONTO && z.bestandskonto()) {
+            return new Benutzer(sub, name, konto, zustand, List.of(RechtPruefung.BESTANDSRECHT));
+        }
         List<Zeile> zeilen = zugriffe.zuweisungen(sub);
         if (z.zugang() == Zugang.UNTERSTUETZUNG) {
             zeilen = zeilen.stream().filter(x -> ZugriffKontextLader.gilt(konto, x)).toList();

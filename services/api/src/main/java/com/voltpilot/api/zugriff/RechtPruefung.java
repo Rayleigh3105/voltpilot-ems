@@ -102,6 +102,13 @@ public class RechtPruefung {
 
     private static final Instant IMMER = Instant.EPOCH;
 
+    /**
+     * Das gedachte Recht eines Bestandskontos (E12: nie zugewiesen, Kundenbereich ohne Stichtag): Kundenadministrator,
+     * unternehmensweit, seit jeher. Dieselbe Zuweisung liest die Selbstauskunft ({@code /me}), damit das Portal zeigt,
+     * was die Prüfung hier erlaubt.
+     */
+    static final Zuweisung BESTANDSRECHT = new Zuweisung(Rolle.KUNDENADMINISTRATOR, null, null, null, IMMER, null, null);
+
     private final JdbcTemplate jdbc;
     private final Geltungsbereich geltungsbereich;
     private final ZugriffRepository zugriffe;
@@ -366,7 +373,7 @@ public class RechtPruefung {
      */
     static Benutzer benutzer(Zugriff z) {
         List<Zuweisung> zuweisungen = z.zugang() == Zugang.KONTO && z.bestandskonto()
-                ? List.of(new Zuweisung(Rolle.KUNDENADMINISTRATOR, null, null, null, IMMER, null, null))
+                ? List.of(BESTANDSRECHT)
                 : Stream.concat(z.zuweisungen().stream(), z.beendete().stream())
                         .map(RechtPruefung::zuweisung).toList();
         return new Benutzer(z.sub(), z.sub(), z.konto(), KontoZustand.AKTIV, zuweisungen);
