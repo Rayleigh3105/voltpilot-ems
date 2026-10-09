@@ -412,11 +412,13 @@ hat `main` schon vergeben, signiert und veröffentlicht: `edge-2026.09.5` am 24.
   den Stand des neuen Release;
 - `tools/nw3-box-image/paare.json` um das neue Paar (NW-3 gegen das neue Image, Tor GA).
 
-**`paare.json` führt `edge-2026.09.6` noch nicht.** Die Datei nennt am Stand `7f875011f` nur
-`edge-2026.09.4` und `edge-2026.09.5`, und `docs/rollout/` hat nur für diese beiden ein Protokoll.
-`09.6` ist veröffentlicht; ob es im Feld läuft, sagt Q07. Nach dem NW-3-Lauf oben wird die Liste
-um `edge-2026.09.6` ergänzt, mit eigenem Protokoll `nw3-protokoll-edge-2026.09.6.json`; NW-3 unter
-G1 verlangt je Paar eines.
+**`paare.json` führt `edge-2026.09.6` seit dem 09.10.2026.** Die Datei nennt `edge-2026.09.4`,
+`edge-2026.09.5` und `edge-2026.09.6`, je mit eigenem Protokoll unter `docs/rollout/`. Der Lauf für
+`09.6` gegen `uems` `7f875011f` (`nw3-protokoll-edge-2026.09.6.json`) zeigt dasselbe Bild wie `09.5`:
+9 grün, 3 rot (3/4a/4b, Katalogkopplung, B10), 1 Befund (6c, X7, B5). Ob `09.6` im Feld läuft, sagt
+weiter Q07; NW-3 unter G1 verlangt je Paar ein Protokoll. NW-3 gegen ein Box-Bild vom `uems`-Kopf
+`7f875011f` ist am selben Tag gefahren (`nw3-protokoll-edge-uems-7f875011fc46.json`, 13 grün); es
+ist kein Bild vom Merge-Commit auf `main`.
 
 ### 2.9 Zwischen Merge und Fenster
 

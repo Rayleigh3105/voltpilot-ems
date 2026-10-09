@@ -28,8 +28,9 @@ die Box-Gruppe und die Strecke —, also nur bei reichlich freiem Speicher start
 
 Welche `(core, palette)`-Paare im Feld laufen, sagt **Q07** des Bestandsblatts
 (`tools/betriebsabfragen/bestand-vor-uems.sql`) — und diese Abfrage fährt allein
-der Betreiber gegen Produktion. `paare.json` trägt darum heute genau das eine
-Paar, das ohne Q07 belegbar ist: das letzte Release-Tag `edge-2026.09.4`. Der
+der Betreiber gegen Produktion. `paare.json` trägt darum heute genau die Paare,
+die ohne Q07 belegbar sind: die Release-Tags `edge-2026.09.4`, `edge-2026.09.5`
+und `edge-2026.09.6`. Der
 Betreiber trägt die Paare seiner Q07-Ausgabe nach oder gibt eine eigene Datei
 mit `--paare`; das Werkzeug fährt sie der Reihe nach und schreibt ein Protokoll
 über alle.
@@ -195,7 +196,7 @@ der Codezeile, die sie verlangt.
 | Datei | Aufgabe |
 |---|---|
 | `nw3.sh` | der Lauf: bauen, Stack hoch, die sieben Punkte, Protokoll |
-| `paare.json` | die Paar-Liste (Parameter; heute das eine Tag-Paar) |
+| `paare.json` | die Paar-Liste (Parameter; heute die drei Tag-Paare 09.4 bis 09.6) |
 | `nw3-overlay.yml` | Compose-Überlagerung: lokale Bilder statt Registry-Pull |
 | `nutzlast.py` | die Cloud-Nutzlasten aus den festgenagelten Beispielen |
 | `faehigkeiten.py` | X2: der Satz „Update nötig für: …" zum gemeldeten Stand |

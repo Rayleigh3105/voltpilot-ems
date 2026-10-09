@@ -97,7 +97,7 @@ Protokoll des Laufs vom 19.09.2026 gegen `origin/uems` `2edc6e1d`, mit
 [`docs/rollout/nw3-protokoll-edge-2026.09.4.json`](../../rollout/nw3-protokoll-edge-2026.09.4.json)
 — **12 grün, 0 rot, 1 Befund, 0 nicht gefahren**. Jeder Punkt trägt seinen Beleg
 (die Nachricht, die die Box wirklich gesendet hat). Die Naht zur api-Antwort für
-Punkt 7 fährt `Nw3AusgeliefertesBoxImageTest` (4 Fälle, beide Stände).
+Punkt 7 fährt `Nw3AusgeliefertesBoxImageTest` (seit dem 09.10.2026 5 Fälle, drei Stände).
 
 Protokoll des Laufs vom 26.09.2026 gegen `origin/uems` `f694b525` (PR 1287), mit
 `--strecke`:
@@ -125,6 +125,29 @@ weiter (X7 behoben). **4b war im ersten Lauf rot, am Prüfstand:** `strecke_prue
 standen 2.1-Umschläge. Punkt 7 liest nur die Tabelle, nicht den Herzschlag-Block `supports[]`, den
 die neue Box mit `data_sources` meldet — sein „grün“ ist für das neue Image die Erwartung an eine
 alte Box, kein Beleg für X2.
+
+Protokoll des Laufs vom 09.10.2026 gegen `origin/uems` `7f875011` (vor dem Schritt `uems` → `main`),
+mit `--strecke`:
+[`docs/rollout/nw3-protokoll-edge-2026.09.6.json`](../../rollout/nw3-protokoll-edge-2026.09.6.json)
+— **9 grün, 3 rot, 1 Befund, 0 nicht gefahren**, dasselbe Bild wie bei 09.5. `edge-2026.09.6`
+(29.09., `becfa44e4`, Korrektur des Rückmeldewegs) trägt weiter die Palette `2026.08.26.3`; 3 und
+4a sind rot mit `rejected: unsupported_catalog`, 4b ist die Folge davon (0 Umschläge gesendet), 6c
+ist der Befund X7. Alle vier sind am 27.09.2026 hingenommen (B5/B10); `paare.json` führt das Paar
+seitdem als drittes, und `Nw3AusgeliefertesBoxImageTest` fährt Punkt 7 für alle drei Stände
+(5 Fälle).
+
+Das **neue** Image vom `uems`-Kopf (NW-3neu vor dem Box-Release nach dem Merge), gefahren am
+09.10.2026 mit `--strecke`, Box und Cloud aus demselben Commit `7f875011`:
+[`docs/rollout/nw3-protokoll-edge-uems-7f875011fc46.json`](../../rollout/nw3-protokoll-edge-uems-7f875011fc46.json)
+— **13 grün, 0 rot, 0 Befund, 0 nicht gefahren**. Das Paar ist wie `edge-release-a` aus dem Commit
+gebaut, nicht getaggt (Stempel `7f875011fc46-7f875011fc46`) und steht nicht in `paare.json`. Gegenüber
+`edge-release-a` enthält es die Box-Änderungen, die seit dem 27.09. über die Nachzüge aus `main`
+kamen (Rückmeldeweg, OCPP, Sonne + Speicher, Steuerstand, Edge-Light-Teile im Core, Tunnel-Dienst
+Box-Seite); der Herzschlag trägt neu den Block `battery_control`, `supports[]` ist unverändert.
+Die Grenzen des Prüfstands gelten weiter: Punkt 7 liest `supports[]` nicht, „Vertrag 2.0“ in 4b
+ist fester Wortlaut, und das Feld `herkunft` im Protokoll sagt auch für ein Commit-Paar „aus dem
+Release-Tag gebaut“. Der Lauf prüft eine frische Box am Simulator; nicht den Update-Pfad (NW-3u),
+keine Hardware, und kein Bild vom späteren Merge-Commit auf `main` oder vom `mispel`-Stand.
 
 ## X2 ist kein Fehlerbild
 
