@@ -42,12 +42,17 @@ const FAELLE: Fall[] = [
     sichtbar: ['Kunststoffwerk Ahrenberg GmbH', '2 Standorte · 3 Anlagen · 1 steuert', '3 von 3 Anlagen liefern Daten', 'Lastspitze', '312,4', '96,5', '38,7'],
     gruppen: 2,
   },
+  // firstmate K2 (09.10.2026): kein Standort misst, also bleibt `#/portfolio` die gewohnte
+  // Übersicht (`PortfolioCockpit`, zeichengleich zu main) statt der Unternehmens-Übersicht mit
+  // ihren Standort-Gruppen und dem Unternehmensnamen als Überschrift.
   {
     name: 'unternehmen-bestand',
     query: 'bild=unternehmen&messen=bestand',
     route: '#/portfolio',
-    sichtbar: ['Kunststoffwerk Ahrenberg GmbH', 'Noch nicht eingerichtet'],
-    gruppen: 2,
+    // Die Überschrift „Meine Anlagen“ ist `vp-sr-only` (die Reiter nennen die Ebene schon) und steht
+    // am Telefon nicht in der Seitenleiste — sichtbar bleiben die Anlagen selbst.
+    sichtbar: ['Werk Ahrenberg – Halle 1', 'Werk Lindach'],
+    gruppen: 0,
   },
   {
     name: 'werk-ahrenberg',
@@ -77,7 +82,9 @@ async function oeffne(page: Page, query: string, breite: number, jetzt: Date = J
   await page.clock.setFixedTime(jetzt);
   await page.setViewportSize({ width: breite, height: breite < 721 ? 812 : 900 });
   await page.goto(`/e2e/startansicht.html?${query}`);
-  await expect(page.locator('.vp-portfolio-kopf').first()).toBeVisible();
+  // firstmate K2: ohne messenden Standort landet `#/portfolio` auf der gewohnten Übersicht
+  // (`.vp-ku-anlagen`, KundenUebersicht) statt der Unternehmens-/Standort-Übersicht (`.vp-portfolio-kopf`).
+  await expect(page.locator('.vp-portfolio-kopf, .vp-ku-anlagen').first()).toBeVisible();
   await expect(page.getByText('Wird geladen …')).toHaveCount(0);
   await page.evaluate(() => document.fonts.ready);
   await page.waitForLoadState('networkidle');

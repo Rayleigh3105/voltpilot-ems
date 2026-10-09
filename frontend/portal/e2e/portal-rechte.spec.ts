@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 
 const BILDER = process.env.RECHTE_BILDER;
 const ST2 = '5a1d0000-0000-4000-8000-000000000002';
+const AN3 = 'a0000000-0000-4000-8000-000000000003';
 for (const breite of [375, 1440]) {
   for (const [bild, person] of [['R1', 'MD'], ['T1', 'CB'], ['T3', 'PH']] as const) {
     test(`${bild} · ${person} · ${breite}px`, async ({ page }) => {
@@ -33,10 +34,13 @@ for (const breite of [375, 1440]) {
         await expect(page.locator('body')).not.toContainText('Werk Nord');
         await expect(page.getByRole('button', { name: 'Anlage anlegen', exact: true })).toHaveCount(0);
       } else {
-        await expect(page).toHaveURL(new RegExp(`#/standort/${ST2}$`));
+        // firstmate K2 (09.10.2026): `messen=bestand` lässt keinen Standort messen — die Teilansicht
+        // unterliegt derselben Regel wie der volle Zugriff (startansicht.test.ts K2-Block) und landet
+        // jetzt auf der gewohnten Übersicht statt auf Peters Standort-Übersicht. Mit nur einer
+        // sichtbaren Anlage (Werk Lindach) ist das ihr Cockpit, nicht die Standort-Seite „ST-2“.
+        await expect(page).toHaveURL(new RegExp(`#/anlage/${AN3}$`));
         await expect(page.locator('body')).not.toContainText('2 Standorte · 3 Anlagen');
-        await expect(page.getByRole('heading', { name: 'Werk Lindach ST-2', exact: true })).toBeVisible();
-        await expect(page.locator('body')).toContainText('Jonas Wendlinger');
+        await expect(page.getByRole('heading', { name: 'Werk Lindach', exact: true })).toBeVisible();
       }
       await page.evaluate(() => document.fonts.ready);
       expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);

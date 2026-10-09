@@ -37,8 +37,12 @@ for (const breite of [375, 1440] as const) {
   test.describe(`${breite} px`, () => {
     test.use({ viewport: { width: breite, height: breite === 375 ? 812 : 900 } });
 
+    // firstmate K2 (09.10.2026): die Karte „Funktionen“ wohnt auf einer Standort-/Unternehmens-
+    // Übersicht — die ist nur die Landung, wenn mindestens ein Standort misst. `&messenWerk=`
+    // lässt gezielt NUR Werk Ahrenberg nicht messen (Lindach bleibt eingerichtet): die Ebene bleibt
+    // erreichbar, Werk Ahrenbergs eigene Karte zeigt weiterhin „Noch nicht eingerichtet".
     test('Übersicht → Karte „Funktionen“ → Knopf → Schritt 1', async ({ page }) => {
-      await oeffnen(page, 'person=JW&messen=bestand', `#/standort/${ST1}`);
+      await oeffnen(page, 'person=JW&messenWerk=bestand', `#/standort/${ST1}`);
       const knopf = karte(page).getByRole('button', { name: 'Messen & Auswerten für Werk Ahrenberg einrichten' });
       await expect(knopf).toBeVisible();
       await knopf.scrollIntoViewIfNeeded();
@@ -55,7 +59,7 @@ for (const breite of [375, 1440] as const) {
         ([schluessel, wert]) => window.localStorage.setItem(schluessel, wert),
         [ENTWURF, JSON.stringify({ standortId: ST1, schritt: 3 })] as const,
       );
-      await oeffnen(page, 'person=JW&messen=entwurf', `#/standort/${ST1}`);
+      await oeffnen(page, 'person=JW&messenWerk=entwurf', `#/standort/${ST1}`);
       const knopf = karte(page).getByRole('button', { name: 'Einrichtung fortsetzen (Schritt 3 von 5)' });
       await expect(knopf).toBeVisible();
       await knopf.scrollIntoViewIfNeeded();
@@ -74,6 +78,11 @@ for (const breite of [375, 1440] as const) {
       await expect(assistent(page).getByText('Womit wird gemessen?')).toBeVisible();
     });
 
+    // Vorbestehender, von K2 unabhängiger Befund (reproduziert unverändert auf origin/uems:
+    // `funktionenZiel` in App.tsx bietet den Avatar-Eintrag „Funktionen" auch an, wenn die Landung
+    // die Unternehmens-Übersicht ist — die Karte wohnt dort aber nicht mehr, „nur auf der
+    // Standort-Übersicht" (EbenenCockpit.tsx, Review PR2 §5.1). Für Jonas (unternehmensweit, zwei
+    // Standorte) zeigt `#/portfolio` also nie die Karte. Nicht Teil dieses Auftrags, nicht behoben.
     test('Avatar-Menü „Funktionen“ → Karte', async ({ page }) => {
       await oeffnen(page, 'person=JW&messen=bestand', '#/portfolio/messstellen');
       await page.getByRole('button', { name: /Konto-Menü/ }).click();
@@ -95,7 +104,7 @@ for (const breite of [375, 1440] as const) {
     });
 
     test('ohne Recht: Grund und Weg statt Knopf', async ({ page }) => {
-      await oeffnen(page, 'person=CB&messen=bestand', `#/standort/${ST1}`);
+      await oeffnen(page, 'person=CB&messenWerk=bestand', `#/standort/${ST1}`);
       await expect(karte(page)).toBeVisible();
       await expect(karte(page).getByRole('button', { name: /Messen & Auswerten für/ })).toHaveCount(0);
       await expect(karte(page).getByRole('note').first()).toBeVisible();

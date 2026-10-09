@@ -48,7 +48,6 @@ import {
   isGeraeteBereich,
   hashForRoute,
   isBootHash,
-  isPortfolioPage,
   pageRoute,
   parseMessstelleWerte,
   PLATFORM_PAGES,
@@ -95,7 +94,6 @@ import {
   ebenenReiter,
   ebenenTitel,
   EBENEN_SEITEN,
-  flottenEintraege,
   istDetailseite,
   misstAnlage,
   resolveAnlage,
@@ -1298,18 +1296,19 @@ function UnifiedPortal() {
     // N3: der Eintrag „Erlöse“ der Flotte nur mit Geld — wie bisher der Reiter.
     geldWelt: hatGeldWelt(geldSites),
   };
-  // N3 (Konzept „Navigation aus einem Guss“): die Flotte ohne Standorte („Meine Anlagen“, „Portfolio“) hat dieselben
-  // Einträge wie jede Ebene — Übersicht · Standorte · Energie · Erlöse in Seitenleiste und Telefon-Leiste.
-  const flotteHier = !anlageNav && !ebenenOrtHier && ebene.art === 'heute' && fleetLevel && isPortfolioPage(page);
+  // firstmate K2 (09.10.2026): solange kein Standort misst (`ebene.art === 'heute'`), bleibt die
+  // Navigation zeichengleich zu main — nur EIN Eintrag „Meine Anlagen"/„Portfolio" in Seitenleiste
+  // und Telefon-Leiste, kein „Standorte" davor (der Weg dahin ist der leise Einstieg im ⋯-Menü).
+  // Das frühere N3 „Navigation aus einem Guss" trug der Flotte ohne Ebene dieselben Einträge wie
+  // jeder echten Ebene auf (Übersicht · Standorte · Energie · Erlöse) — das entfällt hier bewusst;
+  // eine echte Ebene (`ebenenOrtHier`, nur erreichbar sobald ein Standort misst) ist unverändert.
   const ebenenKacheln = ebenenOrtHier
     ? ebenenLeiste(ebenenOrtHier, ebenenLesemodell, EBENEN_SEITEN, page)
-    : flotteHier
-      ? flottenEintraege({ standorte: true, geldWelt: ebenenLesemodell.geldWelt === true, offen: page })
-      : [];
+    : [];
   const standortBereich = standortBereichFuer(route, ebenenLesemodell);
   const aktivHier = ebenenAktiv(page, standortBereich, route.energiemanagementReiter);
   const ebenenNav =
-    (ebenenOrtHier || flotteHier) && ebenenKacheln.length > 0
+    ebenenOrtHier && ebenenKacheln.length > 0
       ? {
           titel: ebenenOrtHier
             ? ebenenTitel(ebenenOrtHier, ebenenLesemodell, unternehmensEbene?.name ?? 'Ihr Unternehmen')
@@ -1628,6 +1627,9 @@ function UnifiedPortal() {
                 : page
             }
             showErloese={hatGeldWelt(geldSites)}
+            // firstmate K2: kein Standort misst (`ebene.art === 'heute'`) → kein Reiter „Standorte",
+            // zeichengleich zu main (der Weg ist dort der leise Einstieg im ⋯-Menü).
+            showStandorte={ebene.art !== 'heute'}
             showMessstellen={messstellenDa === true}
             showBezugsgroessen={bezugsgroessenDa === true}
             showKennzahlen={kennzahlenDa === true}

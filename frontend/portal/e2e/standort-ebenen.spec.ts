@@ -322,18 +322,25 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
 
 
 for (const breite of [1440, 375]) {
-  test(`O18 · Betriebskunde bei ${breite} px: keine neuen Standort-Reiter; alte AP-13-Direktlinks landen auf der Übersicht`, async ({ page }) => {
+  // firstmate K2 (09.10.2026): „ohne Messfunktion" landete bisher trotzdem auf der Standort-
+  // Übersicht (Werk Ahrenberg) - nur ohne deren neue Reiter. Jetzt bleibt dieselbe Betriebskunden-
+  // Szene ganz auf der gewohnten Übersicht (`#/portfolio`, zeichengleich zu main): kein Standort
+  // misst, also ist die Standort-/Unternehmensebene gar nicht erst die Landung (startansicht.test.ts
+  // K2-Block). Die alten AP-13-Direktlinks konvergieren weiterhin alle auf EINE Fläche, jetzt diese.
+  test(`O18 · Betriebskunde bei ${breite} px: kein Standort misst — alte AP-13-Direktlinks landen auf der gewohnten Übersicht`, async ({ page }) => {
     test.slow(); // sieben Adressen nacheinander, jede lädt die ganze Bühne
     let uebersichtText = '';
     for (const bereich of ['', '-gebaeude', '-aufbau', '-anlagen', '-boxen', '-kennzahlen', '-berichte']) {
       await oeffne(page, `bild=unternehmen&messen=bestand&ansicht=werk${bereich}`, breite);
       const m = await messe(page);
       ohneQuerlauf(m, `betrieb${bereich}-${breite}`);
-      expect(m.titel).toBe('Werk AhrenbergST-1');
+      expect(m.route).toBe('#/portfolio');
+      // Die Überschrift ist `vp-sr-only` (Sprungziel) - die Reiter darüber nennen die Ebene schon.
+      expect(m.titel).toBeNull();
       if (!bereich) uebersichtText = m.text;
       expect(m.text).toBe(uebersichtText);
       expect(m.leiste).toBeNull();
-      expect(m.reiter).toEqual([]);
+      expect(m.reiter).toEqual(['Übersicht', 'Energie']);
       expect(m.einstiege).toEqual([]);
       await expect(page.getByTestId('uebersicht-bausteine')).toHaveCount(0);
       if (!bereich) await ablegen(page, `betrieb-${breite}`, m, true);
