@@ -11,7 +11,7 @@
  * Adresse, damit ein Neuladen nicht noch einmal springt.
  */
 import { hashForRoute, type Route } from './nav';
-import type { Sprung } from './uemsOberflaechen';
+import type { Sprung } from './uemsSprung';
 
 export type { Sprung };
 

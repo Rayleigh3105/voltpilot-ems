@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import wordmarkUrl from '../../designsystem/assets/voltpilot-wordmark.png';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { UEMS_KENNZAHLEN } from '../glossar';
+import { UEMS_KENNZAHLEN } from '../glossarEinstieg';
 
 /*
  * Die Buehne jeder UNANGEMELDETEN Flaeche (Login, Registrierung, Boot-Splash,

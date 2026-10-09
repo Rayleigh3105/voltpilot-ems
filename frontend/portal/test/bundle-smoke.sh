@@ -51,6 +51,37 @@ cd "$(dirname "$0")/.."
 #   225,74  P7 (Grenze 230)   — die Ratsche geht ZURÜCK, wie eine Ratsche soll
 #   246,22  main am 24.09.2026 — der Wächter war rot (UX-Review V-01)
 #   224,57  V-01 (Grenze 230)  — vier Hilfs-Module statt ganzer Fach-Module
+#   357,89  uems am 09.10.2026 — der Wächter war rot (Gesamtlauf vor uems → main)
+#   252,37  UEMS-Schnitt (Grenze 256) — firstmate-Entscheid `bel-grenze-230` = B
+#
+# WAS DER UEMS-SCHNITT HERAUSGENOMMEN HAT (−105,52 kB gz, ohne eine Funktion zu ändern):
+#   Der Sammelzweig `uems` hatte 71 Quellen neu im Einstieg. Zwei Flächen sind
+#   jetzt Lazy-Stücke: `pages/BenutzerPage.tsx` (zieht `UnterstuetzungKarte` mit,
+#   `pageChunks.ts`) und der Dialog „Unterstützung beenden?“ des Banners (kommt
+#   mit seinem Klick). Dazu zehn Hilfs-Module statt ganzer Fach-Module, die alten
+#   Module reichen sie unverändert weiter:
+#   `bereichSicht.ts` (statt `bewertung`/`energieziele`/`energiemanagementPortal`),
+#   `uemsSprung.ts` (statt `uemsOberflaechen`), `funktionenRegeln.ts` (statt
+#   `uebersicht`), `messstellenReiter.ts` (statt `kostenstellenUebersicht`),
+#   `energiebilanzReiter.ts` (statt `anlageEnergiebilanz`), `uemsBilanzSaetze.ts`
+#   (statt `uemsBilanz`), `rechteTexte.ts` (statt `rechte`),
+#   `unterstuetzungFrist.ts` (aus `unterstuetzung`), `anlageFlowSchritte.ts`
+#   (statt `anlageFlow`), `glossarEinstieg.ts` (statt `glossar`).
+#
+# WARUM DIE GRENZE DABEI VON 230 AUF 256 GEHT (gemessen, 09.10.2026): `main`
+#   liegt bei 220,32 kB gz, die 230 liessen also 9,68 kB Luft. Nach dem Schnitt
+#   bleiben 32,05 kB über `main`, und nichts davon ist ein Rückfall:
+#   14,3 kB  die SCHALE des ersten Bilds ist mit UEMS gewachsen — Ebenen, Routen,
+#            Reiter-Leiste, Seiten-Tabelle (`App.tsx` +4,0, `nav.ts` +2,0,
+#            `pageChunks.ts` +1,3, `PortfolioTabs` +1,2, …);
+#   11,6 kB  31 UEMS-Quellen, die das erste Bild selbst braucht (`ebenenNav.ts`,
+#            Unterstützungs-Banner, Rechte-Sätze, die Hilfs-Module von oben);
+#    6,5 kB  `api.ts`: das EINE `api`-Objekt trägt jede Route und liegt als
+#            Ganzes im Einstieg. Es zu teilen ist ein eigenes Paket (über tausend
+#            Test-Spione hängen an genau diesem Objekt) — der Boden mit Teilung
+#            läge bei rund 246 kB.
+#   Die Anlagen-Seite bleibt im Einstieg (Haus-Regel: sie ist das Ziel fast
+#   jedes Besuchs). Die 3,6 kB Luft folgen der Regel weiter unten.
 #
 # WAS V-01 HERAUSGENOMMEN HAT (−21,65 kB gz, ohne eine Funktion zu ändern):
 #   Der Einstieg zog vier große Fach-Module für je eine kleine Hilfe mit.
@@ -83,7 +114,7 @@ cd "$(dirname "$0")/.."
 # `nav.ts` raus, `commit` = nacktes `setRoute`) liegt bei 230,28 kB — immer noch
 # über 230, weil der Kopfraum von main (158 Byte) kleiner war als die reine
 # Vorlade-Grenze `pageChunks.ts` plus die `view-transition-name`-Attribute.
-LIMIT_KB="${LIMIT_KB:-230}"
+LIMIT_KB="${LIMIT_KB:-256}"
 
 OUT="dist-bundle-smoke"
 trap 'rm -rf "$OUT"' EXIT

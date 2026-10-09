@@ -49,6 +49,31 @@ for (const breite of [375, 1440]) {
   }
 }
 
+// „Benutzer“ ist seit dem Bündel-Schnitt (09.10.2026, `test/bundle-smoke.sh`) ein nachgeladenes Stück der Schale
+// (`pageChunks.ts`). Die Bühnen `benutzer.html` und `unterstuetzung.html` montieren die Seite direkt - nur hier
+// läuft der Weg durch `App.tsx`: Adresse → Suspense-Grenze → Seite.
+test('Benutzer öffnet über die Schale als nachgeladenes Stück', async ({ page }) => {
+  const fehler: string[] = [];
+  page.on('pageerror', e => fehler.push(e.message));
+  // Die Bühne der Schale kennt die Routen dieser Seite nicht: leere Listen, von der fremden Herkunft der Cloud lesbar.
+  await page.route(/\/api\/v1\/(benutzer|unterstuetzung)(\/[^?]*)?(\?.*)?$/, r => r.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    headers: {
+      'access-control-allow-origin': r.request().headers().origin ?? '*',
+      'access-control-allow-credentials': 'true',
+      'access-control-allow-headers': 'authorization, content-type',
+      'access-control-allow-methods': 'GET, OPTIONS',
+    },
+    body: '[]',
+  }));
+  await page.goto('/e2e/startansicht.html?bild=unternehmen&rechte=1#/unternehmen/einstellungen/benutzer');
+  await page.waitForLoadState('networkidle');
+  await expect(page).toHaveURL(/#\/unternehmen\/einstellungen\/benutzer$/);
+  await expect(page.getByRole('heading', { name: 'Benutzer', exact: true, level: 1 })).toBeVisible();
+  expect(fehler).toEqual([]);
+});
+
 test('N7 → L3 · Zugriff beendet verwirft die alte Seite und lädt die neue Startansicht', async ({ page }) => {
   await page.goto('/e2e/startansicht.html?bild=unternehmen&rechte=1&person=PH');
   await expect(page).toHaveURL(new RegExp(`#/standort/${ST2}$`));

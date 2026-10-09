@@ -24,6 +24,7 @@ import {
   type Term as FormelTerm,
 } from './uemsMessstelleFormel';
 import { SALDIERT as KATALOG_SALDIERT, groessePruefen } from './uemsMessstelle';
+import { SATZ_REST_KEINE_WERTE, SATZ_REST_NEGATIV, SATZ_REST_ZUGEORDNET } from './uemsBilanzSaetze';
 import { zahl } from './uemsErgebnis';
 
 // ------------------------------------------------------------------------ Wörter und Schwellen
@@ -51,15 +52,8 @@ export const UNPLAUSIBEL_NEGATIV = 'unplausibel (negativ)';
 export const SALDIERT = KATALOG_SALDIERT;
 export const SALDIERT_KENNZEICHEN = 'saldiert (Bezug − Abgabe)';
 
-/**
- * Die Kundensätze des Rests, WÖRTLICH die Vorlagen aus `saetze` der Vektor-Datei (`rest_zugeordnet`,
- * `rest_negativ`, `rest_keine_werte`); der Test hält sie dort fest. Ein Rest heißt „nicht
- * zugeordnet" — nie „Verlust", und er nennt keine Ursache. `{zahl}` ist Zahl mit Einheit aus
- * `uemsErgebnis.zahl` (E11).
- */
-export const SATZ_REST_ZUGEORDNET = '{zahl} sind keiner Messstelle zugeordnet';
-export const SATZ_REST_NEGATIV = 'Messwerte passen nicht zusammen ({zahl})';
-export const SATZ_REST_KEINE_WERTE = 'nicht zugeordnet: keine Werte';
+/** Die Kundensätze des Rests wohnen in `uemsBilanzSaetze.ts` (Einstiegs-Bündel). */
+export { SATZ_REST_KEINE_WERTE, SATZ_REST_NEGATIV, SATZ_REST_ZUGEORDNET };
 
 /** Wörter, die eine URSACHE behaupten — kein Satz dieses Vertrags darf sie tragen. */
 export const VERBOTENE_WOERTER = ['Verlust', 'Verluste', 'Verlusten', 'Schwund', 'Diebstahl', 'Leckage'];

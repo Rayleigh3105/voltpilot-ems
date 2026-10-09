@@ -24,9 +24,9 @@
  * Reines Modul: keine React-Importe, kein Netzwerk.
  */
 import type { FunktionStandort, Funktionen } from './api';
-import { FLOW_STEPS } from './anlageFlow';
+import { FLOW_STEPS } from './anlageFlowSchritte';
 import { pageRoute, standortMessstellenRoute, type Route } from './nav';
-import { steuernSpricht } from './uebersicht';
+import { steuernSpricht } from './funktionenRegeln';
 
 /** Wie der Anlege-Fluss spricht: wie heute, oder ohne ein Wort über Steuern und Geld. */
 export type AnlegeArt = 'wie_heute' | 'nur_messen' | 'standort_zuerst';
