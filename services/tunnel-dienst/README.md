@@ -184,7 +184,7 @@ Vier Dinge muss eine eigene Firewall beachten, gleich wie sie aussieht:
 | einzeln ladbar: die Datei beginnt mit `table inet filter` / `delete table inet filter` | so ersetzt `nft -f <datei>` nur diese Tabelle. `systemctl reload nftables` leert dagegen den ganzen Regelsatz und schließt jedes offene Fenster |
 | Priorität `filter + 10` | zwei Ketten am selben Haken mit gleicher Priorität laufen in der Reihenfolge, in der sie geladen wurden. Mit 10 urteilt immer erst die Tabelle des Dienstes; ein `drop` dort ist endgültig |
 
-Belegt ist das Muster in der Integrationsprobe (Schritt 20): Es lädt, ohne die Tabelle des Dienstes und offene Fenster zu berühren; Schlüsselausgabe und Fenster-Verkehr gehen hindurch, ohne die Zeile für die Schlüsselausgabe bekommt die Box keine Antwort. Auf der VM selbst ist die Zeile für die Schlüsselausgabe noch nicht geladen.
+Belegt ist das Muster in der Integrationsprobe (Schritt 20): Es lädt, ohne die Tabelle des Dienstes und offene Fenster zu berühren; Schlüsselausgabe und Fenster-Verkehr gehen hindurch, ohne die Zeile für die Schlüsselausgabe bekommt die Box keine Antwort. Auf der VM ist die Zeile für die Schlüsselausgabe seit dem 09.10.2026 geladen; die Abfrage der Labor-Mango geht hindurch (am Zähler der Regel abgelesen).
 
 ## Schlüsselausgabe
 
@@ -396,10 +396,17 @@ diff /tmp/basis.soll.txt /tmp/basis.ist.txt && echo identisch
   - Lauf gegen die echte API über mehrere Token-Laufzeiten; ein Ausfall des Portals von zwölf Minuten im offenen Fenster: letzter Stand bleibt, `ALARM` ab dem zehnten Fehllauf;
   - Neustart der VM mit aktivierter Unit: Die Firewall steht vor der Tunnel-Schnittstelle, der Dienst läuft aus dem Zwischenstand an, Peers ohne Fenster;
   - die eigene Firewall der VM (Eingang und Weiterleitung auf `drop`) neben der Tabelle des Dienstes.
+- **Schlüsselausgabe auf der echten VM belegt** (09.10.2026, Stand des Dienstes `20b548df2641`, eingespielt nach „Auf einer laufenden VM einschalten“):
+  - unter systemd als Benutzer `vp-tunnel`: Startzeile `Schlüsselausgabe lauscht adresse=10.10.32.1:8022 … rechte=keine dateizugriff=gesperrt`; der Schalter ist ein eigener Prozess, alle vier Capability-Mengen leer, `NoNewPrivs` gesetzt; der Dienst hat genau `CAP_NET_ADMIN`;
+  - `Firewall-Basis geladen` genau einmal, danach `Firewall-Basis stimmt: ja` und `Schlüsselausgabe: 10.10.32.1:8022, lauscht`;
+  - die Labor-Mango (OpenWrt 25.12.5) bekommt mit `uclient-fetch` ohne offenes Fenster die leere, gültige Liste; vor dem Einspielen endete derselbe Abruf nach 5 s mit `Failed to send request: Operation not permitted`, Rückgabewert 4;
+  - andere Ports vom Tunnel zur VM bleiben verworfen (22 und 8023, Zähler der `drop`-Regel).
+- **Das Abholen durch das Box-Skript** (`edge-light/openwrt/service-tunnel.sh`) ist in `edge-light/test/wartung-anmeldung-probe.sh` belegt: OpenWrt 25.12 im Container holt mit `uclient-fetch` gegen diesen Dienst ab, hält die Anfrage offen und meldet sich mit dem abgeholten Schlüssel durch den Tunnel an.
 - **Nicht belegt:**
-  - **die Schlüsselausgabe auf der echten VM** und unter systemd. Sie ist dort noch nicht eingespielt; belegt ist sie in der Integrationsprobe und, für den Prozess des Schalters, in `test/dateisperre.sh`;
-  - **das Abholen durch eine echte Box.** Das Box-Skript gibt es noch nicht (Schritt 3). Die Antwort ist gegen die Prüfregel des Prototyps geprüft und mit `socat` und dem `wget` von BusyBox abgeholt, nicht mit `uclient-fetch`;
-  - die Schlüsselausgabe als Benutzer `vp-tunnel` unter systemd mit der Dateisperre: `test/dateisperre.sh` belegt die Sperre auf dem Kernel der VM (6.12.111+deb13-amd64), dort aber als root und ohne systemd; als Nicht-root ist der Schalter nur in der Integrationsprobe geprüft, und deren Kernel hat Landlock nicht eingeschaltet;
+  - **auf der VM eine Liste mit einem Schlüssel:** Am 09.10. war kein Fenster offen, und kein Zugang im Portal trug einen SSH-Schlüssel. Ebenso dort nicht belegt: eine wartende Anfrage (`warte` größer 0), die Antworten 429 und 503 und die Ablehnung einer Techniker-Adresse (braucht ein Techniker-Gerät);
+  - **das Box-Skript an einer Mango gegen die VM;** es steht mit der Abnahme von Schritt 3 an;
+  - dass der Schalter auf der VM wirklich keine Datei öffnen kann: Dort ist es an seiner Startzeile und den leeren Capability-Mengen abgelesen, nicht mit einem eigenen Versuch. `test/dateisperre.sh` belegt die Sperre auf dem Kernel der VM (6.12.111+deb13-amd64), dort als root und ohne systemd;
+  - ein Neustart der VM mit eingeschalteter Schlüsselausgabe;
   - der schnellere Abruf nach dem Start (fünfmal im Abstand von 5 s) auf der VM; geprüft ist die Regel im Unit-Test;
   - die Schlüsselausgabe unter Last: viele Boxen mit offener Anfrage sind nicht gemessen;
   - das Schließen eines Fensters im echten Portal und der Abriss einer laufenden Sitzung dabei. Im Gesamttest lief das Fenster ab; das Schließen ist mit der Attrappe belegt.
