@@ -63,7 +63,7 @@ edge-light/
 │   └── mango.md               GL.iNet Mango: Speicher, Flash, Ports, WireGuard, Pilotplan
 ├── openwrt/
 │   ├── install.sh             Einrichtung über SSH (auch durch den WireGuard-Tunnel)
-│   ├── service-tunnel.sh      Wartungstunnel zum Wartungsserver aus dem Portal (WireGuard, nur Schlüssel-SSH)
+│   ├── service-tunnel.sh      Wartungstunnel zum Wartungsserver aus dem Portal (WireGuard, Schlüssel-SSH, Web-App im Fenster)
 │   └── files/                 Loader, procd-Dienst, UCI-Konfiguration
 ├── scripts/                   build.sh, test.sh (lokales Go oder Docker)
 └── test/
