@@ -4,6 +4,7 @@ import type { AnlageEnergie, AnlageKurve, EnergieStat } from '../anlageEnergie';
 import { UEMS_ENERGIEBILANZ } from '../glossar';
 import { useStaffel } from '../staffel';
 import { flaeche, pfad } from './portfolio/kurveGeometrie';
+import { Recht } from './Recht';
 import './AnlagenEnergie.css';
 
 /**
@@ -36,6 +37,8 @@ export interface AnlagenEnergieProps {
   /** AP-13 IP-8: Anlagen mit Hauptzähler in der Stellung tragen den Weg „Energiebilanz". */
   energiebilanz?: ReadonlySet<string> | null;
   onEnergiebilanz?: (siteId: string) => void;
+  /** Geführter Einstieg in den bestehenden Zuordnungsdialog (U7a, #1407 P2). */
+  onZuordnungKorrigieren?: (siteId: string) => void;
 }
 
 function Stat({ s }: { s: EnergieStat }) {
@@ -104,11 +107,13 @@ function Karte({
   onOeffnen,
   energiebilanz,
   onEnergiebilanz,
+  onZuordnungKorrigieren,
 }: {
   k: AnlageEnergie;
   onOeffnen: (siteId: string) => void;
   energiebilanz?: ReadonlySet<string> | null;
   onEnergiebilanz?: (siteId: string) => void;
+  onZuordnungKorrigieren?: (siteId: string) => void;
 }) {
   const weg = onEnergiebilanz && energiebilanz?.has(k.id);
   return (
@@ -154,29 +159,59 @@ function Karte({
         </div>
         {k.kurve && <Spark kurve={k.kurve} zeigtPv={k.stats.some((s) => s.rolle === 'pv')} />}
       </div>
-      {weg && (
+      {(weg || onZuordnungKorrigieren) && (
         <div className="vp-ae-fuss">
-          <button
-            type="button"
-            className="vp-ae-weg"
-            onClick={(e) => {
-              e.stopPropagation();
-              onEnergiebilanz?.(k.id);
-            }}
-          >
-            {UEMS_ENERGIEBILANZ}
-          </button>
+          {weg && (
+            <button
+              type="button"
+              className="vp-ae-weg"
+              onClick={(e) => {
+                e.stopPropagation();
+                onEnergiebilanz?.(k.id);
+              }}
+            >
+              {UEMS_ENERGIEBILANZ}
+            </button>
+          )}
+          {onZuordnungKorrigieren && (
+            <Recht aktion="anlage.zuordnen">
+              <button
+                type="button"
+                className="vp-ae-weg"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onZuordnungKorrigieren(k.id);
+                }}
+              >
+                Zuordnung korrigieren
+              </button>
+            </Recht>
+          )}
         </div>
       )}
     </article>
   );
 }
 
-export function AnlagenEnergie({ gruppen, karten, onOeffnen, energiebilanz, onEnergiebilanz }: AnlagenEnergieProps) {
+export function AnlagenEnergie({
+  gruppen,
+  karten,
+  onOeffnen,
+  energiebilanz,
+  onEnergiebilanz,
+  onZuordnungKorrigieren,
+}: AnlagenEnergieProps) {
   const staffel = useStaffel('portfolio-anlagen');
   const liste = staffel ? `vp-ae-liste ${staffel}` : 'vp-ae-liste';
   const eine = (k: AnlageEnergie) => (
-    <Karte key={k.id} k={k} onOeffnen={onOeffnen} energiebilanz={energiebilanz} onEnergiebilanz={onEnergiebilanz} />
+    <Karte
+      key={k.id}
+      k={k}
+      onOeffnen={onOeffnen}
+      energiebilanz={energiebilanz}
+      onEnergiebilanz={onEnergiebilanz}
+      onZuordnungKorrigieren={onZuordnungKorrigieren}
+    />
   );
   if (gruppen) {
     return (
