@@ -190,7 +190,7 @@ test('Fernwartung: ein offenes Fenster zeigt die fertigen Befehle, ohne SSH-Schl
   await expect(alex).toContainText('RSA 3072');
   await expect(kim).toContainText('keiner');
   await expect(kim).toContainText('Fenster öffnen nur den Netzweg');
-  await expect(page.getByTestId('fw-ssh-stand')).toContainText('Abholen können ihn die Boxen noch nicht');
+  await expect(page.getByTestId('fw-ssh-stand')).toContainText('An jeder anderen Box gelingt die Anmeldung nur mit einem Schlüssel, der schon auf der Box liegt');
 
   // Die Box mit zwei offenen Fenstern: die Befehle einmal, je Fenster ein Satz.
   const boxen = page.getByTestId('fw-boxen');

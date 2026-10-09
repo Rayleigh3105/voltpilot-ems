@@ -91,12 +91,22 @@ Ein offenes Fenster öffnet den **Netzweg** zur Box. Die **Anmeldung** an der Bo
 | Schritt | Inhalt | Stand |
 |---|---|---|
 | 1 | Portal und API: der SSH-Schlüssel steht am Techniker-Zugang und geht im Soll-Stand mit | umgesetzt |
-| 2 | Tunnel-Dienst: gibt einer Box die Schlüssel der Techniker aus, für die gerade ein Fenster zu ihr offen ist | umgesetzt; auf der Wartungs-VM erst eingeschaltet, wenn dort `VP_TUNNEL_SCHLUESSEL_PORT` gesetzt ist |
-| 3 | Box (`service-tunnel.sh`): holt die Schlüssel ab, hält sie nur im Arbeitsspeicher und führt die Frist selbst | offen |
+| 2 | Tunnel-Dienst: gibt einer Box die Schlüssel der Techniker aus, für die gerade ein Fenster zu ihr offen ist | umgesetzt; auf der Wartungs-VM seit dem 09.10.2026 eingeschaltet (`10.10.32.1:8022`) |
+| 3 | Box (`service-tunnel.sh`): holt die Schlüssel ab, hält sie nur im Arbeitsspeicher und führt die Frist selbst | umgesetzt für OpenWrt mit Dropbear ab 2025.89 (Mango, 25.12); eine Box holt erst ab, wenn ihr Tunnel mit diesem Skript eingerichtet ist |
+| 4 | Rückmeldung des Tunnel-Dienstes ans Portal: Box verbunden, zuletzt gefragt, Schlüssel abgeholt | entschieden, offen |
 
-**Bis Schritt 3 ausgeliefert ist, holt keine Box einen Schlüssel ab.** Die Anmeldung gelingt so lange nur mit einem Schlüssel, der schon auf der Box liegt. Das Portal sagt das auf der Seite und an jedem offenen Fenster.
+**Eine Box holt nur ab, wenn zwei Dinge stimmen:** Ihr Tunnel ist mit dem `service-tunnel.sh` ab Schritt 3 eingerichtet, und die Schlüsselausgabe läuft am Wartungsserver. Fehlt eines davon, gelingt die Anmeldung wie vorher nur mit einem Schlüssel, der schon auf der Box liegt. Das Portal weiß von beidem nichts und sagt deshalb auf der Seite, für welche Boxen das Abholen gilt, statt die Anmeldung zu versprechen. An einer Box zeigt `service-tunnel.sh <ziel> status`, ob sie eingerichtet ist und wann der Server zuletzt geantwortet hat.
 
 **Die Schlüsselausgabe des Tunnel-Dienstes** (Schritt 2): Eine Box fragt im Tunnel die Server-Adresse im Techniker-Netz (`10.10.32.1`, eigener Port) und bekommt die Schlüssel der Paare, die gerade in der Kernel-Menge `fenster` stehen, mit deren Restlaufzeit. Der Dienst prüft jeden Schlüssel noch einmal selbst, antwortet nur Box-Adressen und gibt ohne frisch abgeholten Soll-Stand keine Liste aus. Einzelheiten, Grenzen und das Einschalten auf der VM: [Tunnel-Dienst](../services/tunnel-dienst/README.md#schlüsselausgabe); Anfrage und Antwort für das Box-Skript: [Vertrag](contracts/fernwartung-schluessel-v1.md).
+
+**Die Box-Seite** (Schritt 3, [mango.md](../edge-light/docs/mango.md#fenster-schlüssel-auf-der-box)): `service-tunnel.sh` legt einen Abholer, ein Startskript und eine cron-Zeile auf die Box. Geprüft mit echter SSH-Anmeldung durch einen echten Tunnel in `edge-light/test/wartung-anmeldung-probe.sh`.
+
+- **Der Abholer fragt nur durch den Tunnel**, mit `uclient-fetch`. Führt die Route zum Server nicht über die Tunnel-Schnittstelle, fragt er nicht; eine Regel in der Firewall der Box weist die Anfrage auf jedem anderen Weg zusätzlich ab.
+- **Die Schlüsseldatei liegt nur im Arbeitsspeicher**, in einem eigenen tmpfs, das allein die SSH-Instanz im Tunnel liest (`dropbear -D`). Ein Neustart der Box löscht jeden Fenster-Schlüssel.
+- **Die Frist läuft in Laufzeit der Box, nicht in Uhrzeit.** Ohne gültige Antwort kommt nichts dazu, und was da ist, verfällt zur Frist: auch ohne Server und auch, wenn der Abholer hängt (ein cron-Lauf je Minute streicht unabhängig von ihm).
+- **Die Antwort ist die ganze Liste.** Ein Schlüssel, den sie nicht mehr nennt, ist sofort gestrichen: bei vorzeitig geschlossenem Fenster und bei einem im offenen Fenster ersetzten oder entfernten Schlüssel.
+- **Übergang:** Was dauerhaft in `/etc/dropbear/authorized_keys` der Box steht, gilt im Tunnel weiter; das Skript liest die Datei nur. Solche Schlüssel umgehen die Schranke „kein Fenster, kein Schlüssel“: Öffnet ein Fehler der Server-Firewall den Port, kommt damit hinein, wer so einen Schlüssel hat. Ob dauerhaft einer bleibt, etwa ein Notfall-Schlüssel, ist noch nicht entschieden.
+- **SSH 2222 kommt nur aus dem Tunnel an** (Entscheid vom 09.10.2026). Die Box weist den Port auf jedem anderen Weg ab, ob der Tunnel oben ist oder unten. Port 22 im LAN ändert sich nicht.
 
 - **Der Schlüssel am Zugang** (`sshPublicKey` beim Anlegen, `PUT`/`DELETE …/techniker/{id}/ssh-schluessel`) ist freiwillig. Ohne ihn öffnet ein Fenster für diesen Zugang nur den Netzweg; das Portal nennt das in der Zugangsliste, beim Öffnen eines Fensters und unter der Box, solange das Fenster offen ist.
 - **Nur RSA, 2048 bis 4096 Bit.** Der Dropbear der Boxen (OpenWrt 25.12.5 auf der Mango) nimmt nur `ssh-rsa` an. Ein Ed25519-, ECDSA- oder FIDO-Schlüssel wird mit dem Befehl abgelehnt, der einen passenden erzeugt (`ssh-keygen -t rsa -b 3072`). 4096 Bit ist die größte Länge, mit der die Anmeldung an diesem Dropbear belegt ist.
@@ -129,6 +139,7 @@ Nach dem Gesamttest mit der Labor-Box hat der Kapitän entschieden:
 | Web-App 8484 im Tunnel | im offenen Fenster für alle Techniker | Box-Seite umgesetzt ([oben](#web-app-der-box-im-fenster)) |
 | Paket `nftables` auf der VM | von den automatischen Updates ausgenommen, wird von Hand aktualisiert | `/etc/apt/apt.conf.d/53vp-nftables-von-hand` auf der VM |
 | Labor-Mango `edge-5t2dcy6` | bleibt als Test-Box am Wartungsserver | verbunden, `10.10.16.2` |
+| SSH 2222 der Box außerhalb des Tunnels | die Box weist es ab, auch im LAN und auch bei Tunnel unten | Box-Seite umgesetzt (`service-tunnel.sh`, eigene Firewall-Kette); gilt für eine Box, sobald das Skript erneut läuft |
 
 **`nftables` von Hand aktualisieren.** Das Paket startet bei einer Aktualisierung `nftables.service` neu. Das leert den ganzen Regelsatz und schließt offene Fenster, bis der Tunnel-Dienst sie wieder öffnet ([Betrieb](../services/tunnel-dienst/README.md#betrieb)). `unattended-upgrades` übergeht deshalb `nftables` und die versionsgleiche Bibliothek `libnftables1`; alle anderen Sicherheitsupdates laufen weiter von selbst. Von Hand, wenn kein Fenster offen ist:
 
@@ -154,9 +165,9 @@ Den Vektor lesen beide Seiten: `FernwartungRegelnTest` (Java) prüft die Felder 
 ## Was das Portal weiß und was nicht
 
 - **Weiß:** den Soll-Zustand und wann der Tunnel-Dienst ihn zuletzt abgeholt hat.
-- **Weiß nicht:** ob ein Fenster auf dem Server wirkt, ob die Box gerade verbunden ist und ob sie den SSH-Schlüssel eines Fensters abgeholt hat. Der Dienst hat nur Leserecht und meldet nichts zurück. Diese Lücke benennt die Oberfläche, statt sie zu überspielen. Eine Rückmeldung des Dienstes ans Portal ist entschieden (09.10.2026), aber noch nicht gebaut. Auf der VM selbst zeigt `vp-tunnel-dienst status`, wann eine Box zuletzt nach Schlüsseln gefragt hat, und das Journal, welcher Schlüssel ihr ausgegeben wurde.
+- **Weiß nicht:** ob ein Fenster auf dem Server wirkt, ob die Box gerade verbunden ist, ob sie für Fenster-Schlüssel eingerichtet ist und ob sie den SSH-Schlüssel eines Fensters abgeholt hat. Der Dienst hat nur Leserecht und meldet nichts zurück. Diese Lücke benennt die Oberfläche, statt sie zu überspielen. Eine Rückmeldung des Dienstes ans Portal ist entschieden (09.10.2026), aber noch nicht gebaut. Auf der VM selbst zeigt `vp-tunnel-dienst status`, wann eine Box zuletzt nach Schlüsseln gefragt hat, und das Journal, welcher Schlüssel ihr ausgegeben wurde.
 
 ## Bausteine
 
 - Tunnel-Dienst mit Installationsanleitung: `services/tunnel-dienst/`. Erste Einrichtung auf einer echten VM (Debian 13) am 08.10.2026; was dabei belegt wurde und was offen ist, steht dort unter „Prüfen“.
-- Box-Seite und beaufsichtigter Wechsel des Piloten: `edge-light/openwrt/service-tunnel.sh`, `edge-light/docs/mango.md`.
+- Box-Seite und beaufsichtigter Wechsel des Piloten: `edge-light/openwrt/service-tunnel.sh`, `edge-light/docs/mango.md`. Proben: `edge-light/test/service-tunnel-probe.sh` (Einrichtung, OpenWrt 24.10) und `edge-light/test/wartung-anmeldung-probe.sh` (Anmeldung mit Fenster-Schlüsseln, OpenWrt 25.12).

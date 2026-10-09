@@ -497,11 +497,13 @@ export function sshText(t: Pick<FernwartungTechniker, 'sshFingerabdruck' | 'sshB
  * Was die Seite über den SSH-Schlüssel ehrlich dazusagt: Das Portal gibt ihn
  * weiter, aber ob eine Box ihn holt, liegt nicht am Portal.
  *
- * ⚠ Der zweite Satz beschreibt den Stand vor den Schritten 2 (Tunnel-Dienst)
- * und 3 (Box-Skript). Wer Schritt 3 ausliefert, ersetzt ihn.
+ * Der Text gilt, seit es Boxen mit Fenster-Schlüsseln gibt (Schritt 3,
+ * `service-tunnel.sh`), und behauptet nicht, jede Box sei so eingerichtet oder
+ * die Schlüsselausgabe am Wartungsserver sei an: Beides weiß das Portal nicht.
+ * Erst die Rückmeldung des Tunnel-Dienstes (Schritt 4) kann ihn je Box ersetzen.
  */
 export const SSH_STAND_SATZ =
-  'Das Portal gibt den SSH-Schlüssel eines Zugangs an den Tunnel-Dienst weiter. Abholen können ihn die Boxen noch nicht: Bis Tunnel-Dienst und Box dafür eingerichtet sind, gelingt die Anmeldung nur mit einem Schlüssel, der schon auf der Box liegt.';
+  'Das Portal gibt den SSH-Schlüssel eines Zugangs an den Wartungsserver weiter. Im offenen Fenster holt eine Box ihn dort ab und behält ihn nur bis zum Ende des Fensters. Das tun nur Boxen, deren Wartungstunnel mit dem aktuellen Skript (service-tunnel.sh) eingerichtet ist, und nur, wenn die Schlüsselausgabe am Wartungsserver eingeschaltet ist. An jeder anderen Box gelingt die Anmeldung nur mit einem Schlüssel, der schon auf der Box liegt. Ob eine Box den Schlüssel abgeholt hat, sieht das Portal nicht.';
 
 /** Der Satz beim Öffnen eines Fensters für einen Zugang ohne SSH-Schlüssel. */
 export function nurNetzwegSatz(name: string): string {

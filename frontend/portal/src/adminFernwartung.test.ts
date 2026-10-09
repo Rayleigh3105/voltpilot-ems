@@ -440,9 +440,15 @@ describe('SSH-Schlüssel des Technikers (Fenster-Schlüssel, Schritt 1)', () => 
     expect(optionen.map((o) => o.sub)).toEqual(['10.10.32.2 · mit SSH-Schlüssel', '10.10.32.3 · ohne SSH-Schlüssel']);
   });
 
-  it('der Satz zum Stand verspricht nicht, dass eine Box den Schlüssel schon holt', () => {
-    expect(SSH_STAND_SATZ).toMatch(/Abholen können ihn die Boxen noch nicht/);
-    expect(SSH_STAND_SATZ).toMatch(/nur mit einem Schlüssel, der schon auf der Box liegt/);
+  it('der Satz zum Stand verspricht nicht, dass jede Box den Schlüssel holt', () => {
+    // Stimmt, sobald eine Box das neue Skript hat ...
+    expect(SSH_STAND_SATZ).toMatch(/Im offenen Fenster holt eine Box ihn dort ab und behält ihn nur bis zum Ende des Fensters/);
+    // ... und behauptet es weder für alle Boxen noch für den Wartungsserver.
+    expect(SSH_STAND_SATZ).toMatch(/Das tun nur Boxen, deren Wartungstunnel mit dem aktuellen Skript \(service-tunnel\.sh\) eingerichtet ist/);
+    expect(SSH_STAND_SATZ).toMatch(/nur, wenn die Schlüsselausgabe am Wartungsserver eingeschaltet ist/);
+    expect(SSH_STAND_SATZ).toMatch(/An jeder anderen Box gelingt die Anmeldung nur mit einem Schlüssel, der schon auf der Box liegt/);
+    expect(SSH_STAND_SATZ).toMatch(/Ob eine Box den Schlüssel abgeholt hat, sieht das Portal nicht/);
+    expect(SSH_STAND_SATZ).not.toMatch(/noch nicht/);
   });
 
   it('zeigt Fingerabdruck und Länge - oder nichts', () => {
