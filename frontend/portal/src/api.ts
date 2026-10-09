@@ -2775,11 +2775,13 @@ export interface Kennzahl {
   /**
    * UEMS AP-17 IP-8 (B3, bezugsbasis.md §13 „Register-Eintrag“): die laufende Bezugsbasis als abgeleitetes Feld —
    * `null` ohne laufende Basis; kein Zustand an der Kennzahl. Gelesen wird es nur in `bezugsbasisAnlegen.energieleistung`.
+   * `fassung`/`freigabe_status` sind `null`, solange die Basis noch keine erste Fassung trägt (`anlegen` ohne
+   * `entwerfen`, B1) - ein erreichbarer Zustand, keine Null aus Versehen.
    */
   bezugsbasis?: {
     kennzeichen: string;
     fassung: number | null;
-    freigabe_status: 'entwurf' | 'beantragt' | 'freigegeben' | 'abgelehnt';
+    freigabe_status: 'entwurf' | 'beantragt' | 'freigegeben' | 'abgelehnt' | null;
     vorlaeufig: boolean;
   } | null;
   /**
