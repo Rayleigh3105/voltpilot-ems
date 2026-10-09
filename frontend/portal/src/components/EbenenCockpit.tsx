@@ -333,6 +333,19 @@ export function EbenenCockpit({
       aktiv = false;
     };
   }, [mitBilanzWeg, anlagenDerSicht]);
+  // AP-13 IP-8 (U7a, #1407 P2): derselbe geführte Einstieg in den bestehenden
+  // Zuordnungsdialog, egal ob die Sicht die Tabelle oder die Energie-Karten zeigt.
+  const zuordnungKorrigieren = mitBilanzWeg
+    ? (id: string) => {
+        void api.standorte().then((antwort) => {
+          const anlage = sites.find((s) => s.id === id);
+          // Die Vorschlags-Bestätigung schreibt `site.created_at` als Beginn dieser
+          // ersten Zuordnung. Genau dieser bestätigte Tag ist die Korrektur-Vorgabe.
+          const zuordnung = antwort.standorte.flatMap((s) => s.anlagen).find((a) => a.id === id);
+          if (anlage && zuordnung) setKorrektur({ anlage, standorte: antwort, ersterTag: zuordnung.gueltigAb });
+        });
+      }
+    : undefined;
   const uemsInhalt = uems?.inhalt.join(',') ?? '';
   // Die Standort-Übersicht ist DIESELBE Fläche, auf die Anlagen des Standorts
   // gefiltert: jede Zahl darunter geht nur über sie.
@@ -767,15 +780,7 @@ export function EbenenCockpit({
             vorschau={vorschau}
             energiebilanz={mitBilanzWeg ? energiebilanz : null}
             onEnergiebilanz={mitBilanzWeg ? (id) => onNavigate(anlageRoute(id, 'energiebilanz')) : undefined}
-            onZuordnungKorrigieren={mitBilanzWeg ? (id) => {
-              void api.standorte().then((antwort) => {
-                const anlage = sites.find((s) => s.id === id);
-                // Die Vorschlags-Bestätigung schreibt `site.created_at` als Beginn dieser
-                // ersten Zuordnung. Genau dieser bestätigte Tag ist die Korrektur-Vorgabe.
-                const zuordnung = antwort.standorte.flatMap((s) => s.anlagen).find((a) => a.id === id);
-                if (anlage && zuordnung) setKorrektur({ anlage, standorte: antwort, ersterTag: zuordnung.gueltigAb });
-              });
-            } : undefined}
+            onZuordnungKorrigieren={zuordnungKorrigieren}
             nichtZugeordnet={nichtZugeordnetSet}
           />
         ) : (
@@ -786,6 +791,7 @@ export function EbenenCockpit({
             onOeffnen={(id) => onNavigate(anlageRoute(id))}
             energiebilanz={mitBilanzWeg ? energiebilanz : null}
             onEnergiebilanz={mitBilanzWeg ? (id) => onNavigate(anlageRoute(id, 'energiebilanz')) : undefined}
+            onZuordnungKorrigieren={zuordnungKorrigieren}
           />
         )}
       </section>

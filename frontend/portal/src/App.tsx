@@ -1458,9 +1458,9 @@ function UnifiedPortal() {
   const leer = ohneStandort(selbst) && !(isAdmin && PLATFORM_PAGES.some((p) => p.id === page));
   const rechteStandort = route.standortId ?? orte?.standorte.find((s) => s.anlagen.includes(shellSite?.id ?? ''))?.id ?? null;
   // Avatar-Menü „Funktionen“ (AP-01 E5 = A): nur, wo die Landung eine Ebene mit der Karte ist. Die Anlage- und die
-  // Bestands-Landung haben keine Karte - dort bleibt das Menü, wie es war.
-  const funktionenZiel: Route | null =
-    ebene.art === 'unternehmen' ? pageRoute('portfolio') : ebene.art === 'standort' ? standortRoute(ebene.standort.id) : null;
+  // Bestands-Landung haben keine Karte - dort bleibt das Menü, wie es war. Die Unternehmens-Übersicht trägt die
+  // Funktionen-Karte seit PR2 §5.1 nicht mehr (EbenenCockpit.tsx), darum bleibt auch dieses Ziel dort aus (#1407 P1).
+  const funktionenZiel: Route | null = ebene.art === 'standort' ? standortRoute(ebene.standort.id) : null;
   const messenWirt = { oeffnen: setMessenZiel, runde: messenRunde, karteGezeigtAm };
   return (
     <ReportFirstPaint.Provider value={markLandingReady}>
