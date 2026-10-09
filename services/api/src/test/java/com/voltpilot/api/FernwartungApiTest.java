@@ -11,7 +11,10 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -39,8 +42,12 @@ import org.testcontainers.utility.DockerImageName;
 /**
  * Fernwartung über das Portal (Entscheid E5, O3) gegen echtes TimescaleDB und
  * Keycloak: Schlüssel hinterlegen, Techniker-Zugang, Fenster öffnen und
- * schließen, der Soll-Stand für den Tunnel-Dienst, das Protokoll - und die
- * Rollen-Grenzen auf jeder Route.
+ * schließen, der Soll-Stand für den Tunnel-Dienst, das Protokoll, das Löschen
+ * eines gesperrten Techniker-Zugangs - und die Rollen-Grenzen auf jeder Route.
+ *
+ * <p>Die Fälle teilen sich EINE Datenbank. Der ganze Weg läuft zuerst, weil er
+ * feste Adressen ab der ersten freien erwartet; das Löschen baut darauf auf
+ * und prüft nur relativ zu dem, was es selbst anlegt.
  */
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
@@ -49,6 +56,7 @@ import org.testcontainers.utility.DockerImageName;
             "voltpilot.fernwartung.max-fenster-dauer=PT24H"
         })
 @ActiveProfiles("local")
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 class FernwartungApiTest {
 
     private static final String APP_USER = "voltpilot_app";
@@ -64,6 +72,9 @@ class FernwartungApiTest {
     private static final String KEY_B = "SBsk0U9z6BgB/U8nb+L9PdK/46p7mBvWRQe8I0Vg3C0=";
     private static final String KEY_C = "FY4LLXFaOvh8LPZu/gA4AeS2WJjXkuOUPB4hlxBI8/Y=";
     private static final String KEY_D = "Pgf4aS+67rz4HdSHuy8KKgm5e/UP3xnrMWJskXaZB9c=";
+    private static final String KEY_E = "dTkajHaCSCVbnmtc9YaXOW4Fvi51HANh0Fg2KTFV3kk=";
+    private static final String KEY_F = "Skrz6Rjblq/I8mcs2kl+0mvkp3bs2IjY3us7VFInf/g=";
+    private static final String KEY_G = "J6rNG4CFG4rBxl+z8To/r1PyuoEkEGjeXHqlbzGGwZ8=";
 
     private static final String BASE = "/api/v1/admin/fernwartung";
 
@@ -115,6 +126,7 @@ class FernwartungApiTest {
     private final ObjectMapper json = new ObjectMapper();
 
     @Test
+    @Order(1)
     void derGanzeWegVomSchluesselBisZumGeschlossenenFenster() throws Exception {
         String admin = token("admin", "admin");
         String dienst = serviceToken("voltpilot-tunnel-dienst", "voltpilot-tunnel-dienst-dev-secret");
@@ -299,6 +311,157 @@ class FernwartungApiTest {
     }
 
     /**
+     * Der Fall des Kapitäns (08.10.2026): ein Zugang mit falschem Schlüssel
+     * wird gesperrt, unter demselben Namen neu angelegt - und der alte soll
+     * weg. „Löschen" nimmt ihn aus jeder Liste, lässt aber stehen, was die
+     * Regel „nichts wird gelöscht" schützt: Adresse und Schlüssel bleiben
+     * vergeben, Fenster und Protokoll nennen ihn weiter, und für den
+     * Tunnel-Dienst ändert sich nichts.
+     */
+    @Test
+    @Order(2)
+    void einGesperrterZugangLaesstSichLoeschenUndBleibtVergeben() throws Exception {
+        String admin = token("admin", "admin");
+        String dienst = serviceToken("voltpilot-tunnel-dienst", "voltpilot-tunnel-dienst-dev-secret");
+        String name = "Kapitän (Laptop)";
+        Instant vorher = Instant.now().minusSeconds(5);
+
+        // Eine aktive Box mit KEY_B, gleich ob der ganze Weg schon gelaufen ist.
+        assertThat(send(HttpMethod.PUT, BASE + "/boxen/" + PILOT + "/schluessel", admin,
+                Map.of("publicKey", KEY_B, "schluesselTausch", true)).getStatusCode().is2xxSuccessful()).isTrue();
+
+        // ── Der Zugang mit dem falschen Schlüssel, einmal benutzt ─────────
+        ResponseEntity<String> angelegt = send(HttpMethod.POST, BASE + "/techniker", admin,
+                Map.of("name", name, "publicKey", KEY_D));
+        assertThat(angelegt.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        JsonNode falsch = json.readTree(angelegt.getBody()).get("techniker");
+        String falschId = falsch.get("id").asText();
+        String falschAdresse = falsch.get("adresse").asText();
+        assertThat(send(HttpMethod.POST, BASE + "/fenster", admin, Map.of("edgeRef", PILOT, "technikerId", falschId,
+                "grund", "Erster Einsatz", "dauerMinuten", 30)).getStatusCode()).isEqualTo(HttpStatus.CREATED);
+
+        // ── Ein AKTIVER Zugang lässt sich nicht löschen ───────────────────
+        ResponseEntity<String> zuFrueh = send(HttpMethod.DELETE, BASE + "/techniker/" + falschId, admin, null);
+        assertThat(zuFrueh.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(message(zuFrueh)).contains("Erst sperren");
+        assertThat(werte(getJson(BASE + "/techniker", admin), "id")).contains(falschId);
+
+        // ── Sperren, denselben Namen mit dem richtigen Schlüssel anlegen ──
+        assertThat(send(HttpMethod.POST, BASE + "/techniker/" + falschId + "/sperren", admin,
+                Map.of("grund", "falscher Schlüssel")).getStatusCode()).isEqualTo(HttpStatus.OK);
+        JsonNode richtig = json.readTree(send(HttpMethod.POST, BASE + "/techniker", admin,
+                Map.of("name", name, "publicKey", KEY_E)).getBody()).get("techniker");
+        String richtigId = richtig.get("id").asText();
+        assertThat(werte(getJson(BASE + "/techniker", admin), "name")).as("zwei Einträge, ein Name")
+                .filteredOn(name::equals).hasSize(2);
+        long gesperrtVorher = getJson(BASE, admin).get("technikerGesperrt").asLong();
+        JsonNode sollVorher = getJson("/api/v1/fernwartung/soll", dienst);
+
+        // ── Löschen ───────────────────────────────────────────────────────
+        ResponseEntity<String> geloescht = send(HttpMethod.DELETE, BASE + "/techniker/" + falschId, admin, null);
+        assertThat(geloescht.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+
+        // Weg aus der Liste (aus ihr speist sich jede Auswahl) und aus den Zählern.
+        JsonNode liste = getJson(BASE + "/techniker", admin);
+        assertThat(werte(liste, "id")).doesNotContain(falschId).contains(richtigId);
+        assertThat(werte(liste, "name")).filteredOn(name::equals).hasSize(1);
+        assertThat(werte(liste, "status")).as("der dritte Zustand verlässt die API nie")
+                .isSubsetOf("aktiv", "gesperrt");
+        assertThat(getJson(BASE, admin).get("technikerGesperrt").asLong()).isEqualTo(gesperrtVorher - 1);
+
+        // Der Soll-Stand ist derselbe wie vor dem Löschen: der gesperrte Zugang
+        // stand schon nicht darin, der Tunnel-Dienst merkt vom Löschen nichts.
+        JsonNode soll = getJson("/api/v1/fernwartung/soll", dienst);
+        assertThat(soll.get("peers")).isEqualTo(sollVorher.get("peers"));
+        assertThat(soll.get("fenster")).isEqualTo(sollVorher.get("fenster"));
+        assertThat(werte(soll.get("peers"), "id")).doesNotContain(falschId).contains(richtigId);
+        assertThat(werte(soll.get("peers"), "publicKey")).doesNotContain(KEY_D);
+        assertThat(werte(soll.get("peers"), "adresse")).doesNotContain(falschAdresse);
+
+        // ── Für jede Regel weg: kein Entsperren, kein zweites Löschen ─────
+        assertThat(send(HttpMethod.POST, BASE + "/techniker/" + falschId + "/entsperren", admin, null)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(send(HttpMethod.POST, BASE + "/techniker/" + falschId + "/sperren", admin, null)
+                .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(send(HttpMethod.DELETE, BASE + "/techniker/" + falschId, admin, null).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(send(HttpMethod.POST, BASE + "/fenster", admin, Map.of("edgeRef", PILOT, "technikerId", falschId,
+                "grund", "Gelöscht?", "dauerMinuten", 10)).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(werte(getJson(BASE + "/techniker", admin), "id")).doesNotContain(falschId);
+
+        // ── Schlüssel und Adresse bleiben vergeben ────────────────────────
+        ResponseEntity<String> selberSchluessel = send(HttpMethod.POST, BASE + "/techniker", admin,
+                Map.of("name", "Zweitgerät", "publicKey", KEY_D));
+        assertThat(selberSchluessel.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(message(selberSchluessel)).contains("gelöschten Zugang").contains("nicht wieder vergeben");
+        ResponseEntity<String> alsBox = send(HttpMethod.PUT, BASE + "/boxen/" + PILOT + "/schluessel", admin,
+                Map.of("publicKey", KEY_D, "schluesselTausch", true));
+        assertThat(alsBox.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(message(alsBox)).contains("gelöschten Zugang");
+
+        JsonNode dritter = json.readTree(send(HttpMethod.POST, BASE + "/techniker", admin,
+                Map.of("name", "Werkstatt-Tablet", "publicKey", KEY_F)).getBody()).get("techniker");
+        assertThat(dritter.get("adresse").asText()).as("die freigewordene Adresse wird NICHT neu vergeben")
+                .isNotEqualTo(falschAdresse).isNotEqualTo(richtig.get("adresse").asText());
+        assertThat(werte(getJson(BASE + "/techniker", admin), "adresse")).doesNotContain(falschAdresse);
+        Map<String, Object> zeile = adminJdbc.queryForMap("SELECT status, name, public_key, "
+                + "host(tunnel_adresse) AS adresse FROM fernwartung_zugang WHERE id = ?::uuid", falschId);
+        assertThat(zeile).containsEntry("status", "geloescht").containsEntry("name", name)
+                .containsEntry("public_key", KEY_D).containsEntry("adresse", falschAdresse);
+
+        // ── Das Protokoll trägt den Eintrag, die älteren bleiben lesbar ───
+        JsonNode protokoll = getJson(BASE + "/protokoll?techniker=" + falschId, admin);
+        assertThat(werte(protokoll, "aktion")).containsExactly("techniker_geloescht", "techniker_gesperrt",
+                "fenster_geschlossen", "fenster_geoeffnet", "techniker_angelegt");
+        assertThat(werte(protokoll, "technikerName")).as("jeder Eintrag nennt ihn weiter beim Namen")
+                .containsOnly(name);
+        JsonNode eintrag = protokoll.get(0);
+        assertThat(eintrag.get("akteur").asText()).isEqualTo("admin");
+        assertThat(Instant.parse(eintrag.get("zeit").asText())).isBetween(vorher, Instant.now().plusSeconds(5));
+        assertThat(eintrag.at("/details/name").asText()).isEqualTo(name);
+        assertThat(eintrag.at("/details/adresse").asText()).isEqualTo(falschAdresse);
+        assertThat(werte(getJson(BASE + "/protokoll", admin), "aktion")).contains("techniker_geloescht");
+
+        JsonNode fenster = getJson(BASE + "/fenster?techniker=" + falschId, admin);
+        assertThat(fenster).hasSize(1);
+        assertThat(fenster.get(0).get("technikerName").asText()).isEqualTo(name);
+        assertThat(fenster.get(0).get("grund").asText()).isEqualTo("Erster Einsatz");
+        assertThat(fenster.get(0).get("zustand").asText()).isEqualTo("geschlossen");
+        assertThat(werte(getJson(BASE + "/fenster?box=" + PILOT, admin), "technikerId")).contains(falschId);
+
+        // ── Endgültig an der Datenbankgrenze ──────────────────────────────
+        assertThatThrownBy(() -> adminJdbc.update(
+                "UPDATE fernwartung_zugang SET status = 'gesperrt' WHERE id = ?::uuid", falschId))
+                .rootCause().hasMessageContaining("endgueltig");
+        assertThatThrownBy(() -> adminJdbc.update(
+                "UPDATE fernwartung_zugang SET public_key = ? WHERE id = ?::uuid", KEY_G, falschId))
+                .rootCause().hasMessageContaining("endgueltig");
+        assertThatThrownBy(() -> adminJdbc.update(
+                "UPDATE fernwartung_zugang SET status = 'geloescht' WHERE id = ?::uuid", richtigId))
+                .as("nie direkt aus aktiv").rootCause().hasMessageContaining("nur ein gesperrter");
+        assertThatThrownBy(() -> adminJdbc.update("DELETE FROM fernwartung_zugang WHERE id = ?::uuid", falschId))
+                .rootCause().hasMessageContaining("permission denied");
+
+        // Das Protokoll bleibt unveränderbar: der Admin-Rolle fehlt das Recht,
+        // und selbst der Schema-Eigentümer scheitert am Trigger - auch daran,
+        // die Zeile des gelöschten Zugangs physisch zu entfernen.
+        assertThatThrownBy(() -> adminJdbc.update(
+                "UPDATE fernwartung_protokoll SET aktion = 'techniker_entsperrt' WHERE techniker_id = ?::uuid",
+                falschId)).rootCause().hasMessageContaining("permission denied");
+        JdbcTemplate eigner = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(),
+                POSTGRES.getUsername(), POSTGRES.getPassword()));
+        assertThatThrownBy(() -> eigner.update(
+                "UPDATE fernwartung_protokoll SET akteur = 'niemand' WHERE techniker_id = ?::uuid", falschId))
+                .rootCause().hasMessageContaining("append-only");
+        assertThatThrownBy(() -> eigner.update(
+                "DELETE FROM fernwartung_protokoll WHERE techniker_id = ?::uuid", falschId))
+                .rootCause().hasMessageContaining("append-only");
+        assertThatThrownBy(() -> eigner.update("DELETE FROM fernwartung_zugang WHERE id = ?::uuid", falschId))
+                .rootCause().hasMessageContaining("foreign key");
+        assertThat(werte(getJson(BASE + "/protokoll?techniker=" + falschId, admin), "aktion")).hasSize(5);
+    }
+
+    /**
      * O3 und die Rollen-Grenze: der Kunde sieht nichts, das Dienstkonto liest
      * nur seinen Soll-Stand, der Release-Publisher erreicht hier nichts.
      */
@@ -318,6 +481,7 @@ class FernwartungApiTest {
                 new Object[] {HttpMethod.POST, BASE + "/boxen/" + PILOT + "/entsperren", null},
                 new Object[] {HttpMethod.GET, BASE + "/techniker", null},
                 new Object[] {HttpMethod.POST, BASE + "/techniker", Map.of("name", "x", "publicKey", KEY_D)},
+                new Object[] {HttpMethod.DELETE, BASE + "/techniker/00000000-0000-0000-0000-000000000000", null},
                 new Object[] {HttpMethod.GET, BASE + "/fenster", null},
                 new Object[] {HttpMethod.POST, BASE + "/fenster", Map.of("edgeRef", PILOT,
                         "technikerId", "00000000-0000-0000-0000-000000000000", "grund", "x", "dauerMinuten", 5)},
@@ -368,6 +532,13 @@ class FernwartungApiTest {
             }
         }
         throw new AssertionError("kein Peer " + kennung + " in " + soll);
+    }
+
+    /** Die Werte eines Feldes über alle Einträge einer Liste. */
+    private static List<String> werte(JsonNode liste, String feld) {
+        List<String> werte = new ArrayList<>();
+        liste.forEach(e -> werte.add(e.get(feld).asText()));
+        return werte;
     }
 
     private String message(ResponseEntity<String> res) throws Exception {

@@ -6,7 +6,7 @@ Referenzdateien dürfen nicht aus dem UEMS-Lauf neu geschrieben werden.
 
 ## Herkunft der Referenz
 
-- Produktivcode: `main`, Commit `4aa1e7fb39b25388f71f20d1d0fc2470a940e4a3` (bytegleich nachgemessen auf `8b8b6a03b`, `308a5cc91` und `3a8519f1d`; auf `69e572c1d` neu aufgenommen, ein Eintrag um ein additives Feld länger, siehe unten).
+- Produktivcode: `main`, Commit `4aa1e7fb39b25388f71f20d1d0fc2470a940e4a3` (bytegleich nachgemessen auf `8b8b6a03b`, `308a5cc91`, `3a8519f1d` und `db32a784c`; auf `69e572c1d` neu aufgenommen, ein Eintrag um ein additives Feld länger, siehe unten).
 - Schema: genau dessen 168 Produktionsmigrationen, ohne Dev-Seeds.
 - Saat: `main-seed.sql`, direkt auf diesem Schema, keine UEMS-Route. Der alte
   V2-Startmarker ist vorhanden, wie bei einer auf main schon gestarteten Anlage.
@@ -72,6 +72,15 @@ in einem `git clone --shared` auf diesem Commit, dieselbe Testklasse mit den zwe
 `-Dnw2.capture=…`: 11 Fälle, davon 2 im Aufnahmemodus übersprungen, **bytegleich** zu `main-reference.json`
 (12 035 Bytes, alle 13 Einträge). Fernwartung fügt nur neue, von diesem Nachweis ungenutzte Tabellen und Routen
 an; `MAIN` nennt seither 3a8519f1d.
+
+## Nachgemessen beim Nachzug main db32a784c (09.10.2026, Fernwartung: Techniker-Zugang löschen)
+
+Die Referenzdatei ist wieder **unverändert**. Aufnahme auf `db32a784ce55ae0610409e193834caa48e182e26`
+(4 Commits: `DELETE /api/v1/admin/fernwartung/techniker/{id}`, `V20261008213500__fernwartung_zugang_loeschen.sql`,
+#1466/#1467; `main-migrations.txt` jetzt 174) in einem `git clone --shared` auf diesem Commit, dieselbe
+Testklasse mit den zwei entfernten UEMS-Sendern, `-Dnw2.capture=…`: 11 Fälle, davon 2 im Aufnahmemodus
+übersprungen, **bytegleich** zu `main-reference.json` (12 035 Bytes, alle 13 Einträge). Die neue Route und
+Migration sind von diesem Nachweis ungenutzt; `MAIN` nennt seither db32a784c.
 
 ## Bewusste Differenzen main → uems
 

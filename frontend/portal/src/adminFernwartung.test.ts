@@ -8,6 +8,8 @@ import {
   dauerText,
   fensterTeile,
   fensterText,
+  loeschbar,
+  loeschenRueckfrage,
   oeffnenSperre,
   offenesFenster,
   protokollDetail,
@@ -246,5 +248,51 @@ describe('Protokoll', () => {
     expect(
       protokollDetail({ ...base, aktion: 'box_schluessel_getauscht', details: { alt: 'aaa…', neu: 'bbb…' } }, JETZT),
     ).toBe('aaa… → bbb…');
+  });
+
+  it('nennt beim gelöschten Zugang, was vergeben bleibt', () => {
+    expect(aktionLabel('techniker_geloescht')).toBe('Techniker-Zugang gelöscht');
+    const base = { id: 'p', zeit: JETZT.toISOString(), akteur: 'admin', edgeRef: null, technikerId: 't1', technikerName: 'Max', fensterId: null };
+    expect(
+      protokollDetail(
+        { ...base, aktion: 'techniker_geloescht', details: { name: 'Max', adresse: '10.10.32.2', publicKey: 'FY4LLXFa…BI8/Y=' } },
+        JETZT,
+      ),
+    ).toBe('10.10.32.2 · FY4LLXFa…BI8/Y= · bleiben vergeben');
+    expect(protokollDetail({ ...base, aktion: 'techniker_geloescht', details: {} }, JETZT)).toBe('');
+  });
+});
+
+describe('Techniker-Zugang löschen', () => {
+  const zugang = (status: 'aktiv' | 'gesperrt'): FernwartungTechniker => ({
+    id: 't1',
+    name: 'Max (Laptop)',
+    publicKey: 'FY4LLXFaOvh8LPZu/gA4AeS2WJjXkuOUPB4hlxBI8/Y=',
+    publicKeyKurz: 'FY4LLXFa…BI8/Y=',
+    adresse: '10.10.32.2',
+    status,
+    notiz: null,
+    angelegtAm: '2026-10-07T10:00:00Z',
+    geaendertAm: '2026-10-07T10:00:00Z',
+  });
+
+  it('nur ein gesperrter Zugang ist löschbar', () => {
+    expect(loeschbar(zugang('gesperrt'))).toBe(true);
+    expect(loeschbar(zugang('aktiv'))).toBe(false);
+  });
+
+  it('die Rückfrage sagt in EINEM Satz, was passiert und dass es endgültig ist', () => {
+    const frage = loeschenRueckfrage(zugang('gesperrt'));
+    expect(frage.titel).toBe('Zugang löschen?');
+    expect(frage.satz).toContain('„Max (Laptop)“');
+    // Ein Satz: genau ein Satzende, und es steht am Schluss.
+    expect(frage.satz.match(/[.!?](\s|$)/g)).toHaveLength(1);
+    expect(frage.satz).toMatch(/endgültig/);
+    expect(frage.satz).toMatch(/nicht wiederherstellen/);
+    // Zwei Zugänge können gleich heißen: Adresse und Schlüssel sagen, welcher.
+    expect(frage.satz).toContain('10.10.32.2');
+    expect(frage.satz).toContain('FY4LLXFa…BI8/Y=');
+    expect(frage.folgen.join(' ')).toMatch(/bleiben vergeben/);
+    expect(frage.folgen.join(' ')).toMatch(/Protokolleinträge bleiben lesbar/);
   });
 });
