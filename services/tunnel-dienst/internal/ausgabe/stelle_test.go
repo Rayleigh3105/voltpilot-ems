@@ -293,6 +293,50 @@ func TestErsetzterUndEntfernterSchluessel(t *testing.T) {
 	}
 }
 
+// `status` nennt den Start des Dienstes. Die erste Anfrage einer Box darf ihn
+// nicht verschieben (auf der Wartungs-VM so gesehen: 16:03:42 statt 16:02:57).
+func TestStartzeitBleibtBeiDerErstenAnfrage(t *testing.T) {
+	s, _, _ := neueStelle(t)
+	start := time.Date(2026, 10, 9, 14, 2, 57, 0, time.UTC)
+	jetzt := start
+	s.Jetzt = func() time.Time { return jetzt }
+	s.SetzeStand(gueltig(t, key1))
+	s.Sichere() // der erste Lauf des Dienstes, noch hat keine Box gefragt
+	jetzt = start.Add(45 * time.Second)
+	sofort(s, box1)
+	jetzt = start.Add(60 * time.Second)
+	s.Sichere()
+	z, err := LiesZustand(s.Zustand)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !z.Seit.Equal(start) {
+		t.Fatalf("Start %s, nach der ersten Anfrage einer Box steht dort %s", start, z.Seit)
+	}
+	if b := z.Boxen["10.10.16.2"]; b.Anfragen != 1 || !b.LetzteAnfrage.Equal(start.Add(45*time.Second)) {
+		t.Fatalf("box1: %+v", b)
+	}
+}
+
+// Fragt eine Box vor dem ersten Lauf, zählt ihre Anfrage als Start.
+func TestStartzeitOhneErstenLauf(t *testing.T) {
+	s, _, _ := neueStelle(t)
+	start := time.Date(2026, 10, 9, 14, 2, 57, 0, time.UTC)
+	jetzt := start
+	s.Jetzt = func() time.Time { return jetzt }
+	s.SetzeStand(gueltig(t, key1))
+	sofort(s, box1)
+	jetzt = start.Add(30 * time.Second)
+	s.Sichere()
+	z, err := LiesZustand(s.Zustand)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !z.Seit.Equal(start) {
+		t.Fatalf("Start %s, in der Datei %s", start, z.Seit)
+	}
+}
+
 // Eine unveränderte Antwort steht nicht noch einmal im Journal; `status`
 // zeigt, wann die Box zuletzt gefragt hat.
 func TestJournalUndZustand(t *testing.T) {

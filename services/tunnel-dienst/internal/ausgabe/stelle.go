@@ -334,6 +334,10 @@ func (s *Stelle) Frage(ctx context.Context, box netip.Addr, warte time.Duration,
 func (s *Stelle) box(a netip.Addr) *boxStand {
 	if s.boxen == nil {
 		s.boxen = map[netip.Addr]*boxStand{}
+	}
+	// Der Start des Dienstes, nicht die erste Anfrage einer Box: Sichere()
+	// hat ihn beim ersten Lauf meist schon gesetzt.
+	if s.seit.IsZero() {
 		s.seit = s.Jetzt()
 	}
 	bs := s.boxen[a]

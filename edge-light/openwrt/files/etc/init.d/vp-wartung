@@ -1,0 +1,62 @@
+#!/bin/sh /etc/rc.common
+# Anmeldung im Wartungstunnel (Fenster-Schluessel). Gehoert zum Betriebssystem,
+# nicht zu vp-edge-light. Eingerichtet von edge-light/openwrt/service-tunnel.sh.
+#
+#   ssh         Dropbear NUR an der Adresse des Tunnels, Port 2222, nur mit
+#               Schluessel, mit EIGENER Schluesseldatei im RAM (dropbear -D).
+#               Loest die UCI-Instanz dropbear.vp_wartung ab: das Startskript
+#               von OpenWrt kennt -D nicht. Ohne Tunnel-Adresse laeuft die
+#               Instanz nicht - dann lauscht auf 2222 niemand.
+#   schluessel  der Abholer als Dauerlauf (schluessel-holen.sh lauf)
+#
+# Die Schluesseldatei liegt in einem eigenen tmpfs: ein Neustart loescht jeden
+# Fenster-Schluessel. Nicht unter /tmp - Dropbear prueft jedes Elternverzeichnis
+# (root, nicht fuer andere schreibbar), und /tmp ist fuer alle schreibbar.
+START=60
+USE_PROCD=1
+
+KEYS=/etc/vp-wartung/keys
+HOLEN=/usr/libexec/vp-wartung/schluessel-holen.sh
+
+schnittstelle() {
+	local s
+	s="$(uci -q get vp-wartung.schluessel.schnittstelle)"
+	echo "${s:-wg_wartung}"
+}
+
+start_service() {
+	. /lib/functions/network.sh
+	local adresse
+
+	mkdir -p "$KEYS" && chmod 700 /etc/vp-wartung "$KEYS" || return 1
+	if ! grep -q " $KEYS tmpfs " /proc/mounts; then
+		# Was unter dem Einhaengepunkt im Flash liegt, gehoert dort nicht hin.
+		rm -f "$KEYS"/authorized_keys*
+		mount -t tmpfs -o size=128k,mode=0700,nosuid,nodev,noexec vp-wartung "$KEYS" || {
+			logger -t vp-wartung "FEHLER: tmpfs fuer $KEYS laesst sich nicht einhaengen - keine Anmeldung im Tunnel"
+			return 1
+		}
+	fi
+	# Die Schluesseldatei steht, bevor Dropbear lauscht: dauerhafte Schluessel
+	# und was vom Stand noch nicht verfallen ist.
+	"$HOLEN" frist
+
+	procd_open_instance schluessel
+	procd_set_param command "$HOLEN" lauf
+	procd_set_param respawn 3600 5 0
+	procd_close_instance
+
+	network_flush_cache
+	network_get_ipaddr adresse "$(schnittstelle)"
+	[ -n "$adresse" ] || return 0
+	procd_open_instance ssh
+	procd_set_param command /usr/sbin/dropbear -F -s -g -T 3 -K 300 \
+		-D "$KEYS" -P /var/run/dropbear.vp_wartung.pid -p "$adresse:2222"
+	procd_set_param respawn
+	procd_close_instance
+}
+
+service_triggers() {
+	procd_add_interface_trigger "interface.*" "$(schnittstelle)" /etc/init.d/vp-wartung reload
+	procd_add_config_trigger "config.change" "vp-wartung" /etc/init.d/vp-wartung reload
+}

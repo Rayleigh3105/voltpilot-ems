@@ -1,6 +1,6 @@
 # Fernwartung: Schlüsselausgabe des Tunnel-Dienstes (v1)
 
-Eine Box fragt den Wartungsserver über den Wartungstunnel, wessen SSH-Schlüssel sich gerade bei ihr anmelden darf. Der Tunnel-Dienst antwortet mit den Schlüsseln der Techniker, für die ein Fenster zu **dieser** Box offen ist. Hintergrund: [Fernwartung](../fernwartung.md#anmeldung-an-der-box-fenster-schlüssel), Server-Seite: [Tunnel-Dienst](../../services/tunnel-dienst/README.md#schlüsselausgabe).
+Eine Box fragt den Wartungsserver über den Wartungstunnel, wessen SSH-Schlüssel sich gerade bei ihr anmelden darf. Der Tunnel-Dienst antwortet mit den Schlüsseln der Techniker, für die ein Fenster zu **dieser** Box offen ist. Hintergrund: [Fernwartung](../fernwartung.md#anmeldung-an-der-box-fenster-schlüssel), Server-Seite: [Tunnel-Dienst](../../services/tunnel-dienst/README.md#schlüsselausgabe). Box-Seite: `edge-light/openwrt/files/usr/libexec/vp-wartung/schluessel-holen.sh`; ihre Prüfregel (`pruefe`) und dieser Vertrag ändern sich nur gemeinsam.
 
 Vektor: [`fernwartung-schluessel-v1.example.txt`](fernwartung-schluessel-v1.example.txt). Er ist die Antwort an die Box `10.10.16.2` aus dem [Vektor des Soll-Stands](fernwartung-soll-v1.example.json) bei einer Stunde Restlaufzeit; der Test des Tunnel-Dienstes erzeugt ihn Byte für Byte (`TestVertragsvektorDerAntwort`).
 

@@ -355,8 +355,9 @@ describe('FernwartungPage', () => {
       expect(within(zeile(tabelle, '10.10.32.2')).getByText('RSA 3072')).toBeInTheDocument();
       expect(within(zeile(tabelle, '10.10.32.3')).getByText('keiner')).toBeInTheDocument();
       expect(within(zeile(tabelle, '10.10.32.3')).getByText('Fenster öffnen nur den Netzweg')).toBeInTheDocument();
-      // Die Seite verspricht nicht, dass eine Box den Schlüssel schon holt.
-      expect(screen.getByTestId('fw-ssh-stand')).toHaveTextContent(/Abholen können ihn die Boxen noch nicht/);
+      // Die Seite verspricht nicht, dass jede Box den Schlüssel holt.
+      expect(screen.getByTestId('fw-ssh-stand')).toHaveTextContent(/Das tun nur Boxen, deren Wartungstunnel mit dem aktuellen Skript/);
+      expect(screen.getByTestId('fw-ssh-stand')).toHaveTextContent(/An jeder anderen Box gelingt die Anmeldung nur mit einem Schlüssel, der schon auf der Box liegt/);
     });
 
     it('zur Zeile eines offenen Fensters stehen die fertigen Befehle für SSH und die Web-App', async () => {

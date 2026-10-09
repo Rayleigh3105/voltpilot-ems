@@ -16,6 +16,10 @@
 #   5. den alten Tunnel abbauen, 6. Web-App-Freigabe je Adresse, 7. alles
 #      abbauen, 8. die Freigabe fuer das Netz gibt es nur am Wartungsserver,
 #   9. VP_SSH_KEY.
+# Dazu, weil dieses OpenWrt einen Dropbear OHNE -D mitbringt (2024.86): die
+# Fenster-Schluessel werden hier nicht eingerichtet, es bleibt bei der
+# UCI-Instanz - und SSH 2222 kommt trotzdem nur aus den Tunneln an. Die
+# Fenster-Schluessel selbst prueft wartung-anmeldung-probe.sh (OpenWrt 25.12).
 #
 # "ssh" ist ein Ersatz, der die Befehle per docker exec im Container
 # ausfuehrt; SSH_CONNECTION wird so gesetzt, als kaeme die Sitzung ueber den
@@ -92,6 +96,9 @@ sleep 2
 pruefe "wg_service hat 10.10.1.25" 'ip -4 addr show dev wg_service | grep -q "inet 10.10.1.25/32"'
 pruefe "Dropbear-Instanz vp_service im Tunnel" '[ "$(uci get dropbear.vp_service.Interface)" = wg_service ]'
 pruefe "altes VPN: Web-App nicht fuer das Netz frei" '! uci -q get firewall.vp_service_web_netz && ! nft list chain inet fw4 input_service | grep -q "dport 8484"'
+pruefe "SSH 2222 nur aus dem Tunnel: eigene Kette vor fw4, nur lo und wg_service" \
+  'nft list chain inet fw4 vp_wartung_eingang | grep "tcp dport 2222 iifname != " | grep "\"lo\"" | grep "\"wg_service\"" | grep -q "reject with tcp reset" && ! nft list chain inet fw4 vp_wartung_eingang | grep -q wg_wartung'
+if VP_SERVICE_ZIEL=alt VP_SERVICE_SCHLUESSEL=fenster tunnel status >/dev/null 2>&1; then falsch "altes VPN: Fenster-Schluessel verweigert"; else ok "altes VPN: Fenster-Schluessel verweigert"; fi
 
 schritt "2. Schluessel fuer den Wartungsserver"
 AUS="$(tunnel key)"
@@ -118,7 +125,17 @@ for lauf in 1 2; do
     ok "Lauf $lauf: keine Dropbear-Meldung \"no suitable IP address(es)\""
   fi
   x 'cat /sys/class/net/wg_wartung/ifindex' > "$ARBEIT/ifindex.$lauf"
+  if grep -q 'Fenster-Schluessel werden NICHT eingerichtet' "$ARBEIT/einrichten.$lauf" && grep -q 'Fenster-Schluessel sind NICHT eingerichtet: dieser Dropbear kennt -D nicht' "$ARBEIT/einrichten.$lauf"; then
+    ok "Lauf $lauf: Dropbear ohne -D - das Skript sagt, dass es bei der bisherigen Instanz bleibt"
+  else
+    falsch "Lauf $lauf: Dropbear ohne -D - das Skript sagt, dass es bei der bisherigen Instanz bleibt"
+  fi
 done
+pruefe "ohne -D: kein Abholer, kein Startskript, keine cron-Zeile der Fenster-Schluessel" \
+  '[ ! -e /etc/init.d/vp-wartung ] && [ ! -e /etc/init.d/vp-wartung.neu ] && [ ! -e /usr/libexec/vp-wartung ] && [ ! -e /etc/config/vp-wartung ] && ! grep -q vp-wartung /etc/crontabs/root'
+pruefe "SSH 2222 nur aus beiden Tunneln (und von der Box selbst)" \
+  'nft list chain inet fw4 vp_wartung_eingang | grep "tcp dport 2222 iifname != " | grep "\"lo\"" | grep "\"wg_service\"" | grep -q "\"wg_wartung\"" && ! nft list chain inet fw4 vp_wartung_ausgang 2>/dev/null | grep -q dport'
+pruefe "die Regel uebersteht ein Neuladen der Firewall" '/etc/init.d/firewall reload >/dev/null 2>&1; nft list chain inet fw4 vp_wartung_eingang | grep -q "dport 2222"'
 if grep -q 'Tunnel unveraendert' "$ARBEIT/einrichten.2" && [ "$(cat "$ARBEIT/ifindex.1")" = "$(cat "$ARBEIT/ifindex.2")" ]; then
   ok "Lauf 2 mit denselben Werten fasst die Schnittstelle nicht an"
 else
@@ -142,6 +159,10 @@ esac
 case "$(tunnel status)" in
   *"Web-App 8484 im Tunnel: Techniker-Netz 10.10.32.0/24, einzelne Adressen keine"*) ok "status nennt die Freigabe" ;;
   *) falsch "status nennt die Freigabe" ;;
+esac
+case "$(tunnel status)" in
+  *"SSH 2222 ausserhalb der Tunnel: abgewiesen"*"Fenster-Schluessel: nicht eingerichtet"*) ok "status nennt die Sperre fuer 2222 und dass keine Fenster-Schluessel eingerichtet sind" ;;
+  *) falsch "status nennt die Sperre fuer 2222 und dass keine Fenster-Schluessel eingerichtet sind" ;;
 esac
 pruefe "fw4: wg_wartung springt in die Zone service" 'nft list chain inet fw4 input | grep "input_service" | grep -q wg_wartung'
 pruefe "Dropbear-Instanz vp_wartung nur im neuen Tunnel" '[ "$(uci get dropbear.vp_wartung.Interface)" = wg_wartung ] && [ "$(uci get dropbear.vp_wartung.PasswordAuth)" = off ]'
@@ -179,6 +200,7 @@ pruefe "Dropbear-Instanz vp_service weg" '! uci -q get dropbear.vp_service'
 pruefe "Alt-Waechter weg, wireguard_watchdog bleibt" \
   '! grep -q "service-tunnel-watch.sh # vp-service-tunnel$" /etc/crontabs/root && grep -q wireguard_watchdog /etc/crontabs/root'
 pruefe "neuer Tunnel unberuehrt" 'ip -4 addr show dev wg_wartung | grep -q "inet 10.10.16.2/32"'
+pruefe "SSH 2222 nur noch aus wg_wartung" 'nft list chain inet fw4 vp_wartung_eingang | grep "dport 2222" | grep -q "\"wg_wartung\"" && ! nft list chain inet fw4 vp_wartung_eingang | grep -q wg_service'
 pruefe "Freigabe fuer das Techniker-Netz unberuehrt" '[ "$(uci get firewall.vp_service_web_netz.src_ip)" = 10.10.32.0/24 ]'
 
 schritt "6. Web-App je Adresse (altes VPN, engere Wahl) neben der Freigabe fuer das Netz"
@@ -201,6 +223,7 @@ SSH_SIM="192.168.1.10 50000 192.168.1.1 22" tunnel abbauen wg_wartung >/dev/null
 pruefe "keine Tunnel-Zone mehr" '! uci -q get firewall.vp_service && ! uci -q get firewall.vp_service_ssh'
 pruefe "keine Freigabe der Web-App mehr" '! uci -q get firewall.vp_service_web && ! uci -q get firewall.vp_service_web_netz'
 pruefe "keine Waechter mehr" '! grep -q vp-service-tunnel /etc/crontabs/root'
+pruefe "keine Regel fuer 2222 mehr" '[ ! -e /etc/nftables.d/20-vp-wartung.nft ] && ! nft list chain inet fw4 vp_wartung_eingang >/dev/null 2>&1'
 
 schritt "8. Die Freigabe fuer das Netz gibt es nur am Wartungsserver"
 tunnel key >/dev/null

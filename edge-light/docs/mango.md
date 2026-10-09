@@ -99,7 +99,7 @@ Neue Boxen bekommen ihren Tunnel nicht mehr im alten Service-VPN, sondern auf de
 | Gegenstelle | `VP_SERVICE_ENDPOINT` (`wartung.voltpilot.de`), Port 51820, Server-Schlüssel `VP_SERVICE_PUBKEY` aus dem Portal (Pflicht) | `vpn.voltpilot.de:1001`, fester Server-Schlüssel |
 | Adresse | im Portal zugeteilt, Box-Netz `10.10.16.0/20` | in WireGuard UI vergeben, `10.10.1.0/24` |
 | Erlaubtes Netz auf der Box | nur Techniker-Netz `10.10.32.0/24` | `10.10.1.0/24` |
-| SSH | eigene Dropbear-Instanz `vp_wartung`, Port 2222, nur Schlüssel | Instanz `vp_service` |
+| SSH | Port 2222, nur Schlüssel, nur aus dem Tunnel: die Instanz der [Fenster-Schlüssel](#fenster-schlüssel-auf-der-box) (`/etc/init.d/vp-wartung`) | UCI-Instanz `vp_service`, nur dauerhafte Schlüssel |
 | Web-App `:8484` im Tunnel | frei für das ganze Techniker-Netz, sobald der Tunnel eingerichtet ist (Regel `Allow-Service-Web-Wartung`) | nur je Adresse: `service-tunnel.sh <ziel> web <adresse>` |
 | Server von der Box aus | `10.10.32.1`. Die Box sendet nur ins Techniker-Netz; `10.10.16.1`, die Server-Adresse ihres eigenen Netzes, erreicht sie **nicht** | – |
 
@@ -107,9 +107,9 @@ Für eine neue Box:
 
 1. `edge-light/openwrt/service-tunnel.sh root@192.168.1.1 key` gibt öffentlichen Schlüssel und Box-Referenz aus.
 2. Im Portal unter **Geräte › Fernwartung › Tunnel-Schlüssel hinterlegen** eintragen. Das Portal teilt die Adresse zu und zeigt die fertige Befehlszeile.
-3. Die Befehlszeile ausführen, mit der Box als Ziel. Sie richtet den Tunnel, SSH auf 2222 und die Web-App auf 8484 ein. Ein weiterer Aufruf je Techniker ist nicht nötig.
-4. Prüfen: `service-tunnel.sh <ziel> status` zeigt den Handshake und die Zeile `Web-App 8484 im Tunnel: Techniker-Netz 10.10.32.0/24`. Von der Box aus antwortet `ping 10.10.32.1`.
-5. Im Portal ein Fenster öffnen. Solange es offen ist, erreicht der Techniker `ssh -p 2222 root@<adresse>` und `http://<adresse>:8484`.
+3. Die Befehlszeile ausführen, mit der Box als Ziel. Sie richtet den Tunnel, SSH auf 2222 mit Fenster-Schlüsseln und die Web-App auf 8484 ein. Ein weiterer Aufruf je Techniker ist nicht nötig, und kein Techniker-Schlüssel muss auf die Box. Die letzten Zeilen sagen, wer sich anmelden darf und ob der Wartungsserver schon Schlüssel ausgibt.
+4. Prüfen: `service-tunnel.sh <ziel> status` zeigt den Handshake, `Web-App 8484 im Tunnel: Techniker-Netz 10.10.32.0/24`, `SSH 2222 ausserhalb der Tunnel: abgewiesen` und `Fenster-Schluessel: Abholer laeuft` mit der letzten gültigen Antwort des Servers. Von der Box aus antwortet `ping 10.10.32.1`.
+5. Im Portal ein Fenster öffnen, für einen Zugang mit SSH-Schlüssel. Solange es offen ist, erreicht der Techniker `ssh -i ~/.ssh/id_rsa_voltpilot -p 2222 root@<adresse>` und `http://<adresse>:8484`.
 
 Das Skript meldet sich mit `ssh` an der Box an. `VP_SSH_KEY=~/.ssh/<schlüssel>` vor dem Aufruf nennt die Schlüsseldatei; ohne die Variable entscheidet `~/.ssh/config`.
 
@@ -123,13 +123,46 @@ Entscheid des Kapitäns vom 09.10.2026: Die Web-App ist im offenen Fenster für 
 |---|---|
 | Das Paket kam durch den Tunnel. Dessen einzige Gegenstelle ist der Wartungsserver, und WireGuard nimmt von ihm nur Absender aus dem Techniker-Netz an | welcher Techniker es ist |
 | Ziel ist SSH 2222, die Web-App 8484 oder ein Ping; alles andere weist die Zone `service` ab, und nichts wird ins Kundennetz weitergeleitet | ob ein Fenster offen ist und wie lange noch |
-| SSH: nur mit einem Schlüssel, der auf der Box liegt | Web-App: keine Anmeldung. Wer durchkommt, bedient sie |
+| SSH: nur mit einem Schlüssel aus der Schlüsseldatei im RAM. Darin stehen die dauerhaften Schlüssel der Box und, solange ein Fenster offen ist, der Schlüssel des Technikers aus dem Portal | Web-App: keine Anmeldung. Wer durchkommt, bedient sie |
 
 - **Ob und wie lange** ein Techniker eine Box erreicht, entscheidet allein der Wartungsserver, je Paar aus Techniker und Box und mit Ablaufzeit. Ohne Fenster verwirft er den Verkehr.
 - **Zum Techniker-Netz gehört auch der Server selbst** (`10.10.32.1`). Wer dort root ist, erreicht die Web-App jeder verbundenen Box auch ohne Fenster.
 - **Die frühere Liste je Adresse** hat nur unterschieden, welcher Techniker mit offenem Fenster die Web-App erreicht. Ohne Fenster kam auch damals niemand durch, und jeder neue Zugang hätte auf jeder Box nachgetragen werden müssen.
 - **Engere Wahl:** `VP_SERVICE_WEB=zu` vor der Befehlszeile richtet den Tunnel ohne die Web-App ein. Dann bleibt `service-tunnel.sh <ziel> web <adresse> …` für einzelne Adressen oder `ssh -p 2222 -L 8484:127.0.0.1:8484 root@<adresse>`.
 - **Im alten Service-VPN gibt es die Freigabe für das Netz nicht**, dort hängen auch Kundensysteme. Die Regel hängt am Absender `10.10.32.0/24`, den die Box nur über `wg_wartung` annimmt; ein zweiter Tunnel in der Zone bekommt damit nichts geöffnet.
+
+#### Fenster-Schlüssel auf der Box
+
+Entscheid des Kapitäns vom 09.10.2026, Schritt 3 von [Fernwartung, Anmeldung an der Box](../../docs/fernwartung.md#anmeldung-an-der-box-fenster-schlüssel). Die Box holt im offenen Fenster den SSH-Schlüssel ab, der im Portal am Techniker-Zugang steht. Kein Techniker-Schlüssel muss dafür je auf die Box.
+
+| Auf der Box | Aufgabe |
+|---|---|
+| `/usr/libexec/vp-wartung/schluessel-holen.sh` | der Abholer: `lauf` (Dauerdienst), `frist` (cron, jede Minute), `einmal` (Abfrage von Hand), `status` |
+| `/etc/init.d/vp-wartung` | startet Dropbear an der Tunnel-Adresse mit eigener Schlüsseldatei (`dropbear -D`) und den Abholer; hängt den RAM-Bereich ein |
+| `/etc/vp-wartung/keys` | eigenes tmpfs (128 KiB, nur root) mit der Schlüsseldatei. Nicht unter `/tmp`: Dropbear lehnt eine Schlüsseldatei unter einem Verzeichnis ab, das alle beschreiben dürfen |
+| `/tmp/vp-wartung` | Arbeitsstand des Abholers: je Schlüssel die Frist in Laufzeit der Box |
+| `/etc/config/vp-wartung` | Server (`10.10.32.1`), Port (`8022`), Schnittstelle; wahlweise `warte` |
+| `/etc/nftables.d/20-vp-wartung.nft` | zwei eigene Firewall-Ketten: SSH 2222 nur aus den Tunneln, die Anfrage nach Schlüsseln nur durch den Tunnel |
+
+- **Die UCI-Instanz `dropbear.vp_wartung` entfällt.** Das Startskript von OpenWrt kennt `-D` nicht, deshalb startet ein eigenes Startskript die Instanz. Sie läuft nur, solange der Tunnel eine Adresse hat.
+- **Was dauerhaft in `/etc/dropbear/authorized_keys` steht, gilt im Tunnel weiter.** Der Abholer liest die Datei nur und schreibt ihre Zeilen vor die Fenster-Schlüssel. Eine neue Zeile dort gilt im Tunnel nach spätestens einer Minute. Port 22 im LAN ist unberührt.
+- **Nur RAM.** Ein Neustart der Box löscht jeden Fenster-Schlüssel; die Box holt ihn von selbst wieder, solange das Fenster offen ist. Ohne das tmpfs schreibt der Abholer nichts, und in der Liste von `sysupgrade -l` steht die Schlüsseldatei nicht.
+- **Frist in Laufzeit der Box** (`/proc/uptime`), nicht in Uhrzeit. Die Box nimmt höchstens 24 h und höchstens acht Schlüssel an. Ein cron-Lauf je Minute streicht Verfallenes auch dann, wenn der Abholer hängt.
+- **Die Antwort des Servers ist die ganze Liste.** Ein geschlossenes Fenster und ein im Portal ersetzter oder entfernter Schlüssel sind auf der Box gestrichen, sobald der Server es meldet; in der Probe nach 0,2 bis 1 s. Jede Antwort, die nicht genau die [vereinbarte Form](../../docs/contracts/fernwartung-schluessel-v1.md) hat, ändert nichts.
+- **Nur durch den Tunnel.** Der Abholer fragt nicht, wenn die Route zum Server nicht über `wg_wartung` führt, und die Firewall der Box weist die Anfrage auf jedem anderen Weg ab. Im Netz des Kunden kann sich so niemand als Wartungsserver ausgeben.
+- **Datenvolumen:** Die Anfrage bleibt bis zu 45 s am Server offen. Im Prototyp waren das rund 3 MB am Tag. Für eine Box am Mobilfunk: `uci set vp-wartung.schluessel.warte=300; uci commit vp-wartung; /etc/init.d/vp-wartung restart` (der Server lässt höchstens 300 s zu). Nach einem Neustart der VM kann es dann bis zu fünf Minuten dauern, bis die Box ein neues Fenster bemerkt. Mit 300 s ist nichts gemessen.
+- **Braucht Dropbear ab 2025.89** (OpenWrt 25.12). Auf einem älteren richtet das Skript die frühere UCI-Instanz ein und sagt das; dort gelten nur die dauerhaften Schlüssel. Dasselbe tut `VP_SERVICE_SCHLUESSEL=aus` vor der Befehlszeile, und es räumt den Abholer wieder ab.
+- **Startet die neue Instanz nicht,** stellt das Skript die frühere UCI-Instanz wieder her und endet mit einem Fehler. Niemand wird dadurch ausgesperrt.
+
+Nachsehen auf der Box:
+
+```sh
+/usr/libexec/vp-wartung/schluessel-holen.sh status   # Abholer, letzte Antwort, Zugang und Restlaufzeit je Fenster; nie ein Schlüssel
+logread -e vp-wartung                                # wann welcher Fenster-Schlüssel kam und ging
+logread -e dropbear | grep 'Pubkey auth'             # jede Anmeldung mit Fingerabdruck und Absender
+```
+
+Meldet `status` „seit dem Start keine“ gültige Antwort, obwohl `ping 10.10.32.1` geht, gibt der Wartungsserver keine Schlüssel aus: Dort ist `VP_TUNNEL_SCHLUESSEL_PORT` nicht gesetzt, oder der Dienst hat keinen frischen Soll-Stand ([Tunnel-Dienst](../../services/tunnel-dienst/README.md#schlüsselausgabe)).
 
 #### Einrichten ohne Unterbrechung, Dropbear an der Adresse
 
@@ -145,13 +178,17 @@ Am Mango gemessen (25.12.5, 09.10.2026):
 | Tunnel unten | lauscht auf **allen** Adressen (`0.0.0.0:2222`), bis der Tunnel wieder oben ist | die Instanz läuft nicht |
 | nach `ifup wg_wartung`, wie es der Wächter ausführt | antwortet weiter | **antwortet im Tunnel nicht mehr**, bis Dropbear neu startet |
 
-`ifup` legt die Schnittstelle neu an, sie bekommt eine neue Nummer. Dropbear wird dabei nicht neu gestartet, weil sich seine Befehlszeile nicht ändert, und bleibt mit `DirectInterface` an die alte Nummer gebunden. Eine Box, deren Wächter den Tunnel einmal neu gestartet hat, wäre über SSH nicht mehr erreichbar. Deshalb bleibt `Interface`. Die Folge: Solange der Tunnel unten ist, hält nur die Firewall 2222 fern. Die WAN-Zone weist ab; die LAN-Zone lässt den Port dann zu, wie Port 22, und Dropbear verlangt auch dort einen Schlüssel.
+`ifup` legt die Schnittstelle neu an, sie bekommt eine neue Nummer. Dropbear wird dabei nicht neu gestartet, weil sich seine Befehlszeile nicht ändert, und bleibt mit `DirectInterface` an die alte Nummer gebunden. Eine Box, deren Wächter den Tunnel einmal neu gestartet hat, wäre über SSH nicht mehr erreichbar. Deshalb bleibt `Interface`, wo es die UCI-Instanz noch gibt: im alten Service-VPN, mit `VP_SERVICE_SCHLUESSEL=aus` und auf einem Dropbear vor 2025.89.
+
+**SSH 2222 außerhalb des Tunnels** (Entscheid vom 09.10.2026): Die UCI-Instanz lauscht auf allen Adressen, solange der Tunnel unten ist. Die WAN-Zone wies das immer ab, die LAN-Zone nicht. Seit dem 09.10. schreibt das Skript eine eigene Firewall-Kette vor die von fw4 (`/etc/nftables.d/20-vp-wartung.nft`, Kette `vp_wartung_eingang`): Port 2222 kommt nur aus den Tunneln der Zone `service` und von der Box selbst an, auf jedem anderen Weg wird er abgewiesen. Das gilt bei Tunnel oben und unten, für beide Arten der Instanz und auch für die Tunnel-Adresse, wenn ein Gerät im LAN sie über die Box anspricht. Die Instanz der Fenster-Schlüssel läuft ohne Tunnel-Adresse gar nicht; sie bindet an die Adresse und startet nach einem `ifup` des Wächters von selbst neu. Port 22 im LAN bleibt, wie er ist.
 
 #### Belegt
 
 - **Im Container** mit `edge-light/test/service-tunnel-probe.sh` gegen OpenWrt 24.10 (procd, netifd, fw4, Dropbear, cron, Kernel-WireGuard): Altbestand, neuer Tunnel daneben, Wiederholbarkeit ohne Neustart der Schnittstelle, geänderte Gegenstelle, Reihenfolge von Schnittstelle und Dropbear, Schutz beim Abbauen, alten Tunnel abbauen, Web-App für das Techniker-Netz und je Adresse, `VP_SSH_KEY`.
 - **Am Mango unter 25.12.5 gegen den echten Wartungsserver** (Labor-Box `edge-5t2dcy6`, 08./09.10.2026): Handshake; im offenen Fenster kommen SSH auf 2222 und die Web-App an der Box an; das Fenster läuft ab. Mit dem Skript vom 09.10.: Einrichten wie bei einer neuen Box und erneuter Lauf ohne Dropbear-Meldung und ohne Unterbrechung von WAN und LAN; die Web-App nimmt eine Adresse des Techniker-Netzes an, die auf der Box nie eingetragen wurde (`10.10.32.1`), und weist 8887 von derselben Adresse ab.
+- **Im Container unter OpenWrt 25.12.5** (Dropbear 2025.89, WAN und LAN getrennt) mit `edge-light/test/wartung-anmeldung-probe.sh`, gegen den Tunnel-Dienst aus dem Repo, mit echter SSH-Anmeldung durch einen echten Tunnel: die Fenster-Schlüssel von der Einrichtung über einen heutigen Zugang bis zum Abbauen, die Störfälle (Lücke in der Server-Firewall, Server und Abholer weg, Neustart der Box, falscher Server, Laufzeit statt Uhr) und SSH 2222 außerhalb des Tunnels bei Tunnel oben und unten.
 - **Noch nicht belegt:** die Web-App vom Gerät eines Technikers aus, seit die Regel je Adresse entfallen ist. Dafür braucht es ein offenes Fenster.
+- **Noch nicht an einer Mango belegt:** die Fenster-Schlüssel und die Regel für 2222. Belegt sind sie unter demselben OpenWrt und demselben Dropbear für x86-64. Es fehlen das Einhängen des tmpfs am Gerät, die Dauer einer RSA-Anmeldung auf dem MIPS-Prozessor, der Weg über einen echten Anschluss und ein `sysupgrade`. Nach einem `sysupgrade` fehlen ohnehin `kmod-wireguard` und `wireguard-tools`, bis sie neu installiert sind; die Dateien der Fenster-Schlüssel stehen in `sysupgrade -l`.
 
 #### Proben von der Box (BusyBox unter 25.12)
 
@@ -172,23 +209,24 @@ Der Pilot (`edge-zay5sdd`, heute `10.10.1.25` im alten VPN) wechselt erst, wenn 
 
 - Die VM steht, die API kennt den Server-Schlüssel, und im Portal steht „Tunnel-Dienst holt ab".
 - Für den Rechner des Technikers gibt es einen Zugang im Portal, und er ist als zweites WireGuard-Profil neben dem alten VPN eingerichtet.
-- In `~/.ssh/config` zwei Namen für dieselbe Box: `mango-alt` (`HostName 10.10.1.25`, `Port 2222`, `User root`) und `mango-neu` (die neue Adresse, `Port 2222`, `User root`), beide mit dem `IdentityFile`, den die Box schon kennt. Das ist ein RSA-Schlüssel; mit einem anderen endet Schritt 5 mit `Permission denied (publickey)`, und Schritt 6 darf dann nicht folgen.
+- In `~/.ssh/config` zwei Namen für dieselbe Box: `mango-alt` (`HostName 10.10.1.25`, `Port 2222`, `User root`) und `mango-neu` (die neue Adresse, `Port 2222`, `User root`), beide mit dem `IdentityFile`, den die Box schon kennt. Das ist ein RSA-Schlüssel; mit einem anderen endet Schritt 5 mit `Permission denied (publickey)`, und Schritt 6 darf dann nicht folgen. Dieser dauerhafte Schlüssel gilt im neuen Tunnel weiter, auch mit Fenster-Schlüsseln.
+- Für Fenster-Schlüssel braucht der Pilot Dropbear ab 2025.89 (OpenWrt 25.12); `ssh mango-alt 'dropbear -V'` nennt den Stand. Auf einem älteren richtet das Skript die frühere Instanz ein und sagt das in den letzten Zeilen; der Wechsel selbst geht genauso.
 
 **Schritte:**
 
 1. Über den alten Tunnel den neuen Schlüssel erzeugen: `edge-light/openwrt/service-tunnel.sh mango-alt key`. Der alte Schlüssel bleibt unberührt.
 2. Im Portal Schlüssel und Referenz `edge-zay5sdd` hinterlegen; das Portal nennt die Adresse im Box-Netz.
-3. Über den alten Tunnel den neuen einrichten: die Befehlszeile aus dem Portal, mit `mango-alt` statt `root@<box>`. Danach laufen beide Tunnel. Die Web-App ist damit im neuen Tunnel für das Techniker-Netz frei; die Freigabe je Adresse im alten VPN (`10.10.1.5`) bleibt daneben bestehen.
+3. Über den alten Tunnel den neuen einrichten: die Befehlszeile aus dem Portal, mit `mango-alt` statt `root@<box>`. Danach laufen beide Tunnel. Die Web-App ist damit im neuen Tunnel für das Techniker-Netz frei; die Freigabe je Adresse im alten VPN (`10.10.1.5`) bleibt daneben bestehen. Der neue Tunnel bekommt die Instanz der Fenster-Schlüssel, der alte behält seine. Ab diesem Schritt kommt SSH 2222 nur noch aus den beiden Tunneln an, nicht mehr aus dem LAN des Mango; dort bleibt Port 22.
 4. Im Portal ein Fenster öffnen: Box `edge-zay5sdd`, der eigene Zugang, 1 Stunde, Grund „Wechsel auf den Wartungsserver".
 5. Über den neuen Weg prüfen, alle drei Punkte:
    - `ssh mango-neu`. Der Host-Schlüssel muss `SHA256:9v/vmOZqCxM2vkV0IqYIjD3U3HL/Go44eeU83WTos8o` sein, sonst abbrechen.
-   - `edge-light/openwrt/service-tunnel.sh mango-neu status`: Handshake auf `wg_wartung` und die Zeile `Web-App 8484 im Tunnel: Techniker-Netz 10.10.32.0/24`.
+   - `edge-light/openwrt/service-tunnel.sh mango-neu status`: Handshake auf `wg_wartung`, die Zeile `Web-App 8484 im Tunnel: Techniker-Netz 10.10.32.0/24` und `Fenster-Schluessel: Abholer laeuft`. Steht darunter „seit dem Start keine“ gültige Antwort, gibt der Wartungsserver noch keine Schlüssel aus; der Wechsel geht trotzdem weiter, die Anmeldung läuft dann über den dauerhaften Schlüssel.
    - Web-App: `http://<neue adresse>:8484/health` im Browser oder mit `curl` liefert `"status":"UP"` und `"ref":"edge-zay5sdd"`.
 6. Nur wenn Schritt 5 gelingt: über den **neuen** Weg den alten Tunnel abbauen: `edge-light/openwrt/service-tunnel.sh mango-neu abbauen wg_service`.
 7. Die Freigabe je Adresse aus dem alten VPN schließen, sie hat keinen Zweck mehr: `edge-light/openwrt/service-tunnel.sh mango-neu web` (ohne Adresse). Die Freigabe für das Techniker-Netz bleibt, `status` zeigt beides. Danach das Fenster im Portal schließen oder ablaufen lassen.
 8. Optional und von Hand durch den Kapitän: den Peer des Piloten in WireGuard UI auf `vpn.voltpilot.de` entfernen. Die Fernwartung ändert dort nichts.
 
-**Rückweg:** Bis Schritt 6 ist nichts verloren. Kommt der neue Tunnel nicht, baut man ihn über den alten wieder ab: `service-tunnel.sh mango-alt abbauen wg_wartung`. Nach Schritt 6 ohne funktionierenden neuen Tunnel hilft nur noch der Zugang vor Ort. Die SSH-Schlüssel in `/etc/dropbear/authorized_keys` bleiben beim Wechsel gleich, sie sind weiterhin die zweite Schranke.
+**Rückweg:** Bis Schritt 6 ist nichts verloren. Kommt der neue Tunnel nicht, baut man ihn über den alten wieder ab: `service-tunnel.sh mango-alt abbauen wg_wartung`; das räumt auch die Fenster-Schlüssel ab. Nach Schritt 6 ohne funktionierenden neuen Tunnel hilft nur noch der Zugang vor Ort. Die SSH-Schlüssel in `/etc/dropbear/authorized_keys` bleiben beim Wechsel gleich und gelten in beiden Tunneln. **Vor Schritt 6 muss die Anmeldung über `mango-neu` mit einem dauerhaften Schlüssel gelungen sein,** nicht nur mit einem Fenster-Schlüssel: Sonst hinge der einzige Zugang zum Piloten an Portal und Wartungsserver.
 
 Zwei Lücken für den Pilot, beide am Gerät gefunden:
 
