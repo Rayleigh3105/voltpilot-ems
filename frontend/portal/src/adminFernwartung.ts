@@ -100,6 +100,15 @@ export interface FernwartungTechniker {
   notiz: string | null;
   angelegtAm: string;
   geaendertAm: string;
+  /**
+   * Der öffentliche SSH-Schlüssel des Technikers für die Anmeldung an der Box,
+   * in Normalform (`ssh-rsa <Base64>`). Alle drei Felder sind gesetzt oder
+   * alle drei null: ohne Schlüssel öffnet ein Fenster nur den Netzweg.
+   */
+  sshPublicKey: string | null;
+  /** Wie `ssh-keygen -lf` ihn zeigt: `SHA256:…`. */
+  sshFingerabdruck: string | null;
+  sshBits: number | null;
 }
 
 export type ProtokollAktion =
@@ -111,6 +120,8 @@ export type ProtokollAktion =
   | 'techniker_gesperrt'
   | 'techniker_entsperrt'
   | 'techniker_geloescht'
+  | 'techniker_ssh_schluessel_gesetzt'
+  | 'techniker_ssh_schluessel_entfernt'
   | 'fenster_geoeffnet'
   | 'fenster_geschlossen';
 
@@ -321,7 +332,7 @@ export function technikerOptionen(
       return {
         value: t.id,
         label: t.name,
-        sub: t.adresse,
+        sub: `${t.adresse} · ${t.sshFingerabdruck ? 'mit SSH-Schlüssel' : 'ohne SSH-Schlüssel'}`,
         disabled: grund != null,
         disabledHint: grund,
       };
@@ -411,6 +422,271 @@ export function schluesselGueltig(s: string): boolean {
   return WG_SCHLUESSEL.test(s.trim());
 }
 
+// ── SSH-Schlüssel des Technikers (Fenster-Schlüssel, Schritt 1) ─────────────
+
+/** Der SSH-Port der Wartungs-Instanz auf der Box und der Port ihrer Web-App. */
+export const BOX_SSH_PORT = 2222;
+export const BOX_WEB_PORT = 8484;
+
+/** Der Dateiname, den die Befehle des Portals durchgehend benutzen. */
+export const SSH_DATEI = 'id_rsa_voltpilot';
+
+export interface SshErzeugen {
+  system: string;
+  /** Erzeugt das Schlüsselpaar; der private Teil bleibt auf dem Gerät. */
+  erzeugen: string;
+  /** Gibt die eine Zeile aus, die ins Portal gehört. */
+  anzeigen: string;
+  /** Zeigt den Fingerabdruck zum Vergleich mit dem Portal. */
+  fingerabdruck: string;
+  hinweis: string | null;
+}
+
+/**
+ * Die Befehle, mit denen der Techniker seinen Schlüssel erzeugt. RSA, weil der
+ * SSH-Server der Boxen (Dropbear) nichts anderes annimmt; ein eigener
+ * Dateiname, damit kein vorhandener Schlüssel überschrieben wird.
+ */
+export const SSH_ERZEUGEN: SshErzeugen[] = [
+  {
+    system: 'Windows (PowerShell)',
+    erzeugen: `ssh-keygen -t rsa -b 3072 -f $env:USERPROFILE\\.ssh\\${SSH_DATEI}`,
+    anzeigen: `Get-Content $env:USERPROFILE\\.ssh\\${SSH_DATEI}.pub`,
+    fingerabdruck: `ssh-keygen -lf $env:USERPROFILE\\.ssh\\${SSH_DATEI}.pub`,
+    hinweis: 'Fehlt der Ordner .ssh, legt ihn „mkdir $env:USERPROFILE\\.ssh“ an.',
+  },
+  {
+    system: 'Linux und macOS',
+    erzeugen: `ssh-keygen -t rsa -b 3072 -f ~/.ssh/${SSH_DATEI}`,
+    anzeigen: `cat ~/.ssh/${SSH_DATEI}.pub`,
+    fingerabdruck: `ssh-keygen -lf ~/.ssh/${SSH_DATEI}.pub`,
+    hinweis: null,
+  },
+];
+
+export interface SshBefehle {
+  /** Anmeldung an der Box. */
+  ssh: string;
+  /** Dieselbe Anmeldung, die zusätzlich die Web-App der Box auf den eigenen Rechner holt. */
+  webApp: string;
+  /** Wo die Web-App dann im Browser des Technikers liegt. */
+  webAdresse: string;
+}
+
+/**
+ * Die fertigen Befehle für ein offenes Fenster. `~` löst der SSH-Client selbst
+ * auf, deshalb gilt dieselbe Zeile unter Windows und Linux. Die Web-App der Box
+ * ist im Tunnel nicht direkt offen; sie kommt über die SSH-Anmeldung.
+ */
+export function sshBefehle(boxAdresse: string): SshBefehle {
+  const basis = `ssh -i ~/.ssh/${SSH_DATEI} -p ${BOX_SSH_PORT}`;
+  return {
+    ssh: `${basis} root@${boxAdresse}`,
+    webApp: `${basis} -L ${BOX_WEB_PORT}:127.0.0.1:${BOX_WEB_PORT} root@${boxAdresse}`,
+    webAdresse: `http://127.0.0.1:${BOX_WEB_PORT}`,
+  };
+}
+
+/** „SHA256:… (RSA 3072)" - oder null ohne Schlüssel. */
+export function sshText(t: Pick<FernwartungTechniker, 'sshFingerabdruck' | 'sshBits'>): string | null {
+  if (!t.sshFingerabdruck) return null;
+  return t.sshBits ? `${t.sshFingerabdruck} (RSA ${t.sshBits})` : t.sshFingerabdruck;
+}
+
+/**
+ * Was die Seite über den SSH-Schlüssel ehrlich dazusagt: Das Portal gibt ihn
+ * weiter, aber ob eine Box ihn holt, liegt nicht am Portal.
+ *
+ * ⚠ Der zweite Satz beschreibt den Stand vor den Schritten 2 (Tunnel-Dienst)
+ * und 3 (Box-Skript). Wer Schritt 3 ausliefert, ersetzt ihn.
+ */
+export const SSH_STAND_SATZ =
+  'Das Portal gibt den SSH-Schlüssel eines Zugangs an den Tunnel-Dienst weiter. Abholen können ihn die Boxen noch nicht: Bis Tunnel-Dienst und Box dafür eingerichtet sind, gelingt die Anmeldung nur mit einem Schlüssel, der schon auf der Box liegt.';
+
+/** Der Satz beim Öffnen eines Fensters für einen Zugang ohne SSH-Schlüssel. */
+export function nurNetzwegSatz(name: string): string {
+  return `Dieses Fenster öffnet nur den Netzweg. Der Zugang „${name}“ hat keinen SSH-Schlüssel; an der Box anmelden kann sich damit nur, wessen Schlüssel dort schon liegt.`;
+}
+
+/** Ein offenes Fenster aus Sicht der Anmeldung: trägt sein Zugang einen SSH-Schlüssel? */
+export interface FensterSchluessel {
+  fensterId: string;
+  technikerName: string;
+  /**
+   * `unbekannt`, wenn der Zugang nicht in der geladenen Liste steht - das ist
+   * kein „fehlt".
+   */
+  schluessel: 'vorhanden' | 'fehlt' | 'unbekannt';
+  /** Fingerabdruck des SSH-Schlüssels am Zugang, sonst null. */
+  fingerabdruck: string | null;
+  /** Ein Satz: womit die Anmeldung gelingt - oder dass das Fenster nur den Netzweg öffnet. */
+  satz: string;
+  ton: Ton;
+}
+
+export interface BoxAnmeldung {
+  /** Die Befehle hängen nur an der Box: sie gelten für jedes ihrer offenen Fenster. */
+  befehle: SshBefehle;
+  /** Je offenem Fenster ein Eintrag, zuerst endend zuerst. */
+  fenster: FensterSchluessel[];
+}
+
+function fensterSchluessel(f: FernwartungFenster, techniker: FernwartungTechniker[]): FensterSchluessel {
+  const basis = { fensterId: f.id, technikerName: f.technikerName };
+  const t = techniker.find((x) => x.id === f.technikerId);
+  if (!t) {
+    return {
+      ...basis,
+      schluessel: 'unbekannt',
+      fingerabdruck: null,
+      ton: 'off',
+      satz: `„${f.technikerName}“: Ob der Zugang einen SSH-Schlüssel hinterlegt hat, ist hier nicht bekannt.`,
+    };
+  }
+  if (!t.sshFingerabdruck) {
+    return {
+      ...basis,
+      schluessel: 'fehlt',
+      fingerabdruck: null,
+      ton: 'warn',
+      satz: `„${f.technikerName}“: nur Netzweg. Der Zugang hat keinen SSH-Schlüssel; anmelden kann sich nur, wessen Schlüssel schon auf der Box liegt.`,
+    };
+  }
+  return {
+    ...basis,
+    schluessel: 'vorhanden',
+    fingerabdruck: t.sshFingerabdruck,
+    ton: 'ok',
+    satz: `„${f.technikerName}“: Anmeldung mit dem SSH-Schlüssel ${t.sshFingerabdruck}, sobald die Box ihn abgeholt hat oder wenn er schon auf ihr liegt.`,
+  };
+}
+
+/**
+ * Was ein Techniker für die OFFENEN Fenster einer Box braucht: die fertigen
+ * Befehle und je Fenster die ehrliche Auskunft, ob sein Zugang einen
+ * SSH-Schlüssel trägt. Ohne offenes Fenster gibt es nichts anzumelden: null
+ * (geplante Fenster zählen nicht).
+ */
+export function boxAnmeldung(box: FernwartungBox, techniker: FernwartungTechniker[]): BoxAnmeldung | null {
+  const offen = box.laufendeFenster
+    .filter((f) => f.zustand === 'offen')
+    .sort((a, b) => a.ende.localeCompare(b.ende));
+  if (offen.length === 0) return null;
+  return { befehle: sshBefehle(box.adresse), fenster: offen.map((f) => fensterSchluessel(f, techniker)) };
+}
+
+export const SSH_ERZEUGEN_KURZ = 'ssh-keygen -t rsa -b 3072';
+export const SSH_MIN_BITS = 2048;
+export const SSH_MAX_BITS = 4096;
+
+export type SshPruefung = { ok: true; bits: number } | { ok: false; fehler: string };
+
+const SSH_KEIN_SCHLUESSEL =
+  'Das ist kein öffentlicher SSH-Schlüssel. Erwartet wird die eine Zeile aus der .pub-Datei; sie beginnt mit „ssh-rsa AAAA".';
+const SSH_BESCHAEDIGT =
+  'Der SSH-Schlüssel ist beschädigt oder unvollständig. Bitte die ganze Zeile aus der .pub-Datei kopieren.';
+
+function sshFremderTyp(typ: string): string | null {
+  if (typ.startsWith('sk-')) return 'ein FIDO-Sicherheitsschlüssel';
+  if (typ.startsWith('ssh-ed25519')) return 'ein Ed25519-Schlüssel';
+  if (typ.startsWith('ecdsa-sha2-')) return 'ein ECDSA-Schlüssel';
+  if (typ.startsWith('ssh-dss')) return 'ein DSA-Schlüssel';
+  return null;
+}
+
+/** Die Felder des SSH-Formats: je vier Byte Länge, dann die Bytes. Null, wenn es nicht aufgeht. */
+function sshFelder(base64: string): Uint8Array[] | null {
+  let roh: string;
+  try {
+    roh = atob(base64);
+  } catch {
+    return null;
+  }
+  const bytes = Uint8Array.from(roh, (c) => c.charCodeAt(0));
+  const felder: Uint8Array[] = [];
+  let i = 0;
+  while (i < bytes.length) {
+    if (i + 4 > bytes.length) return null;
+    const laenge = bytes[i] * 2 ** 24 + bytes[i + 1] * 2 ** 16 + bytes[i + 2] * 2 ** 8 + bytes[i + 3];
+    i += 4;
+    if (i + laenge > bytes.length) return null;
+    felder.push(bytes.subarray(i, i + laenge));
+    i += laenge;
+  }
+  return felder;
+}
+
+/** Bitlänge einer vorzeichenbehafteten Zahl im SSH-Format; -1, wenn sie nicht positiv ist. */
+function sshBitlaenge(zahl: Uint8Array): number {
+  if (zahl.length === 0 || zahl[0] >= 0x80) return -1;
+  let i = 0;
+  while (i < zahl.length && zahl[i] === 0) i += 1;
+  if (i === zahl.length) return -1;
+  return (zahl.length - i - 1) * 8 + (32 - Math.clz32(zahl[i]));
+}
+
+/**
+ * Dieselben Regeln wie die API (`SshSchluessel.java`), schon im Browser: nur
+ * `ssh-rsa`, 2048 bis 4096 Bit, eine Zeile, keine Optionen davor. Wichtig ist
+ * das vor allem für einen versehentlich eingefügten PRIVATEN Schlüssel - er
+ * verlässt den Browser so gar nicht erst. Den Fingerabdruck berechnet die API.
+ */
+export function sshSchluesselPruefen(eingabe: string): SshPruefung {
+  const text = eingabe.trim();
+  if (!text) return { ok: false, fehler: 'Der SSH-Schlüssel fehlt.' };
+  if (text.includes('PRIVATE KEY')) {
+    return {
+      ok: false,
+      fehler:
+        'Das ist ein privater Schlüssel. Er gehört nie ins Portal. Bitte die Zeile aus der Datei mit der Endung .pub eintragen.',
+    };
+  }
+  if (text.length > 2000) {
+    return { ok: false, fehler: 'Das ist kein öffentlicher SSH-Schlüssel: die Eingabe ist zu lang.' };
+  }
+  if (/[\r\n]/.test(text)) {
+    return {
+      ok: false,
+      fehler: 'Der SSH-Schlüssel muss genau eine Zeile sein: der Inhalt der .pub-Datei, ohne Zeilenumbruch.',
+    };
+  }
+  const teile = text.split(/[ \t]+/);
+  const fremd = sshFremderTyp(teile[0]);
+  if (fremd) {
+    return {
+      ok: false,
+      fehler: `Das ist ${fremd}. Die Boxen nehmen nur RSA an. Bitte einen RSA-Schlüssel erzeugen: ${SSH_ERZEUGEN_KURZ}`,
+    };
+  }
+  if (teile[0] !== 'ssh-rsa') {
+    return {
+      ok: false,
+      fehler: teile.slice(1).includes('ssh-rsa')
+        ? 'Vor dem Schlüssel dürfen keine Optionen stehen: die Zeile muss mit „ssh-rsa" beginnen.'
+        : SSH_KEIN_SCHLUESSEL,
+    };
+  }
+  const felder = teile.length > 1 ? sshFelder(teile[1]) : null;
+  if (!felder || felder.length !== 3 || String.fromCharCode(...felder[0]) !== 'ssh-rsa') {
+    return { ok: false, fehler: SSH_BESCHAEDIGT };
+  }
+  const bits = sshBitlaenge(felder[2]);
+  if (bits < 0 || sshBitlaenge(felder[1]) < 2) return { ok: false, fehler: SSH_BESCHAEDIGT };
+  if (bits < SSH_MIN_BITS) {
+    return {
+      ok: false,
+      fehler: `Der RSA-Schlüssel hat nur ${bits} Bit, verlangt sind mindestens ${SSH_MIN_BITS}. Bitte einen neuen erzeugen: ${SSH_ERZEUGEN_KURZ}`,
+    };
+  }
+  if (bits > SSH_MAX_BITS) {
+    return {
+      ok: false,
+      fehler: `Der RSA-Schlüssel hat ${bits} Bit, die Boxen sind nur bis ${SSH_MAX_BITS} Bit geprüft. Bitte einen neuen erzeugen: ${SSH_ERZEUGEN_KURZ}`,
+    };
+  }
+  return { ok: true, bits };
+}
+
 // ── Techniker-Zugang löschen ────────────────────────────────────────────────
 
 export interface Rueckfrage {
@@ -457,6 +733,8 @@ const AKTION: Record<ProtokollAktion, string> = {
   techniker_gesperrt: 'Techniker-Zugang gesperrt',
   techniker_entsperrt: 'Techniker-Zugang entsperrt',
   techniker_geloescht: 'Techniker-Zugang gelöscht',
+  techniker_ssh_schluessel_gesetzt: 'SSH-Schlüssel gesetzt',
+  techniker_ssh_schluessel_entfernt: 'SSH-Schlüssel entfernt',
   fenster_geoeffnet: 'Fenster geöffnet',
   fenster_geschlossen: 'Fenster geschlossen',
 };
@@ -487,8 +765,21 @@ export function protokollDetail(e: FernwartungProtokollEintrag, jetzt: Date): st
     case 'fenster_geschlossen':
       return d.anlass ? (ANLASS[d.anlass] ?? d.anlass) : '';
     case 'box_schluessel_hinterlegt':
-    case 'techniker_angelegt':
       return [d.adresse, d.publicKey].filter(Boolean).join(' · ');
+    case 'techniker_angelegt':
+      return [d.adresse, d.publicKey, d.sshFingerabdruck ? `SSH ${d.sshFingerabdruck}` : null]
+        .filter(Boolean)
+        .join(' · ');
+    case 'techniker_ssh_schluessel_gesetzt':
+      return [
+        d.fingerabdruck,
+        d.bits ? `RSA ${d.bits}` : null,
+        d.vorher ? `ersetzt ${d.vorher}` : null,
+      ]
+        .filter(Boolean)
+        .join(' · ');
+    case 'techniker_ssh_schluessel_entfernt':
+      return d.fingerabdruck ? `${d.fingerabdruck} · der Zugang öffnet nur noch den Netzweg` : '';
     case 'box_schluessel_getauscht':
       return `${d.alt ?? '?'} → ${d.neu ?? '?'}`;
     case 'box_gesperrt':
