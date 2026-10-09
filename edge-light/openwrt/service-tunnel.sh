@@ -24,10 +24,12 @@
 #   2. Tunnel mit der dort zugeteilten Adresse einrichten (das Portal zeigt die
 #      fertige Befehlszeile):
 #        VP_SERVICE_PUBKEY='<server>' edge-light/openwrt/service-tunnel.sh root@192.168.1.1 10.10.16.5 [port]
-#   3. Optional die Web-App :8484 im Tunnel fuer Techniker-Adressen oeffnen
-#      (leer = wieder schliessen); aendert NUR diese eine Firewall-Regel:
-#        edge-light/openwrt/service-tunnel.sh root@<box> web 10.10.32.2 [10.10.32.x ...]
-#      Verlaesslich, weil WireGuard die Absenderadresse an das Geraet bindet.
+#      Damit ist auch die Web-App :8484 im Tunnel frei, fuer das ganze
+#      Techniker-Netz (siehe unten "Web-App im Tunnel").
+#   3. Nur altes Service-VPN oder engere Wahl: die Web-App :8484 fuer einzelne
+#      Adressen oeffnen (leer = wieder schliessen); aendert NUR diese eine
+#      Firewall-Regel:
+#        edge-light/openwrt/service-tunnel.sh root@<box> web 10.10.1.5 [10.10.1.x ...]
 #   4. Einen Tunnel vollstaendig abbauen (nach dem Wechsel den alten):
 #        edge-light/openwrt/service-tunnel.sh root@<box> abbauen wg_service
 #      Verweigert, solange die SSH-Sitzung ueber genau diesen Tunnel laeuft.
@@ -37,17 +39,37 @@
 #   (dann kennt der VPN-Server den privaten Schluessel - nur fuer Altbestand):
 #        VP_SERVICE_ZIEL=alt edge-light/openwrt/service-tunnel.sh root@<box> import <datei.conf>
 #
+# Anmeldung an der Box: das Skript ruft ssh auf. VP_SSH_KEY=<datei> nennt die
+# Schluesseldatei (ssh -i); ohne die Variable entscheidet ~/.ssh/config.
+#
 # Was eingerichtet wird (alles im Betriebssystem, kein Teil des Programms):
 #   - Schnittstelle (wg_wartung bzw. wg_service), persistent_keepalive 25
 #   - Firewall-Zone "service" (alle Tunnel-Schnittstellen): eingehend NUR SSH
-#     auf Port 2222 und Ping; kein Weiterleiten ins Kundennetz. Die Web-App
-#     :8484 hat keine Anmeldung und bleibt ausserhalb des Tunnels -
-#     erreichbar per ssh -p 2222 -L 8484:127.0.0.1:8484 root@<tunnel-ip>,
-#     oder fuer benannte Techniker-Adressen (Schritt 3)
-#   - eine Dropbear-Instanz je Tunnel, nur dort, nur mit Schluessel (RSA - der
-#     Dropbear des Mango kennt kein Ed25519); die SSH-Anmeldung im LAN bleibt
+#     auf Port 2222, Ping und die Web-App :8484 wie unten; kein Weiterleiten
+#     ins Kundennetz
+#   - eine Dropbear-Instanz je Tunnel, nur mit Schluessel (RSA - der Dropbear
+#     des Mango kennt kein Ed25519); die SSH-Anmeldung im LAN bleibt. Sie
+#     haengt an der ADRESSE des Tunnels (Option Interface), nicht an der
+#     Schnittstelle: solange der Tunnel unten ist, lauscht sie auf allen
+#     Adressen, und nur die Firewall-Zonen halten 2222 dann fern (WAN weist ab,
+#     das LAN nicht). DirectInterface bindet an die Schnittstelle, verliert die
+#     Bindung aber, sobald der Waechter die Schnittstelle neu startet - danach
+#     ist SSH im Tunnel tot (am Mango unter 25.12.5 belegt, mango.md)
 #   - Waechter (cron): wireguard_watchdog jede Minute, Neustart der
 #     Schnittstelle ohne Handshake seit 10 min
+#
+# Web-App im Tunnel (:8484, ohne eigene Anmeldung):
+#   wartung  frei fuer das ganze Techniker-Netz (VP_SERVICE_NET), Regel
+#            "Allow-Service-Web-Wartung". Die Schranke ist das Fenster am
+#            Wartungsserver: er laesst einen Techniker nur im offenen Fenster
+#            zu genau dieser Box durch. Die Box prueft selbst nur, dass das
+#            Paket durch den Tunnel kam (WireGuard nimmt vom Server nur
+#            Absender aus dem Techniker-Netz an) und an 2222, 8484 oder als
+#            Ping. WER es ist und OB ein Fenster offen ist, prueft sie nicht.
+#            VP_SERVICE_WEB=zu richtet den Tunnel ohne diese Regel ein; dann
+#            bleibt Schritt 3 je Adresse oder ssh -L 8484:127.0.0.1:8484.
+#   alt      nie fuer das Netz: im alten Service-VPN haengen auch
+#            Kundensysteme. Nur je Adresse (Schritt 3) oder per ssh -L.
 #
 # Erneut ausfuehrbar; der Schluessel bleibt erhalten.
 set -eu
@@ -56,6 +78,19 @@ TARGET="${1:?Ziel fehlt, z. B. root@192.168.1.1}"
 WHAT="${2:?\"key\", \"web <ip ...>\", \"abbauen <schnittstelle>\", \"status\" oder die Tunnel-Adresse fehlt}"
 ZIEL="${VP_SERVICE_ZIEL:-wartung}"
 HERE="$(cd "$(dirname "$0")" && pwd -P)"
+
+if [ -n "${VP_SSH_KEY:-}" ] && [ ! -r "$VP_SSH_KEY" ]; then
+  echo "FEHLER: VP_SSH_KEY=$VP_SSH_KEY ist keine lesbare Schluesseldatei" >&2
+  exit 1
+fi
+# box_ssh <ziel> <befehl> - ssh zur Box, mit VP_SSH_KEY als Schluesseldatei
+box_ssh() {
+  if [ -n "${VP_SSH_KEY:-}" ]; then
+    ssh -i "$VP_SSH_KEY" "$@"
+  else
+    ssh "$@"
+  fi
+}
 
 case "$ZIEL" in
   wartung)
@@ -66,6 +101,7 @@ case "$ZIEL" in
     PORT="${3:-51820}"
     SERVER_PUB="${VP_SERVICE_PUBKEY:-}"
     NET="${VP_SERVICE_NET:-10.10.32.0/24}"
+    WEB="${VP_SERVICE_WEB:-netz}"
     ;;
   alt)
     IFACE=wg_service
@@ -75,6 +111,7 @@ case "$ZIEL" in
     PORT="${3:-1001}"
     SERVER_PUB="${VP_SERVICE_PUBKEY:-LnLMuBG+dDEeaEKlQrdTlPifX2fk0hOaB/NFc/BudjE=}"
     NET="${VP_SERVICE_NET:-10.10.1.0/24}"
+    WEB="${VP_SERVICE_WEB:-zu}"
     ;;
   *)
     echo "FEHLER: VP_SERVICE_ZIEL ist \"wartung\" oder \"alt\", nicht \"$ZIEL\"" >&2
@@ -82,10 +119,24 @@ case "$ZIEL" in
     ;;
 esac
 
+# Web-App :8484 fuer das ganze Techniker-Netz - nur beim Wartungsserver.
+case "$ZIEL:$WEB" in
+  wartung:netz) WEB_NETZ="$NET" ;;
+  *:zu) WEB_NETZ="" ;;
+  alt:netz)
+    echo "FEHLER: VP_SERVICE_WEB=netz gibt es nur fuer den Wartungsserver - im alten Service-VPN haengen Kundensysteme (dort: web <adresse>)" >&2
+    exit 1
+    ;;
+  *)
+    echo "FEHLER: VP_SERVICE_WEB ist \"netz\" oder \"zu\", nicht \"$WEB\"" >&2
+    exit 1
+    ;;
+esac
+
 if [ "$WHAT" = key ]; then
   echo "--- WireGuard installieren und Schluessel ($ZIEL) erzeugen auf $TARGET"
   # shellcheck disable=SC2029 # KEYFILE kommt bewusst von hier
-  ssh "$TARGET" "KEYFILE='$KEYFILE' sh -s" <<'REMOTE'
+  box_ssh "$TARGET" "KEYFILE='$KEYFILE' sh -s" <<'REMOTE'
 set -e
 command -v wg >/dev/null 2>&1 || { apk update >/dev/null && apk add kmod-wireguard wireguard-tools >/dev/null; }
 mkdir -p /etc/wireguard && chmod 700 /etc/wireguard
@@ -105,9 +156,11 @@ REMOTE
 fi
 
 if [ "$WHAT" = status ]; then
-  ssh "$TARGET" 'wg show 2>/dev/null || echo "kein WireGuard aktiv"
+  # shellcheck disable=SC2016 # die Ausdruecke werten auf der Box aus
+  box_ssh "$TARGET" 'wg show 2>/dev/null || echo "kein WireGuard aktiv"
     echo "--- Tunnel in der Zone service: $(uci -q get firewall.vp_service.network || echo keine)"
-    echo "--- Dropbear: $(uci show dropbear 2>/dev/null | sed -n "s/^dropbear\.\([a-z_]*\)\.Interface=.\(.*\)./\1 -> \2/p" | tr "\n" " ")"'
+    echo "--- Dropbear: $(uci show dropbear 2>/dev/null | sed -n "s/^dropbear\.\([a-z_]*\)\.Interface=.\(.*\)./\1 -> \2/p" | tr "\n" " ")"
+    echo "--- Web-App 8484 im Tunnel: Techniker-Netz $(uci -q get firewall.vp_service_web_netz.src_ip || echo zu), einzelne Adressen $(uci -q get firewall.vp_service_web.src_ip || echo keine)"'
   exit 0
 fi
 
@@ -121,12 +174,12 @@ if [ "$WHAT" = web ]; then
     esac
   done
   if [ -n "$FROM" ]; then
-    echo "--- Web-App :8484 im Tunnel oeffnen fuer: $FROM"
+    echo "--- Web-App :8484 im Tunnel oeffnen fuer einzelne Adressen: $FROM"
   else
-    echo "--- Web-App :8484 im Tunnel wieder schliessen"
+    echo "--- Web-App :8484 im Tunnel: Freigabe fuer einzelne Adressen schliessen"
   fi
   # shellcheck disable=SC2029 # die Adressen kommen bewusst von hier
-  ssh "$TARGET" "FROM='$FROM' sh -s" <<'REMOTE'
+  box_ssh "$TARGET" "FROM='$FROM' sh -s" <<'REMOTE'
 set -e
 uci -q delete firewall.vp_service_web || true
 if [ -n "$FROM" ]; then
@@ -141,6 +194,9 @@ fi
 uci commit firewall
 /etc/init.d/firewall reload >/dev/null 2>&1
 nft list chain inet fw4 input_service | grep -E 'dport (2222|8484)' | sed 's/^[[:space:]]*/    /'
+if uci -q get firewall.vp_service_web_netz >/dev/null; then
+  echo "    (die Freigabe fuer das Techniker-Netz gehoert zum Tunnel wg_wartung und bleibt)"
+fi
 REMOTE
   exit 0
 fi
@@ -154,7 +210,7 @@ if [ "$WHAT" = abbauen ]; then
   esac
   echo "--- Tunnel $WEG auf $TARGET abbauen"
   # shellcheck disable=SC2029 # die Werte kommen bewusst von hier
-  ssh "$TARGET" "WEG='$WEG' WEG_KEYS='$WEG_KEYS' WEG_DROPBEAR='$WEG_DROPBEAR' sh -s" <<'REMOTE'
+  box_ssh "$TARGET" "WEG='$WEG' WEG_KEYS='$WEG_KEYS' WEG_DROPBEAR='$WEG_DROPBEAR' sh -s" <<'REMOTE'
 set -e
 # Nicht den Ast absaegen, auf dem man sitzt: laeuft diese SSH-Sitzung ueber
 # genau diesen Tunnel, waere die Box danach nur noch vor Ort erreichbar.
@@ -169,8 +225,10 @@ ifdown "$WEG" 2>/dev/null || true
 uci -q delete "network.$WEG" || true
 uci -q delete "network.${WEG}_peer" || true
 uci -q del_list firewall.vp_service.network="$WEG" || true
+# Die Freigabe der Web-App fuer das Techniker-Netz gehoert zum Wartungsserver.
+if [ "$WEG" = wg_wartung ]; then uci -q delete firewall.vp_service_web_netz || true; fi
 if [ -z "$(uci -q get firewall.vp_service.network)" ]; then
-  for s in vp_service vp_service_ssh vp_service_ping vp_service_web; do uci -q delete "firewall.$s" || true; done
+  for s in vp_service vp_service_ssh vp_service_ping vp_service_web vp_service_web_netz; do uci -q delete "firewall.$s" || true; done
 fi
 uci -q delete "dropbear.$WEG_DROPBEAR" || true
 uci commit network
@@ -217,11 +275,11 @@ if [ "$WHAT" = import ]; then
     exit 1
   }
   echo "--- Schluessel aus $CONF uebernehmen (Adresse $ADDR, Server $ENDPOINT:$PORT)"
-  printf '%s\n' "$PRIV" | ssh "$TARGET" 'umask 077; mkdir -p /etc/wireguard && cat > /etc/wireguard/vp-service.key'
+  printf '%s\n' "$PRIV" | box_ssh "$TARGET" 'umask 077; mkdir -p /etc/wireguard && cat > /etc/wireguard/vp-service.key'
   if [ -n "$PSK" ]; then
-    printf '%s\n' "$PSK" | ssh "$TARGET" 'umask 077; cat > /etc/wireguard/vp-service.psk'
+    printf '%s\n' "$PSK" | box_ssh "$TARGET" 'umask 077; cat > /etc/wireguard/vp-service.psk'
   else
-    ssh "$TARGET" 'rm -f /etc/wireguard/vp-service.psk'
+    box_ssh "$TARGET" 'rm -f /etc/wireguard/vp-service.psk'
   fi
 else
   case "$WHAT" in
@@ -242,16 +300,21 @@ case "$SERVER_PUB" in
 esac
 
 echo "--- Waechter kopieren"
-ssh "$TARGET" 'mkdir -p /usr/libexec/vp-edge-light && cat > /usr/libexec/vp-edge-light/service-tunnel-watch.sh && chmod 0755 /usr/libexec/vp-edge-light/service-tunnel-watch.sh' \
+box_ssh "$TARGET" 'mkdir -p /usr/libexec/vp-edge-light && cat > /usr/libexec/vp-edge-light/service-tunnel-watch.sh && chmod 0755 /usr/libexec/vp-edge-light/service-tunnel-watch.sh' \
   <"$HERE/files/usr/libexec/vp-edge-light/service-tunnel-watch.sh"
 
 echo "--- Tunnel $IFACE $ADDR -> $ENDPOINT:$PORT einrichten ($ZIEL)"
 # shellcheck disable=SC2029 # die Werte kommen bewusst von hier
-ssh "$TARGET" "IFACE='$IFACE' KEYFILE='$KEYFILE' DROPBEAR='$DROPBEAR' ADDR='$ADDR' PORT='$PORT' ENDPOINT='$ENDPOINT' SERVER_PUB='$SERVER_PUB' NET='$NET' sh -s" <<'REMOTE'
+box_ssh "$TARGET" "IFACE='$IFACE' KEYFILE='$KEYFILE' DROPBEAR='$DROPBEAR' ADDR='$ADDR' PORT='$PORT' ENDPOINT='$ENDPOINT' SERVER_PUB='$SERVER_PUB' NET='$NET' WEB_NETZ='$WEB_NETZ' sh -s" <<'REMOTE'
 set -e
 [ -s "$KEYFILE" ] || { echo "FEHLER: kein Schluessel $KEYFILE - erst: service-tunnel.sh <ziel> key" >&2; exit 1; }
 command -v wg >/dev/null 2>&1 || { echo "FEHLER: wireguard-tools fehlt - erst: service-tunnel.sh <ziel> key" >&2; exit 1; }
 PSKFILE="${KEYFILE%.key}.psk"
+
+# Stand der Schnittstelle vor und nach der Aenderung - nur zum Vergleich auf
+# der Box, damit ein erneuter Lauf mit denselben Werten den Tunnel nicht anfasst.
+tunnel_stand() { uci -q show "network.$IFACE"; uci -q show "network.${IFACE}_peer"; }
+STAND_ALT="$(tunnel_stand || true)"
 
 uci -q delete "network.$IFACE" || true
 uci set "network.$IFACE=interface"
@@ -297,11 +360,29 @@ uci set firewall.vp_service_ping.proto='icmp'
 uci set firewall.vp_service_ping.icmp_type='echo-request'
 uci set firewall.vp_service_ping.family='ipv4'
 uci set firewall.vp_service_ping.target='ACCEPT'
+# Web-App :8484 fuer das ganze Techniker-Netz: nur am Tunnel zum Wartungsserver.
+# Die Regel haengt am Absender, nicht an der Schnittstelle - das genuegt, weil
+# WireGuard einen Absender aus diesem Netz nur ueber wg_wartung annimmt. Ein
+# zweiter Tunnel in der Zone (altes Service-VPN) bekommt damit nichts geoeffnet,
+# und seine Einrichtung laesst die Regel stehen.
+if [ "$IFACE" = wg_wartung ]; then
+  uci -q delete firewall.vp_service_web_netz || true
+  if [ -n "$WEB_NETZ" ]; then
+    uci set firewall.vp_service_web_netz=rule
+    uci set firewall.vp_service_web_netz.name='Allow-Service-Web-Wartung'
+    uci set firewall.vp_service_web_netz.src='service'
+    uci set firewall.vp_service_web_netz.proto='tcp'
+    uci set firewall.vp_service_web_netz.dest_port='8484'
+    for n in $(echo "$WEB_NETZ" | tr ',' ' '); do uci add_list firewall.vp_service_web_netz.src_ip="$n"; done
+    uci set firewall.vp_service_web_netz.target='ACCEPT'
+  fi
+fi
 
 uci -q delete "dropbear.$DROPBEAR" || true
 uci set "dropbear.$DROPBEAR=dropbear"
 uci set "dropbear.$DROPBEAR.enable=1"
 uci set "dropbear.$DROPBEAR.Port=2222"
+# Interface, nicht DirectInterface: Begruendung im Kopf dieser Datei.
 uci set "dropbear.$DROPBEAR.Interface=$IFACE"
 uci set "dropbear.$DROPBEAR.PasswordAuth=off"
 uci set "dropbear.$DROPBEAR.RootPasswordAuth=off"
@@ -309,6 +390,7 @@ uci set "dropbear.$DROPBEAR.RootPasswordAuth=off"
 uci commit network
 uci commit firewall
 uci commit dropbear
+STAND_NEU="$(tunnel_stand || true)"
 
 # Waechter: ersetzt nur die eigenen Zeilen dieser Schnittstelle in der crontab
 touch /etc/crontabs/root
@@ -327,18 +409,49 @@ cat /tmp/crontab.vp > /etc/crontabs/root && rm -f /tmp/crontab.vp
 /etc/init.d/cron restart
 
 /etc/init.d/firewall reload >/dev/null 2>&1
-/etc/init.d/dropbear reload
-echo "eingerichtet: $IFACE $ADDR, Firewall-Zone service (SSH 2222, Ping), Dropbear 2222 nur Schluessel, Waechter"
+if [ -n "$WEB_NETZ" ]; then WEB_TEXT=", Web-App 8484 fuer $WEB_NETZ"; else WEB_TEXT=""; fi
+echo "eingerichtet: $IFACE $ADDR, Firewall-Zone service (SSH 2222, Ping$WEB_TEXT), Dropbear 2222 nur Schluessel, Waechter"
+# Erst die Schnittstelle, dann Dropbear: die Instanz haengt an der Adresse des
+# Tunnels. Ohne Adresse meldet Dropbear "has no suitable IP address(es)" und
+# lauscht auf ALLEN Adressen, bis die Schnittstelle da ist.
 # netifd liest Protokoll-Skripte nur beim Start ein: direkt nach der
 # Installation von wireguard-tools reicht ein reload nicht (am Mango gefunden).
+oben() { ubus call "network.interface.$IFACE" status 2>/dev/null | grep -q '"up": true'; }
 if ubus call network get_proto_handlers 2>/dev/null | grep -q '"wireguard"'; then
-  /etc/init.d/network reload
+  # Nur diese eine Schnittstelle, und nur wenn sich an ihr etwas geaendert hat:
+  # ifup liest die Konfiguration neu ein und startet sie (die Gegenstelle liest
+  # netifd sonst nicht neu). "/etc/init.d/network reload" setzt am Mango auch
+  # den Switch zurueck - WAN und LAN sind dann einige Sekunden ohne Link, der
+  # Tunnel startet ein zweites Mal, und Dropbear lauscht so lange auf allen
+  # Adressen (gemessen am 09.10.2026, mango.md).
+  if [ "$STAND_ALT" != "$STAND_NEU" ] || ! oben; then
+    ifup "$IFACE"
+    sleep 1
+  else
+    echo "Tunnel unveraendert - Schnittstelle bleibt oben"
+  fi
+  i=0
+  until oben || [ "$i" -ge 20 ]; do
+    i=$((i + 1))
+    sleep 1
+  done
+  oben || echo "HINWEIS: $IFACE ist nach 20 s nicht oben (ifstatus $IFACE) - Dropbear meldet dann \"no suitable IP address(es)\" und lauscht im Tunnel, sobald die Schnittstelle da ist"
+  /etc/init.d/dropbear reload
 else
+  # Hier geht es nicht anders herum: der Neustart beendet diese Sitzung. Dropbear
+  # muss die neue Instanz vorher kennen, dann laedt es sich selbst neu, sobald
+  # die Schnittstelle da ist (interface-Trigger von procd).
   echo "netifd kennt wireguard noch nicht - Netzwerk-Neustart in 2 s (WLAN/LAN kurz weg)"
+  echo "die folgende Dropbear-Meldung \"no suitable IP address(es)\" ist dabei kein Fehler"
+  /etc/init.d/dropbear reload
   (sleep 2; /etc/init.d/network restart) >/dev/null 2>&1 </dev/null &
 fi
 REMOTE
 
 echo "--- fertig. Pruefen: ssh $TARGET wg show $IFACE"
 echo "    Zugang ueber den Tunnel: ssh -p 2222 root@$ADDR"
-echo "    Web-App ueber den Tunnel: ssh -p 2222 -L 8484:127.0.0.1:8484 root@$ADDR  -> http://127.0.0.1:8484"
+if [ -n "$WEB_NETZ" ]; then
+  echo "    Web-App ueber den Tunnel: http://$ADDR:8484 (aus $WEB_NETZ, im offenen Fenster)"
+else
+  echo "    Web-App ueber den Tunnel: ssh -p 2222 -L 8484:127.0.0.1:8484 root@$ADDR  -> http://127.0.0.1:8484"
+fi
