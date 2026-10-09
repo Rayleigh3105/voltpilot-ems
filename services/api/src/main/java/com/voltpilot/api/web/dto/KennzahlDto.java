@@ -154,6 +154,8 @@ public final class KennzahlDto {
      * Die laufende Bezugsbasis am Register-Eintrag (AP-17 IP-8, B3) oder {@code null}: {@code fassung} ist die laufende
      * freigegebene Fassung, sonst die jüngste. Das Wort „Energieleistungskennzahl“ leitet der Leser aus
      * {@code freigabe_status = freigegeben} ab — es steht an der Kennzahl, nicht in ihr.
+     * {@code fassung} und {@code freigabeStatus} sind beide {@code null}, solange die Basis angelegt, aber noch keine
+     * erste Fassung gebildet ist (B1: {@code anlegen} ohne {@code entwerfen}) - ein erreichbarer Zustand, kein Fehler.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Bezugsbasis(String kennzeichen, Integer fassung, String freigabeStatus, boolean vorlaeufig) {}

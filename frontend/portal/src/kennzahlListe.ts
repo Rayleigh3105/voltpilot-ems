@@ -235,12 +235,16 @@ export function karteMitBasis(k: Kennzahl, leit: boolean): KarteMitBasis {
 }
 
 /** Der Stand einer Bezugsbasis ohne freigegebene Fassung, kurz neben ihrem Kennzeichen. */
-const BASIS_STAND: Record<NonNullable<Kennzahl['bezugsbasis']>['freigabe_status'], string> = {
+const BASIS_STAND: Record<NonNullable<NonNullable<Kennzahl['bezugsbasis']>['freigabe_status']>, string> = {
   entwurf: 'im Entwurf',
   beantragt: 'zur Freigabe',
   abgelehnt: 'abgelehnt',
   freigegeben: 'freigegeben',
 };
+
+/** Wie `BASIS_STAND`, aber `null` (B1: angelegt, noch keine Fassung gebildet) spricht nie eine erfundene Null. */
+const basisStandWort = (status: NonNullable<Kennzahl['bezugsbasis']>['freigabe_status']): string =>
+  status === null ? 'ohne Fassung' : BASIS_STAND[status];
 
 /** „12 Monate, 10 davon mit Wert.“ - der Satz zur kleinen Linie (sie selbst ist nur ein Bild). */
 export function linieSatz(werte: readonly (string | null)[]): string {
@@ -256,7 +260,7 @@ export function reiheOhneBasis(k: Kennzahl): ReiheOhneBasis {
     ...basisVon(k, a),
     art: 'ohne',
     vorjahr: vorjahrText(a?.vorjahr ?? null),
-    bezugsbasis: b ? `${b.kennzeichen} ${BASIS_STAND[b.freigabe_status]}` : null,
+    bezugsbasis: b ? `${b.kennzeichen} ${basisStandWort(b.freigabe_status)}` : null,
     linie: miniLinie(werte),
     linieText: linieSatz(werte),
   };

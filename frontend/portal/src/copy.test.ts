@@ -102,6 +102,8 @@ import { STAND_AM, bannerTitel } from './standAm';
 import { KENNZEICHEN as BERICHT_KENNZEICHEN, SAETZE as BERICHT_SAETZE, VERBOTENE_WOERTER as BERICHT_VERBOTEN } from './uemsBericht';
 import { FLAECHE as STEUERUNG_FLAECHE, flaechenSatz as steuerungFlaechenSatz, KUNDENWORT as GEMEINSAME_STEUERUNG, platzhalter as steuerungPlatzhalter, SAETZE as STEUERUNG_SAETZE, satz as steuerungSatz } from './uemsGemeinsameSteuerung';
 import * as KK from './kennzahlKarte';
+import * as KL from './kennzahlListe';
+import { referenzListe } from './test/kennzahlListeFixtures';
 import * as BS from './berichtSeite';
 import * as NB from './nachweisBerichte';
 import { berichtAm, detailAm, entwurfAm, heutigeWerteAm, nameHeuteAm, standAm, vergleichAm } from './test/berichtFixtures';
@@ -179,7 +181,7 @@ import { ERKLAER_WOERTER_HOECHSTENS, NORMWORT, erklaerWoerter, erklaerZeilen, wo
 import * as ND from './nachweisDokumente';
 import { mbKurzzeile, mbStatus } from './managementbewertungBild';
 import { aufgabenStatus } from './aufgabenBild';
-import type { EnergiemanagementDokument, Feststellung, FeststellungStand, InternesAudit } from './api';
+import type { EnergiemanagementDokument, Feststellung, FeststellungStand, InternesAudit, Kennzahl, KennzahlAuswertung } from './api';
 import { BEGRIFFE, fachwortZeile, NORMWOERTER_IM_FACHWORT, type BegriffSchluessel } from './begriffe';
 import {
   UEMS_AUF_KURS,
@@ -1798,6 +1800,35 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
   it('die Flächen und ihr Modul stehen im Bestand des Wächters', () => {
     const dateien = customerFiles().map((f) => f.slice(SRC.length + 1).replace(/\\/g, '/'));
     for (const rel of FLAECHEN) expect(dateien).toContain(rel);
+  });
+
+  /**
+   * Fix vp-kennzahl-undefined: eine Bezugsbasis kann angelegt sein, ohne schon eine erste Fassung zu tragen (B1) -
+   * `freigabe_status` kommt dann vom Server als `null`. Die Liste „Kennzahlen“ darf das NIE als wörtliches
+   * „undefined“/„null“ neben dem Kennzeichen zeigen (IP-8-Grundsatz: kein Wert ist eine erfundene Null).
+   */
+  it('eine Bezugsbasis ohne Fassung spricht „ohne Fassung“, nie ein wörtliches undefined/null', () => {
+    const kz21 = referenzListe().find((k) => k.kennzeichen === 'KZ-0021') as Kennzahl;
+    const ohneFassung: Kennzahl = { ...kz21, bezugsbasis: { kennzeichen: 'BB-0006', fassung: null, freigabe_status: null, vorlaeufig: false } };
+    const reihe = KL.reiheOhneBasis(ohneFassung);
+    expect(reihe.bezugsbasis).toBe('BB-0006 ohne Fassung');
+  });
+
+  it('Copy-Wächter: kein sichtbarer Text der Liste „Kennzahlen“ trägt je ein undefined/null', () => {
+    const kz21 = referenzListe().find((k) => k.kennzeichen === 'KZ-0021') as Kennzahl;
+    const ohneFassung: Kennzahl = {
+      ...kz21,
+      id: 'c0de0000-0000-4000-8000-00000000a900',
+      kennzeichen: 'KZ-0900',
+      bezugsbasis: { kennzeichen: 'BB-0006', fassung: null, freigabe_status: null, vorlaeufig: false },
+      // Zum Beobachten (wie BB-0006/BB-0007 im Fehlerbild): kein Urteil, darum ohne `vergleich`.
+      auswertung: { ...(kz21.auswertung as KennzahlAuswertung), vergleich: null },
+    };
+    const liste = KL.kennzahlenListe([...referenzListe(), ohneFassung]);
+    expect(liste.ohne.map((k) => k.kennzeichen)).toContain('KZ-0900');
+    const texte = [...liste.mit, ...liste.ohne].flatMap((k) => Object.values(k)).filter((v): v is string => typeof v === 'string');
+    const treffer = texte.filter((t) => /\b(null|undefined)\b/.test(t));
+    expect(treffer).toEqual([]);
   });
 
   /**

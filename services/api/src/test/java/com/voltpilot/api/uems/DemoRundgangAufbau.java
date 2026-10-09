@@ -216,7 +216,9 @@ class DemoRundgangAufbau {
                 + "energetische Bewertung, Korrektur, Import und Einsicht ergänzt. Kennzahlen: " + lauf2);
 
         // Runde 3 - Demo-Füllung Auswerten (Konzept a1, Entscheid 12): passende Zähler, Bühnen-Bestand bis 03/2029,
-        // BB-0001 Fassung 2 wie die Referenzwelt, Kennzahlen gerechnet auf der Bühne, BB-0006/BB-0007 neu gefasst.
+        // BB-0001 Fassung 2 wie die Referenzwelt, Kennzahlen gerechnet auf der Bühne, BB-0006/BB-0007 jetzt mit
+        // Fassung (bezugsbasisFuer blieb an ihnen in Runde 2 an "keine_werte" ohne jede Fassung stehen, weil die
+        // Kennzahl vor der rückwirkenden Korrektur unten noch keinen Monatswert im Referenzzeitraum hatte).
         // Die Kennzahlen rechnet die Bühne: PruefumgebungUhr stellt den Kennzahl-Lauf (K1, PR #1428). Ohne K1 trügen die
         // Werte 2027-2029 ein berechnet_am in der Zukunft, und die erste echte Ablesung hielte die Kaskade der API an.
         assertThat(kennzahlen.rechenzeit(Instant.now())).as("der Kennzahl-Lauf rechnet auf der Bühne (K1)")
@@ -231,8 +233,23 @@ class DemoRundgangAufbau {
         // Fenster des Regellaufs von 24 Monaten); danach rechnet der Regellauf den Rest, beides auf der Bühne.
         anlaesse += kaskadeLeeren();
         KennzahlLauf.Lauf buehne = kennzahlen.lauf(Instant.now());
-        bezugsbasisNeuGefasst("KZ-0021", "BZ-2");
-        bezugsbasisNeuGefasst("KZ-0023", "BZ-2");
+        bezugsbasisNeuGefasst("KZ-0021", "BZ-2", "2026-01/2026-03", "2026-04-01");
+        bezugsbasisNeuGefasst("KZ-0023", "BZ-2", "2026-01/2026-03", "2026-04-01");
+        // vp-kennzahl-undefined: BB-0006/BB-0007 müssen eine freigegebene Fassung tragen - sonst zeigt die Liste
+        // „Kennzahlen” im Portal wörtlich „BB-0006 undefined” statt eines Freigabe-Stands.
+        for (String kz : List.of("KZ-0021", "KZ-0023")) {
+            JsonNode kennzahl = null;
+            for (JsonNode k : lies("/api/v1/kennzahlen").path("kennzahlen")) {
+                if (kz.equals(k.path("kennzeichen").asText())) {
+                    kennzahl = k;
+                }
+            }
+            assertThat(kennzahl).as(kz + " existiert").isNotNull();
+            assertThat(kennzahl.path("bezugsbasis").path("freigabe_status").asText(null))
+                    .as(kz + ": die Bezugsbasis " + kennzahl.path("bezugsbasis").path("kennzeichen").asText()
+                            + " trägt eine freigegebene Fassung")
+                    .isEqualTo("freigegeben");
+        }
         System.out.println("Rundgang Runde 3: passende Zähler, Bühnen-Bestand bis 03/2029, BB-0001 Fassung 2 "
                 + "(Referenzwelt). Kaskade: " + anlaesse + " Anlässe, Kennzahlen auf der Bühne: " + buehne);
 
@@ -1351,22 +1368,41 @@ class DemoRundgangAufbau {
     }
 
     /**
-     * Die Bezugsbasis einer Kennzahl, deren Berechnung sich geändert hat ({@link #kennzahlenPassend}), neu gefasst:
-     * dieselbe Referenzperiode aus den neu gerechneten Werten, dasselbe „gilt ab“ - die neue Fassung ersetzt die alte ganz
-     * (Anpassungsgrund „Grundlage korrigiert“). Über die Routen, wie {@link #bezugsbasisFuer}. Idempotent: nur, solange
-     * die Bezugsbasis eine einzige Fassung hat.
+     * Die Bezugsbasis einer Kennzahl, deren Berechnung sich geändert hat ({@link #kennzahlenPassend}), auf den
+     * aktuellen Stand: hatte {@link #bezugsbasisFuer} in Runde 2 noch keinen Monatswert im Referenzzeitraum (vor der
+     * rückwirkenden Korrektur, Fehler {@code keine_werte}) und blieb darum ganz ohne Fassung, bildet diese Methode
+     * Fassung 1 direkt mit denselben Eckdaten nach; bestand schon eine (noch nicht freigegebene) Fassung mit der
+     * alten Zähler-Definition, ersetzt eine neue Fassung 2 sie ganz (Anpassungsgrund „Grundlage korrigiert“). Über
+     * die Routen, wie {@link #bezugsbasisFuer}. Idempotent: wirkt nur, solange die Basis ohne Fassung ist oder ihre
+     * einzige Fassung noch nicht freigegeben ist.
      */
-    private void bezugsbasisNeuGefasst(String kennzeichen, String nennerKennzeichen) throws Exception {
+    private void bezugsbasisNeuGefasst(String kennzeichen, String nennerKennzeichen, String referenzperiode, String giltAb)
+            throws Exception {
         String kid = kennzahlId(kennzeichen);
         if (kid == null) {
             return;
         }
         JsonNode basen = lies("/api/v1/kennzahlen/" + kid + "/bezugsbasen").path("bezugsbasen");
-        if (basen.size() != 1 || basen.get(0).path("fassungen").size() != 1) {
+        if (basen.size() != 1) {
             return;
         }
-        JsonNode f1 = basen.get(0).path("fassungen").get(0);
         String basis = "/api/v1/kennzahlen/" + kid + "/bezugsbasen/" + basen.get(0).get("id").asText();
+        JsonNode fassungen = basen.get(0).path("fassungen");
+        if (fassungen.isEmpty()) {
+            if (roh("POST", basis + "/fassungen", m("referenzperiode", referenzperiode, "methode", "verhaeltnis",
+                    "variablen", List.of(bezugsgroesseIdRoute(nennerKennzeichen)), "toleranz_prozent", "2.0",
+                    "wiedervorlage_monate", 12, "begruendung", "Erstfassung aus dem Referenzzeitraum 2026.",
+                    "gilt_ab", giltAb)) >= 400) {
+                return;
+            }
+            roh("POST", basis + "/fassungen/1/beantragen", m("begruendung", "Zur Freigabe vorgelegt."));
+            roh("POST", basis + "/fassungen/1/freigeben", m("begruendung", "Nach Prüfung freigegeben."));
+            return;
+        }
+        if (fassungen.size() != 1 || "freigegeben".equals(fassungen.get(0).path("freigabe_status").asText())) {
+            return;
+        }
+        JsonNode f1 = fassungen.get(0);
         if (roh("POST", basis + "/fassungen", m("referenzperiode", f1.path("referenzperiode").asText(),
                 "methode", "verhaeltnis", "variablen", List.of(bezugsgroesseIdRoute(nennerKennzeichen)),
                 "toleranz_prozent", "2.0", "wiedervorlage_monate", 12, "anpassungsgruende", List.of("grundlage_korrigiert"),
