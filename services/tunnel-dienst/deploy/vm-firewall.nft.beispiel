@@ -1,0 +1,61 @@
+# /etc/nftables.d/vm-firewall.nft  (root:root 0644) - MUSTER
+#
+# Eigene Firewall der Wartungs-VM: die zweite Schranke neben der Tabelle
+# "inet voltpilot_wartung" des Tunnel-Dienstes. Der Dienst legt sie nicht an;
+# dieses Muster ist an die eigene VM anzupassen (README, "Eigene Firewall der VM").
+#
+#   - Hinein kommt nur: SSH aus dem Verwaltungsnetz, WireGuard, Ping, DHCP -
+#     und aus dem Tunnel die Schlüsselausgabe (nur von Boxen, nur ihr Port).
+#   - Weitergeleitet wird nur Tunnel -> Tunnel. Was davon durchgeht, entscheidet
+#     vorher die Tabelle des Dienstes; fiele sie aus, bliebe der Weg aus dem
+#     Tunnel in die anderen Netze der VM trotzdem zu.
+#   - Priorität "filter + 10": die Tabelle des Dienstes (Priorität "filter")
+#     urteilt zuerst, ihre Zähler bleiben aussagekräftig. Ein drop dort ist
+#     endgültig, ein accept hier hebt ihn nicht auf.
+#
+# Die beiden ersten Zeilen ersetzen NUR diese Tabelle. Deshalb lässt sich die
+# Datei einzeln laden, ohne ein offenes Fenster zu schließen:
+#
+#     nft -f /etc/nftables.d/vm-firewall.nft
+#
+# NICHT `systemctl reload nftables`: das leert den ganzen Regelsatz, auch die
+# Menge der offenen Fenster.
+#
+# ANPASSEN: das Verwaltungsnetz für SSH; Port und Netze, wenn die Konfiguration
+# des Dienstes von den Vorgaben abweicht (VP_TUNNEL_SCHLUESSEL_PORT,
+# VP_TUNNEL_BOX_NETZ, VP_TUNNEL_TECHNIKER_NETZ, VP_TUNNEL_SCHNITTSTELLE).
+table inet filter
+delete table inet filter
+
+table inet filter {
+	chain input {
+		type filter hook input priority filter + 10; policy drop;
+		ct state established,related accept
+		iifname "lo" accept
+		meta l4proto { icmp, ipv6-icmp } accept
+		ct state invalid counter drop
+		# SSH nur aus dem Verwaltungsnetz - ANPASSEN, sonst sperrt die Regel aus.
+		ip saddr { 192.168.178.0/24 } tcp dport 22 counter accept
+		# WireGuard (wg-wartung)
+		udp dport 51820 counter accept
+		# Schlüsselausgabe des Tunnel-Dienstes: Box -> Server-Adresse im
+		# Techniker-Netz, nur dieser Port. Ohne diese Zeile bekommt keine Box
+		# einen Fenster-Schlüssel.
+		iifname "wg-wartung" ip saddr 10.10.16.0/20 ip daddr 10.10.32.1 tcp dport 8022 counter accept
+		# DHCP-Antworten, falls die VM ihre Adresse per DHCP bekommt
+		udp sport 67 udp dport 68 counter accept
+		ip6 saddr fe80::/10 udp sport 547 udp dport 546 counter accept
+		counter drop
+	}
+	chain forward {
+		type filter hook forward priority filter + 10; policy drop;
+		# Ohne diese Ausnahme verwirft "policy drop" jeden Tunnel-Verkehr,
+		# auch im offenen Fenster.
+		iifname "wg-wartung" oifname "wg-wartung" counter accept
+		limit rate 6/minute burst 5 packets log prefix "vp-vm forward verworfen: " level info
+		counter drop
+	}
+	chain output {
+		type filter hook output priority filter + 10; policy accept;
+	}
+}

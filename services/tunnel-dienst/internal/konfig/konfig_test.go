@@ -23,6 +23,24 @@ func TestVorgaben(t *testing.T) {
 		k.Zustand != "/var/lib/vp-tunnel-dienst" || k.ClientID != "voltpilot-tunnel-dienst" {
 		t.Fatalf("%+v", k)
 	}
+	// Die Schlüsselausgabe ist aus, solange ihr Port nicht eingestellt ist.
+	if k.SchluesselPort != 0 {
+		t.Fatalf("Schlüsselausgabe ohne Einstellung an: %d", k.SchluesselPort)
+	}
+}
+
+func TestSchluesselPort(t *testing.T) {
+	k, err := Lies(umgebung(map[string]string{"VP_TUNNEL_SCHLUESSEL_PORT": " 8022 "}), true)
+	if err != nil || k.SchluesselPort != 8022 {
+		t.Fatalf("%d %v", k.SchluesselPort, err)
+	}
+	// Unter 1024 bräuchte der Schalter ein Recht, das er nicht haben soll.
+	for _, schlecht := range []string{"0", "80", "1023", "65536", "-1", "achtzig", "8022,8023"} {
+		if _, err := Lies(umgebung(map[string]string{"VP_TUNNEL_SCHLUESSEL_PORT": schlecht}), true); err == nil ||
+			!strings.Contains(err.Error(), "VP_TUNNEL_SCHLUESSEL_PORT") {
+			t.Errorf("%q: %v", schlecht, err)
+		}
+	}
 }
 
 func TestSecretAusSystemdCredential(t *testing.T) {

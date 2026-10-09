@@ -33,6 +33,11 @@ type Konfig struct {
 	Zustand      string // Verzeichnis für letzter-soll.json und status.json
 
 	VerbindungenProtokollieren bool
+
+	// SchluesselPort: TCP-Port der Schlüsselausgabe auf der Server-Adresse im
+	// Techniker-Netz. 0 heißt abgeschaltet: kein Schalter, keine Regel in der
+	// Firewall-Basis.
+	SchluesselPort int
 }
 
 // Umgebung liest Variablen; in Tests ersetzbar.
@@ -72,6 +77,8 @@ func Lies(env Umgebung, ohneAPI bool) (Konfig, error) {
 	k.MaxEntfernen, err = zahl(env, "VP_TUNNEL_MAX_ENTFERNEN", "10")
 	add(err)
 	k.VerbindungenProtokollieren = wert(env, "VP_TUNNEL_VERBINDUNGEN_PROTOKOLLIEREN", "ja") != "nein"
+	k.SchluesselPort, err = schluesselPort(wert(env, "VP_TUNNEL_SCHLUESSEL_PORT", ""))
+	add(err)
 	if !gueltigerName(k.Schnittstelle) || len(k.Schnittstelle) > 15 || !gueltigerName(k.Tabelle) {
 		fehler = append(fehler, "VP_TUNNEL_SCHNITTSTELLE (höchstens 15 Zeichen)/VP_TUNNEL_NFT_TABELLE: nur Buchstaben, Ziffern, - und _")
 	}
@@ -114,6 +121,19 @@ func ports(text string) ([]int, error) {
 		liste = append(liste, p)
 	}
 	return liste, nil
+}
+
+// schluesselPort: leer heißt abgeschaltet. Unter 1024 bräuchte der Schalter
+// ein Recht, das er gerade nicht haben soll.
+func schluesselPort(text string) (int, error) {
+	if text == "" {
+		return 0, nil
+	}
+	p, err := strconv.Atoi(text)
+	if err != nil || p < 1024 || p > 65535 {
+		return 0, errors.New("VP_TUNNEL_SCHLUESSEL_PORT: Port zwischen 1024 und 65535 erwartet (leer: Schlüsselausgabe aus)")
+	}
+	return p, nil
 }
 
 func dauer(env Umgebung, name, vorgabe string, min, max time.Duration) (time.Duration, error) {
