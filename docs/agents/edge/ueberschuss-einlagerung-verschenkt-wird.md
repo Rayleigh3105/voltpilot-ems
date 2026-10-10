@@ -20,7 +20,8 @@ den Wolken-Pflichten. Cloud-Seite und Begründung: root `AGENTS.md`
   RUHT** - das könnte auch „bewusst zum Spitzenpreis einspeisen" heissen, also
   gilt der EINE richtige Diskriminator der Wolke: `cover_load_from_battery`
   (Netz ≈ 0, nie ein Verkaufsslot), plus die Tore jeder lokal GESTARTETEN
-  Richtung (`portableReady`).
+  Richtung (`portableReady`); läuft das Laden bereits, übersteht es einen
+  Lesefehler wie die Defizit-Deckung (`chargeReady`, drei Rücklesungen / 30 s).
 - **⚠ Die SoC-Bandgrenze der engen Ladeseite ist ENTFALLEN** (`HighSocCharge`
   samt `high_soc_charge`): sie griff nur zwischen `soc_max − 5` und `soc_max`
   und verweigerte deshalb den Live-Fall 10:14 (Speicher **19 %**, PV 39,354,

@@ -17,6 +17,13 @@ authoritative implementations + their proofs:
   registry FAILSAFE deliberately stays with the v1 fallback computation.
   Plan injection precedence: a fresh v1 plan controls the battery (shadow
   phase); the v2 plan (`internal/plan2`, `…/v2/plan`) drives the rest.
+  ⚠ The executors re-inject on the arbitration loop's own second, so after a
+  new schedule or a slot boundary the holder carries the command of the plan
+  or slot BEFORE - under the flags of the plan `applySetpoint` reads on that
+  tick. `applySetpoint` therefore runs the executors itself whenever the
+  standing v1 injection is for another plan or slot (`planExecutorOutdated`);
+  Herzogau 2026-10-10 17:45:07: the replaced plan's -1,866 kW went out for one
+  second against 5 kW of surplus.
   Proofs: `desired` units, `agent/arbitration_integration_test.go` (P1–P6
   in-process), `edge-app/test/e2e-v2-compose.sh` (compose rig).
 - **flowc compiler** (`nodered/flowc`): deterministic graph→NR-tabs with an

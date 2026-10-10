@@ -619,6 +619,14 @@ type ControlInfo struct {
 	// Confirm (0 after a held cycle). Shown as the technician's detail.
 	MismatchCycles    int `json:"mismatch_cycles,omitempty"`
 	UnconfirmedCycles int `json:"unconfirmed_cycles,omitempty"`
+	// HeldAt is the CheckedAt of the newest cycle that HELD (zero = none yet),
+	// FailedCycles the number of cycles since - mismatching and unanswered ones
+	// alike, which the two counters above keep apart. Together they bound how
+	// long a regulation the box started itself may ride out a failed readback
+	// (agent.runningReadbackHealthy). Internal to the core: no surface reads
+	// them, so they stay out of the JSON.
+	HeldAt       time.Time `json:"-"`
+	FailedCycles int       `json:"-"`
 	// Mode is WHICH kind of plan Layer 1 executed for this cycle: "normal" (the
 	// ordinary setpoint write), "release" (the neutral hand-back) or "native"
 	// (the native self-regulation primitive: the device was handed its own
