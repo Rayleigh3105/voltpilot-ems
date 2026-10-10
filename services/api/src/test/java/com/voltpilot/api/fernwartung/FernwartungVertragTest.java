@@ -77,7 +77,60 @@ class FernwartungVertragTest {
                 "/api/v1/admin/fernwartung/fenster",
                 "/api/v1/admin/fernwartung/fenster/{id}/schliessen",
                 "/api/v1/admin/fernwartung/protokoll",
-                "/api/v1/fernwartung/soll");
+                "/api/v1/fernwartung/soll",
+                "/api/v1/fernwartung/rueckmeldung");
+    }
+
+    /**
+     * Die Rückmeldung des Tunnel-Dienstes: eine Route, nur PUT, und die Form
+     * der Meldung ist in Vertrag, Java und Datenbank dieselbe. Was das Portal
+     * davon zeigt, steht an Box, Fenster und Übersicht.
+     */
+    @Test
+    void dieRueckmeldungStehtInVertragJavaUndMigrationGleich() throws IOException {
+        Map<String, Object> route = map(paths, "/api/v1/fernwartung/rueckmeldung");
+        assertThat(route).containsOnlyKeys("put");
+        assertThat(map(map(route, "put"), "responses")).containsOnlyKeys("204", "400", "401", "403", "413", "422");
+
+        Map<String, Object> meldung = schema("FernwartungRueckmeldungMeldung");
+        List<String> felder = komponenten(FernwartungRueckmeldung.Meldung.class);
+        assertThat(map(meldung, "properties").keySet()).containsExactlyInAnyOrderElementsOf(felder);
+        assertThat(meldung.get("required")).asList().containsExactlyInAnyOrderElementsOf(felder);
+        assertThat(meldung.get("additionalProperties")).isEqualTo(false);
+        assertThat(map(map(meldung, "properties"), "version").get("enum")).asList()
+                .containsExactly(FernwartungRueckmeldung.VERSION);
+        for (Object[] liste : new Object[][] {{"boxen", FernwartungRueckmeldung.BoxMeldung.class},
+                {"fenster", FernwartungRueckmeldung.FensterMeldung.class}}) {
+            Map<String, Object> eintraege = map(map(meldung, "properties"), (String) liste[0]);
+            assertThat(eintraege.get("maxItems")).isEqualTo(FernwartungRueckmeldung.MAX_EINTRAEGE);
+            List<String> spalten = komponenten((Class<?>) liste[1]);
+            assertThat(map(map(eintraege, "items"), "properties").keySet()).as((String) liste[0])
+                    .containsExactlyInAnyOrderElementsOf(spalten);
+            assertThat(map(eintraege, "items").get("required")).asList().containsExactlyInAnyOrderElementsOf(spalten);
+            assertThat(map(eintraege, "items").get("additionalProperties")).isEqualTo(false);
+        }
+
+        // Was das Portal zeigt: dieselben Angaben an Box, Fenster und Übersicht.
+        assertThat(map(map(map(schema("FernwartungBox"), "properties"), "rueckmeldung"), "properties").keySet())
+                .containsExactlyInAnyOrderElementsOf(komponenten(AdminFernwartungController.BoxRueckmeldungDto.class));
+        assertThat(map(map(map(schema("FernwartungFenster"), "properties"), "rueckmeldung"), "properties").keySet())
+                .containsExactlyInAnyOrderElementsOf(
+                        komponenten(AdminFernwartungController.FensterRueckmeldungDto.class));
+        assertThat(map(map(map(map(schema("FernwartungUebersicht"), "properties"), "rueckmeldungen"), "items"),
+                "properties").keySet())
+                .containsExactlyInAnyOrderElementsOf(komponenten(AdminFernwartungController.RueckmeldungDto.class));
+        for (String form : List.of("FernwartungBox", "FernwartungFenster")) {
+            assertThat(map(map(schema(form), "properties"), "rueckmeldung").get("nullable")).as(form)
+                    .isEqualTo(true);
+        }
+
+        // Die Spalten der Migration tragen dieselben Angaben, und keine andere.
+        String sql = lies("/db/migration/V20261010203000__fernwartung_rueckmeldung.sql");
+        assertThat(sql).contains("verbunden_seit     TIMESTAMPTZ,").contains("zuletzt_gefragt_um TIMESTAMPTZ,")
+                .contains("schluessel_abgeholt_um TIMESTAMPTZ").contains("gestartet_um      TIMESTAMPTZ NOT NULL")
+                .contains("schluesselausgabe BOOLEAN     NOT NULL");
+        assertThat(sql).doesNotContainIgnoringCase("public_key").doesNotContainIgnoringCase("adresse")
+                .doesNotContainIgnoringCase("fingerabdruck");
     }
 
     @Test

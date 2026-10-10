@@ -3,11 +3,23 @@
  * Zugänge lassen sich hier anlegen, sperren, entsperren und löschen wie auf dem Server: gelöscht
  * heißt aus der Liste, im Protokoll bleibt der Name. Ein SSH-Schlüssel lässt sich hinterlegen,
  * ersetzen und entfernen; der Fingerabdruck wird wie auf dem Server aus dem Schlüssel berechnet.
+ *
+ * Die Rückmeldung des Tunnel-Dienstes ist nachgebildet. `?fall=` wählt, was er meldet:
+ *   bereit (Vorgabe)   Boxen verbunden, Schlüssel abgeholt
+ *   nicht-abgeholt     Box verbunden und fragt, Schlüssel noch nicht abgeholt
+ *   fragt-nicht        Box verbunden, hat aber nie nach Schlüsseln gefragt (altes Skript)
+ *   ausgabe-aus        am Wartungsserver ist die Schlüsselausgabe aus
+ *   nicht-verbunden    die Box mit den offenen Fenstern ist nicht verbunden
+ *   keine-meldung      der Dienst holt ab, meldet aber nichts (Stand ohne Rückmeldung)
+ *   veraltet           letzte Meldung und letzter Abruf vor 25 Minuten (VM nicht erreichbar)
+ * Ein Fenster für „Kim (Tablet)" (ohne SSH-Schlüssel) steht in jedem Fall dabei; `?ansicht=box`
+ * zeigt statt der Seite die Karte der Box-Seite.
  */
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { AppShell } from '../src/shell/AppShell';
 import { GeraeteBereich } from '../src/pages/admin/GeraeteBereich';
+import { FernwartungKarte } from '../src/components/FernwartungKarte';
 import { adminApi } from '../src/admin/adminApi';
 import { ApiError } from '../src/api';
 import { keycloak } from '../src/auth';
@@ -16,6 +28,7 @@ import {
   type FernwartungBox,
   type FernwartungFenster,
   type FernwartungProtokollEintrag,
+  type FernwartungRueckmeldung,
   type FernwartungServer,
   type FernwartungTechniker,
 } from '../src/adminFernwartung';
@@ -154,25 +167,82 @@ function sshFelder(eingabe: string): Pick<FernwartungTechniker, 'sshPublicKey' |
   return { sshPublicKey: `ssh-rsa ${base64}`, sshFingerabdruck: `SHA256:${abdruck}`, sshBits: p.bits };
 }
 
+// ── Was der nachgebildete Tunnel-Dienst meldet ──────────────────────────────
+type Fall = 'bereit' | 'nicht-abgeholt' | 'fragt-nicht' | 'ausgabe-aus' | 'nicht-verbunden' | 'keine-meldung' | 'veraltet';
+const FAELLE: Fall[] = ['bereit', 'nicht-abgeholt', 'fragt-nicht', 'ausgabe-aus', 'nicht-verbunden', 'keine-meldung', 'veraltet'];
+const parameter = new URLSearchParams(window.location.search);
+const gewaehlt = parameter.get('fall') as Fall | null;
+const fall: Fall = gewaehlt && FAELLE.includes(gewaehlt) ? gewaehlt : 'bereit';
+const vor = (ms: number) => new Date(Date.now() - ms).toISOString();
+/**
+ * Wann die API die letzte Meldung angenommen hat; null = nie. Wie im Betrieb kommt alle 30 s
+ * eine neue; beim Laden ist die letzte 12 s alt. Im Fall „veraltet" kam seit 25 Minuten keine.
+ */
+let letzteMeldung = jetzt - (fall === 'veraltet' ? 25 * 60_000 : 12_000);
+function gemeldetAm(): string | null {
+  if (fall === 'keine-meldung') return null;
+  if (fall !== 'veraltet') {
+    while (Date.now() - letzteMeldung >= 30_000) letzteMeldung += 30_000;
+  }
+  return new Date(letzteMeldung).toISOString();
+}
+const dienstStart = iso(-3 * 3_600_000);
+function rueckmeldungen(): FernwartungRueckmeldung[] {
+  const am = gemeldetAm();
+  if (!am) return [];
+  return [{ dienst: 'voltpilot-tunnel-dienst', zuletztAm: am, gestartetUm: dienstStart, schluesselausgabe: fall !== 'ausgabe-aus',
+    boxen: boxen.filter((b) => b.status === 'aktiv').length, fenster: boxen.flatMap((b) => b.laufendeFenster).length }];
+}
+/** Die Boxen mit dem, was der Dienst zu ihnen und ihren Fenstern zuletzt gemeldet hat. */
+function mitRueckmeldung(liste: FernwartungBox[]): FernwartungBox[] {
+  const am = gemeldetAm();
+  if (!am) return liste;
+  return liste.map((b) => {
+    if (b.status !== 'aktiv') return b; // eine gesperrte Box führt der Wartungsserver nicht
+    // Die erste Box ist seit zwei Stunden verbunden, die zweite war es schon beim Start des Dienstes.
+    const verbunden = fall === 'nicht-verbunden' && b.id === 'b1' ? null : b.id === 'b1' ? iso(-2 * 3_600_000) : dienstStart;
+    const fragt = verbunden && fall !== 'fragt-nicht' && fall !== 'ausgabe-aus';
+    return {
+      ...b,
+      rueckmeldung: { gemeldetAm: am, verbundenSeit: verbunden, zuletztGefragtUm: fragt ? new Date(new Date(am).getTime() - 9_000).toISOString() : null },
+      laufendeFenster: b.laufendeFenster.map((f) => {
+        // Ein Fenster, das jünger ist als die letzte Meldung, nennt sie noch nicht.
+        if (new Date(f.geoeffnetAm).getTime() > new Date(am).getTime()) return f;
+        const hatSsh = techniker.find((t) => t.id === f.technikerId)?.sshFingerabdruck != null;
+        const abgeholt = hatSsh && fragt && fall !== 'nicht-abgeholt';
+        return { ...f, rueckmeldung: { gemeldetAm: am, schluesselAbgeholtUm: abgeholt ? new Date(new Date(f.geoeffnetAm).getTime() + 4_000).toISOString() : null } };
+      }),
+    };
+  });
+}
+
 Object.assign(keycloak, { tokenParsed: { name: 'Alex Beispiel', email: 'alex@example.test', realm_access: { roles: ['platform-admin'] } } });
 Object.assign(adminApi, {
   fernwartung: async () => ({
     server, maxFensterMinuten: 1440,
-    abrufe: [{ dienst: 'voltpilot-tunnel-dienst', zuletztAm: new Date(Date.now() - 20_000).toISOString(),
+    abrufe: [{ dienst: 'voltpilot-tunnel-dienst', zuletztAm: vor(fall === 'veraltet' ? 25 * 60_000 + 3_000 : 20_000),
       peers: 2 + techniker.filter((t) => t.status === 'aktiv').length, fenster: boxen.flatMap((b) => b.laufendeFenster).length }],
+    rueckmeldungen: rueckmeldungen(),
     boxenAktiv: 2, boxenGesperrt: 1, technikerAktiv: techniker.filter((t) => t.status === 'aktiv').length,
     technikerGesperrt: techniker.filter((t) => t.status === 'gesperrt').length,
     fensterOffen: boxen.flatMap((b) => b.laufendeFenster).length, fensterGeplant: 0,
     stand: new Date().toISOString(),
   }),
-  fernwartungBoxen: async () => boxen,
+  fernwartungBoxen: async () => mitRueckmeldung(boxen),
+  fernwartungBox: async (ref: string) => {
+    const b = mitRueckmeldung(boxen).find((x) => x.edgeRef === ref);
+    if (!b) throw new ApiError(404, `Für ${ref} ist kein Tunnel-Schlüssel hinterlegt.`);
+    return b;
+  },
   fernwartungTechniker: async () => techniker,
   fernwartungProtokoll: async () => protokoll,
   fernwartungFensterOeffnen: async (i: { edgeRef: string; technikerId: string; grund: string; dauerMinuten: number }) => {
     const t = zugang(i.technikerId);
+    const jetztIso = new Date().toISOString();
     const f: FernwartungFenster = { ...offen, id: `f-${Date.now()}`, edgeRef: i.edgeRef, grund: i.grund,
-      technikerId: t.id, technikerName: t.name,
-      beginn: iso(0), ende: iso(i.dauerMinuten * 60_000), wirksamesEnde: iso(i.dauerMinuten * 60_000) };
+      technikerId: t.id, technikerName: t.name, beginn: jetztIso, geoeffnetAm: jetztIso,
+      ende: new Date(Date.now() + i.dauerMinuten * 60_000).toISOString(),
+      wirksamesEnde: new Date(Date.now() + i.dauerMinuten * 60_000).toISOString() };
     boxen = boxen.map((b) => (b.edgeRef === i.edgeRef ? { ...b, laufendeFenster: [...b.laufendeFenster, f] } : b));
     return f;
   },
@@ -232,8 +302,16 @@ Object.assign(adminApi, {
   },
 });
 
+/** Die Karte der Box-Seite (Plattform-Sicht) allein, wie sie unter „Technik & Diagnose" steht. */
+function BoxKarte() {
+  return <main style={{ maxWidth: 760, margin: '0 auto', padding: 'var(--vp-space-4)' }} data-testid="fixture-box-karte">
+    <FernwartungKarte edgeRef="edge-zay5sdd" />
+  </main>;
+}
+
 function Fixture() {
   const [page, setPage] = useState<PageId>('fernwartung');
+  if (parameter.get('ansicht') === 'box') return <BoxKarte />;
   return <AppShell page={page} onNavigate={setPage} isAdmin showOverview={false} showAddAnlage={false}
     counts={{ sites: 3, devices: 3 }} tenants={[]} tenantOverride={null} onTenantChange={() => {}}>
     <GeraeteBereich page={page} onNavigate={(r) => setPage(typeof r === 'string' ? r : r.page)} />

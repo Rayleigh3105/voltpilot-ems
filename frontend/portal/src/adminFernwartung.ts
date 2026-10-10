@@ -3,11 +3,16 @@
  * Plattform-Seite „Geräte › Fernwartung" und der Karte auf der Box-Seite.
  *
  * Das Portal führt den SOLL-Zustand (Schlüssel, Adressen, Fenster); ein
- * Tunnel-Dienst auf der Wartungs-VM holt ihn ab und setzt ihn um. Er meldet
- * nichts zurück. Deshalb trennt diese Schicht streng:
+ * Tunnel-Dienst auf der Wartungs-VM holt ihn ab und setzt ihn um. Seit der
+ * Rückmeldung (Fenster-Schlüssel, Schritt 4) meldet er, welche Box verbunden
+ * ist und welches Fenster seinen Schlüssel abgeholt hat. Diese Schicht trennt
+ * streng:
  *   - was im Portal steht (Fenster offen bis …),
  *   - wann der Dienst zuletzt abgeholt hat (`abrufLage`),
- *   - was niemand weiß (ob es auf dem Server wirkt, ob die Box verbunden ist).
+ *   - was der Dienst zuletzt gemeldet hat, mit dem Alter der Angabe
+ *     (`rueckmeldungLage`, `boxVerbindung`, `boxAnmeldung`),
+ *   - was niemand weiß: Fehlt die Meldung, ist sie alt oder nennt sie die Box
+ *     nicht, ist das „unbekannt" und nie „nicht verbunden".
  *
  * O3: der Kunde sieht davon nichts; alles hier ist Plattform-Admin.
  * E10: was nicht geht, bleibt sichtbar und nennt seinen Grund.
@@ -35,10 +40,45 @@ export interface FernwartungAbruf {
   fenster: number;
 }
 
+/**
+ * Die letzte Rückmeldung eines Tunnel-Dienstes. `zuletztAm` ist die Uhr der
+ * API beim Annehmen; was der Dienst meldet, weiß er erst seit `gestartetUm`.
+ */
+export interface FernwartungRueckmeldung {
+  dienst: string;
+  zuletztAm: string;
+  gestartetUm: string;
+  /** Gibt der Dienst den Boxen Schlüssel aus? */
+  schluesselausgabe: boolean;
+  boxen: number;
+  fenster: number;
+}
+
+/** Was der Tunnel-Dienst zuletzt zu einer Box gemeldet hat, angenommen um `gemeldetAm`. */
+export interface BoxRueckmeldung {
+  gemeldetAm: string;
+  /** null = gemeldet als nicht verbunden. */
+  verbundenSeit: string | null;
+  /** null = hat seit dem Start des Dienstes nicht nach Schlüsseln gefragt. */
+  zuletztGefragtUm: string | null;
+}
+
+/** Was der Tunnel-Dienst zuletzt zu einem Fenster gemeldet hat. */
+export interface FensterRueckmeldung {
+  gemeldetAm: string;
+  /** null = die Box hat den Schlüssel seit dem Start des Dienstes nicht abgeholt. */
+  schluesselAbgeholtUm: string | null;
+}
+
 export interface FernwartungUebersicht {
   server: FernwartungServer;
   maxFensterMinuten: number;
   abrufe: FernwartungAbruf[];
+  /**
+   * Je Dienstkonto die letzte Rückmeldung; leer, solange noch nie eine kam.
+   * Eine API vor der Rückmeldung liefert das Feld gar nicht - das zählt wie leer.
+   */
+  rueckmeldungen?: FernwartungRueckmeldung[];
   boxenAktiv: number;
   boxenGesperrt: number;
   technikerAktiv: number;
@@ -64,6 +104,8 @@ export interface FernwartungFenster {
   geoeffnetVon: string;
   geschlossenAm: string | null;
   geschlossenVon: string | null;
+  /** null oder fehlend = keine Meldung hat dieses Fenster genannt: unbekannt. */
+  rueckmeldung?: FensterRueckmeldung | null;
 }
 
 /**
@@ -88,6 +130,8 @@ export interface FernwartungBox {
   tenantName: string | null;
   /** Offene UND geplante Fenster dieser Box. */
   laufendeFenster: FernwartungFenster[];
+  /** null oder fehlend = keine Meldung hat diese Box genannt: unbekannt, nicht „nicht verbunden". */
+  rueckmeldung?: BoxRueckmeldung | null;
 }
 
 export interface FernwartungTechniker {
@@ -252,9 +296,143 @@ export function serverLage(server: FernwartungServer): Lage {
   };
 }
 
-/** Der Satz, den jede Fernwartungs-Fläche ehrlich mitträgt. */
-export const UNBEKANNT_SATZ =
-  'Ob ein Fenster auf dem Server wirkt und ob die Box gerade verbunden ist, meldet der Tunnel-Dienst nicht zurück.';
+// ── Rückmeldung des Tunnel-Dienstes (Fenster-Schlüssel, Schritt 4) ──────────
+
+/**
+ * Ab diesem Alter gilt eine Meldung als veraltet: Der Dienst meldet alle 30 s,
+ * nach drei Minuten ohne Meldung weiß das Portal nicht mehr, was jetzt gilt.
+ */
+export const RUECKMELDUNG_VERALTET_S = 180;
+
+/**
+ * In diesem Takt holen die Fernwartungs-Flächen den Stand neu, solange sie
+ * sichtbar sind: Der Tunnel-Dienst meldet alle 30 s, und ein „Stand: vor 20 s"
+ * darf nicht minutenlang stehen bleiben, während es längst nicht mehr stimmt.
+ */
+export const RUECKMELDUNG_TAKT_MS = 20_000;
+
+/** Die jüngste Rückmeldung über alle Dienstkonten, sonst null. */
+function letzteRueckmeldung(u: FernwartungUebersicht | null): FernwartungRueckmeldung | null {
+  return [...(u?.rueckmeldungen ?? [])].sort((a, b) => b.zuletztAm.localeCompare(a.zuletztAm))[0] ?? null;
+}
+
+/**
+ * So viel älter als die letzte Meldung darf eine Angabe sein und zählt noch zu
+ * ihr: Box, Fenster und Übersicht kommen aus getrennten Abrufen, zwischen
+ * denen eine neue Meldung eintreffen kann (der Dienst meldet alle 30 s).
+ */
+export const RUECKMELDUNG_NACHLAUF_S = 45;
+
+/** Steht diese Angabe in der letzten Meldung - oder stammt sie aus einer deutlich früheren? */
+function inLetzterMeldung(gemeldetAm: string, letzte: FernwartungRueckmeldung): boolean {
+  return new Date(letzte.zuletztAm).getTime() - new Date(gemeldetAm).getTime() <= RUECKMELDUNG_NACHLAUF_S * 1000;
+}
+
+/**
+ * Meldet der Tunnel-Dienst seinen Zustand? Fehlt die Meldung oder ist sie alt,
+ * sagt die Zeile genau das - und was daraus folgt: Die Angaben zu Boxen und
+ * Fenstern sind dann unbekannt.
+ */
+export function rueckmeldungLage(u: FernwartungUebersicht, jetzt: Date): Lage {
+  const letzte = letzteRueckmeldung(u);
+  if (!letzte) {
+    const holtAb = abrufLage(u, jetzt).ton === 'ok';
+    return {
+      ton: 'off',
+      titel: 'Tunnel-Dienst meldet keinen Zustand',
+      text: holtAb
+        ? 'Der Tunnel-Dienst holt den Soll-Stand ab, hat aber noch nie gemeldet, welche Box verbunden ist. Auf dem Wartungsserver läuft vermutlich ein Stand ohne Rückmeldung. Ob eine Box verbunden ist und ob sie einen Schlüssel abgeholt hat, ist deshalb nicht bekannt.'
+        : 'Der Tunnel-Dienst hat noch nie gemeldet, welche Box verbunden ist. Ob eine Box verbunden ist und ob sie einen Schlüssel abgeholt hat, ist deshalb nicht bekannt.',
+    };
+  }
+  const s = alterSek(letzte.zuletztAm, jetzt);
+  if (s > RUECKMELDUNG_VERALTET_S) {
+    return {
+      ton: 'warn',
+      titel: 'Meldung des Tunnel-Dienstes veraltet',
+      text: `Letzte Meldung vor ${alterText(s)}. Ob eine Box jetzt verbunden ist und ob sie einen Schlüssel abgeholt hat, ist nicht bekannt, bis der Dienst wieder meldet.`,
+    };
+  }
+  const ausgabe = letzte.schluesselausgabe
+    ? ''
+    : ' Die Schlüsselausgabe ist dort aus: Keine Box bekommt einen Fenster-Schlüssel.';
+  return {
+    ton: letzte.schluesselausgabe ? 'ok' : 'warn',
+    titel: 'Tunnel-Dienst meldet seinen Zustand',
+    text: `Letzte Meldung vor ${alterText(s)} (${letzte.boxen} Boxen, ${letzte.fenster} offene Fenster auf dem Wartungsserver). Der Dienst läuft seit ${zeitpunkt(letzte.gestartetUm, jetzt)}.${ausgabe}`,
+  };
+}
+
+export type BoxVerbindungFall = 'verbunden' | 'nicht_verbunden' | 'unbekannt';
+
+export interface BoxVerbindung {
+  fall: BoxVerbindungFall;
+  ton: Ton;
+  /** Kurz, für das Abzeichen. */
+  titel: string;
+  /** Ein Satz mit dem Alter der Angabe. */
+  text: string;
+  /** Bei „unbekannt": warum - als Nebensatz, den auch die Fensterzeile übernimmt. */
+  grund: string | null;
+}
+
+function unbekannteVerbindung(grund: string, text = `Ob die Box verbunden ist, ist nicht bekannt: ${grund}`): BoxVerbindung {
+  return { fall: 'unbekannt', ton: 'off', titel: 'Verbindung unbekannt', text, grund };
+}
+
+/**
+ * Ist die Box mit dem Wartungsserver verbunden? Das sagt allein die letzte
+ * Meldung des Tunnel-Dienstes. Fehlt sie, ist sie älter als drei Minuten oder
+ * nennt sie die Box nicht, ist die Antwort „unbekannt" - nie „nicht verbunden".
+ */
+export function boxVerbindung(box: FernwartungBox, u: FernwartungUebersicht | null, jetzt: Date): BoxVerbindung {
+  if (box.status === 'gesperrt') {
+    return unbekannteVerbindung(
+      'Die Box ist gesperrt; der Wartungsserver führt sie nicht.',
+      'Die Box ist für die Fernwartung gesperrt; der Wartungsserver führt sie nicht.',
+    );
+  }
+  if (!u) return unbekannteVerbindung('Der Stand des Tunnel-Dienstes ließ sich nicht laden.');
+  const letzte = letzteRueckmeldung(u);
+  if (!letzte) {
+    return unbekannteVerbindung('Der Tunnel-Dienst hat dem Portal noch nie seinen Zustand gemeldet.');
+  }
+  const alter = alterSek(letzte.zuletztAm, jetzt);
+  const r = box.rueckmeldung ?? null;
+  if (alter > RUECKMELDUNG_VERALTET_S) {
+    const damals = !r ? '' : r.verbundenSeit ? ' Damals war die Box verbunden.' : ' Damals war die Box nicht verbunden.';
+    return unbekannteVerbindung(`Die letzte Meldung des Tunnel-Dienstes ist ${alterText(alter)} alt.${damals}`);
+  }
+  if (!r || !inLetzterMeldung(r.gemeldetAm, letzte)) {
+    return unbekannteVerbindung(
+      `Die letzte Meldung des Tunnel-Dienstes (vor ${alterText(alter)}) nennt diese Box nicht. Nach dem Hinterlegen oder Entsperren dauert das bis zu einer Minute.`,
+    );
+  }
+  const stand = `Stand: vor ${alterText(alter)}.`;
+  if (!r.verbundenSeit) {
+    return {
+      fall: 'nicht_verbunden',
+      ton: 'warn',
+      titel: 'Box nicht verbunden',
+      text: `Die Box ist nicht mit dem Wartungsserver verbunden: kein WireGuard-Handshake in den letzten 3 Minuten. ${stand}`,
+      grund: null,
+    };
+  }
+  const mindestens = new Date(r.verbundenSeit).getTime() <= new Date(letzte.gestartetUm).getTime();
+  const seit = mindestens
+    ? `mindestens seit ${zeitpunkt(r.verbundenSeit, jetzt)} (Start des Tunnel-Dienstes)`
+    : `seit ${zeitpunkt(r.verbundenSeit, jetzt)}`;
+  const gefragt = r.zuletztGefragtUm
+    ? `Sie hat zuletzt um ${zeitpunkt(r.zuletztGefragtUm, jetzt)} nach Schlüsseln gefragt.`
+    : `Sie hat seit dem Start des Tunnel-Dienstes (${zeitpunkt(letzte.gestartetUm, jetzt)}) nicht nach Schlüsseln gefragt.`;
+  return {
+    fall: 'verbunden',
+    ton: 'ok',
+    titel: 'Box verbunden',
+    text: `Verbunden ${seit}. ${gefragt} ${stand}`,
+    grund: null,
+  };
+}
 
 /** Der O3-Satz: warum es keine Kundenfläche gibt. */
 export const ZUSTIMMUNG_SATZ =
@@ -499,29 +677,48 @@ export function sshText(t: Pick<FernwartungTechniker, 'sshFingerabdruck' | 'sshB
  *
  * Der Text gilt, seit es Boxen mit Fenster-Schlüsseln gibt (Schritt 3,
  * `service-tunnel.sh`), und behauptet nicht, jede Box sei so eingerichtet oder
- * die Schlüsselausgabe am Wartungsserver sei an: Beides weiß das Portal nicht.
- * Erst die Rückmeldung des Tunnel-Dienstes (Schritt 4) kann ihn je Box ersetzen.
+ * die Schlüsselausgabe am Wartungsserver sei an. Ob eine bestimmte Box den
+ * Schlüssel abgeholt hat, sagt seit der Rückmeldung (Schritt 4) die Zeile
+ * ihres offenen Fensters (`boxAnmeldung`).
  */
 export const SSH_STAND_SATZ =
-  'Das Portal gibt den SSH-Schlüssel eines Zugangs an den Wartungsserver weiter. Im offenen Fenster holt eine Box ihn dort ab und behält ihn nur bis zum Ende des Fensters. Das tun nur Boxen, deren Wartungstunnel mit dem aktuellen Skript (service-tunnel.sh) eingerichtet ist, und nur, wenn die Schlüsselausgabe am Wartungsserver eingeschaltet ist. An jeder anderen Box gelingt die Anmeldung nur mit einem Schlüssel, der schon auf der Box liegt. Ob eine Box den Schlüssel abgeholt hat, sieht das Portal nicht.';
+  'Das Portal gibt den SSH-Schlüssel eines Zugangs an den Wartungsserver weiter. Im offenen Fenster holt eine Box ihn dort ab und behält ihn nur bis zum Ende des Fensters. Das tun nur Boxen, deren Wartungstunnel mit dem aktuellen Skript (service-tunnel.sh) eingerichtet ist, und nur, wenn die Schlüsselausgabe am Wartungsserver eingeschaltet ist. An jeder anderen Box gelingt die Anmeldung nur mit einem Schlüssel, der schon auf der Box liegt. Ob eine Box den Schlüssel abgeholt hat, steht an ihrem offenen Fenster, sobald der Tunnel-Dienst es meldet.';
+
+/** Der Satz im Dialog „Fenster öffnen": wo man danach sieht, ob es wirkt. */
+export const FENSTER_WIRKUNG_SATZ =
+  'Ob die Box verbunden ist und ob sie den Schlüssel abgeholt hat, steht danach an der Zeile des Fensters, sobald der Tunnel-Dienst es meldet.';
 
 /** Der Satz beim Öffnen eines Fensters für einen Zugang ohne SSH-Schlüssel. */
 export function nurNetzwegSatz(name: string): string {
   return `Dieses Fenster öffnet nur den Netzweg. Der Zugang „${name}“ hat keinen SSH-Schlüssel; an der Box anmelden kann sich damit nur, wessen Schlüssel dort schon liegt.`;
 }
 
-/** Ein offenes Fenster aus Sicht der Anmeldung: trägt sein Zugang einen SSH-Schlüssel? */
+/**
+ * Warum der Techniker im offenen Fenster hineinkommt - oder nicht:
+ *   - `bereit`: Box verbunden, Schlüssel abgeholt.
+ *   - `nicht_abgeholt`: Box verbunden, Schlüssel noch nicht abgeholt.
+ *   - `nicht_verbunden`: die Box hat keinen Tunnel zum Wartungsserver.
+ *   - `kein_schluessel`: am Techniker-Zugang steht kein SSH-Schlüssel.
+ *   - `unbekannt`: keine oder nur eine veraltete Meldung - das ist kein
+ *     „nicht verbunden" und kein „nicht abgeholt".
+ */
+export type FensterFall = 'bereit' | 'nicht_abgeholt' | 'nicht_verbunden' | 'kein_schluessel' | 'unbekannt';
+
+/** Ein offenes Fenster aus Sicht der Anmeldung. */
 export interface FensterSchluessel {
   fensterId: string;
   technikerName: string;
   /**
-   * `unbekannt`, wenn der Zugang nicht in der geladenen Liste steht - das ist
-   * kein „fehlt".
+   * Trägt der Zugang einen SSH-Schlüssel? `unbekannt`, wenn der Zugang nicht
+   * in der geladenen Liste steht - das ist kein „fehlt".
    */
   schluessel: 'vorhanden' | 'fehlt' | 'unbekannt';
   /** Fingerabdruck des SSH-Schlüssels am Zugang, sonst null. */
   fingerabdruck: string | null;
-  /** Ein Satz: womit die Anmeldung gelingt - oder dass das Fenster nur den Netzweg öffnet. */
+  fall: FensterFall;
+  /** Kurz, für das Abzeichen. */
+  titel: string;
+  /** Ein Satz: womit die Anmeldung gelingt - oder warum (noch) nicht, mit dem Alter der Angabe. */
   satz: string;
   ton: Ton;
 }
@@ -533,7 +730,14 @@ export interface BoxAnmeldung {
   fenster: FensterSchluessel[];
 }
 
-function fensterSchluessel(f: FernwartungFenster, techniker: FernwartungTechniker[]): FensterSchluessel {
+function fensterSchluessel(
+  box: FernwartungBox,
+  f: FernwartungFenster,
+  techniker: FernwartungTechniker[],
+  u: FernwartungUebersicht | null,
+  jetzt: Date,
+): FensterSchluessel {
+  const name = `„${f.technikerName}“`;
   const basis = { fensterId: f.id, technikerName: f.technikerName };
   const t = techniker.find((x) => x.id === f.technikerId);
   if (!t) {
@@ -541,40 +745,102 @@ function fensterSchluessel(f: FernwartungFenster, techniker: FernwartungTechnike
       ...basis,
       schluessel: 'unbekannt',
       fingerabdruck: null,
+      fall: 'unbekannt',
+      titel: 'Stand unbekannt',
       ton: 'off',
-      satz: `„${f.technikerName}“: Ob der Zugang einen SSH-Schlüssel hinterlegt hat, ist hier nicht bekannt.`,
+      satz: `${name}: Ob der Zugang einen SSH-Schlüssel hinterlegt hat, ist hier nicht bekannt.`,
     };
   }
+  // Das weiß das Portal selbst, ohne den Tunnel-Dienst.
   if (!t.sshFingerabdruck) {
     return {
       ...basis,
       schluessel: 'fehlt',
       fingerabdruck: null,
+      fall: 'kein_schluessel',
+      titel: 'Kein SSH-Schlüssel am Zugang',
       ton: 'warn',
-      satz: `„${f.technikerName}“: nur Netzweg. Der Zugang hat keinen SSH-Schlüssel; anmelden kann sich nur, wessen Schlüssel schon auf der Box liegt.`,
+      satz: `${name}: nur Netzweg. Der Zugang hat keinen SSH-Schlüssel; anmelden kann sich nur, wessen Schlüssel schon auf der Box liegt.`,
+    };
+  }
+  const mit = { ...basis, schluessel: 'vorhanden' as const, fingerabdruck: t.sshFingerabdruck };
+  const sobald = `${name}: Anmeldung mit dem SSH-Schlüssel ${t.sshFingerabdruck}, sobald die Box ihn abgeholt hat oder wenn er schon auf ihr liegt.`;
+  const v = boxVerbindung(box, u, jetzt);
+  if (v.fall === 'unbekannt') {
+    return {
+      ...mit,
+      fall: 'unbekannt',
+      titel: 'Stand unbekannt',
+      ton: 'off',
+      satz: `${sobald} Ob die Box verbunden ist und ihn abgeholt hat, ist nicht bekannt: ${v.grund}`,
+    };
+  }
+  const letzte = letzteRueckmeldung(u) as FernwartungRueckmeldung;
+  const stand = `Stand: vor ${alterText(alterSek(letzte.zuletztAm, jetzt))}.`;
+  if (v.fall === 'nicht_verbunden') {
+    return {
+      ...mit,
+      fall: 'nicht_verbunden',
+      titel: 'Box nicht verbunden',
+      ton: 'warn',
+      satz: `${name}: Die Box ist nicht mit dem Wartungsserver verbunden. Das Fenster ist offen, aber niemand erreicht die Box, und sie kann den Schlüssel nicht abholen. ${stand}`,
+    };
+  }
+  const r = f.rueckmeldung ?? null;
+  if (!r || !inLetzterMeldung(r.gemeldetAm, letzte)) {
+    return {
+      ...mit,
+      fall: 'unbekannt',
+      titel: 'Stand unbekannt',
+      ton: 'off',
+      satz: `${sobald} Die Box ist verbunden; ob sie ihn abgeholt hat, ist nicht bekannt: Die letzte Meldung des Tunnel-Dienstes nennt dieses Fenster nicht. Nach dem Öffnen dauert das bis zu einer Minute; bleibt es so, wirkt das Fenster auf dem Wartungsserver nicht.`,
+    };
+  }
+  if (!r.schluesselAbgeholtUm) {
+    const gefragt = box.rueckmeldung?.zuletztGefragtUm ?? null;
+    const warum = !letzte.schluesselausgabe
+      ? 'Am Wartungsserver ist die Schlüsselausgabe aus: Keine Box bekommt einen Fenster-Schlüssel. Anmelden kann sich nur, wessen Schlüssel schon auf der Box liegt.'
+      : !gefragt
+        ? `Sie hat seit dem Start des Tunnel-Dienstes (${zeitpunkt(letzte.gestartetUm, jetzt)}) nicht nach Schlüsseln gefragt. Vermutlich ist ihr Tunnel noch nicht mit dem aktuellen Skript (service-tunnel.sh) eingerichtet; dann gelingt die Anmeldung nur mit einem Schlüssel, der schon auf der Box liegt.`
+        : `Sie fragt nach Schlüsseln, zuletzt um ${zeitpunkt(gefragt, jetzt)}; in der Regel folgt der Schlüssel nach wenigen Sekunden.`;
+    return {
+      ...mit,
+      fall: 'nicht_abgeholt',
+      titel: 'Schlüssel noch nicht abgeholt',
+      ton: 'warn',
+      satz: `${name}: Die Box ist verbunden, hat den SSH-Schlüssel ${t.sshFingerabdruck} aber noch nicht abgeholt. ${warum} ${stand}`,
     };
   }
   return {
-    ...basis,
-    schluessel: 'vorhanden',
-    fingerabdruck: t.sshFingerabdruck,
+    ...mit,
+    fall: 'bereit',
+    titel: 'Alles bereit',
     ton: 'ok',
-    satz: `„${f.technikerName}“: Anmeldung mit dem SSH-Schlüssel ${t.sshFingerabdruck}, sobald die Box ihn abgeholt hat oder wenn er schon auf ihr liegt.`,
+    satz: `${name}: Die Box ist verbunden und hat den SSH-Schlüssel ${t.sshFingerabdruck} um ${zeitpunkt(r.schluesselAbgeholtUm, jetzt)} abgeholt. Die Anmeldung ist möglich. ${stand}`,
   };
 }
 
 /**
  * Was ein Techniker für die OFFENEN Fenster einer Box braucht: die fertigen
- * Befehle und je Fenster die ehrliche Auskunft, ob sein Zugang einen
- * SSH-Schlüssel trägt. Ohne offenes Fenster gibt es nichts anzumelden: null
- * (geplante Fenster zählen nicht).
+ * Befehle und je Fenster, warum die Anmeldung gelingt oder nicht - aus dem,
+ * was das Portal selbst weiß (SSH-Schlüssel am Zugang), und dem, was der
+ * Tunnel-Dienst zuletzt gemeldet hat (`u`; null = nicht geladen). Ohne offenes
+ * Fenster gibt es nichts anzumelden: null (geplante Fenster zählen nicht).
  */
-export function boxAnmeldung(box: FernwartungBox, techniker: FernwartungTechniker[]): BoxAnmeldung | null {
+export function boxAnmeldung(
+  box: FernwartungBox,
+  techniker: FernwartungTechniker[],
+  u: FernwartungUebersicht | null = null,
+  jetzt: Date = new Date(),
+): BoxAnmeldung | null {
   const offen = box.laufendeFenster
     .filter((f) => f.zustand === 'offen')
     .sort((a, b) => a.ende.localeCompare(b.ende));
   if (offen.length === 0) return null;
-  return { befehle: sshBefehle(box.adresse), fenster: offen.map((f) => fensterSchluessel(f, techniker)) };
+  return {
+    befehle: sshBefehle(box.adresse),
+    fenster: offen.map((f) => fensterSchluessel(box, f, techniker, u, jetzt)),
+  };
 }
 
 export const SSH_ERZEUGEN_KURZ = 'ssh-keygen -t rsa -b 3072';

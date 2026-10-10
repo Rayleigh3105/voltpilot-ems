@@ -648,3 +648,128 @@ func TestPruefwertHaengtNurAnDerListe(t *testing.T) {
 		t.Fatal("Form des Prüfwerts")
 	}
 }
+
+// Für die Rückmeldung ans Portal: "abgeholt" ist ein Schlüssel erst, wenn die
+// Box den Prüfwert der Liste nennt, die ihn enthält. Den nennt sie erst,
+// nachdem sie die Antwort geprüft und in ihre Schlüsseldatei geschrieben hat.
+func TestBoxBestaetigtDenSchluesselMitDemPruefwert(t *testing.T) {
+	s, m, _ := neueStelle(t)
+	uhr := time.Date(2026, 10, 10, 14, 0, 0, 0, time.UTC)
+	s.Jetzt = func() time.Time { return uhr }
+	m.setze(map[abgleich.Paar]time.Duration{paar(tech1, box1): time.Hour})
+	s.SetzeStand(gueltig(t, key1))
+	f1, _ := soll.PruefeSSHSchluessel(key1)
+	f3, _ := soll.PruefeSSHSchluessel(key3)
+	abgeholt := func() map[string]map[string]time.Time { return s.Auskunft().Boxen[box1].Bestaetigt }
+
+	// Vor jeder Anfrage weiß die Stelle von der Box nichts.
+	if a := s.Auskunft(); len(a.Boxen) != 0 || a.Laeuft {
+		t.Fatalf("vor der ersten Anfrage: %+v", a)
+	}
+
+	// Die erste Anfrage bekommt die Liste. Damit ist sie ausgegeben, nicht abgeholt.
+	erste := sofort(s, box1)
+	pw1, zeilen := zerlege(t, erste.Text)
+	if len(zeilen) != 1 || len(abgeholt()) != 0 {
+		t.Fatalf("nach der ersten Antwort: %q, abgeholt %v", zeilen, abgeholt())
+	}
+	if got := s.Auskunft().Boxen[box1].LetzteAnfrage; !got.Equal(uhr) {
+		t.Fatalf("letzte Anfrage %s, erwartet %s", got, uhr)
+	}
+
+	// Die Box nennt den Prüfwert dieser Liste: abgeholt, mit dem Zeitpunkt dieser Anfrage.
+	uhr = uhr.Add(2 * time.Second)
+	zweite := s.Frage(context.Background(), box1, 0, pw1)
+	if zweite.Code != http.StatusOK || len(abgeholt()) != 1 || !abgeholt()["t1"][f1.Fingerabdruck].Equal(uhr) {
+		t.Fatalf("nach dem Prüfwert: Code %d, abgeholt %v", zweite.Code, abgeholt())
+	}
+	// Die Buchführung ändert keine Antwort: dieselbe Liste, derselbe Prüfwert.
+	if pw, z := zerlege(t, zweite.Text); pw != pw1 || len(z) != 1 || !strings.HasSuffix(z[0], " t1 "+key1) {
+		t.Fatalf("Antwort mit Prüfwert: %q", zweite.Text)
+	}
+
+	// Weitere Anfragen mit demselben Prüfwert verschieben den Zeitpunkt nicht.
+	zuerst := uhr
+	uhr = uhr.Add(45 * time.Second)
+	s.Frage(context.Background(), box1, 0, pw1)
+	if !abgeholt()["t1"][f1.Fingerabdruck].Equal(zuerst) {
+		t.Fatalf("Zeitpunkt verschoben: %v", abgeholt())
+	}
+
+	// Der Schlüssel wird im offenen Fenster ersetzt: Die Box kennt noch die alte
+	// Liste - der neue Schlüssel ist nicht abgeholt, der alte zählt nicht mehr.
+	s.SetzeStand(gueltig(t, key3))
+	uhr = uhr.Add(time.Second)
+	pw3, _ := zerlege(t, s.Frage(context.Background(), box1, 0, pw1).Text)
+	if pw3 == pw1 || len(abgeholt()) != 0 {
+		t.Fatalf("nach dem Ersetzen: Prüfwert %s -> %s, abgeholt %v", pw1, pw3, abgeholt())
+	}
+	uhr = uhr.Add(time.Second)
+	s.Frage(context.Background(), box1, 0, pw3)
+	if got := abgeholt(); len(got) != 1 || len(got["t1"]) != 1 || !got["t1"][f3.Fingerabdruck].Equal(uhr) {
+		t.Fatalf("der neue Schlüssel: %v", got)
+	}
+
+	// Die Box startet neu und fragt ohne Prüfwert: Sie hat nichts mehr.
+	uhr = uhr.Add(time.Minute)
+	sofort(s, box1)
+	if len(abgeholt()) != 0 {
+		t.Fatalf("nach einer Anfrage ohne Prüfwert: %v", abgeholt())
+	}
+
+	// Ein falscher Prüfwert bestätigt nichts, auch nicht der der leeren Liste.
+	for _, falsch := range []string{"0123456789abcdef", Pruefwert(nil)} {
+		s.Frage(context.Background(), box1, 0, falsch)
+		if len(abgeholt()) != 0 {
+			t.Fatalf("Prüfwert %s bestätigt: %v", falsch, abgeholt())
+		}
+	}
+
+	// Ohne Fenster nennt die Box den Prüfwert der leeren Liste: nichts abgeholt.
+	s.Frage(context.Background(), box1, 0, pw3)
+	m.setze(map[abgleich.Paar]time.Duration{})
+	s.Geaendert()
+	s.Frage(context.Background(), box1, 0, Pruefwert(nil))
+	if len(abgeholt()) != 0 {
+		t.Fatalf("ohne Fenster: %v", abgeholt())
+	}
+	// Die andere Box hat nie gefragt.
+	if _, da := s.Auskunft().Boxen[box2]; da {
+		t.Fatal("box2 hat nie gefragt und steht in der Auskunft")
+	}
+	s.SetzeLaeuft(true)
+	if !s.Auskunft().Laeuft {
+		t.Fatal("Auskunft nennt den lauschenden Schalter nicht")
+	}
+}
+
+// Eine wartende Anfrage mit dem richtigen Prüfwert bestätigt sofort, nicht
+// erst mit ihrer Antwort: So lange hält die Box die Anfrage offen.
+func TestWartendeAnfrageBestaetigtSofort(t *testing.T) {
+	s, m, _ := neueStelle(t)
+	m.setze(map[abgleich.Paar]time.Duration{paar(tech1, box1): time.Hour})
+	s.SetzeStand(gueltig(t, key1))
+	pw, _ := zerlege(t, sofort(s, box1).Text)
+	f1, _ := soll.PruefeSSHSchluessel(key1)
+
+	ctx, abbruch := context.WithCancel(context.Background())
+	fertig := make(chan Antwort, 1)
+	go func() { fertig <- s.Frage(ctx, box1, time.Minute, pw) }()
+	ende := time.Now().Add(5 * time.Second)
+	for len(s.Auskunft().Boxen[box1].Bestaetigt["t1"]) == 0 {
+		if time.Now().After(ende) {
+			t.Fatal("die wartende Anfrage hat den Schlüssel nicht bestätigt")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if _, da := s.Auskunft().Boxen[box1].Bestaetigt["t1"][f1.Fingerabdruck]; !da {
+		t.Fatalf("%v", s.Auskunft().Boxen[box1].Bestaetigt)
+	}
+	select {
+	case a := <-fertig:
+		t.Fatalf("die Anfrage sollte offen bleiben: %+v", a)
+	default:
+	}
+	abbruch()
+	<-fertig
+}

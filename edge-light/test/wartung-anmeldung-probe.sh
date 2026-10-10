@@ -120,10 +120,14 @@ EOF
 }
 # fenster <id> <techniker-id> <sekunden>
 fenster() { echo "{\"id\":\"$1\",\"boxId\":\"$ID_BOX\",\"technikerId\":\"$2\",\"beginn\":\"$(zeit -5)\",\"ende\":\"$(zeit "$3")\"}"; }
+# Die Attrappe nimmt auch die Rueckmeldung des Dienstes an und legt die letzte ab
+# (docs/contracts/fernwartung-rueckmeldung-v1.md).
 api_an() {
-  docker exec -d "$P-server" sh -c 'echo $$ > /srv/api.pid; exec /opt/vptd/attrappe -soll /srv/soll.json'
+  docker exec -d "$P-server" sh -c 'echo $$ > /srv/api.pid; exec /opt/vptd/attrappe -soll /srv/soll.json -rueckmeldung /srv/rueckmeldung.json'
   sleep 1
 }
+meldung() { x server cat /srv/rueckmeldung.json 2>/dev/null || true; }
+meldung_hat() { meldung | grep -q -- "$1"; }
 # dienst_an <intervall>: Dauerlauf wie unter systemd - als nobody, nur CAP_NET_ADMIN
 dienst_an() {
   docker exec -d -e VP_TUNNEL_API_URL=http://127.0.0.1:8080 -e VP_TUNNEL_TOKEN_URL=http://127.0.0.1:8080/token \
@@ -389,6 +393,13 @@ T2="$(ms)"
 echo "  Soll-Stand geaendert -> Fenster im Kernel des Servers: $(sek $((T1 - T0))) s (Abruf im Versuch alle 5 s, im Betrieb 30 s)"
 echo "  Fenster im Kernel -> Schluessel auf der Box:           $(sek $((T2 - T1))) s"
 [ $((T2 - T1)) -le 3000 ] && ok "die offene Anfrage wird sofort beantwortet (uclient-fetch haelt die Verbindung)" || falsch "die offene Anfrage wird sofort beantwortet ($(sek $((T2 - T1))) s)"
+# Rueckmeldung ans Portal: "abgeholt" meldet der Dienst erst, wenn die Box den
+# Pruefwert der Liste nennt - das echte Box-Skript tut das mit seiner naechsten Anfrage.
+warte 20 meldung_hat "\"id\":\"$ID_BOX\",\"verbundenSeit\":\"20[^\"]*\",\"zuletztGefragtUm\":\"20" &&
+  ok "Rueckmeldung: die Box steht als verbunden darin und hat nach Schluesseln gefragt" || falsch "Rueckmeldung: Box verbunden und gefragt ($(meldung))"
+warte 20 meldung_hat "\"id\":\"f1\",\"schluesselAbgeholtUm\":\"20" &&
+  ok "Rueckmeldung: der Schluessel des Fensters gilt als abgeholt ($(sek $(($(ms) - T2))) s nach dem Schreiben auf der Box)" || falsch "Rueckmeldung: Schluessel abgeholt ($(meldung))"
+meldung | grep -q -e 'ssh-rsa' -e '10\.10\.' -e 'SHA256' -e "$REF" && falsch "die Rueckmeldung nennt weder Schluessel noch Adresse noch Kennung" || ok "die Rueckmeldung nennt weder Schluessel noch Adresse noch Kennung"
 echo "  Schluesseldatei der Wartungs-Instanz (RAM):"
 bx "awk '/^ssh-/ { print \"    \" \$1, substr(\$2, 1, 16) \"…\", \$3 }' $KEYS"
 erwarte tech1 /root/.ssh/id_rsa ANGEMELDET "tech1 -> Box mit dem Schluessel aus dem Portal"

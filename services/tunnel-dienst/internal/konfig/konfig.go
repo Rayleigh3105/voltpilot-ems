@@ -38,6 +38,11 @@ type Konfig struct {
 	// Techniker-Netz. 0 heißt abgeschaltet: kein Schalter, keine Regel in der
 	// Firewall-Basis.
 	SchluesselPort int
+
+	// Rueckmeldung: der Dienst meldet dem Portal nach jedem Lauf seinen
+	// Zustand (internal/meldung). Abschaltbar; an Soll-Stand, Firewall und
+	// Schlüsselausgabe ändert das nichts.
+	Rueckmeldung bool
 }
 
 // Umgebung liest Variablen; in Tests ersetzbar.
@@ -79,6 +84,13 @@ func Lies(env Umgebung, ohneAPI bool) (Konfig, error) {
 	k.VerbindungenProtokollieren = wert(env, "VP_TUNNEL_VERBINDUNGEN_PROTOKOLLIEREN", "ja") != "nein"
 	k.SchluesselPort, err = schluesselPort(wert(env, "VP_TUNNEL_SCHLUESSEL_PORT", ""))
 	add(err)
+	switch wert(env, "VP_TUNNEL_RUECKMELDUNG", "an") {
+	case "an":
+		k.Rueckmeldung = true
+	case "aus":
+	default:
+		fehler = append(fehler, "VP_TUNNEL_RUECKMELDUNG: an oder aus erwartet")
+	}
 	if !gueltigerName(k.Schnittstelle) || len(k.Schnittstelle) > 15 || !gueltigerName(k.Tabelle) {
 		fehler = append(fehler, "VP_TUNNEL_SCHNITTSTELLE (höchstens 15 Zeichen)/VP_TUNNEL_NFT_TABELLE: nur Buchstaben, Ziffern, - und _")
 	}

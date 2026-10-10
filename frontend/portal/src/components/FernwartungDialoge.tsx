@@ -17,13 +17,13 @@ import { normalizeDeviceIdInput } from '../anlageFlow';
 import {
   boxBefehl,
   dauerOptionen,
+  FENSTER_WIRKUNG_SATZ,
   nurNetzwegSatz,
   schluesselGueltig,
   sshSchluesselPruefen,
   sshText,
   technikerKonfig,
   technikerOptionen,
-  UNBEKANNT_SATZ,
   type FernwartungBox,
   type FernwartungFenster,
   type FernwartungSchluesselAntwort,
@@ -35,8 +35,8 @@ import {
 import { SshErzeugenHinweis, SshFingerabdruck, SshSchluesselFeld } from './FernwartungSsh';
 import { VpPicker } from './VpPicker';
 
-/** Eine Lage-Zeile (Server, Tunnel-Dienst): Ton, Titel, ein Satz. */
-export function LageZeile({ lage, testId }: { lage: Lage; testId?: string }) {
+/** Eine Lage-Zeile (Server, Tunnel-Dienst, Verbindung einer Box): Ton, Titel, ein Satz. */
+export function LageZeile({ lage, testId }: { lage: Pick<Lage, 'ton' | 'titel' | 'text'>; testId?: string }) {
   return (
     <div className={`vp-fw-lage vp-fw-lage-${lage.ton}`} data-testid={testId}>
       <Badge variant={lage.ton} dot>
@@ -147,7 +147,7 @@ export function FensterDialog({
       </p>
       <p className="vp-note" style={{ marginTop: 0 }}>
         Der Techniker erreicht die Box über den Wartungstunnel nur in diesem Zeitfenster; danach
-        schließt der Server den Weg von selbst. {UNBEKANNT_SATZ}
+        schließt der Server den Weg von selbst. {FENSTER_WIRKUNG_SATZ}
       </p>
       <div className="vp-form-stack">
         <VpPicker

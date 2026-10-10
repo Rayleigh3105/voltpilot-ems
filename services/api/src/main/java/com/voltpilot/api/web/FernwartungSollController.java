@@ -13,11 +13,11 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * Die Leseroute des Tunnel-Dienstes: {@code GET /api/v1/fernwartung/soll}.
  *
- * <p><b>Eigene Dienst-Identität, nur Leserecht</b> - im Muster des
+ * <p><b>Eigene Dienst-Identität, hier nur Leserecht</b> - im Muster des
  * Dienstkontos {@code edge-release-publisher}: der Keycloak-Client
  * {@code voltpilot-tunnel-dienst} (nur client_credentials) trägt die
  * Realm-Rolle {@code tunnel-dienst} und nichts sonst. Diese Rolle öffnet
- * GENAU diese eine Route; der Admin-Baum bleibt ihr verschlossen (die
+ * genau diese Route und die Rückmeldung; der Admin-Baum bleibt ihr verschlossen (die
  * Filterkette lässt dort nur {@code platform-admin} und
  * {@code edge-release-publisher} durch), und umgekehrt kommt hier kein
  * Admin- oder Kunden-Token herein.
@@ -26,9 +26,11 @@ import org.springframework.web.bind.annotation.RestController;
  * Rückfallregel des Admin-Baums auch diese Rolle durchlassen, und jede
  * künftig vergessene Annotation dort stünde dem Dienstkonto offen.
  *
- * <p>Der Dienst holt pull-basiert ab (keine eingehende Verbindung zur VM) und
- * meldet nichts zurück. Die API merkt sich nur den Zeitpunkt des Abrufs, damit
- * das Portal zeigen kann, ob überhaupt abgeholt wird.
+ * <p>Der Dienst holt pull-basiert ab (keine eingehende Verbindung zur VM). Die
+ * API merkt sich den Zeitpunkt des Abrufs, damit das Portal zeigen kann, ob
+ * überhaupt abgeholt wird. Seinen Zustand meldet der Dienst über eine zweite,
+ * eigene Route ({@link FernwartungRueckmeldungController}); der Soll-Stand
+ * hängt nicht davon ab.
  */
 @RestController
 public class FernwartungSollController {

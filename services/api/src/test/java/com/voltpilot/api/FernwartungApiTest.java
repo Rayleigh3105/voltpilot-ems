@@ -46,8 +46,8 @@ import org.testcontainers.utility.DockerImageName;
  * Fernwartung über das Portal (Entscheid E5, O3) gegen echtes TimescaleDB und
  * Keycloak: Schlüssel hinterlegen, Techniker-Zugang, Fenster öffnen und
  * schließen, der Soll-Stand für den Tunnel-Dienst, das Protokoll, das Löschen
- * eines gesperrten Techniker-Zugangs, der SSH-Schlüssel am Zugang - und die
- * Rollen-Grenzen auf jeder Route.
+ * eines gesperrten Techniker-Zugangs, der SSH-Schlüssel am Zugang, die
+ * Rückmeldung des Tunnel-Dienstes - und die Rollen-Grenzen auf jeder Route.
  *
  * <p>Die Fälle teilen sich EINE Datenbank. Der ganze Weg läuft zuerst, weil er
  * feste Adressen ab der ersten freien erwartet; das Löschen baut darauf auf
@@ -647,6 +647,192 @@ class FernwartungApiTest {
     }
 
     /**
+     * Fenster-Schlüssel, Schritt 4: der Tunnel-Dienst meldet seinen Zustand,
+     * das Portal zeigt ihn an Box und Fenster. Die Meldung ist ANZEIGE: sie
+     * ändert weder den Soll-Stand noch Zugänge, Fenster oder Protokoll - auch
+     * dann nicht, wenn sie „nicht verbunden" und „nicht abgeholt" sagt.
+     */
+    @Test
+    @Order(4)
+    void dieRueckmeldungIstAnzeigeUndAendertDenSollStandNie() throws Exception {
+        String admin = token("admin", "admin");
+        String kunde = token("demo", "demo");
+        String dienst = serviceToken("voltpilot-tunnel-dienst", "voltpilot-tunnel-dienst-dev-secret");
+        String publisher = serviceToken("voltpilot-release-publisher", "voltpilot-release-publisher-dev-secret");
+        String route = "/api/v1/fernwartung/rueckmeldung";
+
+        // Eine Box, ein Zugang mit SSH-Schlüssel, ein offenes Fenster - unabhängig
+        // von dem, was die Fälle davor hinterlassen haben.
+        assertThat(send(HttpMethod.PUT, BASE + "/boxen/" + ZWEITE + "/schluessel", admin,
+                Map.of("publicKey", wireguardSchluessel(), "schluesselTausch", true)).getStatusCode()
+                .is2xxSuccessful()).isTrue();
+        assertThat(send(HttpMethod.POST, BASE + "/boxen/" + ZWEITE + "/entsperren", admin, null).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+        String boxId = getJson(BASE + "/boxen/" + ZWEITE, admin).get("id").asText();
+        String technikerId = json.readTree(send(HttpMethod.POST, BASE + "/techniker", admin,
+                Map.of("name", "Rückmeldung", "publicKey", wireguardSchluessel(), "sshPublicKey",
+                        SshTestSchluessel.rsa(3072))).getBody()).get("techniker").get("id").asText();
+        ResponseEntity<String> geoeffnet = send(HttpMethod.POST, BASE + "/fenster", admin, Map.of("edgeRef", ZWEITE,
+                "technikerId", technikerId, "grund", "Rückmeldung prüfen", "dauerMinuten", 30));
+        assertThat(geoeffnet.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        String fensterId = json.readTree(geoeffnet.getBody()).get("id").asText();
+
+        // ── Neue API, alter Dienst: es kam nie eine Meldung. Das ist „unbekannt",
+        //    nicht „nicht verbunden": die Felder sind null, nicht false oder leer.
+        assertThat(getJson(BASE, admin).get("rueckmeldungen")).as("noch keine Meldung").isEmpty();
+        JsonNode ohne = getJson(BASE + "/boxen/" + ZWEITE, admin);
+        assertThat(ohne.get("rueckmeldung").isNull()).isTrue();
+        assertThat(fenster(ohne, fensterId).get("rueckmeldung").isNull()).isTrue();
+        assertThat(json.readTree(geoeffnet.getBody()).get("rueckmeldung").isNull()).isTrue();
+
+        String sollVorher = sollOhneZeit(dienst);
+        assertThat(sollVorher).contains(boxId).contains(technikerId).contains(fensterId);
+        String bestandVorher = bestand();
+
+        // ── Die erste Meldung sagt das Schlechteste: nicht verbunden, nicht abgeholt.
+        Instant start = Instant.now().minusSeconds(3600).truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+        ResponseEntity<String> erste = send(HttpMethod.PUT, route, dienst,
+                meldung(start, List.of(box(boxId, null, null)), List.of(fensterMeldung(fensterId, null))));
+        assertThat(erste.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(erste.getBody()).isNull();
+        assertThat(erste.getHeaders().getCacheControl()).contains("no-store");
+
+        JsonNode uebersicht = getJson(BASE, admin);
+        assertThat(uebersicht.get("rueckmeldungen")).hasSize(1);
+        JsonNode letzte = uebersicht.get("rueckmeldungen").get(0);
+        assertThat(letzte.get("dienst").asText()).isEqualTo("voltpilot-tunnel-dienst");
+        assertThat(letzte.get("gestartetUm").asText()).isEqualTo(start.toString());
+        assertThat(letzte.get("schluesselausgabe").asBoolean()).isTrue();
+        assertThat(letzte.get("boxen").asInt()).isEqualTo(1);
+        assertThat(letzte.get("fenster").asInt()).isEqualTo(1);
+        Instant angenommen = Instant.parse(letzte.get("zuletztAm").asText());
+        assertThat(angenommen).isBetween(Instant.now().minusSeconds(60), Instant.now().plusSeconds(1));
+
+        JsonNode gemeldet = getJson(BASE + "/boxen/" + ZWEITE, admin);
+        assertThat(gemeldet.get("rueckmeldung").get("gemeldetAm").asText()).isEqualTo(letzte.get("zuletztAm").asText());
+        assertThat(gemeldet.get("rueckmeldung").get("verbundenSeit").isNull()).as("gemeldet: nicht verbunden").isTrue();
+        assertThat(gemeldet.get("rueckmeldung").get("zuletztGefragtUm").isNull()).isTrue();
+        JsonNode fensterGemeldet = fenster(gemeldet, fensterId).get("rueckmeldung");
+        assertThat(fensterGemeldet.get("gemeldetAm").asText()).isEqualTo(letzte.get("zuletztAm").asText());
+        assertThat(fensterGemeldet.get("schluesselAbgeholtUm").isNull()).isTrue();
+        // Dieselbe Angabe in der Liste aller Boxen und in der Fensterliste.
+        for (JsonNode b : getJson(BASE + "/boxen", admin)) {
+            if (ZWEITE.equals(b.get("edgeRef").asText())) {
+                assertThat(b.get("rueckmeldung").get("verbundenSeit").isNull()).isTrue();
+                assertThat(fenster(b, fensterId).get("rueckmeldung").has("schluesselAbgeholtUm")).isTrue();
+            } else {
+                assertThat(b.get("rueckmeldung").isNull()).as("zu " + b.get("edgeRef") + " kam nie eine Meldung")
+                        .isTrue();
+            }
+        }
+        JsonNode inListe = mitId(getJson(BASE + "/fenster?box=" + ZWEITE, admin), fensterId);
+        assertThat(inListe.get("rueckmeldung").get("gemeldetAm").asText()).isEqualTo(letzte.get("zuletztAm").asText());
+        assertThat(inListe.get("rueckmeldung").get("schluesselAbgeholtUm").isNull()).isTrue();
+
+        // DER BELEG: „nicht verbunden" nimmt weder die Box noch das Fenster aus
+        // dem Soll-Stand, und nichts an Zugängen, Fenstern und Protokoll ändert sich.
+        assertThat(sollOhneZeit(dienst)).isEqualTo(sollVorher);
+        assertThat(bestand()).isEqualTo(bestandVorher);
+
+        // ── Die zweite Meldung sagt das Beste: verbunden, gefragt, abgeholt.
+        Instant verbunden = Instant.now().minusSeconds(600).truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+        Instant gefragt = Instant.now().minusSeconds(20).truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+        Instant abgeholt = Instant.now().minusSeconds(300).truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
+        assertThat(send(HttpMethod.PUT, route, dienst, meldung(start, List.of(box(boxId, verbunden, gefragt)),
+                List.of(fensterMeldung(fensterId, abgeholt)))).getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        JsonNode bereit = getJson(BASE + "/boxen/" + ZWEITE, admin);
+        assertThat(bereit.get("rueckmeldung").get("verbundenSeit").asText()).isEqualTo(verbunden.toString());
+        assertThat(bereit.get("rueckmeldung").get("zuletztGefragtUm").asText()).isEqualTo(gefragt.toString());
+        assertThat(fenster(bereit, fensterId).get("rueckmeldung").get("schluesselAbgeholtUm").asText())
+                .isEqualTo(abgeholt.toString());
+        assertThat(getJson(BASE, admin).get("rueckmeldungen")).as("je Dienstkonto nur der letzte Stand").hasSize(1);
+        assertThat(sollOhneZeit(dienst)).isEqualTo(sollVorher);
+        assertThat(bestand()).isEqualTo(bestandVorher);
+        String anzeigeVorher = bereit.toString() + getJson(BASE, admin).get("rueckmeldungen");
+
+        // ── Abgewiesen: unbekannte Box, unbekanntes Fenster, ein Techniker-Zugang als Box.
+        //    Die Meldung wird als Ganzes verworfen; der vorige Stand bleibt stehen.
+        String fremd = "99999999-9999-4999-8999-999999999999";
+        Map<Object, String> unbekannt = new java.util.LinkedHashMap<>();
+        unbekannt.put(meldung(start, List.of(box(boxId, null, null), box(fremd, verbunden, null)), List.of()),
+                "eine Box, die die API nicht kennt");
+        unbekannt.put(meldung(start, List.of(box(technikerId, verbunden, null)), List.of()),
+                "eine Box, die die API nicht kennt");
+        unbekannt.put(meldung(start, List.of(box(boxId, null, null)), List.of(fensterMeldung(fremd, abgeholt))),
+                "ein Fenster, das die API nicht kennt");
+        unbekannt.put(meldung(start, List.of(), List.of(fensterMeldung(boxId, null))),
+                "ein Fenster, das die API nicht kennt");
+        for (Map.Entry<Object, String> e : unbekannt.entrySet()) {
+            ResponseEntity<String> res = send(HttpMethod.PUT, route, dienst, e.getKey());
+            assertThat(res.getStatusCode()).as(e.getValue()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+            assertThat(message(res)).contains(e.getValue()).contains("Nichts aus dieser Meldung wurde gespeichert");
+        }
+
+        // ── Abgewiesen: falsche Form. Die Regeln im Einzelnen prüft FernwartungRueckmeldungRegelnTest.
+        Map<String, Object> zwei = meldung(start, List.of(box(boxId, verbunden, gefragt)), List.of());
+        zwei.put("version", 2);
+        Map<String, Object> zusatz = meldung(start, List.of(box(boxId, verbunden, gefragt)), List.of());
+        zusatz.put("fensterOeffnen", List.of(Map.of("boxId", boxId, "technikerId", technikerId)));
+        Map<String, Object> uhr = meldung(start, List.of(box(boxId, verbunden, gefragt)), List.of());
+        uhr.put("gemeldetUm", Instant.now().plusSeconds(3600).toString());
+        Map<String, Object> zukunft = meldung(start, List.of(box(boxId, Instant.now().plusSeconds(120), null)),
+                List.of());
+        List<Map<String, Object>> viele = new ArrayList<>();
+        for (int i = 0; i < 10_001; i++) {
+            viele.add(fensterMeldung(java.util.UUID.randomUUID().toString(), null));
+        }
+        for (Object schlecht : List.of(zwei, zusatz, uhr, zukunft,
+                meldung(start, List.of(box(boxId, null, null), box(boxId, verbunden, null)), List.of()),
+                meldung(start, List.of(box("keine-uuid", null, null)), List.of()),
+                meldung(start, List.of(), viele), "kein json", "[]", "")) {
+            ResponseEntity<String> res = send(HttpMethod.PUT, route, dienst, schlecht);
+            assertThat(res.getStatusCode()).as(String.valueOf(schlecht).substring(0,
+                    Math.min(60, String.valueOf(schlecht).length()))).isEqualTo(HttpStatus.BAD_REQUEST);
+        }
+        assertThat(message(send(HttpMethod.PUT, route, dienst, uhr))).contains("Uhr des Wartungsservers");
+
+        assertThat(getJson(BASE + "/boxen/" + ZWEITE, admin).toString() + getJson(BASE, admin).get("rueckmeldungen"))
+                .as("keine abgewiesene Meldung hat etwas geändert").isEqualTo(anzeigeVorher);
+        assertThat(sollOhneZeit(dienst)).isEqualTo(sollVorher);
+        assertThat(bestand()).isEqualTo(bestandVorher);
+
+        // ── Das Fenster schließt: der Soll-Stand ändert sich durch das Portal, nicht durch die Meldung.
+        assertThat(send(HttpMethod.POST, BASE + "/fenster/" + fensterId + "/schliessen", admin, null).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+        assertThat(sollOhneZeit(dienst)).doesNotContain(fensterId);
+        // Der Dienst meldet das geschlossene Fenster noch einmal (er hat den neuen Stand noch nicht):
+        // angenommen, denn das Fenster ist der API bekannt - und es bleibt geschlossen.
+        assertThat(send(HttpMethod.PUT, route, dienst, meldung(start, List.of(box(boxId, verbunden, gefragt)),
+                List.of(fensterMeldung(fensterId, abgeholt)))).getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        assertThat(sollOhneZeit(dienst)).doesNotContain(fensterId);
+        JsonNode geschlossen = mitId(getJson(BASE + "/fenster?box=" + ZWEITE, admin), fensterId);
+        assertThat(geschlossen.get("zustand").asText()).isEqualTo("geschlossen");
+        // Auch am geschlossenen Fenster steht, was zuletzt gemeldet wurde - als Anzeige.
+        assertThat(geschlossen.get("rueckmeldung").get("schluesselAbgeholtUm").asText()).isEqualTo(abgeholt.toString());
+
+        // ── Das eine Schreibrecht gehört allein dem Dienstkonto.
+        Object gut = meldung(start, List.of(box(boxId, verbunden, gefragt)), List.of());
+        for (String fremdesToken : List.of(admin, kunde, publisher)) {
+            assertThat(send(HttpMethod.PUT, route, fremdesToken, gut).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        }
+        assertThat(send(HttpMethod.PUT, route, null, gut).getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        for (HttpMethod andere : List.of(HttpMethod.GET, HttpMethod.POST, HttpMethod.DELETE)) {
+            assertThat(send(andere, route, dienst, andere == HttpMethod.GET ? null : gut).getStatusCode())
+                    .as("die Route kennt nur PUT: " + andere).isEqualTo(HttpStatus.METHOD_NOT_ALLOWED);
+        }
+        // So antwortet eine API, die eine Route unter diesem Baum nicht kennt - also auch eine
+        // ältere API auf die Rückmeldung eines neueren Dienstes: 404 oder 405, nie ein Erfolg.
+        // Der Tunnel-Dienst nimmt beides als „die API kennt die Route nicht" (quelle.MeldeFehler).
+        assertThat(send(HttpMethod.PUT, "/api/v1/fernwartung/gibt-es-nicht", dienst, gut).getStatusCode())
+                .as("unbekannte Route unter /api/v1/fernwartung").isIn(HttpStatus.NOT_FOUND,
+                        HttpStatus.METHOD_NOT_ALLOWED);
+        // Und es reicht nicht weiter: kein anderer Pfad unter dem Baum, nichts im Admin-Baum.
+        assertThat(send(HttpMethod.PUT, "/api/v1/fernwartung/soll", dienst, gut).getStatusCode())
+                .isEqualTo(HttpStatus.METHOD_NOT_ALLOWED);
+        assertThat(send(HttpMethod.GET, BASE, dienst, null).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+    }
+
+    /**
      * O3 und die Rollen-Grenze: der Kunde sieht nichts, das Dienstkonto liest
      * nur seinen Soll-Stand, der Release-Publisher erreicht hier nichts.
      */
@@ -707,13 +893,71 @@ class FernwartungApiTest {
         // liest keine einzige Fernwartungs-Tabelle.
         JdbcTemplate app = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(), APP_USER, APP_PW));
         for (String tabelle : List.of("fernwartung_zugang", "fernwartung_fenster", "fernwartung_protokoll",
-                "fernwartung_dienst_abruf")) {
+                "fernwartung_dienst_abruf", "fernwartung_rueckmeldung_dienst", "fernwartung_rueckmeldung_box",
+                "fernwartung_rueckmeldung_fenster")) {
             assertThatThrownBy(() -> app.queryForObject("SELECT count(*) FROM " + tabelle, Long.class))
                     .as(tabelle).rootCause().hasMessageContaining("permission denied");
         }
     }
 
     // ── Hilfen ────────────────────────────────────────────────────────────
+
+    /** Der Soll-Stand ohne den Zeitpunkt seiner Erzeugung: was der Dienst umsetzt. */
+    private String sollOhneZeit(String dienst) {
+        JsonNode soll = getJson("/api/v1/fernwartung/soll", dienst);
+        ((com.fasterxml.jackson.databind.node.ObjectNode) soll).remove("erzeugtAm");
+        return soll.toString();
+    }
+
+    /** Zugänge, Fenster und Protokoll als ein Text: was eine Rückmeldung nie ändern darf. */
+    private String bestand() {
+        return adminJdbc.queryForObject(
+                "SELECT (SELECT string_agg(z::text, '|' ORDER BY z.id) FROM fernwartung_zugang z) || ' # ' "
+                        + "|| (SELECT string_agg(f::text, '|' ORDER BY f.id) FROM fernwartung_fenster f) || ' # ' "
+                        + "|| (SELECT string_agg(p::text, '|' ORDER BY p.id) FROM fernwartung_protokoll p)",
+                String.class);
+    }
+
+    private static JsonNode fenster(JsonNode box, String fensterId) {
+        return mitId(box.get("laufendeFenster"), fensterId);
+    }
+
+    private static JsonNode mitId(JsonNode liste, String id) {
+        for (JsonNode f : liste) {
+            if (id.equals(f.get("id").asText())) {
+                return f;
+            }
+        }
+        throw new AssertionError("kein Eintrag " + id + " in " + liste);
+    }
+
+    /** Eine Rückmeldung nach docs/contracts/fernwartung-rueckmeldung-v1.md, gemeldet jetzt. */
+    private static Map<String, Object> meldung(Instant gestartet, List<Map<String, Object>> boxen,
+            List<Map<String, Object>> fenster) {
+        Map<String, Object> m = new java.util.LinkedHashMap<>();
+        m.put("version", 1);
+        m.put("gemeldetUm", Instant.now().truncatedTo(java.time.temporal.ChronoUnit.SECONDS).toString());
+        m.put("gestartetUm", gestartet.toString());
+        m.put("schluesselausgabe", true);
+        m.put("boxen", boxen);
+        m.put("fenster", fenster);
+        return m;
+    }
+
+    private static Map<String, Object> box(String id, Instant verbundenSeit, Instant zuletztGefragtUm) {
+        Map<String, Object> b = new java.util.LinkedHashMap<>();
+        b.put("id", id);
+        b.put("verbundenSeit", verbundenSeit == null ? null : verbundenSeit.toString());
+        b.put("zuletztGefragtUm", zuletztGefragtUm == null ? null : zuletztGefragtUm.toString());
+        return b;
+    }
+
+    private static Map<String, Object> fensterMeldung(String id, Instant abgeholt) {
+        Map<String, Object> f = new java.util.LinkedHashMap<>();
+        f.put("id", id);
+        f.put("schluesselAbgeholtUm", abgeholt == null ? null : abgeholt.toString());
+        return f;
+    }
 
     private JsonNode peer(JsonNode soll, String kennung) {
         for (JsonNode p : soll.get("peers")) {

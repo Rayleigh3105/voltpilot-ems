@@ -8,6 +8,10 @@ import com.voltpilot.api.fernwartung.FernwartungRepository.DienstAbruf;
 import com.voltpilot.api.fernwartung.FernwartungRepository.Fenster;
 import com.voltpilot.api.fernwartung.FernwartungRepository.ProtokollEintrag;
 import com.voltpilot.api.fernwartung.FernwartungRepository.Zugang;
+import com.voltpilot.api.fernwartung.FernwartungRueckmeldungRepository.BoxStand;
+import com.voltpilot.api.fernwartung.FernwartungRueckmeldungRepository.DienstStand;
+import com.voltpilot.api.fernwartung.FernwartungRueckmeldungRepository.FensterStand;
+import com.voltpilot.api.fernwartung.FernwartungRueckmeldungService;
 import com.voltpilot.api.fernwartung.FernwartungService;
 import com.voltpilot.api.fernwartung.FernwartungService.Ergebnis;
 import com.voltpilot.api.fernwartung.FernwartungService.Hinterlegt;
@@ -59,6 +63,13 @@ import org.springframework.web.server.ResponseStatusException;
  *
  * <p>Umgesetzt wird nichts von hier aus: der Tunnel-Dienst auf der
  * Wartungs-VM holt den Soll-Stand über {@link FernwartungSollController} ab.
+ *
+ * <p><b>Rückmeldung des Tunnel-Dienstes</b> (Fenster-Schlüssel, Schritt 4):
+ * Box und Fenster tragen in {@code rueckmeldung}, was der Dienst zuletzt
+ * gemeldet hat, mit der Zeit, zu der die API es angenommen hat. Das Feld ist
+ * {@code null}, solange keine Meldung diese Box bzw. dieses Fenster genannt
+ * hat - das heißt „unbekannt", nicht „nicht verbunden". Die Angaben sind
+ * Anzeige; keine Regel hier hängt an ihnen.
  */
 @RestController
 @RequestMapping("/api/v1/admin/fernwartung")
@@ -78,9 +89,47 @@ public class AdminFernwartungController {
         }
     }
 
+    /**
+     * Die letzte Rückmeldung eines Tunnel-Dienstes: {@code zuletztAm} ist die
+     * Uhr der API beim Annehmen, {@code gestartetUm} der Start des Dienstes -
+     * was er meldet, weiß er erst seit dann. {@code schluesselausgabe}: gibt er
+     * den Boxen Schlüssel aus?
+     */
+    public record RueckmeldungDto(String dienst, Instant zuletztAm, Instant gestartetUm,
+            boolean schluesselausgabe, int boxen, int fenster) {
+        static RueckmeldungDto of(DienstStand d) {
+            return new RueckmeldungDto(d.dienst(), d.angenommenAm(), d.gestartetUm(), d.schluesselausgabe(),
+                    d.boxen(), d.fenster());
+        }
+    }
+
+    /**
+     * Was der Tunnel-Dienst zuletzt zu einer Box gemeldet hat, angenommen um
+     * {@code gemeldetAm}. {@code verbundenSeit} null = nicht verbunden;
+     * {@code zuletztGefragtUm} null = hat seit dem Start des Dienstes nicht
+     * nach Schlüsseln gefragt.
+     */
+    public record BoxRueckmeldungDto(Instant gemeldetAm, Instant verbundenSeit, Instant zuletztGefragtUm) {
+        static BoxRueckmeldungDto of(BoxStand b) {
+            return b == null ? null : new BoxRueckmeldungDto(b.angenommenAm(), b.verbundenSeit(),
+                    b.zuletztGefragtUm());
+        }
+    }
+
+    /**
+     * Was der Tunnel-Dienst zuletzt zu einem Fenster gemeldet hat.
+     * {@code schluesselAbgeholtUm} null = die Box hat den Schlüssel dieses
+     * Fensters seit dem Start des Dienstes nicht abgeholt.
+     */
+    public record FensterRueckmeldungDto(Instant gemeldetAm, Instant schluesselAbgeholtUm) {
+        static FensterRueckmeldungDto of(FensterStand f) {
+            return f == null ? null : new FensterRueckmeldungDto(f.angenommenAm(), f.schluesselAbgeholtUm());
+        }
+    }
+
     public record UebersichtDto(ServerDto server, long maxFensterMinuten, List<AbrufDto> abrufe,
-            long boxenAktiv, long boxenGesperrt, long technikerAktiv, long technikerGesperrt,
-            long fensterOffen, long fensterGeplant, Instant stand) {
+            List<RueckmeldungDto> rueckmeldungen, long boxenAktiv, long boxenGesperrt, long technikerAktiv,
+            long technikerGesperrt, long fensterOffen, long fensterGeplant, Instant stand) {
     }
 
     /**
@@ -89,12 +138,14 @@ public class AdminFernwartungController {
      */
     public record FensterDto(UUID id, String edgeRef, UUID technikerId, String technikerName, String grund,
             Instant beginn, Instant ende, Instant wirksamesEnde, String zustand, Instant geoeffnetAm,
-            String geoeffnetVon, Instant geschlossenAm, String geschlossenVon) {
-        static FensterDto of(Fenster f, Instant jetzt) {
+            String geoeffnetVon, Instant geschlossenAm, String geschlossenVon,
+            FensterRueckmeldungDto rueckmeldung) {
+        static FensterDto of(Fenster f, Instant jetzt, Map<UUID, FensterStand> gemeldet) {
             return new FensterDto(f.id(), f.edgeRef(), f.technikerId(), f.technikerName(), f.grund(),
                     f.beginn(), f.ende(), f.wirksamesEnde(), zustand(f, jetzt), f.geoeffnetAm(),
                     name(f.geoeffnetVonName(), f.geoeffnetVon()), f.geschlossenAm(),
-                    f.geschlossenAm() == null ? null : name(f.geschlossenVonName(), f.geschlossenVon()));
+                    f.geschlossenAm() == null ? null : name(f.geschlossenVonName(), f.geschlossenVon()),
+                    FensterRueckmeldungDto.of(gemeldet.get(f.id())));
         }
 
         static String zustand(Fenster f, Instant jetzt) {
@@ -110,12 +161,15 @@ public class AdminFernwartungController {
 
     public record BoxDto(UUID id, String edgeRef, String publicKey, String publicKeyKurz, String adresse,
             String status, String notiz, Instant angelegtAm, Instant geaendertAm, UUID siteId, String siteName,
-            UUID tenantId, String tenantName, List<FensterDto> laufendeFenster) {
-        static BoxDto of(Zugang z, List<Fenster> laufend, Instant jetzt) {
+            UUID tenantId, String tenantName, List<FensterDto> laufendeFenster,
+            BoxRueckmeldungDto rueckmeldung) {
+        static BoxDto of(Zugang z, List<Fenster> laufend, Instant jetzt, BoxStand gemeldet,
+                Map<UUID, FensterStand> fensterGemeldet) {
             return new BoxDto(z.id(), z.edgeRef(), z.publicKey(), WireguardSchluessel.kurz(z.publicKey()),
                     z.adresse(), z.status(), z.notiz(), z.angelegtAm(), z.geaendertAm(), z.siteId(),
                     z.siteName(), z.tenantId(), z.tenantName(),
-                    laufend.stream().map(f -> FensterDto.of(f, jetzt)).toList());
+                    laufend.stream().map(f -> FensterDto.of(f, jetzt, fensterGemeldet)).toList(),
+                    BoxRueckmeldungDto.of(gemeldet));
         }
     }
 
@@ -176,10 +230,13 @@ public class AdminFernwartungController {
     }
 
     private final FernwartungService service;
+    private final FernwartungRueckmeldungService rueckmeldung;
     private final ObjectMapper json;
 
-    public AdminFernwartungController(FernwartungService service, ObjectMapper json) {
+    public AdminFernwartungController(FernwartungService service, FernwartungRueckmeldungService rueckmeldung,
+            ObjectMapper json) {
         this.service = service;
+        this.rueckmeldung = rueckmeldung;
         this.json = json;
     }
 
@@ -189,8 +246,10 @@ public class AdminFernwartungController {
     public UebersichtDto uebersicht() {
         Uebersicht u = service.uebersicht();
         return new UebersichtDto(server(), u.konfiguration().maxFensterDauer().toMinutes(),
-                u.abrufe().stream().map(AbrufDto::of).toList(), u.boxenAktiv(), u.boxenGesperrt(),
-                u.technikerAktiv(), u.technikerGesperrt(), u.fensterOffen(), u.fensterGeplant(), service.jetzt());
+                u.abrufe().stream().map(AbrufDto::of).toList(),
+                rueckmeldung.dienste().stream().map(RueckmeldungDto::of).toList(), u.boxenAktiv(),
+                u.boxenGesperrt(), u.technikerAktiv(), u.technikerGesperrt(), u.fensterOffen(),
+                u.fensterGeplant(), service.jetzt());
     }
 
     // ── Boxen ─────────────────────────────────────────────────────────────
@@ -199,8 +258,11 @@ public class AdminFernwartungController {
     public List<BoxDto> boxen() {
         Instant jetzt = service.jetzt();
         Map<UUID, List<Fenster>> laufend = service.laufendeFensterJeBox();
+        Map<UUID, BoxStand> gemeldet = rueckmeldung.boxen();
+        Map<UUID, FensterStand> fensterGemeldet = gemeldet(laufend.values().stream().flatMap(List::stream).toList());
         return service.boxen().stream()
-                .map(b -> BoxDto.of(b, laufend.getOrDefault(b.id(), List.of()), jetzt))
+                .map(b -> BoxDto.of(b, laufend.getOrDefault(b.id(), List.of()), jetzt, gemeldet.get(b.id()),
+                        fensterGemeldet))
                 .toList();
     }
 
@@ -310,8 +372,9 @@ public class AdminFernwartungController {
     public List<FensterDto> fenster(@RequestParam(required = false) String box,
             @RequestParam(required = false) UUID techniker, @RequestParam(defaultValue = "100") int limit) {
         Instant jetzt = service.jetzt();
-        return service.fenster(box == null ? null : referenz(box), techniker, limit).stream()
-                .map(f -> FensterDto.of(f, jetzt)).toList();
+        List<Fenster> liste = service.fenster(box == null ? null : referenz(box), techniker, limit);
+        Map<UUID, FensterStand> gemeldet = gemeldet(liste);
+        return liste.stream().map(f -> FensterDto.of(f, jetzt, gemeldet)).toList();
     }
 
     @PostMapping("/fenster")
@@ -319,12 +382,12 @@ public class AdminFernwartungController {
             @AuthenticationPrincipal Jwt caller) {
         Fenster f = service.fensterOeffnen(referenz(req.edgeRef()), req.technikerId(), req.grund(),
                 Duration.ofMinutes(req.dauerMinuten()), req.beginn(), Akteur.aus(caller));
-        return ResponseEntity.status(HttpStatus.CREATED).body(FensterDto.of(f, service.jetzt()));
+        return ResponseEntity.status(HttpStatus.CREATED).body(fensterDto(f));
     }
 
     @PostMapping("/fenster/{id}/schliessen")
     public FensterDto fensterSchliessen(@PathVariable UUID id, @AuthenticationPrincipal Jwt caller) {
-        return FensterDto.of(service.fensterSchliessen(id, Akteur.aus(caller)), service.jetzt());
+        return fensterDto(service.fensterSchliessen(id, Akteur.aus(caller)));
     }
 
     // ── Protokoll ─────────────────────────────────────────────────────────
@@ -339,7 +402,17 @@ public class AdminFernwartungController {
     // ── intern ────────────────────────────────────────────────────────────
 
     private BoxDto boxDto(Zugang box) {
-        return BoxDto.of(box, service.laufendeFensterJeBox().getOrDefault(box.id(), List.of()), service.jetzt());
+        List<Fenster> laufend = service.laufendeFensterJeBox().getOrDefault(box.id(), List.of());
+        return BoxDto.of(box, laufend, service.jetzt(), rueckmeldung.boxen().get(box.id()), gemeldet(laufend));
+    }
+
+    private FensterDto fensterDto(Fenster f) {
+        return FensterDto.of(f, service.jetzt(), gemeldet(List.of(f)));
+    }
+
+    /** Was der Tunnel-Dienst zuletzt zu diesen Fenstern gemeldet hat (nur Anzeige). */
+    private Map<UUID, FensterStand> gemeldet(List<Fenster> fenster) {
+        return rueckmeldung.fenster(fenster.stream().map(Fenster::id).toList());
     }
 
     private ServerDto server() {

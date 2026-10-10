@@ -5,9 +5,12 @@ import {
   aktionLabel,
   boxBefehl,
   boxOrt,
+  boxVerbindung,
   dauerOptionen,
   dauerText,
   boxAnmeldung,
+  FENSTER_WIRKUNG_SATZ,
+  rueckmeldungLage,
   fensterTeile,
   fensterText,
   loeschbar,
@@ -27,6 +30,7 @@ import {
   technikerOptionen,
   type FernwartungBox,
   type FernwartungFenster,
+  type FernwartungRueckmeldung,
   type FernwartungServer,
   type FernwartungTechniker,
   type FernwartungUebersicht,
@@ -170,6 +174,209 @@ function uebersicht(p: Partial<FernwartungUebersicht> = {}): FernwartungUebersic
     ...p,
   };
 }
+
+// ── Rückmeldung des Tunnel-Dienstes ─────────────────────────────────────────
+
+/** Eine Meldung, angenommen 20 s vor JETZT; der Dienst läuft seit 09:15 (Berlin 11:15). */
+function gemeldet(p: Partial<FernwartungRueckmeldung> = {}): FernwartungRueckmeldung {
+  return {
+    dienst: 'voltpilot-tunnel-dienst',
+    zuletztAm: '2026-10-07T11:59:40Z',
+    gestartetUm: '2026-10-07T09:15:00Z',
+    schluesselausgabe: true,
+    boxen: 2,
+    fenster: 1,
+    ...p,
+  };
+}
+
+/** Die Übersicht mit frischem Abruf und dieser Meldung. */
+function mitMeldung(p: Partial<FernwartungRueckmeldung> = {}): FernwartungUebersicht {
+  return uebersicht({
+    abrufe: [{ dienst: 'voltpilot-tunnel-dienst', zuletztAm: '2026-10-07T11:59:40Z', peers: 3, fenster: 1 }],
+    rueckmeldungen: [gemeldet(p)],
+  });
+}
+
+const FRISCH = '2026-10-07T11:59:40Z';
+const ALT = '2026-10-07T11:40:00Z';
+
+describe('Rückmeldung des Tunnel-Dienstes: was er meldet, mit dem Alter - und was unbekannt bleibt', () => {
+  it('die Lage-Zeile unterscheidet keine, veraltete und frische Meldung', () => {
+    // Neue API, alter Dienst: er holt ab, meldet aber nichts.
+    const alterDienst = rueckmeldungLage(
+      uebersicht({ abrufe: [{ dienst: 'voltpilot-tunnel-dienst', zuletztAm: FRISCH, peers: 3, fenster: 1 }] }),
+      JETZT,
+    );
+    expect(alterDienst.ton).toBe('off');
+    expect(alterDienst.titel).toBe('Tunnel-Dienst meldet keinen Zustand');
+    expect(alterDienst.text).toMatch(/holt den Soll-Stand ab, hat aber noch nie gemeldet/);
+    expect(alterDienst.text).toMatch(/vermutlich ein Stand ohne Rückmeldung/);
+    expect(alterDienst.text).toMatch(/ist deshalb nicht bekannt/);
+    // Eine API vor der Rückmeldung liefert das Feld gar nicht: dasselbe wie leer.
+    const ohneFeld = uebersicht();
+    delete ohneFeld.rueckmeldungen;
+    expect(rueckmeldungLage(ohneFeld, JETZT).titel).toBe('Tunnel-Dienst meldet keinen Zustand');
+    expect(rueckmeldungLage(ohneFeld, JETZT).text).not.toMatch(/holt den Soll-Stand ab/);
+
+    const veraltet = rueckmeldungLage(mitMeldung({ zuletztAm: ALT }), JETZT);
+    expect(veraltet.ton).toBe('warn');
+    expect(veraltet.titel).toBe('Meldung des Tunnel-Dienstes veraltet');
+    expect(veraltet.text).toMatch(/Letzte Meldung vor 20 min/);
+    expect(veraltet.text).toMatch(/ist nicht bekannt, bis der Dienst wieder meldet/);
+
+    const frisch = rueckmeldungLage(mitMeldung(), JETZT);
+    expect(frisch.ton).toBe('ok');
+    expect(frisch.text).toBe(
+      'Letzte Meldung vor 20 s (2 Boxen, 1 offene Fenster auf dem Wartungsserver). Der Dienst läuft seit 11:15.',
+    );
+    // Genau an der Grenze von drei Minuten gilt die Meldung noch.
+    expect(rueckmeldungLage(mitMeldung({ zuletztAm: '2026-10-07T11:57:00Z' }), JETZT).ton).toBe('ok');
+    expect(rueckmeldungLage(mitMeldung({ zuletztAm: '2026-10-07T11:56:59Z' }), JETZT).ton).toBe('warn');
+
+    const ohneAusgabe = rueckmeldungLage(mitMeldung({ schluesselausgabe: false }), JETZT);
+    expect(ohneAusgabe.ton).toBe('warn');
+    expect(ohneAusgabe.text).toMatch(/Die Schlüsselausgabe ist dort aus: Keine Box bekommt einen Fenster-Schlüssel\.$/);
+  });
+
+  it('die Box: verbunden seit, mindestens seit dem Start, nicht verbunden', () => {
+    const verbunden = boxVerbindung(
+      box({ rueckmeldung: { gemeldetAm: FRISCH, verbundenSeit: '2026-10-07T09:42:07Z', zuletztGefragtUm: '2026-10-07T11:59:12Z' } }),
+      mitMeldung(),
+      JETZT,
+    );
+    expect([verbunden.fall, verbunden.ton, verbunden.titel]).toEqual(['verbunden', 'ok', 'Box verbunden']);
+    expect(verbunden.text).toBe(
+      'Verbunden seit 11:42. Sie hat zuletzt um 13:59 nach Schlüsseln gefragt. Stand: vor 20 s.',
+    );
+
+    // Gleich dem Start des Dienstes: wie lange davor, weiß niemand.
+    const mindestens = boxVerbindung(
+      box({ rueckmeldung: { gemeldetAm: FRISCH, verbundenSeit: '2026-10-07T09:15:00Z', zuletztGefragtUm: null } }),
+      mitMeldung(),
+      JETZT,
+    );
+    expect(mindestens.text).toBe(
+      'Verbunden mindestens seit 11:15 (Start des Tunnel-Dienstes). Sie hat seit dem Start des Tunnel-Dienstes (11:15) nicht nach Schlüsseln gefragt. Stand: vor 20 s.',
+    );
+
+    const getrennt = boxVerbindung(
+      box({ rueckmeldung: { gemeldetAm: FRISCH, verbundenSeit: null, zuletztGefragtUm: null } }),
+      mitMeldung(),
+      JETZT,
+    );
+    expect([getrennt.fall, getrennt.ton, getrennt.titel]).toEqual(['nicht_verbunden', 'warn', 'Box nicht verbunden']);
+    expect(getrennt.text).toBe(
+      'Die Box ist nicht mit dem Wartungsserver verbunden: kein WireGuard-Handshake in den letzten 3 Minuten. Stand: vor 20 s.',
+    );
+  });
+
+  it('unbekannt ist kein „nicht verbunden": keine Meldung, alte Meldung, Box nicht genannt', () => {
+    const nichtVerbunden = { gemeldetAm: ALT, verbundenSeit: null, zuletztGefragtUm: null };
+    const faelle: Array<[string, ReturnType<typeof boxVerbindung>, RegExp]> = [
+      ['nie gemeldet', boxVerbindung(box(), uebersicht(), JETZT), /noch nie seinen Zustand gemeldet/],
+      ['API ohne das Feld', boxVerbindung(box({ rueckmeldung: undefined }), uebersicht({ rueckmeldungen: undefined }), JETZT), /noch nie seinen Zustand gemeldet/],
+      ['Übersicht nicht geladen', boxVerbindung(box(), null, JETZT), /ließ sich nicht laden/],
+      // Die letzte Angabe sagte „nicht verbunden" - sie ist aber 20 Minuten alt.
+      ['veraltet', boxVerbindung(box({ rueckmeldung: nichtVerbunden }), mitMeldung({ zuletztAm: ALT }), JETZT), /ist 20 min alt\. Damals war die Box nicht verbunden\./],
+      // Die Meldung ist frisch, die Angabe zur Box stammt aus einer früheren.
+      ['Box nicht in der letzten Meldung', boxVerbindung(box({ rueckmeldung: nichtVerbunden }), mitMeldung(), JETZT), /nennt diese Box nicht/],
+      ['Box nie genannt', boxVerbindung(box({ rueckmeldung: null }), mitMeldung(), JETZT), /nennt diese Box nicht/],
+      ['gesperrt', boxVerbindung(box({ status: 'gesperrt' }), mitMeldung(), JETZT), /gesperrt; der Wartungsserver führt sie nicht/],
+    ];
+    for (const [name, v, satz] of faelle) {
+      expect([name, v.fall, v.ton, v.titel]).toEqual([name, 'unbekannt', 'off', 'Verbindung unbekannt']);
+      expect(v.text, name).toMatch(satz);
+      expect(v.text, name).not.toMatch(/^Die Box ist nicht mit dem Wartungsserver verbunden/);
+    }
+    // Box und Übersicht kommen aus getrennten Abrufen: Traf dazwischen EINE neue Meldung ein
+    // (30 s später), zählt die Angabe der Box noch; fehlt sie in zwei Meldungen, nicht mehr.
+    const knappDavor = { gemeldetAm: '2026-10-07T11:59:10Z', verbundenSeit: '2026-10-07T09:42:07Z', zuletztGefragtUm: null };
+    expect(boxVerbindung(box({ rueckmeldung: knappDavor }), mitMeldung(), JETZT).fall).toBe('verbunden');
+    const zweiDavor = { ...knappDavor, gemeldetAm: '2026-10-07T11:58:40Z' };
+    expect(boxVerbindung(box({ rueckmeldung: zweiDavor }), mitMeldung(), JETZT).fall).toBe('unbekannt');
+    // Veraltet und verbunden: auch das behauptet die Zeile nicht für jetzt.
+    const damals = boxVerbindung(
+      box({ rueckmeldung: { gemeldetAm: ALT, verbundenSeit: '2026-10-07T09:42:07Z', zuletztGefragtUm: null } }),
+      mitMeldung({ zuletztAm: ALT }),
+      JETZT,
+    );
+    expect(damals.fall).toBe('unbekannt');
+    expect(damals.text).toMatch(/Damals war die Box verbunden\./);
+  });
+
+  it('das Fenster: die vier Fälle aus Sicht des Technikers', () => {
+    const verbunden = { gemeldetAm: FRISCH, verbundenSeit: '2026-10-07T09:42:07Z', zuletztGefragtUm: '2026-10-07T11:59:12Z' };
+    const eins = (b: Partial<FernwartungBox>, f: Partial<FernwartungFenster>, t: FernwartungTechniker, u = mitMeldung()) =>
+      boxAnmeldung(box({ ...b, laufendeFenster: [fenster(f)] }), [t], u, JETZT)!.fenster[0];
+
+    // 1. Alles bereit.
+    const bereit = eins({ rueckmeldung: verbunden }, { rueckmeldung: { gemeldetAm: FRISCH, schluesselAbgeholtUm: '2026-10-07T11:31:05Z' } }, techMitSsh());
+    expect([bereit.fall, bereit.ton, bereit.titel]).toEqual(['bereit', 'ok', 'Alles bereit']);
+    expect(bereit.satz).toBe(
+      `„Max (Laptop)“: Die Box ist verbunden und hat den SSH-Schlüssel ${FINGERABDRUCK} um 13:31 abgeholt. Die Anmeldung ist möglich. Stand: vor 20 s.`,
+    );
+
+    // 2. Box verbunden, Schlüssel noch nicht abgeholt - mit dem Grund, den die Meldung hergibt.
+    const offen = { rueckmeldung: { gemeldetAm: FRISCH, schluesselAbgeholtUm: null } };
+    const wartet = eins({ rueckmeldung: verbunden }, offen, techMitSsh());
+    expect([wartet.fall, wartet.ton, wartet.titel]).toEqual(['nicht_abgeholt', 'warn', 'Schlüssel noch nicht abgeholt']);
+    expect(wartet.satz).toBe(
+      `„Max (Laptop)“: Die Box ist verbunden, hat den SSH-Schlüssel ${FINGERABDRUCK} aber noch nicht abgeholt. Sie fragt nach Schlüsseln, zuletzt um 13:59; in der Regel folgt der Schlüssel nach wenigen Sekunden. Stand: vor 20 s.`,
+    );
+    const fragtNie = eins({ rueckmeldung: { ...verbunden, zuletztGefragtUm: null } }, offen, techMitSsh());
+    expect(fragtNie.fall).toBe('nicht_abgeholt');
+    expect(fragtNie.satz).toMatch(/Sie hat seit dem Start des Tunnel-Dienstes \(11:15\) nicht nach Schlüsseln gefragt\. Vermutlich ist ihr Tunnel noch nicht mit dem aktuellen Skript \(service-tunnel\.sh\) eingerichtet/);
+    const ausgabeAus = eins({ rueckmeldung: verbunden }, offen, techMitSsh(), mitMeldung({ schluesselausgabe: false }));
+    expect(ausgabeAus.fall).toBe('nicht_abgeholt');
+    expect(ausgabeAus.satz).toMatch(/Am Wartungsserver ist die Schlüsselausgabe aus: Keine Box bekommt einen Fenster-Schlüssel\./);
+
+    // 3. Box nicht verbunden: das Fenster ist offen, aber niemand kommt durch.
+    const getrennt = eins(
+      { rueckmeldung: { gemeldetAm: FRISCH, verbundenSeit: null, zuletztGefragtUm: null } },
+      { rueckmeldung: { gemeldetAm: FRISCH, schluesselAbgeholtUm: null } },
+      techMitSsh(),
+    );
+    expect([getrennt.fall, getrennt.ton, getrennt.titel]).toEqual(['nicht_verbunden', 'warn', 'Box nicht verbunden']);
+    expect(getrennt.satz).toBe(
+      '„Max (Laptop)“: Die Box ist nicht mit dem Wartungsserver verbunden. Das Fenster ist offen, aber niemand erreicht die Box, und sie kann den Schlüssel nicht abholen. Stand: vor 20 s.',
+    );
+
+    // 4. Kein SSH-Schlüssel am Zugang: das weiß das Portal selbst, auch ohne jede Meldung.
+    for (const u of [mitMeldung(), uebersicht(), mitMeldung({ zuletztAm: ALT })]) {
+      const ohne = eins({ rueckmeldung: verbunden }, offen, tech(), u);
+      expect([ohne.fall, ohne.ton, ohne.titel]).toEqual(['kein_schluessel', 'warn', 'Kein SSH-Schlüssel am Zugang']);
+      expect(ohne.satz).toMatch(/nur Netzweg\. Der Zugang hat keinen SSH-Schlüssel/);
+    }
+  });
+
+  it('das Fenster: unbekannt ist kein „nicht abgeholt" und kein „nicht verbunden"', () => {
+    const verbunden = { gemeldetAm: FRISCH, verbundenSeit: '2026-10-07T09:42:07Z', zuletztGefragtUm: '2026-10-07T11:59:12Z' };
+    const altGetrennt = { gemeldetAm: ALT, verbundenSeit: null, zuletztGefragtUm: null };
+    const altOffen = { gemeldetAm: ALT, schluesselAbgeholtUm: null };
+    const eins = (b: Partial<FernwartungBox>, f: Partial<FernwartungFenster>, u: FernwartungUebersicht | null) =>
+      boxAnmeldung(box({ ...b, laufendeFenster: [fenster(f)] }), [techMitSsh()], u, JETZT)!.fenster[0];
+
+    const faelle: Array<[string, ReturnType<typeof eins>, RegExp]> = [
+      // Neue API, alter Dienst.
+      ['nie gemeldet', eins({}, {}, uebersicht()), /ist nicht bekannt: Der Tunnel-Dienst hat dem Portal noch nie seinen Zustand gemeldet\./],
+      // VM nicht erreichbar: die letzten Angaben sagten „nicht verbunden" und „nicht abgeholt".
+      ['veraltet', eins({ rueckmeldung: altGetrennt }, { rueckmeldung: altOffen }, mitMeldung({ zuletztAm: ALT })), /ist nicht bekannt: Die letzte Meldung des Tunnel-Dienstes ist 20 min alt\./],
+      ['Box nicht genannt', eins({ rueckmeldung: altGetrennt }, { rueckmeldung: altOffen }, mitMeldung()), /ist nicht bekannt: Die letzte Meldung des Tunnel-Dienstes \(vor 20 s\) nennt diese Box nicht\./],
+      // Die Box ist verbunden, aber das Fenster steht (noch) nicht in der Meldung.
+      ['Fenster nicht genannt', eins({ rueckmeldung: verbunden }, { rueckmeldung: null }, mitMeldung()), /Die Box ist verbunden; ob sie ihn abgeholt hat, ist nicht bekannt: Die letzte Meldung des Tunnel-Dienstes nennt dieses Fenster nicht\./],
+      ['Fenster nur in einer früheren Meldung', eins({ rueckmeldung: verbunden }, { rueckmeldung: altOffen }, mitMeldung()), /nennt dieses Fenster nicht\. Nach dem Öffnen dauert das bis zu einer Minute; bleibt es so, wirkt das Fenster auf dem Wartungsserver nicht\./],
+      ['Übersicht nicht geladen', eins({ rueckmeldung: verbunden }, {}, null), /ließ sich nicht laden/],
+    ];
+    for (const [name, f, satz] of faelle) {
+      expect([name, f.fall, f.ton, f.titel, f.schluessel]).toEqual([name, 'unbekannt', 'off', 'Stand unbekannt', 'vorhanden']);
+      expect(f.satz, name).toMatch(satz);
+      // Der Satz verspricht die Anmeldung nicht und behauptet kein Scheitern.
+      expect(f.satz, name).toMatch(/sobald die Box ihn abgeholt hat oder wenn er schon auf ihr liegt/);
+      expect(f.satz, name).not.toMatch(/noch nicht abgeholt|nicht mit dem Wartungsserver verbunden/);
+    }
+  });
+});
 
 describe('Lage des Tunnel-Dienstes: Abholen ist nicht Wirken', () => {
   it('sagt ehrlich, wenn nie abgeholt wurde', () => {
@@ -397,14 +604,17 @@ describe('SSH-Schlüssel des Technikers (Fenster-Schlüssel, Schritt 1)', () => 
         ],
       }),
       [techMitSsh(), kim],
+      uebersicht(),
+      JETZT,
     );
     // Die Befehle hängen nur an der Box: einmal, nicht je Fenster.
     expect(a?.befehle.ssh).toBe('ssh -i ~/.ssh/id_rsa_voltpilot -p 2222 root@10.10.16.2');
     expect(a?.befehle.webApp).toContain('-L 8484:127.0.0.1:8484');
     // Nur die offenen Fenster, das zuerst endende zuerst.
-    expect(a?.fenster.map((f) => [f.fensterId, f.schluessel, f.ton])).toEqual([
-      ['frueh', 'fehlt', 'warn'],
-      ['spaet', 'vorhanden', 'ok'],
+    // Ohne Meldung des Tunnel-Dienstes: der Schlüssel am Zugang ist bekannt, alles andere nicht.
+    expect(a?.fenster.map((f) => [f.fensterId, f.schluessel, f.fall, f.ton])).toEqual([
+      ['frueh', 'fehlt', 'kein_schluessel', 'warn'],
+      ['spaet', 'vorhanden', 'unbekannt', 'off'],
     ]);
     expect(a?.fenster[0].satz).toBe(
       '„Kim (Tablet)“: nur Netzweg. Der Zugang hat keinen SSH-Schlüssel; anmelden kann sich nur, wessen Schlüssel schon auf der Box liegt.',
@@ -412,7 +622,7 @@ describe('SSH-Schlüssel des Technikers (Fenster-Schlüssel, Schritt 1)', () => 
     // Das Portal verspricht die Anmeldung nicht: die Box muss den Schlüssel erst haben.
     expect(a?.fenster[1].fingerabdruck).toBe(FINGERABDRUCK);
     expect(a?.fenster[1].satz).toBe(
-      `„Max (Laptop)“: Anmeldung mit dem SSH-Schlüssel ${FINGERABDRUCK}, sobald die Box ihn abgeholt hat oder wenn er schon auf ihr liegt.`,
+      `„Max (Laptop)“: Anmeldung mit dem SSH-Schlüssel ${FINGERABDRUCK}, sobald die Box ihn abgeholt hat oder wenn er schon auf ihr liegt. Ob die Box verbunden ist und ihn abgeholt hat, ist nicht bekannt: Der Tunnel-Dienst hat dem Portal noch nie seinen Zustand gemeldet.`,
     );
   });
 
@@ -447,8 +657,11 @@ describe('SSH-Schlüssel des Technikers (Fenster-Schlüssel, Schritt 1)', () => 
     expect(SSH_STAND_SATZ).toMatch(/Das tun nur Boxen, deren Wartungstunnel mit dem aktuellen Skript \(service-tunnel\.sh\) eingerichtet ist/);
     expect(SSH_STAND_SATZ).toMatch(/nur, wenn die Schlüsselausgabe am Wartungsserver eingeschaltet ist/);
     expect(SSH_STAND_SATZ).toMatch(/An jeder anderen Box gelingt die Anmeldung nur mit einem Schlüssel, der schon auf der Box liegt/);
-    expect(SSH_STAND_SATZ).toMatch(/Ob eine Box den Schlüssel abgeholt hat, sieht das Portal nicht/);
+    // Ob eine bestimmte Box ihn abgeholt hat, sagt seit der Rückmeldung die Zeile ihres Fensters.
+    expect(SSH_STAND_SATZ).toMatch(/Ob eine Box den Schlüssel abgeholt hat, steht an ihrem offenen Fenster, sobald der Tunnel-Dienst es meldet/);
+    expect(SSH_STAND_SATZ).not.toMatch(/sieht das Portal nicht/);
     expect(SSH_STAND_SATZ).not.toMatch(/noch nicht/);
+    expect(FENSTER_WIRKUNG_SATZ).toMatch(/sobald der Tunnel-Dienst es meldet/);
   });
 
   it('zeigt Fingerabdruck und Länge - oder nichts', () => {

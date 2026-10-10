@@ -127,9 +127,10 @@ public class SecurityConfig {
                 // weiter zu), sie schließt nur die Rückfallebene.
                 .requestMatchers("/api/v1/admin/**")
                         .hasAnyRole("platform-admin", "edge-release-publisher")
-                // Dieselbe Rückfallebene für die Leseroute des Tunnel-Dienstes
-                // (FernwartungSollController): nur das Dienstkonto mit der
-                // Rolle tunnel-dienst, kein Kunden- und kein Admin-Token.
+                // Dieselbe Rückfallebene für die beiden Routen des Tunnel-Dienstes
+                // (FernwartungSollController, FernwartungRueckmeldungController):
+                // nur das Dienstkonto mit der Rolle tunnel-dienst, kein Kunden-
+                // und kein Admin-Token.
                 // Bewusst ein EIGENER Baum statt unter /api/v1/admin/**, damit
                 // die Rolle dort nichts erreicht.
                 .requestMatchers("/api/v1/fernwartung/**").hasRole("tunnel-dienst")

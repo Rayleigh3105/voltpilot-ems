@@ -12,7 +12,7 @@ test('Fernwartung: Lage, Sperrgründe und Fenster öffnen auf jeder Bildschirmgr
 
   await expect(page.getByRole('tab', { name: 'Fernwartung' })).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByTestId('fw-dienst')).toContainText('Tunnel-Dienst holt ab');
-  await expect(page.getByText(/meldet der Tunnel-Dienst nicht zurück/)).toBeVisible();
+  await expect(page.getByTestId('fw-rueckmeldung')).toContainText('Tunnel-Dienst meldet seinen Zustand');
 
   const boxen = page.getByTestId('fw-boxen');
   const gesperrt = boxen.locator('tr').filter({ hasText: 'edge-q2w3e4r' });
@@ -202,7 +202,7 @@ test('Fernwartung: ein offenes Fenster zeigt die fertigen Befehle, ohne SSH-Schl
   ).toBeVisible();
   await expect(mit).toContainText('danach im Browser: http://127.0.0.1:8484');
   await expect(mit.getByTestId('fw-anmeldung-vorhanden')).toContainText(
-    '„Alex (Laptop)“: Anmeldung mit dem SSH-Schlüssel SHA256:TDOx3bpPNtPLIdd+juZoGcDMz3ZRCklaP5G6aBrp9Zc',
+    '„Alex (Laptop)“: Die Box ist verbunden und hat den SSH-Schlüssel SHA256:TDOx3bpPNtPLIdd+juZoGcDMz3ZRCklaP5G6aBrp9Zc',
   );
   await expect(mit.getByTestId('fw-anmeldung-fehlt')).toContainText('„Kim (Tablet)“: nur Netzweg. Der Zugang hat keinen SSH-Schlüssel');
 
@@ -363,5 +363,158 @@ test('Fernwartung: ein neuer Zugang bekommt seinen SSH-Schlüssel gleich beim An
   await expect(page.getByTestId('fw-protokoll').locator('tr').filter({ hasText: 'Techniker-Zugang angelegt' })).toContainText(
     `SSH ${neu.fingerabdruck}`,
   );
+  expect(errors).toEqual([]);
+});
+
+// ── Rückmeldung des Tunnel-Dienstes (Fenster-Schlüssel, Schritt 4) ──────────
+// Die Fixture bildet nach, was der Dienst meldet (`?fall=`). An der Box mit zwei offenen
+// Fenstern steht je Fenster, warum die Anmeldung gelingt oder nicht.
+const FINGERABDRUCK = 'SHA256:TDOx3bpPNtPLIdd+juZoGcDMz3ZRCklaP5G6aBrp9Zc';
+const RUECKMELDUNG_FAELLE: Array<{
+  fall: string;
+  lage: string;
+  verbindung: [string, string];
+  fenster: [string, string];
+  satz: RegExp;
+}> = [
+  {
+    fall: 'bereit',
+    lage: 'Tunnel-Dienst meldet seinen Zustand',
+    verbindung: ['verbunden', 'Box verbunden'],
+    fenster: ['bereit', 'Alles bereit'],
+    satz: /Die Box ist verbunden und hat den SSH-Schlüssel SHA256:\S+ um \d\d:\d\d abgeholt\. Die Anmeldung ist möglich\. Stand: vor \d+ s\./,
+  },
+  {
+    fall: 'nicht-abgeholt',
+    lage: 'Tunnel-Dienst meldet seinen Zustand',
+    verbindung: ['verbunden', 'Box verbunden'],
+    fenster: ['nicht_abgeholt', 'Schlüssel noch nicht abgeholt'],
+    satz: /hat den SSH-Schlüssel SHA256:\S+ aber noch nicht abgeholt\. Sie fragt nach Schlüsseln, zuletzt um \d\d:\d\d/,
+  },
+  {
+    fall: 'fragt-nicht',
+    lage: 'Tunnel-Dienst meldet seinen Zustand',
+    verbindung: ['verbunden', 'Box verbunden'],
+    fenster: ['nicht_abgeholt', 'Schlüssel noch nicht abgeholt'],
+    satz: /nicht nach Schlüsseln gefragt\. Vermutlich ist ihr Tunnel noch nicht mit dem aktuellen Skript \(service-tunnel\.sh\) eingerichtet/,
+  },
+  {
+    fall: 'ausgabe-aus',
+    lage: 'Die Schlüsselausgabe ist dort aus',
+    verbindung: ['verbunden', 'Box verbunden'],
+    fenster: ['nicht_abgeholt', 'Schlüssel noch nicht abgeholt'],
+    satz: /Am Wartungsserver ist die Schlüsselausgabe aus: Keine Box bekommt einen Fenster-Schlüssel\./,
+  },
+  {
+    fall: 'nicht-verbunden',
+    lage: 'Tunnel-Dienst meldet seinen Zustand',
+    verbindung: ['nicht_verbunden', 'Box nicht verbunden'],
+    fenster: ['nicht_verbunden', 'Box nicht verbunden'],
+    satz: /Die Box ist nicht mit dem Wartungsserver verbunden\. Das Fenster ist offen, aber niemand erreicht die Box/,
+  },
+  {
+    fall: 'keine-meldung',
+    lage: 'Tunnel-Dienst meldet keinen Zustand',
+    verbindung: ['unbekannt', 'Verbindung unbekannt'],
+    fenster: ['unbekannt', 'Stand unbekannt'],
+    satz: /ist nicht bekannt: Der Tunnel-Dienst hat dem Portal noch nie seinen Zustand gemeldet\./,
+  },
+  {
+    fall: 'veraltet',
+    lage: 'Meldung des Tunnel-Dienstes veraltet',
+    verbindung: ['unbekannt', 'Verbindung unbekannt'],
+    fenster: ['unbekannt', 'Stand unbekannt'],
+    satz: /ist nicht bekannt: Die letzte Meldung des Tunnel-Dienstes ist 25 min alt\./,
+  },
+];
+
+for (const f of RUECKMELDUNG_FAELLE) {
+  test(`Fernwartung: Rückmeldung „${f.fall}" steht an Box und Fenster, in voller Länge`, async ({ page }) => {
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.goto(`/e2e/fernwartung.html?fall=${f.fall}`);
+
+    await expect(page.getByTestId('fw-rueckmeldung')).toContainText(f.lage);
+    const boxen = page.getByTestId('fw-boxen');
+    const verbindung = boxen.locator('tr').filter({ hasText: 'edge-zay5sdd' }).getByTestId('fw-verbindung');
+    await expect(verbindung).toHaveAttribute('data-fall', f.verbindung[0]);
+    await expect(verbindung).toContainText(f.verbindung[1]);
+
+    const block = boxen.locator('[data-testid="fw-anmeldung"][data-box="edge-zay5sdd"]');
+    const alex = block.locator('li').filter({ hasText: 'Alex (Laptop)' });
+    await expect(alex).toHaveAttribute('data-fall', f.fenster[0]);
+    await expect(alex).toContainText(f.fenster[1]);
+    await expect(alex).toContainText(f.satz);
+    // Kein SSH-Schlüssel am Zugang: das weiß das Portal selbst, mit und ohne Meldung.
+    const kim = block.locator('li').filter({ hasText: 'Kim (Tablet)' });
+    await expect(kim).toHaveAttribute('data-fall', 'kein_schluessel');
+    await expect(kim).toContainText('Kein SSH-Schlüssel am Zugang');
+    // Die gesperrte Box führt der Wartungsserver nicht: unbekannt, nie „nicht verbunden".
+    const gesperrt = boxen.locator('tr').filter({ hasText: 'edge-q2w3e4r' }).getByTestId('fw-verbindung');
+    await expect(gesperrt).toHaveAttribute('data-fall', 'unbekannt');
+
+    if (f.verbindung[0] === 'unbekannt') {
+      // Unbekannt ist kein „nicht verbunden" und kein „nicht abgeholt".
+      await expect(boxen.getByText('Box nicht verbunden')).toHaveCount(0);
+      await expect(boxen.getByText('Schlüssel noch nicht abgeholt')).toHaveCount(0);
+      await expect(alex).toContainText(`Anmeldung mit dem SSH-Schlüssel ${FINGERABDRUCK}, sobald die Box ihn abgeholt hat`);
+    }
+
+    // Nichts abgeschnitten: Abzeichen, Sätze und Lage-Zeilen brechen um, statt überzustehen.
+    await nichtAbgeschnitten(block.locator('li'));
+    await nichtAbgeschnitten(block.locator('.vp-fw-fall-satz'));
+    await nichtAbgeschnitten(block.locator('.vp-fw-fall-abzeichen'));
+    await nichtAbgeschnitten(page.getByTestId('fw-rueckmeldung'));
+    await nichtAbgeschnitten(page.getByTestId('fw-rueckmeldung').locator('span').last());
+    expect(await verbindung.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(1);
+    const ueberlauf = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(ueberlauf).toBeLessThanOrEqual(0);
+    await page.screenshot({ path: test.info().outputPath(`rueckmeldung-${f.fall}.png`), fullPage: true });
+
+    // Dieselbe Auskunft auf der Karte der Box-Seite.
+    await page.goto(`/e2e/fernwartung.html?ansicht=box&fall=${f.fall}`);
+    const karte = page.getByTestId('fw-karte');
+    await expect(karte.getByTestId('fw-karte-verbindung')).toContainText(f.verbindung[1]);
+    const aufKarte = karte.locator('li').filter({ hasText: '„Alex (Laptop)“' });
+    await expect(aufKarte).toHaveAttribute('data-fall', f.fenster[0]);
+    await expect(aufKarte).toContainText(f.satz);
+    await nichtAbgeschnitten(karte.getByTestId('fw-karte-verbindung'));
+    await nichtAbgeschnitten(karte.getByTestId('fw-karte-verbindung').locator('span').last());
+    await nichtAbgeschnitten(karte.locator('.vp-fw-fall-satz'));
+    const ueberlaufKarte = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    expect(ueberlaufKarte).toBeLessThanOrEqual(0);
+    await page.screenshot({ path: test.info().outputPath(`rueckmeldung-${f.fall}-box.png`), fullPage: true });
+    expect(errors).toEqual([]);
+  });
+}
+
+test('Fernwartung: nach dem Öffnen ist der Stand erst unbekannt und folgt dann von selbst der Meldung', async ({ page }) => {
+  test.setTimeout(120_000);
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/e2e/fernwartung.html');
+
+  const boxen = page.getByTestId('fw-boxen');
+  const frei = boxen.locator('tr').filter({ hasText: 'edge-k7m2xq3' });
+  // Die zweite Box war schon verbunden, als der Dienst startete: mindestens seit dann.
+  await expect(frei.getByTestId('fw-verbindung')).toContainText('Verbunden mindestens seit');
+  await expect(frei.getByTestId('fw-verbindung')).toContainText('(Start des Tunnel-Dienstes)');
+  await frei.getByRole('button', { name: 'Fenster öffnen' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('steht danach an der Zeile des Fensters, sobald der Tunnel-Dienst es meldet');
+  await dialog.getByRole('combobox', { name: /Techniker-Zugang/ }).click();
+  await page.getByRole('option', { name: /Alex \(Laptop\)/ }).filter({ hasNotText: 'Zugang gesperrt' }).click();
+  await dialog.getByLabel('Grund *').fill('Rückmeldung ansehen');
+  await dialog.getByRole('button', { name: 'Fenster öffnen' }).click();
+  await expect(dialog).not.toBeVisible();
+
+  // Das Fenster ist jünger als die letzte Meldung: unbekannt, nicht „nicht abgeholt".
+  const zeile = boxen.locator('[data-testid="fw-anmeldung"][data-box="edge-k7m2xq3"] li');
+  await expect(zeile).toHaveAttribute('data-fall', 'unbekannt');
+  await expect(zeile).toContainText('Die letzte Meldung des Tunnel-Dienstes nennt dieses Fenster nicht');
+  await nichtAbgeschnitten(zeile.locator('.vp-fw-fall-satz'));
+  // Ohne Klick: Die Seite holt den Stand von selbst neu, und die nächste Meldung nennt das Fenster.
+  await expect(zeile).toHaveAttribute('data-fall', 'bereit', { timeout: 75_000 });
+  await expect(zeile).toContainText('Alles bereit');
   expect(errors).toEqual([]);
 });
