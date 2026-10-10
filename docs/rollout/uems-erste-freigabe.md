@@ -423,8 +423,8 @@ ist kein Bild vom Merge-Commit auf `main`.
 **Das Release ist getaggt: `edge-2026.10.0` am 10.10.2026 auf `main` `99944c896`.** NW-3 für
 dieses Paar ist am selben Tag mit `--strecke` gefahren, Box und Cloud aus demselben Commit
 (`nw3-protokoll-edge-2026.10.0.json`): 13 grün, 0 rot, 0 Befund. `paare.json` führt es als viertes
-Paar. Von den zwei Nachzügen oben ist damit `paare.json` erledigt; `KATALOGSTAND` steht weiter auf
-`2026.08.26.3`, das Release trägt `2026.09.23.3`. Der nächste Tag heißt `edge-2026.10.1`.
+Paar. Von den zwei Nachzügen oben ist damit `paare.json` erledigt; `KATALOGSTAND` wird mit der
+Nachpflege (PR 1488) auf `2026.09.23.3` gesetzt. Der nächste Tag heißt `edge-2026.10.1`.
 
 ### 2.9 Zwischen Merge und Fenster
 

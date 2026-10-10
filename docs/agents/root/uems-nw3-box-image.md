@@ -163,8 +163,8 @@ liest (`ab_release: null`) — die Fläche liest `supports[]` und zeigt den Satz
 (Testfall `dasReleaseMitDemUemsStandMeldetSupportsUndBrauchtDarumKeinUpdate`). Und die
 Neuerungen des Release kommen am SunSpec-Simulator nicht vor: netzseitiger Drossel-Slot und
 `grid_target` (Deye P3/P4), Netzregler-Anzeige auf :8484, Fernwartung/Tunnel, Techniker-Zugang.
-`KATALOGSTAND` in `tools/edge-simulator/uems_szenarien.py` steht weiter auf `2026.08.26.3`
-(Drehbuch §2.8 „beim Taggen nachziehen“).
+`KATALOGSTAND` in `tools/edge-simulator/uems_szenarien.py` wird mit der Nachpflege (PR 1488) auf
+`2026.09.23.3` gesetzt (Drehbuch §2.8 „beim Taggen nachziehen“).
 
 ## X2 ist kein Fehlerbild
 
