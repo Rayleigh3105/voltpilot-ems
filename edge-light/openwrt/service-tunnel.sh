@@ -72,6 +72,11 @@
 #     /etc/vp-wartung/keys                          tmpfs fuer die Schluesseldatei
 #     /etc/config/vp-wartung                        Server, Port, Schnittstelle
 #     cron: jede Minute Verfallenes streichen
+#   Mit dem Schluessel enden die Sitzungen, die mit ihm begonnen wurden: der
+#   Abholer beendet ihren Anmeldeprozess, sobald er den Schluessel streicht
+#   (neue Liste vom Server, Frist, cron-Lauf). Sitzungen mit einem dauerhaften
+#   oder einem anderen, noch gueltigen Fenster-Schluessel bleiben; eine, die
+#   sich keinem gueltigen Schluessel zuordnen laesst, endet dabei ebenfalls.
 #   Die UCI-Instanz dropbear.vp_wartung entfaellt. Was dauerhaft in
 #   /etc/dropbear/authorized_keys steht, gilt im Tunnel weiter; die Datei wird
 #   nur gelesen. Gefragt wird die Server-Adresse im Techniker-Netz (.1 von
@@ -259,6 +264,27 @@ vp_fenster_weg() {
     /etc/init.d/vp-wartung stop >/dev/null 2>&1 || true
     /etc/init.d/vp-wartung disable >/dev/null 2>&1 || true
   fi
+  # Mit der Instanz enden ihre Sitzungen: danach ist niemand mehr da, der sie
+  # zum Ende eines Fensters beendet. Auch die mit einem dauerhaften Schluessel;
+  # sie melden sich an der Instanz, die bleibt, sofort wieder an. Ausgenommen
+  # ist nur die Sitzung, an der dieser Lauf selbst haengt - er braeche sonst
+  # mittendrin ab.
+  vfw_ahnen=" "
+  vfw_p=$$
+  while [ -n "$vfw_p" ] && [ "$vfw_p" -gt 1 ] 2>/dev/null; do
+    vfw_ahnen="$vfw_ahnen$vfw_p "
+    vfw_p="$(awk '/^PPid:/ { print $2 }' "/proc/$vfw_p/status" 2>/dev/null || true)"
+  done
+  for vfw_p in $(pgrep -f 'dropbear .*-D /etc/vp-wartung/keys( |$)' 2>/dev/null || true); do
+    case "$(tr '\0' ' ' <"/proc/$vfw_p/cmdline" 2>/dev/null || true)" in
+      dropbear\ *" -D /etc/vp-wartung/keys "* | */dropbear\ *" -D /etc/vp-wartung/keys "*) ;;
+      *) continue ;;
+    esac
+    case "$vfw_ahnen" in *" $vfw_p "*) continue ;; esac
+    if kill -TERM "$vfw_p" 2>/dev/null; then
+      logger -t vp-wartung "Sitzung beendet (Dropbear-Prozess $vfw_p): die Anmeldung mit Fenster-Schluesseln wird abgeraeumt"
+    fi
+  done
   rm -f /etc/init.d/vp-wartung /etc/init.d/vp-wartung.neu /etc/rc.d/S60vp-wartung /etc/config/vp-wartung
   rm -rf /usr/libexec/vp-wartung /tmp/vp-wartung
   if grep -q ' /etc/vp-wartung/keys tmpfs ' /proc/mounts; then umount /etc/vp-wartung/keys || true; fi
@@ -711,6 +737,7 @@ if [ "$FENSTER" = an ]; then
   echo "  im offenen Fenster: der SSH-Schluessel, der im Portal am Techniker-Zugang hinterlegt ist. Die Box holt ihn beim"
   echo "                      Wartungsserver ($S_SERVER:$S_PORT, nur durch den Tunnel), haelt ihn nur im RAM und streicht ihn"
   echo "                      zum Ende des Fensters. Vom Techniker-Geraet: ssh -i ~/.ssh/id_rsa_voltpilot -p 2222 root@$ADDR"
+  echo "  zum Ende:           mit dem Schluessel beendet die Box die Sitzungen, die mit ihm begonnen wurden"
   echo "  dauerhaft:          ${DAUERHAFT:-0} Schluessel aus /etc/dropbear/authorized_keys gelten im Tunnel weiter"
   i=0
   until [ -s /tmp/vp-wartung/zuletzt ] || [ "$i" -ge 8 ]; do i=$((i + 1)); sleep 1; done
