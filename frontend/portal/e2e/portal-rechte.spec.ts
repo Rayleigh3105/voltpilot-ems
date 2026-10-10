@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 
 const BILDER = process.env.RECHTE_BILDER;
 const ST2 = '5a1d0000-0000-4000-8000-000000000002';
+const AN3 = 'a0000000-0000-4000-8000-000000000003';
 for (const breite of [375, 1440]) {
   for (const [bild, person] of [['R1', 'MD'], ['T1', 'CB'], ['T3', 'PH']] as const) {
     test(`${bild} · ${person} · ${breite}px`, async ({ page }) => {
@@ -33,10 +34,13 @@ for (const breite of [375, 1440]) {
         await expect(page.locator('body')).not.toContainText('Werk Nord');
         await expect(page.getByRole('button', { name: 'Anlage anlegen', exact: true })).toHaveCount(0);
       } else {
-        await expect(page).toHaveURL(new RegExp(`#/standort/${ST2}$`));
+        // firstmate K2 (09.10.2026): `messen=bestand` lässt keinen Standort messen — die Teilansicht
+        // unterliegt derselben Regel wie der volle Zugriff (startansicht.test.ts K2-Block) und landet
+        // jetzt auf der gewohnten Übersicht statt auf Peters Standort-Übersicht. Mit nur einer
+        // sichtbaren Anlage (Werk Lindach) ist das ihr Cockpit, nicht die Standort-Seite „ST-2“.
+        await expect(page).toHaveURL(new RegExp(`#/anlage/${AN3}$`));
         await expect(page.locator('body')).not.toContainText('2 Standorte · 3 Anlagen');
-        await expect(page.getByRole('heading', { name: 'Werk Lindach ST-2', exact: true })).toBeVisible();
-        await expect(page.locator('body')).toContainText('Jonas Wendlinger');
+        await expect(page.getByRole('heading', { name: 'Werk Lindach', exact: true })).toBeVisible();
       }
       await page.evaluate(() => document.fonts.ready);
       expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(1);
@@ -48,6 +52,31 @@ for (const breite of [375, 1440]) {
     });
   }
 }
+
+// „Benutzer“ ist seit dem Bündel-Schnitt (09.10.2026, `test/bundle-smoke.sh`) ein nachgeladenes Stück der Schale
+// (`pageChunks.ts`). Die Bühnen `benutzer.html` und `unterstuetzung.html` montieren die Seite direkt - nur hier
+// läuft der Weg durch `App.tsx`: Adresse → Suspense-Grenze → Seite.
+test('Benutzer öffnet über die Schale als nachgeladenes Stück', async ({ page }) => {
+  const fehler: string[] = [];
+  page.on('pageerror', e => fehler.push(e.message));
+  // Die Bühne der Schale kennt die Routen dieser Seite nicht: leere Listen, von der fremden Herkunft der Cloud lesbar.
+  await page.route(/\/api\/v1\/(benutzer|unterstuetzung)(\/[^?]*)?(\?.*)?$/, r => r.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    headers: {
+      'access-control-allow-origin': r.request().headers().origin ?? '*',
+      'access-control-allow-credentials': 'true',
+      'access-control-allow-headers': 'authorization, content-type',
+      'access-control-allow-methods': 'GET, OPTIONS',
+    },
+    body: '[]',
+  }));
+  await page.goto('/e2e/startansicht.html?bild=unternehmen&rechte=1#/unternehmen/einstellungen/benutzer');
+  await page.waitForLoadState('networkidle');
+  await expect(page).toHaveURL(/#\/unternehmen\/einstellungen\/benutzer$/);
+  await expect(page.getByRole('heading', { name: 'Benutzer', exact: true, level: 1 })).toBeVisible();
+  expect(fehler).toEqual([]);
+});
 
 test('N7 → L3 · Zugriff beendet verwirft die alte Seite und lädt die neue Startansicht', async ({ page }) => {
   await page.goto('/e2e/startansicht.html?bild=unternehmen&rechte=1&person=PH');

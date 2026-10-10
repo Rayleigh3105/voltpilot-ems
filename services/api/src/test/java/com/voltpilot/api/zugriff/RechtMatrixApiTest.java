@@ -322,9 +322,13 @@ class RechtMatrixApiTest {
         z.add(new Zeile("verbesserung.verwalten", HttpMethod.PUT, "/api/v1/massnahmen/{FREMD}", "eee333333"));
         z.add(new Zeile("verbesserung.verwalten", HttpMethod.PUT, "/api/v1/massnahmen/{FREMD}/verantwortlicher",
                 "eee333333"));
-        z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/massnahmen/{FREMD}/umgesetzt", "eee333333"));
+        // Verbessern v1 Entscheid 8: die Vorprüfung nimmt auch eigene_massnahme (BD S, LE S); ob die Maßnahme die eigene
+        // ist, entscheidet der Dienst an der Zeile (MassnahmeApiTest).
+        z.add(new Zeile("verbesserung.verwalten|verbesserung.eigene_massnahme", HttpMethod.POST,
+                "/api/v1/massnahmen/{FREMD}/umgesetzt", "eee3ee333"));
         z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/massnahmen/{FREMD}/verwerfen", "eee333333"));
-        z.add(new Zeile("verbesserung.verwalten", HttpMethod.POST, "/api/v1/massnahmen/{FREMD}/eintraege", "eee333333"));
+        z.add(new Zeile("verbesserung.verwalten|verbesserung.eigene_massnahme", HttpMethod.POST,
+                "/api/v1/massnahmen/{FREMD}/eintraege", "eee3ee333"));
         // AP-18 IP-7: Energieziel bewerten — Zellen wie bezugsbasis.freigeben (KA U · EM U).
         z.add(new Zeile("verbesserung.abschliessen", HttpMethod.POST, "/api/v1/energieziele/{FREMD}/bewerten",
                 "ee3333333"));
@@ -961,8 +965,11 @@ class RechtMatrixApiTest {
                     .path("actions").path("SoftReset").asBoolean()).isTrue();
             JsonNode me = MAPPER.readTree(ruf(HttpMethod.GET, "/api/v1/me", bestand, false, null)
                     .getResponse().getContentAsString(StandardCharsets.UTF_8));
-            // /me zeigt ausschließlich echte Zuweisungen; die bestehende Selbstauskunft bleibt unverändert.
-            assertThat(me.path("standorte")).isEmpty();
+            // Befund B2: /me zeigt, was jede Route erlaubt - bis zum Stichtag das Bestands-Recht (E12), sonst sähe
+            // ein Bestandskunde „Kein Standort zugewiesen", solange der Start-Lauf Keycloak nicht erreicht.
+            assertThat(me.path("unternehmensweit").asBoolean()).isTrue();
+            assertThat(me.path("rollen").toString()).isEqualTo("[\"kundenadministrator\"]");
+            assertThat(me.path("standorte")).isNotEmpty();
             assertThat(ruf(HttpMethod.GET, fremdeStufe, bestand, false, null).getResponse().getStatus()).isEqualTo(404);
 
             // Der Stichtag ist die vorhandene Übernahme-Markierung, kein Vergleich mit der Wanduhr.

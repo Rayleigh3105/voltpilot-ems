@@ -1,6 +1,6 @@
 import { bestandSnapshot, bestandsZeit } from '../test/bestandsschutzSnapshot';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AnlageSeite, AnlagenPage } from './AnlagenPage';
 import { api, type Site } from '../api';
 import * as adaptive from '../useAdaptiveLive';
@@ -344,12 +344,14 @@ it('AP-13 Bestandsschutz · Cockpit ohne Messfunktion', async () => {
   mockAdaptive(true, TOPO);
   mockSurface(MULTI);
   const view = renderSeite();
-  await waitFor(() => expect(view.container.querySelector('.vp-cockpit-hero')).toBeTruthy());
+  // Die nachgeladenen Stücke brauchen im vollen Lauf (621 Dateien parallel) länger als die Vorgabe von `waitFor` (1 s).
+  const frist = { timeout: 5000 };
+  await waitFor(() => expect(view.container.querySelector('.vp-cockpit-hero')).toBeTruthy(), frist);
   // Die Energie-Bühne lädt als eigenes Stück nach (main ad5210427): erst ihr Bild, nie der Platzhalter.
-  await waitFor(() => expect(view.container.querySelector('.vp-eb-warten')).toBeNull());
-  // Die Kacheln sind ein ZWEITES Stück (`KachelStueck`, main 1fec2bc1c): auch auf ihr
-  // Bild warten - der Platzhalter `vp-k-platz` mit aria-hidden ist ihr Suspense-Ersatz.
-  await waitFor(() => expect(view.container.querySelector('.vp-k-platz[aria-hidden="true"]')).toBeNull());
+  await waitFor(() => expect(view.container.querySelector('.vp-eb-warten')).toBeNull(), frist);
+  // Die Kacheln laden ebenfalls nach (Suspense-Platzhalter `vp-k-platz` mit aria-hidden); unter Last kam der
+  // Schnappschuss sonst vor ihnen und hielt leere Plätze fest.
+  await waitFor(() => expect(view.container.querySelector('.vp-k-platz[aria-hidden="true"]')).toBeNull(), frist);
   await bestandSnapshot('cockpit', view);
 });
 
@@ -1752,4 +1754,91 @@ it('H-3 lädt alle drei Rollen und erhält Verbrauch/Netz auch bei fehlgeschlage
   fireEvent.click(container.querySelector('.vp-lp-k-load') as Element);
   await waitFor(() => expect(document.body.querySelector('.vp-rolle-consumer')?.textContent).toContain('Stand 10:15 Uhr'));
   expect(document.body.querySelector('.vp-rolle-pv')).toBeNull();
+});
+
+it('der Live-Takt holt auch die Ladepunkte - eine neu gestartete Ladung erscheint ohne Neuladen', async () => {
+  // Pilot Dirolf, 06.10.2026: der Hausverbrauch (Topologie) lief im Takt mit,
+  // die Wallbox stand auf dem Stand beim Öffnen. Eine danach gestartete Ladung
+  // stand als „Kein Auto eingesteckt" da, ihre 9,5 kW im „übrigen Haushalt".
+  const topo = {
+    ...TOPO,
+    entities: [
+      ...TOPO.entities,
+      {
+        id: 'e-haus',
+        entityType: 'house-load',
+        typeLabel: 'Hausverbrauch',
+        label: null,
+        category: 'consumer',
+        health: 'ok',
+        capabilities: [{ channel: 'power_kw', unit: 'kW', role: 'consumer', primary: true, value: 9.5 }],
+      },
+    ],
+    topology: {
+      ...TOPO.topology,
+      nodes: [
+        ...TOPO.topology.nodes,
+        {
+          role: 'consumer',
+          value_kw: 9.5,
+          flow_active: true,
+          direction: 'in',
+          members: [{ entity_id: 'e-haus', label: 'Hausverbrauch', primary: true, value_kw: 9.5 }],
+        },
+      ],
+    },
+  };
+  mockAdaptive(true, topo);
+  mockSurface(MULTI);
+  const saeule = (connector: Record<string, unknown>) => ({
+    budget: null,
+    chargers: [
+      {
+        deviceId: 'd1',
+        chargePointId: 'goe-1',
+        label: 'Wallbox Garage',
+        priority: false,
+        connected: true,
+        ready: true,
+        lastSeen: new Date().toISOString(),
+        entityId: null,
+        reportedAt: new Date().toISOString(),
+        connection: 'haus',
+        connectors: [{ connectorId: 1, ...connector }],
+      },
+    ],
+  });
+  const chargers = vi
+    .spyOn(api, 'siteChargers')
+    .mockResolvedValueOnce(saeule({ status: 'Available', charging: false }) as never)
+    .mockResolvedValue(
+      saeule({
+        status: 'Charging',
+        charging: true,
+        powerKw: 8.2,
+        meteredAt: new Date().toISOString(),
+        sessionSince: new Date().toISOString(),
+      }) as never,
+    );
+  const { container } = renderSeite();
+  const detail = () =>
+    container.querySelector('.vp-eb-listen [aria-label="Verbrauch im Detail"]')?.textContent ?? '';
+  await waitFor(() => expect(detail()).toContain('Kein Auto eingesteckt'));
+  expect(detail()).toMatch(/übriger Haushalt berechnet9,5\skW/);
+  expect(chargers).toHaveBeenCalledTimes(1);
+
+  // Ein Takt des Live-Pollings (hier über die bfcache-Rückkehr ausgelöst, die
+  // denselben Abruf sofort anstößt) - die Seite wird NICHT neu aufgebaut.
+  const e = new Event('pageshow');
+  Object.defineProperty(e, 'persisted', { get: () => true });
+  await act(async () => {
+    window.dispatchEvent(e);
+  });
+
+  await waitFor(() => expect(chargers).toHaveBeenCalledTimes(2));
+  expect(chargers).toHaveBeenLastCalledWith('s-1');
+  await waitFor(() => expect(detail()).toContain('Wallbox Garage'));
+  await waitFor(() => expect(detail()).not.toContain('Kein Auto eingesteckt'));
+  expect(detail()).toMatch(/Wallbox Garage.*8,2\skW/);
+  expect(detail()).toMatch(/übriger Haushalt berechnet1,3\skW/);
 });

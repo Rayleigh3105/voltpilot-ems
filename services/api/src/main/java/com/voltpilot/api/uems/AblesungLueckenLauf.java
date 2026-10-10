@@ -42,7 +42,8 @@ public class AblesungLueckenLauf {
                 JdbcTemplate db=new JdbcTemplate(new SingleConnectionDataSource(con,true));
                 AblesungRepository r=new AblesungRepository(db);
                 r.sperren(q.tenant(),q.messstelle());
-                var werte=r.werte(q.tenant(),q.id());
+                // Stichtag-Grenze: eine Ablesung nach dem Lauf-Zeitpunkt beendet keine Lücke, die heute offen ist.
+                var werte=r.werte(q.tenant(),q.id()).stream().filter(w->!w.zeitpunkt().isAfter(jetzt)).toList();
                 MessreiheEreignisRepository events=new MessreiheEreignisRepository(db);
                 int anzahl=0;
                 for (int i=0;i<werte.size();i++) {

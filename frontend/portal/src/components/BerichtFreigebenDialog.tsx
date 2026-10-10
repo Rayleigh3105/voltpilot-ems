@@ -32,7 +32,8 @@ export function BerichtFreigebenDialog({
   onClose,
   detail,
   entwurf: gesehen,
-  jetzt = () => Date.now(),
+  // Befund 3 (Konzept Nachweisen n1): der Augenblick der Route, mit dem die Seite gelesen wurde.
+  jetzt = () => (Number.isNaN(Date.parse(detail.abruf)) ? Date.now() : Date.parse(detail.abruf)),
   onFreigegeben,
   onEntwurf,
 }: {

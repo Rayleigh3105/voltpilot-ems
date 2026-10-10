@@ -2461,6 +2461,578 @@
       }
     },
     {
+      "name": "P4 Basis gilt erst ab Mitte des Zeitraums: Oktober 2026 zählt nicht mit, 1 von 2 Monaten",
+      "regel": "P4",
+      "operation": "zeitraum",
+      "quelle": "Referenzdatei 1.8 abnahmefaelle_ap17 R5 (BB-0003 Fassung 1 gilt ab 01.11.2026); Entscheid 07.10.2026 (Auswerten, Befund 5)",
+      "rechnung": "Oktober 2026 ohne geltende Fassung (Referenzperiode, 36 900 kWh bei 3 100 m²) zählt weder als Null noch als fehlender Monat; Σ nur November 2026: erwartet = 11,9032 × 3 100 = 36 899,92; Δ = 1 500,08 ÷ 36 899,92 = 4,065… % → 4,1 → schlechter, „1 von 2 Monaten“. Gegen Fassung 1 auch im Oktober gerechnet wären es 75 300 ÷ 73 799,84 = 2,0 % (verdünnt)",
+      "eingang": {
+        "fassung": {
+          "kennzeichen": "BB-0003",
+          "fassung": 1,
+          "methode": "verhaeltnis",
+          "monate": 1,
+          "basiswert": "11.9032",
+          "koeffizienten": null,
+          "streuung_prozent": null,
+          "toleranz_prozent": "2.0",
+          "spannweite": null,
+          "variablen": [
+            {
+              "name": "Bezugsfläche",
+              "einheit": "m²",
+              "art": "flaeche"
+            }
+          ]
+        },
+        "basis_beendet": false,
+        "soll_monate": 2,
+        "monate": [
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": "36900",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "3100",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ],
+            "ohne_fassung": true
+          },
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": "38400",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "3100",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ]
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "schlechter",
+        "grund": null,
+        "gemessen": "38400",
+        "erwartet": "36899.92",
+        "delta_prozent": "4.1",
+        "band_prozent": "2.0",
+        "richtung": "mehr",
+        "kennzeichen": [
+          "bereinigt um Bezugsfläche (Bezugsbasis BB-0003, Fassung 1)",
+          "Bezugsbasis vorläufig (1 von 12 Monaten)",
+          "1 von 2 Monaten"
+        ],
+        "monate": "1 von 2"
+      }
+    },
+    {
+      "name": "P4 + U5 Basis ab Mitte, ein Monat mit Fassung ohne Wert: ohne Urteil, 1 von 3 Monaten",
+      "regel": "P4",
+      "operation": "zeitraum",
+      "quelle": "R5 (BB-0003 Fassung 1) mit Dezember 2026 ohne gemessenen Wert (konstruiert)",
+      "rechnung": "Oktober 2026 ohne Fassung zählt nicht; von den zwei Monaten mit Fassung hat Dezember 2026 keinen Wert → fehlt (U5): Σ über November = 4,1 % mehr, ohne_urteil, „1 von 3 Monaten“",
+      "eingang": {
+        "fassung": {
+          "kennzeichen": "BB-0003",
+          "fassung": 1,
+          "methode": "verhaeltnis",
+          "monate": 1,
+          "basiswert": "11.9032",
+          "koeffizienten": null,
+          "streuung_prozent": null,
+          "toleranz_prozent": "2.0",
+          "spannweite": null,
+          "variablen": [
+            {
+              "name": "Bezugsfläche",
+              "einheit": "m²",
+              "art": "flaeche"
+            }
+          ]
+        },
+        "basis_beendet": false,
+        "soll_monate": 3,
+        "monate": [
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": "36900",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "3100",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ],
+            "ohne_fassung": true
+          },
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": "38400",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "3100",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ]
+          },
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": null,
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "3100",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ]
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "ohne_urteil",
+        "grund": null,
+        "gemessen": "38400",
+        "erwartet": "36899.92",
+        "delta_prozent": "4.1",
+        "band_prozent": "2.0",
+        "richtung": "mehr",
+        "kennzeichen": [
+          "bereinigt um Bezugsfläche (Bezugsbasis BB-0003, Fassung 1)",
+          "Bezugsbasis vorläufig (1 von 12 Monaten)",
+          "1 von 3 Monaten"
+        ],
+        "monate": "1 von 3"
+      }
+    },
+    {
+      "name": "P4 kein Monat bewertbar: die Bezugsbasis gilt erst nach dem Zeitraum",
+      "regel": "P4",
+      "operation": "zeitraum",
+      "quelle": "R5 (BB-0003 Fassung 1 gilt ab 01.11.2026), August bis Oktober 2026",
+      "rechnung": "am letzten Tag von Oktober 2026 gilt keine Fassung, kein Monat hat eine → nicht_anwendbar basis_fehlt, „0 von 3“; die Werte der Monate zählen nicht",
+      "eingang": {
+        "fassung": null,
+        "basis_beendet": false,
+        "soll_monate": 3,
+        "monate": [
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": "35100",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "3100",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ],
+            "ohne_fassung": true
+          },
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": "34800",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "3100",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ],
+            "ohne_fassung": true
+          },
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": "36900",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "3100",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ],
+            "ohne_fassung": true
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "nicht_anwendbar",
+        "grund": "basis_fehlt",
+        "gemessen": null,
+        "erwartet": null,
+        "delta_prozent": null,
+        "band_prozent": null,
+        "richtung": null,
+        "kennzeichen": [],
+        "monate": "0 von 3"
+      }
+    },
+    {
+      "name": "P4 kein Monat bewertbar: der einzige Monat mit Fassung läuft noch",
+      "regel": "P4",
+      "operation": "zeitraum",
+      "quelle": "R5 (BB-0003 Fassung 1), Abruf im November 2026 über Oktober bis November 2026",
+      "rechnung": "Oktober 2026 ohne Fassung zählt nicht; November 2026 ist nicht zu Ende (periode_nicht_zu_ende) → kein Monat mit Vergleich: nicht_anwendbar keine_werte, „0 von 2“",
+      "eingang": {
+        "fassung": {
+          "kennzeichen": "BB-0003",
+          "fassung": 1,
+          "methode": "verhaeltnis",
+          "monate": 1,
+          "basiswert": "11.9032",
+          "koeffizienten": null,
+          "streuung_prozent": null,
+          "toleranz_prozent": "2.0",
+          "spannweite": null,
+          "variablen": [
+            {
+              "name": "Bezugsfläche",
+              "einheit": "m²",
+              "art": "flaeche"
+            }
+          ]
+        },
+        "basis_beendet": false,
+        "soll_monate": 2,
+        "monate": [
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": "36900",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "3100",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ],
+            "ohne_fassung": true
+          },
+          {
+            "abgeschlossen": false,
+            "gemessen": {
+              "wert": "21000",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "3100",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ]
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "nicht_anwendbar",
+        "grund": "keine_werte",
+        "gemessen": null,
+        "erwartet": null,
+        "delta_prozent": null,
+        "band_prozent": null,
+        "richtung": null,
+        "kennzeichen": [],
+        "monate": "0 von 2"
+      }
+    },
+    {
+      "name": "P4 Basis endet im Zeitraum: Januar 2027 nach dem Ende zählt nicht, 2 von 3 Monaten",
+      "regel": "P4",
+      "operation": "zeitraum",
+      "quelle": "Referenzdatei 1.8 abnahmefaelle_ap17 R5 (BB-0003 Fassung 1 beendet 31.12.2026, Januar 2027 40 100 kWh bei 3 400 m²); Dezember 2026 37 500 kWh bei 3 100 m² ist eine Annahme; Review #1446 S2 (a)",
+      "rechnung": "der Kopf liest die Fassung des letzten Monats mit Fassung (Dezember 2026: Fassung 1); Januar 2027 ohne Fassung zählt nicht. Σ 38 400 + 37 500 = 75 900; erwartet 11,9032 × 6 200 = 73 799,84; Δ = 2 100,16 ÷ 73 799,84 = 2,845… % → 2,8 → schlechter, „2 von 3 Monaten“",
+      "eingang": {
+        "fassung": {
+          "kennzeichen": "BB-0003",
+          "fassung": 1,
+          "methode": "verhaeltnis",
+          "monate": 1,
+          "basiswert": "11.9032",
+          "koeffizienten": null,
+          "streuung_prozent": null,
+          "toleranz_prozent": "2.0",
+          "spannweite": null,
+          "variablen": [
+            {
+              "name": "Bezugsfläche",
+              "einheit": "m²",
+              "art": "flaeche"
+            }
+          ]
+        },
+        "basis_beendet": false,
+        "soll_monate": 3,
+        "monate": [
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": "38400",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "3100",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ]
+          },
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": "37500",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "3100",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ]
+          },
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": "40100",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "3400",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ],
+            "ohne_fassung": true
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "schlechter",
+        "grund": null,
+        "gemessen": "75900",
+        "erwartet": "73799.84",
+        "delta_prozent": "2.8",
+        "band_prozent": "2.0",
+        "richtung": "mehr",
+        "kennzeichen": [
+          "bereinigt um Bezugsfläche (Bezugsbasis BB-0003, Fassung 1)",
+          "Bezugsbasis vorläufig (1 von 12 Monaten)",
+          "2 von 3 Monaten"
+        ],
+        "monate": "2 von 3"
+      }
+    },
+    {
+      "name": "P4 kein Monat bewertbar: alle Monate nach dem Ende der Basis",
+      "regel": "P4",
+      "operation": "zeitraum",
+      "quelle": "Referenzdatei 1.8 abnahmefaelle_ap17 R5 januar_februar_2027 (Fassung 1 beendet 31.12.2026, Fassung 2 gilt ab 01.03.2027)",
+      "rechnung": "Januar und Februar 2027 ohne geltende Fassung, die Basis endete davor → nicht_anwendbar basis_beendet, „0 von 2“; die Werte der Monate zählen nicht",
+      "eingang": {
+        "fassung": null,
+        "basis_beendet": true,
+        "soll_monate": 2,
+        "monate": [
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": "40100",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "3400",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ],
+            "ohne_fassung": true
+          },
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": "39800",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "3400",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ],
+            "ohne_fassung": true
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "nicht_anwendbar",
+        "grund": "basis_beendet",
+        "gemessen": null,
+        "erwartet": null,
+        "delta_prozent": null,
+        "band_prozent": null,
+        "richtung": null,
+        "kennzeichen": [],
+        "monate": "0 von 2"
+      }
+    },
+    {
+      "name": "P4 Monate ohne Fassung in der Mitte zählen nicht (konstruiert): 2 von 4 Monaten",
+      "regel": "P4",
+      "operation": "zeitraum",
+      "quelle": "konstruiert nach R5 (BB-0003: Lücke zwischen Fassung 1 bis 31.12.2026 und Fassung 2 ab 01.03.2027), gerechnet gegen Fassung 1 als Fassung des Kopfs",
+      "rechnung": "die zwei Monate der Lücke zählen weder als Null noch als fehlende Monate: Σ 38 400 + 37 200 = 75 600; erwartet 11,9032 × 6 200 = 73 799,84; Δ = 1 800,16 ÷ 73 799,84 = 2,439… % → 2,4 → schlechter, „2 von 4 Monaten“",
+      "eingang": {
+        "fassung": {
+          "kennzeichen": "BB-0003",
+          "fassung": 1,
+          "methode": "verhaeltnis",
+          "monate": 1,
+          "basiswert": "11.9032",
+          "koeffizienten": null,
+          "streuung_prozent": null,
+          "toleranz_prozent": "2.0",
+          "spannweite": null,
+          "variablen": [
+            {
+              "name": "Bezugsfläche",
+              "einheit": "m²",
+              "art": "flaeche"
+            }
+          ]
+        },
+        "basis_beendet": false,
+        "soll_monate": 4,
+        "monate": [
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": "38400",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "3100",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ]
+          },
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": "40100",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "3400",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ],
+            "ohne_fassung": true
+          },
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": "39800",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "3400",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ],
+            "ohne_fassung": true
+          },
+          {
+            "abgeschlossen": true,
+            "gemessen": {
+              "wert": "37200",
+              "zustand": "vollstaendig",
+              "kennzeichen": []
+            },
+            "variablen": [
+              {
+                "wert": "3100",
+                "zustand": "vollstaendig",
+                "kennzeichen": []
+              }
+            ]
+          }
+        ]
+      },
+      "erwartet": {
+        "urteil": "schlechter",
+        "grund": null,
+        "gemessen": "75600",
+        "erwartet": "73799.84",
+        "delta_prozent": "2.4",
+        "band_prozent": "2.0",
+        "richtung": "mehr",
+        "kennzeichen": [
+          "bereinigt um Bezugsfläche (Bezugsbasis BB-0003, Fassung 1)",
+          "Bezugsbasis vorläufig (1 von 12 Monaten)",
+          "2 von 4 Monaten"
+        ],
+        "monate": "2 von 4"
+      }
+    },
+    {
       "name": "U1 Vormonat roh: nie ein Urteil",
       "regel": "U1",
       "operation": "roh",

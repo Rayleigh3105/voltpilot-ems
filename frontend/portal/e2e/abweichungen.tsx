@@ -56,6 +56,7 @@ const LAGEN: AbweichungLage[] = ['leer', 'vermerk', 'offen', 'register'];
 const lage = LAGEN.find((l) => l === params.get('lage')) ?? 'vermerk';
 const tag = heute();
 const me = rechteSeed('IK').me;
+const ziele = energiezielBuehne('juli', false, me.kennung!, me.name!);
 setSelbstauskunft(me);
 keycloak.tokenParsed = { sub: me.kennung!, name: me.name!, tenant_id: me.kundenbereich!.id };
 Object.assign(unterstuetzungApi, { liste: async () => [], anfragen: async () => [], hinweise: async () => [] });
@@ -63,7 +64,9 @@ Object.assign(benutzerApi, { liste: async () => kontenAhrenberg() });
 Object.assign(
   api,
   bezugsbasisBuehne('modell'),
-  energiezielBuehne('juli', false, me.kennung!, me.name!),
+  ziele,
+  // Der Tag der Routen ist der Tag der Uhr - auch im Stand eines Energieziels (eine Uhr, Konzept Verbessern v1 Befund 2).
+  { energiezielStand: async (id: string) => ({ ...(await ziele.energiezielStand!(id)), abruf: tag }) },
   massnahmeBuehne('leer', tag, me.name!),
   abweichungBuehne(lage, tag, me.name!),
   {
@@ -169,7 +172,8 @@ function Ansicht() {
       ) : route.page === 'portfolio-kennzahlen' ? (
         <KennzahlenPage
           kennzahlId={route.kennzahlId ?? null}
-          onOeffnen={(id) => navigate(kennzahlRoute(id))}
+          ebene={route.kennzahlEbene ?? null}
+          onOeffnen={(id, ebene) => navigate(kennzahlRoute(id, null, ebene))}
           onListe={() => navigate(pageRoute('portfolio-kennzahlen'))}
           zone="Europe/Berlin"
         />

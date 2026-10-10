@@ -18,12 +18,15 @@ describe('UEMS AP-19 IP-9 · Energiemanagement im Portal', () => {
     expect(mit[mit.length - 1]).toBe('energiemanagement');
     expect(EBENEN_SEITEN({ art: 'unternehmen' }).energiemanagement).toEqual(pageRoute('portfolio-energiemanagement'));
     expect(E.darfAnsehen(rechteSeed('IK').me)).toBe(true);
-    expect(E.REITER.map((r) => r.label)).toEqual(['Verzeichnis', 'Wiedervorlage', 'Dokumente', 'Aufgaben', 'Audits', 'Feststellungen', 'Managementbewertung']);
+    expect(E.REITER.map((r) => r.label)).toEqual(['Überblick', 'Wiedervorlage', 'Dokumente', 'Audits', 'Managementbewertung', 'Aufgaben']);
   });
 
-  it('Routen: Verzeichnis ohne Zusatz, Dokumente, Zuschnitt-Hilfe und ein Dokument hin und zurück', () => {
+  it('Routen: Überblick ohne Zusatz (Nachweisen n1, Entscheid 2), Verzeichnis, Dokumente, Zuschnitt-Hilfe und ein Dokument hin und zurück', () => {
     expect(hashForRoute(energiemanagementRoute())).toBe('#/portfolio/energiemanagement');
-    for (const r of [energiemanagementRoute('dokumente'), energiemanagementRoute('zuschnitt'), dokumentRoute('d-1')]) {
+    expect(energiemanagementRoute()).toEqual(energiemanagementRoute('ueberblick'));
+    expect(parseRoute('#/portfolio/energiemanagement').energiemanagementReiter).toBeUndefined();
+    expect(hashForRoute(energiemanagementRoute('verzeichnis'))).toBe('#/portfolio/energiemanagement/verzeichnis');
+    for (const r of [energiemanagementRoute('verzeichnis'), energiemanagementRoute('dokumente'), energiemanagementRoute('zuschnitt'), dokumentRoute('d-1')]) {
       expect(parseRoute(hashForRoute(r))).toEqual(r);
     }
     expect(hashForRoute(dokumentRoute('d-1'))).toBe('#/portfolio/energiemanagement/dokumente/d-1');
@@ -103,8 +106,8 @@ describe('UEMS AP-19 IP-13 · Aufgaben, Wer ist wofür verantwortlich, Einsicht'
     begruendung: 'Beschluss B4 der Managementbewertung 2028.', beleg: E.LEERER_VERWEIS, beschluss: 'BR-2029-0001/B4', ...teil,
   });
 
-  it('Reiter „Aufgaben“ nach Dokumente (§6.3); Routen für Aufgaben, Verantwortung und Person', () => {
-    expect(E.REITER.map((r) => r.key)).toEqual(['verzeichnis', 'wiedervorlage', 'dokumente', 'aufgaben', 'audits', 'feststellungen', 'managementbewertung']);
+  it('Reiter „Aufgaben“ zuletzt (Nachweisen n1 §6.2); Routen für Aufgaben, Verantwortung und Person', () => {
+    expect(E.REITER.map((r) => r.key)).toEqual(['ueberblick', 'wiedervorlage', 'dokumente', 'audits', 'managementbewertung', 'aufgaben']);
     for (const r of ['aufgaben', 'verantwortung', 'audits', 'feststellungen', 'wiedervorlage', 'managementbewertung'] as const) {
       expect(hashForRoute(energiemanagementRoute(r))).toBe(`#/portfolio/energiemanagement/${r}`);
       expect(parseRoute(`#/portfolio/energiemanagement/${r}`)).toEqual(energiemanagementRoute(r));
@@ -226,37 +229,15 @@ describe('UEMS AP-19 IP-15 · Nachweise am Einsatz und an der Person (§5.3, R7,
   });
 });
 
-describe('K4 · der erste Schritt einer leeren Gruppe des Verzeichnisses', () => {
-  it('führt jede Gruppe dorthin, wo ihr Inhalt entsteht — ohne Zahl über das Ganze', () => {
-    const ik = rechteSeed('IK').me;
-    expect(E.verzeichnisWeg('grundlagen', ik)).toEqual({ text: 'Energiepolitik und Anwendungsbereich festhalten', ziel: energiemanagementRoute('dokumente') });
-    expect(E.verzeichnisWeg('verantwortung', ik)?.ziel).toEqual(energiemanagementRoute('aufgaben'));
-    expect(E.verzeichnisWeg('audits_feststellungen', ik)?.ziel).toEqual(energiemanagementRoute('audits'));
-    expect(E.verzeichnisWeg('managementbewertung', ik)?.ziel).toEqual(energiemanagementRoute('managementbewertung'));
-    expect(E.verzeichnisWeg('kennzahlen_bezugsbasen', ik)?.ziel).toEqual(pageRoute('portfolio-kennzahlen'));
-    expect(E.verzeichnisWeg('berichte', ik)?.ziel).toEqual(pageRoute('portfolio-berichte'));
-    expect(E.verzeichnisWeg('unbekannt', ik)).toBeNull();
-    for (const g of ['risiken_chancen', 'kompetenz_kommunikation', 'betrieb_auslegung_beschaffung']) {
-      expect(E.verzeichnisWeg(g, ik)?.text, g).toBe('Dokument anlegen');
-    }
-  });
-
-  it('ein Schritt, der etwas anlegt, nur mit `energiemanagement.verwalten` — wer nur liest, bekommt keinen Schreib-Knopf', () => {
-    const lesen = { standorte: [], unternehmen_rechte: ['energiemanagement.ansehen'] };
-    for (const g of ['grundlagen', 'risiken_chancen', 'kompetenz_kommunikation', 'betrieb_auslegung_beschaffung', 'verantwortung']) {
-      expect(E.verzeichnisWeg(g, lesen), g).toBeNull();
-    }
-    // Ein Weg, der nur hinführt, bleibt.
-    expect(E.verzeichnisWeg('audits_feststellungen', lesen)?.text).toBe('Zum Auditprogramm');
-    expect(E.verzeichnisWeg('berichte', lesen)?.text).toBe('Zu den Berichten');
-  });
-
-  it('führt nur auf eine Seite, die die Person sehen darf', () => {
-    const ohne = { standorte: [], unternehmen_rechte: [] };
-    expect(E.verzeichnisWeg('bewertung_messplanung', ohne)).toBeNull();
-    expect(E.verzeichnisWeg('ziele_massnahmen_abweichungen', ohne)).toBeNull();
-    const mit = { standorte: [], unternehmen_rechte: ['energieeinsatz.ansehen', 'verbesserung.ansehen'] };
-    expect(E.verzeichnisWeg('bewertung_messplanung', mit)?.ziel).toEqual(pageRoute('portfolio-bewertung'));
-    expect(E.verzeichnisWeg('ziele_massnahmen_abweichungen', mit)?.ziel).toEqual(pageRoute('portfolio-verbesserung'));
+describe('Review r1, P2-7: der Tag eines Zeitpunkts', () => {
+  it('ein Tag bleibt der Tag; ein Zeitpunkt zählt mit seinem Kalendertag in Berlin (Winter- und Sommerzeit), nie mit dem UTC-Tag', () => {
+    expect(E.tagText('2029-03-19')).toBe('19.03.2029');
+    expect(E.tagText('2029-03-19T23:30:00Z')).toBe('20.03.2029');
+    expect(E.tagText('2029-07-19T22:30:00Z')).toBe('20.07.2029');
+    expect(E.tagText('2029-07-19T21:30:00Z')).toBe('19.07.2029');
+    expect(E.tagText('2029-03-20T00:30:00+01:00')).toBe('20.03.2029');
+    expect(E.tagText(null)).toBe('');
+    expect(E.tagIso('2029-03-19T23:30:00Z')).toBe('2029-03-20');
   });
 });
+

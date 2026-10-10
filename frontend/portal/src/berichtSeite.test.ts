@@ -8,6 +8,7 @@ import {
   abzugAus,
   AUSGABE_EINGEHAENGT,
   ausgabeKnoepfe,
+  berichtTitel,
   darfNachLesen,
   heuteAnfrage,
   heutigerWert,
@@ -323,6 +324,13 @@ describe('Liste und Entwurf entlang der Zeitachse (R5)', () => {
       archiviert: null,
     });
     expect(listenKarte(berichtAm(AM_20_11)).stand).toBe('Berichtsstand Nr. 2');
+    // Nur Monats- und Jahresbericht heißen nach ihrem Zeitraum; jede andere Vorlage nach ihrem Namen, auch wenn ihr
+    // Zeitraum ein Jahr ist oder kein eigenes Wort hat (Nachweisen n1, Befund 8: dieselbe Regel wie das Verzeichnis).
+    const titel = (vorlage: string, zeitraum_art: string) => berichtTitel({ vorlage, zeitraum_art, geltung_name: 'Kunststoffwerk Ahrenberg GmbH', zeitraum_text: 'Z' });
+    expect(titel('jahresbericht_unternehmen', 'jahr')).toBe('Jahresbericht Kunststoffwerk Ahrenberg GmbH Z');
+    expect(titel('energetische_bewertung', 'datengrundlage')).toBe('Energetische Bewertung Kunststoffwerk Ahrenberg GmbH Z');
+    expect(titel('leistungsvergleich', 'monat')).toBe('Leistungsvergleich Kunststoffwerk Ahrenberg GmbH Z');
+    expect(titel('managementbewertung', 'jahr')).toBe('Managementbewertung Kunststoffwerk Ahrenberg GmbH Z');
     // Der offene Anstoß steht am 13.11. am gültigen Stand Nr. 1 und im Verlauf.
     const detail = detailAm(AM_13_11);
     expect(seitenKopf(detail, stand(1, AM_13_11), AM_13_11).abzeichen).toEqual([{ text: revision, ton: 'warn' }]);
@@ -457,9 +465,10 @@ describe('PDF und CSV — abgeleitet, sichtbar erst mit ihrem Ziel (IP-10, IP-11
   const b = berichtAm(AM_20_11);
   const alle = { pdf: true, csv: true } as const;
 
-  it('heute hat keine Ausgabe ein Ziel: kein Knopf, auch nicht mit jedem Recht', () => {
-    expect(AUSGABE_EINGEHAENGT).toEqual({ pdf: false, csv: false });
-    expect(ausgabeKnoepfe(b, stand(1, AM_20_11), () => true)).toEqual([]);
+  it('beide Routen sind eingehängt (Konzept Nachweisen n1, Befund 1): mit Recht PDF und CSV an jedem Stand', () => {
+    expect(AUSGABE_EINGEHAENGT).toEqual({ pdf: true, csv: true });
+    expect(ausgabeKnoepfe(b, stand(1, AM_20_11), () => true).map((k) => k.text)).toEqual(['PDF', 'CSV']);
+    expect(ausgabeKnoepfe(b, stand(1, AM_20_11), () => true, { pdf: false, csv: false })).toEqual([]);
   });
 
   it('eingehängt: ein Stand bekommt PDF und CSV mit den Kennungen aus G1 und den Dateinamen aus §5.4; ein Entwurf nie (EW4)', () => {

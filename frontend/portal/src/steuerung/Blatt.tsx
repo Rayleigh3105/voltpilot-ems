@@ -12,6 +12,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { fokussierbare } from '../components/VpPanel';
+import { fokusAusloeser, sperreSeitenScroll } from '../../designsystem/components/shell/ueberlagerung';
 import { Ic, type IcName } from './Ic';
 
 export interface BlattProps {
@@ -45,7 +46,7 @@ export function Blatt({ symbol, titel, unter, kopf, fuss, voll, onClose, childre
   const schliessenRef = useRef<() => void>(() => {});
 
   useEffect(() => {
-    ausloeser.current = (document.activeElement as HTMLElement | null) ?? null;
+    ausloeser.current = fokusAusloeser();
     const marke = {};
     offeneBlaetter.push(marke);
     const escape = (e: globalThis.KeyboardEvent) => {
@@ -59,8 +60,8 @@ export function Blatt({ symbol, titel, unter, kopf, fuss, voll, onClose, childre
     };
     // Wie `Modal.jsx` in der Bubble-Phase: was im Blatt Escape selbst verbraucht (ein offener Picker), kommt zuerst.
     document.addEventListener('keydown', escape);
-    const alt = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    // Der EINE gezählte Sperrer des Hauses (`ueberlagerung.js`), nicht ein eigener „vorher“-Wert.
+    const freigeben = sperreSeitenScroll();
     const raf = requestAnimationFrame(() => setOffen(true));
     const fokus = window.setTimeout(() => {
       const f = blattRef.current?.querySelector<HTMLElement>('.sh-head button, .sh-body button, .sh-body input');
@@ -72,7 +73,7 @@ export function Blatt({ symbol, titel, unter, kopf, fuss, voll, onClose, childre
       if (i >= 0) offeneBlaetter.splice(i, 1);
       cancelAnimationFrame(raf);
       window.clearTimeout(fokus);
-      document.body.style.overflow = alt;
+      freigeben();
       const a = ausloeser.current;
       if (a && a.isConnected) a.focus({ preventScroll: true });
     };

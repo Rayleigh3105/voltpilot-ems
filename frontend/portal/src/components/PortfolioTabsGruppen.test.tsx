@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { api } from '../api';
 import { ebenenAktiv, telefonReiterBereiche, UNTERNEHMEN_GRUPPEN, type EbenenLeistenKachel } from '../ebenenNav';
@@ -81,16 +81,15 @@ describe('N1 · über der Seite nur die Reiter der offenen Gruppe', () => {
     ]);
   });
 
-  it('„Nachweisen“: das Verzeichnis zuerst, dann die Berichte und die übrigen Reiter des Energiemanagements — eine Reihe', () => {
+  it('„Nachweisen“: der Überblick zuerst, dann die Berichte und die übrigen Reiter des Energiemanagements - eine Reihe (Nachweisen n1 §6.2)', () => {
     const { onOpenBereich } = zeige('portfolio-energiemanagement', 'dokumente');
     expect(reihe('Reiter der Gruppe Nachweisen')).toEqual([
-      ['Verzeichnis', 'false'],
+      ['Überblick', 'false'],
       ['Berichte', 'false'],
       ['Dokumente', 'true'],
-      ['Aufgaben', 'false'],
       ['Audits', 'false'],
-      ['Feststellungen', 'false'],
       ['Managementbewertung', 'false'],
+      ['Aufgaben', 'false'],
     ]);
     expect(screen.queryByRole('tab', { name: 'Energiemanagement' })).toBeNull();
     expect(screen.queryByRole('tab', { name: 'Wiedervorlage' })).toBeNull();
@@ -101,6 +100,21 @@ describe('N1 · über der Seite nur die Reiter der offenen Gruppe', () => {
   it('„Wer ist wofür verantwortlich“ gehört zu den Aufgaben', () => {
     zeige('portfolio-energiemanagement', 'verantwortung');
     expect(screen.getByTestId('energiemanagement-reiter-aufgaben').getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('die Feststellungen gehören zu den Audits - ihre Adresse bleibt (Nachweisen n1, Entscheid 17)', () => {
+    zeige('portfolio-energiemanagement', 'feststellungen');
+    expect(screen.getByTestId('energiemanagement-reiter-audits').getAttribute('aria-selected')).toBe('true');
+    expect(screen.queryByTestId('energiemanagement-reiter-feststellungen')).toBeNull();
+  });
+
+  it('das Verzeichnis und die Zuschnitt-Hilfe liegen eine Ebene unter dem Überblick (Entscheid 2)', () => {
+    for (const reiter of ['verzeichnis', 'zuschnitt', null] as const) {
+      cleanup();
+      zeige('portfolio-energiemanagement', reiter);
+      expect(screen.getByTestId('energiemanagement-reiter-ueberblick').getAttribute('aria-selected')).toBe('true');
+      expect(screen.queryByRole('tab', { name: 'Verzeichnis' })).toBeNull();
+    }
   });
 
   it('die Wiedervorlage steht in der Übersicht — ihre Adresse bleibt', () => {

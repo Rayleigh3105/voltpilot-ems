@@ -323,7 +323,7 @@ def after_sheet(db):
         'Z04': ('mit_standort_ohne_teilnahme', 'ohne_standort', 'anlagen'),
         'Z05': ('kundenbereiche', 'stichtag_bestandslauf', 'stichtag_neu', 'ohne_stichtag', 'konten_uebernommen'),
         'Z07': ('arbeit_viertelstunde_offen', 'arbeit_tag_offen', 'arbeit_periode_offen'),
-        'Z08': ('geloescht_markiert', 'fehlgeschlagen', 'sql_erfolgreich', 'versionen_geloescht'),
+        'Z08': ('geloescht_markiert', 'fehlgeschlagen', 'sql_erfolgreich', 'versionen_geloescht', 'geloescht_offen'),
     }
     for key, cols in columns.items():
         report[key] = {col: numeric(raw[key][0][0][col]) if raw[key][0][0][col] is not None else None for col in cols}
@@ -414,7 +414,9 @@ def probe(db, a, report):
 
 def review(report, incomplete):
     for history in (report['C']['Z08'], report['W1'].get('Z08', report['C']['Z08'])):
-        if history['geloescht_markiert'] or history['fehlgeschlagen']:
+        # Healed markers (identical successful re-application, production 02.08.2026) are history,
+        # not damage; the API start guard applies the same rule. Open markers and failures are damage.
+        if history['geloescht_offen'] or history['fehlgeschlagen']:
             raise Refusal(26)
     if report['pruefen_Z03']:
         raise Refusal(21)

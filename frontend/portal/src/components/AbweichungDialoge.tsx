@@ -4,23 +4,29 @@ import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import * as A from '../abweichungen';
 import { api, type Abweichung, type AbweichungErgebnis, type Massnahme } from '../api';
-import { heute } from '../bewertung';
+import { routenHeute } from '../routenUhr';
 import * as Z from '../energieziele';
-import { UEMS_AUSSAGE_VON, UEMS_NORMGRENZE } from '../glossar';
+import { UEMS_AUSSAGE_VON } from '../glossar';
 import { useAktiveKonten, VerantwortlichWahl } from './AuffaelligkeitZeile';
 import { Ablehnung, Begruendung } from './EnergiezielDialoge';
 import { MassnahmeAnlegenDialog } from './MassnahmeDialoge';
 import { VpDatePicker } from './VpDatePicker';
 import { VpPicker } from './VpPicker';
 import '../pages/Verbesserung.css';
+import '../pages/Abweichungen.css';
 
 const ABBRECHEN = 'Abbrechen';
 const OHNE_KONTO = '__ohne_konto';
 
 type Props = { abweichung: Abweichung; onClose: () => void; onFertig: (a: Abweichung) => void; tagHeute?: string };
 
-function Rahmen({ titel, basis, busy, knopf, testid, onClose, children }: {
-  titel: string; basis: string; busy: boolean; knopf: string; testid: string; onClose: () => void; children: ReactNode;
+/**
+ * Konzept Verbessern v1 §8.2 (Regel V6): der Titel ist die Handlung, die Abweichung steht leise darunter - ihr Name,
+ * das Kennzeichen dahinter, wie im Kopf ihrer Seite; nie das Kennzeichen vorn.
+ */
+function Rahmen({ titel, abweichung, basis, busy, knopf, testid, onClose, children }: {
+  titel: string; abweichung: Abweichung; basis: string; busy: boolean; knopf: string; testid: string; onClose: () => void;
+  children: ReactNode;
 }) {
   return (
     <Modal
@@ -38,6 +44,9 @@ function Rahmen({ titel, basis, busy, knopf, testid, onClose, children }: {
         </>
       }
     >
+      <p className="vp-abw-dlg-unter" data-testid={`${testid}-vorgang`}>
+        {A.abweichungTitel(abweichung)} <span className="vp-abw-kz">{abweichung.kennzeichen}</span>
+      </p>
       {children}
     </Modal>
   );
@@ -48,7 +57,7 @@ function Rahmen({ titel, basis, busy, knopf, testid, onClose, children }: {
  * Konto), an welchem Tag, wahlfrei eine Beleg-Kennung. Wer einträgt, muss nicht wer aussagt sein (R2). Das System
  * nennt keine Ursache — es trägt ein, was eine Person sagt, und zeigt es immer mit „Aussage von …“.
  */
-export function UrsacheAussageDialog({ abweichung, onClose, onFertig, tagHeute = heute() }: Props) {
+export function UrsacheAussageDialog({ abweichung, onClose, onFertig, tagHeute = routenHeute() }: Props) {
   const basis = `ua-${useId().replace(/:/g, '')}`;
   const { geladen, konten } = useAktiveKonten();
   const [e, setE] = useState<A.AussageEntwurf>({ wortlaut: '', person: '', am: tagHeute, beleg: '' });
@@ -87,7 +96,7 @@ export function UrsacheAussageDialog({ abweichung, onClose, onFertig, tagHeute =
   }
 
   return (
-    <Rahmen titel={`${abweichung.kennzeichen}: ${A.KNOPF_AUSSAGE}`} basis={basis} busy={busy} knopf={A.KNOPF_AUSSAGE} testid="ursache-aussage" onClose={onClose}>
+    <Rahmen titel={A.KNOPF_AUSSAGE} abweichung={abweichung} basis={basis} busy={busy} knopf={A.KNOPF_AUSSAGE} testid="ursache-aussage" onClose={onClose}>
       <form id={`${basis}-form`} className="vp-ez-form" noValidate onSubmit={(x) => void senden(x)} data-testid="ursache-aussage">
         <p className="vp-ez-basis">{A.AUSSAGE_HINWEIS}</p>
         <VpPicker
@@ -106,11 +115,10 @@ export function UrsacheAussageDialog({ abweichung, onClose, onFertig, tagHeute =
             Wortlaut der Aussage
           </label>
           <textarea id={`${basis}-wortlaut`} rows={3} value={e.wortlaut} onChange={(x) => setze({ wortlaut: x.target.value })} aria-invalid={!!zeigen.wortlaut} />
-          <p className={zeigen.wortlaut ? 'vp-ez-fehler' : 'vp-ez-leise'}>{zeigen.wortlaut ?? '10 bis 500 Zeichen, so wie die Person es gesagt hat.'}</p>
+          <p className={zeigen.wortlaut ? 'vp-ez-fehler' : 'vp-ez-leise'}>{zeigen.wortlaut ?? A.AUSSAGE_WIE_GESAGT}</p>
         </div>
         <Input id={`${basis}-beleg`} label="Beleg (wahlfrei)" value={e.beleg} onChange={(x) => setze({ beleg: x.target.value })} hint={A.BELEG_HINWEIS} />
         <Ablehnung satz={satz} />
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       </form>
     </Rahmen>
   );
@@ -145,12 +153,11 @@ export function FristDialog({ abweichung, onClose, onFertig }: Props) {
   }
 
   return (
-    <Rahmen titel={`${abweichung.kennzeichen}: ${A.KNOPF_FRIST}`} basis={basis} busy={busy} knopf={A.KNOPF_FRIST} testid="abweichung-frist" onClose={onClose}>
+    <Rahmen titel={A.KNOPF_FRIST} abweichung={abweichung} basis={basis} busy={busy} knopf={A.KNOPF_FRIST} testid="abweichung-frist" onClose={onClose}>
       <form id={`${basis}-form`} className="vp-ez-form" noValidate onSubmit={(x) => void senden(x)} data-testid="abweichung-frist">
         <VpDatePicker id={`${basis}-frist`} label={A.FRIST} value={frist} onChange={setFrist} min={abweichung.eroeffnet_am} />
         <Begruendung id={`${basis}-begruendung`} wert={begruendung} setze={setBegruendung} fehler={zeigen} />
         <Ablehnung satz={satz} />
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       </form>
     </Rahmen>
   );
@@ -188,12 +195,11 @@ export function VerantwortlicherDialog({ abweichung, onClose, onFertig }: Props)
   }
 
   return (
-    <Rahmen titel={`${abweichung.kennzeichen}: ${A.KNOPF_VERANTWORTLICH}`} basis={basis} busy={busy} knopf={A.KNOPF_VERANTWORTLICH} testid="abweichung-verantwortlich" onClose={onClose}>
+    <Rahmen titel={A.KNOPF_VERANTWORTLICH} abweichung={abweichung} basis={basis} busy={busy} knopf={A.KNOPF_VERANTWORTLICH} testid="abweichung-verantwortlich" onClose={onClose}>
       <form id={`${basis}-form`} className="vp-ez-form" noValidate onSubmit={(x) => void senden(x)} data-testid="abweichung-verantwortlich">
         <VerantwortlichWahl id={`${basis}-verantwortlich`} wert={wer} setze={setWer} fehler={zeigen.verantwortlich ?? null} />
         <Begruendung id={`${basis}-begruendung`} wert={begruendung} setze={setBegruendung} fehler={zeigen.begruendung ?? null} />
         <Ablehnung satz={satz} />
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       </form>
     </Rahmen>
   );
@@ -273,7 +279,7 @@ export function AbschliessenDialog({ abweichung, onClose, onFertig }: Props) {
     .map((m) => ({ value: m.id, label: `${m.kennzeichen} ${m.titel}` }));
 
   return (
-    <Rahmen titel={`${abweichung.kennzeichen} ${A.KNOPF_ABSCHLIESSEN}`} basis={basis} busy={busy} knopf={A.KNOPF_ABSCHLIESSEN} testid="abweichung-abschliessen" onClose={onClose}>
+    <Rahmen titel={A.KNOPF_ABSCHLIESSEN} abweichung={abweichung} basis={basis} busy={busy} knopf={A.KNOPF_ABSCHLIESSEN} testid="abweichung-abschliessen" onClose={onClose}>
       <form id={`${basis}-form`} className="vp-ez-form" noValidate onSubmit={(x) => void senden(x)} data-testid="abweichung-abschliessen">
         <p className="vp-ez-leise">{A.ABSCHLUSS_HINWEIS}</p>
         <fieldset className="vp-ez-periode" data-testid="abschluss-ergebnis">
@@ -317,9 +323,59 @@ export function AbschliessenDialog({ abweichung, onClose, onFertig }: Props) {
         )}
         <Begruendung id={`${basis}-begruendung`} wert={begruendung} setze={setBegruendung} fehler={zeigen.begruendung ?? null} />
         <Ablehnung satz={satz} />
-        <p className="vp-ez-grenze">{UEMS_NORMGRENZE}</p>
       </form>
     </Rahmen>
   );
 }
 
+
+/** „Kommentar schreiben“ (A4): 1 bis 2.000 Zeichen im Verlauf, nur offen; nichts wird geändert oder gelöscht. */
+export function KommentarDialog({ abweichung, onClose, onFertig }: Props) {
+  const basis = `ak-${useId().replace(/:/g, '')}`;
+  const [text, setText] = useState('');
+  const [zeigen, setZeigen] = useState<string | null>(null);
+  const [satz, setSatz] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function senden(ev: FormEvent) {
+    ev.preventDefault();
+    const t = text.trim();
+    if (!t || t.length > A.KOMMENTAR_MAX) {
+      setZeigen(A.ABLEHNUNG.text_ungueltig);
+      document.getElementById(`${basis}-text`)?.focus();
+      return;
+    }
+    setZeigen(null);
+    setBusy(true);
+    setSatz(null);
+    try {
+      onFertig(await api.abweichungEintrag(abweichung.id, { art: 'kommentar', text: t }));
+    } catch (x) {
+      setSatz(A.ablehnungSatz(x));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Rahmen titel={A.KNOPF_KOMMENTAR_SCHREIBEN} abweichung={abweichung} basis={basis} busy={busy} knopf={A.KNOPF_KOMMENTAR_SCHREIBEN} testid="abweichung-kommentar" onClose={onClose}>
+      <form id={`${basis}-form`} className="vp-ez-form" noValidate onSubmit={(x) => void senden(x)} data-testid="abweichung-kommentar">
+        <div className="vp-ez-feld">
+          <label className="vp-ez-label" htmlFor={`${basis}-text`}>
+            {A.KNOPF_KOMMENTAR}
+          </label>
+          <textarea
+            id={`${basis}-text`}
+            rows={4}
+            value={text}
+            placeholder="Zum Beispiel: Produktion 21,9 % unter November, Strom nur 8,8 % - bitte Halle 1 prüfen."
+            onChange={(x) => setText(x.target.value)}
+            aria-invalid={!!zeigen}
+          />
+          {zeigen && <p className="vp-ez-fehler">{zeigen}</p>}
+        </div>
+        <Ablehnung satz={satz} />
+      </form>
+    </Rahmen>
+  );
+}

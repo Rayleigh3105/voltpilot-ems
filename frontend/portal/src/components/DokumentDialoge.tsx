@@ -11,7 +11,8 @@ import {
   type EnergiemanagementPersonKurz,
   type StandortAmStichtag,
 } from '../api';
-import { heute } from '../bewertung';
+// Befund 3 (Konzept Nachweisen n1): „entschieden am“ und „vom“ enden am Tag der Route, nie am Tag des Browsers.
+import { routenHeute as heute } from '../routenUhr';
 import { SAETZE, WOERTER } from '../energiemanagement';
 import * as E from '../energiemanagementPortal';
 import { UEMS_ENTSCHIEDEN_VON, UEMS_NORMGRENZE, UEMS_VERANTWORTUNG, UEMS_WORTLAUT, UEMS_VERWEIS } from '../glossar';
@@ -158,15 +159,18 @@ export function DokumentAnlegenDialog({
   onClose,
   onAngelegt,
   fest = null,
+  vorArt = null,
 }: {
   onClose: () => void;
   onAngelegt: (d: EnergiemanagementDokument) => void;
   fest?: E.NachweisBezug | null;
+  /** Die vorgewählte Art, wenn der Überblick einen offenen Teil festhält (Konzept Nachweisen n1, §6.10). */
+  vorArt?: string | null;
 }) {
   const basis = `dk-${useId().replace(/:/g, '')}`;
   const standorte = useStandorte();
   const [e, setE] = useState<E.AnlegenEntwurf>(() => {
-    const art = fest ? E.NACHWEIS_ARTEN[fest.art][0] : '';
+    const art = fest ? E.NACHWEIS_ARTEN[fest.art][0] : (vorArt ?? '');
     return { art, titel: art ? WOERTER.dokument_art[art] : '', bezug: 'unternehmen', standortId: '', original: E.LEERER_VERWEIS };
   });
   const [fehler, setFehler] = useState<E.Feldfehler>({});
@@ -425,12 +429,13 @@ export function FreigabeDialog({
   const [busy, setBusy] = useState(false);
   const setze = (t: Partial<E.FreigabeEntwurf>) => setE((alt) => ({ ...alt, ...t }));
 
-  // Bei Energiepolitik, Anwendungsbereich und Bestellung entscheidet die Leitung am Tag der Entscheidung (PA3).
+  // Bei Energiepolitik, Anwendungsbereich und Bestellung entscheidet die Leitung am Tag der Entscheidung (PA3) - aus
+  // `…/leitung` im Zaun des Freigaberechts, nicht aus den Aufgaben, die nur unternehmensweit lesbar sind (Befund A4).
   useEffect(() => {
     if (zweitePerson) return;
     let aktiv = true;
     const laden = leitungNoetig
-      ? api.energiemanagementAufgaben(e.entschiedenAm || undefined).then((a) => a.leitung)
+      ? api.energiemanagementLeitung(e.entschiedenAm || null, dokument.bezug.standort?.id ?? null).then((a) => a.leitung)
       : api.energiemanagementPersonen().then((p) =>
           p.personen.filter((x: EnergiemanagementPerson) => x.zustand === 'aktiv').map((x) => ({ id: x.id, name: x.name, funktion: x.funktion, kuerzel: x.kuerzel, mit_konto: !!x.konto })),
         );

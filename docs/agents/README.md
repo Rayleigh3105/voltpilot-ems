@@ -203,9 +203,14 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Zusätzliche Messwerte: Bibliothek und Historie (Slice 9)](root/zusaetzliche-messwerte-bibliothek-und-hi.md)
 - [Zusätzliche Messwerte: Desired State bis Timescale (Slices 6–8)](root/zusaetzliche-messwerte-desired-state-bis.md)
 
-## `portal/` — aus `frontend/portal/AGENTS.md` (47 Einträge)
+## `portal/` — aus `frontend/portal/AGENTS.md` (48 Einträge)
 
 - [Anzeige-Ehrlichkeit: Daten-Alter, die gemessene Null, der behauptete Verkauf](portal/anzeige-ehrlichkeit-daten-alter-die-geme.md)
+- [Messen: Kostenstellen, Prozesse und Bezugsgrößen](portal/messen-kostenstellen-prozesse-bezugsgroessen.md)
+- [Messen: die Liste der Messstellen und „Woher kommen die Werte?“](portal/messen-liste-und-woher-die-werte.md)
+- [Messen: die Seite einer Messstelle (Kacheln, Monate, Ablesen, Zuordnung)](portal/messen-seite-einer-messstelle.md)
+- [Messen: die Ablese-Runde je Gebäude (`?ablesen=G-1`)](portal/messen-ablese-runde.md)
+- [Messen: geplante Messstellen (offene Messbedarfe, „Einrichten“, Wiedervorlage)](portal/messen-geplante-messstellen.md)
 - [Build & test](portal/build-test/README.md) *(Sammlung, 95 Punkte)*
 - [Die Speicher-Kachel nennt ihre QUELLE (P6 Speiser-Bindung)](portal/die-speicher-kachel-nennt-ihre-quelle-p6.md)
 - [Der BATTERIE-ASSISTENT (P5d): Anschluss, Zuordnung, Kurve — und die Herkunft des Ladestands](portal/der-batterie-assistent-p5d-anschluss-zuo.md)
@@ -257,6 +262,8 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Verlauf-Sprache P2b: EIN Aufklapper, und Zustände, die ihren Platz reservieren](portal/verlauf-sprache-p2b-ein-aufklapper-und-z.md)
 - [Verlauf-Sprache P8: die Portfolio-Zwillinge, und die Tabelle als LISTE](portal/verlauf-sprache-p8-die-portfolio-zwillin.md)
 - [VpPicker: EIN Picker fuer die ganze Plattform - kein natives `<select>` mehr](portal/vppicker-ein-picker-fuer-die-ganze-platt.md)
+- [Verbessern: eine Uhr, der Grund eines offenen Monats und die Wörter](portal/verbessern-woerter-und-eine-uhr.md)
+- [Nachweisen (Konzept n1 Runde 2): Zeilen-Bausteine, Blätter, Audits, Managementbewertung, Aufgaben, Mappe](portal/nachweisen-zeilen-blaetter-audits.md)
 
 ## `edge/` — aus `edge-app/AGENTS.md` (91 Einträge)
 
@@ -277,6 +284,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Der EINE Wechselrichter-Socket hat seit dem 20.08.2026 eine WARTESCHLANGE](edge/der-eine-wechselrichter-socket-hat-seit.md)
 - [Der Katalog hat DREI Dimensionen: Geraetetyp · Marke · Modell (und der WEG gehoert dem Modell)](edge/der-katalog-hat-drei-dimensionen-geraete.md)
 - [Der NETZ-SOLLWERT-TEST: derselbe Sollwert-Pfad, eine andere Regelseite](edge/der-netz-sollwert-test-derselbe-sollwert.md)
+- [Der NETZSEITIGE DROSSEL-SLOT: der Plan gibt den Netzpunkt an den Wechselrichter](edge/der-netzseitige-drossel-slot-der-plan-gibt.md)
 - [Der SCHALT-Test und der Schalt-Executor (Einheitsmodell Stufe 4)](edge/der-schalt-test-und-der-schalt-executor.md)
 - [Der ZWEITE Trigger auf denselben Einmal-Schreib-Kern: der Portal-Downlink](edge/der-zweite-trigger-auf-denselben-einmal.md)
 - [Deye control WRITE: bidirectional single-socket lock + First-Light evidence gate](edge/deye-control-write-bidirectional-single.md)

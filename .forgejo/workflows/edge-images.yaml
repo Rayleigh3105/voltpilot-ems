@@ -4,6 +4,8 @@ name: Build & Push Edge-App Images
 # the operator can PULL them on the edge device instead of building locally
 # (the edge docker-compose.yml already names these images). Triggered by an
 # `edge-*` tag; the manual trigger CREATES such a tag - see the paragraph below.
+# NEVER by an `edge-light-*` tag: Edge Light is its own release line with its
+# own run (Entscheid E7, Plan Edge Light Stufe 2 §2.3) - see `on.push.tags`.
 #
 # Builds a MULTI-ARCH manifest list (linux/amd64 + linux/arm64) under each tag
 # so a Raspberry Pi (arm64/v8) pulls the arm64 variant automatically. Runs on
@@ -89,6 +91,14 @@ on:
   push:
     tags:
       - 'edge-*'
+      # ⚠ LOAD-BEARING (Plan Edge Light Stufe 2, A4): `edge-*` passt auch auf
+      # die eigene Release-Linie `edge-light-JJJJ.MM.N` (Entscheid E7). Ein
+      # solcher Tag startete sonst DIESEN Docker-Lauf, und der schiebt schon im
+      # Bau-Schritt `:latest` - vor jedem Manifest. Die Verneinung muss NACH
+      # dem Muster stehen (die letzte passende Regel gewinnt). Der Job `test`
+      # prueft dasselbe noch einmal, falls ein Runner die Verneinung nicht
+      # auswertet.
+      - '!edge-light-*'
 
 jobs:
   # DER MANUELLE WEG. Er erzeugt GENAU EINE Sache: den annotierten `edge-*`-Tag.
@@ -126,15 +136,18 @@ jobs:
             # Whitespace faellt weg (ein Eingabefeld sammelt gern ein
             # Leerzeichen ein); das SCHEMA wird geprueft statt geraten.
             release="$(printf '%s' "${RELEASE_INPUT:-}" | tr -d '[:space:]')"
-            ota_check_release "$release"
             echo "Vorgegebener Release-Name: $release"
           else
             # Der Monat folgt der BERLINER Uhr - der Plattform-Zeitzone und der
-            # Uhr, an der die bisherigen Tags entstanden sind.
+            # Uhr, an der die bisherigen Tags entstanden sind. Edge-Light-Tags
+            # zaehlen nicht mit: sie sind eine eigene Linie (ota_next_release).
             ym="$(TZ=Europe/Berlin date +%Y.%m)"
             release="$(git tag -l 'edge-*' | ota_next_release "$ym")"
             echo "Naechster freier Name im Monat $ym: $release"
           fi
+          # Dieser Weg legt NUR Docker-Releases an: ein `edge-light-*`-Name
+          # bricht ab, bevor ein Tag entsteht (Plan Edge Light Stufe 2, A4).
+          ota_check_docker_release "$release"
           echo "release=$release" >> "$GITHUB_OUTPUT"
         env:
           RELEASE_INPUT: ${{ inputs.release }}
@@ -198,8 +211,10 @@ jobs:
     name: Edge release gate
     # Der manuelle Lauf legt nur den Tag an; gebaut wird im TAG-Lauf, den er
     # ausloest. `build` und `manifest` haengen ueber `needs` daran, also reicht
-    # diese eine Bedingung, um einen doppelten Build auszuschliessen.
-    if: github.ref_type == 'tag'
+    # diese eine Bedingung, um einen doppelten Build auszuschliessen - und
+    # ebenso, um einen `edge-light-*`-Tag von jedem Docker-Bau fernzuhalten
+    # (die zweite Sicherung hinter dem Trigger-Ausschluss oben).
+    if: github.ref_type == 'tag' && !startsWith(github.ref_name, 'edge-light-')
     runs-on: ubuntu-latest-mo
     # Race-instrumented Go + the two system rigs on a shared runner; roomy
     # enough that a slow neighbour never reds a sound release, tight enough

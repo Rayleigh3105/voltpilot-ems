@@ -27,9 +27,12 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Die Schreib- und Lese-Fläche der Verteilung (OTA Stufe 2 „Verteilen",
- * Scout vp-ota-rollout-h4 §7): Releases ausrollen, Wellen freigeben,
- * pausieren, einfrieren, ein Einzelgerät zuweisen - und das alles ANSEHEN.
+ * Die Schreib- und Lese-Fläche der Verteilung (OTA Stufe 2 „Verteilen", seit
+ * dem 26.08.2026 in EINEM Schritt): ein Release auf gewählte Geräte, ein
+ * Einzelgerät zuweisen oder zurücknehmen - und das alles ANSEHEN.
+ *
+ * <p>Beide Schreibwege prüfen dieselben zwei Release-Eigenschaften: signiert
+ * und passende Box-Art ({@code ota.BoxArt}); sonst 409 mit deutschem Grund.
  *
  * <p><b>Die Sicherheits-Disziplin ist wörtlich die von {@code /admin/fleet}:</b>
  * jede Route liegt unter {@code /api/v1/admin/**}, die Klasse trägt klassenweit
@@ -40,8 +43,7 @@ import org.springframework.web.server.ResponseStatusException;
  *
  * <p><b>Was hier NICHT passiert: irgendetwas anwenden.</b> Der stärkste Effekt
  * ist eine retained MQTT-Nachricht mit einem signierten Manifest; ob daraus
- * etwas wird, entscheidet das Gerät (Prüfung gegen die eingebackene Wurzel) und
- * danach ein Mensch am Gerät.
+ * etwas wird, entscheidet das Gerät (Prüfung gegen die eingebackene Wurzel).
  */
 @RestController
 @RequestMapping("/api/v1/admin")

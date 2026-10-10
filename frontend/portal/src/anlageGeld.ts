@@ -27,7 +27,7 @@ import { PLAN_KONTEXT_TABS, VERLAUF_TABS } from './ebenenNav';
 import type { BausteinId } from './cockpitLayout';
 import type { AnlagenSub } from './nav';
 import type { AnlageSurface, CockpitBlockId, DeepViewId } from './surface';
-import { geldAnlagen } from './uebersicht';
+import { geldAnlagen } from './funktionenRegeln';
 
 /**
  * Zeigt dieser Cockpit-Baustein Geld? VOLLSTÄNDIG über alle Bausteine: wer einen

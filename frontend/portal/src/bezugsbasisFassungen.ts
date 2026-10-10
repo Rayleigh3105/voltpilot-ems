@@ -2,7 +2,7 @@ import type { Bezugsbasis, BezugsbasisAnstoss, BezugsbasisEntwurf, BezugsbasisFa
 import * as B from './bezugsbasisAnlegen';
 import type { BezugsbasisZustand } from './bezugsbasisUebersicht';
 import { beendetSatz, fristSatz } from './bezugsbasisUebersicht';
-import { UEMS_BEZUGSBASIS, UEMS_EINFLUSSGROESSE, UEMS_REFERENZPERIODE, UEMS_STATISCHER_FAKTOR } from './glossar';
+import { UEMS_BEZUGSBASIS, UEMS_EINFLUSSGROESSE, UEMS_GEPRUEFT_BLEIBT_KNOPF, UEMS_REFERENZPERIODE, UEMS_STATISCHER_FAKTOR } from './glossar';
 import { datumText } from './uemsOrtsbaum';
 
 /**
@@ -19,7 +19,7 @@ export const TITEL_BEENDEN = `${UEMS_BEZUGSBASIS} beenden`;
 export const TITEL_BLEIBT = 'Geprüft, bleibt';
 export const KNOPF_NEUE_FASSUNG = TITEL_NEUE_FASSUNG;
 export const KNOPF_BEENDEN = 'Beenden';
-export const KNOPF_BLEIBT = 'Geprüft, bleibt';
+export const KNOPF_BLEIBT = UEMS_GEPRUEFT_BLEIBT_KNOPF;
 export const KNOPF_WEITER_ZUM_ASSISTENTEN = `Weiter zur ${UEMS_REFERENZPERIODE}`;
 export const ANPASSUNGSGRUENDE_TITEL = 'Anpassungsgründe';
 export const FASSUNGEN_TITEL = 'Fassungen';
@@ -49,8 +49,12 @@ export const grundWort = (g: string): string => ANPASSUNGSGRUND_WORT[g] ?? g;
 export type FassungZustand = 'entwurf' | 'beantragt' | 'freigegeben' | 'abgelehnt' | 'beendet';
 export const ZUSTAND_WORT: Record<FassungZustand, string> = { ...B.FREIGABE_WORT, beendet: 'beendet' };
 
-export const fassungZustand = (f: Pick<BezugsbasisFassung, 'freigabe_status' | 'gilt_bis'>): FassungZustand =>
-  f.freigabe_status === 'freigegeben' && f.gilt_bis ? 'beendet' : f.freigabe_status;
+/**
+ * Mit Stichtag `tag` ist eine freigegebene Fassung erst „beendet“, wenn ihr letzter Tag vor ihm liegt - eine, die noch
+ * gilt oder erst künftig gilt (mit schon bekanntem Ende), steht nie blass als beendet da (Review r3).
+ */
+export const fassungZustand = (f: Pick<BezugsbasisFassung, 'freigabe_status' | 'gilt_bis'>, tag?: string): FassungZustand =>
+  f.freigabe_status === 'freigegeben' && f.gilt_bis && (tag === undefined || f.gilt_bis < tag) ? 'beendet' : f.freigabe_status;
 
 export const zustandTon = (z: FassungZustand): 'ok' | 'warn' | 'tint' | 'off' =>
   z === 'freigegeben' ? 'ok' : z === 'abgelehnt' ? 'tint' : z === 'beendet' ? 'off' : 'warn';

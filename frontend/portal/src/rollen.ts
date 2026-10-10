@@ -22,7 +22,7 @@ import { deviceName } from './entityLabel';
 import { defaultRole } from './topology';
 import { createContext, useContext, useSyncExternalStore } from 'react';
 import type { Selbstauskunft } from './api';
-import { teilansicht, TEXTE } from './rechte';
+import { teilansicht, TEXTE } from './rechteTexte';
 
 /** AP-03 IP-12: Kundenrechte kommen ausschließlich aus der Selbstauskunft.
  * Die Route wendet den Java-Zwilling der Matrix an und liefert die wirksamen
@@ -58,9 +58,26 @@ export function darfInListen(rechte: { unternehmen: readonly string[]; standorte
 }
 
 export function grundUndWeg(s = selbst): string {
+  const weg = wegZuKundenadministratoren(s);
+  return TEXTE.recht_fehlt + (weg ? ` ${weg}` : '');
+}
+
+/** „Ihr Kundenadministrator: Jonas Wendlinger.“ - wer es kann; leer ohne bekannte Person. */
+export function wegZuKundenadministratoren(s = selbst): string {
   const personen = s?.kundenadministratoren ?? [];
+  if (!personen.length) return '';
   const weg = personen.length === 1 ? TEXTE.weg_ein_kundenadministrator : TEXTE.weg_kundenadministratoren;
-  return TEXTE.recht_fehlt + (personen.length ? ` ${weg.replace('{namen}', personen.map((p) => p.name).join(', '))}` : '');
+  return weg.replace('{namen}', personen.map((p) => p.name).join(', '));
+}
+
+/**
+ * Konzept Messen m1 (§8.2 Punkt 9, Rechte mit Grund und Person): wer die Aktion darf, aber nicht rückwirkend, liest,
+ * was nicht geht und wer es kann - „Rückwirkend eintragen dürfen Kundenadministratoren und Energiemanager. Ab heute
+ * können Sie es selbst eintragen. Ihr Kundenadministrator: Jonas Wendlinger.“
+ */
+export function rueckwirkendGrund(s = selbst): string {
+  const weg = wegZuKundenadministratoren(s);
+  return TEXTE.recht_rueckwirkend + (weg ? ` ${weg}` : '');
 }
 
 export function teilansichtKopf(s = selbst): string | null {
@@ -96,6 +113,7 @@ export function useRollen() {
     standort,
     darf: (aktion: string, ziel: string | null = standort) => darf(aktion, ziel, s),
     grund: grundUndWeg(s),
+    rueckwirkendGrund: rueckwirkendGrund(s),
   };
 }
 

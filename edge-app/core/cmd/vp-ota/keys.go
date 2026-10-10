@@ -269,10 +269,11 @@ curl-Befehl ausgegeben - der Handpfad neben dem Tag-Lauf.
 		return err
 	}
 	// Vor dem Signieren pruefen, dass das Dokument die vertraglich vorgesehene
-	// Form hat: eine Signatur ueber Unsinn ist gueltiger Unsinn.
+	// Form hat: eine Signatur ueber Unsinn ist gueltiger Unsinn. Streng, wie
+	// beim Erzeugen - signiert wird nur, was ein Werkzeug erzeugen darf.
 	var manifest *otaverify.Manifest
 	if *domain == otaverify.DomainRelease {
-		manifest, err = otaverify.ParseManifest(doc)
+		manifest, err = otaverify.ParseManifestStrict(doc)
 		if err != nil {
 			return fmt.Errorf("%s ist kein gueltiges Release-Manifest: %w", *in, err)
 		}

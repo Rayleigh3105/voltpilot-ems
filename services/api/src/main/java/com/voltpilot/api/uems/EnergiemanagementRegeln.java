@@ -40,9 +40,13 @@ public final class EnergiemanagementRegeln {
             Map.entry("verweis_keine_datei", "VoltPilot speichert keine Dateien. Halten Sie fest, wo das Original liegt; die Prüfsumme zeigt später, ob es noch dasselbe ist."),
             Map.entry("ueberpruefung", "Überprüfung fällig seit {tage} Tagen."),
             Map.entry("geprueft_bleibt", "Geprüft, bleibt — entschieden von {person} am {am}: ‚{begruendung}‘"),
-            Map.entry("bekanntmachung", "Bekannt gemacht am {am} an {kreis} über {weg} — eingetragen von {person}."),
+            Map.entry("bekanntmachung", "Bekannt gemacht am {am} an {kreis} über {weg}."),
+            // Vertrag 1.4 (Konzept Nachweisen n1, Befund A14): die Person, die bekannt gemacht hat.
+            Map.entry("bekanntmachung_durch", "Bekannt gemacht von {person} am {am} an {kreis} über {weg}."),
             Map.entry("anwendungsbereich_deckungsgleich", "Der Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}, ab {ab}) umfasst dieselben Standorte und Energieträger."),
             Map.entry("anwendungsbereich_unterschied", "{was} gehört zum Anwendungsbereich, aber nicht zum Betrachtungsumfang der energetischen Bewertung (Fassung {fassung})."),
+            // Vertrag 1.4 (Konzept Nachweisen n1, Befund A21): die Gegenrichtung des Vergleichs.
+            Map.entry("anwendungsbereich_nur_im_umfang", "{was} gehört zum Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}), aber nicht zum Anwendungsbereich."),
             Map.entry("freigabe_ohne_leitung", "Diese Fassung braucht eine Entscheidung der Leitung. Für die Aufgabe ‚Leitung des Unternehmens‘ ist keine Person festgelegt."),
             Map.entry("aufgabe_ohne_person", "{aufgabe} — keine Person festgelegt."),
             Map.entry("person_ohne_konto", "{name} · {funktion} · ohne Konto — erscheint als ‚entschieden von‘."),
@@ -67,7 +71,7 @@ public final class EnergiemanagementRegeln {
             Map.entry("wiedervorlage_zeile", "{gegenstand}: {was} seit {tage} Tagen fällig."),
             Map.entry("wiedervorlage_leer", "Zurzeit ist nichts fällig."),
             Map.entry("kalender_abzug", "Stand vom {am} aus VoltPilot; maßgeblich ist die Wiedervorlage im Portal."),
-            Map.entry("baustein", "Energiemanagement — {faellig} fällig · {vorschau} in den nächsten {tage} Tagen."),
+            Map.entry("baustein", "Energiemanagement: {ueberfaellig} überfällig · {naechste} in den nächsten {tage} Tagen."),
             Map.entry("verzeichnis_leer", "Hier ist noch nichts festgehalten."),
             Map.entry("verzeichnis_filter", "In meinem Namen festgehalten: {anzahl} Einträge."),
             Map.entry("zuschnitt_titel", "Was VoltPilot führt — was bei Ihnen liegt.")
@@ -109,11 +113,15 @@ public final class EnergiemanagementRegeln {
         m.put("managementbewertung_zustand", List.of("entwurf", "freigegeben"));
         m.put("beschluss_art", List.of("energieziel", "massnahme", "dokument", "aufgabe", "ressourcen", "audit", "keine_aenderung", "weitere"));
         m.put("folge_art", List.of("energieziel", "massnahme", "dokument", "aufgabe", "audit"));
-        m.put("wiedervorlage_art", List.of("dokument_ueberpruefung", "internes_audit", "managementbewertung", "feststellung", "bewertung_ueberpruefung", "bezugsbasis_ueberpruefung", "energieziel_bewertung", "massnahme_termin", "abweichung_frist", "messbedarf_frist", "bericht_anstoss"));
+        m.put("wiedervorlage_art", List.of("dokument_ueberpruefung", "internes_audit", "managementbewertung", "feststellung", "bewertung_ueberpruefung", "bezugsbasis_ueberpruefung", "energieziel_bewertung", "massnahme_termin", "abweichung_frist", "messbedarf_frist", "bericht_anstoss", "zaehlerablesung"));
         m.put("verzeichnis_ort", List.of("in_voltpilot", "wortlaut_original_beim_kunden", "verweis"));
         m.put("verzeichnis_gruppe", List.of("grundlagen", "verantwortung", "risiken_chancen", "kompetenz_kommunikation", "betrieb_auslegung_beschaffung", "bewertung_messplanung", "kennzahlen_bezugsbasen", "ziele_massnahmen_abweichungen", "audits_feststellungen", "managementbewertung", "berichte"));
         m.put("ueberpruefung_art", List.of("dokument", "internes_audit", "managementbewertung", "feststellung"));
         m.put("ueberpruefung_grund", List.of("nachweis", "keine_fassung", "kein_audit", "keine_managementbewertung", "abgeschlossen"));
+        // Vertrag 1.3 (Konzept Nachweisen n1, Entscheide 5 und 23): die 18 Teile des Überblicks.
+        m.put("teil", List.of("energiepolitik", "anwendungsbereich", "rechtliche_anforderungen", "kontext", "risiken_chancen", "aufgaben", "kompetenz", "kommunikation", "betrieb", "auslegung", "beschaffung", "energetische_bewertung", "bezugsbasen", "massnahmen", "interne_audits", "feststellungen", "managementbewertung", "berichte"));
+        // Vertrag 1.6 (Konzept Nachweisen n1, Entscheid 7): wofür Unterlagen zusammengestellt werden.
+        m.put("mappe_anlass", List.of("audit_von_aussen", "anfrage_behoerde", "eigene_ablage"));
         return m;
     }
 
@@ -142,6 +150,27 @@ public final class EnergiemanagementRegeln {
                 "managementbewertung", "Managementbewertung", "berichte", "Berichte"));
         m.put("verzeichnis_ort", geordnet("in_voltpilot", "in VoltPilot", "wortlaut_original_beim_kunden", "Wortlaut in VoltPilot, Original bei Ihnen",
                 "verweis", "Geführt in Ihrem System"));
+        // Vertrag 1.3: Name und Kurzwort je Teil (Entscheid 23).
+        m.put("teil", geordnet("energiepolitik", "Energiepolitik", "anwendungsbereich", "Anwendungsbereich", "rechtliche_anforderungen", "Rechtliche Anforderungen",
+                "kontext", "Kontext und interessierte Parteien", "risiken_chancen", "Risiken und Chancen", "aufgaben", "Aufgaben im Energiemanagement",
+                "kompetenz", "Kompetenz", "kommunikation", "Kommunikation", "betrieb", "Betrieb und Instandhaltung",
+                "auslegung", "Auslegung", "beschaffung", "Beschaffung", "energetische_bewertung", "Energetische Bewertung und Messplanung",
+                "bezugsbasen", "Kennzahlen und Bezugsbasen", "massnahmen", "Energieziele und Maßnahmen", "interne_audits", "Interne Audits",
+                "feststellungen", "Feststellungen", "managementbewertung", "Managementbewertung", "berichte", "Berichte"));
+        m.put("teil_kurz", geordnet("energiepolitik", "Energiepolitik", "anwendungsbereich", "Anwendungsbereich", "rechtliche_anforderungen", "Rechtliche Anforderungen",
+                "kontext", "Kontext", "risiken_chancen", "Risiken und Chancen", "aufgaben", "Aufgaben",
+                "kompetenz", "Kompetenz", "kommunikation", "Kommunikation", "betrieb", "Betrieb und Instandhaltung",
+                "auslegung", "Auslegung", "beschaffung", "Beschaffung", "energetische_bewertung", "Energetische Bewertung",
+                "bezugsbasen", "Bezugsbasen", "massnahmen", "Maßnahmen", "interne_audits", "Interne Audits",
+                "feststellungen", "Feststellungen", "managementbewertung", "Managementbewertung", "berichte", "Berichte"));
+        // Vertrag 1.5 (Entscheid 23): das Kurzwort je Aufgabe für Zeilen am Handy; der lange Name bleibt im Blatt.
+        m.put("aufgabe_kurz", geordnet("unternehmensleitung", "Leitung", "energiemanagement_leiten", "Energiemanagement leiten",
+                "energieteam", "Energieteam", "bezugsbasen", "Bezugsbasen", "energieziele_massnahmen", "Ziele und Maßnahmen",
+                "bewertung_messplanung", "Energetische Bewertung", "interne_audits", "Interne Audits",
+                "managementbewertung", "Managementbewertung", "dokumente", "Dokumente", "weitere", "Weitere Aufgabe"));
+        // Vertrag 1.6 (Entscheid 7): das Wort je Anlass einer Mappe.
+        m.put("mappe_anlass", geordnet("audit_von_aussen", "Audit von außen", "anfrage_behoerde", "Anfrage einer Behörde",
+                "eigene_ablage", "Eigene Ablage"));
         return m;
     }
 
@@ -233,7 +262,15 @@ public final class EnergiemanagementRegeln {
         }
     }
 
-    /** WV1–WV3: jede Frist kommt fertig aus ihrer Regel (WV2) — hier nur Lage, Vorschau-Fenster und Reihenfolge. */
+    /** Konzept Wiedervorlage w1 (Vertrag 1.1): der Jahresplan reicht so viele Monate über den Abruf hinaus. */
+    public static final int JAHRESPLAN_MONATE = 12;
+
+    /**
+     * WV1–WV3: jede Frist kommt fertig aus ihrer Regel (WV2); hier nur Lage, Vorschau-Fenster und Reihenfolge. Seit
+     * Vertrag 1.1 (Konzept Wiedervorlage w1) dazu der Jahresplan {@code spaeter} (nach dem Fenster bis Abruf + 12 Monate)
+     * und die Zählung nach Dringlichkeit: {@code anzahl_ueberfaellig} (abgelaufen, {@code tage} &gt; 0) und
+     * {@code anzahl_naechste} (heute und das Vorschau-Fenster).
+     */
     public static Map<String, Object> wiedervorlage(WiedervorlageEingang e) {
         if (e.vorschau_tage() < 0) return fehler("vorschau_tage");
         var zeilen = new ArrayList<Map<String, Object>>();
@@ -255,11 +292,20 @@ public final class EnergiemanagementRegeln {
                 .toList();
         var faellig = liste.stream().filter(z -> (int) z.get("tage") >= 0).toList();
         var vorschau = liste.stream().filter(z -> (int) z.get("tage") < 0).toList();
+        String planEnde = LocalDate.parse(e.abruf()).plusMonths(JAHRESPLAN_MONATE).toString();
+        var spaeter = zeilen.stream()
+                .filter(z -> (int) z.get("tage") < -e.vorschau_tage() && ((String) z.get("faellig_am")).compareTo(planEnde) <= 0)
+                .sorted(Comparator.comparing((Map<String, Object> z) -> (String) z.get("faellig_am")).thenComparing(z -> (String) z.get("kennzeichen")))
+                .toList();
         var aus = new LinkedHashMap<String, Object>();
         aus.put("faellig", faellig);
         aus.put("vorschau", vorschau);
+        aus.put("spaeter", spaeter);
         aus.put("anzahl_faellig", faellig.size());
         aus.put("anzahl_vorschau", vorschau.size());
+        aus.put("anzahl_ueberfaellig", (int) faellig.stream().filter(z -> (int) z.get("tage") > 0).count());
+        aus.put("anzahl_naechste", (int) liste.stream().filter(z -> (int) z.get("tage") <= 0).count());
+        aus.put("anzahl_spaeter", spaeter.size());
         aus.put("nicht_in_liste", zeilen.stream().filter(z -> (int) z.get("tage") < -e.vorschau_tage()).map(z -> (String) z.get("kennzeichen")).sorted().toList());
         return aus;
     }

@@ -63,6 +63,13 @@ Code: `zugriff/Recht`, `zugriff/RechtZiel`, `zugriff/RechtInterceptor` (über `z
 - ⚠ **Tests:** `authentication(new KeycloakRealmRoleConverter().convert(jwt))`, sonst fehlt der Kontext und es wird nicht
   geprüft. Einen Handler, der nicht laufen soll, hält `RechtMatrixApiTest.BisZumHandler` (Kopf `X-Test-Bis-Handler`,
   Status 299) an. Eine Route mit `consumes` braucht den passenden `Content-Type`, sonst 415 vor jedem Interceptor.
+- ⚠ **Recht an der Person (Verbessern v1 Entscheid 8):** `verbesserung.eigene_massnahme` gilt nur, wenn die angemeldete
+  Person die verantwortliche der Maßnahme ist. Die Vorprüfung nimmt beide Kennungen (`@Recht({verwalten,
+  eigene_massnahme}, DIENST)`); `MassnahmeService#eigeneOderSchreibbar` fällt nur bei 403 von `verwalten` auf die
+  eigene zurück und wirft sonst die Ablehnung von `verwalten` (Regel: `RechteAbleitung.eigeneMassnahme`, Familie
+  `verantwortung`). Nur `umgesetzt` und `eintraege` - Ändern, Verwerfen, Verantwortlicher, Bewerten nie.
+  Ein Nachtrag eines späteren Konzepts heißt `Verbessern v1 §10.8` (Muster `abschnitt` im Schema), ohne `wie`, wenn
+  die Zellen von jeder Vorlage abweichen; jede neue Kennung braucht einen `darf`-Fall.
 
 ## Prüfen
 

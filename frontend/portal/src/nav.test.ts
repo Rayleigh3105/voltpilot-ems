@@ -40,6 +40,8 @@ import {
   komponenteHash,
   parseKomponente,
   boxSeiteHash,
+  fernwartungHash,
+  parseFernwartungBox,
 } from './nav';
 import { anlageSidebar } from './ebenenNav';
 import { sprungziel } from './uemsOberflaechen';
@@ -501,13 +503,16 @@ describe('PLATFORM_GROUPS - die gruppierte Plattform-Navigation', () => {
     expect(navPageFor('mandanten')).toBe('mandanten');
     expect(isGeraeteBereich('edge-updates')).toBe(true);
     expect(isGeraeteBereich('geraete-registry')).toBe(true);
+    expect(isGeraeteBereich('fernwartung')).toBe(true);
+    expect(navPageFor('fernwartung')).toBe('edge-updates');
     expect(isGeraeteBereich('optimizer')).toBe(false);
   });
 
-  it('nennt die zwei Tabs in Lese-Reihenfolge und führt mit dem Wirt', () => {
+  it('nennt die drei Tabs in Lese-Reihenfolge und führt mit dem Wirt', () => {
     expect(GERAETE_BEREICH.tabs.map((t) => [t.id, t.label])).toEqual([
       ['edge-updates', 'Updates'],
       ['geraete-registry', 'Registrierung'],
+      ['fernwartung', 'Fernwartung'],
     ]);
     // Der Wirt IST einer der Tabs - sonst wäre der Bereich ohne Auswahl leer.
     expect(GERAETE_BEREICH.tabs.some((t) => t.id === GERAETE_BEREICH.host)).toBe(true);
@@ -596,6 +601,14 @@ describe('parseGeraetRef (der Deep-Link-Vertrag)', () => {
 
   it('dekodiert eine Referenz, die Sonderzeichen trägt', () => {
     expect(parseGeraetRef('#/geraete-registry?geraet=edge-a%20b')).toBe('edge-a b');
+  });
+
+  it('trägt die gewählte Box der Fernwartung als ?box= und liest sie zurück', () => {
+    expect(fernwartungHash('edge-k7m2xq3')).toBe('#/fernwartung?box=edge-k7m2xq3');
+    expect(fernwartungHash(null)).toBe('#/fernwartung');
+    expect(parseFernwartungBox(fernwartungHash('edge-k7m2xq3'))).toBe('edge-k7m2xq3');
+    expect(parseFernwartungBox('#/fernwartung')).toBeNull();
+    expect(parseRoute('#/fernwartung?box=edge-k7m2xq3')).toEqual(route('fernwartung'));
   });
 
   // ⚠ Der No-Orphan-Wächter: der frühere SCHREIBER ist ersatzlos entfallen.
@@ -738,17 +751,25 @@ describe('Bewegung P5 · die Richtung eines Seitenwechsels', () => {
 describe('parseMessstelleWerte — Periode, Version und Vergleich der Werte einer Messstelle (UEMS AP-13 IP-3/IP-5)', () => {
   it('liest, was `sprungziel` schreibt; die Route bleibt die Messstellen-Seite', () => {
     const hash = '#/portfolio/messstellen/MS-12?periode=2026-10&version=2';
-    expect(parseMessstelleWerte(hash)).toEqual({ periode: '2026-10', version: 2, vergleich: null });
+    expect(parseMessstelleWerte(hash)).toEqual({ periode: '2026-10', version: 2, vergleich: null, stand: null });
     expect(parseRoute(hash)).toEqual(messstelleRoute('MS-12'));
     expect(parseMessstelleWerte('#/portfolio/messstellen/MS-06?periode=2026-10-25')).toEqual({
       periode: '2026-10-25',
       version: null,
       vergleich: null,
+      stand: null,
     });
   });
 
+  it('aus „Stand am …“: der Tag als `stand=` - nur ein ganzer Tag gilt (Review r4 S4)', () => {
+    expect(parseMessstelleWerte('#/portfolio/messstellen/MS-12?periode=2029-04-30&stand=2029-04-30').stand).toBe('2029-04-30');
+    expect(parseMessstelleWerte('#/portfolio/messstellen/MS-12?stand=2029-04').stand).toBeNull();
+    const s = sprungziel({ art: 'messstelle', id: 'MS-12', periode: '2029-04-30', stand: '2029-04-30' });
+    expect(s?.hash).toBe('#/portfolio/messstellen/MS-12?periode=2029-04-30&stand=2029-04-30');
+  });
+
   it('ohne Parameter nichts; eine Version, die keine ganze Zahl ab 1 ist, gilt nicht', () => {
-    expect(parseMessstelleWerte('#/portfolio/messstellen/MS-12')).toEqual({ periode: null, version: null, vergleich: null });
+    expect(parseMessstelleWerte('#/portfolio/messstellen/MS-12')).toEqual({ periode: null, version: null, vergleich: null, stand: null });
     for (const v of ['0', '-1', '2.5', 'zwei', '']) {
       expect(parseMessstelleWerte(`#/portfolio/messstellen/MS-12?periode=2026-10&version=${v}`).version, v).toBeNull();
     }
@@ -760,6 +781,7 @@ describe('parseMessstelleWerte — Periode, Version und Vergleich der Werte eine
       periode: '2026-11',
       version: null,
       vergleich: 'vorperiode',
+      stand: null,
     });
     expect(parseMessstelleWerte('#/portfolio/messstellen/MS-12?v=').vergleich).toBeNull();
     const s = sprungziel({ art: 'messstelle', id: 'MS-12', periode: '2026-11', vergleich: 'vorjahr' });

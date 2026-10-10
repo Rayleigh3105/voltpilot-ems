@@ -305,10 +305,50 @@ public class CurtailmentStatusListener extends Rueckmeldeweg {
             if (cap != null && !plausibleKw(cap)) {
                 cap = null; // an implausible cap is no cap - never a claimed number
             }
+            String mode = unitMode(u);
             out.add(new CurtailmentUnitDto(sourceId, u.path("certified").asBoolean(false), cap,
-                    optBoolean(u, "match")));
+                    optBoolean(u, "match"), mode, gridTargetKw(u, mode)));
         }
         return List.copyOf(out);
+    }
+
+    /**
+     * HOW the unit curtails (netzseitiger Drossel-Slot, 08.10.2026): the one
+     * word {@code grid_target}, or null for the ordinary cap unit.
+     *
+     * <p>Strict like every word in this listener: an unknown mode is DROPPED
+     * (null), because the portal turns the word into a sentence about what a
+     * device does - and the unit is then read as the cap unit it otherwise is,
+     * never guessed into a regulator. The entry itself stays.
+     */
+    private static String unitMode(JsonNode unit) {
+        JsonNode v = unit.get("mode");
+        if (v == null || v.isNull()) {
+            return null;
+        }
+        String mode = v.isTextual() ? v.asText().trim() : "";
+        if (CurtailmentUnitDto.MODE_GRID_TARGET.equals(mode)) {
+            return mode;
+        }
+        log.warn("unknown curtailment unit mode '{}' ignored", v.asText());
+        return null;
+    }
+
+    /**
+     * The grid target of a {@code grid_target} unit in the sign of the grid
+     * point ({@code +} import / {@code -} feed-in), or null.
+     *
+     * <p>It exists ONLY next to its mode - a number whose meaning nobody stated
+     * is not a target - and a value no grid connection point can carry is
+     * dropped alone. Absent stays null: "no target active" is never 0, and 0 is
+     * a real target ("no feed-in").
+     */
+    private static Double gridTargetKw(JsonNode unit, String mode) {
+        if (mode == null) {
+            return null;
+        }
+        Double kw = optDouble(unit, "target_kw");
+        return kw != null && Double.isFinite(kw) && Math.abs(kw) <= MAX_KW ? kw : null;
     }
 
     /**

@@ -47,7 +47,7 @@
 import type { PlantKind } from './api';
 import { BESTAND_BADGE, bestandZeile, type BestandEingabe } from './erloesKomposition';
 import { eurAmount, fmtNum, NBSP } from './format';
-import { MISPEL_GUTSCHRIFT, MISPEL_NETZLADEN, MISPEL_STROMRECHNUNG } from './glossar';
+import { MISPEL_GUTSCHRIFT, MISPEL_NETZLADEN, MISPEL_STROMRECHNUNG } from './glossarEinstieg';
 
 /** Unter diesem Betrag rundet die Cent-Anzeige auf 0,00 € — dann ist es keine Aussage. */
 export const SPEICHER_TOTBAND = 0.005;

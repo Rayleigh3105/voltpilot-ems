@@ -62,7 +62,9 @@ def build_schedule_payload(plan: SchedulePlan) -> dict:
         "generated_at": _rfc3339(plan.generated_at),
         "horizon_slots": len(slots),
         "slot_minutes": plan.slot_minutes,
-        "slots": [_slot_payload(slot) for slot in slots],
+        "slots": [
+            _slot_payload(slot, _release_floor(plan, i)) for i, slot in enumerate(slots)
+        ],
         # Additive safety fact for any edge-side discharge that may start from
         # an idle slot.  Old edges ignore it; new edges refuse the authorization
         # when it is absent, so a mixed-version fleet fails closed.
@@ -111,10 +113,29 @@ def build_schedule_payload(plan: SchedulePlan) -> dict:
     # limit is never invented.
     if plan.max_feed_in_kw is not None:
         payload["grid_export_limit_kw"] = round(plan.max_feed_in_kw, 3)
+    # OPTIONAL per the contract („Sonne + Speicher", 06.10.2026, additive -
+    # schema_version stays 1.0): present only at a site where a charge point
+    # runs that source. The top-level pair says the run LOOKED (how much the
+    # battery can deliver, or why nothing is released); the per-slot
+    # ev_release_floor_soc_pct below is the floor itself. Every other payload
+    # stays byte-identical, and an old edge ignores all three - its charge
+    # point then runs the "nur_sonne" lane it was sent, the safe fallback.
+    release = plan.storage_release
+    if release is not None:
+        payload["ev_release_max_discharge_kw"] = round(release.max_discharge_kw, 3)
+        if release.grund is not None:
+            payload["ev_release_reason"] = release.grund
     return payload
 
 
-def _slot_payload(slot) -> dict:
+def _release_floor(plan: SchedulePlan, index: int) -> float | None:
+    release = plan.storage_release
+    if release is None or index >= len(release.floor_soc_pct):
+        return None
+    return release.floor_soc_pct[index]
+
+
+def _slot_payload(slot, release_floor_pct: float | None = None) -> dict:
     payload = {
         "start": _rfc3339(slot.start),
         "battery_setpoint_kw": round(slot.battery_kw, 3),
@@ -156,6 +177,11 @@ def _slot_payload(slot) -> dict:
     # and absence is fail-OPEN on the edge for the same reason.
     if slot.charge_surplus_to_battery:
         payload["charge_surplus_to_battery"] = True
+    # OPTIONAL per the contract („Sonne + Speicher", 06.10.2026): the battery
+    # floor of this slot. Absent = no release in this slot (the plan trades
+    # here, or the site does not run the source) - fail-CLOSED on the edge.
+    if release_floor_pct is not None:
+        payload["ev_release_floor_soc_pct"] = round(release_floor_pct, 1)
     return payload
 
 

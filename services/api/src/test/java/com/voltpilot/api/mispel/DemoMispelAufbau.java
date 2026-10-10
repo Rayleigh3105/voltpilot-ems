@@ -752,7 +752,8 @@ class DemoMispelAufbau {
                 "Demo", golf ? "V2H 11 (Golf angesteckt)" : "V2H 11", "1.0", true, null, jetzt, "haus", List.of(stecker));
         var budget = new DeviceChargerStatusRepository.BudgetRow(true, true, null, 32.0, 10.0, 1.4, 11.0, 0.0, 0.0, 0.0,
                 1.2, 1.2, "grid", null, false, 32.0, 4.2, null, true, null, null, 1, "sonne_zuerst", "car", false, 0.0, null, null,
-                false, null, null, null, null, null);
+                false, null, null, null, null, null,
+                null); // storageRelease (main, Sonne + Speicher): die MiSpeL-Demo fährt keine Freigabe
         TenantContext.set(k.tenant());
         try {
             chargers.replaceForDevice(box, k.tenant(), s, jetzt, budget, List.of(saeule));

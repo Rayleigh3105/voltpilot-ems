@@ -150,6 +150,13 @@ export interface ZeileWoerter {
   zustand: string;
   /** Der Satz des Servers (Beobachtung bzw. bei einer berechneten Messstelle ihre Vollständigkeit); `null` = keiner. */
   beobachtung: { text: string; ton: Ton } | null;
+  /**
+   * Eine aktive Messstelle, deren Werte aus Ablesungen kommen: `fehlt`, wo der Server „Ablesung überfällig seit …“ oder
+   * „Noch keine Ablesung“ sagt (`liefert_nicht_seit`), sonst `abgelesen`; `null` für jede andere. Daraus wählt
+   * {@link ablesungsZiele} das Ziel des Schritts „Ablesungen eintragen“ der Wiedervorlage (Konzept w1, Entscheid 7):
+   * dieselbe Aussage wie das Register, nie eine eigene Frist.
+   */
+  ablesung: 'fehlt' | 'abgelesen' | null;
   /** Der letzte Wert der HAUPTGRÖSSE; `null` = kein guter Wert — „—“, nie eine 0. */
   wert: { text: string; zeit: string } | null;
   /**
@@ -337,6 +344,8 @@ export function zeileWoerter(z: MessstelleRegisterZeile, k: WortKontext): ZeileW
     quelle,
     zustand: zustandText(z, k.zone),
     beobachtung: beobachtungWoerter(z, k),
+    ablesung:
+      q.stand !== 'ablesung' || z.lebenszyklus !== 'aktiv' ? null : z.beobachtung?.zustand === 'liefert_nicht_seit' ? 'fehlt' : 'abgelesen',
     wert: w && text !== null ? { text, zeit: `${zeitpunktText(w.zeitpunkt, k.zone, k.zeitpunkt)} Uhr` } : null,
     nebenwerte: (z.nebengroessen ?? []).flatMap((n) => {
       const nt = n.letzter_wert ? wertText(n.letzter_wert) : null;
@@ -344,10 +353,9 @@ export function zeileWoerter(z: MessstelleRegisterZeile, k: WortKontext): ZeileW
         ? [{ groesse: n.groesse.groesse, text: nt, zeit: `${zeitpunktText(n.letzter_wert.zeitpunkt, k.zone, k.zeitpunkt)} Uhr` }]
         : [];
     }),
-    fakten: (z.fakten ?? []).map((f) =>
-      f.art === 'einstellung_geaendert'
-        ? `${EINSTELLUNG_GEAENDERT} ${zeitpunktText(f.gilt_ab, k.zone)}`
-        : f.art,
+    // Ein Kundenwort je Tatsache oder nichts - nie der rohe Code (Konzept Messen m1, Befund 4.4).
+    fakten: (z.fakten ?? []).flatMap((f) =>
+      f.art === 'einstellung_geaendert' ? [`${EINSTELLUNG_GEAENDERT} ${zeitpunktText(f.gilt_ab, k.zone)}`] : [],
     ),
   };
 }
@@ -373,8 +381,19 @@ export function ersterTag(m: MessstelleVertragsform, zone: string): Tag | null {
   return tage.length === 0 ? null : tage.reduce((a, b) => (b < a ? b : a));
 }
 
+/**
+ * Das Ziel des Schritts „Ablesungen eintragen“ im Register eines Orts (Wiedervorlage w1, Entscheid 7): die Messstellen,
+ * deren Ablesung fehlt; fehlt keine (eine Runde, die erst in den nächsten Tagen fällig ist), die Messstellen aus
+ * Ablesungen. Der Schritt landet so immer bei einem Zähler, den man ablesen kann.
+ */
+export function ablesungsZiele(zeilen: readonly ZeileWoerter[]): Set<string> {
+  const fehlt = zeilen.filter((w) => w.ablesung === 'fehlt');
+  return new Set((fehlt.length > 0 ? fehlt : zeilen.filter((w) => w.ablesung === 'abgelesen')).map((w) => w.id));
+}
+
 export type RegisterEintrag =
-  | { art: 'messstelle'; woerter: ZeileWoerter }
+  /** Die Wörter der Zeile und die Zeile selbst (die Liste sucht und gruppiert darin, `messstellenListe.ts`). */
+  | { art: 'messstelle'; woerter: ZeileWoerter; zeile: MessstelleRegisterZeile }
   /** Gab es am Stichtag noch nicht: an ihrem Platz benannt (Satz wie auf der Liste „Standorte“), nie weggelassen. */
   | { art: 'gab_es_noch_nicht'; id: string; kennzeichen: string; name: string; satz: string };
 
@@ -400,7 +419,7 @@ export function registerEintraege(antwort: MessstellenRegister, stichtag: Tag | 
         satz: bestandSatz('gab_es_noch_nicht', `${z.kennzeichen} „${name}“`, stichtag),
       };
     }
-    return { art: 'messstelle', woerter: zeileWoerter(z, k) };
+    return { art: 'messstelle', woerter: zeileWoerter(z, k), zeile: z };
   });
 }
 
@@ -437,6 +456,12 @@ export const ortAus = (hash: string): string | null => filterAus(hash, 'ort');
  * die Messstellen dieser Anlage. In der Adresse steht die ID der Anlage, wie die Auswahlliste sie führt.
  */
 export const anlageAus = (hash: string): string | null => filterAus(hash, 'anlage');
+
+/**
+ * Messen m2 (Konzept Messen m1, §6.5 Variante 3A): die Ablese-Runde eines Orts aus der Adresse
+ * (`#/portfolio/messstellen?ablesen=G-1`) - das Kurzzeichen, wie die Gebäude-Karte und die Wiedervorlage es tragen.
+ */
+export const ablesenAus = (hash: string): string | null => filterAus(hash, 'ablesen');
 
 const filterAus = (hash: string, schluessel: string): string | null =>
   new URLSearchParams(hash.split('?').slice(1).join('?')).get(schluessel)?.trim() || null;

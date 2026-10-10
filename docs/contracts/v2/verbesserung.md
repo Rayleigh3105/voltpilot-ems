@@ -1,7 +1,9 @@
 # Ziele, Maßnahmen, Abweichungen: Wirkung, Ziel-Stand, Frist (UEMS AP-18)
 
-Stand 24.09.2026 · Vertrag 1.0 · Konzept `data/vp-uems-ap18-fundament` §4.1–4.8, §5.9, §7 R4, R5, R6, R9, R10, R12,
-§8 IP-2; Entscheide E1–E7 = A, W1–W15 übernommen (24.09.2026).
+Stand 06.10.2026 · Vertrag 1.1 · Konzept `data/vp-uems-ap18-fundament` §4.1–4.8, §5.9, §7 R4, R5, R6, R9, R10, R12,
+§8 IP-2; Entscheide E1–E7 = A, W1–W15 übernommen (24.09.2026). 1.1 (additiv): Operation `kurs` (§4a) aus dem Konzept
+Verbessern (`data/vp-verbessern-konzept-v1`, Entscheid 3, freigegeben 06.10.2026).
+1.1 (Verbessern-Konzept v1, Entscheide 6 und 12): Vokabular `massnahme_art`, Satz `wirkung_ohne_erwartung`.
 
 Die Abnahme des Captains: **„Eine Maßnahme ist mit Ziel, Verantwortlichem, Messgrundlage und Ergebnis verbunden. Die
 Software behauptet keine Ursache, die die Daten nicht tragen.“** — M-2028-0001 (umgesetzt am 22.01.2028) zeigt am
@@ -12,7 +14,7 @@ sagt eine Person.
 | Datei | Rolle |
 |---|---|
 | [`verbesserung.schema.json`](./verbesserung.schema.json) | die Form der Vektor-Datei (geschlossen, Dezimaltexte statt Gleitkomma; die Eingänge der Bezugsbasis mit ihren `$defs`) |
-| [`verbesserung-vectors.json`](./verbesserung-vectors.json) | 63 Fälle mit Handrechnung (`rechnung`), Startwerte, Vokabulare, die Kundensätze als Schablonen |
+| [`verbesserung-vectors.json`](./verbesserung-vectors.json) | 75 Fälle mit Handrechnung (`rechnung`), Startwerte, Vokabulare, die Kundensätze als Schablonen |
 | [`bezugsbasis.md`](./bezugsbasis.md) · [`bezugsbasis-vectors.json`](./bezugsbasis-vectors.json) | Δ, Band, Urteil je Monat (`vergleich`) und Σ ÷ Σ (`zeitraum`) — hier aufgerufen, nie nachgebaut |
 | [`uems-referenzunternehmen.json`](./uems-referenzunternehmen.json) 1.9 | `massnahmen[]`, `energieziele[]`, `kennzahlen_1_9_monate` — die Stände der Datei sind genau das, was die Operationen rechnen |
 | `services/api/.../uems/VerbesserungRegeln.java` | der Java-Zwilling (rein) |
@@ -25,18 +27,20 @@ sagt eine Person.
 > Filter `ueberfaellig`, Uhr der Kennzahlen), `satz` dessen `massnahme_kopf`, `messgrundlage`, `ohne_messgrundlage` und
 > `ueberfaellig`. `wirkung` ruft der Leser `GET …/massnahmen/{id}/wirkung` (IP-11, `MassnahmeWirkung` über
 > `BezugsbasisVergleich.fuerZiel`: Umsetzungsmonat und die endgültigen Nachher-Monate), `satz` dessen `wirkung_*`.
-> Die Übersicht (F2) folgt; sie rechnet nicht selbst, sondern ruft diese Operationen.
+> Die Übersicht (F2) folgt; sie rechnet nicht selbst, sondern ruft diese Operationen. `kurs` ruft derselbe Leser
+> `GET …/energieziele/{id}/stand` über dieselben endgültigen Monate (Feld `kurs`, Konzept Verbessern Entscheid 3).
 
 ## 1. Vokabulare (geschlossen, in `verbesserung-vectors.json`)
 
 | Gruppe | Schlüssel | Werte |
 |---|---|---|
 | Z | `energieziel_zustand` · `energieziel_ergebnis` · `zielstand_vorschlag` | `offen · bewertet · beendet` · `erreicht · verfehlt · nicht_bewertbar` · `erreicht · nicht_erreicht` |
-| M | `massnahme_zustand` · `massnahme_herkunft` | `geplant · umgesetzt · bewertet · verworfen` · `abweichung · energieziel · einsatz · von_hand · nichtkonformitaet · audit · managementbewertung` (die letzten drei seit AP-19 IP-17) |
+| M | `massnahme_zustand` · `massnahme_herkunft` · `massnahme_art` | `geplant · umgesetzt · bewertet · verworfen` · `abweichung · energieziel · einsatz · von_hand · nichtkonformitaet · audit · managementbewertung` (die letzten drei seit AP-19 IP-17) · `gemessen · nicht_gemessen · organisatorisch` (seit 1.1) |
 | A | `abweichung_zustand` · `abweichung_ergebnis` · `abweichung_eintrag_art` · `auffaelligkeit_zustand` · `auffaelligkeit_antwort` · `anstoss_art` · `anstoss_zustand` · `anstoss_antwort` | `offen · abgeschlossen` · `massnahme · erklaert · keine_abweichung · nicht_bewertbar` · `kommentar · ursache_aussage` · `offen · beantwortet` · `abweichung · zur_kenntnis` · `ausgangslage_korrigiert · bewertung_korrigiert · messgrundlage_beendet · messgrundlage_neu_gefasst` · `offen · beantwortet` · `bleibt · neu_kopiert · neu_bewertet` |
 | U | `ursache_beleg` | `keine_messung · mit_beleg` — eine Ursache ist immer die Aussage einer Person (U1–U3); es gibt **kein** Ursachen-Vokabular |
 | WK | `wirkung_ergebnis` · `wirkung_grund` | `belegt · nicht_belegt · nicht_messbar` (ohne Stand: „beobachtet — nicht belegt“) · `umsetzungsmonat · basis_nach_umsetzung · unvollstaendig` und die Gründe der Bezugsbasis `basis_fehlt · basis_beendet · zu_wenig_perioden · variable_fehlt · variable_ausserhalb · periode_nicht_zu_ende · keine_werte` |
 | F | `frist_art` · `frist_faellig` | `massnahme · abweichung · energieziel` · `ueberfaellig · bewertung_faellig` |
+| K | `kurs_lage` | `auf_kurs · knapp_dahinter · nicht_auf_kurs · noch_keine_aussage` (seit 1.1) |
 
 Pflicht-Beiwerte der Konzept-Liste (`massnahme` mit Verweis, `zur_kenntnis`/`bleibt` mit Begründung, `ursache_aussage`
 mit Wortlaut, Person, Datum) sind Regeln der Schreibwege (IP-5 ff.), nicht Teil der Wörter.
@@ -50,6 +54,15 @@ sichtbarer Kennung, 422 `feststellung_nicht_offen`, 422 `audit_nicht_durchgefueh
 n einer Managementbewertung mit Stand (AP-19 IP-23; noch ohne Stand 422 `managementbewertung_nicht_freigegeben`) — die
 Maßnahme ist damit selbst die Folge des Beschlusses (MG6). Das interne Wort `nichtkonformitaet` steht nur in Vertrag und Code,
 das Kundenwort ist „Feststellung“ (SP5).
+
+**Art der Maßnahme (1.1, Verbessern-Konzept v1 Entscheid 6).** `massnahme_art` sagt, wie sich die Wirkung zeigt:
+`gemessen` (an einer Kennzahl mit freigegebener Bezugsbasis; genau dann gibt es eine Messgrundlage), `nicht_gemessen`
+(spart Energie, ohne Kennzahl) und `organisatorisch` (regelt Zuständigkeiten, Abläufe, Schulungen; keine Zahl). Die Art
+ersetzt den pauschalen Mangel „ohne Messgrundlage“ als Marke; der Satz `ohne_messgrundlage` bleibt für `nicht_gemessen`.
+Bestand und Anlegen ohne Angabe bekommen die Art aus Messgrundlage und Herkunft (mit Kennzahl `gemessen`, aus
+`nichtkonformitaet` oder `audit` `organisatorisch`, sonst `nicht_gemessen`); die Art ist ab dem Anlegen eingefroren. Eine Schätzung in kWh im Jahr (Entscheid 13) ist eine Spalte der Maßnahme, kein Teil dieses
+Vertrags: mit Kennzahl rechnet sie die Route aus der erwarteten Wirkung und den zwölf abgeschlossenen Monaten vor dem
+Anlegen, ohne Kennzahl nennt sie die Person; sie wird nie mit gemessenen Werten summiert.
 
 **Startwerte** (ohne Norm-Herleitung): Nachher-Zeitraum `nachher_monate` 12, höchstens 36 (WK2); Vorgabe der
 Abweichungs-Frist 30 Tage (A3). Band und Toleranz sind die der Bezugsbasis (AP-17 U3).
@@ -97,6 +110,33 @@ Eingang `zielwert_prozent` (Dezimaltext, weniger Energie negativ), `zielperiode`
   (exakt, **nie auf den Zielwert gerundet**: −4,96 % zeigt „−5,0“ und ist `nicht_erreicht`), sonst `nicht_erreicht`.
   Bei 11 von 12 ist `vorschlag` `null` — das Ergebnis `erreicht · verfehlt · nicht_bewertbar` setzt eine Person (Z4).
 
+## 4a. Operation `kurs` (K1–K3, seit 1.1)
+
+Eingang wie `zielstand` (§4); `kurs` ruft `zielstand` und gibt dessen Fehler unverändert weiter. Der Zwischenstand eines
+laufenden Energieziels über die **bisher** bewertbaren Monate - keine Prognose, es zählt nur, was gemessen ist; ob das
+Energieziel erreicht ist, entscheidet am Ende weiter eine Person (Z4).
+
+- **`lage`** (Vokabular `kurs_lage`), exakt wie der Vorschlag, nie gerundet (G = Σ gemessen, E = Σ erwartet, z = Zielwert,
+  b = `band_prozent` der Summe):
+  - `auf_kurs`: (G − E) · 100 ≤ z · E - die Regel des Vorschlags (Z4) über die bewertbaren Monate (K1);
+  - `knapp_dahinter`: nicht auf Kurs, G < E und (G − E) · 100 ≤ (z + b) · E - weniger als erwartet und höchstens das
+    Band vom Zielwert entfernt (K2); mehr als erwartet ist nie knapp dahinter;
+  - `nicht_auf_kurs`: sonst;
+  - `noch_keine_aussage`: kein bewertbarer Monat - dann sind `hoechstens`, `luecke` und `noetig_*` `null` (K3).
+- **`hoechstens`** = E · (100 + z) / 100, was das Energieziel für die bewertbaren Monate zulässt; **`luecke`** = G −
+  höchstens (positiv = darüber), beide exakt in der Einheit der Summe (K1, Lücken in kWh statt Prozentpunkten).
+- **`monate_offen`** = Monate der Zielperiode, die noch nicht endgültig sind; ein endgültiger, nicht bewertbarer Monat
+  zählt nie mehr.
+- **`noetig_prozent`** / **`noetig_richtung`**: der nötige Schnitt der offenen Monate gegen erwartet, **Näherung bei
+  gleich großen Monaten** (jeder offene Monat erwartet E / b): die Operation `roh` der Bezugsbasis über
+  ((b + o) · höchstens − b · G) gegen o · E mit o = `monate_offen`, b = `monate_bewertbar` - ein Verhältnis zweier
+  Summen, kein Mittel der Monats-Δ, gerundet wie jede Veränderung (eine Stelle, ,5 vom Nullpunkt weg). Ohne offenen
+  Monat `null`; ≤ −100 heißt, auch ohne jeden Verbrauch nicht mehr erreichbar.
+
+Vektoren: K1 März 2029 (konstruiert wie die Mocks des Konzepts: 88 740 kWh gegen 86 812,2 kWh, 4 % weniger → nicht auf
+Kurs, 5 400 kWh darüber, 4,7 % weniger nötig), K1/K2 Juli 2028 gegen 5, 4 und 2 % weniger, die Grenzen genau −5,0 %
+(auf Kurs) und −4,96 % (knapp dahinter), mehr als erwartet, ohne bewertbaren Monat, falsch geformte Zielperiode.
+
 ## 5. Operation `frist` (F1)
 
 Eingang `art`, `zustand`, `abruf` (Tag — die Uhr von außen, nie `now()` im Zwilling) und `termin` (Maßnahme, Abweichung)
@@ -114,17 +154,21 @@ Kein Läufer, kein Zustand „überfällig“, keine Nachricht (F2).
 
 ## 6. Kundensätze (§5.9) — Operation `satz`
 
-`saetze` in der Vektor-Datei trägt die 25 Schablonen (`{name}` = Platzhalter); `SAETZE` in allen drei Zwillingen ist
+`saetze` in der Vektor-Datei trägt die 26 Schablonen (`{name}` = Platzhalter); `SAETZE` in allen drei Zwillingen ist
 gleich (Test). `satz(schluessel, werte)` füllt jeden Platzhalter genau aus `werte` — fehlt einer:
 `wert_fehlt:<name>`, bleibt einer übrig: `wert_uebrig:<name>`, unbekannter Satz: `satz_unbekannt`. Jeder Satz-Vektor
 füllt die Schablone mit den Werten des Konzepts und erwartet den Satz aus §5.9 **wörtlich** (vom Report abgelesen).
 Die Zahlen stellt der Aufrufer (SP4: Tausender mit Leerzeichen, Prozent eine Stelle, Personen-Zahlen wie Zielwert und
 erwartete Wirkung ohne „,0“, Band ohne Null am Ende, Daten `TT.MM.JJJJ`).
 
+**`wirkung_ohne_erwartung` (1.1, Entscheid 12).** Hat die Person beim Planen keine Zahl genannt („Weiß ich noch
+nicht“), trägt der Wirkungssatz statt des Teilsatzes „erwartet waren …“ den Satz „Eine erwartete Wirkung ist nicht genannt.“ Die
+beobachtete Zahl, Zeitraum, Monate und Ausschlüsse sind dieselben wie in `wirkung_vorlaeufig`.
+
 ## 7. Die Vektoren
 
 Jeder Fall trägt `name`, `regel`, `operation`, `quelle`, `rechnung`, `eingang` und `erwartet`. Je Operation:
-`wirkung` 15 · `zielstand` 10 · `frist` 10 · `satz` 28. Pflichtfälle aus §8 IP-2 als eigene Vektoren: „R5 Februar bis
+`wirkung` 15 · `zielstand` 10 · `kurs` 10 · `frist` 10 · `satz` 30. Pflichtfälle aus §8 IP-2 als eigene Vektoren: „R5 Februar bis
 Oktober 2028: 2,4 % weniger, 8 von 12, März ausgeschlossen“, „R6 Januar 2028 Umsetzungsmonat nicht gezählt“, „R10 11 von
 12 → kein Vorschlag“. Ränder: alle ausgeschlossen, 0 endgültige Monate, genau 12 von 12, 24 Monate, 11 und 37
 abgelehnt, Frist am Termintag = 0, Schaltjahr, ,5-Rundung (−2,45 → −2,5) und „nie auf Band oder Zielwert gerundet“.

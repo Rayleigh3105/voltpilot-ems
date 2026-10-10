@@ -14,7 +14,7 @@
  * wieder eine Klemme. Die Zahl steht, der Satz steht daneben.
  */
 import { NBSP } from './format';
-import { SATZ_REST_NEGATIV } from './uemsBilanz';
+import { SATZ_REST_NEGATIV } from './uemsBilanzSaetze';
 
 const MINUS = '−';
 

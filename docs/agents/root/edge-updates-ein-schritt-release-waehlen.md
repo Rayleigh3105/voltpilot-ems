@@ -127,6 +127,22 @@ Zuweisung desselben Release versucht wieder).
   den Namen noch nicht melden — **die beiden Konstanten zusammen ändern.**
 - **Unclaim räumt ab:** `RolloutService.onDeviceUnclaimed` löscht die Zuweisung
   und leert den retained Slot (best-effort, nie werfend).
+- **Box-Art (Docker-Box / Edge Light) steht in `ota/BoxArt`** — die EINE
+  Regel, rein und Docker-frei getestet (`BoxArtTest`). Gerät: Backend `light` →
+  Edge Light; **Übergang:** Stempel `edge-light-…` gewinnt über das heute noch
+  fest gemeldete `compose`; Docker-Backend oder Stempel ohne Backend → Docker;
+  sonst `null` = unbekannt (nie still Docker). Release: Docker, außer
+  `compat.backends` enthält `light` oder der Name beginnt mit `edge-light-`
+  (ein gemischtes Manifest gilt als Edge Light). Beide Schreibwege antworten bei
+  unpassender Box-Art mit **409** und deutschem Grund; ein Rollout mit einem
+  unpassenden Gerät schreibt NICHTS. Ein Edge-Light-Release verlangt den Beleg
+  „Edge Light" (Docker-Kerne vor dem Edge-Light-Update-Vertrag lehnen `light`
+  als Prüffehler ab; neuere stellen zurück, Sperre `backend`), ein
+  Docker-Release bleibt einer Box unbekannter Art zuweisbar. Das ist kein
+  Zustands-Tor, sondern der Cloud-Zwilling von `compat.backends`. `boxArt`
+  reist auf `ReleaseDto`, `FleetRowDto` und `DeviceRowDto`; der Portal-Zwilling
+  `releaseSperre` (`adminEdgeUpdates.ts`) trägt wortgleiche Sätze — **beide
+  zusammen ändern.**
 
 ### Portal
 
@@ -141,7 +157,11 @@ offline/unbekannt stehen DANEBEN, nie im Nenner) und einer Zeile je Gerät
 `FleetRow.rolloutId` + `sollSeq` mit der Karte: der Live-Zustand einer neueren
 Zuweisung erscheint NIE unter dem Release-Kopf eines älteren Rollouts; dessen
 Mitgliedschaft bleibt ausschließlich im Journal. Der geteilte `GeraeteDrawer` weist ein
-Einzelgerät zu (`onAssign(releaseSeq)` — kein Kanal, kein Pin). Es gibt
+Einzelgerät zu (`onAssign(releaseSeq)` — kein Kanal, kein Pin). Angeboten werden
+nur zur Box-Art passende Releases (`zuweisbareReleases`); unpassende Geräte stehen
+im Rollout-Dialog ausgegraut MIT Grund (E10), „Alle passenden Geräte" wählt sie
+nicht mit. Edge Light ohne geprüftes Vertrauens-Set heißt ruhig „Updates von Hand
+(Edge Light, Stufe 1)" (`crossoverState` → `von_hand`), nie „ohne Vertrauens-Set". Es gibt
 **nirgends** einen zweiten Knopf; die Vier-Klassen-Grammatik ist auf `busy`
 (läuft von selbst, pulsiert) · `blocked` · `incident` · `calm` geschrumpft, die
 frühere fünfte Klasse `action` („SIE sind dran") ist entfallen.

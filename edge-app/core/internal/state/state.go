@@ -99,6 +99,15 @@ type Snapshot struct {
 	// Leader (K6, additive, box-local) says whether the selection is the
 	// connection point's Führungsgerät and may regulate itself - see LeaderInfo.
 	Leader *LeaderInfo `json:"leader,omitempty"`
+	// GridTarget is the grid-side throttling slot (netzseitiger Drossel-Slot,
+	// concept vp-deye-netzseitig-drossel-k2 P3): in a slot the plan curtails,
+	// the hybrid inverter regulates the CONNECTION POINT itself and throttles
+	// its own PV. Non-nil ONLY while the intent stands (pending or proven).
+	GridTarget *GridTargetInfo `json:"grid_target,omitempty"`
+	// GridTargetWithheld names why a curtailing slot is NOT regulated grid side
+	// although this device carries the lever - a refusal or a take-back (latched
+	// until the slot ends). nil in every other slot.
+	GridTargetWithheld *GridTargetWithheldInfo `json:"grid_target_withheld,omitempty"`
 
 	// ExportGuard is the live feed-in watchdog at the grid connection point
 	// (dynamische Einspeisebegrenzung), non-nil whenever the site HAS a feed-in
@@ -170,6 +179,12 @@ type Snapshot struct {
 	// it) - and then nothing on the control card claims one. A named
 	// limitation is the whole point: an unnamed one reads as a defect.
 	CarsFirstCapKw *float64 `json:"cars_first_cap_kw,omitempty"`
+
+	// ReleaseCoverKw is the „Sonne + Speicher" release cover currently
+	// lowering a planned CHARGE (agent/ocpp_release.go): cars draw released
+	// battery power, so the battery follows pv - load instead of charging on.
+	// nil = not biting. Named for the same reason as CarsFirstCapKw.
+	ReleaseCoverKw *float64 `json:"release_cover_kw,omitempty"`
 
 	// DataPurge tracks a data purge ("Datenaufzeichnungen löschen") triggered
 	// on this device: nil when none is in flight or everything is confirmed.
@@ -315,6 +330,45 @@ type AbsorbInfo struct {
 	// SurplusKw is the measured surplus the charge is raised to; nil when unknown
 	// (then the correction would be inactive anyway - never regulate blind).
 	SurplusKw *float64 `json:"surplus_kw,omitempty"`
+}
+
+// GridTargetInfo is the UI-facing state of the grid-side throttling slot. A
+// read-only display of a decision already taken - the supervision itself lives
+// in guards.GridTargetMode.
+type GridTargetInfo struct {
+	// Active is always true when the block exists (it is omitted otherwise).
+	Active bool `json:"active"`
+	// Proven separates "we asked the device to regulate the connection point"
+	// from "its registers confirm the grid side". Only a PROVEN mode is reported
+	// to the cloud as execution.mode grid_target.
+	Proven bool `json:"proven"`
+	// TargetKw is the commanded grid target (+ import / - feed-in); 0 = the
+	// null export of a negative-price slot. Never above +0,05 kW.
+	TargetKw float64 `json:"target_kw"`
+	// ReferenceKw is the battery setpoint the edge WOULD command right now on
+	// the battery side - the value the take-back writes on the very next tick.
+	ReferenceKw float64 `json:"reference_kw"`
+	// Following is the measured EFFECT while proven: the connection point is
+	// inside the band around the target. nil = not proven / not measured.
+	Following *bool `json:"following,omitempty"`
+	// GridKw is the measured connection point that verdict was formed on.
+	GridKw *float64 `json:"grid_kw,omitempty"`
+	// Reason is the closed-vocabulary code, Text its German sentence.
+	Reason string `json:"reason"`
+	Text   string `json:"text"`
+	// Hint is an observation without take-back, HintText its sentence.
+	Hint     string `json:"hint,omitempty"`
+	HintText string `json:"hint_text,omitempty"`
+}
+
+// GridTargetWithheldInfo says why a curtailing slot is not regulated grid side
+// right now. Closed vocabulary + German sentence, both from
+// guards/gridtarget.go. Ended is true when the mode HAD been engaged in this
+// slot and was taken back (then Reason is the take-back's own word).
+type GridTargetWithheldInfo struct {
+	Reason string `json:"reason"`
+	Text   string `json:"text"`
+	Ended  bool   `json:"ended,omitempty"`
 }
 
 // NativeWithheldInfo says why the device does NOT regulate itself right now
@@ -863,6 +917,19 @@ type OcppInfo struct {
 	// SourceAllocatedKw is how much of the allocation the source lane is
 	// covering - a STANDORT statement, never a per-vehicle solar quota.
 	SourceAllocatedKw float64 `json:"source_allocated_kw,omitempty"`
+
+	// --- „Sonne + Speicher" (internal/lastmgmt/release.go) ---
+	//
+	// The LAST executor verdict - never re-evaluated for a render, so the
+	// surface cannot show a release the stations were not given. Mode "aus"
+	// (and everything else empty) on a box where no station runs the source.
+	StorageReleaseActive   bool     `json:"storage_release_active,omitempty"`
+	StorageReleaseKw       *float64 `json:"storage_release_kw,omitempty"`
+	StorageReleaseUsedKw   float64  `json:"storage_release_used_kw,omitempty"`
+	StorageReleaseFloorPct *float64 `json:"storage_release_floor_soc_pct,omitempty"`
+	StorageReleaseSocPct   *float64 `json:"storage_release_soc_pct,omitempty"`
+	StorageReleaseMode     string   `json:"storage_release_mode,omitempty"`
+	StorageReleaseNote     string   `json:"storage_release_note,omitempty"`
 
 	Chargers []OcppCharger `json:"chargers"`
 }

@@ -19,7 +19,7 @@ import {
   verbesserungRoute,
   type Route,
 } from '../src/nav';
-import { BewertungPage } from '../src/pages/BewertungPage';
+import { VerbrauchPage } from '../src/pages/VerbrauchPage';
 import { VerbesserungBereich } from '../src/pages/VerbesserungBereich';
 import { setSelbstauskunft, teilansichtKopf } from '../src/rollen';
 import { AppShell } from '../src/shell/AppShell';
@@ -58,6 +58,7 @@ const LAGEN: MassnahmeLage[] = ['leer', 'geplant', 'r9', 'r5', 'r6', 'r12', 'ant
 const lage = LAGEN.find((l) => l === params.get('lage')) ?? 'r9';
 const tag = heute();
 const me = rechteSeed('IK').me;
+const ziele = energiezielBuehne('juli', false, me.kennung!, me.name!);
 setSelbstauskunft(me);
 keycloak.tokenParsed = { sub: me.kennung!, name: me.name!, tenant_id: me.kundenbereich!.id };
 Object.assign(unterstuetzungApi, { liste: async () => [], anfragen: async () => [], hinweise: async () => [] });
@@ -66,7 +67,9 @@ Object.assign(
   api,
   bewertungBuehne('voll', 'IK', tag),
   bezugsbasisBuehne('modell'),
-  energiezielBuehne('juli', false, me.kennung!, me.name!),
+  ziele,
+  // Der Tag der Routen ist der Tag der Uhr - auch im Stand eines Energieziels (eine Uhr, Konzept Verbessern v1 Befund 2).
+  { energiezielStand: async (id: string) => ({ ...(await ziele.energiezielStand!(id)), abruf: tag }) },
   massnahmeBuehne(lage, tag, me.name!, { sub: me.kennung!, vieraugen: params.get('vieraugen') === '1' }),
   { standorte: async () => ({ stichtag: tag, standorte: [] }) },
 );
@@ -138,6 +141,7 @@ function Ansicht() {
         showKennzahlen={bereiche.includes('kennzahlen')}
         showBerichte={bereiche.includes('berichte')}
         showBewertung={bereiche.includes('bewertung')}
+        showVerbrauch={bereiche.includes('verbrauch')}
         showVerbesserung={bereiche.includes('verbesserung')}
         // Wie `App.tsx`: die Leiste trägt Gruppen; was sie trägt, ist am Telefon kein zweites Mal Reiter —
         // über der Seite stehen dort nur die Reiter der offenen Gruppe.
@@ -165,11 +169,12 @@ function Ansicht() {
           onKennzahl={(id) => navigate(kennzahlRoute(id))}
           onMassnahme={(id) => navigate(massnahmeRoute(id))}
         />
-      ) : route.page === 'portfolio-bewertung' && route.energieeinsatzId ? (
-        <BewertungPage
+      ) : route.page === 'portfolio-verbrauch' && route.energieeinsatzId ? (
+        <VerbrauchPage
           einsatzId={route.energieeinsatzId}
           onOeffnen={(id) => navigate(energieeinsatzRoute(id))}
-          onListe={() => navigate(pageRoute('portfolio-bewertung'))}
+          onListe={() => navigate(pageRoute('portfolio-verbrauch'))}
+          onNavigate={navigate}
         />
       ) : (
         <p>Diese Bühne zeigt nur Maßnahmen und den Energieeinsatz EE-3.</p>

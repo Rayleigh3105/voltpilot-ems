@@ -11,6 +11,8 @@ import java.sql.Date;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -436,15 +438,15 @@ final class BerichtUnternehmen {
             n.put("periode", z.schluessel());
             n.put("berechnet_am", BerichtAbzugBildung.iso(jetzt, zone));
             n.put("zeitzone", zone.getId());
-            n.set("gemessen", block(json, e.gemessen()));
-            n.set("verteilt", block(json, e.verteilt()));
-            n.set("berechnet", block(json, e.berechnet()));
-            n.set("summe", block(json, e.summe()));
-            n.set("nicht_verteilt", block(json, e.nichtVerteilt()));
-
             LocalDate von = k.gueltigAb().isAfter(z.ersterTag()) ? k.gueltigAb() : z.ersterTag();
             LocalDate bis = k.gueltigBis() != null && k.gueltigBis().isBefore(z.letzterTag()) ? k.gueltigBis()
                     : z.letzterTag();
+            n.set("gemessen", block(json, e.gemessen(), von, bis));
+            n.set("verteilt", block(json, e.verteilt(), von, bis));
+            n.set("berechnet", block(json, e.berechnet(), von, bis));
+            n.set("summe", block(json, e.summe(), von, bis));
+            n.set("nicht_verteilt", block(json, e.nichtVerteilt(), von, bis));
+
             Integer fassung = null;
             for (KostenstelleEnergieDto.Block b : List.of(e.gemessen(), e.verteilt(), e.berechnet())) {
                 for (KostenstelleEnergieDto.Posten p : b.posten()) {
@@ -455,14 +457,15 @@ final class BerichtUnternehmen {
             }
             quellen.add(new BerichtAbzugBildung.Quelle(KOSTENSTELLE, k.kennzeichen(), k.id(),
                     BerichtRegeln.UNMITTELBAR, von, bis, null, fassung, k.name()));
-            // Q6 — was die Kostenstelle trägt, zitiert der Bericht mittelbar: je Posten die Tage mit einem Anteil.
+            // Q6 — was die Kostenstelle trägt, zitiert der Bericht mittelbar: je Posten die Tage mit einem Anteil, an
+            // einer Messstelle aus Ablesungen die Tage ihrer Ablesezeiträume (sonst fehlte sie im Verzeichnis, und eine
+            // Berichtigung ihrer Ablesung träfe keinen freigegebenen Stand - B1).
             for (KostenstelleEnergieDto.Block b : List.of(e.gemessen(), e.verteilt(), e.berechnet())) {
                 for (KostenstelleEnergieDto.Posten p : b.posten()) {
                     if (berichtMessstellen.contains(p.messstelle().id())) {
                         continue;
                     }
-                    for (LocalDate[] lauf : laeufe(p.tage().stream().filter(t -> t.anteilProzent() != null)
-                            .map(KostenstelleEnergieDto.Tag::tag).toList())) {
+                    for (LocalDate[] lauf : laeufe(List.copyOf(anteileJeTag(p, von, bis).keySet()))) {
                         quellen.add(new BerichtAbzugBildung.Quelle(BerichtKennzahlen.MESSSTELLE,
                                 p.messstelle().kennzeichen(), p.messstelle().id(), BerichtRegeln.MITTELBAR, lauf[0],
                                 lauf[1], p.version(), null, p.messstelle().name()));
@@ -473,8 +476,11 @@ final class BerichtUnternehmen {
         return aus;
     }
 
-    /** Ein Block der Sicht ohne Kennungen; je Posten die Verteilungs-Sätze zum Tag statt der einzelnen Tage. */
-    private static ObjectNode block(ObjectMapper json, KostenstelleEnergieDto.Block b) {
+    /**
+     * Ein Block der Sicht ohne Kennungen; je Posten die Verteilungs-Sätze zum Tag statt der einzelnen Tage (bzw. Monate),
+     * über die Tage der Kostenstelle im Bericht ({@code von} … {@code bis}).
+     */
+    private static ObjectNode block(ObjectMapper json, KostenstelleEnergieDto.Block b, LocalDate von, LocalDate bis) {
         ObjectNode n = json.createObjectNode();
         n.put("menge", b.menge());
         n.put("einheit", b.einheit());
@@ -511,7 +517,7 @@ final class BerichtUnternehmen {
             (p.fassungen() == null ? List.<Integer>of() : p.fassungen()).forEach(fassungen::add);
             texte(x.putArray("fehlend"), p.fehlend());
             ArrayNode saetze = x.putArray("saetze");
-            for (Object[] satz : saetze(p.tage())) {
+            for (Object[] satz : saetze(anteileJeTag(p, von, bis))) {
                 ObjectNode s = saetze.addObject();
                 s.put("von", satz[0].toString());
                 s.put("bis", satz[1].toString());
@@ -529,19 +535,64 @@ final class BerichtUnternehmen {
         return n;
     }
 
-    /** Aufeinanderfolgende Tage mit demselben Anteil → {von, bis, anteil}; ein Tag ohne Anteil trennt. */
-    static List<Object[]> saetze(List<KostenstelleEnergieDto.Tag> tage) {
-        List<Object[]> aus = new ArrayList<>();
-        Object[] offen = null;
-        for (KostenstelleEnergieDto.Tag t : tage) {
-            BigDecimal anteil = t.anteilProzent();
-            boolean weiter = offen != null && anteil != null && ((BigDecimal) offen[2]).compareTo(anteil) == 0
-                    && ((LocalDate) offen[1]).plusDays(1).equals(t.tag());
-            if (weiter) {
-                offen[1] = t.tag();
+    /**
+     * Je Tag, an dem die Kostenstelle den Posten trägt, der Anteil dieses Tages - {@code null}, wenn er im Ablesezeitraum
+     * wechselt (der Tag zählt für das Verzeichnis, einen Satz hat er nicht). Ein Posten aus Tagen bringt seine Tage mit
+     * Anteil. Einer aus Ablesungen (Messen PR4) trägt Monate statt Tage: jeder Monat mit Anteil oder Wechsel bringt die Tage
+     * seiner Ablesezeiträume - wie {@link VerteilungRegeln#ablesezeitraum} vom Tag der öffnenden Ablesung bis zum Tag der
+     * letzten Sekunde davor, in der Zone der Messstelle (der Versatz der Zeitpunkte) -, ohne Zeitraum die des
+     * Kalendermonats. Nur Tage von {@code von} bis {@code bis}: ein Zeitraum, der über die Periode hinausreicht, zitiert
+     * der Bericht nur in ihr; die Berichtigung einer Ablesung meldet ganze Jahre ({@code AblesungService}).
+     */
+    static TreeMap<LocalDate, BigDecimal> anteileJeTag(KostenstelleEnergieDto.Posten p, LocalDate von, LocalDate bis) {
+        TreeMap<LocalDate, BigDecimal> aus = new TreeMap<>();
+        for (KostenstelleEnergieDto.Tag t : p.tage()) {
+            if (t.anteilProzent() != null) {
+                aus.put(t.tag(), t.anteilProzent());
+            }
+        }
+        for (KostenstelleEnergieDto.Monat m : p.monate() == null ? List.<KostenstelleEnergieDto.Monat>of() : p.monate()) {
+            if (m.anteilProzent() == null && !VerteilungRegeln.GRUND_ANTEIL_WECHSELT.equals(m.grund())) {
                 continue;
             }
-            offen = anteil == null ? null : new Object[] {t.tag(), t.tag(), anteil};
+            for (LocalDate[] lauf : tageDesMonats(m)) {
+                for (LocalDate d = lauf[0].isBefore(von) ? von : lauf[0]; !d.isAfter(lauf[1]) && !d.isAfter(bis);
+                        d = d.plusDays(1)) {
+                    // Zwei Zeiträume teilen den Tag einer Ablesung: hat einer dort einen Anteil, gilt er.
+                    if (aus.get(d) == null) {
+                        aus.put(d, m.anteilProzent());
+                    }
+                }
+            }
+        }
+        return aus;
+    }
+
+    /** Die Tage eines Monats aus Ablesungen je Ablesezeitraum ({von, bis}, Tage einschließlich). */
+    private static List<LocalDate[]> tageDesMonats(KostenstelleEnergieDto.Monat m) {
+        if (m.ablesezeitraeume().isEmpty()) {
+            YearMonth monat = YearMonth.parse(m.monat());
+            return List.<LocalDate[]>of(new LocalDate[] {monat.atDay(1), monat.atEndOfMonth()});
+        }
+        return m.ablesezeitraeume().stream()
+                .map(z -> new LocalDate[] {OffsetDateTime.parse(z.von()).toLocalDate(),
+                        OffsetDateTime.parse(z.bis()).minusNanos(1).toLocalDate()})
+                .toList();
+    }
+
+    /** Aufeinanderfolgende Tage mit demselben Anteil → {von, bis, anteil}; ein Tag ohne Anteil trennt. */
+    static List<Object[]> saetze(TreeMap<LocalDate, BigDecimal> anteile) {
+        List<Object[]> aus = new ArrayList<>();
+        Object[] offen = null;
+        for (Map.Entry<LocalDate, BigDecimal> t : anteile.entrySet()) {
+            BigDecimal anteil = t.getValue();
+            boolean weiter = offen != null && anteil != null && ((BigDecimal) offen[2]).compareTo(anteil) == 0
+                    && ((LocalDate) offen[1]).plusDays(1).equals(t.getKey());
+            if (weiter) {
+                offen[1] = t.getKey();
+                continue;
+            }
+            offen = anteil == null ? null : new Object[] {t.getKey(), t.getKey(), anteil};
             if (offen != null) {
                 aus.add(offen);
             }

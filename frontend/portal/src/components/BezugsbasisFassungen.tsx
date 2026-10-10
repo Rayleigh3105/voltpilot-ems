@@ -6,6 +6,7 @@ import { Modal } from '../../designsystem/components/shell/Modal';
 import { api, ApiError, type Bezugsbasis, type BezugsbasisFassung, type BezugsbasisFassungKurz, type Kennzahl } from '../api';
 import * as B from '../bezugsbasisAnlegen';
 import * as F from '../bezugsbasisFassungen';
+import * as Bz from '../bezugsbasisEbene';
 import type { BezugsbasisZustand } from '../bezugsbasisUebersicht';
 import { UEMS_NORMGRENZE } from '../glossar';
 import { ablehnungSatz } from '../kennzahlAnlegen';
@@ -73,6 +74,7 @@ export function BezugsbasisFassungen({
   freigeben,
   onNeu,
   onAssistent,
+  stichtag,
 }: {
   kennzahl: Kennzahl;
   basis: Bezugsbasis;
@@ -82,9 +84,13 @@ export function BezugsbasisFassungen({
   freigeben: boolean;
   onNeu: () => void;
   onAssistent: (neu: NeueFassung | null) => void;
+  /** Der Tag, an dem „seit“, „ab“ und „bis“ gemessen werden (`JJJJ-MM-TT`); ohne Angabe heute in der Zone. */
+  stichtag?: string;
 }) {
+  const tag = stichtag ?? heuteIn(zone, Date.now());
   const { karten, voll, zustand } = useFassungen(kennzahl.id, basis);
   const [dialog, setDialog] = useState<'neu' | 'beenden' | 'bleibt' | null>(null);
+  const [alleAnstoesseOffen, setAlleAnstoesseOffen] = useState(false);
   const laufend = F.laufendeFassung(karten);
   const offen = F.offeneFassung(karten);
   const anstoesse = F.offeneAnstoesse(basis.anstoesse, laufend?.fassung ?? null);
@@ -94,67 +100,94 @@ export function BezugsbasisFassungen({
 
   const Antworten = () =>
     pflege ? (
-      <div className="vp-kz-aktionen" data-testid="bezugsbasis-antworten">
-        <Button size="sm" data-testid="bezugsbasis-neue-fassung-knopf" disabled={offen !== null} onClick={() => setDialog('neu')}>
+      <div className="vp-kz-aktionen" data-testid="bezugsbasis-antworten" data-entscheid="bezugsbasis_ueberpruefung" data-entscheid-kennzeichen={basis.kennzeichen}>
+        <Button size="sm" variant="outline" data-testid="bezugsbasis-bleibt-knopf" data-entscheid-schritt onClick={() => setDialog('bleibt')}>
+          {F.KNOPF_BLEIBT}
+        </Button>
+        <Button size="sm" variant="outline" data-testid="bezugsbasis-neue-fassung-knopf" disabled={offen !== null} onClick={() => setDialog('neu')}>
           {F.KNOPF_NEUE_FASSUNG}
         </Button>
-        <Button size="sm" variant="outline" data-testid="bezugsbasis-beenden-knopf" onClick={() => setDialog('beenden')}>
+        <Button size="sm" variant="ghost" data-testid="bezugsbasis-beenden-knopf" onClick={() => setDialog('beenden')}>
           {F.KNOPF_BEENDEN}
-        </Button>
-        <Button size="sm" variant="outline" data-testid="bezugsbasis-bleibt-knopf" onClick={() => setDialog('bleibt')}>
-          {F.KNOPF_BLEIBT}
         </Button>
       </div>
     ) : null;
+  const zuletzt = Bz.zuletztSatz(basis, laufend);
 
   return (
     <div className="vp-bb-pflege">
-      {frist && (
-        <p className="vp-bb-frist" data-testid="bezugsbasis-frist">
-          {frist}
-        </p>
-      )}
-      {anstossLiegtVor && laufend ? (
-        <div className="vp-bb-anstoss" role="note" aria-label={F.ANSTOSS_TITEL} data-testid="bezugsbasis-anstoss">
-          <p className="vp-bb-label">{F.ANSTOSS_TITEL}</p>
-          {anstoesse.length > 0 ? (
-            <ul>
-              {anstoesse.map((a, i) => (
-                <li key={`${a.art}-${a.zeitpunkt}-${i}`}>{F.anstossSatz(basis, a)}</li>
-              ))}
-            </ul>
-          ) : (
-            <p>{F.anstossOhneAnlass(basis, laufend.fassung)}</p>
-          )}
-          <p className="vp-kz-leise">{F.ANTWORT_HINWEIS}</p>
-          {Antworten()}
+      {/* Konzept Auswerten a1 §6.6: die Fassungen als Datumsblöcke, neueste zuerst; Einzelheiten unter „Fassung ansehen“. */}
+      <section className="vp-kz-block vp-kzs-karte" aria-label={F.FASSUNGEN_TITEL} data-testid="bezugsbasis-fassungen-karte">
+        <div className="vp-kzs-blockkopf">
+          <h2 className="vp-bb-titel">{F.FASSUNGEN_TITEL}</h2>
+          <span className="vp-kzs-m">{Bz.NEUESTE_ZUERST}</span>
         </div>
-      ) : (
-        Antworten()
+        {offen && pflege && <p className="vp-kz-leise">{`Fassung ${offen.fassung} ist noch ${B.FREIGABE_WORT[offen.freigabe_status]} — eine neue Fassung entsteht erst nach ihrer Entscheidung.`}</p>}
+        <ol className="vp-bb-fassungen">
+          {karten.map((f) => (
+            <FassungKarte
+              key={f.fassung}
+              stichtag={tag}
+              kennzahl={kennzahl}
+              basis={basis}
+              f={f}
+              verwalten={verwalten}
+              freigeben={freigeben}
+              onNeu={onNeu}
+              onBearbeiten={() => {
+                const v = voll[f.fassung];
+                // Ab Fassung 2 trägt jede Bildung ihre Anpassung — der Entwurf nimmt seine Gründe mit (A1, F4).
+                if (f.fassung > 1 && v) {
+                  const vorgaengerin = voll[f.fassung - 1] ?? null;
+                  onAssistent({ anpassung: F.anpassungAus(v), vorgaengerin, vorbelegung: F.vorbelegung(v) });
+                } else onAssistent(null);
+              }}
+            />
+          ))}
+        </ol>
+      </section>
+      {laufend && basis.beendet_zum === null && (
+        <section className="vp-kz-block vp-kzs-karte" aria-label={Bz.UEBERPRUEFUNG} data-testid="bezugsbasis-ueberpruefung">
+          <h2>{Bz.UEBERPRUEFUNG}</h2>
+          {frist && (
+            <p className="vp-bb-frist" data-testid="bezugsbasis-frist">
+              {frist}
+            </p>
+          )}
+          {anstossLiegtVor && (
+            <div className="vp-bb-anstoss" role="note" aria-label={F.ANSTOSS_TITEL} data-testid="bezugsbasis-anstoss">
+              <p className="vp-bb-label">{F.ANSTOSS_TITEL}</p>
+              {anstoesse.length > 0 ? (
+                <>
+                  <ul>
+                    {(alleAnstoesseOffen ? anstoesse : anstoesse.slice(0, Bz.ANSTOESSE_SICHTBAR)).map((x, i) => (
+                      <li key={`${x.art}-${x.zeitpunkt}-${i}`}>{F.anstossSatz(basis, x)}</li>
+                    ))}
+                  </ul>
+                  {anstoesse.length > Bz.ANSTOESSE_SICHTBAR && (
+                    <button
+                      type="button"
+                      className="vp-kzs-link"
+                      aria-expanded={alleAnstoesseOffen}
+                      data-testid="bezugsbasis-anstoesse-alle"
+                      onClick={() => setAlleAnstoesseOffen((x) => !x)}
+                    >
+                      {alleAnstoesseOffen ? Bz.WENIGER_ANSTOESSE : Bz.alleAnstoesse(anstoesse.length)}
+                    </button>
+                  )}
+                </>
+              ) : (
+                <p>{F.anstossOhneAnlass(basis, laufend.fassung)}</p>
+              )}
+              <p className="vp-kz-leise">{F.ANTWORT_HINWEIS}</p>
+            </div>
+          )}
+          <p className="vp-kzs-text">{zuletzt}</p>
+          <p className="vp-kzs-fuss">{`verantwortlich ${basis.verantwortlich_name}`}</p>
+          {Antworten()}
+        </section>
       )}
-      {offen && pflege && <p className="vp-kz-leise">{`Fassung ${offen.fassung} ist noch ${B.FREIGABE_WORT[offen.freigabe_status]} — eine neue Fassung entsteht erst nach ihrer Entscheidung.`}</p>}
-      <h3 className="vp-bb-titel">{F.FASSUNGEN_TITEL}</h3>
-      <ol className="vp-bb-fassungen">
-        {karten.map((f) => (
-          <FassungKarte
-            key={f.fassung}
-            kennzahl={kennzahl}
-            basis={basis}
-            f={f}
-            verwalten={verwalten}
-            freigeben={freigeben}
-            onNeu={onNeu}
-            onBearbeiten={() => {
-              const v = voll[f.fassung];
-              // Ab Fassung 2 trägt jede Bildung ihre Anpassung — der Entwurf nimmt seine Gründe mit (A1, F4).
-              if (f.fassung > 1 && v) {
-                const vorgaengerin = voll[f.fassung - 1] ?? null;
-                onAssistent({ anpassung: F.anpassungAus(v), vorgaengerin, vorbelegung: F.vorbelegung(v) });
-              } else onAssistent(null);
-            }}
-          />
-        ))}
-      </ol>
+      <p className="vp-kzs-fuss vp-bb-fuss-satz">{Bz.PRUEFSUMME_HINWEIS}</p>
       {dialog === 'neu' && laufend && (
         <NeueFassungDialog
           onClose={() => setDialog(null)}
@@ -176,6 +209,7 @@ export function BezugsbasisFassungen({
 }
 
 function FassungKarte({
+  stichtag,
   kennzahl,
   basis,
   f,
@@ -191,37 +225,37 @@ function FassungKarte({
   freigeben: boolean;
   onNeu: () => void;
   onBearbeiten: () => void;
+  stichtag: string;
 }) {
-  const zustand = F.fassungZustand(f);
+  const zustand = F.fassungZustand(f, stichtag);
   const wer = f.freigabe !== undefined ? F.freigeberText({ freigabe_status: f.freigabe_status, freigabe: f.freigabe, entscheidung: f.entscheidung, freigegeben_am: f.freigegeben_am }) : null;
   const anpassung = F.anpassungText(f);
   const wert = f.basiswert
     ? F.wertText({ methode: f.methode, basiswert: f.basiswert, koeffizienten: f.koeffizienten, streuung_prozent: f.streuung_prozent, variablen: f.variablen ?? [] }, kennzahl.einheit_anzeige)
     : B.methodeWort(f.methode);
+  const zeile = Bz.fassungZeile({ fassung: f.fassung, gilt_ab: f.gilt_ab, gilt_bis: f.gilt_bis ?? null, freigabe_status: f.freigabe_status, anpassungsgruende: f.anpassungsgruende }, zustand, wer, stichtag);
   return (
     <li className={`vp-bb-fassung is-${zustand}`} data-testid={`bezugsbasis-fassung-${f.fassung}`}>
-      <p>
-        <strong>Fassung {f.fassung}</strong> · {B.referenzperiodeText(f.referenzperiode)} <Badge variant={F.zustandTon(zustand)}>{F.ZUSTAND_WORT[zustand]}</Badge>
-      </p>
-      <p>
-        {wert}
-        {f.datenlage === 'vorlaeufig' ? ' · vorläufig' : ''} · {F.geltungText({ gilt_ab: f.gilt_ab, gilt_bis: f.gilt_bis ?? null })}
-      </p>
-      {wer && <p className="vp-kz-leise">{wer}</p>}
-      {anpassung && <p data-testid={`bezugsbasis-anpassung-${f.fassung}`}>{anpassung}</p>}
-      {f.fassung > 1 && f.begruendung && <p className="vp-kz-leise">{`${B.BEGRUENDUNG}: ${f.begruendung}`}</p>}
-      {f.freigabe_status === 'abgelehnt' && f.entscheidungs_begruendung && <p className="vp-kz-leise">{`Abgelehnt, weil: ${f.entscheidungs_begruendung}`}</p>}
-      {(f.faktoren ?? []).length > 0 && (
-        <div className="vp-bb-faktoren" data-testid={`bezugsbasis-faktoren-${f.fassung}`}>
-          <p className="vp-bb-label">{F.FAKTOREN_TITEL}</p>
-          <ul>
-            {(f.faktoren ?? []).map((x) => (
-              <li key={x.position}>{F.faktorSatz(x)}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-      <p className="vp-kz-leise">Prüfsumme {B.pruefsummeKurz(f.pruefsumme)}</p>
+      <div className={`vp-bb-fz${zustand === 'beendet' ? ' is-zart' : ''}`}>
+        <span className={`vp-bb-fd is-${zustand}`} aria-hidden={zeile.datum === null ? undefined : 'true'}>
+          {zeile.datum ? (
+            <>
+              <small>{zeile.datum.wort}</small>
+              <b>{zeile.datum.tag}</b>
+              <span>{zeile.datum.jahr}</span>
+            </>
+          ) : (
+            <b>–</b>
+          )}
+        </span>
+        <span className="vp-bb-tx">
+          <span className="vp-bb-ti">
+            {zeile.titel}
+            {zeile.datum && <span className="vp-bb-nurvorlesen">{` · ${zeile.datum.wort} ${zeile.datum.tag}${zeile.datum.jahr}`}</span>}
+          </span>
+          {zeile.warum && <span className="vp-bb-why">{zeile.warum}</span>}
+        </span>
+      </div>
       {f.freigabe_status === 'entwurf' && verwalten && (
         <div className="vp-kz-aktionen">
           <Button variant="outline" size="sm" data-testid="bezugsbasis-bearbeiten-knopf" onClick={onBearbeiten}>
@@ -235,6 +269,31 @@ function FassungKarte({
       {f.freigabe_status === 'beantragt' && freigeben && (
         <FreigabeFormular kennzahl={kennzahl} basis={basis} fassung={f.fassung} art="antrag" vieraugen={f.vieraugen ?? null} onFertig={onNeu} />
       )}
+      <details className="vp-bb-ansehen" data-testid={`bezugsbasis-fassung-ansehen-${f.fassung}`}>
+        <summary>{Bz.FASSUNG_ANSEHEN}</summary>
+        <p>
+          <strong>Fassung {f.fassung}</strong> · {B.referenzperiodeText(f.referenzperiode)} <Badge variant={F.zustandTon(zustand)}>{F.ZUSTAND_WORT[zustand]}</Badge>
+        </p>
+        <p>
+          {wert}
+          {f.datenlage === 'vorlaeufig' ? ' · vorläufig' : ''} · {F.geltungText({ gilt_ab: f.gilt_ab, gilt_bis: f.gilt_bis ?? null })}
+        </p>
+        {wer && <p className="vp-kz-leise">{wer}</p>}
+        {anpassung && <p data-testid={`bezugsbasis-anpassung-${f.fassung}`}>{anpassung}</p>}
+        {f.fassung > 1 && f.begruendung && <p className="vp-kz-leise">{`${B.BEGRUENDUNG}: ${f.begruendung}`}</p>}
+        {f.freigabe_status === 'abgelehnt' && f.entscheidungs_begruendung && <p className="vp-kz-leise">{`Abgelehnt, weil: ${f.entscheidungs_begruendung}`}</p>}
+        {(f.faktoren ?? []).length > 0 && (
+          <div className="vp-bb-faktoren" data-testid={`bezugsbasis-faktoren-${f.fassung}`}>
+            <p className="vp-bb-label">{F.FAKTOREN_TITEL}</p>
+            <ul>
+              {(f.faktoren ?? []).map((x) => (
+                <li key={x.position}>{F.faktorSatz(x)}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <p className="vp-kz-leise">Prüfsumme {B.pruefsummeKurz(f.pruefsumme)}</p>
+      </details>
     </li>
   );
 }

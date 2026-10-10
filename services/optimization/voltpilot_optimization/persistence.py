@@ -71,10 +71,10 @@ INSERT INTO schedule
      why_next_best, why_next_best_margin_ct,
      pv_anchor_ratio,
      why_night_reserve_kwh, why_night_reserve_q,
-     soc_source)
+     ev_release_floor_soc_pct, soc_source)
 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
         %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-        %s)
+        %s, %s)
 ON CONFLICT (site_id, generated_at, time)
 DO UPDATE SET
     device_id         = EXCLUDED.device_id,
@@ -109,6 +109,7 @@ DO UPDATE SET
     pv_anchor_ratio   = EXCLUDED.pv_anchor_ratio,
     why_night_reserve_kwh = EXCLUDED.why_night_reserve_kwh,
     why_night_reserve_q = EXCLUDED.why_night_reserve_q,
+    ev_release_floor_soc_pct = EXCLUDED.ev_release_floor_soc_pct,
     soc_source        = EXCLUDED.soc_source;
 """
 
@@ -250,8 +251,16 @@ def plan_rows(plan: SchedulePlan) -> list[tuple]:
     often that much is needed (see :func:`_night_reserve_columns`). NULL when
     the run held nothing - never a 0, which would claim the value function had
     looked and found no reason.
+
+    ``ev_release_floor_soc_pct`` („Sonne + Speicher", api migration
+    V20261006120000) is per-slot: the battery floor a charge point on that
+    source may discharge down to - the SAME number the MQTT payload carries, so
+    the portal can draw it into the charging plan. NULL = no release in this
+    slot (the plan trades, or the site does not run the source).
     """
     night_reserve = _night_reserve_columns(plan)
+    release = plan.storage_release
+    floors = release.floor_soc_pct if release is not None else ()
     return [
         (
             slot.start,
@@ -293,11 +302,12 @@ def plan_rows(plan: SchedulePlan) -> list[tuple]:
             plan.pv_anchor_ratio,
             night_reserve[0],
             night_reserve[1],
+            floors[i] if i < len(floors) else None,
             # P7: der RUN-Fakt, je Zeile wiederholt wie
             # terminal_value_eur_per_kwh - eine Zeile antwortet fuer den Lauf.
             plan.soc_source,
         )
-        for slot in plan.slots
+        for i, slot in enumerate(plan.slots)
     ]
 
 

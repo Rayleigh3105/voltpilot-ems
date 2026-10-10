@@ -79,7 +79,7 @@ const kennzeichen = (e: Json): string | null => {
 const satz = (code: string, w: Json): string => {
   switch (code) {
     case 'keine_quellen': return B.keineQuellen(w.geltung, w.zeitraum, w.besteht_seit);
-    case 'bericht_gibt_es_schon': return B.berichtGibtEsSchon(w.kennung, w.geltung, w.zeitraum);
+    case 'bericht_gibt_es_schon': return B.berichtGibtEsSchon(w.kennung, w.vorlage, w.geltung, w.zeitraum);
     case 'stand_gibt_es_nicht': return B.standGibtEsNicht(w.nr, w.neueste, ZONE);
     case 'wert_nicht_mehr_gespeichert': return B.wertNichtMehrGespeichert(w.zeitraum, w.stand, ZONE);
     case 'berichts_belege': return B.berichtsBelege(w.staende);

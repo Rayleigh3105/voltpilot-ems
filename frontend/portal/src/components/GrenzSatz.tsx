@@ -10,7 +10,9 @@ import './GrenzSatz.css';
  * Ein Bereich (Bewertung, Energieeinsatz, Ziele und Maßnahmen, Energiemanagement, die UEMS-Bausteine der Übersicht)
  * legt sich in `GrenzSatzBereich` und trägt im Kopf `GrenzHinweis`: „Was VoltPilot leistet“ öffnet beide Sätze im
  * vollen Wortlaut. Jeder Teil darin (Rangliste, Register, Reiter) behält seinen `GrenzSatz` — er schweigt im Bereich und
- * spricht, wo er allein steht. Dialoge und Berichte tragen die Sätze weiter selbst und vollständig.
+ * spricht, wo er allein steht. Dialoge und Berichte tragen die Sätze weiter selbst und vollständig - außer den Dialogen
+ * unter Verbessern: sie sind Teile ihrer Seite, der Satz steht dort einmal (Konzept Verbessern v1, PR 4;
+ * `VERBESSERUNG_TEILE` in `copy.test.ts`).
  */
 const ImBereich = createContext(false);
 

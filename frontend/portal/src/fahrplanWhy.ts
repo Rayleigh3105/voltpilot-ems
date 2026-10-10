@@ -32,7 +32,7 @@ import {
   type GrenzenSlot,
 } from './grenzenWarum';
 import type { PlanWordingKind } from './schedule';
-import { FAHRPLAN_TAETIGKEIT } from './glossar';
+import { FAHRPLAN_TAETIGKEIT } from './glossarEinstieg';
 
 // ---- The slot-role vocabulary (report §6) ---------------------------------
 

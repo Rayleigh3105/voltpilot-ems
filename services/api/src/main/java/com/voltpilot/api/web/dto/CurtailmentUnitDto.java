@@ -26,9 +26,32 @@ package com.voltpilot.api.web.dto;
  *       (a release lifted the limit), never a fabricated 0.
  *   <li>{@code match} - this unit's readback verdict; null = observed-only,
  *       nothing was commanded. Only TRUE is a confirmation - "nothing applied"
- *       must never read as "the readback disagreed".
+ *       must never read as "the readback disagreed". For a unit with
+ *       {@code mode = grid_target} it judges the MEASUREMENT instead (the grid
+ *       connection point follows the target), never a held register - a
+ *       register that holds proves nothing about the effect there.
+ *   <li>{@code mode} - HOW this unit curtails (netzseitiger Drossel-Slot,
+ *       08.10.2026). null = the cap on the unit itself ({@code appliedCapKw}),
+ *       i.e. every unit before this field existed. {@link #MODE_GRID_TARGET} =
+ *       the unit does not cap its own output, it regulates the GRID CONNECTION
+ *       POINT on {@code targetKw} (the primary hybrid inverter, which stores
+ *       the surplus first and throttles its own PV for the rest). The word is
+ *       STANDING - it says how the unit curtails, not that it does so right
+ *       now. An unknown word of a newer box is dropped at ingest (null).
+ *   <li>{@code targetKw} - only with {@code grid_target}: the target at the
+ *       grid connection point in the sign of the grid point ({@code +} import,
+ *       {@code -} feed-in; 0 = no feed-in). null = no target active right now,
+ *       never a fabricated 0.
  * </ul>
  */
 public record CurtailmentUnitDto(String sourceId, boolean certified, Double appliedCapKw,
-        Boolean match) {
+        Boolean match, String mode, Double targetKw) {
+
+    /** The one {@code mode} word besides null: the unit regulates the grid connection point. */
+    public static final String MODE_GRID_TARGET = "grid_target";
+
+    /** An ordinary cap unit: no mode, no grid target. */
+    public CurtailmentUnitDto(String sourceId, boolean certified, Double appliedCapKw, Boolean match) {
+        this(sourceId, certified, appliedCapKw, match, null, null);
+    }
 }

@@ -10,14 +10,11 @@
  */
 import {
   ApiError,
+  type Bericht,
   type Bezugsgroesse,
   type BewertungUmfang,
   type BewertungUmfangAusschluss,
   type BewertungUmfangSpeichern,
-  type BewertungKriterienFassung,
-  type BewertungKriterienWerte,
-  type BewertungRangliste,
-  type BewertungRanglisteEinsatz,
   type EnergieeinsatzEinstufungFassung,
   type EnergieTraeger,
   type Energieeinsatz,
@@ -32,24 +29,15 @@ import {
 } from './api';
 import type { BenutzerEintrag } from './benutzer';
 import type { VpGruppe, VpOption } from './picker/optionen';
-import { UEMS_BEWERTUNG, UEMS_BEWERTUNG_SAETZE, UEMS_BEWERTUNG_URTEILE, UEMS_EINSTUFUNGEN, UEMS_ENERGIEEINSAETZE, UEMS_ENERGIEEINSATZ } from './glossar';
+import { UEMS_BEWERTUNG_URTEILE, UEMS_EINSTUFUNGEN, UEMS_ENERGIEEINSATZ } from './glossar';
 
 // ------------------------------------------------------------------ Wörter
 
-export const TITEL = UEMS_BEWERTUNG;
-export const EINSAETZE_TITEL = UEMS_ENERGIEEINSAETZE;
-export const LEER = UEMS_BEWERTUNG_SAETZE.leer();
-/** K4 (Konzept „Energiemanagement ohne Fachsprache“): vor dem Leer-Satz steht, wozu die Seite da ist. */
-export const LEER_WOZU = 'Die Bewertung zeigt, wo in Ihrem Betrieb die meiste Energie eingesetzt wird.';
-/** Der erste Schritt im leeren Zustand — derselbe Dialog wie „Energieeinsatz anlegen“ im Kopf. */
-export const ERSTER_EINSATZ_KNOPF = 'Ersten Energieeinsatz anlegen';
 export const LADEN = 'Energieeinsätze werden geladen …';
 export const ANLEGEN_KNOPF = 'Energieeinsatz anlegen';
 export const ANLEGEN_TITEL = 'Energieeinsatz anlegen';
 export const BEARBEITEN_TITEL = 'Energieeinsatz bearbeiten';
 export const UMFANG_TITEL = 'Umfang';
-export const UMFANG_FESTLEGEN = 'Umfang festlegen';
-export const UMFANG_AENDERN = 'Umfang ändern';
 export const NUR_LESEN =
   'Energieeinsätze und Umfang anlegen oder ändern können Kundenadministratoren und Energiemanager. Sie sehen, was an Ihren Standorten gemessen wird.';
 export const ZURUECK = 'Alle Energieeinsätze';
@@ -95,11 +83,8 @@ const ZUSTAND_MESSSTELLE: Record<string, string> = {
 
 type Rechte = Pick<Selbstauskunft, 'standorte' | 'unternehmen_rechte'>;
 
-/** Sieht die Person Energieeinsätze (an irgendeinem Standort oder am Unternehmen)? Unbekannt ist nein. */
-export function darfAnsehen(s: Rechte | null | undefined): boolean {
-  if (!s) return false;
-  return s.unternehmen_rechte.includes('energieeinsatz.ansehen') || s.standorte.some((st) => st.rechte.includes('energieeinsatz.ansehen'));
-}
+/** Sieht die Person Energieeinsätze? Wohnt in `bereichSicht.ts` (Einstiegs-Bündel). */
+export { darfEnergieeinsaetzeSehen as darfAnsehen } from './bereichSicht';
 
 /** Darf die Person anlegen, ändern, beenden und den Umfang festlegen? Nur am Unternehmen (KA U · EM U). */
 export function darfVerwalten(s: Rechte | null | undefined): boolean {
@@ -138,51 +123,6 @@ export function heute(jetzt: Date = new Date()): string {
 
 export const anlagenText = (n: number) => `${n} ${n === 1 ? 'Anlage' : 'Anlagen'}`;
 
-export interface UmfangKarte {
-  /** „Fassung 1 · gültig ab 04.11.2026“ oder der Vorschlag. */
-  kopf: string;
-  gespeichert: boolean;
-  /** Je Standort: Name und die Anlagen im Umfang am Stichtag (nur die Zahl der Route). */
-  standorte: { id: string; name: string; anlagen: string }[];
-  /** „am 22.09.2026 im Umfang: 3 Anlagen“ — nur y, kein erfundenes x. */
-  anlagen: string;
-  traeger: string[];
-  ausschluesse: string[];
-  akteur: string | null;
-  teilansicht: string | null;
-}
-
-export function traegerText(t: { name: EnergieTraeger; mit_anteil: boolean }): string {
-  return t.mit_anteil ? `${t.name} (mit Anteil)` : `${t.name} (im Umfang, ohne Anteil)`;
-}
-
-const AUSSCHLUSS_ART: Record<BewertungUmfangAusschluss['art'], string> = {
-  standort: 'Standort',
-  anlage: 'Anlage',
-  prozess: 'Prozess',
-};
-
-/** Ein Ausschluss als Satz; der Name kommt aus dem Umfang selbst, sonst aus `namen`, sonst die Art. */
-export function ausschlussText(a: BewertungUmfangAusschluss, namen: ReadonlyMap<string, string>): string {
-  const name = namen.get(a.verweis);
-  return `${name ? `${AUSSCHLUSS_ART[a.art]} ${name}` : AUSSCHLUSS_ART[a.art]} ausgeschlossen — ${a.begruendung}`;
-}
-
-export function umfangKarte(u: BewertungUmfang, namen: ReadonlyMap<string, string> = new Map()): UmfangKarte {
-  const gespeichert = u.fassung !== null;
-  return {
-    kopf: gespeichert
-      ? `Fassung ${u.fassung} · gültig ab ${tag(u.gueltig_ab)}`
-      : 'Noch nicht festgelegt — Vorschlag: alle Standorte, Träger Strom.',
-    gespeichert,
-    standorte: u.standorte.map((s) => ({ id: s.id, name: s.name, anlagen: anlagenText(s.anzahl_anlagen_im_umfang) })),
-    anlagen: `am ${tag(u.am)} im Umfang: ${anlagenText(u.anzahl_anlagen_im_umfang)}`,
-    traeger: u.traeger.map(traegerText),
-    ausschluesse: u.ausschluesse.map((a) => ausschlussText(a, namen)),
-    akteur: gespeichert && u.akteur ? `${u.akteur.name}${u.created_at ? ` · ${zeitpunkt(u.created_at)}` : ''}` : null,
-    teilansicht: u.teilansicht ? 'Sie sehen den Umfang an Ihren Standorten.' : null,
-  };
-}
 
 /** Das Formular des Umfang-Dialogs: aus der Fassung (oder der Vorgabe) vorbelegt. */
 export interface UmfangEntwurf {
@@ -259,34 +199,6 @@ export function verantwortlichText(v: EnergieeinsatzVerantwortlicher | null | un
 
 export const prozessText = (p: { kennzeichen: string; name: string }) => `${p.kennzeichen} ${p.name}`;
 
-export interface EinsatzZeile {
-  id: string;
-  kennzeichen: string;
-  name: string;
-  prozess: string;
-  traeger: string;
-  verantwortlich: string;
-  zustand: string;
-  laeuft: boolean;
-  messstellen: string;
-  keineWerte: boolean;
-}
-
-export function einsatzZeile(e: Energieeinsatz): EinsatzZeile {
-  const n = e.messstellen.length;
-  return {
-    id: e.id,
-    kennzeichen: e.kennzeichen,
-    name: e.name,
-    prozess: prozessText(e.prozess),
-    traeger: e.traeger,
-    verantwortlich: `${VERANTWORTLICH}: ${verantwortlichText(e.verantwortlich)}`,
-    zustand: zustandText(e),
-    laeuft: laeuft(e),
-    messstellen: n === 0 ? 'keine Messstelle' : `${n} ${n === 1 ? 'Messstelle' : 'Messstellen'}`,
-    keineWerte: e.keine_werte,
-  };
-}
 
 /** Der jüngste Ort einer Messstelle (Bereich vor Gebäude vor Standort) — nur das Kennzeichen der Route. */
 export function messstelleOrt(m: EnergieeinsatzMessstelle): string {
@@ -491,15 +403,39 @@ export function ladeFehler(e: unknown): { satz: string; erneut: boolean } {
 
 // ------------------------------------------------------------------ Rangliste, Einstufung und Kriterien (AP-16 IP-12)
 
-/** Der letzte abgeschlossene Kalendermonat in der Unternehmenszeitzone. */
-export function bewertungZeitraum(jetzt: Date = new Date()) {
+const MONAT_JAHR = (y: number, m: number): string =>
+  new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('de-DE', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+const MONATSENDE = (y: number, m: number): string =>
+  `${y}-${String(m).padStart(2, '0')}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`;
+
+/**
+ * Der Zeitraum von Rangliste und Messabdeckung (Konzept Auswerten a1, Befund 2): die Datengrundlage der energetischen
+ * Bewertung (`zeitraum` „2028-04/2029-03“ eines Berichts mit `zeitraum_art` `datengrundlage`). Ohne Bewertung rechnet er
+ * wie der Server beim Anlegen einer Bewertung: die zwölf vollen Monate bis zum Vormonat in der Unternehmenszeitzone
+ * (`BerichtService.anlegen`). Nie ein einzelner Monat - die Kriterien verlangen mehrere Monate (K7), ein Monat bliebe
+ * immer „vorläufig“.
+ */
+export function bewertungZeitraum(
+  bericht?: Pick<Bericht, 'zeitraum' | 'zeitraum_art' | 'zeitraum_text'> | null,
+  jetzt: Date = new Date(),
+): { von: string; bis: string; label: string } {
+  const dg = bericht?.zeitraum_art === 'datengrundlage' ? /^(\d{4})-(\d{2})(?:\/(\d{4})-(\d{2}))?$/.exec(bericht.zeitraum) : null;
+  if (bericht && dg) {
+    const [, vj, vm, bj = vj, bm = vm] = dg;
+    return { von: `${vj}-${vm}-01`, bis: MONATSENDE(Number(bj), Number(bm)), label: bericht.zeitraum_text };
+  }
   const teile = new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit' })
     .formatToParts(jetzt).reduce<Record<string, string>>((a, x) => ({ ...a, [x.type]: x.value }), {});
-  const ersterDieser = new Date(Date.UTC(Number(teile.year), Number(teile.month) - 1, 1));
-  const letzter = new Date(ersterDieser.getTime() - 86_400_000);
-  const y = letzter.getUTCFullYear(), m = String(letzter.getUTCMonth() + 1).padStart(2, '0');
-  const bis = `${y}-${m}-${String(new Date(Date.UTC(y, letzter.getUTCMonth() + 1, 0)).getUTCDate()).padStart(2, '0')}`;
-  return { von: `${y}-${m}-01`, bis, label: letzter.toLocaleDateString('de-DE', { month: 'long', year: 'numeric', timeZone: 'UTC' }) };
+  // Der Vormonat ist der letzte volle Monat; elf Monate davor beginnt die Datengrundlage.
+  const bisIndex = Number(teile.year) * 12 + (Number(teile.month) - 1) - 1;
+  const vonIndex = bisIndex - 11;
+  const [vj, vm] = [Math.floor(vonIndex / 12), (vonIndex % 12) + 1];
+  const [bj, bm] = [Math.floor(bisIndex / 12), (bisIndex % 12) + 1];
+  return {
+    von: `${vj}-${String(vm).padStart(2, '0')}-01`,
+    bis: MONATSENDE(bj, bm),
+    label: `${MONAT_JAHR(vj, vm)} bis ${MONAT_JAHR(bj, bm)}`,
+  };
 }
 
 export const zahlMitEinheit = (wert: string | null, einheit: string | null) => {
@@ -511,27 +447,10 @@ export const zahlMitEinheit = (wert: string | null, einheit: string | null) => {
 
 export const prozentText = (wert: string | null) => wert === null ? '—' : `${Number(wert).toLocaleString('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}\u00a0%`;
 export const urteilText = (wert: string) => UEMS_BEWERTUNG_URTEILE[wert as keyof typeof UEMS_BEWERTUNG_URTEILE] ?? wert;
-export const vorschlagText = (wert: BewertungRanglisteEinsatz['vorschlag']) => wert === 'ueber_schwelle' ? 'über Schwelle' : 'unter Schwelle';
 export const einstufungText = (wert: EnergieeinsatzEinstufungFassung['einstufung']) => UEMS_EINSTUFUNGEN[wert];
 
-export function ranglisteKopf(r: BewertungRangliste, label: string) {
-  if (r.nenner.wert === null || r.abdeckung_prozent === null) return `Stromeinsatz ${label}: ohne vollständigen Nenner · ${r.nenner.anlagen} Anlagen.`;
-  return UEMS_BEWERTUNG_SAETZE.ranglisteKopf(label.split(' ')[0], Number(label.split(' ')[1]), Number(r.nenner.wert), r.nenner.vorhanden, r.nenner.gesamt, Number(r.abdeckung_prozent));
-}
-
-export function groessterRest(r: BewertungRangliste) {
-  return r.anlagen.filter((a) => a.rest !== null).sort((a, b) => Number(b.rest) - Number(a.rest))[0] ?? null;
-}
 
 export const darfEinstufen = (s: Rechte | null | undefined) => !!s && s.unternehmen_rechte.includes('energieeinsatz.einstufen');
 export const darfKriterienAendern = (s: Rechte | null | undefined) => !!s && s.unternehmen_rechte.includes('bewertung.kriterien');
 
-export const KRITERIEN_NAMEN: Record<keyof BewertungKriterienWerte, string> = {
-  K1: 'K1 · Anteil am Stromeinsatz', K2: 'K2 · Kumulierter Block', K3: 'K3 · Jahresmenge',
-  K5: 'K5 · Datenlage', K6: 'K6 · Ersatzwert-Anteil', K7: 'K7 · Volle Monate',
-  K8: 'K8 · Messabdeckung', mindest_monate: 'K7 · Vorläufig bis',
-};
-export const KRITERIEN_EINHEIT: Record<keyof BewertungKriterienWerte, string> = {
-  K1: '%', K2: '%', K3: 'kWh', K5: '%', K6: '%', K7: 'Monate', K8: '%', mindest_monate: 'Monate',
-};
-export const kriterienStarttext = (f: BewertungKriterienFassung, key: keyof BewertungKriterienWerte) => `${f.werte[key]} ${KRITERIEN_EINHEIT[key]}`;
+

@@ -9,10 +9,14 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.repo.ControlStatusRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.web.dto.DeviceDto;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
@@ -234,6 +238,60 @@ class ControlStatusListenerTest {
         assertThat(discharge.mode()).isEqualTo("autonomous_discharge");
         assertThat(discharge.plannedKw()).isEqualTo(-4.0);
         assertThat(discharge.targetKw()).isNull();
+    }
+
+    /**
+     * Netzseitiger Drossel-Slot (08.10.2026): the cloud must understand
+     * {@code grid_target} BEFORE a box sends it - a dropped word would leave
+     * the portal saying "Sonne wird gedrosselt" without being able to say that
+     * the hybrid inverter itself holds the grid connection point. It is neither
+     * a house-deficit nor a surplus correction, so no one-sided measurement may
+     * be stored as its target; the reference of the take-back stays planned_kw,
+     * and the heartbeat carries no commanded battery value in this mode.
+     */
+    @Test
+    void theGridSideThrottlingSlotIsUnderstoodWithoutAOneSidedTarget() {
+        var ex = ingest("{\"commanded_kw\":null,\"confirmed_kw\":null,\"all_match\":true," +
+                "\"control_enabled\":true,\"certified\":true,\"mismatch_roles\":[]," +
+                "\"execution\":{\"mode\":\"grid_target\",\"direction\":\"reduce\"," +
+                "\"planned_kw\":5.0,\"surplus_kw\":21.4,\"deficit_kw\":0.0," +
+                "\"effective_floor_soc_pct\":20,\"measurements_fresh\":true}}", "schedule");
+
+        assertThat(ex.mode()).isEqualTo("grid_target");
+        assertThat(ex.direction()).isNull();
+        assertThat(ex.plannedKw()).isEqualTo(5.0);
+        assertThat(ex.targetKw()).isNull();
+        assertThat(ex.effectiveFloorSocPct()).isEqualTo(20);
+        assertThat(ex.measurementsFresh()).isTrue();
+    }
+
+    /**
+     * The SAME contract vectors the box (Go) and Layer 1 (Node-RED) read
+     * ({@code docs/contracts/v2/grid-target-vectors.json}, section
+     * {@code herzschlag}): every execution block the box can send on this path
+     * must be stored under exactly the word the vector names - including the
+     * case in which the intent is not proven yet and the box therefore still
+     * says {@code plan}. A word changed on one side turns this red.
+     */
+    @Test
+    void theGridTargetHeartbeatVectorsAreStoredAsTheContractSays() throws Exception {
+        JsonNode vectors = new ObjectMapper().readTree(Files.readString(
+                Path.of("..", "..", "docs", "contracts", "v2", "grid-target-vectors.json")));
+        assertThat(vectors.path("woerter").path("execution_mode").asText()).isEqualTo("grid_target");
+        JsonNode faelle = vectors.path("herzschlag").path("faelle");
+        assertThat(faelle.size()).isGreaterThanOrEqualTo(3);
+        for (JsonNode fall : faelle) {
+            setUp();
+            var ex = ingest("{\"all_match\":true,\"control_enabled\":true,\"certified\":true,"
+                    + "\"mismatch_roles\":[],\"execution\":" + fall.get("execution") + "}", "schedule");
+            String name = fall.path("name").asText();
+            assertThat(ex.mode()).as(name).isEqualTo(fall.path("api_execution_mode").asText());
+            assertThat(ex.targetKw()).as(name + ": no one-sided target").isNull();
+            JsonNode planned = fall.path("execution").path("planned_kw");
+            if (planned.isNumber()) {
+                assertThat(ex.plannedKw()).as(name).isEqualTo(planned.asDouble());
+            }
+        }
     }
 
     /** The full-battery override is distinct and carries its tighter top-band floor. */

@@ -108,8 +108,9 @@ describe('Prognosequalität - der Reiter in den C-Bausteinen (P7)', () => {
     rendere();
 
     await screen.findByText('Wie gut Ihre Anlage vorhersagt');
-    // Die 24-px-Zahl der Sektion — E8 = a: KEIN Hero, sondern eine Zeile je Art.
-    expect(screen.getByText(/±0,75\s?kW/)).toBeInTheDocument();
+    // Die 24-px-Zahl der Sektion — E8 = a: KEIN Hero, sondern eine Zeile je Art. Die Überschrift steht vor den Zahlen
+    // (zwei Abrufe): auf die erste warten, sonst kippt der Fall unter Last.
+    expect(await screen.findByText(/±0,75\s?kW/)).toBeInTheDocument();
     expect(screen.getByText(/±1,36\s?kW/)).toBeInTheDocument();
     // Beide Arten beim Namen - die Rahmung haengt daran. Sie stehen seit P7 an
     // mehreren Orten (Zeile, Aufklapper, Kurven-Label), deshalb `getAllByText`.
@@ -184,7 +185,10 @@ describe('Prognosequalität - der Reiter in den C-Bausteinen (P7)', () => {
       setzeBreite(phone);
       const { unmount } = rendere();
       await screen.findByText('Wie gut Ihre Anlage vorhersagt');
-      for (const k of karten) expect(screen.getByText(k)).toBeInTheDocument();
+      // Schon das Lade-Gerüst trägt den Titel „Wie gut Ihre Anlage vorhersagt“ (PrognosePage, `loading`); die übrigen
+      // Karten kommen erst mit der Antwort. Unter Last fand der erste Blick das Gerüst (im vollen Lauf beobachtet),
+      // deshalb wird je Karte gewartet.
+      for (const k of karten) expect(await screen.findByText(k, {}, { timeout: 5000 })).toBeInTheDocument();
       // Der Essay ist auf BEIDEN Breiten ein Aufklapper - er stand am Rechner
       // offen VOR der Antwort, die man bei jedem Besuch sucht.
       expect(screen.getByText('Was sehe ich hier?').closest('details')).not.toBeNull();

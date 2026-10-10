@@ -7,6 +7,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -90,16 +91,28 @@ public class WiedervorlageBestand implements WiedervorlageQuelle {
             var kopf = u.kopf();
             var pruefung = u.ueberpruefung();
             if (pruefung != null && pruefung.frist() != null && pruefung.frist().faelligAm() != null) {
+                var frist = pruefung.frist();
                 aus.add(new Frist("bewertung_ueberpruefung", kopf.kennung(), "Energetische Bewertung — Überprüfung",
-                        pruefung.frist().faelligAm(), null, null, null));
+                        frist.faelligAm(), null, null, null, Herkunft.von("freigabe", frist.standVom())
+                                .mitFassung(frist.standNr()).mitMonaten(frist.wiedervorlageMonate())
+                                .mitKennung(kopf.kennung())));
             }
             if (!BerichtService.ZEICHEN_REVISION.equals(u.standZeichen())) continue;
-            for (var a : berichte.detail(kopf.kennung(), wer).anstoesse()) {
-                if (!BerichtService.OFFEN.equals(a.zustand())) continue;
-                aus.add(new Frist("bericht_anstoss", kopf.kennung(), berichtName(kopf.vorlage(), kopf.geltungName(),
-                        kopf.zeitraumArt(), kopf.schluessel()) + " — Revision angestoßen ("
-                        + a.anlassKennung() + ")", tag(a.erkanntAm(), zone), null, null, null));
-            }
+            // Konzept Wiedervorlage w1, Entscheid 4: ein Gegenstand, ein Eintrag. Die offenen Anstöße eines Berichts sind
+            // EINE Frist ab dem Tag, an dem der erste erkannt wurde; die Zahl der Anstöße trägt die Herkunft.
+            var offen = berichte.detail(kopf.kennung(), wer).anstoesse().stream()
+                    .filter(a -> BerichtService.OFFEN.equals(a.zustand()))
+                    .sorted((a, b) -> a.erkanntAm().equals(b.erkanntAm())
+                            ? a.anlassKennung().compareTo(b.anlassKennung()) : a.erkanntAm().compareTo(b.erkanntAm()))
+                    .toList();
+            if (offen.isEmpty()) continue;
+            var erste = offen.get(0);
+            String name = berichtName(kopf.vorlage(), kopf.geltungName(), kopf.zeitraumArt(), kopf.schluessel());
+            String anlass = offen.size() == 1 ? erste.anlassKennung()
+                    : offen.size() + " Korrekturen, zuerst " + erste.anlassKennung();
+            aus.add(new Frist("bericht_anstoss", kopf.kennung(), name + " — Revision angestoßen (" + anlass + ")",
+                    tag(erste.erkanntAm(), zone), null, null, null, Herkunft.von("erkannt", tag(erste.erkanntAm(), zone))
+                            .mitKennung(erste.anlassKennung()).mitAnzahl(offen.size()).mitBezug(name)));
         }
     }
 
@@ -109,7 +122,7 @@ public class WiedervorlageBestand implements WiedervorlageQuelle {
      */
     static String berichtName(String vorlage, String geltungName, String zeitraumArt, String schluessel) {
         return BerichtPdf.VORLAGEN.getOrDefault(vorlage, vorlage) + " " + geltungName + " "
-                + KennzahlRegeln.periodeText(zeitraumArt, schluessel);
+                + BerichtRegeln.zeitraumName(zeitraumArt, schluessel);
     }
 
     // ------------------------------------------------------------------ AP-17
@@ -124,12 +137,15 @@ public class WiedervorlageBestand implements WiedervorlageQuelle {
                         .map(BezugsbasisDto.FassungKurz::fassung).max(Integer::compare).orElse(null);
                 if (f == null || nr == null) continue;
                 LocalDate freigabe = tag(bezugsbasen.fassung(k.id(), b.id(), nr).freigegebenAm(), zone);
-                String beginn = f.bestaetigtAm() != null && (freigabe == null || f.bestaetigtAm().isAfter(freigabe))
+                boolean bleibt = f.bestaetigtAm() != null && (freigabe == null || f.bestaetigtAm().isAfter(freigabe));
+                String beginn = bleibt
                         ? "geprüft, bleibt " + TAG.format(f.bestaetigtAm())
                         : "Freigabe " + (freigabe == null ? "" : TAG.format(freigabe));
                 aus.add(new Frist("bezugsbasis_ueberpruefung", b.kennzeichen(), "Bezugsbasis " + b.kennzeichen()
                         + ", Fassung " + nr + " — Überprüfung (" + beginn + " + " + f.wiedervorlageMonate() + " Monate)",
-                        f.faelligAm(), b.verantwortlichName(), b.id(), k.id()));
+                        f.faelligAm(), b.verantwortlichName(), b.id(), k.id(),
+                        Herkunft.von(bleibt ? "geprueft_bleibt" : "freigabe", bleibt ? f.bestaetigtAm() : freigabe)
+                                .mitFassung(nr).mitMonaten(f.wiedervorlageMonate()).mitBezug(k.name())));
             }
         }
     }
@@ -137,34 +153,57 @@ public class WiedervorlageBestand implements WiedervorlageQuelle {
     // ------------------------------------------------------------------ AP-18
 
     private void verbesserung(List<Frist> aus, LocalDate abruf) {
+        // Konzept Wiedervorlage w1: die Herkunft je Vorgang (Herkunft einer Maßnahme, Konto der verantwortlichen Person)
+        // aus denselben Registern, aus denen die Vorschau ohnehin liest.
+        // Fällige Maßnahmen sind geplant (überfällig), die Vorschau ebenso: das Register der geplanten genügt.
+        var geplanteMassnahmen = massnahmen.liste(List.of(), "geplant", null, null, null).massnahmen();
+        var offeneAbweichungen = abweichungen.liste(List.of(), "offen", null, null).abweichungen();
+        var offeneZiele = energieziele.liste(List.of(), null, "offen").energieziele();
+        Map<UUID, Herkunft> herkunft = new HashMap<>();
+        for (var m : geplanteMassnahmen) {
+            herkunft.put(m.id(), Herkunft.von("termin", m.frist() == null ? m.termin() : m.frist().termin())
+                    .mitQuelle(m.herkunft() == null ? null : m.herkunft().art(),
+                            m.herkunft() == null ? null : m.herkunft().kennung())
+                    .mitKonto(m.verantwortlich() == null ? null : m.verantwortlich().sub()));
+        }
+        for (var a : offeneAbweichungen) {
+            herkunft.put(a.id(), Herkunft.von("termin", a.frist() == null ? null : a.frist().termin())
+                    .mitBezug(a.kennzahl().kennzeichen() + " " + a.kennzahl().name())
+                    .mitKonto(a.verantwortlich() == null ? null : a.verantwortlich().sub()));
+        }
+        for (var z : offeneZiele) {
+            herkunft.put(z.id(), Herkunft.von("zielperiode", z.frist() == null ? null : z.frist().termin())
+                    .mitKonto(z.verantwortlich() == null ? null : z.verantwortlich().sub()));
+        }
         Set<UUID> faellig = new HashSet<>();
         for (var z : uebersicht.lesen().faellig()) {
             faellig.add(z.id());
             aus.add(new Frist(AP18_ART.get(z.art()), z.kennzeichen(), z.titel(), z.termin(), z.verantwortlich(), z.id(),
-                    z.kennzahlId()));
+                    z.kennzahlId(), herkunft.get(z.id())));
         }
         // Vorschau: offen und noch nicht fällig — der Termin steht im Register (F2), die Wiedervorlage rechnet ihn nicht.
-        for (var m : massnahmen.liste(List.of(), "geplant", null, null, null).massnahmen()) {
+        for (var m : geplanteMassnahmen) {
             if (faellig.contains(m.id()) || m.frist() == null || m.frist().faellig() != null) continue;
             aus.add(new Frist("massnahme_termin", m.kennzeichen(), m.titel(), m.frist().termin(),
                     m.verantwortlich() == null ? null : m.verantwortlich().name(), m.id(),
-                    m.messgrundlage() == null ? null : m.messgrundlage().kennzahl().id()));
+                    m.messgrundlage() == null ? null : m.messgrundlage().kennzahl().id(), herkunft.get(m.id())));
         }
-        for (var a : abweichungen.liste(List.of(), "offen", null, null).abweichungen()) {
+        for (var a : offeneAbweichungen) {
             if (faellig.contains(a.id()) || a.frist() == null || a.frist().faellig() != null) continue;
             aus.add(new Frist("abweichung_frist", a.kennzeichen(), a.kennzahl().kennzeichen() + " " + a.kennzahl().name(),
                     a.frist().termin(), a.verantwortlich() == null ? null : a.verantwortlich().name(), a.id(),
-                    a.kennzahl().id()));
+                    a.kennzahl().id(), herkunft.get(a.id())));
         }
         // Ein Energieziel: die Bewertung wird erst mit dem endgültigen letzten Monat fällig (F1) — bis zum Ende der
         // Zielperiode steht es in der Vorschau, danach erst wieder, wenn der Übersichts-Leser es fällig nennt.
-        for (var z : energieziele.liste(List.of(), null, "offen").energieziele()) {
+        for (var z : offeneZiele) {
             if (faellig.contains(z.id()) || z.frist() == null || z.frist().faellig() != null
                     || !z.frist().termin().isAfter(abruf) || kennzahlen.lesbareKennzahlOderNichts(z.kennzahl().id()) == null) {
                 continue;
             }
             aus.add(new Frist("energieziel_bewertung", z.kennzeichen(), z.wortlaut(), z.frist().termin(),
-                    z.verantwortlich() == null ? null : z.verantwortlich().name(), z.id(), z.kennzahl().id()));
+                    z.verantwortlich() == null ? null : z.verantwortlich().name(), z.id(), z.kennzahl().id(),
+                    herkunft.get(z.id())));
         }
     }
 
@@ -175,8 +214,10 @@ public class WiedervorlageBestand implements WiedervorlageQuelle {
             if (b.frist() == null || !"offen".equals(b.zustand())) continue;
             Map<String, Object> f = VerbesserungRegeln.frist(new VerbesserungRegeln.FristEingang("abweichung",
                     b.zustand(), b.frist().toString(), null, null, abruf.toString()));
-            aus.add(new Frist("messbedarf_frist", b.kennzeichen(), "Messbedarf " + b.kennzeichen() + " — Frist",
-                    LocalDate.parse((String) f.get("termin")), null, b.id(), null));
+            LocalDate termin = LocalDate.parse((String) f.get("termin"));
+            aus.add(new Frist("messbedarf_frist", b.kennzeichen(), "Messbedarf " + b.kennzeichen() + " — Frist", termin,
+                    null, b.id(), null, Herkunft.von("termin", termin).mitBezug(b.wortlaut())
+                            .mitEinsatz(b.energieeinsatzId())));
         }
     }
 

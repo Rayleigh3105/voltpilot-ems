@@ -5,7 +5,8 @@ import { expect, test, type Page } from '@playwright/test';
 /**
  * Der Einstieg in den Assistenten „Messen & Auswerten“ (AP-01 E5 = A) auf der ECHTEN App-Schale: die Bühne
  * `startansicht.html` mit `rechte=1` rendert `<App initialAuth />` (nicht die Vorschau), der Assistent kommt also
- * aus `App.tsx` — nachgeladen, an genau einer Stelle. Karte „Funktionen“ → Knopf → Schritt 1; Entwurf → „Einrichtung
+ * aus `App.tsx` — nachgeladen, an genau einer Stelle. Karte „Funktionen“ (seit Konzept §5.1, #1403, nur auf der
+ * Standort-Übersicht) → Knopf → Schritt 1; Entwurf → „Einrichtung
  * fortsetzen (Schritt n von 5)“ → dieser Schritt; Satz „Daten kommen an“ → Schritt 2; Avatar-Menü „Funktionen“ →
  * Karte; Leerzustand der Messstellen → Assistent. Ohne Recht: Grund und Weg statt Knopf.
  *
@@ -36,8 +37,12 @@ for (const breite of [375, 1440] as const) {
   test.describe(`${breite} px`, () => {
     test.use({ viewport: { width: breite, height: breite === 375 ? 812 : 900 } });
 
+    // firstmate K2 (09.10.2026): die Karte „Funktionen“ wohnt auf einer Standort-/Unternehmens-
+    // Übersicht — die ist nur die Landung, wenn mindestens ein Standort misst. `&messenWerk=`
+    // lässt gezielt NUR Werk Ahrenberg nicht messen (Lindach bleibt eingerichtet): die Ebene bleibt
+    // erreichbar, Werk Ahrenbergs eigene Karte zeigt weiterhin „Noch nicht eingerichtet".
     test('Übersicht → Karte „Funktionen“ → Knopf → Schritt 1', async ({ page }) => {
-      await oeffnen(page, 'person=JW&messen=bestand');
+      await oeffnen(page, 'person=JW&messenWerk=bestand', `#/standort/${ST1}`);
       const knopf = karte(page).getByRole('button', { name: 'Messen & Auswerten für Werk Ahrenberg einrichten' });
       await expect(knopf).toBeVisible();
       await knopf.scrollIntoViewIfNeeded();
@@ -54,7 +59,7 @@ for (const breite of [375, 1440] as const) {
         ([schluessel, wert]) => window.localStorage.setItem(schluessel, wert),
         [ENTWURF, JSON.stringify({ standortId: ST1, schritt: 3 })] as const,
       );
-      await oeffnen(page, 'person=JW&messen=entwurf');
+      await oeffnen(page, 'person=JW&messenWerk=entwurf', `#/standort/${ST1}`);
       const knopf = karte(page).getByRole('button', { name: 'Einrichtung fortsetzen (Schritt 3 von 5)' });
       await expect(knopf).toBeVisible();
       await knopf.scrollIntoViewIfNeeded();
@@ -73,8 +78,16 @@ for (const breite of [375, 1440] as const) {
       await expect(assistent(page).getByText('Womit wird gemessen?')).toBeVisible();
     });
 
+    // #1407 P1 (PR #1471, von K2 unabhängig behoben): `funktionenZiel` in App.tsx bietet den
+    // Avatar-Eintrag „Funktionen" nicht mehr an, wenn die Landung die Unternehmens-Übersicht ist -
+    // die Karte wohnt seit Review PR2 §5.1 nur noch auf der Standort-Übersicht (EbenenCockpit.tsx).
+    // Darum PH statt JW: ihr Zugriff ist auf EINEN Standort beschränkt (Teilansicht AP-03). JW sieht
+    // beide Standorte (Landung `unternehmen`) - dort bleibt das Menü seit #1407 P1 ganz weg.
     test('Avatar-Menü „Funktionen“ → Karte', async ({ page }) => {
-      await oeffnen(page, 'person=JW&messen=bestand', '#/portfolio/messstellen');
+      // firstmate K2: ohne das Standard-`messen` (misst) bliebe auch PHs einziger sichtbarer Standort
+      // (Lindach) ohne Messfunktion - dann gilt K2s „kein Standort misst" auch für ihre Teilansicht,
+      // und die Landung wäre die gewohnte Übersicht statt der Standort-Übersicht (kein `funktionenZiel`).
+      await oeffnen(page, 'person=PH', '#/portfolio/messstellen');
       await page.getByRole('button', { name: /Konto-Menü/ }).click();
       const eintrag = page.getByRole('menuitem', { name: 'Funktionen' });
       await expect(eintrag).toBeVisible();
@@ -94,7 +107,7 @@ for (const breite of [375, 1440] as const) {
     });
 
     test('ohne Recht: Grund und Weg statt Knopf', async ({ page }) => {
-      await oeffnen(page, 'person=CB&messen=bestand');
+      await oeffnen(page, 'person=CB&messenWerk=bestand', `#/standort/${ST1}`);
       await expect(karte(page)).toBeVisible();
       await expect(karte(page).getByRole('button', { name: /Messen & Auswerten für/ })).toHaveCount(0);
       await expect(karte(page).getByRole('note').first()).toBeVisible();

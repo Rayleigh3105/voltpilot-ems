@@ -16,10 +16,10 @@ import {
   type StandorteAmStichtag,
   type StandortZuordnungVorschau as StandortZuordnungVorschauDaten,
 } from '../api';
-import { fleetTonalitaet } from '../fleet';
+import { berlinDay, fleetTonalitaet } from '../fleet';
 import { ortsHinweis } from '../cockpitLayout';
 import { anlageRoute, aufbauHash, pageRoute, standortAufbauHash, standortRoute, type AufbauNeu, type Route } from '../nav';
-import { misst } from '../ebenenNav';
+import { misst, type EbenenLeistenKachel } from '../ebenenNav';
 import { hatHauptzaehler } from '../anlageEnergiebilanz';
 import {
   CANONICAL_PORTFOLIO,
@@ -32,8 +32,15 @@ import {
   ruheSatz,
   tabellenSpalten,
   verfuegbareBausteine,
+  type AnlagenZeile,
   type PortfolioBausteinId,
 } from '../portfolioCockpit';
+import { anlageEnergie, anlageKurve } from '../anlageEnergie';
+import { AnlagenEnergie } from './AnlagenEnergie';
+import { usePortfolioHistorie } from '../usePortfolioHistorie';
+import { usePortfolioKpis } from '../usePortfolioKpis';
+import { portfolioKacheln } from '../portfolioKacheln';
+import { PortfolioKacheln } from './PortfolioKacheln';
 import { vorschauZeilen, type VorschauZeile } from '../portfolioVorschau';
 import {
   anlagenDerEbene,
@@ -43,6 +50,7 @@ import {
   kopfzeile,
   standortGruppen,
   standortLeerzustand,
+  steuerndeAnlagen,
   type UebersichtEbene,
 } from '../uebersicht';
 import { useCockpitLayout } from '../useCockpitLayout';
@@ -56,21 +64,15 @@ import { KennzahlLeiste } from './KennzahlLeiste';
 import { RowMenu } from './RowMenu';
 import { FunktionenKarte } from './FunktionenKarte';
 import { SteuernAssistent } from './SteuernAssistent';
-import {
-  bausteinBilder,
-  bausteinDa,
-  traegtSaetze,
-  UEBERSICHT_REIHENFOLGE,
-  UebersichtBausteine,
-  useUebersichtBausteine,
-} from './UebersichtBausteine';
-import { einstiegFuer, obenBausteine } from '../einstieg';
+import { UebersichtBausteine, useUebersichtBausteine } from './UebersichtBausteine';
+import { TieferEinsteigen } from './TieferEinsteigen';
 import { useRollen } from '../rollen';
 import { browserSpeicher, entwurfLesen, messenEinstiegeDerKarte } from '../messenAssistent';
 import { useMessenEinstieg } from '../messenEinstieg';
 import { NochNichtZugeordnetKarte, StandortVorschau } from './StandortVorschau';
 import { FunktionsZustaende, StandortGruppeKopf } from './StandortGruppeKopf';
 import { EmptyState, ErrorState, Skeleton } from './States';
+import { useReportFirstPaint } from '../bootReady';
 import './PortfolioCockpit.css';
 import './EbenenCockpit.css';
 // LIVE: die Kennzahlen-Leiste zeigt gemessene Ist-Werte (PV jetzt, Netz).
@@ -78,6 +80,9 @@ import { LIVE_POLL_MS } from '../pollCadence';
 
 /** Re-render cadence of the freshness/liveness derivations. */
 const TICK_MS = 5_000;
+
+/** Bis zu so vielen Anlagen tragen die Karten eine Tageskurve; darüber entfällt sie (Perf). */
+const KURVEN_BIS_ANLAGEN = 12;
 
 /**
  * DIE UEMS-ÜBERSICHT EINER EBENE — Unternehmens- und Standort-Übersicht
@@ -140,6 +145,13 @@ export interface EbenenCockpitProps {
    * Tabelle selbst ist dieselbe — dieselben Zeilen, Spalten und Vorschau.
    */
   nurAnlagen?: boolean;
+  /**
+   * §5.1 „Tiefer einsteigen": die Arbeitsgruppen des Unternehmens
+   * ({@link unternehmensGruppen}, aus `App.tsx`) als Sprungkarten am Fuß der
+   * Unternehmens-Übersicht. Leer am Standort und unter drei messenden
+   * Standorten — dann steht dort nichts.
+   */
+  tieferGruppen?: readonly EbenenLeistenKachel[];
 }
 
 export function EbenenCockpit({
@@ -153,6 +165,7 @@ export function EbenenCockpit({
   kunde = null,
   ebene,
   nurAnlagen = false,
+  tieferGruppen = [],
 }: EbenenCockpitProps) {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [earnings, setEarnings] = useState<Earnings | null>(null);
@@ -160,6 +173,10 @@ export function EbenenCockpit({
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => new Date());
   const [siteDrawer, setSiteDrawer] = useState(false);
+  // Boot-Cover: die Übersicht der Ebene hat ihr erstes echtes Bild, sobald die Übersicht steht, der Fehlerzustand
+  // greift oder es (leer) gar keine Anlage gibt - wie im Portfolio-Cockpit. Ohne die Meldung hing der Lader bei jeder
+  // Anmeldung eines UEMS-Kunden bis zur 3-s-Grenze über fertigem Inhalt.
+  useReportFirstPaint(overview != null || failed || sites.length === 0);
   const [steuernStandort, setSteuernStandort] = useState<string | null>(null);
   const [offen, setOffen] = useState<string | null>(null);
   /** `undefined` = lädt noch, `null` = nicht abrufbar (fail-soft). */
@@ -177,10 +194,9 @@ export function EbenenCockpit({
   // AP-01 E5 = A: die Karte „Funktionen“ öffnet den EINEN Messen-Assistenten der App; ohne Wirt bleibt der Hinweis.
   const messen = useMessenEinstieg();
   const messenRunde = messen?.runde ?? 0;
-  // Vor der Bestätigung gibt es noch keine UEMS-Ebene: der Mehr-Anlagen-
-  // Bestand landet im bisherigen Portfolio (dort trägt `StandortVorschlagHinweis`
-  // die Vorschlagskarte); nach der Bestätigung bleibt sie zusätzlich auf der
-  // Unternehmens-Ebene zulässig.
+  // Vor der Bestätigung gibt es noch keine UEMS-Ebene: der Mehr-Anlagen-Bestand landet im
+  // bisherigen Portfolio (dort trägt `PortfolioCockpit` den leisen Einstieg im ⋯-Menü, firstmate
+  // K2); nach der Bestätigung bleibt sie zusätzlich auf der Unternehmens-Ebene zulässig.
   const darfStandorteEinrichten = ebene.art === 'unternehmen' && rollen.darf('standort.verwalten', null);
 
   useEffect(() => {
@@ -272,6 +288,24 @@ export function EbenenCockpit({
   const configById = useMemo(() => new Map(sites.map((s) => [s.id, s])), [sites]);
   // UEMS AP-13 IP-7: die Bausteine der Messstellen-Welt — nur auf einer Übersicht, nicht auf „Standort › Anlagen“.
   const anlagenDerSicht = useMemo(() => anlagenDerEbene(sites, ebene).map((s) => ({ id: s.id, name: s.name })), [sites, ebene]);
+  // Konzept Runde 4: die Energie-Karten tragen eine Tages-Verlaufskurve — dieselbe
+  // Tages-Historie wie der Reiter „Energie" (geteilter Cache); bei sehr vielen
+  // Anlagen entfällt sie, statt die Seite zu bremsen (nur auf der Übersicht).
+  const { daten: historien } = usePortfolioHistorie(
+    anlagenDerSicht,
+    'day',
+    berlinDay(now),
+    !nurAnlagen && anlagenDerSicht.length > 0 && anlagenDerSicht.length <= KURVEN_BIS_ANLAGEN,
+  );
+  const histById = useMemo(
+    () => new Map((historien ?? []).map((h) => [h.siteId, h.history] as const)),
+    [historien],
+  );
+  // Konzept §4.2: das Kennzahl-Kachelraster der Unternehmens-Übersicht (Leitkennzahl,
+  // Verbrauch vs. Vorjahr, Lastspitze, Kosten) aus dem Backend-Aggregat.
+  const kpiAktiv = !nurAnlagen && ebene?.art === 'unternehmen';
+  const { kpis, laedt: kpiLaedt, fehler: kpiFehler, erneut: kpiErneut } = usePortfolioKpis(kpiAktiv);
+  const kpiRaster = useMemo(() => (kpis ? portfolioKacheln(kpis) : null), [kpis]);
   const uems = useUebersichtBausteine(ebene && !nurAnlagen ? ebene : null, anlagenDerSicht, funktionen ?? null);
   // UEMS AP-13 IP-8 (Ü7, versprochen von IP-2): „Standort › Anlagen“ trägt je Zeile den Weg „Energiebilanz“ — nur für eine
   // Anlage mit Hauptzähler in der Stellung (dieselbe Frage wie der Reiter). Die Übersicht fragt nichts und bleibt gleich.
@@ -298,6 +332,19 @@ export function EbenenCockpit({
       aktiv = false;
     };
   }, [mitBilanzWeg, anlagenDerSicht]);
+  // AP-13 IP-8 (U7a, #1407 P2): derselbe geführte Einstieg in den bestehenden
+  // Zuordnungsdialog, egal ob die Sicht die Tabelle oder die Energie-Karten zeigt.
+  const zuordnungKorrigieren = mitBilanzWeg
+    ? (id: string) => {
+        void api.standorte().then((antwort) => {
+          const anlage = sites.find((s) => s.id === id);
+          // Die Vorschlags-Bestätigung schreibt `site.created_at` als Beginn dieser
+          // ersten Zuordnung. Genau dieser bestätigte Tag ist die Korrektur-Vorgabe.
+          const zuordnung = antwort.standorte.flatMap((s) => s.anlagen).find((a) => a.id === id);
+          if (anlage && zuordnung) setKorrektur({ anlage, standorte: antwort, ersterTag: zuordnung.gueltigAb });
+        });
+      }
+    : undefined;
   const uemsInhalt = uems?.inhalt.join(',') ?? '';
   // Die Standort-Übersicht ist DIESELBE Fläche, auf die Anlagen des Standorts
   // gefiltert: jede Zahl darunter geht nur über sie.
@@ -381,6 +428,24 @@ export function EbenenCockpit({
         })
       : null;
 
+  const unternehmen = ebene?.art === 'unternehmen';
+  // Review PR2 §5.1 / Punkt 2 — Status-Variante A: die ruhige Statuszeile eskaliert
+  // bei Handlungsbedarf zur Hinweiskarte unter dem Kopf. Zwei Quellen, beide nur auf
+  // der Unternehmens-Übersicht (der Standort-Kopf behält seine Zeile): die Datenlage
+  // (nicht „ok") und die Wiedervorlage-Eskalation „N Fristen überfällig · älteste
+  // seit …" aus PR #1396 (`wiedervorlageStatus`, Konzept Wiedervorlage w1 Entscheid 9).
+  const statusHinweise: { text: string; ton: string; route?: Route }[] = [];
+  if (unternehmen && !nurAnlagen) {
+    if (kopf?.datenlage != null && kopf.datenlage.ton !== 'ok') {
+      statusHinweise.push({ text: kopf.datenlage.text, ton: kopf.datenlage.ton });
+    }
+    const wv = uems?.wiedervorlageStatus ?? null;
+    if (wv) {
+      statusHinweise.push({ text: `${wv.titel} · ${wv.satz}`, ton: 'warn', route: wv.sprung.route });
+    }
+  }
+  const handlungsbedarf = statusHinweise.length > 0;
+
   const head = (
     <div className="vp-portfolio-kopf">
       <div className="vp-portfolio-titel">
@@ -398,7 +463,7 @@ export function EbenenCockpit({
             ) : (
               kopf.zahlen && <p className="vp-portfolio-zahlen">{kopf.zahlen}</p>
             )}
-            {kopf.datenlage && (
+            {kopf.datenlage && !handlungsbedarf && (
               <p className={`vp-portfolio-satz is-${kopf.datenlage.ton}`}>
                 <span className="vp-portfolio-punkt" aria-hidden="true" />
                 {kopf.datenlage.text}
@@ -423,7 +488,9 @@ export function EbenenCockpit({
         )}
       </div>
       <div className="vp-portfolio-aktionen">
-        {overview != null && !layout.anpassen && !nurAnlagen && (
+        {/* §5.1: die Unternehmens-Übersicht hat eine feste Standardstruktur —
+            kein „Anpassen". Die Standort-Übersicht ordnet ihre Leiste weiter. */}
+        {overview != null && !layout.anpassen && !nurAnlagen && !unternehmen && (
           <Recht aktion="cockpit.anpassen"><Button
             variant="ghost"
             iconLeft={<Icon name="sliders" size={18} />}
@@ -543,14 +610,48 @@ export function EbenenCockpit({
       : null;
   const spalten = tabellenSpalten(zeilen, layout.resolved.order);
   const ruhe = ruheSatz(layout.resolved.order);
-  // K6/K8 (Konzept „Energiemanagement ohne Fachsprache“): am Unternehmen steht oben, was die Rolle zuerst fragt — am
-  // Telefon zuerst „Was steht an“, Abweichungen und Datenlage. Was oben steht, steht unten nicht noch einmal. Der
-  // Hinweis „Was VoltPilot leistet“ (K7) steht einmal auf der Seite: unter den Bausteinen, ohne sie oben.
-  const obenWunsch = uems && ebene?.art === 'unternehmen' ? obenBausteine(einstiegFuer(rollen.selbst), isPhone) : [];
-  const bilder = uems ? bausteinBilder(uems, layout.resolved.order) : null;
-  const oben = bilder ? obenWunsch.filter((id) => bausteinDa(bilder, id)) : [];
-  const saetze = bilder ? traegtSaetze(bilder, oben) : false;
-  const untenDa = bilder ? UEBERSICHT_REIHENFOLGE.some((id) => !oben.includes(id) && bausteinDa(bilder, id)) : false;
+  // Konzept Runde 4: „Anlagen nach Standort" zeigt auf der Übersicht Energiedaten
+  // je Anlage (reines Modell `anlageEnergie`), nicht mehr die Tabelle. Die Rollen
+  // (PV/Speicher) entscheiden, welche Energiedaten je Anlagentyp Sinn ergeben.
+  // Review PR2 §6: die Betriebsart (steuert / reine Messung) kommt aus den
+  // Funktionen, NICHT aus den Rollen — eine gesteuerte Anlage ist nie „reine
+  // Messung". `null` (Funktionen laden noch) zählt vorerst als nicht gesteuert.
+  const steuertSet = steuerndeAnlagen(funktionen ?? null);
+  const rollenById = new Map(
+    sicht.sites.map(
+      (s) =>
+        [
+          s.id,
+          {
+            pv: s.roleCounts?.pv ?? 0,
+            storage: s.roleCounts?.storage ?? 0,
+            steuert: steuertSet?.has(s.id) ?? false,
+          },
+        ] as const,
+    ),
+  );
+  const nichtZugeordnetSet = new Set(
+    standortVorschlag?.gruppen.flatMap((g) => g.anlagen.map((a) => a.anlageId)) ?? [],
+  );
+  const energieKarte = (z: AnlagenZeile) =>
+    anlageEnergie(
+      z,
+      rollenById.get(z.id) ?? { pv: 0, storage: 0, steuert: false },
+      nichtZugeordnetSet.has(z.id),
+      anlageKurve(histById.get(z.id) ?? null, now),
+    );
+  const energieGruppen = gruppen
+    ? gruppen.map((g) => ({ key: g.key, kopf: g.kopf, karten: g.zeilen.map(energieKarte), leer: g.leer }))
+    : null;
+  const energieKarten = energieGruppen ? [] : zeilen.map(energieKarte);
+  // Review PR2 §5.1: die Unternehmens-Übersicht folgt der freigegebenen
+  // Standardstruktur (Kopf+Statuszeile → Kacheln → Anlagen → „Was steht an" →
+  // „Tiefer einsteigen"). Die rollengesteuerte Reihenfolge der Bausteine
+  // (`einstieg.ts`) bleibt als Modul technisch möglich, führt die Übersicht
+  // aber nicht mehr. Die dichten Bausteine (Messstellen, Energiebilanz,
+  // Kennzahlen, Bewertung, Bezugsbasen, Ziele) verlassen die Unternehmens-
+  // Übersicht; sie leben in den Bereichen und sind über „Tiefer einsteigen"
+  // erreichbar. Nur die Standort-Übersicht trägt sie weiterhin unter der Tabelle.
   // AP-01 IP-8: ein Standort ohne Anlage zeigt Grund und nächsten Schritt statt
   // einer leeren Tabelle.
   const leerStandort = ebene?.art === 'standort' ? standortLeerzustand(ebene.standort) : null;
@@ -558,11 +659,42 @@ export function EbenenCockpit({
   return (
     <>
       {head}
-      {uems && oben.length > 0 && (
-        <UebersichtBausteine daten={uems} zeigen={layout.resolved.order} nur={oben} grenzHinweis={saetze && !untenDa} onNavigate={onNavigate} />
-      )}
-      {standortVorschlag && (
-        <NochNichtZugeordnetKarte vorschau={standortVorschlag} onOeffnen={() => setStandortVorschauOffen(true)} />
+      {/* Status-Variante A (Punkt 2): bei Handlungsbedarf wird aus der ruhigen
+          Statuszeile im Kopf eine Hinweiskarte — die Datenlage (nennt die auffällige
+          Anlage) und/oder die Wiedervorlage-Eskalation „N Fristen überfällig · älteste
+          seit …" (PR #1396), die zur Wiedervorlage springt. */}
+      {statusHinweise.length > 0 && (
+        <div className="vp-portfolio-hinweise">
+          {statusHinweise.map((h, i) => {
+            const inhalt = (
+              <>
+                <span className="vp-portfolio-hinweis-icon" aria-hidden="true">
+                  <Icon name="alert-triangle" size={20} />
+                </span>
+                <p className="vp-portfolio-hinweis-text">{h.text}</p>
+                {h.route && (
+                  <span className="vp-portfolio-hinweis-pfeil" aria-hidden="true">
+                    <Icon name="chevron-right" size={18} />
+                  </span>
+                )}
+              </>
+            );
+            return h.route ? (
+              <button
+                key={i}
+                type="button"
+                className={`vp-portfolio-hinweis is-${h.ton}`}
+                onClick={() => onNavigate(h.route!)}
+              >
+                {inhalt}
+              </button>
+            ) : (
+              <div key={i} className={`vp-portfolio-hinweis is-${h.ton}`} role="status">
+                {inhalt}
+              </div>
+            );
+          })}
+        </div>
       )}
       {layout.anpassen && (
         <>
@@ -598,9 +730,21 @@ export function EbenenCockpit({
 
       {!nurAnlagen && (
         <>
-          <KennzahlLeiste zellen={zellen} label="Kennzahlen Ihrer Anlagen" />
+          {/* Unternehmen: das Kennzahl-Kachelraster (Konzept §4.2). Standort: die
+              schlanke Live-Leiste wie bisher. */}
+          {ebene?.art === 'unternehmen' ? (
+            <PortfolioKacheln raster={kpiRaster} laedt={kpiLaedt} fehler={kpiFehler} onErneut={kpiErneut} />
+          ) : (
+            <KennzahlLeiste zellen={zellen} label="Kennzahlen Ihrer Anlagen" />
+          )}
           {ruhe && <p className="vp-portfolio-ruhe">{ruhe}</p>}
         </>
+      )}
+
+      {/* Noch nicht zugeordnete Anlagen: der Hinweis steht bei den „Anlagen nach
+          Standort", um die es geht. */}
+      {standortVorschlag && (
+        <NochNichtZugeordnetKarte vorschau={standortVorschlag} onOeffnen={() => setStandortVorschauOffen(true)} />
       )}
 
       <section
@@ -621,7 +765,9 @@ export function EbenenCockpit({
               </>
             }
           />
-        ) : (
+        ) : nurAnlagen ? (
+          // AP-13 IP-2 „Standort › Anlagen": die ausführliche Tabelle mit Vorschau-Zeile,
+          // Energiebilanz-Weg und Zuordnungskorrektur bleibt die Verwaltungssicht.
           <AnlagenTabelle
             gruppen={gruppen}
             zeilen={zeilen}
@@ -633,47 +779,66 @@ export function EbenenCockpit({
             vorschau={vorschau}
             energiebilanz={mitBilanzWeg ? energiebilanz : null}
             onEnergiebilanz={mitBilanzWeg ? (id) => onNavigate(anlageRoute(id, 'energiebilanz')) : undefined}
-            onZuordnungKorrigieren={mitBilanzWeg ? (id) => {
-              void api.standorte().then((antwort) => {
-                const anlage = sites.find((s) => s.id === id);
-                // Die Vorschlags-Bestätigung schreibt `site.created_at` als Beginn dieser
-                // ersten Zuordnung. Genau dieser bestätigte Tag ist die Korrektur-Vorgabe.
-                const zuordnung = antwort.standorte.flatMap((s) => s.anlagen).find((a) => a.id === id);
-                if (anlage && zuordnung) setKorrektur({ anlage, standorte: antwort, ersterTag: zuordnung.gueltigAb });
-              });
-            } : undefined}
-            nichtZugeordnet={new Set(standortVorschlag?.gruppen.flatMap((g) => g.anlagen.map((a) => a.anlageId)) ?? [])}
+            onZuordnungKorrigieren={zuordnungKorrigieren}
+            nichtZugeordnet={nichtZugeordnetSet}
+          />
+        ) : (
+          // Konzept Runde 4: die Übersicht zeigt Energiedaten je Anlage als Karten.
+          <AnlagenEnergie
+            gruppen={energieGruppen}
+            karten={energieKarten}
+            onOeffnen={(id) => onNavigate(anlageRoute(id))}
+            energiebilanz={mitBilanzWeg ? energiebilanz : null}
+            onEnergiebilanz={mitBilanzWeg ? (id) => onNavigate(anlageRoute(id, 'energiebilanz')) : undefined}
+            onZuordnungKorrigieren={zuordnungKorrigieren}
           />
         )}
       </section>
 
-      {/* UEMS AP-13 IP-7 (Ü1): die Bausteine der Messstellen-Welt — unter der Tabelle, vor der Karte „Funktionen“. */}
-      {uems && (
-        <UebersichtBausteine
-          daten={uems}
-          zeigen={layout.resolved.order}
-          ohne={oben}
-          grenzHinweis={oben.length > 0 ? saetze : undefined}
-          onNavigate={onNavigate}
-        />
-      )}
-
-      {/* AP-01 IP-8: die Karte „Funktionen" — nur auf einer Ebene; das Portfolio
-          eines Betreibers bleibt zeichengleich. */}
-      {ebene && !nurAnlagen && (
-        <FunktionenKarte
-          abschnitte={funktionenKarte(ebene, funktionen ?? null)}
-          laedt={funktionen === undefined}
-          onSteuernEinrichten={setSteuernStandort}
-          onSteuernAktion={async (standortId, aktion) => {
-            await api.funktionSteuernStandort(standortId, aktion);
-            setReloadKey((k) => k + 1);
-          }}
-          // Der Entwurf liegt im Browser; nach jedem Schließen des Assistenten liest die Karte ihn neu (`messenRunde`).
-          messenEinstiege={messen ? messenEinstiegeDerKarte(funktionen ?? null, entwurfLesen(browserSpeicher())) : undefined}
-          onMessenOeffnen={messen ? (start) => messen.oeffnen({ standortId: start.standortId }) : undefined}
-          gezeigtAm={messen?.karteGezeigtAm ?? null}
-        />
+      {unternehmen && !nurAnlagen ? (
+        <>
+          {/* §5.1 „Was steht an": nur der Wiedervorlage-Baustein bleibt auf der
+              Unternehmens-Übersicht (ohne den K7-Hinweis — „Tiefer einsteigen"
+              führt weiter). Seine Ableitung gehört PR #1396. */}
+          {uems && (
+            <UebersichtBausteine
+              daten={uems}
+              zeigen={['energiemanagement']}
+              nur={['energiemanagement']}
+              grenzHinweis={false}
+              onNavigate={onNavigate}
+            />
+          )}
+          {/* §5.1 „Tiefer einsteigen": der Weg in die Bereiche, in denen die aus
+              der Übersicht entfernten Blöcke (Messstellen, Energiebilanz,
+              Kennzahlen, Bewertung, Bezugsbasen, Ziele) jetzt leben. */}
+          <TieferEinsteigen gruppen={tieferGruppen} onNavigate={onNavigate} />
+        </>
+      ) : (
+        <>
+          {/* Standort-Übersicht: die Bausteine der Messstellen-Welt unter der
+              Tabelle, davor; die Karte „Funktionen" dahinter. (Die Unternehmens-
+              Übersicht trägt sie nicht mehr — Review PR2 §5.1.) */}
+          {uems && (
+            <UebersichtBausteine daten={uems} zeigen={layout.resolved.order} onNavigate={onNavigate} />
+          )}
+          {/* AP-01 IP-8: die Karte „Funktionen" — nur auf der Standort-Übersicht. */}
+          {ebene && !nurAnlagen && (
+            <FunktionenKarte
+              abschnitte={funktionenKarte(ebene, funktionen ?? null)}
+              laedt={funktionen === undefined}
+              onSteuernEinrichten={setSteuernStandort}
+              onSteuernAktion={async (standortId, aktion) => {
+                await api.funktionSteuernStandort(standortId, aktion);
+                setReloadKey((k) => k + 1);
+              }}
+              // Der Entwurf liegt im Browser; nach jedem Schließen des Assistenten liest die Karte ihn neu (`messenRunde`).
+              messenEinstiege={messen ? messenEinstiegeDerKarte(funktionen ?? null, entwurfLesen(browserSpeicher())) : undefined}
+              onMessenOeffnen={messen ? (start) => messen.oeffnen({ standortId: start.standortId }) : undefined}
+              gezeigtAm={messen?.karteGezeigtAm ?? null}
+            />
+          )}
+        </>
       )}
 
       {steuernStandort && (

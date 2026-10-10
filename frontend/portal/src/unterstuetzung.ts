@@ -1,22 +1,11 @@
 import { ApiError, api, request, type Selbstauskunft, type SelbstauskunftUnterstuetzung, type Unterstuetzung, type UnterstuetzungAnfrage, type UnterstuetzungGewaehren, type UnterstuetzungHinweis } from './api';
 import { selbstauskunft, setSelbstauskunft } from './rollen';
-import { iso, tagPlus } from './bezugsPeriode';
-import { datumZeit } from './rechte';
+import { datumZeit } from './rechteTexte';
 import { VORGABE_ZEITZONE } from './uemsZustand';
 
 export const UMFANG = { ansehen: 'Ansehen', einrichten: 'Einrichten', einrichten_und_bedienen: 'Einrichten und Bedienen' };
-export const heute = () => iso(Date.now(), VORGABE_ZEITZONE).slice(0, 10);
-export const vorgabeEnde = () => tagPlus(heute(), 30);
-export function hoechstesEnde(ab = heute()): string {
-  const [j, m, t] = ab.split('-').map(Number);
-  return `${j + 1}-${String(m).padStart(2, '0')}-${String(Math.min(t, new Date(Date.UTC(j + 1, m, 0)).getUTCDate())).padStart(2, '0')}`;
-}
-export function pruefeUnterstuetzung(standorte: string[], bis: string, ab = heute()): string | null {
-  if (!standorte.length) return 'Wählen Sie mindestens einen Standort.';
-  if (!bis || bis > hoechstesEnde(ab)) return 'Wählen Sie ein Enddatum innerhalb von höchstens 12 Monaten.';
-  if (bis < ab) return 'Das Enddatum darf nicht vor dem Beginn liegen.';
-  return null;
-}
+/** Die Fristen des Gewähren-Dialogs wohnen in `unterstuetzungFrist.ts` - der Banner im Einstiegs-Bündel braucht sie nicht. */
+export { heute, hoechstesEnde, pruefeUnterstuetzung, vorgabeEnde } from './unterstuetzungFrist';
 export const enddatum = (u: Pick<Unterstuetzung, 'gueltig_bis' | 'endet'>) => u.gueltig_bis
   ? u.gueltig_bis.split('-').reverse().join('.') : u.endet ? datumZeit(u.endet, VORGABE_ZEITZONE) : 'unbekannt';
 export function bannerTexte(me: Selbstauskunft | null, standort: string | null, jetzt = Date.now()): string[] {

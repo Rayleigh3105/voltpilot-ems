@@ -53,6 +53,8 @@ const zeile = (
 ): WiedervorlageZeile => ({
   art, kennzeichen, titel, faellig_am, tage, satz: tage > 0 ? `seit ${tage} Tagen fällig` : tage === 0 ? 'heute fällig' : `fällig in ${-tage} Tagen`,
   verantwortlich, id, kennzahl_id: art === 'bezugsbasis_ueberpruefung' ? 'k0170000-0000-4000-8000-000000000001' : null,
+  // Vertrag 1.1: die Abschnitte der Managementbewertung lesen nur Kennzeichen, Titel, Tag und Satz.
+  herleitung: null, bezug: null, einsatz_id: null, aufgabe: null, zustaendig: null,
 });
 
 export function r12Wiedervorlage(): Wiedervorlage {
@@ -77,6 +79,12 @@ export function r12Wiedervorlage(): Wiedervorlage {
     nicht_in_liste: ['AU-2029-0001', 'BB-0001', 'D-0003', 'D-0004', 'F-2029-0001', 'M-2029-0002'],
     verantwortung: UEMS_VERANTWORTUNG,
     naechste_managementbewertung: null,
+    spaeter: [],
+    anzahl_ueberfaellig: 8,
+    anzahl_naechste: 1,
+    anzahl_spaeter: 0,
+    // Diese Welt führt keine Aufgaben im Energiemanagement: keine Person laut Aufgabe, kein „Niemand zuständig“.
+    aufgaben_lesbar: false,
   };
 }
 
@@ -265,7 +273,7 @@ export function managementbewertungBuehne(lage: MbLage, jetzt: () => string, hil
     kennung, vorlage: 'managementbewertung', vorlage_fassung: 1, geltung_art: 'unternehmen', geltung_id: UNTERNEHMEN_ID,
     geltung_name: 'Kunststoffwerk Ahrenberg GmbH', zeitraum_art: 'jahr', zeitraum, zeitraum_text: zeitraum, zeitzone: ZONE,
     angelegt_von: IK, angelegt_am: angelegt, archiviert_am: null, stand_zeichen: 'entwurf', stand_text: null, neueste_nr: null,
-    entwurf_datenstand: angelegt, wiedervorlage_monate: null, ueberpruefung: null,
+    entwurf_datenstand: angelegt, wiedervorlage_monate: null, ueberpruefung: null, freigegeben_am: null, anstoss_seit: null,
   });
   if (lage !== 'leer') berichte.set(MB_KENNUNG, { bericht: neu(MB_KENNUNG, '2028', '2029-02-05T09:00:00Z'), staende: [] });
   let staendeFertig: Promise<void> = Promise.resolve();
@@ -283,7 +291,7 @@ export function managementbewertungBuehne(lage: MbLage, jetzt: () => string, hil
       const pruefsumme = PRUEFSUMME_PRAEFIX + (await sha256Hex(kanonisch(abzug)));
       const b = berichte.get(MB_KENNUNG)!;
       b.staende.push({ nr: 1, datenstand: '2029-02-12T13:00:00Z', freigegeben_am: '2029-02-12T13:10:00Z', freigegeben_von: IK, pruefsumme, ersetzt_durch_nr: null, anlass_anstoss_id: null, abzug });
-      b.bericht = { ...b.bericht, stand_zeichen: 'berichtsstand', neueste_nr: 1 };
+      b.bericht = { ...b.bericht, stand_zeichen: 'berichtsstand', neueste_nr: 1, freigegeben_am: '2029-02-12T13:10:00Z' };
     })();
   }
   const finde = async (kennung: string) => {
@@ -407,8 +415,9 @@ export function managementbewertungBuehne(lage: MbLage, jetzt: () => string, hil
       const abzug = r13Abzug(datenstand, ein);
       const pruefsumme = PRUEFSUMME_PRAEFIX + (await sha256Hex(kanonisch(abzug)));
       const nr = b.staende.length + 1;
-      b.staende.push({ nr, datenstand, freigegeben_am: jetzt(), freigegeben_von: IK, pruefsumme, ersetzt_durch_nr: null, anlass_anstoss_id: null, abzug });
-      b.bericht = { ...b.bericht, stand_zeichen: 'berichtsstand', neueste_nr: nr };
+      const freigegeben = jetzt();
+      b.staende.push({ nr, datenstand, freigegeben_am: freigegeben, freigegeben_von: IK, pruefsumme, ersetzt_durch_nr: null, anlass_anstoss_id: null, abzug });
+      b.bericht = { ...b.bericht, stand_zeichen: 'berichtsstand', neueste_nr: nr, freigegeben_am: freigegeben };
       return stand(kennung, nr);
     },
     berichtStand: stand,
@@ -473,12 +482,29 @@ export function managementbewertungBuehne(lage: MbLage, jetzt: () => string, hil
         w.naechste_managementbewertung = { faellig_am: faellig, kennzeichen: letzte.bericht.kennung, sitzung_am: tagS, rhythmus_monate: 12 };
         if (tage >= 0) w.faellig.push(z);
         else if (-tage <= w.vorschau_tage) w.vorschau.push(z);
-        else w.nicht_in_liste = [...w.nicht_in_liste, letzte.bericht.kennung].sort();
+        else {
+          w.nicht_in_liste = [...w.nicht_in_liste, letzte.bericht.kennung].sort();
+          w.spaeter = [...w.spaeter, z];
+        }
         w.anzahl_faellig = w.faellig.length;
         w.anzahl_vorschau = w.vorschau.length;
+        w.anzahl_ueberfaellig = w.faellig.filter((x) => x.tage > 0).length;
+        w.anzahl_naechste = w.faellig.length + w.vorschau.length - w.anzahl_ueberfaellig;
+        w.anzahl_spaeter = w.spaeter.length;
       }
       return w;
     },
+    // Konzept Wiedervorlage w1: „Zuletzt erledigt“ am 12.02.2029, die 90 Tage davor: das „geprüft, bleibt“ von BB-0001.
+    energiemanagementWiedervorlageZuletzt: async () => ({
+      stichtag: '2029-02-12T08:00:00+01:00',
+      tage: 90,
+      eintraege: [
+        {
+          art: 'bezugsbasis_geprueft_bleibt', gruppe: null, kennzeichen: 'BB-0001', titel: 'Bezugsbasis BB-0001 (KZ-0004 Stromeinsatz Spritzguss je kg)',
+          nr: 2, am: '2028-11-25', entschieden_von: null, eingetragen_von: 'Ines Kaltenbach',
+        },
+      ],
+    }),
     energiemanagementWiedervorlageIcs: async () => {
       gesendet.push({ route: 'GET /api/v1/energiemanagement/wiedervorlage?format=ics', body: null });
       return new Blob(['BEGIN:VCALENDAR\r\nX-WR-CALDESC:Stand vom 12.02.2029 aus VoltPilot; maßgeblich ist die Wiedervorlage im Portal.\r\nEND:VCALENDAR\r\n'], { type: 'text/calendar' });

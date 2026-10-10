@@ -1,4 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import { ahrenbergHeute, ahrenbergUnternehmen, FIXTURE_IDS } from '../src/test/standorteFixtures';
 
 /**
  * Der Boot-Ablauf der SCHALE (nach der Keycloak-Anmeldung): `/tenant-context`,
@@ -57,6 +58,9 @@ async function mockBoot(
     failSites?: number;
     // Plattform-Konto mit gewähltem Mandanten (UEMS-Selbstauskunft `konto: plattform`).
     admin?: boolean;
+    // UEMS-Ortsstruktur des Referenzunternehmens (zwei Standorte), Werk Ahrenberg misst: die Landung ist die
+    // Unternehmens-Übersicht. Seit K2 (PR #1482) ist sie das nur, wenn mindestens ein Standort misst.
+    orte?: boolean;
   },
 ) {
   const wait = () => new Promise((r) => setTimeout(r, opts.delayMs));
@@ -77,17 +81,42 @@ async function mockBoot(
   // UEMS: die Schale liest zuerst die Selbstauskunft (`/me`, AP-03) - ein Konto mit Unternehmenssicht, sonst
   // stünde „Kein Standort zugewiesen“ statt der Landung. Ohne Ortsstruktur (`/standorte` 404 = älteres Backend)
   // bleibt die Startansicht „wie heute“.
-  await page.route('**/api/v1/me', (route) => route.fulfill({ json: selbstauskunft(opts.admin === true) }));
+  await page.route('**/api/v1/me', (route) => route.fulfill({ json: selbstauskunft(opts.admin === true, opts.orte === true) }));
   await page.route('**/api/v1/standorte**', (route) => route.fulfill({ status: 404, json: { message: 'nicht da' } }));
-  // Die Funktionen (AP-01): niemand misst oder steuert schon - die Anlege-Wege bleiben wie bisher.
+  if (opts.orte) {
+    await page.route('**/api/v1/standorte', (route) => route.fulfill({ json: ahrenbergHeute() }));
+    await page.route('**/api/v1/unternehmen', (route) => route.fulfill({ json: ahrenbergUnternehmen() }));
+    await page.route('**/api/v1/overview', (route) =>
+      route.fulfill({
+        json: {
+          sites: [],
+          totals: { sites: opts.sites.length, devices: 0, online: 0, plannedSavingsTodayEur: null, liveSitesCovered: 0 },
+          dailySavings: [],
+        },
+      }),
+    );
+  }
+  // Die Funktionen (AP-01): niemand misst oder steuert schon - die Anlege-Wege bleiben wie bisher. Mit `orte`
+  // misst Werk Ahrenberg: erst dann ist die Unternehmensebene die Landung (K2, `ebenenNav.ts misst()`).
   await page.route('**/api/v1/funktionen', (route) =>
     route.fulfill({
       json: {
         unternehmen: {
-          messen: { laeuft_an: 0, standorte: 0, text: null },
-          steuern: { laeuft_an: 0, standorte: 0, text: null },
+          messen: { laeuft_an: opts.orte ? 1 : 0, standorte: opts.orte ? 2 : 0, text: null },
+          steuern: { laeuft_an: 0, standorte: opts.orte ? 2 : 0, text: null },
         },
-        standorte: [],
+        standorte: opts.orte
+          ? [
+              {
+                id: FIXTURE_IDS.st1,
+                kurzzeichen: 'ST-1',
+                name: 'Werk Ahrenberg',
+                zeitzone: 'Europe/Berlin',
+                messen: { zustand: 'aktiv', seit: '2026-10-01T00:00:00+02:00', text: 'Eingerichtet am 01.10.2026', fehlt: [], datenlage: null },
+                steuern: { zustand: 'kein_objekt', seit: null, text: 'Steuern & Optimieren — noch nicht eingerichtet', fehlt: [], aktionen: ['einrichten'], anlagen: [] },
+              },
+            ]
+          : [],
       },
     }),
   );
@@ -118,12 +147,17 @@ function sichtbar(eintraege: unknown[]) {
   return { eintraege, teilansicht: { sichtbar: eintraege.length, gesamt: eintraege.length } };
 }
 
-/** Die Selbstauskunft eines Kontos, das das ganze Unternehmen sieht (keine Teilansicht). */
-function selbstauskunft(admin: boolean) {
+/** Die Selbstauskunft eines Kontos, das das ganze Unternehmen sieht (keine Teilansicht); mit `orte` beide Standorte. */
+function selbstauskunft(admin: boolean, orte = false) {
+  const standorte = orte
+    ? ahrenbergHeute().standorte.map((st) => ({
+        id: st.id, kennzeichen: st.kurzzeichen, name: st.name, rollen: ['kundenadministrator'], umfang: null, rechte: ['anlage.verwalten'],
+      }))
+    : [];
   return {
     kennung: 'e2e', name: 'Alex Beispiel', konto: admin ? 'plattform' : 'benutzer', zustand: 'aktiv',
     kundenbereich: { id: 't-1', name: 'Demo' }, zugang: admin ? 'umschalter' : 'konto', rollen: ['kundenadministrator'],
-    unternehmensweit: true, standorte: [], unternehmen_rechte: ['anlage.verwalten'], kuenftig: [], text: null,
+    unternehmensweit: true, standorte, unternehmen_rechte: ['anlage.verwalten'], kuenftig: [], text: null,
     teilansicht: null, unterstuetzungen: { eigene: [], gewaehrte: [] }, kundenadministratoren: [],
   };
 }
@@ -246,5 +280,65 @@ test.describe('Boot-Cover · Ränder', () => {
     await expect(page).toHaveURL(/#\/portfolio\/messwerte$/);
     const dt = Date.now() - t0;
     expect(dt, `der Cover hing ${dt} ms - Verdacht auf die 3-s-Grenze`).toBeLessThan(2500);
+  });
+
+  test('UEMS-Übersicht (Unternehmensebene): der Cover hebt mit ihrem ersten Bild ab, nicht an der 3-s-Grenze', async ({
+    page,
+  }) => {
+    // Die Landung eines Kunden mit zwei Standorten ist die Unternehmens-Übersicht (`EbenenCockpit`). Sie muss ihr
+    // erstes Bild melden wie das Portfolio-Cockpit - sonst hängt der Cover bei JEDER Anmeldung bis zur 3-s-Grenze und
+    // zeigt ab 2,2 s „Das dauert gerade etwas länger als sonst …“ über fertigem Inhalt.
+    const anlagen = [FIXTURE_IDS.an1, FIXTURE_IDS.an2, FIXTURE_IDS.an3].map((id, i) => ({ ...site, id, name: `Anlage ${i + 1}` }));
+    const geraete = anlagen.map((a, i) => ({ ...device, id: `20000000-0000-0000-0000-00000000000${i + 1}`, siteId: a.id }));
+    await mockBoot(page, { sites: anlagen, devices: geraete, delayMs: 400, orte: true });
+    const kpis = page.waitForRequest('**/api/v1/portfolio/kpis');
+    await page.goto('/e2e/boot-flow.html');
+    const t0 = Date.now();
+    await expect(page.locator('.vp-loader-screen')).toBeVisible();
+    // Das Kachelraster der Unternehmens-Übersicht fragt seine Kennzahlen an: die Landung IST das EbenenCockpit.
+    await kpis;
+    await expect(page.locator('.vp-loader-screen')).toHaveCount(0, { timeout: 2500 });
+    await expect(page).toHaveURL(/#\/portfolio$/);
+    await expect(page.getByText(/dauert gerade etwas länger/)).toHaveCount(0);
+    const dt = Date.now() - t0;
+    expect(dt, `der Cover hing ${dt} ms - Verdacht auf die 3-s-Grenze`).toBeLessThan(2500);
+  });
+
+  test('Deep-Link auf einen Reiter der Anlage: der Cover hebt bei `loaded` ab, nicht erst an der 3-s-Grenze', async ({
+    page,
+  }) => {
+    // Nur die Anlage selbst (ohne Reiter) meldet ihr erstes Bild; ein Reiter wie „Messwerte“ meldet nicht.
+    const zweite = { ...site, id: '10000000-0000-0000-0000-000000000002', name: 'Waldblick' };
+    await mockBoot(page, { sites: [site, zweite], devices: [device], delayMs: 400, admin: true });
+    await page.goto(`/e2e/boot-flow.html?admin=1&tenant=t-1#/anlage/${site.id}/messwerte`);
+    const t0 = Date.now();
+    await expect(page.locator('.vp-loader-screen')).toBeVisible();
+    await expect(page.locator('.vp-loader-screen')).toHaveCount(0, { timeout: 2500 });
+    await expect(page).toHaveURL(new RegExp(`#/anlage/${site.id}/messwerte$`));
+    const dt = Date.now() - t0;
+    expect(dt, `der Cover hing ${dt} ms - Verdacht auf die 3-s-Grenze`).toBeLessThan(2500);
+  });
+
+  test('Einmal gehoben, kehrt der Cover nicht zurück: nach einem Deep-Link auf eine Unterseite auch nicht auf der Übersicht', async ({
+    page,
+  }) => {
+    const zweite = { ...site, id: '10000000-0000-0000-0000-000000000002', name: 'Waldblick' };
+    await mockBoot(page, { sites: [site, zweite], devices: [device], delayMs: 400, admin: true });
+    await page.goto('/e2e/boot-flow.html?admin=1&tenant=t-1#/portfolio/messwerte');
+    await expect(page.locator('.vp-loader-screen')).toHaveCount(0, { timeout: 2500 });
+    // Ab jetzt jedes Auftauchen der Lade-Bühne mitschreiben - auch ein Aufblitzen für die Dauer der Ausblendung.
+    await page.evaluate(() => {
+      const w = window as unknown as { __buehne: number };
+      w.__buehne = 0;
+      new MutationObserver(() => {
+        if (document.querySelector('.vp-loader-screen')) w.__buehne += 1;
+      }).observe(document.body, { childList: true, subtree: true });
+    });
+    await page.evaluate(() => {
+      window.location.hash = '#/portfolio';
+    });
+    await expect(page).toHaveURL(/#\/portfolio$/);
+    await page.waitForTimeout(1200);
+    expect(await page.evaluate(() => (window as unknown as { __buehne: number }).__buehne), 'die Lade-Bühne kam zurück').toBe(0);
   });
 });

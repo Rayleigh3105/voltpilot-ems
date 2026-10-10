@@ -10,7 +10,7 @@ Neu angelegt am 15.09.2026. Keine Migration, keine Fläche. Die Regeln sind der 
 | Gemeinsamer Weg mit dem CSV | `BerichtService.ausgabe(…)`: Recht → Stand mit geprüfter Prüfsumme → Datei → `bericht_abruf` + `bericht_abgerufen` in EINER Transaktion |
 | Bibliothek | Apache PDFBox 3.0.8 (Apache-2.0) in `services/api/pom.xml` mit Lizenz-Vermerk; `commons-logging` ausgeschlossen (spring-jcl stellt dieselbe API) |
 | Schrift | Liberation Sans Regular aus dem pdfbox-Jar (`/org/apache/pdfbox/resources/ttf/LiberationSans-Regular.ttf`, SIL OFL 1.1), als Teilmenge eingebettet |
-| Portal-Naht (nicht eingehängt) | `berichtSeite.ts`: `AUSGABE_EINGEHAENGT.pdf` auf `true` (`berichtSeite.test.ts` pinnt heute `{ pdf: false, csv: false }`); `pages/BerichtePage.tsx`: `onAbruf` in `<BerichtSeite>` reichen; `api.ts`: ein Download wie `downloadMeasurementExport` mit `k.datei`. `darfNachLesen` kennt das PDF-Recht schon (= abrufen) — der Knopf erscheint, sobald beides steht |
+| Portal-Naht (eingehängt, Konzept Nachweisen n1 PR 0) | `berichtSeite.ts`: `AUSGABE_EINGEHAENGT.pdf = true`; das PDF-Recht ist das Recht zum Abrufen (`darfNachLesen`); `pages/BerichtSeite.tsx` lädt die Datei unter `k.datei`. Name der Person im Kopf und Fuß: `freigeber_name` liest `BerichtRepository` über `benutzer.anzeigename` |
 | Tests | `BerichtPdfTest` (rein) · `BerichtApiTest.dasPdfEinesStands…` (Testcontainers) · `BerichtSchnittstelleVertragTest` · `RechteKennungenDerRoutenTest` |
 
 ```bash

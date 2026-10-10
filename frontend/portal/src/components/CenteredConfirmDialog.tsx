@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { fokussierbare } from './VpPanel';
+import { fokusAusloeser, sperreSeitenScroll } from '../../designsystem/components/shell/ueberlagerung';
 import './CenteredConfirmDialog.css';
 
 /**
@@ -37,12 +38,13 @@ export function CenteredConfirmDialog({
 
   useEffect(() => {
     if (!open) return undefined;
-    const vorherigerFokus = document.activeElement as HTMLElement | null;
-    const vorherigerOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    // Der Auslöser, nicht blind `document.activeElement`: Safari fokussiert einen angetippten Knopf nicht.
+    const vorherigerFokus = fokusAusloeser();
+    // Der EINE gezählte Sperrer des Hauses: eine Rückfrage über einem Modal gibt sonst dessen `hidden` als „vorher“ zurück.
+    const freigeben = sperreSeitenScroll();
     panelRef.current?.focus();
     return () => {
-      document.body.style.overflow = vorherigerOverflow;
+      freigeben();
       vorherigerFokus?.focus();
     };
   }, [open]);

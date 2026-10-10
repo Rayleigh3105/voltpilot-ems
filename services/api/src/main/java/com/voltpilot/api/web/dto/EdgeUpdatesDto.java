@@ -24,9 +24,14 @@ public record EdgeUpdatesDto(List<ReleaseDto> releases, List<RolloutDto> rollout
      * Release kann verteilt werden, weil nur dann Manifest-Bytes existieren,
      * die ein Gerät gegen seine eingebackene Wurzel prüfen kann. Ein
      * Stufe-0-Eintrag liest sich ehrlich als „nicht signiert".
+     *
+     * <p>{@code boxArt} ist {@code docker} oder {@code light} ({@code ota.BoxArt}):
+     * ohne Kennzeichnung im Manifest oder Namen gilt ein Release als Docker.
+     * Nur Geräte derselben Box-Art bekommen es (409 sonst).
      */
     public record ReleaseDto(long releaseSeq, String version, String targetCommit, String notes,
-            boolean signed, String signingKeyId, Instant createdAt, int runningOnDevices) {
+            boolean signed, String signingKeyId, Instant createdAt, int runningOnDevices,
+            String boxArt) {
     }
 
     /**
@@ -75,12 +80,17 @@ public record EdgeUpdatesDto(List<ReleaseDto> releases, List<RolloutDto> rollout
      * {@code externalRef} die Referenz selbst - der geteilte Geräte-Drawer
      * zeigt beide, und die Referenz als „Name" auszugeben wäre auf einem
      * benannten Gerät schlicht falsch.
+     *
+     * <p>{@code boxArt} ist {@code docker}, {@code light} oder {@code null} =
+     * unbekannt (noch keine Meldung) - abgeleitet in {@code ota.BoxArt}, nie im
+     * Portal geraten.
      */
     public record FleetRowDto(UUID deviceId, String label, String externalRef,
             UUID siteId, String siteName,
             UUID tenantId, String tenantName, String ist, String soll, Long sollSeq,
             String state, String reason, String blocker,
-            Instant since, Instant reportedAt, UUID rolloutId, TrustDto trust) {
+            Instant since, Instant reportedAt, UUID rolloutId, TrustDto trust,
+            String boxArt) {
     }
 
     /**

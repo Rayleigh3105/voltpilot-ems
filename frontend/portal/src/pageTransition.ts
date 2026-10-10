@@ -25,6 +25,8 @@ import type { AnlagenSub, PageId, Route, TransitionKind } from './nav';
 interface ViewTransitionLike {
   finished: Promise<void>;
   updateCallbackDone: Promise<void>;
+  /** Lehnt ab („Transition was skipped“), wenn ein Nachfolger den Übergang überspringt, bevor er bereit ist. */
+  ready?: Promise<void>;
   skipTransition: () => void;
 }
 
@@ -81,6 +83,10 @@ export function runPageTransition(kind: TransitionKind, apply: () => void): void
   // Ein Fehler im Rückruf lehnt diese Zusage ab; ohne Fänger wäre es eine
   // unbehandelte Ablehnung in der Konsole des Kunden.
   transition.updateCallbackDone.catch(() => {});
+  // Überspringt ein schneller zweiter Wechsel diesen Übergang, bevor er bereit
+  // ist, lehnt `ready` mit „Transition was skipped“ ab - gewollt (der Neue
+  // gewinnt), also kein Fehler in der Konsole.
+  transition.ready?.catch(() => {});
 }
 
 /* -------------------------------------------------------------------------
@@ -139,7 +145,7 @@ const SUB_LOADER: Partial<Record<AnlagenSub, Loader>> = {
 /**
  * `anlagen` fehlt mit Absicht: ohne Anlage ist es die Umleitungs-Adresse der
  * Flotten-Ebene, mit Anlage das Cockpit — beides ohne eigenes Stück.
- * Geräte-Registry und Edge-Updates teilen sich `GeraeteBereich`.
+ * Geräte-Registry, Edge-Updates und Fernwartung teilen sich `GeraeteBereich`.
  */
 const PAGE_LOADER: Partial<Record<PageId, Loader>> = {
   hilfe: PAGE_CHUNK.hilfe,
@@ -151,15 +157,18 @@ const PAGE_LOADER: Partial<Record<PageId, Loader>> = {
   'portfolio-kennzahlen': PAGE_CHUNK['portfolio-kennzahlen'],
   'portfolio-berichte': PAGE_CHUNK['portfolio-berichte'],
   'portfolio-bewertung': PAGE_CHUNK['portfolio-bewertung'],
+  'portfolio-verbrauch': PAGE_CHUNK['portfolio-verbrauch'],
   'portfolio-verbesserung': PAGE_CHUNK['portfolio-verbesserung'],
   'portfolio-energiemanagement': PAGE_CHUNK['portfolio-energiemanagement'],
   'portfolio-messwerte': PAGE_CHUNK['portfolio-messwerte'],
   'portfolio-erloese': PAGE_CHUNK['portfolio-erloese'],
+  'kunden-benutzer': PAGE_CHUNK['kunden-benutzer'],
   standort: PAGE_CHUNK.standort,
   mandanten: PAGE_CHUNK.mandanten,
   'plattform-uebersicht': PAGE_CHUNK['plattform-uebersicht'],
   'geraete-registry': PAGE_CHUNK['geraete-registry'],
   'edge-updates': PAGE_CHUNK['geraete-registry'],
+  fernwartung: PAGE_CHUNK['geraete-registry'],
   optimizer: PAGE_CHUNK.optimizer,
   flows: PAGE_CHUNK.flows,
   'steuerungs-freigabe': PAGE_CHUNK['steuerungs-freigabe'],

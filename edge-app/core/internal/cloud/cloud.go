@@ -36,6 +36,9 @@ type Link struct {
 	version string
 	// networkFn is the link-level reachability source (see Options.NetworkFn).
 	networkFn func() *NetworkSummary
+	// batteryControlFn is the link-level steering-state source (see
+	// Options.BatteryControlFn).
+	batteryControlFn func() *BatteryControlSummary
 
 	onSchedule          func(payload []byte)
 	onCommand           func(payload []byte) bool
@@ -198,6 +201,13 @@ type Options struct {
 	// It reports ONLY what the box can PROVE (see internal/netinfo); the cloud
 	// never invents a box address.
 	NetworkFn func() *NetworkSummary
+	// BatteryControlFn is asked at PUBLISH time whether VoltPilot commands this
+	// box's battery or only observes it (contract
+	// docs/contracts/speicher-steuerstand.md). It hangs on the LINK for the
+	// same reason NetworkFn does: the block must ride every heartbeat,
+	// independent of the control readback that gates the `control` block. nil
+	// (or a nil result) = omit the block.
+	BatteryControlFn func() *BatteryControlSummary
 }
 
 func (o Options) brokerURL() string {
@@ -210,8 +220,9 @@ func (o Options) brokerURL() string {
 // New builds (but does not connect) the link.
 func New(o Options) (*Link, error) {
 	l := &Link{identity: o.Identity, version: o.Version, networkFn: o.NetworkFn,
-		onSchedule: o.OnSchedule,
-		onCommand:  o.OnCommand, onEntities: o.OnEntities, onPlanV2: o.OnPlanV2,
+		batteryControlFn: o.BatteryControlFn,
+		onSchedule:       o.OnSchedule,
+		onCommand:        o.OnCommand, onEntities: o.OnEntities, onPlanV2: o.OnPlanV2,
 		onFlows: o.OnFlows, onUpdateTarget: o.OnUpdateTarget,
 		onControlCert:       o.OnControlCert,
 		onVerbundAnteile:    o.OnVerbundAnteile,
@@ -771,6 +782,20 @@ type ChargersSummary struct {
 	// labelled at the hub).
 	SourceAllocatedKw float64 `json:"source_allocated_kw,omitempty"`
 
+	// --- „Sonne + Speicher" (2026-10-06, ADDITIVE) ---
+	//
+	// What the box does with the cloud's battery floor right now: whether it
+	// releases battery energy to cars on that source, how much (kW beyond the
+	// sun), against which floor and which MEASURED SoC, and the stage with its
+	// German sentence. Every number is nil when it is not known - never a 0.
+	// Absent mode = an older edge, or no station runs the source.
+	StorageReleaseActive   bool     `json:"storage_release_active,omitempty"`
+	StorageReleaseKw       *float64 `json:"storage_release_kw,omitempty"`
+	StorageReleaseFloorPct *float64 `json:"storage_release_floor_soc_pct,omitempty"`
+	StorageReleaseSocPct   *float64 `json:"storage_release_soc_pct,omitempty"`
+	StorageReleaseMode     string   `json:"storage_release_mode,omitempty"`
+	StorageReleaseNote     string   `json:"storage_release_note,omitempty"`
+
 	// Chargers are the registered charge points, id-sorted. Never nil when the
 	// block is present.
 	Chargers []ChargerEntry `json:"chargers"`
@@ -1201,6 +1226,34 @@ type ActiveControlEntity struct {
 	AllMatch *bool `json:"all_match,omitempty"`
 }
 
+// BatteryControlSummary is the additive `battery_control` block of the status
+// heartbeat (contract docs/contracts/speicher-steuerstand.md, vectors
+// speicher-steuerstand-vectors.json): does VoltPilot COMMAND this box's
+// battery, or does the box only OBSERVE it?
+//
+// It exists because the `control` block cannot answer that question: it rides
+// only with a Layer-1 readback (controlSummary returns nil without one), so a
+// box that never reads back - Edge Light with its read-only Deye - never told
+// the cloud that it does not command the battery. The optimizer then planned
+// every battery as commanded, including trades nobody executes.
+//
+// The block comes from the CORE gate (the kill-switch and the certification
+// merge), never from a readback stamp, and it is omitted while no inverter is
+// selected: an unknown battery is not an observed one.
+type BatteryControlSummary struct {
+	// State is "gesteuert" (kill-switch on AND certified: the box writes the
+	// battery), "beobachtet" (kill-switch on, no model/device approval: Layer 1
+	// writes nothing, the inverter regulates itself) or "not_aus" (kill-switch
+	// off: the box writes neither the battery nor the wallboxes).
+	State string `json:"state"`
+	// ControlEnabled means exactly what `control.control_enabled` and the
+	// control_enabled on edge/setpoint mean: kill-switch AND certification.
+	ControlEnabled bool `json:"control_enabled"`
+	// Certified is the model/device approval (env allowlist, First-Light or
+	// platform register), as in `control.certified`.
+	Certified bool `json:"certified"`
+}
+
 // ControlSummary is the compact inverter-control confirmation folded into the
 // status heartbeat (report §5.3), so the cloud sees "Fahrplan sagt X ->
 // Wechselrichter bestätigt Y" without register-level detail. Additive; the
@@ -1300,6 +1353,15 @@ type ExecutionSummary struct {
 	//	             its own watts. Reported ONLY once the device has CONFIRMED
 	//	             the mode on its readback - "we stopped writing" and "we
 	//	             died" must never look the same to the cloud.
+	//	"grid_target" - GRID-SIDE THROTTLING SLOT: in a slot the plan curtails,
+	//	             the hybrid inverter regulates the grid connection point
+	//	             itself (target 0 W) and throttles its OWN PV for it. Like
+	//	             the autonomous_* words it is reported ONLY once the device
+	//	             confirmed the grid side on its readback, planned_kw is the
+	//	             reference the box would write if it took the battery back,
+	//	             and commanded_kw/confirmed_kw are null (no battery value is
+	//	             written). The commanded target and the measured effect ride
+	//	             in curtailment.per_unit (mode/target_kw/match).
 	//	"fallback" - no fresh plan: the built-in self-consumption rule
 	//
 	// A cloud that does not know a mode DROPS it (the strict filter in the api's
@@ -1449,7 +1511,23 @@ type CurtailmentUnit struct {
 	// Match is the unit's readback verdict. Absent (nil) for an observed-only
 	// readback where nothing was commanded - "nothing applied" must not read as
 	// "the readback disagreed".
+	//
+	// For a `mode: grid_target` entry it is the MEASURED EFFECT instead: the
+	// grid connection point is inside the band around target_kw. Registers that
+	// hold prove nothing about what the meter does. Absent while the device has
+	// not confirmed the grid side yet ("not judged", never "disagreed").
 	Match *bool `json:"match,omitempty"`
+	// Mode (additive, netzseitiger Drossel-Slot P3) says HOW this unit curtails.
+	// "grid_target" = the PRIMARY hybrid inverter: it does not cap its own
+	// output, it regulates the grid connection point and throttles its own PV
+	// for it - so AppliedCapKw stays absent on such an entry. The word is
+	// STANDING (present whenever the device carries the released lever), not a
+	// claim that it regulates right now. Absent = the ordinary cap unit.
+	Mode string `json:"mode,omitempty"`
+	// TargetKw is the commanded grid target of a grid_target entry
+	// (+ import / - feed-in; 0 = no feed-in), present only while the intent
+	// stands. Absent = no target active - never a fabricated 0.
+	TargetKw *float64 `json:"target_kw,omitempty"`
 }
 
 // CurtailTrackSummary is the heartbeat half of the live curtailment tracker.
@@ -1543,6 +1621,11 @@ func (l *Link) PublishStatus(controlSource string, socPct *float64, control *Con
 	}
 	if update != nil {
 		payload["update"] = update
+	}
+	if l.batteryControlFn != nil {
+		if b := l.batteryControlFn(); b != nil {
+			payload["battery_control"] = b
+		}
 	}
 	if control != nil {
 		payload["control"] = control

@@ -921,3 +921,29 @@ describe('controlStrip · Wechselrichter-Automatik ohne Sollwert (K4b)', () => {
     expect(MODI.every((m) => isWrAutomatik(m))).toBe(true);
   });
 });
+
+describe('netzseitiger Drossel-Slot (Konzept `vp-deye-netzseitig-drossel-k2` P4)', () => {
+  it('ist eine Wechselrichter-Eigenregelung: der Wechselrichter führt den Speicher selbst', () => {
+    expect(isWrAutomatik('grid_target')).toBe(true);
+    const v = controlStrip(
+      status({ commandedKw: null, confirmedKw: null, executionMode: 'grid_target' }),
+      NOW,
+      false,
+    )!;
+    expect(v.state).toBe('healthy');
+    expect(v.sentence).toContain(WR_AUTOMATIK_SATZ);
+    expect(JSON.stringify(v)).not.toMatch(/grid_target|pausiert|Stillstand/);
+  });
+
+  it('der Satz nennt den Netzanschluss und KEINE Zahl - die trägt der Abregel-Beleg', () => {
+    const note = executionNote(
+      status({ executionMode: 'grid_target', executionPlannedKw: -3, executionTargetKw: 0 }),
+    )!;
+    expect(note).toBe(
+      'Ihr Wechselrichter regelt gerade selbst den Netzanschluss: Solar-Überschuss geht ' +
+        'zuerst in den Speicher, erst danach wird die Solarleistung gedrosselt.',
+    );
+    expect(note).not.toMatch(/\d|Fahrplan sah/);
+    expect(EXECUTION_MODE_LABEL.grid_target).toBe('Wechselrichter regelt den Netzanschluss');
+  });
+});

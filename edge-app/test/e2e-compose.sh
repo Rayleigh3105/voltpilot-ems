@@ -244,6 +244,70 @@ done
 [ -n "$CTRL_OK" ] || { echo "$STATE"; fail "control readback never confirmed reg 40 = -25 kW (all_match)"; }
 echo "control readback confirmed: -25 kW written to reg 40, read back and matched"
 
+echo "--- Abregel-Slot OHNE freigegebenen Hebel: der Sollwert-Pfad bleibt, wie er ist (netzseitiger Drossel-Slot)"
+# Der netzseitige Drossel-Slot (core guards/gridtarget.go) gibt in einem Slot mit
+# Abregelung den NETZPUNKT an den Wechselrichter - aber nur, wenn Layer 1 den
+# modellgebundenen Hebel `grid_target` meldet. Den traegt allein der
+# Deye-Fernsteuerpfad des freigegebenen Modells (nodered/deye-grid-target.js),
+# nie der Simulator dieses Rigs. Ein Slot, der sonst ALLES erfuellt (Abregelung,
+# der Plan laedt, Reserve bekannt, Not-Aus an), muss deshalb hier exakt wie
+# vorher laufen: der Batterie-Sollwert wird geschrieben und zurueckgelesen, die
+# PV-Kappe landet in Register 42, und nichts vom neuen Pfad erscheint - die
+# Zusage „ohne Zertifikat byte-identisch", im ausgelieferten Compose.
+docker run --rm --network "$NET" eclipse-mosquitto:2 \
+  mosquitto_pub -h cloud-broker -p 1883 -t "$T_BASE/schedule" -q 1 -r -m "{
+    \"schema_version\":\"1.0\",
+    \"tenant_id\":\"00000000-0000-0000-0000-000000000001\",
+    \"site_id\":\"00000000-0000-0000-0000-000000000002\",
+    \"device_id\":\"00000000-0000-0000-0000-000000000003\",
+    \"plan_id\":\"e2e00000-0000-0000-0000-000000000002\",
+    \"generated_at\":\"$START\",
+    \"horizon_slots\":2,\"slot_minutes\":15,
+    \"grid_import_limit_kw\":60.0,\"peak_reserve_soc_pct\":25,
+    \"grid_charge_allowed\":true,\"effective_floor_soc_pct\":25,
+    \"slots\":[
+      {\"start\":\"$START\",\"battery_setpoint_kw\":4.0,\"pv_limit_kw\":3.0},
+      {\"start\":\"$(python3 -c "from datetime import datetime,timedelta,timezone;print((datetime.strptime('$START','%Y-%m-%dT%H:%M:%SZ')+timedelta(minutes=15)).strftime('%Y-%m-%dT%H:%M:%SZ'))")\",\"battery_setpoint_kw\":4.0,\"pv_limit_kw\":3.0}
+    ]}"
+
+for i in $(seq 1 30); do
+  if "${COMPOSE[@]}" logs edge-sim 2>/dev/null | grep -q 'PV limit write: cap = '; then
+    echo "sim received the curtailment cap (reg 42)"
+    break
+  fi
+  [ "$i" = 30 ] && { "${COMPOSE[@]}" logs edge-sim | tail -20; fail "sim never logged a PV limit write for the curtailing slot"; }
+  sleep 2
+done
+
+CURTAIL_OK=""
+for i in $(seq 1 30); do
+  STATE=$(req /api/state)
+  if probe_py "$STATE" <<'PY'
+import json, os, sys
+s = json.loads(os.environ["STATE"])
+c = s.get("control") or {}
+regs = {r["role"]: r for r in c.get("registers", [])}
+bp, pl = regs.get("battery_power"), regs.get("pv_limit")
+ok = (c.get("all_match") and bp and (bp.get("actual_kw") or 0) > 0
+      and pl and pl.get("commanded_raw") != 0xFFFF and s.get("curtail_track"))
+sys.exit(0 if ok else 1)
+PY
+  then CURTAIL_OK=1; break; fi
+  sleep 2
+done
+[ -n "$CURTAIL_OK" ] || { echo "$STATE"; fail "the curtailing slot never showed a confirmed battery setpoint + PV cap"; }
+probe_py "$STATE" <<'PY' || { echo "$STATE"; fail "a device WITHOUT the released grid-side lever shows a trace of the grid-target path"; }
+import json, os, sys
+s = json.loads(os.environ["STATE"])
+c = s.get("control") or {}
+roles = [r["role"] for r in c.get("registers", [])]
+caps = (c.get("native_capabilities") or {}).get("intents") or []
+bad = ("grid_target" in s or "grid_target_withheld" in s or "grid_power" in roles
+       or "power_control_mode" in roles or "grid_target" in caps)
+sys.exit(1 if bad else 0)
+PY
+echo "curtailing slot without the lever: battery setpoint + PV cap written and confirmed, no grid-target path"
+
 echo "--- Modbus-Datenspiegel: off by default, VP map (unit 100) after enabling, writes refused"
 # Disabled (the shipped default): nothing may answer on the mapped port. Vom
 # Compose-Netz aus gibt es keinen Userland-Proxy mehr, der den Connect
@@ -305,4 +369,4 @@ done
 echo "mirror serves unit 100 from the gated telemetry; FC6 write refused with ILLEGAL FUNCTION"
 
 echo
-echo "E2E OK: full loop verified (sim -> nodered/vp-palette -> core -> cloud broker; schedule -> guards -> sim; control write -> readback -> match; read-only Modbus mirror)."
+echo "E2E OK: full loop verified (sim -> nodered/vp-palette -> core -> cloud broker; schedule -> guards -> sim; control write -> readback -> match; curtailing slot without the grid-side lever unchanged; read-only Modbus mirror)."

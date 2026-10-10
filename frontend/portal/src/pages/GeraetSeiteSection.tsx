@@ -702,9 +702,16 @@ export function GeraetSeiteSection({
     () => grenzenZeilen(view, curtailment, data?.entities ?? null),
     [view, curtailment, data],
   );
+  // Der Netzwert, den DIESES Gerät selbst misst - der Beleg eines Geräts, das
+  // den Netzanschluss regelt. ⚠ Nur eine frische Lesung zählt: ein veralteter
+  // Wert neben „gerade" wäre eine Behauptung über das Jetzt.
+  const eigeneNetzMessung = useMemo(() => {
+    const src = (sources ?? []).find((s) => s.sourceId === geraetId) ?? null;
+    return src?.health === 'ok' ? src.powerKw : null;
+  }, [sources, geraetId]);
   const einspeiseZeilen: Zeile[] = useMemo(
-    () => einspeiseSektion(curtailment, geraetId, now),
-    [curtailment, geraetId, now],
+    () => einspeiseSektion(curtailment, geraetId, now, eigeneNetzMessung),
+    [curtailment, geraetId, now, eigeneNetzMessung],
   );
   const ausfallschutz: Zeile[] = useMemo(
     () => ausfallschutzZeilen(charging),
@@ -1249,7 +1256,13 @@ export function GeraetSeiteSection({
 
         // --- Steuerung ------------------------------------------------------
         const notAus = view.steuerung.find((z) => z.label === NOT_AUS_LABEL) ?? null;
-        const eigenEinspeisung = abregelungDiesesGeraets(curtailment, geraetId ?? '');
+        const eigenEinspeisung = abregelungDiesesGeraets(
+          curtailment, geraetId ?? '', eigeneNetzMessung,
+        );
+        // Ein Gerät, das den Netzanschluss REGELT, ist ein gesteuertes Gerät:
+        // sein Ziel und die Messung gehören in denselben Baustein wie sein
+        // Schalter, nicht in einen zweiten daneben.
+        const netzRegelung = eigenEinspeisung?.netz ? eigenEinspeisung : null;
         const steuerungBaustein: BausteinInhalt | null = steuerung
           ? {
             inhalt: (
@@ -1257,11 +1270,24 @@ export function GeraetSeiteSection({
                 view={steuerung}
                 busy={aktionBusy}
                 onAktion={segmentAusloesen}
-                zusatz={notAus ? (
-                  <p className="vp-steuer-hinweis" role="status">
-                    <Icon name="alert-triangle" size={15} />
-                    <span>{`${notAus.label}: ${notAus.wert}`}</span>
-                  </p>
+                zusatz={notAus || netzRegelung ? (
+                  <>
+                    {netzRegelung && (
+                      <ZeilenListe
+                        zeilen={[{
+                          label: 'Am Netzanschluss',
+                          wert: netzRegelung.satz,
+                          ton: netzRegelung.ton,
+                        }]}
+                      />
+                    )}
+                    {notAus && (
+                      <p className="vp-steuer-hinweis" role="status">
+                        <Icon name="alert-triangle" size={15} />
+                        <span>{`${notAus.label}: ${notAus.wert}`}</span>
+                      </p>
+                    )}
+                  </>
                 ) : null}
               />
             ),
@@ -1790,8 +1816,9 @@ function einspeiseSektion(
   cu: CurtailmentStatus | null,
   geraetId: string | null,
   now: number,
+  eigeneNetzMessung: number | null,
 ): Zeile[] {
-  const eigen = abregelungDiesesGeraets(cu, geraetId ?? '');
+  const eigen = abregelungDiesesGeraets(cu, geraetId ?? '', eigeneNetzMessung);
   if (!eigen) {
     return [{
       label: 'Einspeise-Begrenzung',

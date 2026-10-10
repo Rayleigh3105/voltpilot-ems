@@ -10,6 +10,7 @@ import {
 import { createPortal } from 'react-dom';
 import { fokussierbareElemente } from '../../designsystem/components/shell/fokus';
 import { useAusblenden } from '../../designsystem/components/shell/ausblenden';
+import { fokusFalle } from '../../designsystem/components/shell/ueberlagerung';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { IconName } from '../../designsystem/components/core/Icon';
 import './VpPicker.css';
@@ -248,14 +249,9 @@ export function VpPanel({
       schliessen();
       return;
     }
-    if (e.key !== 'Tab') return;
-    const f = fokussierbare(panelRef.current);
-    if (f.length === 0) return;
-    const jetzt = document.activeElement as HTMLElement | null;
-    const i = jetzt ? f.indexOf(jetzt) : -1;
-    const ziel = e.shiftKey ? f[(i <= 0 ? f.length : i) - 1] : f[(i + 1) % f.length];
-    e.preventDefault();
-    ziel?.focus();
+    // Tab endet im Panel: es hängt an `document.body`, steht im React-Baum aber in seinem Blatt oder Dialog - dessen
+    // Fokusfalle risse den Fokus sonst aus dem offenen Panel zurück in die Fläche (Review Nachweisen r1, Q-2).
+    fokusFalle(e, panelRef.current);
   };
 
   /* Bewegungs-Programm P6: das Telefon-Blatt des Pickers blendet AUS wie jedes

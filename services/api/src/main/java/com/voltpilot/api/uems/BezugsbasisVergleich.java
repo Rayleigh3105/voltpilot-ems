@@ -122,6 +122,37 @@ public class BezugsbasisVergleich {
     }
 
     /**
+     * Konzept Auswerten a1 (PR1): der erste Tag, an dem eine freigegebene Fassung der Bezugsbasis gilt, die der Leser ohne
+     * {@code basis} liest (die laufende, sonst die zuletzt beendete) - für „Vergleich ab …“, solange noch kein Monat
+     * verglichen wird. {@code null} ohne Bezugsbasis oder ohne freigegebene Fassung. Ohne Sichtprüfung: der Aufrufer hat
+     * die Kennzahl eben über {@link #vergleich} gelesen.
+     */
+    LocalDate ersteGeltung(UUID kennzahl) {
+        Basis basis = basis(kennzahl, null);
+        if (basis == null) {
+            return null;
+        }
+        return jdbc.queryForObject("SELECT min(gilt_ab) FROM bezugsbasis_fassung WHERE bezugsbasis_id = ? "
+                + "AND freigabe_status = 'freigegeben'", LocalDate.class, basis.id());
+    }
+
+    /**
+     * Konzept Auswerten a1 (PR2, Review r3 zu §10.6): der erste Tag der freigegebenen Fassung, die am Tag {@code tag} gilt
+     * (P4, dieselbe Wahl wie {@link #fassungAm}) - an ihm beginnt ein Zeitraum, der gegen diese eine Fassung rechnet.
+     * {@code null} ohne Bezugsbasis oder ohne Fassung an dem Tag. Ohne Sichtprüfung wie {@link #ersteGeltung}.
+     */
+    LocalDate geltungAm(UUID kennzahl, LocalDate tag) {
+        Basis basis = basis(kennzahl, null);
+        if (basis == null) {
+            return null;
+        }
+        return jdbc.query("SELECT gilt_ab FROM bezugsbasis_fassung WHERE bezugsbasis_id = ? "
+                + "AND freigabe_status = 'freigegeben' AND gilt_ab <= ? AND (gilt_bis IS NULL OR gilt_bis >= ?) "
+                + "ORDER BY fassung DESC LIMIT 1", (rs, i) -> rs.getDate(1).toLocalDate(), basis.id(), Date.valueOf(tag),
+                Date.valueOf(tag)).stream().findFirst().orElse(null);
+    }
+
+    /**
      * Ein Monat für die Auffälligkeits-Naht (AP-18 IP-15, A1): die Vergleichszeile des Lesers gegen die Fassung am letzten
      * Tag des Monats (P4), die zitierte Bezugsbasis und die Nummer dieser Fassung ({@code null}, wenn keine gilt).
      */
@@ -167,9 +198,24 @@ public class BezugsbasisVergleich {
 
     private ZielVergleich lesen(UUID id, KennzahlService.BasisKennzahl k, String basisText, YearMonth von,
             YearMonth bis) {
-        LocalDate heute = LocalDate.ofInstant(k.jetzt(), k.zone());
         KennzahlDto.Werte gelesen = werte.werte(id, Set.of("periode", "von", "bis"), "monat",
                 von.minusMonths(1).atDay(1).toString(), bis.atEndOfMonth().toString(), null);
+        return lesen(id, k, gelesen, basisText, von, bis);
+    }
+
+    /**
+     * Konzept Auswerten a1 (PR1): derselbe Vergleich wie {@link #vergleich} ohne Parameterprüfung, über Monatswerte, die
+     * der Aufrufer für die Kennzahl {@code k} schon gelesen hat ({@code gelesen} deckt {@code von − 1} … {@code bis}) -
+     * die Auswertung der Liste liest so je Kennzahl einmal statt dreimal.
+     */
+    BezugsbasisVergleichDto.Vergleich vergleichUeber(KennzahlService.BasisKennzahl k, KennzahlDto.Werte gelesen,
+            YearMonth von, YearMonth bis) {
+        return lesen(k.zeile().id(), k, gelesen, null, von, bis).vergleich();
+    }
+
+    private ZielVergleich lesen(UUID id, KennzahlService.BasisKennzahl k, KennzahlDto.Werte gelesen, String basisText,
+            YearMonth von, YearMonth bis) {
+        LocalDate heute = LocalDate.ofInstant(k.jetzt(), k.zone());
         Map<String, KennzahlDto.Wert> jeMonat = new HashMap<>();
         gelesen.werte().forEach(w -> jeMonat.put(w.schluessel(), w));
         Einheiten einheiten = einheiten(k, gelesen.kennzahl().einheit());
@@ -264,22 +310,34 @@ public class BezugsbasisVergleich {
     }
 
     /**
-     * U5 mit P4: der Zeitraum ist eine Periode — er liest die Fassung am letzten Tag von {@code bis} und vergleicht jeden
-     * Monat gegen sie (Operation {@code zeitraum}).
+     * U5 mit P4: der Zeitraum ist eine Periode — er liest die Fassung am letzten Tag des letzten seiner Monate, für den
+     * eine Fassung gilt, und vergleicht jeden Monat gegen sie (Operation {@code zeitraum}). Ein Monat, für den an seinem
+     * letzten Tag keine Fassung gilt (vor dem Beginn, in einer Lücke, nach dem Ende), zählt dabei nicht mit (Entscheid
+     * 07.10.2026, Auswerten Befund 5; Review S2 a): Kopf und Zeilen zählen dieselben Monate, der Satz nennt die übrigen.
+     * Gerechnet wird jeder gezählte Monat gegen die Fassung des Kopfs; bei einem Fassungswechsel im Zeitraum weicht
+     * „erwartet“ darum von der Summe der Zeilen ab (jede Zeile rechnet gegen ihre eigene Fassung).
      */
     private BezugsbasisVergleichDto.Zeitraum zeitraum(YearMonth von, YearMonth bis, LocalDate heute,
             Map<String, KennzahlDto.Wert> jeMonat, Einheiten einheiten, Basis basis, List<FassungZeile> fassungen,
             Map<UUID, Map<String, Gelesen>> variablen, KennzahlDto.Werte gelesen) {
         LocalDate letzter = bis.atEndOfMonth();
-        FassungZeile f = fassungAm(fassungen, letzter);
+        List<YearMonth> mitFassung = new ArrayList<>();
+        for (YearMonth m = von; !m.isAfter(bis); m = m.plusMonths(1)) {
+            if (fassungAm(fassungen, m.atEndOfMonth()) != null) {
+                mitFassung.add(m);
+            }
+        }
+        FassungZeile f = mitFassung.isEmpty() ? null
+                : fassungAm(fassungen, mitFassung.get(mitFassung.size() - 1).atEndOfMonth());
         List<BezugsbasisRegeln.Monat> monate = new ArrayList<>();
         int soll = 0;
         for (YearMonth m = von; !m.isAfter(bis); m = m.plusMonths(1)) {
             soll++;
+            boolean ohne = !mitFassung.contains(m);
             KennzahlDto.Wert w = jeMonat.get(m.toString());
-            List<BezugsbasisRegeln.Wert> b = f == null ? List.of()
+            List<BezugsbasisRegeln.Wert> b = f == null || ohne ? List.of()
                     : bedingung(f, m, w, einheiten, variablen).stream().map(Variablenwert::wert).toList();
-            monate.add(new BezugsbasisRegeln.Monat(m.atEndOfMonth().isBefore(heute), gemessen(w), b));
+            monate.add(new BezugsbasisRegeln.Monat(m.atEndOfMonth().isBefore(heute), gemessen(w), b, ohne));
         }
         Map<String, Object> e = BezugsbasisRegeln.zeitraum(new BezugsbasisRegeln.ZeitraumEingang(
                 f == null ? null : f.regel(), f == null && beendet(basis, fassungen, letzter), soll, monate));
@@ -288,7 +346,39 @@ public class BezugsbasisVergleich {
         return new BezugsbasisVergleichDto.Zeitraum(f == null ? null : f.fassung(), (String) e.get("gemessen"),
                 (String) e.get("erwartet"), (String) e.get("delta_prozent"), (String) e.get("band_prozent"),
                 (String) e.get("richtung"), (String) e.get("urteil"), (String) e.get("grund"), (String) e.get("monate"),
-                kennzeichen(e), BezugsbasisVergleichSatz.zeitraum(e, vonText, bisText, einheiten.zaehler(), soll));
+                kennzeichen(e), BezugsbasisVergleichSatz.zeitraum(e, vonText, bisText, einheiten.zaehler(), soll,
+                        geltung(basis, fassungen, von, bis, soll, mitFassung)));
+    }
+
+    /**
+     * Was der Kopfsatz über die Monate ohne Fassung sagt (P4 je Monat): liegen sie vorn, ab wann die Basis gilt („erst“
+     * vor ihrer ersten Fassung, „wieder“ nach einem Ende); liegen sie hinten, wann sie endete; ohne einen Monat mit
+     * Fassung beides, soweit es zutrifft. Liegt eine Lücke zwischen Monaten mit Fassung, nur ihre Zahl.
+     */
+    private static BezugsbasisVergleichSatz.Geltung geltung(Basis basis, List<FassungZeile> fassungen, YearMonth von,
+            YearMonth bis, int soll, List<YearMonth> mitFassung) {
+        int n = mitFassung.size();
+        if (n == soll) {
+            return BezugsbasisVergleichSatz.Geltung.voll(soll);
+        }
+        LocalDate vorher = beendetZum(basis, fassungen, von.atEndOfMonth());
+        if (n == 0) {
+            YearMonth danach = fassungen.stream().map(FassungZeile::giltAb).filter(d -> d.isAfter(bis.atEndOfMonth()))
+                    .min(LocalDate::compareTo).map(YearMonth::from).orElse(null);
+            return new BezugsbasisVergleichSatz.Geltung(0, monatText(danach), vorher != null, vorher);
+        }
+        YearMonth erster = mitFassung.get(0), letzterMit = mitFassung.get(n - 1);
+        if (java.time.temporal.ChronoUnit.MONTHS.between(erster, letzterMit) + 1 != n) {
+            return new BezugsbasisVergleichSatz.Geltung(n, null, false, null);
+        }
+        YearMonth ab = erster.isAfter(von) ? erster : null;
+        LocalDate endete = letzterMit.isBefore(bis)
+                ? beendetZum(basis, fassungen, letzterMit.plusMonths(1).atEndOfMonth()) : null;
+        return new BezugsbasisVergleichSatz.Geltung(n, monatText(ab), ab != null && vorher != null, endete);
+    }
+
+    private static String monatText(YearMonth m) {
+        return m == null ? null : KennzahlRegeln.periodeText("monat", m.toString());
     }
 
     /**

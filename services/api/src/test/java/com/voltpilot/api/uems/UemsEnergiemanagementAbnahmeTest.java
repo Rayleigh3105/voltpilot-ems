@@ -296,8 +296,9 @@ class UemsEnergiemanagementAbnahmeTest {
     @Test
     void jederBerichtsstandDerWeltTraegtDenVollstaendigenAbzug() throws Exception {
         record S(String kennung, int nr, String vorlage, String tag) { }
-        for (S s : List.of(new S("BR-2026-0001", 1, "monatsbericht_standort", "2026-11-05"),
-                new S("BR-2026-0001", 2, "monatsbericht_standort", "2026-12-20"),
+        // Nachweisen PR 8: der Monatsbericht an den Tagen der Referenz (Nr. 1 am 10.11., Nr. 2 am 16.11.2026).
+        for (S s : List.of(new S("BR-2026-0001", 1, "monatsbericht_standort", "2026-11-10"),
+                new S("BR-2026-0001", 2, "monatsbericht_standort", "2026-11-16"),
                 new S("BR-2026-0002", 1, "energetische_bewertung", "2026-12-01"),
                 new S("BR-2026-0002", 2, "energetische_bewertung", "2027-02-10"),
                 new S("BR-2027-0001", 1, "energetische_bewertung", "2027-11-24"),
@@ -314,6 +315,46 @@ class UemsEnergiemanagementAbnahmeTest {
         assertThat(root.queryForObject("SELECT count(*) FROM bericht_stand s JOIN bericht b ON b.id = s.bericht_id "
                 + "WHERE b.tenant_id = ? AND b.kennung LIKE 'BR-202_-000_' AND s.ersetzt_durch_nr IS NOT NULL", Integer.class,
                 tenant)).as("Nr. 1 von BR-2026-0001 und BR-2026-0002 ersetzt").isEqualTo(2);
+    }
+
+    /**
+     * Fall R5 (Konzept AP-16 §7, {@code abnahmefaelle_ap16}) und Review r4 M4: MB-1 ist am 27.11.2026 durch die
+     * eingerichtete MS-23 „Halle 1 Allgemein“ eingelöst — VOR der ersten energetischen Bewertung (BR-2026-0002,
+     * 01.12.2026), die ihn seitdem als Quelle zitiert. Der Belegschutz bleibt trotzdem scharf: Bearbeiten scheitert
+     * weiter mit 409 {@code berichts_belege} (der M4-Fix ändert nur den Weg zum Einrichten, nicht den Schutz selbst).
+     */
+    @Test
+    void r5Mb1DurchMs23EingeloestBelegschutzBleibtScharf() throws Exception {
+        String basis = "/api/v1/unternehmen/energieeinsaetze/" + einsatz.get("EE-8") + "/messbedarf";
+        JsonNode messbedarfe = ruf(basis, "IK", 200).path("messbedarfe");
+        JsonNode mb1 = null;
+        for (JsonNode b : messbedarfe) {
+            if (b.path("kennzeichen").asText().equals("MB-1")) {
+                mb1 = b;
+            }
+        }
+        assertThat(mb1).as("MB-1 in der Liste").isNotNull();
+        assertThat(mb1.path("zustand").asText()).isEqualTo("eingeloest");
+        assertThat(mb1.at("/messstelle/kennzeichen").asText()).isEqualTo("MS-23");
+        assertThat(mb1.path("angelegt_am").asText()).startsWith("2026-11-27");
+        assertThat(mb1.path("einloesbar").asBoolean(true)).isFalse();
+        assertThat(texte(mb1.path("zitiert_von"), "kennung")).contains("BR-2026-0002", "BR-2027-0001");
+
+        JsonNode ablehnung = ruf("PUT", basis + "/" + mb1.path("id").asText(), "IK",
+                Map.of("wortlaut", "Anderer Wortlaut"), 409);
+        assertThat(ablehnung.path("code").asText()).isEqualTo("berichts_belege");
+        assertThat(texte(ablehnung.path("berichtsstaende"), "kennung")).contains("BR-2026-0002", "BR-2027-0001");
+
+        // Review #1455 S1: das Protokoll trägt den Tag der Bühne (27.11.2026), nicht den echten Tag des Aufbaus.
+        JsonNode protokoll = ruf(basis + "/" + mb1.path("id").asText() + "/protokoll", "IK", 200).path("aenderungen");
+        JsonNode eingeloest = null;
+        for (JsonNode a : protokoll) {
+            if (a.path("art").asText().equals("eingeloest")) {
+                eingeloest = a;
+            }
+        }
+        assertThat(eingeloest).as("Protokoll-Zeile eingeloest").isNotNull();
+        assertThat(eingeloest.path("zeit").asText()).as("eingeloest am").startsWith("2026-11-27");
     }
 
     /**
@@ -348,7 +389,18 @@ class UemsEnergiemanagementAbnahmeTest {
             assertThat(z.path("eingetragen_von").asText()).as(e.fall() + " eingetragen von").isNotBlank();
             assertThat(z.path("tag").asText()).as(e.fall()).isEqualTo(e.tag());
             assertThat(e.nr() == 0 || z.path("nr").asInt() == e.nr()).as(e.fall()).isTrue();
-            assertThat(z.path("pruefsumme").asText()).as(e.fall() + " Prüfsumme").matches("(sha256:)?[0-9a-f]{64}");
+            if (z.path("ort").asText().equals("verweis")) {
+                // Ein Verweis trägt die Prüfsumme seines Originals; die Referenz nennt sie nur für IH-SG-01 (R7).
+                String sha = null;
+                for (JsonNode d : referenz.path("dokumente")) {
+                    if (d.path("kennzeichen").asText().equals(e.kennzeichen())) {
+                        sha = d.at("/fassungen/0/verweis/sha256").asText(null);
+                    }
+                }
+                assertThat(z.path("pruefsumme").asText(null)).as(e.fall() + " Prüfsumme").isEqualTo(sha);
+            } else {
+                assertThat(z.path("pruefsumme").asText()).as(e.fall() + " Prüfsumme").matches("(sha256:)?[0-9a-f]{64}");
+            }
         }
         // Die Prüfsummen sind die der Träger — gelesen, nicht gebildet (VZ1).
         assertThat(zeile(v, "energiepolitik", "D-0001", 1).path("pruefsumme").asText())
@@ -366,6 +418,21 @@ class UemsEnergiemanagementAbnahmeTest {
                 .startsWith("Geführt in Ihrem System: Personalsystem");
         assertThat(zeile(v, "internes_audit", "AU-2029-0001", 0).path("ort_satz").asText())
                 .startsWith("Wortlaut in VoltPilot, Original bei Ihnen: QM-Laufwerk, Ordner Energiemanagement/Audits");
+        // Befund 8 (Nachweisen n1): ein Titel spricht Kundenwörter, nie einen rohen Wert; das Kennzeichen steht daneben.
+        assertThat(zeile(v, "wirksamkeit", "F-2029-0001", 1).path("titel").asText()).isEqualTo("Wirksamkeit: wirksam");
+        assertThat(zeile(v, "einstufung_fassung", "EE-1", 1).path("titel").asText()).isEqualTo("Spritzguss: wesentlich");
+        assertThat(zeile(v, "einstufung_fassung", "EE-3", 3).path("titel").asText())
+                .isEqualTo("Druckluft: nicht wesentlich");
+        assertThat(zeile(v, "messbedarf", "MB-1", 0).path("titel").asText()).isEqualTo("Messbedarf MB-1 (EE-8): eingelöst");
+        assertThat(zeile(v, "berichtsstand", "BR-2026-0001", 2).path("titel").asText())
+                .isEqualTo("Monatsbericht Werk Ahrenberg Oktober 2026");
+        assertThat(zeile(v, "berichtsstand", "BR-2027-0001", 1).path("titel").asText())
+                .isEqualTo("Energetische Bewertung November 2026 bis Oktober 2027");
+        assertThat(zeile(v, "berichtsstand", "BR-2028-0001", 1).path("titel").asText())
+                .isEqualTo("Leistungsvergleich Dezember 2027");
+        assertThat(alle(v)).allSatisfy(z -> assertThat(z.path("titel").asText()).as(z.toString())
+                .doesNotContain("nicht_wesentlich", "eingeloest", "nicht_wirksam", "ohne_massnahme", "zurueckgenommen")
+                .doesNotContainPattern("[0-9]{4}-[0-9]{2}/[0-9]{4}-[0-9]{2}"));
 
         // R5, R14 B4: elf laufende Zuordnungen am 30.04.2029, die zehn mit „entschieden von“ Robert Falk.
         List<JsonNode> aufgaben = alle(v).stream().filter(z -> z.path("art").asText().equals("aufgabe")).toList();
@@ -428,7 +495,7 @@ class UemsEnergiemanagementAbnahmeTest {
         assertThat(glossar.replaceAll("'\\s*\\+\\s*'", "")).contains(VERANTWORTUNG);
         List<String> flaechen = energiemanagementFlaechen(src);
         assertThat(flaechen).hasSizeGreaterThanOrEqualTo(18).contains("pages/EnergiemanagementBereich.tsx",
-                "components/VerzeichnisTabelle.tsx", "pages/AuditSeite.tsx", "pages/FeststellungSeite.tsx");
+                "components/nachweisen/VerzeichnisMonate.tsx", "pages/AuditSeite.tsx", "pages/FeststellungSeite.tsx");
         // Der Kopf-Hinweis des Bereichs spricht beide Sätze aus ihrer einen Quelle, ohne Bedingung davor.
         String baustein = Files.readString(src.resolve("components/GrenzSatz.tsx"), StandardCharsets.UTF_8);
         String hinweis = baustein.substring(baustein.indexOf("export function GrenzHinweis"));
@@ -542,7 +609,8 @@ class UemsEnergiemanagementAbnahmeTest {
         JsonNode m = antwort("massnahme M-2029-0001");
         assertThat(m.at("/herkunft/art").asText()).isEqualTo("nichtkonformitaet");
         assertThat(m.at("/herkunft/kennung").asText()).isEqualTo("F-2029-0001");
-        assertThat(m.path("zustand").asText()).isEqualTo("umgesetzt");
+        // Seit der Demo-Füllung Verbessern (PR 6) wie massnahmen_1_10: am 15.04.2029 „nicht messbar“ abgeschlossen.
+        assertThat(m.path("zustand").asText()).isEqualTo(referenz.at("/massnahmen_1_10/0/zustand").asText()).isEqualTo("bewertet");
         assertThat(m.toString()).doesNotContain("Nichtkonformität");
         assertThat(root.queryForObject("SELECT herkunft_art FROM massnahme WHERE tenant_id = ? AND kennzeichen = "
                 + "'M-2029-0002'", String.class, tenant)).isEqualTo("audit");
@@ -605,6 +673,75 @@ class UemsEnergiemanagementAbnahmeTest {
         assertThat(z.path("eingetragen_von").asText()).isEqualTo("Ines Kaltenbach");
     }
 
+    /**
+     * Nachweisen PR 8 (Konzept n1 §4.10, Entscheid 20): Dokumente, Feststellung und Audit tragen am 30.04.2029, was die
+     * Referenzdatei führt - Titel, jede Fassung mit ihrer Prüfsumme und Begründung, Bekanntmachungen und „geprüft,
+     * bleibt“ mit Kreis, Weg und Begründung, F-2029-0001 mit drei Einträgen und dem Stand der Wirksamkeit der
+     * Referenz, der Abschluss von AU-2029-0001 byte-gleich. Fassung 2 der Energiepolitik hat ihr eigenes Original.
+     */
+    @Test
+    void nachweisenWieDieReferenz() throws Exception {
+        for (JsonNode d : referenz.path("dokumente")) {
+            String k = d.path("kennzeichen").asText();
+            JsonNode seite = antwort("dokument " + k);
+            assertThat(seite.path("titel").asText()).as(k).isEqualTo(d.path("titel").asText());
+            assertThat(seite.path("zustand").asText()).as(k).isEqualTo("gueltig");
+            assertThat(seite.path("fassungen")).as(k).hasSize(d.path("fassungen").size());
+            for (int i = 0; i < d.path("fassungen").size(); i++) {
+                JsonNode soll = d.path("fassungen").get(i);
+                JsonNode ist = seite.path("fassungen").get(i);
+                assertThat(ist.path("pruefsumme").asText()).as(k + "/" + (i + 1)).isEqualTo(soll.path("pruefsumme").asText());
+                assertThat(ist.path("begruendung").asText()).as(k + "/" + (i + 1)).isEqualTo(soll.path("begruendung").asText());
+                assertThat(ist.path("beschluss_kennung").asText(null)).as(k + "/" + (i + 1))
+                        .isEqualTo(soll.path("beschluss").asText(null));
+                assertThat(ist.at("/entschieden_von/name").asText()).as(k + "/" + (i + 1))
+                        .isEqualTo(AhrenbergWelt.NAMEN.get(soll.path("entschieden_von").asText()));
+            }
+            // Je Weg ein Eintrag (EnergiemanagementNachweise: „aushang · intranet“ ist eine Mitteilung mit zwei Wegen).
+            List<String> soll = new ArrayList<>();
+            d.path("eintraege").forEach(e -> {
+                for (String weg : e.path("weg").asText("").split(" · ")) {
+                    soll.add(e.path("art").asText() + " " + e.path("fassung").asInt() + " " + e.path("am").asText() + " "
+                            + e.path("kreis").asText("") + " " + weg + " " + e.path("begruendung").asText("") + " "
+                            + e.path("beschluss").asText(""));
+                }
+            });
+            List<String> ist = new ArrayList<>();
+            seite.path("eintraege").forEach(e -> ist.add(e.path("art").asText() + " " + e.path("fassung").asInt() + " "
+                    + e.path("am").asText() + " " + e.path("kreis").asText("") + " " + e.path("weg").asText("") + " "
+                    + e.path("begruendung").asText("") + " " + e.path("beschluss_kennung").asText("")));
+            assertThat(ist).as(k).containsExactlyInAnyOrderElementsOf(soll);
+        }
+        // Original je Fassung (Entscheid 10): Fassung 1 liest das Original am Dokument, Fassung 2 trägt ihr eigenes.
+        JsonNode politik = antwort("dokument D-0001");
+        assertThat(politik.at("/beleg/kennung").asText()).isEqualTo("EP-2026");
+        assertThat(politik.at("/fassungen/1/original/kennung").asText()).isEqualTo("EP-2029");
+
+        JsonNode rf1 = referenz.at("/feststellungen/0");
+        JsonNode f = antwort("feststellung F-2029-0001");
+        assertThat(f.at("/feststellung/wortlaut").asText()).isEqualTo(rf1.path("wortlaut").asText());
+        assertThat(f.at("/feststellung/vorgabe/dokument").asText()).isEqualTo("D-0001");
+        assertThat(f.at("/feststellung/vorgabe/fassung").asInt()).isEqualTo(1);
+        assertThat(texte(f.at("/feststellung/bezug/objekte"), null)).containsExactly("BB-0001", "BB-0002", "BB-0003",
+                "BB-0004", "BB-0005");
+        List<String> eintraege = new ArrayList<>();
+        f.path("eintraege").forEach(e -> eintraege.add(e.path("am").asText() + " " + e.path("art").asText() + " "
+                + e.at("/person/name").asText() + " " + e.path("wortlaut").asText()));
+        List<String> sollEintraege = new ArrayList<>();
+        rf1.path("eintraege").forEach(e -> sollEintraege.add(e.path("am").asText() + " " + e.path("art").asText() + " "
+                + AhrenbergWelt.NAMEN.get(e.path("person").asText()) + " " + e.path("text").asText()));
+        assertThat(eintraege).containsExactlyElementsOf(sollEintraege);
+        JsonNode stand = f.at("/wirksamkeit/0");
+        assertThat(stand.path("begruendung").asText()).isEqualTo(rf1.at("/wirksamkeit/0/begruendung").asText());
+        assertThat(stand.path("pruefsumme").asText()).isEqualTo(rf1.at("/wirksamkeit/0/pruefsumme").asText());
+
+        JsonNode au = antwort("audit AU-2029-0001");
+        assertThat(au.at("/audit/was").asText()).isEqualTo(referenz.at("/audits/0/was").asText());
+        assertThat(au.at("/audit/woran").asText()).isEqualTo(referenz.at("/audits/0/woran").asText());
+        assertThat(au.at("/audit/abschluss/pruefsumme").asText())
+                .isEqualTo(referenz.at("/audits/0/abgeschlossen/pruefsumme").asText());
+    }
+
     // ================================================================================ Die Sprach-Probe
 
     /** Die Leser und Schablonen des Energiemanagements, deren Sätze der Kunde liest (Quelltext-Probe). */
@@ -615,7 +752,8 @@ class UemsEnergiemanagementAbnahmeTest {
             "DokumentVerzeichnis", "AufgabenVerzeichnis", "AuditVerzeichnis", "FeststellungVerzeichnis",
             "ManagementbewertungVerzeichnis", "VerzeichnisBestand", "DokumentWiedervorlage", "AuditWiedervorlage",
             "FeststellungWiedervorlage", "ManagementbewertungWiedervorlage", "WiedervorlageBestand", "AuditVerantwortung",
-            "FeststellungVerantwortung", "EnergiemanagementAbgelehnt");
+            "FeststellungVerantwortung", "EnergiemanagementAbgelehnt", "EnergiemanagementTeilVermerkService",
+            "TeilVermerkVerzeichnis");
 
     /**
      * SP2 (R4) und G4: die Konformitäts-, Zertifizierungs- und Vollständigkeits-Wörter — dieselbe Liste wie der
@@ -782,6 +920,111 @@ class UemsEnergiemanagementAbnahmeTest {
         k.put("managementbewertung", 0);
         k.put("berichte", 2);
         return k;
+    }
+
+    /**
+     * Konzept Verbessern v1 §4.8 (Vorarbeit der Demo-Füllung, PR 6): die Vorgänge von „Ziele und Maßnahmen“ tragen
+     * Kennzahl, Bezugsbasis, Verantwortliche, Energieziel, Herkunft, Wortlaut und Begründung der Referenz - kein
+     * Platzhalter wie „Umgesetzt wie in der Referenzdatei.“ und kein fremder Wortlaut.
+     */
+    @Test
+    void zieleUndMassnahmenWieDieReferenz() {
+        for (JsonNode aw : referenz.path("abweichungen")) {
+            Map<String, Object> z = root.queryForMap("SELECT k.kennzeichen AS kennzahl, b.kennzeichen AS basis, a.fassung, "
+                    + "a.verantwortlich_name FROM abweichung a JOIN kennzahl k ON k.id = a.kennzahl_id JOIN bezugsbasis b "
+                    + "ON b.id = a.bezugsbasis_id WHERE a.tenant_id = ? AND a.kennzeichen = ?", tenant,
+                    aw.path("kennzeichen").asText());
+            assertThat(z.get("kennzahl")).as(aw.path("kennzeichen").asText()).isEqualTo(aw.path("kennzahl").asText());
+            assertThat(z.get("basis")).isEqualTo(aw.path("bezugsbasis").asText());
+            assertThat(z.get("fassung")).isEqualTo(aw.path("fassung").asInt());
+            assertThat(z.get("verantwortlich_name")).isEqualTo(AhrenbergWelt.NAMEN.get(aw.path("verantwortlich").asText()));
+        }
+        for (String liste : List.of("massnahmen", "massnahmen_1_10")) {
+            for (JsonNode m : referenz.path(liste)) {
+                String k = m.path("kennzeichen").asText();
+                Map<String, Object> z = root.queryForMap("SELECT m.titel, m.termin::text AS termin, m.verantwortlich_name, "
+                        + "m.herkunft_art, m.herkunft_kennung, m.erwartete_wirkung_wortlaut, m.umgesetzt_begruendung, "
+                        + "z.kennzeichen AS energieziel FROM massnahme m LEFT JOIN energieziel z ON z.id = m.energieziel_id "
+                        + "WHERE m.tenant_id = ? AND m.kennzeichen = ?", tenant, k);
+                assertThat(z.get("titel")).as(k).isEqualTo(m.path("titel").asText());
+                assertThat(z.get("termin")).as(k).isEqualTo(m.path("termin").asText());
+                assertThat(z.get("verantwortlich_name")).as(k).isEqualTo(AhrenbergWelt.NAMEN.get(m.path("verantwortlich").asText()));
+                assertThat(z.get("herkunft_art")).as(k).isEqualTo(m.at("/herkunft/art").asText());
+                assertThat(z.get("herkunft_kennung")).as(k).isEqualTo(m.at("/herkunft/kennung").asText());
+                assertThat(z.get("erwartete_wirkung_wortlaut")).as(k).isEqualTo(m.at("/erwartete_wirkung/wortlaut").asText());
+                assertThat(z.get("energieziel")).as(k).isEqualTo(m.path("energieziel").isTextual() ? m.path("energieziel").asText() : null);
+                String umgesetzt = m.has("umgesetzt_begruendung") ? m.path("umgesetzt_begruendung").asText(null) : null;
+                for (JsonNode v : m.path("verlauf")) {
+                    if (v.path("art").asText().equals("massnahme_umgesetzt")) {
+                        umgesetzt = v.path("begruendung").asText();
+                    }
+                }
+                assertThat(z.get("umgesetzt_begruendung")).as(k).isEqualTo(umgesetzt);
+            }
+        }
+        assertThat(root.queryForObject("SELECT count(*) FROM massnahme WHERE tenant_id = ? AND umgesetzt_begruendung = "
+                + "'Umgesetzt wie in der Referenzdatei.'", Integer.class, tenant)).isZero();
+    }
+
+    /**
+     * Konzept Verbessern v1 §4.8, Entscheid 16 (Demo-Füllung, PR 6): jeder Vorgang trägt seinen Verlauf am Tag der
+     * Referenz - auch, was eine Route schrieb -, die Art der Maßnahme, M-2029-0001 ist „nicht messbar“ abgeschlossen,
+     * der Anstoß K-2028-0001 ist „bleibt“ beantwortet, und die drei Auffälligkeiten der Referenz stehen mit Vermerk,
+     * Anlass und Antwort da.
+     */
+    @Test
+    void verlaeufeUndAuffaelligkeitenWieDieReferenz() {
+        Map<String, List<String>> soll = new LinkedHashMap<>();
+        soll.put("EZ-2028-0001", List.of("energieziel_angelegt 2027-12-20 IK", "energieziel_bewertet 2029-01-15 IK"));
+        soll.put("EZ-2029-0001", List.of("energieziel_angelegt 2029-02-15 IK"));
+        soll.put("AW-2026-0001", List.of("abweichung_eroeffnet 2026-12-09 IK", "ursache_aussage 2026-12-10 IK JW",
+                "abweichung_abgeschlossen 2026-12-20 IK"));
+        soll.put("AW-2028-0001", List.of("abweichung_eroeffnet 2028-01-12 IK", "kommentar 2028-01-12 IK",
+                "ursache_aussage 2028-01-14 IK MD", "kommentar 2028-01-15 IK", "abweichung_abgeschlossen 2028-01-15 IK"));
+        soll.put("M-2028-0001", List.of("massnahme_angelegt 2028-01-15 IK", "massnahme_umgesetzt 2028-01-22 IK",
+                "anstoss_gesetzt 2028-04-03 VoltPilot", "anstoss_beantwortet 2028-04-05 IK", "massnahme_bewertet 2028-11-15 IK"));
+        soll.put("M-2028-0002", List.of("massnahme_angelegt 2028-01-20 IK", "massnahme_umgesetzt 2028-03-28 IK",
+                "massnahme_bewertet 2028-11-20 IK"));
+        soll.put("M-2029-0001", List.of("massnahme_angelegt 2029-01-26 IK", "massnahme_umgesetzt 2029-03-01 JW",
+                "massnahme_bewertet 2029-04-15 IK"));
+        soll.put("M-2029-0002", List.of("massnahme_angelegt 2029-01-29 IK"));
+        soll.put("M-2029-0003", List.of("massnahme_angelegt 2029-02-14 IK"));
+        Map<String, String> kuerzel = new LinkedHashMap<>();
+        AhrenbergWelt.NAMEN.forEach((k, name) -> kuerzel.put(name, k));
+        kuerzel.put(VorgangAnstoss.AKTEUR_KASKADE, "VoltPilot");
+        soll.forEach((k, zeilen) -> {
+            String vorgang = k.startsWith("EZ") ? "energieziel" : k.startsWith("AW") ? "abweichung" : "massnahme";
+            String aussage = vorgang.equals("abweichung") ? "a.aussage_name" : "NULL";
+            List<String> ist = root.query("SELECT a.art, to_char(a.created_at AT TIME ZONE 'Europe/Berlin', 'YYYY-MM-DD') "
+                    + "AS tag, a.actor_name, " + aussage + " AS aussage FROM " + vorgang + "_aenderung a JOIN " + vorgang
+                    + " v ON v.id = a." + vorgang + "_id WHERE v.tenant_id = ? AND v.kennzeichen = ? ORDER BY a.created_at, "
+                    + "a.id", (rs, i) -> rs.getString("art") + " " + rs.getString("tag") + " "
+                    + kuerzel.get(rs.getString("actor_name")) + (rs.getString("aussage") == null ? ""
+                    : " " + kuerzel.get(rs.getString("aussage"))), tenant, k);
+            assertThat(ist).as(k).containsExactlyElementsOf(zeilen);
+        });
+        AhrenbergWelt.ART.forEach((k, art) -> assertThat(root.queryForObject("SELECT art FROM massnahme WHERE tenant_id = ? "
+                + "AND kennzeichen = ?", String.class, tenant, k)).as(k).isEqualTo(art));
+        assertThat(root.queryForList("SELECT ergebnis || ' ' || to_char(freigabe_am AT TIME ZONE 'Europe/Berlin', "
+                + "'YYYY-MM-DD') FROM massnahme_bewertung b JOIN massnahme m ON m.id = b.massnahme_id WHERE m.tenant_id = ? "
+                + "AND m.kennzeichen = 'M-2029-0001'", String.class, tenant)).containsExactly("nicht_messbar 2029-04-15");
+        assertThat(root.queryForList("SELECT s.anlass_kennung || ' ' || s.antwort || ' ' || to_char(s.beantwortet_am AT "
+                + "TIME ZONE 'Europe/Berlin', 'YYYY-MM-DD') FROM vorgang_anstoss s JOIN massnahme m ON m.id = s.massnahme_id "
+                + "WHERE m.tenant_id = ?", String.class, tenant)).containsExactly("K-2028-0001 bleibt 2028-04-05");
+
+        List<String> vermerke = new ArrayList<>();
+        for (JsonNode r : referenz.path("auffaelligkeiten")) {
+            vermerke.add(r.path("kennzahl").asText() + " " + r.path("periode").asText() + " "
+                    + r.path("vermerkt_am").asText().substring(0, 10) + " " + r.path("pruefsumme").asText() + " "
+                    + r.at("/antwort/antwort").asText() + " " + r.at("/antwort/am").asText() + " "
+                    + r.at("/antwort/abweichung").asText("-"));
+        }
+        assertThat(root.queryForList("SELECT k.kennzeichen || ' ' || a.periode || ' ' || to_char(a.vermerkt_am AT TIME ZONE "
+                + "'Europe/Berlin', 'YYYY-MM-DD') || ' ' || a.anlass_pruefsumme || ' ' || a.antwort || ' ' || "
+                + "to_char(a.beantwortet_am AT TIME ZONE 'Europe/Berlin', 'YYYY-MM-DD') || ' ' || coalesce(w.kennzeichen, '-') "
+                + "FROM auffaelligkeit a JOIN kennzahl k ON k.id = a.kennzahl_id LEFT JOIN abweichung w ON w.id = "
+                + "a.abweichung_id WHERE a.tenant_id = ? ORDER BY a.periode", String.class, tenant))
+                .containsExactlyElementsOf(vermerke);
     }
 
     /** Alle Uhren, an denen ein Dienst „heute“ misst, auf denselben Augenblick. */

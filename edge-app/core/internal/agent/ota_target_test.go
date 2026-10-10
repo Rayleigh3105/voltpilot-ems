@@ -220,6 +220,55 @@ func TestAssignedReleaseBelowTheAntiRollbackFloorIsDeferredNotFailed(t *testing.
 	}
 }
 
+// Die Docker-Toleranz (Plan Edge Light Stufe 2, B1): eine gueltig signierte
+// Zuweisung eines Edge-Light-Release ist auf der Docker-Box KEIN Vorfall. Bis
+// zu diesem Stand scheiterte schon der Umschlag am Namen und das Manifest an
+// Typ und Backend - die Box meldete failed, der Rollout sah einen Fehlschlag.
+func TestAssignedEdgeLightReleaseIsDeferredNotFailedOnTheDockerBox(t *testing.T) {
+	light := otaverify.Manifest{
+		SchemaVersion: otaverify.ManifestSchemaVersion,
+		Release:       "edge-light-2026.10.1",
+		ReleaseSeq:    14,
+		TargetCommit:  "5b28311b4c0d",
+		Artifacts: []otaverify.Artifact{{Type: otaverify.ArtifactBinary, Name: "vp-edge-light",
+			Arch: "linux/mipsle", SHA256: strings.Repeat("a", 64), Size: 14614743,
+			GzSHA256: strings.Repeat("b", 64), GzSize: 4679121}},
+		StateSchema:  1,
+		Compat:       otaverify.Compat{Backends: []string{otaverify.BackendLight}},
+		SigningKeyID: "rel-2026-a",
+	}
+	b := newOtaTargetBox(t, otaManifest("edge-2026.08.0", 12, 9))
+	b.a.onUpdateTarget(b.envelope(t, light, nil))
+
+	u := b.a.updateSummary()
+	if u.State != cloud.UpdateStateDeferred {
+		t.Fatalf("state = %q, want %q - eine andere Box-Art ist kein Fehlschlag", u.State, cloud.UpdateStateDeferred)
+	}
+	if u.TargetVerdict != string(otaverify.OutcomeDeferred) {
+		t.Fatalf("target_verdict = %q - gueltig signiert, nur nicht fuer diese Box", u.TargetVerdict)
+	}
+	if !strings.Contains(u.Reason, "Box-Art") || !strings.Contains(u.Reason, otaverify.BackendLight) {
+		t.Errorf("der Grund muss die Box-Art nennen: %q", u.Reason)
+	}
+	if u.Target != "edge-light-2026.10.1" {
+		t.Errorf("das Ziel kommt aus dem signierten Manifest: %q", u.Target)
+	}
+	if view := b.a.OtaTarget(); len(view.Images) != 0 {
+		t.Fatalf("ein Release der anderen Box-Art gibt keine Artefakte heraus: %+v", view.Images)
+	}
+
+	// Dieselbe Zuweisung mit fremdem Schluessel bleibt ein VORFALL (eigene
+	// Box: die abgelegte Zuweisung waere sonst gleich gross, und der Pruefer
+	// cached nach Groesse und Zeitstempel).
+	foreign := otaNewKey(t, "rel-2026-a")
+	b = newOtaTargetBox(t, otaManifest("edge-2026.08.0", 12, 9))
+	b.a.onUpdateTarget(b.envelope(t, light, &foreign))
+	if u := b.a.updateSummary(); u.State != cloud.UpdateStateFailed ||
+		u.TargetVerdict != string(otaverify.OutcomeRejected) {
+		t.Fatalf("ungueltige Signatur = failed/rejected, ist %q/%q", u.State, u.TargetVerdict)
+	}
+}
+
 func TestAssignedReleaseForAnotherDeviceIsIgnored(t *testing.T) {
 	b := newOtaTargetBox(t, otaManifest("edge-2026.08.0", 12, 9))
 	m := otaManifest("edge-2026.08.0", 12, 9)

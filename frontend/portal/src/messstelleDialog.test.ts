@@ -2,8 +2,18 @@ import { describe, expect, it } from 'vitest';
 import { ApiError } from './api';
 import { ZEIT_SAETZE } from './geraetEinstellungen';
 import {
+  abgelesenSatz,
   ablehnung,
+  ABLESUNG_ZUKUNFT,
+  ablesungAblehnung,
+  ablesungPruefen,
   abschlussSatz,
+  KEINE_KOMPONENTE,
+  OHNE_ANLAGE,
+  WEG,
+  WEG_GESPERRT,
+  wegBestand,
+  wegGesperrt,
   anlageWahlen,
   anlegenAnfrage,
   ersterIdentitaetFehler,
@@ -494,12 +504,107 @@ describe('Abschluss — die Stufe kommt vom Server', () => {
     expect(abschlussSatz(ms17, { fassung: 'anlegen', quelleGebunden: true, quelleVorhanden: true })).toBe(FERTIG_51);
   });
 
-  it('ohne Quelle „keine Datenquelle“ (E8), ohne Ort ein Entwurf mit dem, was fehlt', () => {
+  it('ohne Quelle „noch keine Quelle“ (E8, Konzept Messen m1 Anhang A F), ohne Ort ein Entwurf mit dem, was fehlt', () => {
     expect(abschlussSatz(ms17, { fassung: 'anlegen', quelleGebunden: false, quelleVorhanden: false })).toBe(
-      'MS-0017 Lagerhalle Lindach gesamt ist eingerichtet und aktiv · keine Datenquelle',
+      'MS-0017 Lagerhalle Lindach gesamt ist eingerichtet und aktiv · noch keine Quelle',
     );
     expect(
       abschlussSatz({ ...ms17, lebenszyklus: 'entwurf', fehlt: ['ort'] }, { fassung: 'anlegen', quelleGebunden: false, quelleVorhanden: false }),
     ).toBe('MS-0017 Lagerhalle Lindach gesamt ist als Entwurf gespeichert — es fehlt: Ort.');
+  });
+});
+
+describe('Schritt 3 · Woher kommen die Werte? (Messen m2)', () => {
+  const ziel = (laufend: boolean) => ({
+    schluessel: HAUPT,
+    groesse: { groesse: 'Wirkenergie', richtung: 'Bezug' },
+    rolle: 'haupt' as const,
+    label: 'Messwert für die Hauptgröße · Wirkenergie · Bezug',
+    laufend: laufend
+      ? { komponente: 'k', kanal: 'c', rolle: 'fuehrend', gueltig_ab: '2026-10-01T00:00:00+02:00', gueltig_bis: null }
+      : null,
+  });
+
+  it('die zwei Wege heißen wie im Captain-Punkt, beide gleichwertig', () => {
+    expect(WEG.geraet.titel).toBe('Automatisch von einem Gerät');
+    expect(WEG.ablesen.titel).toBe('Von Hand ablesen');
+  });
+
+  it('der Bestand legt den Weg fest: Ablesungen → ablesen, eine laufende oder gebundene Quelle → Gerät, sonst offen', () => {
+    expect(wegBestand([ziel(false)], 'ablesung')).toBe('ablesen');
+    expect(wegBestand([ziel(false)], 'gebunden')).toBe('geraet');
+    expect(wegBestand([ziel(true)], null)).toBe('geraet');
+    expect(wegBestand([ziel(false)], 'keine_datenquelle')).toBeNull();
+    expect(wegBestand([ziel(false)], null)).toBeNull();
+  });
+
+  it('gesperrte Wege tragen ihren Grund: ohne Anlage, ohne Komponente, kein Zählerstand, schon der andere Weg', () => {
+    const offen = { bestand: null, wertart: 'Zählerstand', quellAnlagen: 1, komponenten: 3 };
+    expect(wegGesperrt('geraet', offen)).toBeNull();
+    expect(wegGesperrt('ablesen', offen)).toBeNull();
+    expect(wegGesperrt('geraet', { ...offen, quellAnlagen: 0 })).toBe(OHNE_ANLAGE);
+    expect(wegGesperrt('geraet', { ...offen, komponenten: 0 })).toBe(KEINE_KOMPONENTE);
+    // Noch nicht geladen ist kein „keine Komponente“.
+    expect(wegGesperrt('geraet', { ...offen, komponenten: null })).toBeNull();
+    expect(wegGesperrt('ablesen', { ...offen, wertart: 'Intervallmenge' })).toBe(WEG_GESPERRT.keinZaehlerstand);
+    expect(wegGesperrt('geraet', { ...offen, bestand: 'ablesen' })).toBe(WEG_GESPERRT.schonAbgelesen);
+    expect(wegGesperrt('ablesen', { ...offen, bestand: 'ablesen' })).toBeNull();
+    expect(wegGesperrt('ablesen', { ...offen, bestand: 'geraet' })).toBe(WEG_GESPERRT.schonGeraet);
+    expect(wegGesperrt('geraet', { ...offen, bestand: 'geraet', quellAnlagen: 0 })).toBeNull();
+  });
+
+  it('„Wird seit … von Hand abgelesen“ - mit und ohne letzte Ablesung', () => {
+    expect(abgelesenSatz({ seit: '2024-10-01T00:00:00+02:00', zuletzt: '2026-10-01T07:15:00+02:00' })).toBe(
+      'Wird seit 01.10.2024 von Hand abgelesen, zuletzt am 01.10.2026.',
+    );
+    expect(abgelesenSatz({ seit: '2026-10-20T08:30:00+02:00', zuletzt: null })).toBe(
+      'Wird seit 20.10.2026 von Hand abgelesen. Es gibt noch keine Ablesung.',
+    );
+  });
+
+  it('die erste Ablesung: Ortszeit auf die Minute, nie in der Zukunft, der Stand als deutsche Zahl, ohne Monat', () => {
+    const jetzt = '2026-10-20T09:00:00+02:00';
+    expect(ablesungPruefen({ datum: '2026-10-20', uhrzeit: '08:30', stand: '1.250.000' }, jetzt, 'kWh')).toEqual({
+      fehler: {},
+      anfrage: { zeitpunkt: '2026-10-20T08:30:00+02:00', stand: '1.250.000', zuordnung_monat: null },
+    });
+    expect(ablesungPruefen({ datum: '2026-10-20', uhrzeit: '09:01', stand: '1' }, jetzt, 'kWh').fehler).toEqual({
+      ablesezeit: ABLESUNG_ZUKUNFT,
+    });
+    expect(ablesungPruefen({ datum: '2026-10-20', uhrzeit: '08:30', stand: ' ' }, jetzt, 'kWh').fehler).toEqual({
+      stand: PFLICHT.stand,
+    });
+    expect(ablesungPruefen({ datum: '2026-10-20', uhrzeit: '08:30', stand: '-5' }, jetzt, 'kWh').fehler.stand).toBe(
+      'Mengen sind nicht negativ.',
+    );
+    // Die doppelte Stunde der Zeitumstellung wird nie geraten.
+    expect(ablesungPruefen({ datum: '2026-10-25', uhrzeit: '02:30', stand: '1' }, '2026-10-26T09:00:00+01:00', 'kWh').fehler).toEqual({
+      ablesezeit: ZEIT_SAETZE.zweimal,
+    });
+    expect(ablesungPruefen({ datum: '', uhrzeit: '08:30', stand: '1' }, jetzt, 'kWh').anfrage).toBeNull();
+  });
+
+  it('Ablehnungen des Ablesungs-Wegs stehen am Feld - der Satz des Servers, sonst der allgemeine', () => {
+    const satz = 'Datum und Uhrzeit prüfen.';
+    expect(ablesungAblehnung(new ApiError(422, satz, { code: 'zeitpunkt_ungueltig', message: satz }))).toEqual({
+      feld: 'ablesezeit',
+      satz,
+    });
+    expect(
+      ablesungAblehnung(new ApiError(422, 'x', { code: 'zahl_unlesbar', message: 'Den Zählerstand …', feld: 'stand' })),
+    ).toEqual({ feld: 'stand', satz: 'Den Zählerstand …' });
+    expect(ablesungAblehnung(new ApiError(409, 'Konflikt', { code: 'konflikt', message: 'Konflikt' })).feld).toBe('ablesezeit');
+    expect(ablesungAblehnung(new ApiError(422, 'Nein', { code: 'quelle_passt_nicht', message: 'Nein' }))).toEqual({
+      feld: null,
+      satz: 'Nein',
+    });
+    expect(ablesungAblehnung(null)).toEqual({ feld: null, satz: SATZ_ALLGEMEIN });
+  });
+
+  it('der Fertig-Satz nach der ersten Ablesung', () => {
+    const ms = { kennzeichen: 'MS-0022', name: 'Spritzguss', lebenszyklus: 'aktiv', fehlt: [] };
+    expect(
+      abschlussSatz(ms, { fassung: 'anlegen', quelleGebunden: false, quelleVorhanden: false, abgelesen: true }),
+    ).toBe('MS-0022 Spritzguss ist eingerichtet und aktiv · wird von Hand abgelesen');
   });
 });

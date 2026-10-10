@@ -271,14 +271,14 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
 
     await page.getByTestId('einstieg-berichte').click();
     await expect(page.locator('body')).toHaveAttribute('data-route', /^#\/standort\/[^/]+\/berichte$/);
-    await expect(page.locator('[data-testid="bericht-karte"]').first()).toBeVisible();
+    await expect(page.locator('[data-testid^="bericht-zeile-BR-"]').first()).toBeVisible();
     const b = await messe(page);
     ohneQuerlauf(b, 'werk-berichte-375');
     expect(b.titel).toBe('Berichte dieses Standorts');
     expect(b.leisteAktiv).toBe('Übersicht');
     await ablegen(page, 'werk-berichte-375', b);
     // Die Berichtsseite bleibt im Standort, und der Rückweg sagt, wohin er führt.
-    await page.locator('[data-testid="bericht-karte"]').first().click();
+    await page.locator('[data-testid^="bericht-zeile-BR-"]').first().click();
     await expect(page.locator('body')).toHaveAttribute('data-route', /^#\/standort\/[^/]+\/berichte\/BR-2026-0001$/);
     await page.getByRole('button', { name: 'Berichte dieses Standorts' }).click();
     await expect(page.locator('body')).toHaveAttribute('data-route', /^#\/standort\/[^/]+\/berichte$/);
@@ -288,20 +288,21 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
     await oeffne(page, 'bild=unternehmen&ansicht=werk', 1440, AM_20_11);
     await page.getByTestId('einstieg-kennzahlen').click();
     await expect(page.locator('body')).toHaveAttribute('data-route', /^#\/standort\/[^/]+\/kennzahlen$/);
-    await expect(page.locator('[data-testid="kennzahl-karte"]').first()).toBeVisible();
+    // Konzept Auswerten a1 §6.4: Karten mit Bezugsbasis, Reihen zum Beobachten - beide tragen `data-kennzeichen`.
+    await expect(page.locator('[data-kennzeichen]').first()).toBeVisible();
     const k = await messe(page);
     ohneQuerlauf(k, 'werk-kennzahlen-1440');
     expect(k.titel).toBe('Kennzahlen dieses Standorts');
-    const amStandort = await page.locator('[data-testid="kennzahl-karte"]').count();
+    const amStandort = await page.locator('[data-kennzeichen]').count();
     await ablegen(page, 'werk-kennzahlen-1440', k);
 
     // Das Lesezeichen des Unternehmens gilt unverändert — und zeigt auch die Kennzahlen, die dort nicht gelten.
     await oeffne(page, 'bild=unternehmen&ansicht=kennzahlen', 1440, AM_20_11);
-    await expect(page.locator('[data-testid="kennzahl-karte"]').first()).toBeVisible();
+    await expect(page.locator('[data-kennzeichen]').first()).toBeVisible();
     const u = await messe(page);
     expect(u.route).toBe('#/portfolio/kennzahlen');
     expect(u.titel).toBe('Kennzahlen');
-    expect(await page.locator('[data-testid="kennzahl-karte"]').count()).toBeGreaterThan(amStandort);
+    expect(await page.locator('[data-kennzeichen]').count()).toBeGreaterThan(amStandort);
   });
 
   test('Ü8 · der Betriebskunde bekommt keine Einstiege (375 px)', async ({ page }) => {
@@ -338,9 +339,14 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
 // vier Workern auch die 90 s von test.slow (Gesamtlauf mispel 05.10.2026; je Aufruf ~745 Module, 9–13 s). Ein alter
 // Direktlink braucht die Übersicht als Vergleichstext — zwei Aufrufe, darum behält NUR dieser Fall test.slow.
 for (const breite of [1440, 375]) {
+  // firstmate K2 (09.10.2026): „ohne Messfunktion" landete bisher trotzdem auf der Standort-
+  // Übersicht (Werk Ahrenberg) - nur ohne deren neue Reiter. Jetzt bleibt dieselbe Betriebskunden-
+  // Szene ganz auf der gewohnten Übersicht (`#/portfolio`, zeichengleich zu main): kein Standort
+  // misst, also ist die Standort-/Unternehmensebene gar nicht erst die Landung (startansicht.test.ts
+  // K2-Block). Die alten AP-13-Direktlinks konvergieren weiterhin alle auf EINE Fläche, jetzt diese.
   for (const bereich of ['', '-gebaeude', '-aufbau', '-anlagen', '-boxen', '-kennzahlen', '-berichte']) {
-    const was = bereich ? `der alte AP-13-Direktlink „werk${bereich}“ landet auf der Übersicht` : 'die Übersicht';
-    test(`O18 · Betriebskunde bei ${breite} px: keine neuen Standort-Reiter; ${was}`, async ({ page }) => {
+    const was = bereich ? `der alte AP-13-Direktlink „werk${bereich}“ landet auf der gewohnten Übersicht` : 'die gewohnte Übersicht';
+    test(`O18 · Betriebskunde bei ${breite} px: kein Standort misst — ${was}`, async ({ page }) => {
       let uebersichtText = '';
       if (bereich) {
         test.slow(); // zwei Aufrufe: die Übersicht als Vergleich, dann der alte Direktlink
@@ -350,11 +356,13 @@ for (const breite of [1440, 375]) {
       await oeffne(page, `bild=unternehmen&messen=bestand&ansicht=werk${bereich}`, breite);
       const m = await messe(page);
       ohneQuerlauf(m, `betrieb${bereich}-${breite}`);
-      expect(m.titel).toBe('Werk AhrenbergST-1');
+      expect(m.route).toBe('#/portfolio');
+      // Die Überschrift ist `vp-sr-only` (Sprungziel) - die Reiter darüber nennen die Ebene schon.
+      expect(m.titel).toBeNull();
       if (!bereich) uebersichtText = m.text;
       expect(m.text).toBe(uebersichtText);
       expect(m.leiste).toBeNull();
-      expect(m.reiter).toEqual([]);
+      expect(m.reiter).toEqual(['Übersicht', 'Energie']);
       expect(m.einstiege).toEqual([]);
       await expect(page.getByTestId('uebersicht-bausteine')).toHaveCount(0);
       if (!bereich) await ablegen(page, `betrieb-${breite}`, m, true);

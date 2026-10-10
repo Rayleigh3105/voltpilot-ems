@@ -11,14 +11,14 @@ Ausführbare JSON-Fixtures für Schema- und Laufzeitprüfungen. Dateinamen und I
 | `mqtt-probe.*.json` | 12 | 3 |
 | `mqtt-register-write.*.json` | 6 | 1 |
 | `mqtt-schedule.*.json` | 5 | 4 |
-| `ota-release-manifest.*.json` | 2 | 1 |
+| `ota-release-manifest.*.json` | 3 | 2 |
 
 `valid` muss die jeweils geprüfte Regel erfüllen; `invalid` benennt den gezielten Verstoß. Negative Beispiele nicht mit beliebigen Zusatzfeldern ungültig machen. Datumswerte sind eingefrorene Testdaten, keine aktuellen Fahrpläne.
 
 ## Wichtige Unterschiede
 
 - Boolesche Fahrplanpflichten sind keine kW-Sollwerte; negative Einspeisegrenzen sind ungültig. Semantik im jeweiligen Vertrag und [Optimierer](../../../services/optimization/README.md) nachlesen.
-- OTA-Manifeste pinnen Image-Digests; ein Tag wie `latest` genügt nicht.
+- OTA-Manifeste pinnen Image-Digests; ein Tag wie `latest` genügt nicht. Ein Edge-Light-Manifest (`valid.light`) pinnt Programme je Architektur über `sha256`/`size` und `gz_sha256`/`gz_size`. Was ein Gerät mit einem gültig signierten Manifest tut, steht in den [geteilten Vektoren](../ota-release-manifest-vectors.json).
 - Registerschreibaufträge und Ergebnisse werden auf API- und Geräteseite geprüft. Eine Quittung ersetzt keine Messwirkung.
 - `mqtt-charging-config`: fehlende Patch-Felder erhalten bestehende Werte; `charge_points` ergänzt Kennungen. Entfernen erfolgt ausdrücklich über `removed_charge_point_ids`; Tombstones müssen in späteren retained Dokumenten erhalten bleiben.
 - `mqtt-charging-boost` ist ein zeitlich begrenzter Einmalauftrag, nicht retained. `requested_at` begrenzt auch verspätete Zustellung; `cancel` nimmt die Freigabe zurück.

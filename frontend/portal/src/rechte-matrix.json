@@ -793,6 +793,24 @@
       "anmerkung": "Reserviert für AP-18 IP-6 ff. (Routen); Standort-Zaun über die Geltung des Ankers und standort_id des Vorgangs (RE2); ein Vorgang am Unternehmen nur unternehmensweit. Zuständigkeit verleiht kein Recht."
     },
     {
+      "kennung": "verbesserung.eigene_massnahme",
+      "gruppe": "kennzahlen",
+      "kundenwort": "Die eigene Maßnahme als umgesetzt melden und kommentieren (als verantwortliche Person)",
+      "herkunft": "Verbessern v1 §10.8 (Entscheid 8, eng gefasst)",
+      "nachtrag": "Verbessern v1 §10.8",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "S",
+        "leser": "S",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
+      },
+      "anmerkung": "Nur die eigene Maßnahme (verantwortlich = angemeldete Person) und nur zwei Schritte: umgesetzt melden und kommentieren. Alles andere an der Maßnahme bleibt bei verbesserung.verwalten. Standort-Zaun wie verbesserung.ansehen; Unterstützer und Einsicht nie (kein Eintrag)."
+    },
+    {
       "kennung": "energiemanagement.verwalten",
       "gruppe": "kennzahlen",
       "kundenwort": "Dokumente, Aufgaben, Personen, Audits, Feststellungen und Managementbewertungen anlegen und bearbeiten",
@@ -2381,6 +2399,29 @@
         {
           "wortlaut": "der Unterstützer bekommt kein Unternehmensrecht und keine Freigabe (RE5)",
           "wo": "Spalte unterstuetzer unverändert; energiemanagement.* mit ihrer Zeile (IP-5)"
+        }
+      ]
+    },
+    {
+      "abschnitt": "Verbessern v1 §10.8",
+      "titel": "Verantwortliche melden die eigene Maßnahme",
+      "konzept": "Verbessern-Konzept v1 §10 Entscheid 8 (Empfehlung: ja, eng gefasst); entschieden am 06.10.2026",
+      "handlungen": [
+        {
+          "handlung": "Die eigene Maßnahme als umgesetzt melden und kommentieren (als verantwortliche Person)",
+          "wer": "KA U · EM U · BE S · BD S · LE S · US − · EI − · VB −",
+          "recht": "`verbesserung.eigene_massnahme`",
+          "kennungen": [
+            "verbesserung.eigene_massnahme"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "Eigene Zellen (keine Vorlage): wie verbesserung.ansehen am Standort, aber ohne Unterstützer und Einsicht; die Zellen tragen die Rolle, die Person trägt die Maßnahme - wirksam nur, wenn die angemeldete Person die verantwortliche ist."
+        }
+      ],
+      "regeln": [
+        {
+          "wortlaut": "Ausnahme von „Verantwortung verleiht kein Recht“ (AP-18 RE3), eng gefasst: wer für eine Maßnahme verantwortlich ist und `verbesserung.eigene_massnahme` hat, meldet SIE als umgesetzt und kommentiert SIE; ändern, verwerfen, bewerten und jede fremde Maßnahme bleiben bei `verbesserung.verwalten` bzw. `verbesserung.abschliessen`.",
+          "wo": "RechteAbleitung.eigeneMassnahme und rechte.ts eigeneMassnahme (Familie verantwortung); MassnahmeService umgesetzt und eintrag"
         }
       ]
     }

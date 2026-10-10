@@ -33,11 +33,15 @@ export const VOKABULARE: Record<string, string[]> = {
   managementbewertung_zustand: ['entwurf', 'freigegeben'],
   beschluss_art: ['energieziel', 'massnahme', 'dokument', 'aufgabe', 'ressourcen', 'audit', 'keine_aenderung', 'weitere'],
   folge_art: ['energieziel', 'massnahme', 'dokument', 'aufgabe', 'audit'],
-  wiedervorlage_art: ['dokument_ueberpruefung', 'internes_audit', 'managementbewertung', 'feststellung', 'bewertung_ueberpruefung', 'bezugsbasis_ueberpruefung', 'energieziel_bewertung', 'massnahme_termin', 'abweichung_frist', 'messbedarf_frist', 'bericht_anstoss'],
+  wiedervorlage_art: ['dokument_ueberpruefung', 'internes_audit', 'managementbewertung', 'feststellung', 'bewertung_ueberpruefung', 'bezugsbasis_ueberpruefung', 'energieziel_bewertung', 'massnahme_termin', 'abweichung_frist', 'messbedarf_frist', 'bericht_anstoss', 'zaehlerablesung'],
   verzeichnis_ort: ['in_voltpilot', 'wortlaut_original_beim_kunden', 'verweis'],
   verzeichnis_gruppe: ['grundlagen', 'verantwortung', 'risiken_chancen', 'kompetenz_kommunikation', 'betrieb_auslegung_beschaffung', 'bewertung_messplanung', 'kennzahlen_bezugsbasen', 'ziele_massnahmen_abweichungen', 'audits_feststellungen', 'managementbewertung', 'berichte'],
   ueberpruefung_art: ['dokument', 'internes_audit', 'managementbewertung', 'feststellung'],
   ueberpruefung_grund: ['nachweis', 'keine_fassung', 'kein_audit', 'keine_managementbewertung', 'abgeschlossen'],
+  // Vertrag 1.3 (Konzept Nachweisen n1, Entscheide 5 und 23): die 18 Teile des Überblicks.
+  teil: ['energiepolitik', 'anwendungsbereich', 'rechtliche_anforderungen', 'kontext', 'risiken_chancen', 'aufgaben', 'kompetenz', 'kommunikation', 'betrieb', 'auslegung', 'beschaffung', 'energetische_bewertung', 'bezugsbasen', 'massnahmen', 'interne_audits', 'feststellungen', 'managementbewertung', 'berichte'],
+  // Vertrag 1.6 (Konzept Nachweisen n1, Entscheid 7): wofür Unterlagen zusammengestellt werden.
+  mappe_anlass: ['audit_von_aussen', 'anfrage_behoerde', 'eigene_ablage'],
 };
 export const DOKUMENT_ART_KLASSE: Record<string, string> = Object.fromEntries(
   VOKABULARE.dokument_art.map((art) => [art, art === 'auslegung' || art === 'kompetenz' ? 'nachweis' : 'vorgabe']),
@@ -64,6 +68,68 @@ export const WOERTER: Record<string, Record<string, string>> = {
     managementbewertung: 'Managementbewertung', berichte: 'Berichte',
   },
   verzeichnis_ort: { in_voltpilot: 'in VoltPilot', wortlaut_original_beim_kunden: 'Wortlaut in VoltPilot, Original bei Ihnen', verweis: 'Geführt in Ihrem System' },
+  /** Vertrag 1.3: die Teile mit ihrem Namen (Blatt einer Gruppe, Verzeichnis) und ihrem Kurzwort (Chips, Entscheid 23). */
+  teil: {
+    energiepolitik: 'Energiepolitik',
+    anwendungsbereich: 'Anwendungsbereich',
+    rechtliche_anforderungen: 'Rechtliche Anforderungen',
+    kontext: 'Kontext und interessierte Parteien',
+    risiken_chancen: 'Risiken und Chancen',
+    aufgaben: 'Aufgaben im Energiemanagement',
+    kompetenz: 'Kompetenz',
+    kommunikation: 'Kommunikation',
+    betrieb: 'Betrieb und Instandhaltung',
+    auslegung: 'Auslegung',
+    beschaffung: 'Beschaffung',
+    energetische_bewertung: 'Energetische Bewertung und Messplanung',
+    bezugsbasen: 'Kennzahlen und Bezugsbasen',
+    massnahmen: 'Energieziele und Maßnahmen',
+    interne_audits: 'Interne Audits',
+    feststellungen: 'Feststellungen',
+    managementbewertung: 'Managementbewertung',
+    berichte: 'Berichte',
+  },
+  teil_kurz: {
+    energiepolitik: 'Energiepolitik',
+    anwendungsbereich: 'Anwendungsbereich',
+    rechtliche_anforderungen: 'Rechtliche Anforderungen',
+    kontext: 'Kontext',
+    risiken_chancen: 'Risiken und Chancen',
+    aufgaben: 'Aufgaben',
+    kompetenz: 'Kompetenz',
+    kommunikation: 'Kommunikation',
+    betrieb: 'Betrieb und Instandhaltung',
+    auslegung: 'Auslegung',
+    beschaffung: 'Beschaffung',
+    energetische_bewertung: 'Energetische Bewertung',
+    bezugsbasen: 'Bezugsbasen',
+    massnahmen: 'Maßnahmen',
+    interne_audits: 'Interne Audits',
+    feststellungen: 'Feststellungen',
+    managementbewertung: 'Managementbewertung',
+    berichte: 'Berichte',
+  },
+  // Vertrag 1.5 (Konzept Nachweisen n1, Entscheid 23): das Kurzwort je Aufgabe für Zeilen am Handy; der lange Name
+  // (`aufgabe`) bleibt im Blatt der Aufgabe. „Energetische Bewertung“ statt „Bewertung und Messplanung“: das Wort
+  // „Bewertung“ allein gehört Auswerten (Sprach-Wächter SP3).
+  aufgabe_kurz: {
+    unternehmensleitung: 'Leitung',
+    energiemanagement_leiten: 'Energiemanagement leiten',
+    energieteam: 'Energieteam',
+    bezugsbasen: 'Bezugsbasen',
+    energieziele_massnahmen: 'Ziele und Maßnahmen',
+    bewertung_messplanung: 'Energetische Bewertung',
+    interne_audits: 'Interne Audits',
+    managementbewertung: 'Managementbewertung',
+    dokumente: 'Dokumente',
+    weitere: 'Weitere Aufgabe',
+  },
+  // Vertrag 1.6 (Entscheid 7): das Wort je Anlass einer Mappe.
+  mappe_anlass: {
+    audit_von_aussen: 'Audit von außen',
+    anfrage_behoerde: 'Anfrage einer Behörde',
+    eigene_ablage: 'Eigene Ablage',
+  },
 };
 /** Die Kundensätze (Report §5.8) als Schablonen; {name} füllt die Operation `satz`. */
 export const SAETZE: Record<string, string> = {
@@ -76,9 +142,13 @@ export const SAETZE: Record<string, string> = {
   verweis_keine_datei: 'VoltPilot speichert keine Dateien. Halten Sie fest, wo das Original liegt; die Prüfsumme zeigt später, ob es noch dasselbe ist.',
   ueberpruefung: 'Überprüfung fällig seit {tage} Tagen.',
   geprueft_bleibt: 'Geprüft, bleibt — entschieden von {person} am {am}: ‚{begruendung}‘',
-  bekanntmachung: 'Bekannt gemacht am {am} an {kreis} über {weg} — eingetragen von {person}.',
+  bekanntmachung: 'Bekannt gemacht am {am} an {kreis} über {weg}.',
+  // Vertrag 1.4 (Konzept Nachweisen n1, Befund A14): die Person, die bekannt gemacht hat.
+  bekanntmachung_durch: 'Bekannt gemacht von {person} am {am} an {kreis} über {weg}.',
   anwendungsbereich_deckungsgleich: 'Der Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}, ab {ab}) umfasst dieselben Standorte und Energieträger.',
   anwendungsbereich_unterschied: '{was} gehört zum Anwendungsbereich, aber nicht zum Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}).',
+  // Vertrag 1.4 (Konzept Nachweisen n1, Befund A21): die Gegenrichtung des Vergleichs.
+  anwendungsbereich_nur_im_umfang: '{was} gehört zum Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}), aber nicht zum Anwendungsbereich.',
   freigabe_ohne_leitung: 'Diese Fassung braucht eine Entscheidung der Leitung. Für die Aufgabe ‚Leitung des Unternehmens‘ ist keine Person festgelegt.',
   aufgabe_ohne_person: '{aufgabe} — keine Person festgelegt.',
   person_ohne_konto: '{name} · {funktion} · ohne Konto — erscheint als ‚entschieden von‘.',
@@ -103,7 +173,7 @@ export const SAETZE: Record<string, string> = {
   wiedervorlage_zeile: '{gegenstand}: {was} seit {tage} Tagen fällig.',
   wiedervorlage_leer: 'Zurzeit ist nichts fällig.',
   kalender_abzug: 'Stand vom {am} aus VoltPilot; maßgeblich ist die Wiedervorlage im Portal.',
-  baustein: 'Energiemanagement — {faellig} fällig · {vorschau} in den nächsten {tage} Tagen.',
+  baustein: 'Energiemanagement: {ueberfaellig} überfällig · {naechste} in den nächsten {tage} Tagen.',
   verzeichnis_leer: UEMS_NOCH_NICHTS_FESTGEHALTEN,
   verzeichnis_filter: 'In meinem Namen festgehalten: {anzahl} Einträge.',
   zuschnitt_titel: 'Was VoltPilot führt — was bei Ihnen liegt.',
@@ -186,7 +256,16 @@ export function ueberpruefung(e: UeberpruefungEingang): Frist | Fehler {
   }
 }
 
-/** WV1–WV3: jede Frist kommt fertig aus ihrer Regel (WV2) — hier nur Lage, Vorschau-Fenster und Reihenfolge. */
+/** Konzept Wiedervorlage w1 (Vertrag 1.1): so viele Monate reicht der Jahresplan über den Abruf hinaus. */
+export const JAHRESPLAN_MONATE = 12;
+
+/** Der letzte Tag des Jahresplans (einschließlich): Abruf + 12 Monate, Monatsende geklemmt, wie die Operation ihn rechnet. */
+export const jahresplanBis = (abruf: string) => plusMonate(abruf.slice(0, 10), JAHRESPLAN_MONATE);
+
+/**
+ * WV1–WV3: jede Frist kommt fertig aus ihrer Regel (WV2); hier nur Lage, Vorschau-Fenster und Reihenfolge. Seit Vertrag
+ * 1.1 dazu der Jahresplan `spaeter` (nach dem Fenster bis Abruf + 12 Monate) und die Zählung nach Dringlichkeit.
+ */
 export function wiedervorlage(e: WiedervorlageEingang) {
   if (e.vorschau_tage < 0) return { fehler: 'vorschau_tage' };
   if (e.zeilen.some((z) => !VOKABULARE.wiedervorlage_art.includes(z.art))) return { fehler: 'wiedervorlage_art' };
@@ -200,8 +279,14 @@ export function wiedervorlage(e: WiedervorlageEingang) {
     .sort((a, b) => vergleich(a.faellig_am, b.faellig_am) || vergleich(a.kennzeichen, b.kennzeichen));
   const faellig = liste.filter((z) => z.tage >= 0);
   const vorschau = liste.filter((z) => z.tage < 0);
+  const planEnde = plusMonate(e.abruf, JAHRESPLAN_MONATE);
+  const spaeter = zeilen
+    .filter((z) => z.tage < -e.vorschau_tage && z.faellig_am <= planEnde)
+    .sort((a, b) => vergleich(a.faellig_am, b.faellig_am) || vergleich(a.kennzeichen, b.kennzeichen));
   return {
-    faellig, vorschau, anzahl_faellig: faellig.length, anzahl_vorschau: vorschau.length,
+    faellig, vorschau, spaeter, anzahl_faellig: faellig.length, anzahl_vorschau: vorschau.length,
+    anzahl_ueberfaellig: faellig.filter((z) => z.tage > 0).length, anzahl_naechste: liste.filter((z) => z.tage <= 0).length,
+    anzahl_spaeter: spaeter.length,
     nicht_in_liste: zeilen.filter((z) => z.tage < -e.vorschau_tage).map((z) => z.kennzeichen).sort(),
   };
 }

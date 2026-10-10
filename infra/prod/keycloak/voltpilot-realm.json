@@ -40,7 +40,8 @@
       { "name": "site-admin", "description": "Site administrator: OCPP availability, soft reset, allowlisted configuration and local-auth operations" },
       { "name": "platform-admin", "description": "Portal-Admin: platform operator, manages tenants and users across all tenants" },
       { "name": "partner", "description": "Partner account (installer, UEMS AP-03 E7): NEVER a tenant_id; reaches a customer area only through a granted Unterstuetzung" },
-      { "name": "edge-release-publisher", "description": "OTA release automation: may ONLY register a signed edge release (POST /api/v1/admin/edge-releases + its next-seq read). Never a rollout, never a device target - see docs/ota-signing.md." }
+      { "name": "edge-release-publisher", "description": "OTA release automation: may ONLY register a signed edge release (POST /api/v1/admin/edge-releases + its next-seq read). Never a rollout, never a device target - see docs/ota-signing.md." },
+      { "name": "tunnel-dienst", "description": "Wartungstunnel: darf AUSSCHLIESSLICH den Soll-Stand lesen (GET /api/v1/fernwartung/soll). Kein Schreibrecht, keine Admin-Route - siehe docs/fernwartung.md." }
     ]
   },
   "clients": [
@@ -58,6 +59,23 @@
       "serviceAccountsEnabled": true,
       "fullScopeAllowed": true,
       "secret": "${VP_RELEASE_PUBLISHER_SECRET:change-me}",
+      "redirectUris": [],
+      "webOrigins": []
+    },
+    {
+      "clientId": "voltpilot-tunnel-dienst",
+      "name": "VoltPilot Tunnel-Dienst",
+      "description": "Service account of the maintenance tunnel service (Wartungs-VM). Client credentials only, no login or password grant; the token carries tunnel-dienst only. Ships DISABLED: enable after setting VP_TUNNEL_DIENST_SECRET (infra/prod/keycloak/README.md).",
+      "enabled": false,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "bearerOnly": false,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "fullScopeAllowed": true,
+      "secret": "${VP_TUNNEL_DIENST_SECRET:change-me}",
       "redirectUris": [],
       "webOrigins": []
     },
@@ -130,6 +148,12 @@
       "enabled": true,
       "serviceAccountClientId": "voltpilot-release-publisher",
       "realmRoles": ["edge-release-publisher"]
+    },
+    {
+      "username": "service-account-voltpilot-tunnel-dienst",
+      "enabled": true,
+      "serviceAccountClientId": "voltpilot-tunnel-dienst",
+      "realmRoles": ["tunnel-dienst"]
     },
     {
       "username": "service-account-voltpilot-api",
@@ -260,7 +284,7 @@
         "subComponents": {},
         "config": {
           "kc.user.profile.config": [
-            "{\"unmanagedAttributePolicy\": \"ADMIN_EDIT\", \"attributes\": [{\"name\": \"username\", \"displayName\": \"${username}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}, {\"name\": \"email\", \"displayName\": \"${email}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}, {\"name\": \"firstName\", \"displayName\": \"${firstName}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}, {\"name\": \"lastName\", \"displayName\": \"${lastName}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}, {\"name\": \"tenant_id\", \"displayName\": \"Tenant ID\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}}]}"
+            "{\"unmanagedAttributePolicy\": \"ADMIN_EDIT\", \"attributes\": [{\"name\": \"username\", \"displayName\": \"${username}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}, {\"name\": \"email\", \"displayName\": \"${email}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}, {\"name\": \"firstName\", \"displayName\": \"${firstName}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}}, {\"name\": \"lastName\", \"displayName\": \"${lastName}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}}, {\"name\": \"tenant_id\", \"displayName\": \"Tenant ID\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}}]}"
           ]
         }
       }

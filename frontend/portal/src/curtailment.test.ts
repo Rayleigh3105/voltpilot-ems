@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { CurtailmentStatus, ExportGuard } from './api';
+import type { CurtailmentStatus, CurtailmentUnit, ExportGuard } from './api';
 import {
   abregelZiel,
   CURTAIL_PLAN,
@@ -13,6 +13,8 @@ import {
   curtailWarnLine,
   exportGuardView,
   hasCurtailEvidence,
+  netzKwText,
+  regeltNetzanschluss,
   releaseNote,
 } from './curtailment';
 import { NBSP } from './format';
@@ -491,5 +493,125 @@ describe('abregelZiel', () => {
   it('sagt ohne Einheit GAR NICHTS', () => {
     expect(abregelZiel(status({ units: 0, certifiedUnits: 0 }), nameOf)).toBeNull();
     expect(abregelZiel(null, nameOf)).toBeNull();
+  });
+});
+
+// ── Der netzseitige Regler (Konzept `vp-deye-netzseitig-drossel-k2` P4) ──────
+
+/**
+ * Herzogau/Pilsting: zwei Fronius werden gedeckelt, der Deye regelt den REST am
+ * Netzanschluss. Die Fälle prüfen, dass sein Beleg (Messung folgt Ziel) Teil
+ * der Wahrheit ist - und dass ohne ihn kein Byte der bisherigen Sätze kippt.
+ */
+describe('netzseitiger Regler in der Abregel-Wahrheit', () => {
+  const namen: Record<string, string> = {
+    'src-a': 'Fronius Ost', 'src-b': 'Fronius West', inverter: 'Heizhaus',
+  };
+  const nameOf = (id: string) => namen[id] ?? null;
+  const kappe = (sourceId: string) => ({ sourceId, certified: true, appliedCapKw: 6.2, match: true });
+  const netz = (over: Partial<CurtailmentUnit> = {}): CurtailmentUnit => ({
+    sourceId: 'inverter',
+    certified: true,
+    appliedCapKw: null,
+    match: true,
+    mode: 'grid_target',
+    targetKw: 0,
+    ...over,
+  });
+  const dreiVonDrei = (deye: CurtailmentUnit, over: Partial<CurtailmentStatus> = {}) =>
+    status({
+      units: 3, certifiedUnits: 3, perUnit: [kappe('src-a'), kappe('src-b'), deye], ...over,
+    });
+
+  it('bestätigt erst, wenn auch die Messung am Netzanschluss dem Ziel folgt', () => {
+    const t = curtailTruth(dreiVonDrei(netz()), NOW);
+    expect(t.stufe).toBe('ausgefuehrt');
+    expect(t.netzZiel).toEqual({ targetKw: 0, bestaetigt: true });
+    expect(curtailExecutionNote(t)).toBe(
+      `Ihr Wechselrichter regelt den Netzanschluss auf 0,0${NBSP}kW Einspeisung — durch die Messung bestätigt.`,
+    );
+    expect(curtailActionPhrase(t)).toBe('pausiert gerade die Einspeisung');
+  });
+
+  it('⚠ `allMatch` der Kappen allein ist KEINE Bestätigung, solange der Regler nicht folgt', () => {
+    // Der Fall, den §2.11 benennt: beide Fronius halten, der Deye speist
+    // ungebremst ein - „vom Wechselrichter bestätigt" wäre die halbe Wahrheit.
+    const folgtNicht = curtailTruth(dreiVonDrei(netz({ match: false })), NOW);
+    expect(folgtNicht.stufe).toBe('nicht_umgesetzt');
+    expect(folgtNicht.cause).toBe('die Messung am Netzanschluss folgt dem Ziel nicht');
+    expect(curtailActionPhrase(folgtNicht)).toBe('soll gerade die Einspeisung pausieren');
+
+    const offen = curtailTruth(dreiVonDrei(netz({ match: null })), NOW);
+    expect(offen.stufe).toBe('nicht_umgesetzt');
+    expect(offen.cause).toBe('die Regelung am Netzanschluss ist noch nicht bestätigt');
+    expect(curtailWarnLine(offen, 14.2)).toBe(
+      `Ihre Anlage speist gerade 14,2${NBSP}kW ein – sie setzt die Drosselung noch nicht um ` +
+        '(die Regelung am Netzanschluss ist noch nicht bestätigt).',
+    );
+  });
+
+  it('ein Regler OHNE aktives Ziel oder OHNE Freigabe belegt nichts und ändert nichts', () => {
+    const ohneZiel = curtailTruth(dreiVonDrei(netz({ targetKw: null, match: null })), NOW);
+    expect(ohneZiel).toEqual(curtailTruth(status({ units: 3, certifiedUnits: 3 }), NOW));
+    expect(curtailExecutionNote(ohneZiel)).toBe(
+      `Die Einspeisung ist auf 12,5${NBSP}kW begrenzt — vom Wechselrichter bestätigt.`,
+    );
+    // Nicht freigegeben: der Grund bleibt die fehlende Freigabe (2 von 3).
+    const gesperrt = curtailTruth(
+      dreiVonDrei(netz({ certified: false, match: false }), { certifiedUnits: 2 }), NOW,
+    );
+    expect(gesperrt.cause).toBe('2 von 3 Wechselrichtern freigegeben');
+    expect(gesperrt.netzZiel).toBeUndefined();
+  });
+
+  it('die schärferen Urteile behalten ihren Vorrang (Not-Aus, veraltet, übersteuert)', () => {
+    expect(curtailTruth(dreiVonDrei(netz(), { controlEnabled: false }), NOW).cause)
+      .toBe('die Wechselrichter-Steuerung ist ausgeschaltet');
+    expect(curtailTruth(dreiVonDrei(netz(), { possibleOverride: true }), NOW).stufe)
+      .toBe('uebersteuert');
+    const alt = new Date(NOW.getTime() - CURTAIL_STALE_MS - 1000).toISOString();
+    expect(curtailTruth(dreiVonDrei(netz(), { checkedAt: alt }), NOW)).toEqual({
+      ...CURTAIL_PLAN, stale: true,
+    });
+  });
+
+  it('nennt Richtung als Wort: ein Bezugs-Ziel heißt nie Einspeisung', () => {
+    expect(netzKwText(0)).toBe(`0,0${NBSP}kW Einspeisung`);
+    expect(netzKwText(-30)).toBe(`30,0${NBSP}kW Einspeisung`);
+    expect(netzKwText(2)).toBe(`2,0${NBSP}kW Bezug`);
+  });
+
+  it('abregelZiel nennt den Regler mit SEINER Aufgabe, nicht als gedeckelte Einheit', () => {
+    expect(abregelZiel(dreiVonDrei(netz()), nameOf)).toEqual({
+      satz: 'Geht an Fronius Ost und Fronius West; Heizhaus regelt den Rest am Netzanschluss.',
+      ton: 'ok',
+    });
+    // Nur der Regler ist freigegeben: an niemanden „geht" eine Begrenzung.
+    const nur = abregelZiel(
+      status({ units: 1, certifiedUnits: 1, perUnit: [netz()] }), nameOf,
+    );
+    expect(nur?.satz).toBe('Heizhaus regelt den Netzanschluss.');
+    // Halb benannt wird weiterhin nicht - auch nicht der Regler.
+    const ohneName = abregelZiel(dreiVonDrei(netz({ sourceId: 'src-fremd' })), nameOf);
+    expect(ohneName?.satz).toBe(
+      'Geht an alle freigegebenen Wechselrichter (3 von 3 Wechselrichtern freigegeben).',
+    );
+  });
+
+  it('liest ein unbekanntes Wort einer neueren Box wie die Kappe, nie als Netzregler', () => {
+    const fremd = { ...kappe('inverter'), mode: 'etwas_neues' } as unknown as CurtailmentUnit;
+    expect(regeltNetzanschluss(fremd)).toBe(false);
+    expect(abregelZiel(dreiVonDrei(fremd), nameOf)?.satz)
+      .toBe('Geht an Fronius Ost, Fronius West und Heizhaus.');
+  });
+
+  it('kein Kundensatz trägt das Wort des Herzschlags', () => {
+    const t = curtailTruth(dreiVonDrei(netz({ match: false })), NOW);
+    const alles = [
+      curtailExecutionNote(t), curtailWarnLine(t, 5), t.cause,
+      curtailExecutionNote(curtailTruth(dreiVonDrei(netz()), NOW)),
+      abregelZiel(dreiVonDrei(netz()), nameOf)?.satz,
+    ].join(' ');
+    expect(alles).not.toMatch(/grid_target|target_kw|per_unit|Sollwert/);
   });
 });

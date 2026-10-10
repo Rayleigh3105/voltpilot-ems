@@ -2,7 +2,7 @@
 
 The Geräte sidebar entry opens `edge-updates`. `geraete-registry` remains the secondary Registrierung tab, including existing `?geraet=` links. `BoxVersions` leads with the newest release (by `releaseSeq`) and every connected box's reported version, target and server update status. It reuses `versionDisplay` and `releaseIsRunning`; a confirmed target is not necessarily the newest release.
 
-Search, filters, release register and journal start collapsed. Registration has no onboarding KPI strip. Pending enrollments appear below the inventory in collapsed support details, omitted when empty, with an explicit error on failed fetch.
+Every box row carries a Box-Art chip (`BoxArtChip`: Docker-Box · Edge Light · Box-Art unbekannt, derived server-side in `ota/BoxArt`); the filter panel has a Box-Art picker listing only kinds that occur. Search, filters, release register and journal start collapsed. Registration has no onboarding KPI strip. Pending enrollments appear below the inventory in collapsed support details, omitted when empty, with an explicit error on failed fetch.
 
 Update actions use the shared Modal. `UpdateActionError` focuses failed writes inside that modal because disabling the submit button drops focus in Chrome. `restingLine` also checks individual updates without a rollout. Registration keeps the shared `Blende` loading transition.
 

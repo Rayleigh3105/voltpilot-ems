@@ -38,14 +38,17 @@ public class ControlStatusRepository {
      *                  {@code limit} (the cloud's unpriced
      *                  {@code limit_discharge_to_load} right) and the separately
      *                  certified inverter self-regulation
-     *                  {@code autonomous_discharge|autonomous_charge|autonomous_selfconsumption}.
+     *                  {@code autonomous_discharge|autonomous_charge|autonomous_selfconsumption}
+     *                  and {@code grid_target} (the hybrid inverter regulates
+     *                  the grid connection point itself in a curtailing slot).
      * @param direction {@code deepen|reduce}, only for {@code follow} and
      *                  {@code limit} (where it is always {@code reduce}).
      * @param plannedKw the setpoint BEFORE the correction.
      * @param targetKw  the MEASURED value the correction tracks (house deficit
      *                  for follower modes, PV surplus for {@code trim}/{@code absorb}/
      *                  {@code high_soc_charge}/{@code surplus_store}/{@code autonomous_charge};
-     *                  always null for the two-way {@code autonomous_selfconsumption}).
+     *                  always null for the two-way {@code autonomous_selfconsumption}
+     *                  and for {@code grid_target}, which regulates neither).
      */
     public record Execution(String source, String mode, String direction,
             Double plannedKw, Double targetKw, Double effectiveFloorSocPct,

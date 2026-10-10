@@ -92,7 +92,7 @@
       }
     },
     "abzuege": {
-      "type": "object", "description": "Die Abzüge, auf die Prüfungen per Schlüssel verweisen. „BR-2026-0001/1“ und „…/2“ halten `$defs/abzug` (die Zwillinge prüfen es); „randfall“ ist ein beliebiges JSON-Objekt für die kanonische Form.",
+      "type": "object", "description": "Die Abzüge, auf die Prüfungen per Schlüssel verweisen. „BR-2026-0001/1“ und „…/2“ halten `$defs/abzug` (die Zwillinge prüfen es); „randfall“ ist ein beliebiges JSON-Objekt für die kanonische Form, „r1_ohne_zahl/…“ ein Ausschnitt (Korrekturen, Werte, Kennzahlen) für den Vergleich R1.",
       "additionalProperties": { "type": "object" }
     },
     "cases": { "type": "array", "minItems": 17, "items": { "$ref": "#/$defs/fall" } }
@@ -309,8 +309,8 @@
         "kennzeichen": { "type": "array", "items": { "type": "string" } },
         "fassung": { "type": ["string", "null"], "enum": ["vorläufig", "endgültig", null] },
         "endgueltig_ab": { "$ref": "#/$defs/zeitpunkt_oder_null" },
-        "version": { "type": "integer", "minimum": 1 },
-        "berechnet_am": { "$ref": "#/$defs/zeitpunkt" },
+        "version": { "type": ["integer", "null"], "minimum": 1, "description": "null bei „keine Werte“: eine Quelle ohne gespeicherten Wert hat keine Version (nie 0)." },
+        "berechnet_am": { "$ref": "#/$defs/zeitpunkt_oder_null" },
         "zeitzone": { "type": "string" },
         "formel": { "type": "string" },
         "formel_fassung": { "type": "integer", "minimum": 1 }

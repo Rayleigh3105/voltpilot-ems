@@ -128,9 +128,10 @@ public class CurtailmentStatusRepository {
         for (CurtailmentUnitDto u : units) {
             jdbc.update(
                     "INSERT INTO device_curtailment_unit (device_id, source_id, tenant_id, "
-                            + "site_id, certified, applied_cap_kw, match) VALUES (?, ?, "
-                            + "NULLIF(current_setting('app.tenant_id', true), '')::uuid, ?, ?, ?, ?)",
-                    deviceId, u.sourceId(), siteId, u.certified(), u.appliedCapKw(), u.match());
+                            + "site_id, certified, applied_cap_kw, match, mode, target_kw) VALUES (?, ?, "
+                            + "NULLIF(current_setting('app.tenant_id', true), '')::uuid, ?, ?, ?, ?, ?, ?)",
+                    deviceId, u.sourceId(), siteId, u.certified(), u.appliedCapKw(), u.match(),
+                    u.mode(), u.targetKw());
         }
     }
 
@@ -157,15 +158,18 @@ public class CurtailmentStatusRepository {
     /** One device's per-unit breakdown, ordered by its join key (stable). */
     public List<CurtailmentUnitDto> unitsForDevice(UUID deviceId) {
         return jdbc.query(
-                "SELECT source_id, certified, applied_cap_kw, match FROM device_curtailment_unit "
-                        + "WHERE device_id = ? ORDER BY source_id",
+                "SELECT source_id, certified, applied_cap_kw, match, mode, target_kw "
+                        + "FROM device_curtailment_unit WHERE device_id = ? ORDER BY source_id",
                 (rs, i) -> new CurtailmentUnitDto(
                         rs.getString("source_id"),
                         rs.getBoolean("certified"),
                         (Double) rs.getObject("applied_cap_kw"),
                         // Nullable on purpose: "nothing commanded" must not read
                         // as "the readback disagreed" (getBoolean would say false).
-                        rs.getObject("match", Boolean.class)),
+                        rs.getObject("match", Boolean.class),
+                        rs.getString("mode"),
+                        // Nullable on purpose: "no target active" is not 0 kW.
+                        (Double) rs.getObject("target_kw")),
                 deviceId);
     }
 

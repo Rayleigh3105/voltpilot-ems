@@ -18,7 +18,7 @@
   ],
   "properties": {
     "schema_version": {
-      "const": "1.0"
+      "const": "1.6"
     },
     "herkunft": {
       "type": "string",
@@ -115,7 +115,9 @@
         "verzeichnis_ort",
         "verzeichnis_gruppe",
         "ueberpruefung_art",
-        "ueberpruefung_grund"
+        "ueberpruefung_grund",
+        "teil",
+        "mappe_anlass"
       ],
       "properties": {
         "dokument_art": {
@@ -317,6 +319,22 @@
             "pattern": "^[a-z_]+$"
           },
           "minItems": 1
+        },
+        "teil": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
+        },
+        "mappe_anlass": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z_]+$"
+          },
+          "minItems": 1
         }
       }
     },
@@ -467,7 +485,11 @@
         "dokument_art",
         "aufgabe",
         "verzeichnis_gruppe",
-        "verzeichnis_ort"
+        "verzeichnis_ort",
+        "teil",
+        "teil_kurz",
+        "aufgabe_kurz",
+        "mappe_anlass"
       ],
       "properties": {
         "dokument_art": {
@@ -681,6 +703,283 @@
               "minLength": 1
             }
           }
+        },
+        "teil": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "energiepolitik",
+            "anwendungsbereich",
+            "rechtliche_anforderungen",
+            "kontext",
+            "risiken_chancen",
+            "aufgaben",
+            "kompetenz",
+            "kommunikation",
+            "betrieb",
+            "auslegung",
+            "beschaffung",
+            "energetische_bewertung",
+            "bezugsbasen",
+            "massnahmen",
+            "interne_audits",
+            "feststellungen",
+            "managementbewertung",
+            "berichte"
+          ],
+          "properties": {
+            "energiepolitik": {
+              "type": "string",
+              "minLength": 1
+            },
+            "anwendungsbereich": {
+              "type": "string",
+              "minLength": 1
+            },
+            "rechtliche_anforderungen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kontext": {
+              "type": "string",
+              "minLength": 1
+            },
+            "risiken_chancen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "aufgaben": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kompetenz": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kommunikation": {
+              "type": "string",
+              "minLength": 1
+            },
+            "betrieb": {
+              "type": "string",
+              "minLength": 1
+            },
+            "auslegung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "beschaffung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "energetische_bewertung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "bezugsbasen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "massnahmen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "interne_audits": {
+              "type": "string",
+              "minLength": 1
+            },
+            "feststellungen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "managementbewertung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "berichte": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "teil_kurz": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "energiepolitik",
+            "anwendungsbereich",
+            "rechtliche_anforderungen",
+            "kontext",
+            "risiken_chancen",
+            "aufgaben",
+            "kompetenz",
+            "kommunikation",
+            "betrieb",
+            "auslegung",
+            "beschaffung",
+            "energetische_bewertung",
+            "bezugsbasen",
+            "massnahmen",
+            "interne_audits",
+            "feststellungen",
+            "managementbewertung",
+            "berichte"
+          ],
+          "properties": {
+            "energiepolitik": {
+              "type": "string",
+              "minLength": 1
+            },
+            "anwendungsbereich": {
+              "type": "string",
+              "minLength": 1
+            },
+            "rechtliche_anforderungen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kontext": {
+              "type": "string",
+              "minLength": 1
+            },
+            "risiken_chancen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "aufgaben": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kompetenz": {
+              "type": "string",
+              "minLength": 1
+            },
+            "kommunikation": {
+              "type": "string",
+              "minLength": 1
+            },
+            "betrieb": {
+              "type": "string",
+              "minLength": 1
+            },
+            "auslegung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "beschaffung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "energetische_bewertung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "bezugsbasen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "massnahmen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "interne_audits": {
+              "type": "string",
+              "minLength": 1
+            },
+            "feststellungen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "managementbewertung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "berichte": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "aufgabe_kurz": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "unternehmensleitung",
+            "energiemanagement_leiten",
+            "energieteam",
+            "bezugsbasen",
+            "energieziele_massnahmen",
+            "bewertung_messplanung",
+            "interne_audits",
+            "managementbewertung",
+            "dokumente",
+            "weitere"
+          ],
+          "properties": {
+            "unternehmensleitung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "energiemanagement_leiten": {
+              "type": "string",
+              "minLength": 1
+            },
+            "energieteam": {
+              "type": "string",
+              "minLength": 1
+            },
+            "bezugsbasen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "energieziele_massnahmen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "bewertung_messplanung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "interne_audits": {
+              "type": "string",
+              "minLength": 1
+            },
+            "managementbewertung": {
+              "type": "string",
+              "minLength": 1
+            },
+            "dokumente": {
+              "type": "string",
+              "minLength": 1
+            },
+            "weitere": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "mappe_anlass": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "audit_von_aussen",
+            "anfrage_behoerde",
+            "eigene_ablage"
+          ],
+          "properties": {
+            "audit_von_aussen": {
+              "type": "string",
+              "minLength": 1
+            },
+            "anfrage_behoerde": {
+              "type": "string",
+              "minLength": 1
+            },
+            "eigene_ablage": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         }
       }
     },
@@ -698,8 +997,10 @@
         "ueberpruefung",
         "geprueft_bleibt",
         "bekanntmachung",
+        "bekanntmachung_durch",
         "anwendungsbereich_deckungsgleich",
         "anwendungsbereich_unterschied",
+        "anwendungsbereich_nur_im_umfang",
         "freigabe_ohne_leitung",
         "aufgabe_ohne_person",
         "person_ohne_konto",
@@ -770,11 +1071,19 @@
           "type": "string",
           "minLength": 1
         },
+        "bekanntmachung_durch": {
+          "type": "string",
+          "minLength": 1
+        },
         "anwendungsbereich_deckungsgleich": {
           "type": "string",
           "minLength": 1
         },
         "anwendungsbereich_unterschied": {
+          "type": "string",
+          "minLength": 1
+        },
+        "anwendungsbereich_nur_im_umfang": {
           "type": "string",
           "minLength": 1
         },
@@ -1276,8 +1585,12 @@
                     "required": [
                       "faellig",
                       "vorschau",
+                      "spaeter",
                       "anzahl_faellig",
                       "anzahl_vorschau",
+                      "anzahl_ueberfaellig",
+                      "anzahl_naechste",
+                      "anzahl_spaeter",
                       "nicht_in_liste"
                     ],
                     "properties": {
@@ -1383,11 +1696,74 @@
                           }
                         }
                       },
+                      "spaeter": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "art",
+                            "kennzeichen",
+                            "titel",
+                            "faellig_am",
+                            "tage",
+                            "satz",
+                            "verantwortlich"
+                          ],
+                          "properties": {
+                            "art": {
+                              "type": "string",
+                              "pattern": "^[a-z_]+$"
+                            },
+                            "kennzeichen": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "titel": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "faellig_am": {
+                              "type": "string",
+                              "pattern": "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"
+                            },
+                            "tage": {
+                              "type": "integer"
+                            },
+                            "satz": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "verantwortlich": {
+                              "anyOf": [
+                                {
+                                  "type": "null"
+                                },
+                                {
+                                  "type": "string"
+                                }
+                              ]
+                            }
+                          }
+                        }
+                      },
                       "anzahl_faellig": {
                         "type": "integer",
                         "minimum": 0
                       },
                       "anzahl_vorschau": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "anzahl_ueberfaellig": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "anzahl_naechste": {
+                        "type": "integer",
+                        "minimum": 0
+                      },
+                      "anzahl_spaeter": {
                         "type": "integer",
                         "minimum": 0
                       },

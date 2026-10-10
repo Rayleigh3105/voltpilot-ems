@@ -42,13 +42,19 @@ VOKABULARE = dict(
     folge_art=["energieziel", "massnahme", "dokument", "aufgabe", "audit"],
     wiedervorlage_art=["dokument_ueberpruefung", "internes_audit", "managementbewertung", "feststellung",
                        "bewertung_ueberpruefung", "bezugsbasis_ueberpruefung", "energieziel_bewertung", "massnahme_termin",
-                       "abweichung_frist", "messbedarf_frist", "bericht_anstoss"],
+                       "abweichung_frist", "messbedarf_frist", "bericht_anstoss", "zaehlerablesung"],
     verzeichnis_ort=["in_voltpilot", "wortlaut_original_beim_kunden", "verweis"],
     verzeichnis_gruppe=["grundlagen", "verantwortung", "risiken_chancen", "kompetenz_kommunikation",
                         "betrieb_auslegung_beschaffung", "bewertung_messplanung", "kennzahlen_bezugsbasen",
                         "ziele_massnahmen_abweichungen", "audits_feststellungen", "managementbewertung", "berichte"],
     ueberpruefung_art=["dokument", "internes_audit", "managementbewertung", "feststellung"],
     ueberpruefung_grund=["nachweis", "keine_fassung", "kein_audit", "keine_managementbewertung", "abgeschlossen"],
+    # Vertrag 1.3 (Konzept Nachweisen n1, Entscheide 5 und 23): die 18 Teile des Überblicks.
+    teil=["energiepolitik", "anwendungsbereich", "rechtliche_anforderungen", "kontext", "risiken_chancen", "aufgaben",
+          "kompetenz", "kommunikation", "betrieb", "auslegung", "beschaffung", "energetische_bewertung",
+          "bezugsbasen", "massnahmen", "interne_audits", "feststellungen", "managementbewertung", "berichte"],
+    # Vertrag 1.6 (Konzept Nachweisen n1, Entscheid 7): wofür Unterlagen zusammengestellt werden.
+    mappe_anlass=["audit_von_aussen", "anfrage_behoerde", "eigene_ablage"],
 )
 DOKUMENT_ART_KLASSE = dict(energiepolitik="vorgabe", anwendungsbereich="vorgabe", kontext="vorgabe",
                            rechtliche_anforderungen="vorgabe", risiken_chancen="vorgabe", bestellung="vorgabe",
@@ -80,6 +86,31 @@ WOERTER = dict(
                             managementbewertung="Managementbewertung", berichte="Berichte"),
     verzeichnis_ort=dict(in_voltpilot="in VoltPilot", wortlaut_original_beim_kunden="Wortlaut in VoltPilot, Original bei Ihnen",
                          verweis="Geführt in Ihrem System"),
+    # Vertrag 1.3: Name und Kurzwort je Teil (Entscheid 23).
+    teil=dict(energiepolitik="Energiepolitik", anwendungsbereich="Anwendungsbereich",
+              rechtliche_anforderungen="Rechtliche Anforderungen", kontext="Kontext und interessierte Parteien",
+              risiken_chancen="Risiken und Chancen", aufgaben="Aufgaben im Energiemanagement",
+              kompetenz="Kompetenz", kommunikation="Kommunikation", betrieb="Betrieb und Instandhaltung",
+              auslegung="Auslegung", beschaffung="Beschaffung",
+              energetische_bewertung="Energetische Bewertung und Messplanung",
+              bezugsbasen="Kennzahlen und Bezugsbasen", massnahmen="Energieziele und Maßnahmen",
+              interne_audits="Interne Audits", feststellungen="Feststellungen",
+              managementbewertung="Managementbewertung", berichte="Berichte"),
+    teil_kurz=dict(energiepolitik="Energiepolitik", anwendungsbereich="Anwendungsbereich",
+                   rechtliche_anforderungen="Rechtliche Anforderungen", kontext="Kontext",
+                   risiken_chancen="Risiken und Chancen", aufgaben="Aufgaben", kompetenz="Kompetenz",
+                   kommunikation="Kommunikation", betrieb="Betrieb und Instandhaltung", auslegung="Auslegung",
+                   beschaffung="Beschaffung", energetische_bewertung="Energetische Bewertung",
+                   bezugsbasen="Bezugsbasen", massnahmen="Maßnahmen", interne_audits="Interne Audits",
+                   feststellungen="Feststellungen", managementbewertung="Managementbewertung", berichte="Berichte"),
+    # Vertrag 1.5 (Entscheid 23): das Kurzwort je Aufgabe für Zeilen am Handy.
+    aufgabe_kurz=dict(unternehmensleitung="Leitung", energiemanagement_leiten="Energiemanagement leiten",
+                      energieteam="Energieteam", bezugsbasen="Bezugsbasen", energieziele_massnahmen="Ziele und Maßnahmen",
+                      bewertung_messplanung="Energetische Bewertung", interne_audits="Interne Audits",
+                      managementbewertung="Managementbewertung", dokumente="Dokumente", weitere="Weitere Aufgabe"),
+    # Vertrag 1.6 (Entscheid 7): das Wort je Anlass einer Mappe.
+    mappe_anlass=dict(audit_von_aussen="Audit von außen", anfrage_behoerde="Anfrage einer Behörde",
+                      eigene_ablage="Eigene Ablage"),
 )
 VERANTWORTUNG = ("Inhalte und Entscheidungen Ihres Energiemanagements verantwortet Ihr Unternehmen. VoltPilot hält fest, "
                  "wer was wann entschieden hat, und beurteilt nicht, ob Ihr Energiemanagement genügt.")
@@ -95,9 +126,13 @@ SAETZE = dict(
     verweis_keine_datei="VoltPilot speichert keine Dateien. Halten Sie fest, wo das Original liegt; die Prüfsumme zeigt später, ob es noch dasselbe ist.",
     ueberpruefung="Überprüfung fällig seit {tage} Tagen.",
     geprueft_bleibt="Geprüft, bleibt — entschieden von {person} am {am}: ‚{begruendung}‘",
-    bekanntmachung="Bekannt gemacht am {am} an {kreis} über {weg} — eingetragen von {person}.",
+    bekanntmachung="Bekannt gemacht am {am} an {kreis} über {weg}.",
+    # Vertrag 1.4 (Konzept Nachweisen n1, Befund A14): die Person, die bekannt gemacht hat.
+    bekanntmachung_durch="Bekannt gemacht von {person} am {am} an {kreis} über {weg}.",
     anwendungsbereich_deckungsgleich="Der Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}, ab {ab}) umfasst dieselben Standorte und Energieträger.",
     anwendungsbereich_unterschied="{was} gehört zum Anwendungsbereich, aber nicht zum Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}).",
+    # Vertrag 1.4 (Konzept Nachweisen n1, Befund A21): die Gegenrichtung des Vergleichs.
+    anwendungsbereich_nur_im_umfang="{was} gehört zum Betrachtungsumfang der energetischen Bewertung (Fassung {fassung}), aber nicht zum Anwendungsbereich.",
     freigabe_ohne_leitung="Diese Fassung braucht eine Entscheidung der Leitung. Für die Aufgabe ‚Leitung des Unternehmens‘ ist keine Person festgelegt.",
     aufgabe_ohne_person="{aufgabe} — keine Person festgelegt.",
     person_ohne_konto="{name} · {funktion} · ohne Konto — erscheint als ‚entschieden von‘.",
@@ -122,7 +157,7 @@ SAETZE = dict(
     wiedervorlage_zeile="{gegenstand}: {was} seit {tage} Tagen fällig.",
     wiedervorlage_leer="Zurzeit ist nichts fällig.",
     kalender_abzug="Stand vom {am} aus VoltPilot; maßgeblich ist die Wiedervorlage im Portal.",
-    baustein="Energiemanagement — {faellig} fällig · {vorschau} in den nächsten {tage} Tagen.",
+    baustein="Energiemanagement: {ueberfaellig} überfällig · {naechste} in den nächsten {tage} Tagen.",
     verzeichnis_leer="Hier ist noch nichts festgehalten.",
     verzeichnis_filter="In meinem Namen festgehalten: {anzahl} Einträge.",
     zuschnitt_titel="Was VoltPilot führt — was bei Ihnen liegt.",
@@ -199,8 +234,16 @@ def ueberpruefung(e):
     return dict(fehler="ueberpruefung_art")
 
 
+JAHRESPLAN_MONATE = 12
+"""Konzept Wiedervorlage w1 (Vertrag 1.1): so viele Monate reicht der Jahresplan über den Abruf hinaus."""
+
+
 def wiedervorlage(e):
-    """WV1–WV3: jede Frist kommt fertig aus ihrer Regel (WV2) — hier nur Lage, Vorschau-Fenster und Reihenfolge."""
+    """WV1–WV3: jede Frist kommt fertig aus ihrer Regel (WV2); hier nur Lage, Vorschau-Fenster und Reihenfolge.
+
+    Seit Vertrag 1.1 dazu der Jahresplan ``spaeter`` (nach dem Fenster bis Abruf + 12 Monate) und die Zählung nach
+    Dringlichkeit: ``anzahl_ueberfaellig`` (``tage`` > 0) und ``anzahl_naechste`` (heute und das Vorschau-Fenster).
+    """
     if e["vorschau_tage"] < 0:
         return dict(fehler="vorschau_tage")
     abruf = _tag(e["abruf"])
@@ -214,7 +257,12 @@ def wiedervorlage(e):
     liste = sorted([z for z in zeilen if z["tage"] >= -e["vorschau_tage"]], key=lambda z: (z["faellig_am"], z["kennzeichen"]))
     faellig = [z for z in liste if z["tage"] >= 0]
     vorschau = [z for z in liste if z["tage"] < 0]
-    return dict(faellig=faellig, vorschau=vorschau, anzahl_faellig=len(faellig), anzahl_vorschau=len(vorschau),
+    plan_ende = plus_monate(abruf, JAHRESPLAN_MONATE).isoformat()
+    spaeter = sorted([z for z in zeilen if z["tage"] < -e["vorschau_tage"] and z["faellig_am"] <= plan_ende],
+                     key=lambda z: (z["faellig_am"], z["kennzeichen"]))
+    return dict(faellig=faellig, vorschau=vorschau, spaeter=spaeter, anzahl_faellig=len(faellig),
+                anzahl_vorschau=len(vorschau), anzahl_ueberfaellig=sum(1 for z in faellig if z["tage"] > 0),
+                anzahl_naechste=sum(1 for z in liste if z["tage"] <= 0), anzahl_spaeter=len(spaeter),
                 nicht_in_liste=sorted(z["kennzeichen"] for z in zeilen if z["tage"] < -e["vorschau_tage"]))
 
 

@@ -493,6 +493,36 @@ describe('controlMatrixRows (B2 - die Pilsting-Sicht)', () => {
     expect(row.executionText).toBe('Solar-Überschuss');
   });
 
+  it('Fleet-Puls 3 von 3: der Netzregler zählt mit und sein Beleg ist die Messung', () => {
+    const netz = {
+      sourceId: 'inverter', certified: true, appliedCapKw: null, match: true,
+      mode: 'grid_target' as const, targetKw: 0,
+    };
+    const fronius = { sourceId: 'src-a', certified: true, appliedCapKw: 6.2, match: true };
+    const [row] = controlMatrixRows(
+      [input({
+        control: control({ commandedKw: null, confirmedKw: null, executionMode: 'grid_target' }),
+        curtailment: curtail({ units: 3, certifiedUnits: 3, perUnit: [fronius, netz] }),
+      })],
+      NOW,
+    );
+    expect(row.curtail.text).toBe('3 von 3 Wechselrichtern freigegeben');
+    expect(row.curtail.tone).toBe('ok');
+    expect(row.curtail.detail).toMatch(/^Netz-Sollwert 0,0\skW Einspeisung - durch die Messung bestätigt\.$/);
+    expect(row.executionText).toBe('Wechselrichter regelt den Netzanschluss');
+
+    const [folgtNicht] = controlMatrixRows(
+      [input({
+        curtailment: curtail({
+          units: 3, certifiedUnits: 3, perUnit: [fronius, { ...netz, match: false }],
+        }),
+      })],
+      NOW,
+    );
+    expect(folgtNicht.curtail.tone).toBe('warn');
+    expect(folgtNicht.curtail.detail).toBe('Die Messung am Netzanschluss folgt dem Ziel nicht.');
+  });
+
   it('a possible override is a warning, not a confirmation', () => {
     const [row] = controlMatrixRows([input({ curtailment: curtail({ possibleOverride: true }) })], NOW);
     expect(row.curtail.tone).toBe('warn');

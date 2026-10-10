@@ -349,6 +349,14 @@ tags:
       sagt, wo das Original liegt. IP-6: Personen im Energiemanagement (auch ohne Konto) und Aufgaben mit
       „entschieden von“; die Leitung ist, wer am Tag die Aufgabe „Leitung des Unternehmens“ trägt. IP-10: „Wer ist
       wofür verantwortlich“ liest die Verantwortlichen der Objekte und die Freigaben der Bezugsbasen daneben.
+  - name: fernwartung
+    description: >
+      Fernwartung über das Portal (Entscheid E5): Tunnel-Schlüssel je Box,
+      Techniker-Zugänge, Fernwartungsfenster und Protokoll unter
+      /api/v1/admin/fernwartung (nur `platform-admin`), dazu die nur lesende
+      Route des Tunnel-Dienstes (/api/v1/fernwartung/soll, nur die Rolle
+      `tunnel-dienst`). Der Kunde sieht nichts davon (O3). Siehe
+      docs/fernwartung.md.
   - name: admin
     description: >
       Platform-admin API (Portal-Admins only). Every operation requires the
@@ -2747,6 +2755,36 @@ paths:
               schema: { $ref: "#/components/schemas/ChargingConfig" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Anlage unbekannt, oder diese Kennung ist hier nicht eingetragen (deutscher Grund im Körper). }
+  /api/v1/sites/{siteId}/charging-config/storage-release:
+    put:
+      tags: [sites]
+      summary: Die Reserve von „Sonne + Speicher“ setzen (06.10.2026).
+      description: >
+        Die Energie in kWh, die der Speicher über seinem Reservestapel
+        (technisch, Notstrom, Lastspitze) zusätzlich für die Nacht behält, wenn
+        ein Ladepunkt auf „Sonne + Speicher“ lädt. `reserveKwh: null` nimmt die
+        eigene Angabe zurück - dann gilt die Vorgabe (1,0 kWh). Die Zahl reist
+        nicht zur Box: der Optimierer rechnet mit ihr die Untergrenze, die der
+        Fahrplan je Viertelstunde mitbringt. RLS-gefenced (fremde Anlage 404).
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reserveKwh: { type: number, nullable: true, minimum: 0, maximum: 100 }
+      responses:
+        "200":
+          description: Die gespeicherte Konfiguration.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ChargingConfig" }
+        "400": { description: Reserve außerhalb von 0..100 kWh (deutscher Grund im Körper). }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Anlage unbekannt. }
   /api/v1/sites/{siteId}/charging-config/charge-points/{chargePointId}/source:
     put:
       tags: [sites]
@@ -3737,7 +3775,12 @@ paths:
                   enum: ["", sofort, ueberschuss]
                   description: >
                     Abwesend = nichts ändern, "" = Profil zurücknehmen.
-                ueberschussModus: { type: string, enum: [pausieren, mindestleistung] }
+                ueberschussModus:
+                  type: string
+                  enum: [pausieren, mindestleistung]
+                  description: >
+                    „speicher“ (Sonne + Speicher) gibt es je Ladepunkt, nicht je
+                    Karte - es wird mit einem benannten Grund abgelehnt (400).
                 mindestleistungKw: { type: number, minimum: 0, maximum: 1000 }
       responses:
         "200":
@@ -6179,6 +6222,12 @@ paths:
         several updates may run side by side); one that just finished must not
         vanish from the page in the very moment it completed. Platform-admin
         only; there is deliberately NO customer-facing surface for updates.
+        BOX KIND: every release and every fleet row carries `boxArt` (`docker` |
+        `light`, derived once in `ota.BoxArt`). A device reporting backend
+        `light` - or, during the transition, a stamp starting `edge-light-` - is
+        Edge Light; a fleet row with nothing to go by is `null` (unknown, never
+        silently Docker). A release is Docker unless its signed manifest lists
+        `light` in `compat.backends` or its name starts `edge-light-`.
       responses:
         "200":
           description: Releases, the recent updates, the fleet matrix, the journal and the KPI.
@@ -6201,8 +6250,9 @@ paths:
         installed base). A row that is not yet a device carries NO state -
         deriving one would be a claim about a device that does not exist.
         The state fields are the SAME derivation as the fleet row
-        (RolloutStates), so the two surfaces can never disagree.
-        Platform-admin only.
+        (RolloutStates), so the two surfaces can never disagree; `boxArt` is the
+        same derivation as on the fleet row (`null` for a printed ID that is not
+        a device yet). Platform-admin only.
       responses:
         "200":
           description: One row per device - registry half, fleet half, or both.
@@ -6229,6 +6279,12 @@ paths:
         Several updates may run SIDE BY SIDE - the former "at most one live
         rollout" bar was a gate that blocked a legitimate second order. What
         stays unique is what matters: exactly one assignment per DEVICE.
+
+
+        The release must fit the BOX KIND of every chosen device (`ota.BoxArt`):
+        no Docker release to an Edge Light box, no Edge Light release to a
+        Docker box or to a box of unknown kind. If one device does not fit,
+        NOTHING is assigned and the 409 names the devices with the German reason.
 
 
         Assigning publishes the signed manifest RETAINED on
@@ -6273,7 +6329,7 @@ paths:
                         grund: { type: string, enum: [kundenbereich_beendet] }
         "400": { description: No devices, or an unknown device. }
         "404": { description: The release is not registered. }
-        "409": { description: The release is not signed - or every chosen device belongs to an ended customer area (kundenbereich_beendet). }
+        "409": { description: "The release is not signed, or it does not fit the box kind of a chosen device (nothing assigned), or every chosen device belongs to an ended customer area (kundenbereich_beendet)." }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
@@ -6282,8 +6338,9 @@ paths:
       tags: [admin]
       summary: Assign ONE device a release.
       description: >
-        The single-device path (the device page). Only a signed release is
-        assignable (409 otherwise); the device does the rest by itself.
+        The single-device path (the device page). Only a signed release that
+        fits the device's box kind (`ota.BoxArt`) is assignable (409 with a
+        German reason otherwise); the device does the rest by itself.
       parameters:
         - name: deviceId
           in: path
@@ -6301,7 +6358,7 @@ paths:
       responses:
         "204": { description: Assigned; the signed manifest went out retained. }
         "404": { description: Device or release not found. }
-        "409": { description: The release is not signed. }
+        "409": { description: "The release is not signed, or it does not fit the device's box kind." }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
 
@@ -6429,6 +6486,389 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AdminFleet" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/fernwartung:
+    get:
+      tags: [fernwartung]
+      summary: Übersicht - Server-Seite, Zähler und wann der Tunnel-Dienst zuletzt abgeholt hat.
+      description: >
+        `abrufe` sagt, DASS ein Tunnel-Dienst den Soll-Stand abgeholt hat, nicht
+        ob er wirkt (der Dienst meldet nichts zurück). `server.eingerichtet` ist
+        false, solange der Server-Schlüssel nicht konfiguriert ist.
+      responses:
+        "200":
+          description: Übersicht.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungUebersicht" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/fernwartung/boxen:
+    get:
+      tags: [fernwartung]
+      summary: Alle Boxen mit hinterlegtem Tunnel-Schlüssel, mit laufenden und geplanten Fenstern.
+      responses:
+        "200":
+          description: Boxen nach Tunnel-Adresse.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FernwartungBox" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/admin/fernwartung/boxen/{ref}:
+    get:
+      tags: [fernwartung]
+      summary: Eine Box; 404, solange kein Tunnel-Schlüssel hinterlegt ist.
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string, example: edge-zay5sdd } }
+      responses:
+        "200":
+          description: Die Box.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungBox" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Kein Tunnel-Schlüssel hinterlegt. }
+        "422": { description: Box-Referenz mit falschem Prüfzeichen. }
+  /api/v1/admin/fernwartung/boxen/{ref}/schluessel:
+    put:
+      tags: [fernwartung]
+      summary: Öffentlichen Tunnel-Schlüssel einer Box hinterlegen (Übergang bis zur Werkstatt-Registrierung D2).
+      description: >
+        Neu: Adresse aus dem Box-Netz zuteilen (201). Derselbe Schlüssel noch
+        einmal: unverändert (200). Ein anderer Schlüssel nur mit
+        `schluesselTausch: true` (200, sonst 409) - die Adresse bleibt der Box.
+        Ein Schlüssel gehört höchstens einem Zugang (409). Die Referenz wird
+        wie bei der Kopplung kanonisiert; `edge-` mit falschem Prüfzeichen oder
+        eine der Plattform unbekannte Referenz ohne Prüfzeichen ist 422. Die
+        Antwort trägt die Server-Seite für service-tunnel.sh.
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [publicKey]
+              properties:
+                publicKey: { type: string, description: Öffentlicher WireGuard-Schlüssel (Base64, 44 Zeichen). }
+                schluesselTausch: { type: boolean }
+                notiz: { type: string, maxLength: 500 }
+      responses:
+        "200":
+          description: Unverändert oder getauscht.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungSchluesselAntwort" }
+        "201":
+          description: Angelegt, Adresse zugeteilt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungSchluesselAntwort" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: Anderer Schlüssel ohne Tausch-Markierung, Schlüssel schon vergeben oder Netz voll. }
+        "422": { description: Referenz mit falschem Prüfzeichen oder unbekannt. }
+  /api/v1/admin/fernwartung/boxen/{ref}/sperren:
+    post:
+      tags: [fernwartung]
+      summary: Box sperren - der Tunnel-Dienst entfernt ihren Peer, offene und geplante Fenster werden geschlossen.
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object, properties: { grund: { type: string, maxLength: 500 } } }
+      responses:
+        "200":
+          description: Gesperrt (idempotent).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungBox" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Kein Tunnel-Schlüssel hinterlegt. }
+  /api/v1/admin/fernwartung/boxen/{ref}/entsperren:
+    post:
+      tags: [fernwartung]
+      summary: Box wieder zulassen (idempotent).
+      parameters:
+        - { name: ref, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Aktiv.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungBox" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Kein Tunnel-Schlüssel hinterlegt. }
+  /api/v1/admin/fernwartung/techniker:
+    get:
+      tags: [fernwartung]
+      summary: Alle Techniker-Zugänge, ohne gelöschte.
+      responses:
+        "200":
+          description: Aktive und gesperrte Zugänge nach Tunnel-Adresse.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FernwartungTechniker" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [fernwartung]
+      summary: Techniker-Zugang anlegen; die Schlüssel entstehen auf dem Gerät des Technikers.
+      description: >
+        `publicKey` ist der öffentliche WireGuard-Schlüssel (Pflicht).
+        `sshPublicKey` ist freiwillig: der öffentliche SSH-Schlüssel, mit dem
+        sich der Techniker im offenen Fenster an der Box anmeldet; Regeln wie
+        bei `PUT …/techniker/{id}/ssh-schluessel`. Ohne ihn öffnet ein Fenster
+        für diesen Zugang nur den Netzweg.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, publicKey]
+              properties:
+                name: { type: string, maxLength: 80 }
+                publicKey: { type: string }
+                notiz: { type: string, maxLength: 500 }
+                sshPublicKey: { type: string, description: "Eine Zeile `ssh-rsa AAAA… [Kommentar]`, 2048 bis 4096 Bit." }
+      responses:
+        "201":
+          description: Angelegt, Adresse aus dem Techniker-Netz zugeteilt; mit Server-Seite für die Gerätekonfiguration.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  techniker: { $ref: "#/components/schemas/FernwartungTechniker" }
+                  server: { $ref: "#/components/schemas/FernwartungServer" }
+        "400": { description: "Name, WireGuard-Schlüssel oder SSH-Schlüssel nicht annehmbar; `message` nennt den Grund." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409": { description: "Schlüssel schon vergeben (auch der eines gelöschten Zugangs) oder Netz voll." }
+  /api/v1/admin/fernwartung/techniker/{id}/ssh-schluessel:
+    put:
+      tags: [fernwartung]
+      summary: Öffentlichen SSH-Schlüssel eines Techniker-Zugangs setzen oder ersetzen.
+      description: >
+        Fenster-Schlüssel, Schritt 1: Der Schlüssel steht am Zugang und geht im
+        Soll-Stand an den Tunnel-Dienst (`sshPublicKey` am Techniker-Peer).
+        Angenommen wird nur `ssh-rsa` mit 2048 bis 4096 Bit, als eine Zeile ohne
+        Optionen davor; der Dropbear der Boxen nimmt nichts anderes an. Ein
+        Ed25519-, ECDSA- oder FIDO-Schlüssel wird mit dem Befehl abgelehnt, der
+        einen passenden erzeugt (`ssh-keygen -t rsa -b 3072`). Der Kommentar wird
+        verworfen; gespeichert und geliefert wird die Normalform
+        `ssh-rsa <Base64>`, dazu der Fingerabdruck wie bei `ssh-keygen -lf`.
+        Derselbe Schlüssel noch einmal ändert nichts. Sonst bekommt das
+        Protokoll den Eintrag `techniker_ssh_schluessel_gesetzt`.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sshPublicKey]
+              properties:
+                sshPublicKey: { type: string, description: "Eine Zeile `ssh-rsa AAAA… [Kommentar]`." }
+      responses:
+        "200":
+          description: Gesetzt oder unverändert.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungTechniker" }
+        "400": { description: "Kein annehmbarer Schlüssel; `message` nennt den Grund und bei falschem Typ oder zu kurzem Schlüssel den Befehl." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Unbekannter oder gelöschter Zugang. }
+    delete:
+      tags: [fernwartung]
+      summary: SSH-Schlüssel eines Techniker-Zugangs entfernen (idempotent).
+      description: >
+        Fenster für diesen Zugang öffnen danach nur noch den Netzweg. Das
+        Protokoll bekommt den Eintrag `techniker_ssh_schluessel_entfernt`, wenn
+        ein Schlüssel hinterlegt war.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Entfernt oder schon ohne Schlüssel.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungTechniker" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Unbekannter oder gelöschter Zugang. }
+  /api/v1/admin/fernwartung/techniker/{id}:
+    delete:
+      tags: [fernwartung]
+      summary: Gesperrten Techniker-Zugang löschen (endgültig).
+      description: >
+        Nur aus dem Zustand `gesperrt`. Der Zugang fehlt danach in jeder Liste
+        und Auswahl und lässt sich nicht mehr entsperren. Seine Tunnel-Adresse
+        und sein öffentlicher Schlüssel bleiben dauerhaft vergeben und werden
+        nie wieder zugeteilt. Frühere Fenster- und Protokolleinträge bleiben
+        lesbar und nennen ihn weiter beim Namen; das Protokoll bekommt den
+        Eintrag `techniker_geloescht`. Für den Tunnel-Dienst ändert sich nichts:
+        ein gesperrter Zugang steht schon nicht mehr im Soll-Stand.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "204": { description: Gelöscht. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Unbekannter oder bereits gelöschter Zugang. }
+        "409": { description: "Der Zugang ist aktiv - erst sperren, dann löschen." }
+  /api/v1/admin/fernwartung/techniker/{id}/sperren:
+    post:
+      tags: [fernwartung]
+      summary: Techniker-Zugang sperren - Peer raus, seine offenen und geplanten Fenster werden geschlossen.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object, properties: { grund: { type: string, maxLength: 500 } } }
+      responses:
+        "200":
+          description: Gesperrt (idempotent).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungTechniker" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Unbekannter Zugang. }
+  /api/v1/admin/fernwartung/techniker/{id}/entsperren:
+    post:
+      tags: [fernwartung]
+      summary: Techniker-Zugang wieder zulassen (idempotent).
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Aktiv.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungTechniker" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Unbekannter Zugang. }
+  /api/v1/admin/fernwartung/fenster:
+    get:
+      tags: [fernwartung]
+      summary: Fernwartungsfenster, neueste zuerst.
+      parameters:
+        - { name: box, in: query, required: false, schema: { type: string } }
+        - { name: techniker, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, required: false, schema: { type: integer, default: 100, maximum: 500 } }
+      responses:
+        "200":
+          description: Fenster.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FernwartungFenster" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [fernwartung]
+      summary: Fenster öffnen - Box, Techniker, Grund und Dauer sind Pflicht.
+      description: >
+        Dauer 1 Minute bis `max-fenster-dauer` (Vorgabe 24 h). `beginn` leer =
+        jetzt, sonst höchstens 30 Tage im Voraus. Ein überlappendes Fenster für
+        dasselbe Paar ist 409 (erst schließen). Gesperrte Box oder gesperrter
+        Zugang ist 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [edgeRef, technikerId, grund, dauerMinuten]
+              properties:
+                edgeRef: { type: string }
+                technikerId: { type: string, format: uuid }
+                grund: { type: string, minLength: 3, maxLength: 500 }
+                dauerMinuten: { type: integer, minimum: 1 }
+                beginn: { type: string, format: date-time }
+      responses:
+        "201":
+          description: Geöffnet oder geplant.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungFenster" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Box ohne Tunnel-Schlüssel oder unbekannter Zugang. }
+        "409": { description: Gesperrt oder überlappend. }
+  /api/v1/admin/fernwartung/fenster/{id}/schliessen:
+    post:
+      tags: [fernwartung]
+      summary: Ein offenes Fenster vorzeitig schließen bzw. ein geplantes absagen.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200":
+          description: Geschlossen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungFenster" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: Unbekanntes Fenster. }
+        "409": { description: Nicht mehr offen. }
+  /api/v1/admin/fernwartung/protokoll:
+    get:
+      tags: [fernwartung]
+      summary: Das Protokoll aller Fernwartungs-Änderungen, neueste zuerst (append-only).
+      parameters:
+        - { name: box, in: query, required: false, schema: { type: string } }
+        - { name: techniker, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, required: false, schema: { type: integer, default: 200, maximum: 500 } }
+      responses:
+        "200":
+          description: Einträge.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/FernwartungProtokollEintrag" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/fernwartung/soll:
+    get:
+      tags: [fernwartung]
+      summary: Soll-Stand für den Tunnel-Dienst (nur Rolle `tunnel-dienst`, nur lesen).
+      description: >
+        Alle aktiven Peers (Boxen und Techniker-Zugänge) und die JETZT offenen
+        Fenster, deren Box und Techniker aktiv sind; geplante Fenster stehen
+        nicht darin. Fenster verweisen über `boxId`/`technikerId` auf Peers.
+        Vertragsvektor: docs/contracts/fernwartung-soll-v1.example.json.
+        Antwort mit `Cache-Control: no-store`. Kein Admin- und kein
+        Kunden-Token (403).
+      responses:
+        "200":
+          description: Soll-Stand Version 1.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FernwartungSoll" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
   /api/v1/admin/sites/{siteId}/v2-entities:
@@ -9226,6 +9666,10 @@ paths:
         nichts - leer, nie 403. `beobachtung` und `letzter_wert` (IP-15) sagen je Größe,
         was ihre führende Quelle liefert - `aggregat` zählt „x von y Messstellen liefern
         Daten“ über genau die gezeigten Zeilen; `teilansicht` bleibt bis AP-03 `false`.
+        Mit `letzterMonat=true` trägt jede Zeile `letzter_monat` (Messen PR5): den Monat
+        vor dem des Stichtags und seinen Wert aus dem Lese-Modell „Werte je Messstelle“ -
+        genau der Schritt von `…/werte?raster=monat`, keine zweite Rechnung. Er kostet
+        einen Lesezug je gezeigter Messstelle und steht darum nur auf Verlangen.
       parameters:
         - { name: standort, in: query, required: false, description: "Kurzzeichen oder ID des Standorts; die Zeile zählt, wenn ihr abgeleiteter Standort dieser ist.", schema: { type: string } }
         - { name: ort, in: query, required: false, description: "Kurzzeichen oder ID eines Standorts, Gebäudes oder Bereichs - einschließlich seines Teilbaums am Stichtag; U = direkt am Unternehmen.", schema: { type: string } }
@@ -9234,6 +9678,7 @@ paths:
         - { name: ohneQuelle, in: query, required: false, description: "true = nur gemessene ohne führende Quelle zum Zeitpunkt (berechnete sind nicht „ohne Quelle“, sie haben keine); fehlend oder false = kein Filter.", schema: { type: boolean } }
         - { name: geplantFuerEinsatz, in: query, required: false, description: "true = nur Messstellen, die einen eingelösten Messbedarf tragen („geplant für EE-…“).", schema: { type: boolean } }
         - { name: stichtag, in: query, required: false, schema: { type: string } }
+        - { name: letzterMonat, in: query, required: false, description: "true = jede Zeile trägt `letzter_monat` (kein Filter); fehlend oder false = das Feld fehlt.", schema: { type: boolean } }
       responses:
         "200":
           description: Die Messstellen und ihre Register-Zeilen (leer ohne gewählten Kundenbereich).
@@ -11635,6 +12080,10 @@ paths:
         fremder Standort 404 `nicht_gefunden`, fehlendes Recht 403 `recht_fehlt` - die Unterstützung
         bekommt nie Entwurf oder Stand. Die Liste enthält nur, was die Person lesen darf; darf sie
         nirgends einen Bericht lesen, ist das 403. Neueste zuerst. UEMS AP-12 IP-7.
+        Mit `archiviert=true` (Konzept Nachweisen n1, C8) auch die archivierten - die Liste zeigt sie als eine
+        Zeile „Archiviert · n“.
+      parameters:
+        - { name: archiviert, in: query, required: false, schema: { type: string, enum: ["true", "false"] }, description: "`true` nimmt die archivierten Berichte dazu (ihr `archiviert_am` ist gesetzt); anderes als `true`/`false` ist 400 `anfrage_ungueltig`." }
       responses:
         "200":
           description: Die Berichte.
@@ -11967,6 +12416,39 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/BerichtAnstoss" }
+        "400": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "404": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "409": { $ref: "#/components/responses/BerichtAbgelehnt" }
+        "422": { $ref: "#/components/responses/BerichtAbgelehnt" }
+  /api/v1/berichte/{kennung}/anstoesse/verwerfen:
+    parameters:
+      - { name: kennung, in: path, required: true, schema: { type: string, pattern: "^BR-[0-9]{4}-[0-9]{4,}$" }, description: "Die Kennung des Berichts (BR-<Jahr>-<Nr.>); eine, die keine ist, ist 404 `nicht_gefunden`." }
+    post:
+      tags: [berichte]
+      summary: Verwirft die gesehenen offenen Anstöße mit EINEM Grund in einer Transaktion - „Nein, Stand n behalten“.
+      description: >
+        Konzept Nachweisen n1, Entscheid 16 (Review r1, P3-2): eine Entscheidung für alle offenen Anstöße, die
+        die Person gesehen hat - alle oder keiner. Recht wie `POST …/anstoesse/{id}/verwerfen`. Reihenfolge:
+        Kennungen (400 `anfrage_ungueltig`: leer, doppelt, mehr als 200) → jede ein Anstoß dieses Berichts (404
+        `nicht_gefunden`) → Begründung 10 bis 500 Zeichen (422 `begruendung_fehlt`) → jeder offen (409
+        `anstoss_nicht_offen` mit `zustand` und `anstoss_id` des ersten, der es nicht ist; dann ist keiner
+        verworfen). Ein neuer Anstoß, der nicht in der Anfrage steht, bleibt offen.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/BerichtAnstoesseVerwerfen" }
+            example:
+              anstoss_ids: ["0b5c3f0e-1c2d-4e5f-8a9b-0c1d2e3f4a5b", "1c6d4a1f-2d3e-4f60-9b0c-1d2e3f4a5b6c"]
+              begruendung: "Die Korrekturen betreffen keine Zahl dieses Berichts."
+      responses:
+        "200":
+          description: Verworfen - die Anstöße in der Reihenfolge der Anfrage.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/BerichtAnstoesseVerworfen" }
         "400": { $ref: "#/components/responses/BerichtAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/BerichtAbgelehnt" }
@@ -12371,6 +12853,33 @@ paths:
         "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
         "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
         "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/leitung:
+    get:
+      tags: [energiemanagement]
+      summary: Die Leitung des Unternehmens am Tag - für die Freigabe mit Leitungs-Pflicht (PA3, DK3).
+      description: >
+        Recht `energiemanagement.freigeben` am `standort` (ohne Standort am Unternehmen; sonst 403 `recht_fehlt`, ein
+        fremder Standort 422 `standort_unbekannt`). `tag` (Vorgabe heute in der Zeitzone des Unternehmens, sonst 400).
+        `leitung` sind die Personen mit laufender Aufgabe `unternehmensleitung` - dieselben wie in
+        `GET …/aufgaben`, aber auch für wen nur an einem Standort freigibt und die Aufgaben nicht unternehmensweit
+        liest (Konzept Nachweisen n1, Befund A4). Leer heißt, Freigaben mit Leitungs-Pflicht sind gesperrt.
+      parameters:
+        - in: query
+          name: tag
+          schema: { type: string, format: date }
+        - in: query
+          name: standort
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementLeitung" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
   /api/v1/energiemanagement/aufgaben/{id}/beenden:
     parameters:
       - in: path
@@ -12401,6 +12910,179 @@ paths:
         "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
         "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
         "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/teil-vermerke:
+    get:
+      tags: [energiemanagement]
+      summary: „Trifft bei uns zurzeit nicht zu“ je Teil des Überblicks (Konzept Nachweisen n1, Entscheid 5).
+      description: >
+        Recht `energiemanagement.ansehen`, nur unternehmensweit - wer nur Standorte liest, bekommt keinen Vermerk,
+        ohne Hinweis. `stichtag` ist der Abruf in der Zeitzone des Unternehmens (wie das Verzeichnis). `vermerke`
+        nennt geltende Vermerke zuerst in der Folge des Vokabulars `teil` (Vertrag energiemanagement 1.3), dann
+        aufgehobene, die zuletzt aufgehobene zuerst. Im Verzeichnis steht jeder Vermerk als Zeile der Art
+        `teil_vermerk` in der Gruppe seines Teils. Kein Urteil: welcher Teil zutrifft, entscheidet der Kunde.
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementTeilVermerke" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [energiemanagement]
+      summary: Vermerken, dass ein Teil zurzeit nicht zutrifft - mit Satz und „entschieden von“.
+      description: >
+        Recht `energiemanagement.verwalten` am Unternehmen (auch „Einsicht“ 403 `recht_fehlt`). `teil` aus dem
+        Vokabular `teil` (400 `anfrage_ungueltig`, `feld` `teil`), `satz` 10 bis 500 Zeichen (400
+        `anfrage_ungueltig`, `feld` `satz`, mit `min`/`max`), `entschieden_von` eine Person im Energiemanagement
+        (fehlt 422 `entschieden_von_fehlt`, unbekannt 404 `nicht_gefunden`, ihr `bis` vor dem Tag 422
+        `person_beendet`), `entschieden_am` wahlfrei (Vorgabe heute in der Zeitzone des Unternehmens, nie in der
+        Zukunft: 422 `tag_in_zukunft`). Ein geltender Vermerk für denselben Teil 409 `vermerk_besteht` (mit `teil`).
+        Nur anhängen; der Vermerk trägt, wer ihn eingetragen hat.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnergiemanagementTeilVermerkAnlegen" }
+      responses:
+        "201":
+          description: Der Vermerk.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementTeilVermerk" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/teil-vermerke/{id}/aufheben:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      tags: [energiemanagement]
+      summary: Vermerk aufheben - einmal, jetzt; danach ist er endgültig.
+      description: >
+        Recht `energiemanagement.verwalten` am Unternehmen. Ohne Körper. Setzt den Zeitpunkt des Aufhebens und wer es
+        eingetragen hat; unbekannt 404 `nicht_gefunden`, schon aufgehoben 409 `vermerk_aufgehoben` (mit
+        `aufgehoben_am`). Danach kann der Teil wieder vermerkt werden, als neuer Vermerk. Keine Löschroute.
+      responses:
+        "200":
+          description: Der aufgehobene Vermerk.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementTeilVermerk" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "409": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "422": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/mappen:
+    get:
+      tags: [energiemanagement]
+      summary: Die Mappen „Unterlagen zusammenstellen“, die jüngste zuerst (Konzept Nachweisen n1, Entscheid 7).
+      description: >
+        Recht `energiemanagement.ansehen`, nur unternehmensweit - wer nur Standorte liest, bekommt keine Mappe, ohne
+        Hinweis; „Einsicht“ liest. Leert dabei die Dateien abgelaufener Mappen (Aufbewahrung 30 Tage); die Angaben
+        bleiben.
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementMappen" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [energiemanagement]
+      summary: Unterlagen zusammenstellen - ein PDF mit Inhaltsverzeichnis und die Verzeichnis-CSV für einen Anlass.
+      description: >
+        Recht `energiemanagement.verwalten` am Unternehmen (auch „Einsicht“ 403 `recht_fehlt`). `anlass` aus dem
+        Vokabular `mappe_anlass` (Vertrag energiemanagement 1.6), `gruppen` mindestens eine aus `verzeichnis_gruppe`,
+        `offen` die Teile (Vokabular `teil`), die das Portal beim Zusammenstellen als offen zeigt (Entscheid 4: der
+        Stand je Teil lebt im Portal; sie stehen als offen in der Mappe, ohne Urteil), `von` wahlfrei (ohne: alles bis
+        zum Stichtag; nach dem Stichtag 400). Jede Ablehnung 400 `anfrage_ungueltig` mit `feld`. Der Stichtag ist der
+        des Verzeichnisses. Das PDF nennt „Was am Stichtag gilt“ (je Dokument die jüngste freigegebene Fassung,
+        laufende Aufgaben, geltende Vermerke) und „Was im Zeitraum festgehalten wurde“ (die Zeilen des Verzeichnisses);
+        die CSV ist das Verzeichnis des Zeitraums. Beide mit Prüfsumme, 30 Tage abrufbar. Der Mandant kommt nie aus dem
+        Körper.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EnergiemanagementMappeAnlegen" }
+      responses:
+        "201":
+          description: Die Mappe.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementMappe" }
+        "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/mappen/{id}:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [energiemanagement]
+      summary: Eine Mappe - wofür, was hineinging, Prüfsummen und wie lange sie noch abrufbar ist.
+      description: >
+        Recht `energiemanagement.ansehen`, nur unternehmensweit; unbekannt, fremd oder im Standort-Zaun 404
+        `nicht_gefunden`. `abrufbar_tage` zählt die Datenbank in echter Zeit (angebrochene als ganze), 0 nach der Frist.
+      responses:
+        "200":
+          description: Die Mappe.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementMappe" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/mappen/{id}/pdf:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [energiemanagement]
+      summary: Das PDF der Mappe; jeder Abruf protokolliert.
+      description: >
+        Recht `energiemanagement.ansehen`, nur unternehmensweit. Erst die Datei, dann der Abruf im Protokoll, in einer
+        Transaktion. Nach 30 Tagen 410 `mappe_abgelaufen`; ein verwehrter Abruf steht nicht im Protokoll.
+      responses:
+        "200":
+          description: Das PDF.
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "410": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+  /api/v1/energiemanagement/mappen/{id}/csv:
+    parameters:
+      - in: path
+        name: id
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [energiemanagement]
+      summary: Die Verzeichnis-CSV der Mappe; jeder Abruf protokolliert.
+      description: >
+        Recht `energiemanagement.ansehen`, nur unternehmensweit. Die CSV des Verzeichnisses für den Zeitraum der Mappe,
+        mit einer ersten Zeile, wofür und von wem. Nach 30 Tagen 410 `mappe_abgelaufen`.
+      responses:
+        "200":
+          description: Die CSV.
+          content:
+            text/csv:
+              schema: { type: string }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "410": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
   /api/v1/energiemanagement/verantwortung:
     get:
       tags: [energiemanagement]
@@ -12487,7 +13169,15 @@ paths:
         längsten fällig zuerst, bei gleichem Tag nach Kennzeichen; `vorschau` die Fristen in den nächsten
         `vorschau_tage` Tagen (Einstellung, Startwert 30; genau 30 ist Vorschau); `nicht_in_liste` die Kennzeichen mit
         späterer Frist; `naechste_managementbewertung` die Frist von MG7 mit Herkunft, auch außerhalb des Fensters.
-        `format=ics` liefert dieselben Zeilen (fällig und Vorschau) als Kalender-Abzug nach RFC 5545 -
+        Seit Vertrag 1.1 (Konzept Wiedervorlage w1, additiv): `spaeter` der Jahresplan (nach dem Fenster bis Abruf +
+        12 Monate, dieselbe Zeilenform), `anzahl_ueberfaellig` (abgelaufen), `anzahl_naechste` (heute und das Fenster),
+        `anzahl_spaeter`; je Zeile `herleitung` (woraus die Frist folgt), `bezug` (der Gegenstand, wo der Titel ihn nicht
+        trägt), `einsatz_id` (der Energieeinsatz eines Messbedarfs) und `zustaendig` (die Person am Objekt oder laut
+        Aufgabe im Energiemanagement). Ein Gegenstand ist eine Zeile: die offenen Korrekturen eines Berichts stehen in
+        einer. Seit Vertrag 1.2 die Zählerablesungen: die aktiven Messstellen, deren Werte aus Ablesungen kommen, über
+        das Messstellen-Register mit dem Leserecht je Messstelle (wie `GET /api/v1/messstellen`); fällig zwei
+        Kalendermonate nach der letzten Ablesung, ohne Ablesung ab dem Beginn der Ablesungs-Quelle - je Gebäude und
+        Fälligkeitstag eine Zeile. `format=ics` liefert dieselben Zeilen (fällig, Vorschau und Jahresplan) als Kalender-Abzug nach RFC 5545 -
         je Zeile ein ganztägiger Termin am Tag, an dem sie fällig ist bzw. wird, Titel „Kennzeichen: Titel“,
         Beschreibung und Kalender mit dem Vermerk „Stand vom TT.MM.JJJJ aus VoltPilot; maßgeblich ist die Wiedervorlage
         im Portal.“ Dasselbe Recht wie die Seite, nicht eigens protokolliert; nichts wird verschickt.
@@ -12504,6 +13194,24 @@ paths:
             text/calendar:
               schema: { type: string }
         "400": { $ref: "#/components/responses/EnergiemanagementAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/energiemanagement/wiedervorlage/zuletzt:
+    get:
+      tags: [energiemanagement]
+      summary: Zuletzt erledigt - die letzten Entscheidungen, die eine Frist beendet oder neu begonnen haben (Konzept Wiedervorlage w1).
+      description: >
+        Recht `energiemanagement.ansehen`. Ein Leser wie die Wiedervorlage: die Zeilen des Verzeichnisses, die eine Frist
+        beenden oder neu beginnen lassen (freigegebene Fassung einer Vorgabe oder Bezugsbasis, abgeschlossenes internes
+        Audit, Wirksamkeit, Bewertung eines Energieziels oder einer Maßnahme, Abschluss einer Abweichung, Stand der
+        energetischen Bewertung oder Managementbewertung, Berichtsstand nach einer Korrektur), dazu „geprüft, bleibt“ an
+        Dokumenten und Bezugsbasen - je mit den Rechten des Aufrufers gelesen. Die letzten 90 Tage bis zum Abruf
+        (Zeitzone des Unternehmens), die jüngste zuerst, höchstens fünf.
+      responses:
+        "200":
+          description: Ergebnis.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EnergiemanagementWiedervorlageZuletzt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/energiemanagement/energieeinsaetze/{id}/nachweise:
     parameters:
@@ -12717,8 +13425,8 @@ paths:
         Energiemanagement (422 `entschieden_von_fehlt`, `person_unbekannt`), `entschieden_am` ein Tag bis heute
         (Vorgabe heute, 422 `tag_in_der_zukunft`), Begründung 10-500 Zeichen (422 `begruendung_fehlt`). Bei
         Energiepolitik, Anwendungsbereich und Bestellung ist es die Person mit der am Tag laufenden Aufgabe „Leitung
-        des Unternehmens“ (422 `leitung_fehlt`). Kopie und Prüfsumme entstehen mit dem Antrag. Protokoll
-        `fassung_beantragt`.
+        des Unternehmens“ (ohne Leitung am Tag 422 `leitung_fehlt`, eine andere Person 422 `nicht_die_leitung` mit
+        `leitung`). Kopie und Prüfsumme entstehen mit dem Antrag. Protokoll `fassung_beantragt`.
       requestBody:
         required: true
         content:
@@ -12745,7 +13453,8 @@ paths:
       summary: Fassung freigeben - mit „entschieden von“, bei Vier-Augen durch eine zweite Person (DK3, DK4).
       description: >
         Recht `energiemanagement.freigeben` am Standort des Bezugs bzw. am Unternehmen. Ohne Vier-Augen der Entwurf
-        mit „entschieden von“, Tag und Begründung wie beim Antrag (Leitungs-Pflicht 422 `leitung_fehlt`); mit
+        mit „entschieden von“, Tag und Begründung wie beim Antrag (Leitungs-Pflicht 422 `leitung_fehlt` bzw.
+        `nicht_die_leitung`); mit
         Vier-Augen ist ein Entwurf 409 `vieraugen_beantragen`, und den Antrag bestätigt eine zweite Person - nie, wer
         die Fassung entworfen oder beantragt hat (422 `vieraugen_urheber`), mit Rolle Kundenadministrator oder
         Energiemanager (403 `vieraugen_rolle`); sie schickt höchstens eine Begründung (ein „entschieden von“ 422
@@ -13943,7 +14652,7 @@ paths:
         ist; über die endgültigen Monate die Operation `zielstand`: Σ gemessen ÷ Σ erwartet über die bewertbaren
         (nie ein Mittel), `monate_text` „x von y“, `nicht_gezaehlt` mit Grund, `vorschlag` (`erreicht ·
         nicht_erreicht`) nur bei vollständiger Periode, sonst null. `satz` und `vorschlag_satz` sind Kundensätze des
-        Vertrags (§6), ohne bewertbaren Monat null.
+        Vertrags (§6), ohne bewertbaren Monat null. `kurs` ist die Operation `kurs` (§4a) über dieselben Monate.
       responses:
         "200":
           description: Der Stand zum Abruf-Tag.
@@ -13961,11 +14670,16 @@ paths:
         `standort_id`, eine Maßnahme am Unternehmen nur unternehmensweit; mit Messgrundlage zusätzlich über die
         Kennzahl). `ueberfaellig` filtert über die Operation `frist` beim Abruf (Uhr der Kennzahlen, kein Läufer,
         kein Zustand); `kennzahl` ist die ID einer sichtbaren Kennzahl (sonst 404); ein anderer Parameter 400.
+        `energieziel` (ID eines sichtbaren Energieziels, sonst 404; Konzept Verbessern, Entscheid 5) liefert die
+        Maßnahmen für dieses Energieziel und die, deren Wirkung schon im Stand enthalten ist: an derselben Kennzahl
+        umgesetzt, nach dem Ende der Referenzperiode seiner Bezugsbasis-Fassung und spätestens am letzten Tag der
+        Zielperiode; diese stehen zusätzlich in `im_stand_enthalten`.
       parameters:
         - { name: zustand, in: query, required: false, schema: { type: string, enum: [geplant, umgesetzt, bewertet, verworfen] } }
         - { name: ueberfaellig, in: query, required: false, schema: { type: string, enum: ["true", "false"] } }
         - { name: kennzahl, in: query, required: false, schema: { type: string, format: uuid } }
         - { name: einsatz, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: energieziel, in: query, required: false, schema: { type: string, format: uuid } }
       responses:
         "200":
           description: Die sichtbaren Maßnahmen, nach Kennzeichen, mit dem Abruf-Tag.
@@ -13997,7 +14711,12 @@ paths:
         `monate_nicht_abgeschlossen`; ohne: der letzte abgeschlossene Monat), kanonischer Text mit Prüfsumme; der
         Standort ist der der Kennzahl (422 `standort_der_kennzahl`). Ohne `kennzahl` (M4) ist
         `erwartete_wirkung_prozent` 422 `ohne_messgrundlage` mit `kennzeichen` und `hinweis`, welche Kennzahl fehlt.
-        Protokoll `massnahme_angelegt`.
+        `art` (Verbessern-Konzept v1, Entscheid 6) `gemessen · nicht_gemessen · organisatorisch` - `gemessen` genau mit
+        `kennzahl` (422 `art_ohne_kennzahl` bzw. `art_mit_kennzahl`); ohne Angabe `gemessen` mit Kennzahl, aus
+        `nichtkonformitaet` oder `audit` `organisatorisch`, sonst `nicht_gemessen`. `erwartete_einsparung_kwh_jahr` (Entscheid 13) ist die Schätzung einer Person in ganzen kWh im
+        Jahr, weniger Energie (> 0) - nur ohne Kennzahl (422 `einsparung_mit_kennzahl`) und nicht bei `organisatorisch`
+        (422 `einsparung_organisatorisch`); mit Kennzahl und `erwartete_wirkung_prozent` rechnet die Route selbst um wie
+        `GET …/schaetzung`. Protokoll `massnahme_angelegt`.
       requestBody:
         required: true
         content:
@@ -14024,6 +14743,8 @@ paths:
                 standort: { type: string, format: uuid }
                 erwartete_wirkung_prozent: { type: number, exclusiveMinimum: -100, exclusiveMaximum: 100 }
                 erwartete_wirkung_wortlaut: { type: string, minLength: 1 }
+                art: { type: string, enum: [gemessen, nicht_gemessen, organisatorisch] }
+                erwartete_einsparung_kwh_jahr: { type: integer, minimum: 1, description: "kWh im Jahr, Schätzung einer Person; nur ohne Kennzahl" }
       responses:
         "201":
           description: Angelegt, geplant.
@@ -14036,6 +14757,30 @@ paths:
         "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
         "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
         "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/massnahmen/schaetzung:
+    get:
+      tags: [kennzahlen]
+      summary: Rechnet eine erwartete Wirkung in Prozent in kWh im Jahr um - für „Maßnahme planen“ (Entscheid 13).
+      description: >
+        Recht `verbesserung.ansehen`; die Kennzahl muss sichtbar sein (sonst 404). `kwh_jahr` = −`prozent` × die
+        gemessene Menge der Kennzahl in den zwölf abgeschlossenen Monaten vor heute (`grundlage_kwh`,
+        `grundlage_monate`), auf ganze kWh gerundet, weniger Energie positiv - dieselbe Rechnung, mit der `POST` die
+        Schätzung festhält. Ohne volle Grundlage `kwh_jahr` null und `grund` (`monate_fehlen` mit `monate_mit_wert`,
+        `einheit_nicht_kwh`, `kennzahl_ohne_bezugsbasis`, `zu_klein`); die Fassung wählt dieselbe Regel wie die
+        Messgrundlage beim Anlegen (freigegeben und heute geltend), sonst `kennzahl_ohne_bezugsbasis` - das Blatt zeigt
+        nie eine Zahl, die `POST` danach ablehnt. Liest nur; fehlender oder anderer Parameter 400.
+      parameters:
+        - { name: kennzahl, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: prozent, in: query, required: true, schema: { type: string, pattern: "^-?[0-9]{1,2}(\\.[0-9])?$" } }
+      responses:
+        "200":
+          description: Die Umrechnung oder der Grund, warum es keine gibt.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MassnahmeSchaetzung" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
   /api/v1/massnahmen/{id}:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -14072,6 +14817,7 @@ paths:
                 erwartete_wirkung_prozent: { type: number, exclusiveMinimum: -100, exclusiveMaximum: 100 }
                 erwartete_wirkung_wortlaut: { type: string, minLength: 1 }
                 begruendung: { type: string, minLength: 10, maxLength: 500 }
+                erwartete_einsparung_kwh_jahr: { type: integer, minimum: 1, description: "nur ohne Kennzahl und nicht organisatorisch; mit Kennzahl folgt sie `erwartete_wirkung_prozent`" }
       responses:
         "200":
           description: Geändert.
@@ -14307,7 +15053,8 @@ paths:
       summary: Setzt den Verantwortlichen der Maßnahme (Benutzer + Schnappschuss) mit Begründung.
       description: >
         Recht `verbesserung.verwalten`, solange geplant (409 `massnahme_nicht_geplant`); `benutzer` ist ein aktives
-        Konto des Kundenbereichs (422 `benutzer_unbekannt`) - Verantwortung verleiht kein Recht (RE3). Protokoll
+        Konto des Kundenbereichs (422 `benutzer_unbekannt`) - Verantwortung verleiht kein Recht (RE3), mit der einen
+        engen Ausnahme `verbesserung.eigene_massnahme` (umgesetzt melden, kommentieren; Verbessern v1 Entscheid 8). Protokoll
         `verantwortlicher_geaendert`.
       requestBody:
         required: true
@@ -14339,7 +15086,8 @@ paths:
       tags: [kennzahlen]
       summary: Meldet die Maßnahme als umgesetzt (Tag, Begründung) - einmalig.
       description: >
-        Recht `verbesserung.verwalten` (M6). Nur geplant, einmalig (409 `massnahme_nicht_geplant`); `am` nie nach
+        Recht `verbesserung.verwalten`, für die verantwortliche Person auch `verbesserung.eigene_massnahme` (Verbessern
+        v1 Entscheid 8; eine fremde Maßnahme bleibt 403 wie ohne Recht) (M6). Nur geplant, einmalig (409 `massnahme_nicht_geplant`); `am` nie nach
         heute in der Zeitzone des Unternehmens (422 `umgesetzt_in_der_zukunft`); `begruendung` 10–500 Zeichen.
         Protokoll `massnahme_umgesetzt`.
       requestBody:
@@ -14403,7 +15151,8 @@ paths:
       tags: [kennzahlen]
       summary: Ein Kommentar im Verlauf der Maßnahme.
       description: >
-        Recht `verbesserung.verwalten` (M7, §5.7). An einer geplanten oder umgesetzten Maßnahme (sonst 409
+        Recht `verbesserung.verwalten`, für die verantwortliche Person auch `verbesserung.eigene_massnahme` (Verbessern
+        v1 Entscheid 8; eine fremde Maßnahme bleibt 403 wie ohne Recht) (M7, §5.7). An einer geplanten oder umgesetzten Maßnahme (sonst 409
         `massnahme_nicht_geplant`); `text` 1–2 000 Zeichen (422 `text_ungueltig`); `art` nur `kommentar`. Eine
         Protokollzeile mit Person, Zeit und Text - nichts wird geändert, nichts gelöscht.
       requestBody:
@@ -14497,6 +15246,27 @@ paths:
         "404": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
         "409": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
         "422": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+  /api/v1/auffaelligkeiten:
+    get:
+      tags: [kennzahlen]
+      summary: Die Auffälligkeiten (Vermerke) aller sichtbaren Kennzahlen - für Verbessern.
+      description: >
+        Recht `verbesserung.ansehen` (UEMS AP-18 IP-16, Verbessern-Konzept v1 Entscheid 4); derselbe Zaun wie an der
+        Kennzahl: RLS über `standort_id` des Vermerks und je Kennzahl ihre Sicht - ein Vermerk an einer nicht
+        sichtbaren Kennzahl fehlt in der Liste (kein 404). Je Vermerk die Kennzahl, die Kopie des Vergleichsergebnisses
+        mit Prüfsumme, die geerbten Vorbehalte und die Antwort; ältester Monat zuerst. `zustand` (`offen · beantwortet`)
+        filtert, `offen` zählt immer alle sichtbaren offenen; ein anderer Parameter 400. Beantwortet wird an der
+        Kennzahl (`POST /api/v1/kennzahlen/{id}/auffaelligkeiten/{aid}/antwort`).
+      parameters:
+        - { name: zustand, in: query, required: false, schema: { type: string, enum: [offen, beantwortet] } }
+      responses:
+        "200":
+          description: Die sichtbaren Vermerke nach Monat, mit dem Abruf-Tag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuffaelligkeitenAlle" }
+        "400": { $ref: "#/components/responses/VerbesserungAbgelehnt" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
   /api/v1/abweichungen:
     get:
       tags: [kennzahlen]
@@ -14891,7 +15661,17 @@ paths:
       summary: Die Kennzahlen des Kundenbereichs, archivierte eingeschlossen, nach Kennzeichen.
       description: >
         Recht `messwerte.ansehen` (AP-11 R2). Die Sichtbarkeit R-A1 und R-A6 je Person setzt
-        der Geltungsbereich-Prüfpunkt durch (AP-03 IP-11).
+        der Geltungsbereich-Prüfpunkt durch (AP-03 IP-11). Mit `mit=auswertung` (Konzept Auswerten
+        a1, PR1) trägt jede nicht archivierte Kennzahl mit Monatswerten ihre `auswertung`: das Urteil
+        des letzten abgeschlossenen Monats gegen die Bezugsbasis, die zwölf Monate davor, die Veränderung
+        zum Vorjahr und den Stand des offenen Energieziels - dieselbe Ableitung wie die Leitkachel der
+        Übersicht. Ohne `mit` fehlt das Feld (die Antwort bleibt Byte für Byte gleich).
+      parameters:
+        - name: mit
+          in: query
+          required: false
+          schema: { type: string, enum: [auswertung] }
+          description: Ein anderer Wert ist 400 `anfrage_ungueltig` mit `feld` `mit`.
       responses:
         "200":
           description: Die Kennzahlen (ein Objekt, kein nacktes Array - additiv erweiterbar).
@@ -14995,13 +15775,23 @@ paths:
     get:
       tags: [kennzahlen]
       summary: Eine Kennzahl mit der heute geltenden Berechnung.
-      description: Recht `messwerte.ansehen`.
+      description: >
+        Recht `messwerte.ansehen`. Mit `mit=auswertung` (Konzept Auswerten a1 §6.5, die Seite einer Kennzahl)
+        trägt eine nicht archivierte Kennzahl mit Monatswerten dieselbe `auswertung` wie in der Liste, mit dem
+        Stand ihres offenen Energieziels. Ohne `mit` fehlt das Feld.
+      parameters:
+        - name: mit
+          in: query
+          required: false
+          schema: { type: string, enum: [auswertung] }
+          description: Ein anderer Wert ist 400 `anfrage_ungueltig` mit `feld` `mit`.
       responses:
         "200":
           description: Die Kennzahl.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Kennzahl" }
+        "400": { $ref: "#/components/responses/KennzahlAbgelehnt" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/KennzahlAbgelehnt" }
     put:
@@ -15258,7 +16048,8 @@ paths:
         freigegebene Fassung, die am letzten Tag des Monats gilt, P4): gemessen = gespeicherter Zähler der Kennzahl
         mit Version, `bedingung` = jede Variable mit Wert und Fassung, erwartet, Δ, Band = max(Toleranz, Streuung),
         Urteil oder Grund, Kennzeichen nach G5. `zeitraum` = Operation `zeitraum` gegen die Fassung am letzten Tag
-        von `bis` - Σ gemessen ÷ Σ erwartet, nie ein Mittel (U5). Gerechnet wird in BezugsbasisRegeln; nichts wird
+        des letzten Monats mit Fassung - Σ gemessen ÷ Σ erwartet über die Monate mit Fassung, nie ein Mittel (U5, P4
+        je Monat). Gerechnet wird in BezugsbasisRegeln; nichts wird
         gespeichert. Ein unbekannter oder falsch geformter Parameter ist 400 `anfrage_ungueltig` mit `feld`.
       responses:
         "200":
@@ -15616,6 +16407,13 @@ paths:
         der Zeitpunkt dieser Sicht. Liest nur. `doppelzaehlung` (Captain-Entscheid 14.09.2026) warnt,
         welcher Posten in welchem bereits enthalten ist (Regel `doppelzaehlung`, Formeln je Tag, rekursiv,
         Kreis benannt) - und ändert keine Zahl: kein Posten fehlt, keine Summe wird bereinigt.
+        Messen PR4 (Regel `ablesezeitraum`, Vertrag 1.5): eine Messstelle aus Ablesungen hat keine
+        Tageswerte. Über `monat` und `jahr` trägt ihr Posten `monate` statt `tage`: je Monat die Menge
+        aus den Ablesezeiträumen, die der Kunde ihm zugeordnet hat - als Ganzes an die Kostenstelle,
+        wenn ihr Anteil an JEDEM Tag dieser Zeiträume gilt; wechselt er mitten darin, keine Zahl
+        (`anteil_wechselt_im_ablesezeitraum`, Satz „keine Werte (Verteilung im Ablesezeitraum
+        geändert)“ und „Verteilung geändert am …“). Ein Monat mit Zeile, aber noch ohne Ablesung:
+        `keine_ablesung`. Ein Tag bekommt nie einen Anteil eines Ablesezeitraums.
       parameters:
         - { name: periode, in: query, required: false, schema: { type: string, enum: [tag, monat, jahr] } }
         - { name: am, in: query, required: false, schema: { type: string, format: date } }
@@ -18720,6 +19518,98 @@ components:
         zuordnungen:
           type: array
           items: { $ref: "#/components/schemas/EnergiemanagementZuordnung" }
+    EnergiemanagementLeitung:
+      type: object
+      required: [tag, leitung]
+      properties:
+        tag: { type: string, format: date }
+        leitung:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementPersonKurz" }
+    EnergiemanagementTeilVermerkAnlegen:
+      type: object
+      additionalProperties: false
+      required: [teil, satz, entschieden_von]
+      properties:
+        teil: { type: string, enum: [energiepolitik, anwendungsbereich, rechtliche_anforderungen, kontext, risiken_chancen, aufgaben, kompetenz, kommunikation, betrieb, auslegung, beschaffung, energetische_bewertung, bezugsbasen, massnahmen, interne_audits, feststellungen, managementbewertung, berichte] }
+        satz: { type: string, minLength: 10, maxLength: 500, description: Die Begründung in einem Satz. }
+        entschieden_von: { type: string, format: uuid, description: Eine Person im Energiemanagement, auch ohne Konto. }
+        entschieden_am: { type: string, format: date, nullable: true, description: Vorgabe heute; nie in der Zukunft. }
+    EnergiemanagementTeilVermerk:
+      type: object
+      required: [id, teil, teil_wort, satz, entschieden_von, entschieden_am, eingetragen, aufgehoben]
+      properties:
+        id: { type: string, format: uuid }
+        teil: { type: string }
+        teil_wort: { type: string, description: Der Name des Teils (Vertrag `woerter.teil`). }
+        satz: { type: string }
+        entschieden_von: { $ref: "#/components/schemas/EnergiemanagementPersonKurz" }
+        entschieden_am: { type: string, format: date }
+        eingetragen: { $ref: "#/components/schemas/EnergiemanagementEingetragen" }
+        aufgehoben: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementEingetragen" }], nullable: true, description: Wer aufgehoben hat und wann; `null`, solange der Vermerk gilt. }
+    EnergiemanagementTeilVermerke:
+      type: object
+      required: [stichtag, vermerke]
+      properties:
+        stichtag: { type: string, format: date-time }
+        vermerke:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementTeilVermerk" }
+    EnergiemanagementMappeAnlegen:
+      type: object
+      additionalProperties: false
+      required: [anlass, gruppen]
+      properties:
+        anlass: { type: string, enum: [audit_von_aussen, anfrage_behoerde, eigene_ablage] }
+        von: { type: string, format: date, nullable: true, description: Ab welchem Tag; ohne alles bis zum Stichtag. }
+        gruppen:
+          type: array
+          minItems: 1
+          items: { type: string, enum: [grundlagen, verantwortung, risiken_chancen, kompetenz_kommunikation, betrieb_auslegung_beschaffung, bewertung_messplanung, kennzahlen_bezugsbasen, ziele_massnahmen_abweichungen, audits_feststellungen, managementbewertung, berichte] }
+        offen:
+          type: array
+          items: { type: string, enum: [energiepolitik, anwendungsbereich, rechtliche_anforderungen, kontext, risiken_chancen, aufgaben, kompetenz, kommunikation, betrieb, auslegung, beschaffung, energetische_bewertung, bezugsbasen, massnahmen, interne_audits, feststellungen, managementbewertung, berichte] }
+    EnergiemanagementMappe:
+      type: object
+      required: [id, titel, anlass, anlass_wort, von, bis, stichtag, gruppen, gruppen_woerter, offen, offen_woerter,
+        eintraege, gilt, datei_titel, datei_name, pdf_pruefsumme, csv_pruefsumme, abrufbar, abrufbar_tage,
+        aufbewahrung_tage, abrufe, erstellt, abruf]
+      properties:
+        id: { type: string, format: uuid }
+        titel: { type: string, description: „Unterlagen für das Audit“, „… für die Behörde“, „… für die eigene Ablage“. }
+        anlass: { type: string }
+        anlass_wort: { type: string, description: Das Wort des Vertrags `woerter.mappe_anlass`. }
+        von: { type: string, format: date, nullable: true }
+        bis: { type: string, format: date, description: Der Stichtag des Verzeichnisses. }
+        stichtag: { type: string, format: date-time }
+        gruppen: { type: array, items: { type: string } }
+        gruppen_woerter: { type: array, items: { type: string } }
+        offen: { type: array, items: { type: string } }
+        offen_woerter: { type: array, items: { type: string } }
+        eintraege: { type: integer, description: Zeilen des Verzeichnisses im Zeitraum. }
+        gilt: { type: integer, description: Was am Stichtag gilt (Fassungen, Aufgaben, Vermerke). }
+        datei_titel: { type: string, description: „Nachweise Ahrenberg, 30.04.2029“. }
+        datei_name: { type: string, description: Der Dateiname ohne Endung. }
+        pdf_pruefsumme: { type: string, description: SHA-256 des PDF, hexadezimal. }
+        csv_pruefsumme: { type: string, description: SHA-256 der CSV, hexadezimal. }
+        abrufbar: { type: boolean }
+        abrufbar_tage: { type: integer, description: Noch so viele Tage abrufbar; 0 nach der Frist. }
+        aufbewahrung_tage: { type: integer, description: Entscheid 7, 30. }
+        abrufe: { type: integer, description: Wie oft eine Datei abgerufen wurde. }
+        erstellt:
+          type: object
+          required: [name, am]
+          properties:
+            name: { type: string }
+            am: { type: string, format: date-time }
+        abruf: { type: string, format: date-time, description: Der Augenblick des Abrufs auf der Uhr der Route (wie der Stichtag des Verzeichnisses). }
+    EnergiemanagementMappen:
+      type: object
+      required: [mappen]
+      properties:
+        mappen:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementMappe" }
     EnergiemanagementVerantwortlich:
       type: object
       required: [sub, name]
@@ -18832,12 +19722,17 @@ components:
           items: { $ref: "#/components/schemas/EnergiemanagementVerzeichnisGruppe" }
     EnergiemanagementWiedervorlageZeile:
       type: object
-      required: [art, kennzeichen, titel, faellig_am, tage, satz, verantwortlich, id, kennzahl_id]
+      required: [art, kennzeichen, titel, faellig_am, tage, satz, verantwortlich, id, kennzahl_id, herleitung, bezug, einsatz_id, aufgabe, zustaendig]
       description: >
         Die Ausgabe der Operation `wiedervorlage` (energiemanagement.md §3). `faellig_am` kommt aus der Regel des
         Objekts; `id` und `kennzahl_id` tragen den Sprung auf die Seite des Objekts - wo es keine gibt, `null`.
+        Additiv seit Vertrag 1.1: `herleitung`, `bezug`, `einsatz_id`, `aufgabe`, `zustaendig`.
+        Seit Vertrag 1.2 die Art `zaehlerablesung`: eine Zeile je Ort, an dem man abliest (Gebäude, ohne Gebäude der
+        Standort, `kennzeichen` sein Kurzzeichen, am Unternehmen `U`), und Fälligkeitstag; `herleitung.anzahl` zählt
+        die Zähler, `bezug` nennt den Ort. Bei einem Zähler ist `id` die Messstelle (`herleitung.kennung` ihr
+        Kennzeichen), bei mehreren der Ort (am Unternehmen `null`).
       properties:
-        art: { type: string, enum: [dokument_ueberpruefung, internes_audit, managementbewertung, feststellung, bewertung_ueberpruefung, bezugsbasis_ueberpruefung, energieziel_bewertung, massnahme_termin, abweichung_frist, messbedarf_frist, bericht_anstoss] }
+        art: { type: string, enum: [dokument_ueberpruefung, internes_audit, managementbewertung, feststellung, bewertung_ueberpruefung, bezugsbasis_ueberpruefung, energieziel_bewertung, massnahme_termin, abweichung_frist, messbedarf_frist, bericht_anstoss, zaehlerablesung] }
         kennzeichen: { type: string }
         titel: { type: string }
         faellig_am: { type: string, format: date }
@@ -18846,9 +19741,77 @@ components:
         verantwortlich: { type: string, nullable: true }
         id: { type: string, format: uuid, nullable: true }
         kennzahl_id: { type: string, format: uuid, nullable: true }
+        herleitung:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/EnergiemanagementWiedervorlageHerleitung" }]
+          description: Woraus die Frist folgt - Angaben, keine Sätze; `null`, wo die Quelle sie nicht nennt.
+        bezug: { type: string, nullable: true, description: "Der Gegenstand in Kundenwörtern, wo der Titel ihn nicht trägt (die Kennzahl einer Bezugsbasis, der Bericht, der Wortlaut einer Feststellung, einer Abweichung oder eines Messbedarfs, der Ort einer Zählerablesung)." }
+        einsatz_id: { type: string, format: uuid, nullable: true, description: Der Energieeinsatz eines Messbedarfs - dort entsteht die Messstelle. }
+        aufgabe:
+          type: string
+          nullable: true
+          enum: [unternehmensleitung, energiemanagement_leiten, energieteam, bezugsbasen, energieziele_massnahmen, bewertung_messplanung, interne_audits, managementbewertung, dokumente, weitere, null]
+          description: Die Aufgabe im Energiemanagement (Vokabular `aufgabe`), zu der diese Art Frist gehört - auch wenn niemand sie hat.
+        zustaendig:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/EnergiemanagementWiedervorlageZustaendig" }]
+          description: Wer die Frist erledigt; `null`, wo weder das Objekt noch die Aufgabe eine Person nennt.
+    EnergiemanagementWiedervorlageHerleitung:
+      type: object
+      required: [basis, am, fassung, monate, kennung, quelle_art, anzahl]
+      description: >
+        Woraus eine Frist folgt (Konzept Wiedervorlage w1): `basis` woran die Regel ansetzt, `am` der Tag dazu; dazu, wo
+        die Regel sie kennt, `fassung` (Fassung bzw. Stand Nr.), `monate` (Rhythmus), `kennung` (das Objekt, an dem die
+        Regel ansetzt, oder die Herkunft), `quelle_art` (Herkunft einer Maßnahme aus `massnahme_herkunft` bzw. Quelle
+        einer Feststellung) und `anzahl` (offene Korrekturen an einem Bericht, Zähler einer Zählerablesung).
+        Zählerablesung (Vertrag 1.2): `abgelesen` am Tag der letzten Ablesung mit `monate` 2, ohne Ablesung
+        `ablesebeginn` am Tag, seit dem die Werte aus Ablesungen kommen sollen.
+      properties:
+        basis: { type: string, enum: [freigabe, geprueft_bleibt, durchgefuehrt, sitzung, erkannt, festgestellt, termin, zielperiode, abgelesen, ablesebeginn] }
+        am: { type: string, format: date, nullable: true }
+        fassung: { type: integer, nullable: true }
+        monate: { type: integer, nullable: true }
+        kennung: { type: string, nullable: true }
+        quelle_art: { type: string, nullable: true }
+        anzahl: { type: integer, nullable: true }
+    EnergiemanagementWiedervorlageZustaendig:
+      type: object
+      required: [name, herkunft, ich]
+      description: >
+        Die Person am Objekt (`herkunft` = `objekt`) oder, wo das Objekt keine nennt, die Person der laufenden Zuordnung
+        der Aufgabe der Zeile (`herkunft` = `aufgabe`). `ich`: die Person ist die angemeldete.
+      properties:
+        name: { type: string }
+        herkunft: { type: string, enum: [objekt, aufgabe] }
+        ich: { type: boolean }
+    EnergiemanagementWiedervorlageZuletzt:
+      type: object
+      required: [stichtag, tage, eintraege]
+      properties:
+        stichtag: { type: string, format: date-time, description: Der Abruf in der Zeitzone des Unternehmens, auf die Minute. }
+        tage: { type: integer, description: So viele Tage bis zum Abruf reicht die Liste (90). }
+        eintraege:
+          type: array
+          items: { $ref: "#/components/schemas/EnergiemanagementWiedervorlageErledigt" }
+    EnergiemanagementWiedervorlageErledigt:
+      type: object
+      required: [art, gruppe, kennzeichen, titel, nr, am, entschieden_von, eingetragen_von]
+      description: >
+        Eine Entscheidung, die eine Frist beendet oder neu beginnen lässt: `art` die Art der Verzeichnis-Zeile (`gruppe`
+        ihre Gruppe) oder `dokument_geprueft_bleibt` bzw. `bezugsbasis_geprueft_bleibt` (ohne Gruppe); `nr` Fassung bzw.
+        Stand Nr., `am` der Tag der Entscheidung, `entschieden_von` die Person, `eingetragen_von` das Konto.
+      properties:
+        art: { type: string }
+        gruppe: { type: string, nullable: true }
+        kennzeichen: { type: string }
+        titel: { type: string }
+        nr: { type: integer, nullable: true }
+        am: { type: string, format: date }
+        entschieden_von: { type: string, nullable: true }
+        eingetragen_von: { type: string, nullable: true }
     EnergiemanagementWiedervorlage:
       type: object
-      required: [stichtag, vorschau_tage, faellig, vorschau, anzahl_faellig, anzahl_vorschau, nicht_in_liste, verantwortung, naechste_managementbewertung]
+      required: [stichtag, vorschau_tage, faellig, vorschau, anzahl_faellig, anzahl_vorschau, nicht_in_liste, verantwortung, naechste_managementbewertung, spaeter, anzahl_ueberfaellig, anzahl_naechste, anzahl_spaeter, aufgaben_lesbar]
       properties:
         stichtag: { type: string, format: date-time, description: Der Abruf in der Zeitzone des Unternehmens, auf die Minute. }
         vorschau_tage: { type: integer, description: Das Vorschau-Fenster der Einstellung (Startwert 30). }
@@ -18859,9 +19822,10 @@ components:
           type: array
           items: { $ref: "#/components/schemas/EnergiemanagementWiedervorlageZeile" }
         anzahl_faellig: { type: integer }
-        anzahl_vorschau: { type: integer, description: "Mit `anzahl_faellig` der Baustein „Energiemanagement — n fällig · m in den nächsten 30 Tagen.“ (WV5)." }
+        anzahl_vorschau: { type: integer }
         nicht_in_liste:
           type: array
+          description: Die Kennzeichen mit späterer Frist (für Bestandsleser; den Jahresplan trägt `spaeter`).
           items: { type: string }
         verantwortung: { type: string, description: Der Verantwortungs-Satz (SP4). }
         naechste_managementbewertung:
@@ -18870,6 +19834,18 @@ components:
           description: >
             Additiv (Folge AP-19 IP-24): die Frist von MG7 mit ihrer Herkunft - auch außerhalb des Vorschau-Fensters, aus
             derselben Rechnung wie die Zeile `managementbewertung`; `null` ohne freigegebene Managementbewertung mit Sitzung.
+        spaeter:
+          type: array
+          description: Additiv seit Vertrag 1.1 - der Jahresplan, nach dem Vorschau-Fenster bis Abruf + 12 Monate, nach Tag und Kennzeichen.
+          items: { $ref: "#/components/schemas/EnergiemanagementWiedervorlageZeile" }
+        anzahl_ueberfaellig: { type: integer, description: "Abgelaufen (`tage` > 0). Mit `anzahl_naechste` der Baustein „Energiemanagement: n überfällig · m in den nächsten 30 Tagen.“ (WV5)." }
+        anzahl_naechste: { type: integer, description: "Heute fällig und das Vorschau-Fenster (`tage` ≤ 0)." }
+        anzahl_spaeter: { type: integer }
+        aufgaben_lesbar:
+          type: boolean
+          description: >
+            Der Aufrufer liest die Aufgaben im Energiemanagement (unternehmensweit). Sonst ist `zustaendig` nur die Person
+            am Objekt; eine Zeile ohne sie sagt dann nicht, dass niemand zuständig ist.
     EnergiemanagementWiedervorlageNaechsteManagementbewertung:
       type: object
       required: [faellig_am, kennzeichen, sitzung_am, rhythmus_monate]
@@ -18994,7 +19970,7 @@ components:
         grund: { type: string, nullable: true, enum: [abgeschlossen, null] }
     Feststellung:
       type: object
-      required: [id, kennzeichen, quelle, wortlaut, vorgabe, bezug, festgestellt_von, festgestellt_am, verantwortlich, frist, zustand, lage, ergebnis, eintraege, massnahmen, eingetragen]
+      required: [id, kennzeichen, quelle, wortlaut, vorgabe, bezug, festgestellt_von, festgestellt_am, verantwortlich, frist, zustand, lage, ergebnis, abgeschlossen_am, eintraege, massnahmen, eingetragen]
       properties:
         id: { type: string, format: uuid }
         kennzeichen: { type: string, pattern: "^F-[0-9]{4}-[0-9]{4,9}$" }
@@ -19009,6 +19985,7 @@ components:
         zustand: { type: string, enum: [offen, abgeschlossen] }
         lage: { $ref: "#/components/schemas/FeststellungFrist" }
         ergebnis: { type: string, nullable: true, enum: [wirksam, ohne_massnahme, zurueckgenommen, null], description: Das Ergebnis des schließenden Stands. }
+        abgeschlossen_am: { type: string, format: date, nullable: true, description: "Der Tag des schließenden Stands („wirksam seit …“); offen null." }
         eintraege: { type: integer, description: Anzahl der Einträge. }
         massnahmen: { type: array, items: { type: string }, description: Die Kennzeichen der Maßnahmen mit Herkunft dieser Feststellung. }
         eingetragen: { $ref: "#/components/schemas/EnergiemanagementEingetragen" }
@@ -19409,6 +20386,7 @@ components:
         anwendungsbereich: { $ref: "#/components/schemas/EnergiemanagementAnwendungsbereichEingang" }
         begruendung: { type: string, nullable: true, minLength: 10, maxLength: 500, description: Ab Fassung 2 Pflicht. }
         beschluss_kennung: { type: string, nullable: true, pattern: "^BR-[0-9]{4}-[0-9]{4,}/B[0-9]{1,3}$" }
+        original: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementBeleg" }], nullable: true, description: "Additiv (Konzept Nachweisen n1, Entscheid 10): wo das unterschriebene Original dieser Fassung liegt - nur an einem Wortlaut (sonst 422 `angabe_ungueltig`); nie die Datei." }
     EnergiemanagementEntscheid:
       type: object
       additionalProperties: false
@@ -19419,6 +20397,7 @@ components:
         entschieden_von: { type: string, format: uuid, nullable: true, description: Eine Person im Energiemanagement, auch ohne Konto. }
         entschieden_am: { type: string, format: date, nullable: true }
         begruendung: { type: string, nullable: true, minLength: 10, maxLength: 500 }
+        original: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementBeleg" }], nullable: true, description: "Additiv (Entscheid 10): wo das unterschriebene Original liegt - nur beim Übergang aus dem Entwurf (Antrag, Freigabe ohne Vier-Augen) und nur an einem Wortlaut; die zweite Person schickt keins (422 `angabe_ungueltig`). Fehlt es, bleibt das Original des Entwurfs." }
     EnergiemanagementAblehnen:
       type: object
       additionalProperties: false
@@ -19501,7 +20480,7 @@ components:
           items: { $ref: "#/components/schemas/EnergiemanagementAusschluss" }
     EnergiemanagementFassung:
       type: object
-      required: [nr, form, wortlaut, verweis, anwendungsbereich, status, begruendung, beschluss_kennung, pruefsumme, vieraugen, entschieden_von, entschieden_am, freigabe_begruendung, freigabe, zweite_person, ablehnung_begruendung, freigegeben_am, eingetragen]
+      required: [nr, form, wortlaut, verweis, anwendungsbereich, status, begruendung, beschluss_kennung, pruefsumme, vieraugen, entschieden_von, entschieden_am, freigabe_begruendung, freigabe, zweite_person, ablehnung_begruendung, freigegeben_am, eingetragen, original]
       properties:
         nr: { type: integer }
         form: { type: string, enum: [wortlaut, verweis] }
@@ -19521,6 +20500,7 @@ components:
         ablehnung_begruendung: { type: string, nullable: true }
         freigegeben_am: { type: string, format: date-time, nullable: true }
         eingetragen: { $ref: "#/components/schemas/EnergiemanagementEingetragen" }
+        original: { allOf: [{ $ref: "#/components/schemas/EnergiemanagementBeleg" }], nullable: true, description: "Additiv (Konzept Nachweisen n1, Entscheid 10): wo das unterschriebene Original dieser Fassung liegt; `null` ohne Angabe und an jedem Verweis. Das Original am Dokument (`beleg`) gehört lesend zu Fassung 1." }
     EnergiemanagementDokumentEintrag:
       type: object
       required: [id, art, fassung, am, person, entschieden_von, kreis, weg, weg_wortlaut, begruendung, beschluss_kennung, kommentar, satz, eingetragen]
@@ -19541,8 +20521,11 @@ components:
         eingetragen: { $ref: "#/components/schemas/EnergiemanagementEingetragen" }
     EnergiemanagementUeberpruefung:
       type: object
-      required: [abruf, faellig_am, basis, fassung, tage, satz, grund]
-      description: Vertrag `ueberpruefung` (DK5) am Abruf-Tag; ohne Frist sind fällig am, Basis, Fassung, Tage und Satz `null`.
+      required: [abruf, faellig_am, basis, fassung, tage, satz, grund, basis_art, monate]
+      description: >
+        Vertrag `ueberpruefung` (DK5) am Abruf-Tag; ohne Frist sind fällig am, Basis, Fassung, Tage und Satz `null`.
+        Additiv (Konzept Wiedervorlage w1): `basis_art` woher die Basis kommt, `monate` der Rhythmus des Dokuments; beide
+        `null` ohne Frist.
       properties:
         abruf: { type: string, format: date }
         faellig_am: { type: string, format: date, nullable: true }
@@ -19551,6 +20534,8 @@ components:
         tage: { type: integer, nullable: true, description: Abruf minus fällig am - positiv = fällig, 0 = heute fällig. }
         satz: { type: string, nullable: true }
         grund: { type: string, nullable: true, enum: [nachweis, keine_fassung, null] }
+        basis_art: { type: string, nullable: true, enum: [freigabe, geprueft_bleibt, null] }
+        monate: { type: integer, nullable: true }
     EnergiemanagementDokumentSaetze:
       type: object
       required: [kopf, ueberpruefung, freigabe_gesperrt]
@@ -19781,7 +20766,7 @@ components:
         Ohne Struktur (`ort_ziel`, `messgroesse` null) bleibt der Wortlaut führend für die Anzeige — so liest sich jeder
         Bedarf aus der Fassung vor der Struktur unverändert.
       required: [id, kennzeichen, energieeinsatz_id, wortlaut, ort, groesse, frist, zustand, messstelle,
-        begruendung, akteur, angelegt_am, geaendert_am, ort_ziel, messgroesse, richtung]
+        begruendung, akteur, angelegt_am, geaendert_am, ort_ziel, messgroesse, richtung, zitiert_von, einloesbar]
       properties:
         id: { type: string, format: uuid }
         kennzeichen: { type: string, pattern: '^MB-[1-9][0-9]*$' }
@@ -19815,6 +20800,19 @@ components:
           nullable: true
         messgroesse: { type: string, nullable: true }
         richtung: { type: string, nullable: true }
+        zitiert_von:
+          type: array
+          items: { $ref: "#/components/schemas/BerichtStandRef" }
+          description: >-
+            Die freigegebenen Berichtsstände, die diesen Bedarf zitieren (`uems_berichts_belege`), nach `kennung` und
+            `nr` - dieselbe Liste wie `berichtsstaende` der 409 `berichts_belege`; leer, wenn keiner zitiert. In jedem
+            Zustand gefüllt.
+        einloesbar:
+          type: boolean
+          description: >-
+            `true` genau dann, wenn der Bedarf `offen` ist und `zitiert_von` leer ist. Ein zitierter offener Bedarf
+            ist nicht einlösbar (Einlösen, Bearbeiten und Verwerfen antworten 409 `berichts_belege`); eingelöste und
+            verworfene sind es nie.
     MessbedarfListe:
       type: object
       required: [messbedarfe]
@@ -25382,6 +26380,155 @@ components:
           description: >
             Optional cross-check; must equal the key named by the manifest and
             by the signature file.
+    FernwartungServer:
+      type: object
+      properties:
+        endpunkt: { type: string, example: wartung.voltpilot.de }
+        port: { type: integer, example: 51820 }
+        publicKey: { type: string, nullable: true, description: null solange der Server nicht eingerichtet ist. }
+        eingerichtet: { type: boolean }
+        boxNetz: { type: string, example: 10.10.16.0/20 }
+        technikerNetz: { type: string, example: 10.10.32.0/24 }
+        boxServerAdresse: { type: string, example: 10.10.16.1 }
+        technikerServerAdresse: { type: string, example: 10.10.32.1 }
+    FernwartungUebersicht:
+      type: object
+      properties:
+        server: { $ref: "#/components/schemas/FernwartungServer" }
+        maxFensterMinuten: { type: integer }
+        abrufe:
+          type: array
+          items:
+            type: object
+            properties:
+              dienst: { type: string, example: voltpilot-tunnel-dienst }
+              zuletztAm: { type: string, format: date-time }
+              peers: { type: integer }
+              fenster: { type: integer }
+        boxenAktiv: { type: integer }
+        boxenGesperrt: { type: integer }
+        technikerAktiv: { type: integer }
+        technikerGesperrt: { type: integer }
+        fensterOffen: { type: integer }
+        fensterGeplant: { type: integer }
+        stand: { type: string, format: date-time }
+    FernwartungFenster:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        edgeRef: { type: string }
+        technikerId: { type: string, format: uuid }
+        technikerName: { type: string }
+        grund: { type: string }
+        beginn: { type: string, format: date-time }
+        ende: { type: string, format: date-time }
+        wirksamesEnde: { type: string, format: date-time }
+        zustand: { type: string, enum: [offen, geplant, geschlossen, abgesagt, abgelaufen] }
+        geoeffnetAm: { type: string, format: date-time }
+        geoeffnetVon: { type: string }
+        geschlossenAm: { type: string, format: date-time, nullable: true }
+        geschlossenVon: { type: string, nullable: true }
+    FernwartungBox:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        edgeRef: { type: string, example: edge-zay5sdd }
+        publicKey: { type: string }
+        publicKeyKurz: { type: string }
+        adresse: { type: string, example: 10.10.16.2 }
+        status: { type: string, enum: [aktiv, gesperrt] }
+        notiz: { type: string, nullable: true }
+        angelegtAm: { type: string, format: date-time }
+        geaendertAm: { type: string, format: date-time }
+        siteId: { type: string, format: uuid, nullable: true, description: Gekoppelte Anlage, sonst null. }
+        siteName: { type: string, nullable: true }
+        tenantId: { type: string, format: uuid, nullable: true }
+        tenantName: { type: string, nullable: true }
+        laufendeFenster:
+          type: array
+          items: { $ref: "#/components/schemas/FernwartungFenster" }
+    FernwartungSchluesselAntwort:
+      type: object
+      properties:
+        ergebnis: { type: string, enum: [angelegt, unveraendert, getauscht] }
+        box: { $ref: "#/components/schemas/FernwartungBox" }
+        server: { $ref: "#/components/schemas/FernwartungServer" }
+    FernwartungTechniker:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        publicKey: { type: string }
+        publicKeyKurz: { type: string }
+        adresse: { type: string, example: 10.10.32.2 }
+        status: { type: string, enum: [aktiv, gesperrt] }
+        notiz: { type: string, nullable: true }
+        angelegtAm: { type: string, format: date-time }
+        geaendertAm: { type: string, format: date-time }
+        sshPublicKey:
+          type: string
+          nullable: true
+          description: Öffentlicher SSH-Schlüssel in Normalform (`ssh-rsa <Base64>`, ohne Kommentar); null, wenn keiner hinterlegt ist.
+        sshFingerabdruck:
+          type: string
+          nullable: true
+          example: "SHA256:TDOx3bpPNtPLIdd+juZoGcDMz3ZRCklaP5G6aBrp9Zc"
+          description: Fingerabdruck wie bei `ssh-keygen -lf`; null ohne SSH-Schlüssel.
+        sshBits: { type: integer, nullable: true, example: 3072, description: Länge des RSA-Schlüssels; null ohne SSH-Schlüssel. }
+    FernwartungProtokollEintrag:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        zeit: { type: string, format: date-time }
+        akteur: { type: string, description: Anmeldename, sonst JWT-Subject. }
+        aktion:
+          type: string
+          enum: [box_schluessel_hinterlegt, box_schluessel_getauscht, box_gesperrt, box_entsperrt,
+                 techniker_angelegt, techniker_gesperrt, techniker_entsperrt, techniker_geloescht,
+                 techniker_ssh_schluessel_gesetzt, techniker_ssh_schluessel_entfernt,
+                 fenster_geoeffnet, fenster_geschlossen]
+        edgeRef: { type: string, nullable: true }
+        technikerId: { type: string, format: uuid, nullable: true }
+        technikerName: { type: string, nullable: true }
+        fensterId: { type: string, format: uuid, nullable: true }
+        details: { type: object, additionalProperties: true }
+    FernwartungSoll:
+      type: object
+      required: [version, erzeugtAm, boxNetz, technikerNetz, peers, fenster]
+      properties:
+        version: { type: integer, enum: [1] }
+        erzeugtAm: { type: string, format: date-time }
+        boxNetz: { type: string }
+        technikerNetz: { type: string }
+        peers:
+          type: array
+          items:
+            type: object
+            required: [art, id, kennung, publicKey, adresse]
+            properties:
+              art: { type: string, enum: [box, techniker] }
+              id: { type: string, format: uuid }
+              kennung: { type: string, description: Box-Referenz bzw. Name des Zugangs. }
+              publicKey: { type: string }
+              adresse: { type: string, description: IPv4 ohne Präfix; der Peer bekommt genau diese /32. }
+              sshPublicKey:
+                type: string
+                description: >
+                  Nur an einem Techniker-Peer mit hinterlegtem SSH-Schlüssel,
+                  sonst fehlt das Feld: `ssh-rsa <Base64>` ohne Kommentar.
+                  Additiv seit dem 09.10.2026, die Version bleibt 1; ein
+                  Dienst, der das Feld nicht kennt, überliest es.
+        fenster:
+          type: array
+          items:
+            type: object
+            required: [id, boxId, technikerId, beginn, ende]
+            properties:
+              id: { type: string, format: uuid }
+              boxId: { type: string, format: uuid }
+              technikerId: { type: string, format: uuid }
+              beginn: { type: string, format: date-time }
+              ende: { type: string, format: date-time }
     ProvisionedDevice:
       type: object
       properties:
@@ -25398,7 +26545,7 @@ components:
       type: object
       description: A device that enrolled (uploaded a CSR) but has no claimed device row.
       properties:
-        externalRef: { type: string, example: edge-k7m2xqp }
+        externalRef: { type: string, example: edge-k7m2xq3 }
         deviceInfo: { type: string, nullable: true, description: Free-form device info from the CSR upload. }
         csrUpdatedAt: { type: string, format: date-time, description: When the pending CSR was last (re)uploaded. }
         everIssued:
@@ -25662,6 +26809,7 @@ components:
               unplannedLoadDischarge: { type: boolean, nullable: true, description: "Additive idle-slot authority: true permits fresh measured load coverage to START from a 0-kW plan slot when full marginal economics favor discharge. It never redefines coverLoadFromBattery and never applies to a planned charge or sale. Null = pre-feature/not evaluated; false = evaluated and intentionally held." }
               whyNextBest: { type: string, nullable: true, description: "Erklaerbarkeit Stufe 1 (schedule.why_next_best, migration V20260824000000): the best action this RESTING slot REJECTED - decken | verkaufen | solar_speichern | netzladen. Only physically ADMISSIBLE alternatives are named (charging needs SoC headroom and, in EEG mode, real PV surplus; netzladen needs the grid-charge permission), so a margin never describes an impossible action. Null on ACTIVE slots (the chosen action's marginal benefit is 0 at the optimum), when nothing else was possible, and on runs whose explain layer was off." }
               whyNextBestMarginCt: { type: number, nullable: true, description: "Erklaerbarkeit Stufe 1 (schedule.why_next_best_margin_ct): how much WORSE that rejected alternative would have been, in ct/kWh - always <= 0. |margin| <= 0.05 is a TIE and the surface must say so ('beides waere gerade fast gleich gut') instead of dressing an abwaegung up as certainty; on 17.08.2026 it was algebraically exactly 0,000 ct/kWh. Null exactly where whyNextBest is null - name and margin are ONE statement." }
+              evReleaseFloorSocPct: { type: number, nullable: true, description: "„Sonne + Speicher“ (schedule.ev_release_floor_soc_pct, 06.10.2026): die Speicheruntergrenze dieses Slots in % - bis dahin darf ein Ladepunkt auf dieser Quelle den Speicher leeren (dieselbe Zahl, die der MQTT-Fahrplan als ev_release_floor_soc_pct trägt). null = in diesem Slot keine Freigabe (der Plan handelt, oder die Anlage fährt die Quelle nicht)." }
               chargeFromSurplusOnly: { type: boolean, nullable: true, description: "Duty-Vorschau, charge-side mirror (schedule.charge_from_surplus_only, migration V20260802010000): true = in THIS slot the device clamps the commanded CHARGE to the measured solar surplus max(pv - load, 0) because buying the shortfall would be uneconomic - the plan's batteryKw is a forecast here too. Same tri-state discipline as coverLoadFromBattery." }
     ControlStatus:
       type: object
@@ -25677,7 +26825,7 @@ components:
         slotStart: { type: string, format: date-time, nullable: true }
         checkedAt: { type: string, format: date-time, description: "When the readback was taken (\"geprüft vor X\")." }
         controlSource: { type: string, nullable: true, enum: [schedule, default], description: "The device's COARSE truth: is a fresh plan driving it at all. It collapses every non-schedule mode (self-consumption fallback, a v2 desired holding the battery, calibration) into `default`, so it must never be rendered as \"the built-in safety rule is running\" - executionMode is the precise signal. Null for a pre-PR-3 row." }
-        executionMode: { type: string, nullable: true, enum: [plan, follow, limit, trim, absorb, fallback, idle_follow, deficit_cover, high_soc_follow, high_soc_charge, surplus_store, autonomous_discharge, autonomous_charge, autonomous_selfconsumption], description: "Diagnostic execution path. idle_follow is the economically authorized portable exact-setpoint correction; deficit_cover and surplus_store are the general measured-deficit/measured-surplus corrections that superseded the retired high_soc_follow and high_soc_charge; limit is the REDUCE-only right limit_discharge_to_load. autonomous_discharge (intent E-down, cover the house only), autonomous_charge (E-up, store only the PV surplus, never from the grid) and autonomous_selfconsumption (E and E~, both directions) mean the inverter regulates by itself inside the window the edge set; each is reported only once the device confirmed the mode on its readback, and executionPlannedKw is then the reference the edge would write if it took the battery back. Customer UI translates these to German and never exposes the codes." }
+        executionMode: { type: string, nullable: true, enum: [plan, follow, limit, trim, absorb, fallback, idle_follow, deficit_cover, high_soc_follow, high_soc_charge, surplus_store, autonomous_discharge, autonomous_charge, autonomous_selfconsumption, grid_target], description: "Diagnostic execution path. idle_follow is the economically authorized portable exact-setpoint correction; deficit_cover and surplus_store are the general measured-deficit/measured-surplus corrections that superseded the retired high_soc_follow and high_soc_charge; limit is the REDUCE-only right limit_discharge_to_load. autonomous_discharge (intent E-down, cover the house only), autonomous_charge (E-up, store only the PV surplus, never from the grid) and autonomous_selfconsumption (E and E~, both directions) mean the inverter regulates by itself inside the window the edge set; each is reported only once the device confirmed the mode on its readback, and executionPlannedKw is then the reference the edge would write if it took the battery back. grid_target (netzseitiger Drossel-Slot) means the hybrid inverter regulates the grid connection point itself in a slot the plan curtails and throttles its own PV for it; it follows the same two rules (reported only once confirmed, executionPlannedKw is the take-back reference) and carries no executionTargetKw. Customer UI translates these to German and never exposes the codes." }
         executionDirection: { type: string, nullable: true, enum: [deepen, reduce], description: "Only for executionMode `follow`: the discharge was RAISED to cover the house (`deepen`) or LIMITED to what it needs (`reduce`). The idle path is already unambiguous and does not expose this detail. Null otherwise." }
         executionPlannedKw: { type: number, nullable: true, description: "The setpoint BEFORE an in-slot correction, so plan and execution can stand side by side instead of being two contradicting numbers under one word." }
         executionTargetKw: { type: number, nullable: true, description: "The MEASURED value the correction tracks - the house deficit for follower modes, the PV surplus for trim/absorb; which one follows unambiguously from executionMode. Null when the device could not measure it (it never regulates blind, and never reports blind either) - never a fabricated 0." }
@@ -25772,7 +26920,9 @@ components:
         sourceId: { type: string, description: "The JOIN KEY to the reported sources (/sources.sourceId) - how a unit becomes a device NAME. No name travels over the wire; the portal names devices through its one name builder." }
         certified: { type: boolean, description: "This unit carries a persisted per-unit First-Light release. The edge sources it from its CORE, never from the readback's own stamp, so it can never disagree with certifiedUnits." }
         appliedCapKw: { type: number, nullable: true, description: "The cap THIS unit applies; null = none applied (a release lifted the limit) - never a fabricated 0." }
-        match: { type: boolean, nullable: true, description: "This unit's readback verdict; null = observed-only, nothing was commanded. Only true is a confirmation - \"nothing applied\" must never read as \"the readback disagreed\"." }
+        match: { type: boolean, nullable: true, description: "This unit's readback verdict; null = observed-only, nothing was commanded. Only true is a confirmation - \"nothing applied\" must never read as \"the readback disagreed\". With mode grid_target it judges the MEASUREMENT (the grid connection point follows targetKw), never a held register." }
+        mode: { type: string, nullable: true, enum: [grid_target], description: "HOW this unit curtails. null/absent = the cap on the unit itself (appliedCapKw) - every unit before this field existed. grid_target = the unit does not cap its own output, it regulates the GRID CONNECTION POINT on targetKw and throttles its own PV for it (the primary hybrid inverter in a curtailing slot). The word is STANDING: it says how the unit curtails, not that it does so right now. An unknown word of a newer box is dropped at ingest (null), never guessed." }
+        targetKw: { type: number, nullable: true, description: "Only with mode grid_target: the target at the grid connection point in kW, in the sign of the grid point (+ import, - feed-in; 0 = no feed-in). null = no target active right now - never a fabricated 0." }
     ExportGuard:
       type: object
       description: >
@@ -25879,6 +27029,8 @@ components:
             ganzen Überschuss greifen darf - nie 0.
         updatedAt: { type: string, format: date-time, nullable: true }
         updatedBy: { type: string, nullable: true, description: "Wer sie zuletzt gesetzt hat (JWT-Subject)." }
+        storageReleaseReserveKwh: { type: number, nullable: true, description: "„Sonne + Speicher“: die Reserve dieser Anlage in kWh über dem Reservestapel des Speichers. null = keine eigene Angabe, es gilt storageReleaseReserveStandardKwh. Reist NICHT zur Box - der Optimierer rechnet damit die Untergrenze." }
+        storageReleaseReserveStandardKwh: { type: number, description: "Die Vorgabe des Optimierers (1,0 kWh; docs/contracts/v2/sonne-speicher-vectors.json)." }
     LadeparkRahmen:
       type: object
       description: >
@@ -25921,6 +27073,7 @@ components:
             Box wechselt zwischen ihnen weiter im Takt ab (Rotation).
         addedAt: { type: string, format: date-time, nullable: true }
         addedBy: { type: string, nullable: true, description: "Wer sie eingetragen hat (JWT-Subject)." }
+        storageRelease: { type: boolean, nullable: true, description: "„Sonne + Speicher“ (06.10.2026): auf der Bahn nur_sonne darf diese Säule zusätzlich Speicherenergie oberhalb der Untergrenze des Fahrplans bekommen (charge_points[].storage_release). Gesetzt über die Steuerart (ueberschussModus speicher), nie über diese Liste." }
     Steuerart:
       type: object
       description: >
@@ -25946,7 +27099,13 @@ components:
         ueberschussModus:
           type: string
           nullable: true
-          enum: [pausieren, mindestleistung, null]
+          enum: [pausieren, mindestleistung, speicher, null]
+          description: >
+            NUR am Ladepunkt: was bei zu wenig Überschuss geschieht.
+            `pausieren` = „Nur Sonne“, `mindestleistung` = „Sonne + Minimum“,
+            `speicher` = „Sonne + Speicher“ (06.10.2026): die Säule fährt die
+            Bahn `nur_sonne` mit `storage_release` und bekommt zusätzlich
+            Speicherenergie oberhalb der Untergrenze des Fahrplans.
         mindestleistungKw: { type: number, nullable: true }
         fenster: { $ref: "#/components/schemas/SteuerartFenster" }
         ziel:
@@ -26014,6 +27173,18 @@ components:
         zielEnergieKwh: { type: number, nullable: true }
         zielLaufzeitMinuten: { type: integer, nullable: true }
         zielAmStueck: { type: boolean, nullable: true }
+        ueberschussModus:
+          type: string
+          nullable: true
+          enum: [pausieren, mindestleistung, speicher, null]
+          description: >
+            NUR am Ladepunkt und nur zu `quelle: ueberschuss`. Ein anderes Wort
+            ist eine benannte Ablehnung (400). `speicher` („Sonne + Speicher“)
+            ist nur an einer OCPP-Säule einer Anlage mit PV und Speicher samt
+            gepflegter Kapazität wählbar - sonst trägt die Karte
+            `ueberschuss_speicher` in `optionen.quellen` den Grund, und der
+            Schreibpfad lehnt mit genau ihm ab.
+        mindestleistungKw: { type: number, nullable: true, description: "Zu `ueberschussModus: mindestleistung` - ab welcher Leistung die Säule lädt." }
     SteuerartErgebnis:
       type: object
       properties:
@@ -26266,6 +27437,24 @@ components:
             antwortet, ist die schlechtere Auskunft als gar keine.
         ocppUrlPath: { type: string, nullable: true, description: "Der Pfad des OCPP-Servers (z. B. `/ocpp`); null wie oben." }
         reportedAt: { type: string, format: date-time }
+        storageRelease:
+          type: object
+          nullable: true
+          description: >
+            „Sonne + Speicher“ (06.10.2026): was die BOX gerade aus der
+            Untergrenze des Fahrplans macht. null = eine ältere Box, oder keine
+            Säule fährt die Quelle. Jede Zahl nullable - kein Messwert ist nie
+            eine 0.
+          properties:
+            active: { type: boolean, description: "Die Box gibt gerade Speicherenergie an Autos auf dieser Quelle." }
+            kw: { type: number, nullable: true, description: "Die freigegebene Speicherleistung über dem Sonnenüberschuss (nur aktiv)." }
+            floorSocPct: { type: number, nullable: true, description: "Die Untergrenze der laufenden Viertelstunde." }
+            socPct: { type: number, nullable: true, description: "Der gemessene Ladestand, gegen den die Box entschied." }
+            mode:
+              type: string
+              enum: [frei, frei_beobachtet, an_der_grenze, kein_plan, plan_handelt, ladestand_unbekannt, keine_messung, speicherpfad, bms_sperrt, keine_leistung, wirkung, kein_ladestand, speicher_gehalten, prognose_veraltet, nachtbedarf_ueber_kapazitaet, reserve_ueber_kapazitaet, prognose_zu_kurz]
+              description: "Die Stufe der Box (Vokabular: docs/contracts/v2/sonne-speicher-vectors.json). `frei` gibt ein von VoltPilot gesteuerter Speicher frei, `frei_beobachtet` einer, den die Box nur beobachtet (Freigabe aus Messung und Wirkungsprüfung)."
+            note: { type: string, nullable: true, description: "Der deutsche Satz der Box, unverändert." }
     ChargePoint:
       type: object
       description: >
@@ -28951,6 +30140,29 @@ components:
               id: { type: string, format: uuid }
               kennzeichen: { type: string }
               name: { type: string }
+        letzter_monat:
+          description: "Nur mit `letzterMonat=true`: der letzte vollständige Monat und sein Wert (Messen PR5)."
+          allOf: [{ $ref: "#/components/schemas/MessstelleRegisterMonat" }]
+    MessstelleRegisterMonat:
+      type: object
+      description: >
+        Der letzte vollständige Kalendermonat einer Messstelle (Messen PR5, Konzept §10.2):
+        der Monat vor dem Monat des Stichtags in der Zone ihres Standorts. `wert` ist GENAU
+        der Schritt, den `GET /api/v1/messstellen/{kennzeichen}/werte?raster=monat` für
+        diesen Monat in der neuesten Version zeigt - Menge, Zustand, Kennzeichen,
+        Abdeckung, Fassung, Version und Grund; eine Fläche rechnet nichts nach. Ein Monat
+        ohne Zahl ist `menge: null` mit seinem Zustand bzw. Grund, nie 0.
+      required: [monat, zeitzone, wert]
+      properties:
+        monat: { type: string, pattern: "^[0-9]{4}-[0-9]{2}$", example: "2026-09" }
+        zeitzone: { type: string, description: "Die Zone, in der `wert.von`/`wert.bis` den Monat schneiden.", example: Europe/Berlin }
+        wert:
+          nullable: true
+          description: "null NUR mit `ausserhalb_zugriff`."
+          allOf: [{ $ref: "#/components/schemas/MessstelleWerteWert" }]
+        ausserhalb_zugriff:
+          type: string
+          description: "NUR wenn ein Eingang einer berechneten Messstelle im Monat außerhalb des Zugriffs liegt (AP-03 R-A3): die Zahl fehlt ganz."
     MessstelleRegisterFakt:
       type: object
       required: [art, gilt_ab]
@@ -29011,10 +30223,14 @@ components:
         ablesung:
           type: object
           description: "Nur bei stand = ablesung: seit wann die Ablesungs-Quelle führt und wann zuletzt abgelesen wurde (null = noch nie). Die Beobachtung sagt dann „Abgelesen am …“ bzw. nach der Frist der überfälligen Ablesung „Ablesung überfällig seit …“."
-          required: [seit, zuletzt]
+          required: [seit, zuletzt, faellig_ab]
           properties:
             seit: { type: string, format: date-time }
             zuletzt: { type: string, format: date-time, nullable: true }
+            faellig_ab:
+              type: string
+              format: date-time
+              description: "Ab wann die nächste Ablesung fehlt (additiv, Messen-Bau m2): die letzte Ablesung plus zwei Kalendermonate in der Zeitzone des Standorts, ohne Ablesung der Beginn der Quelle - derselbe Zeitpunkt wie „Ablesung überfällig seit …“ der Beobachtung."
         fuehrend:
           nullable: true
           allOf: [{ $ref: "#/components/schemas/MessstelleRegisterBindung" }]
@@ -30778,6 +31994,37 @@ components:
           nullable: true
           description: "{satz, fehlt} nach bilanzwert-herkunft.schema.json (Art verteilt); bei nicht_verteilt null — die Rechnung einer berechneten Messstelle steht je Tag an tage[].herkunft."
           additionalProperties: true
+        monate:
+          type: array
+          description: "Messen PR4: NUR an einer Messstelle aus Ablesungen über `monat` oder `jahr` - je Monat der Anteil der Ablesezeiträume, die ihm zugeordnet sind; `tage` ist dann leer. Sonst fehlt das Feld."
+          items: { $ref: "#/components/schemas/KostenstelleEnergieMonat" }
+    KostenstelleEnergieMonat:
+      type: object
+      description: >
+        Ein Monat eines Postens aus Ablesungen (Messen PR4): die Menge des Monats an der Messstelle
+        (`quelle_menge`, dieselbe Zahl wie `…/werte?raster=monat`), der Anteil, der an JEDEM Tag ihrer
+        Ablesezeiträume galt, und der Teil daraus. Ein Ablesezeitraum wird nie auf Tage verteilt.
+      required: [monat, ablesezeitraeume, anteil_prozent, quelle_menge, menge, zustand, abdeckung_prozent, version, grund, geaendert_am]
+      properties:
+        monat: { type: string, pattern: "^[0-9]{4}-[0-9]{2}$", example: "2026-10" }
+        ablesezeitraeume:
+          type: array
+          description: "Die Ablesezeiträume, die der Kunde dem Monat zugeordnet hat; leer ohne gespeicherten Monat."
+          items: { $ref: "#/components/schemas/KostenstelleEnergieAblesezeitraum" }
+        anteil_prozent: { type: number, nullable: true, description: "Der Anteil an jedem Tag der Ablesezeiträume; null, wenn er mitten darin wechselt, und bei nicht_verteilt." }
+        quelle_menge: { type: number, nullable: true }
+        menge: { type: number, nullable: true, description: "Anteil × Menge des Monats; null = keine Zahl (siehe grund), nie 0." }
+        zustand: { type: string }
+        abdeckung_prozent: { type: integer, nullable: true }
+        version: { type: integer }
+        grund: { type: string, nullable: true, enum: [quelle_keine_werte, rest_unplausibel, anteil_wechselt_im_ablesezeitraum, keine_ablesung, null] }
+        geaendert_am: { type: string, format: date, nullable: true, description: "Der Tag, an dem der Anteil mitten im Ablesezeitraum wechselt." }
+    KostenstelleEnergieAblesezeitraum:
+      type: object
+      required: [von, bis]
+      properties:
+        von: { type: string, format: date-time, example: "2026-10-01T07:15:00+02:00" }
+        bis: { type: string, format: date-time, description: "ausschließlich", example: "2026-11-02T07:40:00+01:00" }
     KostenstelleEnergieMessstelle:
       type: object
       required: [id, kennzeichen, name, art]
@@ -31084,6 +32331,96 @@ components:
         archiviert_am: { type: string, format: date-time, nullable: true }
         angelegt_am: { type: string, format: date-time }
         bezugsbasis: { allOf: [{ $ref: "#/components/schemas/KennzahlBezugsbasis" }], nullable: true, description: "Die laufende Bezugsbasis (AP-17 IP-8, B3) oder null." }
+        auswertung: { $ref: "#/components/schemas/KennzahlAuswertung" }
+        leitkennzahl: { type: boolean, description: "Nur an `GET /api/v1/kennzahlen/{id}?mit=auswertung` (Seite einer Kennzahl): ob sie die Leitkennzahl der Übersicht ist - dieselbe Wahl wie `leit` an `GET /api/v1/portfolio/kpis` und `leitkennzahl` der Liste (Konzept Auswerten a1 §10.8)." }
+    KennzahlAuswertung:
+      type: object
+      description: >
+        Nur mit `mit=auswertung` an `GET /api/v1/kennzahlen` oder `GET /api/v1/kennzahlen/{id}`, nur an einer
+        nicht archivierten Kennzahl mit Monatswerten (Konzept Auswerten a1 §6.4, §6.5, §10.8). Urteil und
+        Abweichungen sind die Operation `vergleich` des Bezugsbasis-Lesers (bezugsbasis.md §16), der Zeitraum
+        dessen Operation `zeitraum`, die Veränderungen zu Vorjahr und Vormonat die Operation `roh` (ohne Urteil,
+        VG3), der Stand des Energieziels sein Leser (Z3). Selbst gerechnet werden nur die Mengen je Monat
+        (`erwartet_wert`, `abweichung`, `zusammen`), exakt aus derselben Zeile.
+      required: [monat, wert, vorjahr, vormonat, monate, vergleich, zeitraum, energieziel]
+      properties:
+        monat: { type: string, pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$", description: "Der letzte abgeschlossene Monat in der Zone der Geltung - für ihn gilt das Urteil." }
+        wert: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungWert" }], nullable: true, description: "Der jüngste Monatswert der zwölf Monate bis `monat`; null ohne jeden." }
+        vorjahr: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungRoh" }], nullable: true, description: "Die Veränderung von `wert` gegen denselben Monat ein Jahr davor; null ohne beide Werte." }
+        vormonat: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungRoh" }], nullable: true, description: "Die Veränderung von `wert` gegen den Monat davor; null ohne beide Werte." }
+        monate: { type: array, minItems: 12, maxItems: 12, items: { $ref: "#/components/schemas/KennzahlAuswertungMonat" }, description: "Die zwölf Monate bis `monat`, der älteste zuerst." }
+        vergleich: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungVergleich" }], nullable: true, description: "null ohne freigegebene Bezugsbasis." }
+        zeitraum: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungZeitraum" }], nullable: true, description: "Der Vergleich gegen die Fassung am letzten Tag von `monat` (P4) über die Monate der zwölf, für die genau diese Fassung gilt (§10.6) - nach einem Fassungswechsel also erst ab dem Wechsel; endete die Basis vor `monat`, gegen ihre letzte Fassung bis zu deren letztem Monat; null ohne Bezugsbasis oder solange noch keine gilt." }
+        energieziel: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungZiel" }], nullable: true, description: "Das offene Energieziel (bei mehreren das mit der frühesten Zielperiode) mit Stand; null ohne." }
+    KennzahlAuswertungWert:
+      type: object
+      required: [periode, wert, einheit, zustand, richtung]
+      properties:
+        periode: { type: string, description: "JJJJ-MM" }
+        wert: { type: string, description: "Ungerundeter Dezimaltext (U4)." }
+        einheit: { type: string, nullable: true }
+        zustand: { type: string, nullable: true }
+        richtung: { type: string, nullable: true, description: "untergrenze · obergrenze · unbestimmt - genau bei „unvollständig“ (Q3)." }
+    KennzahlAuswertungRoh:
+      type: object
+      required: [periode, wert, delta_prozent, richtung]
+      properties:
+        periode: { type: string, description: "Der Vorjahresmonat bzw. der Vormonat JJJJ-MM." }
+        wert: { type: string }
+        delta_prozent: { type: string, description: "Eine Stelle; trägt nie ein Urteil." }
+        richtung: { type: string, enum: [mehr, weniger, gleich] }
+    KennzahlAuswertungMonat:
+      type: object
+      required: [periode, wert, delta_prozent, urteil, grund, erwartet_wert, abweichung, zusammen, vorjahr]
+      properties:
+        periode: { type: string, description: "JJJJ-MM" }
+        wert: { type: string, nullable: true, description: "Der Kennzahlwert; null = keiner (nie 0)." }
+        delta_prozent: { type: string, nullable: true, description: "Die bereinigte Abweichung gegen die Bezugsbasis (U2); null ohne Vergleich." }
+        urteil: { type: string, nullable: true, enum: [besser, schlechter, im_rahmen, ohne_urteil, nicht_anwendbar] }
+        grund: { type: string, nullable: true, enum: [basis_fehlt, basis_beendet, zu_wenig_perioden, variable_fehlt, variable_ausserhalb, variablen_abhaengig, keine_werte, periode_nicht_zu_ende] }
+        erwartet_wert: { type: string, nullable: true, description: "Der erwartete Kennzahlwert: erwartet ÷ Nenner des Monats, gerundet wie der Kennzahlwert; null ohne erwartet oder Nenner." }
+        abweichung: { type: string, nullable: true, description: "gemessen − erwartet in der Einheit des Zählers, exakt (positiv = mehr als erwartet); null ohne beide." }
+        zusammen: { type: string, nullable: true, description: "Die Abweichungen aller Monate mit Urteil bis hierher zusammengezählt; null an einem Monat ohne Urteil (er zählt nicht mit)." }
+        vorjahr: { allOf: [{ $ref: "#/components/schemas/KennzahlAuswertungRoh" }], nullable: true, description: "Der Wert desselben Monats ein Jahr davor mit der rohen Veränderung (Operation `roh`, nie ein Urteil); null ohne beide Werte oder mit 0 davor." }
+    KennzahlAuswertungVergleich:
+      type: object
+      required: [bezugsbasis, urteil, delta_prozent, band_prozent, richtung, grund, satz, erster_monat]
+      properties:
+        bezugsbasis: { type: string, nullable: true, description: "BB-0001 …" }
+        urteil: { type: string, enum: [besser, schlechter, im_rahmen, ohne_urteil, nicht_anwendbar] }
+        delta_prozent: { type: string, nullable: true }
+        band_prozent: { type: string, nullable: true }
+        richtung: { type: string, nullable: true, enum: [mehr, weniger, gleich] }
+        grund: { type: string, nullable: true, enum: [basis_fehlt, basis_beendet, zu_wenig_perioden, variable_fehlt, variable_ausserhalb, variablen_abhaengig, keine_werte, periode_nicht_zu_ende] }
+        satz: { type: string, nullable: true, description: "Der Kundensatz des Monats (bezugsbasis.md §10, §16)." }
+        erster_monat: { type: string, nullable: true, description: "Nur, solange für `monat` noch keine Fassung gilt: der erste Monat JJJJ-MM, für den eine freigegebene Fassung am letzten Tag gilt (P4)." }
+    KennzahlAuswertungZeitraum:
+      type: object
+      description: Der Vergleich über `von` … `bis` (Operation `zeitraum`, Σ gemessen ÷ Σ erwartet, U5); `von` ist der erste der zwölf Monate mit Fassung.
+      required: [von, bis, delta_prozent, band_prozent, richtung, urteil, grund, monate, satz]
+      properties:
+        von: { type: string, description: "JJJJ-MM" }
+        bis: { type: string, description: "JJJJ-MM" }
+        delta_prozent: { type: string, nullable: true }
+        band_prozent: { type: string, nullable: true }
+        richtung: { type: string, nullable: true, enum: [mehr, weniger, gleich] }
+        urteil: { type: string, enum: [besser, schlechter, im_rahmen, ohne_urteil, nicht_anwendbar] }
+        grund: { type: string, nullable: true, enum: [basis_fehlt, basis_beendet, zu_wenig_perioden, variable_fehlt, variable_ausserhalb, variablen_abhaengig, keine_werte, periode_nicht_zu_ende] }
+        monate: { type: string, nullable: true, description: "„x von y“ Monaten mit Vergleich." }
+        satz: { type: string, description: "Der Kundensatz des Zeitraums (bezugsbasis.md §10, §16)." }
+    KennzahlAuswertungZiel:
+      type: object
+      required: [id, kennzeichen, zielwert_prozent, zielperiode, delta_prozent, richtung, urteil, monate_bewertbar, monate_soll]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, description: "EZ-2029-0001 …" }
+        zielwert_prozent: { type: string, description: "Dezimaltext, negativ = weniger als erwartet." }
+        zielperiode: { type: string, description: "JJJJ-MM/JJJJ-MM" }
+        delta_prozent: { type: string, nullable: true, description: "Die Summe über die bewertbaren Monate (U5); null ohne bewertbaren Monat." }
+        richtung: { type: string, nullable: true, enum: [mehr, weniger, gleich] }
+        urteil: { type: string, nullable: true, enum: [besser, schlechter, im_rahmen, ohne_urteil, nicht_anwendbar] }
+        monate_bewertbar: { type: integer }
+        monate_soll: { type: integer }
     KennzahlBezugsbasis:
       type: object
       description: >
@@ -31495,6 +32832,10 @@ components:
         kennzahlen: { type: array, items: { $ref: "#/components/schemas/Kennzahl" } }
         ausserhalb_zugriff:
           $ref: "#/components/schemas/KennzahlZugriffHinweis"
+        leitkennzahl:
+          type: string
+          format: uuid
+          description: "Nur mit `mit=auswertung`: die Kennzahl, die die Leitkachel der Übersicht zeigt (`GET /api/v1/portfolio/kpis` `leit`) - dieselbe Wahl über dieselbe Auswertung (Konzept Auswerten a1 §10.8): unter den Kennzahlen mit Auswertung und offenem Energieziel die mit dem kleinsten Kennzeichen, die einen Monatswert trägt. Fehlt ohne eine."
     KennzahlZugriffHinweis:
       type: object
       description: "Nur die Anzahl unsichtbarer standortübergreifender Kennzahlen; niemals Kennung, Name, Formel oder Wert. Fehlt bei voller Sicht (AP-03 IP-11, R-A1 und R-A6)."
@@ -31735,8 +33076,9 @@ components:
       type: object
       description: >
         Z5: die Bewertung - `kopie` ist der kanonische Text des Ziel-Stands zum Bewertungstag, `pruefsumme` sein
-        sha256; `person`/`am` wer bewertet bzw. beantragt hat, bei Vier-Augen `entscheidung` die zweite Person.
-      required: [status, ergebnis, begruendung, vorschlag, vieraugen, person, am, entscheidung, entschieden_am, entscheidungs_begruendung, kopie, pruefsumme]
+        sha256, `stand` derselbe Stand lesbar; `person`/`am` wer bewertet bzw. beantragt hat, bei Vier-Augen
+        `entscheidung` die zweite Person.
+      required: [status, ergebnis, begruendung, vorschlag, vieraugen, person, am, entscheidung, entschieden_am, entscheidungs_begruendung, kopie, pruefsumme, stand]
       properties:
         status: { type: string, enum: [beantragt, bewertet, abgelehnt] }
         ergebnis: { type: string, enum: [erreicht, verfehlt, nicht_bewertbar] }
@@ -31757,6 +33099,34 @@ components:
         entscheidungs_begruendung: { type: string, nullable: true }
         kopie: { type: string }
         pruefsumme: { type: string, pattern: "^sha256:[0-9a-f]{64}$" }
+        stand: { $ref: "#/components/schemas/EnergiezielFestgehaltenerStand" }
+    EnergiezielFestgehaltenerStand:
+      type: object
+      description: >
+        Konzept Verbessern, Entscheid 11 - der Ziel-Stand der Kopie zum Bewertungstag lesbar statt als Rohtext: Σ
+        gemessen und Σ erwartet in `einheit` (kWh, wenn die Kopie `_kwh` trägt), Δ mit Richtung, Urteil, Band, „x von y“
+        und die nicht gezählten Monate mit Grund. Dieselben Zahlen, die `pruefsumme` deckt.
+      required: [abruf, gemessen, erwartet, einheit, delta_prozent, richtung, urteil, band_prozent, monate_bewertbar, monate_gesamt, ausgeschlossen, grund_kein_vorschlag]
+      properties:
+        abruf: { type: string, format: date, nullable: true }
+        gemessen: { type: string, nullable: true }
+        erwartet: { type: string, nullable: true }
+        einheit: { type: string, nullable: true }
+        delta_prozent: { type: string, nullable: true }
+        richtung: { type: string, nullable: true, enum: [mehr, weniger, gleich, null] }
+        urteil: { type: string, nullable: true }
+        band_prozent: { type: string, nullable: true }
+        monate_bewertbar: { type: integer }
+        monate_gesamt: { type: integer }
+        ausgeschlossen:
+          type: array
+          items:
+            type: object
+            required: [monat, grund]
+            properties:
+              monat: { type: string }
+              grund: { type: string }
+        grund_kein_vorschlag: { type: string, nullable: true }
     EnergiezielAnstoss:
       type: object
       description: >
@@ -31792,7 +33162,7 @@ components:
     EnergiezielStand:
       type: object
       description: Der Ziel-Stand (Z3, Z4) - Ausgang der Operation `zielstand` und je Monat die Vergleichszeile.
-      required: [energieziel, abruf, zielperiode, zielwert_prozent, monate, monate_bewertbar, monate_endgueltig, monate_soll, monate_text, vollstaendig, nicht_gezaehlt, summe, vorschlag, satz, vorschlag_satz]
+      required: [energieziel, abruf, zielperiode, zielwert_prozent, monate, monate_bewertbar, monate_endgueltig, monate_soll, monate_text, vollstaendig, nicht_gezaehlt, summe, vorschlag, satz, vorschlag_satz, kurs]
       properties:
         energieziel: { $ref: "#/components/schemas/Energieziel" }
         abruf: { type: string, format: date }
@@ -31834,12 +33204,35 @@ components:
         vorschlag: { type: string, nullable: true, enum: [erreicht, nicht_erreicht, null] }
         satz: { type: string, nullable: true }
         vorschlag_satz: { type: string, nullable: true }
+        kurs: { $ref: "#/components/schemas/EnergiezielKurs" }
+    EnergiezielKurs:
+      type: object
+      description: >
+        Operation `kurs` (Vertrag verbesserung.md §4a, Konzept Verbessern Entscheid 3): der Zwischenstand über die bisher
+        bewertbaren Monate. `lage` auf Kurs nach der Regel des Vorschlags, knapp dahinter weniger als erwartet und
+        höchstens das Band vom Zielwert entfernt, ohne bewertbaren Monat `noch_keine_aussage` (dann sind die Zahlen
+        null). `hoechstens` ist, was das Energieziel für die bewertbaren Monate zulässt, `luecke` = Σ gemessen −
+        höchstens (positiv = darüber), beide in der Einheit der Summe; `noetig_prozent` der nötige Schnitt der
+        `monate_offen` noch nicht endgültigen Monate gegen erwartet (Näherung bei gleich großen Monaten; ohne offenen
+        Monat null).
+      required: [lage, monate_bewertbar, monate_offen, hoechstens, luecke, noetig_prozent, noetig_richtung]
+      properties:
+        lage: { type: string, enum: [auf_kurs, knapp_dahinter, nicht_auf_kurs, noch_keine_aussage] }
+        monate_bewertbar: { type: integer }
+        monate_offen: { type: integer }
+        hoechstens: { type: string, nullable: true }
+        luecke: { type: string, nullable: true }
+        noetig_prozent: { type: string, nullable: true }
+        noetig_richtung: { type: string, nullable: true, enum: [mehr, weniger, gleich, null] }
     Massnahme:
       type: object
       description: >
         Eine Maßnahme (UEMS AP-18 IP-10, M1–M4, M6); `messgrundlage` oder `ohne_messgrundlage` ist gesetzt, nie beide;
         `frist` über die Operation `frist` beim Abruf; `kopf_satz` erst ab umgesetzt; `verlauf` nur an der einzelnen.
-      required: [id, kennzeichen, titel, verantwortlich, termin, standort_id, zustand, herkunft, messgrundlage, ohne_messgrundlage, einsatz, einstufung_fassung, energieziel, erwartete_wirkung_prozent, erwartete_wirkung_wortlaut, angelegt_am, umgesetzt_am, umgesetzt_begruendung, verworfen_am, verworfen_grund, frist, kopf_satz, bewertung, bewertung_antrag, anstoesse, verlauf]
+        `art` (Entscheid 6) sagt, wie sich die Wirkung zeigt; `erwartete_einsparung` die Schätzung in kWh im Jahr
+        (Entscheid 13); `wirkung_kurz` die beobachtete Wirkung in Kurzform - in der Liste und an der Maßnahme von
+        `…/wirkung`, an der einzelnen Maßnahme null.
+      required: [id, kennzeichen, titel, verantwortlich, termin, standort_id, zustand, herkunft, messgrundlage, ohne_messgrundlage, einsatz, einstufung_fassung, energieziel, erwartete_wirkung_prozent, erwartete_wirkung_wortlaut, angelegt_am, umgesetzt_am, umgesetzt_begruendung, verworfen_am, verworfen_grund, frist, kopf_satz, bewertung, bewertung_antrag, anstoesse, verlauf, art, erwartete_einsparung, wirkung_kurz]
       properties:
         id: { type: string, format: uuid }
         kennzeichen: { type: string, pattern: "^M-[0-9]{4}-[0-9]{4,9}$" }
@@ -31899,6 +33292,57 @@ components:
           type: array
           nullable: true
           items: { $ref: "#/components/schemas/MassnahmeEintrag" }
+        art: { type: string, enum: [gemessen, nicht_gemessen, organisatorisch] }
+        erwartete_einsparung: { $ref: "#/components/schemas/MassnahmeEinsparung" }
+        wirkung_kurz: { $ref: "#/components/schemas/MassnahmeWirkungKurz" }
+    MassnahmeEinsparung:
+      type: object
+      nullable: true
+      description: >
+        Die erwartete Einsparung in kWh im Jahr (Entscheid 13) - eine Schätzung, nie mit beobachteten Werten summiert.
+        `kwh_jahr` weniger Energie positiv; mit Kennzahl umgerechnet aus der erwarteten Wirkung über `grundlage_kwh` der
+        Monate `grundlage_monate`, ohne Kennzahl von einer Person geschätzt (Grundlage null).
+      required: [kwh_jahr, grundlage_kwh, grundlage_monate]
+      properties:
+        kwh_jahr: { type: string }
+        grundlage_kwh: { type: string, nullable: true }
+        grundlage_monate: { type: string, nullable: true, description: "JJJJ-MM/JJJJ-MM" }
+    MassnahmeWirkungKurz:
+      type: object
+      nullable: true
+      description: >
+        Die beobachtete Wirkung in Kurzform für die Liste (Verbessern-Konzept v1 §6.5) - die Summe der Operation
+        `wirkung` mit 12 Nachher-Monaten; nur mit Messgrundlage, ab umgesetzt und mit mindestens einem bewertbaren
+        Monat. Mengen in `einheit`; `differenz` = Σ gemessen − Σ erwartet (weniger negativ); `erwartete_wirkung` =
+        Prozent der Person × Σ erwartet derselben Monate (ohne Zahl null).
+      required: [delta_prozent, richtung, urteil, monate_bewertbar, monate_soll, monate_text, vorlaeufig, zeitraum_von, zeitraum_bis, gemessen, erwartet, differenz, erwartete_wirkung, einheit, energie]
+      properties:
+        delta_prozent: { type: string }
+        richtung: { type: string }
+        urteil: { type: string, enum: [besser, schlechter, im_rahmen, nicht_anwendbar, ohne_urteil] }
+        monate_bewertbar: { type: integer }
+        monate_soll: { type: integer }
+        monate_text: { type: string }
+        vorlaeufig: { type: boolean }
+        zeitraum_von: { type: string }
+        zeitraum_bis: { type: string }
+        gemessen: { type: string }
+        erwartet: { type: string }
+        differenz: { type: string }
+        erwartete_wirkung: { type: string, nullable: true }
+        einheit: { type: string, nullable: true }
+        energie: { type: string }
+    MassnahmeSchaetzung:
+      type: object
+      required: [kennzahl, prozent, kwh_jahr, grundlage_kwh, grundlage_monate, monate_mit_wert, grund]
+      properties:
+        kennzahl: { type: string, format: uuid }
+        prozent: { type: string }
+        kwh_jahr: { type: string, nullable: true }
+        grundlage_kwh: { type: string, nullable: true }
+        grundlage_monate: { type: string }
+        monate_mit_wert: { type: integer }
+        grund: { type: string, nullable: true, enum: [monate_fehlen, einheit_nicht_kwh, kennzahl_ohne_bezugsbasis, zu_klein, null] }
     MassnahmeAnstoss:
       type: object
       description: >
@@ -31992,16 +33436,22 @@ components:
         am: { type: string, format: date-time }
     MassnahmeListe:
       type: object
-      required: [abruf, massnahmen]
+      required: [abruf, massnahmen, im_stand_enthalten]
       properties:
         abruf: { type: string, format: date }
         massnahmen: { type: array, items: { $ref: "#/components/schemas/Massnahme" } }
+        im_stand_enthalten:
+          type: array
+          description: >
+            Nur mit `energieziel`: die IDs der Maßnahmen, die nicht für dieses Energieziel angelegt sind, deren Wirkung
+            aber im Stand enthalten ist (Konzept Verbessern, Entscheid 5); sonst leer.
+          items: { type: string, format: uuid }
     MassnahmeWirkung:
       type: object
       description: >
         Die Wirkung (WK1–WK5) - Ausgang der Operation `wirkung` und je Monat die Vergleichszeile. Mit `grund`
         (`ohne_messgrundlage`, `nicht_umgesetzt`) sind die Zahlen null und `monate`/`nicht_gezaehlt` leer.
-      required: [massnahme, abruf, grund, umsetzungsmonat, nachher_von, nachher_bis, monate, monate_bewertbar, monate_endgueltig, monate_soll, monate_text, vorlaeufig, nicht_gezaehlt, summe, satz]
+      required: [massnahme, abruf, grund, umsetzungsmonat, nachher_von, nachher_bis, monate, monate_bewertbar, monate_endgueltig, monate_soll, monate_text, vorlaeufig, nicht_gezaehlt, summe, satz, energie]
       properties:
         massnahme: { $ref: "#/components/schemas/Massnahme" }
         abruf: { type: string, format: date }
@@ -32019,7 +33469,8 @@ components:
         summe:
           nullable: true
           allOf: [{ $ref: "#/components/schemas/MassnahmeWirkungSumme" }]
-        satz: { type: string, nullable: true, description: "Kundensatz `wirkung_vorlaeufig` bzw. `ohne_messgrundlage` (§5.9)" }
+        satz: { type: string, nullable: true, description: "Kundensatz `wirkung_vorlaeufig` (ohne Zahl der Person `wirkung_ohne_erwartung`, Entscheid 12) bzw. `ohne_messgrundlage` (§5.9)" }
+        energie: { type: string, nullable: true, description: "Energieträger des Zählers („Strom“, sonst „Energie“); ohne Nachher-Monate null" }
     MassnahmeWirkungMonat:
       type: object
       description: >
@@ -32089,6 +33540,15 @@ components:
       required: [kennzahl, abruf, offen, vermerke]
       properties:
         kennzahl: { $ref: "#/components/schemas/AbweichungVerweis" }
+        abruf: { type: string, format: date }
+        offen: { type: integer }
+        vermerke: { type: array, items: { $ref: "#/components/schemas/Auffaelligkeit" } }
+    AuffaelligkeitenAlle:
+      type: object
+      description: >
+        Die Vermerke aller sichtbaren Kennzahlen (Verbessern, Entscheid 4); die Kennzahl steht an jedem Vermerk.
+      required: [abruf, offen, vermerke]
+      properties:
         abruf: { type: string, format: date }
         offen: { type: integer }
         vermerke: { type: array, items: { $ref: "#/components/schemas/Auffaelligkeit" } }
@@ -32267,7 +33727,12 @@ components:
         zustand: { type: string, nullable: true }
     BezugsbasisVergleichZeitraum:
       type: object
-      description: Operation `zeitraum` (U5) gegen die Fassung am letzten Tag von `bis` - Σ gemessen ÷ Σ erwartet, nie ein Mittel.
+      description: >
+        Operation `zeitraum` (U5) gegen die Fassung am letzten Tag des letzten Monats mit Fassung (endet die Basis im
+        Zeitraum, die letzte, die galt) - Σ gemessen ÷ Σ erwartet, nie ein Mittel. Ein Monat, für den an seinem letzten
+        Tag keine Fassung gilt, zählt nicht mit (P4 je Monat, Entscheid 07.10.2026): Zahl und Urteil stehen über die
+        Monate mit Fassung, `monate` nennt „x von y“ über alle Monate des Zeitraums. Bei einem Fassungswechsel rechnet
+        jeder gezählte Monat gegen die Fassung des Kopfs; `erwartet` ist dann nicht die Summe der Zeilen.
       required: [fassung, gemessen, erwartet, delta_prozent, band_prozent, richtung, urteil, grund, monate, kennzeichen, satz]
       properties:
         fassung: { type: integer, nullable: true }
@@ -34414,6 +35879,23 @@ components:
       required: [begruendung]
       properties:
         begruendung: { type: string, minLength: 10, maxLength: 500 }
+    BerichtAnstoesseVerwerfen:
+      type: object
+      description: >
+        Der Körper von `POST …/anstoesse/verwerfen` (Konzept Nachweisen n1, Entscheid 16): die gesehenen offenen
+        Anstöße und EIN Grund für alle.
+      additionalProperties: false
+      required: [anstoss_ids, begruendung]
+      properties:
+        anstoss_ids: { type: array, minItems: 1, maxItems: 200, uniqueItems: true, items: { type: string, format: uuid } }
+        begruendung: { type: string, minLength: 10, maxLength: 500 }
+    BerichtAnstoesseVerworfen:
+      type: object
+      required: [anstoesse]
+      properties:
+        anstoesse:
+          type: array
+          items: { $ref: "#/components/schemas/BerichtAnstoss" }
     BerichtPerson:
       type: object
       description: >
@@ -34428,7 +35910,7 @@ components:
         Ein Bericht in der Liste und im Kopf: `stand_zeichen` ist der Vermerk aus R5 als Wort,
         `stand_text` sein Kundensatz („Entwurf · Datenstand …“, „Berichtsstand Nr. 1“, „Revision nötig —
         Korrektur K-2026-0007“, „Anstoß verworfen (…)“).
-      required: [kennung, vorlage, vorlage_fassung, geltung_art, geltung_id, geltung_name, zeitraum_art, zeitraum, zeitraum_text, zeitzone, angelegt_von, angelegt_am, archiviert_am, stand_zeichen, stand_text, neueste_nr, entwurf_datenstand, wiedervorlage_monate, ueberpruefung]
+      required: [kennung, vorlage, vorlage_fassung, geltung_art, geltung_id, geltung_name, zeitraum_art, zeitraum, zeitraum_text, zeitzone, angelegt_von, angelegt_am, archiviert_am, stand_zeichen, stand_text, neueste_nr, entwurf_datenstand, wiedervorlage_monate, ueberpruefung, freigegeben_am, anstoss_seit]
       properties:
         kennung: { type: string }
         vorlage: { type: string }
@@ -34452,6 +35934,16 @@ components:
           allOf: [{ $ref: "#/components/schemas/BerichtUeberpruefung" }]
           nullable: true
           description: "AP-16 S5/S6 (IP-24): nur an einer energetischen Bewertung mit freigegebenem Stand, sonst null."
+        freigegeben_am:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Die Freigabe des gültigen Stands; ohne Stand null (Konzept Nachweisen n1, §6.4: Datumsblock „frei“)."
+        anstoss_seit:
+          type: string
+          format: date-time
+          nullable: true
+          description: "Der früheste offene Anstoß am gültigen Stand (`stand_zeichen` revision_noetig), sonst null (Datumsblock „seit“)."
     BerichtUeberpruefung:
       type: object
       description: >
@@ -34483,9 +35975,15 @@ components:
         ohne_verantwortliche: { type: array, items: { type: string }, description: "Wesentliche Einsätze ohne verantwortliche Person." }
     BerichtListe:
       type: object
-      required: [berichte]
+      required: [berichte, abruf]
       properties:
         berichte: { type: array, items: { $ref: "#/components/schemas/Bericht" } }
+        abruf:
+          type: string
+          format: date-time
+          description: >
+            Der Augenblick der Route (ihre Uhr, in der Prüfumgebung die Bühnen-Uhr). Das Portal misst „Zeitraum läuft“
+            und die Zeitraum-Wahl daran, nie an der Uhr des Browsers.
     BerichtStandRef:
       type: object
       description: Ein Berichtsstand in einer Folgen-Karte - „BR-2026-0001 Nr. 2“.
@@ -34537,11 +36035,12 @@ components:
         verworfen_am: { type: string, format: date-time, nullable: true }
     BerichtDetail:
       type: object
-      required: [bericht, staende, anstoesse]
+      required: [bericht, staende, anstoesse, abruf]
       properties:
         bericht: { $ref: "#/components/schemas/Bericht" }
         staende: { type: array, items: { $ref: "#/components/schemas/BerichtStandKurz" } }
         anstoesse: { type: array, items: { $ref: "#/components/schemas/BerichtAnstoss" } }
+        abruf: { type: string, format: date-time, description: "Der Augenblick der Route, wie in BerichtListe." }
     BerichtEntwurf:
       type: object
       description: >

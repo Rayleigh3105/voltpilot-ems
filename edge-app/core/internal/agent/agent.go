@@ -110,6 +110,10 @@ type Agent struct {
 	lastReadingAt time.Time
 	lastRawSoc    *float64
 
+	// releaseReady is the battery executor's per-tick word on whether it
+	// covers a vehicle's draw („Sonne + Speicher", ocpp_release.go).
+	releaseReady releaseReadiness
+
 	// net answers "under which address is my box reachable" - the ONE fact the
 	// box could never say about itself (D5). It records the Host header of
 	// every request that reaches the local web app (see internal/netinfo) and
@@ -157,6 +161,13 @@ type Agent struct {
 	// and when the device never confirms the mode (guards/nativemode.go). Never a
 	// failsafe: on any doubt the proven 10-second follower carries the slot.
 	native *guards.NativeMode
+	// gridTarget carries the per-slot supervision of the GRID-SIDE THROTTLING
+	// SLOT (concept vp-deye-netzseitig-drossel-k2 P3): in a slot the plan
+	// curtails, the hybrid regulates the connection point itself and throttles
+	// its own PV - and this type takes the battery back at the reserve floor, on
+	// a lost measurement/readback, when the grid point does not follow the
+	// target and when the device never confirms (guards/gridtarget.go).
+	gridTarget *guards.GridTargetMode
 	// export is the REAL-TIME feed-in watchdog (dynamische Einspeisebegrenzung):
 	// it regulates the CONTROLLABLE producers against the MEASURED connection
 	// point so the site's feed-in limit holds no matter what the house does -
@@ -230,10 +241,15 @@ type Agent struct {
 	// nativeLastReason is the last native supervision verdict, so a CHANGED
 	// cause is logged once (noteNativeReason). Under a.mu.
 	nativeLastReason string
-	calMu            sync.Mutex
-	cal              *calibration.Session
-	calWatchdog      *time.Timer
-	calCert          map[string]bool
+	// gridTargetLastReason is the last grid-target verdict (a changed entry is
+	// logged once), gridTargetEndedSlot the slot in which the mode was taken
+	// back (the withheld block then says so). Both under a.mu.
+	gridTargetLastReason string
+	gridTargetEndedSlot  time.Time
+	calMu                sync.Mutex
+	cal                  *calibration.Session
+	calWatchdog          *time.Timer
+	calCert              map[string]bool
 
 	// pcMu guards platformDoc, the retained PLATFORM control-certification
 	// document (agent/controlcert.go). ⚠ Lock order: invMu (the inverter
@@ -739,6 +755,7 @@ func New(cfg config.Config) (*Agent, error) {
 	// The native supervision's proof grace derives from the setpoint cadence, so
 	// it is constructed after the Agent literal (a.Cfg is set there).
 	a.native = guards.NewNativeMode(a.nativeProofGrace())
+	a.gridTarget = guards.NewGridTargetMode(a.nativeProofGrace())
 	// The clock guard takes its first reading here: a.boxClock needs the Agent.
 	a.zeitWache = boxevents.NeueZeitWache(a.boxClock)
 	if raw, err := os.ReadFile(filepath.Join(cfg.DataDir, "measurement-config.json")); err == nil {
@@ -1326,13 +1343,16 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		DevInsecure: a.Cfg.DevInsecure,
 		// The build stamp rides EVERY heartbeat as the top-level `version`
 		// (OTA Stufe 0) - see cloud.Options.Version.
-		Version:    Version,
-		NetworkFn:  a.networkSummary,
-		OnSchedule: a.onSchedule,
-		OnCommand:  a.onCloudCommand,
-		OnEntities: a.onEntityRegistryPush,
-		OnPlanV2:   a.onPlanV2,
-		OnFlows:    a.onFlows,
+		Version:   Version,
+		NetworkFn: a.networkSummary,
+		// Gesteuert oder nur beobachtet - in JEDEM Herzschlag, auch ohne
+		// Rücklesung (docs/contracts/speicher-steuerstand.md).
+		BatteryControlFn: a.batteryControlSummary,
+		OnSchedule:       a.onSchedule,
+		OnCommand:        a.onCloudCommand,
+		OnEntities:       a.onEntityRegistryPush,
+		OnPlanV2:         a.onPlanV2,
+		OnFlows:          a.onFlows,
 		// AP-15 IP-17: the share document of a Gemeinsame Steuerung -
 		// judged, stored, receipted and mirrored (verbund_anteile.go).
 		OnVerbundAnteile: a.onVerbundAnteile,
@@ -2146,7 +2166,7 @@ const (
 // isAutonomousMode reports whether the device, not the box, decides the watts.
 func isAutonomousMode(mode string) bool {
 	return mode == execModeAutonomousDischarge || mode == execModeAutonomousCharge ||
-		mode == execModeAutonomousSelfConsumption
+		mode == execModeAutonomousSelfConsumption || mode == execModeGridTarget
 }
 
 // executionSummary folds the in-slot corrections (snap.Follow / snap.Trim) plus
@@ -2163,6 +2183,20 @@ func isAutonomousMode(mode string) bool {
 // control_source carries too, repeated here so ONE block answers the question.
 // Values are COPIED out of the snapshot, never aliased.
 func executionSummary(snap state.Snapshot) *cloud.ExecutionSummary {
+	// THE GRID-SIDE THROTTLING SLOT comes first for the reason native does: the
+	// device decides the watts, so any correction named below would describe a
+	// computation nobody executed. Only a PROVEN mode makes the claim, and the
+	// word falls in the same tick as every take-back (snap.GridTarget is
+	// rewritten by every setpoint tick). planned_kw is the reference the box
+	// would write if it took the battery back.
+	if g := snap.GridTarget; g != nil && g.Active && g.Proven {
+		return &cloud.ExecutionSummary{
+			Mode:                 execModeGridTarget,
+			PlannedKw:            copyFloat(&g.ReferenceKw),
+			EffectiveFloorSocPct: copyFloat(snap.EffectiveFloorSocPct),
+			MeasurementsFresh:    true,
+		}
+	}
 	// NATIVE SELF-REGULATION is checked FIRST because it OUTRANKS every
 	// correction below: in a native slot the inverter itself decides the watts,
 	// so "the follower deepened the discharge" would describe a computation
@@ -2729,6 +2763,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 		// economic execution mode may carry an armed state across it.
 		a.native.Release()
 		a.damp.Release()
+		a.releaseGridTarget()
 		return
 	}
 
@@ -2744,11 +2779,15 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// Voraussetzungen des Armierens (curtailcal.GridSession.Start), nicht
 	// Dinge, die er beiseiteschiebt.
 	if a.gridTestOverride(now, p) {
+		// Ein armierter Test BESITZT den Wechselrichter - der Produktivpfad des
+		// netzseitigen Drossel-Slots darf daneben keinen scharfen Zustand tragen.
+		a.releaseGridTarget()
 		return
 	}
 	// K5 Pilotfenster der Deye-Ladeseite: derselbe Gedanke - von Hand armiert,
 	// begrenzt, und es umgeht nur das Zertifikat des Kandidaten.
 	if a.nativePilotOverride(now, p) {
+		a.releaseGridTarget()
 		return
 	}
 
@@ -2841,7 +2880,10 @@ func (a *Agent) applySetpoint(now time.Time) {
 			// same rule the three corrections above follow.
 			s.Native = nil
 			s.NativeWithheld = nil
+			s.GridTarget = nil
+			s.GridTargetWithheld = nil
 			s.CarsFirstCapKw = nil
+			s.ReleaseCoverKw = nil
 			s.ExportGuard = exportGuard
 			// Without a reading the tracker has no evaluation point at all, so a
 			// previous claim is cleared rather than left standing - the same rule
@@ -2852,6 +2894,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 		a.follow.Release()
 		a.absorb.Release()
 		a.native.Release()
+		a.gridTarget.Release()
 		a.damp.Release()
 		return
 	}
@@ -2914,6 +2957,47 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// registry transition even before its first holder command is available.
 	// Hard export/compliance/watchdog and device write gates remain downstream.
 	marketCorrectionsAllowed := !paused && !nonPlanHolder && !a.batteryOwnerClaimed()
+	// The measurement freshness every in-slot rule below shares.
+	freshWindow := 2 * a.Cfg.SetpointInterval
+	if freshWindow < 30*time.Second {
+		freshWindow = 30 * time.Second
+	}
+	measurementFresh := !readingAt.IsZero() && !now.Before(readingAt) && now.Sub(readingAt) <= freshWindow
+	// K6: only the connection point's Führungsgerät may regulate itself
+	// (guards/leader.go) - a standing condition of BOTH device-regulated modes
+	// (the grid-side slot right below, the native Wegwahl further down).
+	leader, leaderInfo := a.leaderVerdict(now)
+
+	// NETZSEITIGER DROSSEL-SLOT (guards/gridtarget.go, concept
+	// vp-deye-netzseitig-drossel-k2 P3): in a slot the plan CURTAILS and does
+	// not discharge the battery, hand the grid connection point to the hybrid's
+	// own grid-side regulator (target 0 W) - it stores the surplus first and
+	// throttles its OWN PV for the rest, the one generation the curtailment
+	// chain cannot reach.
+	//
+	// It is decided HERE, ahead of the in-slot corrections, because it removes
+	// their object: on the grid side nobody commands a battery setpoint, so
+	// trim, follower, deficit cover, absorption, the cars-first cap and the
+	// peak guard have nothing to act on - they are released for the slot and
+	// the device does their job natively (concept §2.7). `kw` stays the plain
+	// guard-clamped plan value: the REFERENCE the take-back writes on the very
+	// next tick, with every correction back in force on that same tick.
+	//
+	// It publishes an INTENT; Layer 1 holds the model release and the register
+	// sequence and answers with evidence on the readback. Without its reported
+	// lever, without both write gates, or on a box that holds a share document
+	// (GEMEINSAME STEUERUNG - its watchdogs need the levers the box commands),
+	// nothing here changes a byte.
+	gridDec, gridInfo, gridWithheld := a.gridTargetDecide(now, p, r, marketCorrectionsAllowed,
+		a.Cfg.ControlEnabled && a.controlCertified(a.currentFamily()),
+		measurementFresh, freshWindow, effectiveFloor, leader.Reason)
+	inSlotCorrections := marketCorrectionsAllowed && !gridDec.Engage
+	if gridDec.Engage {
+		a.trim.Release()
+		a.follow.Release()
+		a.absorb.Release()
+		a.damp.Release()
+	}
 	// MEASURE, THEN SET (guards/followdamper.go, concept
 	// vp-wechselrichter-eigenregelung-k1 §6.5, Captain E2 A): every measured
 	// in-slot correction below - trim, load follower, deficit cover, surplus
@@ -2928,7 +3012,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	rc, dampPair := a.damp.Gate(now, dampProfile, r, readingAt)
 	preCorrectionKw := kw
 	trimmed := a.trim.Apply(now, kw,
-		marketCorrectionsAllowed && p.ActiveChargeFromSurplusOnly(now), rc)
+		inSlotCorrections && p.ActiveChargeFromSurplusOnly(now), rc)
 	kw = trimmed.Kw
 
 	// In-slot LOAD FOLLOWING (2026-07-30, the discharge-side mirror of the trim
@@ -2962,12 +3046,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// recent complete measurement, the cloud-computed full floor, and both live
 	// write gates. Every supported driver uses this exact-setpoint path until an
 	// exact model/firmware native capability has completed its bench gate.
-	freshWindow := 2 * a.Cfg.SetpointInterval
-	if freshWindow < 30*time.Second {
-		freshWindow = 30 * time.Second
-	}
-	measurementFresh := !readingAt.IsZero() && !now.Before(readingAt) && now.Sub(readingAt) <= freshWindow
-	coverLoad := marketCorrectionsAllowed && p.ActiveCoverLoadFromBattery(now)
+	coverLoad := inSlotCorrections && p.ActiveCoverLoadFromBattery(now)
 	// The REDUCE-only right (2026-09-08, Netz-null-Reduzieren): a discharging
 	// "grid ~ 0" slot lets the box LIMIT the commanded discharge to the measured
 	// house even where the economic duty above is silent - which on a
@@ -2978,9 +3057,12 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// SHRINKS one the plan already commands, so it spends nothing and cannot
 	// flip a direction. The follower's own fact set (fresh measurements, the
 	// full floor stack, known SoC) still gates it.
-	limitToLoad := marketCorrectionsAllowed && p.ActiveLimitDischargeToLoad(now)
-	economicUnplannedRequested := marketCorrectionsAllowed && p.ActiveUnplannedLoadDischarge(now)
+	limitToLoad := inSlotCorrections && p.ActiveLimitDischargeToLoad(now)
+	economicUnplannedRequested := inSlotCorrections && p.ActiveUnplannedLoadDischarge(now)
 	portableReady := false
+	// commanded: VoltPilot drives this battery at all (the control_enabled
+	// edge/setpoint carries). Only „Sonne + Speicher" reads it on its own.
+	commanded := false
 	// This additive economic permission belongs exclusively to an idle MARKET
 	// slot. The shared marketCorrectionsAllowed boundary above protects both it
 	// and the established cover_load_from_battery follower from every non-plan
@@ -2997,9 +3079,44 @@ func (a *Agent) applySetpoint(now time.Time) {
 			familyForIdle = a.inv.Family
 		}
 		a.invMu.Unlock()
-		portableReady = a.Cfg.ControlEnabled && a.controlCertified(familyForIdle) && readbackHealthy
+		commanded = a.Cfg.ControlEnabled && a.controlCertified(familyForIdle)
+		portableReady = commanded && readbackHealthy
 	}
 	economicUnplanned := economicUnplannedRequested && portableReady
+
+	// „SONNE + SPEICHER" (ocpp_release.go): tell the charge-point executor
+	// whether THIS path covers a vehicle's draw right now. Every hold reason
+	// the battery honours is a reason not to release - a battery that a rule
+	// holds or that runs its stale-plan fallback would leave the car on grid
+	// power, and so would a COMMANDED battery without a held readback: it
+	// follows the box's setpoint, not the house, and may sit in a forced
+	// charge. A battery the box does NOT command (no model/device approval)
+	// is OBSERVED instead (Kapitän 07.10.2026): its inverter covers the
+	// wallbox by itself, and the release rests on the measurement and the
+	// effect check.
+	switch {
+	case paused:
+		a.noteReleaseReadiness(now, false, "Die Steuerung des Speichers ist pausiert")
+	case nonPlanHolder || a.batteryOwnerClaimed():
+		a.noteReleaseReadiness(now, false, "Eine Regel oder ein Handeingriff hält den Speicher")
+	case mode != state.ModeSchedule || !p.Fresh(now):
+		a.noteReleaseReadiness(now, false, "Ohne aktuellen Fahrplan fährt der Speicher seinen Rückfall")
+	case !measurementFresh:
+		a.noteReleaseReadiness(now, false, "Die Messung des Wechselrichters ist nicht frisch")
+	case !portableReady && !a.Cfg.ControlEnabled:
+		// The global stop: the box writes nothing at all, the wallboxes hold
+		// their safety profile (ocppControlAllowed) - no release to speak of.
+		a.noteReleaseReadiness(now, false, "Die Steuerung ist an dieser Box abgeschaltet (Not-Aus)")
+	case !portableReady && commanded:
+		a.noteReleaseReadiness(now, false, "VoltPilot steuert den Speicher, aber ohne bestätigte Rückmeldung "+
+			"des Wechselrichters ist offen, was er gerade ausführt")
+	case !portableReady:
+		// No model/device approval: control_enabled=false on edge/setpoint,
+		// Layer 1 writes nothing, the inverter regulates itself.
+		a.noteReleaseObserved(now)
+	default:
+		a.noteReleaseReadiness(now, true, "")
+	}
 
 	unplanned := economicUnplanned
 	floor := peakReserve
@@ -3025,7 +3142,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// locally STARTED discharge demands. Charge slot, SoC floor, stale
 	// measurement and the sale protection live in the decision.
 	deficitCover := guards.CoverDeficit(guards.DeficitCoverInput{
-		Eligible: marketCorrectionsAllowed && mode == state.ModeSchedule &&
+		Eligible: inSlotCorrections && mode == state.ModeSchedule &&
 			p.Fresh(now) && !coverLoad && !economicUnplannedRequested &&
 			portableReady,
 		MeasurementsFresh: measurementFresh,
@@ -3066,7 +3183,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// the same safe controller also executes the LOCAL charge-side trust floor
 	// below; that authorization is not the cloud's economic verdict and gets its
 	// own execution path/name.
-	absorbAuthorized := marketCorrectionsAllowed && p.ActiveChargeSurplusToBattery(now)
+	absorbAuthorized := inSlotCorrections && p.ActiveChargeSurplusToBattery(now)
 	// SURPLUS STORAGE (2026-08-29, scout report
 	// vp-herzogau-einspeisung-statt-laden-h3 §8 B1/B2): the same measured-surplus
 	// controller, authorized LOCALLY instead of by a cloud flag - because the
@@ -3096,7 +3213,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// second-guess it), a fresh plan, and "a cloud duty is already in charge" -
 	// where the cloud authorized the absorption it keeps its own name.
 	surplusStore := guards.StoreSurplus(guards.SurplusStoreInput{
-		Eligible: marketCorrectionsAllowed && mode == state.ModeSchedule &&
+		Eligible: inSlotCorrections && mode == state.ModeSchedule &&
 			p.Fresh(now) && !absorbAuthorized,
 		IdleAuthorized:    coverLoad && portableReady,
 		MeasurementsFresh: measurementFresh,
@@ -3159,10 +3276,44 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// corrections because the absorption above RAISES to the surplus, and with
 	// cars-first that surplus is not the battery's to take.
 	var carsFirstCap *float64
-	if cap, ok := a.OcppBatteryChargeCap(now); marketCorrectionsAllowed && ok && kw > cap {
+	if cap, ok := a.OcppBatteryChargeCap(now); inSlotCorrections && ok && kw > cap {
 		v := cap
 		carsFirstCap = &v
 		kw = cap
+	}
+
+	// „SONNE + SPEICHER" - the RELEASE COVER (ocpp_release.go): while cars on
+	// that source draw released battery power, a planned CHARGE in a slot the
+	// cloud authorized (it carries ev_release_floor_soc_pct, i.e. a
+	// self-consumption slot - never a trade) yields to the MEASURED
+	// self-consumption value pv - load, where load includes the cars. Without
+	// it the PV-bus semantics would keep charging the battery from the sun
+	// while the car's draw came from the grid - exactly what the source
+	// promises never happens.
+	//
+	// ⚠ LOWER-ONLY and bounded by the cloud's floor: the target is re-run
+	// through the SAME guards.Clamp with the SoC floor raised to the release
+	// floor, so rated band, BMS, §14a and the solar-only clamp hold; it lands
+	// at predicted grid 0, so it can never create an export, and the peak
+	// guard and the export watchdog below still act on the result. In every
+	// other slot the battery already covers the cars (deficit cover, load
+	// following, self-consumption), so this is a no-op there.
+	var releaseCoverKw *float64
+	if floorPct, inUse := a.ocppReleaseInUse(now); inUse && inSlotCorrections &&
+		mode == state.ModeSchedule && p.Fresh(now) && measurementFresh && portableReady &&
+		!math.IsNaN(rc.PvKw) && !math.IsNaN(rc.LoadKw) {
+		if _, slotOk := p.ActiveReleaseFloor(now); slotOk {
+			l := limits
+			if floorPct > l.SocMinPct {
+				l.SocMinPct = floorPct
+			}
+			target := guards.Clamp(rc.PvKw-rc.LoadKw, l, r)
+			if kw > target {
+				v := target
+				releaseCoverKw = &v
+				kw = target
+			}
+		}
 	}
 
 	// PS-3 peak guard, in BOTH modes (schedule + fallback): when the running
@@ -3178,7 +3329,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	vorBezugswaechter := kw
 	peakActive := false
 	var quarterMean *float64
-	if marketCorrectionsAllowed && peakTarget != nil {
+	if inSlotCorrections && peakTarget != nil {
 		if allowed, ok := a.peak.AllowedImport(now, *peakTarget); ok {
 			kw = guards.PeakShave(kw, allowed, limits, r)
 			peakActive = true
@@ -3355,18 +3506,46 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// display/take-back reference in native mode.
 	//
 	// K6: only the connection point's Führungsgerät may regulate itself
-	// (guards/leader.go) - a standing condition of the Wegwahl.
-	leader, leaderInfo := a.leaderVerdict(now)
-	nativeDec, nativeInfo, nativeWithheldInfo := a.nativeDecide(now, p, r, kw,
-		marketCorrectionsAllowed && !surplusStored, controlEnabled, measurementFresh, freshWindow,
-		effectiveFloor, peakTarget, solarOnly, limits, leader.Reason)
+	// (guards/leader.go) - a standing condition of the Wegwahl (the verdict was
+	// formed above, ahead of the grid-side slot it gates as well).
+	//
+	// One device-regulated mode at a time: while the grid-side slot stands, the
+	// native Wegwahl is not consulted and carries no armed state.
+	var (
+		nativeDec          guards.NativeDecision
+		nativeInfo         *state.NativeInfo
+		nativeWithheldInfo *state.NativeWithheldInfo
+	)
+	if gridDec.Engage {
+		a.native.Release()
+	} else {
+		nativeDec, nativeInfo, nativeWithheldInfo = a.nativeDecide(now, p, r, kw,
+			marketCorrectionsAllowed && !surplusStored, controlEnabled, measurementFresh, freshWindow,
+			effectiveFloor, peakTarget, solarOnly, limits, leader.Reason)
+	}
 	a.noteLeaderSymptom(now, nativeDec)
 
 	// PV curtailment and the feed-in watchdog, with the leader as the inner
 	// loop of the cascade (K6, agent/leader.go). `kw` is final here.
+	//
+	// GRID-SIDE SLOT (E6 "Fronius zuerst, der Deye regelt den Rest"): a PROVEN
+	// grid-side device is the cascade's inner loop exactly like a device that
+	// stores the surplus in its own mode - the zero-export watchdog of the
+	// curtailable units lets the storage charge to its ceiling and never aims
+	// below the device's own target, so the two cannot ratchet each other down
+	// (no double throttling). While the intent stands the tracker counts the
+	// MEASURED battery power: the commanded value is one the device does not
+	// follow on the grid side. The registered feed-in limit stays the
+	// curtailable units' alone (E3) - nothing here commands the hybrid for it.
 	_, nativeSlot, _ := p.ActiveSetpoint(now)
-	pvLimit, curtailTrack, exportGuard, exportCap := a.composeCurtailment(now, readingAt, r, kw, pvLimit, exportLimit,
-		a.innerLoop(nativeDec, r, limits, nativeSlot), anteilCap)
+	inner := a.innerLoop(nativeDec, r, limits, nativeSlot)
+	curtailKw := kw
+	if gridDec.Engage {
+		inner = a.gridTargetInner(gridDec, r, limits, nativeSlot)
+		curtailKw = a.gridTargetTrackKw(kw)
+	}
+	pvLimit, curtailTrack, exportGuard, exportCap := a.composeCurtailment(now, readingAt, r, curtailKw, pvLimit, exportLimit,
+		inner, anteilCap)
 
 	// SPRUNGPROBE, second half (AP-15 IP-21): the feed-in watchdog that holds
 	// the producers back, regulates blind or lowers the discharge on this tick,
@@ -3435,6 +3614,21 @@ func (a *Agent) applySetpoint(now time.Time) {
 			msg["battery_window_natural_max_kw"] = nat.MaxKw
 		}
 	}
+	if gridDec.Engage {
+		// "grid_target" = do NOT write battery_setpoint_kw - regulate the grid
+		// connection point on grid_target_kw (+ import / - feed-in; never above
+		// +0,05 kW, guards.ClampGridTarget). Additive: a Layer 1 that does not
+		// know the word runs the ordinary setpoint plan, never confirms, and the
+		// intent is withdrawn after its grace. grid_target_neutralize asks for
+		// the neutral step (1109 <- 0 ahead of the side switch) on every tick the
+		// grid side is not yet proven - the tick WITH the side switch is one of
+		// them, and a repeated neutral step is harmless.
+		msg["battery_mode"] = batteryModeGridTarget
+		msg["grid_target_kw"] = gridDec.TargetKw
+		if !gridDec.Proven {
+			msg["grid_target_neutralize"] = true
+		}
+	}
 	if effectiveFloor != nil {
 		msg["effective_floor_soc_pct"] = *effectiveFloor
 	}
@@ -3480,10 +3674,17 @@ func (a *Agent) applySetpoint(now time.Time) {
 	}
 	a.bezugSpeicherSoll(kw, controlEnabled)
 	// AP-15 IP-20: what this setpoint MUST change at the meter goes to the
-	// probe for a frozen value (no-op without a share document).
+	// probe for a frozen value (no-op without a share document - and with one
+	// the grid-side slot is never entered, guards.GridTargetSharedControl).
 	a.einfrierSollwert(now, controlEnabled, pvLimit, r.PvKw, kw, nativeDec.Native)
-	// The damper's settle clock runs from the value Layer 1 now writes.
-	a.damp.Commit(now, kw)
+	// The damper's settle clock runs from the value Layer 1 now writes - on the
+	// grid side it writes no battery value at all.
+	if !gridDec.Engage {
+		a.damp.Commit(now, kw)
+	}
+	if gridInfo != nil {
+		gridInfo.ReferenceKw = kw
+	}
 	// The per-entity retained command is owned by the ARBITER since E2 (the
 	// plan executor injects the plan as market desires, the failsafe is the
 	// arbiter's registry fallback) - the E1a applySetpoint-side mirror is
@@ -3507,11 +3708,14 @@ func (a *Agent) applySetpoint(now time.Time) {
 		s.Follow = followInfo
 		s.Absorb = absorbInfo
 		s.CarsFirstCapKw = carsFirstCap
+		s.ReleaseCoverKw = releaseCoverKw
 		s.ExportGuard = exportGuard
 		s.CurtailTrack = curtailTrack
 		s.Leader = leaderInfo
 		s.Native = nativeInfo
 		s.NativeWithheld = nativeWithheldInfo
+		s.GridTarget = gridInfo
+		s.GridTargetWithheld = gridWithheld
 	})
 }
 

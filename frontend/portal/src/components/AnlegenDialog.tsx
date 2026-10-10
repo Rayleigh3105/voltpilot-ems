@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { useIsPhone } from '../useIsPhone';
 import { fokussierbare } from './VpPanel';
+import { fokusAusloeser, sperreSeitenScroll } from '../../designsystem/components/shell/ueberlagerung';
 import { fortschritt, fortschrittAnteil } from '../anlegenFlow';
 import './AnlegenDialog.css';
 
@@ -63,12 +64,12 @@ export function AnlegenDialog({
   const rumpfRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const prevFocus = document.activeElement as HTMLElement | null;
+    // Der EINE gezählte Sperrer des Hauses (`ueberlagerung.js`), nicht ein eigener „vorher“-Wert.
+    const freigeben = sperreSeitenScroll();
+    const prevFocus = fokusAusloeser();
     panelRef.current?.focus();
     return () => {
-      document.body.style.overflow = prevOverflow;
+      freigeben();
       if (prevFocus && typeof prevFocus.focus === 'function') prevFocus.focus();
     };
   }, []);

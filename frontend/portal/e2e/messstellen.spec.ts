@@ -4,18 +4,15 @@ import { expect, test, type Page } from '@playwright/test';
 import { FIXTURE_IDS } from '../src/test/standorteFixtures';
 
 /**
- * „Unternehmen › Messstellen“ und „Standort › Messstellen“ (UEMS AP-04 IP-5) bei
- * 1440 px (Tabelle) und 375 px (Karten) auf der Bühne `startansicht` — die ECHTE
- * Schale mit der ECHTEN Leiste und den ECHTEN Reitern, dieselben reinen Funktionen
- * wie `App.tsx`, das Register des Referenzunternehmens (heute = 20.10.2026 10:15,
- * `src/test/messstellenRegisterFixtures.ts`).
+ * Die Liste „Messstellen“ (Konzept Messen m1, §6.2/§6.3; UEMS AP-04 IP-5) bei 1440 und 375 px auf der Bühne
+ * `startansicht` - die ECHTE Schale mit der ECHTEN Leiste und den ECHTEN Reitern, dieselben reinen Funktionen wie
+ * `App.tsx`, das Register des Referenzunternehmens (heute = 20.10.2026 10:15, `src/test/messstellenRegisterFixtures.ts`).
  *
- * GEMESSEN, nicht behauptet: Querlauf des Dokuments (`scrollWidth − clientWidth`),
- * jedes Element, das über den Bildrand ragt (außer in einem lokal scrollenden
- * Rahmen), die Kacheln der Leiste und die SICHTBAREN Reiter.
+ * GEMESSEN, nicht behauptet: Querlauf des Dokuments (`scrollWidth − clientWidth`), jedes Element, das über den
+ * Bildrand ragt (außer in einem lokal scrollenden Rahmen), die Kacheln der Leiste und die SICHTBAREN Reiter.
  *
- * Mit `MESSSTELLEN_BILDER=<Ordner>` legt der Lauf je Fall ein Bild und
- * `messung-<fall>.json` ab — die Vorschau für die Freigabe.
+ * Mit `MESSSTELLEN_BILDER=<Ordner>` legt der Lauf je Fall ein Bild und `messung-<fall>.json` ab - die Vorschau für
+ * die Freigabe.
  */
 
 const BILDER = process.env.MESSSTELLEN_BILDER;
@@ -31,9 +28,12 @@ async function oeffne(page: Page, query: string, breite: number) {
   await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
 }
 
-async function warteAufRegister(page: Page) {
-  await expect(page.locator('[data-testid="messstellen"] .vp-ms-tabelle, [data-testid="messstellen"] .vp-ms-karten').first()).toBeVisible();
+async function warteAufListe(page: Page) {
+  await expect(page.locator('[data-testid="messstellen"] [data-testid="messstelle-reihe"]').first()).toBeVisible();
 }
+
+const reihe = (page: Page, kz: string) =>
+  page.getByTestId('messstelle-reihe').filter({ has: page.locator('.vp-ms-kz', { hasText: new RegExp(`^${kz}$`) }) });
 
 async function messe(page: Page) {
   return page.evaluate(() => {
@@ -43,7 +43,7 @@ async function messe(page: Page) {
     const bar = document.querySelector<HTMLElement>('.vp-bottombar');
     const leisteSichtbar = bar !== null && getComputedStyle(bar).display !== 'none';
     const ueberstehend = [...document.querySelectorAll<HTMLElement>('.vp-main *')]
-      .filter((e) => sichtbar(e) && !e.closest('.vp-ms-rahmen, .vp-bereich-tabs'))
+      .filter((e) => sichtbar(e) && !e.closest('.vp-bereich-tabs'))
       .filter((e) => e.getBoundingClientRect().right > breite + 0.5)
       .map((e) => `${e.tagName.toLowerCase()}.${[...e.classList].join('.')}`);
     return {
@@ -53,12 +53,11 @@ async function messe(page: Page) {
       ueberstehend: [...new Set(ueberstehend)],
       leiste: leisteSichtbar ? [...bar!.querySelectorAll('.vp-bottombar-item .lbl')].map((l) => l.textContent ?? '') : null,
       leisteAktiv: leisteSichtbar ? bar!.querySelector('[aria-current="page"] .lbl')?.textContent ?? null : null,
-      // Ein Zeitraum-Segment (`ZeitSegment`, `.vp-seg`) ist kein Reiter — die Übersicht trägt eines seit AP-13 IP-7.
-      // Gemeint sind die Reiter der EBENEN und Welten — nicht das Zeit-Segment (`.vp-seg`) und seit AP-13 IP-9 nicht die
-      // Reiter INNERHALB der Welt Messstellen (`.vp-ms-reiter`: Liste · Kostenstellen · Prozesse).
+      // Gemeint sind die Reiter der EBENEN und Welten - nicht das Zeit-Segment (`.vp-seg`) und nicht die Reiter
+      // INNERHALB der Welt Messstellen (`.vp-ms-reiter`: Liste · Kostenstellen · Prozesse).
       reiter: [...document.querySelectorAll<HTMLElement>('[role="tablist"]:not(.vp-seg):not(.vp-ms-reiter) [role="tab"]')].filter(sichtbar).map((t) => t.textContent?.trim() ?? ''),
       reiterAktiv: [...document.querySelectorAll<HTMLElement>('[role="tablist"]:not(.vp-seg):not(.vp-ms-reiter) [role="tab"][aria-selected="true"]')].filter(sichtbar).map((t) => t.textContent?.trim() ?? ''),
-      // N1: die Einträge der Ebene in der Seitenleiste (am Telefon verborgen) — ohne die Frage des offenen Eintrags.
+      // N1: die Einträge der Ebene in der Seitenleiste (am Telefon verborgen) - ohne die Frage des offenen Eintrags.
       seite: [...document.querySelectorAll<HTMLElement>('.vp-ebenennav .vp-navitem')]
         .filter(sichtbar)
         .map((e) => (e.querySelector('.vp-nav-zwei > span:first-child') ?? e.querySelector('.vp-nav-lbl'))?.textContent?.trim() ?? ''),
@@ -66,16 +65,12 @@ async function messe(page: Page) {
         [...document.querySelectorAll<HTMLElement>('.vp-ebenennav .vp-navitem[aria-current="page"]')]
           .filter(sichtbar)
           .map((e) => (e.querySelector('.vp-nav-zwei > span:first-child') ?? e.querySelector('.vp-nav-lbl'))?.textContent?.trim() ?? '')[0] ?? null,
-      zeilen: document.querySelectorAll('.vp-ms-tabelle tbody tr').length,
-      karten: document.querySelectorAll('.vp-ms-karte').length,
-      still: [...document.querySelectorAll('.vp-ms-still')].map((e) => e.querySelector('.vp-ms-kz')?.textContent ?? ''),
-      // K3: die Zeile „Begriffe“ steht auch im Kopf — gemeint ist der Satz der Datenlage.
-      kopf: document.querySelector('.vp-ms-kopf p:not(.vp-begriffe)')?.textContent ?? null,
-      spalten: [...document.querySelectorAll('.vp-ms-tabelle th')].map((t) => t.textContent ?? ''),
-      tabelleScrollt: (() => {
-        const r = document.querySelector<HTMLElement>('.vp-ms-rahmen');
-        return r ? r.scrollWidth - r.clientWidth : null;
-      })(),
+      reihen: document.querySelectorAll('[data-testid="messstelle-reihe"]').length,
+      orte: [...document.querySelectorAll('[data-testid="messstellen-ort"] h2')].map((h) => h.textContent ?? ''),
+      nochNicht: [...document.querySelectorAll('[data-testid="messstellen-noch-nicht"] .vp-ms-kz')].map((e) => e.textContent ?? ''),
+      // Die Statuszeile (der Satz des Servers) bzw. die Hinweiskarten an ihrer Stelle.
+      lage: document.querySelector('[data-testid="messstellen-status"], [data-testid="messstellen-hinweise"]')?.textContent ?? null,
+      kopf: document.querySelector('.vp-ms-kopf .vp-ms-meta')?.textContent ?? null,
     };
   });
 }
@@ -92,70 +87,80 @@ function ohneQuerlauf(m: Awaited<ReturnType<typeof messe>>, fall: string) {
   expect(m.ueberstehend, `${fall}: überstehende Elemente`).toEqual([]);
 }
 
-test.describe('Messstellen-Register', () => {
-  test('Unternehmen › Messstellen bei 1440 px: Tabelle, Reiter „Messstellen“, 0 px Überlauf', async ({ page }) => {
+test.describe('Messstellen-Liste', () => {
+  test('Unternehmen › Messstellen bei 1440 px: je Ort eine Karte, Reiter „Messstellen“, 0 px Überlauf', async ({ page }) => {
     await oeffne(page, 'bild=unternehmen&ansicht=messstellen', 1440);
-    await warteAufRegister(page);
+    await warteAufListe(page);
     // N5: die Reihe von „Messen“ ist vollständig, sobald die Kataloge der Kostenstellen und Prozesse da sind.
     await expect(page.getByTestId('messstellen-reiter-prozesse')).toBeVisible();
     const m = await messe(page);
     ohneQuerlauf(m, 'unternehmen-1440');
     expect(m.route).toBe('#/portfolio/messstellen');
-    expect(m.zeilen).toBe(22);
-    expect(m.karten).toBe(0);
-    // AP-13 IP-13: die Bühne stellt das Register jetzt mit seinem Wirt wie `App.tsx` — mit dem Einstieg in die Werte
-    // („Letzter Wert“ und das Zeilenmenü, AP-13 IP-3) und damit mit der Spalte „Aktionen“.
-    expect(m.spalten).toEqual([
-      'Kennzeichen',
-      'Name',
-      'Ort',
-      'Elektrische Stellung',
-      'Quelle (führend)',
-      'Zustand',
-      'Letzter Wert',
-      'Aktionen',
-    ]);
-    // AP-11 IP-13: „Kennzahlen“ steht als Reiter neben „Messstellen“ (Ahrenberg misst und hat Kennzahlen).
-    // N1: am Rechner die Gruppen in der Seitenleiste, über der Seite die Reiter der offenen Gruppe „Messen“ (N5: mit
-    // Kostenstellen und Prozessen, wo es sie gibt).
+    expect(m.reihen).toBe(22);
+    expect(m.orte).toHaveLength(14);
+    expect(m.orte.slice(0, 3)).toEqual(['Unternehmen', 'Werk Ahrenberg', 'Halle 1']);
+    expect(m.kopf).toBe('Wo Ihr Verbrauch gemessen, abgelesen oder berechnet wird – nach Ort geordnet.');
+    expect(m.lage).toBe('21 von 22 Messstellen liefern Daten');
+    // N1: am Rechner die Gruppen in der Seitenleiste, über der Seite die Reiter der offenen Gruppe „Messen“.
     expect(m.seite).toEqual(['Übersicht', 'Messen', 'Auswerten', 'Nachweisen']);
     expect(m.seiteAktiv).toBe('Messen');
     expect(m.reiter).toEqual(['Messstellen', 'Kostenstellen', 'Prozesse', 'Bezugsgrößen']);
     expect(m.reiterAktiv).toEqual(['Messstellen']);
     expect(m.leiste).toBeNull();
-    expect(m.kopf).toBe('21 von 22 Messstellen liefern Daten');
+    // Die Spalten am Rechner: dieselben Wörter wie die Reihen am Telefon.
+    await expect(page.locator('.vp-ms-spalten').first()).toHaveText(/MessstelleZustandWoher die Werte kommenLetzter Stand/);
+    await expect(page.locator('.vp-ms-kopf').getByRole('button', { name: 'Messstelle anlegen' })).toBeVisible();
     await ablegen(page, 'unternehmen-1440', m);
     await ablegen(page, 'unternehmen-1440-ganz', m, true);
   });
 
-  test('Unternehmen › Messstellen bei 375 px: Karten, Leiste mit „Messen“ offen, darüber nur deren Reiter', async ({ page }) => {
+  test('Unternehmen › Messstellen bei 375 px: Reihen, Leiste mit „Messen“ offen, darüber nur deren Reiter', async ({ page }) => {
     await oeffne(page, 'bild=unternehmen&ansicht=messstellen', 375);
-    await warteAufRegister(page);
-    // N5: die Reihe von „Messen“ ist vollständig, sobald die Kataloge der Kostenstellen und Prozesse da sind.
+    await warteAufListe(page);
     await expect(page.getByTestId('messstellen-reiter-prozesse')).toBeVisible();
     const m = await messe(page);
     ohneQuerlauf(m, 'unternehmen-375');
-    expect(m.karten).toBe(22);
-    expect(m.zeilen).toBe(0);
-    // Die Leiste trägt am Unternehmen Gruppen (`ebenenNav.UNTERNEHMEN_GRUPPEN`, höchstens fünf); am Telefon stehen über
-    // der Seite nur die Reiter der offenen Gruppe.
+    expect(m.reihen).toBe(22);
     expect(m.leiste).toEqual(['Übersicht', 'Messen', 'Auswerten', 'Nachweisen']);
     expect(m.leisteAktiv).toBe('Messen');
-    // N5: Kostenstellen und Prozesse stehen in derselben Reihe (die Seite zeigt dann keine eigene).
     expect(m.reiter).toEqual(['Messstellen', 'Kostenstellen', 'Prozesse', 'Bezugsgrößen']);
     expect(m.reiterAktiv).toEqual(['Messstellen']);
+    // Am Telefon steht „Messstelle anlegen“ im Menü ⋯, nicht im Kopf.
+    await expect(page.locator('.vp-ms-kopf').getByRole('button', { name: 'Messstelle anlegen' })).toHaveCount(0);
+    // Eine Reihe ist mindestens 56 px hoch (Ziel für den Daumen).
+    const hoehe = await reihe(page, 'MS-06').evaluate((e) => e.getBoundingClientRect().height);
+    expect(hoehe).toBeGreaterThanOrEqual(56);
     await ablegen(page, 'unternehmen-375', m);
   });
 
-  test('A4 · Einstellungsänderung steht an MS-01 und MS-02 bei 1440 und 375 px als Fakt', async ({ page }) => {
+  test('woher die Werte kommen: das Gerät mit Komponente und Messwert, „noch keine Quelle“ - bei 1440 und 375 px', async ({ page }) => {
+    test.slow();
+    for (const breite of [1440, 375]) {
+      await oeffne(page, 'bild=unternehmen&ansicht=messstellen', breite);
+      await warteAufListe(page);
+      const ms10 = reihe(page, 'MS-10');
+      await expect(ms10).toContainText('Liefert Daten');
+      if (breite === 1440) {
+        await expect(ms10.locator('.vp-ms-reihe-woher')).toHaveText(
+          'automatisch vom GerätZähler Energiekarte EK-1 (Hauptmessung Halle 2) · Wirkenergie Bezug',
+        );
+      } else {
+        await expect(ms10.locator('.vp-ms-reihe-satz')).toHaveText('Liefert Daten · vom Gerät');
+      }
+      await expect(reihe(page, 'MS-21').locator('.vp-ms-reihe-satz')).toHaveText('Noch keine Quelle · zuordnen');
+      const m = await messe(page);
+      ohneQuerlauf(m, `woher-${breite}`);
+      await ablegen(page, `woher-${breite}`, m);
+    }
+  });
+
+  test('A4 · Einstellungsänderung steht an MS-01 und MS-02 bei 1440 und 375 px als leise Tatsache unter dem Zustand', async ({ page }) => {
+    test.slow();
     for (const breite of [1440, 375]) {
       await oeffne(page, 'bild=unternehmen&ansicht=messstellen&stand=2027-01-15', breite);
-      await warteAufRegister(page);
+      await warteAufListe(page);
       for (const kz of ['MS-01', 'MS-02']) {
-        const zeile = breite === 375
-          ? page.locator('.vp-ms-karte', { has: page.locator('.vp-ms-kz', { hasText: new RegExp(`^${kz}$`) }) })
-          : page.locator('.vp-ms-tabelle tbody tr', { has: page.locator('.vp-ms-kz', { hasText: new RegExp(`^${kz}$`) }) });
-        await expect(zeile.locator('.vp-ms-fakt')).toHaveText('Einstellung geändert ab 15.01.2027 09:00');
+        await expect(reihe(page, kz).locator('.vp-ms-reihe-fakt')).toHaveText('Einstellung geändert ab 15.01.2027 09:00');
       }
       const m = await messe(page);
       ohneQuerlauf(m, `einstellungsfakt-${breite}`);
@@ -164,50 +169,56 @@ test.describe('Messstellen-Register', () => {
   });
 
   test('Standort › Messstellen (Werk Ahrenberg) bei 1440 und 375 px: Übersicht · Aufbau · Gebäude · Messstellen, 16 Messstellen', async ({ page }) => {
+    test.slow();
     for (const breite of [1440, 375]) {
       await oeffne(page, 'bild=unternehmen&ansicht=werk-messstellen', breite);
-      await warteAufRegister(page);
+      await warteAufListe(page);
       const m = await messe(page);
       ohneQuerlauf(m, `werk-${breite}`);
       expect(m.route).toBe(`#/standort/${FIXTURE_IDS.st1}/messstellen`);
-      expect(breite === 375 ? m.karten : m.zeilen).toBe(16);
-      // AP-13 IP-2: die Bereiche des Standorts (O17; „Aufbau“ trägt Anlagen, Boxen und Geräte). N1: am Rechner in der
-      // Seitenleiste, am Telefon in der Leiste — dieselben; was sie tragen, ist kein zweites Mal Reiter.
+      expect(m.reihen).toBe(16);
+      // AP-13 IP-2: die Bereiche des Standorts. N1: am Rechner in der Seitenleiste, am Telefon in der Leiste.
       expect(m.seite).toEqual(breite === 375 ? [] : ['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
       expect(m.seiteAktiv).toBe(breite === 375 ? null : 'Messstellen');
       expect(m.reiter).toEqual([]);
       expect(m.reiterAktiv).toEqual([]);
       expect(m.leiste).toEqual(breite === 375 ? ['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Anschlüsse'] : null);
       if (breite === 375) expect(m.leisteAktiv).toBe('Messstellen');
-      expect(m.kopf).toBe('Werk Ahrenberg · 15 von 16 Messstellen liefern Daten');
+      expect(m.kopf).toBe('Werk Ahrenberg · Wo Ihr Verbrauch gemessen, abgelesen oder berechnet wird – nach Ort geordnet.');
+      expect(m.lage).toBe('15 von 16 Messstellen liefern Daten');
       await ablegen(page, `werk-${breite}`, m);
     }
   });
 
-  test('Summenwert-Einstieg aus dem Register verwendet den vorhandenen Assistenten', async ({ page }) => {
-    await page.route('**/summenwert-quellen*', route => route.fulfill({ json: [] }));
+  test('„Summenwert anlegen“ gibt es unter Messen nicht mehr (Konzept §6.10) - weder im Kopf noch im Menü', async ({ page }) => {
+    test.slow();
     for (const breite of [1440, 375]) {
       await oeffne(page, 'bild=unternehmen&ansicht=werk-messstellen', breite);
-      await warteAufRegister(page);
-      await page.getByRole('combobox', { name: 'Summenwert anlegen in', exact: true }).click();
-      await page.getByRole('option', { name: /Halle 1/ }).click();
-      await expect(page.getByRole('dialog', { name: 'Summenwert anlegen' })).toBeVisible();
-      await expect(page.getByRole('combobox', { name: 'Formel-Typ', exact: true })).toBeVisible();
-      await expect(page.getByText('Schritt 1 von 5')).toBeVisible();
+      await warteAufListe(page);
+      await expect(page.getByRole('combobox', { name: /Summenwert anlegen/ })).toHaveCount(0);
+      await page.getByRole('button', { name: 'Weitere Aktionen' }).click();
+      // Erst muss das Menü offen sein, dann zählt, dass KEIN Eintrag „Summenwert“ heißt (`not.toHaveText([…])` bestand
+      // bei zwei oder mehr Einträgen immer).
+      await expect(page.getByRole('menuitem', { name: /Korrekturen am Standort/ })).toBeVisible();
+      await expect(page.getByRole('menuitem', { name: /Summenwert/ })).toHaveCount(0);
+      await expect(page.locator('body')).not.toContainText('Summenwert');
+      await page.keyboard.press('Escape');
     }
   });
 
-  test('„Messstelle anlegen“ (AP-04 IP-6) in Standort › Messstellen bei 1440 und 375 px: Knopf im Kopf öffnet den Dialog, 0 px Überlauf', async ({ page }) => {
+  test('„Messstelle anlegen“ in Standort › Messstellen: am Rechner der Knopf im Kopf, am Telefon im Menü - der Dialog ohne Überlauf', async ({ page }) => {
+    test.slow();
     for (const breite of [1440, 375]) {
       await oeffne(page, 'bild=unternehmen&ansicht=werk-messstellen', breite);
-      await warteAufRegister(page);
-      const knopf = page.locator('.vp-ms-kopf').getByRole('button', { name: 'Messstelle anlegen' });
-      await expect(knopf).toBeVisible();
-      const m = await messe(page);
-      ohneQuerlauf(m, `anlegen-knopf-${breite}`);
-      await ablegen(page, `anlegen-knopf-${breite}`, m);
-
-      await knopf.click();
+      await warteAufListe(page);
+      if (breite === 1440) {
+        const knopf = page.locator('.vp-ms-kopf').getByRole('button', { name: 'Messstelle anlegen' });
+        await expect(knopf).toBeVisible();
+        await knopf.click();
+      } else {
+        await page.getByRole('button', { name: 'Weitere Aktionen' }).click();
+        await page.getByRole('menuitem', { name: 'Messstelle anlegen' }).click();
+      }
       const dialog = page.getByRole('dialog', { name: 'Messstelle anlegen' });
       await expect(dialog).toBeVisible();
       await expect(page.getByLabel('Kennzeichen', { exact: true })).toHaveValue('MS-0023');
@@ -223,129 +234,100 @@ test.describe('Messstellen-Register', () => {
       expect(d.dokument, `anlegen-dialog-${breite}: Dokument`).toBe(0);
       expect(d.dialog, `anlegen-dialog-${breite}: Dialog`).toBe(0);
       await ablegen(page, `anlegen-dialog-${breite}`, d);
-
       await page.keyboard.press('Escape');
       await expect(dialog).toHaveCount(0);
-      await warteAufRegister(page);
+      await warteAufListe(page);
     }
   });
 
-  test('„Stand am 10.10.2026“ bei 1440 und 375 px: die Messstellen in Lindach sind benannt, nicht weggelassen', async ({ page }) => {
+  test('„Stand an einem Tag ansehen“ (10.10.2026) bei 1440 und 375 px: die Marke „Stand …“, die Messstellen in Lindach sind benannt', async ({ page }) => {
+    test.slow();
     for (const breite of [1440, 375]) {
       await oeffne(page, 'bild=unternehmen&ansicht=messstellen', breite);
-      await warteAufRegister(page);
-      await page.getByRole('combobox', { name: 'Stand am' }).click();
+      await warteAufListe(page);
+      await page.getByRole('button', { name: 'Weitere Aktionen' }).click();
+      await page.getByRole('menuitem', { name: /^Stand an einem Tag ansehen/ }).click();
+      // Der Kalender klappt gleich auf.
       await page.locator('.vp-kal-tag[data-iso="2026-10-10"]:not(.is-rand)').click();
-      await expect(page.getByText('Sie sehen den Stand am 10.10.2026')).toBeVisible();
-      await expect(page.locator('.vp-ms-still')).toHaveCount(4);
+      await expect(page.getByTestId('stand-am')).toContainText('Stand 10.10.2026');
+      await expect(page.getByTestId('messstellen-noch-nicht')).toBeVisible();
       const m = await messe(page);
       ohneQuerlauf(m, `stand-am-${breite}`);
-      expect(m.still).toEqual(['MS-16', 'MS-17', 'MS-18', 'MS-22']);
-      expect(breite === 375 ? m.karten : m.zeilen).toBe(22);
-      expect(m.kopf).toBeNull();
-      if (breite === 1440) expect(m.spalten).toContain('Zustand (heute)');
-      await expect(page.locator('.vp-ms-still').first()).toContainText(
+      expect(m.nochNicht).toEqual(['MS-16', 'MS-17', 'MS-18', 'MS-22']);
+      expect(m.reihen).toBe(18);
+      await expect(page.getByTestId('messstellen-noch-nicht')).toContainText(
         'Am 10.10.2026 gab es MS-16 „Netzbezug Lindach“ im Portal noch nicht.',
       );
+      // Mit Stichtag gibt es keinen Schreibweg.
+      await expect(page.getByRole('button', { name: 'Messstelle anlegen' })).toHaveCount(0);
       await ablegen(page, `stand-am-${breite}`, m);
-      await page.locator('.vp-ms-still').first().scrollIntoViewIfNeeded();
+      await page.getByTestId('messstellen-noch-nicht').scrollIntoViewIfNeeded();
       await ablegen(page, `stand-am-${breite}-lindach`, m);
+      await page.getByRole('button', { name: 'Zurück zu heute' }).click();
+      await expect(page.getByTestId('stand-am')).toHaveCount(0);
     }
   });
 
-  test('Filter „Nur ohne Quelle“ bei 375 px: MS-21 bleibt, der Weg zurück steht daneben', async ({ page }) => {
+  test('Suche bei 375 und 1440 px: sofort, tolerant, markiert, in der Adresse; leer mit dem Weg zurück', async ({ page }) => {
+    test.slow();
+    for (const breite of [375, 1440]) {
+      await oeffne(page, 'bild=unternehmen&ansicht=messstellen', breite);
+      await warteAufListe(page);
+      const feld = page.getByRole('searchbox', { name: 'Messstellen suchen' });
+      await feld.fill('druck');
+      await expect(page.getByTestId('messstelle-reihe')).toHaveCount(1);
+      await expect(page.getByTestId('messstelle-reihe').locator('mark')).toHaveText('Druck');
+      await expect(page.locator('.vp-ms-treffer')).toContainText('1 von 22 Messstellen');
+      await expect(page).toHaveURL(/\?suche=druck$/);
+      const m = await messe(page);
+      ohneQuerlauf(m, `suche-${breite}`);
+      await ablegen(page, `suche-${breite}`, m);
+
+      await feld.fill('Wärmepumpe');
+      await expect(page.getByText('Keine Messstelle passt zu „Wärmepumpe“.')).toBeVisible();
+      await expect(page.getByText('Gesucht wird in Name, Kennzeichen, Ort und Gerät.')).toBeVisible();
+      const leer = await messe(page);
+      ohneQuerlauf(leer, `suche-leer-${breite}`);
+      await ablegen(page, `suche-leer-${breite}`, leer);
+      await page.getByTestId('messstellen-kein-treffer').getByRole('button', { name: 'Suche leeren' }).click();
+      await expect(page.getByTestId('messstelle-reihe')).toHaveCount(22);
+    }
+  });
+
+  test('Marke „1 ohne Quelle“ bei 375 px: sie filtert auf MS-21, noch einmal getippt ist alles wieder da', async ({ page }) => {
     await oeffne(page, 'bild=unternehmen&ansicht=messstellen', 375);
-    await warteAufRegister(page);
-    await page.getByRole('button', { name: 'Nur ohne Quelle (1)' }).click();
-    await expect(page.locator('.vp-ms-karte')).toHaveCount(1);
-    await expect(page.getByRole('button', { name: 'Filter zurücksetzen' })).toBeVisible();
+    await warteAufListe(page);
+    const marke = page.getByRole('group', { name: 'Nur diese zeigen' }).getByRole('button', { name: '1 ohne Quelle' });
+    await marke.click();
+    await expect(page.getByTestId('messstelle-reihe')).toHaveCount(1);
+    await expect(marke).toHaveAttribute('aria-pressed', 'true');
     const m = await messe(page);
     ohneQuerlauf(m, 'ohne-quelle-375');
     await ablegen(page, 'ohne-quelle-375', m);
+    await marke.click();
+    await expect(page.getByTestId('messstelle-reihe')).toHaveCount(22);
   });
 
-  /**
-   * AP-13 IP-12 (L6 · W10): die Spalte „Quelle“ nennt die BOX, die das Gerät liest — aus der
-   * Zuständigkeit der Datenquelle (AP-06 IP-3), nicht aus der Anlage. Der Box-Tausch der Zeitachse
-   * (04.11.2026 09:38, E-2 → E-2′) ist am Stand danach an derselben Zeile zu sehen.
-   *
-   * Je Bild EIN Fall mit EINEM vollen Aufruf der Bühne (Entscheid firstmate gm-e2e-mehrfachaufruf = A): drei volle
-   * Aufrufe in einem Fall brauchten unter vier Workern bis zu 17 von 30 s (Nachtrag Gesamtlauf mispel 05.10.2026). Die
-   * Zusicherungen sind dieselben.
-   */
-  test('die Spalte „Quelle“ trägt die Box — und nach dem Box-Tausch die Nachfolgerin: heute in der Tabelle (1440 px)', async ({ page }) => {
-    const boxZeile = (kz: string) =>
-      page.locator('.vp-ms-tabelle tbody tr', { has: page.locator('.vp-ms-kz', { hasText: new RegExp(`^${kz}$`) }) }).locator('.vp-ms-box');
-
-    await oeffne(page, 'bild=unternehmen&ansicht=messstellen', 1440);
-    await warteAufRegister(page);
-    // MS-10 liest über den WAGO-Controller C-1 (GR-7, DQ-4); am 20.10.2026 ist Box Halle 2 zuständig.
-    await expect(boxZeile('MS-10')).toHaveText('zuständig: Box Halle 2 seit 01.10.2026');
-    // MS-01 hängt an Box Halle 1, MS-16 an Box Lindach — jede Anlage ihre eigene Box (W10).
-    await expect(boxZeile('MS-01')).toHaveText('zuständig: Box Halle 1 seit 12.03.2024');
-    await expect(boxZeile('MS-16')).toHaveText('zuständig: Box Lindach seit 15.10.2026');
-    // Eine BERECHNETE Messstelle hat keine Quelle und darum keine Box — nie eine geratene.
-    await expect(page.locator('.vp-ms-tabelle tbody tr', { has: page.locator('.vp-ms-kz', { hasText: /^MS-20$/ }) }).locator('.vp-ms-box')).toHaveCount(0);
-    const m = await messe(page);
-    ohneQuerlauf(m, 'box-an-quelle-1440');
-    // Das Bild zeigt die Zeile, um die es geht — MS-10 am WAGO-Controller C-1.
-    await boxZeile('MS-10').scrollIntoViewIfNeeded();
-    await ablegen(page, 'box-an-quelle-1440', m);
-  });
-
-  test('die Spalte „Quelle“ trägt die Box — und nach dem Box-Tausch die Nachfolgerin: am Stand 05.11.2026 in der Tabelle (1440 px)', async ({ page }) => {
-    const boxZeile = (kz: string) =>
-      page.locator('.vp-ms-tabelle tbody tr', { has: page.locator('.vp-ms-kz', { hasText: new RegExp(`^${kz}$`) }) }).locator('.vp-ms-box');
-
-    // Nach dem Box-Tausch: dieselbe Zeile, dieselbe Messstelle — die Nachfolgerin, seit dem Augenblick des Tauschs.
-    await oeffne(page, 'bild=unternehmen&ansicht=messstellen&stand=2026-11-05', 1440);
-    await warteAufRegister(page);
-    await expect(boxZeile('MS-10')).toHaveText('zuständig: Box Halle 2 (neu) seit 04.11.2026 09:38');
-    await expect(boxZeile('MS-01')).toHaveText('zuständig: Box Halle 1 seit 12.03.2024');
-    const n = await messe(page);
-    ohneQuerlauf(n, 'box-an-quelle-tausch-1440');
-    await boxZeile('MS-10').scrollIntoViewIfNeeded();
-    await ablegen(page, 'box-an-quelle-tausch-1440', n);
-  });
-
-  test('die Spalte „Quelle“ trägt die Box — und nach dem Box-Tausch die Nachfolgerin: heute in der Karte (375 px)', async ({ page }) => {
-    // Am Telefon trägt die Karte dieselbe Zeile in ihrem Feld „Quelle“.
-    await oeffne(page, 'bild=unternehmen&ansicht=messstellen', 375);
-    await warteAufRegister(page);
-    const karte = page.locator('.vp-ms-karte', { has: page.locator('.vp-ms-kz', { hasText: /^MS-10$/ }) });
-    await expect(karte.locator('.vp-ms-box')).toHaveText('zuständig: Box Halle 2 seit 01.10.2026');
-    const t = await messe(page);
-    ohneQuerlauf(t, 'box-an-quelle-375');
-    await karte.scrollIntoViewIfNeeded();
-    await ablegen(page, 'box-an-quelle-375', t);
-  });
-
-  // Je Breite der Messstellen und für die Standortkarte EIN Fall mit EINEM vollen Aufruf der Bühne (Entscheid firstmate
-  // gm-e2e-mehrfachaufruf = A): drei volle Aufrufe in einem Fall brauchten unter vier Workern bis zu 20 von 30 s
-  // (Nachtrag Gesamtlauf mispel 05.10.2026). Die Zusicherungen sind dieselben.
+  // Je Breite der Reihen und für die Standortkarte EIN Fall mit EINEM vollen Aufruf der Bühne (Entscheid firstmate
+  // gm-e2e-mehrfachaufruf = A: teilen statt längerer Frist): drei volle Aufrufe in einem Fall brauchten unter vier Workern
+  // bis zu 20 von 30 s (Nachtrag Gesamtlauf mispel 05.10.2026). Die Zusicherungen sind die von uems (Messen PR1).
   for (const breite of [1440, 375]) {
-    test(`Ausfall 03.11.2026: Messstellen und Standortkarte sprechen nur aus festgehaltenen Fakten — die Messstellen bei ${breite} px`, async ({ page }) => {
+    test(`Ausfall 03.11.2026: Reihen und Standortkarte sprechen nur aus festgehaltenen Fakten — die Reihen bei ${breite} px`, async ({ page }) => {
       await oeffne(page, 'bild=unternehmen&ansicht=werk-messstellen&ausfall=1', breite);
-      await warteAufRegister(page);
-      const direkt = page.locator(breite === 375 ? '.vp-ms-karte' : '.vp-ms-tabelle tbody tr', {
-        has: page.locator('.vp-ms-kz', { hasText: /^MS-10$/ }),
-      });
+      await warteAufListe(page);
+      const direkt = reihe(page, 'MS-10');
       await expect(direkt).toContainText('Unvollständig seit 14:00 (Box Halle 2)');
-      const berechnet = page.locator(breite === 375 ? '.vp-ms-karte' : '.vp-ms-tabelle tbody tr', {
-        has: page.locator('.vp-ms-kz', { hasText: /^MS-15$/ }),
-      });
+      const berechnet = reihe(page, 'MS-15');
       await expect(berechnet).toContainText('fehlt: MS-10, MS-11, MS-12, MS-13, MS-14');
       await expect(berechnet).not.toContainText('Box Halle 2');
       const m = await messe(page);
       ohneQuerlauf(m, `ausfall-messstellen-${breite}`);
       await direkt.scrollIntoViewIfNeeded();
       await ablegen(page, `ausfall-messstellen-${breite}`, m);
-      await berechnet.scrollIntoViewIfNeeded();
-      await ablegen(page, `ausfall-berechnet-${breite}`, m);
     });
   }
 
-  test('Ausfall 03.11.2026: Messstellen und Standortkarte sprechen nur aus festgehaltenen Fakten — die Standortkarte bei 1440 px', async ({ page }) => {
+  test('Ausfall 03.11.2026: Reihen und Standortkarte sprechen nur aus festgehaltenen Fakten — die Standortkarte bei 1440 px', async ({ page }) => {
     await oeffne(page, 'bild=unternehmen&ansicht=standorte&ausfall=1', 1440);
     const standort = page.getByTestId('standort-ausfall');
     await expect(standort).toHaveText('1 von 2 Boxen meldet sich nicht · 6 Messstellen unvollständig');
@@ -365,7 +347,7 @@ test.describe('Leisten-Nachweis: mit der Seite „Messstellen“ schaltet sich d
     await ablegen(page, 'leiste-uebersicht-375', m);
     await page.locator('.vp-bottombar').getByRole('button', { name: 'Messen' }).click();
     await expect(page.locator('body')).toHaveAttribute('data-route', '#/portfolio/messstellen');
-    await warteAufRegister(page);
+    await warteAufListe(page);
   });
 
   test('Übersicht bei 375 px — Variante A (nur Vorschau, `&reiter=alle`): jeder Bereich steht doppelt', async ({ page }) => {
@@ -382,7 +364,7 @@ test.describe('Leisten-Nachweis: mit der Seite „Messstellen“ schaltet sich d
     // N1: am Unternehmen stehen die Gruppen in der Seitenleiste; „Messen“ öffnet ihren ersten Bereich, die Messstellen.
     await page.getByTestId('seitenleiste-messen').click();
     await expect(page.locator('body')).toHaveAttribute('data-route', '#/portfolio/messstellen');
-    await warteAufRegister(page);
+    await warteAufListe(page);
     await oeffne(page, 'bild=unternehmen&ansicht=werk', 1440);
     const m = await messe(page);
     // Am Standort seine Bereiche in der Seitenleiste — über der Seite steht keine zweite Reihe derselben Bereiche.
@@ -391,15 +373,15 @@ test.describe('Leisten-Nachweis: mit der Seite „Messstellen“ schaltet sich d
     await ablegen(page, 'werk-uebersicht-1440', m);
     await page.getByTestId('seitenleiste-messstellen').click();
     await expect(page.locator('body')).toHaveAttribute('data-route', `#/standort/${FIXTURE_IDS.st1}/messstellen`);
-    await warteAufRegister(page);
+    await warteAufListe(page);
   });
 
   test('der reine Messkunde (nur Werk Lindach, oberste Ebene): „Messstellen“ führt auf seinen Standort — Seitenleiste am Rechner, Kachel am Telefon', async ({ page }) => {
     await oeffne(page, 'bild=messkunde', 1440);
     const r = await messe(page);
     ohneQuerlauf(r, 'messkunde-1440');
-    // AP-13 IP-2: als oberste Ebene hat der Standort auch „Aufbau“ und „Gebäude“ — „Boxen“ und „Anlagen“ gibt es nicht
-    // mehr. N1: seine Bereiche stehen in der Seitenleiste, dieselben wie am Telefon in der Leiste.
+    // AP-13 IP-2: als oberste Ebene hat der Standort auch „Aufbau“ und „Gebäude“. N1: seine Bereiche stehen in der
+    // Seitenleiste, dieselben wie am Telefon in der Leiste.
     expect(r.seite).toEqual(['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
     for (const weg of ['Anlagen', 'Boxen']) {
       expect(r.seite).not.toContain(weg);
@@ -407,19 +389,18 @@ test.describe('Leisten-Nachweis: mit der Seite „Messstellen“ schaltet sich d
     }
     await page.getByTestId('seitenleiste-messstellen').click();
     await expect(page.locator('body')).toHaveAttribute('data-route', `#/standort/${FIXTURE_IDS.st2}/messstellen`);
-    await warteAufRegister(page);
+    await warteAufListe(page);
 
     await oeffne(page, 'bild=messkunde', 375);
     const m = await messe(page);
     ohneQuerlauf(m, 'messkunde-375');
-    // Die Bereiche mit Seite — die Leiste (O17), höchstens fünf Kacheln.
     expect(m.leiste).toEqual(['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Anschlüsse']);
     await page.locator('.vp-bottombar').getByRole('button', { name: 'Messstellen' }).click();
     await expect(page.locator('body')).toHaveAttribute('data-route', `#/standort/${FIXTURE_IDS.st2}/messstellen`);
-    await warteAufRegister(page);
+    await warteAufListe(page);
     const n = await messe(page);
     ohneQuerlauf(n, 'messkunde-messstellen-375');
-    expect(n.karten).toBe(3);
+    expect(n.reihen).toBe(3);
     expect(n.leisteAktiv).toBe('Messstellen');
     await ablegen(page, 'messkunde-messstellen-375', n);
   });

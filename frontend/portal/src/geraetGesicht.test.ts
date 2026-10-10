@@ -354,6 +354,69 @@ describe('abregelungDiesesGeraets', () => {
     expect(abregelungDiesesGeraets(null, 'src-fr1')).toBeNull();
     expect(abregelungDiesesGeraets(basis({ units: 0, certifiedUnits: 0 }), 'x')).toBeNull();
   });
+
+  // ---- Der netzseitige Regler (Konzept `vp-deye-netzseitig-drossel-k2` P4) --
+
+  const deye = (over: Record<string, unknown> = {}) => basis({
+    units: 3,
+    certifiedUnits: 3,
+    perUnit: [{
+      sourceId: 'inverter', certified: true, appliedCapKw: null, match: true,
+      mode: 'grid_target', targetKw: 0, ...over,
+    }],
+  });
+
+  it('der Netzregler zeigt ZIEL und MESSUNG statt einer Kappe', () => {
+    const v = abregelungDiesesGeraets(deye(), 'inverter', -0.3);
+    expect(v).toEqual({
+      satz: `Regelt den Netzanschluss gerade auf 0,0${NBSP}kW Einspeisung · bestätigt `
+        + `(Messung 0,3${NBSP}kW Einspeisung).`,
+      ton: 'ok',
+      netz: true,
+    });
+  });
+
+  it('⚠ folgt die Messung nicht, sagt er es - mit der gemessenen Zahl und in Bernstein', () => {
+    const v = abregelungDiesesGeraets(deye({ match: false }), 'inverter', -18.4);
+    expect(v?.satz).toBe(
+      `Regelt den Netzanschluss gerade auf 0,0${NBSP}kW Einspeisung · die Messung folgt dem `
+        + `Ziel nicht (Messung 18,4${NBSP}kW Einspeisung).`,
+    );
+    expect(v?.ton).toBe('warn');
+  });
+
+  it('ohne eigene frische Messung fällt ihr Halbsatz weg - nie eine erfundene 0', () => {
+    expect(abregelungDiesesGeraets(deye(), 'inverter')?.satz)
+      .toBe(`Regelt den Netzanschluss gerade auf 0,0${NBSP}kW Einspeisung · bestätigt.`);
+    expect(abregelungDiesesGeraets(deye({ match: null }), 'inverter', null)?.satz)
+      .toBe(`Regelt den Netzanschluss gerade auf 0,0${NBSP}kW Einspeisung · noch nicht bestätigt.`);
+  });
+
+  it('Bezug bleibt Bezug: Ziel und Messung tragen ihre Richtung als Wort', () => {
+    expect(abregelungDiesesGeraets(deye({ targetKw: -30 }), 'inverter', 1.2)?.satz).toBe(
+      `Regelt den Netzanschluss gerade auf 30,0${NBSP}kW Einspeisung · bestätigt `
+        + `(Messung 1,2${NBSP}kW Bezug).`,
+    );
+  });
+
+  it('ohne aktives Ziel behauptet er keine Regelung, und ohne Freigabe gar keine', () => {
+    const ruht = abregelungDiesesGeraets(deye({ targetKw: null, match: null }), 'inverter', -4);
+    expect(ruht?.satz).toMatch(/gerade ist kein Ziel aktiv/);
+    expect(ruht?.satz).not.toMatch(/Messung/);
+    expect(ruht?.netz).toBe(true);
+    const gesperrt = abregelungDiesesGeraets(deye({ certified: false }), 'inverter', -4);
+    expect(gesperrt?.satz).toMatch(/noch nicht freigegeben/);
+    expect(gesperrt?.netz).toBeUndefined();
+  });
+
+  it('eine gedeckelte Einheit bleibt beim Kappen-Satz, auch wenn eine Messung mitkommt', () => {
+    const s = basis({
+      perUnit: [{ sourceId: 'src-fr1', certified: true, appliedCapKw: 8, match: true }],
+    });
+    expect(abregelungDiesesGeraets(s, 'src-fr1', -2)).toEqual({
+      satz: `Begrenzt gerade auf 8,0${NBSP}kW · vom Gerät bestätigt.`, ton: 'ok',
+    });
+  });
 });
 
 /**

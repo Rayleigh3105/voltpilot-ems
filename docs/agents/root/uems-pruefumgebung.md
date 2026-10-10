@@ -14,8 +14,16 @@ Die Umgebung für die Fachperson erreichbar machen (Adresse, Portal, Zugangsweg)
 - Ein SQL-Seed 1.10 hätte Prüfsummen, Abzüge und Kopien von Hand erfinden müssen (§8.5 „gelesen, nicht
   ausprobiert“ — geprüft: nicht ohne Umbau).
 - `SEED` legt nur an, was 1.4 nicht trägt: MS-20, BZ-1, Geräte an AN-1, das Konto von Robert Falk
-  (Subject `…08a6`, ohne Realm-Login) und `zugriffe_1_10`. Es stellt beim Aufbau auch die Uhr von
-  `ZugriffKontextLader` (die Zuweisungen des Seeds beginnen am 01.10.2026), danach steht alles auf der Bühne.
+  (Subject `…08a6`, ohne Realm-Login), `zugriffe_1_10` und (seit Review r4 M4) MS-23 für MB-1. Es stellt beim
+  Aufbau auch die Uhr von `ZugriffKontextLader` (die Zuweisungen des Seeds beginnen am 01.10.2026), danach steht
+  alles auf der Bühne.
+- ⚠ Review r4 M4: MB-1 muss VOR der ersten energetischen Bewertung (BR-2026-0002, 01.12.2026) über MS-23 eingelöst
+  werden (`AhrenbergWelt.mb1DurchMs23Einloesen`, 27.11.2026) — danach zitieren freigegebene Berichtsstände ihn als
+  Quelle, und der Belegschutz (409 `berichts_belege`) lehnt jedes Einlösen über die Route ab. Ohne diesen Schritt
+  blieb MB-1 „geplant“ und die Demo zeigte bei jedem Rundgang den defekten „Einrichten“-Weg aus dem Review (Option a
+  — ein zitierter Bedarf bleibt einlösbar — wurde nicht gewählt; der Belegschutz bleibt für Bearbeiten/Verwerfen
+  bestehen). Eine künftige, frühere Bewertung oder ein früherer Berichtsstand in der Welt muss dieselbe Reihenfolge
+  wahren.
 - Idempotent (`PruefumgebungAhrenberg`): steht `feststellung_wirksamkeit`, geschieht nichts; ein halber Aufbau
   (Robert Falk da, Wirksamkeit nicht) bricht ab — dann abräumen und neu aufbauen.
 - ⚠ Im laufenden Stapel vergibt der Geräte-Bestand der drei Boxen GR-1 … GR-6, bevor die Welt kommt. `SEED` nimmt
@@ -33,6 +41,15 @@ Die Umgebung für die Fachperson erreichbar machen (Adresse, Portal, Zugangsweg)
   Zuweisungen und Bühnen-Uhr für die Leser war die echte Frist auf der Bühne längst vorbei → `KennzahlAbgelehnt`
   (500) im Verzeichnis (über `EnergiezielService.liste`). Darum zählt die Frist auf der Bühne: letzter Tag =
   Bühnen-Heute + Tage; weil die Bühne in echter Zeit läuft, endet der Zugang nach genau so vielen echten Tagen.
+- Seit Konzept Nachweisen n1 (PR 0) läuft auch `EnergiemanagementPersonenService` (Aufgaben, Verantwortung) auf der
+  Bühne: ohne `tag` nennt die Route den Tag der Bühne, und das Portal übernimmt ihn (`routenUhr.ts`). Wer eine neue
+  Route mit „heute“ baut, stellt ihre Uhr in `PruefumgebungUhr.stellen(Clock)` mit - sonst nennt eine Seite 2026
+  neben dem Stichtag 2029. Die Bericht-Routen tragen dafür `abruf` (Augenblick der Route).
+- Seit K1 (#1428) rechnen auch `KennzahlLauf` und die Bericht-Naht der Kaskade (`BerichtKaskade`) auf der Bühne; die Bühne beginnt nie vor dem jüngsten `kennzahl_wert.berechnet_am`.
+  ⚠ Kennzahlwerte mit Bühnenzeit neben einer API, die in echter Zeit rechnet, halten die Kaskade aller Mandanten an: jede neue Ablesung kaskadiert über die ganze Reihe („liegt nicht nach der neuesten Zeile“, an der Bericht-Naht D2).
+  ⚠ Im Testlauf ist die Bericht-Naht aus (surefire `voltpilot.uems.berichte.enabled=false`); ihr Verhalten zeigt nur eine laufende API, z. B. auf einer Kopie der Demo-DB.
+  Ausnahme seit Nachweisen PR 8: `PruefumgebungAhrenbergAufbau` und `PruefumgebungAhrenbergTest` schalten sie an, weil die Welt den Monatsbericht Oktober 2026 mit einer Korrektur baut; sonst entschiede der Takt der API, ob Nr. 1 den Anstoß bekommt.
+  Die Welt trägt dafür MS-20 bis 01.11.2026 ein, aus derselben Reihe wie der Rundgang (`DemoRundgangAufbau.reihe`); Reihenfolge und Wettlauf stehen in `infra/local/demo/README.md`.
 
 ## Bedienen
 

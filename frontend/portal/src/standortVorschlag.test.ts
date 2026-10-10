@@ -49,7 +49,12 @@ describe('Standort-Vorschau', () => {
       { name: 'Werk Ahrenberg', zeitzone: 'Europe/Berlin', adresse: { strasse: 'Gewerbering 7', plz: '84123', ort: 'Ahrenberg', land: 'DE' }, vorschlagIds: ['v1', 'v2'] },
       { name: 'Werk Lindach', zeitzone: 'Europe/Berlin', adresse: { strasse: 'Werkstraße 8', plz: '84123', ort: 'Lindach', land: 'DE' }, vorschlagIds: ['v3'] },
     ] });
+    // firstmate K2: von der gewohnten Übersicht aus entsteht durch diese Vorschau immer ein
+    // NEUER, noch nicht messender Standort — kein Startseiten-Versprechen mehr (nur von einem
+    // schon messenden Standort aus, `aktuelleEbene: 'standort'`, siehe unten).
     expect(wasSichAendert({ aktuelleEbene: 'heute', zielGruppen: gruppen.length, isAdmin: false, betriebsart: null, anlagen: [{ tarifArt: 'ohne' }], anwendungen: ['monitoring'] }))
+      .toEqual([]);
+    expect(wasSichAendert({ aktuelleEbene: 'standort', zielGruppen: gruppen.length, isAdmin: false, betriebsart: null, anlagen: [{ tarifArt: 'ohne' }], anwendungen: ['monitoring'] }))
       .toEqual(['Ihre Startseite wird die Unternehmens-Übersicht.']);
     const eineGruppe = gruppierungAendern(gruppen, ausgang, { art: 'alle_zusammen' });
     expect(wasSichAendert({ aktuelleEbene: 'heute', zielGruppen: eineGruppe.length, isAdmin: false, betriebsart: null, anlagen: [{ tarifArt: 'ohne' }], anwendungen: ['monitoring'] }))

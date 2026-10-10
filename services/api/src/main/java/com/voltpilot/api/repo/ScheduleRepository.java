@@ -41,7 +41,7 @@ public class ScheduleRepository {
                     + "curtail_kw, pv_kw, load_kw, slot_role, slot_flags, stored_value_ct_kwh, "
                     + "grid_value_ct_kwh, peak_pressure_eur_kw, "
                     + "cover_load_from_battery, unplanned_load_discharge, charge_from_surplus_only, "
-                    + "why_next_best, why_next_best_margin_ct";
+                    + "why_next_best, why_next_best_margin_ct, ev_release_floor_soc_pct";
 
     /**
      * The optimizer's default AC round-trip efficiency when the asset carries
@@ -283,7 +283,9 @@ public class ScheduleRepository {
                 // RESTING slot - null elsewhere is the honest "no margin", not
                 // a missing value.
                 rs.getString("why_next_best"),
-                rs.getBigDecimal("why_next_best_margin_ct"));
+                rs.getBigDecimal("why_next_best_margin_ct"),
+                // „Sonne + Speicher" (V20261006120000): null = keine Freigabe.
+                rs.getBigDecimal("ev_release_floor_soc_pct"));
     }
 
     /**

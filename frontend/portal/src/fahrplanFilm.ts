@@ -52,7 +52,7 @@ import {
   type PlanWordingKind,
   type SlotDuty,
 } from './schedule';
-import { FAHRPLAN_TAETIGKEIT } from './glossar';
+import { FAHRPLAN_TAETIGKEIT } from './glossarEinstieg';
 
 /**
  * Die Pflicht-Vorschau einer Phase (PR 4): „folgt dem gemessenen Verbrauch" /

@@ -177,6 +177,26 @@ export interface ChargingBudget {
   ocppPort?: number | null;
   ocppUrlPath?: string | null;
   reportedAt?: string | null;
+  /**
+   * „Sonne + Speicher“ (06.10.2026): was die BOX gerade aus der Untergrenze
+   * des Fahrplans macht. `null`/abwesend = eine ältere Box, oder keine Säule
+   * fährt die Quelle.
+   */
+  storageRelease?: SpeicherFreigabe | null;
+}
+
+/**
+ * Die Speicherfreigabe der Box („Sonne + Speicher“). Jede Zahl darf fehlen -
+ * fehlend ist keine Null. `mode` ist das geschlossene Vokabular der Box
+ * (`docs/contracts/v2/sonne-speicher-vectors.json`), `note` ihr Satz.
+ */
+export interface SpeicherFreigabe {
+  active: boolean;
+  kw?: number | null;
+  floorSocPct?: number | null;
+  socPct?: number | null;
+  mode?: string | null;
+  note?: string | null;
 }
 
 export interface SiteCharging {
@@ -227,6 +247,13 @@ export interface ChargingConfig {
   removedChargePointIds?: string[];
   updatedAt?: string | null;
   updatedBy?: string | null;
+  /**
+   * „Sonne + Speicher“: die Reserve dieser Anlage in kWh über dem
+   * Reservestapel des Speichers. `null` = keine eigene Angabe, es gilt
+   * `storageReleaseReserveStandardKwh`. Ein älteres Backend sendet beides nicht.
+   */
+  storageReleaseReserveKwh?: number | null;
+  storageReleaseReserveStandardKwh?: number | null;
 }
 
 /**
@@ -255,6 +282,8 @@ export interface AllowedChargePoint {
   connection?: ChargerConnection | null;
   addedAt?: string | null;
   addedBy?: string | null;
+  /** „Sonne + Speicher“ auf der Bahn nur_sonne (06.10.2026). */
+  storageRelease?: boolean | null;
 }
 
 /** Die Antwort auf „Jetzt voll laden". */

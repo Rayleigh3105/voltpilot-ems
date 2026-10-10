@@ -125,6 +125,41 @@ public class AbweichungService {
     }
 
     /**
+     * Verbessern (Konzept v1, Entscheid 4): die Vermerke über ALLE sichtbaren Kennzahlen, damit offene Auffälligkeiten
+     * unter Verbessern einen Ort haben. Derselbe Zaun wie an der Kennzahl: RLS über {@code standort_id} und je Kennzahl
+     * {@link KennzahlService#lesbareKennzahlOderNichts} - ein Vermerk an einer nicht sichtbaren Kennzahl fehlt still.
+     * {@code zustand} filtert, {@code offen} zählt immer alle sichtbaren offenen; ältester Monat zuerst. Beantwortet
+     * wird weiter an der Kennzahl ({@link #antworten}).
+     */
+    public AbweichungDto.AlleVermerke alleVermerke(Collection<String> parameter, String zustand) {
+        parameter.stream().filter(p -> !VERMERK_PARAMETER.contains(p)).findFirst().ifPresent(p -> {
+            throw VerbesserungAbgelehnt.anfrage(p);
+        });
+        if (zustand != null && !VerbesserungRegeln.VOKABULARE.get("auffaelligkeit_zustand").contains(zustand)) {
+            throw VerbesserungAbgelehnt.anfrage("zustand");
+        }
+        ZoneId zone = zone();
+        Map<UUID, Boolean> lesbar = new HashMap<>();
+        List<AbweichungDto.Vermerk> aus = new ArrayList<>();
+        int offen = 0;
+        // Die offenen immer (sie zählen), die übrigen nur, wenn der Filter sie verlangt.
+        for (Map<String, Object> z : jdbc.queryForList(VERMERK + "WHERE v.zustand = 'offen' OR ?::text IS NULL "
+                + "OR v.zustand = ? ORDER BY v.periode, k.kennzeichen, v.fassung", zustand, zustand)) {
+            UUID kz = (UUID) z.get("kennzahl_id");
+            if (!lesbar.computeIfAbsent(kz, x -> kennzahlen.lesbareKennzahlOderNichts(x) != null)) {
+                continue;
+            }
+            if (OFFEN.equals(z.get("zustand"))) {
+                offen++;
+            }
+            if (zustand == null || zustand.equals(z.get("zustand"))) {
+                aus.add(vermerk(z, zone));
+            }
+        }
+        return new AbweichungDto.AlleVermerke(LocalDate.ofInstant(kennzahlen.jetzt(), zone), offen, List.copyOf(aus));
+    }
+
+    /**
      * A2: die einmalige Antwort einer Person. {@code abweichung} eröffnet AW-… mit allen offenen Vermerken derselben
      * Kennzahl × Fassung; {@code zur_kenntnis} braucht eine Begründung (422 {@code begruendung_fehlt}).
      */

@@ -2,7 +2,20 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 
-/** AP-14 U2: sichtbarer 2+1-Fluss bei 375 und 1440 px; A6 bleibt als Gegenprobe. */
+/**
+ * AP-14 U2: sichtbarer 2+1-Fluss bei 375 und 1440 px; A6 bleibt als Gegenprobe.
+ *
+ * firstmate K2 (09.10.2026): die frühere grosse Karte „Noch nicht zugeordnet" ist aus der
+ * Kunden-Übersicht entfernt — der Weg in diese Vorschau führt jetzt über den leisen Einstieg
+ * „Messen & Auswerten einrichten" im ⋯-Menü (`oeffneMenu`). Dieselbe Regel lässt „Was sich
+ * ändert" das Versprechen „Ihre Startseite wird die Unternehmens-Übersicht" nicht mehr von der
+ * gewohnten Übersicht aus geben: ein hier frisch gegründeter Standort misst nach dem Bestätigen
+ * noch nicht („Messen & Auswerten" ist ein eigener, späterer Schritt) — nur ein Standort, der
+ * VORHER schon mass, durfte das versprechen (`standortVorschlag.ts wasSichAendert`,
+ * `startansicht.test.ts` K2-Block). Dass dieser Lauf trotzdem auf der Unternehmens-Übersicht
+ * landet (Zeile `Kunststoffwerk Ahrenberg GmbH`), kommt allein von der Funktionen-Bühne
+ * (`messenArt=eingerichtet` ist ihre Vorgabe) und beweist nicht das Versprechen.
+ */
 const BILDER = process.env.STANDORT_VORSCHLAG_BILDER;
 
 async function ruhe(page: Page) {
@@ -10,16 +23,23 @@ async function ruhe(page: Page) {
   await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
 }
 
+/** Der leise Einstieg: ⋯-Menü der gewohnten Übersicht → „Messen & Auswerten einrichten". */
+async function oeffneMenu(page: Page) {
+  await page.getByRole('button', { name: 'Weitere Aktionen' }).click();
+  await page.getByRole('menuitem', { name: 'Messen & Auswerten einrichten' }).click();
+}
+
 async function oeffne(page: Page, breite: 375 | 1440) {
   await page.clock.setFixedTime(new Date('2026-10-20T08:15:30Z'));
   await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
   await page.goto('/e2e/startansicht.html?bild=bestand-mehrere&vorschlag=offen&vorschlagfall=u2&vorschauart=steuerkunde');
-  await expect(page.getByText('Noch nicht zugeordnet').first()).toBeVisible();
+  // K2: keine Karte mehr auf der gewohnten Übersicht — nur der leise Einstieg im Menü.
+  await expect(page.getByText('Noch nicht zugeordnet')).toHaveCount(0);
   if (BILDER) {
     mkdirSync(BILDER, { recursive: true });
     await page.screenshot({ path: join(BILDER, `standort-vorschlag-karte-${breite}.png`) });
   }
-  await page.getByRole('button', { name: 'Standorte einrichten' }).click();
+  await oeffneMenu(page);
   await expect(page.getByRole('heading', { name: 'Vorschau: Ihre Anlagen und Standorte' })).toBeVisible();
   await ruhe(page);
 }
@@ -56,7 +76,8 @@ for (const breite of [375, 1440] as const) {
     await expect(dialog.getByText('Werk Lindach', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('Bis Sie bestätigen, ändert sich nichts')).toBeVisible();
     await expect(dialog.getByRole('heading', { name: 'Was sich ändert' })).toBeVisible();
-    await expect(dialog).toContainText('Ihre Startseite wird die Unternehmens-Übersicht.');
+    // K2: von der gewohnten Übersicht aus kein Startseiten-Versprechen mehr (siehe Dateikopf).
+    await expect(dialog).not.toContainText('Ihre Startseite wird die Unternehmens-Übersicht.');
     await expect(dialog).toContainText('Erlöse und Kosten finden Sie weiter im Cockpit jeder Anlage, im Portfolio und unter Erlöse.');
     await expect(dialog).toContainText('An Steuerung, Fahrplänen und Freigaben ändert sich nichts.');
 
@@ -73,8 +94,10 @@ for (const breite of [375, 1440] as const) {
       { name: 'Werk Ahrenberg', zeitzone: 'Europe/Berlin', adresse: { strasse: 'Industriestraße 4', plz: '84347', ort: 'Pfarrkirchen', land: 'DE' }, vorschlagIds: ['aa020000-0000-4000-8000-000000000001', 'aa020000-0000-4000-8000-000000000002'] },
       { name: 'Werk Lindach', zeitzone: 'Europe/Berlin', adresse: { strasse: 'Werkstraße 8', plz: '84123', ort: 'Lindach', land: 'DE' }, vorschlagIds: ['aa020000-0000-4000-8000-000000000003'] },
     ] }]);
-    await expect(page.getByText('Noch nicht zugeordnet')).toHaveCount(0);
     await expect(dialog).toHaveCount(0);
+    // Die Funktionen-Bühne markiert beide neuen Standorte als messend (Vorgabe `messenArt=
+    // eingerichtet`) — deshalb springt dieser Lauf auf die Unternehmens-Übersicht; ohne Messen
+    // bliebe die gewohnte Übersicht (K2-Block in `startansicht.test.ts`), nicht dieser Klick.
     await expect(page.getByRole('heading', { name: 'Kunststoffwerk Ahrenberg GmbH' })).toBeVisible();
     await expect(page.getByText('Werk Ahrenberg', { exact: true }).first()).toBeVisible();
     await expect(page.getByText('Werk Lindach', { exact: true }).first()).toBeVisible();
@@ -87,7 +110,7 @@ for (const breite of [375, 1440] as const) {
     await page.clock.setFixedTime(new Date('2026-10-20T08:15:30Z'));
     await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
     await page.goto('/e2e/startansicht.html?bild=bestand-mehrere&vorschlag=offen&vorschauart=steuerkunde');
-    await page.getByRole('button', { name: 'Standorte einrichten' }).click();
+    await oeffneMenu(page);
     const dialog = page.getByRole('dialog', { name: 'Standorte einrichten' });
     await expect(dialog.locator('.vp-sv-gruppe')).toHaveCount(2);
     await dialog.getByRole('button', { name: 'Alle Anlagen zusammenlegen' }).click();
@@ -100,14 +123,16 @@ for (const breite of [375, 1440] as const) {
     await expect(dialog).toHaveCount(0);
   });
 
-  test(`reiner Messkunde liest in derselben Vorschau nur die Startseiten-Änderung (${breite} px)`, async ({ page }) => {
+  test(`reiner Messkunde liest in derselben Vorschau gar keine Änderung (K2) (${breite} px)`, async ({ page }) => {
     await page.clock.setFixedTime(new Date('2026-10-20T08:15:30Z'));
     await page.setViewportSize({ width: breite, height: breite === 375 ? 812 : 900 });
     await page.goto('/e2e/startansicht.html?bild=bestand-mehrere&vorschlag=offen&vorschlagfall=u2&vorschauart=messkunde');
-    await page.getByRole('button', { name: 'Standorte einrichten' }).click();
+    await oeffneMenu(page);
     const dialog = page.getByRole('dialog', { name: 'Standorte einrichten' });
     await expect(dialog.getByRole('heading', { name: 'Was sich ändert' })).toBeVisible();
-    await expect(dialog).toContainText('Ihre Startseite wird die Unternehmens-Übersicht.');
+    // K2: kein Startseiten-Versprechen von der gewohnten Übersicht aus — ein reiner Messkunde
+    // ohne Geld/Steuerung liest hier also gar keinen Satz mehr (vorher nur die Startseite).
+    await expect(dialog).not.toContainText('Ihre Startseite wird die Unternehmens-Übersicht.');
     await expect(dialog).not.toContainText('Erlöse');
     await expect(dialog).not.toContainText('Steuerung');
     await expect(dialog).not.toContainText('Fahrplänen');
@@ -123,7 +148,7 @@ test('reine Verbrauchsanlage mit Tarif: Ebenen-Übersicht bleibt ohne Geld', asy
   await page.clock.setFixedTime(new Date('2026-10-20T08:15:30Z'));
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/e2e/startansicht.html?bild=bestand-mehrere&vorschlag=offen&vorschlagfall=u2&vorschauart=verbrauch');
-  await page.getByRole('button', { name: 'Standorte einrichten' }).click();
+  await oeffneMenu(page);
   await expect(page.getByRole('heading', { name: 'Vorschau: Ihre Anlagen und Standorte' })).toBeVisible();
   await zuAhrenbergGruppieren(page);
   await adressenErgaenzen(page);

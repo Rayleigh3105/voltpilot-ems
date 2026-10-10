@@ -47,7 +47,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, ApiError, type MessstelleRegisterZeile, type MessstelleWerte } from '../api';
-import { UEMS_ZEITRAEUME } from '../glossar';
+import { UEMS_VERGLEICH, UEMS_ZEITRAEUME } from '../glossar';
 import { isoTag, verschiebe } from '../picker/datum';
 import { VERLAUF_NICHT_ABRUFBAR, WERTE_NICHT_ABRUFBAR, ZEITRAEUME, auskunft, type Auskunft, type Zeitraum } from '../uemsOberflaechen';
 import { LISTE_TITEL, blaettere, ersterTag, gleicheAnfrage, heuteOderSpaeter, kernaussage, wertAm, zeitraumAnfragen } from '../uemsVerlauf';
@@ -78,7 +78,10 @@ import { DeltaZeile, ReihenKarten, useVergleich, VergleichLeiste } from './Werte
 import { ErrorState, Skeleton } from './States';
 import { VpDatePicker } from './VpDatePicker';
 import { VersionenDialog, VersionenEinstieg } from './WertVersionen';
-import { WerteKarte, WerteListe } from './WerteKarte';
+import { WerteKarte, WerteListe, WerteZusammenfassung } from './WerteKarte';
+import { MonatsBalken } from './MonatsBalken';
+import type { KachelTon } from './kacheln/Kachel';
+import { ABLESUNG_EINTRAGEN, ablesungFehltSatz, balken, monatPlus, monatsTage } from '../messstelleSeite';
 import { ZUORDNUNG_ETIKETT, ZUORDNUNG_SATZ, zuordnungDerWerte } from '../werteOhneReihe';
 import { ZUORDNUNG_KNOPF } from '../messenEinstieg';
 
@@ -92,6 +95,26 @@ const WAEHLEN: Readonly<Record<Exclude<Zeitraum, 'jahr'>, string>> = {
 
 /** Der Weg zurück aus einer früheren Version der Adresse. */
 export const NEUESTE_ZEIGEN = 'Neueste zeigen';
+
+/**
+ * Die Werte auf der Seite einer Messstelle (Konzept Messen m1, §6.4 Punkt 5; Messen-Bau m2): die Zeiträume, die die
+ * Messstelle hat (ein Ablesezähler nur Monat und Jahr - Tag und Woche wären immer leer), die Überschrift in ihrer Rolle
+ * („Verbrauch je Monat“) und der Ton ihrer Balken. Im Monat und im Jahr stehen die Monate dann als Balken auf einer
+ * Skala mit der Zahl der Periode in einer Zeile darunter; die Zone steht am Fuß der Seite, nicht hier.
+ */
+export interface WerteSeite {
+  zeitraeume: readonly Zeitraum[];
+  titel: (art: Zeitraum) => string;
+  titelId: string;
+  ton: KachelTon;
+  /** Ein Ablesezähler ohne Ablesung im Zeitraum: der Schritt dorthin (nur mit Recht). */
+  onAblesen?: () => void;
+}
+
+/** „12 Monate“ - was die Balken im Monat zeigen. */
+export const ZWOELF_MONATE = '12 Monate';
+/** Die Werte des Tages und der Woche bleiben auf der Seite erreichbar, aber zugeklappt. */
+export const ALLE_WERTE = 'Alle Werte des Zeitraums';
 
 interface Geladen {
   schluessel: string;
@@ -135,7 +158,10 @@ export function WerteSektion({
   herkunftKontext,
   onZeitraum,
   rahmen = (inhalt) => inhalt,
+  seite,
 }: {
+  /** Nur auf der Seite einer Messstelle (Konzept Messen m1): Zeiträume, Überschrift und Balken der Monate. */
+  seite?: WerteSeite;
   /**
    * Das Register von heute — die Hauptgrößen der anderen Messstellen. Nur damit kann der Picker „Weitere Messstelle“
    * sagen, WELCHE passt und warum die anderen nicht (AP-13 IP-5, O12); ohne Register gibt es keinen Vergleich.
@@ -211,6 +237,13 @@ export function WerteSektion({
   const [versionen, setVersionen] = useState<{ einstieg: Einstieg; periode: string } | null>(null);
   // AP-13 IP-5: die gewählten weiteren Reihen leben auf der Fläche; in der Adresse steht nur die Wahl des Umschalters.
   const [reihen, setReihen] = useState<ReihenWahl[]>([]);
+  // Messen m2 (Seite): die zwölf Monate der Balken - im Monat ein Fenster, das mit dem gewählten Monat endet. Ein Klick
+  // auf einen Balken darin verschiebt das Fenster nicht; blättern, der Kalender und das Umschalten schon.
+  const [fensterEnde, setFensterEnde] = useState(start.art === 'monat' ? start.wert : '');
+  const [reihe, setReihe] = useState<{ schluessel: string; antwort: MessstelleWerte } | null>(null);
+  const [reiheFehler, setReiheFehler] = useState<Auskunft | null>(null);
+  const balkenModus = seite !== undefined && (art === 'monat' || art === 'jahr');
+  const arten = seite ? ARTEN.filter((a) => seite.zeitraeume.includes(a.id)) : ARTEN;
 
   const anfragen = zeitraumAnfragen(art, wert);
   const verlaufIstListe = gleicheAnfrage(anfragen.liste, anfragen.verlauf);
@@ -245,8 +278,24 @@ export function WerteSektion({
     };
   }, [kennzeichen, art, wert, verlaufSchluessel]);
 
+  // Die zwölf Monate der Balken: EINE Anfrage im Raster Monat bis zum Ende des Fensters.
+  const reiheSchluessel = `${kennzeichen}|${fensterEnde}|${neu}`;
+  useEffect(() => {
+    if (!kennzeichen || !seite || art !== 'monat' || !fensterEnde) return;
+    let aktiv = true;
+    setReiheFehler(null);
+    const a: Anfrage = { raster: 'monat', ...monatsTage(monatPlus(fensterEnde, -11), fensterEnde) };
+    hole(kennzeichen, a)
+      .then((antwort) => aktiv && setReihe({ schluessel: reiheSchluessel, antwort }))
+      .catch((e: unknown) => aktiv && setReiheFehler(auskunftAus(e, 'monat')));
+    return () => {
+      aktiv = false;
+    };
+  }, [kennzeichen, seite, art, fensterEnde, reiheSchluessel]);
+
   // Jede Wahl eines Zeitraums zeigt die neueste Version und wird dem Wirt gemeldet.
-  const waehle = (neuArt: Zeitraum, neuWert: string) => {
+  const waehle = (neuArt: Zeitraum, neuWert: string, ausBalken = false) => {
+    if (neuArt === 'monat' && !(ausBalken && art === 'monat')) setFensterEnde(neuWert);
     setArt(neuArt);
     setWert(neuWert);
     setBezug((b) => (wertAm(neuArt, b) === neuWert ? b : ersterTag(neuArt, neuWert)));
@@ -296,6 +345,10 @@ export function WerteSektion({
     bestehen: bestehenAus(quelle),
     register,
   });
+  // Auf der Seite stehen Monat und Jahr als Balken; der Verlauf kommt dazu, sobald ein Vergleich gewählt ist - erst
+  // er zeichnet die zweite Reihe (die Vorperiode oder eine weitere Messstelle) ins Bild.
+  const vergleichAktiv = vergleichbar && (wahl !== VERGLEICH_AUS || reihen.length > 0);
+  const mitVerlauf = !balkenModus || vergleichAktiv;
   const verlaufAntwort = verlaufIstListe
     ? (aktuell?.liste ?? null)
     : verlauf?.schluessel === verlaufSchluessel
@@ -315,13 +368,22 @@ export function WerteSektion({
   const inhalt = (
     <div className="vp-wk">
       <div className="vp-wk-oben">
-        {kopf}
-        <p className="vp-wk-zone" data-testid="werte-zone" aria-hidden={zone ? undefined : true}>
-          {zone ?? '\u00a0'}
-        </p>
+        {seite ? (
+          <div className="vp-wk-seitenkopf">
+            <h2 id={seite.titelId}>{seite.titel(art)}</h2>
+            {art === 'monat' && <span className="vp-wk-umfang">{ZWOELF_MONATE}</span>}
+          </div>
+        ) : (
+          <>
+            {kopf}
+            <p className="vp-wk-zone" data-testid="werte-zone" aria-hidden={zone ? undefined : true}>
+              {zone ?? '\u00a0'}
+            </p>
+          </>
+        )}
         {/* EIN Bedienelement (Captain 14.09.2026, Variante B): ein Kasten, oben der Zeitraum, darunter ‹ Datum ›. */}
-        <div className="vp-wk-zeitwahl" role="group" aria-label="Zeitraum">
-          <ZeitSegment label="Zeitraum" optionen={ARTEN} wert={art} onWert={umschalten} />
+        <div className={`vp-wk-zeitwahl${seite ? ' is-seite' : ''}`} role="group" aria-label="Zeitraum">
+          <ZeitSegment label="Zeitraum" optionen={arten} wert={art} onWert={umschalten} />
           <div className="vp-wk-datumzeile">
             <button type="button" className="vp-wk-schritt" aria-label="Vorheriger Zeitraum" onClick={() => waehle(art, blaettere(art, wert, -1))}>
               <Icon name="chevron-left" size={18} />
@@ -366,6 +428,29 @@ export function WerteSektion({
           </div>
         ) : ausserhalb ? (
           <p className="vp-wk-version" role="status" data-testid="werte-ausserhalb">Die Zahl {ausserhalb}.</p>
+        ) : leer && seite && abgelesen ? (
+          // Konzept Messen m1 §8.1: ein Zeitraum des Ablesezählers ohne Ablesung sagt das und führt hin; die Balken bleiben.
+          <>
+            {balkenModus && (
+              <SeitenBalken
+                art={art}
+                wert={wert}
+                ton={seite.ton}
+                reihe={art === 'monat' ? (reihe?.schluessel === reiheSchluessel ? reihe.antwort : null) : aktuell.liste}
+                fehler={art === 'monat' ? reiheFehler : null}
+                onErneut={() => setNeu((n) => n + 1)}
+                onWahl={(monat) => waehle('monat', monat, true)}
+              />
+            )}
+            <p className="vp-wk-fehlt" data-testid="werte-ablesung-fehlt">
+              <span>{ablesungFehltSatz(art, wert)}</span>
+              {seite.onAblesen && (
+                <button type="button" className="vp-wk-weg" onClick={seite.onAblesen}>
+                  {ABLESUNG_EINTRAGEN} ›
+                </button>
+              )}
+            </p>
+          </>
         ) : leer ? (
           <WerteLeer leer={leer} weg={weg} onAb={(tag) => waehle(art, wertAm(art, tag))} onQuelleZuordnen={onQuelleZuordnen} />
         ) : (
@@ -395,37 +480,69 @@ export function WerteSektion({
                 )}
               </p>
             )}
-            {k && (
-              <WerteKarte
-                karte={k}
-                grund={k.grund}
-                versionen={
-                  e && <VersionenEinstieg einstieg={e} onOeffnen={() => setVersionen({ einstieg: e, periode: k.titel })} />
-                }
+            {balkenModus && (
+              <SeitenBalken
+                art={art}
+                wert={wert}
+                ton={seite!.ton}
+                reihe={art === 'monat' ? (reihe?.schluessel === reiheSchluessel ? reihe.antwort : null) : aktuell.liste}
+                fehler={art === 'monat' ? reiheFehler : null}
+                onErneut={() => setNeu((n) => n + 1)}
+                onWahl={(monat) => waehle('monat', monat, true)}
               />
             )}
+            {k &&
+              (seite ? (
+                <WerteZusammenfassung
+                  karte={k}
+                  grund={k.grund}
+                  versionen={
+                    e && <VersionenEinstieg einstieg={e} onOeffnen={() => setVersionen({ einstieg: e, periode: k.titel })} />
+                  }
+                />
+              ) : (
+                <WerteKarte
+                  karte={k}
+                  grund={k.grund}
+                  versionen={
+                    e && <VersionenEinstieg einstieg={e} onOeffnen={() => setVersionen({ einstieg: e, periode: k.titel })} />
+                  }
+                />
+              ))}
             {/* O11: die Δ-Zeile steht DIREKT unter der Karte — die Zahl und ihre Einordnung gehören zusammen. */}
             {vergleichbar && <DeltaZeile delta={vg.eigenDelta} />}
             {/* AP-13 IP-11 (D4): eine BERECHNETE Zahl spricht ihre Herkunft — Formel, Zeitpunkt, Version und je
                 Eingang eine Zeile, die auf ihre Messstelle springt (mit dieser Periode und SEINER Version).
                 An einer gemessenen Zahl trägt die Route die Hülle nicht, und dann steht hier nichts. */}
             {herkunft && <BerechneteHerkunftBlock herkunft={herkunft} />}
-            {vergleichbar && (
-              <VergleichLeiste
-                zeitraum={art}
-                wahl={wahl}
-                onWahl={(w) => onVergleich?.(w)}
-                basis={eigeneZeile?.hauptgroesse ?? null}
-                eigenKennzeichen={kennzeichen}
-                register={register}
-                reihen={reihen}
-                onReihen={setReihen}
-                laufend={vg.laufend}
-                fehler={vg.fehler}
-                onErneut={vg.erneut}
-              />
-            )}
-            {verlaufFehler && !verlaufIstListe ? (
+            {vergleichbar && (() => {
+              const leiste = (
+                <VergleichLeiste
+                  zeitraum={art}
+                  wahl={wahl}
+                  onWahl={(w) => onVergleich?.(w)}
+                  basis={eigeneZeile?.hauptgroesse ?? null}
+                  eigenKennzeichen={kennzeichen}
+                  register={register}
+                  reihen={reihen}
+                  onReihen={setReihen}
+                  laufend={vg.laufend}
+                  fehler={vg.fehler}
+                  onErneut={vg.erneut}
+                />
+              );
+              // Auf der Seite zugeklappt, bis jemand vergleichen will (Konzept Messen m1: Inhalt vor Werkzeug) -
+              // offen, sobald ein Vergleich gewählt ist.
+              return seite ? (
+                <details className="vp-wk-vergleich-auf" open={vergleichAktiv || undefined}>
+                  <summary>{UEMS_VERGLEICH}</summary>
+                  {leiste}
+                </details>
+              ) : (
+                leiste
+              );
+            })()}
+            {!mitVerlauf ? null : verlaufFehler && !verlaufIstListe ? (
               <WerteAuskunft auskunft={verlaufFehler} stoerung={VERLAUF_NICHT_ABRUFBAR} onRetry={() => setVerlaufNeu((n) => n + 1)} />
             ) : verlaufAntwort ? (
               <MessstellenVerlauf
@@ -460,7 +577,15 @@ export function WerteSektion({
           </>
         )}
       </div>
-      {!fehler && aktuell && !leer && <WerteListe titel={LISTE_TITEL[art]} zeilen={liste(aktuell.liste)} />}
+      {!fehler && aktuell && !leer && !balkenModus &&
+        (seite ? (
+          <details className="vp-wk-alle">
+            <summary>{ALLE_WERTE}</summary>
+            <WerteListe titel={LISTE_TITEL[art]} zeilen={liste(aktuell.liste)} />
+          </details>
+        ) : (
+          <WerteListe titel={LISTE_TITEL[art]} zeilen={liste(aktuell.liste)} />
+        ))}
     </div>
   );
 
@@ -485,6 +610,45 @@ export function WerteSektion({
         />
       )}
     </>
+  );
+}
+
+/**
+ * Die Monate als Balken (Seite einer Messstelle): im Monat die zwölf Monate bis zum Fenster-Ende, im Jahr die Monate des
+ * Jahres. Ein Klick wählt den Monat; aus dem Jahr wechselt er in den Monat.
+ */
+function SeitenBalken({
+  art,
+  wert,
+  ton,
+  reihe,
+  fehler,
+  onErneut,
+  onWahl,
+}: {
+  art: Zeitraum;
+  wert: string;
+  ton: KachelTon;
+  reihe: MessstelleWerte | null;
+  fehler: Auskunft | null;
+  onErneut: () => void;
+  onWahl: (monat: string) => void;
+}) {
+  if (fehler) return <WerteAuskunft auskunft={fehler} stoerung={VERLAUF_NICHT_ABRUFBAR} onRetry={onErneut} />;
+  if (!reihe) {
+    return (
+      <div aria-busy="true">
+        <Skeleton height={112} />
+      </div>
+    );
+  }
+  return (
+    <MonatsBalken
+      balken={balken(reihe, art === 'monat' ? wert : '')}
+      ton={ton}
+      label={art === 'monat' ? 'Die letzten zwölf Monate' : `Die Monate ${wert}`}
+      onWahl={onWahl}
+    />
   );
 }
 

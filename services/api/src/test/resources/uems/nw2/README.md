@@ -6,7 +6,7 @@ Referenzdateien dürfen nicht aus dem UEMS-Lauf neu geschrieben werden.
 
 ## Herkunft der Referenz
 
-- Produktivcode: `main`, Commit `4aa1e7fb39b25388f71f20d1d0fc2470a940e4a3` (bytegleich nachgemessen auf `8b8b6a03b` und `308a5cc91`, siehe unten).
+- Produktivcode: `main`, Commit `4aa1e7fb39b25388f71f20d1d0fc2470a940e4a3` (bytegleich nachgemessen auf `8b8b6a03b`, `308a5cc91`, `3a8519f1d`, `db32a784c` und `690806300`; auf `69e572c1d` neu aufgenommen, ein Eintrag um ein additives Feld länger, siehe unten).
 - Schema: genau dessen 168 Produktionsmigrationen, ohne Dev-Seeds.
 - Saat: `main-seed.sql`, direkt auf diesem Schema, keine UEMS-Route. Der alte
   V2-Startmarker ist vorhanden, wie bei einer auf main schon gestarteten Anlage.
@@ -53,6 +53,44 @@ Steuerung mit drei Reitern, Szenen und „nur messen“ samt `V20260929120000`, 
 `main-migrations.txt` jetzt 170) in einem `git clone --shared` auf diesem Commit, dieselbe Testklasse mit den zwei
 entfernten UEMS-Sendern, `-Dnw2.capture=…`: 11 Fälle, davon 2 im Aufnahmemodus übersprungen, **bytegleich** zu
 `main-reference.json` (12 005 Bytes, alle 13 Einträge). `MAIN` nennt seither 308a5cc91.
+
+## Neu aufgenommen beim Nachzug main 69e572c1d (07.10.2026, Steuerstand und Sonne + Speicher)
+
+Die Referenzdatei hat sich in **genau einem** der 13 Einträge geändert: `plan GET /api/v1/sites/{id}/schedule`
+trägt am Slot das additive Feld `"evReleaseFloorSocPct":null` (main `2f3cc35c2`, Sonne + Speicher 3/5,
+`ScheduleSlotDto`). Ohne dieses Feld ist der Eintrag bytegleich zur bisherigen Referenz; die übrigen zwölf Einträge
+sind unverändert (12 005 → 12 035 Bytes). Aufnahme auf `69e572c1dff031fb7b967044c9ec411d55fd7b17` (55 Commits,
+`main-migrations.txt` jetzt 172) in einem `git clone --shared` auf diesem Commit, dieselbe Testklasse ohne die zwei
+UEMS-Sender, `-Dnw2.capture=…`: 11 Fälle, davon 2 im Aufnahmemodus übersprungen. Die aufgenommene Datei ist hierher
+kopiert, `MAIN` nennt seither 69e572c1d. Der UEMS-Lauf schreibt die Referenz weiterhin nie.
+
+## Nachgemessen beim Nachzug main 3a8519f1d (08.10.2026, Fernwartung)
+
+Die Referenzdatei ist wieder **unverändert**. Aufnahme auf `3a8519f1d34a276c3504edf93440ac581062dd4d` (9 Commits:
+Fernwartung 1-4/4, Tunnel-Dienst, `V20261007163700__fernwartung.sql`, #1458-#1461; `main-migrations.txt` jetzt 173)
+in einem `git clone --shared` auf diesem Commit, dieselbe Testklasse mit den zwei entfernten UEMS-Sendern,
+`-Dnw2.capture=…`: 11 Fälle, davon 2 im Aufnahmemodus übersprungen, **bytegleich** zu `main-reference.json`
+(12 035 Bytes, alle 13 Einträge). Fernwartung fügt nur neue, von diesem Nachweis ungenutzte Tabellen und Routen
+an; `MAIN` nennt seither 3a8519f1d.
+
+## Nachgemessen beim Nachzug main db32a784c (09.10.2026, Fernwartung: Techniker-Zugang löschen)
+
+Die Referenzdatei ist wieder **unverändert**. Aufnahme auf `db32a784ce55ae0610409e193834caa48e182e26`
+(4 Commits: `DELETE /api/v1/admin/fernwartung/techniker/{id}`, `V20261008213500__fernwartung_zugang_loeschen.sql`,
+#1466/#1467; `main-migrations.txt` jetzt 174) in einem `git clone --shared` auf diesem Commit, dieselbe
+Testklasse mit den zwei entfernten UEMS-Sendern, `-Dnw2.capture=…`: 11 Fälle, davon 2 im Aufnahmemodus
+übersprungen, **bytegleich** zu `main-reference.json` (12 035 Bytes, alle 13 Einträge). Die neue Route und
+Migration sind von diesem Nachweis ungenutzt; `MAIN` nennt seither db32a784c.
+
+## Nachgemessen beim Nachzug main 690806300 (09.10.2026, Fernwartung: SSH-Schlüssel des Technikers)
+
+Die Referenzdatei ist wieder **unverändert**. Aufnahme auf `690806300a125e6329b4e91b450d23ef2e6981be`
+(4 Commits: `PUT` und `DELETE /api/v1/admin/fernwartung/techniker/{id}/ssh-schluessel`,
+`V20261009074500__fernwartung_ssh_schluessel.sql`, #1477; `main-migrations.txt` jetzt 175) in einem
+`git clone --shared` auf diesem Commit, dieselbe Testklasse mit den zwei entfernten UEMS-Sendern,
+`-Dnw2.capture=…`: 11 Fälle, davon 2 im Aufnahmemodus übersprungen, **bytegleich** zu `main-reference.json`
+(12 035 Bytes, alle 13 Einträge). Die zwei neuen Routen und die Migration sind von diesem Nachweis ungenutzt;
+`MAIN` nennt seither 690806300.
 
 ## Bewusste Differenzen main → uems
 

@@ -5,40 +5,24 @@
  * Route; das Portal setzt nur Zahlen ins deutsche Format (`bezugsbasisVergleich.ts`) und wählt Wörter aus `glossar.ts`.
  * „Energieziel“, nie „Ziel“ allein (W6) — „Ziel: 2,2 kW“ gehört der Steuerung.
  */
-import { ApiError, type Energieziel, type EnergiezielEintrag, type EnergiezielErgebnis, type EnergiezielStand, type Selbstauskunft } from './api';
+import { ApiError, type Energieziel, type EnergiezielEintrag, type EnergiezielErgebnis, type EnergiezielStand } from './api';
 import { band, deltaText, deZahl, menge, monatWort, urteilWort } from './bezugsbasisVergleich';
 import {
-  UEMS_ABWEICHUNGEN,
   UEMS_ENERGIEZIEL,
   UEMS_ENERGIEZIEL_ERGEBNISSE,
   UEMS_ENERGIEZIEL_ZUSTAENDE,
   UEMS_ENERGIEZIELE,
-  UEMS_MASSNAHMEN,
   UEMS_VERANTWORTLICH,
   UEMS_ZIELPERIODE,
   UEMS_ZIELWERT,
 } from './glossar';
-import type { VerbesserungReiter } from './nav';
 
 // ------------------------------------------------------------------ Rechte (aus `/me`, entschieden wird an der Route)
 
-type Rechte = Pick<Selbstauskunft, 'standorte' | 'unternehmen_rechte'>;
-
-const hat = (s: Rechte | null | undefined, recht: string, standortId?: string | null) =>
-  !!s &&
-  (s.unternehmen_rechte.includes(recht) ||
-    (standortId !== null && s.standorte.some((st) => (standortId === undefined || st.id === standortId) && st.rechte.includes(recht))));
-
-/** `verbesserung.ansehen` am Unternehmen oder an einem Standort — sonst gibt es den Bereich nicht. */
-export const darfAnsehen = (s: Rechte | null | undefined) => hat(s, 'verbesserung.ansehen');
+/** `verbesserung.ansehen` und die Reiter des Bereichs wohnen in `bereichSicht.ts` (Einstiegs-Bündel). */
+export { darfVerbesserungSehen as darfAnsehen, VERBESSERUNG_REITER as REITER } from './bereichSicht';
 
 // ------------------------------------------------------------------ Wörter
-
-export const REITER: readonly { key: VerbesserungReiter; label: string }[] = [
-  { key: 'energieziele', label: UEMS_ENERGIEZIELE },
-  { key: 'massnahmen', label: UEMS_MASSNAHMEN },
-  { key: 'abweichungen', label: UEMS_ABWEICHUNGEN },
-];
 
 export const KNOPF_SETZEN = `${UEMS_ENERGIEZIEL} setzen`;
 export const KNOPF_BEWERTEN = 'bewerten';
@@ -68,6 +52,10 @@ export const MONAT_SPALTEN = {
 
 export const SUMME = 'Summe';
 export const NOCH_NICHT_ENDGUELTIG = 'noch nicht endgültig';
+/** Befund 1 (Konzept Verbessern v1): ein offener Monat nennt den Grund der Route statt nur „noch nicht endgültig“. */
+export const MONAT_LAEUFT = 'läuft noch';
+export const MONAT_OHNE_WERT = 'kein gemessener Wert';
+export const NICHT_BEWERTBAR = 'nicht bewertbar';
 export const VERLAUF = 'Verlauf';
 export const VORSCHLAG = 'Vorschlag';
 export const LADEFEHLER = `Die ${UEMS_ENERGIEZIELE} konnten nicht geladen werden.`;
@@ -127,20 +115,36 @@ export function standSpalte(s: Pick<EnergiezielStand, 'summe' | 'monate_text'>):
 }
 
 export type MonatZeile =
-  | { art: 'offen'; periode: string; beschriftung: string }
+  | { art: 'offen'; periode: string; beschriftung: string; grund: string }
   | { art: 'gezaehlt'; periode: string; beschriftung: string; gemessen: string; erwartet: string; delta: string | null;
       urteil: string; band: string | null; urteilKlasse: string }
   | { art: 'ausgeschlossen'; periode: string; beschriftung: string; gemessen: string; satz: string };
 
 /**
- * Je Monat der Zielperiode eine Zeile: noch nicht endgültig · gezählt (gemessen, erwartet, Δ, Urteil mit Band) ·
+ * Der Grund eines nicht endgültigen Monats aus der Route (`bereinigt.grund`, sonst der Satz der Route): „läuft noch“,
+ * „kein gemessener Wert“ — nur ohne Grund (Wert da, aber noch nicht endgültig) bleibt „noch nicht endgültig“.
+ */
+export function offenGrund(v: { satz: string; bereinigt: { grund: string | null } }): string {
+  const g = v.bereinigt.grund;
+  if (g === 'periode_nicht_zu_ende') return MONAT_LAEUFT;
+  if (g === 'keine_werte') return MONAT_OHNE_WERT;
+  if (g) {
+    const i = v.satz.indexOf(' — ');
+    // Ohne Satz der Route (etwa `basis_fehlt` ohne Bezugsbasis) bleibt die Zelle nicht leer.
+    return (i >= 0 ? v.satz.slice(i + 3) : v.satz).replace(/\.$/, '').trim() || NICHT_BEWERTBAR;
+  }
+  return NOCH_NICHT_ENDGUELTIG;
+}
+
+/**
+ * Je Monat der Zielperiode eine Zeile: offen mit Grund der Route · gezählt (gemessen, erwartet, Δ, Urteil mit Band) ·
  * nicht gezählt mit dem Satz des Lesers als Grund (Z3). Zählt ein Monat, entscheidet der Leser über `nicht_gezaehlt`.
  */
 export function monatZeilen(s: Pick<EnergiezielStand, 'monate' | 'nicht_gezaehlt'>): MonatZeile[] {
   const aus = new Set(s.nicht_gezaehlt.map((n) => n.monat));
   return s.monate.map(({ periode, endgueltig, vergleich: v }) => {
     const beschriftung = v.beschriftung;
-    if (!endgueltig) return { art: 'offen', periode, beschriftung };
+    if (!endgueltig) return { art: 'offen', periode, beschriftung, grund: offenGrund(v) };
     const b = v.bereinigt;
     if (aus.has(periode) || b.erwartet === null) {
       return { art: 'ausgeschlossen', periode, beschriftung, gemessen: menge(b.gemessen.wert, b.gemessen.einheit), satz: v.satz };
@@ -234,6 +238,8 @@ export const BEGRUENDUNG_MIN = 10;
 export const BEGRUENDUNG_MAX = 500;
 export const begruendungOk = (t: string) => t.trim().length >= BEGRUENDUNG_MIN && t.trim().length <= BEGRUENDUNG_MAX;
 export const BEGRUENDUNG_HINWEIS = `Begründung mit ${BEGRUENDUNG_MIN} bis ${BEGRUENDUNG_MAX} Zeichen.`;
+/** Konzept Verbessern v1 §8.4: der Platzhalter einer Begründung - ein Beispiel statt der Länge. */
+export const BEGRUENDUNG_BEISPIEL = 'Zum Beispiel: was Sie geprüft haben und was Sie daraus schließen.';
 
 /**
  * Der Zielwert im Dialog: „Prozent weniger als erwartet“, eine Stelle; gesendet wird er wie im Vertrag (weniger

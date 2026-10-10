@@ -47,15 +47,20 @@ public final class EnergiemanagementDokumentDto {
 
     /**
      * Fassung entwerfen: Wortlaut ODER Verweis; beim Anwendungsbereich Standorte und Träger; Begründung ab Fassung 2.
-     * Ein offener Entwurf wird überschrieben (dieselbe Nr.), ein offener Antrag nicht.
+     * Ein offener Entwurf wird überschrieben (dieselbe Nr.), ein offener Antrag nicht. Additiv (Konzept Nachweisen n1,
+     * Entscheid 10): {@code original} - wo das unterschriebene Original dieser Fassung liegt, nur an einem Wortlaut.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record FassungEntwerfen(String form, String wortlaut, Verweis verweis,
-            AnwendungsbereichEingang anwendungsbereich, String begruendung, String beschlussKennung) {}
+            AnwendungsbereichEingang anwendungsbereich, String begruendung, String beschlussKennung, Beleg original) {}
 
-    /** Beantragen oder freigeben: wer entschieden hat (eine Person, auch ohne Konto), an welchem Tag, warum. */
+    /**
+     * Beantragen oder freigeben: wer entschieden hat (eine Person, auch ohne Konto), an welchem Tag, warum. Additiv
+     * (Entscheid 10): {@code original} - wo das unterschriebene Original der Fassung liegt; nur beim Übergang aus dem
+     * Entwurf und nur an einem Wortlaut, danach ist es so unveränderlich wie die Fassung.
+     */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Entscheid(UUID entschiedenVon, LocalDate entschiedenAm, String begruendung) {}
+    public record Entscheid(UUID entschiedenVon, LocalDate entschiedenAm, String begruendung, Beleg original) {}
 
     /** Die zweite Person lehnt einen Antrag ab — mit Begründung. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -99,13 +104,16 @@ public final class EnergiemanagementDokumentDto {
     /**
      * Eine Fassung: {@code status} ist das gespeicherte Wort, bei einer früheren freigegebenen „abgeloest“ (DK4, beim
      * Lesen). {@code freigabe} ist das Konto, das die Entscheidung eingetragen (bei Vier-Augen: beantragt) hat,
-     * {@code zweite_person} das Konto, das bei Vier-Augen bestätigt oder abgelehnt hat.
+     * {@code zweite_person} das Konto, das bei Vier-Augen bestätigt oder abgelehnt hat. Additiv (Entscheid 10):
+     * {@code original} - wo das unterschriebene Original dieser Fassung liegt; {@code null} ohne Angabe und an jedem
+     * Verweis (dort ist der Verweis das Original).
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Fassung(int nr, String form, String wortlaut, Verweis verweis, Anwendungsbereich anwendungsbereich,
             String status, String begruendung, String beschlussKennung, String pruefsumme, boolean vieraugen,
             PersonKurz entschiedenVon, LocalDate entschiedenAm, String freigabeBegruendung, Eingetragen freigabe,
-            Eingetragen zweitePerson, String ablehnungBegruendung, Instant freigegebenAm, Eingetragen eingetragen) {}
+            Eingetragen zweitePerson, String ablehnungBegruendung, Instant freigegebenAm, Eingetragen eingetragen,
+            Beleg original) {}
 
     /** Ein Eintrag: bekannt gemacht · geprüft, bleibt · aufgehoben · Kommentar. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -113,10 +121,14 @@ public final class EnergiemanagementDokumentDto {
             PersonKurz entschiedenVon, String kreis, String weg, String wegWortlaut, String begruendung,
             String beschlussKennung, String kommentar, String satz, Eingetragen eingetragen) {}
 
-    /** DK5 beim Abruf (Vertrag {@code ueberpruefung}); {@code null} an einem aufgehobenen Dokument. */
+    /**
+     * DK5 beim Abruf (Vertrag {@code ueberpruefung}); {@code null} an einem aufgehobenen Dokument. Additiv (Konzept
+     * Wiedervorlage w1): {@code basis_art} sagt, woher die Basis kommt ({@code freigabe} der gültigen Fassung oder ein
+     * späteres {@code geprueft_bleibt}), {@code monate} der Rhythmus des Dokuments; beide {@code null} ohne Frist.
+     */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Ueberpruefung(LocalDate abruf, LocalDate faelligAm, LocalDate basis, Integer fassung, Integer tage,
-            String satz, String grund) {}
+            String satz, String grund, String basisArt, Integer monate) {}
 
     /** Die Kundensätze der Seite (Vertrag §7), wörtlich; {@code null}, wo die Lage keinen trägt. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

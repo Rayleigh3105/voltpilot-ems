@@ -30,7 +30,8 @@ public class FeststellungRepository {
             String vorgabeDokument, Integer vorgabeFassung, String vorgabeWortlaut, UUID standortId, String bezugAufgabe,
             UUID bezugDokumentId, String bezugDokument, List<String> bezugObjekte, UUID festgestelltVon,
             LocalDate festgestelltAm, String verantwortlichSub, String verantwortlichName, LocalDate frist,
-            String zustand, ProtokollAkteur akteur, Instant angelegtAm, int eintraege, String ergebnis) {}
+            String zustand, ProtokollAkteur akteur, Instant angelegtAm, int eintraege, String ergebnis,
+            LocalDate abgeschlossenAm) {}
 
     public record Neu(String quelleArt, UUID auditId, String quelleKennung, String quelleWortlaut, String wortlaut,
             UUID vorgabeDokumentId, Integer vorgabeFassung, String vorgabeWortlaut, UUID standortId,
@@ -70,7 +71,10 @@ public class FeststellungRepository {
                     AND e.feststellung_id = f.id) AS eintrag_zahl,
                 (SELECT w.ergebnis FROM feststellung_wirksamkeit w WHERE w.tenant_id = f.tenant_id
                     AND w.feststellung_id = f.id AND w.status = 'freigegeben'
-                    AND w.ergebnis IN ('wirksam', 'ohne_massnahme', 'zurueckgenommen')) AS schluss
+                    AND w.ergebnis IN ('wirksam', 'ohne_massnahme', 'zurueckgenommen')) AS schluss,
+                (SELECT w.entschieden_tag FROM feststellung_wirksamkeit w WHERE w.tenant_id = f.tenant_id
+                    AND w.feststellung_id = f.id AND w.status = 'freigegeben'
+                    AND w.ergebnis IN ('wirksam', 'ohne_massnahme', 'zurueckgenommen')) AS schluss_am
             FROM feststellung f
             LEFT JOIN internes_audit a ON a.id = f.audit_id AND a.tenant_id = f.tenant_id
             LEFT JOIN energiemanagement_dokument vd ON vd.id = f.vorgabe_dokument_id AND vd.tenant_id = f.tenant_id
@@ -87,7 +91,8 @@ public class FeststellungRepository {
             texte(rs.getArray("bezug_objekte")), rs.getObject("festgestellt_von", UUID.class),
             rs.getObject("festgestellt_am", LocalDate.class), rs.getString("verantwortlich_sub"),
             rs.getString("verantwortlich_name"), rs.getObject("frist", LocalDate.class), rs.getString("zustand"),
-            akteur(rs, "actor"), instant(rs, "angelegt_am"), rs.getInt("eintrag_zahl"), rs.getString("schluss"));
+            akteur(rs, "actor"), instant(rs, "angelegt_am"), rs.getInt("eintrag_zahl"), rs.getString("schluss"),
+            rs.getObject("schluss_am", LocalDate.class));
 
     /** Alle sichtbaren Feststellungen: offene zuerst nach Frist (am längsten überfällig oben), dann abgeschlossene. */
     public List<Feststellung> feststellungen() {

@@ -190,6 +190,63 @@ class AbweichungApiTest {
                 w.kz4())).isEqualTo(1);
     }
 
+    /**
+     * Verbessern (Entscheid 4): {@code GET /api/v1/auffaelligkeiten} liest die Vermerke über alle sichtbaren
+     * Kennzahlen - ältester Monat zuerst, {@code zustand} filtert, {@code offen} zählt alle offenen. Derselbe Zaun wie an
+     * der Kennzahl: die Bearbeiterin an ST-2 und ein fremder Kundenbereich bekommen eine leere Liste, kein 404; der
+     * Bedienberechtigte an ST-1 liest mit.
+     */
+    @Test
+    void alleVermerkeUeberAlleSichtbarenKennzahlen() throws Exception {
+        Welt w = welt();
+        Welt fremd = welt();
+        JsonNode anlass = vermerkAus("KZ-0004", "2027-12").get("anlass");
+        UUID dezember = vermerk(w, 2, "2027-12", anlass, "2028-01-07T04:12:00Z");
+        UUID november = vermerk(w, 1, "2026-11", anlass, "2026-12-07T05:00:00Z");
+        Antwort zk = ruf(w, "ines", HttpMethod.POST, "/api/v1/kennzahlen/" + w.kz4() + "/auffaelligkeiten/" + november
+                + "/antwort", Map.of("antwort", "zur_kenntnis", "begruendung", "Baustellenstrom des Anbaus, bekannt."));
+        assertThat(zk.status()).as(zk.text()).isEqualTo(200);
+        String pfad = "/api/v1/auffaelligkeiten";
+
+        Antwort alle = ruf(w, "ines", HttpMethod.GET, pfad, null);
+        assertThat(alle.status()).as(alle.text()).isEqualTo(200);
+        assertThat(alle.body().get("abruf").asText()).isEqualTo("2028-01-12");
+        assertThat(alle.body().get("offen").asInt()).isEqualTo(1);
+        assertThat(alle.body().get("vermerke")).hasSize(2);
+        assertThat(alle.body().at("/vermerke/0/id").asText()).isEqualTo(november.toString());
+        assertThat(alle.body().at("/vermerke/0/satz").asText()).startsWith("Auffälligkeit November 2026: 12,9 % mehr");
+        assertThat(alle.body().at("/vermerke/1/id").asText()).isEqualTo(dezember.toString());
+        assertThat(alle.body().at("/vermerke/1/kennzahl/kennzeichen").asText()).isEqualTo("KZ-0004");
+        assertThat(alle.body().at("/vermerke/1/kennzahl/name").asText()).isEqualTo("Stromeinsatz Spritzguss je kg");
+        assertThat(alle.body().at("/vermerke/1/standort_id").asText()).isEqualTo(w.st1().toString());
+        assertThat(alle.body().at("/vermerke/1/anlass_pruefsumme").asText())
+                .isEqualTo(vermerkAus("KZ-0004", "2027-12").get("pruefsumme").asText());
+
+        Antwort offen = ruf(w, "ines", HttpMethod.GET, pfad + "?zustand=offen", null);
+        assertThat(offen.body().get("offen").asInt()).isEqualTo(1);
+        assertThat(offen.body().get("vermerke")).hasSize(1);
+        assertThat(offen.body().at("/vermerke/0/id").asText()).isEqualTo(dezember.toString());
+        Antwort beantwortet = ruf(w, "ines", HttpMethod.GET, pfad + "?zustand=beantwortet", null);
+        assertThat(beantwortet.body().get("offen").asInt()).isEqualTo(1);
+        assertThat(beantwortet.body().get("vermerke")).hasSize(1);
+        assertThat(beantwortet.body().at("/vermerke/0/antwort").asText()).isEqualTo("zur_kenntnis");
+
+        Antwort murat = ruf(w, "murat", HttpMethod.GET, pfad + "?zustand=offen", null);
+        assertThat(murat.status()).as(murat.text()).isEqualTo(200);
+        assertThat(murat.body().get("vermerke")).hasSize(1);
+        for (Antwort leer : List.of(ruf(w, "rita", HttpMethod.GET, pfad, null), ruf(fremd, "ines", HttpMethod.GET, pfad,
+                null))) {
+            assertThat(leer.status()).as(leer.text()).isEqualTo(200);
+            assertThat(leer.body().get("offen").asInt()).isZero();
+            assertThat(leer.body().get("vermerke")).isEmpty();
+        }
+
+        Antwort fremdesFeld = ruf(w, "ines", HttpMethod.GET, pfad + "?kennzahl=" + w.kz4(), null);
+        assertThat(fremdesFeld.status()).as(fremdesFeld.text()).isEqualTo(400);
+        assertThat(fremdesFeld.body().get("code").asText()).isEqualTo("anfrage_ungueltig");
+        assertThat(ruf(w, "ines", HttpMethod.GET, pfad + "?zustand=zu", null).status()).isEqualTo(400);
+    }
+
     /** A2: alle offenen Vermerke derselben Kennzahl × Fassung gehen in EINE Abweichung; ohne Frist Eröffnungstag + 30. */
     @Test
     void alleOffenenVermerkeGehenHinein() throws Exception {

@@ -29,6 +29,7 @@
  * `tariffInput.TARIF_PARAM_FIELDS`.
  * ─────────────────────────────────────────────────────────────────────────────
  */
+import { UEMS_KENNZAHLEN } from './glossarEinstieg';
 import type { SettingsGroupId } from './settingsNav';
 
 // ---------------------------------------------------------------------------
@@ -72,10 +73,10 @@ export const VERAEUSSERUNGSFORM_TIP =
  */
 
 /** Die Wurzel des Ortsbaums — das, worüber der Kunde berichtet. */
-export const UEMS_UNTERNEHMEN = 'Unternehmen';
+export { UEMS_UNTERNEHMEN } from './glossarEinstieg';
 
 /** Ein räumlich abgegrenzter Ort des Unternehmens mit Adresse. */
-export const UEMS_STANDORT = 'Standort';
+export { UEMS_STANDORT } from './glossarEinstieg';
 
 /** Die Koordinaten-Zeile der Anlage, wenn neben ihr das Objekt „Standort“ steht (AP-02 W4). */
 export const UEMS_STANDORT_AUF_DER_KARTE = 'Standort auf der Karte';
@@ -93,7 +94,7 @@ export const UEMS_NETZANSCHLUSS = 'Netzanschluss';
 export const UEMS_ELEKTRISCHES_SYSTEM = 'elektrisches System';
 
 /** Die fachliche Identität einer Messung — sie überlebt Gerät, Kanal und Box. */
-export const UEMS_MESSSTELLE = 'Messstelle';
+export { UEMS_MESSSTELLE } from './glossarEinstieg';
 
 /**
  * WOHER eine Messstelle ihre Werte hat: Gerät und Messwert, zeitgültig (AP-04
@@ -184,12 +185,20 @@ export const UEMS_FUEHRENDE_BOX = 'führende Box';
  * Band, Film und Panel je anders. Die Rollen ohne eigenes Listenwort
  * (Verkaufen, Lastspitze kappen, Reserve halten) sagt `fahrplanWhy.roleLabel`.
  */
-export const FAHRPLAN_TAETIGKEIT = {
-  sonneSpeichern: 'Sonne speichern',
-  guenstigLaden: 'Günstig aus dem Netz laden',
-  verbrauchDecken: 'Verbrauch decken',
-  warten: 'Warten',
-  einspeisungPausieren: 'Einspeisung pausieren',
+export { FAHRPLAN_TAETIGKEIT } from './glossarEinstieg';
+
+/**
+ * Die LADEQUELLEN unter „Womit laden?“ (Steuerung, Reiter Laden). „Sonne +
+ * Speicher“ (06.10.2026, Glossar-Nachtrag „Sonne + Speicher“) gibt dem Auto zum
+ * Überschuss die Speicherenergie über der Untergrenze, die das Haus laut
+ * Prognose bis zur nächsten Sonne braucht. Die Moduswahl „Aus · Smart ·
+ * Schnell“ darüber bleibt unverändert.
+ */
+export const LADEQUELLE = {
+  sonne: 'Nur Sonne',
+  min: 'Sonne + Minimum',
+  speicher: 'Sonne + Speicher',
+  guenstig: 'Günstig',
 } as const;
 
 /**
@@ -212,9 +221,9 @@ export const STEUERUNG_SZENE = {
  * „Netzladen nach MiSpeL“ mit den Viertelstunden-Mengen (1)¼ und (2)¼. Dieselben Wörter in Cockpit, Verlauf ›
  * Erlöse, Fahrplan und Portfolio (`speicherAussage.ts`).
  */
-export const MISPEL_NETZLADEN = 'Netzladen nach MiSpeL';
-export const MISPEL_STROMRECHNUNG = 'auf der Stromrechnung';
-export const MISPEL_GUTSCHRIFT = 'Gutschrift nach Anlage 1';
+export { MISPEL_NETZLADEN } from './glossarEinstieg';
+export { MISPEL_STROMRECHNUNG } from './glossarEinstieg';
+export { MISPEL_GUTSCHRIFT } from './glossarEinstieg';
 
 /**
  * MiSpeL MP-41c (Bedienkonzept BK-41c = A/A/A, Captain 05.10.2026; `docs/fachmodell/glossar.md` › Zurückspeisen ruht,
@@ -299,7 +308,7 @@ export const GESAMTWERT = SUMMENWERT;
  * Kennzahl-Fläche nie Durchschnitt oder Mittel (`copy.test.ts`).
  */
 export const UEMS_KENNZAHL = 'Kennzahl';
-export const UEMS_KENNZAHLEN = 'Kennzahlen';
+export { UEMS_KENNZAHLEN } from './glossarEinstieg';
 export const UEMS_BERECHNUNG = 'Berechnung';
 export const UEMS_FASSUNG = 'Fassung';
 export const UEMS_VERSION = 'Version';
@@ -437,7 +446,7 @@ export const UEMS_VERGLEICH_ENTFERNEN = '{messstelle} aus dem Bild nehmen';
 export const UEMS_VERGLEICH_NICHT_ABRUFBAR = 'Der Vergleich ist gerade nicht abrufbar.';
 
 /** Nur mit Präfix: „Bilanz“ allein ist auf Kundenflächen verboten, „Erlösbilanz“ ist etwas anderes (AP-10 E14). */
-export const UEMS_ENERGIEBILANZ = 'Energiebilanz';
+export { UEMS_ENERGIEBILANZ } from './glossarEinstieg';
 
 /** „15 von 16 Messstellen liefern Daten“ — EINE Zählung je Ebene aus dem Register (AP-13 E13), nie der Online-Status der Box. */
 export const UEMS_DATENLAGE = 'Datenlage';
@@ -489,6 +498,15 @@ export const UEMS_BEWERTUNG_ABDECKUNG = {
   ersatz: 'Ersatz',
   ungemessen: 'ungemessen',
 } as const;
+
+/**
+ * Konzept Auswerten a1 §6.1 (9): dieselben Wörter auf Verbrauch, Bewertung und Energiebilanz — der Anteil, den die
+ * Bereiche (Energieeinsätze) messen, die Rest-Reihe und der Ort ohne eigenen Zähler.
+ * Glossar: `docs/fachmodell/glossar.md` › Energieeinsatz (Abschnitt „Verbrauch“).
+ */
+export const UEMS_EINEM_BEREICH_ZUGEORDNET = 'einem Bereich zugeordnet';
+export const UEMS_KEINEM_BEREICH_ZUGEORDNET = 'Keinem Bereich zugeordnet';
+export const UEMS_OHNE_EIGENEN_ZAEHLER = 'ohne eigenen Zähler';
 
 /**
  * AP-16 IP-18 (G5, AP-04 E3): der Satz der Quelle-Karte über der Befund-Zeile. Die Karte stellt weiter nebeneinander
@@ -579,6 +597,22 @@ export const UEMS_BEWERTUNG_SAETZE = {
 } as const;
 
 /**
+ * Konzept Auswerten a1 §6.7 (Captain-Freigabe 06.10.2026): die energetische Bewertung als Ergebnis-Seite - welche
+ * Bereiche wesentlich sind, welche nicht, welche noch ohne Werte; Kriterien in Worten statt Kürzeln. „Bereich“ ist das
+ * kurze Kundenwort für den Energieeinsatz; die Kürzel K1 bis K8 bleiben in Bericht, Prüfsumme und Kriterien-Dialog.
+ * Glossar: `docs/fachmodell/glossar.md` › Einstufung (Abschnitt „Die Bewertung als Ergebnis“).
+ */
+export const UEMS_ENERGETISCHE_BEWERTUNG = 'Energetische Bewertung';
+export const UEMS_ENERGETISCHE_BEWERTUNG_WORT = 'energetische Bewertung';
+export const UEMS_WESENTLICHE_BEREICHE = 'Wesentliche Bereiche';
+export const UEMS_NICHT_WESENTLICHE_BEREICHE = 'Nicht wesentlich';
+export const UEMS_NOCH_NICHT_EINGESTUFT = 'Noch nicht eingestuft';
+export const UEMS_NOCH_OHNE_WERTE = 'Noch ohne Werte';
+export const UEMS_WEICHT_VOM_VORSCHLAG_AB = 'weicht vom Vorschlag ab';
+export const UEMS_WIE_VOLTPILOT_VORSCHLAEGT = 'Wie VoltPilot vorschlägt';
+// „Keinem Bereich zugeordnet“ steht einmal oben bei den Wörtern von Verbrauch, Bewertung und Energiebilanz (§6.1).
+
+/**
  * UEMS AP-17 IP-4 (SP1–SP3) — Kundenwörter der Bezugsbasis. Die Norm-Wörter des Konzepts stehen nur dort und in
  * Verträgen; `copy.test.ts` (Block „Bezugsbasis“) hält sie von den Kundenflächen fern. Ein Urteil gibt es nur
  * bereinigt gegen eine freigegebene Bezugsbasis, mit Band und Bedingung (E8 = A) — nie an einer rohen Zahl (VG3).
@@ -593,6 +627,19 @@ export const UEMS_BEREINIGT_UM = (einflussgroesse: string) => `${UEMS_BEREINIGT}
 export const UEMS_ERWARTET = 'erwartet';
 export const UEMS_GRUNDLAST = 'Grundlast';
 export const UEMS_LEISTUNGSVERGLEICH = 'Leistungsvergleich';
+
+/**
+ * UEMS Portfolio-Übersicht (Konzept `data/vp-portfolio-konzept2-p2` §4.2) — die
+ * „Leitkennzahl" ist die FÜHRENDE Kennzahl der Unternehmens-Übersicht: die
+ * {@link UEMS_ENERGIELEISTUNGSKENNZAHL} mit offenem Energieziel, die das
+ * Kachelraster als erste (breite) Kachel anführt. Kein neues Fachobjekt,
+ * sondern die Präsentations-Rolle dieser einen Kennzahl im Portfolio-Kopf.
+ * Fehlt ein offenes Ziel, führt stattdessen die Datenlage (Satz unten).
+ * Glossar: `docs/fachmodell/glossar.md` › Energieleistungskennzahl
+ * (Abschnitt „Leitkennzahl").
+ */
+export const UEMS_LEITKENNZAHL = 'Leitkennzahl';
+export const UEMS_LEITKENNZAHL_OHNE_ZIEL_SATZ = `Noch keine ${UEMS_LEITKENNZAHL} gegen ein Ziel hinterlegt.`;
 
 /**
  * Die Urteil-Wörter (U2, U3, SP1). Der Vertragswert `nicht_anwendbar` heißt auf der Kundenfläche „nicht bewertbar“;
@@ -615,20 +662,21 @@ export const UEMS_KOORDINATEN_FEHLEN_SATZ = (standort: string) =>
 /**
  * UEMS AP-18 IP-4 (SP1–SP4) — Kundenwörter des Bereichs „Ziele und Maßnahmen“. Die Norm-Wörter (Nichtkonformität,
  * Korrekturmaßnahme, Aktionsplan) stehen nur im Konzept und in Verträgen; `copy.test.ts` (Block „Ziele und
- * Maßnahmen“) hält sie von den Kundenflächen fern. „Energieziel“, nie „Ziel“ allein — „Ziel: 2,2 kW“ gehört der
+ * Maßnahmen“) hält sie von den Kundenflächen fern; einzige Ausnahme ist das Feld `fachwort` in `begriffe.ts`
+ * (Konzept Verbessern v1, Entscheid 14). „Energieziel“, nie „Ziel“ allein — „Ziel: 2,2 kW“ gehört der
  * Steuerung (W6); „Verbesserung“ nur im Wirkungs-Satz mit Bedingung, nie als Beschriftung (W5).
  */
-export const UEMS_ZIELE_UND_MASSNAHMEN = 'Ziele und Maßnahmen';
+export { UEMS_ZIELE_UND_MASSNAHMEN } from './glossarEinstieg';
 export const UEMS_ENERGIEZIEL = 'Energieziel';
-export const UEMS_ENERGIEZIELE = 'Energieziele';
+export { UEMS_ENERGIEZIELE } from './glossarEinstieg';
 export const UEMS_ZIELWERT = 'Zielwert';
 export const UEMS_ZIELPERIODE = 'Zielperiode';
 export const UEMS_MASSNAHME = 'Maßnahme';
-export const UEMS_MASSNAHMEN = 'Maßnahmen';
+export { UEMS_MASSNAHMEN } from './glossarEinstieg';
 export const UEMS_TERMIN = 'Termin';
 export const UEMS_UMGESETZT_AM = 'umgesetzt am';
 export const UEMS_ABWEICHUNG = 'Abweichung';
-export const UEMS_ABWEICHUNGEN = 'Abweichungen';
+export { UEMS_ABWEICHUNGEN } from './glossarEinstieg';
 export const UEMS_AUFFAELLIGKEIT = 'Auffälligkeit';
 export const UEMS_MESSGRUNDLAGE = 'Messgrundlage';
 export const UEMS_AUSGANGSLAGE = 'Ausgangslage';
@@ -680,6 +728,22 @@ export const UEMS_AUFFAELLIGKEIT_ANTWORTEN = {
   zur_kenntnis: UEMS_ZUR_KENNTNIS_GENOMMEN,
 } as const;
 
+/**
+ * Konzept Verbessern v1 §7 (Captain-Freigabe 06.10.2026): die Alltagswörter der Flächen. „auf Kurs“ ist der
+ * Zwischenstand eines Energieziels (Entscheid 3); „Vorher“ und „gemessen an“ sagen auf den Flächen, was im Fachmodell
+ * Ausgangslage und Messgrundlage heißt; „zweite Person“ ist das Vier-Augen-Prinzip; „Einsparung“ ist der Unterschied
+ * zwischen erwartetem und gemessenem Verbrauch, nie „Einsparung durch“ eine Maßnahme. Die Normwörter (Aktionsplan,
+ * Korrekturmaßnahme, Nichtkonformität, Energieleistungsverbesserung) stehen nur im Feld `fachwort` von `begriffe.ts`,
+ * sichtbar in der letzten Zeile von „Was ist …?“ (Entscheid 14), sonst auf keiner Fläche.
+ */
+export const UEMS_AUF_KURS = 'auf Kurs';
+export const UEMS_KNAPP_DAHINTER = 'knapp dahinter';
+export const UEMS_NICHT_AUF_KURS = `nicht ${UEMS_AUF_KURS}`;
+export const UEMS_VORHER = 'Vorher';
+export const UEMS_GEMESSEN_AN = 'gemessen an';
+export const UEMS_ZWEITE_PERSON = 'zweite Person';
+export const UEMS_EINSPARUNG = 'Einsparung';
+
 /** Gemessenes Δ mit einer Stelle; der Wert einer Person (erwartete Wirkung, Zielwert) so, wie sie ihn gesetzt hat. */
 const verbesserungRichtung = (delta: number, stellen: number | null = 1) =>
   `${Math.abs(delta).toLocaleString('de-DE', { minimumFractionDigits: stellen ?? 0, maximumFractionDigits: stellen ?? 1 })} % ${delta < 0 ? 'weniger' : 'mehr'}`;
@@ -718,11 +782,62 @@ export const UEMS_VERBESSERUNG_SAETZE = {
  * Energiemanagement“, nicht die „zuständige Box“; „Managementbewertung“, nie „Bewertung“ allein. „Fassung“ ist
  * `UEMS_FASSUNG`, „Überprüfung fällig“ ist `UEMS_UEBERPRUEFUNG_FAELLIG` — dieselben Wörter, keine zweite Konstante.
  */
-export const UEMS_ENERGIEMANAGEMENT = 'Energiemanagement';
+export { UEMS_ENERGIEMANAGEMENT } from './glossarEinstieg';
 export const UEMS_VERZEICHNIS = 'Verzeichnis';
-export const UEMS_WIEDERVORLAGE = 'Wiedervorlage';
+export { UEMS_WIEDERVORLAGE } from './glossarEinstieg';
+/**
+ * Konzept Wiedervorlage w1 (Captain-Freigabe 05.10.2026): der Name bleibt, ein Satz darunter sagt, was er meint. Die
+ * Liste ordnet nach Dringlichkeit; „Überfällig“ heißt abgelaufen („fällig“ allein hieße umgangssprachlich „jetzt dran“).
+ */
+export const UEMS_WIEDERVORLAGE_SATZ = 'Alle Fristen Ihres Energiemanagements';
+export const UEMS_UEBERFAELLIG = 'Überfällig';
+export const UEMS_KEINE_FRIST_UEBERFAELLIG = 'Keine Frist überfällig';
+export const UEMS_NAECHSTE_FRISTEN = 'Nächste Fristen';
+export const UEMS_ZULETZT_ERLEDIGT = 'Zuletzt erledigt';
+export const UEMS_WOHER_FRISTEN = 'Woher kommen diese Fristen?';
+
+/**
+ * Konzept Messen m1 (Captain-Freigabe 05.10.2026): woher die Werte einer Messstelle kommen - die Spalte der Liste, die
+ * zwei gleichwertigen Wege einer gemessenen Messstelle im Messstellen-Dialog und das Wort ohne Weg. „Quelle“ bleibt das
+ * Fachwort im Aufklapper und in den Dialogen. Der Ableserhythmus ist fest monatlich (AP-09 Z7).
+ * Glossar: `docs/fachmodell/glossar.md` › Logische Messstelle (Abschnitt „Woher die Werte kommen“).
+ */
+export const UEMS_WOHER_DIE_WERTE = 'Woher die Werte kommen';
+export const UEMS_WEG_GERAET = 'Automatisch von einem Gerät';
+export const UEMS_WEG_ABLESEN = 'Von Hand ablesen';
+export const UEMS_NOCH_KEINE_QUELLE = 'noch keine Quelle';
+export const UEMS_ABLESERHYTHMUS = 'Ableserhythmus';
+/**
+ * Konzept Messen m1 §6.4/§6.5 (Messen-Bau m2): die Seite einer Messstelle - EINE Karte „Zuordnung“ mit Ort, „Im
+ * Stromnetz“ (Fachwort: elektrische Stellung), Prozess und Kostenstellen; beim Ablesezähler die Kachel „Nächste
+ * Ablesung“ und oben genau ein Schritt. Glossar: `docs/fachmodell/glossar.md` › Logische Messstelle (Abschnitt „Seite
+ * einer Messstelle“).
+ */
+export const UEMS_ZUORDNUNG = 'Zuordnung';
+export const UEMS_IM_STROMNETZ = 'Im Stromnetz';
+export const UEMS_NAECHSTE_ABLESUNG = 'Nächste Ablesung';
+export const UEMS_ABLESUNG_EINTRAGEN = 'Ablesung eintragen';
+/**
+ * Konzept Messen m1 §6.5, Variante 3A (Messen-Bau m2): die Ablese-Runde je Gebäude - „Ablesen ›“ im Kopf der Ortskarte
+ * öffnet „Halle 1 ablesen“. Glossar: `docs/fachmodell/glossar.md` › Logische Messstelle (Abschnitt „Ablese-Runde je
+ * Gebäude“).
+ */
+export const UEMS_ABLESEN = 'Ablesen';
+/**
+ * Konzept Auswerten a1, Entscheid 9 (Messen-Bau m2): ein offener Messbedarf steht unter Messen als geplante Messstelle
+ * an seinem Ort, bis jemand die Messstelle einrichtet. Glossar: `docs/fachmodell/glossar.md` › Messbedarf (Abschnitt
+ * „Geplante Messstellen unter Messen“).
+ */
+export const UEMS_GEPLANTE_MESSSTELLE = 'geplante Messstelle';
+/** Die Fristen nach den nächsten 30 Tagen bis zwölf Monate nach dem Abruf, nach Monaten (Vertrag 1.1, `spaeter`). */
+export const UEMS_JAHRESPLAN = 'Jahresplan';
+/**
+ * Die Person einer Frist, wenn das Objekt keine nennt: die der „Aufgabe im Energiemanagement“, zu der die Frist gehört
+ * („Ines Kaltenbach · laut Aufgabe „Dokumente des Energiemanagements pflegen““).
+ */
+export const UEMS_LAUT_AUFGABE = 'laut Aufgabe';
 export const UEMS_DOKUMENT = 'Dokument';
-export const UEMS_DOKUMENTE = 'Dokumente';
+export { UEMS_DOKUMENTE } from './glossarEinstieg';
 export const UEMS_WORTLAUT = 'Wortlaut';
 export const UEMS_VERWEIS = 'Verweis';
 export const UEMS_GEFUEHRT_IN_IHREM_SYSTEM = 'Geführt in Ihrem System';
@@ -746,7 +861,7 @@ export const UEMS_SOFORTIGE_BEHEBUNG = 'sofortige Behebung';
 export const UEMS_AEHNLICHE_FAELLE = 'ähnliche Fälle';
 /** Ein Stand Nr. n einer Person an der Feststellung — nicht die Wirkung einer Maßnahme (AP-18). */
 export const UEMS_WIRKSAMKEIT = 'Wirksamkeit';
-export const UEMS_MANAGEMENTBEWERTUNG = 'Managementbewertung';
+export { UEMS_MANAGEMENTBEWERTUNG } from './glossarEinstieg';
 /** Konzept „Energiemanagement ohne Fachsprache“ K4: wozu die Managementbewertung da ist — vor ihrem Leer-Satz. */
 export const UEMS_MANAGEMENTBEWERTUNG_WOZU =
   'Die Managementbewertung ist der Rückblick der Leitung: Sie sieht sich die Ergebnisse an und hält fest, was sie beschließt.';
@@ -757,6 +872,8 @@ export const UEMS_FOLGE = 'Folge';
 export const UEMS_ENTSCHIEDEN_VON = 'entschieden von';
 export const UEMS_EINGETRAGEN_VON = 'eingetragen von';
 export const UEMS_GEPRUEFT_BLEIBT = 'geprüft, bleibt';
+/** Der Knopf dazu, an der Bezugsbasis (AP-17) und am Dokument (DK5): dasselbe Wort, eine Konstante. */
+export const UEMS_GEPRUEFT_BLEIBT_KNOPF = 'Geprüft, bleibt';
 export const UEMS_BEKANNT_GEMACHT = 'bekannt gemacht';
 export const UEMS_NOCH_NICHTS_FESTGEHALTEN = 'Hier ist noch nichts festgehalten.';
 
@@ -773,9 +890,8 @@ export const UEMS_VERANTWORTUNG =
  * die kurze Totzeit nach einer Wolkenkante ist kein Fehler und wird so gesagt;
  * ein bewusstes Netz-Laden des Fahrplans nennt seinen Grund.
  */
-export const LADEN_BEI_BEZUG_WOLKE =
-  'Eine Wolke hat die Sonne gerade verdeckt – der Speicher regelt in den nächsten Sekunden nach.';
-export const LADEN_BEI_BEZUG_FAHRPLAN = 'Der Fahrplan lädt jetzt für die teuren Stunden.';
+export { LADEN_BEI_BEZUG_WOLKE } from './glossarEinstieg';
+export { LADEN_BEI_BEZUG_FAHRPLAN } from './glossarEinstieg';
 
 // ---------------------------------------------------------------------------
 // 3 · Die Suchwörter der Einstellungen

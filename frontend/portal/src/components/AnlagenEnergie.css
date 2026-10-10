@@ -1,0 +1,311 @@
+/*
+ * Anlagen-Energie-Karten der UEMS-Übersicht (Konzept Runde 4). Energiedaten je
+ * Anlage in den Rollen-Farben des Flusses (`--vp-flow-*`), Flächen der Variante C.
+ * Keine zweite Palette (AGENTS.md): nur Haus-Tokens.
+ */
+.vp-ae-gruppen {
+  display: grid;
+  gap: var(--vp-c-space-5, 24px);
+}
+.vp-ae-gruppe {
+  display: grid;
+  gap: var(--vp-c-space-3, 12px);
+}
+.vp-ae-liste {
+  display: grid;
+  gap: var(--vp-c-space-3, 12px);
+}
+.vp-ae-leer {
+  margin: 0;
+  color: var(--vp-c-muted-fg, #475569);
+  font-size: var(--vp-c-fs-14, 0.875rem);
+}
+
+/* --- Die Karte --- */
+.vp-ae {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 16px);
+  background: var(--vp-c-card, #fff);
+  cursor: pointer;
+  transition: var(--vp-motion-chrome, border-color 120ms, box-shadow 120ms);
+}
+.vp-ae:hover {
+  border-color: color-mix(in srgb, var(--vp-navy, #1e3a5f) 30%, var(--vp-c-border, #e2e8f0));
+  box-shadow: var(--vp-shadow-sm, 0 2px 8px rgba(0, 0, 0, 0.04));
+}
+
+.vp-ae-kopf {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 6px;
+  min-width: 0;
+}
+.vp-ae-chips {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.vp-ae-open {
+  grid-column: 1;
+  grid-row: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.vp-ae-open:focus-visible {
+  outline: 2px solid var(--vp-action, #2c5282);
+  outline-offset: 2px;
+  border-radius: var(--vp-radius-sm, 10px);
+}
+.vp-ae-open:hover .vp-ae-name {
+  color: var(--vp-action, #2c5282);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.vp-ae-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--vp-flow-batt, #16a34a);
+}
+.vp-ae-dot.is-warn {
+  background: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-ae-dot.is-off {
+  background: var(--vp-text-gray, #66717c);
+}
+.vp-ae-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--vp-text-dark, #1a1a1a);
+  font-family: var(--vp-c-font, var(--vp-font-body));
+  font-size: var(--vp-c-fs-16, 1rem);
+  font-weight: var(--vp-c-fw-600, 600);
+}
+.vp-ae-typ {
+  flex: none;
+  padding: 2px 9px;
+  border-radius: var(--vp-radius-pill, 50px);
+  background: var(--vp-c-muted, #e9eff8);
+  color: var(--vp-c-muted-fg, #475569);
+  font-family: var(--vp-c-font, var(--vp-font-body));
+  font-size: var(--vp-c-fs-12, 0.75rem);
+  font-weight: var(--vp-c-fw-600, 600);
+  white-space: nowrap;
+}
+.vp-ae-unzugeordnet {
+  flex: none;
+  padding: 2px 9px;
+  border-radius: var(--vp-radius-pill, 50px);
+  background: var(--vp-c-warn-bg, #fff7ed);
+  color: var(--vp-c-warn-fg, #9a3412);
+  font-family: var(--vp-c-font, var(--vp-font-body));
+  font-size: var(--vp-c-fs-12, 0.75rem);
+  font-weight: var(--vp-c-fw-600, 600);
+  white-space: nowrap;
+}
+.vp-ae-chev {
+  grid-column: 2;
+  grid-row: 1;
+  display: inline-flex;
+  align-self: center;
+  color: var(--vp-c-muted-fg, #475569);
+}
+/* Chips auf schmalen Karten eine eigene Zeile; am Rechner neben dem Namen. */
+@media (min-width: 720px) {
+  .vp-ae-chips {
+    grid-column: 2;
+    grid-row: 1;
+    justify-content: flex-end;
+  }
+  .vp-ae-chev {
+    grid-column: 3;
+  }
+  .vp-ae-kopf {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+}
+.vp-ae-satz {
+  margin: 0;
+  color: var(--vp-c-muted-fg, #475569);
+  font-family: var(--vp-c-font, var(--vp-font-body));
+  font-size: var(--vp-c-fs-14, 0.875rem);
+}
+.vp-ae-satz.is-warn {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-ae-warn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--vp-c-warn-fg, #9a3412);
+  font-family: var(--vp-c-font, var(--vp-font-body));
+  font-size: var(--vp-c-fs-12, 0.75rem);
+}
+
+/* --- Die Energiedaten + Verlaufskurve --- */
+.vp-ae-body {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.vp-ae-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px 16px;
+  min-width: 0;
+}
+.vp-ae-stats > * {
+  min-width: 0;
+}
+.vp-ae-spark {
+  display: block;
+  width: 100%;
+  height: 36px;
+  min-width: 0;
+}
+/* Dieselben Chart-Tokens wie die große Tageskurve (AGENTS.md „keine zweite
+   Chart-Palette"): PV-Linie `--vp-c-chart-pv`, Verbrauch `--vp-c-chart-load`. */
+.vp-ae-spark .achse {
+  stroke: var(--vp-border, #e2e8f0);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.vp-ae-spark .pv-a {
+  fill: var(--vp-c-chart-pv, #e65100);
+  opacity: 0.16;
+}
+.vp-ae-spark .pv-l,
+.vp-ae-spark .ld-l {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.vp-ae-spark .pv-l {
+  stroke: var(--vp-c-chart-pv, #e65100);
+}
+.vp-ae-spark .ld-l {
+  stroke: var(--vp-c-chart-load, #8b5cf6);
+}
+/* Am Rechner: Energiedaten links in einer Reihe (nehmen nur ihren Platz), die
+   Kurve FÜLLT den freien Raum rechts daneben (Review 7: nicht winzig in einer
+   leeren Fläche). */
+@media (min-width: 900px) {
+  .vp-ae-stats {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 28px;
+  }
+  .vp-ae-stat {
+    min-width: 96px;
+  }
+  .vp-ae-body.has-spark {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+  }
+  .vp-ae-body.has-spark .vp-ae-stats {
+    flex: 0 1 auto;
+  }
+  .vp-ae-body.has-spark .vp-ae-spark {
+    flex: 1 1 0;
+    min-width: 220px;
+    height: 48px;
+  }
+}
+.vp-ae-stat {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.vp-ae-stat-l {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--vp-c-muted-fg, #475569);
+  font-family: var(--vp-c-font, var(--vp-font-body));
+  font-size: var(--vp-c-fs-12, 0.75rem);
+  overflow-wrap: anywhere;
+}
+.vp-ae-key {
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+}
+.vp-ae-key.is-load {
+  background: var(--vp-flow-load, #8b5cf6);
+}
+.vp-ae-key.is-pv {
+  background: var(--vp-flow-pv, #f59e0b);
+}
+.vp-ae-key.is-grid {
+  background: var(--vp-flow-grid, #0ea5a3);
+}
+.vp-ae-key.is-batt {
+  background: var(--vp-flow-batt, #16a34a);
+}
+.vp-ae-stat-v {
+  color: var(--vp-navy, #1e3a5f);
+  font-family: var(--vp-font-heading, 'Inter Tight', sans-serif);
+  font-size: var(--vp-c-fs-16, 1rem);
+  font-weight: var(--vp-c-fw-700, 700);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vp-ae-stat-v small {
+  font-size: var(--vp-c-fs-12, 0.75rem);
+  font-weight: var(--vp-c-fw-700, 700);
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ae-stat-v.is-dim,
+.vp-ae-stat-v.is-leer {
+  color: var(--vp-text-gray, #66717c);
+  font-weight: var(--vp-c-fw-600, 600);
+}
+
+/* --- Fuß: der Weg „Energiebilanz" --- */
+.vp-ae-fuss {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.vp-ae-weg {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  color: var(--vp-action, #2c5282);
+  font-family: var(--vp-c-font, var(--vp-font-body));
+  font-size: var(--vp-c-fs-14, 0.875rem);
+  font-weight: var(--vp-c-fw-600, 600);
+}
+.vp-ae-weg:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.vp-ae-weg:focus-visible {
+  outline: 2px solid var(--vp-action, #2c5282);
+  outline-offset: 2px;
+  border-radius: var(--vp-radius-sm, 10px);
+}

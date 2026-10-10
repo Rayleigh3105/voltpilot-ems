@@ -407,6 +407,71 @@ describe('Steuerung · Rechte (AP-03 IP-12)', () => {
   });
 });
 
+describe('Steuerung · Reiter Laden · Sonne + Speicher', () => {
+  const WB = VERBRAUCHER.verbraucher.find((v) => v.entityId === 'e-wb')!;
+  const mitWallbox = (o: Partial<typeof WB>) => ({
+    ...VERBRAUCHER, verbraucher: VERBRAUCHER.verbraucher.map((v) => (v.entityId === 'e-wb' ? { ...v, ...o } : v)),
+  });
+  const quellen = (speicher: { gesperrt: boolean; grund?: string }) => ({
+    ...WB.optionen!, quellen: [{ id: 'ueberschuss', gesperrt: false }, { id: 'ueberschuss_speicher', ...speicher }, { id: 'guenstig', gesperrt: false }],
+  });
+
+  it('bietet „Sonne + Speicher“ unter „Womit laden“ an und schreibt den Überschuss-Modus speicher', async () => {
+    vi.spyOn(api, 'siteVerbraucher').mockResolvedValue(mitWallbox({ optionen: quellen({ gesperrt: false }) }) as never);
+    const setze = vi.spyOn(api, 'setzeSteuerart').mockResolvedValue({ steuerart: { quelle: 'ueberschuss', herkunft: 'saeule', ueberschussModus: 'speicher' }, aktiv: true });
+    zeige('laden');
+    const karte = await screen.findByRole('region', { name: 'Wallbox Werkstatt' });
+    const gruppe = within(karte).getByRole('group', { name: 'Womit laden' });
+    // „Smart“ bleibt das Wort der Moduswahl; die neue Quelle steht neben den drei bisherigen.
+    expect(within(karte).getByRole('button', { name: /Smart/ })).toBeInTheDocument();
+    expect(within(gruppe).getAllByRole('button').map((b) => b.textContent)).toEqual(['Nur Sonne', 'Sonne + Minimum', 'Sonne + Speicher', 'Günstig']);
+    fireEvent.click(within(gruppe).getByRole('button', { name: 'Sonne + Speicher' }));
+    await waitFor(() => expect(setze).toHaveBeenCalledWith('s-1', 'e-wb', { quelle: 'ueberschuss', ueberschussModus: 'speicher' }));
+  });
+
+  it('zeigt eine gesperrte Wahl mit ihrem Grund, statt sie verschwinden zu lassen', async () => {
+    const grund = 'An dieser Anlage ist kein Speicher hinterlegt — ohne Speicher gibt es nichts freizugeben.';
+    vi.spyOn(api, 'siteVerbraucher').mockResolvedValue(mitWallbox({ optionen: quellen({ gesperrt: true, grund }) }) as never);
+    const setze = vi.spyOn(api, 'setzeSteuerart');
+    zeige('laden');
+    const karte = await screen.findByRole('region', { name: 'Wallbox Werkstatt' });
+    const chip = within(karte).getByRole('button', { name: 'Sonne + Speicher' });
+    expect(chip).toBeDisabled();
+    expect(within(karte).getByText(`Sonne + Speicher: ${grund}`)).toBeInTheDocument();
+    fireEvent.click(chip);
+    expect(setze).not.toHaveBeenCalled();
+    // Ohne freie Wahl an keinem Ladepunkt gibt es auch keine Reserve einzustellen.
+    expect(screen.queryByRole('region', { name: 'Reserve für Sonne + Speicher' })).not.toBeInTheDocument();
+  });
+
+  it('erklärt mit der Meldung der Box und stellt die Reserve je Anlage ein', async () => {
+    vi.spyOn(api, 'siteVerbraucher').mockResolvedValue(mitWallbox({
+      steuerart: { quelle: 'ueberschuss', herkunft: 'saeule', ueberschussModus: 'speicher' }, optionen: quellen({ gesperrt: false }),
+    }) as never);
+    vi.spyOn(api, 'siteChargers').mockResolvedValue({ budget: {
+      reportedAt: new Date().toISOString(),
+      storageRelease: { active: true, kw: 3.8, floorSocPct: 22, socPct: 80, mode: 'frei', note: 'Satz der Box' },
+    } as never, chargers: [] });
+    vi.spyOn(api, 'chargingConfig').mockResolvedValue({ gridLimitKw: 22, priorityChargePointIds: [], storagePriority: 'speicher_vor_auto',
+      storageReleaseReserveKwh: null, storageReleaseReserveStandardKwh: 1 });
+    const speichern = vi.spyOn(api, 'saveStorageReleaseReserve').mockResolvedValue({ gridLimitKw: 22, priorityChargePointIds: [],
+      storagePriority: 'speicher_vor_auto', storageReleaseReserveKwh: 2, storageReleaseReserveStandardKwh: 1 });
+    zeige('laden');
+    const karte = await screen.findByRole('region', { name: 'Wallbox Werkstatt' });
+    expect(within(karte).getByRole('button', { name: 'Sonne + Speicher' })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(karte).getByText(/Der Speicher gibt gerade bis 3,8 kW frei und darf bis 22 % entladen \(jetzt 80 %\)/)).toBeInTheDocument();
+    const reserve = await screen.findByRole('region', { name: 'Reserve für Sonne + Speicher' });
+    expect(within(reserve).getByText(/behält 1 kWh mehr.*\(Vorgabe\)/)).toBeInTheDocument();
+    expect(within(reserve).getByRole('button', { name: '1 kWh · Vorgabe' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(within(reserve).getByRole('button', { name: '2 kWh' }));
+    await waitFor(() => expect(speichern).toHaveBeenCalledWith('s-1', 2));
+    await waitFor(() => expect(within(reserve).getByRole('button', { name: '2 kWh' })).toHaveAttribute('aria-pressed', 'true'));
+    // Die Vorgabe zurück heißt: keine eigene Angabe (null), nicht „1 kWh fest“.
+    fireEvent.click(within(reserve).getByRole('button', { name: '1 kWh · Vorgabe' }));
+    await waitFor(() => expect(speichern).toHaveBeenLastCalledWith('s-1', null));
+  });
+});
+
 describe('Steuerung · ehrlich ohne Daten', () => {
   it('nennt den Fehler mit Weg, wenn die Geräte-Liste fehlt', async () => {
     vi.spyOn(api, 'siteVerbraucher').mockRejectedValue(new Error('Die Anlage antwortet nicht.'));

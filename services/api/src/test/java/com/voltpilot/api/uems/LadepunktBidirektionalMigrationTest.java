@@ -72,13 +72,21 @@ class LadepunktBidirektionalMigrationTest {
         root.update("INSERT INTO device_charge_point (device_id, charge_point_id, tenant_id, site_id, entity_id, "
                 + "reported_at) VALUES (?, 'CP-1', ?, ?, ?, now())", box, t1, anlage, saeule);
         Map<String, String> vorher = Bestandsschutz.fingerabdruck(root, List.of());
+        String saeulenVorher = Bestandsschutz.inhaltOhne(root, "site_charge_point_allowlist", "storage_release");
 
         flyway().target(DIESE).load().migrate();
         Map<String, String> danach = Bestandsschutz.fingerabdruck(root, List.of());
         flyway().load().migrate();
         assertThat(Bestandsschutz.abweichungen(vorher, danach)).as("die Migration ändert keinen Bestand").isEmpty();
+        // Sonne + Speicher (V20261006120000, aus main): die Wahl je Säule ist eine neue Spalte mit Vorgabe FALSE in
+        // jeder bestehenden Zeile - sonst bleibt die Säule byte-gleich, und keine bestehende Säule gibt Speicher frei.
         assertThat(Bestandsschutz.abweichungen(vorher, Bestandsschutz.fingerabdruck(root, List.of())))
-                .as("auch nach dem ganzen Lauf").isEmpty();
+                .as("auch nach dem ganzen Lauf: die Säule nur um ihre Speicherfreigabe")
+                .containsExactly("site_charge_point_allowlist: bestehender Inhalt geändert");
+        assertThat(Bestandsschutz.inhaltOhne(root, "site_charge_point_allowlist", "storage_release"))
+                .as("die Säulen ohne die neue Spalte").isEqualTo(saeulenVorher);
+        assertThat(root.queryForObject("SELECT count(*) FROM site_charge_point_allowlist "
+                + "WHERE storage_release IS DISTINCT FROM FALSE", Integer.class)).as("keine Freigabe im Bestand").isZero();
         for (String tabelle : TABELLEN) {
             assertThat(root.queryForObject("SELECT count(*) FROM " + tabelle, Integer.class)).as(tabelle).isZero();
             // RLS + FORCE.

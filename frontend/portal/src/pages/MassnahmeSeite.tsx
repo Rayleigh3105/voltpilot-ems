@@ -1,33 +1,38 @@
-import { useEffect, useId, useState, type FormEvent } from 'react';
+import { useEffect, useState } from 'react';
 import { GrenzHinweis, GrenzSatz, GrenzSatzBereich } from '../components/GrenzSatz';
-import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api, ApiError, type Massnahme, type MassnahmeHerkunft, type VorgangAnstoss } from '../api';
+import { api, ApiError, type Massnahme, type MassnahmeEintrag, type MassnahmeHerkunft, type VorgangAnstoss } from '../api';
 import { herkunftSatz } from '../auditFeststellung';
-import { MassnahmeAendernDialog, MassnahmeUmgesetztDialog, MassnahmeVerwerfenDialog } from '../components/MassnahmeDialoge';
-import { MassnahmeBewertenDialog, MassnahmeWirkungBewertung } from '../components/MassnahmeWirkung';
-import { Recht } from '../components/Recht';
-import { ErrorState, Skeleton } from '../components/States';
+import { FristDatum } from '../components/FristDatum';
+import {
+  MassnahmeAendernDialog,
+  MassnahmeKommentarDialog,
+  MassnahmeUmgesetztDialog,
+  MassnahmeVerwerfenDialog,
+} from '../components/MassnahmeDialoge';
+import { MassnahmeBewertenDialog, UrteilKarte, useWirkung, WirkungKacheln, WirkungKarte, type BewertungSchritt } from '../components/MassnahmeWirkung';
+import { RowMenu, type RowMenuItem } from '../components/RowMenu';
+import { Skeleton } from '../components/States';
 import { VerbesserungAnstoesse } from '../components/VerbesserungAnstoesse';
 import * as Z from '../energieziele';
-import { UEMS_BEWERTUNGSMETHODE, UEMS_BEZUGSBASIS, UEMS_ENERGIEZIEL, UEMS_MESSGRUNDLAGE, UEMS_VERANTWORTLICH } from '../glossar';
+import { NBSP } from '../format';
+import { UEMS_MASSNAHME } from '../glossar';
 import * as M from '../massnahmen';
+import * as B from '../massnahmenBild';
 import { auditRoute, feststellungRoute, hashForRoute, managementbewertungRoute } from '../nav';
-import * as W from '../massnahmeWirkung';
 import { useRollen } from '../rollen';
+import { merkeAbruf } from '../routenUhr';
+import '../components/Wiedervorlage.css';
 import './Verbesserung.css';
+import './Massnahmen.css';
 
 type Lage = { art: 'laedt' } | { art: 'fehlt' } | { art: 'fehler' } | { art: 'da'; m: Massnahme };
+type Dialog = null | 'umgesetzt' | 'verwerfen' | 'aendern' | 'kommentar' | BewertungSchritt;
 
-/**
- * Die Herkunft aus dem Energiemanagement (AP-19 IP-20, SP5, W3): „Herkunft: Feststellung F-2029-0001.“ als Sprung zur
- * Feststellung, „Herkunft: internes Audit AU-…“ als Sprung zum Audit — über das Kennzeichen in der Adresse; seit
- * AP-19 IP-24 „Herkunft: Managementbewertung BR-… (Beschluss n).“ als Sprung zur Seite der Managementbewertung (die Kennung
- * vor dem „/B…“). Das Vertragswort wird nie zu Text.
- */
-function HerkunftSprung({ art, kennung }: { art: MassnahmeHerkunft; kennung: string }) {
-  const satz = herkunftSatz(art, kennung)!;
+/** Der Sprung zur Herkunft aus dem Energiemanagement (SP5, W3): Feststellung, internes Audit, Managementbewertung. */
+function herkunftZiel(art: MassnahmeHerkunft, kennung: string | null): string | null {
+  if (!kennung) return null;
   const ziel =
     art === 'nichtkonformitaet'
       ? feststellungRoute(kennung)
@@ -36,66 +41,197 @@ function HerkunftSprung({ art, kennung }: { art: MassnahmeHerkunft; kennung: str
         : art === 'managementbewertung'
           ? managementbewertungRoute(kennung.split('/')[0])
           : null;
-  return ziel ? (
-    <a className="vp-ez-sprung" href={hashForRoute(ziel)} data-testid="massnahme-sprung-herkunft">
-      {satz}
-    </a>
-  ) : (
-    <span data-testid="massnahme-herkunft-satz">{satz}</span>
+  return ziel ? hashForRoute(ziel) : null;
+}
+
+/** Ein Eintrag des Verlaufs in einem Satz (neueste zuerst, Datumsblöcke neutral wie die Ablesungen in Messen m1). */
+function verlaufTitel(e: MassnahmeEintrag): string {
+  if (e.art === 'massnahme_bewertet') {
+    const ergebnis = typeof e.neu?.ergebnis === 'string' ? (e.neu.ergebnis as string).replace('_', ' ') : null;
+    return ergebnis ? `Wirkung geprüft: ${ergebnis}` : 'Wirkung geprüft';
+  }
+  if (e.art === 'massnahme_umgesetzt') return 'Umgesetzt';
+  if (e.art === 'massnahme_angelegt') return 'Geplant';
+  if (e.art === 'massnahme_verworfen') return 'Verworfen';
+  return M.VERLAUF_WORT[e.art].charAt(0).toUpperCase() + M.VERLAUF_WORT[e.art].slice(1);
+}
+
+function Verlauf({ m }: { m: Massnahme }) {
+  const eintraege = [...(m.verlauf ?? [])].reverse();
+  return (
+    <section className="vp-mn-karte is-verlauf" aria-labelledby="ma-verlauf" data-testid="massnahme-verlauf">
+      <div className="vp-wv-blockkopf">
+        <h2 id="ma-verlauf">{M.VERLAUF}</h2>
+        <span className="vp-wv-abschnitt-m is-immer">neueste zuerst</span>
+      </div>
+      {eintraege.length === 0 ? (
+        <p className="vp-mn-leise">Für diese Maßnahme ist noch kein Verlauf festgehalten.</p>
+      ) : (
+        eintraege.length === 1 &&
+        eintraege[0].art === 'massnahme_angelegt' && <p className="vp-mn-leise">{`Noch kein Eintrag seit dem Planen am ${Z.tag(m.angelegt_am)}.`}</p>
+      )}
+      <ol className="vp-mn-verlauf">
+        {eintraege.map((e) => {
+          const [j, mo, t] = e.am.slice(0, 10).split('-');
+          const text = e.kommentar ?? e.begruendung;
+          return (
+            <li key={e.nr} data-testid={`verlauf-${e.art}`}>
+              <FristDatum wort="" tag={`${t}.${mo}.`} jahr={j} satz={`${verlaufTitel(e)} am ${t}.${mo}.${j}`} ton="bald" />
+              <span className="vp-mn-verlauf-text">
+                <b>{verlaufTitel(e)}</b>
+                <span>{text ? `${e.person}: ‚${text}‘` : e.person}</span>
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
   );
 }
 
-/** Ein Kommentar im Verlauf (M7): 1–2 000 Zeichen, an geplant und umgesetzt; nichts wird geändert oder gelöscht. */
-function Kommentar({ m, onNeu }: { m: Massnahme; onNeu: (m: Massnahme) => void }) {
-  const id = `mk-${useId().replace(/:/g, '')}`;
-  const [text, setText] = useState('');
-  const [satz, setSatz] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  async function senden(ev: FormEvent) {
-    ev.preventDefault();
-    const t = text.trim();
-    if (!t || t.length > M.KOMMENTAR_MAX) {
-      setSatz(M.ABLEHNUNG.text_ungueltig);
-      document.getElementById(id)?.focus();
-      return;
-    }
-    setBusy(true);
-    setSatz(null);
-    try {
-      onNeu(await api.massnahmeKommentar(m.id, { text: t }));
-      setText('');
-    } catch (x) {
-      setSatz(M.ablehnungSatz(x));
-    } finally {
-      setBusy(false);
-    }
-  }
+/** „Woher die Maßnahme kommt“ (§6.6): die Herkunft als Satz mit Sprung. */
+function Woher({ m }: { m: Massnahme }) {
+  const satz = herkunftSatz(m.herkunft.art, m.herkunft.kennung) ?? B.herkunftText(m);
+  const ziel = herkunftZiel(m.herkunft.art, m.herkunft.kennung);
+  if (!satz) return null;
   return (
-    <Recht aktion="verbesserung.verwalten" standort={m.standort_id}>
-      <form className="vp-ez-form" noValidate onSubmit={(x) => void senden(x)} data-testid="massnahme-kommentar">
-        <div className="vp-ez-feld">
-          <label className="vp-ez-label" htmlFor={id}>
-            {M.KNOPF_KOMMENTAR}
-          </label>
-          <textarea id={id} rows={2} value={text} onChange={(x) => setText(x.target.value)} aria-invalid={!!satz} />
-          {satz && <p className="vp-ez-fehler">{satz}</p>}
+    <section className="vp-mn-karte is-woher" aria-labelledby="ma-woher" data-testid="massnahme-herkunft">
+      <div className="vp-wv-blockkopf">
+        <h2 id="ma-woher">{`Woher die ${UEMS_MASSNAHME} kommt`}</h2>
+      </div>
+      <p className="vp-mn-text">{satz.endsWith('.') ? satz : `${satz.charAt(0).toUpperCase()}${satz.slice(1)}.`}</p>
+      {ziel && (
+        <a className="vp-mn-sprung" href={ziel} data-testid="massnahme-sprung-herkunft">
+          Ansehen
+        </a>
+      )}
+    </section>
+  );
+}
+
+/** „Wofür und woran gemessen“ (§6.6): Energieziel, Kennzahl mit Bezugsbasis, Vorher - oder ehrlich „nicht gemessen“. */
+function WofuerUndWoran({
+  m,
+  onKennzahl,
+  onEnergieziel,
+}: {
+  m: Massnahme;
+  onKennzahl?: (id: string) => void;
+  onEnergieziel?: (id: string) => void;
+}) {
+  const mg = m.messgrundlage;
+  const vorher = B.vorherBild(m);
+  return (
+    <section className="vp-mn-karte is-wofuer" aria-labelledby="ma-wofuer" data-testid="massnahme-messgrundlage">
+      <div className="vp-wv-blockkopf">
+        <h2 id="ma-wofuer">Wofür und woran gemessen</h2>
+      </div>
+      <dl className="vp-mn-zuo">
+        {m.energieziel && (
+          <div className="vp-mn-zr">
+            <dt>Für</dt>
+            <dd className="vp-mn-w">{B.energiezielName(m.energieziel.kennzeichen)}</dd>
+            <dd className="vp-mn-n">{B.energiezielRest(m.energieziel.kennzeichen, m.energieziel.name) ?? m.energieziel.kennzeichen}</dd>
+            {onEnergieziel && (
+              <button type="button" className="vp-mn-sprung vp-mn-a" onClick={() => onEnergieziel(m.energieziel!.id)} data-testid="massnahme-sprung-energieziel">
+                Ansehen
+              </button>
+            )}
+          </div>
+        )}
+        {mg ? (
+          <>
+            <div className="vp-mn-zr">
+              <dt>Gemessen an</dt>
+              <dd className="vp-mn-w">{mg.kennzahl.name ?? mg.kennzahl.kennzeichen}</dd>
+              <dd className="vp-mn-n" data-testid="massnahme-methode">{`Bezugsbasis ${mg.bezugsbasis.kennzeichen}, Fassung ${mg.fassung} · ${B.methodeKurz(mg.bewertungsmethode)}`}</dd>
+              {onKennzahl && (
+                <button type="button" className="vp-mn-sprung vp-mn-a" onClick={() => onKennzahl(mg.kennzahl.id)} data-testid="massnahme-sprung-kennzahl">
+                  Ansehen
+                </button>
+              )}
+            </div>
+            <div className="vp-mn-zr">
+              <dt>Vorher</dt>
+              <dd className="vp-mn-w">{vorher ? vorher.satz : 'die Monate vor dem Planen'}</dd>
+              <dd className="vp-mn-n">{`festgehalten am ${Z.tag(m.angelegt_am)}`}</dd>
+              <dd>
+                <details className="vp-mn-details" data-testid="massnahme-ausgangslage">
+                  <summary>
+                    Details
+                    <Icon name="chevron-down" size={14} />
+                  </summary>
+                  {mg.satz && <p className="vp-mn-leise">{mg.satz}</p>}
+                  <pre>{mg.ausgangslage}</pre>
+                  <p className="vp-mn-leise" data-testid="massnahme-pruefsumme">{`${M.PRUEFSUMME} ${mg.pruefsumme}`}</p>
+                </details>
+              </dd>
+            </div>
+          </>
+        ) : (
+          <div className="vp-mn-zr">
+            <dt>Gemessen an</dt>
+            <dd className="vp-mn-w">{m.art === 'organisatorisch' ? 'nichts - organisatorisch' : 'nicht gemessen'}</dd>
+            {m.art === 'nicht_gemessen' && m.ohne_messgrundlage && (
+              <dd className="vp-mn-n" data-testid="massnahme-ohne-messgrundlage">{B.nichtGemessenSatz(m)}</dd>
+            )}
+          </div>
+        )}
+      </dl>
+    </section>
+  );
+}
+
+/** „Was es bringen soll“ (§6.6): die erwartete Wirkung als Zitat der Person, die Schätzung als solche gekennzeichnet. */
+function WasEsBringenSoll({ m, kennzahlAnlegen }: { m: Massnahme; kennzahlAnlegen: boolean }) {
+  const angelegt = m.verlauf?.find((e) => e.art === 'massnahme_angelegt');
+  const e = m.erwartete_einsparung;
+  const zahl =
+    m.erwartete_wirkung_prozent !== null
+      ? `${B.personProzent(m.erwartete_wirkung_prozent)} ${B.richtungWort(m.erwartete_wirkung_prozent)} als erwartet${e ? `, rund ${B.rund(e.kwh_jahr)}${NBSP}kWh im Jahr` : ''}`
+      : e
+        ? `rund ${B.rund(e.kwh_jahr)}${NBSP}kWh im Jahr, geschätzt`
+        : null;
+  return (
+    <section className="vp-mn-karte is-wirkung" aria-labelledby="ma-soll" data-testid="massnahme-erwartete-wirkung">
+      <div className="vp-wv-blockkopf">
+        <h2 id="ma-soll">{m.art === 'organisatorisch' ? 'Was sich ändern soll' : 'Was es bringen soll'}</h2>
+      </div>
+      {zahl && <p className="vp-mn-w vp-mn-text"><b>{zahl}</b></p>}
+      <blockquote className="vp-mn-zitat">
+        ‚{m.erwartete_wirkung_wortlaut}‘
+        <small>{`${angelegt ? `${angelegt.person} · ` : ''}beim Planen am ${Z.tag(m.angelegt_am)}`}</small>
+      </blockquote>
+      {e?.grundlage_kwh && e.grundlage_monate && (
+        <p className="vp-mn-leise">{`Gerechnet mit ${B.ganz(e.grundlage_kwh)}${NBSP}kWh in ${Z.zielperiodeText(e.grundlage_monate)} - eine Schätzung, nie mit gemessenen Werten summiert.`}</p>
+      )}
+      {m.art === 'nicht_gemessen' && m.ohne_messgrundlage && (m.zustand === 'geplant' || m.zustand === 'umgesetzt') && (
+        <div className="vp-mn-hinweis">
+          <Icon name="info" size={16} />
+          <span>
+            <b>Nicht gemessen:</b> {B.nichtGemessenSatz(m)}
+            {/* Der Sprung nur, wenn die Person eine Kennzahl anlegen darf - sonst führt er ins Leere. */}
+            {kennzahlAnlegen && (
+              <>
+                {' '}
+                <a className="vp-mn-sprung" href="#/portfolio/kennzahlen">
+                  Kennzahl anlegen
+                </a>
+              </>
+            )}
+          </span>
         </div>
-        <div className="vp-ez-aktionen">
-          <Button type="submit" size="sm" variant="outline" disabled={busy} data-testid="massnahme-kommentar-senden">
-            {M.KNOPF_KOMMENTAR}
-          </Button>
-        </div>
-      </form>
-    </Recht>
+      )}
+    </section>
   );
 }
 
 /**
- * Die Maßnahmen-Seite (AP-18 IP-13, §5.4, M1–M4, M6, M7): Kopf mit Herkunft als Sprung (Kennzahl, Energieziel;
- * Einsatz und Abweichung als Kennung), die Messgrundlage mit Ausgangslage — die Kopie der Route mit Prüfsumme — oder
- * der Satz „ohne Messgrundlage“, die erwartete Wirkung, der Verlauf mit Kommentaren und je Zustand „umgesetzt melden“,
- * „verwerfen“, „ändern“. Ab `umgesetzt` (IP-20, §5.5–§5.7) der Abschnitt „Wirkung“ mit der Spalte „Bewertung“ und die
- * Anstöße am Vorgang mit Antwort-Knöpfen. Das Portal rechnet nichts.
+ * Die Seite einer Maßnahme (Verbessern-Konzept v1 §6.6): Rückweg, Titel mit Kennzeichen leise, Stufen mit Datum, die
+ * Antwort zuerst, je Stufe ein großer Knopf (Umsetzung melden · Wirkung prüfen · Abschließen), die Wirkung als Kacheln
+ * und Grafik, das Urteil einer Person, Herkunft, „Wofür und woran gemessen“ und der Verlauf. Seltenes im Menü ⋯
+ * (Ändern, Kommentar schreiben, Verwerfen). Am Rechner zwei Spalten. Die Marke `data-entscheid="massnahme_termin"`
+ * bleibt am Kopf, damit die Sprünge der Wiedervorlage treffen.
  */
 export function MassnahmeSeite({
   id,
@@ -110,15 +246,19 @@ export function MassnahmeSeite({
 }) {
   const [lage, setLage] = useState<Lage>({ art: 'laedt' });
   const [versuch, setVersuch] = useState(0);
-  const [dialog, setDialog] = useState<null | 'umgesetzt' | 'verwerfen' | 'aendern' | 'bewerten' | 'freigeben' | 'ablehnen'>(null);
+  const [dialog, setDialog] = useState<Dialog>(null);
   const [anstoss, setAnstoss] = useState<VorgangAnstoss | null>(null);
-  const sub = useRollen().selbst?.kennung ?? null;
+  const rollen = useRollen();
+  const sub = rollen.selbst?.kennung ?? null;
 
   useEffect(() => {
     let aktiv = true;
     setLage({ art: 'laedt' });
     api.massnahme(id).then(
-      (m) => aktiv && setLage({ art: 'da', m }),
+      (m) => {
+        merkeAbruf(m.frist.abruf);
+        if (aktiv) setLage({ art: 'da', m });
+      },
       (e) => aktiv && setLage({ art: e instanceof ApiError && e.status === 404 ? 'fehlt' : 'fehler' }),
     );
     return () => {
@@ -133,185 +273,171 @@ export function MassnahmeSeite({
     </button>
   );
 
+  const m = lage.art === 'da' ? lage.m : null;
+  const [wirkung, wirkungErneut] = useWirkung(m ?? { id, umgesetzt_am: null, zustand: 'geplant', art: 'nicht_gemessen' });
+
   if (lage.art === 'laedt') {
     return (
-      <div className="vp-ez" data-testid="massnahme-seite" aria-busy="true">
+      <div className="vp-mn-seite vp-k-farben" data-testid="massnahme-seite" aria-busy="true">
         {zurueck}
         <Skeleton height={260} />
       </div>
     );
   }
-  if (lage.art !== 'da') {
+  if (lage.art !== 'da' || !m) {
     return (
-      <div className="vp-ez" data-testid="massnahme-seite">
+      <div className="vp-mn-seite vp-k-farben" data-testid="massnahme-seite">
         {zurueck}
         {lage.art === 'fehlt' ? (
           <p className="vp-ez-satz">{M.NICHT_GEFUNDEN}</p>
         ) : (
-          <ErrorState message={M.LADEFEHLER_SEITE} onRetry={() => setVersuch((v) => v + 1)} />
+          <section className="vp-wv-karte is-fehler" role="alert">
+            <div className="vp-wv-blockkopf">
+              <h2>{B.LADEFEHLER_TITEL}</h2>
+            </div>
+            <p className="vp-wv-leise">{B.LADEFEHLER_SEITE}</p>
+            <button type="button" className="vp-wv-link" onClick={() => setVersuch((v) => v + 1)}>
+              {B.ERNEUT_VERSUCHEN}
+            </button>
+          </section>
         )}
         <GrenzSatz className="vp-ez-grenze" />
       </div>
     );
   }
 
-  const { m } = lage;
-  const mg = m.messgrundlage;
-  // AP-19 IP-20 (SP5, W3): die Herkunft aus dem Energiemanagement als Satz aus §5.8 — „Herkunft: Feststellung F-…“.
-  const herkunftAusEnergiemanagement = !!herkunftSatz(m.herkunft.art, m.herkunft.kennung);
-  const ueberfaellig = M.ueberfaelligText(m);
+  const w = wirkung?.art === 'da' ? wirkung.w : null;
+  // Entscheid 8: die verantwortliche Person meldet und kommentiert ihre Maßnahme auch ohne `verwalten`.
+  const darfMelden = M.darfMeldenUndKommentieren(rollen.darf, m, sub);
+  const darfAbschliessen = rollen.darf('verbesserung.abschliessen', m.standort_id);
+  const antwort = B.antwortBild(m, w, darfAbschliessen, wirkung?.art === 'laedt' || wirkung?.art === 'fehler' ? wirkung.art : 'da');
+  const stufen = B.stufenBild(m);
   const neu = (x: Massnahme) => {
     setDialog(null);
     setAnstoss(null);
     setLage({ art: 'da', m: x });
   };
 
+  const gross =
+    m.zustand === 'geplant' && darfMelden
+      ? { wort: B.KNOPF_UMSETZUNG, dialog: 'umgesetzt' as const, icon: 'check' as const }
+      : m.zustand === 'umgesetzt' && darfAbschliessen && !m.bewertung_antrag
+        ? m.art === 'gemessen'
+          ? { wort: B.KNOPF_WIRKUNG, dialog: 'bewerten' as const, icon: 'check' as const }
+          : { wort: B.KNOPF_ABSCHLIESSEN, dialog: 'bewerten' as const, icon: 'check' as const }
+        : null;
+
+  const menue: RowMenuItem[] = [
+    ...(M.aenderbar(m) ? [{ label: 'Ändern', icon: 'pencil' as const, recht: 'verbesserung.verwalten', standort: m.standort_id, onClick: () => setDialog('aendern') }] : []),
+    // Ohne Recht bleibt der Eintrag an `verwalten` gebunden: das Menü nennt dann den Grund (RowMenu).
+    ...(M.kommentierbar(m)
+      ? [{ label: 'Kommentar schreiben', icon: 'file-text' as const, ...(darfMelden ? {} : { recht: 'verbesserung.verwalten', standort: m.standort_id }), onClick: () => setDialog('kommentar') }]
+      : []),
+    ...(M.aenderbar(m)
+      ? [{ label: 'Verwerfen', icon: 'x' as const, recht: 'verbesserung.verwalten', standort: m.standort_id, danger: true, onClick: () => setDialog('verwerfen') }]
+      : []),
+  ];
+  const wer = [m.einsatz?.name ?? m.messgrundlage?.kennzahl.name ?? null, `verantwortlich ${m.verantwortlich.name}`].filter(Boolean).join(' · ');
+  const zeigeWirkung = m.art === 'gemessen' && (m.zustand === 'umgesetzt' || m.zustand === 'bewertet') && wirkung;
+  const zeigeUrteil = m.zustand === 'umgesetzt' || m.zustand === 'bewertet';
+
   return (
     <GrenzSatzBereich>
-      <div className="vp-ez" data-testid="massnahme-seite">
+      <div className="vp-mn-seite vp-k-farben" data-testid="massnahme-seite">
         {zurueck}
-        <header className="vp-ez-kopf">
-          <div className="vp-ez-kopf-zeile">
-            <h1>{`${M.SPALTEN.kennzeichen} ${m.kennzeichen}`}</h1>
-            <Badge variant="tint">{M.ZUSTAND_WORT[m.zustand]}</Badge>
+        <header className="vp-mn-pkopf" data-entscheid="massnahme_termin" data-testid="massnahme-zustand">
+          <div className="vp-mn-pkopf-text">
+            <h1 data-testid="massnahme-titel">
+              {m.titel}
+              <span className="vp-mn-kz">{m.kennzeichen}</span>
+            </h1>
+            <p className="vp-mn-meta" data-testid="massnahme-kopf">
+              {wer}
+            </p>
           </div>
-          <p className="vp-ez-satz" data-testid="massnahme-kopf">
-            {M.kopfZeile(m, Z.tag)}
-          </p>
-          <p className="vp-ez-herkunft" data-testid="massnahme-herkunft">
-            {herkunftAusEnergiemanagement ? (
-              <HerkunftSprung art={m.herkunft.art} kennung={m.herkunft.kennung!} />
-            ) : (
-              <span>{`${M.HERKUNFT_WORT[m.herkunft.art]}${m.herkunft.kennung && m.herkunft.art !== 'energieziel' ? ` ${m.herkunft.kennung}` : ''}`}</span>
-            )}
-            {m.energieziel &&
-              (onEnergieziel ? (
-                <button type="button" className="vp-ez-sprung" onClick={() => onEnergieziel(m.energieziel!.id)} data-testid="massnahme-sprung-energieziel">
-                  {`${UEMS_ENERGIEZIEL} ${m.energieziel.kennzeichen}`}
-                </button>
-              ) : (
-                <span>{`${UEMS_ENERGIEZIEL} ${m.energieziel.kennzeichen}`}</span>
-              ))}
-            {m.einsatz && <span>{`${m.einsatz.kennzeichen}${m.einsatz.name ? ` ${m.einsatz.name}` : ''}${m.einstufung_fassung ? ` (Einstufung, Fassung ${m.einstufung_fassung})` : ''}`}</span>}
-            <span>{`${UEMS_VERANTWORTLICH} ${m.verantwortlich.name}`}</span>
-            {m.umgesetzt_am && <span data-testid="massnahme-umgesetzt-am">{M.umgesetztZeile(m.umgesetzt_am, Z.tag)}</span>}
-          </p>
-          {ueberfaellig && (
-            <p className="vp-ez-frist" data-testid="massnahme-frist">
-              {m.frist.satz ?? ueberfaellig}
-            </p>
+          {menue.length > 0 && (
+            <span className="vp-wv-menue" data-testid="massnahme-menue">
+              <RowMenu label="Weitere Aktionen" buttonClassName="vp-wv-menue-knopf" items={menue} />
+            </span>
           )}
-          <GrenzHinweis />
         </header>
-
-        <section className="vp-ez-karte" aria-labelledby="ma-messgrundlage" data-testid="massnahme-messgrundlage">
-          <h2 id="ma-messgrundlage">{UEMS_MESSGRUNDLAGE}</h2>
-          {mg ? (
-            <>
-              <p className="vp-ez-herkunft">
-                {onKennzahl ? (
-                  <button type="button" className="vp-ez-sprung" onClick={() => onKennzahl(mg.kennzahl.id)} data-testid="massnahme-sprung-kennzahl">
-                    {`${mg.kennzahl.kennzeichen} ${mg.kennzahl.name ?? ''}`.trim()}
+        <ol className="vp-mn-stufen" style={{ ['--n' as string]: String(stufen.length) }} aria-label="Stand der Maßnahme" data-testid="massnahme-stufen">
+          {stufen.map((s) => (
+            <li key={s.wort} className={`is-${s.stand}`}>
+              <span className="vp-mn-punkt" aria-hidden="true">
+                {s.stand === 'done' && <Icon name="check" size={13} />}
+              </span>
+              <b>{s.wort}</b>
+              <small>{s.klein}</small>
+            </li>
+          ))}
+        </ol>
+        <div className="vp-mn-spalten">
+          <div className="vp-mn-spalte">
+            {antwort.laedt ? (
+              <div className="vp-mn-antwort" aria-busy="true" data-testid="massnahme-antwort">
+                <Skeleton height={22} />
+                <Skeleton width="60%" height={14} />
+              </div>
+            ) : (
+              <div className="vp-mn-antwort" role={antwort.fehler ? 'alert' : undefined} data-testid="massnahme-antwort">
+                <p className={`vp-mn-satz${m.frist.faellig === 'ueberfaellig' ? ' is-warn' : ''}`}>{antwort.satz}</p>
+                {antwort.formal && <p className="vp-mn-formal">{antwort.formal}</p>}
+                {antwort.fehler && (
+                  <button type="button" className="vp-wv-link" onClick={wirkungErneut} data-testid="massnahme-wirkung-erneut">
+                    {B.ERNEUT_VERSUCHEN}
                   </button>
-                ) : (
-                  <span>{`${mg.kennzahl.kennzeichen} ${mg.kennzahl.name ?? ''}`.trim()}</span>
                 )}
-                <span>{`${UEMS_BEZUGSBASIS} ${mg.bezugsbasis.kennzeichen}, Fassung ${mg.fassung}`}</span>
-              </p>
-              <p className="vp-ez-leise" data-testid="massnahme-methode">
-                {`${UEMS_BEWERTUNGSMETHODE}: ${mg.bewertungsmethode}`}
-              </p>
-              {mg.satz && (
-                <p className="vp-ez-satz" data-testid="massnahme-messgrundlage-satz">
-                  {mg.satz}
-                </p>
-              )}
-              <details className="vp-ez-kopie" data-testid="massnahme-ausgangslage">
-                <summary>{M.AUSGANGSLAGE_KOPIE}</summary>
-                <pre>{mg.ausgangslage}</pre>
-              </details>
-              <p className="vp-ez-pruefsumme" data-testid="massnahme-pruefsumme">
-                {`${M.PRUEFSUMME} ${mg.pruefsumme}`}
-              </p>
-            </>
-          ) : (
-            <p className="vp-ez-satz vp-ez-ohne-satz" data-testid="massnahme-ohne-messgrundlage">
-              {m.ohne_messgrundlage?.satz}
-            </p>
-          )}
-          {/* Der Messgrundlage-Satz der Route (§5.9) nennt die erwartete Wirkung schon — sonst steht sie hier. */}
-          {!mg?.satz && (
-            <p className="vp-ez-satz" data-testid="massnahme-erwartete-wirkung">
-              {M.erwarteteWirkungText(m)}
-            </p>
-          )}
-        </section>
-
-        <section className="vp-ez-karte" aria-labelledby="ma-zustand" data-testid="massnahme-zustand">
-          <h2 id="ma-zustand">{M.SPALTEN.zustand}</h2>
-          {m.zustand === 'geplant' ? (
-            <div className="vp-ez-aktionen">
-              <Recht aktion="verbesserung.verwalten" standort={m.standort_id}>
-                <Button size="sm" onClick={() => setDialog('umgesetzt')} data-testid="massnahme-umgesetzt-knopf">
-                  {M.KNOPF_UMGESETZT}
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => setDialog('aendern')} data-testid="massnahme-aendern-knopf">
-                  {M.KNOPF_AENDERN}
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => setDialog('verwerfen')} data-testid="massnahme-verwerfen-knopf">
-                  {M.KNOPF_VERWERFEN}
-                </Button>
-              </Recht>
-            </div>
-          ) : m.zustand === 'verworfen' ? (
-            <p className="vp-ez-satz" data-testid="massnahme-verworfen">
-              {`verworfen am ${Z.tag(m.verworfen_am)}${m.verworfen_grund ? `: ‚${m.verworfen_grund}‘` : '.'}`}
-            </p>
-          ) : (
-            <p className="vp-ez-satz" data-testid="massnahme-umgesetzt">
-              {`${M.umgesetztZeile(m.umgesetzt_am ?? '', Z.tag)}${m.umgesetzt_begruendung ? `: ‚${m.umgesetzt_begruendung}‘` : '.'}`}
-            </p>
-          )}
-        </section>
-
-        {W.hatWirkung(m) && <MassnahmeWirkungBewertung m={m} sub={sub} onDialog={setDialog} />}
-
-        <VerbesserungAnstoesse
-          vorgang="massnahme"
-          anstoesse={m.anstoesse}
-          standort={m.standort_id}
-          onAntwort={async (a, antwort, begruendung) => neu(await api.massnahmeAnstossAntwort(m.id, a.id, { antwort, ...(begruendung ? { begruendung } : {}) }))}
-          onNeuBewerten={(a) => {
-            setAnstoss(a);
-            setDialog('bewerten');
-          }}
-        />
-
-        <section className="vp-ez-karte" aria-labelledby="ma-verlauf" data-testid="massnahme-verlauf">
-          <h2 id="ma-verlauf">{M.VERLAUF}</h2>
-          {m.verlauf && m.verlauf.length > 0 && (
-            <ol className="vp-ez-verlauf">
-              {m.verlauf.map((e) => (
-                <li key={e.nr} data-testid={`verlauf-${e.art}`}>
-                  <p>
-                    <strong>{M.VERLAUF_WORT[e.art]}</strong> · {e.person} · {Z.tag(e.am)}
-                  </p>
-                  {e.kommentar && <p>{e.kommentar}</p>}
-                  {e.begruendung && <p className="vp-ez-leise">‚{e.begruendung}‘</p>}
-                </li>
-              ))}
-            </ol>
-          )}
-          {M.kommentierbar(m) && <Kommentar m={m} onNeu={(x) => setLage({ art: 'da', m: x })} />}
-        </section>
-
+              </div>
+            )}
+            {gross && (
+              <Button
+                className="vp-mn-gross"
+                iconLeft={<Icon name={gross.icon} size={16} />}
+                onClick={() => setDialog(gross.dialog)}
+                data-testid={gross.dialog === 'umgesetzt' ? 'massnahme-umgesetzt-knopf' : 'massnahme-bewerten'}
+              >
+                {gross.wort}
+              </Button>
+            )}
+            {zeigeWirkung && w && <WirkungKacheln m={m} w={w} />}
+            {zeigeWirkung && wirkung && wirkung.art !== 'fehler' && <WirkungKarte m={m} lage={wirkung} />}
+            {(m.zustand === 'geplant' || m.art !== 'gemessen') && (
+              <WasEsBringenSoll
+                m={m}
+                kennzahlAnlegen={rollen.darf('kennzahl.standort_definieren', m.standort_id) || rollen.darf('kennzahl.unternehmen_definieren', null)}
+              />
+            )}
+            <VerbesserungAnstoesse
+              vorgang="massnahme"
+              anstoesse={m.anstoesse}
+              standort={m.standort_id}
+              onAntwort={async (a, antwortArt, begruendung) =>
+                neu(await api.massnahmeAnstossAntwort(m.id, a.id, { antwort: antwortArt, ...(begruendung ? { begruendung } : {}) }))
+              }
+              onNeuBewerten={(a) => {
+                setAnstoss(a);
+                setDialog('bewerten');
+              }}
+            />
+            <Verlauf m={m} />
+          </div>
+          <div className="vp-mn-spalte">
+            {zeigeUrteil && <UrteilKarte m={m} w={w} sub={sub} onDialog={setDialog} darfAbschliessen={darfAbschliessen} />}
+            <Woher m={m} />
+            <WofuerUndWoran m={m} onKennzahl={onKennzahl} onEnergieziel={onEnergieziel} />
+          </div>
+        </div>
+        <GrenzHinweis />
 
         {dialog === 'umgesetzt' && <MassnahmeUmgesetztDialog massnahme={m} onClose={() => setDialog(null)} onFertig={neu} />}
         {dialog === 'verwerfen' && <MassnahmeVerwerfenDialog massnahme={m} onClose={() => setDialog(null)} onFertig={neu} />}
         {dialog === 'aendern' && <MassnahmeAendernDialog massnahme={m} onClose={() => setDialog(null)} onFertig={neu} />}
+        {dialog === 'kommentar' && <MassnahmeKommentarDialog massnahme={m} onClose={() => setDialog(null)} onFertig={neu} />}
         {(dialog === 'bewerten' || dialog === 'freigeben' || dialog === 'ablehnen') && (
           <MassnahmeBewertenDialog
             m={m}
+            w={w}
             schritt={dialog}
             anstoss={anstoss}
             onClose={() => {

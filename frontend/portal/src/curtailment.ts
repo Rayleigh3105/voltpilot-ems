@@ -25,7 +25,7 @@
 //      Rücklese-Stand belegt nicht, was die Anlage JETZT tut.
 //   3. Nur ein ausdrückliches `allMatch === true` ist eine Bestätigung —
 //      `null` heißt „nichts angewandt", nicht „widersprochen".
-import type { CurtailmentStatus } from './api';
+import type { CurtailmentStatus, CurtailmentUnit } from './api';
 import { fmtNum, fmtRelative } from './format';
 
 /** Die vier Zustände der Beleg-Lage (Stufe 3 hat zwei Ausprägungen). */
@@ -52,6 +52,24 @@ export interface CurtailTruth {
   appliedCapKw: number | null;
   /** true, wenn der Block zu alt ist, um etwas zu belegen. */
   stale: boolean;
+  /**
+   * Der netzseitige Regler der Anlage (Konzept `vp-deye-netzseitig-drossel-k2`
+   * §2.11): eine Einheit, die nicht ihre eigene Leistung deckelt, sondern den
+   * NETZANSCHLUSS auf ein Ziel regelt. Fehlend = die Anlage hat gerade keinen
+   * — dann bleibt jeder Satz exakt der bisherige Kappen-Satz.
+   */
+  netzZiel?: NetzZiel | null;
+}
+
+/** Das Ziel am Netzanschluss und sein Beleg (siehe `CurtailTruth.netzZiel`). */
+export interface NetzZiel {
+  /** Im Vorzeichen des Netzpunkts: `+` Bezug, `−` Einspeisung. */
+  targetKw: number;
+  /**
+   * Die MESSUNG folgt dem Ziel. Nur `true` ist eine Bestätigung — `null`
+   * heißt „noch nicht geurteilt", nicht „widersprochen".
+   */
+  bestaetigt: boolean | null;
 }
 
 /** Der Zustand ohne jeden Beleg — exakt das Verhalten vor PR 3. */
@@ -64,6 +82,41 @@ export const CURTAIL_PLAN: CurtailTruth = {
 
 function num(v: number | null | undefined): number | null {
   return v == null || !Number.isFinite(Number(v)) ? null : Number(v);
+}
+
+/**
+ * true, wenn die Einheit den NETZANSCHLUSS regelt statt ihre eigene Leistung
+ * zu deckeln. Die EINE Stelle, die das Wort des Herzschlags liest — jede
+ * Fläche fragt hier, keine vergleicht den Text selbst.
+ */
+export function regeltNetzanschluss(unit: CurtailmentUnit | null | undefined): boolean {
+  return unit?.mode === 'grid_target';
+}
+
+/**
+ * „0,0 kW Einspeisung" / „2,0 kW Bezug" — das Ziel bzw. die Messung am
+ * Netzanschluss mit ihrer RICHTUNG als Wort. Ein nacktes Vorzeichen liest ein
+ * Kunde nicht; und Bezug und Einspeisung zu vertauschen wäre der teuerste
+ * Fehler dieser Fläche. Die Null ist „Einspeisung": sie ist das Ziel „nichts
+ * einspeisen", nie ein Bezugs-Ziel.
+ */
+export function netzKwText(kw: number): string {
+  return `${fmtNum(Math.abs(kw), 'kW', 1)} ${kw > 0 ? 'Bezug' : 'Einspeisung'}`;
+}
+
+/**
+ * Der netzseitige Regler aus dem gemeldeten Block: die FREIGEGEBENE Einheit mit
+ * einem aktiven Ziel. Ohne Freigabe oder ohne Ziel gibt es keinen — eine
+ * Einheit, die nur regeln KÖNNTE, belegt nichts über das Jetzt.
+ */
+function netzZielVon(status: CurtailmentStatus): NetzZiel | null {
+  for (const u of status.perUnit ?? []) {
+    if (!regeltNetzanschluss(u) || !u.certified) continue;
+    const target = num(u.targetKw);
+    if (target == null) continue;
+    return { targetKw: target, bestaetigt: u.match ?? null };
+  }
+  return null;
 }
 
 /** „0 von 2 Wechselrichtern freigegeben" — Singular/Plural korrekt. */
@@ -90,6 +143,11 @@ export function releaseNote(certifiedUnits: number, units: number): string {
  *   keinen auflösbaren Namen, fällt der ganze Satz auf die Zahl zurück — eine
  *   Liste, die zwei von drei Wechselrichtern nennt, liest sich als
  *   Vollständigkeit.
+ *
+ * Eine Einheit, die den NETZANSCHLUSS regelt, wird mit genau dieser Aufgabe
+ * genannt und nicht in die Liste der gedeckelten gemischt: an sie „geht" keine
+ * Begrenzung, sie hält den Rest am Netzpunkt (Captain-Entscheid E6: die
+ * gedeckelten zuerst, der Netzregler den Rest).
  */
 export function abregelZiel(
   status: CurtailmentStatus | null | undefined,
@@ -104,9 +162,18 @@ export function abregelZiel(
   }
   const freigegeben = (status.perUnit ?? []).filter((u) => u.certified);
   if (freigegeben.length > 0) {
-    const namen = freigegeben.map((u) => nameOf(u.sourceId)).filter((n): n is string => !!n);
-    if (namen.length === freigegeben.length) {
-      return { satz: `Geht an ${aufzaehlung(namen)}.`, ton: 'ok' };
+    const benannt = freigegeben.map((u) => ({ u, name: nameOf(u.sourceId) }));
+    if (benannt.every((b) => !!b.name)) {
+      const kappen = benannt.filter((b) => !regeltNetzanschluss(b.u)).map((b) => b.name as string);
+      const netz = benannt.filter((b) => regeltNetzanschluss(b.u)).map((b) => b.name as string);
+      if (netz.length === 0) return { satz: `Geht an ${aufzaehlung(kappen)}.`, ton: 'ok' };
+      const verb = netz.length === 1 ? 'regelt' : 'regeln';
+      return {
+        satz: kappen.length === 0
+          ? `${aufzaehlung(netz)} ${verb} den Netzanschluss.`
+          : `Geht an ${aufzaehlung(kappen)}; ${aufzaehlung(netz)} ${verb} den Rest am Netzanschluss.`,
+        ton: 'ok',
+      };
     }
   }
   return {
@@ -175,6 +242,23 @@ export function curtailTruth(
       stale: false,
     };
   }
+  // Der netzseitige Regler gehört in den Beleg: sein Urteil ist die MESSUNG am
+  // Netzanschluss. Ohne diese Prüfung bestätigte „vom Wechselrichter
+  // bestätigt" nur die gedeckelten Einheiten, während der Regler, der den Rest
+  // halten soll, es (noch) nicht tut. Vor `allMatch`, weil der Grund hier
+  // genauer benennbar ist als „noch nicht bestätigt".
+  const netz = netzZielVon(status);
+  if (netz && netz.bestaetigt !== true) {
+    return {
+      stufe: 'nicht_umgesetzt',
+      cause: netz.bestaetigt === false
+        ? 'die Messung am Netzanschluss folgt dem Ziel nicht'
+        : 'die Regelung am Netzanschluss ist noch nicht bestätigt',
+      appliedCapKw: cap,
+      stale: false,
+      netzZiel: netz,
+    };
+  }
   if (status.allMatch !== true) {
     // Angewandt, aber (noch) nicht bestätigt — das ist keine Ausführung.
     return {
@@ -182,9 +266,16 @@ export function curtailTruth(
       cause: 'die Begrenzung ist noch nicht bestätigt',
       appliedCapKw: cap,
       stale: false,
+      ...(netz ? { netzZiel: netz } : {}),
     };
   }
-  return { stufe: 'ausgefuehrt', cause: null, appliedCapKw: cap, stale: false };
+  return {
+    stufe: 'ausgefuehrt',
+    cause: null,
+    appliedCapKw: cap,
+    stale: false,
+    ...(netz ? { netzZiel: netz } : {}),
+  };
 }
 
 /**
@@ -232,6 +323,16 @@ export function curtailExecutionNote(truth: CurtailTruth): string | null {
         'Begrenzung aber nicht — möglicherweise übersteuert ihn eine lokale Einstellung.'
       );
     case 'ausgefuehrt': {
+      // Regelt ein Wechselrichter den Netzanschluss, ist DAS die Aussage über
+      // die Einspeisung: die Summe der Kappen daneben wäre eine zweite Zahl
+      // für dieselbe Frage, und sie beschreibt die Solarleistung, nicht den
+      // Netzpunkt. Bestätigt ist hier die Messung, nicht ein Register.
+      if (truth.netzZiel) {
+        return (
+          `Ihr Wechselrichter regelt den Netzanschluss auf ${netzKwText(truth.netzZiel.targetKw)}` +
+          ' — durch die Messung bestätigt.'
+        );
+      }
       const cap = capText(truth);
       return cap == null
         ? 'Die Einspeisung ist begrenzt — vom Wechselrichter bestätigt.'

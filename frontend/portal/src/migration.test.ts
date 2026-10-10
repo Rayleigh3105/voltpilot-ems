@@ -77,6 +77,7 @@ import { anlagenOptionen } from './anlagenWahl';
 import { anlageRoute, hashForRoute, parseRoute, pageRoute, standortRoute, type Route } from './nav';
 import { AppShell } from './shell/AppShell';
 import { ahrenbergUnternehmen, bestandEineAnlage, FIXTURE_IDS, halle1Entwurf } from './test/standorteFixtures';
+import { ahrenbergFunktionen } from './test/funktionenFixtures';
 
 // Die Schale braucht für den Byte-Vergleich (UEMS AP-01 IP-5) nur einen Namen
 // am Avatar; alles andere aus `auth` bleibt echt (`rollen` liest `isPlatformAdmin`).
@@ -1416,9 +1417,11 @@ describe('UEMS AP-01 IP-5 — die Startansicht-Weiche lässt den Einzel-Anlagen-
       ),
     ],
   ];
+  // firstmate K2: Werk Ahrenberg misst bereits (ahrenbergFunktionen Vorgabe) — die härteste
+  // Anforderung gilt für einen Bestandskunden, der längst misst, nicht für einen Entwurf.
   const mitEbene = (orte: Orte | null): ShellInput => ({
     ...heute,
-    ebene: startEbene({ isAdmin: false, betriebsart: 'endkunde', siteIds: ids, orte }),
+    ebene: startEbene({ isAdmin: false, betriebsart: 'endkunde', siteIds: ids, orte, funktionen: ahrenbergFunktionen() }),
   });
   const routen: Route[] = [
     pageRoute('uebersicht'),
@@ -1543,6 +1546,18 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
       }
     }
     const verwendeteEntfallene = new Set<string>();
+    // Ein Bedienelement kann mehrmals belegt fortgeschrieben werden (AP-10 IP-15, dann Messen-Bau m2): jeder Schritt
+    // trägt seinen eigenen Commit und Grund, und die Kette führt vom Bestand bis zur heutigen Fassung (`null` = entfallen).
+    const kette = (pfad: string, start: string): string | null => {
+      let soll: string | null = start;
+      for (let schritt = 0; soll !== null && schritt < 20; schritt++) {
+        const f = kundenBestand.fortschreibungen.find(x => x.datei === pfad && x.vorher === soll);
+        if (!f || 'menue' in f) break;
+        verwendeteFortschreibungen.add(f);
+        soll = f.nachher;
+      }
+      return soll;
+    };
     let zahl = 0;
     for (const [pfad, vorher] of Object.entries(kundenBestand.bedienelemente)) {
       const nachfolger = kundenBestand.fortschreibungen.find(f => f.datei === pfad && 'nachher_datei' in f);
@@ -1555,6 +1570,19 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
         nz.entfallen.forEach((_, i) => verwendeteEntfallene.add(`${pfad}#${i}`));
         zahl += vorher.length;
         continue;
+      }
+      // Ein beschlossener Umbau einer uems-Fläche (Konzept mit Entscheid): die Datei entfällt und nennt, wohin ihre Aufgabe
+      // ging, oder sie trägt danach genau die Bedienelemente des Umbaus (geschützt wie ein Neubau, unten). Ihre bisherigen
+      // Fortschreibungen gehen im Umbau auf.
+      const umbau = kundenBestand.umbauten.find((u) => pfad in u.dateien);
+      const umbauZiel = umbau ? (umbau.dateien[pfad as keyof typeof umbau.dateien] as { nachher?: string[]; entfaellt?: boolean; wohin?: string }) : null;
+      if (umbau && umbauZiel) {
+        kundenBestand.fortschreibungen.filter((f) => f.datei === pfad).forEach((f) => verwendeteFortschreibungen.add(f));
+        if (umbauZiel.entfaellt) {
+          expect(existsSync(join(SRC, pfad)), `${pfad}: ${umbau.entscheid} (${umbauZiel.wohin})`).toBe(false);
+          zahl += vorher.length;
+          continue;
+        }
       }
       const datei = ts.createSourceFile(quellpfad, readFileSync(join(SRC, quellpfad), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
       const jetzt: string[] = [];
@@ -1570,6 +1598,11 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
         ts.forEachChild(knoten, besuche);
       };
       besuche(datei);
+      if (umbau && umbauZiel) {
+        expect(jetzt, `${pfad}: ${umbau.entscheid}`).toEqual(umbauZiel.nachher);
+        zahl += vorher.length;
+        continue;
+      }
       const zusammen = kundenBestand.assistentZusammenfuehrung;
       const umgebaut = zusammen.dateien[pfad as keyof typeof zusammen.dateien];
       if (umgebaut) {
@@ -1586,7 +1619,8 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
         // Der ausgelieferte Neubau ist geschützt: jedes Bedienelement der main-Fassung steht unverändert im Merge.
         const rest = [...jetzt];
         for (const fingerabdruck of nz.main) {
-          const stelle = rest.indexOf(fingerabdruck);
+          // Auch ein Bedienelement der main-Fassung ändert sich nur mit einzeln belegter Fortschreibung.
+          const stelle = rest.indexOf(kette(pfad, fingerabdruck) ?? fingerabdruck);
           expect(stelle, `${pfad}: Bedienelement von main ${nz.nachzug}`).toBeGreaterThanOrEqual(0);
           rest.splice(stelle, 1);
         }
@@ -1595,8 +1629,27 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
         // Der ursprüngliche Bestand bleibt erhalten. Nur ein ausdrücklich belegter Nachfolger
         // ersetzt seinen Fingerabdruck; auch dessen gesamte Attribute/Handler bleiben geschützt.
         const fortschreibung = kundenBestand.fortschreibungen.find(f => f.datei === pfad && f.vorher === fingerabdruck);
-        if (fortschreibung) verwendeteFortschreibungen.add(fortschreibung);
-        const soll = fortschreibung?.nachher ?? fingerabdruck;
+        if (fortschreibung && 'menue' in fortschreibung) {
+          verwendeteFortschreibungen.add(fortschreibung);
+          // Ins Menü ⋯ verlegt (Konzept Auswerten a1 §6.5): kein eigener Knopf mehr, sondern ein Eintrag des RowMenu -
+          // Beschriftung, Recht und Handler stehen wörtlich in der Datei, sonst gilt der Knopf als verloren. Trägt der
+          // Eintrag sein Recht über eine Variable, steht deren Belegung als `recht` daneben und ebenso wörtlich in der
+          // Datei (Review r3: sonst prüfte niemand, welches Recht der Eintrag verlangt).
+          const quelle = readFileSync(join(SRC, quellpfad), 'utf8');
+          expect(quelle, `${pfad}: ${fortschreibung.grund}`).toContain(String(fortschreibung.menue));
+          expect('recht' in fortschreibung, `${pfad}: Fortschreibung ins Menü ohne belegtes Recht`).toBe(true);
+          expect(quelle, `${pfad}: das Recht des Menüeintrags`).toContain(String((fortschreibung as { recht?: string }).recht));
+          zahl++;
+          continue;
+        }
+        const soll = kette(pfad, fingerabdruck);
+        if (soll === null) {
+          // Ein ausdrücklich belegter Wegfall (Neubau einer Fläche nach freigegebenem Konzept, Grund und Commit am
+          // Eintrag): das Bedienelement ist wirklich weg, nicht nur verschoben.
+          expect(jetzt, `${pfad}: als entfallen belegt, steht aber noch da`).not.toContain(fingerabdruck);
+          zahl++;
+          continue;
+        }
         const stelle = jetzt.indexOf(soll);
         if (stelle < 0 && nz) {
           // Nur was main selbst entfernt hat, darf fehlen — einzeln belegt und auf main wirklich nicht mehr da.
@@ -1650,7 +1703,8 @@ describe('AP-09 IP-10 · additive Kundenhebel für Werte und Ablesungen', () => 
   it.each([
     ['components/BezugsKanalbindung.tsx', 'bezugsgroesse.verwalten'],
     ['components/BezugswertDialog.tsx', 'bezugsgroesse.eingeben'],
-    ['components/BezugswertListe.tsx', 'bezugsgroesse.eingeben'],
+    // Messen m1 §6.8: die Werte einer Bezugsgröße stehen auf ihrer Seite (die frühere Inline-Liste entfällt).
+    ['pages/BezugsgroesseSeite.tsx', 'bezugsgroesse.eingeben'],
     ['components/AblesungDialog.tsx', 'ablesung.erfassen'],
     ['components/Ablesungen.tsx', 'ablesung.erfassen'],
   ])('%s verwendet die bestehende Rechte-Weiche für %s', (pfad, recht) => {
@@ -1682,17 +1736,33 @@ describe('AP-01 IP-13 · Ladegrenze bleibt eine additive Bestandsfläche', () =>
   });
 });
 
-// AP-02 IP-10: die neue Bestandsübernahme ergänzt das Portfolio nur bei einer
+// AP-02 IP-10: die Unternehmens-Ebene zeigt die Vorschlagskarte weiterhin nur bei einer
 // tatsächlich offenen Vorschlagsmenge. Ohne sie bleibt der O18-Bestand zeichengleich.
-describe('AP-02 IP-10 · Vorschau-Zuordnung bleibt additiv', () => {
-  it('lädt und rendert die Fläche nur mit Unternehmensrecht und offenen Anlagen', () => {
-    // Seit dem Nachzug von main d1d67b97e (eine Übersicht für jede Betriebsart) trägt die Flotte die Karte über
-    // `StandortVorschlagHinweis`, die Unternehmens-Ebene über `EbenenCockpit` — beide mit derselben Regel.
-    for (const datei of ['components/StandortVorschlagHinweis.tsx', 'components/EbenenCockpit.tsx']) {
-      const quelle = ohneKommentare(readFileSync(join(SRC, datei), 'utf8'));
-      expect(quelle, datei).toContain("rollen.darf('standort.verwalten', null)");
-      expect(quelle, datei).toContain('v.anlagenZahl > 0 ? v : null');
-      expect(quelle, datei).toContain('{standortVorschlag &&');
+describe('AP-02 IP-10 · Vorschau-Zuordnung auf der Unternehmens-Ebene bleibt additiv', () => {
+  it('lädt und rendert die Karte nur mit Unternehmensrecht und offenen Anlagen', () => {
+    const quelle = ohneKommentare(readFileSync(join(SRC, 'components/EbenenCockpit.tsx'), 'utf8'));
+    expect(quelle).toContain("rollen.darf('standort.verwalten', null)");
+    expect(quelle).toContain('v.anlagenZahl > 0 ? v : null');
+    expect(quelle).toContain('{standortVorschlag &&');
+  });
+});
+
+// firstmate K2 (09.10.2026): die grosse Vorschlagskarte verschwindet aus der Kunden-Übersicht
+// (`EBENE_HEUTE`) — Ersatz ist der leise Einstieg im ⋯-Menü, nur sichtbar mit `standort.verwalten`
+// (von `RowMenu` selbst gefiltert) und ohne Hintergrund-Abruf vor dem Klick.
+describe('firstmate K2 · der leise Einstieg ersetzt die Vorschlagskarte auf der gewohnten Übersicht', () => {
+  it('trägt das Recht am Menü-Eintrag, lädt erst beim Klick und zeigt keine Karte von sich aus', () => {
+    const quelle = ohneKommentare(readFileSync(join(SRC, 'components/MessenEinrichtenEintrag.tsx'), 'utf8'));
+    expect(quelle).toContain("recht: 'standort.verwalten'");
+    expect(quelle).not.toContain('NochNichtZugeordnetKarte');
+    expect(quelle).not.toMatch(/useEffect/);
+    // `PortfolioCockpit` selbst bleibt blind für die Betriebsart (siehe oben) — der Hook läuft
+    // in den Aufrufern, die das fertige Paar nur noch als Prop einhängen.
+    for (const datei of ['pages/UebersichtPage.tsx', 'pages/PortfolioPage.tsx']) {
+      expect(ohneKommentare(readFileSync(join(SRC, datei), 'utf8')), datei).toContain('useMessenEinrichtenEintrag');
     }
+    const cockpit = ohneKommentare(readFileSync(join(SRC, 'components/PortfolioCockpit.tsx'), 'utf8'));
+    expect(cockpit).toContain('messenEinrichtenEintrag');
+    expect(cockpit).not.toMatch(/\bbetriebsart\b/i);
   });
 });

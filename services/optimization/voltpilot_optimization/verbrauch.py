@@ -580,8 +580,12 @@ class Teilperiode:
 
 
 def _mit_abdeckung(out: dict, erwartet: int) -> dict:
+    """Kappt bei 100 (Java-Zwilling ``VerbrauchRegeln.Ergebnis.mitAbdeckung``): ``erwartet`` ist
+    die Erwartung aus der deklarierten Kadenz, nicht die tatsaechliche Zustellrate - ein
+    ereignisgetriebener Kanal kann mehr gute Werte liefern als erwartet. Ungekappt ueberschritte
+    ``abdeckung_prozent`` 100 und die Datenbankgrenze wiese den Wert ab."""
     out["erwartet"] = erwartet
-    out["abdeckung_prozent"] = int(_D(out["erhalten"]) * 100 / _D(erwartet)) if erwartet else None
+    out["abdeckung_prozent"] = min(100, int(_D(out["erhalten"]) * 100 / _D(erwartet))) if erwartet else None
     return out
 
 
@@ -1677,9 +1681,11 @@ def ergebnis(
     if abgelehnt:
         out["ersatzwert_abgelehnt"] = abgelehnt
     # Z9: Abdeckung des VERLAUFS - sie sagt, wie viele Werte ankamen, nicht ob die Menge
-    # stimmt. Ein vollständiger Tag darf 85 % Abdeckung haben (F8).
+    # stimmt. Ein vollständiger Tag darf 85 % Abdeckung haben (F8). Gekappt bei 100 (derselbe
+    # Klemmwert wie _mit_abdeckung): mehr Werte als erwartet bleiben voll abgedeckt, nie
+    # "übererfüllt" - sonst wiese die Datenbankgrenze den Wert ab.
     out["abdeckung_prozent"] = (
-        int(_D(out["erhalten"]) * 100 / _D(out["erwartet"])) if out["erwartet"] else None
+        min(100, int(_D(out["erhalten"]) * 100 / _D(out["erwartet"]))) if out["erwartet"] else None
     )
     # P3: die Länge der Periode in Stunden - am Umstellungstag 23 oder 25, weil Tage
     # Kalenderperioden in der Zeitzone des Standorts sind.

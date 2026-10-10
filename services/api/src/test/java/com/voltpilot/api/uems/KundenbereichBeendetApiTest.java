@@ -103,6 +103,22 @@ class KundenbereichBeendetApiTest {
                 "Vorlagen-Katalog der Plattform");
         m.put("POST /api/v1/admin/component-templates/{templateRef}/versions/{version}/restore",
                 "Vorlagen-Katalog der Plattform");
+        m.put("POST /api/v1/admin/fernwartung/techniker", "Techniker-Zugang der Plattform, nicht je Kundenbereich");
+        m.put("DELETE /api/v1/admin/fernwartung/techniker/{id}", "Techniker-Zugang der Plattform, nicht je Kundenbereich");
+        m.put("PUT /api/v1/admin/fernwartung/techniker/{id}/ssh-schluessel",
+                "SSH-Schlüssel am Techniker-Zugang der Plattform, nicht je Kundenbereich");
+        m.put("DELETE /api/v1/admin/fernwartung/techniker/{id}/ssh-schluessel",
+                "SSH-Schlüssel am Techniker-Zugang der Plattform, nicht je Kundenbereich");
+        m.put("POST /api/v1/admin/fernwartung/techniker/{id}/sperren", "Techniker-Zugang der Plattform, nicht je Kundenbereich");
+        m.put("POST /api/v1/admin/fernwartung/techniker/{id}/entsperren", "Techniker-Zugang der Plattform, nicht je Kundenbereich");
+        m.put("POST /api/v1/admin/fernwartung/fenster", "Fernwartungsfenster der Plattform, nicht je Kundenbereich");
+        m.put("POST /api/v1/admin/fernwartung/fenster/{id}/schliessen", "Fernwartungsfenster der Plattform, nicht je Kundenbereich");
+        m.put("POST /api/v1/admin/fernwartung/boxen/{ref}/sperren",
+                "Fernwartung einer Box — Befund: kein Kundenbereich-Zaun, erreicht auch Boxen beendeter Bereiche (Diagnose/Abbau)");
+        m.put("POST /api/v1/admin/fernwartung/boxen/{ref}/entsperren",
+                "Fernwartung einer Box — Befund: kein Kundenbereich-Zaun, erreicht auch Boxen beendeter Bereiche (Diagnose/Abbau)");
+        m.put("PUT /api/v1/admin/fernwartung/boxen/{ref}/schluessel",
+                "Fernwartung einer Box — Befund: kein Kundenbereich-Zaun, erreicht auch Boxen beendeter Bereiche (Diagnose/Abbau)");
         return m;
     }
 

@@ -71,6 +71,85 @@
   background: var(--vp-warn, #f59e0b);
 }
 
+/*
+ * Status-Variante A (Review PR2 §5.1, Punkt 2): bei Handlungsbedarf eskaliert die
+ * ruhige Statuszeile zu Hinweiskarten unter dem Kopf — die Datenlage und/oder die
+ * Wiedervorlage-Eskalation (PR #1396, letztere springt zur Wiedervorlage). Dieselbe
+ * Karten-Sprache wie die Bausteine (1-px-Rahmen, Radius 16 px), toniger linker Akzent.
+ */
+.vp-portfolio-hinweise {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-2, 8px);
+  margin-top: var(--vp-space-4, 16px);
+  /* Pixel-Review R2: nicht am Kachelraster kleben - derselbe Abstand wie zwischen den Kacheln (`.vp-pk-raster` gap). */
+  margin-bottom: var(--vp-c-space-3, 12px);
+  min-width: 0;
+}
+
+.vp-portfolio-hinweis {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-3, 12px);
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--vp-space-4, 16px) var(--vp-space-5, 20px);
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-left: 4px solid var(--vp-text-subtle, #ced4da);
+  border-radius: 16px;
+  min-width: 0;
+  text-align: left;
+}
+
+/* Die klickbare Hinweiskarte (Wiedervorlage): springt in die Arbeitsliste. */
+button.vp-portfolio-hinweis {
+  font: inherit;
+  cursor: pointer;
+  transition: background var(--vp-motion-fast) var(--vp-ease-inout);
+}
+button.vp-portfolio-hinweis:hover {
+  background: #f8fafc;
+}
+button.vp-portfolio-hinweis:focus-visible {
+  outline: 2px solid var(--vp-focus, #2563eb);
+  outline-offset: 2px;
+}
+.vp-portfolio-hinweis-pfeil {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-self: center;
+  margin-left: auto;
+  color: var(--vp-text-subtle, #ced4da);
+}
+
+.vp-portfolio-hinweis.is-warn {
+  border-left-color: var(--vp-warn, #f59e0b);
+}
+
+.vp-portfolio-hinweis.is-off {
+  border-left-color: var(--vp-text-subtle, #ced4da);
+}
+
+.vp-portfolio-hinweis-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: var(--vp-warn-ink, #b45309);
+}
+
+.vp-portfolio-hinweis.is-off .vp-portfolio-hinweis-icon {
+  color: var(--vp-text-muted, #6c757d);
+}
+
+.vp-portfolio-hinweis-text {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.4;
+  color: var(--vp-navy-1, #1e3a5f);
+  overflow-wrap: anywhere;
+}
+
 .vp-portfolio-aktionen {
   display: flex;
   align-items: center;

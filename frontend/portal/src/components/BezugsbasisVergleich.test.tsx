@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { api, ApiError } from '../api';
 import { UEMS_NORMGRENZE } from '../glossar';
-import { vergleichLeer, vergleichMitMaerz, vergleichMitStand, vergleichR2 } from '../test/bezugsbasisVergleichFixtures';
+import { vergleichAbNovember, vergleichLeer, vergleichMitMaerz, vergleichMitStand, vergleichR2 } from '../test/bezugsbasisVergleichFixtures';
 import { BezugsbasisVergleich } from './BezugsbasisVergleich';
 
 const KZ1 = 'c0de0000-0000-4000-8000-00000000a001';
@@ -80,18 +80,33 @@ describe('AP-17 IP-20 · Reiter „Vergleich mit Bezugsbasis“', () => {
     expect(within(kopf).getByTestId('urteil').textContent).toBe('ohne Urteil (± 2 %)');
   });
 
+  it('P4 je Monat: der Kopf-Satz nennt „4 von 6 Monaten bewertbar“ neben dem Urteil; die Monate ohne Fassung sagen ihren Grund', async () => {
+    leser(vergleichAbNovember());
+    render(<BezugsbasisVergleich kennzahlId={KZ1} />);
+    const september = await screen.findByTestId('monat-2027-09');
+    expect(within(september).getByTestId('grund').textContent).toContain(
+      'September 2027: nicht bewertbar — für diesen Monat gilt noch keine Fassung der Bezugsbasis BB-0001.',
+    );
+    const kopf = screen.getByTestId('vergleich-zeitraum');
+    expect(within(kopf).getByTestId('urteil').textContent).toBe('im Rahmen (± 2 %)');
+    expect(within(kopf).queryByTestId('zeitraum-monate')).toBeNull();
+    expect(within(kopf).getByTestId('zeitraum-satz').textContent).toContain(
+      '4 von 6 Monaten bewertbar, die Bezugsbasis gilt erst ab November 2027.',
+    );
+  });
+
   it('S5: mit Stand „Stand Nr. 1 vom 12.01.2028“', async () => {
     leser(vergleichMitStand());
     render(<BezugsbasisVergleich kennzahlId={KZ1} />);
     expect((await screen.findByTestId('vergleich-stand')).textContent).toBe('Stand Nr. 1 vom 12.01.2028');
   });
 
-  it('R10: ohne Bezugsbasis nur der Leer-Satz mit Verweis auf den Reiter „Bezugsbasis“ — keine Tafel, kein Urteil', async () => {
+  it('R10: ohne Bezugsbasis nur der Leer-Satz mit dem Weg zur Bezugsbasis (Seite der Kennzahl) — keine Tafel, kein Urteil', async () => {
     leser(vergleichLeer());
     render(<BezugsbasisVergleich kennzahlId={KZ1} />);
     const leer = await screen.findByTestId('vergleich-leer');
     expect(leer.textContent).toContain('Noch keine Bezugsbasis.');
-    expect(leer.textContent).toContain('Reiter „Bezugsbasis“');
+    expect(leer.textContent).toContain('auf der Seite der Kennzahl fest („Bezugsbasis festlegen“)');
     expect(screen.queryByTestId('vergleich-monate')).toBeNull();
     expect(screen.queryByTestId('urteil')).toBeNull();
     expect(screen.queryByTestId('vergleich-stand')).toBeNull();

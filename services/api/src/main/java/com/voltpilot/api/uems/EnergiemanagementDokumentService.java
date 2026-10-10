@@ -19,6 +19,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -160,6 +161,36 @@ public class EnergiemanagementDokumentService {
                         baum(a.alt()), baum(a.neu()), a.begruendung(), a.akteur(), a.zeit())).toList());
     }
 
+    /** Ein „geprüft, bleibt“ an einem Dokument, für „Zuletzt erledigt“ der Wiedervorlage (Konzept w1). */
+    public record GeprueftBleibt(UUID dokumentId, String kennzeichen, String titel, Integer fassung, LocalDate am,
+            String entschiedenVon, String eingetragenVon) {}
+
+    /**
+     * Konzept Wiedervorlage w1, „Zuletzt erledigt“: die „geprüft, bleibt“ von {@code ab} bis {@code bis} (beide Tage
+     * eingeschlossen), der jüngste zuerst; „entschieden von“ ist die Person, „eingetragen von“ das Konto.
+     */
+    public List<GeprueftBleibt> geprueftBleibt(LocalDate ab, LocalDate bis) {
+        var liste = repo.geprueftBleibt(ab, bis);
+        if (liste.isEmpty()) {
+            return List.of();
+        }
+        Map<UUID, EnergiemanagementPersonenRepository.Person> leute = personen.personen().stream()
+                .collect(Collectors.toMap(EnergiemanagementPersonenRepository.Person::id, Function.identity()));
+        Map<UUID, EnergiemanagementDokumentRepository.Dokument> doks = new HashMap<>();
+        var aus = new ArrayList<GeprueftBleibt>();
+        for (var b : liste) {
+            var d = doks.computeIfAbsent(b.dokumentId(), id -> repo.dokument(id).orElse(null));
+            if (d == null) {
+                continue;
+            }
+            var e = b.eintrag();
+            var von = leute.get(e.entschiedenVon());
+            aus.add(new GeprueftBleibt(d.id(), d.kennzeichen(), d.titel(), e.fassung(), e.am(),
+                    von == null ? null : von.name(), e.akteur() == null ? null : e.akteur().name()));
+        }
+        return List.copyOf(aus);
+    }
+
     /**
      * DK7, W5: die gültige Fassung des Anwendungsbereichs neben dem laufenden Betrachtungsumfang der energetischen
      * Bewertung (AP-16 U1, {@code bewertung_umfang}) — Mengen und Sätze ohne Urteil; der Vergleich ändert nichts.
@@ -203,15 +234,20 @@ public class EnergiemanagementDokumentService {
             saetze.add(satz("anwendungsbereich_deckungsgleich", Map.of("fassung", String.valueOf(lauf.nummer()),
                     "ab", lauf.inhalt().gueltigAb().format(TAG))));
         } else {
-            // §5.8 nennt nur die Richtung „gehört zum Anwendungsbereich, aber nicht zum Betrachtungsumfang“;
-            // die Gegenrichtung steht in den Feldern (Vertrag §9).
+            // Beide Richtungen mit Satz: §5.8 „gehört zum Anwendungsbereich, aber nicht zum Betrachtungsumfang“ und
+            // seit Vertrag 1.4 die Gegenrichtung (Konzept Nachweisen n1, Befund A21); die Felder tragen dieselben Mengen.
+            String fassung = String.valueOf(lauf.nummer());
             for (var s : nurAb) {
-                saetze.add(satz("anwendungsbereich_unterschied", Map.of("was", s.name(),
-                        "fassung", String.valueOf(lauf.nummer()))));
+                saetze.add(satz("anwendungsbereich_unterschied", Map.of("was", s.name(), "fassung", fassung)));
             }
             for (String t : trAb) {
-                saetze.add(satz("anwendungsbereich_unterschied", Map.of("was", t,
-                        "fassung", String.valueOf(lauf.nummer()))));
+                saetze.add(satz("anwendungsbereich_unterschied", Map.of("was", t, "fassung", fassung)));
+            }
+            for (var s : nurUm) {
+                saetze.add(satz("anwendungsbereich_nur_im_umfang", Map.of("was", s.name(), "fassung", fassung)));
+            }
+            for (String t : trUm) {
+                saetze.add(satz("anwendungsbereich_nur_im_umfang", Map.of("was", t, "fassung", fassung)));
             }
         }
         return new EnergiemanagementDokumentDto.Vergleich(heute, gilt.nr(), ab, um,
@@ -361,9 +397,10 @@ public class EnergiemanagementDokumentService {
                         "Ohne Vier-Augen-Freigabe geben Sie die Fassung direkt frei.", Map.of("fassung", nr));
             }
             leitungPruefen(d, entscheid);
+            var original = originalImUebergang(e, f);
             String kopie = kopie(d, f);
             repo.beantragen(id, f, kopie, BerichtRegeln.pruefsumme(kopie), entscheid.von(), entscheid.tag(),
-                    entscheid.begruendung(), freigabeRolle(wer), wer);
+                    entscheid.begruendung(), freigabeRolle(wer), original, wer);
         });
     }
 
@@ -386,13 +423,17 @@ public class EnergiemanagementDokumentService {
                 }
                 var entscheid = entscheid(e);
                 leitungPruefen(d, entscheid);
+                var original = originalImUebergang(e, f);
                 String kopie = kopie(d, f);
                 repo.freigeben(id, f, kopie, BerichtRegeln.pruefsumme(kopie), entscheid.von(), entscheid.tag(),
-                        entscheid.begruendung(), freigabeRolle(wer), wer);
+                        entscheid.begruendung(), freigabeRolle(wer), original, wer);
             } else if ("beantragt".equals(f.status())) {
                 zweitePerson(f, wer);
                 if (e != null && (e.entschiedenVon() != null || e.entschiedenAm() != null)) {
                     throw ungueltig("entschieden_von", "„Entschieden von“ und der Tag stehen schon im Antrag.");
+                }
+                if (e != null && e.original() != null) {
+                    throw ungueltig("original", "Das Original steht schon im Antrag.");
                 }
                 String begruendung = e == null || text(e.begruendung()) == null ? null : begruendung(e.begruendung());
                 repo.bestaetigen(id, f, begruendung, wer);
@@ -428,7 +469,7 @@ public class EnergiemanagementDokumentService {
     /** DK5: „geprüft, bleibt“ an der gültigen Fassung einer Vorgabe — verschiebt die Überprüfung. */
     public void geprueft(UUID id, EnergiemanagementDokumentDto.Geprueft g, ProtokollAkteur wer) {
         var entscheid = entscheid(new EnergiemanagementDokumentDto.Entscheid(g.entschiedenVon(), g.am(),
-                g.begruendung()));
+                g.begruendung(), null));
         String beschluss = beschluss(g.beschlussKennung());
         tx.executeWithoutResult(s -> {
             var d = schreibbar(id, FREIGEBEN);
@@ -494,7 +535,7 @@ public class EnergiemanagementDokumentService {
     /** DK8: aufheben mit Tag und Begründung — das Dokument bleibt mit allen Fassungen lesbar. */
     public void aufheben(UUID id, EnergiemanagementDokumentDto.Aufheben a, ProtokollAkteur wer) {
         var entscheid = entscheid(new EnergiemanagementDokumentDto.Entscheid(a.entschiedenVon(), a.am(),
-                a.begruendung()));
+                a.begruendung(), null));
         String beschluss = beschluss(a.beschlussKennung());
         tx.executeWithoutResult(s -> {
             var d = schreibbar(id, FREIGEBEN);
@@ -526,7 +567,8 @@ public class EnergiemanagementDokumentService {
     /**
      * DK3/PA3: bei Energiepolitik, Anwendungsbereich und Bestellung entscheidet die Person mit der am Tag laufenden
      * Aufgabe „Leitung des Unternehmens“ — ohne Leitung der Satz des Vertrags; die Fläche erfindet keine (422
-     * {@code leitung_fehlt}, bevor der Trigger es täte).
+     * {@code leitung_fehlt}, bevor der Trigger es täte). Eine andere Person als die Leitung: 422
+     * {@code nicht_die_leitung} mit der Leitung am Tag.
      */
     private void leitungPruefen(EnergiemanagementDokumentRepository.Dokument d, Entscheidung e) {
         if (!leitungsPflicht(d.art())) {
@@ -538,7 +580,9 @@ public class EnergiemanagementDokumentService {
                     Map.of("art", d.art(), "tag", e.tag().toString()));
         }
         if (!am.contains(e.von())) {
-            throw EnergiemanagementAbgelehnt.fachlich("leitung_fehlt",
+            // Befund A11 (Konzept Nachweisen n1): „keine Leitung festgelegt“ und „diese Person ist nicht die Leitung“
+            // sind zwei Ablehnungen mit zwei Codes.
+            throw EnergiemanagementAbgelehnt.fachlich("nicht_die_leitung",
                     "Über " + artWort(d.art()) + " entscheidet die Leitung des Unternehmens.",
                     Map.of("art", d.art(), "tag", e.tag().toString(),
                             "leitung", am.stream().map(UUID::toString).toList()));
@@ -605,10 +649,13 @@ public class EnergiemanagementDokumentService {
             }
             laenge("wortlaut", w, EnergiemanagementRegeln.STARTWERTE.wortlaut_zeichen_hoechstens());
             return new EnergiemanagementDokumentRepository.Inhalt("wortlaut", w, null, null, null, null, null, null,
-                    null, begruendung, beschluss);
+                    null, begruendung, beschluss, original(f.original()));
         }
         if (f.wortlaut() != null) {
             throw ungueltig("wortlaut", "Ein Verweis trägt keinen Wortlaut.");
+        }
+        if (f.original() != null) {
+            throw ungueltig("original", "Bei einem Verweis ist der Verweis selbst das Original.");
         }
         var v = f.verweis();
         String ablage = v == null ? null : text(v.ablage());
@@ -630,7 +677,7 @@ public class EnergiemanagementDokumentService {
             throw ungueltig("verweis.sha256", "Die Prüfsumme ist 64 Zeichen 0–9 und a–f.");
         }
         return new EnergiemanagementDokumentRepository.Inhalt("verweis", null, bezeichnung, ablage, kennung, adresse,
-                angabe, v.datum(), sha, begruendung, beschluss);
+                angabe, v.datum(), sha, begruendung, beschluss, null);
     }
 
     /** DK7: nur der Anwendungsbereich trägt Standorte (des Kundenbereichs, einmal), Träger und Ausschlüsse. */
@@ -736,8 +783,17 @@ public class EnergiemanagementDokumentService {
         if (r.containsKey("fehler")) {
             throw new IllegalStateException("Überprüfung nicht berechenbar: " + r.get("fehler"));
         }
-        return new EnergiemanagementDokumentDto.Ueberpruefung(heute, datum(r.get("faellig_am")), datum(r.get("basis")),
-                (Integer) r.get("fassung"), (Integer) r.get("tage"), (String) r.get("satz"), (String) r.get("grund"));
+        LocalDate basis = datum(r.get("basis"));
+        Integer nr = (Integer) r.get("fassung");
+        String basisArt = null;
+        if (r.get("faellig_am") != null && basis != null && nr != null) {
+            LocalDate freigabe = fassungen.stream().filter(f -> "freigegeben".equals(f.status()) && f.nr() == nr)
+                    .map(EnergiemanagementDokumentRepository.Fassung::entschiedenTag).findFirst().orElse(basis);
+            basisArt = basis.isAfter(freigabe) ? "geprueft_bleibt" : "freigabe";
+        }
+        return new EnergiemanagementDokumentDto.Ueberpruefung(heute, datum(r.get("faellig_am")), basis, nr,
+                (Integer) r.get("tage"), (String) r.get("satz"), (String) r.get("grund"), basisArt,
+                basisArt == null ? null : d.ueberpruefungMonate());
     }
 
     private EnergiemanagementDokumentDto.Fassung fassung(EnergiemanagementDokumentRepository.Fassung f,
@@ -754,7 +810,9 @@ public class EnergiemanagementDokumentService {
                 kurz(leute.get(f.entschiedenVon())), f.entschiedenTag(), f.freigabeBegruendung(),
                 f.freigabe() == null ? null : new Eingetragen(f.freigabe(), f.freigabeAm()),
                 f.entscheidung() == null ? null : new Eingetragen(f.entscheidung(), f.entschiedenAm()),
-                f.entscheidungsBegruendung(), f.freigegebenAm(), new Eingetragen(f.akteur(), f.angelegtAm()));
+                f.entscheidungsBegruendung(), f.freigegebenAm(), new Eingetragen(f.akteur(), f.angelegtAm()),
+                f.original() == null ? null : new EnergiemanagementPersonenDto.Beleg(f.original().bezeichnung(),
+                        f.original().ablage(), f.original().kennung(), f.original().adresse(), f.original().sha256()));
     }
 
     private EnergiemanagementDokumentDto.Eintrag eintrag(EnergiemanagementDokumentRepository.Eintrag e,
@@ -920,6 +978,32 @@ public class EnergiemanagementDokumentService {
     }
 
     private static EnergiemanagementPersonenDto.Beleg beleg(EnergiemanagementPersonenDto.Beleg b) {
+        return beleg(b, "beleg");
+    }
+
+    /**
+     * Entscheid 10: das Original einer Wortlaut-Fassung, geprüft wie jeder Verweis (G3); ohne Ablage und ohne einen
+     * seiner Teile {@code null} (nichts festgehalten).
+     */
+    private static EnergiemanagementDokumentRepository.Original original(EnergiemanagementPersonenDto.Beleg b) {
+        var n = beleg(b, "original");
+        return n.ablage() == null ? null : new EnergiemanagementDokumentRepository.Original(n.bezeichnung(),
+                n.ablage(), n.kennung(), n.adresse(), n.sha256());
+    }
+
+    /** Das Original beim Übergang aus dem Entwurf: nur an einem Wortlaut; ohne Angabe bleibt das des Entwurfs. */
+    private static EnergiemanagementDokumentRepository.Original originalImUebergang(
+            EnergiemanagementDokumentDto.Entscheid e, EnergiemanagementDokumentRepository.Fassung f) {
+        if (e == null || e.original() == null) {
+            return null;
+        }
+        if (!"wortlaut".equals(f.form())) {
+            throw ungueltig("original", "Bei einem Verweis ist der Verweis selbst das Original.");
+        }
+        return original(e.original());
+    }
+
+    private static EnergiemanagementPersonenDto.Beleg beleg(EnergiemanagementPersonenDto.Beleg b, String feld) {
         if (b == null) {
             return new EnergiemanagementPersonenDto.Beleg(null, null, null, null, null);
         }
@@ -929,16 +1013,16 @@ public class EnergiemanagementDokumentService {
                 || n.sha256() != null;
         if (n.ablage() == null && irgendwas) {
             throw EnergiemanagementAbgelehnt.fachlich("beleg_ungueltig",
-                    "Bitte nennen Sie, wo das Original liegt (Ablage).", Map.of("feld", "beleg.ablage"));
+                    "Bitte nennen Sie, wo das Original liegt (Ablage).", Map.of("feld", feld + ".ablage"));
         }
         if (n.ablage() != null) {
-            laenge("beleg.ablage", n.ablage(), 200);
-            if (n.bezeichnung() != null) laenge("beleg.bezeichnung", n.bezeichnung(), 200);
-            if (n.kennung() != null) laenge("beleg.kennung", n.kennung(), 200);
-            if (n.adresse() != null) laenge("beleg.adresse", n.adresse(), 2000);
+            laenge(feld + ".ablage", n.ablage(), 200);
+            if (n.bezeichnung() != null) laenge(feld + ".bezeichnung", n.bezeichnung(), 200);
+            if (n.kennung() != null) laenge(feld + ".kennung", n.kennung(), 200);
+            if (n.adresse() != null) laenge(feld + ".adresse", n.adresse(), 2000);
             if (n.sha256() != null && !SHA256.matcher(n.sha256()).matches()) {
                 throw EnergiemanagementAbgelehnt.fachlich("beleg_ungueltig",
-                        "Die Prüfsumme ist 64 Zeichen 0–9 und a–f.", Map.of("feld", "beleg.sha256"));
+                        "Die Prüfsumme ist 64 Zeichen 0–9 und a–f.", Map.of("feld", feld + ".sha256"));
             }
         }
         return n;

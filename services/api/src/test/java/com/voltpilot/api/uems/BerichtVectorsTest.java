@@ -621,7 +621,8 @@ class BerichtVectorsTest {
             case BerichtRegeln.KEINE_QUELLEN -> BerichtRegeln.keineQuellen(w.path("geltung").asText(), w.at("/zeitraum/art").asText(),
                     w.at("/zeitraum/schluessel").asText(), tag(w.path("besteht_seit")));
             case BerichtRegeln.BERICHT_GIBT_ES_SCHON -> BerichtRegeln.berichtGibtEsSchon(w.path("kennung").asText(),
-                    w.path("geltung").asText(), w.at("/zeitraum/art").asText(), w.at("/zeitraum/schluessel").asText());
+                    w.path("vorlage").asText(), w.path("geltung").asText(), w.at("/zeitraum/art").asText(),
+                    w.at("/zeitraum/schluessel").asText());
             case BerichtRegeln.STAND_GIBT_ES_NICHT -> w.path("neueste").isNull()
                     ? BerichtRegeln.standGibtEsNicht(w.path("nr").asInt(), null, null, zone)
                     : BerichtRegeln.standGibtEsNicht(w.path("nr").asInt(), w.at("/neueste/nr").asInt(), zeit(w.at("/neueste/freigegeben_am")), zone);

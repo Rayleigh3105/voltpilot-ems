@@ -25,9 +25,20 @@
  *              battery rests), in the new grid-side meaning it is the target - so
  *              no stale battery setpoint can ever be read as a grid target (k2
  *              §2.9). 1115 <- 999 because 1000 (what Herzogau reads) throttles the
- *              own PV to 0 in grid mode (k2 §1.7). RAM registers, kept alive like
- *              the ordinary remote plan (1101/1109/1100 every tick), so a dead box
- *              ends it by the device's own 60-s watchdog.
+ *              own PV to 0 in grid mode per the LV field report (k2 §1.7). RAM
+ *              registers, kept alive like the ordinary remote plan
+ *              (1101/1109/1100 every tick), so a dead box ends it by the device's
+ *              own 60-s watchdog.
+ *              ⚠ Evidence level of the grid side ("2 netzseitig"), HV-30K Herzogau
+ *              08.10.2026 confirmed (Netz-Sollwert-Test, DEYE.md): the grid point
+ *              follows the target, 1115 = 1000 does NOT throttle the PV to 0 on
+ *              this HV unit (999 is written all the same - one device is not the
+ *              family), and target 0 reaches only as far as the device's OWN
+ *              share (own PV plus storage charge) - the Fronius feed-in needs the
+ *              cascade with their caps. That test released the PLAN's grid-side
+ *              throttling slot (deye-grid-target.js, P3); it does NOT release
+ *              this candidate - a charge-side hand-over at a positive price
+ *              still needs its own pilot window.
  *              ⚠ Side effect (§6.3): with the storage full or at its charge limit
  *              the device throttles its OWN PV to hold the grid at 0 - also at a
  *              positive price. The plan says so (`curtailsOwnPv`), Layer 1 states

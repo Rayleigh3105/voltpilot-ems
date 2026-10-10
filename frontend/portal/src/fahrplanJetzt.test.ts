@@ -1070,3 +1070,59 @@ describe('jetztHeld · Wechselrichter-Eigenregelung (Lade- und Eigenverbrauchs-A
     expect(JSON.stringify(v)).not.toMatch(RAW);
   });
 });
+
+describe('Abregeln · der netzseitige Regler gehört in den Fahrplan-Beleg (P4)', () => {
+  const netz = (match: boolean | null) => ({
+    sourceId: 'inverter', certified: true, appliedCapKw: null, match,
+    mode: 'grid_target' as const, targetKw: 0,
+  });
+  const fronius = { sourceId: 'src-a', certified: true, appliedCapKw: 6.2, match: true };
+  const truth = (match: boolean | null) =>
+    curtailTruth(
+      {
+        deviceId: 'd1',
+        units: 3,
+        certifiedUnits: 3,
+        controlEnabled: true,
+        active: true,
+        appliedCapKw: 6.2,
+        allMatch: true,
+        possibleOverride: false,
+        checkedAt: new Date(NOW.getTime() - 9000).toISOString(),
+        perUnit: [fronius, netz(match)],
+      } as CurtailmentStatus,
+      NOW,
+    );
+  const drosselSlot = (over: Partial<JetztInput> = {}) =>
+    input({
+      slot: slot({ slotRole: 'abregeln', batteryKw: 0, priceEurMwh: -1 }),
+      control: status({
+        commandedKw: null, confirmedKw: null, executionMode: 'grid_target',
+        executionMeasurementsFresh: true,
+      }),
+      ...over,
+    });
+
+  it('bestätigt: Gegenwart, das Ziel am Netzanschluss und der Wechselrichter als Regler', () => {
+    const v = jetztHeld(drosselSlot({ snapshot: snap({ gridKw: -0.3 }), curtail: truth(true) }));
+    expect(v.state).toBe('angepasst');
+    expect(v.tone).toBe('ok');
+    expect(v.lead).toBe('Ihre Batterie pausiert gerade die Einspeisung');
+    expect(v.curtailment).toBe(
+      `Ihr Wechselrichter regelt den Netzanschluss auf 0,0${NBSP}kW Einspeisung — durch die Messung bestätigt.`,
+    );
+    expect(v.adjust).toContain('Ihr Wechselrichter regelt gerade selbst den Netzanschluss');
+    expect(v.conflict).toBeNull();
+    expect(JSON.stringify(v)).not.toMatch(/grid_target|wird vorbereitet/);
+  });
+
+  it('⚠ die Fronius halten, der Regler nicht: kein „bestätigt", sondern der benannte Grund', () => {
+    const v = jetztHeld(drosselSlot({ snapshot: snap({ gridKw: -18.4 }), curtail: truth(false) }));
+    expect(v.lead).toBe('Ihre Batterie soll gerade die Einspeisung pausieren');
+    expect(v.curtailment).toBeNull();
+    expect(v.conflict).toBe(
+      `Ihre Anlage speist gerade 18,4${NBSP}kW ein – sie setzt die Drosselung noch nicht um ` +
+        '(die Messung am Netzanschluss folgt dem Ziel nicht).',
+    );
+  });
+});

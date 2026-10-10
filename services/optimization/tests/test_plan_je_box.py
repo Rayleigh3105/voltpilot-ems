@@ -218,7 +218,7 @@ def _zyklus(monkeypatch, plan, *, verbund=None, flagged=frozenset({SITE})):
     site = SimpleNamespace(site_id=SITE, device_id=E_1, verbund=verbund)
     publisher, repo = RecordingPlanV2Publisher(), InMemorySitePlanRepository()
     engine._shadow_publish_v2(
-        "dsn", site, SimpleNamespace(soc_unbekannt=False), T0, publisher, flagged, repo
+        "dsn", site, SimpleNamespace(soc_unbekannt=False, battery_observed=False), T0, publisher, flagged, repo
     )
     return publisher, repo
 
@@ -316,7 +316,7 @@ def test_laufnummer_fehlt_wenn_die_api_noch_nicht_migriert_ist(monkeypatch):
     publisher, repo = RecordingPlanV2Publisher(), _AlteDb()
     site = SimpleNamespace(site_id=SITE, device_id=E_1, verbund=_stand())
     engine._shadow_publish_v2(
-        "dsn", site, SimpleNamespace(soc_unbekannt=False), T0, publisher, frozenset(), repo
+        "dsn", site, SimpleNamespace(soc_unbekannt=False, battery_observed=False), T0, publisher, frozenset(), repo
     )
     assert len(publisher.published) == 2
     assert all("lauf_nr" not in p for _, p in publisher.published)

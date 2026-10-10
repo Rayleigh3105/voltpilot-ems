@@ -14,6 +14,7 @@ Vektor derselben Datei. Noch ruft niemand an: keine Tabelle, keine Route, keine 
 | Ziel-Stand (Z3/Z4) | `zielstand`: Σ ÷ Σ über die Zielperiode, Vorschlag `erreicht · nicht_erreicht` nur bei vollständiger Periode, exakt gegen den Zielwert |
 | Frist (F1) | `frist`: „überfällig seit n Tagen“ / „Bewertung fällig seit n Tagen“, 0 am Termintag, Uhr als Eingang `abruf` |
 | Kundensätze (§5.9) | `SAETZE` + `satz`: 25 Schablonen, jeder Satz-Vektor erwartet den Report-Satz wörtlich |
+| Zwischenstand (K1–K3, Vertrag 1.1) | `kurs`: Lage `auf_kurs · knapp_dahinter · nicht_auf_kurs · noch_keine_aussage`, `hoechstens`, `luecke`, `noetig_prozent` der offenen Monate; im Stand als Feld `kurs` |
 | Tests | `VerbesserungVectorsTest` · `uemsVerbesserung.test.ts` · `services/optimization/tests/test_verbesserung.py` |
 
 ## Die Fallen
@@ -27,6 +28,14 @@ Vektor derselben Datei. Noch ruft niemand an: keine Tabelle, keine Route, keine 
 - **`ohne_urteil` zählt nicht** (Grund `unvollstaendig`, neu gegenüber der Konzept-Liste) — anders als `zeitraum` der
   Bezugsbasis, der unvollständige Monate mitrechnet und das Urteil wegnimmt.
 - **Die Kundensätze sind eigene Schablonen** in `verbesserung.ts`, nicht die Kundenwort-Konstanten des Glossars (IP-4).
+- **`kurs` teilt nicht selbst:** der nötige Schnitt ist `roh` der Bezugsbasis über ((b + o) · höchstens − b · G) gegen
+  o · E - die Quelltext-Probe verbietet `.divide(` in `VerbesserungRegeln.java`. Knapp dahinter heißt weniger als
+  erwartet UND höchstens das Band vom Zielwert entfernt; mehr als erwartet ist nie knapp dahinter.
+- **Fläche Energieziele (Konzept Verbessern PR 1):** Wörter, Skala, Kacheln und Monate stehen rein in
+  `frontend/portal/src/energiezielBild.ts`; `StandSkala` und `MonatsGrafik` sind allgemein. Bewertete Energieziele lesen
+  `bewertung.stand` (die Kopie lesbar), nie den Rohtext `kopie`. Maßnahmen am Energieziel kommen über
+  `GET /api/v1/massnahmen?energieziel=`; `im_stand_enthalten` = an derselben Kennzahl umgesetzt, nach dem Ende der
+  Referenzperiode der Fassung (sonst steckt die Wirkung in „erwartet“, WK4) und bis zum Ende der Zielperiode.
 - **Stände der Referenzdatei = Ausgänge:** `test_verbesserung.py` vergleicht M-2028-0001 Stand Nr. 1 und EZ-2028-0001
   Bewertung mit den Vektoren. Wer 1.9 ändert, fährt alle drei Zwillinge.
 

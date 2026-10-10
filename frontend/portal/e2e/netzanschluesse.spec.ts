@@ -197,47 +197,44 @@ for (const breite of [375, 1440]) {
     await expect(page.getByRole('dialog').getByRole('alert')).toContainText('überschneidet');
     await expect(page.getByRole('dialog').getByRole('alert')).toBeFocused();
   });
-  // Der Bilanzkopf je Aufruf in einem eigenen Fall mit EINEM vollen Aufruf der Bühne (derselbe Entscheid): vier volle
+  // Der Bilanzfuß je Aufruf in einem eigenen Fall mit EINEM vollen Aufruf der Bühne (derselbe Entscheid): vier volle
   // Aufrufe in einem Fall brauchten unter vier Workern bis zu 17 von 30 s (Nachtrag Gesamtlauf mispel 05.10.2026). Die
-  // Zusicherungen sind dieselben; die Fälle, die die Bilanz selbst aufrufen, richten Uhr und Breite wie `oeffne` ein,
-  // ohne dessen Aufruf und Kopf.
-  test(`Bilanzkopf mit Grenz-Nachweis des Monats (AP-15 IP-31): vorab die Netzanschlüsse ${breite}`, async ({ page }) => {
+  // Zusicherungen sind die von uems (Konzept Auswerten a1 §6.9); die Fälle, die die Bilanz selbst aufrufen, richten Uhr
+  // und Breite wie `oeffne` ein, ohne dessen Aufruf und Kopf.
+  test(`Bilanzfuß mit Grenz-Nachweis des Monats (AP-15 IP-31): vorab die Netzanschlüsse ${breite}`, async ({ page }) => {
     await oeffne(page, breite);
   });
-  test(`Bilanzkopf mit Grenz-Nachweis des Monats (AP-15 IP-31): Grenze eingehalten ${breite}`, async ({ page }) => {
+  // Konzept Auswerten a1 §6.9: am Fuß steht nur ein überschrittener Nachweis - er verlangt eine Handlung.
+  test(`Bilanzfuß mit Grenz-Nachweis des Monats (AP-15 IP-31): Grenze überschritten ${breite}`, async ({ page }) => {
     await richteEin(page, breite);
-    const kopf = page.getByTestId('bilanz-netzanschluss');
-    await page.goto('/e2e/startansicht.html?bild=unternehmen&ansicht=bilanz&an=AN-1&grenze=eingehalten');
-    await expect(kopf).toContainText('vereinbart 550\u00a0kW · Anschluss 630\u00a0kVA · Grenze im September 2026 eingehalten');
+    const fuss = page.getByTestId('energiebilanz-fuss');
+    await page.goto('/e2e/startansicht.html?bild=unternehmen&ansicht=bilanz&an=AN-1&grenze=ueberschritten');
+    await expect(fuss).toContainText('vereinbart 550\u00a0kW · Grenze im September 2026 überschritten');
     await foto(page, `bilanz-nachweis-${breite}`);
   });
-  test(`Bilanzkopf mit Grenz-Nachweis des Monats (AP-15 IP-31): Grenze nicht belegt ${breite}`, async ({ page }) => {
-    await richteEin(page, breite);
-    const kopf = page.getByTestId('bilanz-netzanschluss');
-    await page.goto('/e2e/startansicht.html?bild=unternehmen&ansicht=bilanz&an=AN-1&grenze=nicht_belegt');
-    await expect(kopf).toContainText('Grenze im September 2026 nicht belegt');
-    await foto(page, `bilanz-nicht-belegt-${breite}`);
-  });
-  test(`Bilanzkopf mit Grenz-Nachweis des Monats (AP-15 IP-31): ohne Nachweis kein Grenz-Satz ${breite}`, async ({ page }) => {
-    await richteEin(page, breite);
-    const kopf = page.getByTestId('bilanz-netzanschluss');
-    await page.goto('/e2e/startansicht.html?bild=unternehmen&ansicht=bilanz&an=AN-1');
-    await expect(kopf).toContainText('vereinbart 550\u00a0kW · Anschluss 630\u00a0kVA');
-    await expect(kopf).not.toContainText('Grenze im');
-  });
+  for (const urteil of ['eingehalten', 'nicht_belegt']) {
+    test(`Bilanzfuß mit Grenz-Nachweis des Monats (AP-15 IP-31): ${urteil} ohne Grenz-Satz ${breite}`, async ({ page }) => {
+      await richteEin(page, breite);
+      const fuss = page.getByTestId('energiebilanz-fuss');
+      await page.goto(`/e2e/startansicht.html?bild=unternehmen&ansicht=bilanz&an=AN-1&grenze=${urteil}`);
+      await expect(fuss).toContainText('vereinbart 550\u00a0kW');
+      await expect(fuss).not.toContainText('Grenze im');
+    });
+  }
   // Tagesroute und Betriebskunde ebenso: drei volle Aufrufe in einem Fall, jetzt je Aufruf ein Fall (derselbe Entscheid).
   // Der erste ist die Gegenprobe zum Betriebskunden: der messende Kunde sieht die Netzanschlüsse.
-  test(`Bilanzkopf aus Tagesroute und Betriebskunde ohne neuen Reiter: vorab die Netzanschlüsse ${breite}`, async ({ page }) => {
+  test(`Bilanzfuß aus Tagesroute und Betriebskunde ohne neuen Reiter: vorab die Netzanschlüsse ${breite}`, async ({ page }) => {
     await oeffne(page, breite);
   });
-  test(`Bilanzkopf aus Tagesroute und Betriebskunde ohne neuen Reiter: der Bilanzkopf ${breite}`, async ({ page }) => {
+  test(`Bilanzfuß aus Tagesroute und Betriebskunde ohne neuen Reiter: der Bilanzfuß ${breite}`, async ({ page }) => {
     await richteEin(page, breite);
     await page.goto('/e2e/startansicht.html?bild=unternehmen&ansicht=bilanz&an=AN-1');
-    await expect(page.getByTestId('bilanz-netzanschluss')).toContainText('Netzanschluss NA-1');
-    await expect(page.getByTestId('bilanz-netzanschluss')).toContainText('vereinbart 550\u00a0kW · Anschluss 630\u00a0kVA');
+    await expect(page.getByTestId('energiebilanz-fuss')).toHaveText(
+      'Netzanschluss NA-1 · vereinbart 550\u00a0kW · Zeiten: Europe/Berlin (Werk Ahrenberg)',
+    );
     await foto(page, `bilanz-${breite}`);
   });
-  test(`Bilanzkopf aus Tagesroute und Betriebskunde ohne neuen Reiter: der Betriebskunde ${breite}`, async ({ page }) => {
+  test(`Bilanzfuß aus Tagesroute und Betriebskunde ohne neuen Reiter: der Betriebskunde ${breite}`, async ({ page }) => {
     await richteEin(page, breite);
     await page.goto('/e2e/startansicht.html?bild=unternehmen&ansicht=werk-netzanschluesse&messen=bestand');
     await expect(page.getByTestId('netzanschluesse')).toHaveCount(0);

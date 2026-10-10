@@ -13,7 +13,7 @@ import type {
 } from './admin/fleetApi';
 import { BOX_FAEHIGKEITEN } from './boxUebersicht';
 import { CONTROL_STALE_MS, EXECUTION_MODE_LABEL } from './control';
-import { curtailTruth, releaseNote, type CurtailTruth } from './curtailment';
+import { curtailTruth, netzKwText, releaseNote, type CurtailTruth } from './curtailment';
 import { faehigkeiten } from './uemsDatenquelle';
 
 /**
@@ -746,8 +746,9 @@ function curtailCell(
     case 'ausgefuehrt':
       return {
         text: release,
-        detail:
-          truth.appliedCapKw == null
+        detail: truth.netzZiel
+          ? `Netz-Sollwert ${netzKwText(truth.netzZiel.targetKw)} - durch die Messung bestätigt.`
+          : truth.appliedCapKw == null
             ? 'Begrenzung vom Wechselrichter bestätigt.'
             : `Begrenzung ${truth.appliedCapKw.toLocaleString('de-DE', {
                 maximumFractionDigits: 1,

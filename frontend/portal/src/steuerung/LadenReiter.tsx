@@ -8,6 +8,8 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { api, type ChargingConfig } from '../api';
 import { Recht } from '../components/Recht';
 import { VpTimePicker } from '../components/VpTimePicker';
+import { LADEQUELLE } from '../glossar';
+import type { SpeicherFreigabe } from '../ladepunkte';
 import type { SiteFahrzeuge } from '../fahrzeugProfile';
 import type { FahrerAnfrage, LadepunktErtraege, LadepunktListe, Rueckspeisen } from '../ladepunktErtraege';
 import { fahrzeugName, fahrzeugZeilen, kartenKurz } from '../fahrzeugProfile';
@@ -19,10 +21,11 @@ import type { BlattKontext } from './Blaetter';
 import { quellenAnteil, type GeraetBild } from './bild';
 import { Ic } from './Ic';
 import {
-  abfahrtSetzen, abfahrtZeile, band, ertragZeile, fahrerAnfrage, grenzePruefung, haltSatz, heutigerAnschluss, kmZu,
-  kwVereinbart, ladebudgetKw, ladeQuelle, ladeWahl, ladeplan, ladestandAlterText, ladestandZuletztText, lokalesDatum,
-  naechsteAbfahrt, naechsteUhrzeit, pctKm, rueckspeiseLage, rueckspeiseSatz, rueckspeiseWohin, ruhtZurueckspeisen, schnellSatz, wallboxMispel,
-  wochentageText, type AnschlussStand, type LadeQuelle, type RueckspeiseLage, type WallboxMispel,
+  OPTION_SONNE_SPEICHER, abfahrtSetzen, abfahrtZeile, band, ertragZeile, fahrerAnfrage, grenzePruefung, haltSatz,
+  hatSpeicherGrenze, heutigerAnschluss, kmZu, kwVereinbart, ladebudgetKw, ladeQuelle, ladeWahl, ladeplan,
+  ladestandAlterText, ladestandZuletztText, lokalesDatum, naechsteAbfahrt, naechsteUhrzeit, pctKm, rueckspeiseLage,
+  rueckspeiseSatz, rueckspeiseWohin, ruhtZurueckspeisen, schnellSatz, speicherZeile, wallboxMispel, wochentageText,
+  type AnschlussStand, type LadeQuelle, type RueckspeiseLage, type WallboxMispel,
 } from './laden';
 import { MISPEL_PLAN_VON } from '../glossar';
 import type { BlattZustand, SeitenBild } from './seite';
@@ -46,6 +49,12 @@ export interface LadenReiterProps {
   ertraege?: LadepunktErtraege | null;
   onFahrer?: (g: GeraetBild, anfrage: FahrerAnfrage) => Promise<boolean>;
   zuErloesen?: () => void;
+  /** „Sonne + Speicher“: was die Box gerade freigibt (null = keine Meldung). */
+  release?: SpeicherFreigabe | null;
+  /** Wann die Box zuletzt gemeldet hat (`ChargingBudget.reportedAt`). */
+  releaseGemeldet?: string | null;
+  /** „Sonne + Speicher“: die Reserve der Anlage setzen (null = Vorgabe). */
+  onReserve?: (kwh: number | null) => void;
 }
 
 export function LadenReiter(p: LadenReiterProps) {
@@ -56,7 +65,8 @@ export function LadenReiter(p: LadenReiterProps) {
       <BudgetKarte bild={bild} rahmen={p.rahmen} oeffne={p.oeffne} />
       {lp.map((g) => (
         <LadeKarte key={g.id} g={g} bild={bild} fahrzeuge={p.fahrzeuge} busy={p.busy === g.id} oeffne={p.oeffne} onSmart={p.onSmart} onQuelle={p.onQuelle}
-          m={wallboxMispel(g, p.ladepunkte)} ertraege={p.ertraege ?? null} onFahrer={p.onFahrer} zuErloesen={p.zuErloesen} />
+          m={wallboxMispel(g, p.ladepunkte)} ertraege={p.ertraege ?? null} onFahrer={p.onFahrer} zuErloesen={p.zuErloesen}
+          release={p.release ?? null} releaseGemeldet={p.releaseGemeldet ?? null} />
       ))}
       {!lp.length && (
         <section className="card">
@@ -64,6 +74,10 @@ export function LadenReiter(p: LadenReiterProps) {
         </section>
       )}
       {bild.speicher && <VorrangKarte config={p.config} busy={p.busy === 'vorrang'} onVorrang={p.onVorrang} zuGeraete={p.zuGeraete} />}
+      {bild.speicher && p.onReserve && speicherAngeboten(lp) && p.config?.storageReleaseReserveStandardKwh != null && (
+        <ReserveKarte standard={p.config.storageReleaseReserveStandardKwh} eigen={p.config.storageReleaseReserveKwh ?? null}
+          busy={p.busy === 'reserve'} onReserve={p.onReserve} />
+      )}
       <FahrzeugKarte fahrzeuge={p.fahrzeuge} oeffne={p.oeffne} bild={bild} mispel={lp.some((g) => wallboxMispel(g, p.ladepunkte) != null)} />
       <section className="card immer">
         <button type="button" className="immer-r" onClick={p.onLadevorgaenge}>
@@ -113,12 +127,13 @@ function BudgetKarte({ bild, rahmen, oeffne }: { bild: SeitenBild; rahmen: Ladep
   );
 }
 
-function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, m, ertraege, onFahrer, zuErloesen }: {
+function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, m, ertraege, onFahrer, zuErloesen, release, releaseGemeldet }: {
   g: GeraetBild; bild: SeitenBild; fahrzeuge: SiteFahrzeuge | null; busy: boolean;
   oeffne: (b: BlattZustand) => void; onSmart: (g: GeraetBild) => void; onQuelle: (g: GeraetBild, q: LadeQuelle) => void;
   /** MiSpeL MP-41b; `null` = Bestand, die Karte bleibt wie vor MP-41b. */
   m: WallboxMispel | null; ertraege: LadepunktErtraege | null;
   onFahrer?: (g: GeraetBild, anfrage: FahrerAnfrage) => Promise<boolean>; zuErloesen?: () => void;
+  release: SpeicherFreigabe | null; releaseGemeldet: string | null;
 }) {
   // BK-41 A: für ein Auto mit gemeldetem Ladestand wird das Ladeziel zu „Abfahrt und Reserve“ - eine Quelle (MP-41a).
   const abfahrtStatt = m?.fahrzeug === 'mit_ladestand';
@@ -144,8 +159,18 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, m, ert
       : an && g.sonnig && platz > 0 && !g.steuerart?.ziel
         ? `Sonnenstrom · Platz ${platz}`
         : g.warum;
-  const quellen: [LadeQuelle, string, string][] = [['sonne', 'Nur Sonne', 'ueberschuss'], ['min', 'Sonne + Minimum', 'ueberschuss'], ['guenstig', 'Günstig', 'guenstig']];
+  const quellen: [LadeQuelle, string, string][] = [
+    ['sonne', LADEQUELLE.sonne, 'ueberschuss'], ['min', LADEQUELLE.min, 'ueberschuss'],
+    ['speicher', LADEQUELLE.speicher, OPTION_SONNE_SPEICHER], ['guenstig', LADEQUELLE.guenstig, 'guenstig'],
+  ];
   const frei = new Set(liste(g.eintrag.optionen?.quellen).filter((x) => !x.gesperrt).map((x) => x.id));
+  // „Sonne + Speicher“ zeigt auch GESPERRT seinen Grund (die Haus-Disziplin der
+  // gesperrten Karte) - eine Wahl, die verschwindet, erklärt nichts. Nur neben
+  // einer wählbaren Sonnen-Quelle: ohne sie fehlt die ganze Gruppe aus einem
+  // Grund, den die Karte schon nennt.
+  const speicherSperre = frei.has('ueberschuss')
+    ? liste(g.eintrag.optionen?.quellen).find((x) => x.id === OPTION_SONNE_SPEICHER && x.gesperrt) ?? null
+    : null;
   const s = g.steuerart;
   const zielAn = s?.ziel === 'bis_uhrzeit' && typeof s.zielEnergieKwh === 'number';
   const zielMoeglich = liste(g.eintrag.optionen?.ziele).some((z) => z.id === 'bis_uhrzeit' && !z.gesperrt);
@@ -156,7 +181,9 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, m, ert
   if (zielAn && s?.zielFenster?.bis) {
     const bis = naechsteUhrzeit(r.jetzt, s.zielFenster.bis);
     zielBis = bis;
-    const art = s.quelle === 'guenstig' ? 'In den günstigsten Stunden' : 'Sonne zuerst, Rest in den günstigsten Stunden';
+    const art = s.quelle === 'guenstig' ? 'In den günstigsten Stunden'
+      : q === 'speicher' ? 'Sonne und freigegebener Speicher zuerst, Rest in den günstigsten Stunden'
+        : 'Sonne zuerst, Rest in den günstigsten Stunden';
     // Der Fahrplan hat Vorrang; die Schätzung nur, wo er fehlt und ein Auto steckt.
     const geplant = g.herkunft.some((h, t) => h === 'plan' && t > r.jetzt);
     let fertig: number | null = null;
@@ -178,6 +205,9 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, m, ert
   const t1 = Math.min(N, r.jetzt + TAG);
   // Die Legende nennt nur, was das Band zeigt: „laden“ nur, wenn die Zeile Laden trägt.
   const laedtImBand = (zeile.kw ?? g.kw).slice(r.jetzt, t1).some((v) => v != null && v > 0.02);
+  // „Sonne + Speicher“: das Ladestand-Band mit der Untergrenze des Fahrplans -
+  // nur, wenn der Plan im Fenster überhaupt eine trägt (belegte Zahlen).
+  const grenzeBand = q === 'speicher' && hatSpeicherGrenze(bild.reihen.speicherGrenze, r.jetzt, t1);
   const ticks: number[] = [];
   for (let k = 0; k <= t1 - r.jetzt; k++) if ((r.jetzt + k) % 24 === 0) ticks.push(k);
   return (
@@ -234,7 +264,12 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, m, ert
               {quellen.filter(([, , id]) => frei.has(id)).map(([k, label]) => (
                 <button type="button" key={k} aria-pressed={q === k} disabled={busy} onClick={() => onQuelle(g, k)}>{label}</button>
               ))}
+              {speicherSperre && (
+                <button type="button" key="speicher-gesperrt" aria-pressed={false} disabled title={speicherSperre.grund ?? undefined}>{LADEQUELLE.speicher}</button>
+              )}
             </div></Recht>
+            {speicherSperre?.grund && <p className="leise">{LADEQUELLE.speicher}: {speicherSperre.grund}</p>}
+            {q === 'speicher' && <p className="leise">{speicherZeile(release, bild.reihen.speicherGrenze?.[r.jetzt] ?? null, releaseGemeldet)}</p>}
             {q === 'guenstig' && !zielAn && s?.preisgrenzeCtKwh != null && <p className="leise">Lädt, solange der Börsenpreis unter {fCt(s.preisgrenzeCtKwh)} liegt.</p>}
             {q === 'min' && <p className="leise">Lädt immer mit mindestens {fKw(s?.mindestleistungKw ?? 1.4)}; was die Sonne mehr liefert, kommt dazu.</p>}
           </div>}
@@ -258,7 +293,9 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, m, ert
             padT={22}
             tage
             label="Ladeplan der nächsten 24 Stunden"
-            bands={[{ art: 'pv', h: 20, gap: 4 }, { art: 'preis', h: 22, gap: 6 }]}
+            bands={grenzeBand
+              ? [{ art: 'pv', h: 20, gap: 4 }, { art: 'soc', h: 22, gap: 4, grenze: bild.reihen.speicherGrenze, label: 'Ladestand und Untergrenze für „Sonne + Speicher“' }, { art: 'preis', h: 22, gap: 6 }]
+              : [{ art: 'pv', h: 20, gap: 4 }, { art: 'preis', h: 22, gap: 6 }]}
             rows={[zeile]}
             ticks={ticks}
             namen={false}
@@ -270,6 +307,7 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, m, ert
               {lage.plan.standMs != null && <span className="r">{MISPEL_PLAN_VON} {uhrVon(r, lage.plan.standMs)}</span>}
             </div>
           )}
+          {grenzeBand && <p className="leise">Gestrichelt: bis dorthin darf der Speicher für das Auto entladen. Fehlt die Linie, nutzt der Fahrplan den Speicher selbst oder es gibt keine Freigabe.</p>}
         </>
       )}
       {/* BK-41c-3 A: „Abfahrt und Reserve“ bleibt unter „Schnell“ erreichbar - sie gilt wieder mit „Smart“. */}
@@ -291,6 +329,45 @@ function herkunftWort(bild: SeitenBild, t: number): string {
 
 function mitGemessen(g: GeraetBild, plan: (number | null)[], jetzt: number): (number | null)[] {
   return plan.map((v, t) => (t <= jetzt ? g.kw[t] : v));
+}
+
+/** Bietet ein Ladepunkt der Anlage „Sonne + Speicher“ überhaupt an? */
+function speicherAngeboten(lp: GeraetBild[]): boolean {
+  return lp.some((g) => liste(g.eintrag.optionen?.quellen).some((x) => x.id === OPTION_SONNE_SPEICHER && !x.gesperrt));
+}
+
+const RESERVEN = [0.5, 1, 2, 3, 5];
+
+/**
+ * Die Reserve von „Sonne + Speicher“ je Anlage: wie viel der Speicher über
+ * seinem Mindestladestand zusätzlich für die Nacht behält. Sie wirkt nur über
+ * den Fahrplan - deshalb steht da, dass sie mit dem nächsten Fahrplan gilt.
+ * Ein Wert außerhalb der Chips (über die API gesetzt) steht im Satz, ohne
+ * dass ein Chip gedrückt erscheint.
+ */
+function ReserveKarte({ standard, eigen, busy, onReserve }: {
+  standard: number; eigen: number | null; busy: boolean; onReserve: (kwh: number | null) => void;
+}) {
+  const wert = eigen ?? standard;
+  const kwhText = (v: number) => `${String(v).replace('.', ',')} kWh`;
+  const chips = RESERVEN.includes(standard) ? RESERVEN : [...RESERVEN, standard].sort((a, b) => a - b);
+  return (
+    <section className="card" aria-label={`Reserve für ${LADEQUELLE.speicher}`}>
+      <div className="card-h"><h2><Ic n="battery" s={18} />Reserve für „{LADEQUELLE.speicher}“</h2></div>
+      <p style={{ margin: '0 0 10px', font: '600 15px/1.45 var(--font)' }}>
+        Der Speicher behält {kwhText(wert)} mehr, als die vorsichtige Prognose bis zur nächsten Sonne verlangt{eigen == null ? ' (Vorgabe)' : ''}.
+      </p>
+      <Recht aktion="betriebsweise.aendern"><div className="chips" role="group" aria-label="Reserve">
+        {chips.map((v) => (
+          <button type="button" key={v} aria-pressed={wert === v} disabled={busy}
+            onClick={() => onReserve(v === standard ? null : v)}>
+            {kwhText(v)}{v === standard ? ' · Vorgabe' : ''}
+          </button>
+        ))}
+      </div></Recht>
+      <p className="leise">Gerechnet wird vorsichtig: eher viel Verbrauch, eher wenig Sonne, aus den gemessenen Prognosefehlern dieser Anlage. Mehr Reserve heißt: weniger für das Auto, mehr Sicherheit für die Nacht. Eine Änderung gilt ab dem nächsten Fahrplan, spätestens in einer Viertelstunde.</p>
+    </section>
+  );
 }
 
 function VorrangKarte({ config, busy, onVorrang, zuGeraete }: { config: ChargingConfig | null; busy: boolean; onVorrang: (speicherZuerst: boolean) => void; zuGeraete: () => void }) {
