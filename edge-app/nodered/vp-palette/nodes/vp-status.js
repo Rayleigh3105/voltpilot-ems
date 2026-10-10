@@ -11,6 +11,7 @@
 'use strict';
 
 const TOPIC = 'edge/status';
+const sourceStatus = require('../../measurements/data-source-status');
 
 // shape() is exported for unit tests: normalizes the input into the
 // local-bus status message, or null when it is not a valid link state.
@@ -45,6 +46,10 @@ module.exports = function (RED) {
         node.status({ fill: 'yellow', shape: 'ring', text: 'ungültiger Status verworfen' });
         done();
         return;
+      }
+      if (shaped.inverter_link === 'down') {
+        const evidence = sourceStatus.event({ source_id:'inverter', failed:true, error_class:sourceStatus.errorClass(msg.payload) });
+        client.publish(sourceStatus.TOPIC, JSON.stringify(evidence), { qos:1, retain:false });
       }
       // Retained: the core sees the last known link state even after a restart.
       client.publish(TOPIC, JSON.stringify(shaped), { qos: 1, retain: true }, (err) => {

@@ -1,3 +1,4 @@
+import { Recht } from '../Recht';
 /**
  * Portal v3 M5 · Part E - the PHONE view of an automation: a vertical step
  * list, not a mini canvas. Every sentence + live value comes from the pure
@@ -65,9 +66,9 @@ export function FlowStepList({
         ))}
       </ol>
       {onPause && (
-        <Button variant="outline" size="sm" onClick={onPause} disabled={pauseBusy}>
+        <Recht aktion="betriebsweise.aendern"><Button variant="outline" size="sm" onClick={onPause} disabled={pauseBusy}>
           Automation anhalten
-        </Button>
+        </Button></Recht>
       )}
       {showPhoneHint && (
         <p className="vp-flowed-help">

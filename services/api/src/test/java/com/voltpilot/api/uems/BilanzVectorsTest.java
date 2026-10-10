@@ -1,12 +1,14 @@
 package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -160,9 +162,8 @@ class BilanzVectorsTest {
     void dieRegelnStehenInDerDatei() throws Exception {
         JsonNode r = vektoren().path("regeln");
         assertThat(r.path("menge_nachkommastellen").asInt()).isEqualTo(BilanzAbleitung.MENGE_NACHKOMMASTELLEN);
-        assertThat(r.path("tausender_trennzeichen").asText())
-                .isEqualTo(BilanzAbleitung.TAUSENDER_TRENNZEICHEN);
-        assertThat(r.path("minuszeichen").asText()).isEqualTo(BilanzAbleitung.MINUS);
+        assertThat(r.path("zahlform").asText()).startsWith("ergebnis-zustand-vectors.json");
+        assertThat(r.has("tausender_trennzeichen")).as("die Zahlform steht im Ergebnis-Zustand, nicht hier").isFalse();
         assertThat(texte(vektoren().path("verbotene_woerter")))
                 .containsExactlyElementsOf(BilanzAbleitung.VERBOTENE_WOERTER);
         List<String> muster = new ArrayList<>();
@@ -202,6 +203,124 @@ class BilanzVectorsTest {
                 assertThat(satz).as("Satz ohne Ursachen-Behauptung").doesNotContain(wort);
             }
         }
+    }
+
+    // ------------------------------------------------ Zahlform E11 (ergebnis-zustand-vectors.json)
+
+    private static BilanzAbleitung.Summand summand(String messstelle, String menge) {
+        return new BilanzAbleitung.Summand(messstelle, menge == null ? null : new BigDecimal(menge),
+                menge == null ? BilanzAbleitung.KEINE_WERTE : BilanzAbleitung.VOLLSTAENDIG, 100, 1, List.of(), "+",
+                BigDecimal.ONE);
+    }
+
+    private static BilanzAbleitung.Eingang eingang(String messstelle, String rolle, String menge) {
+        return new BilanzAbleitung.Eingang(messstelle, rolle, "gesamt", new BigDecimal(menge),
+                BilanzAbleitung.VOLLSTAENDIG, 100, 1, List.of());
+    }
+
+    /** Die alte Form „1 055 kWh“ (Leerzeichen als Tausendertrenner) ist falsch: E11 schreibt „1.055 kWh“. */
+    @Test
+    void tausenderMitPunktNichtMitLeerzeichen() {
+        String anzeige = BilanzAbleitung.summe("kWh", "tag",
+                List.of(summand("MS-11", "740"), summand("MS-13", "315"), summand("MS-14", null))).anzeige();
+        assertThat(anzeige).isEqualTo("mindestens 1.055\u00A0kWh (MS-14 fehlt)").doesNotContain("1 055");
+        assertThat(NetzanschlussRegeln.kopfzeile("NA-9", new BigDecimal("1200"), null, null).text())
+                .isEqualTo("vereinbart 1.200\u00A0kW").doesNotContain("1 200");
+    }
+
+    /** Die alte Form war ungerundet („1 200,5“): die EBENE bestimmt die Stellen — Tag/Monat ganz, Leistung eine. */
+    @Test
+    void festeStellenJeEbeneStattUngerundet() {
+        List<BilanzAbleitung.Eingang> e = List.of(eingang("MS-16", BilanzAbleitung.ZUFLUSS, "1300.5"),
+                eingang("MS-17", BilanzAbleitung.ZUGEORDNET, "100"));
+        assertThat(BilanzAbleitung.rest("MS-16", "kWh", "monat", 1, List.of(), e).kundensatz())
+                .isEqualTo("1.201\u00A0kWh sind keiner Messstelle zugeordnet").doesNotContain("1 200,5");
+        assertThat(BilanzAbleitung.rest("MS-16", "kWh", "stunde", 1, List.of(), e).kundensatz())
+                .isEqualTo("1.200,5\u00A0kWh sind keiner Messstelle zugeordnet");
+        assertThat(NetzanschlussRegeln.kopfzeile("NA-1", new BigDecimal("550"), new BigDecimal("630"),
+                new BigDecimal("312.44")).text())
+                .isEqualTo("vereinbart 550\u00A0kW · Anschluss 630\u00A0kVA · Momentan 312,4\u00A0kW");
+        assertThatThrownBy(() -> BilanzAbleitung.rest("MS-16", "kWh", null, 1, List.of(), e))
+                .as("kWh ohne Ebene hat keine Anzeige (ebene_fehlt)")
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    /** Die alte Form hatte ein normales Leerzeichen vor der Einheit: E11 verlangt U+00A0, auf 375 px bricht nichts um. */
+    @Test
+    void geschuetztesLeerzeichenVorDerEinheit() throws Exception {
+        List<String> saetze = new ArrayList<>();
+        for (JsonNode fall : vektoren().path("cases")) {
+            for (JsonNode p : fall.path("pruefungen")) {
+                for (String feld : List.of("kundensatz", "anzeige")) {
+                    JsonNode satz = p.path("ergebnis").path(feld);
+                    if (satz.isTextual() && satz.asText().matches(".*\\d.*kWh.*")) {
+                        saetze.add(satz.asText());
+                    }
+                }
+            }
+        }
+        assertThat(saetze).hasSizeGreaterThanOrEqualTo(11)
+                .allSatisfy(s -> assertThat(s).contains("\u00A0kWh").doesNotContain(" kWh"));
+        assertThat(BilanzAbleitung.rest("MS-16", "kWh", "tag", 1, List.of(),
+                List.of(eingang("MS-16", BilanzAbleitung.ZUFLUSS, "100"),
+                        eingang("MS-17", BilanzAbleitung.ZUGEORDNET, "105"))).kundensatz())
+                .isEqualTo("Messwerte passen nicht zusammen (\u22125\u00A0kWh)");
+    }
+
+    /**
+     * Der Kundensatz des Rests kommt aus dem VERTRAG (AP-10 IP-4): die Vorlagen der Klasse sind
+     * wörtlich die aus {@code saetze} — und die Plan-Abnahme F1 sagt damit „10 kWh sind keiner
+     * Messstelle zugeordnet“, nie „Verlust“.
+     */
+    @Test
+    void dieKundensaetzeDesRestsStehenImVertrag() throws Exception {
+        JsonNode saetze = vektoren().path("saetze");
+        assertThat(BilanzAbleitung.SATZ_REST_ZUGEORDNET).isEqualTo(saetze.path("rest_zugeordnet").asText());
+        assertThat(BilanzAbleitung.SATZ_REST_NEGATIV).isEqualTo(saetze.path("rest_negativ").asText());
+        assertThat(BilanzAbleitung.SATZ_REST_KEINE_WERTE).isEqualTo(saetze.path("rest_keine_werte").asText());
+    }
+
+    /**
+     * Das BEFRISTETE Kennzeichen „vorläufig (Geräte-Verdichtung)“ (AP-10 IP-9, W12) ist mit seinem Ablaufpaket
+     * AP-10 IP-10 entfallen: die Periodenwerte berechneter Messstellen liegen in der Speicherklasse. Kein
+     * Kennzeichen dieses Vertrags spricht mehr von der Geräte-Verdichtung, und der befristete Block ist weg.
+     */
+    @Test
+    void dasBefristeteKennzeichenIstMitSeinemAblaufpaketEntfallen() throws Exception {
+        JsonNode v = vektoren().path("vokabulare");
+        assertThat(v.has("kennzeichen_befristet")).isFalse();
+        assertThat(texte(v.path("kennzeichen_neu"))).noneMatch(k -> k.contains("Geräte-Verdichtung"));
+    }
+
+    /**
+     * E3 — jede Fassung eines Rests, die {@code rest_aus_stellung} aus den Stellungen des
+     * Referenzunternehmens ableitet, ist GENAU die Eingangsmenge einer {@code rest}-Prüfung desselben
+     * Falls: die Terme, mit denen gerechnet wird, sind die aus der Stellung — nicht eine zweite,
+     * von Hand gepflegte Liste. (Die Reihenfolge ändert keine Zahl und wird hier nicht verglichen.)
+     */
+    @Test
+    void dieTermeAusDerStellungSindDieEingaengeDesRests() throws Exception {
+        int gedeckt = 0;
+        for (JsonNode fall : vektoren().path("cases")) {
+            for (JsonNode p : fall.path("pruefungen")) {
+                if (!p.path("regel").asText().equals("rest_aus_stellung") || !p.path("ergebnis").path("fehler").isNull()) {
+                    continue;
+                }
+                List<String> ausStellung = terme(p.path("ergebnis").path("terme"));
+                List<List<String>> restEingaenge = new ArrayList<>();
+                for (JsonNode r : fall.path("pruefungen")) {
+                    if (r.path("regel").asText().equals("rest") && r.path("eingang").path("hauptzaehler").asText()
+                            .equals(p.path("eingang").path("hauptzaehler").asText())) {
+                        restEingaenge.add(terme(r.path("eingang").path("eingaenge")));
+                    }
+                }
+                assertThat(restEingaenge)
+                        .as(fall.path("id").asText() + " · " + p.path("name").asText())
+                        .anySatisfy(e -> assertThat(e).containsExactlyInAnyOrderElementsOf(ausStellung));
+                gedeckt++;
+            }
+        }
+        assertThat(gedeckt).as("Fassungen mit Termen").isGreaterThanOrEqualTo(9);
     }
 
     /** Die Richtung je Typ ist eine REGEL in der Datei — `rest` fest auf Bezug, `saldo` auf saldiert. */
@@ -326,7 +445,7 @@ class BilanzVectorsTest {
             }
             case "rest" -> {
                 BilanzAbleitung.RestUrteil ist = BilanzAbleitung.rest(
-                        str(ein.path("hauptzaehler")), str(ein.path("einheit")),
+                        str(ein.path("hauptzaehler")), str(ein.path("einheit")), str(ein.path("zahl_ebene")),
                         ein.path("version").asInt(), texte(ein.path("vermerke")),
                         eingaenge(ein.path("eingaenge")));
                 betragGleich(ist.zufluss(), soll.path("zufluss"), why + " · Zufluss");
@@ -348,7 +467,8 @@ class BilanzVectorsTest {
             }
             case "summe" -> {
                 BilanzAbleitung.SummeUrteil ist =
-                        BilanzAbleitung.summe(str(ein.path("einheit")), summanden(ein.path("eingaenge")));
+                        BilanzAbleitung.summe(str(ein.path("einheit")), str(ein.path("zahl_ebene")),
+                                summanden(ein.path("eingaenge")));
                 betragGleich(ist.menge(), soll.path("menge"), why + " · Summe");
                 assertThat(ist.zustand()).as(why + " · Zustand").isEqualTo(str(soll.path("zustand")));
                 assertThat(ist.abdeckungProzent()).as(why + " · Abdeckung")
@@ -497,8 +617,49 @@ class BilanzVectorsTest {
                         .as(why + " · der Satz hält bilanzwert-herkunft.schema.json")
                         .isEmpty();
             }
+            case "rest_aus_stellung" -> {
+                BilanzAbleitung.RestFassung ist = BilanzAbleitung.restAusStellung(
+                        ein.path("hauptzaehler").asText(), LocalDate.parse(ein.path("tag").asText()),
+                        stellungenDesReferenzunternehmens());
+                assertThat(ist.hauptzaehler()).as(why + " · Hauptzähler").isEqualTo(ein.path("hauptzaehler").asText());
+                assertThat(ist.anlage()).as(why + " · System").isEqualTo(str(soll.path("anlage")));
+                assertThat(ist.terme().stream().map(t -> t.messstelle() + ":" + t.rolle() + ":" + t.anteil()).toList())
+                        .as(why + " · Terme aus der Stellung")
+                        .isEqualTo(terme(soll.path("terme")));
+                assertThat(ist.ausserhalb()).as(why + " · außerhalb").isEqualTo(texte(soll.path("ausserhalb")));
+                assertThat(ist.fehler()).as(why + " · Fehler").isEqualTo(str(soll.path("fehler")));
+            }
             default -> throw new IllegalStateException("unbekannte Regel " + p.path("regel").asText());
         }
+    }
+
+    private static List<String> terme(JsonNode n) {
+        List<String> raus = new ArrayList<>();
+        n.forEach(t -> raus.add(t.path("messstelle").asText() + ":" + (t.has("rolle") ? t.path("rolle").asText()
+                : t.path("bilanz_rolle").asText()) + ":" + t.path("anteil").asText()));
+        return raus;
+    }
+
+    /**
+     * Die zeitgültigen Stellungen ALLER Messstellen des Referenzunternehmens — die Regel
+     * {@code rest_aus_stellung} liest sie von dort und nicht aus einer Kopie in der Vektor-Datei.
+     */
+    static List<BilanzAbleitung.StellungZeile> stellungenDesReferenzunternehmens() throws Exception {
+        List<BilanzAbleitung.StellungZeile> raus = new ArrayList<>();
+        for (JsonNode m : lies(REFERENZ).path("messstellen")) {
+            for (JsonNode st : m.path("elektrische_stellung")) {
+                raus.add(new BilanzAbleitung.StellungZeile(m.path("kennzeichen").asText(),
+                        st.path("anlage").asText(), st.path("stellung").asText(),
+                        m.path("hauptgroesse").path("richtung").asText(), m.path("art").asText(),
+                        m.path("medium").asText(), str(st.path("unterzaehler_von")),
+                        tag(st.path("gueltig_ab")), tag(st.path("gueltig_bis"))));
+            }
+        }
+        return raus;
+    }
+
+    private static LocalDate tag(JsonNode n) {
+        return str(n) == null ? null : LocalDate.parse(n.asText());
     }
 
     private static List<BilanzAbleitung.Eingang> eingaenge(JsonNode n) {

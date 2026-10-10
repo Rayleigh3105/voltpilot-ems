@@ -46,6 +46,9 @@ public final class OrtDto {
     /** {@code PUT /api/v1/orte/{id}/flaeche}: ganze m² ab einem Tag (E3); fehlend = heute. */
     public record Flaeche(Integer m2, LocalDate gueltigAb) {}
 
+    /** Das nächste freie Kurzzeichen für ein Gebäude oder einen Bereich; der Zähler bleibt stehen. */
+    public record Vorschlag(String kurzzeichen) {}
+
     /** Eine Zuordnung an den Elternknoten; {@code zustand}: gueltig · geplant · beendet. */
     public record Zuordnung(
             UUID elternId,

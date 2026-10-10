@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useEffect, useRef, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
@@ -11,14 +12,17 @@ import {
   deviceLiveStatus,
   deviceWaitedTooLong,
   type Device,
+  type BoxTauschAntwort,
   type DevicePurgeResult,
   type Site,
+  type UemsDatenquelle,
 } from '../api';
 import { deviceKindLabel, fmtRelative } from '../format';
 import { DangerZone } from './DangerZone';
 import { VpPicker } from './VpPicker';
 import { HelpLink } from '../help/HelpProvider';
 import { normalizeDeviceIdInput, DEVICE_ID_FIELD, DEVICE_ID_UNKNOWN_MSG } from '../anlageFlow';
+import { tauschFehler, tauschFolgen } from '../boxDialoge';
 
 /** Status badge for a device row/detail (zero-touch onboarding states). */
 export function DeviceStatusBadge({ device }: { device: Device }) {
@@ -45,7 +49,7 @@ export function DeviceStatusBadge({ device }: { device: Device }) {
 }
 
 /**
- * ZERO-TOUCH "Gerät hinzufügen" drawer: the customer enters ONLY the
+ * ZERO-TOUCH "VoltPilot-Box hinzufügen" drawer: the customer enters ONLY the
  * Edge-Referenz and picks the Anlage - no IDs, no commands, no connection
  * panel. The cloud provisions the physical device over the MQTT handshake
  * (docs/contracts/mqtt-provisioning.schema.json); the row flips to online as
@@ -56,12 +60,19 @@ export function AddDeviceDrawer({
   onClose,
   sites,
   onClaimed,
-  title = 'Gerät hinzufügen',
+  nachfolgerVon = null,
+  datenquellen = [],
+  // EIN Name je Handlung: eine Box anmelden heißt überall „VoltPilot-Box hinzufügen“ — „Gerät hinzufügen“
+  // ist der Gerätekatalog (Zähler, Wechselrichter, Ladesäule hinter der Box).
+  title = 'VoltPilot-Box hinzufügen',
 }: {
   open: boolean;
   onClose: () => void;
   sites: Site[];
   onClaimed: (device: Device) => void;
+  /** Auf der Box-Seite: dieselbe Claim-Strecke, danach eine getrennte Bestätigung des Tauschs. */
+  nachfolgerVon?: Device | null;
+  datenquellen?: UemsDatenquelle[];
   /** Titel und Knopf; der Aufbau nennt die Box beim Namen („VoltPilot-Box hinzufügen"). */
   title?: string;
 }) {
@@ -71,6 +82,7 @@ export function AddDeviceDrawer({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [claimed, setClaimed] = useState<Device | null>(null);
+  const [tausch, setTausch] = useState<BoxTauschAntwort | null>(null);
   const refInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -102,8 +114,21 @@ export function AddDeviceDrawer({
             ? 'Diese Geräte-ID ist bereits mit einem anderen Konto verbunden. Bitte prüfen Sie die Schreibweise - oder kontaktieren Sie unseren Support.'
             : e instanceof ApiError && e.status === 404
               ? 'Die gewählte Anlage wurde nicht gefunden. Bitte laden Sie die Seite neu.'
-              : 'Das Gerät konnte nicht hinzugefügt werden. Bitte versuchen Sie es erneut.',
+              : 'Die Box konnte nicht hinzugefügt werden. Bitte versuchen Sie es erneut.',
       );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function nachfolgerBestaetigen() {
+    if (!claimed || !nachfolgerVon || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      setTausch(await api.boxTauschen(claimed.id, nachfolgerVon.id));
+    } catch (e) {
+      setError(tauschFehler(e));
     } finally {
       setBusy(false);
     }
@@ -111,6 +136,7 @@ export function AddDeviceDrawer({
 
   function close() {
     setClaimed(null);
+    setTausch(null);
     setError(null);
     onClose();
   }
@@ -119,14 +145,21 @@ export function AddDeviceDrawer({
     <Modal
       open={open}
       onClose={close}
-      title={title}
+      title={nachfolgerVon ? 'Box tauschen' : title}
       icon={
         <IconTile category="battery" size={40}>
           <Icon name="zap" size={20} />
         </IconTile>
       }
       footer={
-        claimed ? (
+        claimed && nachfolgerVon && !tausch ? (
+          <>
+            <Button variant="ghost" onClick={close} disabled={busy}>Später fortsetzen</Button>
+            <Recht aktion="datenquelle.zustaendigkeit"><Button variant="primary" onClick={() => void nachfolgerBestaetigen()} disabled={busy}>
+              {busy ? 'Wird vorbereitet …' : 'Box-Tausch bestätigen'}
+            </Button></Recht>
+          </>
+        ) : claimed ? (
           <Button variant="primary" onClick={close}>
             Fertig
           </Button>
@@ -135,30 +168,48 @@ export function AddDeviceDrawer({
             <Button variant="ghost" onClick={close}>
               Abbrechen
             </Button>
-            <Button variant="primary" onClick={claim} disabled={busy || !siteId}>
+            <Recht aktion="geraet.einrichten"><Button variant="primary" onClick={claim} disabled={busy || !siteId}>
               {busy ? 'Wird hinzugefügt…' : title}
-            </Button>
+            </Button></Recht>
           </>
         )
       }
     >
       {claimed ? (
         <>
-          <div className="vp-alert vp-alert-ok" style={{ marginTop: 0 }}>
-            Gerät <b>{claimed.externalRef}</b> wurde der Anlage{' '}
-            <b>{siteName(claimed.siteId)}</b> zugeordnet.
+          <div className={`vp-alert ${tausch?.zugestellt ? 'vp-alert-ok' : 'vp-alert-info'}`} style={{ marginTop: 0 }} role="status">
+            {nachfolgerVon
+              ? tausch
+                ? tausch.zugestellt
+                  ? 'Box-Tausch abgeschlossen. Die neue Box übernimmt die Aufgaben.'
+                  : 'Box-Tausch vorbereitet. Die Änderung wird zugestellt, sobald die Box erreichbar ist.'
+                : <>Neue Box <b>{claimed.externalRef}</b> verbunden. Der Tausch ist noch nicht bestätigt.</>
+              : <>VoltPilot-Box <b>{claimed.externalRef}</b> wurde der Anlage <b>{siteName(claimed.siteId)}</b> zugeordnet.</>}
           </div>
-          <p style={{ margin: 'var(--vp-space-4) 0' }}>
-            Mehr ist nicht zu tun: sobald das Gerät mit dieser Referenz online geht,
-            erhält es seine Konfiguration automatisch und beginnt zu senden.
-          </p>
+          {nachfolgerVon && !tausch ? (
+            <section className="vp-dqa-folgen" aria-label="Folgen des Box-Tauschs">
+              <h3>Was danach gilt</h3>
+              <ul>{tauschFolgen(
+                nachfolgerVon,
+                claimed,
+                datenquellen.filter((q) => q.zustaendige_box?.id === nachfolgerVon.id),
+                nachfolgerVon.fuehrtAnlage === true,
+              ).map((satz) => <li key={satz}>{satz}</li>)}</ul>
+              <p>Bestätigen Sie erst nach dieser Prüfung. Bis dahin bleibt die bisherige Box zuständig.</p>
+            </section>
+          ) : !nachfolgerVon ? <p style={{ margin: 'var(--vp-space-4) 0' }}>
+            Mehr ist nicht zu tun: sobald die Box mit dieser Referenz online geht,
+            erhält sie ihre Konfiguration automatisch und beginnt zu senden.
+          </p> : null}
+          {error && <div className="vp-alert vp-alert-err">{error}</div>}
+          {!nachfolgerVon && (
           <ul className="vp-checklist">
             <li>
               <span className="mk">
                 <Icon name="check" size={13} strokeWidth={3} />
               </span>
               <div>
-                <b>Gerät registriert</b>
+                <b>Box registriert</b>
                 <div className="vp-note">
                   Zugeordnet zur Anlage {siteName(claimed.siteId)}.
                 </div>
@@ -167,9 +218,9 @@ export function AddDeviceDrawer({
             <li>
               <span className="mk todo">2</span>
               <div>
-                <b>Gerät einschalten</b>
+                <b>Box einschalten</b>
                 <div className="vp-note">
-                  Das Gerät meldet sich mit seiner Referenz an und wird automatisch
+                  Die Box meldet sich mit ihrer Referenz an und wird automatisch
                   konfiguriert - keine IDs, kein Kopieren.
                 </div>
               </div>
@@ -192,12 +243,14 @@ export function AddDeviceDrawer({
               </div>
             </li>
           </ul>
+          )}
         </>
       ) : (
         <>
           <p className="vp-note" style={{ marginTop: 0 }}>
-            {DEVICE_ID_FIELD.help} Das Gerät verbindet sich selbst - Sie müssen keine
-            IDs übertragen.
+            {nachfolgerVon
+              ? `Verbinden Sie die neue Box mit ihrer Geräte-ID als Nachfolger von ${nachfolgerVon.name || nachfolgerVon.externalRef}. Die bisherige Box bleibt bis zur zweiten Bestätigung unverändert.`
+              : <>{DEVICE_ID_FIELD.help} Die Box verbindet sich selbst - Sie müssen keine IDs übertragen.</>}
           </p>
           <HelpLink article="box-verbinden">Hilfe beim Verbinden</HelpLink>
           <div className="vp-form-stack">
@@ -223,11 +276,12 @@ export function AddDeviceDrawer({
               value={siteId}
               onChange={setSiteId}
               searchPlaceholder="Anlage suchen …"
+              disabled={Boolean(nachfolgerVon)}
             />
           </div>
           {sites.length === 0 && (
             <div className="vp-alert vp-alert-info">
-              Sie haben noch keine Anlage - legen Sie zuerst unter „Meine Anlage“ eine an.
+              Sie haben noch keine Anlage - legen Sie zuerst eine Anlage an; die Box gehört immer zu einer Anlage.
             </div>
           )}
           {error && <div className="vp-alert vp-alert-err">{error}</div>}
@@ -248,7 +302,7 @@ export function unclaimConsequences(device: Device): string[] {
   const name = device.name || device.externalRef;
   return [
     `Das Gerät „${name}" wird von Ihrem Konto getrennt`,
-    'Alle aufgezeichneten Messdaten dieses Geräts werden gelöscht',
+    'Die aufgezeichneten Messdaten bleiben erhalten – das Gerät wird als ausgebaut geführt',
     'Das physische Gerät verliert seinen Fahrplan und fällt in den sicheren Standardbetrieb zurück',
   ];
 }
@@ -339,7 +393,7 @@ export function DeviceDetailDrawer({
         <Badge variant="tint">{deviceKindLabel(device.kind)}</Badge>
         {site && <Badge variant="tint">{site.name}</Badge>}
         {!editing && (
-          <Button
+          <Recht aktion="geraet.einrichten"><Button
             variant="ghost"
             size="sm"
             iconLeft={<Icon name="pencil" size={16} />}
@@ -347,7 +401,7 @@ export function DeviceDetailDrawer({
             style={{ marginLeft: 'auto' }}
           >
             Bearbeiten
-          </Button>
+          </Button></Recht>
         )}
       </div>
 
@@ -417,7 +471,8 @@ export function DeviceDetailDrawer({
               */}
               <DangerZone
                 variant="inline"
-                actionLabel="Gerät entfernen und neu verbinden"
+                recht="komponente.loeschen"
+          actionLabel="Gerät entfernen und neu verbinden"
                 consequences={unclaimConsequences(device)}
                 confirmLabel="Gerät endgültig entfernen"
                 busy={deleteBusy}
@@ -446,7 +501,8 @@ export function DeviceDetailDrawer({
             </div>
           ) : (
             <DangerZone
-              actionLabel="Datenaufzeichnungen löschen"
+              recht="aufzeichnungen.loeschen"
+          actionLabel="Datenaufzeichnungen löschen"
               description="Löscht alle bisher aufgezeichneten Messdaten dieses Geräts unwiderruflich. Das Gerät bleibt verbunden und zeichnet ab sofort wieder neu auf."
               consequences={[
                 `Alle Messdaten von „${device.name || device.externalRef}" werden endgültig gelöscht - auch aus Verlauf, Historie und Statistiken`,
@@ -462,7 +518,8 @@ export function DeviceDetailDrawer({
           )}
 
           <DangerZone
-            actionLabel="Gerät entfernen"
+            recht="komponente.loeschen"
+          actionLabel="Gerät entfernen"
             description="Falsches Gerät verbunden? Entfernen macht die Geräte-ID wieder frei - sie kann danach erneut (auch von einem anderen Konto) verbunden werden."
             consequences={unclaimConsequences(device)}
             confirmLabel="Gerät endgültig entfernen"
@@ -536,9 +593,9 @@ function DeviceEditForm({
         <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
           Abbrechen
         </Button>
-        <Button variant="primary" size="sm" onClick={save} disabled={busy}>
+        <Recht aktion="geraet.einrichten"><Button variant="primary" size="sm" onClick={save} disabled={busy}>
           {busy ? 'Wird gespeichert…' : 'Änderungen speichern'}
-        </Button>
+        </Button></Recht>
       </div>
     </div>
   );

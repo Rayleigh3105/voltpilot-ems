@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -11,6 +12,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.NullNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.entities.EntityRegistryPublisher;
@@ -23,6 +25,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -173,7 +176,7 @@ class DatenquelleVorschlagApiTest {
             assertThat(v.get("protokoll").asText()).as(dq).isEqualTo(rq.get("protokoll").asText());
             assertThat(v.get("adresse").asText()).as(dq)
                     .isEqualTo(rq.get("adresse").asText() + ":" + rq.get("port").asInt());
-            assertThat(v.get("geraete_ids")).as(dq).isEqualTo(rq.get("geraete_ids"));
+            assertThat(v.get("geraete_ids")).as(dq).isEqualTo(geraeteIdsZumStand(dq));
             assertThat(v.get("kadenz_s").asInt()).as(dq).isEqualTo(rq.get("kadenz_s").asInt());
             assertThat(v.get("steuerquelle").asBoolean()).as(dq).isEqualTo(rq.get("steuerquelle").asBoolean());
             assertThat(Instant.parse(v.get("ab").asText())).as(dq).isEqualTo(reihenbeginn(dq));
@@ -190,6 +193,18 @@ class DatenquelleVorschlagApiTest {
      * A12: bis zur Bestätigung ändert sich nichts — keine Zeile, kein Registry-Push, keine
      * Flow-Aktivierung, keine führende Box; und nach der Bestätigung: dieselben Pushes an dieselbe
      * Box wie vorher.
+     *
+     * <p><b>Was „dieselben" heißt</b> — A12 sagt wörtlich „gleiche Pushes wie vorher (Vollmenge =
+     * alle Quellen dieser Box)": die Klammer nennt das Maß, nämlich dieselbe MENGE. Nichts fällt
+     * weg, nichts wandert zu einer anderen Box. Das entschiedene AP-06-Konzept führt dazu EINE
+     * additive Ausnahme (Verträge, additiv): „Registry-Push: unverändertes Schema, neue Regel WAS je
+     * Box hineingehört (Zuständigkeit) + optional {@code data_source_id} je Entität (alte Box
+     * überliest)". Seit PR 939 (AP-06 IP-13, stabiles DQ-Kennzeichen im Quellen-Herzschlag) trägt
+     * der Push dieses Feld, sobald eine Quelle zugeordnet ist.
+     *
+     * <p>Der Vergleich bleibt deshalb STRENG: {@link #ohneQuellkennzeichen} nimmt genau dieses eine
+     * Feld heraus — alles andere wird weiter Zeichen für Zeichen verglichen — und der Test prüft das
+     * Feld anschließend ausdrücklich. Kein generisches „unbekannte Felder ignorieren".
      */
     @Test
     void bisZurBestaetigungAendertSichNichtsUndDanachDieselbenPushes() throws Exception {
@@ -210,7 +225,24 @@ class DatenquelleVorschlagApiTest {
         assertThat(u.status()).as(u.body().toString()).isEqualTo(200);
         assertThat(u.body().get("neu").asInt()).isEqualTo(3);
         assertThat(fingerabdruck()).isNotEqualTo(abdruck);
-        assertThat(stand(w, an1)).as("nach der Übernahme: dieselben Pushes an dieselbe Box").isEqualTo(vorher);
+
+        Stand nachher = stand(w, an1);
+        assertThat(nachher.ohneQuellKennzeichen())
+                .as("nach der Übernahme: dieselben Pushes an dieselbe Box")
+                .isEqualTo(vorher.ohneQuellKennzeichen());
+
+        // Die EINE entschiedene Differenz, ausdrücklich geprüft statt ignoriert: jede Entität einer
+        // übernommenen Quelle trägt danach deren stabiles DQ-Kennzeichen, vorher trägt es keine.
+        assertThat(vorher.quellKennzeichen()).as("vor der Bestätigung trägt keine Entität das Feld").isEmpty();
+        for (String dq : HALLE_1) {
+            for (UUID k : w.komponentenDer(dq)) {
+                assertThat(nachher.quellKennzeichen().get(k)).as(dq + " an " + k).isEqualTo(dq);
+            }
+        }
+        // Keine Entität bleibt ohne Kennzeichen, und es taucht kein fremdes auf - die zusammengesetzte
+        // Entität (der producer des Hybrid-Wechselrichters) erbt das Kennzeichen ihres Erzeugers.
+        assertThat(nachher.quellKennzeichen().keySet()).isEqualTo(entitaeten(nachher.registry()));
+        assertThat(Set.copyOf(nachher.quellKennzeichen().values())).isEqualTo(Set.copyOf(HALLE_1));
     }
 
     /** Die Übernahme schreibt Quelle, Zuständigkeit ab Reihenbeginn, beide Verweise und EIN Protokoll. */
@@ -356,12 +388,107 @@ class DatenquelleVorschlagApiTest {
         assertThat(fingerabdruck()).isEqualTo(abdruck);
     }
 
+    /**
+     * „Gerät dort hinzufügen?" (Messen-Assistent Schritt 2, 21.09.2026): die gesperrte Zeile nennt die von
+     * Hand angelegte Quelle als {@code ziel}, sobald sie alle Geräte-IDs des Vorschlags trägt; die
+     * Bestätigung MIT {@code datenquelle_id} hängt die Komponenten daran — ein anderes Ziel ist 409
+     * {@code vorschlag_geaendert}, ein zweiter Aufruf unverändert. Keine neue Quelle, keine neue Zuständigkeit.
+     */
+    @Test
+    void eineVergebeneAdresseNimmtDieGeraeteNachBestaetigungAuf() throws Exception {
+        Welt w = halle1("Halle 1 · hinzufügen");
+        UUID an1 = w.anlagen.get("AN-1");
+        UUID e1 = w.boxen.get("E-1");
+        UUID vonHand = root.queryForObject("INSERT INTO data_source (tenant_id, site_id, kennzeichen, protokoll, "
+                + "adresse, kadenz_s) VALUES (?, ?, 'DQ-41', 'modbus_tcp', '192.168.10.30:502', 10) RETURNING id",
+                UUID.class, w.mandant, an1);
+        root.update("INSERT INTO data_source_assignment (tenant_id, data_source_id, device_id, protokoll, adresse, "
+                + "effective_from) VALUES (?, ?, ?, 'modbus_tcp', '192.168.10.30:502', '2026-09-01T08:00:00Z')",
+                w.mandant, vonHand, e1);
+
+        // Ohne die Geräte-IDs des Vorschlags beschreibt DQ-41 diese Geräte nicht — kein Ziel.
+        JsonNode dq2 = ruf(w.jonas, HttpMethod.GET, basis(an1) + "/vorschlag", null).body().at("/vorschlaege/1");
+        assertThat(dq2.get("grund").asText()).isEqualTo("adresse_an_box_vergeben");
+        assertThat(dq2.get("ziel").isNull()).isTrue();
+        List<Integer> ids = new ArrayList<>();
+        dq2.get("geraete_ids").forEach(i -> ids.add(i.asInt()));
+        root.update(con -> {
+            var ps = con.prepareStatement("UPDATE data_source SET geraete_ids = ? WHERE id = ?");
+            ps.setArray(1, con.createArrayOf("integer", ids.toArray()));
+            ps.setObject(2, vonHand);
+            return ps;
+        });
+
+        dq2 = ruf(w.jonas, HttpMethod.GET, basis(an1) + "/vorschlag", null).body().at("/vorschlaege/1");
+        assertThat(dq2.at("/ziel/id").asText()).isEqualTo(vonHand.toString());
+        assertThat(dq2.at("/ziel/kennzeichen").asText()).isEqualTo("DQ-41");
+        Map<String, Object> zeile = new LinkedHashMap<>();
+        zeile.put("device_id", dq2.at("/box/id").asText());
+        zeile.put("protokoll", dq2.get("protokoll").asText());
+        zeile.put("adresse", dq2.get("adresse").asText());
+        zeile.put("komponenten", texte(ids(dq2.get("komponenten"))));
+
+        String abdruck = fingerabdruck();
+        zeile.put("datenquelle_id", UUID.randomUUID().toString());
+        Antwort falsch = ruf(w.jonas, HttpMethod.POST, basis(an1) + "/vorschlag/uebernehmen",
+                Map.of("vorschlaege", List.of(zeile)));
+        assertThat(falsch.status()).as(falsch.body().toString()).isEqualTo(409);
+        assertThat(falsch.body().get("code").asText()).isEqualTo("vorschlag_geaendert");
+        assertThat(fingerabdruck()).isEqualTo(abdruck);
+
+        zeile.put("datenquelle_id", vonHand.toString());
+        Antwort u = ruf(w.jonas, HttpMethod.POST, basis(an1) + "/vorschlag/uebernehmen",
+                Map.of("vorschlaege", List.of(zeile)));
+        assertThat(u.status()).as(u.body().toString()).isEqualTo(200);
+        assertThat(u.body().get("neu").asInt()).isZero();
+        assertThat(u.body().get("angehaengt").asInt()).isEqualTo(1);
+        assertThat(u.body().at("/datenquellen/0/kennzeichen").asText()).isEqualTo("DQ-41");
+        int zahl = dq2.get("komponenten").size();
+        assertThat(root.queryForObject("SELECT count(*) FROM measurement_point WHERE data_source_id = ?",
+                Integer.class, vonHand)).isEqualTo(zahl);
+        assertThat(root.queryForObject("SELECT count(*) FROM data_source WHERE site_id = ?", Integer.class, an1))
+                .as("keine zweite Quelle").isEqualTo(1);
+        assertThat(root.queryForObject("SELECT count(*) FROM data_source_assignment WHERE data_source_id = ?",
+                Integer.class, vonHand)).as("keine neue Zuständigkeit").isEqualTo(1);
+
+        Antwort nochmal = ruf(w.jonas, HttpMethod.POST, basis(an1) + "/vorschlag/uebernehmen",
+                Map.of("vorschlaege", List.of(zeile)));
+        assertThat(nochmal.status()).isEqualTo(200);
+        assertThat(nochmal.body().get("unveraendert").asInt()).isEqualTo(1);
+        assertThat(nochmal.body().get("angehaengt").asInt()).isZero();
+    }
+
+    @Test
+    void gleicheAdresseAnAndererBoxBrauchtAusserhalbDesBestandsAssistentenEineNetzlage() throws Exception {
+        Welt w = halle1("Halle 1 · Doppel-Lesen");
+        UUID an1 = w.anlagen.get("AN-1");
+        UUID andereBox = w.boxErfunden("Vergleichs-Box", an1, "2026-08-01T08:00:00+02:00");
+        UUID bestehend = root.queryForObject("INSERT INTO data_source (tenant_id, site_id, kennzeichen, protokoll, "
+                + "adresse, netz, mehrere_leser, kadenz_s) VALUES (?, ?, 'DQ-41', 'modbus_tcp', "
+                + "'192.168.10.30:502', '192.168.10.0/24', true, 10) RETURNING id",
+                UUID.class, w.mandant, an1);
+        root.update("INSERT INTO data_source_assignment (tenant_id, data_source_id, device_id, protokoll, adresse, "
+                + "effective_from) VALUES (?, ?, ?, 'modbus_tcp', '192.168.10.30:502', '2026-09-01T08:00:00Z')",
+                w.mandant, bestehend, andereBox);
+
+        JsonNode liste = ruf(w.jonas, HttpMethod.GET, basis(an1) + "/vorschlag", null).body();
+        JsonNode dq2 = liste.at("/vorschlaege/1");
+        assertThat(dq2.get("grund").asText()).isEqualTo("netzlage_fehlt");
+        assertThat(dq2.get("text").asText()).contains("erst das Netz beider Quellen eintragen");
+
+        Antwort uebernahme = ruf(w.jonas, HttpMethod.POST, basis(an1) + "/vorschlag/uebernehmen", alle(liste));
+        assertThat(uebernahme.status()).isEqualTo(409);
+        assertThat(uebernahme.body().get("grund").asText()).isEqualTo("netzlage_fehlt");
+        assertThat(uebernahme.body().get("satz").asText()).contains("erst das Netz beider Quellen eintragen");
+    }
+
     // ================================================================ A9: zweite Box
 
     /**
      * A9: eine zusätzliche Lese-Box in AN-1. Gruppiert wird je Box — was Box Halle 1 liest, bleibt
      * DQ-1 … DQ-3; was die zweite liest, wird eine eigene Quelle mit IHREM Reihenbeginn. Die
-     * führende Box bleibt Box Halle 1 (Speicher-Box), der Push geht weiter nur an sie.
+     * führende Box bleibt Box Halle 1 (Speicher-Box). Seit IP-6 (Push je Box) bekommt die Lese-Box nach
+     * der Bestätigung ihren EIGENEN Registry-Push mit genau ihrer Quelle; Box Halle 1 liest K-96 nicht mehr.
      */
     @Test
     void a9ZweiteBoxVorschlaegeJeBoxDieFuehrendeBleibt() throws Exception {
@@ -397,7 +524,22 @@ class DatenquelleVorschlagApiTest {
         Antwort u = ruf(w.jonas, HttpMethod.POST, basis(an1) + "/vorschlag/uebernehmen", alle(liste));
         assertThat(u.body().get("neu").asInt()).as(u.body().toString()).isEqualTo(4);
         assertThat(u.body().at("/datenquellen/3/zustaendige_box/id").asText()).isEqualTo(lese.toString());
-        assertThat(stand(w, an1)).as("kein Verbund, kein Push an die zweite Box").isEqualTo(vorher);
+        // Kein Verbund: die führende Box und die Flow-Aktivierung bleiben Box Halle 1. Aber seit IP-6 geht
+        // der Registry-Push je Box — die Lese-Box bekommt genau K-96, Box Halle 1 alles andere.
+        Stand nachher = stand(w, an1);
+        assertThat(vorher.registryPushes()).isEqualTo(1);
+        assertThat(nachher.registryPushes()).isEqualTo(2);
+        assertThat(nachher.registryBox()).isEqualTo(w.boxen.get("E-1"));
+        assertThat(nachher.flow()).isEqualTo(vorher.flow());
+        assertThat(nachher.flowBox()).isEqualTo(vorher.flowBox());
+        assertThat(nachher.fuehrend()).isEqualTo(vorher.fuehrend());
+        assertThat(nachher.fuehrungsGrund()).isEqualTo(vorher.fuehrungsGrund());
+        Map<UUID, Set<UUID>> jeBox = entitaetenJeBox(w, an1);
+        Set<UUID> ohneKantine = new HashSet<>(entitaeten(vorher.registry()));
+        assertThat(ohneKantine.remove(kantine)).as("vor der Bestätigung las Box Halle 1 auch K-96").isTrue();
+        assertThat(jeBox.keySet()).containsExactly(w.boxen.get("E-1"), lese);
+        assertThat(jeBox.get(w.boxen.get("E-1"))).isEqualTo(ohneKantine);
+        assertThat(jeBox.get(lese)).containsExactly(kantine);
     }
 
     // ================================================================ benannt ausgelassen
@@ -532,8 +674,18 @@ class DatenquelleVorschlagApiTest {
     // ================================================================ Gerüst
 
     /** Was eine Box erreicht: Registry-Push und Flow-Aktivierung (ohne ihre Zeitstempel), und wer führt. */
-    private record Stand(String registry, UUID registryBox, String flow, UUID flowBox, UUID fuehrend,
-            String fuehrungsGrund) {}
+    private record Stand(String registry, UUID registryBox, int registryPushes, String flow, UUID flowBox,
+            UUID fuehrend, String fuehrungsGrund, Map<UUID, String> quellKennzeichen) {
+
+        /**
+         * Fuer den Vergleich vorher/nachher: alles AUSSER dem einen Feld, das AP-06 als additiv
+         * entschieden hat. Das Feld selbst wird nicht ignoriert, sondern ausdruecklich geprueft.
+         */
+        Stand ohneQuellKennzeichen() {
+            return new Stand(registry, registryBox, registryPushes, flow, flowBox, fuehrend, fuehrungsGrund,
+                    Map.of());
+        }
+    }
 
     private Stand stand(Welt w, UUID anlage) throws Exception {
         reset(registryPublisher, flowPublisher);
@@ -546,15 +698,85 @@ class DatenquelleVorschlagApiTest {
             flows.republishForSite(anlage);
             ArgumentCaptor<UUID> rBox = ArgumentCaptor.forClass(UUID.class);
             ArgumentCaptor<byte[]> rPush = ArgumentCaptor.forClass(byte[].class);
-            verify(registryPublisher).publishRegistry(eq(w.mandant), eq(anlage), rBox.capture(), rPush.capture());
+            // Seit IP-6 geht der Registry-Push je Box: der Stand trägt den Push an die FÜHRENDE Box und zählt,
+            // wie viele Boxen einen bekamen.
+            verify(registryPublisher, atLeastOnce()).publishRegistry(eq(w.mandant), eq(anlage), rBox.capture(),
+                    rPush.capture());
+            int fuehrende = rBox.getAllValues().indexOf(f.box());
             ArgumentCaptor<UUID> fBox = ArgumentCaptor.forClass(UUID.class);
             ArgumentCaptor<byte[]> fPush = ArgumentCaptor.forClass(byte[].class);
             verify(flowPublisher).publishDeployment(eq(w.mandant), eq(anlage), fBox.capture(), fPush.capture());
-            return new Stand(ohne(rPush.getValue(), "revision", "published_at"), rBox.getValue(),
-                    ohne(fPush.getValue(), "deployed_at"), fBox.getValue(), f.box(), f.grund().code());
+            Map<UUID, String> quellKennzeichen = new LinkedHashMap<>();
+            String registryPush = ohneQuellkennzeichen(rPush.getAllValues().get(fuehrende), quellKennzeichen,
+                    "revision", "published_at");
+            return new Stand(registryPush,
+                    rBox.getAllValues().get(fuehrende), rBox.getAllValues().size(),
+                    ohne(fPush.getValue(), "deployed_at"), fBox.getValue(), f.box(), f.grund().code(),
+                    quellKennzeichen);
         } finally {
             TenantContext.clear();
         }
+    }
+
+    /** Seit IP-6: je Box (in Zustell-Reihenfolge) die Entitäten ihres Registry-Pushs. */
+    private Map<UUID, Set<UUID>> entitaetenJeBox(Welt w, UUID anlage) throws Exception {
+        reset(registryPublisher);
+        when(registryPublisher.publishRegistry(any(), any(), any(), any())).thenReturn(true);
+        TenantContext.set(w.mandant);
+        try {
+            registry.pushRegistryBestEffort(anlage);
+        } finally {
+            TenantContext.clear();
+        }
+        ArgumentCaptor<UUID> box = ArgumentCaptor.forClass(UUID.class);
+        ArgumentCaptor<byte[]> push = ArgumentCaptor.forClass(byte[].class);
+        verify(registryPublisher, atLeastOnce()).publishRegistry(eq(w.mandant), eq(anlage), box.capture(),
+                push.capture());
+        Map<UUID, Set<UUID>> out = new LinkedHashMap<>();
+        for (int i = 0; i < box.getAllValues().size(); i++) {
+            out.put(box.getAllValues().get(i),
+                    entitaeten(new String(push.getAllValues().get(i), StandardCharsets.UTF_8)));
+        }
+        return out;
+    }
+
+    private static Set<UUID> entitaeten(String push) throws IOException {
+        Set<UUID> out = new HashSet<>();
+        MAPPER.readTree(push).get("entities").forEach(e -> out.add(UUID.fromString(e.get("entity_id").asText())));
+        return out;
+    }
+
+    /**
+     * Nimmt GENAU das eine Feld aus dem Registry-Push, das AP-06 als additiv entschieden hat -
+     * {@code entities[].driver.data_source_id} - und reicht es ueber {@code senke} zur
+     * ausdruecklichen Pruefung heraus. Alles andere bleibt im Vergleich: Entitaeten-Menge,
+     * Reihenfolge, Adressen, Kadenz, Register, Treiber-Parameter. Kein generisches
+     * "unbekannte Felder ignorieren".
+     *
+     * <p>Den Treiber-Behaelter selbst entfernt die Methode nur, wenn er NACH dem Herausnehmen leer
+     * ist: fuer eine Entitaet ohne eigenen Treiber legt ihn erst das Kennzeichen an (siehe
+     * {@code EntityRegistryService}, {@code d.has("driver") ? ... : d.putObject("driver")}).
+     */
+    private static String ohneQuellkennzeichen(byte[] push, Map<UUID, String> senke, String... zeitstempel)
+            throws IOException {
+        ObjectNode n = (ObjectNode) MAPPER.readTree(push);
+        for (String z : zeitstempel) {
+            assertThat(n.has(z)).as(z).isTrue();
+            n.remove(z);
+        }
+        for (JsonNode e : n.path("entities")) {
+            ObjectNode entitaet = (ObjectNode) e;
+            JsonNode treiber = entitaet.get("driver");
+            if (treiber == null || !treiber.has("data_source_id")) {
+                continue;
+            }
+            senke.put(UUID.fromString(entitaet.get("entity_id").asText()),
+                    ((ObjectNode) treiber).remove("data_source_id").asText());
+            if (treiber.isEmpty()) {
+                entitaet.remove("driver");
+            }
+        }
+        return n.toString();
     }
 
     private static String ohne(byte[] push, String... zeitstempel) throws IOException {
@@ -628,6 +850,30 @@ class DatenquelleVorschlagApiTest {
         List<UUID> out = new ArrayList<>();
         arr.forEach(n -> out.add(UUID.fromString(n.at("/" + feld + "/id").asText())));
         return out;
+    }
+
+    /**
+     * Die Geräte-IDs der Quelle, deren Gerät am {@code stand} der Referenz schon eingebaut ist. Die
+     * Welt baut den Grundbestand; ein später eingebautes Gerät (Referenz 1.6: GR-19 mit Geräte-ID 5
+     * an DQ-3 erst ab 01.03.2027) gehört heute nicht in den Vorschlag.
+     */
+    private static JsonNode geraeteIdsZumStand(String dq) {
+        LocalDate stand = LocalDate.parse(referenz.get("stand").asText());
+        ArrayNode ids = MAPPER.createArrayNode();
+        for (JsonNode id : referenzQuelle(dq).get("geraete_ids")) {
+            JsonNode geraet = null;
+            for (JsonNode g : referenz.get("geraete")) {
+                if (dq.equals(g.get("datenquelle").asText()) && g.get("modbus_geraete_id").asInt() == id.asInt()) {
+                    geraet = g;
+                }
+            }
+            assertThat(geraet).as(dq + " Geräte-ID " + id).isNotNull();
+            LocalDate eingebaut = OffsetDateTime.parse(geraet.at("/einbauten/0/gueltig_ab").asText()).toLocalDate();
+            if (!eingebaut.isAfter(stand)) {
+                ids.add(id);
+            }
+        }
+        return ids;
     }
 
     /** Der Beginn der ersten Zuständigkeit der Quelle in der Referenz — ihr Reihenbeginn. */

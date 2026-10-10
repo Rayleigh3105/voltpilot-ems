@@ -9,6 +9,7 @@ import {
   GROESSEN_KATALOG,
   HERLEITUNGEN,
   HINWEISE,
+  hoechstzuwachsJeKadenz,
   KANAL_EINHEITEN,
   KENNZEICHEN_MAX_ZEICHEN,
   KENNZEICHEN_MIN_ZEICHEN,
@@ -19,6 +20,8 @@ import {
   MEDIEN,
   MEDIEN_WAEHLBAR,
   PASSUNG_GRUENDE,
+  ANTEILE,
+  ANTEIL_RICHTUNGEN,
   RUECKWIRKUNG_ARTEN,
   STELLUNGEN,
   STELLUNG_GRUENDE,
@@ -42,6 +45,7 @@ import {
   stellungPruefen,
   vorschlagsliste,
   wechselPruefen,
+  kartenWechselPruefen,
   zeitstrahlAus,
   type Abschnitt,
   type Bindung,
@@ -154,11 +158,15 @@ const bindungEingang = (i: Json): BindungEingang => ({
     anfangsstand: stand(i.neu.anfangsstand),
     // Fehlt das Feld, speist der Einbau bis auf Weiteres (der Stand vor IP-13).
     geraetBis: i.neu.geraet_bis ?? null,
+    // Fehlen die Felder, ist es eine Bindung ohne Anteil (der Stand vor AP-08 IP-7).
+    kanalDirection: i.neu.kanal_direction ?? null,
+    anteil: i.neu.anteil ?? null,
   },
   kanalFuehrendAnderswo: i.kanal_fuehrend_anderswo.map((f: Json) => ({
     messstelle: f.messstelle,
     gueltigAb: f.gueltig_ab,
     gueltigBis: f.gueltig_bis,
+    anteil: f.anteil ?? null,
   })),
 });
 
@@ -297,6 +305,8 @@ describe('Messstellen-Vertrag — die Regeln stehen in der Datei', () => {
     expect(vectors.stellungen).toEqual([...STELLUNGEN]);
     expect(vectors.stellung_gruende).toEqual([...STELLUNG_GRUENDE]);
     expect(vectors.passung_gruende).toEqual([...PASSUNG_GRUENDE]);
+    expect(vectors.anteile).toEqual([...ANTEILE]);
+    expect(vectors.anteil_richtungen).toEqual(ANTEIL_RICHTUNGEN);
     expect(vectors.hinweise).toEqual([...HINWEISE]);
     expect(vectors.rueckwirkung_arten).toEqual([...RUECKWIRKUNG_ARTEN]);
     expect(vectors.vorschlag_fluesse).toEqual([...VORSCHLAG_FLUESSE]);
@@ -324,6 +334,8 @@ describe('Messstellen-Vertrag — die Regeln stehen in der Datei', () => {
           kanal_wertart: q.kanalWertart,
           nur_wertart: q.nurWertart,
         })),
+        // Nur wo es sie gibt (AP-10 IP-4) — `toEqual` übergeht ein `undefined`-Feld.
+        richtungen_nur_berechnet: e.richtungenNurBerechnet,
       })),
     );
     expect(Object.entries(vectors.kanal_einheiten)).toEqual(Object.entries(KANAL_EINHEITEN));
@@ -342,7 +354,15 @@ describe('Messstellen-Vertrag — die Fälle', () => {
   });
 
   it.each(faelle('groesse'))('Größe: $name', (c) => {
-    expect(groessePruefen(c.input.medium, c.input.groesse)).toEqual(c.expected);
+    // `art` fehlt in den Fällen von vor AP-10 IP-4: dann urteilt die Regel ohne Art.
+    expect(groessePruefen(c.input.medium, c.input.groesse, c.input.art)).toEqual(c.expected);
+  });
+
+  it.each(faelle('anschlussleistung'))('Anschlussleistung: $name', (c) => {
+    const ist = hoechstzuwachsJeKadenz(c.input.anschlussleistung_kw, c.input.einheit, c.input.kadenz_s);
+    const soll = c.expected.hoechstzuwachs_je_kadenz;
+    if (soll === null) expect(ist).toBeNull();
+    else expect(ist).toBeCloseTo(soll, 9);
   });
 
   it.each(faelle('lebenszyklus'))('Lebenszyklus: $name', (c) => {
@@ -357,7 +377,18 @@ describe('Messstellen-Vertrag — die Fälle', () => {
 
   it.each(faelle('passung'))('Passung: $name', (c) => {
     const k = c.input.kanal;
-    expect(passung(c.input.medium, c.input.ziel, k.groesse, k.richtung, k.einheit, k.wertart)).toEqual(c.expected);
+    expect(
+      passung(
+        c.input.medium,
+        c.input.ziel,
+        k.groesse,
+        k.richtung,
+        k.einheit,
+        k.wertart,
+        k.direction ?? null,
+        c.input.anteil ?? null,
+      ),
+    ).toEqual(c.expected);
   });
 
   it.each(faelle('vorschlag'))('Vorschlag Bestand: $name', (c) => {
@@ -381,6 +412,10 @@ describe('Messstellen-Vertrag — die Fälle', () => {
 
   it.each(faelle('wechsel'))('Zählerwechsel: $name', (c) => {
     const a = c.input.alt;
+    if (c.input.karten) {
+      const k = c.input.karten;
+      expect(kartenWechselPruefen(k.vorhanden, k.uebernommen, k.fuehrende_bindungen, k.ablesestaende)).toBe(c.expected.karten_fehler);
+    }
     expect(
       wechselPruefen({
         jetzt: c.input.jetzt,
@@ -567,7 +602,16 @@ const giltAm = (o: Json, tag: string): boolean => o.gueltig_ab <= tag && (o.guel
 /** Ein Kalendertag als Zeitpunkt MITTEN in ihm (12:00 UTC liegt immer im Berliner Tag). */
 const mittag = (tag: string): number => Date.parse(`${tag}T12:00:00Z`);
 
-const letztesEreignis = Math.max(...referenz.zeitachse.map((z: Json) => Date.parse(z.zeitpunkt)));
+/**
+ * Der Horizont einer Fortschreibung: das letzte Ereignis der Zeitachse OHNE fachfremde Zeilen. Seit Fassung
+ * 1.5 sind das Zeilen der `gemeinsame_steuerung`, seit 1.6 auch Zeilen der `energetische_bewertung`, seit 1.8
+ * Zeilen der `bezugsbasis`, seit 1.9 Zeilen der `verbesserung`, seit 1.10 Zeilen des `energiemanagement`; alle fünf sagen über Messstellen-Quellen nichts (Fall unten). Dieselbe Regel steht in MessstelleRegelnVectorsTest.
+ */
+const horizontZeilen: Json[] = referenz.zeitachse.filter(
+  (z: Json) => z.gemeinsame_steuerung == null && z.energetische_bewertung == null && z.bezugsbasis == null && z.verbesserung == null
+    && z.energiemanagement == null,
+);
+const letztesEreignis = Math.max(...horizontZeilen.map((z: Json) => Date.parse(z.zeitpunkt)));
 
 const gilt = (o: Json, t: number): boolean =>
   Date.parse(o.gueltig_ab) <= t && (o.gueltig_bis === null || t < Date.parse(o.gueltig_bis));
@@ -621,6 +665,23 @@ const pruefeZeitstrahlWieReferenz = (zeitstrahl: Json[], referenzQuellen: Json[]
 const ohneStand = (qs: Json[]) => qs.map(({ anfangsstand: _a, endstand: _e, ...rest }) => rest);
 
 describe('Messstellen-Vertrag — übernimmt das Referenzunternehmen', () => {
+  it('die fachfremden Zeilen nennen keine Messstelle, Datenquelle oder Bezugsgröße der Vektoren', () => {
+    // Die Ausnahme vom Horizont ist durch die Daten begründet; sagt eine solche Zeile doch etwas über eine Quelle,
+    // bricht dieser Fall — dann gehört die Zeile in den Horizont.
+    const kz = /\b(?:MS|DQ|BZ)-[0-9]+\b/g;
+    const benutzt = new Set(JSON.stringify(vectors).match(kz) ?? []);
+    expect(benutzt.size).toBeGreaterThan(0);
+    const ausgenommen = (referenz.zeitachse as Json[]).filter(
+      (z) => z.gemeinsame_steuerung != null || z.energetische_bewertung != null || z.bezugsbasis != null || z.verbesserung != null
+        || z.energiemanagement != null,
+    );
+    expect(ausgenommen.length).toBeGreaterThan(0);
+    const fehler = ausgenommen.flatMap((z) =>
+      ((z.ereignis as string).match(kz) ?? []).filter((k) => benutzt.has(k)).map((k) => `${z.zeitpunkt} nennt ${k}`),
+    );
+    expect(fehler).toEqual([]);
+  });
+
   it.each(gueltige)('%s ist die Messstelle des Referenzunternehmens, Feld für Feld', (datei) => {
     const d = lies(resolve(FIXTURES, datei));
     const m = refMessstelle(d.kennzeichen);

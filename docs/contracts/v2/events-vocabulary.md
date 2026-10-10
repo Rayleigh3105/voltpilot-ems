@@ -5,7 +5,7 @@ Stand 11.09.2026 · Umschlag 2.1 · `events.raw` 1.0 · Vokabular 1.0 · Bezug: 
 beide Pfade — nie gelöscht“), dazu AP-04 E2, AP-05 E6, AP-06 E5/E7/E9 und der
 [Herkunftsvertrag](./messwert-herkunft.md).
 
-Dieser Vertrag sagt, **welche Ereignisse es gibt** (ein geschlossenes Vokabular von 23 Arten),
+Dieser Vertrag sagt, **welche Ereignisse es gibt** (ein geschlossenes Vokabular von 34 Arten),
 **wer sie melden darf**, **worauf sie sich beziehen**, **wie ihre Zeit zu lesen ist**, **wie
 eine VoltPilot-Box sie an die Cloud schickt** und **in welcher Form jedes Ereignis — von der
 Box oder von der Cloud selbst — auf Redpanda liegt**, bevor es in die nie gelöschte
@@ -15,7 +15,7 @@ Ereignis-Tabelle je Mandant geht (IP-8).
 |---|---|
 | [`mqtt-events-2.1.schema.json`](./mqtt-events-2.1.schema.json) | der Umschlag Box → Cloud auf `ems/{tenant_id}/{site_id}/{device_id}/v2/events` |
 | [`events-raw.event.schema.json`](./events-raw.event.schema.json) | das Redpanda-Ereignis `events.raw` (beide Wege, ein Ereignis je Datensatz) |
-| [`events-vocabulary-vectors.json`](./events-vocabulary-vectors.json) | das Vokabular (je Art Urheber, Bezug, Zeit, Felder, Fortschreibung, Kundensatz) und 61 Fälle im Referenzunternehmen Ahrenberg |
+| [`events-vocabulary-vectors.json`](./events-vocabulary-vectors.json) | das Vokabular (je Art Urheber, Bezug, Zeit, Felder, Fortschreibung, Kundensatz) und 132 Fälle im Referenzunternehmen Ahrenberg |
 | [`events-vocabulary.schema.json`](./events-vocabulary.schema.json) | JSON Schema 2020-12 der Vektor-Datei |
 | `services/api/.../uems/EreignisVokabular.java` | die reine PRÜFUNG: angenommen oder verworfen mit Grund |
 | `services/api/.../uems/EreignisVokabularVectorsTest.java` | Schema, Vokabular ⟷ Klasse ⟷ beide Schemas, jeder Fall, Referenzunternehmen, Herkunfts- und Datenquellen-Vektoren, Bestand des Writers |
@@ -99,13 +99,18 @@ Jedes Ereignis trägt:
   Cloud (sie kennt die Quellenbindung zur Messzeit) — die Box kennt keine Messstellen; ein
   Messkanal ohne Komponente ist keine Reihe.
 - **die Felder der Art** — geschlossen: ein Feld, das die Art nicht kennt, wird nicht still
-  mitgeschleppt (`schema_verletzt`). Die Typen stehen je Feld in `vokabular.felder`.
+  mitgeschleppt (`schema_verletzt`). Die Typen stehen je Feld in `vokabular.felder`. Ein
+  **Messwert** (`gespeicherter_wert`, `abgewiesener_wert`) trägt immer `raw`, `decoded` und
+  `qualitaet`; `decoded` ist `null`, wenn der Kanal keinen decodierten Wert liefert
+  (`measurement-samples` 2.1 lässt ihn weg, etwa ein OCPP-Protokollwert) — nie weggelassen
+  (`schema_verletzt`), damit ein Wert genau eine Schreibweise hat, und nie 0.
 
 **Fortschreibung statt Änderung (append-only).** Ein offenes Ereignis wird fortgeschrieben,
 nie geändert: dieselbe `ereignis_id`, dieselbe Art, derselbe Bezug, dasselbe `von`; ein
 **fortschreibbares** Feld darf von leer auf einen Wert gehen — nie zurück, nie auf einen
 anderen Wert, und kein Feld verschwindet (`fortschreibung_unzulaessig`). Fortschreibbar sind
-bei `data_gap` `bis`, `erwartet_fehlend`, `nachgeliefert_am`, `ursache_ereignis`, bei
+bei `data_gap` `bis`, `erwartet_fehlend`, `nachgeliefert_am`, `ursache_ereignis` und der Zuwachs
+(`zuwachs`, `einheit`, `stand_vor`, `stand_nach`, AP-08 IP-6), bei
 `handover` `bis`. Der Speicher (IP-8) hängt die Fortschreibung an; die erste Meldung bleibt
 lesbar. **Kein Ereignis wird gelöscht** (§4.9 Nr. 7) — `nie_geloescht` steht bei jeder Art.
 
@@ -116,13 +121,14 @@ Felder, die eine Fortschreibung setzen darf.
 
 | Art | Überschrift | Urheber | Box | Zeit · Achse | Bezug (Pflicht, + erlaubt) | Pflichtfelder | Fortschreibbar |
 |---|---|---|---|---|---|---|---|
-| `data_gap` | Lücke | writer · box · cloud | ja | [von, bis) · offen erlaubt · Messzeit | box (+ datenquelle, komponente, messkanal, messstelle) | `erkannt_aus` | `bis`, `erwartet_fehlend`, `nachgeliefert_am`, `ursache_ereignis` |
-| `backfill` | Nachlieferung | writer | — | [von, bis] · Messzeit | box, datenquelle | `eingang_von`, `eingang_bis`, `anzahl` | — |
+| `data_gap` | Lücke | writer · box · cloud | ja | [von, bis) · offen erlaubt · Messzeit | box (+ datenquelle, komponente, messkanal, messstelle) | `erkannt_aus` | `bis`, `erwartet_fehlend`, `nachgeliefert_am`, `ursache_ereignis`, `zuwachs`, `einheit`, `stand_vor`, `stand_nach` |
+| `backfill` | Nachlieferung | writer · cloud | — | [von, bis] · Messzeit | box, datenquelle | `eingang_von`, `eingang_bis`, `anzahl` | — |
 | `duplicate_conflict` | Abweichender Wert | writer | — | Zeitpunkt · Eingangszeit | box, komponente, messkanal (+ messstelle) | `messzeit`, `gespeicherter_wert`, `abgewiesener_wert`, `sequenzen` | — |
 | `sequence_gap` | Datenpakete fehlen | writer | — | Zeitpunkt · Eingangszeit | box | `strom`, `sequenz_erwartet`, `sequenz_erhalten`, `anzahl` | — |
 | `sequence_reset` | Paketzählung neu begonnen | writer | — | Zeitpunkt · Eingangszeit | box | `strom`, `sequenz_erwartet`, `sequenz_erhalten` | — |
 | `late_arrival` | Nach Abschluss eingegangen | writer · cloud | — | [von, bis) · Messzeit | komponente, messkanal (+ box, messstelle) | `eingangszeit`, `anzahl` | — |
 | `counter_reset` | Zähler zurückgesetzt | writer | — | Zeitpunkt · Messzeit | komponente, messkanal (+ box, messstelle) | `stand_alt`, `stand_neu` | — |
+| `counter_overflow` | Zähler übergelaufen | writer | — | Zeitpunkt · Messzeit | komponente, messkanal (+ box, messstelle) | `stand_alt`, `stand_neu`, `messzeit_alt`, `wertebereich_modul`, `hoechstzuwachs_je_kadenz`, `kadenz_s` | — |
 | `device_boundary` | Gerätegrenze | kunde | — | Zeitpunkt · Messzeit | komponente (+ messkanal, messstelle) | `anlass`, `einbau_alt`, `einbau_neu`, `eingetragen_am` | — |
 | `handover` | Übergabe | cloud | — | [von, bis) · offen erlaubt · Messzeit | datenquelle | `anlass`, `box_alt`, `box_neu` | `bis` |
 | `unassigned_reader` | Nicht zuständige Box | writer | — | [von, bis] · Messzeit | box, datenquelle, komponente (+ messkanal) | `anzahl` | — |
@@ -139,11 +145,21 @@ Felder, die eine Fortschreibung setzen darf.
 | `state_change` | Zustand | writer | — | Zeitpunkt · Messzeit | komponente, messkanal (+ box, messstelle) | `alt`, `neu` | — |
 | `bitfield_change` | Statusbits | writer | — | Zeitpunkt · Messzeit | komponente, messkanal (+ box, messstelle) | `alt`, `neu` | — |
 | `text_change` | Text | writer | — | Zeitpunkt · Messzeit | komponente, messkanal (+ box, messstelle) | `alt`, `neu` | — |
+| `substitute` | Ersatzwert | kunde | — | [von, bis) · Messzeit | komponente, messkanal (+ messstelle) | `ersatzwert`, `methode`, `status` | — |
+| `correction` | Korrektur | cloud · kunde | — | [von, bis) · Messzeit | GENAU EINER: komponente, messkanal (+ messstelle) ODER bezugsgroesse (mit `fassung_alt`, `fassung_neu`) | `korrektur`, `korrektur_art`, `status` | — |
+| `verteilung_geaendert` | Verteilung geändert | kunde | — | Zeitpunkt · Messzeit | messstelle | `eingetragen_am` | — |
+| `bilanz_neu_berechnet` | Bilanz neu berechnet | cloud | — | [von, bis) · Messzeit | messstelle | `ausloeser` | — |
+| `bericht_freigegeben` | Bericht freigegeben | kunde | — | Zeitpunkt · Messzeit | bericht | `nr`, `datenstand`, `pruefsumme` | — |
+| `bericht_revision_angestossen` | Revision angestoßen | cloud | — | Zeitpunkt · Messzeit | bericht | `nr`, `anstoss_art`, `anlass_kennung` | — |
+| `bericht_entwurf_neu_gebildet` | Entwurf neu gebildet | cloud | — | Zeitpunkt · Messzeit | bericht | `datenstand` | — |
+| `bericht_abgerufen` | Bericht abgerufen | kunde | — | Zeitpunkt · Messzeit | bericht | `nr`, `format` | — |
+| `kennzahl_neu_gebildet` | Kennzahl neu gebildet | cloud | — | [von, bis) · Messzeit | kennzahl | `ausloeser`, `version` | — |
+| `einstufung_gesetzt` | Einstufung gesetzt | kunde | — | Zeitpunkt · Messzeit | energieeinsatz | `fassung`, `einstufung`, `gruende` | — |
 
 Die optionalen Felder, die Regeln je Art (Anzahl aus den Sequenzen, Einbau je Anlass, Schwellen
 der Zeitfehler …) und die Kundensätze stehen je Art in der Vektor-Datei. Die Teil-Vokabulare:
 `strom` = `telemetry` · `measurement-samples` · `events` (das Blatt des Topics); `erkannt_aus` =
-`kadenz` (writer) · `verdraengung` (box) · `herzschlag` (cloud); Anlass einer Gerätegrenze =
+`kadenz` (writer, seit AP-07 IP-9 auch cloud) · `verdraengung` (box) · `herzschlag` (cloud); Anlass einer Gerätegrenze =
 `zaehlerwechsel` · `kartenwechsel` · `controllerwechsel` · `zaehler_zurueckgesetzt`; Anlass einer
 Übergabe = `uebergabe` · `box_tausch`; `fehlerklasse` = die neun Klassen aus
 [`data-source-vectors.json`](./data-source-vectors.json).
@@ -152,6 +168,173 @@ der Zeitfehler …) und die Kundensätze stehen je Art in der Vektor-Datei. Die 
 `counter_reset` und `data_gap` schreibt der Writer HEUTE schon in `device_measurement_event`
 (`V20260848000000__additional_measurement_pipeline.sql`) — das Vokabular übernimmt sie in
 derselben Schreibweise; der Java-Test liest den CHECK aus der Migration.
+
+**Überlauf (AP-08 IP-4, additiv).** `counter_overflow` ist das 24. Wort: der Writer meldet es,
+wenn ein Zählerstand fällt, die Reihe Wertebereich UND Höchstzuwachs deklariert hat und der
+Zuwachs plausibel ist (AP-08 Z6, E4) — dieselbe Entscheidung wie `VerbrauchRegeln.ueberlauf`.
+Die Meldung trägt die Rechnung (`stand_alt`, `stand_neu`, `messzeit_alt`, `wertebereich_modul`,
+`hoechstzuwachs_je_kadenz`, `kadenz_s`); die Menge bildet der Verdichtungs-Lauf trotzdem aus den
+Werten und der Deklaration, nie aus der Meldung. Kein Box-Umschlag ändert sich (Writer-Art, kein
+Edge-Release); die Bestandstabelle `device_measurement_event` kennt das Wort nicht und schreibt
+für denselben Sprung weiter `counter_reset` (Spiegel `aus_bestand`). Migration
+`V20260912220000__uems_zaehler_ueberlauf.sql`.
+
+**Lücken-Melder (AP-07 IP-9, additiv).** Die Kadenz-Lücke und die Nachlieferung stellt der
+Lücken-Melder der api fest (`uems/LueckenMelder`) — dort heißt Weg 2 `cloud`, wie schon bei
+`late_arrival` (IP-13). Darum darf `backfill` auch von `cloud` kommen und `erkannt_aus = kadenz`
+auch von `cloud` (`auch_urheber` in der Vektor-Datei); `writer` bleibt zulässig, keine Bedeutung
+ändert sich. Schmal: `verdraengung` bleibt der Box, `herzschlag` der Cloud. Migration
+`V20260913130000__uems_luecken_vokabular.sql`.
+
+**Zuwachs über eine Lücke (AP-08 IP-6, E2 = A, additiv).** Der Zähler hat weitergezählt, während
+die Werte fehlten: die Differenz der Stände um die Lücke ist GEMESSEN, aber auf keine Viertelstunde
+VERTEILBAR. `data_gap` trägt sie darum als Nutzlast — `zuwachs`, `einheit`, `stand_vor`,
+`stand_nach`, optional und fortschreibbar (der Lücken-Melder setzt sie mit dem Schließen). Die
+vier Felder stehen **nur zusammen**, **nur an einer geschlossenen Lücke EINER Reihe**
+(`komponente` + `messkanal`) und **nie von einer Box** (ihr Drahtschema kennt sie nicht);
+`zuwachs` = `stand_nach` − `stand_vor` ≥ 0, `einheit` aus `vokabular.einheit_zuwachs` — die
+Zählerstand-Einheiten des Größen-Katalogs der Messstellen mit ihren umrechenbaren Einheiten
+(`messstelle-vectors.json`), kein freier Text. Der Zusatz im Kundensatz: „· der Zähler hat
+weitergezählt: Zuwachs 337,6 kWh — nicht auf Viertelstunden verteilbar“. Die Meldung ist die
+Rechnung zum Nachlesen, nie die Quelle der Menge: in welcher Periode der Zuwachs zählt, entscheidet
+`VerbrauchRegeln.zaehltZu` im Verbrauchsvertrag (`verbrauch.md` §9). Migration
+`V20260913170000__uems_luecken_zuwachs.sql`.
+
+**Ersatzwert und Korrektur (AP-08 IP-12, E7/E8/E14, additiv).** `substitute` und `correction` sind
+das 25. und 26. Wort — beide nur aus der Cloud, beide an EINER Reihe (`komponente` + `messkanal`),
+[von, bis) auf dem Viertelstunden-Raster. **Ein Ersatzwert ist kein Messwert:** `substitute`
+meldet ein Mensch (`kunde`) mit Kennung `EW-<Jahr>-<lfd. Nr.>`, Methode aus
+`vokabular.ersatzwert_methode` (a `gleichmaessig_verteilen` · b `profil_vorperiode` · c
+`profil_vergleichsquelle` · d `ablesestand_nachtragen` · e `wert_eingeben` · f
+`vorperiode_uebernehmen` · g `vergleichsquelle_uebernehmen`) und Status `wirksam` ·
+`zurueckgenommen`. `correction` trägt `K-<Jahr>-<lfd. Nr.>`, `korrektur_art`
+(`nachlieferung_nach_endgueltigkeit` · `ablesestaende_nachgetragen` · `umklassifizierung` ·
+`ersatzwert` · `wert_berichtigt` · `menge_nachgetragen` — der Nachtrag der Tagesmenge an einem Tag, der vor
+AP-08 IP-5 schon endgültig war, nur als Vorschlag des Systems über den Korrekturweg) und Status `vorschlag` · `freigegeben` · `abgelehnt` ·
+`zurueckgenommen`; `ersatzwert` genau bei der Art `ersatzwert`. **Nie automatisch (E14):** die
+Cloud meldet nur `vorschlag`. **Jeder Statuswechsel ist eine NEUE Meldung** mit eigener
+`ereignis_id` — nie eine Fortschreibung, denn ein Status wird nicht nachgetragen, sondern
+entschieden. Welche Methode einen gemessenen Zuwachs verteilt (a–c, Summe = Zuwachs) und welche
+nur ohne ihn steht (e–g), trägt das Vokabular als Merkmal `zuwachs`; erzwungen wird es in der
+Tabelle `messreihe_ersatzwert` (die Meldung nennt nur Methode und Stand). Kundensatz etwa
+„Ersatzwert EW-2026-0003 für 03.11.2026 14:00 bis 04.11.2026 09:30: Zuwachs gleichmäßig verteilen —
+kein gemessener Wert“; die Namen der Methoden und Arten stehen in der Vektor-Datei, der Satz
+spricht nie das Vertragswort. Dieselben Wörter prüfen die Tabellen über
+`messreihe_korrektur_vokabular()`. Migration `V20260913190000__uems_korrektur_ersatzwert.sql`.
+
+**Berichtigung eines Bezugsgrößen-Werts (AP-09 IP-7, F4, additiv).** `correction` trifft seitdem GENAU
+EINEN Bezug: die Reihe (`komponente` + `messkanal`, wie bisher) ODER die Bezugsgröße — `bezugsgroesse`
+(ihr Kennzeichen zur Zeit der Meldung) mit `fassung_alt` und `fassung_neu` (die wirksame Fassung des Werts
+vorher und nachher, `fassung_neu` > `fassung_alt`) und optional `import` (`I-<Jahr>-<lfd. Nr.>`, erst mit
+AP-09 IP-13). Die Kennung ist dann der Vorgang der Berichtigung `BK-<Jahr>-<lfd. Nr.>` (Tabelle
+`bezugsgroesse_berichtigung`), die Art immer `wert_berichtigt`, [von, bis) die Periode des Werts
+(Mitternacht in der Zeitzone des Standorts — auf dem Viertelstunden-Raster). Gemeldet wird NUR die wirksame
+Fassung ≥ 2 (`freigegeben`, Urheber `kunde`): ein Erstwert meldet nichts, ein offener Vorschlag auch nicht.
+Die Listen des Vokabulars nennen darum keinen der beiden Bezüge als Pflicht; was dem gewählten Bezug fehlt,
+ist `schema_verletzt` wie zuvor („Pflichtfeld komponente“), beides zugleich oder Fassungen an einer Reihe sind
+`regel_verletzt` — jede Meldung, die vorher angenommen oder verworfen wurde, bleibt es mit demselben Grund.
+Kundensatz etwa „Korrektur BK-2026-0001 freigegeben für 01.10.2026 00:00 bis 01.11.2026 00:00: Wert berichtigt
+(mit Beleg) · Bezugsgröße BZ-2, Fassung 1 → 2“. Migration `V20260915010000__uems_bezugswert_berichtigung.sql`,
+Schreibweg `uems-bezugswert-eingeben.md` (Wegweiser).
+
+**Verteilung geändert (AP-10 IP-8, E11/E12, additiv).** `verteilung_geaendert` ist das 27. Wort und
+das erste, dessen Bezug NUR die Messstelle ist — eine Verteilung auf Kostenstellen hängt an keiner
+Reihe, darum stehen `komponente` und `messkanal` nie darin (die Regel „Messstelle nur mit der ganzen
+Reihe“ gilt für jede Art, deren Pflicht-Bezug die Messstelle nicht ist). Nur `kunde`; `zeitpunkt` =
+Beginn des ersten Tags der neuen Verteilung (00:00 in der Zeitzone des Unternehmens), `eingetragen_am`
+davor oder danach. Eine Meldung je Schreibvorgang von `PUT …/messstellen/{id}/verteilung`, derselbe
+Satz noch einmal meldet nichts; die Zeilen stehen in `messstelle_verteilung`
+(`V20260913230000__uems_messstelle_verteilung.sql`, [`verteilung.md`](./verteilung.md)).
+
+**Bilanz neu berechnet (AP-10 IP-11, additiv).** `bilanz_neu_berechnet` ist das 28. Wort: die
+Korrektur-Kaskade (AP-08 IP-17) hat die Bilanz-Werte EINER Messstelle für [von, bis) neu berechnet — die
+Versionen einer berechneten Messstelle oder die verteilten Werte einer gemessenen, die in diesen Tagen auf
+Kostenstellen verteilt ist. Nur `cloud` (gerechnet hat das System; die Entscheidung eines Menschen meldet
+`correction`), Bezug NUR die Messstelle, Pflicht `ausloeser` = die Korrektur `K-…` oder der Ersatzwert
+`EW-…`. Eine Meldung je Messstelle und Anlass-Fassung, in derselben Transaktion wie die Versionen; die
+Kennung ist abgeleitet, eine Wiederholung schreibt nichts. Gelesen werden die Werte über
+`GET /api/v1/unternehmen/kostenstellen/{id}/energie` (Migration `V20260914140000__uems_bilanz_neu_berechnet.sql`).
+
+**Berichte (AP-12 IP-4, additiv).** `bericht_freigegeben`, `bericht_revision_angestossen`,
+`bericht_entwurf_neu_gebildet` und `bericht_abgerufen` sind das 29. bis 32. Wort — eingelöst aus dem Block
+`reserviert` (unten). Alle vier: Zeitpunkt auf der Messzeit-Achse, Bezug NUR der Bericht (`bericht` =
+`BR-<Jahr>-<Nr.>`, sechster Schlüssel von `kennungen`). Freigabe (Pflicht `nr`, `datenstand`, `pruefsumme` =
+`sha256:` + 64 Hex-Ziffern) und Abruf (Pflicht `nr`, `format` = ein Wort von `bericht_format`: `pdf` · `csv`)
+meldet eine Person (`kunde`); den Anstoß (Pflicht `nr`, `anstoss_art` = ein Wort von `anstoss_art`, Zeile für
+Zeile `bericht-vectors.json`, `anlass_kennung`; optional `anlass_fassung`) und die Neubildung des Entwurfs
+(Pflicht `datenstand`, optional `anlass_kennung`) erkennt das System (`cloud`). Der Datenstand liegt nie nach dem
+Zeitpunkt. Person und Teilansicht eines Abrufs stehen in der Tabelle `bericht_abruf`, nicht in der Meldung.
+Geschrieben werden sie erst von AP-12 IP-7 bis IP-11 (Migration `V20260915050100__uems_bericht_ereignisse.sql`).
+
+**Kennzahl neu gebildet (AP-11 IP-8, additiv).** `kennzahl_neu_gebildet` ist das 33. Wort und löst die
+Reservierung aus AP-11 IP-1 ein: die Korrektur-Kaskade (später auch der Nenner- und der Definitions-Auslöser,
+AP-11 IP-9) hat einen ENDGÜLTIGEN Kennzahl-Wert als Version n + 1 neu gebildet; [von, bis) ist die Periode dieses
+Werts (erster Tag 00:00 bis zum Tag nach dem letzten Tag 00:00 in der Zeitzone des Unternehmens). Nur `cloud`,
+Bezug NUR die Kennzahl — `kennzahl` ist der siebte Schlüssel von `kennungen` (Kennzeichen `KZ-…`), eine
+Messstelle nennt die Meldung nie —, Pflicht `ausloeser` = die Korrektur `K-…` oder der Ersatzwert `EW-…` (seit AP-11
+IP-9 auch die Berichtigung eines Bezugsgrößen-Werts `BK-…`, die rückwirkend geänderte Berechnung als Kennzahl mit
+Fassung `KZ-0004/Fassung-2` oder das rückwirkende Stammdatum als Bezugsgröße mit Tag `BZ-8/ab-2027-01-01`; ein bloßes
+Kennzeichen wie `MS-12` bleibt `regel_verletzt`) und
+`version` = die neue Version (mindestens 2, sonst `regel_verletzt`). Version 1 bildet der Regellauf ohne Meldung;
+vorläufige Werte, die ohne neue Version nachziehen, meldet niemand. Kundensatz etwa „Kennzahl KZ-0001 neu gebildet
+für 01.10.2026 00:00 bis 01.11.2026 00:00: Version 2 nach K-2026-0007“ (Migration
+`V20260915061500__uems_kennzahl_neu_gebildet.sql`).
+
+**Reserviert (AP-11 IP-1, additiv — KEIN Wort des Vokabulars).** Der Block `reserviert` der
+Vektor-Datei nennt, was spätere Pakete anlegen: `correction` mit Bezug `bezugsgroesse` (AP-09 IP-7 —
+eine wirksame Fassung ≥ 2 oder die Rücknahme eines Bezugsgrößen-Werts; gelesen vom Nenner-Auslöser der
+Kennzahl-Kaskade AP-11 IP-9, der NUR Kennzahlen und Berichte neu bildet, keine Messreihen-Stufe) und
+`kennzahl_neu_gebildet` (Urheber `cloud`, Bezug die Kennzahl; AP-11 IP-8 — ein endgültiger Kennzahl-Wert
+wurde als Version n + 1 neu gebildet, Pflicht der Anlass). `correction` mit Bezug `bezugsgroesse` ist seit AP-09 IP-7 angelegt (siehe
+„Berichtigung eines Bezugsgrößen-Werts“), `kennzahl_neu_gebildet` seit AP-11 IP-8 (siehe „Kennzahl neu gebildet“; bis dahin
+kannte es weder `vokabular.arten` noch die Tabelle noch eine Prüfung, eine Meldung damit wurde abgelehnt). Wer einen Eintrag anlegt, trägt
+ihn in `vokabular.arten` ein (Migration nach dem höchsten ausgelieferten Stand); `KennzahlVectorsTest`
+prüft, dass Reservierung und Anlage sich nicht widersprechen. Vertrag der Kennzahl:
+[`kennzahl.md`](./kennzahl.md).
+
+**Reserviert für die Berichte (AP-12 IP-1, additiv — KEIN Wort des Vokabulars).** Vier Einträge im Block
+`reserviert`, alle mit Bezug `bericht` (die Kennung BR-…, beim Stand mit seiner Nummer): `bericht_freigegeben`
+(Urheber `kunde` — eine Person gibt einen Entwurf frei, Berichtsstand Nr. n), `bericht_revision_angestossen`
+(`cloud` — ein gültiger Stand bekommt einen Anstoß, bleibt aber byte-gleich), `bericht_entwurf_neu_gebildet`
+(`cloud` — Pfad 1 oder 2 hat den Entwurf neu gebildet; ein Abruf, der neu bildet, meldet nichts) und
+`bericht_abgerufen` (`kunde` — PDF oder CSV eines Stands, nie eines Entwurfs). Seit AP-12 IP-4 sind sie
+angelegt (siehe „Berichte“); die Reservierung bleibt als Herkunft stehen. `BerichtVectorsTest` hält die Liste gleich
+`BerichtRegeln.EREIGNISSE_RESERVIERT`; `KennzahlVectorsTest` prüft weiter nur die Reservierungen der Kennzahl.
+Vertrag des Berichts: [`bericht.md`](./bericht.md).
+
+**Energetische Bewertung (AP-16 IP-3/IP-11).** `einstufung_gesetzt` ist seit IP-11
+angelegt: Bezug `energieeinsatz` (EE-…), Urheber `kunde`, Pflicht Fassung,
+Einstufung und Gründe K1–K4. Der unveränderliche Herkunftssatz und die Begründung
+stehen an der Fassung; Zahlen allein erzeugen nie die Meldung. `messbedarf_erfasst` und
+`messbedarf_eingeloest` (Bezug `messbedarf`) haben jeweils Urheber `kunde`. Eine Person
+erfasst/löst einen Messbedarf ein. Beide sind seit AP-16 IP-19 angelegt (Migration
+`V20260922246000__uems_messbedarf.sql`, `vokabular.arten`; `EreignisVokabular.Art.MESSBEDARF_ERFASST`
+und `MESSBEDARF_EINGELOEST`, Zwilling im Timescale-Writer); der API-Schreibweg meldet sie atomar mit
+dem Messbedarf. Die Reservierung im Block `reserviert` bleibt als Herkunft stehen
+(`EreignisVokabularVectorsTest.bewertungsEreignisseSindAusDerReservierungAktiviert`). Nachtrag AP-18
+W11 (24.09.2026).
+
+**Reserviert für die Bezugsbasis (AP-17 IP-6).** `bezugsbasis_freigegeben` (Urheber `kunde`),
+`bezugsbasis_beendet` (`kunde` oder `cloud` — die Archivierung der Kennzahl beendet die Basis)
+und `bezugsbasis_anstoss` (`cloud`, Kaskade oder Struktur-Läufer), alle mit Bezug `bezugsbasis`
+(BB-…). **Anlage offen** (Nachtrag AP-18 W15, 24.09.2026): IP-8, IP-15 und IP-17 sind gebaut, haben
+die Wörter aber nicht angelegt — Freigabe, Anstoß und Beenden stehen im Änderungsprotokoll
+`bezugsbasis_aenderung` und in `bezugsbasis_anstoss`, nicht im Ereignisstrom. Die Wörter stehen nur im
+Block `reserviert`; kein Schreiber und kein Eintrag in `vokabular.arten` oder der Ereignis-Tabelle.
+Bis zur Anlage lehnen die bestehenden Prüfer diese Wörter ab
+(`EreignisVokabularVectorsTest.bezugsbasisEreignisseBleibenBisZumSchreibpaketNurReserviert`). Die
+gleichnamigen Werte `bezugsbasis_anstoss`/`bezugsbasis_beendet` in `EreignisVokabular.ANSTOSS_ART`
+sind Anlässe eines Bericht-Anstoßes, keine Ereignis-Wörter. Die Anlage bleibt AP-17 (Konzept AP-18
+§6.8); AP-18 hängt seine Auslöser an die Transaktion, nicht an diese Ereignisse.
+
+**Reserviert für die Vorgänge (AP-18 IP-5, §6.2).** `auffaelligkeit_vermerkt` (Urheber `cloud`, die
+Naht vermerkt einen endgültigen Monat mit Urteil „schlechter“) und `abweichung_eroeffnet` (`kunde`),
+beide mit Bezug `kennzahl`; `massnahme_umgesetzt` und `massnahme_bewertet` (`kunde`) mit Bezug
+`massnahme` (M-…). **Anlage offen:** AP-18 hängt seine Auslöser an die Transaktion (E5 = A, LA4), die
+Übergänge stehen im Protokoll des Vorgangs (`energieziel_aenderung` seit V20260924223000,
+`massnahme_aenderung` seit V20260924233000, `abweichung_aenderung` seit V20260924235130). Die Wörter stehen nur im Block `reserviert`; kein Schreiber und kein Eintrag in
+`vokabular.arten` oder der Ereignis-Tabelle. Bis zur Anlage lehnen die bestehenden Prüfer sie ab
+(`EreignisVokabularVectorsTest.vorgangsEreignisseBleibenNurReserviert`).
 
 **Der Kundensatz** je Art (Überschrift + Satz, gewählt nach Anlass bzw. danach, ob der Zeitraum
 offen ist, plus Zusätze gesetzter Felder) spricht Zeiten in der Zeitzone des Standorts, Zahlen
@@ -281,16 +464,22 @@ angenommenen Umschlags ein Datensatz wie oben (`BoxEventsValidator`, Zwilling vo
 
 ## 8. Die Fälle
 
-61 Fälle, jede Art mit mindestens einem angenommenen, jeder Grund mit mindestens einem
+132 Fälle, jede Art mit mindestens einem angenommenen, jeder Grund mit mindestens einem
 verworfenen Fall; A = mit `annahme` (siehe §9).
 
 | Gruppe | Fälle |
 |---|---|
-| Ausfall Box Halle 2, 03.11.2026 (Referenz) | Lücke je Box / je Quelle DQ-4 / je Reihe MS-10 (offen) · Box-Tausch E-2 → E-2′ am 04.11. (A: Quittungszeit) · Fehlerklasse ohne Herzschlag verworfen · Fortschreibung verschiebt Beginn/Ende verworfen · Variante ohne Rückkehr: geschlossen am 04.11. 09:40 ohne Nachlieferung (A) |
+| Ausfall Box Halle 2, 03.11.2026 (Referenz) | Lücke je Box / je Quelle DQ-4 / je Reihe MS-10 (offen) · Box-Tausch E-2 → E-2′ am 04.11. (A: Quittungszeit) · Fehlerklasse ohne Herzschlag verworfen · Fortschreibung verschiebt Beginn/Ende verworfen · Variante ohne Rückkehr: geschlossen am 04.11. 09:40 ohne Nachlieferung (A) · vom Lücken-Melder der api (`cloud`, IP-9): Reihen-Lücke offen, geschlossen mit Nachlieferung, `backfill` (A), `verdraengung` von der Cloud verworfen |
 | Rückkehr 17:30 und Nachlieferung, A1/A3/A4 (Referenz) | Nachlieferung 3 640 Werte · Lücke MS-10 nachgeliefert 17:31 · 188 Datenpakete fehlen (falsche Anzahl verworfen) · Paketzählung neu · MS-10 nach Abschluss eingegangen (A: Puffer der reparierten Box; Raster verletzt verworfen) |
 | Zählerwechsel MS-06, 18.11.2026 10:40 (Referenz) | Z-5a → Z-5b mit Ständen · Lücke 10:40–10:47 mit Ursache · gleicher Einbau / nicht auf der Minute / im Voraus / von der Box verworfen · abweichender Wert 10:39 (gleicher Wert verworfen) |
+| Abweichender Wert am Ladepunkt MS-14 (A) | zweiter OCPP-Zählerstand ohne decodierten Wert (`decoded: null`) · `decoded` fehlt ganz verworfen |
 | Übergabe DQ-3, 10.04.2027 07:30 (Referenz) | offen bis zur Quittung · Quittung schließt · an dieselbe Box / nicht auf der Minute / Ende vor Beginn verworfen · Rückgabe 12.04. (A) · nicht zuständige Box 07:32 (über eine Stunde verworfen) |
 | Kartenzähler-Rücksetzung EK-3 (A) | `counter_reset` 6 184,37 → 0 · bestätigt als Grenze ohne Gerätewechsel · mit Gerätewechsel / steigender Stand verworfen |
+| Überlauf Impulszähler K-6/MS-07, 20.10.2026 (F7, AP-08 IP-4) | `counter_overflow` 64 954 → 185 (767 ≤ 1 667) · Sprung 12 457 → 100 über dem Höchstzuwachs verworfen |
+| Ersatzwert und Korrektur MS-10/MS-11 (F10, F11, F12, F21, AP-08 IP-12) | EW-2026-0003 gleichmäßig verteilt · zurückgenommen · EW-2026-0005 nach Profil der Vergleichsquelle · K-2026-0007 vorgeschlagen (cloud) · freigegeben · K-2027-0002 Ablesestände vorgeschlagen · Korrektur zum Ersatzwert (A: K-2026-0008) · Freigabe von der Cloud / Wochentagsmittel / vom Writer / neben dem Raster / Art Ersatzwert ohne Ersatzwert verworfen |
+| Verteilung MS-07 ab 15.01.2027 (F13, AP-10 IP-8) | 60/40 rückwirkend eingetragen am 20.01. · im Voraus eingetragen · von der Cloud / an einer Reihe verworfen |
+| Korrektur MS-17, 18.10.2026 (F14, AP-10 IP-11) | Rest MS-22 neu berechnet · verteilte Werte MS-17 neu berechnet (A: K-2026-0011) · von einem Menschen / ohne Korrektur-Kennung / an einer Reihe verworfen |
+| Korrektur MS-12, Oktober 2026 (K7, AP-11 IP-8) | KZ-0001 Version 2 · KZ-0003 Version 2 in derselben Kaskade (A: K-2026-0007) · von der Box / vom Writer / von einem Menschen / ohne Auslöser / Version 1 / ohne Kennzahl / an einer Messstelle / ohne Korrektur-Kennung verworfen |
 | Box-Umschläge (A) | Neustart bei Wandlertausch 01.02.2027 · neue Karte EK-7 01.03.2027 · Bereichsbegrenzung EK-3 · Werte eingefroren · Puffer verdrängt · Übergabe von der Box / unbekannte Art / Kennung / Fassung 2.0 / ohne Kennung / offene Lücke / leer verworfen |
 | Datenannahme | Box Lindach 14 min vor · genau 300 s ist kein Ereignis · 91 Tage alt · Uhrsprung · ohne Einbau (Writer) · unbekanntes Wort · unbekannter Grund / `herkunft_unvollstaendig` von der Datenannahme verworfen |
 | Übergänge (A) | Statusbits EK-3 · Zustand, Fehlermeldung, Text am Ladepunkt · unverändert / fremdes Feld verworfen |
@@ -348,3 +537,27 @@ Edge-Release). Die Kern-Telemetrie 2.0 und `measurement-samples` 2.0 bleiben unv
 (cd services/ingest && ./mvnw test -Dtest='EventsContractSchemaTest,BoxEventsValidatorTest,DatenannahmeTest')  # rein
 (cd frontend/portal && npx vitest run src/uemsEreignis.test.ts)
 ```
+
+### Ablesungen: Lücke und Berichtigung (AP-09 IP-8)
+
+`data_gap` darf bei einer manuell abgelesenen Messstelle ohne Box, Komponente und
+Messkanal stehen: Urheber ausschließlich `cloud`, Bezug `messstelle`, `erkannt_aus = kadenz`.
+Die monatliche Ablesung wird strikt nach zwei Kalendermonaten überfällig. Eine spätere
+Ablesung schließt dasselbe Ereignis; es entstehen keine Nullwerte oder Tagesmengen.
+Kanalgebundene Lücken behalten ihre bisherigen Pflichtbezüge und Urheberregeln.
+
+`correction` erlaubt zusätzlich den Bezug `messstelle` ohne Komponente/Messkanal,
+wenn `korrektur_art = ablesestaende_nachgetragen` ist. Die Kennung bleibt `K-…`;
+`fassung_alt` und `fassung_neu` dürfen gemeinsam die Rohwertfassungen nennen.
+Die bestehende Freigabe-/Rücknahmekette und ihre nachgelagerten Periodenversionen gelten.
+
+### Import-Korrekturen (AP-09 IP-13)
+
+Bei einer Bezugsgröße darf `korrektur` zusätzlich
+`I-<Jahr>-<Nr.>/Zeile-<n>/Fassung-<m>` tragen. `import` muss dieselbe
+Import-Kennung und `fassung_neu` dieselbe Fassung nennen. Jede Zeile ist damit
+für die Kaskade ein eigener Anlass; Import, Wert-Fassung und Ereignis werden
+in einer Transaktion geschrieben. Bestehende `BK-…`-Meldungen bleiben unverändert.
+Die Fälle `import-zeile-eigener-korrektur-anlass` und `import-anlass-…-widerspricht`
+pinnen die Annahme und beide Identitätswidersprüche für API und Writer; der
+Portal-Zwilling prüft den vorhandenen Kundensatz mit Import-Zusatz.

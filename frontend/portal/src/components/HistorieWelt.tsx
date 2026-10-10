@@ -7,7 +7,7 @@
  * `PeakBand`/`FleetOverview`-Muster).
  *
  * ⚠ **Die Frage „was schaue ich gerade an?" beantworten die BEREICHS-REITER**
- * (`anlageNav` Verlauf › Messwerte · Erlöse), nicht mehr eine Kopf-Karte. Sie
+ * (`ebenenNav` Verlauf › Messwerte · Erlöse), nicht mehr eine Kopf-Karte. Sie
  * kostete 189 px vor der ersten Zahl, und das Kartenpaar darin war der Reiter
  * ein zweites Mal — gemessen stand die Antwort dadurch bei 779 px (1440).
  */
@@ -114,7 +114,7 @@ export function KartenKopf({
  * Was er war: eine Karte mit 44-px-Icon-Kachel, Titel, Abzeichen,
  * Einleitungssatz und dem Kartenpaar für den Welt-Wechsel — **189 px (1440)
  * VOR der Antwort**, und dahinter klebte die Zeit-Leiste. Was er sagte, sagen
- * die Bereichs-Reiter darüber schon (`anlageNav` Verlauf › Messwerte · Erlöse),
+ * die Bereichs-Reiter darüber schon (`ebenenNav` Verlauf › Messwerte · Erlöse),
  * das Abzeichen sitzt seit je an jeder Karte (`KartenKopf`), und das Kartenpaar
  * war der Reiter ein zweites Mal.
  *

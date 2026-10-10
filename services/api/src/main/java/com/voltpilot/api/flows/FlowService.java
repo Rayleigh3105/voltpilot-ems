@@ -22,6 +22,7 @@ import com.voltpilot.api.simulation.SimulationPayload;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.SimulationRequestDto;
 import com.voltpilot.api.web.dto.SiteDto;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -120,6 +121,7 @@ public class FlowService {
     }
 
     private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final FlowLayoutRepository layouts;
     private final FlowStatusRepository flowStatus;
     private final FlowRepository flows;
@@ -143,8 +145,9 @@ public class FlowService {
             FlowActivationService activation, FlowGatedNodeRepository gatedNodes,
             FlowTemplateService templates, SimulationDefaultsRepository simulationDefaults,
             SimulationClient simulationClient, SimulationJobRegistry simulationJobs,
-            FlowClaimRepository claims, ObjectMapper mapper) {
+            FlowClaimRepository claims, ObjectMapper mapper, Geltungsbereich geltungsbereich) {
         this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.layouts = layouts;
         this.flowStatus = flowStatus;
         this.flows = flows;
@@ -853,7 +856,7 @@ public class FlowService {
     }
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
+        if (!geltungsbereich.siteVisible(siteId)) {
             throw notFound();
         }
     }

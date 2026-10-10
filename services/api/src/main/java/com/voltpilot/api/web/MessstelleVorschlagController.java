@@ -10,6 +10,8 @@ import com.voltpilot.api.uems.MessstelleAbgelehnt;
 import com.voltpilot.api.uems.MessstelleVorschlagService;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.MessstelleVorschlagDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -34,9 +36,10 @@ import org.springframework.web.server.ResponseStatusException;
  * die ausgewählten Zeilen an — Messstelle, Ort, führende Quelle ab dem Verlaufsbeginn
  * (rückwirkend, Herkunft „Bestandsübernahme“) und Stellung, alles in EINER Transaktion.
  *
- * <p><b>Rechte:</b> bis AP-03 durchsetzt gilt {@code authenticated()} (SecurityConfig) plus die
+ * <p><b>Rechte:</b> es gilt {@code authenticated()} (SecurityConfig) plus die
  * Mandanten-RLS — ein fremder Standort ist 404, nie 403. Über jeder Route steht die Kennung, die
- * die Rechte-Matrix dafür vorsieht ({@code RechteKennungenDerRoutenTest} hält sie daran fest).
+ * die Rechte-Matrix dafür vorsieht ({@code RechteKennungenDerRoutenTest} hält sie daran fest);
+ * seit AP-03 IP-6 setzt {@code @Recht} sie vor dem Handler durch.
  * Die Freischaltung „nur mit Messen &amp; Auswerten“ (E6) hängt an den Funktions-Objekten aus
  * AP-01 IP-2 und kommt mit ihnen — hier wird keine zweite Sperre erfunden.
  */
@@ -63,6 +66,7 @@ public class MessstelleVorschlagController {
      * Beginn des Verlaufs, also zusätzlich {@code aenderung.rueckwirkend}.
      */
     @PostMapping("/uebernehmen")
+    @Recht(value = "messstelle.bearbeiten", ziel = RechtZiel.STANDORT, variable = "id")
     public MessstelleVorschlagDto.Uebernommen uebernehmen(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return vorschlaege.uebernehmen(id, lies(body), akteur(auth));

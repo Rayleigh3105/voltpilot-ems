@@ -98,7 +98,10 @@ public class EntityObservedRepository {
         }
     }
 
-    /** All observed rows of a site's devices, stable order. */
+    /**
+     * All observed rows of a site's active devices, stable order. What an ausgebaut box last
+     * reported stays stored (UEMS AP-07 IP-11) but is no longer what the site reports now.
+     */
     public List<ObservedRow> forSite(UUID siteId) {
         return jdbc.query(
                 "SELECT device_id, entity_id, source, entity_type, health, label, "
@@ -107,7 +110,9 @@ public class EntityObservedRepository {
                         + "edge_family, edge_connection::text AS edge_connection_json, "
                         + "edge_interval_s, edge_capacity_kwp, edge_registry_unit_id "
                         + "FROM entity_observed_state "
-                        + "WHERE site_id = ? ORDER BY source, entity_id",
+                        + "WHERE site_id = ? AND EXISTS (SELECT 1 FROM device d "
+                        + "  WHERE d.id = entity_observed_state.device_id AND d.ausgebaut_am IS NULL) "
+                        + "ORDER BY source, entity_id",
                 EntityObservedRepository::mapRow, siteId);
     }
 

@@ -24,6 +24,7 @@ from semantics import (  # noqa: E402
     ENERGY_WITHOUT_DIRECTION,
     QUANTITIES,
     RULES,
+    ZAEHLER_OHNE_ANZEIGE_EINHEIT,
     rule_for,
 )
 from validate import validate_catalog  # noqa: E402
@@ -83,6 +84,46 @@ class SemanticsTest(unittest.TestCase):
                     self.assertIn(point["quantity"], ENERGY_QUANTITIES, point["point_key"])
                     self.assertIsNotNone(point["direction"], point["point_key"])
 
+    def test_every_counter_has_a_display_unit_or_is_named(self) -> None:
+        """Jeder Zähler spricht eine Anzeige-Einheit des Ergebnis-Zustands — oder steht benannt da.
+
+        Ohne Anzeige-Einheit nennt die Cloud keine Zahl in einem Mengen-Satz (`einheit_unbekannt`).
+        Dieselbe Datei per Pfad, die Java `ErgebnisZustand` und TS `uemsErgebnis.ts` fahren.
+        """
+        vertrag = json.loads((V2 / "ergebnis-zustand-vectors.json").read_text(encoding="utf-8"))
+        anzeige = {a["gespeichert"]: a["angezeigt"] for a in vertrag["rundung"]["anzeige_einheiten"]}
+        counters = [point for point in self.points if point["aggregation_kind"] == "counter"]
+        ohne = sorted(point["point_key"] for point in counters if point.get("unit") not in anzeige)
+        self.assertEqual(ohne, sorted(ZAEHLER_OHNE_ANZEIGE_EINHEIT))
+        arten = collections.Counter(art for art, _ in ZAEHLER_OHNE_ANZEIGE_EINHEIT.values())
+        self.assertEqual(dict(arten), {"keine_energie": 29, "einheit_im_schluessel": 4, "faktor_zu_erheben": 2})
+        einheiten = collections.Counter(point.get("unit") for point in counters)
+        # Befund PR 726: 41 ohne Einheit, 25 in VAh, 4 in „0,1 kWh“, 1 in Wmin — dazu seit UEMS AP-05 IP-4
+        # die zwei Zählerstände der 750-494, deren Faktor zu erheben ist (noch an keiner Box). Seit dem
+        # Laufzeitstand 2026.09.23.2 sprechen die 4 KACO-Zähler kWh und die 8 go-e-Zähler Wh.
+        self.assertEqual((einheiten[None], einheiten["VAh"], einheiten["kWh"], einheiten["Wh"], einheiten["Wmin"]),
+                         (35, 25, 60, 55, 1))
+        self.assertFalse([unit for unit in einheiten if unit and unit[0].isdigit()], "a factor belongs to scale")
+        # Scheinarbeit ist nie als Wirkarbeit getarnt; Wmin ist Wirkarbeit.
+        self.assertEqual(anzeige["VAh"], "kVAh")
+        self.assertEqual(anzeige["Wmin"], "kWh")
+        for point in counters:
+            if point.get("unit") == "VAh":
+                self.assertEqual(point["quantity"], "apparent_energy", point["point_key"])
+
+    def test_validator_rejects_an_unnamed_counter_without_unit(self) -> None:
+        def drop(points):
+            points["sunspec.model_203.totwhimp"]["unit"] = None
+        self.assertIn("sunspec.model_203.totwhimp: counter without unit is not named", self.validation_error(drop))
+
+        def wrong(points):
+            points["shelly.gen2plus.sys.cfg_rev"]["unit"] = "Wh"
+        self.assertIn("shelly.gen2plus.sys.cfg_rev: named without unit, has one", self.validation_error(wrong))
+
+        def factor(points):
+            points["kaco_http.energy-total"]["unit"] = "0,1 kWh"
+        self.assertIn("kaco_http.energy-total: unit carries a factor; put it into scale", self.validation_error(factor))
+
     def test_validator_rejects_an_energy_point_without_direction(self) -> None:
         def drop(points):
             points["sunspec.model_203.totwhimp"]["direction"] = None
@@ -109,8 +150,13 @@ class SemanticsTest(unittest.TestCase):
         self.assertIn("voltage has no flow direction", self.validation_error(directionless))
 
         def orphan(points):
-            points["goe.api_v2.eto"]["direction"] = "import"
-        self.assertIn("goe.api_v2.eto: a direction needs a quantity", self.validation_error(orphan))
+            points["goe.api_v2.amp"]["direction"] = "import"
+        self.assertIn("goe.api_v2.amp: a direction needs a quantity", self.validation_error(orphan))
+
+        def goe_prose(points):
+            points["goe.api_v2.amp"]["unit"] = "A"
+        self.assertIn("goe.api_v2.amp: go-e unit must stay unknown unless the source text states it",
+                      self.validation_error(goe_prose))
 
     def test_vocabulary_is_closed_and_matches_the_schema(self) -> None:
         schema = json.loads(SCHEMA.read_text(encoding="utf-8"))
@@ -145,7 +191,8 @@ class SemanticsTest(unittest.TestCase):
             "deye.hybrid_3p.battery.battery": ("soc", "none"),
             "deye.hybrid_3p.meter.total-battery-charge": ("active_energy", "charge"),
             "deye.hybrid_3p.meter.total-production": ("active_energy", "generation"),
-            "goe.api_v2.eto": (None, None),
+            "goe.api_v2.eto": ("active_energy", None),
+            "goe.api_v2.amp": (None, None),
         }
         for key, (quantity, direction) in expected.items():
             point = self.by_key[key]

@@ -220,15 +220,21 @@ class IngestPipeTest {
      */
     @Test
     void boxEventsAndRefusalsLandOnEventsRaw() throws Exception {
-        // The readiness gate against a real Redpanda: a missing topic is "not there", events.raw is.
+        // The readiness gate against a real Redpanda: for a check-only probe a missing topic is
+        // "not there"; events.raw nobody creates here - the app itself does (since 15.09.2026).
         assertThat(new EventsTopicPruefung(kafkaAdmin, "gibt-es-nicht.raw").vorhanden()).isFalse();
-        createTopic(EVENTS_RAW_TOPIC);
         // The check asks Redpanda at most every 10 s; the box adapter connects once it has seen the topic.
         long bis = System.nanoTime() + Duration.ofSeconds(30).toNanos();
         while (!eventsTopic.vorhanden() && System.nanoTime() < bis) {
             Thread.sleep(500);
         }
         assertThat(eventsTopic.vorhanden()).isTrue();
+        try (Admin admin = Admin.create(Map.of("bootstrap.servers", REDPANDA.getBootstrapServers()))) {
+            assertThat(admin.describeTopics(List.of(EVENTS_RAW_TOPIC)).allTopicNames().get()
+                    .get(EVENTS_RAW_TOPIC).partitions())
+                    .as("created by the app with the values of redpanda-init, not auto-created")
+                    .hasSize(3);
+        }
         createTopic(MEASUREMENTS_RAW_TOPIC);
         String envelope = java.nio.file.Files.readString(java.nio.file.Path.of(
                 "../../docs/contracts/v2/examples/mqtt-events-2.1.valid.restart.json"));

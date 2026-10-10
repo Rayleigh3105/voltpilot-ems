@@ -17,9 +17,16 @@
     "nie nachgebaut. Die Zustandswörter sind die der Verbrauchsregel AP-08 (VerbrauchRegeln).",
     "Erzeugt aus data/vp-uems-ap10-bilanzen/referenzfaelle.json; _abweichungen nennt jede Stelle,",
     "an der diese Datei bewusst von der Vorlage abweicht, _nicht_geprueft jede Erwartung der",
-    "Vorlage, die hier steht, aber (noch) kein Zwilling nachrechnet."
+    "Vorlage, die hier steht, aber (noch) kein Zwilling nachrechnet.",
+    "AP-10 IP-4: `rest_aus_stellung` leitet die Terme eines Rests je Hauptzähler und TAG aus den",
+    "Stellungen des Referenzunternehmens ab (`referenzunternehmen`, Messstellen[].elektrische_stellung);",
+    "beide Zwillinge lesen die Stellungen von dort, und jede Fassung mit Termen deckt sich mit den",
+    "Eingängen einer `rest`-Prüfung desselben Falls.",
+    "AP-10 IP-10: das befristete Kennzeichen der PR-688-Antworten `wert`/`verlauf` aus IP-9 ist entfallen —",
+    "die Periodenwerte berechneter Messstellen liegen in der Speicherklasse, der Live-Wert bleibt live.",
+    "Fassung 1.1 (AP-10 IP-12, 14.09.2026): die Herkunft steht in allen drei Routen; jeder Herkunfts-Satz trägt `periode_ende` und Beträge ohne nachgestellte Nullen (`_abweichungen`). Die Ableitung aus gespeicherten Zeilen prüft `bilanzwert-herkunft-vectors.json`."
   ],
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "$schema_datei": "./bilanz.schema.json",
   "herkunft": "UEMS AP-10 §4.3 (Bilanz aus der Stellung), §4.4 (Richtung je Formel-Typ), §4.5 (Fortpflanzung), §4.7 (Herkunft), §4.8 (Ebenen), §4.9 (Invarianten); Entscheide E1–E19 vom 12.09.2026.",
   "zeitzone": "Europe/Berlin",
@@ -175,15 +182,14 @@
     "menge_nachkommastellen": 6,
     "abdeckung_nachkommastellen": 0,
     "live_nachkommastellen": 6,
-    "tausender_trennzeichen": " ",
-    "minuszeichen": "−"
+    "zahlform": "ergebnis-zustand-vectors.json · rundung (E11): Zahl und Einheit eines Kundensatzes schreibt ErgebnisZustand.zahl ⟷ uemsErgebnis.zahl; die Ebene der Periode (zahl_ebene) bestimmt die Stellen"
   },
   "saetze": {
-    "rest_zugeordnet": "{menge} {einheit} sind keiner Messstelle zugeordnet",
-    "rest_negativ": "Messwerte passen nicht zusammen ({menge} {einheit})",
+    "rest_zugeordnet": "{zahl} sind keiner Messstelle zugeordnet",
+    "rest_negativ": "Messwerte passen nicht zusammen ({zahl})",
     "rest_keine_werte": "nicht zugeordnet: keine Werte",
-    "summe_mindestens": "mindestens {menge} {einheit} ({fehlend} fehlt)",
-    "summe_mindestens_mehrere": "mindestens {menge} {einheit} ({fehlend} fehlen)",
+    "summe_mindestens": "mindestens {zahl} ({fehlend} fehlt)",
+    "summe_mindestens_mehrere": "mindestens {zahl} ({fehlend} fehlen)",
     "ebene_x_von_y": "{mit_werten} von {gesamt} {wort}",
     "nicht_verteilt": "nicht verteilt",
     "verteilt": "verteilt ({anteil} % von {quelle})",
@@ -203,6 +209,10 @@
       "ts"
     ],
     "rest": [
+      "java",
+      "ts"
+    ],
+    "rest_aus_stellung": [
       "java",
       "ts"
     ],
@@ -329,6 +339,33 @@
       "vorlage": "„Netz-Saldo Halle 1“ (keine Kennung in der Referenzdatei)",
       "statt": "MS-Saldo-H1",
       "grund": "Die Vorlage kennzeichnet die Saldo-Messstelle nicht (sie ist dort ausdrücklich eine Annahme). Der Vertrag braucht eine Kennung; sie ist als solche erkennbar und wird von der Referenzdatei-Ergänzung 1.2 nicht vergeben."
+    },
+    {
+      "fall": "F1–F7, F14 · Kundensätze",
+      "feld": "pruefungen[rest|summe].ergebnis.kundensatz / anzeige",
+      "vorlage": "„1 200 kWh sind keiner Messstelle zugeordnet“, „mindestens 1 055 kWh (MS-14 fehlt)“",
+      "statt": "„1.200 kWh sind keiner Messstelle zugeordnet“, „mindestens 1.055 kWh (MS-14 fehlt)“ — Tausenderpunkt, ganze kWh an Tag und Monat, geschütztes Leerzeichen U+00A0 vor der Einheit",
+      "grund": "Entscheid E11 (AP-08, 11.09.2026): „das Konzept schreibt aus Lesbarkeit „2 304 kWh“, das Produkt „2.304 kWh““, feste Stellen je Ebene. Die Zahl kommt aus ergebnis-zustand-vectors.json (ErgebnisZustand.zahl ⟷ uemsErgebnis.zahl); die beschreibenden `anzeige`-Texte je Fall bleiben im Wortlaut der Vorlage."
+    },
+    {
+      "fall": "F2, F3, F4, F6, F7, F8, F9, F11, F14 · herkunft.periode_ende",
+      "feld": "herkunft.periode_ende",
+      "vorlage": null,
+      "statt": "die letzte Sekunde der Periode in der Zone des Standorts (z. B. 2026-10-31T23:59:59+01:00)",
+      "grund": "IP-12 leitet `periode_ende` in JEDER Route aus der Periode ab (`BilanzwertHerkunft.periodeEnde`: die letzte Sekunde in der Zone des Standorts, die Form der Vorlage an F1/F5). Die Vorlage nannte es nur dort, wo sie zwei Zeitpunkte in ein Feld schrieb (F1, F5) — F14 ist derselbe Tag wie F1, und keine Regel gäbe dem einen ein Ende und dem anderen keins. Byte-gleich zum Vektor kann eine Route darum nur sein, wenn jeder Fall es trägt."
+    },
+    {
+      "fall": "F11 · herkunft.menge",
+      "feld": "herkunft.menge",
+      "vorlage": [
+        "11130.0",
+        "88630.0"
+      ],
+      "statt": [
+        "11130",
+        "88630"
+      ],
+      "grund": "Ein Betrag reist im Herkunfts-Satz ohne nachgestellte Nullen (`BilanzwertHerkunft.betrag`, dieselbe Form wie die Kostenstellen-Sicht seit IP-11). Numerisch gleich; byte-gleich zum Vektor ist die Route nur mit EINER Form. Die Regel `summe` desselben Falls bleibt unverändert."
     }
   ],
   "_nicht_geprueft": [
@@ -444,6 +481,7 @@
           "eingang": {
             "hauptzaehler": "MS-16",
             "einheit": "kWh",
+            "zahl_ebene": "tag",
             "version": 1,
             "vermerke": [],
             "eingaenge": [
@@ -495,7 +533,37 @@
               "berechnet (Differenz)",
               "nicht zugeordnet"
             ],
-            "kundensatz": "10 kWh sind keiner Messstelle zugeordnet"
+            "kundensatz": "10 kWh sind keiner Messstelle zugeordnet"
+          }
+        },
+        {
+          "regel": "rest_aus_stellung",
+          "name": "Die Terme des Rests MS-22 am 18.10.2026 kommen aus der STELLUNG: MS-16 Zufluss, MS-17 und MS-18 zugeordnet — keine gespeicherte Formel",
+          "eingang": {
+            "hauptzaehler": "MS-16",
+            "tag": "2026-10-18"
+          },
+          "ergebnis": {
+            "anlage": "AN-3",
+            "terme": [
+              {
+                "messstelle": "MS-16",
+                "rolle": "zufluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-17",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-18",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              }
+            ],
+            "ausserhalb": [],
+            "fehler": null
           }
         },
         {
@@ -514,6 +582,86 @@
             "wertart": "Intervallmenge",
             "fehler": null,
             "grund": null
+          }
+        },
+        {
+          "regel": "richtung",
+          "name": "Gleichgerichtete Eingänge mit Minus (MS-16 + · MS-17 − · MS-18 −): der Typ `rest` bleibt Bezug — die Vorzeichen entscheiden nichts",
+          "eingang": {
+            "typ": "rest",
+            "art": "berechnet",
+            "wertart": "Intervallmenge",
+            "terme": [
+              {
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "wertart": "Intervallmenge",
+                "vorzeichen": "+"
+              },
+              {
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "wertart": "Intervallmenge",
+                "vorzeichen": "-"
+              },
+              {
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "wertart": "Intervallmenge",
+                "vorzeichen": "-"
+              }
+            ]
+          },
+          "ergebnis": {
+            "groesse": "Wirkenergie",
+            "richtung": "Bezug",
+            "einheit": "kWh",
+            "wertart": "Intervallmenge",
+            "fehler": null,
+            "grund": null
+          }
+        },
+        {
+          "regel": "richtung",
+          "name": "Dieselben Terme als `gewichtete_summe` wären ein Netto ohne Katalog-Richtung — genau daran scheiterte die Abnahme vor E1",
+          "eingang": {
+            "typ": "gewichtete_summe",
+            "art": "berechnet",
+            "wertart": "Intervallmenge",
+            "terme": [
+              {
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "wertart": "Intervallmenge",
+                "vorzeichen": "+"
+              },
+              {
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "wertart": "Intervallmenge",
+                "vorzeichen": "-"
+              },
+              {
+                "groesse": "Wirkenergie",
+                "richtung": "Bezug",
+                "einheit": "kWh",
+                "wertart": "Intervallmenge",
+                "vorzeichen": "-"
+              }
+            ]
+          },
+          "ergebnis": {
+            "groesse": null,
+            "richtung": null,
+            "einheit": null,
+            "wertart": null,
+            "fehler": "groessen_gemischt",
+            "grund": "richtung"
           }
         },
         {
@@ -581,7 +729,7 @@
                 "berechnet (Differenz)",
                 "nicht zugeordnet"
               ],
-              "kundensatz": "10 kWh sind keiner Messstelle zugeordnet"
+              "kundensatz": "10 kWh sind keiner Messstelle zugeordnet"
             }
           },
           "ergebnis": {
@@ -679,6 +827,7 @@
           "eingang": {
             "hauptzaehler": "MS-16",
             "einheit": "kWh",
+            "zahl_ebene": "monat",
             "version": 1,
             "vermerke": [],
             "eingaenge": [
@@ -733,7 +882,51 @@
               "nicht zugeordnet",
               "ab 15.10.2026"
             ],
-            "kundensatz": "1 200 kWh sind keiner Messstelle zugeordnet"
+            "kundensatz": "1.200 kWh sind keiner Messstelle zugeordnet"
+          }
+        },
+        {
+          "regel": "rest_aus_stellung",
+          "name": "14.10.2026 — vor „Lindach ab 15.10.2026“ ist MS-16 noch kein Hauptzähler: kein Rest, keine erfundene Bilanz",
+          "eingang": {
+            "hauptzaehler": "MS-16",
+            "tag": "2026-10-14"
+          },
+          "ergebnis": {
+            "anlage": null,
+            "terme": [],
+            "ausserhalb": [],
+            "fehler": "rest_ohne_hauptzaehler"
+          }
+        },
+        {
+          "regel": "rest_aus_stellung",
+          "name": "15.10.2026 — ab dem ersten Tag der Stellung gibt es den Rest mit denselben drei Termen",
+          "eingang": {
+            "hauptzaehler": "MS-16",
+            "tag": "2026-10-15"
+          },
+          "ergebnis": {
+            "anlage": "AN-3",
+            "terme": [
+              {
+                "messstelle": "MS-16",
+                "rolle": "zufluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-17",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-18",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              }
+            ],
+            "ausserhalb": [],
+            "fehler": null
           }
         },
         {
@@ -748,7 +941,7 @@
             },
             "formel_typ": "rest",
             "formel_fassung": 1,
-            "periode_ende": null,
+            "periode_ende": "2026-10-31T23:59:59+01:00",
             "berechnet_am": "2026-11-01T00:15:00+01:00",
             "version": 1,
             "ausloeser": null,
@@ -804,7 +997,7 @@
                 "nicht zugeordnet",
                 "ab 15.10.2026"
               ],
-              "kundensatz": "1 200 kWh sind keiner Messstelle zugeordnet"
+              "kundensatz": "1.200 kWh sind keiner Messstelle zugeordnet"
             }
           },
           "ergebnis": {
@@ -817,7 +1010,7 @@
               },
               "formel_typ": "rest",
               "formel_fassung": 1,
-              "periode_ende": null,
+              "periode_ende": "2026-10-31T23:59:59+01:00",
               "berechnet_am": "2026-11-01T00:15:00+01:00",
               "version": 1,
               "ausloeser": null,
@@ -898,6 +1091,7 @@
           "name": "Σ der vier Unterzähler = 33 100 kWh",
           "eingang": {
             "einheit": "kWh",
+            "zahl_ebene": "monat",
             "eingaenge": [
               {
                 "messstelle": "MS-11",
@@ -960,6 +1154,7 @@
           "eingang": {
             "hauptzaehler": "MS-10",
             "einheit": "kWh",
+            "zahl_ebene": "monat",
             "version": 1,
             "vermerke": [],
             "eingaenge": [
@@ -1031,7 +1226,47 @@
               "berechnet (Differenz)",
               "nicht zugeordnet"
             ],
-            "kundensatz": "3 800 kWh sind keiner Messstelle zugeordnet"
+            "kundensatz": "3.800 kWh sind keiner Messstelle zugeordnet"
+          }
+        },
+        {
+          "regel": "rest_aus_stellung",
+          "name": "Halle 2 im Oktober 2026: MS-10 Zufluss, MS-11 … MS-14 zugeordnet (MS-08 steht noch in AN-1)",
+          "eingang": {
+            "hauptzaehler": "MS-10",
+            "tag": "2026-10-01"
+          },
+          "ergebnis": {
+            "anlage": "AN-2",
+            "terme": [
+              {
+                "messstelle": "MS-10",
+                "rolle": "zufluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-11",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-12",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-13",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-14",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              }
+            ],
+            "ausserhalb": [],
+            "fehler": null
           }
         },
         {
@@ -1046,7 +1281,7 @@
             },
             "formel_typ": "rest",
             "formel_fassung": 1,
-            "periode_ende": null,
+            "periode_ende": "2026-10-31T23:59:59+01:00",
             "berechnet_am": "2026-11-01T00:15:00+01:00",
             "version": 1,
             "ausloeser": null,
@@ -1123,7 +1358,7 @@
                 "berechnet (Differenz)",
                 "nicht zugeordnet"
               ],
-              "kundensatz": "3 800 kWh sind keiner Messstelle zugeordnet"
+              "kundensatz": "3.800 kWh sind keiner Messstelle zugeordnet"
             }
           },
           "ergebnis": {
@@ -1136,7 +1371,7 @@
               },
               "formel_typ": "rest",
               "formel_fassung": 1,
-              "periode_ende": null,
+              "periode_ende": "2026-10-31T23:59:59+01:00",
               "berechnet_am": "2026-11-01T00:15:00+01:00",
               "version": 1,
               "ausloeser": null,
@@ -1305,6 +1540,7 @@
           "eingang": {
             "hauptzaehler": "MS-01",
             "einheit": "kWh",
+            "zahl_ebene": "monat",
             "version": 1,
             "vermerke": [],
             "eingaenge": [
@@ -1420,7 +1656,81 @@
               "berechnet (Differenz)",
               "nicht zugeordnet"
             ],
-            "kundensatz": "54 580 kWh sind keiner Messstelle zugeordnet"
+            "kundensatz": "54.580 kWh sind keiner Messstelle zugeordnet"
+          }
+        },
+        {
+          "regel": "rest_aus_stellung",
+          "name": "Halle 1: Erzeuger und Speicher kommen aus der Stellung desselben Systems — der Speicher mit BEIDEN Anteilen",
+          "eingang": {
+            "hauptzaehler": "MS-01",
+            "tag": "2026-10-01"
+          },
+          "ergebnis": {
+            "anlage": "AN-1",
+            "terme": [
+              {
+                "messstelle": "MS-01",
+                "rolle": "zufluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-03",
+                "rolle": "zufluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-04",
+                "rolle": "zufluss",
+                "anteil": "negativ"
+              },
+              {
+                "messstelle": "MS-02",
+                "rolle": "abfluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-04",
+                "rolle": "abfluss",
+                "anteil": "positiv"
+              },
+              {
+                "messstelle": "MS-05",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-06",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-07",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-08",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              }
+            ],
+            "ausserhalb": [],
+            "fehler": null
+          }
+        },
+        {
+          "regel": "rest_aus_stellung",
+          "name": "Der Hauptzähler Abgabe hat keinen eigenen Rest — er ist ein Abfluss im Rest von MS-01",
+          "eingang": {
+            "hauptzaehler": "MS-02",
+            "tag": "2026-10-01"
+          },
+          "ergebnis": {
+            "anlage": null,
+            "terme": [],
+            "ausserhalb": [],
+            "fehler": "rest_ohne_hauptzaehler"
           }
         },
         {
@@ -1435,7 +1745,7 @@
             },
             "formel_typ": "rest",
             "formel_fassung": 1,
-            "periode_ende": null,
+            "periode_ende": "2026-10-31T23:59:59+01:00",
             "berechnet_am": "2026-11-01T00:15:00+01:00",
             "version": 1,
             "ausloeser": null,
@@ -1552,7 +1862,7 @@
                 "berechnet (Differenz)",
                 "nicht zugeordnet"
               ],
-              "kundensatz": "54 580 kWh sind keiner Messstelle zugeordnet"
+              "kundensatz": "54.580 kWh sind keiner Messstelle zugeordnet"
             }
           },
           "ergebnis": {
@@ -1565,7 +1875,7 @@
               },
               "formel_typ": "rest",
               "formel_fassung": 1,
-              "periode_ende": null,
+              "periode_ende": "2026-10-31T23:59:59+01:00",
               "berechnet_am": "2026-11-01T00:15:00+01:00",
               "version": 1,
               "ausloeser": null,
@@ -1709,6 +2019,7 @@
           "name": "Summe = 1 055 kWh, Zustand „unvollständig“, Anzeige „mindestens …“",
           "eingang": {
             "einheit": "kWh",
+            "zahl_ebene": "tag",
             "eingaenge": [
               {
                 "messstelle": "MS-11",
@@ -1764,7 +2075,7 @@
             "kennzeichen": [
               "berechnet (Summe)"
             ],
-            "anzeige": "mindestens 1 055 kWh (MS-14 fehlt)"
+            "anzeige": "mindestens 1.055 kWh (MS-14 fehlt)"
           }
         },
         {
@@ -1773,6 +2084,7 @@
           "eingang": {
             "hauptzaehler": "MS-10",
             "einheit": "kWh",
+            "zahl_ebene": "tag",
             "version": 1,
             "vermerke": [],
             "eingaenge": [
@@ -1847,6 +2159,46 @@
               "keine Werte"
             ],
             "kundensatz": "nicht zugeordnet: keine Werte"
+          }
+        },
+        {
+          "regel": "rest_aus_stellung",
+          "name": "04.11.2026: MS-14 ohne Werte ändert die Terme nicht — der Rest fehlt erst in der Rechnung, nicht in der Fassung",
+          "eingang": {
+            "hauptzaehler": "MS-10",
+            "tag": "2026-11-04"
+          },
+          "ergebnis": {
+            "anlage": "AN-2",
+            "terme": [
+              {
+                "messstelle": "MS-10",
+                "rolle": "zufluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-11",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-12",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-13",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-14",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              }
+            ],
+            "ausserhalb": [],
+            "fehler": null
           }
         },
         {
@@ -2076,6 +2428,7 @@
           "eingang": {
             "hauptzaehler": "MS-16",
             "einheit": "kWh",
+            "zahl_ebene": "tag",
             "version": 1,
             "vermerke": [],
             "eingaenge": [
@@ -2127,7 +2480,37 @@
               "berechnet (Differenz)",
               "unplausibel (negativ)"
             ],
-            "kundensatz": "Messwerte passen nicht zusammen (−5 kWh)"
+            "kundensatz": "Messwerte passen nicht zusammen (−5 kWh)"
+          }
+        },
+        {
+          "regel": "rest_aus_stellung",
+          "name": "08.11.2026: dieselben drei Terme — auch ein negativer Rest ist eine Differenz aus der Stellung",
+          "eingang": {
+            "hauptzaehler": "MS-16",
+            "tag": "2026-11-08"
+          },
+          "ergebnis": {
+            "anlage": "AN-3",
+            "terme": [
+              {
+                "messstelle": "MS-16",
+                "rolle": "zufluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-17",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-18",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              }
+            ],
+            "ausserhalb": [],
+            "fehler": null
           }
         },
         {
@@ -2160,7 +2543,7 @@
             },
             "formel_typ": "rest",
             "formel_fassung": 1,
-            "periode_ende": null,
+            "periode_ende": "2026-11-08T23:59:59+01:00",
             "berechnet_am": "2026-11-09T00:12:00+01:00",
             "version": 1,
             "ausloeser": null,
@@ -2213,7 +2596,7 @@
                 "berechnet (Differenz)",
                 "unplausibel (negativ)"
               ],
-              "kundensatz": "Messwerte passen nicht zusammen (−5 kWh)"
+              "kundensatz": "Messwerte passen nicht zusammen (−5 kWh)"
             }
           },
           "ergebnis": {
@@ -2226,7 +2609,7 @@
               },
               "formel_typ": "rest",
               "formel_fassung": 1,
-              "periode_ende": null,
+              "periode_ende": "2026-11-08T23:59:59+01:00",
               "berechnet_am": "2026-11-09T00:12:00+01:00",
               "version": 1,
               "ausloeser": null,
@@ -2281,7 +2664,7 @@
           "geklemmt_auf_0": false,
           "ursache_behauptet": false
         },
-        "kundensatz": "Messwerte passen nicht zusammen (−5 kWh)"
+        "kundensatz": "Messwerte passen nicht zusammen (−5 kWh)"
       },
       "annahmen": [
         "Tag 2026-11-08 und die Werte sind Annahmen."
@@ -2310,6 +2693,7 @@
           "eingang": {
             "hauptzaehler": "MS-01",
             "einheit": "kWh",
+            "zahl_ebene": "tag",
             "version": 1,
             "vermerke": [],
             "eingaenge": [
@@ -2421,7 +2805,7 @@
               "berechnet (Differenz)",
               "nicht zugeordnet"
             ],
-            "kundensatz": "1 610 kWh sind keiner Messstelle zugeordnet"
+            "kundensatz": "1.610 kWh sind keiner Messstelle zugeordnet"
           }
         },
         {
@@ -2430,6 +2814,7 @@
           "eingang": {
             "hauptzaehler": "MS-01",
             "einheit": "kWh",
+            "zahl_ebene": "tag",
             "version": 1,
             "vermerke": [
               "Stellung geändert (MS-08 → AN-2 ab 01.03.2027)"
@@ -2534,7 +2919,7 @@
               "nicht zugeordnet",
               "Stellung geändert (MS-08 → AN-2 ab 01.03.2027)"
             ],
-            "kundensatz": "1 810 kWh sind keiner Messstelle zugeordnet"
+            "kundensatz": "1.810 kWh sind keiner Messstelle zugeordnet"
           }
         },
         {
@@ -2543,6 +2928,7 @@
           "eingang": {
             "hauptzaehler": "MS-10",
             "einheit": "kWh",
+            "zahl_ebene": "tag",
             "version": 1,
             "vermerke": [
               "Stellung geändert (MS-08 → AN-2 ab 01.03.2027)"
@@ -2627,7 +3013,167 @@
               "nicht zugeordnet",
               "Stellung geändert (MS-08 → AN-2 ab 01.03.2027)"
             ],
-            "kundensatz": "110 kWh sind keiner Messstelle zugeordnet"
+            "kundensatz": "110 kWh sind keiner Messstelle zugeordnet"
+          }
+        },
+        {
+          "regel": "rest_aus_stellung",
+          "name": "28.02.2027: MS-08 ist Unterzähler von MS-01 und geht in den Rest von AN-1 ein",
+          "eingang": {
+            "hauptzaehler": "MS-01",
+            "tag": "2027-02-28"
+          },
+          "ergebnis": {
+            "anlage": "AN-1",
+            "terme": [
+              {
+                "messstelle": "MS-01",
+                "rolle": "zufluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-03",
+                "rolle": "zufluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-04",
+                "rolle": "zufluss",
+                "anteil": "negativ"
+              },
+              {
+                "messstelle": "MS-02",
+                "rolle": "abfluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-04",
+                "rolle": "abfluss",
+                "anteil": "positiv"
+              },
+              {
+                "messstelle": "MS-05",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-06",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-07",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-08",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              }
+            ],
+            "ausserhalb": [],
+            "fehler": null
+          }
+        },
+        {
+          "regel": "rest_aus_stellung",
+          "name": "01.03.2027: MS-08 ist umgezogen — der Rest von AN-1 verliert den Term, ohne dass eine Formel angefasst wird",
+          "eingang": {
+            "hauptzaehler": "MS-01",
+            "tag": "2027-03-01"
+          },
+          "ergebnis": {
+            "anlage": "AN-1",
+            "terme": [
+              {
+                "messstelle": "MS-01",
+                "rolle": "zufluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-03",
+                "rolle": "zufluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-04",
+                "rolle": "zufluss",
+                "anteil": "negativ"
+              },
+              {
+                "messstelle": "MS-02",
+                "rolle": "abfluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-04",
+                "rolle": "abfluss",
+                "anteil": "positiv"
+              },
+              {
+                "messstelle": "MS-05",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-06",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-07",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              }
+            ],
+            "ausserhalb": [],
+            "fehler": null
+          }
+        },
+        {
+          "regel": "rest_aus_stellung",
+          "name": "01.03.2027: derselbe Tag, anderes System — MS-08 ist jetzt im Rest von AN-2 zugeordnet",
+          "eingang": {
+            "hauptzaehler": "MS-10",
+            "tag": "2027-03-01"
+          },
+          "ergebnis": {
+            "anlage": "AN-2",
+            "terme": [
+              {
+                "messstelle": "MS-10",
+                "rolle": "zufluss",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-08",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-11",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-12",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-13",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              },
+              {
+                "messstelle": "MS-14",
+                "rolle": "zugeordnet",
+                "anteil": "gesamt"
+              }
+            ],
+            "ausserhalb": [],
+            "fehler": null
           }
         },
         {
@@ -2642,7 +3188,7 @@
             },
             "formel_typ": "rest",
             "formel_fassung": "aus der Stellung je Tag",
-            "periode_ende": null,
+            "periode_ende": "2027-03-01T23:59:59+01:00",
             "berechnet_am": "2027-03-02T00:12:00+01:00",
             "version": 1,
             "ausloeser": null,
@@ -2726,7 +3272,7 @@
                 "nicht zugeordnet",
                 "Stellung geändert (MS-08 → AN-2 ab 01.03.2027)"
               ],
-              "kundensatz": "110 kWh sind keiner Messstelle zugeordnet"
+              "kundensatz": "110 kWh sind keiner Messstelle zugeordnet"
             }
           },
           "ergebnis": {
@@ -2739,7 +3285,7 @@
               },
               "formel_typ": "rest",
               "formel_fassung": "aus der Stellung je Tag",
-              "periode_ende": null,
+              "periode_ende": "2027-03-01T23:59:59+01:00",
               "berechnet_am": "2027-03-02T00:12:00+01:00",
               "version": 1,
               "ausloeser": null,
@@ -3027,7 +3573,7 @@
             },
             "formel_typ": "gewichtete_summe",
             "formel_fassung": 1,
-            "periode_ende": null,
+            "periode_ende": "2026-10-31T23:59:59+01:00",
             "berechnet_am": "2026-11-01T00:15:00+01:00",
             "version": 1,
             "ausloeser": null,
@@ -3086,7 +3632,7 @@
               },
               "formel_typ": "gewichtete_summe",
               "formel_fassung": 1,
-              "periode_ende": null,
+              "periode_ende": "2026-10-31T23:59:59+01:00",
               "berechnet_am": "2026-11-01T00:15:00+01:00",
               "version": 1,
               "ausloeser": null,
@@ -3309,7 +3855,7 @@
             },
             "formel_typ": "saldo",
             "formel_fassung": 1,
-            "periode_ende": null,
+            "periode_ende": "2026-10-31T23:59:59+01:00",
             "berechnet_am": "2026-11-01T00:15:00+01:00",
             "version": 1,
             "ausloeser": null,
@@ -3356,7 +3902,7 @@
               },
               "formel_typ": "saldo",
               "formel_fassung": 1,
-              "periode_ende": null,
+              "periode_ende": "2026-10-31T23:59:59+01:00",
               "berechnet_am": "2026-11-01T00:15:00+01:00",
               "version": 1,
               "ausloeser": null,
@@ -3423,6 +3969,7 @@
           "name": "55 100 + 22 400 + 11 130 = 88 630 kWh · „enthält verteilt (70 % von MS-07)“",
           "eingang": {
             "einheit": "kWh",
+            "zahl_ebene": "monat",
             "eingaenge": [
               {
                 "messstelle": "MS-06",
@@ -3484,7 +4031,7 @@
             },
             "formel_typ": "gewichtete_summe",
             "formel_fassung": 1,
-            "periode_ende": null,
+            "periode_ende": "2026-10-31T23:59:59+01:00",
             "berechnet_am": "2026-11-01T00:15:00+01:00",
             "version": 1,
             "ausloeser": null,
@@ -3514,7 +4061,7 @@
                 "messstelle": "MS-07",
                 "bilanz_rolle": null,
                 "anteil": "gesamt",
-                "menge": "11130.0",
+                "menge": "11130",
                 "zustand": "vollständig",
                 "abdeckung_prozent": 100,
                 "version": 1,
@@ -3524,7 +4071,7 @@
               }
             ],
             "ergebnis": {
-              "menge": "88630.0",
+              "menge": "88630",
               "zustand": "vollständig",
               "abdeckung_prozent": 100,
               "kennzeichen": [
@@ -3543,7 +4090,7 @@
               },
               "formel_typ": "gewichtete_summe",
               "formel_fassung": 1,
-              "periode_ende": null,
+              "periode_ende": "2026-10-31T23:59:59+01:00",
               "berechnet_am": "2026-11-01T00:15:00+01:00",
               "version": 1,
               "ausloeser": null,
@@ -3573,7 +4120,7 @@
                   "messstelle": "MS-07",
                   "bilanz_rolle": null,
                   "anteil": "gesamt",
-                  "menge": "11130.0",
+                  "menge": "11130",
                   "zustand": "vollständig",
                   "abdeckung_prozent": 100,
                   "version": 1,
@@ -3586,7 +4133,7 @@
                 "berechnet (Summe)",
                 "enthält verteilt (70 % von MS-07)"
               ],
-              "menge": "88630.0",
+              "menge": "88630",
               "zustand": "vollständig",
               "abdeckung_prozent": 100
             },
@@ -3623,6 +4170,7 @@
           "eingang": {
             "hauptzaehler": "MS-16",
             "einheit": "kWh",
+            "zahl_ebene": "tag",
             "version": 1,
             "vermerke": [],
             "eingaenge": [
@@ -3674,7 +4222,7 @@
               "berechnet (Differenz)",
               "nicht zugeordnet"
             ],
-            "kundensatz": "10 kWh sind keiner Messstelle zugeordnet"
+            "kundensatz": "10 kWh sind keiner Messstelle zugeordnet"
           }
         },
         {
@@ -3683,6 +4231,7 @@
           "eingang": {
             "hauptzaehler": "MS-16",
             "einheit": "kWh",
+            "zahl_ebene": "tag",
             "version": 2,
             "vermerke": [],
             "eingaenge": [
@@ -3737,7 +4286,7 @@
               "nicht zugeordnet",
               "korrigiert (Version 2)"
             ],
-            "kundensatz": "12 kWh sind keiner Messstelle zugeordnet"
+            "kundensatz": "12 kWh sind keiner Messstelle zugeordnet"
           }
         },
         {
@@ -3752,7 +4301,7 @@
             },
             "formel_typ": "rest",
             "formel_fassung": 1,
-            "periode_ende": null,
+            "periode_ende": "2026-10-18T23:59:59+02:00",
             "berechnet_am": "2026-10-21T09:40:00+02:00",
             "version": 2,
             "ausloeser": "correction MS-17 2026-10-18 Version 2",
@@ -3808,7 +4357,7 @@
                 "nicht zugeordnet",
                 "korrigiert (Version 2)"
               ],
-              "kundensatz": "12 kWh sind keiner Messstelle zugeordnet"
+              "kundensatz": "12 kWh sind keiner Messstelle zugeordnet"
             }
           },
           "ergebnis": {
@@ -3821,7 +4370,7 @@
               },
               "formel_typ": "rest",
               "formel_fassung": 1,
-              "periode_ende": null,
+              "periode_ende": "2026-10-18T23:59:59+02:00",
               "berechnet_am": "2026-10-21T09:40:00+02:00",
               "version": 2,
               "ausloeser": "correction MS-17 2026-10-18 Version 2",
@@ -3884,7 +4433,7 @@
             },
             "formel_typ": "rest",
             "formel_fassung": 1,
-            "periode_ende": null,
+            "periode_ende": "2026-10-18T23:59:59+02:00",
             "berechnet_am": "2026-10-21T09:40:00+02:00",
             "version": 2,
             "ausloeser": null,
@@ -3918,7 +4467,7 @@
                 "nicht zugeordnet",
                 "korrigiert (Version 2)"
               ],
-              "kundensatz": "12 kWh sind keiner Messstelle zugeordnet"
+              "kundensatz": "12 kWh sind keiner Messstelle zugeordnet"
             }
           },
           "ergebnis": {

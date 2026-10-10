@@ -16,7 +16,7 @@ import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.MeasurementPointRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.templates.ComponentTemplateRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.ComponentTemplateDto;
@@ -52,7 +52,7 @@ class ComponentActivationOutboxWiringTest {
     private static final UUID SITE = UUID.fromString("00000000-0000-0000-0000-0000000000b1");
     private static final UUID ENTITY = UUID.fromString("00000000-0000-0000-0000-0000000000c1");
 
-    private final SiteRepository sites = mock(SiteRepository.class);
+    private final Geltungsbereich sites = mock(Geltungsbereich.class);
     private final MeasurementPointRepository points = mock(MeasurementPointRepository.class);
     private final EntityRegistryRepository entityRepo = mock(EntityRegistryRepository.class);
     private final EntityRegistryService registry = mock(EntityRegistryService.class);
@@ -90,7 +90,6 @@ class ComponentActivationOutboxWiringTest {
         TenantContext.set(TENANT);
         ComponentTemplateDto template = template();
         Map<String, Object> connection = Map.of("host", "192.168.0.28");
-        when(sites.existsForCurrentTenant(SITE)).thenReturn(true);
         when(definitions.componentAuthority(SITE)).thenReturn("portal");
         when(templates.findExactByRef(any(), eq("builtin:deye:sun-30k"), eq(1)))
                 .thenReturn(Optional.of(template));

@@ -53,7 +53,7 @@ public class RolloutRepository {
                    s.tenant_id, ten.name AS tenant_name,
                    r.manifest, r.signature
               FROM device_update_target t
-              JOIN device d ON d.id = t.device_id
+              JOIN device d ON d.id = t.device_id AND d.ausgebaut_am IS NULL
               JOIN site s ON s.id = d.site_id
               JOIN tenant ten ON ten.id = s.tenant_id
               JOIN edge_release r ON r.release_seq = t.release_seq
@@ -298,7 +298,7 @@ public class RolloutRepository {
                        u.reason, u.blocker, u.reported_at,
                        u.root_key_ids, u.trust_set_key_ids, u.trust_set_generated_at,
                        u.trust_set_error,
-                       ls.last_seen,
+                       coalesce(d.device_status_seen_at, ls.last_seen) AS last_seen,
                        c.checked_at AS control_checked_at, c.all_match AS control_confirmed,
                        c.certified AS control_certified
                   FROM device d
@@ -308,6 +308,7 @@ public class RolloutRepository {
                   LEFT JOIN device_control_status c ON c.device_id = d.id
                   LEFT JOIN LATERAL (SELECT max(received_at) AS last_seen
                                        FROM telemetry tm WHERE tm.device_id = d.id) ls ON true
+                 WHERE d.ausgebaut_am IS NULL
                  ORDER BY t.name, s.name, d.external_ref
                 """, (rs, i) -> new FleetDeviceRow(
                         rs.getObject("device_id", UUID.class),

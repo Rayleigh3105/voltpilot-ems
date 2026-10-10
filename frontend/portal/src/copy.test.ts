@@ -1,8 +1,236 @@
 import ts from 'typescript';
-import { SUMMENWERT, SUMMENWERT_VERBOTENE_WOERTER } from './glossar';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { STANDORT_ZUERST_SATZ, STANDORT_ZUERST_TITEL, steuerGeldWoerter } from './anlegeNurMessen';
+import { GELD_BLEIBT, STARTSEITE_UNTERNEHMEN, STEUERUNG_BLEIBT } from './standortVorschlag';
+import { STEUERN_EINSTIEG_AKTION, STEUERN_EINSTIEG_SATZ } from './steuernAssistent';
+import { everydayArticles } from './help/content/alltag';
+import { plantArticles } from './help/content/anlage';
+import { energiemanagementArticles } from './help/content/energiemanagement';
+import { KORREKTUR_VORSPANN } from './anlageUmziehen';
+import {
+  GESAMTWERT,
+  SUMMENWERT,
+  SUMMENWERT_VERBOTENE_WOERTER,
+  UEMS_BEWERTUNG_ABDECKUNG,
+  UEMS_BEWERTUNG_SAETZE,
+  UEMS_BEWERTUNG_URTEILE,
+  UEMS_BEREINIGT,
+  UEMS_BEREINIGT_UM,
+  UEMS_BEZOGEN,
+  UEMS_BEZUGSBASIS,
+  UEMS_BEZUGSBASIS_URTEILE,
+  UEMS_EINFLUSSGROESSE,
+  UEMS_EINSTUFUNGEN,
+  UEMS_ENERGIELEISTUNGSKENNZAHL,
+  UEMS_ERWARTET,
+  UEMS_GRUNDLAST,
+  UEMS_KOORDINATEN_FEHLEN,
+  UEMS_KOORDINATEN_FEHLEN_SATZ,
+  UEMS_LEISTUNGSVERGLEICH,
+  UEMS_NORMGRENZE,
+  UEMS_REFERENZPERIODE,
+  UEMS_STATISCHER_FAKTOR,
+  UEMS_TEMPERATUR_BEZOGEN,
+} from './glossar';
+import { budgetFreiText, folgenSaetze } from './datenquelle';
+import { rechteSeed } from './test/rollenFixtures';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { GRUENDE, KENNZEICHEN, TAGESDAUER, VORGESEHEN, ZUSTAENDE } from './uemsErgebnis';
+import { UEMS_FUEHREND, UEMS_LEBENSZYKLUS, UEMS_MESSSTELLE, UEMS_QUELLE, UEMS_VERGLEICH } from './glossar';
+import {
+  UEMS_ABWEICHUNG,
+  UEMS_ABWEICHUNG_ERGEBNISSE,
+  UEMS_ABWEICHUNG_ZUSTAENDE,
+  UEMS_ABWEICHUNGEN,
+  UEMS_AUFFAELLIGKEIT,
+  UEMS_AUFFAELLIGKEIT_ANTWORTEN,
+  UEMS_AUSGANGSLAGE,
+  UEMS_AUSSAGE_VON,
+  UEMS_BEOBACHTET,
+  UEMS_BEOBACHTET_NICHT_BELEGT,
+  UEMS_BEWERTUNGSMETHODE,
+  UEMS_ENERGIEZIEL,
+  UEMS_ENERGIEZIEL_ERGEBNISSE,
+  UEMS_ENERGIEZIEL_ZUSTAENDE,
+  UEMS_ENERGIEZIELE,
+  UEMS_ERWARTETE_WIRKUNG,
+  UEMS_MASSNAHME,
+  UEMS_MASSNAHME_ERGEBNISSE,
+  UEMS_MASSNAHME_ZUSTAENDE,
+  UEMS_MASSNAHMEN,
+  UEMS_MESSGRUNDLAGE,
+  UEMS_OHNE_MESSGRUNDLAGE,
+  UEMS_OHNE_MESSGRUNDLAGE_SATZ,
+  UEMS_TERMIN,
+  UEMS_UEBERFAELLIG_SEIT,
+  UEMS_UMGESETZT_AM,
+  UEMS_URSACHE_AUSSAGE_VON,
+  UEMS_VERBESSERUNG_SAETZE,
+  UEMS_WIRKUNG,
+  UEMS_ZIELE_UND_MASSNAHMEN,
+  UEMS_ZIELPERIODE,
+  UEMS_ZIELWERT,
+  UEMS_ZUR_KENNTNIS_GENOMMEN,
+} from './glossar';
+import {
+  BERECHNET_AUS,
+  FILTER,
+  FILTER_OHNE_TREFFER,
+  KEIN_ORT,
+  KEINE_DATENQUELLE,
+  LADEFEHLER,
+  OHNE_FILTER,
+  SPALTEN,
+  TITEL as MESSSTELLEN_TITEL,
+  VERGLEICHSQUELLE,
+  ZUSTAND_HEUTE,
+  leerzustand as messstellenLeer,
+} from './messstellen';
+import { ahrenbergRegister, leeresRegister } from './test/messstellenRegisterFixtures';
+import * as QB from './quelleBinden';
+import { JETZT as QB_JETZT, kanaeleK3, quellenMs01 } from './test/quelleBindenFixtures';
+import { erkenne as kennzahlKennzeichen, KENNZEICHEN as KENNZAHL_KENNZEICHEN, SAETZE as KENNZAHL_SAETZE, VERBOTENE_WOERTER as KENNZAHL_VERBOTEN } from './uemsKennzahl';
+import { archiviertAmText, KNOPF_ARCHIVIEREN, KNOPF_LOESCHEN, KNOPF_WIEDERHERSTELLEN } from './ortArchiv';
+import { UEMS_BEREICH, UEMS_GEBAEUDE, UEMS_STANDORT, UEMS_UNTERNEHMEN } from './glossar';
+import { UEMS_ROLLEN_STANDORT, UEMS_ROLLEN_UNTERNEHMEN, UEMS_ROLLE_UNTERSTUETZER } from './glossar';
+import { ARTEN as RECHTE_ARTEN, KONTEN as RECHTE_KONTEN, ROLLE_KUNDENWORT, TEXTE as RECHTE_TEXTE, UMFANG_KUNDENWORT } from './rechte';
+import { KUNDENROLLEN } from './benutzer';
+import { herkunftSatz } from './auditFeststellung';
+import { ROLLE_BESCHREIBUNG } from './components/BenutzerEinladen';
+import { STAND_AM, bannerTitel } from './standAm';
+import { KENNZEICHEN as BERICHT_KENNZEICHEN, SAETZE as BERICHT_SAETZE, VERBOTENE_WOERTER as BERICHT_VERBOTEN } from './uemsBericht';
+import { FLAECHE as STEUERUNG_FLAECHE, flaechenSatz as steuerungFlaechenSatz, KUNDENWORT as GEMEINSAME_STEUERUNG, platzhalter as steuerungPlatzhalter, SAETZE as STEUERUNG_SAETZE, satz as steuerungSatz } from './uemsGemeinsameSteuerung';
+import * as KK from './kennzahlKarte';
+import * as KL from './kennzahlListe';
+import { referenzListe } from './test/kennzahlListeFixtures';
+import * as BS from './berichtSeite';
+import * as NB from './nachweisBerichte';
+import { berichtAm, detailAm, entwurfAm, heutigeWerteAm, nameHeuteAm, standAm, vergleichAm } from './test/berichtFixtures';
+import * as BD from './berichtDialoge';
+import { UEMS_BERICHTE, UEMS_BERICHTSSTAND, UEMS_DATENSTAND, UEMS_ENTWURF, UEMS_PRUEFSUMME, UEMS_QUELLENVERZEICHNIS } from './glossar';
+import { UEMS_BERECHNUNG, UEMS_BEZUGSGROESSE, UEMS_KENNZAHLEN, UEMS_MENGE, UEMS_RECHENFORM } from './glossar';
+import { UEMS_LEITKENNZAHL, UEMS_LEITKENNZAHL_OHNE_ZIEL_SATZ } from './glossar';
+import {
+  UEMS_DATENLAGE,
+  UEMS_ENERGIEBILANZ,
+  UEMS_ERHALTEN,
+  UEMS_EREIGNIS_AM,
+  UEMS_EREIGNIS_SEIT,
+  UEMS_EREIGNIS_VON_BIS,
+  UEMS_KEINE_WERTE_AM,
+  UEMS_KEINE_WERTE_IM,
+  UEMS_KEINE_WERTE_VON_BIS,
+  UEMS_MANUELL_ABGELESEN,
+  UEMS_NICHT_VERORTET,
+  UEMS_VERLAUF,
+  UEMS_VERLAUF_EREIGNISSE,
+  UEMS_VERLAUF_PROZENT,
+  UEMS_VERLAUF_WAHL,
+  UEMS_WERTE,
+  UEMS_WOCHE_OHNE_ZAHL,
+  UEMS_ZEITRAEUME,
+} from './glossar';
+import * as OF from './uemsOberflaechen';
+import * as VG from './uemsVergleich';
+import {
+  UEMS_VERGLEICH_KEIN_DELTA,
+  UEMS_VERGLEICH_NICHT_ABRUFBAR,
+  UEMS_VERGLEICH_NUR_EINE_REIHE,
+  UEMS_VERGLEICH_WEITERE,
+} from './glossar';
+import { GRUENDE_OHNE_VERGLEICH } from './uemsBericht';
+import { ms12November, ms12Oktober, ms12Vorjahr } from './test/vergleichFixtures';
+import * as VL from './uemsVerlauf';
+import * as EB from './anlageEnergiebilanz';
+import { ahrenbergBilanz } from './test/bilanzFixtures';
+import { FIXTURE_IDS } from './test/standorteFixtures';
+import {
+  DIE_DATENQUELLE,
+  NEBENGROESSEN_SATZ,
+  NEBENGROESSEN_TITEL,
+  QUELLE_AB_ZEIGEN,
+  QUELLE_GILT_AB,
+  QUELLE_GILT_SEIT,
+  QUELLE_OHNE_RECHT,
+  QUELLE_ZUORDNEN,
+  VERSION_FRUEHERE,
+  VERSION_NEUESTE,
+} from './uemsWerteKarte';
+import {
+  fassungenVon as kennzahlFassungen,
+  KZ as KENNZAHL_IDS,
+  kennzahlenDerWelt,
+  kennzahlWerteAntwort,
+  kennzahlWertVersionenAntwort,
+} from './test/kennzahlWerteFixtures';
+import { HERKUNFT_WORT as MASSNAHME_HERKUNFT_WORT } from './massnahmen';
+import {
+  ERKLAERUNG_WIRKSAMKEIT,
+  NORMWORT_FESTSTELLUNG,
+  NORMWORT_WIRKSAMKEIT,
+  auditStatus,
+  auditorenZeile,
+  auditsKurzzeile,
+  auditsStatus,
+  erklaerungFeststellung,
+  feststellungHerkunft,
+  feststellungStatus,
+} from './auditBild';
+import { ERKLAER_WOERTER_HOECHSTENS, NORMWORT, erklaerWoerter, erklaerZeilen, woerter } from './components/nachweisen/erklaerung';
+import * as ND from './nachweisDokumente';
+import { mbKurzzeile, mbStatus } from './managementbewertungBild';
+import { aufgabenStatus } from './aufgabenBild';
+import type { EnergiemanagementDokument, Feststellung, FeststellungStand, InternesAudit, Kennzahl, KennzahlAuswertung } from './api';
+import { BEGRIFFE, fachwortZeile, NORMWOERTER_IM_FACHWORT, type BegriffSchluessel } from './begriffe';
+import {
+  UEMS_AUF_KURS,
+  UEMS_EINSPARUNG,
+  UEMS_GEMESSEN_AN,
+  UEMS_KNAPP_DAHINTER,
+  UEMS_NICHT_AUF_KURS,
+  UEMS_VORHER,
+  UEMS_ZWEITE_PERSON,
+} from './glossar';
+import {
+  UEMS_AEHNLICHE_FAELLE,
+  UEMS_ANWENDUNGSBEREICH,
+  UEMS_AUFGABE_IM_ENERGIEMANAGEMENT,
+  UEMS_AUFGABEN_IM_ENERGIEMANAGEMENT,
+  UEMS_BEKANNT_GEMACHT,
+  UEMS_BESCHLUSS,
+  UEMS_DOKUMENT,
+  UEMS_DOKUMENTE,
+  UEMS_EINGETRAGEN_VON,
+  UEMS_EINSICHT,
+  UEMS_ENERGIEMANAGEMENT,
+  UEMS_ENERGIEPOLITIK,
+  UEMS_ENTSCHIEDEN_VON,
+  UEMS_FASSUNG,
+  UEMS_FESTSTELLUNG,
+  UEMS_FESTSTELLUNGEN,
+  UEMS_FOLGE,
+  UEMS_GEFUEHRT_IN_IHREM_SYSTEM,
+  UEMS_GELTUNGSBEREICH,
+  UEMS_GEPRUEFT_BLEIBT,
+  UEMS_HINWEIS,
+  UEMS_INTERNES_AUDIT,
+  UEMS_LEITUNG,
+  UEMS_MANAGEMENTBEWERTUNG,
+  UEMS_NOCH_NICHTS_FESTGEHALTEN,
+  UEMS_PERSON,
+  UEMS_PERSON_IM_ENERGIEMANAGEMENT,
+  UEMS_SITZUNG,
+  UEMS_SOFORTIGE_BEHEBUNG,
+  UEMS_UEBERPRUEFUNG_FAELLIG,
+  UEMS_VERANTWORTUNG,
+  UEMS_VERWEIS,
+  UEMS_VERZEICHNIS,
+  UEMS_WER_IST_WOFUER_VERANTWORTLICH,
+  UEMS_WIEDERVORLAGE,
+  UEMS_WIRKSAMKEIT,
+  UEMS_WORTLAUT,
+} from './glossar';
 
 /**
  * Portal v3 · M7 — the copy guard.
@@ -23,6 +251,33 @@ import { describe, expect, it } from 'vitest';
 
 /** The portal source root (vitest runs in the `frontend/portal` root). */
 const SRC = join(process.cwd(), 'src');
+
+/**
+ * K7 (Konzept „Energiemanagement ohne Fachsprache“, D5): eine Fläche trägt die Sätze wörtlich, als JSX-Kind aus
+ * `glossar.ts` ODER über `components/GrenzSatz.tsx` — `<GrenzSatz …/>` (spricht allein, schweigt in einem Bereich) oder
+ * den Kopf-Hinweis `<GrenzHinweis />` (beide Sätze im vollen Wortlaut). `grenze={false}` trägt den Grenz-Satz nicht.
+ */
+const GRENZ_BAUSTEIN = /<GrenzSatz(?![\w])(?![^>]*\sgrenze=\{false\})[^>]*\/>/;
+const VERANTWORTUNG_BAUSTEIN = /<GrenzSatz(?![\w])[^>]*\sverantwortung[\s/>]/;
+const GRENZ_HINWEIS = /<GrenzHinweis[\s/>]/;
+/**
+ * Bereiche, die nur Reiter legen (Verbessern-Konzept v1, Entscheid 2; Review r1 S-X.1): jeder Reiter trägt Titel, Satz
+ * und „Was VoltPilot leistet“ selbst, der Bereich keinen eigenen Kopf. Er gilt als „mit Hinweis“, wenn er jedes seiner
+ * Register wirklich zeigt und jedes davon den Hinweis trägt - ein neuer Reiter ohne Hinweis fällt so weiter auf.
+ */
+const REITER_MIT_HINWEIS: Record<string, string[]> = {
+  'pages/VerbesserungBereich.tsx': ['components/EnergiezieleRegister.tsx', 'components/MassnahmenRegister.tsx', 'components/AbweichungenRegister.tsx'],
+};
+function reiterTragenDenHinweis(datei: string, code: string): boolean {
+  const register = REITER_MIT_HINWEIS[datei];
+  if (!register) return false;
+  return register.every((r) => {
+    const name = r.split('/').pop()!.replace(/\.tsx$/, '');
+    return new RegExp(`<${name}[\\s/>]`).test(code) && GRENZ_HINWEIS.test(readFileSync(join(SRC, r), 'utf8'));
+  });
+}
+const traegtGrenzBaustein = (text: string) => GRENZ_HINWEIS.test(text) || GRENZ_BAUSTEIN.test(text);
+const traegtVerantwortungBaustein = (text: string) => GRENZ_HINWEIS.test(text) || VERANTWORTUNG_BAUSTEIN.test(text);
 
 /**
  * Path fragments that are NOT the plain-customer surface, so they are allowed
@@ -59,6 +314,9 @@ const EXCLUDED = [
   // „Messpunkt") und wird - wie die Plattform-Sicht - NUR hinter dem EINEN Tor
   // gerendert; der Test unten prüft dieses Tor, statt es zu glauben.
   '/components/TechnischeKarten.tsx',
+  // UEMS AP-15 IP-24: die reine Schicht des Betreiber-Blatts „Gemeinsame Steuerung“ (einziger Importeur
+  // `pages/admin/GemeinsameSteuerungBetreiberBlatt`) — Betreiber-Vokabular (Messpunkt, plan_id, Epoche).
+  '/adminGemeinsameSteuerung.ts',
   '/entities.ts',
   '/entitiesApi.ts',
   '/channels.ts',
@@ -141,6 +399,8 @@ const FORBIDDEN: Array<{ re: RegExp; why: string }> = [
  * das Substantiv groß, eine Kennung nicht.
  */
 const FORBIDDEN_INTERN: Array<{ re: RegExp; why: string }> = [
+  // AP-02 IP-15: der archivierte Knoten heißt beim Kunden „Archiviert am …“, nie Grabstein/Tombstone.
+  { re: /\b(Grabstein\w*|Tombstones?)\b/, why: 'UEMS: „Archiviert am …“ statt „Grabstein“/„Tombstone“' },
   { re: /\bTenant\w*/, why: 'UEMS: „Kundenbereich" (bzw. „Unternehmen") statt „Tenant"' },
   { re: /\bSites?\b/, why: 'UEMS: „Anlage" oder „Standort" statt „Site"' },
   { re: /\bStandort-ID\b/i, why: 'UEMS: der Standort trägt einen NAMEN, keine „Standort-ID"' },
@@ -157,6 +417,12 @@ const FORBIDDEN_INTERN: Array<{ re: RegExp; why: string }> = [
   { re: /\bEdge\b/, why: 'UEMS: „VoltPilot-Box" statt „Edge"' },
   { re: /\bSlots?\b/, why: 'UEMS: „Steckplatz" (Karte) bzw. „Viertelstunde" (Zeit) statt „Slot"' },
   { re: /\b(un)?claim\w*/i, why: 'UEMS: „anmelden"/„abmelden" statt „Claim"/„Unclaim"' },
+  // AP-04 IP-5: das Register spricht Messstelle · Quelle · führend · Vergleich — nie die Werkstatt-Wörter dafür.
+  { re: /\b(Primär|Sekundär|Haupt|Leit|Zweit)quellen?\b/, why: 'UEMS AP-04: „führende Quelle" bzw. „Vergleichsquelle"' },
+  { re: /\bReferenzquellen?\b/, why: 'UEMS AP-04: „Vergleichsquelle" statt „Referenzquelle"' },
+  { re: /\bQuellen?bindung(en)?\b/, why: 'UEMS AP-04: „Quelle" statt „Quellenbindung" (Vertragswort)' },
+  { re: /\bMe(ß|ss-)[Ss]tellen?\b/, why: 'UEMS AP-04: „Messstelle" (ss, ein Wort)' },
+  { re: /\bfuehrend\w*/i, why: 'UEMS AP-04: „führend" mit Umlaut' },
 ];
 
 /**
@@ -575,6 +841,8 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
       // sie darf die anderen Admin-Schichten importieren (nur die Admin-Seite
       // rendert sie), war aber bei ihrer Einführung nicht mit aufgeführt.
       'boxVersions',
+      // UEMS AP-15 IP-24: das Betreiber-Blatt der Gemeinsamen Steuerung.
+      'adminGemeinsameSteuerung',
     ];
     // PR 1f (Anlagen-Zentrale Stufe 1): die Plattform-Sicht wohnt seither
     // ADDITIV auf der KUNDEN-Geräteseite - hinter dem EINEN Rollen-Tor
@@ -617,6 +885,10 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
       // gerendert werden - sonst wäre die Ausnahme still ein Loch.
       if (/from '[^']*\bTechnischeKarten'/.test(code) && !gated) {
         offenders.push(`${rel} rendert die technische Sicht OHNE ${GATE})`);
+      }
+      // UEMS AP-15 IP-24: das Betreiber-Blatt (auch lazy geladen) nur hinter dem Tor.
+      if (/['/]admin\/GemeinsameSteuerungBetreiberBlatt'/.test(code) && !gated) {
+        offenders.push(`${rel} rendert das Betreiber-Blatt OHNE ${GATE})`);
       }
     }
     expect(offenders, offenders.join('\n')).toEqual([]);
@@ -673,6 +945,31 @@ describe('copy guard: the customer surface uses the v3 dictionary', () => {
     expect(stripComments('/** Entität */\nconst x = "ok";')).not.toMatch(/Entität/);
     // A JSX comment is stripped too.
     expect(stripComments('return <div>{/* Entität */}ok</div>;')).not.toMatch(/Entität/);
+  });
+});
+
+describe('AP-01 IP-13 · Kundenwörter im Grenze-Schritt', () => {
+  it('nennt Anschluss, Übergang und Rechengrundlage ohne interne Felder', () => {
+    // Seit dem Nachzug „Steuerung neu“ wohnt der Rahmen im Rahmen-Blatt des Reiters Laden (Paket 1c bringt die Prüfung dorthin).
+    const quelle = readFileSync(join(SRC, 'steuerung/LadenReiter.tsx'), 'utf8');
+    expect(quelle).toContain('Heute ist kein Netzanschluss gebunden. Tragen Sie für den Übergang die vereinbarte Leistung im Dialog ein.');
+    expect(quelle).toContain('Grundlast der letzten 7 Tage');
+    expect(quelle).toContain('Hausreserve');
+    expect(quelle).toContain('Ladebudget');
+    expect(quelle.replace(/\.vereinbart_kw/g, '')).not.toMatch(/grid_limit_kw|max_house_load_kw/);
+  });
+});
+
+describe('AP-06 IP-11 · Datenquelle anlegen spricht mit Kundenwörtern in Sie-Form', () => {
+  it('nennt Box, Netzlage, Prüfung und Lesebudget — keine internen Transportwörter', () => {
+    const quelle = readFileSync(join(process.cwd(), 'src/components/DatenquelleAnlegen.tsx'), 'utf8');
+    for (const wort of ['Datenquelle anlegen', 'Netzlage', 'Zuständige Box', 'Lesebudget', 'Was danach gilt']) {
+      expect(quelle).toContain(wort);
+    }
+    expect(`${budgetFreiText(null)} ${folgenSaetze('Halle 2', 'Box Halle 2').join(' ')}`)
+      .toContain('Liegt die Quelle in einem anderen Netz, brauchen Sie eine Box dort oder eine Route der Kunden-IT.');
+    expect(quelle).not.toMatch(/\b(?:Gateway-ID|Device-ID|Duty Cycle|Payload|Topic)\b/);
+    expect(quelle).not.toMatch(/\b(?:du|dein(?:e|en|em|er|es)?|euch)\b/i);
   });
 });
 
@@ -765,7 +1062,1410 @@ describe('K4 · Klartext-Wächter über den Chart-Beschriftungen', () => {
   });
 });
 
-/** H-1/E10: nur der bestehende Wortbestand wartet auf H-5/H-7, kein neuer Satz darf hinzukommen. */
+/**
+ * UEMS · AP-08 IP-8 — die Sätze des Ergebnis-Zustands.
+ *
+ * Sie wohnen im VERTRAG (`docs/contracts/v2/ergebnis-zustand-vectors.json`)
+ * und im Modul `uemsErgebnis.ts`, nicht in einer Fläche — der Dateiwächter
+ * oben sieht darum nur die Hälfte. Dieser Abschnitt liest jeden Kundensatz des
+ * Vertrags (Zustandswörter, Kennzeichen, Tagesdauer, Raster, Rundungsdifferenz
+ * und jeden erwarteten Satz) und prüft ihn gegen beide Wörterbücher und gegen
+ * die Werkstatt-Schrift DIESES Vertrags: Schlüssel in snake_case, Umlaute als
+ * Umschrift, die englischen Ereignis-Arten, ein ASCII-Minus, ein normales
+ * Leerzeichen vor der Einheit oder als Tausendertrenner (E11).
+ *
+ * ⚠ Bekannt und benannt, NICHT durchgelassen aus Versehen: „Rechteck-Halten“ ist
+ * heutiger Wortlaut der Verbrauchsregel und steht als Befund in der Vektor-Datei.
+ * „Zuwachs 337.600“ (Punkt, ohne Einheit) spricht seit 1.3 niemand mehr — er lebt
+ * nur als frühere Fassung (gespeicherte Zeilen) und wird hier nicht gelesen.
+ */
+const ERGEBNIS_INTERN: Array<{ re: RegExp; why: string; beispiel: string }> = [
+  { re: /\b[a-z]+_[a-z0-9_]+\b/, why: 'IP-8: ein Vertragsschlüssel ist kein Kundenwort', beispiel: '36,0 kWh · keine_werte' },
+  {
+    re: /\b(vollstaendig|unvollstaendig|Geraetegrenze|Ruecksetzung|Ueberlauf|Luecke|Zaehlung)\b/i,
+    why: 'IP-8: Umlaut-Umschrift ist Schlüsselschrift',
+    beispiel: '2.304 kWh · vollstaendig',
+  },
+  {
+    re: /\b(device|counter|restart|boundary|overflow|reset|gap|substitute|correction)\b/i,
+    why: 'IP-8: die Ereignis-Art ist kein Kundenwort („Gerätegrenze“, „Rücksetzung“ …)',
+    beispiel: 'counter reset 09:12',
+  },
+  { re: /\b(null|undefined|NaN|Infinity)\b/, why: 'IP-8: kein Wert ist „—“', beispiel: 'undefined · keine Werte' },
+  { re: /(^|[\s(])-\d/, why: 'E11: Minus ist U+2212, nicht der Bindestrich', beispiel: '-34,2 kW' },
+  { re: /\d (kWh|kvarh|kW|%|m³)(?![\w])/, why: 'E11: geschütztes Leerzeichen vor der Einheit', beispiel: '2.304 kWh' },
+  { re: /\d \d{3}(?!\d)/, why: 'E11: Tausenderpunkt statt Leerzeichen', beispiel: '1 240 m³' },
+];
+
+describe('UEMS AP-08 IP-8 · die Ergebnis-Sätze sprechen das Kunden-Wörterbuch', () => {
+  const vertrag = JSON.parse(
+    readFileSync(join(process.cwd(), '../../docs/contracts/v2/ergebnis-zustand-vectors.json'), 'utf8'),
+  );
+
+  /** Jeder Kundensatz des Vertrags und des Moduls; Platzhalter stehen als „X“. */
+  const saetze = (): Array<{ wo: string; text: string }> => {
+    const out: Array<{ wo: string; text: string }> = [];
+    const ohnePlatz = (t: string) => t.replace(/\{[a-z_]+\}/g, 'X');
+    for (const z of ZUSTAENDE) out.push({ wo: 'Zustand', text: z.wort });
+    for (const k of KENNZEICHEN) {
+      out.push({ wo: `Kennzeichen ${k.schluessel}`, text: ohnePlatz(k.muster) });
+      if (k.wort) out.push({ wo: `Wort ${k.schluessel}`, text: k.wort });
+    }
+    for (const w of VORGESEHEN) out.push({ wo: 'vorgesehen', text: w.wort });
+    for (const t of Object.values(TAGESDAUER)) out.push({ wo: 'Tagesdauer', text: t });
+    for (const k of vertrag.kennzeichen) out.push({ wo: `Beispiel ${k.schluessel}`, text: k.beispiel });
+    out.push({ wo: 'Rundungsdifferenz', text: ohnePlatz(vertrag.rundung.differenz_satz) });
+    out.push({ wo: 'Verlauf', text: ohnePlatz(vertrag.satz.abdeckung) });
+    // Seit 1.6 (AP-08 IP-11): die Herkunft der Menge am Zustandswort.
+    for (const h of Object.values(vertrag.mengen_herkunft.herleitungen)) {
+      if (typeof h === 'string') out.push({ wo: 'Herkunft', text: h });
+    }
+    for (const f of vertrag.cases) {
+      const e = f.erwartet;
+      for (const t of [e.satz, e.text, e.summe_der_angezeigten, e.differenz]) {
+        if (typeof t === 'string') out.push({ wo: `Fall ${f.name}`, text: t });
+      }
+      for (const feld of e.felder ?? []) out.push({ wo: `Raster ${f.name}`, text: feld.beschriftung });
+    }
+    // Seit 1.11 (AP-13 IP-1): der Grund einer fehlenden Zahl — jedes Muster und jedes Beispiel.
+    for (const g of GRUENDE) out.push({ wo: `Grund ${g.code}`, text: ohnePlatz(g.muster) });
+    for (const g of vertrag.grund.saetze) out.push({ wo: `Grund-Beispiel ${g.code}`, text: g.beispiel });
+    return out;
+  };
+
+  it('liest wirklich die Sätze (der Wächter ist verdrahtet)', () => {
+    expect(saetze().length).toBeGreaterThan(150);
+  });
+
+  it('kein Kundensatz trägt ein verbotenes, internes oder Werkstatt-Wort', () => {
+    const violations: string[] = [];
+    for (const { wo, text } of saetze()) {
+      for (const { re, why } of [...FORBIDDEN, ...FORBIDDEN_INTERN, ...ERGEBNIS_INTERN]) {
+        const m = re.exec(ohneAusnahmen(text));
+        if (m) violations.push(`${wo}: „${m[0]}“ in „${text}“ — ${why}`);
+      }
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('beisst wirklich (jedes Muster gegen seinen eigenen Fall)', () => {
+    for (const { re, beispiel } of ERGEBNIS_INTERN) expect(re.test(beispiel), beispiel).toBe(true);
+    // …und lässt die richtige Schreibweise durch.
+    for (const gut of ['2.304\u00a0kWh · vollständig', '−34,2\u00a0kW', '02:00–03:00 MESZ', '— · keine Werte']) {
+      expect(ERGEBNIS_INTERN.filter(({ re }) => re.test(gut)).map(({ why }) => why), gut).toEqual([]);
+    }
+  });
+});
+
+/**
+ * UEMS · AP-08 IP-14 — die vorbelegte Begründung eines Korrektur-Vorschlags.
+ *
+ * Das System schlägt vor, ein Mensch gibt frei (E14). Die Begründung sagt, was
+ * das System gesehen hat, und sie wird GESPEICHERT (`messreihe_korrektur`), nie
+ * im Portal gebildet — darum wohnt ihr Wortlaut im Vertrag
+ * (`docs/contracts/v2/korrektur-vorschlag-vectors.json`), gesprochen von Java
+ * `uems/KorrekturVorschlagRegeln`. Dieser Abschnitt liest jedes Muster, jede
+ * Notiz an der Erkennung und jeden erwarteten Satz gegen dieselben Wörterbücher
+ * wie die Ergebnis-Sätze.
+ */
+describe('UEMS AP-08 IP-14 · die Vorschlags-Begründung spricht das Kunden-Wörterbuch', () => {
+  const vertrag = JSON.parse(
+    readFileSync(join(process.cwd(), '../../docs/contracts/v2/korrektur-vorschlag-vectors.json'), 'utf8'),
+  );
+
+  const saetze = (): Array<{ wo: string; text: string }> => {
+    const out: Array<{ wo: string; text: string }> = [];
+    const ohnePlatz = (t: string) => t.replace(/\{[a-z_]+\}/g, 'X');
+    for (const [art, muster] of Object.entries(vertrag.begruendung as Record<string, string>)) {
+      out.push({ wo: `Muster ${art}`, text: ohnePlatz(muster) });
+    }
+    for (const [zustand, notiz] of Object.entries(vertrag.erkennung_notiz as Record<string, string>)) {
+      out.push({ wo: `Notiz ${zustand}`, text: ohnePlatz(notiz) });
+    }
+    for (const f of vertrag.cases) out.push({ wo: `Fall ${f.name}`, text: f.satz });
+    return out;
+  };
+
+  it('liest wirklich die Sätze (der Wächter ist verdrahtet)', () => {
+    expect(saetze().length).toBe(15);
+  });
+
+  it('kein Vorschlags-Satz trägt ein verbotenes, internes oder Werkstatt-Wort', () => {
+    const violations: string[] = [];
+    for (const { wo, text } of saetze()) {
+      for (const { re, why } of [...FORBIDDEN, ...FORBIDDEN_INTERN, ...ERGEBNIS_INTERN]) {
+        const m = re.exec(ohneAusnahmen(text));
+        if (m) violations.push(`${wo}: „${m[0]}“ in „${text}“ — ${why}`);
+      }
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('sagt, was gesehen wurde — nie, was der Mensch tun soll', () => {
+    const auftrag = /\b(bitte|müssen|muss|sollten|sollen|freigeben|genehmigen|übernehmen Sie)\b/i;
+    for (const { wo, text } of saetze()) expect(auftrag.test(text), `${wo}: ${text}`).toBe(false);
+    expect(auftrag.test('Bitte freigeben.')).toBe(true);
+  });
+});
+
+/**
+ * UEMS AP-02 IP-15 — Archivieren, Wiederherstellen, Löschen. „archiviert“ ist ein Wort des
+ * Lebenszyklus (Glossar), die Fläche sagt „Archivieren …“, „Archiviert am …“, „Wiederherstellen …“
+ * und „Löschen …“; das Werkstatt-Wort für den archivierten Knoten steht in `FORBIDDEN_INTERN`.
+ */
+describe('UEMS AP-02 IP-15 · Archivieren, Wiederherstellen und Löschen sprechen die Kundenwörter', () => {
+  it('„archiviert“ ist ein Lebenszyklus-Wort; Menü und Baum sagen „Archivieren“, „Archiviert am“, „Wiederherstellen“', () => {
+    expect(UEMS_LEBENSZYKLUS).toContain('archiviert');
+    expect(KNOPF_ARCHIVIEREN).toBe('Archivieren …');
+    expect(KNOPF_WIEDERHERSTELLEN).toBe('Wiederherstellen …');
+    expect(KNOPF_LOESCHEN).toBe('Löschen …');
+    expect(archiviertAmText('2027-06-30')).toBe('Archiviert am 30.06.2027');
+  });
+
+  it('die Archiv-Flächen nennen kein „deaktiviert“ und keinen Papierkorb — und der Wächter beißt beim Grabstein', () => {
+    const verboten = /\b([Dd]eaktivier\w*|Papierkorb)\b/;
+    for (const datei of ['ortArchiv.ts', 'components/OrtMenue.tsx', 'components/ArchivierenDialog.tsx', 'components/Ortsbaum.tsx']) {
+      const texte = visibleTexts(readFileSync(join(SRC, datei), 'utf8')).filter(isKundentext);
+      expect(texte.length, datei).toBeGreaterThan(0);
+      expect(texte.filter((t) => verboten.test(t)), datei).toEqual([]);
+    }
+    expect(FORBIDDEN_INTERN.some(({ re }) => re.test('Der Grabstein bleibt'))).toBe(true);
+  });
+});
+
+/**
+ * UEMS AP-02 IP-16 — die Demo-Daten des Referenzunternehmens „Kunststoffwerk Ahrenberg GmbH"
+ * (`infra/local/seed/ahrenberg.sql`) sind das, was ein Mensch beim ersten Anmelden sieht.
+ * Sie sprechen deshalb dieselben Kundenwörter wie jede gebaute Fläche: Standort, Gebäude,
+ * Bereich, gültig ab, Stand am, rückwirkend, archiviert — und nie ihre englischen oder
+ * internen Zwillinge. Der Wächter liest die Seed-Datei selbst, damit ein „Site"/„Building"
+ * in einer Demo-Zeile nicht still an allen Wörterbüchern vorbeiläuft.
+ */
+describe('UEMS AP-02 IP-16 · die Demo-Daten Ahrenberg sprechen die Kundenwörter', () => {
+  const AHRENBERG = join(SRC, '..', '..', '..', 'infra', 'local', 'seed', 'ahrenberg.sql');
+  const seed = () => readFileSync(AHRENBERG, 'utf8');
+
+  it('die sieben Wörter der Ortsstruktur stehen im Wörterbuch und auf den Flächen', () => {
+    expect(UEMS_UNTERNEHMEN).toBe('Unternehmen');
+    expect(UEMS_STANDORT).toBe('Standort');
+    expect(UEMS_GEBAEUDE).toBe('Gebäude');
+    expect(UEMS_BEREICH).toBe('Bereich');
+    expect(STAND_AM).toBe('Stand am');
+    expect(bannerTitel('2027-01-15')).toBe('Sie sehen den Stand am 15.01.2027');
+    expect(UEMS_LEBENSZYKLUS).toContain('archiviert');
+    expect(archiviertAmText('2027-06-30')).toBe('Archiviert am 30.06.2027');
+    // „gültig ab" und „rückwirkend" spricht die gebaute Fläche - hier gegen die Quelle geprüft.
+    expect(readFileSync(join(SRC, 'components', 'StandortDialog.tsx'), 'utf8')).toContain('Gültig ab');
+    expect(readFileSync(join(SRC, 'ortVerschieben.ts'), 'utf8')).toContain('rückwirkend');
+  });
+
+  it('die Demo-Daten nennen die Orte mit den Kundenwörtern - kein englischer Zwilling', () => {
+    const text = seed();
+    expect(text.length).toBeGreaterThan(0);
+    for (const wort of ['Standort', 'Gebäude', 'Bereich', 'gültig ab', 'rückwirkend', 'Unternehmen']) {
+      expect(text, wort).toContain(wort);
+    }
+    const verboten = /\b(Site|Sites|Building|Buildings|Zone|Area|Facility|Snapshot|valid from|deleted)\b/;
+    for (const zeile of text.split('\n')) {
+      expect(verboten.test(zeile), zeile).toBe(false);
+    }
+  });
+
+  it('beisst wirklich (das Muster gegen seinen eigenen Fall)', () => {
+    const verboten = /\b(Site|Sites|Building|Buildings|Zone|Area|Facility|Snapshot|valid from|deleted)\b/;
+    expect(verboten.test('-- Building G-1 mit Zone B-1')).toBe(true);
+    expect(verboten.test('-- Gebäude G-1 mit Bereich B-1')).toBe(false);
+  });
+});
+
+/**
+ * UEMS AP-03 IP-16 — die Personen der Demo-Daten. Ein Seed schreibt CODES
+ * (`kundenadministrator`, `unterstuetzer`, `einrichten_und_bedienen`), die Fläche zeigt
+ * KUNDENWÖRTER (Kundenadministrator, Unterstützer, Einrichten und Bedienen). Dieser Wächter
+ * hält beide Seiten zusammen: jeder Code, den die Demo-Daten verwenden, muss ein Kundenwort
+ * haben — sonst stünde im Portal eine Rolle, die niemand benennen kann. Und die neun Wörter der
+ * Rechte-Fläche stehen im Wörterbuch, nicht nur in einer Komponente.
+ */
+describe('UEMS AP-03 IP-16 · die Personen der Demo-Daten sprechen die Kundenwörter', () => {
+  const AHRENBERG = join(SRC, '..', '..', '..', 'infra', 'local', 'seed', 'ahrenberg.sql');
+  const seed = () => readFileSync(AHRENBERG, 'utf8');
+  /** Die Werte einer Spalte, wie der Seed sie schreibt: `'wort'` in den VALUES-Zeilen. */
+  const woerter = (codes: readonly string[]) =>
+    codes.filter((c) => seed().includes(`'${c}'`));
+
+  it('die neun Wörter der Rechte-Fläche stehen im Wörterbuch', () => {
+    expect(UEMS_ROLLEN_UNTERNEHMEN).toEqual(['Kundenadministrator', 'Energiemanager']);
+    expect(UEMS_ROLLEN_STANDORT).toEqual(['Bearbeiter', 'Bedienberechtigt', 'Leser']);
+    expect(UEMS_ROLLE_UNTERSTUETZER).toBe('Unterstützer');
+    expect(RECHTE_TEXTE.unterstuetzung_beendet).toContain('Unterstützung');
+    expect(RECHTE_TEXTE.teilansicht).toContain('Teilansicht');
+    expect(RECHTE_TEXTE.zugriff_beendet).toContain('Zugriff');
+    // Und alle neun kommen aus EINER Quelle - kein zweites Wort für dieselbe Sache.
+    for (const wort of [...UEMS_ROLLEN_UNTERNEHMEN, ...UEMS_ROLLEN_STANDORT, UEMS_ROLLE_UNTERSTUETZER]) {
+      expect(Object.values(ROLLE_KUNDENWORT), wort).toContain(wort);
+    }
+  });
+
+  it('AP-19 IP-12: die Rolle Einsicht spricht das Wort des Wörterbuchs und jede zuweisbare Rolle hat ihre Beschreibung', () => {
+    expect(ROLLE_KUNDENWORT.einsicht).toBe(UEMS_EINSICHT);
+    expect(KUNDENROLLEN.map((r) => r.value)).toEqual([
+      'kundenadministrator', 'energiemanager', 'bearbeiter', 'bedienberechtigt', 'leser', 'einsicht',
+    ]);
+    expect(KUNDENROLLEN.find((r) => r.value === 'einsicht')).toEqual({ value: 'einsicht', label: UEMS_EINSICHT, unternehmensweit: true });
+    for (const r of KUNDENROLLEN) expect(ROLLE_BESCHREIBUNG[r.value], r.value).toBeTruthy();
+    // „nur lesen“ steht im Satz, ohne Norm-Wort (SP2) — dieselbe Aussage wie „Was man sieht“ in R6.
+    expect(ROLLE_BESCHREIBUNG.einsicht).toContain('kann nichts ändern');
+    expect(ROLLE_BESCHREIBUNG.einsicht).not.toMatch(/ISO|konform|zertifiz|Audit/i);
+  });
+
+  it('jede Rolle, Kontoart, Art und jeder Umfang der Demo-Daten hat ein Kundenwort', () => {
+    const rollen = woerter(Object.keys(ROLLE_KUNDENWORT));
+    // Sechs der sieben Rollen kommen vor; `voltpilot_betrieb` wird nie zugewiesen.
+    expect(rollen).toEqual([
+      'kundenadministrator', 'energiemanager', 'bearbeiter', 'bedienberechtigt', 'leser', 'unterstuetzer',
+    ]);
+    for (const rolle of rollen) {
+      expect(ROLLE_KUNDENWORT[rolle as keyof typeof ROLLE_KUNDENWORT], rolle).toBeTruthy();
+    }
+    expect(woerter(RECHTE_KONTEN)).toEqual(['benutzer', 'partner', 'plattform']);
+    // Ein Installateur und eine VoltPilot-Unterstützung; einen Notfall kennen die Demo-Daten nicht.
+    expect(woerter(RECHTE_ARTEN)).toEqual(['installateur', 'voltpilot']);
+    for (const umfang of woerter(Object.keys(UMFANG_KUNDENWORT))) {
+      expect(UMFANG_KUNDENWORT[umfang as keyof typeof UMFANG_KUNDENWORT], umfang).toBeTruthy();
+    }
+  });
+
+  it('die Demo-Daten nennen die Personen-Sachen deutsch - kein englischer Zwilling', () => {
+    const verboten = /\b(User|Users|Role|Roles|Permission|Permissions|Grant|Grants|Tenant|Owner|Viewer|Editor)\b/;
+    for (const zeile of seed().split('\n')) {
+      expect(verboten.test(zeile), zeile).toBe(false);
+    }
+    expect(verboten.test('-- Role of the User in this Tenant')).toBe(true);
+    expect(verboten.test('-- Rolle des Benutzers in diesem Kundenbereich')).toBe(false);
+  });
+
+  it('Sabine Rauch steht NICHT in den Demo-Daten - die Referenz streicht sie mit ST-3', () => {
+    // Die Zelle AP-03 IP-16 nennt acht Logins; die einzige Quelle trägt sieben Personen.
+    // AhrenbergDemoLoginTest hält dieselbe Tatsache auf der Realm-Seite fest.
+    // Geprüft werden die DATEN, nicht der Kopfkommentar - der nennt beide und sagt, warum.
+    const daten = seed()
+      .split('\n')
+      .filter((z) => !z.trimStart().startsWith('--'))
+      .join('\n');
+    expect(daten).not.toContain('Sabine');
+    expect(daten).not.toContain('ST-3');
+    // Der Kommentar dagegen MUSS es erklären, sonst trägt jemand sie stillschweigend nach.
+    expect(seed()).toContain('Sabine Rauch');
+  });
+});
+
+/**
+ * UEMS AP-11 IP-3 — die Sätze der Kennzahl. Ihr Wortlaut steht im Vertrag (`kennzahl-vectors.json`
+ * `saetze`, `ergebnis-zustand-vectors.json` `kennzahl_kennzeichen`), gesprochen von `uemsKennzahl.ts`
+ * ⟷ `KennzahlRegeln.java`. Dieser Abschnitt liest jeden Satz, jedes Kennzeichen-Muster und jeden
+ * erwarteten Kundensatz, jede Anzeige und jedes Kennzeichen der Vektoren gegen die Wörterbücher — und
+ * gegen die Wörter, die auf einer Kennzahl-Fläche nie stehen (§4.13). Ein GEERBTER Satz (etwa
+ * „enthält verteilt (70 % von MS-07)“) gehört seinem Vertrag (AP-10) und wird hier nur auf Wörter
+ * geprüft, nicht auf die Zahlform.
+ */
+describe('UEMS AP-11 IP-3 · die Kennzahl-Sätze sprechen das Kunden-Wörterbuch', () => {
+  const vektoren = JSON.parse(readFileSync(join(process.cwd(), '../../docs/contracts/v2/kennzahl-vectors.json'), 'utf8'));
+  const ohnePlatz = (t: string) => t.replace(/\{[a-z_]+\}/g, 'X');
+
+  const saetze = (): Array<{ wo: string; text: string; eigen: boolean }> => {
+    const out: Array<{ wo: string; text: string; eigen: boolean }> = [];
+    for (const [schluessel, text] of Object.entries(KENNZAHL_SAETZE)) out.push({ wo: `Satz ${schluessel}`, text: ohnePlatz(text), eigen: true });
+    for (const k of KENNZAHL_KENNZEICHEN) out.push({ wo: `Kennzeichen ${k.schluessel}`, text: ohnePlatz(k.muster), eigen: k.herkunft !== 'geerbt' });
+    for (const fall of vektoren.cases) {
+      for (const p of fall.pruefungen) {
+        for (const t of [p.ergebnis.kundensatz, p.ergebnis.anzeige]) {
+          if (typeof t === 'string') out.push({ wo: `${fall.id} ${p.name}`, text: t, eigen: true });
+        }
+        for (const t of p.ergebnis.kennzeichen ?? []) {
+          out.push({ wo: `${fall.id} Kennzeichen`, text: t, eigen: kennzahlKennzeichen(t)?.herkunft !== 'geerbt' });
+        }
+      }
+    }
+    return out;
+  };
+
+  it('liest wirklich die Sätze (der Wächter ist verdrahtet)', () => {
+    expect(saetze().length).toBeGreaterThan(150);
+  });
+
+  it('kein Kennzahl-Satz trägt ein verbotenes, internes oder Werkstatt-Wort', () => {
+    const violations: string[] = [];
+    for (const { wo, text, eigen } of saetze()) {
+      for (const { re, why } of [...FORBIDDEN, ...FORBIDDEN_INTERN, ...(eigen ? ERGEBNIS_INTERN : [])]) {
+        const m = re.exec(ohneAusnahmen(text));
+        if (m) violations.push(`${wo}: „${m[0]}“ in „${text}“ — ${why}`);
+      }
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('keine Kennzahl spricht von KPI, Metrik, Kenngröße, Dashboard, Widget, Template, Durchschnitt oder Mittel (§4.13)', () => {
+    const verboten = new RegExp(`(^|[^\\p{L}])(${KENNZAHL_VERBOTEN.join('|')})([^\\p{L}]|$)`, 'u');
+    expect(saetze().filter(({ text }) => verboten.test(text)).map(({ wo, text }) => `${wo}: ${text}`)).toEqual([]);
+    // …und der Wächter beißt.
+    expect(verboten.test('Durchschnitt je Stück')).toBe(true);
+    expect(verboten.test('KPI Halle 2')).toBe(true);
+    expect(verboten.test('gewichtet (Summe ÷ Summe)')).toBe(false);
+  });
+});
+
+/**
+ * UEMS AP-12 IP-3 — die Sätze und Kennzeichen des Berichts. Ihr Wortlaut steht im Vertrag
+ * (`bericht-vectors.json` `saetze`, `ergebnis-zustand-vectors.json` `bericht_kennzeichen`), gesprochen
+ * von `uemsBericht.ts` ⟷ `BerichtRegeln.java`. Dieser Abschnitt liest jede Satzvorlage, jedes
+ * Kennzeichen-Muster und jeden erwarteten Kundensatz und Text der Vektoren gegen die Wörterbücher — und
+ * gegen die Wörter, die ein Bericht über sich nie sagt (§4.15). Die Kennzeichen der WERTE im Abzug
+ * („korrigiert (Version 2)“) gehören ihrem Vertrag; der CSV ist Kundenform, aber keine Fläche.
+ */
+describe('UEMS AP-12 IP-3 · die Bericht-Sätze sprechen das Kunden-Wörterbuch', () => {
+  const vektoren = JSON.parse(readFileSync(join(process.cwd(), '../../docs/contracts/v2/bericht-vectors.json'), 'utf8'));
+  const ohnePlatz = (t: string) => t.replace(/\{[a-z_]+\}/g, 'X');
+
+  const saetze = (): Array<{ wo: string; text: string }> => {
+    const out: Array<{ wo: string; text: string }> = [];
+    for (const [schluessel, text] of Object.entries(BERICHT_SAETZE)) out.push({ wo: `Satz ${schluessel}`, text: ohnePlatz(text) });
+    for (const k of BERICHT_KENNZEICHEN) out.push({ wo: `Kennzeichen ${k.schluessel}`, text: ohnePlatz(k.muster) });
+    for (const fall of vektoren.cases) {
+      for (const p of fall.pruefungen) {
+        if (['kanonisch', 'csv_kopf', 'csv_zeile'].includes(p.regel)) continue;
+        for (const t of [p.ergebnis.kundensatz, p.ergebnis.text]) {
+          if (typeof t === 'string') out.push({ wo: `${fall.id} ${p.name}`, text: t });
+        }
+      }
+    }
+    return out;
+  };
+
+  it('liest wirklich die Sätze (der Wächter ist verdrahtet)', () => {
+    expect(saetze().length).toBeGreaterThan(80);
+  });
+
+  it('kein Bericht-Satz trägt ein verbotenes, internes oder Werkstatt-Wort', () => {
+    const violations: string[] = [];
+    for (const { wo, text } of saetze()) {
+      for (const { re, why } of [...FORBIDDEN, ...FORBIDDEN_INTERN, ...ERGEBNIS_INTERN]) {
+        const m = re.exec(ohneAusnahmen(text));
+        if (m) violations.push(`${wo}: „${m[0]}“ in „${text}“ — ${why}`);
+      }
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('kein Bericht spricht über sich von Version, Ausgabe, Snapshot, Report oder „Freigabe zurücknehmen“ (§4.15)', () => {
+    expect(saetze().filter(({ text }) => BERICHT_VERBOTEN.some((w) => text.includes(w))).map(({ wo, text }) => `${wo}: ${text}`)).toEqual([]);
+    // …und der Wächter beißt.
+    expect(BERICHT_VERBOTEN.some((w) => 'Snapshot vom 10.11.2026'.includes(w))).toBe(true);
+    expect(BERICHT_VERBOTEN.some((w) => 'Berichtsstand Nr. 2 (Revision)'.includes(w))).toBe(false);
+  });
+});
+
+/**
+ * UEMS AP-04 IP-5 — das Messstellen-Register („Unternehmen › Messstellen“, „Standort ›
+ * Messstellen“) spricht die vier Kundenwörter Messstelle · Quelle · führend · Vergleich.
+ * Sie stehen als Konstanten in `glossar.ts`; die Fläche baut ihre Spalten und Sätze daraus
+ * (`messstellen.ts`). Die Werkstatt-Wörter dafür (Primärquelle, Referenzquelle,
+ * Quellenbindung, „fuehrend“) stehen in `FORBIDDEN_INTERN` und gelten für jede
+ * Kundenfläche; hier wird zusätzlich jeder Satz des Registers gelesen — auch die, die erst
+ * zur Laufzeit entstehen (Leerzustände aus den Referenzantworten).
+ */
+describe('UEMS AP-04 IP-5 · das Messstellen-Register spricht Messstelle · Quelle · führend · Vergleich', () => {
+  const saetze = (): string[] => {
+    const basis = ahrenbergRegister();
+    const leer = leeresRegister();
+    const ebenen = [
+      { art: 'unternehmen' as const, name: 'Kunststoffwerk Ahrenberg GmbH' },
+      { art: 'standort' as const, id: 'st', name: 'Werk Lindach' },
+    ];
+    const laufzeit = ebenen.flatMap((ebene) =>
+      [true, false, null].flatMap((bereichDa) =>
+        [OHNE_FILTER, { ...OHNE_FILTER, ohneQuelle: true }, { ...OHNE_FILTER, zustand: 'angehalten' as const }].flatMap(
+          (filter) => messstellenLeer({ antwort: leer, basis, filter, ebene, bereichDa })?.satz ?? [],
+        ),
+      ),
+    );
+    return [
+      MESSSTELLEN_TITEL,
+      ...Object.values(SPALTEN),
+      ZUSTAND_HEUTE,
+      ...Object.values(FILTER),
+      VERGLEICHSQUELLE,
+      KEINE_DATENQUELLE,
+      BERECHNET_AUS,
+      KEIN_ORT,
+      FILTER_OHNE_TREFFER,
+      LADEFEHLER,
+      ...laufzeit,
+    ];
+  };
+
+  it('die Wörter kommen aus dem Glossar: „Quelle (führend)“, „Vergleichsquelle“, „Messstellen“', () => {
+    expect(SPALTEN.quelle).toBe(`${UEMS_QUELLE} (${UEMS_FUEHREND})`);
+    expect(VERGLEICHSQUELLE).toBe(`${UEMS_VERGLEICH}squelle`);
+    expect(MESSSTELLEN_TITEL).toBe(`${UEMS_MESSSTELLE}n`);
+    expect(FILTER.ohneQuelle).toContain(UEMS_QUELLE);
+  });
+
+  it('liest wirklich die Sätze — und kein Satz trägt ein verbotenes oder Werkstatt-Wort', () => {
+    const alle = saetze();
+    expect(alle.length).toBeGreaterThan(20);
+    expect(alle).toContain('Alle 17 gemessenen Messstellen haben eine Quelle.');
+    const violations = alle.flatMap((text) =>
+      [...FORBIDDEN, ...FORBIDDEN_INTERN].flatMap(({ re, why }) => (re.test(ohneAusnahmen(text)) ? [`„${text}“ — ${why}`] : [])),
+    );
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('die Fläche und ihr Modul stehen im Bestand des Wächters', () => {
+    const dateien = customerFiles().map((f) => f.slice(SRC.length + 1).replace(/\\/g, '/'));
+    expect(dateien).toContain('messstellen.ts');
+    expect(dateien).toContain('pages/MessstellenPage.tsx');
+    expect(dateien).toContain('components/EbenenTabs.tsx');
+  });
+
+  it('beißt wirklich: Primär-/Referenzquelle, Quellenbindung, „fuehrend“ — nicht die Kundenwörter', () => {
+    const beisst = (t: string) => FORBIDDEN_INTERN.some(({ re }) => re.test(t));
+    for (const falsch of ['Die Primärquelle von MS-06', 'Referenzquelle wählen', 'Quellenbindung beenden', 'fuehrend seit 12.03.2024', 'Meßstelle MS-01']) {
+      expect(beisst(falsch), falsch).toBe(true);
+    }
+    for (const richtig of ['Quelle (führend)', 'führend seit 18.11.2026 10:40 · davor Z-5a', '1 Vergleichsquelle', 'Keine Datenquelle', 'Messstellen']) {
+      expect(beisst(richtig), richtig).toBe(false);
+    }
+  });
+});
+
+/**
+ * UEMS AP-04 IP-14 — „Quelle binden“ und die Quelle-Karte sprechen dieselben Wörter wie das Register: Quelle ·
+ * führend · Vergleichsquelle. Nie „Quellenbindung“ (das Vertragswort der Werkstatt), nie „Primär-“ oder
+ * „Referenzquelle“. Gelesen werden die festen Sätze UND die, die die Fläche aus den Ahrenberg-Fixturen bildet —
+ * die Gründe der ausgegrauten Messwerte eingeschlossen, denn genau sie liest der Kunde am häufigsten.
+ */
+describe('UEMS AP-04 IP-14 · „Quelle binden“ spricht Quelle · führend · Vergleichsquelle (E3)', () => {
+  const saetze = (): string[] => {
+    const karten = QB.quelleKarte(quellenMs01(), QB_JETZT);
+    const gruende = QB.messwertZeilen(
+      kanaeleK3(),
+      { groesse: 'Wirkleistung', richtung: 'Bezug', einheit: 'kW', wertart: 'Momentanwert' },
+      { rolle: 'fuehrend', eigenesKennzeichen: 'MS-01', anteil: true },
+    );
+    return [
+      QB.QUELLE_TITEL,
+      QB.QUELLE_BINDEN,
+      QB.VERGLEICHSQUELLE,
+      QB.VERGLEICHSQUELLE_HINZUFUEGEN,
+      QB.ALS_MESSSTELLE_VERWENDEN,
+      QB.KEINE_DATENQUELLE,
+      QB.KEINE_VERGLEICHSQUELLE,
+      QB.OHNE_BEWERTUNG,
+      QB.HISTORIE,
+      QB.WAS_GESCHIEHT,
+      QB.LUECKE,
+      ...Object.values(QB.PFLICHT),
+      ...Object.values(QB.TITEL),
+      ...Object.values(QB.KNOPF),
+      ...QB.ZWECKE,
+      ...Object.values(QB.ZWECK_SUB),
+      QB.keinZielSatz([], 'Ladestand'),
+      ...karten.flatMap((k) => [
+        k.titel,
+        ...k.werte.flatMap((w) => [w.rolle, w.quelle, w.zeitraum, w.anteil, w.ohneWert]),
+        ...k.historie.flatMap((h) => [h.wert, h.zeitraum, h.marke]),
+        k.leerFuehrend,
+        k.leerVergleich,
+      ]),
+      ...gruende.map((g) => g.grund),
+      QB.folgenSatz({
+        rolle: 'vergleich',
+        kennzeichen: 'MS-01',
+        zeitpunkt: QB_JETZT,
+        jetzt: QB_JETZT,
+        komponente: 'Netzzähler Halle 1',
+        messwert: 'Wirkleistung',
+        zweck: 'Plausibilität',
+        anteil: 'positiv',
+        richtung: 'Bezug',
+        rueckwirkendAbzeichen: null,
+      }),
+    ].filter((x): x is string => typeof x === 'string' && x.length > 0);
+  };
+
+  it('die Wörter kommen aus dem Glossar', () => {
+    expect(QB.QUELLE_TITEL).toBe(UEMS_QUELLE);
+    expect(QB.QUELLE_BINDEN).toBe(`${UEMS_QUELLE} binden`);
+    expect(QB.VERGLEICHSQUELLE).toBe(`${UEMS_VERGLEICH}squelle`);
+    expect(QB.ALS_MESSSTELLE_VERWENDEN).toBe(`Als ${UEMS_MESSSTELLE} verwenden`);
+    expect(QB.quelleKarte(quellenMs01(), QB_JETZT)[1].werte[0].rolle).toBe(UEMS_FUEHREND);
+  });
+
+  it('liest wirklich die Sätze — und kein Satz trägt ein verbotenes oder Werkstatt-Wort', () => {
+    const alle = saetze();
+    expect(alle.length).toBeGreaterThan(40);
+    expect(alle).toContain('Beide Werte stehen nebeneinander; keiner ersetzt den anderen. Liefern beide eine Monatsmenge, steht darunter die Abweichung gegen Ihre Toleranz — ohne Ursache.');
+    const violations = alle.flatMap((text) =>
+      [...FORBIDDEN, ...FORBIDDEN_INTERN].flatMap(({ re, why }) => (re.test(ohneAusnahmen(text)) ? [`„${text}“ — ${why}`] : [])),
+    );
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('die Fläche und ihr Modul stehen im Bestand des Wächters', () => {
+    const dateien = customerFiles().map((f) => f.slice(SRC.length + 1).replace(/\\/g, '/'));
+    expect(dateien).toContain('quelleBinden.ts');
+    expect(dateien).toContain('components/QuelleKarte.tsx');
+    expect(dateien).toContain('components/QuelleBindenDialog.tsx');
+  });
+
+  it('E3: keine Fläche der Quelle bewertet — kein Delta, keine Ampel, kein stiller Ersatz', () => {
+    // AP-16 IP-18: der EINE Brückensatz über der Befund-Zeile nennt sie (Abweichung gegen die Toleranz des Kunden,
+    // G5) — er trägt selbst keine Zahl, verneint den Ersatz und sagt „ohne Ursache“. Alle übrigen Sätze bleiben frei.
+    expect(QB.OHNE_BEWERTUNG).toMatch(/keiner ersetzt den anderen.*ohne Ursache\.$/);
+    expect(QB.OHNE_BEWERTUNG).not.toMatch(/[0-9%]|Ampel|plausibel|Delta/);
+    const alle = saetze().map((s) => s.replace(QB.OHNE_BEWERTUNG, '')).join(' | ');
+    for (const verboten of ['Abweichung', 'Ampel', 'plausibel', 'Toleranz', 'ersetzt', 'Delta']) {
+      expect(alle, verboten).not.toContain(verboten);
+    }
+  });
+});
+
+/**
+ * UEMS AP-11 IP-13 — die Welt „Kennzahlen“ spricht die Wörter von §4.13 (E12 = A): „Kennzahl“ gehört nur dem neuen
+ * Objekt, „Berechnung“/„Fassung“ der Rechnung, „Version“ dem Wert; in der Kundensicht nie KPI, Metrik, Kenngröße,
+ * Dashboard, Widget, Template — und auf einer Kennzahl-Fläche nie Durchschnitt oder Mittel (Q5). Gelesen werden die
+ * Quelltexte der Flächen UND die Sätze, die sie zur Laufzeit aus den Vektor-Fixtures bilden.
+ */
+describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Berechnung · Fassung · Version (§4.13)', () => {
+  const FLAECHEN = [
+    'kennzahlKarte.ts',
+    'kennzahlAnlegen.ts',
+    'kennzahlAendern.ts',
+    'pages/KennzahlenPage.tsx',
+    // AP-13 IP-7: die Listen-Karte und ihr Lade-Hook (von der Seite und vom Baustein „Kennzahlen“ der Übersicht geteilt).
+    'components/KennzahlListe.tsx',
+    // Konzept Auswerten a1 (PR1): die Liste mit Urteil, Gruppen und Mini-Grafiken - ihr reines Modell, ihre Bausteine,
+    // ihre Bühnen-Welt und die geteilten Urteils-Wörter.
+    'kennzahlListe.ts',
+    'components/KennzahlenAuswertung.tsx',
+    'test/kennzahlListeFixtures.ts',
+    'bezugsbasisUrteil.ts',
+    'pages/KennzahlSeite.tsx',
+    // Konzept Auswerten a1 (PR2): die Seite einer Kennzahl ohne Reiter, ihre Bezugsbasis eine Ebene tiefer, ihr reines
+    // Modell und ihre Bühnen-Welt.
+    'kennzahlSeite.ts',
+    'test/kennzahlSeiteFixtures.ts',
+    'pages/BezugsbasisEbene.tsx',
+    'bezugsbasisEbene.ts',
+    'components/KennzahlAnlegenDialog.tsx',
+    'components/KennzahlStammdatenDialog.tsx',
+    // AP-17 IP-20: der Reiter „Vergleich mit Bezugsbasis“ an der Kennzahl (eine Welt) und seine Leser-Antworten der Bühne.
+    'bezugsbasisVergleich.ts',
+    'test/bezugsbasisVergleichFixtures.ts',
+    // AP-17 IP-9: der Reiter „Bezugsbasis“ an der Kennzahl und sein Assistent sind Kennzahl-Flächen (eine Welt).
+    'bezugsbasisAnlegen.ts',
+    'components/BezugsbasisReiter.tsx',
+    'components/BezugsbasisAssistent.tsx',
+    // AP-17 IP-14: die Modell-Ansicht einer Fassung (im Reiter und im Schritt „Vorschau“) und ihre Grafik.
+    'bezugsbasisModell.ts',
+    'components/BezugsbasisModell.tsx',
+    'components/BezugsbasisModellGrafik.tsx',
+    // AP-17 IP-18: Fassungen, Anstoß, neue Fassung, Faktoren im selben Reiter (eine Welt).
+    'bezugsbasisFassungen.ts',
+    'components/BezugsbasisFassungen.tsx',
+  ];
+  const verboten = (woerter: string[]) => new RegExp(`(^|[^\\p{L}])(${woerter.join('|')})([^\\p{L}]|$)`, 'u');
+  const KUNDENSICHT_VERBOTEN = verboten(['KPI', 'Metrik', 'Kenngröße', 'Kenngrößen', 'Dashboard', 'Widget', 'Template']);
+  const MITTEL_VERBOTEN = verboten(['Durchschnitt', 'Durchschnitte', 'Mittel', 'Mittelwert', 'Mittelwerte']);
+  const ROLLEN_VERBOTEN = verboten(['Zähler', 'Nenner', 'Dividend', 'Divisor']);
+  const da = (t: string | null | undefined): t is string => typeof t === 'string';
+
+  const laufzeit = (): string[] => {
+    const jetzt = Date.parse('2026-12-03T09:00:00+01:00');
+    const out: string[] = [];
+    for (const k of kennzahlenDerWelt()) {
+      const art = k.grundperiode!;
+      const { von, bis } = KK.anfrage(art, '2026-12-03', KK.ANZAHL_VERLAUF[art]);
+      const antwort = kennzahlWerteAntwort(k.id, art, von, bis, jetzt);
+      const fassungen = kennzahlFassungen(k.id);
+      const kopf = KK.kopf(k);
+      out.push(kopf.titel, kopf.unter, ...KK.stammdaten(k).flatMap((s) => [s.name, s.wert]));
+      const b = KK.berechnung(k, fassungen, 'Europe/Berlin');
+      if (b) out.push(b.satz, b.wer);
+      const karte = KK.listenKarte(k, { art: 'geladen', antwort });
+      out.push(...[karte.zahl, karte.zustand, karte.periode, karte.unter].filter(da));
+      for (const w of antwort.werte) {
+        const wk = KK.wertKarte(antwort, w, KK.eingaengeDer(fassungen, w));
+        out.push(wk.karte.titel, wk.karte.zahl, ...[wk.karte.zustand, wk.karte.abdeckung, wk.karte.fassung, wk.grund].filter(da));
+        const h = KK.herkunftAnzeige(antwort, w);
+        if (h) out.push(...[h.eingaenge, h.gebildet, h.fehlt].filter(da), ...h.paare);
+      }
+      for (const balken of KK.verlauf(antwort)) out.push(balken.kurz, balken.titel);
+    }
+    const h = KK.kennzahlHistorie(kennzahlWertVersionenAntwort(KENNZAHL_IDS.kz1, 'monat', '2026-10-01', jetzt));
+    for (const v of h.versionen) {
+      out.push(v.titel, ...[v.etikett, v.vorher?.zahl, v.danach.zahl, v.danach.info, v.gebildet, v.ohneEntscheidung].filter(da));
+      for (const e of v.entscheidungen) out.push(e.vorgang, ...[e.fassung?.wer, e.fassung?.warum, e.angelegt?.wer].filter(da));
+    }
+    out.push(
+      KK.TITEL, KK.LADEN, KK.WERTE_FEHLER, KK.LEER, KK.NICHT_GEFUNDEN, KK.ZUR_LISTE, KK.ARCHIVIERT,
+      KK.AUSSERHALB_ZUGRIFF, KK.KARTE_VERLAUF, KK.KARTE_HERKUNFT, KK.KARTE_BERECHNUNG, KK.KARTE_STAMMDATEN, KK.FASSUNGEN_TITEL,
+      KK.PERIODE_WAHL, KK.OHNE_ZWECK, KK.SEIT_BEGINN, KK.HERKUNFT_FEHLT,
+      ...Object.values(KK.PERIODEN_NAME), ...Object.values(KK.GELTUNG_WORT), ...Object.values(KK.FEHLT_WORT),
+    );
+    return out;
+  };
+
+  /** Die sichtbaren Texte der Flächen selbst (Quelltext, ohne Kommentare und Code). */
+  const flaechenTexte = (): Array<{ wo: string; text: string }> =>
+    FLAECHEN.flatMap((rel) => visibleTexts(readFileSync(join(SRC, rel), 'utf8')).map((text) => ({ wo: rel, text })));
+
+  it('liest wirklich die Sätze (der Wächter ist verdrahtet)', () => {
+    const alle = laufzeit();
+    expect(alle.length).toBeGreaterThan(150);
+    expect(alle).toContain('Menge je Bezugsgröße · Montage Linie M1 (MS-12) je Gutteile Montage Halle 2 (BZ-6) · Fassung 1 gilt seit Beginn');
+    expect(alle).toContain('Für November 2026 fehlt der Wert der Bezugsgröße BZ-6 Gutteile Montage Halle 2.');
+    expect(flaechenTexte().length).toBeGreaterThan(5);
+  });
+
+  it('kein Satz der Welt trägt ein verbotenes oder Werkstatt-Wort', () => {
+    const violations = [...laufzeit(), ...flaechenTexte().map((t) => t.text)].flatMap((text) =>
+      [...FORBIDDEN, ...FORBIDDEN_INTERN].flatMap(({ re, why }) => (re.test(ohneAusnahmen(text)) ? [`„${text}“ — ${why}`] : [])),
+    );
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('in der ganzen Kundensicht nie KPI, Metrik, Kenngröße, Dashboard, Widget oder Template', () => {
+    const violations: string[] = [];
+    for (const file of customerFiles()) {
+      const rel = file.slice(SRC.length + 1).replace(/\\/g, '/');
+      // Der Vertrags-Zwilling trägt die Liste der verbotenen Wörter selbst (`VERBOTENE_WOERTER`) — sie ist kein Kundensatz.
+      if (rel === 'uemsKennzahl.ts') continue;
+      // Suchwörter der Hilfe sind keine Kundensätze (derselbe Schnitt wie im Werkstatt-Wächter oben).
+      for (const text of visibleTexts(readFileSync(file, 'utf8').replace(HILFE_SUCHWOERTER, ' '))) {
+        if (isKundentext(text) && KUNDENSICHT_VERBOTEN.test(text)) violations.push(`${rel}: „${text.trim().slice(0, 80)}“`);
+      }
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('auf den Kennzahl-Flächen nie Durchschnitt oder Mittel (Q5) — und nie Zähler oder Nenner als Rolle', () => {
+    const texte = [...laufzeit(), ...flaechenTexte().map((t) => t.text)];
+    expect(texte.filter((t) => MITTEL_VERBOTEN.test(t))).toEqual([]);
+    expect(texte.filter((t) => ROLLEN_VERBOTEN.test(t))).toEqual([]);
+  });
+
+  it('Konzept Auswerten a1 (Wörter): Seite einer Kennzahl und Bezugsbasis sprechen ohne „Roh“, „Urteil (Band)“ und K1-K8', () => {
+    // §8.3: „Roh · Urteil (Band)“ wird „ggü. Vormonat“ und „Urteil“; Kriterien heißen in Worten, nie K1 bis K8 (§10.10).
+    const auswerten = ['kennzahlSeite.ts', 'pages/KennzahlSeite.tsx', 'bezugsbasisEbene.ts', 'pages/BezugsbasisEbene.tsx', 'bezugsbasisVergleich.ts', 'kennzahlListe.ts', 'components/KennzahlenAuswertung.tsx'];
+    const verbotenAuswerten = /(^|[^\p{L}])(Roh|K[1-8])([^\p{L}\p{N}]|$)|Urteil \(Band\)/u;
+    const treffer = auswerten.flatMap((rel) =>
+      // Jede sichtbare Zeichenkette, auch ein einzelnes Wort („Roh“ ist kurz genug, um den Kundentext-Filter zu umgehen).
+      visibleTexts(readFileSync(join(SRC, rel), 'utf8')).filter((t) => verbotenAuswerten.test(t)).map((t) => `${rel}: ${t}`),
+    );
+    expect(treffer).toEqual([]);
+  });
+
+  it('„Kennzahl“ steht nur auf Kennzahl-Flächen und in der Navigation', () => {
+    // Die Wörter-Quellen (Glossar, Vertrags-Zwilling) und die Navigation dürfen es; jede ANDERE Kundenfläche nicht.
+    // `glossarEinstieg.ts` ist das Glossar des ersten Bilds (dieselben Wörter, von `glossar.ts` weitergereicht).
+    const erlaubt = new Set([...FLAECHEN, 'nav.ts', 'ebenenNav.ts', 'glossar.ts', 'glossarEinstieg.ts', 'uemsKennzahl.ts', 'test/kennzahlWerteFixtures.ts', 'test/kennzahlAendernFixtures.ts', 'test/korrekturFixtures.ts']);
+    const treffer = new Set<string>();
+    for (const file of customerFiles()) {
+      const rel = file.slice(SRC.length + 1).replace(/\\/g, '/');
+      if (erlaubt.has(rel)) continue;
+      const texte = visibleTexts(readFileSync(file, 'utf8')).filter((t) => isKundentext(t) && /Kennzahl/.test(t));
+      if (texte.length > 0) treffer.add(rel);
+    }
+    expect([...treffer].sort()).toEqual(KENNZAHL_BESTAND);
+  });
+
+  it('„Leitkennzahl“ ist ein Glossarbegriff und kommt aus dem Glossar, nicht als freier Literal (Review R2 §B1)', () => {
+    // Der Begriff ist registriert (glossar.ts; `glossar.md` wird aus fachmodell.py erzeugt und trägt ihn).
+    expect(UEMS_LEITKENNZAHL).toBe('Leitkennzahl');
+    // Der Leersatz der Kachel wird aus dem Glossarwort gebildet, nicht getrennt getippt.
+    expect(UEMS_LEITKENNZAHL_OHNE_ZIEL_SATZ).toContain(UEMS_LEITKENNZAHL);
+    // Die Kachelraster-Fläche zieht den Satz aus dem Glossar statt ihn hart zu verdrahten.
+    const raster = readFileSync(join(SRC, 'components/PortfolioKacheln.tsx'), 'utf8');
+    expect(raster).toContain('UEMS_LEITKENNZAHL_OHNE_ZIEL_SATZ');
+    expect(raster).not.toContain('Noch keine Leitkennzahl gegen ein Ziel');
+  });
+
+  it('die Wörter kommen aus dem Glossar: „Kennzahlen“, „Berechnung“, „Menge je Bezugsgröße“', () => {
+    expect(KK.TITEL).toBe(UEMS_KENNZAHLEN);
+    expect(KK.KARTE_BERECHNUNG).toBe(UEMS_BERECHNUNG);
+    expect(UEMS_RECHENFORM.quotient).toBe(`${UEMS_MENGE} je ${UEMS_BEZUGSGROESSE}`);
+    expect(UEMS_RECHENFORM).toEqual({ quotient: 'Menge je Bezugsgröße', anteil: 'Teil an Ganzem', zusammenfassung: 'Kennzahlen zusammenfassen' });
+  });
+
+  it('die Flächen und ihr Modul stehen im Bestand des Wächters', () => {
+    const dateien = customerFiles().map((f) => f.slice(SRC.length + 1).replace(/\\/g, '/'));
+    for (const rel of FLAECHEN) expect(dateien).toContain(rel);
+  });
+
+  /**
+   * Fix vp-kennzahl-undefined: eine Bezugsbasis kann angelegt sein, ohne schon eine erste Fassung zu tragen (B1) -
+   * `freigabe_status` kommt dann vom Server als `null`. Die Liste „Kennzahlen“ darf das NIE als wörtliches
+   * „undefined“/„null“ neben dem Kennzeichen zeigen (IP-8-Grundsatz: kein Wert ist eine erfundene Null).
+   */
+  it('eine Bezugsbasis ohne Fassung spricht „ohne Fassung“, nie ein wörtliches undefined/null', () => {
+    const kz21 = referenzListe().find((k) => k.kennzeichen === 'KZ-0021') as Kennzahl;
+    const ohneFassung: Kennzahl = { ...kz21, bezugsbasis: { kennzeichen: 'BB-0006', fassung: null, freigabe_status: null, vorlaeufig: false } };
+    const reihe = KL.reiheOhneBasis(ohneFassung);
+    expect(reihe.bezugsbasis).toBe('BB-0006 ohne Fassung');
+  });
+
+  it('Copy-Wächter: kein sichtbarer Text der Liste „Kennzahlen“ trägt je ein undefined/null', () => {
+    const kz21 = referenzListe().find((k) => k.kennzeichen === 'KZ-0021') as Kennzahl;
+    const ohneFassung: Kennzahl = {
+      ...kz21,
+      id: 'c0de0000-0000-4000-8000-00000000a900',
+      kennzeichen: 'KZ-0900',
+      bezugsbasis: { kennzeichen: 'BB-0006', fassung: null, freigabe_status: null, vorlaeufig: false },
+      // Zum Beobachten (wie BB-0006/BB-0007 im Fehlerbild): kein Urteil, darum ohne `vergleich`.
+      auswertung: { ...(kz21.auswertung as KennzahlAuswertung), vergleich: null },
+    };
+    const liste = KL.kennzahlenListe([...referenzListe(), ohneFassung]);
+    expect(liste.ohne.map((k) => k.kennzeichen)).toContain('KZ-0900');
+    const texte = [...liste.mit, ...liste.ohne].flatMap((k) => Object.values(k)).filter((v): v is string => typeof v === 'string');
+    const treffer = texte.filter((t) => /\b(null|undefined)\b/.test(t));
+    expect(treffer).toEqual([]);
+  });
+
+  /**
+   * AP-11 IP-10: der Vorlagen-Katalog ist ein Kundentext-Wohnort (die Karten des Assistenten: Name, Zweck, Hilfesatz und
+   * der Satz jeder Erwartung) — er liegt als JSON und wird vom Datei-Walker nicht erfasst. `_comment` ist Entwickler-Doku.
+   */
+  it('die Kennzahl-Vorlagen sprechen dasselbe Wörterbuch (§4.13)', () => {
+    const katalog = JSON.parse(readFileSync(join(SRC, 'kennzahlen/kennzahl-vorlagen.json'), 'utf8')) as {
+      vorlagen: { kennung: string; name_vorschlag: string; zweck_vorschlag: string; hilfesatz: string; zaehler_erwartung: { satz: string }; nenner_erwartung: { satz: string } }[];
+    };
+    expect(katalog.vorlagen.length).toBe(10);
+    const texte = katalog.vorlagen.flatMap((v) =>
+      [v.name_vorschlag, v.zweck_vorschlag, v.hilfesatz, v.zaehler_erwartung.satz, v.nenner_erwartung.satz].map((text) => ({
+        wo: v.kennung,
+        text: text.split('{Geltungsbereich}').join('Halle 2'),
+      })),
+    );
+    const violations: string[] = [];
+    for (const { wo, text } of texte) {
+      for (const { re, why } of [...FORBIDDEN, ...FORBIDDEN_INTERN]) {
+        if (re.test(ohneAusnahmen(text))) violations.push(`${wo}: „${text}“ — ${why}`);
+      }
+      for (const re of [KUNDENSICHT_VERBOTEN, MITTEL_VERBOTEN, ROLLEN_VERBOTEN]) {
+        if (re.test(text)) violations.push(`${wo}: „${text}“ — §4.13`);
+      }
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('beißt wirklich — und nicht die Kundenwörter', () => {
+    for (const falsch of ['KPI Halle 2', 'Kenngröße anlegen', 'Durchschnitt je Stück', 'Mittelwert der Gebäude', 'Zähler je Nenner']) {
+      expect([KUNDENSICHT_VERBOTEN, MITTEL_VERBOTEN, ROLLEN_VERBOTEN].some((re) => re.test(falsch)), falsch).toBe(true);
+    }
+    for (const richtig of ['Kennzahlen zusammenfassen', 'gewichtet (Summe ÷ Summe)', 'Mittelspannung', 'Zählerstand', 'Menge je Bezugsgröße']) {
+      expect([KUNDENSICHT_VERBOTEN, MITTEL_VERBOTEN, ROLLEN_VERBOTEN].some((re) => re.test(richtig)), richtig).toBe(false);
+    }
+  });
+});
+
+/**
+ * UEMS AP-12 IP-13 — die Welt „Berichte“ spricht die Wörter von §4.15 (E14 = A): Bericht · Berichtsvorlage · Entwurf ·
+ * Berichtsstand Nr. n · Revision · Datenstand · Quellenverzeichnis. Ein freigegebener Stand ist nie „Version“,
+ * „Ausgabe“, „Snapshot“ oder „Report“ („Version“ gehört dem Wert); „Entwurf“ steht unqualifiziert nur in dieser Welt,
+ * anderswo heißt der Entwurf eines Berichts „Berichtsentwurf“ (W7). Gelesen werden die Quelltexte der Flächen UND die
+ * Sätze, die sie zur Laufzeit aus den Vektor-Fixtures bilden (B1 Nr. 1/Nr. 2, B10, B16).
+ */
+describe('UEMS AP-12 IP-13 · die Welt „Berichte“ spricht Bericht · Entwurf · Berichtsstand Nr. n · Datenstand (E14)', () => {
+  // AP-12 IP-14: die Dialoge Anlegen, Freigeben, Vergleich und Verwerfen gehören zur Welt.
+  const FLAECHEN = [
+    'berichtSeite.ts',
+    'pages/BerichtePage.tsx',
+    'pages/BerichtSeite.tsx',
+    'berichtDialoge.ts',
+    'components/BerichtAnlegenDialog.tsx',
+    'components/BerichtFreigebenDialog.tsx',
+    // Der Vergleich bleibt der Dialog der energetischen Bewertung (BewertungStand); die Berichte selbst vergleichen in der Karte.
+    'components/BerichtVergleichDialog.tsx',
+    // Konzept Nachweisen n1, Runde 2 (§6.4): Liste, Seite und Blätter der Berichte in Nachweisen.
+    'nachweisBerichte.ts',
+    'components/nachweisen/BerichteListe.tsx',
+    'components/nachweisen/BerichtBlaetter.tsx',
+  ];
+  const VERSION_AM_STAND = /(Berichtsstand|Bericht)\s+Version|Version\s+(des|eines)\s+Berichts?|Berichtsversion/u;
+  const da = (t: string | null | undefined): t is string => typeof t === 'string';
+
+  const laufzeit = (): string[] => {
+    const out: string[] = [];
+    const tage = ['2026-11-10T09:00:00+01:00', '2026-11-13T09:00:00+01:00', '2026-11-20T09:00:00+01:00', '2026-12-03T09:00:00+01:00'];
+    for (const tag of tage) {
+      const jetzt = Date.parse(tag);
+      const detail = detailAm(jetzt);
+      const karte = BS.listenKarte(berichtAm(jetzt));
+      out.push(karte.kennung, karte.titel, karte.unter, ...[karte.stand, karte.archiviert].filter(da));
+      out.push(...BS.standWahl(detail).optionen.map((o) => o.label));
+      const ansichten: BS.Ansicht[] = [
+        { art: 'entwurf', entwurf: entwurfAm(jetzt) },
+        ...detail.staende.map((s): BS.Ansicht => ({ art: 'stand', stand: standAm(s.nr, jetzt) })),
+      ];
+      for (const a of ansichten) {
+        const k = BS.seitenKopf(detail, a, jetzt);
+        out.push(k.titel, k.vorlage, k.zeile, ...k.abzeichen.map((x) => x.text), ...[k.teilansicht].filter(da));
+        const abzug = BS.abzugAus(a.art === 'stand' ? a.stand.abzug : a.entwurf.abzug);
+        const heuteName = (kz: string) => nameHeuteAm(jetzt, kz, null);
+        for (const teil of BS.abschnitte(abzug, heuteName).abschnitte) {
+          out.push(teil.titel);
+          if (teil.art === 'kopf' || teil.art === 'qualitaet') out.push(...teil.zeilen.flatMap((z) => [z.name, z.wert]));
+          if (teil.art === 'kopf') out.push(teil.anzahl);
+          if (teil.art === 'qualitaet') out.push(...teil.korrekturen);
+          if (teil.art === 'zusammenfassung') out.push(...teil.kacheln.flatMap((z) => [z.name, z.wert]), ...[teil.zaehlung].filter(da));
+          if (teil.art === 'messstellen') out.push(...teil.vergleiche);
+          if (teil.art === 'kennzahlen') out.push(...[teil.leer].filter(da));
+          if (teil.art === 'tagesverlauf') {
+            out.push(...[teil.leer].filter(da));
+            for (const z of teil.zeilen) {
+              out.push(z.name, ...[z.leer].filter(da));
+              out.push(...z.tage.flatMap((t) => [t.label, t.mengeText, t.zustand]));
+            }
+          }
+          if (teil.art === 'messstellen' || teil.art === 'kennzahlen') {
+            for (const z of teil.zeilen) {
+              out.push(z.name, z.zahl, z.zustand, z.version, ...z.kennzeichenSaetze, ...z.nachweis.herkunft, ...[z.heute].filter(da));
+              out.push(z.nachweis.karte.titel, ...[z.nachweis.karte.fassung, z.nachweis.karte.abdeckung].filter(da));
+            }
+          }
+          if (teil.art === 'quellen') out.push(teil.anzahl, ...teil.zeilen.flatMap((q) => [q.name, q.stand, q.heute].filter(da)));
+        }
+        if (a.art === 'stand') {
+          const b = berichtAm(jetzt);
+          out.push(BS.heutigerWert({ antwort: heutigeWerteAm('MS-12', jetzt) }, b, a.stand).text);
+        }
+      }
+      for (const v of BS.verlaufDerStaende(detail)) out.push(v.titel, v.zeile, ...[v.anlass, v.ersetzt].filter(da), ...v.anstoesse);
+      // Konzept Nachweisen n1 (PR 3): was die Liste, die Seite und die Blätter der Berichte heute zeigen (Review r1, P3-9:
+      // geprüft wurden sonst nur die alten Ausgaben von `berichtSeite.ts`).
+      const bild = NB.berichteBild([berichtAm(jetzt)]);
+      for (const z of [...bild.wartet, ...bild.gelten, ...bild.abgeloest, ...bild.archiviert]) out.push(z.titel, z.stand, ...[z.unter, z.verb].filter(da));
+      const status = NB.seitenStatus(detail, null);
+      out.push(status.text, ...[status.sub].filter(da));
+      out.push(...NB.stufen(detail).flatMap((x) => [x.titel, x.datum].filter(da)));
+      out.push(...NB.korrekturZeilen(detail.anstoesse, 'Europe/Berlin').flatMap((z) => [z.etikett, z.wert]));
+      const grund = NB.aenderungsGruende(NB.offeneAnstoesse(detail), entwurfAm(jetzt).abzug as Record<string, unknown>, 'Europe/Berlin');
+      if (grund) out.push(grund.kurz, grund.titel, ...grund.zeilen.flatMap((z) => [z.etikett, z.wert]));
+      for (const s of detail.staende) {
+        out.push(NB.jaAntwort(s.nr + 1), NB.neinAntwort(s.nr));
+        for (const w of NB.entscheidWerte(standAm(s.nr, jetzt), entwurfAm(jetzt))) out.push(w.name, ...[w.alt, w.neu, w.einheit].filter(da));
+      }
+    }
+    const spaet = Date.parse('2036-11-02T10:00:00+01:00');
+    try {
+      heutigeWerteAm('MS-12', spaet);
+    } catch (fehler) {
+      out.push(BS.heutigerWert({ fehler }, berichtAm(spaet), standAm(1, spaet)).text);
+    }
+    out.push(
+      BS.TITEL, BS.LADEN, BS.LADEFEHLER, BS.LADEFEHLER_SEITE, BS.LADEFEHLER_STAND, BS.LEER, BS.NICHT_GEFUNDEN, BS.ZUR_LISTE,
+      BS.ARCHIVIERT, BS.STAND_WAHL, BS.KEIN_STAND, BS.NEU_GEBILDET, BS.PRUEFSUMME_GEPRUEFT, BS.VERLAUF_TITEL, BS.NACHWEIS,
+      BS.HEUTIGEN_WERT, BS.HEUTIGER_WERT_LAEDT, BS.HEUTIGER_WERT_FEHLER, BS.KEINE_KENNZAHLEN,
+      BS.KEIN_TAGESVERLAUF, BS.RICHTUNGSPAAR_FEHLT, ...Object.values(BS.MENGE_ART_WORT),
+      ...BS.ZUSAMMENFASSUNG.map(([, name]) => name), ...Object.values(BS.VERGLEICH_WORT), ...Object.values(BS.GELTUNG_WORT),
+      ...Object.values(BS.KOPF_WORT), ...Object.values(BS.QUALITAET_WORT),
+    );
+    return out;
+  };
+
+  const flaechenTexte = (): Array<{ wo: string; text: string }> =>
+    FLAECHEN.flatMap((rel) => visibleTexts(readFileSync(join(SRC, rel), 'utf8')).map((text) => ({ wo: rel, text })));
+
+  it('liest wirklich die Sätze (der Wächter ist verdrahtet)', () => {
+    const alle = laufzeit();
+    expect(alle.length).toBeGreaterThan(300);
+    // Die Ausgaben von Nachweisen (PR 3) stehen mit darin.
+    expect(alle).toContain('Daten geändert');
+    expect(alle).toContain('Nein, Stand 1 behalten');
+    expect(alle).toContain('Datenstand 10.11.2026 08:55 (MEZ) · Berichtsstand Nr. 1 · freigegeben 10.11.2026 09:02 von Ines Kaltenbach');
+    expect(alle).toContain('Revision nötig — Korrektur K-2026-0007');
+    expect(alle).toContain('heute: Montage Linie M1 (Halle 2)');
+    expect(alle).toContain('Tagesverlauf je Messstelle');
+    expect(alle).toContain('In diesem Berichtsstand sind keine Tageswerte gespeichert.');
+    expect(alle).toContain('Laden');
+    expect(alle).toContain('Entladen');
+    expect(alle).toContain('Der Wert vom Oktober 2026 wird nicht mehr gespeichert (Aufbewahrung 10 Jahre). Der Berichtsstand Nr. 1 vom 10.11.2026 hält ihn fest.');
+    expect(flaechenTexte().length).toBeGreaterThan(3);
+  });
+
+  it('kein Satz der Welt trägt ein verbotenes oder Werkstatt-Wort', () => {
+    const violations = [...laufzeit(), ...flaechenTexte().map((t) => t.text)].flatMap((text) =>
+      [...FORBIDDEN, ...FORBIDDEN_INTERN].flatMap(({ re, why }) => (re.test(ohneAusnahmen(text)) ? [`„${text}“ — ${why}`] : [])),
+    );
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('ein Berichtsstand ist nie „Version“, „Ausgabe“, „Snapshot“ oder „Report“ (§4.15, `VERBOTENE_WOERTER` des Vertrags)', () => {
+    const texte = [...laufzeit(), ...flaechenTexte().map((t) => t.text)];
+    expect(texte.filter((t) => BERICHT_VERBOTEN.some((w) => t.includes(w)))).toEqual([]);
+    expect(texte.filter((t) => VERSION_AM_STAND.test(t))).toEqual([]);
+  });
+
+  it('„Entwurf“ steht unqualifiziert nur in dieser Welt — anderswo heißt der Entwurf eines Berichts „Berichtsentwurf“ (W7)', () => {
+    const violations: string[] = [];
+    for (const file of customerFiles()) {
+      const rel = file.slice(SRC.length + 1).replace(/\\/g, '/');
+      if (FLAECHEN.includes(rel) || rel === 'uemsBericht.ts' || rel === 'glossar.ts') continue;
+      for (const text of visibleTexts(readFileSync(file, 'utf8'))) {
+        if (isKundentext(text) && /Bericht/u.test(text) && /(^|[^\p{L}])Entwurf/u.test(text)) violations.push(`${rel}: „${text.trim().slice(0, 80)}“`);
+      }
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('die Wörter kommen aus dem Glossar: Berichte, Berichtsstand, Entwurf, Datenstand, Prüfsumme, Quellenverzeichnis', () => {
+    expect(BS.TITEL).toBe(UEMS_BERICHTE);
+    expect(BS.STAND_WAHL).toBe(UEMS_BERICHTSSTAND);
+    expect(BS.KEIN_STAND).toContain(UEMS_BERICHTSSTAND);
+    expect(BS.PRUEFSUMME_GEPRUEFT).toContain(UEMS_PRUEFSUMME);
+    expect(BS.KOPF_WORT.datenstand).toBe(UEMS_DATENSTAND);
+    expect(BS.standWahl(detailAm(Date.parse('2026-11-20T09:00:00+01:00'))).optionen.at(-1)?.label).toBe(UEMS_ENTWURF);
+    const quellen = BS.abschnitte(BS.abzugAus(standAm(1, Date.parse('2026-11-20T09:00:00+01:00')).abzug)).abschnitte.find((a) => a.art === 'quellen');
+    expect(quellen?.titel).toBe(UEMS_QUELLENVERZEICHNIS);
+  });
+
+  it('die Flächen und ihr Modul stehen im Bestand des Wächters', () => {
+    const dateien = customerFiles().map((f) => f.slice(SRC.length + 1).replace(/\\/g, '/'));
+    for (const rel of FLAECHEN) expect(dateien).toContain(rel);
+  });
+
+  it('beißt wirklich — und nicht die Kundenwörter', () => {
+    for (const falsch of ['Version des Berichts', 'Berichtsstand Version 2', 'Berichtsversion 1']) expect(VERSION_AM_STAND.test(falsch), falsch).toBe(true);
+    for (const richtig of ['Berichtsstand Nr. 2', 'Version 2 · endgültig ab 08.11.2026', 'korrigiert (Version 2)']) expect(VERSION_AM_STAND.test(richtig), richtig).toBe(false);
+  });
+});
+
+/**
+ * Kundenflächen, die „Kennzahl“ HEUTE schon außerhalb der Welt sagen — benannt, damit jede neue Stelle rot wird.
+ * Wer eine davon umbenennt (IP-14: „3 · Kennzahl“ der Eigenen Auswertung wird „3 · Zeitbezug“), streicht sie hier.
+ */
+// Sortiert wie der Vergleich. „alt“ = das ALTE Wort (AP-11 W7, Kachel oder Aggregat — umzubenennen, die Eigene
+// Auswertung mit IP-14); „neu“ = das NEUE Objekt, von einer Nachbarfläche aus genannt.
+const KENNZAHL_BESTAND: string[] = [
+  'abweichungen.ts', // neu: eine Abweichung zitiert genau eine Kennzahl (AP-18 IP-18, A3; Spalte, Filter, Ablehnungen)
+  'begriffe.ts', // neu: „Was ist eine Maßnahme?“ und „gemessen an“ nennen die Kennzahl, an der die Wirkung gemessen wird (Konzept Verbessern v1 §7)
+  'berichtDialoge.ts', // neu: „Bericht anlegen“ wählt Kennzahlen ab (AP-12 IP-14, V3)
+  'berichtSeite.ts', // neu: die Welt „Berichte“ zitiert Kennzahlen (Abschnitt der Vorlage, AP-12 IP-13)
+  'bezugsgroesse.ts', // neu: die Ablehnung „Flächen pflegen Sie am Gebäude …“ nennt den Weg zum Kennzahl-Nenner
+  'bezugsgroesseListe.ts', // neu: AP-09 erklärt Zweck und Archivfolgen
+  'components/AbweichungenRegister.tsx', // neu: der Reiter nennt die Kennzahl jeder Auffälligkeit und Abweichung (Verbessern-Konzept v1, PR3)
+  'components/AuffaelligkeitBlatt.tsx', // neu: „Keine Antwort ändert eine Zahl“ nennt Kennzahl und Bezugsbasis (Verbessern-Konzept v1, PR3)
+  'components/AuthScreen.tsx', // neu: die Anmelde-Bühne zeigt die Flächen des Portals als Kacheln, eine davon „Kennzahlen“ (Login-Konzept C)
+  'components/BezugsdatenImportProtokollDialog.tsx', // neu: AP-09 nennt die Folgen einer Import-Rücknahme
+  'components/EbenenCockpit.tsx', // alt: die Unternehmens- und Standort-Übersicht aus PortfolioCockpit.tsx (Nachzug main d1d67b97e: die Flotte trägt die vier Blöcke)
+  'components/EnergiezielSetzenFuehrung.tsx', // neu: „Energieziel setzen“ geführt wählt zuerst die Kennzahl (Konzept Verbessern §6.9)
+  'components/MarktpreiseMobil.tsx', // alt
+  'components/MassnahmeDialoge.tsx', // neu: die Messgrundlage einer Maßnahme ist genau eine Kennzahl (AP-18 IP-13, M2)
+  'components/MassnahmeWirkung.tsx', // neu: ohne Kennzahl misst VoltPilot nichts - Abschließen mit einem Satz (Verbessern v1 PR 2, Entscheid 6)
+  'components/PortfolioCockpit.tsx', // alt
+  'components/PortfolioKacheln.tsx', // neu: das Kennzahl-Kachelraster der Unternehmens-Übersicht (PR2, §4.2 — Leitkennzahl, Verbrauch, Lastspitze, Kosten)
+  'components/VerlaufExplorer.tsx', // alt
+  'components/WidgetGrid.tsx', // alt
+  'components/ZuschnittHilfe.tsx', // neu: die Managementbewertung nimmt Kennzahlen als Eingabe (AP-19 IP-9, Zuschnitt §3.2)
+  'components/nachweisen/BerichtBlaetter.tsx', // neu: „Bericht erstellen“ wählt Kennzahlen ab bzw. die eine Kennzahl des Leistungsvergleichs (Nachweisen n1, §6.4)
+  'components/nachweisen/UeberblickBlaetter.tsx', // neu: der Teil „Bezugsbasen“ des Überblicks entsteht bei den Kennzahlen (Nachweisen n1, §6.3)
+  'energiemanagement.ts', // neu: das Verzeichnis nennt die Gruppe „Kennzahlen, Bezugsbasen und Leistungsvergleiche“ (AP-19 IP-2, VZ3)
+  'energiemanagementPortal.ts', // neu: „Wer ist wofür verantwortlich“ nennt die Verantwortlichen der Kennzahlen (AP-19 IP-13, PA4)
+  'energiezielBild.ts', // neu: ein Energieziel entsteht an einer Kennzahl mit Bezugsbasis (Konzept Verbessern §6.3)
+  'energieziele.ts', // neu: ein Energieziel gehört zu genau einer Kennzahl (AP-18 IP-8, Spalte und Ablehnung)
+  'flaecheAendern.ts', // neu: eine Flächenänderung wirkt auf Kennzahlen
+  'help/content/alltag.ts', // alt
+  'help/content/energiemanagement.ts', // neu: der Hilfe-Artikel trägt den Z-002-Satz und den Grenz-Satz aus AP-20 §5.8 wörtlich (IP-22)
+  'leistungsvergleichBericht.ts', // neu: der Leistungsvergleich zitiert genau eine Kennzahl (AP-17 IP-24, S1)
+  'mappeBild.ts', // neu: „Was gehört hinein?“ bündelt die Verzeichnis-Gruppen, eine davon Kennzahlen (Nachweisen n1, Entscheid 7)
+  'massnahmePlanen.ts', // neu: „Maßnahme planen“ fragt, ob an einer Kennzahl gemessen wird (Verbessern v1 PR 2, Entscheid 6)
+  'massnahmeWirkung.ts', // neu: die rohe Kennzahl steht ohne Urteil neben der Wirkung (AP-18 IP-20, WK5)
+  'massnahmen.ts', // neu: Filter und Ablehnungen nennen die Kennzahl der Messgrundlage (AP-18 IP-13, M2)
+  'massnahmenBild.ts', // neu: „So läuft eine Maßnahme“ - ohne Kennzahl ein Satz zum Abschluss (Verbessern v1 PR 2)
+  'ortArchiv.ts', // neu: ein Ort mit Kennzahlen wird nicht gelöscht
+  'pages/AbweichungSeite.tsx', // neu: „Über diese Abweichung“ nennt ihre Kennzahl (Verbessern-Konzept v1, PR3)
+  'pages/DataPages.tsx', // alt
+  'pages/EnergiezielSeite.tsx', // neu: die Seite eines Energieziels führt zu seiner Kennzahl (Konzept Verbessern §6.4)
+  'pages/MassnahmeSeite.tsx', // neu: „Wofür und woran gemessen“ nennt die Kennzahl der Messgrundlage (Verbessern v1 PR 2, §6.6)
+  'portfolioCockpit.ts', // alt
+  'test/energiemanagementFixtures.ts', // neu: die Bühne spielt die Verzeichnis-Gruppe „Kennzahlen, Bezugsbasen und Leistungsvergleiche“ (AP-19 IP-9)
+  'test/kennzahlAnlegenFixtures.ts', // neu: die Fixture spiegelt genau diese Ablehnung
+  'test/leistungsvergleichFixtures.ts', // neu: die Ablehnung `basis_fehlt` und die Namen der Kennzahlen (AP-17 IP-24)
+  'uemsBericht.ts', // neu: der Bericht-Zwilling (AP-12)
+  'uemsEreignis.ts', // neu: „Berechnung einer Kennzahl rückwirkend geändert“ im Änderungsprotokoll
+  'verzeichnisMonate.ts', // neu: das Verzeichnis bündelt Kennzahl-Fassungen eines Tages zu „Kennzahlen“ (Nachweisen n1, §6.9)
+  'wiedervorlage.ts', // neu: eine Bezugsbasis ist die Vergleichsgrundlage einer Kennzahl (Konzept Wiedervorlage w1)
+];
+
+/**
+ * UEMS AP-13 IP-1 — die Welt „Oberflächen“ spricht die Wörter von §4.14 (E15 = A): Werte · Verlauf · Vergleich ·
+ * Energiebilanz · Datenlage · liefert Daten · Verlauf n % · Herkunft · Nachweis · Zeitraum · Zeitzone. Verboten sind die
+ * Wörter der Analyse-Werkzeuge; „Abdeckung“ bleibt ein Wort der Bestandsflächen (W7) — `ABDECKUNG_BESTAND` nennt sie,
+ * jede NEUE Stelle wird rot. Gelesen werden die Quelltexte der Flächen (heute das reine Modul; IP-2 … IP-13 tragen ihre
+ * Dateien in `FLAECHEN` ein), die Sätze, die das Modul zur Laufzeit bildet, die acht Grund-Sätze und die Glossar-Wörter.
+ */
+const OBERFLAECHEN_VERBOTEN = new RegExp(
+  '(^|[^\\p{L}])(Dashboards?|Widgets?|KPIs?|Drilldowns?|Timelines?|Sankey|Charts?|Zeitreihen?|Rollups?|Buckets?|Raster|Provenienz|Aggregat(?:e|en)?|Snapshots?)([^\\p{L}]|$)',
+  'u',
+);
+const BILANZ_URSACHE_VERBOTEN = /(^|[^\p{L}])(Verlust(?:e|en)?|Schwund)([^\p{L}]|$)/iu;
+
+/** Kundenflächen, die „Abdeckung“ HEUTE sagen (Bestand, W7) — sortiert wie der Vergleich. Eine neue Stelle wird rot. */
+const ABDECKUNG_BESTAND: string[] = [
+  'berichtSeite.ts', // UEMS AP-12 IP-13: „Abdeckung (geringste)“ im Kopf des Berichts — gebaut vor E15, W7-Befund an AP-12
+  'help/content/alltag.ts', // Handbuch: „Prüfen Sie Verbindung und Abdeckung“ (Bestand)
+  'marktpreise.ts', // Marktpreise-Rückblick: Zeile „Abdeckung“ der gesammelten Preise (Bestand)
+];
+
+/**
+ * Die Diagramm-Dateien der Oberflächen. Wer eine einhängt, trägt sie HIER ein: IP-4 (Verlauf je Messstelle mit seiner
+ * reinen Regel, Kennzahl-Balken samt Ableitung — der offene Punkt aus AP-11), IP-5 (Vergleich als Überlagerung), IP-8
+ * (Anteils-Balken der Energiebilanz). Es gelten die Chart-Regeln des Bestands (`CHART_FORBIDDEN`, `BARE_UNIT_AXIS`) UND
+ * die Verbote dieser Welt.
+ */
+const CHART_FILES_OBERFLAECHEN: string[] = [
+  // AP-13 IP-4 (= AP-08 IP-10): der Verlauf einer Messstelle — Render und Regel gleichberechtigt, wie beim Tagesbild.
+  'components/MessstellenVerlauf.tsx',
+  'uemsVerlauf.ts',
+  // AP-13 IP-5: der Vergleich legt die zweite Reihe in DASSELBE Bild — reines Modul und Render gehören dazu.
+  'uemsVergleich.ts',
+  'components/WerteVergleich.tsx',
+  // AP-11 IP-13: der Kennzahl-Balken (Funktion `Verlauf` der Kennzahl-Seite) und seine Ableitung `kennzahlKarte.verlauf`.
+  'pages/KennzahlSeite.tsx',
+  'kennzahlKarte.ts',
+  // AP-13 IP-8 / Konzept Auswerten a1 §6.9: der Zwei-Teile-Balken der Energiebilanz (ohne Etikett) - Render und Ableitung.
+  'pages/EnergiebilanzSection.tsx',
+  'anlageEnergiebilanz.ts',
+];
+
+describe('UEMS AP-13 IP-1 · die Welt „Oberflächen“ spricht Werte · Verlauf · Vergleich · Energiebilanz · Datenlage (E15)', () => {
+  // AP-13 IP-3: der Abschnitt „Werte“ (Sektion und ihre reine Ableitung).
+  // AP-13 IP-7: die Übersichts-Bausteine je Ebene (reines Modul und Render).
+  const FLAECHEN = [
+    'uemsOberflaechen.ts',
+    'uemsWerteKarte.ts',
+    'components/WerteSektion.tsx',
+    'uemsVerlauf.ts',
+    'components/MessstellenVerlauf.tsx',
+    // AP-13 IP-5: der Vergleich (reines Modul und Render).
+    'uemsVergleich.ts',
+    'components/WerteVergleich.tsx',
+    'uebersichtBausteine.ts',
+    'components/UebersichtBausteine.tsx',
+    // AP-13 IP-8: die Energiebilanz je Anlage (reines Modul und Render).
+    'anlageEnergiebilanz.ts',
+    'pages/EnergiebilanzSection.tsx',
+    'netzanschlussListe.ts',
+    'pages/StandortNetzanschluessePage.tsx',
+    'components/NetzanschlussDialog.tsx',
+    'components/EnergiebilanzFuss.tsx',
+    // AP-13 IP-9: Kostenstellen und Prozesse nebeneinander (reines Modul und Render).
+    'kostenstellenUebersicht.ts',
+    'pages/KostenstellenSection.tsx',
+    // AP-13 IP-10: die Gebäude-Karte (reines Modul und Render).
+    'gebaeudeKarte.ts',
+    'components/GebaeudeKarte.tsx',
+  ];
+  const vertrag = JSON.parse(readFileSync(join(process.cwd(), '../../docs/contracts/v2/ergebnis-zustand-vectors.json'), 'utf8'));
+  const faelle = JSON.parse(readFileSync(join(SRC, 'test/oberflaechenFaelle.json'), 'utf8'));
+  const rel = (file: string) => file.slice(SRC.length + 1).replace(/\\/g, '/');
+
+  const flaechenTexte = (): Array<{ wo: string; text: string }> =>
+    FLAECHEN.flatMap((datei) =>
+      visibleTexts(readFileSync(join(SRC, datei), 'utf8'))
+        .filter(isKundentext)
+        .map((text) => ({ wo: datei, text })),
+    );
+
+  const laufzeit = (): Array<{ wo: string; text: string }> => {
+    const out: Array<{ wo: string; text: string }> = [];
+    const ohnePlatz = (t: string) => t.replace(/\{[a-z_]+\}/g, 'X');
+    for (const g of GRUENDE) out.push({ wo: `Grund ${g.code}`, text: ohnePlatz(g.muster) });
+    for (const g of vertrag.grund.saetze) out.push({ wo: `Grund-Beispiel ${g.code}`, text: g.beispiel });
+    const basis = { groesse: 'Wirkenergie', richtung: 'Bezug', einheit: 'kWh', wertart: 'Zählerstand' };
+    for (const andere of [
+      { ...basis, groesse: 'Volumen', einheit: 'm³' },
+      { ...basis, richtung: 'Laden / Entladen' },
+      { ...basis, einheit: 'MWh' },
+      { ...basis, wertart: 'Intervallmenge' },
+    ]) {
+      out.push({ wo: 'passend', text: OF.passendSatz(OF.passend(basis, andere)) ?? '' });
+    }
+    out.push({ wo: 'Zone', text: OF.zoneSatz('Europe/Berlin', 'standort', 'Werk Ahrenberg') });
+    out.push({ wo: 'Zone', text: OF.zoneSatz('Europe/Vienna', 'unternehmen') });
+    out.push({ wo: 'Zone', text: OF.zoneSatz('Europe/Zurich', 'vorgabe') });
+    // AP-13 IP-3: der Hinweis zur Version der Adresse, beide Formen.
+    out.push({ wo: 'Version', text: VERSION_NEUESTE.replace('{n}', '2') });
+    out.push({ wo: 'Version', text: VERSION_FRUEHERE.replace('{n}', '1').replace('{neueste}', '2') });
+    for (const w of [UEMS_WERTE, UEMS_VERLAUF, UEMS_VERLAUF_PROZENT, UEMS_ENERGIEBILANZ, UEMS_DATENLAGE, UEMS_NICHT_VERORTET, UEMS_MANUELL_ABGELESEN]) {
+      out.push({ wo: 'Glossar', text: w });
+    }
+    // AP-13 IP-4: der Verlauf — Zeiträume, Lücken- und Ereignis-Sätze, erhalten/erwartet, die Schritt-Wahl, die Woche.
+    for (const w of Object.values(UEMS_ZEITRAEUME)) out.push({ wo: 'Verlauf', text: w });
+    for (const t of [
+      UEMS_KEINE_WERTE_VON_BIS,
+      UEMS_KEINE_WERTE_AM,
+      UEMS_KEINE_WERTE_IM,
+      UEMS_EREIGNIS_VON_BIS,
+      UEMS_EREIGNIS_SEIT,
+      UEMS_EREIGNIS_AM,
+      UEMS_ERHALTEN.singular,
+      UEMS_ERHALTEN.plural,
+      UEMS_WOCHE_OHNE_ZAHL,
+      UEMS_VERLAUF_EREIGNISSE,
+      ...Object.values(UEMS_VERLAUF_WAHL).flatMap((w) => Object.values(w)),
+    ]) {
+      out.push({ wo: 'Verlauf', text: ohnePlatz(t) });
+    }
+    out.push({ wo: 'Verlauf', text: VL.markerSatz({ art: 'handover', von: '2026-11-04T09:38:00+01:00', bis: '2026-11-04T09:40:00+01:00' }, 'Europe/Berlin') ?? '' });
+    // AP-13 IP-5: der Umschalter, die Δ-Zeile in allen Formen, die Gründe und die Sätze der Leiste.
+    for (const o of VG.wahlOptionen('monat')) out.push({ wo: 'Vergleich', text: o.label });
+    for (const [z, w] of [['tag', '2026-11-03'], ['woche', '2026-W45'], ['monat', '2026-10'], ['jahr', '2025']] as const) {
+      out.push({ wo: 'Vergleich', text: VG.periodeTitel(z, w) });
+    }
+    for (const g of GRUENDE_OHNE_VERGLEICH) out.push({ wo: `Vergleich ${g}`, text: VG.grundSatz(g) ?? '' });
+    out.push({ wo: 'Vergleich', text: VG.grundSatz('vor_bestehen', '2026-10-01') ?? '' });
+    out.push({ wo: 'Vergleich', text: VG.laufendSatz('monat', '2026-11', '2026-11-20') ?? '' });
+    out.push({ wo: 'Vergleich', text: VG.WOCHE_OHNE_DELTA });
+    out.push({ wo: 'Vergleich', text: VG.VOLL_SATZ });
+    out.push({ wo: 'Vergleich', text: VG.entfernenName({ id: 'x', kennzeichen: 'MS-11', name: 'Spritzguss SG07–SG10' }) });
+    for (const t of [UEMS_VERGLEICH, UEMS_VERGLEICH_KEIN_DELTA, UEMS_VERGLEICH_NUR_EINE_REIHE, UEMS_VERGLEICH_WEITERE, UEMS_VERGLEICH_NICHT_ABRUFBAR]) {
+      out.push({ wo: 'Vergleich', text: t });
+    }
+    for (const d of [
+      VG.delta({ zeitraum: 'monat', aktuell: ms12November(), vergleich: ms12Oktober(), periode: '2026-10', bestehen: { seit: '2026-10-01', beendet: null } }),
+      VG.delta({ zeitraum: 'monat', aktuell: ms12November(), vergleich: ms12Vorjahr(), periode: '2025-11', bestehen: { seit: '2026-10-01', beendet: null } }),
+    ]) {
+      for (const t of [d?.satz, d?.ohne]) if (t) out.push({ wo: 'Vergleich Δ', text: t });
+    }
+    // AP-13 IP-6: die Sätze der Ablehnungen je Grund und Feld, die Auskünfte, die Leerzustände und die Nebengrößen.
+    for (const g of OF.ABLEHNUNG_GRUENDE) {
+      for (const feld of ['von', 'bis', 'raster', 'version']) out.push({ wo: `Ablehnung ${g}`, text: OF.ablehnungSatz(g, feld, 'tag') });
+    }
+    const keinePassende = OF.vergleichOhnePassende(basis, []);
+    for (const t of [
+      OF.ZEITRAUM_UNLESBAR_OHNE_GRUND,
+      OF.MESSSTELLE_GIBT_ES_NICHT,
+      OF.WERT_NICHT_MEHR_GESPEICHERT,
+      OF.WERTE_NICHT_ABRUFBAR,
+      OF.VERLAUF_NICHT_ABRUFBAR,
+      OF.OHNE_HAUPTZAEHLER.titel,
+      OF.OHNE_HAUPTZAEHLER.satz,
+      OF.OHNE_HAUPTZAEHLER.schritt ?? '',
+      keinePassende?.titel ?? '',
+      keinePassende?.satz ?? '',
+    ]) {
+      out.push({ wo: 'Auskunft', text: t });
+    }
+    for (const t of [QUELLE_GILT_SEIT, QUELLE_GILT_AB, QUELLE_AB_ZEIGEN, QUELLE_ZUORDNEN, QUELLE_OHNE_RECHT, DIE_DATENQUELLE, NEBENGROESSEN_TITEL, NEBENGROESSEN_SATZ]) {
+      out.push({ wo: 'Werte', text: ohnePlatz(t) });
+    }
+    // AP-13 IP-8: die Wörter der Energiebilanz und alles, was sie an O5/O6/O7/O8 und im Vorschlag wirklich sagt.
+    for (const t of [
+      EB.ENERGIEBILANZ_UNTERZEILE,
+      ...Object.values(EB.ZEILE_WORT),
+      EB.KARTE_WORT.bezug,
+      EB.KARTE_WORT.verbrauch,
+      ...Object.values(EB.KARTE_WORT.erfasst),
+      EB.KARTE_WORT.ohne,
+      ...Object.values(EB.ANTEIL_AM),
+      EB.VERBRAUCH_AUS,
+      ...Object.values(EB.ANTWORT),
+      ...Object.values(EB.OFFEN_SATZ),
+      ...Object.values(EB.ANTEIL_WORT).filter((w): w is string => w !== null),
+      ...Object.values(EB.UNTERZAEHLER_TITEL),
+      ...Object.values(EB.AUSSERHALB_SATZ),
+      EB.KEIN_UNTERZAEHLER,
+      EB.HILFE_NEGATIV,
+      EB.HILFE_NEGATIV_VERBRAUCH,
+      EB.LIVE_JETZT,
+      EB.LIVE_STAND,
+      EB.FUSS_ZONE,
+      EB.FUSS_ZONE_STANDORT,
+      EB.STELLUNG_GEAENDERT,
+      EB.WORAUS,
+      EB.HERKUNFT,
+      EB.HERKUNFT_EINGAENGE,
+      EB.HERKUNFT_FORMEL,
+      EB.HERKUNFT_FASSUNG,
+      EB.HERKUNFT_BERECHNET_AM,
+      EB.HERKUNFT_VERSION,
+      EB.HERKUNFT_KORRIGIERT,
+      EB.HERKUNFT_ERSATZWERT,
+      EB.HERKUNFT_VERTEILT,
+      EB.HERKUNFT_UNVOLLSTAENDIG,
+      EB.REST_VORSCHLAG,
+      EB.REST_ANLEGEN,
+      EB.REST_GEFUEHRT,
+      EB.ZAEHLER_ZUORDNEN,
+      EB.REST_OHNE_RECHT,
+      EB.REST_ANGELEGT,
+      EB.REST_GAB_ES_SCHON,
+      EB.REST_NICHT_ANGELEGT,
+      EB.REST_OHNE_HAUPTZAEHLER_SATZ,
+    ]) {
+      out.push({ wo: 'Energiebilanz', text: ohnePlatz(t) });
+    }
+    const ctxEB = { heute: '2026-11-05', arten: new Map<string, EB.MessstellenArt>([['MS-10', 'gemessen']]) };
+    for (const [siteId, periode, am, b] of [
+      [FIXTURE_IDS.an2, 'monat', '2026-10-01', { restVorschlag: true }],
+      [FIXTURE_IDS.an1, 'monat', '2026-10-01', {}],
+      [FIXTURE_IDS.an2, 'tag', '2026-11-04', { live: 'veraltet' }],
+    ] as const) {
+      const bild = EB.energiebilanzBild(ahrenbergBilanz(siteId, periode, am, b), ctxEB);
+      const texte = [bild.zeitraum, bild.zone, ...bild.hauptzaehler.flatMap((h) => [h.titel, h.live?.text ?? '', h.vorschlag?.satz ?? '', h.restMessstelle?.text ?? '', ...h.abschnitte.flatMap((ab) => ab.tage.flatMap((tag) => [tag.antwort.satz, ...tag.karte.flatMap((k) => [k.wort, k.zahl, ...k.unter]), ...tag.unterzaehler.flatMap((x) => [x.nurName, x.anteil ?? '']), ...tag.zeilen.flatMap((z) => [z.wort, z.zahl, z.zusatz ?? '', ...z.woerter, ...z.saetze, ...z.herkunft.zeilen, ...z.herkunft.eingaenge, ...z.teile.flatMap((x) => [x.name, ...x.woerter])])]))])];
+      for (const text of texte.filter(Boolean)) out.push({ wo: `Energiebilanz ${periode} ${am}`, text });
+    }
+    return out;
+  };
+
+  it('liest wirklich: die Flächen stehen im Bestand des Wächters, und die Sätze sind da', () => {
+    const dateien = customerFiles().map(rel);
+    for (const datei of FLAECHEN) expect(dateien).toContain(datei);
+    expect(flaechenTexte().length).toBeGreaterThan(3);
+    expect(laufzeit().length).toBeGreaterThan(25);
+  });
+
+  it('kein Satz der Welt trägt ein verbotenes, internes oder Werkstatt-Wort', () => {
+    const violations: string[] = [];
+    for (const { wo, text } of [...flaechenTexte(), ...laufzeit()]) {
+      const m = OBERFLAECHEN_VERBOTEN.exec(text);
+      if (m) violations.push(`${wo}: „${m[2]}“ in „${text}“ — E15: verboten auf den Oberflächen`);
+      for (const { re, why } of [...FORBIDDEN, ...FORBIDDEN_INTERN]) {
+        if (re.test(ohneAusnahmen(text))) violations.push(`${wo}: „${text}“ — ${why}`);
+      }
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('die Energiebilanz behauptet weder Verlust noch Schwund als Ursache', () => {
+    const texte = [
+      ...flaechenTexte().filter(({ wo }) => wo === 'anlageEnergiebilanz.ts' || wo === 'pages/EnergiebilanzSection.tsx'),
+      ...laufzeit().filter(({ wo }) => wo.startsWith('Energiebilanz')),
+    ];
+    expect(texte.length).toBeGreaterThan(20);
+    expect(
+      texte.filter(({ text }) => BILANZ_URSACHE_VERBOTEN.test(text)).map(({ wo, text }) => `${wo}: ${text}`),
+    ).toEqual([]);
+    expect(BILANZ_URSACHE_VERBOTEN.test('10 kWh Verlust')).toBe(true);
+    expect(BILANZ_URSACHE_VERBOTEN.test('Schwund: 10 kWh')).toBe(true);
+  });
+
+  it('„Abdeckung“ steht nur auf den Flächen des Bestands — die Oberflächen sagen „Verlauf n %“ (W7)', () => {
+    const heute = customerFiles()
+      .filter((file) => visibleTexts(readFileSync(file, 'utf8')).some((text) => isKundentext(text) && /Abdeckung/u.test(text)))
+      .map(rel)
+      .sort();
+    expect(heute).toEqual(ABDECKUNG_BESTAND);
+    expect(laufzeit().filter(({ text }) => /Abdeckung/u.test(text))).toEqual([]);
+    for (const datei of FLAECHEN) expect(ABDECKUNG_BESTAND).not.toContain(datei);
+  });
+
+  it('die Wörter kommen aus dem Glossar und stehen im Vokabular von E15', () => {
+    const kundenwoerter = faelle.vokabulare['kundenwoerter (E15)'] as string[];
+    for (const w of [UEMS_WERTE, UEMS_VERLAUF, UEMS_ENERGIEBILANZ, UEMS_DATENLAGE]) expect(kundenwoerter).toContain(w);
+    expect(UEMS_VERLAUF_PROZENT).toBe(vertrag.satz.abdeckung);
+    expect(UEMS_VERLAUF_PROZENT.startsWith(`${UEMS_VERLAUF} `)).toBe(true);
+    for (const w of faelle.vokabulare['verboten (E15)'] as string[]) expect(OBERFLAECHEN_VERBOTEN.test(w), w).toBe(true);
+  });
+
+  it('die Chart-Liste der Oberflächen ist verdrahtet: jede Datei lesbar, nirgends doppelt, keine verbotene Beschriftung', () => {
+    const violations: string[] = [];
+    for (const datei of CHART_FILES_OBERFLAECHEN) {
+      expect(CHART_FILES, datei).not.toContain(datei);
+      const sichtbar = stripComments(readFileSync(join(SRC, datei), 'utf8'));
+      for (const { re, why } of [...CHART_FORBIDDEN, { re: OBERFLAECHEN_VERBOTEN, why: 'E15: verboten auf den Oberflächen' }]) {
+        const m = re.exec(sichtbar);
+        if (m) violations.push(`${datei}: „${m[0]}“ — ${why}`);
+      }
+      if (BARE_UNIT_AXIS.test(sichtbar)) violations.push(`${datei}: K4 — die Einheit steht nie allein`);
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('beißt wirklich — und nicht die Kundenwörter', () => {
+    for (const falsch of ['KPI-Übersicht', 'Zeitreihe MS-06', 'Raster Viertelstunde', 'Snapshot vom 10.11.2026', 'Drilldown', 'Aggregate je Standort']) {
+      expect(OBERFLAECHEN_VERBOTEN.test(falsch), falsch).toBe(true);
+    }
+    for (const richtig of ['Verlauf 85 %', 'Werte', 'Energiebilanz', 'Datenlage: 15 von 16 Messstellen liefern Daten', 'Zeitraster', 'Zeiten in Europe/Berlin (Vorgabe)']) {
+      expect(OBERFLAECHEN_VERBOTEN.test(richtig), richtig).toBe(false);
+    }
+  });
+});
+
+/**
+ * UEMS AP-12 IP-14 — die Dialoge der Welt „Berichte“ (Anlegen, Freigeben, Vergleich, Verwerfen, Banner „Revision nötig“)
+ * sprechen dieselben Wörter wie die Seite (E14): was `berichtDialoge.ts` zur Laufzeit sagt, entlang der Zeitachse der
+ * Fixtures (20.10. läuft · 10.11. Nr. 1 · 13.11. Revision). Die Quelltexte der Dialoge liest der Abschnitt IP-13 (`FLAECHEN`).
+ */
+describe('UEMS AP-12 IP-14 · die Berichts-Dialoge sprechen Bericht · Entwurf · Berichtsstand Nr. n (E14)', () => {
+  const da = (t: string | null | undefined): t is string => typeof t === 'string';
+  const ZONE = 'Europe/Berlin';
+
+  const laufzeit = (): string[] => {
+    const out: string[] = [];
+    for (const tag of ['2026-10-20T10:00:00+02:00', '2026-11-10T09:00:00+01:00', '2026-11-13T09:00:00+01:00']) {
+      const jetzt = Date.parse(tag);
+      const detail = detailAm(jetzt);
+      const h = BD.seitenHebel(detail, entwurfAm(jetzt), BD.rechteAus(rechteSeed().me), jetzt);
+      if (h.freigeben) {
+        const v = h.freigeben.vorschau;
+        out.push(h.freigeben.knopf, v.knopf, v.festgehalten, ...v.punkte.map((p) => p.text), ...[v.satz, v.ersetzt].filter(da));
+      }
+      if (h.vergleichen) out.push(h.vergleichen.knopf, BD.vergleichTitel(h.vergleichen.gegen), BD.keineAbweichung(h.vergleichen.gegen));
+      const banner = BD.revisionBanner(detail);
+      if (banner) out.push(banner.titel, banner.satz, ...banner.anstoesse.flatMap((a) => [a.zeile, a.text]), BD.verwerfenVorspann(banner.nr));
+      for (const art of ['monat', 'jahr'] as const) {
+        out.push(...BD.zeitraumWahlen(art, jetzt, ZONE).map((z) => z.label));
+        out.push(BD.zeitraumVorschau(art, art === 'monat' ? '2026-10' : '2026', ZONE, jetzt).text);
+      }
+    }
+    const revision = Date.parse('2026-11-13T09:00:00+01:00');
+    const entwurf = BS.abzugAus(entwurfAm(revision).abzug);
+    for (const z of BD.vergleichZeilen(vergleichAm(1, revision).abweichungen, entwurf)) {
+      out.push(...[z.name, z.vorher, z.nachher, z.version, z.anlass, z.beleg].filter(da));
+    }
+    out.push(BD.unveraendert(entwurf, 3), BD.unveraendert(entwurf, 17), BD.abweichungenAnzahl(3), BD.abweichungenAnzahl(1));
+    for (const k of BD.vorlageKarten(null, [])) out.push(k.name, k.abschnitte, k.fassung);
+    out.push(...['', 'kurz', 'x'.repeat(501)].map(BD.begruendungFehler).filter(da));
+    out.push(...Object.values(BD.anlegenPruefen({ vorlage: null, geltungId: null, zeitraum: null, abgewaehlt: [] })).filter(da));
+    out.push(
+      BD.ANLEGEN_KNOPF, BD.ANLEGEN_TITEL, BD.ANLEGEN, BD.ABBRECHEN, BD.SCHLIESSEN, BD.VORLAGE_TITEL, BD.GELTUNG_TITEL,
+      BD.ZEITRAUM_TITEL, BD.KENNZAHLEN_TITEL, BD.KENNZAHLEN_HINWEIS, BD.KENNZAHLEN_KEINE, BD.KENNZAHLEN_LADEFEHLER,
+      BD.ARCHIVIERTE_KENNZAHL, BD.VORAUSSETZUNGEN_TITEL, BD.LAEDT, BD.ERNEUT, BD.ENTWURF_LADEFEHLER, BD.ANLEGEN_LADEFEHLER,
+      BD.ANLEGEN_FEHLER, BD.BERICHT_OEFFNEN, BD.KEINE_GELTUNG, BD.FREIGEBEN_TITEL, BD.FREIGEBEN_FEHLER, BD.ENTWURF_NEU_LADEN,
+      BD.WAS_SIE_FREIGEBEN, BD.VERGLEICHEN, BD.VERGLEICH_QUELLE, BD.VERGLEICH_ENTWURF, BD.VERGLEICH_VERSION,
+      BD.VERGLEICH_ANLASS, BD.VERGLEICH_LADEFEHLER, BD.VERWERFEN, BD.BEGRUENDUNG, BD.BEGRUENDUNG_HINWEIS,
+      BD.BEGRUENDUNG_BEISPIEL, BD.VERWERFEN_FEHLER,
+    );
+    return out;
+  };
+
+  it('liest wirklich die Sätze (der Wächter ist verdrahtet)', () => {
+    const alle = laufzeit();
+    expect(alle.length).toBeGreaterThan(80);
+    expect(alle).toContain('Revision nötig — Korrektur K-2026-0007');
+    expect(alle).toContain('Entwurf aktuell (Datenstand 10.11.2026 08:55)');
+    expect(alle).toContain('Der Oktober 2026 ist noch nicht zu Ende — ein Berichtsstand ist ab dem 08.11.2026 möglich (7 Tage nach Monatsende).');
+    expect(alle).toContain('Korrektur K-2026-0007 (über die Formel)');
+  });
+
+  it('kein Satz der Dialoge trägt ein verbotenes oder Werkstatt-Wort', () => {
+    const violations = laufzeit().flatMap((text) =>
+      [...FORBIDDEN, ...FORBIDDEN_INTERN].flatMap(({ re, why }) => (re.test(ohneAusnahmen(text)) ? [`„${text}“ — ${why}`] : [])),
+    );
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+
+  it('ein Berichtsstand ist nie „Version“, „Ausgabe“, „Snapshot“ oder „Report“ — „Version“ steht nur am Wert (§4.15)', () => {
+    const texte = laufzeit();
+    expect(texte.filter((t) => BERICHT_VERBOTEN.some((w) => t.includes(w)))).toEqual([]);
+    expect(texte.filter((t) => /(Berichtsstand|Bericht)\s+Version|Version\s+(des|eines)\s+Berichts?|Berichtsversion/u.test(t))).toEqual([]);
+  });
+});
+
+/** H-9/E10: keine Alttexte mehr; technische Exportnamen bleiben kompatibel. */
 describe('Summenwert: das eine Kundenwort', () => {
   const altwort = new RegExp(`\\b(?:${SUMMENWERT_VERBOTENE_WOERTER.map((w) => w === 'Gesamtwert' ? `${w}(?:e|en|s)?` : w).join('|')})\\b`);
   // AST statt Quelltext: JSX-Text vor einem Ausdruck und Template-Sätze werden vollständig erfasst.
@@ -784,9 +2484,28 @@ describe('Summenwert: das eine Kundenwort', () => {
   };
   // EXAKTER Satz, Datei und Höchstzahl. Entfernen ist erlaubt; neue/duplizierte Alttexte sind rot.
   const bestand: Record<string, number> = {};
+
+  it('alle Summenwert-Flächen und ihr Hilfeartikel sprechen ohne Steuer- oder Geldwörter', () => {
+    const FLAECHEN = [
+      'components/SummenwertAssistent.tsx', 'components/GeraetSummenwerte.tsx',
+      'components/RolleAendernDialog.tsx', 'components/SummenwertFormelDialog.tsx',
+      'components/GesamtwertKarten.tsx', 'components/PvRollenBreakdown.tsx',
+      'gesamtwert.ts', 'summenwertQuellen.ts', 'uemsRollen.ts', 'pvRolle.ts',
+    ];
+    for (const file of FLAECHEN) {
+      for (const text of visibleTexts(readFileSync(join(SRC, file), 'utf8'))) {
+        // IANA-Zonen sind technische Optionen, kein Geldwort im Kundentext.
+        expect(steuerGeldWoerter(text.replace(/Europe\/Berlin/g, '')), `${file}: ${text}`).toEqual([]);
+      }
+    }
+    const hilfe = everydayArticles.find((a) => a.id === 'summenwerte');
+    expect(hilfe).toBeDefined();
+    expect(steuerGeldWoerter(JSON.stringify(hilfe))).toEqual([]);
+  });
   it('Konstante und Wortverbote entsprechen dem Vertrag', () => {
     const v = JSON.parse(readFileSync(join(process.cwd(), '../../docs/contracts/v2/rollen-zuordnung-vectors.json'), 'utf8'));
     expect(SUMMENWERT).toBe(v.kundenwort);
+    expect(GESAMTWERT).toBe(SUMMENWERT);
     expect(SUMMENWERT_VERBOTENE_WOERTER).toEqual(v.verbotene_woerter);
     expect(altwort.test(SUMMENWERT)).toBe(false);
     expect(altwort.test('Gesamt-PV')).toBe(false);
@@ -817,5 +2536,2170 @@ describe('Summenwert: das eine Kundenwort', () => {
     }
     const neu = Object.entries(gefunden).filter(([key, n]) => n > (bestand[key] ?? 0));
     expect(neu, JSON.stringify(neu, null, 2)).toEqual([]);
+  });
+});
+
+
+describe('AP-08 IP-16 · Ersatzwerte und Korrekturen', () => {
+  const dateien = ['korrekturen.ts', 'components/ErsatzwertDialog.tsx', 'components/KorrekturenDialog.tsx', 'components/KorrekturVorschau.tsx'];
+  const texte = dateien.flatMap(f => visibleTexts(readFileSync(join(SRC, f), 'utf8')));
+  it('spricht in Kundenwörtern und benennt die zweite Person', () => {
+    expect(texte.some(t => t.includes('zweite Person'))).toBe(true);
+    const falsch = texte.filter(isKundentext).flatMap(t => [...FORBIDDEN, ...FORBIDDEN_INTERN].filter(({ re }) => re.test(ohneAusnahmen(t))).map(({ why }) => `${t}: ${why}`));
+    expect(falsch).toEqual([]);
+  });
+  it('Widerruf und Vorschlag behaupten keine abgeschlossene Neuberechnung', () => {
+    expect(texte.some(t => t.includes('weitere Version'))).toBe(true);
+    expect(texte.some(t => t.includes('bisherigen Werte bleiben unverändert'))).toBe(true);
+    expect(texte.some(t => t.includes('werden neu berechnet'))).toBe(true);
+  });
+});
+
+describe('AP-14 IP-4 · erste Minute des Messkunden', () => {
+  const texte = [
+    STANDORT_ZUERST_TITEL,
+    STANDORT_ZUERST_SATZ,
+    STEUERN_EINSTIEG_SATZ,
+    STEUERN_EINSTIEG_AKTION,
+    'Legen Sie Ihre Anlage an, um Ihr Gerät zu verbinden und ihre Messwerte zu sehen.',
+    'Eine Anlage bündelt Ihr Gerät und seine Messwerte. Danach verbinden Sie Ihr Gerät in wenigen Schritten.',
+  ];
+
+  it('spricht auf Kundenflächen ohne Betreiberwörter', () => {
+    const falsch = texte.flatMap((text) =>
+      [...FORBIDDEN, ...FORBIDDEN_INTERN]
+        .filter(({ re }) => re.test(ohneAusnahmen(text)))
+        .map(({ why }) => `${text}: ${why}`),
+    );
+    expect(falsch).toEqual([]);
+  });
+
+  it('spricht vor der eigenen Steuerungsseite weder von Steuern noch Geld', () => {
+    expect(steuerGeldWoerter(`${STANDORT_ZUERST_TITEL} ${STANDORT_ZUERST_SATZ}`)).toEqual([]);
+  });
+});
+
+describe('AP-14 IP-14 · Bestandsschutz in der Standort-Vorschau', () => {
+  const texte = [STARTSEITE_UNTERNEHMEN, GELD_BLEIBT, STEUERUNG_BLEIBT];
+
+  it('trägt den verbindlichen Wortlaut additiv', () => {
+    expect(texte.join(' ')).toBe(
+      'Ihre Startseite wird die Unternehmens-Übersicht. Erlöse und Kosten finden Sie weiter im Cockpit jeder Anlage, im Portfolio und unter Erlöse. An Steuerung, Fahrplänen und Freigaben ändert sich nichts.',
+    );
+  });
+
+  it('enthält weder Betreiberwörter noch Pilot oder Rollout', () => {
+    const intern = /\b(?:Pilot|Rollout|Betreiber)\b/i;
+    const falsch = texte.flatMap((text) => [
+      ...[...FORBIDDEN, ...FORBIDDEN_INTERN]
+        .filter(({ re }) => re.test(ohneAusnahmen(text)))
+        .map(({ why }) => `${text}: ${why}`),
+      ...(intern.test(text) ? [`${text}: internes Einführungswort`] : []),
+    ]);
+    expect(falsch).toEqual([]);
+  });
+});
+
+describe('AP-14 IP-15 · Zuordnung korrigieren', () => {
+  const artikel = plantArticles.find((a) => a.id === 'standort-zuordnung-korrigieren');
+
+  it('trägt den verbindlichen Satz aus §5.9 additiv', () => {
+    expect(KORREKTUR_VORSPANN).toBe(
+      'Die Anlage gehört seit ihrem ersten Tag zu einem anderen Standort? Hier ändern Sie das rückwirkend. Steuerung und Messwerte bleiben unberührt.',
+    );
+  });
+
+  it('erklärt Korrektur, normalen Umzug, Erhalt und den fehlenden Zustand „wieder nicht zugeordnet“', () => {
+    const text = artikel?.sections.flatMap((s) => s.paragraphs).join(' ') ?? '';
+    expect(text).toContain('tatsächlichen Umzugstag');
+    expect(text).toContain('Steuerung und Messwerte bleiben unberührt');
+    expect(text).toContain('keinen Zustand „wieder nicht zugeordnet“');
+    expect(text).toContain('wird nichts gelöscht');
+  });
+});
+
+describe('UEMS AP-16 IP-7 · Bewertung: Sprach-Wächter und Kundenwörter (SP1–SP3)', () => {
+  /** IP-6/IP-12/IP-18/IP-20/IP-25 tragen hier ihre Kunden-Komponenten ein. */
+  const BEWERTUNG_FLAECHEN: string[] = [
+    // IP-6: Umfang, Liste, Seite eines Energieeinsatzes und ihre Dialoge.
+    'pages/BewertungPage.tsx',
+    'pages/EnergieeinsatzSeite.tsx',
+    'components/UmfangDialog.tsx',
+    'components/EnergieeinsatzDialoge.tsx',
+    // IP-12: Rangliste, Einstufung, Kriterien und Historie.
+    'components/BewertungEntscheidungen.tsx',
+    // IP-18: Abdeckungs-Tabelle, Messmittel-Blatt mit Dialog, Toleranz-Dialog an der Befund-Zeile.
+    'components/MessabdeckungTabelle.tsx',
+    'components/MessmittelBlatt.tsx',
+    'components/VergleichBefund.tsx',
+    // IP-20: Messplanung — Bedarf erfassen, einlösen, verwerfen; Liste je Einsatz und je Standort.
+    'components/Messplanung.tsx',
+    // IP-24: der Übersichts-Baustein am Unternehmen (Frist, Zahlen, Verantwortliche).
+    'components/BewertungBaustein.tsx',
+    // IP-25: der Bewertungsstand — Entwurf, Stände, Revision-Vermerk, Freigabe, PDF/CSV.
+    'components/BewertungStand.tsx',
+    // Konzept Auswerten a1 (Entscheid 10.1): „Verbrauch“ liest Rangliste und Messabdeckung — der Satz steht am Fuß.
+    'pages/VerbrauchPage.tsx',
+  ];
+  const VERBOTEN = [
+    /(^|[^\p{L}\p{N}])SEU([^\p{L}\p{N}]|$)/iu,
+    /(^|[^\p{L}\p{N}])EnPI([^\p{L}\p{N}]|$)/iu,
+    /(^|[^\p{L}\p{N}])ISO[-‑– ]wesentlich([^\p{L}\p{N}]|$)/iu,
+    /(^|[^\p{L}\p{N}])wesentlich\s+nach\s+ISO([^\p{L}\p{N}]|$)/iu,
+    /(^|[^\p{L}\p{N}])automatisch\s+eingestuft([^\p{L}\p{N}]|$)/iu,
+    /(^|[^\p{L}\p{N}])ISO([^\p{L}\p{N}]|$)/iu,
+  ];
+  const verstoesse = (text: string) => {
+    const ohneGrenze = text.replaceAll(UEMS_NORMGRENZE, ' ');
+    return VERBOTEN.filter((re) => re.test(ohneGrenze));
+  };
+  // Der Satz steht wörtlich ODER als JSX-Kind aus seiner einen Quelle (`glossar.ts`) — nie nur als Import.
+  const traegtGrenze = (text: string) =>
+    text.includes(UEMS_NORMGRENZE) || />\s*\{\s*UEMS_NORMGRENZE\s*\}\s*</.test(text) || traegtGrenzBaustein(text);
+
+  it('beißt an jedem verbotenen Wort und lässt die Wortgrenzen heil', () => {
+    for (const probe of ['SEU', 'seu', 'EnPI', 'enpi', 'ISO-wesentlich', 'wesentlich nach ISO', 'automatisch eingestuft', 'ISO']) {
+      expect(verstoesse(`Bewertung: ${probe}.`), probe).not.toEqual([]);
+    }
+    expect(verstoesse('Museum und Isolierung bleiben normale Wörter.')).toEqual([]);
+    expect(verstoesse(UEMS_NORMGRENZE)).toEqual([]);
+  });
+
+  it('verlangt den Grenz-Satz auf jeder Bewertungs-Fläche und prüft die Mechanik am Prüfling', () => {
+    for (const datei of BEWERTUNG_FLAECHEN) {
+      const text = readFileSync(join(SRC, datei), 'utf8');
+      expect(verstoesse(text), datei).toEqual([]);
+      expect(traegtGrenze(text), datei).toBe(true);
+    }
+    expect(traegtGrenze('Bewertung ohne Abgrenzung')).toBe(false);
+    expect(traegtGrenze(`Bewertung. ${UEMS_NORMGRENZE}`)).toBe(true);
+    expect(traegtGrenze('<p className="x">{UEMS_NORMGRENZE}</p>')).toBe(true);
+    expect(traegtGrenze("import { UEMS_NORMGRENZE } from '../glossar';")).toBe(false);
+  });
+
+  it('findet verbotene Wörter auf jeder Kundenfläche', () => {
+    const funde = customerFiles().flatMap((file) => {
+      const wo = file.slice(SRC.length + 1).replace(/\\/g, '/');
+      return visibleTexts(readFileSync(file, 'utf8'))
+        .filter(isKundentext)
+        .flatMap((text) => verstoesse(text).map((re) => `${wo}: ${re} in „${text}“`));
+    });
+    expect(funde, funde.join('\n')).toEqual([]);
+  });
+
+  it('bildet die geschlossenen Vokabulare mit Kundenwörtern ab', () => {
+    expect(UEMS_EINSTUFUNGEN).toEqual({ wesentlich: 'wesentlich', nicht_wesentlich: 'nicht wesentlich', offen: 'offen' });
+    expect(UEMS_BEWERTUNG_URTEILE).toEqual({
+      ueber_schwelle: 'über Schwelle', unter_schwelle: 'unter Schwelle', nicht_anwendbar: 'nicht anwendbar',
+      nicht_belastbar: 'nicht belastbar', erfuellt: 'erfüllt', vorbehalt_datenlage: 'Vorbehalt: Datenlage',
+      vorbehalt_ersatzwerte: 'Vorbehalt: Ersatzwerte', unter_zwoelf: 'unter zwölf Monaten', vorlaeufig: 'vorläufig',
+    });
+    expect(UEMS_BEWERTUNG_ABDECKUNG).toEqual({ gemessen: 'gemessen', geplant: 'geplant', ersatz: 'Ersatz', ungemessen: 'ungemessen' });
+  });
+
+  it('erzeugt die 17 Kundensätze aus §5.7 Zeichen für Zeichen', () => {
+    const s = UEMS_BEWERTUNG_SAETZE;
+    expect([
+      s.ranglisteKopf('Oktober', 2026, 185380, 3, 3, 67.8),
+      s.restZeile(59640, 32.2, 'Halle 1', 39.2),
+      s.nichtBelastbar(80, 67.8),
+      s.vorlaeufig(1, 12),
+      s.einstufung('Wesentlich', '06.11.2026', 1, 'Ines Kaltenbach', '41,8 % des Stromeinsatzes; größter Einsatz an beiden Hallen.'),
+      s.abweichungVorschlag('Wesentlich', 'unter Schwelle', 8.6, 'Querschnitt für Spritzguss und Montage, Leckageverluste vermutet.'),
+      s.querschnitt('Spritzguss', 'Druckluft', 70, 'MS-07', 11130),
+      s.messbedarf('MB-1', 'Lüftung, Beleuchtung und Allgemeinstrom Halle 1', 'MS-23 Halle 1 Allgemein', 'keine Datenquelle seit 27.11.2026'),
+      s.messmittel('Netzzähler Halle 1', 'B', 'MID', '14.06.2023', '31.12.2031', 'Zählerstandsmitteilung 10/2026', '3b1f…9a2e'),
+      s.messmittelOffen('Unterzähler Druckluft'),
+      s.vergleichsquelle('Dezember', 2026, 1.1, 'Netzleistung am Wechselrichter', 2),
+      s.befund(3.4, 2),
+      s.stand(2026, 2, '17.11.2026', 1, '09.11.2026', 'Korrektur K-2026-0007'),
+      s.frist(2, '17.11.2026', 1),
+      s.traegerOhneAnteil('Heizung Verwaltung', 'Gas', 1240, 'm³', 'Oktober', 2026, 'abgelesen'),
+      s.leer(),
+      s.grenze(),
+    ]).toEqual([
+      'Stromeinsatz Oktober 2026: 185 380 kWh aus 3 von 3 Anlagen · 67,8 % Energieeinsätzen zugeordnet.',
+      '59 640 kWh (32,2 %) sind keinem Energieeinsatz zugeordnet — größter Block: Halle 1 (39,2 % der Anlage).',
+      'Der 80-%-Block ist nicht belastbar: nur 67,8 % des Stromeinsatzes sind Energieeinsätzen zugeordnet.',
+      'Datengrundlage 1 von 12 Monaten — vorläufig.',
+      'Wesentlich · seit 06.11.2026 (Fassung 1) · Ines Kaltenbach: ‚41,8 % des Stromeinsatzes; größter Einsatz an beiden Hallen.‘',
+      'Wesentlich — Vorschlag: unter Schwelle (8,6 %). Begründung: ‚Querschnitt für Spritzguss und Montage, Leckageverluste vermutet.‘',
+      'Spritzguss bezieht Druckluft: 70 % von MS-07 = 11 130 kWh — in Druckluft gezählt.',
+      'Messbedarf MB-1: Lüftung, Beleuchtung und Allgemeinstrom Halle 1 — eingelöst durch MS-23 Halle 1 Allgemein (keine Datenquelle seit 27.11.2026).',
+      'Netzzähler Halle 1: Klasse B (MID) · geeicht 14.06.2023, gültig bis 31.12.2031 · Beleg: Zählerstandsmitteilung 10/2026 (Prüfsumme 3b1f…9a2e).',
+      'Unterzähler Druckluft: Klasse und Prüfung nicht erhoben.',
+      'Vergleich Dezember 2026: 1,1 % Abweichung zur Netzleistung am Wechselrichter (Toleranz 2 %) — passt.',
+      'Abweichung zur Vergleichsquelle 3,4 % (Toleranz 2 %) — bitte prüfen.',
+      'Bewertung 2026 · Stand Nr. 2 vom 17.11.2026 (ersetzt Nr. 1 vom 09.11.2026 — Anlass: Korrektur K-2026-0007).',
+      'Energetische Bewertung: Stand Nr. 2 vom 17.11.2026 · Überprüfung fällig seit 1 Tag.',
+      'Heizung Verwaltung (Gas): 1 240 m³ im Oktober 2026, abgelesen · ohne Anteil — Gas hat keinen gemeinsamen Nenner mit Strom.',
+      'Noch keine Energieeinsätze. Legen Sie fest, welche Prozesse Energie einsetzen — die Rangliste entsteht aus den Messwerten.',
+      UEMS_NORMGRENZE,
+    ]);
+  });
+
+  it('die Ergebnis-Seite nennt kein Kürzel K1 bis K8, kein „Roh“ und kein „Urteil (Band)“ (Konzept Auswerten a1 §10.10)', () => {
+    // Die Kürzel stehen nur im Dialog „Kriterien ändern“ (Wort und Kürzel, `bewertungErgebnis.KRITERIEN_FELDER`).
+    const kuerzel = /(^|[^\p{L}\p{N}])K[1-8]([^\p{L}\p{N}]|$)|(^|[^\p{L}])Roh([^\p{L}]|$)|Urteil \(Band\)/u;
+    // Die Seitenhülle und der Bewertungsstand; die Sätze aus `bewertungErgebnis.ts` prüft `bewertungErgebnis.test.ts`
+    // an ihrem Ergebnis (jeder Text der Ergebnis-Seite ohne Kürzel).
+    for (const datei of ['pages/BewertungPage.tsx', 'components/BewertungStand.tsx']) {
+      const texte = visibleTexts(readFileSync(join(SRC, datei), 'utf8'));
+      expect(texte.length, datei).toBeGreaterThan(5);
+      expect(texte.filter((t) => kuerzel.test(t)), datei).toEqual([]);
+    }
+    expect(kuerzel.test('Er braucht mindestens 10 % des Stroms (K1).')).toBe(true);
+  });
+});
+
+describe('UEMS AP-17 IP-4 · Bezugsbasis: Sprach-Wächter und Kundenwörter (SP1–SP3)', () => {
+  /**
+   * IP-9/IP-14/IP-18/IP-20/IP-24 tragen hier ihre Kunden-Komponenten ein. Zusätzlich gilt jede Komponente, deren
+   * Dateiname „Bezugsbasis“ oder „Leistungsvergleich“ trägt, als Fläche — heute gibt es keine, der Block greift ab
+   * der ersten, ohne dass jemand an ihn denken muss.
+   */
+  const BEZUGSBASIS_FLAECHEN: string[] = [];
+  const BEZUGSBASIS_NAMENSMUSTER = /(?:Bezugsbasis|Leistungsvergleich)[^/]*\.tsx$/;
+  const bezugsbasisFlaechen = () => [
+    ...new Set([
+      ...BEZUGSBASIS_FLAECHEN,
+      ...customerFiles()
+        .map((file) => file.slice(SRC.length + 1).replace(/\\/g, '/'))
+        .filter((datei) => BEZUGSBASIS_NAMENSMUSTER.test(datei)),
+    ]),
+  ];
+
+  /** SP2: die Norm-Wörter des Konzepts; „ISO“ nur im Grenz-Satz. */
+  const VERBOTEN = [
+    /(^|[^\p{L}\p{N}])EnPIs?([^\p{L}\p{N}]|$)/iu,
+    /(^|[^\p{L}\p{N}])EnBs?([^\p{L}\p{N}]|$)/iu,
+    /Baseline/iu,
+    /Normalisierung/iu,
+    /(^|[^\p{L}\p{N}])KPIs?([^\p{L}\p{N}]|$)/iu,
+    /(^|[^\p{L}\p{N}])automatisch\s+bewertet([^\p{L}\p{N}]|$)/iu,
+    /(^|[^\p{L}\p{N}])ISO([^\p{L}\p{N}]|$)/iu,
+  ];
+  const verstoesse = (text: string) => {
+    const ohneGrenze = text.replaceAll(UEMS_NORMGRENZE, ' ');
+    return VERBOTEN.filter((re) => re.test(ohneGrenze));
+  };
+  const traegtGrenze = (text: string) =>
+    text.includes(UEMS_NORMGRENZE) || />\s*\{\s*UEMS_NORMGRENZE\s*\}\s*</.test(text) || traegtGrenzBaustein(text);
+  /**
+   * IP-14: Teil-Komponenten, die nur INNERHALB einer Fläche mit Grenz-Satz stehen (die Modell-Ansicht im Reiter und im
+   * Assistenten) — der Satz stünde sonst doppelt auf derselben Fläche. Sie gelten weiter als Fläche für Wörter und
+   * Pfeile; statt des Grenz-Satzes muss jede Eltern-Datei sie importieren und selbst den Grenz-Satz tragen (oder selbst
+   * ein Teil sein, dessen Eltern ihn tragen).
+   */
+  const BEZUGSBASIS_TEILE: Record<string, string[]> = {
+    'components/BezugsbasisModell.tsx': ['components/BezugsbasisReiter.tsx', 'components/BezugsbasisAssistent.tsx'],
+    'components/BezugsbasisModellGrafik.tsx': ['components/BezugsbasisModell.tsx'],
+  };
+  const importiert = (eltern: string, teil: string) =>
+    existsSync(join(SRC, eltern)) &&
+    readFileSync(join(SRC, eltern), 'utf8').includes(`from './${teil.replace(/^components\//, '').replace(/\.tsx$/, '')}'`);
+  const grenzeUeberEltern = (teil: string, gesehen: string[] = []): boolean =>
+    (BEZUGSBASIS_TEILE[teil] ?? []).length > 0 &&
+    BEZUGSBASIS_TEILE[teil].every(
+      (eltern) =>
+        !gesehen.includes(eltern) &&
+        importiert(eltern, teil) &&
+        (traegtGrenze(readFileSync(join(SRC, eltern), 'utf8')) || grenzeUeberEltern(eltern, [...gesehen, teil])),
+    );
+
+  /**
+   * VG3 (E8 = A): ein Pfeil-Wort steht nur an einem bereinigten Urteil — der Satz nennt, was erwartet wurde. An einer
+   * rohen Zahl (gemessen, Vorperiode, Vorjahr) steht kein „besser“, „schlechter“ und kein Pfeil.
+   */
+  const PFEIL = /(?:^|[^\p{L}])(?:besser|schlechter|verbesser|verschlechter)|[↑↓▲▼⬆⬇]/iu;
+  const BEREINIGT = /erwart|bereinigt/iu;
+  /** Eine Zahl ist auch ein Platzhalter vor Einheit oder Prozent (`${delta} % besser` → „ % besser“). */
+  const ZAHL = /[\p{N}%]|kWh|m³/u;
+  const pfeilAnRoherZahl = (text: string) => ZAHL.test(text) && PFEIL.test(text) && !BEREINIGT.test(text);
+  /**
+   * `visibleTexts` lässt JSX-Text mit Doppelpunkt aus (Schutz vor Code-Fragmenten) — ein §5.8-Satz hat fast immer
+   * einen. Für die Pfeil-Probe zählt darum zusätzlich jeder `>Text<`-Lauf ohne geschweifte Klammer.
+   */
+  const pfeilTexte = (code: string) =>
+    [...visibleTexts(code), ...[...code.matchAll(/>([^<>{}]*\p{L}[^<>{}]*)</gu)].map((m) => m[1])]
+      .filter(isKundentext)
+      .filter(pfeilAnRoherZahl);
+
+  /** Die 21 Sätze aus AP-17 §5.8, wörtlich. */
+  const SAETZE = [
+    'Bezugsbasis BB-0001 · Oktober 2026 · Verhältnis 0,2837 kWh je kg · vorläufig (1 von 12 Monaten) · freigegeben von Ines Kaltenbach am 12.11.2026.',
+    'Energieleistungskennzahl — Bezugsbasis seit 12.11.2026.',
+    'Bezugsbasis BB-0001 · Fassung 2 (November 2026 bis Oktober 2027, 12 Monate): Modell mit einer Einflussgröße — 10 523 kWh Grundlast + 0,2343 kWh je kg, Streuung ± 0,8 % · gilt seit 01.11.2027.',
+    'Dezember 2027: 78 000 kWh gemessen, 69 098 kWh erwartet bei 250 000 kg — 12,9 % mehr als die Bezugsbasis erwarten lässt: schlechter.',
+    'Dezember 2027: 78 000 kWh — 8,8 % weniger als im November (Produktion: 21,9 % weniger).',
+    'Januar 2028: 78 000 kWh gemessen, 80 813 kWh erwartet bei 300 000 kg — 3,5 % weniger: besser.',
+    'Februar 2028: 81 500 kWh gemessen, 81 985 kWh erwartet bei 305 000 kg — 0,6 % weniger: im Rahmen (± 2 %).',
+    'November 2027 bis Februar 2028: 323 000 kWh gemessen, 317 395 kWh erwartet — 1,8 %: im Rahmen der Bezugsbasis (Summe über vier Monate).',
+    'März 2027: 88 265 kWh bei 331 000 kg — 6,0 % weniger als die Bezugsbasis Oktober 2026 erwarten lässt: besser. Die Bezugsbasis ist vorläufig (1 von 12 Monaten).',
+    'Modell nicht anwendbar: die Produktionsmenge im März 2028 (390 000 kg) liegt außerhalb der Bezugsbasis (254 000–341 000 kg).',
+    'Modell nicht möglich: 1 von 12 Monaten in der Referenzperiode. Das Verhältnis ist vorläufig.',
+    'Betriebsstunden nicht aufgenommen: sie hängen an der Produktionsmenge (r = 0,997). Ein Modell mit zwei Einflussgrößen braucht unabhängige Größen.',
+    `Januar 2028: 1 930 m³ Gas bei 480 Gradtagen — 1 943 m³ erwartet: im Rahmen der Bezugsbasis (± 4,6 %). ${UEMS_TEMPERATUR_BEZOGEN}`,
+    UEMS_KOORDINATEN_FEHLEN_SATZ('Lindach'),
+    'Bezugsbasis BB-0002: Grundlage korrigiert (K-2026-0007, 12.11.2026) — Fassung 1 zitiert Version 1 (0,1488), gültig ist jetzt Version 2 (0,1473). Neue Fassung bilden oder Fassung 1 begründet behalten.',
+    'Bezugsbasis BB-0003: die Fläche der Halle 2 hat sich geändert (3 100 → 3 400 m² ab 01.01.2027) — Fassung 1 prüfen.',
+    'Nicht bewertbar: Bezugsbasis beendet am 31.12.2026 (Anbau Halle 2). Fassung 2 gilt seit 01.03.2027.',
+    'Bezugsbasis BB-0001, Fassung 2 vom 24.11.2027 · Überprüfung fällig seit 1 Tag — bestätigen oder neu fassen.',
+    'Leistungsvergleich Spritzguss, Dezember 2027 · Stand Nr. 1 vom 12.01.2028 · Bezugsbasis BB-0001, Fassung 2 · Prüfsumme 4e2d…',
+    'Noch keine Bezugsbasis. Legen Sie fest, gegen welchen Zeitraum diese Kennzahl verglichen werden soll — der Vergleich entsteht aus den gespeicherten Werten.',
+    UEMS_NORMGRENZE,
+  ];
+
+  it('beißt an jedem verbotenen Wort und lässt die Wortgrenzen heil', () => {
+    for (const probe of [
+      'EnPI', 'enpi', 'EnPIs', 'EnB', 'ENB', 'Baseline', 'Baseline-Modell', 'Energie-Baselines', 'Normalisierung',
+      'Normalisierungsmethode', 'KPI', 'KPI-Karte', 'KPIs', 'automatisch bewertet', 'ISO',
+    ]) {
+      expect(verstoesse(`Bezugsbasis: ${probe}.`), probe).not.toEqual([]);
+    }
+    expect(verstoesse('Museum, Isolierung, Genbank und Kapital bleiben normale Wörter; bereinigt um die Produktionsmenge.')).toEqual([]);
+    expect(verstoesse(UEMS_NORMGRENZE)).toEqual([]);
+  });
+
+  it('VG3-Probe: kein Pfeil-Wort an einer rohen Zahl, das Urteil nur mit „erwartet“', () => {
+    for (const probe of [
+      'Dezember 2027: 78 000 kWh — 8,8 % weniger als im November: besser.',
+      'Dezember 2027: 78 000 kWh — 8,8 % mehr als im November: schlechter.',
+      '0,2837 kWh je kg ↓ 8,8 %',
+      '0,2837 kWh je kg ↑ 3 %',
+      'Verbesserung um 8,8 % gegenüber dem Vorjahr.',
+      '8,8 % verschlechtert gegenüber dem Vorjahr.',
+    ]) {
+      expect(pfeilAnRoherZahl(probe), probe).toBe(true);
+    }
+    expect(pfeilAnRoherZahl('Januar 2028: 78 000 kWh gemessen, 80 813 kWh erwartet bei 300 000 kg — 3,5 % weniger: besser.')).toBe(false);
+    expect(pfeilAnRoherZahl('Dezember 2027: 78 000 kWh — 8,8 % weniger als im November.')).toBe(false);
+  });
+
+  it('verlangt den Grenz-Satz auf jeder Bezugsbasis-Fläche und hält Wörter und Pfeile fern', () => {
+    for (const datei of bezugsbasisFlaechen()) {
+      const code = readFileSync(join(SRC, datei), 'utf8');
+      expect(verstoesse(code), datei).toEqual([]);
+      expect(datei in BEZUGSBASIS_TEILE ? grenzeUeberEltern(datei) : traegtGrenze(code), datei).toBe(true);
+      expect(pfeilTexte(code), `${datei}: Pfeil-Wort an roher Zahl`).toEqual([]);
+    }
+  });
+
+  it('findet Flächen über den Dateinamen und prüft die Mechanik am Prüfling', () => {
+    for (const datei of ['pages/BezugsbasisSeite.tsx', 'components/VergleichMitBezugsbasis.tsx', 'components/LeistungsvergleichStand.tsx']) {
+      expect(BEZUGSBASIS_NAMENSMUSTER.test(datei), datei).toBe(true);
+    }
+    for (const datei of ['glossar.ts', 'uemsBezugsbasis.ts', 'components/KennzahlenRegister.tsx', 'components/BezugsgroessenListe.tsx']) {
+      expect(BEZUGSBASIS_NAMENSMUSTER.test(datei), datei).toBe(false);
+    }
+    expect(traegtGrenze('<p>Bezugsbasis ohne Abgrenzung</p>')).toBe(false);
+    expect(traegtGrenze('<p className="x">{UEMS_NORMGRENZE}</p>')).toBe(true);
+    expect(traegtGrenze("import { UEMS_NORMGRENZE } from '../glossar';")).toBe(false);
+    for (const probe of [
+      '<section><p>Dezember 2027: 78 000 kWh — 8,8 % weniger als im November: besser.</p><p>{UEMS_NORMGRENZE}</p></section>',
+      'const zeile = `Dezember 2027: ${menge} kWh — ${delta} % besser als im November`;',
+      '<p>Vorperiode ↓ 8,8 %</p>',
+    ]) {
+      expect(pfeilTexte(probe), probe).not.toEqual([]);
+    }
+    expect(pfeilTexte('<p>Januar 2028: 78 000 kWh gemessen, 80 813 kWh erwartet — 3,5 % weniger: besser.</p>')).toEqual([]);
+    expect(pfeilTexte('const f = (x: number) => x < 3 ? a : b; <p>{UEMS_NORMGRENZE}</p>')).toEqual([]);
+    for (const datei of BEZUGSBASIS_FLAECHEN) {
+      expect(customerFiles().some((file) => file.endsWith(`/${datei}`)), datei).toBe(true);
+    }
+    // IP-14: ein Teil ohne Eltern oder mit einer Eltern-Datei, die ihn nicht importiert, trägt keinen Grenz-Satz.
+    expect(grenzeUeberEltern('components/BezugsbasisModell.tsx')).toBe(true);
+    expect(grenzeUeberEltern('components/BezugsbasisModellGrafik.tsx')).toBe(true);
+    expect(grenzeUeberEltern('components/BezugsbasisUnbekannt.tsx')).toBe(false);
+    for (const [teil, eltern] of Object.entries(BEZUGSBASIS_TEILE)) {
+      expect(BEZUGSBASIS_NAMENSMUSTER.test(teil), teil).toBe(true);
+      for (const e of eltern) expect(importiert(e, teil), `${e} importiert ${teil}`).toBe(true);
+    }
+  });
+
+  it('findet die verbotenen Wörter auf keiner Kundenfläche', () => {
+    const funde = customerFiles().flatMap((file) => {
+      const wo = file.slice(SRC.length + 1).replace(/\\/g, '/');
+      return visibleTexts(readFileSync(file, 'utf8'))
+        .filter(isKundentext)
+        .flatMap((text) => verstoesse(text).map((re) => `${wo}: ${re} in „${text}“`));
+    });
+    expect(funde, funde.join('\n')).toEqual([]);
+  });
+
+  it('die 21 Sätze aus §5.8 bestehen den Wächter', () => {
+    expect(SAETZE).toHaveLength(21);
+    for (const satz of SAETZE) {
+      expect(verstoesse(satz), satz).toEqual([]);
+      expect(pfeilAnRoherZahl(satz), satz).toBe(false);
+    }
+    expect(SAETZE.some(traegtGrenze)).toBe(true);
+    expect(SAETZE[13]).toBe(
+      'Für den Standort Lindach kann VoltPilot kein Wetter beziehen: die Koordinaten fehlen. Eine Wetterbereinigung über Gradtage ist hier erst möglich, wenn der Standort Koordinaten hat.',
+    );
+    expect(SAETZE[12]).toContain('Temperatur von VoltPilot bezogen (Wetter-Archiv), nicht am Standort gemessen.');
+  });
+
+  it('bildet die Kundenwörter und Urteile als Konstanten ab (SP1, Z4)', () => {
+    expect([
+      UEMS_ENERGIELEISTUNGSKENNZAHL, UEMS_BEZUGSBASIS, UEMS_REFERENZPERIODE, UEMS_EINFLUSSGROESSE, UEMS_STATISCHER_FAKTOR,
+      UEMS_BEREINIGT, UEMS_BEREINIGT_UM('die Produktionsmenge'), UEMS_ERWARTET, UEMS_GRUNDLAST, UEMS_LEISTUNGSVERGLEICH,
+      UEMS_BEZOGEN, UEMS_KOORDINATEN_FEHLEN,
+    ]).toEqual([
+      'Energieleistungskennzahl', 'Bezugsbasis', 'Referenzperiode', 'Einflussgröße', 'statischer Faktor',
+      'bereinigt', 'bereinigt um die Produktionsmenge', 'erwartet', 'Grundlast', 'Leistungsvergleich',
+      'bezogen', 'Koordinaten fehlen',
+    ]);
+    expect(UEMS_BEZUGSBASIS_URTEILE).toEqual({
+      besser: 'besser', schlechter: 'schlechter', im_rahmen: 'im Rahmen', nicht_anwendbar: 'nicht bewertbar',
+    });
+    for (const wort of Object.values(UEMS_BEZUGSBASIS_URTEILE)) expect(verstoesse(wort), wort).toEqual([]);
+  });
+
+  /**
+   * AP-17 IP-5: der Methoden-Katalog ist ein Kundentext-Wohnort (Kundenwort und Kennzeichen jeder Methode; IP-9 zeigt
+   * Datenbedarf und Grenze im Assistenten) — er liegt als JSON und wird vom Datei-Walker nicht erfasst. Jedes Kundenwort
+   * steht in einem Satz aus §5.8, jedes Kennzeichen sagt „bereinigt um“, kein Text trägt ein Norm-Wort (SP2).
+   */
+  it('der Methoden-Katalog spricht die Kundenwörter aus §5.8 (IP-5)', () => {
+    const katalog = JSON.parse(readFileSync(join(SRC, 'bezugsbasis/bezugsbasis-methoden.json'), 'utf8')) as {
+      methoden: { kennung: string; kundenwort: string; formel: string; variablen: string; datenbedarf: string; grenze: string; kennzeichen: string }[];
+      parameter: { grundperiode: string; hinweis: string };
+    };
+    expect(katalog.methoden.map((m) => m.kennung)).toEqual(['verhaeltnis', 'regression_eine_variable', 'regression_zwei_variablen', 'gradtage']);
+    const violations: string[] = [];
+    for (const m of katalog.methoden) {
+      if (!SAETZE.some((satz) => satz.includes(m.kundenwort))) violations.push(`${m.kennung}: „${m.kundenwort}“ steht in keinem Satz aus §5.8`);
+      if (!m.kennzeichen.includes(`${UEMS_BEREINIGT} um`)) violations.push(`${m.kennung}: Kennzeichen ohne „bereinigt um“`);
+      for (const text of [m.kundenwort, m.formel, m.variablen, m.datenbedarf, m.grenze, m.kennzeichen]) {
+        for (const re of verstoesse(text)) violations.push(`${m.kennung}: ${re} in „${text}“`);
+      }
+      for (const text of [m.kundenwort, m.kennzeichen]) {
+        for (const { re, why } of FORBIDDEN) if (re.test(text)) violations.push(`${m.kennung}: „${text}“ — ${why}`);
+      }
+    }
+    for (const text of [katalog.parameter.grundperiode, katalog.parameter.hinweis]) {
+      for (const re of verstoesse(text)) violations.push(`parameter: ${re} in „${text}“`);
+    }
+    expect(violations, violations.join('\n')).toEqual([]);
+  });
+});
+
+/**
+ * AP-18 SP2: die Norm- und Kausal-Wörter des Bereichs „Ziele und Maßnahmen“ — auf Modul-Ebene, damit der Block
+ * „Energiemanagement“ (AP-19 SP5, W3) an genau diesen Regeln zeigt, dass die Maßnahmen-Seite „Feststellung“ sagen darf
+ * und „Nichtkonformität“ nicht. Der AP-18-Wächter bleibt, wie er ist: keine Ausnahme, kein Wort weniger — außer der
+ * einen aus Nachweisen Entscheid 18 (siehe `NACHWEISEN_FACHWORT_AUSNAHMEN`), die dieselbe Form hat wie die spätere
+ * Ausnahme aus Verbessern Entscheid 14.
+ */
+const VERBESSERUNG_VERBOTEN = [
+  /Nicht[-\s]?konformit(?:ä|ae)t/iu,
+  /(^|[^\p{L}\p{N}])Korrektur[-\s]?ma(?:ß|ss)nahme/iu,
+  /(^|[^\p{L}\p{N}])Aktions[-\s]?pl(?:a|ä)n/iu,
+  /(^|[^\p{L}\p{N}])Ursachen[-\s]?analyse/iu,
+  /(^|[^\p{L}\p{N}])Root[-\s]?Cause/iu,
+  /(^|[^\p{L}\p{N}])(?:hat|haben)\s+gewirkt([^\p{L}\p{N}]|$)/iu,
+  /(^|[^\p{L}\p{N}])Einsparung(?:en)?\s+durch([^\p{L}\p{N}]|$)/iu,
+];
+
+/**
+ * Konzept Nachweisen n1, Entscheid 18: Berater suchen die Normwörter. Sie stehen darum in der letzten Zeile von „Was
+ * ist …?“ - nur im Feld `fachwort` der Erklärungen aus `auditBild.ts` (NORMWORT_FESTSTELLUNG, NORMWORT_WIRKSAMKEIT).
+ * Genau diese Texte lässt jeder Wächter nur in `auditBild.ts` durch; jede andere Fläche bleibt verboten.
+ */
+const NACHWEISEN_FACHWORT_AUSNAHMEN = new Set([NORMWORT_FESTSTELLUNG, NORMWORT_WIRKSAMKEIT]);
+const nachweisenFachwortAusnahme = (datei: string | undefined, text: string) =>
+  datei === 'auditBild.ts' && NACHWEISEN_FACHWORT_AUSNAHMEN.has(text);
+
+/**
+ * Konzept Verbessern v1, Entscheid 14 (Captain-Freigabe 06.10.2026): dieselbe Form wie Entscheid 18 oben, für die
+ * Begriffe aus `NORMWOERTER_IM_FACHWORT`. Genau diese Texte in `begriffe.ts` lässt der Wächter durch; jede andere
+ * Stelle bleibt verboten.
+ */
+const FACHWORT_AUSNAHMEN = new Set<string>([
+  ...Object.values(NORMWOERTER_IM_FACHWORT).flatMap((woerter) => woerter ?? []),
+  ...(Object.keys(NORMWOERTER_IM_FACHWORT) as BegriffSchluessel[]).map((k) => BEGRIFFE[k].fachwort ?? ''),
+]);
+const fachwortAusnahme = (datei: string, text: string) => datei === 'begriffe.ts' && FACHWORT_AUSNAHMEN.has(text);
+
+describe('UEMS AP-18 IP-4 · Ziele und Maßnahmen: Sprach-Wächter und Kundenwörter (SP1–SP4)', () => {
+  /**
+   * IP-8/IP-13/IP-18/IP-20 tragen hier ihre Kunden-Komponenten ein. Zusätzlich gilt jede Komponente, deren Dateiname
+   * mit „Energieziel“, „Massnahme“, „Abweichung“, „Auffaelligkeit“ oder „Verbesserung“ beginnt, als Fläche — heute gibt
+   * es keine, der Block greift ab der ersten, ohne dass jemand an ihn denken muss. Die Wörter aus AP-14 S1 und AP-17
+   * SP2 prüfen deren Blöcke auf jeder Kundenfläche; dieser Block ergänzt sie, er öffnet sie nicht.
+   */
+  const VERBESSERUNG_FLAECHEN: string[] = [
+    // IP-8: Bereich, Register „Energieziele“, Energieziel-Seite und ihre Dialoge (samt „Energieziel setzen“).
+    'pages/VerbesserungBereich.tsx',
+    'pages/EnergiezielSeite.tsx',
+    'components/EnergiezieleRegister.tsx',
+    'components/EnergiezielDialoge.tsx',
+    // IP-13: Register „Maßnahmen“, „Maßnahme anlegen“ (auch am Energieziel und am Energieeinsatz) und die Maßnahmen-Seite.
+    'components/MassnahmenRegister.tsx',
+    'components/MassnahmeDialoge.tsx',
+    'pages/MassnahmeSeite.tsx',
+    // IP-18: Vermerk-Zeile und Antwort-Dialog in der Vergleichs-Fläche, Register „Abweichungen“, Abweichungs-Seite und
+    // ihre Dialoge (Ursache-Aussage, Frist, Verantwortlich, Abschluss mit Sprung in „Maßnahme anlegen“).
+    'components/AuffaelligkeitZeile.tsx',
+    'components/AbweichungenRegister.tsx',
+    'components/AbweichungDialoge.tsx',
+    'pages/AbweichungSeite.tsx',
+    // IP-20: Abschnitt „Wirkung“, Spalte „Bewertung“ und Dialog „bewerten“ an der Maßnahme, die Anstöße am Vorgang mit
+    // Antwort-Knöpfen (Maßnahme und Energieziel). Das reine Modul `massnahmeWirkung.ts` prüft der Wörter-Wächter unten.
+    'components/MassnahmeWirkung.tsx',
+    'components/VerbesserungAnstoesse.tsx',
+    // Konzept Verbessern v1: das geführte „Energieziel setzen“ (PR 1), der Hinweis am Energieziel und das Antwort-Blatt
+    // einer Auffälligkeit (PR 3).
+    'components/EnergiezielSetzenFuehrung.tsx',
+    'components/AuffaelligkeitHinweis.tsx',
+    'components/AuffaelligkeitBlatt.tsx',
+  ];
+  const VERBESSERUNG_NAMENSMUSTER = /(?:^|\/)(?:Energieziel|Massnahme|Abweichung|Auffaelligkeit|Verbesserung)[^/]*\.tsx$/;
+  const verbesserungFlaechen = () => [
+    ...new Set([
+      ...VERBESSERUNG_FLAECHEN,
+      ...customerFiles()
+        .map((file) => file.slice(SRC.length + 1).replace(/\\/g, '/'))
+        .filter((datei) => VERBESSERUNG_NAMENSMUSTER.test(datei)),
+    ]),
+  ];
+
+  /** SP2: die Norm- und Kausal-Wörter des Konzepts — auf keiner Kundenfläche. */
+  const VERBOTEN = VERBESSERUNG_VERBOTEN;
+  const verstoesse = (text: string) => {
+    const ohneGrenze = text.replaceAll(UEMS_NORMGRENZE, ' ');
+    return VERBOTEN.filter((re) => re.test(ohneGrenze));
+  };
+  const traegtGrenze = (text: string) =>
+    text.includes(UEMS_NORMGRENZE) || />\s*\{\s*UEMS_NORMGRENZE\s*\}\s*</.test(text) || traegtGrenzBaustein(text);
+
+  /**
+   * Konzept Verbessern v1, PR 4 (Muster `BEZUGSBASIS_TEILE`): Dialoge, Blätter und Abschnitte, die nur INNERHALB einer
+   * Seite mit Grenz-Satz stehen. Der Satz steht einmal am Fuß der Seite, nicht am Fuß jedes Dialogs. Ein Teil gilt weiter
+   * als Fläche für Wörter, Ursachen und Pfeile. Seine Eltern sind JEDE Datei, die ihn importiert (Review r1 S-4.1 a): jede
+   * trägt den Grenz-Satz selbst oder ist selbst ein Teil, dessen Eltern ihn tragen - eine neue Eltern-Seite ohne Satz fällt
+   * so auf, ohne dass jemand eine Liste nachführt.
+   */
+  const VERBESSERUNG_TEILE: string[] = [
+    'components/EnergiezielDialoge.tsx',
+    'components/EnergiezielSetzenFuehrung.tsx',
+    'components/MassnahmeDialoge.tsx',
+    'components/AbweichungDialoge.tsx',
+    'components/AuffaelligkeitZeile.tsx',
+    'components/AuffaelligkeitBlatt.tsx',
+    'components/AuffaelligkeitHinweis.tsx',
+    'components/MassnahmeWirkung.tsx',
+    'components/VerbesserungAnstoesse.tsx',
+  ];
+  const istTeil = (datei: string) => VERBESSERUNG_TEILE.includes(datei);
+  /** Der Importpfad von `eltern` nach `teil` (`./X`, `../components/X`, `./components/X`). */
+  const importPfad = (eltern: string, teil: string) => {
+    const von = eltern.split('/').slice(0, -1);
+    const nach = teil.replace(/\.tsx$/, '').split('/');
+    let i = 0;
+    while (i < von.length && i < nach.length - 1 && von[i] === nach[i]) i++;
+    return [...(von.length > i ? Array<string>(von.length - i).fill('..') : ['.']), ...nach.slice(i)].join('/');
+  };
+  const importiertTeil = (eltern: string, teil: string) =>
+    existsSync(join(SRC, eltern)) && readFileSync(join(SRC, eltern), 'utf8').includes(`from '${importPfad(eltern, teil)}'`);
+  const quellen = () =>
+    walk()
+      .map((datei) => datei.slice(SRC.length + 1).replace(/\\/g, '/'))
+      .filter((datei) => datei.endsWith('.tsx') && !datei.endsWith('.test.tsx') && !datei.startsWith('test/'));
+  const elternVon = (teil: string) => quellen().filter((datei) => datei !== teil && importiertTeil(datei, teil));
+  const grenzeUeberEltern = (teil: string, gesehen: string[] = []): boolean => {
+    const eltern = elternVon(teil);
+    return (
+      eltern.length > 0 &&
+      eltern.every((e) => {
+        if (gesehen.includes(e)) return false;
+        const code = stripComments(readFileSync(join(SRC, e), 'utf8'));
+        return traegtGrenze(code) || reiterTragenDenHinweis(e, code) || (istTeil(e) && grenzeUeberEltern(e, [...gesehen, teil]));
+      })
+    );
+  };
+
+  /**
+   * U1–U3: eine Ursache ist die Aussage einer Person. „Ursache“ steht nur in der Nähe von „Aussage von“ (auch als
+   * Konstante oder Satzmuster aus `glossar.ts`) oder als Überschrift „Ursache-Aussagen“ — ein Satz des Systems
+   * „Ursache: …“ fällt durch.
+   */
+  const URSACHE = /(?<![\p{L}])Ursache(?![\p{L}]|-Aussage)/gu;
+  const AUSSAGE_VON = /Aussage\s+von|UEMS_AUSSAGE_VON|UEMS_URSACHE_AUSSAGE_VON|ursacheAussage/u;
+  const ursacheOhnePerson = (text: string) =>
+    [...text.matchAll(URSACHE)].some((m) => !AUSSAGE_VON.test(text.slice(Math.max(0, m.index - 80), m.index + 80)));
+
+  /**
+   * W5 (SP2): „Verbesserung“ nur im Wirkungs-Satz mit Bedingung — der Satz nennt, was die Bezugsbasis erwarten lässt,
+   * und über wie viele Monate. Nie als Beschriftung, nie an einer rohen Zahl. Platzhalter zählen (`${x} von ${n}`).
+   */
+  const VERBESSERUNG = /verbesserung/iu;
+  const WIRKUNGS_SATZ = /erwarten\s+lässt/u;
+  const BEDINGUNG = /von\s+[\p{N}\s]*Monat/u;
+  const verbesserungOhneBedingung = (text: string) =>
+    VERBESSERUNG.test(text) && !(WIRKUNGS_SATZ.test(text) && BEDINGUNG.test(text));
+
+  /** W6 (SP1): „Energieziel“, nie „Ziel“ allein — „Ziel: 2,2 kW“ gehört der Steuerung, außerhalb dieses Bereichs. */
+  const ZIEL_ALLEIN = /(?<![\p{L}])Ziel(?![\p{L}])/u;
+
+  /** VG3 (AP-17 E8 = A): dieselbe Pfeil-Probe wie im Block „Bezugsbasis“. */
+  const PFEIL = /(?:^|[^\p{L}])(?:besser|schlechter|verbesser|verschlechter)|[↑↓▲▼⬆⬇]/iu;
+  const BEREINIGT = /erwart|bereinigt/iu;
+  const ZAHL = /[\p{N}%]|kWh|m³/u;
+  const pfeilAnRoherZahl = (text: string) => ZAHL.test(text) && PFEIL.test(text) && !BEREINIGT.test(text);
+  /** Wie im Block „Bezugsbasis“: `visibleTexts` plus jeder `>Text<`-Lauf (ein §5.9-Satz hat fast immer einen Doppelpunkt). */
+  const kundenTexte = (code: string) =>
+    [...visibleTexts(code), ...[...code.matchAll(/>([^<>{}]*\p{L}[^<>{}]*)</gu)].map((m) => m[1])].filter(isKundentext);
+
+  /** Die 24 Sätze aus AP-18 §5.9, wörtlich. */
+  const SAETZE = [
+    'Auffälligkeit: Dezember 2027 — 78 000 kWh gemessen, 69 098 kWh erwartet bei 250 000 kg: 12,9 % mehr als die Bezugsbasis erwarten lässt (schlechter, Band ± 2 %). Vermerkt am 07.01.2028. Abweichung eröffnen oder zur Kenntnis nehmen.',
+    'Auffälligkeit Juli 2028: 2,5 % mehr als die Bezugsbasis erwarten lässt (schlechter, Band ± 2 %) — zur Kenntnis genommen von Ines Kaltenbach am 10.08.2028: ‚Kleinserien-Sonderauftrag KW 27–29, im Produktionsplan dokumentiert; keine Abweichung des Prozesses.‘',
+    'Abweichung AW-2028-0001 · KZ-0004 Stromeinsatz Spritzguss je kg, Dezember 2027: 12,9 % mehr als die Bezugsbasis erwarten lässt · Verantwortlich Ines Kaltenbach · Frist 31.01.2028 · offen.',
+    'Ursache — Aussage von Murat Demirci, 14.01.2028 (keine Messung): ‚Die Werkzeugheizungen der Maschinen 3 bis 6 liefen vom 23.12. bis 02.01. durch — keine Abschaltung in der Betriebspause programmiert.‘',
+    'Ursache — Aussage von Jonas Wendlinger, 18.11.2026 (mit Beleg: Zählerwechsel Z-5a → Z-5b am 18.11.2026): ‚Der Anfangsstand des neuen Zählers wurde erst nachgetragen.‘',
+    'Abgeschlossen am 15.01.2028 von Ines Kaltenbach: Maßnahme M-2028-0001 — ‚Aussage von Murat Demirci erklärt die Ursache plausibel; Maßnahme mit Messgrundlage angelegt; Dezember-Werte bleiben, keine Korrektur.‘',
+    'Abgeschlossen am 20.12.2026 von Ines Kaltenbach: erklärt — ‚Baustellenstrom des Anbaus über MS-10 (Aussage JW); keine Maßnahme am Gebäude.‘',
+    'M-2028-0001 · Werkzeugheizungen in Betriebspausen abschalten · Verantwortlich Murat Demirci · Termin 31.01.2028 · umgesetzt am 22.01.2028.',
+    'Messgrundlage: KZ-0004 Stromeinsatz Spritzguss je kg, Bezugsbasis BB-0001, Fassung 2 — bereinigt um Produktionsmenge (Modell mit einer Einflussgröße). Ausgangslage Dezember 2027: 12,9 % mehr als erwartet (Version 1, Kopie vom 15.01.2028). Erwartete Wirkung: 3 % weniger — ‚Heizungen laufen etwa ein Fünftel der Zeit ohne Produktion.‘',
+    'M-2028-0002 · Druckluft-Leckagen orten und beseitigen · ohne Messgrundlage — Wirkung nicht messbar. Um die Wirkung zu messen, braucht Druckluft eine Energieleistungskennzahl (zum Beispiel Stromeinsatz je Betriebsstunde mit einer Bezugsbasis).',
+    'Wirkung von M-2028-0001, beobachtet: 2,4 % weniger Strom als die Bezugsbasis erwarten lässt (Februar bis Oktober 2028, 8 von 12 Monaten; März 2028 nicht bewertbar: Produktionsmenge außerhalb der Bezugsbasis) — erwartet waren 3 % weniger. Ob die Maßnahme das bewirkt hat, sagt eine Person.',
+    'Januar 2028: Umsetzungsmonat — nicht gezählt. März 2028: nicht bewertbar — Produktionsmenge 390 000 kg außerhalb der Bezugsbasis (228 600–375 100 kg).',
+    'November 2028: nicht bewertbar — die Bezugsbasis BB-0001, Fassung 3 hat eine Referenzperiode (November 2027 bis Oktober 2028), die nach der Umsetzung endet; sie enthielte die Maßnahme.',
+    'Belegt von Ines Kaltenbach am 15.11.2028: ‚Zeitschaltung seit 22.01.2028 aktiv, Laufzeit der Werkzeugheizungen laut Steuerung 18 % niedriger; keine andere Änderung am Prozess Spritzguss im Zeitraum.‘ Beobachtet: 2,4 % weniger (8 von 12 Monaten). Stand Nr. 1, Prüfsumme 7c1e…',
+    'Beobachtet — nicht belegt. Eine Bewertung mit Begründung setzt eine Person.',
+    'Bewertet am 20.11.2028 von Ines Kaltenbach: nicht messbar — ‚Keine Messgrundlage: Druckluft hat keine Energieleistungskennzahl.‘',
+    'Energieziel EZ-2028-0001 · Spritzguss: 5 % weniger Strom als die Bezugsbasis erwarten lässt · Januar bis Dezember 2028 · Verantwortlich Ines Kaltenbach. Stand nach 5 von 12 Monaten: 2,9 % weniger (März 2028 nicht bewertbar: Produktionsmenge außerhalb der Bezugsbasis). Bezugsbasis BB-0001, Fassung 2.',
+    'Energieziel EZ-2028-0001, Zielperiode Januar bis Dezember 2028: 2,7 % weniger Strom als die Bezugsbasis erwarten lässt (11 von 12 Monaten; März 2028 nicht bewertbar) — Zielwert 5 % weniger. Über die ganze Zielperiode nicht bewertbar; die Bewertung trifft eine Person. Bewertet am 15.01.2029 von Ines Kaltenbach: verfehlt.',
+    'Zielwert nicht erreicht: 2,7 % weniger gegenüber 5 % weniger (12 von 12 Monaten) — Vorschlag; bestätigen oder mit Begründung abweichen.',
+    'M-2028-0002 · geplant · Termin 29.02.2028 · überfällig seit 15 Tagen · Ines Kaltenbach.',
+    'Ziele und Maßnahmen — 1 Maßnahme überfällig: M-2028-0002 Druckluft-Leckagen, Termin 29.02.2028, überfällig seit 15 Tagen (Ines Kaltenbach) · 1 Maßnahme umgesetzt, noch nicht bewertet · 1 Energieziel läuft.',
+    'Ausgangslage korrigiert: K-2028-0001 (03.04.2028) — die Ausgangslage zitiert Dezember 2027 in Version 1 (12,9 % mehr als erwartet), gültig ist Version 2 (12,0 % mehr). Beibehalten mit Begründung oder neu kopieren.',
+    'Noch keine Energieziele, Maßnahmen oder Abweichungen. Sie entstehen aus Ihren Energieleistungskennzahlen: aus einer Auffälligkeit, aus einem Energieziel oder von Hand.',
+    UEMS_NORMGRENZE,
+  ];
+
+  it('beißt an jedem verbotenen Wort und lässt die Wortgrenzen heil', () => {
+    for (const probe of [
+      'Nichtkonformität', 'Nichtkonformitäten', 'Nicht-Konformität', 'nichtkonformitaet', 'Korrekturmaßnahme',
+      'Korrekturmassnahmen', 'Korrektur-Maßnahme', 'Aktionsplan', 'Aktionspläne', 'Ursachenanalyse', 'Ursachen-Analyse',
+      'Root Cause', 'Root-Cause-Analyse', 'die Maßnahme hat gewirkt', 'Maßnahmen haben gewirkt', 'Einsparung durch M-2028-0001',
+      'Einsparungen durch die Zeitschaltung',
+    ]) {
+      expect(verstoesse(`Maßnahme: ${probe}.`), probe).not.toEqual([]);
+    }
+    expect(verstoesse('Transaktionsplanung, Konformität des Zählers, gewirkte Stoffe und die Einsparung bleiben normale Wörter.')).toEqual([]);
+    expect(verstoesse(UEMS_NORMGRENZE)).toEqual([]);
+  });
+
+  it('„Ursache“ nur mit „Aussage von“ — ein Systemsatz mit Ursache fällt durch', () => {
+    for (const probe of [
+      'Ursache: Werkzeugheizungen liefen in der Betriebspause durch.',
+      'Ursache — Werkzeugheizungen liefen durch.',
+      'Abweichung AW-2028-0001 · Ursache: Leckage.',
+      'Mögliche Ursache: Produktionsmenge.',
+      '<dt>Ursache</dt><dd>{abweichung.ursache}</dd>',
+    ]) {
+      expect(ursacheOhnePerson(probe), probe).toBe(true);
+    }
+    expect(ursacheOhnePerson('Ursache — Aussage von Murat Demirci, 14.01.2028 (keine Messung): ‚…‘')).toBe(false);
+    expect(ursacheOhnePerson('<dt>{UEMS_URSACHE_AUSSAGE_VON} {person}</dt>')).toBe(false);
+    expect(ursacheOhnePerson('const zeile = `Ursache — ${UEMS_AUSSAGE_VON} ${person}, ${datum}`;')).toBe(false);
+    expect(ursacheOhnePerson('<h3>Ursache-Aussagen</h3>')).toBe(false);
+    expect(ursacheOhnePerson('Ursachen-freie Wörter wie Sache und Ursprung bleiben.')).toBe(false);
+  });
+
+  it('„Verbesserung“ nur im Wirkungs-Satz mit Bedingung (W5)', () => {
+    for (const probe of [
+      'Verbesserung',
+      'Verbesserungen',
+      'Verbesserungsmaßnahmen',
+      'Beobachtete Verbesserung: 2,4 %.',
+      'Verbesserung: 2,4 % weniger Strom als die Bezugsbasis erwarten lässt.',
+      'Verbesserung um 2,4 % in 8 von 12 Monaten.',
+    ]) {
+      expect(verbesserungOhneBedingung(probe), probe).toBe(true);
+    }
+    expect(verbesserungOhneBedingung(
+      'Beobachtete Verbesserung: 2,4 % weniger Strom als die Bezugsbasis erwarten lässt (8 von 12 Monaten seit der Umsetzung).',
+    )).toBe(false);
+    expect(verbesserungOhneBedingung('Verbesserung:   % weniger Strom als die   erwarten lässt (  von   Monaten).')).toBe(false);
+  });
+
+  it('„Energieziel“, nie „Ziel“ allein (W6) — der Bereichsname „Ziele und Maßnahmen“ bleibt', () => {
+    for (const probe of ['Ziel: 5 % weniger', 'Ziel setzen', 'Ziel EZ-2028-0001', 'Neues Ziel']) {
+      expect(ZIEL_ALLEIN.test(probe), probe).toBe(true);
+    }
+    for (const probe of [UEMS_ZIELE_UND_MASSNAHMEN, 'Energieziel setzen', 'Zielwert 5 % weniger', 'Zielperiode 2028']) {
+      expect(ZIEL_ALLEIN.test(probe), probe).toBe(false);
+    }
+  });
+
+  it('verlangt den Grenz-Satz auf jeder Fläche des Bereichs und hält Wörter, Ursachen und Pfeile fern', () => {
+    for (const datei of verbesserungFlaechen()) {
+      const code = stripComments(readFileSync(join(SRC, datei), 'utf8'));
+      // Die Wörter an den Kundentexten, nicht am Code: ein Vertragsschlüssel wie `'nichtkonformitaet'` (E7) ist Protokoll.
+      const texte = kundenTexte(code);
+      expect(texte.flatMap(verstoesse), datei).toEqual([]);
+      if (istTeil(datei)) {
+        expect(grenzeUeberEltern(datei), `${datei}: eine Eltern-Seite trägt keinen Grenz-Satz`).toBe(true);
+        expect(traegtGrenze(code), `${datei}: der Grenz-Satz steht einmal am Fuß der Seite, nicht im Teil`).toBe(false);
+      } else {
+        expect(traegtGrenze(code) || reiterTragenDenHinweis(datei, code), datei).toBe(true);
+      }
+      expect(ursacheOhnePerson(code), `${datei}: „Ursache“ ohne „Aussage von“`).toBe(false);
+      expect(texte.filter(verbesserungOhneBedingung), `${datei}: „Verbesserung“ ohne Bedingung`).toEqual([]);
+      expect(texte.filter((text) => ZIEL_ALLEIN.test(text)), `${datei}: „Ziel“ allein`).toEqual([]);
+      expect(texte.filter(pfeilAnRoherZahl), `${datei}: Pfeil-Wort an roher Zahl`).toEqual([]);
+    }
+  });
+
+  it('findet Flächen über den Dateinamen und prüft die Mechanik am Prüfling', () => {
+    for (const datei of [
+      'pages/EnergiezielSeite.tsx', 'components/Energieziele.tsx', 'components/MassnahmeKopf.tsx', 'pages/MassnahmenRegister.tsx',
+      'components/AbweichungSeite.tsx', 'components/AuffaelligkeitZeile.tsx', 'pages/VerbesserungBereich.tsx',
+    ]) {
+      expect(VERBESSERUNG_NAMENSMUSTER.test(datei), datei).toBe(true);
+    }
+    for (const datei of ['glossar.ts', 'uemsMassnahme.ts', 'components/KennzahlenRegister.tsx', 'components/StromAbweichungsBalken.tsx']) {
+      expect(VERBESSERUNG_NAMENSMUSTER.test(datei), datei).toBe(false);
+    }
+    expect(traegtGrenze('<p>Maßnahme ohne Abgrenzung</p>')).toBe(false);
+    expect(traegtGrenze('<p className="x">{UEMS_NORMGRENZE}</p>')).toBe(true);
+    expect(traegtGrenze("import { UEMS_NORMGRENZE } from '../glossar';")).toBe(false);
+    expect(kundenTexte('<section><h2>Verbesserung</h2><p>{UEMS_NORMGRENZE}</p></section>').filter(verbesserungOhneBedingung))
+      .not.toEqual([]);
+    expect(kundenTexte('<p>Ziel: 5 % weniger</p>').filter((text) => ZIEL_ALLEIN.test(text))).not.toEqual([]);
+    expect(kundenTexte('<p>Vorjahr ↓ 8,8 %</p>').filter(pfeilAnRoherZahl)).not.toEqual([]);
+    expect(kundenTexte('const f = (x: number) => x < 3 ? a : b; <p>{UEMS_NORMGRENZE}</p>').filter(pfeilAnRoherZahl)).toEqual([]);
+    for (const datei of VERBESSERUNG_FLAECHEN) {
+      expect(customerFiles().some((file) => file.endsWith(`/${datei}`)), datei).toBe(true);
+    }
+    // PR 4: ein Teil ohne Eltern trägt keinen Grenz-Satz; die Eltern kommen aus den Imports (S-4.1 a).
+    expect(grenzeUeberEltern('components/MassnahmeDialoge.tsx')).toBe(true);
+    expect(grenzeUeberEltern('components/VerbesserungUnbekannt.tsx')).toBe(false);
+    expect(importPfad('pages/EnergiezielSeite.tsx', 'components/MassnahmeDialoge.tsx')).toBe('../components/MassnahmeDialoge');
+    expect(importPfad('components/EnergiezieleRegister.tsx', 'components/MassnahmeDialoge.tsx')).toBe('./MassnahmeDialoge');
+    expect(importPfad('App.tsx', 'components/MassnahmeDialoge.tsx')).toBe('./components/MassnahmeDialoge');
+    expect(importPfad('components/kacheln/Kachel.tsx', 'components/MassnahmeDialoge.tsx')).toBe('../MassnahmeDialoge');
+    expect(elternVon('components/AuffaelligkeitZeile.tsx')).toEqual(
+      expect.arrayContaining(['components/BezugsbasisVergleich.tsx', 'pages/KennzahlSeite.tsx']),
+    );
+    for (const teil of VERBESSERUNG_TEILE) {
+      expect(VERBESSERUNG_FLAECHEN, teil).toContain(teil);
+      expect(elternVon(teil), `${teil} hat Eltern`).not.toEqual([]);
+    }
+  });
+
+  /** Konzept Verbessern v1, Befund 1: ein offener Monat nennt den Grund der Route; nur ohne Grund „noch nicht endgültig“. */
+  it('„noch nicht endgültig“ steht nur ohne Grund der Route - nie als fester Text einer Fläche', () => {
+    const NOCH_NICHT = /NOCH_NICHT_ENDGUELTIG|noch nicht endgültig/u;
+    // Mit den reinen Bildern der Seiten (Review r1 S-4.1 c): auch sie raten keinen Grund.
+    for (const datei of [...verbesserungFlaechen(), 'massnahmeWirkung.ts', 'massnahmen.ts', 'abweichungen.ts', 'energiezielBild.ts', 'massnahmenBild.ts']) {
+      expect(NOCH_NICHT.test(stripComments(readFileSync(join(SRC, datei), 'utf8'))), datei).toBe(false);
+    }
+    // Im Modul: nur die Konstante selbst und der Rückfall in `offenGrund`.
+    const modul = stripComments(readFileSync(join(SRC, 'energieziele.ts'), 'utf8'));
+    expect(modul.match(/NOCH_NICHT_ENDGUELTIG/g)).toHaveLength(2);
+    expect(modul).toMatch(/export function offenGrund[\s\S]*?return NOCH_NICHT_ENDGUELTIG;\n\}/u);
+  });
+
+  /**
+   * Konzept Verbessern v1 §8.4: die Länge einer Begründung („10 bis 500 Zeichen“) steht erst da, wenn sie nicht passt -
+   * als Fehler am Feld, nie als Dauertext darunter. Der Platzhalter zeigt stattdessen ein Beispiel.
+   */
+  const LAENGE_ALS_DAUERTEXT = />\s*\{[^{}]*\b(?:BEGRUENDUNG_HINWEIS|WORTLAUT_HINWEIS)\b[^{}]*\}\s*</u;
+  /** Dieselbe Länge als Hilfe-Text eines Felds (`hint=`/`hilfe=`, Review r1 S-4.1 b) - steht ebenso dauerhaft da. */
+  const LAENGE_ALS_HILFE =
+    /\b(?:hint|hilfe)=(?:\{[^{}]*\b(?:BEGRUENDUNG_HINWEIS|WORTLAUT_HINWEIS)\b|(?:"|\{\s*['`"])[^"'`]*\b(?:mindestens|höchstens)\s+(?:\d+|zehn|zwanzig|fünfzig|hundert)\s+Zeichen)/iu;
+  it('die Länge einer Begründung steht nur als Fehler da, nie als Dauertext', () => {
+    for (const datei of verbesserungFlaechen()) {
+      const code = stripComments(readFileSync(join(SRC, datei), 'utf8'));
+      expect(LAENGE_ALS_DAUERTEXT.test(code), datei).toBe(false);
+      expect(LAENGE_ALS_HILFE.test(code), `${datei}: Länge als Hilfe-Text`).toBe(false);
+      expect(kundenTexte(code).filter((t) => /\d+\s+bis\s+[\d.]+\s+Zeichen/u.test(t)), datei).toEqual([]);
+    }
+    for (const probe of [
+      "<p className={fehler ? 'vp-ez-fehler' : 'vp-ez-leise'}>{fehler ?? Z.BEGRUENDUNG_HINWEIS}</p>",
+      "<p className={zeigen.wortlaut ? 'vp-ez-fehler' : 'vp-ez-leise'}>{A.WORTLAUT_HINWEIS}</p>",
+    ]) {
+      expect(LAENGE_ALS_DAUERTEXT.test(probe), probe).toBe(true);
+    }
+    expect(LAENGE_ALS_DAUERTEXT.test("{fehler && <p className=\"vp-ez-fehler\">{fehler}</p>}")).toBe(false);
+    expect(LAENGE_ALS_DAUERTEXT.test("setze({ begruendung: Z.BEGRUENDUNG_HINWEIS });")).toBe(false);
+    for (const probe of ['hint={Z.BEGRUENDUNG_HINWEIS}', 'hilfe="Ein Satz, den jeder versteht. Mindestens zehn Zeichen."', "hilfe={'Mindestens 10 Zeichen'}"]) {
+      expect(LAENGE_ALS_HILFE.test(probe), probe).toBe(true);
+    }
+    expect(LAENGE_ALS_HILFE.test('hint="Eine Stelle nach dem Komma."')).toBe(false);
+    expect(LAENGE_ALS_HILFE.test("setFehler({ text: 'Bitte mindestens zehn Zeichen.' })")).toBe(false);
+  });
+
+  it('findet die verbotenen Wörter auf keiner Kundenfläche — außer den Ausnahmen aus Nachweisen Entscheid 18 und Verbessern Entscheid 14', () => {
+    const funde = customerFiles().flatMap((file) => {
+      const wo = file.slice(SRC.length + 1).replace(/\\/g, '/');
+      return visibleTexts(readFileSync(file, 'utf8'))
+        .filter(isKundentext)
+        .filter((text) => !nachweisenFachwortAusnahme(wo, text))
+        .filter((text) => !fachwortAusnahme(wo, text))
+        .flatMap((text) => verstoesse(text).map((re) => `${wo}: ${re} in „${text}“`));
+    });
+    expect(funde, funde.join('\n')).toEqual([]);
+  });
+
+  it('die 24 Sätze aus §5.9 bestehen den Wächter', () => {
+    expect(SAETZE).toHaveLength(24);
+    for (const satz of SAETZE) {
+      expect(verstoesse(satz), satz).toEqual([]);
+      expect(ursacheOhnePerson(satz), satz).toBe(false);
+      expect(verbesserungOhneBedingung(satz), satz).toBe(false);
+      expect(ZIEL_ALLEIN.test(satz), satz).toBe(false);
+      expect(pfeilAnRoherZahl(satz), satz).toBe(false);
+    }
+    expect(SAETZE.some(traegtGrenze)).toBe(true);
+  });
+
+  it('die Satzmuster in `glossar.ts` bilden die §5.9-Sätze wörtlich (SP4)', () => {
+    const S = UEMS_VERBESSERUNG_SAETZE;
+    expect(S.ursacheAussage('Murat Demirci', '14.01.2028', null,
+      'Die Werkzeugheizungen der Maschinen 3 bis 6 liefen vom 23.12. bis 02.01. durch — keine Abschaltung in der Betriebspause programmiert.'))
+      .toBe(SAETZE[3]);
+    expect(S.ursacheAussage('Jonas Wendlinger', '18.11.2026', 'Zählerwechsel Z-5a → Z-5b am 18.11.2026',
+      'Der Anfangsstand des neuen Zählers wurde erst nachgetragen.')).toBe(SAETZE[4]);
+    expect(S.ohneMessgrundlage('M-2028-0002', 'Druckluft-Leckagen orten und beseitigen', 'Druckluft',
+      'Stromeinsatz je Betriebsstunde mit einer Bezugsbasis')).toBe(SAETZE[9]);
+    expect(S.wirkung('M-2028-0001', -2.4, 'Strom', 'Februar bis Oktober 2028', 8, 12,
+      'März 2028 nicht bewertbar: Produktionsmenge außerhalb der Bezugsbasis', -3)).toBe(SAETZE[10]);
+    expect(S.bewertungOffen()).toBe(SAETZE[14]);
+    expect(S.energiezielStand('EZ-2028-0001', 'Spritzguss', -5, 'Strom', 'Januar bis Dezember 2028', 'Ines Kaltenbach', 5, 12,
+      -2.9, 'März 2028 nicht bewertbar: Produktionsmenge außerhalb der Bezugsbasis', 'BB-0001', 2)).toBe(SAETZE[16]);
+    expect(S.ueberfaellig('M-2028-0002', UEMS_MASSNAHME_ZUSTAENDE.geplant, '29.02.2028', 15, 'Ines Kaltenbach')).toBe(SAETZE[19]);
+    expect(S.leer()).toBe(SAETZE[22]);
+    expect(S.grenze()).toBe(SAETZE[23]);
+    // Ohne Ausschluss und ohne erwartete Zahl bleibt die Bedingung (x von 12) im Satz.
+    const ohneErwartung = S.wirkung('M-2028-0003', 1.25, 'Gas', 'Februar bis März 2029', 2, 12, null, null);
+    expect(ohneErwartung).toBe(
+      'Wirkung von M-2028-0003, beobachtet: 1,3 % mehr Gas als die Bezugsbasis erwarten lässt (Februar bis März 2029, 2 von 12 Monaten). Ob die Maßnahme das bewirkt hat, sagt eine Person.',
+    );
+    for (const satz of [ohneErwartung, S.ueberfaellig('M-1', 'geplant', '01.01.2029', 1, 'A B')]) {
+      expect(verstoesse(satz), satz).toEqual([]);
+      expect(pfeilAnRoherZahl(satz), satz).toBe(false);
+    }
+    expect(UEMS_UEBERFAELLIG_SEIT(1)).toBe('überfällig seit 1 Tag');
+    expect(UEMS_UEBERFAELLIG_SEIT(15)).toBe('überfällig seit 15 Tagen');
+  });
+
+  it('bildet die Kundenwörter und Vokabulare als Konstanten ab (SP1, E2, E5, E6)', () => {
+    const woerter = [
+      UEMS_ZIELE_UND_MASSNAHMEN, UEMS_ENERGIEZIEL, UEMS_ENERGIEZIELE, UEMS_ZIELWERT, UEMS_ZIELPERIODE, UEMS_MASSNAHME,
+      UEMS_MASSNAHMEN, UEMS_TERMIN, UEMS_UMGESETZT_AM, UEMS_ABWEICHUNG, UEMS_ABWEICHUNGEN, UEMS_AUFFAELLIGKEIT,
+      UEMS_MESSGRUNDLAGE, UEMS_AUSGANGSLAGE, UEMS_ERWARTETE_WIRKUNG, UEMS_BEWERTUNGSMETHODE, UEMS_WIRKUNG, UEMS_BEOBACHTET,
+      UEMS_BEOBACHTET_NICHT_BELEGT, UEMS_ZUR_KENNTNIS_GENOMMEN, UEMS_AUSSAGE_VON, UEMS_URSACHE_AUSSAGE_VON,
+      UEMS_OHNE_MESSGRUNDLAGE, UEMS_OHNE_MESSGRUNDLAGE_SATZ,
+    ];
+    expect(woerter).toEqual([
+      'Ziele und Maßnahmen', 'Energieziel', 'Energieziele', 'Zielwert', 'Zielperiode', 'Maßnahme',
+      'Maßnahmen', 'Termin', 'umgesetzt am', 'Abweichung', 'Abweichungen', 'Auffälligkeit',
+      'Messgrundlage', 'Ausgangslage', 'erwartete Wirkung', 'Bewertungsmethode', 'Wirkung', 'beobachtet',
+      'beobachtet — nicht belegt', 'zur Kenntnis genommen', 'Aussage von', 'Ursache — Aussage von',
+      'ohne Messgrundlage', 'ohne Messgrundlage — Wirkung nicht messbar',
+    ]);
+    expect(UEMS_ENERGIEZIEL_ZUSTAENDE).toEqual({ offen: 'offen', bewertet: 'bewertet', beendet: 'beendet' });
+    expect(UEMS_ENERGIEZIEL_ERGEBNISSE).toEqual({ erreicht: 'erreicht', verfehlt: 'verfehlt', nicht_bewertbar: 'nicht bewertbar' });
+    expect(UEMS_MASSNAHME_ZUSTAENDE).toEqual({ geplant: 'geplant', umgesetzt: 'umgesetzt', bewertet: 'bewertet', verworfen: 'verworfen' });
+    expect(UEMS_MASSNAHME_ERGEBNISSE).toEqual({ belegt: 'belegt', nicht_belegt: 'nicht belegt', nicht_messbar: 'nicht messbar' });
+    expect(UEMS_ABWEICHUNG_ZUSTAENDE).toEqual({ offen: 'offen', abgeschlossen: 'abgeschlossen' });
+    expect(UEMS_ABWEICHUNG_ERGEBNISSE).toEqual({
+      massnahme: 'Maßnahme', erklaert: 'erklärt', keine_abweichung: 'keine Abweichung', nicht_bewertbar: 'nicht bewertbar',
+    });
+    expect(UEMS_AUFFAELLIGKEIT_ANTWORTEN).toEqual({ abweichung: 'Abweichung eröffnen', zur_kenntnis: 'zur Kenntnis genommen' });
+    const alle = [
+      ...woerter, ...[UEMS_ENERGIEZIEL_ZUSTAENDE, UEMS_ENERGIEZIEL_ERGEBNISSE, UEMS_MASSNAHME_ZUSTAENDE, UEMS_MASSNAHME_ERGEBNISSE,
+        UEMS_ABWEICHUNG_ZUSTAENDE, UEMS_ABWEICHUNG_ERGEBNISSE, UEMS_AUFFAELLIGKEIT_ANTWORTEN].flatMap((v) => Object.values(v)),
+    ];
+    for (const wort of alle) {
+      expect(verstoesse(wort), wort).toEqual([]);
+      expect(ursacheOhnePerson(wort), wort).toBe(false);
+      expect(verbesserungOhneBedingung(wort), wort).toBe(false);
+      expect(ZIEL_ALLEIN.test(wort), wort).toBe(false);
+    }
+  });
+
+  /**
+   * Konzept Verbessern v1 §8.2 „Kennzeichen statt Name“ (Regel V6, Zusage aus PR 4): eine Überschrift und ein
+   * Dialogtitel beginnen mit dem Namen des Vorgangs, das Kennzeichen (EZ-, M-, AW-) steht danach - nie vorn.
+   */
+  // `title` am Modal, `titel` als Prop eines Rahmens (AbweichungDialoge) oder als Konstante davor.
+  const KENNZEICHEN_VORN = [
+    /<h1\b[^>]*>\s*(?:\{[^{}]*\bkennzeichen\b[^{}]*\}|(?:EZ|M|AW)-)/u,
+    /\b(?:title|titel)=\{\s*(?:[\w.?]*\.)?kennzeichen\b/u,
+    /\b(?:title|titel)=\{\s*`\$\{[^{}]*\bkennzeichen\b/u,
+    /\b(?:title|titel)="(?:EZ|M|AW)-/u,
+    /\b(?:title|titel)\s*=\s*`\$\{[^{}]*\bkennzeichen\b/u,
+  ];
+  const kennzeichenVorn = (code: string) => KENNZEICHEN_VORN.some((re) => re.test(code));
+  it('Überschrift und Dialogtitel beginnen mit dem Namen, nie mit dem Kennzeichen', () => {
+    for (const datei of verbesserungFlaechen()) {
+      expect(kennzeichenVorn(stripComments(readFileSync(join(SRC, datei), 'utf8'))), datei).toBe(false);
+    }
+    for (const probe of [
+      '<h1 data-testid="massnahme-titel">{m.kennzeichen} {m.titel}</h1>',
+      '<h1>\n  {ez.kennzeichen}\n</h1>',
+      '<h1>EZ-2028-0001</h1>',
+      '<Modal open title={a.kennzeichen} onClose={zu}>',
+      '<Modal open title={`${m.kennzeichen} umgesetzt melden`} onClose={zu}>',
+      '<Modal open title="AW-2028-0001 abschließen" onClose={zu}>',
+      'const titel = `${ez.kennzeichen} bewerten`;',
+      '<Rahmen titel={`${abweichung.kennzeichen}: ${A.KNOPF_AUSSAGE}`} basis={basis}>',
+      '<Rahmen titel={`${abweichung.kennzeichen} ${A.KNOPF_ABSCHLIESSEN}`} basis={basis}>',
+      '<Rahmen titel={abweichung.kennzeichen} basis={basis}>',
+    ]) {
+      expect(kennzeichenVorn(probe), probe).toBe(true);
+    }
+    for (const gut of [
+      '<h1 data-testid="massnahme-titel">\n  {m.titel}\n  <span className="vp-mn-kz">{m.kennzeichen}</span>\n</h1>',
+      '<h1>{A.abweichungTitel(a)} <span className="vp-abw-kz">{a.kennzeichen}</span></h1>',
+      'title={`${UEMS_ENERGIEZIEL} ${ez.kennzeichen} ${Z.KNOPF_BEENDEN}`}',
+      'const titel = `${UEMS_ENERGIEZIEL} ${ez.kennzeichen} ${Z.KNOPF_BEWERTEN}`;',
+      '<Rahmen titel={A.KNOPF_AUSSAGE} abweichung={abweichung} basis={basis}>',
+    ]) {
+      expect(kennzeichenVorn(gut), gut).toBe(false);
+    }
+  });
+});
+
+describe('Konzept Verbessern v1 · Wörter (PR 4, Entscheide 1 und 14)', () => {
+  /** Die Normwörter aus Entscheid 14 samt den übrigen Verboten des AP-18-Blocks - auf jeder Kundenfläche. */
+  const NORMWORT = [...VERBESSERUNG_VERBOTEN, /Energieleistungsverbesserung/iu];
+  const verboteIn = (text: string) => NORMWORT.filter((re) => re.test(text));
+  /** In `begriffe.ts` zusätzlich kein Wort, das Konformität verspricht (Kopf der Datei). */
+  const begriffVerbote = (text: string) => [...NORMWORT, /konform/iu].filter((re) => re.test(text));
+  const verbesserungsBegriffe: BegriffSchluessel[] = [
+    'energieziel', 'massnahme', 'abweichung', 'auf_kurs', 'erwartete_wirkung', 'beobachtet', 'belegt', 'vorher',
+    'gemessen_an', 'auffaelligkeit', 'wirksamkeit', 'zweite_person', 'einsparung',
+  ];
+
+  it('Entscheid 14: die Normwörter stehen nur im Feld `fachwort` der genannten Begriffe', () => {
+    expect(NORMWOERTER_IM_FACHWORT).toEqual({
+      massnahme: ['Aktionsplan', 'Korrekturmaßnahme'],
+      abweichung: ['Nichtkonformität'],
+      einsparung: ['Energieleistungsverbesserung'],
+    });
+    for (const [k, woerter] of Object.entries(NORMWOERTER_IM_FACHWORT) as [BegriffSchluessel, readonly string[]][]) {
+      const fachwort = BEGRIFFE[k].fachwort ?? '';
+      for (const wort of woerter) expect(fachwort, k).toContain(wort);
+      // Außer den genannten Wörtern trägt das Fachwort kein verbotenes.
+      expect(begriffVerbote(woerter.reduce((rest, wort) => rest.replaceAll(wort, ' '), fachwort)), k).toEqual([]);
+    }
+    for (const [k, b] of Object.entries(BEGRIFFE) as [BegriffSchluessel, (typeof BEGRIFFE)[BegriffSchluessel]][]) {
+      for (const text of [b.wort, b.klartext, b.beispiel ?? '', b.frage ?? '', b.mehr ?? '', b.abgrenzung ?? '']) {
+        expect(begriffVerbote(text), `${k}: ${text}`).toEqual([]);
+      }
+      if (!(k in NORMWOERTER_IM_FACHWORT)) expect(begriffVerbote(b.fachwort ?? ''), k).toEqual([]);
+    }
+  });
+
+  it('Entscheid 14: außerhalb von `begriffe.ts` steht kein Normwort auf einer Kundenfläche — außer der Ausnahme aus Nachweisen Entscheid 18', () => {
+    const funde = customerFiles().flatMap((file) => {
+      const wo = file.slice(SRC.length + 1).replace(/\\/g, '/');
+      if (wo === 'begriffe.ts') return [];
+      return visibleTexts(readFileSync(file, 'utf8'))
+        .filter(isKundentext)
+        .filter((text) => !nachweisenFachwortAusnahme(wo, text))
+        .filter((text) => verboteIn(text).length > 0)
+        .map((text) => `${wo}: „${text}“`);
+    });
+    expect(funde, funde.join('\n')).toEqual([]);
+    // Die Ausnahme greift nur in `begriffe.ts` und nur für genau diese Texte.
+    expect(fachwortAusnahme('begriffe.ts', BEGRIFFE.massnahme.fachwort!)).toBe(true);
+    expect(fachwortAusnahme('components/MassnahmeDialoge.tsx', BEGRIFFE.massnahme.fachwort!)).toBe(false);
+    expect(fachwortAusnahme('begriffe.ts', 'Aktionsplan 2029')).toBe(false);
+    // Die Gegenstelle aus Nachweisen Entscheid 18 greift nur in `auditBild.ts`.
+    expect(nachweisenFachwortAusnahme('auditBild.ts', NORMWORT_FESTSTELLUNG)).toBe(true);
+    expect(nachweisenFachwortAusnahme('begriffe.ts', NORMWORT_FESTSTELLUNG)).toBe(false);
+  });
+
+  it('die letzte Zeile von „Was ist …?“ sagt „Fachwort“ oder bei mehreren „Fachwörter“', () => {
+    expect(fachwortZeile('Vier-Augen-Prinzip')).toBe('Fachwort: Vier-Augen-Prinzip');
+    expect(fachwortZeile(BEGRIFFE.massnahme.fachwort!)).toBe(
+      'Fachwörter: Aktionsplan (die Liste Ihrer Maßnahmen), Korrekturmaßnahme (eine Maßnahme aus einer Feststellung)',
+    );
+    // Ein Komma in der Klammer trennt keine zwei Wörter.
+    expect(fachwortZeile('Ausgangslage (Monat, festgehalten)')).toBe('Fachwort: Ausgangslage (Monat, festgehalten)');
+  });
+
+  it('jeder Begriff unter Verbessern erklärt sich mit Frage, Klartext und Abgrenzung - in den Wörtern des Bereichs', () => {
+    const ZIEL_ALLEIN = /(?<![\p{L}])Ziel(?![\p{L}])/u;
+    const URSACHE = /(?<![\p{L}])Ursache(?![\p{L}])/u;
+    for (const k of verbesserungsBegriffe) {
+      const b = BEGRIFFE[k];
+      expect(b.frage, k).toMatch(/^Was (?:ist|heißt) .+\?$/u);
+      expect(b.klartext.endsWith('.'), k).toBe(true);
+      expect(b.abgrenzung, k).toBeTruthy();
+      for (const text of [b.klartext, b.beispiel ?? '', b.abgrenzung ?? '']) {
+        expect(ZIEL_ALLEIN.test(text), `${k}: „Ziel“ allein in „${text}“`).toBe(false);
+        expect(URSACHE.test(text), `${k}: „Ursache“ ohne Person in „${text}“`).toBe(false);
+        expect(/verbesserung/iu.test(text), `${k}: „Verbesserung“ in „${text}“`).toBe(false);
+      }
+    }
+  });
+
+  it('die Alltagswörter stehen als Konstanten im Glossar (§7)', () => {
+    expect([UEMS_AUF_KURS, UEMS_KNAPP_DAHINTER, UEMS_NICHT_AUF_KURS, UEMS_VORHER, UEMS_GEMESSEN_AN, UEMS_ZWEITE_PERSON, UEMS_EINSPARUNG])
+      .toEqual(['auf Kurs', 'knapp dahinter', 'nicht auf Kurs', 'Vorher', 'gemessen an', 'zweite Person', 'Einsparung']);
+    expect(BEGRIFFE.vorher.fachwort).toBe(UEMS_AUSGANGSLAGE);
+    expect(BEGRIFFE.gemessen_an.fachwort).toBe(UEMS_MESSGRUNDLAGE);
+    expect(BEGRIFFE.zweite_person.fachwort).toBe('Vier-Augen-Prinzip');
+    for (const k of verbesserungsBegriffe) expect(BEGRIFFE[k].wort.length, k).toBeGreaterThan(0);
+  });
+});
+
+describe('UEMS AP-19 IP-3 · Energiemanagement: Sprach-Wächter, Kundenwörter, Verantwortungs-Satz (SP1–SP5)', () => {
+  /**
+   * IP-9/IP-13/IP-15/IP-20/IP-24 tragen hier ihre Kunden-Komponenten ein. Zusätzlich gilt jede Komponente, deren
+   * Dateiname mit einem Wort des Bereichs beginnt, als Fläche — heute gibt es keine, der Block greift ab der ersten,
+   * ohne dass jemand an ihn denken muss. Ein reines Modul mit demselben Namensanfang (`energiemanagement.ts`,
+   * `feststellungen.ts` …) prüft er auf die Wörter, ohne die zwei Sätze zu verlangen. Die Maßnahmen-Seite bleibt eine
+   * Fläche des AP-18-Blocks: sie zeigt die Herkunft „Feststellung F-…“ (SP5), der Fall dazu steht unten.
+   */
+  const ENERGIEMANAGEMENT_FLAECHEN: string[] = [
+    // IP-9: Bereich (mit Reiter „Dokumente“), Verzeichnis, Dokument-Seite, Dialoge (Anlegen, Fassung/Verweis, Freigabe,
+    // Person anlegen), Vergleich Anwendungsbereich ⟷ Betrachtungsumfang, Zuschnitt-Hilfe.
+    'pages/EnergiemanagementBereich.tsx',
+    'pages/DokumentSeite.tsx',
+    'components/DokumentDialoge.tsx',
+    'components/ZuschnittHilfe.tsx',
+    // IP-13: Reiter „Aufgaben“ mit Personen, „Wer ist wofür verantwortlich“, Personen-Seite, Dialoge Zuordnen/Beenden/
+    // Angaben ändern.
+    'components/EnergiemanagementAufgaben.tsx',
+    'components/EnergiemanagementVerantwortung.tsx',
+    'pages/EnergiemanagementPersonSeite.tsx',
+    'components/EnergiemanagementAufgabeDialoge.tsx',
+    // IP-15: der Abschnitt „Nachweise“ an der Einsatz-Seite (AP-16) und an der Personen-Seite, mit „Nachweis festhalten“.
+    'components/Nachweise.tsx',
+    // IP-20: Reiter „Audits“ (seit Nachweisen n1 Entscheid 17 mit den Feststellungen), Audit-Seite, Feststellungs-Seite,
+    // ihre Dialoge und Blätter (Audit planen, Wirksamkeit prüfen).
+    'components/EnergiemanagementAudits.tsx',
+    'components/AuditBlaetter.tsx',
+    'components/FeststellungBlaetter.tsx',
+    'pages/AuditSeite.tsx',
+    'pages/FeststellungSeite.tsx',
+    'components/InternesAuditDialoge.tsx',
+    'components/FeststellungDialoge.tsx',
+    // IP-24: Reiter „Wiedervorlage“ (mit Kalender-Abzug) und „Managementbewertung“, die Seite einer Managementbewertung,
+    // ihre Eingaben und Dialoge.
+    'components/EnergiemanagementWiedervorlage.tsx',
+    'components/EnergiemanagementManagementbewertung.tsx',
+    'pages/ManagementbewertungSeite.tsx',
+    'components/ManagementbewertungEingaben.tsx',
+    'components/ManagementbewertungDialoge.tsx',
+  ];
+  const ENERGIEMANAGEMENT_NAMENSMUSTER =
+    /(?:^|\/)(?:Energiemanagement|Energiepolitik|Anwendungsbereich|Dokument|Verzeichnis|Wiedervorlage|InternesAudit|Audit|Feststellung|Managementbewertung|Beschluss|Wirksamkeit|Zuschnitt|Nachweis)[^/]*\.tsx?$/i;
+  const energiemanagementDateien = () =>
+    customerFiles()
+      .map((file) => file.slice(SRC.length + 1).replace(/\\/g, '/'))
+      .filter((datei) => ENERGIEMANAGEMENT_NAMENSMUSTER.test(datei));
+  const energiemanagementFlaechen = () => [
+    ...new Set([...ENERGIEMANAGEMENT_FLAECHEN, ...energiemanagementDateien().filter((datei) => datei.endsWith('.tsx'))]),
+  ];
+  const energiemanagementModule = () => energiemanagementDateien().filter((datei) => datei.endsWith('.ts'));
+
+  /**
+   * SP2: nur zwei Sätze dürfen Konformität und ISO nennen — der Grenz-Satz und die neutrale Nennung aus AP-14 S1.
+   * Beide fallen vor jeder Probe heraus; alles andere auf einer Fläche ist ohne Norm-Wort und ohne Norm-Nummer.
+   */
+  const NEUTRALE_ISO_NENNUNG = 'Eine Zertifizierung nach ISO 50001 wird nicht versprochen.';
+  const ohneErlaubteSaetze = (text: string) =>
+    [UEMS_NORMGRENZE, NEUTRALE_ISO_NENNUNG].reduce((rest, satz) => rest.replaceAll(satz, ' '), text);
+
+  /** SP2 (R4): „wie AP-18“ plus die Konformitäts-, Zertifizierungs- und Vollständigkeits-Wörter des Energiemanagements. */
+  const VERBOTEN = [
+    ...VERBESSERUNG_VERBOTEN,
+    /(^|[^\p{L}\p{N}])CAPA([^\p{L}\p{N}]|$)/iu,
+    /konform/iu,
+    /zertifizier/iu,
+    /audit-?(?:fest|sicher|bereit)(?:e[nmrs]?)?(?![\p{L}])/iu,
+    /revisions-?sicher/iu,
+    /norm-?gerecht/iu,
+    /(^|[^\p{L}\p{N}])EnMS([^\p{L}\p{N}]|$)/iu,
+    /management[-\s]?system/iu,
+    /erf(?:ü|ue)llungs[-\s]?grad/iu,
+    /reife[-\s]?grad/iu,
+    /vollst(?:ä|ae)ndig\s+(?:dokumentiert|erf(?:ü|ue)llt|abgedeckt|nachgewiesen)/iu,
+    /(?:Energiemanagement|Nachweise?|Dokumentation)\s+(?:ist|sind)\s+vollst(?:ä|ae)ndig/iu,
+    /alle\s+(?:erforderlichen\s+)?Nachweise\s+(?:liegen|sind)/iu,
+    /bereit\s+f(?:ü|ue)r\s+(?:\p{L}+\s+){0,2}(?:Audit|Zertifizierung)/iu,
+    /(^|[^\p{L}\p{N}])ISO([^\p{L}\p{N}]|$)/iu,
+  ];
+  /** §8 IP-3, R4 (`norm_nummer_auf_flaeche: false`): weder die Nummer einer Norm noch ein Normabschnitt. */
+  const NORM_NUMMER = [
+    /(^|[^\p{L}\p{N}])(?:ISO|DIN|EN|IEC|VDI)(?:[\s/-]+(?:EN|ISO|IEC))*[\s-]*\d{3,}/u,
+    /(^|[^\p{N}.,])(?:5000\d|500[1-4]\d|16247)(?![\p{N}])/u,
+    /(?:Kapitel|Kap\.|Abschnitt|Ziffer|Klausel)\s*\d+(?:\.\d+)+/iu,
+  ];
+  /**
+   * SP3 (W6): keine Doppelbelegung — die Wörter gehören anderen Bereichen. „Revision“ und „Abweichung“ bleiben
+   * erlaubt: die Wiedervorlage nennt den Revisions-Anstoß eines Berichts, die Managementbewertung offene Abweichungen.
+   */
+  const DOPPELT = [
+    /Geltungs[-\s]?bereich/iu,
+    /Zust(?:ä|ae)ndigkeit|zust(?:ä|ae)ndige\s+Box/iu,
+    /(?<!energetische[nrs]?\s+)(?<![\p{L}-])Bewertung(?![\p{L}])/iu,
+    /(?<![\p{L}])Befund/iu,
+  ];
+  const verstoesse = (text: string) => VERBOTEN.filter((re) => re.test(ohneErlaubteSaetze(text)));
+  const normNummern = (text: string) => NORM_NUMMER.filter((re) => re.test(ohneErlaubteSaetze(text)));
+  const doppelt = (text: string) => DOPPELT.filter((re) => re.test(text));
+
+  // Der Satz steht wörtlich ODER als JSX-Kind aus seiner einen Quelle (`glossar.ts`) — nie nur als Import.
+  const traegtGrenze = (text: string) =>
+    text.includes(UEMS_NORMGRENZE) || />\s*\{\s*UEMS_NORMGRENZE\s*\}\s*</.test(text) || traegtGrenzBaustein(text);
+  const traegtVerantwortung = (text: string) =>
+    text.includes(UEMS_VERANTWORTUNG) || />\s*\{\s*UEMS_VERANTWORTUNG\s*\}\s*</.test(text) || traegtVerantwortungBaustein(text);
+  /** Wie in den Blöcken „Bezugsbasis“ und „Ziele und Maßnahmen“: `visibleTexts` plus jeder `>Text<`-Lauf, jeder einmal. */
+  const kundenTexte = (code: string) => [
+    ...new Set(
+      [...visibleTexts(code), ...[...code.matchAll(/>([^<>{}]*\p{L}[^<>{}]*)</gu)].map((m) => m[1])].filter(isKundentext),
+    ),
+  ];
+  const wortFehler = (code: string, datei?: string) =>
+    kundenTexte(code)
+      .filter((text) => !nachweisenFachwortAusnahme(datei, text))
+      .flatMap((text) => [
+        ...verstoesse(text).map((re) => `SP2 ${re} in „${text}“`),
+        ...normNummern(text).map((re) => `Norm-Nummer ${re} in „${text}“`),
+        ...doppelt(text).map((re) => `SP3 ${re} in „${text}“`),
+      ]);
+  /** Alles, was eine Fläche falsch machen kann — leer heißt: die Fläche besteht den Wächter. */
+  const flaechenFehler = (code: string) => {
+    const sichtbar = stripComments(code);
+    return [
+      ...wortFehler(sichtbar),
+      ...(traegtGrenze(sichtbar) ? [] : ['ohne Grenz-Satz (SP4)']),
+      ...(traegtVerantwortung(sichtbar) ? [] : ['ohne Verantwortungs-Satz (SP4)']),
+    ];
+  };
+
+  /**
+   * Die 37 Sätze der Energiemanagement-Flächen aus AP-19 §5.8, wörtlich (ohne die Herkunft-Zeile der Maßnahmen-Seite),
+   * und seit Vertrag 1.4 die Bekanntmachung ohne und mit Person und die Gegenrichtung des Vergleichs (Konzept
+   * Nachweisen n1, Befunde A14 und A21): 39.
+   */
+  const SAETZE = [
+    UEMS_VERANTWORTUNG,
+    UEMS_NORMGRENZE,
+    'Energiepolitik D-0001 · Fassung 1 · freigegeben am 15.12.2026 · entschieden von Robert Falk (Geschäftsführer) · eingetragen von Ines Kaltenbach.',
+    'Wortlaut in VoltPilot, Original bei Ihnen: QM-Laufwerk, Ordner Energiemanagement/Politik.',
+    'Geführt in Ihrem System: Instandhaltungssystem, Arbeitspläne (IH-SG-01, Rev. 4 vom 03.11.2028).',
+    'Die Prüfsumme wird in Ihrem Browser gebildet; die Datei verlässt Ihren Rechner nicht.',
+    'VoltPilot speichert keine Dateien. Halten Sie fest, wo das Original liegt; die Prüfsumme zeigt später, ob es noch dasselbe ist.',
+    'Überprüfung fällig seit 64 Tagen.',
+    'Geprüft, bleibt — entschieden von Robert Falk am 10.12.2027: ‚Mit der Jahresplanung 2028 durchgesehen; die Politik gilt unverändert.‘',
+    'Bekannt gemacht am 18.12.2026 an alle Mitarbeitenden beider Werke über Aushang und Intranet.',
+    'Bekannt gemacht von Ines Kaltenbach am 18.12.2026 an alle Mitarbeitenden beider Werke über Aushang und Intranet.',
+    'Der Betrachtungsumfang der energetischen Bewertung (Fassung 1, ab 04.11.2026) umfasst dieselben Standorte und Energieträger.',
+    'Gas gehört zum Anwendungsbereich, aber nicht zum Betrachtungsumfang der energetischen Bewertung (Fassung 1).',
+    'Werk Lindach gehört zum Betrachtungsumfang der energetischen Bewertung (Fassung 2), aber nicht zum Anwendungsbereich.',
+    'Diese Fassung braucht eine Entscheidung der Leitung. Für die Aufgabe ‚Leitung des Unternehmens‘ ist keine Person festgelegt.',
+    'Bezugsbasen pflegen und freigeben — keine Person festgelegt.',
+    'Robert Falk · Geschäftsführer · ohne Konto — erscheint als ‚entschieden von‘.',
+    'Einsicht — Sie sehen das Energiemanagement des ganzen Unternehmens und können nichts ändern.',
+    'Mit ‚Einsicht‘ können Sie hier nichts ändern. Festhalten kann, wer das Energiemanagement bearbeitet.',
+    'Internes Audit AU-2029-0001 · durchgeführt am 22.01.2029 von Claudia Berger (Controlling; gehört nicht zum Energieteam).',
+    'Hinweis — festgestellt von Claudia Berger, eingetragen von Ines Kaltenbach am 22.01.2029.',
+    'Feststellung F-2029-0001 · aus dem internen Audit AU-2029-0001 · festgestellt von Claudia Berger am 22.01.2029 · Verantwortlich Jonas Wendlinger · Frist 22.04.2029 · offen.',
+    'Sofortige Behebung — Ines Kaltenbach, 23.01.2029: Bis zur Festlegung gibt Ines Kaltenbach keine Bezugsbasis ohne Rücksprache mit Jonas Wendlinger frei.',
+    'Ursache — Aussage von Ines Kaltenbach, 25.01.2029: Die Aufgabenliste entstand zum Start, bevor es Bezugsbasen gab; sie wurde nicht nachgeführt.',
+    'Wirksamkeit geprüft am 15.04.2029 von Ines Kaltenbach: wirksam — Stand Nr. 1 mit Prüfsumme.',
+    'Die Wirksamkeit lässt sich prüfen, sobald jede Maßnahme umgesetzt, bewertet oder verworfen ist.',
+    'Vier-Augen nicht erfüllbar: außer Ines Kaltenbach und Jonas Wendlinger darf niemand freigeben, und beide sind hier beteiligt.',
+    'Managementbewertung 2028 · Sitzung am 12.02.2029 · Leitung Robert Falk · Stand Nr. 1 vom 12.02.2029, 14:10, mit Prüfsumme.',
+    'Keine frühere Managementbewertung festgehalten.',
+    'Beschluss 3 — entschieden von Robert Falk, eingetragen von Ines Kaltenbach: Energiepolitik um Einkauf und Planung ergänzen; neue Fassung bis 31.03.2029.',
+    'Keine Folge in VoltPilot — der Beschluss steht im Stand vom 12.02.2029.',
+    'Dieser Stand zeigt die Eingaben vom 12.02.2029, 14:00. Was sich danach geändert hat, zeigt die nächste Managementbewertung.',
+    'Bezugsbasis BB-0002, Fassung 2: Überprüfung seit 457 Tagen fällig.',
+    'Zurzeit ist nichts fällig.',
+    'Stand vom 12.02.2029 aus VoltPilot; maßgeblich ist die Wiedervorlage im Portal.',
+    'Energiemanagement: 8 überfällig · 1 in den nächsten 30 Tagen.',
+    UEMS_NOCH_NICHTS_FESTGEHALTEN,
+    'In meinem Namen festgehalten: 11 Einträge.',
+    'Was VoltPilot führt — was bei Ihnen liegt.',
+  ];
+  /** §5.8, Zeile „Maßnahme, Herkunft (AP-18-Fläche)“ — SP5. */
+  const HERKUNFT_SAETZE = [
+    'Herkunft: Feststellung F-2029-0001.',
+    'Herkunft: internes Audit AU-2029-0001.',
+    'Herkunft: Managementbewertung BR-2029-0001 (Beschluss 2).',
+  ];
+
+  it('beißt an jedem verbotenen Wort (SP2, R4) und lässt die Wortgrenzen heil', () => {
+    for (const probe of [
+      'Nichtkonformität', 'Nicht-Konformität', 'Korrekturmaßnahme', 'Aktionsplan', 'Ursachenanalyse', 'CAPA',
+      'konform', 'nicht konform', 'Konformität', 'normkonform', 'zertifiziert', 'zertifizierbar', 'Zertifizierungsaudit',
+      'zertifizierungsreif', 'auditfest', 'audit-sicher', 'auditsichere Ablage', 'auditbereit', 'revisionssicher',
+      'normgerecht', 'EnMS', 'Managementsystem', 'Energiemanagementsystem', 'Erfüllungsgrad', 'Reifegrad',
+      'vollständig dokumentiert', 'vollständig erfüllt', 'Ihr Energiemanagement ist vollständig', 'alle Nachweise liegen vor',
+      'bereit für das Audit', 'bereit für die Zertifizierung', 'bereit für das externe Audit', 'ISO', 'nach ISO',
+    ]) {
+      expect(verstoesse(`Energiemanagement: ${probe}.`), probe).not.toEqual([]);
+    }
+    expect(verstoesse(
+      'Das interne Audit festhalten, das Audit sicher planen, Fassungen vollständig lesen: Isolierung, Museum, Zertifikat und Transaktionsplanung bleiben normale Wörter.',
+    )).toEqual([]);
+    for (const erlaubt of [UEMS_NORMGRENZE, NEUTRALE_ISO_NENNUNG, `${UEMS_VERANTWORTUNG} ${UEMS_NORMGRENZE}`]) {
+      expect(verstoesse(erlaubt), erlaubt).toEqual([]);
+      expect(normNummern(erlaubt), erlaubt).toEqual([]);
+    }
+  });
+
+  it('keine Norm-Nummer (§8, R4) — Kennzeichen, Daten und Fassungsangaben bleiben', () => {
+    for (const probe of [
+      'ISO 50001', 'DIN EN ISO 50001', 'EN 16247-1', 'ISO 50006', '50001', 'nach 50003', 'Kapitel 9.2', 'Abschnitt 10.2',
+      'Ziffer 6.3',
+    ]) {
+      expect(normNummern(`Energiemanagement: ${probe}.`), probe).not.toEqual([]);
+    }
+    for (const probe of [
+      'AU-2029-0001', 'F-2029-0001', 'BR-2029-0001 (Beschluss 2)', 'IH-SG-01, Rev. 4 vom 03.11.2028', '12.02.2029, 14:10',
+      '50 001 kWh', 'Stand Nr. 1', 'Fassung 2', 'D-0001',
+    ]) {
+      expect(normNummern(probe), probe).toEqual([]);
+    }
+  });
+
+  it('keine Doppelbelegung (SP3, W6): Anwendungsbereich, Aufgaben im Energiemanagement, Managementbewertung, Feststellung', () => {
+    for (const probe of [
+      'Geltungsbereich des Energiemanagements', 'Zuständigkeiten', 'Zuständige Box', 'Bewertung 2028', 'zur Bewertung',
+      'Befund', 'Befunde des Audits',
+    ]) {
+      expect(doppelt(probe), probe).not.toEqual([]);
+    }
+    for (const probe of [
+      UEMS_ANWENDUNGSBEREICH, UEMS_AUFGABEN_IM_ENERGIEMANAGEMENT, UEMS_MANAGEMENTBEWERTUNG, UEMS_FESTSTELLUNG,
+      'der energetischen Bewertung', 'Energetische Bewertung', 'Bewertungsstand', 'bewertet', 'Revisions-Anstoß',
+      'keine offene Abweichung',
+    ]) {
+      expect(doppelt(probe), probe).toEqual([]);
+    }
+    // Die belegten Wörter bleiben, wo sie hingehören: der Geltungsbereich ist ein Stammdatum der Kennzahl.
+    expect(UEMS_GELTUNGSBEREICH).toBe('Geltungsbereich');
+    expect(UEMS_ANWENDUNGSBEREICH).not.toBe(UEMS_GELTUNGSBEREICH);
+  });
+
+  it('verlangt Grenz-Satz UND Verantwortungs-Satz auf jeder Fläche (SP4) und hält Wörter und Norm-Nummern fern', () => {
+    for (const datei of energiemanagementFlaechen()) {
+      expect(flaechenFehler(readFileSync(join(SRC, datei), 'utf8')), datei).toEqual([]);
+    }
+    for (const datei of energiemanagementModule()) {
+      expect(wortFehler(stripComments(readFileSync(join(SRC, datei), 'utf8')), datei), datei).toEqual([]);
+    }
+    for (const datei of ENERGIEMANAGEMENT_FLAECHEN) {
+      expect(customerFiles().some((file) => file.endsWith(`/${datei}`)), datei).toBe(true);
+    }
+  });
+
+  it('findet Flächen über den Dateinamen und prüft die Mechanik am Prüfling', () => {
+    for (const datei of [
+      'pages/EnergiemanagementBereich.tsx', 'pages/DokumentSeite.tsx', 'components/DokumentDialoge.tsx',
+      'components/VerzeichnisTabelle.tsx', 'components/WiedervorlageListe.tsx', 'components/EnergiepolitikKopf.tsx',
+      'components/AnwendungsbereichVergleich.tsx', 'pages/AuditSeite.tsx', 'components/InternesAuditDialoge.tsx',
+      'pages/FeststellungSeite.tsx', 'components/ManagementbewertungEntwurf.tsx', 'components/BeschlussDialog.tsx',
+      'components/WirksamkeitDialog.tsx', 'components/ZuschnittHilfe.tsx', 'components/NachweiseAmEinsatz.tsx',
+      'energiemanagement.ts', 'feststellungen.ts', 'wiedervorlage.ts',
+    ]) {
+      expect(ENERGIEMANAGEMENT_NAMENSMUSTER.test(datei), datei).toBe(true);
+    }
+    for (const datei of [
+      'pages/MassnahmeSeite.tsx', 'components/MassnahmeDialoge.tsx', 'glossar.ts', 'pages/BewertungPage.tsx',
+      'pages/BerichtSeite.tsx', 'components/KennzahlenRegister.tsx', 'pages/BenutzerPage.tsx',
+    ]) {
+      expect(ENERGIEMANAGEMENT_NAMENSMUSTER.test(datei), datei).toBe(false);
+    }
+    const saetze = '<p>{UEMS_NORMGRENZE}</p><p>{UEMS_VERANTWORTUNG}</p>';
+    expect(flaechenFehler(`<section><h2>Energiepolitik</h2><p>Überprüfung fällig seit 64 Tagen.</p>${saetze}</section>`))
+      .toEqual([]);
+    expect(flaechenFehler('<section><h2>Energiepolitik</h2><p>{UEMS_NORMGRENZE}</p></section>'))
+      .toEqual(['ohne Verantwortungs-Satz (SP4)']);
+    expect(flaechenFehler('<section><h2>Energiepolitik</h2><p>{UEMS_VERANTWORTUNG}</p></section>'))
+      .toEqual(['ohne Grenz-Satz (SP4)']);
+    expect(flaechenFehler("import { UEMS_NORMGRENZE, UEMS_VERANTWORTUNG } from '../glossar';"))
+      .toEqual(['ohne Grenz-Satz (SP4)', 'ohne Verantwortungs-Satz (SP4)']);
+    expect(flaechenFehler(`<p>Ihr Energiemanagement ist zertifizierbar.</p>${saetze}`)).not.toEqual([]);
+    expect(flaechenFehler(`<h3>Kapitel 9.2 Internes Audit</h3>${saetze}`)).not.toEqual([]);
+    expect(flaechenFehler(`<h3>Zuständigkeiten</h3>${saetze}`)).not.toEqual([]);
+    // Ein Kommentar und ein Vertragsschlüssel sind kein Kundentext — das interne Wort steht nur im Code (SP5).
+    expect(flaechenFehler(`{/* Nichtkonformität heißt hier Feststellung */}<p>{UEMS_FESTSTELLUNG}</p>${saetze}`)).toEqual([]);
+    expect(flaechenFehler(`const art = 'nichtkonformitaet';${saetze}`)).toEqual([]);
+  });
+
+  it('die Maßnahmen-Seite sagt „Feststellung“, nie „Nichtkonformität“ — an den Regeln des AP-18-Blocks (SP5, W3)', () => {
+    const ap18 = (text: string) => VERBESSERUNG_VERBOTEN.filter((re) => re.test(text));
+    // Die Seite bleibt eine AP-18-Fläche; dieser Block öffnet und schließt dort nichts.
+    expect(ENERGIEMANAGEMENT_NAMENSMUSTER.test('pages/MassnahmeSeite.tsx')).toBe(false);
+    expect(ENERGIEMANAGEMENT_FLAECHEN).not.toContain('pages/MassnahmeSeite.tsx');
+    // Die echte Seite, um die Herkunft-Zeile aus §5.8 ergänzt: der AP-18-Wächter lässt „Feststellung“ durch …
+    const seite = stripComments(readFileSync(join(SRC, 'pages/MassnahmeSeite.tsx'), 'utf8'));
+    const mitHerkunft = (satz: string) => `${seite}\n<span>${satz}</span>`;
+    for (const satz of HERKUNFT_SAETZE) {
+      expect(kundenTexte(mitHerkunft(satz)).flatMap(ap18), satz).toEqual([]);
+      expect(verstoesse(satz), satz).toEqual([]);
+      expect(normNummern(satz), satz).toEqual([]);
+    }
+    // … und beißt am Norm-Wort, auch in der Schreibweise des Vertrags.
+    for (const probe of [
+      'Herkunft: Nichtkonformität F-2029-0001.', 'Herkunft: Nichtkonformitaet F-2029-0001.',
+      'Herkunft: Korrekturmaßnahme aus dem internen Audit AU-2029-0001.',
+    ]) {
+      expect(kundenTexte(mitHerkunft(probe)).flatMap(ap18), probe).not.toEqual([]);
+    }
+    // Die Herkunft-Wörter der Maßnahme sind die einzige Stelle, an der die Herkunft-Art zu Text wird: keines ist ein
+    // Norm-Wort; kommen die neuen Arten dazu (AP-19 IP-17), trägt jede das Kundenwort ihres Objekts.
+    const herkunftWorte: Record<string, string> = MASSNAHME_HERKUNFT_WORT;
+    for (const [art, wort] of Object.entries(herkunftWorte)) {
+      expect(ap18(wort), art).toEqual([]);
+      expect(verstoesse(wort), art).toEqual([]);
+    }
+    const kundenwortDerArt: Record<string, RegExp> = {
+      nichtkonformitaet: new RegExp(UEMS_FESTSTELLUNG),
+      audit: /Audit/,
+      managementbewertung: new RegExp(UEMS_MANAGEMENTBEWERTUNG),
+    };
+    for (const [art, kundenwort] of Object.entries(kundenwortDerArt)) {
+      if (art in herkunftWorte) expect(herkunftWorte[art], art).toMatch(kundenwort);
+    }
+  });
+
+  it('IP-20: die Maßnahmen-Seite und „Maßnahme anlegen“ bilden die Herkunft über `herkunftSatz` — genau die Sätze aus §5.8 (SP5, W3)', () => {
+    const ap18 = (text: string) => VERBESSERUNG_VERBOTEN.filter((re) => re.test(text));
+    expect([
+      herkunftSatz('nichtkonformitaet', 'F-2029-0001'),
+      herkunftSatz('audit', 'AU-2029-0001'),
+      herkunftSatz('managementbewertung', 'BR-2029-0001/B2'),
+    ]).toEqual(HERKUNFT_SAETZE);
+    // Die Herkünfte von AP-18 bleiben bei ihren Wörtern; das Vertragswort wird nie zu Text.
+    for (const art of ['abweichung', 'energieziel', 'einsatz', 'von_hand'] as const) expect(herkunftSatz(art, 'AW-2028-0001'), art).toBeNull();
+    for (const satz of HERKUNFT_SAETZE) expect(ap18(satz), satz).toEqual([]);
+    for (const datei of ['pages/MassnahmeSeite.tsx', 'components/MassnahmeDialoge.tsx']) {
+      const quelle = readFileSync(join(SRC, datei), 'utf8');
+      expect(quelle, datei).toMatch(/herkunftSatz\(/);
+      expect(kundenTexte(stripComments(quelle)).flatMap(ap18), datei).toEqual([]);
+    }
+  });
+
+  it('die 39 Sätze aus §5.8 und Vertrag 1.4 bestehen den Wächter - einzeln und als Fläche (NW-4)', () => {
+    expect(SAETZE).toHaveLength(39);
+    expect(new Set(SAETZE).size).toBe(SAETZE.length);
+    for (const satz of SAETZE) {
+      expect(verstoesse(satz), satz).toEqual([]);
+      expect(normNummern(satz), satz).toEqual([]);
+      expect(doppelt(satz), satz).toEqual([]);
+    }
+    const flaeche = `<section>${SAETZE.slice(2).map((satz) => `<p>${satz}</p>`).join('')}<p>{UEMS_NORMGRENZE}</p><p>{UEMS_VERANTWORTUNG}</p></section>`;
+    expect(flaechenFehler(flaeche)).toEqual([]);
+    // Der Wächter hat jeden Satz gesehen — keiner ist als Nicht-Kundentext durchgerutscht.
+    const gesehen = kundenTexte(flaeche);
+    for (const satz of SAETZE.slice(2)) expect(gesehen, satz).toContain(satz);
+  });
+
+  it('bildet die Kundenwörter als Konstanten ab (SP1, §4.1) — der Grenz-Satz bleibt Wort für Wort (W7)', () => {
+    const woerter = [
+      UEMS_ENERGIEMANAGEMENT, UEMS_VERZEICHNIS, UEMS_WIEDERVORLAGE, UEMS_DOKUMENT, UEMS_DOKUMENTE, UEMS_FASSUNG,
+      UEMS_WORTLAUT, UEMS_VERWEIS, UEMS_GEFUEHRT_IN_IHREM_SYSTEM, UEMS_ENERGIEPOLITIK, UEMS_ANWENDUNGSBEREICH,
+      UEMS_PERSON_IM_ENERGIEMANAGEMENT, UEMS_AUFGABE_IM_ENERGIEMANAGEMENT, UEMS_AUFGABEN_IM_ENERGIEMANAGEMENT,
+      UEMS_WER_IST_WOFUER_VERANTWORTLICH, UEMS_PERSON, UEMS_LEITUNG, UEMS_EINSICHT, UEMS_INTERNES_AUDIT, UEMS_HINWEIS,
+      UEMS_FESTSTELLUNG, UEMS_FESTSTELLUNGEN, UEMS_SOFORTIGE_BEHEBUNG, UEMS_AEHNLICHE_FAELLE, UEMS_WIRKSAMKEIT,
+      UEMS_MANAGEMENTBEWERTUNG, UEMS_SITZUNG, UEMS_BESCHLUSS, UEMS_FOLGE, UEMS_ENTSCHIEDEN_VON, UEMS_EINGETRAGEN_VON,
+      UEMS_UEBERPRUEFUNG_FAELLIG, UEMS_GEPRUEFT_BLEIBT, UEMS_BEKANNT_GEMACHT, UEMS_NOCH_NICHTS_FESTGEHALTEN,
+    ];
+    expect(woerter).toEqual([
+      'Energiemanagement', 'Verzeichnis', 'Wiedervorlage', 'Dokument', 'Dokumente', 'Fassung',
+      'Wortlaut', 'Verweis', 'Geführt in Ihrem System', 'Energiepolitik', 'Anwendungsbereich',
+      'Person im Energiemanagement', 'Aufgabe im Energiemanagement', 'Aufgaben im Energiemanagement',
+      'Wer ist wofür verantwortlich', 'Person', 'Leitung', 'Einsicht', 'internes Audit', 'Hinweis',
+      'Feststellung', 'Feststellungen', 'sofortige Behebung', 'ähnliche Fälle', 'Wirksamkeit',
+      'Managementbewertung', 'Sitzung', 'Beschluss', 'Folge', 'entschieden von', 'eingetragen von',
+      'Überprüfung fällig', 'geprüft, bleibt', 'bekannt gemacht', 'Hier ist noch nichts festgehalten.',
+    ]);
+    for (const wort of [...woerter, UEMS_VERANTWORTUNG]) {
+      expect(verstoesse(wort), wort).toEqual([]);
+      expect(normNummern(wort), wort).toEqual([]);
+      expect(doppelt(wort), wort).toEqual([]);
+    }
+    // W7: der Verantwortungs-Satz steht NEBEN dem Grenz-Satz; der Grenz-Satz ist der aus §5.8 und steht unverändert in
+    // beiden Kopien der Berichts-Vorlagen (und damit in deren Prüfsummen).
+    expect(UEMS_VERANTWORTUNG).toBe(SAETZE[0]);
+    expect(UEMS_NORMGRENZE).toBe(
+      'VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden.',
+    );
+    expect(UEMS_NORMGRENZE.includes(UEMS_VERANTWORTUNG)).toBe(false);
+    for (const vorlagen of ['berichte/bericht-vorlagen.json', '../../../services/api/src/main/resources/berichte/bericht-vorlagen.json']) {
+      expect(readFileSync(join(SRC, vorlagen), 'utf8').includes(UEMS_NORMGRENZE), vorlagen).toBe(true);
+    }
+  });
+
+  it('IP-25: die Release-Notiz-Zeile „Energiemanagement“ besteht den Wächter und nennt die Verantwortung (SP2, SP3, R4)', () => {
+    const vorlage = readFileSync(join(SRC, '../../../docs/rollout/release-notiz-vorlage.md'), 'utf8');
+    const zeile = vorlage.split(/\n(?=- |\n)/u).find((absatz) => absatz.startsWith('- Unter „Energiemanagement“'));
+    expect(zeile, 'die Zeile steht in der Vorlage').toBeDefined();
+    const text = zeile!.replace(/\s+/gu, ' ');
+    expect(verstoesse(text).map(String)).toEqual([]);
+    expect(normNummern(text).map(String)).toEqual([]);
+    expect(doppelt(text).map(String)).toEqual([]);
+    expect(text).toContain('Inhalte und Entscheidungen verantwortet Ihr Unternehmen');
+    expect(text).toContain('Solange Sie nichts festhalten, ändert sich nichts.');
+  });
+
+  describe('UEMS AP-20 IP-22 · Hilfe-Artikel Energiemanagement: Wortliste, Verantwortungs- und Grenz-Satz (E7, E8, PB2–PB4, NW-4)', () => {
+    /**
+     * Der Artikel trägt nur Sätze aus AP-20 (§5.8 und die Texte der Kundenaufgaben), Wort für Wort. Welcher
+     * Funktionssatz stehen darf, entscheidet die geltende Bewertung (PB1) — das prüft
+     * `tools/bewertung/produktbeschreibung.py --check` von außen, nie dieser Test: das Portal liest die Bewertung nicht. Hier stehen die Wortliste (SP2 dieses Blocks, der AP-14 S1 enthält,
+     * dazu die Rechtsaussagen aus PB2 und die Abschnittsnummern aus PB3) und die zwei Sätze, ohne die der Artikel
+     * nicht erscheint (E8 = A: der Grenz-Satz unverändert, der Verantwortungs-Satz daneben).
+     */
+    type Artikel = (typeof energiemanagementArticles)[number];
+    const [ARTIKEL] = energiemanagementArticles;
+    const RECHTSAUSSAGEN = [/(?:DSGVO|GDPR)[-\s]?(?:konform|compliant)/iu, /complian(?:t|ce)/iu, /rechts-?sicher/iu, /garanti(?:e|er)/iu];
+    const ABSCHNITTSNUMMER = /(?<![\p{L}\p{N}.])(?:[4-9]|10)\.[1-9](?:\.[1-9])?(?![\p{L}\p{N}]|\.\p{N})/u;
+    /** Jeder sichtbare Text in Lesefolge: Titel, Kurztext, je Abschnitt Überschrift, Absätze, Schritte, Hinweis. */
+    const texte = (a: Artikel) =>
+      [a.title, a.summary, a.prerequisite, ...a.sections.flatMap((s) => [s.title, ...s.paragraphs, ...(s.steps ?? []), s.note])]
+        .filter((t): t is string => Boolean(t));
+    const artikelFehler = (a: Artikel) => {
+      const saetze = texte(a);
+      return [
+        ...[...saetze, ...a.keywords].flatMap((t) => [
+          ...verstoesse(t).map((re) => `SP2 ${re} in „${t}“`),
+          ...normNummern(t).map((re) => `Norm-Nummer ${re} in „${t}“`),
+          ...doppelt(t).map((re) => `SP3 ${re} in „${t}“`),
+          ...RECHTSAUSSAGEN.filter((re) => re.test(t)).map((re) => `PB2 ${re} in „${t}“`),
+          ...(ABSCHNITTSNUMMER.test(t) ? [`PB3 Abschnittsnummer in „${t}“`] : []),
+        ]),
+        ...(saetze.includes(NEUTRALE_ISO_NENNUNG) ? ['die ISO-Nennung steht nur in der Übersicht für Prüfende (PB3)'] : []),
+        ...(saetze.includes(UEMS_VERANTWORTUNG) ? [] : ['ohne Verantwortungs-Satz (E8, W8)']),
+        ...(saetze.includes(UEMS_NORMGRENZE) ? [] : ['ohne Grenz-Satz (E8)']),
+      ];
+    };
+    const mitSatz = (satz: string): Artikel => ({
+      ...ARTIKEL,
+      sections: ARTIKEL.sections.map((s, i) => (i === 0 ? { ...s, paragraphs: [...s.paragraphs, satz] } : s)),
+    });
+    const ohneSatz = (satz: string): Artikel => ({
+      ...ARTIKEL,
+      sections: ARTIKEL.sections.map((s) => ({ ...s, paragraphs: s.paragraphs.filter((p) => p !== satz) })),
+    });
+
+    it('trägt Titel und Sätze aus §5.8 Wort für Wort und besteht die Wortliste', () => {
+      expect(texte(ARTIKEL)).toEqual([
+        'Was VoltPilot für Ihr Energiemanagement festhält — und was bei Ihnen bleibt',
+        'Was außerhalb von VoltPilot bei Ihnen bleibt, steht bei jeder Funktion dabei.',
+        'Was VoltPilot festhält',
+        'VoltPilot misst, rechnet Kennzahlen und vergleicht mit Ihrer Bezugsbasis; was die Zahlen bedeuten, entscheiden Sie.',
+        'Was bei Ihnen bleibt',
+        // Alle neun Kundenaufgaben wie in der Beschreibung: der Satz aus §5.8, sonst der Text der Kundenaufgabe.
+        'Ihr Energiemanagement als Ganzes einführen, mit Mitteln ausstatten, aufrechterhalten und verbessern.',
+        'Festlegen, welche Kompetenz nötig ist, und sie nachweisen, tun Sie selbst. VoltPilot hält an der Person nur den Verweis auf Ihren Nachweis.',
+        'Ob Sie rechtliche Anforderungen einhalten, bewerten Sie selbst. VoltPilot bewertet das nicht.',
+        'Warum ein Monat anders war und ob eine Maßnahme gewirkt hat, sagen Sie selbst, mit Begründung. VoltPilot schlägt vor und zeigt die Messwerte.',
+        'Ob der Klimawandel für Ihr Energiemanagement eine Rolle spielt, beurteilen Sie. VoltPilot führt dazu keine Angaben.',
+        'Vor dem Ende Ihres Vertrags laden Sie den Gesamtabzug und bewahren ihn selbst auf.',
+        'Messmittel und Zähler prüfen lassen, die Messplanung verantworten, eine Einstufung fachlich tragen.',
+        'Interne Audits durchführen (Gespräche, Begehung), Auditorinnen und Auditoren auswählen und ihre Unabhängigkeit sichern.',
+        'Entscheidungen der Leitung treffen und verantworten; Originale in Ihren Systemen führen, wo VoltPilot nur verweist.',
+        'Grenze',
+        UEMS_VERANTWORTUNG,
+        UEMS_NORMGRENZE,
+      ]);
+      expect(artikelFehler(ARTIKEL)).toEqual([]);
+      // Der Artikel zeigt auf nichts in der Bewertung: kein Pfad, kein Kennzeichen einer Zusage, Kundenaufgabe oder Lücke.
+      const quelle = readFileSync(join(SRC, 'help/content/energiemanagement.ts'), 'utf8');
+      expect(quelle).not.toMatch(/docs\/bewertung|BWB-\d|(?<![\p{L}\p{N}])(?:Z-\d{3}|KA-\d{2}|L-\d{3})(?![\p{N}])/u);
+    });
+
+    it('wird rot an einem verbotenen Wort — auch an den Wörtern von AP-14 S1, einer Rechtsaussage und einer Nummer (NW-4)', () => {
+      for (const probe of [
+        'VoltPilot ist ISO-konform.', 'VoltPilot ist zertifiziert nach einer Energiemanagement-Norm.',
+        'VoltPilot arbeitet normkonform.', 'VoltPilot erfüllt ISO 50001.', 'Ihr Energiemanagement ist auditfest.',
+        'Ihr Energiemanagement ist vollständig dokumentiert.', 'Die Ablage ist revisionssicher.',
+        'VoltPilot ist DSGVO-konform.', 'VoltPilot is GDPR compliant.', 'Ihre Nachweise sind rechtssicher abgelegt.',
+        'VoltPilot garantiert Ihre Einsparung.', 'Abschnitt 6.3 bleibt bei Ihnen.', 'Zu 9.1 hält VoltPilot die Kennzahlen fest.',
+        NEUTRALE_ISO_NENNUNG,
+      ]) {
+        expect(artikelFehler(mitSatz(probe)), probe).not.toEqual([]);
+      }
+      expect(artikelFehler({ ...ARTIKEL, keywords: [...ARTIKEL.keywords, 'ISO 50001'] })).not.toEqual([]);
+      // Die Wortgrenzen bleiben heil: Datum, Uhrzeit und ein Satz über das interne Audit sind keine Verstöße.
+      expect(artikelFehler(mitSatz('Stand vom 12.02.2029, 14:10; das interne Audit halten Sie selbst.'))).toEqual([]);
+    });
+
+    it('wird rot an einem Artikel ohne Grenz-Satz, ohne Verantwortungs-Satz oder mit verändertem Grenz-Satz (E8, NW-4)', () => {
+      expect(artikelFehler(ohneSatz(UEMS_NORMGRENZE))).toEqual(['ohne Grenz-Satz (E8)']);
+      expect(artikelFehler(ohneSatz(UEMS_VERANTWORTUNG))).toEqual(['ohne Verantwortungs-Satz (E8, W8)']);
+      // Wort für Wort: ein veränderter Grenz-Satz ist kein Grenz-Satz mehr, und sein Norm-Wort ist dann verboten.
+      const verbogen: Artikel = {
+        ...ARTIKEL,
+        sections: ARTIKEL.sections.map((s) => ({
+          ...s, paragraphs: s.paragraphs.map((p) => (p === UEMS_NORMGRENZE ? p.replace('nicht verbunden', 'verbunden') : p)),
+        })),
+      };
+      expect(artikelFehler(verbogen)).toContain('ohne Grenz-Satz (E8)');
+      expect(artikelFehler(verbogen).some((f) => f.startsWith('SP2 /konform/iu'))).toBe(true);
+    });
+  });
+
+  it('Nachweisen n1: die Bausteine unter components/nachweisen tragen kein verbotenes Wort und keine Norm-Nummer (SP2, SP3)', () => {
+    // Sie stehen in einer Fläche, die beide Sätze trägt (dem Bereich), und tragen sie darum nicht selbst; die Wörter
+    // prüft dieser Fall für jede Datei des Ordners - auch für die Bausteine der übrigen Nachweisen-PRs.
+    const bausteine = customerFiles()
+      .map((file) => file.slice(SRC.length + 1).replace(/\\/g, '/'))
+      .filter((datei) => datei.startsWith('components/nachweisen/'));
+    expect(bausteine).toEqual(expect.arrayContaining(['components/nachweisen/Ueberblick.tsx', 'components/nachweisen/VerzeichnisMonate.tsx']));
+    for (const datei of bausteine) {
+      expect(wortFehler(stripComments(readFileSync(join(SRC, datei), 'utf8'))), datei).toEqual([]);
+    }
+  });
+
+  it('Entscheid 18, PR 7: die Normwörter stehen nur in der letzten Zeile von „Was ist …?“ in auditBild.ts', () => {
+    // Die Ausnahme greift nur in auditBild.ts und nur für genau diese zwei Texte.
+    expect(nachweisenFachwortAusnahme('auditBild.ts', NORMWORT_FESTSTELLUNG)).toBe(true);
+    expect(nachweisenFachwortAusnahme('auditBild.ts', NORMWORT_WIRKSAMKEIT)).toBe(true);
+    expect(nachweisenFachwortAusnahme('pages/FeststellungSeite.tsx', NORMWORT_FESTSTELLUNG)).toBe(false);
+    expect(nachweisenFachwortAusnahme('auditBild.ts', 'Nichtkonformität 2029')).toBe(false);
+    expect(nachweisenFachwortAusnahme(undefined, NORMWORT_FESTSTELLUNG)).toBe(false);
+    // Ohne die Ausnahme wären beide Normwörter verboten - der Wächter kennt sie, gerade weil sie Normwörter sind.
+    expect(verstoesse(NORMWORT_FESTSTELLUNG)).not.toEqual([]);
+    expect(verstoesse(NORMWORT_WIRKSAMKEIT)).not.toEqual([]);
+    // Die Erklärungen tragen das Normwort tatsächlich, als letzte Zeile, unter der Wortgrenze (§0.4).
+    for (const e of [erklaerungFeststellung(null), ERKLAERUNG_WIRKSAMKEIT]) {
+      expect(e.fachwort).not.toBeNull();
+      expect(erklaerZeilen(e).at(-1)).toBe(`${NORMWORT} ${e.fachwort}`);
+      expect(erklaerWoerter(e)).toBeLessThanOrEqual(ERKLAER_WOERTER_HOECHSTENS);
+    }
+    // Außerhalb von auditBild.ts steht keines der beiden Normwörter auf einer Energiemanagement-Fläche.
+    for (const datei of [...energiemanagementFlaechen(), ...energiemanagementModule()]) {
+      if (datei === 'auditBild.ts') continue;
+      const texte = kundenTexte(stripComments(readFileSync(join(SRC, datei), 'utf8')));
+      expect(texte.filter((t) => t === NORMWORT_FESTSTELLUNG || t === NORMWORT_WIRKSAMKEIT), datei).toEqual([]);
+    }
+  });
+});
+
+/**
+ * Konzept Nachweisen n1, Runde 2, PR 7 (Wörter): die Flächen, die `NwKopf` zeigen - erkannt an der Schreibweise des
+ * Bausteins selbst, nicht an einer gepflegten Liste, damit eine neue Fläche den Block automatisch erreicht.
+ */
+const nachweisenKopfFlaechen = () =>
+  customerFiles()
+    .map((file) => file.slice(SRC.length + 1).replace(/\\/g, '/'))
+    .filter((datei) => /<NwKopf\b/.test(readFileSync(join(SRC, datei), 'utf8')));
+
+describe('Konzept Nachweisen n1 · Wörter (PR 7, Entscheide 1, 18, 25)', () => {
+  it('findet die Kopf-Flächen und prüft die Mechanik am Prüfling', () => {
+    const flaechen = nachweisenKopfFlaechen();
+    expect(flaechen).toEqual(
+      expect.arrayContaining(['pages/AuditSeite.tsx', 'pages/DokumentSeite.tsx', 'pages/BerichtSeite.tsx', 'components/nachweisen/Ueberblick.tsx']),
+    );
+    expect(/<NwKopf\b/.test("<NwKopf titel={d.titel} kennzeichen={d.kennzeichen} />")).toBe(true);
+    expect(/<NwKopf\b/.test('<NwKarte titel="Werte">')).toBe(false);
+  });
+
+  /**
+   * Entscheid 25 (NwKopf.tsx): der Titel ist der Name der Fläche oder der Name, den die Person vergeben hat - nie ein
+   * Kennzeichen. Das Kennzeichen hat seinen eigenen, leisen Platz (`kennzeichen=`), nie im Feld `titel`.
+   */
+  const NW_KOPF_TITEL = /<NwKopf\b[^>]*?\btitel=\{([^}]*)\}/gsu;
+  const kennzeichenAlsTitel = (titelAusdruck: string) => /\bkenn(?:zeichen|ung)\b/u.test(titelAusdruck);
+
+  it('Entscheid 25: kein Kennzeichen im Feld `titel` von NwKopf', () => {
+    const funde: string[] = [];
+    for (const datei of nachweisenKopfFlaechen()) {
+      const code = stripComments(readFileSync(join(SRC, datei), 'utf8'));
+      for (const m of code.matchAll(NW_KOPF_TITEL)) {
+        if (kennzeichenAlsTitel(m[1])) funde.push(`${datei}: titel={${m[1].trim()}}`);
+      }
+    }
+    expect(funde, funde.join('\n')).toEqual([]);
+    // Mechanik: die Probe schlägt wirklich an, ein echter Titel (Name oder Konstante) lässt sie unberührt.
+    expect(kennzeichenAlsTitel('d.kennzeichen')).toBe(true);
+    expect(kennzeichenAlsTitel('b.kennung')).toBe(true);
+    expect(kennzeichenAlsTitel("fehler ? 'Feststellung' : 'Wird geladen …'")).toBe(false);
+    expect(kennzeichenAlsTitel('N.DOKUMENTE_TITEL')).toBe(false);
+    expect([...'<NwKopf titel={d.kennzeichen} />'.matchAll(NW_KOPF_TITEL)].map((m) => m[1])).toEqual(['d.kennzeichen']);
+  });
+
+  /**
+   * Befund 8 (Rohe Werte im Verzeichnis, behoben in PR 1): Vokabular-Schlüssel wie `nicht_wesentlich` oder ein roher
+   * ISO-Zeitraum wie „2028-04/2029-03“ sind nie Kundentext - nur die übersetzten Wörter aus den Vokabularen. Die
+   * umlautlose Schreibweise (`zurueckgenommen`, `eingeloest`) ist dabei selbst schon das Erkennungsmerkmal: das
+   * richtige deutsche Wort trägt immer ein Ü/Ö.
+   */
+  const ROHE_WERTE = [
+    /\bnicht_wesentlich\b/u,
+    /\bnicht_wirksam\b/u,
+    /\bohne_massnahme\b/u,
+    /\bzurueckgenommen\b/u,
+    /\beingeloest\b/u,
+    /\b\d{4}-\d{2}\/\d{4}-\d{2}\b/u,
+  ];
+  const roheWerte = (text: string) => ROHE_WERTE.filter((re) => re.test(text));
+
+  /**
+   * N-7.2 (Review r2, SOLLTE): `isKundentext` verwirft genau die Treffer, auf die es hier ankommt - `nicht_wesentlich`
+   * und `2028-04/2029-03` haben weder ein Leerzeichen noch einen großen Anfangsbuchstaben, gelten der allgemeinen
+   * Regel nach also nicht als Kundentext. Darum lesen wir die reinen Bild-Module roh: jeder Treffer ist verboten,
+   * außer an den zwei Stellen, die keinen Anzeige-Text bauen - ein Vergleich (`=== '…'`/`!== '…'`) und ein
+   * unquotiertes Wörterbuch-Schlüsselwort (`wort: '…'`, siehe `ERGEBNIS_WORT` & Co. in `auditBild.ts`).
+   */
+  const NACHWEISEN_REINE_MODULE = ['auditBild.ts', 'nachweisDokumente.ts', 'nachweisBerichte.ts', 'managementbewertungBild.ts', 'aufgabenBild.ts'];
+  const roheWerteImCode = (code: string) => {
+    const funde: { re: RegExp; text: string }[] = [];
+    for (const re of ROHE_WERTE) {
+      const global = new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`);
+      for (const m of code.matchAll(global)) {
+        const vor = code.slice(Math.max(0, m.index - 12), m.index);
+        const nach = code.slice(m.index + m[0].length, m.index + m[0].length + 3);
+        if (/(?:===|!==)\s*['"]?$/u.test(vor)) continue; // Vergleich, kein Anzeige-Text
+        if (/^['"]?\s*:/u.test(nach)) continue; // Wörterbuch-Schlüssel, kein Wert
+        funde.push({ re, text: m[0] });
+      }
+    }
+    return funde;
+  };
+
+  it('Befund 8: kein roher Vokabular-Schlüssel und kein roher ISO-Zeitraum auf einer Nachweisen-Fläche', () => {
+    for (const probe of ['nicht_wesentlich', 'Wirksamkeit: nicht_wirksam', 'ohne_massnahme', 'zurueckgenommen', 'eingeloest', '2028-04/2029-03']) {
+      expect(roheWerte(probe), probe).not.toEqual([]);
+    }
+    for (const probe of ['nicht wesentlich', 'nicht wirksam', 'zurückgenommen', 'eingelöst', 'April 2028 bis März 2029', 'wesentlich']) {
+      expect(roheWerte(probe), probe).toEqual([]);
+    }
+    const funde = [...nachweisenKopfFlaechen(), ...customerFiles()
+      .map((file) => file.slice(SRC.length + 1).replace(/\\/g, '/'))
+      .filter((datei) => datei.startsWith('components/nachweisen/') || datei === 'verzeichnisMonate.ts')]
+      .flatMap((datei) => {
+        const texte = visibleTexts(stripComments(readFileSync(join(SRC, datei), 'utf8'))).filter(isKundentext);
+        return texte.flatMap((text) => roheWerte(text).map((re) => `${datei}: ${re} in „${text}“`));
+      });
+    expect(funde, funde.join('\n')).toEqual([]);
+
+    // Mechanik: ein Vergleich und ein Wörterbuch-Schlüssel bleiben unberührt, ein Anzeige-Text schlägt an.
+    expect(roheWerteImCode("if (f.ergebnis === 'zurueckgenommen') return { text: 'zurückgenommen' };")).toEqual([]);
+    expect(roheWerteImCode("nicht_wirksam: 'nicht wirksam', zurueckgenommen: 'zurückgenommen',")).toEqual([]);
+    expect(roheWerteImCode("text: 'nicht_wesentlich'")).toHaveLength(1);
+    expect(roheWerteImCode("text: 'Wirksamkeit: nicht_wirksam'")).toHaveLength(1);
+    expect(roheWerteImCode("sub: '2028-04/2029-03'")).toHaveLength(1);
+
+    const codeFunde = NACHWEISEN_REINE_MODULE.flatMap((datei) =>
+      roheWerteImCode(stripComments(readFileSync(join(SRC, datei), 'utf8'))).map(({ re, text }) => `${datei}: ${re} im Code „${text}“`),
+    );
+    expect(codeFunde, codeFunde.join('\n')).toEqual([]);
+  });
+
+  /**
+   * N-7.3 (Review r2, SOLLTE): `nachweisenFachwortAusnahme` kennt nur Datei und Text - sie ließe das Normwort auch in
+   * einem ANDEREN Feld von `auditBild.ts` durch (M6) oder den Bezeichner `NORMWORT_…` auf einer fremden Fläche
+   * durchreichen (M4). Zwei engere Proben schließen das, ohne die generischen Wächter anzufassen: Der Text steht in
+   * `auditBild.ts` nur in seiner eigenen `export const NORMWORT_… = '…'`-Zeile; der Bezeichner wird außerhalb von
+   * `auditBild.ts` nirgends referenziert (Kundenflächen - Testdateien bringen ihre eigenen Festwerte mit).
+   */
+  it('N-7.3: die Normwort-Ausnahme ist eng - nur die eigene Deklaration, der Bezeichner nirgends sonst', () => {
+    const normwortAusserhalbDeklaration = (code: string, konstante: string, wort: string) => {
+      const funde: string[] = [];
+      const re = new RegExp(wort.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&'), 'gu');
+      const deklaration = new RegExp(`${konstante}\\s*=\\s*['"]$`, 'u');
+      for (const m of code.matchAll(re)) {
+        const vor = code.slice(Math.max(0, m.index - 40), m.index);
+        if (!deklaration.test(vor)) funde.push(`„${wort}“ außerhalb seiner Deklaration`);
+      }
+      return funde;
+    };
+    // Mechanik: die eigene Deklaration bleibt unberührt, ein zweites Vorkommen (M6: als Status-Text) schlägt an.
+    expect(normwortAusserhalbDeklaration("export const NORMWORT_FESTSTELLUNG = 'Nichtkonformität';", 'NORMWORT_FESTSTELLUNG', 'Nichtkonformität')).toEqual([]);
+    expect(
+      normwortAusserhalbDeklaration("export const NORMWORT_FESTSTELLUNG = 'Nichtkonformität'; const s = { text: 'Nichtkonformität' };", 'NORMWORT_FESTSTELLUNG', 'Nichtkonformität'),
+    ).toHaveLength(1);
+
+    const auditBildCode = stripComments(readFileSync(join(SRC, 'auditBild.ts'), 'utf8'));
+    const texteFunde = [
+      ...normwortAusserhalbDeklaration(auditBildCode, 'NORMWORT_FESTSTELLUNG', NORMWORT_FESTSTELLUNG),
+      ...normwortAusserhalbDeklaration(auditBildCode, 'NORMWORT_WIRKSAMKEIT', NORMWORT_WIRKSAMKEIT),
+    ];
+    expect(texteFunde, texteFunde.join('\n')).toEqual([]);
+
+    // Der Bezeichner selbst steht auf keiner Kundenfläche außer seiner eigenen Datei.
+    const bezeichnerFunde = customerFiles()
+      .map((file) => file.slice(SRC.length + 1).replace(/\\/g, '/'))
+      .filter((datei) => datei !== 'auditBild.ts')
+      .flatMap((datei) => {
+        const code = readFileSync(join(SRC, datei), 'utf8');
+        return ['NORMWORT_FESTSTELLUNG', 'NORMWORT_WIRKSAMKEIT']
+          .filter((id) => new RegExp(`\\b${id}\\b`, 'u').test(code))
+          .map((id) => `${datei}: ${id}`);
+      });
+    expect(bezeichnerFunde, bezeichnerFunde.join('\n')).toEqual([]);
+  });
+
+  /**
+   * N-7.1 (Review r2, MUSS): „höchstens acht Wörter“ prüft die ECHTEN Status- und Kurzzeilen-Funktionen der reinen
+   * Module (`auditBild.ts`, `managementbewertungBild.ts`, `nachweisBerichte.ts`, `nachweisDokumente.ts`,
+   * `aufgabenBild.ts`) mit eigenen, minimalen Festwerten (`audit`/`feststellung`/`dokument` unten, Muster
+   * `auditBild.test.ts`) - keine getippte Liste mehr: eine Änderung an einer dieser Funktionen, die ihren Satz länger
+   * macht, lässt diesen Fall rot werden. Gezählt wird `text` + `sub` zusammen (die Status-Zeile zeigt beides).
+   */
+  const PERSON_CB = { id: 'cb', name: 'Claudia Berger', funktion: 'Controlling', kuerzel: 'CB', mit_konto: true };
+  const PERSON_RF = { id: 'rf', name: 'Robert Falk', funktion: 'Geschäftsführer', kuerzel: 'RF', mit_konto: true };
+  const WOERTER_EINGETRAGEN = { akteur: { sub: 'IK', name: 'Ines Kaltenbach', rolle: 'energiemanager', art: 'kunde' as const }, am: '2029-01-10T09:00:00+01:00' };
+  const woerterAudit = (over: Partial<InternesAudit> = {}): InternesAudit => ({
+    id: 'au', kennzeichen: 'AU-2029-0001', titel: 'Internes Audit 2029', termin: '2029-01-22',
+    auditoren: [PERSON_CB], unabhaengigkeit: 'gehört nicht zum Energieteam', was: 'Grundlagen', woran: 'Energiepolitik',
+    verantwortlich: { sub: 'IK', name: 'Ines Kaltenbach' }, standort_ids: [], zustand: 'abgeschlossen', durchgefuehrt_am: '2029-01-22',
+    abgesagt_begruendung: null, hinweise: 0, feststellungen: [], abschluss: null, eingetragen: WOERTER_EINGETRAGEN, ...over,
+  });
+  const woerterFeststellung = (over: Partial<Feststellung> = {}): Feststellung => ({
+    id: 'f1', kennzeichen: 'F-2029-0001', quelle: { art: 'internes_audit', audit_id: 'au', kennung: 'AU-2029-0001', wortlaut: null },
+    wortlaut: 'Wer die Bezugsbasen pflegt und freigibt, ist nicht festgelegt.',
+    vorgabe: { dokument_id: null, dokument: null, fassung: null, wortlaut: null },
+    bezug: { standort_id: null, aufgabe: null, dokument_id: null, dokument: null, objekte: [] },
+    festgestellt_von: PERSON_CB, festgestellt_am: '2029-01-22', verantwortlich: { sub: 'JW', name: 'Jonas Wendlinger' }, frist: '2029-04-22',
+    zustand: 'abgeschlossen', lage: { abruf: '2029-04-30', faellig_am: null, tage: null, satz: null, grund: 'abgeschlossen' },
+    ergebnis: 'wirksam', abgeschlossen_am: '2029-04-15', eintraege: 0, massnahmen: [], eingetragen: WOERTER_EINGETRAGEN, ...over,
+  });
+  const woerterDokument = (over: Partial<EnergiemanagementDokument> = {}): EnergiemanagementDokument => ({
+    id: 'd1', kennzeichen: 'D-0001', art: 'energiepolitik', art_wort: 'Energiepolitik', klasse: 'vorgabe', titel: 'Energiepolitik',
+    bezug: { art: 'unternehmen', standort: null }, zustand: 'gueltig', gueltige_fassung: 1,
+    ueberpruefung: { abruf: '2029-04-30', faellig_am: '2030-03-20', basis: '2029-03-20', fassung: 1, tage: -324, satz: 'fällig in 324 Tagen', grund: null },
+    eingetragen: WOERTER_EINGETRAGEN, ueberpruefung_monate: 12, beleg: null,
+    fassungen: [{
+      nr: 1, form: 'wortlaut', wortlaut: 'Wortlaut der Energiepolitik.', verweis: null, anwendungsbereich: null, status: 'freigegeben',
+      begruendung: null, beschluss_kennung: null, pruefsumme: 'sha256:00', vieraugen: false, entschieden_von: PERSON_RF,
+      entschieden_am: '2026-12-15', freigabe_begruendung: null, freigabe: WOERTER_EINGETRAGEN, zweite_person: null,
+    }],
+    eintraege: [], saetze: { kopf: null, ueberpruefung: null, freigabe_gesperrt: null }, verlauf: [], ...over,
+  });
+  /** `text` + `sub` zusammen, wie die Status-Zeile sie zeigt (`NwKopf`/`StatusZeile`). */
+  const statusWoerter = (s: { text: string; sub?: string | null }) => woerter(s.sub ? `${s.text} ${s.sub}` : s.text);
+
+  it('N-7.1: Status- und Kurzzeilen der reinen Nachweisen-Module bleiben unter acht Wörtern', () => {
+    const status: { name: string; ergebnis: { text: string; sub?: string | null } }[] = [
+      { name: 'auditsStatus (keine offen)', ergebnis: auditsStatus([]) },
+      { name: 'auditsStatus (eine offen)', ergebnis: auditsStatus([{ zustand: 'offen', lage: { abruf: '2029-04-30', faellig_am: '2029-05-01', tage: -1, satz: null, grund: null } }]) },
+      { name: 'auditStatus (abgeschlossen)', ergebnis: auditStatus(woerterAudit({ zustand: 'abgeschlossen' })) },
+      { name: 'auditStatus (durchgeführt)', ergebnis: auditStatus(woerterAudit({ zustand: 'durchgefuehrt' })) },
+      { name: 'auditStatus (geplant)', ergebnis: auditStatus(woerterAudit({ zustand: 'geplant' })) },
+      { name: 'feststellungStatus (behoben und wirksam)', ergebnis: feststellungStatus(woerterFeststellung(), []) },
+      { name: 'feststellungStatus (ohne Maßnahme abgeschlossen)', ergebnis: feststellungStatus(woerterFeststellung({ ergebnis: 'ohne_massnahme' }), []) },
+      { name: 'feststellungStatus (überfällig)', ergebnis: feststellungStatus(woerterFeststellung({ zustand: 'offen', ergebnis: null, abgeschlossen_am: null, lage: { abruf: '2029-04-30', faellig_am: '2029-04-22', tage: 8, satz: null, grund: null } }), []) },
+      {
+        name: 'feststellungStatus (beantragt)',
+        ergebnis: feststellungStatus(
+          woerterFeststellung({ zustand: 'offen', ergebnis: null, abgeschlossen_am: null, lage: { abruf: '2029-04-30', faellig_am: '2029-05-01', tage: -1, satz: null, grund: null } }),
+          [{ status: 'beantragt', ergebnis: 'nicht_wirksam', eingetragen: WOERTER_EINGETRAGEN } as Pick<FeststellungStand, 'status' | 'ergebnis' | 'eingetragen'>],
+        ),
+      },
+      { name: 'mbStatus (gilt)', ergebnis: mbStatus({ freigegeben: true, stand_nr: 1 }) },
+      { name: 'mbStatus (Entwurf)', ergebnis: mbStatus({ freigegeben: false, stand_nr: null }) },
+      { name: 'aufgabenStatus (alle besetzt)', ergebnis: aufgabenStatus([{ ohnePerson: false }]) ?? { text: '' } },
+      { name: 'aufgabenStatus (3 ohne Person)', ergebnis: aufgabenStatus([{ ohnePerson: true }, { ohnePerson: true }, { ohnePerson: true }, { ohnePerson: false }]) ?? { text: '' } },
+      { name: 'ND.listenStatus (gelten)', ergebnis: ND.listenStatus({ gelten: 5, ueberfaellig: 0, entwuerfe: 0 }) },
+      { name: 'ND.listenStatus (überfällig)', ergebnis: ND.listenStatus({ gelten: 5, ueberfaellig: 2, entwuerfe: 0 }) },
+      { name: 'ND.seitenStatus (gilt)', ergebnis: ND.seitenStatus(woerterDokument()) },
+      { name: 'ND.seitenStatus (wartet auf Freigabe)', ergebnis: ND.seitenStatus(woerterDokument({ fassungen: [{ ...woerterDokument().fassungen[0], nr: 2, status: 'entwurf' }, woerterDokument().fassungen[0]] })) },
+      { name: 'NB.seitenStatus (gilt)', ergebnis: NB.seitenStatus(detailAm(Date.parse('2029-04-30T09:00:00+01:00')), null) },
+    ];
+    for (const { name, ergebnis } of status) expect(statusWoerter(ergebnis), `${name}: „${ergebnis.text}${ergebnis.sub ? ` ${ergebnis.sub}` : ''}“`).toBeLessThanOrEqual(8);
+
+    const kurzzeilen: { name: string; text: string }[] = [
+      { name: 'auditorenZeile (eine Person)', text: auditorenZeile(woerterAudit()) },
+      { name: 'auditsKurzzeile (jährlich)', text: auditsKurzzeile(12) },
+      { name: 'auditsKurzzeile (alle 18 Monate)', text: auditsKurzzeile(18) },
+      { name: 'mbKurzzeile (freigegeben)', text: mbKurzzeile({ freigegeben: true, sitzung: { tag: '2029-02-12', leitung: { name: 'Robert Falk' } } }) },
+      { name: 'mbKurzzeile (Entwurf)', text: mbKurzzeile({ freigegeben: false, sitzung: null }) },
+      { name: 'feststellungHerkunft (internes Audit)', text: feststellungHerkunft({ quelle: { art: 'internes_audit' } }, woerterAudit()) },
+      { name: 'feststellungHerkunft (Managementbewertung)', text: feststellungHerkunft({ quelle: { art: 'managementbewertung' } }, null) },
+      { name: 'ND.kurzzeile (Fassung 2)', text: ND.kurzzeile(woerterDokument({ gueltige_fassung: 2, fassungen: [{ ...woerterDokument().fassungen[0], nr: 2 }] })) },
+      { name: 'ND.kurzzeile (Entwurf)', text: ND.kurzzeile(woerterDokument({ gueltige_fassung: null, fassungen: [] })) },
+    ];
+    for (const { name, text } of kurzzeilen) expect(woerter(text), `${name}: „${text}“`).toBeLessThanOrEqual(8);
+
+    // Mechanik: der Zähler selbst schlägt bei neun Wörtern an.
+    expect(woerter('eins zwei drei vier fünf sechs sieben acht neun')).toBe(9);
+  });
+});
+
+describe('AP-14 IP-19 · Freigabe: Sprach-Wächter und Release-Notiz (S1–S3)', () => {
+  const GRENZ_SATZ = UEMS_NORMGRENZE;
+  const NEUTRALE_ISO_NENNUNG = 'Eine Zertifizierung nach ISO 50001 wird nicht versprochen.';
+  const RELEASE_NOTIZ = join(SRC, '../../../docs/rollout/release-notiz-vorlage.md');
+  const BERICHT_VORLAGEN = join(
+    SRC,
+    '../../../services/api/src/main/resources/berichte/bericht-vorlagen.json',
+  );
+
+  const REGELN = [
+    { regel: 'S1', re: /ISO[-‑– ]konform/iu, grund: 'keine Aussage „ISO-konform"' },
+    { regel: 'S1', re: /zertifiziert\s+nach/iu, grund: 'keine Aussage „zertifiziert nach"' },
+    { regel: 'S1', re: /normkonform/iu, grund: 'keine Aussage „normkonform"' },
+    { regel: 'S1', re: /ISO\s*50001/iu, grund: 'ISO 50001 nicht als erreichte Eigenschaft behaupten' },
+    { regel: 'S2', re: /(?:^|[^\p{L}\p{N}])Pilot[\p{L}\p{N}-]*/iu, grund: '„Pilot" ist ein Betreiberwort' },
+    { regel: 'S2', re: /Betreuungs[-‑– ]Welle/iu, grund: '„Betreuungs-Welle" ist ein Betreiberwort' },
+    { regel: 'S2', re: /Betreiber[-‑– ]Liste/iu, grund: '„Betreiber-Liste" ist ein Betreiberwort' },
+    { regel: 'S2', re: /(?:^|[^\p{L}\p{N}])Rollout(?:$|[^\p{L}\p{N}])/iu, grund: '„Rollout" ist ein Betreiberwort' },
+    { regel: 'S2', re: /Freigabe[-‑– ]Tor/iu, grund: '„Freigabe-Tor" ist ein Betreiberwort' },
+    { regel: 'S2', re: /Stufe\s+S(?:\s*\d+)?(?![\p{L}\p{N}])/iu, grund: '„Stufe S" ist ein Betreiberwort' },
+    { regel: 'S3', re: /gemeinsam\s+optimiert/iu, grund: 'Boxen werden nicht gemeinsam optimiert' },
+    { regel: 'S3', re: /(?:^|[^\p{L}\p{N}])Verbund(?:$|[^\p{L}\p{N}])/iu, grund: 'kein „Verbund" mehrerer Boxen' },
+    { regel: 'S3', re: /übergreifend\s+optimiert/iu, grund: 'Boxen werden nicht übergreifend optimiert' },
+    // AP-15 W5: der Wächter wird nicht geöffnet — „Steuerungsverbund“ ist Fach- und Vertragswort,
+    // auf Kundenflächen heißt es „Gemeinsame Steuerung“. Als Wortteil (auch gebeugt), anders als
+    // das freie „Verbund“ oben, das „Stromverbund“ zulässt.
+    { regel: 'S3', re: /Steuerungsverb[uü]nd/iu, grund: '„Gemeinsame Steuerung" statt „Steuerungsverbund"' },
+  ] as const;
+
+  function freigabeVerstoesse(text: string) {
+    const prueftext = [GRENZ_SATZ, NEUTRALE_ISO_NENNUNG].reduce(
+      (rest, erlaubterSatz) => rest.replaceAll(erlaubterSatz, ' '),
+      text,
+    );
+    return REGELN.filter(({ re }) => re.test(prueftext));
+  }
+
+  function jsonTexte(wert: unknown): string[] {
+    if (typeof wert === 'string') return [wert];
+    if (Array.isArray(wert)) return wert.flatMap(jsonTexte);
+    if (wert && typeof wert === 'object') return Object.values(wert).flatMap(jsonTexte);
+    return [];
+  }
+
+  function kundenFundstellen() {
+    const portal = customerFiles().flatMap((file) => {
+      const wo = file.slice(SRC.length + 1).replace(/\\/g, '/');
+      return visibleTexts(readFileSync(file, 'utf8'))
+        .filter(isKundentext)
+        .map((text) => ({ wo, text }));
+    });
+    const berichte = jsonTexte(JSON.parse(readFileSync(BERICHT_VORLAGEN, 'utf8')))
+      .map((text) => ({ wo: 'services/api/src/main/resources/berichte/bericht-vorlagen.json', text }));
+    return [
+      ...portal,
+      ...berichte,
+      { wo: 'docs/rollout/release-notiz-vorlage.md', text: readFileSync(RELEASE_NOTIZ, 'utf8') },
+    ];
+  }
+
+  it('S1 wird an Behauptungen rot und lässt die ausdrückliche Abgrenzung zu', () => {
+    for (const probe of [
+      'VoltPilot ist ISO-konform.',
+      'VoltPilot ist zertifiziert nach einer Energiemanagement-Norm.',
+      'VoltPilot arbeitet normkonform.',
+      'VoltPilot erfüllt ISO 50001.',
+    ]) {
+      expect(freigabeVerstoesse(probe).some(({ regel }) => regel === 'S1'), probe).toBe(true);
+    }
+    expect(freigabeVerstoesse(GRENZ_SATZ)).toEqual([]);
+    expect(freigabeVerstoesse(NEUTRALE_ISO_NENNUNG)).toEqual([]);
+  });
+
+  it('S2 wird an Betreiberwörtern rot, aber nicht am Produktnamen oder in Admin-Flächen', () => {
+    for (const probe of [
+      'Dieser Pilot beginnt heute.',
+      'Der Pilotnachweis fehlt.',
+      'Die nächste Betreuungs-Welle beginnt morgen.',
+      'Sie stehen auf der Betreiber-Liste.',
+      'Der Rollout ist abgeschlossen.',
+      'Das Freigabe-Tor ist offen.',
+      'Sie befinden sich in Stufe S3.',
+    ]) {
+      expect(freigabeVerstoesse(probe).some(({ regel }) => regel === 'S2'), probe).toBe(true);
+    }
+    expect(freigabeVerstoesse('VoltPilot zeigt Ihre Messwerte.')).toEqual([]);
+    expect(freigabeVerstoesse('Die Stufe Standort ist vollständig.')).toEqual([]);
+    expect(customerFiles().some((file) => file.includes('/pages/admin/'))).toBe(false);
+    expect(customerFiles().some((file) => EXCLUDED.some((frag) => file.includes(frag)))).toBe(false);
+    expect(customerFiles().some((file) => file.includes('/help/content/'))).toBe(true);
+  });
+
+  it('S3 wird an einer behaupteten Kopplung rot und lässt die festgelegte Einzel-Box-Aussage zu', () => {
+    for (const probe of [
+      'Ihre Boxen werden gemeinsam optimiert.',
+      'Die Anlagen bilden einen Verbund.',
+      'Mehrere Anlagen werden übergreifend optimiert.',
+      'Ihre Boxen bilden einen Steuerungsverbund.',
+      'Die Steuerungsverbünde sind eingerichtet.',
+    ]) {
+      expect(freigabeVerstoesse(probe).some(({ regel }) => regel === 'S3'), probe).toBe(true);
+    }
+    expect(freigabeVerstoesse('Jede Box liest ihre Quellen.')).toEqual([]);
+    expect(freigabeVerstoesse('Das Verbundnetz gehört zum Stromverbund.')).toEqual([]);
+  });
+
+  it('S3: jedes der vier Wörter macht den Wächter allein rot (AP-15 IP-25, Test des Tests)', () => {
+    const s3 = (text: string) => freigabeVerstoesse(text).filter(({ regel }) => regel === 'S3');
+    for (const [probe, grund] of [
+      ['Ihre Boxen werden gemeinsam optimiert.', 'gemeinsam optimiert'],
+      ['Die Anlagen bilden einen Verbund.', '„Verbund"'],
+      ['Mehrere Anlagen werden übergreifend optimiert.', 'übergreifend optimiert'],
+      ['Ihre Boxen bilden einen Steuerungsverbund.', '„Steuerungsverbund"'],
+    ] as const) {
+      expect(s3(probe).map((r) => r.grund), probe).toHaveLength(1);
+      expect(s3(probe)[0].grund, probe).toContain(grund);
+    }
+  });
+
+  it('die Sätze der Gemeinsamen Steuerung (AP-15 §5.8) bestehen den Wächter — roh und eingesetzt', () => {
+    expect(freigabeVerstoesse(GEMEINSAME_STEUERUNG)).toEqual([]);
+    expect(freigabeVerstoesse('Gemeinsam gesteuert wird nur hinter demselben Netzanschluss.')).toEqual([]);
+    const werte: Record<string, string> = {
+      box: 'Halle 1', andere_box: 'Verwaltung', boxen: '2',
+      einspeisung_kw: '100', bezug_kw: '550', kw: '77', uhrzeit: '13:10', kwh: '160', ladepark: 'Ladepark Verwaltung',
+    };
+    const texte = Object.entries(STEUERUNG_SAETZE).flatMap(([schluessel, vorlage]) => [
+      vorlage,
+      steuerungSatz(schluessel as keyof typeof STEUERUNG_SAETZE, Object.fromEntries(steuerungPlatzhalter(vorlage).map((k) => [k, werte[k]]))),
+    ]);
+    expect(texte).toHaveLength(32);
+    expect(texte.flatMap((t) => freigabeVerstoesse(t).map(({ grund }) => `${grund}: ${t}`))).toEqual([]);
+    // …und der Bestands-Scan liest das Modul als Kundenfläche mit.
+    expect(customerFiles().some((file) => file.endsWith('/uemsGemeinsameSteuerung.ts'))).toBe(true);
+  });
+
+  it('die Sätze der Kundenfläche (AP-15 IP-23) bestehen den Wächter — roh und eingesetzt', () => {
+    const werte: Record<string, string> = {
+      box: 'Verwaltung', boxen: '2', einspeisung_kw: '60', bezug_kw: '77', geraet: 'PV-Wechselrichter Verwaltung 60 kW',
+      summe_kw: '100', verteilbar_kw: '70', kwh: '160', dauer: '9,1 Stunden', puffer_kw: '4', fehlt_kw: '4', hoechstens_kw: '36',
+    };
+    const texte = Object.entries(STEUERUNG_FLAECHE).flatMap(([schluessel, vorlage]) => [
+      vorlage,
+      steuerungFlaechenSatz(schluessel as keyof typeof STEUERUNG_FLAECHE, Object.fromEntries(steuerungPlatzhalter(vorlage).map((k) => [k, werte[k]]))),
+    ]);
+    expect(texte.flatMap((t) => freigabeVerstoesse(t).map(({ grund }) => `${grund}: ${t}`))).toEqual([]);
+    // „mindestens“: die kWh der Verlust-Zeile ist eine Untergrenze (IP-22) und steht nie ohne das Wort.
+    expect(Object.values(STEUERUNG_FLAECHE).filter((v) => v.includes('{kwh}')).every((v) => v.includes('mindestens {kwh}'))).toBe(true);
+  });
+
+  it('findet im Bestand, in Hilfe, Berichts-Texten und Release-Notiz keinen echten Verstoß', () => {
+    const violations = kundenFundstellen().flatMap(({ wo, text }) =>
+      freigabeVerstoesse(text).map(({ regel, grund }) => `${wo}: ${regel} — ${grund} in „${text.trim().slice(0, 100)}"`),
+    );
+    expect(violations, `Verbotene Freigabe-Aussagen:\n${violations.join('\n')}`).toEqual([]);
+  });
+
+  it('die drei Vorlagen tragen den Grenz-Satz und die sichtbaren Änderungen', () => {
+    const vorlage = readFileSync(RELEASE_NOTIZ, 'utf8');
+    expect(vorlage.split(GRENZ_SATZ)).toHaveLength(4);
+    expect(vorlage).toContain('„Noch nicht zugeordnet“');
+    expect(vorlage).toContain('„Standort anlegen“');
+    expect(vorlage).toContain('„Messen & Auswerten“');
+    expect(vorlage).toMatch(/historischen\s+Prozentwerte\s+für\s+Autarkie\s+und\s+Eigenverbrauch/u);
+    expect(vorlage).toContain('Software-Aktualisierung Ihrer Box');
+    expect(vorlage.match(/Jede Box liest ihre Quellen\./g)).toHaveLength(3);
+  });
+});
+
+/**
+ * Anmeldung (AP-20 E9, W2, PB2): die Anmeldung trägt keine Rechts- oder Konformitätsaussage.
+ * Die Vertrauenszeile heißt nur „Verschlüsselt · Server in Deutschland“ — zwei Tatsachen, die der
+ * Betreiber mit Datum bestätigt. Ein belegter Satz darf erst nach einer Datenschutz-Prüfung
+ * zurückkommen (PB1), und dann über einen ausdrücklichen Eintrag hier, nie durch Lockern der Liste.
+ * Geprüft werden die Portal-Quelle der Anmeldung und jede Textdatei des Keycloak-Themas
+ * (Vorlagen, Meldungen deutsch und englisch, Skripte, CSS) — ohne Kommentare.
+ */
+describe('Anmeldung: keine Rechts- und Konformitätswörter', () => {
+  const REPO = join(process.cwd(), '../..');
+  const THEMA = join(REPO, 'deploy/keycloak/themes/voltpilot/login');
+  const PORTAL_QUELLEN = ['frontend/portal/src/components/AuthScreen.tsx'];
+
+  // PB2: Rechtsaussagen plus die Norm-/Zertifizierungswörter (AP-14 S1, AP-19 SP2), deutsch und englisch.
+  const ANMELDUNG_VERBOTEN =
+    /DSGVO|GDPR|konform|Konformität|complian|zertifiz|Zertifikat|certif|rechtssicher|rechtskonform|legally|garantiert|Garantie|guarante|ISO\s*\d|TÜV|auditfest|audit-?proof|revisionssicher/iu;
+
+  function themaDateien(dir: string): string[] {
+    return readdirSync(dir).flatMap((name) => {
+      const p = join(dir, name);
+      if (statSync(p).isDirectory()) return name === 'fonts' || name === 'img' ? [] : themaDateien(p);
+      return /\.(ftl|properties|js|css)$/.test(name) ? [p] : [];
+    });
+  }
+
+  // Kommentare werden geleert, die Zeilenumbrüche bleiben — so zeigt ein Fund seine echte Zeile.
+  const leeren = (kommentar: string) => kommentar.replace(/[^\n]/g, ' ');
+  function ohneKommentare(datei: string, text: string): string {
+    if (datei.endsWith('.ftl')) return text.replace(/<#--[\s\S]*?-->/g, leeren);
+    if (datei.endsWith('.properties')) return text.replace(/^\s*[#!][^\n]*/gm, '');
+    return text.replace(/\/\*[\s\S]*?\*\//g, leeren).replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+  }
+
+  function funde(datei: string, text: string): string[] {
+    return ohneKommentare(datei, text)
+      .split('\n')
+      .map((zeile, i) => ({ zeile, i }))
+      .filter(({ zeile }) => ANMELDUNG_VERBOTEN.test(zeile))
+      .map(({ zeile, i }) => `${datei.replace(`${REPO}/`, '')}:${i + 1}: ${zeile.trim().slice(0, 100)}`);
+  }
+
+  const dateien = () => [...PORTAL_QUELLEN.map((rel) => join(REPO, rel)), ...themaDateien(THEMA)];
+
+  it('prüft die Portal-Anmeldung und beide Sprachen des Keycloak-Themas', () => {
+    const rel = dateien().map((d) => d.replace(`${REPO}/`, ''));
+    expect(rel).toEqual(
+      expect.arrayContaining([
+        'frontend/portal/src/components/AuthScreen.tsx',
+        'deploy/keycloak/themes/voltpilot/login/login.ftl',
+        'deploy/keycloak/themes/voltpilot/login/messages/messages_de.properties',
+        'deploy/keycloak/themes/voltpilot/login/messages/messages_en.properties',
+      ]),
+    );
+  });
+
+  it('findet an der Anmeldung kein Rechts- oder Konformitätswort', () => {
+    expect(dateien().flatMap((d) => funde(d, readFileSync(d, 'utf8')))).toEqual([]);
+  });
+
+  it('die Vertrauenszeile heißt in beiden Sprachen nur „Verschlüsselt · Server in Deutschland“', () => {
+    const de = readFileSync(join(THEMA, 'messages/messages_de.properties'), 'utf8');
+    const en = readFileSync(join(THEMA, 'messages/messages_en.properties'), 'utf8');
+    const trust = (t: string) => t.split('\n').filter((z) => z.startsWith('vpTrust'));
+    expect(trust(de)).toEqual(['vpTrustEncrypted=Verschlüsselt', 'vpTrustServers=Server in Deutschland']);
+    expect(trust(en)).toEqual(['vpTrustEncrypted=Encrypted', 'vpTrustServers=Servers in Germany']);
+    const ftl = readFileSync(join(THEMA, 'login.ftl'), 'utf8');
+    expect(ftl.match(/msg\("vpTrust\w+"\)/g)).toEqual(['msg("vpTrustEncrypted")', 'msg("vpTrustServers")']);
+  });
+
+  it('der Wächter schlägt an den Proben an — und nicht an der erlaubten Zeile', () => {
+    for (const [datei, probe] of [
+      ['messages_de.properties', 'vpTrustDsgvo=DSGVO-konform'],
+      ['messages_en.properties', 'vpTrustDsgvo=GDPR compliant'],
+      ['AuthScreen.tsx', '<span>Rechtssicher und zertifiziert</span>'],
+      ['login.ftl', '<li>ISO 50001 · garantiert</li>'],
+    ]) {
+      expect(funde(datei, probe), probe).toHaveLength(1);
+    }
+    expect(funde('messages_de.properties', '# DSGVO-konform stand hier bis AP-20 E9')).toEqual([]);
+    expect(funde('AuthScreen.tsx', '<span>Verschlüsselt</span> <span>Server in Deutschland</span>')).toEqual([]);
+    expect(funde('messages_en.properties', 'vpTrustEncrypted=Encrypted\nvpTrustServers=Servers in Germany')).toEqual([]);
+  });
+});
+
+describe('K7: Grenz- und Verantwortungs-Satz einmal je Bereich', () => {
+  const alle = walk().filter((datei) => datei.endsWith('.tsx') && !datei.endsWith('.test.tsx'));
+  const rel = (datei: string) => datei.slice(SRC.length + 1);
+
+  it('der Hinweis im Kopf trägt beide Sätze im vollen Wortlaut aus ihrer einen Quelle', () => {
+    const code = readFileSync(join(SRC, 'components/GrenzSatz.tsx'), 'utf8');
+    const hinweis = code.slice(code.indexOf('export function GrenzHinweis'));
+    expect(/>\s*\{\s*UEMS_NORMGRENZE\s*\}\s*</.test(hinweis)).toBe(true);
+    expect(/>\s*\{\s*UEMS_VERANTWORTUNG\s*\}\s*</.test(hinweis)).toBe(true);
+    // Keine Bedingung vor den Sätzen: der Hinweis öffnet immer beide.
+    expect(hinweis.slice(0, hinweis.indexOf('</details>'))).not.toMatch(/&&\s*<p>/);
+  });
+
+  it('jeder Bereich, der die Sätze seiner Teile schweigen lässt, zeigt den Hinweis', () => {
+    const ohne = alle
+      .map((datei) => [rel(datei), stripComments(readFileSync(datei, 'utf8'))] as const)
+      .filter(([datei, code]) => /<GrenzSatzBereich>/.test(code) && !GRENZ_HINWEIS.test(code) && !reiterTragenDenHinweis(datei, code))
+      .map(([datei]) => datei);
+    expect(ohne).toEqual([]);
+  });
+
+  it('Berichte und Dialoge tragen die Sätze selbst — kein Bericht schweigt in einem Bereich', () => {
+    const berichte = alle
+      .map(rel)
+      .filter((datei) => /Bericht/.test(datei.split('/').pop() ?? ''))
+      .filter((datei) => /<GrenzSatz(?![\w])|<GrenzSatzBereich>/.test(readFileSync(join(SRC, datei), 'utf8')));
+    expect(berichte).toEqual([]);
+  });
+
+  it('prüft die Mechanik am Prüfling', () => {
+    expect(traegtGrenzBaustein('<GrenzSatz className="x" />')).toBe(true);
+    expect(traegtGrenzBaustein('<GrenzSatz className="x" testId="y" />')).toBe(true);
+    expect(traegtGrenzBaustein('<GrenzSatz className="x" verantwortung grenze={false} />')).toBe(false);
+    expect(traegtVerantwortungBaustein('<GrenzSatz className="x" verantwortung grenze={false} />')).toBe(true);
+    expect(traegtVerantwortungBaustein('<GrenzSatz className="x" />')).toBe(false);
+    expect(traegtGrenzBaustein('<GrenzSatzBereich>')).toBe(false);
+    expect(traegtVerantwortungBaustein('<GrenzSatzBereich>')).toBe(false);
+    expect(traegtGrenzBaustein('<GrenzHinweis />')).toBe(true);
+    expect(traegtVerantwortungBaustein('<GrenzHinweis />')).toBe(true);
+    expect(traegtGrenzBaustein("import { GrenzSatz } from './GrenzSatz';")).toBe(false);
+    // Ein Bereich mit Reitern gilt nur, wenn er jedes Register zeigt - fehlt eins, trägt er den Hinweis nicht.
+    const bereich = '<EnergiezieleRegister onOeffnen={x} /> <MassnahmenRegister /> <AbweichungenRegister grenze={false} />';
+    expect(reiterTragenDenHinweis('pages/VerbesserungBereich.tsx', bereich)).toBe(true);
+    expect(reiterTragenDenHinweis('pages/VerbesserungBereich.tsx', bereich.replace('<MassnahmenRegister />', ''))).toBe(false);
+    expect(reiterTragenDenHinweis('pages/KennzahlSeite.tsx', bereich)).toBe(false);
+  });
+});
+
+describe('Konzept Messen m1 · „Woher die Werte kommen“: Liste und Dialog sprechen dieselben Glossarwörter', () => {
+  it('die Spalte der Liste, die zwei Wege des Dialogs und das Wort ohne Weg kommen aus dem Glossar', async () => {
+    const g = await import('./glossar');
+    const liste = await import('./messstellenListe');
+    const dialog = await import('./messstelleDialog');
+    expect(g.UEMS_WOHER_DIE_WERTE).toBe('Woher die Werte kommen');
+    expect(liste.SPALTE.woher).toBe(g.UEMS_WOHER_DIE_WERTE);
+    expect(dialog.WEG.geraet.titel).toBe(g.UEMS_WEG_GERAET);
+    expect(dialog.WEG.ablesen.titel).toBe(g.UEMS_WEG_ABLESEN);
+    expect(dialog.ABLESERHYTHMUS.label).toBe(g.UEMS_ABLESERHYTHMUS);
+    expect(liste.WEG_WORT.ohne).toBe(g.UEMS_NOCH_KEINE_QUELLE);
+    expect(liste.NOCH_KEINE_QUELLE).toBe('Noch keine Quelle · zuordnen');
+  });
+
+  it('die Seite einer Messstelle spricht dieselben Glossarwörter: Karte „Zuordnung“, „Im Stromnetz“, „Nächste Ablesung“, ein Schritt', async () => {
+    const g = await import('./glossar');
+    const seite = await import('./messstelleSeite');
+    const zuordnung = await import('./messstelleZuordnung');
+    expect(seite.ZUORDNUNG).toBe(g.UEMS_ZUORDNUNG);
+    expect(seite.NAECHSTE_ABLESUNG).toBe(g.UEMS_NAECHSTE_ABLESUNG);
+    expect(seite.ABLESUNG_EINTRAGEN).toBe(g.UEMS_ABLESUNG_EINTRAGEN);
+    expect(zuordnung.ZEILE_ETIKETT).toEqual({ ort: 'Ort', stellung: g.UEMS_IM_STROMNETZ, prozesse: g.UEMS_PROZESS, verteilung: 'Kostenstellen' });
+    // Die Karte heißt nicht mehr „Ort · Elektrisch · Organisation“, und „Ändern ab …“ ist ein „Ändern“.
+    const texte = visibleTexts(readFileSync(join(SRC, 'pages/MessstelleSeite.tsx'), 'utf8')).filter(isKundentext);
+    expect(texte.filter((t) => /^(Elektrisch|Organisation)$|Ändern ab …|Keine Datenquelle/.test(t))).toEqual([]);
+  });
+
+  it('die Ablese-Runde je Gebäude spricht das Glossarwort: „Ablesen ›“ in der Liste, „Halle 1 ablesen“ als Titel', async () => {
+    const g = await import('./glossar');
+    const runde = await import('./ableseRunde');
+    expect(runde.ABLESEN).toBe(g.UEMS_ABLESEN);
+    expect(g.UEMS_ABLESEN).toBe('Ablesen');
+  });
+
+  it('die Liste zeigt keine Datenmodell-Wörter mehr: kein „Quelle (führend)“, kein „Keine Datenquelle“, kein „Summenwert anlegen“', () => {
+    for (const datei of ['pages/MessstellenPage.tsx', 'messstellenListe.ts']) {
+      const texte = visibleTexts(readFileSync(join(SRC, datei), 'utf8')).filter(isKundentext);
+      expect(texte.filter((t) => /Quelle \(führend\)|Keine Datenquelle|Summenwert anlegen|Elektrische Stellung/.test(t)), datei).toEqual([]);
+    }
+  });
+});
+
+describe('Konzept Messen m1 · Kostenstellen, Prozesse, Bezugsgrößen: „Antwort zuerst“ (§8.2)', () => {
+  const DATEIEN = [
+    'kostenstellenUebersicht.ts',
+    'pages/KostenstellenSection.tsx',
+    'bezugsgroessenUebersicht.ts',
+    'pages/BezugsgroessenPage.tsx',
+    'pages/BezugsgroesseSeite.tsx',
+  ];
+
+  it('kein Satz über das, was es nicht gibt, kein Datenmodell-Wort, keine Zeitzonen-Kennung im Satz', () => {
+    for (const datei of DATEIEN) {
+      const texte = visibleTexts(readFileSync(join(SRC, datei), 'utf8')).filter(isKundentext);
+      expect(texte.length, datei).toBeGreaterThan(3);
+      expect(
+        texte.filter((t) => /nicht summierbar|Keine Prozess-Summe|Art nicht angegeben|Nicht verteilt|Datenquelle|kein_tageswert|Europe\/[A-Z]/.test(t)),
+        datei,
+      ).toEqual([]);
+    }
+  });
+
+  it('die Fachwörter erklärt ein Satz unter dem Titel und der Aufklapper „Was ist …?“ (Kostenstelle, Prozess, Bezugsgröße)', async () => {
+    const { BEGRIFFE } = await import('./begriffe');
+    const g = await import('./glossar');
+    expect(BEGRIFFE.kostenstelle).toMatchObject({ wort: g.UEMS_KOSTENSTELLE, frage: 'Was ist eine Kostenstelle?' });
+    expect(BEGRIFFE.prozess).toMatchObject({ wort: g.UEMS_PROZESS, frage: 'Was ist ein Prozess?' });
+    expect(BEGRIFFE.bezugsgroesse.frage).toBe('Was ist eine Bezugsgröße?');
+    for (const b of [BEGRIFFE.kostenstelle, BEGRIFFE.prozess, BEGRIFFE.bezugsgroesse]) {
+      expect(b.klartext.length).toBeGreaterThan(20);
+      expect(b.abgrenzung).toMatch(/^(Nicht dasselbe wie|Erst mit ihr)/);
+    }
   });
 });

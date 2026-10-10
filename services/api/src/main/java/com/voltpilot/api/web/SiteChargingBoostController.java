@@ -1,6 +1,8 @@
 package com.voltpilot.api.web;
 
 import com.voltpilot.api.chargers.ChargingBoostService;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -56,6 +58,7 @@ public class SiteChargingBoostController {
     }
 
     @PostMapping("/charging-boost")
+    @Recht(value = "handeingriff.setzen", ziel = RechtZiel.ANLAGE)
     public ChargingBoostService.BoostResult boost(@PathVariable UUID siteId,
             @Valid @RequestBody BoostRequest req, @AuthenticationPrincipal Jwt caller) {
         return service.boost(siteId, req.chargePointId(), req.connectorId(), req.minutes(),

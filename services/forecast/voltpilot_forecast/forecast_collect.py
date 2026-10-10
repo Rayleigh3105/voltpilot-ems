@@ -40,6 +40,7 @@ from datetime import date, datetime, timedelta, timezone
 from urllib.parse import quote
 
 from voltpilot_forecast import model_choice, registry
+from voltpilot_forecast.anlage import anlage_slot_kw, fuehrende_box
 from voltpilot_forecast.domain import (
     ForecastKind,
     GeoLocation,
@@ -51,6 +52,7 @@ from voltpilot_forecast.domain import (
 )
 from voltpilot_forecast.evaluation import BERLIN
 from voltpilot_forecast.features import WeatherHistory
+from voltpilot_forecast.kundenbereich import NICHT_BEENDET
 from voltpilot_forecast.load import SeasonalPersistenceLoadForecaster
 from voltpilot_forecast.openmeteo import (
     OpenMeteoWeatherProvider,
@@ -149,7 +151,10 @@ class CollectorConfig:
 # ---- DB reads -------------------------------------------------------------------
 
 def load_sites(conn) -> list[SiteRow]:
-    """Every site, with its authoritative PV asset parameters when linked.
+    """Every site of a live area, with its authoritative PV asset parameters when linked.
+
+    A "beendet" customer area is left out (UEMS AP-20 E10 = A,
+    :mod:`voltpilot_forecast.kundenbereich`): no new forecast for it.
 
     The LEFT JOIN picks the site's `pv` asset row (created by the portal's
     MaStR "Anlage verknüpfen" apply step); orientation/tilt are nullable there
@@ -162,6 +167,7 @@ def load_sites(conn) -> list[SiteRow]:
             SELECT s.tenant_id, s.id, s.latitude, s.longitude,
                    a.pv_capacity_kwp, a.azimuth_deg, a.tilt_deg
             FROM site s
+            JOIN tenant t ON t.id = s.tenant_id
             LEFT JOIN LATERAL (
                 SELECT pv_capacity_kwp, azimuth_deg, tilt_deg
                 FROM asset
@@ -169,6 +175,9 @@ def load_sites(conn) -> list[SiteRow]:
                 ORDER BY created_at DESC
                 LIMIT 1
             ) a ON TRUE
+            WHERE """
+            + NICHT_BEENDET
+            + """
             ORDER BY s.id
             """
         )
@@ -201,6 +210,15 @@ def _telemetry_history(
     if column not in ("load_kw", "pv_power_kw"):
         raise ValueError(f"unsupported telemetry column: {column}")
     with conn.cursor() as cur:
+        # A multi-box site with a determined leading box: the site's quarter-hour
+        # means by the api's one rule (AP-15 W2/B1) - interleaving the boxes'
+        # raw samples would average them. One observation per slot is what
+        # slot_means makes of it anyway.
+        if fuehrende_box(cur, site_id) is not None:
+            return [
+                Observation(ts, kw)
+                for ts, kw in anlage_slot_kw(cur, site_id, column, since, None)
+            ]
         cur.execute(
             f"""
             SELECT time, {column} FROM telemetry

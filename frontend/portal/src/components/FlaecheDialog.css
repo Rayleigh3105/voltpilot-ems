@@ -1,0 +1,110 @@
+/*
+ * „Fläche ändern“ (UEMS AP-02 IP-8, Mockup T7). Die Schale ist `vp-sd` aus dem
+ * Standort-Dialog, die Reihe „Fläche · Gültig ab“ die aus dem Ort-Dialog; hier nur
+ * der Kopf, die Folgen-Karte und der Verlauf.
+ * ⚠ 375 px: das Kennzeichen bricht unter die Zeile, nie über den Rand.
+ */
+
+.vp-fd-kopf {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-1, 4px);
+}
+
+.vp-fd-name {
+  margin: 0;
+  font-weight: var(--vp-c-fw-600);
+  overflow-wrap: anywhere;
+}
+
+.vp-fd-folgen,
+.vp-fd-verlauf {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+  padding: var(--vp-c-space-3) var(--vp-c-space-4);
+  border-radius: var(--vp-c-radius-sm);
+  border: 1px solid var(--vp-c-border, #d9dde3);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-fd-folgen {
+  background: var(--vp-c-muted);
+}
+
+.vp-fd-folgen h4,
+.vp-fd-verlauf h4 {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-fd-folgen p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-fd-verlauf ul {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-fd-zeile {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-c-space-2) var(--vp-c-space-3);
+  padding: var(--vp-c-space-2) 0;
+  border-top: 1px solid var(--vp-c-border, #d9dde3);
+}
+
+.vp-fd-zeile:first-child {
+  border-top: 0;
+}
+
+.vp-fd-punkt {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--vp-c-muted-fg);
+  opacity: 0.45;
+}
+
+.vp-fd-punkt-gueltig,
+.vp-fd-punkt-geplant {
+  background: var(--vp-c-primary);
+  opacity: 1;
+}
+
+.vp-fd-text {
+  display: flex;
+  flex: 1 1 10rem;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.vp-fd-m2 {
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-fd-zeitraum {
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: anywhere;
+}
+
+.vp-fd-chip {
+  flex: none;
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--vp-c-muted);
+  color: var(--vp-c-fg);
+  font-size: var(--vp-c-fs-12, 0.75rem);
+  font-weight: var(--vp-c-fw-600);
+  white-space: nowrap;
+}

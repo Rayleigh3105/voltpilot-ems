@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
+import com.voltpilot.api.measurement.MeasurementCatalog;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -39,6 +40,34 @@ class EndgueltigkeitWiringTest {
         JdbcTemplate adminJdbcTemplate() {
             return mock(JdbcTemplate.class);
         }
+
+        /** Tag und Monat/Jahr bilden den Träger ihrer Reihe ({@link ReihenKontext}) aus dem Katalog. */
+        @Bean
+        MeasurementCatalog measurementCatalog() {
+            return mock(MeasurementCatalog.class);
+        }
+
+        /** Der Korrektur-Vorschlag (AP-08 IP-14) rechnet „neu“ über den Verdichtungs-Lauf und zählt mit dem Melder. */
+        @Bean
+        ViertelstundeVerdichter viertelstundeVerdichter() {
+            return mock(ViertelstundeVerdichter.class);
+        }
+
+        @Bean
+        SpaetankunftMelder spaetankunftMelder() {
+            return mock(SpaetankunftMelder.class);
+        }
+
+        @Bean
+        KanalbindungLauf kanalbindungLauf() {
+            return mock(KanalbindungLauf.class);
+        }
+
+        /** Die berechneten Messstellen (AP-10 IP-10) rechnen im selben Takt nach den gemessenen. */
+        @Bean
+        BerechnetePeriodenLauf berechnetePeriodenLauf() {
+            return mock(BerechnetePeriodenLauf.class);
+        }
     }
 
     private final ApplicationContextRunner runner = new ApplicationContextRunner()
@@ -46,7 +75,8 @@ class EndgueltigkeitWiringTest {
                     .setConversionService(ApplicationConversionService.getSharedInstance()))
             .withConfiguration(AutoConfigurations.of(PropertyPlaceholderAutoConfiguration.class))
             .withUserConfiguration(Nachbarn.class, EndgueltigkeitLauf.class, TagVerdichter.class,
-                    PeriodeVerdichter.class, EndgueltigkeitLaeufer.class, EndgueltigkeitSchedulingConfig.class);
+                    PeriodeVerdichter.class, KorrekturVorschlagLauf.class, AblesungLueckenLauf.class, EndgueltigkeitLaeufer.class,
+                    EndgueltigkeitSchedulingConfig.class);
 
     @Test
     void derTaktVerdrahtetSichMitBeidenLaeufen() {
@@ -56,6 +86,8 @@ class EndgueltigkeitWiringTest {
             assertThat(context).hasSingleBean(EndgueltigkeitLauf.class);
             assertThat(context).hasSingleBean(TagVerdichter.class);
             assertThat(context).hasSingleBean(PeriodeVerdichter.class);
+            assertThat(context).hasSingleBean(AblesungLueckenLauf.class);
+            assertThat(context).hasSingleBean(KorrekturVorschlagLauf.class);
             assertThat(context).hasSingleBean(EndgueltigkeitSchedulingConfig.class);
         });
     }
@@ -70,6 +102,8 @@ class EndgueltigkeitWiringTest {
             assertThat(context).hasSingleBean(EndgueltigkeitLauf.class);
             assertThat(context).hasSingleBean(TagVerdichter.class);
             assertThat(context).hasSingleBean(PeriodeVerdichter.class);
+            assertThat(context).hasSingleBean(AblesungLueckenLauf.class);
+            assertThat(context).hasSingleBean(KorrekturVorschlagLauf.class);
         });
     }
 

@@ -1,7 +1,10 @@
+import { rollenMoment } from './rollen-fixture';
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { api, type RollenKanonischerWert, type SiteTopology } from '../src/api';
 import { keycloak } from '../src/auth';
+import { RechteStandort } from '../src/rollen';
+import { STANDORT_IDS } from '../src/test/rollenFixtures';
 import { Button } from '../designsystem/components/core/Button';
 import { GesamtwertDialog } from '../src/components/GesamtwertDialog';
 import { GeraetSummenwerte } from '../src/components/GeraetSummenwerte';
@@ -19,6 +22,7 @@ import '../src/index.css';
 (keycloak as unknown as { token: string }).token = 'e2e-token';
 (keycloak as unknown as { updateToken: () => Promise<boolean> }).updateToken = async () => false;
 const fall = FAELLE[(new URLSearchParams(location.search).get('fall') ?? 'deye') as Fall];
+const standort = STANDORT_IDS[fall.standort];
 const roles = ['pv', 'consumer', 'grid'] as const;
 const lindach = fall === FAELLE.lindach;
 const snapshot = { pvKw: fall.rolle === 'pv' ? fall.roh : lindach ? 0 : ahrenbergRoh.pv, loadKw: fall.rolle === 'consumer' ? fall.roh : ahrenbergRoh.verbrauch, gridKw: fall.rolle === 'grid' || lindach ? fall.roh : ahrenbergRoh.netz, socPct: null, battKw: null };
@@ -33,10 +37,12 @@ function Fixture() {
   const [anlagenDialog, setAnlagenDialog] = useState(false);
   const [version, setVersion] = useState(0);
   const [werte, setWerte] = useState<RollenKanonischerWert[]>([]);
+  const sichtbar = rollenMoment.standorte.some((s) => s.id === standort);
   useEffect(() => {
-    void Promise.all(roles.map((r) => api.rollenWert('site-abnahme', r))).then(setWerte);
-  }, [version]);
-  return <main style={{ maxWidth: 1120, margin: '0 auto', padding: 16, display: 'grid', gap: 24 }}>
+    if (sichtbar) void Promise.all(roles.map((r) => api.rollenWert('site-abnahme', r))).then(setWerte);
+  }, [version, sichtbar]);
+  if (!sichtbar) return <main>Dieser Standort gehört nicht zu Ihrem Zugriff.</main>;
+  return <RechteStandort.Provider value={standort}><main style={{ maxWidth: 1120, margin: '0 auto', padding: 16, display: 'grid', gap: 24 }}>
     <h1>{fall.titel}</h1>
     {fall === FAELLE.ahrenberg && <><Button onClick={() => setAnlagenDialog(true)}>Summenwert der Anlage anlegen</Button>
       <GesamtwertDialog open={anlagenDialog} onClose={() => setAnlagenDialog(false)} siteId="site-abnahme"
@@ -47,6 +53,6 @@ function Fixture() {
     <section aria-label="Anlagen-Übersicht"><CockpitHero topology={topology} snapshot={snapshot}
       view={{ rings: [], ringsNote: null, money: null, planSentence: null }} onOpenSub={() => {}} showRail={false}
       pvRollen={werte[0]} verbrauchRollen={werte[1]} netzRollen={werte[2]} /></section>
-  </main>;
+  </main></RechteStandort.Provider>;
 }
 ReactDOM.createRoot(document.getElementById('root')!).render(<Fixture />);

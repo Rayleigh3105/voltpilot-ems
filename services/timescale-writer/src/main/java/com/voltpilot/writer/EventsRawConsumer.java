@@ -56,12 +56,14 @@ public class EventsRawConsumer {
     private final ObjectMapper mapper;
     private final MessreiheEreignisRepository repository;
     private final MeterRegistry meters;
+    private final WriterVerwerfMetriken verworfen;
 
     public EventsRawConsumer(ObjectMapper mapper, MessreiheEreignisRepository repository,
-            MeterRegistry meters) {
+            MeterRegistry meters, WriterVerwerfMetriken verworfen) {
         this.mapper = mapper;
         this.repository = repository;
         this.meters = meters;
+        this.verworfen = verworfen;
     }
 
     @KafkaListener(topics = "${voltpilot.redpanda.events-topic:events.raw}",
@@ -71,12 +73,13 @@ public class EventsRawConsumer {
         try {
             r = mapper.readTree(value);
         } catch (JsonProcessingException e) {
-            verworfen(null, Grund.SCHEMA_VERLETZT.code(), "unparseable: " + e.getOriginalMessage());
+            verworfen(null, Grund.SCHEMA_VERLETZT.code(), WriterVerwerfMetriken.UNLESBAR,
+                    "unparseable: " + e.getOriginalMessage());
             return;
         }
         String[] fehler = rahmenFehler(r);
         if (fehler != null) {
-            verworfen(r, fehler[0], fehler[1]);
+            verworfen(r, fehler[0], metrischerGrund(fehler[0]), fehler[1]);
             return;
         }
         Ergebnis e;
@@ -91,10 +94,11 @@ public class EventsRawConsumer {
             log.error("events.raw event {} refused by the database: {}", r.path("event_id").asText(),
                     ex.getMostSpecificCause().getMessage());
             zaehle("verworfen", "datenbank");
+            verworfen.umschlag("events", WriterVerwerfMetriken.UNGUELTIG);
             return;
         }
         if (e.ausgang() == Ausgang.VERWORFEN) {
-            verworfen(r, e.grund(), e.hinweis());
+            verworfen(r, e.grund(), metrischerGrund(e.grund()), e.hinweis());
             return;
         }
         zaehle(e.ausgang().name().toLowerCase(Locale.ROOT), "");
@@ -182,10 +186,16 @@ public class EventsRawConsumer {
         }
     }
 
-    private void verworfen(JsonNode r, String grund, String hinweis) {
+    private void verworfen(JsonNode r, String grund, String metrischerGrund, String hinweis) {
         log.warn("Dropping events.raw event {}: {} ({})",
                 r == null ? "?" : r.path("event_id").asText("?"), grund, hinweis);
         zaehle("verworfen", grund);
+        verworfen.umschlag("events", metrischerGrund);
+    }
+
+    private static String metrischerGrund(String grund) {
+        return Grund.KENNUNG_ABWEICHEND.code().equals(grund)
+                ? WriterVerwerfMetriken.IDENTITAET : WriterVerwerfMetriken.UNGUELTIG;
     }
 
     private void zaehle(String ergebnis, String grund) {

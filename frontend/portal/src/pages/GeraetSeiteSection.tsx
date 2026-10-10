@@ -1,3 +1,4 @@
+import { Recht } from '../components/Recht';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -51,6 +52,7 @@ import { deviceLimitLine, exportGuardView, WAECHTER_LABEL } from '../curtailment
 import type { IconName } from '../../designsystem/components/core/Icon';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import { GeraetProtokoll } from '../components/GeraetProtokoll';
+import { GeraetHerkunft } from '../components/GeraetHerkunft';
 import { GeraetGefahrenzone, gefahrMenueLabel } from '../components/GeraetGefahrenzone';
 import { GeraetSummenwerte } from '../components/GeraetSummenwerte';
 import { gefahrenzone } from '../geraetLoeschen';
@@ -167,7 +169,7 @@ import '../components/AnlagenModell.css';
 // Geräteseite ankommt (im Browser gefunden).
 import './Befehle.css';
 import './GeraetSeite.css';
-import { AUFBAU_REITER } from '../anlageNav';
+import { AUFBAU_REITER } from '../ebenenNav';
 
 /**
  * Die GERÄTE-DETAILSEITE der Anlagen-Zentrale
@@ -735,6 +737,7 @@ export function GeraetSeiteSection({
       eigeneErlaubt={geraetId === 'inverter'}
       registerFaehig={registerSektion}
       geraetName={view.kopf.titel}
+      boxNamen={Object.fromEntries((devices ?? []).map((d) => [d.id, d.name ?? d.externalRef]))}
       lesbar={beobachtenMoeglich({ geraetId, familien: messFamilien ?? [] })}
       bruecke={bruecke}
       onBrueckeVerbraucht={brueckeVerbraucht}
@@ -1177,10 +1180,15 @@ export function GeraetSeiteSection({
           setEditOpen(true);
         };
         const menue: MenueEintrag[] = [];
-        if (bearbeitbar) menue.push({ key: 'bearbeiten', label: 'Bearbeiten', icon: 'pencil', onClick: bearbeiten });
+        if (bearbeitbar) {
+          menue.push({ key: 'bearbeiten', label: 'Bearbeiten', icon: 'pencil', onClick: bearbeiten, recht: 'geraet.einrichten' });
+        }
         const gefahrLabel = gefahrMenueLabel(gefahr);
         if (gefahrLabel) {
-          menue.push({ key: 'entfernen', label: gefahrLabel, icon: 'trash', danger: true, onClick: () => setEntfernenOffen(true) });
+          menue.push({
+            key: 'entfernen', label: gefahrLabel, icon: 'trash', danger: true,
+            onClick: () => setEntfernenOffen(true), recht: 'komponente.loeschen',
+          });
         }
 
         const massgeblich = held.werte.massgeblich;
@@ -1341,6 +1349,14 @@ export function GeraetSeiteSection({
               {view.verbindungLeer && <p className="vp-note">{view.verbindungLeer}</p>}
               {view.komponentenLeer && <p className="vp-note">{view.komponentenLeer}</p>}
               <ZeilenListe zeilen={detailZeilen} />
+              {/* Gerät, Einstellungen und Messkanäle (UEMS AP-04 IP-12): die
+                  Herkunftskette von der Technik-Seite — welches Gerät eingebaut
+                  ist, womit es misst und welche Messstelle ein Kanal speist. Ohne
+                  auflösbares UEMS-Gerät rendert es gar nichts (wie das Protokoll). */}
+              <GeraetHerkunft
+                siteId={site.id}
+                komponenten={view.komponenten.map((c) => ({ entityId: c.entityId, label: c.label }))}
+              />
               {view.bms.length > 0 && (
                 <Block titel="BMS" icon="battery">
                   <p className="vp-note">
@@ -1463,9 +1479,9 @@ export function GeraetSeiteSection({
                     <p>Jede Änderung ist eine neue Fassung. Eine Rückkehr schreibt wiederum eine neue Fassung; nichts wird gelöscht.</p>
                     <div className="vp-geraet-version-list">
                       {versions.filter((version) => version.version < editRow.definitionVersion).slice(0, 4).map((version) => (
-                        <button key={version.version} type="button" className="vp-btn vp-btn--outline vp-btn--sm" onClick={() => setRollbackTarget(version)}>
+                        <Recht aktion="geraet.einrichten" key={version.version}><button key={version.version} type="button" className="vp-btn vp-btn--outline vp-btn--sm" onClick={() => setRollbackTarget(version)}>
                           Fassung {version.version} zurückholen
-                        </button>
+                        </button></Recht>
                       ))}
                     </div>
                     {editError && <p className="vp-assist-error" role="alert">{editError}</p>}
@@ -1542,9 +1558,9 @@ export function GeraetSeiteSection({
             }}
             menue={menue}
             kopfAktion={bearbeitbar ? (
-              <button type="button" className="vp-btn vp-btn--outline vp-btn--md" onClick={bearbeiten}>
+              <Recht aktion="geraet.einrichten"><button type="button" className="vp-btn vp-btn--outline vp-btn--md" onClick={bearbeiten}>
                 <Icon name="pencil" size={15} /> Bearbeiten
-              </button>
+              </button></Recht>
             ) : null}
             veraltet={view.kopf.zustand.ton === 'warn'}
             bausteine={{
@@ -1924,14 +1940,14 @@ function GeleseneRegisterTabelle({
                   {/* Die Brücke: lesen, gut finden, behalten (§7.2 Teil 3). */}
                   {bruecken && z.key in bruecken && (
                     bruecken[z.key] ? (
-                      <button
+                      <Recht aktion="mess_selektion.bearbeiten"><button
                         type="button"
                         className="vp-geraet-btn vp-beob-bruecke"
                         data-testid={`beob-bruecke-${z.key}`}
                         onClick={() => onBeobachten?.(bruecken[z.key]!)}
                       >
                         <Icon name="plus" size={12} /> {BRUECKE_LABEL}
-                      </button>
+                      </button></Recht>
                     ) : (
                       <span className="vp-muted vp-text-sm">{BRUECKE_NICHT_MOEGLICH}</span>
                     )
@@ -2141,14 +2157,14 @@ function RegisterSektion({
             <p>Mit Vorschau, einmaliger Ausführung und dauerhaftem Protokoll.</p>
           </div>
           {zugang.moeglich ? (
-            <button
+            <Recht aktion="register.schreiben"><button
               type="button"
               className="vp-geraet-btn"
               onClick={() => setOffen(true)}
               data-testid="geraet-regwrite"
             >
               <Icon name="pencil" size={13} /> Schreiben vorbereiten
-            </button>
+            </button></Recht>
           ) : (
             <p className="vp-muted vp-text-sm" data-testid="geraet-regwrite-grund">
               {zugang.grund ?? 'Die Ziele dieses Geräts werden geladen …'}

@@ -9,7 +9,9 @@ not require Python or access outside their Docker build context.
 Both derivatives carry the RUNTIME version (``RUNTIME_VERSION``), not the content
 version: a content version that changes nothing the box or the writer reads
 (``validate.py`` proves it) leaves both files byte-identical, so no box on an
-older edge release ever sees a foreign ``catalog_version``.
+older edge release ever sees a foreign ``catalog_version``. Families the content
+version carries but no box reads yet (``cataloglib.NOCH_NICHT_AN_DER_BOX``) are
+left out of both files.
 """
 
 from __future__ import annotations
@@ -18,18 +20,22 @@ import argparse
 import json
 from pathlib import Path
 
-from cataloglib import CATALOG_VERSION, EDGE_FIELDS, ROOT, canonical_json_bytes
+from cataloglib import CATALOG_VERSION, EDGE_FIELDS, ROOT, box_points, canonical_json_bytes
 
 
 REPO = ROOT.parents[1]
 SOURCE = ROOT / "dist" / f"measurement-point-catalog-{CATALOG_VERSION}.json"
 EDGE = REPO / "edge-app" / "nodered" / "measurements" / "catalog.json"
+BUDGET = REPO / "docs" / "contracts" / "v2" / "measurement-budget-vectors.json"
 MIGRATIONS = REPO / "services" / "api" / "src" / "main" / "resources" / "db" / "migration"
 # ⚠ Eine angewandte Migration ist unveränderlich: jeder Laufzeitstand bekommt seine EIGENE
 # Metadaten-Migration. Wer RUNTIME_VERSION hebt, trägt hier eine neue, datums-versionierte
 # Datei ein — nie die alte umschreiben.
 SQL_BY_RUNTIME_VERSION = {
     "2026.08.26.3": "V20260853010000__measurement_catalog_metadata_slice9_r2.sql",
+    "2026.09.23.2": "V20260924021500__measurement_catalog_metadata_runtime_2026_09_23_2.sql",
+    # UEMS AP-05 IP-6b: die WAGO-Karten gehen an die Box (wirksam mit dem Box-Release).
+    "2026.09.23.3": "V20260924030000__measurement_catalog_metadata_runtime_2026_09_23_3.sql",
 }
 
 
@@ -38,7 +44,7 @@ def outputs() -> tuple[bytes, bytes]:
     runtime = catalog["runtime_catalog_version"]
     points = [{key: (runtime if key == "catalog_version" else point[key])
                for key in EDGE_FIELDS if key in point}
-              for point in catalog["points"]]
+              for point in box_points(catalog)]
     edge = canonical_json_bytes({
         "schema_version": "1.0",
         "catalog_version": runtime,
@@ -46,7 +52,7 @@ def outputs() -> tuple[bytes, bytes]:
     })
 
     rows = []
-    for point in catalog["points"]:
+    for point in box_points(catalog):
         key = point["point_key"].replace("'", "''")
         cadence = point["long_term_cadence_s"]
         rows.append("('%s','%s','%s',%s)" % (
@@ -75,7 +81,8 @@ def main() -> int:
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
     edge, sql = outputs()
-    expected = ((EDGE, edge), (sql_path(), sql))
+    expected = ((EDGE, edge), (sql_path(), sql),
+                (EDGE.with_name(BUDGET.name), BUDGET.read_bytes()))
     if args.check:
         stale = [str(path.relative_to(REPO)) for path, raw in expected
                  if not path.exists() or path.read_bytes() != raw]

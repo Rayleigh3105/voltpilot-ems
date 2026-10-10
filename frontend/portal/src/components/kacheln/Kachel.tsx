@@ -82,7 +82,8 @@ export function Kachel({
 }
 
 /** Die ruhige Marke unten in einer Kachel: gemessen, geplant, erwartet. */
-export function Marke({ art = 'neutral', children }: { art?: 'neutral' | 'plan' | 'ok' | 'warn'; children: ReactNode }) {
+/** `ohne`: ein leiser Umriss für Angaben ohne Urteil („Bezugsbasis vorläufig“, „Vergleich ab …“). */
+export function Marke({ art = 'neutral', children }: { art?: 'neutral' | 'plan' | 'ok' | 'warn' | 'ohne'; children: ReactNode }) {
   return <span className={`vp-k-marke is-${art}`}>{children}</span>;
 }
 

@@ -306,6 +306,28 @@ describe('aufbauBaum — Standort als Wurzel', () => {
     expect(baum.anlagen[1].boxen.map((b) => b.ref)).toEqual(['VP-DEMO-0002']);
   });
 
+  it('nennt an einer Nachbar-Anlage mit zwei Boxen die führende nach dem Server-Fakt — nie nach der Reihenfolge', () => {
+    const mit = (fuehrtAnlage: boolean | undefined) =>
+      aufbauBaum(
+        eingabe({
+          standorte: STANDORTE([{ id: 's-1', name: 'Sonnenhof' }, { id: 's-2', name: 'Werkstatt am Bach' }]),
+          devices: [
+            box({ id: 'b-1', externalRef: 'VP-1' }),
+            box({ id: 'b-3', externalRef: 'VP-3', name: 'Box Werkstatt', siteId: 's-2' }),
+            box({ id: 'b-4', externalRef: 'VP-4', name: 'Box Lager', siteId: 's-2', fuehrtAnlage }),
+          ],
+        }),
+      ).anlagen[1].boxen.map((b) => [b.name, b.fuehrend]);
+    expect(mit(true)).toEqual([
+      ['Box Lager', true],
+      ['Box Werkstatt', false],
+    ]);
+    expect(mit(undefined)).toEqual([
+      ['Box Werkstatt', false],
+      ['Box Lager', false],
+    ]);
+  });
+
   it('zeigt die Geräte einer Nachbar-Anlage, sobald sie geladen sind', () => {
     const baum = aufbauBaum(
       eingabe({

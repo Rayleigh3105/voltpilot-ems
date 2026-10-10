@@ -2,6 +2,7 @@ package com.voltpilot.api.consumers;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
 import com.voltpilot.api.repo.ConsumerRuntimeStatusRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.command.CommandLogWriter;
@@ -60,7 +61,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @ConditionalOnProperty(name = "voltpilot.consumers.mqtt-listener-enabled", havingValue = "true")
-public class ConsumerRuntimeStatusListener {
+public class ConsumerRuntimeStatusListener extends Rueckmeldeweg {
 
     private static final Logger log = LoggerFactory.getLogger(ConsumerRuntimeStatusListener.class);
     private static final String STATUS_FILTER = "ems/+/+/+/status";
@@ -194,6 +195,7 @@ public class ConsumerRuntimeStatusListener {
 
     /** Package-visible + test-visible: parse one heartbeat's consumers block. */
     public void handle(String topic, byte[] payload) {
+        if (kundenbereichBeendet(topic)) return; // Kundenbereich beendet: verworfen und gezählt
         JsonNode json;
         try {
             json = mapper.readTree(new String(payload, StandardCharsets.UTF_8));

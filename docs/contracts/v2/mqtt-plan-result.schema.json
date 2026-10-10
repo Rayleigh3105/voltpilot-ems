@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mqtt-plan-result.schema.json",
+  "title": "Plan-Quittung 1.0 (…/v2/plan-result) und Herzschlag-Block gemeinsame_steuerung",
+  "type": "object",
+  "required": ["schema_version", "tenant_id", "site_id", "device_id", "ts", "angenommen"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "site_id": { "type": "string", "format": "uuid" },
+    "device_id": { "type": "string", "format": "uuid" },
+    "ts": { "type": "string", "format": "date-time" },
+    "plan_id": { "type": "string", "format": "uuid" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "angenommen": { "type": "boolean" },
+    "grund": {
+      "enum": ["unlesbar", "schema_version_unbekannt", "slot_minutes_ungueltig", "keine_entitaeten", "fremde_box"]
+    },
+    "lauf_nr": { "type": "integer", "minimum": 1 },
+    "anteile_revision": { "type": "integer", "minimum": 0 }
+  },
+  "anyOf": [
+    { "properties": { "angenommen": { "const": true } }, "not": { "required": ["grund"] }, "required": ["plan_id"] },
+    { "properties": { "angenommen": { "const": false } }, "required": ["grund"] }
+  ],
+  "$defs": {
+    "herzschlag_block": {
+      "title": "Block gemeinsame_steuerung im Status-Herzschlag 1.0 (wahlfrei): Plan 2.0 (IP-10) und/oder Anteils-Dokument (IP-17)",
+      "type": "object",
+      "anyOf": [
+        { "required": ["plan_id"] },
+        { "required": ["anteile_epoche", "anteile_revision", "anteile_kw"] }
+      ],
+      "properties": {
+        "plan_id": { "type": "string", "format": "uuid" },
+        "waechter": {
+          "type": "object",
+          "properties": {
+            "einspeisung": { "$ref": "#/$defs/waechter_stufe" },
+            "bezug": { "$ref": "#/$defs/waechter_stufe" }
+          },
+          "additionalProperties": false
+        },
+        "messpunkt_alter_s": { "type": "integer", "minimum": 0 },
+        "rolle": { "enum": ["fuehrt", "steuert_mit", "liest"] },
+        "anteile_revision": { "type": "integer", "minimum": 0 },
+        "anteile_epoche": { "type": "integer", "minimum": 1 },
+        "anteile_kw": {
+          "description": "die WIRKSAMEN eigenen Anteile je Richtung in kW, wie im angenommenen Dokument (Y3, A18); einspeisung fehlt genau dann, wenn das Dokument keine Einspeiseseite hat (Einspeisung unbegrenzt, AP-15 Folge) - nie als 0",
+          "type": "object",
+          "required": ["bezug"],
+          "additionalProperties": false,
+          "properties": {
+            "einspeisung": { "type": "number", "minimum": 0 },
+            "bezug": { "type": "number", "minimum": 0 }
+          }
+        },
+        "reserve_verbraucher_kw": {
+          "description": "wahlfrei (AP-15 Folge von IP-19): reserve_verbraucher des angenommenen Dokuments — fehlt, wenn das Dokument keine trägt",
+          "type": "object",
+          "additionalProperties": false,
+          "properties": { "bezug": { "type": "number", "minimum": 0 } }
+        }
+      }
+    },
+    "waechter_stufe": { "enum": ["aus", "ueberwacht", "regelt", "haelt", "zieht_zusammen", "sicherheitskappe"] }
+  }
+}

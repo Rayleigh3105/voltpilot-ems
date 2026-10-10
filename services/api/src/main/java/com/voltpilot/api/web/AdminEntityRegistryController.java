@@ -6,7 +6,8 @@ import com.voltpilot.api.components.ComponentAdoption;
 import com.voltpilot.api.components.ComponentAdoptionService;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryService;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.uems.BelegeImWeg;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
@@ -15,8 +16,10 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -78,16 +81,16 @@ public class AdminEntityRegistryController {
             @DecimalMin("0.0") @DecimalMax("100000.0") BigDecimal capacityKwp,
             @Size(max = 64) String registryUnitId) {}
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final EntityRegistryRepository repo;
     private final EntityRegistryService service;
     private final ComponentAdoptionService adoption;
     private final ObjectMapper mapper;
 
-    public AdminEntityRegistryController(SiteRepository sites, EntityRegistryRepository repo,
+    public AdminEntityRegistryController(Geltungsbereich geltungsbereich, EntityRegistryRepository repo,
             EntityRegistryService service, ComponentAdoptionService adoption,
             ObjectMapper mapper) {
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.repo = repo;
         this.service = service;
         this.adoption = adoption;
@@ -242,6 +245,11 @@ public class AdminEntityRegistryController {
             // getaktete Lauf protokolliert.
             return new ComponentAdoptionService.Outcome(
                     ComponentAdoption.Verdict.INCOMPLETE_REPORT, e.getMessage(), 0);
+        } catch (ComponentAdoptionService.PushNotDeliveredException e) {
+            // UEMS AP-06 W7: hat eine Box den Push der zurückgerollten Übernahme schon, stellt das
+            // sie zurück; der Ausgang der Route bleibt, wie er war.
+            adoption.nachAbbruchZurueckstellen(siteId, e);
+            throw e;
         }
     }
 
@@ -288,9 +296,12 @@ public class AdminEntityRegistryController {
         }
     }
 
+    @ExceptionHandler(BelegeImWeg.class)
+    public ResponseEntity<java.util.Map<String, Object>> belegeImWeg(BelegeImWeg e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(e.koerper());
+    }
+
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 }

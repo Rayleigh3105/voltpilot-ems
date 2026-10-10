@@ -79,6 +79,11 @@ type ocppRuntime struct {
 	mu       sync.Mutex
 	settings lastmgmt.Settings
 	plan     *lastmgmt.Plan
+	// planStichprobe is the connection-point sample the current plan was
+	// decided on (taken BEFORE the budget, so never newer than the one it
+	// used). The battery ceiling of a share-holding box releases no headroom
+	// of a sample the park has not decided on yet (bezugswaechter_anteil.go).
+	planStichprobe time.Time
 	// commissioned fingerprints what a station was last set up WITH, so a
 	// reconnect or a changed site limit re-commissions and nothing else does.
 	commissioned map[string]string
@@ -317,6 +322,7 @@ func (a *Agent) ocppStep(ctx context.Context) {
 	}
 
 	// THE BUDGET (see ocppBudget: one derivation, shared with the surface).
+	stichprobe := rt.budget.Stichprobe()
 	verdict, reserved := a.ocppBudget(now, set, snap, safe)
 
 	// ⚠ WHAT WE CANNOT SEE IS STILL DRAWING. A station whose websocket is
@@ -411,7 +417,8 @@ func (a *Agent) ocppStep(ctx context.Context) {
 	if len(banded) > 0 && rt.ocppPaceSwitches(sessions, banded, plan, now) {
 		plan = lastmgmt.Decide(input)
 	}
-	rt.setPlan(&plan)
+	prevPlan := rt.previousPlan()
+	rt.setPlanAuf(&plan, stichprobe)
 	a.ocppObserveReleaseEffect(now, plan)
 
 	// P6: the wallbox allocations are published for the consumer executor
@@ -420,6 +427,10 @@ func (a *Agent) ocppStep(ctx context.Context) {
 	a.noteWallboxCaps(plan)
 	if allowed, _ := a.ocppControlAllowed(); allowed {
 		a.ocppApply(ctx, plan, byKey, banded, now)
+		// AP-15 IP-20: an allocation lowered below the measured draw MUST show
+		// at the meter (no-op without a share document)
+		drawKw, drawOk := rt.measuredChargingKw(now)
+		a.einfrierLadepunkte(now, prevPlan, &plan, drawKw, drawOk)
 	}
 	a.ocppReadback(ctx, snap, now)
 	a.publishOcppState()
@@ -451,11 +462,33 @@ func (a *Agent) ocppStep(ctx context.Context) {
 // and the engineering margin covers the gap. Every blind stage gets it back.
 func (a *Agent) ocppBudget(now time.Time, set lastmgmt.Settings, snap csms.Snapshot, safe lastmgmt.SafeDefault) (lastmgmt.BudgetVerdict, float64) {
 	a.ocppFeedPlanLimit(now)
-	verdict := a.ocpp.budget.Budget(now, set)
+	an := a.bezugAnteil()
+	if an == nil {
+		verdict := a.ocpp.budget.Budget(now, set)
+		reserved := 0.0
+		if safe.Computable && !verdict.Measured() {
+			reserved = safe.PerConnectorKw * float64(ocppUncontrolledConnectors(snap))
+		}
+		return verdict, reserved
+	}
+	// AP-15 IP-19: with a share document the budget holds the box's import
+	// share (lastmgmt/bezuganteil.go). A share that binds is a fixed figure,
+	// never Measured(), so what stations we cannot reach may draw comes OUT OF
+	// it - their draw is inside no measurement the share is compared with.
+	// B2 (AP-15 IP-20): a frozen connection-point value counts as blind
+	an.EingefrorenSeit = a.eingefrorenSeit(now)
+	// IP-27 A7: a standing import value asks for ONE probing adjustment
+	if r, neu := a.einfrierPruefen(now); r > 0 {
+		an.Pruefen, an.PruefenNeu = true, neu
+	}
+	verdict := a.ocpp.budget.BudgetAnteil(now, set, *an)
+	a.einfrierGeprueft(now, verdict.Pruefung)
 	reserved := 0.0
 	if safe.Computable && !verdict.Measured() {
 		reserved = safe.PerConnectorKw * float64(ocppUncontrolledConnectors(snap))
 	}
+	stufe := ladeStufe(verdict, *an)
+	a.setBezugStufe(&stufe, nil)
 	return verdict, reserved
 }
 
@@ -732,7 +765,7 @@ func ocppMeasurement(snap csms.Snapshot, ts time.Time, gridKw, wallboxKw float64
 	m := lastmgmt.Measurement{GridKw: gridKw, ChargingKw: charging + wallboxKw,
 		Complete: complete && !settling, Settling: settling}
 	if battKw != nil {
-		m.HaveBattery, m.BatteryKw = true, *battKw
+		m.HaveBattery, m.BatteryKw, m.BatteryPowerKw = true, *battKw, battKw
 	}
 	return m
 }
@@ -875,6 +908,20 @@ func (rt *ocppRuntime) setPlan(p *lastmgmt.Plan) {
 	rt.mu.Lock()
 	rt.plan = p
 	rt.mu.Unlock()
+}
+
+// setPlanAuf stores the plan together with the sample it was decided on.
+func (rt *ocppRuntime) setPlanAuf(p *lastmgmt.Plan, stichprobe time.Time) {
+	rt.mu.Lock()
+	rt.plan, rt.planStichprobe = p, stichprobe
+	rt.mu.Unlock()
+}
+
+// planUndStichprobe is the current plan and the sample it was decided on.
+func (rt *ocppRuntime) planUndStichprobe() (*lastmgmt.Plan, time.Time) {
+	rt.mu.Lock()
+	defer rt.mu.Unlock()
+	return rt.plan, rt.planStichprobe
 }
 
 // nudge asks the executor to re-decide out of band. Non-blocking: the channel

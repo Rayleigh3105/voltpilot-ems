@@ -1,23 +1,31 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.web.dto.SichtbareListe;
+import com.voltpilot.api.zugriff.TeilansichtDienst;
+
 import com.voltpilot.api.control.ControlCertificationService;
 import com.voltpilot.api.enrollment.EnrollmentService;
 import com.voltpilot.api.chargers.ChargingConfigPublisher;
 import com.voltpilot.api.entities.EntityAutoComposer;
 import com.voltpilot.api.entities.EntityRegistryPublisher;
+import com.voltpilot.api.entities.LeadDeviceService;
 import com.voltpilot.api.ota.RolloutService;
 import com.voltpilot.api.provisioning.ProvisioningPublisher;
 import com.voltpilot.api.provisioning.ProvisioningTopics;
 import com.voltpilot.api.purge.DevicePurgeService;
 import com.voltpilot.api.repo.AssetRepository;
+import com.voltpilot.api.repo.CommandLogRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.ProvisionedDeviceRepository;
-import com.voltpilot.api.repo.SeriesRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.uems.BelegeImWeg;
 import com.voltpilot.api.web.dto.DeviceClaimRequest;
 import com.voltpilot.api.web.dto.DeviceDto;
 import com.voltpilot.api.web.dto.UpdateDeviceRequest;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtPruefung;
+import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
 import java.util.List;
 import java.util.Locale;
@@ -29,6 +37,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -42,10 +51,15 @@ import org.springframework.web.server.ResponseStatusException;
  * Devices for the caller's tenant, and the claim endpoint. Claiming is a single
  * insert scoped to the tenant; RLS plus the global unique {@code external_ref}
  * index make cross-tenant claiming impossible.
+ *
+ * <p>AP-03 IP-12: Der Umschlag nennt die sichtbaren Einträge und mit
+ * {@code teilansicht} den Umfang derselben Antwort. Der Standort-Zaun bleibt erhalten.
  */
 @RestController
 @RequestMapping("/api/v1/devices")
 public class DeviceController {
+
+    private final TeilansichtDienst teilansicht;
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(DeviceController.class);
 
@@ -53,8 +67,7 @@ public class DeviceController {
     static final String STICKER_PREFIX = "VP-";
 
     private final DeviceRepository devices;
-    private final SiteRepository sites;
-    private final SeriesRepository series;
+    private final Geltungsbereich geltungsbereich;
     private final AssetRepository assets;
     private final ProvisionedDeviceRepository provisioned;
     private final DevicePurgeService purge;
@@ -66,9 +79,25 @@ public class DeviceController {
     private final ControlCertificationService controlCertification;
     private final ObjectProvider<ChargingConfigPublisher> chargingConfig;
     private final com.voltpilot.api.repo.DeviceOverrideRepository deviceOverrides;
+    private final CommandLogRepository commandLog;
+    private final RechtPruefung rechte;
+    private LeadDeviceService leadDevices;
 
-    public DeviceController(DeviceRepository devices, SiteRepository sites,
-            SeriesRepository series, AssetRepository assets,
+    @org.springframework.beans.factory.annotation.Autowired
+    void leadDevices(LeadDeviceService service) {
+        this.leadDevices = service;
+    }
+
+    /** UEMS AP-15 §5.5: eine abgemeldete Mitglieds-Box scheidet aus der Gemeinsamen Steuerung aus. */
+    private com.voltpilot.api.uems.GemeinsameSteuerungAusscheiden verbundAusscheiden;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void verbundAusscheiden(com.voltpilot.api.uems.GemeinsameSteuerungAusscheiden dienst) {
+        this.verbundAusscheiden = dienst;
+    }
+
+    public DeviceController(DeviceRepository devices, Geltungsbereich geltungsbereich, RechtPruefung rechte,
+            AssetRepository assets,
             ProvisionedDeviceRepository provisioned,
             DevicePurgeService purge,
             ObjectProvider<ProvisioningPublisher> provisioning,
@@ -78,10 +107,12 @@ public class DeviceController {
             EntityAutoComposer autoCompose,
             ControlCertificationService controlCertification,
             ObjectProvider<ChargingConfigPublisher> chargingConfig,
-            com.voltpilot.api.repo.DeviceOverrideRepository deviceOverrides) {
+            com.voltpilot.api.repo.DeviceOverrideRepository deviceOverrides,
+            CommandLogRepository commandLog, TeilansichtDienst teilansicht) {
         this.devices = devices;
-        this.sites = sites;
-        this.series = series;
+        this.teilansicht = teilansicht;
+        this.geltungsbereich = geltungsbereich;
+        this.rechte = rechte;
         this.assets = assets;
         this.provisioned = provisioned;
         this.purge = purge;
@@ -93,14 +124,28 @@ public class DeviceController {
         this.controlCertification = controlCertification;
         this.chargingConfig = chargingConfig;
         this.deviceOverrides = deviceOverrides;
+        this.commandLog = commandLog;
     }
 
     @GetMapping
-    public List<DeviceDto> listDevices() {
-        return devices.findAll();
+    public SichtbareListe<DeviceDto> listDevices() {
+        var liste = devices.findAll();
+        var fuehrend = new java.util.HashMap<java.util.UUID, java.util.UUID>();
+        if (leadDevices != null) {
+            liste.stream().map(DeviceDto::siteId).distinct().forEach(site -> {
+                java.util.UUID box = leadDevices.fuehrendeBox(site).box();
+                if (box != null) fuehrend.put(site, box);
+            });
+        }
+        return new SichtbareListe<>(liste.stream().map(d -> new DeviceDto(
+                d.id(), d.siteId(), d.externalRef(), d.kind(), d.name(), d.status(),
+                d.lastSeenAt(), d.createdAt(), d.lanHost(), d.lanSeenAt(), d.lanSource(),
+                fuehrend.get(d.siteId()) == null ? null : d.id().equals(fuehrend.get(d.siteId()))))
+                .toList(), teilansicht.jetzt());
     }
 
     @PostMapping("/claim")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.DIENST)
     @Transactional
     public ResponseEntity<DeviceDto> claim(@Valid @RequestBody DeviceClaimRequest request) {
         UUID tenantId = TenantContext.get();
@@ -108,9 +153,12 @@ public class DeviceController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No tenant in token");
         }
         // The target site must belong to the caller's tenant (RLS-checked).
-        if (!sites.existsForCurrentTenant(request.siteId())) {
+        if (!geltungsbereich.siteVisible(request.siteId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
         }
+        // Das Recht an der Zielanlage (UEMS AP-03 IP-6): der Interceptor kennt sie nicht, sie steht im Körper.
+        rechte.pruefen("geraet.einrichten", RechtZiel.ANLAGE, request.siteId(),
+                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found"));
         String externalRef = canonicalExternalRef(request.externalRef());
         // Topic-safety gate (defense in depth, same rule as the enrollment
         // path): the ref is interpolated into the retained MQTT provisioning
@@ -195,6 +243,7 @@ public class DeviceController {
      * an derselben Geräte-ID. RLS makes a foreign device a 404.
      */
     @PutMapping("/{deviceId}")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.DEVICE)
     public DeviceDto update(@PathVariable UUID deviceId,
             @Valid @RequestBody UpdateDeviceRequest request) {
         DeviceDto existing = devices.findById(deviceId)
@@ -206,8 +255,9 @@ public class DeviceController {
     }
 
     /**
-     * Purge ALL recorded data of a device ("Datenaufzeichnungen löschen")
-     * WITHOUT unclaiming it: raw telemetry goes, the site's rollups are rebuilt
+     * Purge the recorded data of a device ("Datenaufzeichnungen löschen")
+     * WITHOUT unclaiming it - refused with the list of Messstellen (409) when
+     * the box carries Belege (UEMS AP-07 E8): raw telemetry goes, the site's rollups are rebuilt
      * without it, the writer refuses replayed old samples via the purge
      * watermark, and the device is told (retained {@code purge_data} command)
      * to wipe its local buffers. Claim/enrollment/config stay intact; new data
@@ -215,6 +265,7 @@ public class DeviceController {
      * Full design: {@link DevicePurgeService}.
      */
     @PostMapping("/{deviceId}/purge-data")
+    @Recht(value = "aufzeichnungen.loeschen", ziel = RechtZiel.DEVICE)
     public com.voltpilot.api.web.dto.DevicePurgeResultDto purgeData(@PathVariable UUID deviceId) {
         DeviceDto device = devices.findById(deviceId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found"));
@@ -224,26 +275,42 @@ public class DeviceController {
     }
 
     /**
-     * Unclaim (delete) a device: removes the device row AND its telemetry, and
-     * cleans the broker - the retained {@code provision/{ref}/config} and the
-     * retained schedule topic are cleared (best-effort, like the on-claim
-     * publish), so the physical device falls back to its watchdog default and
-     * the ref becomes claimable again. A sticker ref stays registered in the
-     * manufacturing registry, so re-claiming it later just works.
+     * Unclaim ("Gerät entfernen") = the box is AUSGEBAUT (UEMS AP-07 E8 / IP-11, AP-06 E7;
+     * Captain 13.09.2026: beim Abmelden und beim Tausch geht kein Datenbestand verloren).
+     * NOTHING recorded is deleted: the device row stays with its identity, and so do its raw
+     * telemetry, OCPP recordings, additional measurements, events, measurement selection and
+     * approvals - the history keeps naming the box that read it. What ends is the box's part in
+     * operation: every live surface filters on {@code device.ausgebaut_am}, the box's open command
+     * log periods end at their last evidence, the topology loses
+     * its pointers to the box (what the FK {@code SET NULL} did when the row was deleted), and
+     * the broker is cleaned as before - the retained {@code provision/{ref}/config} and schedule
+     * topic are cleared (best-effort), so the physical device falls back to its watchdog
+     * default. The sticker ref is claimable again (a new box, like before); it stays registered
+     * in the manufacturing registry.
      */
     @DeleteMapping("/{deviceId}")
+    @Recht(value = "komponente.loeschen", ziel = RechtZiel.DEVICE)
     @Transactional
-    public ResponseEntity<Void> unclaim(@PathVariable UUID deviceId) {
+    public ResponseEntity<Void> unclaim(@PathVariable UUID deviceId,
+            org.springframework.security.core.Authentication auth) {
         UUID tenantId = TenantContext.get();
         DeviceDto device = devices.findById(deviceId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found"));
-        series.purgeDeviceRecordings(deviceId, device.siteId(), null);
-        if (!devices.delete(deviceId)) {
+        // Gemeinsame Steuerung (AP-15 §5.5): ist die Box Mitglied, scheidet sie aus und wartet auf die Bestätigung des
+        // Betreibers, dass ihre Geräte vom Netz sind — bis dahin bekommt keine andere Box mehr. Ohne Verbund: nichts.
+        if (verbundAusscheiden != null) {
+            verbundAusscheiden.beimAusbau(deviceId, com.voltpilot.api.uems.ProtokollAkteur.aus(auth).orElse(null));
+        }
+        if (!devices.ausbauen(deviceId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Device not found");
         }
+        devices.ausDerTopologieLoesen(deviceId);
+        // Die offenen Perioden des Befehlsverlaufs enden mit der Box: kein Herzschlag schlösse sie
+        // mehr, und „läuft" wäre für immer falsch. Beendet, nicht gelöscht (UEMS AP-07 IP-11).
+        commandLog.beimAusbauBeenden(deviceId);
         provisioning.ifAvailable(p ->
                 p.clearRetained(device.externalRef(), tenantId, device.siteId(), device.id()));
-        // v2 hygiene: the retained entity-registry slot dies with the device
+        // v2 hygiene: the retained entity-registry slot ends with the box
         // (a re-claim mints a NEW device id, so the old subtree would otherwise
         // keep an orphaned retained push forever). Best-effort like the rest.
         entityRegistry.ifAvailable(p ->
@@ -279,6 +346,15 @@ public class DeviceController {
     }
 
     /**
+     * The purge of a box whose series are Belege of Messstellen (UEMS AP-07 E8): 409 with the
+     * list of those Messstellen - nothing was written.
+     */
+    @ExceptionHandler(BelegeImWeg.class)
+    public ResponseEntity<java.util.Map<String, Object>> belegeImWeg(BelegeImWeg e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(e.koerper());
+    }
+
+    /**
      * Canonicalize a typed Geräte-ID so the same physical device never becomes
      * two rows and so the typo gates see a normalized form. Sticker IDs are
      * printed uppercase ({@code VP-1234-ABCD}) and self-generated edge refs are
@@ -296,4 +372,9 @@ public class DeviceController {
         }
         return trimmed;
     }
+    @org.springframework.web.bind.annotation.ExceptionHandler(com.voltpilot.api.uems.BoxKonflikt.class)
+    public ResponseEntity<java.util.Map<String, String>> boxKonflikt(com.voltpilot.api.uems.BoxKonflikt e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(e.koerper());
+    }
+
 }

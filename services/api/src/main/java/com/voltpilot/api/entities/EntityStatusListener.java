@@ -3,6 +3,7 @@ package com.voltpilot.api.entities;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.entities.EntityObservedRepository.ObservedRow;
+import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.DeviceDto;
@@ -45,9 +46,14 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @ConditionalOnProperty(name = "voltpilot.entities.mqtt-listener-enabled", havingValue = "true")
-public class EntityStatusListener {
+public class EntityStatusListener extends Rueckmeldeweg {
 
     private static final Logger log = LoggerFactory.getLogger(EntityStatusListener.class);
+    private com.voltpilot.api.uems.UebergabeRepository uebergaben;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void uebergaben(com.voltpilot.api.uems.UebergabeRepository repo) { this.uebergaben = repo; }
+
     private static final String STATUS_FILTER = "ems/+/+/+/status";
 
     private final String brokerUrl;
@@ -141,6 +147,7 @@ public class EntityStatusListener {
 
     /** Package-visible + test-visible: parse one heartbeat's entities block. */
     public void handle(String topic, byte[] payload) {
+        if (kundenbereichBeendet(topic)) return; // Kundenbereich beendet: verworfen und gezählt
         JsonNode json;
         try {
             json = mapper.readTree(new String(payload, StandardCharsets.UTF_8));
@@ -212,6 +219,15 @@ public class EntityStatusListener {
             observed.replaceForDevice(deviceId, tenantId, siteId, reportedAt, rows);
             ingestComponentApply(entities.get("component_apply"), deviceId, tenantId, siteId,
                     reportedAt);
+            if (uebergaben != null) {
+                try {
+                    uebergaben.herzschlag(tenantId, deviceId, revision, reportedAt);
+                } catch (RuntimeException e) {
+                    io.micrometer.core.instrument.Metrics.counter("voltpilot_uems_uebergabe_herzschlag",
+                            "ergebnis", "fehler").increment();
+                    log.warn("Übergabe-Herzschlag für {} nicht gespeichert: {}", deviceId, e.toString());
+                }
+            }
         } finally {
             TenantContext.clear();
         }

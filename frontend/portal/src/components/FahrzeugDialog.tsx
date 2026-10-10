@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 /**
  * Der FAHRZEUG-Dialog (Verbrauchsmanagement v1 / P7): eine Ladekarte benennen
  * und ihr eine Steuerart geben.
@@ -98,7 +99,7 @@ export function FahrzeugDialog({
       footer={(
         <>
           <Button variant="ghost" onClick={onClose} disabled={busy}>Abbrechen</Button>
-          <Button onClick={speichern} disabled={busy}>Speichern</Button>
+          <Recht aktion="ladepunkt.betrieb"><Button onClick={speichern} disabled={busy}>Speichern</Button></Recht>
         </>
       )}
     >
@@ -180,9 +181,9 @@ export function FahrzeugDialog({
             <ul className="vp-fz-folgen">
               {entfernenFolgen(anzeigeName).map((s) => <li key={s}>{s}</li>)}
             </ul>
-            <Button variant="ghost" onClick={entfernen} disabled={busy}>
+            <Recht aktion="ladepunkt.betrieb"><Button variant="ghost" onClick={entfernen} disabled={busy}>
               Profil entfernen
-            </Button>
+            </Button></Recht>
           </div>
         )}
 

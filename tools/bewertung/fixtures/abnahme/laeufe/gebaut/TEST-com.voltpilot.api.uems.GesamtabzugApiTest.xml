@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- FIXTURE AP-20 IP-23: kein echter Lauf. Methoden wie im Repo, Zahlen erfunden. -->
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="3.0" name="com.voltpilot.api.uems.GesamtabzugApiTest" time="3.0" tests="2" errors="0" skipped="0" failures="0">
+  <testcase name="derKundenadministratorLaedtDenAbzugUndJedePruefsummeImManifestStimmt" classname="com.voltpilot.api.uems.GesamtabzugApiTest" time="1.5"/>
+  <testcase name="imZustandBeendetLaesstDerFilterDenAbzugFuerDenKundenadministratorDurch" classname="com.voltpilot.api.uems.GesamtabzugApiTest" time="1.5"/>
+</testsuite>

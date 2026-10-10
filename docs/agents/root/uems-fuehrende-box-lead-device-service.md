@@ -17,7 +17,8 @@ veröffentlichen gegen die wörtlich kopierte alte Weiche). Regeln: `uems-datenq
   pushRegistryBestEffort, gatewayDeviceFor, gatewayAmbiguous) und `FlowActivationService`
   (activate, deactivate, republishForSite, hasGatewayDevice) fragen NUR `LeadDeviceService`; die
   private Weiche und ihre Kopie sind weg. Wer für diese Wege eine Box je Anlage braucht, fragt
-  dort — nie eine dritte Kopie.
+  dort — nie eine dritte Kopie. Seit IP-6 geht der Registry-Push je Box; die führende Box trägt die
+  Anlagen-Rollen und alles ohne Datenquelle (`uems-registry-push-je-box.md`).
 - **Verhaltensgleich für den Bestand.** `lead_device_id` ist überall NULL (kein Backfill; gesetzt
   wird es erst mit der Wahl-Route des Portal-Teils). Dann gilt: Box des Speichers (OHNE
   Anmelde-Prüfung, wie die Weiche), sonst die einzige Box. Die Fehlerfälle behalten ihre Codes
@@ -34,6 +35,8 @@ veröffentlichen gegen die wörtlich kopierte alte Weiche). Regeln: `uems-datenq
   Ein „ausgebaut“ gibt es in der DB noch nicht: Unclaim löscht die Zeile, `ON DELETE SET NULL`
   leert die Wahl. Führt AP-07 E8 „ausgebaut“ ein, muss die Box-Liste des Dienstes
   (`siteDeviceIds`) ausgebaute Boxen auslassen.
-- **Nicht umgestellt** (AP-06 §2.4, IP-6/IP-8 ff.): Probe, Register schreiben, Handeingriffe,
-  Fahrplan (Optimierer über `asset.device_id`), Ladepark, OCPP, Portal `boxOf`. Offen aus IP-5:
+- **Einmal-Aufträge seit IP-8:** Probe, Register schreiben, Handeingriffe und Mess-Selektion
+  nutzen `EinmalAuftragZiel` (Quellen-Ausführung, sonst führende Box); siehe
+  [Einmal-Aufträge](uems-einmalauftraege.md). Nicht umgestellt: Fahrplan (Optimierer über
+  `asset.device_id`), Ladepark, OCPP, Portal `boxOf`. Offen aus IP-5:
   Portal-Picker „Steuerndes Gerät“ → „Diese Box führt die Anlage“ samt Wahl-Route.

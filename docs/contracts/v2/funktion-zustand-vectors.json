@@ -100,7 +100,12 @@
     "",
     "ZEIT: Zeitpunkte reisen als Instant mit Zeitzonen-Versatz; das Datum im Kundensatz",
     "steht in der Zeitzone des Standorts (`zeitzone`, Vorgabe Europe/Berlin). Ein",
-    "unbekanntes Datum lässt den Satz kürzer — es wird nie eines erfunden."
+    "unbekanntes Datum lässt den Satz kürzer — es wird nie eines erfunden.",
+    "",
+    "AP-13 IP-7 (E13 = A, W6): `messen` bildet die Datenlage allein aus `register_zeilen` — je Zeile des Messstellen-",
+    "Registers am Standort, wie das Register sie zählt (berechnete eingeschlossen, „keine Datenquelle“ im Nenner),",
+    "dazu manuell abgelesene als Zusatz. Die Prüfliste liest weiter `messstellen`. Die Fälle von vor IP-7 tragen die",
+    "Zeilen ihrer gemessenen Messstellen — ihr Ergebnis bleibt Zeichen für Zeichen gleich."
   ],
   "schema_version": "1.0",
   "$schema_datei": "./funktion-zustand.schema.json",
@@ -2346,6 +2351,7 @@
         "eingerichtet_am": null,
         "boxen": [],
         "messstellen": [],
+        "register_zeilen": [],
         "anlagen": [],
         "jetzt": "2026-09-30T12:00:00+02:00",
         "zeitzone": "Europe/Berlin"
@@ -2376,6 +2382,7 @@
           }
         ],
         "messstellen": [],
+        "register_zeilen": [],
         "anlagen": [
           {
             "name": "Werk Lindach",
@@ -2455,6 +2462,13 @@
             "kadenz_s": 60
           }
         ],
+        "register_zeilen": [
+          "liefert",
+          "liefert",
+          "wartet_auf_erste_daten",
+          "liefert",
+          "liefert"
+        ],
         "anlagen": [
           {
             "name": "Halle 2",
@@ -2533,6 +2547,13 @@
             "kadenz_s": 60
           }
         ],
+        "register_zeilen": [
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert"
+        ],
         "anlagen": [
           {
             "name": "Halle 2",
@@ -2608,6 +2629,13 @@
             "je_ein_wert": true,
             "kadenz_s": 60
           }
+        ],
+        "register_zeilen": [
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert"
         ],
         "anlagen": [
           {
@@ -2686,6 +2714,13 @@
             "kadenz_s": 60
           }
         ],
+        "register_zeilen": [
+          "liefert_nicht_seit",
+          "liefert_nicht_seit",
+          "liefert_nicht_seit",
+          "liefert_nicht_seit",
+          "liefert_nicht_seit"
+        ],
         "anlagen": [
           {
             "name": "Halle 2",
@@ -2762,6 +2797,13 @@
             "kadenz_s": 60
           }
         ],
+        "register_zeilen": [
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "keine_datenquelle"
+        ],
         "anlagen": [
           {
             "name": "Halle 2",
@@ -2821,6 +2863,11 @@
             "je_ein_wert": false,
             "kadenz_s": 60
           }
+        ],
+        "register_zeilen": [
+          "keine_datenquelle",
+          "keine_datenquelle",
+          "keine_datenquelle"
         ],
         "anlagen": [
           {
@@ -2908,6 +2955,13 @@
             "kadenz_s": 60
           }
         ],
+        "register_zeilen": [
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert"
+        ],
         "anlagen": [
           {
             "name": "Halle 2",
@@ -2947,6 +3001,7 @@
             "kadenz_s": 60
           }
         ],
+        "register_zeilen": [],
         "anlagen": [],
         "jetzt": "2026-10-01T10:00:00+02:00",
         "zeitzone": "Europe/Berlin"
@@ -2957,6 +3012,256 @@
         "fehlt": [],
         "text": "Eingerichtet",
         "datenlage": "1 manuell abgelesen"
+      }
+    },
+    {
+      "name": "e13-datenlage-ist-die-zaehlung-des-registers",
+      "familie": "messen",
+      "ableitung": "standort",
+      "why": "AP-13 IP-7 (E13 = A, W6): Werk Ahrenberg am 20.10.2026. Die Prüfliste kennt die 13 gemessenen, liefernden Messstellen und MS-21 ohne Datenquelle — bis IP-7 sagte die Zeile daraus „13 von 14 Messstellen liefern Daten“. Das Register zählt MS-09 und MS-15 (berechnet, vollständig = liefert) dazu: „15 von 16“ — die Zahl, die das Register nach dem Sprung nennt.",
+      "input": {
+        "standort": "Werk Ahrenberg",
+        "angelegt": true,
+        "standort_eingerichtet": true,
+        "standort_archiviert_am": null,
+        "eingerichtet_am": "2026-10-01T10:30:00+02:00",
+        "boxen": [
+          {
+            "name": "Box Halle 2",
+            "verbunden": true
+          }
+        ],
+        "messstellen": [
+          {
+            "kennzeichen": "MS-01",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T08:29:30.000Z",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-02",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T08:29:30.000Z",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-03",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T08:29:30.000Z",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-04",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T08:29:30.000Z",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-05",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T08:29:30.000Z",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-06",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T08:29:30.000Z",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-07",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T08:29:30.000Z",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-08",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T08:29:30.000Z",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-10",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T08:29:30.000Z",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-11",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T08:29:30.000Z",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-12",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T08:29:30.000Z",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-13",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T08:29:30.000Z",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-14",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T08:29:30.000Z",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-21",
+            "manuell": false,
+            "quelle_vorhanden": false,
+            "letzter_guter_wert": null,
+            "je_ein_wert": false,
+            "kadenz_s": 60
+          }
+        ],
+        "register_zeilen": [
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "keine_datenquelle"
+        ],
+        "anlagen": [
+          {
+            "name": "Halle 2",
+            "hauptzaehler_anzahl": 1
+          }
+        ],
+        "jetzt": "2026-10-01T10:30:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "aktiv",
+        "seit": "2026-10-01T10:30:00+02:00",
+        "fehlt": [],
+        "text": "Eingerichtet am 01.10.2026",
+        "datenlage": "15 von 16 Messstellen liefern Daten"
+      }
+    },
+    {
+      "name": "e13-berechnete-ohne-eingang-haelt-die-einrichtung-nicht-auf",
+      "familie": "messen",
+      "ableitung": "standort",
+      "why": "AP-13 IP-7 (E13 = A): eine berechnete Messstelle, der ein Eingang fehlt (im Register „liefert nicht“), steht in der Datenlage im Nenner — sie ist aber kein Punkt der Prüfliste und hält die Einrichtung nicht auf (die Prüfliste liest weiter nur die gemessenen).",
+      "input": {
+        "standort": "Werk Ahrenberg",
+        "angelegt": true,
+        "standort_eingerichtet": true,
+        "standort_archiviert_am": null,
+        "eingerichtet_am": null,
+        "boxen": [
+          {
+            "name": "Box Halle 2",
+            "verbunden": true
+          }
+        ],
+        "messstellen": [
+          {
+            "kennzeichen": "MS-10",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-11",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-12",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-13",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          },
+          {
+            "kennzeichen": "MS-14",
+            "manuell": false,
+            "quelle_vorhanden": true,
+            "letzter_guter_wert": "2026-10-01T09:59:30+02:00",
+            "je_ein_wert": true,
+            "kadenz_s": 60
+          }
+        ],
+        "register_zeilen": [
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert",
+          "liefert_nicht_seit"
+        ],
+        "anlagen": [
+          {
+            "name": "Halle 2",
+            "hauptzaehler_anzahl": 1
+          }
+        ],
+        "jetzt": "2026-10-01T10:00:00+02:00",
+        "zeitzone": "Europe/Berlin"
+      },
+      "expected": {
+        "zustand": "aktiv",
+        "seit": null,
+        "fehlt": [],
+        "text": "Eingerichtet",
+        "datenlage": "5 von 6 Messstellen liefern Daten"
       }
     },
     {
@@ -3001,6 +3306,11 @@
             "je_ein_wert": true,
             "kadenz_s": 60
           }
+        ],
+        "register_zeilen": [
+          "liefert",
+          "liefert",
+          "liefert"
         ],
         "anlagen": [
           {
@@ -3063,6 +3373,11 @@
             "je_ein_wert": true,
             "kadenz_s": 60
           }
+        ],
+        "register_zeilen": [
+          "liefert_nicht_seit",
+          "liefert_nicht_seit",
+          "liefert_nicht_seit"
         ],
         "anlagen": [
           {
@@ -3129,6 +3444,11 @@
             "kadenz_s": 60
           }
         ],
+        "register_zeilen": [
+          "liefert",
+          "liefert",
+          "liefert"
+        ],
         "anlagen": [
           {
             "name": "Werk Lindach",
@@ -3190,6 +3510,11 @@
             "je_ein_wert": true,
             "kadenz_s": 60
           }
+        ],
+        "register_zeilen": [
+          "liefert_nicht_seit",
+          "liefert_nicht_seit",
+          "liefert_nicht_seit"
         ],
         "anlagen": [
           {

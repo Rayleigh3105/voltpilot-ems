@@ -190,6 +190,7 @@ public final class EreignisVokabular {
         STAND,
         MESSWERT,
         GANZ_LISTE,
+        WORT_LISTE,
         WERT
     }
 
@@ -233,6 +234,9 @@ public final class EreignisVokabular {
         f.put("stand_alt", Typ.STAND);
         f.put("stand_neu", Typ.STAND);
         f.put("messzeit_alt", Typ.ZEIT);
+        f.put("wertebereich_modul", Typ.STAND);
+        f.put("hoechstzuwachs_je_kadenz", Typ.STAND);
+        f.put("kadenz_s", Typ.SEKUNDEN);
         f.put("anlass", Typ.WORT);
         f.put("eingetragen_am", Typ.ZEIT);
         f.put("endstand", Typ.STAND);
@@ -253,6 +257,41 @@ public final class EreignisVokabular {
         f.put("karten_gelesen", Typ.GANZ_AB_0);
         f.put("alt", Typ.WERT);
         f.put("neu", Typ.WERT);
+        // AP-08 IP-6 (additiv): der gemessene Zuwachs über eine Lücke.
+        f.put("zuwachs", Typ.STAND);
+        f.put("stand_vor", Typ.STAND);
+        f.put("stand_nach", Typ.STAND);
+        // AP-08 IP-12 (additiv): Ersatzwert und Korrektur.
+        f.put("ersatzwert", Typ.KENNUNG);
+        f.put("methode", Typ.WORT);
+        f.put("status", Typ.WORT);
+        f.put("korrektur", Typ.KENNUNG);
+        f.put("korrektur_art", Typ.WORT);
+        // AP-09 IP-7 (additiv): die Berichtigung eines Bezugsgrößen-Werts — Bezug, Fassungen, Import.
+        f.put("bezugsgroesse", Typ.KENNUNG);
+        f.put("fassung_alt", Typ.GANZ_AB_1);
+        f.put("fassung_neu", Typ.GANZ_AB_1);
+        f.put("import", Typ.KENNUNG);
+        // AP-10 IP-11 (additiv): was eine Neuberechnung der Bilanz auslöste (K-… oder EW-…).
+        f.put("ausloeser", Typ.KENNUNG);
+        // AP-12 IP-4 (additiv): die Berichts-Ereignisse — Bericht, Stand, Datenstand, Prüfsumme, Anstoß, Ausgabe.
+        f.put("bericht", Typ.KENNUNG);
+        f.put("nr", Typ.GANZ_AB_1);
+        f.put("datenstand", Typ.ZEIT);
+        f.put("pruefsumme", Typ.KENNUNG);
+        f.put("anstoss_art", Typ.WORT);
+        f.put("anlass_kennung", Typ.KENNUNG);
+        f.put("anlass_fassung", Typ.GANZ_AB_1);
+        f.put("format", Typ.WORT);
+        // AP-11 IP-8 (additiv): die neu gebildete Kennzahl — ihr Kennzeichen (KZ-…) als Bezug und die Version n + 1.
+        f.put("kennzahl", Typ.KENNUNG);
+        f.put("version", Typ.GANZ_AB_1);
+        f.put("energieeinsatz", Typ.KENNUNG);
+        f.put("fassung", Typ.GANZ_AB_1);
+        f.put("einstufung", Typ.WORT);
+        f.put("gruende", Typ.WORT_LISTE);
+        // AP-16 IP-19: der Messbedarf ist der Bezug der beiden Kundenereignisse.
+        f.put("messbedarf", Typ.KENNUNG);
         FELDER = Collections.unmodifiableMap(f);
     }
 
@@ -270,6 +309,15 @@ public final class EreignisVokabular {
         ERKANNT_AUS = Collections.unmodifiableMap(e);
     }
 
+    /**
+     * Wer dasselbe ZUSÄTZLICH feststellen darf (additiv, Vektor-Datei {@code auch_urheber}): die
+     * Kadenz-Lücke auch der Lücken-Melder der api ({@code cloud}, AP-07 IP-9) — wie
+     * {@code late_arrival} seit IP-13. {@code verdraengung} bleibt der Box, {@code herzschlag} der
+     * Cloud.
+     */
+    public static final Map<String, Set<Urheber>> ERKANNT_AUS_AUCH =
+            Map.of("kadenz", Collections.unmodifiableSet(EnumSet.of(CLOUD)));
+
     public static final List<String> ANLASS_GERAETEGRENZE =
             List.of("zaehlerwechsel", "kartenwechsel", "controllerwechsel", "zaehler_zurueckgesetzt");
 
@@ -281,6 +329,85 @@ public final class EreignisVokabular {
 
     public static final List<String> QUALITAET =
             List.of("good", "uncertain", "invalid", "stale", "device_error");
+
+    /**
+     * AP-08 IP-6 — die Einheiten, in denen {@code data_gap} einen Zuwachs trägt: die Einheiten der
+     * Größen mit Wertart Zählerstand im Größen-Katalog der Messstellen, jeweils mit ihren
+     * umrechenbaren Einheiten — gerufen aus {@link MessstelleRegeln}, nicht nachgebaut
+     * ({@code vokabular.einheit_zuwachs}). Kein freier Text: ein Zuwachs in „Impulse“ ist erst mit
+     * einer Größe dafür eine Menge.
+     */
+    public static final List<String> EINHEITEN_ZUWACHS = MessstelleRegeln.GROESSEN_KATALOG.stream()
+            .filter(k -> k.wertarten().contains("Zählerstand"))
+            .flatMap(k -> MessstelleRegeln.KANAL_EINHEITEN.getOrDefault(k.groesse(), List.of(k.einheit())).stream())
+            .distinct()
+            .toList();
+
+    /** AP-08 IP-6 — die Felder des Zuwachses über eine Lücke; sie stehen nur zusammen. */
+    public static final List<String> ZUWACHS_FELDER = List.of("zuwachs", "einheit", "stand_vor", "stand_nach");
+
+    /**
+     * AP-08 IP-12 — die sieben Methoden eines Ersatzwerts (E7, a–g in dieser Reihenfolge;
+     * {@code vokabular.ersatzwert_methode}). Welche davon einen gemessenen Zuwachs verteilen und
+     * welche nur ohne ihn stehen dürfen, hält die Tabelle {@code messreihe_ersatzwert} über
+     * {@code messreihe_korrektur_vokabular()} — die Meldung nennt nur die Methode.
+     */
+    public static final List<String> ERSATZWERT_METHODE = List.of("gleichmaessig_verteilen",
+            "profil_vorperiode", "profil_vergleichsquelle", "ablesestand_nachtragen", "wert_eingeben",
+            "vorperiode_uebernehmen", "vergleichsquelle_uebernehmen");
+
+    /** AP-08 IP-12 — der Stand eines Ersatzwerts: nie gelöscht, nur zurückgenommen. */
+    public static final List<String> ERSATZWERT_STATUS = List.of("wirksam", "zurueckgenommen");
+
+    /**
+     * AP-08 IP-12 — die Arten einer Korrektur (§4.6); die sechste, {@code menge_nachgetragen}, trägt den Nachtrag
+     * der Tagesmenge an Tagen, die vor AP-08 IP-5 schon endgültig waren (V20260924013000).
+     */
+    public static final List<String> KORREKTUR_ART = List.of("nachlieferung_nach_endgueltigkeit",
+            "ablesestaende_nachgetragen", "umklassifizierung", "ersatzwert", "wert_berichtigt", "menge_nachgetragen");
+
+    /** AP-08 IP-12 — die Art einer Korrektur, die genau einen Ersatzwert nennt. */
+    public static final String KORREKTUR_ART_ERSATZWERT = "ersatzwert";
+
+    /** AP-08 IP-12 — der Stand einer Korrektur; der Anfang ist {@code vorschlag} (E14). */
+    public static final List<String> KORREKTUR_STATUS =
+            List.of("vorschlag", "freigegeben", "abgelehnt", "zurueckgenommen");
+
+    private static final Pattern ERSATZWERT_KENNUNG = Pattern.compile("^EW-[0-9]{4}-[0-9]{4,}$");
+    private static final Pattern KORREKTUR_KENNUNG = Pattern.compile("^K-[0-9]{4}-[0-9]{4,}$");
+    /** AP-10 IP-11 — der Auslöser einer Neuberechnung ist eine Korrektur oder ein Ersatzwert. */
+    private static final Pattern AUSLOESER_KENNUNG = Pattern.compile("^(K|EW)-[0-9]{4}-[0-9]{4,}$");
+    /**
+     * AP-11 IP-9 — der Auslöser einer Kennzahl-Neubildung: eine Korrektur, ein Ersatzwert, die Berichtigung eines
+     * Bezugsgrößen-Werts ({@code BK-…}), eine rückwirkende Fassung der Berechnung ({@code KZ-0004/Fassung-2}) oder ein
+     * rückwirkendes Stammdatum ({@code BZ-8/ab-2027-01-01}). Ein bloßes Kennzeichen ({@code MS-12}) ist keine Ursache.
+     */
+    private static final Pattern KENNZAHL_AUSLOESER = Pattern.compile("^(?:(?:K|EW|BK)-[0-9]{4}-[0-9]{4,}"
+            + "|[A-Z0-9./-]{2,16}/Fassung-[0-9]+|[A-Z0-9./-]{2,16}/ab-[0-9]{4}-[0-9]{2}-[0-9]{2})$");
+    /** AP-12 IP-4 — die Kennung eines Berichts (bericht.md §1) und die Prüfsumme eines Abzugs (A6). */
+    private static final Pattern BERICHT_KENNUNG = Pattern.compile("^BR-[0-9]{4}-[0-9]{4,}$");
+    private static final Pattern PRUEFSUMME = Pattern.compile("^sha256:[0-9a-f]{64}$");
+
+    /** AP-12 IP-4 — was einen Anstoß an einen Berichtsstand auslöst (bericht-vectors.json → vokabulare.anstoss_art). */
+    public static final List<String> ANSTOSS_ART = List.of("korrektur_freigegeben", "korrektur_zurueckgenommen",
+            "ersatzwert_wirksam", "ersatzwert_zurueckgenommen", "bezugsgroesse_fassung", "kennzahl_fassung_rueckwirkend",
+            "zuordnung_rueckwirkend", "anlage_umzug_rueckwirkend", "flaeche_rueckwirkend", "verteilung_rueckwirkend",
+            "einstufung_fassung", "kriterien_fassung", "umfang_fassung", "messbedarf_zustand",
+            "prozess_zuordnung_rueckwirkend", "messmittel_angabe", "bezugsbasis_anstoss", "bezugsbasis_fassung",
+            "bezugsbasis_beendet");
+    /** AP-12 IP-4 — die Ausgaben eines Berichtsstands, deren Abruf gemeldet wird (DA5). */
+    public static final List<String> BERICHT_FORMAT = List.of("pdf", "csv");
+    /** AP-09 IP-7 — der Vorgang einer Berichtigung eines Bezugsgrößen-Werts (bezugsgroesse_berichtigung). */
+    private static final Pattern BERICHTIGUNG_KENNUNG = Pattern.compile("^BK-[0-9]{4}-[0-9]{4,}$");
+    /** AP-09 IP-7 — ein Import der Bezugsdaten (C2). */
+    private static final Pattern IMPORT_KENNUNG = Pattern.compile("^I-[0-9]{4}-[0-9]{4,}$");
+
+    /** AP-09 IP-7 — die Art, mit der ein Bezugsgrößen-Wert berichtigt wird. */
+    public static final String KORREKTUR_ART_BEZUGSWERT = "wert_berichtigt";
+
+    /** AP-09 IP-7 — der Bezug einer Korrektur: die Reihe ODER die Bezugsgröße mit ihren Fassungen. */
+    public static final List<String> KORREKTUR_BEZUG_REIHE = List.of("komponente", "messkanal");
+    public static final List<String> KORREKTUR_BEZUG_BEZUGSGROESSE = List.of("bezugsgroesse", "fassung_alt", "fassung_neu");
 
     /**
      * Die Fehlerklassen je Datenquelle (AP-06 E5) — gerufen aus
@@ -298,14 +425,16 @@ public final class EreignisVokabular {
     /** Die Ereignisarten — geschlossen. */
     public enum Art {
         DATA_GAP("data_gap", EnumSet.of(WRITER, BOX, CLOUD), ZEITRAUM, HALBOFFEN, true, MESSZEIT,
-                List.of("box"), List.of("datenquelle", "komponente", "messkanal", "messstelle"),
+                List.of(), List.of("box", "datenquelle", "komponente", "messkanal", "messstelle"),
                 List.of("erkannt_aus"),
-                List.of("erwartet_fehlend", "nachgeliefert_am", "fehlerklasse", "ursache_ereignis"),
-                List.of("bis", "erwartet_fehlend", "nachgeliefert_am", "ursache_ereignis"),
+                List.of("erwartet_fehlend", "nachgeliefert_am", "fehlerklasse", "ursache_ereignis",
+                        "zuwachs", "einheit", "stand_vor", "stand_nach"),
+                List.of("bis", "erwartet_fehlend", "nachgeliefert_am", "ursache_ereignis",
+                        "zuwachs", "einheit", "stand_vor", "stand_nach"),
                 List.of("ereignis_id", "art", "von", "bis", "erkannt_aus"),
                 List.of("ereignis_id", "art", "von", "bis", "erkannt_aus", "datenquelle",
                         "komponente", "messkanal", "erwartet_fehlend")),
-        BACKFILL("backfill", EnumSet.of(WRITER), ZEITRAUM, GESCHLOSSEN, false, MESSZEIT,
+        BACKFILL("backfill", EnumSet.of(WRITER, CLOUD), ZEITRAUM, GESCHLOSSEN, false, MESSZEIT,
                 List.of("box", "datenquelle"), List.of(),
                 List.of("eingang_von", "eingang_bis", "anzahl"), List.of("erwartet"), List.of(),
                 null, null),
@@ -328,6 +457,11 @@ public final class EreignisVokabular {
                 List.of("komponente", "messkanal"), List.of("box", "messstelle"),
                 List.of("stand_alt", "stand_neu"), List.of("messzeit_alt", "einheit"), List.of(),
                 null, null),
+        COUNTER_OVERFLOW("counter_overflow", EnumSet.of(WRITER), ZEITPUNKT, null, false, MESSZEIT,
+                List.of("komponente", "messkanal"), List.of("box", "messstelle"),
+                List.of("stand_alt", "stand_neu", "messzeit_alt", "wertebereich_modul",
+                        "hoechstzuwachs_je_kadenz", "kadenz_s"),
+                List.of("einheit"), List.of(), null, null),
         DEVICE_BOUNDARY("device_boundary", EnumSet.of(KUNDE), ZEITPUNKT, null, false, MESSZEIT,
                 List.of("komponente"), List.of("messkanal", "messstelle"),
                 List.of("anlass", "einbau_alt", "einbau_neu", "eingetragen_am"),
@@ -383,7 +517,56 @@ public final class EreignisVokabular {
         ERROR_CHANGE("error_change"),
         STATE_CHANGE("state_change"),
         BITFIELD_CHANGE("bitfield_change"),
-        TEXT_CHANGE("text_change");
+        TEXT_CHANGE("text_change"),
+        // AP-08 IP-12 (additiv): der Ersatzwert und die Korrektur — nur aus der Cloud, je
+        // Statuswechsel eine neue Meldung, nie fortgeschrieben.
+        SUBSTITUTE("substitute", EnumSet.of(KUNDE), ZEITRAUM, HALBOFFEN, false, MESSZEIT,
+                List.of("komponente", "messkanal"), List.of("messstelle"),
+                List.of("ersatzwert", "methode", "status"), List.of(), List.of(), null, null),
+        // AP-09 IP-7 (additiv): GENAU EIN Bezug — die Reihe (komponente + messkanal) oder die Bezugsgröße
+        // mit fassung_alt/fassung_neu (optional import). Die Listen nennen keinen als Pflicht; das
+        // Entweder-oder prüfen pruefeFelder (was fehlt) und pruefeRegeln (nicht beides).
+        CORRECTION("correction", EnumSet.of(CLOUD, KUNDE), ZEITRAUM, HALBOFFEN, false, MESSZEIT,
+                List.of(), List.of("komponente", "messkanal", "messstelle", "bezugsgroesse"),
+                List.of("korrektur", "korrektur_art", "status"),
+                List.of("ersatzwert", "fassung_alt", "fassung_neu", "import"), List.of(),
+                null, null),
+        // AP-10 IP-8 (additiv): die Verteilung einer Messstelle auf Kostenstellen hat sich ab einem
+        // Tag geändert — Bezug NUR die Messstelle (eine Verteilung hängt an keiner Reihe), nur aus
+        // der Cloud von einem Menschen.
+        VERTEILUNG_GEAENDERT("verteilung_geaendert", EnumSet.of(KUNDE), ZEITPUNKT, null, false, MESSZEIT,
+                List.of("messstelle"), List.of(), List.of("eingetragen_am"), List.of(), List.of(), null,
+                null),
+        // AP-10 IP-11 (additiv): die Korrektur-Kaskade hat die Bilanz-Werte einer Messstelle — ihre berechneten
+        // Versionen oder ihre verteilten Werte — für einen Zeitraum neu berechnet. Bezug NUR die Messstelle, nur die
+        // Cloud (gerechnet hat das System; entschieden hat ein Mensch, und das meldet `correction`).
+        BILANZ_NEU_BERECHNET("bilanz_neu_berechnet", EnumSet.of(CLOUD), ZEITRAUM, HALBOFFEN, false, MESSZEIT,
+                List.of("messstelle"), List.of(), List.of("ausloeser"), List.of(), List.of(), null, null),
+        // AP-12 IP-4 (additiv): die vier Berichts-Ereignisse — Zeitpunkt, Bezug NUR der Bericht (BR-…). Freigabe und
+        // Abruf meldet eine Person (kunde); Anstoß und Neubildung des Entwurfs erkennt das System (cloud).
+        BERICHT_FREIGEGEBEN("bericht_freigegeben", EnumSet.of(KUNDE), ZEITPUNKT, null, false, MESSZEIT,
+                List.of("bericht"), List.of(), List.of("nr", "datenstand", "pruefsumme"), List.of(), List.of(), null,
+                null),
+        BERICHT_REVISION_ANGESTOSSEN("bericht_revision_angestossen", EnumSet.of(CLOUD), ZEITPUNKT, null, false,
+                MESSZEIT, List.of("bericht"), List.of(), List.of("nr", "anstoss_art", "anlass_kennung"),
+                List.of("anlass_fassung"), List.of(), null, null),
+        BERICHT_ENTWURF_NEU_GEBILDET("bericht_entwurf_neu_gebildet", EnumSet.of(CLOUD), ZEITPUNKT, null, false,
+                MESSZEIT, List.of("bericht"), List.of(), List.of("datenstand"), List.of("anlass_kennung"), List.of(),
+                null, null),
+        BERICHT_ABGERUFEN("bericht_abgerufen", EnumSet.of(KUNDE), ZEITPUNKT, null, false, MESSZEIT,
+                List.of("bericht"), List.of(), List.of("nr", "format"), List.of(), List.of(), null, null),
+        // AP-11 IP-8 (additiv): die Korrektur-Kaskade (später auch der Nenner- und der Definitions-Auslöser, AP-11 IP-9)
+        // hat einen ENDGÜLTIGEN Kennzahl-Wert als Version n + 1 neu gebildet; [von, bis) ist seine Periode. Bezug NUR die
+        // Kennzahl (ihr Kennzeichen KZ-…), nur die Cloud; vorläufige Werte ziehen ohne Meldung nach.
+        KENNZAHL_NEU_GEBILDET("kennzahl_neu_gebildet", EnumSet.of(CLOUD), ZEITRAUM, HALBOFFEN, false, MESSZEIT,
+                List.of("kennzahl"), List.of(), List.of("ausloeser", "version"), List.of(), List.of(), null, null),
+        EINSTUFUNG_GESETZT("einstufung_gesetzt", EnumSet.of(KUNDE), ZEITPUNKT, null, false, MESSZEIT,
+                List.of("energieeinsatz"), List.of(), List.of("fassung", "einstufung", "gruende"),
+                List.of(), List.of(), null, null),
+        MESSBEDARF_ERFASST("messbedarf_erfasst", EnumSet.of(KUNDE), ZEITPUNKT, null, false, MESSZEIT,
+                List.of("messbedarf"), List.of(), List.of(), List.of(), List.of(), null, null),
+        MESSBEDARF_EINGELOEST("messbedarf_eingeloest", EnumSet.of(KUNDE), ZEITPUNKT, null, false, MESSZEIT,
+                List.of("messbedarf", "messstelle"), List.of(), List.of(), List.of(), List.of(), null, null);
 
         private final String code;
         private final Set<Urheber> urheber;
@@ -714,6 +897,21 @@ public final class EreignisVokabular {
                 throw nein(Grund.SCHEMA_VERLETZT, "Pflichtfeld " + p);
             }
         }
+        // AP-09 IP-7: eine Korrektur trifft die Reihe ODER die Bezugsgröße — was dem gewählten Bezug fehlt,
+        // ist ein Pflichtfeld wie zuvor (ohne beide also weiter „Pflichtfeld komponente“).
+        if (art == Art.DATA_GAP && !e.hasNonNull("box") && !(u == CLOUD
+                && e.hasNonNull("messstelle") && !e.has("komponente") && !e.has("messkanal")
+                && !e.has("datenquelle") && "kadenz".equals(e.path("erkannt_aus").asText()))) {
+            throw nein(Grund.SCHEMA_VERLETZT, "Pflichtfeld box");
+        }
+        if (art == Art.CORRECTION) {
+            for (String p : e.has("bezugsgroesse") ? KORREKTUR_BEZUG_BEZUGSGROESSE
+                    : e.has("messstelle") && !e.has("komponente") ? List.of("messstelle") : KORREKTUR_BEZUG_REIHE) {
+                if (!e.hasNonNull(p)) {
+                    throw nein(Grund.SCHEMA_VERLETZT, "Pflichtfeld " + p);
+                }
+            }
+        }
         for (Iterator<Map.Entry<String, JsonNode>> it = e.fields(); it.hasNext(); ) {
             Map.Entry<String, JsonNode> f = it.next();
             if (!typPasst(FELDER.get(f.getKey()), f.getValue())) {
@@ -738,6 +936,7 @@ public final class EreignisVokabular {
             case STAND -> w.isNumber();
             case MESSWERT -> istMesswert(w);
             case GANZ_LISTE -> istGanzListe(w);
+            case WORT_LISTE -> istWortListe(w);
             case WERT -> w.isNull() || skalar(w);
         };
     }
@@ -762,11 +961,19 @@ public final class EreignisVokabular {
         }
     }
 
+    /**
+     * Ein Messwert trägt immer {@code raw}, {@code decoded} und {@code qualitaet}. {@code decoded}
+     * ist {@code null}, wenn der Kanal keinen decodierten Wert liefert ({@code measurement-samples}
+     * 2.1 lässt ihn weg, etwa ein OCPP-Protokollwert) — nie weggelassen, damit zwei gleiche Werte
+     * nicht in zwei Formen ankommen, und nie 0.
+     */
     private static boolean istMesswert(JsonNode w) {
-        if (!w.isObject() || w.size() != 3) {
+        if (!w.isObject() || w.size() != 3 || !w.has("decoded")) {
             return false;
         }
-        return skalar(w.path("raw")) && skalar(w.path("decoded")) && w.path("qualitaet").isTextual();
+        JsonNode decoded = w.get("decoded");
+        return skalar(w.path("raw")) && (decoded.isNull() || skalar(decoded))
+                && w.path("qualitaet").isTextual();
     }
 
     private static boolean istGanzListe(JsonNode w) {
@@ -781,11 +988,27 @@ public final class EreignisVokabular {
         return true;
     }
 
+    private static boolean istWortListe(JsonNode w) {
+        if (!w.isArray()) return false;
+        for (JsonNode x : w) if (!x.isTextual()) return false;
+        return true;
+    }
+
     private static void pruefeWoerter(JsonNode e, Art art) {
         wort(e, "strom", STROM);
         wort(e, "erkannt_aus", List.copyOf(ERKANNT_AUS.keySet()));
         wort(e, "fehlerklasse", FEHLERKLASSEN);
         wort(e, "anlass", art == Art.DEVICE_BOUNDARY ? ANLASS_GERAETEGRENZE : ANLASS_UEBERGABE);
+        wort(e, "methode", ERSATZWERT_METHODE);
+        wort(e, "korrektur_art", KORREKTUR_ART);
+        wort(e, "anstoss_art", ANSTOSS_ART);
+        wort(e, "format", BERICHT_FORMAT);
+        wort(e, "einstufung", List.of("wesentlich", "nicht_wesentlich"));
+        wortListe(e, "gruende", List.of("K1", "K2", "K3", "K4"));
+        wort(e, "status", art == Art.SUBSTITUTE ? ERSATZWERT_STATUS : KORREKTUR_STATUS);
+        if (art == Art.DATA_GAP) {
+            wort(e, "einheit", EINHEITEN_ZUWACHS);
+        }
         if (e.has("grund") && Grund.vonCode(e.get("grund").asText()) == null) {
             throw nein(Grund.WORT_UNBEKANNT, "grund " + e.get("grund").asText());
         }
@@ -799,6 +1022,15 @@ public final class EreignisVokabular {
     private static void wort(JsonNode e, String feld, List<String> vokabular) {
         if (e.has(feld) && !vokabular.contains(e.get(feld).asText())) {
             throw nein(Grund.WORT_UNBEKANNT, feld + " " + e.get(feld).asText());
+        }
+    }
+
+    private static void wortListe(JsonNode e, String feld, List<String> vokabular) {
+        if (!e.has(feld)) return;
+        for (JsonNode wert : e.get(feld)) {
+            if (!wert.isTextual() || !vokabular.contains(wert.asText())) {
+                throw nein(Grund.WORT_UNBEKANNT, feld + " " + wert.asText());
+            }
         }
     }
 
@@ -820,6 +1052,11 @@ public final class EreignisVokabular {
                     throw nein(Grund.ZEIT_UNGUELTIG, "keine Viertelstunde im Raster");
                 }
             }
+            if ((art == Art.SUBSTITUTE || art == Art.CORRECTION)
+                    && (von.getEpochSecond() % VIERTELSTUNDE_S != 0
+                            || zeit(e, "bis").getEpochSecond() % VIERTELSTUNDE_S != 0)) {
+                throw nein(Grund.ZEIT_UNGUELTIG, "nicht im Viertelstunden-Raster");
+            }
             if (art == Art.HANDOVER && von.getEpochSecond() % 60 != 0) {
                 throw nein(Grund.ZEIT_UNGUELTIG, "von nicht auf der Minute");
             }
@@ -829,14 +1066,23 @@ public final class EreignisVokabular {
     }
 
     private static void pruefeRegeln(JsonNode e, Art art, Urheber u) {
+        // Eine Messstelle an einer Reihe braucht die ganze Reihe — außer die Art bezieht sich auf
+        // die Messstelle selbst (AP-10 IP-8: verteilung_geaendert).
+        boolean ablesung = e.hasNonNull("messstelle") && !e.has("komponente") && !e.has("messkanal")
+                && ((art == Art.DATA_GAP && u == CLOUD && !e.has("box")
+                        && "kadenz".equals(e.path("erkannt_aus").asText()))
+                    || (art == Art.CORRECTION
+                        && "ablesestaende_nachgetragen".equals(e.path("korrektur_art").asText())));
         if ((e.has("messkanal") && !e.has("komponente"))
-                || (e.has("messstelle") && !(e.has("komponente") && e.has("messkanal")))) {
+                || (e.has("messstelle") && !ablesung && !art.bezugPflicht().contains("messstelle")
+                        && !(e.has("komponente") && e.has("messkanal")))) {
             throw nein(Grund.REGEL_VERLETZT, "Reihe unvollständig");
         }
         switch (art) {
             case DATA_GAP -> {
                 String aus = e.get("erkannt_aus").asText();
-                if (ERKANNT_AUS.get(aus) != u) {
+                if (ERKANNT_AUS.get(aus) != u
+                        && !ERKANNT_AUS_AUCH.getOrDefault(aus, Set.of()).contains(u)) {
                     throw nein(Grund.REGEL_VERLETZT, "erkannt_aus " + aus + " von " + u.code());
                 }
                 String klasse = e.path("fehlerklasse").asText(null);
@@ -847,6 +1093,7 @@ public final class EreignisVokabular {
                 if (e.hasNonNull("nachgeliefert_am") && e.get("bis").isNull()) {
                     throw nein(Grund.REGEL_VERLETZT, "nachgeliefert, aber offen");
                 }
+                pruefeZuwachs(e);
             }
             case BACKFILL -> {
                 if (zeit(e, "eingang_bis").isBefore(zeit(e, "eingang_von"))
@@ -876,6 +1123,21 @@ public final class EreignisVokabular {
                         || (e.has("messzeit_alt")
                                 && !zeit(e, "messzeit_alt").isBefore(zeit(e, "zeitpunkt")))) {
                     throw nein(Grund.REGEL_VERLETZT, "Stand fällt nicht");
+                }
+            }
+            case COUNTER_OVERFLOW -> {
+                // Z6 (AP-08 E4): dieselbe Entscheidung wie die Mengenregel - nur ein fallender Stand
+                // mit Deklaration und plausiblem Zuwachs ist ein Überlauf, alles andere eine Rücksetzung.
+                Instant alt = zeit(e, "messzeit_alt");
+                Instant neu = zeit(e, "zeitpunkt");
+                long kadenzS = e.get("kadenz_s").asLong();
+                if (!alt.isBefore(neu) || kadenzS < 1
+                        || zahl(e, "wertebereich_modul").signum() <= 0
+                        || zahl(e, "hoechstzuwachs_je_kadenz").signum() <= 0
+                        || VerbrauchRegeln.ueberlauf(new VerbrauchRegeln.Rohwert(alt, zahl(e, "stand_alt")),
+                        new VerbrauchRegeln.Rohwert(neu, zahl(e, "stand_neu")), Duration.ofSeconds(kadenzS),
+                        zahl(e, "wertebereich_modul"), zahl(e, "hoechstzuwachs_je_kadenz")) == null) {
+                    throw nein(Grund.REGEL_VERLETZT, "kein plausibler Überlauf");
                 }
             }
             case DEVICE_BOUNDARY -> {
@@ -923,6 +1185,85 @@ public final class EreignisVokabular {
                 paar(e, "fassung_erwartet", "fassung_gelesen");
                 paar(e, "karten_erwartet", "karten_gelesen");
             }
+            case SUBSTITUTE -> {
+                if (!ERSATZWERT_KENNUNG.matcher(e.get("ersatzwert").asText()).matches()) {
+                    throw nein(Grund.REGEL_VERLETZT, "keine Ersatzwert-Kennung");
+                }
+            }
+            case CORRECTION -> {
+                // AP-09 IP-7: nicht beides — und Fassungen und Import gibt es nur an einer Bezugsgröße.
+                boolean anBezugsgroesse = e.has("bezugsgroesse");
+                boolean anAblesung = !anBezugsgroesse && e.has("messstelle") && !e.has("komponente");
+                if (anAblesung && (e.has("messkanal") || e.has("import")
+                        || !"ablesestaende_nachgetragen".equals(e.path("korrektur_art").asText())
+                        || (e.has("fassung_alt") != e.has("fassung_neu"))
+                        || (e.has("fassung_neu") && e.path("fassung_neu").asInt() <= e.path("fassung_alt").asInt()))) {
+                    throw nein(Grund.REGEL_VERLETZT, "Ablesungs-Korrektur passt nicht zur Messstelle");
+                }
+                if (anBezugsgroesse && (e.has("komponente") || e.has("messkanal"))) {
+                    throw nein(Grund.REGEL_VERLETZT, "Reihe oder Bezugsgröße, nicht beides");
+                }
+                if (!anBezugsgroesse && !anAblesung && (e.has("fassung_alt") || e.has("fassung_neu") || e.has("import"))) {
+                    throw nein(Grund.REGEL_VERLETZT, "Fassungen und Import nur an einer Bezugsgröße");
+                }
+                Pattern kennung = anBezugsgroesse ? BERICHTIGUNG_KENNUNG : KORREKTUR_KENNUNG;
+                boolean importKorrektur = anBezugsgroesse && e.has("import")
+                        && e.path("korrektur").asText().matches("^I-[0-9]{4}-[0-9]{4,}/Zeile-[1-9][0-9]*/Fassung-[1-9][0-9]*$")
+                        && e.path("korrektur").asText().startsWith(e.path("import").asText()+"/Zeile-")
+                        && e.path("korrektur").asText().endsWith("/Fassung-"+e.path("fassung_neu").asInt());
+                if (!importKorrektur && !kennung.matcher(e.get("korrektur").asText()).matches()) {
+                    throw nein(Grund.REGEL_VERLETZT, "keine Korrektur-Kennung");
+                }
+                // E14: nie automatisch — über Freigabe, Ablehnung und Rücknahme entscheidet ein Mensch.
+                if (u == CLOUD && !KORREKTUR_STATUS.get(0).equals(e.get("status").asText())) {
+                    throw nein(Grund.REGEL_VERLETZT, "die Cloud schlägt nur vor");
+                }
+                boolean mitErsatzwert = KORREKTUR_ART_ERSATZWERT.equals(e.get("korrektur_art").asText());
+                if (mitErsatzwert != e.has("ersatzwert")) {
+                    throw nein(Grund.REGEL_VERLETZT, "Ersatzwert passt nicht zur Art");
+                }
+                if (mitErsatzwert && !ERSATZWERT_KENNUNG.matcher(e.get("ersatzwert").asText()).matches()) {
+                    throw nein(Grund.REGEL_VERLETZT, "keine Ersatzwert-Kennung");
+                }
+                if (anBezugsgroesse) {
+                    if (!KORREKTUR_ART_BEZUGSWERT.equals(e.get("korrektur_art").asText())) {
+                        throw nein(Grund.REGEL_VERLETZT, "ein Bezugsgrößen-Wert wird berichtigt");
+                    }
+                    if (e.get("fassung_neu").asLong() <= e.get("fassung_alt").asLong()) {
+                        throw nein(Grund.REGEL_VERLETZT, "fassung_neu folgt nicht auf fassung_alt");
+                    }
+                    if (e.has("import") && !IMPORT_KENNUNG.matcher(e.get("import").asText()).matches()) {
+                        throw nein(Grund.REGEL_VERLETZT, "keine Import-Kennung");
+                    }
+                }
+            }
+            case BILANZ_NEU_BERECHNET -> {
+                if (!AUSLOESER_KENNUNG.matcher(e.get("ausloeser").asText()).matches()) {
+                    throw nein(Grund.REGEL_VERLETZT, "kein Auslöser (Korrektur oder Ersatzwert)");
+                }
+            }
+            // AP-12 IP-4: der Bezug ist ein Bericht; eine Freigabe nennt die Prüfsumme eines Abzugs; der Datenstand
+            // liegt nie nach dem Zeitpunkt der Meldung (D1/D3).
+            case BERICHT_FREIGEGEBEN, BERICHT_REVISION_ANGESTOSSEN, BERICHT_ENTWURF_NEU_GEBILDET, BERICHT_ABGERUFEN -> {
+                if (!BERICHT_KENNUNG.matcher(e.get("bericht").asText()).matches()) {
+                    throw nein(Grund.REGEL_VERLETZT, "keine Berichts-Kennung");
+                }
+                if (e.has("pruefsumme") && !PRUEFSUMME.matcher(e.get("pruefsumme").asText()).matches()) {
+                    throw nein(Grund.REGEL_VERLETZT, "keine Prüfsumme eines Abzugs");
+                }
+                if (e.has("datenstand") && zeit(e, "zeitpunkt").isBefore(zeit(e, "datenstand"))) {
+                    throw nein(Grund.REGEL_VERLETZT, "Datenstand nach dem Zeitpunkt");
+                }
+            }
+            case KENNZAHL_NEU_GEBILDET -> {
+                if (!KENNZAHL_AUSLOESER.matcher(e.get("ausloeser").asText()).matches()) {
+                    throw nein(Grund.REGEL_VERLETZT, "kein Auslöser (Korrektur, Ersatzwert, Berichtigung oder Kennzeichen)");
+                }
+                // AP-11 IP-8: Version 1 bildet der Regellauf ohne Meldung — neu gebildet ist erst Version n + 1.
+                if (e.get("version").asLong() < 2) {
+                    throw nein(Grund.REGEL_VERLETZT, "keine Version n + 1");
+                }
+            }
             case ERROR_CHANGE, STATE_CHANGE, BITFIELD_CHANGE, TEXT_CHANGE -> {
                 if (gleich(e.get("alt"), e.get("neu"))) {
                     throw nein(Grund.REGEL_VERLETZT, "kein Übergang");
@@ -931,6 +1272,31 @@ public final class EreignisVokabular {
             default -> {
                 // late_arrival: Zeitregel oben; box_restart: nichts weiter
             }
+        }
+    }
+
+    /**
+     * AP-08 IP-6 — der Zuwachs über eine Lücke: alle vier Felder oder keines, nur an einer
+     * geschlossenen Lücke EINER Reihe, und er IST die Differenz der Stände (nie negativ). Die Box
+     * kann ihn gar nicht senden (ihr Drahtschema kennt die Felder nicht).
+     */
+    private static void pruefeZuwachs(JsonNode e) {
+        long da = ZUWACHS_FELDER.stream().filter(e::has).count();
+        if (da == 0) {
+            return;
+        }
+        if (da < ZUWACHS_FELDER.size()) {
+            throw nein(Grund.REGEL_VERLETZT, "Zuwachs nur mit zuwachs, einheit, stand_vor und stand_nach");
+        }
+        if (e.get("bis").isNull()) {
+            throw nein(Grund.REGEL_VERLETZT, "Zuwachs, aber offen");
+        }
+        if (!e.has("komponente") || !e.has("messkanal")) {
+            throw nein(Grund.REGEL_VERLETZT, "Zuwachs ohne Reihe");
+        }
+        BigDecimal zuwachs = zahl(e, "zuwachs");
+        if (zuwachs.signum() < 0 || zuwachs.compareTo(zahl(e, "stand_nach").subtract(zahl(e, "stand_vor"))) != 0) {
+            throw nein(Grund.REGEL_VERLETZT, "zuwachs ist nicht stand_nach − stand_vor");
         }
     }
 

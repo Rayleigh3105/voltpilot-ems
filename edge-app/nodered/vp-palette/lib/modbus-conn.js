@@ -90,7 +90,7 @@ function pump(t) {
   let overallTimer;
   const overall = new Promise((_, rej) => {
     overallTimer = setTimeout(
-      () => rej(new Error('Gesamt-Timeout nach ' + overallMs + ' ms')), overallMs);
+      () => rej(Object.assign(new Error('Gesamt-Timeout nach ' + overallMs + ' ms'), {code:'timeout'})), overallMs);
     if (overallTimer.unref) overallTimer.unref();
   });
   Promise.race([doOp(job.opts), overall])
@@ -139,9 +139,9 @@ function doOp(opts) {
       else resolve(regs);
     };
     connectTimer = setTimeout(
-      () => finish(new Error('Verbindungsaufbau-Timeout (' + connectMs + ' ms)')), connectMs);
-    sock.on('error', (e) => finish(new Error('Verbindung fehlgeschlagen: ' + e.message)));
-    sock.on('close', () => finish(new Error('Verbindung geschlossen ohne Antwort')));
+      () => finish(Object.assign(new Error('Verbindungsaufbau-Timeout (' + connectMs + ' ms)'), {code:'unreachable'})), connectMs);
+    sock.on('error', (e) => finish(Object.assign(new Error('Verbindung fehlgeschlagen: ' + e.message), {code:'unreachable'})));
+    sock.on('close', () => finish(Object.assign(new Error('Verbindung geschlossen ohne Antwort'), {code:'no_answer'})));
     sock.on('data', (chunk) => {
       buf = Buffer.concat([buf, chunk]);
       const want = codec.expectedFrameLength(buf);
@@ -164,13 +164,13 @@ function doOp(opts) {
           finish(null, codec.parseReadResponse(frame, check));
         }
       } catch (e) {
-        finish(e);
+        finish(Object.assign(e, {code:'invalid_response'}));
       }
     });
     sock.connect(opts.port, opts.host, () => {
       clearTimeout(connectTimer);
       readTimer = setTimeout(
-        () => finish(new Error('Antwort-Timeout (' + readMs + ' ms)')), readMs);
+        () => finish(Object.assign(new Error('Antwort-Timeout (' + readMs + ' ms)'), {code:'no_answer'})), readMs);
       sock.write(requestFrame(txid, fc, kind, opts));
     });
   });

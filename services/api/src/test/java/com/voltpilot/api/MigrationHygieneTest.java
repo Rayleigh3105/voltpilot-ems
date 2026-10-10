@@ -74,6 +74,39 @@ class MigrationHygieneTest {
             Pattern.compile("(?i)ADD\\s+COLUMN\\s+(IF\\s+NOT\\s+EXISTS\\s+)?([A-Za-z0-9_\"]+)");
 
     /**
+     * Die hoechste Version des eingefrorenen Satzes der ersten Produktfreigabe.
+     * Am CODE festgemacht, nicht am Datum: es ist die groesste Version, die
+     * {@code db/migration} am 19.09.2026 traegt. Alles bis hierher ist BESTAND
+     * und bleibt ohne nachtraeglichen Marker gruen - der Bestand ist gebaut,
+     * und das Fenster des Rollout-Tags (docs/rollout/uems-erste-freigabe.md)
+     * macht ihn unschaedlich. Alles DARUEBER ist neu und faellt unter
+     * Expand-Contract (Konzept AP-14 Regel D9, Kasten W1).
+     */
+    private static final String ERSTE_FREIGABE_HOECHSTE_VERSION = "20260918110000";
+
+    /**
+     * Der Marker, mit dem eine neue Migration ausdruecklich sagt: ich brauche
+     * ein Wartungsfenster, der alte Code laeuft danach nicht mehr. Er steht als
+     * eigene Kommentarzeile in der Migration.
+     */
+    private static final Pattern FREIGABE_FENSTER_MARKER =
+            Pattern.compile("(?im)^[\\s]*--[\\s]*freigabe:[\\s]*fenster[\\s]*$");
+
+    /**
+     * Die drei Aussagen, nach denen der Code der VORIGEN Auslieferung nicht mehr
+     * laeuft - genau die drei aus Kasten W1: die Spalten-Umbenennung in
+     * {@code ort_aenderung} (V20260916010000), der gefallene Primaerschluessel
+     * von {@code entity_registry_state} (V20260915040000) und eine fallende
+     * Spalte. Ein fallender CHECK oder Fremdschluessel ist NICHT dabei: er
+     * nimmt dem alten Leser nichts weg.
+     */
+    private static final Map<String, Pattern> FENSTER_PFLICHTIG = Map.of(
+            "RENAME COLUMN", Pattern.compile("(?is)\\bRENAME\\s+COLUMN\\b"),
+            "DROP COLUMN", Pattern.compile("(?is)\\bDROP\\s+COLUMN\\b"),
+            "DROP CONSTRAINT ..._pkey",
+                    Pattern.compile("(?is)\\bDROP\\s+CONSTRAINT\\s+(?:IF\\s+EXISTS\\s+)?\"?[A-Za-z0-9_.]*_pkey\\b"));
+
+    /**
      * A duplicate version aborts EVERY boot of every environment, so it must
      * never reach main. Both Flyway locations are scanned as one set: under the
      * {@code local} profile {@code db/migration} and {@code db/dev} are loaded
@@ -177,6 +210,171 @@ class MigrationHygieneTest {
         assertThat(flyway.isValidateOnMigrate())
                 .as("validation stays ON; out-of-order is not a way to switch it off")
                 .isTrue();
+    }
+
+    // --- Expand-Contract-Waechter (AP-14 IP-13, Kasten W1) --------------
+
+    /**
+     * <b>Der Waechter.</b> Ab dem Rollout-Tag arbeiten Kunden auf dem neuen
+     * Stand, und der rollende Wechsel der api ({@code maxSurge 1 /
+     * maxUnavailable 0}) laesst alten und neuen Pod fuer Sekunden nebeneinander
+     * laufen. Eine NEUE Migration, die eine Spalte umbenennt, eine Spalte
+     * fallen laesst oder einen Primaerschluessel fallen laesst, macht den
+     * gerade noch laufenden alten Pod fachlich kaputt - lautlos, weil Flyway
+     * selbst gruen bleibt.
+     *
+     * <p>Die erste Produktfreigabe ist die benannte Ausnahme: sie faehrt mit
+     * Wartungsfenster und Wiederherstellungspunkt (Konzept AP-14 E2 = A), und
+     * genau deshalb darf ihr Bestand hier nicht mitgezaehlt werden. Alles ueber
+     * {@link #ERSTE_FREIGABE_HOECHSTE_VERSION} braucht entweder Expand-Contract
+     * oder den Marker {@code -- freigabe: fenster}, mit dem die Migration
+     * ausdruecklich ein Wartungsfenster anmeldet.
+     */
+    @Test
+    void keineNeueMigrationBrichtDenAltenCodeOhneFreigabeMarker() {
+        assertThat(ohneFreigabeMarkerAbgelehnt(neueMigrationen(sourceMigrations())))
+                .as("""
+                        Neue Migrationen mit RENAME COLUMN, DROP COLUMN oder fallendem Primaerschluessel.
+                        Nach ihnen laeuft der zuletzt ausgelieferte Code nicht mehr - und beim rollenden
+                        Wechsel der api laeuft er noch Sekunden neben dem neuen Pod (gitops
+                        apps/voltpilot/base/api/deployment.yaml, maxSurge 1 / maxUnavailable 0).
+                        Entweder Expand-Contract bauen (neue Spalte daneben, Leser/Schreiber umstellen,
+                        erst spaeter entfernen) - oder die Migration meldet mit der Kommentarzeile
+                        '-- freigabe: fenster' ein Wartungsfenster an. Das Drehbuch dafuer steht in
+                        docs/rollout/uems-erste-freigabe.md""")
+                .isEmpty();
+    }
+
+    /**
+     * Der BESTAND bleibt gruen, ohne dass ihm jemand nachtraeglich Marker
+     * anheftet: er ist gebaut, angewandt und durch das Fenster der ersten
+     * Freigabe unschaedlich. Der Test haelt das ausdruecklich fest - sonst
+     * koennte eine spaetere Bequemlichkeit die Grenze nach oben schieben und
+     * der Waechter waere still tot.
+     */
+    @Test
+    void derBestandTraegtDieseAussagenUndBleibtOhneMarkerGruen() {
+        List<Migration> bestand = sourceMigrations().stream()
+                .filter(m -> version(m) != null && version(m).compareTo(ERSTE_FREIGABE_HOECHSTE_VERSION) <= 0)
+                .toList();
+
+        List<String> mitAussage = bestand.stream()
+                .filter(m -> !fensterPflichtigeAussagen(lies(m)).isEmpty())
+                .map(Migration::describe)
+                .toList();
+        assertThat(mitAussage)
+                .as("der Bestand traegt solche Aussagen - genau darum gibt es das Fenster (W1)")
+                .contains("migration/V20260916010000__uems_akteur_vokabular.sql");
+
+        assertThat(bestand.stream().filter(m -> FREIGABE_FENSTER_MARKER.matcher(lies(m)).find()).toList())
+                .as("kein Bestandsskript traegt einen nachtraeglich angehefteten Marker; "
+                        + "die Grenze ist die Version, nicht ein Kommentar in einer angewandten Datei")
+                .isEmpty();
+    }
+
+    /**
+     * Die Grenze zeigt auf eine wirklich ausgelieferte Version. Ohne diese
+     * Zusicherung koennte ein Tippfehler (oder eine ins Jahr 2999 gehobene
+     * Zahl) den Waechter stumm schalten, ohne dass eine Zeile rot wird.
+     */
+    @Test
+    void dieGrenzeDesEingefrorenenSatzesIstEineAusgelieferteVersion() {
+        List<String> versionen = sourceMigrations().stream().map(this::version).filter(v -> v != null).toList();
+        assertThat(versionen)
+                .as("ERSTE_FREIGABE_HOECHSTE_VERSION muss eine Migration in db/migration sein")
+                .contains(ERSTE_FREIGABE_HOECHSTE_VERSION);
+        assertThat(versionen.stream().max(String::compareTo).orElseThrow())
+                .as("die Grenze darf nicht UEBER dem ausgelieferten Satz liegen - sonst bewacht sie nichts")
+                .isGreaterThanOrEqualTo(ERSTE_FREIGABE_HOECHSTE_VERSION);
+    }
+
+    /**
+     * Die Probe: dieselben drei Aussagen, einmal ohne und einmal mit Marker.
+     * Die Dateien liegen unter {@code src/test/resources/freigabe-fenster} und
+     * damit ABSEITS des Flyway-Pfades - sie werden nie angewandt.
+     */
+    @Test
+    void dieProbeMigrationOhneMarkerWirdAbgelehntUndMitMarkerDurchgelassen() {
+        List<Migration> proben = probeMigrationen();
+        assertThat(proben).as("Probe-Migrationen unter src/test/resources/freigabe-fenster").hasSize(3);
+
+        assertThat(ohneFreigabeMarkerAbgelehnt(neueMigrationen(proben)))
+                .as("nur die Probe ohne Marker wird abgelehnt; die mit Marker und die rein additive nicht")
+                .hasSize(1)
+                .allSatisfy(grund -> assertThat(grund)
+                        .contains("V29990101000000__probe_ohne_marker.sql")
+                        .contains("RENAME COLUMN")
+                        .contains("DROP COLUMN")
+                        .contains("DROP CONSTRAINT ..._pkey"));
+    }
+
+    /**
+     * Der Waechter liest SQL, nicht Prosa: eine Kommentarzeile, die
+     * {@code DROP COLUMN} nur erwaehnt, darf keine Ablehnung ausloesen, und ein
+     * fallender CHECK ist keine fensterpflichtige Aussage.
+     */
+    @Test
+    void einKommentarUndEinFallenderCheckLoesenNichtAus() {
+        Migration additiv = probeMigrationen().stream()
+                .filter(m -> m.file().getFileName().toString().contains("probe_additiv"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(fensterPflichtigeAussagen(lies(additiv)))
+                .as("rein additiv: ADD COLUMN und ein fallender CHECK nehmen dem alten Leser nichts weg")
+                .isEmpty();
+    }
+
+    private List<Migration> neueMigrationen(List<Migration> migrations) {
+        return migrations.stream()
+                .filter(m -> version(m) != null && version(m).compareTo(ERSTE_FREIGABE_HOECHSTE_VERSION) > 0)
+                .toList();
+    }
+
+    /** Ein Eintrag je abgelehnter Migration, mit den Aussagen, die sie ablehnen. */
+    private List<String> ohneFreigabeMarkerAbgelehnt(List<Migration> migrations) {
+        List<String> abgelehnt = new ArrayList<>();
+        for (Migration migration : migrations) {
+            String sql = lies(migration);
+            List<String> aussagen = fensterPflichtigeAussagen(sql);
+            if (!aussagen.isEmpty() && !FREIGABE_FENSTER_MARKER.matcher(sql).find()) {
+                abgelehnt.add(migration.describe() + " " + aussagen);
+            }
+        }
+        return abgelehnt;
+    }
+
+    /**
+     * Gesucht wird im SQL, nicht im Kommentar: Zeilen- und Blockkommentare
+     * fallen vorher weg. Der Marker dagegen IST ein Kommentar und wird am
+     * unveraenderten Text gesucht.
+     */
+    private List<String> fensterPflichtigeAussagen(String rohesSql) {
+        String sql = BLOCK_COMMENT.matcher(LINE_COMMENT.matcher(rohesSql).replaceAll("")).replaceAll("");
+        return FENSTER_PFLICHTIG.entrySet().stream()
+                .filter(e -> e.getValue().matcher(sql).find())
+                .map(Map.Entry::getKey)
+                .sorted()
+                .toList();
+    }
+
+    private String version(Migration migration) {
+        Matcher m = VERSIONED.matcher(migration.file().getFileName().toString());
+        return m.matches() ? m.group(1) : null;
+    }
+
+    private String lies(Migration migration) {
+        try {
+            return Files.readString(migration.file());
+        } catch (java.io.IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    /** Die Probe-Dateien, aus dem Klassenpfad gelesen wie die echten Orte auch. */
+    private List<Migration> probeMigrationen() {
+        Path dir = classpathDir("/freigabe-fenster");
+        assertThat(dir).as("Probe-Migrationen sind nicht in ein Jar gepackt").isNotNull();
+        return sqlFiles(dir).map(f -> new Migration("freigabe-fenster", f)).toList();
     }
 
     // --- scanning -------------------------------------------------------

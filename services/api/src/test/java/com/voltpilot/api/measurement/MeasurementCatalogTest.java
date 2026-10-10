@@ -2,7 +2,9 @@ package com.voltpilot.api.measurement;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -17,7 +19,7 @@ class MeasurementCatalogTest {
         var result = catalog.search("Batteriestrom", Set.of("hybrid_1p"), null, null,
                 null, false, false, Set.of(), Map.of(), Set.of(), Map.of(), 0, 20);
 
-        assertThat(result.catalogVersion()).isEqualTo("2026.08.26.3");
+        assertThat(result.catalogVersion()).isEqualTo("2026.09.23.3");
         assertThat(result.customPointActionLabel()).isEqualTo("Eigenen Messwert hinzufügen");
         assertThat(result.points()).isNotEmpty();
         assertThat(result.points()).allSatisfy(p -> {
@@ -116,8 +118,8 @@ class MeasurementCatalogTest {
      */
     @Test
     void theBoxKeepsItsRuntimeVersionWhileTheContentVersionCarriesQuantityAndDirection() {
-        assertThat(catalog.version()).isEqualTo("2026.08.26.3");
-        assertThat(catalog.inhaltsstand()).isEqualTo("2026.09.11.1");
+        assertThat(catalog.version()).isEqualTo("2026.09.23.3");
+        assertThat(catalog.inhaltsstand()).isEqualTo("2026.09.23.3");
 
         assertThat(catalog.semantik("sunspec.model_203.totwhimp"))
                 .isEqualTo(new MeasurementCatalog.Semantik("active_energy", "import"));
@@ -125,10 +127,87 @@ class MeasurementCatalogTest {
                 .isEqualTo(new MeasurementCatalog.Semantik("active_power", "import_export"));
         assertThat(catalog.semantik("sunspec.model_160.module[7].dcwh"))
                 .isEqualTo(new MeasurementCatalog.Semantik("active_energy", "generation"));
-        assertThat(catalog.semantik("goe.api_v2.eto"))
+        assertThat(catalog.semantik("goe.api_v2.eto")).as("Wh heißt Wirkenergie, go-e nennt keine Richtung")
+                .isEqualTo(new MeasurementCatalog.Semantik("active_energy", null));
+        assertThat(catalog.semantik("goe.api_v2.amp"))
                 .isEqualTo(new MeasurementCatalog.Semantik(null, null));
         assertThat(catalog.semantik("gibt.es.nicht")).isNull();
     }
+
+    @Test
+    void herstellerGenauigkeitBleibtCloudOnlyUndTrifftModellvarianten() {
+        var karte = catalog.herstellerGenauigkeit("WAGO", "750-494/000-001 (5 A)");
+        assertThat(karte).isNotNull();
+        assertThat(karte.modell()).isEqualTo("750-494");
+        assertThat(karte.zustand()).isEqualTo("belegt");
+        assertThat(karte.wert()).isEqualTo("± 0,5 %");
+        assertThat(karte.bezug()).isEqualTo("Messbereichsendwert der Wirkleistung");
+        assertThat(karte.sourceSha256()).matches("^[0-9a-f]{64}$");
+
+        var zaehler = catalog.herstellerGenauigkeit("wago", "879-3020");
+        assertThat(zaehler).isNotNull();
+        assertThat(zaehler.modell()).isEqualTo("879-30xx");
+        assertThat(zaehler.klasse()).isEqualTo("MID");
+        assertThat(catalog.herstellerGenauigkeit("WAGO", "879-3100")).isNull();
+        assertThat(catalog.herstellerGenauigkeit("anderer Hersteller", "750-494")).isNull();
+        assertThat(catalog.version()).isEqualTo("2026.09.23.3");
+    }
+
+    /**
+     * Die Einheit eines OCPP-Messwerts steht nicht im Katalog, sondern im konkreten Schlüssel der Reihe —
+     * die Station nennt sie je SampledValue. Ohne genannte Einheit ({@code unit[none]}) und an der Vorlage
+     * bleibt sie unbekannt; jeder andere Punkt behält die Katalog-Einheit, auch eine ohne.
+     */
+    @Test
+    void einOcppZaehlerNenntDieEinheitSeinesSchluessels() {
+        String vorlage = "ocpp.1_6.metervalues.energy.active.import.register.context[*].format[*].phase[*]"
+                + ".location[*].unit[*]";
+        String reihe = "ocpp.1_6.metervalues.energy.active.import.register.context[sample-periodic].format[raw]"
+                + ".phase[none].location[outlet]";
+        assertThat(catalog.resolve(vorlage).unit()).as("der Katalog selbst nennt keine").isNull();
+        assertThat(catalog.einheit(reihe + ".unit[wh]")).isEqualTo("Wh");
+        assertThat(catalog.einheit(reihe + ".unit[kwh]")).isEqualTo("kWh");
+        assertThat(catalog.einheit(reihe.replace(".active.", ".reactive.") + ".unit[kvarh]")).isEqualTo("kvarh");
+        assertThat(catalog.einheit(reihe + ".unit[none]")).as("nie der OCPP-Vorgabewert Wh geraten").isNull();
+        assertThat(catalog.einheit(reihe + ".unit[gibt-es-nicht]")).isNull();
+        assertThat(catalog.einheit(vorlage)).isNull();
+
+        assertThat(catalog.einheit("sunspec.model_203.totwhimp")).isEqualTo("Wh");
+        assertThat(catalog.einheit("kaco_http.energy-total")).as("seit Laufzeitstand 2026.09.23.2 ohne Faktor im Namen")
+                .isEqualTo("kWh");
+        assertThat(catalog.einheit("goe.api_v2.eto")).as("go-e nennt „measured in Wh“").isEqualTo("Wh");
+        assertThat(catalog.einheit("goe.api_v2.amp")).isNull();
+        assertThat(catalog.einheit("gibt.es.nicht[wh].unit[wh]")).isNull();
+    }
+
+    /**
+     * UEMS AP-05 IP-6b: die WAGO-Karten gehen mit dem Laufzeitstand 2026.09.23.3 an die Box — die api bietet
+     * sie in Suche und Auswahl an und veröffentlicht diesen Stand. Wirksam mit dem Box-Release: eine Box mit
+     * älterer Palette lehnt jede Mess-Konfiguration dieses Standes ab (unsupported_catalog).
+     */
+    @Test
+    void wagoCardsAreOfferedWithTheRuntimeVersionThatReachesTheBox() throws Exception {
+        JsonNode paket;
+        try (InputStream in = getClass().getResourceAsStream(
+                "/measurementcatalog/measurement-point-catalog-" + catalog.inhaltsstand() + ".json")) {
+            paket = new ObjectMapper().readTree(in);
+        }
+        long wago = 0;
+        for (JsonNode p : paket.path("points")) {
+            if (p.path("family").asText().startsWith("wago.")) {
+                wago++;
+            }
+        }
+        assertThat(wago).as("27 Punkte je Karte im Inhaltsstand").isEqualTo(54);
+
+        assertThat(catalog.familienNochNichtAnDerBox()).isEmpty();
+        assertThat(catalog.families()).contains("wago.pm494", "wago.pm495");
+        assertThat(catalog.resolve("wago.pm495.karte[*].energy_import_total")).isNotNull();
+        assertThat(catalog.search("", Set.of("wago.pm494", "wago.pm495"), null, null, null, false, false,
+                Set.of("wago.pm494", "wago.pm495"), Map.of(), Set.of(), Map.of(), 0, 250).total()).isPositive();
+        assertThat(catalog.version()).isEqualTo("2026.09.23.3");
+    }
+
     @Test void missingOrUnknownFamilyIsNamedInsteadOfAnUnexplainedEmptyCatalog() {
         var missing = catalog.search(null, Set.of(), null, null, null, true, false,
                 Set.of(), Map.of(), Set.of(), Map.of(), 0, 250);

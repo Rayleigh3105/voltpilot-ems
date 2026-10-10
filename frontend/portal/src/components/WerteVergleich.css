@@ -1,0 +1,130 @@
+/*
+ * Der Vergleich an der Messstelle (UEMS AP-13 IP-5). Keine eigene Palette: die Reihen-Farben sind die des Verlaufs
+ * (`MessstellenVerlauf.css`), der Rahmen der der Karte. Die Δ-Zeile steht ruhig — eine Messstelle hat keine Richtung
+ * „gut“ (VG3), also trägt sie keine Wertungsfarbe.
+ */
+.vp-vg {
+  display: grid;
+  gap: var(--vp-c-space-2, 8px);
+  min-width: 0;
+}
+
+.vp-vg-titel {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+  color: var(--vp-c-fg);
+}
+
+.vp-vg-leiste {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-c-space-2, 8px);
+  min-width: 0;
+}
+
+.vp-vg-picker {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.vp-vg-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-vg-chips li {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 2px 4px 2px 10px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 999px;
+  background: var(--vp-c-card);
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-fg);
+}
+
+/* Die Tippfläche bleibt 44 px, auch wenn der Chip schmaler aussieht (M3). */
+.vp-vg-chips button {
+  display: inline-grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  margin: -12px 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-muted-fg);
+  cursor: pointer;
+}
+
+.vp-vg-chips button:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+
+.vp-vg-satz {
+  margin: 0;
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-vg-delta {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-c-fg);
+  overflow-wrap: anywhere;
+}
+
+.vp-vg-delta.is-ohne {
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-vg-karten {
+  display: grid;
+  gap: var(--vp-c-space-3, 12px);
+  min-width: 0;
+}
+
+@media (min-width: 721px) {
+  .vp-vg-karten {
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  }
+}
+
+.vp-vg-karte {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.vp-vg-karte-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-700);
+  color: var(--vp-c-fg);
+}
+
+.vp-vg-farbe {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+.vp-vg-farbe.is-r1 {
+  background: var(--vp-chart-pv-line);
+}
+
+.vp-vg-farbe.is-r2 {
+  background: var(--vp-chart-soc);
+}

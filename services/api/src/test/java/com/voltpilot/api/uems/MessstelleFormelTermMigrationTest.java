@@ -105,8 +105,9 @@ class MessstelleFormelTermMigrationTest {
                 "SELECT count(*) FROM messstelle_formel_term WHERE tenant_id <> ?", Long.class, b)))
                 .isZero();
 
-        // Die App-Rolle darf die Definition lesen, anlegen, ändern und ersetzen.
-        assertThat(rechte(APP_USER, "messstelle_formel_term")).isEqualTo("SIUD");
+        // Die App-Rolle liest und legt an. Seit den Fassungen (V20260912210000, AP-10 IP-3) sind die
+        // Terme Historie ihrer Fassung: eine Änderung ist eine neue Fassung, nie UPDATE/DELETE.
+        assertThat(rechte(APP_USER, "messstelle_formel_term")).isEqualTo("SI");
     }
 
     @Test

@@ -84,6 +84,8 @@ class UemsDatenquelleMigrationTest {
     /** Diese Fassung. Die davor wird aus dem Klassenpfad bestimmt, nicht hart verdrahtet. */
     private static final String DIESE = "20260911150000";
     private static final String DATEI = "V20260911150000__uems_datenquelle_zustaendigkeit.sql";
+    private static final String RUECKNAHME_DATEI =
+            "V20260917109000__uems_geplante_zustaendigkeit_zuruecknehmen.sql";
 
     private static final Path V2 = Path.of("..", "..", "docs", "contracts", "v2");
     private static final Path REFERENZ = V2.resolve("uems-referenzunternehmen.json");
@@ -426,8 +428,11 @@ class UemsDatenquelleMigrationTest {
     void dieReferenzDatenquellenUndIhreZustaendigkeitenPassenUnverfaelschtInsSchema() {
         Map<String, UUID> dq = referenzQuellen();
         Map<String, List<Zeitraum>> perioden = referenzPerioden();
-        // Der Zähler vergibt in der Reihenfolge der Referenz genau ihre Kennzeichen.
-        assertThat(dq.keySet()).containsExactly("DQ-1", "DQ-2", "DQ-3", "DQ-4", "DQ-5", "DQ-6", "DQ-7");
+        // Der Zähler vergibt in der Reihenfolge der Referenz genau ihre Kennzeichen (ab Fassung 1.5 auch
+        // DQ-8 … DQ-10 der Box Verwaltung, AP-15 E8).
+        List<String> referenzKennzeichen = new ArrayList<>();
+        referenz.get("datenquellen").forEach(rq -> referenzKennzeichen.add(rq.get("kennzeichen").asText()));
+        assertThat(dq.keySet()).containsExactlyElementsOf(referenzKennzeichen);
         alsTue(AHRENBERG, () -> {
             for (JsonNode rq : referenz.get("datenquellen")) {
                 String kz = rq.get("kennzeichen").asText();
@@ -448,11 +453,11 @@ class UemsDatenquelleMigrationTest {
             }
         });
         assertThat(root.queryForObject("SELECT naechste_nummer FROM data_source_kennzeichen_seq "
-                + "WHERE tenant_id = ?", Integer.class, AHRENBERG)).isEqualTo(8);
+                + "WHERE tenant_id = ?", Integer.class, AHRENBERG)).isEqualTo(referenzKennzeichen.size() + 1);
 
         // Die führende Box je Anlage (E3): die heute führende Box der Referenz.
         for (JsonNode b : referenz.get("boxen")) {
-            if (b.get("ausgebaut_am").isNull()) {
+            if (b.get("ausgebaut_am").isNull() && b.hasNonNull("fuehrend_fuer")) {
                 UUID anlage = ANLAGEN.get(b.get("fuehrend_fuer").asText());
                 assertThat(root.queryForObject("SELECT lead_device_id FROM site WHERE id = ?",
                         UUID.class, anlage)).isEqualTo(BOXEN.get(b.get("kennzeichen").asText()));
@@ -543,13 +548,14 @@ class UemsDatenquelleMigrationTest {
                 + "VALUES (?, ?, 'dq-9', 'modbus_tcp', '192.168.10.41:502', 10)", p.tenant, p.site));
     }
 
-    // ---- (c) das Unclaim läuft wie heute ------------------------------------------
+    // ---- (c) Unclaim erhält die Geschichte und verlangt beendete Zuständigkeiten ---
 
     @Test
-    void einUnclaimLaeuftWieHeuteDieFuehrendeBoxWirdNullUndDieZustaendigkeitBleibt() {
+    void einUnclaimVerlangtBeendeteZustaendigkeitUndBehaeltIhreGeschichte() {
         Probe p = new Probe(boxen("E-1"));
         UUID box = p.boxen.get("E-1");
-        Instant ab = Instant.parse("2026-10-01T06:00:00Z");
+        Instant ab = Instant.now().minusSeconds(86400).truncatedTo(java.time.temporal.ChronoUnit.MINUTES);
+        Instant uebergabe = ab.plusSeconds(3600);
         UUID quelle = als(p.tenant, () -> p.quelle("modbus_tcp", "192.168.10.21:502"));
         UUID zeitraum = als(p.tenant, () -> zustaendigkeiten.eintragen(p.tenant, quelle, box, ab,
                 null, null)).orElseThrow();
@@ -558,10 +564,20 @@ class UemsDatenquelleMigrationTest {
         assertThat(als(p.tenant, () -> app.update(
                 "UPDATE site SET lead_device_id = ? WHERE id = ?", box, p.site))).isOne();
 
-        // Der Datenbank-Schritt des Unclaim (DeviceController#unclaim → DeviceRepository#delete).
-        assertThat(als(p.tenant, () -> new DeviceRepository(app).delete(box))).isTrue();
+        // Der Datenbank-Schritt des Unclaim (DeviceController#unclaim): seit AP-07 IP-11 wird die
+        // Box ausgebaut statt gelöscht, und die Verweise, die das FK-SET-NULL löste, löst der Weg.
+        DeviceRepository boxen = new DeviceRepository(app);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> als(p.tenant, () -> boxen.ausbauen(box)))
+                .isInstanceOf(BoxKonflikt.class)
+                .hasMessageContaining("409");
+        UUID neueBox = p.box("E-1 (neu)");
+        abgelehnt("23P01", "data_source_assignment_eine_box_je_zeitpunkt", () -> als(p.tenant, () ->
+                zustaendigkeiten.eintragen(p.tenant, quelle, neueBox, uebergabe, null, null)));
+        assertThat(als(p.tenant, () -> zustaendigkeiten.beenden(zeitraum, uebergabe))).isTrue();
+        assertThat(als(p.tenant, () -> boxen.ausbauen(box))).isTrue();
+        alsTue(p.tenant, () -> boxen.ausDerTopologieLoesen(box));
 
-        assertThat(anzahl("SELECT count(*) FROM device WHERE id = ?", box)).isZero();
+        assertThat(anzahl("SELECT count(*) FROM device WHERE id = ? AND ausgebaut_am IS NOT NULL", box)).isOne();
         // Die Anlage bleibt, nur ihre führende Box ist NULL — tenant_id bleibt stehen.
         assertThat(root.queryForMap("SELECT tenant_id, lead_device_id FROM site WHERE id = ?",
                 p.site)).containsEntry("tenant_id", p.tenant).containsEntry("lead_device_id", null);
@@ -571,16 +587,12 @@ class UemsDatenquelleMigrationTest {
                 .containsEntry("data_source_id", quelle);
         // Die Zuständigkeit überlebt ihre Box: sie sagt weiter, wer gelesen hat.
         assertThat(als(p.tenant, () -> zustaendigkeiten.fuerQuelle(quelle))).singleElement()
-                .isEqualTo(new ZustaendigkeitRepository.Zeitraum(zeitraum, quelle, box, ab, null));
+                .isEqualTo(new ZustaendigkeitRepository.Zeitraum(zeitraum, quelle, box, ab, uebergabe));
 
         // Die neue Box (ein Re-Claim ist eine neue Kennung) liest erst, wenn der offene
         // Zeitraum der alten beendet ist — Ende alt = Beginn neu, nie still.
-        UUID neueBox = p.box("E-1 (neu)");
-        abgelehnt("23P01", "data_source_assignment_eine_box_je_zeitpunkt", () -> als(p.tenant, () ->
-                zustaendigkeiten.eintragen(p.tenant, quelle, neueBox, SPAETER, null, null)));
         alsTue(p.tenant, () -> {
-            assertThat(zustaendigkeiten.beenden(zeitraum, SPAETER)).isTrue();
-            assertThat(zustaendigkeiten.eintragen(p.tenant, quelle, neueBox, SPAETER, null, null))
+            assertThat(zustaendigkeiten.eintragen(p.tenant, quelle, neueBox, uebergabe, null, null))
                     .isPresent();
         });
         // Und die Adresse der Quelle bleibt änderbar, obwohl eine Box ihrer Geschichte fehlt.
@@ -748,13 +760,22 @@ class UemsDatenquelleMigrationTest {
 
     @Test
     void einErneuterLaufAendertNichts() throws IOException {
-        Map<String, Map<String, String>> vorher = new LinkedHashMap<>();
-        for (String t : alleBeruehrtenTabellen()) {
-            vorher.put(t, schnappschuss(t, "", ""));
-        }
-        fuehreDieseMigrationErneutAus();
-        for (String t : alleBeruehrtenTabellen()) {
-            assertThat(schnappschuss(t, "", "")).as(t).isEqualTo(vorher.get(t));
+        // Spätere Migrationen dürfen Constraints und Spaltenrechte dieser Tabelle
+        // erweitern. Deshalb stellt der erste Lauf hier bewusst den Stand DIESER
+        // Migration her; der zweite muss dann zeichengleich bleiben. Anschließend
+        // wird der aktuelle Endstand für die übrigen Tests wiederhergestellt.
+        try {
+            fuehreDieseMigrationErneutAus();
+            Map<String, Map<String, String>> vorher = new LinkedHashMap<>();
+            for (String t : alleBeruehrtenTabellen()) {
+                vorher.put(t, schnappschuss(t, "", ""));
+            }
+            fuehreDieseMigrationErneutAus();
+            for (String t : alleBeruehrtenTabellen()) {
+                assertThat(schnappschuss(t, "", "")).as(t).isEqualTo(vorher.get(t));
+            }
+        } finally {
+            fuehreMigrationErneutAus(RUECKNAHME_DATEI);
         }
     }
 
@@ -782,7 +803,7 @@ class UemsDatenquelleMigrationTest {
                     }
                 }
                 for (JsonNode b : referenz.get("boxen")) {
-                    if (b.get("ausgebaut_am").isNull()) {
+                    if (b.get("ausgebaut_am").isNull() && b.hasNonNull("fuehrend_fuer")) {
                         app.update("UPDATE site SET lead_device_id = ? WHERE id = ?",
                                 BOXEN.get(b.get("kennzeichen").asText()),
                                 ANLAGEN.get(b.get("fuehrend_fuer").asText()));
@@ -1155,10 +1176,14 @@ class UemsDatenquelleMigrationTest {
 
     /** Dieselbe Datei noch einmal, wie Flyway sie ausführt (Platzhalter ersetzt). */
     private static void fuehreDieseMigrationErneutAus() throws IOException {
+        fuehreMigrationErneutAus(DATEI);
+    }
+
+    private static void fuehreMigrationErneutAus(String datei) throws IOException {
         String sql;
         try (InputStream in = UemsDatenquelleMigrationTest.class
-                .getResourceAsStream("/db/migration/" + DATEI)) {
-            sql = new String(Objects.requireNonNull(in, DATEI).readAllBytes(),
+                .getResourceAsStream("/db/migration/" + datei)) {
+            sql = new String(Objects.requireNonNull(in, datei).readAllBytes(),
                     StandardCharsets.UTF_8);
         }
         root.execute(sql.replace("${appDbUser}", APP_USER).replace("${adminDbUser}", ADMIN_USER));

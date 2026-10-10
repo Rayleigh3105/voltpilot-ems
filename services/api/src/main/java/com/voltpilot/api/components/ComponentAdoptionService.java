@@ -165,11 +165,42 @@ public class ComponentAdoptionService {
             // Zurückgerollt: die Anlage bleibt box-verwaltet, der nächste Takt
             // versucht es erneut. Lieber gar nicht übernehmen als eine Anlage,
             // deren Soll niemand erfahren hat.
-            throw new PushNotDeliveredException(siteId);
+            // UEMS AP-06 W7: mit zwei Boxen kann EINE ihren Push schon haben - die Ausnahme sagt es,
+            // damit der Aufrufer nach dem Rückrollen beide zurückstellt (nachAbbruchZurueckstellen).
+            throw new PushNotDeliveredException(siteId, push.teilweiseZugestellt());
         }
         log.info("Bestands-Übernahme: Anlage {} ist jetzt portal-verwaltet ({} Komponenten)",
                 siteId, plan.items().size());
         return new Outcome(plan.verdict(), null, plan.items().size());
+    }
+
+    /**
+     * Rückrollen beider (UEMS AP-06 W7): die Übernahme einer Anlage mit zwei Boxen gilt erst, wenn
+     * BEIDE Pushes angekommen sind. Ist sie zurückgerollt, nachdem eine Box ihren Push schon
+     * bekommen hat, stellt ein neuer Push jeder Box den Stand von vorher zu - gebaut aus der
+     * zurückgerollten Datenbank, also ohne die Übernahme. Sonst hinge diese Box zwischen zwei
+     * Welten: portal-verwaltet auf der Box, box-verwaltet in der Cloud.
+     *
+     * <p>Aufzurufen NACH dem Rollback, außerhalb der Transaktion von {@link #adoptIfComplete}, unter
+     * dem Mandanten der Übernahme. Ohne Teilzustellung tut sie nichts. Wirft nie.
+     */
+    public void nachAbbruchZurueckstellen(UUID siteId, PushNotDeliveredException abbruch) {
+        if (!abbruch.teilweiseZugestellt()) {
+            return;
+        }
+        try {
+            EntityRegistryService.PushOutcome push = entityRegistry.pushRegistryBestEffort(siteId);
+            if (push.published()) {
+                log.warn("Bestands-Übernahme: Anlage {} nach Teilzustellung an jeder Box zurückgestellt",
+                        siteId);
+            } else {
+                log.warn("Bestands-Übernahme: Anlage {} nach Teilzustellung nicht an jeder Box "
+                        + "zurückgestellt ({}) - der nächste Push stellt es zu", siteId, push.reason());
+            }
+        } catch (RuntimeException e) {
+            log.warn("Bestands-Übernahme: Anlage {} nach Teilzustellung nicht zurückgestellt: {}", siteId,
+                    e.toString());
+        }
     }
 
     /**
@@ -455,9 +486,22 @@ public class ComponentAdoptionService {
      * versucht es beim nächsten Mal erneut.
      */
     public static class PushNotDeliveredException extends RuntimeException {
+
+        private final boolean teilweiseZugestellt;
+
         public PushNotDeliveredException(UUID siteId) {
+            this(siteId, false);
+        }
+
+        public PushNotDeliveredException(UUID siteId, boolean teilweiseZugestellt) {
             super("Übernahme von Anlage " + siteId + " zurückgerollt: der Soll-Stand konnte "
                     + "nicht an das Gerät zugestellt werden");
+            this.teilweiseZugestellt = teilweiseZugestellt;
+        }
+
+        /** Ob mindestens eine Box den Push der zurückgerollten Übernahme schon bekommen hat (W7). */
+        public boolean teilweiseZugestellt() {
+            return teilweiseZugestellt;
         }
     }
 }

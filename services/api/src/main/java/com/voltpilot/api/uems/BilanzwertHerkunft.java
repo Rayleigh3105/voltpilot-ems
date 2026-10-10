@@ -1,8 +1,17 @@
 package com.voltpilot.api.uems;
 
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.YearMonth;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -192,4 +201,172 @@ public final class BilanzwertHerkunft {
         satz.put("abdeckung_prozent", e.ergebnis().abdeckungProzent());
         return new Urteil(satz, List.of());
     }
+
+    // ------------------------------------------------------------------ Die Routen (AP-10 IP-12)
+
+    /**
+     * Die Hülle, in der jede Route den Satz ausliefert: {@code {"satz": …, "fehlt": […]}}. Eine Zahl, die NICHT
+     * berechnet ist (gemessen, oder ein Schritt ohne Zahl), trägt statt der Hülle {@code null} — nie eine leere.
+     */
+    public static Map<String, Object> umschlag(Urteil u) {
+        Map<String, Object> raus = new LinkedHashMap<>();
+        raus.put("satz", u.satz());
+        raus.put("fehlt", u.fehlt());
+        return raus;
+    }
+
+    /** Ein Betrag als Dezimaltext: ohne nachgestellte Nullen, ohne Exponent; {@code null} bleibt {@code null}. */
+    public static String betrag(BigDecimal zahl) {
+        return zahl == null ? null : zahl.stripTrailingZeros().toPlainString();
+    }
+
+    /** Der Schlüssel einer Periode, deren Beginn {@code beginn} ist, in der Zone des Standorts. */
+    public static String schluessel(String periodeArt, Instant beginn, ZoneId zone) {
+        ZonedDateTime b = beginn.atZone(zone);
+        return switch (periodeArt) {
+            case "viertelstunde" -> SEKUNDE.format(b);
+            case "tag" -> b.toLocalDate().toString();
+            case "monat" -> YearMonth.from(b).toString();
+            case "jahr" -> String.valueOf(b.getYear());
+            default -> throw new IllegalArgumentException("unbekannte Periode " + periodeArt);
+        };
+    }
+
+    /**
+     * Das Ende der Periode: ihre LETZTE Sekunde in der Zone des Standorts ({@code 2026-10-18T23:59:59+02:00}) — die
+     * Form, in der die Vorlage es an F1 und F5 nennt. Abgeleitet, nie geraten: jede Route nennt es für jeden Wert.
+     */
+    public static String periodeEnde(String periodeArt, String schluessel, ZoneId zone) {
+        ZonedDateTime naechste = switch (periodeArt) {
+            case "viertelstunde" -> OffsetDateTime.parse(schluessel).toInstant().plusSeconds(900).atZone(zone);
+            case "tag" -> LocalDate.parse(schluessel).plusDays(1).atStartOfDay(zone);
+            case "monat" -> YearMonth.parse(schluessel).plusMonths(1).atDay(1).atStartOfDay(zone);
+            case "jahr" -> LocalDate.of(Integer.parseInt(schluessel) + 1, 1, 1).atStartOfDay(zone);
+            default -> throw new IllegalArgumentException("unbekannte Periode " + periodeArt);
+        };
+        return SEKUNDE.format(naechste.minusSeconds(1));
+    }
+
+    /**
+     * Der Auslöser einer Version ≥ 2 ({@code correction MS-17 2026-10-18 Version 2}, F14): die Art des Anlasses
+     * ({@code substitute} bei einem Ersatzwert {@code EW-…}, sonst {@code correction}), die Eingänge in neuerer Version
+     * — ohne sie die Kennung des Anlasses —, die Periode und die Version. Ohne Anlass {@code null}: dann nennt der
+     * Satz {@code ausloeser} als fehlend, statt eine Ursache zu erfinden.
+     */
+    public static String ausloeser(String anlass, List<String> messstellen, String schluessel, int version) {
+        if (anlass == null || anlass.isBlank()) {
+            return null;
+        }
+        String bezug = messstellen.isEmpty() ? anlass : String.join(", ", messstellen);
+        return (anlass.startsWith("EW-") ? "substitute " : "correction ") + bezug + " " + schluessel + " Version "
+                + version;
+    }
+
+    /** Ein Tag-Satz einer Verteilung der Messstelle (Tage, der letzte gehört dazu; {@code gueltigBis} null = offen). */
+    public record VerteilungZeile(String ziel, BigDecimal anteilProzent, int fassung, LocalDate gueltigAb,
+            LocalDate gueltigBis) {}
+
+    /**
+     * Die Verteilung eines BERECHNETEN Werts (F3: MS-15 zu 100 % an 4300): nur, wenn an JEDEM Tag der Periode genau
+     * EINE Zeile gilt und alle dasselbe Ziel, denselben Anteil und dieselbe Fassung tragen — sonst {@code null}. Eine
+     * Aufteilung auf mehrere Ziele beschreibt der verteilte Satz jeder Kostenstelle, nicht dieser.
+     */
+    public static Verteilungsbezug verteilungDerPeriode(List<VerteilungZeile> zeilen, LocalDate von, LocalDate bis) {
+        VerteilungZeile erste = null;
+        for (LocalDate t = von; !t.isAfter(bis); t = t.plusDays(1)) {
+            LocalDate tag = t;
+            List<VerteilungZeile> gelten = zeilen.stream()
+                    .filter(z -> !z.gueltigAb().isAfter(tag) && (z.gueltigBis() == null || !z.gueltigBis().isBefore(tag)))
+                    .toList();
+            if (gelten.size() != 1) {
+                return null;
+            }
+            VerteilungZeile z = gelten.get(0);
+            if (erste == null) {
+                erste = z;
+            } else if (!erste.ziel().equals(z.ziel()) || erste.fassung() != z.fassung()
+                    || erste.anteilProzent().compareTo(z.anteilProzent()) != 0) {
+                return null;
+            }
+        }
+        return erste == null ? null
+                : new Verteilungsbezug(erste.fassung(), erste.ziel(), betrag(erste.anteilProzent()));
+    }
+
+    /** Ein gespeicherter Eingang ({@code bilanzwert_eingang}); {@code messstelle} null = ein Messkanal-Term. */
+    public record GespeicherterEingang(String messstelle, String rolle, String anteil, BigDecimal menge,
+            String zustand, Integer abdeckungProzent, Integer version, List<String> kennzeichen) {}
+
+    /**
+     * Ein gespeicherter berechneter Wert, wie ihn eine Route liest: die Zeile der Spur {@code berechnet} (AP-10 IP-10)
+     * bzw. ihre Version aus der Kaskade, die Nummer ihrer Formel-Fassung, die Eingänge IN DIESER Version und — ab
+     * Version 2 — die Kennung des Anlasses. {@code ergebnis} ist die Zahl, die die Route daneben zeigt.
+     */
+    public record Gespeichert(String messstelle, String periodeArt, Instant beginn, ZoneId zone, String formelTyp,
+            Integer formelFassung, Instant berechnetAm, int version, String anlass,
+            List<VerteilungZeile> verteilungen, List<GespeicherterEingang> eingaenge, Ergebnis ergebnis) {}
+
+    /**
+     * Der Satz eines gespeicherten berechneten Werts. Die Routen rechnen nichts nach: Schlüssel und Ende der Periode,
+     * Rechenzeitpunkt in der Zone des Standorts, Beträge als {@link #betrag}, ein Eingang ohne Zahl mit Zustand „keine
+     * Werte“ und Version 1, ohne Anteil „gesamt“, der Auslöser über {@link #ausloeser}, die Verteilung über
+     * {@link #verteilungDerPeriode} an den Tagen der Periode. Zusätzlich zu den Regeln von
+     * {@link #herkunft}: ohne Nummer der Formel-Fassung fehlt {@code formel_fassung}, ein Eingang ohne Messstelle
+     * (Messkanal-Term) {@code eingang_messstelle} — beides wäre eine Herkunft, mit der sich die Zahl nicht nachrechnen
+     * ließe.
+     */
+    public static Urteil ausGespeichert(Gespeichert g) {
+        String schluessel = schluessel(g.periodeArt(), g.beginn(), g.zone());
+        List<Eingangswert> werte = new ArrayList<>();
+        List<String> neuer = new ArrayList<>();
+        boolean ohneMessstelle = false;
+        for (GespeicherterEingang e : g.eingaenge()) {
+            int version = e.version() == null ? 1 : e.version();
+            ohneMessstelle |= e.messstelle() == null;
+            if (version > 1 && e.messstelle() != null && !neuer.contains(e.messstelle())) {
+                neuer.add(e.messstelle());
+            }
+            werte.add(new Eingangswert(e.messstelle(), e.rolle(), e.anteil() == null ? "gesamt" : e.anteil(),
+                    betrag(e.menge()), e.zustand() == null ? ErgebnisZustand.KEINE_WERTE : e.zustand(),
+                    e.abdeckungProzent(), version, e.kennzeichen() == null ? List.of() : e.kennzeichen()));
+        }
+        Urteil u = herkunft(new Eingang(BERECHNET, g.messstelle(), g.periodeArt(), schluessel, g.formelTyp(),
+                g.formelFassung() == null ? null : Fassung.nummer(g.formelFassung()),
+                periodeEnde(g.periodeArt(), schluessel, g.zone()),
+                g.berechnetAm() == null ? null : SEKUNDE.format(g.berechnetAm().atZone(g.zone())), g.version(),
+                g.version() > 1 ? ausloeser(g.anlass(), neuer, schluessel, g.version()) : null,
+                verteilungDerPeriode(g.verteilungen(), ersterTag(g.periodeArt(), schluessel, g.zone()),
+                        letzterTag(g.periodeArt(), schluessel, g.zone())),
+                List.copyOf(werte), g.ergebnis()));
+        List<String> fehlt = new ArrayList<>(u.fehlt());
+        if (g.formelFassung() == null) {
+            fehlt.add("formel_fassung");
+        }
+        if (ohneMessstelle) {
+            fehlt.add("eingang_messstelle");
+        }
+        return fehlt.isEmpty() ? u : new Urteil(null, List.copyOf(fehlt));
+    }
+
+    /** Der erste Tag der Periode (die Viertelstunde: ihr Tag in der Zone des Standorts). */
+    static LocalDate ersterTag(String periodeArt, String schluessel, ZoneId zone) {
+        return switch (periodeArt) {
+            case "viertelstunde" -> OffsetDateTime.parse(schluessel).atZoneSameInstant(zone).toLocalDate();
+            case "tag" -> LocalDate.parse(schluessel);
+            case "monat" -> YearMonth.parse(schluessel).atDay(1);
+            default -> LocalDate.of(Integer.parseInt(schluessel), 1, 1);
+        };
+    }
+
+    /** Der letzte Tag der Periode — er gehört dazu. */
+    static LocalDate letzterTag(String periodeArt, String schluessel, ZoneId zone) {
+        return switch (periodeArt) {
+            case "monat" -> YearMonth.parse(schluessel).atEndOfMonth();
+            case "jahr" -> LocalDate.of(Integer.parseInt(schluessel), 12, 31);
+            default -> ersterTag(periodeArt, schluessel, zone);
+        };
+    }
+
+    private static final DateTimeFormatter SEKUNDE =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ssxxx", Locale.ROOT);
 }

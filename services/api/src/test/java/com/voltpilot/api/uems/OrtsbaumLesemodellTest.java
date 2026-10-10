@@ -115,6 +115,15 @@ class OrtsbaumLesemodellTest {
         assertThat(mrz.gueltigBis()).isNull();
         // E11: die Bereiche ziehen mit.
         assertThat(mrz.bereiche()).extracting(Bereich::kurzzeichen).containsExactly("B-3", "B-4", "B-5");
+        // IP-12 (V4): bis zum Stichtag steht Halle 2 bei Werk Ahrenberg — mit dem Abzeichen „ab 01.03.2027 → …“.
+        assertThat(feb.danach()).isNotNull();
+        assertThat(feb.danach().ab()).isEqualTo(LocalDate.of(2027, 3, 1));
+        assertThat(feb.danach().elternId()).isEqualTo(StandortLesemodellTest.id("ST-3"));
+        assertThat(feb.danach().elternArt()).isEqualTo("standort");
+        assertThat(feb.danach().standortId()).isEqualTo(StandortLesemodellTest.id("ST-3"));
+        assertThat(feb.danach().elternName()).isEqualTo(feb.danach().standortName()).isNotBlank();
+        assertThat(mrz.danach()).as("ohne Ende kein Abzeichen").isNull();
+        assertThat(feb.bereiche()).allSatisfy(b -> assertThat(b.danach()).as("die Bereiche ziehen mit, ohne eigenes Ende").isNull());
     }
 
     /** Die Kinder eines Knotens am Stichtag, in der Reihenfolge des Szenarios (des Anlegens). */

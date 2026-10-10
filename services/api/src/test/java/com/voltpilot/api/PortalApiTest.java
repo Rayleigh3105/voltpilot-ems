@@ -304,8 +304,11 @@ class PortalApiTest {
         String permissions = rest.exchange(url("/api/v1/sites/" + BERLIN_SITE
                         + "/ocpp/action-permissions"), HttpMethod.GET,
                 new HttpEntity<>(bearer(demo)), String.class).getBody();
+        // Captain 22.09.2026 E2 = A: demo erhält über das gedachte E12-Recht die Kundenadmin-Stufe.
+        // Plattform-Aktionen bleiben VoltPilot vorbehalten, direkte Ladeprofile bleiben gesperrt.
         assertThat(permissions).contains("\"RemoteStartTransaction\":true",
-                        "\"ChangeConfiguration\":false", "\"UpdateFirmware\":false");
+                        "\"ChangeConfiguration\":true", "\"UpdateFirmware\":false",
+                        "\"SetChargingProfile\":false");
 
         ResponseEntity<String> crossTenant = rest.exchange(url("/api/v1/sites/" + BERLIN_SITE
                         + "/ocpp/stations"), HttpMethod.GET,
@@ -368,7 +371,7 @@ class PortalApiTest {
         spoofed.set("X-Tenant-Id", "10000000-0000-0000-0000-000000000001"); // tenant B
 
         // The site list is still exactly tenant A's own data.
-        ResponseEntity<List<Map<String, Object>>> sites = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> sites = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/sites"), HttpMethod.GET, new HttpEntity<>(spoofed),
                 new ParameterizedTypeReference<>() {});
         assertThat(sites.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -383,7 +386,7 @@ class PortalApiTest {
         assertThat(foreign.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
 
         // Same for the device list: only tenant A's devices, none of tenant B's.
-        ResponseEntity<List<Map<String, Object>>> devices = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> devices = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(spoofed),
                 new ParameterizedTypeReference<>() {});
         assertThat(devices.getBody()).extracting(d -> d.get("externalRef"))
@@ -411,7 +414,7 @@ class PortalApiTest {
 
         // The device list carries lastSeenAt: null for the fresh device, the
         // newest telemetry timestamp for the seeded one (which has demo data).
-        ResponseEntity<List<Map<String, Object>>> devices = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> devices = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/devices"), HttpMethod.GET,
                 new HttpEntity<>(bearer(token("demo", "demo"))),
                 new ParameterizedTypeReference<>() {});
@@ -485,7 +488,7 @@ class PortalApiTest {
         assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
 
         // No ghost device row was created.
-        ResponseEntity<List<Map<String, Object>>> devices = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> devices = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         assertThat(devices.getBody())
@@ -522,7 +525,7 @@ class PortalApiTest {
                 String.class);
         assertThat(rejected.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
 
-        ResponseEntity<List<Map<String, Object>>> afterTypo = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> afterTypo = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         assertThat(afterTypo.getBody())
@@ -556,7 +559,7 @@ class PortalApiTest {
                     .isEqualTo(HttpStatus.BAD_REQUEST);
         }
         // Nothing was stored for any of them.
-        ResponseEntity<List<Map<String, Object>>> devices = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> devices = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         assertThat(devices.getBody())
@@ -585,7 +588,7 @@ class PortalApiTest {
                 + BERLIN_SITE + "', '" + newDeviceId + "', 1.5, "
                 + "jsonb_build_object('schema_version', 1, 'source', 'test'))");
 
-        ResponseEntity<List<Map<String, Object>>> res = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> res = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -624,7 +627,8 @@ class PortalApiTest {
                 + "now() - interval '1 minute', '00000000-0000-0000-0000-000000000001', '"
                 + BERLIN_SITE + "', '" + id + "', gen_random_uuid(), 'do_1', 1)");
 
-        ResponseEntity<List<Map<String, Object>>> res = rest.exchange(
+        // Auf uems ist die Geräteliste eine sichtbare Liste (AP-03 IP-12) — derselbe Leser wie im Fall darüber.
+        ResponseEntity<List<Map<String, Object>>> res = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         Map<String, Object> mine = res.getBody().stream()
@@ -659,7 +663,7 @@ class PortalApiTest {
                 + "'00000000-0000-0000-0000-000000000001', '" + BERLIN_SITE + "', '" + newDeviceId + "', 1.5, "
                 + "jsonb_build_object('schema_version', 1, 'source', 'test'))");
 
-        ResponseEntity<List<Map<String, Object>>> res = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> res = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         Map<String, Object> mine = res.getBody().stream()
@@ -671,6 +675,39 @@ class PortalApiTest {
         // even though its newest observation timestamp is 3h old.
         assertThat(java.time.Instant.parse(lastSeenAt))
                 .isAfter(java.time.Instant.now().minusSeconds(120));
+    }
+
+    @Test
+    void overviewTreatsAHeartbeatOnlyReadBoxAsConnectedAndPreservesOneBoxTelemetryFallback() {
+        String demo = token("demo", "demo");
+        String tenant = "00000000-0000-0000-0000-000000000001";
+
+        String heartbeatSite = createSite(demo, "Overview Lese-Box", "DE-LU", "eigenverbrauch");
+        String heartbeatDevice = claimDeviceInto(demo, heartbeatSite, "overview-reader-heartbeat");
+        exec("UPDATE device SET device_status_seen_at = now() WHERE id = '" + heartbeatDevice + "'");
+
+        String bestandSite = createSite(demo, "Overview Bestand Ein-Box", "DE-LU", "eigenverbrauch");
+        String bestandDevice = claimDeviceInto(demo, bestandSite, "overview-existing-single");
+        exec("INSERT INTO telemetry (time, received_at, tenant_id, site_id, device_id, power_kw) "
+                + "VALUES (now(), now(), '" + tenant + "', '" + bestandSite + "', '"
+                + bestandDevice + "', 1.0)");
+
+        ResponseEntity<Map<String, Object>> response = rest.exchange(
+                url("/api/v1/overview"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
+                new ParameterizedTypeReference<>() {});
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> heartbeat = list(response.getBody(), "sites").stream()
+                .filter(s -> heartbeatSite.equals(s.get("id"))).findFirst().orElseThrow();
+        Map<String, Object> bestand = list(response.getBody(), "sites").stream()
+                .filter(s -> bestandSite.equals(s.get("id"))).findFirst().orElseThrow();
+
+        for (Map<String, Object> site : List.of(heartbeat, bestand)) {
+            assertThat(site).containsEntry("deviceCount", 1)
+                    .containsEntry("onlineCount", 1)
+                    .containsEntry("waitingCount", 0)
+                    .containsEntry("worstStatus", "online");
+            assertThat(site.get("lastSeenAt")).isNotNull();
+        }
     }
 
     // ---- site creation (customer self-service, tenant-bound) ----------------
@@ -893,17 +930,19 @@ class PortalApiTest {
                 new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);
 
-        // Unclaim the device, then the delete goes through...
+        // Unclaim the device, then the delete goes through... Since UEMS AP-07 IP-11 the
+        // unclaim keeps the box (ausgebaut) and its OCPP recordings: the SITE path itself must
+        // sweep all eleven tables, and an ausgebaut box no longer guards the site.
         assertThat(rest.exchange(url("/api/v1/devices/" + deviceId), HttpMethod.DELETE,
                 new HttpEntity<>(bearer(demo)), String.class).getStatusCode())
                 .isEqualTo(HttpStatus.NO_CONTENT);
-        assertThat(queryLong(OcppTestData.countByDeviceSql(deviceId))).isZero();
+        assertThat(queryLong(OcppTestData.countByDeviceSql(deviceId))).isEqualTo(11);
         // Legacy-defense proof for the SITE path itself: the published
         // foundation briefly allowed orphan OCPP rows. Bypass FK triggers only
-        // while seeding that pre-hardening state; the real endpoint must sweep
-        // all eleven tables even though no device remains.
-        seedLegacyOrphanOcpp(tenantA, siteId, deviceId);
-        assertThat(queryLong(OcppTestData.countBySiteSql(siteId))).isEqualTo(11);
+        // while seeding that pre-hardening state (for a box that no longer
+        // exists at all); the real endpoint must sweep them too.
+        seedLegacyOrphanOcpp(tenantA, siteId, UUID.randomUUID().toString());
+        assertThat(queryLong(OcppTestData.countBySiteSql(siteId))).isEqualTo(22);
         assertThat(rest.exchange(url("/api/v1/sites/" + siteId), HttpMethod.DELETE,
                 new HttpEntity<>(bearer(demo)), String.class).getStatusCode())
                 .isEqualTo(HttpStatus.NO_CONTENT);
@@ -918,7 +957,7 @@ class PortalApiTest {
     }
 
     @Test
-    void deviceEditAndUnclaimDeleteTelemetryAndAllowReclaim() {
+    void deviceEditAndUnclaimKeepRecordingsAndAllowReclaim() {
         String demo = token("demo", "demo");
         String tenantA = "00000000-0000-0000-0000-000000000001";
 
@@ -971,15 +1010,20 @@ class PortalApiTest {
                 new HttpEntity<>(bearer(demo2)), String.class).getStatusCode())
                 .isEqualTo(HttpStatus.NOT_FOUND);
 
-        // Unclaim: the device row AND its telemetry are gone.
+        // Unclaim (UEMS AP-07 IP-11): the box is ausgebaut - its row, its telemetry and its OCPP
+        // recordings stay; no route reaches it anymore.
         assertThat(rest.exchange(url("/api/v1/devices/" + deviceId), HttpMethod.DELETE,
                 new HttpEntity<>(bearer(demo)), String.class).getStatusCode())
                 .isEqualTo(HttpStatus.NO_CONTENT);
-        assertThat(queryLong("SELECT count(*) FROM telemetry WHERE device_id = '" + deviceId + "'")).isZero();
-        assertThat(queryLong(OcppTestData.countByDeviceSql(deviceId))).isZero();
-        assertThat(queryLong("SELECT count(*) FROM device WHERE id = '" + deviceId + "'")).isZero();
+        assertThat(queryLong("SELECT count(*) FROM telemetry WHERE device_id = '" + deviceId + "'")).isOne();
+        assertThat(queryLong(OcppTestData.countByDeviceSql(deviceId))).isEqualTo(11);
+        assertThat(queryLong("SELECT count(*) FROM device WHERE id = '" + deviceId
+                + "' AND status = 'ausgebaut' AND ausgebaut_am IS NOT NULL")).isOne();
+        assertThat(rest.exchange(url("/api/v1/devices/" + deviceId), HttpMethod.DELETE,
+                new HttpEntity<>(bearer(demo)), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.NOT_FOUND);
 
-        // The freed ref is claimable again (fresh row, fresh id).
+        // The ref is claimable again (fresh row, fresh id) - the ausgebaut row keeps it as provenance.
         ResponseEntity<Map<String, Object>> reclaimed = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
                 new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "edge-unclaim-01"),
@@ -1058,7 +1102,7 @@ class PortalApiTest {
 
         // The device is NOT unclaimed: still listed, still updatable, and new
         // data recorded after the purge is visible again.
-        ResponseEntity<List<Map<String, Object>>> devices = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> devices = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         assertThat(devices.getBody()).extracting(d -> d.get("id")).contains(purged);
@@ -3090,7 +3134,7 @@ class PortalApiTest {
         String deviceId = claimDeviceInto(demo, siteId, "edge-lan-01");
 
         java.util.function.Function<String, Map<String, Object>> device = id -> {
-            ResponseEntity<List<Map<String, Object>>> res = rest.exchange(
+            ResponseEntity<List<Map<String, Object>>> res = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                     url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
                     new ParameterizedTypeReference<>() {});
             assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -3136,7 +3180,7 @@ class PortalApiTest {
                 .containsEntry("lanSource", "schnittstelle");
 
         // Ein fremder Mandant sieht das Gerät gar nicht (RLS).
-        ResponseEntity<List<Map<String, Object>>> fremd = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> fremd = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/devices"), HttpMethod.GET,
                 new HttpEntity<>(bearer(token("demo2", "demo2"))),
                 new ParameterizedTypeReference<>() {});
@@ -4334,7 +4378,8 @@ class PortalApiTest {
         // => saved 0.4 * 150/1000 = 0.06 on that bucket's Berlin day.
         exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) "
                 + "SELECT time_bucket('15 minutes', now() - interval '2 hours'), 'CH', 'PT15M', 150.0, 'EUR', 'test' "
-                + "ON CONFLICT DO NOTHING");
+                + "ON CONFLICT (bidding_zone, resolution, ts)"
+                + " DO UPDATE SET price_eur_mwh = EXCLUDED.price_eur_mwh");
         exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
                 + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) "
                 + "SELECT time_bucket('15 minutes', now() - interval '2 hours'), '" + tenantA + "', '"
@@ -4478,7 +4523,9 @@ class PortalApiTest {
                 + " + interval '10 days 18 hours') AT TIME ZONE 'Europe/Berlin'";
         exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) "
                 + "VALUES (" + t1 + ", 'CH', 'PT15M', 100.0, 'EUR', 'test'), "
-                + "(" + t2 + ", 'CH', 'PT15M', 200.0, 'EUR', 'test') ON CONFLICT DO NOTHING");
+                + "(" + t2 + ", 'CH', 'PT15M', 200.0, 'EUR', 'test')"
+                + " ON CONFLICT (bidding_zone, resolution, ts)"
+                + " DO UPDATE SET price_eur_mwh = EXCLUDED.price_eur_mwh");
         for (String site : new String[] {withTariff, noTariff}) {
             exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
                     + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) VALUES "
@@ -4736,7 +4783,9 @@ class PortalApiTest {
                 + "VALUES (" + ta + ", 'CH', 'PT15M', 100.0, 'EUR', 'test'), "
                 + "(" + tb + ", 'CH', 'PT15M', 200.0, 'EUR', 'test'), "
                 + "(" + tc + ", 'CH', 'PT15M', -40.0, 'EUR', 'test'), "
-                + "(" + tprev + ", 'CH', 'PT15M', 500.0, 'EUR', 'test') ON CONFLICT DO NOTHING");
+                + "(" + tprev + ", 'CH', 'PT15M', 500.0, 'EUR', 'test')"
+                + " ON CONFLICT (bidding_zone, resolution, ts)"
+                + " DO UPDATE SET price_eur_mwh = EXCLUDED.price_eur_mwh");
         for (String site : new String[] {dyn, fest}) {
             exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
                     + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) VALUES "
@@ -5240,13 +5289,18 @@ class PortalApiTest {
         // Forward day-ahead prices for CH, aligned to the 15-min slot grid at
         // +1h/+2h/+3h from now (the +4h night slot deliberately has NO price
         // either - a zero-PV slot never needs one).
+        // Die Preise gehören diesem Test - deshalb DO UPDATE: die Klasse teilt EINE
+        // Datenbank, und theDailySeries… (läuft vorher) legt CH 200 auf heute 12:00
+        // und 12:15. Zwischen 09:00 und 09:30 fiel der -40-Slot (+3 h) genau dorthin,
+        // DO NOTHING behielt die 200 -> 1600/9/10 = 17,777 statt 1360/9/10.
         exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) VALUES "
                 + "(time_bucket('15 minutes', now() + interval '1 hour'), 'CH', 'PT15M', 100.0, 'EUR', 'test'), "
                 + "(time_bucket('15 minutes', now() + interval '2 hours'), 'CH', 'PT15M', 200.0, 'EUR', 'test'), "
                 + "(time_bucket('15 minutes', now() + interval '3 hours'), 'CH', 'PT15M', -40.0, 'EUR', 'test'), "
                 // priced night slot: covered, but pv 0 => it must not move the value
                 + "(time_bucket('15 minutes', now() + interval '4 hours'), 'CH', 'PT15M', 300.0, 'EUR', 'test') "
-                + "ON CONFLICT DO NOTHING");
+                + "ON CONFLICT (bidding_zone, resolution, ts)"
+                + " DO UPDATE SET price_eur_mwh = EXCLUDED.price_eur_mwh");
 
         // Active-model PV forecast (latest run) for the priced site + a night
         // zero; plus a SHADOW challenger row at a huge price-weighted value that
@@ -6785,14 +6839,14 @@ class PortalApiTest {
         // aber es entsteht keine Versionszeile - „unbekannt" bleibt unbekannt.
         listener.handle(topic, (head + "\"ts\":\"2026-08-03T09:00:00Z\","
                 + "\"flows\":{\"applied\":[]}}").getBytes(StandardCharsets.UTF_8));
-        ResponseEntity<List> none = rest.exchange(versionsUrl, HttpMethod.GET, demo, List.class);
+        ResponseEntity<List> none = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest, versionsUrl, HttpMethod.GET, demo, List.class);
         assertThat(none.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(edgeVersionFor(none.getBody(), deviceId)).isNull();
 
         listener.handle(topic, (head + "\"ts\":\"2026-08-03T09:15:00Z\","
                 + "\"flows\":{\"core_version\":\"1.4.2\",\"palette_version\":\"0.3.0\","
                 + "\"applied\":[]}}").getBytes(StandardCharsets.UTF_8));
-        ResponseEntity<List> reported = rest.exchange(versionsUrl, HttpMethod.GET, demo, List.class);
+        ResponseEntity<List> reported = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest, versionsUrl, HttpMethod.GET, demo, List.class);
         Map<String, Object> row = edgeVersionFor(reported.getBody(), deviceId);
         assertThat(row).isNotNull();
         assertThat(row.get("deviceId")).isEqualTo("00000000-0000-0000-0000-000000000003");
@@ -6801,7 +6855,7 @@ class PortalApiTest {
         assertThat(row.get("paletteVersion")).isEqualTo("0.3.0");
 
         // Der andere Mandant sieht davon nichts (RLS).
-        assertThat(rest.exchange(versionsUrl, HttpMethod.GET,
+        assertThat(com.voltpilot.api.SichtbareListenTestLeser.lesen(rest, versionsUrl, HttpMethod.GET,
                 new HttpEntity<>(bearer(token("demo2", "demo2"))), List.class).getBody())
                 .isEmpty();
 
@@ -6810,7 +6864,7 @@ class PortalApiTest {
         listener.handle(topic, (head + "\"ts\":\"2026-08-03T09:30:00Z\","
                 + "\"flows\":{\"core_version\":\"1.5.0\",\"applied\":[]}}")
                 .getBytes(StandardCharsets.UTF_8));
-        ResponseEntity<List> updated = rest.exchange(versionsUrl, HttpMethod.GET, demo, List.class);
+        ResponseEntity<List> updated = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest, versionsUrl, HttpMethod.GET, demo, List.class);
         Map<String, Object> after = edgeVersionFor(updated.getBody(), deviceId);
         assertThat(after).isNotNull();
         assertThat(after.get("coreVersion")).isEqualTo("1.5.0");
@@ -6827,8 +6881,7 @@ class PortalApiTest {
         exec("INSERT INTO edge_release (release_seq, version, target_commit, created_by) "
                 + "VALUES (4200, 'edge-2099.01.1', 'deadbeef', 'test')");
         try {
-            Map<String, Object> judged = edgeVersionFor(rest
-                    .exchange(versionsUrl, HttpMethod.GET, demo, List.class).getBody(), deviceId);
+            Map<String, Object> judged = edgeVersionFor(com.voltpilot.api.SichtbareListenTestLeser.lesen(rest, versionsUrl, HttpMethod.GET, demo, List.class).getBody(), deviceId);
             assertThat(judged).isNotNull();
             assertThat(judged.get("newestRelease")).isEqualTo("edge-2099.01.1");
             assertThat(judged.get("upToDate")).as("nicht registriert ist NIE veraltet").isNull();
@@ -6838,8 +6891,7 @@ class PortalApiTest {
             listener.handle(topic, (head + "\"ts\":\"2026-08-03T09:45:00Z\","
                     + "\"flows\":{\"core_version\":\"edge-2099.01.1-9b37439a02c1\","
                     + "\"applied\":[]}}").getBytes(StandardCharsets.UTF_8));
-            Map<String, Object> current = edgeVersionFor(rest
-                    .exchange(versionsUrl, HttpMethod.GET, demo, List.class).getBody(), deviceId);
+            Map<String, Object> current = edgeVersionFor(com.voltpilot.api.SichtbareListenTestLeser.lesen(rest, versionsUrl, HttpMethod.GET, demo, List.class).getBody(), deviceId);
             assertThat(current).isNotNull();
             assertThat(current.get("upToDate")).isEqualTo(Boolean.TRUE);
 
@@ -6853,8 +6905,7 @@ class PortalApiTest {
                     + "\"version\":\"edge-2099.01.1-cafebabefeed\","
                     + "\"update\":{\"backend\":\"compose\",\"state\":\"idle\"}}")
                     .getBytes(StandardCharsets.UTF_8));
-            Map<String, Object> installed = edgeVersionFor(rest
-                    .exchange(versionsUrl, HttpMethod.GET, demo, List.class).getBody(), deviceId);
+            Map<String, Object> installed = edgeVersionFor(com.voltpilot.api.SichtbareListenTestLeser.lesen(rest, versionsUrl, HttpMethod.GET, demo, List.class).getBody(), deviceId);
             assertThat(installed).isNotNull();
             assertThat(installed.get("coreVersion"))
                     .isEqualTo("edge-2099.01.1-cafebabefeed");
@@ -7247,7 +7298,9 @@ class PortalApiTest {
                 + " + interval '14 days 18 hours') AT TIME ZONE 'Europe/Berlin'";
         exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh, currency, source) "
                 + "VALUES (" + t1 + ", 'CH', 'PT15M', 100.0, 'EUR', 'test'), "
-                + "(" + t2 + ", 'CH', 'PT15M', 200.0, 'EUR', 'test') ON CONFLICT DO NOTHING");
+                + "(" + t2 + ", 'CH', 'PT15M', 200.0, 'EUR', 'test')"
+                + " ON CONFLICT (bidding_zone, resolution, ts)"
+                + " DO UPDATE SET price_eur_mwh = EXCLUDED.price_eur_mwh");
         exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh, "
                 + "grid_import_kwh, grid_export_kwh, battery_charge_kwh, battery_discharge_kwh, n_samples) VALUES "
                 + "(" + t1 + ", '" + tenantA + "', '" + site + "', 2.0, 0.5, 0.0, 1.0, 0.5, 0.0, 90), "
@@ -7725,13 +7778,18 @@ class PortalApiTest {
                     + "max_discharge_kw, roundtrip_efficiency_pct) VALUES ('" + tenantA + "', '"
                     + site + "', 'battery', 10, 5, 5, 100)");
             // Berliner Mittag von HEUTE - deterministisch im 14-Tage-Fenster und
-            // nie ueber einer Tagesgrenze.
+            // nie ueber einer Tagesgrenze. Die Preise gehoeren diesem Test (DO UPDATE):
+            // earningsComputesRealized... laeuft vorher und legt CH 150 auf now() - 2 h -
+            // zwischen 14:00 und 14:15 genau dieser Mittag (Gesamtlauf mispel 05.10.2026:
+            // savedEur 0,3 statt 0,2).
             String noon = "(date_trunc('day', now() AT TIME ZONE 'Europe/Berlin')"
                     + " + interval '12 hours') AT TIME ZONE 'Europe/Berlin'";
             for (String offset : new String[] {"0", "15"}) {
                 exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh,"
                         + " currency, source) SELECT " + noon + " + interval '" + offset
-                        + " minutes', 'CH', 'PT15M', 200.0, 'EUR', 'test' ON CONFLICT DO NOTHING");
+                        + " minutes', 'CH', 'PT15M', 200.0, 'EUR', 'test'"
+                        + " ON CONFLICT (bidding_zone, resolution, ts)"
+                        + " DO UPDATE SET price_eur_mwh = EXCLUDED.price_eur_mwh");
             }
             exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh,"
                     + " grid_import_kwh, grid_export_kwh, battery_charge_kwh,"
@@ -7854,7 +7912,8 @@ class PortalApiTest {
                 + " currency, source) VALUES "
                 + "(" + mittag + ", 'CH', 'PT15M', 100.0, 'EUR', 'test'), "
                 + "(" + letzter + ", 'CH', 'PT15M', 200.0, 'EUR', 'test') "
-                + "ON CONFLICT DO NOTHING");
+                + "ON CONFLICT (bidding_zone, resolution, ts)"
+                + " DO UPDATE SET price_eur_mwh = EXCLUDED.price_eur_mwh");
         // Die Ladestands-Kette: 50 % vor dem Vortag → 24 % zu Tagesbeginn →
         // 92 % zu Tagesende. Der Eimer VOR dem Fenster ist der Anfangsbestand.
         exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh,"
@@ -7924,8 +7983,23 @@ class PortalApiTest {
         // Am LAUFENDEN Tag gewinnt das rohe Sample über den Rollup-Stand - sonst
         // hinkte die Bestandszeile dem kWh-Satz daneben 15 Minuten hinterher.
         java.time.Instant jetzt = java.time.Instant.now();
+        java.time.LocalDate laufenderTag = jetzt.atZone(berlin).toLocalDate();
+        java.time.Instant laufenderTagStart = laufenderTag.atStartOfDay(berlin).toInstant();
+        // Die Methode kann in einem langen Klassenlauf über Mitternacht reichen.
+        // Dann muss weiterhin 92 % der Tagesanfang sein: je ein Anker für den bei
+        // der Vorbereitung laufenden Tag und den unmittelbar folgenden Tag hält
+        // die Testbühne stabil, ohne die Produkt-Erwartung abzuschwächen.
+        String laufenderTagAnker = ts(laufenderTag.atStartOfDay(berlin)
+                .minusMinutes(15).toInstant());
+        String folgetagAnker = ts(laufenderTag.plusDays(1).atStartOfDay(berlin)
+                .minusMinutes(15).toInstant());
         exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, soc_last_pct,"
-                + " n_samples) VALUES (" + ts(jetzt.minusSeconds(1800)) + ", '" + tenantA
+                + " n_samples) VALUES (" + laufenderTagAnker + ", '" + tenantA + "', '"
+                + site + "', 92.00, 90), (" + folgetagAnker + ", '" + tenantA + "', '"
+                + site + "', 92.00, 90) ON CONFLICT DO NOTHING");
+        exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, soc_last_pct,"
+                + " n_samples) VALUES (" + ts(laufenderTagStart.plus(java.time.Duration
+                        .between(laufenderTagStart, jetzt).dividedBy(2))) + ", '" + tenantA
                 + "', '" + site + "', 20.00, 90) ON CONFLICT DO NOTHING");
         exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, soc_pct) VALUES ("
                 + ts(jetzt.minusSeconds(60)) + ", '" + tenantA + "', '" + site + "',"
@@ -8019,7 +8093,7 @@ class PortalApiTest {
     }
 
     private List<Map<String, Object>> sites(String token) {
-        return rest.exchange(url("/api/v1/sites"), HttpMethod.GET,
+        return com.voltpilot.api.SichtbareListenTestLeser.lesen(rest, url("/api/v1/sites"), HttpMethod.GET,
                 new HttpEntity<>(bearer(token)),
                 new ParameterizedTypeReference<List<Map<String, Object>>>() {}).getBody();
     }

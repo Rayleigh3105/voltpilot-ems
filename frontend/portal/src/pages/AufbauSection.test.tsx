@@ -15,6 +15,8 @@ import * as auth from '../auth';
 import { entitiesApi } from '../entitiesApi';
 import { consumersApi } from '../consumers/consumersApi';
 import { OHNE_STANDORT } from '../aufbauBaum';
+import { setSelbstauskunft } from '../rollen';
+import { rechteSeed } from '../test/rollenFixtures';
 
 /*
   Der Reiter „Aufbau" (Konzept „Anlage – neu gedacht", E1–E6 = A). Die
@@ -965,6 +967,29 @@ describe('AufbauSection · Hinzufügen (K6)', () => {
     vi.mocked(api.siteSources).mockResolvedValue([]);
     rendere();
     expect(await screen.findByText('Noch kein Gerät an dieser Box')).toBeInTheDocument();
+  });
+});
+
+describe('AufbauSection · Rechte (UEMS AP-03 IP-12)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('ohne „geraet.einrichten“ wird „Gerät hinzufügen“ zum Satz, das Menü nennt nur noch die Anlage', async () => {
+    const me = rechteSeed('JW').me;
+    const ohne = (rechte: readonly string[]) => rechte.filter((r) => r !== 'geraet.einrichten');
+    setSelbstauskunft({
+      ...me,
+      unternehmen_rechte: ohne(me.unternehmen_rechte),
+      standorte: me.standorte.map((st) => ({ ...st, rechte: ohne(st.rechte) })),
+    });
+    stub();
+    portalVerwaltet();
+    rendere();
+    const menue = await screen.findByRole('button', { name: 'Box oder Anlage hinzufügen' });
+    expect(screen.queryByRole('button', { name: /Gerät hinzufügen/ })).toBeNull();
+    expect(screen.getAllByRole('note').length).toBeGreaterThan(0);
+    fireEvent.click(menue);
+    expect(await screen.findByRole('menuitem', { name: /Anlage hinzufügen/ })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /VoltPilot-Box hinzufügen/ })).toBeNull();
   });
 });
 

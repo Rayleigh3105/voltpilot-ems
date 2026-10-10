@@ -1,18 +1,19 @@
 package com.voltpilot.api.measurement;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.measurement.MeasurementSelectionRepository.DeviceScope;
 import com.voltpilot.api.measurement.MeasurementSelectionService.State;
+import com.voltpilot.api.uems.BoxFaehigkeiten;
 import com.voltpilot.api.uems.ErwarteteKadenz;
 import com.voltpilot.api.uems.ErwarteteKadenz.Messkanal;
-import com.voltpilot.api.uems.KadenzRegeln;
 import jakarta.annotation.PreDestroy;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import org.eclipse.paho.client.mqttv3.MqttClient;
@@ -21,6 +22,7 @@ import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -30,11 +32,18 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(name = "voltpilot.provisioning.enabled", havingValue = "true")
 public class MeasurementConfigPublisher {
     private static final Logger log = LoggerFactory.getLogger(MeasurementConfigPublisher.class);
+    /**
+     * Die Box versteht den geteilten Punkt im Plan (AP-07 IP-18b Teil 2,
+     * {@code docs/contracts/v2/edge-supports.md}).
+     */
+    public static final String FAEHIGKEIT_JE_KOMPONENTE = "measurement_config_per_component";
     private final String brokerUrl;
     private final String username;
     private final String password;
     private final ObjectMapper mapper;
     private final ErwarteteKadenz kadenzen;
+    private BoxFaehigkeiten faehigkeiten;
+    private WagoRegisterbilder registerbilder;
     private MqttClient client;
 
     public MeasurementConfigPublisher(
@@ -47,6 +56,21 @@ public class MeasurementConfigPublisher {
         this.password = password;
         this.mapper = mapper;
         this.kadenzen = kadenzen;
+    }
+
+    /**
+     * Ohne Fähigkeiten-Abfrage (Testaufbau, ältere Verdrahtung) bekommt jede Box den
+     * zusammengelegten Plan - Zeichen für Zeichen den von vor IP-18b.
+     */
+    @Autowired(required = false)
+    void setFaehigkeiten(BoxFaehigkeiten faehigkeiten) {
+        this.faehigkeiten = faehigkeiten;
+    }
+
+    /** Ohne Quelle (Testaufbau) trägt kein Plan {@code registerbilder} — Zeichen für Zeichen wie bisher. */
+    @Autowired(required = false)
+    void setRegisterbilder(WagoRegisterbilder registerbilder) {
+        this.registerbilder = registerbilder;
     }
 
     public static String topic(UUID tenantId, UUID siteId, UUID deviceId) {
@@ -70,6 +94,17 @@ public class MeasurementConfigPublisher {
         }
     }
 
+    /** Clear the retired box's desired plan through the same retained transport. */
+    public synchronized boolean clear(UUID tenantId, UUID siteId, UUID deviceId) {
+        try {
+            connected().publish(topic(tenantId, siteId, deviceId), new byte[0], 1, true);
+            return true;
+        } catch (Exception e) {
+            log.warn("Could not clear measurement config for {}: {}", deviceId, e.getMessage());
+            return false;
+        }
+    }
+
     /**
      * One entry per POINT KEY, in the order the state lists them.
      *
@@ -88,46 +123,21 @@ public class MeasurementConfigPublisher {
      * Dokument hat dieselben Felder in derselben Reihenfolge, {@code schema_version} bleibt 2.0,
      * und die Fassung trägt dieselben Schranken wie das Feld (1 … 86 400 s), weil sie gar nicht
      * anders entstehen kann. Nur die QUELLE der Zahl wechselt.
+     *
+     * <p><b>⚠ Seit AP-07 IP-18b Teil 2 entscheidet die Box-Fähigkeit über die Form:</b> meldet die
+     * Box {@link #FAEHIGKEIT_JE_KOMPONENTE}, steht ein Punkt mehrerer Komponenten einmal je
+     * Komponente da ({@link MeasurementPlan#composeJeKomponente}); jede andere Box bekommt den
+     * zusammengelegten Plan Byte für Byte wie vorher (sie wiese einen doppelten
+     * {@code point_key} als ganzes Dokument ab). {@code schema_version} bleibt 2.0 - der Vertrag
+     * ist additiv (x-point-key-rule).
      */
     byte[] payload(DeviceScope scope, State state) throws Exception {
         Map<Messkanal, Integer> fassungen = kadenzen.fassungenJeKanal(messkanaele(state), Instant.now());
-        Map<String, Map<String, Object>> byPointKey = new LinkedHashMap<>();
-        Map<String, Boolean> unambiguousEntity = new LinkedHashMap<>();
-        for (MeasurementSelectionService.SelectionPoint p : state.selections()) {
-            if (!p.enabled()) {
-                continue;
-            }
-            Integer soll = cadence(p, fassungen);
-            Map<String, Object> selection = byPointKey.get(p.pointKey());
-            if (selection == null) {
-                selection = new LinkedHashMap<>();
-                selection.put("point_key", p.pointKey());
-                selection.put("cadence_s", soll);
-                if (p.customDefinition() != null) {
-                    selection.put("definition", p.customDefinition());
-                }
-                if (p.entityId() != null) {
-                    selection.put("entity_id", p.entityId());
-                }
-                byPointKey.put(p.pointKey(), selection);
-                unambiguousEntity.put(p.pointKey(), Boolean.TRUE);
-                continue;
-            }
-            Object cadence = selection.get("cadence_s");
-            if (soll != null && (!(cadence instanceof Integer existing)
-                    || soll.intValue() < existing.intValue())) {
-                selection.put("cadence_s", soll);
-            }
-            if (!Objects.equals(p.entityId(), selection.get("entity_id"))) {
-                unambiguousEntity.put(p.pointKey(), Boolean.FALSE);
-            }
-        }
-        for (Map.Entry<String, Map<String, Object>> e : byPointKey.entrySet()) {
-            if (!Boolean.TRUE.equals(unambiguousEntity.get(e.getKey()))) {
-                e.getValue().remove("entity_id");
-            }
-        }
-        List<Map<String, Object>> selections = List.copyOf(byPointKey.values());
+        List<MeasurementPlan.Entry> plan = jeKomponente(scope)
+                ? MeasurementPlan.composeJeKomponente(state.selections(), fassungen)
+                : MeasurementPlan.compose(state.selections(), fassungen);
+        List<Map<String, Object>> selections = plan.stream()
+                .map(MeasurementConfigPublisher::wireEntry).toList();
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("schema_version", "2.0");
         payload.put("tenant_id", scope.tenantId());
@@ -136,22 +146,48 @@ public class MeasurementConfigPublisher {
         payload.put("revision", state.desiredRevision());
         payload.put("catalog_version", state.catalogVersion());
         payload.put("selections", selections);
+        // UEMS AP-05: die Parameter je WAGO-Controller, NUR an einem Plan mit Kartenpunkten -
+        // jeder andere Plan bleibt Byte für Byte wie vorher (x-registerbilder-rule).
+        List<Map<String, Object>> bilder = registerbilder == null ? List.of()
+                : registerbilder.fuer(scope.siteId(), plan);
+        if (!bilder.isEmpty()) payload.put("registerbilder", bilder);
         return mapper.writeValueAsBytes(payload);
     }
 
-    /**
-     * Die Soll-Kadenz EINER Auswahlzeile: die Fassung ihrer Quellenbindung, sonst die der Auswahl.
-     * Eine Fassung außerhalb der Schranken des Drahtvertrags wird ÜBERGANGEN, nie zurechtgebogen —
-     * über den Schreibweg kann sie nicht entstehen (CHECK und {@link KadenzRegeln}), von Hand in
-     * der Datenbank schon.
-     */
-    private static Integer cadence(MeasurementSelectionService.SelectionPoint p,
-            Map<Messkanal, Integer> fassungen) {
-        if (p.entityId() == null) {
-            return p.cadenceS();
+    /** Eine fehlgeschlagene Abfrage ist ein Nein: der Bestandsplan, nie ein verlorener Versand. */
+    private boolean jeKomponente(DeviceScope scope) {
+        if (faehigkeiten == null) return false;
+        try {
+            return faehigkeiten.kann(scope.deviceId(), FAEHIGKEIT_JE_KOMPONENTE);
+        } catch (RuntimeException e) {
+            log.warn("capability lookup for device {} failed, publishing the merged plan: {}",
+                    scope.deviceId(), e.getMessage());
+            return false;
         }
-        Integer fassung = fassungen.get(new Messkanal(p.entityId(), p.pointKey()));
-        return KadenzRegeln.imRahmen(fassung) ? fassung : p.cadenceS();
+    }
+
+    private static Map<String, Object> wireEntry(MeasurementPlan.Entry entry) {
+        Map<String, Object> selection = new LinkedHashMap<>();
+        selection.put("point_key", entry.pointKey());
+        selection.put("cadence_s", entry.cadenceS());
+        if (entry.customDefinition() != null) selection.put("definition", fuerDieBox(entry.customDefinition()));
+        if (entry.entityId() != null) selection.put("entity_id", entry.entityId());
+        return selection;
+    }
+
+    /**
+     * Die eigene Definition, wie die Box sie kennt: ohne {@code measures}. Was der Wert misst, ist
+     * eine Angabe der Cloud (Messkanal, Messstelle); der Vertrag {@code mqtt-measurement-config} ist
+     * geschlossen ({@code additionalProperties: false}, die Box liest mit
+     * {@code DisallowUnknownFields}), und eine ältere Box würde die ganze Auswahl verwerfen.
+     */
+    static JsonNode fuerDieBox(JsonNode definition) {
+        if (definition instanceof ObjectNode o && o.has("measures")) {
+            ObjectNode kopie = o.deepCopy();
+            kopie.remove("measures");
+            return kopie;
+        }
+        return definition;
     }
 
     /** Die Messkanäle, nach deren Fassung gefragt wird: je aktive Auswahlzeile mit Komponente. */

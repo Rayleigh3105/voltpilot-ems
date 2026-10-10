@@ -41,6 +41,18 @@ describe('healthChecklist', () => {
     expect(items[0].state).toBe('warn');
   });
 
+  it('shows the connected share for several boxes in every state', () => {
+    expect(byKey(healthChecklist(input({ deviceCount: 2, onlineCount: 2 })), 'device')).toMatchObject({
+      label: 'Boxen', state: 'ok', detail: '2 von 2 Boxen verbunden',
+    });
+    expect(byKey(healthChecklist(input({ deviceCount: 2, onlineCount: 1 })), 'device')).toMatchObject({
+      label: 'Boxen', state: 'warn', detail: '1 von 2 Boxen verbunden',
+    });
+    expect(byKey(healthChecklist(input({ deviceCount: 2, onlineCount: 1, waitingCount: 1 })), 'device')).toMatchObject({
+      label: 'Boxen', state: 'warn', detail: '1 von 2 Boxen verbunden',
+    });
+  });
+
   it('a battery without a device warns', () => {
     const items = healthChecklist(input({ batteryWithoutDevice: true, batteryLinked: false }));
     const b = byKey(items, 'battery');
@@ -168,7 +180,7 @@ describe('the badge carries EVERY finding, not just the worst (portal-signal fix
     expect(badge.state).toBe('warnung');
     // Warnings first, then the hints - so the popover reads worst-first too.
     expect(badge.findings.map((f) => f.text)).toEqual([
-      'Gerät: meldet sich nicht',
+      'Boxen: 1 von 2 Boxen verbunden',
       'Speicher: keinem Gerät zugeordnet',
       'Fahrplan: noch keiner erstellt',
       'Steuerung: noch nicht freigegeben',
@@ -254,6 +266,22 @@ describe('zustandView — leise wenn gesund, laut nur mit Befund', () => {
     });
     expect(zustandView(partial)!.line).toBe(
       'Alles in Ordnung — Gerät und Fahrplan arbeiten zusammen.',
+    );
+  });
+
+  it('grün mit mehreren Boxen nennt den verbundenen Anteil ohne Aufklappen', () => {
+    const multi = healthChecklist({
+      deviceCount: 2,
+      onlineCount: 2,
+      waitingCount: 0,
+      hasPlanToday: true,
+      hasAnyPlan: true,
+      controlState: null,
+      batteryWithoutDevice: false,
+      batteryLinked: false,
+    });
+    expect(zustandView(multi)!.line).toBe(
+      'Alles in Ordnung — 2 von 2 Boxen verbunden; Fahrplan läuft.',
     );
   });
 

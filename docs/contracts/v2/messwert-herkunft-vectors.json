@@ -180,6 +180,14 @@
       "woher": "ableitung",
       "woher_aeltere_box": null,
       "beschreibung": "Führend, Vergleich, Spiegel oder Beobachtung — zur Messzeit aus Zuständigkeit und Quellenbindung. Nur führende Werte fließen in Verbrauch und Bilanz."
+    },
+    {
+      "feld": "urheber",
+      "angabe": "Ablesung durch",
+      "art": "marker",
+      "woher": "eingabe",
+      "woher_aeltere_box": null,
+      "beschreibung": "Nur bei Eingabe oder Import: Person aus dem Akteur-Vokabular. Kanalwerte behalten ihre fünfzehn Angaben."
     }
   ],
   "vokabular": {
@@ -1953,5 +1961,158 @@
         }
       }
     }
-  ]
+  ],
+  "ablesungen": {
+    "bezug": "AP-09 W2/W3, B8; Import-Herkunft vorbereitet, kein Import-Schreibweg. Eingangszeit/Subject sind Annahmen.",
+    "reihe": [
+      "kundenbereich",
+      "messstelle",
+      "groesse"
+    ],
+    "spur": "ablesung",
+    "cases": [
+      {
+        "name": "MS-21-eingabe",
+        "input": {
+          "kundenbereich": "Ahrenberg",
+          "messstelle": "MS-21",
+          "groesse": "Volumen",
+          "messzeit": "2026-11-02T06:40:00Z",
+          "eingangszeit": "2026-11-02T06:41:00Z",
+          "stand": "49451",
+          "einheit": "m³",
+          "woher": "eingabe",
+          "urheber": {
+            "sub": "jonas-wendlinger",
+            "name": "Jonas Wendlinger",
+            "rolle": "energiemanager",
+            "art": "kunde"
+          }
+        },
+        "expected": {
+          "kundenbereich": "Ahrenberg",
+          "messstelle": "MS-21",
+          "groesse": "Volumen",
+          "spur": "ablesung",
+          "messzeit": "2026-11-02T06:40:00Z",
+          "eingangszeit": "2026-11-02T06:41:00Z",
+          "wert": {
+            "raw": 49451,
+            "decoded": 49451,
+            "einheit": "m³"
+          },
+          "qualitaet": "good",
+          "wertart": "counter",
+          "woher": "eingabe",
+          "urheber": {
+            "sub": "jonas-wendlinger",
+            "name": "Jonas Wendlinger",
+            "rolle": "energiemanager",
+            "art": "kunde"
+          }
+        },
+        "grund": null
+      },
+      {
+        "name": "MS-21-import",
+        "input": {
+          "kundenbereich": "Ahrenberg",
+          "messstelle": "MS-21",
+          "groesse": "Volumen",
+          "messzeit": "2026-11-02T06:40:00Z",
+          "eingangszeit": "2026-11-02T06:41:00Z",
+          "stand": "49451",
+          "einheit": "m³",
+          "woher": "import",
+          "urheber": {
+            "sub": "jonas-wendlinger",
+            "name": "Jonas Wendlinger",
+            "rolle": "energiemanager",
+            "art": "kunde"
+          }
+        },
+        "expected": {
+          "kundenbereich": "Ahrenberg",
+          "messstelle": "MS-21",
+          "groesse": "Volumen",
+          "spur": "ablesung",
+          "messzeit": "2026-11-02T06:40:00Z",
+          "eingangszeit": "2026-11-02T06:41:00Z",
+          "wert": {
+            "raw": 49451,
+            "decoded": 49451,
+            "einheit": "m³"
+          },
+          "qualitaet": "good",
+          "wertart": "counter",
+          "woher": "import",
+          "urheber": {
+            "sub": "jonas-wendlinger",
+            "name": "Jonas Wendlinger",
+            "rolle": "energiemanager",
+            "art": "kunde"
+          }
+        },
+        "grund": null
+      },
+      {
+        "name": "ablesung-ohne-urheber",
+        "input": {
+          "kundenbereich": "Ahrenberg",
+          "messstelle": "MS-21",
+          "groesse": "Volumen",
+          "messzeit": "2026-11-02T06:40:00Z",
+          "eingangszeit": "2026-11-02T06:41:00Z",
+          "stand": "49451",
+          "einheit": "m³",
+          "woher": "eingabe",
+          "urheber": null
+        },
+        "expected": null,
+        "grund": "herkunft_unvollstaendig"
+      },
+      {
+        "name": "ablesung-ohne-woher",
+        "input": {
+          "kundenbereich": "Ahrenberg",
+          "messstelle": "MS-21",
+          "groesse": "Volumen",
+          "messzeit": "2026-11-02T06:40:00Z",
+          "eingangszeit": "2026-11-02T06:41:00Z",
+          "stand": "49451",
+          "einheit": "m³",
+          "woher": "box",
+          "urheber": {
+            "sub": "jonas-wendlinger",
+            "name": "Jonas Wendlinger",
+            "rolle": "energiemanager",
+            "art": "kunde"
+          }
+        },
+        "expected": null,
+        "grund": "herkunft_unvollstaendig"
+      },
+      {
+        "name": "ablesung-ohne-messstelle",
+        "input": {
+          "kundenbereich": "Ahrenberg",
+          "messstelle": "",
+          "groesse": "Volumen",
+          "messzeit": "2026-11-02T06:40:00Z",
+          "eingangszeit": "2026-11-02T06:41:00Z",
+          "stand": "49451",
+          "einheit": "m³",
+          "woher": "eingabe",
+          "urheber": {
+            "sub": "jonas-wendlinger",
+            "name": "Jonas Wendlinger",
+            "rolle": "energiemanager",
+            "art": "kunde"
+          }
+        },
+        "expected": null,
+        "grund": "herkunft_unvollstaendig"
+      }
+    ]
+  }
 }

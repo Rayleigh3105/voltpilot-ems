@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -112,6 +113,7 @@ const UDB_TYP = 'user-defined-battery';
 export function AnlegenFlow({
   siteId,
   box,
+  boxes,
   vorlage,
   initialTyp,
   bearbeiten,
@@ -132,6 +134,8 @@ export function AnlegenFlow({
    * sie nennt der Assistent ehrlich den Weg statt eine Adresse zu behaupten.
    */
   box?: Device;
+  /** Alle Boxen der Anlage fuer die ausdrueckliche OCPP-Zielwahl. */
+  boxes?: Device[];
   /**
    * Einheitsmodell Stufe 6: aus einer EIGENEN Vorlage ein Gerät machen. Mit
    * ihr startet der Fluss direkt im Eigenbau-Weg, vorbefüllt - die Typ-Wahl
@@ -524,6 +528,7 @@ export function AnlegenFlow({
     setOhneKanal(null);
     try {
       const antwort = await api.testComponentConnection(siteId, {
+        deviceId: box?.id,
         templateRef: template.templateRef,
         templateVersion: templateVersion ?? undefined,
         role: rolle ?? undefined,
@@ -912,9 +917,9 @@ export function AnlegenFlow({
                   </div>
                 )}
                 {testNoetig && testZustand !== 'laeuft' && (
-                  <Button id="geraet-edit-test" variant="outline" onClick={testen} disabled={editorBusy || fehlend.length > 0 || !template}>
+                  <Recht aktion="geraet.einrichten"><Button id="geraet-edit-test" variant="outline" onClick={testen} disabled={editorBusy || fehlend.length > 0 || !template}>
                     {testZustand === 'ungeprueft' ? 'Verbindung prüfen' : 'Erneut prüfen'}
-                  </Button>
+                  </Button></Recht>
                 )}
 
                 {hebelListe.length > 0 && (
@@ -996,9 +1001,9 @@ export function AnlegenFlow({
           </p>
           <div>
             <Button variant="ghost" onClick={inlineSchliessen} disabled={speichern}>Abbrechen</Button>
-            <Button onClick={inlineSpeichern} disabled={speichern || !hatAenderungen}>
+            <Recht aktion="geraet.einrichten"><Button onClick={inlineSpeichern} disabled={speichern || !hatAenderungen}>
               {speichern ? 'Speichere …' : 'Änderungen speichern'}
-            </Button>
+            </Button></Recht>
           </div>
         </div>
 
@@ -1104,6 +1109,7 @@ export function AnlegenFlow({
               onClick: () => void anlegen(),
               disabled: speichern || !rolleOk || fehlend.length > 0 || !belegt || kwpUngueltig,
               testId: 'einrichten-speichern',
+              aktion: 'geraet.einrichten',
             }}
           />
         }
@@ -1216,9 +1222,9 @@ export function AnlegenFlow({
               </div>
             )}
             {(testZustand === 'bestanden' || testZustand === 'fehlgeschlagen') && (
-              <Button variant="outline" className="vp-anlegen-nochmal" onClick={testen} disabled={speichern}>
+              <Recht aktion="geraet.einrichten"><Button variant="outline" className="vp-anlegen-nochmal" onClick={testen} disabled={speichern}>
                 Erneut testen
-              </Button>
+              </Button></Recht>
             )}
             {/* Die HEBEL: konkrete Wege statt eines Fließtexts. Sie erscheinen
                 auch neben einem BESTANDENEN Test - der Faktor-10-Fall verletzt
@@ -1444,7 +1450,7 @@ export function AnlegenFlow({
         fuss={<EinrichtenFuss grund={null} primaer={{ label: 'Fertig', onClick: onClose }} />}
       >
         <section data-testid="typ-ladesaeule">
-          <LadesaeuleAnbinden siteId={siteId} device={box} />
+          <LadesaeuleAnbinden siteId={siteId} device={box} devices={boxes} />
         </section>
       </EinrichtenSeite>
     );

@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 /**
  * „Komponente umbenennen" — the ONE rename mask (concept `vp-entity-alias-k1`
  * §5: two ways in, no second mask).
@@ -180,9 +181,9 @@ export function UmbenennenDialog({
           <p aria-live="polite">{changed ? '1 Änderung bereit' : 'Noch keine Änderung'}</p>
           <div>
             <Button variant="ghost" onClick={closeInline} disabled={busy}>Abbrechen</Button>
-            <Button onClick={() => void save(label.trim() || null)} disabled={busy || !changed}>
+            <Recht aktion="geraet.einrichten"><Button onClick={() => void save(label.trim() || null)} disabled={busy || !changed}>
               {busy ? 'Speichere …' : 'Änderungen speichern'}
-            </Button>
+            </Button></Recht>
           </div>
         </div>
 
@@ -212,9 +213,9 @@ export function UmbenennenDialog({
           <Button variant="ghost" onClick={onClose}>
             Abbrechen
           </Button>
-          <Button onClick={() => save(label.trim() || null)} disabled={busy}>
+          <Recht aktion="geraet.einrichten"><Button onClick={() => save(label.trim() || null)} disabled={busy}>
             Speichern
-          </Button>
+          </Button></Recht>
         </>
       }
     >
@@ -232,9 +233,9 @@ export function UmbenennenDialog({
             undo. */}
         {target.alias && (
           <div className="vp-rename-reset">
-            <Button variant="ghost" onClick={() => save(null)} disabled={busy}>
+            <Recht aktion="geraet.einrichten"><Button variant="ghost" onClick={() => save(null)} disabled={busy}>
               Zurücksetzen
-            </Button>
+            </Button></Recht>
             <span className="vp-note">
               Ohne eigenen Namen zeigt VoltPilot wieder „{target.derivedLabel}“.
             </span>

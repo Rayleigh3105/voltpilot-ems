@@ -2,14 +2,16 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { schemaVerstoesse } from './test/uemsSchemaLaeufer';
+import { stellungenDesReferenzunternehmens } from './test/uemsReferenzStellungen';
 import { dez, dezVergleich, type Dez } from './bezugsdaten';
 import { STELLUNGEN } from './uemsMessstelle';
 import {
   KENNZEICHEN_ERBEND,
   MENGE_NACHKOMMASTELLEN,
-  MINUS,
   SALDIERT,
-  TAUSENDER_TRENNZEICHEN,
+  SATZ_REST_KEINE_WERTE,
+  SATZ_REST_NEGATIV,
+  SATZ_REST_ZUGEORDNET,
   VERBOTENE_WOERTER,
   ZUSTAND_RANG,
   ebene,
@@ -18,6 +20,7 @@ import {
   live,
   richtung,
   rest,
+  restAusStellung,
   rolle,
   saldo,
   summe,
@@ -26,6 +29,7 @@ import {
   type HerkunftEingang,
   type Summand,
 } from './uemsBilanz';
+import { kopfzeile } from './uemsNetzanschluss';
 
 /**
  * Die Regeln der ENERGIEBILANZ (UEMS AP-10 IP-1) gegen die EINE geteilte Vektor-Datei —
@@ -161,8 +165,8 @@ describe('Bilanz-Vertrag: Form der Vektor-Datei', () => {
 
   it('die Schwellen, Zeichen und Erbregeln stehen in der Datei, nicht nur im Modul', () => {
     expect(vectors.regeln.menge_nachkommastellen).toBe(MENGE_NACHKOMMASTELLEN);
-    expect(vectors.regeln.tausender_trennzeichen).toBe(TAUSENDER_TRENNZEICHEN);
-    expect(vectors.regeln.minuszeichen).toBe(MINUS);
+    expect(vectors.regeln.zahlform).toMatch(/^ergebnis-zustand-vectors\.json/);
+    expect(vectors.regeln, 'die Zahlform steht im Ergebnis-Zustand').not.toHaveProperty('tausender_trennzeichen');
     expect(vectors.zustand_rang).toEqual(ZUSTAND_RANG);
     expect([...vectors.vokabulare.zustand].sort()).toEqual([...ZUSTAND_RANG].sort());
     expect(vectors.verbotene_woerter).toEqual(VERBOTENE_WOERTER);
@@ -174,6 +178,37 @@ describe('Bilanz-Vertrag: Form der Vektor-Datei', () => {
 
   it('die Stellungen sind die des Messstellen-Vertrags — kein zweites Vokabular', () => {
     expect(vectors.vokabulare.stellung).toEqual([...STELLUNGEN]);
+  });
+
+  it('der Kundensatz des Rests kommt aus dem Vertrag (saetze) — nie „Verlust"', () => {
+    expect(SATZ_REST_ZUGEORDNET).toBe(vectors.saetze.rest_zugeordnet);
+    expect(SATZ_REST_NEGATIV).toBe(vectors.saetze.rest_negativ);
+    expect(SATZ_REST_KEINE_WERTE).toBe(vectors.saetze.rest_keine_werte);
+  });
+
+  it('das befristete Kennzeichen der PR-688-Antworten ist mit seinem Ablaufpaket AP-10 IP-10 entfallen', () => {
+    expect(vectors.vokabulare.kennzeichen_befristet).toBeUndefined();
+    expect(
+      (vectors.vokabulare.kennzeichen_neu as string[]).some((k) => k.includes('Geräte-Verdichtung')),
+    ).toBe(false);
+  });
+
+  it('E3: jede Fassung aus der Stellung ist genau die Eingangsmenge einer Rest-Prüfung desselben Falls', () => {
+    const schluessel = (ts: Json[]): string[] =>
+      ts.map((t) => `${t.messstelle}:${t.rolle}:${t.anteil}`).sort();
+    let gedeckt = 0;
+    for (const fall of vectors.cases) {
+      for (const p of fall.pruefungen) {
+        if (p.regel !== 'rest_aus_stellung' || p.ergebnis.fehler !== null) continue;
+        const ausStellung = schluessel(p.ergebnis.terme);
+        const restEingaenge = fall.pruefungen
+          .filter((r: Json) => r.regel === 'rest' && r.eingang.hauptzaehler === p.eingang.hauptzaehler)
+          .map((r: Json) => schluessel(r.eingang.eingaenge));
+        expect(restEingaenge, `${fall.id} · ${p.name}`).toContainEqual(ausStellung);
+        gedeckt += 1;
+      }
+    }
+    expect(gedeckt).toBeGreaterThanOrEqual(9);
   });
 
   it('die Richtung je Typ ist eine Regel in der Datei', () => {
@@ -269,7 +304,14 @@ describe('Bilanz-Vertrag: die Vektoren', () => {
         break;
       }
       case 'rest': {
-        const ist = rest(ein.hauptzaehler, ein.einheit, ein.version, ein.vermerke, eingaenge(ein.eingaenge));
+        const ist = rest(
+          ein.hauptzaehler,
+          ein.einheit,
+          ein.zahl_ebene,
+          ein.version,
+          ein.vermerke,
+          eingaenge(ein.eingaenge),
+        );
         betragGleich(ist.zufluss, soll.zufluss, `${why} · Zufluss`);
         betragGleich(ist.abfluss, soll.abfluss, `${why} · Abfluss`);
         betragGleich(ist.zugeordnet, soll.zugeordnet, `${why} · zugeordnet`);
@@ -286,7 +328,7 @@ describe('Bilanz-Vertrag: die Vektoren', () => {
         break;
       }
       case 'summe': {
-        const ist = summe(ein.einheit, summanden(ein.eingaenge));
+        const ist = summe(ein.einheit, ein.zahl_ebene, summanden(ein.eingaenge));
         betragGleich(ist.menge, soll.menge, `${why} · Summe`);
         expect(ist.zustand, `${why} · Zustand`).toBe(soll.zustand);
         expect(ist.abdeckung_prozent, `${why} · Abdeckung`).toBe(soll.abdeckung_prozent);
@@ -380,8 +422,76 @@ describe('Bilanz-Vertrag: die Vektoren', () => {
         expect(schemaVerstoesse(ist.satz, herkunftSchema), `${why} · Schema`).toEqual([]);
         break;
       }
+      case 'rest_aus_stellung': {
+        const ist = restAusStellung(ein.hauptzaehler, ein.tag, stellungenDesReferenzunternehmens());
+        expect(ist.hauptzaehler, `${why} · Hauptzähler`).toBe(ein.hauptzaehler);
+        expect(ist.anlage, `${why} · System`).toBe(soll.anlage);
+        expect(ist.terme, `${why} · Terme aus der Stellung`).toEqual(soll.terme);
+        expect(ist.ausserhalb, `${why} · außerhalb`).toEqual(soll.ausserhalb);
+        expect(ist.fehler, `${why} · Fehler`).toBe(soll.fehler);
+        break;
+      }
       default:
         throw new Error(`unbekannte Regel ${p.regel}`);
     }
+  });
+});
+
+describe('Bilanz-Vertrag: Zahlform E11 aus dem Ergebnis-Zustand', () => {
+  const summand = (messstelle: string, menge: string | null): Summand => ({
+    messstelle,
+    menge: menge === null ? null : dez(menge),
+    zustand: menge === null ? 'keine Werte' : 'vollständig',
+    abdeckung_prozent: 100,
+    version: 1,
+    kennzeichen: [],
+    vorzeichen: '+',
+    faktor: dez('1'),
+  });
+  const eingang = (messstelle: string, rolle: string, menge: string): Eingang => ({
+    messstelle,
+    rolle,
+    anteil: 'gesamt',
+    menge: dez(menge),
+    zustand: 'vollständig',
+    abdeckung_prozent: 100,
+    version: 1,
+    kennzeichen: [],
+  });
+
+  it('Tausender mit Punkt, nicht mit Leerzeichen („1 055 kWh“ ist die alte Form)', () => {
+    const s = summe('kWh', 'tag', [summand('MS-11', '740'), summand('MS-13', '315'), summand('MS-14', null)]);
+    expect(s.anzeige).toBe('mindestens 1.055\u00a0kWh (MS-14 fehlt)');
+    expect(s.anzeige).not.toContain('1 055');
+    expect(kopfzeile('NA-9', dez('1200'), null, null).text).toBe('vereinbart 1.200\u00a0kW');
+  });
+
+  it('feste Stellen je Ebene statt ungerundet („1 200,5“ ist die alte Form)', () => {
+    const e = [eingang('MS-16', 'zufluss', '1300.5'), eingang('MS-17', 'zugeordnet', '100')];
+    expect(rest('MS-16', 'kWh', 'monat', 1, [], e).kundensatz).toBe('1.201\u00a0kWh sind keiner Messstelle zugeordnet');
+    expect(rest('MS-16', 'kWh', 'stunde', 1, [], e).kundensatz).toBe('1.200,5\u00a0kWh sind keiner Messstelle zugeordnet');
+    expect(kopfzeile('NA-1', dez('550'), dez('630'), dez('312.44')).text).toBe(
+      'vereinbart 550\u00a0kW · Anschluss 630\u00a0kVA · Momentan 312,4\u00a0kW',
+    );
+    expect(() => rest('MS-16', 'kWh', null, 1, [], e), 'kWh ohne Ebene hat keine Anzeige').toThrow();
+  });
+
+  it('geschütztes Leerzeichen vor der Einheit (ein normales ist die alte Form)', () => {
+    const saetze: string[] = [];
+    for (const c of vectors.cases) {
+      for (const p of c.pruefungen ?? []) {
+        for (const feld of ['kundensatz', 'anzeige']) {
+          const satz = p.ergebnis?.[feld];
+          if (typeof satz === 'string' && /\d.*kWh/.test(satz)) saetze.push(satz);
+        }
+      }
+    }
+    expect(saetze.length).toBeGreaterThanOrEqual(11);
+    for (const satz of saetze) {
+      expect(satz).toContain('\u00a0kWh');
+      expect(satz).not.toContain(' kWh');
+    }
+    const e = [eingang('MS-16', 'zufluss', '100'), eingang('MS-17', 'zugeordnet', '105')];
+    expect(rest('MS-16', 'kWh', 'tag', 1, [], e).kundensatz).toBe('Messwerte passen nicht zusammen (\u22125\u00a0kWh)');
   });
 });

@@ -64,12 +64,13 @@
       "vereinbart_kw"
     ],
     "kopfzeile_trenner": " · ",
-    "leistung_nachkommastellen": 1
+    "leistung_nachkommastellen": 1,
+    "zahlform": "ergebnis-zustand-vectors.json · rundung (E11): {wert} ist Zahl mit Einheit aus ErgebnisZustand.zahl ⟷ uemsErgebnis.zahl — vereinbart_kw und anschluss_kva mit wertbezug vereinbart (ganzzahlig, echte Dezimalstellen bleiben); momentan_kw gemessen (eine Nachkommastelle)"
   },
   "saetze": {
-    "kopfzeile_vereinbart": "vereinbart {wert} kW",
-    "kopfzeile_anschluss": "Anschluss {wert} kVA",
-    "kopfzeile_momentan": "Momentan {wert} kW",
+    "kopfzeile_vereinbart": "vereinbart {wert}",
+    "kopfzeile_anschluss": "Anschluss {wert}",
+    "kopfzeile_momentan": "Momentan {wert}",
     "nicht_angelegt": "Netzanschluss: nicht angelegt"
   },
   "zwillinge": {
@@ -113,13 +114,20 @@
         "AN-3": "NA-3 ab 2026-10-15"
       },
       "grund": "Die Vorlage nennt unter `erwartet.bindung` je Anlage einen eigenen Tag (dem Bestehen der Anlage folgend) und unter `annahmen` einen gemeinsamen Anlegetag der Objekte. Die Vektoren nehmen die BINDUNGS-Tage der Vorlage, weil genau sie das Ergebnis tragen; der Anlegetag der Objekte trägt keines."
+    },
+    {
+      "fall": "F16 · Kopfzeile",
+      "feld": "pruefungen[kopfzeile].ergebnis.text",
+      "vorlage": "„vereinbart 550 kW · Momentanleistung 312,4 kW“",
+      "statt": "„vereinbart 550 kW · Anschluss 630 kVA · Momentan 312,4 kW“ mit geschütztem Leerzeichen U+00A0 vor der Einheit",
+      "grund": "E11 ergänzt durch Entscheid B vom 15.09.2026: vereinbarte kW und Anschluss-kVA ganzzahlig, echte Dezimalstellen bleiben; gemessene Leistung eine Nachkommastelle. Tausenderpunkt und U+00A0 bleiben; ergebnis-zustand-vectors.json führt den Wertbezug seit 1.12. Die beschreibenden `anzeige`-Texte bleiben im Wortlaut der Vorlage."
     }
   ],
   "_nicht_geprueft": [
     {
       "fall": "F16 · Grenzprüfung",
       "feld": "vereinbart_kw gegen die Momentanleistung",
-      "warum": "Die Kopfzeile ZEIGT beide Zahlen; geprüft wird die Grenze erst in AP-15 (`grenze_geprueft` ist deshalb in jedem Fall `false`). Eine Anzeige, die eine Überschreitung behauptete, hätte hier keinen Fakt, der sie trägt."
+      "warum": "Die Kopfzeile ZEIGT beide Zahlen; sie prüft sie nicht selbst. Seit AP-15 IP-31 trägt sie das Urteil des Grenz-Nachweises (`netzanschluss-grenznachweis-vectors.json`: Viertelstunden-Mittel am Hauptzähler gegen die wirksame Grenze) — `grenze_geprueft` ist nur wahr, wo er Grenze UND Hauptzähler hatte. Den Momentanwert gegen die vereinbarte Leistung vergleicht weiterhin niemand: eine Anzeige, die daraus eine Überschreitung behauptete, hätte keinen Fakt, der sie trägt."
     },
     {
       "fall": "F16 · Preisfelder",
@@ -534,6 +542,74 @@
           }
         },
         {
+          "regel": "bindung",
+          "name": "Ein früherer Beginn schiebt sich nie vor eine spätere Bindung derselben Anlage — nichts wird überschrieben",
+          "eingang": {
+            "bestehend": [
+              {
+                "anlage": "AN-3",
+                "netzanschluss": "NA-3",
+                "gueltig_ab": "2026-10-15",
+                "gueltig_bis": null
+              }
+            ],
+            "neu": {
+              "anlage": "AN-3",
+              "netzanschluss": "NA-3",
+              "gueltig_ab": "2026-10-01",
+              "gueltig_bis": null
+            },
+            "heute": "2026-10-20"
+          },
+          "ergebnis": {
+            "beendet": null,
+            "eintrag": null,
+            "fehler": "bindung_ueberlappt",
+            "rueckwirkend": true
+          }
+        },
+        {
+          "regel": "bindung",
+          "name": "Ein Anschluss, der erst ab einem späteren Tag an einer anderen Anlage hängt, ist für eine offene Bindung davor belegt",
+          "eingang": {
+            "bestehend": [
+              {
+                "anlage": "AN-2",
+                "netzanschluss": "NA-2",
+                "gueltig_ab": "2026-10-01",
+                "gueltig_bis": null
+              }
+            ],
+            "neu": {
+              "anlage": "AN-1",
+              "netzanschluss": "NA-2",
+              "gueltig_ab": "2026-09-01",
+              "gueltig_bis": null
+            },
+            "heute": "2026-10-20"
+          },
+          "ergebnis": {
+            "beendet": null,
+            "eintrag": null,
+            "fehler": "anschluss_belegt",
+            "rueckwirkend": true
+          }
+        },
+        {
+          "regel": "kopfzeile",
+          "name": "Vereinbarte Dezimalwerte bleiben exakt; die Momentanleistung behält eine Stelle",
+          "eingang": {
+            "netzanschluss": "NA-1",
+            "vereinbart_kw": "550.4500",
+            "anschluss_kva": "630.625",
+            "momentan_kw": "312.44"
+          },
+          "ergebnis": {
+            "text": "vereinbart 550,45 kW · Anschluss 630,625 kVA · Momentan 312,4 kW",
+            "grenze_geprueft": false
+          }
+        },
+        {
           "regel": "kopfzeile",
           "name": "Die Kopfzeile der Bilanz nennt Vereinbartes, Anschluss und Momentanleistung",
           "eingang": {
@@ -543,7 +619,7 @@
             "momentan_kw": "312.4"
           },
           "ergebnis": {
-            "text": "vereinbart 550 kW · Anschluss 630 kVA · Momentan 312,4 kW",
+            "text": "vereinbart 550 kW · Anschluss 630 kVA · Momentan 312,4 kW",
             "grenze_geprueft": false
           }
         },
@@ -557,7 +633,67 @@
             "momentan_kw": null
           },
           "ergebnis": {
-            "text": "vereinbart 550 kW · Anschluss 630 kVA",
+            "text": "vereinbart 550 kW · Anschluss 630 kVA",
+            "grenze_geprueft": false
+          }
+        },
+        {
+          "regel": "kopfzeile",
+          "name": "Mit Grenz-Nachweis (AP-15 IP-31): Grenze und Hauptzähler lagen vor, der Monat ist belegt",
+          "eingang": {
+            "netzanschluss": "NA-1",
+            "vereinbart_kw": "550",
+            "anschluss_kva": "630",
+            "momentan_kw": null,
+            "nachweis": {"grenze_geprueft": true, "urteil": "eingehalten", "monat": "2026-09"}
+          },
+          "ergebnis": {
+            "text": "vereinbart 550 kW · Anschluss 630 kVA · Grenze im September 2026 eingehalten",
+            "grenze_geprueft": true
+          }
+        },
+        {
+          "regel": "kopfzeile",
+          "name": "Eine belegte Überschreitung heißt überschritten",
+          "eingang": {
+            "netzanschluss": "NA-1",
+            "vereinbart_kw": "550",
+            "anschluss_kva": "630",
+            "momentan_kw": null,
+            "nachweis": {"grenze_geprueft": true, "urteil": "ueberschritten", "monat": "2026-03"}
+          },
+          "ergebnis": {
+            "text": "vereinbart 550 kW · Anschluss 630 kVA · Grenze im März 2026 überschritten",
+            "grenze_geprueft": true
+          }
+        },
+        {
+          "regel": "kopfzeile",
+          "name": "Eine Lücke ist kein sauberer Wert: nicht belegt, nie eingehalten (B5)",
+          "eingang": {
+            "netzanschluss": "NA-1",
+            "vereinbart_kw": "550",
+            "anschluss_kva": "630",
+            "momentan_kw": null,
+            "nachweis": {"grenze_geprueft": true, "urteil": "nicht_belegt", "monat": "2026-10"}
+          },
+          "ergebnis": {
+            "text": "vereinbart 550 kW · Anschluss 630 kVA · Grenze im Oktober 2026 nicht belegt",
+            "grenze_geprueft": true
+          }
+        },
+        {
+          "regel": "kopfzeile",
+          "name": "Ohne Grenze oder ohne Hauptzähler bleibt die Zeile, wie sie war — gezeigt, nicht geprüft",
+          "eingang": {
+            "netzanschluss": "NA-1",
+            "vereinbart_kw": "550",
+            "anschluss_kva": "630",
+            "momentan_kw": null,
+            "nachweis": {"grenze_geprueft": false, "urteil": null, "monat": "2026-09"}
+          },
+          "ergebnis": {
+            "text": "vereinbart 550 kW · Anschluss 630 kVA",
             "grenze_geprueft": false
           }
         }

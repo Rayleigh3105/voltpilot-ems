@@ -526,4 +526,23 @@ class ChargingConfigPublisherTest {
                 Instant.parse("2026-08-31T10:00:00Z")), StandardCharsets.UTF_8));
         assertThat(actualBack).isEqualTo(expectedBack);
     }
+
+    /**
+     * Bestandsschutz AP-06 IP-9: eine Ein-Box-Anlage behaelt denselben
+     * Empfaenger und damit dasselbe Dokument Byte fuer Byte.
+     */
+    @Test
+    void singleBoxPushStaysByteIdentical() {
+        UUID ziel = ChargingConfigService.zielBoxen(List.of(DEVICE), List.of()).get(0);
+        byte[] vorher = ChargingConfigPublisher.document(TENANT, SITE, DEVICE, 277.0,
+                List.of("saeule-1"), "nur_sonne", "auto_vor_speicher",
+                List.of(cp("saeule-1", "Hof Nord", 22.0, 2)), List.of(), null, null,
+                null, List.of(), AT);
+        byte[] nachher = ChargingConfigPublisher.document(TENANT, SITE, ziel, 277.0,
+                List.of("saeule-1"), "nur_sonne", "auto_vor_speicher",
+                List.of(cp("saeule-1", "Hof Nord", 22.0, 2)), List.of(), null, null,
+                null, List.of(), AT);
+
+        assertThat(nachher).isEqualTo(vorher);
+    }
 }

@@ -20,7 +20,7 @@ class MeasurementHistoryServiceTest {
                 datum("=SUM(A1:A2)"), datum("+1"), datum("-1"), datum("@cmd"),
                 datum("\tformula"), datum("\rformula"), datum("harmlos"));
         String csv = new String(service.csv(new MeasurementHistoryService.History(
-                meta, rows, List.of())), StandardCharsets.UTF_8);
+                meta, rows, List.of()), BestandGeraeteCsvVergleich.erzeugung()), StandardCharsets.UTF_8);
         for (String dangerous : List.of("=SUM(A1:A2)", "+1", "-1", "@cmd",
                 "\tformula", "\rformula")) {
             assertThat(csv).contains("\"'" + dangerous.replace("\"", "\"\"") + "\"");

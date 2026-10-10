@@ -5,7 +5,7 @@
  * eine Anlage ohne Entitäten und ohne Modi bekommt KEINE Platzhalter-Karten —
  * **ihr Cockpit IST der Einrichtungspfad**:
  *
- *     1 Gerät verbinden ✓ → 2 Geräte übernehmen → 3 Steuerung wählen
+ *     1 VoltPilot-Box verbinden ✓ → 2 Geräte übernehmen → 3 Steuerung wählen
  *
  * Sobald Entitäten (und damit Modi) da sind, übernimmt der M3-Modul-Stapel;
  * die Seite baut sich „aus genau dem, was gewählt wurde".
@@ -72,7 +72,7 @@ export type SetupStepId = 'geraet' | 'uebernehmen' | 'steuerung';
 export type SetupStepState = 'done' | 'current' | 'todo';
 
 export interface SetupStepAction {
-  /** Was der Knopf auslöst: Gerät verbinden · übernehmen · Werkzeugkasten. */
+  /** Was der Knopf auslöst: Box hinzufügen (im Aufbau) · übernehmen · Werkzeugkasten. */
   kind: 'claim' | 'adopt' | 'toolbox';
   label: string;
 }
@@ -149,12 +149,13 @@ export function setupPath(input: SetupPathInput | null | undefined): SetupPathVi
   const geraet: SetupStep = {
     id: 'geraet',
     num: 1,
-    title: geraetDone ? 'Gerät verbunden' : 'Gerät verbinden',
+    title: geraetDone ? 'VoltPilot-Box verbunden' : 'VoltPilot-Box verbinden',
     line: geraetDone
       ? 'Ihre VoltPilot-Box gehört zu dieser Anlage und meldet sich.'
       : 'Verbinden Sie Ihre VoltPilot-Box mit dieser Anlage - Sie brauchen nur die Geräte-ID.',
     state: geraetDone ? 'done' : 'current',
-    action: geraetDone ? null : { kind: 'claim', label: 'Gerät verbinden' },
+    // Dieselbe Handlung, derselbe Name wie im Aufbau — und dort findet sie statt (EIN Ort für Boxen).
+    action: geraetDone ? null : { kind: 'claim', label: 'VoltPilot-Box hinzufügen' },
   };
 
   const uebernehmenLine = !geraetDone

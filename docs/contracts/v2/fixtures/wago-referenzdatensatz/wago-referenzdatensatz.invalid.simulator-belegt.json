@@ -1,0 +1,42 @@
+{
+  "$comment": "UNGÜLTIG, genau eine Regel gebrochen: ein Simulator-Fall behauptet belegt: true. Der Simulator dient dem Bauen, nie dem Beleg. Sonst gleich dem gültigen Beispiel vorstufe-simulator (erster Fall); mit belegt: false hält die Datei.",
+  "schema_version": "1.0",
+  "kombination": {
+    "controller": "750-8212",
+    "controller_firmware": "04.05.08(27)",
+    "karte": "750-494/000-001",
+    "karte_firmware": "zu erheben",
+    "ausgabeweg": "AW-1 Modbus TCP aus der Anwendung, VoltPilot-Registerbild v1",
+    "registerbild_version": 1,
+    "basisadresse": "zu erheben",
+    "wortfolge": "zu erheben",
+    "hardwareblatt": "hardwareblatt-ahrenberg-c1-fassung-1.md"
+  },
+  "einheiten": {
+    "energy_import_total_kwh": "kWh"
+  },
+  "wertart": {
+    "energy_import_total_kwh": "counter"
+  },
+  "faelle": [
+    {
+      "name": "ek3-zaehler-zurueckgesetzt",
+      "why": "Rücksetzung per WAGO-I/O-CHECK: der Zählerstand fällt von 6 184,35 kWh (123 687 Schritte × 0,05 kWh) auf 0 — erwartet ein counter_reset, kein negativer und kein erfundener Verbrauch",
+      "herkunft": "simulator",
+      "belegt": true,
+      "quelle": "Simulator-Vorstufe (kein Hardwarebeleg)",
+      "input": {
+        "karte": 3,
+        "steckplatz": 4,
+        "vorher": { "energy_import_total": [1, 58151] },
+        "woerter": { "energy_import_total": [0, 0] },
+        "register35": 4
+      },
+      "expected": {
+        "energy_import_total_kwh": 0.0,
+        "quality": "good",
+        "events": ["counter_reset"]
+      }
+    }
+  ]
+}

@@ -24,6 +24,7 @@ sequenceDiagram
 - Der öffentliche Issuer und die interne JWKS-Adresse dürfen unterschiedliche Hosts verwenden. Der erwartete Issuer muss zum Token passen.
 - `voltpilot_app` ist weder Superuser noch `BYPASSRLS`; ohne gesetzten Mandanten liefern geschützte Tabellen keine Kundenzeilen.
 - Plattformverwaltung verwendet `voltpilot_admin` mit `BYPASSRLS` hinter einem Rollencheck. Kundenpfade verwenden diese Verbindung nicht.
+- Die Selbst-Liste externer Konten (`/me.kundenbereiche`) ist die schmale Ausnahme für eigene Zugangsmetadaten: rollenbewacht, ausschließlich das verifizierte Subject, keine Kundendaten oder Freigabe. [Leser und Nachweise](agents/root/uems-unterstuetzung-portal.md).
 - Standort-/Gerätebesitz wird aus dem authentifizierten Kontext bestimmt. Fremde, durch RLS unsichtbare Objekte erscheinen als 404.
 
 Quellen: `TenantFilter`, `TenantAwareDataSource`, `SecurityConfig`, Migrationen und `PortalApiTest` im [API-Service](../services/api/).
@@ -60,9 +61,64 @@ Die Prüfziffer gilt für Referenzen im generierten Format; freie Integrationsre
 
 `out-of-order: true` erlaubt später gemergte Migrationen mit kleinerer Versionsnummer. Eine neue Migration muss unabhängig von der Ankunftsreihenfolge funktionieren. Versionskollisionen und veraltete Buildkopien werden durch `MigrationHygieneTest` geprüft.
 
-Die `SelfHealingFlywayMigrationStrategy` repariert bestimmte Validierungsabweichungen einmalig und versucht die Migration erneut. Das richtet Prüfsummen aus, **führt bereits angewandtes SQL aber nicht erneut aus**. SQL-Fehler und fehlende Out-of-Order-Migrationen sind keine reparierbare Prüfsummendrift. Unerwartete Reparaturwarnungen prüfen; Migrationen niemals deshalb nachträglich bearbeiten.
+`UemsProduktionsreihenfolgeMigrationTest` spielt zusätzlich den vollständigen, eingecheckten
+`main`-Migrationssatz und danach alle übrigen Migrationen mit `out-of-order` ein. Er vergleicht
+Tabelleninhalte (`Bestandsschutz`), Spalten und Constraints einschließlich CHECK-Definitionen mit
+einer frisch in Versionsreihenfolge migrierten Datenbank. Rollenereignisse werden vor dem Nachzug
+gesät. Pflege der Liste und die einmalige Prüfsummenänderung der noch nicht produktiven
+`V20260916150000`: [Produktionsreihenfolge](agents/root/uems-migration-produktionsreihenfolge.md).
 
-`*:missing` toleriert aufgezeichnete, nicht mehr mitgelieferte Migrationen, etwa Dev-Seeds nach Profilwechsel. Ein leeres Produktionsprofil entfernt keine bereits vorhandenen Demodaten.
+Die `SelfHealingFlywayMigrationStrategy` prüft vor Migration und jeder Reparatur lesend die
+Historie: unbekannte angewandte Kernversionen (`FUTURE_*` und `MISSING_*`) sowie offene physische
+`DELETE`-Marker verweigern den Start. Auch eine unlesbare Diagnose bricht ab.
+Geheilt und damit zulässig ist ein Marker nur, wenn die jüngste Zeile seiner Version eine erfolgreiche `SQL`-Neuanwendung mit gleicher Prüfsumme, Beschreibung und gleichem Skript ist.
+So steht es seit dem 02.08.2026 in der Produktion: 15 Marker auf drei Versionen, jeder identisch neu angewandt, von Builds ohne Wächter.
+Die Neuausführung liegt dort in der Vergangenheit; ein offener Marker verweigert weiter und verhindert so genau diese Neuausführung.
+Ein älteres Image kann so keine neuere Historie reparieren und danach Bereitschaft melden. Eine datenbankweite
+Advisory-Sperre hält Diagnose und Flyway-Aufrufe für alle Starts mit dieser Strategie zusammen;
+ihr Schlüssel bleibt über Releases stabil. Sie liegt auf einer separaten lesenden Transaktion,
+die auch bei Startabbruch endet. Manuelle Flyway-Aufrufe und alte Builds ohne Wächter nehmen
+nicht an dieser Sperre teil und müssen betrieblich ausgeschlossen werden. Das schützt erst
+Builds, die den Wächter enthalten; bereits laufende Prozesse hält er nicht an.
+
+Bekannte Prüfsummen-/Beschreibungs-/Typabweichungen werden weiterhin einmal laut repariert.
+Das richtet Metadaten aus, führt geändertes SQL aber nicht aus. Flyway `repair()` kann fehlende
+Versionen außerdem als `DELETE` markieren; deshalb steht der Wächter vor diesem Schreibweg.
+SQL-Fehler und `IGNORED`-Ankünfte ohne Out-of-Order-Freigabe sind keine heilbare Drift.
+
+`*:missing` bleibt für den Profilwechsel erhalten, wird aber durch eine explizite Ausnahme im
+Wächter begrenzt: die acht Dateien unter `db/dev` (Version UND exakter Skriptname) sowie
+`V20260702000100__dev_provisioned_devices.sql` aus `8766260c` (heutige Fassung
+`V20260702020100` aus `ec6d93a7`). Die Git-Historie enthält keine weiteren entfernten Dev-Seeds;
+entfernte Kernskripte sind ausdrücklich keine Ausnahme. Ein leeres Produktionsprofil entfernt
+keine vorhandenen Demodaten. Neue Dev-Seeds benötigen eine bewusste Aktualisierung dieser Liste.
+
+**Lokaler Zweigwechsel:** `docker-compose.yml` setzt für die API ausdrücklich
+`SPRING_PROFILES_ACTIVE=local`; die Produktionsvorlage lässt das Profil leer. Eine bleibende
+Entwicklungsdatenbank kann Kernmigrationen eines anderen Zweigs tragen. Ausschließlich wenn
+`local` das **einzige aktive Profil** ist UND `voltpilot.flyway.startwaechter=nur-warnen` gilt,
+warnt der Wächter deshalb laut und setzt nach den bisherigen Flyway-Regeln fort. `application-local.yml`
+belegt diesen Schalter vor; `VOLTPILOT_FLYWAY_STARTWAECHTER=streng` schaltet lokal auf den strengen
+Wächter zurück. Vorgabe, leeres Profil, nur ein Default-Profil sowie gemischte Profile bleiben
+streng, selbst mit `nur-warnen`. Niedrige unbekannte Versionen können lokal durch `*:missing`
+weiter toleriert werden; FUTURE-Versionen und DELETE-Marker werden mit Versionen ausdrücklich
+gewarnt. Eine lokale Reparatur kann dabei DELETE-Marker erzeugen und einen späteren Start brechen;
+der Modus ist kein Kompatibilitätsnachweis und ausschließlich für Entwicklungsdaten gedacht.
+SQL-Fehler oder unlesbare Diagnosen bleiben Startfehler, die Startsperre bleibt aktiv.
+
+Bei einem Rolling Update mit neuer Migration kann ein neu startender alter Pod bis zu seiner
+Ersetzung in CrashLoop gehen; er meldet keine Readiness. Der neue Pod kennt die Migrationen und
+kann weiter starten. API-Welle 0 mit Readiness und `maxSurge: 1`/`maxUnavailable: 0` erlaubt diesen
+Austausch, garantiert bei gleichzeitigem Ausfall des alten Pods aber keine unterbrechungsfreie
+Verfügbarkeit. Sync-Wellen stoppen keine bereits laufenden alten Prozesse. Für den inkompatiblen
+UEMS-Umstieg bleibt daher der nachgewiesene Nullbestand von API/Writer im Wartungsfenster nötig.
+[Nachher-Blatt Z08](../tools/betriebsabfragen/README.md) prüft die Marker; bei Schaden vor Öffnung:
+API/Writer anhalten, Befund sichern und geübten Rückweg auf den Wiederherstellungspunkt nutzen.
+
+Nachweise: `FlywayStartupGuardTest` (vollständiger main-Satz → UEMS → alter Start ohne Schreibzugriff
+→ neuer Start, kanonischer Historienfingerabdruck; Produktionsmuster der geheilten Marker und jede
+Abweichung davon), `SelfHealingFlywayMigrationStrategyTest`,
+`FlywayIgnoreMissingBootTest`, `FlywayOutOfOrderBootTest`, `BetriebsabfragenBlaetterTest`.
 
 ## Betrieb und Änderungspunkte
 

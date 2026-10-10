@@ -59,7 +59,9 @@ describe('AnlageSetup - die Anlege-Kette', () => {
     const { container } = renderSetup({ deviceCount: 0 });
     await waitFor(() => expect(container.querySelectorAll('.vp-setup-step')).toHaveLength(3));
     expect(screen.getByText('Ihr Weg zum fertigen EMS')).toBeInTheDocument();
-    expect(screen.getAllByText('Gerät verbinden').length).toBeGreaterThan(0);
+    // Schritt 1 heißt wie im Aufbau — und findet dort statt (EIN Ort für Boxen).
+    expect(screen.getAllByText('VoltPilot-Box verbinden').length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'VoltPilot-Box hinzufügen' })).toBeTruthy();
     expect(screen.getByText('Geräte übernehmen')).toBeInTheDocument();
     expect(screen.getByText('Steuerung wählen')).toBeInTheDocument();
   });

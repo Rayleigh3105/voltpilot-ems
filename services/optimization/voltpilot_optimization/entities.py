@@ -61,6 +61,7 @@ from voltpilot_optimization.domain import (
     derive_terminal_value,
 )
 from voltpilot_optimization.night_reserve import NightErrorQuantiles
+from voltpilot_optimization.verbund import erzeuger_id
 
 # The mqtt-schedule-2.0 contract's entity_id pattern (MQTT-topic-safe).
 ENTITY_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
@@ -434,6 +435,12 @@ class CoOptimizationInput:
     #: sie ist eine Eigenschaft des STANDORTS, nicht eines Speichers, und der
     #: Term laeuft deshalb ueber die SUMME der Ladestaende.
     night_error_quantiles: NightErrorQuantiles | None = None
+    #: Die mitsteuernden Boxen (UEMS AP-15 IP-14, P4) - v1-Semantik verbatim
+    #: (:attr:`~voltpilot_optimization.domain.OptimizationInput.verbund`). Die
+    #: PV einer Box ist der Erzeuger :func:`verbund.erzeuger_id`, ihre
+    #: Verbraucher nennt ``BoxAnteil.verbraucher``, der geplante Speicher haengt
+    #: an ``device_id``. ``()`` = kein Verbund, kein Modul.
+    verbund: tuple = ()
 
     def __post_init__(self) -> None:
         n = len(self.slot_starts)
@@ -600,7 +607,36 @@ def from_v1_input(
     grid-charge permission = ``netzladen_erlaubt``), one producer entity (the
     aggregated site PV forecast), no controllable loads. Every site-level
     field carries over verbatim. The golden suite pins that
-    ``co_optimize(from_v1_input(x))`` reproduces ``optimize(x)``."""
+    ``co_optimize(from_v1_input(x))`` reproduces ``optimize(x)``.
+
+    Mit Verbund (AP-15 IP-14) teilt sich die PV: der Erzeuger
+    ``producer_entity_id`` behaelt den Rest (die fuehrende Box), jede
+    mitsteuernde Box bekommt ihren Teil als eigenen Erzeuger
+    (:func:`voltpilot_optimization.verbund.erzeuger_id`)."""
+    producers = (
+        ProducerEntity(
+            entity_id=producer_entity_id,
+            generation_kw=inp.pv_kw,
+            curtailable=True,
+        ),
+    )
+    if inp.verbund:
+        rest = [
+            inp.pv_kw[t] - sum(box.pv_kw[t] for box in inp.verbund)
+            for t in range(len(inp.pv_kw))
+        ]
+        producers = (
+            ProducerEntity(
+                entity_id=producer_entity_id, generation_kw=rest, curtailable=True
+            ),
+        ) + tuple(
+            ProducerEntity(
+                entity_id=erzeuger_id(box.device_id),
+                generation_kw=list(box.pv_kw),
+                curtailable=True,
+            )
+            for box in inp.verbund
+        )
     return CoOptimizationInput(
         tenant_id=inp.tenant_id,
         site_id=inp.site_id,
@@ -616,13 +652,7 @@ def from_v1_input(
                 charge_from_grid_allowed=inp.netzladen_erlaubt,
             ),
         ),
-        producers=(
-            ProducerEntity(
-                entity_id=producer_entity_id,
-                generation_kw=inp.pv_kw,
-                curtailable=True,
-            ),
-        ),
+        producers=producers,
         grid_limit_kw=inp.grid_limit_kw,
         max_feed_in_kw=inp.max_feed_in_kw,
         slot_minutes=inp.slot_minutes,
@@ -632,6 +662,7 @@ def from_v1_input(
         leistungspreis_eur_kw=inp.leistungspreis_eur_kw,
         peak_so_far_kw=inp.peak_so_far_kw,
         night_error_quantiles=inp.night_error_quantiles,
+        verbund=inp.verbund,
     )
 
 

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { Recht } from './Recht';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -14,9 +15,12 @@ import {
   type SiteEntity,
   type SupplyPriceUpdate,
   type TarifArt,
+  type Funktionen,
 } from '../api';
 import { VERAEUSSERUNGSFORM_FRAGE, VERAEUSSERUNGSFORM_LABEL } from '../glossar';
-import { isPlatformAdmin } from '../auth';
+import { standortWaehlenSatz, standortWahl, standortWahlHinweis, type StandortWahl } from '../anlageStandort';
+import { alsOrtFehler } from '../standorte';
+import { showTechnicalLayer } from '../rollen';
 import { entitiesApi, type EntityTypeDef } from '../entitiesApi';
 import {
   creatableConsumerTypes,
@@ -65,8 +69,21 @@ import { fmtNum } from '../format';
 import { LocationMap } from './LocationMap';
 import { VpPicker } from './VpPicker';
 import { TariffFields } from './TariffFields';
+import { StandortZuerst } from './StandortZuerst';
 import { HelpLink } from '../help/HelpProvider';
 import { helpForSetupStep } from '../help/context';
+import type { Route } from '../nav';
+import {
+  anlegeArt,
+  anlegeSchritte,
+  anlegeStandort,
+  ERSTE_DATEN_NUR_MESSEN,
+  messstellenZiel,
+  nurMessenWeiterSatz,
+  ZU_DEN_MESSSTELLEN,
+  type AnlegeArt,
+  type AnlegeRueckkehr,
+} from '../anlegeNurMessen';
 import {
   buildSupplyPricePatch,
   showSupplyPriceFields,
@@ -206,10 +223,10 @@ export function LocationSearch({
   );
 }
 
-function StepsRail({ current }: { current: number }) {
+function StepsRail({ current, schritte }: { current: number; schritte: readonly string[] }) {
   return (
     <ol className="vp-steps">
-      {FLOW_STEPS.map((label, i) => {
+      {schritte.map((label, i) => {
         const n = i + 1;
         const state = n < current ? 'done' : n === current ? 'active' : 'todo';
         return (
@@ -229,10 +246,12 @@ export function AnlageFlow({
   sites,
   existingSites,
   waitForFirstData,
-  standortId,
   onSiteCreated,
   onDone,
   onSkipAll,
+  kopf,
+  standortId: vorwahl = null,
+  rueckkehr = null,
 }: {
   /** The customer's existing Anlagen (wizard resume + Gerät target picker). */
   sites: Site[];
@@ -248,18 +267,30 @@ export function AnlageFlow({
    * false = drawer: the flow ends on a summary card.
    */
   waitForFirstData: boolean;
-  /**
-   * Der Standort, an dem die neue Anlage entsteht (UEMS AP-02 IP-9) - gesetzt,
-   * wenn „+ Hinzufügen › Anlage" im Aufbau eines Standorts beginnt. Ohne ihn
-   * belegt der Server bei genau einem Standort selbst vor.
-   */
-  standortId?: string | null;
   /** Fired the moment the Anlage row exists (host refreshes on close). */
   onSiteCreated?: (site: Site) => void;
-  /** The flow is finished or deliberately left - host closes/returns. */
-  onDone: () => void;
+  /**
+   * The flow is finished or deliberately left - host closes/returns. Im Modus
+   * „nur messen“ nennt der Knopf „Zu den Messstellen“ sein Ziel; ohne Ziel wie heute.
+   */
+  onDone: (ziel?: Route) => void;
   /** Wizard only: "Später einrichten" leaves the whole flow. */
   onSkipAll?: () => void;
+  /**
+   * Was der Wirt über dem Fluss zeigt, abhängig von den Schritten, die er wirklich hat
+   * (Einrichtungs-Assistent: „In vier Schritten …“). `null`, solange die Art offen ist.
+   */
+  kopf?: (schritte: readonly string[] | null) => ReactNode;
+  /**
+   * Der Standort, an dem die Anlage entstehen soll — vorbelegt vom Assistenten
+   * „Messen & Auswerten“ (Knopf „Messanlage anlegen“) oder von „Hinzufügen › Anlage“
+   * im Aufbau eines Standorts (UEMS AP-02 IP-9). Kein Schalter: der Modus folgt
+   * weiter dem Fakt dieses Standorts (`anlegeArt`), und der Kunde kann ihn in Schritt 1
+   * ändern. Ohne Angabe wie heute.
+   */
+  standortId?: string | null;
+  /** Das Ende im Modus „nur messen“, wenn ein Wirt den Kunden danach wieder aufnimmt. */
+  rueckkehr?: AnlegeRueckkehr | null;
 }) {
   // Resume: a customer who already has an Anlage but no device continues at
   // the Register step (skippable) on the way to the Gerät step.
@@ -273,85 +304,145 @@ export function AnlageFlow({
   // Welche Anwendungen der Assistent eingeschaltet hat (für die Zusammenfassung).
   const [eingeschaltet, setEingeschaltet] = useState<string[]>([]);
   const [step, setStep] = useState<number>(initialFlowStep(sites.length > 0));
+  // Steuern-Regel im Anlege-Fluss (`anlegeNurMessen.ts`): die Funktionen IN der
+  // Entscheidung laden — `undefined`, solange sie unterwegs sind (dann fehlen
+  // Geld-Block und „Betrieb“, statt aufzublitzen); bei einem Fehler bleibt die
+  // Entscheidung ebenso offen.
+  // Der Standort kommt aus Schritt 1, nach dem Anlegen steht die Art fest.
+  const [funktionen, setFunktionen] = useState<Funktionen | null | undefined>(undefined);
+  const [funktionenRunde, setFunktionenRunde] = useState(0);
+  const [standortId, setStandortId] = useState<string | null>(vorwahl);
+  const [artBeimAnlegen, setArtBeimAnlegen] = useState<AnlegeArt | null>(null);
+  useEffect(() => {
+    let aktiv = true;
+    api.funktionen().then(
+      (f) => {
+        if (aktiv) setFunktionen(f);
+      },
+      () => {
+        if (aktiv) setFunktionen(null);
+      },
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [funktionenRunde]);
+  // Die neue Anlage steht noch nicht in den Funktionen — nach dem Anlegen zählt ihr Standort.
+  const ort = createdHere
+    ? { standortId, hatAnlage: true }
+    : { standortId, anlageId: site?.id ?? null, hatAnlage: sites.length > 0 || (existingSites?.length ?? 0) > 0 };
+  const art: AnlegeArt | null = artBeimAnlegen ?? (funktionen === undefined ? null : anlegeArt(funktionen, ort));
+  const nurMessen = art === 'nur_messen';
+  const schritte = anlegeSchritte(art);
+  const messStandort = nurMessen ? anlegeStandort(funktionen ?? null, ort) : null;
+  const messenEnde: NurMessenEnde | null = nurMessen
+    ? rueckkehr
+      ? { satz: rueckkehr.satz, zurueck: rueckkehr.knopf }
+      : { satz: nurMessenWeiterSatz(messStandort), ziel: messstellenZiel(messStandort) }
+    : null;
 
   const locationSites = existingSites ?? sites;
-  const finished = step > FLOW_STEPS.length;
+  // Im Modus „nur messen“ endet der Fluss nach dem Gerät — „Betrieb“ gehört zum Steuern.
+  const finished = step > (nurMessen ? schritte.length : FLOW_STEPS.length);
 
   return (
-    <div className="vp-anlage-flow">
-      <StepsRail current={step} />
-      <div className="vp-context-help"><HelpLink article={helpForSetupStep(step)}>Hilfe zu diesem Schritt</HelpLink></div>
-      {step === 1 && (
-        <AnlageStep
-          locationSites={locationSites}
-          standortId={standortId ?? null}
-          onCreated={(s) => {
-            setSite(s);
-            setCreatedHere(true);
-            onSiteCreated?.(s);
-            setStep(2);
-          }}
-        />
-      )}
-      {step === 2 && site && (
-        <RegisterStep
-          site={site}
-          onApplied={(pv, storage) => {
-            setPvApplied(pv);
-            setStorageApplied(storage);
-            setStep(3);
-          }}
-          onManualSaved={() => {
-            setManualBatterySaved(true);
-            setStep(3);
-          }}
-          onSkip={() => setStep(3)}
-        />
-      )}
-      {step === 3 && site && (
-        <GeraetStep
-          sites={createdHere ? [site] : locationSites}
-          site={site}
-          onSiteChange={setSite}
-          onClaimed={(d) => {
-            setClaimed(d);
-            setStep(4);
-          }}
-          onSkip={() => setStep(4)}
-        />
-      )}
-      {step === 4 && site && (
-        <AnwendungenStep
-          site={site}
-          onNext={(ids) => {
-            setEingeschaltet(ids);
-            setStep(5);
-          }}
-        />
-      )}
-      {finished &&
-        site &&
-        (waitForFirstData && claimed ? (
-          <FirstDataStep siteId={site.id} onDone={onDone} />
-        ) : (
-          <SummaryStep
-            site={site}
-            claimed={claimed}
-            pvApplied={pvApplied}
-            storageApplied={storageApplied}
-            manualBatterySaved={manualBatterySaved}
-            eingeschaltet={eingeschaltet}
-            onDone={onDone}
+    <>
+      {kopf?.(art === null ? null : schritte)}
+      <div className="vp-anlage-flow">
+        <StepsRail current={step} schritte={schritte} />
+        <div className="vp-context-help"><HelpLink article={helpForSetupStep(finished ? FLOW_STEPS.length + 1 : step)}>Hilfe zu diesem Schritt</HelpLink></div>
+        {step === 1 && art === 'standort_zuerst' && (
+          <StandortZuerst
+            onGespeichert={(id) => {
+              setStandortId(id);
+              setFunktionen(undefined);
+              setFunktionenRunde((runde) => runde + 1);
+            }}
           />
-        ))}
-      {!finished && onSkipAll && (
-        <p className="vp-note" style={{ marginTop: 20, textAlign: 'center' }}>
-          <button type="button" className="vp-linklike" onClick={onSkipAll}>
-            Später einrichten - direkt zum Portal
-          </button>
-        </p>
-      )}
-    </div>
+        )}
+        {step === 1 && art !== null && art !== 'standort_zuerst' && (
+          <AnlageStep
+            locationSites={locationSites}
+            mitGeld={art === 'wie_heute'}
+            vorwahl={vorwahl}
+            onStandort={setStandortId}
+            onCreated={(s) => {
+              setSite(s);
+              setCreatedHere(true);
+              if (art) setArtBeimAnlegen(art);
+              onSiteCreated?.(s);
+              setStep(2);
+            }}
+          />
+        )}
+        {step === 1 && art === null && (
+          <p className="vp-note" aria-busy={funktionen === undefined}>
+            {funktionen === undefined
+              ? 'Der nächste Schritt wird vorbereitet …'
+              : 'Der nächste Schritt konnte nicht geladen werden.'}
+          </p>
+        )}
+        {step === 2 && site && (
+          <RegisterStep
+            site={site}
+            onApplied={(pv, storage) => {
+              setPvApplied(pv);
+              setStorageApplied(storage);
+              setStep(3);
+            }}
+            onManualSaved={() => {
+              setManualBatterySaved(true);
+              setStep(3);
+            }}
+            onSkip={() => setStep(3)}
+          />
+        )}
+        {step === 3 && site && (
+          <GeraetStep
+            sites={createdHere ? [site] : locationSites}
+            site={site}
+            onSiteChange={setSite}
+            onClaimed={(d) => {
+              setClaimed(d);
+              setStep(4);
+            }}
+            onSkip={() => setStep(4)}
+          />
+        )}
+        {step === 4 && site && !nurMessen && (
+          <AnwendungenStep
+            site={site}
+            onNext={(ids) => {
+              setEingeschaltet(ids);
+              setStep(5);
+            }}
+          />
+        )}
+        {finished &&
+          site &&
+          (waitForFirstData && claimed ? (
+            <FirstDataStep siteId={site.id} onDone={onDone} messen={messenEnde} />
+          ) : (
+            <SummaryStep
+              site={site}
+              claimed={claimed}
+              pvApplied={pvApplied}
+              storageApplied={storageApplied}
+              manualBatterySaved={manualBatterySaved}
+              eingeschaltet={eingeschaltet}
+              onDone={onDone}
+              messen={messenEnde}
+            />
+          ))}
+        {!finished && onSkipAll && (
+          <p className="vp-note" style={{ marginTop: 20, textAlign: 'center' }}>
+            <button type="button" className="vp-linklike" onClick={onSkipAll}>
+              Später einrichten - direkt zum Portal
+            </button>
+          </p>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -364,11 +455,22 @@ export function AnlageFlow({
  */
 function AnlageStep({
   locationSites,
-  standortId,
+  mitGeld,
+  vorwahl,
+  onStandort,
   onCreated,
 }: {
   locationSites: Site[];
-  standortId: string | null;
+  /**
+   * Steuern-Regel im Anlege-Fluss: Veräußerungsform und Feineinstellungen stehen nur,
+   * wenn der Fluss wie heute spricht — nicht im Modus „nur messen“ und nicht, solange
+   * das noch nicht feststeht. Was nicht zu sehen war, wird nicht gesendet.
+   */
+  mitGeld: boolean;
+  /** Vom Wirt vorbelegter Standort; gilt nur, wenn er zur Wahl steht (sonst die heutige Vorbelegung). */
+  vorwahl: string | null;
+  /** Der gewählte oder vorbelegte Standort — an ihm entscheidet der Fluss. */
+  onStandort: (standortId: string | null) => void;
   onCreated: (site: Site) => void;
 }) {
   const [name, setName] = useState('');
@@ -400,6 +502,35 @@ function AnlageStep({
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const nameRef = useRef<HTMLInputElement>(null);
+  // UEMS AP-02 IP-8: der Standort der neuen Anlage — vorbelegt bei genau einem,
+  // zur Wahl bei mehreren. Ohne Standort-Objekt (oder unlesbar) kein Picker und
+  // kein `standortId`: der Schritt bleibt, wie er war (AnlageFlow.standort.test.tsx).
+  const [standortAuswahl, setStandortAuswahl] = useState<StandortWahl | null>(null);
+  const [standortId, setStandortId] = useState<string | null>(null);
+  const [standortFehler, setStandortFehler] = useState<string | null>(null);
+  const [standorteRunde, setStandorteRunde] = useState(0);
+
+  useEffect(() => {
+    let aktiv = true;
+    api
+      .standorte()
+      .then((antwort) => {
+        if (!aktiv) return;
+        const wahl = standortWahl(antwort);
+        const vorbelegt =
+          vorwahl && wahl?.optionen.some((o) => o.value === vorwahl) ? vorwahl : (wahl?.vorbelegt ?? null);
+        setStandortAuswahl(wahl);
+        setStandortId(vorbelegt);
+        onStandort(vorbelegt);
+      })
+      .catch(() => {
+        // Unlesbar: kein Picker. Bei genau einem Standort ordnet der Server selbst zu,
+        // bei mehreren antwortet er 422 mit seinem Satz (siehe `submit`).
+      });
+    return () => {
+      aktiv = false;
+    };
+  }, [standorteRunde]);
 
   const valid = name.trim().length > 0;
   // "Gleicher Standort wie …": Anlagen the customer already placed on the map.
@@ -429,21 +560,31 @@ function AnlageStep({
       nameRef.current?.focus();
       return;
     }
-    const praemieValue = plantKind === 'direktvermarktung' ? parsePremiumInput(praemie) : null;
+    if (standortAuswahl && !standortId) {
+      setStandortFehler(standortWaehlenSatz(standortAuswahl.optionen.length));
+      document.getElementById('flow-standort')?.focus();
+      return;
+    }
+    // Steuern-Regel im Anlege-Fluss: ohne Geld-Block gilt, was ein unberührter Block
+    // sendet — nie ein Wert, den der Kunde nicht sehen konnte (etwa nach dem Wechsel
+    // zu einem Standort, der nur misst).
+    const kind: PlantKind = mitGeld ? plantKind : 'eigenverbrauch';
+    const tarif: TarifArt = mitGeld ? tarifArt : 'ohne';
+    const praemieValue = kind === 'direktvermarktung' ? parsePremiumInput(praemie) : null;
     if (praemieValue === undefined) {
       setErr('Bitte geben Sie den anzulegenden Wert als Zahl in ct/kWh an, z. B. 8,11.');
       return;
     }
-    const tarifParamValue = tarifArt === 'ohne' ? null : parsePremiumInput(tarifParam);
+    const tarifParamValue = tarif === 'ohne' ? null : parsePremiumInput(tarifParam);
     if (tarifParamValue === undefined) {
       setErr(
-        tarifArt === 'dynamisch'
+        tarif === 'dynamisch'
           ? 'Bitte geben Sie den Aufschlag als Zahl in ct/kWh an, z. B. 18.'
           : 'Bitte geben Sie Ihren Arbeitspreis als Zahl in ct/kWh an, z. B. 32,5.',
       );
       return;
     }
-    const maxFeedInValue = parseFeedInCapInput(maxFeedIn);
+    const maxFeedInValue = mitGeld ? parseFeedInCapInput(maxFeedIn) : null;
     if (maxFeedInValue === undefined) {
       setErr('Bitte geben Sie die maximale Einspeiseleistung als Zahl in kW an, z. B. 75.');
       return;
@@ -452,7 +593,7 @@ function AnlageStep({
     // the Tarif-Art uses it (dynamisch/ohne) - the prefilled suggestions stay a
     // prefill, never an auto-activated sheet.
     let supplyPatch: SupplyPriceUpdate | null = null;
-    if (priceMode === 'genau' && showSupplyPriceFields(tarifArt)) {
+    if (mitGeld && priceMode === 'genau' && showSupplyPriceFields(tarif)) {
       const built = buildSupplyPricePatch(supply);
       if ('error' in built) {
         setErr(built.error);
@@ -468,11 +609,11 @@ function AnlageStep({
         biddingZone: zone,
         latitude: lat,
         longitude: lon,
-        plantKind,
+        plantKind: kind,
         anzulegenderWertCtKwh: praemieValue,
-        tarifArt,
+        tarifArt: tarif,
         tarifParamCtKwh: tarifParamValue,
-        netzladenErlaubt: netzladen,
+        netzladenErlaubt: mitGeld && netzladen,
         maxFeedInKw: maxFeedInValue,
         ...(standortId ? { standortId } : {}),
       });
@@ -487,6 +628,14 @@ function AnlageStep({
       }
       onCreated(site);
     } catch (e) {
+      const abgelehnt = e instanceof ApiError ? alsOrtFehler(e.body) : null;
+      const code: string | undefined = abgelehnt?.code;
+      if (abgelehnt && code === 'standort_waehlen') {
+        // Der Server kennt mehrere Standorte, die Auswahl hier (noch) nicht: sein Satz an den Picker, Auswahl neu lesen.
+        setStandortFehler(abgelehnt.message);
+        setStandorteRunde((r) => r + 1);
+        return;
+      }
       setErr(
         e instanceof ApiError && e.status === 400
           ? 'Bitte prüfen Sie den Namen Ihrer Anlage.'
@@ -517,6 +666,22 @@ function AnlageStep({
           onBlur={() => setTouched(true)}
           error={touched && !valid ? 'Bitte geben Sie einen Namen für Ihre Anlage ein.' : null}
         />
+        {standortAuswahl && (
+          <VpPicker
+            id="flow-standort"
+            label="Standort *"
+            placeholder="Standort wählen"
+            options={standortAuswahl.optionen}
+            value={standortId}
+            onChange={(v) => {
+              setStandortId(v);
+              setStandortFehler(null);
+              onStandort(v);
+            }}
+            hint={standortWahlHinweis(standortAuswahl, standortId) ?? undefined}
+            error={standortFehler}
+          />
+        )}
         {reusable.length > 0 && (
           <div className="vp-reuse-loc">
             <span className="vp-reuse-loc-lbl">Gleicher Standort wie</span>
@@ -544,117 +709,122 @@ function AnlageStep({
             setLon(lo);
           }}
         />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-          <VpPicker
-            id="flow-plant-kind"
-            label={VERAEUSSERUNGSFORM_LABEL}
-            options={[
-              { value: 'eigenverbrauch', label: 'Eigenverbrauch (Haushalt/Gewerbe)' },
-              {
-                value: 'direktvermarktung',
-                label: 'Direktvermarktung (Einspeisung am Markt)',
-              },
-            ]}
-            value={plantKind}
-            onChange={(v) => setPlantKind(v as PlantKind)}
-          />
-          <p className="vp-note" style={{ margin: 0 }}>
-            {VERAEUSSERUNGSFORM_FRAGE} Sie bestimmt auch, wie Ihr Vorteil erzählt wird:
-            „gespart" beim Eigenverbrauch, „mehr verdient" bei der Direktvermarktung.
-          </p>
-        </div>
-        <div>
-          <button
-            type="button"
-            className="vp-linklike"
-            aria-expanded={advanced}
-            onClick={() => setAdvanced((a) => !a)}
-          >
-            <Icon
-              name="chevron-down"
-              size={14}
-              style={{
-                verticalAlign: '-2px',
-                marginRight: 4,
-                transform: advanced ? 'rotate(180deg)' : undefined,
-              }}
-            />
-            Feineinstellungen {advanced ? 'ausblenden' : '(optional)'}
-          </button>
-          {!advanced && (
-            <p className="vp-note" style={{ margin: '4px 0 0' }}>
-              Stromtarif, Vergütung, Netzladen und Einspeisegrenze - jetzt oder
-              später unter „Einstellungen".
-            </p>
-          )}
-        </div>
-        {advanced && (
+        {/* Steuern-Regel im Anlege-Fluss: im Modus „nur messen“ gibt es diesen Teil nicht. */}
+        {mitGeld && (
           <>
-            {plantKind === 'direktvermarktung' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                <Input
-                  label="Anzulegender Wert (ct/kWh)"
-                  placeholder="z. B. 8,11"
-                  inputMode="decimal"
-                  value={praemie}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPraemie(e.target.value)}
-                />
-                <p className="vp-note" style={{ margin: 0 }}>
-                  Steht in Ihrem EEG-Zuschlag bzw. Direktvermarktungsvertrag. Optional -
-                  wenn angegeben, rechnen wir Ihre Marktprämie (anzulegender Wert minus
-                  Monatsmarktwert Solar) in Ihren Mehrerlös ein; bei negativen
-                  Börsenpreisen entfällt sie.
-                </p>
-              </div>
-            )}
-            <TariffFields
-              tarifArt={tarifArt}
-              onTarifArt={setTarifArt}
-              param={tarifParam}
-              onParam={setTarifParam}
-              idPrefix="flow-site"
-              supplyValues={supply}
-              onSupplyChange={(field, value) => setSupply((s) => ({ ...s, [field]: value }))}
-              priceMode={priceMode}
-              onPriceMode={setPriceMode}
-            />
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
               <VpPicker
-                id="flow-netzladen"
-                label="Netzladen des Speichers"
+                id="flow-plant-kind"
+                label={VERAEUSSERUNGSFORM_LABEL}
                 options={[
-                  { value: 'verboten', label: 'Verboten - EEG-Anlage (nur Solarladen)' },
-                  { value: 'erlaubt', label: 'Erlaubt - Speicher darf aus dem Netz laden' },
+                  { value: 'eigenverbrauch', label: 'Eigenverbrauch (Haushalt/Gewerbe)' },
+                  {
+                    value: 'direktvermarktung',
+                    label: 'Direktvermarktung (Einspeisung am Markt)',
+                  },
                 ]}
-                value={netzladen ? 'erlaubt' : 'verboten'}
-                onChange={(v) => setNetzladen(v === 'erlaubt')}
+                value={plantKind}
+                onChange={(v) => setPlantKind(v as PlantKind)}
               />
               <p className="vp-note" style={{ margin: 0 }}>
-                EEG-geförderte Anlagen dürfen ihren Speicher nicht aus dem Netz laden
-                (Ausschließlichkeitsprinzip). Nur aktivieren, wenn Ihre Anlage keine
-                EEG-Vergütung bezieht.
+                {VERAEUSSERUNGSFORM_FRAGE} Sie bestimmt auch, wie Ihr Vorteil erzählt wird:
+                „gespart" beim Eigenverbrauch, „mehr verdient" bei der Direktvermarktung.
               </p>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-              <Input
-                label="Maximale Einspeiseleistung am Netzanschlusspunkt (kW)"
-                placeholder="z. B. 75"
-                inputMode="decimal"
-                value={maxFeedIn}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                  setMaxFeedIn(e.target.value)
-                }
-              />
-              <p className="vp-note" style={{ margin: 0 }}>
-                Steht in Ihrer Netzanschluss-Zusage bzw. im Einspeisevertrag. Optional -
-                wenn angegeben, plant VoltPilot die Einspeisung nie über diese Grenze
-                hinaus. Ihr Bezug aus dem Netz ist davon nicht betroffen.
-              </p>
+            <div>
+              <button
+                type="button"
+                className="vp-linklike"
+                aria-expanded={advanced}
+                onClick={() => setAdvanced((a) => !a)}
+              >
+                <Icon
+                  name="chevron-down"
+                  size={14}
+                  style={{
+                    verticalAlign: '-2px',
+                    marginRight: 4,
+                    transform: advanced ? 'rotate(180deg)' : undefined,
+                  }}
+                />
+                Feineinstellungen {advanced ? 'ausblenden' : '(optional)'}
+              </button>
+              {!advanced && (
+                <p className="vp-note" style={{ margin: '4px 0 0' }}>
+                  Stromtarif, Vergütung, Netzladen und Einspeisegrenze - jetzt oder
+                  später unter „Einstellungen".
+                </p>
+              )}
             </div>
+            {advanced && (
+              <>
+                {plantKind === 'direktvermarktung' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                    <Input
+                      label="Anzulegender Wert (ct/kWh)"
+                      placeholder="z. B. 8,11"
+                      inputMode="decimal"
+                      value={praemie}
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPraemie(e.target.value)}
+                    />
+                    <p className="vp-note" style={{ margin: 0 }}>
+                      Steht in Ihrem EEG-Zuschlag bzw. Direktvermarktungsvertrag. Optional -
+                      wenn angegeben, rechnen wir Ihre Marktprämie (anzulegender Wert minus
+                      Monatsmarktwert Solar) in Ihren Mehrerlös ein; bei negativen
+                      Börsenpreisen entfällt sie.
+                    </p>
+                  </div>
+                )}
+                <TariffFields
+                  tarifArt={tarifArt}
+                  onTarifArt={setTarifArt}
+                  param={tarifParam}
+                  onParam={setTarifParam}
+                  idPrefix="flow-site"
+                  supplyValues={supply}
+                  onSupplyChange={(field, value) => setSupply((s) => ({ ...s, [field]: value }))}
+                  priceMode={priceMode}
+                  onPriceMode={setPriceMode}
+                />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  <VpPicker
+                    id="flow-netzladen"
+                    label="Netzladen des Speichers"
+                    options={[
+                      { value: 'verboten', label: 'Verboten - EEG-Anlage (nur Solarladen)' },
+                      { value: 'erlaubt', label: 'Erlaubt - Speicher darf aus dem Netz laden' },
+                    ]}
+                    value={netzladen ? 'erlaubt' : 'verboten'}
+                    onChange={(v) => setNetzladen(v === 'erlaubt')}
+                  />
+                  <p className="vp-note" style={{ margin: 0 }}>
+                    EEG-geförderte Anlagen dürfen ihren Speicher nicht aus dem Netz laden
+                    (Ausschließlichkeitsprinzip). Nur aktivieren, wenn Ihre Anlage keine
+                    EEG-Vergütung bezieht.
+                  </p>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                  <Input
+                    label="Maximale Einspeiseleistung am Netzanschlusspunkt (kW)"
+                    placeholder="z. B. 75"
+                    inputMode="decimal"
+                    value={maxFeedIn}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                      setMaxFeedIn(e.target.value)
+                    }
+                  />
+                  <p className="vp-note" style={{ margin: 0 }}>
+                    Steht in Ihrer Netzanschluss-Zusage bzw. im Einspeisevertrag. Optional -
+                    wenn angegeben, plant VoltPilot die Einspeisung nie über diese Grenze
+                    hinaus. Ihr Bezug aus dem Netz ist davon nicht betroffen.
+                  </p>
+                </div>
+              </>
+            )}
           </>
         )}
       </div>
-      <Button
+      <Recht aktion="anlage.verwalten"><Button
         variant="primary"
         size="lg"
         fullWidth
@@ -663,7 +833,7 @@ function AnlageStep({
         style={{ marginTop: 20 }}
       >
         {busy ? 'Lege Anlage an…' : 'Weiter'}
-      </Button>
+      </Button></Recht>
       {lat == null && (
         <p className="vp-note" style={{ marginTop: 8 }}>
           Ohne Standort geht es auch - dann allerdings ohne Wetterprognose.
@@ -794,7 +964,7 @@ function RegisterStep({
           Datenquelle: Marktstammdatenregister der Bundesnetzagentur (dl-de/by-2-0). Straße und
           Koordinaten sind für private Betreiber nicht öffentlich - Ihren Standort setzen Sie selbst.
         </p>
-        <Button
+        <Recht aktion="anlage.verwalten"><Button
           variant="primary"
           size="lg"
           fullWidth
@@ -803,7 +973,7 @@ function RegisterStep({
           style={{ marginTop: 8 }}
         >
           {busy ? 'Wird übernommen…' : 'Übernehmen & weiter'}
-        </Button>
+        </Button></Recht>
         <p className="vp-note" style={{ marginTop: 8, textAlign: 'center' }}>
           <button
             type="button"
@@ -1037,7 +1207,7 @@ function ManualBatteryStep({
           onChange={(e) => setMaxDischarge((e.target as HTMLInputElement).value)}
         />
       </div>
-      <Button
+      <Recht aktion="geraet.einrichten"><Button
         variant="primary"
         size="lg"
         fullWidth
@@ -1046,7 +1216,7 @@ function ManualBatteryStep({
         style={{ marginTop: 20 }}
       >
         {busy ? 'Speichere…' : 'Speicher speichern'}
-      </Button>
+      </Button></Recht>
       <p className="vp-note" style={{ marginTop: 8, textAlign: 'center' }}>
         <button type="button" className="vp-linklike" onClick={onSkip}>
           Kein Speicher oder später eintragen
@@ -1147,7 +1317,7 @@ function AnwendungenStep({
   // - „Später entscheiden" ist eine Wahl, ein unberührter Schritt nicht.
   const profilBeruehrt = useRef(false);
 
-  const admin = isPlatformAdmin();
+  const admin = showTechnicalLayer();
 
   // Die Batterie, die Register-/Handeingabe gerade angelegt hat (oder keine).
   useEffect(() => {
@@ -1354,7 +1524,7 @@ function AnwendungenStep({
             onClick={() => waehleModell(id)}
           />
         ) : (
-          <button
+          <Recht aktion="betriebsweise.aendern"><button
             type="button"
             role="switch"
             aria-checked={an}
@@ -1363,7 +1533,7 @@ function AnwendungenStep({
             onClick={() => toggle(id)}
           >
             <span className="vp-switch-knob" aria-hidden="true" />
-          </button>
+          </button></Recht>
         )}
       </li>
     );
@@ -1518,7 +1688,7 @@ function AnwendungenStep({
         </section>
       )}
 
-      <Button
+      <Recht aktion="betriebsweise.aendern"><Button
         variant="primary"
         size="lg"
         fullWidth
@@ -1527,7 +1697,7 @@ function AnwendungenStep({
         style={{ marginTop: 20 }}
       >
         {busy ? 'Speichere…' : 'Weiter'}
-      </Button>
+      </Button></Recht>
       <p className="vp-note" style={{ marginTop: 8, textAlign: 'center' }}>
         <button type="button" className="vp-linklike" onClick={() => onNext([])}>
           Überspringen - später festlegen
@@ -1693,14 +1863,14 @@ function GeraetStep({
 
   return (
     <div className="vp-onboarding-step">
-      <h3>Verbinden Sie Ihr VoltPilot-Gerät</h3>
+      <h3>Verbinden Sie Ihre VoltPilot-Box</h3>
       <p className="vp-muted">
         {DEVICE_ID_FIELD.help}
-        {!multiSite && ` Das Gerät wird mit der Anlage „${site.name}“ verbunden.`}
+        {!multiSite && ` Die Box wird mit der Anlage „${site.name}“ verbunden.`}
       </p>
       <p className="vp-note">
-        Wechselrichter, Erzeuger und Verbraucher richten Sie direkt am Gerät ein – auf der
-        Geräteseite „Meine Anlage". Hier im Portal verbinden Sie das Gerät nur mit Ihrem Konto.
+        Hier verbinden Sie nur die Box mit Ihrem Konto. Wechselrichter, Zähler und Verbraucher
+        kommen danach im Aufbau der Anlage dazu.
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 16 }}>
         {multiSite && (
@@ -1735,7 +1905,7 @@ function GeraetStep({
           }}
         />
       </div>
-      <Button
+      <Recht aktion="geraet.einrichten"><Button
         variant="primary"
         size="lg"
         fullWidth
@@ -1744,10 +1914,10 @@ function GeraetStep({
         style={{ marginTop: 20 }}
       >
         {busy ? 'Verbinde…' : 'Anlage anlegen'}
-      </Button>
+      </Button></Recht>
       <p className="vp-note" style={{ marginTop: 8, textAlign: 'center' }}>
         <button type="button" className="vp-linklike" onClick={onSkip}>
-          Gerät habe ich noch nicht - später
+          Box habe ich noch nicht - später
         </button>
       </p>
       {err && <div className="vp-alert vp-alert-err">{err}</div>}
@@ -1759,7 +1929,16 @@ function GeraetStep({
  * Wizard finish after a claimed device: wait for the first data so the
  * customer sees their Anlage come alive before entering the portal.
  */
-export function FirstDataStep({ siteId, onDone }: { siteId: string; onDone: () => void }) {
+export function FirstDataStep({
+  siteId,
+  onDone,
+  messen = null,
+}: {
+  siteId: string;
+  onDone: (ziel?: Route) => void;
+  /** Modus „nur messen“: Satz und Ziel des Endes (`anlegeNurMessen.ts`). */
+  messen?: NurMessenEnde | null;
+}) {
   const [connected, setConnected] = useState(false);
   const [waitedLong, setWaitedLong] = useState(false);
 
@@ -1791,16 +1970,24 @@ export function FirstDataStep({ siteId, onDone }: { siteId: string; onDone: () =
           <Icon name="check" size={26} strokeWidth={2.5} />
         </div>
         <h3>Ihre Anlage ist verbunden</h3>
-        <p className="vp-muted">
-          Ihr Gerät sendet Daten. Im Portal sehen Sie ab jetzt Live-Werte, Prognosen und
-          den optimierten Speicher-Fahrplan Ihrer Anlage.
-        </p>
+        {messen ? (
+          <p className="vp-muted">{ERSTE_DATEN_NUR_MESSEN}</p>
+        ) : (
+          <p className="vp-muted">
+            Ihr Gerät sendet Daten. Im Portal sehen Sie ab jetzt Live-Werte, Prognosen und
+            den optimierten Speicher-Fahrplan Ihrer Anlage.
+          </p>
+        )}
         {/* M5 (#533): die Übergabe in den Einrichtungspfad - der Assistent legt
             die Anlage an, die Anlagen-Seite führt die Kette zu Ende. */}
-        <p className="vp-note" style={{ marginTop: 8 }}>{SETUP_NEXT_HINT}</p>
-        <Button variant="primary" size="lg" fullWidth onClick={onDone} style={{ marginTop: 12 }}>
-          Zur Anlage
-        </Button>
+        <p className="vp-note" style={{ marginTop: 8 }}>{messen ? messen.satz : SETUP_NEXT_HINT}</p>
+        {messen ? (
+          <NurMessenKnoepfe messen={messen} onDone={onDone} marginTop={12} />
+        ) : (
+          <Button variant="primary" size="lg" fullWidth onClick={() => onDone()} style={{ marginTop: 12 }}>
+            Zur Anlage
+          </Button>
+        )}
       </div>
     );
   }
@@ -1821,7 +2008,7 @@ export function FirstDataStep({ siteId, onDone }: { siteId: string; onDone: () =
         </div>
       )}
       <p className="vp-note" style={{ marginTop: 16 }}>
-        <button type="button" className="vp-linklike" onClick={onDone}>
+        <button type="button" className="vp-linklike" onClick={() => onDone()}>
           Später ansehen - zum Portal
         </button>
       </p>
@@ -1842,6 +2029,7 @@ function SummaryStep({
   manualBatterySaved,
   eingeschaltet,
   onDone,
+  messen,
 }: {
   site: Site;
   claimed: Device | null;
@@ -1849,7 +2037,9 @@ function SummaryStep({
   storageApplied: MastrPreview | null;
   manualBatterySaved: boolean;
   eingeschaltet: string[];
-  onDone: () => void;
+  onDone: (ziel?: Route) => void;
+  /** Modus „nur messen“: Satz und Ziel des Endes; `null` = wie heute. */
+  messen: NurMessenEnde | null;
 }) {
   const fromRegistry = pvApplied != null || storageApplied != null;
   const anwendungenLine = anwendungenSatz(eingeschaltet);
@@ -1881,11 +2071,56 @@ function SummaryStep({
         </p>
       )}
       {/* M5 (#533): die Übergabe in den Einrichtungspfad. */}
-      <p className="vp-note" style={{ marginTop: 12 }}>{SETUP_NEXT_HINT}</p>
-      <Button variant="primary" size="lg" fullWidth onClick={onDone} style={{ marginTop: 16 }}>
-        Zur Anlage
-      </Button>
+      <p className="vp-note" style={{ marginTop: 12 }}>{messen ? messen.satz : SETUP_NEXT_HINT}</p>
+      {messen ? (
+        <NurMessenKnoepfe messen={messen} onDone={onDone} marginTop={16} />
+      ) : (
+        <Button variant="primary" size="lg" fullWidth onClick={() => onDone()} style={{ marginTop: 16 }}>
+          Zur Anlage
+        </Button>
+      )}
     </div>
+  );
+}
+
+/**
+ * Das Ende des Modus „nur messen“: der Übergabe-Satz und das Ziel „Zu den Messstellen“ —
+ * oder, mit `zurueck`, EIN Knopf zurück zum Wirt (ohne Ziel).
+ */
+type NurMessenEnde = { satz: string; ziel: Route } | { satz: string; zurueck: string };
+
+/**
+ * Die Knöpfe am Ende des Modus „nur messen“: ohne Umweg zu den Messstellen — und
+ * die Anlage bleibt einen Tipp entfernt. Dort liegt auch ihr Bereich „Steuerung“,
+ * still und nicht angepriesen: verboten ist das Aufdrängen, nicht die Erreichbarkeit.
+ */
+function NurMessenKnoepfe({
+  messen,
+  onDone,
+  marginTop,
+}: {
+  messen: NurMessenEnde;
+  onDone: (ziel?: Route) => void;
+  marginTop: number;
+}) {
+  if ('zurueck' in messen) {
+    return (
+      <Button variant="primary" size="lg" fullWidth onClick={() => onDone()} style={{ marginTop }}>
+        {messen.zurueck}
+      </Button>
+    );
+  }
+  return (
+    <>
+      <Button variant="primary" size="lg" fullWidth onClick={() => onDone(messen.ziel)} style={{ marginTop }}>
+        {ZU_DEN_MESSSTELLEN}
+      </Button>
+      <p className="vp-note" style={{ marginTop: 8, textAlign: 'center' }}>
+        <button type="button" className="vp-linklike" onClick={() => onDone()}>
+          Zur Anlage
+        </button>
+      </p>
+    </>
   );
 }
 

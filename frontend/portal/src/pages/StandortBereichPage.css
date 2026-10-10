@@ -1,0 +1,56 @@
+/* Die Seiten eines Standorts ohne eigenes Cockpit (UEMS AP-13 IP-2): „Standort › Gebäude“.
+   Kopf wie „Standort › Messstellen“ (Titel · Standort), darunter Stand am und der Ortsbaum in einer Karte. */
+
+.vp-sb {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+}
+
+.vp-sb-kopf {
+  min-width: 0;
+}
+
+.vp-sb-kopf h1 {
+  margin: 0;
+  font-size: var(--vp-c-fs-24);
+  font-weight: var(--vp-c-fw-800);
+  line-height: var(--vp-c-lh-title);
+  overflow-wrap: break-word;
+}
+
+.vp-sb-kopf p {
+  margin: 4px 0 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: break-word;
+}
+
+.vp-sb-karte {
+  min-width: 0;
+  padding: var(--vp-c-space-4);
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius);
+  background: var(--vp-c-card);
+}
+
+.vp-sb-karte-still {
+  background: var(--vp-c-muted);
+}
+
+/* Der Baum bringt Abstand und Trennlinie nach oben für die Karten der Liste „Standorte“ mit (dort steht der
+   Standort-Kopf darüber) — hier ist die Karte der Rahmen, und eine Linie über nichts wäre ein leerer Strich. */
+.vp-sb-karte > .vp-ob {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.vp-sb-hinweis {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}

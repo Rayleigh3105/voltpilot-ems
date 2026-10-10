@@ -10,6 +10,16 @@ spring:
   lifecycle:
     timeout-per-shutdown-phase: ${SHUTDOWN_TIMEOUT:20s}
 
+  # Datei-Upload der Bezugsdaten-Vorschau (UEMS AP-09 E14, IP-12): 5MB ist Springs 5 x 1024 x 1024 =
+  # 5 242 880 Bytes, dieselbe Zahl wie CsvLeser.BYTES_HOECHSTENS. Die Anfrage darf etwas groesser sein
+  # (Zuordnung + Multipart-Rahmen). Lazily: erst die Route liest die Teile - so antwortet sie selbst mit
+  # dem Befund `datei_zu_gross` statt eines rohen Fehlers. Ingress-Grenze im gitops-Repo pruefen.
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+      resolve-lazily: true
+
   # Runtime connection: the NON-privileged app role so Row-Level-Security applies.
   datasource:
     url: ${POSTGRES_JDBC_URL:jdbc:postgresql://localhost:5432/voltpilot}
@@ -32,14 +42,10 @@ spring:
     baseline-on-migrate: true
     baseline-version: 0
     locations: classpath:db/migration
-    # Tolerate APPLIED-but-now-absent migrations, scoped to ":missing" ONLY.
-    # A production instance runs with a BLANK profile (db/migration only), but a
-    # VM that previously ran SPRING_PROFILES_ACTIVE=local already applied the
-    # db/dev seeds; once the local profile is dropped those migrations leave the
-    # classpath, and by default Flyway validation FAILS startup ("detected
-    # applied migration not resolved locally"). ":missing" tolerates exactly that
-    # so prod boots cleanly - without loosening checksum/other validation, so
-    # dev + CI still catch an accidental edit of an already-applied migration.
+    # Profile changes can leave the known db/dev seeds in history. The startup
+    # strategy permits only explicit version+script identities (docs/api.md).
+    # This Flyway pattern alone is NOT a guard: it also ignores missing core
+    # migrations from a newer build. The strategy rejects those before migrate/repair.
     ignore-migration-patterns: "*:missing"
     # Apply a migration whose version is BELOW the highest already-applied one.
     #
@@ -118,6 +124,9 @@ server:
 # offline unit tests and broker-less dev setups opt out explicitly with
 # VOLTPILOT_SECURITY_OIDC_ENABLED=false.
 voltpilot:
+  flyway:
+    # The switch alone never relaxes startup without the explicit local profile.
+    startwaechter: ${VOLTPILOT_FLYWAY_STARTWAECHTER:streng}
   # Additional measurement-point selection (Geraete-Erlebnis Slice 5). D5's
   # global limits live in code; representative driver bench runs may only
   # TIGHTEN the sample ceiling per canonical catalog family, never widen 600.
@@ -177,6 +186,25 @@ voltpilot:
       enabled: ${VOLTPILOT_METRICS_DB_ENABLED:true}
       interval-ms: ${VOLTPILOT_METRICS_DB_INTERVAL_MS:60000}
       initial-delay-ms: ${VOLTPILOT_METRICS_DB_INITIAL_DELAY_MS:15000}
+      # Mandantenanteile brauchen vier Vollscans. Einmal taeglich sammeln und
+      # dazwischen fuer beliebig viele Prometheus-Scrapes im Prozess cachen.
+      storage-interval-ms: ${VOLTPILOT_METRICS_DB_STORAGE_INTERVAL_MS:86400000}
+      storage-initial-delay-ms: ${VOLTPILOT_METRICS_DB_STORAGE_INITIAL_DELAY_MS:300000}
+    # UEMS-Betriebsueberwachung (AP-14 IP-9, Konzept "Erste Produktfreigabe" §3.5,
+    # com.voltpilot.api.metrics.UemsMetricsCollector): Rueckstand der drei
+    # Arbeitslisten, "zuletzt gelaufen"/Fehler je UEMS-Laeufer, Alter des
+    # juengsten Mess-Eingangs je Kundenbereich mit aktiver Funktion "Messen" und
+    # die Ergebnisse der drei Bestands-Laeufer. Dieselbe TAKT-Disziplin wie oben:
+    # gesammelt im Takt, ein Prometheus-Scrape fuehrt NIE eine Abfrage aus.
+    # Vorgabe AN, Not-Aus VOLTPILOT_METRICS_UEMS_ENABLED=false. Die zwei Abfragen
+    # sind klein (gedeckelte Arbeitslisten, verdichteter Lueckenstand), darum der
+    # billige 60-s-Takt und nicht der taegliche der Speicherklassen. Liest ueber
+    # die BYPASSRLS-Admin-Rolle - unter RLS zaehlte jede Abfrage null und meldete
+    # faelschlich Ruhe. Die Schwellen und Regeln dazu baut IP-10 in gitops.
+    uems:
+      enabled: ${VOLTPILOT_METRICS_UEMS_ENABLED:true}
+      interval-ms: ${VOLTPILOT_METRICS_UEMS_INTERVAL_MS:60000}
+      initial-delay-ms: ${VOLTPILOT_METRICS_UEMS_INITIAL_DELAY_MS:20000}
   security:
     oidc:
       enabled: ${VOLTPILOT_SECURITY_OIDC_ENABLED:true}
@@ -380,8 +408,114 @@ voltpilot:
   # Idempotent; ändert keine Anlage, keinen Push, kein Kommando. `enabled` ist
   # der Not-Aus des Start-Laufs - Vorgabe AN, im Testlauf AUS (surefire).
   uems:
+    # AP-14 IP-18 (Kasten E11): interne UUID des Kundenbereichs "VoltPilot
+    # Dauerlaeufer (intern)" - zwei simulierte Boxen, die dauerhaft den Weg
+    # Box -> Bericht gehen. Leer = kein Dauerlaeufer, jede Kennzahl wie vorher.
+    # Gesetzt zaehlt er in KEINER Flottenkennzahl (voltpilot_sites und die
+    # voltpilot_site_*-Reihen); sein Messkunden-Alter bleibt mit Etikett tenant
+    # sichtbar, denn darauf schaut VoltPilotDauerlaeuferStumm. Derselbe Wert wie
+    # voltpilot:uems_dauerlaeufer in gitops. Drehbuch: docs/rollout/uems-erste-freigabe.md §14.
+    dauerlaeufer:
+      tenant: ${VOLTPILOT_UEMS_DAUERLAEUFER_TENANT:}
+    uebergabe:
+      enabled: ${VOLTPILOT_UEMS_UEBERGABE_ENABLED:true}
+      interval-ms: ${VOLTPILOT_UEMS_UEBERGABE_INTERVAL_MS:1000}
+      initial-delay-ms: ${VOLTPILOT_UEMS_UEBERGABE_INITIAL_DELAY_MS:30000}
+    # UEMS AP-10 IP-18: sichtbare Historienquoten ausserhalb 0..100 % reisen
+    # ungeklemmt mit Unplausibel-Kennzeichen. Vorgabe AN; AUS stellt fuer den
+    # Rollback die alte sichtbare 0-/100-%-Klemme wieder her. Rollups und Exporte
+    # liegen vor dieser Darstellung und werden vom Schalter nicht beruehrt.
+    historie:
+      ungeklemmte-quoten-enabled: ${VOLTPILOT_UEMS_HISTORIE_UNGEKLEMMTE_QUOTEN_ENABLED:true}
+    # UEMS AP-12 IP-5 (RW1): die Build-Kennung (Git-SHA) des Deployments für das
+    # Regelwerk-Verzeichnis im Kopf jedes Berichts-Abzugs (BerichtRegelwerk). Ohne
+    # sie nennt der Abzug Version und Build-Zeit aus build-info (pom.xml). Kein Flag.
+    # UEMS AP-16 IP-23: nur die Kaskaden- und Struktur-Naht der energetischen
+    # Bewertung. Aus lässt Routen und übrige Berichte unverändert; Bewertungs-
+    # Protokolle bekommen dann auch noch kein Wasserzeichen. Vorgabe AN.
+    bewertung:
+      enabled: ${VOLTPILOT_UEMS_BEWERTUNG_ENABLED:true}
+    # UEMS AP-17 IP-15: nur die Anstoß-Nähte der Bezugsbasis (BezugsbasisAnstoss) -
+    # Pfad 1 in der Korrekturkaskade (grundlage_korrigiert), Pfad 2 im
+    # Strukturänderungs-Läufer (Wasserzeichen bezugsbasis_struktur_gelesen). Aus:
+    # Pfad 1 schweigt, Pfad 2 setzt nur das Wasserzeichen - nichts wird nachgeholt.
+    # Routen und Portal haben keinen Schalter. Vorgabe AN.
+    bezugsbasis:
+      enabled: ${VOLTPILOT_UEMS_BEZUGSBASIS_ENABLED:true}
+    # UEMS AP-18 IP-15: nur die Auffälligkeits-Naht (VerbesserungNaht) - im
+    # Endgültigkeits-Takt in der Transaktion des endgültigen Monatswerts und in der
+    # Korrekturkaskade nach kennzahl_neu_gebildet; bei `schlechter` ein Vermerk in
+    # auffaelligkeit. Aus: die Naht schweigt, nichts wird nachgeholt; die
+    # Kennzahl-Werte werden trotzdem gebildet. Routen und Portal haben keinen
+    # Schalter. Vorgabe AN.
+    verbesserung:
+      enabled: ${VOLTPILOT_UEMS_VERBESSERUNG_ENABLED:true}
+    berichte:
+      build: ${VOLTPILOT_BUILD:}
+      # UEMS AP-12 IP-8: die Kaskaden-Naht der Berichte (BerichtKaskade). Eine
+      # freigegebene oder zurückgenommene Korrektur bildet betroffene Entwürfe in
+      # der Transaktion der Kaskade neu und stößt gültige Berichtsstände an - ein
+      # Stand wird nie geändert. `enabled` ist der Rückbau: aus -> BerichteNaht.Keine,
+      # die Tabellen bleiben. Kein eigener Takt. Vorgabe AN, im Testlauf AUS (surefire).
+      enabled: ${VOLTPILOT_UEMS_BERICHTE_ENABLED:true}
+      # UEMS AP-12 IP-9: der Strukturänderungs-Läufer (Pfad 2, StrukturAenderungLaeufer).
+      # Liest rückwirkende Zuordnungen, Flächen und Verteilungen aus ort_aenderung und
+      # messstelle_aenderung (Wasserzeichen bericht_struktur_gelesen) und ruft dieselbe
+      # Naht in einer eigenen Transaktion je Protokollzeile - die Schreibwege selbst
+      # bleiben, wie sie sind. Läuft nur, wenn auch `berichte.enabled` an ist.
+      # `enabled` ist der Not-Aus. Vorgabe AN, im Testlauf AUS (surefire).
+      struktur:
+        enabled: ${VOLTPILOT_UEMS_BERICHTE_STRUKTUR_ENABLED:true}
     bestandsuebernahme:
       enabled: ${VOLTPILOT_UEMS_BESTANDSUEBERNAHME_ENABLED:true}
+    # UEMS AP-01 IP-2: der UMSTIEG „Bestand → Zustand" der Funktionen läuft direkt
+    # NACH der Bestandsübernahme der Standorte (FunktionBestandLaeufer, kein Takt):
+    # eine heute zugeordnete Anlage mit laufender Betriebsweise wird Teilnahme
+    # `aktiv` (übernommen), ihr Standort trägt den höchsten Zustand. Idempotent,
+    # lesend gegenüber dem Bestand (kein Push, kein Kommando, kein Ruhe-Eintrag).
+    # `enabled` ist der Not-Aus - Vorgabe AN, im Testlauf AUS (surefire).
+    funktion-bestand:
+      enabled: ${VOLTPILOT_UEMS_FUNKTION_BESTAND_ENABLED:true}
+    # UEMS AP-03 IP-2: die BESTANDSÜBERNAHME der Rechte (E12) - beim Start holt
+    # ZugriffBestandLaeufer je Kundenbereich die Konten aus Keycloak; wer hier noch
+    # nie eine Zuweisung hatte, wird Kundenadministrator (mandantenweit). Idempotent,
+    # ein entzogener Zugriff kommt nie zurück; läuft im eigenen Thread. `enabled` ist
+    # der Not-Aus des Start-Laufs - Vorgabe AN, im Testlauf AUS (surefire).
+    zugriff-bestand:
+      enabled: ${VOLTPILOT_UEMS_ZUGRIFF_BESTAND_ENABLED:true}
+    # UEMS AP-08 Nachtrag (Captain 15.09.2026, B): beim Start schlägt
+    # TagesmengeNachtragLaeufer je Tag, der vor AP-08 IP-5 schon endgültig war
+    # und darum keine Menge trägt, eine Korrektur `menge_nachgetragen` vor -
+    # freigegeben wird von Hand, erst dann schreibt die Kaskade Version 2.
+    # Idempotent (Version >= 2 oder ein Vorschlag sperrt). `enabled` ist der
+    # Not-Aus des Start-Laufs - Vorgabe AN, im Testlauf AUS (surefire).
+    tagesmenge-nachtrag:
+      enabled: ${VOLTPILOT_UEMS_TAGESMENGE_NACHTRAG_ENABLED:true}
+    # UEMS AP-17 IP-12b (E9 = C): der TAKT des Wetter-Archivs - taeglich 06:10
+    # Europe/Berlin holt WetterArchivLaeufer je bezogener Gradtagzahl die Tages-
+    # mittel des Standorts (Koordinaten) und schreibt Gradtage mit Herkunft
+    # `bezogen`; jeder Takt holt fehlende Archiv-Tage der letzten 60 Tage nach,
+    # nie einen Tag nach gestern. Quelle, Adresse und Schluessel (optional) sind
+    # gitops-Werte des Betreibers. `enabled` ist der Not-Aus - Vorgabe AN, im
+    # Testlauf AUS (surefire).
+    wetter-archiv:
+      enabled: ${VOLTPILOT_UEMS_WETTER_ARCHIV_ENABLED:true}
+      quelle: ${VOLTPILOT_UEMS_WETTER_ARCHIV_QUELLE:open-meteo}
+      basis-url: ${VOLTPILOT_UEMS_WETTER_ARCHIV_BASIS_URL:https://archive-api.open-meteo.com}
+      schluessel: ${VOLTPILOT_UEMS_WETTER_ARCHIV_SCHLUESSEL:}
+    # UEMS AP-03 IP-8: der TAKT der Unterstuetzung - minuetlich traegt AblaufLaeufer
+    # abgelaufene Gewaehrungen ins Zugriffsprotokoll ein (ablaufen) und erinnert 7 Tage
+    # vor dem Ende. Er BEENDET nichts: der Zugang endet mit endet_am von selbst
+    # (zugriff_zeitraum, bei jeder Anfrage neu gefragt) - der Takt macht es sichtbar.
+    # `enabled` ist der Not-Aus - Vorgabe AN, im Testlauf AUS (surefire).
+    unterstuetzung:
+      enabled: ${VOLTPILOT_UEMS_UNTERSTUETZUNG_ENABLED:true}
+      # AP-03 W3: gilt der Mandanten-Umschalter X-Tenant-Id auf KUNDENrouten noch?
+      # IP-15: Produktion AUS. Kundenflächen verlangen gewährte Unterstützung oder
+      # Notfall-Zugriff über X-Kundenbereich. Nur das lokale Kompatibilitätsprofil
+      # behält den alten Umschalter ausdrücklich für Bestandsnachweise.
+      # /api/v1/admin/** (Plattform-Betrieb) ist davon nie betroffen.
+      umschalter-enabled: ${VOLTPILOT_UEMS_UNTERSTUETZUNG_UMSCHALTER_ENABLED:false}
     # UEMS AP-07 IP-12: der VERDICHTUNGS-LAUF der Speicherklasse Viertelstunden-
     # werte - alle fuenf Minuten bildet er aus der Menge der Rohwerte der
     # Arbeitsliste die vorlaeufigen Intervalle (E6: JEDE Reihe) und faehrt
@@ -397,6 +531,14 @@ voltpilot:
       stapel: ${VOLTPILOT_UEMS_VIERTELSTUNDE_STAPEL:500}
       stapel-je-lauf: ${VOLTPILOT_UEMS_VIERTELSTUNDE_STAPEL_JE_LAUF:40}
       arbeit-hochwasser: ${VOLTPILOT_UEMS_VIERTELSTUNDE_ARBEIT_HOCHWASSER:200000}
+    # UEMS AP-11 IP-6: der RECHENLAUF der Kennzahlen - ein Schritt im Stundentakt
+    # der Endgueltigkeit (unten), NACH den berechneten Messstellen. Er liest die
+    # Periodenwerte der Messstellen, die wirksamen Bezugsgroessen-Werte und die
+    # Stammdaten am Stichtag und haengt Kennzahl-Werte an (append-only, vorlaeufige
+    # ziehen nach, endgueltige bleiben stehen). `enabled` ist der Not-Aus NUR dieses
+    # Schritts - Vorgabe AN; im Testlauf ist der ganze Takt aus.
+    kennzahlen:
+      enabled: ${VOLTPILOT_UEMS_KENNZAHLEN_ENABLED:true}
     # UEMS AP-07 IP-13: der STUNDENLAUF der Endgueltigkeit und der TAGESLAUF.
     # Einmal je Stunde setzt er jede faellige Viertelstunde (Intervallende +
     # 7 Tage, Entscheid E5) auf `endgueltig` und zieht danach die Tageswerte
@@ -417,6 +559,92 @@ voltpilot:
       stapel-je-lauf: ${VOLTPILOT_UEMS_TAG_STAPEL_JE_LAUF:40}
       frist-je-lauf: ${VOLTPILOT_UEMS_TAG_FRIST_JE_LAUF:20000}
       arbeit-hochwasser: ${VOLTPILOT_UEMS_TAG_ARBEIT_HOCHWASSER:200000}
+    # UEMS AP-07 IP-9: der LUECKEN-MELDER - alle fuenf Minuten schreibt er fest,
+    # dass Werte FEHLEN: je Reihe aus der Kadenz zum Zeitpunkt (kein guter Wert
+    # ueber 2 x Kadenz) und je Box aus dem letzten Eingang ("Box meldet sich
+    # nicht", eine Luecke je Box und je Datenquelle der Box) - und schliesst sie
+    # bei Rueckkehr/Nachlieferung (nachgeliefert_am, backfill). Kein Alarm, keine
+    # Benachrichtigung. Vorgabe AN (die Hausregel "ein Flag hat die Vorgabe AN"),
+    # im Testlauf AUS (surefire); wer ihn prueft, ruft LueckenMelder.lauf() selbst.
+    # `stapel` = Einheiten je Transaktion, `stapel-je-lauf` = Transaktionen je
+    # Takt, `werte-je-lochsuche` = wie viele Werte einer Reihe eine Suche liest.
+    luecken:
+      enabled: ${VOLTPILOT_UEMS_LUECKEN_ENABLED:true}
+      interval-ms: ${VOLTPILOT_UEMS_LUECKEN_INTERVAL_MS:300000}
+      stapel: ${VOLTPILOT_UEMS_LUECKEN_STAPEL:200}
+      stapel-je-lauf: ${VOLTPILOT_UEMS_LUECKEN_STAPEL_JE_LAUF:50}
+      werte-je-lochsuche: ${VOLTPILOT_UEMS_LUECKEN_WERTE_JE_LOCHSUCHE:20000}
+    # UEMS AP-08 IP-13: der ERSATZWERT-LAUF - alle fuenf Minuten bildet er fuer jeden
+    # neu erfassten oder zurueckgenommenen Ersatzwert die Viertelstunden als Version
+    # (messreihe_viertelstunde_version) und haelt seine Wirkung fest. Er rechnet nichts
+    # selbst (VerbrauchRegeln) und fuellt nie etwas automatisch auf: jeder Ersatzwert ist
+    # ein Mensch mit Begruendung. Vorgabe AN (die Hausregel), im Testlauf AUS (surefire);
+    # wer ihn prueft, ruft ErsatzwertLauf.lauf() selbst. `je-lauf` = Ersatzwerte je Takt.
+    ersatzwert:
+      enabled: ${VOLTPILOT_UEMS_ERSATZWERT_ENABLED:true}
+      interval-ms: ${VOLTPILOT_UEMS_ERSATZWERT_INTERVAL_MS:300000}
+      je-lauf: ${VOLTPILOT_UEMS_ERSATZWERT_JE_LAUF:200}
+    # UEMS AP-08 IP-17: die KORREKTUR-KASKADE - alle fuenf Minuten zieht sie jede freigegebene
+    # oder zurueckgenommene Korrektur und jeden gerechneten Ersatzwert bis zum Jahr durch
+    # (Viertelstunde, Tag, Monat, Jahr, berechnete Messstellen, Kennzahlen-Naht) und gibt
+    # freigegebenen Berichten NUR den Revisions-Ausloeser; danach zieht sie vorlaeufige Versionen
+    # mit ihrer Grundlage nach. Die Freigabe selbst bleibt beim Menschen (E14). Vorgabe AN, im
+    # Testlauf AUS (surefire); wer sie prueft, ruft KorrekturKaskade.lauf() selbst.
+    kaskade:
+      enabled: ${VOLTPILOT_UEMS_KASKADE_ENABLED:true}
+      interval-ms: ${VOLTPILOT_UEMS_KASKADE_INTERVAL_MS:300000}
+      je-lauf: ${VOLTPILOT_UEMS_KASKADE_JE_LAUF:50}
+    # Zeilentexte eines Bezugsdaten-Imports bleiben zwei Jahre (AP-09 E14, IP-12): ein taeglicher Lauf
+    # entfernt aeltere Texte; Urteil, Schluessel und Fingerabdruck bleiben. Die Frist steht in der
+    # Datenbank (bezugsdaten_zeilentext_frist()). Vorgabe AN, im Testlauf AUS (surefire); wer ihn
+    # prueft, ruft ZeilentextAufbewahrung.lauf() selbst.
+    zeilentexte:
+      enabled: ${VOLTPILOT_UEMS_ZEILENTEXTE_ENABLED:true}
+      cron: ${VOLTPILOT_UEMS_ZEILENTEXTE_CRON:0 17 3 * * *}
+    # Frist fuer plan_zustellung (AP-15 IP-11): ein taeglicher Lauf loescht Zeilen, deren juengster
+    # Zeitpunkt aelter als die Frist ist - je Box bleiben IMMER die juengste veroeffentlichte und die
+    # juengste angenommene Zeile. Vorgabe AN, im Testlauf AUS (surefire); wer ihn prueft, ruft
+    # PlanZustellungAufbewahrung.lauf() selbst.
+    plan-zustellung:
+      enabled: ${VOLTPILOT_UEMS_PLAN_ZUSTELLUNG_ENABLED:true}
+      cron: ${VOLTPILOT_UEMS_PLAN_ZUSTELLUNG_CRON:0 47 3 * * *}
+      aufbewahrung-tage: ${VOLTPILOT_UEMS_PLAN_ZUSTELLUNG_AUFBEWAHRUNG_TAGE:35}
+    # Verbund-Bilanz (AP-15 IP-12): taeglich je Anlage MIT Gemeinsamer Steuerung den Vortag rechnen
+    # (Netzpunkt gegen Summe der Box-Beitraege); unplausibel fuehrt eine Anlage ueber S1 auf S1 zurueck,
+    # die Anteile bleiben in Kraft. Vorgabe AN, im Testlauf AUS (surefire); wer ihn prueft, ruft
+    # VerbundBilanzLaeufer.lauf(tag) selbst.
+    verbund-bilanz:
+      enabled: ${VOLTPILOT_UEMS_VERBUND_BILANZ_ENABLED:true}
+      cron: ${VOLTPILOT_UEMS_VERBUND_BILANZ_CRON:0 37 4 * * *}
+    # Vorbehalt aus Messwerten (AP-15 IP-13): taeglich nach der Verbund-Bilanz je Anlage MIT Gemeinsamer
+    # Steuerung den hoechsten belegten Viertelstundenwert des Ungeregelten der letzten 12 Monate x 1,1
+    # gegen den Vorbehalt der Bezugsseite halten: ERHOEHEN selbsttaetig (verengt, Zweischritt, Zaehler
+    # voltpilot_uems_vorbehalt_erhoeht_total), SENKEN nur als Vorschlag (Freigabe unter /api/v1/admin).
+    # Vorgabe AN, im Testlauf AUS (surefire); wer ihn prueft, ruft VorbehaltLaeufer.lauf(heute) selbst.
+    vorbehalt:
+      enabled: ${VOLTPILOT_UEMS_VORBEHALT_ENABLED:true}
+      cron: ${VOLTPILOT_UEMS_VORBEHALT_CRON:0 52 4 * * *}
+      # Derselbe Vorbehalt im VIERTELSTUNDEN-Takt (IP-13 Folge, R23 "die Cloud prueft nach jeder
+      # Viertelstunde"): 10 Minuten nach jedem Viertelstunden-Ende (Reife: Verdichter 5 min +
+      # Sicherheit 2 min + Transport) das Ungeregelte der reifen, vollstaendigen Viertelstunden von
+      # gestern und heute - NUR erhoehen (derselbe Weg wie oben), Senken/30 Tage/12 Monate bleiben
+      # beim Tageslauf. Haengt zusaetzlich an vorbehalt.enabled. Vorgabe AN, im Testlauf AUS
+      # (surefire); wer ihn prueft, ruft VorbehaltViertelstundeLaeufer.lauf(jetzt) selbst.
+      viertelstunde:
+        enabled: ${VOLTPILOT_UEMS_VORBEHALT_VIERTELSTUNDE_ENABLED:true}
+        cron: ${VOLTPILOT_UEMS_VORBEHALT_VIERTELSTUNDE_CRON:0 10/15 * * * *}
+    # Grenzblatt-Anstoss (AP-15 IP-3 Folgepaket): stuendlich je Anlage mit Ladepark-Rahmen den heute
+    # wirksamen Bezug gegen den zuletzt zugestellten vergleichen und nur bei einem Unterschied das
+    # Ladepark-Dokument neu zustellen (Fassung/Bindung am Tageswechsel, Nachholen nach Ausfall).
+    # Vorgabe AN, im Testlauf AUS (surefire); wer ihn prueft, ruft LadeparkGrenzeLaeufer.lauf() selbst.
+    ladepark-grenze:
+      enabled: ${VOLTPILOT_UEMS_LADEPARK_GRENZE_ENABLED:true}
+      cron: ${VOLTPILOT_UEMS_LADEPARK_GRENZE_CRON:0 1 * * * *}
+    # AP-06 IP-14: additive data_sources[] heartbeat block -> latest state per
+    # (box, data source). Production default ON; Surefire turns the broker
+    # listener off globally and parser tests call it directly.
+    data-source-status:
+      mqtt-listener-enabled: ${VOLTPILOT_UEMS_DATA_SOURCE_STATUS_MQTT_LISTENER_ENABLED:true}
   # Per-measurement-point Ist: ingest the heartbeat `sources` block (the primary
   # inverter + each configured source with its OWN latest reading + freshness)
   # into device_source_status, so the portal can explain a multi-inverter site's
@@ -510,7 +738,6 @@ voltpilot:
       realm: ${KEYCLOAK_REALM:voltpilot}
       client-id: ${KEYCLOAK_API_CLIENT_ID:voltpilot-api}
       client-secret: ${KEYCLOAK_API_CLIENT_SECRET:voltpilot-api-dev-secret}
-      customer-role: operator
 
 # Expose actuator at the root so health is reachable at /health (and /info).
 #

@@ -72,6 +72,18 @@ class ComponentAdoptionWiringTest {
             return mock(EntityRegistryService.class);
         }
 
+        /**
+         * Auch eine Attrappe bekommt die {@code @Autowired}-Methoden ihrer Oberklasse
+         * gespritzt: {@code EntityRegistryService.uebergabe(QuellenUebergabe)} kam mit
+         * PR 859 dazu, und ohne diese Bohne bricht der Minimal-Kontext beim Bauen ab
+         * ("No qualifying bean of type QuellenUebergabe"). In der echten Anwendung ist
+         * die Klasse ein bedingungsloser {@code @Service}.
+         */
+        @Bean
+        com.voltpilot.api.uems.QuellenUebergabe quellenUebergabe() {
+            return mock(com.voltpilot.api.uems.QuellenUebergabe.class);
+        }
+
         @Bean
         AssetRepository assetRepository() {
             return mock(AssetRepository.class);

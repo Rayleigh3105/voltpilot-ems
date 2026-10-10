@@ -1,3 +1,4 @@
+import './rollen-fixture';
 import ReactDOM from 'react-dom/client';
 import { keycloak } from '../src/auth';
 import { GeraetSeiteSection } from '../src/pages/GeraetSeiteSection';

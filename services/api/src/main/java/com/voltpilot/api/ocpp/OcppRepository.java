@@ -484,9 +484,17 @@ public class OcppRepository {
 
     // ---- tenant-scoped read API -------------------------------------------
 
+    /** The row {@code s} belongs to a box that takes part in operation (not ausgebaut, UEMS AP-07 IP-11). */
+    private static final String BOX_AKTIV =
+            "EXISTS (SELECT 1 FROM device d WHERE d.id = s.device_id AND d.ausgebaut_am IS NULL)";
+
+    /**
+     * The site's current stations. A station behind an ausgebaut box (UEMS AP-07 IP-11) is no
+     * current station: its snapshot rows stay as history, but it is listed nowhere live.
+     */
     public List<OcppDto.Station> stations(UUID siteId) {
-        List<OcppDto.Station> out = jdbc.query("SELECT * FROM ocpp_station WHERE site_id=? "
-                        + "ORDER BY charge_point_id", (rs, n) -> station(rs, siteId), siteId);
+        List<OcppDto.Station> out = jdbc.query("SELECT * FROM ocpp_station s WHERE s.site_id=? AND " + BOX_AKTIV
+                        + " ORDER BY s.charge_point_id", (rs, n) -> station(rs, siteId), siteId);
         return out;
     }
 
@@ -551,8 +559,14 @@ public class OcppRepository {
                 }, siteId, Math.max(1, Math.min(limit, 1000)));
     }
 
+    /**
+     * Charging sessions, newest first - including those of an ausgebaut box (history). Only a
+     * session of such a box that never received its stop is left out: it would read as still
+     * charging, and nothing will ever end it (UEMS AP-07 IP-11).
+     */
     public List<OcppDto.Transaction> transactions(UUID siteId, int limit) {
-        return jdbc.query("SELECT * FROM ocpp_transaction WHERE site_id=? ORDER BY started_at DESC LIMIT ?",
+        return jdbc.query("SELECT * FROM ocpp_transaction s WHERE s.site_id=? AND (s.stopped_at IS NOT NULL OR "
+                        + BOX_AKTIV + ") ORDER BY s.started_at DESC LIMIT ?",
                 (rs, n) -> new OcppDto.Transaction(UUID.fromString(rs.getString("device_id")),
                         rs.getString("charge_point_id"), rs.getInt("transaction_id"),
                         rs.getInt("connector_id"), instant(rs, "started_at"), instant(rs, "stopped_at"),
@@ -595,7 +609,7 @@ public class OcppRepository {
                 + "SELECT device_id, charge_point_id, site_id FROM ocpp_configuration_key UNION ALL "
                 + "SELECT device_id, charge_point_id, site_id FROM ocpp_configuration_unknown_key UNION ALL "
                 + "SELECT device_id, charge_point_id, site_id FROM ocpp_station_capability"
-                + ") inventory WHERE site_id=?"
+                + ") s WHERE s.site_id=? AND " + BOX_AKTIV
                 + (onlyChargePoint == null ? "" : " AND charge_point_id=?")
                 + " ORDER BY charge_point_id";
         Object[] args = onlyChargePoint == null ? new Object[]{siteId} : new Object[]{siteId, onlyChargePoint};

@@ -3,12 +3,14 @@ package com.voltpilot.api.web;
 import com.voltpilot.api.mastr.MastrService;
 import com.voltpilot.api.mastr.RegistryLookupException;
 import com.voltpilot.api.repo.AssetRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.MastrApplyRequest;
 import com.voltpilot.api.web.dto.MastrLookupRequest;
 import com.voltpilot.api.web.dto.MastrPreviewDto;
 import com.voltpilot.api.web.dto.SiteAssetDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
 import java.time.Instant;
 import java.util.List;
@@ -38,12 +40,12 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/v1/sites/{siteId}")
 public class MastrController {
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final AssetRepository assets;
     private final MastrService mastr;
 
-    public MastrController(SiteRepository sites, AssetRepository assets, MastrService mastr) {
-        this.sites = sites;
+    public MastrController(Geltungsbereich geltungsbereich, AssetRepository assets, MastrService mastr) {
+        this.geltungsbereich = geltungsbereich;
         this.assets = assets;
         this.mastr = mastr;
     }
@@ -61,6 +63,7 @@ public class MastrController {
      * plausibility check) and decides.
      */
     @PostMapping("/mastr-lookup")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public MastrPreviewDto lookup(@PathVariable UUID siteId,
             @Valid @RequestBody MastrLookupRequest request) throws RegistryLookupException {
         requireSite(siteId);
@@ -74,6 +77,7 @@ public class MastrController {
      */
     @Transactional
     @PostMapping("/mastr-apply")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public List<SiteAssetDto> apply(@PathVariable UUID siteId,
             @Valid @RequestBody MastrApplyRequest request) {
         requireSite(siteId);
@@ -112,8 +116,6 @@ public class MastrController {
     }
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 }

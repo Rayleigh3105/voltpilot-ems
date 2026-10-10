@@ -25,8 +25,8 @@ trägt den AP-08-Haken `gilt_als_erzeugung` (Migration `V20260914100000`, Vertra
 `richtungMitErzeugungsHaken` + TS-Zwilling + Vektoren `cases.haken`). Der Haken macht den
 richtungslosen Kanal als Term zulässig und lässt ihn als `Erzeugung` zählen — nur an einem Kanal
 OHNE Katalog-Richtung (der Server lehnt ihn auf einem gerichteten Kanal ab).
-`import_export` trägt eine eigene Richtung: neue Terme und der Erzeugungs-Haken
-sind dafür auf main gesperrt (H-4/W1); gespeicherte Altterme bleiben lesbar. So bleibt der
+`import_export` ist eine eigene Katalog-Richtung und als vorzeichenbehafteter
+Netzwert zulässig; dort ist der Erzeugungs-Haken gesperrt (H-4/W1). So bleibt der
 Ankerfall `PV1+PV2+PV3+Gen-Port` eine reine `Erzeugung`-Summe statt zu `richtungslos` zu
 degradieren.
 
@@ -40,6 +40,16 @@ Edge-Vertrag bleibt unangetastet.
 ⚠ Der Formel-Stand geht in `MessstelleService.darstellung`/`lebenszyklus` ein (das generische
 `GET /api/v1/messstellen/{id}` zeigt eine fertige berechnete Messstelle ehrlich als `aktiv`, nicht
 mehr `entwurf`); das Register (IP-4) batcht die Formel noch nicht und lässt sie dort Entwurf.
+
+**Seit AP-10 IP-3 (Fassungen je Tag):** die Terme gehören zu einer Fassung
+(`messstelle_formel_fassung`, Fassung 1 ohne ersten Tag), gerechnet wird mit der Fassung des Tages,
+`GET …/formel?am=` und `POST …/formel/fassungen` kommen dazu, das Anlegen trägt das Recht
+`messstelle.formel` — Details und Fallen in `uems-formel-fassungen-je-tag.md`.
+
+**Seit AP-10 IP-10 (Periodenwerte):** Viertelstunde, Tag, Monat und Jahr einer berechneten Messstelle mit Menge
+stehen in der Speicherklasse (Spur `berechnet`, gerechnet vom Stundenlauf nach den gemessenen) und werden über
+`GET …/{kennzeichen}/werte` gelesen; Live-Wert und Verlauf bleiben der schnelle Blick aus den Geräte-Verdichtungen,
+jetzt ohne befristetes Kennzeichen — `uems-berechnete-periodenwerte.md`.
 
 **Endpunkte:** `POST /api/v1/messstellen/berechnet`, `GET …/{id}/formel|wert|verlauf`
 (`MessstelleFormelController`). Prüfen: `MessstelleFormelRegelnVectorsTest` (rein),

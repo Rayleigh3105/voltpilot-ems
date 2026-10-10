@@ -1,0 +1,202 @@
+# VORSCHLAG aus voltpilot-ems (AP-20 IP-19, E11 = A, BT3, W6) - gehoert nach
+# gitops infra/monitoring/datenebene/prometheusrule-sicherung.yaml. Einbau und
+# Reihenfolge: docs/bewertung/vorschlaege/gitops/README.md im Anwendungsrepo.
+#
+# Die Sicherung der Datenebene als neunte Ueberwachungsschicht: Alter der
+# letzten Basissicherung und des letzten WAL-Segments.
+#
+# ===========================================================================
+# WOHER DIE ZAHLEN KOMMEN
+# ===========================================================================
+# Auf 192.168.178.128 schreibt `tools/backup/vp-db-backup-metrics.sh` (Timer
+# alle 5 min) eine Textdatei fuer den Textfile-Collector des node-exporters.
+# Sie kommt deshalb ueber das Ziel `datenebene-node` herein, mit dessen
+# `namespace`- und `job`-Labels. Drei ZEITPUNKTE, kein Alter:
+#
+#   voltpilot_sicherung_basis_timestamp_seconds   juengstes Basis-Backup
+#   voltpilot_sicherung_wal_timestamp_seconds     juengste WAL-Archivdatei
+#   voltpilot_sicherung_export_timestamp_seconds  letzter Lauf des Exports
+#
+# Das Alter rechnet diese Datei (`time() - x`). Steht der Export, waechst das
+# Alter weiter und der Alarm kommt trotzdem - ein exportiertes Alter bliebe
+# stehen und zeigte eine stehende Messung als frische Sicherung.
+#
+# Fehlt eine Sicherung ganz, fehlt ihre Zeile (unbekannt ist keine Null). Das
+# meldet `zustand: keine`, gemessen gegen die Export-Zeile: nur wenn der
+# Export da ist, ist das Fehlen ein Befund und kein Messausfall.
+#
+# ===========================================================================
+# SCHWELLEN - dieselben wie der Alterscheck vp-db-backup-check.sh
+# ===========================================================================
+#   Basis-Backup  26 h  (taeglicher Timer + Luft fuer Zufallsversatz/Laufzeit)
+#                 50 h  kritisch: "ein fehlgeschlagener Lauf ist kein Notfall,
+#                       zwei in Folge sind einer" (docs/backup-restore.md)
+#   WAL-Archiv    60 min (archive_timeout=300 erzwingt alle 5 min ein Segment;
+#                 steht das Archiv, ist Wiederherstellung auf den Punkt weg
+#                 und pg_wal waechst, bis die Platte voll ist)
+#   Export        30 min (sechs verpasste Laeufe)
+#
+# Alle Regeln tragen denselben Namen und unterscheiden sich in `teil` und
+# `zustand` (Muster wie VoltPilotLaeuferSteht). Faellt der ganze Rechner aus,
+# schweigen sie: ohne Scrape gibt es keine Zeitreihen, und `zustand: fehlt`
+# verlangt `up == 1`. Das meldet dann DatenebeneNichtErreichbar allein.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: datenebene-sicherung
+  labels:
+    app.kubernetes.io/name: datenebene
+    app.kubernetes.io/component: alerting
+spec:
+  groups:
+    # =======================================================================
+    - name: datenebene-sicherung
+      rules:
+        # -------------------------------------------------------------------
+        # Basis-Backup: ein taeglicher Lauf ist ausgefallen. Noch kein Verlust -
+        # das WAL-Archiv traegt die Wiederherstellung auf den Punkt weiter -,
+        # aber der Weg zurueck wird mit jedem Tag laenger.
+        # `<= 180000` schliesst die kritische Stufe darunter aus, damit nie
+        # beide Meldungen zugleich kommen (Muster DatenebenePlatteWirdKnapp).
+        - alert: VoltPilotSicherungZuAlt
+          expr: >-
+            time() - max by (namespace) (voltpilot_sicherung_basis_timestamp_seconds{job="datenebene-node"}) > 93600 <= 180000
+          for: 10m
+          labels:
+            teil: basis
+            zustand: zu_alt
+            severity: warning
+          annotations:
+            summary: "Die letzte Basissicherung der Datenebene ist älter als 26 Stunden"
+            description: >-
+              Die jüngste Basissicherung der Messwert-Datenbank ist {{ $value | humanizeDuration }}
+              alt; der tägliche Lauf ist mindestens einmal ausgefallen. Die Wiederherstellung
+              auf den Punkt trägt weiter über das WAL-Archiv, dauert aber mit jedem Tag länger.
+            massnahme: >-
+              Auf 192.168.178.128 `systemctl status vp-db-backup.timer` und
+              `journalctl -u vp-db-backup.service -n 50` ansehen; danach einmal von Hand
+              `/srv/docker/voltpilot/tools/backup/vp-db-backup.sh` fahren
+              (docs/backup-restore.md, Täglicher Betrieb).
+
+        - alert: VoltPilotSicherungZuAlt
+          expr: >-
+            time() - max by (namespace) (voltpilot_sicherung_basis_timestamp_seconds{job="datenebene-node"}) > 180000
+          for: 10m
+          labels:
+            teil: basis
+            zustand: zu_alt
+            severity: critical
+          annotations:
+            summary: "Die letzte Basissicherung der Datenebene ist älter als 50 Stunden"
+            description: >-
+              Die jüngste Basissicherung der Messwert-Datenbank ist {{ $value | humanizeDuration }}
+              alt; mindestens zwei tägliche Läufe in Folge sind ausgefallen. Das ist ein
+              Notfall: die Wiederherstellung hängt an immer mehr WAL-Segmenten.
+            massnahme: >-
+              Heute noch eine Basissicherung ziehen
+              (`/srv/docker/voltpilot/tools/backup/vp-db-backup.sh`) und die Ursache im Journal
+              von vp-db-backup.service suchen; häufig ist die Sicherungsplatte voll.
+
+        # -------------------------------------------------------------------
+        # WAL-Archiv steht: ab jetzt geht jede Minute verloren, die nach der
+        # letzten Archivdatei geschrieben wird - und pg_wal waechst.
+        - alert: VoltPilotSicherungZuAlt
+          expr: >-
+            time() - max by (namespace) (voltpilot_sicherung_wal_timestamp_seconds{job="datenebene-node"}) > 3600
+          for: 10m
+          labels:
+            teil: wal
+            zustand: zu_alt
+            severity: critical
+          annotations:
+            summary: "Das WAL-Archiv der Datenebene steht"
+            description: >-
+              Die jüngste WAL-Archivdatei ist {{ $value | humanizeDuration }} alt. Eine
+              Wiederherstellung auf den Punkt reicht nur bis dorthin, und das WAL-Verzeichnis
+              der Datenbank wächst, bis die Platte voll ist.
+            massnahme: >-
+              `/srv/docker/voltpilot/tools/backup/vp-db-backup-check.sh` fahren; es nennt den
+              Archiver-Zustand. Häufigste Ursachen: Besitz des Verzeichnisses (uid 70) oder
+              volle Sicherungsplatte (docs/backup-restore.md, Einrichtung Schritt 1).
+
+        # -------------------------------------------------------------------
+        # Es gibt gar keine Sicherung: der Export laeuft, findet aber nichts.
+        - alert: VoltPilotSicherungZuAlt
+          expr: >-
+            count by (namespace) (voltpilot_sicherung_export_timestamp_seconds{job="datenebene-node"})
+            unless on (namespace)
+            count by (namespace) (voltpilot_sicherung_basis_timestamp_seconds{job="datenebene-node"})
+          for: 10m
+          labels:
+            teil: basis
+            zustand: keine
+            severity: critical
+          annotations:
+            summary: "Die Datenebene hat keine Basissicherung"
+            description: >-
+              Der Export des Sicherungsalters läuft, findet aber unter dem Sicherungsverzeichnis
+              kein abgeschlossenes Basis-Backup. Ohne Basis-Backup gibt es keinen Weg zurück.
+            massnahme: >-
+              Prüfen, ob `--backup-dir` in vp-db-backup-metrics.service auf DB_BACKUP_DIR zeigt;
+              stimmt es, eine Basissicherung ziehen (docs/backup-restore.md, Einrichtung Schritt 4).
+
+        - alert: VoltPilotSicherungZuAlt
+          expr: >-
+            count by (namespace) (voltpilot_sicherung_export_timestamp_seconds{job="datenebene-node"})
+            unless on (namespace)
+            count by (namespace) (voltpilot_sicherung_wal_timestamp_seconds{job="datenebene-node"})
+          for: 10m
+          labels:
+            teil: wal
+            zustand: keine
+            severity: critical
+          annotations:
+            summary: "Die Datenebene hat kein WAL-Archiv"
+            description: >-
+              Der Export des Sicherungsalters läuft, findet aber keine einzige WAL-Archivdatei.
+              Ohne Archiv ist keine Wiederherstellung auf den Punkt möglich.
+            massnahme: >-
+              DB_BACKUP=enabled und archive_mode=on prüfen
+              (`/srv/docker/voltpilot/tools/backup/vp-db-backup-check.sh`,
+              docs/backup-restore.md, Einrichtung Schritte 1–3).
+
+        # -------------------------------------------------------------------
+        # Der Export selbst steht oder fehlt. Dann ist das Alter der Sicherung
+        # unbekannt - und unbekannt ist nicht frisch.
+        - alert: VoltPilotSicherungZuAlt
+          expr: >-
+            time() - max by (namespace) (voltpilot_sicherung_export_timestamp_seconds{job="datenebene-node"}) > 1800
+          for: 5m
+          labels:
+            teil: export
+            zustand: zu_alt
+            severity: warning
+          annotations:
+            summary: "Das Alter der Sicherung wird nicht mehr gemessen"
+            description: >-
+              Der Export des Sicherungsalters ist seit {{ $value | humanizeDuration }} nicht
+              mehr gelaufen. Ob die Sicherung läuft, ist damit unbekannt.
+            massnahme: >-
+              Auf 192.168.178.128 `systemctl status vp-db-backup-metrics.timer` und
+              `journalctl -u vp-db-backup-metrics.service -n 20` ansehen.
+
+        - alert: VoltPilotSicherungZuAlt
+          expr: >-
+            max by (namespace) (up{job="datenebene-node"}) == 1
+            unless on (namespace)
+            count by (namespace) (voltpilot_sicherung_export_timestamp_seconds{job="datenebene-node"})
+          for: 30m
+          labels:
+            teil: export
+            zustand: fehlt
+            severity: warning
+          annotations:
+            summary: "Das Alter der Sicherung wird nicht gemessen"
+            description: >-
+              Der node-exporter der Datenebene antwortet, liefert aber keine Zahlen zur
+              Sicherung. Entweder ist der Export auf dem Rechner nicht eingerichtet, oder der
+              node-exporter liest das Textfile-Verzeichnis nicht.
+            massnahme: >-
+              Timer vp-db-backup-metrics.timer einrichten und im node-exporter
+              `--collector.textfile.directory=/host/var/lib/node_exporter/textfile_collector`
+              setzen (docs/backup-restore.md, Sicherungsalter als Metrik).

@@ -1,5 +1,7 @@
 package com.voltpilot.api.uems;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
@@ -102,9 +104,45 @@ public final class MessstelleRegeln {
             "nicht_elektrisch", "bezug_nur_bei_unterzaehler", "bezug_fehlt", "selbst",
             "fremde_anlage", "zyklus");
 
-    /** Woran ein Messwert an der Größe scheitert — in der Reihenfolge der Prüfung. */
+    /**
+     * Woran ein Messwert an der Größe scheitert — in der Reihenfolge der Prüfung. {@code anteil}
+     * (AP-08 IP-7): ein Anteil an einem Messwert, der kein Vorzeichen-Wert ist, oder an einem
+     * Zählerstand — er steht an der Stelle von {@code richtung}.
+     */
     public static final List<String> PASSUNG_GRUENDE =
-            List.of("wertart", "groesse", "einheit", "richtung");
+            List.of("wertart", "groesse", "einheit", "richtung", "anteil");
+
+    /** Der positive Teil eines Vorzeichen-Werts, je Rohwert {@code max(0, P)} (AP-08 E15). */
+    public static final String ANTEIL_POSITIV = "positiv";
+    /** Der Betrag des negativen Teils, je Rohwert {@code max(0, −P)} (AP-08 E15). */
+    public static final String ANTEIL_NEGATIV = "negativ";
+
+    /** Das Vokabular {@code anteil} der Quellenbindung; kein Anteil ist {@code null} (der ganze Wert). */
+    public static final List<String> ANTEILE = List.of(ANTEIL_POSITIV, ANTEIL_NEGATIV);
+
+    /**
+     * Regel 7, Ausnahme „Anteil“ (AP-08 E15, W8): welche Richtung der Anteil eines Vorzeichen-Werts
+     * speist — je Katalogwort. Nur hier steht, dass {@code import_export} positiv = Bezug und
+     * negativ = Abgabe ist; das Box-Vorzeichen ist dabei schon im Rohwert (AP-04 E5). Ein Katalogwort,
+     * das hier fehlt ({@code charge_discharge}), hat keinen Anteil.
+     */
+    public static final Map<String, Map<String, String>> ANTEIL_RICHTUNGEN =
+            Map.of("import_export", Map.of(ANTEIL_POSITIV, "Bezug", ANTEIL_NEGATIV, "Abgabe"));
+
+    /**
+     * Welche Flüsse ein Katalogkanal führt, dessen Richtung ZWEI davon in EINER Größe hält — das
+     * Wort je Anteil. Das ist <b>nicht</b> {@link #ANTEIL_RICHTUNGEN}: dort steht, womit eine
+     * QUELLENBINDUNG einen Anteil belegen darf (Regel 7), und {@code charge_discharge} darf das
+     * weiterhin nicht. Hier steht nur, wie die VERDICHTUNG die beiden Anteile einer solchen Reihe
+     * benennt, die sie seit {@code V20260918101000} neben der Netto-Menge speichert
+     * ({@code messreihe_tag.menge_positiv}/{@code menge_negativ}).
+     *
+     * <p>Ein Speicher heißt darum „Laden / Entladen“ und ein Netzanschluss „Bezug / Abgabe“, ohne
+     * dass die Spalte das Wort trüge — die Spalte kennt nur Vorzeichen.
+     */
+    public static final Map<String, Map<String, String>> RICHTUNGSPAAR = Map.of(
+            "import_export", Map.of(ANTEIL_POSITIV, "Bezug", ANTEIL_NEGATIV, "Abgabe"),
+            "charge_discharge", Map.of(ANTEIL_POSITIV, "Laden", ANTEIL_NEGATIV, "Entladen"));
 
     public static final List<String> HINWEISE = List.of("ablesestand_pruefen");
 
@@ -232,26 +270,47 @@ public final class MessstelleRegeln {
     /** Aus welchem Messwert eine Größe gespeist werden darf. */
     public record KatalogQuelle(String kanalGroesse, String kanalWertart, String nurWertart) {}
 
-    /** Eine Größe des Katalogs. */
+    /**
+     * Eine Größe des Katalogs. {@code richtungenNurBerechnet} sind Richtungen, die NUR eine
+     * berechnete Messstelle tragen darf (AP-10 IP-4: {@code saldiert}) — sie stehen bewusst NICHT
+     * in {@code richtungen}, damit jede gemessene Reihe und jeder Messkanal sie nie bekommt.
+     */
     public record KatalogEintrag(
             String groesse,
             List<String> medien,
             String einheit,
             List<String> richtungen,
             List<String> wertarten,
-            List<KatalogQuelle> quellen) {}
+            List<KatalogQuelle> quellen,
+            List<String> richtungenNurBerechnet) {
+
+        /** Eine Größe, deren Richtungen alle auch gemessen vorkommen dürfen. */
+        public KatalogEintrag(String groesse, List<String> medien, String einheit, List<String> richtungen,
+                List<String> wertarten, List<KatalogQuelle> quellen) {
+            this(groesse, medien, einheit, richtungen, wertarten, quellen, List.of());
+        }
+    }
+
+    /**
+     * Die Richtung einer Bilanz-Differenz „Bezug − Abgabe“ (AP-10 E1, Formel-Typ {@code saldo}):
+     * ein ADDITIVER Katalog-Eintrag der Wirkenergie, zulässig nur für {@code art = berechnet} und
+     * nie an einem Messkanal bindbar ({@code MesskanalAbbildung} kennt das Wort nicht).
+     */
+    public static final String SALDIERT = "saldiert";
 
     /**
      * Der Größen-Katalog (AP-04 §4.1). „Laden / Entladen“ bei der Wirkenergie ist
      * die zusammengefasste Richtung des Speichers (E1, MS-04); aus einer Leistung
-     * wird nur eine Intervallmenge, nie ein Zählerstand.
+     * wird nur eine Intervallmenge, nie ein Zählerstand. {@code saldiert} gibt es nur
+     * an einer berechneten Messstelle (AP-10 IP-4).
      */
     public static final List<KatalogEintrag> GROESSEN_KATALOG = List.of(
             new KatalogEintrag("Wirkenergie", List.of(STROM), "kWh",
                     List.of("Bezug", "Abgabe", "Erzeugung", "Laden", "Entladen", "Laden / Entladen"),
                     List.of(ZAEHLERSTAND, "Intervallmenge"),
                     List.of(new KatalogQuelle("Wirkenergie", COUNTER, null),
-                            new KatalogQuelle("Wirkleistung", GAUGE, "Intervallmenge"))),
+                            new KatalogQuelle("Wirkleistung", GAUGE, "Intervallmenge")),
+                    List.of(SALDIERT)),
             new KatalogEintrag("Wirkleistung", List.of(STROM), "kW",
                     List.of("Bezug", "Abgabe", "Erzeugung", "Laden", "Entladen", "richtungslos"),
                     List.of(MOMENTANWERT),
@@ -296,16 +355,35 @@ public final class MessstelleRegeln {
      * Steht die Größe mit diesem Medium im Katalog? Sonst {@code groesse_ungueltig}
      * mit dem ERSTEN verletzten Merkmal: groesse → medium → einheit → richtung →
      * wertart.
+     *
+     * <p>Ohne Art geprüft: eine Richtung, die nur eine berechnete Messstelle tragen darf
+     * ({@code saldiert}), ist hier {@code richtung} — genau so urteilt die Datenbank-Funktion
+     * {@code messstelle_groesse_im_katalog}.
      */
     public static GroesseUrteil groessePruefen(String medium, Groesse g) {
+        return groessePruefen(medium, null, g);
+    }
+
+    /**
+     * Wie {@link #groessePruefen(String, Groesse)}, aber mit der Art der Messstelle: nur
+     * {@code art = berechnet} darf zusätzlich eine Richtung aus
+     * {@link KatalogEintrag#richtungenNurBerechnet()} tragen (AP-10 IP-4). Eine gemessene
+     * Messstelle mit {@code saldiert} ist {@code groesse_ungueltig} mit Grund {@code richtung}.
+     */
+    public static GroesseUrteil groessePruefen(String medium, String art, Groesse g) {
         KatalogEintrag e = katalog(g.groesse());
         String grund = e == null ? "groesse"
                 : !enthaelt(e.medien(), medium) ? "medium"
                 : !e.einheit().equals(g.einheit()) ? "einheit"
-                : !enthaelt(e.richtungen(), g.richtung()) ? "richtung"
+                : !richtungErlaubt(e, art, g.richtung()) ? "richtung"
                 : !enthaelt(e.wertarten(), g.wertart()) ? "wertart"
                 : null;
         return new GroesseUrteil(grund == null ? null : Fehler.GROESSE_UNGUELTIG, grund);
+    }
+
+    private static boolean richtungErlaubt(KatalogEintrag e, String art, String richtung) {
+        return enthaelt(e.richtungen(), richtung)
+                || (BERECHNET.equals(art) && enthaelt(e.richtungenNurBerechnet(), richtung));
     }
 
     private static KatalogEintrag katalog(String groesse) {
@@ -479,8 +557,10 @@ public final class MessstelleRegeln {
      * @param geraet das Gerät, dessen Einbau die Komponente zu {@code gueltigAb} speist;
      *     {@code null} mit {@code einbau == null}: keine Speisung zu diesem Zeitpunkt
      * @param kanalRichtung {@code null}, wenn der Katalog keine EINE Vertrags-Richtung kennt
-     *     (der Vorzeichen-Wert {@code import_export} — die Aufteilung ist Sache von AP-08)
+     *     (der Vorzeichen-Wert {@code import_export} — er bindet nur mit {@code anteil})
      * @param geraetBis bis wann dieser Einbau die Komponente speist; {@code null} = bis auf Weiteres
+     * @param kanalDirection das Katalogwort {@code direction} des Messwerts ({@code import_export} …)
+     * @param anteil {@code positiv} | {@code negativ} | {@code null} = der ganze Wert (AP-08 IP-7)
      */
     public record NeueBindung(
             String rolle,
@@ -497,10 +577,31 @@ public final class MessstelleRegeln {
             OffsetDateTime gueltigBis,
             Stand endstandVorgaenger,
             Stand anfangsstand,
-            OffsetDateTime geraetBis) {}
+            OffsetDateTime geraetBis,
+            String kanalDirection,
+            String anteil) {
 
-    /** Derselbe Messwert speist in diesem Zeitraum eine ANDERE Messstelle führend. */
-    public record FremdeFuehrung(String messstelle, OffsetDateTime gueltigAb, OffsetDateTime gueltigBis) {}
+        /** Eine Bindung ohne Anteil — die Form von vor AP-08 IP-7. */
+        public NeueBindung(String rolle, String zweck, String komponente, String kanal, String geraet,
+                String einbau, String kanalGroesse, String kanalRichtung, String kanalEinheit,
+                String kanalWertart, OffsetDateTime gueltigAb, OffsetDateTime gueltigBis,
+                Stand endstandVorgaenger, Stand anfangsstand, OffsetDateTime geraetBis) {
+            this(rolle, zweck, komponente, kanal, geraet, einbau, kanalGroesse, kanalRichtung, kanalEinheit,
+                    kanalWertart, gueltigAb, gueltigBis, endstandVorgaenger, anfangsstand, geraetBis, null, null);
+        }
+    }
+
+    /**
+     * Derselbe Messwert speist in diesem Zeitraum eine ANDERE Messstelle führend — mit seinem
+     * {@code anteil} ({@code null} = der ganze Wert).
+     */
+    public record FremdeFuehrung(String messstelle, OffsetDateTime gueltigAb, OffsetDateTime gueltigBis,
+            String anteil) {
+
+        public FremdeFuehrung(String messstelle, OffsetDateTime gueltigAb, OffsetDateTime gueltigBis) {
+            this(messstelle, gueltigAb, gueltigBis, null);
+        }
+    }
 
     /**
      * @param vorgang {@code binden} fügt hinzu; {@code wechsel} löst die laufende Quelle ab
@@ -542,6 +643,27 @@ public final class MessstelleRegeln {
             List<Abschnitt> zeitstrahl,
             OffsetDateTime ohneGeraetAb) {}
 
+    /** Die Einheiten eines Energie-Zählerstands und wie viele davon eine kWh sind (AP-08 IP-7). */
+    private static final Map<String, BigDecimal> JE_KWH = Map.of(
+            "Wh", BigDecimal.valueOf(1000), "kWh", BigDecimal.ONE, "MWh", new BigDecimal("0.001"));
+
+    /**
+     * AP-08 IP-7 (Z6, E4): der größte plausible Zuwachs eines Energie-Zählerstands je Kadenz aus der
+     * Anschlussleistung der Messstelle — kW × Kadenz in der Einheit des Zählerstands, auf drei Stellen
+     * AUFgerundet (eine Grenze schneidet nie einen echten Zuwachs ab). Die Messstellen-Seite der
+     * Überlauf-Deklaration; ein Überlauf braucht zusätzlich den Wertebereich des Messwerts.
+     *
+     * @return {@code null} ohne Anschlussleistung oder ohne elektrische Energie-Einheit — nie geraten
+     */
+    public static BigDecimal hoechstzuwachsJeKadenz(BigDecimal anschlussleistungKw, String einheit, int kadenzS) {
+        BigDecimal jeKwh = einheit == null ? null : JE_KWH.get(einheit);
+        if (anschlussleistungKw == null || jeKwh == null || anschlussleistungKw.signum() <= 0 || kadenzS < 1) {
+            return null;
+        }
+        return anschlussleistungKw.multiply(BigDecimal.valueOf(kadenzS)).multiply(jeKwh)
+                .divide(BigDecimal.valueOf(3600), 3, RoundingMode.CEILING).stripTrailingZeros();
+    }
+
     /** Das Urteil der Passung Messwert → Größe (Regel 7). */
     public record Passung(Fehler fehler, String grund, String herleitung) {}
 
@@ -550,11 +672,27 @@ public final class MessstelleRegeln {
      * (state/bitfield/text nie; Momentanwert nie aus Zählerstand; Zählerstand nie aus
      * Leistung), die Größe laut Katalog, eine umrechenbare Einheit, dieselbe
      * Richtung. Bei Erfolg sagt {@code herleitung}, wie aus dem Messwert die Größe
-     * wird.
+     * wird. Ohne Anteil — die Form von vor AP-08 IP-7.
      */
     public static Passung passung(
             String medium, Groesse ziel, String kanalGroesse, String kanalRichtung,
             String kanalEinheit, String kanalWertart) {
+        return passung(medium, ziel, kanalGroesse, kanalRichtung, kanalEinheit, kanalWertart, null, null);
+    }
+
+    /**
+     * Regel 7 mit der Ausnahme „Anteil“ (AP-08 E15, W8). Alles bis zur Einheit wie ohne Anteil; an
+     * der Stelle der Richtung gilt dann: ein Anteil nur an einem Momentanwert-Messwert, dessen
+     * Katalogwort in {@link #ANTEIL_RICHTUNGEN} steht (sonst Grund {@code anteil}), und die Richtung
+     * des Anteils ist die Richtung der Größe (sonst Grund {@code richtung}). Ohne Anteil bleibt ein
+     * Vorzeichen-Wert, was er war: keine Richtung, Grund {@code richtung}.
+     *
+     * @param kanalDirection das Katalogwort {@code direction}; nur mit Anteil gelesen
+     * @param anteil {@code positiv} | {@code negativ} | {@code null}
+     */
+    public static Passung passung(
+            String medium, Groesse ziel, String kanalGroesse, String kanalRichtung,
+            String kanalEinheit, String kanalWertart, String kanalDirection, String anteil) {
         if (!STROM.equals(medium)) {
             return new Passung(Fehler.MEDIUM_OHNE_QUELLE, null, null);
         }
@@ -581,7 +719,17 @@ public final class MessstelleRegeln {
         if (!enthaelt(KANAL_EINHEITEN.getOrDefault(kanalGroesse, List.of()), kanalEinheit)) {
             return passtNicht("einheit");
         }
-        if (!ziel.richtung().equals(kanalRichtung)) {
+        if (anteil != null) {
+            Map<String, String> richtungen = kanalDirection == null ? null : ANTEIL_RICHTUNGEN.get(kanalDirection);
+            String richtungDesAnteils = richtungen == null || !GAUGE.equals(kanalWertart) ? null
+                    : richtungen.get(anteil);
+            if (richtungDesAnteils == null) {
+                return passtNicht("anteil");
+            }
+            if (!ziel.richtung().equals(richtungDesAnteils)) {
+                return passtNicht("richtung");
+            }
+        } else if (!ziel.richtung().equals(kanalRichtung)) {
             return passtNicht("richtung");
         }
         String herleitung = COUNTER.equals(kanalWertart)
@@ -598,7 +746,7 @@ public final class MessstelleRegeln {
      * Darf die neue Quelle gebunden werden — und wie sieht der Zeitstrahl danach
      * aus? Die Prüfreihenfolge ist Teil des Vertrags (der erste Treffer gewinnt):
      * Medium → Zweck → Passung → Zeitraum → Gerät zum Zeitpunkt → Messwert führt
-     * schon anderswo → Zeitpunkt vor Vorgänger/Beginn → Überlappung.
+     * schon anderswo (je Anteil, AP-08 IP-7) → Zeitpunkt vor Vorgänger/Beginn → Überlappung.
      */
     public static BindungUrteil bindungPruefen(BindungEingang e) {
         NeueBindung n = e.neu();
@@ -610,7 +758,7 @@ public final class MessstelleRegeln {
             return abgelehnt(Fehler.VERGLEICH_OHNE_ZWECK, null, null, null);
         }
         Passung p = passung(e.medium(), e.ziel(), n.kanalGroesse(), n.kanalRichtung(),
-                n.kanalEinheit(), n.kanalWertart());
+                n.kanalEinheit(), n.kanalWertart(), n.kanalDirection(), n.anteil());
         if (p.fehler() != null) {
             return abgelehnt(p.fehler(), p.grund(), null, null);
         }
@@ -630,7 +778,10 @@ public final class MessstelleRegeln {
         }
         if (!vergleich) {
             for (FremdeFuehrung f : e.kanalFuehrendAnderswo()) {
-                if (ueberschneiden(ab, bis, f.gueltigAb(), f.gueltigBis())) {
+                // AP-08 E15: der positive und der negative Anteil sind zwei Messwerte — sie führen je
+                // eine Messstelle; der ganze Wert schließt jeden Anteil aus.
+                boolean andererAnteil = n.anteil() != null && f.anteil() != null && !n.anteil().equals(f.anteil());
+                if (!andererAnteil && ueberschneiden(ab, bis, f.gueltigAb(), f.gueltigBis())) {
                     return abgelehnt(Fehler.KANAL_BEREITS_FUEHREND, null, null, f.messstelle());
                 }
             }
@@ -773,6 +924,20 @@ public final class MessstelleRegeln {
         }
         OffsetDateTime jetzt = minute(e.jetzt());
         return new WechselUrteil(null, null, t.isBefore(jetzt), t.isAfter(jetzt));
+    }
+
+    /** AP-04 E10: Auswahl und Ablesestände dürfen ausschließlich bekannte, eindeutige Ziele nennen. */
+    public static String kartenWechselPruefen(List<String> karten, List<String> uebernommen,
+            List<String> fuehrendeBindungen, List<String> ablesestaende) {
+        if (uebernommen == null || uebernommen.stream().anyMatch(x -> x == null || !karten.contains(x))
+                || new java.util.HashSet<>(uebernommen).size() != uebernommen.size()) {
+            return "karten_uebernommen";
+        }
+        if (ablesestaende.stream().anyMatch(x -> x == null || !fuehrendeBindungen.contains(x))
+                || new java.util.HashSet<>(ablesestaende).size() != ablesestaende.size()) {
+            return "ablesestaende";
+        }
+        return null;
     }
 
     /** Wie weit ein Zeitpunkt von „jetzt“ entfernt ist, auf die Minute (E2). */
@@ -1539,8 +1704,9 @@ public final class MessstelleRegeln {
                     + "sagt der Messwert nicht.";
             case "weitere_groesse" -> was + " misst eine weitere Größe — sie kommt als Nebengröße "
                     + "von Hand dazu.";
-            case "vorzeichen_wert" -> was + " trägt Bezug und Abgabe in einem Vorzeichen — bis die "
-                    + "Aufteilung da ist, wird daraus keine Messstelle.";
+            case "vorzeichen_wert" -> was + " trägt Bezug und Abgabe in einem Vorzeichen — er wird keine "
+                    + "eigene Messstelle; sein positiver und sein negativer Anteil kommen als Nebengröße von Hand "
+                    + "an Bezug und Abgabe.";
             case "vergleich_kandidat" -> was + " misst den Netzanschluss ein zweites Mal — ein "
                     + "Kandidat für eine Vergleichsquelle an " + zu + ", nie eine eigene Messstelle.";
             case "gleicher_fluss" -> was + " misst denselben Fluss wie " + zu + " — als Nebengröße "

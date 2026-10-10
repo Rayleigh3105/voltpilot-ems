@@ -1,11 +1,16 @@
 package com.voltpilot.api.repo;
 
+import com.voltpilot.api.metrics.DbHealthMetrics;
 import com.voltpilot.api.metrics.DbHealthMetrics.HypertableSize;
 import com.voltpilot.api.metrics.DbHealthMetrics.JobStat;
 import com.voltpilot.api.metrics.DbHealthMetrics.OptimizerCycle;
+import com.voltpilot.api.metrics.DbHealthMetrics.TenantTableSize;
 import java.sql.Timestamp;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -60,6 +65,79 @@ public class DbHealthMetricsRepository {
                     sizes.add(new HypertableSize(rs.getString("name"), rs.getLong("bytes")));
                 });
         return sizes;
+    }
+
+    /**
+     * Ordnet die physische Groesse der vier AP-07-Speicherklassen den internen
+     * Mandantenkennungen zu. TimescaleDB kann die Belegung eines gemeinsam
+     * genutzten Chunks nicht direkt je Mandant ausweisen. Darum wird die echte
+     * {@code hypertable_size} proportional zu den logischen Zeilengroessen
+     * ({@code pg_column_size}) verteilt. Die Summe je Klasse bleibt damit die
+     * echte physische Tabellenbelegung einschliesslich Chunks und Indizes.
+     *
+     * <p>Die vier Vollscans sind absichtlich NICHT Teil von {@link
+     * #hypertableSizes()}. {@code DbStorageMetricsCollector} fuehrt sie einmal
+     * taeglich aus und haelt das Ergebnis fuer beliebig viele Scrapes im Cache.
+     */
+    public List<TenantTableSize> tenantTableSizes() {
+        Map<TenantClass, Long> measured = new HashMap<>();
+        allocatedTenantBytes("roh", """
+                WITH logisch AS (
+                    SELECT tenant_id, sum(pg_column_size(r.*))::numeric AS bytes
+                      FROM device_measurement_sample r GROUP BY tenant_id)
+                SELECT tenant_id,
+                       round(hypertable_size('device_measurement_sample')::numeric
+                             * bytes / sum(bytes) OVER ())::bigint AS bytes
+                  FROM logisch
+                """, measured);
+        allocatedTenantBytes("vm", """
+                WITH logisch AS (
+                    SELECT tenant_id, sum(pg_column_size(v.*))::numeric AS bytes
+                      FROM messreihe_viertelstunde v GROUP BY tenant_id)
+                SELECT tenant_id,
+                       round(hypertable_size('messreihe_viertelstunde')::numeric
+                             * bytes / sum(bytes) OVER ())::bigint AS bytes
+                  FROM logisch
+                """, measured);
+        allocatedTenantBytes("tag", """
+                WITH logisch AS (
+                    SELECT tenant_id, sum(pg_column_size(t.*))::numeric AS bytes
+                      FROM messreihe_tag t GROUP BY tenant_id)
+                SELECT tenant_id,
+                       round(hypertable_size('messreihe_tag')::numeric
+                             * bytes / sum(bytes) OVER ())::bigint AS bytes
+                  FROM logisch
+                """, measured);
+        allocatedTenantBytes("ereignis", """
+                WITH logisch AS (
+                    SELECT tenant_id, sum(pg_column_size(e.*))::numeric AS bytes
+                      FROM messreihe_ereignis e GROUP BY tenant_id)
+                SELECT tenant_id,
+                       round(hypertable_size('messreihe_ereignis')::numeric
+                             * bytes / sum(bytes) OVER ())::bigint AS bytes
+                  FROM logisch
+                """, measured);
+
+        List<UUID> tenants = admin.queryForList("SELECT id FROM tenant ORDER BY id", UUID.class);
+        List<TenantTableSize> result = new ArrayList<>(tenants.size() * DbHealthMetrics.STORAGE_PLAN.size());
+        for (UUID tenant : tenants) {
+            for (var plan : DbHealthMetrics.STORAGE_PLAN) {
+                result.add(new TenantTableSize(tenant, plan.storageClass(),
+                        measured.getOrDefault(new TenantClass(tenant, plan.storageClass()), 0L)));
+            }
+        }
+        return result;
+    }
+
+    private void allocatedTenantBytes(String storageClass, String sql,
+            Map<TenantClass, Long> target) {
+        admin.query(sql, rs -> {
+            target.put(new TenantClass(rs.getObject("tenant_id", UUID.class), storageClass),
+                    rs.getLong("bytes"));
+        });
+    }
+
+    private record TenantClass(UUID tenantId, String storageClass) {
     }
 
     /**

@@ -65,6 +65,7 @@ import {
 import { NETTO_WORT, nettoEur } from './erloesNetto';
 import { fmtNum } from './format';
 import type { PeakBandView } from './peakBand';
+import { quoteSatz, quoteUnplausibel, quoteZahl } from './quoteUnplausibel';
 import { planSentence, type PlanWordingKind } from './schedule';
 import { speicherAussage, type SpeicherAussage, type SpeicherKontext } from './speicherAussage';
 import { winterSatz } from './winterSatz';
@@ -247,6 +248,8 @@ function eigenverbrauchWidget(input: CockpitWidgetsInput): WidgetBase | null {
   const view: EigenverbrauchBlockView = eigenverbrauchBlock({
     autarkiePct: input.dayTotals?.autarkiePct,
     eigenverbrauchPct: input.dayTotals?.eigenverbrauchPct,
+    autarkieUnplausibel: input.dayTotals?.autarkieUnplausibel,
+    eigenverbrauchUnplausibel: input.dayTotals?.eigenverbrauchUnplausibel,
     gridImportKwh: input.dayTotals?.gridImportKwh,
     slots: input.slots ?? [],
     now: input.now,
@@ -258,7 +261,8 @@ function eigenverbrauchWidget(input: CockpitWidgetsInput): WidgetBase | null {
     id: 'eigenverbrauch',
     label: 'Eigenverbrauch',
     value: first.value,
-    sub: first.label,
+    // Eine unplausible Quote steht nie ohne ihren Satz (AP-10 E16 Nr. 5).
+    sub: first.unplausibel ? `${first.label}: ${first.sub}` : first.label,
     accent: 'batt',
   };
 }
@@ -296,9 +300,15 @@ function wetterWidget(input: CockpitWidgetsInput): WidgetBase | null {
 export interface HeroRing {
   id: 'autarkie' | 'eigenverbrauch';
   label: string;
-  /** 0..100 — nur vorhanden, wenn der Tageswert wirklich gemessen wurde. */
-  pct: number;
+  /**
+   * Die Bogen-Füllung 0..100; `null` = KEIN Bogen, weil die Quote außerhalb
+   * 0…100 % liegt (AP-10 E16 Nr. 5) — ein Bogen bräuchte dafür wieder eine Klemme.
+   */
+  pct: number | null;
+  /** Die Zahl, ungeklemmt. */
   valueText: string;
+  /** „Messwerte passen nicht zusammen (…)", sonst null. */
+  hinweis: string | null;
   /** CSS-Farbe (Token-`var()`). */
   hue: string;
 }
@@ -430,23 +440,20 @@ export function cockpitHero(input: {
   const rings: HeroRing[] = [];
   const autarkie = num(input.totals?.autarkiePct);
   if (autarkie != null) {
-    rings.push({
-      id: 'autarkie',
-      label: `Autarkie · ${label}`,
-      pct: clampPct(autarkie),
-      valueText: fmtNum(autarkie, '%', 0),
-      hue: RING_HUE.autarkie,
-    });
+    rings.push(
+      heroRing('autarkie', `Autarkie · ${label}`, autarkie, input.totals?.autarkieUnplausibel),
+    );
   }
   const ev = num(input.totals?.eigenverbrauchPct);
   if (ev != null) {
-    rings.push({
-      id: 'eigenverbrauch',
-      label: `Eigenverbrauch · ${label}`,
-      pct: clampPct(ev),
-      valueText: fmtNum(ev, '%', 0),
-      hue: RING_HUE.eigenverbrauch,
-    });
+    rings.push(
+      heroRing(
+        'eigenverbrauch',
+        `Eigenverbrauch · ${label}`,
+        ev,
+        input.totals?.eigenverbrauchUnplausibel,
+      ),
+    );
   }
 
   // EINE Zahl ueber die Flaechen (Erloese-Konzept E9 / P9, Befund B11): der
@@ -710,6 +717,23 @@ function num(v: number | null | undefined): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
-function clampPct(v: number): number {
-  return Math.max(0, Math.min(100, v));
+/**
+ * Ein Ring aus einer Quote. Liegt sie außerhalb 0…100 %, wird sie NICHT in den
+ * Bogen gebogen (AP-10 E16 Nr. 5): kein Bogen, die ungeklemmte Zahl und der Satz.
+ */
+function heroRing(
+  id: HeroRing['id'],
+  label: string,
+  pct: number,
+  unplausibelFlag: boolean | null | undefined,
+): HeroRing {
+  const unplausibel = quoteUnplausibel(pct, unplausibelFlag);
+  return {
+    id,
+    label,
+    pct: unplausibel ? null : pct,
+    valueText: unplausibel ? quoteZahl(pct) : fmtNum(pct, '%', 0),
+    hinweis: unplausibel ? quoteSatz(pct) : null,
+    hue: RING_HUE[id],
+  };
 }

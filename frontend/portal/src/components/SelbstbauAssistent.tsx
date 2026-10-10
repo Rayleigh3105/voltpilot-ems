@@ -234,6 +234,7 @@ export function SelbstbauAssistent({
             onClick: () => void anlegen(),
             disabled: speichern || grund !== null,
             testId: 'einrichten-speichern',
+            aktion: 'geraet.einrichten',
           }}
         />
       }

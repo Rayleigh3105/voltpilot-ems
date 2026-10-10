@@ -3,6 +3,8 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import type { Site } from '../api';
+import type { AnlegeRueckkehr } from '../anlegeNurMessen';
+import { hashForRoute, type Route } from '../nav';
 import { AnlageFlow } from './AnlageFlow';
 
 /**
@@ -19,36 +21,50 @@ export function AnlageAnlegenDrawer({
   onChanged,
   existingSites,
   standortId,
+  rueckkehr,
 }: {
   open: boolean;
   onClose: () => void;
-  /** Fired on close when the flow created an Anlage - host reloads/selects. */
-  onChanged: (createdSiteId: string) => void;
+  /**
+   * Fired on close when the flow created an Anlage - host reloads/selects. Im Modus
+   * „nur messen“ trägt das Ende ein Ziel („Zu den Messstellen“): ein Wirt, der selbst
+   * navigiert, nimmt es; sonst führt der Drawer nach dem Schließen dorthin.
+   */
+  onChanged: (createdSiteId: string, ziel?: Route) => void;
   /**
    * The customer's existing Anlagen - powers the "gleicher Standort wie …"
    * reuse affordance in the Anlage step (the flow still starts fresh at
    * step 1; these are location suggestions only).
    */
   existingSites?: Site[];
-  /** Der Standort der neuen Anlage (aus dem Aufbau); ohne ihn entscheidet der Server. */
+  /**
+   * Vorbelegter Standort der neuen Anlage: Knopf „Messanlage anlegen“ im Assistenten
+   * „Messen & Auswerten“ oder „Hinzufügen › Anlage“ im Aufbau eines Standorts.
+   * Ohne ihn entscheidet der Server (bei genau einem Standort belegt er selbst vor).
+   */
   standortId?: string | null;
+  /** Das Ende im Modus „nur messen“: ein Knopf zurück zum Wirt statt „Zu den Messstellen“. */
+  rueckkehr?: AnlegeRueckkehr | null;
 }) {
   // The reload is DEFERRED to close: reloading the host's site list mid-flow
   // would re-render an empty-state host into the full page and unmount this
   // drawer while the customer is still on the Gerät/Speicher step.
   const createdSiteId = useRef<string | null>(null);
 
-  function close() {
+  function close(ziel?: Route) {
     const created = createdSiteId.current;
     createdSiteId.current = null;
     onClose();
-    if (created) onChanged(created);
+    if (created) onChanged(created, ziel);
+    // Derselbe Weg wie „Messstellen ansehen“ im Assistenten „Messen & Auswerten“;
+    // hat der Wirt schon dorthin navigiert, ändert sich nichts.
+    if (ziel) window.location.hash = hashForRoute(ziel);
   }
 
   return (
     <Modal
       open={open}
-      onClose={close}
+      onClose={() => close()}
       title="Anlage anlegen"
       icon={
         <IconTile category="solar" size={40}>
@@ -63,6 +79,7 @@ export function AnlageAnlegenDrawer({
           sites={[]}
           existingSites={existingSites}
           standortId={standortId}
+          rueckkehr={rueckkehr}
           waitForFirstData={false}
           onSiteCreated={(s: Site) => {
             createdSiteId.current = s.id;

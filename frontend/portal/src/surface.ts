@@ -317,7 +317,7 @@ export interface BaseSurface {
   hasEntities: boolean;
   blocks: CockpitBlock[];
   /**
-   * Die modus-UNABHÄNGIGEN Tiefen-Ansichten. Die Navigation (`anlageNav.ts`)
+   * Die modus-UNABHÄNGIGEN Tiefen-Ansichten. Die Navigation (`ebenenNav.ts`)
    * liest sie: was hier steht, ist ohne jeden aktiven Modus erreichbar.
    */
   deepViews: DeepViewId[];
@@ -335,6 +335,17 @@ export interface AnlageSurface {
   moneyStreams: MoneyStream[];
   /** base ∪ Modus-Deep-Views, kanonisch sortiert, dedupliziert. */
   deepViews: DeepViewId[];
+  /**
+   * UEMS AP-01 IP-8, Geld-Regel je Anlage: `true` = die Anlage zeigt kein Geld
+   * (`anlageGeld.ohneGeld` hat Blöcke, Ströme und Ansichten schon gefiltert).
+   * Fehlt das Feld, gilt alles wie vorher.
+   */
+  geldfrei?: boolean;
+  /**
+   * UEMS AP-13 IP-8: `true` = die Anlage hat einen Hauptzähler in der Stellung — der Verlauf trägt den Reiter
+   * „Energiebilanz“ (`anlageEnergiebilanz.mitEnergiebilanz`). Fehlt das Feld, bleibt der Verlauf wie vorher.
+   */
+  energiebilanz?: boolean;
 }
 
 // ---------------------------------------------------------------------------

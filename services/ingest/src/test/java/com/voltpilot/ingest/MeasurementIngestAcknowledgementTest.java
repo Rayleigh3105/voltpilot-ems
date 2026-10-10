@@ -70,7 +70,9 @@ class MeasurementIngestAcknowledgementTest {
         return new MeasurementIngestHandler(new MeasurementSamplesValidator(mapper, Messzeitregel.E13),
                 mapper, kafka, "measurements.raw", new EventsRawProducer(mapper, kafka, "events.raw",
                         mock(EventsTopicPruefung.class), new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
-                Clock.fixed(Instant.parse("2026-08-25T12:00:01Z"), ZoneOffset.UTC));
+                Clock.fixed(Instant.parse("2026-08-25T12:00:01Z"), ZoneOffset.UTC),
+                new IngestMetriken(new io.micrometer.core.instrument.simple.SimpleMeterRegistry(),
+                        Clock.fixed(Instant.parse("2026-08-25T12:00:01Z"), ZoneOffset.UTC)));
     }
 
     private static String payload() {

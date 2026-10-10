@@ -1,0 +1,18 @@
+.vp-benutzer { max-width: 1100px; margin: 0 auto; }
+.vp-benutzer-kopf, .vp-benutzer-aktionen { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.vp-benutzer-aktionen { justify-content: flex-start; margin: 16px 0; }
+.vp-benutzer-karte { background: var(--vp-surface); border: 1px solid var(--vp-border); border-radius: 16px; padding: 20px; margin: 16px 0; min-width: 0; overflow-wrap: anywhere; }
+.vp-benutzer-karte h2, .vp-benutzer-karte h3 { margin: 0 0 6px; }
+.vp-benutzer-karte p { margin: 8px 0; }
+.vp-benutzer-chip { display: inline-block; border-radius: 20px; background: var(--vp-surface-alt); padding: 4px 10px; font-size: 13px; }
+.vp-benutzer-zuweisungen { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 12px; margin-top: 16px; }
+.vp-benutzer-zuweisung { padding: 12px 0; border-top: 1px solid var(--vp-border); }
+.vp-benutzer-zwei { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.vp-benutzer-form { display: grid; gap: 16px; }
+.vp-benutzer-form > *, .vp-benutzer-zwei > * { min-width: 0; }
+.vp-benutzer-folgen { display: grid; gap: 8px; margin: 16px 0; }
+.vp-benutzer-folgen details { border: 1px solid var(--vp-border); border-radius: 12px; padding: 12px; }
+.vp-benutzer-folgen summary { cursor: pointer; font-weight: 600; }
+.vp-benutzer-folgen li { margin: 8px 0; overflow-wrap: anywhere; }
+.vp-benutzer-leer { padding: 20px; background: var(--vp-surface-alt); border-radius: 12px; }
+@media (max-width: 600px) { .vp-benutzer-zwei { grid-template-columns: minmax(0, 1fr); } .vp-benutzer-karte { padding: 16px; } }

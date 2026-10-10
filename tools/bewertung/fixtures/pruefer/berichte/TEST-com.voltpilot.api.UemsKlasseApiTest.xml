@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" version="3.0" name="com.voltpilot.api.UemsKlasseApiTest" time="20.5" tests="3" errors="0" skipped="0" failures="0">
+  <testcase name="eins" classname="com.voltpilot.api.UemsKlasseApiTest" time="7.0"/>
+  <testcase name="zwei" classname="com.voltpilot.api.UemsKlasseApiTest" time="6.5"/>
+  <testcase name="drei" classname="com.voltpilot.api.UemsKlasseApiTest" time="7.0"/>
+</testsuite>

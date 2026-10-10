@@ -1,4 +1,5 @@
 import { Suspense, type ReactNode } from 'react';
+import { Fehlergrenze } from './Fehlergrenze';
 import { ChartCardSkeleton, Skeleton } from './States';
 import { useAusblenden } from '../../designsystem/components/shell/ausblenden';
 import './Lazy.css';
@@ -19,6 +20,11 @@ import './Lazy.css';
  * nie eine erfundene Zahl, nie eine Ansicht, die wieder verschwindet. Eine
  * Fläche, die schon eine eigene Lade-Aussage hat, gibt ihre über `fallback`
  * mit; sonst steht dort ein ruhiges Skelett.
+ *
+ * Dieselbe Stelle trägt die Fehlergrenze der Seite: scheitert eine Seite beim
+ * Zeichnen, steht ihr Satz an ihrer Stelle, Kopf und Navigation bleiben — bis
+ * UEMS-Bezugsbasis (27.09.2026) ersetzte ein `null` in einem Reiter das ganze
+ * Portal durch die Boot-Karte.
  */
 export function LazyBoundary({
   children,
@@ -27,7 +33,11 @@ export function LazyBoundary({
   children: ReactNode;
   fallback?: ReactNode;
 }) {
-  return <Suspense fallback={fallback ?? <PageLoading />}>{children}</Suspense>;
+  return (
+    <Fehlergrenze>
+      <Suspense fallback={fallback ?? <PageLoading />}>{children}</Suspense>
+    </Fehlergrenze>
+  );
 }
 
 /** Ruhiger Platzhalter einer noch nachladenden Unterseite. */

@@ -1,0 +1,273 @@
+/*
+ * Der Messstellen-Dialog (UEMS AP-04 IP-6, Mockups D1–D3). Der Rahmen ist das zentrierte
+ * `Modal` (am Telefon Vollbild); hier wohnen nur die drei Schritt-Stapel.
+ * ⚠ 375 px: jedes Flex-/Grid-Kind darf schrumpfen (`min-width: 0`), die drei Felder einer
+ * Größe stehen erst nebeneinander, wenn jedes mindestens 10 rem breit sein kann.
+ */
+
+.vp-msd {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg);
+}
+
+.vp-msd > *,
+.vp-msd-stapel > * {
+  min-width: 0;
+}
+
+.vp-msd-stapel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+}
+
+.vp-msd-vorspann,
+.vp-msd-grund {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-msd-kz {
+  white-space: nowrap;
+}
+
+.vp-msd-groesse {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+}
+
+.vp-msd-groesse > * {
+  min-width: 0;
+}
+
+.vp-msd-fest {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-1);
+  min-width: 0;
+}
+
+.vp-msd-fest-label {
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-c-fg);
+}
+
+.vp-msd-fest-wert {
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-msd-neben {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+  padding: var(--vp-c-space-3);
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius);
+  min-width: 0;
+}
+
+.vp-msd-neben-kopf {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-c-space-2);
+  min-width: 0;
+}
+
+.vp-msd-neben-titel {
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-msd-fehler {
+  margin: 0;
+  color: var(--vp-industry-end);
+  font-size: var(--vp-c-fs-12);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-msd-links {
+  align-self: flex-start;
+}
+
+.vp-msd-zeit {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+}
+
+.vp-msd-zeit > * {
+  min-width: 0;
+}
+
+.vp-msd-folgen {
+  margin: 0;
+  padding: var(--vp-c-space-3);
+  border-radius: var(--vp-c-radius);
+  background: var(--vp-c-muted);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-msd-folgen-titel {
+  display: block;
+  margin-bottom: var(--vp-c-space-1);
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-msd-fertig {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+  font-size: var(--vp-c-fs-16, 1rem);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+/*
+ * Schritt 3 „Woher kommen die Werte?“ (Messen m2): zwei gleichwertige Karten im Muster der Karten-Auswahl
+ * (`SteuerartDialog.css`): eine gesperrte Karte bleibt sichtbar und trägt ihren Grund. Nebeneinander, sobald jede
+ * Karte 15 rem breit sein kann; am Telefon untereinander.
+ */
+.vp-msd-weg {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.vp-msd-weg-frage {
+  padding: 0;
+  margin: 0 0 var(--vp-c-space-1);
+  font: var(--vp-c-fw-600) 1rem/1.35 var(--vp-font-heading, var(--vp-c-font));
+  color: var(--vp-navy, var(--vp-c-fg));
+}
+
+.vp-msd-wege {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: var(--vp-c-space-2);
+  min-width: 0;
+}
+
+.vp-msd-wegkarte {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  /* 44 px Mindesthöhe: die Karte ist das Bedienelement des Schritts. */
+  min-height: 44px;
+  padding: 12px 14px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 12px;
+  background: var(--vp-c-card, #fff);
+  cursor: pointer;
+}
+
+.vp-msd-wegkarte:hover:not(.is-gesperrt) {
+  border-color: var(--vp-brand, #95b9ff);
+}
+
+.vp-msd-wegkarte.is-gewaehlt {
+  border-color: var(--vp-action, #2c5282);
+  box-shadow: 0 0 0 1px var(--vp-action, #2c5282) inset;
+}
+
+.vp-msd-wegkarte:focus-within {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+}
+
+.vp-msd-wegkarte.is-gesperrt {
+  cursor: not-allowed;
+  background: var(--vp-surface-muted, #f6f8fc);
+}
+
+.vp-msd-wegkarte > input {
+  flex: none;
+  margin: 3px 0 0;
+}
+
+.vp-msd-wegkarte-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-msd-wegkarte-text > b {
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-c-fg);
+}
+
+.vp-msd-wegkarte-text > small {
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-msd-wegkarte.is-gesperrt .vp-msd-wegkarte-text > b,
+.vp-msd-wegkarte.is-gesperrt .vp-msd-wegkarte-text > small {
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-msd-wegkarte-grund {
+  margin-top: 4px;
+  font-style: normal;
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-warn-ink, #8a5a00);
+}
+
+.vp-msd-weg-felder {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+}
+
+.vp-msd-weg-felder > * {
+  min-width: 0;
+}
+
+.vp-msd-weg-teil {
+  margin: var(--vp-c-space-1) 0 calc(-1 * var(--vp-c-space-2));
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-c-fg);
+}
+
+.vp-msd-fertig-weiter {
+  display: block;
+  margin-top: var(--vp-c-space-1);
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+}
+
+/* Fuß: die Knöpfe stehen direkt in `.dfoot` — am Telefon stapelt das Modal sie in voller Breite,
+   ab Tablet-Breite steht „Zurück“/„Abbrechen“ links. */
+@media (min-width: 721px) {
+  .vp-modal .dfoot .vp-msd-zurueck {
+    margin-right: auto;
+  }
+}

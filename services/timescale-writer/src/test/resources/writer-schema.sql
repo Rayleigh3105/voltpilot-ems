@@ -55,7 +55,9 @@ CREATE TABLE IF NOT EXISTS device (
     id                 UUID PRIMARY KEY,
     tenant_id          UUID NOT NULL,
     site_id            UUID NOT NULL DEFAULT '00000000-0000-0000-0000-000000000002',
-    data_purged_before TIMESTAMPTZ
+    data_purged_before TIMESTAMPTZ,
+    -- api V20260913150000 (AP-07 IP-11): Werte ab dem Ausbau der Box nimmt der Writer nicht an.
+    ausgebaut_am       TIMESTAMPTZ
 );
 CREATE UNIQUE INDEX uq_device_tenant_site_identity ON device(id, tenant_id, site_id);
 
@@ -83,6 +85,8 @@ CREATE TABLE IF NOT EXISTS measurement_point (
     device_id   UUID,
     control     BOOLEAN NOT NULL DEFAULT FALSE,
     entity_type TEXT,
+    family TEXT,
+    source_kind TEXT,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     -- UEMS AP-06 (V20260911150000): die Datenquelle, über die diese Komponente
     -- gelesen wird. Sie ist die Weiche des Writers: NULL = Bestandswert.
@@ -110,7 +114,12 @@ CREATE TABLE IF NOT EXISTS telemetry_v2 (
     device_id   UUID        NOT NULL,
     entity_id   TEXT        NOT NULL,
     channel     TEXT        NOT NULL,
-    value       DOUBLE PRECISION NOT NULL
+    value       DOUBLE PRECISION NOT NULL,
+    role        TEXT,
+    spiegel_point_key TEXT,
+    CONSTRAINT telemetry_v2_kern_spiegel_chk CHECK (
+        (role IS NULL AND spiegel_point_key IS NULL)
+        OR coalesce(role = 'spiegel' AND length(spiegel_point_key) > 0, false))
 );
 
 SELECT create_hypertable('telemetry_v2', 'time', if_not_exists => TRUE);
@@ -197,6 +206,9 @@ CREATE TABLE device_measurement_sample (
     -- zeichengleich weiterschreibt.
     entity_id UUID, device_install_id UUID, applied_revision BIGINT,
     value_kind TEXT, role TEXT, delivery TEXT, delay_s INTEGER,
+    -- UEMS AP-07 IP-18b (V20260922236000): die Komponente, die die Box an einem
+    -- geteilten Punkt genannt hat; sonst NULL.
+    edge_entity_id UUID,
     CHECK ((raw_numeric IS NOT NULL)::int + (raw_text IS NOT NULL)::int = 1),
     -- Die geschlossenen Vokabulare und die Paar-Regel der Zustellart, wörtlich
     -- aus V20260912140000: ein fremdes Wort wird abgewiesen, nie aufgelöst.
@@ -212,10 +224,18 @@ CREATE TABLE device_measurement_sample (
         CHECK (applied_revision IS NULL OR applied_revision >= 0)
 );
 SELECT create_hypertable('device_measurement_sample','time',if_not_exists=>TRUE);
-CREATE UNIQUE INDEX uq_device_measurement_sample_idempotency
-    ON device_measurement_sample(device_id,point_key,time,edge_sequence);
+-- Der Box-Schlüssel (V20260922236500 baut ihn Chunk für Chunk und löst danach
+-- uq_device_measurement_sample_idempotency ab): ohne genannte Komponente dieselbe
+-- Spaltenfolge wie vorher, am geteilten Punkt je genannter Komponente. Hier der
+-- Endstand; den Übergang mit beiden Schlüsseln belegt UemsBoxSchluesselBauenMigrationTest.
+CREATE UNIQUE INDEX uq_device_measurement_sample_box
+    ON device_measurement_sample(device_id,point_key,time,edge_sequence)
+    WHERE edge_entity_id IS NULL;
+CREATE UNIQUE INDEX uq_device_measurement_sample_box_komponente
+    ON device_measurement_sample(device_id,point_key,edge_entity_id,time,edge_sequence)
+    WHERE edge_entity_id IS NOT NULL;
 -- Der neue Doppel-Erkennungsschlüssel (Reihe + Messzeit, IP-6). Seit IP-7 ist er
--- der Schlüssel JEDES Werts mit nachgeschlagener Herkunft; der ALTE Index darüber
+-- der Schlüssel JEDES Werts mit nachgeschlagener Herkunft; der Box-Schlüssel darüber
 -- bleibt der Schlüssel jedes Bestandswerts (ohne Komponente) und jedes Spiegels.
 CREATE UNIQUE INDEX uq_device_measurement_sample_reihe
     ON device_measurement_sample(tenant_id,entity_id,point_key,time)
@@ -234,6 +254,7 @@ CREATE TABLE device_measurement_point_state (
     raw_numeric NUMERIC, raw_text TEXT, decoded_numeric NUMERIC, decoded_text TEXT,
     quality TEXT NOT NULL, gap BOOLEAN NOT NULL, dropped_samples BIGINT NOT NULL,
     catalog_version TEXT NOT NULL,
+    component_read_at TIMESTAMPTZ,
     PRIMARY KEY(tenant_id,site_id,device_id,point_key),
     CHECK ((raw_numeric IS NOT NULL)::int + (raw_text IS NOT NULL)::int = 1)
 );

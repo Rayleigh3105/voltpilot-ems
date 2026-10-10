@@ -57,6 +57,16 @@ DSN-Verbindungen verwenden `POSTGRES_CONNECT_TIMEOUT` (Vorgabe 10 s). Der Optimi
 
 `flowc` und Frontend haben eigene Health-Pfade gemäß Tabelle. Config-/Quellcode sind die Referenz für optionale Port-Overrides.
 
+## Upload-Grenzen am Portalweg
+
+Jede Schicht des öffentlichen Wegs muss die fachlich zulässige Anfrage durchlassen. Für den
+Bezugsdaten-CSV-Import gilt: `CsvLeser` und Spring erlauben 5 MiB Datei (5 242 880 Bytes), Spring
+erlaubt 6 MB Multipart-Anfrage. Der GitOps-Ingress setzt `proxy-body-size: 8m`. Der Frontend-nginx
+proxyt `/api/`, setzt im aktuellen Stand jedoch kein `client_max_body_size`; damit gilt dort die
+nginx-Vorgabe von 1 MiB. Das ist ein Freigabebefund: vor `uems` → `main` auf mindestens die
+6-MB-Anfrage anheben und einen Upload über den echten Ingress- und Proxyweg prüfen. Readiness allein
+belegt diese Grenze nicht. Quelle und Abschlussnachweis: [AP-09](agents/root/uems-bezugsgroessen-abschluss.md).
+
 ## Metriken
 
 API: `GET /metrics`, intern ohne Token. Frontend-nginx veröffentlicht diesen internen Endpunkt nicht als API-Route. Keine Kundennamen/Adressen als Labels hinzufügen.
@@ -84,27 +94,77 @@ max(voltpilot_metrics_collect_age_seconds) > 300
 
 Diese Ausdrücke sind Ausgangspunkte der vorhandenen Betriebslogik; Alert-Dauer und Empfänger gehören in die tatsächliche Monitoringkonfiguration. Verbraucher-Metriken stehen im [Verbraucherhandbuch](verbrauchssteuerung-betrieb.md).
 
+### UEMS-Arbeitslisten
+
+Die UEMS-Verdichter entnehmen Viertelstunden und Tage unter `FOR UPDATE SKIP LOCKED` und schreiben
+das Ergebnis in derselben Transaktion. Ein wachsender Rückstand bedeutet daher „Arbeit wird nicht
+abgebaut“, nicht „der HTTP-Prozess ist nicht bereit“
+(`services/api/src/main/java/com/voltpilot/api/uems/ViertelstundeVerdichter.java:360-405`,
+`services/api/src/main/java/com/voltpilot/api/uems/TagVerdichter.java:350-389`). **Arbeitslistenrückstand darf die Readiness nicht rot schalten**;
+sonst würde Kubernetes gerade den Prozess neu starten, der den Rückstand abbauen soll.
+
+Seit AP-14 IP-9 veröffentlicht die API den Rückstand als Metrik: `UemsMetricsCollector` meldet je
+Arbeitsliste die Zahl offener Einträge und das Alter des ältesten (`liste` = `viertelstunde` |
+`tag` | `periode`, Tabelle unten). Betreiber müssen `messreihe_viertelstunde_arbeit`,
+`messreihe_tag_arbeit` und `messreihe_periode_arbeit` also nicht mehr von Hand abfragen.
+**Die Schwellen und der Alarm selbst stehen weiter im separaten GitOps-Repository, nicht hier** —
+sie kommen mit AP-14 IP-10; bis dahin ist die Metrik vorhanden, aber unbewacht.
+Der gebaute Kapazitätswächter ist davon getrennt; Details stehen unter
+[UEMS-Speicher-Wächter](agents/root/uems-speicher-waechter.md), die UEMS-Betriebsüberwachung
+vollständig unter [UEMS-Betriebsüberwachung](agents/root/uems-betriebsueberwachung.md).
+
 ## Migrationen und Rollouts
 
-Expand-Contract: Während eines Rollouts kann alter Code bereits das neue Schema sehen. Neue Felder zunächst kompatibel ergänzen, Leser/Schreiber umstellen und erst später entfernen. Flyway-Dateien nicht nachträglich ändern oder umnummerieren.
+Expand-Contract: Während eines Rollouts kann alter Code bereits das neue Schema sehen. Der rollende Wechsel der api (`maxSurge 1 / maxUnavailable 0`, `replicas: 1`) bedeutet ausdrücklich, dass der neue Pod bereit sein muss, **bevor** der alte geht — für Sekunden laufen zwei. Neue Felder zunächst kompatibel ergänzen, Leser/Schreiber umstellen und erst später entfernen. Flyway-Dateien nicht nachträglich ändern oder umnummerieren.
 
-Ein Rollback des Images setzt keine Datenbankmigration zurück. Kein zweiter Compose-Optimierer neben dem Cluster. Nach Rollout MQTT-Verbindungen, Auth, Datenfrische und Preisabdeckung prüfen.
+**Der rollende Wechsel VERLANGT Expand-Contract, er stellt ihn nicht her.** Eine Migration, die eine Spalte umbenennt, eine Spalte oder einen Primärschlüssel fallen lässt, braucht ein Wartungsfenster mit Wiederherstellungspunkt. `MigrationHygieneTest` lehnt eine solche neue Migration ohne den Marker `-- freigabe: fenster` ab; die erste UEMS-Produktfreigabe ist die benannte Ausnahme und hat ihr eigenes [Rollout-Drehbuch](rollout/uems-erste-freigabe.md).
+
+**Die Selbstheilung der Flyway-Strategie hat eine Grenze, und sie zeigt nach unten:** startet ein älterer Build gegen ein neueres Schema, bricht er nicht, sondern repariert — er markiert jede ihm unbekannte angewandte Migration als `type='DELETE'` in `flyway_schema_history` und meldet Bereitschaft. Der neue Build sieht diese Versionen danach als `PENDING`, migriert erneut und **startet nicht mehr**. Deshalb ist der belegte Nullstand (keine Pods, keine alten ReplicaSets, keine offenen DB-Sitzungen der Laufzeitrolle) die Bedingung vor jeder solchen Migration.
+
+**Sync-Wellen ordnen, sie stoppen nicht.** `api` liegt in Welle 0, `timescale-writer`, `ingest` und `frontend` in Welle 1; Argo wartet auf die Gesundheit der aktualisierten Welle 0. Alte Pods der Welle 1 bleiben davon unberührt.
+
+Ein Rollback des Images setzt keine Datenbankmigration zurück — und nach einer nicht-additiven Migration ist er **kein Rückweg**, sondern stellt alten Code auf das neue Schema. Kein zweiter Compose-Optimierer neben dem Cluster. Nach Rollout MQTT-Verbindungen, Auth, Datenfrische und Preisabdeckung prüfen.
 
 Belege: `K8sReadinessConfigTest` in den JVM-Diensten, Python-`test_runtime.py`, `MetricsEndpointSecurityTest`, `FleetMetricsScrapeTest` und Deployment-Selbstchecks.
 
 ## Zusätzliche Readiness und Datenhaltungsmetriken
 
-Ingest verwendet `readinessState,eventsTopic`: `events.raw` muss einmal erfolgreich erkannt sein. Bis dahin bleiben Messwerte mit Ereignis-Fallback möglich, der Box-Ereignisadapter wartet. Ein späterer Broker-Ausfall entfernt die einmal erkannte Bereitschaft nicht. Details: [Ingest](../services/ingest/README.md).
+Ingest verwendet `readinessState,eventsTopic`: `events.raw` muss einmal erfolgreich erkannt sein. Fehlt es, legt der Ingest es vorher selbst an (abschaltbar; ein vorhandenes Topic wird nie angepasst; Grund und Einstellung im Ingest-README). Bis dahin bleiben Messwerte mit Ereignis-Fallback möglich, der Box-Ereignisadapter wartet. Ein späterer Broker-Ausfall entfernt die einmal erkannte Bereitschaft nicht. Details: [Ingest](../services/ingest/README.md).
 
-API und Writer liefern interne `/metrics`-Endpunkte auf 8090 bzw. 8092. Die API ergänzt Datenhaltungsmetriken über `DbHealthMetricsCollector` (alle 60 s, `VOLTPILOT_METRICS_DB_ENABLED`, Vorgabe true). Der Writer ermittelt Gruppenrückstand über Kafka-AdminClient (`VOLTPILOT_METRICS_KAFKA_LAG_ENABLED`, Vorgabe true).
+API, Writer und Ingest liefern interne `/metrics`-Endpunkte auf 8090, 8092 bzw. 8091 (gleiche Bauart: Actuator-Endpunkt `prometheus`, umgehängt auf `/metrics`; anonym lesbar, vom Frontend-nginx nie durchgereicht). Die API ergänzt Datenhaltungsmetriken über `DbHealthMetricsCollector` (alle 60 s, `VOLTPILOT_METRICS_DB_ENABLED`, Vorgabe true). Der Writer ermittelt Gruppenrückstand über Kafka-AdminClient (`VOLTPILOT_METRICS_KAFKA_LAG_ENABLED`, Vorgabe true).
 
 | Metrikfamilie | Bedeutung |
 |---|---|
 | `voltpilot_db_total_bytes{table}` | Größe je Hypertable |
+| `voltpilot_db_table_bytes{class,tenant}` | Täglich gecachter physischer Anteil der AP-07-Speicherklasse je interner Mandantenkennung |
+| `voltpilot_db_table_plan_fraction{class,tenant}`, `…_warning` | Anteil am 100-Messstellen-Plan; Warnung `1` ab einschließlich 70 % |
 | `voltpilot_db_job_last_run_failed`, `voltpilot_db_job_total_failures` | Status/Fehlerzahl der Timescale-Jobs; `policy_telemetry` wird ausgeblendet |
 | `voltpilot_optimizer_cycle_seconds`, `…_sites_planned`, `…_sites_skipped`, `…_age_seconds` | Persistierter Optimierer-Zyklus; ohne Lauf `NaN` |
 | `voltpilot_db_metrics_collect_age_seconds`, `…_duration_seconds` | Gesundheit des DB-Sammlers |
 | `voltpilot_kafka_consumer_lag{group,topic}` | Committeter Offset bis Log-Ende; unbekannte Gruppe ohne Zeile |
 | `voltpilot_kafka_consumer_lag_collect_age_seconds` | Alter der letzten Lag-Abfrage |
+| `voltpilot_ingest_angenommen_total{strom}`, `…_weitergereicht_total{strom}` | Umschläge, die die Datenannahme aufgenommen bzw. an Redpanda übergeben hat |
+| `voltpilot_ingest_verworfen_total{strom,grund}` | Umschläge, die ihr Nutzlast-Topic nicht erreicht haben; `grund` = `ungueltig` \| `identitaet` \| `serialisierung` |
+| `voltpilot_ingest_letzter_schreibzug_age_seconds{strom}` | Sekunden seit dem letzten von Redpanda bestätigten Schreibzug; ohne Schreibzug `NaN` |
+| `voltpilot_writer_verworfen_total{strom,grund}` | Vom Writer nicht geschriebene Eingangsumschläge; geschlossene Eingänge und Gründe, ab Start als `0` vorhanden |
+| `voltpilot_writer_verworfene_samples_total{grund}` | Bekannte Sample-Zahl verworfener `measurements`-Umschläge; ab Start als `0` vorhanden |
+| `voltpilot_uems_arbeitsliste_offen{liste}`, `…_aeltester_eintrag_age_seconds` | Rückstand der drei UEMS-Arbeitslisten über alle Kundenbereiche; das Alter fehlt, wenn die Liste leer ist |
+| `voltpilot_uems_laeufer_letzter_lauf_age_seconds{laeufer}` | Alter des letzten beendeten Laufs je UEMS-Läufer; **fehlt, wenn der Läufer aus ist oder seit dem Prozess-Start nie lief** |
+| `voltpilot_uems_laeufer_zustand{laeufer,zustand}`, `…_fehler_total{laeufer}` | 1 für den aktiven Zustand `gelaufen` \| `nie` \| `aus`; Fehlschläge je Läufer, ab Start als `0` vorhanden |
+| `voltpilot_uems_kundenbereich_letzter_messwert_age_seconds{tenant}`, `…_messwert_zustand{tenant,zustand}` | Alter des jüngsten Mess-Eingangs je Kundenbereich mit AKTIVER Funktion „Messen“, interne Kennung; Alter fehlt, wenn nie |
+| `voltpilot_uems_bestandslaeufer_total{laeufer,ergebnis}` | Kundenbereiche je Ergebnis der drei Start-Läufer (`erledigt` \| `fehler`) |
 
 Ein nie gelaufener Job hat keinen erfundenen Erfolgsstatus. Altersmetriken wachsen bei ausgefallenem Sammler weiter. Für Betriebsalarme Größen summieren, Zyklus-/Lag-Alter überwachen und Label-Duplikate über Instanzen aggregieren. Nachweise: `DbHealthMetricsScrapeTest`, `DbHealthMetricsDbTest`, `KafkaConsumerLagScrapeTest`, `KafkaLagProbeTest`.
+
+Die Regel für Writer-Verwerfungen (Zuwachs > 0 über 15 Minuten → Warnung an `betreiber`) gehört
+in das gitops-Repo und ist nicht Teil dieses PRs; Gitops-PR 37 liegt beim Betreiber und wird dort
+ergänzt. Die Metriken tragen bewusst keine Mandanten-, Anlagen-, Box- oder sonstigen Kennungen.
+
+Die UEMS-Betriebsmetriken kommen aus demselben Muster (`UemsMetricsCollector`, alle 60 s, `VOLTPILOT_METRICS_UEMS_ENABLED`, Vorgabe true, Lesen über die BYPASSRLS-Admin-Rolle); ein Scrape führt auch hier nie SQL aus. Der Läufer-Stand wird IM PROZESS gehalten: nach einem Neustart meldet ein Läufer, der noch nicht lief, kein Alter `0`, und mehrere Repliken melden jede ihren eigenen Stand — Alarm-Regeln aggregieren über `laeufer`. Der Mess-Eingang je Kundenbereich kommt aus dem verdichteten `messreihe_luecke_stand` (`art = 'box'`), nicht aus dem heißen `device_measurement_sample`. Nachweise: `UemsMetricsScrapeTest`, `UemsMetricsDbTest`, `UemsMetricsEndpointE2eTest`, `UemsMetrikenWiringTest`; Einzelheiten unter [UEMS-Betriebsüberwachung](agents/root/uems-betriebsueberwachung.md).
+
+Der Mandanten-Wächter läuft über die Admin-Datenquelle außerhalb eines
+Kundenkontexts und standardmäßig nur einmal täglich
+(`VOLTPILOT_METRICS_DB_STORAGE_INTERVAL_MS`), weil seine vier Abfragen die
+Speicherklassen vollständig lesen. Scrapes lesen ausschließlich den Cache. Die
+Planwerte und die Abgrenzung zum bestehenden 0,5-TB-Flottenalarm stehen unter
+[Speicherplanung](performance/speicherplanung.md).

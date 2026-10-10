@@ -2,7 +2,7 @@
 
 # Glossar des Unternehmens-Energiemanagements
 
-Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 14 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
+Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 58 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
 
 Belege sind `datei:zeile` am Stand `origin/main` 36f3e7e8 (10.09.2026); `MIG` = `services/api/src/main/resources/db/migration`, `PORTAL` = `frontend/portal/src`, `DATA` = die Konzept-Ablage des Programms (nicht in diesem Repo). `tools/check_belege.sh` prüft die Pfade.
 
@@ -44,6 +44,50 @@ Ein Kasten **Verfeinert durch** nennt, was ein späteres Konzeptpaket geschärft
 - [Bilanzdifferenz](#bilanzdifferenz) — Sicht Elektrisch · Nachtrag AP-10 §4.3 (E1, E3)
 - [Feste Verteilung](#feste-verteilung) — Sicht Organisation · Nachtrag AP-10 §4.6 (E11, E12)
 - [Berechnete Messstelle](#berechnete-messstelle) — Sicht Zustand · Nachtrag AP-10 §4.1 (E1, E5)
+- [Kennzahl](#kennzahl) — Sicht Organisation · Nachtrag AP-11 §4.1 (E1, E2, E5)
+- [Kennzahlvorlage](#kennzahlvorlage) — Sicht Organisation · Nachtrag AP-11 §4.12 (E9)
+- [Bericht](#bericht) — Sicht Organisation · Nachtrag AP-12 §4.1 (E1, E8, E9)
+- [Berichtsvorlage](#berichtsvorlage) — Sicht Organisation · Nachtrag AP-12 §4.5 (E9)
+- [Berichtsstand](#berichtsstand) — Sicht Organisation · Nachtrag AP-12 §4.3 (E1, E2, E5)
+- [Revision](#revision) — Sicht Organisation · Nachtrag AP-12 §4.9 (E6, E7)
+- [Datenstand](#datenstand) — Sicht Organisation · Nachtrag AP-12 §4.6 (E4)
+- [Quellenverzeichnis](#quellenverzeichnis) — Sicht Organisation · Nachtrag AP-12 §4.4 (E3, E6)
+- [Werte](#werte) — Sicht Zustand · Nachtrag AP-13 §4.1 (E9, E15)
+- [Verlauf](#verlauf) — Sicht Zustand · Nachtrag AP-13 §4.1 (E5, E15)
+- [Vergleich](#vergleich) — Sicht Zustand · Nachtrag AP-13 §4.1 (E6, E15)
+- [Datenlage](#datenlage) — Sicht Zustand · Nachtrag AP-13 §4.1 (E13, E15)
+- [Grund (einer fehlenden Zahl)](#grund-einer-fehlenden-zahl) — Sicht Zustand · Nachtrag AP-13 §4.10 (E11)
+- [Betrachtungsumfang](#betrachtungsumfang) — Sicht Organisation · Nachtrag AP-16 §3.2, §4.1
+- [Energieeinsatz](#energieeinsatz) — Sicht Organisation · Nachtrag AP-16 §3.3, §4.1 (E1)
+- [Einstufung](#einstufung) — Sicht Organisation · Nachtrag AP-16 §3.1, §4.1
+- [Messbedarf](#messbedarf) — Sicht Organisation · Nachtrag AP-16 §3.6, §4.1 (E6)
+- [Messmittel-Angabe](#messmittel-angabe) — Sicht Erfassung · Nachtrag AP-16 §3.7, §4.1 (E7)
+- [Energieleistungskennzahl](#energieleistungskennzahl) — Sicht Organisation · Nachtrag AP-17 §4.1 (SP1, E1)
+- [Bezugsbasis](#bezugsbasis) — Sicht Organisation · Nachtrag AP-17 §4.2–§4.5 (B1, B4, F1–F5)
+- [Referenzperiode](#referenzperiode) — Sicht Organisation · Nachtrag AP-17 §4.3 (P1–P3, E2)
+- [Einflussgröße (Variable)](#einflussgröße-variable) — Sicht Organisation · Nachtrag AP-17 §4.4 (V1, V2, E3)
+- [Statischer Faktor](#statischer-faktor) — Sicht Organisation · Nachtrag AP-17 §4.4 (V3, E6)
+- [Leistungsvergleich](#leistungsvergleich) — Sicht Organisation · Nachtrag AP-17 §4.7–§4.9 (U1–U6, S1–S5, E8)
+- [Wetterbezug](#wetterbezug) — Sicht Erfassung · Nachtrag AP-17 §6.6 (E9 = C)
+- [Energieziel](#energieziel) — Sicht Organisation · Nachtrag AP-18 §4.1, §4.3 (Z1–Z5, E3)
+- [Maßnahme](#maßnahme) — Sicht Organisation · Nachtrag AP-18 §4.1, §4.4 (M1–M7, E1, E2)
+- [Abweichung](#abweichung) — Sicht Organisation · Nachtrag AP-18 §4.1, §4.5 (A2–A6, E1, E7)
+- [Auffälligkeit](#auffälligkeit) — Sicht Organisation · Nachtrag AP-18 §4.1, §4.5 (A1, E4)
+- [Ursache-Aussage](#ursache-aussage) — Sicht Organisation · Nachtrag AP-18 §4.1, §4.6 (U1–U3, E6)
+- [Wirkung (beobachtet · belegt)](#wirkung-beobachtet--belegt) — Sicht Organisation · Nachtrag AP-18 §4.1, §4.7 (WK1–WK6, E6)
+- [Anstoß am Vorgang](#anstoß-am-vorgang) — Sicht Organisation · Nachtrag AP-18 §4.1, §4.4 (M5, Z5, E4)
+- [Energiemanagement (Bereich)](#energiemanagement-bereich) — Sicht Organisation · Nachtrag AP-19 §4.1, §3.1 (G1–G5, E1)
+- [Verzeichnis](#verzeichnis) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.9 (VZ1–VZ4, KS2)
+- [Wiedervorlage](#wiedervorlage) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.9 (WV1–WV5, E10)
+- [Dokument · Fassung](#dokument--fassung) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.4 (DK1–DK8, E2)
+- [Energiepolitik · Anwendungsbereich](#energiepolitik--anwendungsbereich) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.4 (DK3, DK7, W5)
+- [Person · Aufgabe im Energiemanagement · Leitung](#person--aufgabe-im-energiemanagement--leitung) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.5 (PA1–PA5, E7)
+- [entschieden von · eingetragen von](#entschieden-von--eingetragen-von) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.3 (G2, E7, E8)
+- [Einsicht](#einsicht) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.11 (RE3–RE5, E8)
+- [internes Audit · Hinweis](#internes-audit--hinweis) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.6 (IA1–IA5, E5)
+- [Feststellung · Wirksamkeit](#feststellung--wirksamkeit) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.7 (FS1–FS7, E4)
+- [Managementbewertung](#managementbewertung) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.8 (MG1–MG7, E6)
+- [Sitzung · Beschluss · Folge](#sitzung--beschluss--folge) — Sicht Organisation · Nachtrag AP-19 §4.1, §4.8 (MG4–MG7, E6)
 - [Tätigkeit des Speichers](#tätigkeit-des-speichers) — Sicht Betrieb · Nachtrag Fahrplan „Tagesuhr und Bildfahrplan“ E8 (24.09.2026)
 - [Szene](#szene) — Sicht Betrieb · Nachtrag Steuerung neu E6 (29.09.2026)
 - [Sonne + Speicher](#sonne--speicher) — Sicht Betrieb · Nachtrag Ladequelle (06.10.2026)
@@ -98,6 +142,8 @@ Der Standort ist die Rechte-Einheit (AP-03: „Zugriff auf ausgewählte Standort
 
 > **Verfeinert durch AP-02 E9:** „gültig ab“ ist ein TAG, wirksam 00:00 Uhr in der Zeitzone des Standorts — die Zeitzone ist damit ein Pflicht-Stammdatum des Standorts.
 
+> **Verfeinert durch AP-02 W4 (IP-8):** Stehen das Objekt und das Koordinaten-Feld auf EINER Karte (Anlage › Einstellungen › „Meine Anlage“), heißt die Objekt-Zeile „Standort“ (Name, Kurzzeichen, Adresse, seit) und die Koordinaten-Zeile in der Anzeige „Standort auf der Karte“ — das Label, das sie beim Bearbeiten schon trägt. Ohne Standort-Objekt bleibt die Karte, wie sie ist; E9 = B bleibt.
+
 > **Verfeinert durch AP-02 E1/E12:** Archivieren ist der Normalweg, Löschen nur für Objekte OHNE jede Historie. Archiviert wird nur ohne aktive Messstellen und Anlagen; leere Kinder werden mitarchiviert.
 
 > **Verfeinert durch AP-02 E8/E10:** Kurzzeichen (ST-1, G-1, B-1) werden automatisch vergeben, sind änderbar, je Kundenbereich eindeutig und werden nie wiederverwendet. Ein automatisch angelegter Standort bleibt Entwurf, bis die Adresse steht — sichtbar nur auf Standort-Flächen, er blockiert nichts.
@@ -150,7 +196,7 @@ Die Anlage bleibt das heutige Objekt (E1, Variante A): sie ist die Betriebseinhe
 
 **Beispiel (Referenzunternehmen Ahrenberg).** AN-1 Werk Ahrenberg – Halle 1 (Bestand seit 12.03.2024; PV 240 kWp + Speicher 200 kWh; Lastspitzenkappung läuft; versorgt Halle 1 UND Verwaltung), AN-2 Werk Ahrenberg – Halle 2 (reine Messung), AN-3 Werk Lindach (reine Messung).
 
-**Heute im Code.** Tabelle `site` (MIG/V1__core_schema.sql:45-52: name, bidding_zone) plus 17 Zusatzspalten — u. a. `plant_kind` (MIG/V20260706010000__site_plant_kind.sql:17), `tarif_art`/`tarif_param_ct_kwh` (MIG/V20260708010000__site_tarif_model.sql:41-44), `max_feed_in_kw` (MIG/V20260716000000__site_max_feed_in_kw.sql:21), `component_authority` box|portal (MIG/V20260817000000__component_authority_and_definitions.sql:42-43), `profil` privat|gewerbe (MIG/V20260838000000__site_profil.sql:45) — und 19 Migrationen mit 24 Verweisen `REFERENCES site(id)` (device, asset, measurement_point, site_profile_state, site_charging_config …). Portal: `#/anlage/{siteId}/…` (PORTAL/nav.ts:504, :612-641), fünf Bereiche Cockpit · Fahrplan · Verlauf · Steuerung · Anlage (PORTAL/anlageNav.ts:16-17, :76). Topic `ems/{tenant}/{site}/{device}/…` (docs/architecture.md:90-94).
+**Heute im Code.** Tabelle `site` (MIG/V1__core_schema.sql:45-52: name, bidding_zone) plus 17 Zusatzspalten — u. a. `plant_kind` (MIG/V20260706010000__site_plant_kind.sql:17), `tarif_art`/`tarif_param_ct_kwh` (MIG/V20260708010000__site_tarif_model.sql:41-44), `max_feed_in_kw` (MIG/V20260716000000__site_max_feed_in_kw.sql:21), `component_authority` box|portal (MIG/V20260817000000__component_authority_and_definitions.sql:42-43), `profil` privat|gewerbe (MIG/V20260838000000__site_profil.sql:45) — und 19 Migrationen mit 24 Verweisen `REFERENCES site(id)` (device, asset, measurement_point, site_profile_state, site_charging_config …). Portal: `#/anlage/{siteId}/…` (PORTAL/nav.ts:504, :612-641), fünf Bereiche Cockpit · Fahrplan · Verlauf · Steuerung · Anlage (PORTAL/ebenenNav.ts:16-17, :245). Topic `ems/{tenant}/{site}/{device}/…` (docs/architecture.md:90-94).
 
 **Abgrenzung.** Nicht der Standort (räumlich, kann mehrere Anlagen haben), nicht der Netzanschluss (der Übergabepunkt der Anlage), nicht die Box (die Hardware in der Anlage).
 
@@ -230,7 +276,7 @@ Die Datenquelle ist der technische Zugang (Modbus TCP Host/Port/Geräte-ID, MQTT
 
 **Beispiel (Referenzunternehmen Ahrenberg).** DQ-3: Modbus TCP 192.168.10.31, Geräte-IDs 1–4 — vier Unterzähler hinter einer Adresse, zuständig Box E-1. DQ-5: OCPP-Station AHR-LP-01, die sich selbst zur Box E-2 verbindet.
 
-**Heute im Code.** Kein Objekt. Transport-Wahrheit je Komponente in `measurement_point.communication/family/connection_json` (MIG/V20260709000000__measurement_point.sql:38-43), historisiert in `component_definition.connection_json` (MIG/V20260817000000__component_authority_and_definitions.sql:82-93); „Der Lesepfad reist im Flow“ (docs/contracts/v2/edge-entity-config.md:192-194); Lesetypen `vp.modbus.read`, `vp.mqtt.read`, `vp.http.read` sind Flow-Knoten (services/api/src/main/resources/flowcatalog/catalog.json:769,904,1046). Ist-Rückmeldung je Quelle `device_source_status.health` ok|stale|never (MIG/V20260721000000__device_source_status.sql:24-41). Zuständige Box = `measurement_point.device_id` bzw. `entity_registry_state.device_id` je Anlage (MIG/V20260709000000:48; MIG/V20260719030000__entity_sync_state.sql:24-27). Im Portal ist „Datenquelle“ heute nur die MaStR-Herkunft (PORTAL/components/MastrDrawer.tsx:276).
+**Heute im Code.** Kein Objekt. Transport-Wahrheit je Komponente in `measurement_point.communication/family/connection_json` (MIG/V20260709000000__measurement_point.sql:38-43), historisiert in `component_definition.connection_json` (MIG/V20260817000000__component_authority_and_definitions.sql:82-93); „Sein Leseplan reist im Flow“ (docs/agents/edge/ein-selbstbau-geraet-darf-den-registry-p.md:18-20); Lesetypen `vp.modbus.read`, `vp.mqtt.read`, `vp.http.read` sind Flow-Knoten (services/api/src/main/resources/flowcatalog/catalog.json:769,904,1046). Ist-Rückmeldung je Quelle `device_source_status.health` ok|stale|never (MIG/V20260721000000__device_source_status.sql:24-41). Zuständige Box = `measurement_point.device_id` bzw. `entity_registry_state.device_id` je Anlage (MIG/V20260709000000:48; MIG/V20260719030000__entity_sync_state.sql:24-27). Im Portal ist „Datenquelle“ heute nur die MaStR-Herkunft (PORTAL/components/MastrDrawer.tsx:276).
 
 **Abgrenzung.** Nicht das Gerät (was antwortet), nicht der Messkanal (was gelesen wird), nicht die Box (wer liest).
 
@@ -322,6 +368,8 @@ Die Messstelle ist das zentrale Objekt des Unternehmens-Energiemanagements. Sie 
 
 > **Verfeinert durch AP-04 E3:** Vergleichsquellen werden mit Zweck gekennzeichnet (Plausibilität · Ersatz bei Ausfall · Abrechnungszähler) und beide Werte nebeneinander gezeigt — ohne Bewertung, ohne Ersatz.
 
+> **Verfeinert durch AP-16 E10 (IP-17/IP-18):** Eine Vergleichsquelle trägt eine **Toleranz** als Fassung (Startwert 2 % je Monat, änderbar mit Begründung ab dem laufenden Monat). Liegt die Monatsabweichung darüber, steht unter der Quelle-Karte ein Befund „Abweichung x % (Toleranz y %) — bitte prüfen“ — ohne Ursache; die Werte stehen weiter nebeneinander, keiner ersetzt den anderen. Messmittel-Angaben ohne Erhebung heißen „nicht erhoben“; ein wesentlicher Einsatz mit solchen Messmitteln wird zur **Prüfaufgabe**.
+
 > **Verfeinert durch AP-04 E7:** Das Kennzeichen ist vierstellig fortlaufend („MS-0001“) je Kundenbereich, änderbar auf 2–16 Zeichen (Großbuchstaben, Ziffern, „-“, „.“, „/“); archivierte Kennzeichen bleiben belegt.
 
 > **Verfeinert durch AP-04 E8:** Eine Messstelle OHNE Quelle ist erlaubt und eingerichtet (Kennzeichen + Name + Hauptgröße + Ort); ihre Beobachtung ist „keine Datenquelle“, und in Bilanz und Bericht steht sie als „ohne Werte“ — nie als 0.
@@ -335,6 +383,54 @@ Die Messstelle ist das zentrale Objekt des Unternehmens-Energiemanagements. Sie 
 > **Verfeinert durch AP-05 E3:** Bei einer Energiekarte ist der Zählerstand der Karte die Hauptgröße und die Wirkleistung eine Nebengröße; eine auf der Box integrierte Energie darf nur als gekennzeichnete Vergleichsgröße auftreten.
 
 > **Verfeinert durch AP-04 IP-1:** Die Regeln der Messstelle sind ein Vertrag mit geteilten Vektoren: `docs/contracts/v2/messstelle.md` (Schema `messstelle.schema.json`, Vektoren `messstelle-vectors.json`). Ein Kennzeichen geht nie an eine ANDERE Messstelle — auch das frühere einer umbenannten bleibt belegt; „genau ein Hauptzähler je Anlage“ heißt: je Anlage und Richtung einer, alle am selben Zähler (MS-01 Bezug und MS-02 Abgabe an K-3); eine neue Quelle beendet die laufende genau zu ihrem Beginn, eine Lücke bleibt als Abschnitt ohne Quelle sichtbar; eine berechnete Messstelle braucht keinen Ort. Zwillinge: `services/api .../uems/MessstelleRegeln` und `frontend/portal/src/uemsMessstelle.ts` — noch ruft niemand an.
+
+**Woher die Werte kommen (Konzept Messen m1, Captain-Freigabe 05.10.2026).**
+Auf den Flächen unter Messen heißt die führende Quelle einer Messstelle „Woher die Werte kommen“; „Quelle“ bleibt das Fachwort im Aufklapper und in den Dialogen.
+Eine gemessene Messstelle hat einen von zwei gleichwertigen Wegen: „Automatisch von einem Gerät“ (ein Messwert einer Komponente, laufend, meist jede Viertelstunde) oder „Von Hand ablesen“ (Zählerstände, die jemand einträgt).
+In der Liste heißen sie „automatisch vom Gerät“ und „von Hand abgelesen, monatlich“; eine berechnete Messstelle ist „berechnet aus anderen Messstellen“, und ohne Weg steht „noch keine Quelle“, nie „Keine Datenquelle“.
+Der Ableserhythmus ist fest monatlich (AP-09 Z7): nach zwei Monaten ohne Ablesung erinnert die Wiedervorlage; mit der ersten Ablesung entsteht die Ablesungsquelle, und nur eine Messstelle mit einem Zählerstand als Hauptgröße lässt sich ablesen.
+„Aus anderen Messstellen berechnet“ ist kein dritter Weg im Messstellen-Dialog: ein Summenwert entsteht an der Anlage, an der seine Messwerte liegen, und „Summenwert anlegen“ steht unter Messen nicht mehr (Konzept §6.10).
+Die Liste erklärt das Wort mit einem Satz unter dem Titel und dem Aufklapper „Was ist eine Messstelle?“ (Klartext, ein Beispiel aus der eigenen Firma, die Abgrenzung zum Gerät).
+Kundenwörter: `UEMS_WOHER_DIE_WERTE`, `UEMS_WEG_GERAET`, `UEMS_WEG_ABLESEN`, `UEMS_NOCH_KEINE_QUELLE`, `UEMS_ABLESERHYTHMUS` (PORTAL/glossar.ts).
+
+**Seite einer Messstelle (Konzept Messen m1 §6.4/§6.5, Messen-Bau m2).**
+Der Kopf nennt Name und Kennzeichen, darunter Medium, Ort und Standort; der Lebenszyklus steht nur, wenn er nicht „aktiv“ ist.
+Die Zustandszeile sagt mit dem Satz des Servers, ob Werte kommen („Abgelesen am 01.10.2026“); bei einem Ablesezähler steht oben genau ein Schritt: „Ablesung eintragen“.
+Die Leitkachel nennt die Menge des letzten vollständigen Monats in der Rolle der Messstelle („Verbrauch September 2026“, „Erzeugung …“, „Einspeisung …“) mit dem Vergleich zum Vorjahresmonat; daneben stehen „Zählerstand“ und bei einem Ablesezähler „Nächste Ablesung“ mit „im Plan“ oder „überfällig“.
+Die Werte heißen nach der Rolle: „Verbrauch je Monat“ (zwölf Monate als Balken), „Verbrauch am Tag“, „Verbrauch in der Woche“; ein Ablesezähler kennt nur Monat und Jahr.
+„Zuordnung“ ist eine Karte mit vier Zeilen: Ort, „Im Stromnetz“ (Fachwort: elektrische Stellung, also Hauptzähler, Unterzähler oder Abzweig), Prozess und Kostenstellen, je mit „Ändern“; der Dialog der zweiten Zeile heißt „Stellung im Stromnetz ändern“.
+Ohne Änderung steht im Dialog grau „Heute gilt: …“, und der Knopf wartet, bis etwas anders ist; das ist kein Fehler.
+Ohne Quelle sagt auch die Zustandszeile „Noch keine Quelle“, nie „Keine Datenquelle“; ein unvollständiger Monat trägt in der Leitkachel die Marke „unvollständig“ und keinen Vergleich zum Vorjahr.
+Eine berechnete Messstelle zeigt „Zusammengesetzt aus“ mit ihren Termen; „Formel ändern“ öffnet den Formel-Dialog des Summenwerts.
+Aus „Stand an einem Tag ansehen“ geöffnet zeigt die Seite diesen Tag mit der Marke „Stand … · Nur lesen“ und „Zurück zu heute“ und bietet keinen Schreibweg.
+Eine Ablesung „zählt zum“ Monat ihres Zeitraums: „Zählt zum Oktober 2026 – dem Zeitraum seit der letzten Ablesung am 01.10.“; die Wahl des Monats steht nur, wenn der Zeitraum mehr als einen Monat berührt.
+Die Zeitzone steht einmal am Fuß („Zeiten: Europe/Berlin (Zeitzone des Standorts Werk Ahrenberg) · Stand 06.10.2026, 17:42“), am Uhrzeitfeld nur ihr Kürzel („MESZ“, „MEZ“).
+Kundenwörter: `UEMS_ZUORDNUNG`, `UEMS_IM_STROMNETZ`, `UEMS_NAECHSTE_ABLESUNG`, `UEMS_ABLESUNG_EINTRAGEN` (PORTAL/glossar.ts).
+
+**Ablese-Runde je Gebäude (Konzept Messen m1 §6.5, Variante 3A, Messen-Bau m2).**
+„Halle 1 ablesen“ trägt alle Zähler eines Orts ein, die von Hand abgelesen werden - dieselben, die die Wiedervorlage als „8 Zähler in Halle 1 ablesen“ bündelt.
+Ein Zeitpunkt („Abgelesen am“) gilt für alle; je Zähler steht der letzte Stand („zuletzt 647.760 kWh“) neben einem Feld.
+„Weiter“ speichert die Reihe und springt zum nächsten Zähler; die Antwort bestätigt grün („gespeichert · 216.300 kWh seit 01.10.“), „3 von 8 eingetragen“ zeigt den Fortschritt.
+Eine Ablesung der Runde ist dieselbe wie an der Messstelle (gleiche Route, gleiche Rechte, gleiche Prüfung); der Monat ist die Vorgabe mit dem größten Anteil, und ein Zeitraum über drei oder mehr Monate wird an der Messstelle eingetragen.
+Der Satz einer Prüfung steht am Zähler, die Runde läuft weiter; „Fertig“ führt zurück in die Liste.
+Einstieg: „Ablesen ›“ im Kopf der Ortskarte in der Liste und der Schritt „Ablesungen eintragen“ der Wiedervorlage; „Öffnen“ im Jahresplan zeigt die Liste des Orts.
+Kundenwort: `UEMS_ABLESEN` (PORTAL/glossar.ts).
+
+## Summenwert
+
+Das Kundenwort für eine berechnete Messstelle vom Typ **gewichtete Summe**:
+aus Registern und anderen berechneten Messstellen derselben Anlage, mit
+Vorzeichen und Faktor. Kein eigenes drittes Objekt. Die Messstellen-Welt
+nennt sie weiterhin „berechnet (Summe)“ mit Kennzeichen; „Gesamt-PV“ bleibt
+Cockpit-Wort. „Gesamtwert“, „PV gesamt“ und „Helfer“ sind keine neuen
+Produkttexte (freie Kundennamen bleiben erhalten). Konstante `SUMMENWERT`
+in `frontend/portal/src/glossar.ts`; Umstellung der Bestandsflächen H-5/H-7.
+
+Die Rolle ist eine gesonderte Zuordnung am Gerät: PV-Produktion, Verbrauch,
+Netz oder keine Rolle (Vorgabe). Sie wirkt ab jetzt auf die Anlagen-Anzeige,
+mit Änderungsprotokoll. Ein Wert zählt je Anlage und Rolle einmal, Netz hat
+höchstens einen maßgeblichen Wert. Vertrag und Zwillinge:
+[`rollen-zuordnung.md`](../contracts/v2/rollen-zuordnung.md).
 
 ## Messgröße, Medium, Einheit, Richtung, Wertart
 
@@ -360,13 +456,20 @@ Das Medium ist ein geschlossenes Vokabular an der Messstelle; im ersten Umfang i
 
 **Eine betriebliche Tätigkeit, die Energie einsetzt (Spritzguss, Druckluft, Logistik) — organisatorisch, gebäude- und standortübergreifend.**
 
-Prozesse bilden die zweite Sicht auf dieselben Messstellen. Ein Prozess kann Messstellen in mehreren Gebäuden, Anlagen und Standorten haben. Prozesse dürfen einen übergeordneten Prozess haben (Prozessbaum, eine Ebene). Sie sind der Anker für „wesentliche Energieeinsätze“ (AP-16) und Prozesskennzahlen (AP-11).
+Prozesse bilden die zweite Sicht auf dieselben Messstellen. Ein Prozess kann Messstellen in mehreren Gebäuden, Anlagen und Standorten haben. Prozesse dürfen einen übergeordneten Prozess haben (Prozessbaum, eine Ebene). Sie sind der Anker für „wesentliche Energieeinsätze“ (AP-16) und Prozesskennzahlen (AP-11) — über den Energieeinsatz (AP-16 E1 = A: genau ein Prozess × ein Träger, mit Verantwortlichem, Einflussgrößen, Messbedarf und Einstufungs-Fassungen; der Prozess selbst bleibt unverändert).
 
-**Beispiel (Referenzunternehmen Ahrenberg).** P-1 Spritzguss läuft in Halle 1 (MS-06, AN-1) und Halle 2 (MS-11, AN-2); P-2 Montage in Halle 2 und Werk Lindach; P-3 Druckluft ist Querschnitt (70 % Spritzguss, 30 % Montage).
+**Beispiel (Referenzunternehmen Ahrenberg).** P-1 Spritzguss läuft in Halle 1 (MS-06, AN-1) und Halle 2 (MS-11, AN-2); P-2 Montage in Halle 2 und Werk Lindach; P-3 Druckluft ist Querschnitt (70 % Spritzguss, 30 % Montage — über die Kostenstellen-Verteilung, AP-16 W2: die Zuordnung Messstelle → Prozess bleibt ohne Anteil, die Bewertung zählt MS-07 einmal in P-3).
 
 **Heute im Code.** Heute nicht vorhanden (`grep -rniE '\bprocess\b|prozess' MIG` → nur MIG/V20260842000000__flow_claim.sql:8 Prosa).
 
 **Abgrenzung.** Nicht der Bereich (räumlich), nicht die Kostenstelle (buchhalterisch, mit Prozentaufteilung).
+
+**Reiter „Prozesse“ (Konzept Messen m1 §6.7, Entscheid 4).**
+Unter dem Titel steht: „Arbeitsschritte, die Energie brauchen – und was sie verbraucht haben.“; „Was ist ein Prozess?“ klappt Klartext, Beispiel und Abgrenzung zur Kostenstelle auf.
+Je Prozess steht, wovon er gemessen wird, mit dem Wert der Messstelle im Zeitraum: „gemessen von AZ-3 Zähler Druckluft“; eine Prozess-Summe (eine berechnete Messstelle des Prozesses) hat Vorrang („zusammengerechnet in MS-20 …“).
+Mehrere gemessene Messstellen ohne Summe stehen einzeln („2 Messstellen, einzeln“), nie addiert; zählt eine Messstelle schon bei einem anderen Prozess, steht „auch bei {Prozess} gezählt“.
+Ohne Messstelle: „noch keine Messstelle zugeordnet“ mit dem Weg „Messstelle zuordnen“ (zugeordnet wird an der Messstelle).
+Kundenwörter: `GEMESSEN_VON`, `ZUSAMMENGERECHNET_IN`, `AUCH_BEI`, `NOCH_KEINE_MESSSTELLE_KLEIN` (PORTAL/kostenstellenUebersicht.ts), Erklärung `prozess` (PORTAL/begriffe.ts).
 
 ## Kostenstelle
 
@@ -383,6 +486,14 @@ Kostenstellen sind flach und kommen aus der Buchhaltung des Kunden. Eine Messste
 **Abgrenzung.** Nicht der Prozess (Tätigkeit), nicht der Bereich (Raum). Prozess und Kostenstelle sind zwei getrennte Achsen (E5).
 
 > **Verfeinert durch AP-10 E11/E12:** Die „festen Prozentanteile“ aus AP-00 werden eine eigene zeitgültige Beziehung Messstelle → Kostenstelle (Tage): an jedem Tag mit Zeilen genau 100 %, sonst „nicht verteilt“. Sie wirkt je Tag auf die Tagesmenge (kein Stichtag), endet mit der Kostenstelle und kennt keine dynamischen Schlüssel. Regeln: `docs/contracts/v2/verteilung.md`.
+
+**Reiter „Kostenstellen“ (Konzept Messen m1 §6.6, Captain-Freigabe 05.10.2026).**
+Unter dem Titel steht die Erklärung: „Wem Ihr Verbrauch in der Kostenrechnung zugerechnet wird.“; „Was ist eine Kostenstelle?“ klappt Klartext, ein Beispiel aus den eigenen Kostenstellen und die Abgrenzung zum Prozess auf.
+Je Kostenstelle steht die Summe der Kostenstellen-Sicht mit ihren Posten; ein Posten nennt seine Herkunft in Alltagswörtern: „ganz“ (die Messstelle gehört ganz zu ihr), „30 % von 88.200 kWh“ (Anteil und die Menge der Messstelle aus der Werte-Route), „berechnet · ganz“.
+Messstellen ohne Verteilungszeile im Zeitraum heißen auf dieser Fläche „Ohne Kostenstelle“ statt „nicht verteilt“ - ein Zustand, kein Fehler („Ihr Verbrauch ist keiner Kostenstelle zugerechnet. Ordnen Sie sie an der Messstelle zu, wenn sie in die Kostenrechnung gehören.“).
+Eine Gesamtsumme über Kostenstellen gibt es nicht, und kein Satz erklärt ihr Fehlen auf der Fläche; der Grund steht im Aufklapper.
+Solange die Sicht Ablesezeiträume nicht verteilt, sagt die Fläche bei Ablesezählern einmal: „Für {Zeitraum} noch keine Werte. Ihre Zähler werden monatlich abgelesen, diese Ansicht verteilt heute je Tag. Die Monatsmengen stehen an jeder Messstelle. Sie müssen nichts tun.“
+Kundenwörter: `OHNE_KOSTENSTELLE`, `GANZ`, `ANTEIL_VON`, `ABLESUNG_OHNE_TAGESWERT` (PORTAL/kostenstellenUebersicht.ts), Erklärung `kostenstelle` (PORTAL/begriffe.ts).
 
 ## Betriebsmodell (übernommen)
 
@@ -431,6 +542,17 @@ AP-00 legt nur fest, dass Bezugsgrößen an Objekte des Fachmodells gebunden sin
 **Abgrenzung.** Nicht die Messstelle (misst Energie), nicht die Kennzahl (AP-11: Verhältnis aus beidem).
 
 > **Verfeinert durch AP-09 E1/E2/E4/E17:** Der Geltungsbereich ist genau EINES von sieben Fachobjekten — Unternehmen · Standort · Gebäude · Bereich · Prozess · Kostenstelle · Messstelle (AP-00 nannte vier; aufgelöst in AP-09 W7) —, und die Wertart ist genau EINE von drei: Periodenwert (Menge je Tag, Woche, Monat oder Jahr), Stand (Ablesung zu einem Zeitpunkt) oder Stammdatum mit Gültigkeit. Die Einheit kommt aus einem geschlossenen Vokabular JE GRÖSSE (Masse kg · t, Stückzahl Stück, Zeit h · min, Fläche m², Volumen m³ · l, Personen, Schichten, Gradtage Kd); umgerechnet wird nur innerhalb derselben Größe mit festem Faktor, alles andere wird abgelehnt statt geraten. Die Betriebszeit ist eine Periodenreihe, kein Wochenmodell (E2). Die Bezugsfläche wird NICHT in AP-09 erfasst, sondern am Gebäude gelesen — zum Stichtag der Periode, ihrem letzten Tag (E17): ein neuer Wert ab Tag X ändert keine Periode vor X. Die Regeln stehen als Vertrag in `docs/contracts/v2/bezugsdaten.md` samt Vektoren (`bezugsdaten-vectors.json`).
+
+> **Verfeinert durch AP-17 W9:** Heute im Code (Stand 23.09.2026, gebaut mit AP-09): Tabellen `bezugsgroesse` mit genau einem Geltungsbereich, `bezugsgroesse_wert` (Werte als Fassungen, nur anhängend), `bezugsgroesse_kennzeichen_verlauf` und `bezugsgroesse_aenderung` (MIG/V20260913104500__uems_bezugsgroesse.sql:162, :291); Art als eigenes Datum (MIG/V20260918110000__uems_bezugsgroesse_art.sql); Kanalbindung an Zähler-, Zustands- und Temperaturkanäle mit Gradtagen G20/15 (`bezugsgroesse_kanalbindung`, MIG/V20260917100000__uems_bezugsgroesse_kanalbindung.sql:2; services/api/src/main/java/com/voltpilot/api/uems/GradtagRegeln.java:14). Routen `/api/v1/bezugsgroessen` (services/api/src/main/java/com/voltpilot/api/web/BezugsgroesseController.java:64) und `/api/v1/bezugsdaten/importe`; Regeln `uems/BezugsdatenRegeln` ⟷ `bezugsdaten.ts` gegen `docs/contracts/v2/bezugsdaten-vectors.json`; Portal „Unternehmen › Bezugsgrößen“ (PORTAL/nav.ts:250). Die Herkunft `bezogen` einer Gradtagzahl (von VoltPilot aus einem Wetter-Archiv, AP-17 E9 = C) ist seit AP-17 IP-12 gebaut (siehe „Wetterbezug“). Einstieg: `docs/agents/root/uems-bezugsgroessen-abschluss.md`.
+
+> **Verfeinert durch AP-17 W2 (E10 = A):** Erledigt: AP-09 §6.5 wies Betriebskalender, Arbeitszeitmodell und Wetterbereinigung AP-17 zu. Es gibt keinen Kalender und kein Arbeitszeitmodell als Stammdatum — die Betriebszeit ist eine Bezugsgröße mit Periodenwerten und als Einflussgröße eine Variable wie jede; ein Schichtmodell ist höchstens ein Wortlaut-Faktor an der Fassung. Die Wetterbereinigung ist mit Gradtagen eingelöst, die Temperatur dafür bezieht VoltPilot aus dem Wetter-Archiv (E9 = C). AP-09 E2 („die Zahl wäre geplant, nicht gemessen“) bleibt. Einstieg: `docs/agents/root/uems-bezugsbasis.md`.
+
+**Liste und Seite einer Bezugsgröße (Konzept Messen m1 §6.8, Entscheid 9).**
+Unter dem Titel steht: „Womit Sie Ihren Verbrauch vergleichen: Menge, Schichten, Wetter oder Fläche.“; die Liste ordnet je Periode („Werte je Monat“) und zeigt je Bezugsgröße, was sie zählt („Halle 2 · kg je Monat“), den Zustand („eingetragen bis Sep 2026“, „für Sep 2026 fehlt der Wert“, „noch kein Wert“), woher der letzte Wert kommt („von Hand eingetragen“, „importiert“, „aus einem Messkanal“, „aus dem Wetter-Archiv“) und den letzten Wert.
+Die Statuszeile sagt „Werte bis {Monat} eingetragen“ oder, was fehlt, mit dem Schritt „Eintragen“.
+Die Flächen aus den Gebäuden stehen als Kacheln unter „Flächen · aus dem Gebäudeplan, heute“ mit dem Weg „Am Gebäude ändern“; eine Bezugsfläche aus dem Gebäude ist nicht schreibbar und heißt „aus dem Gebäudeplan“, eine eigene Angabe „eigene Angabe“.
+Jede Bezugsgröße hat eine eigene Seite (`#/portfolio/bezugsgroessen/{id}`): „Wert eintragen“ oben, der letzte Wert und derselbe Zeitraum im Vorjahr, zwölf Perioden als Balken, die Werte neueste zuerst; Berichtigen, Fassungen und Archivieren stehen im Menü ⋯.
+Kundenwörter: `KOPF_SATZ`, `WERTE_JE`, `WOHER`, `ZUSTAND`, `STATUS`, `FLAECHEN`, `WERT_EINTRAGEN` (PORTAL/bezugsgroessenUebersicht.ts), Erklärung `bezugsgroesse` (PORTAL/begriffe.ts).
 
 ## Benutzer und Rolle (nur Begriff, Rechte-Matrix AP-03)
 
@@ -620,6 +742,8 @@ Die Bilanzgrenze ist die Anlage, nie ein Gebäude und nie ein Standort: nur hint
 
 **Abgrenzung.** Nicht die Erlösbilanz (die rechnet Geld, nicht Energie), nicht der Fahrplan (der plant, statt zu bilanzieren), nicht die Verdichtung (die bildet Mengen, nicht Rollen).
 
+> **Verfeinert durch AP-13 E15:** Auf den Messdaten- und Analyseoberflächen heißt der Rest eines Systems an der Anlage „nicht zugeordnet“, in der Gebäude-Sicht „nicht verortet“ und bei den Kostenstellen „nicht verteilt“ — drei Wörter für drei Sichten, nie vertauscht. „Bilanz“ steht nie ohne Präfix, „Energiefluss“ bleibt das Bestandsbild der Bühne. Die Wörter: `frontend/portal/src/glossar.ts` (`UEMS_ENERGIEBILANZ`, `UEMS_NICHT_VERORTET`).
+
 ## Bilanzdifferenz
 
 *Sicht: Elektrisch · Nachtrag AP-10 §4.3 (E1, E3)*
@@ -662,6 +786,705 @@ Drei Typen: die gewichtete Summe (Terme mit Vorzeichen und Faktor), der Rest (di
 
 **Abgrenzung.** Nicht die Kennzahl (die teilt durch eine Bezugsgröße, AP-11), nicht der Messkanal (der wird gelesen, nicht gerechnet), nicht der Ersatzwert (der steht für einen fehlenden Messwert).
 
+## Kennzahl
+
+*Sicht: Organisation · Nachtrag AP-11 §4.1 (E1, E2, E5)*
+
+**Ein eigenes Objekt, das Mengen teilt: Menge je Bezugsgröße, Teil am Ganzen oder Summe durch Summe über Kennzahlen — mit Zustand, Richtung, Fassung und Version.**
+
+Eine Kennzahl hat ein Kennzeichen (KZ-0001), genau einen Geltungsbereich, einen Verantwortlichen und einen Zweck. Ihre Berechnung lebt in tagesgültigen Fassungen, ihr Wert je Periode in Versionen. Sie summiert nie selbst (Summen sind Gesamtwerte) und mittelt nie Quotienten: eine Unternehmenszahl aus Gebäuden ist Summe durch Summe. Eine Zahl gibt es nur mit Menge UND Bezugsgröße und einer Bezugsgröße ungleich 0; ist ein Eingang unvollständig, steht die Richtung dabei (mindestens, höchstens).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** KZ-0001 Halle 2 im Oktober 2026: 6 100 kWh ÷ 41 000 Stück = 0,15 kWh je Stück; KZ-0003 Unternehmen: (6 100 + 3 600) ÷ (41 000 + 7 200) = 0,20 kWh je Stück.
+
+**Heute im Code.** Gebaut mit AP-11 IP-1 bis IP-16 (Stand 23.09.2026, Nachtrag AP-17 W9). Vertrag `docs/contracts/v2/kennzahl.md` samt Vektoren (`kennzahl-vectors.json` K1–K23, Zwillinge `uems/KennzahlRegeln` ⟷ `uemsKennzahl.ts`); Tabellen `kennzahl`, `kennzahl_fassung` (Berechnung als tagesgültige Fassungen), `kennzahl_eingang` und `kennzahl_wert` (Werte als Versionen, nur anhängend) (MIG/V20260915003000__uems_kennzahl.sql:190, :307, :409, :478); Routen `/api/v1/kennzahlen` für Anlegen, Fassungen, Vorschau, Werte und Versionen (services/api/src/main/java/com/voltpilot/api/web/KennzahlController.java:57); Rechenlauf `uems/KennzahlLauf` im Stundentakt und Kaskade `uems/KennzahlKaskade` hinter `voltpilot.uems.kennzahlen.enabled`; Portal „Unternehmen › Kennzahlen“ (PORTAL/nav.ts:251) und am Standort. Einstieg: `docs/agents/root/uems-kennzahlen-abschluss.md`. Der Aggregat-Schritt der Eigenen Auswertung ist nicht dieses Objekt (AP-11 W7).
+
+**Abgrenzung.** Nicht die Messstelle (die misst oder summiert, sie teilt nicht), nicht der Gesamtwert (eine berechnete Messstelle), nicht die Bezugsgröße (der Nenner), nicht ein Mittelwert.
+
+## Kennzahlvorlage
+
+*Sicht: Organisation · Nachtrag AP-11 §4.12 (E9)*
+
+**Ein Katalog-Eintrag, der das Anlegen einer Kennzahl vorbelegt: Rechenform, Name, Zweck und die Erwartung an Menge und Bezugsgröße.**
+
+Eine Vorlage ist nie selbst eine Kennzahl und hat keine Fassungen. Aus ihr entsteht eine Kennzahl mit neuem Kennzeichen und Fassung 1; Eingänge und Geltungsbereich werden immer neu gebunden. Wer eine bestehende Kennzahl kopiert, übernimmt Form, Name und Zweck ebenso — und bindet ebenso neu.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Aus „Stromeinsatz je Stück — {Geltungsbereich}“ legt Peter Hollerbach KZ-0002 für die Montagehalle Lindach an.
+
+**Heute im Code.** Gebaut mit AP-11 IP-10 (Stand 23.09.2026, Nachtrag AP-17 W9/W11): zehn VoltPilot-Vorlagen in `services/api/src/main/resources/kennzahlen/kennzahl-vorlagen.json` (byte-gleiche Kopie PORTAL/kennzahlen/kennzahl-vorlagen.json), Form `docs/contracts/v2/kennzahl-vorlagen.schema.json`, Route `GET /api/v1/kennzahl-vorlagen` (services/api/src/main/java/com/voltpilot/api/web/KennzahlVorlagenController.java:20); die acht aus AP-11 §4.12 und seit AP-17 W11 „Stromeinsatz je Gradtag“ und „Stromeinsatz je Betriebsstunde aus Leistung“. Die Regel für Vorlage und Kopie steht in `docs/contracts/v2/kennzahl-vectors.json` (K20).
+
+**Abgrenzung.** Nicht die Zuordnungs-Vorlage eines Imports (die deutet eine Datei), nicht eine Kundenvorlage mit eigenen Fassungen (E9, nicht gewählt).
+
+## Bericht
+
+*Sicht: Organisation · Nachtrag AP-12 §4.1 (E1, E8, E9)*
+
+**Ein eigenes Objekt aus Berichtsvorlage, Geltung (Standort oder Unternehmen) und Zeitraum (Monat oder Jahr) — mit genau einem Entwurf und null bis n freigegebenen Berichtsständen.**
+
+Ein Bericht zitiert nur die Welt der Messstellen: Messstellen, Kostenstellen-Energie, Bezugsgrößen und Kennzahlen, jede Zahl mit Zustand, Version und Herkunft. Sein Entwurf bildet sich neu, wenn sich eine Quelle ändert; ein Berichtsstand bleibt, wie er freigegeben wurde. Je Vorlage, Geltung und Zeitraum gibt es genau einen Bericht.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** BR-2026-0001, Monatsbericht Werk Ahrenberg Oktober 2026: Berichtsstand Nr. 1 am 10.11.2026, Nr. 2 (Revision) am 16.11.2026.
+
+**Heute im Code.** Gebaut mit AP-12 IP-1 ff. (Stand 24.09.2026, Nachtrag AP-18 W13). Vertrag `docs/contracts/v2/bericht.md` samt Vektoren (`bericht-vectors.json`, Zwillinge `uems/BerichtRegeln` ⟷ `uemsBericht.ts`); Tabellen `bericht` und `bericht_entwurf` (MIG/V20260915050000__uems_bericht.sql:162, :223); Routen `/api/v1/berichte` für Anlegen, Entwurf, Freigabe, Stände, PDF/CSV und Archivieren (services/api/src/main/java/com/voltpilot/api/web/BerichtController.java:83); Fläche PORTAL/pages/BerichtePage.tsx:1 und PORTAL/pages/BerichtSeite.tsx:1. Der Geräte-Export ohne Stand bleibt daneben.
+
+**Abgrenzung.** Nicht der Export (der zitiert nichts und hat keinen Stand), nicht die Erlöse-Karte (keine Berichtsquelle, E3), nicht der freie Zeitraum des Lese-Modells.
+
+## Berichtsvorlage
+
+*Sicht: Organisation · Nachtrag AP-12 §4.5 (E9)*
+
+**Ein Katalog-Eintrag von VoltPilot mit Fassungsnummer, der Geltung, Zeitraum, Vergleichszeiträume und die festen Abschnitte eines Berichts festlegt.**
+
+Es gibt vier Vorlagen: Monats- und Jahresbericht je Standort und je Unternehmen. Der Kunde wählt Vorlage, Geltung, Zeitraum und abgewählte Kennzahlen — sonst nichts. Eine neue Fassung einer Vorlage ändert keinen Berichtsstand; der nächste Entwurf nennt die neue Fassung.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Monatsbericht Standort, Fassung 1: Kopf · Zusammenfassung · Verbrauch je Messstelle · Tagesverlauf · Kennzahlen · Qualität · Quellenverzeichnis.
+
+**Heute im Code.** Gebaut mit AP-12 IP-1/IP-5 (Stand 24.09.2026, Nachtrag AP-18 W13). Der Katalog steht in `docs/contracts/v2/bericht-vorlagen.json` (heute sechs Vorlagen: die vier aus AP-12, dazu die energetische Bewertung aus AP-16 und seit AP-17 IP-21a der Leistungsvergleich) und wird byte-gleich als API-Ressource `berichte/bericht-vorlagen.json` über `GET /api/v1/bericht-vorlagen` ausgeliefert (services/api/src/main/java/com/voltpilot/api/web/BerichtVorlagenController.java:44).
+
+**Abgrenzung.** Nicht die Kennzahlvorlage (die legt eine Kennzahl an), nicht ein freier Berichtsdesigner (E9, nicht gewählt).
+
+## Berichtsstand
+
+*Sicht: Organisation · Nachtrag AP-12 §4.3 (E1, E2, E5)*
+
+**Der freigegebene, unveränderliche Inhalt eines Berichts zu einem Datenstand: eine Kopie mit Prüfsumme, Nummer, Person und Freigabe-Zeitpunkt.**
+
+Er entsteht nur, wenn eine Person mit Recht den Entwurf freigibt — der Zeitraum ist zu Ende, jeder Wert endgültig und der Entwurf aktuell. Er wird nie geändert und nie gelöscht und hält jede Zahl mit ihrem Nachweis selbst fest, auch wenn die Messdaten ihre Aufbewahrung überschritten haben. Ändert sich eine Quelle später, bekommt er einen Anstoß; der nächste Stand ersetzt ihn, er bleibt lesbar.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** BR-2026-0001 Nr. 1 nennt MS-12 mit 6 100 kWh in Version 1 — auch 2036, wenn die Zeilen der Speicherklasse gelöscht sind.
+
+**Heute im Code.** Gebaut mit AP-12 IP-4 (Stand 24.09.2026, Nachtrag AP-18 W13). Die Form steht in `docs/contracts/v2/bericht.schema.json` (Abzug, Stand); Tabelle `bericht_stand` mit Prüfsumme, Nummer und Datenstand ≤ Freigabe (MIG/V20260915050000__uems_bericht.sql:252); Freigabe und Abruf über `POST …/freigeben` und `GET …/staende/{nr}` (services/api/src/main/java/com/voltpilot/api/web/BerichtController.java:195, :214).
+
+**Abgrenzung.** Nicht die Version eines Werts (die gehört der Zahl), nicht der Entwurf (der bildet sich neu), nicht eine Datei (PDF und CSV werden aus ihm erzeugt).
+
+## Revision
+
+*Sicht: Organisation · Nachtrag AP-12 §4.9 (E6, E7)*
+
+**Ein neuer Berichtsstand, der den gültigen ersetzt — immer die Freigabe einer Person nach einem Anstoß, nie automatisch.**
+
+Eine Korrektur, ein Ersatzwert oder eine rückwirkende Änderung der Struktur trifft einen freigegebenen Berichtsstand, wenn sie eine seiner Quellen in seinem Zeitraum ändert. Der Stand bleibt unverändert und zeigt „Revision nötig“; der Entwurf nennt jede Abweichung. Ein Anstoß kann mit Begründung verworfen werden.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Die Korrektur K-2026-0007 stößt Nr. 1 an („Revision nötig — Korrektur K-2026-0007“); Ines Kaltenbach gibt am 16.11.2026 Nr. 2 frei, drei Abweichungen.
+
+**Heute im Code.** Gebaut mit AP-12 IP-4/IP-8 (Stand 24.09.2026, Nachtrag AP-18 W13). Die Regeln stehen in `docs/contracts/v2/bericht.md` (Betroffenheit, Anstoß, Abweichung); Anstoß-Tabelle `bericht_revision_anstoss` (MIG/V20260915050000__uems_bericht.sql:341), Kaskaden-Naht `uems/BerichtKaskade` (services/api/src/main/java/com/voltpilot/api/uems/BerichtKaskade.java:61), Verwerfen mit Begründung über `POST …/anstoesse/{id}/verwerfen` (services/api/src/main/java/com/voltpilot/api/web/BerichtController.java:260).
+
+**Abgrenzung.** Nicht die Korrektur eines Werts (die macht eine neue Version einer Zahl), nicht das Zurücknehmen einer Freigabe (gibt es nicht).
+
+## Datenstand
+
+*Sicht: Organisation · Nachtrag AP-12 §4.6 (E4)*
+
+**Der Zeitpunkt, zu dem ein Berichtsentwurf oder Berichtsstand aus den Daten gebildet wurde — alle einbezogenen Werte sind älter.**
+
+Der Datenstand ist eine Aussage über die Daten, die Freigabe eine über eine Person; beide stehen im Kopf eines Berichts. Ändert sich eine Quelle nach dem Datenstand, ist der Entwurf veraltet und bildet sich neu; eine Freigabe mit einem veralteten Datenstand wird abgelehnt. An einer Anlage sagt dasselbe Wort, wie aktuell ihre Daten sind — dieselbe Bedeutung an einem anderen Gegenstand.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Berichtsstand Nr. 2: Datenstand 12.11.2026 10:05 (MEZ), freigegeben 16.11.2026 14:20 von Ines Kaltenbach.
+
+**Heute im Code.** Für Berichte gebaut mit AP-12 IP-4 (Stand 24.09.2026, Nachtrag AP-18 W13). Die Regeln stehen in `docs/contracts/v2/bericht.md` (Datenstand, D1–D5); Spalte `datenstand` an Entwurf und Stand (MIG/V20260915050000__uems_bericht.sql:229, :259).
+
+**Abgrenzung.** Nicht der Freigabe-Zeitpunkt, nicht „endgültig ab“ eines Werts, nicht die Berechnungszeit einer einzelnen Zahl.
+
+## Quellenverzeichnis
+
+*Sicht: Organisation · Nachtrag AP-12 §4.4 (E3, E6)*
+
+**Die Liste aller Objekte, aus denen ein Bericht seine Zahlen hat — unmittelbar, mittelbar oder als Vergleich, je mit ihrem Zeitraum.**
+
+Das Quellenverzeichnis entscheidet, welche Änderung einen Bericht trifft: Zeitraum mal Quellen, nie der Standort oder ein Name. Mittelbare Quellen (die Eingänge berechneter Messstellen, Kostenstellen und Kennzahlen) stehen mit darin, damit eine Korrektur auch den Unternehmensbericht erreicht.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** BR-2026-0001: 19 Einträge von BZ-4 bis MS-15, darunter KZ-0001 und KZ-0005.
+
+**Heute im Code.** Gebaut mit AP-12 IP-4 (Stand 24.09.2026, Nachtrag AP-18 W13). Die Form einer Zeile steht in `docs/contracts/v2/bericht.schema.json` (Quelle); Tabelle `bericht_quelle` mit dem Namen zum Datenstand (MIG/V20260915050000__uems_bericht.sql:299).
+
+**Abgrenzung.** Nicht die Quellenbindung einer Messstelle (die verbindet Messstelle und Messkanal), nicht die Herkunft eines Werts (die erklärt eine einzelne Zahl).
+
+## Werte
+
+*Sicht: Zustand · Nachtrag AP-13 §4.1 (E9, E15)*
+
+**Der Abschnitt einer Messstelle, in dem ihre Zahlen für einen Zeitraum stehen: Karte, Liste, Verlauf und Vergleich.**
+
+Jede Zahl steht mit Zustand, Verlauf, Fassung, Kennzeichen und Version so, wie sie gebildet wurde; fehlt eine Zahl, steht ein Strich mit dem Satz ihres Grundes, nie eine 0. Die Zeiten stehen in der Zeitzone des Standorts, und der Kopf nennt sie. Jeder Weg zur Zahl einer Messstelle — aus dem Register, einer Übersicht, einer Kennzahl oder einem Bericht — endet hier, mit Zeitraum und Version.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** MS-10 Netzbezug Halle 2 am 03.11.2026: 2.304 kWh · vollständig (Menge aus Zählerständen) · Verlauf 85 % · vorläufig — Zeiten in Europe/Berlin (Zeitzone des Standorts Werk Ahrenberg).
+
+**Heute im Code.** Die Tages- und Monatskarte öffnet als Dialog an der Messstelle (`frontend/portal/src/uemsWerteKarte.ts`); als Abschnitt der Messstellen-Seite kommt sie mit AP-13 IP-3. Das Wort: `frontend/portal/src/glossar.ts` (`UEMS_WERTE`).
+
+**Abgrenzung.** Nicht der Reiter „Messwerte“ einer Anlage (Bestand, Verdichtung in Berlin-Zeit), nicht der Register-Verlauf eines Geräts.
+
+## Verlauf
+
+*Sicht: Zustand · Nachtrag AP-13 §4.1 (E5, E15)*
+
+**Die Zeichnung der Werte über einen Zeitraum — Tag in Viertelstunden, Woche in Stunden, Monat in Tagen, Jahr in Monaten.**
+
+Jeder Schritt zeigt Farbe und Wort seines Zustands; ein Schritt ohne Werte ist eine Lücke ohne Linie und ohne Null, eine Folge davon eine Fläche mit Satz. „Verlauf n %“ an einer Zahl sagt, welcher Anteil der erwarteten Werte angekommen ist — das ist nicht die Vollständigkeit der Menge: ein Tag kann vollständig gemessen sein und trotzdem „Verlauf 85 %“ tragen. Dasselbe Wort wie der Bereich „Verlauf“ einer Anlage, dieselbe Bedeutung.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** MS-10 am 03.11.2026: 96 Viertelstunden, 14:00–17:31 als Lücke mit dem Satz „Lücke von 14:00 bis 17:31 — nie als 0 gerechnet“; die Karte sagt „vollständig (Menge aus Zählerständen) · Verlauf 85 %“.
+
+**Heute im Code.** Das Wort und die Form des Abzeichens: `frontend/portal/src/glossar.ts` (`UEMS_VERLAUF`, `UEMS_VERLAUF_PROZENT` = `satz.abdeckung` in `docs/contracts/v2/ergebnis-zustand-vectors.json`); das Raster je Zeitraum: `frontend/portal/src/uemsOberflaechen.ts` (`verlaufRaster`). Die Zeichnung kommt mit AP-13 IP-4.
+
+**Abgrenzung.** Nicht die „Abdeckung“ der Bestandsflächen (Viertelstunden einer Anlage), nicht eine Hochrechnung, nicht ein freier Von–Bis-Zeitraum.
+
+## Vergleich
+
+*Sicht: Zustand · Nachtrag AP-13 §4.1 (E6, E15)*
+
+**Die Werte einer Messstelle neben ihrer Vorperiode oder ihrem Vorjahr — oder neben bis zu zwei weiteren passenden Messstellen.**
+
+Gegen die eigene Vorperiode steht die Differenz in kWh und Prozent, gemessen an der neuesten Version des Vergleichswerts; fehlt der Vergleichswert, steht sein Grund, nie eine 0. Zwischen zwei Messstellen gibt es keine Differenz — ein Unterschied zweier Zähler sagt nichts über einen von beiden. Passend sind Messstellen mit gleicher Größe, Richtung, Einheit und Wertart; bei den anderen nennt die Auswahl, warum nicht.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** MS-12 im November 2026 gegen Oktober 2026 (Version 2): +260 kWh (+4,3 %). MS-06 und MS-11 (Spritzguss) nebeneinander; MS-21 ist nicht passend (Volumen in m³).
+
+**Heute im Code.** Die Regel „passend“: `frontend/portal/src/uemsOberflaechen.ts` (`passend`); die Differenz rechnet der Bericht-Zwilling `frontend/portal/src/uemsBericht.ts` (AP-12). Das Wort: `frontend/portal/src/glossar.ts` (`UEMS_VERGLEICH`, dasselbe Wort wie die Vergleichsquelle). Die Fläche kommt mit AP-13 IP-5.
+
+**Abgrenzung.** Nicht die Vergleichsquelle (eine zweite Quelle derselben Größe an EINER Messstelle, AP-04), nicht ein Benchmark gegen andere Unternehmen.
+
+## Datenlage
+
+*Sicht: Zustand · Nachtrag AP-13 §4.1 (E13, E15)*
+
+**Wie viele Messstellen einer Ebene Daten liefern — „15 von 16 Messstellen liefern Daten“, EINE Zählung je Ebene.**
+
+Gezählt wird aus dem Messstellen-Register: berechnete Messstellen zählen mit, eine Messstelle ohne Datenquelle steht im Nenner, manuell abgelesene werden als Zusatz genannt („· 1 manuell abgelesen“). Schweigen ist nie rot: eine Messstelle, die nicht liefert, sagt seit wann.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Unternehmen Ahrenberg, Oktober 2026: Werk Ahrenberg „15 von 16“, Werk Lindach „4 von 4“.
+
+**Heute im Code.** Die Zählung je Zeile: `services/api/src/main/java/com/voltpilot/api/uems/MessstelleRegisterService.java` (`aggregatZustand`) über `aggregatLiefertDaten` (`frontend/portal/src/uemsZustand.ts`); seit AP-13 IP-7 spricht die Karte „Funktionen“ dieselbe Zählung (`services/api/src/main/java/com/voltpilot/api/uems/FunktionZustandAbleitung.java`, `datenlage` über `register_zeilen`) und der Baustein „Messstellen“ der Übersicht liest sie aus dem Register (`frontend/portal/src/uebersichtBausteine.ts`); die Wörter: `frontend/portal/src/glossar.ts` (`UEMS_DATENLAGE`, `UEMS_MANUELL_ABGELESEN`).
+
+**Abgrenzung.** Nicht der Online-Status einer Anlage oder Box, nicht die Vollständigkeit einer Zahl, nicht „Verlauf n %“.
+
+## Grund (einer fehlenden Zahl)
+
+*Sicht: Zustand · Nachtrag AP-13 §4.10 (E11)*
+
+**Der Satz, warum an einer Stelle keine Zahl steht — je Grund genau einer.**
+
+Die Karte zeigt den Strich UND den Satz. Der Satz nennt nur, was das System weiß: keine Quelle, eine Quelle, die den Zeitraum nur zum Teil deckt, ein Zeitraum, der noch nicht gerechnet ist, eine Version, die es nicht gibt — nie eine Ursache, die niemand festgestellt hat, und nie eine Störung.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** MS-21 Gas Heizung Verwaltung, Oktober 2026: „— · keine Werte“ und „Keine Quelle: MS-21 Gas Heizung Verwaltung hatte in diesem Zeitraum keine führende Quelle — es gibt keine Zahl, auch keine 0.“
+
+**Heute im Code.** Acht Sätze als Vertrag: `docs/contracts/v2/ergebnis-zustand.md` §9 (Block `grund`, 1.11), gesprochen von `frontend/portal/src/uemsErgebnis.ts` und `services/api/src/main/java/com/voltpilot/api/uems/ErgebnisZustand.java` (`grundSatz`). An der Karte sprechen sie mit AP-13 IP-6.
+
+**Abgrenzung.** Nicht ein Fehler oder eine Störung, nicht der Zustand „keine Werte“ (der sagt, DASS keine Zahl da ist), nicht die Gründe einer Kennzahl (eigener Vertrag).
+
+### Ersatzwert, Korrektur und Widerruf
+
+Ein **Ersatzwert** füllt oder verteilt fehlende Messwerte mit einer benannten Methode
+und einer Begründung. Bei gemessenem Zuwachs wird dessen Menge verteilt; ohne
+Zuwachs kann eine belegte Menge, eine Vorperiode oder eine Vergleichsquelle helfen.
+Ein nachgetragener Ablesestand bleibt als solcher erkennbar.
+
+Eine **Korrektur** bewahrt den bisherigen Wert und erzeugt nach der Freigabe eine neue
+Version. Ein Vorschlag verändert noch keinen Wert. Bei eingeschalteter Prüfung durch
+eine zweite Person kann der Ersteller nicht selbst freigeben.
+
+Ein **Widerruf** nimmt einen freigegebenen Vorgang begründet zurück. Auch dabei entsteht
+eine weitere Version; die bisherigen Werte und Begründungen bleiben erhalten.
+Wege und Umsetzung: [Korrektur-Prüfseite und Ersatzwerte](../agents/root/uems-korrektur-portal-routen.md).
+
+## Betrachtungsumfang
+
+*Sicht: Organisation · Nachtrag AP-16 §3.2, §4.1*
+
+**Fassung am Unternehmen: Standorte, Träger, Ausschlüsse mit Begründung; die Anlagen folgen aus den Standorten am Stichtag.**
+
+Der Betrachtungsumfang ist eine Fassung am Unternehmen: welche Standorte, welche Energieträger — und was ausdrücklich außerhalb bleibt, mit Begründung. Die Anlagen im Umfang sind die Anlagen dieser Standorte am Stichtag (zeitgültig, AP-02/AP-10); die Bilanzgrenze bleibt die Anlage (AP-10 E9) — der Umfang ist die Menge der Bilanzgrenzen, kein neues Grenzobjekt.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Ines Kaltenbach (Energiemanager) legt am 04.11.2026 den Betrachtungsumfang fest — beide Werke, Träger Strom: ST-1 Werk Ahrenberg mit AN-1, AN-2; ST-2 Werk Lindach mit AN-3; Träger Strom mit Anteil, Gas ohne Anteil.
+
+**Heute im Code.** Tabellen `bewertung_umfang`, `bewertung_umfang_standort`, `bewertung_umfang_ausschluss`; `services/api/src/main/java/com/voltpilot/api/uems/BewertungUmfangService.java` (AP-16 IP-5). Wegweiser: `docs/agents/root/uems-bewertung-umfang.md`.
+
+**Abgrenzung.** Nicht ein neues Grenzobjekt; nicht ein Geltungsbereich-Wort.
+
+## Energieeinsatz
+
+*Sicht: Organisation · Nachtrag AP-16 §3.3, §4.1 (E1)*
+
+**Genau ein Prozess × genau ein Träger, mit Verantwortlichem, Einflussgrößen, Messbedarf, Einstufungs-Fassungen (Kennzeichen EE-…).**
+
+Ein Energieeinsatz ist genau ein Prozess und genau ein Träger (E1). Er trägt: Kennzeichen (EE-1 …), Name, Verbraucher als Wortlaut (welche Maschinen, Anlagenteile), optional Verweise auf Komponenten (die Technik), einen Verantwortlichen, Einflussgrößen, Messbedarf und Einstufungs-Fassungen.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Sieben Energieeinsätze, je Prozess einen (Spritzguss, Montage, Druckluft, Kühlung, Logistik, Verwaltung; dazu die Gasheizung der Verwaltung als Einsatz ohne Anteil), mit Verantwortlichen aus dem Personen-Satz.
+
+**Heute im Code.** Tabellen `energieeinsatz`, `energieeinsatz_einflussgroesse`, `energieeinsatz_aenderung`; `services/api/src/main/java/com/voltpilot/api/uems/EnergieeinsatzService.java`, `services/api/src/main/java/com/voltpilot/api/web/EnergieeinsatzController.java` (AP-16 IP-3/IP-4). Regeln als Vertrag: `docs/contracts/v2/bewertung.md` mit `bewertung-vectors.json`. Wegweiser: `docs/agents/root/uems-energieeinsatz.md`.
+
+**Abgrenzung.** Nicht der Prozess selbst; nicht eine Messstelle; nicht eine Komponente.
+
+**Verbrauch (Konzept Auswerten a1, 06.10.2026).**
+„Auswerten“ beantwortet zuerst „Wo geht die Energie hin?“: der Reiter „Verbrauch“ (`#/portfolio/verbrauch`) zeigt den Strom eines Monats oder der zwölf Monate bis zu ihm je Energieeinsatz, sortiert als Balken; im Portal heißt der Energieeinsatz dort kurz „Bereich“.
+Was kein Bereich misst, steht als eigene Reihe „Keinem Bereich zugeordnet“ am Ende, mit der Anlage „ohne eigenen Zähler“ und dem Weg „Zähler planen“; der Anteil der Bereiche heißt „einem Bereich zugeordnet“.
+Dieselben drei Wörter gelten auf Verbrauch, Bewertung und Energiebilanz, damit zwei Flächen nie zwei Antworten auf „Wohin?“ geben.
+Der Vergleich mit dem Vorjahr ist roh (Produktion und Wetter sind nicht herausgerechnet) und bekommt keine Urteilsfarbe; ob es besser wird, sagt nur der Vergleich mit der Bezugsbasis.
+Die Seite eines Energieeinsatzes wohnt unter „Verbrauch“ (`#/portfolio/verbrauch/{id}`); die frühere Adresse unter „Bewertung“ leitet weiter.
+Kundenwörter: `UEMS_EINEM_BEREICH_ZUGEORDNET`, `UEMS_KEINEM_BEREICH_ZUGEORDNET`, `UEMS_OHNE_EIGENEN_ZAEHLER` (PORTAL/glossar.ts).
+
+## Einstufung
+
+*Sicht: Organisation · Nachtrag AP-16 §3.1, §4.1*
+
+**Fassung am Einsatz: `wesentlich` · `nicht_wesentlich` · `offen`; Person, Tag, Begründung, Herkunfts-Satz.**
+
+Eine Bewertung ist eine Behauptung gegenüber Dritten. Deshalb hat jede Einstufung vier Dinge, oder sie ist keine: eine Person (Konto, Name, Rolle), einen Tag (gilt ab, als Fassung), eine Begründung (Pflichtfeld, im Wortlaut) und einen Herkunfts-Satz (welche Zahl in welcher Version, welcher Nenner aus welchen Bilanzwerten, welche Kriterien-Fassung, welches Urteil). Das System liefert die ersten drei nicht und den vierten immer.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Ines Kaltenbach stuft ein — Spritzguss wesentlich nach Zahl, Druckluft wesentlich nach ihrer begründeten Einschätzung (Querschnitt, Leckagen vermutet).
+
+**Heute im Code.** Tabelle `energieeinsatz_einstufung`; `services/api/src/main/java/com/voltpilot/api/uems/EnergieeinsatzEinstufungService.java` (AP-16 IP-11); Anzeigewörter in `frontend/portal/src/glossar.ts`. Wegweiser: `docs/agents/root/uems-bewertung-einstufung.md`.
+
+**Abgrenzung.** Nicht ein Vorschlag; nicht etwas, das ein Läufer setzt.
+
+**Die Bewertung als Ergebnis (Konzept Auswerten a1 §6.7, Captain-Freigabe 06.10.2026).**
+Die Seite „Energetische Bewertung“ zeigt ihr Ergebnis statt ihrer Rohdaten: „4 von 8 Bereichen sind wesentlich - zusammen 68 % des Stroms.“, darunter die Datengrundlage der gültigen Bewertung.
+„Bereich“ ist das kurze Kundenwort für den Energieeinsatz; die Bereiche stehen in drei Karten nach der Einstufung einer Person: „Wesentliche Bereiche“, „Nicht wesentlich“ und „Noch ohne Werte“ (ein Bereich, dessen Zähler noch nichts liefert), dazu „Noch nicht eingestuft“.
+Weicht eine Einstufung von einem Vorschlag ab, der auf Messwerten beruht, trägt die Reihe die leise Marke „weicht vom Vorschlag ab“ mit dem Zitat der Begründung - ohne Warnton, weil eine begründete Entscheidung kein Fehler ist; ohne Messwerte gibt es keinen Vorschlag und damit keine Abweichung.
+Die Kriterien stehen als Sätze unter „Wie VoltPilot vorschlägt“ („Er braucht mindestens 10 % des Stroms.“); die Kürzel K1 bis K8 bleiben in Bericht, Prüfsumme und im Dialog „Kriterien ändern“ (Wort und Kürzel).
+Die Messabdeckung steht als Kachel „Keinem Bereich zugeordnet“ mit „ausreichend“ oder „zu wenig“ gegen die Schwelle, ab der die Rangfolge belastbar ist.
+Mit Vier-Augen wartet eine neue Kriterien-Fassung auf eine zweite Person, die sie auf der Seite freigibt oder begründet ablehnt; die Meldung nach dem Speichern sagt, ob die Fassung gilt oder wartet.
+Kundenwörter: `UEMS_ENERGETISCHE_BEWERTUNG`, `UEMS_WESENTLICHE_BEREICHE`, `UEMS_NICHT_WESENTLICHE_BEREICHE`, `UEMS_NOCH_NICHT_EINGESTUFT`, `UEMS_NOCH_OHNE_WERTE`, `UEMS_WEICHT_VOM_VORSCHLAG_AB`, `UEMS_WIE_VOLTPILOT_VORSCHLAEGT`, `UEMS_KEINEM_BEREICH_ZUGEORDNET` (PORTAL/glossar.ts).
+
+## Messbedarf
+
+*Sicht: Organisation · Nachtrag AP-16 §3.6, §4.1 (E6)*
+
+**Eintrag am Einsatz (was, wo, Größe optional, Frist), Zustand offen · eingelöst · verworfen; eingelöst durch eine eingerichtete Messstelle.**
+
+Messbedarf ist ein Eintrag am Einsatz (was, wo, welche Größe — optional —, Frist), Zustand offen · eingelöst · verworfen; eingelöst wird er durch eine eingerichtete Messstelle (AP-04 E8), die bis zum Zähler „keine Datenquelle seit …“ sagt und nie 0 ist (R5).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Aus der Rest-Zeile wird Messbedarf: „Halle 1 Lüftung, Beleuchtung, Allgemein“ → eine geplante Messstelle ohne Datenquelle → am 01.03.2027 hängt der Zähler (R5).
+
+**Heute im Code.** Tabellen `messbedarf`, `messbedarf_aenderung`; `services/api/src/main/java/com/voltpilot/api/uems/MessbedarfService.java` (AP-16 IP-19). Wegweiser: `docs/agents/root/uems-messbedarf.md`.
+
+**Abgrenzung.** Nicht eine Messstelle; nicht eine Maßnahme (AP-18).
+
+**Geplante Messstellen unter Messen (Konzept Auswerten a1, Entscheid 9; Messen-Bau m2).**
+Ein offener Messbedarf ist eine geplante Messstelle: eine Messstelle, die noch fehlt.
+Die Liste „Messstellen“ zeigt sie an ihrem Ort nach dessen Messstellen, mit dem Energieeinsatz, für den sie erfasst wurde („Geplant für EE-8 Gebäudetechnik Halle 1“), und der Frist; ohne Ort steht sie unter „Kein Ort zugeordnet“.
+„Einrichten“ öffnet den Messstellen-Dialog mit Ort und Größe des Bedarfs; sobald die Messstelle eingerichtet ist, ist der Bedarf eingelöst, und an ihrer Stelle steht die Messstelle selbst (bis zum Zähler mit „noch keine Quelle“, nie 0).
+Die Marke „1 geplant“ zeigt nur die geplanten Messstellen; ist eine Frist überschritten, nennt eine Hinweiskarte sie wie eine überfällige Ablesung.
+Der Schritt „Messstelle anlegen“ der Wiedervorlage öffnet die Liste bei genau diesem Bedarf.
+Zitieren freigegebene Berichtsstände einen Bedarf, bleibt er, wie er ist: statt „Einrichten“ nennt ein Satz die Stände („2 freigegebene Berichtsstände zitieren diesen Messbedarf (…) - er bleibt, wie er ist.“).
+Scheitert das Einlösen nach dem Anlegen, bietet die Reihe „MS-23 zuordnen“ mit der schon angelegten Messstelle an, nie ein zweites Anlegen.
+Erfasst, bearbeitet und verworfen wird ein Messbedarf weiter am Energieeinsatz; unter Messen steht dazu „Messbedarf erfassen“ im Menü der Liste.
+Kundenwort: `UEMS_GEPLANTE_MESSSTELLE` (PORTAL/glossar.ts).
+
+## Messmittel-Angabe
+
+*Sicht: Erfassung · Nachtrag AP-16 §3.7, §4.1 (E7)*
+
+**Am Einbau: Klasse, Prüfungsart, Datum, gültig bis, Beleg; Vorgabe `nicht_erhoben`.**
+
+Messmittel-Angaben stehen am Einbau: Genauigkeitsklasse, Prüfungsart (Eichung · MID-Konformität · Kalibrierung · Werksbescheinigung · keine · nicht erhoben), Prüfdatum, gültig bis, Beleg. Ein Beleg ist ein Verweis mit Prüfsumme: Bezeichnung, Ablageort beim Kunden, SHA-256 der Datei (beim Eintragen im Portal gebildet), Person, Zeitpunkt — die Datei selbst wird nicht gespeichert (E7). Die Vorgabe ist `nicht_erhoben`, nie ein erfundener Wert; ein wesentlicher Einsatz mit Messmitteln ohne Angabe wird zur Prüfaufgabe (R8).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Am Netzzähler trägt Ines Kaltenbach Eichung und Beleg ein; am Druckluft-Zähler steht „Klasse und Prüfung nicht erhoben“ — als Prüfaufgabe, nicht als Schätzung (R8).
+
+**Heute im Code.** `services/api/src/main/java/com/voltpilot/api/uems/MessmittelService.java` (AP-16 IP-15), Anzeigewörter in `frontend/portal/src/glossar.ts`. Wegweiser: `docs/agents/root/uems-messmittel.md`.
+
+**Abgrenzung.** Nicht eine Katalog-Eigenschaft (die steht daneben: „laut Hersteller“).
+
+## Energieleistungskennzahl
+
+*Sicht: Organisation · Nachtrag AP-17 §4.1 (SP1, E1)*
+
+**Eine Kennzahl mit freigegebener Bezugsbasis — ein Wort an der Kennzahl, kein eigenes Objekt.**
+
+Eine Energieleistungskennzahl ist eine Kennzahl (AP-11), für die eine Bezugsbasis freigegeben ist. Sie ist kein neues Objekt und keine neue Rechenform: Wert, Versionen, Kaskade und Herkunft der Kennzahl bleiben, wie sie sind (Invariante 1). Das Wort leitet der Leser aus der freigegebenen Fassung ab; ohne Basis bleibt die Kennzahl eine allgemeine Kennzahl (R10).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** KZ-0004 „Strom je Kilogramm Spritzguss“ wird mit der Freigabe von BB-0001 zur Energieleistungskennzahl; KZ-0003 bleibt ohne Basis eine Kennzahl wie bisher.
+
+**Heute im Code.** Kein Feld, sondern abgeleitet: `bezugsbasis` am Register-Eintrag der Kennzahl (`services/api/src/main/java/com/voltpilot/api/web/dto/KennzahlDto.java`, AP-17 IP-8; für eine Kennzahl ohne Basis `null`); Anzeigewort `UEMS_ENERGIELEISTUNGSKENNZAHL` (PORTAL/glossar.ts:542). Wegweiser: `docs/agents/root/uems-bezugsbasis.md`.
+
+**Abgrenzung.** Nicht eine neue Kennzahl-Art; nicht eine gespeicherte bereinigte Kennzahl (Rechenform `modell` bleibt Folgestufe, E7).
+
+**Leitkennzahl (Portfolio-Übersicht, Konzept `data/vp-portfolio-konzept2-p2` §4.2).**
+Die „Leitkennzahl“ ist die führende Kennzahl der Unternehmens-Übersicht: die Energieleistungskennzahl mit offenem Energieziel, die das Kachelraster als erste, breite Kachel anführt.
+Sie ist kein neues Objekt und keine neue Rechenform, sondern die Präsentations-Rolle dieser einen Kennzahl im Kopf der Übersicht — Wert, Ziel, Urteil und Trend bleiben die der Kennzahl.
+Gibt es keine Kennzahl mit offenem Ziel, führt stattdessen die Datenlage, und an ihrer Stelle steht „Noch keine Leitkennzahl gegen ein Ziel hinterlegt.“.
+Kundenwort: `UEMS_LEITKENNZAHL` (PORTAL/glossar.ts).
+
+## Bezugsbasis
+
+*Sicht: Organisation · Nachtrag AP-17 §4.2–§4.5 (B1, B4, F1–F5)*
+
+**Fassung an einer Kennzahl: Referenzperiode, Methode, eingefrorene Grundlage, Basiswert; Freigabe durch eine Person (BB-…).**
+
+Eine Bezugsbasis hängt an genau einer Kennzahl (eine laufende je Kennzahl) und trägt Fassungen. Jede Fassung nennt Referenzperiode, Methode (Verhältnis, eine oder zwei Einflussgrößen, Gradtage), die eingefrorene Grundlage mit Prüfsumme, Basiswert und Koeffizienten samt Modellgüte, statische Faktoren und Begründung. Eine Person gibt frei (Vier-Augen nach Unternehmenseinstellung); danach bleibt die Fassung byte-gleich — eine Änderung darunter ist ein Anstoß, den eine Person beantwortet (Fassung n + 1 oder bestätigt). Kein Läufer legt an, gibt frei, fasst neu oder beendet (Invariante 4).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** BB-0001 an KZ-0004: Fassung 1 vorläufig (Referenzperiode Oktober 2026, Verhältnis), Fassung 2 mit Einflussgröße Produktionsmenge BZ-6, freigegeben von Ines Kaltenbach.
+
+**Heute im Code.** Tabellen `bezugsbasis`, `bezugsbasis_fassung`, `bezugsbasis_anstoss`, `bezugsbasis_aenderung` (MIG/V20260924071500__uems_bezugsbasis.sql:151, :228, :481, :511; RLS + FORCE); Routen `/api/v1/kennzahlen/{id}/bezugsbasen` (services/api/src/main/java/com/voltpilot/api/web/BezugsbasisController.java:39); Dienst `services/api/src/main/java/com/voltpilot/api/uems/BezugsbasisService.java`, Grundlage `services/api/src/main/java/com/voltpilot/api/uems/BezugsbasisGrundlage.java`, Anstoß `services/api/src/main/java/com/voltpilot/api/uems/BezugsbasisAnstoss.java`; Vertrag `docs/contracts/v2/bezugsbasis.md` mit `bezugsbasis-vectors.json`, Zwillinge `services/api/src/main/java/com/voltpilot/api/uems/BezugsbasisRegeln.java` · Portal · Python. Wegweiser: `docs/agents/root/uems-bezugsbasis.md`.
+
+**Abgrenzung.** Nicht ein Ziel und keine Maßnahme (AP-18); nicht eine Vorperiode (der Vergleich rechnet „erwartet“ statt „Vormonat“).
+
+## Referenzperiode
+
+*Sicht: Organisation · Nachtrag AP-17 §4.3 (P1–P3, E2)*
+
+**Die Monate einer Fassung, aus denen Basiswert und Modell gerechnet werden; unter zwölf Monaten „vorläufig (n von 12)“.**
+
+Die Referenzperiode ist ein Monatsbereich an der Fassung (`JJJJ-MM/JJJJ-MM`). Sie gilt erst als vollständig, wenn ihre Monate endgültig sind (Endgültigkeits-Läufer, AP-07); die Werte der Kennzahl, der Messstellen und der Einflussgrößen werden mit Version in die Grundlage eingefroren. Kürzer als zwölf Monate wird die Zahl trotzdem gebildet und trägt „vorläufig (n von 12)“ (E2 = A).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Fassung 1 von BB-0001: Referenzperiode 2026-10/2026-10 — „vorläufig (1 von 12)“.
+
+**Heute im Code.** Spalte `referenzperiode` an `bezugsbasis_fassung` (MIG/V20260924071500__uems_bezugsbasis.sql:228); Leser `services/api/src/main/java/com/voltpilot/api/uems/BezugsbasisGrundlage.java` (AP-17 IP-7); Anzeigewort `UEMS_REFERENZPERIODE` (PORTAL/glossar.ts:544).
+
+**Abgrenzung.** Nicht der Vergleichszeitraum; nicht ein Kalender (W2, E10 = A).
+
+## Einflussgröße (Variable)
+
+*Sicht: Organisation · Nachtrag AP-17 §4.4 (V1, V2, E3)*
+
+**Eine Bezugsgröße mit Periodenwerten, die das Modell einer Fassung als Variable liest (höchstens zwei).**
+
+Eine Einflussgröße der Bezugsbasis ist eine Bezugsgröße (AP-09) mit Werten je Periode, zitiert mit ihrer Fassung. Das Modell der Fassung nimmt eine oder zwei (E4 = A: keine nichtlinearen Modelle, keine dritte Variable). Der Vorschlag kommt aus den Einflussgrößen des Energieeinsatzes (AP-16) — dort sind sie Dokumentation, hier eine gerechnete Variable. Die Betriebszeit ist eine Variable wie jede (W2).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Produktionsmenge BZ-6 (kg je Monat) als Einflussgröße von BB-0001; die Gradtagzahl BZ-8 als Einflussgröße der Heizung.
+
+**Heute im Code.** Tabelle `bezugsbasis_variable` (MIG/V20260924071500__uems_bezugsbasis.sql:384); Vorschlag `GET /api/v1/kennzahlen/{id}/variablen-vorschlag` (services/api/src/main/java/com/voltpilot/api/web/KennzahlVariablenVorschlagController.java:42, `services/api/src/main/java/com/voltpilot/api/uems/VariablenVorschlag.java`, AP-17 IP-11a); Anzeigewort `UEMS_EINFLUSSGROESSE` (PORTAL/glossar.ts:545).
+
+**Abgrenzung.** Nicht die Einflussgröße des Energieeinsatzes selbst (die bleibt Wortlaut, AP-16 W1); nicht ein statischer Faktor.
+
+## Statischer Faktor
+
+*Sicht: Organisation · Nachtrag AP-17 §4.4 (V3, E6)*
+
+**Was in der Referenzperiode als gleichbleibend angenommen wird, als Liste an der Fassung — ändert es sich, entsteht ein Anstoß.**
+
+Ein statischer Faktor ist eine Annahme an der Fassung: Fläche, Standort, Anlage, Prozess-Zuordnung oder ein Wortlaut. Die strukturellen Faktoren werden zum Stichtag aus der Struktur kopiert und beim Freigeben neu gelesen; ändert sich einer danach, stößt der Struktur-Läufer die Fassung an (Pfad 2). Ein Wortlaut-Faktor löst nie etwas aus (E6 = A).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** An BB-0001: Fläche Halle 1 = 4 200 m² zum 01.10.2026; „Ein-Schicht-Betrieb“ als Wortlaut.
+
+**Heute im Code.** Tabelle `bezugsbasis_faktor` (MIG/V20260924071500__uems_bezugsbasis.sql:415); Vorschlag `GET /api/v1/kennzahlen/{id}/faktoren-vorschlag` (services/api/src/main/java/com/voltpilot/api/web/FaktorenVorschlagController.java:42, `services/api/src/main/java/com/voltpilot/api/uems/FaktorenVorschlag.java`), Kopie zum Stichtag `services/api/src/main/java/com/voltpilot/api/uems/BezugsbasisFaktoren.java` (AP-17 IP-16a/b); Anzeigewort `UEMS_STATISCHER_FAKTOR` (PORTAL/glossar.ts:546).
+
+**Abgrenzung.** Nicht ein Betriebskalender und kein Schichtmodell als Stammdatum (E10 = A); nicht eine Variable.
+
+## Leistungsvergleich
+
+*Sicht: Organisation · Nachtrag AP-17 §4.7–§4.9 (U1–U6, S1–S5, E8)*
+
+**Wert gegen „erwartet“ aus der freigegebenen Basis: roh ohne Urteil, bereinigt mit Band und Bedingung; als Bericht ein Stand mit Prüfsumme.**
+
+Der Leistungsvergleich stellt je Monat den Wert der Kennzahl dem erwarteten Wert der freigegebenen Fassung gegenüber. Roh gibt es kein Urteil; bereinigt urteilt er „besser · im Rahmen · schlechter“ nur mit Band = max(Toleranz, Streuung), Variable, Basis-Fassung und Vorbehalten, sonst steht ein Grund statt einer Zahl (außerhalb der Spannweite `nicht_anwendbar`). Der Zeitraum rechnet Σ ÷ Σ. Als Bericht ist er die Vorlage `leistungsvergleich` je Kennzahl; ein freigegebener Stand belegt die Basis-Fassung (409 `berichts_belege`).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Dezember 2027 für Spritzguss: KZ-0004 gegen BB-0001 Fassung 2, bereinigt um die Produktionsmenge — Stand Nr. 1 mit Prüfsumme (R8).
+
+**Heute im Code.** Leser `GET /api/v1/kennzahlen/{id}/vergleich` (services/api/src/main/java/com/voltpilot/api/web/BezugsbasisVergleichController.java:44, `services/api/src/main/java/com/voltpilot/api/uems/BezugsbasisVergleich.java`, AP-17 IP-19/IP-13); Vorlage `leistungsvergleich` in `bericht_vorlage()` (MIG/V20260924071945__uems_leistungsvergleich_vorlage.sql:68), Spalte `bericht.kennzahl_id` (MIG/V20260924211800__uems_leistungsvergleich_kennzahl.sql:7), Abzug `services/api/src/main/java/com/voltpilot/api/uems/BerichtLeistungsvergleich.java` (AP-17 IP-21a/b, IP-22); Anzeigewort `UEMS_LEISTUNGSVERGLEICH` (PORTAL/glossar.ts:551).
+
+**Abgrenzung.** Nicht der Vergleich der Messdaten-Oberflächen (AP-13, Vorperiode); nicht eine Ursache und keine Maßnahmenwirkung (AP-18, U6).
+
+## Wetterbezug
+
+*Sicht: Erfassung · Nachtrag AP-17 §6.6 (E9 = C)*
+
+**Eine Gradtagzahl am Standort, deren Tagesmittel VoltPilot aus einem Wetter-Archiv bezieht — Herkunft `bezogen`.**
+
+Der Wetterbezug bindet eine Gradtagzahl eines Standorts an das Wetter-Archiv (Open-Meteo-Archiv; Quelle, Adresse und Schlüssel sind Werte des Betreibers). Ein täglicher Abruf holt die Tagesmittel über die Koordinaten des Standorts und schreibt Gradtage mit Herkunft `bezogen`, Quelle und Abrufzeit. Ein fehlender Tag fehlt — nie eine Null; der Monat ist dann „unvollständig, x von y Tagen“, der nächste Abruf holt nach. Ein gebundener Wetterbezug sperrt Eingabe und Import derselben Zahl.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** BZ-8 „Gradtagzahl Werk Ahrenberg“ (G20/15) ist an das Wetter-Archiv gebunden; der Oktober 2026 hat 31 von 31 Tagen.
+
+**Heute im Code.** Tabelle `bezugsgroesse_wetterbezug` und Spalten `bezugsgroesse_wert.bezug_quelle`, `abgerufen_am`, `bezug_herkunft` (MIG/V20260924192700__uems_wetter_archiv_bezug.sql:310, :344); Takt `services/api/src/main/java/com/voltpilot/api/uems/WetterArchivLaeufer.java` (06:10 Europe/Berlin, Not-Aus `VOLTPILOT_UEMS_WETTER_ARCHIV_ENABLED`), Abruf `services/api/src/main/java/com/voltpilot/api/uems/WetterArchivAbruf.java`, Quelle `services/api/src/main/java/com/voltpilot/api/uems/OpenMeteoWetterArchiv.java` (AP-17 IP-12b); Binden/Lösen `PUT/DELETE /api/v1/bezugsgroessen/{id}/wetterbezug` (services/api/src/main/java/com/voltpilot/api/web/WetterbezugController.java:33, AP-17 IP-12c).
+
+**Abgrenzung.** Nicht eine Vorhersage (AP-09 E13); nicht eine Temperatur-Datei des Kunden (benannte Folgestufe, Auslegung LA1).
+
+## Energieziel
+
+*Sicht: Organisation · Nachtrag AP-18 §4.1, §4.3 (Z1–Z5, E3)*
+
+**Ein Ziel an genau einer Energieleistungskennzahl: Prozent weniger, als die Bezugsbasis erwarten lässt, für eine feste Zielperiode (EZ-…).**
+
+Ein Energieziel zitiert eine Energieleistungskennzahl mit ihrer freigegebenen Bezugsbasis-Fassung und setzt einen Zielwert in Prozent gegenüber dem Erwarteten für ganze Monate (Zielperiode, vorher gesetzt, nie rückwirkend), dazu Verantwortlichen und Begründung. Den Ziel-Stand liest das Portal beim Abruf (Σ gemessen ÷ Σ erwartet über die endgültigen Monate, „x von y“); „erreicht“ oder „verfehlt“ ist der Vorschlag nur bei vollständiger Periode, die Bewertung ist ein Stand einer Person mit Prüfsumme (E3 = A). Zustand offen · bewertet · beendet.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** EZ-2028-0001 „Spritzguss: 5,0 % weniger Strom als die Bezugsbasis erwarten lässt“ an KZ-0004 mit BB-0001 Fassung 2, Zielperiode 2028-01/2028-12, angelegt von Ines Kaltenbach am 20.12.2027.
+
+**Heute im Code.** Tabellen `energieziel`, `energieziel_aenderung`, Zähler `verbesserung_kennung_seq` (MIG/V20260924223000__uems_verbesserung.sql:228, :469, :142; RLS + FORCE); Routen `/api/v1/energieziele` (services/api/src/main/java/com/voltpilot/api/web/EnergiezielController.java:47, services/api/src/main/java/com/voltpilot/api/uems/EnergiezielService.java, AP-18 IP-6/IP-7); Anzeigewort `UEMS_ENERGIEZIEL` (PORTAL/glossar.ts:578). Wegweiser: `docs/agents/root/uems-energieziel-routen.md`.
+
+**Abgrenzung.** Nicht ein Steuerungs-Ziel („Ziel: 2,2 kW“ gehört der Steuerung, W6); nicht ein absoluter kWh-Wert; nicht die Toleranz der Bezugsbasis.
+
+**Wörter auf den Flächen (Konzept Verbessern v1, Captain-Freigabe 06.10.2026).**
+Die Gruppe „Verbessern“ fragt „Was tun wir, um Energie zu sparen?“.
+Ihre Reiter heißen wie ihre Seite („Energieziele“, „Maßnahmen“, „Abweichungen“); „Ziele und Maßnahmen“ bleibt der Name des Bereichs in Verzeichnis und Rechten.
+Unter jedem Titel erklärt ein Satz das Wort; „Was ist ein Energieziel?“ klappt Klartext, ein Beispiel aus der eigenen Firma und die Abgrenzung zur Bezugsbasis auf.
+„Auf Kurs“ ist der Zwischenstand eines laufenden Energieziels: bisher mindestens so viel weniger, wie vorgenommen; „knapp dahinter“ heißt weniger, aber noch nicht genug; ohne bewertbaren Monat gibt es noch keine Aussage.
+Das ist keine Prognose: Es zählt, was schon gemessen ist, und ob das Energieziel erreicht ist, entscheidet am Ende eine Person.
+Ein offener Monat nennt den Grund der Route („läuft noch“, „kein gemessener Wert“); „noch nicht endgültig“ steht nur, wenn die Route keinen Grund nennt.
+Kundenwörter: `UEMS_AUF_KURS`, `UEMS_KNAPP_DAHINTER`, `UEMS_NICHT_AUF_KURS` (PORTAL/glossar.ts); die Erklärtexte stehen in `begriffe.ts`.
+
+## Maßnahme
+
+*Sicht: Organisation · Nachtrag AP-18 §4.1, §4.4 (M1–M7, E1, E2)*
+
+**Ein geplantes Vorhaben mit Verantwortlichem, Termin und erwarteter Wirkung (M-…); geplant · umgesetzt · bewertet · verworfen.**
+
+Eine Maßnahme trägt Titel, Verantwortlichen (aktives Konto, Fremdschlüssel plus Schnappschuss), Termin, Herkunft (Auffälligkeit, Energieziel, Energieeinsatz oder von Hand) und die erwartete Wirkung als Wortlaut. Die Messgrundlage — Energieleistungskennzahl × Bezugsbasis-Fassung × Ausgangslage als Kopie mit Prüfsumme — ist beim Anlegen wahlfrei und erst für die Bewertung der Wirkung Pflicht (E2 = A); ohne sie gibt es keine Zahl, nur „nicht messbar“. „Überfällig seit n Tagen“ leitet der Abruf ab — kein Läufer, keine Nachricht (E5 = A).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** M-2028-0001 „Werkzeugheizungen in Betriebspausen abschalten“, verantwortlich Murat Demirci, mit Messgrundlage KZ-0004 × BB-0001 Fassung 2; M-2028-0002 „Druckluft-Leckagen orten und beseitigen“ am Einsatz EE-3 ohne Messgrundlage.
+
+**Heute im Code.** Tabellen `massnahme`, `massnahme_aenderung`, `massnahme_bewertung` (MIG/V20260924233000__uems_massnahme.sql:170, :428, :466; RLS + FORCE); Routen `/api/v1/massnahmen` (services/api/src/main/java/com/voltpilot/api/web/MassnahmeController.java:49, services/api/src/main/java/com/voltpilot/api/uems/MassnahmeService.java, AP-18 IP-10/IP-12); Anzeigewort `UEMS_MASSNAHME` (PORTAL/glossar.ts:582). Wegweiser: `docs/agents/root/uems-massnahme-routen.md`.
+
+**Abgrenzung.** Nicht ein Messbedarf (AP-16); nicht eine Korrektur (AP-08); nicht ein Anstoß; kein „Aktionsplan“ und keine „Korrekturmaßnahme“ auf einer Fläche (SP1), beide nur als Fachwort im Aufklapper „Was ist eine Maßnahme?“ (Konzept Verbessern v1, Entscheid 14).
+
+## Abweichung
+
+*Sicht: Organisation · Nachtrag AP-18 §4.1, §4.5 (A2–A6, E1, E7)*
+
+**Ein Vorgang, den eine Person zu einer Auffälligkeit eröffnet, untersucht und mit Ergebnis abschließt (AW-…).**
+
+Eine Abweichung zitiert Kennzahl, Bezugsbasis-Fassung und Monate; ihr Anlass ist die Kopie des Vergleichsergebnisses mit Prüfsumme. Sie hat Verantwortlichen und Frist, ein Protokoll aus Kommentaren und Ursache-Aussagen (append-only) und endet mit einem Abschluss einer Person: Maßnahme (nur mit Verweis), erklärt, keine Abweichung oder nicht bewertbar — immer mit Begründung. Nichts wird gelöscht.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** AW-2028-0001 zur Auffälligkeit Dezember 2027 an KZ-0004: Frist, zwei Kommentare, eine Ursache-Aussage von Murat Demirci; am 15.01.2028 von Ines Kaltenbach mit Ergebnis „Maßnahme“ (M-2028-0001) abgeschlossen.
+
+**Heute im Code.** Tabellen `abweichung`, `abweichung_aenderung` (MIG/V20260924235130__uems_abweichung.sql:214, :376; RLS + FORCE); Routen `/api/v1/abweichungen` (services/api/src/main/java/com/voltpilot/api/web/AbweichungController.java:45, services/api/src/main/java/com/voltpilot/api/uems/AbweichungService.java, AP-18 IP-16); Anzeigewort `UEMS_ABWEICHUNG` (PORTAL/glossar.ts:586). Wegweiser: `docs/agents/root/uems-abweichung-routen.md`.
+
+**Abgrenzung.** Nicht der Toleranz-Befund einer Vergleichsquelle (AP-16 E10, W10); nicht eine Nichtkonformität des Managementsystems (AP-19, E7; das Wort steht nur als Fachwort im Aufklapper „Was ist eine Abweichung?“, Entscheid 14); „wesentlich“ bleibt das Wort der Einstufung (W2).
+
+## Auffälligkeit
+
+*Sicht: Organisation · Nachtrag AP-18 §4.1, §4.5 (A1, E4)*
+
+**Ein Vermerk an der Energieleistungskennzahl: ein endgültiger Monat mit Urteil „schlechter“ — eine Person antwortet.**
+
+Wird ein Monatswert einer Kennzahl mit freigegebener Bezugsbasis endgültig und urteilt der bereinigte Vergleich „schlechter“ (außerhalb des Bands der Basis — keine zweite Schwelle), vermerkt die Naht in derselben Transaktion genau eine Auffälligkeit mit Kopie des Vergleichsergebnisses und Prüfsumme (E4 = A). Sie ist kein Vorgang: eine Person antwortet einmal mit „Abweichung eröffnen“ oder „zur Kenntnis genommen“ (mit Begründung). Das System urteilt nicht und legt nichts an.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Dezember 2027 wird am 07.01.2028 endgültig; der Vergleich von KZ-0004 sagt 12,9 % mehr als erwartet — schlechter; Ines Kaltenbach eröffnet AW-2028-0001.
+
+**Heute im Code.** Tabelle `auffaelligkeit` (MIG/V20260924235130__uems_abweichung.sql:430; RLS + FORCE, Admin-`INSERT` aus MIG/V20260925002000__uems_auffaelligkeit_admin.sql); Naht services/api/src/main/java/com/voltpilot/api/uems/VerbesserungNaht.java (AP-18 IP-15, Schalter `voltpilot.uems.verbesserung.enabled`); Routen `/api/v1/kennzahlen/{id}/auffaelligkeiten` (services/api/src/main/java/com/voltpilot/api/web/AuffaelligkeitController.java:44); Anzeigewort `UEMS_AUFFAELLIGKEIT` (PORTAL/glossar.ts:588). Wegweiser: `docs/agents/root/uems-verbesserung-naht.md`.
+
+**Abgrenzung.** Nicht ein Alarm und keine Nachricht (E5 = A); nicht ein Urteil des Läufers; nicht „wesentlich“ (W2).
+
+## Ursache-Aussage
+
+*Sicht: Organisation · Nachtrag AP-18 §4.1, §4.6 (U1–U3, E6)*
+
+**Der Wortlaut einer Person zur Ursache einer Abweichung — immer „Aussage von <Name>, <Datum>“.**
+
+Eine Ursache nennt in VoltPilot nie das System: sie ist ein Eintrag im Protokoll einer Abweichung mit Namen, Datum und Wortlaut der Person, wahlfrei mit Beleg-Kennung (etwa ein Messmittel-Befund oder ein Zählerwechsel). Überall, wo sie erscheint, steht „Aussage von …“; ein Satz des Systems mit „Ursache“ ist verboten (Sprach-Wächter, SP1).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** „Ursache — Aussage von Murat Demirci, 14.01.2028 (keine Messung): ‚Die Werkzeugheizungen der Maschinen 3 bis 6 liefen vom 23.12. bis 02.01. durch.‘“
+
+**Heute im Code.** Eintrag der Art `ursache` in `abweichung_aenderung` (MIG/V20260924235130__uems_abweichung.sql:376), Route `POST /api/v1/abweichungen/{id}/eintraege` (services/api/src/main/java/com/voltpilot/api/web/AbweichungController.java:45); Anzeigewort `UEMS_URSACHE_AUSSAGE_VON` (PORTAL/glossar.ts:599); Wächter `frontend/portal/src/copy.test.ts` (Block AP-18 IP-4).
+
+**Abgrenzung.** Nicht ein Satz des Systems; nicht ein Vokabular von Ursachen; nicht eine „Ursachenanalyse“ (SP1).
+
+## Wirkung (beobachtet · belegt)
+
+*Sicht: Organisation · Nachtrag AP-18 §4.1, §4.7 (WK1–WK6, E6)*
+
+**Beobachtet: was der Leser nach der Umsetzung misst, mit Bedingung. Belegt: das Wort einer Person, als Stand mit Prüfsumme.**
+
+Die beobachtete Wirkung liest das Portal beim Abruf: Nachher-Monate ab dem Monat nach der Umsetzung (Startwert zwölf, verlängerbar bis 36), Σ gemessen ÷ Σ erwartet über die bewertbaren Monate, „x von 12“, Ausschlüsse mit Grund, Urteil nur mit Band. Ohne Stand steht „beobachtet — nicht belegt“. „Belegt“, „nicht belegt“ oder „nicht messbar“ sagt eine Person in einer Bewertung (Stand Nr. n: Kopie der Wirkung mit Prüfsumme, Begründung, Vier-Augen nach Einstellung) — das System sagt nie, eine Maßnahme habe gewirkt (E6 = A).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** M-2028-0001 am 15.11.2028: 2,4 % weniger, als die Bezugsbasis erwarten lässt, über 8 von 12 Monaten (März nicht bewertbar, Juli schlechter) — erwartet waren 3,0 % weniger; der Januar 2028 vor der Umsetzung zählt nicht.
+
+**Heute im Code.** Leser `GET /api/v1/massnahmen/{id}/wirkung` (services/api/src/main/java/com/voltpilot/api/web/MassnahmeController.java:105, services/api/src/main/java/com/voltpilot/api/uems/MassnahmeWirkung.java, AP-18 IP-11), Stand `massnahme_bewertung` (MIG/V20260924233000__uems_massnahme.sql:466, services/api/src/main/java/com/voltpilot/api/uems/MassnahmeBewertung.java, IP-12); Operation `wirkung` in `docs/contracts/v2/verbesserung-vectors.json`; Anzeigewörter `UEMS_WIRKUNG`, `UEMS_BEOBACHTET_NICHT_BELEGT`, `UEMS_MASSNAHME_ERGEBNISSE` (PORTAL/glossar.ts:593).
+
+**Abgrenzung.** Nicht „hat gewirkt“ und keine „Einsparung durch“ (SP1); nicht ein Mittel und kein gespeicherter Wert; nicht der Ziel-Stand eines Energieziels.
+
+**Drei Wörter für drei Dinge (Konzept Verbessern v1, Captain-Freigabe 06.10.2026).**
+„Erwartet“ ist bei einer Maßnahme die Schätzung einer Person, „beobachtet“ die Messung gegen die Bezugsbasis, „belegt“ das Urteil einer Person.
+Die Schätzung steht immer neben der Beobachtung, nie an ihrer Stelle, und wird nie mit ihr summiert.
+Auf den Flächen heißt die Ausgangslage „Vorher“ (wie der Monat aussah, als die Maßnahme geplant wurde) und die Messgrundlage „gemessen an“ (Kennzahl und Bezugsbasis); die Fachwörter stehen im Aufklapper.
+„Einsparung“ ist der Unterschied zwischen erwartetem und gemessenem Verbrauch in kWh, nie „Einsparung durch“ eine Maßnahme; ob eine Maßnahme ihn bewirkt hat, sagt eine Person.
+„Zweite Person“ ist das Vier-Augen-Prinzip: Wer beantragt hat oder verantwortlich ist, bestätigt nicht selbst.
+Die Normwörter Aktionsplan, Korrekturmaßnahme, Nichtkonformität und Energieleistungsverbesserung stehen nur in der letzten Zeile von „Was ist …?“ (Feld `fachwort` in `begriffe.ts`, Entscheid 14).
+Auf jeder anderen Fläche bleiben sie verboten, ebenso „hat gewirkt“, „Einsparung durch“, „Ursache“ ohne „Aussage von“ und „Ziel“ allein.
+Kundenwörter: `UEMS_VORHER`, `UEMS_GEMESSEN_AN`, `UEMS_ZWEITE_PERSON`, `UEMS_EINSPARUNG` (PORTAL/glossar.ts); Wächter `frontend/portal/src/copy.test.ts` (Block „Konzept Verbessern v1 · Wörter“).
+
+## Anstoß am Vorgang
+
+*Sicht: Organisation · Nachtrag AP-18 §4.1, §4.4 (M5, Z5, E4)*
+
+**Ein Vermerk an Maßnahme oder Energieziel, wenn eine zitierte Zahl eine neue Version bekommt oder die Bezugsbasis endet bzw. neu gefasst wird.**
+
+Die Kopien einer Maßnahme (Ausgangslage, Bewertung) und eines Energieziels (Bewertung) bleiben byte-gleich. Bekommt ein zitierter Monat in der Kaskade Version n + 1 (Pfad 1) oder endet die zitierte Bezugsbasis bzw. wird nach der Umsetzung neu gefasst (Pfad 2, Struktur-Läufer), vermerkt die Naht einen Anstoß. Eine Person antwortet: bleibt, neu kopiert oder neu bewertet — immer mit Begründung. Muster wie beim Bericht (AP-12 E7) und bei der Bezugsbasis (AP-17), eine Stufe höher.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** K-2028-0001 berichtigt MS-06 um −600 kWh; der Dezember 2027 von KZ-0004 wird Version 2; die Ausgangslage von M-2028-0001 bleibt Version 1 und bekommt „Ausgangslage korrigiert“ — Ines Kaltenbach antwortet „bleibt“ mit Begründung (R12).
+
+**Heute im Code.** Tabelle `vorgang_anstoss` (MIG/V20260924233000__uems_massnahme.sql:596; RLS + FORCE); services/api/src/main/java/com/voltpilot/api/uems/VorgangAnstoss.java über services/api/src/main/java/com/voltpilot/api/uems/VerbesserungNaht.java (AP-18 IP-17), Antwort `POST /api/v1/massnahmen|energieziele/{id}/anstoesse/{aid}/antwort` (services/api/src/main/java/com/voltpilot/api/uems/VorgangAntwort.java). Wegweiser: `docs/agents/root/uems-vorgang-anstoss.md`.
+
+**Abgrenzung.** Nicht ein Umbau der Kopie; nicht ein Läufer, der antwortet; nicht der Anstoß am Bericht (AP-12) oder an der Bezugsbasis (AP-17).
+
+## Energiemanagement (Bereich)
+
+*Sicht: Organisation · Nachtrag AP-19 §4.1, §3.1 (G1–G5, E1)*
+
+**Die neunte Seite am Unternehmen: Verzeichnis, Wiedervorlage, Dokumente, Aufgaben, Audits, Feststellungen, Managementbewertung.**
+
+VoltPilot hält fest, der Kunde entscheidet, und jede Zeile sagt, wo das Original liegt (E1 = A). Der Bereich führt, was an VoltPilot hängt (Anwendungsbereich, Aufgaben, Bekanntmachungen, Audits, Feststellungen, Managementbewertung, die Energiepolitik als Wortlaut) und verweist auf alles andere. Jede Fläche trägt den Grenz-Satz und den Verantwortungs-Satz; kein Erfüllungsgrad, keine Ampel, keine Zahl über das Ganze (G4). Ohne Eintrag zeigt der Bereich die Nachweise der Vorgänger und je leerer Gruppe „Hier ist noch nichts festgehalten.“ (R15).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Werk Ahrenberg am 12.02.2029: 62 Nachweise in 11 Gruppen im Verzeichnis, 8 fällige Zeilen in der Wiedervorlage (R3, R12).
+
+**Heute im Code.** Seite `#/portfolio/energiemanagement` (PORTAL/pages/EnergiemanagementBereich.tsx:1, AP-19 IP-9/IP-13/IP-20); Kundenwort `UEMS_ENERGIEMANAGEMENT`, Verantwortungs-Satz `UEMS_VERANTWORTUNG` (PORTAL/glossar.ts:675, :719); Wörter `energiemanagement_vokabular()` (MIG/V20260925013500__uems_energiemanagement.sql:50); kein Schalter, kein Läufer (`UemsEnergiemanagementBestandsschutzTest`). Wegweiser: `docs/agents/root/uems-energiemanagement-abschluss.md`.
+
+**Abgrenzung.** Nicht ein „Managementsystem“ im Sinn einer Zertifizierung und kein allgemeines Dokumentenmanagement (SP2, G5); nicht die Funktion „Messen“.
+
+## Verzeichnis
+
+*Sicht: Organisation · Nachtrag AP-19 §4.1, §4.9 (VZ1–VZ4, KS2)*
+
+**Der Leser über alle Nachweise und Entscheidungen: je Zeile Träger, Fassung oder Nr., Prüfsumme und Ort des Originals.**
+
+Das Verzeichnis sammelt beim Abruf die Nachweise aller Pakete — Dokumente, Aufgaben, Audits, Feststellungen, Berichtsstände, Bewertungen, Bezugsbasen, Maßnahmen — in elf festen Gruppen; jede Zeile nennt, wer entschieden hat, wann, mit welcher Fassung oder Nr., mit Prüfsumme und dem Ort (in VoltPilot oder „Geführt in Ihrem System“). Es zählt nichts zusammen und urteilt nicht; der CSV-Abzug trägt Stichtag und Verantwortungs-Satz.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Am 12.02.2029 zeigt der Filter „in meinem Namen festgehalten“ für Robert Falk 11 Zeilen; die Gruppe „Risiken und Chancen“ sagt „Hier ist noch nichts festgehalten.“ (R3).
+
+**Heute im Code.** `GET /api/v1/energiemanagement/verzeichnis` (services/api/src/main/java/com/voltpilot/api/web/EnergiemanagementVerzeichnisController.java:30, services/api/src/main/java/com/voltpilot/api/uems/EnergiemanagementVerzeichnisService.java, Quellen `VerzeichnisQuelle`, AP-19 IP-8); Operation `verzeichnis_zeile` in `docs/contracts/v2/energiemanagement-vectors.json`; Kundenwort `UEMS_VERZEICHNIS` (PORTAL/glossar.ts:676). Wegweiser: `docs/agents/root/uems-energiemanagement-dokumente.md`.
+
+**Abgrenzung.** Nicht eine Ablage und keine Datei; nicht eine Checkliste; nicht ein Erfüllungsgrad (G4).
+
+## Wiedervorlage
+
+*Sicht: Organisation · Nachtrag AP-19 §4.1, §4.9 (WV1–WV5, E10)*
+
+**Der Leser über alle Fristen aller Objekte, am längsten fällig zuerst, mit 30 Tagen Vorschau.**
+
+Die Wiedervorlage rechnet keine Frist selbst: jede Quelle gibt ihr „fällig am“ aus der Regel ihres Objekts (Überprüfung eines Dokuments, nächstes internes Audit, Frist einer Feststellung, Bewertung, Bezugsbasis, Revisions-Anstoß eines Berichts, Maßnahmen und Energieziele). Nichts wird verschickt; der Kalender-Abzug ist ein Abruf mit Stand-Vermerk (E10 = A). Der Baustein „Energiemanagement“ erscheint nur mit Inhalt.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** 12.02.2029: 8 fällige Zeilen (vier Bezugsbasen seit 457, 450, 344 und 80 Tagen …) und M-2029-0001 in 16 Tagen als Vorschau (R12).
+
+**Heute im Code.** `GET /api/v1/energiemanagement/wiedervorlage?format=json|ics` (services/api/src/main/java/com/voltpilot/api/web/EnergiemanagementWiedervorlageController.java:27, services/api/src/main/java/com/voltpilot/api/uems/EnergiemanagementWiedervorlageService.java, AP-19 IP-21); Kundenwort `UEMS_WIEDERVORLAGE` (PORTAL/glossar.ts:677). Wegweiser: `docs/agents/root/uems-energiemanagement-wiedervorlage.md`.
+
+**Abgrenzung.** Nicht ein Postfach, kein Läufer und keine Erinnerung per E-Mail (E10 = A).
+
+**Arbeitsliste (Konzept Wiedervorlage w1, 05.10.2026).**
+Der Name bleibt; darunter sagt ein Satz, was er meint: „Alle Fristen Ihres Energiemanagements, das am längsten Überfällige zuerst.“
+Die Liste ordnet nach Dringlichkeit: „Überfällig“ (die Frist ist abgelaufen; „fällig“ allein hieße umgangssprachlich „jetzt dran“), „In den nächsten 30 Tagen“, „Jahresplan“, „Zuletzt erledigt“.
+Ein Gegenstand ist ein Eintrag (zehn Korrekturen an einem Bericht sind eine Aufgabe), und die Zahlen zählen Einträge.
+Jeder Eintrag nennt Aufgabe mit Verb, Grund, Bereich, Person und genau einen Schritt; der Schritt öffnet das Objekt dort, wo die Entscheidung fällt, abgehakt wird nichts.
+Die Frist steht als Datum („seit 13.11.2027“, „bis 28.02.2029“), nie als Tageszähler.
+Ist nichts überfällig, heißt es „Keine Frist überfällig“, und auf der Übersicht stehen die „Nächsten Fristen“; „Woher kommen diese Fristen?“ erklärt die Herleitung.
+Der „Jahresplan“ zeigt die Fristen nach den nächsten 30 Tagen bis zwölf Monate nach dem Abruf, nach Monaten; er nennt Fristen, die noch nichts verlangen.
+„Zuständig“ ist die Person am Objekt; nennt das Objekt keine, die Person der passenden Aufgabe im Energiemanagement („laut Aufgabe“); hat auch die Aufgabe keine, steht „Niemand zuständig“ mit dem Weg, die Aufgabe festzulegen.
+Wer die Aufgaben nicht lesen darf, liest keine Person laut Aufgabe und auch kein „Niemand zuständig“.
+„Zuletzt erledigt“ nennt die Entscheidungen der letzten 90 Tage, die eine Frist beendet oder neu begonnen haben, auch „geprüft, bleibt“.
+Seit Vertrag 1.2 steht die „Zählerablesung“ in der Liste (Bereich Messen): eine Ablese-Runde je Gebäude (ohne Gebäude der Standort) und Fälligkeitstag, „8 Zähler in Halle 1 ablesen“, fällig zwei Monate nach der letzten Ablesung wie „Ablesung überfällig seit …“ im Register.
+Der Schritt heißt „Ablesungen eintragen“ und öffnet die Messstellen des Orts; bei einem Zähler heißt er wie der Knopf an der Messstelle, „Ablesung eintragen“.
+Kundenwörter: `UEMS_WIEDERVORLAGE_SATZ`, `UEMS_UEBERFAELLIG`, `UEMS_KEINE_FRIST_UEBERFAELLIG`, `UEMS_NAECHSTE_FRISTEN`, `UEMS_ZULETZT_ERLEDIGT`, `UEMS_WOHER_FRISTEN`, `UEMS_JAHRESPLAN`, `UEMS_LAUT_AUFGABE`, `UEMS_GEPRUEFT_BLEIBT_KNOPF` (PORTAL/glossar.ts).
+
+## Dokument · Fassung
+
+*Sicht: Organisation · Nachtrag AP-19 §4.1, §4.4 (DK1–DK8, E2)*
+
+**Ein Dokument D-nnnn mit Art, Bezug und Fassungen Nr. n — Wortlaut oder Verweis —, Freigabe mit „entschieden von“, Überprüfung und Bekanntmachung.**
+
+Ein Dokument hat eine von zwölf Arten (keine „Sonstiges“, G5) und genau seinen Bezug. Jede Fassung ist entweder Wortlaut in VoltPilot (bis 20 000 Zeichen) oder Verweis auf das Original beim Kunden (Bezeichnung, Ablage, Kennung, Adresse, Fassungsangabe, Prüfsumme aus dem Browser) — nie eine Datei (E2 = A). Die Freigabe trägt „entschieden von“ (eine Person, auch ohne Konto) und „eingetragen von“ (ein Konto), bei Energiepolitik und Anwendungsbereich die Leitung; eine freigegebene Fassung ist unveränderlich, die nächste löst sie ab.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** D-0001 Energiepolitik Fassung 1 am 15.12.2026 — entschieden von Robert Falk (ohne Konto), eingetragen von Ines Kaltenbach; D-0004 ist ein Verweis auf den Arbeitsplan IH-SG-01 Rev. 4 im Instandhaltungssystem (R1, R7).
+
+**Heute im Code.** Tabellen `energiemanagement_dokument`, `energiemanagement_dokument_fassung`, `energiemanagement_dokument_eintrag` (MIG/V20260925013500__uems_energiemanagement.sql:532, :675, :960; RLS + FORCE); Routen `/api/v1/energiemanagement/dokumente` (services/api/src/main/java/com/voltpilot/api/web/EnergiemanagementDokumentController.java:44, AP-19 IP-7); Kundenwörter `UEMS_DOKUMENT`, `UEMS_WORTLAUT`, `UEMS_VERWEIS`, `UEMS_GEFUEHRT_IN_IHREM_SYSTEM` (PORTAL/glossar.ts:678). Wegweiser: `docs/agents/root/uems-energiemanagement-dokumente.md`.
+
+**Abgrenzung.** Nicht eine Datei, kein Ordner und kein Anhang (E2 = A); nicht die „Revision“ eines Berichts (SP3).
+
+## Energiepolitik · Anwendungsbereich
+
+*Sicht: Organisation · Nachtrag AP-19 §4.1, §4.4 (DK3, DK7, W5)*
+
+**Zwei Dokument-Arten mit Leitungs-Pflicht: der Wortlaut der Energiepolitik und die Grenze des Energiemanagements.**
+
+Die Energiepolitik steht als Wortlaut in VoltPilot, das unterschriebene Original bleibt beim Kunden. Der Anwendungsbereich nennt Standorte, Energieträger und Ausschlüsse mit Begründung. Beide gibt die Leitung frei. Neben dem Betrachtungsumfang der energetischen Bewertung sagt die Seite in einem Satz ohne Urteil, ob beide deckungsgleich sind (DK7).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** D-0002 Anwendungsbereich Fassung 1 (Werk Ahrenberg und Werk Lindach, Strom und Gas, keine Ausschlüsse) ist deckungsgleich mit dem Betrachtungsumfang Fassung 1 ab 04.11.2026 (R2).
+
+**Heute im Code.** Arten `energiepolitik`, `anwendungsbereich` in `energiemanagement_vokabular()` (MIG/V20260925013500__uems_energiemanagement.sql:176); Tabelle `energiemanagement_anwendungsbereich` (MIG/V20260925013500__uems_energiemanagement.sql:898); Vergleich `GET /api/v1/energiemanagement/dokumente/{id}/vergleich` (Operation `anwendungsbereich_vergleich`); Kundenwörter `UEMS_ENERGIEPOLITIK`, `UEMS_ANWENDUNGSBEREICH` (PORTAL/glossar.ts:683).
+
+**Abgrenzung.** Nicht der „Geltungsbereich“ einer Kennzahl und nicht der Betrachtungsumfang der Bewertung (SP3, AP-16 U1); nicht die Energiepolitik eines Staates.
+
+## Person · Aufgabe im Energiemanagement · Leitung
+
+*Sicht: Organisation · Nachtrag AP-19 §4.1, §4.5 (PA1–PA5, E7)*
+
+**Wer entscheidet, prüft oder teilnimmt — auch ohne Konto — und welche Aufgabe er ab wann bis wann hat, entschieden von wem.**
+
+Eine Person im Energiemanagement hat Namen, Funktion und Organisation und kann mit einem Konto verknüpft sein, muss es aber nicht (E7 = A). Eine Aufgabe ist Aufgabe × Person × gilt ab/bis mit „entschieden von“; sie wird beendet, nie gelöscht. Die Leitung ist die Person mit der laufenden Aufgabe „Leitung des Unternehmens“. „Wer ist wofür verantwortlich“ nennt je Aufgabe die Person oder „keine Person festgelegt“.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Am 22.01.2029 zehn laufende Zuordnungen, entschieden von Robert Falk; „Bezugsbasen pflegen und freigeben — keine Person festgelegt“; ab 01.03.2029 Ines Kaltenbach, Vertretung Jonas Wendlinger (R5).
+
+**Heute im Code.** Tabellen `energiemanagement_person`, `energiemanagement_aufgabe` (MIG/V20260925013500__uems_energiemanagement.sql:374, :443; RLS + FORCE); Routen `/api/v1/energiemanagement/personen`, `…/aufgaben` (services/api/src/main/java/com/voltpilot/api/web/EnergiemanagementPersonenController.java:49, AP-19 IP-6/IP-10); Kundenwörter `UEMS_PERSON_IM_ENERGIEMANAGEMENT`, `UEMS_AUFGABEN_IM_ENERGIEMANAGEMENT`, `UEMS_LEITUNG` (PORTAL/glossar.ts:685). Wegweiser: `docs/agents/root/uems-energiemanagement-personen.md`.
+
+**Abgrenzung.** Nicht ein Konto und keine Zugriffsrolle; nicht die „Zuständigkeit“ einer Box (SP3).
+
+## entschieden von · eingetragen von
+
+*Sicht: Organisation · Nachtrag AP-19 §4.1, §4.3 (G2, E7, E8)*
+
+**Die zwei Träger jeder Entscheidung im Energiemanagement: die Person, die entschieden hat, und das Konto, das es eingetragen hat.**
+
+Die Leitung, die kein Konto will, entscheidet trotzdem: eingetragen wird ihre Entscheidung von einer Person mit Recht, sichtbar als zwei Namen. Eine Bestätigung durch die Leitung selbst ist eine benannte spätere Stufe (E8 = A). Beide Namen stehen an jeder Freigabe, jeder Aufgabe und jedem Beschluss.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** „entschieden von Robert Falk (Geschäftsführer) · eingetragen von Ines Kaltenbach“ an D-0001 Fassung 1 (R1).
+
+**Heute im Code.** Spalten `entschieden_von` (Fremdschlüssel auf `energiemanagement_person`) und `freigabe_*`/`actor_*` an Fassung und Aufgabe (MIG/V20260925013500__uems_energiemanagement.sql:675, :443); Kundenwörter `UEMS_ENTSCHIEDEN_VON`, `UEMS_EINGETRAGEN_VON` (PORTAL/glossar.ts:708).
+
+**Abgrenzung.** Nicht ein Vier-Augen-Paar (das sind zwei Konten).
+
+## Einsicht
+
+*Sicht: Organisation · Nachtrag AP-19 §4.1, §4.11 (RE3–RE5, E8)*
+
+**Eine Zugriffsrolle: unternehmensweit nur ansehen, befristbar — für die Leitung und für Prüfende.**
+
+„Einsicht“ ist die achte Rolle der Rechte-Matrix und das erste Unternehmensrecht ohne Schreibrecht: sie sieht unternehmensweit Nachweise, Berichte und die Bewertung, lädt PDFs und ändert nichts (jede Schreibroute 403). Der Kundenadministrator weist sie zu, wahlweise mit Enddatum; danach gilt wieder die vorige Sicht. Die Lese-Kennungen `bericht.unternehmen_abrufen` und `bewertung.ansehen` sind dafür vom Freigeben getrennt (W10) — KA und EM behalten jede Zelle.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Claudia Berger (Leser an ST-1/ST-2) hat vom 20. bis 31.01.2029 „Einsicht“ für das interne Audit; Robert Falk ab 01.02.2029 ein Konto mit „Einsicht“ (R6).
+
+**Heute im Code.** `zugriff_rolle()` Zeile 8 und CHECK-Tausch `bericht_abruf_actor_rolle_chk` (MIG/V20260925030000__uems_rolle_einsicht.sql:38, :52, AP-19 IP-12); Spalte `einsicht` in `docs/contracts/v2/rechte-matrix.json`; Kundenwort `UEMS_EINSICHT` (PORTAL/glossar.ts:693). Wegweiser: `docs/agents/root/uems-benutzerverwaltung.md`.
+
+**Abgrenzung.** Nicht ein Unterstützer (VoltPilot) und nicht ein Leser am Standort; kein Bestätigen und kein Festhalten (E8 = A).
+
+## internes Audit · Hinweis
+
+*Sicht: Organisation · Nachtrag AP-19 §4.1, §4.6 (IA1–IA5, E5)*
+
+**Ein internes Audit AU-JJJJ-nnnn mit Auditorin, Unabhängigkeit als Wortlaut, Umfang und Ergebnissen; ein Hinweis ist ein Ergebnis ohne Nichterfüllung.**
+
+Ein internes Audit wird geplant, durchgeführt und abgeschlossen (mit Kopie und Prüfsumme) oder abgesagt. Ergebnisse sind Hinweise (Nr. n, daraus kann eine Maßnahme werden) und Feststellungen. Das nächste Audit leitet der Abruf aus dem letzten Durchführungstag und dem Rhythmus ab (Auditprogramm).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** AU-2029-0001 am 22.01.2029, Auditorin Claudia Berger (Controlling, nicht im Energieteam): ein Hinweis → M-2029-0002, eine Feststellung F-2029-0001; abgeschlossen am 31.01.2029 mit dem Bericht als Verweis; nächstes Audit fällig am 22.01.2030 (R9).
+
+**Heute im Code.** Tabellen `internes_audit`, `internes_audit_eintrag` (MIG/V20260925031500__uems_audit_feststellung.sql:254, :445; RLS + FORCE); Routen `/api/v1/energiemanagement/audits` (services/api/src/main/java/com/voltpilot/api/web/InternesAuditController.java:46, AP-19 IP-18); Kundenwörter `UEMS_INTERNES_AUDIT`, `UEMS_HINWEIS` (PORTAL/glossar.ts:694). Wegweiser: `docs/agents/root/uems-audit-routen.md`.
+
+**Abgrenzung.** Nicht das Zertifizierungsaudit und nicht das Pilot-Audit von AP-20; nicht ein technisches Audit-Protokoll.
+
+## Feststellung · Wirksamkeit
+
+*Sicht: Organisation · Nachtrag AP-19 §4.1, §4.7 (FS1–FS7, E4)*
+
+**Eine festgestellte Nichterfüllung einer Vorgabe des Energiemanagements (F-JJJJ-nnnn); ihre Wirksamkeit sagt eine Person als Stand Nr. n.**
+
+Eine Feststellung hat Wortlaut, festgestellt von, Verantwortlichen und Frist, Einträge (sofortige Behebung, Ursache als Aussage einer Person, ähnliche Fälle — je mit Person und Tag) und ihre Maßnahmen: AP-18-Maßnahmen mit der Herkunft `nichtkonformitaet` (Kundenwort „Feststellung F-…“, SP5). Die Wirksamkeit ist kein Rechenergebnis: eine Person hält „wirksam“ oder „nicht wirksam“ mit Begründung, Kopie und Prüfsumme fest (E4 = A); danach ist die Feststellung abgeschlossen.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** F-2029-0001 „Wer die Bezugsbasen pflegt und freigibt …, ist nicht festgelegt“ — Maßnahme M-2029-0001; am 15.04.2029 hält Ines Kaltenbach Stand Nr. 1 „wirksam“ fest (R10, R11).
+
+**Heute im Code.** Tabellen `feststellung`, `feststellung_eintrag`, `feststellung_wirksamkeit` (MIG/V20260925031500__uems_audit_feststellung.sql:519, :667, :724; RLS + FORCE); Routen `/api/v1/energiemanagement/feststellungen` (services/api/src/main/java/com/voltpilot/api/web/FeststellungController.java:48, AP-19 IP-19); Herkunft der Maßnahme per CHECK-Tausch (MIG/V20260925040000__uems_massnahme_herkunft_weiten.sql:140, IP-17); Kundenwörter `UEMS_FESTSTELLUNG`, `UEMS_SOFORTIGE_BEHEBUNG`, `UEMS_WIRKSAMKEIT` (PORTAL/glossar.ts:697). Wegweiser: `docs/agents/root/uems-feststellung-routen.md`.
+
+**Abgrenzung.** Nicht eine Abweichung der Energieleistung (AP-18) und nicht ein Befund (AP-16); nie „Nichtkonformität“ oder „Korrekturmaßnahme“ auf einer Fläche (SP2); die Wirksamkeit ist nicht die Wirkung einer Maßnahme (AP-18).
+
+## Managementbewertung
+
+*Sicht: Organisation · Nachtrag AP-19 §4.1, §4.8 (MG1–MG7, E6)*
+
+**Ein Bericht der VoltPilot-Vorlage Nr. 7 „Managementbewertung“ (Unternehmen × Jahr) mit Eingaben, Sitzung, Beschlüssen der Leitung und Stand.**
+
+Die Managementbewertung liest ihre Eingaben aus den Vorgängern — Energieziele, Maßnahmen und ihre Bewertungen, Abweichungen, Leistungsvergleich, Bewertung, Bezugsbasen, Audits und Feststellungen — als Stände und Zustände, nie als neue Rechnung. Der Stand ist eine Kopie seines Tages mit Prüfsumme (MG3); spätere Änderungen erreichen ihn nicht.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** BR-2029-0001 für 2028 am 12.02.2029: Energieziel EZ-2028-0001 verfehlt, M-2028-0001 belegt, M-2028-0002 nicht messbar, ein Audit mit offener Feststellung; Stand Nr. 1 mit Prüfsumme (R13).
+
+**Heute im Code.** Vorlage `managementbewertung` Nr. 7 (services/api/src/main/resources/berichte/bericht-vorlagen.json:327, `bericht_vokabular()`/`bericht_vorlage()` als Vereinigung in MIG/V20260925061500__uems_managementbewertung_vorlage.sql:11), Abschnitt-Leser services/api/src/main/java/com/voltpilot/api/uems/BerichtManagementbewertung.java (AP-19 IP-22); Kundenwort `UEMS_MANAGEMENTBEWERTUNG` (PORTAL/glossar.ts:703).
+
+**Abgrenzung.** Nicht die energetische Bewertung (AP-16) und nie „Bewertung“ allein (SP3); nicht ein Protokoll-Upload.
+
+## Sitzung · Beschluss · Folge
+
+*Sicht: Organisation · Nachtrag AP-19 §4.1, §4.8 (MG4–MG7, E6)*
+
+**Die Sitzung der Managementbewertung mit der Leitung, ihre Beschlüsse Nr. n und je Beschluss die Verknüpfung mit dem Objekt, das daraus wurde.**
+
+Eine Managementbewertung wird nur mit Sitzung (Tag, Leitung, Teilnehmende), Leitung und mindestens einem Beschluss freigegeben. Ein Beschluss hat Art, Wortlaut und „entschieden von“ (die Leitung), wahlfrei zuständig und Termin; mit der Freigabe steht er im Stand. Eine Folge verknüpft von Hand einen Beschluss mit dem, was daraus wurde — Energieziel, Dokument-Fassung, Aufgabe, internes Audit; Maßnahmen verknüpfen sich über ihre Herkunft `managementbewertung`. Eine Folge ändert den Stand nicht (ein Stand seines Tages).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** BR-2029-0001: Sitzung am 12.02.2029 mit Robert Falk als Leitung, sechs Beschlüsse — B1 → EZ-2029-0001, B2 → M-2029-0003, B3 → Energiepolitik Fassung 2, B4 → Aufgabe Bezugsbasen, B5 ohne Folge in VoltPilot, B6 „geprüft, bleibt“ (R13, R14).
+
+**Heute im Code.** Tabellen `managementbewertung_sitzung`, `managementbewertung_beschluss`, `managementbewertung_folge` (MIG/V20260925093000__uems_managementbewertung_beschluesse.sql:30, :57, :89; RLS + FORCE); Routen `/api/v1/energiemanagement/managementbewertungen/{kennung}` (services/api/src/main/java/com/voltpilot/api/web/ManagementbewertungController.java:43, AP-19 IP-23); Kundenwörter `UEMS_SITZUNG`, `UEMS_BESCHLUSS`, `UEMS_FOLGE` (PORTAL/glossar.ts:704). Wegweiser: `docs/agents/root/uems-managementbewertung-beschluesse.md`.
+
+**Abgrenzung.** Nicht eine Aufgabe des Systems und nicht selbst eine Maßnahme; kein Protokoll-Upload.
+
 ## Tätigkeit des Speichers
 
 *Sicht: Betrieb · Nachtrag Fahrplan „Tagesuhr und Bildfahrplan“ E8 (24.09.2026)*
@@ -672,7 +1495,7 @@ Die Tätigkeit ist eine Aussage des PLANS über eine Phase, nie eine Messung: wa
 
 **Beispiel (Referenzunternehmen Ahrenberg).** AN-1 am 24.09.2026: 00:00 Warten · 05:45 Verbrauch decken · 13:30 Günstig aus dem Netz laden · 14:30 Sonne speichern · 17:30 Verbrauch decken.
 
-**Heute im Code.** Die Wörter stehen als Konstanten `FAHRPLAN_TAETIGKEIT` in PORTAL/glossar.ts:160; die Zuordnung Rolle → Wort macht `filmLabel` (PORTAL/fahrplanFilm.ts:120), für die übrigen Rollen `roleLabel` (PORTAL/fahrplanWhy.ts:718). Die Rolle je Viertelstunde (`slot_role`) schreibt der Optimierer; das Tagesbild legt die Phasen auf die Uhrzeit (PORTAL/fahrplanTag.ts:165).
+**Heute im Code.** Die Wörter stehen als Konstanten `FAHRPLAN_TAETIGKEIT` in PORTAL/glossar.ts:187; die Zuordnung Rolle → Wort macht `filmLabel` (PORTAL/fahrplanFilm.ts:120), für die übrigen Rollen `roleLabel` (PORTAL/fahrplanWhy.ts:718). Die Rolle je Viertelstunde (`slot_role`) schreibt der Optimierer; das Tagesbild legt die Phasen auf die Uhrzeit (PORTAL/fahrplanTag.ts:165).
 
 **Abgrenzung.** Nicht das Betriebsmodell (die Betriebsweise der Anlage), nicht die Regel (eine Ausnahme obendrauf), nicht der Zustand „steuert“ (eine Beobachtung).
 

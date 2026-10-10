@@ -457,13 +457,15 @@ class UemsMesswertRohtabelleMigrationTest {
     /**
      * Der ALTE Schlüssel steht daneben und weist weiter dieselben Zeilen ab wie vorher: dasselbe
      * Paket derselben Box (Gerät, Kanal, Messzeit, Sequenz) — auch ohne Komponente, also genau so,
-     * wie der heutige Writer schreibt. Bis zur Umschaltung (IP-7) trägt ER die Wiederholung.
+     * wie der heutige Writer schreibt. Bis zur Umschaltung (IP-7) trägt ER die Wiederholung. Seit
+     * AP-07 IP-18b (V20260922236000) heißt er {@code uq_device_measurement_sample_box} und gilt für
+     * jede Zeile ohne {@code edge_entity_id} — für diesen Bestand also jede, mit derselben Folge.
      */
     @Test
     void derAlteSchluesselBleibtDerSchluesselDesHeutigenWriters() {
         Instant zeit = erstesMessfenster.plus(210, ChronoUnit.MINUTES);
         schreibeRohwert(PROBE, probeSite, probeBox, OHNE_AUSWAHL_KANAL, zeit, null, null, 3.3, 70_201L);
-        abgelehnt("23505", "uq_device_measurement_sample_idempotency", () -> schreibeRohwert(PROBE,
+        abgelehnt("23505", "uq_device_measurement_sample_box", () -> schreibeRohwert(PROBE,
                 probeSite, probeBox, OHNE_AUSWAHL_KANAL, zeit, null, null, 3.3, 70_201L));
         // Ohne Komponente ist der NEUE Index nie im Weg: eine andere Sequenz geht durch wie heute.
         schreibeRohwert(PROBE, probeSite, probeBox, OHNE_AUSWAHL_KANAL, zeit, null, null, 3.4, 70_202L);

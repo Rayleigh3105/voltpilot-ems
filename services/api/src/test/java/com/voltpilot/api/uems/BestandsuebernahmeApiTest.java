@@ -1,10 +1,14 @@
 package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anySet;
+import static org.mockito.Mockito.doThrow;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.web.dto.StandortVorschlagDto;
 import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
@@ -27,6 +31,7 @@ import org.junit.jupiter.api.TestMethodOrder;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.SpyBean;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.core.ParameterizedTypeReference;
@@ -37,6 +42,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -98,6 +104,8 @@ class BestandsuebernahmeApiTest {
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static final Path REFERENZ =
             Path.of("..", "..", "docs", "contracts", "v2", "uems-referenzunternehmen.json");
+    private static final Path NACHHER_BLATT =
+            Path.of("..", "..", "tools", "betriebsabfragen", "bestand-nach-rollout.sql");
 
     /** Die Tabellen, in die die Übernahme schreiben DARF — alle anderen bleiben zeichengleich. */
     private static final List<String> SCHREIBT_IN = List.of("standort", "anlage_standort",
@@ -154,6 +162,9 @@ class BestandsuebernahmeApiTest {
     BestandsuebernahmeLaeufer laeufer;
 
     @Autowired
+    BestandsuebernahmeService bestandsuebernahme;
+
+    @Autowired
     StandortVorschlagRepository vorschlaege;
 
     @Autowired
@@ -161,6 +172,15 @@ class BestandsuebernahmeApiTest {
 
     @Autowired
     StandortRepository standorte;
+
+    @Autowired
+    StandortVorschlagService standortVorschlagService;
+
+    @Autowired
+    FunktionBestandLaeufer funktionBestandLaeufer;
+
+    @SpyBean
+    FunktionBestandService funktionBestand;
 
     /** Der Kundenbereich des Referenzunternehmens (A5 mit dem echten Datum). */
     private static String ahrenbergTenant;
@@ -228,8 +248,8 @@ class BestandsuebernahmeApiTest {
         List<Map<String, Object>> protokoll = protokoll(NORDWIND);
         assertThat(protokoll).hasSize(2);
         assertThat(protokoll).allSatisfy(e -> {
-            assertThat(e.get("akteur_name")).isEqualTo("VoltPilot (Bestandsübernahme)");
-            assertThat(e.get("akteur_sub")).isNull();
+            assertThat(e.get("actor_name")).isEqualTo("VoltPilot (Bestandsübernahme)");
+            assertThat(e.get("actor_sub")).isNull();
             assertThat(e.get("gilt_ab").toString()).isEqualTo(hamburgAb.toString());
         });
         Map<String, Object> standortEintrag = eintrag(protokoll, "standort");
@@ -265,7 +285,7 @@ class BestandsuebernahmeApiTest {
         // Die zwei Einträge der Übernahme (Standort und Zuordnung) gelten ab dem 12.03.2024 —
         // rückwirkend (E2); der dritte am Unternehmen stammt aus V20260911100000.
         assertThat(protokoll(ahrenbergTenant)).hasSize(2).allSatisfy(e -> {
-            assertThat(e.get("akteur_name")).isEqualTo("VoltPilot (Bestandsübernahme)");
+            assertThat(e.get("actor_name")).isEqualTo("VoltPilot (Bestandsübernahme)");
             assertThat(e.get("gilt_ab").toString()).isEqualTo("2024-03-12");
             assertThat(e.get("rueckwirkend")).as("die Übernahme trägt die Vergangenheit nach")
                     .isEqualTo(true);
@@ -292,7 +312,8 @@ class BestandsuebernahmeApiTest {
         // ---- Die Anlage bleibt unverändert (A5) -----------------------------
         assertThat(ok(get("/api/v1/overview", adminToken, DEMO))).isEqualTo(overviewDemoVorher);
         assertThat(ok(get("/api/v1/sites", adminToken, DEMO))).isEqualTo(sitesDemoVorher);
-        assertThat(ok(get("/api/v1/sites", adminToken, NORDWIND))).isEqualTo(sitesNordwindVorher);
+        assertThat(ohneStandort(ok(get("/api/v1/sites", adminToken, NORDWIND))))
+                .isEqualTo(ohneStandort(sitesNordwindVorher));
         assertThat(ok(get("/api/v1/sites/" + NORDWIND_SITE + "/cockpit-layout", adminToken, NORDWIND)))
                 .isEqualTo(cockpitVorher);
         // … bis auf das EINE additive Feld der zugeordneten Anlage.
@@ -303,12 +324,121 @@ class BestandsuebernahmeApiTest {
                 .isEqualTo(hamburgAb.toString());
         JsonNode overviewNordwindNachher = ok(get("/api/v1/overview", adminToken, NORDWIND));
         assertThat(ohneStandort(overviewNordwindNachher)).isEqualTo(ohneStandort(overviewNordwindVorher));
+        // Vorher gab es keinen Standort, nachher genau den EINEN, den die Übernahme angelegt hat - die
+        // Teilansicht zählt Standorte, und ein unternehmensweiter Zugriff sieht sie alle (AP-03 IP-10).
+        assertThat(overviewNordwindVorher.path("teilansicht").path("gesamt").asInt()).isZero();
+        assertThat(overviewNordwindNachher.path("teilansicht").path("sichtbar").asInt()).isEqualTo(1);
+        assertThat(overviewNordwindNachher.path("teilansicht").path("gesamt").asInt()).isEqualTo(1);
 
         // … und KEINE andere Tabelle: kein Kommando, kein Fahrplan, keine Komponente, kein Push.
         Map<String, String> tabellenNachher = tabellenStand();
         assertThat(tabellenNachher.keySet()).isEqualTo(tabellenVorher.keySet());
-        tabellenNachher.forEach((tabelle, stand) ->
-                assertThat(stand).as(tabelle).isEqualTo(tabellenVorher.get(tabelle)));
+        assertThat(Bestandsschutz.abweichungen(tabellenVorher, tabellenNachher)).isEmpty();
+    }
+
+    /** Der Vergleich beißt noch: eine geänderte Anlage fällt auf, eine leere neue Spalte nicht. */
+    @Test
+    @Order(1)
+    void derTabellenvergleichFaengtEineGeaenderteZeile() {
+        JdbcTemplate root = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(),
+                POSTGRES.getUsername(), POSTGRES.getPassword()));
+        Bestandsschutz.mutationsprobe(root, SCHREIBT_IN, "site", "UPDATE site SET name = name || ' (Probe)'");
+    }
+
+    /** U2/N2: Bestätigen übernimmt die drei Anlagen als 2 + 1 und bleibt beim späteren Lauf idempotent. */
+    @Test
+    @Order(7)
+    void vorschauZusammenlegenUndBestaetigen() {
+        String adminToken = token("admin", "admin");
+        String tenant = neuerKundenbereich(adminToken, "Vorschau Kunststoff GmbH");
+        String halle1 = neueAnlage(adminToken, tenant, "Werk Ahrenberg – Halle 1");
+        String halle2 = neueAnlage(adminToken, tenant, "Werk Ahrenberg – Halle 2");
+        String lindach = neueAnlage(adminToken, tenant, "Werk Lindach");
+        admin.update("UPDATE site SET created_at = '2025-01-03T09:00:00Z' WHERE id = ?::uuid", halle1);
+        admin.update("UPDATE site SET created_at = '2026-10-01T09:00:00Z' WHERE id = ?::uuid", halle2);
+        admin.update("UPDATE site SET created_at = '2026-10-15T09:00:00Z' WHERE id = ?::uuid", lindach);
+        for (String site : List.of(halle1, halle2, lindach)) {
+            admin.update("INSERT INTO site_profile_state (site_id, profile, state, tenant_id, updated_at) "
+                    + "VALUES (?::uuid, 'lastspitzenkappung', 'an', ?::uuid, '2025-01-01T00:00:00Z')", site, tenant);
+        }
+        alsMandant(tenant, () -> bestandsuebernahme.uebernehmen());
+
+        long standorteVorher = anzahl("SELECT count(*) FROM standort WHERE tenant_id = ?::uuid", tenant);
+        long zuordnungenVorher = anzahl("SELECT count(*) FROM anlage_standort WHERE tenant_id = ?::uuid", tenant);
+        Map<String, String> steuerungVorher = Bestandsschutz.fingerabdruck(admin, List.of(
+                "standort", "anlage_standort", "ort_aenderung", "ort_kurzzeichen", "ort_kurzzeichen_seq",
+                "standort_vorschlag", "funktion%"));
+        JsonNode vorschau = ok(get("/api/v1/standorte/vorschlag", adminToken, tenant));
+        assertThat(vorschau.path("anlagenZahl").asInt()).isEqualTo(3);
+        assertThat(vorschau.path("gruppen")).hasSize(3);
+        assertThat(anzahl("SELECT count(*) FROM standort WHERE tenant_id = ?::uuid", tenant)).isEqualTo(standorteVorher);
+        assertThat(anzahl("SELECT count(*) FROM anlage_standort WHERE tenant_id = ?::uuid", tenant)).isEqualTo(zuordnungenVorher);
+        assertThat(protokoll(tenant)).isEmpty();
+
+        List<String> ids = new java.util.ArrayList<>();
+        vorschau.path("gruppen").forEach(g -> ids.add(g.path("anlagen").get(0).path("vorschlagId").asText()));
+        Map<String, Object> ahrenberg = new LinkedHashMap<>();
+        ahrenberg.put("name", "Werk Ahrenberg");
+        ahrenberg.put("zeitzone", "Europe/Berlin");
+        ahrenberg.put("adresse", Map.of("strasse", "Gewerbering 7", "plz", "84123", "ort", "Ahrenberg", "land", "DE"));
+        ahrenberg.put("vorschlagIds", ids.subList(0, 2));
+        Map<String, Object> lindachGruppe = new LinkedHashMap<>();
+        lindachGruppe.put("name", "Werk Lindach");
+        lindachGruppe.put("zeitzone", "Europe/Berlin");
+        lindachGruppe.put("adresse", Map.of("strasse", "Werkstrasse 8", "plz", "84123", "ort", "Lindach", "land", "DE"));
+        lindachGruppe.put("vorschlagIds", List.of(ids.get(2)));
+        JsonNode ergebnis = ok(exchange("/api/v1/standorte/vorschlag/bestaetigen", HttpMethod.POST,
+                adminToken, tenant, Map.of("gruppen", List.of(ahrenberg, lindachGruppe))));
+        assertThat(ergebnis.path("standortIds")).hasSize(2);
+        assertThat(ergebnis.path("zuordnungen").asInt()).isEqualTo(3);
+        assertThat(anzahl("SELECT count(*) FROM standort WHERE tenant_id = ?::uuid", tenant)).isEqualTo(2);
+        assertThat(anzahl("SELECT count(*) FROM anlage_standort WHERE tenant_id = ?::uuid", tenant)).isEqualTo(3);
+        assertThat(anzahl("SELECT count(*) FROM standort_vorschlag WHERE tenant_id = ?::uuid", tenant)).isZero();
+        assertThat(admin.queryForList("SELECT gueltig_ab FROM anlage_standort WHERE tenant_id = ?::uuid ORDER BY gueltig_ab", tenant))
+                .extracting(x -> x.get("gueltig_ab").toString())
+                .containsExactly("2025-01-03", "2026-10-01", "2026-10-15");
+        assertThat(protokoll(tenant)).extracting(x -> x.get("objekt_art") + "/" + x.get("art"))
+                .containsExactly("standort/angelegt", "anlage/verschoben", "anlage/verschoben",
+                        "standort/angelegt", "anlage/verschoben");
+        assertThat(anzahl("SELECT count(*) FROM funktion_teilnahme WHERE tenant_id = ?::uuid", tenant)).isEqualTo(3);
+        assertThat(alsMandant(tenant, () -> app.queryForMap(z04())).get("mit_standort_ohne_teilnahme"))
+                .isEqualTo(0L);
+        assertThat(Bestandsschutz.abweichungen(steuerungVorher, Bestandsschutz.fingerabdruck(admin, List.of(
+                "standort", "anlage_standort", "ort_aenderung", "ort_kurzzeichen", "ort_kurzzeichen_seq",
+                "standort_vorschlag", "funktion%")))).as("Steuer-Bestand bleibt zeichengleich").isEmpty();
+
+        String funktionVorLauf = funktionStand(tenant);
+        funktionBestandLaeufer.lauf();
+        assertThat(funktionStand(tenant)).as("der spätere Start-Läufer schreibt nichts mehr").isEqualTo(funktionVorLauf);
+        assertThat(ok(get("/api/v1/standorte/vorschlag", adminToken, tenant)).path("gruppen")).isEmpty();
+    }
+
+    /** Die Funktions-Ableitung gehört zur selben Transaktion: ihr Fehler nimmt die Zuordnung zurück. */
+    @Test
+    @Order(99)
+    void einFehlerDerFunktionsAbleitungRolltDieBestaetigungZurueck() {
+        String adminToken = token("admin", "admin");
+        String tenant = neuerKundenbereich(adminToken, "Rollback Vorschlag GmbH");
+        String site = neueAnlage(adminToken, tenant, "Bestandshalle 1");
+        String zweite = neueAnlage(adminToken, tenant, "Bestandshalle 2");
+        admin.update("UPDATE site SET created_at = '2024-01-03T09:00:00Z' WHERE id IN (?::uuid, ?::uuid)",
+                site, zweite);
+        alsMandant(tenant, () -> bestandsuebernahme.uebernehmen());
+        List<UUID> vorschlagIds = alsMandant(tenant,
+                () -> vorschlaege.alle().stream().map(StandortVorschlagRepository.Vorschlag::id).toList());
+        doThrow(new IllegalStateException("Ableitung kaputt")).when(funktionBestand).uebernehmen(anySet());
+
+        StandortVorschlagDto.Bestaetigen body = new StandortVorschlagDto.Bestaetigen(List.of(
+                new StandortVorschlagDto.GruppeEingang("Werk Rollback", "Europe/Berlin",
+                        new StandortLesemodell.Adresse("Prüfweg 1", "84123", "Ahrenberg", "DE"), vorschlagIds)));
+        assertThatThrownBy(() -> alsMandant(tenant,
+                () -> standortVorschlagService.bestaetigen(body, ProtokollAkteur.bestandsuebernahme())))
+                .hasRootCauseMessage("Ableitung kaputt");
+
+        assertThat(anzahl("SELECT count(*) FROM standort WHERE tenant_id = ?::uuid", tenant)).isZero();
+        assertThat(anzahl("SELECT count(*) FROM anlage_standort WHERE tenant_id = ?::uuid", tenant)).isZero();
+        assertThat(anzahl("SELECT count(*) FROM funktion_teilnahme WHERE tenant_id = ?::uuid", tenant)).isZero();
+        assertThat(anzahl("SELECT count(*) FROM standort_vorschlag WHERE tenant_id = ?::uuid", tenant)).isEqualTo(2);
     }
 
     /** Die Übernahme kennt keinen Publisher — sie KANN nichts an eine Box schicken. */
@@ -358,11 +488,11 @@ class BestandsuebernahmeApiTest {
         JsonNode neu = ok(get("/api/v1/sites/" + site, token, null));
         assertThat(neu.path("standort").path("kurzzeichen").asText()).isEqualTo("ST-1");
         assertThat(neu.path("standort").path("gueltigAb").asText()).isEqualTo(heute.toString());
-        Map<String, Object> eintrag = admin.queryForMap("SELECT art, akteur_name, akteur_sub, gilt_ab, "
+        Map<String, Object> eintrag = admin.queryForMap("SELECT art, actor_name, actor_sub, gilt_ab, "
                 + "rueckwirkend FROM ort_aenderung WHERE objekt_art = 'anlage' AND objekt_id = ?::uuid", site);
         assertThat(eintrag.get("art")).isEqualTo("verschoben");
-        assertThat(eintrag.get("akteur_name")).as("die Person, nicht VoltPilot").isEqualTo("demo2");
-        assertThat(eintrag.get("akteur_sub")).isNotNull();
+        assertThat(eintrag.get("actor_name")).as("die Person, nicht VoltPilot").isEqualTo("demo2");
+        assertThat(eintrag.get("actor_sub")).isNotNull();
         assertThat(eintrag.get("rueckwirkend")).isEqualTo(false);
 
         // W5: löschen geht wie bisher — und die Zuordnung bleibt als beendetes Intervall.
@@ -375,7 +505,7 @@ class BestandsuebernahmeApiTest {
         assertThat(grabstein.get("gueltig_bis").toString()).isEqualTo(heute.toString());
         assertThat(grabstein.get("aufgehoben_am")).isNull();
         Map<String, Object> grabsteinEintrag = admin.queryForMap("SELECT art, alt::text AS alt, "
-                + "neu::text AS neu, akteur_name FROM ort_aenderung WHERE objekt_art = 'anlage' "
+                + "neu::text AS neu, actor_name FROM ort_aenderung WHERE objekt_art = 'anlage' "
                 + "AND objekt_id = ?::uuid AND art = 'geloescht'", site);
         JsonNode alt = json(grabsteinEintrag.get("alt"));
         assertThat(alt.path("anlage_name").asText()).isEqualTo("Nordwind Cuxhaven");
@@ -383,7 +513,7 @@ class BestandsuebernahmeApiTest {
         assertThat(alt.path("gueltig_bis").isNull()).isTrue();
         assertThat(json(grabsteinEintrag.get("neu")).path("gueltig_bis").asText())
                 .isEqualTo(heute.toString());
-        assertThat(grabsteinEintrag.get("akteur_name")).isEqualTo("demo2");
+        assertThat(grabsteinEintrag.get("actor_name")).isEqualTo("demo2");
     }
 
     /** Ohne Standort im Kundenbereich bleibt alles, wie es war: keine Zuordnung, kein Protokoll. */
@@ -517,7 +647,7 @@ class BestandsuebernahmeApiTest {
 
     private List<Map<String, Object>> protokoll(String tenant) {
         return admin.queryForList("SELECT objekt_art, objekt_id, art, alt::text AS alt, neu::text AS neu, "
-                + "gilt_ab, rueckwirkend, akteur_sub, akteur_name FROM ort_aenderung "
+                + "gilt_ab, rueckwirkend, actor_sub, actor_name FROM ort_aenderung "
                 + "WHERE tenant_id = ?::uuid AND objekt_art <> 'unternehmen' ORDER BY id", tenant);
     }
 
@@ -528,17 +658,7 @@ class BestandsuebernahmeApiTest {
 
     /** Der Stand JEDER Tabelle, in die die Übernahme nicht schreiben darf. */
     private Map<String, String> tabellenStand() {
-        Map<String, String> stand = new LinkedHashMap<>();
-        for (String t : admin.queryForList("SELECT table_name FROM information_schema.tables "
-                + "WHERE table_schema = 'public' AND table_type = 'BASE TABLE' ORDER BY table_name",
-                String.class)) {
-            if (SCHREIBT_IN.contains(t) || "flyway_schema_history".equals(t)) {
-                continue;
-            }
-            stand.put(t, admin.queryForObject("SELECT coalesce(md5(string_agg(x::text, E'\\n' "
-                    + "ORDER BY x::text)), 'leer') FROM " + t + " x", String.class));
-        }
-        return stand;
+        return Bestandsschutz.fingerabdruck(admin, SCHREIBT_IN);
     }
 
     /** Der Stand der Tabellen, in die sie schreibt — für „ein zweiter Lauf schreibt nichts". */
@@ -557,7 +677,39 @@ class BestandsuebernahmeApiTest {
         return stand;
     }
 
-    /** Dieselbe Antwort ohne das additive Feld {@code standort} (auch je Anlage in /overview). */
+    private String funktionStand(String tenant) {
+        return admin.queryForObject("SELECT "
+                + "(SELECT coalesce(string_agg(f::text, E'\\n' ORDER BY f::text), 'leer') "
+                + "FROM funktion f WHERE tenant_id = ?::uuid) || E'\\n---\\n' || "
+                + "(SELECT coalesce(string_agg(ft::text, E'\\n' ORDER BY ft::text), 'leer') "
+                + "FROM funktion_teilnahme ft WHERE tenant_id = ?::uuid)", String.class, tenant, tenant);
+    }
+
+    /** Der exakte Abfragetext Z04 aus dem parallel gelieferten Nachher-Blatt. */
+    private static String z04() {
+        try {
+            String blatt = Files.readString(NACHHER_BLATT);
+            int marker = blatt.indexOf("-- Z04");
+            int anfang = blatt.indexOf("SELECT", marker);
+            int ende = blatt.indexOf(';', anfang);
+            if (marker < 0 || anfang < 0 || ende < 0) {
+                throw new IllegalStateException("Z04 fehlt in " + NACHHER_BLATT);
+            }
+            return blatt.substring(anfang, ende + 1);
+        } catch (IOException e) {
+            throw new IllegalStateException("Z04 kann nicht gelesen werden: " + NACHHER_BLATT, e);
+        }
+    }
+
+    /**
+     * Dieselbe Antwort ohne die additiven Felder, die von der Bestandsübernahme SELBST abhängen:
+     * {@code standort} (AP-02 IP-3, je Anlage in /overview und an /sites/{id}) und {@code teilansicht}
+     * (AP-03 IP-10, {@code {sichtbar, gesamt}} an /overview).
+     *
+     * <p>Beide dürfen sich ändern — die Übernahme legt ja genau die Standorte an, die sie zählen. Dass sie
+     * sich RICHTIG ändern, prüft der Aufrufer daneben ausdrücklich; hier fällt nur weg, was sonst jeden
+     * Zeichenvergleich verdecken würde.
+     */
     private static JsonNode ohneStandort(JsonNode antwort) {
         JsonNode kopie = antwort.deepCopy();
         entferne(kopie);
@@ -567,6 +719,7 @@ class BestandsuebernahmeApiTest {
     private static void entferne(JsonNode n) {
         if (n.isObject()) {
             ((com.fasterxml.jackson.databind.node.ObjectNode) n).remove("standort");
+            ((com.fasterxml.jackson.databind.node.ObjectNode) n).remove("teilansicht");
             n.forEach(BestandsuebernahmeApiTest::entferne);
         } else if (n.isArray()) {
             n.forEach(BestandsuebernahmeApiTest::entferne);

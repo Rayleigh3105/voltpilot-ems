@@ -72,17 +72,18 @@ public class RegisterWriteEventRepository {
                 + "lane, entity_id, target_label, register_kind, address, write_fc, "
                 + "address_input, value_input, note, value_raw, expected_before, "
                 + "register_label, register_class, scale_note, "
-                + "origin, actor_sub, actor_name, actor_role, via_tenant_switcher, requested_at) "
+                + "origin, actor_sub, actor_name, actor_role, via_tenant_switcher, requested_at, "
+                + "actor_rolle, actor_art) "
                 + "VALUES (?, '" + EVENT_REQUESTED + "', ?, "
                 + "NULLIF(current_setting('app.tenant_id', true), '')::uuid, "
-                + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                + "?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                 + "ON CONFLICT (request_id, event) DO NOTHING",
                 r.requestId(), r.source(), r.siteId(), r.deviceId(), r.deviceRef(),
                 r.lane(), r.entityId(), r.targetLabel(), r.registerKind(), r.address(),
                 r.writeFc(), r.addressInput(), r.valueInput(), r.note(), r.valueRaw(),
                 r.expectedBefore(), r.registerLabel(), r.registerClass(), r.scaleNote(),
                 r.origin(), r.actorSub(), r.actorName(), r.actorRole(), r.viaTenantSwitcher(),
-                Timestamp.from(r.requestedAt()));
+                Timestamp.from(r.requestedAt()), r.actorRolle(), r.actorArt());
     }
 
     /** Die Ergebnis-Zeile (Quittung oder ihr Ausbleiben). */
@@ -345,7 +346,7 @@ public class RegisterWriteEventRepository {
                     rs.getString("register_class"), rs.getString("scale_note"),
                     rs.getString("origin"), rs.getString("actor_name"), rs.getString("actor_role"),
                     rs.getBoolean("via_tenant_switcher"), instant(rs, "requested_at"),
-                    null, null, null, null, null, null);
+                    null, null, null, null, null, null, rs.getString("actor_rolle"), rs.getString("actor_art"));
             return current == null ? base : base.withOutcomeOf(current);
         }
         Outcome outcome = new Outcome(integer(rs, "before_raw"), integer(rs, "after_raw"),
@@ -359,7 +360,7 @@ public class RegisterWriteEventRepository {
                     null, null, null, null, null, null, null, null, null, null, null, null, null,
                     false, instant(rs, "requested_at"),
                     outcome.beforeRaw(), outcome.afterRaw(), outcome.adopted(),
-                    outcome.outcome(), outcome.reason(), outcome.at());
+                    outcome.outcome(), outcome.reason(), outcome.at(), null, null);
         }
         return current.with(outcome, Math.max(current.id(), rs.getLong("id")));
     }
@@ -374,7 +375,7 @@ public class RegisterWriteEventRepository {
             int address, Integer writeFc, String addressInput, String valueInput, String note,
             Integer valueRaw, Integer expectedBefore, String registerLabel, String registerClass,
             String scaleNote, String origin, String actorSub, String actorName, String actorRole,
-            boolean viaTenantSwitcher, Instant requestedAt) {
+            boolean viaTenantSwitcher, Instant requestedAt, String actorRolle, String actorArt) {
     }
 
     /** Die Ergebnis-Tatsachen EINES Vorgangs. */
@@ -390,14 +391,14 @@ public class RegisterWriteEventRepository {
             Integer expectedBefore, String registerLabel, String registerClass, String scaleNote,
             String origin, String actorName, String actorRole, boolean viaTenantSwitcher,
             Instant requestedAt, Integer beforeRaw, Integer afterRaw, Boolean adopted,
-            String outcome, String reason, Instant answeredAt) {
+            String outcome, String reason, Instant answeredAt, String actorRolle, String actorArt) {
 
         Entry with(Outcome o, long id) {
             return new Entry(id, requestId, source, deviceId, deviceRef, lane, entityId,
                     targetLabel, registerKind, address, addressInput, valueInput, note, valueRaw,
                     expectedBefore, registerLabel, registerClass, scaleNote, origin, actorName,
                     actorRole, viaTenantSwitcher, requestedAt, o.beforeRaw(), o.afterRaw(),
-                    o.adopted(), o.outcome(), o.reason(), o.at());
+                    o.adopted(), o.outcome(), o.reason(), o.at(), actorRolle, actorArt);
         }
 
         Entry withOutcomeOf(Entry other) {
@@ -406,7 +407,7 @@ public class RegisterWriteEventRepository {
                     note, valueRaw, expectedBefore, registerLabel, registerClass, scaleNote,
                     origin, actorName, actorRole, viaTenantSwitcher, requestedAt,
                     other.beforeRaw(), other.afterRaw(), other.adopted(), other.outcome(),
-                    other.reason(), other.answeredAt());
+                    other.reason(), other.answeredAt(), actorRolle, actorArt);
         }
     }
 

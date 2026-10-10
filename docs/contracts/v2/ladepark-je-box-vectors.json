@@ -1,0 +1,71 @@
+{
+  "vertrag": "docs/contracts/v2/steuerungsverbund.md §9 — Ladepark-Dokument je Box (UEMS AP-15 IP-16, P6, W6, E4 = A)",
+  "hinweis": [
+    "Ausschnitt: je Box die Säulen, die SIE gemeldet hat (device_charge_point); was keine steuernde Box gemeldet hat, reist bei der führenden (G7).",
+    "Reihenfolge: gefiltert, nie neu sortiert; jeder Rang behält seine Zahl aus der Anlage. storage_rank reist in jedem Ausschnitt (der Speicher bleibt EIN Eintrag, W6/E7).",
+    "Grenze: jede Box bekommt die Netzgrenze der Anlage wie heute (grid_limit_kw); ihr Anteil reist NUR im Anteils-Dokument (Y1), die Box rechnet min(heute, Anteil) (IP-19). Diese Vektoren prüfen darum nur den Ausschnitt.",
+    "Fälle mit Kennzeichen des Referenzunternehmens Ahrenberg (AN-1, E-1 Box Halle 1 führt, E-4 Box Verwaltung steuert mit, AHR-LP-02 … AHR-LP-07); Fall 3 ist konstruiert."
+  ],
+  "ausschnitt": [
+    {
+      "fall": "R3 — sechs Ladepunkte an Box Verwaltung, Box Halle 1 ohne Säulen",
+      "saeulen": [
+        { "id": "AHR-LP-02", "rank": 1 }, { "id": "AHR-LP-03", "rank": 2 }, { "id": "AHR-LP-04", "rank": 4 },
+        { "id": "AHR-LP-05", "rank": 5 }, { "id": "AHR-LP-06", "rank": 6 }, { "id": "AHR-LP-07", "rank": 7 }
+      ],
+      "vorrang": ["AHR-LP-02", "AHR-LP-03"],
+      "boxen": {
+        "E-1": { "fuehrt": true, "gemeldet": [] },
+        "E-4": { "fuehrt": false, "gemeldet": ["AHR-LP-02", "AHR-LP-03", "AHR-LP-04", "AHR-LP-05", "AHR-LP-06", "AHR-LP-07"] }
+      },
+      "erwartet": {
+        "E-1": { "saeulen": [], "vorrang": [] },
+        "E-4": {
+          "saeulen": [
+            { "id": "AHR-LP-02", "rank": 1 }, { "id": "AHR-LP-03", "rank": 2 }, { "id": "AHR-LP-04", "rank": 4 },
+            { "id": "AHR-LP-05", "rank": 5 }, { "id": "AHR-LP-06", "rank": 6 }, { "id": "AHR-LP-07", "rank": 7 }
+          ],
+          "vorrang": ["AHR-LP-02", "AHR-LP-03"]
+        }
+      }
+    },
+    {
+      "fall": "W6 — der Kunde sortiert um: dieselben Säulen, neue Ränge, Zuordnung zur Box unverändert",
+      "saeulen": [
+        { "id": "AHR-LP-02", "rank": 7 }, { "id": "AHR-LP-03", "rank": 6 }, { "id": "AHR-LP-04", "rank": 5 },
+        { "id": "AHR-LP-05", "rank": 3 }, { "id": "AHR-LP-06", "rank": 2 }, { "id": "AHR-LP-07", "rank": 1 }
+      ],
+      "vorrang": ["AHR-LP-06", "AHR-LP-07"],
+      "boxen": {
+        "E-1": { "fuehrt": true, "gemeldet": [] },
+        "E-4": { "fuehrt": false, "gemeldet": ["AHR-LP-02", "AHR-LP-03", "AHR-LP-04", "AHR-LP-05", "AHR-LP-06", "AHR-LP-07"] }
+      },
+      "erwartet": {
+        "E-1": { "saeulen": [], "vorrang": [] },
+        "E-4": {
+          "saeulen": [
+            { "id": "AHR-LP-02", "rank": 7 }, { "id": "AHR-LP-03", "rank": 6 }, { "id": "AHR-LP-04", "rank": 5 },
+            { "id": "AHR-LP-05", "rank": 3 }, { "id": "AHR-LP-06", "rank": 2 }, { "id": "AHR-LP-07", "rank": 1 }
+          ],
+          "vorrang": ["AHR-LP-06", "AHR-LP-07"]
+        }
+      }
+    },
+    {
+      "fall": "konstruiert — Säulen an beiden Boxen, eine noch ohne Meldung: jede Box ihren Teil, die ungemeldete bei der führenden",
+      "saeulen": [
+        { "id": "HL-01", "rank": 2 }, { "id": "AHR-LP-02", "rank": 1 }, { "id": "AHR-LP-03", "rank": 3 },
+        { "id": "NEU-01" }
+      ],
+      "vorrang": ["AHR-LP-02", "HL-01", "NEU-01"],
+      "boxen": {
+        "E-1": { "fuehrt": true, "gemeldet": ["HL-01"] },
+        "E-4": { "fuehrt": false, "gemeldet": ["AHR-LP-02", "AHR-LP-03"] }
+      },
+      "erwartet": {
+        "E-1": { "saeulen": [{ "id": "HL-01", "rank": 2 }, { "id": "NEU-01" }], "vorrang": ["HL-01", "NEU-01"] },
+        "E-4": { "saeulen": [{ "id": "AHR-LP-02", "rank": 1 }, { "id": "AHR-LP-03", "rank": 3 }], "vorrang": ["AHR-LP-02"] }
+      }
+    }
+  ]
+}

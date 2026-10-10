@@ -35,6 +35,16 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+        <!-- Prometheus scrape format for the actuator: registering this registry
+             turns the `prometheus` actuator endpoint on (remapped to /metrics in
+             application.yml). Same build as the writer. Ohne sie registriert der
+             ingest zwar Micrometer-Zaehler (EventsRawProducer, IngestMetriken),
+             aber niemand kann sie abholen - genau der Zustand bis AP-14 IP-9. -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+            <scope>runtime</scope>
+        </dependency>
         <!-- MVP data path: consume MQTT (EMQX), publish to Redpanda (Kafka API). -->
         <dependency>
             <groupId>org.springframework.integration</groupId>

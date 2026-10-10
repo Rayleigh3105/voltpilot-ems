@@ -1,3 +1,4 @@
+import { Recht } from '../components/Recht';
 import { useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
@@ -7,8 +8,11 @@ import { type Betriebsart, type Device, type Site } from '../api';
 import { isFleetShell } from '../betriebsart';
 import { anlageRoute, type Route } from '../nav';
 import { AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawer';
+import { useMessenEinrichtenEintrag } from '../components/MessenEinrichtenEintrag';
 import { PortfolioCockpit } from '../components/PortfolioCockpit';
 import { AnlageSeite } from './AnlagenPage';
+import { anlageLeertext } from '../anlegeNurMessen';
+import { useAnlegeArt } from '../useAnlegeArt';
 
 interface UebersichtProps {
   sites: Site[];
@@ -36,6 +40,14 @@ interface UebersichtProps {
  * und der leere Zustand.
  */
 export function UebersichtPage(props: UebersichtProps) {
+  // firstmate K2: der Hook läuft unbedingt (React-Regel) — gebraucht wird sein Ergebnis nur in
+  // der Flotten-Fläche unten; `AnlageSeite`/der Leerzustand haben kein ⋯-Menü dafür.
+  const messenEinrichtenEintrag = useMessenEinrichtenEintrag({
+    sites: props.sites,
+    isAdmin: props.isAdmin ?? false,
+    betriebsart: props.betriebsart ?? null,
+    onBestaetigt: () => props.onReload(),
+  });
   if (props.sites.length === 0) {
     return <UebersichtEmpty {...props} />;
   }
@@ -73,6 +85,7 @@ export function UebersichtPage(props: UebersichtProps) {
       onReload={props.onReload}
       isAdmin={props.isAdmin}
       titel="Meine Anlagen"
+      messenEinrichtenEintrag={messenEinrichtenEintrag}
     />
   );
 }
@@ -80,6 +93,7 @@ export function UebersichtPage(props: UebersichtProps) {
 /** Empty-state: onboarding entry for customers, neutral notice for admins. */
 function UebersichtEmpty({ onReload, isAdmin = false }: UebersichtProps) {
   const [siteDrawer, setSiteDrawer] = useState(false);
+  const anlegeArt = useAnlegeArt();
   return (
     <>
       <div className="vp-page-head">
@@ -88,7 +102,11 @@ function UebersichtEmpty({ onReload, isAdmin = false }: UebersichtProps) {
           <p>
             {isAdmin
               ? 'Dieser Mandant hat noch keine Anlage.'
-              : 'Legen Sie Ihre Anlage an, um Ihr Gerät zu verbinden und Live-Daten, Fahrplan und Erlöse zu sehen.'}
+              : anlageLeertext(
+                  anlegeArt,
+                  'Legen Sie Ihre Anlage an, um Ihr Gerät zu verbinden und Live-Daten, Fahrplan und Erlöse zu sehen.',
+                  'Legen Sie Ihre Anlage an, um Ihr Gerät zu verbinden und ihre Messwerte zu sehen.',
+                )}
           </p>
         </div>
       </div>
@@ -101,11 +119,15 @@ function UebersichtEmpty({ onReload, isAdmin = false }: UebersichtProps) {
           <p>
             {isAdmin
               ? 'Sobald für diesen Mandanten eine Anlage angelegt ist, erscheinen hier ihre Live-Daten, Marktpreise, Wetter und der Batterie-Fahrplan. Sie können im Namen des Mandanten eine Anlage anlegen.'
-              : 'Eine Anlage bündelt Ihr Gerät, Live-Daten, Marktpreise, Wetter und den Batterie-Fahrplan. Danach verbinden Sie Ihr Gerät in wenigen Schritten.'}
+              : anlageLeertext(
+                  anlegeArt,
+                  'Eine Anlage bündelt Ihr Gerät, Live-Daten, Marktpreise, Wetter und den Batterie-Fahrplan. Danach verbinden Sie Ihr Gerät in wenigen Schritten.',
+                  'Eine Anlage bündelt Ihr Gerät und seine Messwerte. Danach verbinden Sie Ihr Gerät in wenigen Schritten.',
+                )}
           </p>
-          <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setSiteDrawer(true)}>
+          <Recht aktion="anlage.verwalten"><Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setSiteDrawer(true)}>
             {isAdmin ? 'Anlage anlegen' : 'Erste Anlage anlegen'}
-          </Button>
+          </Button></Recht>
         </div>
       </Card>
       <AnlageAnlegenDrawer

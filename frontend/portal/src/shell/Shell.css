@@ -28,6 +28,49 @@
   min-width: 0;
 }
 
+/* ---------- Die Einträge einer Ebene über der Anlage ----------
+   Konzept „Navigation aus einem Guss“ (N1): am Unternehmen, am Standort und in der Flotte trägt die Seitenleiste
+   die Einträge der Ebene — dieselben wie die Telefon-Leiste. Über ihnen steht, wo es eine Ebene darüber gibt, der Weg
+   dorthin (N2, „‹ Ahrenberg“); die Trennlinie setzt ihn ab wie in der Anlage. */
+.vp-ebenennav {
+  min-width: 0;
+}
+.vp-nav-hoch + .vp-ebenennav {
+  margin-top: var(--vp-space-4);
+  padding-top: var(--vp-space-3);
+  border-top: 1px solid var(--vp-border);
+}
+.vp-app .vp-sidebar .vp-navitem.vp-nav-hoch {
+  color: var(--vp-text-gray);
+}
+.vp-app .vp-sidebar .vp-navitem.vp-nav-hoch .ic {
+  color: inherit;
+}
+/* N4: die Frage der offenen Gruppe als zweite Zeile ihres Eintrags; der Titel nennt sie immer. */
+.vp-navitem .vp-nav-lbl.vp-nav-zwei {
+  display: grid;
+  gap: 1px;
+  padding-block: var(--vp-space-1, 0.25rem);
+  white-space: normal;
+}
+.vp-nav-zwei > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.vp-nav-zwei > .vp-nav-frage {
+  font-size: var(--vp-text-badge, 0.75rem);
+  font-weight: 400;
+  line-height: 1.35;
+  white-space: normal;
+  color: var(--vp-text-gray);
+}
+.vp-navitem.active .vp-nav-zwei > .vp-nav-frage {
+  color: inherit;
+  opacity: 0.8;
+}
+
 /* ---------- Gruppen-Überschriften (nur noch „Plattform") ----------
    Die farbigen Anwendungs-Gruppen sind mit E3 entfallen; ihre Ansichten sind
    Reiter geworden. Geblieben sind die Plattform-Überschriften. */
@@ -795,3 +838,29 @@
 .vp-avatarmenu-phone {
   display: none;
 }
+
+/* ---------- Der Ortspfad einer Seite ohne Anlage (UEMS AP-01 IP-5) ----------
+   Standort- und Unternehmens-Übersicht: „Ahrenberg › Werk Ahrenberg". Anders
+   als in einer Anlage gibt es dort am Telefon weder die Leiste noch den
+   Anlagen-Umschalter — der Rückweg im Pfad bleibt deshalb auf jeder Breite
+   sichtbar, mit 44 px Trefferfläche, und gibt Breite ab, bevor der Ort selbst
+   gekürzt wird. Die Anlagen-Kopfzeile oben ist davon unberührt. */
+@media (max-width: 1279px) {
+  .vp-app .vp-topbar .vp-crumbs-ort .vp-crumb-up {
+    display: inline-block;
+    flex: 0 1 auto;
+    min-width: 3rem;
+    min-height: 44px;
+    line-height: 44px;
+    padding-block: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .vp-app .vp-topbar .vp-crumbs-ort .vp-crumb-sep {
+    display: inline;
+  }
+}
+
+/* Die Leiste trägt höchstens fünf Kacheln (`ebenenNav.LEISTE_HOECHSTENS`): am Unternehmen Gruppen, am
+   Standort „Anschlüsse“ statt „Netzanschlüsse“. Das frühere Umbruch-Pflaster für sechs und mehr Kacheln brach
+   „Messstell|en“ mitten im Wort und ist entfallen; eine Beschriftung bleibt einzeilig. */

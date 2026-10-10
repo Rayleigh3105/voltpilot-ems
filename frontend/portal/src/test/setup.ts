@@ -1,3 +1,5 @@
+import { setSelbstauskunft } from '../rollen';
+import { rechteSeed } from './rollenFixtures';
 import '@testing-library/jest-dom/vitest';
 import { beforeEach } from 'vitest';
 
@@ -77,3 +79,7 @@ beforeEach(() => {
     /* kein Speicher in dieser Umgebung - dann gibt es auch nichts zu leeren. */
   }
 });
+
+// Bestands-Komponententests laufen als der übernommene Kundenadministrator.
+// Rechte-Tests setzen danach ihre eigene /me-Momentaufnahme (einschließlich null).
+beforeEach(() => setSelbstauskunft(rechteSeed().me));

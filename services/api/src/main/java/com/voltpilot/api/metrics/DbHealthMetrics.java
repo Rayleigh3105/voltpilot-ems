@@ -1,6 +1,8 @@
 package com.voltpilot.api.metrics;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
 
 /**
  * Die REINEN Regeln hinter den Datenhaltungs-Metriken - welcher Timescale-Job
@@ -17,6 +19,23 @@ import java.time.Instant;
  * Ehrlichkeitsregeln, die dabei zaehlen.
  */
 public final class DbHealthMetrics {
+
+    /**
+     * Plan-Obergrenze je Mandant aus AP-07 {@code k_speicher.py}, Szenario
+     * „100 Messstellen, 1 300 Kanaele, alle Kanaele in der Zehn-Jahres-Klasse“.
+     * E7-A ist unkomprimiert entschieden; deshalb stehen hier die
+     * unkomprimierten Planwerte. Diese Tabelle ist die Laufzeitquelle fuer die
+     * 70-Prozent-Warnung und wird in {@code docs/performance/speicherplanung.md}
+     * lesbar gespiegelt.
+     */
+    public static final List<StorageClassPlan> STORAGE_PLAN = List.of(
+            new StorageClassPlan("roh", "device_measurement_sample", 20_217_600_000L),
+            new StorageClassPlan("vm", "messreihe_viertelstunde", 109_414_656_000L),
+            new StorageClassPlan("tag", "messreihe_tag", 1_329_692_000L),
+            new StorageClassPlan("ereignis", "messreihe_ereignis", 350_688_000L));
+
+    /** Ab 70 % des Planwerts soll der Betrieb gewarnt werden. */
+    public static final double STORAGE_WARNING_FRACTION = 0.70;
 
     /**
      * Der TimescaleDB-eigene Nutzungs-/Telemetrie-Reporter (Proc
@@ -39,6 +58,32 @@ public final class DbHealthMetrics {
 
     /** Die Groesse EINES Hypertables in Bytes (aus {@code hypertable_size}). */
     public record HypertableSize(String table, long bytes) {
+    }
+
+    /** Einer internen Mandantenkennung zurechenbarer physischer Tabellenanteil. */
+    public record TenantTableSize(UUID tenantId, String storageClass, long bytes) {
+    }
+
+    /** Eine Zeile der reproduzierten Planungstabelle. */
+    public record StorageClassPlan(String storageClass, String table, long bytes) {
+    }
+
+    public static long plannedBytes(String storageClass) {
+        return STORAGE_PLAN.stream()
+                .filter(p -> p.storageClass().equals(storageClass))
+                .findFirst()
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "unknown storage class: " + storageClass))
+                .bytes();
+    }
+
+    public static double planFraction(TenantTableSize size) {
+        return (double) size.bytes() / plannedBytes(size.storageClass());
+    }
+
+    /** Einschliesslich der Grenze: genau 70 % ist bereits eine Warnung. */
+    public static double planWarning(TenantTableSize size) {
+        return planFraction(size) >= STORAGE_WARNING_FRACTION ? 1.0 : 0.0;
     }
 
     /**

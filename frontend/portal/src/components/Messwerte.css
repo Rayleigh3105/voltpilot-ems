@@ -34,7 +34,14 @@
 .vp-measure-range button { min-height: 44px; border: 1px solid var(--vp-field-border); border-radius: 999px; background: var(--vp-surface); color: var(--vp-text-dark); padding: .45rem .8rem; }
 .vp-measure-range button.is-active { border-color: var(--vp-primary-deep); background: var(--vp-primary-soft); color: var(--vp-primary-deep); font-weight: 700; }
 .vp-measure-chart { width: 100%; height: 340px; min-width: 0; }
+.vp-measure-chart-wrap { position: relative; min-width: 0; }
 .vp-measure-marker-list { color: var(--vp-text-gray); font-size: var(--vp-text-sm); padding-left: 1.1rem; }
+.vp-measure-origin { margin-top: var(--vp-space-3); padding: var(--vp-space-3); border: 1px solid var(--vp-line); border-radius: var(--vp-radius-lg); background: var(--vp-surface-subtle); }
+.vp-measure-origin h4 { margin: 0 0 var(--vp-space-2); }
+.vp-measure-origin dl { display: grid; gap: .45rem; margin: 0; }
+.vp-measure-origin dl > div { display: grid; grid-template-columns: minmax(6.5rem, 35%) minmax(0, 1fr); gap: .75rem; }
+.vp-measure-origin dt { color: var(--vp-text-gray); }
+.vp-measure-origin dd { margin: 0; overflow-wrap: anywhere; }
 .vp-measure-custom { display: grid; gap: var(--vp-space-3); }
 .vp-measure-free { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin-bottom: var(--vp-space-3); }
 .vp-measure-free > div { display: grid; gap: .65rem; min-width: 0; }

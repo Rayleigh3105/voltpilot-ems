@@ -1,0 +1,826 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/v2/ergebnis-zustand.schema.json",
+  "title": "Ergebnis-Zustand, Kennzeichen und Anzeige: die Vektor-Datei",
+  "description": "Der Vertrag, wie eine abgeleitete Zahl sagt, wie belastbar sie ist (UEMS AP-08 IP-8, Prosa: ergebnis-zustand.md): das geschlossene Zustands-Vokabular, die geschlossene Liste der Kennzeichen-Sätze mit Rang, die Rundung je Ebene (E11) und die Sommerzeit-Beschriftung (E10). Er beschreibt ergebnis-zustand-vectors.json, gegen die BEIDE Zwillinge gefahren werden: Java services/api .../uems/ErgebnisZustand und TypeScript frontend/portal/src/uemsErgebnis.ts. Wer die Regel ändert, ändert die Vektor-Datei UND beide Zwillinge.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "herkunft", "zeitzone", "referenzunternehmen", "verbrauch_vektoren", "zustaende", "platzhalter", "kennzeichen", "fruehere_fassungen", "kennzeichen_vorgesehen", "verstoesse", "satz", "rundung", "sommerzeit", "mengen_herkunft", "fassung", "befunde", "cases"],
+  "properties": {
+    "_comment": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "Die Regel in Prosa — dieselbe wie in ergebnis-zustand.md." },
+    "schema_version": { "type": "string", "const": "1.13", "description": "Fassung dieses Vertrags. Erweiterungen sind additiv; ein geänderter Wortlaut behält seine frühere Fassung in `fruehere_fassungen`." },
+    "$schema_datei": { "type": "string", "const": "./ergebnis-zustand.schema.json" },
+    "herkunft": { "type": "string", "minLength": 1 },
+    "zeitzone": { "type": "string", "const": "Europe/Berlin", "description": "Die Zeitzone der Beispielwelt Ahrenberg; die Regeln selbst nehmen die Zone des Standorts." },
+    "referenzunternehmen": { "type": "string", "const": "./uems-referenzunternehmen.json" },
+    "verbrauch_vektoren": { "type": "string", "const": "./verbrauch-vectors.json", "description": "Die Datei, deren Kennzeichen-Sätze diese Liste vollständig abdecken muss — beide Zwillinge prüfen jede Erwartung dort." },
+    "zustaende": {
+      "type": "array",
+      "minItems": 4,
+      "description": "Das geschlossene Zustands-Vokabular (§4.5) in dieser Reihenfolge.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["wort", "zahl", "kennzeichen", "bedeutung"],
+        "properties": {
+          "wort": { "type": "string", "enum": ["vollständig", "unvollständig", "keine Werte", "mit Ersatzwert"] },
+          "zahl": { "type": "string", "enum": ["pflicht", "erlaubt", "verboten"] },
+          "kennzeichen": { "type": "string", "enum": ["kein_fehlbestand", "mindestens_ein_fehlbestand", "frei"] },
+          "bedeutung": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "platzhalter": {
+      "type": "object",
+      "description": "Je Platzhalter-Art der reguläre Ausdruck (ohne fangende Gruppen), der den eingesetzten Text erkennt.",
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "kennzeichen": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Die geschlossene Liste der Kennzeichen-Sätze. Ein Satz ist genau dann ein Kennzeichen, wenn er auf GENAU EIN Muster passt.",
+      "items": { "$ref": "#/$defs/muster" }
+    },
+    "fruehere_fassungen": {
+      "type": "array",
+      "description": "Wortlaute, die eine frühere Fassung sprach und die gespeichert sein können. Sie werden als ihr Muster ERKANNT (gleicher Rang, gleiches Wort), aber nie mehr GESPROCHEN.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["schluessel", "muster", "platzhalter", "bis_fassung", "beispiel", "warum"],
+        "properties": {
+          "schluessel": { "type": "string", "pattern": "^[a-z0-9_]+$", "description": "Das heutige Muster, als das der Satz erkannt wird." },
+          "muster": { "type": "string", "minLength": 1 },
+          "platzhalter": { "type": "object", "additionalProperties": { "type": "string", "enum": ["uhr", "text", "ganzzahl", "ganzzahl_ab_2", "sekunden", "dezimal_punkt", "dezimal_klartext", "menge", "ersatzwert_methode", "ersatzwert_kennung", "tag_uhr"] } },
+          "bis_fassung": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+$", "description": "Die letzte Fassung, die diesen Wortlaut sprach." },
+          "beispiel": { "type": "string", "minLength": 1 },
+          "warum": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "kennzeichen_vorgesehen": {
+      "type": "array",
+      "description": "Wörter des Vokabulars, deren Wortlaut ein späteres Paket festlegt. Ein Satz, der mit `anfang` beginnt, ist bis dahin `kennzeichen_vorgesehen`.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["wort", "anfang", "wortlaut_mit"],
+        "properties": {
+          "wort": { "type": "string", "minLength": 1 },
+          "anfang": { "type": "string", "minLength": 1 },
+          "wortlaut_mit": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "kennzahl_kennzeichen": {
+      "type": "object", "additionalProperties": false,
+      "description": "Seit 1.9 (AP-11 IP-1, E4 Q8): die Kennzeichen-Sätze eines Kennzahl-Werts mit eigenem Rang und die Erbregeln ihrer Eingänge. Die Verbrauchs-Liste `kennzeichen` bleibt unberührt.",
+      "required": ["herkunft", "platzhalter", "saetze", "erbend", "reihenfolge"],
+      "properties": {
+        "herkunft": { "type": "string", "minLength": 1 },
+        "platzhalter": { "type": "object", "additionalProperties": { "type": "string", "minLength": 1 } },
+        "saetze": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["schluessel", "muster", "platzhalter", "rang", "herkunft", "stelle", "ohne_zahl", "beispiel", "fall"],
+            "properties": {
+              "schluessel": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+              "muster": { "type": "string", "minLength": 1 },
+              "platzhalter": { "type": "object", "additionalProperties": { "type": "string" } },
+              "rang": { "type": "integer", "minimum": 1 },
+              "herkunft": { "type": "string", "enum": ["eigen", "geerbt", "beides"] },
+              "stelle": { "type": "string", "enum": ["wert", "eingang"] },
+              "ohne_zahl": { "type": "boolean" },
+              "beispiel": { "type": "string", "minLength": 1 },
+              "fall": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "erbend": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["muster", "als", "von", "warum"],
+            "properties": {
+              "muster": { "type": "string", "minLength": 1 },
+              "als": { "type": "string", "minLength": 1 },
+              "von": { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["messstelle", "bezugsgroesse", "kennzahl"] } },
+              "warum": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "reihenfolge": { "type": "array", "minItems": 1, "items": { "type": "string" } }
+      }
+    },
+    "bericht_kennzeichen": {
+      "type": "object", "additionalProperties": false,
+      "description": "Seit 1.10 (AP-12 IP-1, E7/E8/E11/E14): die Kennzeichen eines Berichts, eines Berichtsstands und ihrer Werte — kein Rang, keine Erbregel; jedes steht an seiner Stelle. Die Verbrauchs-Liste `kennzeichen` und `kennzahl_kennzeichen` bleiben unberührt.",
+      "required": ["herkunft", "platzhalter", "saetze"],
+      "properties": {
+        "herkunft": { "type": "string", "minLength": 1 },
+        "platzhalter": { "type": "object", "additionalProperties": { "type": "string", "minLength": 1 } },
+        "saetze": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["schluessel", "muster", "platzhalter", "stelle", "beispiel", "fall"],
+            "properties": {
+              "schluessel": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+              "muster": { "type": "string", "minLength": 1 },
+              "platzhalter": { "type": "object", "additionalProperties": { "type": "string" } },
+              "stelle": { "type": "string", "enum": ["bericht", "stand", "entwurf", "wert", "quelle", "datei"] },
+              "beispiel": { "type": "string", "minLength": 1 },
+              "fall": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "grund": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Seit 1.11 (AP-13 IP-1, E11 = A, D5): je Code des Feldes grund der Route „Werte je Messstelle“ genau EIN Kundensatz — warum eine Zahl fehlt. Keine Regel: wann ein Grund gilt, entscheidet die Route. Die übrigen Blöcke bleiben unberührt; die Anzahl der Sätze (acht) prüfen beide Zwillinge gegen die Route.",
+      "required": [
+        "herkunft",
+        "quelle",
+        "platzhalter",
+        "anteil",
+        "ohne_grund",
+        "saetze"
+      ],
+      "properties": {
+        "herkunft": {
+          "type": "string",
+          "minLength": 1
+        },
+        "quelle": {
+          "type": "string",
+          "minLength": 1
+        },
+        "platzhalter": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "anteil": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "positiv",
+            "negativ"
+          ],
+          "properties": {
+            "positiv": {
+              "type": "string",
+              "minLength": 1
+            },
+            "negativ": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "ohne_grund": {
+          "type": "null",
+          "description": "Die Route nennt keinen Grund (ein Schritt mit Zahl): nichts wird gesprochen."
+        },
+        "saetze": {
+          "type": "array",
+          "minItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "muster",
+              "platzhalter",
+              "woher",
+              "beispiel",
+              "fall"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "keine_quelle",
+                  "quelle_teilweise",
+                  "anteil_nicht_gespeichert",
+                  "berechnet",
+                  "noch_nicht_gebildet",
+                  "ohne_menge_gespeichert",
+                  "version_nicht_gespeichert",
+                  "version_nicht_gebildet"
+                ]
+              },
+              "muster": {
+                "type": "string",
+                "minLength": 1
+              },
+              "platzhalter": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string",
+                  "enum": [
+                    "text",
+                    "datum",
+                    "anteil",
+                    "version"
+                  ]
+                }
+              },
+              "woher": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "description": "Aus welchem Feld der Antwort ein Platzhalter gebildet wird — Hinweis für die Fläche, keine Regel."
+              },
+              "beispiel": {
+                "type": "string",
+                "minLength": 1
+              },
+              "fall": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      }
+    },
+    "verstoesse": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Das geschlossene Vokabular der Verstöße, in der Reihenfolge, in der `pruefe` sie meldet.",
+      "items": { "$ref": "#/$defs/verstoss" }
+    },
+    "satz": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["trenner", "ohne_zahl", "abdeckung", "reihenfolge"],
+      "properties": {
+        "trenner": { "type": "string", "const": " · " },
+        "ohne_zahl": { "type": "string", "const": "—" },
+        "abdeckung": { "type": "string", "const": "Verlauf {prozent}" },
+        "reihenfolge": { "type": "array", "items": { "type": "string", "enum": ["zahl", "zustand", "abdeckung", "kennzeichen"] } }
+      }
+    },
+    "rundung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["gerechnet", "rundungsart", "tausender", "dezimal", "vor_einheit", "minus", "ebenen", "stellen", "anzeige_einheiten", "anzeige_einheit_warum", "kennzeichen_ebene", "kennzeichen_ebene_warum", "differenz_satz", "export", "wertbezug"],
+      "properties": {
+        "wertbezug": {
+          "type": "object", "additionalProperties": false, "required": ["gemessen", "vereinbart"],
+          "properties": {
+            "gemessen": { "type": "string", "minLength": 1 },
+            "vereinbart": { "type": "string", "minLength": 1 }
+          }
+        },
+        "gerechnet": { "type": "string", "minLength": 1 },
+        "rundungsart": { "type": "string", "minLength": 1 },
+        "tausender": { "type": "string", "const": "." },
+        "dezimal": { "type": "string", "const": "," },
+        "vor_einheit": { "type": "string", "const": " ", "description": "Geschütztes Leerzeichen U+00A0." },
+        "minus": { "type": "string", "const": "−", "description": "U+2212, nicht der ASCII-Bindestrich." },
+        "ebenen": { "type": "array", "items": { "$ref": "#/$defs/ebene" } },
+        "stellen": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["einheit", "ebene", "stellen"],
+            "properties": {
+              "einheit": { "type": "string", "enum": ["kWh", "kvarh", "kVAh", "kW", "%", "m³", "kVA"] },
+              "ebene": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/ebene" }] },
+              "stellen": { "type": "integer", "minimum": 0, "maximum": 3 }
+            }
+          }
+        },
+        "anzeige_einheiten": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Seit 1.3: je GESPEICHERTER Einheit (wie der Zähler sie liefert) die Anzeige-Einheit und der feste Faktor. Eine Einheit, die hier fehlt, hat keine Anzeige. Seit 1.8: Scheinarbeit VAh/kVAh mit eigener Anzeige-Einheit kVAh (nie kWh) und Wmin mit teiler.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["gespeichert", "angezeigt", "faktor"],
+            "properties": {
+              "gespeichert": { "type": "string", "enum": ["Wh", "kWh", "MWh", "Wmin", "varh", "kvarh", "VAh", "kVAh", "m³"] },
+              "angezeigt": { "type": "string", "enum": ["kWh", "kvarh", "kVAh", "m³"] },
+              "faktor": { "$ref": "#/$defs/dezimaltext" },
+              "teiler": { "type": "string", "pattern": "^[1-9][0-9]*$", "description": "Seit 1.8, optional (fehlt = 1): gespeicherter Wert × faktor ÷ teiler = Wert in der Anzeige-Einheit; gerundet wird der EXAKTE Quotient. Für Faktoren, die kein endlicher Dezimalbruch sind (Wmin → kWh = ÷ 60000)." }
+            }
+          }
+        },
+        "anzeige_einheit_warum": { "type": "string", "minLength": 1 },
+        "kennzeichen_ebene": { "$ref": "#/$defs/ebene", "description": "Seit 1.3: die Ebene, deren Stellen eine Menge IN einem Kennzeichen spricht." },
+        "kennzeichen_ebene_warum": { "type": "string", "minLength": 1 },
+        "differenz_satz": { "type": "string", "minLength": 1 },
+        "export": { "type": "string", "minLength": 1 }
+      }
+    },
+    "sommerzeit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["zusatz_normalzeit_utc_plus_1", "zusatz_sonst", "schritte", "beschriftung", "tagesdauer"],
+      "properties": {
+        "zusatz_normalzeit_utc_plus_1": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["+01:00", "+02:00"],
+          "properties": { "+01:00": { "const": "MEZ" }, "+02:00": { "const": "MESZ" } }
+        },
+        "zusatz_sonst": { "type": "string", "const": "UTC{offset}" },
+        "schritte": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["viertelstunde", "stunde"],
+          "properties": { "viertelstunde": { "const": 15 }, "stunde": { "const": 60 } }
+        },
+        "beschriftung": { "type": "string", "const": "{von}–{bis}" },
+        "tagesdauer": { "type": "object", "additionalProperties": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "mengen_herkunft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["form", "zustaende", "nur_mit_zahl", "herleitungen"],
+      "description": "Seit 1.6 (AP-08 IP-11): die Herkunft der Menge am Zustandswort (E1 = A) — „vollständig (Menge aus Zählerständen)“.",
+      "properties": {
+        "form": { "type": "string", "const": "{zustand} ({herkunft})" },
+        "zustaende": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/zustand_wort" } },
+        "nur_mit_zahl": { "type": "boolean", "const": true },
+        "herleitungen": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["zaehlerstand", "differenzen", "integration", "momentanwert"],
+          "description": "Die geschlossenen Herleitungen der Quellenbindung (messstelle.schema.json); null = das Wort steht allein.",
+          "properties": {
+            "zaehlerstand": { "type": ["string", "null"], "minLength": 1 },
+            "differenzen": { "type": ["string", "null"], "minLength": 1 },
+            "integration": { "type": ["string", "null"], "minLength": 1 },
+            "momentanwert": { "type": ["string", "null"], "minLength": 1 }
+          }
+        }
+      }
+    },
+    "fassung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["quelle", "kennzeichen", "ohne_fassung", "hoechstens_eine"],
+      "description": "Seit 1.7 (AP-08 IP-11, Captain 14.09.2026 „Ja, immer zeigen“): die Fassung einer Periode als Kennzeichen — ob die Zahl sich noch ändern kann. Nicht der Zustand (Vollständigkeit).",
+      "properties": {
+        "quelle": { "type": "string", "const": "GET /api/v1/messstellen/{kennzeichen}/werte · werte[].fassung", "description": "Die Fassung kommt aus der Route, je gezeigter Periode — nie abgeleitet." },
+        "kennzeichen": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["vorlaeufig", "endgueltig"],
+          "description": "Je Wert der Route der Schlüssel des Kennzeichens, dessen Wortlaut gesprochen wird.",
+          "properties": {
+            "vorlaeufig": { "type": "string", "const": "vorlaeufig" },
+            "endgueltig": { "type": "string", "const": "endgueltig" }
+          }
+        },
+        "ohne_fassung": { "type": "null", "description": "Die Route kennt keine Fassung (null): es wird nichts gesprochen, auch nicht „endgültig“." },
+        "hoechstens_eine": { "type": "boolean", "const": true, "description": "Zwei Fassungs-Kennzeichen in einer Liste sind kennzeichen_doppelt." }
+      }
+    },
+    "befunde": {
+      "type": "array",
+      "description": "Was die Inventur fand und nicht still umformuliert hat.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["stelle", "befund", "warum_so_aufgenommen"],
+        "properties": {
+          "stelle": { "type": "string", "minLength": 1 },
+          "befund": { "type": "string", "minLength": 1 },
+          "warum_so_aufgenommen": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "anyOf": [
+        { "$ref": "#/$defs/fall_zahl" },
+        { "$ref": "#/$defs/fall_menge" },
+        { "$ref": "#/$defs/fall_ergebnis" },
+        { "$ref": "#/$defs/fall_erkennen" },
+        { "$ref": "#/$defs/fall_tagesdauer" },
+        { "$ref": "#/$defs/fall_raster" },
+        { "$ref": "#/$defs/fall_uhr" },
+        { "$ref": "#/$defs/fall_rundungsdifferenz" },
+        { "$ref": "#/$defs/fall_herkunft" },
+        { "$ref": "#/$defs/fall_fassung" },
+        { "$ref": "#/$defs/fall_grund" }
+      ] }
+    }
+  },
+  "$defs": {
+    "ebene": { "type": "string", "enum": ["viertelstunde", "stunde", "tag", "monat", "jahr"] },
+    "zustand_wort": { "type": "string", "enum": ["vollständig", "unvollständig", "keine Werte", "mit Ersatzwert"] },
+    "verstoss": {
+      "type": "string",
+      "enum": ["zustand_unbekannt", "einheit_unbekannt", "ebene_unbekannt", "ebene_fehlt", "zahl_fehlt", "zahl_verboten", "kennzeichen_unbekannt", "kennzeichen_vorgesehen", "kennzeichen_doppelt", "kennzeichen_reihenfolge", "kennzeichen_folge", "vollstaendig_mit_fehlbestand", "unvollstaendig_ohne_grund", "keine_werte_mit_fehlbestand"]
+    },
+    "dezimaltext": { "type": "string", "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$" },
+    "muster": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schluessel", "muster", "platzhalter", "wort", "rang", "fehlbestand", "einmalig", "folgt_auf", "verlangt_danach", "beispiel", "fall"],
+      "properties": {
+        "schluessel": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+        "muster": { "type": "string", "minLength": 1, "description": "Der Wortlaut; {name} ist ein Platzhalter aus `platzhalter`." },
+        "platzhalter": { "type": "object", "additionalProperties": { "type": "string", "enum": ["uhr", "text", "ganzzahl", "ganzzahl_ab_2", "sekunden", "dezimal_punkt", "dezimal_klartext", "menge", "ersatzwert_methode", "ersatzwert_kennung", "tag_uhr"] } },
+        "wort": { "type": ["string", "null"], "description": "Das Wort des Kennzeichen-Vokabulars (verbrauch-vectors.json kennzeichen); null = kein Wort (siehe befunde)." },
+        "rang": { "type": "integer", "minimum": 1 },
+        "fehlbestand": { "type": "boolean" },
+        "einmalig": { "type": "boolean" },
+        "folgt_auf": { "anyOf": [{ "type": "null" }, { "type": "array", "minItems": 1, "items": { "type": "string" } }] },
+        "verlangt_danach": { "type": ["string", "null"] },
+        "beispiel": { "type": "string", "minLength": 1 },
+        "fall": { "type": "string", "minLength": 1 }
+      }
+    },
+    "fall_zahl": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "familie", "fall", "why", "eingang", "erwartet"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "familie": { "const": "zahl" },
+        "fall": { "type": "string", "minLength": 1 },
+        "why": { "type": "string", "minLength": 1 },
+        "eingang": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["wert", "einheit", "ebene"],
+          "properties": {
+            "wert": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/dezimaltext" }] },
+            "einheit": { "type": "string", "minLength": 1 },
+            "ebene": { "type": ["string", "null"] },
+            "wertbezug": { "type": "string", "enum": ["gemessen", "vereinbart"], "default": "gemessen", "description": "Seit 1.12: vereinbart erhält echte Dezimalstellen, ganze Werte stehen ganzzahlig." }
+          }
+        },
+        "erwartet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["verstoesse", "text"],
+          "properties": {
+            "verstoesse": { "type": "array", "items": { "$ref": "#/$defs/verstoss" } },
+            "text": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "fall_menge": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "familie", "fall", "why", "eingang", "erwartet"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "familie": { "const": "menge" },
+        "fall": { "type": "string", "minLength": 1 },
+        "why": { "type": "string", "minLength": 1 },
+        "eingang": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["wert", "einheit", "ebene"],
+          "properties": {
+            "wert": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/dezimaltext" }] },
+            "einheit": { "type": "string", "minLength": 1 },
+            "ebene": { "type": ["string", "null"] }
+          }
+        },
+        "erwartet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["verstoesse", "text"],
+          "properties": {
+            "verstoesse": { "type": "array", "items": { "$ref": "#/$defs/verstoss" } },
+            "text": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "fall_ergebnis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "familie", "fall", "why", "eingang", "erwartet"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "familie": { "const": "ergebnis" },
+        "fall": { "type": "string", "minLength": 1 },
+        "why": { "type": "string", "minLength": 1 },
+        "eingang": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["wert", "einheit", "ebene", "zustand", "abdeckung_prozent", "kennzeichen"],
+          "properties": {
+            "wert": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/dezimaltext" }] },
+            "einheit": { "type": "string", "minLength": 1 },
+            "ebene": { "type": ["string", "null"] },
+            "zustand": { "type": "string", "minLength": 1 },
+            "abdeckung_prozent": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/dezimaltext" }] },
+            "kennzeichen": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+          }
+        },
+        "erwartet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["verstoesse", "satz"],
+          "properties": {
+            "verstoesse": { "type": "array", "items": { "$ref": "#/$defs/verstoss" } },
+            "satz": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "fall_erkennen": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "familie", "fall", "why", "eingang", "erwartet"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "familie": { "const": "erkennen" },
+        "fall": { "type": "string", "minLength": 1 },
+        "why": { "type": "string", "minLength": 1 },
+        "eingang": { "type": "object", "additionalProperties": false, "required": ["satz"], "properties": { "satz": { "type": "string" } } },
+        "erwartet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["schluessel", "werte", "vorgesehen"],
+          "properties": {
+            "schluessel": { "type": ["string", "null"] },
+            "werte": { "anyOf": [{ "type": "null" }, { "type": "object", "additionalProperties": { "type": "string" } }] },
+            "fruehere_fassung": { "type": "boolean", "description": "Der Satz ist als Wortlaut einer früheren Fassung erkannt (gespeichert, nie mehr gesprochen). Ohne Angabe false." },
+            "vorgesehen": { "type": "boolean" }
+          }
+        }
+      }
+    },
+    "fall_uhr": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "familie", "fall", "why", "eingang", "erwartet"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "familie": { "const": "uhr" },
+        "fall": { "type": "string", "minLength": 1 },
+        "why": { "type": "string", "minLength": 1 },
+        "eingang": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["zeit", "zeitzone"],
+          "properties": { "zeit": { "type": "string", "minLength": 1, "description": "ISO-8601 mit Offset." }, "zeitzone": { "type": "string", "minLength": 1 } }
+        },
+        "erwartet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["text"],
+          "properties": { "text": { "type": "string", "minLength": 1 } }
+        }
+      }
+    },
+    "fall_tagesdauer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "familie", "fall", "why", "eingang", "erwartet"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "familie": { "const": "tagesdauer" },
+        "fall": { "type": "string", "minLength": 1 },
+        "why": { "type": "string", "minLength": 1 },
+        "eingang": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tag", "zeitzone"],
+          "properties": { "tag": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }, "zeitzone": { "type": "string", "minLength": 1 } }
+        },
+        "erwartet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["stunden", "satz"],
+          "properties": { "stunden": { "type": "integer", "minimum": 23, "maximum": 25 }, "satz": { "type": ["string", "null"] } }
+        }
+      }
+    },
+    "fall_raster": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "familie", "fall", "why", "eingang", "erwartet"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "familie": { "const": "raster" },
+        "fall": { "type": "string", "minLength": 1 },
+        "why": { "type": "string", "minLength": 1 },
+        "ausschnitt_ab": { "type": "integer", "minimum": 0, "description": "Die Felder stehen ab diesem Index; ohne Angabe ist die Liste vollständig." },
+        "eingang": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["tag", "zeitzone", "schritt"],
+          "properties": {
+            "tag": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+            "zeitzone": { "type": "string", "minLength": 1 },
+            "schritt": { "type": "string", "enum": ["viertelstunde", "stunde"] }
+          }
+        },
+        "erwartet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["anzahl", "felder"],
+          "properties": {
+            "anzahl": { "type": "integer", "minimum": 1 },
+            "felder": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["beschriftung", "von"],
+                "properties": {
+                  "beschriftung": { "type": "string", "pattern": "^[0-2][0-9]:[0-5][0-9]–[0-2][0-9]:[0-5][0-9]( (MEZ|MESZ|UTC[+-][0-9]{2}:[0-9]{2}))?$" },
+                  "von": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "fall_rundungsdifferenz": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "familie", "fall", "why", "eingang", "erwartet"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "familie": { "const": "rundungsdifferenz" },
+        "fall": { "type": "string", "minLength": 1 },
+        "why": { "type": "string", "minLength": 1 },
+        "eingang": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["einheit", "teile", "ebene_teile", "summe", "ebene_summe"],
+          "properties": {
+            "einheit": { "type": "string", "minLength": 1 },
+            "teile": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/dezimaltext" } },
+            "ebene_teile": { "$ref": "#/$defs/ebene" },
+            "summe": { "$ref": "#/$defs/dezimaltext" },
+            "ebene_summe": { "$ref": "#/$defs/ebene" }
+          }
+        },
+        "erwartet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["summe_der_angezeigten", "differenz", "satz"],
+          "properties": {
+            "summe_der_angezeigten": { "type": "string", "minLength": 1 },
+            "differenz": { "type": ["string", "null"] },
+            "satz": { "type": ["string", "null"] }
+          }
+        }
+      }
+    },
+    "fall_herkunft": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "familie", "fall", "why", "eingang", "erwartet"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "familie": { "const": "herkunft" },
+        "fall": { "type": "string", "minLength": 1 },
+        "why": { "type": "string", "minLength": 1 },
+        "eingang": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["zustand", "herleitung", "wert"],
+          "properties": {
+            "zustand": { "type": "string", "minLength": 1 },
+            "herleitung": { "type": ["string", "null"] },
+            "wert": { "anyOf": [{ "$ref": "#/$defs/dezimaltext" }, { "type": "null" }] }
+          }
+        },
+        "erwartet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["text"],
+          "properties": { "text": { "type": ["string", "null"], "description": "null = nicht gesprochen (fremdes Wort)." } }
+        }
+      }
+    },
+    "fall_fassung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "familie", "fall", "why", "eingang", "erwartet"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "familie": { "const": "fassung" },
+        "fall": { "type": "string", "minLength": 1 },
+        "why": { "type": "string", "minLength": 1 },
+        "eingang": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["fassung"],
+          "properties": { "fassung": { "type": ["string", "null"], "description": "Das Feld fassung der Route, wie geliefert." } }
+        },
+        "erwartet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["text", "unbekannt"],
+          "properties": {
+            "text": { "type": ["string", "null"], "description": "Der gesprochene Satz; null = nichts gesprochen." },
+            "unbekannt": { "type": "boolean", "description": "true = ein fremder Wert, der nicht gesprochen wird (Fehler)." }
+          }
+        }
+      }
+    },
+    "fall_grund": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "familie",
+        "fall",
+        "why",
+        "eingang",
+        "erwartet"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "familie": {
+          "const": "grund"
+        },
+        "fall": {
+          "type": "string",
+          "minLength": 1
+        },
+        "why": {
+          "type": "string",
+          "minLength": 1
+        },
+        "eingang": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "code",
+            "werte"
+          ],
+          "properties": {
+            "code": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Das Feld grund der Route, wie geliefert."
+            },
+            "werte": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "Die Platzhalter, aus den Feldern der Antwort gebildet."
+            }
+          }
+        },
+        "erwartet": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "text",
+            "fehler"
+          ],
+          "properties": {
+            "text": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Der gesprochene Satz; null = nichts gesprochen."
+            },
+            "fehler": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "grund_unbekannt",
+                "platzhalter_falsch"
+              ],
+              "description": "null = gesprochen; sonst ein Programmfehler des Aufrufers."
+            }
+          }
+        }
+      }
+    }
+  }
+}

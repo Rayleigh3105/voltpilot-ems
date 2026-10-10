@@ -6,7 +6,7 @@
  *
  * IA (captain decision 2026-07-07, "Anlagen-Seite"; evolved by M1 #529): the
  * customer nav is Übersicht / Meine Anlage(n) plus, per SELECTED Anlage, the
- * shell trio Übersicht · Steuerung · Geräte (`anlageNav.ts`) and — only while
+ * shell trio Übersicht · Steuerung · Geräte (`ebenenNav.ts`) and — only while
  * the market mode is active — the mode-tagged Marktpreise/Prognosequalität
  * group. ONE site = ONE Anlage; everything that used to be its own menu item
  * (Standorte,
@@ -18,10 +18,21 @@
 import type { IconName } from '../designsystem/components/core/Icon';
 
 export type PageId =
+  | 'kunden-benutzer'
   | 'hilfe'
   | 'portfolio'
+  | 'portfolio-standorte'
+  | 'portfolio-messstellen'
+  | 'portfolio-bezugsgroessen'
+  | 'portfolio-kennzahlen'
+  | 'portfolio-berichte'
+  | 'portfolio-bewertung'
+  | 'portfolio-verbrauch'
+  | 'portfolio-verbesserung'
+  | 'portfolio-energiemanagement'
   | 'portfolio-messwerte'
   | 'portfolio-erloese'
+  | 'standort'
   | 'uebersicht'
   | 'anlagen'
   | 'plattform-uebersicht'
@@ -39,6 +50,8 @@ export type PageId =
 export type AnlagenSub =
   | 'fahrplan'
   | 'messwerte'
+  // UEMS AP-13 IP-8: die Energiebilanz je Anlage — ein Reiter des Verlaufs, nur mit Hauptzähler in der Stellung.
+  | 'energiebilanz'
   | 'erloese'
   // Die einzelnen Messwerte und Summenwerte (Verlauf-Rework P3): der frühere
   // Aufklapper der Energie-Seite als eigener Reiter „Messwerte".
@@ -68,7 +81,7 @@ export type AnlagenSub =
 const SUBS = new Set<string>([
   'fahrplan', 'messwerte', 'erloese', 'einzelwerte', 'marktpreise', 'prognose', 'wetter',
   'technik', 'modell', 'steuerung', 'laden', 'regeln', 'lastspitzen', 'ladevorgaenge', 'befehle',
-  'geraet', 'box',
+  'geraet', 'box', 'energiebilanz',
 ]);
 
 /**
@@ -121,6 +134,87 @@ export interface Route {
    * Routen-Zusicherung unverändert gültig.
    */
   geraet?: GeraetTarget;
+  /**
+   * Nur bei `page === 'standort'` gesetzt: WELCHER Standort die
+   * Standort-Übersicht ist (UEMS AP-01 IP-5, `#/standort/{id}`). Absent bei
+   * jeder anderen Route - wie `geraet`.
+   */
+  standortId?: string;
+  /**
+   * Nur bei `page === 'standort'`: eine Seite des Standorts statt seiner
+   * Übersicht (UEMS AP-04 IP-5 `#/standort/{id}/messstellen`, AP-13 IP-2
+   * `…/gebaeude`, `…/anlagen`, `…/kennzahlen`, `…/berichte`). Absent = die
+   * Übersicht — jede bestehende Standort-Route bleibt unverändert.
+   */
+  standortBereich?: StandortBereich;
+  /**
+   * Nur bei `page === 'portfolio-kennzahlen'` oder am Standort mit
+   * `standortBereich: 'kennzahlen'`: WELCHE Kennzahl die Seite zeigt (UEMS
+   * AP-11 IP-13 `#/portfolio/kennzahlen/{id}`, AP-13 IP-2
+   * `#/standort/{sid}/kennzahlen/{id}`). Absent = die Liste.
+   */
+  kennzahlId?: string;
+  /**
+   * Nur mit `kennzahlId`: die Ebene unter der Kennzahl-Seite (Konzept Auswerten a1 §6.6) -
+   * `bezugsbasis` = `…/kennzahlen/{id}/bezugsbasis` (Fassungen, Freigaben, Überprüfung). Absent = die Seite.
+   */
+  kennzahlEbene?: 'bezugsbasis';
+  /**
+   * Nur bei `page === 'portfolio-berichte'` oder am Standort mit
+   * `standortBereich: 'berichte'`: WELCHER Bericht die Seite zeigt (UEMS
+   * AP-12 IP-13 `#/portfolio/berichte/{kennung}`, AP-13 IP-2
+   * `#/standort/{sid}/berichte/{kennung}`). Absent = die Liste.
+   */
+  berichtKennung?: string;
+  /**
+   * Nur bei `page === 'portfolio-verbrauch'`: WELCHER Energieeinsatz die Seite zeigt (Konzept Auswerten a1, Entscheid
+   * 10.1: `#/portfolio/verbrauch/{id}`; bis dahin UEMS AP-16 IP-6 `#/portfolio/bewertung/{id}`, das weiterleitet).
+   * Absent = die Verteilung.
+   */
+  energieeinsatzId?: string;
+  /**
+   * Nur bei `page === 'portfolio-verbesserung'` (UEMS AP-18 IP-8): der Reiter des Bereichs „Ziele und Maßnahmen“
+   * (`#/portfolio/verbesserung/massnahmen` · `…/abweichungen`; absent = Energieziele) und WELCHES Energieziel die Seite
+   * zeigt (`#/portfolio/verbesserung/energieziele/{id}`).
+   */
+  verbesserungReiter?: VerbesserungReiter;
+  energiezielId?: string;
+  /** UEMS AP-18 IP-13: WELCHE Maßnahme die Seite zeigt (`#/portfolio/verbesserung/massnahmen/{id}`). */
+  massnahmeId?: string;
+  /** UEMS AP-18 IP-18: WELCHE Abweichung die Seite zeigt (`#/portfolio/verbesserung/abweichungen/{id}`). */
+  abweichungId?: string;
+  /**
+   * Nur bei `page === 'portfolio-energiemanagement'` (UEMS AP-19 IP-9): der Reiter des Bereichs „Energiemanagement“
+   * (`#/portfolio/energiemanagement/dokumente`, `…/zuschnitt` die Zuschnitt-Hilfe; absent = Überblick, seit Konzept
+   * Nachweisen n1; `…/verzeichnis` das Verzeichnis eine Ebene tiefer) und WELCHES
+   * Dokument die Seite zeigt (`#/portfolio/energiemanagement/dokumente/{id}`). Seit IP-13 die Reiter `aufgaben` und
+   * `verantwortung` („Wer ist wofür verantwortlich“, eine Ansicht unter „Aufgaben“) und WELCHE Person die Seite zeigt
+   * (`#/portfolio/energiemanagement/personen/{id}`). Seit IP-20 die Reiter `audits` und `feststellungen` und WELCHES
+   * Audit bzw. WELCHE Feststellung die Seite zeigt (`…/audits/{id}`, `…/feststellungen/{id}`) — statt der Kennung darf
+   * das Kennzeichen stehen (`…/feststellungen/F-2029-0001`), so springt die Maßnahmen-Seite zu ihrer Herkunft (SP5).
+   * Seit IP-24 die Reiter `wiedervorlage` und `managementbewertung` und WELCHE Managementbewertung die Seite zeigt
+   * (`…/managementbewertung/BR-2029-0001` — die Kennung des Berichts).
+   */
+  energiemanagementReiter?: EnergiemanagementReiter;
+  dokumentId?: string;
+  personId?: string;
+  auditId?: string;
+  feststellungId?: string;
+  managementbewertungKennung?: string;
+  /** Konzept Nachweisen n1, Entscheid 7: WELCHE Mappe „Unterlagen zusammenstellen“ die Seite zeigt (`…/mappen/{id}`). */
+  mappeId?: string;
+  /**
+   * Nur im Bereich „Messstellen“ (`portfolio-messstellen` oder `standort` mit
+   * `standortBereich: 'messstellen'`): WELCHE Messstelle die Seite zeigt (UEMS
+   * AP-04 IP-8, `#/portfolio/messstellen/{id}` bzw. `#/standort/{sid}/messstellen/{id}`).
+   * Absent = das Register.
+   */
+  messstelleId?: string;
+  /**
+   * Nur bei `portfolio-bezugsgroessen`: WELCHE Bezugsgröße die Seite zeigt (Konzept Messen m1 §6.8, Entscheid 9,
+   * `#/portfolio/bezugsgroessen/{id}`). Absent = die Liste.
+   */
+  bezugsgroesseId?: string;
   /** Global handbook article; never scoped to a tenant or Anlage. */
   helpArticle?: string;
 }
@@ -173,6 +267,16 @@ export const ANLAGEN_PAGE: PageDef = { id: 'anlagen', label: 'Meine Anlage', ico
 export const PORTFOLIO_PAGE: PageDef = { id: 'portfolio', label: 'Portfolio', icon: 'building' };
 
 /**
+ * Die STANDORT-ÜBERSICHT (UEMS AP-01 IP-5, E1): `#/standort/{id}` — die
+ * Anlagen eines Standorts unter seinem Kopf. Sie ist die Landung eines Kunden
+ * mit genau einem Standort und mehreren Anlagen und das mittlere Glied des
+ * Pfades „Unternehmen › Standort › Anlage“. Ob es sie für einen Kunden gibt,
+ * entscheidet `betriebsart.startEbene`; ohne Standorte leitet
+ * `canonicalShellRoute` die Adresse dorthin, wo der Kunde heute landet.
+ */
+export const STANDORT_PAGE: PageDef = { id: 'standort', label: 'Standort', icon: 'map-pin' };
+
+/**
  * Die zwei Welten der Historie EINE EBENE HÖHER (PR G des Historie-Konzepts,
  * §4.3 Betreiber-Schale): `#/portfolio/messwerte` · `#/portfolio/erloese`.
  * Sie hängen an derselben Bedingung wie die Portfolio-Landung (Betreiber-Rahmen)
@@ -185,6 +289,38 @@ export const PORTFOLIO_PAGE: PageDef = { id: 'portfolio', label: 'Portfolio', ic
  * unverändert eine Seite je Id kennt.
  */
 export const PORTFOLIO_WELT_PAGES: PageDef[] = [
+  // UEMS AP-02 IP-6: „Unternehmen › Standorte“ wohnt hier, bis die
+  // Ebenen-Navigation aus AP-01 IP-5/IP-7 steht (`#/portfolio/standorte`) —
+  // der Report nennt den Weg „erreichbar über die Standort-Übersicht“. Kein
+  // Historie-Reiter: `PORTFOLIO_TAB_HASH` kennt ihn nicht, ein Zeitraum reist
+  // nicht mit. `#/standorte` bleibt die Alt-Adresse der Technik.
+  { id: 'portfolio-standorte', label: 'Standorte', icon: 'map-pin' },
+  // UEMS AP-04 IP-5: „Unternehmen › Messstellen“ (`#/portfolio/messstellen`). Der
+  // Reiter steht nur, wenn ein Standort misst (`PortfolioTabs.showMessstellen`).
+  { id: 'portfolio-messstellen', label: 'Messstellen', icon: 'activity' },
+  // UEMS AP-11 IP-13: „Unternehmen › Kennzahlen“ (`#/portfolio/kennzahlen`, eine
+  // Kennzahl unter `…/kennzahlen/{id}`), bis AP-13 die Ebenen-Navigation bringt.
+  // Der Reiter steht nur, wenn die Ebene den Bereich hat (`PortfolioTabs.showKennzahlen`).
+  { id: 'portfolio-bezugsgroessen', label: 'Bezugsgrößen', icon: 'layers' },
+  // Konzept Auswerten a1 (Richtungsfrage 1 = A, Entscheid 10.1): „Unternehmen › Verbrauch“ (`#/portfolio/verbrauch`,
+  // ein Energieeinsatz unter `…/verbrauch/{id}`) — der erste Reiter von „Auswerten“, vor Kennzahlen und Bewertung.
+  // Der Reiter steht nach der Regel der Bewertung (`PortfolioTabs.showVerbrauch`).
+  { id: 'portfolio-verbrauch', label: 'Verbrauch', icon: 'zap' },
+  { id: 'portfolio-kennzahlen', label: 'Kennzahlen', icon: 'trending-up' },
+  // UEMS AP-12 IP-13: „Unternehmen › Berichte“ (`#/portfolio/berichte`, ein Bericht unter
+  // `…/berichte/{kennung}`), bis AP-13 die Ebenen-Navigation bringt. Der Reiter steht
+  // nur, wenn die Ebene den Bereich hat (`PortfolioTabs.showBerichte`).
+  { id: 'portfolio-berichte', label: 'Berichte', icon: 'file-text' },
+  // UEMS AP-16 IP-6: „Unternehmen › Bewertung“ (`#/portfolio/bewertung`, ein Energieeinsatz unter
+  // `…/bewertung/{id}`). Der Reiter steht nur, wenn die Ebene den Bereich hat (`PortfolioTabs.showBewertung`).
+  { id: 'portfolio-bewertung', label: 'Bewertung', icon: 'list' },
+  // UEMS AP-18 IP-8: „Unternehmen › Ziele und Maßnahmen“ (`#/portfolio/verbesserung`, ein Energieziel unter
+  // `…/verbesserung/energieziele/{id}`). Der Reiter steht nur mit `verbesserung.ansehen` (`PortfolioTabs.showVerbesserung`).
+  { id: 'portfolio-verbesserung', label: 'Ziele und Maßnahmen', icon: 'list' },
+  // UEMS AP-19 IP-9: „Unternehmen › Energiemanagement“ (`#/portfolio/energiemanagement`, ein Dokument unter
+  // `…/energiemanagement/dokumente/{id}`). Der Reiter steht nur mit `energiemanagement.ansehen`
+  // (`PortfolioTabs.showEnergiemanagement`).
+  { id: 'portfolio-energiemanagement', label: 'Energiemanagement', icon: 'file-text' },
   // „Energie" wie der Reiter der Anlage (Verlauf-Rework P4); die Adresse
   // bleibt `#/portfolio/messwerte`, damit Lesezeichen weiter tragen.
   { id: 'portfolio-messwerte', label: 'Energie', icon: 'activity' },
@@ -360,8 +496,10 @@ export function anlagenLabel(siteCount: number | null): string {
 /** Every page def, wherever it is rendered (main nav, mode group, Plattform). */
 export const ALL_PAGES: PageDef[] = [
   { id: 'hilfe', label: 'Hilfe & Kontakt', icon: 'help-circle' },
+  { id: 'kunden-benutzer', label: 'Benutzer', icon: 'users' },
   PORTFOLIO_PAGE,
   ...PORTFOLIO_WELT_PAGES,
+  STANDORT_PAGE,
   ...MAIN_PAGES,
   ANLAGEN_PAGE,
   ...PLATFORM_PAGES,
@@ -458,6 +596,32 @@ export function parseSektion(hash: string): string | null {
 }
 
 /**
+ * Periode, Version und Vergleich der Werte einer Messstelle aus dem Hash (UEMS AP-13 IP-3/IP-5, E9/E6):
+ * `#/portfolio/messstellen/{id}?periode=2026-10&version=2&v=vorperiode` (aus „Stand am …“ dazu `&stand=2029-04-30`). `parseRoute` schneidet den Query-Teil ab — die
+ * Route bleibt die Messstellen-Seite; geschrieben wird die Adresse über `uemsOberflaechen.sprungziel`. Die
+ * Periode kommt roh (die Sektion prüft sie, `uemsWerteKarte.periodeAus`), die Version nur als ganze Zahl ab 1, und
+ * `v` ebenfalls roh — welche Wahl der Zeitraum überhaupt anbietet, weiß `uemsVergleich.wahlAus`.
+ */
+export function parseMessstelleWerte(hash: string): {
+  periode: string | null;
+  version: number | null;
+  vergleich: string | null;
+  stand: string | null;
+} {
+  const [, ...rest] = hash.replace(/^#\/?/, '').split('?');
+  const params = new URLSearchParams(rest.join('?'));
+  const version = params.get('version')?.trim() ?? '';
+  const stand = params.get('stand')?.trim() ?? '';
+  return {
+    periode: params.get('periode')?.trim() || null,
+    version: /^[1-9]\d{0,5}$/.test(version) ? Number(version) : null,
+    vergleich: params.get('v')?.trim() || null,
+    // Messen m1 (Review r4 S4): aus „Stand an einem Tag ansehen“ geöffnet - die Seite liest diesen Tag, nur lesend.
+    stand: /^\d{4}-\d{2}-\d{2}$/.test(stand) ? stand : null,
+  };
+}
+
+/**
  * The self-registration route (`#register` / `#/register`): the "Konto
  * erstellen" form lives in the PORTAL (custom form + seamless auto-login), not
  * in Keycloak - this route must render WITHOUT the automatic login redirect,
@@ -547,9 +711,76 @@ export function parseRoute(hash: string): Route {
   // Die Portfolio-Ebene ist zweistufig: `#/portfolio` (Landung) und
   // `#/portfolio/{welt}`. Ein unbekannter zweiter Abschnitt landet auf der
   // Landung, statt ins Leere zu zeigen.
+  if (head === 'unternehmen' && segments[1] === 'einstellungen' && segments[2] === 'benutzer')
+    return pageRoute('kunden-benutzer');
   if (head === 'portfolio') {
+    if (segments[1] === 'kennzahlen' && segments[2]) {
+      return kennzahlRoute(decodeURIComponent(segments[2]), null, segments[3] === 'bezugsbasis' ? 'bezugsbasis' : undefined);
+    }
+    if (segments[1] === 'berichte' && segments[2]) return berichtRoute(decodeURIComponent(segments[2]));
+    // Die Seite eines Energieeinsatzes wohnt unter „Verbrauch“; die frühere Adresse unter „Bewertung“ führt dorthin.
+    if ((segments[1] === 'verbrauch' || segments[1] === 'bewertung') && segments[2]) {
+      return energieeinsatzRoute(decodeURIComponent(segments[2]));
+    }
+    if (segments[1] === 'verbesserung') {
+      if (segments[2] === 'energieziele' && segments[3]) return energiezielRoute(decodeURIComponent(segments[3]));
+      if (segments[2] === 'massnahmen' && segments[3]) return massnahmeRoute(decodeURIComponent(segments[3]));
+      if (segments[2] === 'abweichungen' && segments[3]) return abweichungRoute(decodeURIComponent(segments[3]));
+      if (segments[2] === 'massnahmen' || segments[2] === 'abweichungen') return verbesserungRoute(segments[2]);
+      return verbesserungRoute();
+    }
+    if (segments[1] === 'energiemanagement') {
+      if (segments[2] === 'dokumente' && segments[3]) return dokumentRoute(decodeURIComponent(segments[3]));
+      if (segments[2] === 'personen' && segments[3]) return personRoute(decodeURIComponent(segments[3]));
+      if (segments[2] === 'audits' && segments[3]) return auditRoute(decodeURIComponent(segments[3]));
+      if (segments[2] === 'feststellungen' && segments[3]) return feststellungRoute(decodeURIComponent(segments[3]));
+      if (segments[2] === 'managementbewertung' && segments[3]) return managementbewertungRoute(decodeURIComponent(segments[3]));
+      if (segments[2] === 'mappen' && segments[3]) return mappeRoute(decodeURIComponent(segments[3]));
+      if (
+        segments[2] === 'dokumente' || segments[2] === 'zuschnitt' || segments[2] === 'aufgaben' || segments[2] === 'verantwortung' ||
+        segments[2] === 'audits' || segments[2] === 'feststellungen' || segments[2] === 'wiedervorlage' || segments[2] === 'managementbewertung' ||
+        segments[2] === 'verzeichnis'
+      ) {
+        return energiemanagementRoute(segments[2]);
+      }
+      return energiemanagementRoute();
+    }
+    if (segments[1] === 'messstellen' && segments[2]) return messstelleRoute(decodeURIComponent(segments[2]));
+    if (segments[1] === 'bezugsgroessen' && segments[2]) return bezugsgroesseRoute(decodeURIComponent(segments[2]));
     const welt = PORTFOLIO_WELT_PAGES.find((p) => p.id === `portfolio-${segments[1] ?? ''}`);
     return { page: welt ? welt.id : 'portfolio', siteId: null, sub: null };
+  }
+  // Die Standort-Übersicht (IP-5): `#/standort/{id}`. Ohne Kennung bleibt es
+  // die Seite ohne Ziel — `canonicalShellRoute` legt sie auf die Landung.
+  // ⚠ `#/standorte` (Mehrzahl) ist NICHT diese Seite, sondern die Alt-Adresse
+  // der Technik in `LEGACY_ROUTES`.
+  if (head === 'standort') {
+    if (segments[1] && segments[2] === 'messstellen') {
+      return segments[3]
+        ? messstelleRoute(decodeURIComponent(segments[3]), segments[1])
+        : standortMessstellenRoute(segments[1]);
+    }
+    // AP-13 IP-2: die übrigen Seiten des Standorts; Kennzahl und Bericht bleiben im Standort, aus dem sie geöffnet werden.
+    if (segments[1] && segments[2] === 'kennzahlen') {
+      return segments[3]
+        ? kennzahlRoute(decodeURIComponent(segments[3]), segments[1], segments[4] === 'bezugsbasis' ? 'bezugsbasis' : undefined)
+        : standortBereichRoute(segments[1], 'kennzahlen');
+    }
+    if (segments[1] && segments[2] === 'berichte') {
+      return segments[3]
+        ? berichtRoute(decodeURIComponent(segments[3]), segments[1])
+        : standortBereichRoute(segments[1], 'berichte');
+    }
+    if (segments[1] && (segments[2] === 'aufbau' || segments[2] === 'gebaeude' || segments[2] === 'netzanschluesse')) {
+      return standortBereichRoute(segments[1], segments[2]);
+    }
+    // Die früheren Seiten „Boxen“ und „Anlagen“ sind im Aufbau aufgegangen — jedes Lesezeichen gilt weiter.
+    if (segments[1] && (segments[2] === 'boxen' || segments[2] === 'anlagen')) {
+      return standortBereichRoute(segments[1], 'aufbau');
+    }
+    return segments[1]
+      ? { page: 'standort', siteId: null, sub: null, standortId: segments[1] }
+      : { page: 'standort', siteId: null, sub: null };
   }
   if (head in LEGACY_ROUTES) {
     return { page: 'anlagen', siteId: null, sub: LEGACY_ROUTES[head] };
@@ -631,10 +862,66 @@ export function hashForRoute(route: Route): string {
       : `#/anlage/${route.siteId}`;
   }
   if (route.page === 'anlagen') return '#/anlagen';
+  if (route.page === 'standort') {
+    if (!route.standortId) return '#/standort';
+    const objekt =
+      route.standortBereich === 'messstellen'
+        ? route.messstelleId
+        : route.standortBereich === 'kennzahlen'
+          ? route.kennzahlId
+          : route.standortBereich === 'berichte'
+            ? route.berichtKennung
+            : undefined;
+    const ebene = route.standortBereich === 'kennzahlen' && route.kennzahlId && route.kennzahlEbene ? `/${route.kennzahlEbene}` : '';
+    const unter = objekt ? `/${encodeURIComponent(objekt)}${ebene}` : '';
+    return `#/standort/${route.standortId}${route.standortBereich ? `/${route.standortBereich}` : ''}${unter}`;
+  }
   // Die Portfolio-Welten schreiben sich zweistufig (`#/portfolio/messwerte`).
   if (PORTFOLIO_WELT_PAGES.some((p) => p.id === route.page)) {
-    return `#/portfolio/${route.page.slice('portfolio-'.length)}`;
+    const kennzahl =
+      route.page === 'portfolio-kennzahlen' && route.kennzahlId
+        ? `/${encodeURIComponent(route.kennzahlId)}${route.kennzahlEbene ? `/${route.kennzahlEbene}` : ''}`
+        : '';
+    const messstelle =
+      route.page === 'portfolio-messstellen' && route.messstelleId ? `/${encodeURIComponent(route.messstelleId)}` : '';
+    const bezugsgroesse =
+      route.page === 'portfolio-bezugsgroessen' && route.bezugsgroesseId ? `/${encodeURIComponent(route.bezugsgroesseId)}` : '';
+    const bericht = route.page === 'portfolio-berichte' && route.berichtKennung ? `/${encodeURIComponent(route.berichtKennung)}` : '';
+    const einsatz =
+      route.page === 'portfolio-verbrauch' && route.energieeinsatzId ? `/${encodeURIComponent(route.energieeinsatzId)}` : '';
+    const verbesserung =
+      route.page !== 'portfolio-verbesserung'
+        ? ''
+        : route.energiezielId
+          ? `/energieziele/${encodeURIComponent(route.energiezielId)}`
+          : route.massnahmeId
+            ? `/massnahmen/${encodeURIComponent(route.massnahmeId)}`
+            : route.abweichungId
+              ? `/abweichungen/${encodeURIComponent(route.abweichungId)}`
+              : route.verbesserungReiter && route.verbesserungReiter !== 'energieziele'
+                ? `/${route.verbesserungReiter}`
+                : '';
+    const energiemanagement =
+      route.page !== 'portfolio-energiemanagement'
+        ? ''
+        : route.dokumentId
+          ? `/dokumente/${encodeURIComponent(route.dokumentId)}`
+          : route.personId
+            ? `/personen/${encodeURIComponent(route.personId)}`
+            : route.auditId
+            ? `/audits/${encodeURIComponent(route.auditId)}`
+            : route.feststellungId
+            ? `/feststellungen/${encodeURIComponent(route.feststellungId)}`
+            : route.managementbewertungKennung
+            ? `/managementbewertung/${encodeURIComponent(route.managementbewertungKennung)}`
+            : route.mappeId
+            ? `/mappen/${encodeURIComponent(route.mappeId)}`
+            : route.energiemanagementReiter && route.energiemanagementReiter !== 'ueberblick'
+            ? `/${route.energiemanagementReiter}`
+            : '';
+    return `#/portfolio/${route.page.slice('portfolio-'.length)}${kennzahl}${messstelle}${bezugsgroesse}${bericht}${einsatz}${verbesserung}${energiemanagement}`;
   }
+  if (route.page === 'kunden-benutzer') return '#/unternehmen/einstellungen/benutzer';
   return `#/${route.page}`;
 }
 
@@ -646,6 +933,253 @@ export function pageRoute(page: PageId): Route {
 /** Route of one Anlage's page (or one of its subpages). */
 export function anlageRoute(siteId: string, sub: AnlagenSub | null = null): Route {
   return { page: 'anlagen', siteId, sub };
+}
+
+/** Route der Standort-Übersicht eines Standorts (UEMS AP-01 IP-5). */
+export function standortRoute(standortId: string): Route {
+  return { page: 'standort', siteId: null, sub: null, standortId };
+}
+
+/**
+ * Die Seiten eines Standorts mit eigener Adresse, ohne seine Übersicht (UEMS AP-04 IP-5, AP-13 IP-2).
+ * ⚠ Kennzahlen und Berichte sind hier SEITEN, aber keine Bereiche der Ebene (AP-01 §4.6, O17): sie haben keine
+ * Kachel, man erreicht sie von der Standort-Übersicht (`ebenenNav.standortEinstiege`).
+ *
+ * „Aufbau“ ist der EINE Ort für Anlagen, VoltPilot-Boxen und Geräte des Standorts (derselbe Baum wie
+ * „Anlage › Aufbau“). Die früheren Seiten `…/boxen` und `…/anlagen` sind darin aufgegangen; ihre Adressen
+ * leiten auf `…/aufbau` ({@link canonicalStandortHash}).
+ */
+export type StandortBereich = 'aufbau' | 'netzanschluesse' | 'gebaeude' | 'messstellen' | 'kennzahlen' | 'berichte';
+
+/** Was der Aufbau beim Öffnen gleich anbietet (`?neu=`): der Weg aus Cockpit, Kopf und Assistent in den EINEN Ort. */
+export type AufbauNeu = 'box' | 'geraet' | 'anlage';
+
+const AUFBAU_NEU: ReadonlySet<string> = new Set<AufbauNeu>(['box', 'geraet', 'anlage']);
+
+/**
+ * Der Aufbau einer Anlage, optional mit einer Handlung, die er beim Öffnen gleich anbietet:
+ * `#/anlage/{id}/modell?neu=box|geraet|anlage`.
+ */
+export function aufbauHash(siteId: string, neu?: AufbauNeu | null): string {
+  return `#/anlage/${siteId}/modell${neu ? `?neu=${neu}` : ''}`;
+}
+
+/**
+ * Der Aufbau eines Standorts: `#/standort/{id}/aufbau[?anlage=…][&neu=…]`. `anlage` wählt, welche Anlage des
+ * Standorts aufgeklappt und bearbeitbar ist (ohne: die erste).
+ */
+export function standortAufbauHash(standortId: string, opts: { anlage?: string | null; neu?: AufbauNeu | null } = {}): string {
+  const params = new URLSearchParams();
+  if (opts.anlage) params.set('anlage', opts.anlage);
+  if (opts.neu) params.set('neu', opts.neu);
+  const q = params.toString();
+  return `#/standort/${standortId}/aufbau${q ? `?${q}` : ''}`;
+}
+
+/** Die Handlung aus `?neu=` (nur die drei bekannten), sonst null. */
+export function parseAufbauNeu(hash: string): AufbauNeu | null {
+  const wert = befehleParam(hash, 'neu');
+  return wert && AUFBAU_NEU.has(wert) ? (wert as AufbauNeu) : null;
+}
+
+/** Die Anlage aus `?anlage=` des Standort-Aufbaus, sonst null. */
+export function parseAufbauAnlage(hash: string): string | null {
+  return befehleParam(hash, 'anlage');
+}
+
+/** Dieselbe Adresse ohne `?neu=` — nach dem Öffnen des Dialogs, damit ein Neuladen ihn nicht erneut öffnet. */
+export function ohneAufbauNeu(hash: string): string {
+  const [path, ...rest] = hash.split('?');
+  if (rest.length === 0) return hash;
+  const params = new URLSearchParams(rest.join('?'));
+  params.delete('neu');
+  const query = params.toString();
+  return `${path}${query ? `?${query}` : ''}`;
+}
+
+/**
+ * Die kanonische Adresse einer STILLGELEGTEN Standort-Seite: `…/boxen` und `…/anlagen` sind im Aufbau
+ * aufgegangen. Die Parameter reisen mit; sonst null.
+ */
+export function canonicalStandortHash(hash: string): string | null {
+  const [pathPart, ...rest] = hash.replace(/^#\/?/, '').split('?');
+  const segments = pathPart.split('/').filter((s) => s.length > 0);
+  if (segments[0] !== 'standort' || !segments[1] || segments.length !== 3) return null;
+  if (segments[2] !== 'boxen' && segments[2] !== 'anlagen') return null;
+  const query = rest.length > 0 ? `?${rest.join('?')}` : '';
+  return `#/standort/${segments[1]}/aufbau${query}`;
+}
+
+/**
+ * Die kanonische Adresse der früheren Seite eines Energieeinsatzes (Konzept Auswerten a1, Entscheid 10.1):
+ * `#/portfolio/bewertung/{id}` steht jetzt unter `#/portfolio/verbrauch/{id}`. Die Parameter reisen mit (der Sprung der
+ * Wiedervorlage trägt `?entscheid=…`); sonst null.
+ */
+export function canonicalVerbrauchHash(hash: string): string | null {
+  const [pathPart, ...rest] = hash.replace(/^#\/?/, '').split('?');
+  const segments = pathPart.split('/').filter((s) => s.length > 0);
+  if (segments[0] !== 'portfolio' || segments[1] !== 'bewertung' || !segments[2] || segments.length !== 3) return null;
+  const query = rest.length > 0 ? `?${rest.join('?')}` : '';
+  return `#/portfolio/verbrauch/${segments[2]}${query}`;
+}
+
+/** Die Wahl der Liste „Verbrauch“ (`zeitraum`, `bis`) aus einer Adresse - als Query, sonst leer. */
+function verbrauchWahl(hash: string): string {
+  const q = new URLSearchParams(hash.split('?').slice(1).join('?'));
+  const wahl = new URLSearchParams();
+  for (const k of ['zeitraum', 'bis']) {
+    const v = q.get(k);
+    if (v) wahl.set(k, v);
+  }
+  const s = wahl.toString();
+  return s ? `?${s}` : '';
+}
+
+/**
+ * Die Seite eines Energieeinsatzes, geöffnet aus der Liste „Verbrauch“: die Wahl der Liste reist mit, damit der
+ * Rückweg „Verbrauch“ denselben Zeitraum zeigt (Queryparameter bei Rückwegen erhalten).
+ */
+export const verbrauchEinsatzHash = (energieeinsatzId: string, listeHash: string): string =>
+  `#/portfolio/verbrauch/${encodeURIComponent(energieeinsatzId)}${verbrauchWahl(listeHash)}`;
+
+/** Der Rückweg von der Seite eines Energieeinsatzes zur Liste „Verbrauch“ - mit der Wahl, die sie beim Öffnen hatte. */
+export const verbrauchListeHash = (einsatzHash: string): string => `#/portfolio/verbrauch${verbrauchWahl(einsatzHash)}`;
+
+/** Route einer Seite des Standorts (UEMS AP-13 IP-2): `#/standort/{id}/{bereich}`. */
+export function standortBereichRoute(standortId: string, standortBereich: StandortBereich): Route {
+  return { page: 'standort', siteId: null, sub: null, standortId, standortBereich };
+}
+
+/** Route von „Standort › Messstellen“ (UEMS AP-04 IP-5): `#/standort/{id}/messstellen`. */
+export function standortMessstellenRoute(standortId: string): Route {
+  return standortBereichRoute(standortId, 'messstellen');
+}
+
+/**
+ * Route einer Kennzahl-Seite (UEMS AP-11 IP-13): ohne Standort `#/portfolio/kennzahlen/{id}`, aus
+ * „Kennzahlen dieses Standorts“ (AP-13 IP-2) `#/standort/{sid}/kennzahlen/{id}`. Mit `ebene` `bezugsbasis` die Ebene
+ * darunter (Konzept Auswerten a1 §6.6): `…/kennzahlen/{id}/bezugsbasis`.
+ */
+export function kennzahlRoute(kennzahlId: string, standortId?: string | null, ebene?: 'bezugsbasis'): Route {
+  const unter = ebene ? { kennzahlEbene: ebene } : {};
+  return standortId
+    ? { ...standortBereichRoute(standortId, 'kennzahlen'), kennzahlId, ...unter }
+    : { page: 'portfolio-kennzahlen', siteId: null, sub: null, kennzahlId, ...unter };
+}
+
+/** Die drei Reiter des Bereichs „Ziele und Maßnahmen“ (UEMS AP-18 IP-8, §6.3). */
+export type VerbesserungReiter = 'energieziele' | 'massnahmen' | 'abweichungen';
+
+/** Route des Bereichs „Ziele und Maßnahmen“ (UEMS AP-18 IP-8): `#/portfolio/verbesserung[/massnahmen|/abweichungen]`. */
+export function verbesserungRoute(reiter: VerbesserungReiter = 'energieziele'): Route {
+  return { page: 'portfolio-verbesserung', siteId: null, sub: null, ...(reiter === 'energieziele' ? {} : { verbesserungReiter: reiter }) };
+}
+
+/** Route der Seite eines Energieziels (UEMS AP-18 IP-8): `#/portfolio/verbesserung/energieziele/{id}` — nur am Unternehmen. */
+export function energiezielRoute(energiezielId: string): Route {
+  return { page: 'portfolio-verbesserung', siteId: null, sub: null, energiezielId };
+}
+
+/** Route der Seite einer Maßnahme (UEMS AP-18 IP-13): `#/portfolio/verbesserung/massnahmen/{id}` — nur am Unternehmen. */
+export function massnahmeRoute(massnahmeId: string): Route {
+  return { page: 'portfolio-verbesserung', siteId: null, sub: null, verbesserungReiter: 'massnahmen', massnahmeId };
+}
+
+/** Route der Seite einer Abweichung (UEMS AP-18 IP-18): `#/portfolio/verbesserung/abweichungen/{id}` — nur am Unternehmen. */
+export function abweichungRoute(abweichungId: string): Route {
+  return { page: 'portfolio-verbesserung', siteId: null, sub: null, verbesserungReiter: 'abweichungen', abweichungId };
+}
+
+/**
+ * Die Reiter des Bereichs „Energiemanagement“ (UEMS AP-19 IP-9, §6.3) — seit Konzept Nachweisen n1 der Überblick zuerst
+ * (Entscheid 2), das Verzeichnis eine Ebene darunter; Wiedervorlage (IP-24), Dokumente,
+ * Aufgaben (IP-13), Audits und Feststellungen (IP-20), Managementbewertung (IP-24); `zuschnitt` ist die Zuschnitt-Hilfe „Was VoltPilot führt — was
+ * bei Ihnen liegt.“, eine Seite ohne eigenen Reiter; `verantwortung` („Wer ist wofür verantwortlich“, IP-13) eine
+ * Ansicht unter dem Reiter „Aufgaben“.
+ */
+export type EnergiemanagementReiter =
+  | 'verzeichnis'
+  | 'wiedervorlage'
+  | 'dokumente'
+  | 'aufgaben'
+  | 'verantwortung'
+  | 'audits'
+  | 'feststellungen'
+  | 'managementbewertung'
+  | 'zuschnitt'
+  | 'ueberblick';
+
+/**
+ * Route des Bereichs „Energiemanagement“ (UEMS AP-19 IP-9/IP-13/IP-24): `#/portfolio/energiemanagement[/wiedervorlage|/dokumente|/aufgaben|/verantwortung|/audits|/feststellungen|/managementbewertung|/zuschnitt|/verzeichnis]`.
+ * Seit Konzept Nachweisen n1 (Entscheid 2) öffnet die Adresse ohne Reiter den Überblick; das Verzeichnis liegt eine Ebene
+ * tiefer unter `…/verzeichnis`.
+ */
+export function energiemanagementRoute(reiter: EnergiemanagementReiter = 'ueberblick'): Route {
+  return { page: 'portfolio-energiemanagement', siteId: null, sub: null, ...(reiter === 'ueberblick' ? {} : { energiemanagementReiter: reiter }) };
+}
+
+/** Route der Seite einer Person im Energiemanagement (UEMS AP-19 IP-13): `#/portfolio/energiemanagement/personen/{id}`. */
+export function personRoute(personId: string): Route {
+  return { page: 'portfolio-energiemanagement', siteId: null, sub: null, energiemanagementReiter: 'aufgaben', personId };
+}
+
+/** Route der Seite eines internen Audits (UEMS AP-19 IP-20): `#/portfolio/energiemanagement/audits/{id|AU-…}`. */
+export function auditRoute(auditId: string): Route {
+  return { page: 'portfolio-energiemanagement', siteId: null, sub: null, energiemanagementReiter: 'audits', auditId };
+}
+
+/** Route der Seite einer Feststellung (UEMS AP-19 IP-20): `#/portfolio/energiemanagement/feststellungen/{id|F-…}`. */
+export function feststellungRoute(feststellungId: string): Route {
+  return { page: 'portfolio-energiemanagement', siteId: null, sub: null, energiemanagementReiter: 'feststellungen', feststellungId };
+}
+
+/** Route der Seite einer Mappe (Konzept Nachweisen n1, Entscheid 7): `#/portfolio/energiemanagement/mappen/{id}`, unter dem Überblick. */
+export function mappeRoute(mappeId: string): Route {
+  return { page: 'portfolio-energiemanagement', siteId: null, sub: null, mappeId };
+}
+
+/** Route der Seite einer Managementbewertung (UEMS AP-19 IP-24): `#/portfolio/energiemanagement/managementbewertung/{BR-…}`. */
+export function managementbewertungRoute(kennung: string): Route {
+  return { page: 'portfolio-energiemanagement', siteId: null, sub: null, energiemanagementReiter: 'managementbewertung', managementbewertungKennung: kennung };
+}
+
+/** Route der Seite eines Dokuments (UEMS AP-19 IP-9): `#/portfolio/energiemanagement/dokumente/{id}` — nur am Unternehmen. */
+export function dokumentRoute(dokumentId: string): Route {
+  return { page: 'portfolio-energiemanagement', siteId: null, sub: null, energiemanagementReiter: 'dokumente', dokumentId };
+}
+
+/**
+ * Route der Seite eines Energieeinsatzes (UEMS AP-16 IP-6) — nur am Unternehmen. Seit dem Konzept Auswerten a1
+ * (Entscheid 10.1) unter „Verbrauch“: `#/portfolio/verbrauch/{id}`; `#/portfolio/bewertung/{id}` leitet dorthin
+ * ({@link canonicalVerbrauchHash}).
+ */
+export function energieeinsatzRoute(energieeinsatzId: string): Route {
+  return { page: 'portfolio-verbrauch', siteId: null, sub: null, energieeinsatzId };
+}
+
+/**
+ * Route einer Berichtsseite (UEMS AP-12 IP-13): ohne Standort `#/portfolio/berichte/{kennung}`, aus
+ * „Berichte dieses Standorts“ (AP-13 IP-2) `#/standort/{sid}/berichte/{kennung}`.
+ */
+export function berichtRoute(berichtKennung: string, standortId?: string | null): Route {
+  return standortId
+    ? { ...standortBereichRoute(standortId, 'berichte'), berichtKennung }
+    : { page: 'portfolio-berichte', siteId: null, sub: null, berichtKennung };
+}
+
+/**
+ * Route einer Messstellen-Seite (UEMS AP-04 IP-8) — im Bereich „Messstellen“, aus dem sie geöffnet
+ * wird: ohne Standort `#/portfolio/messstellen/{id}`, mit `#/standort/{sid}/messstellen/{id}`.
+ */
+export function messstelleRoute(messstelleId: string, standortId?: string | null): Route {
+  return standortId
+    ? { ...standortMessstellenRoute(standortId), messstelleId }
+    : { page: 'portfolio-messstellen', siteId: null, sub: null, messstelleId };
+}
+
+/** Route der Seite einer Bezugsgröße (Konzept Messen m1 §6.8, Entscheid 9): `#/portfolio/bezugsgroessen/{id}`. */
+export function bezugsgroesseRoute(bezugsgroesseId: string): Route {
+  return { page: 'portfolio-bezugsgroessen', siteId: null, sub: null, bezugsgroesseId };
 }
 
 /* =========================================================================
@@ -684,7 +1218,7 @@ export function routeDepth(route: Route): number {
   if (route.page !== 'anlagen' || route.siteId == null) return 0;
   if (route.sub == null) return 1;
   // Die Geräte- und die Box-Seite wohnen EINE Ebene unter dem Anlagen-Modell
-  // (`anlageNav.OHNE_BEREICHS_REITER`: sie tragen deshalb keinen Reiter,
+  // (`ebenenNav.OHNE_BEREICHS_REITER`: sie tragen deshalb keinen Reiter,
   // sondern ihren eigenen Rückweg als Brotkrume).
   return route.sub === 'geraet' || route.sub === 'box' ? 3 : 2;
 }

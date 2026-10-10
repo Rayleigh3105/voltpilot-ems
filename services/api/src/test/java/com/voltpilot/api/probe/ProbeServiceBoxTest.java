@@ -44,7 +44,7 @@ class ProbeServiceBoxTest {
     private final ProbePublisher publisher = mock(ProbePublisher.class);
     @SuppressWarnings("unchecked")
     private final ObjectProvider<ProbePublisher> provider = mock(ObjectProvider.class);
-    private final ProbeService service = new ProbeService(devices, registry, provider);
+    private final ProbeService service = new ProbeService(devices, registry, provider, mock(com.voltpilot.api.entities.EinmalAuftragZiel.class));
 
     private static final ProbeRequest.Op SCHRITT = new ProbeRequest.Op("erreichbarkeit", "192.168.10.31",
             502, 1, "holding", 0, "u16", null, null, null);

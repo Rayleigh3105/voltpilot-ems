@@ -62,7 +62,8 @@ import org.yaml.snakeyaml.Yaml;
  *       Bindungslücke (Vertrag §9 Nr. 2), eine Lücke entsteht nur durch ausdrückliches Beenden
  *       (MS-07);</li>
  *   <li>die Fehler nach §5.12: Überlappung 409, Messwert schon führend 409, Passung 422 je Grund
- *       (samt dem Vorzeichen-Fall von MS-01, der auf AP-08 wartet), Vergleich ohne Zweck 400,
+ *       (samt dem Vorzeichen-Fall von MS-01: ohne Anteil 422, mit Anteil gebunden — AP-08 IP-7),
+ *       Vergleich ohne Zweck 400,
  *       kein Gerät zum Zeitpunkt 422 (vor dem Einbau, über den Ausbau hinaus), Beenden vor Beginn
  *       400, zweimal beenden 409, die Form der Anfrage 400;</li>
  *   <li>Vergleichsquellen stehen überlappend nebeneinander; Lücken sind erlaubt und sichtbar;</li>
@@ -93,7 +94,11 @@ class MessstelleQuelleApiTest {
     /** Die Wirkleistung am Zählpunkt: ein Vorzeichen-Wert (Katalog import_export). */
     private static final String LEISTUNG_VORZEICHEN = "sunspec.model_203.w";
     private static final String SPANNUNG = "sunspec.model_203.phv";
-    private static final String ERZEUGUNG_ZEHNTEL = "kaco_http.energy-total";
+    /**
+     * Ein Zählerstand in Wattminuten: Regel 7 rechnet ihn nicht um (bis Laufzeitstand 2026.08.26.3 stand
+     * hier KACO „0,1 kWh“ — seit 2026.09.23.2 nennt der Katalog dort die dekodierte Einheit kWh).
+     */
+    private static final String ENERGIE_WMIN = "shelly.gen1.meter[0].meters[0].total";
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -443,10 +448,10 @@ class MessstelleQuelleApiTest {
         assertThat(jetzt.at("/rueckwirkung/art").asText()).isEqualTo("ab_jetzt");
     }
 
-    // ---- 422: die Passung je Grund, und der Vorzeichen-Wert, der auf AP-08 wartet --------------------
+    // ---- 422: die Passung je Grund, und der Vorzeichen-Wert ohne Anteil -------------------------------
 
     @Test
-    void diePassungLehntJeGrundAbUndDerVorzeichenWertWartetAufAp08() {
+    void diePassungLehntJeGrundAbUndDerVorzeichenWertBindetNurMitAnteil() {
         Werk w = ahrenberg("Passung");
         String ms06 = anlegen(w.admin(), wieReferenz("MS-06", referenzMessstelle("MS-06"))).get("id").asText();
         String ms01 = anlegen(w.admin(), wieReferenz("MS-01", referenzMessstelle("MS-01"))).get("id").asText();
@@ -461,9 +466,9 @@ class MessstelleQuelleApiTest {
         Map<String, Object> spannung = binden(w.k("K-5"), SPANNUNG, "fuehrend", null, null);
         spannung.put("groesse", Map.of("groesse", "Wirkleistung", "richtung", "Bezug"));
         passtNicht(rufe(HttpMethod.POST, "/api/v1/messstellen/" + ms06 + "/quellen", w.admin(), spannung), "groesse");
-        // einheit: „0,1 kWh“ ist keine umrechenbare Einheit.
+        // einheit: Wmin rechnet Regel 7 nicht in Wh/kWh/MWh um.
         passtNicht(rufe(HttpMethod.POST, "/api/v1/messstellen/" + ms03 + "/quellen", w.admin(),
-                binden(w.k("K-1"), ERZEUGUNG_ZEHNTEL, "fuehrend", null, null)), "einheit");
+                binden(w.k("K-1"), ENERGIE_WMIN, "fuehrend", null, null)), "einheit");
         // richtung: Bezug ist nicht Abgabe (Vektor ms-01-bezug-nie-aus-abgabe).
         passtNicht(rufe(HttpMethod.POST, "/api/v1/messstellen/" + ms01 + "/quellen", w.admin(),
                 binden(w.k("K-3"), ENERGIE_ABGABE, "fuehrend", null, null)), "richtung");
@@ -471,9 +476,10 @@ class MessstelleQuelleApiTest {
         abgelehnt(rufe(HttpMethod.POST, "/api/v1/messstellen/" + ms21 + "/quellen", w.admin(),
                 binden(w.k("K-3"), ENERGIE_BEZUG, "fuehrend", null, null)), 422, "medium_ohne_quelle");
 
-        // Der benannte Befund (Vektor ms-01-nebengroesse-vorzeichen-wartet-auf-ap08): die Referenz
-        // speist „Wirkleistung · Bezug“ von MS-01 aus der Wirkleistung von K-3 — ein Vorzeichen-Wert.
-        JsonNode vorzeichen = fall("bindung", "ms-01-nebengroesse-vorzeichen-wartet-auf-ap08");
+        // Der Vorzeichen-Wert OHNE Anteil (Vektor ms-01-nebengroesse-vorzeichen-ohne-anteil, bis AP-08 IP-7
+        // „…-wartet-auf-ap08“): die Referenz speist „Wirkleistung · Bezug“ von MS-01 aus der Wirkleistung
+        // von K-3 — ohne Anteil passt er nicht (W8), der Satz sagt, wie er passt.
+        JsonNode vorzeichen = fall("bindung", "ms-01-nebengroesse-vorzeichen-ohne-anteil");
         Map<String, Object> nebengroesse = binden(w.k("K-3"), LEISTUNG_VORZEICHEN, "fuehrend", null,
                 vorzeichen.at("/input/neu/gueltig_ab").asText());
         nebengroesse.put("groesse", Map.of("groesse", vorzeichen.at("/input/ziel/groesse").asText(),
@@ -483,12 +489,160 @@ class MessstelleQuelleApiTest {
         passtNicht(r, vorzeichen.at("/expected/grund").asText());
         assertThat(r.getBody().at("/kanal/direction").asText()).isEqualTo("import_export");
         assertThat(r.getBody().at("/kanal/richtung").asText()).isEqualTo("richtungslos");
-        assertThat(r.getBody().get("message").asText()).contains("Vorzeichen");
+        assertThat(r.getBody().get("message").asText()).contains("Vorzeichen").contains("positiven Anteil")
+                .doesNotContain("noch nicht");
+        // Ein Anteil an einem Zählerstand (Vektor anteil-nie-aus-zaehlerstand): Grund `anteil`.
+        Map<String, Object> zaehlerAnteil = binden(w.k("K-3"), ENERGIE_BEZUG, "fuehrend", null, null);
+        zaehlerAnteil.put("anteil", "positiv");
+        passtNicht(rufe(HttpMethod.POST, "/api/v1/messstellen/" + ms01 + "/quellen", w.admin(), zaehlerAnteil),
+                "anteil");
+        // Ein Wort außerhalb des Vokabulars ist die Form der Anfrage — nie „der ganze Wert“ geraten.
+        nebengroesse.put("anteil", "gesamt");
+        anfrage(rufe(HttpMethod.POST, "/api/v1/messstellen/" + ms01 + "/quellen", w.admin(), nebengroesse), "anteil");
 
         assertThat(eintraege(w.tenant())).as("abgelehnt schreibt nichts").isEqualTo(vorher);
         for (String ms : List.of(ms06, ms01, ms03, ms21)) {
             assertThat(quellenDer(ms)).isZero();
         }
+    }
+
+    /**
+     * AP-08 IP-7 (E15 = A): EIN Vorzeichen-Wert speist Bezug UND Abgabe — MS-01 mit dem positiven, MS-02
+     * mit dem negativen Anteil der Wirkleistung von K-3 (Vektoren ms-01-nebengroesse-positiver-anteil,
+     * ms-02-nebengroesse-negativer-anteil-neben-ms-01). Der Anteil ist ein Fakt der Bindung: gespeichert,
+     * in Antwort und Protokoll; denselben Anteil führt nur EINE Messstelle (409).
+     */
+    @Test
+    void einVorzeichenWertSpeistBezugUndAbgabeMitAnteil() {
+        Werk w = ahrenberg("Anteil");
+        uhr("2026-10-01T09:14:00+02:00");
+        String ms01 = anlegen(w.admin(), wieReferenz("MS-01", referenzMessstelle("MS-01"))).get("id").asText();
+        Map<String, Object> ms02Body = wieReferenz("MS-02", referenzMessstelle("MS-02"));
+        ObjectNode abgabe = MAPPER.createObjectNode().put("groesse", "Wirkleistung").put("richtung", "Abgabe")
+                .put("einheit", "kW").put("wertart", "Momentanwert");
+        ms02Body.put("nebengroessen", List.of(abgabe));
+        String ms02 = anlegen(w.admin(), ms02Body).get("id").asText();
+        String ms06 = anlegen(w.admin(), wieReferenz("MS-06", referenzMessstelle("MS-06"))).get("id").asText();
+
+        JsonNode positiv = fall("bindung", "ms-01-nebengroesse-positiver-anteil");
+        Map<String, Object> bezug = binden(w.k("K-3"), LEISTUNG_VORZEICHEN, "fuehrend", null,
+                positiv.at("/input/neu/gueltig_ab").asText());
+        bezug.put("groesse", Map.of("groesse", "Wirkleistung", "richtung", "Bezug"));
+        bezug.put("anteil", positiv.at("/input/neu/anteil").asText());
+        JsonNode b = erfolgreich(rufe(HttpMethod.POST, "/api/v1/messstellen/" + ms01 + "/quellen", w.admin(), bezug));
+        assertThat(b.at("/quelle/anteil").asText()).isEqualTo("positiv");
+        assertThat(b.at("/quelle/herleitung").asText()).isEqualTo(positiv.at("/expected/herleitung").asText());
+        assertThat(b.at("/quelle/status").asText()).isEqualTo(positiv.at("/expected/status").asText());
+
+        Map<String, Object> abgabeBindung = binden(w.k("K-3"), LEISTUNG_VORZEICHEN, "fuehrend", null,
+                positiv.at("/input/neu/gueltig_ab").asText());
+        abgabeBindung.put("groesse", Map.of("groesse", "Wirkleistung", "richtung", "Abgabe"));
+        abgabeBindung.put("anteil", "negativ");
+        JsonNode a = erfolgreich(rufe(HttpMethod.POST, "/api/v1/messstellen/" + ms02 + "/quellen", w.admin(),
+                abgabeBindung));
+        assertThat(a.at("/quelle/anteil").asText()).as("zwei Anteile sind zwei Messwerte").isEqualTo("negativ");
+
+        // Denselben (positiven) Anteil führt nur EINE Messstelle — die Antwort nennt MS-01.
+        Map<String, Object> doppelt = binden(w.k("K-3"), LEISTUNG_VORZEICHEN, "fuehrend", null,
+                positiv.at("/input/neu/gueltig_ab").asText());
+        doppelt.put("groesse", Map.of("groesse", "Wirkleistung", "richtung", "Bezug"));
+        doppelt.put("anteil", "positiv");
+        ResponseEntity<JsonNode> d = rufe(HttpMethod.POST, "/api/v1/messstellen/" + ms06 + "/quellen", w.admin(), doppelt);
+        abgelehnt(d, 409, "kanal_bereits_fuehrend");
+        assertThat(d.getBody().get("bestehende_messstelle").asText()).isEqualTo("MS-01");
+
+        // Gespeichert als Fakt, in der Messstelle sichtbar, im Protokoll genannt — die Hauptgrößen nie.
+        assertThat(root.queryForList("SELECT anteil FROM messstelle_quelle WHERE tenant_id = ? ORDER BY anteil",
+                String.class, w.tenant())).containsExactly("negativ", "positiv");
+        JsonNode m01 = ok(rufe(HttpMethod.GET, "/api/v1/messstellen/" + ms01, w.admin(), null));
+        assertThat(m01.at("/nebengroessen/0/fuehrende_quelle/0/anteil").asText()).isEqualTo("positiv");
+        assertThat(protokoll(ms01)).last().satisfies(e -> assertThat(json(e.get("neu")).get("anteil").asText())
+                .isEqualTo("positiv"));
+        assertThat(quellenDer(ms06)).isZero();
+    }
+
+    /**
+     * AP-04 IP-14 (E3, Abnahmefall A8): Die Quelle-Karte stellt die führende und die Vergleichsquelle
+     * NEBENEINANDER — also muss {@code GET …/quellen} je Bindung ihren eigenen letzten Wert nennen.
+     * MS-01 liest die Wirkleistung führend aus dem Netzzähler K-3 (312,4 kW) und vergleicht sie mit der
+     * Netzmessung des Wechselrichters K-1 (309,8 kW, Zweck Plausibilität).
+     *
+     * <p>Geprüft wird genau das, was die Fläche braucht: der Wert je Bindung in der Einheit ihres
+     * Messkanals, der Anteil-Schnitt (AP-08 IP-7) und der Anzeigename. Eine BEENDETE oder geplante
+     * Bindung trägt keinen Wert — ein alter Wert neben einem laufenden sähe aus wie ein zweiter Zustand.
+     * Bewertet wird nichts: die Antwort nennt keine Abweichung und keinen Prozentwert.
+     */
+    @Test
+    void jedeLaufendeQuelleNenntIhrenEigenenLetztenWertUndIhrenAnzeigenamen() {
+        Werk w = ahrenberg("A8");
+        // K-1 misst am Wechselrichter ebenfalls einen Vorzeichen-Wert (Referenzdatei: „Einspeise-/
+        // Bezugsleistung am Wechselrichter“) — im Katalog ein eigener Punkt, damit die Reihen sich
+        // nicht überlagern: beide Komponenten hängen an derselben Box.
+        String wechselrichterLeistung = "sunspec.model_211.w";
+        messkanalAuswahl(w, "K-1", wechselrichterLeistung);
+        uhr("2026-10-20T10:15:00+02:00");
+        String ms01 = anlegen(w.admin(), wieReferenz("MS-01", referenzMessstelle("MS-01"))).get("id").asText();
+
+        Map<String, Object> fuehrend = binden(w.k("K-3"), LEISTUNG_VORZEICHEN, "fuehrend", null,
+                "2024-03-12T00:00:00+01:00");
+        fuehrend.put("groesse", Map.of("groesse", "Wirkleistung", "richtung", "Bezug"));
+        fuehrend.put("anteil", "positiv");
+        erfolgreich(rufe(HttpMethod.POST, "/api/v1/messstellen/" + ms01 + "/quellen", w.admin(), fuehrend));
+
+        Map<String, Object> vergleich = binden(w.k("K-1"), wechselrichterLeistung, "vergleich", "Plausibilität",
+                "2026-10-15T09:00:00+02:00");
+        vergleich.put("groesse", Map.of("groesse", "Wirkleistung", "richtung", "Bezug"));
+        vergleich.put("anteil", "positiv");
+        erfolgreich(rufe(HttpMethod.POST, "/api/v1/messstellen/" + ms01 + "/quellen", w.admin(), vergleich));
+
+        // Die Werte, wie der Writer sie ablegt: je Box und Kanal, nie je Messstelle.
+        wert(w, LEISTUNG_VORZEICHEN, "2026-10-20T08:14:00Z", 312.4);
+        wert(w, wechselrichterLeistung, "2026-10-20T08:14:00Z", 309.8);
+
+        JsonNode liste = ok(rufe(HttpMethod.GET, "/api/v1/messstellen/" + ms01 + "/quellen", w.admin(), null));
+        JsonNode leistung = element(liste.get("groessen"), null, g -> "Wirkleistung".equals(g.get("groesse").asText()));
+        assertThat(leistung.at("/fuehrend/letzter_wert/wert").asDouble()).isEqualTo(312.4);
+        assertThat(leistung.at("/fuehrend/letzter_wert/einheit").asText()).isEqualTo("W");
+        assertThat(leistung.at("/fuehrend/kanal_name").asText()).isNotBlank();
+        assertThat(leistung.at("/vergleich/0/letzter_wert/wert").asDouble()).isEqualTo(309.8);
+        assertThat(leistung.at("/vergleich/0/zweck").asText()).isEqualTo("Plausibilität");
+        assertThat(leistung.at("/vergleich/0/anteil").asText()).isEqualTo("positiv");
+
+        // Die Hauptgröße hat keine Quelle — dann gibt es keinen Wert, nie eine 0.
+        JsonNode haupt = element(liste.get("groessen"), null, g -> g.get("hauptgroesse").asBoolean());
+        assertThat(haupt.get("fuehrend").isNull()).isTrue();
+
+        // E3: nichts bewertet — die Antwort kennt weder Abweichung noch Prozent.
+        assertThat(liste.toString()).doesNotContain("abweichung").doesNotContain("prozent");
+
+        // Eine BEENDETE Bindung trägt keinen Wert mehr.
+        String quelleId = leistung.at("/vergleich/0/id").asText();
+        ok(rufe(HttpMethod.PUT, "/api/v1/messstellen/" + ms01 + "/quellen/" + quelleId + "/beenden", w.admin(),
+                Map.of("gueltig_bis", "2026-10-20T10:00:00+02:00")));
+        JsonNode danach = ok(rufe(HttpMethod.GET, "/api/v1/messstellen/" + ms01 + "/quellen", w.admin(), null));
+        JsonNode beendet = element(danach.get("quellen"), null, q -> quelleId.equals(q.get("id").asText()));
+        assertThat(beendet.get("status").asText()).isEqualTo("beendet");
+        assertThat(beendet.get("letzter_wert").isNull()).as("ein alter Wert steht nie neben einem laufenden").isTrue();
+        assertThat(beendet.get("kanal_name").isNull()).as("der Name bleibt — er gehört dem Messwert").isFalse();
+    }
+
+    /** EIN Messwert, wie ihn der Writer ablegt — je Box und Kanal (AP-04 IP-14). */
+    private void wert(Werk w, String kanal, String zeit, double zahl) {
+        root.update("INSERT INTO device_measurement_sample (time, tenant_id, site_id, device_id, point_key, "
+                + "raw_numeric, decoded_numeric, quality, catalog_version, edge_sequence, aggregation_kind) "
+                + "VALUES (?,?,?,?,?,?,?,'good','2026.08.26.3',?,'gauge')",
+                Timestamp.from(Instant.parse(zeit)), w.tenant(), w.an1(), w.box(), kanal, zahl, zahl,
+                Math.abs((kanal + zeit).hashCode()) % 100000);
+    }
+
+    /** Das erste Element, das die Bedingung erfüllt — mit dem Namen im Fehlerfall. */
+    private static JsonNode element(JsonNode liste, String was, java.util.function.Predicate<JsonNode> passt) {
+        for (JsonNode n : liste) {
+            if (passt.test(n)) {
+                return n;
+            }
+        }
+        throw new AssertionError("kein Element " + (was == null ? "" : was) + " in " + liste);
     }
 
     // ---- Lücke erlaubt; Beenden ---------------------------------------------------------------
@@ -696,7 +850,7 @@ class MessstelleQuelleApiTest {
         root.update("UPDATE geraet SET einbau_kennzeichen = ?, seriennummer = ? WHERE tenant_id = ? AND kennzeichen = 'GR-4'",
                 z5a.get("kennzeichen").asText(), z5a.get("seriennummer").asText(), t);
         Werk w = new Werk(t, new Anrufer("admin", t), an1, box, komponenten);
-        messkanalAuswahl(w, "K-1", ERZEUGUNG_ZEHNTEL);
+        messkanalAuswahl(w, "K-1", ENERGIE_WMIN);
         messkanalAuswahl(w, "K-3", ENERGIE_BEZUG, ENERGIE_ABGABE, LEISTUNG_VORZEICHEN);
         messkanalAuswahl(w, "K-4", ENERGIE_BEZUG);
         messkanalAuswahl(w, "K-5", ENERGIE_BEZUG, LEISTUNG_VORZEICHEN, SPANNUNG);

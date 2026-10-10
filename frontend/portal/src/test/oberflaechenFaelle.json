@@ -1,0 +1,1224 @@
+{
+ "schema_version": "1.0",
+ "stand": "15.09.2026",
+ "repo": "84f8307f",
+ "titel": "AP-13 Referenzfallkatalog — Messdaten- und Analyseoberflächen (Referenzunternehmen Ahrenberg)",
+ "beschreibung": "Eine Quelle für Report §7, die Review-Ansicht (concept.html, Phase 3) und die Portal-Fixtures der Bau-Pakete (IP-1: oberflaechenFaelle.json). Kein Fall erfindet eine Zahl oder eine Rechenregel: Mengen, Zustände, Abdeckungen, Kennzeichen und Versionen sind Ergebnisse der Vorgänger (AP-08 F1/F8/F13, AP-10 F3/F4/F5/F8/F17/F18, AP-11 K1/K12, AP-12 B6/B10/B16); AP-13 sagt, welche Fläche sie wo zeigt, welchen Zeitraum sie nennt, welchen Grund sie ausspricht und wohin ein Klick führt. Mengen in kWh ganzzahlig wie in der Referenzdatei; Zeitpunkte in der Standort-Zone (Europe/Berlin) mit Offset.",
+ "quelle": "docs/contracts/v2/uems-referenzunternehmen.json (Fassung 1.4, Stand 15.09.2026) — einzige Quelle für Kennzeichen, Fachwerte, Personen und Zeitpunkte; alles Weitere steht je Fall unter „annahmen“ und zitiert den Vorgänger-Fall unter „quelle_faelle“. gegen docs/contracts/v2/uems-referenzunternehmen.json 1.4 (origin/uems 84f8307f) geprüft.",
+ "plan_abnahmen": {
+  "captain": "O1 — die Lücke vom 03.11.2026 an MS-10: der Kunde erkennt, was gemessen wurde (2 304 kWh aus Zählerständen), welchen Zeitraum er betrachtet (Tag 03.11.2026, Zeiten in Europe/Berlin) und warum die Zahl eingeschränkt ist (Lücke 14:00–17:31, Verlauf 85 %, vorläufig) — ohne dass die Fläche eine Zahl rechnet"
+ },
+ "regeln_kurz": [
+  "Eine UEMS-Fläche zeigt NUR die Messstellen-Welt (Werte-, Bilanz-, Kostenstellen-, Kennzahl- und Bericht-Routen); Bestandsflächen (Cockpit, Verlauf-Reiter, Erlöse, Übersichts-Leiste) lesen weiter die Rollups und bleiben zeichengleich; nie beide Welten in einem Bild (E1, E2).",
+  "Jede Zahl steht mit Zustand · Abdeckung („Verlauf n %“) · Fassung · Kennzeichen · Version so, wie die Route sie liefert; `null` ist ein Strich mit dem Satz des Grundes (E11), nie 0, nie eine Teilsumme; Datenlücken bleiben sichtbar (Fläche mit Satz, keine Linie).",
+  "Jede UEMS-Fläche nennt einmal im Kopf die Zone der Antwort und ihre Herkunft; Stunden tragen MESZ/MEZ; Zeiträume sind Tag · Woche · Monat · Jahr im Raster der Route (E5, E12).",
+  "Die Übersicht einer Ebene zeigt drei UEMS-Bausteine — Datenlage (Register-Aggregat, EINE Zählung), Energiebilanz-Summe „x von y Systemen“ (AP-10 E9, Zwilling `ebene`), Kennzahlen (Listen-Karten) — und rechnet keinen davon (E3, E13); Geld-Bausteine nur nach der Geld-Regel je Anlage.",
+  "Gebäude sind eine Sicht (AP-10 E9, Zwilling `gebaeude`), nie eine Ebene und nie eine Grenze: Standort › Gebäude = Ortsbaum + Karte je Gebäude (E4).",
+  "Die Zahl einer Messstelle wohnt auf ihrer Seite: Abschnitt „Werte“ mit Karte, Liste, Verlauf und Vergleich; Register-Zeile, Bausteine, Herkunfts-Zeilen springen dorthin mit Periode und Version (E9, E10).",
+  "Vergleich = Überlagerung Vorperiode/Vorjahr mit Δ nach der AP-12-Regel + bis drei passende Messstellen nebeneinander ohne Δ (E6).",
+  "Energiebilanz je Anlage ist die AP-10-Fläche als Reiter des Bereichs „Verlauf“; Standort/Unternehmen zeigen die Summe, Gebäude die Sicht; kein neues Flussbild (E7); Kostenstellen nebeneinander, „nicht verteilt“ einmal, keine Summe über alle (E8).",
+  "Eine Herkunfts-Zeile ist ein Sprung, wenn ihr Objekt eine Seite hat; sonst Text mit Befund an das zuständige Paket (E10) — AP-13 baut keine Fläche für ein Objekt, dessen Paket sie nicht hat.",
+  "Telefon und Rechner funktionsgleich; Struktur nur, wo sie es muss; ein gemessener Weg Ebene → Welt → Zahl → Nachweis (E14). Kundenwörter: Werte · Verlauf · Vergleich · Energiebilanz · Datenlage · liefert Daten · Herkunft · Nachweis · Zeitraum (E15)."
+ ],
+ "vokabulare": {
+  "grund (ergebnis-zustand, additiv — E11)": [
+   "keine_quelle",
+   "quelle_teilweise",
+   "anteil_nicht_gespeichert",
+   "berechnet",
+   "noch_nicht_gebildet",
+   "ohne_menge_gespeichert",
+   "version_nicht_gespeichert",
+   "version_nicht_gebildet"
+  ],
+  "quelle_abzeichen (UEMS)": [
+   "gemessen",
+   "berechnet",
+   "verteilt",
+   "manuell abgelesen"
+  ],
+  "bausteine_uebersicht (E3)": [
+   "datenlage",
+   "energiebilanz_summe",
+   "kennzahlen"
+  ],
+  "sprungziele (E10)": [
+   "messstelle (Werte, Periode, Version)",
+   "versionen",
+   "geraet (Komponente)",
+   "kennzahl",
+   "bericht (Stand, Nachweis)",
+   "kostenstelle",
+   "gebaeude"
+  ],
+  "ohne_sprung_bis (Befunde)": [
+   "bezugsgroesse (AP-09)",
+   "ereignis (AP-07)",
+   "box (AP-06 IP-16)"
+  ],
+  "zeitraeume_verlauf (E5)": [
+   "tag → viertelstunde",
+   "woche → stunde",
+   "monat → tag",
+   "jahr → monat"
+  ],
+  "kundenwoerter (E15)": [
+   "Werte",
+   "Verlauf",
+   "Vergleich",
+   "Energiebilanz",
+   "Verteilung",
+   "Datenlage",
+   "liefert Daten",
+   "Herkunft",
+   "Nachweis",
+   "Zeitraum",
+   "Zeitzone"
+  ],
+  "verboten (E15)": [
+   "Dashboard",
+   "Widget",
+   "KPI",
+   "Drilldown",
+   "Timeline",
+   "Sankey",
+   "Chart",
+   "Zeitreihe",
+   "Rollup",
+   "Bucket",
+   "Raster"
+  ]
+ },
+ "ref_ap13": {
+  "beschreibung": "AP-13 braucht KEINE Ergänzung der Referenzdatei: jede Zahl der 19 Fälle steht in Fassung 1.4 oder in einem Vorgänger-Fall (dort als Annahme gekennzeichnet). Für die Bühne (startansicht.tsx) und die Fixtures der Bau-Pakete werden die Fälle nach `frontend/portal/src/test/oberflaechenFaelle.json` kopiert (IP-1, Gleichheitstest wie bei AP-12 IP-13).",
+  "aenderungen": [],
+  "hinweis": "Wird W5 zugunsten der Referenz entschieden (Oktober-Monat Lindach als „unvollständig · Anfang nicht gemessen“), ändert das die Referenzdatei nicht — nur die Werte-Route (AP-08)."
+ },
+ "faelle": [
+  {
+   "id": "O1",
+   "familie": "plan_abnahme",
+   "abnahme": "captain",
+   "titel": "Plan-Abnahme — die Lücke vom 03.11.2026 auf der Fläche: 2 304 kWh · vollständig (Menge aus Zählerständen) · Verlauf 85 %, Lücke 14:00–17:31 als Fläche mit Satz, Zeitraum mit Zone, Grund statt Strich",
+   "geltung": "Werk Ahrenberg › Messstellen › MS-10 Netzbezug Halle 2 › Werte",
+   "periode": "Tag 2026-11-03",
+   "zweck": "Die Abnahme des Captains wörtlich: der Kunde erkennt, WAS gemessen wurde (2 304 kWh aus Zählerständen), WELCHEN Zeitraum er betrachtet (Dienstag, 03.11.2026, Zeiten in Europe/Berlin) und WARUM die Zahl eingeschränkt ist (Lücke 14:00–17:31, der Verlauf deckt 85 %). Nichts davon rechnet die Fläche: Menge, Zustand, Abdeckung, Kennzeichen (AP-08 F8), Beschriftung und Tagesdauer (Route), der Marker-Satz (Ereignis-Vokabular AP-07).",
+   "gegeben": {
+    "tag": "2026-11-03",
+    "zone": "Europe/Berlin",
+    "menge_kwh": 2304.0,
+    "zustand": "vollständig",
+    "mengen_herkunft": "Menge aus Zählerständen",
+    "erhalten": 1230,
+    "erwartet": 1440,
+    "abdeckung_prozent": 85,
+    "fassung": "vorläufig",
+    "endgueltig_ab": "2026-11-11T00:00:00+01:00",
+    "kennzeichen": [
+     "Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht auf Viertelstunden verteilbar"
+    ],
+    "ereignisse": [
+     {
+      "art": "data_gap",
+      "von": "2026-11-03T14:00:00+01:00",
+      "bis": "2026-11-03T17:31:00+01:00"
+     }
+    ],
+    "viertelstunden_ohne_werte_fehlmenge": 14,
+    "zuwachs_kwh": 337.6
+   },
+   "eingang_text": "Ines öffnet am 04.11.2026 die Messstelle MS-10 und wählt den Tag 03.11.2026 (E9 = A: die Messstellen-Seite trägt die Werte; E5: Tag in Viertelstunden).",
+   "schritte": [
+    "Kopf der Fläche: „MS-10 Netzbezug Halle 2 · Dienstag, 03.11.2026 · Zeiten in Europe/Berlin (Zeitzone des Standorts Werk Ahrenberg)“ (E12 = A) — die Zone kommt aus `zeitzone`/`zeitzone_herkunft` der Antwort, nie aus dem Browser.",
+    "Tageskarte (WerteKarte, unverändert aus AP-08 IP-11): „2 304 kWh“ · Abzeichen „vollständig (Menge aus Zählerständen)“ und „Verlauf 85 %“ · „vorläufig“ (endgültig ab 11.11.2026) · Kennzeichen-Satz der Lücke.",
+    "Verlauf (IP-4 = AP-08 IP-10): 96 Viertelstunden-Balken; 14:00–17:31 als schraffierte Fläche OHNE Linie und OHNE Null; darüber der Marker mit dem Satz des Ereignis-Vokabulars: „Lücke von 14:00 bis 17:31 — nie als 0 gerechnet“ (`data_gap.saetze.standard`); der Zusatz „· der Zähler hat weitergezählt: Zuwachs 337,6 kWh — nicht auf Viertelstunden verteilbar“ erscheint, sobald die Ereignis-Route die Felder liefert (Befund AP-07, §6.6).",
+    "Ein Tipp auf die Viertelstunde 14:15–14:30 zeigt die Schritt-Karte: „— · keine Werte · 0 von 15“; auf 17:30–17:45: „22,4 kWh · unvollständig (14 von 15) · Anfang nicht gemessen (kein Stand an der Periodengrenze)“ — beides Zeilen der Route.",
+    "Kein Δ zur Vorperiode, solange der Tag vorläufig ist? Doch: der Vergleich (E6) zeigt den 02.11. als Überlagerung, das Δ trägt „laufende Fassung — vorläufig“ (AP-12 V-Regel, AP-08 Fassung); ein Δ ohne Basis gibt es nicht."
+   ],
+   "erwartet": {
+    "kopf": "MS-10 Netzbezug Halle 2 · Dienstag, 03.11.2026 · Zeiten in Europe/Berlin (Zeitzone des Standorts Werk Ahrenberg)",
+    "karte": "2 304 kWh · vollständig (Menge aus Zählerständen) · Verlauf 85 % · vorläufig (endgültig ab 11.11.2026)",
+    "marker": "Lücke von 14:00 bis 17:31 — nie als 0 gerechnet",
+    "verlauf_luecke": "Fläche 14:00–17:31, keine Linie, keine 0",
+    "schritt_14_15": "— · keine Werte · 0 von 15",
+    "schritt_17_30": "22,4 kWh · unvollständig (14 von 15) · Anfang nicht gemessen (kein Stand an der Periodengrenze)"
+   },
+   "nachweis": {
+    "was_gemessen": "2 304 kWh, Menge aus Zählerständen (Stand 00:00 und 24:00 vorhanden)",
+    "welcher_zeitraum": "Tag 03.11.2026, Europe/Berlin (Standort)",
+    "warum_eingeschraenkt": "Lücke 14:00–17:31 (Box Halle 2 hat sich nicht gemeldet); Verlauf 85 %; vorläufig bis 11.11.2026"
+   },
+   "anzeige": "MS-10 · 03.11.2026 · 2 304 kWh · vollständig (Menge aus Zählerständen) · Verlauf 85 % — Lücke von 14:00 bis 17:31 — nie als 0 gerechnet",
+   "annahmen": [
+    "Die Rohwerte des 03.11.2026 sind die Annahme aus AP-08 F8 (416 856,0 → 419 160,0 kWh, 1 230 gute Werte); der Ausfall selbst steht in der Zeitachse der Referenzdatei. Die Minute 14:00 ist noch erhalten (letzte Meldung der Box, O13), deshalb fehlen 210 Minuten bei einer Lücke von 211 Minuten — 14 Viertelstunden ohne Werte und der Schritt 17:30–17:45 mit 14 von 15.",
+    "Der Grund „Box Halle 2 hat sich nicht gemeldet“ kommt aus dem Herzschlag (AP-06 E5) — bis AP-06 IP-14 gebaut ist, steht nur der Vokabular-Satz ohne Ursache."
+   ],
+   "quelle_faelle": [
+    "AP-08 F8",
+    "AP-07 §5 (Lücke sehen)",
+    "AP-08 §5 Bedienablauf 1"
+   ],
+   "flaeche": "Werte + Verlauf der Messstelle (E9, E5, IP-3/IP-4)"
+  },
+  {
+   "id": "O2",
+   "familie": "uebersicht",
+   "abnahme": null,
+   "titel": "Unternehmens-Übersicht Ahrenberg, Oktober 2026: Datenlage je Standort aus dem Register-Aggregat („15 von 16“, „4 von 4“), Netzbezug 174 400 kWh „3 von 3 Systemen“ aus der AP-10-Ebenen-Regel, fünf Kennzahlen mit letztem Wert — kein Geld, keine dritte Zählung",
+   "geltung": "Unternehmen › Übersicht",
+   "periode": "Monat 2026-10 (gelesen am 10.11.2026)",
+   "zweck": "E3 = A: die Übersicht einer Ebene zeigt aus der Messstellen-Welt drei Bausteine — Datenlage, Energiebilanz-Summe, Kennzahlen — und rechnet keinen davon selbst: die Datenlage ist das Register-Aggregat (AP-04 IP-15), die Summe ist `BilanzAbleitung.ebene` ⟷ `uemsBilanz.ebene` (AP-10 E9, F8) über die Bilanzen je Anlage, die Kennzahlen sind die Listen-Karten aus AP-11. E13 = A: EINE Zählung — das Register-Aggregat; die Funktionen-Zeile spricht dieselbe (W6).",
+   "gegeben": {
+    "register_st1": {
+     "erfuellt": 15,
+     "gesamt": 16,
+     "text": "15 von 16 Messstellen liefern Daten"
+    },
+    "register_st2": {
+     "erfuellt": 4,
+     "gesamt": 4,
+     "text": "4 von 4 Messstellen liefern Daten"
+    },
+    "register_unternehmen": {
+     "erfuellt": 21,
+     "gesamt": 22,
+     "text": "21 von 22 Messstellen liefern Daten"
+    },
+    "funktionen_datenlage_st1_heute": "13 von 13 Messstellen liefern Daten · 1 manuell abgelesen",
+    "bezug_kwh": {
+     "AN-1 (MS-01)": 128400,
+     "AN-2 (MS-10)": 36900,
+     "AN-3 (MS-16)": 9100
+    },
+    "summe_unternehmen_kwh": 174400,
+    "summe_st1_kwh": 165300,
+    "systeme": "3 von 3 Systemen",
+    "st1_systeme": "2 von 2 Systemen",
+    "abgabe_kwh": {
+     "AN-1 (MS-02)": 3120
+    },
+    "kennzahlen": {
+     "KZ-0001": "0,15 kWh je Stück",
+     "KZ-0002": "0,50 kWh je Stück",
+     "KZ-0003": "0,20 kWh je Stück",
+     "KZ-0004": "0,28 kWh je kg",
+     "KZ-0005": "11,90 kWh je m²"
+    }
+   },
+   "eingang_text": "Ines öffnet am 10.11.2026 die Unternehmens-Übersicht; die Zeit-Leiste steht auf „Oktober 2026“ (der letzte gebildete Monat, endgültig ab 08.11.2026).",
+   "schritte": [
+    "Kopfzeile (Bestand, AP-01 IP-6): „Kunststoffwerk Ahrenberg · 2 Standorte · 3 Anlagen · 1 steuert“ — die Anlagen-Datenlage „3 von 3 Anlagen liefern Daten“ bleibt das Wort der Anlagen-Zeile (Box-Telemetrie, W7).",
+    "Baustein „Messstellen“ (IP-7): je Standort die Zeile des Register-Aggregats — „Werk Ahrenberg · 15 von 16 Messstellen liefern Daten“, „Werk Lindach · 4 von 4“ — als Sprung in das Register des Standorts (gefiltert). MS-21 (Gas, monatlich abgelesen) zählt im Nenner als „keine Datenquelle“ (AP-04 E8: eingerichtet, nie eine 0); die Funktionen-Zeile spricht ab IP-7 dieselbe Zählung und ergänzt „· 1 manuell abgelesen“.",
+    "Baustein „Energiebilanz“ (IP-7, AP-10 E9): „Netzbezug 174 400 kWh · 3 von 3 Systemen · Lindach ab 15.10.2026“ — die Summe der Hauptzähler Bezug der drei Anlagen zum Stichtag (`uemsBilanz.ebene` über drei Antworten von `GET …/sites/{id}/bilanz?periode=monat&am=2026-10-01`), kein eigener Rest; Abgabe getrennt: „Netzeinspeisung 3 120 kWh · 1 von 3 Systemen“ — nur Halle 1 hat einen Abgabe-Zähler, die zwei anderen fehlen NICHT, sie haben keinen (Wortlaut aus der AP-10-Regel, keine AP-13-Deutung).",
+    "Baustein „Kennzahlen“ (AP-11 Listen-Karten, IP-7): fünf Karten mit letztem Wert, Zustand und Geltung; „Kennzahlen“ ist zugleich Kachel und Reiter.",
+    "Kein Geld-Baustein: keine Anlage der Ebene steuert oder hat Erzeuger/Speicher außer AN-1 — die Geld-Regel je Anlage (AP-01 IP-8) lässt die Erlöse-Welt für AN-1 bestehen und hält sie von den UEMS-Bausteinen fern (E1 = A).",
+    "Der Wert 174 400 ist zugleich MS-19 (berechnete Messstelle „Netzbezug gesamt Unternehmen“): der Baustein nennt sie als Sprung („= MS-19“), rechnet aber nicht gegen sie."
+   ],
+   "erwartet": {
+    "datenlage_st1": "15 von 16 Messstellen liefern Daten",
+    "datenlage_st2": "4 von 4 Messstellen liefern Daten",
+    "energiebilanz_bezug": "Netzbezug 174 400 kWh · 3 von 3 Systemen · Lindach ab 15.10.2026",
+    "energiebilanz_st1": "165 300 kWh · 2 von 2 Systemen",
+    "energiebilanz_abgabe": "Netzeinspeisung 3 120 kWh · 1 von 3 Systemen",
+    "kennzahlen_karten": 5,
+    "geld_bausteine": 0,
+    "dritte_zaehlung": false
+   },
+   "nachweis": null,
+   "anzeige": "Kunststoffwerk Ahrenberg · Oktober 2026 · Werk Ahrenberg 15 von 16 Messstellen liefern Daten · Werk Lindach 4 von 4 · Netzbezug 174 400 kWh (3 von 3 Systemen; Lindach ab 15.10.)",
+   "annahmen": [
+    "MS-22 („Lindach nicht zugeordnet“, Ort „keiner“) zählt über seine elektrische Stellung in AN-3 zum Standort ST-2 — so leitet das Register den Standort einer Zeile ab (AP-04 „Ort (abgeleiteter Standort)“); MS-19/MS-20 ohne Standort zählen nur beim Unternehmen (`MessstelleRegisterAggregat`).",
+    "Die Kennzeichen „3 von 3 Systemen“ und „1 von 3 Systemen“ sind die Wörter der AP-10-Regel `ebene` (`BERECHNET_SUMME`, „x von y Systemen“); wie die Regel eine Anlage OHNE Abgabe-Zähler zählt, prüft O2 nicht — es ist ihre Aussage, nicht die der Fläche."
+   ],
+   "quelle_faelle": [
+    "AP-10 F8",
+    "AP-04 IP-15 (Register-Aggregat)",
+    "AP-11 K1–K5, K12"
+   ],
+   "flaeche": "Übersicht der Ebene (E3, E13, IP-7)"
+  },
+  {
+   "id": "O3",
+   "familie": "uebersicht",
+   "abnahme": null,
+   "titel": "Standort-Übersicht Werk Lindach am 18.10.2026 (Peter Hollerbach, Teilansicht „1 von 2 Standorten“): Netzbezug 100 kWh „1 von 1 System“, Gebäude-Zeilen 60 und 30 kWh, „nicht zugeordnet 10 kWh“ nur an der Anlage, Datenlage „4 von 4“",
+   "geltung": "Standort › Übersicht (Werk Lindach)",
+   "periode": "Tag 2026-10-18",
+   "zweck": "Dieselbe Fläche wie O2 mit Ebene „Standort“ (AP-01 E2): die Summe „1 von 1 System“, die Gebäude-Zeilen als Sicht Ort × Stellung (AP-10 F17-Regel `gebaeude`), der Rest NUR an der Anlage (kein Gebäude-Rest, kein Standort-Rest — AP-10 E9). Peter sieht die Unternehmensebene nicht (AP-03 E10/R-A1); sein Kopf trägt „Teilansicht“ (R-A2).",
+   "gegeben": {
+    "tag": "2026-10-18",
+    "MS-16": 100,
+    "MS-17": 60,
+    "MS-18": 30,
+    "MS-22": 10,
+    "register_st2": "4 von 4 Messstellen liefern Daten",
+    "teilansicht": "Teilansicht: Werk Lindach (1 von 2 Standorten)"
+   },
+   "eingang_text": "Peter öffnet am 19.10.2026 die Standort-Übersicht Werk Lindach und wählt den Tag 18.10.2026 (Sonntag).",
+   "schritte": [
+    "Kopf: „Werk Lindach · Teilansicht: Werk Lindach (1 von 2 Standorten)“ (R-A2/R-A7: die Zahl der Standorte darf er wissen, Namen und Werte des anderen nicht).",
+    "Baustein „Energiebilanz“: „Netzbezug 100 kWh · 1 von 1 System“ — die Summe über die Hauptzähler des einen Systems AN-3 (MS-16); KEIN „nicht zugeordnet“ auf der Standort-Ebene (ein Standort hat keine Bilanzgrenze).",
+    "Gebäude-Zeilen (IP-7, Regel `gebaeude`): „Lagerhalle Lindach · gemessen im Gebäude 60 kWh (1 Messstelle)“, „Montagehalle Lindach · 30 kWh (1 Messstelle)“; jede Zeile ist der Sprung in Standort › Gebäude (IP-2).",
+    "Anlagen-Zeile AN-3 (Bestand-Tabelle, gefiltert) trägt den Weg „Energiebilanz“: dort steht „nicht zugeordnet 10 kWh · berechnet (Differenz) = MS-22“ (AP-10 F1/F2) — die einzige Stelle, an der der Rest erscheint.",
+    "Baustein „Messstellen“: „4 von 4 Messstellen liefern Daten“ (MS-16, MS-17, MS-18, MS-22 vollständig).",
+    "Kein Kennzahlen-Baustein am 18.10.: KZ-0002 wird erst am 03.11.2026 angelegt (Zeitachse) — der Baustein erscheint erst mit einer lebenden Kennzahl der Ebene, nie leer."
+   ],
+   "erwartet": {
+    "kopf": "Werk Lindach · Teilansicht: Werk Lindach (1 von 2 Standorten)",
+    "energiebilanz": "Netzbezug 100 kWh · 1 von 1 System",
+    "gebaeude_zeilen": {
+     "G-4": "gemessen im Gebäude 60 kWh (1 Messstelle)",
+     "G-5": "gemessen im Gebäude 30 kWh (1 Messstelle)"
+    },
+    "rest_nur_an_der_anlage": "nicht zugeordnet 10 kWh · berechnet (Differenz)",
+    "datenlage": "4 von 4 Messstellen liefern Daten",
+    "kennzahlen_baustein": null
+   },
+   "nachweis": null,
+   "anzeige": "Werk Lindach · 18.10.2026 · Netzbezug 100 kWh (1 von 1 System) · Lagerhalle 60 kWh · Montagehalle 30 kWh · nicht zugeordnet 10 kWh (nur an AN-3)",
+   "annahmen": [
+    "Der Sonntag 18.10.2026 trägt in der Referenzdatei nur die drei Tageswerte (`tag_2026_10_18_kwh`); die Datenlage „4 von 4“ ist die der Momentaufnahme."
+   ],
+   "quelle_faelle": [
+    "AP-10 F1",
+    "AP-10 F2",
+    "AP-10 F17 (Regel)",
+    "AP-03 R-A2/R-A7"
+   ],
+   "flaeche": "Übersicht der Ebene Standort (E3, IP-7)"
+  },
+  {
+   "id": "O4",
+   "familie": "gebaeude",
+   "abnahme": null,
+   "titel": "Standort › Gebäude › Halle 2, Oktober 2026 (E4 = A): gemessen im Gebäude 32 000 kWh (3 Messstellen), außerhalb im selben System Ladepunkt 1 100 kWh, Rest des Systems 3 800 kWh „nicht verortet“, Kennzahlen des Gebäudes 0,15 und 11,90 — keine vierte Ebene",
+   "geltung": "Standort › Gebäude (Werk Ahrenberg) › Halle 2",
+   "periode": "Monat 2026-10",
+   "zweck": "Die Gebäude-Seite ist der Ortsbaum aus AP-02 IP-7 plus je Gebäude eine Karte, die drei fertige Ergebnisse nebeneinanderlegt: die Gebäude-Sicht (AP-10 F17, Zwilling `uemsBilanz.gebaeude`), die Datenlage der Messstellen im Gebäude (Register-Aggregat, gefiltert) und die Kennzahlen mit Geltung Gebäude (AP-11). Nichts wird auf Gebäude verteilt; ein Gebäude ist eine Sicht, keine Grenze (AP-10 E9).",
+   "gegeben": {
+    "im_gebaeude": {
+     "MS-11 (B-4)": 22400,
+     "MS-12 (B-3)": 6100,
+     "MS-13 (B-5)": 3500
+    },
+    "summe_im_gebaeude": 32000,
+    "ausserhalb_im_system": {
+     "MS-14 (ST-1, Außenfläche)": 1100
+    },
+    "rest_des_systems": 3800,
+    "kennzahlen": {
+     "KZ-0001": 0.1488,
+     "KZ-0005": 11.9032
+    },
+    "datenlage_gebaeude": "3 von 3 Messstellen liefern Daten"
+   },
+   "eingang_text": "Claudia öffnet Werk Ahrenberg › Gebäude und klappt Halle 2 auf; Zeitraum Oktober 2026.",
+   "schritte": [
+    "Ortsbaum (AP-02 IP-7): Halle 1 · Halle 2 · Verwaltung mit ihren Bereichen; „Stand am …“ gilt (AP-02 IP-13).",
+    "Karte Halle 2, Block „Energie“ (Regel `gebaeude`): „Gemessen im Gebäude 32 000 kWh (3 Messstellen: Spritzguss SG07–SG10 22 400 · Montage Linie M1 6 100 · Lager 3 500) · Außerhalb des Gebäudes, im selben System: Ladepunkt Parkplatz 1 100 kWh · Rest des Systems Halle 2: 3 800 kWh nicht verortet“. `gebaeudeverbrauch` ist IMMER null — die Karte zeigt keine Gebäude-Summe.",
+    "Block „Messstellen“: „3 von 3 Messstellen liefern Daten“ + Sprung in das Register mit Filter Ort = Halle 2.",
+    "Block „Kennzahlen“ (AP-11 §6.6): KZ-0001 „0,15 kWh je Stück · vollständig“, KZ-0005 „11,90 kWh je m² · vollständig“; Weg „Kennzahl anlegen“ mit vorgeschlagener Menge (AP-11 §6.6 — nie still angelegt).",
+    "Der Umzug des Kaltwassersatzes am 01.03.2027 (Zeitachse) ändert die Sicht ab März von selbst: MS-08 zählt dann in Halle 2 — nichts wird nachgepflegt (AP-10 F7)."
+   ],
+   "erwartet": {
+    "energie": "Gemessen im Gebäude 32 000 kWh (3 Messstellen) · Außerhalb im selben System: Ladepunkt 1 100 kWh · Rest des Systems Halle 2: 3 800 kWh nicht verortet",
+    "gebaeudeverbrauch": null,
+    "messstellen": "3 von 3 Messstellen liefern Daten",
+    "kennzahlen": {
+     "KZ-0001": "0,15 kWh je Stück",
+     "KZ-0005": "11,90 kWh je m²"
+    },
+    "vierte_ebene": false,
+    "leiste_standort_kacheln": 4
+   },
+   "nachweis": null,
+   "anzeige": "Halle 2 · Oktober 2026 · gemessen im Gebäude 32 000 kWh (3 Messstellen) · Rest des Systems 3 800 kWh nicht verortet · KZ-0001 0,15 kWh je Stück",
+   "annahmen": [],
+   "quelle_faelle": [
+    "AP-10 F17",
+    "AP-11 K1",
+    "AP-11 K12",
+    "AP-02 IP-7"
+   ],
+   "flaeche": "Standort › Gebäude (E4, IP-2, IP-10)"
+  },
+  {
+   "id": "O5",
+   "familie": "energiebilanz",
+   "abnahme": null,
+   "titel": "Energiebilanz Anlage Halle 2, Oktober 2026 (E7 = A): Zufluss 36 900 · zugeordnet 33 100 (4 Unterzähler mit Anteils-Balken) · nicht zugeordnet 3 800, verteilt 100 % an 4300 Logistik — die AP-10-Fläche §5.2 im Bereich „Verlauf“ der Anlage, kein neues Flussbild",
+   "geltung": "Anlage Halle 2 › Verlauf › Energiebilanz",
+   "periode": "Monat 2026-10",
+   "zweck": "E7 = A: die Energiebilanz je Anlage ist die AP-10-Fläche (§5.2, IP-14) — Zeilen Zufluss · zugeordnet · nicht zugeordnet mit Herkunft je Zeile — im AP-13-Rahmen als Reiter des Bereichs „Verlauf“ (geldfrei, ZeitSegment). Die Anteils-Balken (`MiniShareBar`) zeichnen die kWh der Unterzähler gegen den Zufluss und tragen keine Prozentzahl; der Rest ist eine Differenz und heißt „nicht zugeordnet“ (AP-10 E14).",
+   "gegeben": {
+    "zufluss": {
+     "MS-10 Netzbezug Halle 2 (Hauptzähler)": 36900
+    },
+    "zugeordnet": {
+     "MS-11": 22400,
+     "MS-12": 6100,
+     "MS-13": 3500,
+     "MS-14": 1100
+    },
+    "zugeordnet_summe": 33100,
+    "nicht_zugeordnet": 3800,
+    "verteilung_ms15": {
+     "4300 Logistik": 100
+    },
+    "zeitzone": "Europe/Berlin"
+   },
+   "eingang_text": "Claudia öffnet Anlage Halle 2 › Verlauf › Energiebilanz, Oktober 2026 (`GET /api/v1/sites/{AN-2}/bilanz?periode=monat&am=2026-10-01`).",
+   "schritte": [
+    "Kopf: „System Halle 2 · Netzanschluss NA-2 · Oktober 2026 · Zeiten in Europe/Berlin (Zeitzone des Standorts Werk Ahrenberg)“ — Zone mit Herkunft wie auf jeder UEMS-Fläche (V7, E12 = A).",
+    "Zeile „Zufluss 36 900 kWh · gemessen · Netzbezug Halle 2 (MS-10, Hauptzähler)“ — Sprung zu MS-10 › Werte Oktober.",
+    "Zeile „Zugeordnet 33 100 kWh · gemessen · 4 Unterzähler“ mit vier Anteils-Balken (22 400 · 6 100 · 3 500 · 1 100 kWh) — jeder Balken ein Sprung zur Messstelle; die Balkenlänge ist Zeichnung, keine Zahl.",
+    "Zeile „Nicht zugeordnet 3 800 kWh · berechnet (Differenz) · Halle 2 nicht zugeordnet (MS-15) → verteilt 100 % an 4300 Logistik“ — Herkunft aus `rest.herkunft` (AP-10 IP-12), Sprung zu MS-15 und zur Kostenstellen-Sicht 4300.",
+    "Live-Zeile oben (AP-10 F18): „jetzt: 1,6 kW nicht zugeordnet · Stand 10:15“ (O8) — mit ihrem Stand, nie ohne (W9).",
+    "Der Bestands-Energiefluss (PV · Batterie · Haus · Netz) bleibt in der Cockpit-Bühne von Halle 1; Halle 2 (reine Messung) hat ihn nie gezeigt — E7 = A zeichnet kein zweites Flussbild."
+   ],
+   "erwartet": {
+    "zeilen": [
+     "Zufluss 36 900 kWh · gemessen · MS-10",
+     "Zugeordnet 33 100 kWh · gemessen · 4 Unterzähler",
+     "Nicht zugeordnet 3 800 kWh · berechnet (Differenz) · MS-15 → verteilt 100 % an 4300 Logistik"
+    ],
+    "anteils_balken_kwh": [
+     22400,
+     6100,
+     3500,
+     1100
+    ],
+    "prozentzahl_am_balken": false,
+    "flussbild": false
+   },
+   "nachweis": null,
+   "anzeige": "System Halle 2 · Oktober 2026 · Zufluss 36 900 kWh · Zugeordnet 33 100 kWh (4 Unterzähler) · Nicht zugeordnet 3 800 kWh (berechnet, → 4300 Logistik)",
+   "annahmen": [],
+   "quelle_faelle": [
+    "AP-10 F3",
+    "AP-10 §5.2",
+    "AP-10 E14"
+   ],
+   "flaeche": "Anlage › Verlauf › Energiebilanz (E7, IP-8 = AP-10 IP-14)"
+  },
+  {
+   "id": "O6",
+   "familie": "energiebilanz",
+   "abnahme": null,
+   "titel": "Energiebilanz Anlage Halle 1, Oktober 2026 (AP-10 F4): Zufluss 150 400 (Netz 128 400 · PV 14 900 · Speicher entladen 7 100) · Abfluss 11 020 (Einspeisung 3 120 · Speicher laden 7 900) · zugeordnet 84 800 · nicht zugeordnet 54 580 — die Speicher-Anteile als zwei Zeilen, nie saldiert",
+   "geltung": "Anlage Halle 1 › Verlauf › Energiebilanz",
+   "periode": "Monat 2026-10",
+   "zweck": "Alle Bilanz-Rollen der Stellung in einer Fläche: Hauptzähler Bezug/Abgabe, Erzeuger, Speicher mit positivem und negativem Anteil (AP-10 E4), Unterzähler. Die Fläche zeigt die Zeilen der Route (`terme[].rolle`/`anteil`); sie saldiert nichts (AP-08 E12: Bezug und Abgabe nie stillschweigend saldiert). Der Bestands-Energiefluss derselben Anlage bleibt daneben unverändert (E1/E2 = A) — zwei Flächen, zwei Aussagen, jede mit ihrer Quelle.",
+   "gegeben": {
+    "zufluss": {
+     "MS-01 (Hauptzähler Bezug)": 128400,
+     "MS-03 (Erzeuger)": 14900,
+     "MS-04 negativer Anteil = Entladen": 7100
+    },
+    "abfluss": {
+     "MS-02 (Hauptzähler Abgabe)": 3120,
+     "MS-04 positiver Anteil = Laden": 7900
+    },
+    "zugeordnet": {
+     "MS-05": 7600,
+     "MS-06": 55100,
+     "MS-07": 15900,
+     "MS-08": 6200
+    },
+    "summen": {
+     "zufluss": 150400,
+     "abfluss": 11020,
+     "zugeordnet": 84800,
+     "nicht_zugeordnet": 54580
+    }
+   },
+   "eingang_text": "Claudia öffnet Anlage Halle 1 › Verlauf › Energiebilanz, Oktober 2026.",
+   "schritte": [
+    "Zeile „Zufluss 150 400 kWh“ mit drei Unterzeilen: „Netzbezug Halle 1 128 400 · gemessen“, „PV-Erzeugung Dach Halle 1 14 900 · gemessen“, „Speicher Halle 1 entladen 7 100 · negativer Anteil von Speicherleistung“ (Kennzeichen Rang 10 des Ergebnis-Vertrags).",
+    "Zeile „Abfluss 11 020 kWh“: „Netzeinspeisung Halle 1 3 120“, „Speicher Halle 1 laden 7 900 · positiver Anteil“.",
+    "Zeile „Zugeordnet 84 800 kWh · 4 Unterzähler“ (Verwaltung 7 600 · Spritzguss 55 100 · Druckluft 15 900 · Kühlung 6 200).",
+    "Zeile „Nicht zugeordnet 54 580 kWh · berechnet (Differenz) · Halle 1 + Verwaltung nicht zugeordnet (MS-09)“ — die Fläche zeigt den Wert der Route; dass die Referenzdatei 1.1 hier 52 600 nannte, hat AP-10 W10 geklärt, nicht die Fläche.",
+    "Die Cockpit-Bühne von Halle 1 zeigt weiter „PV · Batterie · Haus · Netz“ aus den Rollups (Bestand, Berlin-Zeit, ohne Zustand) — mit dem Weg „Energiebilanz aus Messstellen“ (E2 = A), ohne eine Zahl zu tauschen."
+   ],
+   "erwartet": {
+    "zufluss": "150 400 kWh (3 Zeilen)",
+    "abfluss": "11 020 kWh (2 Zeilen)",
+    "zugeordnet": "84 800 kWh (4 Unterzähler)",
+    "nicht_zugeordnet": "54 580 kWh · berechnet (Differenz) · MS-09",
+    "speicher_saldiert": false,
+    "cockpit_buehne_unveraendert": true
+   },
+   "nachweis": null,
+   "anzeige": "System Halle 1 · Oktober 2026 · Zufluss 150 400 kWh · Abfluss 11 020 kWh · Zugeordnet 84 800 kWh · Nicht zugeordnet 54 580 kWh (MS-09)",
+   "annahmen": [],
+   "quelle_faelle": [
+    "AP-10 F4",
+    "AP-10 E4",
+    "AP-08 E12"
+   ],
+   "flaeche": "Anlage › Verlauf › Energiebilanz (E7, IP-8)"
+  },
+  {
+   "id": "O7",
+   "familie": "energiebilanz",
+   "abnahme": null,
+   "titel": "Energiebilanz Halle 2 am 04.11.2026 (AP-10 F5): Ladepunkt meldet den ganzen Tag nicht — „Zugeordnet mindestens 1 055 kWh (MS-14 fehlt)“, „Nicht zugeordnet: — keine Werte“, nie 145",
+   "geltung": "Anlage Halle 2 › Verlauf › Energiebilanz",
+   "periode": "Tag 2026-11-04",
+   "zweck": "Die Fläche spricht die Fortpflanzung des Ergebnis-Zustands (AP-08 §4.5 / AP-10 E2) so, wie die Route sie liefert: eine Summe mit Lücke ist „unvollständig · mindestens …“, eine Differenz mit unvollständigem Eingang ist „keine Werte“ — der Strich mit Grund, nie ein Falschwert nach oben. Datenlücken bleiben sichtbar (Programm-Vorgabe).",
+   "gegeben": {
+    "MS-10": 1200,
+    "MS-11": 740,
+    "MS-12": 200,
+    "MS-13": 115,
+    "MS-14": "keine Werte (0 von 1 440)",
+    "mindestens": 1055,
+    "falschwert_vermieden": 145
+   },
+   "eingang_text": "Ines öffnet am 05.11.2026 die Energiebilanz Halle 2 für den Tag 04.11.2026 (Tag des Box-Tauschs; F5 nimmt an, dass MS-14 den ganzen Tag schweigt).",
+   "schritte": [
+    "Zeile „Zugeordnet mindestens 1 055 kWh · unvollständig · Ladepunkt Parkplatz Halle 2 (MS-14) fehlt“ — Wort „mindestens“ aus dem Ergebnis-Vertrag (Untergrenze), der fehlende Eingang wird genannt.",
+    "Zeile „Nicht zugeordnet — · keine Werte · ein Eingang der Differenz ist nicht vollständig“ — kein 145 kWh.",
+    "Anteils-Balken: drei Balken (740 · 200 · 115) und ein leerer Platz mit dem Wort „keine Werte“ für MS-14 — keine Null-Länge, die wie „0 kWh“ aussähe.",
+    "Der Weg zu MS-14 › Werte zeigt den Tag als „— · keine Werte · 0 von 1 440“ mit dem Marker „Lücke seit 00:00 — nie als 0 gerechnet“ (offene Lücke, `standard_offen`)."
+   ],
+   "erwartet": {
+    "zugeordnet": "mindestens 1 055 kWh · unvollständig (MS-14 fehlt)",
+    "nicht_zugeordnet": "— · keine Werte",
+    "balken_ms14": "keine Werte (kein Balken)",
+    "wert_145_gezeigt": false
+   },
+   "nachweis": null,
+   "anzeige": "Halle 2 · 04.11.2026 · Zufluss 1 200 kWh · Zugeordnet mindestens 1 055 kWh (MS-14 fehlt) · Nicht zugeordnet — keine Werte",
+   "annahmen": [
+    "Die Tageswerte vom 04.11.2026 sind die Annahme aus AP-10 F5."
+   ],
+   "quelle_faelle": [
+    "AP-10 F5",
+    "AP-08 §4.5",
+    "AP-10 E2"
+   ],
+   "flaeche": "Energiebilanz mit Lücke (E7, Z-Regeln)"
+  },
+  {
+   "id": "O8",
+   "familie": "live",
+   "abnahme": null,
+   "titel": "Live-Zeile der Energiebilanz Halle 2 (AP-10 F18): „jetzt: 1,6 kW nicht zugeordnet · Stand 10:15“ — und „— · Ladepunkt Parkplatz Halle 2 meldet sich gerade nicht“, sobald ein Term veraltet ist; zwei Frische-Fenster, jede Live-Zahl mit ihrem Stand (W9)",
+   "geltung": "Anlage Halle 2 › Verlauf › Energiebilanz (Kopf)",
+   "periode": "Momentaufnahme 2026-10-20T10:15:00+02:00",
+   "zweck": "Die Live-Zeile ist `live` der Bilanz-Route (FRISCHE 15 min); die Cockpit-Bühne derselben Anlage hält das 5-Minuten-Fenster. AP-13 erfindet kein drittes Fenster: jede Live-Zahl nennt ihren Stand („Stand 10:15“), und `null` ist ein Strich mit dem Grund der Route (`fehlende[].grund`), nie 0 und nie eine Teilsumme.",
+   "gegeben": {
+    "MS-10": 96.5,
+    "MS-11": 61.2,
+    "MS-12": 14.8,
+    "MS-13": 7.9,
+    "MS-14": 11.0,
+    "rest_kw": 1.6,
+    "stand": "10:15",
+    "variante_veraltet": {
+     "MS-14": "veraltet",
+     "wert": null
+    }
+   },
+   "eingang_text": "Momentaufnahme der Referenzdatei (20.10.2026 10:15 MESZ); danach der Ausfall des Ladepunkts als Variante.",
+   "schritte": [
+    "Zeile „jetzt: 1,6 kW nicht zugeordnet · Stand 10:15“ — Wert und Stand aus `live.wert`/`live.stand`.",
+    "Variante: `live.wert = null`, `fehlende = [{term: MS-14, grund: veraltet}]` → „— · Ladepunkt Parkplatz Halle 2 meldet sich gerade nicht“ (Kundensatz je Grund: kein_geraet · kein_wert · veraltet).",
+    "Die Cockpit-Bühne (Bestand) zeigt ihre eigene Live-Zahl mit „Stand 10:12 Uhr“, sobald sie älter als 5 min ist (Anzeige-Ehrlichkeit); beide Zahlen stehen nie ohne Stand in einem Baustein (W9)."
+   ],
+   "erwartet": {
+    "live": "jetzt: 1,6 kW nicht zugeordnet · Stand 10:15",
+    "live_veraltet": "— · Ladepunkt Parkplatz Halle 2 meldet sich gerade nicht",
+    "teilsumme": false
+   },
+   "nachweis": null,
+   "anzeige": "Halle 2 · jetzt: 1,6 kW nicht zugeordnet · Stand 10:15",
+   "annahmen": [],
+   "quelle_faelle": [
+    "AP-10 F18",
+    "AP-10 E7"
+   ],
+   "flaeche": "Live-Zeile (W9, Z-Regeln)"
+  },
+  {
+   "id": "O9",
+   "familie": "kostenstellen",
+   "abnahme": null,
+   "titel": "Kostenstellen-Übersicht Oktober 2026 (E8 = A): 4200 Montage gemessen 9 700 · verteilt 4 770 (30 % von MS-07) · berechnet — · Summe 14 470; 4100 Spritzguss mit der Doppelzählungs-Warnung zu MS-20; „nicht verteilt“ EINMAL als eigener Block; keine Summe über alle Kostenstellen",
+   "geltung": "Unternehmen › Messstellen › Kostenstellen",
+   "periode": "Monat 2026-10",
+   "zweck": "Die Kostenstellen-Übersicht legt die Antworten der Kostenstellen-Sicht (AP-10 IP-11) nebeneinander: je Kostenstelle die vier Blöcke gemessen · verteilt · berechnet · Summe; „nicht verteilt“ gehört keiner und steht einmal über allen; eine Summe über Kostenstellen gibt es nicht (sie träfe den Gesamtverbrauch nur, wenn der Rest still verteilt wäre — „eine Lüge mit stimmiger Summe“, uems-kostenstelle-energie.md). Die Doppelzählungs-Warnung (Captain 14.09.2026) wird gezeigt und ändert keine Zahl.",
+   "gegeben": {
+    "4200 Montage": {
+     "gemessen": {
+      "MS-12 (ab 01.10.)": 6100,
+      "MS-18 (ab 15.10.)": 3600
+     },
+     "verteilt": {
+      "30 % von MS-07": 4770
+     },
+     "berechnet": null,
+     "summe": 14470
+    },
+    "4100 Spritzguss": {
+     "gemessen": {
+      "MS-06": 55100,
+      "MS-08": 6200,
+      "MS-11": 22400
+     },
+     "verteilt": {
+      "70 % von MS-07": 11130
+     },
+     "berechnet": {
+      "MS-20 (100 %)": 88630
+     },
+     "doppelzaehlung": "MS-20 enthält MS-06, MS-11 und 70 % von MS-07"
+    },
+    "ms07_anteile_summe": 15900
+   },
+   "eingang_text": "Ines öffnet Unternehmen › Messstellen › Reiter „Kostenstellen“, Oktober 2026 (je Kostenstelle `GET …/kostenstellen/{id}/energie?periode=monat&am=2026-10-01`).",
+   "schritte": [
+    "Block „Nicht verteilt“ (einmal, oben): die Messstellen des Zeitraums mit Wert und ohne Verteilungszeile, mit Kennzeichen der Quelle — Wortlaut und Inhalt aus der Route, hier nicht nachgerechnet.",
+    "Karte 4200 Montage: „gemessen 9 700 kWh (Montage Linie M1 6 100 · Montagehalle Lindach gesamt 3 600 ab 15.10.2026) · verteilt 4 770 kWh (30 % von Druckluft K1+K2) · berechnet — · Summe 14 470 kWh“; jeder Posten ist ein Sprung zur Messstelle mit Periode.",
+    "Karte 4100 Spritzguss: gemessen 83 700 · verteilt 11 130 · berechnet 88 630 (Prozess Spritzguss gesamt, MS-20, 100 %) — und darunter die Warnung der Route: „Doppelt gezählt: MS-20 enthält MS-06, MS-11 und 70 % von MS-07“ (Feld `doppelzaehlung`, nur Anzeige).",
+    "Kein Fuß „Summe aller Kostenstellen“; die Fläche sagt: „Die Kostenstellen sind nicht summierbar — nicht verteilte Mengen gehören keiner.“",
+    "Am 01.01.2027 (Zeitachse: 9000 → 9010/9020) erscheint 9000 mit „gültig bis 31.12.2026“ und Januar-Werten „nicht verteilt“ (AP-10 F12) — nichts wird still umgehängt.",
+    "Bis AP-10 eine Route „alle Kostenstellen einer Periode“ liefert (Befund §6.6), ruft die Fläche je Kostenstelle einmal (Ahrenberg: 5 lebende im Oktober)."
+   ],
+   "erwartet": {
+    "karte_4200": "gemessen 9 700 · verteilt 4 770 · berechnet — · Summe 14 470 kWh",
+    "karte_4100_warnung": "Doppelt gezählt: MS-20 enthält MS-06, MS-11 und 70 % von MS-07",
+    "nicht_verteilt_block": "einmal, gehört keiner",
+    "summe_ueber_kostenstellen": false
+   },
+   "nachweis": null,
+   "anzeige": "Kostenstellen · Oktober 2026 · 4200 Montage 14 470 kWh (9 700 gemessen · 4 770 verteilt) · 4100 Spritzguss mit Warnung zu MS-20 · nicht verteilt: eigener Block",
+   "annahmen": [
+    "Der Wortlaut der Doppelzählungs-Warnung folgt dem Vertrag (`verteilung-vectors.json` 1.4, Regel `doppelzaehlung`); O9 prüft nur, dass sie erscheint und keine Zahl ändert."
+   ],
+   "quelle_faelle": [
+    "AP-10 F10",
+    "AP-10 F11",
+    "AP-10 F12",
+    "AP-10 IP-11 (Captain 14.09.2026)"
+   ],
+   "flaeche": "Kostenstellen-Übersicht (E8, IP-9 = AP-10 IP-15 Listen-Teil)"
+  },
+  {
+   "id": "O10",
+   "familie": "drilldown",
+   "abnahme": null,
+   "titel": "Von der Kennzahl zum Eingang und zur Version (E10 = A): KZ-0001 Oktober Version 2 = 6 040 ÷ 41 000 = 0,15 — die Herkunfts-Zeile „6 040 kWh (MS-12, korrigiert (Version 2))“ springt zu MS-12 › Werte › Oktober mit Version 2 vorgewählt, „Versionen“ nennt K-2026-0007 mit wer/wann/warum; „41 000 Stück (BZ-6)“ bleibt Text",
+   "geltung": "Unternehmen › Kennzahlen › KZ-0001 › Herkunft → Messstelle MS-12 › Werte › Versionen",
+   "periode": "Monat 2026-10 (Version 2, gelesen am 16.11.2026)",
+   "zweck": "Die Kette Übersicht → Messstelle → Periode → Version → Eingang, die der Vertrag trägt (ist/D.1), bekommt ihre Sprünge: jede Herkunfts-Zeile ist ein Link, wenn ihr Objekt eine Seite hat, und der Link trägt Periode und Version. Ein Objekt ohne Seite (Bezugsgröße BZ-6) bleibt Text — mit Befund an AP-09 (§6.6), nicht mit einer erfundenen Fläche.",
+   "gegeben": {
+    "kz": "KZ-0001",
+    "zaehler_v2": 6040,
+    "nenner": 41000,
+    "wert_v2": 0.1473,
+    "wert_v1": 0.1488,
+    "korrektur": {
+     "kennung": "K-2026-0007",
+     "reihe": "MS-12",
+     "alt": 6100,
+     "neu": 6040,
+     "freigegeben": "2026-11-12T10:05:33+01:00",
+     "von": "Ines Kaltenbach",
+     "begruendung": "Zählerablesung 31.10. berichtigt (Ablesefehler 60 kWh)"
+    },
+    "sprungziel": "#/portfolio/messstellen/MS-12?periode=2026-10&version=2"
+   },
+   "eingang_text": "Claudia liest KZ-0001 am 16.11.2026 (nach der Korrektur K-2026-0007 vom 12.11.2026).",
+   "schritte": [
+    "Kennzahl-Seite, Werte-Karte: „0,15 kWh je Stück · vollständig · Oktober 2026 · endgültig · korrigiert (Version 2)“; Einstieg „Versionen (2)“.",
+    "Block „Herkunft“ (AP-11 IP-13, Text bisher): „Menge 6 040 kWh (MS-12 Montage Linie M1, korrigiert (Version 2)) je 41 000 Stück (BZ-6, Fassung 1)“ — mit IP-11 wird „MS-12 …“ ein Sprung: Ziel Messstellen-Seite MS-12, Abschnitt Werte, Monat Oktober 2026, `version=2` vorgewählt.",
+    "Messstellen-Seite MS-12 › Werte: Karte „6 040 kWh · vollständig · Verlauf 100 % · endgültig · korrigiert (Version 2)“, Hinweis „Sie sehen Version 2 — heute die neueste“, Einstieg „Versionen (2)“.",
+    "Versionen-Dialog (AP-08 IP-18, unverändert): „Version 2 · vorher 6 100 kWh · jetzt 6 040 kWh · Korrektur K-2026-0007 · freigegeben von Ines Kaltenbach am 12.11.2026 10:05 · Zählerablesung 31.10. berichtigt (Ablesefehler 60 kWh)“; Version 1 bleibt lesbar (`?version=1`).",
+    "Zurück auf der Kennzahl: „41 000 Stück (BZ-6, Fassung 1, eingegeben von Ines Kaltenbach 03.11.2026)“ — die Angaben „eingegeben von … am …“ trägt der Kennzahl-Herkunftsvertrag heute nicht (W11); die Fläche zeigt, was er trägt, und BZ-6 bleibt Text bis AP-09 eine Bezugsgrößen-Fläche hat.",
+    "Vom Bericht aus derselbe Weg: BR-2026-0001 Nr. 2 › Nachweis MS-12 → „heutigen Wert zeigen“ (AP-12) → dieselbe Messstellen-Seite mit Periode Oktober."
+   ],
+   "erwartet": {
+    "herkunft_sprung": "MS-12 → #/portfolio/messstellen/MS-12?periode=2026-10&version=2",
+    "karte_ms12": "6 040 kWh · vollständig · Verlauf 100 % · endgültig · korrigiert (Version 2)",
+    "versionen": "vorher 6 100 · jetzt 6 040 · K-2026-0007 · Ines Kaltenbach · 12.11.2026 10:05 · Zählerablesung 31.10. berichtigt (Ablesefehler 60 kWh)",
+    "bz6_ist_sprung": false,
+    "wert_kz_v2": "0,15 kWh je Stück"
+   },
+   "nachweis": null,
+   "anzeige": "KZ-0001 · Oktober 2026 · 0,15 kWh je Stück (Version 2) → MS-12 6 040 kWh (Version 2) → Versionen: K-2026-0007, Ines Kaltenbach, 12.11.2026 10:05",
+   "annahmen": [
+    "Die Zeitpunkte und die Begründung der Korrektur stehen seit Fassung 1.4 in der Referenzdatei (`korrekturen[]`)."
+   ],
+   "quelle_faelle": [
+    "AP-11 K1",
+    "AP-11 K7",
+    "AP-12 B1",
+    "AP-08 IP-18"
+   ],
+   "flaeche": "Sprünge der Kette (E10, IP-11)"
+  },
+  {
+   "id": "O11",
+   "familie": "vergleich",
+   "abnahme": null,
+   "titel": "Vergleich mit der Vorperiode (E6 = A, Δ nach der AP-12-Regel): MS-12 November 6 300 gegen Oktober 6 040 (Version 2) = +260 kWh (+4,3 %); MS-10 −1 100 kWh (−3,0 %); Vorjahresmonat „keine Werte — vor Beginn (Energiemanagement seit 01.10.2026)“",
+   "geltung": "Werk Ahrenberg › Messstellen › MS-12 › Werte › Vergleich",
+   "periode": "Monat 2026-11 gegen 2026-10 und 2025-11",
+   "zweck": "Der Vergleich einer Messstelle mit ihrer Vorperiode ist die Überlagerung des Bestands (historieVergleich: kein Δ ohne Basis, laufende Periode wird gesagt) mit den Zahlen der Messstellen-Welt; das Δ in kWh und Prozent folgt der Regel, die AP-12 für Berichte entschieden hat (V1/Q5, B6: Prozent mit einer Nachkommastelle, Vergleichswert mit Version, fehlender Vergleich mit Grund). AP-13 rechnet kein eigenes Δ.",
+   "gegeben": {
+    "november": {
+     "MS-12": 6300,
+     "MS-10": 35800
+    },
+    "oktober": {
+     "MS-12": {
+      "menge": 6040,
+      "version": 2
+     },
+     "MS-10": {
+      "menge": 36900,
+      "version": 1
+     }
+    },
+    "delta": {
+     "MS-12": {
+      "kwh": 260,
+      "prozent": 4.3
+     },
+     "MS-10": {
+      "kwh": -1100,
+      "prozent": -3.0
+     }
+    },
+    "vorjahresmonat": "keine Werte — vor Beginn",
+    "ems_seit": "2026-10-01"
+   },
+   "eingang_text": "Ines vergleicht am 10.12.2026 den November mit dem Oktober (Überlagerung „Vorperiode“) und dem Vorjahresmonat.",
+   "schritte": [
+    "Zeit-Leiste „November 2026“, Umschalter Vergleich „aus · Vorperiode · Vorjahr“ (Bestand-Muster, Hash `v=`).",
+    "Überlagerung: die Tage des November als Balken, die Tage des Oktober blass dahinter; Karte oben: „6 300 kWh · vollständig · endgültig“ und darunter die Δ-Zeile „+260 kWh (+4,3 %) gegenüber Oktober 2026 (Version 2, korrigiert)“ — der Vergleichswert trägt seine Version.",
+    "MS-10: „−1 100 kWh (−3,0 %) gegenüber Oktober 2026“.",
+    "Vorjahr: „Vorjahresmonat November 2025: keine Werte — vor Beginn (Energiemanagement seit 01.10.2026)“ (Grund aus dem AP-12-Vokabular `grund_ohne_vergleich`), keine leere Kurve.",
+    "Laufender Monat (z. B. am 20.11.): „Der November läuft — der Vergleich gilt für den bisherigen Zeitraum“ (Bestand-Regel), und die Karte sagt „noch nicht gebildet“ für den Monatswert (Grund-Satz E11), die Tage sind vorläufig."
+   ],
+   "erwartet": {
+    "delta_ms12": "+260 kWh (+4,3 %) gegenüber Oktober 2026 (Version 2, korrigiert)",
+    "delta_ms10": "−1 100 kWh (−3,0 %) gegenüber Oktober 2026",
+    "vorjahr": "keine Werte — vor Beginn (Energiemanagement seit 01.10.2026)",
+    "eigene_delta_regel": false
+   },
+   "nachweis": null,
+   "anzeige": "MS-12 · November 2026 · 6 300 kWh · +260 kWh (+4,3 %) gegenüber Oktober 2026 (Version 2) · Vorjahresmonat: keine Werte — vor Beginn",
+   "annahmen": [
+    "Die November-Werte (MS-12 6 300, MS-10 35 800) sind die Annahmen aus AP-12 B6."
+   ],
+   "quelle_faelle": [
+    "AP-12 B6",
+    "AP-12 §4.5 V-Regeln",
+    "Bestand historieVergleich.ts"
+   ],
+   "flaeche": "Vergleich Vorperiode/Vorjahr (E6, IP-5)"
+  },
+  {
+   "id": "O12",
+   "familie": "vergleich",
+   "abnahme": null,
+   "titel": "Vergleich passender Reihen (E6 = A): Spritzguss SG01–SG06 (MS-06, Halle 1) und SG07–SG10 (MS-11, Halle 2) nebeneinander — 55 100 gegen 22 400 kWh im Oktober, ohne Δ zwischen Messstellen; Speicher (Laden/Entladen), Gas (m³) und PV (Erzeugung) sind nicht passend",
+   "geltung": "Werk Ahrenberg › Messstellen › MS-06 › Werte › Vergleich (bis drei Messstellen)",
+   "periode": "Monat 2026-10",
+   "zweck": "„Passend“ ist die Regel des Bestands (`compatibilityKey`: gleiche Größe, Richtung, Einheit, Wertart — AP-04 E1 gibt jeder Messstelle diese Hauptgröße); die Fläche legt bis drei passende Messstellen in einem Bild übereinander, jede mit eigener Karte, und bildet zwischen Messstellen KEIN Δ — ein Unterschied zweier Zähler ist keine Aussage über einen von beiden.",
+   "gegeben": {
+    "MS-06": 55100,
+    "MS-11": 22400,
+    "passend": {
+     "MS-11": true,
+     "MS-04": false,
+     "MS-21": false,
+     "MS-03": false
+    },
+    "hoechstens_reihen": 3
+   },
+   "eingang_text": "Ines vergleicht MS-06 mit MS-11 (Picker „Weitere Messstelle“ zeigt nur passende).",
+   "schritte": [
+    "Picker „Weitere Messstelle“ (VpPicker): Liste der passenden Messstellen des Zugriffs — MS-11 ja; MS-04 „nicht passend: Laden/Entladen“, MS-21 „nicht passend: Volumen in m³“, MS-03 „nicht passend: Erzeugung“ — als Erklärung, nicht als leere Liste.",
+    "Bild: zwei Reihen in zwei Farben (Kontrast-Wächter ΔE 15 des Bestands), Legende als Bedienung; Karten nebeneinander: „MS-06 · 55 100 kWh · vollständig · endgültig“, „MS-11 · 22 400 kWh · vollständig · endgültig“.",
+    "Keine Zeile „Differenz 32 700 kWh“ und kein Prozent zwischen den beiden — die Δ-Zeile gibt es nur gegen die eigene Vorperiode (O11).",
+    "Am Telefon dieselbe Funktion: Reihen übereinander, Karten als Stapel (E14 = A)."
+   ],
+   "erwartet": {
+    "reihen": [
+     "MS-06 55 100 kWh",
+     "MS-11 22 400 kWh"
+    ],
+    "delta_zwischen_messstellen": false,
+    "picker_nicht_passend": [
+     "MS-04 (Laden/Entladen)",
+     "MS-21 (m³)",
+     "MS-03 (Erzeugung)"
+    ]
+   },
+   "nachweis": null,
+   "anzeige": "MS-06 55 100 kWh und MS-11 22 400 kWh · Oktober 2026 · nebeneinander, kein Δ zwischen den Messstellen",
+   "annahmen": [],
+   "quelle_faelle": [
+    "AP-04 E1",
+    "Bestand SiteMeasurementComparison (compatibilityKey)"
+   ],
+   "flaeche": "Vergleich passender Reihen (E6, IP-5)"
+  },
+  {
+   "id": "O13",
+   "familie": "liste",
+   "abnahme": null,
+   "titel": "Messstellenliste mit Dateneingang und Qualität während des Ausfalls der Box Halle 2 (03.11.2026 14:06): MS-10…MS-14 „liefert keine Daten seit 14:00“, MS-15 „unvollständig (fehlt: MS-10 … MS-14)“, Kopfzeile „9 von 16 Messstellen liefern Daten“ — Toleranz 300 s, Schweigen ist nie rot",
+   "geltung": "Werk Ahrenberg › Messstellen (Register)",
+   "periode": "heute 2026-11-03T14:06:00+01:00",
+   "zweck": "Die Liste ist das Register aus AP-04 IP-5, unverändert: jede Zeile trägt die Beobachtung der Zustands-Ableitung (Toleranz min(max(3 × Kadenz, 300 s), 86 400 s), Kante gehört zu „liefert“) und den letzten Wert. AP-13 ergänzt nur den Einstieg in die Werte (E9) und die Spalte „Qualität“ als Zustand des letzten gebildeten Tages (aus dem Register-Feld `letzter_wert` und der Werte-Route, nicht neu gerechnet).",
+   "gegeben": {
+    "toleranz_s": 300,
+    "kadenz_s": 60,
+    "ausfall_von": "2026-11-03T14:00:00+01:00",
+    "jetzt": "2026-11-03T14:06:00+01:00",
+    "kante_14_05_liefert": true,
+    "zeilen_ohne_daten": [
+     "MS-10",
+     "MS-11",
+     "MS-12",
+     "MS-13",
+     "MS-14"
+    ],
+    "berechnet_unvollstaendig": {
+     "MS-15": [
+      "MS-10",
+      "MS-11",
+      "MS-12",
+      "MS-13",
+      "MS-14"
+     ]
+    },
+    "register_st1": {
+     "erfuellt": 9,
+     "gesamt": 16,
+     "text": "9 von 16 Messstellen liefern Daten"
+    },
+    "funktionen_datenlage_st1": "8 von 13 Messstellen liefern Daten · 1 manuell abgelesen",
+    "nach_nachlieferung_17_31": {
+     "erfuellt": 15,
+     "gesamt": 16,
+     "text": "15 von 16 Messstellen liefern Daten"
+    }
+   },
+   "eingang_text": "Claudia öffnet um 14:06 das Register des Werks Ahrenberg; die Box Halle 2 hat sich um 14:00 zum letzten Mal gemeldet (Zeitachse).",
+   "schritte": [
+    "Kopfzeile: „9 von 16 Messstellen liefern Daten“ (Register-Aggregat).",
+    "Zeilen MS-10 … MS-14: Beobachtung „liefert keine Daten seit 14:00“ in Ton „warn“ — nie rot: Schweigen ist kein bewiesener Fehlschlag (AP-04 IP-15); Spalte Quelle „GR-7 C-1 · gelesen von Box Halle 2“ (IP-12).",
+    "Zeile MS-15 (berechnet): „unvollständig · fehlt: Netzbezug Halle 2, Spritzguss SG07–SG10, Montage Linie M1, Lager Halle 2, Ladepunkt Parkplatz Halle 2“.",
+    "Um 14:05:00 hätte die Zeile noch „liefert Daten“ gesagt (Kante gehört zu liefert); ab 14:05:01 nicht mehr — die Fläche zeigt den Satz der Ableitung, keinen eigenen Countdown.",
+    "Spalte „Letzter Wert“: „418 200,0 kWh · 14:00“ — der letzte gute Wert mit Zeitpunkt, nie eine Dauer („vor 6 Minuten“ ist verboten: Anzeige-Ehrlichkeit).",
+    "Nach der Nachlieferung 17:31 (Zeitachse): Kopfzeile wieder „15 von 16“, die Zeilen „liefert Daten“; die Lücke bleibt als Ereignis in den Werten sichtbar (O1)."
+   ],
+   "erwartet": {
+    "kopfzeile": "9 von 16 Messstellen liefern Daten",
+    "zeile_ms10": "liefert keine Daten seit 14:00 · 418 200,0 kWh · 14:00",
+    "zeile_ms15": "unvollständig · fehlt: MS-10 … MS-14 (5)",
+    "ton": "warn, nie rot",
+    "funktionen_zeile_heute": "8 von 13 Messstellen liefern Daten · 1 manuell abgelesen",
+    "nach_17_31": "15 von 16 Messstellen liefern Daten"
+   },
+   "nachweis": null,
+   "anzeige": "Werk Ahrenberg · 03.11.2026 14:06 · 9 von 16 Messstellen liefern Daten · MS-10 … MS-14 liefert keine Daten seit 14:00 · MS-15 unvollständig",
+   "annahmen": [
+    "Die Register-Zeilen der Momentaufnahme (O2) gelten am 03.11.2026 unverändert; die Box E-2 ist bis 04.11.2026 09:38 die zuständige Box für DQ-4/DQ-5."
+   ],
+   "quelle_faelle": [
+    "AP-04 IP-15",
+    "AP-07 E9",
+    "AP-08 F8",
+    "Zeitachse 03.11.2026"
+   ],
+   "flaeche": "Messstellenliste (L-Regeln, IP-3, IP-12)"
+  },
+  {
+   "id": "O14",
+   "familie": "zeitraum",
+   "abnahme": null,
+   "titel": "Welchen Zeitraum betrachte ich: der 25-Stunden-Tag 25.10.2026 an MS-06 (AP-08 F13) — Kopf „Zeiten in Europe/Berlin (Zeitzone des Standorts)“, Karte „720 kWh · vollständig · 25 Stunden (Zeitumstellung)“, Stundenliste mit „02:00–03:00 MESZ“ und „02:00–03:00 MEZ“, Verlauf mit 25 Balken",
+   "geltung": "Werk Ahrenberg › Messstellen › MS-06 › Werte",
+   "periode": "Tag 2026-10-25",
+   "zweck": "E12 = A: jede UEMS-Fläche nennt die Zone der Antwort einmal im Kopf (`zeitzone` + `zeitzone_herkunft`), die Stunden tragen MESZ/MEZ (Route, AP-08 E10), die Tagesdauer kommt aus `tagesdauer`. Die Fläche rechnet keine Zeit um und rastert nichts; der Bestand (Berlin fest, Browser-Kalender) bleibt unverändert (W8).",
+   "gegeben": {
+    "tag": "2026-10-25",
+    "zone": "Europe/Berlin",
+    "zeitzone_herkunft": "standort",
+    "menge_kwh": 720.0,
+    "stunden": 25,
+    "tagesdauer": "25 Stunden (Zeitumstellung)",
+    "erhalten": 1500,
+    "erwartet": 1500,
+    "stunde_mesz": 28.8,
+    "stunde_mez": 28.8
+   },
+   "eingang_text": "Claudia öffnet MS-06 am 26.10.2026 und wählt den 25.10.2026 (Sonntag, Ende der Sommerzeit).",
+   "schritte": [
+    "Kopf: „MS-06 Spritzguss SG01–SG06 · Sonntag, 25.10.2026 · Zeiten in Europe/Berlin (Zeitzone des Standorts Werk Ahrenberg)“ — bei `zeitzone_herkunft = unternehmen` stünde „(Zeitzone des Unternehmens)“, bei `vorgabe` „(Vorgabe)“.",
+    "Karte: „720 kWh · vollständig (Menge aus Zählerständen) · Verlauf 100 % · endgültig · 25 Stunden (Zeitumstellung)“.",
+    "Stundenliste (E5, Tag in Stunden): 25 Zeilen, darunter „02:00–03:00 MESZ · 28,8 kWh“ und „02:00–03:00 MEZ · 28,8 kWh“ — zwei Zeilen, beide vollständig.",
+    "Verlauf: 25 Balken; die doppelte Stunde ist an der Beschriftung erkennbar, nicht an einer Farbe (kein Farbe-allein-Signal).",
+    "Der Bestands-Verlauf derselben Anlage zeigt den Tag weiter mit 96 Viertelstunden-Buckets in Berlin-Zeit — E1 = A: beide Welten stehen nie in einem Bild."
+   ],
+   "erwartet": {
+    "kopf": "Sonntag, 25.10.2026 · Zeiten in Europe/Berlin (Zeitzone des Standorts Werk Ahrenberg)",
+    "karte": "720 kWh · vollständig (Menge aus Zählerständen) · Verlauf 100 % · endgültig · 25 Stunden (Zeitumstellung)",
+    "stunden_zeilen": 25,
+    "doppelte_stunde": [
+     "02:00–03:00 MESZ · 28,8 kWh",
+     "02:00–03:00 MEZ · 28,8 kWh"
+    ],
+    "zeit_umgerechnet": false
+   },
+   "nachweis": null,
+   "anzeige": "MS-06 · 25.10.2026 · 720 kWh · vollständig · 25 Stunden (Zeitumstellung) · Zeiten in Europe/Berlin",
+   "annahmen": [],
+   "quelle_faelle": [
+    "AP-08 F13",
+    "AP-08 E10",
+    "AP-08 W6"
+   ],
+   "flaeche": "Zeitraum und Zone (E12, IP-3)"
+  },
+  {
+   "id": "O15",
+   "familie": "grund",
+   "abnahme": null,
+   "titel": "Warum fehlt eine Zahl: die acht `grund`-Werte der Werte-Route bekommen Kundensätze (E11 = A, Vertragsergänzung ergebnis-zustand, keine Rechenregel) — MS-21 „Keine Quelle“, MS-16 Oktober „Die Quelle deckt den Zeitraum nur zum Teil“, MS-01 Viertelstunde „nur den positiven Anteil“, Oktober am 20.10. „noch nicht gebildet“",
+   "geltung": "Werte-Karte jeder Messstelle",
+   "periode": "verschieden (je Beispiel)",
+   "zweck": "Heute zeigt ein Schritt ohne Zustand nur den Strich (uemsWerteKarte.ts:23-25); die Route nennt den Grund als Code. E11 = A gibt jedem Code genau einen Satz in `ergebnis-zustand-vectors.json` (Block `grund`, additiv), gesprochen von beiden Zwillingen; die Karte zeigt Strich UND Satz. Das ist eine Ergänzung des Vertrags um Sprache — die Bedingung, wann ein Grund gilt, bleibt die der Route (AP-08 IP-9).",
+   "gegeben": {
+    "codes": [
+     "keine_quelle",
+     "quelle_teilweise",
+     "anteil_nicht_gespeichert",
+     "berechnet",
+     "noch_nicht_gebildet",
+     "ohne_menge_gespeichert",
+     "version_nicht_gespeichert",
+     "version_nicht_gebildet"
+    ],
+    "saetze": {
+     "keine_quelle": "Keine Quelle: {messstelle} hatte in diesem Zeitraum keine führende Quelle — es gibt keine Zahl, auch keine 0.",
+     "quelle_teilweise": "Die Quelle deckt den Zeitraum nur zum Teil: {quelle} gilt seit {ab} — die gespeicherte Zahl gehört nicht ganz dieser Messstelle.",
+     "anteil_nicht_gespeichert": "Die Quelle liest nur den {anteil} Anteil von {kanal}; eine Menge je Anteil ist nicht gespeichert.",
+     "berechnet": "Für eine berechnete Messstelle gibt es keine Stundenwerte — Viertelstunde, Tag, Monat und Jahr stehen in den Werten.",
+     "noch_nicht_gebildet": "{periode} ist noch nicht gebildet — der Wert entsteht nach dem Ende des Zeitraums ({bildung}).",
+     "ohne_menge_gespeichert": "Dieser Tag ist ohne Menge gespeichert (Stand vor der Umstellung) — Zustand und Verlauf sind bekannt, die Zahl nicht.",
+     "version_nicht_gespeichert": "Version {n} ist für diesen Zeitraum nicht gespeichert; der neueste Stand ist Version {max}.",
+     "version_nicht_gebildet": "Eine Stunde hat keine eigenen Versionen — eine ihrer Viertelstunden trägt eine spätere Version. Die Viertelstunden zeigen sie."
+    },
+    "beispiele": {
+     "keine_quelle": {
+      "fall": "MS-21 Gas Heizung Verwaltung, Oktober 2026",
+      "satz": "Keine Quelle: MS-21 Gas Heizung Verwaltung hatte in diesem Zeitraum keine führende Quelle — es gibt keine Zahl, auch keine 0."
+     },
+     "quelle_teilweise": {
+      "fall": "MS-16 Netzbezug Lindach, Monat Oktober 2026 (Bindung seit 15.10.2026)",
+      "satz": "Die Quelle deckt den Zeitraum nur zum Teil: Netzzähler K-11 (GR-10) gilt seit 15.10.2026 — die gespeicherte Zahl gehört nicht ganz dieser Messstelle."
+     },
+     "anteil_nicht_gespeichert": {
+      "fall": "MS-01 Netzbezug Halle 1, Viertelstunde (Vorzeichen-Kanal)",
+      "satz": "Die Quelle liest nur den positiven Anteil von Wirkenergie Bezug (K-3); eine Menge je Anteil ist nicht gespeichert."
+     },
+     "berechnet": {
+      "fall": "MS-15 Halle 2 nicht zugeordnet, Stunde",
+      "satz": "Für eine berechnete Messstelle gibt es keine Stundenwerte — Viertelstunde, Tag, Monat und Jahr stehen in den Werten."
+     },
+     "noch_nicht_gebildet": {
+      "fall": "MS-06, Monat Oktober 2026, gelesen am 20.10.2026",
+      "satz": "Oktober 2026 ist noch nicht gebildet — der Wert entsteht nach dem Ende des Zeitraums (Monatslauf am 01.11.2026)."
+     },
+     "ohne_menge_gespeichert": {
+      "fall": "ein endgültiger Tag von vor AP-08 IP-5",
+      "satz": "Dieser Tag ist ohne Menge gespeichert (Stand vor der Umstellung) — Zustand und Verlauf sind bekannt, die Zahl nicht."
+     },
+     "version_nicht_gespeichert": {
+      "fall": "MS-12, Oktober 2026, ?version=3",
+      "satz": "Version 3 ist für diesen Zeitraum nicht gespeichert; der neueste Stand ist Version 2."
+     },
+     "version_nicht_gebildet": {
+      "fall": "MS-12, Stunde 10:00–11:00 am 31.10.2026, ?version=1",
+      "satz": "Eine Stunde hat keine eigenen Versionen — eine ihrer Viertelstunden trägt eine spätere Version. Die Viertelstunden zeigen sie."
+     }
+    }
+   },
+   "eingang_text": "Acht Beispiele aus Ahrenberg, je eines je Grund.",
+   "schritte": [
+    "Die Karte zeigt „—“, darunter den Satz des Grundes (Feld `grund` → Satz des Vertrags mit den Feldern der Antwort: Quelle, Anteil, Periode, Version).",
+    "MS-21 (Gas, keine Datenquelle): „— · keine Werte“ + „Keine Quelle: MS-21 Gas Heizung Verwaltung hatte in diesem Zeitraum keine führende Quelle — es gibt keine Zahl, auch keine 0.“ Dazu der Weg „Ablesung eintragen“ (AP-09), sobald AP-09 IP-7 gebaut ist.",
+    "MS-16 Oktober (Bindung seit 15.10.): „—“ + „Die Quelle deckt den Zeitraum nur zum Teil: Netzzähler K-11 (GR-10) gilt seit 15.10.2026 — die gespeicherte Zahl gehört nicht ganz dieser Messstelle.“ (W5: die Referenz erwartet 9 100 kWh „ab 15.10.2026“ — Befund an AP-08).",
+    "Oktober am 20.10.: „—“ + „Oktober 2026 ist noch nicht gebildet — der Wert entsteht nach dem Ende des Zeitraums (Monatslauf am 01.11.2026).“ — die Tage bis 19.10. stehen darunter (vorläufig).",
+    "Kein Grund ist eine Störung; kein Satz nennt eine Ursache, die kein Modul geliefert hat."
+   ],
+   "erwartet": {
+    "saetze_anzahl": 8,
+    "strich_plus_satz": true,
+    "ursache_erfunden": false
+   },
+   "nachweis": null,
+   "anzeige": "— · keine Werte · Keine Quelle: MS-21 Gas Heizung Verwaltung hatte in diesem Zeitraum keine führende Quelle — es gibt keine Zahl, auch keine 0.",
+   "annahmen": [
+    "Die acht Sätze sind der Vorschlag dieses Konzepts (E11); ihr Wortlaut wird in IP-1 mit `copy.test.ts` und den Vektoren festgezurrt."
+   ],
+   "quelle_faelle": [
+    "ist/D (Wo die Kette abbricht)",
+    "AP-08 IP-9",
+    "AP-04 E8"
+   ],
+   "flaeche": "Werte-Karte (E11, IP-6)"
+  },
+  {
+   "id": "O16",
+   "familie": "widerspruch",
+   "abnahme": null,
+   "titel": "W5 als Fall — Werk Lindach, Oktober 2026: die Werte-Route antwortet für MS-16 „quelle_teilweise“ ohne Zahl (Bindung seit 15.10. beginnt im Schritt), Referenzdatei, AP-10 F8 und AP-12 B15 erwarten „9 100 kWh · ab 15.10.2026“ — die Fläche zeigt die Route und den Grund; die Regel gehört AP-08",
+   "geltung": "Werk Lindach › Messstellen › MS-16 › Werte",
+   "periode": "Monat 2026-10",
+   "zweck": "AP-13 zeigt, was das Modul liefert — auch dort, wo Vorgänger etwas anderes erwartet haben. `MessstelleWerteRegeln.deckung` gibt `quelle_teilweise`, sobald eine Bindung nach dem Schrittbeginn anfängt (Zeilen 389-392); der Ergebnis-Vertrag kennt für genau diesen Fall das Kennzeichen „Anfang nicht gemessen“ (Rang 20, Fehlbestand) mit Zustand „unvollständig“. Welche der beiden Aussagen gilt, entscheidet AP-08 (Befund §6.6) — nicht die Fläche.",
+   "gegeben": {
+    "bindung_ab": "2026-10-15",
+    "schritt": {
+     "von": "2026-10-01",
+     "bis": "2026-11-01"
+    },
+    "route_grund": "quelle_teilweise",
+    "route_menge": null,
+    "referenz_erwartung": {
+     "MS-16": 9100,
+     "kennzeichen": "ab 15.10.2026"
+    },
+    "tage_gedeckt": 17,
+    "vertrag_kennzeichen_vorhanden": "Anfang nicht gemessen (kein Stand an der Periodengrenze) — Rang 20"
+   },
+   "eingang_text": "Peter öffnet MS-16 › Werte, Oktober 2026.",
+   "schritte": [
+    "Heute (Route): Karte „—“ und mit E11 der Satz „Die Quelle deckt den Zeitraum nur zum Teil: Netzzähler K-11 (GR-10) gilt seit 15.10.2026 — …“; die 17 Tage vom 15.10. bis 31.10. stehen als Tagesliste darunter, jeder Tag vollständig.",
+    "Erwartung der Vorgänger: „9 100 kWh · unvollständig · ab 15.10.2026“ (Referenzdatei `oktober_2026_beschreibung`, AP-10 F8 Kennzeichen „Lindach ab 15.10.2026“, AP-12 B15 „Netzbezug 51 500 kWh (ab 15.10.2026)“).",
+    "AP-13 baut keine Brücke (kein Summieren der 17 Tage in der Fläche — das wäre die Rechenregel, die das Paket nicht erfindet); die Fläche zeigt die Antwort der Route mit Grund, und der Befund geht an AP-08 IP-9 (§6.6): entweder liefert die Route den Monat als „unvollständig · Anfang nicht gemessen“, oder die Referenzfälle F8/B15 werden berichtigt.",
+    "Bis zur Klärung ist das Übersichts-Kennzeichen „Lindach ab 15.10.2026“ (O2) nur dann sichtbar, wenn die Bilanz-Route AN-3 für Oktober eine Zahl liefert — sonst zeigt der Baustein „mindestens 165 300 kWh (2 von 3 Systemen, AN-3 fehlt)“ (AP-10 F8 Schritt 3)."
+   ],
+   "erwartet": {
+    "karte_heute": "— · Die Quelle deckt den Zeitraum nur zum Teil: Netzzähler K-11 (GR-10) gilt seit 15.10.2026 — die gespeicherte Zahl gehört nicht ganz dieser Messstelle.",
+    "tage_darunter": 17,
+    "flaeche_summiert": false,
+    "befund_an": "AP-08 IP-9 (Deckungsregel) — W5"
+   },
+   "nachweis": null,
+   "anzeige": "MS-16 · Oktober 2026 · — (quelle_teilweise: Netzzähler K-11 seit 15.10.2026) · 17 Tage darunter · Befund W5 an AP-08",
+   "annahmen": [
+    "Ob der Monatslauf (BerechnetePeriodenLauf/TagRegeln) für Lindach einen Oktober-Periodenstand bildet, ist nicht geprüft (kein Testlauf in Phase 2); der Fall folgt allein der Deckungsregel der Route."
+   ],
+   "quelle_faelle": [
+    "MessstelleWerteRegeln.java:389-392",
+    "AP-10 F8",
+    "AP-12 B15",
+    "ergebnis-zustand.md §2 Rang 20"
+   ],
+   "flaeche": "Werte-Karte (W5)"
+  },
+  {
+   "id": "O17",
+   "familie": "telefon",
+   "abnahme": null,
+   "titel": "Am Telefon (375 px) ein Weg: Unternehmen (5 Kacheln) → Werk Ahrenberg (heute 2 Kacheln = Reiter, nach IP-2 4 Kacheln) → Messstellen → MS-06 → Werte Oktober → Versionen — kein Querlauf, jede Tippfläche 44 px, Erklärendes als Aufklapper",
+   "geltung": "Ebene → Welt → Zahl → Nachweis (Murat Demirci, Pixel 5)",
+   "periode": "Monat 2026-10",
+   "zweck": "E14 = A: Funktionsgleichheit; die Struktur unterscheidet sich nur, wo sie es muss (PHONE_MAX_PX 720, CSS zuerst). Die Kacheln kommen aus dem Read-Model (AP-01 E4 = A, Kachel erst mit Seite); AP-13 hängt Gebäude und Anlagen des Standorts ein (IP-2) und misst den GANZEN Weg als einen Playwright-Lauf (IP-13) — heute prüft jede Spec nur eine Fläche.",
+   "gegeben": {
+    "bereiche_u": [
+     "uebersicht",
+     "standorte",
+     "messstellen",
+     "kennzahlen",
+     "berichte"
+    ],
+    "kacheln_u": [
+     "uebersicht",
+     "standorte",
+     "messstellen",
+     "kennzahlen",
+     "berichte"
+    ],
+    "leiste_u": true,
+    "bereiche_st1": [
+     "uebersicht",
+     "gebaeude",
+     "anlagen",
+     "messstellen"
+    ],
+    "kacheln_st1_heute": [
+     "uebersicht",
+     "messstellen"
+    ],
+    "leiste_st1_heute": false,
+    "kacheln_st1_nach_ip2": [
+     "uebersicht",
+     "gebaeude",
+     "anlagen",
+     "messstellen"
+    ],
+    "leiste_st1_nach_ip2": true,
+    "kacheln_st2_nach_ip2": [
+     "uebersicht",
+     "gebaeude",
+     "messstellen"
+    ],
+    "leiste_st2_nach_ip2": true,
+    "tippflaeche_px": 44,
+    "querlauf_px": 0
+   },
+   "eingang_text": "Murat (Bedienberechtigt, Werk Ahrenberg) meldet sich am Telefon an; Startansicht-Weiche: Zugriff nur auf einen von zwei Standorten → Standort-Übersicht als Teilansicht.",
+   "schritte": [
+    "Landung: Standort-Übersicht Werk Ahrenberg (Teilansicht) — Leiste mit vier Kacheln Übersicht · Gebäude · Anlagen · Messstellen (nach IP-2; heute Reiter, weil nur zwei Bereiche eine Seite haben).",
+    "Kachel „Messstellen“ → Register als Karten (dieselben Wörter wie die Tabelle) → Karte MS-06 → Messstellen-Seite; Abschnitt „Werte“ liegt unter dem Kopf, das Diagramm im ersten Bildschirm, Zeitraum-Leiste klebt (HistorieMobil-Muster), Erklärendes (Kennzeichen, Grund) als Aufklapper.",
+    "Tipp auf einen Balken öffnet die Schritt-Karte (Tipp statt Hover); „Versionen (2)“ öffnet den gestapelten Dialog im Vollbild (WerteDialog-Muster).",
+    "Messung (IP-13): `scrollWidth − clientWidth = 0` auf jeder der fünf Flächen des Wegs bei 375 px und 1440 px; Tippflächen ≥ 44 px (verlaufMobil-Wächter); keine Konsolenfehler.",
+    "Ein Unternehmen ohne „Messen & Auswerten“ (reiner Betriebskunde) hat auf keiner Ebene drei Kacheln — Reiter wie heute (O18)."
+   ],
+   "erwartet": {
+    "weg": [
+     "Standort-Übersicht (Teilansicht)",
+     "Messstellen (Karten)",
+     "MS-06 (Seite, Werte)",
+     "Werte Oktober 2026 (Karte + Verlauf)",
+     "Versionen (Dialog)"
+    ],
+    "kacheln_u": 5,
+    "kacheln_st1": 4,
+    "querlauf": 0
+   },
+   "nachweis": null,
+   "anzeige": "375 px · Werk Ahrenberg (4 Kacheln) → Messstellen → MS-06 → Werte Oktober 2026 → Versionen · kein Querlauf",
+   "annahmen": [],
+   "quelle_faelle": [
+    "AP-01 E1/E4",
+    "ebenenNav.ts",
+    "HistorieMobil-Muster",
+    "e2e/*.spec.ts (375/1440)"
+   ],
+   "flaeche": "Telefon-Weg (E14, IP-2, IP-13)"
+  },
+  {
+   "id": "O18",
+   "familie": "bestand",
+   "abnahme": null,
+   "titel": "Bestandsschutz (E2 = A): das Cockpit von Halle 1 zeigt weiter „Netzbezug heute“ aus den Rollups (AP-07 W11: 1 212 kWh neben MS-01 1 209 kWh sind zwei Abtastungen, kein Fehler) und bekommt nur den Weg „Messstellen dieser Anlage · 9 von 9 liefern Daten“; ein reiner Betriebskunde sieht keine Kachel, keinen Baustein, kein neues Wort",
+   "geltung": "Anlage Halle 1 › Cockpit; Betriebskunde ohne „Messen & Auswerten“",
+   "periode": "heute",
+   "zweck": "Programm-Vorgabe: heutige Verläufe, Cockpit, Erlöse und Pushes bleiben unverändert, bis der Kunde selbst bestätigt. E2 = A: das Cockpit tauscht keine Zahl; der Wechsel auf Messstellen-Zahlen ist der Bestätigungsschritt der Bestandsübernahme (AP-14), nicht eine Fläche dieses Pakets. E1 = A: Bestandsflächen lesen Bestand, UEMS-Flächen lesen die Messstellen-Welt — nie beides in einem Bild.",
+   "gegeben": {
+    "cockpit_leiste": [
+     "Netzbezug jetzt",
+     "PV jetzt",
+     "Erzeugung heute",
+     "Verbrauch heute",
+     "Netz heute",
+     "Vermiedene Spitze"
+    ],
+    "cockpit_quelle": "telemetry_rollup_15m (Europe/Berlin fest)",
+    "ap07_w11_beispiel": {
+     "cockpit_netzbezug_heute_kwh": 1212,
+     "ms01_kwh": 1209
+    },
+    "register_an1": {
+     "erfuellt": 9,
+     "gesamt": 9,
+     "text": "9 von 9 Messstellen liefern Daten"
+    },
+    "betriebskunde_bereiche_u": [
+     "uebersicht"
+    ],
+    "betriebskunde_bereiche_st": [
+     "uebersicht",
+     "anlagen"
+    ],
+    "betriebskunde_leiste": false
+   },
+   "eingang_text": "Jonas öffnet das Cockpit von Halle 1; daneben ein Betriebskunde mit drei Anlagen an einem Standort ohne Messfunktion.",
+   "schritte": [
+    "Cockpit Halle 1: Kennzahlen-Leiste, Bühne mit Energiefluss, Verlauf-Reiter Messwerte · Erlöse · … zeichengleich zu heute (Regressionstest IP-14).",
+    "Neu nur EIN Weg unter der Bühne: „Messstellen dieser Anlage · 9 von 9 liefern Daten → Werte“ (Register-Aggregat, gefiltert auf AN-1; MS-01 … MS-09) — kein Zahlentausch, keine zweite Leiste.",
+    "Zeigt das Cockpit „Netzbezug heute 1 212 kWh“ und MS-01 › Werte „heute — noch nicht gebildet · gestern 1 209 kWh“, steht beides in seiner Welt mit seiner Quelle; die Hilfe erklärt „zwei Abtastungen desselben Zählers“ (AP-07 W11) — kein Abgleich, keine Warnung.",
+    "Betriebskunde: Bereiche Unternehmen = [Übersicht], Standort = [Übersicht, Anlagen] → keine Leiste (unter drei Kacheln), Reiter Übersicht · Messwerte · Erlöse wie heute; kein UEMS-Baustein, kein UEMS-Wort auf seinen Flächen (copy-Wächter: `UEMS_*`-Konstanten nur auf UEMS-Flächen).",
+    "Die Umstellung des Cockpits auf Messstellen-Zahlen ist in AP-14 (Bestandsübernahme) ein eigener Kasten mit Bestätigung je Anlage — AP-13 reserviert nur den Weg."
+   ],
+   "erwartet": {
+    "cockpit_zahl_getauscht": false,
+    "neuer_weg": "Messstellen dieser Anlage · 9 von 9 liefern Daten → Werte",
+    "betriebskunde_neu": "nichts",
+    "abgleich_warnung": false
+   },
+   "nachweis": null,
+   "anzeige": "Halle 1 · Cockpit unverändert · Weg: Messstellen dieser Anlage (9 von 9 liefern Daten) · Betriebskunde: nichts Neues",
+   "annahmen": [
+    "Die Zahlen 1 212 / 1 209 kWh sind das Beispiel aus AP-07 W11, nicht aus der Referenzdatei."
+   ],
+   "quelle_faelle": [
+    "AP-07 W11",
+    "AP-01 E4",
+    "Programm-Vorgabe Bestandskunden"
+   ],
+   "flaeche": "Cockpit und Betriebskunde (E2, IP-14)"
+  },
+  {
+   "id": "O19",
+   "familie": "ablauf",
+   "abnahme": null,
+   "titel": "Nach den Fristen (02.11.2036, AP-12 B16): MS-12 › Werte › Oktober 2026 antwortet 404 `wert_nicht_mehr_gespeichert` — die Karte sagt „nicht mehr gespeichert (Aufbewahrung 10 Jahre)“ und springt zu Berichtsstand Nr. 1 vom 10.11.2026, der die Zahl festhält; der Verlauf ab 2027 bleibt lesbar",
+   "geltung": "Werk Ahrenberg › Messstellen › MS-12 › Werte",
+   "periode": "Monat 2026-10 (gelesen am 2036-11-02)",
+   "zweck": "Die Fläche zeigt den Ablauf einer Frist als Grund, nie als leere Stelle: 404 mit Satz der Route (AP-12 IP-16), und den Sprung in den Bericht, der den Wert als Kopie trägt (AP-12 E1 = A). Nichts wird aus dem Abzug in die Werte-Fläche zurückgeschrieben — der Bericht bleibt der Ort der alten Zahl.",
+   "gegeben": {
+    "zeilen_weg_ab": "2036-10-31",
+    "rohwerte_weg_ab": "2027-01-29",
+    "gelesen_am": "2036-11-02",
+    "antwort": "404 wert_nicht_mehr_gespeichert",
+    "berichtsstand": {
+     "kennung": "BR-2026-0001",
+     "nr": 1,
+     "freigegeben": "2026-11-10T09:02:00+01:00",
+     "wert_im_abzug": 6100,
+     "version": 1
+    },
+    "nr2": {
+     "wert": 6040,
+     "version": 2,
+     "freigegeben": "2026-11-16T14:20:00+01:00"
+    }
+   },
+   "eingang_text": "Claudia öffnet am 02.11.2036 MS-12 und wählt Oktober 2026.",
+   "schritte": [
+    "Zeit-Leiste: Oktober 2026 wählbar (die Leiste begrenzt nur, wo es gewusst wird); Antwort 404 `wert_nicht_mehr_gespeichert`.",
+    "Karte: „—“ + „Der Wert vom Oktober 2026 wird nicht mehr gespeichert (Aufbewahrung 10 Jahre). Der Berichtsstand Nr. 1 vom 10.11.2026 hält ihn fest.“ (Satz der Route, AP-12 §5.8) + Sprung „Berichtsstand Nr. 1 öffnen“ → BR-2026-0001 Nr. 1, Nachweis MS-12: 6 100 kWh, Version 1; Nr. 2: 6 040 kWh, Version 2.",
+    "Der Verlauf zeigt für Oktober 2026 keine Kurve und keinen Strich als Linie — die Fläche der Lücke trägt den Satz „nicht mehr gespeichert“; ab November 2026 (weg ab 30.11.2036) ist der Verlauf noch da.",
+    "Versionen-Dialog: Version 2 (Versionstabelle, unbefristet) ist lesbar, Version 1 nicht (Fristen-Asymmetrie AP-12 B16) — die Fläche sagt es: „Version 1 wird nicht mehr gespeichert; sie steht im Berichtsstand Nr. 1.“"
+   ],
+   "erwartet": {
+    "karte": "— · Der Wert vom Oktober 2026 wird nicht mehr gespeichert (Aufbewahrung 10 Jahre). Der Berichtsstand Nr. 1 vom 10.11.2026 hält ihn fest.",
+    "sprung": "BR-2026-0001 Nr. 1 › Nachweis MS-12 (6 100 kWh, Version 1)",
+    "verlauf_oktober": "Fläche mit Satz, keine Linie",
+    "version_1_lesbar": false,
+    "version_2_lesbar": true
+   },
+   "nachweis": null,
+   "anzeige": "MS-12 · Oktober 2026 · am 02.11.2036: nicht mehr gespeichert (Aufbewahrung 10 Jahre) → Berichtsstand Nr. 1 vom 10.11.2026: 6 100 kWh, Version 1",
+   "annahmen": [],
+   "quelle_faelle": [
+    "AP-12 B16",
+    "AP-12 §5.8",
+    "AP-07 E6/E7"
+   ],
+   "flaeche": "Werte nach den Fristen (Z-Regeln, IP-6)"
+  }
+ ]
+}

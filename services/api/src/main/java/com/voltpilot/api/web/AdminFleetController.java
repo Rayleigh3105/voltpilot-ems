@@ -10,12 +10,16 @@ import com.voltpilot.api.repo.AdminFleetRepository.EdgeReleaseRow;
 import com.voltpilot.api.repo.AdminFleetRepository.EdgeVersionRow;
 import com.voltpilot.api.repo.AdminFleetRepository.ExportCeiling;
 import com.voltpilot.api.repo.AdminFleetRepository.FleetSiteRow;
+import com.voltpilot.api.repo.AdminFleetRepository.FleetBoxRow;
+import com.voltpilot.api.repo.AdminFleetRepository.LeadFacts;
 import com.voltpilot.api.repo.AdminFleetRepository.ForecastRow;
 import com.voltpilot.api.repo.AdminFleetRepository.PvPeak;
 import com.voltpilot.api.repo.AdminFleetRepository.SourceCounts;
 import com.voltpilot.api.repo.AdminFleetRepository.UpdateStatusRow;
+import com.voltpilot.api.uems.GrenzeAufloesung;
 import com.voltpilot.api.web.dto.AdminFleetDto;
 import com.voltpilot.api.web.dto.AdminFleetDto.FleetEdgeDto;
+import com.voltpilot.api.web.dto.AdminFleetDto.FleetBoxDto;
 import com.voltpilot.api.web.dto.AdminFleetDto.FleetFeedInDto;
 import com.voltpilot.api.web.dto.AdminFleetDto.FleetForecastDto;
 import com.voltpilot.api.web.dto.AdminFleetDto.FleetKwpDto;
@@ -29,6 +33,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -58,8 +63,8 @@ import org.springframework.web.bind.annotation.RestController;
  * Kunden-Endpunkte bleiben unangetastet auf dem RLS-Pfad - hier wird nichts
  * aufgeweicht und nichts neu erfunden.
  *
- * <p>Die Oberfläche bleibt dieselbe wie in Stufe 1; nur die Datenquelle
- * wechselt.
+ * <p>Die Anlagen-Fakten bleiben gruppiert; additiv reist jede aktive Box mit
+ * ihrem eigenen Verbindungs- und Versionsstand.
  */
 @RestController
 @RequestMapping("/api/v1/admin/fleet")
@@ -103,10 +108,17 @@ public class AdminFleetController {
         this.forecastModels = forecastModels;
     }
 
+    // Lesend ohne eigene Kennung: bestehender Plattform-Zaun, einschließlich Unterstützungsauswahl und Ende.
     @GetMapping
     public AdminFleetDto fleet() {
         Instant now = Instant.now();
         List<FleetSiteRow> siteRows = fleet.sites();
+
+        Map<UUID, List<FleetBoxRow>> boxes = new HashMap<>();
+        for (FleetBoxRow box : fleet.boxes()) {
+            boxes.computeIfAbsent(box.siteId(), ignored -> new ArrayList<>()).add(box);
+        }
+        Map<UUID, LeadFacts> leadFacts = fleet.leadFactsPerSite();
 
         Map<UUID, DeviceStats> deviceStats = fleet.deviceStatsPerSite();
         Map<UUID, Instant> lastPlan = fleet.lastPlanPerSite(now.minus(PLAN_LOOKBACK));
@@ -120,7 +132,7 @@ public class AdminFleetController {
         Set<UUID> withBattery = fleet.sitesWithBattery();
         Map<UUID, BigDecimal> pvCapacity = fleet.pvCapacityPerSite();
         Map<UUID, PvPeak> pvPeak = fleet.pvPeakPerSite(now.minus(PV_PEAK_LOOKBACK));
-        Map<UUID, BigDecimal> maxFeedIn = fleet.maxFeedInPerSite();
+        Map<UUID, GrenzeAufloesung.Wirksam> maxFeedIn = fleet.maxFeedInPerSite(now);
         Map<UUID, ExportCeiling> feedInCeiling = fleet.feedInCeilingPerSite(now.minus(FEED_IN_LOOKBACK));
 
         // Die UNTERSTE Präzedenz-Stufe (Umgebungs-Vorgabe, validiert - eine
@@ -135,13 +147,26 @@ public class AdminFleetController {
         List<FleetSiteDto> out = new ArrayList<>(siteRows.size());
         for (FleetSiteRow site : siteRows) {
             UUID id = site.siteId();
+            List<FleetBoxRow> siteBoxes = boxes.getOrDefault(id, List.of());
+            LeadFacts facts = leadFacts.get(id);
+            UUID leading = com.voltpilot.api.uems.FuehrendeBoxAbleitung.ableiten(
+                    siteBoxes.stream().map(FleetBoxRow::deviceId).toList(),
+                    facts == null ? null : facts.batteryDeviceId(),
+                    facts == null ? null : facts.storedDeviceId()).box();
+            List<FleetBoxDto> boxDtos = siteBoxes.stream().map(box -> new FleetBoxDto(
+                    box.deviceId(), box.externalRef(), box.name(),
+                    leading == null ? null : leading.equals(box.deviceId()),
+                    box.lastSeenAt(), edgeDto(box.edge()), updateDto(box.update()), box.supports())).toList();
             DeviceStats stats = deviceStats.get(id);
             int deviceCount = stats == null ? 0 : stats.deviceCount();
             int onlineCount = stats == null ? 0 : stats.onlineCount();
             int waitingCount = stats == null ? 0 : stats.waitingCount();
 
             FleetKwpDto kwp = FleetPflege.kwp(pvCapacity.get(id), pvPeak.get(id));
-            FleetFeedInDto feedIn = FleetPflege.feedIn(maxFeedIn.get(id), feedInCeiling.get(id));
+            GrenzeAufloesung.Wirksam einspeisung = maxFeedIn.get(id);
+            FleetFeedInDto feedIn = FleetPflege.feedIn(
+                    einspeisung == null ? null : einspeisung.einspeisungKw(),
+                    einspeisung == null ? null : einspeisung.quelleEinspeisung(), feedInCeiling.get(id));
             List<FleetForecastDto> siteForecast = forecast.getOrDefault(id, List.of());
             boolean batteryWithoutDevice = unlinkedBattery.contains(id);
 
@@ -157,6 +182,7 @@ public class AdminFleetController {
                     site.plantKind(),
                     site.netzladenErlaubt(),
                     site.tarifArt(),
+                    boxDtos,
                     deviceCount,
                     onlineCount,
                     waitingCount,
@@ -167,11 +193,8 @@ public class AdminFleetController {
                     batteryWithoutDevice,
                     counts == null ? null : new FleetSourcesDto(
                             counts.total(), counts.ok(), counts.stale(), counts.never()),
-                    version == null ? null : new FleetEdgeDto(
-                            version.coreVersion(), version.paletteVersion(), version.reportedAt()),
-                    ota == null ? null : new FleetUpdateDto(
-                            ota.version(), ota.backend(), ota.currentVersion(), ota.targetVersion(),
-                            ota.state(), ota.reason(), ota.lastKnownGood(), ota.reportedAt()),
+                    edgeDto(version),
+                    updateDto(ota),
                     control.get(id),
                     curtailment.get(id),
                     kwp,
@@ -186,7 +209,18 @@ public class AdminFleetController {
         List<AdminFleetDto.FleetReleaseDto> register = releases.stream()
                 .map(r -> new AdminFleetDto.FleetReleaseDto(r.releaseSeq(), r.version()))
                 .toList();
-        return new AdminFleetDto(out, register);
+        return new AdminFleetDto(out, register, fleet.unterstuetzungBis(), fleet.unterstuetzungStandorte());
+    }
+
+    private static FleetEdgeDto edgeDto(EdgeVersionRow version) {
+        return version == null ? null : new FleetEdgeDto(
+                version.coreVersion(), version.paletteVersion(), version.reportedAt());
+    }
+
+    private static FleetUpdateDto updateDto(UpdateStatusRow update) {
+        return update == null ? null : new FleetUpdateDto(
+                update.version(), update.backend(), update.currentVersion(), update.targetVersion(),
+                update.state(), update.reason(), update.lastKnownGood(), update.reportedAt());
     }
 
     /**

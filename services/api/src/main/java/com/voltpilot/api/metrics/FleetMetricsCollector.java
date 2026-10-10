@@ -16,11 +16,14 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -118,6 +121,13 @@ public class FleetMetricsCollector {
     private final FleetMetricsRepository repo;
     private final Clock clock;
 
+    /**
+     * Der interne Dauerläufer (AP-14 IP-18, E11) — seine Anlagen zählen in KEINER Flottenkennzahl:
+     * weder im Nenner {@link #SITES} noch mit einer eigenen Zeile noch mit ihrer Gebotszone. Leer =
+     * kein Dauerläufer, alles wie vorher. Siehe {@link Dauerlaeufer}.
+     */
+    private final Optional<UUID> dauerlaeufer;
+
     private final MultiGauge planAge;
     private final MultiGauge telemetryAge;
     private final MultiGauge planState;
@@ -143,8 +153,9 @@ public class FleetMetricsCollector {
     private volatile boolean failing;
 
     @Autowired
-    public FleetMetricsCollector(FleetMetricsRepository repo, MeterRegistry registry) {
-        this(repo, registry, Clock.systemUTC());
+    public FleetMetricsCollector(FleetMetricsRepository repo, MeterRegistry registry,
+            @Value("${" + Dauerlaeufer.EIGENSCHAFT + ":}") String dauerlaeufer) {
+        this(repo, registry, Clock.systemUTC(), Dauerlaeufer.kennung(dauerlaeufer));
     }
 
     /**
@@ -154,8 +165,15 @@ public class FleetMetricsCollector {
      * daran ist {@code BrokerAuthzReloader} schon einmal beim Start abgestürzt.
      */
     FleetMetricsCollector(FleetMetricsRepository repo, MeterRegistry registry, Clock clock) {
+        this(repo, registry, clock, Optional.empty());
+    }
+
+    /** Test-Naht mit steuerbarer Uhr und Dauerläufer. */
+    FleetMetricsCollector(FleetMetricsRepository repo, MeterRegistry registry, Clock clock,
+            Optional<UUID> dauerlaeufer) {
         this.repo = repo;
         this.clock = clock;
+        this.dauerlaeufer = dauerlaeufer;
 
         this.planAge = MultiGauge.builder(PLAN_AGE)
                 .description("Alter des juengsten Optimierer-Laufs; fehlt, wenn unbekannt"
@@ -243,6 +261,9 @@ public class FleetMetricsCollector {
         // verschwände die Metrik genau dann, wenn sie gebraucht wird.
         Set<String> fleetZones = new LinkedHashSet<>();
         for (FleetMetricsRepository.SiteRow row : siteRows) {
+            if (dauerlaeufer.isPresent() && dauerlaeufer.get().equals(row.tenantId())) {
+                continue;
+            }
             collectedSites.add(FleetMetrics.evaluate(
                     row.siteId(),
                     row.tenantId(),

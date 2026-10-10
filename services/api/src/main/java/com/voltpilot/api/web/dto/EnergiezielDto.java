@@ -1,0 +1,162 @@
+package com.voltpilot.api.web.dto;
+
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+/**
+ * Das Energieziel und sein Ziel-Stand (UEMS AP-18 IP-6, Z1–Z4; Vertrag {@code verbesserung.md} §4). Zahlen sind
+ * Dezimaltexte wie im Vergleich der Bezugsbasis.
+ */
+public final class EnergiezielDto {
+
+    private EnergiezielDto() {}
+
+    /** {@code POST /api/v1/energieziele}: Kennzahl, Zielwert in Prozent, Zielperiode {@code JJJJ-MM/JJJJ-MM}. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Anlegen(UUID kennzahl, BigDecimal zielwertProzent, String zielperiode, String wortlaut,
+            String begruendung, String verantwortlich) {}
+
+    /** {@code PUT …/{id}}: Wortlaut und/oder das Ende der Zielperiode (nur nach hinten), immer mit Begründung. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Aendern(String wortlaut, String zielperiode, String begruendung) {}
+
+    /** {@code PUT …/{id}/verantwortlicher}: ein aktiver Benutzer des Kundenbereichs ({@code sub}) mit Begründung. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Verantwortlicher(String benutzer, String begruendung) {}
+
+    /** {@code POST …/{id}/beenden}: der Tag (ohne: heute) und die Begründung. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Beenden(LocalDate zum, String begruendung) {}
+
+    /**
+     * {@code POST …/{id}/bewerten} und {@code …/bewertung/beantragen} (Z4, Z5): das Ergebnis
+     * {@code erreicht · verfehlt · nicht_bewertbar} und die Begründung (10–500 Zeichen).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Bewerten(String ergebnis, String begruendung) {}
+
+    /**
+     * {@code POST …/{id}/anstoesse/{aid}/antwort} (IP-17, Z5): {@code bleibt} mit Begründung (10–500 Zeichen) ·
+     * {@code neu_bewertet} mit {@code ergebnis} und Begründung (die Bewertung wie {@code …/bewerten}; nur am offenen Ziel —
+     * eine gestellte Bewertung wird nie zurückgenommen).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record AnstossAntwort(String antwort, String begruendung, String ergebnis) {}
+
+    /** {@code …/bewertung/freigeben} (Begründung wahlfrei) und {@code …/bewertung/ablehnen} (Begründung Pflicht). */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Entscheid(String begruendung) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Kennzahl(UUID id, String kennzeichen, String name) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Basis(UUID id, String kennzeichen, int fassung) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Person(String sub, String name) {}
+
+    /** Eine Zeile des Protokolls {@code energieziel_aenderung}. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Eintrag(String art, Map<String, Object> alt, Map<String, Object> neu, String begruendung,
+            String person, Instant am) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Energieziel(UUID id, String kennzeichen, Kennzahl kennzahl, Basis bezugsbasis,
+            String zielwertProzent, String zielperiode, String wortlaut, String begruendung, Person verantwortlich,
+            UUID standortId, String zustand, LocalDate angelegtAm, LocalDate beendetZum, String beendetGrund,
+            String ergebnis, Frist frist, Bewertung bewertung, List<Anstoss> anstoesse, List<Eintrag> verlauf) {}
+
+    /**
+     * F1 (Operation {@code frist}): Termin = letzter Tag der Zielperiode; {@code faellig} = {@code bewertung_faellig}
+     * mit {@code seit_tagen} (0 am Termintag), solange das Ziel offen und der letzte Monat endgültig ist — beim Abruf
+     * abgeleitet, nie gespeichert.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Frist(LocalDate termin, String faellig, Integer seitTagen) {}
+
+    /**
+     * Z5: die Bewertung — {@code status} {@code beantragt · bewertet · abgelehnt}; die Kopie des Ziel-Stands zum
+     * Bewertungstag (kanonischer Text) mit Prüfsumme; bei Vier-Augen die zweite Person. Ohne Bewertung {@code null}.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Bewertung(String status, String ergebnis, String begruendung, String vorschlag, boolean vieraugen,
+            Person person, Instant am, Person entscheidung, Instant entschiedenAm, String entscheidungsBegruendung,
+            String kopie, String pruefsumme, FestgehaltenerStand stand) {}
+
+    /**
+     * Konzept Verbessern, Entscheid 11: der Ziel-Stand der Kopie zum Bewertungstag, lesbar statt als Rohtext - Σ
+     * gemessen und Σ erwartet in der Einheit der Kopie, Δ, Richtung, Urteil, Band, „x von y“ und die nicht gezählten
+     * Monate mit Grund. Bewertete Energieziele zeigen ihn oben; der Live-Stand nur, wenn er abweicht.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record FestgehaltenerStand(LocalDate abruf, String gemessen, String erwartet, String einheit,
+            String deltaProzent, String richtung, String urteil, String bandProzent, int monateBewertbar,
+            int monateGesamt, List<Ausschluss> ausgeschlossen, String grundKeinVorschlag) {}
+
+    /**
+     * Ein Anstoß am Ziel ({@code vorgang_anstoss}, Z5): Basis beendet oder neu gefasst (Pfad 2), die Bewertung zitiert
+     * einen Monat, der eine neue Version bekam (Pfad 1, IP-17) — eine Person antwortet.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Anstoss(UUID id, String art, String anlassKennung, Instant angestossenAm, String zustand,
+            String antwort, String antwortBegruendung, Instant beantwortetAm, String beantwortetVon) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Liste(List<Energieziel> energieziele) {}
+
+    /** Ein Monat der Zielperiode: die Vergleichszeile des Bezugsbasis-Lesers und ob er endgültig ist. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Monat(String periode, boolean endgueltig, BezugsbasisVergleichDto.Monat vergleich) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Ausschluss(String monat, String grund) {}
+
+    /** Σ ÷ Σ über die bewertbaren endgültigen Monate (Operation {@code zielstand} → {@code zeitraum}). */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Summe(String gemessen, String erwartet, String deltaProzent, String bandProzent, String richtung,
+            String urteil, List<String> kennzeichen) {}
+
+    /**
+     * {@code GET …/{id}/stand} (Z3, Z4): je Monat der Zielperiode das Vergleichsergebnis, die Summe, „x von y“, die
+     * Ausschlüsse mit Grund und der Vorschlag nur bei vollständiger Periode; {@code satz} und {@code vorschlag_satz}
+     * sind die Kundensätze des Vertrags.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Stand(Energieziel energieziel, LocalDate abruf, String zielperiode, String zielwertProzent,
+            List<Monat> monate, int monateBewertbar, int monateEndgueltig, int monateSoll, String monateText,
+            boolean vollstaendig, List<Ausschluss> nichtGezaehlt, Summe summe, String vorschlag, String satz,
+            String vorschlagSatz, Kurs kurs) {}
+
+    /**
+     * Operation {@code kurs} (Vertrag §4a, Konzept Verbessern Entscheid 3): der Zwischenstand über die bisher
+     * bewertbaren Monate - {@code lage} {@code auf_kurs · knapp_dahinter · nicht_auf_kurs · noch_keine_aussage}, was
+     * das Energieziel für die bewertbaren Monate höchstens zulässt, die Lücke dazu (positiv = darüber) in der Einheit
+     * der Summe und der nötige Schnitt der offenen Monate (Näherung bei gleich großen Monaten).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record Kurs(String lage, int monateBewertbar, int monateOffen, String hoechstens, String luecke,
+            String noetigProzent, String noetigRichtung) {}
+}

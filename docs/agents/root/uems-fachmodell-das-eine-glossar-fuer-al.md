@@ -39,7 +39,9 @@ braucht:
 `zustaende.md` und `fachmodell.svg` sind erzeugt
 (`python3 docs/fachmodell/tools/build_fachmodell.py`, `--check` prüft die Aktualität). Ein
 bestehender AP-00-Text wird nie überschrieben: eine Verfeinerung kommt als Eintrag in
-`VERFEINERUNGEN` mit Paket- und Entscheid-Verweis. Zwei Prüfskripte müssen grün bleiben:
+`VERFEINERUNGEN` mit Paket- und Entscheid-Verweis, ein freier Abschnitt hinter einem Begriff
+(Summenwert, Ersatzwert/Korrektur/Widerruf) in `ABSCHNITTE_NACH` — nie von Hand in `glossar.md`,
+sonst löscht der nächste Bau ihn. Jedes Argument außer `--check` baut neu. Zwei Prüfskripte müssen grün bleiben:
 `bash docs/fachmodell/tools/check_belege.sh` (jeder Beleg zeigt auf eine existierende Datei)
 und `bash docs/fachmodell/tools/check_auswirkungen.sh` (jede genannte Tabelle existiert in den
 Migrationen). Die vollständige Pflegeregel steht in

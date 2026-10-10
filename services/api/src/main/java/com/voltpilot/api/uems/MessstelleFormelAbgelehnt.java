@@ -28,6 +28,26 @@ public final class MessstelleFormelAbgelehnt extends RuntimeException {
         return new MessstelleFormelAbgelehnt(fehler.code(), fehler.status(), satz, fakten);
     }
 
+    /** Ein Urteil über die Tage einer Fassung (AP-10 IP-3): Code und Status aus {@link MessstelleFormelRegeln.FassungFehler}. */
+    public static MessstelleFormelAbgelehnt fassung(MessstelleFormelRegeln.FassungFehler fehler, String satz,
+            Map<String, Object> fakten) {
+        return new MessstelleFormelAbgelehnt(fehler.code(), fehler.status(), satz, fakten);
+    }
+
+    /**
+     * Ein Term, dessen Anteil nicht gelesen werden kann (AP-10 IP-5): Code, Status und Kundensatz aus
+     * {@link AnteilLeseweg.Ablehnung} — dem Block {@code leseweg} des Verteilungs-Vertrags. Die Fakten
+     * nennen das Feld des Terms und, wenn die Ablehnung auf ein Paket wartet, dieses Paket.
+     */
+    public static MessstelleFormelAbgelehnt leseweg(AnteilLeseweg.Ablehnung ablehnung, String termFeld) {
+        Map<String, Object> fakten = new LinkedHashMap<>();
+        fakten.put("feld", termFeld + "." + ablehnung.feld());
+        if (ablehnung.wartetAuf() != null) {
+            fakten.put("wartet_auf", ablehnung.wartetAuf());
+        }
+        return new MessstelleFormelAbgelehnt(ablehnung.code(), ablehnung.status(), ablehnung.satz(), fakten);
+    }
+
     /** Ein Feld fehlt, hat die falsche Form oder ist nicht auflösbar (400). */
     public static MessstelleFormelAbgelehnt anfrage(String feld, String satz) {
         return new MessstelleFormelAbgelehnt("anfrage_ungueltig", 400, satz, Map.of("feld", feld));

@@ -16,10 +16,20 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 /**
- * Fleet-overview aggregates for the current tenant. Every query runs through
- * the RLS-scoped app datasource WITHOUT a tenant predicate - RLS (migration V2)
- * fences the tenant, so omitting the site filter aggregates exactly the
- * caller's fleet and never more.
+ * Fleet-overview aggregates for the caller's VISIBLE sites. Every query runs
+ * through the RLS-scoped app datasource WITHOUT a tenant predicate - RLS
+ * fences it: the Mandanten-Policy (migration V2) and, seit UEMS AP-03 IP-5,
+ * die RESTRICTIVE Policy {@code site_scope} auf {@code site}, {@code device}
+ * und {@code measurement_point} ({@code V20260915190000}).
+ *
+ * <p><b>Der Zaun hängt an DIESEN Tabellen, nicht an den Messdaten.</b> Eine
+ * Abfrage auf {@code asset}, {@code telemetry_rollup_15m}, {@code schedule},
+ * {@code flow_definition} oder {@code site_charging_config} läuft ohne
+ * {@code site}-Bindung mandantenweit. Für eine Abfrage JE ANLAGE ist das
+ * harmlos - der Controller liest daraus nur die Einträge der sichtbaren
+ * Anlagen. Eine SUMME über alle Zeilen muss dagegen selbst über {@code site}
+ * gehen, sonst trägt sie fremde Standorte (AP-03 IP-10, Regel R-A2); siehe
+ * {@link #storageTotals()}.
  */
 @Repository
 public class OverviewRepository {
@@ -191,14 +201,22 @@ public class OverviewRepository {
     }
 
     /**
-     * Fleet-wide Σ battery capacity (kWh) and Σ discharge power (kW) for the
-     * portfolio KPI row - from the v1 {@code asset} rows (no new schema).
-     * RLS-scoped; both null when the fleet has no battery (never a fake zero).
+     * Σ battery capacity (kWh) and Σ discharge power (kW) over the SICHTBAREN Anlagen for the portfolio KPI row -
+     * from the v1 {@code asset} rows (no new schema). Both null when no visible site has a battery (never a fake
+     * zero).
+     *
+     * <p><b>Der {@code JOIN site} ist der Zaun (UEMS AP-03 IP-10).</b> {@code asset} trägt nur die
+     * Mandanten-Policy, nicht {@code site_scope} (IP-5) — ohne den Join war dies die EINZIGE Zahl von
+     * {@code /overview}, die mandantenweit entstand: ein Bearbeiter EINES Standorts bekam die Speicher-Summe
+     * ALLER Standorte seines Unternehmens und konnte daraus die fremde Kapazität als Differenz ableiten
+     * (§6.2 Punkt 6, Regel R-A2). Die Summe läuft jetzt über genau die Anlagen, die auch in {@code sites}
+     * stehen. Für einen unternehmensweiten Zugriff ändert der Join nichts: {@code asset.site_id} ist NOT NULL
+     * und zeigt immer auf eine Anlage desselben Kundenbereichs (Bestandsnachweis W11).
      */
     public StorageTotals storageTotals() {
         return jdbc.queryForObject(
-                "SELECT sum(capacity_kwh) AS kwh, sum(max_discharge_kw) AS kw "
-                        + "FROM asset WHERE type = 'battery'",
+                "SELECT sum(a.capacity_kwh) AS kwh, sum(a.max_discharge_kw) AS kw "
+                        + "FROM asset a JOIN site s ON s.id = a.site_id WHERE a.type = 'battery'",
                 (rs, n) -> new StorageTotals(rs.getBigDecimal("kwh"), rs.getBigDecimal("kw")));
     }
 
@@ -219,23 +237,26 @@ public class OverviewRepository {
     }
 
     /**
-     * Device count / online count / never-seen count / newest arrival per site.
-     * Liveness derives from {@code max(received_at)} per device - the ARRIVAL
-     * time, never the observation time: a store-and-forward edge replays old
-     * observation timestamps while being perfectly online (migration
-     * V20260703000000).
+     * Device count / connected count / never-seen count / newest status arrival
+     * per site. A box is connected when its status heartbeat arrived within the
+     * five-minute window (2 x 15 seconds, raised to the existing five-minute
+     * minimum). Until a pre-existing box sends its first status heartbeat, its
+     * newest telemetry arrival is the compatibility fallback.
      */
     public Map<UUID, DeviceStats> deviceStatsPerSite() {
         Map<UUID, DeviceStats> stats = new HashMap<>();
         jdbc.query(
                 "SELECT d.site_id, count(*) AS device_count,"
-                        + " count(*) FILTER (WHERE ls.last_seen >= now() - interval '" + ONLINE_WINDOW + "')"
+                        + " count(*) FILTER (WHERE coalesce(d.device_status_seen_at, ls.last_seen)"
+                        + " >= now() - interval '" + ONLINE_WINDOW + "')"
                         + "   AS online_count,"
-                        + " count(*) FILTER (WHERE ls.last_seen IS NULL) AS waiting_count,"
-                        + " max(ls.last_seen) AS last_seen "
+                        + " count(*) FILTER (WHERE coalesce(d.device_status_seen_at, ls.last_seen) IS NULL)"
+                        + " AS waiting_count,"
+                        + " max(coalesce(d.device_status_seen_at, ls.last_seen)) AS last_seen "
                         + "FROM device d "
                         + "LEFT JOIN LATERAL (SELECT max(received_at) AS last_seen"
                         + "  FROM telemetry t WHERE t.device_id = d.id) ls ON true "
+                        + "WHERE d.ausgebaut_am IS NULL "
                         + "GROUP BY d.site_id",
                 rs -> {
                     Timestamp lastSeen = rs.getTimestamp("last_seen");
@@ -251,15 +272,19 @@ public class OverviewRepository {
     /**
      * The newest telemetry row per site (the fleet cards' live snapshot) - a
      * top-1 LATERAL per site so the (site_id, time DESC) index answers it
-     * without scanning history.
+     * without scanning history. A row of an ausgebaut box (UEMS AP-07 IP-11) stays as history but
+     * is no live snapshot - the card shows what the site's boxes report, as before the rows were
+     * kept.
      */
     public Map<UUID, LiveRow> latestLivePerSite() {
         Map<UUID, LiveRow> live = new HashMap<>();
         jdbc.query(
                 "SELECT s.id AS site_id, t.time, t.pv_power_kw, t.load_kw, t.power_kw, t.soc_pct "
                         + "FROM site s "
-                        + "JOIN LATERAL (SELECT time, pv_power_kw, load_kw, power_kw, soc_pct"
-                        + "  FROM telemetry WHERE site_id = s.id ORDER BY time DESC LIMIT 1) t ON true",
+                        + "JOIN LATERAL (SELECT x.time, x.pv_power_kw, x.load_kw, x.power_kw, x.soc_pct"
+                        + "  FROM telemetry x WHERE x.site_id = s.id AND NOT EXISTS (SELECT 1 FROM device d"
+                        + "    WHERE d.id = x.device_id AND d.ausgebaut_am IS NOT NULL)"
+                        + "  ORDER BY x.time DESC LIMIT 1) t ON true",
                 rs -> {
                     live.put(rs.getObject("site_id", UUID.class), new LiveRow(
                             rs.getTimestamp("time").toInstant(),

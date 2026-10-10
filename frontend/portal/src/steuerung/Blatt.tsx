@@ -4,13 +4,15 @@
  *
  * Es hält die Zusagen des Hauses (`BottomSheet`, `Modal`): Fokusfalle,
  * Escape, Rückkehr zum Auslöser (auch auf iOS, wo ein angetippter Knopf nicht
- * fokussiert wird - der Auslöser wird beim Öffnen AUSDRÜCKLICH gemerkt),
+ * fokussiert wird - jeder Öffner fokussiert seinen Knopf vor dem Öffnen,
+ * `e.currentTarget.focus()` wie `BenutzerPage`, und das Blatt merkt ihn sich),
  * Scroll-Sperre der Seite darunter und ein Ausblenden in der Dauer der
  * Bewegungs-Familie.
  */
 import { useEffect, useId, useRef, useState, type ReactNode, type KeyboardEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { fokussierbare } from '../components/VpPanel';
+import { fokusAusloeser, sperreSeitenScroll } from '../../designsystem/components/shell/ueberlagerung';
 import { Ic, type IcName } from './Ic';
 
 export interface BlattProps {
@@ -28,26 +30,50 @@ export interface BlattProps {
 
 const AUSBLENDEN_MS = 280;
 
+/**
+ * Die offenen Blätter, das oberste zuletzt - dieselbe Stapel-Prüfung wie `Modal.jsx`: Escape trifft nur
+ * das oberste, auch wenn der Fokus das Blatt verlassen hat. Safari/WebKit fokussiert einen angetippten
+ * Knopf nicht; ein Hörer nur am Blatt selbst bekam Escape danach nie (Gesamtlauf 04./05.10.2026).
+ */
+const offeneBlaetter: object[] = [];
+
 export function Blatt({ symbol, titel, unter, kopf, fuss, voll, onClose, children }: BlattProps) {
   const [offen, setOffen] = useState(false);
   const titelId = useId();
   const blattRef = useRef<HTMLDivElement>(null);
   const ausloeser = useRef<HTMLElement | null>(null);
   const zu = useRef(false);
+  const schliessenRef = useRef<() => void>(() => {});
 
   useEffect(() => {
-    ausloeser.current = (document.activeElement as HTMLElement | null) ?? null;
-    const alt = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    ausloeser.current = fokusAusloeser();
+    const marke = {};
+    offeneBlaetter.push(marke);
+    const escape = (e: globalThis.KeyboardEvent) => {
+      if (e.key !== 'Escape' || offeneBlaetter[offeneBlaetter.length - 1] !== marke) return;
+      // Liegt ein später geöffneter Dialog des Hauses darüber, gehört Escape ihm.
+      const dialoge = document.querySelectorAll('[role="dialog"][aria-modal="true"]');
+      if (dialoge.length && dialoge[dialoge.length - 1] !== blattRef.current) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      schliessenRef.current();
+    };
+    // Wie `Modal.jsx` in der Bubble-Phase: was im Blatt Escape selbst verbraucht (ein offener Picker), kommt zuerst.
+    document.addEventListener('keydown', escape);
+    // Der EINE gezählte Sperrer des Hauses (`ueberlagerung.js`), nicht ein eigener „vorher“-Wert.
+    const freigeben = sperreSeitenScroll();
     const raf = requestAnimationFrame(() => setOffen(true));
     const fokus = window.setTimeout(() => {
       const f = blattRef.current?.querySelector<HTMLElement>('.sh-head button, .sh-body button, .sh-body input');
       f?.focus({ preventScroll: true });
     }, 60);
     return () => {
+      document.removeEventListener('keydown', escape);
+      const i = offeneBlaetter.lastIndexOf(marke);
+      if (i >= 0) offeneBlaetter.splice(i, 1);
       cancelAnimationFrame(raf);
       window.clearTimeout(fokus);
-      document.body.style.overflow = alt;
+      freigeben();
       const a = ausloeser.current;
       if (a && a.isConnected) a.focus({ preventScroll: true });
     };
@@ -59,14 +85,10 @@ export function Blatt({ symbol, titel, unter, kopf, fuss, voll, onClose, childre
     setOffen(false);
     window.setTimeout(onClose, AUSBLENDEN_MS);
   };
+  schliessenRef.current = schliessen;
 
+  // Escape läuft über den Stapel oben; hier hält nur die Fokusfalle Tab/Shift-Tab im Blatt.
   const taste = (e: KeyboardEvent<HTMLDivElement>) => {
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      e.stopPropagation();
-      schliessen();
-      return;
-    }
     if (e.key !== 'Tab') return;
     const f = fokussierbare(blattRef.current);
     if (!f.length) return;

@@ -45,7 +45,8 @@ class ComponentActivationOutboxBindingTest {
         doAnswer(inv -> {
             ((RowCallbackHandler) inv.getArgument(1)).processRow(rs);
             return null;
-        }).when(admin).query(anyString(), any(RowCallbackHandler.class));
+        // Seit AP-20 (#1273) trägt die Abfrage die beendeten Kundenbereiche als Parameter.
+        }).when(admin).query(anyString(), any(RowCallbackHandler.class), any(Object[].class));
     }
 
     private Object[] updateArgs() {

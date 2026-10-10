@@ -52,6 +52,12 @@ ERWARTUNGEN = [
 ]
 
 
+#: Der Träger der konstruierten Fälle: ein kWh-Zähler an einem Standort in Europe/Berlin.
+_KWH_BERLIN = verbrauch.ReihenKontext("kWh", "Europe/Berlin")
+
+ERGEBNIS_ZUSTAND = VECTORS.parent / "ergebnis-zustand-vectors.json"
+
+
 def _reihe(case: dict, erwartung: dict) -> dict:
     """Die Reihe einer Erwartung: ein Fall hat EINE Reihe oder mehrere mit Namen."""
     if "reihe" in case["input"]:
@@ -62,9 +68,10 @@ def _reihe(case: dict, erwartung: dict) -> dict:
 # --------------------------------------------------------------------- Form der Datei
 
 
-def test_die_datei_traegt_die_dreiundzwanzig_faelle():
-    """23 Fälle, jeder mit Namen, Familie, Begründung und mindestens einer Erwartung."""
-    assert len(CASES) == 23
+def test_die_datei_traegt_die_dreiundzwanzig_faelle_und_f24():
+    """23 Fälle der Vorlage plus F24 (AP-08 IP-3), jeder mit Namen, Familie, Begründung und Erwartung."""
+    assert len(CASES) == 24
+    assert CASES[-1]["name"].startswith("f24-")
     assert DOC["schema_version"] == "1.0"
     assert DOC["zeitzone"] == "Europe/Berlin"
     namen = [c["name"] for c in CASES]
@@ -82,6 +89,8 @@ def test_die_regeln_der_datei_sind_die_regeln_des_moduls():
     assert regeln["luecke_faktor"] == verbrauch.LUECKE_FAKTOR
     assert regeln["integration_halten_faktor"] == verbrauch.HALTEN_FAKTOR
     assert regeln["vergleich_nachkommastellen"] == verbrauch.NACHKOMMASTELLEN
+    assert tuple(regeln["luecke_zeitraeume"]) == verbrauch.LUECKE_ZEITRAEUME
+    assert "JE ROHWERT" in regeln["anteil"]
     assert set(DOC["zustaende"]) >= {
         verbrauch.VOLLSTAENDIG,
         verbrauch.UNVOLLSTAENDIG,
@@ -114,6 +123,8 @@ def test_vektor(case: dict, erwartung: dict):
         erwartung["von"],
         erwartung["bis"],
         erwartung.get("ereignisse_zusatz", ()),
+        erwartung.get("anteil"),
+        erwartung.get("quelle"),
     )
     for feld in GERECHNET:
         if feld not in erwartung:
@@ -127,6 +138,42 @@ def test_vektor(case: dict, erwartung: dict):
                 assert float(gerechnet) == pytest.approx(float(soll), abs=1e-9), f"{feld}: {case['why']}"
         else:
             assert gerechnet == soll, f"{feld}: {case['why']}"
+
+
+def test_erst_mitteln_dann_zuordnen_ist_falsch():
+    """AP-08 IP-7, E15 Option C als benannte Gegenprobe: das Mittel des ganzen Vorzeichen-Werts,
+    danach nach seinem Vorzeichen zugeordnet, ergibt genau die verworfene Zahl der Datei — und weicht
+    von beiden Anteil-Erwartungen ab, die JE ROHWERT geteilt sind."""
+    faelle = [c for c in CASES if "gegenprobe" in c]
+    assert [c["name"] for c in faelle] == ["f19-richtung"]
+    case = faelle[0]
+    g = case["gegenprobe"]
+    reihe = case["input"]["reihen"][g["reihe"]]
+    kadenz = timedelta(seconds=reihe["kadenz_s"])
+    von, bis = datetime.fromisoformat(g["von"]), datetime.fromisoformat(g["bis"])
+    mittel = verbrauch.momentanwerte(verbrauch.rohwerte(reihe), von, bis, kadenz)["mittel"]
+    assert float(mittel) == pytest.approx(g["mittel_vorzeichen"])
+    falsch = {
+        "positiv": verbrauch.anteil_des_werts(mittel, "positiv"),
+        "negativ": verbrauch.anteil_des_werts(mittel, "negativ"),
+    }
+    assert float(falsch["positiv"]) == pytest.approx(g["falsch_bezug"])
+    assert float(falsch["negativ"]) == pytest.approx(g["falsch_abgabe"])
+    anteile = [e for e in case["expected"] if e.get("anteil")]
+    assert len(anteile) == 2
+    for e in anteile:
+        assert float(falsch[e["anteil"]]) != pytest.approx(e["mittel"]), e["name"]
+
+
+def test_der_anteil_wird_je_rohwert_geteilt_und_das_vorzeichen_nie_zweimal():
+    """max(0, P) / max(0, −P) je Wert; ein schon vorzeichenrichtiger Rohwert wird nicht noch einmal gedreht."""
+    t = datetime(2026, 10, 20, 10, 7, tzinfo=timezone.utc)
+    werte = [verbrauch.Rohwert(t, Decimal("-10.0"))]
+    assert verbrauch.anteil_je_rohwert(werte, "positiv")[0].wert == 0
+    assert verbrauch.anteil_je_rohwert(werte, "negativ")[0].wert == Decimal("10.0")
+    assert verbrauch.anteil_je_rohwert(werte, None) == werte
+    with pytest.raises(ValueError):
+        verbrauch.anteil_je_rohwert(werte, "gesamt")
 
 
 # ------------------------------------------------- Die Eigenschaften, die die Regel tragen
@@ -290,6 +337,7 @@ def test_zusammengesetzt_aus_viertelstunden(case: dict, erwartung: dict, ueber_t
     modul = verbrauch._dez(reihe["wertebereich_modul"]) if reihe.get("wertebereich_modul") else None
     hoechst = verbrauch._dez(reihe["hoechstzuwachs_je_kadenz"]) if reihe.get("hoechstzuwachs_je_kadenz") else None
     zusatz = (ereignisse, faktor, modul, hoechst)
+    kontext = verbrauch.kontext(reihe)
 
     ab = von - (timedelta(days=2) if ueber_tage else timedelta(days=1))
     ende = bis + (timedelta(days=1) if ueber_tage else _VIERTELSTUNDE)
@@ -298,7 +346,7 @@ def test_zusammengesetzt_aus_viertelstunden(case: dict, erwartung: dict, ueber_t
     while q < ende:
         fenster = _fenster(werte, q - kadenz, q + _VIERTELSTUNDE)
         if any(q <= r.zeit < q + _VIERTELSTUNDE for r in fenster):
-            viertelstunden.append(verbrauch.teilperiode(fenster, q, q + _VIERTELSTUNDE, kadenz, *zusatz))
+            viertelstunden.append(verbrauch.teilperiode(kontext, fenster, q, q + _VIERTELSTUNDE, kadenz, *zusatz))
         q += _VIERTELSTUNDE
 
     teile = viertelstunden
@@ -312,10 +360,10 @@ def test_zusammengesetzt_aus_viertelstunden(case: dict, erwartung: dict, ueber_t
             t_bis = datetime.combine(tag + timedelta(days=1), time(), _ORT).astimezone(timezone.utc)
             fuer_tag = [v for v in viertelstunden if v.bis > t_von - timedelta(days=1) and v.von <= t_bis]
             if any(v.von >= t_von and v.bis <= t_bis for v in fuer_tag):
-                teile.append(verbrauch.zaehlerstand_aus_teilperioden(fuer_tag, t_von, t_bis, kadenz, *zusatz))
+                teile.append(verbrauch.zaehlerstand_aus_teilperioden(kontext, fuer_tag, t_von, t_bis, kadenz, *zusatz))
             tag += timedelta(days=1)
 
-    ist = verbrauch.zaehlerstand_aus_teilperioden(teile, von, bis, kadenz, *zusatz).ergebnis
+    ist = verbrauch.zaehlerstand_aus_teilperioden(kontext, teile, von, bis, kadenz, *zusatz).ergebnis
     for feld in ("menge", "zustand", "erhalten", "erwartet", "abdeckung_prozent", "kennzeichen"):
         if feld not in erwartung:
             continue
@@ -337,11 +385,12 @@ def test_die_summe_der_tage_ist_nicht_die_monatsmenge():
     while tag.month == 10:
         t_von = datetime.combine(tag, time(), _ORT).astimezone(timezone.utc)
         t_bis = datetime.combine(tag + timedelta(days=1), time(), _ORT).astimezone(timezone.utc)
-        t = verbrauch.teilperiode(_fenster(werte, t_von - kadenz, t_bis), t_von, t_bis, kadenz)
+        t = verbrauch.teilperiode(_KWH_BERLIN, _fenster(werte, t_von - kadenz, t_bis), t_von, t_bis, kadenz)
         tage.append(t)
         summe += t.ergebnis["menge"]
         tag += timedelta(days=1)
     monat = verbrauch.zaehlerstand_aus_teilperioden(
+        _KWH_BERLIN,
         tage, verbrauch._zeit("2026-10-01T00:00:00+02:00"), verbrauch._zeit("2026-11-01T00:00:00+01:00"), kadenz
     )
     assert summe == Decimal("55100.013")
@@ -352,7 +401,529 @@ def test_eine_ueberstehende_teilperiode_wird_abgewiesen():
     von = verbrauch._zeit("2026-10-20T00:00:00+00:00")
     kadenz = timedelta(seconds=60)
     schief = verbrauch.teilperiode(
-        [verbrauch.Rohwert(von, Decimal(1))], von - kadenz, von + timedelta(seconds=840), kadenz
+        _KWH_BERLIN, [verbrauch.Rohwert(von, Decimal(1))], von - kadenz, von + timedelta(seconds=840), kadenz
     )
     with pytest.raises(ValueError, match="ragt"):
-        verbrauch.zaehlerstand_aus_teilperioden([schief], von, von + timedelta(hours=1), kadenz)
+        verbrauch.zaehlerstand_aus_teilperioden(_KWH_BERLIN, [schief], von, von + timedelta(hours=1), kadenz)
+
+
+# ------------------- Momentanwert und Intervallmenge aus Teilperioden (AP-08 IP-3, §4.5)
+
+_WERTE_LOCKSTEP = [
+    pytest.param(case, erwartung, id=f"{case['name']}::{erwartung['name']}")
+    for case in CASES
+    for erwartung in case["expected"]
+    if _reihe(case, erwartung)["wertart"] in ("momentanwert", "intervallmenge")
+    for von, bis in [(verbrauch._zeit(erwartung["von"]), verbrauch._zeit(erwartung["bis"]))]
+    if bis - von >= 2 * _VIERTELSTUNDE and _im_raster(von) and _im_raster(bis)
+]
+
+
+def _werteteile(reihe: dict, von: datetime, bis: datetime) -> list:
+    """Die Viertelstunden als :class:`verbrauch.Werteteil` - wie in der Datenbank nur die mit Rohwert,
+    dazu je eine davor und danach (die Nachbarn der Lücke und des Haltens)."""
+    werte = verbrauch.rohwerte(reihe)
+    kadenz = timedelta(seconds=reihe["kadenz_s"])
+    reichweite = verbrauch.HALTEN_FAKTOR * kadenz
+    teile = []
+    q = von - timedelta(hours=1)
+    while q < bis + timedelta(hours=1):
+        q_bis = q + _VIERTELSTUNDE
+        fenster = _fenster(werte, q - reichweite, q_bis + reichweite)
+        if reihe["wertart"] == "intervallmenge":
+            if any(q < r.zeit <= q_bis for r in fenster):
+                teile.append(verbrauch.intervallmenge_teil(fenster, q, q_bis, kadenz, verbrauch._dez(reihe.get("faktor", 1))))
+        elif any(q <= r.zeit < q_bis for r in fenster):
+            teile.append(verbrauch.momentanwert_teil(fenster, q, q_bis, kadenz, reihe.get("integrieren", False)))
+        q = q_bis
+    return teile
+
+
+def test_der_werte_lockstep_traegt_die_abnahme_von_ip3():
+    """F2 (halbe Stunde) und F24 (halbe Stunde, Stunde) müssen unter den zusammengesetzten Erwartungen sein."""
+    assert "nie Mittel von Mitteln" in DOC["regeln"]["werte_teilperioden"]
+    namen = {p.id for p in _WERTE_LOCKSTEP}
+    for teil in ("f2-intervallmenge::Halbe Stunde", "f24-momentanwert-ueber-die-viertelstundengrenze::Stunde"):
+        assert any(teil in n for n in namen), teil
+
+
+@pytest.mark.parametrize("case,erwartung", _WERTE_LOCKSTEP)
+def test_werte_zusammengesetzt_aus_viertelstunden(case: dict, erwartung: dict):
+    """Lockstep: aus den gespeicherten Viertelstunden ergibt sich GENAU die Erwartung der Datei."""
+    reihe = _reihe(case, erwartung)
+    kadenz = timedelta(seconds=reihe["kadenz_s"])
+    von, bis = verbrauch._zeit(erwartung["von"]), verbrauch._zeit(erwartung["bis"])
+    teile = _werteteile(reihe, von, bis)
+    if reihe["wertart"] == "intervallmenge":
+        ist = verbrauch.intervallmenge_aus_teilperioden(teile, von, bis, kadenz).teil.ergebnis
+    else:
+        ist = verbrauch.momentanwert_aus_teilperioden(teile, von, bis, kadenz, reihe.get("integrieren", False)).teil.ergebnis
+    for feld in GERECHNET:
+        if feld not in erwartung or feld == "stunden":
+            continue
+        soll = erwartung[feld]
+        if feld in ("menge", "mittel", "min", "max", "energie_kwh") and soll is not None:
+            assert ist[feld] is not None and Decimal(str(soll)) == ist[feld], f"{feld}: {case['why']}"
+        else:
+            assert ist[feld] == soll, f"{feld}: {case['why']}"
+
+
+def test_die_viertelstunden_energien_ergeben_die_der_stunde():
+    """F24: die ungerundeten Energien der vier Viertelstunden sind zusammen GENAU die der Stunde -
+    weil jeder Wert bis zum nächsten guten Wert hält, auch hinter der Grenze (M4)."""
+    (case,) = [c for c in CASES if c["name"].startswith("f24-")]
+    reihe = case["input"]["reihe"]
+    von, bis = verbrauch._zeit("2026-10-20T10:00:00+02:00"), verbrauch._zeit("2026-10-20T11:00:00+02:00")
+    teile = [t for t in _werteteile(reihe, von, bis) if von <= t.teil.von and t.teil.bis <= bis]
+    werte = verbrauch.rohwerte(reihe)
+    assert len(teile) == 4
+    stunde = verbrauch._integriere(werte, von, bis, timedelta(seconds=10))
+    # Gleich bis auf die 28. Stelle des Dezimal-Kontexts (jeder Teil teilt für sich durch 3600).
+    assert abs(sum(t.energie for t in teile) - stunde) < Decimal("1e-20")
+    assert verbrauch._runde(verbrauch._D(386309) / verbrauch._D(3600)) == Decimal("107.308")
+
+
+def test_ein_mittel_von_mitteln_waere_falsch():
+    """Zwei Viertelstunden mit dem wahren Mittel 10,05 und 10,04: gerundet 10,1 und 10,0, deren Mittel
+    10,05 ergäbe 10,1 - die halbe Stunde hat 10,045, also 10,0. Gerechnet wird aus den Summen."""
+    von = verbrauch._zeit("2026-10-20T10:00:00+00:00")
+    kadenz = timedelta(seconds=450)
+
+    def werte(t0: datetime, a: str, b: str) -> list:
+        return [verbrauch.Rohwert(t0, Decimal(a)), verbrauch.Rohwert(t0 + kadenz, Decimal(b))]
+
+    roh = werte(von, "10.00", "10.10") + werte(von + _VIERTELSTUNDE, "10.00", "10.08")
+    teile = [
+        verbrauch.momentanwert_teil(roh, von, von + _VIERTELSTUNDE, kadenz),
+        verbrauch.momentanwert_teil(roh, von + _VIERTELSTUNDE, von + 2 * _VIERTELSTUNDE, kadenz),
+    ]
+    assert [t.teil.ergebnis["mittel"] for t in teile] == [Decimal("10.1"), Decimal("10.0")]
+    halb = verbrauch.momentanwert_aus_teilperioden(teile, von, von + 2 * _VIERTELSTUNDE, kadenz)
+    assert halb.teil.ergebnis["mittel"] == Decimal("10.0")
+    assert halb.teil.ergebnis["mittel"] == verbrauch.momentanwerte(roh, von, von + 2 * _VIERTELSTUNDE, kadenz)["mittel"]
+
+
+def test_ohne_einen_guten_wert_gibt_es_keine_energie():
+    """Eine Stunde, deren Viertelstunden keinen guten Wert tragen, hat keine Zahl - nie 0, nie Mittel × Länge."""
+    von = verbrauch._zeit("2026-10-20T10:00:00+00:00")
+    kadenz = timedelta(seconds=10)
+    schlecht = [verbrauch.Rohwert(von + timedelta(seconds=10 * i), Decimal(96), "bad") for i in range(90)]
+    teil = verbrauch.momentanwert_teil(schlecht, von, von + _VIERTELSTUNDE, kadenz, True)
+    assert teil.energie is None and teil.teil.ergebnis["zustand"] == verbrauch.KEINE_WERTE
+    stunde = verbrauch.momentanwert_aus_teilperioden([teil], von, von + timedelta(hours=1), kadenz, True)
+    assert stunde.energie is None
+    assert stunde.teil.ergebnis["energie_kwh"] is None and stunde.teil.ergebnis["kennzeichen"] == []
+    assert stunde.teil.ergebnis["erwartet"] == 360
+
+
+def test_integrieren_verlangt_die_energie_jedes_teils():
+    von = verbrauch._zeit("2026-10-20T10:00:00+00:00")
+    kadenz = timedelta(seconds=10)
+    roh = [verbrauch.Rohwert(von + timedelta(seconds=10 * i), Decimal(96)) for i in range(90)]
+    ohne = verbrauch.momentanwert_teil(roh, von, von + _VIERTELSTUNDE, kadenz, False)
+    with pytest.raises(ValueError, match="Energie"):
+        verbrauch.momentanwert_aus_teilperioden([ohne], von, von + timedelta(hours=1), kadenz, True)
+
+
+def test_h2_ereignisgetriebene_burstkadenz_ueberschreitet_die_erwartung_nie_die_abdeckung():
+    """H2 (vp-prod-safety §4.6, echte Produktionsdaten): ein ereignisgetriebener Kanal (Vorbild
+    Deye "work-mode", Mess-Selektion 300 s) sendet bei jedem Zustandswechsel ZUSAETZLICH zur
+    periodischen Kadenz - an der echten Produktionskopie kamen so 4-5 gute Werte statt der
+    erwarteten 3 in einer Viertelstunde an (``erhalten > erwartet``). Ungeklemmt lieferte
+    ``_mit_abdeckung`` dafuer ``abdeckung_prozent > 100`` und der Java-Zwilling verletzte
+    ``messreihe_viertelstunde_abdeckung_chk``. Ohne den ``min(100, ...)``-Klemmwert ist dieser
+    Test rot (``abdeckung_prozent == 166``)."""
+    von = verbrauch._zeit("2026-12-10T10:00:00+00:00")
+    kadenz = timedelta(seconds=300)
+    # Periodisch 10:00/10:05/10:10 (erwartet = 900 s / 300 s = 3) plus zwei Zustandswechsel
+    # mitten im Fenster (10:02:30, 10:07:45) -> erhalten = 5, genau das reale Muster.
+    roh = [
+        verbrauch.Rohwert(von, Decimal(1)),
+        verbrauch.Rohwert(von + timedelta(seconds=150), Decimal(2)),
+        verbrauch.Rohwert(von + timedelta(seconds=300), Decimal(2)),
+        verbrauch.Rohwert(von + timedelta(seconds=465), Decimal(1)),
+        verbrauch.Rohwert(von + timedelta(seconds=600), Decimal(1)),
+    ]
+    teil = verbrauch.momentanwert_teil(roh, von, von + _VIERTELSTUNDE, kadenz)
+    ergebnis = teil.teil.ergebnis
+    assert ergebnis["erhalten"] == 5
+    assert ergebnis["erwartet"] == 3
+    assert ergebnis["abdeckung_prozent"] == 100
+
+
+def test_rechenrauschen_kippt_keine_rundungsgrenze():
+    """Die Summe 28-stelliger Teil-Energien trägt Rauschen: 24,11249…9 darf nicht auf 24,112 kippen (F3)."""
+    assert verbrauch._runde_energie(Decimal("24.11249999999999999999999999")) == Decimal("24.113")
+    assert verbrauch._runde_energie(Decimal("24.11250000000000000000000001")) == Decimal("24.113")
+    assert verbrauch._runde_energie(Decimal("24.11244444444444444444444444")) == Decimal("24.112")
+
+
+# ------------------------------------------------ Z6: die EINE Überlauf-Entscheidung (AP-08 IP-4)
+
+
+def _faelle_mit_fallendem_stand():
+    """Jeder fallende Nachbar guter Werte in jeder Zählerstand-Reihe, samt der Zeiten, an denen die
+    Erwartungen des Falls einen Überlauf nennen. Eine Gerätegrenze dazwischen ist Z4, nie Z6."""
+    for case in CASES:
+        reihe = case["input"].get("reihe")
+        if case["familie"] != "zaehlerstand" or reihe is None:
+            continue
+        gute = [r for r in verbrauch.rohwerte(reihe) if r.gut]
+        grenzen = [verbrauch._zeit(e["t"]) for e in reihe.get("ereignisse", []) if e["art"] == "device_boundary"]
+        genannt = {
+            k.split(" ")[1]
+            for erwartung in case["expected"]
+            for k in erwartung.get("kennzeichen", [])
+            if k.startswith("Überlauf ")
+        }
+        for vorher, nachher in zip(gute, gute[1:]):
+            if nachher.wert < vorher.wert and not any(vorher.zeit < g <= nachher.zeit for g in grenzen):
+                yield case["name"], reihe, vorher, nachher, genannt
+
+
+def test_die_ueberlauf_entscheidung_steht_genau_dort_wo_die_erwartung_einen_ueberlauf_nennt():
+    """F7: 65 536 − 64 954 + 185 = 767 ≤ 1 667 ist ein Überlauf, 65 536 − 12 457 + 100 = 53 179 nicht.
+
+    Die Writer-Erkennung (``UeberlaufRegel``) prüft dieselbe Ableitung aus derselben Datei."""
+    gesehen = set()
+    for name, reihe, vorher, nachher, genannt in _faelle_mit_fallendem_stand():
+        kadenz = timedelta(seconds=reihe["kadenz_s"])
+        modul = verbrauch._dez(reihe["wertebereich_modul"]) if reihe.get("wertebereich_modul") else None
+        hoechst = verbrauch._dez(reihe["hoechstzuwachs_je_kadenz"]) if reihe.get("hoechstzuwachs_je_kadenz") else None
+        ueber = verbrauch.ueberlauf(vorher, nachher, kadenz, modul, hoechst)
+        uhr = verbrauch._uhr(nachher.zeit, verbrauch.kontext(reihe).zeitzone)
+        assert (ueber is not None) == (uhr in genannt), f"{name} {uhr}"
+        if ueber is not None:
+            assert ueber == modul - vorher.wert + nachher.wert
+            gesehen.add((name, uhr))
+        # Ohne Deklaration wird nie ein Überlauf geraten (E4).
+        assert verbrauch.ueberlauf(vorher, nachher, kadenz, None, hoechst) is None
+        assert verbrauch.ueberlauf(vorher, nachher, kadenz, modul, None) is None
+    assert any(n.startswith("f7-") for n, _ in gesehen)
+    # Ein steigender Stand ist nie ein Überlauf, auch nicht mit Deklaration.
+    t = verbrauch._zeit("2026-10-20T10:00:00+02:00")
+    assert verbrauch.ueberlauf(
+        verbrauch.Rohwert(t, Decimal(100)), verbrauch.Rohwert(t + timedelta(minutes=1), Decimal(101)),
+        timedelta(minutes=1), Decimal(65536), Decimal(1667)) is None
+
+
+# ------------------------------------------ Zuwachs über eine Lücke (AP-08 IP-6, E2 = A)
+
+_IMMER_VON = verbrauch._zeit("2000-01-01T00:00:00+00:00")
+_IMMER_BIS = verbrauch._zeit("2100-01-01T00:00:00+00:00")
+
+LUECKEN_ERWARTUNGEN = [
+    pytest.param(case, erwartung, id=f"{case['name']}::{erwartung['name']}")
+    for case in CASES
+    for erwartung in case["expected"]
+    if "luecken_zuwachs" in erwartung
+]
+
+
+def test_die_abnahmefaelle_von_ip6_tragen_ihre_zuwachs_felder():
+    """F8, F11, F20 und F23 nennen an JEDER Erwartung, welche Lücken ihr Zuwachs zählt."""
+    abnahme = [c for c in CASES if c["name"].split("-")[0] in {"f8", "f11", "f20", "f23"}]
+    assert len(abnahme) == 4
+    for case in abnahme:
+        for erwartung in case["expected"]:
+            assert "luecken_zuwachs" in erwartung, f"{case['name']}::{erwartung['name']}"
+
+
+@pytest.mark.parametrize("case,erwartung", LUECKEN_ERWARTUNGEN)
+def test_der_zuwachs_steht_genau_einmal(case: dict, erwartung: dict):
+    """E2: die Periode, die die Lücke GANZ enthält, zählt den Zuwachs (Stände, Einheit, Kennzeichen); sonst keine."""
+    reihe = _reihe(case, erwartung)
+    werte = verbrauch.rohwerte(reihe)
+    kadenz = timedelta(seconds=reihe["kadenz_s"])
+    faktor = verbrauch._dez(reihe.get("faktor", 1))
+    ereignisse = list(reihe.get("ereignisse", [])) + list(erwartung.get("ereignisse_zusatz", []))
+    von, bis = verbrauch._zeit(erwartung["von"]), verbrauch._zeit(erwartung["bis"])
+    ist = verbrauch.ergebnis(reihe, erwartung["von"], erwartung["bis"], erwartung.get("ereignisse_zusatz", ()))
+
+    gezaehlt = verbrauch.luecken_zuwaechse(werte, von, bis, kadenz, ereignisse, faktor)
+    soll = erwartung["luecken_zuwachs"]
+    assert len(gezaehlt) == len(soll), case["why"]
+    for luecke, s in zip(gezaehlt, soll):
+        assert luecke.messzeit_vor == verbrauch._zeit(s["messzeit_vor"])
+        assert luecke.messzeit_nach == verbrauch._zeit(s["messzeit_nach"])
+        assert luecke.stand_vor == verbrauch._dez(s["stand_vor"])
+        assert luecke.stand_nach == verbrauch._dez(s["stand_nach"])
+        assert luecke.zuwachs == verbrauch._dez(s["zuwachs"])
+        assert s["einheit"] == reihe["einheit"]
+        assert verbrauch.luecken_kennzeichen(luecke, verbrauch.kontext(reihe)) in ist["kennzeichen"]
+    for luecke in verbrauch.luecken_zuwaechse(werte, _IMMER_VON, _IMMER_BIS, kadenz, ereignisse, faktor):
+        if luecke not in gezaehlt:
+            assert verbrauch.luecken_kennzeichen(luecke, verbrauch.kontext(reihe)) not in ist["kennzeichen"], case["why"]
+
+
+@pytest.mark.parametrize("zuordnung", DOC["luecken_zuordnung"], ids=lambda z: z["name"])
+def test_der_kleinste_ganz_enthaltende_zeitraum(zuordnung: dict):
+    """E2: Viertelstunde → Stunde → Tag → Monat → Jahr; über den Jahreswechsel keiner."""
+    kadenz = timedelta(seconds=zuordnung["kadenz_s"])
+    vor, nach = verbrauch._zeit(zuordnung["messzeit_vor"]), verbrauch._zeit(zuordnung["messzeit_nach"])
+    ist = verbrauch.kleinster_zeitraum(verbrauch.LueckenZuwachs(vor, nach), kadenz, DOC["zeitzone"])
+    soll = zuordnung["kleinster_zeitraum"]
+    if soll is None:
+        assert ist is None, zuordnung["why"]
+    else:
+        assert ist == (soll["art"], verbrauch._zeit(soll["von"]), verbrauch._zeit(soll["bis"])), zuordnung["why"]
+    if zuordnung["fall"] is not None:
+        reihe = next(c for c in CASES if c["name"] == zuordnung["fall"])["input"]["reihe"]
+        alle = verbrauch.luecken_zuwaechse(
+            verbrauch.rohwerte(reihe),
+            _IMMER_VON,
+            _IMMER_BIS,
+            timedelta(seconds=reihe["kadenz_s"]),
+            reihe.get("ereignisse", []),
+            verbrauch._dez(reihe.get("faktor", 1)),
+        )
+        assert [(l.messzeit_vor, l.messzeit_nach) for l in alle] == [(vor, nach)]
+
+
+# ---------------------------------------------- die alten Kundensätze (PR 721, ergebnis-zustand 1.1)
+
+
+def test_der_alte_dativ_wird_nie_mehr_gesprochen():
+    """Befund Dativ: nach „mit“ steht „Ableseständen“ — die Form bis Fassung 1.0 spricht kein Zwilling mehr."""
+    t = datetime(2026, 11, 19, 9, 45, tzinfo=timezone.utc)
+    werte = [
+        verbrauch.Rohwert(t - timedelta(seconds=60), Decimal("100")),
+        verbrauch.Rohwert(t, Decimal("3")),
+    ]
+    grenze = {"art": "device_boundary", "t": "2026-11-19T10:45:00+01:00", "endstand": "100.5", "anfangsstand": "2.5"}
+    ergebnis = verbrauch.menge_zaehlerstand(
+        _KWH_BERLIN, werte, t - timedelta(seconds=60), t, timedelta(seconds=60), [grenze]
+    )
+    assert ergebnis["kennzeichen"] == ["Gerätegrenze 10:45 mit Ableseständen"]
+    assert "Gerätegrenze 10:45 mit Ablesestände" not in ergebnis["kennzeichen"]
+
+
+def test_eine_ruecksetzung_in_der_doppelten_stunde_ist_eindeutig():
+    """Befund Sommerzeit: am 25.10.2026 gibt es 02:30 zweimal — die zweite heißt „02:30 MEZ“, nie „02:30“."""
+    zweite = datetime(2026, 10, 25, 1, 30, tzinfo=timezone.utc)
+    minute = timedelta(seconds=60)
+    werte = [
+        verbrauch.Rohwert(zweite - minute, Decimal("101")),
+        verbrauch.Rohwert(zweite, Decimal("5")),
+        verbrauch.Rohwert(zweite + minute, Decimal("6")),
+    ]
+    ergebnis = verbrauch.menge_zaehlerstand(_KWH_BERLIN, werte, zweite - minute, zweite + minute, minute)
+    assert "Rücksetzung 02:30 MEZ ohne Endstand — bis zu 1 Kadenz nicht gezählt" in ergebnis["kennzeichen"]
+    assert "Rücksetzung 02:30 ohne Endstand — bis zu 1 Kadenz nicht gezählt" not in ergebnis["kennzeichen"]
+    assert verbrauch._uhr(zweite - timedelta(hours=1), "Europe/Berlin") == "02:30 MESZ"
+    assert verbrauch._uhr(datetime(2026, 10, 25, 2, 0, tzinfo=timezone.utc), "Europe/Berlin") == "03:00"
+    assert verbrauch._uhr(datetime(2026, 10, 25, 0, 30, tzinfo=timezone.utc), "Europe/London") == "01:30 UTC+01:00"
+
+
+# ------------------------------- Einheit und Zone aus dem Träger (ergebnis-zustand 1.3, Befunde aus 721/722)
+
+
+def test_die_anzeige_einheiten_sind_die_des_vertrags():
+    """Zwilling von ``ErgebnisZustand.ANZEIGE_EINHEITEN``: dieselbe Tabelle wie ``rundung.anzeige_einheiten``."""
+    rundung = json.loads(ERGEBNIS_ZUSTAND.read_text(encoding="utf-8"))["rundung"]
+    assert verbrauch.ANZEIGE_EINHEITEN == {
+        a["gespeichert"]: (a["angezeigt"], Decimal(a["faktor"]), int(a.get("teiler", "1")))
+        for a in rundung["anzeige_einheiten"]
+    }
+    assert rundung["kennzeichen_ebene"] == "viertelstunde"
+    stellen = {(s["einheit"], s["ebene"]): s["stellen"] for s in rundung["stellen"]}
+    for angezeigt, _, _ in verbrauch.ANZEIGE_EINHEITEN.values():
+        assert stellen.get((angezeigt, "viertelstunde"), stellen.get((angezeigt, None))) == verbrauch.KENNZEICHEN_STELLEN
+
+
+@pytest.mark.parametrize(
+    "fall",
+    [
+        f
+        for f in json.loads(ERGEBNIS_ZUSTAND.read_text(encoding="utf-8"))["cases"]
+        if f["familie"] == "menge" and f["eingang"]["ebene"] == "viertelstunde" and f["eingang"]["wert"] is not None
+    ],
+    ids=lambda f: f["name"],
+)
+def test_die_menge_im_kennzeichen_ist_die_des_vertrags(fall: dict):
+    """Die Zahl im Zuwachs-Satz spricht Python wie ``ErgebnisZustand.menge`` an der Viertelstunde."""
+    ein, erw = fall["eingang"], fall["erwartet"]
+    assert verbrauch._menge(Decimal(ein["wert"]), ein["einheit"]) == erw["text"]
+
+
+def test_ein_zaehler_in_wh_ergibt_einen_satz_in_kwh():
+    """Befund Zuwachs: 337 600 Wh sind „Zuwachs 337,6 kWh“ — ohne bekannte Einheit steht keine Zahl."""
+    werte = [
+        verbrauch.Rohwert(datetime(2026, 11, 3, 13, 0, tzinfo=timezone.utc), Decimal("418200000")),
+        verbrauch.Rohwert(datetime(2026, 11, 3, 16, 31, tzinfo=timezone.utc), Decimal("418537600")),
+    ]
+    von = datetime(2026, 11, 2, 23, 0, tzinfo=timezone.utc)
+    bis = datetime(2026, 11, 3, 23, 0, tzinfo=timezone.utc)
+    minute = timedelta(seconds=60)
+    wh = verbrauch.menge_zaehlerstand(verbrauch.ReihenKontext("Wh", "Europe/Berlin"), werte, von, bis, minute)
+    assert wh["menge"] == Decimal("337600.000")
+    assert "Lücke 14:00–17:31: Zuwachs 337,6\u00a0kWh gemessen, nicht auf Viertelstunden verteilbar" in wh["kennzeichen"]
+    ohne = verbrauch.menge_zaehlerstand(verbrauch.ReihenKontext(None, "Europe/Berlin"), werte, von, bis, minute)
+    assert "Lücke 14:00–17:31: Zuwachs gemessen, nicht auf Viertelstunden verteilbar" in ohne["kennzeichen"]
+
+
+def test_ein_standort_ausserhalb_von_berlin_zeigt_seine_eigene_uhrzeit():
+    """Befund Zone (E10): die Uhrzeit spricht die Zone des Standorts aus dem Träger, nie eine feste."""
+    t = datetime(2026, 11, 19, 9, 12, tzinfo=timezone.utc)
+    minute = timedelta(seconds=60)
+    werte = [verbrauch.Rohwert(t - minute, Decimal("101")), verbrauch.Rohwert(t, Decimal("5"))]
+    neustart = [{"art": "device_restart", "t": "2026-11-19T09:12:00+00:00", "verlust_s": 120}]
+    berlin = verbrauch.menge_zaehlerstand(_KWH_BERLIN, werte, t - minute, t, minute, neustart)
+    lissabon = verbrauch.menge_zaehlerstand(
+        verbrauch.ReihenKontext("kWh", "Europe/Lisbon"), werte, t - minute, t, minute, neustart
+    )
+    assert berlin["kennzeichen"] == [
+        "Rücksetzung 10:12 ohne Endstand — bis zu 1 Kadenz nicht gezählt",
+        "Neustart 10:12: bis zu 120 s Zählung möglicherweise verloren",
+    ]
+    assert lissabon["kennzeichen"] == [
+        "Rücksetzung 09:12 ohne Endstand — bis zu 1 Kadenz nicht gezählt",
+        "Neustart 09:12: bis zu 120 s Zählung möglicherweise verloren",
+    ]
+    assert lissabon["menge"] == berlin["menge"]
+
+
+# ---------------------------------------------------- Ersatzwert-Methoden (E7, AP-08 IP-13)
+
+EREIGNIS_VEKTOREN = VECTORS.parent / "events-vocabulary-vectors.json"
+_F11, _F21 = "f11-begr-ndeter-ersatzwert", "f21-widerruf-und-ersatz-durch-eine-bessere-methode"
+_FAELLE = {c["name"]: c for c in CASES}
+
+ERSATZWERT_ERWARTUNGEN = [
+    pytest.param(eintrag, erwartung, id=f"{eintrag['name']}::{erwartung['name']}")
+    for eintrag in DOC["ersatzwerte"]
+    for erwartung in eintrag["expected"]
+]
+
+
+def _mit_status(eintrag: dict) -> list[dict]:
+    return [{**e, "status": eintrag["status"][e["kennung"]]} for e in eintrag["ersatzwerte"]]
+
+
+def test_die_methoden_und_ablehnungen_sind_die_des_vertrags():
+    """Sieben Methoden in der Reihenfolge und mit dem Kundennamen des Ereignis-Vokabulars; die Ablehnungen aus der Datei."""
+    regeln = DOC["regeln"]
+    assert regeln["ersatzwert_stellen"] == verbrauch.ERSATZWERT_STELLEN
+    assert tuple(regeln["ersatzwert_ablehnungen"]) == verbrauch.ERSATZWERT_ABLEHNUNGEN
+    methoden = json.loads(EREIGNIS_VEKTOREN.read_text(encoding="utf-8"))["vokabular"]["ersatzwert_methode"]
+    assert list(verbrauch.ERSATZWERT_METHODEN.items()) == [(m["code"], m["name"]) for m in methoden]
+    assert verbrauch.VERTEILEN == tuple(m["code"] for m in methoden if m["zuwachs"] == "gemessen")
+    assert verbrauch.UEBERNEHMEN == tuple(
+        m["code"] for m in methoden if m["zuwachs"] == "keiner" and m["bezug"] in ("vorperiode", "vergleichsquelle")
+    )
+
+
+def test_f11_und_f21_und_jede_methode_und_ablehnung_sind_vertreten():
+    """Die Abnahme von IP-13 hängt an F11 und F21; jede Methode rechnet und jede Ablehnung steht mindestens einmal da."""
+    eintraege = DOC["ersatzwerte"]
+    assert {e["fall"] for e in eintraege} >= {_F11, _F21}
+    assert {ew["methode"] for e in eintraege if not e["abgelehnt"] for ew in e["ersatzwerte"]} == set(
+        verbrauch.ERSATZWERT_METHODEN
+    )
+    assert {g for e in eintraege for g in e["abgelehnt"].values()} == set(verbrauch.ERSATZWERT_ABLEHNUNGEN)
+
+
+@pytest.mark.parametrize("eintrag,erwartung", ERSATZWERT_ERWARTUNGEN)
+def test_ersatzwert_vektor(eintrag: dict, erwartung: dict):
+    """Jede Version mit Ersatzwerten, Feld für Feld — und genau die benannten Ablehnungen."""
+    ist = verbrauch.ergebnis(
+        _FAELLE[eintrag["fall"]]["input"]["reihe"], erwartung["von"], erwartung["bis"], ersatzwerte=_mit_status(eintrag)
+    )
+    for feld in GERECHNET:
+        if feld not in erwartung:
+            continue
+        if feld == "menge":
+            soll = erwartung["menge"]
+            assert (ist["menge"] is None) == (soll is None), eintrag["why"]
+            if soll is not None:
+                assert ist["menge"] == Decimal(str(soll)), f"menge: {eintrag['why']}"
+        else:
+            assert ist.get(feld) == erwartung[feld], f"{feld}: {eintrag['why']}"
+    assert ist.get("ersatzwert_abgelehnt", {}) == eintrag["abgelehnt"], eintrag["why"]
+
+
+@pytest.mark.parametrize("eintrag", [e for e in DOC["ersatzwerte"] if e["verteilung"]], ids=lambda e: e["name"])
+def test_die_verteilung_der_datei(eintrag: dict):
+    """Anzahl, erster und letzter Anteil, Summe je Tag — und die Summe EXAKT der gemessene Zuwachs."""
+    reihe = _FAELLE[eintrag["fall"]]["input"]["reihe"]
+    for soll in eintrag["verteilung"]:
+        roh = next(e for e in eintrag["ersatzwerte"] if e["kennung"] == soll["kennung"])
+        ew = verbrauch.ersatzwert_aus({**roh, "status": verbrauch.WIRKSAM}, reihe)
+        anteile = verbrauch.ersatzwert_anteile(ew, reihe["wertart"], reihe["einheit"])
+        assert len(anteile) == soll["anzahl"]
+        assert sum((a for _, a in anteile), Decimal(0)) == ew.luecke.zuwachs == Decimal(str(soll["summe"]))
+        assert anteile[0][1] == Decimal(str(soll["erster"]))
+        assert anteile[-1][1] == Decimal(str(soll["letzter"]))
+        je_tag: dict[str, Decimal] = {}
+        for t, a in anteile:
+            tag = t.astimezone(ZoneInfo(reihe["zeitzone"])).date().isoformat()
+            je_tag[tag] = je_tag.get(tag, Decimal(0)) + a
+        assert je_tag == {k: Decimal(str(x)) for k, x in soll["je_tag"].items()}
+
+
+def test_ein_zurueckgenommener_ersatzwert_hinterlaesst_keine_spur_in_den_zahlen():
+    """F21: nur zurückgenommene Ersatzwerte → jede Periode ist Zeichen für Zeichen Version 1."""
+    geprueft = 0
+    for eintrag in DOC["ersatzwerte"]:
+        if set(eintrag["status"].values()) != {"zurueckgenommen"}:
+            continue
+        reihe = _FAELLE[eintrag["fall"]]["input"]["reihe"]
+        for erwartung in eintrag["expected"]:
+            mit = verbrauch.ergebnis(reihe, erwartung["von"], erwartung["bis"], ersatzwerte=_mit_status(eintrag))
+            assert mit == verbrauch.ergebnis(reihe, erwartung["von"], erwartung["bis"])
+            geprueft += 1
+    assert geprueft >= 3
+
+
+def test_die_bessere_methode_rechnet_vom_bestand_aus():
+    """F21: Version 3 mit Methode c ist dieselbe Zahl, ob Version 2 (Methode a) je bestand oder nicht."""
+    reihe = _FAELLE[_F21]["input"]["reihe"]
+    eintrag = next(e for e in DOC["ersatzwerte"] if e["status"] == {"EW-2026-0003": "zurueckgenommen", "EW-2026-0005": "wirksam"})
+    nur_c = [e for e in _mit_status(eintrag) if e["kennung"] == "EW-2026-0005"]
+    for erwartung in eintrag["expected"]:
+        mit_widerruf = verbrauch.ergebnis(reihe, erwartung["von"], erwartung["bis"], ersatzwerte=_mit_status(eintrag))
+        assert mit_widerruf == verbrauch.ergebnis(reihe, erwartung["von"], erwartung["bis"], ersatzwerte=nur_c)
+
+
+# Die Invariante „Summe = gemessener Zuwachs“ (a, b, c) — an vielen Lückenlängen und mit Rundungsrest.
+
+_LAENGEN = [1, 2, 3, 7, 38, 40, 78, 96, 100, 2976]
+_ZUWAECHSE = ["1872.0", "100", "1", "0.001", "337.6", "1000000", "0", "2.000000001", "418537600"]
+
+
+def _profile(n: int) -> dict[str, list[Decimal]]:
+    return {
+        "gleichmaessig": [Decimal(1)] * n,
+        "steigend": [Decimal(i + 1) for i in range(n)],
+        "mit_nullen": [Decimal(3) if i % 2 == 0 else Decimal(0) for i in range(n)],
+        "letzte_null": [Decimal(5)] * (n - 1) + [Decimal(0)] if n > 1 else [Decimal(5)],
+        "unregelmaessig": [Decimal("0.37") * (i % 7 + 1) for i in range(n)],
+    }
+
+
+@pytest.mark.parametrize("n", _LAENGEN)
+@pytest.mark.parametrize("zuwachs", _ZUWAECHSE)
+def test_invariante_summe_gleich_gemessenem_zuwachs(n: int, zuwachs: str):
+    """a–c: die Summe der GESPEICHERTEN Anteile ist EXAKT der Zuwachs — auch wo ein Anteil ein unendlicher Bruch ist."""
+    z = Decimal(zuwachs)
+    stelle = Decimal(1).scaleb(-verbrauch.ERSATZWERT_STELLEN)
+    for art, gewichte in _profile(n).items():
+        anteile = verbrauch.verteilen(z, gewichte)
+        assert len(anteile) == n
+        assert sum(anteile, Decimal(0)) == z, f"{art}: Summe {sum(anteile)} statt {z}"
+        assert all(a >= 0 for a in anteile), art
+        summe = sum(gewichte, Decimal(0))
+        for g, a in zip(gewichte[:-1], anteile[:-1]):
+            genau = z * g / summe
+            assert a == a.quantize(stelle) and 0 <= genau - a < stelle, f"{art}: {a} ist nicht {genau} abgeschnitten"
+        # Der Rest aus dem Abschneiden steht in der LETZTEN Viertelstunde und ist kleiner als n × 10⁻⁹.
+        rest = anteile[-1] - z * gewichte[-1] / summe
+        assert Decimal(0) <= rest.quantize(stelle) < n * stelle, f"{art}: Rest {rest}"
+
+
+def test_die_invariante_haelt_auch_mit_rest_an_einer_echten_luecke():
+    """Konstruiert: 100 kWh über drei Viertelstunden — 33,333333333 + 33,333333333 + 33,333333334 = 100 exakt."""
+    anteile = verbrauch.verteilen(Decimal(100), [Decimal(1)] * 3)
+    assert anteile == [Decimal("33.333333333"), Decimal("33.333333333"), Decimal("33.333333334")]
+    gerundet = [(Decimal(100) / 3).quantize(Decimal("0.000000001"))] * 3
+    assert sum(gerundet) != Decimal(100), "Gegenprobe: jeden Anteil zu runden verlöre den Rest"

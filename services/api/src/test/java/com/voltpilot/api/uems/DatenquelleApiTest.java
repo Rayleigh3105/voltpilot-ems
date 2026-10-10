@@ -16,6 +16,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.NullNode;
+import com.voltpilot.api.probe.ProbePublisher;
 import com.voltpilot.api.probe.ProbeRequest;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.probe.ProbeResult.OpResult;
@@ -114,7 +115,7 @@ class DatenquelleApiTest {
             Map.entry("ueberschneidung", 409),
             Map.entry("adresse_an_box_vergeben", 409),
             Map.entry("netzlage_fehlt", 409),
-            Map.entry("nur_ein_leser", 409),
+            Map.entry("nur_ein_leser", 422),
             Map.entry("vergleich_bestaetigen", 409),
             Map.entry("pruefung_fehlt", 409),
             Map.entry("pruefung_gescheitert", 409));
@@ -182,6 +183,9 @@ class DatenquelleApiTest {
     @MockBean
     ProbeService probes;
 
+    @MockBean
+    DatenquelleBudgetService budgets;
+
     @Autowired
     MockMvc mvc;
 
@@ -200,7 +204,7 @@ class DatenquelleApiTest {
 
     @AfterEach
     void aufraeumen() {
-        reset(probes);
+        reset(probes, budgets);
         TenantContext.clear();
     }
 
@@ -211,7 +215,7 @@ class DatenquelleApiTest {
     Stream<DynamicTest> dieFamilieAntragLaeuftDurchDieSchnittstelle() {
         List<JsonNode> faelle = StreamSupport.stream(vektoren.get("cases").spliterator(), false)
                 .filter(f -> "antrag".equals(f.get("familie").asText())).toList();
-        assertThat(faelle).hasSize(21);
+        assertThat(faelle).hasSize(22);
         return faelle.stream().map(f -> DynamicTest.dynamicTest(f.get("name").asText(), () -> spiele(f)));
     }
 
@@ -268,6 +272,15 @@ class DatenquelleApiTest {
             quelle = w.quellen.get(antrag.get("quelle").asText());
             anlage = w.anlage(w.quelleAnlage.get(antrag.get("quelle").asText()));
         }
+        if (antrag.path("innerhalb_gemeinsamer_steuerung").asBoolean()) {
+            // AP-15 IP-26: der Fakt dahinter — die Anlage hat eine Gemeinsame Steuerung vor dem Scharfschalten (S1),
+            // und die Ziel-Box steuert mit. Die Schnittstelle leitet das Antrag-Feld daraus ab.
+            UUID verbund = root.queryForObject("INSERT INTO steuerungsverbund (tenant_id, site_id, stufe, created_by) "
+                    + "VALUES (?, ?, 'beobachtet', 'test') RETURNING id", UUID.class, w.mandant, anlage);
+            root.update("INSERT INTO steuerungsverbund_mitglied (tenant_id, steuerungsverbund_id, site_id, device_id, "
+                    + "rolle, gueltig_ab) VALUES (?, ?, ?, ?, 'steuert_mit', ?)", w.mandant, verbund, anlage, ziel,
+                    OffsetDateTime.parse(jetzt).minusDays(1));
+        }
 
         if (!pruefung.isNull()) {
             UHR.stelle(pruefung.get("zeitpunkt").asText());
@@ -309,6 +322,8 @@ class DatenquelleApiTest {
         assertThat(a.status()).as(a.body().toString()).isEqualTo(STATUS_JE_GRUND.get(grund));
         assertThat(a.body().get("code").asText()).isEqualTo(grund);
         assertThat(a.body().get("message").asText()).isEqualTo(e.get("text").asText());
+        assertThat(a.body().get("grund").asText()).isEqualTo(grund);
+        assertThat(a.body().get("satz").asText()).isEqualTo(e.get("text").asText());
         assertThat(a.body().get("urteil").asText()).isEqualTo(e.get("urteil").asText());
     }
 
@@ -319,6 +334,53 @@ class DatenquelleApiTest {
         for (Grund g : Grund.values()) {
             assertThat(DatenquelleAbgelehnt.status(g)).as(g.code()).isEqualTo(STATUS_JE_GRUND.get(g.code()));
         }
+    }
+
+    @Test
+    void a10Budget422TraegtRechnungUndZweiAuswegeUndLaesstDenBestandUnberuehrt() throws Exception {
+        Welt w = new Welt("Ahrenberg A10");
+        JsonNode ref = referenzQuelle("DQ-3");
+        UUID dq3 = w.saeen("DQ-3", ref.get("anlage").asText(), ref.get("protokoll").asText(),
+                adresseAusReferenz(ref), ganzzahlen(ref.get("geraete_ids")), ref.get("netz").asText(),
+                false, ref.get("steuerquelle").asBoolean(), 10, List.of());
+        UUID e1 = w.box("E-1");
+        UUID e2 = w.box("E-2");
+        UUID halle1 = w.anlage("AN-1");
+        Wer jonas = kunde(w.mandant, "Jonas Wendlinger");
+        UHR.stelle("2026-10-01T00:00:00+02:00");
+        antwortet(e1, "ok");
+        assertThat(ruf(jonas, HttpMethod.POST, basis(halle1) + "/" + dq3 + "/reachability-check",
+                Map.of("device_id", e1, "unit_id", 1, "register", 0)).status()).isEqualTo(200);
+
+        var source = new com.voltpilot.api.measurement.MeasurementBudget.SourceCandidate("DQ-3", "modbus_tcp", 8, 10,
+                List.of(new com.voltpilot.api.measurement.MeasurementBudget.SourceRequest(4, 400)));
+        var belegt = new com.voltpilot.api.measurement.MeasurementBudget.SourceCandidate("Bestand", "modbus_tcp", 66, 60,
+                List.of(new com.voltpilot.api.measurement.MeasurementBudget.SourceRequest(22, 400)));
+        var e2Belegt = new com.voltpilot.api.measurement.MeasurementBudget.SourceCandidate("Bestand E2", "modbus_tcp", 3, 60,
+                List.of(new com.voltpilot.api.measurement.MeasurementBudget.SourceRequest(1, 400)));
+        DatenquelleBudget.Ablehnung rechnung = DatenquelleBudget.pruefe("DQ-3", source, e1, List.of(
+                new DatenquelleBudget.BoxStand(e1, "Box Halle 1", List.of(belegt)),
+                new DatenquelleBudget.BoxStand(e2, "Box Halle 2", List.of(e2Belegt))));
+        when(budgets.pruefe(eq(dq3), eq(e1), any(Instant.class))).thenReturn(rechnung);
+        int quellenVorher = anzahl(w, "data_source");
+        int zeitraeumeVorher = anzahl(w, "data_source_assignment");
+
+        Antwort ab = ruf(jonas, HttpMethod.POST, basis(halle1) + "/" + dq3 + "/assignments",
+                Map.of("device_id", e1));
+
+        assertThat(ab.status()).as(ab.body().toString()).isEqualTo(422);
+        assertThat(ab.body().get("code").asText()).isEqualTo("budget_ueberschritten");
+        assertThat(ab.body().at("/rechnung/quelle/last/requests_per_minute").asDouble()).isEqualTo(24);
+        assertThat(ab.body().at("/rechnung/quelle/takt_s").asInt()).isEqualTo(10);
+        assertThat(ab.body().at("/rechnung/quelle/anfragen/0/anfragen_je_takt").asInt()).isEqualTo(4);
+        assertThat(ab.body().at("/rechnung/quelle/anfragen/0/kosten_ms_je_anfrage").asInt()).isEqualTo(400);
+        assertThat(ab.body().at("/rechnung/box_nachher/requests_per_minute").asDouble()).isEqualTo(46);
+        assertThat(ab.body().at("/rechnung/auswege/takt_s").asInt()).isEqualTo(60);
+        assertThat(ab.body().at("/rechnung/auswege/takt").asText()).isEqualTo("Takt 60 s wählen");
+        assertThat(ab.body().at("/rechnung/auswege/andere_box").asText())
+                .isEqualTo("Box Halle 2 wählen (29 Anfragen/min frei)");
+        assertThat(anzahl(w, "data_source")).isEqualTo(quellenVorher);
+        assertThat(anzahl(w, "data_source_assignment")).isEqualTo(zeitraeumeVorher);
     }
 
     // ============================================================ Anlegen (Lindach)
@@ -399,6 +461,25 @@ class DatenquelleApiTest {
         assertThat(protokoll.at("/eintraege/2/neu/kennzeichen").asText()).isEqualTo("DQ-6");
     }
 
+    @Test
+    void katalogEinLeserKannNichtVomClientGeoeffnetWerden() throws Exception {
+        Welt w = new Welt("Ein-Leser-Katalog");
+        UUID anlage = w.anlage("AN-1");
+        Wer kunde = kunde(w.mandant, "Ines Fischer");
+
+        for (Map<String, Object> body : List.of(
+                new LinkedHashMap<>(Map.of("name", "Solarman-Logger", "protokoll", "solarman_v5",
+                        "adresse", "192.168.10.20:8899/2985159064", "geraete_ids", List.of(1), "mehrere_leser", true,
+                        "steuerquelle", false, "kadenz_s", 60)),
+                new LinkedHashMap<>(Map.of("name", "WAGO-Steuerung", "protokoll", "modbus_tcp",
+                        "adresse", "192.168.10.21:502", "geraete_ids", List.of(1), "mehrere_leser", true,
+                        "steuerquelle", true, "kadenz_s", 60)))) {
+            Antwort angelegt = ruf(kunde, HttpMethod.POST, basis(anlage), body);
+            assertThat(angelegt.status()).as(angelegt.body().toString()).isEqualTo(201);
+            assertThat(angelegt.body().get("mehrere_leser").asBoolean()).isFalse();
+        }
+    }
+
     // ============================================================ A3 · A11 · A13
 
     /**
@@ -409,7 +490,7 @@ class DatenquelleApiTest {
      * Datenbank, und das Protokoll der Quelle trägt beide Wechsel.
      */
     @Test
-    void a3HinUndZurueckWieDieReferenzUndBeideWechselImProtokoll() throws Exception {
+    void a7EdgeWechselLaesstMessstellenGebundenUndTraegtDieBoxJeMesszeit() throws Exception {
         Welt w = new Welt("Ahrenberg A3");
         UUID dq3 = w.quelleAusReferenz("DQ-3", OffsetDateTime.parse("2027-04-09T09:00:00+02:00").toInstant());
         UUID halle1 = w.anlage("AN-1");
@@ -417,6 +498,38 @@ class DatenquelleApiTest {
         UUID e2neu = w.box("E-2′");
         Wer jonas = kunde(w.mandant, "Jonas Wendlinger");
         String pfad = basis(halle1) + "/" + dq3;
+
+        // A7 beginnt mit vier Messstellen an DQ-3. Der Box-Wechsel darf weder diese Bindungen
+        // anfassen noch einen Messstellen-Eintrag erzeugen. Die Writer-Abnahme
+        // WriterPipeTest#derNachzueglerIstFuehrendUndDerSpaetereEinSpiegel beweist separat, dass
+        // der Writer dieselbe Zuständigkeit zur Messzeit nachschlägt; hier läuft ihre echte
+        // AP-06-Schreibroute und die gemeinsame Datenbankform zusammen.
+        UUID komponente = root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, label, "
+                + "entity_type, device_id, control, communication, connection_json, created_at) VALUES "
+                + "(?, ?, 'modbus-generic', 'DQ-3 Zähler', 'modbus-generic', ?, false, true, '{}'::jsonb, now()) "
+                + "RETURNING id", UUID.class, w.mandant, halle1, e1);
+        // Der Bestands-Trigger leitet aus der Komponente bereits Gerät und Speisung ab; A7 hängt
+        // nur die vorhandene DQ-3 daran, statt einen zweiten Geräteweg zu erfinden.
+        UUID geraet = root.queryForObject("SELECT geraet_id FROM geraet_komponente WHERE tenant_id = ? "
+                + "AND entity_id = ? AND gueltig_bis IS NULL", UUID.class, w.mandant, komponente);
+        root.update("UPDATE geraet SET data_source_id = ?, geraete_id = 1 WHERE id = ?", dq3, geraet);
+        for (int n = 5; n <= 8; n++) {
+            UUID messstelle = root.queryForObject("INSERT INTO messstelle (tenant_id, kennzeichen, name, art, "
+                    + "medium, groesse, richtung, einheit, wertart) VALUES (?, ?, ?, 'gemessen', 'Strom', "
+                    + "'Wirkenergie', 'Bezug', 'kWh', 'Zählerstand') RETURNING id", UUID.class,
+                    w.mandant, "MS-0" + n, "Messstelle " + n);
+            root.update("INSERT INTO messstelle_quelle (tenant_id, messstelle_id, groesse, richtung, entity_id, "
+                    + "geraet_id, kanal, kanal_wertart, herleitung, rolle, gueltig_ab, rueckwirkend, "
+                    + "eingetragen_am, actor_name, actor_art) VALUES (?, ?, 'Wirkenergie', 'Bezug', ?, ?, ?, "
+                    + "'counter', 'zaehlerstand', 'fuehrend', '2024-03-12T00:00:00Z', true, "
+                    + "'2027-04-09T07:00:00Z', 'Bestandsübernahme', 'voltpilot')",
+                    w.mandant, messstelle, komponente, geraet, "energy_kwh_ms0" + n);
+        }
+        List<Map<String, Object>> bindungenVorher = root.queryForList("SELECT id, messstelle_id, entity_id, "
+                + "geraet_id, kanal, gueltig_ab, gueltig_bis FROM messstelle_quelle WHERE tenant_id = ? "
+                + "ORDER BY messstelle_id", w.mandant);
+        assertThat(bindungenVorher).hasSize(4);
+        assertThat(anzahl(w, "messstelle_aenderung")).isZero();
 
         // A11: vor der Route.
         UHR.stelle("2027-04-09T09:00:00+02:00");
@@ -477,6 +590,42 @@ class DatenquelleApiTest {
         assertThat(erster.at("/alt/box_name").asText()).isEqualTo("Box Halle 1");
         assertThat(erster.at("/neu/box_name").asText()).isEqualTo("Box Halle 2 (neu)");
         assertThat(erster.at("/neu/ab").asText()).isEqualTo("2027-04-10T05:30:00Z");
+
+        assertThat(root.queryForList("SELECT id, messstelle_id, entity_id, geraet_id, kanal, gueltig_ab, "
+                + "gueltig_bis FROM messstelle_quelle WHERE tenant_id = ? ORDER BY messstelle_id", w.mandant))
+                .as("A7: alle vier Quellenbindungen bleiben bytegleich").isEqualTo(bindungenVorher);
+        assertThat(anzahl(w, "messstelle_aenderung"))
+                .as("A7: ein Box-Wechsel ist kein Ereignis der Messstelle").isZero();
+
+        Instant vorWechsel = OffsetDateTime.parse("2027-04-10T07:29:00+02:00").toInstant();
+        Instant nachWechsel = OffsetDateTime.parse("2027-04-10T07:31:00+02:00").toInstant();
+        UUID boxVorher = zustaendigeBox(dq3, vorWechsel);
+        UUID boxNachher = zustaendigeBox(dq3, nachWechsel);
+        assertThat(boxVorher).isEqualTo(e1);
+        assertThat(boxNachher).isEqualTo(e2neu);
+        for (Object[] wert : List.of(
+                new Object[] {vorWechsel, boxVorher, 1001L, 312400.0},
+                new Object[] {nachWechsel, boxNachher, 1002L, 312401.0})) {
+            root.update("INSERT INTO device_measurement_sample (time, received_at, tenant_id, site_id, device_id, "
+                    + "point_key, raw_numeric, decoded_numeric, quality, catalog_version, edge_sequence, "
+                    + "aggregation_kind, entity_id, applied_revision, value_kind, role, delivery, delay_s, "
+                    + "device_install_id) VALUES (?, ?, ?, ?, ?, 'energy_kwh_ms05', ?, ?, 'good', '2026.09.11.1', ?, "
+                    + "'counter', ?, 1, 'counter', 'fuehrend', 'direkt', 0, ?)",
+                    java.sql.Timestamp.from((Instant) wert[0]), java.sql.Timestamp.from((Instant) wert[0]),
+                    w.mandant, halle1, wert[1], wert[3], wert[3], wert[2], komponente, geraet);
+        }
+        assertThat(root.queryForList("SELECT s.time, d.name AS box FROM device_measurement_sample s "
+                + "JOIN device d ON d.id = s.device_id WHERE s.tenant_id = ? AND s.entity_id = ? "
+                + "ORDER BY s.time", w.mandant, komponente))
+                .extracting(z -> z.get("box"))
+                .as("A7: eine box-unabhängige Reihe, Herkunft je Wert aus der Zuständigkeit zur Messzeit")
+                .containsExactly("Box Halle 1", "Box Halle 2 (neu)");
+    }
+
+    private static UUID zustaendigeBox(UUID datenquelle, Instant messzeit) {
+        return root.queryForObject("SELECT device_id FROM data_source_assignment WHERE data_source_id = ? "
+                + "AND effective_from <= ? AND (effective_to IS NULL OR ? < effective_to)", UUID.class,
+                datenquelle, java.sql.Timestamp.from(messzeit), java.sql.Timestamp.from(messzeit));
     }
 
     /**
@@ -607,6 +756,189 @@ class DatenquelleApiTest {
                 Map.of("device_id", e2neu, "unit_id", 1, "register", 0));
         assertThat(ocpp.status()).isEqualTo(422);
         assertThat(ocpp.body().get("code").asText()).isEqualTo("pruefung_nicht_moeglich");
+    }
+
+    /**
+     * Befund aus PR 1140 (Rot-Beweis): eine Lese-Prüfung mit der Katalog-Schreibweise
+     * {@code uint16} — so schickte sie der WAGO-Assistent — war eine 400. Jetzt geht sie als
+     * gewöhnlicher {@code read} mit dem Vertragswort {@code u16} zur Box, und eine Prüfung mit dem
+     * Vertragswort bleibt Byte für Byte, was sie war: derselbe Schritt, dieselben Felder der Antwort,
+     * kein {@code wago}-Block, nie ein Kopf-Schritt.
+     */
+    @Test
+    void eineLesePruefungSendetDasVertragswortUndBleibtByteGleich() throws Exception {
+        Welt w = new Welt("Ahrenberg Vertragswort");
+        UUID dq3 = w.quelleAusReferenz("DQ-3", OffsetDateTime.parse("2027-04-09T09:00:00+02:00").toInstant());
+        UUID halle1 = w.anlage("AN-1");
+        UUID e2neu = w.box("E-2′");
+        Wer jonas = kunde(w.mandant, "Jonas Wendlinger");
+        String pfad = basis(halle1) + "/" + dq3 + "/reachability-check";
+        UHR.stelle("2027-04-09T09:00:00+02:00");
+        OpResult zeile = new OpResult("erreichbarkeit", true, 1.0, List.of(1), 1.0, null, null);
+        when(probes.probeBox(eq(e2neu), anyList(), any()))
+                .thenReturn(Optional.of(new ProbeResult("a1b2c3d4e5f60718", null, null, List.of(zeile))));
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ProbeRequest.Op>> schritte = ArgumentCaptor.forClass(List.class);
+
+        Antwort katalog = ruf(jonas, HttpMethod.POST, pfad,
+                Map.of("device_id", e2neu, "unit_id", 3, "register", 30775, "data_type", "uint16"));
+        assertThat(katalog.status()).isEqualTo(200);
+        assertThat(katalog.body().get("ergebnis").asText()).isEqualTo("ok");
+        Antwort vertrag = ruf(jonas, HttpMethod.POST, pfad,
+                Map.of("device_id", e2neu, "unit_id", 3, "register", 30775, "data_type", "u16"));
+        assertThat(vertrag.status()).isEqualTo(200);
+        Antwort vorgabe = ruf(jonas, HttpMethod.POST, pfad, Map.of("device_id", e2neu, "unit_id", 3, "register", 30775));
+        Antwort int32 = ruf(jonas, HttpMethod.POST, pfad,
+                Map.of("device_id", e2neu, "unit_id", 3, "register", 30775, "data_type", "int32"));
+        verify(probes, org.mockito.Mockito.times(4)).probeBox(eq(e2neu), schritte.capture(), eq("sub-jonas-wendlinger"));
+        ProbeRequest.Op u16 = new ProbeRequest.Op("erreichbarkeit", "192.168.10.31", 502, 3, "holding", 30775, "u16",
+                null, null, null);
+        assertThat(schritte.getAllValues()).containsExactly(List.of(u16), List.of(u16), List.of(u16),
+                List.of(new ProbeRequest.Op("erreichbarkeit", "192.168.10.31", 502, 3, "holding", 30775, "s32",
+                        null, null, null)));
+        verify(probes, never()).probeBox(any(), any(ProbePublisher.WagoKopfOp.class), anyList(), any());
+        for (Antwort a : List.of(katalog, vertrag, vorgabe, int32)) {
+            List<String> felder = new ArrayList<>();
+            a.body().fieldNames().forEachRemaining(felder::add);
+            assertThat(felder).containsExactly("box", "adresse", "ergebnis", "gewertet", "text", "zeitpunkt",
+                    "dauer_ms", "antwort");
+        }
+        assertThat(vertrag.body().get("text").asText()).isEqualTo(katalog.body().get("text").asText());
+        JsonNode eintrag = ruf(jonas, HttpMethod.GET, basis(halle1) + "/" + dq3 + "/history", null).body()
+                .get("eintraege").get(0);
+        List<String> neu = new ArrayList<>();
+        eintrag.get("neu").fieldNames().forEachRemaining(neu::add);
+        assertThat(neu).containsExactlyInAnyOrder("protokoll", "adresse", "dauer_ms"); // jsonb ordnet selbst
+
+        clearInvocations(probes);
+        Antwort fremd = ruf(jonas, HttpMethod.POST, pfad,
+                Map.of("device_id", e2neu, "unit_id", 3, "register", 30775, "data_type", "float64"));
+        assertThat(fremd.status()).isEqualTo(400);
+        assertThat(fremd.body().get("feld").asText()).isEqualTo("data_type");
+        verify(probes, never()).probeBox(any(), anyList(), any());
+    }
+
+    /**
+     * AP-05, Befund aus PR 1140: die Datenquellen-Prüfung einer WAGO-Steuerung ({@code op: wago_kopf})
+     * schickt den Kopf über den Probe-Weg der Soll-Lesung und liest NUR hinter einem erkannten
+     * v1-Kopf je Karte Steckplatz, Kartentyp und Variante — die Antwort sagt es in Kundensprache.
+     * Kein v1-Kopf und eine stumme Box sind ehrliche Ausgänge ohne eine einzige Karte.
+     */
+    @Test
+    void dieWagoPruefungLiestDenKopfUndJeKarteDieKennwoerter() throws Exception {
+        Welt w = new Welt("Ahrenberg WAGO-Prüfung");
+        UUID dq4 = w.quelleAusReferenz("DQ-4", OffsetDateTime.parse("2027-04-09T09:00:00+02:00").toInstant());
+        UUID halle2 = w.anlage("AN-2");
+        UUID e2neu = w.box("E-2′");
+        Wer jonas = kunde(w.mandant, "Jonas Wendlinger");
+        String pfad = basis(halle2) + "/" + dq4;
+        UHR.stelle("2027-04-09T09:00:00+02:00");
+        Map<String, Object> wago = Map.of("device_id", e2neu, "op", "wago_kopf", "unit_id", 1, "register", 4096,
+                "register_kind", "input", "word_order", "little");
+
+        // 1. Kopf erkannt: zwei Karten, ihre Kennwörter in EINER Probe (zwei Karten je Anfrage).
+        when(probes.probeBox(eq(e2neu), any(ProbePublisher.WagoKopfOp.class), anyList(), any()))
+                .thenReturn(Optional.of(new ProbeResult("c41f0a9b3e77d215", null, null, List.of(OpResult.ausKopf(
+                        "erreichbarkeit", true, null, null, new ProbeResult.WagoKopf(true, true, null, 1, 0, 12, 42, 2,
+                                1731, 8212L, null))))));
+        List<OpResult> woerter = new ArrayList<>();
+        int[][] gelesen = {{1, 494, 0}, {2, 495, 25_001}};
+        for (int n = 0; n < 2; n++) {
+            for (int o = 0; o < 3; o++) {
+                woerter.add(new OpResult("k" + (n + 1) + "-" + o, true, (double) gelesen[n][o], List.of(gelesen[n][o]),
+                        (double) gelesen[n][o], null, null));
+            }
+        }
+        when(probes.probeBox(eq(e2neu), anyList(), any()))
+                .thenReturn(Optional.of(new ProbeResult("d52a1b0c4f88e326", null, null, woerter)));
+        Antwort erkannt = ruf(jonas, HttpMethod.POST, pfad + "/reachability-check", wago);
+        assertThat(erkannt.status()).isEqualTo(200);
+        assertThat(erkannt.body().get("ergebnis").asText()).isEqualTo("ok");
+        assertThat(erkannt.body().get("gewertet").asBoolean()).isTrue();
+        JsonNode block = erkannt.body().get("wago");
+        assertThat(block.get("erkannt").asBoolean()).isTrue();
+        assertThat(block.get("satz").asText())
+                .isEqualTo("Registerbild v1 erkannt — Controller-Kennung 8212, 2 Energiekarten.");
+        assertThat(block.get("controller_kennung").asLong()).isEqualTo(8212L);
+        assertThat(block.get("kartenzahl").asInt()).isEqualTo(2);
+        assertThat(MAPPER.writeValueAsString(block.get("karten"))).isEqualTo(
+                "[{\"karte\":1,\"steckplatz\":1,\"kartentyp\":494,\"variante\":0},"
+                        + "{\"karte\":2,\"steckplatz\":2,\"kartentyp\":495,\"variante\":25001}]");
+        // Der rohe Kopf reist mit, unter dem Vertragsnamen, den der Assistent liest.
+        assertThat(erkannt.body().get("antwort").get("results").get(0).get("wago_kopf").get("controller_kennung")
+                .asLong()).isEqualTo(8212L);
+
+        ArgumentCaptor<ProbePublisher.WagoKopfOp> kopf = ArgumentCaptor.forClass(ProbePublisher.WagoKopfOp.class);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ProbeRequest.Op>> nebenbei = ArgumentCaptor.forClass(List.class);
+        verify(probes).probeBox(eq(e2neu), kopf.capture(), nebenbei.capture(), eq("sub-jonas-wendlinger"));
+        assertThat(kopf.getValue()).isEqualTo(new ProbePublisher.WagoKopfOp("erreichbarkeit", "192.168.20.10", 502, 1,
+                "input", 4096, "little"));
+        assertThat(nebenbei.getValue()).isEmpty();
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ProbeRequest.Op>> karten = ArgumentCaptor.forClass(List.class);
+        verify(probes).probeBox(eq(e2neu), karten.capture(), eq("sub-jonas-wendlinger"));
+        assertThat(karten.getValue()).extracting(ProbeRequest.Op::address)
+                .containsExactly(4108, 4109, 4110, 4150, 4151, 4152);
+        assertThat(karten.getValue()).allSatisfy(op -> {
+            assertThat(op.dataType()).isEqualTo("u16");
+            assertThat(op.registerKind()).isEqualTo("input");
+            assertThat(op.wordOrder()).isEqualTo("little");
+        });
+        JsonNode eintrag = ruf(jonas, HttpMethod.GET, pfad + "/history", null).body().get("eintraege").get(0);
+        assertThat(eintrag.get("art").asText()).isEqualTo("erreichbarkeit_geprueft");
+        assertThat(eintrag.get("ergebnis").asText()).isEqualTo("ok");
+        assertThat(eintrag.get("neu").get("op").asText()).isEqualTo("wago_kopf");
+
+        // 2. Kein v1-Kopf: ehrlicher Ausgang, keine einzige Karte gelesen.
+        reset(probes);
+        when(probes.probeBox(eq(e2neu), any(ProbePublisher.WagoKopfOp.class), anyList(), any()))
+                .thenReturn(Optional.of(new ProbeResult("c41f0a9b3e77d216", null, null, List.of(OpResult.ausKopf(
+                        "erreichbarkeit", false, "invalid_response", "Unter dieser Adresse steht nicht das "
+                                + "VoltPilot-Registerbild v1", new ProbeResult.WagoKopf(true, false,
+                                        "hauptversion_fremd", 2, null, null, null, null, null, null, null))))));
+        Antwort fremd = ruf(jonas, HttpMethod.POST, pfad + "/reachability-check", wago);
+        assertThat(fremd.status()).isEqualTo(200);
+        assertThat(fremd.body().get("ergebnis").asText()).isEqualTo("invalid_response");
+        assertThat(fremd.body().get("wago").get("erkannt").asBoolean()).isFalse();
+        assertThat(fremd.body().get("wago").get("satz").asText()).isEqualTo(
+                "Unter der Basisadresse steht kein VoltPilot-Registerbild v1 — es wurde keine Karte gelesen.");
+        assertThat(fremd.body().get("wago").has("karten")).isFalse();
+        assertThat(fremd.body().get("wago").has("controller_kennung")).isFalse();
+        verify(probes, never()).probeBox(any(), anyList(), any());
+
+        // 3. Box stumm: nichts zählt, nichts steht im Protokoll, keine Karte.
+        reset(probes);
+        when(probes.probeBox(eq(e2neu), any(ProbePublisher.WagoKopfOp.class), anyList(), any()))
+                .thenReturn(Optional.empty());
+        int vorher = ruf(jonas, HttpMethod.GET, pfad + "/history", null).body().get("eintraege").size();
+        Antwort still = ruf(jonas, HttpMethod.POST, pfad + "/reachability-check", wago);
+        assertThat(still.status()).isEqualTo(200);
+        assertThat(still.body().get("ergebnis").asText()).isEqualTo("box_meldet_sich_nicht");
+        assertThat(still.body().get("gewertet").asBoolean()).isFalse();
+        assertThat(still.body().get("antwort").isNull()).isTrue();
+        assertThat(still.body().get("wago").get("erkannt").asBoolean()).isFalse();
+        assertThat(still.body().get("wago").get("satz").asText())
+                .isEqualTo("Die Box hat nicht geantwortet — der Kopf des Registerbilds wurde nicht gelesen.");
+        assertThat(ruf(jonas, HttpMethod.GET, pfad + "/history", null).body().get("eintraege").size()).isEqualTo(vorher);
+        verify(probes, never()).probeBox(any(), anyList(), any());
+
+        // 4. Benannt statt geraten: kein Datentyp am Kopf, kein fremder Schritt, keine OCPP-Station.
+        reset(probes);
+        Map<String, Object> mitTyp = new LinkedHashMap<>(wago);
+        mitTyp.put("data_type", "u16");
+        Antwort typ = ruf(jonas, HttpMethod.POST, pfad + "/reachability-check", mitTyp);
+        assertThat(typ.status()).isEqualTo(400);
+        assertThat(typ.body().get("feld").asText()).isEqualTo("data_type");
+        Map<String, Object> fremderSchritt = new LinkedHashMap<>(wago);
+        fremderSchritt.put("op", "test_connection");
+        assertThat(ruf(jonas, HttpMethod.POST, pfad + "/reachability-check", fremderSchritt).body().get("feld").asText())
+                .isEqualTo("op");
+        UUID dq5 = w.quelleAusReferenz("DQ-5", OffsetDateTime.parse("2027-04-09T09:00:00+02:00").toInstant());
+        Antwort ocpp = ruf(jonas, HttpMethod.POST, basis(halle2) + "/" + dq5 + "/reachability-check", wago);
+        assertThat(ocpp.status()).isEqualTo(422);
+        assertThat(ocpp.body().get("code").asText()).isEqualTo("pruefung_nicht_moeglich");
+        verify(probes, never()).probeBox(any(), any(ProbePublisher.WagoKopfOp.class), anyList(), any());
     }
 
     // ============================================================ Bearbeiten · Urheber
@@ -749,6 +1081,63 @@ class DatenquelleApiTest {
         TenantContext.clear();
         assertThatThrownBy(() -> root.update("DELETE FROM data_source_aenderung WHERE data_source_id = ?", quelle))
                 .rootCause().hasMessageContaining("audit rows are append-only");
+    }
+
+    @Test
+    void geplanterWechselBleibtAlsZurueckgenommenErhaltenUndIstDanach409Fremd404() throws Exception {
+        Welt w = new Welt("Ahrenberg Rücknahme");
+        UUID quelle = w.quelleAusReferenz("DQ-3", OffsetDateTime.parse("2027-04-09T09:00:00+02:00").toInstant());
+        UUID anlage = w.anlage("AN-1");
+        UUID ziel = w.box("E-2′");
+        Wer jonas = kunde(w.mandant, "Jonas Wendlinger");
+        String pfad = basis(anlage) + "/" + quelle;
+        UHR.stelle("2027-04-09T15:10:00+02:00");
+        antwortet(ziel, "ok");
+        assertThat(ruf(jonas, HttpMethod.POST, pfad + "/reachability-check",
+                Map.of("device_id", ziel, "unit_id", 1, "register", 0)).status()).isEqualTo(200);
+        JsonNode geplant = ruf(jonas, HttpMethod.POST, pfad + "/assignments",
+                Map.of("device_id", ziel, "effective_from", "2027-04-10T07:30:00+02:00")).body();
+        UUID assignment = UUID.fromString(geplant.at("/datenquelle/zeitraeume/1/id").asText());
+
+        Welt fremd = new Welt("Fremder Kunde");
+        assertThat(ruf(kunde(fremd.mandant, "Fremd"), HttpMethod.DELETE,
+                pfad + "/assignments/" + assignment, null).status()).isEqualTo(404);
+
+        UHR.stelle("2027-04-09T16:00:00+02:00");
+        Antwort zurueck = ruf(jonas, HttpMethod.DELETE, pfad + "/assignments/" + assignment, null);
+        assertThat(zurueck.status()).isEqualTo(200);
+        assertThat(zurueck.body().get("zeitraeume").size()).isEqualTo(1);
+        assertThat(zurueck.body().at("/zeitraeume/0/effective_to").isNull()).isTrue();
+        assertThat(root.queryForObject("SELECT zurueckgenommen_am IS NOT NULL FROM data_source_assignment WHERE id=?",
+                Boolean.class, assignment)).isTrue();
+        assertThat(root.queryForObject("SELECT art FROM data_source_aenderung WHERE data_source_id=? ORDER BY id DESC LIMIT 1",
+                String.class, quelle)).isEqualTo("zustaendigkeit_zurueckgenommen");
+
+        Antwort nochmal = ruf(jonas, HttpMethod.DELETE, pfad + "/assignments/" + assignment, null);
+        assertThat(nochmal.status()).isEqualTo(409);
+        assertThat(nochmal.body().get("grund").asText()).isEqualTo("bereits_zurueckgenommen");
+        assertThat(nochmal.body().get("satz").asText()).contains("bereits zurückgenommen");
+    }
+
+    @Test
+    void bereitsWirksamerWechselKannNichtZurueckgenommenWerden() throws Exception {
+        Welt w = new Welt("Ahrenberg wirksamer Wechsel");
+        UUID quelle = w.quelleAusReferenz("DQ-3", OffsetDateTime.parse("2027-04-09T09:00:00+02:00").toInstant());
+        UUID anlage = w.anlage("AN-1"), ziel = w.box("E-2′");
+        Wer jonas = kunde(w.mandant, "Jonas Wendlinger");
+        String pfad = basis(anlage) + "/" + quelle;
+        UHR.stelle("2027-04-09T15:10:00+02:00");
+        antwortet(ziel, "ok");
+        ruf(jonas, HttpMethod.POST, pfad + "/reachability-check",
+                Map.of("device_id", ziel, "unit_id", 1, "register", 0));
+        JsonNode geplant = ruf(jonas, HttpMethod.POST, pfad + "/assignments",
+                Map.of("device_id", ziel, "effective_from", "2027-04-10T07:30:00+02:00")).body();
+        UUID assignment = UUID.fromString(geplant.at("/datenquelle/zeitraeume/1/id").asText());
+        UHR.stelle("2027-04-10T07:30:00+02:00");
+        Antwort antwort = ruf(jonas, HttpMethod.DELETE, pfad + "/assignments/" + assignment, null);
+        assertThat(antwort.status()).isEqualTo(409);
+        assertThat(antwort.body().get("grund").asText()).isEqualTo("bereits_wirksam");
+        assertThat(antwort.body().get("satz").asText()).contains("bereits wirksam");
     }
 
     // ============================================================ Gerüst

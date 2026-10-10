@@ -62,7 +62,7 @@ export const startArticles: HelpArticle[] = [
         "Melden Sie sich mit Ihrem Konto an oder registrieren Sie sich mit Name, E-Mail-Adresse und Passwort. Neue Konten starten mit der ersten Anlage. Fehlt eine bestehende Anlage, prüfen Sie zuerst das angemeldete Konto.",
       ] },
       { id: 'navigation', title: 'Ein Ort für jede Frage', paragraphs: [
-        "Am Rechner stehen die Bereiche in der Seitenleiste, innerhalb einer Anlage am Telefon unten. Über den Anlagennamen wechseln Sie den Standort. Je nach Ausstattung erscheinen weitere Reiter oder Ladevorgänge anstelle eines Speicher-Fahrplans.",
+        "Am Rechner stehen die Bereiche in der Seitenleiste, am Telefon in der Leiste unten. Ganz oben in der Seitenleiste führt der Eintrag mit „‹“ eine Ebene höher. Über den Anlagennamen wechseln Sie den Standort. Je nach Ausstattung erscheinen weitere Reiter oder Ladevorgänge anstelle eines Speicher-Fahrplans.",
       ], figure: 'orientierung' },
       { id: 'mobil', title: 'Hilfe auf dem Telefon', paragraphs: [
         "Hilfe & Kontakt, „Als App auf dem Handy“ und Abmelden stehen im Konto-Menü hinter dem Avatar. Ein Hilfelink öffnet die passende Erklärung; beim Schließen bleibt Ihre Eingabe erhalten. Bei vergessenem Passwort hilft Ihr VoltPilot-Ansprechpartner.",
@@ -102,7 +102,7 @@ export const startArticles: HelpArticle[] = [
         "Die VoltPilot-Geräte-ID steht auf dem Aufkleber oder in der lokalen Web-App der Box. Verwenden Sie diese ID, nicht die Seriennummer des Wechselrichters. Schließen Sie zuerst die lokale Einrichtung ab.",
       ], figure: 'box-verbinden' },
       { id: 'verbinden', title: 'Verbinden und den Eingang kontrollieren', paragraphs: [], steps: [
-        'Im Assistenten oder beim Hinzufügen eines VoltPilot-Geräts die gewünschte Anlage prüfen.',
+        'Im Aufbau der Anlage „VoltPilot-Box hinzufügen“ wählen (beim Anlegen einer Anlage fragt der Assistent danach) und die gewünschte Anlage prüfen.',
         'Die Geräte-ID vollständig übertragen und verbinden. Beachten Sie die Hinweise direkt am Eingabefeld.',
         'Auf die Rückmeldung warten. Anschließend Geräteverbindung, Zeitpunkt des letzten Kontakts und erste Messwerte prüfen.',
       ], figure: 'box-verbinden-mobil', note: 'Eine bestätigte Zuordnung und eine aktive Datenverbindung sind zwei verschiedene Schritte. „Wartet auf Daten“ ist noch kein gemessener Betriebszustand.' },

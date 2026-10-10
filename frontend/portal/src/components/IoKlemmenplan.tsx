@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { consumersApi } from '../consumers/consumersApi';
+import { Recht } from './Recht';
 import { ioZustandView, VERALTET_MS, type IoModulZustandDto } from '../consumers/ioZustand';
 import './IoKlemmenplan.css';
 
@@ -137,17 +138,21 @@ export function IoKlemmenplan({
                   )}
                   {z.schalten && (
                     <span className="vp-io-schalter">
-                      {z.schalten.map((a) => (
-                        <button
-                          key={a.label}
-                          type="button"
-                          disabled={busy !== null}
-                          onClick={() => schalten(k.channel, a.on)}
-                          aria-label={`Ausgang DO${k.channel} ${a.on ? 'einschalten' : 'ausschalten'}`}
-                        >
-                          {busy === k.channel ? 'Schaltet …' : a.on ? 'Ein' : 'Aus'}
-                        </button>
-                      ))}
+                      {/* Die Route trägt @Recht schalttest.durchfuehren (wie der Schalttest
+                          der Freigabe) - ohne das Recht steht der Grund statt der Schalter. */}
+                      <Recht aktion="schalttest.durchfuehren">
+                        {z.schalten.map((a) => (
+                          <button
+                            key={a.label}
+                            type="button"
+                            disabled={busy !== null}
+                            onClick={() => schalten(k.channel, a.on)}
+                            aria-label={`Ausgang DO${k.channel} ${a.on ? 'einschalten' : 'ausschalten'}`}
+                          >
+                            {busy === k.channel ? 'Schaltet …' : a.on ? 'Ein' : 'Aus'}
+                          </button>
+                        ))}
+                      </Recht>
                     </span>
                   )}
                 </li>

@@ -21,6 +21,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/anteile"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/boxevents"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/buffer"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/calibration"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
@@ -29,9 +31,10 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/controlcert"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/controlprofile"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/curtailcal"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/datasourcestatus"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/desired"
-	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/enroll"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/ebyte"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/enroll"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/flexfallback"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/flowdeploy"
@@ -41,9 +44,9 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/installerwrite"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/inverter"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/localbus"
-	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/nativepilot"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/measurements"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/mirror"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/nativepilot"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/netinfo"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/otaverify"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/plan"
@@ -52,6 +55,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/registerwrite"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/shelly"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sources"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/sprungprobe"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/state"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/testconn"
 )
@@ -66,9 +70,10 @@ const historyCapacity = 5000
 
 // Agent is the running core.
 type Agent struct {
-	Cfg   config.Config
-	State *state.Store
-	Bus   *localbus.Bus
+	dataSourceStatus datasourcestatus.Collector
+	Cfg              config.Config
+	State            *state.Store
+	Bus              *localbus.Bus
 
 	buf                 *buffer.Buffer
 	hist                *history.Ring
@@ -80,6 +85,23 @@ type Agent struct {
 	measurementIdentity measurements.Identity
 	measurementRevision int64
 	measurementConfig   []byte
+	// Serializes "measurement-status.json + cloud send" (measurements.go).
+	measurementStatusMu sync.Mutex
+
+	// The SECOND outbox of the box: its own event stream on .../v2/events
+	// (UEMS AP-07 IP-19). Its own sequence, its own FIFO - never mixed with
+	// measurement samples.
+	boxEventOutbox     *boxevents.Outbox
+	boxEventMu         sync.Mutex
+	boxRestartGemeldet bool
+	zeitWache          *boxevents.ZeitWache
+	gestartet          time.Time
+	// uhr is nil in production; a test injects a jumping clock through it.
+	uhr boxevents.Uhr
+	// sollwertUhr is the clock of the setpoint path (sollwertJetzt); nil in
+	// production = the wall clock. A harness that plays a model clock sets it,
+	// so an urgent nudge is evaluated on the same clock as the tick.
+	sollwertUhr func() time.Time
 
 	mu            sync.Mutex
 	currentPlan   *plan.Plan
@@ -207,14 +229,14 @@ type Agent struct {
 	// des PRIMAERgeraets - fuer eine Aussage ueber den Netzpunkt taugt keines
 	// von beiden. nil = nie gemessen, nie eine erfundene 0. Unter a.mu wie
 	// lastReading/lastBattKw.
-	lastGridKw  *float64
+	lastGridKw *float64
 	// nativeLastReason is the last native supervision verdict, so a CHANGED
 	// cause is logged once (noteNativeReason). Under a.mu.
 	nativeLastReason string
-	calMu       sync.Mutex
-	cal         *calibration.Session
-	calWatchdog *time.Timer
-	calCert     map[string]bool
+	calMu            sync.Mutex
+	cal              *calibration.Session
+	calWatchdog      *time.Timer
+	calCert          map[string]bool
 
 	// pcMu guards platformDoc, the retained PLATFORM control-certification
 	// document (agent/controlcert.go). ⚠ Lock order: invMu (the inverter
@@ -404,6 +426,37 @@ type Agent struct {
 	entReadback map[string]*bool    // per-entity latest readback all_match
 	arbWake     chan struct{}
 
+	// AP-15 IP-17 (Y2): the accepted share document of a Gemeinsame
+	// Steuerung, restored from disk in New - before the first measurement
+	// (R15). nil = no document: the box behaves byte for byte as before.
+	anteileMu    sync.Mutex
+	anteile      *anteile.Gehalten
+	anteileStore *anteile.Store
+	// AP-15 IP-19: the last stage of the Bezugswaechter's two parts (charging
+	// budget, battery ceiling) for the heartbeat (bezugswaechter_anteil.go).
+	bezugMu   sync.Mutex
+	bezugLade guards.ExportState
+	bezugBatt guards.ExportState
+	// AP-15 Folge: the sample from which the battery's loop (at the leading
+	// box, and at a co-controlling one's own meter) regulates again after it
+	// did not (blind, frozen, start); zero while it does not. Until
+	// the charge park has decided on a sample at least that new, the battery
+	// releases nothing (guards.Netzladen.ParkOffen).
+	bezugFrischAb time.Time
+	// AP-15 IP-20: the one probe for a frozen connection-point value (B2),
+	// shared by both watchdogs (eingefroren.go). Fed only with a share
+	// document.
+	einfrier einfrierStand
+	// AP-15 IP-22: what the feed-in share holds back, per local day of the
+	// plant, on disk (anteil_verlust.go). Counted only with a share document.
+	verlust *guards.AnteilVerlust
+	// AP-15 IP-21: the one running Sprungprobe and its report waiting for the
+	// link (sprungprobe.go). nil/nil = no order: the setpoint is untouched.
+	sprungMu           sync.Mutex
+	sprung             *sprungprobe.Probe
+	sprungBericht      *sprungprobe.Bericht
+	sprungSendetGerade bool
+
 	// Edge-local deadline fallback (agent/flexfallback.go + internal/
 	// flexfallback; Verbrauchssteuerung Inkrement 6, D-20): the validated
 	// per-entity deadline duties from the registry push, the confirmed-progress
@@ -577,6 +630,11 @@ func New(cfg config.Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	boxEventOutbox, err := boxevents.OpenOutbox(
+		filepath.Join(cfg.DataDir, "box-event-outbox"), 1000)
+	if err != nil {
+		return nil, err
+	}
 	ps, err := plan.NewStore(cfg.DataDir)
 	if err != nil {
 		return nil, err
@@ -610,6 +668,10 @@ func New(cfg config.Config) (*Agent, error) {
 	if err != nil {
 		return nil, err
 	}
+	as, err := anteile.NewStore(cfg.DataDir)
+	if err != nil {
+		return nil, err
+	}
 	cs, err := componentapply.NewStore(cfg.DataDir)
 	if err != nil {
 		return nil, err
@@ -631,6 +693,7 @@ func New(cfg config.Config) (*Agent, error) {
 		State:             state.New(ref, Version),
 		buf:               buf,
 		measurementOutbox: measurementOutbox,
+		boxEventOutbox:    boxEventOutbox,
 		hist:              history.New(historyCapacity),
 		planStore:         ps,
 		invStore:          is,
@@ -667,6 +730,7 @@ func New(cfg config.Config) (*Agent, error) {
 		curtailUnits: map[string]state.CurtailUnit{},
 		wake:         make(chan struct{}, 1),
 		reconcileNow: make(chan struct{}, 1),
+		gestartet:    time.Now(),
 		lastReading: guards.Reading{
 			SocPct: guards.Unknown(), PvKw: guards.Unknown(),
 			LoadKw: guards.Unknown(), GridLimitKw: guards.Unknown(),
@@ -675,6 +739,8 @@ func New(cfg config.Config) (*Agent, error) {
 	// The native supervision's proof grace derives from the setpoint cadence, so
 	// it is constructed after the Agent literal (a.Cfg is set there).
 	a.native = guards.NewNativeMode(a.nativeProofGrace())
+	// The clock guard takes its first reading here: a.boxClock needs the Agent.
+	a.zeitWache = boxevents.NeueZeitWache(a.boxClock)
 	if raw, err := os.ReadFile(filepath.Join(cfg.DataDir, "measurement-config.json")); err == nil {
 		var header struct {
 			Revision int64 `json:"revision"`
@@ -731,6 +797,7 @@ func New(cfg config.Config) (*Agent, error) {
 	// per-entity retained configs are re-published once the bus is up in Start.
 	a.entStore = es
 	a.restoreEntities()
+	a.dataSourceStatus.Reconcile(a.entRegistry, time.Now())
 	// Einheitsmodell Stufe 1: who owns this plant's device configuration. Loaded
 	// BEFORE the first push of the session, so a portal-managed plant refuses
 	// local edits even while offline.
@@ -766,6 +833,9 @@ func New(cfg config.Config) (*Agent, error) {
 	} else if err != nil {
 		slog.Warn("cached v2 plan unreadable; starting without", "err", err)
 	}
+	a.restoreAnteile(as)
+	a.restoreVerlust(cfg.DataDir)
+	a.restoreSprungprobe(time.Now())
 	// Restore the customer's inverter selection (persisted across restarts); it
 	// is (re-)published retained on the local bus once the bus is up in Start.
 	if sel, ok, err := is.Load(); err == nil && ok {
@@ -818,6 +888,12 @@ func (a *Agent) Start(ctx context.Context) error {
 	a.Bus = bus
 
 	if err := bus.Subscribe(localbus.TopicTelemetry, 1, a.onLocalTelemetry); err != nil {
+		return err
+	}
+	if err := bus.Subscribe(datasourcestatus.Topic, 21, a.onDataSourcePoll); err != nil {
+		return err
+	}
+	if err := bus.Subscribe(boxevents.Topic, 22, a.onBoxEvent); err != nil {
 		return err
 	}
 	if err := bus.Subscribe(localbus.TopicStatus, 2, a.onLocalStatus); err != nil {
@@ -1260,6 +1336,12 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 		OnEntities:       a.onEntityRegistryPush,
 		OnPlanV2:         a.onPlanV2,
 		OnFlows:          a.onFlows,
+		// AP-15 IP-17: the share document of a Gemeinsame Steuerung -
+		// judged, stored, receipted and mirrored (verbund_anteile.go).
+		OnVerbundAnteile: a.onVerbundAnteile,
+		// AP-15 IP-21: a Sprungprobe order - run bounded, reported once
+		// (sprungprobe.go).
+		OnSprungprobe: a.onSprungprobe,
 		// OTA Stufe 2: das zugewiesene Release kommt retained ueber denselben
 		// Link. Es wird geprueft, abgelegt und gemeldet - angewandt wird es
 		// beaufsichtigt (update.sh --from-target).
@@ -1341,7 +1423,8 @@ func (a *Agent) startCloud(id enroll.Identity, keyPath, certPath, caPath string)
 				if err := link.PublishStatus(src, soc, controlSummary(snap), a.entitiesSummary(),
 					a.flowsSummary(), a.sourcesSummary(), a.flowNodeStatusSummary(),
 					a.curtailmentSummary(), a.updateSummary(), a.consumersSummary(),
-					a.registerWritesSummary(), a.chargersSummary()); err != nil {
+					a.registerWritesSummary(), a.chargersSummary(), cloud.StatusExtension{DataSources: a.dataSourceStatus.Snapshot(time.Now()), Supports: cloud.BuiltSupports(),
+						GemeinsameSteuerung: a.gemeinsameSteuerung()}); err != nil {
 					slog.Warn("status publish failed", "err", err)
 				}
 			case <-linkCtx.Done():
@@ -1408,6 +1491,7 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	// their share to the primary. Committed into the state snapshot only after
 	// the gates below KEEP the sample; a gated channel is held to its last
 	// accepted primary value there (the same display policy as the composite).
+	a.dataSourceStatus.Observe(datasourcestatus.Event{SourceID: "inverter", Ts: ts, Samples: len(measurements)}, time.Now())
 	primary := make(map[string]float64, len(measurements))
 	for k, v := range measurements {
 		primary[k] = v
@@ -1618,7 +1702,7 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 		v := *battKw
 		a.lastBattKw = &v
 	}
-	// Der gemessene Netzpunkt (Verbund, nach den Toren): der Netz-Sollwert-Test
+	// Der gemessene Netzpunkt (zusammengesetzter Netzpunkt, nach den Toren): der Netz-Sollwert-Test
 	// braucht ihn fuer seine Voraussetzung und sein Halte-Ziel, und er ist
 	// dieselbe Groesse, die Einspeisewaechter und Lastspitzen-Zaehler unten
 	// bekommen. Ein Sample ohne power_kw laesst den letzten Wert stehen - die
@@ -1653,7 +1737,18 @@ func (a *Agent) onLocalTelemetry(_ string, payload []byte) {
 	// pass. Deliberately only on a TIGHTENING - a release must never bypass its
 	// rate limit, and an unconditional nudge would republish at telemetry
 	// cadence for no gain.
-	if g, ok := measurements["power_kw"]; ok {
+	//
+	// AP-15 IP-18: a box holding a share document observes its OWN measuring
+	// point plus its measured battery (einspeisewaechter_anteil.go); without a
+	// document this is exactly the call above it always was.
+	if an := a.exportAnteil(); an != nil {
+		// AP-15 IP-20: the same measuring point feeds the probe for a frozen
+		// value (B2, eingefroren.go) - one probe for both watchdogs.
+		a.einfrierWert(ts, measurements, battKw)
+		if a.observeExportAnteil(ts, measurements, battKw, an.Fuehrt) {
+			a.nudgeSetpoint()
+		}
+	} else if g, ok := measurements["power_kw"]; ok {
 		if pv, okPv := measurements["pv_power_kw"]; okPv {
 			urgent := a.export.Observe(ts, g, pv)
 			if a.exportZero.Observe(ts, g, pv) {
@@ -2538,7 +2633,7 @@ func (a *Agent) onSchedule(payload []byte) {
 		s.PlanSlots = len(p.Slots)
 	})
 	slog.Info("schedule cached", "plan_id", p.PlanID, "slots", len(p.Slots), "slot_minutes", p.SlotMinutes)
-	a.applySetpoint(time.Now().UTC()) // react immediately, don't wait for the tick
+	a.applySetpoint(a.sollwertJetzt()) // react immediately, don't wait for the tick
 }
 
 // setpointLoop recomputes + publishes the current setpoint on every tick
@@ -2552,7 +2647,7 @@ func (a *Agent) setpointLoop(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			a.applySetpoint(time.Now().UTC())
+			a.applySetpoint(a.sollwertJetzt())
 		}
 	}
 }
@@ -2712,8 +2807,18 @@ func (a *Agent) applySetpoint(now time.Time) {
 		// its plant yet. It is EVALUATED (so the state shows the safe static cap
 		// it would command) while this branch still publishes nothing - the honest
 		// outcome is that state, on :8484 and in the heartbeat.
-		exportGuard := a.exportGuardInfo(
-			a.export.Cap(now, exportLimit, exportSafeStaticCap(exportLimit, 0)))
+		// With a share document (AP-15 IP-18) the share holds here too - before
+		// the first measurement, with or without a plan (R15, V5).
+		var noReadingCap guards.ExportCap
+		if an := a.exportAnteil(); an != nil {
+			an.EingefrorenSeit = a.eingefrorenSeit(now)
+			noReadingCap = a.export.CapAnteil(now, exportLimit, *an, 0)
+			// no reading: nothing counted, and the rate before it ends here
+			a.verlust.Zaehle(now, noReadingCap, an.Fuehrt, nil)
+		} else {
+			noReadingCap = a.export.Cap(now, exportLimit, exportSafeStaticCap(exportLimit, 0))
+		}
+		exportGuard := a.exportGuardInfo(noReadingCap)
 		a.State.Update(func(s *state.Snapshot) {
 			s.Mode = state.ModeNoReading
 			s.PeakTargetKw = peakTarget
@@ -3137,6 +3242,9 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// EEG solar-only, SoC floor and the rated band are never violated. With no
 	// fresh grid measurement the tracker reports inactive - never regulate
 	// blind; a missed quarter only costs money, never safety.
+	// AP-15 IP-21: what the setpoint was before the import-side guards - if one
+	// of them lowers it on this tick, a running Sprungprobe aborts.
+	vorBezugswaechter := kw
 	peakActive := false
 	var quarterMean *float64
 	if marketCorrectionsAllowed && peakTarget != nil {
@@ -3149,6 +3257,35 @@ func (a *Agent) applySetpoint(now time.Time) {
 			quarterMean = &m
 		}
 	}
+
+	// GEMEINSAME STEUERUNG, Bezugswaechter (AP-15 IP-19, V1/V3/V5): with a
+	// share document the battery's charge is held under the import share - the
+	// leading box regulates it against the connection limit while it measures,
+	// any other box and a blind leading box charge only from their own PV
+	// (guards/bezuganteil.go). It sits HERE, after the arbitration and every
+	// clamp, so no manual override and no customer rule lifts it, and BEFORE
+	// the curtailment tracker, which must see what the battery will really
+	// take. It only ever lowers a charge; without a document it is a no-op.
+	if d := a.netzladenDeckel(now, r); d != nil {
+		before := kw
+		kw = guards.LowerCharge(kw, &d.DeckelKw)
+		stufe := battStufe(*d, before, kw < before)
+		a.setBezugStufe(nil, &stufe)
+	}
+
+	// SPRUNGPROBE (AP-15 IP-21, sprungprobe.go): a running probe lowers ONE
+	// set value - here the battery's charge (verbrauch_senken); the PV cap
+	// below, after the feed-in watchdog. It sits after every clamp and both
+	// import-side guards, before the curtailment tracker and the feed-in
+	// watchdog, so they see what the battery will really take; it only ever
+	// LOWERS a charge. An import-side guard that acted on this tick, a frozen
+	// connection-point value or the battery's protection stop abort it at
+	// once. Without an order the Wunsch is empty and nothing changes.
+	a.mu.Lock()
+	battGemessen := a.lastBattKw
+	a.mu.Unlock()
+	sprung := a.sprungSchritt(now, r, battGemessen, kw < vorBezugswaechter, limits.Bms)
+	kw = sprungprobe.Laden(kw, sprung)
 
 	// DYNAMISCHE EINSPEISEBEGRENZUNG (2026-08-06): the real-time watchdog at the
 	// grid connection point. The plan already carries the site's feed-in limit as
@@ -3204,6 +3341,51 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// K6: the composition itself runs BEHIND the Wegwahl below
 	// (composeCurtailment), because the cascade needs to know whether the
 	// leader regulates itself.
+	//
+	// GEMEINSAME STEUERUNG (AP-15 IP-18, V1-V6): with a share document the
+	// watchdog holds the box's own share (guards/exportanteil.go) - the leading
+	// box regulates the whole limit while it measures and falls to its share
+	// without holding when blind; any other box holds its share at its own
+	// point, always. It sits HERE, after the arbitration has put the holder's
+	// value into kw, so no manual override and no customer rule lifts it (V1),
+	// and it holds in pause, rest and without a plan alike (V5). The share
+	// covers generation AND discharge (V6): the watchdog may then LOWER the
+	// battery discharge too - blind to the share, with a fresh measurement only
+	// once the producers are at 0 - and never charges or raises anything.
+	// Without a document this is exactly the single-box watchdog, and the
+	// static cap holds as argued for EVERY house load - but only for the
+	// generation THIS box controls (a producer another box reads is not in
+	// pv_total, W11).
+	//
+	// Nachzug main (26.09.2026): the share half stays HERE, in front of the
+	// Wegwahl, because it may lower `kw` and the Wegwahl, the setpoint and the
+	// curtailment tracker must all see the lowered value. It has no K6 inner
+	// loop (the cascade belongs to a single box's own leader);
+	// composeCurtailment takes its verdict as the watchdog's instead of running
+	// CapCascade. Without a document composeCurtailment runs the single-box
+	// watchdog with the cascade, exactly as K6 built it.
+	var anteilCap *guards.ExportCap
+	entladungGesenkt := false
+	if an := a.exportAnteil(); an != nil {
+		// B2 (AP-15 IP-20): a frozen value counts as blind - its age from its
+		// last change (eingefroren.go)
+		an.EingefrorenSeit = a.eingefrorenSeit(now)
+		// IP-27 A7: a standing value asks for ONE probing adjustment
+		if r, neu := a.einfrierPruefen(now); r < 0 {
+			an.Pruefen, an.PruefenNeu = true, neu
+		}
+		// V6 in every evaluation: the charge counts too - a battery that goes
+		// from charging to discharging lowers the producers at once
+		an.LadenKw = math.Max(kw, 0)
+		c := a.export.CapAnteil(now, exportLimit, *an, math.Max(-kw, 0))
+		a.einfrierGeprueft(now, c.Pruefung)
+		vorEntladeKappe := kw
+		kw = lowerDischarge(kw, c.DischargeCapKw)
+		entladungGesenkt = kw != vorEntladeKappe
+		// AP-15 IP-22: count what the share holds back (anteil_verlust.go)
+		a.verlust.Zaehle(now, c, an.Fuehrt, c.PvKw)
+		anteilCap = &c
+	}
 
 	// Control gate (report §6.6/§6.7): the setpoint carries the core's kill-switch
 	// AND per-model certification verdict as control_enabled. Layer 1 writes only
@@ -3252,8 +3434,18 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// PV curtailment and the feed-in watchdog, with the leader as the inner
 	// loop of the cascade (K6, agent/leader.go). `kw` is final here.
 	_, nativeSlot, _ := p.ActiveSetpoint(now)
-	pvLimit, curtailTrack, exportGuard := a.composeCurtailment(now, readingAt, r, kw, pvLimit, exportLimit,
-		a.innerLoop(nativeDec, r, limits, nativeSlot))
+	pvLimit, curtailTrack, exportGuard, exportCap := a.composeCurtailment(now, readingAt, r, kw, pvLimit, exportLimit,
+		a.innerLoop(nativeDec, r, limits, nativeSlot), anteilCap)
+
+	// SPRUNGPROBE, second half (AP-15 IP-21): the feed-in watchdog that holds
+	// the producers back, regulates blind or lowers the discharge on this tick,
+	// or control off, abort the probe - its PV ceiling then never reaches the
+	// setpoint. Otherwise the ceiling composes into the plant's PV cap as a
+	// minimum (sprungprobe.Kappe), never a widening, AFTER the watchdog - since
+	// the Nachzug of K6 (26.09.2026) that is after composeCurtailment. The
+	// Wegwahl above reads neither the PV cap nor the probe's ceiling.
+	sprung = a.sprungNachher(now, sprung, exportCap, entladungGesenkt, controlEnabled)
+	pvLimit = sprungprobe.Kappe(pvLimit, sprung)
 
 	msg := map[string]any{
 		"battery_setpoint_kw": kw,
@@ -3355,6 +3547,10 @@ func (a *Agent) applySetpoint(now time.Time) {
 		slog.Error("setpoint publish failed", "err", err)
 		return
 	}
+	a.bezugSpeicherSoll(kw, controlEnabled)
+	// AP-15 IP-20: what this setpoint MUST change at the meter goes to the
+	// probe for a frozen value (no-op without a share document).
+	a.einfrierSollwert(now, controlEnabled, pvLimit, r.PvKw, kw, nativeDec.Native)
 	// The damper's settle clock runs from the value Layer 1 now writes.
 	a.damp.Commit(now, kw)
 	// The per-entity retained command is owned by the ARBITER since E2 (the
@@ -3403,9 +3599,12 @@ func idleReadbackHealthy(control *state.ControlInfo, now time.Time, window time.
 //	      <= pv + discharge                        (load, charge >= 0)
 //	      <= (limit - discharge) + discharge = limit
 //
-// So capping total PV at `limit - commanded discharge` is sufficient. It is
-// derived at the setpoint path because only there is the final commanded
-// setpoint known - a CHARGE only ever absorbs PV, so it subtracts nothing.
+// So capping total PV at `limit - commanded discharge` is sufficient - for the
+// generation THIS box controls (W11: a producer another box reads is not in pv).
+// It is derived at the setpoint path because only there is the final commanded
+// setpoint known - a CHARGE only ever absorbs PV, so it subtracts nothing. With
+// a share document the guard derives its own cap from the share instead
+// (guards.ExportLimiter.CapAnteil).
 func exportSafeStaticCap(limitKw *float64, setpointKw float64) float64 {
 	if limitKw == nil {
 		return 0
@@ -3534,6 +3733,25 @@ func (a *Agent) publisherLoop(ctx context.Context) {
 			default:
 			}
 		}
+		for sent := 0; sent < 64; sent++ {
+			e, ok := a.boxEventOutbox.Next()
+			if !ok {
+				break
+			}
+			if err := link.PublishBoxEvents(e.Raw); err != nil {
+				slog.Warn("box event publish failed; will retry", "seq", e.Sequence, "err", err)
+				break
+			}
+			if err := a.boxEventOutbox.Ack(e.Sequence); err != nil {
+				slog.Error("box event outbox ack failed", "err", err)
+				break
+			}
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
+		}
 		for sent := 0; sent < 256; sent++ {
 			e, ok := a.measurementOutbox.Next()
 			if !ok {
@@ -3553,7 +3771,7 @@ func (a *Agent) publisherLoop(ctx context.Context) {
 			default:
 			}
 		}
-		if a.buf.Pending() > 0 || a.measurementOutbox.Pending() > 0 {
+		if a.buf.Pending() > 0 || a.measurementOutbox.Pending() > 0 || a.boxEventOutbox.Pending() > 0 {
 			a.kick()
 		}
 	}

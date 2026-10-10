@@ -1,0 +1,2173 @@
+{
+ "bilder_aus_commit": "17abebe1c9935c852b42a3756dd8e495fbca7db3",
+ "core_bild": "vb-edge-core:ip29-17abebe1c993",
+ "drehbuch": [
+  "2026-09-22T09:15:43Z mess_s=1 stoerung A5",
+  "2026-09-22T09:45:50Z mess_s=1800 zurueck "
+ ],
+ "lokaler_bus": [],
+ "zugestellt": [
+  "ems/7a000000-0000-4000-8000-000000000001/7a000000-0000-4000-8000-0000000000a1/7a000000-0000-4000-8000-0000000000e1/v2/entities",
+  "ems/7a000000-0000-4000-8000-000000000001/7a000000-0000-4000-8000-0000000000a1/7a000000-0000-4000-8000-0000000000e1/v2/verbund-anteile",
+  "ems/7a000000-0000-4000-8000-000000000001/7a000000-0000-4000-8000-0000000000a1/7a000000-0000-4000-8000-0000000000e1/v2/charging-config",
+  "ems/7a000000-0000-4000-8000-000000000001/7a000000-0000-4000-8000-0000000000a1/7a000000-0000-4000-8000-0000000000e1/schedule",
+  "ems/7a000000-0000-4000-8000-000000000001/7a000000-0000-4000-8000-0000000000a1/7a000000-0000-4000-8000-0000000000e1/v2/plan",
+  "ems/7a000000-0000-4000-8000-000000000001/7a000000-0000-4000-8000-0000000000a1/7a000000-0000-4000-8000-0000000000e4/v2/entities",
+  "ems/7a000000-0000-4000-8000-000000000001/7a000000-0000-4000-8000-0000000000a1/7a000000-0000-4000-8000-0000000000e4/v2/verbund-anteile",
+  "ems/7a000000-0000-4000-8000-000000000001/7a000000-0000-4000-8000-0000000000a1/7a000000-0000-4000-8000-0000000000e4/v2/charging-config",
+  "ems/7a000000-0000-4000-8000-000000000001/7a000000-0000-4000-8000-0000000000a1/7a000000-0000-4000-8000-0000000000e4/schedule",
+  "ems/7a000000-0000-4000-8000-000000000001/7a000000-0000-4000-8000-0000000000a1/7a000000-0000-4000-8000-0000000000e4/v2/plan"
+ ],
+ "quittiert": {
+  "E-1": {
+   "anteile": "angenommen",
+   "anteile_wirksam": {
+    "epoche": 1,
+    "revision": 1
+   },
+   "plan": "angenommen",
+   "plan_id": "fa14bb99-c2e6-5564-be81-5b7cfdda3cca"
+  },
+  "E-4": {
+   "anteile": "angenommen",
+   "anteile_wirksam": {
+    "epoche": 1,
+    "revision": 1
+   },
+   "plan": "angenommen",
+   "plan_id": "9768106a-681e-597d-ae1d-fcf19fff7e95"
+  }
+ },
+ "boxen": {
+  "E-1": {
+   "quittungen": [
+    {
+     "topic": "v2/verbund-anteile-result",
+     "empfangen": 1790068238,
+     "nutzlast": {
+      "device_id": "7a000000-0000-4000-8000-0000000000e1",
+      "epoche": 1,
+      "revision": 1,
+      "schema_version": "1.0",
+      "site_id": "7a000000-0000-4000-8000-0000000000a1",
+      "tenant_id": "7a000000-0000-4000-8000-000000000001",
+      "ts": "2026-09-22T09:10:38.243428251Z",
+      "urteil": "angenommen",
+      "wirksam": {
+       "epoche": 1,
+       "revision": 1
+      }
+     }
+    },
+    {
+     "topic": "v2/plan-result",
+     "empfangen": 1790068239,
+     "nutzlast": {
+      "angenommen": true,
+      "device_id": "7a000000-0000-4000-8000-0000000000e1",
+      "generated_at": "2026-09-22T09:10:37Z",
+      "plan_id": "5f0c2b1e-7d3a-4c6e-9b8f-1a2b3c4d4711",
+      "schema_version": "1.0",
+      "site_id": "7a000000-0000-4000-8000-0000000000a1",
+      "tenant_id": "7a000000-0000-4000-8000-000000000001",
+      "ts": "2026-09-22T09:10:39.139160168Z"
+     }
+    },
+    {
+     "topic": "v2/plan-result",
+     "empfangen": 1790068502,
+     "nutzlast": {
+      "angenommen": true,
+      "device_id": "7a000000-0000-4000-8000-0000000000e1",
+      "generated_at": "2026-09-22T09:15:02Z",
+      "plan_id": "9768106a-681e-597d-ae1d-fcf19fff7e95",
+      "schema_version": "1.0",
+      "site_id": "7a000000-0000-4000-8000-0000000000a1",
+      "tenant_id": "7a000000-0000-4000-8000-000000000001",
+      "ts": "2026-09-22T09:15:02.839693012Z"
+     }
+    },
+    {
+     "topic": "v2/plan-result",
+     "empfangen": 1790069403,
+     "nutzlast": {
+      "angenommen": true,
+      "device_id": "7a000000-0000-4000-8000-0000000000e1",
+      "generated_at": "2026-09-22T09:30:02Z",
+      "plan_id": "0602cec6-39a1-55ad-a385-89bf399302cc",
+      "schema_version": "1.0",
+      "site_id": "7a000000-0000-4000-8000-0000000000a1",
+      "tenant_id": "7a000000-0000-4000-8000-000000000001",
+      "ts": "2026-09-22T09:30:03.284177221Z"
+     }
+    },
+    {
+     "topic": "v2/plan-result",
+     "empfangen": 1790070302,
+     "nutzlast": {
+      "angenommen": true,
+      "device_id": "7a000000-0000-4000-8000-0000000000e1",
+      "generated_at": "2026-09-22T09:45:02Z",
+      "plan_id": "fa14bb99-c2e6-5564-be81-5b7cfdda3cca",
+      "schema_version": "1.0",
+      "site_id": "7a000000-0000-4000-8000-0000000000a1",
+      "tenant_id": "7a000000-0000-4000-8000-000000000001",
+      "ts": "2026-09-22T09:45:02.772901762Z"
+     }
+    }
+   ],
+   "stand": "uems-17abebe1c993",
+   "herzschlaege": 142,
+   "letzter_herzschlag": {
+    "version": "uems-17abebe1c993"
+   }
+  },
+  "E-4": {
+   "quittungen": [
+    {
+     "topic": "v2/verbund-anteile-result",
+     "empfangen": 1790068239,
+     "nutzlast": {
+      "device_id": "7a000000-0000-4000-8000-0000000000e4",
+      "epoche": 1,
+      "revision": 1,
+      "schema_version": "1.0",
+      "site_id": "7a000000-0000-4000-8000-0000000000a1",
+      "tenant_id": "7a000000-0000-4000-8000-000000000001",
+      "ts": "2026-09-22T09:10:39.743513876Z",
+      "urteil": "angenommen",
+      "wirksam": {
+       "epoche": 1,
+       "revision": 1
+      }
+     }
+    },
+    {
+     "topic": "v2/plan-result",
+     "empfangen": 1790068240,
+     "nutzlast": {
+      "angenommen": true,
+      "device_id": "7a000000-0000-4000-8000-0000000000e4",
+      "generated_at": "2026-09-22T09:10:37Z",
+      "plan_id": "5f0c2b1e-7d3a-4c6e-9b8f-1a2b3c4d4711",
+      "schema_version": "1.0",
+      "site_id": "7a000000-0000-4000-8000-0000000000a1",
+      "tenant_id": "7a000000-0000-4000-8000-000000000001",
+      "ts": "2026-09-22T09:10:40.683874919Z"
+     }
+    },
+    {
+     "topic": "v2/plan-result",
+     "empfangen": 1790068503,
+     "nutzlast": {
+      "angenommen": true,
+      "device_id": "7a000000-0000-4000-8000-0000000000e4",
+      "generated_at": "2026-09-22T09:15:02Z",
+      "plan_id": "9768106a-681e-597d-ae1d-fcf19fff7e95",
+      "schema_version": "1.0",
+      "site_id": "7a000000-0000-4000-8000-0000000000a1",
+      "tenant_id": "7a000000-0000-4000-8000-000000000001",
+      "ts": "2026-09-22T09:15:03.429775513Z"
+     }
+    }
+   ],
+   "stand": "uems-17abebe1c993",
+   "herzschlaege": 21,
+   "letzter_herzschlag": {
+    "version": "uems-17abebe1c993"
+   }
+  }
+ },
+ "anlage": {
+  "werkzeug": "tools/uems-verbund-sim (AP-15 IP-28, NW-3)",
+  "takt": "1 Simulator-Sekunde = 1 echte Sekunde (die Box rechnet in echten Sekunden)",
+  "profil": "mittag",
+  "anlauf_s": 300,
+  "dauer_s": 1800,
+  "t0_mess_s": 0,
+  "nullpunkt_e1_kw": 0.0,
+  "ladepunkte": [],
+  "sim_s": 2100,
+  "mess_s": 1800,
+  "fertig": true,
+  "einspeisung": {
+   "grenze_kw": 100.0,
+   "m1_hoechstes_viertel_kw": 98.02,
+   "m1_eingehalten": true,
+   "m1_viertel": [
+    {
+     "viertel": 0,
+     "ab_s": 0,
+     "mittel_kw": 98.02
+    },
+    {
+     "viertel": 1,
+     "ab_s": 900,
+     "mittel_kw": 98.0
+    }
+   ],
+   "m2_sekunden_ueber": 1,
+   "m2_laengste_ueber_s": 1,
+   "m2_groesste_ueber_kw": 24.7,
+   "m2_erste_ueber_s": 5
+  },
+  "bezug": {
+   "grenze_kw": 550.0,
+   "m1_hoechstes_viertel_kw": 0.0,
+   "m1_eingehalten": true,
+   "m1_viertel": [
+    {
+     "viertel": 0,
+     "ab_s": 0,
+     "mittel_kw": 0.0
+    },
+    {
+     "viertel": 1,
+     "ab_s": 900,
+     "mittel_kw": 0.0
+    }
+   ],
+   "m2_sekunden_ueber": 0,
+   "m2_laengste_ueber_s": 0,
+   "m2_groesste_ueber_kw": 0.0,
+   "m2_erste_ueber_s": null
+  },
+  "stoerungen": [
+   {
+    "art": "getrennt",
+    "phase": "start",
+    "box": "E-4",
+    "zeile": "A5",
+    "sim_s": 300,
+    "mess_s": 0
+   },
+   {
+    "art": "getrennt",
+    "phase": "ende",
+    "box": "E-4",
+    "zeile": "A5",
+    "sim_s": 2100,
+    "mess_s": 1800
+   }
+  ],
+  "boxen": {
+   "E-1": {
+    "lesen": 1728,
+    "schreiben": 666,
+    "letzter_schreib_s": 2100,
+    "freigabe": 1,
+    "pv_limit_raw": 0,
+    "speicher_soll_kw": -39.2,
+    "ueberlauf": 0
+   },
+   "E-4": {
+    "lesen": 1712,
+    "schreiben": 651,
+    "letzter_schreib_s": 2100,
+    "freigabe": 1,
+    "pv_limit_raw": 5880,
+    "speicher_soll_kw": 58.8,
+    "ueberlauf": 0
+   }
+  },
+  "reihe_10s": [
+   {
+    "mess_s": -290,
+    "netz_kw": -96.67,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 10.0,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -56.67,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -280,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 8.0,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -270,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 8.0,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -260,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 8.0,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -250,
+    "netz_kw": -95.9,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 5.9,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -240,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 8.0,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -230,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 8.0,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -220,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 8.0,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -210,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 8.0,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -200,
+    "netz_kw": -95.9,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 5.9,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -190,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 8.0,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -180,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 8.0,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -170,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 8.0,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -160,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 8.0,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -150,
+    "netz_kw": -95.9,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 5.9,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -140,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 8.0,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -130,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 8.0,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -120,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 8.0,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -110,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 8.0,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -100,
+    "netz_kw": -95.9,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 5.9,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -90,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 8.0,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -80,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 8.0,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -70,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 8.0,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -60,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 8.0,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -50,
+    "netz_kw": -95.9,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 5.9,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -40,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 8.0,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -30,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 8.0,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -20,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 8.0,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": -10,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 8.0,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 0,
+    "netz_kw": -95.9,
+    "abgang_e4_kw": -30.0,
+    "pv_k1_kw": 5.9,
+    "pv_k12_kw": 30.0,
+    "speicher_k2_kw": -60.0,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 10,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 20,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 30,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 40,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 50,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 60,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 70,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 80,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 90,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 100,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 110,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 120,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 130,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 140,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 150,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 160,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 170,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 180,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 190,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 200,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 210,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 220,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 230,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 240,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 250,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 260,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 270,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 280,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 290,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 300,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 310,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 320,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 330,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 340,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 350,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 360,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 370,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 380,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 390,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 400,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 410,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 420,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 430,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 440,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 450,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 460,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 470,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 480,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 490,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 500,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 510,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 520,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 530,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 540,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 550,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 560,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 570,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 580,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 590,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 600,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 610,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 620,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 630,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 640,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 650,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 660,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 670,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 680,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 690,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 700,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 710,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 720,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 730,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 740,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 750,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 760,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 770,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 780,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 790,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 800,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 810,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 820,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 830,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 840,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 850,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 860,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 870,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 880,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 890,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 900,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 910,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 920,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 930,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 940,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 950,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 960,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 970,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 980,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 990,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1000,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1010,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1020,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1030,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1040,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1050,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1060,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1070,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1080,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1090,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1100,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1110,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1120,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1130,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1140,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1150,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1160,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1170,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1180,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1190,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1200,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1210,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1220,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1230,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1240,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1250,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1260,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1270,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1280,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1290,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1300,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1310,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1320,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1330,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1340,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1350,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1360,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1370,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1380,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1390,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1400,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1410,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1420,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1430,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1440,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1450,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1460,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1470,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1480,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1490,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1500,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1510,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1520,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1530,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1540,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1550,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1560,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1570,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1580,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1590,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1600,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1610,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1620,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1630,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1640,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1650,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1660,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1670,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1680,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1690,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1700,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1710,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1720,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1730,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1740,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1750,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1760,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1770,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1780,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1790,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   },
+   {
+    "mess_s": 1800,
+    "netz_kw": -98.0,
+    "abgang_e4_kw": -58.8,
+    "pv_k1_kw": 0.0,
+    "pv_k12_kw": 58.8,
+    "speicher_k2_kw": -39.2,
+    "laden_k13_kw": 0.0
+   }
+  ]
+ },
+ "lauf": "A5",
+ "werkzeug": "75f691c00242",
+ "umgebung": {
+  "VB_PROFIL": "mittag",
+  "VB_T0_S": "0",
+  "VB_DAUER_S": "1800"
+ }
+}

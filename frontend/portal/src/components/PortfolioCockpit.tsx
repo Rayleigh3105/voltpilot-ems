@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Recht } from './Recht';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -31,8 +32,7 @@ import { KundenUebersicht } from './portfolio/KundenUebersicht';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { AnlageAnlegenDrawer } from './AnlageAnlegenDrawer';
 import { AnpassenLeiste, AnpassenListe } from './CockpitAnpassen';
-import { AddDeviceDrawer } from './DeviceDrawers';
-import { RowMenu } from './RowMenu';
+import { RowMenu, type RowMenuItem } from './RowMenu';
 import { ErrorState, Skeleton } from './States';
 import './PortfolioCockpit.css';
 // LIVE: „Jetzt" und die Statuszeile zeigen gemessene Ist-Werte.
@@ -59,6 +59,16 @@ const KURVEN_BIS_ANLAGEN = 12;
  * Solange die Übersicht nicht steht (Laden, Fehler, keine Anlage), trägt ein
  * schmaler Kopf Titel, Flotten-Aussage und das ⋯-Menü.
  *
+ * UEMS: Die Unternehmens- und Standort-Übersicht (mit Ebene) ist
+ * `EbenenCockpit`; die Aufrufer wählen nach der UEMS-Ebene, nie nach der
+ * Betriebsart — diese Fläche selbst bleibt dafür blind (Entscheid 25.09.2026,
+ * `migration.test.ts` bewacht das). Hier bleiben nur die Rechte-Hebel
+ * (`<Recht>` bzw. `recht` im ⋯-Menü, AP-03 IP-12) und der Platz für den
+ * leisen Einstieg „Messen & Auswerten einrichten" im selben Menü (firstmate
+ * K2, Ersatz für die frühere Vorschlagskarte „Noch nicht zugeordnet", AP-02
+ * IP-10) — fertig gebaut vom Aufrufer (`useMessenEinrichtenEintrag`), der
+ * die Betriebsart dafür kennen darf.
+ *
  * **Render-only.** Jede Zahl, jedes Wort und jede Auslassung entsteht in den
  * reinen Modulen `kundenUebersicht.ts` / `portfolioCockpit.ts`, die Anordnung
  * der Blöcke im ebenso reinen `cockpitLayout.ts`.
@@ -84,6 +94,12 @@ export interface PortfolioCockpitProps {
   titelBereitsGenannt?: boolean;
   /** Der Kundenname für das Admin-Band des Anpassen-Modus. */
   kunde?: string | null;
+  /**
+   * UEMS firstmate K2: der leise Einstieg „Messen & Auswerten einrichten" im
+   * ⋯-Menü — vom Aufrufer über {@link useMessenEinrichtenEintrag} gebaut
+   * (der kennt Betriebsart/Anwendungen), hier nur eingehängt.
+   */
+  messenEinrichtenEintrag?: { aktion: RowMenuItem; modal: ReactNode } | null;
 }
 
 export function PortfolioCockpit({
@@ -93,6 +109,7 @@ export function PortfolioCockpit({
   titel,
   titelBereitsGenannt = false,
   kunde = null,
+  messenEinrichtenEintrag = null,
 }: PortfolioCockpitProps) {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [earnings, setEarnings] = useState<Earnings | null>(null);
@@ -100,7 +117,6 @@ export function PortfolioCockpit({
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => new Date());
   const [siteDrawer, setSiteDrawer] = useState(false);
-  const [deviceDrawer, setDeviceDrawer] = useState(false);
 
   // Boot-Cover: das Portfolio hat sein erstes echtes Bild, sobald die Übersicht
   // steht, der Fehlerzustand greift oder es (leer) gar keine Anlage gibt.
@@ -203,16 +219,13 @@ export function PortfolioCockpit({
     sites.length > 0 && sites.length <= KURVEN_BIS_ANLAGEN,
   );
 
+  // Eine VoltPilot-Box kommt im Aufbau der Anlage hinzu, in die sie gehört — dem EINEN Ort für Boxen und
+  // Geräte. Die Flotte selbst legt nur neue Anlagen an.
   const aktionen = [
     {
-      label: 'Anlage anlegen',
+      label: 'Anlage anlegen', recht: 'anlage.verwalten',
       icon: 'plus' as const,
       onClick: () => setSiteDrawer(true),
-    },
-    {
-      label: 'Gerät hinzufügen',
-      icon: 'cpu' as const,
-      onClick: () => setDeviceDrawer(true),
     },
   ];
 
@@ -231,13 +244,13 @@ export function PortfolioCockpit({
       </div>
       <div className="vp-portfolio-aktionen">
         {overview != null && !layout.anpassen && (
-          <Button
+          <Recht aktion="cockpit.anpassen"><Button
             variant="ghost"
             iconLeft={<Icon name="sliders" size={18} />}
             onClick={layout.start}
           >
             Anpassen
-          </Button>
+          </Button></Recht>
         )}
         <RowMenu items={aktionen} label="Weitere Aktionen" />
       </div>
@@ -252,15 +265,6 @@ export function PortfolioCockpit({
         existingSites={sites}
         onChanged={(createdSiteId) => {
           onReload(createdSiteId);
-          setReloadKey((k) => k + 1);
-        }}
-      />
-      <AddDeviceDrawer
-        open={deviceDrawer}
-        onClose={() => setDeviceDrawer(false)}
-        sites={sites}
-        onClaimed={() => {
-          onReload();
           setReloadKey((k) => k + 1);
         }}
       />
@@ -282,13 +286,13 @@ export function PortfolioCockpit({
                 ? 'Sobald für diesen Mandanten eine Anlage angelegt ist, erscheint sie hier.'
                 : 'Legen Sie Ihre erste Anlage an — danach sehen Sie hier alle Ihre Anlagen mit ihren Kennzahlen und ihrem Zustand.'}
             </p>
-            <Button
+            <Recht aktion="anlage.verwalten"><Button
               variant="primary"
               iconLeft={<Icon name="plus" size={18} />}
               onClick={() => setSiteDrawer(true)}
             >
               {isAdmin ? 'Anlage anlegen' : 'Erste Anlage anlegen'}
-            </Button>
+            </Button></Recht>
           </div>
         </Card>
         {drawers}
@@ -349,8 +353,9 @@ export function PortfolioCockpit({
         titelVersteckt={titelBereitsGenannt}
         status={statusZeile(overview.sites, now)}
         aktionen={[
-          { label: 'Anpassen', icon: 'sliders', onClick: layout.start },
+          { label: 'Anpassen', icon: 'sliders', recht: 'cockpit.anpassen', onClick: layout.start },
           ...aktionen,
+          ...(messenEinrichtenEintrag ? [messenEinrichtenEintrag.aktion] : []),
         ]}
         bloecke={bloecke}
         heute={heute}
@@ -387,6 +392,7 @@ export function PortfolioCockpit({
           ) : null
         }
       />
+      {messenEinrichtenEintrag?.modal}
       {drawers}
     </>
   );

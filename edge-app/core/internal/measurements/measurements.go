@@ -54,6 +54,35 @@ type Selection struct {
 	EntityID   string          `json:"entity_id,omitempty"`
 	Definition json.RawMessage `json:"definition,omitempty"`
 }
+// RegisterbildKarte is the Soll of one energy card: WHICH card the Hardwareblatt
+// expects in which slot. Identity of a card is (device, slot) - card type and
+// variant only check that the expected card is plugged in, so a card swapped to
+// another slot becomes visible instead of being silently re-attached.
+type RegisterbildKarte struct {
+	Steckplatz int `json:"steckplatz"`
+	Kartentyp  int `json:"kartentyp"`
+	Variante   int `json:"variante"`
+}
+
+// Registerbild carries the per-installation parameters of a WAGO register image
+// (UEMS AP-05, docs/contracts/v2/wago-registerbild.md §2). Base address,
+// function code and word order differ per plant and are therefore PARAMETERS,
+// never a fixed modbus_holding (AP-05 Befund 9); the controller id is not proof
+// of identity, only that the expected controller answers at that address.
+//
+// This layer carries and shape-checks them; the reading rule lives in
+// edge-app/nodered/measurements/wago-registerbild.js. The field is OPTIONAL and
+// purely additive: a config without it parses exactly as before.
+type Registerbild struct {
+	EntityID          string              `json:"entity_id"`
+	Basisadresse      int                 `json:"basisadresse"`
+	Funktionscode     int                 `json:"funktionscode"`
+	Wortfolge         string              `json:"wortfolge"`
+	Kartenzahl        int                 `json:"kartenzahl"`
+	ControllerKennung int64               `json:"controller_kennung"`
+	Karten            []RegisterbildKarte `json:"karten"`
+}
+
 type Config struct {
 	SchemaVersion  string      `json:"schema_version"`
 	TenantID       string      `json:"tenant_id"`
@@ -62,6 +91,41 @@ type Config struct {
 	Revision       int64       `json:"revision"`
 	CatalogVersion string      `json:"catalog_version"`
 	Selections     []Selection `json:"selections"`
+	// Additive since UEMS AP-05 IP-6; absent on every box shipped so far.
+	Registerbilder []Registerbild `json:"registerbilder,omitempty"`
+}
+
+// geteiltePunkte applies the x-point-key-rule of mqtt-measurement-config 2.0
+// (AP-07 IP-18b): a point_key is unique, with ONE exception - a SHARED POINT,
+// the same point_key once per component, where EVERY occurrence names an
+// entity_id and no component appears twice. One occurrence without entity_id
+// makes the key unique again for all of them. The same rule keys a local
+// batch (one sample per component) and the per-component status.
+type geteiltePunkte map[string]*geteilterPunkt
+
+type geteilterPunkt struct {
+	ohneKomponente bool
+	komponenten    map[string]bool
+}
+
+// add reports whether (pointKey, entityID) may join what was seen so far.
+// UUIDs compare case-insensitively: the same component in another spelling is
+// still the same component twice.
+func (g geteiltePunkte) add(pointKey, entityID string) bool {
+	komponente := strings.ToLower(entityID)
+	p, ok := g[pointKey]
+	if !ok {
+		p = &geteilterPunkt{komponenten: map[string]bool{}}
+		g[pointKey] = p
+	} else if p.ohneKomponente || komponente == "" || p.komponenten[komponente] {
+		return false
+	}
+	if komponente == "" {
+		p.ohneKomponente = true
+	} else {
+		p.komponenten[komponente] = true
+	}
+	return true
 }
 
 // ParseConfig validates identity, strict shape, duplicates and monotonicity.
@@ -90,7 +154,7 @@ func ParseConfig(raw []byte, id Identity, appliedRevision int64) (Config, error)
 	if len(c.Selections) > MaxConfigPoints {
 		return c, errors.New("too many selections")
 	}
-	seen := map[string]bool{}
+	seen := geteiltePunkte{}
 	for _, s := range c.Selections {
 		if !pointKeyPattern.MatchString(s.PointKey) || s.CadenceS < 1 || s.CadenceS > 86400 {
 			return c, errors.New("invalid selection")
@@ -98,10 +162,9 @@ func ParseConfig(raw []byte, id Identity, appliedRevision int64) (Config, error)
 		if s.EntityID != "" && !entityIDPattern.MatchString(s.EntityID) {
 			return c, errors.New("invalid selection entity_id")
 		}
-		if seen[s.PointKey] {
+		if !seen.add(s.PointKey, s.EntityID) {
 			return c, fmt.Errorf("duplicate point %s", s.PointKey)
 		}
-		seen[s.PointKey] = true
 		if strings.HasPrefix(s.PointKey, "custom.") {
 			if len(s.Definition) == 0 || len(s.Definition) > 4096 || !validCustomDefinition(s.Definition) {
 				return c, errors.New("custom selection definition missing/invalid")
@@ -110,7 +173,63 @@ func ParseConfig(raw []byte, id Identity, appliedRevision int64) (Config, error)
 			return c, errors.New("catalog selection must not carry a custom definition")
 		}
 	}
+	if err := validRegisterbilder(c.Registerbilder); err != nil {
+		return c, err
+	}
 	return c, nil
+}
+
+// MaxRegisterbilder bounds the controllers one box may carry register images
+// for. The image itself is bounded by the address space (§2).
+const MaxRegisterbilder = 64
+
+func validRegisterbilder(bilder []Registerbild) error {
+	if len(bilder) > MaxRegisterbilder {
+		return errors.New("too many registerbilder")
+	}
+	seen := map[string]bool{}
+	for _, b := range bilder {
+		if !entityIDPattern.MatchString(b.EntityID) {
+			return errors.New("invalid registerbild entity_id")
+		}
+		if seen[b.EntityID] {
+			return fmt.Errorf("duplicate registerbild %s", b.EntityID)
+		}
+		seen[b.EntityID] = true
+		if b.Funktionscode != 3 && b.Funktionscode != 4 {
+			return errors.New("registerbild funktionscode must be 3 or 4")
+		}
+		if b.Wortfolge != "big" && b.Wortfolge != "little" {
+			return errors.New("registerbild wortfolge must be big or little")
+		}
+		// Base address + header + cards must stay inside the address space (§2);
+		// a header is 12 words and a card block 42, and those minima are what the
+		// cloud plans with. The reader navigates with the lengths FROM THE HEAD.
+		if b.Basisadresse < 0 || b.Basisadresse > 65535 || b.Kartenzahl < 1 ||
+			b.Basisadresse+12+b.Kartenzahl*42 > 65536 {
+			return errors.New("registerbild does not fit the address space")
+		}
+		if len(b.Karten) != b.Kartenzahl {
+			return errors.New("registerbild karten must match kartenzahl")
+		}
+		steckplaetze := map[int]bool{}
+		for _, k := range b.Karten {
+			if k.Steckplatz < 1 || k.Steckplatz > 65535 {
+				return errors.New("invalid registerbild steckplatz")
+			}
+			if steckplaetze[k.Steckplatz] {
+				return fmt.Errorf("duplicate registerbild steckplatz %d", k.Steckplatz)
+			}
+			steckplaetze[k.Steckplatz] = true
+			if k.Kartentyp != 494 && k.Kartentyp != 495 {
+				return errors.New("registerbild kartentyp must be 494 or 495")
+			}
+			if k.Variante < 0 || k.Variante > 65535 {
+				return errors.New("invalid registerbild variante")
+			}
+		}
+	}
+	return nil
 }
 
 func validCustomDefinition(raw []byte) bool {
@@ -145,6 +264,12 @@ type LocalStatus struct {
 type Rejection struct {
 	PointKey string `json:"point_key"`
 	Reason   string `json:"reason"`
+	// EntityID names the refused component of a SHARED POINT (AP-07 IP-18b,
+	// mqtt-measurement-config-status x-rejection-entity-rule): the plan named the
+	// point once per component, so one of them can be refused while another is
+	// read. Absent everywhere else - a status without a shared point is byte for
+	// byte the one sent before.
+	EntityID string `json:"entity_id,omitempty"`
 }
 
 var reasons = map[string]bool{"unknown_point": true, "unsupported_catalog": true, "edge_too_old": true,
@@ -171,18 +296,25 @@ func WrapStatus(raw []byte, id Identity, edgeVersion string) ([]byte, error) {
 	if len(s.Accepted)+len(s.Rejected) > MaxConfigPoints {
 		return nil, errors.New("too many status points")
 	}
-	seen := map[string]bool{}
+	accepted := map[string]bool{}
 	for _, key := range s.Accepted {
-		if !pointKeyPattern.MatchString(key) || seen[key] {
+		if !pointKeyPattern.MatchString(key) || accepted[key] {
 			return nil, errors.New("duplicate/empty accepted")
 		}
-		seen[key] = true
+		accepted[key] = true
 	}
+	// A rejection without entity_id refuses the whole point (as before). One
+	// WITH entity_id refuses one component of a shared point; the point may
+	// then also be accepted for its other components, but the same component
+	// is refused at most once and never beside a whole-point refusal.
+	rejected := geteiltePunkte{}
 	for _, r := range s.Rejected {
-		if !pointKeyPattern.MatchString(r.PointKey) || !reasons[r.Reason] || seen[r.PointKey] {
+		if !pointKeyPattern.MatchString(r.PointKey) || !reasons[r.Reason] ||
+			(r.EntityID == "" && accepted[r.PointKey]) ||
+			(r.EntityID != "" && !entityIDPattern.MatchString(r.EntityID)) ||
+			!rejected.add(r.PointKey, r.EntityID) {
 			return nil, errors.New("invalid rejection")
 		}
-		seen[r.PointKey] = true
 	}
 	return json.Marshal(struct {
 		SchemaVersion string `json:"schema_version"`
@@ -203,13 +335,16 @@ type Sample struct {
 	ObservedAt       *time.Time `json:"observed_at,omitempty"`
 	SignedData       string     `json:"signed_data,omitempty"`
 	SignedDataFormat string     `json:"signed_data_format,omitempty"`
+	// RawMessage distinguishes an absent provenance field from explicit null.
+	EntityID json.RawMessage `json:"entity_id,omitempty"`
 }
 type LocalBatch struct {
-	CatalogVersion string    `json:"catalog_version"`
-	ObservedAt     time.Time `json:"observed_at"`
-	Samples        []Sample  `json:"samples"`
-	DroppedSamples int64     `json:"dropped_samples,omitempty"`
-	Gap            bool      `json:"gap,omitempty"`
+	CatalogVersion  string          `json:"catalog_version"`
+	ObservedAt      time.Time       `json:"observed_at"`
+	Samples         []Sample        `json:"samples"`
+	DroppedSamples  int64           `json:"dropped_samples,omitempty"`
+	Gap             bool            `json:"gap,omitempty"`
+	AppliedRevision json.RawMessage `json:"applied_revision,omitempty"`
 }
 
 var qualities = map[string]bool{"good": true, "uncertain": true, "invalid": true, "stale": true, "device_error": true}
@@ -229,13 +364,27 @@ func parseBatch(raw []byte) (LocalBatch, error) {
 		b.DroppedSamples < 0 || (len(b.Samples) == 0 && !(b.Gap && b.DroppedSamples > 0)) {
 		return b, errors.New("invalid batch")
 	}
-	seen := map[string]bool{}
+	if len(b.AppliedRevision) > 0 {
+		var revision int64
+		if err := json.Unmarshal(b.AppliedRevision, &revision); err != nil ||
+			bytes.Equal(bytes.TrimSpace(b.AppliedRevision), []byte("null")) || revision < 0 {
+			return b, errors.New("invalid applied_revision")
+		}
+	}
+	// One sample per point, or per component at a shared point: the same
+	// (point_key, entity_id) rule as the plan (geteiltePunkte).
+	seen := geteiltePunkte{}
 	for _, s := range b.Samples {
-		if !pointKeyPattern.MatchString(s.PointKey) || seen[s.PointKey] ||
+		var entityID string
+		if len(s.EntityID) > 0 {
+			if err := json.Unmarshal(s.EntityID, &entityID); err != nil || !entityIDPattern.MatchString(entityID) {
+				return b, errors.New("invalid sample entity_id")
+			}
+		}
+		if !pointKeyPattern.MatchString(s.PointKey) || !seen.add(s.PointKey, entityID) ||
 			s.Raw == nil || !qualities[s.Quality] {
 			return b, errors.New("invalid sample")
 		}
-		seen[s.PointKey] = true
 		if len(s.SignedData) > 32768 || len(s.SignedDataFormat) > 128 {
 			return b, errors.New("signed data too large")
 		}
@@ -265,6 +414,17 @@ type diskState struct {
 	Gap                bool   `json:"gap"`
 	PendingDropFile    string `json:"pending_drop_file,omitempty"`
 	PendingDropSamples int64  `json:"pending_drop_samples,omitempty"`
+	// The WINDOW of an eviction episode, so the box can report the loss as a
+	// data_gap with erkannt_aus = verdraengung (UEMS AP-07 IP-19). Durable like
+	// the loss counter itself: a reboot in the middle keeps the report.
+	GapVon     string `json:"gap_von,omitempty"`
+	GapBis     string `json:"gap_bis,omitempty"`
+	GapSamples int64  `json:"gap_samples,omitempty"`
+	// GapOffen says the eviction episode is still RUNNING. While the uplink is
+	// down every Append evicts again, so the window keeps growing; it is handed
+	// out as ONE gap when an Append finally evicts nothing - not once per
+	// discarded envelope.
+	GapOffen bool `json:"gap_offen,omitempty"`
 }
 type Outbox struct {
 	mu    sync.Mutex
@@ -344,6 +504,7 @@ func (o *Outbox) Append(local []byte, id Identity) (Envelope, error) {
 	if err != nil {
 		return Envelope{}, err
 	}
+	verdraengt := false
 	for len(files) >= o.max {
 		drop := 0
 		if o.inFlight >= 0 && sequenceOf(files[drop]) == o.inFlight {
@@ -353,10 +514,18 @@ func (o *Outbox) Append(local []byte, id Identity) (Envelope, error) {
 			return Envelope{}, errors.New("measurement outbox contains only in-flight entry")
 		}
 		name := files[drop]
-		count, countErr := envelopeLossCount(filepath.Join(o.dir, name))
+		count, observed, countErr := envelopeLoss(filepath.Join(o.dir, name))
 		if countErr != nil {
 			return Envelope{}, countErr
 		}
+		// The gap starts at the OLDEST envelope this episode threw away and stays
+		// there while more are evicted; only its end moves.
+		if o.state.GapVon == "" && observed != "" {
+			o.state.GapVon = observed
+		}
+		o.state.GapSamples += count
+		o.state.GapOffen = true
+		verdraengt = true
 		// Two-phase eviction: recovery can distinguish "prepared but file still
 		// exists" from "file removed but loss counter not committed" exactly.
 		o.state.PendingDropFile, o.state.PendingDropSamples = name, count
@@ -377,6 +546,23 @@ func (o *Outbox) Append(local []byte, id Identity) (Envelope, error) {
 			return Envelope{}, err
 		}
 	}
+	// The gap is half-open [von, bis): it ends where the oldest SURVIVING
+	// envelope begins - the one this envelope, or the replay behind it, does
+	// deliver. Nothing survived means the gap ends at the batch written now.
+	if verdraengt && o.state.GapVon != "" {
+		o.state.GapBis = b.ObservedAt.UTC().Truncate(time.Second).Format("2006-01-02T15:04:05Z")
+		if len(files) > 0 {
+			if _, observed, err := envelopeLoss(filepath.Join(o.dir, files[0])); err == nil && observed != "" {
+				o.state.GapBis = observed
+			}
+		}
+	} else if o.state.GapOffen {
+		// Nothing had to go this time: the episode is over and can be reported.
+		o.state.GapOffen = false
+		if err := o.save(); err != nil {
+			return Envelope{}, err
+		}
+	}
 	// Persist the loss marker before creating another envelope. A crash after
 	// deleting an oldest file may duplicate a gap report, but can never hide it.
 	if o.state.Gap {
@@ -390,6 +576,18 @@ func (o *Outbox) Append(local []byte, id Identity) (Envelope, error) {
 	// actually sent after an eviction. Persisted later envelopes stay clean, so
 	// one loss episode cannot become a train of duplicate data-gap events.
 	payload := map[string]any{"schema_version": "2.0", "tenant_id": id.TenantID, "site_id": id.SiteID, "device_id": id.DeviceID, "catalog_version": b.CatalogVersion, "sequence": seq, "observed_at": b.ObservedAt.UTC(), "samples": b.Samples, "dropped_samples": b.DroppedSamples, "gap": b.Gap || b.DroppedSamples > 0}
+	// A legacy palette still produces the unchanged 2.0 shape. Provenance is
+	// legal only in 2.1; never manufacture it for old local batches or replay.
+	if len(b.AppliedRevision) > 0 {
+		payload["applied_revision"] = b.AppliedRevision
+		payload["schema_version"] = "2.1"
+	}
+	for _, sample := range b.Samples {
+		if len(sample.EntityID) > 0 {
+			payload["schema_version"] = "2.1"
+			break
+		}
+	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		return Envelope{}, err
@@ -488,19 +686,48 @@ func (o *Outbox) recoverPendingDrop() error {
 	o.state.PendingDropFile, o.state.PendingDropSamples = "", 0
 	return o.save()
 }
-func envelopeLossCount(path string) (int64, error) {
+
+// envelopeLoss reports how many samples one stored envelope carries and WHEN the
+// box observed them, so an eviction can name both the size and the window of the
+// loss.
+func envelopeLoss(path string) (int64, string, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	var payload struct {
-		Samples []json.RawMessage `json:"samples"`
-		Dropped int64             `json:"dropped_samples"`
+		Samples    []json.RawMessage `json:"samples"`
+		Dropped    int64             `json:"dropped_samples"`
+		ObservedAt string            `json:"observed_at"`
 	}
 	if err := json.Unmarshal(raw, &payload); err != nil {
-		return 0, fmt.Errorf("measurement outbox envelope corrupt: %w", err)
+		return 0, "", fmt.Errorf("measurement outbox envelope corrupt: %w", err)
 	}
-	return int64(len(payload.Samples)) + payload.Dropped, nil
+	observed := ""
+	if t, parseErr := time.Parse(time.RFC3339, payload.ObservedAt); parseErr == nil {
+		observed = t.UTC().Truncate(time.Second).Format("2006-01-02T15:04:05Z")
+	}
+	return int64(len(payload.Samples)) + payload.Dropped, observed, nil
+}
+
+// Verdraengung hands out the window of a completed eviction episode exactly ONCE
+// and clears it durably in the same step. The caller turns it into the box's own
+// data_gap; a crash between the two loses the precise window, never the loss
+// itself - `gap` and `dropped_samples` still ride on the next envelope.
+func (o *Outbox) Verdraengung() (von, bis time.Time, samples int64, ok bool) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if o.state.GapVon == "" || o.state.GapBis == "" || o.state.GapOffen {
+		return time.Time{}, time.Time{}, 0, false
+	}
+	von, vonErr := time.Parse(time.RFC3339, o.state.GapVon)
+	bis, bisErr := time.Parse(time.RFC3339, o.state.GapBis)
+	samples = o.state.GapSamples
+	o.state.GapVon, o.state.GapBis, o.state.GapSamples = "", "", 0
+	if err := o.save(); err != nil || vonErr != nil || bisErr != nil || !bis.After(von) {
+		return time.Time{}, time.Time{}, 0, false
+	}
+	return von.UTC(), bis.UTC(), samples, true
 }
 func atomicWrite(path string, raw []byte) error {
 	tmp := path + ".tmp"

@@ -35,11 +35,11 @@ CHECKs, „nur einmal beendet“, Offboarding), `MessstelleRegelnVectorsTest`,
 - **MS-06: die sieben Minuten 10:40–10:47 sind KEINE Bindungslücke** (Vertrag §9 Nr. 2,
   Referenzdatei 1.1: Z-5b ab 10:40) — sie sind die Werte-Lücke der Beobachtung (IP-15). Eine Lücke
   im Zeitstrahl entsteht nur durch ausdrückliches Beenden (MS-07).
-- **Der Vorzeichen-Wert wartet auf AP-08.** Die Wirkleistung am Zweirichtungszähler
-  (`sunspec.model_203.w`, Katalog `import_export`) hat keine Vertrags-Richtung → 422
-  `quelle_passt_nicht` Grund `richtung`, auch für die Nebengröße „Wirkleistung · Bezug“ von MS-01,
-  die die Referenzdatei aus K-3 speist (Vektor `ms-01-nebengroesse-vorzeichen-wartet-auf-ap08`).
-  Kein Feld, keine Aufteilung erfinden — AP-08 entscheidet die Rechenregel.
+- **Der Vorzeichen-Wert bindet nur mit `anteil` (AP-08 IP-7).** Die Wirkleistung am
+  Zweirichtungszähler (`sunspec.model_203.w`, Katalog `import_export`) hat keine Vertrags-Richtung:
+  ohne Anteil 422 `quelle_passt_nicht` Grund `richtung` (Vektor `ms-01-nebengroesse-vorzeichen-ohne-anteil`),
+  mit `anteil` positiv → Bezug, negativ → Abgabe; `kanal_bereits_fuehrend` gilt je Anteil. Alles
+  Weitere in `uems-quelle-anteil.md`.
 - **„rückwirkend“ gegen die Uhr des Dienstes.** `eingetragen_am` (Tabelle) und `created_at` des
   Protokolls (`MessstelleAenderungRepository.eintragen(e, eingetragenAm)`) sind das „jetzt“ des
   Schreibwegs — so hält der CHECK `gilt_ab < created_at` auch mit einer Test-Uhr in der Zukunft
@@ -57,3 +57,21 @@ CHECKs, „nur einmal beendet“, Offboarding), `MessstelleRegelnVectorsTest`,
   Anlage bleibt), `→ messstelle`/`→ tenant` RESTRICT; `TenantRepository.offboard` räumt
   `messstelle_quelle` zuerst ab. Der CHECK `messstelle_aenderung_art_chk` wurde geweitet, indem der
   Stand von IP-7 (`V20260911230000`) abgeschrieben wurde — wer ihn weitet, schreibt DIESEN ab.
+
+## Additiv seit AP-04 IP-14 (Portal-Fläche „Quelle binden“)
+
+`GET …/quellen` trägt je Bindung zwei weitere Felder (OpenAPI `MessstelleQuelle`, beide optional):
+
+- `kanal_name` — der Anzeigename des Messwerts, dieselbe Regel wie im Messkanal-Read-Model.
+- `letzter_wert` — der letzte gute Wert DIESER Bindung, in der Form von `MessstelleRegisterWert`.
+  ⚠ Nur an einer Bindung, die zum Stichtag GILT (geplant und beendet bekommen `null`); `null` heißt
+  „nichts bekannt“, nie eine 0. Gebildet von `MessstelleBeobachtung.letzterWert` — DERSELBEN Stelle
+  wie der letzte Wert des Registers (Werte-Zug `MessstelleRegisterRepository.werte`, Einheit des
+  Messkanals ohne Umrechnung, Anteil-Schnitt nach AP-08 IP-7). Die Quelle-Karte stellt die führende
+  und die Vergleichsquelle nebeneinander (E3) — beide Zahlen müssen gleich entstanden sein.
+
+Dazu trägt `MesskanalDto.Speist` (`…/messkanaele`) das Feld `anteil`: erst damit kann die Auswahl
+richtig ausgrauen — EIN Vorzeichen-Kanal führt den Bezug der einen und die Abgabe der anderen
+Messstelle, verboten ist nur derselbe Teil zweimal führend.
+
+Beweis: `MessstelleQuelleApiTest#jedeLaufendeQuelleNenntIhrenEigenenLetztenWertUndIhrenAnzeigenamen`.

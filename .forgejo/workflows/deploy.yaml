@@ -181,7 +181,7 @@ jobs:
       # Verzeichnis und liest aus der `sources`-Liste des Einstiegs-Chunks, ob
       # ein Motion-Modul hineingeflossen ist - ein Namens-`grep` reicht dafuer
       # nicht, der Minifizierer benennt die Symbole um.
-      - name: Bundle smoke (Einstieg <= 230 kB gz, Motion nur in Lazy-Stuecken)
+      - name: Bundle smoke (Einstieg <= 256 kB gz, Motion nur in Lazy-Stuecken)
         if: matrix.type == 'frontend'
         working-directory: ${{ matrix.path }}
         run: npm run test:bundle
@@ -376,6 +376,12 @@ jobs:
   gitops-tag-bump:
     name: Bump gitops image tags
     needs: build
+    # Nur ein Bau von main setzt den Prod-Tag. workflow_dispatch nimmt die
+    # Workflow-Datei des gewaehlten Zweigs, github.ref ist dann
+    # refs/heads/<zweig>; auf uems/mispel u. a. laufen die Builds, der Bump
+    # wird uebersprungen (skipped, nicht rot). Gleichschritt mit der
+    # Schwesterdatei prueft tools/deploy/test-gitops-bump-workflow.sh.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest-mo
     timeout-minutes: 10
 

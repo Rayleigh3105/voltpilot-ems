@@ -9,7 +9,7 @@ import com.voltpilot.api.repo.CockpitLayoutRepository;
 import com.voltpilot.api.repo.CockpitLayoutRepository.StoredLayout;
 import com.voltpilot.api.repo.EntityHistoryRepository;
 import com.voltpilot.api.repo.EntityHistoryRepository.Bucket;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.EigeneAuswertungDto;
 import com.voltpilot.api.web.dto.EigeneAuswertungDto.WertDto;
@@ -65,14 +65,14 @@ import org.springframework.stereotype.Service;
 @Service
 public class EigeneAuswertungService {
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final CockpitLayoutRepository layouts;
     private final EntityRegistryRepository entities;
     private final EntityHistoryRepository history;
 
-    public EigeneAuswertungService(SiteRepository sites, CockpitLayoutRepository layouts,
+    public EigeneAuswertungService(Geltungsbereich geltungsbereich, CockpitLayoutRepository layouts,
             EntityRegistryRepository entities, EntityHistoryRepository history) {
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.layouts = layouts;
         this.entities = entities;
         this.history = history;
@@ -84,6 +84,7 @@ public class EigeneAuswertungService {
      * @param at der Anker-Tag (Europe/Berlin); null = heute
      */
     public EigeneAuswertungDto forSite(UUID siteId, LocalDate at) {
+        geltungsbereich.requireSite(siteId);
         LocalDate anchor = at != null ? at : LocalDate.now(HistoryRange.ZONE);
         HistoryRange.Window window = HistoryRange.DAY.window(anchor);
 
@@ -109,11 +110,6 @@ public class EigeneAuswertungService {
         }
         return new EigeneAuswertungDto(anchor.toString(), window.from(), window.to(),
                 HistoryRange.DAY.bucketMinutes(), List.copyOf(werte));
-    }
-
-    /** Existiert diese Anlage im Mandanten des Aufrufers? (RLS ist der Zaun.) */
-    public boolean siteVisible(UUID siteId) {
-        return sites.existsForCurrentTenant(siteId);
     }
 
     /**

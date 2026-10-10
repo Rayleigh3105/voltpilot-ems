@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useEffect, useState, type ChangeEvent } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -5,6 +6,7 @@ import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { api, ApiError, type Device } from '../api';
+import { VpPicker } from './VpPicker';
 import {
   ANBINDEN_ALLOWLIST,
   ANBINDEN_EINSTIEG,
@@ -52,11 +54,14 @@ import './LadesaeuleAnbinden.css';
 export function LadesaeuleAnbinden({
   siteId,
   device,
+  devices,
   onChanged,
 }: {
   siteId: string;
-  /** Die Box dieser Anlage — sie kennt die Adresse (D5). Ohne sie: der Weg. */
+  /** Bestandspfad: die bisher eindeutige Box der Anlage. */
   device?: Device;
+  /** Alle Boxen der Anlage — bei mehreren waehlt der Kunde die Ladepark-Box. */
+  devices?: Device[];
   /** Der Wirt darf seine eigene Sicht auffrischen, sobald etwas passiert ist. */
   onChanged?: () => void;
 }) {
@@ -76,6 +81,12 @@ export function LadesaeuleAnbinden({
   const [busy, setBusy] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
   const [kopiert, setKopiert] = useState<string | null>(null);
+  const boxen = (devices?.length ? devices : device ? [device] : [])
+    .filter((box, index, alle) => box.siteId === siteId
+      && alle.findIndex((item) => item.id === box.id) === index);
+  const [boxId, setBoxId] = useState<string | null>(
+    boxen.length === 1 ? boxen[0].id : null,
+  );
   // Die Kennung, deren Rücknahme gerade zur Rückfrage steht (null = keine).
   const [entfernenZiel, setEntfernenZiel] = useState<{ kennung: string; name: string } | null>(
     null,
@@ -96,6 +107,21 @@ export function LadesaeuleAnbinden({
       aktiv = false;
     };
   }, [siteId]);
+
+  useEffect(() => {
+    const gemeldet = Array.from(new Set((charging?.chargers ?? []).map((c) => c.deviceId)));
+    if (gemeldet.length === 1 && boxen.some((box) => box.id === gemeldet[0])) {
+      setBoxId(gemeldet[0]);
+      return;
+    }
+    if (boxen.length === 1) {
+      setBoxId(boxen[0].id);
+      return;
+    }
+    setBoxId((aktuell) => (aktuell && boxen.some((box) => box.id === aktuell) ? aktuell : null));
+  // Die API-Listen werden bei jedem Poll neu erzeugt; IDs sind die stabile Abhaengigkeit.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [charging?.chargers.map((c) => c.deviceId).join('|'), boxen.map((box) => box.id).join('|')]);
 
   useEffect(() => {
     let aktiv = true;
@@ -119,7 +145,15 @@ export function LadesaeuleAnbinden({
   const istEingetragen = !!kennung.trim() && vergeben.includes(kennung.trim());
   const mangel = kennungFehler(kennung, vergeben);
   const m = meldung(charging, kennung);
-  const ziel = endpunkt(device, charging, kennung);
+  const zielBox = boxen.find((box) => box.id === boxId);
+  // Ein älterer Wirt kennt die Geräteliste noch nicht. Dann bleibt der
+  // Ein-Box-Bestandspfad offen; der Server löst genau eine aktive Box auf und
+  // lehnt mehrere mit 422 ab. Nur eine tatsächlich geladene Mehrbox-Liste
+  // braucht die ausdrückliche Wahl im Portal.
+  const boxWahlFehlt = boxen.length > 1 && !boxId;
+  const boxBudget = (charging?.budgets ?? (charging?.budget ? [charging.budget] : []))
+    .find((budget) => budget.deviceId === boxId) ?? null;
+  const ziel = endpunkt(zielBox, charging ? { ...charging, budget: boxBudget } : null, kennung);
   const steps = schritte(istEingetragen, m.gemeldet);
   const zeilen = eingetrageneZeilen(config?.chargePoints, charging);
   // Das SOLL dieser Kennung, falls sie schon eingetragen ist - es führt die
@@ -144,6 +178,7 @@ export function LadesaeuleAnbinden({
         // Aussage über die Bilanz einer Anlage. Beim ERSTEN Eintragen reist
         // die Wahl dagegen immer mit - der Kunde hat sie gesehen.
         connection: anschlussZumSenden(wahl, soll),
+        deviceId: boxId ?? undefined,
       });
       setConfig(c);
       onChanged?.();
@@ -202,6 +237,21 @@ export function LadesaeuleAnbinden({
       <div className="vp-anbinden-step">
         <h3 className="vp-anbinden-h">1 · Kennung festlegen</h3>
         <p className="vp-anbinden-sub">{KENNUNG_HILFE}</p>
+        {boxen.length > 0 && (
+          <VpPicker
+            label="Box für die Ladepunkte"
+            value={boxId}
+            onChange={setBoxId}
+            options={boxen.map((box) => ({
+              value: box.id,
+              label: box.name?.trim() || box.externalRef,
+              description: box.lanHost ? `Adresse ${box.lanHost}` : 'Adresse noch nicht gemeldet',
+            }))}
+            placeholder="Box wählen …"
+            hint="Alle Ladepunkte dieser Anlage verbinden sich mit derselben Box. Die gewählte Adresse erscheint in Schritt 2."
+            error={boxWahlFehlt ? 'Bitte wählen Sie die Box für diesen Ladepark.' : null}
+          />
+        )}
         <Input
           label="Name der Säule (optional)"
           value={name}
@@ -255,16 +305,16 @@ export function LadesaeuleAnbinden({
                 eingetragenen Kennung - dafür braucht es einen Knopf, sonst
                 verschluckt die Fläche die Wahl, die der Kunde gerade traf. */}
             {anschlussZumSenden(wahl, soll) !== undefined && (
-              <Button size="sm" disabled={busy} onClick={() => void eintragen()}>
+              <Recht aktion="ladepunkt.anbinden"><Button size="sm" disabled={busy} onClick={() => void eintragen()}>
                 {busy ? 'Wird gespeichert …' : 'Anschluss speichern'}
-              </Button>
+              </Button></Recht>
             )}
           </div>
         ) : (
           <div className="vp-anbinden-actions">
-            <Button size="sm" disabled={!!mangel || busy} onClick={() => void eintragen()}>
+            <Recht aktion="ladepunkt.anbinden"><Button size="sm" disabled={!!mangel || boxWahlFehlt || busy} onClick={() => void eintragen()}>
               {busy ? 'Wird eingetragen …' : 'Kennung eintragen'}
-            </Button>
+            </Button></Recht>
           </div>
         )}
         {fehler && (
@@ -343,7 +393,7 @@ export function LadesaeuleAnbinden({
                 </span>
                 {/* Die Rücknahme ist eine ausdrückliche Handlung mit Folgen -
                     deshalb der Haus-Dialog, nie ein Klick, der sofort wirkt. */}
-                <button
+                <Recht aktion="ladepunkt.anbinden"><button
                   type="button"
                   className="vp-anbinden-remove"
                   aria-label={`Ladesäule „${z.name}" entfernen`}
@@ -351,7 +401,7 @@ export function LadesaeuleAnbinden({
                   onClick={() => setEntfernenZiel({ kennung: z.kennung, name: z.name })}
                 >
                   <Icon name="trash" size={16} />
-                </button>
+                </button></Recht>
               </li>
             ))}
           </ul>
@@ -387,12 +437,14 @@ export function LadesaeuleAnbindenDrawer({
   open,
   siteId,
   device,
+  devices,
   onClose,
   onChanged,
 }: {
   open: boolean;
   siteId: string;
   device?: Device;
+  devices?: Device[];
   onClose: () => void;
   onChanged?: () => void;
 }) {
@@ -408,7 +460,7 @@ export function LadesaeuleAnbindenDrawer({
         </IconTile>
       }
     >
-      <LadesaeuleAnbinden siteId={siteId} device={device} onChanged={onChanged} />
+      <LadesaeuleAnbinden siteId={siteId} device={device} devices={devices} onChanged={onChanged} />
     </Modal>
   );
 }

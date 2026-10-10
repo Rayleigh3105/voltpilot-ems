@@ -80,6 +80,38 @@ class ProbeResultListenerTest {
     }
 
     /**
+     * AP-05: der Kopf eines WAGO-Registerbilds kommt als eigener Block an — mit den Vertragsnamen, auch
+     * neben einer Ablehnung, und nur mit {@code signatur_ok}/{@code erkannt} als Aussage.
+     */
+    @Test
+    void aWagoHeadTravelsAsItsOwnBlockAlsoBesideARefusal() throws Exception {
+        CompletableFuture<ProbeResult> f = arm();
+        listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
+                "{\"id\":\"kopf\",\"ok\":true,\"wago_kopf\":{\"signatur_ok\":true,\"erkannt\":true,"
+                        + "\"hauptversion\":1,\"nebenversion\":0,\"kopflaenge\":12,\"kartenblocklaenge\":42,"
+                        + "\"kartenzahl\":4,\"herzschlag\":900,\"controller_kennung\":4294967295}},"
+                        + "{\"id\":\"fremd\",\"ok\":false,\"error_code\":\"invalid_response\",\"message\":\"x\","
+                        + "\"wago_kopf\":{\"signatur_ok\":true,\"erkannt\":false,\"grund\":\"hauptversion_fremd\","
+                        + "\"hauptversion\":2}},"
+                        + "{\"id\":\"leer\",\"ok\":true,\"wago_kopf\":{\"kartenzahl\":4}}")));
+
+        List<ProbeResult.OpResult> zeilen = get(f).results();
+        ProbeResult.WagoKopf kopf = zeilen.get(0).wagoKopf();
+        assertThat(zeilen.get(0).ok()).isTrue();
+        assertThat(kopf.controllerKennung()).isEqualTo(4_294_967_295L);
+        assertThat(kopf.kartenzahl()).isEqualTo(4);
+        assertThat(zeilen.get(1).ok()).isFalse();
+        assertThat(zeilen.get(1).errorCode()).isEqualTo("invalid_response");
+        assertThat(zeilen.get(1).wagoKopf().grund()).isEqualTo("hauptversion_fremd");
+        assertThat(zeilen.get(1).wagoKopf().kartenzahl()).isNull();
+        // Ohne die beiden Pflichtfelder ist der Block keine Aussage — und die Zeile kein Erfolg.
+        assertThat(zeilen.get(2).ok()).isFalse();
+        assertThat(zeilen.get(2).wagoKopf()).isNull();
+        assertThat(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(zeilen.get(0)))
+                .contains("\"wago_kopf\":{\"signatur_ok\":true,\"erkannt\":true", "\"controller_kennung\":4294967295");
+    }
+
+    /**
      * The identity rule of every listener on the device topics: a device may
      * not answer for another one. Both halves are checked - a foreign TOPIC and
      * a payload that disagrees with its own topic.

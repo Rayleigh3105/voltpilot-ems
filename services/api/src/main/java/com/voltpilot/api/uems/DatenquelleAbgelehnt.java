@@ -52,7 +52,15 @@ public final class DatenquelleAbgelehnt extends RuntimeException {
          * Bestands-Übernahme (IP-4): den bestätigten Vorschlag gibt es so nicht mehr (andere Box,
          * anderer Weg, andere Komponenten) — bestätigt wird nur, was gezeigt wurde.
          */
-        VORSCHLAG_GEAENDERT("vorschlag_geaendert", 409);
+        VORSCHLAG_GEAENDERT("vorschlag_geaendert", 409),
+        /** Das physische Lesebudget der Ziel-Box wäre nach dieser Quelle überschritten. */
+        BUDGET_UEBERSCHRITTEN("budget_ueberschritten", 422),
+        /**
+         * AP-15 T6: die Quelle trägt eine scharfe Gemeinsame Steuerung (Netzzähler, Messpunkt oder Steuerquelle eines
+         * Mitglieds) — ihre Box wechselt nur als Änderung der Gemeinsamen Steuerung, nicht als Zuständigkeitswechsel.
+         * Fakt: {@code kennzeichen}.
+         */
+        GEMEINSAME_STEUERUNG_AENDERN("gemeinsame_steuerung_aendern", 409);
 
         private final String code;
         private final int status;
@@ -84,15 +92,15 @@ public final class DatenquelleAbgelehnt extends RuntimeException {
 
     /**
      * Der HTTP-Status je Grund des Vertrags: 400 für ein Wort außerhalb des Vokabulars, 422 für
-     * einen Zeitpunkt, der in sich nicht geht (Sekunden, rückwirkend, leer), 409 für alles, was
-     * am gespeicherten Stand scheitert — auch „erst bestätigen“ und „erst prüfen“.
+     * einen in sich ungültigen Wunsch (Zeitpunkt bzw. Ein-Leser-Vorlage), 409 für alles, was am
+     * gespeicherten Stand scheitert — auch „erst bestätigen“ und „erst prüfen“.
      */
     public static int status(Grund g) {
         return switch (g) {
             case PROTOKOLL_UNBEKANNT -> 400;
-            case KEINE_VOLLE_MINUTE, RUECKWIRKEND, LEERER_ZEITRAUM -> 422;
+            case KEINE_VOLLE_MINUTE, RUECKWIRKEND, LEERER_ZEITRAUM, NUR_EIN_LESER -> 422;
             case STEUERQUELLE, SPAETERER_WECHSEL_GEPLANT, SCHON_ZUSTAENDIG, UEBERSCHNEIDUNG,
-                    ADRESSE_AN_BOX_VERGEBEN, NETZLAGE_FEHLT, NUR_EIN_LESER, VERGLEICH_BESTAETIGEN,
+                    ADRESSE_AN_BOX_VERGEBEN, NETZLAGE_FEHLT, VERGLEICH_BESTAETIGEN,
                     PRUEFUNG_FEHLT, PRUEFUNG_GESCHEITERT -> 409;
         };
     }
@@ -101,19 +109,22 @@ public final class DatenquelleAbgelehnt extends RuntimeException {
     public static DatenquelleAbgelehnt regel(AntragErgebnis e) {
         Map<String, Object> fakten = new LinkedHashMap<>();
         fakten.put("urteil", e.urteil().code());
+        fakten.put("grund", e.grund().code());
+        fakten.put("satz", e.text());
         return new DatenquelleAbgelehnt(e.grund().code(), status(e.grund()), e.text(), fakten);
     }
 
     /** Ein Urteil der Speicher-Regel {@link DatenquelleRegeln#pruefeZeitraum}. */
     public static DatenquelleAbgelehnt zeitraum(ZeitraumErgebnis e) {
-        return new DatenquelleAbgelehnt(e.grund().code(), status(e.grund()), e.text(),
-                Map.of("urteil", DatenquelleRegeln.Urteil.ABGELEHNT.code()));
+        return new DatenquelleAbgelehnt(e.grund().code(), status(e.grund()), e.text(), Map.of(
+                "urteil", DatenquelleRegeln.Urteil.ABGELEHNT.code(),
+                "grund", e.grund().code(), "satz", e.text()));
     }
 
     /** Ein Grund des Vertrags ohne Platzhalter im Satz (heute: {@code protokoll_unbekannt}). */
     public static DatenquelleAbgelehnt grund(Grund g) {
         return new DatenquelleAbgelehnt(g.code(), status(g), g.text(),
-                Map.of("urteil", g.urteil().code()));
+                Map.of("urteil", g.urteil().code(), "grund", g.code(), "satz", g.text()));
     }
 
     public static DatenquelleAbgelehnt schnittstelle(Schnittstelle s, String satz, Map<String, Object> fakten) {
@@ -122,6 +133,22 @@ public final class DatenquelleAbgelehnt extends RuntimeException {
 
     public static DatenquelleAbgelehnt anfrage(String feld, String satz) {
         return schnittstelle(Schnittstelle.ANFRAGE_UNGUELTIG, satz, Map.of("feld", feld));
+    }
+
+    /** Zustandskonflikte der Rücknahme tragen die vom Portal direkt sprechbaren Felder. */
+    public static DatenquelleAbgelehnt konflikt(String grund, String satz) {
+        return new DatenquelleAbgelehnt(grund, 409, satz, Map.of("grund", grund, "satz", satz));
+    }
+
+    /** E6: die ganze Rechnung und beide Auswege reisen im 422-Körper; geschrieben ist noch nichts. */
+    public static DatenquelleAbgelehnt budget(DatenquelleBudget.Ablehnung b) {
+        Map<String, Object> fakten = new LinkedHashMap<>();
+        fakten.put("urteil", "abgelehnt");
+        fakten.put("rechnung", b);
+        return new DatenquelleAbgelehnt(Schnittstelle.BUDGET_UEBERSCHRITTEN.code(),
+                Schnittstelle.BUDGET_UEBERSCHRITTEN.status(),
+                "Diese Quelle passt nicht mehr in das Lesebudget von " + b.box()
+                        + " — Takt strecken oder andere Box wählen.", fakten);
     }
 
     public String code() {

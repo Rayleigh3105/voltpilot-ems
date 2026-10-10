@@ -13,6 +13,11 @@ Treiber `edge-app/core/internal/ebyte`, Executor/Poll/Test
   ältere Box ignoriert ihn also folgenlos. Die Box liest die Adresse aus dem
   Treiber der Modul-Entität. **Nie `edge_source_id` für Kanal-Verbraucher**
   (die Übernahme-Nadel ist 1:1).
+- **Mehrere Boxen:** der Kanal-Verbraucher hat keine eigene Quelle und folgt
+  der seines Moduls (`EntityRegistryRepository.FOLGE_QUELLE`): Push je Box
+  und Einmal-Aufträge (Handeingriff) gehen an die Box, die das Modul liest,
+  wie `switch_set`. Sonst bekäme die führende Box einen Treiber mit fremder
+  `io_entity_id`. Beweis: `RegistryPushJeBoxApiTest` (Kanal-Fälle).
 - **`roleFor`:** die Modul-Entität ist measure-only und wäre „nicht
   bestimmbar" — ohne den `CommEbyteModbusTCP`-Zweig kippte sie den GANZEN Push.
 - **Ein Socket:** `inverter.IsCoreOwned` (Shelly + Ebyte) hält das Modul aus

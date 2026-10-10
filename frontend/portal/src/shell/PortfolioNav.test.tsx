@@ -116,10 +116,11 @@ describe('Die Flotten-Ebene in der Schale: EIN Eintrag, keine Gruppe', () => {
 
 /**
  * Die zwei Welten, jetzt als REITER: Übersicht · Energie · Erlöse. Sie
- * navigieren zwischen drei Seiten DERSELBEN Ebene.
+ * navigieren zwischen Seiten DERSELBEN Ebene. Seit UEMS AP-02 IP-6 steht
+ * „Standorte“ dazwischen (bis die Ebenen-Navigation aus AP-01 kommt).
  */
 describe('PortfolioTabs: die Reiter der Flotten-Ebene', () => {
-  it('trägt die drei Reiter und navigiert', () => {
+  it('trägt die vier Reiter und navigiert', () => {
     const onNavigate = vi.fn();
     render(
       <PortfolioTabs
@@ -131,10 +132,15 @@ describe('PortfolioTabs: die Reiter der Flotten-Ebene', () => {
     );
     expect([...reiter().querySelectorAll('[role=tab]')].map((n) => n.textContent)).toEqual([
       'Übersicht',
+      'Standorte',
       'Energie',
       'Erlöse',
     ]);
     expect(reiter().getAttribute('aria-label')).toBe('Reiter der Ebene Portfolio');
+    fireEvent.click(screen.getByRole('tab', { name: 'Standorte' }));
+    expect(onNavigate).toHaveBeenCalledWith('portfolio-standorte');
+    // Vier Reiter: am Telefon das dichtere Polster (375 px, gemessen in e2e/standorte.spec.ts).
+    expect(reiter().classList.contains('vp-bereich-tabs-dicht')).toBe(true);
     fireEvent.click(screen.getByRole('tab', { name: 'Energie' }));
     expect(onNavigate).toHaveBeenCalledWith('portfolio-messwerte');
     fireEvent.click(screen.getByRole('tab', { name: 'Erlöse' }));
@@ -180,6 +186,8 @@ describe('PortfolioTabs: die Reiter der Flotten-Ebene', () => {
     );
     expect(screen.getByRole('tab', { name: 'Energie' })).toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: 'Erlöse' })).toBeNull();
+    // Drei Reiter passen mit dem gewohnten Polster — die Leiste bleibt, wie sie war.
+    expect(reiter().classList.contains('vp-bereich-tabs-dicht')).toBe(false);
   });
 
   it('zeigt sie trotzdem, wenn sie per Lesezeichen offen ist - nie eine Sackgasse', () => {
@@ -199,5 +207,67 @@ describe('PortfolioTabs: die Reiter der Flotten-Ebene', () => {
       <PortfolioTabs page="anlagen" showErloese fleetLabel="Portfolio" onNavigate={vi.fn()} />,
     );
     expect(container.innerHTML).toBe('');
+  });
+});
+
+/**
+ * UEMS AP-04 IP-5: „Messstellen“ ist ein BEREICH der Unternehmens-Ebene. Der Reiter steht nur, wo ein Standort misst.
+ * Seit dem Konzept „Navigation aus einem Guss“ (N1/N3) tragen Seitenleiste und Telefon-Leiste die Einträge der Ebene —
+ * was sie tragen, wird hier gar nicht erst Reiter.
+ */
+describe('PortfolioTabs: der Bereich „Messstellen“ und die Leiste am Telefon (AP-04 IP-5)', () => {
+  it('der Reiter „Messstellen“ steht nur, wenn ein Standort misst — und per Lesezeichen offen', () => {
+    const onNavigate = vi.fn();
+    const { rerender } = render(
+      <PortfolioTabs page="portfolio" showErloese={false} fleetLabel="Meine Anlagen" onNavigate={onNavigate} />,
+    );
+    expect(screen.queryByRole('tab', { name: 'Messstellen' })).toBeNull();
+    rerender(
+      <PortfolioTabs page="portfolio" showErloese={false} showMessstellen fleetLabel="Meine Anlagen" onNavigate={onNavigate} />,
+    );
+    expect([...reiter().querySelectorAll('[role=tab]')].map((n) => n.textContent)).toEqual([
+      'Übersicht',
+      'Standorte',
+      'Messstellen',
+      'Energie',
+    ]);
+    fireEvent.click(screen.getByRole('tab', { name: 'Messstellen' }));
+    expect(onNavigate).toHaveBeenCalledWith('portfolio-messstellen');
+    rerender(
+      <PortfolioTabs page="portfolio-messstellen" showErloese={false} fleetLabel="Meine Anlagen" onNavigate={onNavigate} />,
+    );
+    expect(screen.getByRole('tab', { name: 'Messstellen' }).getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('ohne Leiste bleibt jeder Reiter überall sichtbar', () => {
+    render(<PortfolioTabs page="portfolio" showErloese showMessstellen fleetLabel="Meine Anlagen" onNavigate={vi.fn()} />);
+    expect(reiter().classList.contains('vp-nur-rechner')).toBe(false);
+    expect(reiter().querySelectorAll('.vp-nur-rechner')).toHaveLength(0);
+  });
+
+  it('N1 · mit Leiste: auf der Übersicht nur, was keine Leiste trägt — auf „Messstellen“ keine Reihe', () => {
+    const leiste = ['uebersicht', 'standorte', 'messstellen'] as const;
+    const { rerender } = render(
+      <PortfolioTabs page="portfolio" showErloese showMessstellen leiste={leiste} fleetLabel="Meine Anlagen" onNavigate={vi.fn()} />,
+    );
+    expect([...reiter().querySelectorAll('[role=tab]')].map((t) => t.textContent)).toEqual(['Übersicht', 'Energie', 'Erlöse']);
+    rerender(
+      <PortfolioTabs page="portfolio-messstellen" showErloese showMessstellen leiste={leiste} fleetLabel="Meine Anlagen" onNavigate={vi.fn()} />,
+    );
+    expect(screen.queryByRole('tablist')).toBeNull();
+  });
+
+  it('N3 · die Flotte trägt ihre Seiten in Seitenleiste und Leiste — über der Seite bleibt keine Reihe', () => {
+    render(
+      <PortfolioTabs
+        page="portfolio-messwerte"
+        showErloese
+        leiste={['uebersicht', 'standorte']}
+        leisteSeiten={['portfolio', 'portfolio-standorte', 'portfolio-messwerte', 'portfolio-erloese']}
+        fleetLabel="Meine Anlagen"
+        onNavigate={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('tablist')).toBeNull();
   });
 });

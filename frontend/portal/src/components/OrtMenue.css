@@ -1,0 +1,69 @@
+/* Das Menü je Knoten im Ortsbaum (UEMS AP-02 IP-15). Die Schale ist die von RowMenu (index.css:
+   .vp-rowmenu-pop, .vp-rowmenu-scrim); hier nur, was ein Menü mit Hinweisen zusätzlich braucht. */
+
+.vp-om-knopf {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: var(--vp-c-radius-8, 8px);
+  background: none;
+  color: var(--vp-c-muted-fg);
+  cursor: pointer;
+}
+
+.vp-om-knopf:hover,
+.vp-om-knopf:focus-visible,
+.vp-om-knopf[aria-expanded='true'] {
+  background: var(--vp-c-muted);
+  color: var(--vp-c-primary);
+}
+
+.vp-om-pop {
+  width: max-content;
+  max-width: min(320px, calc(100vw - 24px));
+}
+
+.vp-om-pop button {
+  align-items: flex-start;
+  text-align: left;
+}
+
+.vp-om-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.vp-om-grund {
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+  font-weight: normal;
+}
+
+.vp-om-pop button.vp-om-gesperrt {
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-om-hinweis {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-c-space-3);
+  margin: 0;
+  padding: var(--vp-c-space-3);
+  border-top: 1px solid var(--vp-border);
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-om-hinweis > svg,
+.vp-om-pop button > svg {
+  flex: none;
+  margin-top: 2px;
+}

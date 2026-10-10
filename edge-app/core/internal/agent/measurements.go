@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"time"
 
-	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/cloud"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/csms"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/measurements"
 )
@@ -106,6 +105,13 @@ func persistMeasurementConfig(path string, payload []byte) error {
 	return err
 }
 
+// measurementStatusLink is the part of the cloud link the status path uses;
+// *cloud.Link satisfies it.
+type measurementStatusLink interface {
+	Connected() bool
+	PublishMeasurementConfigStatus(payload []byte) error
+}
+
 func (a *Agent) onMeasurementStatus(_ string, payload []byte) {
 	a.measurementMu.Lock()
 	id := a.measurementIdentity
@@ -115,6 +121,22 @@ func (a *Agent) onMeasurementStatus(_ string, payload []byte) {
 		slog.Warn("local measurement status rejected", "err", err)
 		return
 	}
+	a.linkMu.Lock()
+	var link measurementStatusLink
+	if a.link != nil {
+		link = a.link
+	}
+	a.linkMu.Unlock()
+	a.storeAndSendMeasurementStatus(raw, link)
+}
+
+// storeAndSendMeasurementStatus and republishMeasurementStatus share
+// measurementStatusMu around "file + send": otherwise a reconnect could read
+// the stored older status, lose the CPU, and deliver it AFTER a newer status
+// was written and sent - the retained cloud status would then be the old one.
+func (a *Agent) storeAndSendMeasurementStatus(raw []byte, link measurementStatusLink) {
+	a.measurementStatusMu.Lock()
+	defer a.measurementStatusMu.Unlock()
 	// A status produced during a WAN outage must not disappear. Persist the
 	// already identity-bound cloud envelope before attempting transport; the
 	// connection callback republishes it retained after every reconnect.
@@ -128,9 +150,6 @@ func (a *Agent) onMeasurementStatus(_ string, payload []byte) {
 		slog.Warn("measurement status atomic replace failed", "err", err)
 		return
 	}
-	a.linkMu.Lock()
-	link := a.link
-	a.linkMu.Unlock()
 	if link == nil || !link.Connected() {
 		return
 	} // retained config is replayed; Node-RED re-acks.
@@ -139,7 +158,9 @@ func (a *Agent) onMeasurementStatus(_ string, payload []byte) {
 	}
 }
 
-func (a *Agent) republishMeasurementStatus(link *cloud.Link) {
+func (a *Agent) republishMeasurementStatus(link measurementStatusLink) {
+	a.measurementStatusMu.Lock()
+	defer a.measurementStatusMu.Unlock()
 	raw, err := os.ReadFile(filepath.Join(a.Cfg.DataDir, "measurement-status.json"))
 	if os.IsNotExist(err) {
 		return
@@ -164,6 +185,9 @@ func (a *Agent) onMeasurementSamples(_ string, payload []byte) {
 		slog.Warn("local measurement batch rejected", "err", err)
 		return
 	}
+	// An Append may have evicted older envelopes. The box reports that loss
+	// itself as a data_gap with erkannt_aus = verdraengung (AP-07 IP-19).
+	a.meldeVerdraengung()
 	a.kick()
 }
 
@@ -172,6 +196,11 @@ func (a *Agent) setMeasurementIdentity(tenant, site, device string) {
 	a.measurementIdentity = measurements.Identity{TenantID: tenant, SiteID: site, DeviceID: device}
 	stored := append([]byte(nil), a.measurementConfig...)
 	a.measurementMu.Unlock()
+	// The first moment this runtime has a topic to send on: now - and only now -
+	// it can report that it started.
+	if tenant != "" && site != "" && device != "" {
+		a.meldeBoxNeustart()
+	}
 	if len(stored) == 0 || a.Bus == nil {
 		return
 	}

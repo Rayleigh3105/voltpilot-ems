@@ -1,0 +1,31 @@
+/*
+ * Messmittel-Blatt und Messmittel-Dialog (UEMS AP-16 IP-18). Der Block erbt Kopf und Trennlinie von
+ * `.vp-rahmen-block`; hier stehen nur die Label/Wert-Zeilen und der Beleg. Telefon zuerst: Label über dem Wert,
+ * ab 640 px nebeneinander. „nicht erhoben“ ist leise, nie rot — eine fehlende Angabe ist kein Fehler (G3).
+ */
+.vp-mm { min-width: 0; }
+.vp-mm-kopf { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 0 0 10px; font-size: 0.9rem; }
+.vp-mm-zeilen { display: grid; gap: 8px; margin: 0; }
+.vp-mm-zeile { display: grid; gap: 2px; min-width: 0; }
+.vp-mm-zeile dt { color: var(--vp-c-muted-fg); font-size: 0.8rem; font-weight: 600; }
+.vp-mm-zeile dd { display: flex; flex-direction: column; gap: 2px; margin: 0; overflow-wrap: anywhere; }
+.vp-mm-zeile.is-offen dd > span:first-child { color: var(--vp-c-muted-fg); font-style: italic; }
+.vp-mm-hinweis { color: var(--vp-c-muted-fg); font-size: 0.8rem; }
+.vp-mm-hinweis.is-abgelaufen { color: var(--vp-c-warn-fg); font-weight: 600; }
+.vp-mm-leise, .vp-mm-grenze { margin: 10px 0 0; color: var(--vp-c-muted-fg); font-size: 0.8rem; }
+.vp-mm-fuss { margin-top: 8px; }
+.vp-mm-notiz { margin: 8px 0 0; font-size: 0.85rem; }
+.vp-mm-form { display: grid; gap: 12px; }
+.vp-mm-paar { display: grid; gap: 12px; }
+.vp-mm-beleg { display: grid; gap: 10px; margin: 0; padding: 12px; border: 1px solid var(--vp-c-border); border-radius: 8px; min-width: 0; }
+.vp-mm-beleg legend { padding: 0 4px; font-weight: 650; font-size: 0.9rem; }
+.vp-mm-datei { position: relative; display: inline-flex; width: fit-content; }
+.vp-mm-datei input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.vp-mm-datei-knopf { display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 0 14px; border: 1px solid var(--vp-c-border); border-radius: 8px; font-weight: 600; font-size: 0.9rem; }
+.vp-mm-datei:focus-within .vp-mm-datei-knopf { outline: 2px solid var(--vp-c-primary); outline-offset: 2px; }
+.vp-mm-summe { margin: 0; font-size: 0.85rem; overflow-wrap: anywhere; }
+@media (min-width: 640px) {
+  .vp-mm-zeile { grid-template-columns: 11rem minmax(0, 1fr); gap: 12px; }
+  .vp-mm-paar { grid-template-columns: 1fr 1fr; }
+}
+.vp-mm-unter { margin: 14px 0 8px; color: var(--vp-c-muted-fg); font-size: 0.8rem; font-weight: 650; }

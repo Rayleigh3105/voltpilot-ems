@@ -1,6 +1,7 @@
 import { Card } from '../designsystem/components/core/Card';
 import type { Site } from './api';
-import { STARTKLAR_SATZ } from './anlageFlow';
+import type { Route } from './nav';
+import { startklarSatz } from './anlageFlow';
 import { AnlageFlow } from './components/AnlageFlow';
 
 /**
@@ -20,17 +21,29 @@ export function OnboardingWizard({
   onSkip,
 }: {
   sites: Site[];
-  onDone: () => void;
+  /** Modus „nur messen“ (`anlegeNurMessen.ts`): mit dem Ziel „Standort › Messstellen“. */
+  onDone: (ziel?: Route) => void;
   onSkip: () => void;
 }) {
   return (
     <div className="vp-onboarding">
       <Card padding="lg" radius="lg">
         <h2 style={{ marginBottom: 4 }}>Willkommen bei VoltPilot</h2>
-        <p className="vp-muted" style={{ margin: '0 0 8px' }}>
-          {STARTKLAR_SATZ}
-        </p>
-        <AnlageFlow sites={sites} waitForFirstData onDone={onDone} onSkipAll={onSkip} />
+        <AnlageFlow
+          sites={sites}
+          waitForFirstData
+          onDone={onDone}
+          onSkipAll={onSkip}
+          // Die Schrittzahl folgt dem Fluss — im Modus „nur messen“ drei, sonst vier — und
+          // steht erst, wenn das feststeht (sonst stünde einen Augenblick die falsche Zahl da).
+          kopf={(schritte) =>
+            schritte && (
+              <p className="vp-muted" style={{ margin: '0 0 8px' }}>
+                {startklarSatz(schritte.length)}
+              </p>
+            )
+          }
+        />
       </Card>
     </div>
   );

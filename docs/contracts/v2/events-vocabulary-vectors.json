@@ -12,16 +12,42 @@
     "  Java  services/ingest .../EventsContractSchemaTest — Umschläge und Beispiele gegen die Schemas",
     "Wer eine Art, ein Feld oder einen Satz ändert, ändert Java, TS, beide Schemas UND diese Datei.",
     "",
-    "⚠ NOCH RUFT NIEMAND AN. Keine Box sendet Ereignisse (erst mit einem Edge-Release,",
-    "IP-18/IP-19), die Datenannahme verarbeitet …/v2/events noch nicht (IP-5), es gibt noch",
-    "keine Ereignis-Tabelle (IP-8). Bis dahin schreibt der Writer weiter device_measurement_event.",
+    "Cloud-Dienste hängen Ereignisse über die gemeinsame Prüfung an die Ereignis-Tabelle an.",
+    "`einstufung_gesetzt`, `messbedarf_erfasst` und `messbedarf_eingeloest` kommen ausschließlich aus der API und sind ausdrücklich keine Box-Ereignisse;",
+    "die Ergänzung erweitert weder den MQTT-Umschlag noch eine Edge-Auslieferung.",
     "",
     "DIE BEISPIELWELT ist das Referenzunternehmen (uems-referenzunternehmen.json). Jeder Fall,",
     "der ein Ahrenberg-Objekt nennt (E-x, DQ-x, K-x, MS-x, Einbau), übernimmt dessen Werte, und",
     "der Java-Test prüft das gegen die Referenzdatei. Was ein Fall ERFINDET, nennt er in",
     "`annahme` und — für ein Kennzeichen oder einen Messkanal außerhalb der Referenz — in",
     "`erfunden`. Technische Kennungen (UUIDs) nennt die Referenz nicht: `kennungen` legt sie fest.",
-    "Zeiten in Ereignissen sind UTC (…Z); der Kundensatz spricht in der Zeitzone des Standorts."
+    "Zeiten in Ereignissen sind UTC (…Z); der Kundensatz spricht in der Zeitzone des Standorts.",
+    "",
+    "AP-08 IP-6 (additiv): data_gap trägt den gemessenen Zuwachs über die Lücke — zuwachs, einheit,",
+    "stand_vor, stand_nach — nur zusammen, nur geschlossen, nur an einer Reihe, nie von der Box;",
+    "einheit aus vokabular.einheit_zuwachs (Zählerstand-Einheiten aus messstelle-vectors.json).",
+    "",
+    "AP-08 IP-12 (additiv): substitute (Ersatzwert) und correction (Korrektur) — beide nur aus der",
+    "Cloud (kunde bzw. kunde/cloud), je Statuswechsel eine NEUE Meldung, nie fortgeschrieben. Ihre",
+    "Wörter stehen in vokabular.ersatzwert_methode (a–g, E7), ersatzwert_status, korrektur_art und",
+    "korrektur_status — dieselben Wörter, mit denen die Tabellen messreihe_ersatzwert und",
+    "messreihe_korrektur sie über messreihe_korrektur_vokabular() prüfen (Zeile für Zeile).",
+    "",
+    "AP-10 IP-8 (additiv): verteilung_geaendert — die Verteilung einer Messstelle auf Kostenstellen gilt ab",
+    "einem Tag anders. Nur kunde, Zeitpunkt = Beginn des ersten Tags (00:00 in der Zeitzone des",
+    "Unternehmens), Bezug NUR die Messstelle (eine Verteilung hängt an keiner Reihe); die Zeilen selbst",
+    "stehen in messstelle_verteilung.",
+    "",
+    "AP-10 IP-11 (additiv): bilanz_neu_berechnet — die Korrektur-Kaskade hat die Bilanz-Werte einer Messstelle",
+    "(ihre berechneten Versionen oder ihre verteilten Werte) für einen Zeitraum neu berechnet. Nur cloud, [von, bis)",
+    "= die betroffenen Tage, Bezug NUR die Messstelle, Pflicht `ausloeser` (K-… oder EW-…); gemeldet in derselben",
+    "Transaktion wie die Versionen.",
+    "",
+    "AP-11 IP-8 (additiv): kennzahl_neu_gebildet — die Korrektur-Kaskade (später auch der Nenner- und der",
+    "Definitions-Auslöser, AP-11 IP-9) hat einen ENDGÜLTIGEN Kennzahl-Wert als Version n + 1 neu gebildet. Nur cloud,",
+    "[von, bis) = die Periode des Werts, Bezug NUR die Kennzahl (`kennzahl` = ihr Kennzeichen KZ-…), Pflicht",
+    "`ausloeser` (K-… oder EW-…) und `version` (die neue Version, mindestens 2); vorläufige Werte ziehen ohne",
+    "Meldung nach. Die Reservierung aus AP-11 IP-1 (Block `reserviert`) ist damit eingelöst."
   ],
   "schema_version": "1.0",
   "$schema_datei": "./events-vocabulary.schema.json",
@@ -45,7 +71,9 @@
       "E-1": "a4e0b000-0000-4000-8000-0000000000e1",
       "E-2": "a4e0b000-0000-4000-8000-0000000000e2",
       "E-2′": "a4e0b000-0000-4000-8000-0000000002e2",
-      "E-3": "a4e0b000-0000-4000-8000-0000000000e3"
+      "E-3": "a4e0b000-0000-4000-8000-0000000000e3",
+      "E-4": "a4e0b000-0000-4000-8000-0000000000e4",
+      "E-4′": "a4e0b000-0000-4000-8000-0000000004e4"
     }
   },
   "vokabular": {
@@ -127,7 +155,10 @@
       {
         "code": "kadenz",
         "urheber": "writer",
-        "text": "kein guter Wert über 2 × Kadenz"
+        "text": "kein guter Wert über 2 × Kadenz",
+        "auch_urheber": [
+          "cloud"
+        ]
       },
       {
         "code": "verdraengung",
@@ -156,6 +187,253 @@
       "invalid",
       "stale",
       "device_error"
+    ],
+    "einheit_zuwachs": [
+      "Wh",
+      "kWh",
+      "MWh",
+      "varh",
+      "kvarh",
+      "m³"
+    ],
+    "ersatzwert_methode": [
+      {
+        "code": "gleichmaessig_verteilen",
+        "buchstabe": "a",
+        "name": "Zuwachs gleichmäßig verteilen",
+        "zuwachs": "gemessen",
+        "bezug": null,
+        "zeit": "zeitraum",
+        "wann": "Zählerstand-Lücke mit gemessenem Zuwachs; Zuwachs ÷ Anzahl Viertelstunden der Lücke"
+      },
+      {
+        "code": "profil_vorperiode",
+        "buchstabe": "b",
+        "name": "Zuwachs nach dem Profil der Vorperiode verteilen",
+        "zuwachs": "gemessen",
+        "bezug": "vorperiode",
+        "zeit": "zeitraum",
+        "wann": "Zählerstand-Lücke; Vorperiode = derselbe Zeitraum 7 Tage früher (Vorgabe) oder gewählter Tag"
+      },
+      {
+        "code": "profil_vergleichsquelle",
+        "buchstabe": "c",
+        "name": "Zuwachs nach dem Profil der Vergleichsquelle verteilen",
+        "zuwachs": "gemessen",
+        "bezug": "vergleichsquelle",
+        "zeit": "zeitraum",
+        "wann": "Zählerstand-Lücke; die gekennzeichnete Vergleichsquelle (AP-04 E3) hat Werte im Zeitraum"
+      },
+      {
+        "code": "ablesestand_nachtragen",
+        "buchstabe": "d",
+        "name": "Ablesestand nachtragen",
+        "zuwachs": null,
+        "bezug": "ablesestaende",
+        "zeit": "zeitpunkt",
+        "wann": "Rücksetzung ohne Endstand, Zählerwechsel ohne Ablesestände, Kartenwechsel; Regel Z4 rechnet die Menge"
+      },
+      {
+        "code": "wert_eingeben",
+        "buchstabe": "e",
+        "name": "Wert eingeben (mit Beleg)",
+        "zuwachs": "keiner",
+        "bezug": "betrag",
+        "zeit": "zeitraum",
+        "wann": "nicht gezählte Zeit oder Lücke einer Intervallmengen-/Leistungsreihe; Beleg z. B. Netzrechnung, Ablesung, Protokoll"
+      },
+      {
+        "code": "vorperiode_uebernehmen",
+        "buchstabe": "f",
+        "name": "Vorperiode übernehmen",
+        "zuwachs": "keiner",
+        "bezug": "vorperiode",
+        "zeit": "zeitraum",
+        "wann": "Lücke ohne gemessenen Zuwachs (Intervallmenge, integrierte Leistung)"
+      },
+      {
+        "code": "vergleichsquelle_uebernehmen",
+        "buchstabe": "g",
+        "name": "Vergleichsquelle übernehmen",
+        "zuwachs": "keiner",
+        "bezug": "vergleichsquelle",
+        "zeit": "zeitraum",
+        "wann": "Lücke ohne gemessenen Zuwachs; die Vergleichsquelle hat Werte"
+      }
+    ],
+    "ersatzwert_status": [
+      {
+        "code": "wirksam",
+        "folgt_auf": [],
+        "grund_pflicht": false
+      },
+      {
+        "code": "zurueckgenommen",
+        "folgt_auf": [
+          "wirksam"
+        ],
+        "grund_pflicht": true
+      }
+    ],
+    "korrektur_art": [
+      {
+        "code": "nachlieferung_nach_endgueltigkeit",
+        "name": "Nachlieferung nach Endgültigkeit",
+        "ersatzwert": false,
+        "beleg_pflicht": false,
+        "wer": "System aus late_arrival (E14), F10"
+      },
+      {
+        "code": "ablesestaende_nachgetragen",
+        "name": "Ablesestände nachgetragen",
+        "ersatzwert": false,
+        "beleg_pflicht": false,
+        "wer": "System aus geänderter Gerätegrenze oder Rücksetzung (AP-04 E2 rückwirkend), F12"
+      },
+      {
+        "code": "umklassifizierung",
+        "name": "Rücksetzung und Überlauf umklassifiziert",
+        "ersatzwert": false,
+        "beleg_pflicht": false,
+        "wer": "Bearbeiter (Vorschlag mit Rechnung), F7"
+      },
+      {
+        "code": "ersatzwert",
+        "name": "Ersatzwert",
+        "ersatzwert": true,
+        "beleg_pflicht": false,
+        "wer": "Bearbeiter (E7) — eingetragen oder zurückgenommen, F11, F21"
+      },
+      {
+        "code": "wert_berichtigt",
+        "name": "Wert berichtigt (mit Beleg)",
+        "ersatzwert": false,
+        "beleg_pflicht": true,
+        "wer": "Bearbeiter — nur abgeleitete Werte, nie Rohwerte"
+      },
+      {
+        "code": "menge_nachgetragen",
+        "name": "Menge nachgetragen",
+        "ersatzwert": false,
+        "beleg_pflicht": false,
+        "wer": "System je Tag, der vor AP-08 IP-5 schon endgültig war und darum keine Menge trägt (Captain 15.09.2026, Empfehlung B: über den Korrekturweg, nie still)"
+      }
+    ],
+    "korrektur_status": [
+      {
+        "code": "vorschlag",
+        "folgt_auf": [],
+        "grund_pflicht": false
+      },
+      {
+        "code": "freigegeben",
+        "folgt_auf": [
+          "vorschlag"
+        ],
+        "grund_pflicht": false
+      },
+      {
+        "code": "abgelehnt",
+        "folgt_auf": [
+          "vorschlag"
+        ],
+        "grund_pflicht": true
+      },
+      {
+        "code": "zurueckgenommen",
+        "folgt_auf": [
+          "freigegeben"
+        ],
+        "grund_pflicht": true
+      }
+    ],
+    "anstoss_art": [
+      {
+        "code": "korrektur_freigegeben",
+        "name": "Korrektur freigegeben"
+      },
+      {
+        "code": "korrektur_zurueckgenommen",
+        "name": "Korrektur zurückgenommen"
+      },
+      {
+        "code": "ersatzwert_wirksam",
+        "name": "Ersatzwert wirksam"
+      },
+      {
+        "code": "ersatzwert_zurueckgenommen",
+        "name": "Ersatzwert zurückgenommen"
+      },
+      {
+        "code": "bezugsgroesse_fassung",
+        "name": "Wert einer Bezugsgröße berichtigt"
+      },
+      {
+        "code": "kennzahl_fassung_rueckwirkend",
+        "name": "Berechnung einer Kennzahl rückwirkend geändert"
+      },
+      {
+        "code": "zuordnung_rueckwirkend",
+        "name": "Zuordnung rückwirkend geändert"
+      },
+      {
+        "code": "anlage_umzug_rueckwirkend",
+        "name": "Anlage rückwirkend umgezogen"
+      },
+      {
+        "code": "flaeche_rueckwirkend",
+        "name": "Fläche rückwirkend geändert"
+      },
+      {
+        "code": "verteilung_rueckwirkend",
+        "name": "Verteilung rückwirkend geändert"
+      },
+      {
+        "code": "einstufung_fassung",
+        "name": "Einstufungs-Fassung geändert"
+      },
+      {
+        "code": "kriterien_fassung",
+        "name": "Kriterien-Fassung geändert"
+      },
+      {
+        "code": "umfang_fassung",
+        "name": "Betrachtungsumfang geändert"
+      },
+      {
+        "code": "messbedarf_zustand",
+        "name": "Messbedarf geändert"
+      },
+      {
+        "code": "prozess_zuordnung_rueckwirkend",
+        "name": "Prozess-Zuordnung rückwirkend geändert"
+      },
+      {
+        "code": "messmittel_angabe",
+        "name": "Messmittel-Angaben geändert"
+      },
+      {
+        "code": "bezugsbasis_anstoss",
+        "name": "Anstoß an der Bezugsbasis"
+      },
+      {
+        "code": "bezugsbasis_fassung",
+        "name": "Neue Fassung der Bezugsbasis"
+      },
+      {
+        "code": "bezugsbasis_beendet",
+        "name": "Bezugsbasis beendet"
+      }
+    ],
+    "bericht_format": [
+      {
+        "code": "pdf",
+        "name": "PDF"
+      },
+      {
+        "code": "csv",
+        "name": "CSV"
+      }
     ],
     "fehlerklasse_datei": "./data-source-vectors.json",
     "felder": {
@@ -307,6 +585,18 @@
         "typ": "zeit",
         "beschreibung": "Die Messzeit des letzten Stands davor."
       },
+      "wertebereich_modul": {
+        "typ": "stand",
+        "beschreibung": "Der deklarierte Wertebereich des Zählers (Modul): bei diesem Stand beginnt er wieder bei 0 (AP-08 Z6, E4)."
+      },
+      "hoechstzuwachs_je_kadenz": {
+        "typ": "stand",
+        "beschreibung": "Der deklarierte größte plausible Zuwachs je Kadenz (AP-08 Z6, E4)."
+      },
+      "kadenz_s": {
+        "typ": "sekunden",
+        "beschreibung": "Die Kadenz, auf die sich der Höchstzuwachs bezieht."
+      },
       "anlass": {
         "typ": "wort",
         "beschreibung": "Warum die Grenze bzw. der Wechsel entstand."
@@ -386,6 +676,118 @@
       "neu": {
         "typ": "wert",
         "beschreibung": "Der Wert nachher."
+      },
+      "zuwachs": {
+        "typ": "stand",
+        "beschreibung": "Der gemessene Zuwachs über eine Lücke: stand_nach − stand_vor. Gemessen, aber auf keine Viertelstunde verteilbar (AP-08 E2)."
+      },
+      "stand_vor": {
+        "typ": "stand",
+        "beschreibung": "Der letzte gute Zählerstand vor der Lücke (Messzeit: von − eine Kadenz)."
+      },
+      "stand_nach": {
+        "typ": "stand",
+        "beschreibung": "Der erste gute Zählerstand danach (Messzeit: bis)."
+      },
+      "ersatzwert": {
+        "typ": "kennung",
+        "beschreibung": "Die Kennung des Ersatzwerts: EW-<Jahr>-<lfd. Nr.> je Kundenbereich (AP-08 §4.6)."
+      },
+      "methode": {
+        "typ": "wort",
+        "beschreibung": "Die Methode des Ersatzwerts a–g (vokabular.ersatzwert_methode, AP-08 E7)."
+      },
+      "status": {
+        "typ": "wort",
+        "beschreibung": "Der Stand, den diese Meldung setzt: vokabular.ersatzwert_status bzw. korrektur_status."
+      },
+      "korrektur": {
+        "typ": "kennung",
+        "beschreibung": "Die Kennung der Korrektur: K-<Jahr>-<lfd. Nr.> je Kundenbereich (AP-08 §4.6); an einer Bezugsgröße der Vorgang der Berichtigung BK-<Jahr>-<lfd. Nr.> (AP-09 IP-7), bei Importen I-<Jahr>-<Nr.>/Zeile-<n>/Fassung-<m> mit passender import- und fassung_neu-Angabe (IP-13)."
+      },
+      "korrektur_art": {
+        "typ": "wort",
+        "beschreibung": "Die Art der Korrektur (vokabular.korrektur_art, AP-08 §4.6)."
+      },
+      "bezugsgroesse": {
+        "typ": "kennung",
+        "beschreibung": "Die Bezugsgröße, deren Wert berichtigt wurde — ihr Kennzeichen zur Zeit der Meldung, statt der Reihe (AP-09 IP-7)."
+      },
+      "fassung_alt": {
+        "typ": "ganz_ab_1",
+        "beschreibung": "Die wirksame Fassung des Bezugsgrößen-Werts vor der Berichtigung (AP-09 F4)."
+      },
+      "fassung_neu": {
+        "typ": "ganz_ab_1",
+        "beschreibung": "Die Fassung des Bezugsgrößen-Werts, die mit dieser Meldung wirksam ist — größer als fassung_alt (AP-09 F4)."
+      },
+      "import": {
+        "typ": "kennung",
+        "beschreibung": "Der Import der Bezugsdaten, aus dem die Berichtigung kam: I-<Jahr>-<lfd. Nr.> (AP-09 C2, IP-13)."
+      },
+      "ausloeser": {
+        "typ": "kennung",
+        "beschreibung": "Was die Neuberechnung auslöste: die Korrektur K-<Jahr>-<lfd. Nr.> oder der Ersatzwert EW-<Jahr>-<lfd. Nr.> (AP-10 IP-11)."
+      },
+      "bericht": {
+        "typ": "kennung",
+        "beschreibung": "Der Bericht: seine Kennung BR-<Jahr>-<lfd. Nr.> (AP-12 bericht.md §1). Bezug der Berichts-Ereignisse."
+      },
+      "nr": {
+        "typ": "ganz_ab_1",
+        "beschreibung": "Die Nummer des Berichtsstands (Nr. 1, 2, …) — beim Anstoß der Stand, der ihn bekommt (AP-12 IP-4)."
+      },
+      "datenstand": {
+        "typ": "zeit",
+        "beschreibung": "Der Datenstand eines Abzugs: der Zeitpunkt seiner Bildung (AP-12 D1) — nie nach dem Zeitpunkt der Meldung."
+      },
+      "pruefsumme": {
+        "typ": "kennung",
+        "beschreibung": "Die Prüfsumme des freigegebenen Abzugs: sha256: + 64 Hex-Ziffern (AP-12 A6)."
+      },
+      "anstoss_art": {
+        "typ": "wort",
+        "beschreibung": "Was den Anstoß auslöste — ein Wort von `anstoss_art` (Zeile für Zeile bericht-vectors.json → vokabulare.anstoss_art)."
+      },
+      "anlass_kennung": {
+        "typ": "kennung",
+        "beschreibung": "Der Anlass eines Anstoßes oder einer Neubildung: K-…, EW-…, BK-… oder die Kennung einer Strukturänderung (AP-12 B4)."
+      },
+      "anlass_fassung": {
+        "typ": "ganz_ab_1",
+        "beschreibung": "Die Fassung des Anlasses, wo er eine hat (AP-12 B7: idempotent über Stand, Art, Anlass und Fassung)."
+      },
+      "format": {
+        "typ": "wort",
+        "beschreibung": "Die abgerufene Ausgabe eines Berichtsstands — ein Wort von `bericht_format` (AP-12 DA5)."
+      },
+      "kennzahl": {
+        "typ": "kennung",
+        "beschreibung": "Die Kennzahl, deren endgültiger Wert neu gebildet wurde — ihr Kennzeichen KZ-… zur Zeit der Meldung (AP-11 IP-8)."
+      },
+      "version": {
+        "typ": "ganz_ab_1",
+        "beschreibung": "Die Version n + 1 des Kennzahl-Werts, die mit dieser Meldung entstanden ist — mindestens 2; Version 1 bildet der Regellauf ohne Meldung (AP-11 E7/E8, IP-8)."
+      },
+      "energieeinsatz": {
+        "typ": "kennung",
+        "beschreibung": "Das unveränderliche Kennzeichen des Energieeinsatzes (EE-…)."
+      },
+      "fassung": {
+        "typ": "ganz_ab_1",
+        "beschreibung": "Die Nummer der Einstufungs-Fassung."
+      },
+      "einstufung": {
+        "typ": "wort",
+        "beschreibung": "Die von einer Person gesetzte Einstufung: wesentlich oder nicht_wesentlich."
+      },
+      "gruende": {
+        "typ": "wort_liste",
+        "beschreibung": "Die begründenden Kriteriennummern K1 bis K4; darf bei nicht wesentlich leer sein."
+      },
+      "messbedarf": {
+        "typ": "kennung",
+        "beschreibung": "Der Messbedarf: sein Kennzeichen MB-… zur Zeit der Meldung (AP-16 IP-19)."
       }
     },
     "arten": [
@@ -403,10 +805,9 @@
           "offen_erlaubt": true,
           "achse": "messzeit"
         },
-        "bezug_pflicht": [
-          "box"
-        ],
+        "bezug_pflicht": [],
         "bezug_erlaubt": [
+          "box",
           "datenquelle",
           "komponente",
           "messkanal",
@@ -419,13 +820,21 @@
           "erwartet_fehlend",
           "nachgeliefert_am",
           "fehlerklasse",
-          "ursache_ereignis"
+          "ursache_ereignis",
+          "zuwachs",
+          "einheit",
+          "stand_vor",
+          "stand_nach"
         ],
         "fortschreibbar": [
           "bis",
           "erwartet_fehlend",
           "nachgeliefert_am",
-          "ursache_ereignis"
+          "ursache_ereignis",
+          "zuwachs",
+          "einheit",
+          "stand_vor",
+          "stand_nach"
         ],
         "mqtt": {
           "pflicht": [
@@ -453,24 +862,29 @@
           "standard_offen": "Lücke seit {von} — nie als 0 gerechnet"
         },
         "zusaetze": {
+          "zuwachs": " · der Zähler hat weitergezählt: Zuwachs {zuwachs} — nicht auf Viertelstunden verteilbar",
           "nachgeliefert_am": " · nachgeliefert am {nachgeliefert_am}"
         },
         "regeln": [
           "`von` ist der erste Zeitpunkt ohne erwarteten Wert (Kadenz) bzw. der letzte Herzschlag (Herzschlag); `bis` die Messzeit des ersten Werts danach; die Lücke ist [von, bis).",
-          "`erkannt_aus` gehört zum Urheber: kadenz ↔ writer, verdraengung ↔ box, herzschlag ↔ cloud.",
+          "`erkannt_aus` gehört zum Urheber: kadenz ↔ writer (seit AP-07 IP-9 auch cloud — der Lücken-Melder der api, `auch_urheber`), verdraengung ↔ box, herzschlag ↔ cloud.",
           "Eine Box meldet nur eine geschlossene Lücke (was sie verdrängt hat, weiß sie hinterher).",
           "`fehlerklasse` `box_meldet_sich_nicht` nur mit `erkannt_aus` herzschlag; eine Herzschlag-Lücke trägt keine andere Klasse — solange die Box schweigt, kennt niemand ihren Grund.",
-          "`nachgeliefert_am` erst, wenn die Lücke geschlossen ist; ein Box-Tausch liefert nie nach (§4.5 Nachlieferung Nr. 6)."
+          "`nachgeliefert_am` erst, wenn die Lücke geschlossen ist; ein Box-Tausch liefert nie nach (§4.5 Nachlieferung Nr. 6).",
+          "`zuwachs`, `einheit`, `stand_vor` und `stand_nach` (AP-08 IP-6, E2) stehen nur ZUSAMMEN, nur an einer geschlossenen Lücke EINER Reihe (`komponente` + `messkanal`) und nie von einer Box: `zuwachs` = `stand_nach` − `stand_vor` ≥ 0, `einheit` aus `einheit_zuwachs` (die Zählerstand-Einheiten des Größen-Katalogs der Messstellen mit ihren umrechenbaren Einheiten).",
+          "Der Zuwachs ist GEMESSEN, aber NICHT VERTEILBAR: er zählt im kleinsten Zeitraum, der die Lücke ganz enthält (verbrauch-vectors.json `regeln.luecke_zuwachs`), die Viertelstunden der Lücke bleiben „keine Werte“. Die Meldung ist die Rechnung zum Nachlesen, nie die Quelle der Menge — die bildet der Verdichtungs-Lauf aus den Werten.",
+          "AP-09 IP-8: ohne Box nur cloud + erkannt_aus kadenz + messstelle (Ablesung überfällig); die übrigen Lücken verlangen weiterhin die Box."
         ],
         "bestand": true,
         "nie_geloescht": true,
-        "herkunft": "AP-07 §4.8, §4.6 Nr. 4; AP-06 §6.2 (je Box UND je Quelle); E11 (je Box für den Kern); heute Pseudo-Punkt `_pipeline` des Writers"
+        "herkunft": "AP-07 §4.8, §4.6 Nr. 4; AP-06 §6.2 (je Box UND je Quelle); E11 (je Box für den Kern); heute Pseudo-Punkt `_pipeline` des Writers; Kadenz-Lücke auch von `cloud` seit AP-07 IP-9; Zuwachs als Nutzlast seit AP-08 IP-6 (E2)"
       },
       {
         "art": "backfill",
         "name": "Nachlieferung",
         "urheber": [
-          "writer"
+          "writer",
+          "cloud"
         ],
         "zeit": {
           "form": "zeitraum",
@@ -504,7 +918,7 @@
         ],
         "bestand": false,
         "nie_geloescht": true,
-        "herkunft": "AP-07 §4.5 Nachlieferung Nr. 2, §4.8"
+        "herkunft": "AP-07 §4.5 Nachlieferung Nr. 2, §4.8; von `cloud` seit AP-07 IP-9 (Lücken-Melder der api)"
       },
       {
         "art": "duplicate_conflict",
@@ -705,6 +1119,53 @@
         "bestand": true,
         "nie_geloescht": true,
         "herkunft": "AP-07 §4.8 (Writer, wie heute); AP-05 E6, A8"
+      },
+      {
+        "art": "counter_overflow",
+        "name": "Zähler übergelaufen",
+        "urheber": [
+          "writer"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "komponente",
+          "messkanal"
+        ],
+        "bezug_erlaubt": [
+          "box",
+          "messstelle"
+        ],
+        "pflicht": [
+          "stand_alt",
+          "stand_neu",
+          "messzeit_alt",
+          "wertebereich_modul",
+          "hoechstzuwachs_je_kadenz",
+          "kadenz_s"
+        ],
+        "felder": [
+          "einheit"
+        ],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Zähler am {zeitpunkt} über das Ende seines Wertebereichs ({wertebereich_modul}) gelaufen: von {stand_alt} auf {stand_neu} — der Verbrauch dazwischen ist mitgezählt"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "`zeitpunkt` ist die Messzeit des ersten Stands unter dem vorigen, `messzeit_alt` liegt davor; `stand_neu` < `stand_alt`.",
+          "Nur mit deklariertem Wertebereich UND Höchstzuwachs (AP-08 E4): `wertebereich_modul − stand_alt + stand_neu ≤ hoechstzuwachs_je_kadenz × (zeitpunkt − messzeit_alt) ÷ kadenz_s` — dieselbe Entscheidung wie Z6 im Verbrauchsvertrag; sonst ist es kein Überlauf, sondern eine Rücksetzung.",
+          "Die Meldung ist die Rechnung zum Nachlesen, nie die Quelle der Menge: die Menge bildet der Verdichtungs-Lauf aus den Werten und der Deklaration der Reihe."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-08 §4.3, Z6, E4 (Writer, Lieferpaket IP-4)"
       },
       {
         "art": "device_boundary",
@@ -1406,6 +1867,435 @@
         "bestand": true,
         "nie_geloescht": true,
         "herkunft": "AP-07 §4.8 (Writer, wie heute, mit Nachbewertung bei Verspätung)"
+      },
+      {
+        "art": "substitute",
+        "name": "Ersatzwert",
+        "urheber": [
+          "kunde"
+        ],
+        "zeit": {
+          "form": "zeitraum",
+          "grenzen": "halboffen",
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "komponente",
+          "messkanal"
+        ],
+        "bezug_erlaubt": [
+          "messstelle"
+        ],
+        "pflicht": [
+          "ersatzwert",
+          "methode",
+          "status"
+        ],
+        "felder": [],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": "status",
+        "saetze": {
+          "wirksam": "Ersatzwert {ersatzwert} für {von} bis {bis}: {methode} — kein gemessener Wert",
+          "zurueckgenommen": "Ersatzwert {ersatzwert} für {von} bis {bis} zurückgenommen: {methode}"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "[`von`, `bis`) liegt auf dem Viertelstunden-Raster (UTC); bei ablesestand_nachtragen ist es die Viertelstunde, in die der Ablesestand fällt (Zeitpunkt in (von, bis]).",
+          "`ersatzwert` hat die Form EW-<Jahr>-<lfd. Nr.>. Eine Rücknahme ist eine NEUE Meldung (eigene ereignis_id) mit status zurueckgenommen — der Ersatzwert bleibt sichtbar, nie gelöscht.",
+          "Ein Ersatzwert ist kein Messwert (E7): a–c verteilen nur einen GEMESSENEN Zuwachs, ihre Summe ist dieser Zuwachs; e, f und g nur, wo keiner gemessen ist. Die Tabelle messreihe_ersatzwert erzwingt das, die Meldung nennt Methode und Stand."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-08 §4.4, §4.6, E7 (Tabelle messreihe_ersatzwert, Lieferpaket IP-12)"
+      },
+      {
+        "art": "correction",
+        "name": "Korrektur",
+        "urheber": [
+          "cloud",
+          "kunde"
+        ],
+        "zeit": {
+          "form": "zeitraum",
+          "grenzen": "halboffen",
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [],
+        "bezug_erlaubt": [
+          "komponente",
+          "messkanal",
+          "messstelle",
+          "bezugsgroesse"
+        ],
+        "pflicht": [
+          "korrektur",
+          "korrektur_art",
+          "status"
+        ],
+        "felder": [
+          "ersatzwert",
+          "fassung_alt",
+          "fassung_neu",
+          "import"
+        ],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": "status",
+        "saetze": {
+          "vorschlag": "Korrektur {korrektur} vorgeschlagen für {von} bis {bis}: {korrektur_art} — die Werte bleiben bis zur Freigabe unverändert",
+          "freigegeben": "Korrektur {korrektur} freigegeben für {von} bis {bis}: {korrektur_art}",
+          "abgelehnt": "Korrektur {korrektur} abgelehnt für {von} bis {bis}: {korrektur_art} — die Werte bleiben unverändert",
+          "zurueckgenommen": "Korrektur {korrektur} zurückgenommen für {von} bis {bis}: {korrektur_art}"
+        },
+        "zusaetze": {
+          "ersatzwert": " ({ersatzwert})",
+          "bezugsgroesse": " · Bezugsgröße {bezugsgroesse}, Fassung {fassung_alt} → {fassung_neu}",
+          "import": " · Import {import}"
+        },
+        "regeln": [
+          "[`von`, `bis`) liegt auf dem Viertelstunden-Raster (UTC); eine Meldung je betroffener Reihe bzw. je berichtigtem Wert einer Bezugsgröße (dann die Periode des Werts, Mitternacht in der Zeitzone des Standorts).",
+          "`korrektur` hat die Form K-<Jahr>-<lfd. Nr.> (Reihe) bzw. BK-<Jahr>-<lfd. Nr.> (Bezugsgröße, AP-09 IP-7). Jeder Statuswechsel ist eine NEUE Meldung (eigene ereignis_id) — nie fortgeschrieben, nie gelöscht.",
+          "Nie automatisch (E14): die Cloud meldet nur `vorschlag`; freigegeben, abgelehnt und zurueckgenommen meldet ein Mensch (kunde).",
+          "`ersatzwert` steht genau bei korrektur_art ersatzwert.",
+          "freigegeben und zurueckgenommen lösen die Neuberechnung (E9) und die Revision freigegebener Berichte (AP-12) aus — die Kaskade selbst ist AP-08 IP-17.",
+          "AP-09 IP-7 (additiv): GENAU EIN Bezug — die Reihe (komponente + messkanal) ODER die Bezugsgröße (bezugsgroesse + fassung_alt + fassung_neu, optional import I-<Jahr>-<lfd. Nr.>). Was dem gewählten Bezug fehlt, ist schema_verletzt (wie vorher); beides zugleich oder Fassungen und Import an einer Reihe sind regel_verletzt. An einer Bezugsgröße ist die Art wert_berichtigt und fassung_neu größer als fassung_alt; gemeldet wird nur die wirksame Fassung ≥ 2 (F4), nie ein Erstwert oder ein offener Vorschlag.",
+          "AP-09 IP-8: eine Ablesungs-Berichtigung nennt nur messstelle, Art ablesestaende_nachgetragen, Kennung K-…; fassung_alt/neu, sofern ein bisheriger Stand berichtigt wird. Keine Komponente erfunden."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-08 §4.4, §4.6, E8, E9, E14 (Tabelle messreihe_korrektur, Lieferpaket IP-12); AP-09 §4.5 F4, §6.1 (Bezug bezugsgroesse, Tabelle bezugsgroesse_berichtigung, Lieferpaket IP-7)"
+      },
+      {
+        "art": "verteilung_geaendert",
+        "name": "Verteilung geändert",
+        "urheber": [
+          "kunde"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "messstelle"
+        ],
+        "bezug_erlaubt": [],
+        "pflicht": [
+          "eingetragen_am"
+        ],
+        "felder": [],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Verteilung auf Kostenstellen geändert ab {zeitpunkt} (eingetragen am {eingetragen_am})"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "`zeitpunkt` ist der Beginn des ersten Tags der neuen Verteilung (00:00 in der Zeitzone des Unternehmens); `eingetragen_am` darf davor (rückwirkend) oder danach (im Voraus eingetragen) liegen.",
+          "Bezug ist NUR die Messstelle — eine Verteilung hängt an keiner Reihe, darum weder komponente noch messkanal. Die Zeilen selbst (Kostenstelle, Anteil, Tage) stehen in messstelle_verteilung; die Meldung sagt nur, DASS und AB WANN sich etwas geändert hat.",
+          "Eine Meldung je Schreibvorgang (Satz ab Tag, E11), nie fortgeschrieben; derselbe Satz noch einmal meldet nichts. Die Neuberechnung der verteilten Werte ab dem Zeitpunkt ist AP-10 IP-11."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-10 §4.6, §4.7 (Auslöser „Verteilung geändert“), §5 (messreihe_ereignis + Art verteilung_geaendert, Urheber kunde); Lieferpaket IP-8"
+      },
+      {
+        "art": "bilanz_neu_berechnet",
+        "name": "Bilanz neu berechnet",
+        "urheber": [
+          "cloud"
+        ],
+        "zeit": {
+          "form": "zeitraum",
+          "grenzen": "halboffen",
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "messstelle"
+        ],
+        "bezug_erlaubt": [],
+        "pflicht": [
+          "ausloeser"
+        ],
+        "felder": [],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Bilanz neu berechnet für {von} bis {bis} nach {ausloeser}"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "[`von`, `bis`) sind die betroffenen Tage (00:00 bis 00:00 in der Zeitzone des Kundenbereichs); eine Meldung je Messstelle und Anlass-Fassung, die Kennung ist abgeleitet — eine Wiederholung schreibt nichts.",
+          "Gemeldet für jede berechnete Messstelle, die eine neue Version bekam, und für jede gemessene Messstelle einer korrigierten Reihe, die in diesen Tagen auf Kostenstellen verteilt ist (ihre verteilten Werte tragen jetzt die neue Version).",
+          "Nur cloud: gerechnet hat das System. Entschieden hat ein Mensch, und das meldet `correction` (Urheber kunde) — `ausloeser` nennt genau diese Korrektur oder den Ersatzwert.",
+          "Bezug ist NUR die Messstelle — eine Neuberechnung hängt an keiner Reihe, darum weder komponente noch messkanal. Die Versionen selbst stehen in messreihe_periode_version; die Kostenstellen-Sicht liest sie über GET /api/v1/unternehmen/kostenstellen/{id}/energie."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-10 §5 (messreihe_ereignis + Art bilanz_neu_berechnet, Urheber cloud), §8 IP-11; Anschluss an die Korrektur-Kaskade AP-08 IP-17"
+      },
+      {
+        "art": "bericht_freigegeben",
+        "name": "Bericht freigegeben",
+        "urheber": [
+          "kunde"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "bericht"
+        ],
+        "bezug_erlaubt": [],
+        "pflicht": [
+          "nr",
+          "datenstand",
+          "pruefsumme"
+        ],
+        "felder": [],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Berichtsstand Nr. {nr} von {bericht} freigegeben (Datenstand {datenstand})"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "Bezug ist NUR der Bericht (`bericht` = BR-<Jahr>-<Nr.>); der Zeitpunkt ist, wann es geschah (UTC, auf die Sekunde).",
+          "Eine Person mit Recht gibt den Entwurf frei, den sie gesehen hat (bericht.md F2): `nr` ist die Nummer des neuen Stands, `datenstand` der Datenstand des Abzugs, `pruefsumme` seine Prüfsumme (A6). Der Datenstand liegt nie nach dem Zeitpunkt (D3).",
+          "Nur kunde: freigegeben hat ein Mensch. Eine Wiederholung derselben Freigabe (Bericht, Datenstand) schreibt nichts (F5)."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-12 §4.14 S5, bericht.md §12; reserviert mit AP-12 IP-1 (PR 787), angelegt mit AP-12 IP-4 (V20260915050100)"
+      },
+      {
+        "art": "bericht_revision_angestossen",
+        "name": "Revision angestoßen",
+        "urheber": [
+          "cloud"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "bericht"
+        ],
+        "bezug_erlaubt": [],
+        "pflicht": [
+          "nr",
+          "anstoss_art",
+          "anlass_kennung"
+        ],
+        "felder": [
+          "anlass_fassung"
+        ],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Revision nötig für Berichtsstand Nr. {nr} von {bericht}: {anstoss_art} ({anlass_kennung})"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "Bezug ist NUR der Bericht (`bericht` = BR-<Jahr>-<Nr.>); der Zeitpunkt ist, wann es geschah (UTC, auf die Sekunde).",
+          "Eine Änderung trifft einen GÜLTIGEN freigegebenen Berichtsstand (bericht.md B1): der Stand bleibt byte-gleich und bekommt einen Anstoß (Tabelle bericht_revision_anstoss). `nr` ist der Stand, `anstoss_art` was ihn auslöste, `anlass_kennung` und `anlass_fassung` der Anlass.",
+          "Nur cloud: erkannt hat das System. Idempotent über Stand, Art, Anlass und Fassung (B7); ein ersetzter Stand bekommt keinen."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-12 §4.14 S5, bericht.md §12; reserviert mit AP-12 IP-1 (PR 787), angelegt mit AP-12 IP-4 (V20260915050100)"
+      },
+      {
+        "art": "bericht_entwurf_neu_gebildet",
+        "name": "Entwurf neu gebildet",
+        "urheber": [
+          "cloud"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "bericht"
+        ],
+        "bezug_erlaubt": [],
+        "pflicht": [
+          "datenstand"
+        ],
+        "felder": [
+          "anlass_kennung"
+        ],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Entwurf von {bericht} neu gebildet (Datenstand {datenstand})"
+        },
+        "zusaetze": {
+          "anlass_kennung": " nach {anlass_kennung}"
+        },
+        "regeln": [
+          "Bezug ist NUR der Bericht (`bericht` = BR-<Jahr>-<Nr.>); der Zeitpunkt ist, wann es geschah (UTC, auf die Sekunde).",
+          "Pfad 1 (Korrektur-Kaskade) oder Pfad 2 (Strukturänderungs-Läufer) hat den Entwurf eines Berichts neu gebildet (bericht.md EW1); `datenstand` ist der neue Datenstand, nie nach dem Zeitpunkt.",
+          "Nur cloud. Bildet ein Abruf den Entwurf neu, weil er nicht mehr aktuell ist (D4), wird nichts gemeldet (B6)."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-12 §4.14 S5, bericht.md §12; reserviert mit AP-12 IP-1 (PR 787), angelegt mit AP-12 IP-4 (V20260915050100)"
+      },
+      {
+        "art": "bericht_abgerufen",
+        "name": "Bericht abgerufen",
+        "urheber": [
+          "kunde"
+        ],
+        "zeit": {
+          "form": "zeitpunkt",
+          "grenzen": null,
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "bericht"
+        ],
+        "bezug_erlaubt": [],
+        "pflicht": [
+          "nr",
+          "format"
+        ],
+        "felder": [],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Berichtsstand Nr. {nr} von {bericht} als {format} abgerufen"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "Bezug ist NUR der Bericht (`bericht` = BR-<Jahr>-<Nr.>); der Zeitpunkt ist, wann es geschah (UTC, auf die Sekunde).",
+          "Eine Person ruft eine Ausgabe eines Berichtsstands ab — PDF oder CSV, nie eines Entwurfs (bericht.md EW4, DA5). Jeder Abruf ist eine Meldung.",
+          "Person und Teilansicht stehen in der Tabelle bericht_abruf; die Meldung nennt Stand und Ausgabe."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-12 §4.14 S5, bericht.md §12; reserviert mit AP-12 IP-1 (PR 787), angelegt mit AP-12 IP-4 (V20260915050100)"
+      },
+      {
+        "art": "kennzahl_neu_gebildet",
+        "name": "Kennzahl neu gebildet",
+        "urheber": [
+          "cloud"
+        ],
+        "zeit": {
+          "form": "zeitraum",
+          "grenzen": "halboffen",
+          "offen_erlaubt": false,
+          "achse": "messzeit"
+        },
+        "bezug_pflicht": [
+          "kennzahl"
+        ],
+        "bezug_erlaubt": [],
+        "pflicht": [
+          "ausloeser",
+          "version"
+        ],
+        "felder": [],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "Kennzahl {kennzahl} neu gebildet für {von} bis {bis}: Version {version} nach {ausloeser}"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "[`von`, `bis`) ist die Periode des Kennzahl-Werts: erster Tag 00:00 bis zum Tag nach dem letzten Tag 00:00 in der Zeitzone des Unternehmens; eine Meldung je Kennzahl, Periode und neuer Version, nie fortgeschrieben.",
+          "Gemeldet NUR, wenn ein ENDGÜLTIGER Wert als Version n + 1 neu entsteht — `version` ist diese neue Version, also mindestens 2. Version 1 bildet der Regellauf ohne Meldung; vorläufige Werte ziehen ohne neue Version und ohne Meldung nach (AP-11 V3).",
+          "Nur cloud: gebildet hat das System — die Korrektur-Kaskade (AP-11 IP-8), später auch der Nenner- und der Definitions-Auslöser (AP-11 IP-9). Entschieden hat ein Mensch, und das meldet `correction`; `ausloeser` nennt die Korrektur K-… oder den Ersatzwert EW-….",
+          "Bezug ist NUR die Kennzahl (`kennzahl` = ihr Kennzeichen KZ-… zur Zeit der Meldung) — ein Kennzahl-Wert hängt an keiner Reihe und keiner Messstelle, darum weder komponente noch messkanal noch messstelle. Gemeldet wird in derselben Transaktion wie die neue Version."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-11 §8 IP-8 (Kaskaden-Naht, Reihen-Pfad), reserviert seit AP-11 IP-1 (Block `reserviert`); Referenzfall K7 (kennzahl-vectors.json)"
+      },
+      {
+        "art": "einstufung_gesetzt",
+        "name": "Einstufung gesetzt",
+        "urheber": ["kunde"],
+        "zeit": { "form": "zeitpunkt", "grenzen": null, "offen_erlaubt": false, "achse": "messzeit" },
+        "bezug_pflicht": ["energieeinsatz"],
+        "bezug_erlaubt": [],
+        "pflicht": ["fassung", "einstufung", "gruende"],
+        "felder": [],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": {
+          "standard": "{energieeinsatz}: Fassung {fassung} als {einstufung} gesetzt (Gründe: {gruende})"
+        },
+        "zusaetze": {},
+        "regeln": [
+          "Nur eine Person mit energieeinsatz.einstufen meldet die angelegte Fassung; Zahlen melden niemals selbst.",
+          "Bezug ist nur der Energieeinsatz EE-…; Fassung und Einstufung entsprechen der gespeicherten Fassung, gruende enthält K1 bis K4 ohne Wiederholung.",
+          "Die Begründung und der vollständige Herkunftssatz stehen in der Fassung und im unveränderlichen Einsatzprotokoll, nicht doppelt in der Meldung."
+        ],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-16 IP-11, F1–F5 und R3; reserviert seit IP-3"
+      },
+      {
+        "art": "messbedarf_erfasst",
+        "name": "Messbedarf erfasst",
+        "urheber": ["kunde"],
+        "zeit": { "form": "zeitpunkt", "grenzen": null, "offen_erlaubt": false, "achse": "messzeit" },
+        "bezug_pflicht": ["messbedarf"],
+        "bezug_erlaubt": [],
+        "pflicht": [],
+        "felder": [],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": { "standard": "Messbedarf {messbedarf} erfasst" },
+        "zusaetze": {},
+        "regeln": ["Nur kunde; Zeitpunkt des Erfassens, Bezug nur der Messbedarf. Eine Wiederholung schreibt nichts."],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-16 §4.7 P1/P2, IP-19; reserviert mit IP-3"
+      },
+      {
+        "art": "messbedarf_eingeloest",
+        "name": "Messbedarf eingelöst",
+        "urheber": ["kunde"],
+        "zeit": { "form": "zeitpunkt", "grenzen": null, "offen_erlaubt": false, "achse": "messzeit" },
+        "bezug_pflicht": ["messbedarf", "messstelle"],
+        "bezug_erlaubt": [],
+        "pflicht": [],
+        "felder": [],
+        "fortschreibbar": [],
+        "mqtt": null,
+        "variante_nach": null,
+        "saetze": { "standard": "Messbedarf {messbedarf} durch Messstelle {messstelle} eingelöst" },
+        "zusaetze": {},
+        "regeln": ["Nur kunde; die Messstelle ist eingerichtet und steht im selben Kundenbereich und Zugriffszaun."],
+        "bestand": false,
+        "nie_geloescht": true,
+        "herkunft": "AP-16 §4.7 P2, IP-19; reserviert mit IP-3"
       }
     ]
   },
@@ -1476,7 +2366,211 @@
       "data_gap"
     ]
   },
+  "reserviert": [
+    {
+      "art": "correction",
+      "bezug": "bezugsgroesse",
+      "urheber": [
+        "kunde"
+      ],
+      "angelegt_von": "AP-09 IP-7 — der Schreibweg der Bezugsgrößen-Werte (Berichtigung als Fassung n + 1, Rücknahme); Aufgabe vp-uems-b09-wert-eingeben",
+      "gelesen_von": "AP-11 IP-9 — der Nenner-Auslöser der Kaskade (`Betroffen.bezugsgroessen`)",
+      "regel": "Eine wirksame Fassung ≥ 2 oder die Rücknahme eines Werts einer Bezugsgröße meldet `correction` mit Bezug `bezugsgroesse` (Kennzeichen BZ-…) und der Periode. Die Kaskade bildet daraufhin NUR Kennzahlen und Berichte neu, keine Messreihen-Stufe (AP-11 E8, W1). Eine Fassung 1 ist keine Korrektur (AP-09 F1/F4).",
+      "bis_dahin": "Eingelöst mit AP-09 IP-7 (V20260915010000): `vokabular.arten` → `correction` kennt den Bezug `bezugsgroesse` (mit `fassung_alt`, `fassung_neu`, Kennung BK-…); es gilt jener Eintrag. Vorher war die Meldung abgelehnt. Die Reservierung bleibt als Nachweis für die Kennzahl stehen und ändert kein Verhalten."
+    },
+    {
+      "art": "kennzahl_neu_gebildet",
+      "bezug": "kennzahl",
+      "urheber": [
+        "cloud"
+      ],
+      "angelegt_von": "AP-11 IP-8 — die Kaskaden-Naht, Reihen-Pfad (Migration V20260915061500)",
+      "gelesen_von": "AP-12 — die Revision freigegebener Berichte",
+      "regel": "Der Rechenlauf oder die Kaskade hat einen ENDGÜLTIGEN Kennzahl-Wert als Version n + 1 neu gebildet — „korrigiert (Version n)“ nach einem Eingang, „Berechnung geändert (Fassung n)“ nach einer rückwirkenden Fassung. Pflicht ist der Anlass. Vorläufige Werte ziehen ohne Meldung nach (AP-11 V3).",
+      "bis_dahin": "Eingelöst mit AP-11 IP-8 (V20260915061500): `vokabular.arten` → `kennzahl_neu_gebildet` (nur cloud, Bezug `kennzahl` mit Kennzeichen KZ-…, Pflicht `ausloeser` K-… oder EW-… und `version` ≥ 2); es gilt jener Eintrag. Vorher war die Meldung abgelehnt. Die Reservierung bleibt als Nachweis für die Kennzahl stehen und ändert kein Verhalten."
+    },
+    {
+      "art": "bericht_freigegeben",
+      "bezug": "bericht",
+      "urheber": [
+        "kunde"
+      ],
+      "angelegt_von": "AP-12 IP-4 (Vokabular und Tabelle) — geschrieben von AP-12 IP-7, der Freigabe eines Berichtsentwurfs",
+      "gelesen_von": "AP-12 IP-13 — der Verlauf der Berichtsstände auf der Berichtsseite",
+      "regel": "Eine Person mit Recht gibt den Entwurf frei, den sie gesehen hat: Berichtsstand Nr. n mit Datenstand, Freigabe-Zeitpunkt und Prüfsumme (bericht.md F2). Zeitform Zeitpunkt; Bezug der Bericht (BR-…) mit der Nummer des Stands. Eine Wiederholung derselben Freigabe (Bericht, Datenstand) schreibt nichts (F5).",
+      "bis_dahin": "Eingelöst mit AP-12 IP-4 (V20260915050100): `vokabular.arten` → `bericht_freigegeben` mit Pflicht nr, datenstand, pruefsumme; es gilt jener Eintrag. Vorher war die Meldung abgelehnt. Die Reservierung bleibt als Herkunft stehen."
+    },
+    {
+      "art": "bericht_revision_angestossen",
+      "bezug": "bericht",
+      "urheber": [
+        "cloud"
+      ],
+      "angelegt_von": "AP-12 IP-4 (Vokabular und Tabelle) — geschrieben von AP-12 IP-8 (Kaskaden-Naht, Pfad 1) und IP-9 (Strukturänderungs-Läufer, Pfad 2)",
+      "gelesen_von": "AP-12 IP-13/IP-14 — der Vermerk „Revision nötig — …“",
+      "regel": "Eine Änderung trifft einen GÜLTIGEN freigegebenen Berichtsstand (Zeitraum × Quellenverzeichnis, bericht.md B1): der Stand bleibt byte-gleich und bekommt einen Anstoß mit Art (`anstoss_art`) und Anlass. Idempotent über Stand, Art, Anlass und Fassung (B7); ein ersetzter Stand bekommt keinen.",
+      "bis_dahin": "Eingelöst mit AP-12 IP-4 (V20260915050100): `vokabular.arten` → `bericht_revision_angestossen` mit Pflicht nr, anstoss_art, anlass_kennung (optional anlass_fassung); es gilt jener Eintrag. Vorher war die Meldung abgelehnt. Die Reservierung bleibt als Herkunft stehen."
+    },
+    {
+      "art": "bericht_entwurf_neu_gebildet",
+      "bezug": "bericht",
+      "urheber": [
+        "cloud"
+      ],
+      "angelegt_von": "AP-12 IP-4 (Vokabular und Tabelle) — geschrieben von AP-12 IP-8 und IP-9",
+      "gelesen_von": "AP-12 IP-13 — der Datenstand des Entwurfs",
+      "regel": "Pfad 1 oder Pfad 2 hat den Entwurf eines Berichts aus neuen Versionen neu gebildet (neuer Datenstand, bericht.md EW1). Bildet ein Abruf ihn neu, weil er nicht mehr aktuell ist (D4), wird nichts gemeldet (B6).",
+      "bis_dahin": "Eingelöst mit AP-12 IP-4 (V20260915050100): `vokabular.arten` → `bericht_entwurf_neu_gebildet` mit Pflicht datenstand (optional anlass_kennung); es gilt jener Eintrag. Vorher war die Meldung abgelehnt. Die Reservierung bleibt als Herkunft stehen."
+    },
+    {
+      "art": "bericht_abgerufen",
+      "bezug": "bericht",
+      "urheber": [
+        "kunde"
+      ],
+      "angelegt_von": "AP-12 IP-4 (Vokabular und Tabelle) — geschrieben von AP-12 IP-10/IP-11 (CSV und PDF)",
+      "gelesen_von": "AP-12 — „wer hat welchen Stand gesehen“ (bericht.md DA5)",
+      "regel": "Eine Person ruft PDF oder CSV eines Berichtsstands ab — nie eines Entwurfs (EW4): Stand, Format, Person, Zeitpunkt und Teilansicht. Jeder Abruf ist eine Meldung.",
+      "bis_dahin": "Eingelöst mit AP-12 IP-4 (V20260915050100): `vokabular.arten` → `bericht_abgerufen` mit Pflicht nr, format; es gilt jener Eintrag. Vorher war die Meldung abgelehnt. Die Reservierung bleibt als Herkunft stehen."
+    },
+    {
+      "art": "einstufung_gesetzt",
+      "bezug": "energieeinsatz",
+      "urheber": [
+        "kunde"
+      ],
+      "angelegt_von": "AP-16 IP-11 (Vokabular, Tabelle und Schreiber); Reservierung mit IP-3",
+      "gelesen_von": "AP-16 Bewertungs-Verlauf und Bericht",
+      "regel": "Eine Person setzt eine Einstufungs-Fassung am Energieeinsatz (EE-…) mit Begründung und Herkunfts-Satz; Zahlen allein stufen niemals ein.",
+      "bis_dahin": "Eingelöst mit AP-16 IP-11 (V20260922237000): vokabular.arten kennt einstufung_gesetzt; es gilt jener Eintrag. Die Reservierung bleibt als Herkunft stehen."
+    },
+    {
+      "art": "messbedarf_erfasst",
+      "bezug": "messbedarf",
+      "urheber": [
+        "kunde"
+      ],
+      "angelegt_von": "AP-16 IP-19/IP-20; Reservierung mit IP-3",
+      "gelesen_von": "AP-16 Bewertungs-Verlauf und Bericht",
+      "regel": "Eine Person erfasst einen offenen Messbedarf am Energieeinsatz.",
+      "bis_dahin": "Eingelöst mit AP-16 IP-19: `vokabular.arten` enthält `messbedarf_erfasst`; der API-Schreibweg meldet es atomar mit dem offenen Bedarf."
+    },
+    {
+      "art": "messbedarf_eingeloest",
+      "bezug": "messbedarf",
+      "urheber": [
+        "kunde"
+      ],
+      "angelegt_von": "AP-16 IP-19/IP-20; Reservierung mit IP-3",
+      "gelesen_von": "AP-16 Bewertungs-Verlauf und Bericht",
+      "regel": "Eine Person löst einen Messbedarf durch eine eingerichtete Messstelle ein; die Historie bleibt erhalten.",
+      "bis_dahin": "Eingelöst mit AP-16 IP-19: `vokabular.arten` enthält `messbedarf_eingeloest`; der API-Schreibweg meldet es atomar mit der Messstellen-Verknüpfung."
+    },
+    {
+      "art": "bezugsbasis_freigegeben",
+      "bezug": "bezugsbasis",
+      "urheber": [
+        "kunde"
+      ],
+      "angelegt_von": "Anlage offen (AP-17; IP-8 ist gebaut, ohne das Wort anzulegen — Nachtrag AP-18 W15); Reservierung mit IP-6",
+      "gelesen_von": "AP-17 Bezugsbasis-Verlauf und Leistungsvergleich",
+      "regel": "Eine Person gibt eine Fassung der Bezugsbasis (BB-…) mit Begründung frei; bei Vier-Augen bestätigt eine zweite Person. Kein Läufer gibt frei.",
+      "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt. Freigabe, Beenden und Anstoß stehen bis dahin im Protokoll bezugsbasis_aenderung bzw. in bezugsbasis_anstoss."
+    },
+    {
+      "art": "bezugsbasis_beendet",
+      "bezug": "bezugsbasis",
+      "urheber": [
+        "kunde",
+        "cloud"
+      ],
+      "angelegt_von": "Anlage offen (AP-17; IP-8 und IP-17 sind gebaut, ohne das Wort anzulegen — Nachtrag AP-18 W15); Reservierung mit IP-6",
+      "gelesen_von": "AP-17 Bezugsbasis-Verlauf und Leistungsvergleich",
+      "regel": "Eine Person beendet eine Bezugsbasis oder Fassung mit Grund, oder die Archivierung der Kennzahl beendet die Basis am selben Tag; beendet, nie gelöscht.",
+      "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt. Freigabe, Beenden und Anstoß stehen bis dahin im Protokoll bezugsbasis_aenderung bzw. in bezugsbasis_anstoss."
+    },
+    {
+      "art": "bezugsbasis_anstoss",
+      "bezug": "bezugsbasis",
+      "urheber": [
+        "cloud"
+      ],
+      "angelegt_von": "Anlage offen (AP-17; IP-15 ist gebaut, ohne das Wort anzulegen — Nachtrag AP-18 W15); Reservierung mit IP-6",
+      "gelesen_von": "AP-17 Bezugsbasis-Verlauf und Leistungsvergleich",
+      "regel": "Kaskade (Pfad 1) oder Struktur-Läufer (Pfad 2) setzt „Anstoß liegt vor“ an einer freigegebenen Fassung; die Fassung bleibt byte-gleich, eine Person antwortet.",
+      "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt. Freigabe, Beenden und Anstoß stehen bis dahin im Protokoll bezugsbasis_aenderung bzw. in bezugsbasis_anstoss."
+    },
+    {
+      "art": "auffaelligkeit_vermerkt",
+      "bezug": "kennzahl",
+      "urheber": [
+        "cloud"
+      ],
+      "angelegt_von": "Anlage offen (AP-18 IP-15 ff.); Reservierung mit IP-5",
+      "gelesen_von": "AP-18 Vermerk-Zeile an der Kennzahl und Übersichts-Baustein „Ziele und Maßnahmen“",
+      "regel": "Die Naht vermerkt einen endgültigen Monatswert einer Energieleistungskennzahl mit Urteil „schlechter“ als Auffälligkeit (A1), in derselben Transaktion wie ihr Anlass; eindeutig je Kennzahl × Fassung × Monat, eine Person antwortet.",
+      "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt. AP-18 hängt seine Auslöser an die Transaktion (E5 = A, LA4); bis dahin stehen die Übergänge im Protokoll des Vorgangs."
+    },
+    {
+      "art": "abweichung_eroeffnet",
+      "bezug": "kennzahl",
+      "urheber": [
+        "kunde"
+      ],
+      "angelegt_von": "Anlage offen (AP-18 IP-14 ff.); Reservierung mit IP-5",
+      "gelesen_von": "AP-18 Verlauf der Abweichung und Übersichts-Baustein „Ziele und Maßnahmen“",
+      "regel": "Eine Person eröffnet eine Abweichung (AW-…) an Kennzahl × Fassung × Monaten — als Antwort auf eine Auffälligkeit oder von Hand — mit Verantwortlichem und Frist (A3). Kein Läufer eröffnet.",
+      "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt. AP-18 hängt seine Auslöser an die Transaktion (E5 = A, LA4); bis dahin stehen die Übergänge im Protokoll des Vorgangs."
+    },
+    {
+      "art": "massnahme_umgesetzt",
+      "bezug": "massnahme",
+      "urheber": [
+        "kunde"
+      ],
+      "angelegt_von": "Anlage offen (AP-18 IP-10 ff.); Reservierung mit IP-5",
+      "gelesen_von": "AP-18 Verlauf der Maßnahme und Wirkung (Nachher-Monate ab dem Monat nach der Umsetzung)",
+      "regel": "Eine Person meldet eine Maßnahme (M-…) mit dem Tag der Umsetzung als umgesetzt (nie in der Zukunft); ab dem Folgemonat zählen die Nachher-Monate (WK1).",
+      "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt. AP-18 hängt seine Auslöser an die Transaktion (E5 = A, LA4); bis dahin stehen die Übergänge im Protokoll des Vorgangs."
+    },
+    {
+      "art": "massnahme_bewertet",
+      "bezug": "massnahme",
+      "urheber": [
+        "kunde"
+      ],
+      "angelegt_von": "Anlage offen (AP-18 IP-12 ff.); Reservierung mit IP-5",
+      "gelesen_von": "AP-18 Verlauf der Maßnahme und Bewertungs-Stände; nicht AP-19 — die Managementbewertung liest die Bewertungs-Stände direkt und braucht das Ereignis nicht (AP-19 §6.2, IP-4)",
+      "regel": "Eine Person bewertet die Wirkung einer Maßnahme als Stand Nr. n (belegt · nicht belegt · nicht messbar) mit Begründung und Kopie mit Prüfsumme; bei Vier-Augen bestätigt eine zweite Person. Das System behauptet nichts.",
+      "bis_dahin": "Nur reserviert: kein Schreiber, keine Erweiterung von vokabular.arten oder Ereignis-Tabelle. Meldungen werden bis zur Anlage abgelehnt. AP-18 hängt seine Auslöser an die Transaktion (E5 = A, LA4); bis dahin stehen die Übergänge im Protokoll des Vorgangs."
+    }
+  ],
   "cases": [
+    {
+      "name": "einstufung-ee3-wesentlich-nach-einschaetzung",
+      "pruefung": "ereignis",
+      "bezug": "AP-16 R3, F1–F5",
+      "why": "Die Person weicht mit K4 vom Vorschlag unter Schwelle ab; die Zahlen selbst melden nichts.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000001611",
+          "art": "einstufung_gesetzt",
+          "zeitpunkt": "2026-11-06T09:00:00Z",
+          "energieeinsatz": "EE-3",
+          "fassung": 1,
+          "einstufung": "wesentlich",
+          "gruende": ["K4"]
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": ["EE-3: Fassung 1 als wesentlich gesetzt (Gründe: K4)"]
+      }
+    },
     {
       "name": "ausfall-e2-luecke-je-box-offen",
       "pruefung": "ereignis",
@@ -1727,6 +2821,342 @@
         "saetze": [
           "Lücke von 03.11.2026 14:00 bis 17:30 — nie als 0 gerechnet · nachgeliefert am 03.11.2026 17:31"
         ]
+      }
+    },
+    {
+      "name": "ausfall-e2-luecke-je-reihe-ms10-offen-von-der-cloud",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.8 data_gap (aus Kadenz), E9; Lieferpaket IP-9 (services/api)",
+      "why": "Dieselbe Reihen-Lücke, gestellt von dem Lauf, der sie wirklich feststellt: der Lücken-Melder ist ein Lauf der api, und dort heißt Weg 2 `cloud`. Die Ursache bleibt die Kadenz — die Herkunft der Aussage ändert sich nicht, nur ihr Absender.",
+      "annahme": "AP-07 §4.8 nennt für die Kadenz-Lücke und die Nachlieferung den Writer; §8 legt IP-9 als Job in die api (oder den Writer). Der Fall nimmt an, dass das Lieferpaket den Ort bestimmt und das Vokabular dem folgt (additiv: `writer` bleibt zulässig) — wie late_arrival mit IP-13.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000031",
+          "art": "data_gap",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": null,
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "erkannt_aus": "kadenz"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Lücke seit 03.11.2026 14:00 — nie als 0 gerechnet"
+        ]
+      }
+    },
+    {
+      "name": "ausfall-e2-luecke-ms10-nachgeliefert-von-der-cloud",
+      "pruefung": "fortschreibung",
+      "bezug": "AP-07 §4.8 data_gap (MS-10 14:00–17:30, nachgeliefert 17:31), §4.5 Nachlieferung Nr. 2; Lieferpaket IP-9",
+      "why": "Der Melder schließt seine eigene Reihen-Lücke bei der Rückkehr: `bis`, die gezählten fehlenden Werte und `nachgeliefert_am` gehen in EINER Fortschreibung von leer auf einen Wert — gleicher Urheber, gleiches `von`.",
+      "annahme": "AP-07 §4.8 nennt für die Kadenz-Lücke und die Nachlieferung den Writer; §8 legt IP-9 als Job in die api (oder den Writer). Der Fall nimmt an, dass das Lieferpaket den Ort bestimmt und das Vokabular dem folgt (additiv: `writer` bleibt zulässig) — wie late_arrival mit IP-13. `erwartet_fehlend` = 210 ist die Kadenz 60 s über 14:00–17:30.",
+      "input": {
+        "urheber": "cloud",
+        "alt": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000031",
+          "art": "data_gap",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": null,
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "erkannt_aus": "kadenz"
+        },
+        "neu": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000031",
+          "art": "data_gap",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-03T16:30:00Z",
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "erkannt_aus": "kadenz",
+          "erwartet_fehlend": 210,
+          "nachgeliefert_am": "2026-11-03T16:31:00Z"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Lücke von 03.11.2026 14:00 bis 17:30 — nie als 0 gerechnet · nachgeliefert am 03.11.2026 17:31"
+        ]
+      }
+    },
+    {
+      "name": "ms10-luecke-geschlossen-mit-zuwachs-nicht-verteilbar",
+      "pruefung": "fortschreibung",
+      "bezug": "AP-08 E2, IP-6; Referenzfall F8 (MS-10 03.11.2026 14:00–17:31, 418 200,0 → 418 537,6 kWh)",
+      "why": "Der Zähler hat weitergezählt, während die Werte fehlten: 418 537,6 − 418 200,0 = 337,6 kWh sind GEMESSEN — nur wann in den 3,5 Stunden sie anfielen, weiß niemand. Der Lücken-Melder schreibt den Zuwachs mit dem Schließen fort.",
+      "annahme": "Der Fall folgt der Zeitachse von F8 ohne Nachlieferung; `von` ist wie beim Lücken-Melder der letzte gute Wert (14:00) plus eine Kadenz (60 s).",
+      "input": {
+        "urheber": "cloud",
+        "alt": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000088",
+          "art": "data_gap",
+          "von": "2026-11-03T13:01:00Z",
+          "bis": null,
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "erkannt_aus": "kadenz"
+        },
+        "neu": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000088",
+          "art": "data_gap",
+          "von": "2026-11-03T13:01:00Z",
+          "bis": "2026-11-03T16:31:00Z",
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "erkannt_aus": "kadenz",
+          "erwartet_fehlend": 210,
+          "zuwachs": 337.6,
+          "einheit": "kWh",
+          "stand_vor": 418200.0,
+          "stand_nach": 418537.6
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Lücke von 03.11.2026 14:01 bis 17:31 — nie als 0 gerechnet · der Zähler hat weitergezählt: Zuwachs 337,6 kWh — nicht auf Viertelstunden verteilbar"
+        ]
+      }
+    },
+    {
+      "name": "luecke-zuwachs-ohne-einheit-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 E2, IP-6; Referenzfall F8 (MS-10 03.11.2026 14:00–17:31, 418 200,0 → 418 537,6 kWh)",
+      "why": "Ein Zuwachs ohne Einheit ist eine Zahl ohne Bedeutung — die vier Felder stehen nur zusammen.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000089",
+          "art": "data_gap",
+          "von": "2026-11-03T13:01:00Z",
+          "bis": "2026-11-03T16:31:00Z",
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "erkannt_aus": "kadenz",
+          "erwartet_fehlend": 210,
+          "zuwachs": 337.6,
+          "stand_vor": 418200.0,
+          "stand_nach": 418537.6
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "luecke-zuwachs-rechnet-nicht-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 E2, IP-6; Referenzfall F8 (MS-10 03.11.2026 14:00–17:31, 418 200,0 → 418 537,6 kWh)",
+      "why": "Der Zuwachs IST die Differenz der Stände — 300,0 statt 337,6 wäre eine erfundene Zahl.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000090",
+          "art": "data_gap",
+          "von": "2026-11-03T13:01:00Z",
+          "bis": "2026-11-03T16:31:00Z",
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "erkannt_aus": "kadenz",
+          "erwartet_fehlend": 210,
+          "zuwachs": 300.0,
+          "einheit": "kWh",
+          "stand_vor": 418200.0,
+          "stand_nach": 418537.6
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "luecke-zuwachs-offen-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 E2, IP-6; Referenzfall F8 (MS-10 03.11.2026 14:00–17:31, 418 200,0 → 418 537,6 kWh)",
+      "why": "Solange die Lücke offen ist, gibt es keinen Stand danach — und damit keinen Zuwachs.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000091",
+          "art": "data_gap",
+          "von": "2026-11-03T13:01:00Z",
+          "bis": null,
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "erkannt_aus": "kadenz",
+          "zuwachs": 337.6,
+          "einheit": "kWh",
+          "stand_vor": 418200.0,
+          "stand_nach": 418537.6
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "luecke-zuwachs-je-box-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 E2, IP-6; AP-06 §6.2 (Lücke je Box aus dem Herzschlag)",
+      "why": "Eine Box hat keinen Zählerstand — der Zuwachs gehört an die Lücke EINER Reihe, nie an die der Box.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000092",
+          "art": "data_gap",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-03T16:30:00Z",
+          "box": "E-2",
+          "erkannt_aus": "herzschlag",
+          "fehlerklasse": "box_meldet_sich_nicht",
+          "zuwachs": 337.6,
+          "einheit": "kWh",
+          "stand_vor": 418200.0,
+          "stand_nach": 418537.6
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "luecke-zuwachs-einheit-unbekannt-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 E2, IP-6; Referenzfall F8 (MS-10 03.11.2026 14:00–17:31, 418 200,0 → 418 537,6 kWh)",
+      "why": "Die Einheit des Zuwachses kommt aus dem Einheiten-Vokabular der Zählerstände, nicht als freier Text.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000093",
+          "art": "data_gap",
+          "von": "2026-11-03T13:01:00Z",
+          "bis": "2026-11-03T16:31:00Z",
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "erkannt_aus": "kadenz",
+          "erwartet_fehlend": 210,
+          "zuwachs": 337.6,
+          "einheit": "kilowattstunden",
+          "stand_vor": 418200.0,
+          "stand_nach": 418537.6
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "wort_unbekannt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "ausfall-e2-nachlieferung-von-der-cloud",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.5 Nachlieferung Nr. 2, §4.8 backfill; Lieferpaket IP-9 (services/api)",
+      "why": "Die Nachlieferung je Box und Quelle, gemeldet vom Lücken-Melder der api: Messzeiten des ersten und letzten nachgelieferten Werts (beide enthalten), Eingangszeiten, Anzahl — und `erwartet`, wenn die Kadenz-Lücken der Reihen es zählen.",
+      "annahme": "AP-07 §4.8 nennt für die Kadenz-Lücke und die Nachlieferung den Writer; §8 legt IP-9 als Job in die api (oder den Writer). Der Fall nimmt an, dass das Lieferpaket den Ort bestimmt und das Vokabular dem folgt (additiv: `writer` bleibt zulässig) — wie late_arrival mit IP-13. `erwartet` = 3 640 nimmt an, dass die Reihen-Lücken genau so viele Werte zählen.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000032",
+          "art": "backfill",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-03T16:30:00Z",
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "eingang_von": "2026-11-03T16:31:00Z",
+          "eingang_bis": "2026-11-03T16:34:00Z",
+          "anzahl": 3640,
+          "erwartet": 3640
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Nachgeliefert: 3.640 Werte von 03.11.2026 14:00 bis 17:30, eingegangen 03.11.2026 17:31 bis 17:34"
+        ]
+      }
+    },
+    {
+      "name": "verdraengung-von-der-cloud-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.8 data_gap; `erkannt_aus` gehört zum Urheber (auch nach IP-9)",
+      "why": "Die Weitung aus IP-9 ist schmal: die Cloud darf eine Lücke aus der Kadenz melden, aber nie behaupten, die Box habe ihren Puffer verdrängt — das weiß nur die Box.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000033",
+          "art": "data_gap",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-03T13:14:00Z",
+          "box": "E-2",
+          "datenquelle": "DQ-4",
+          "erkannt_aus": "verdraengung",
+          "erwartet_fehlend": 14
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
       }
     },
     {
@@ -2253,6 +3683,89 @@
       }
     },
     {
+      "name": "ms14-ladepunkt-abweichender-wert-ohne-decoded",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.5 Duplikate Nr. 3, §4.8; mqtt-measurement-samples 2.1 (decoded optional); Nacharbeit zu PR 694",
+      "why": "Am Ladepunkt kommt zur Messzeit 14:12 ein zweiter, anderer OCPP-Zählerstand. OCPP liefert den Protokollwert ohne decodierten Wert, also trägt jeder Messwert decoded: null — die Meldung reist trotzdem, und der Satz nennt den Rohwert.",
+      "annahme": "Messzeit, Zählerstände, Sequenzen und die Einheit Wh (OCPP-Vorgabe für einen Energie-Zählerstand ohne unit) sind angenommen — die Referenz nennt am Ladepunkt keine Stände. Dass OCPP keinen decodierten Wert liefert, folgt aus dem Katalog (scale = protocol_value).",
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001b5",
+          "art": "duplicate_conflict",
+          "zeitpunkt": "2026-11-18T13:12:04Z",
+          "box": "E-2′",
+          "komponente": "K-9",
+          "messkanal": "OCPP-Zählerstand",
+          "messstelle": "MS-14",
+          "messzeit": "2026-11-18T13:12:00Z",
+          "gespeicherter_wert": {
+            "raw": 1843250,
+            "decoded": null,
+            "qualitaet": "good"
+          },
+          "abgewiesener_wert": {
+            "raw": 1843260,
+            "decoded": null,
+            "qualitaet": "good"
+          },
+          "sequenzen": [
+            20417,
+            20418
+          ],
+          "einheit": "Wh"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Zweiter Wert für 18.11.2026 14:12 abgewiesen: 1.843.260 Wh statt 1.843.250 Wh — der erste Wert bleibt"
+        ]
+      }
+    },
+    {
+      "name": "messwert-ohne-decoded-feld-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "events-vocabulary §3 (Messwert); mqtt-measurement-samples 2.1",
+      "why": "Fehlt decoded im Messwert ganz, statt null zu tragen, ist die Form verletzt: ein Wert hat genau eine Schreibweise, sonst hielte die Prüfung zwei gleiche Werte für verschieden.",
+      "annahme": "Messzeit, Zählerstände, Sequenzen und die Einheit Wh (OCPP-Vorgabe für einen Energie-Zählerstand ohne unit) sind angenommen — die Referenz nennt am Ladepunkt keine Stände. Dass OCPP keinen decodierten Wert liefert, folgt aus dem Katalog (scale = protocol_value).",
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001b6",
+          "art": "duplicate_conflict",
+          "zeitpunkt": "2026-11-18T13:12:04Z",
+          "box": "E-2′",
+          "komponente": "K-9",
+          "messkanal": "OCPP-Zählerstand",
+          "messstelle": "MS-14",
+          "messzeit": "2026-11-18T13:12:00Z",
+          "gespeicherter_wert": {
+            "raw": 1843250,
+            "decoded": null,
+            "qualitaet": "good"
+          },
+          "abgewiesener_wert": {
+            "raw": 1843260,
+            "qualitaet": "good"
+          },
+          "sequenzen": [
+            20417,
+            20418
+          ],
+          "einheit": "Wh"
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "schema_verletzt",
+        "saetze": []
+      }
+    },
+    {
       "name": "uebergabe-dq3-offen-bis-zur-quittung",
       "pruefung": "ereignis",
       "bezug": "AP-06 E9, AP-07 §4.8 handover, §5.2; Referenz 10.04.2027 07:30",
@@ -2601,6 +4114,70 @@
           "stand_neu": 6190.0,
           "messzeit_alt": "2026-11-02T08:11:00Z",
           "einheit": "kWh"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "ek4-impulszaehler-druckluft-uebergelaufen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 §4.3 counter_overflow, Z6, E4; Referenzfall F7 (MS-07)",
+      "why": "Der 16-bit-Impulszähler von K-6 läuft um 10:03 von 64 954 über 65 535 auf 185. Wertebereich und Höchstzuwachs sind deklariert, und 65 536 − 64 954 + 185 = 767 ≤ 1 667 × 1 Kadenz: ein Überlauf, lückenlos gezählt — keine Rücksetzung.",
+      "annahme": "F7 nennt die Deklaration an der Vorlage (Wertebereich 0 … 65 535, Höchstzuwachs 1 667 Impulse je Minute aus 100 kW Anschlussleistung); die Felder dafür baut AP-08 IP-7. Die Meldung trägt die Zahlen, mit denen der Writer entschieden hat.",
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000086",
+          "art": "counter_overflow",
+          "zeitpunkt": "2026-10-20T08:03:00Z",
+          "komponente": "K-6",
+          "messkanal": "Wirkenergie Bezug",
+          "stand_alt": 64954,
+          "stand_neu": 185,
+          "messzeit_alt": "2026-10-20T08:02:00Z",
+          "wertebereich_modul": 65536,
+          "hoechstzuwachs_je_kadenz": 1667,
+          "kadenz_s": 60,
+          "messstelle": "MS-07",
+          "einheit": "Impulse"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Zähler am 20.10.2026 10:03 über das Ende seines Wertebereichs (65.536 Impulse) gelaufen: von 64.954 Impulse auf 185 Impulse — der Verbrauch dazwischen ist mitgezählt"
+        ]
+      }
+    },
+    {
+      "name": "ek4-sprung-ueber-dem-hoechstzuwachs-ist-kein-ueberlauf-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 §4.3 counter_overflow, Z6, E4; Referenzfall F7 10:20",
+      "why": "Um 10:20 fällt derselbe Zähler von 12 457 auf 100: 65 536 − 12 457 + 100 = 53 179 > 1 667. Das wäre fiktiver Verbrauch — es ist eine Rücksetzung, und eine Überlauf-Meldung dafür wird abgewiesen.",
+      "annahme": "Wie der Fall davor; der Writer meldet einen solchen Sprung gar nicht erst als Überlauf, der Fall prüft die Grenze des Vokabulars.",
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000087",
+          "art": "counter_overflow",
+          "zeitpunkt": "2026-10-20T08:20:00Z",
+          "komponente": "K-6",
+          "messkanal": "Wirkenergie Bezug",
+          "stand_alt": 12457,
+          "stand_neu": 100,
+          "messzeit_alt": "2026-10-20T08:19:00Z",
+          "wertebereich_modul": 65536,
+          "hoechstzuwachs_je_kadenz": 1667,
+          "kadenz_s": 60,
+          "messstelle": "MS-07",
+          "einheit": "Impulse"
         }
       },
       "expected": {
@@ -3405,6 +4982,1527 @@
         "urteil": "verworfen",
         "grund": "schema_verletzt",
         "saetze": []
+      }
+    },
+    {
+      "name": "ew-2026-0003-zuwachs-gleichmaessig-verteilt",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 §4.6, E7 (Methode a); Referenzfall F11",
+      "why": "Ines Kaltenbach verteilt am 06.11. 11:20 den gemessenen Zuwachs von 1 872,0 kWh über die Lücke der getauschten Box Halle 2 gleichmäßig auf 78 Viertelstunden. Der Satz sagt, dass es kein gemessener Wert ist.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000094",
+          "art": "substitute",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-04T08:30:00Z",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "ersatzwert": "EW-2026-0003",
+          "methode": "gleichmaessig_verteilen",
+          "status": "wirksam"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Ersatzwert EW-2026-0003 für 03.11.2026 14:00 bis 04.11.2026 09:30: Zuwachs gleichmäßig verteilen — kein gemessener Wert"
+        ]
+      }
+    },
+    {
+      "name": "ew-2026-0003-zurueckgenommen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 §4.6 (Status zurückgenommen, nie gelöscht); Referenzfall F21",
+      "why": "Am 20.11. 15:10 liegt der Lastgang des Netzbetreibers vor; Ines Kaltenbach nimmt EW-2026-0003 zurück. Die Rücknahme ist eine neue Meldung, der Ersatzwert bleibt sichtbar.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000095",
+          "art": "substitute",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-04T08:30:00Z",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "ersatzwert": "EW-2026-0003",
+          "methode": "gleichmaessig_verteilen",
+          "status": "zurueckgenommen"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Ersatzwert EW-2026-0003 für 03.11.2026 14:00 bis 04.11.2026 09:30 zurückgenommen: Zuwachs gleichmäßig verteilen"
+        ]
+      }
+    },
+    {
+      "name": "ew-2026-0005-profil-der-vergleichsquelle",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 §4.6, E7 (Methode c); Referenzfall F21",
+      "why": "Derselbe Zeitraum, jetzt nach dem Profil des Lastgangs des Netzbetreibers verteilt; die Summe bleibt der gemessene Zuwachs.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000096",
+          "art": "substitute",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-04T08:30:00Z",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "ersatzwert": "EW-2026-0005",
+          "methode": "profil_vergleichsquelle",
+          "status": "wirksam"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Ersatzwert EW-2026-0005 für 03.11.2026 14:00 bis 04.11.2026 09:30: Zuwachs nach dem Profil der Vergleichsquelle verteilen — kein gemessener Wert"
+        ]
+      }
+    },
+    {
+      "name": "k-2026-0007-nachlieferung-vorgeschlagen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 §4.6, E14; Referenzfall F10",
+      "why": "Die Werte 14:01–17:30 treffen am 12.11. 09:02 ein, die Viertelstunden sind endgültig: die Cloud schlägt K-2026-0007 vor und ändert nichts.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000097",
+          "art": "correction",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-03T16:45:00Z",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "korrektur": "K-2026-0007",
+          "korrektur_art": "nachlieferung_nach_endgueltigkeit",
+          "status": "vorschlag"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Korrektur K-2026-0007 vorgeschlagen für 03.11.2026 14:00 bis 17:45: Nachlieferung nach Endgültigkeit — die Werte bleiben bis zur Freigabe unverändert"
+        ]
+      }
+    },
+    {
+      "name": "k-2026-0007-freigegeben",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 §4.6, E8, E9; Referenzfall F10",
+      "why": "Ines Kaltenbach gibt K-2026-0007 am 12.11. 10:15 frei — erst jetzt entsteht Version 2.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000098",
+          "art": "correction",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-03T16:45:00Z",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "korrektur": "K-2026-0007",
+          "korrektur_art": "nachlieferung_nach_endgueltigkeit",
+          "status": "freigegeben"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Korrektur K-2026-0007 freigegeben für 03.11.2026 14:00 bis 17:45: Nachlieferung nach Endgültigkeit"
+        ]
+      }
+    },
+    {
+      "name": "k-2027-0002-ablesestaende-vorgeschlagen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 §4.6; Referenzfälle F6/F12",
+      "why": "Ines Kaltenbach trägt am 25.01.2027 den Endstand der Rücksetzung vom 15.01. nach; die Viertelstunde ist endgültig, also schlägt die Cloud K-2027-0002 vor.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000099",
+          "art": "correction",
+          "von": "2027-01-15T08:00:00Z",
+          "bis": "2027-01-15T08:15:00Z",
+          "komponente": "K-8.2",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-11",
+          "korrektur": "K-2027-0002",
+          "korrektur_art": "ablesestaende_nachgetragen",
+          "status": "vorschlag"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Korrektur K-2027-0002 vorgeschlagen für 15.01.2027 09:00 bis 09:15: Ablesestände nachgetragen — die Werte bleiben bis zur Freigabe unverändert"
+        ]
+      }
+    },
+    {
+      "name": "korrektur-zum-ersatzwert-ew-2026-0003-freigegeben",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 §4.6 (Art „Ersatzwert eingetragen“, Wirkung: erzeugt eine Korrektur); Referenzfall F11",
+      "why": "Der Ersatzwert EW-2026-0003 wirkt über eine Korrektur: ihre Freigabe erzeugt Version 2 der Tage 03.11. und 04.11.",
+      "annahme": "F11 nennt die Kennung der Korrektur zum Ersatzwert nicht; der Fall setzt K-2026-0008 (die nächste nach K-2026-0007 aus F10).",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000100",
+          "art": "correction",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-04T08:30:00Z",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "korrektur": "K-2026-0008",
+          "korrektur_art": "ersatzwert",
+          "status": "freigegeben",
+          "ersatzwert": "EW-2026-0003"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Korrektur K-2026-0008 freigegeben für 03.11.2026 14:00 bis 04.11.2026 09:30: Ersatzwert (EW-2026-0003)"
+        ]
+      }
+    },
+    {
+      "name": "korrektur-freigabe-nie-automatisch-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 E14 (nie automatisch)",
+      "why": "Eine Freigabe ist die Entscheidung eines Menschen; meldet die Cloud selbst „freigegeben“, wäre die Korrektur automatisch wirksam.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000101",
+          "art": "correction",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-03T16:45:00Z",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "korrektur": "K-2026-0007",
+          "korrektur_art": "nachlieferung_nach_endgueltigkeit",
+          "status": "freigegeben"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "ersatzwert-nach-wochentagsmittel-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 E7 (sieben benannte Methoden — Option C „Wochentagsmittel“ nicht gewählt)",
+      "why": "Das Wochentagsmittel steht nicht im geschlossenen Vokabular der Methoden; es wird verworfen, nie auf eine ähnliche Methode geraten.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000102",
+          "art": "substitute",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-04T08:30:00Z",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "ersatzwert": "EW-2026-0003",
+          "methode": "wochentagsmittel",
+          "status": "wirksam"
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "wort_unbekannt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "ersatzwert-vom-writer-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 §4.4 (Ersatzwert: Kunde, E7)",
+      "why": "Einen Ersatzwert setzt ein Mensch mit Begründung; der Writer misst und setzt nie eine Zahl, die der Zähler nicht geliefert hat.",
+      "annahme": null,
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000103",
+          "art": "substitute",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-04T08:30:00Z",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "ersatzwert": "EW-2026-0003",
+          "methode": "gleichmaessig_verteilen",
+          "status": "wirksam"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "urheber_unzulaessig",
+        "saetze": []
+      }
+    },
+    {
+      "name": "ersatzwert-neben-dem-viertelstunden-raster-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 §4.6 (Zeitraum auf die Viertelstunde)",
+      "why": "Ein Ersatzwert gilt für ganze Viertelstunden; 14:01 liegt neben dem Raster.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000104",
+          "art": "substitute",
+          "von": "2026-11-03T13:01:00Z",
+          "bis": "2026-11-04T08:30:00Z",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "ersatzwert": "EW-2026-0003",
+          "methode": "gleichmaessig_verteilen",
+          "status": "wirksam"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "zeit_ungueltig",
+        "saetze": []
+      }
+    },
+    {
+      "name": "korrektur-art-ersatzwert-ohne-ersatzwert-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-08 §4.6 (Art „Ersatzwert eingetragen / zurückgenommen“)",
+      "why": "Eine Korrektur der Art Ersatzwert nennt den Ersatzwert, den sie wirksam macht — ohne ihn wäre sie nicht nachvollziehbar.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000105",
+          "art": "correction",
+          "von": "2026-11-03T13:00:00Z",
+          "bis": "2026-11-03T16:45:00Z",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "messstelle": "MS-10",
+          "korrektur": "K-2026-0008",
+          "korrektur_art": "ersatzwert",
+          "status": "vorschlag"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "bk-2026-0001-bz-2-oktober-freigegeben",
+      "pruefung": "ereignis",
+      "bezug": "AP-09 §4.5 F4, §6.1; Referenzfall B5 (bezugsdaten-vectors.json)",
+      "why": "Ines Kaltenbach berichtigt die Gutteile Montage (BZ-2) für Oktober 2026 von 4 820 auf 48 200 Stück; mit der Freigabe ist Fassung 2 wirksam — eine Meldung, Bezug die Bezugsgröße statt einer Reihe.",
+      "annahme": "Die Kennung BK-2026-0001 ist eine Annahme; BZ-2, Oktober 2026 und die Fassungen 1 → 2 sind der Fall B5.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000901",
+          "art": "correction",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "bezugsgroesse": "BZ-2",
+          "korrektur": "BK-2026-0001",
+          "korrektur_art": "wert_berichtigt",
+          "status": "freigegeben",
+          "fassung_alt": 1,
+          "fassung_neu": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Korrektur BK-2026-0001 freigegeben für 01.10.2026 00:00 bis 01.11.2026 00:00: Wert berichtigt (mit Beleg) · Bezugsgröße BZ-2, Fassung 1 → 2"
+        ]
+      }
+    },
+    {
+      "name": "bezugsgroesse-ohne-fassung-neu-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-09 §4.5 F4, §6.1; Referenzfall B5 (bezugsdaten-vectors.json)",
+      "why": "An einer Bezugsgröße nennt die Meldung, welche Fassung vorher und welche jetzt wirksam ist — ohne die neue ist nicht nachvollziehbar, was die Kennzahl neu bildet.",
+      "annahme": "Die Kennung BK-2026-0001 ist eine Annahme; BZ-2, Oktober 2026 und die Fassungen 1 → 2 sind der Fall B5.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000902",
+          "art": "correction",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "bezugsgroesse": "BZ-2",
+          "korrektur": "BK-2026-0001",
+          "korrektur_art": "wert_berichtigt",
+          "status": "freigegeben",
+          "fassung_alt": 1
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "schema_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "korrektur-ohne-bezug-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-07 §4.5; AP-09 IP-7 (genau ein Bezug)",
+      "why": "Eine Korrektur ohne Reihe und ohne Bezugsgröße trifft nichts — wie vor AP-09 IP-7 fehlt ein Pflichtfeld.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000903",
+          "art": "correction",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "korrektur": "K-2026-0007",
+          "korrektur_art": "nachlieferung_nach_endgueltigkeit",
+          "status": "freigegeben"
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "schema_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "korrektur-an-reihe-und-bezugsgroesse-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-09 IP-7 (genau ein Bezug)",
+      "why": "Eine Meldung trifft GENAU EINEN Bezug: eine Reihe und zugleich eine Bezugsgröße wäre zweimal gezählt.",
+      "annahme": "Die Kennung BK-2026-0001 ist eine Annahme; BZ-2, Oktober 2026 und die Fassungen 1 → 2 sind der Fall B5.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000904",
+          "art": "correction",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "bezugsgroesse": "BZ-2",
+          "korrektur": "BK-2026-0001",
+          "korrektur_art": "wert_berichtigt",
+          "status": "freigegeben",
+          "fassung_alt": 1,
+          "fassung_neu": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "fassungen-an-einer-reihe-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-09 IP-7 (Fassungen nur an einer Bezugsgröße)",
+      "why": "Eine Korrektur an einer Reihe hat keine Wert-Fassungen — sie trägt ihre Versionen in den Viertelstunden.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000905",
+          "art": "correction",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug",
+          "korrektur": "K-2026-0007",
+          "korrektur_art": "nachlieferung_nach_endgueltigkeit",
+          "status": "freigegeben",
+          "fassung_alt": 1,
+          "fassung_neu": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "bezugsgroesse-mit-korrektur-kennung-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-09 §4.5 F4, §6.1; Referenzfall B5 (bezugsdaten-vectors.json)",
+      "why": "Die Berichtigung eines Bezugsgrößen-Werts ist der Vorgang BK-…, nie eine Korrektur K-… einer Reihe.",
+      "annahme": "Die Kennung BK-2026-0001 ist eine Annahme; BZ-2, Oktober 2026 und die Fassungen 1 → 2 sind der Fall B5.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000906",
+          "art": "correction",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "bezugsgroesse": "BZ-2",
+          "korrektur": "K-2026-0007",
+          "korrektur_art": "wert_berichtigt",
+          "status": "freigegeben",
+          "fassung_alt": 1,
+          "fassung_neu": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "bezugsgroesse-fassung-neu-nicht-groesser-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-09 §4.5 F4, §6.1; Referenzfall B5 (bezugsdaten-vectors.json)",
+      "why": "Die neue Fassung folgt auf die alte (F2: Fassung n + 1) — dieselbe Nummer wäre keine Berichtigung.",
+      "annahme": "Die Kennung BK-2026-0001 ist eine Annahme; BZ-2, Oktober 2026 und die Fassungen 1 → 2 sind der Fall B5.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000907",
+          "art": "correction",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "bezugsgroesse": "BZ-2",
+          "korrektur": "BK-2026-0001",
+          "korrektur_art": "wert_berichtigt",
+          "status": "freigegeben",
+          "fassung_alt": 2,
+          "fassung_neu": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "verteilung-ms07-ab-15-01-2027",
+      "pruefung": "ereignis",
+      "bezug": "AP-10 §4.6, E11, E12; Referenzfall F13 (verteilung-vectors.json)",
+      "why": "Ines Kaltenbach trägt am 20.01.2027 rückwirkend ein, dass MS-07 ab dem 15.01. zu 60 % an 4100 und zu 40 % an 4200 geht — eine Meldung, Bezug die Messstelle.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001a0",
+          "art": "verteilung_geaendert",
+          "zeitpunkt": "2027-01-14T23:00:00Z",
+          "messstelle": "MS-07",
+          "eingetragen_am": "2027-01-20T09:12:00Z"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Verteilung auf Kostenstellen geändert ab 15.01.2027 00:00 (eingetragen am 20.01.2027 10:12)"
+        ]
+      }
+    },
+    {
+      "name": "verteilung-im-voraus-eingetragen",
+      "pruefung": "ereignis",
+      "bezug": "AP-10 §4.6, E11, E12; Referenzfall F13 (verteilung-vectors.json)",
+      "why": "Die Verteilung ab dem 01.02.2027 wird schon am 20.01. eingetragen — eingetragen_am darf vor dem Zeitpunkt liegen.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001a1",
+          "art": "verteilung_geaendert",
+          "zeitpunkt": "2027-01-31T23:00:00Z",
+          "messstelle": "MS-07",
+          "eingetragen_am": "2027-01-20T09:12:00Z"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Verteilung auf Kostenstellen geändert ab 01.02.2027 00:00 (eingetragen am 20.01.2027 10:12)"
+        ]
+      }
+    },
+    {
+      "name": "verteilung-von-der-cloud-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-10 §4.6, E11, E12; Referenzfall F13 (verteilung-vectors.json)",
+      "why": "Eine Verteilung trägt ein Mensch ein; die Cloud rechnet mit ihr, ändert sie aber nie.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001a2",
+          "art": "verteilung_geaendert",
+          "zeitpunkt": "2027-01-14T23:00:00Z",
+          "messstelle": "MS-07",
+          "eingetragen_am": "2027-01-20T09:12:00Z"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "urheber_unzulaessig",
+        "saetze": []
+      }
+    },
+    {
+      "name": "verteilung-an-einer-reihe-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-10 §4.6, E11, E12; Referenzfall F13 (verteilung-vectors.json)",
+      "why": "Eine Verteilung hängt an der Messstelle, nicht an einer Reihe — Komponente und Messkanal gehören nicht in die Meldung.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001a3",
+          "art": "verteilung_geaendert",
+          "zeitpunkt": "2027-01-14T23:00:00Z",
+          "messstelle": "MS-07",
+          "eingetragen_am": "2027-01-20T09:12:00Z",
+          "komponente": "K-6",
+          "messkanal": "Wirkenergie Bezug"
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "schema_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "bilanz-ms22-nach-korrektur-von-ms17",
+      "pruefung": "ereignis",
+      "bezug": "AP-10 §8 IP-11; Referenzfall F14 (bilanz-vectors.json, verteilung-vectors.json)",
+      "why": "Nach der Freigabe der Korrektur von MS-17 rechnet die Kaskade den Rest MS-22 für den 18.10.2026 als Version 2 (12 kWh) — eine Meldung, Bezug der Rest.",
+      "annahme": "Die Kennung K-2026-0011 der freigegebenen Korrektur von MS-17 ist eine Annahme — die Vorlage nennt die Korrektur, aber keine Kennung.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001b0",
+          "art": "bilanz_neu_berechnet",
+          "von": "2026-10-17T22:00:00Z",
+          "bis": "2026-10-18T22:00:00Z",
+          "messstelle": "MS-22",
+          "ausloeser": "K-2026-0011"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Bilanz neu berechnet für 18.10.2026 00:00 bis 19.10.2026 00:00 nach K-2026-0011"
+        ]
+      }
+    },
+    {
+      "name": "bilanz-ms17-verteilte-werte-nach-korrektur",
+      "pruefung": "ereignis",
+      "bezug": "AP-10 §8 IP-11; Referenzfall F14 (bilanz-vectors.json, verteilung-vectors.json)",
+      "why": "MS-17 geht zu 100 % an 4300: ihre verteilten Werte tragen nach der Korrektur Version 2 — dieselbe Kaskade meldet es an der gemessenen Messstelle.",
+      "annahme": "Die Kennung K-2026-0011 der freigegebenen Korrektur von MS-17 ist eine Annahme — die Vorlage nennt die Korrektur, aber keine Kennung.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001b1",
+          "art": "bilanz_neu_berechnet",
+          "von": "2026-10-17T22:00:00Z",
+          "bis": "2026-10-18T22:00:00Z",
+          "messstelle": "MS-17",
+          "ausloeser": "K-2026-0011"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Bilanz neu berechnet für 18.10.2026 00:00 bis 19.10.2026 00:00 nach K-2026-0011"
+        ]
+      }
+    },
+    {
+      "name": "bilanz-neu-berechnet-von-einem-menschen-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-10 §8 IP-11; Referenzfall F14 (bilanz-vectors.json, verteilung-vectors.json)",
+      "why": "Neu gerechnet hat das System; ein Mensch meldet die Entscheidung als correction, nie die Rechnung.",
+      "annahme": "Die Kennung K-2026-0011 der freigegebenen Korrektur von MS-17 ist eine Annahme — die Vorlage nennt die Korrektur, aber keine Kennung.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001b2",
+          "art": "bilanz_neu_berechnet",
+          "von": "2026-10-17T22:00:00Z",
+          "bis": "2026-10-18T22:00:00Z",
+          "messstelle": "MS-22",
+          "ausloeser": "K-2026-0011"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "urheber_unzulaessig",
+        "saetze": []
+      }
+    },
+    {
+      "name": "bilanz-neu-berechnet-ohne-anlass-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-10 §8 IP-11; Referenzfall F14 (bilanz-vectors.json, verteilung-vectors.json)",
+      "why": "Ein Auslöser, der keine Korrektur und kein Ersatzwert ist, wäre eine Neuberechnung ohne Ursache.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001b3",
+          "art": "bilanz_neu_berechnet",
+          "von": "2026-10-17T22:00:00Z",
+          "bis": "2026-10-18T22:00:00Z",
+          "messstelle": "MS-22",
+          "ausloeser": "MS-17"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "bilanz-neu-berechnet-an-einer-reihe-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-10 §8 IP-11; Referenzfall F14 (bilanz-vectors.json, verteilung-vectors.json)",
+      "why": "Eine Neuberechnung der Bilanz hängt an der Messstelle, nicht an einer Reihe — Komponente und Messkanal gehören nicht in die Meldung.",
+      "annahme": "Die Kennung K-2026-0011 der freigegebenen Korrektur von MS-17 ist eine Annahme — die Vorlage nennt die Korrektur, aber keine Kennung.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001b4",
+          "art": "bilanz_neu_berechnet",
+          "von": "2026-10-17T22:00:00Z",
+          "bis": "2026-10-18T22:00:00Z",
+          "messstelle": "MS-22",
+          "ausloeser": "K-2026-0011",
+          "komponente": "K-8.1",
+          "messkanal": "Wirkenergie Bezug"
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "schema_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "bericht-br-2026-0001-nr1-freigegeben",
+      "pruefung": "ereignis",
+      "bezug": "AP-12 §8 IP-4; bericht-vectors.json B1/B2/B7/B14; Referenzunternehmen 1.4 (BR-2026-0001, K-2026-0007)",
+      "why": "B1/B5: Ines gibt am 10.11.2026 um 09:02 den Oktober-Bericht frei — Datenstand 08:55, Prüfsumme des Abzugs Nr. 1.",
+      "annahme": "Keine über die Referenz hinaus: BR-2026-0001 Nr. 1, Datenstand 10.11.2026 08:55, Freigabe 09:02 und die Prüfsumme von Abzug Nr. 1 sind B1/B5 (bericht-vectors.json, Referenzdatei 1.4).",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001c0",
+          "art": "bericht_freigegeben",
+          "zeitpunkt": "2026-11-10T08:02:00Z",
+          "bericht": "BR-2026-0001",
+          "nr": 1,
+          "datenstand": "2026-11-10T07:55:00Z",
+          "pruefsumme": "sha256:b113527d108b16714992e6057b7ac201d37998f3765a10e3b12a0fcf3cc7ae03"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Berichtsstand Nr. 1 von BR-2026-0001 freigegeben (Datenstand 10.11.2026 08:55)"
+        ]
+      }
+    },
+    {
+      "name": "bericht-freigabe-von-der-cloud-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-12 §8 IP-4; bericht-vectors.json B1/B2/B7/B14; Referenzunternehmen 1.4 (BR-2026-0001, K-2026-0007)",
+      "why": "Freigegeben hat ein Mensch (F2); das System meldet nie eine Freigabe.",
+      "annahme": "Wie bericht-br-2026-0001-nr1-freigegeben; erfunden ist nur der Urheber cloud.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001c1",
+          "art": "bericht_freigegeben",
+          "zeitpunkt": "2026-11-10T08:02:00Z",
+          "bericht": "BR-2026-0001",
+          "nr": 1,
+          "datenstand": "2026-11-10T07:55:00Z",
+          "pruefsumme": "sha256:b113527d108b16714992e6057b7ac201d37998f3765a10e3b12a0fcf3cc7ae03"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "urheber_unzulaessig",
+        "saetze": []
+      }
+    },
+    {
+      "name": "bericht-freigabe-datenstand-nach-dem-zeitpunkt-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-12 §8 IP-4; bericht-vectors.json B1/B2/B7/B14; Referenzunternehmen 1.4 (BR-2026-0001, K-2026-0007)",
+      "why": "D3: die Freigabe liegt nie vor dem Datenstand — ein Datenstand nach dem Zeitpunkt der Meldung widerspricht sich.",
+      "annahme": "Wie bericht-br-2026-0001-nr1-freigegeben; erfunden ist nur der Datenstand 09:10.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001c2",
+          "art": "bericht_freigegeben",
+          "zeitpunkt": "2026-11-10T08:02:00Z",
+          "bericht": "BR-2026-0001",
+          "nr": 1,
+          "datenstand": "2026-11-10T08:10:00Z",
+          "pruefsumme": "sha256:b113527d108b16714992e6057b7ac201d37998f3765a10e3b12a0fcf3cc7ae03"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "bericht-br-2026-0001-nr1-revision-nach-k-2026-0007",
+      "pruefung": "ereignis",
+      "bezug": "AP-12 §8 IP-4; bericht-vectors.json B1/B2/B7/B14; Referenzunternehmen 1.4 (BR-2026-0001, K-2026-0007)",
+      "why": "B1/B2: die Freigabe von K-2026-0007 am 12.11.2026 trifft Nr. 1 — der Stand bleibt byte-gleich und bekommt den Anstoß.",
+      "annahme": "Fassung 2 = die Freigabe-Fassung von K-2026-0007 (Fassung 1 ist der Vorschlag, AP-08 E14); Zeitpunkt = Freigabe der Korrektur.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001d0",
+          "art": "bericht_revision_angestossen",
+          "zeitpunkt": "2026-11-12T09:05:33Z",
+          "bericht": "BR-2026-0001",
+          "nr": 1,
+          "anstoss_art": "korrektur_freigegeben",
+          "anlass_kennung": "K-2026-0007",
+          "anlass_fassung": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Revision nötig für Berichtsstand Nr. 1 von BR-2026-0001: Korrektur freigegeben (K-2026-0007)"
+        ]
+      }
+    },
+    {
+      "name": "bericht-anstoss-umbenennung-ist-kein-wort",
+      "pruefung": "ereignis",
+      "bezug": "AP-12 §8 IP-4; bericht-vectors.json B1/B2/B7/B14; Referenzunternehmen 1.4 (BR-2026-0001, K-2026-0007)",
+      "why": "B6: eine Umbenennung ist kein Anstoß — `umbenennung` ist ein Wort von `kein_anstoss`, nicht von `anstoss_art`.",
+      "annahme": "Wie der Anstoß nach K-2026-0007; erfunden sind die Art umbenennung und der Anlass MS-12 (B10: MS-12 wird umbenannt).",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001d1",
+          "art": "bericht_revision_angestossen",
+          "zeitpunkt": "2026-11-12T09:05:33Z",
+          "bericht": "BR-2026-0001",
+          "nr": 1,
+          "anstoss_art": "umbenennung",
+          "anlass_kennung": "MS-12",
+          "anlass_fassung": 2
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "wort_unbekannt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "bericht-br-2026-0001-entwurf-neu-nach-k-2026-0007",
+      "pruefung": "ereignis",
+      "bezug": "AP-12 §8 IP-4; bericht-vectors.json B1/B2/B7/B14; Referenzunternehmen 1.4 (BR-2026-0001, K-2026-0007)",
+      "why": "B2: dieselbe Kaskade bildet den Entwurf in derselben Transaktion neu — neuer Datenstand 12.11.2026 10:05:33.",
+      "annahme": "Zeitpunkt und Datenstand = Freigabe von K-2026-0007 (12.11.2026 10:05:33, Referenzdatei 1.4); dass die Kaskade in derselben Sekunde bildet, ist angenommen.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001f0",
+          "art": "bericht_entwurf_neu_gebildet",
+          "zeitpunkt": "2026-11-12T09:05:33Z",
+          "bericht": "BR-2026-0001",
+          "datenstand": "2026-11-12T09:05:33Z",
+          "anlass_kennung": "K-2026-0007"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Entwurf von BR-2026-0001 neu gebildet (Datenstand 12.11.2026 10:05:33) nach K-2026-0007"
+        ]
+      }
+    },
+    {
+      "name": "bericht-br-2026-0001-nr2-als-csv-abgerufen",
+      "pruefung": "ereignis",
+      "bezug": "AP-12 §8 IP-4; bericht-vectors.json B1/B2/B7/B14; Referenzunternehmen 1.4 (BR-2026-0001, K-2026-0007)",
+      "why": "B14: Jonas ruft am 20.11.2026 um 17:45 den CSV des Oktober-Berichts ab — eine Meldung je Abruf.",
+      "annahme": "Der abgerufene Stand ist Nr. 2 (am 20.11.2026 der gültige, seit 16.11.2026).",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001e0",
+          "art": "bericht_abgerufen",
+          "zeitpunkt": "2026-11-20T16:45:00Z",
+          "bericht": "BR-2026-0001",
+          "nr": 2,
+          "format": "csv"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Berichtsstand Nr. 2 von BR-2026-0001 als CSV abgerufen"
+        ]
+      }
+    },
+    {
+      "name": "bericht-abruf-xlsx-ist-keine-ausgabe",
+      "pruefung": "ereignis",
+      "bezug": "AP-12 §8 IP-4; bericht-vectors.json B1/B2/B7/B14; Referenzunternehmen 1.4 (BR-2026-0001, K-2026-0007)",
+      "why": "DA5: abgerufen werden PDF und CSV eines Stands — ein anderes Format ist kein Wort.",
+      "annahme": "Wie bericht-br-2026-0001-nr2-als-csv-abgerufen; erfunden ist nur das Format xlsx.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001e1",
+          "art": "bericht_abgerufen",
+          "zeitpunkt": "2026-11-20T16:45:00Z",
+          "bericht": "BR-2026-0001",
+          "nr": 2,
+          "format": "xlsx"
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "wort_unbekannt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "bericht-abruf-ohne-berichts-kennung-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-12 §8 IP-4; bericht-vectors.json B1/B2/B7/B14; Referenzunternehmen 1.4 (BR-2026-0001, K-2026-0007)",
+      "why": "Bezug ist ein Bericht BR-<Jahr>-<Nr.> — eine Korrektur-Kennung ist keiner.",
+      "annahme": "Wie bericht-br-2026-0001-nr2-als-csv-abgerufen; erfunden ist nur die Korrektur-Kennung als Bezug.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001e2",
+          "art": "bericht_abgerufen",
+          "zeitpunkt": "2026-11-20T16:45:00Z",
+          "bericht": "K-2026-0007",
+          "nr": 2,
+          "format": "csv"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "kennzahl-kz0001-oktober-version-2-nach-korrektur",
+      "pruefung": "ereignis",
+      "bezug": "AP-11 §8 IP-8; Referenzfall K7 (kennzahl-vectors.json)",
+      "why": "Die freigegebene Korrektur von MS-12 macht den endgültigen Oktober-Wert von KZ-0001 (Halle 2) zu Version 2 — die Kaskade meldet die Neubildung, Bezug die Kennzahl.",
+      "annahme": "Der Auslöser K-2026-0007 folgt der Herkunft „KZ-0001 Version 2 mit dem Anlass K-2026-0007“ in kennzahl-vectors.json; K7 nennt die Korrektur von MS-12, aber keine Kennung.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001c0",
+          "art": "kennzahl_neu_gebildet",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "kennzahl": "KZ-0001",
+          "ausloeser": "K-2026-0007",
+          "version": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Kennzahl KZ-0001 neu gebildet für 01.10.2026 00:00 bis 01.11.2026 00:00: Version 2 nach K-2026-0007"
+        ]
+      }
+    },
+    {
+      "name": "kennzahl-kz0003-oktober-version-2-in-derselben-kaskade",
+      "pruefung": "ereignis",
+      "bezug": "AP-11 §8 IP-8; Referenzfall K7 (kennzahl-vectors.json)",
+      "why": "Das Unternehmen (KZ-0003) fasst Halle 2 zusammen und wird in derselben Kaskade Version 2 — eine eigene Meldung je Kennzahl; KZ-0002 bleibt Version 1 und meldet nichts.",
+      "annahme": "Der Auslöser K-2026-0007 folgt der Herkunft „KZ-0001 Version 2 mit dem Anlass K-2026-0007“ in kennzahl-vectors.json; K7 nennt die Korrektur von MS-12, aber keine Kennung.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001c1",
+          "art": "kennzahl_neu_gebildet",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "kennzahl": "KZ-0003",
+          "ausloeser": "K-2026-0007",
+          "version": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Kennzahl KZ-0003 neu gebildet für 01.10.2026 00:00 bis 01.11.2026 00:00: Version 2 nach K-2026-0007"
+        ]
+      }
+    },
+    {
+      "name": "kennzahl-kz0004-oktober-version-2-nach-berichtigung-des-nenners",
+      "pruefung": "ereignis",
+      "bezug": "AP-11 §8 IP-9 (Nenner-Auslöser, W1); Referenzfall K6 (kennzahl-vectors.json)",
+      "why": "Die Berichtigung von BZ-1 Oktober 2026 bildet KZ-0004 als Version 2 neu — derselbe Takt wie eine Korrektur, aber ohne Messreihen-Stufe; der Auslöser ist die Berichtigung, die AP-09 IP-7 als correction mit Bezug bezugsgroesse meldet.",
+      "annahme": "Die Kennung BK-2026-0001 ist angenommen: K6 nennt den Import I-2026-0003 (Annahme aus B3) nur im Beleg-Satz der Herkunft; die Meldung trägt die Kennung der Berichtigung.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000210",
+          "art": "kennzahl_neu_gebildet",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "kennzahl": "KZ-0004",
+          "ausloeser": "BK-2026-0001",
+          "version": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Kennzahl KZ-0004 neu gebildet für 01.10.2026 00:00 bis 01.11.2026 00:00: Version 2 nach BK-2026-0001"
+        ]
+      }
+    },
+    {
+      "name": "kennzahl-kz0004-maerz-version-2-nach-geaenderter-berechnung",
+      "pruefung": "ereignis",
+      "bezug": "AP-11 §8 IP-9 (Definitions-Auslöser); Referenzfall K17 (kennzahl-vectors.json)",
+      "why": "Wäre der März 2027 am 20.03. schon endgültig gewesen, bildete die rückwirkende Fassung 2 der Berechnung ihn als Version 2 „Berechnung geändert (Fassung 2)“ neu — ohne Vorgang ist der Auslöser die Kennzahl mit der Nummer ihrer neuen Fassung — ein bloßes Kennzeichen wäre keine Ursache.",
+      "annahme": "Der endgültige März ist die Annahme aus K17 („wäre der März endgültig gewesen“); die Periode endet in der Sommerzeit.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000211",
+          "art": "kennzahl_neu_gebildet",
+          "von": "2027-02-28T23:00:00Z",
+          "bis": "2027-03-31T22:00:00Z",
+          "kennzahl": "KZ-0004",
+          "ausloeser": "KZ-0004/Fassung-2",
+          "version": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Kennzahl KZ-0004 neu gebildet für 01.03.2027 00:00 bis 01.04.2027 00:00: Version 2 nach KZ-0004/Fassung-2"
+        ]
+      }
+    },
+    {
+      "name": "kennzahl-kz0007-januar-version-2-nach-rueckwirkendem-stammdatum",
+      "pruefung": "ereignis",
+      "bezug": "AP-11 §8 IP-9 (Stammdatum-Auslöser); Referenzfälle K10 und K12 (kennzahl-vectors.json)",
+      "why": "Ein rückwirkend eingetragenes Stammdatum (Mitarbeitende BZ-8 ab 01.01.2027) bildet den schon endgültigen Januar der Kennzahl je Person als Version 2 neu — der Auslöser ist die Bezugsgröße mit dem Tag, ab dem das Stammdatum gilt.",
+      "annahme": "Die Kennzahl KZ-0007 (Netzbezug gesamt je Person, K10) und das Datum sind angenommen; K12 beschreibt dieselbe Regel für die Fläche, die heute kein Kennzahl-Eingang ist.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000212",
+          "art": "kennzahl_neu_gebildet",
+          "von": "2026-12-31T23:00:00Z",
+          "bis": "2027-01-31T23:00:00Z",
+          "kennzahl": "KZ-0007",
+          "ausloeser": "BZ-8/ab-2027-01-01",
+          "version": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Kennzahl KZ-0007 neu gebildet für 01.01.2027 00:00 bis 01.02.2027 00:00: Version 2 nach BZ-8/ab-2027-01-01"
+        ]
+      }
+    },
+    {
+      "name": "kennzahl-neu-gebildet-von-der-box-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-11 §8 IP-8; Referenzfall K7 (kennzahl-vectors.json)",
+      "why": "Eine Box kennt keine Kennzahl — gebildet hat das System in der Cloud.",
+      "annahme": null,
+      "input": {
+        "urheber": "box",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001c2",
+          "art": "kennzahl_neu_gebildet",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "kennzahl": "KZ-0001",
+          "ausloeser": "K-2026-0007",
+          "version": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "urheber_unzulaessig",
+        "saetze": []
+      }
+    },
+    {
+      "name": "kennzahl-neu-gebildet-vom-writer-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-11 §8 IP-8; Referenzfall K7 (kennzahl-vectors.json)",
+      "why": "Der Writer schreibt Messwerte, keine Kennzahl-Versionen — die Neubildung meldet nur die Kaskade der Cloud.",
+      "annahme": null,
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001c3",
+          "art": "kennzahl_neu_gebildet",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "kennzahl": "KZ-0001",
+          "ausloeser": "K-2026-0007",
+          "version": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "urheber_unzulaessig",
+        "saetze": []
+      }
+    },
+    {
+      "name": "kennzahl-neu-gebildet-von-einem-menschen-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-11 §8 IP-8; Referenzfall K7 (kennzahl-vectors.json)",
+      "why": "Neu gebildet hat das System; ein Mensch meldet die Entscheidung als correction, nie die Neubildung.",
+      "annahme": null,
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001c4",
+          "art": "kennzahl_neu_gebildet",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "kennzahl": "KZ-0001",
+          "ausloeser": "K-2026-0007",
+          "version": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "urheber_unzulaessig",
+        "saetze": []
+      }
+    },
+    {
+      "name": "kennzahl-neu-gebildet-ohne-ausloeser-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-11 §8 IP-8; Referenzfall K7 (kennzahl-vectors.json)",
+      "why": "Eine Version n + 1 ohne Anlass wäre eine Neubildung ohne Ursache — der Auslöser ist Pflicht.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001c5",
+          "art": "kennzahl_neu_gebildet",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "kennzahl": "KZ-0001",
+          "version": 2
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "schema_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "kennzahl-neu-gebildet-version-1-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-11 §8 IP-8; Referenzfall K7 (kennzahl-vectors.json)",
+      "why": "Version 1 bildet der Regellauf ohne Meldung — neu gebildet ist erst Version n + 1, also mindestens 2.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001c6",
+          "art": "kennzahl_neu_gebildet",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "kennzahl": "KZ-0001",
+          "ausloeser": "K-2026-0007",
+          "version": 1
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "kennzahl-neu-gebildet-ohne-kennzahl-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-11 §8 IP-8; Referenzfall K7 (kennzahl-vectors.json)",
+      "why": "Eine Neubildung, die keine Kennzahl nennt, trifft nichts — der Bezug ist Pflicht.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001c7",
+          "art": "kennzahl_neu_gebildet",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "ausloeser": "K-2026-0007",
+          "version": 2
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "schema_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "kennzahl-neu-gebildet-an-einer-messstelle-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-11 §8 IP-8; Referenzfall K7 (kennzahl-vectors.json)",
+      "why": "Ein Kennzahl-Wert hängt an keiner Messstelle — die korrigierte MS-12 gehört in die Korrektur, nicht in die Meldung der Kennzahl.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001c8",
+          "art": "kennzahl_neu_gebildet",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "kennzahl": "KZ-0001",
+          "ausloeser": "K-2026-0007",
+          "version": 2,
+          "messstelle": "MS-12"
+        }
+      },
+      "expected": {
+        "schema": false,
+        "urteil": "verworfen",
+        "grund": "schema_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "kennzahl-neu-gebildet-ohne-korrektur-kennung-verworfen",
+      "pruefung": "ereignis",
+      "bezug": "AP-11 §8 IP-8; Referenzfall K7 (kennzahl-vectors.json)",
+      "why": "Ein Auslöser, der keine Korrektur und kein Ersatzwert ist, wäre eine Neubildung ohne Ursache.",
+      "annahme": null,
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-0000000001c9",
+          "art": "kennzahl_neu_gebildet",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "kennzahl": "KZ-0001",
+          "ausloeser": "MS-12",
+          "version": 2
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "ablesung-ms21-ueberfaellig-cloud",
+      "pruefung": "ereignis",
+      "bezug": "AP-09 IP-8 Z7",
+      "why": "Mehr als zwei Kalendermonate seit 02.11.2026 07:40: Cloud meldet die Ablesung, ohne Box zu erfinden.",
+      "annahme": "Keine weitere Ablesung seit B8.",
+      "input": {
+        "urheber": "cloud",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000981",
+          "art": "data_gap",
+          "von": "2027-01-02T06:40:00Z",
+          "bis": null,
+          "erkannt_aus": "kadenz",
+          "messstelle": "MS-21"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Lücke seit 02.01.2027 07:40 — nie als 0 gerechnet"
+        ]
+      }
+    },
+    {
+      "name": "ablesung-ohne-box-nicht-vom-writer",
+      "pruefung": "ereignis",
+      "bezug": "AP-09 IP-8 Z7",
+      "why": "Mehr als zwei Kalendermonate seit 02.11.2026 07:40: Cloud meldet die Ablesung, ohne Box zu erfinden.",
+      "annahme": "Keine weitere Ablesung seit B8.",
+      "input": {
+        "urheber": "writer",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000981",
+          "art": "data_gap",
+          "von": "2027-01-02T06:40:00Z",
+          "bis": null,
+          "erkannt_aus": "kadenz",
+          "messstelle": "MS-21"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "schema_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "import-zeile-eigener-korrektur-anlass",
+      "pruefung": "ereignis",
+      "bezug": "AP-09 IP-13 C6/C7; B3/B14",
+      "why": "Jede Importzeile hat ihren eigenen Anlass; zwei Fassungen 2 desselben Imports dürfen sich in der Kaskade nicht übergehen.",
+      "annahme": "Import-Kennung und Zeilennummer sind angenommene technische Belege; BZ-2 und Oktober stammen aus dem Referenzfall B5.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000971",
+          "art": "correction",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "bezugsgroesse": "BZ-2",
+          "korrektur": "I-2026-0003/Zeile-2/Fassung-2",
+          "korrektur_art": "wert_berichtigt",
+          "status": "freigegeben",
+          "fassung_alt": 1,
+          "fassung_neu": 2,
+          "import": "I-2026-0003"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": [
+          "Korrektur I-2026-0003/Zeile-2/Fassung-2 freigegeben für 01.10.2026 00:00 bis 01.11.2026 00:00: Wert berichtigt (mit Beleg) · Bezugsgröße BZ-2, Fassung 1 → 2 · Import I-2026-0003"
+        ]
+      }
+    },
+    {
+      "name": "import-anlass-import-widerspricht",
+      "pruefung": "ereignis",
+      "bezug": "AP-09 IP-13 C6/C7; B3/B14",
+      "why": "Import und Fassung im Anlass müssen zur Meldung passen.",
+      "annahme": "Import-Kennung und Zeilennummer sind angenommene technische Belege; BZ-2 und Oktober stammen aus dem Referenzfall B5.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000972",
+          "art": "correction",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "bezugsgroesse": "BZ-2",
+          "korrektur": "I-2026-0003/Zeile-2/Fassung-2",
+          "korrektur_art": "wert_berichtigt",
+          "status": "freigegeben",
+          "fassung_alt": 1,
+          "fassung_neu": 2,
+          "import": "I-2026-0004"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "import-anlass-fassung-neu-widerspricht",
+      "pruefung": "ereignis",
+      "bezug": "AP-09 IP-13 C6/C7; B3/B14",
+      "why": "Import und Fassung im Anlass müssen zur Meldung passen.",
+      "annahme": "Import-Kennung und Zeilennummer sind angenommene technische Belege; BZ-2 und Oktober stammen aus dem Referenzfall B5.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000000973",
+          "art": "correction",
+          "von": "2026-09-30T22:00:00Z",
+          "bis": "2026-10-31T23:00:00Z",
+          "bezugsgroesse": "BZ-2",
+          "korrektur": "I-2026-0003/Zeile-2/Fassung-2",
+          "korrektur_art": "wert_berichtigt",
+          "status": "freigegeben",
+          "fassung_alt": 1,
+          "fassung_neu": 3,
+          "import": "I-2026-0003"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "verworfen",
+        "grund": "regel_verletzt",
+        "saetze": []
+      }
+    },
+    {
+      "name": "messbedarf-mb-1-erfasst",
+      "pruefung": "ereignis",
+      "bezug": "AP-16 §4.7 P1, R5; IP-19",
+      "why": "Die Person erfasst den offenen Messbedarf; Zahlen stufen nichts ein.",
+      "annahme": "MB-1 ist das Kennzeichen der Erweiterung 1.6 aus R5.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000001901",
+          "art": "messbedarf_erfasst",
+          "zeitpunkt": "2026-11-27T09:00:00Z",
+          "messbedarf": "MB-1"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": ["Messbedarf MB-1 erfasst"]
+      }
+    },
+    {
+      "name": "messbedarf-mb-1-eingeloest",
+      "pruefung": "ereignis",
+      "bezug": "AP-16 §4.7 P2, R5; IP-19",
+      "why": "Die Person löst den Bedarf durch die eingerichtete Messstelle MS-23 ein.",
+      "annahme": "MB-1 und MS-23 sind die Kennzeichen der Erweiterung 1.6 aus R5.",
+      "input": {
+        "urheber": "kunde",
+        "ereignis": {
+          "ereignis_id": "e7e00000-0000-4000-8000-000000001902",
+          "art": "messbedarf_eingeloest",
+          "zeitpunkt": "2026-11-27T09:05:00Z",
+          "messbedarf": "MB-1",
+          "messstelle": "MS-23"
+        }
+      },
+      "expected": {
+        "schema": true,
+        "urteil": "angenommen",
+        "grund": null,
+        "saetze": ["Messbedarf MB-1 durch Messstelle Halle 1 Allgemein eingelöst"]
       }
     }
   ]

@@ -112,11 +112,16 @@ public class AdminComponentFleetRepository {
         return out;
     }
 
-    /** Das SOLL: die zuletzt komponierte Push-Revision je Anlage. */
+    /**
+     * Das SOLL: die zuletzt komponierte Push-Revision je Anlage. Seit UEMS AP-06 IP-6 hat eine
+     * Anlage eine Zeile je Box - gelesen wird die jüngste, wortgleich
+     * {@code EntityRegistryRepository.registryState}.
+     */
     public Map<UUID, String> registryRevisionPerSite() {
         Map<UUID, String> out = new HashMap<>();
         each(rs -> out.put(rs.getObject("site_id", UUID.class),
-                rs.getString("revision")), "SELECT site_id, revision FROM entity_registry_state");
+                rs.getString("revision")), "SELECT DISTINCT ON (site_id) site_id, revision FROM entity_registry_state "
+                + "ORDER BY site_id, composed_at DESC, device_id NULLS LAST");
         return out;
     }
 
@@ -135,18 +140,24 @@ public class AdminComponentFleetRepository {
                         rs.getString("held_revision"), instant(rs, "reported_at"))),
                 "SELECT DISTINCT ON (site_id) site_id, authority, applied_revision, "
                         + "refused_revision, refused_reason, held_revision, reported_at "
-                        + "FROM device_component_apply ORDER BY site_id, reported_at DESC");
+                        + "FROM device_component_apply a WHERE EXISTS (SELECT 1 FROM device d "
+                        + "  WHERE d.id = a.device_id AND d.ausgebaut_am IS NULL) "
+                        + "ORDER BY site_id, reported_at DESC");
         return out;
     }
 
-    /** Die vom Gerät gemeldete Steuer-Herkunft je Anlage (jüngster Bericht). */
+    /**
+     * Die vom Gerät gemeldete Steuer-Herkunft je Anlage (jüngster Bericht einer Box, die nicht
+     * ausgebaut ist - UEMS AP-07 IP-11).
+     */
     public Map<UUID, ControlRow> controlPerSite() {
         Map<UUID, ControlRow> out = new HashMap<>();
         each(rs -> out.put(rs.getObject("site_id", UUID.class),
                 new ControlRow(rs.getString("cert_source"), rs.getString("platform_cert_verdict"),
                         rs.getString("platform_cert_model"), instant(rs, "checked_at"))),
                 "SELECT DISTINCT ON (site_id) site_id, cert_source, platform_cert_verdict, "
-                        + "platform_cert_model, checked_at FROM device_control_status "
+                        + "platform_cert_model, checked_at FROM device_control_status s "
+                        + "WHERE EXISTS (SELECT 1 FROM device d WHERE d.id = s.device_id AND d.ausgebaut_am IS NULL) "
                         + "ORDER BY site_id, checked_at DESC");
         return out;
     }
@@ -159,7 +170,7 @@ public class AdminComponentFleetRepository {
     public Map<UUID, Integer> activationsPerSite() {
         Map<UUID, Integer> out = new HashMap<>();
         each(countHandler(out), "SELECT d.site_id, count(*) AS n "
-                + "FROM device_control_activation a JOIN device d ON d.id = a.device_id "
+                + "FROM device_control_activation a JOIN device d ON d.id = a.device_id AND d.ausgebaut_am IS NULL "
                 + "GROUP BY d.site_id");
         return out;
     }

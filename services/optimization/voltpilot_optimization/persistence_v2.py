@@ -17,7 +17,9 @@ byte-for-byte the discipline of :mod:`voltpilot_optimization.persistence`.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Protocol
+from uuid import UUID
 
 from voltpilot_optimization.entities import SitePlan
 
@@ -31,12 +33,24 @@ class SitePlanRepository(Protocol):
         """Persist the run + every consumer slot idempotently; return rows."""
         ...
 
+    def record_publication(
+        self, plan: SitePlan, device_id: UUID, published_at: datetime
+    ) -> None:
+        """AP-15 IP-10 (P3): note "veröffentlicht" for the box that got the plan."""
+        ...
+
+    def assign_run_number(self, plan: SitePlan) -> int | None:
+        """AP-15 IP-15 (P1): the site's next run number, stored on the run."""
+        ...
+
 
 class InMemorySitePlanRepository:
     """Test double: keeps every plan, latest-run lookup per site."""
 
     def __init__(self) -> None:
         self.plans: list[SitePlan] = []
+        self.publications: list[tuple[UUID, UUID, datetime, datetime]] = []
+        self.run_numbers: dict[UUID, int] = {}
 
     def upsert_site_plan(self, plan: SitePlan) -> int:
         self.plans = [
@@ -46,6 +60,17 @@ class InMemorySitePlanRepository:
         ]
         self.plans.append(plan)
         return sum(len(d.slots) for d in plan.loads)
+
+    def record_publication(
+        self, plan: SitePlan, device_id: UUID, published_at: datetime
+    ) -> None:
+        self.publications.append(
+            (device_id, plan.plan_id, plan.generated_at, published_at)
+        )
+
+    def assign_run_number(self, plan: SitePlan) -> int | None:
+        self.run_numbers[plan.site_id] = self.run_numbers.get(plan.site_id, 0) + 1
+        return self.run_numbers[plan.site_id]
 
     def latest_for_site(self, site_id) -> SitePlan | None:
         candidates = [p for p in self.plans if p.site_id == site_id]
@@ -78,6 +103,36 @@ DO UPDATE SET
     target_value   = EXCLUDED.target_value,
     reason_code    = EXCLUDED.reason_code,
     requirement_id = EXCLUDED.requirement_id;
+"""
+
+
+# AP-15 IP-10: "veröffentlicht" je Box und Plan (api migration
+# V20260921130000__plan_zustellung.sql). The api writes the box's verdict into
+# the same row when the receipt arrives - whoever comes first inserts; this
+# side owns generated_at and keeps the FIRST publication time.
+_PUBLICATION_UPSERT_SQL = """
+INSERT INTO plan_zustellung
+    (device_id, plan_id, tenant_id, site_id, generated_at, veroeffentlicht_um)
+VALUES (%s, %s, %s, %s, %s, %s)
+ON CONFLICT (device_id, plan_id)
+DO UPDATE SET
+    generated_at       = EXCLUDED.generated_at,
+    veroeffentlicht_um = COALESCE(plan_zustellung.veroeffentlicht_um,
+                                  EXCLUDED.veroeffentlicht_um);
+"""
+
+
+# AP-15 IP-15 (P1): eine Laufnummer je Anlage, aufsteigend, gespeichert am Lauf
+# (api migration V20260922000000__site_plan_run_lauf_nr.sql). EINE Optimierer-
+# Instanz schreibt; die Nummer folgt der hoechsten der Anlage. Die Aufbewahrung
+# (180 Tage) nimmt nur alte Laeufe - die juengsten tragen die Zaehlung weiter.
+_RUN_NUMBER_SQL = """
+UPDATE site_plan_run
+   SET lauf_nr = (SELECT COALESCE(max(r.lauf_nr), 0) + 1
+                    FROM site_plan_run r
+                   WHERE r.site_id = %s)
+ WHERE plan_id = %s AND generated_at = %s AND lauf_nr IS NULL
+RETURNING lauf_nr;
 """
 
 
@@ -120,11 +175,16 @@ class TimescaleSitePlanRepository:
         self._dsn = dsn
 
     def upsert_site_plan(self, plan: SitePlan) -> int:
+        """Run + slots, or nothing: an area that is "beendet", deleted or
+        locked by the Löschzug gets neither (UEMS AP-20 E10 = A,
+        :mod:`voltpilot_forecast.kundenbereich`); returns 0 then."""
         import psycopg  # lazy: optional [db] extra
 
         rows = consumer_slot_rows(plan)
         with psycopg.connect(self._dsn) as conn:
             with conn.cursor() as cur:
+                if not _lebend_gesperrt(cur, plan):
+                    return 0
                 cur.execute(
                     _RUN_UPSERT_SQL,
                     (
@@ -153,3 +213,56 @@ class TimescaleSitePlanRepository:
             },
         )
         return len(rows)
+
+    def record_publication(
+        self, plan: SitePlan, device_id: UUID, published_at: datetime
+    ) -> None:
+        import psycopg  # lazy: optional [db] extra
+
+        with psycopg.connect(self._dsn) as conn:
+            with conn.cursor() as cur:
+                if not _lebend_gesperrt(cur, plan):
+                    return
+                cur.execute(
+                    _PUBLICATION_UPSERT_SQL,
+                    (
+                        device_id,
+                        plan.plan_id,
+                        plan.tenant_id,
+                        plan.site_id,
+                        plan.generated_at,
+                        published_at,
+                    ),
+                )
+            conn.commit()
+
+    def assign_run_number(self, plan: SitePlan) -> int | None:
+        import psycopg  # lazy: optional [db] extra
+
+        with psycopg.connect(self._dsn) as conn:
+            with conn.cursor() as cur:
+                if not _lebend_gesperrt(cur, plan):
+                    return None
+                cur.execute(
+                    _RUN_NUMBER_SQL, (plan.site_id, plan.plan_id, plan.generated_at)
+                )
+                row = cur.fetchone()
+            conn.commit()
+        return int(row[0]) if row else None
+
+
+def _lebend_gesperrt(cur, plan: SitePlan) -> bool:  # noqa: ANN001
+    """``True`` = write: the plan's area is live and now locked until commit.
+
+    ``False`` logs the skip; the caller writes nothing in this transaction
+    (:mod:`voltpilot_forecast.kundenbereich`).
+    """
+    from voltpilot_forecast.kundenbereich import lebenden_bereich_sperren
+
+    if lebenden_bereich_sperren(cur, plan.tenant_id):
+        return True
+    logger.info(
+        "persist_v2.bereich_ausgelassen",
+        extra={"context": {"site_id": str(plan.site_id), "plan_id": str(plan.plan_id)}},
+    )
+    return False

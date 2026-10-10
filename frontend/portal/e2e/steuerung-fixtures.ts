@@ -10,7 +10,9 @@
 import { api } from '../src/api';
 import { consumersApi } from '../src/consumers/consumersApi';
 import { buildGuidedFlow } from '../src/flows/guidedBuilder';
-import { installHelpFixtures } from './help-fixtures';
+import { installHelpFixtures, site } from './help-fixtures';
+import { ahrenbergFunktionen } from '../src/test/funktionenFixtures';
+import { rechteSeed } from '../src/test/rollenFixtures';
 import D from './steuerung-daten.json';
 
 /** Die Uhr der Aufnahmen: 13:10 Uhr in Berlin. */
@@ -231,6 +233,9 @@ export function installSteuerungFixtures() {
     siteChargers: result(charging),
     chargingConfig: result({ gridLimitKw: 22, priorityChargePointIds: ['CP-WERKSTATT'], surplusPolicy: 'nur_sonne', storagePriority: 'speicher_vor_auto', frame: { rotationMinutes: 15 },
       storageReleaseReserveKwh: null, storageReleaseReserveStandardKwh: 1 }),
+    // Das Rahmen-Blatt prüft die Grenze gegen den heute gebundenen Netzanschluss (AP-01 IP-13); das Haus hat keinen Standort.
+    siteDetail: result({ ...site, standort: null }),
+    saveCustomerChargingFrame: async (_s: string, body: { gridLimitKw: number }) => ({ gridLimitKw: body.gridLimitKw, priorityChargePointIds: ['CP-WERKSTATT'], surplusPolicy: 'nur_sonne', storagePriority: 'speicher_vor_auto', frame: { rotationMinutes: 15 } }),
     saveStorageReleaseReserve: async (_s: string, reserveKwh: number | null) => ({ gridLimitKw: 22, priorityChargePointIds: ['CP-WERKSTATT'], surplusPolicy: 'nur_sonne',
       storagePriority: 'speicher_vor_auto', frame: { rotationMinutes: 15 }, storageReleaseReserveKwh: reserveKwh, storageReleaseReserveStandardKwh: 1 }),
     consumerSchedule: result(consumerPlan),
@@ -291,6 +296,26 @@ export function installSteuerungFixtures() {
     clearOverride: async () => ({ applied: true, pushed: true, kind: 'clear', endsAt: null, effectivePowerKw: null, gridImportPossible: false, ttlCapped: false, message: 'ok' }),
     patch: async (_s: string, id: string) => consumers.find((c) => c.id === id),
   });
+
+  // UEMS (SZ-1/SZ-2 A): `?funktion=kein_objekt|aktiv|angehalten` stellt „Steuern & Optimieren“ dieser
+  // Anlage. Ohne den Parameter bleibt `/funktionen` ungestellt - die Seite behauptet dann nichts.
+  const funktion = new URLSearchParams(location.search).get('funktion');
+  if (funktion === 'kein_objekt' || funktion === 'aktiv' || funktion === 'angehalten') {
+    const f = ahrenbergFunktionen();
+    const anlage = f.standorte[0].steuern.anlagen[0];
+    anlage.id = SITE;
+    Object.assign(anlage.teilnahme, funktion === 'kein_objekt'
+      ? { zustand: 'kein_objekt', seit: null, text: 'Nimmt noch nicht an Steuern & Optimieren teil', aktionen: ['aufnehmen'], ruhe_hinweis: { jetzt: false, beim_anhalten: false } }
+      : funktion === 'angehalten'
+        ? { zustand: 'angehalten', seit: '2026-09-29T08:00:00+02:00', text: 'Angehalten seit 29.09.2026 08:00', aktionen: ['fortsetzen', 'beenden'], ruhe_hinweis: { jetzt: false, beim_anhalten: false } }
+        : { zustand: 'aktiv', aktionen: ['anhalten', 'beenden'], ruhe_hinweis: { jetzt: false, beim_anhalten: false } });
+    Object.assign(api, {
+      // Die Rechte der Funktion gelten am Standort: dieselbe Person mit ihren Standorten (die Hilfe-Daten haben keine).
+      selbstauskunft: result(rechteSeed().me),
+      funktionen: result(f),
+      funktionSteuern: async (_s: string, aktion: string) => ({ aktion, betroffen: [], standort: f.standorte[0] }),
+    });
+  }
 
   // Die Regeln (`/flows`) laufen über fetch - dieselbe Abkürzung wie in den Hilfe-Beispieldaten.
   const vorher = window.fetch;

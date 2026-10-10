@@ -8,7 +8,7 @@ die Server-Regeln, die sie nennen.
 ## Aufbau
 
 - **Routen:** `steuerung` (Reiter Geräte), `laden` (nur mit Ladepunkt), `regeln`. Alle drei gehören
-  zum Bereich Steuerung (`anlageNav.ts` `SUB_BEREICH`); `AnlagenPage` rendert für sie keinen
+  zum Bereich Steuerung (`ebenenNav.ts` `SUB_BEREICH`); `AnlagenPage` rendert für sie keinen
   Seitenkopf und keine Bereichsreiter, sondern `SteuerungSection` → `steuerung/SteuerungSeite.tsx`.
   Alte Lesezeichen `steuerung?vorlage|verbraucher|komponente=` leitet `canonicalAnlageHash` auf
   `regeln` um, der Query bleibt; die Seite öffnet daraus den Satzbaukasten und räumt die Adresse mit
@@ -36,20 +36,60 @@ die Server-Regeln, die sie nennen.
 - Bausteine, die die Box nicht ausführen kann (Außentemperatur, günstigste Stunden, anderes Gerät,
   „nie wenn“), stehen als „kommt noch“ da, nie als stiller Knopf.
 
+## UEMS: „Steuern & Optimieren“ (Nachzug 1d)
+
+- `funktion.ts` leitet aus `/funktionen` (fail-soft in `useSteuerungDaten`; ohne Antwort behauptet die
+  Seite nichts) die Lage der Anlage ab und legt sie als `bild.funktion` ins `seitenBild`.
+- **Ruhe** = entwurf, eingerichtet, angehalten (wie `RuheHinweisRegel`) und beendet (auch „beenden“
+  schreibt die Ruhe). `/interventions` zeigt die Ruhe bewusst nicht. In Ruhe: Plakette mit Zustand statt
+  „Automatik an“ (kein Pause-Knopf), Band „Angehalten seit …“ / „Eingerichtet am … — …“, Ruhe-Satz der
+  älteren Box (#986); Aus/Ein im Blatt und Aus/Schnell am Ladepunkt gesperrt mit Grund, und `eingriff`,
+  `speicherEingriff`, `pause` sperren zentral - sonst antwortet der Server 409. „Smart“ bleibt.
+- **Ohne Teilnahme** (kein Objekt, beendet; Steuern-Regel #779): keine Karte „Neu in Ihrer Anlage“, kein
+  „Gerät fehlt?“; Geräte ohne Auftrag stehen als `einordnung.still` mit dem Weg „Steuerart“. Nur „kein
+  Objekt“ bekommt den Einstieg (#965, Knopf hinter `funktion.steuern_einrichten`, öffnet `SteuernAssistent`).
+- **SZ-1 A Messen-Ansicht** (Captain 04.10.2026): ohne Teilnahme zeigt der Reiter Geräte nur `messen.ts` -
+  Jetzt aus der jüngsten Telemetrie (`seitenBild.jetztGemessen`, nie ein Fahrplanwert), die Geräte als Liste
+  „Gemessene Geräte“ (Antippen = Geräte-Blatt mit Steuerart); keine Plakette, keine Reiter-Zahlen, keine
+  Reihenfolge, kein Tagesbild, keine Vorschläge. Einstiegs-Band mit `STEUERN_EINSTIEG_MESSEN`.
+- **SZ-2 A ein Ort** (Captain 04.10.2026): die Plakette öffnet `PauseBlatt` „Steuerung anhalten“ - die Dauern
+  (`/automation-pause`, `handeingriff.setzen`) und, wenn `/funktionen` „anhalten“ anbietet, „Bis ich fortsetze“
+  (`PUT …/funktionen/steuern`, `steuerung.anhalten_fortsetzen`, ohne Recht gesperrt mit Grund); Antippen wählt,
+  erst „Anhalten“ schreibt. Angehalten: Band „Steuerung angehalten seit …“ mit „Fortsetzen“ (`FortsetzenBlatt`,
+  Folgen + Bestätigung), Geräte/Speicher `ANGEHALTEN_ZUSTAND` ohne Plan, Regeln „wirkt nicht“, Karten `.matt`,
+  keine Reihenfolge zum Ändern. Plakette: „Automatik an“ · „Pausiert bis …“ · „Angehalten seit …“ ·
+  „Noch nicht gestartet“. Bestandsschutz-Test: aktiv und nicht angehalten = dieselbe Seite wie ohne Funktion.
+
 ## Schreibwege (alle bestehend, außer Szene und „nur messen“)
 
 Eingriff am Verbraucher `consumersApi.startOverride/clearOverride` (Server-Deckel 4 h), Ladepunkt
 `chargingBoost`, Speicher `startBatteryOverride`, Pause `pauseAutomation`, Smart `setzeSteuerart`,
 Reihenfolge `saveRangliste`, Betriebsmodell `setSiteProfile`, Regeln über die Flow-API
-(`create`/`save` → `activate`). **„Nur messen“** ist die Haltung `nur_messen` ohne Frist in
+(`create`/`save` → `activate`). Die Anschlussgrenze im Rahmen-Blatt geht über den Kunden-Schritt
+`saveCustomerChargingFrame` (`PUT /charging-frame`, Prüfung gegen den Netzanschluss mit 422, nie über
+`saveChargingConfig`): [Ladegrenze](../root/uems-ladegrenze-kundenroute.md). **„Nur messen“** ist die Haltung `nur_messen` ohne Frist in
 `suggestion-states` (V20260929120000) und wird beim Übernehmen per `DELETE` zurückgenommen.
 **Szenen** (`/scene`, `SzenenService`) pausieren gewählte Verbraucher über den Pausenweg und setzen
 beim Beenden genau die fort, die die Szene pausiert hat; ohne `voltpilot.consumer-control.enabled`
 verweigert der Server das Einschalten, weil er danach nicht fortsetzen könnte.
 
+## Rechte (AP-03 IP-12, Nachzug 1b)
+
+Jeder Schreibknopf steht in `components/Recht` mit dem Recht seines Schreibwegs: Eingriff, Lademodus,
+Speicher-Eingriff, Pause → `handeingriff.setzen`; Smart/„Womit laden“/Ladeziel, Reihenfolge, Betriebsmodell,
+Vorrang, Regeln (neu, Vorlage, Schalter, aktivieren, löschen), Szene an/aus, „nur messen“ und „Speicher darf
+aushelfen“ → `betriebsweise.aendern`; Fahrzeug → `ladepunkt.betrieb`; Anschlussgrenze → `grenze.eintragen`.
+Ohne Recht stehen Grund und Weg an der Stelle des Hebels; eine Gruppe (Aus · Smart · Ein, Chips, Fußzeile) ist
+EIN Hebel. Ausnahme: der Automatik-Knopf im Kopf zeigt den Zustand und bleibt sichtbar, gesperrt mit dem Grund als
+`title`. In Ruhe (1d) sperrt die Ruhe für alle und sagt ihren Grund (Plakette statt Knopf, Satz unter Aus · Smart · Ein
+und am Lademodus, außerhalb von `Recht`); die Knöpfe selbst folgen weiter dem Recht. `PATCH /consumers/{id}` prüft je Feld (`allowStorageDischarge` = Betrieb, jedes andere Feld
+`geraet.einrichten`) wie `PUT /charging-config`. Nachweise: `SteuerungSection.test.tsx` (IK ohne Steuerrecht,
+MD ohne Grenze), `RechtMatrixApiTest`, `e2e/portal-rechte.spec.ts` (R1).
+
 ## Prüfen
 
 `src/steuerung/*.test.ts`, `src/pages/SteuerungSection.test.tsx`, Playwright
-`e2e/steuerung.spec.ts` (Beispielanlage `e2e/steuerung.*`, Uhr 29.09.2026 13:10 Berlin, 1440 und 375).
+`e2e/steuerung-anhalten.spec.ts` und `e2e/leerzustaende.spec.ts` (Funktion), `e2e/steuerung.spec.ts` (Beispielanlage `e2e/steuerung.*`, Uhr 29.09.2026 13:10 Berlin, 1440 und 375;
+`?funktion=kein_objekt|aktiv|angehalten` stellt „Steuern & Optimieren“, `STEUERUNG_SZ_BILDER=<Ordner>` legt Bilder ab).
 Die Hilfe-Aufnahmen `steuerung`, `steuerung-geraete`, `regeln`, `regeln-mobil`, `ladepark` kommen aus
 derselben Beispielanlage (`seite: 'steuerung'` in `e2e/help-captures.mjs`).

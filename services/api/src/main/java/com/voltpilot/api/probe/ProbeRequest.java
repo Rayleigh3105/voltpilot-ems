@@ -22,12 +22,11 @@ import java.util.UUID;
  * would only refuse after a broker round trip, so an obvious typo comes back
  * immediately.
  *
- * @param deviceId optional - the plant's device to ask. Absent means "the
- *     plant's single device"; a plant with several devices must name one,
- *     because guessing which box sits on the customer's LAN segment is exactly
- *     the kind of invention this codebase does not do.
+ * @param deviceId optional explicit box for an unbound target; otherwise the leading box.
+ * @param entityId optional existing component; its source execution takes precedence.
  */
-public record ProbeRequest(UUID deviceId, @NotEmpty @Size(max = 8) @Valid List<Op> ops) {
+public record ProbeRequest(UUID deviceId, @NotEmpty @Size(max = 8) @Valid List<Op> ops, UUID entityId) {
+    public ProbeRequest(UUID deviceId, List<Op> ops) { this(deviceId, ops, null); }
 
     /**
      * One read step. The field names and defaults mirror the contract's

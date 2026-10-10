@@ -2,8 +2,11 @@ package com.voltpilot.api.measurement;
 
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.LeadDeviceService;
-import com.voltpilot.api.uems.MessstelleFormelAbgelehnt;
+import com.voltpilot.api.uems.PushJeBox;
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import com.voltpilot.api.uems.MessstelleFormelAbgelehnt;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
@@ -45,9 +48,14 @@ public class SummenwertQuellenService {
 
     public List<Quelle> sources(UUID siteId) {
         var rows = registry.entitiesForSite(siteId);
-        var fuehrend = lead.fuehrendeBox(siteId);
-        return rows.stream().map(r -> new Quelle(r.id(), fuehrend.box(),
-                r.label() == null ? "Gerät" : r.label(),
-                fuehrend.box() == null ? fuehrend.grund().code() : null)).toList();
+        var quellen = registry.datenquelleJeEntitaet(siteId);
+        var v = PushJeBox.verteilen(rows.stream().map(r -> new PushJeBox.Entitaet(r.id(), r.entityType(), quellen.get(r.id()))).toList(),
+                lead.fuehrendeBox(siteId).box(), registry.siteDeviceIds(siteId),
+                registry.zustaendigkeitenDerQuellen(siteId), Instant.now(), List.of());
+        return rows.stream().map(r -> {
+            UUID box = v.boxen().entrySet().stream().filter(e -> e.getValue().contains(r.id())).map(Map.Entry::getKey).findFirst().orElse(null);
+            String grund = v.ausgelassen().stream().filter(a -> a.entitaet().equals(r.id())).map(a -> a.grund().code()).findFirst().orElse(null);
+            return new Quelle(r.id(), box, r.label() == null ? "Gerät" : r.label(), grund);
+        }).toList();
     }
 }

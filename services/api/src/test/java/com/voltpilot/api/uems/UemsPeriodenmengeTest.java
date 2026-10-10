@@ -14,6 +14,7 @@ import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -55,6 +56,11 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers(disabledWithoutDocker = true)
 class UemsPeriodenmengeTest {
 
+    private static final ZoneId ORT = ZoneId.of("Europe/Berlin");
+
+    /** Katalog mit den Testkanälen {@code energy_kwh_*} als kWh-Zähler ({@link UemsTestKatalog}). */
+    private static final MeasurementCatalog KATALOG = UemsTestKatalog.mitKwhTestkanaelen();
+
     private static final String DIESE = "20260912205000";
     private static final String APP_USER = "voltpilot_app";
     private static final String APP_PW = "voltpilot_app_test_pw";
@@ -75,6 +81,13 @@ class UemsPeriodenmengeTest {
             "device_measurement_selection", "measurement_point", "messstelle", "geraet", "standort",
             "unternehmen", "anlage_standort", "telemetry", "telemetry_v2", "schedule",
             "site_supply_price", "entity_registry_state", "device_command_log");
+
+    /**
+     * Die Tabellen, die dieses Paket bearbeitet, und die Rohtabelle — nicht Teil des
+     * Bestands-Fingerabdrucks. Die Rohtabelle wächst in diesem Test selbst; dass keine BESTEHENDE
+     * Rohzeile sich ändert, prüft {@link #rohwerteFinger()} eigens.
+     */
+    private static final List<String> AUSNAHMEN = List.of("messreihe_%", "device_measurement_sample");
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -137,12 +150,12 @@ class UemsPeriodenmengeTest {
 
         admin = new JdbcTemplate(ds(ADMIN_USER, ADMIN_PW));
         app = new JdbcTemplate(new TenantAwareDataSource(ds(APP_USER, APP_PW)));
-        verdichter = new ViertelstundeVerdichter(admin, new MeasurementCatalog(new ObjectMapper()),
+        verdichter = new ViertelstundeVerdichter(admin, KATALOG,
                 new SpaetankunftMelder(), 500, 40, 200_000);
         endgueltigkeit = new EndgueltigkeitLauf(admin, 2000, 200);
-        tage = new TagVerdichter(admin, 200, 40, 20_000, 200_000);
-        perioden = new PeriodeVerdichter(admin, 50, 40, 2000);
-        zeitraum = new ZeitraumMenge(app);
+        tage = new TagVerdichter(admin, KATALOG, 200, 40, 20_000, 200_000);
+        perioden = new PeriodeVerdichter(admin, KATALOG, 50, 40, 2000);
+        zeitraum = new ZeitraumMenge(app, KATALOG);
 
         // ---- 1. Anfang November: Viertelstunden, Endgültigkeit, Tage, Monate, Jahre ---------
         arbeitFuellen();
@@ -317,12 +330,13 @@ class UemsPeriodenmengeTest {
         ZeitraumMenge.Zeitraum z = zeitraum.zeitraum(KB, IDS.get("MG"), "energy_kwh_mg", von, bis, T_SPAETER);
 
         // Dieselbe Regel über dieselben ROHWERTE — die Antwort ist Zeichen für Zeichen dieselbe.
-        VerbrauchRegeln.Ergebnis roh = VerbrauchRegeln.ergebnis("zaehlerstand", mgRohwerte(), von, bis,
+        VerbrauchRegeln.Ergebnis roh = VerbrauchRegeln.ergebnis(new ReihenKontext("kWh", ORT), "zaehlerstand",
+                mgRohwerte(), von, bis,
                 Duration.ofSeconds(60), List.of(), BigDecimal.ONE, null, null, false);
         assertThat(z.menge().ergebnis()).isEqualTo(roh);
         assertThat(roh.zustand()).isEqualTo("vollständig");
         assertThat(roh.kennzeichen()).containsExactly(
-                "Lücke 23:40–00:20: Zuwachs 64.000 gemessen, nicht auf Viertelstunden verteilbar");
+                "Lücke 23:40–00:20: Zuwachs 64,0 kWh gemessen, nicht auf Viertelstunden verteilbar");
 
         Map<String, Object> oktober = periode("MG", "monat", LocalDate.of(2026, 10, 1));
         Map<String, Object> november = periode("MG", "monat", LocalDate.of(2026, 11, 1));
@@ -365,7 +379,7 @@ class UemsPeriodenmengeTest {
     void abdeckungUndKennzeichenPflanzenSichInDenMonatFort() {
         Map<String, Object> november = periode("F8", "monat", LocalDate.of(2026, 11, 1));
         assertThat(kennzeichen(november)).contains(
-                "Lücke 14:00–17:31: Zuwachs 337.600 gemessen, nicht auf Viertelstunden verteilbar");
+                "Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht auf Viertelstunden verteilbar");
         // 1 230 Werte des 03.11. und der Stand um 04.11. 00:00, der den Tag schließt.
         assertThat(zahl(november, "erhalten")).isEqualTo(1231);
         assertThat(zahl(november, "erwartet")).as("jede Minute des Novembers ist erwartet").isEqualTo(43200);
@@ -412,10 +426,21 @@ class UemsPeriodenmengeTest {
 
     @Test
     void dieMigrationLegtNurDanebenUndDerGanzeLaufLaesstDenBestandZeichengleich() {
-        assertThat(fingerNachMigration).as("nach der Migration").isEqualTo(fingerVorher);
-        assertThat(fingerNachAllem).as("nach allen Läufen").isEqualTo(fingerVorher);
+        assertThat(Bestandsschutz.abweichungen(fingerVorher, fingerNachMigration)).as("nach der Migration")
+                .isEmpty();
+        assertThat(Bestandsschutz.abweichungen(fingerVorher, fingerNachAllem)).as("nach allen Läufen")
+                .isEmpty();
         assertThat(fingerVorher).hasSizeGreaterThan(100).containsKeys(BESTAND.toArray(String[]::new));
         assertThat(rohNachAllem).as("keine bestehende Rohzeile ändert sich").isEqualTo(rohVorher);
+    }
+
+    /** Der Vergleich beißt noch: eine geänderte Bestandszeile und eine neue Tabelle mit Inhalt fallen auf. */
+    @Test
+    void derBestandsvergleichFaengtEineGeaenderteZeile() {
+        Bestandsschutz.mutationsprobe(root, AUSNAHMEN, "measurement_point",
+                "UPDATE measurement_point SET label = label || ' (Probe)'");
+        Bestandsschutz.inhaltsprobe(root, UemsPeriodenmengeTest::rohwerteFinger, "device_measurement_sample",
+                "UPDATE device_measurement_sample SET catalog_version = catalog_version || '.probe'");
     }
 
     @Test
@@ -695,30 +720,12 @@ class UemsPeriodenmengeTest {
     }
 
     private static Map<String, String> fingerabdruck() {
-        List<String> tabellen = root.queryForList(
-                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' "
-                        + "AND table_type = 'BASE TABLE' AND table_name NOT LIKE 'messreihe_%' "
-                        + "AND table_name <> 'device_measurement_sample' "
-                        // Was eine SPAETERE Migration anlegt, gehoert nicht in diese Messung:
-                        // die Szenen (V20260929120000), die Speichersteuerung
-                        // (V20261007120000) und die Fernwartung (V20261007163700).
-                        + "AND table_name <> 'site_scene' "
-                        + "AND table_name <> 'device_battery_control' "
-                        + "AND table_name NOT LIKE 'fernwartung%' "
-                        + "AND table_name <> 'flyway_schema_history' ORDER BY table_name",
-                String.class);
-        Map<String, String> aus = new LinkedHashMap<>();
-        for (String tabelle : tabellen) {
-            aus.put(tabelle, root.queryForObject("SELECT coalesce(md5(string_agg(t::text, '|' ORDER BY t::text)), "
-                    + "'leer') FROM " + tabelle + " t", String.class));
-        }
-        return aus;
+        return Bestandsschutz.fingerabdruck(root, AUSNAHMEN);
     }
 
     /** Die pünktlichen Rohwerte — der Nachzügler vom April kommt dazu, keine bestehende Zeile ändert sich. */
     private static String rohwerteFinger() {
-        return root.queryForObject("SELECT coalesce(md5(string_agg(t::text, '|' ORDER BY t::text)), 'leer') "
-                + "FROM device_measurement_sample t WHERE t.received_at < ?", String.class,
+        return Bestandsschutz.inhalt(root, "device_measurement_sample", "t.received_at < ?",
                 Timestamp.from(T_SPAETER));
     }
 

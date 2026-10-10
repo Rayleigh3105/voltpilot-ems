@@ -1,0 +1,1248 @@
+{
+ "_comment": "UEMS AP-15 IP-7: Anteils-Dokument auf dem Draht (Downlink …/v2/verbund-anteile) gegen die Box-Prüfung von IP-2 (SteuerungsverbundAnteile.dokumentPruefen) und die Quittung (Uplink …/v2/verbund-anteile-result). Zahlen aus R12 (40/60 → 10/60 → 10/90 kW) und dem Bezug aus R1/R3 (0/77 kW). Kennungen konstruiert. Leser: VerbundAnteileVectorsTest (Java) und der Go-Zwilling der Box (edge-app/core/internal/anteile, cloud/verbund_anteile_test.go; IP-17).",
+ "schema_version": "1.0",
+ "kennungen": {
+  "tenant": "7a000000-0000-4000-8000-000000000001",
+  "site": "7a000000-0000-4000-8000-0000000000a1",
+  "andere_site": "7a000000-0000-4000-8000-0000000000a2",
+  "E-1": "7a000000-0000-4000-8000-0000000000e1",
+  "E-4": "7a000000-0000-4000-8000-0000000000e4"
+ },
+ "dokumente": [
+  {
+   "name": "R12 Übergangsstand 10/60 an die verengte Box E-1, Revision 8 nach 7",
+   "box": "7a000000-0000-4000-8000-0000000000e1",
+   "stand": {
+    "epoche": 1,
+    "revision": 7
+   },
+   "epoche": 1,
+   "revision": 8,
+   "schritt": "uebergang",
+   "verteilbar": {
+    "einspeisung": 100.0,
+    "bezug": 77.0
+   },
+   "anteile": {
+    "einspeisung": {
+     "7a000000-0000-4000-8000-0000000000e1": 10.0,
+     "7a000000-0000-4000-8000-0000000000e4": 60.0
+    },
+    "bezug": {
+     "7a000000-0000-4000-8000-0000000000e1": 0.0,
+     "7a000000-0000-4000-8000-0000000000e4": 77.0
+    }
+   },
+   "erwartet": {
+    "urteil": "angenommen",
+    "grund": null
+   }
+  },
+  {
+   "name": "R12 Übergangsstand geht an ALLE: auch E-4 (nicht verengt) nimmt Revision 8 an",
+   "box": "7a000000-0000-4000-8000-0000000000e4",
+   "stand": {
+    "epoche": 1,
+    "revision": 7
+   },
+   "epoche": 1,
+   "revision": 8,
+   "schritt": "uebergang",
+   "verteilbar": {
+    "einspeisung": 100.0,
+    "bezug": 77.0
+   },
+   "anteile": {
+    "einspeisung": {
+     "7a000000-0000-4000-8000-0000000000e1": 10.0,
+     "7a000000-0000-4000-8000-0000000000e4": 60.0
+    },
+    "bezug": {
+     "7a000000-0000-4000-8000-0000000000e1": 0.0,
+     "7a000000-0000-4000-8000-0000000000e4": 77.0
+    }
+   },
+   "erwartet": {
+    "urteil": "angenommen",
+    "grund": null
+   }
+  },
+  {
+   "name": "R12 Zielstand 10/90, Revision 9 — erst nach der Quittung von E-1",
+   "box": "7a000000-0000-4000-8000-0000000000e4",
+   "stand": {
+    "epoche": 1,
+    "revision": 8
+   },
+   "epoche": 1,
+   "revision": 9,
+   "schritt": "ziel",
+   "verteilbar": {
+    "einspeisung": 100.0,
+    "bezug": 77.0
+   },
+   "anteile": {
+    "einspeisung": {
+     "7a000000-0000-4000-8000-0000000000e1": 10.0,
+     "7a000000-0000-4000-8000-0000000000e4": 90.0
+    },
+    "bezug": {
+     "7a000000-0000-4000-8000-0000000000e1": 0.0,
+     "7a000000-0000-4000-8000-0000000000e4": 77.0
+    }
+   },
+   "erwartet": {
+    "urteil": "angenommen",
+    "grund": null
+   }
+  },
+  {
+   "name": "erstes Dokument nach dem Scharfschalten (Epoche 1, Revision 1): die Box hat noch keinen Stand",
+   "box": "7a000000-0000-4000-8000-0000000000e1",
+   "stand": null,
+   "epoche": 1,
+   "revision": 1,
+   "schritt": "ziel",
+   "verteilbar": {
+    "einspeisung": 100.0,
+    "bezug": 77.0
+   },
+   "anteile": {
+    "einspeisung": {
+     "7a000000-0000-4000-8000-0000000000e1": 40.0,
+     "7a000000-0000-4000-8000-0000000000e4": 60.0
+    },
+    "bezug": {
+     "7a000000-0000-4000-8000-0000000000e1": 0.0,
+     "7a000000-0000-4000-8000-0000000000e4": 77.0
+    }
+   },
+   "erwartet": {
+    "urteil": "angenommen",
+    "grund": null
+   }
+  },
+  {
+   "name": "A18 zurückgespielt: Revision 7 nach quittierter 9 derselben Epoche → revision_aelter",
+   "box": "7a000000-0000-4000-8000-0000000000e1",
+   "stand": {
+    "epoche": 1,
+    "revision": 9
+   },
+   "epoche": 1,
+   "revision": 7,
+   "schritt": "ziel",
+   "verteilbar": {
+    "einspeisung": 100.0,
+    "bezug": 77.0
+   },
+   "anteile": {
+    "einspeisung": {
+     "7a000000-0000-4000-8000-0000000000e1": 40.0,
+     "7a000000-0000-4000-8000-0000000000e4": 60.0
+    },
+    "bezug": {
+     "7a000000-0000-4000-8000-0000000000e1": 0.0,
+     "7a000000-0000-4000-8000-0000000000e4": 77.0
+    }
+   },
+   "erwartet": {
+    "urteil": "abgelehnt",
+    "grund": "revision_aelter"
+   }
+  },
+  {
+   "name": "A18 neu scharfgeschaltet: Epoche 2 mit Revision 8 nach Epoche 1 Revision 9 → angenommen",
+   "box": "7a000000-0000-4000-8000-0000000000e1",
+   "stand": {
+    "epoche": 1,
+    "revision": 9
+   },
+   "epoche": 2,
+   "revision": 8,
+   "schritt": "uebergang",
+   "verteilbar": {
+    "einspeisung": 100.0,
+    "bezug": 77.0
+   },
+   "anteile": {
+    "einspeisung": {
+     "7a000000-0000-4000-8000-0000000000e1": 10.0,
+     "7a000000-0000-4000-8000-0000000000e4": 60.0
+    },
+    "bezug": {
+     "7a000000-0000-4000-8000-0000000000e1": 0.0,
+     "7a000000-0000-4000-8000-0000000000e4": 77.0
+    }
+   },
+   "erwartet": {
+    "urteil": "angenommen",
+    "grund": null
+   }
+  },
+  {
+   "name": "nie der Übergang über verteilbar: 40 + 70 = 110 > 100 → summe_ueber_verteilbar",
+   "box": "7a000000-0000-4000-8000-0000000000e1",
+   "stand": null,
+   "epoche": 1,
+   "revision": 2,
+   "schritt": "uebergang",
+   "verteilbar": {
+    "einspeisung": 100.0,
+    "bezug": 77.0
+   },
+   "anteile": {
+    "einspeisung": {
+     "7a000000-0000-4000-8000-0000000000e1": 40.0,
+     "7a000000-0000-4000-8000-0000000000e4": 70.0
+    },
+    "bezug": {
+     "7a000000-0000-4000-8000-0000000000e1": 0.0,
+     "7a000000-0000-4000-8000-0000000000e4": 77.0
+    }
+   },
+   "erwartet": {
+    "urteil": "abgelehnt",
+    "grund": "summe_ueber_verteilbar"
+   }
+  }
+ ],
+ "identitaet": [
+  {
+   "name": "Topic nennt Anlage AN-1, Nutzlast eine andere Anlage → fremde_anlage",
+   "topic": {
+    "tenant": "7a000000-0000-4000-8000-000000000001",
+    "site": "7a000000-0000-4000-8000-0000000000a1",
+    "box": "7a000000-0000-4000-8000-0000000000e1"
+   },
+   "nutzlast": {
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a2",
+    "device_id": "7a000000-0000-4000-8000-0000000000e1"
+   },
+   "erwartet": {
+    "gelesen": true,
+    "urteil": "abgelehnt",
+    "grund": "fremde_anlage"
+   }
+  },
+  {
+   "name": "Topic nennt Box E-1, Nutzlast Box E-4 → nicht ihres, verworfen ohne Quittung",
+   "topic": {
+    "tenant": "7a000000-0000-4000-8000-000000000001",
+    "site": "7a000000-0000-4000-8000-0000000000a1",
+    "box": "7a000000-0000-4000-8000-0000000000e1"
+   },
+   "nutzlast": {
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e4"
+   },
+   "erwartet": {
+    "gelesen": false
+   }
+  },
+  {
+   "name": "Box fehlt in der Tabelle → box_fehlt_im_dokument",
+   "topic": {
+    "tenant": "7a000000-0000-4000-8000-000000000001",
+    "site": "7a000000-0000-4000-8000-0000000000a1",
+    "box": "7a000000-0000-4000-8000-0000000000e9"
+   },
+   "nutzlast": {
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e9"
+   },
+   "erwartet": {
+    "gelesen": true,
+    "urteil": "abgelehnt",
+    "grund": "box_fehlt_im_dokument"
+   }
+  }
+ ],
+ "quittungen": [
+  {
+   "name": "E-1 quittiert den Übergang (Revision 8)",
+   "topic_box": "7a000000-0000-4000-8000-0000000000e1",
+   "nutzlast": {
+    "schema_version": "1.0",
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e1",
+    "epoche": 1,
+    "revision": 8,
+    "urteil": "angenommen",
+    "ts": "2027-10-20T09:00:05Z"
+   },
+   "erwartet": {
+    "gueltig": true,
+    "angenommen": true,
+    "grund": null,
+    "stand": {
+     "epoche": 1,
+     "revision": 8
+    },
+    "wirksam": null
+   }
+  },
+  {
+   "name": "Ablehnung mit Grund und gemeldetem wirksamem Stand (A18: Box hält Revision 9)",
+   "topic_box": "7a000000-0000-4000-8000-0000000000e1",
+   "nutzlast": {
+    "schema_version": "1.0",
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e1",
+    "epoche": 1,
+    "revision": 7,
+    "urteil": "abgelehnt",
+    "ts": "2027-10-20T09:00:05Z",
+    "grund": "revision_aelter",
+    "wirksam": {
+     "epoche": 1,
+     "revision": 9
+    }
+   },
+   "erwartet": {
+    "gueltig": true,
+    "angenommen": false,
+    "grund": "revision_aelter",
+    "stand": {
+     "epoche": 1,
+     "revision": 7
+    },
+    "wirksam": {
+     "epoche": 1,
+     "revision": 9
+    }
+   }
+  },
+  {
+   "name": "jeder Grund aus IP-2 dokument_ablehnung",
+   "topic_box": "7a000000-0000-4000-8000-0000000000e1",
+   "nutzlast": {
+    "schema_version": "1.0",
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e1",
+    "epoche": 1,
+    "revision": 8,
+    "urteil": "abgelehnt",
+    "ts": "2027-10-20T09:00:05Z",
+    "grund": "summe_ueber_verteilbar"
+   },
+   "erwartet": {
+    "gueltig": true,
+    "angenommen": false,
+    "grund": "summe_ueber_verteilbar",
+    "stand": {
+     "epoche": 1,
+     "revision": 8
+    },
+    "wirksam": null
+   }
+  },
+  {
+   "name": "fremde_anlage als Grund",
+   "topic_box": "7a000000-0000-4000-8000-0000000000e1",
+   "nutzlast": {
+    "schema_version": "1.0",
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e1",
+    "epoche": 1,
+    "revision": 8,
+    "urteil": "abgelehnt",
+    "ts": "2027-10-20T09:00:05Z",
+    "grund": "fremde_anlage"
+   },
+   "erwartet": {
+    "gueltig": true,
+    "angenommen": false,
+    "grund": "fremde_anlage",
+    "stand": {
+     "epoche": 1,
+     "revision": 8
+    },
+    "wirksam": null
+   }
+  },
+  {
+   "name": "box_fehlt_im_dokument als Grund",
+   "topic_box": "7a000000-0000-4000-8000-0000000000e1",
+   "nutzlast": {
+    "schema_version": "1.0",
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e1",
+    "epoche": 1,
+    "revision": 8,
+    "urteil": "abgelehnt",
+    "ts": "2027-10-20T09:00:05Z",
+    "grund": "box_fehlt_im_dokument"
+   },
+   "erwartet": {
+    "gueltig": true,
+    "angenommen": false,
+    "grund": "box_fehlt_im_dokument",
+    "stand": {
+     "epoche": 1,
+     "revision": 8
+    },
+    "wirksam": null
+   }
+  },
+  {
+   "name": "Topic- und Payload-Identität: Box im Topic E-4, Nutzlast E-1 → verworfen",
+   "topic_box": "7a000000-0000-4000-8000-0000000000e4",
+   "nutzlast": {
+    "schema_version": "1.0",
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e1",
+    "epoche": 1,
+    "revision": 8,
+    "urteil": "angenommen",
+    "ts": "2027-10-20T09:00:05Z"
+   },
+   "erwartet": {
+    "gueltig": false
+   }
+  },
+  {
+   "name": "unbekannter Grund → verworfen (geschlossenes Vokabular)",
+   "topic_box": "7a000000-0000-4000-8000-0000000000e1",
+   "nutzlast": {
+    "schema_version": "1.0",
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e1",
+    "epoche": 1,
+    "revision": 8,
+    "urteil": "abgelehnt",
+    "ts": "2027-10-20T09:00:05Z",
+    "grund": "zu_spaet"
+   },
+   "erwartet": {
+    "gueltig": false
+   }
+  },
+  {
+   "name": "abgelehnt ohne Grund → verworfen",
+   "topic_box": "7a000000-0000-4000-8000-0000000000e1",
+   "nutzlast": {
+    "schema_version": "1.0",
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e1",
+    "epoche": 1,
+    "revision": 8,
+    "urteil": "abgelehnt",
+    "ts": "2027-10-20T09:00:05Z"
+   },
+   "erwartet": {
+    "gueltig": false
+   }
+  },
+  {
+   "name": "angenommen MIT Grund → verworfen",
+   "topic_box": "7a000000-0000-4000-8000-0000000000e1",
+   "nutzlast": {
+    "schema_version": "1.0",
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e1",
+    "epoche": 1,
+    "revision": 8,
+    "urteil": "angenommen",
+    "ts": "2027-10-20T09:00:05Z",
+    "grund": "revision_aelter"
+   },
+   "erwartet": {
+    "gueltig": false
+   }
+  },
+  {
+   "name": "unbekanntes Urteil → verworfen",
+   "topic_box": "7a000000-0000-4000-8000-0000000000e1",
+   "nutzlast": {
+    "schema_version": "1.0",
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e1",
+    "epoche": 1,
+    "revision": 8,
+    "urteil": "teilweise",
+    "ts": "2027-10-20T09:00:05Z"
+   },
+   "erwartet": {
+    "gueltig": false
+   }
+  },
+  {
+   "name": "falsche Schema-Version → verworfen",
+   "topic_box": "7a000000-0000-4000-8000-0000000000e1",
+   "nutzlast": {
+    "schema_version": "2.0",
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e1",
+    "epoche": 1,
+    "revision": 8,
+    "urteil": "angenommen",
+    "ts": "2027-10-20T09:00:05Z"
+   },
+   "erwartet": {
+    "gueltig": false
+   }
+  },
+  {
+   "name": "Revision negativ → verworfen",
+   "topic_box": "7a000000-0000-4000-8000-0000000000e1",
+   "nutzlast": {
+    "schema_version": "1.0",
+    "tenant_id": "7a000000-0000-4000-8000-000000000001",
+    "site_id": "7a000000-0000-4000-8000-0000000000a1",
+    "device_id": "7a000000-0000-4000-8000-0000000000e1",
+    "epoche": 1,
+    "revision": -1,
+    "urteil": "angenommen",
+    "ts": "2027-10-20T09:00:05Z"
+   },
+   "erwartet": {
+    "gueltig": false
+   }
+  }
+ ],
+ "reserve_verbraucher": {
+  "_comment": "UEMS AP-15 Folge von IP-19 (V3: der Anteil bezug gilt für ALLES, was die Box steuert). Je Box die Summe der Nennleistungen ihrer steuerbaren Bezugs-Geräte AUSSERHALB des Ladepark-Rahmens (Schreibfreigabe ja; Typ heating-rod, heat-pump-sgready, pump, generic-load, modbus-load oder eine Wallbox, die nicht in wallboxes[] reist) — aufgerundet auf 0,1 kW (die sichere Seite). Ladepunkte (ev-charger, Wallbox in wallboxes[]), Speicher, Erzeuger, Geräte ohne Schreibfreigabe und das Ungeregelte hinter dem Abgang zählen NICHT. Das Feld reist im Dokument jeder Box als reserve_verbraucher.bezug (wahlfrei, schema_version bleibt 1.0); die Box gibt dem Ladepark max(0, Anteil − Reserve), wo der Anteil bindet. Leser: VerbundAnteileReserveVectorsTest (Java, Erzeuger) und edge-app/core/internal/lastmgmt/reserve_verbraucher_vectors_test.go (Go, Lesen + Ladebudget).",
+  "ableitung": [
+   {
+    "name": "R3 mit Wärmepumpe: sechs Ladepunkte und eine 10-kW-Wärmepumpe an Box Verwaltung → Reserve 10,0 kW, Box Halle 1 ohne solche Verbraucher 0,0",
+    "geraete": [
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c001",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c002",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c003",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c004",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c005",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c006",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-0000000000f1",
+      "typ": "heat-pump-sgready",
+      "im_ladepark": false,
+      "richtung": "bezug",
+      "nenn_kw": 10.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e1",
+      "komponente": "7a000000-0000-4000-8000-0000000000b1",
+      "typ": "battery-hybrid",
+      "im_ladepark": false,
+      "richtung": "bezug",
+      "nenn_kw": 100.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": null,
+      "typ": null,
+      "im_ladepark": false,
+      "richtung": "bezug",
+      "nenn_kw": 38.0,
+      "schreibfreigabe": false
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-0000000000f6",
+      "typ": "producer",
+      "im_ladepark": false,
+      "richtung": "einspeisung",
+      "nenn_kw": 60.0,
+      "schreibfreigabe": true
+     }
+    ],
+    "erwartet": {
+     "7a000000-0000-4000-8000-0000000000e1": 0.0,
+     "7a000000-0000-4000-8000-0000000000e4": 10.0
+    }
+   },
+   {
+    "name": "R3 wie in der Referenzanlage: nur Ladepunkte → beide Boxen 0,0 (Zahl für Zahl wie ohne das Feld)",
+    "geraete": [
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c001",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c002",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c003",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c004",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c005",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c006",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     }
+    ],
+    "erwartet": {
+     "7a000000-0000-4000-8000-0000000000e1": 0.0,
+     "7a000000-0000-4000-8000-0000000000e4": 0.0
+    }
+   },
+   {
+    "name": "go-e außerhalb wallboxes[] zählt, eine Wallbox im Ladepark nicht; ohne Schreibfreigabe zählt nichts",
+    "geraete": [
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c001",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c002",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c003",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c004",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c005",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c006",
+      "typ": "ev-charger",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-0000000000f1",
+      "typ": "heat-pump-sgready",
+      "im_ladepark": false,
+      "richtung": "bezug",
+      "nenn_kw": 10.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-0000000000f2",
+      "typ": "wallbox",
+      "im_ladepark": false,
+      "richtung": "bezug",
+      "nenn_kw": 11.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-0000000000f3",
+      "typ": "wallbox",
+      "im_ladepark": true,
+      "richtung": "bezug",
+      "nenn_kw": 11.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-0000000000f5",
+      "typ": "generic-load",
+      "im_ladepark": false,
+      "richtung": "bezug",
+      "nenn_kw": 5.0,
+      "schreibfreigabe": false
+     }
+    ],
+    "erwartet": {
+     "7a000000-0000-4000-8000-0000000000e1": 0.0,
+     "7a000000-0000-4000-8000-0000000000e4": 21.0
+    }
+   },
+   {
+    "name": "aufgerundet auf 0,1 kW: Heizstab 3,05 kW → 3,1",
+    "geraete": [
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e1",
+      "komponente": "7a000000-0000-4000-8000-0000000000f4",
+      "typ": "heating-rod",
+      "im_ladepark": false,
+      "richtung": "bezug",
+      "nenn_kw": 3.05,
+      "schreibfreigabe": true
+     }
+    ],
+    "erwartet": {
+     "7a000000-0000-4000-8000-0000000000e1": 3.1,
+     "7a000000-0000-4000-8000-0000000000e4": 0.0
+    }
+   }
+  ],
+  "draht": [
+   {
+    "name": "R3 mit Wärmepumpe: Box Verwaltung steuert mit, Anteil 77, Reserve 10,0 → Ladepark höchstens 67",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "rolle": "steuert_mit",
+    "reserve_bezug": 10.0,
+    "erwartet": {
+     "gelesen": true,
+     "reserve_bezug": "10.0",
+     "ladebudget_kw": 67.0
+    }
+   },
+   {
+    "name": "ohne das Feld (alte Cloud): keine Reserve, Ladepark 77 wie heute",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "rolle": "steuert_mit",
+    "reserve_bezug": null,
+    "erwartet": {
+     "gelesen": true,
+     "reserve_bezug": null,
+     "ladebudget_kw": 77.0
+    }
+   },
+   {
+    "name": "Reserve 0,0: keine anderen Verbraucher, Ladepark 77",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "rolle": "steuert_mit",
+    "reserve_bezug": 0.0,
+    "erwartet": {
+     "gelesen": true,
+     "reserve_bezug": "0.0",
+     "ladebudget_kw": 77.0
+    }
+   },
+   {
+    "name": "Reserve über dem Anteil: das Ladebudget fällt nie unter 0",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "rolle": "steuert_mit",
+    "reserve_bezug": 90.0,
+    "erwartet": {
+     "gelesen": true,
+     "reserve_bezug": "90.0",
+     "ladebudget_kw": 0.0
+    }
+   },
+   {
+    "name": "negative Reserve: unlesbar, ohne Quittung, der Anteil bleibt",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "rolle": "steuert_mit",
+    "reserve_bezug": -1.0,
+    "erwartet": {
+     "gelesen": false,
+     "reserve_bezug": null,
+     "ladebudget_kw": null
+    }
+   }
+  ]
+ },
+ "ungeregelt_hinter_abgang": {
+  "_comment": "UEMS AP-15 Folge von IP-19 (B3, Konzept §3.2 Schicht 2): der Anteil einer mitsteuernden Box ist ALLES hinter ihrem eigenen Messpunkt — die Box hält ihn am Abgangszähler (Regelkreis von heute mit planbar = Anteil: Ladebudget = min(Anteil, Anteil − (Abgang − gemessenes Laden))). Blind (kein Abgangswert, älter als 30 s, eingefroren, Uhrensprung, vor der ersten Messung, nach Neustart) kennt sie nur den erklärten Höchstwert des Ungeregelten hinter ihrem Abgang: Ladebudget = max(0, Anteil − Reserve − ungeregelt_hinter_abgang). Der Höchstwert je Box = Summe der Nennleistungen bzw. Höchstwerte ihrer UNGEREGELTEN Bezugs-Geräte (Erklärung ungeregelt, d. h. ohne Komponente, und Geräte ohne Schreibfreigabe, I1), aufgerundet auf 0,1 kW; nur Boxen, die nicht führen, und nur über 0 — sonst reist das Feld nicht (Dokument Byte für Byte wie vorher). Reist als ungeregelt_hinter_abgang.bezug (wahlfrei, schema_version bleibt 1.0). Die Reserve der anderen steuerbaren Verbraucher gilt nur blind: mit frischem Abgang stecken sie im gemessenen Rest. Leser: VerbundAnteileUngeregeltVectorsTest (Java, Erzeuger) und edge-app/core/internal/lastmgmt/ungeregelt_vectors_test.go (Go, Lesen + Ladebudget).",
+  "ableitung": [
+   {
+    "name": "R3 Fall C: 50 kW Gebäudelast hinter dem Abgang von Box Verwaltung erklärt → 50,0; das Ungeregelte der führenden Box Halle 1 reist nie",
+    "geraete": [
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c001",
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c002",
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c003",
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c004",
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c005",
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c006",
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": null,
+      "richtung": "bezug",
+      "nenn_kw": 50.0,
+      "schreibfreigabe": false
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e1",
+      "komponente": null,
+      "richtung": "bezug",
+      "nenn_kw": 380.0,
+      "schreibfreigabe": false
+     }
+    ],
+    "erwartet": {
+     "7a000000-0000-4000-8000-0000000000e4": 50.0
+    }
+   },
+   {
+    "name": "R3 wie in der Referenzanlage (DQ-10: hinter dem Abgang NUR, was die Box steuert) → kein Feld",
+    "geraete": [
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c001",
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c002",
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c003",
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c004",
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c005",
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c006",
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     }
+    ],
+    "erwartet": {}
+   },
+   {
+    "name": "Gerät ohne Schreibfreigabe zählt wie das Ungeregelte (I1), Einspeisung zählt nicht, aufgerundet: 12,04 + 3,0 → 15,1",
+    "geraete": [
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-00000000c001",
+      "richtung": "bezug",
+      "nenn_kw": 22.0,
+      "schreibfreigabe": true
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": "7a000000-0000-4000-8000-0000000000f2",
+      "richtung": "bezug",
+      "nenn_kw": 12.04,
+      "schreibfreigabe": false
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": null,
+      "richtung": "bezug",
+      "nenn_kw": 3.0,
+      "schreibfreigabe": false
+     },
+     {
+      "box": "7a000000-0000-4000-8000-0000000000e4",
+      "komponente": null,
+      "richtung": "einspeisung",
+      "nenn_kw": 40.0,
+      "schreibfreigabe": false
+     }
+    ],
+    "erwartet": {
+     "7a000000-0000-4000-8000-0000000000e4": 15.1
+    }
+   }
+  ],
+  "draht": [
+   {
+    "name": "Fall A: Anteil 77, 50 kW Gebäude im Abgang erklärt → blind 27; frisch mit 50 kW im Abgang 27",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "rolle": "steuert_mit",
+    "ungeregelt_bezug": 50.0,
+    "reserve_bezug": null,
+    "erwartet": {
+     "gelesen": true,
+     "ungeregelt_bezug": "50.0",
+     "ladebudget_blind_kw": 27.0,
+     "ladebudget_frisch_kw": 27.0
+    }
+   },
+   {
+    "name": "ohne das Feld (alte Cloud): blind der Anteil 77 wie seit PR 1058; frisch hält der Abgang trotzdem: 27",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "rolle": "steuert_mit",
+    "ungeregelt_bezug": null,
+    "reserve_bezug": null,
+    "erwartet": {
+     "gelesen": true,
+     "ungeregelt_bezug": null,
+     "ladebudget_blind_kw": 77.0,
+     "ladebudget_frisch_kw": 27.0
+    }
+   },
+   {
+    "name": "mit Reserve 10 (Wärmepumpe): blind 77 − 10 − 50 = 17; frisch misst der Abgang beide, die Reserve zählt nicht doppelt: 27",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "rolle": "steuert_mit",
+    "ungeregelt_bezug": 50.0,
+    "reserve_bezug": 10.0,
+    "erwartet": {
+     "gelesen": true,
+     "ungeregelt_bezug": "50.0",
+     "ladebudget_blind_kw": 17.0,
+     "ladebudget_frisch_kw": 27.0
+    }
+   },
+   {
+    "name": "Ungeregeltes über dem Anteil: das Ladebudget fällt nie unter 0",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "rolle": "steuert_mit",
+    "ungeregelt_bezug": 90.0,
+    "reserve_bezug": null,
+    "erwartet": {
+     "gelesen": true,
+     "ungeregelt_bezug": "90.0",
+     "ladebudget_blind_kw": 0.0,
+     "ladebudget_frisch_kw": 27.0
+    }
+   },
+   {
+    "name": "negativer Höchstwert: unlesbar, ohne Quittung, der Anteil bleibt",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "rolle": "steuert_mit",
+    "ungeregelt_bezug": -1.0,
+    "reserve_bezug": null,
+    "erwartet": {
+     "gelesen": false,
+     "ungeregelt_bezug": null,
+     "ladebudget_blind_kw": null,
+     "ladebudget_frisch_kw": null
+    }
+   }
+  ]
+ },
+ "ohne_einspeiseseite": {
+  "_comment": "UEMS AP-15 Folge „Anlage ohne Einspeisegrenze“ (Captain 23.09.2026: Einspeisung unbegrenzt - nur der Bezug wird aufgeteilt). Trägt das Grenzblatt ausdrücklich „keine Einspeisegrenze“, fehlen verteilbar.einspeisung UND anteile.einspeisung: kein Anteil, kein Wächter, die Box prüft Kennung und Summe nur im Bezug und quittiert wie jedes gültige Dokument. Nur die Einspeisung darf fehlen; eine halbe Seite bleibt, was sie war (verteilbar ohne Tabelle → box_fehlt_im_dokument, Tabelle ohne verteilbar → unlesbar, ohne Quittung). gelesen = die Nutzlast ist lesbar; einspeisung_unbegrenzt = das gelesene Dokument hat keine Einspeiseseite (angenommen: die Box hält keinen Einspeise-Anteil). Zahlen aus R1/R3 (Bezug 0/77 kW). Wirksam auf der Box erst mit dem Box-Release dieser Regel. Leser: VerbundAnteileVectorsTest (Java-Zwilling und Erzeuger) und edge-app/core/internal/anteile/anteile_vectors_test.go (Go).",
+  "dokumente": [
+   {
+    "name": "Nur Bezug (ausdrücklich keine Einspeisegrenze): angenommen, Einspeisung unbegrenzt",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "stand": null,
+    "epoche": 1,
+    "revision": 1,
+    "schritt": "ziel",
+    "verteilbar": {
+     "bezug": 77.0
+    },
+    "anteile": {
+     "bezug": {
+      "7a000000-0000-4000-8000-0000000000e1": 0.0,
+      "7a000000-0000-4000-8000-0000000000e4": 77.0
+     }
+    },
+    "erwartet": {
+     "gelesen": true,
+     "urteil": "angenommen",
+     "grund": null,
+     "einspeisung_unbegrenzt": true
+    }
+   },
+   {
+    "name": "Nur Bezug, die eigene Kennung fehlt in der Bezugs-Tabelle → box_fehlt_im_dokument",
+    "box": "7a000000-0000-4000-8000-0000000000e1",
+    "stand": null,
+    "epoche": 1,
+    "revision": 1,
+    "schritt": "ziel",
+    "verteilbar": {
+     "bezug": 77.0
+    },
+    "anteile": {
+     "bezug": {
+      "7a000000-0000-4000-8000-0000000000e4": 77.0
+     }
+    },
+    "erwartet": {
+     "gelesen": true,
+     "urteil": "abgelehnt",
+     "grund": "box_fehlt_im_dokument",
+     "einspeisung_unbegrenzt": true
+    }
+   },
+   {
+    "name": "Nur Bezug, Summe 77 über verteilbar 70 → summe_ueber_verteilbar",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "stand": null,
+    "epoche": 1,
+    "revision": 1,
+    "schritt": "ziel",
+    "verteilbar": {
+     "bezug": 70.0
+    },
+    "anteile": {
+     "bezug": {
+      "7a000000-0000-4000-8000-0000000000e1": 0.0,
+      "7a000000-0000-4000-8000-0000000000e4": 77.0
+     }
+    },
+    "erwartet": {
+     "gelesen": true,
+     "urteil": "abgelehnt",
+     "grund": "summe_ueber_verteilbar",
+     "einspeisung_unbegrenzt": true
+    }
+   },
+   {
+    "name": "verteilbar.einspeisung ohne Einspeise-Tabelle → box_fehlt_im_dokument wie bisher",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "stand": null,
+    "epoche": 1,
+    "revision": 1,
+    "schritt": "ziel",
+    "verteilbar": {
+     "einspeisung": 100.0,
+     "bezug": 77.0
+    },
+    "anteile": {
+     "bezug": {
+      "7a000000-0000-4000-8000-0000000000e1": 0.0,
+      "7a000000-0000-4000-8000-0000000000e4": 77.0
+     }
+    },
+    "erwartet": {
+     "gelesen": true,
+     "urteil": "abgelehnt",
+     "grund": "box_fehlt_im_dokument",
+     "einspeisung_unbegrenzt": false
+    }
+   },
+   {
+    "name": "Einspeise-Tabelle ohne verteilbar.einspeisung → unlesbar, ohne Quittung",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "stand": null,
+    "epoche": 1,
+    "revision": 1,
+    "schritt": "ziel",
+    "verteilbar": {
+     "bezug": 77.0
+    },
+    "anteile": {
+     "einspeisung": {
+      "7a000000-0000-4000-8000-0000000000e1": 40.0,
+      "7a000000-0000-4000-8000-0000000000e4": 60.0
+     },
+     "bezug": {
+      "7a000000-0000-4000-8000-0000000000e1": 0.0,
+      "7a000000-0000-4000-8000-0000000000e4": 77.0
+     }
+    },
+    "erwartet": {
+     "gelesen": false
+    }
+   },
+   {
+    "name": "Ohne Bezugsseite (nur die Einspeisung darf unbegrenzt sein) → unlesbar, ohne Quittung",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "stand": null,
+    "epoche": 1,
+    "revision": 1,
+    "schritt": "ziel",
+    "verteilbar": {
+     "einspeisung": 100.0
+    },
+    "anteile": {
+     "einspeisung": {
+      "7a000000-0000-4000-8000-0000000000e1": 40.0,
+      "7a000000-0000-4000-8000-0000000000e4": 60.0
+     }
+    },
+    "erwartet": {
+     "gelesen": false
+    }
+   },
+   {
+    "name": "Bestand: beide Seiten, Zielstand 40/60 und 0/77 → angenommen mit Einspeise-Anteil",
+    "box": "7a000000-0000-4000-8000-0000000000e4",
+    "stand": null,
+    "epoche": 1,
+    "revision": 1,
+    "schritt": "ziel",
+    "verteilbar": {
+     "einspeisung": 100.0,
+     "bezug": 77.0
+    },
+    "anteile": {
+     "einspeisung": {
+      "7a000000-0000-4000-8000-0000000000e1": 40.0,
+      "7a000000-0000-4000-8000-0000000000e4": 60.0
+     },
+     "bezug": {
+      "7a000000-0000-4000-8000-0000000000e1": 0.0,
+      "7a000000-0000-4000-8000-0000000000e4": 77.0
+     }
+    },
+    "erwartet": {
+     "gelesen": true,
+     "urteil": "angenommen",
+     "grund": null,
+     "einspeisung_unbegrenzt": false
+    }
+   }
+  ]
+ }
+}

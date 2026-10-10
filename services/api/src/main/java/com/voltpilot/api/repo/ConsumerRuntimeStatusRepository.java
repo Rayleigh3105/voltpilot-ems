@@ -89,12 +89,20 @@ public class ConsumerRuntimeStatusRepository {
         return previous;
     }
 
+    /**
+     * The row was reported by a box that takes part in operation (UEMS AP-07 IP-11): the state an
+     * ausgebaut box last reported stays stored, but it is no evidence of the consumer's state now.
+     */
+    private static final String BOX_AKTIV =
+            "EXISTS (SELECT 1 FROM device d WHERE d.id = s.device_id AND d.ausgebaut_am IS NULL)";
+
     /** All reported consumer states of a site (empty = no evidence yet). */
     public List<ConsumerRuntimeStatusDto> listForSite(UUID siteId) {
         return jdbc.query(
                 "SELECT entity_id, state, reason_code, actual_kw, confirmed, "
                         + "runtime_seconds_today, starts_today, reported_at "
-                        + "FROM consumer_runtime_status WHERE site_id = ? ORDER BY entity_id",
+                        + "FROM consumer_runtime_status s WHERE s.site_id = ? AND " + BOX_AKTIV
+                        + " ORDER BY entity_id",
                 (rs, i) -> map(rs), siteId);
     }
 
@@ -103,7 +111,8 @@ public class ConsumerRuntimeStatusRepository {
         return jdbc.query(
                         "SELECT entity_id, state, reason_code, actual_kw, confirmed, "
                                 + "runtime_seconds_today, starts_today, reported_at "
-                                + "FROM consumer_runtime_status WHERE site_id = ? AND entity_id = ?",
+                                + "FROM consumer_runtime_status s WHERE s.site_id = ? AND s.entity_id = ? AND "
+                                + BOX_AKTIV,
                         (rs, i) -> map(rs), siteId, entityId)
                 .stream().findFirst();
     }

@@ -61,12 +61,66 @@
           "type": "array", "minItems": 1,
           "items": {
             "type": "object", "additionalProperties": false, "required": ["code", "urheber", "text"],
-            "properties": { "code": { "$ref": "#/$defs/code" }, "urheber": { "$ref": "#/$defs/code" }, "text": { "type": "string", "minLength": 1 } }
+            "properties": { "code": { "$ref": "#/$defs/code" }, "urheber": { "$ref": "#/$defs/code" }, "auch_urheber": { "type": "array", "minItems": 1, "uniqueItems": true, "description": "Weitere Urheber, die dasselbe feststellen dürfen (additiv, AP-07 IP-9: die Kadenz-Lücke auch von `cloud`).", "items": { "$ref": "#/$defs/code" } }, "text": { "type": "string", "minLength": 1 } }
           }
         },
         "anlass_geraetegrenze": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/code" } },
         "anlass_uebergabe": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/code" } },
         "qualitaet": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/code" } },
+        "einheit_zuwachs": {
+          "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 },
+          "description": "AP-08 IP-6 (additiv): die Einheiten, in denen data_gap einen Zuwachs trägt — die Zählerstand-Einheiten des Größen-Katalogs der Messstellen (messstelle-vectors.json groessen_katalog) mit ihren umrechenbaren Einheiten (kanal_einheiten)."
+        },
+        "ersatzwert_methode": {
+          "type": "array", "minItems": 7, "maxItems": 7,
+          "description": "AP-08 IP-12 (additiv): die sieben Methoden eines Ersatzwerts (E7). `zuwachs`: gemessen = nur über eine Lücke MIT gemessenem Zuwachs, die Summe ist dieser Zuwachs (a–c); keiner = nur, wo über den Zeitraum keiner gemessen ist (e–g); null = die Methode betrifft keine Lücke (d). `bezug`: worauf sich der Wert stützt. `zeit`: Zeitraum oder Zeitpunkt. Dieselben Zeilen trägt messreihe_korrektur_vokabular().",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["code", "buchstabe", "name", "zuwachs", "bezug", "zeit", "wann"],
+            "properties": {
+              "code": { "$ref": "#/$defs/code" },
+              "buchstabe": { "type": "string", "enum": ["a", "b", "c", "d", "e", "f", "g"] },
+              "name": { "type": "string", "minLength": 1, "description": "Der Name der Methode in Kundensprache (AP-08 §4.6)." },
+              "zuwachs": { "anyOf": [{ "type": "string", "enum": ["gemessen", "keiner"] }, { "type": "null" }] },
+              "bezug": { "anyOf": [{ "type": "string", "enum": ["vorperiode", "vergleichsquelle", "ablesestaende", "betrag"] }, { "type": "null" }] },
+              "zeit": { "type": "string", "enum": ["zeitraum", "zeitpunkt"] },
+              "wann": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "ersatzwert_status": { "$ref": "#/$defs/statusliste" },
+        "korrektur_art": {
+          "type": "array", "minItems": 1,
+          "description": "AP-08 IP-12 (additiv): die Arten einer Korrektur (§4.6). `ersatzwert`: die Korrektur nennt genau dann einen Ersatzwert; `beleg_pflicht`: ohne Beleg keine Korrektur dieser Art.",
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["code", "name", "ersatzwert", "beleg_pflicht", "wer"],
+            "properties": {
+              "code": { "$ref": "#/$defs/code" },
+              "name": { "type": "string", "minLength": 1 },
+              "ersatzwert": { "type": "boolean" },
+              "beleg_pflicht": { "type": "boolean" },
+              "wer": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "korrektur_status": { "$ref": "#/$defs/statusliste" },
+        "anstoss_art": {
+          "type": "array", "minItems": 1,
+          "description": "AP-12 IP-4 (additiv): was einen Anstoß an einen Berichtsstand auslöst — Zeile für Zeile bericht-vectors.json → vokabulare.anstoss_art, mit dem Namen in Kundensprache.",
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["code", "name"],
+            "properties": { "code": { "$ref": "#/$defs/code" }, "name": { "type": "string", "minLength": 1 } }
+          }
+        },
+        "bericht_format": {
+          "type": "array", "minItems": 1,
+          "description": "AP-12 IP-4 (additiv): die Ausgaben eines Berichtsstands, deren Abruf bericht_abgerufen meldet (DA5).",
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["code", "name"],
+            "properties": { "code": { "$ref": "#/$defs/code" }, "name": { "type": "string", "minLength": 1 } }
+          }
+        },
         "fehlerklasse_datei": { "type": "string", "const": "./data-source-vectors.json" },
         "felder": {
           "type": "object",
@@ -74,7 +128,7 @@
           "additionalProperties": {
             "type": "object", "additionalProperties": false, "required": ["typ", "beschreibung"],
             "properties": {
-              "typ": { "type": "string", "enum": ["uuid", "wort", "zeit", "zeit_oder_leer", "kennung", "text", "ganz_ab_0", "ganz_ab_1", "sekunden", "statuswort", "stand", "messwert", "ganz_liste", "wert"] },
+              "typ": { "type": "string", "enum": ["uuid", "wort", "zeit", "zeit_oder_leer", "kennung", "text", "ganz_ab_0", "ganz_ab_1", "sekunden", "statuswort", "stand", "messwert", "ganz_liste", "wort_liste", "wert"] },
               "beschreibung": { "type": "string", "minLength": 1 }
             }
           }
@@ -116,16 +170,45 @@
         "arten": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/code" } }
       }
     },
+    "reserviert": {
+      "type": "array",
+      "description": "Seit AP-11 IP-1: Arten und Bezüge, die ein späteres Paket anlegt. Ein reservierter Eintrag ist KEIN Wort des Vokabulars — die Prüfung lehnt ihn ab, bis das genannte Paket ihn in `vokabular.arten` einträgt.",
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["art", "bezug", "urheber", "angelegt_von", "gelesen_von", "regel", "bis_dahin"],
+        "properties": {
+          "art": { "$ref": "#/$defs/code" },
+          "bezug": { "$ref": "#/$defs/code" },
+          "urheber": { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["box", "datenannahme", "writer", "cloud", "kunde"] } },
+          "angelegt_von": { "type": "string", "minLength": 1 },
+          "gelesen_von": { "type": "string", "minLength": 1 },
+          "regel": { "type": "string", "minLength": 1 },
+          "bis_dahin": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
     "cases": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fall" } }
   },
   "$defs": {
     "code": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "statusliste": {
+      "type": "array", "minItems": 1,
+      "description": "AP-08 IP-12 (additiv): ein geschlossenes Status-Vokabular. `folgt_auf`: aus welchem Status eine Fortschreibung dahin führt (leer = der Anfang); `grund_pflicht`: die Fortschreibung dahin nennt einen Grund.",
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["code", "folgt_auf", "grund_pflicht"],
+        "properties": {
+          "code": { "$ref": "#/$defs/code" },
+          "folgt_auf": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/code" } },
+          "grund_pflicht": { "type": "boolean" }
+        }
+      }
+    },
     "kennungTabelle": {
       "type": "object",
       "additionalProperties": { "type": "string", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" }
     },
     "feldliste": { "type": "array", "items": { "$ref": "#/$defs/code" } },
-    "bezugsliste": { "type": "array", "items": { "type": "string", "enum": ["box", "datenquelle", "komponente", "messkanal", "messstelle"] } },
+    "bezugsliste": { "type": "array", "items": { "type": "string", "enum": ["box", "datenquelle", "komponente", "messkanal", "messstelle", "bezugsgroesse", "bericht", "kennzahl", "energieeinsatz", "messbedarf"] } },
     "art": {
       "type": "object",
       "additionalProperties": false,

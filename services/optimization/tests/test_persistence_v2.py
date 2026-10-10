@@ -12,6 +12,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from voltpilot_optimization import persistence_v2
 from voltpilot_optimization.entities import (
     LoadDispatch,
     LoadSlot,
@@ -65,6 +66,18 @@ def test_consumer_slot_rows_mirror_the_published_commands_with_kw_targets():
     assert rows[2][6:] == (
         "setpoint_kw", 7.4, "optimizer_selected_low_cost", "task@2026-08-10",
     )
+
+
+def test_publication_upsert_keeps_the_first_publication_and_owns_generated_at():
+    """AP-15 IP-10: the optimizer's half of plan_zustellung. The api writes
+    the verdict into the same row, so both sides upsert on (device, plan)."""
+    sql = persistence_v2._PUBLICATION_UPSERT_SQL
+    assert "INSERT INTO plan_zustellung" in sql
+    assert "ON CONFLICT (device_id, plan_id)" in sql
+    assert "generated_at       = EXCLUDED.generated_at" in sql
+    assert "COALESCE(plan_zustellung.veroeffentlicht_um" in sql
+    for column in ("urteil", "grund", "quittiert_um", "empfangen_um"):
+        assert column not in sql  # the verdict belongs to the api alone
 
 
 def test_in_memory_repository_is_idempotent_per_run():
@@ -167,3 +180,9 @@ def test_shadow_persists_consumer_slots_only_for_the_flagged_site(monkeypatch):
     assert consumer["entity_id"] == heater.entity_id
     assert consumer["slots"][2]["commands"] == {"on_off": True}
     assert consumer["slots"][0]["commands"] == {"on_off": False}
+    # AP-15 IP-10: "veröffentlicht" for exactly the box that got the plan,
+    # recorded after the send - the unflagged site records nothing.
+    ((device_id, plan_id, generated_at, published_at),) = v2_repo.publications
+    assert device_id == flagged.device_id
+    assert (plan_id, generated_at) == (stored.plan_id, stored.generated_at)
+    assert published_at.tzinfo is not None

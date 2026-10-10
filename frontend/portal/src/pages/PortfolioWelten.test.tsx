@@ -1,3 +1,4 @@
+import { bestandSnapshot, bestandsZeit } from '../test/bestandsschutzSnapshot';
 import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { PortfolioMesswerte } from './PortfolioMesswerte';
@@ -167,6 +168,23 @@ function kachel(name: string): HTMLElement {
   const gruppe = screen.getByRole('group', { name: /aller Anlagen · / });
   return within(gruppe).getByText(name).closest('.vp-vr-kpi') as HTMLElement;
 }
+
+it('AP-13 Bestandsschutz · Portfolio Messwerte ohne Messfunktion', async () => {
+  bestandsZeit();
+  vi.spyOn(api, 'history').mockResolvedValue(history(16));
+  const view = render(<PortfolioMesswerte sites={[DACHAU, LINDENBERG]} />);
+  await screen.findByRole('group', { name: 'Energie aller Anlagen · Juli 2026' });
+  await bestandSnapshot('portfolio-messwerte', view);
+});
+
+it('AP-13 Bestandsschutz · Portfolio Erlöse ohne Messfunktion', async () => {
+  bestandsZeit();
+  window.location.hash = '#/portfolio/erloese?z=monat&at=2026-07-15';
+  vi.spyOn(api, 'earnings').mockResolvedValue(earnings);
+  const view = render(<PortfolioErloese sites={[DACHAU, LINDENBERG]} />);
+  await screen.findByRole('group', { name: 'Erlöse aller Anlagen · Juli 2026' });
+  await bestandSnapshot('portfolio-erloese', view);
+});
 
 describe('Meine Anlagen · Energie', () => {
   it('trägt die Zeitleiste der Anlage mit allen vier Zeiträumen und die Statuszeile', async () => {

@@ -283,6 +283,24 @@ class RegisterWriteTargetsTest {
         assertThat(out).noneMatch(t -> RegisterWriteTargets.LANE_LAN.equals(t.lane()));
     }
 
+    @Test
+    void sameEndpointOnAnotherBoxRemainsAnIndependentTarget() {
+        device();
+        UUID other = UUID.randomUUID();
+        String connection = "{\"ip\":\"192.168.210.40\",\"port\":502,\"unit_id\":2}";
+        when(registry.entitiesForSite(SITE)).thenReturn(List.of(
+                entity(UUID.randomUUID(), "Fronius 1", "fronius_sunspec", connection, "sunspec_live")));
+        when(observed.forSite(SITE)).thenReturn(List.of(new EntityObservedRepository.ObservedRow(
+                other, "local:src-2", "local", null, null, null, null, "rev-1", null, Instant.now(),
+                "pv-generation", "fronius_sunspec", "eco-27",
+                new EntityObservedRepository.EdgeLink("fronius_sunspec", "sunspec_live", connection,
+                        null, null, null))));
+        assertThat(targets.forSite(SITE)).anySatisfy(t -> {
+            assertThat(t.lane()).isEqualTo(RegisterWriteTargets.LANE_LAN);
+            assertThat(t.deviceId()).isEqualTo(other);
+        });
+    }
+
     /**
      * Die Bedeutung darf nicht am Herzschlag hängen: auf einer
      * portal-verwalteten Anlage steht die Familie in der gespeicherten

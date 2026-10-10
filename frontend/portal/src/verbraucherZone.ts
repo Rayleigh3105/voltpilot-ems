@@ -15,7 +15,7 @@
  */
 import { POLICY_LABEL, kwText } from './ladepunkte';
 import type { SteuerartOptionen } from './steuerartDialog';
-import { AUFBAU_REITER } from './anlageNav';
+import { AUFBAU_REITER } from './ebenenNav';
 
 // ---------------------------------------------------------------------------
 // Der Vertrag (die Form der Antwort)

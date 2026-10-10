@@ -63,6 +63,8 @@ class EreignisVokabularVectorsTest {
     private static final Path REFERENZ = V2.resolve("uems-referenzunternehmen.json");
     private static final Path HERKUNFT = V2.resolve("messwert-herkunft-vectors.json");
     private static final Path DATENQUELLE = V2.resolve("data-source-vectors.json");
+    private static final Path MESSSTELLE = V2.resolve("messstelle-vectors.json");
+    private static final Path BERICHT = V2.resolve("bericht-vectors.json");
     private static final Path BEISPIELE = V2.resolve("examples");
 
     private static JsonNode lies(Path p) throws Exception {
@@ -73,6 +75,18 @@ class EreignisVokabularVectorsTest {
         List<String> out = new ArrayList<>();
         liste.forEach(n -> out.add(n.isObject() ? n.path("code").asText() : n.asText()));
         return out;
+    }
+
+    @Test
+    void dieBoxloseAblesungslueckeErlaubtKeineErfundeneKanalidentitaet() throws Exception {
+        JsonNode fall = java.util.stream.StreamSupport.stream(lies(VECTORS).path("cases").spliterator(), false)
+                .filter(c -> c.path("name").asText().equals("ablesung-ms21-ueberfaellig-cloud"))
+                .findFirst().orElseThrow();
+        for (String feld : List.of("komponente", "messkanal", "datenquelle")) {
+            ObjectNode ereignis = fall.path("input").path("ereignis").deepCopy();
+            ereignis.put(feld, "erfundene Identitaet");
+            assertThat(EreignisVokabular.pruefe(ereignis, Urheber.CLOUD).angenommen()).as(feld).isFalse();
+        }
     }
 
     // ---------------------------------------------------------------- Form
@@ -135,11 +149,53 @@ class EreignisVokabularVectorsTest {
         assertThat(texte(w.path("anlass_uebergabe")))
                 .containsExactlyElementsOf(EreignisVokabular.ANLASS_UEBERGABE);
         assertThat(texte(w.path("qualitaet"))).containsExactlyElementsOf(EreignisVokabular.QUALITAET);
+        // AP-08 IP-12 (additiv): die Wörter von Ersatzwert und Korrektur.
+        assertThat(texte(w.path("ersatzwert_methode"))).containsExactlyElementsOf(EreignisVokabular.ERSATZWERT_METHODE);
+        assertThat(texte(w.path("ersatzwert_status"))).containsExactlyElementsOf(EreignisVokabular.ERSATZWERT_STATUS);
+        assertThat(texte(w.path("korrektur_art"))).containsExactlyElementsOf(EreignisVokabular.KORREKTUR_ART);
+        assertThat(texte(w.path("korrektur_status"))).containsExactlyElementsOf(EreignisVokabular.KORREKTUR_STATUS);
+        // AP-12 IP-4 (additiv): die Wörter der Berichts-Ereignisse — der Anstoß Zeile für Zeile aus dem Bericht-Vertrag,
+        // die Ausgaben sind Wörter seiner `handlung`.
+        JsonNode bericht = lies(BERICHT).path("vokabulare");
+        assertThat(texte(w.path("anstoss_art"))).containsExactlyElementsOf(EreignisVokabular.ANSTOSS_ART)
+                .containsExactlyElementsOf(texte(bericht.path("anstoss_art")));
+        assertThat(texte(w.path("bericht_format"))).containsExactlyElementsOf(EreignisVokabular.BERICHT_FORMAT);
+        assertThat(texte(bericht.path("handlung"))).containsAll(EreignisVokabular.BERICHT_FORMAT);
+        w.path("korrektur_art").forEach(a -> assertThat(a.path("ersatzwert").asBoolean()).as(a.path("code").asText())
+                .isEqualTo(EreignisVokabular.KORREKTUR_ART_ERSATZWERT.equals(a.path("code").asText())));
+        assertThat(w.path("korrektur_status").get(0).path("folgt_auf").isEmpty()).as("vorschlag ist der Anfang").isTrue();
+        // AP-08 IP-6: die Einheiten des Zuwachses sind die Zählerstand-Einheiten des Größen-Katalogs
+        // der Messstellen mit ihren umrechenbaren Einheiten — aus DER Datei, nicht abgeschrieben.
+        JsonNode messstelle = lies(MESSSTELLE);
+        List<String> ausKatalog = new ArrayList<>();
+        for (JsonNode g : messstelle.path("groessen_katalog")) {
+            if (texte(g.path("wertarten")).contains("Zählerstand")) {
+                JsonNode familie = messstelle.path("kanal_einheiten").path(g.path("groesse").asText());
+                for (String einheit : familie.isMissingNode() ? List.of(g.path("einheit").asText()) : texte(familie)) {
+                    if (!ausKatalog.contains(einheit)) {
+                        ausKatalog.add(einheit);
+                    }
+                }
+            }
+        }
+        assertThat(texte(w.path("einheit_zuwachs"))).containsExactlyElementsOf(ausKatalog)
+                .containsExactlyElementsOf(EreignisVokabular.EINHEITEN_ZUWACHS);
         Map<String, String> erkannt = new LinkedHashMap<>();
         w.path("erkannt_aus").forEach(e -> erkannt.put(e.path("code").asText(), e.path("urheber").asText()));
         Map<String, String> javaErkannt = new LinkedHashMap<>();
         EreignisVokabular.ERKANNT_AUS.forEach((k, u) -> javaErkannt.put(k, u.code()));
         assertThat(erkannt).containsExactlyEntriesOf(javaErkannt);
+        // Additiv (AP-07 IP-9): wer dasselbe ZUSÄTZLICH feststellen darf — Vektor-Datei `auch_urheber`.
+        Map<String, String> auch = new LinkedHashMap<>();
+        w.path("erkannt_aus").forEach(e -> {
+            if (e.has("auch_urheber")) {
+                auch.put(e.path("code").asText(), String.join(",", texte(e.path("auch_urheber"))));
+            }
+        });
+        Map<String, String> auchKlasse = new LinkedHashMap<>();
+        EreignisVokabular.ERKANNT_AUS_AUCH.forEach((k, us) -> auchKlasse.put(k,
+                String.join(",", us.stream().map(u -> u.code()).toList())));
+        assertThat(auch).isEqualTo(auchKlasse);
         w.path("grund").forEach(g -> assertThat(g.path("von").asText())
                 .as(g.path("code").asText())
                 .isEqualTo(Grund.HERKUNFT_UNVOLLSTAENDIG.code().equals(g.path("code").asText())
@@ -262,6 +318,17 @@ class EreignisVokabularVectorsTest {
         assertThat(texte(rd.path("anlass_uebergabe").path("enum")))
                 .containsExactlyElementsOf(EreignisVokabular.ANLASS_UEBERGABE);
         assertThat(texte(rd.path("qualitaet").path("enum"))).containsExactlyElementsOf(EreignisVokabular.QUALITAET);
+        assertThat(texte(rd.path("einheit_zuwachs").path("enum")))
+                .containsExactlyElementsOf(EreignisVokabular.EINHEITEN_ZUWACHS);
+        assertThat(texte(rd.path("ersatzwert_methode").path("enum")))
+                .containsExactlyElementsOf(EreignisVokabular.ERSATZWERT_METHODE);
+        assertThat(texte(rd.path("ersatzwert_status").path("enum")))
+                .containsExactlyElementsOf(EreignisVokabular.ERSATZWERT_STATUS);
+        assertThat(texte(rd.path("korrektur_art").path("enum"))).containsExactlyElementsOf(EreignisVokabular.KORREKTUR_ART);
+        assertThat(texte(rd.path("korrektur_status").path("enum")))
+                .containsExactlyElementsOf(EreignisVokabular.KORREKTUR_STATUS);
+        assertThat(texte(rd.path("anstoss_art").path("enum"))).containsExactlyElementsOf(EreignisVokabular.ANSTOSS_ART);
+        assertThat(texte(rd.path("bericht_format").path("enum"))).containsExactlyElementsOf(EreignisVokabular.BERICHT_FORMAT);
         JsonNode umschlag = mqtt.path("properties");
         assertThat(umschlag.path("schema_version").path("const").asText())
                 .isEqualTo(EreignisVokabular.FASSUNG_UMSCHLAG);
@@ -667,7 +734,15 @@ class EreignisVokabularVectorsTest {
                 }
             }
             String ms = e.path("messstelle").asText(null);
-            if (ms != null) {
+            // Eine Art, deren Bezug die Messstelle SELBST ist (AP-10 IP-8: verteilung_geaendert), hängt an
+            // keiner Reihe — ihre Existenz prüft existenz(), eine führende Quelle braucht sie nicht.
+            Art dieArt = Art.vonCode(art);
+            boolean ablesung = ms != null && messstellen.containsKey(ms)
+                    && !messstellen.get(ms).path("ablesungen").isEmpty()
+                    && !e.has("komponente") && !e.has("messkanal")
+                    && ("data_gap".equals(art) || ("correction".equals(art)
+                        && "ablesestaende_nachgetragen".equals(e.path("korrektur_art").asText())));
+            if (ms != null && !ablesung && !(dieArt != null && dieArt.bezugPflicht().contains("messstelle"))) {
                 JsonNode q = fuehrend(ms, t);
                 if (q == null) {
                     fehler.add(ms + " hat zum Zeitpunkt keine führende Quelle");
@@ -779,4 +854,75 @@ class EreignisVokabularVectorsTest {
         s.put("$ref", ref);
         return s;
     }
+    @Test
+    void bewertungsEreignisseSindAusDerReservierungAktiviert() throws Exception {
+        JsonNode datei = MAPPER.readTree(VECTORS.toFile());
+        for (String art : List.of("einstufung_gesetzt", "messbedarf_erfasst", "messbedarf_eingeloest")) {
+            List<JsonNode> reservierungen = new ArrayList<>();
+            datei.path("reserviert").forEach(r -> {
+                if (r.path("art").asText().equals(art)) reservierungen.add(r);
+            });
+            assertThat(reservierungen).hasSize(1);
+            assertThat(reservierungen.getFirst().path("urheber")).isEqualTo(MAPPER.readTree("[\"kunde\"]"));
+            assertThat(EreignisVokabular.Art.vonCode(art)).isNotNull();
+        }
+        assertThat(EreignisVokabular.Art.vonCode("einstufung_gesetzt"))
+                .isEqualTo(EreignisVokabular.Art.EINSTUFUNG_GESETZT);
+        assertThat(EreignisVokabular.Art.vonCode("messbedarf_erfasst"))
+                .isEqualTo(EreignisVokabular.Art.MESSBEDARF_ERFASST);
+        assertThat(EreignisVokabular.Art.vonCode("messbedarf_eingeloest"))
+                .isEqualTo(EreignisVokabular.Art.MESSBEDARF_EINGELOEST);
+    }
+
+    /** AP-17 IP-6: die drei Wörter der Bezugsbasis sind nur reserviert — bis IP-8/IP-15/IP-17 lehnt der Prüfer sie ab. */
+    @Test
+    void bezugsbasisEreignisseBleibenBisZumSchreibpaketNurReserviert() throws Exception {
+        JsonNode datei = MAPPER.readTree(VECTORS.toFile());
+        Map<String, String> urheber = Map.of("bezugsbasis_freigegeben", "[\"kunde\"]",
+                "bezugsbasis_beendet", "[\"kunde\",\"cloud\"]", "bezugsbasis_anstoss", "[\"cloud\"]");
+        for (Map.Entry<String, String> e : urheber.entrySet()) {
+            List<JsonNode> reservierungen = new ArrayList<>();
+            datei.path("reserviert").forEach(r -> {
+                if (r.path("art").asText().equals(e.getKey())) reservierungen.add(r);
+            });
+            assertThat(reservierungen).hasSize(1);
+            assertThat(reservierungen.getFirst().path("bezug").asText()).isEqualTo("bezugsbasis");
+            assertThat(reservierungen.getFirst().path("urheber")).isEqualTo(MAPPER.readTree(e.getValue()));
+            assertThat(EreignisVokabular.Art.vonCode(e.getKey())).isNull();
+            for (Urheber u : List.of(Urheber.KUNDE, Urheber.CLOUD)) {
+                assertThat(EreignisVokabular.pruefe(MAPPER.createObjectNode().put("art", e.getKey()), u).grund())
+                        .isEqualTo(Grund.WORT_UNBEKANNT);
+            }
+        }
+    }
+
+    /**
+     * AP-18 IP-5: die vier Wörter der Vorgänge sind nur reserviert (§6.2, W15) — AP-18 hängt seine Auslöser an die
+     * Transaktion; bis zur Anlage lehnt der Prüfer sie ab.
+     */
+    @Test
+    void vorgangsEreignisseBleibenNurReserviert() throws Exception {
+        JsonNode datei = MAPPER.readTree(VECTORS.toFile());
+        Map<String, String> bezugUndUrheber = Map.of("auffaelligkeit_vermerkt", "kennzahl [\"cloud\"]",
+                "abweichung_eroeffnet", "kennzahl [\"kunde\"]", "massnahme_umgesetzt", "massnahme [\"kunde\"]",
+                "massnahme_bewertet", "massnahme [\"kunde\"]");
+        for (Map.Entry<String, String> e : bezugUndUrheber.entrySet()) {
+            List<JsonNode> reservierungen = new ArrayList<>();
+            datei.path("reserviert").forEach(r -> {
+                if (r.path("art").asText().equals(e.getKey())) reservierungen.add(r);
+            });
+            assertThat(reservierungen).as(e.getKey()).hasSize(1);
+            String[] erwartet = e.getValue().split(" ", 2);
+            assertThat(reservierungen.getFirst().path("bezug").asText()).isEqualTo(erwartet[0]);
+            assertThat(reservierungen.getFirst().path("urheber")).isEqualTo(MAPPER.readTree(erwartet[1]));
+            assertThat(reservierungen.getFirst().path("angelegt_von").asText()).startsWith("Anlage offen");
+            assertThat(EreignisVokabular.Art.vonCode(e.getKey())).isNull();
+            assertThat(datei.at("/vokabular/arten").findValuesAsText("art")).doesNotContain(e.getKey());
+            for (Urheber u : List.of(Urheber.KUNDE, Urheber.CLOUD)) {
+                assertThat(EreignisVokabular.pruefe(MAPPER.createObjectNode().put("art", e.getKey()), u).grund())
+                        .isEqualTo(Grund.WORT_UNBEKANNT);
+            }
+        }
+    }
+
 }

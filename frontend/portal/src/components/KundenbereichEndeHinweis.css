@@ -1,0 +1,4 @@
+/* UEMS AP-20 IP-16: Kopf-Hinweis des beendeten Kundenbereichs — Bauart des Unterstützungs-Hinweises, Warnkante links. */
+.vp-kundenbereich-ende { padding: var(--vp-space-3) var(--vp-space-4); margin-bottom: var(--vp-space-3); border: 1px solid var(--vp-warn-ink); border-left-width: 4px; border-radius: var(--vp-radius-md); background: var(--vp-bg-light); overflow-wrap: anywhere; }
+.vp-kundenbereich-ende p { margin: 0; }
+.vp-kundenbereich-ende strong { margin-right: var(--vp-space-2); }

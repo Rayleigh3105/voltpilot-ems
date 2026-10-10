@@ -69,33 +69,19 @@ describe('MandantenPage - die gefaltete Benutzer-Verwaltung', () => {
     enableUser.mockReset().mockResolvedValue(undefined);
   });
 
-  it('bietet je Benutzer ALLE vier Handlungen - der Reset ist mit umgezogen', async () => {
+  it('belässt die Profilhandlungen in der Plattformverwaltung', async () => {
     openDetail();
     fireEvent.click(await screen.findByRole('button', { name: 'Aktionen für anna' }));
-    for (const label of ['Bearbeiten', 'Passwort zurücksetzen', 'Deaktivieren', 'Löschen']) {
+    for (const label of ['Bearbeiten', 'Deaktivieren', 'Löschen']) {
       expect(screen.getByRole('menuitem', { name: label })).toBeInTheDocument();
     }
   });
 
-  it('setzt ein Passwort im Drawer - der eine Support-Hebel, an seinem neuen Ort', async () => {
+  it('überlässt weitere Benutzer und Startpasswörter dem Kundenadministrator', async () => {
     openDetail();
     fireEvent.click(await screen.findByRole('button', { name: 'Aktionen für anna' }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Passwort zurücksetzen' }));
-
-    const reset = await screen.findByRole('dialog', { name: /Passwort zurücksetzen: anna/ });
-    fireEvent.change(within(reset).getByLabelText(/Neues Passwort/), {
-      target: { value: 'geheim12345' },
-    });
-    fireEvent.click(within(reset).getByRole('button', { name: 'Passwort setzen' }));
-
-    await waitFor(() =>
-      expect(resetPassword).toHaveBeenCalledWith('t-1', 'u-1', {
-        password: 'geheim12345',
-        temporary: true,
-      }),
-    );
-    // Die Zusage, die den Hebel überhaupt zum Support-Hebel macht.
-    expect(await within(reset).findByText(/Anmeldesperre wurde aufgehoben/)).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Passwort zurücksetzen' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Benutzer anlegen' })).toBeDisabled();
   });
 
   it('bearbeitet einen Benutzer, ohne den Anmeldenamen anzufassen', async () => {

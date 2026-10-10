@@ -216,6 +216,11 @@
   transform: rotate(90deg);
 }
 
+.vp-at-korrigieren {
+  align-self: flex-start;
+  margin: 0 14px 12px;
+}
+
 /* Zustand: 8-px-Punkt + WORT + Alter — nie ein gefülltes Badge. */
 .vp-at-state {
   display: inline-flex;
@@ -463,4 +468,104 @@
   padding-top: 10px;
   border-top: 1px solid var(--vp-border, #e9ecef);
   cursor: default;
+}
+
+/*
+ * UEMS AP-01 IP-6 — die Standort-Gruppen der Unternehmens-Übersicht: EINE
+ * Tabelle, je Standort ein `tbody` mit der Standort-Karte als Kopfzeile, damit
+ * die Spalten aller Standorte untereinander fluchten.
+ */
+.vp-at .vp-at-gruppe th {
+  white-space: normal;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: inherit;
+  font-weight: 400;
+  color: inherit;
+  vertical-align: top;
+  padding: 14px 12px 12px;
+  background: var(--vp-surface-2, #f8f9fa);
+}
+
+.vp-at tbody + tbody .vp-at-gruppe th {
+  border-top: 1px solid var(--vp-border, #e9ecef);
+}
+
+.vp-at .vp-at-leer td {
+  color: var(--vp-text-muted, #6c757d);
+  white-space: normal;
+}
+
+/* Telefon: je Standort ein Abschnitt — die Karte, darunter seine Anlagen-Karten. */
+.vp-at-gruppen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-5, 20px);
+  min-width: 0;
+}
+
+.vp-at-gruppe-karten {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-space-3, 12px);
+  min-width: 0;
+}
+
+.vp-at-gruppe-karten > .vp-at-leer {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--vp-text-muted, #6c757d);
+}
+
+/* UEMS AP-13 IP-8: der Weg „Energiebilanz“ je Zeile auf „Standort › Anlagen“ — nur mit Hauptzähler in der Stellung. */
+.vp-at-weg {
+  position: relative;
+  flex: none;
+  background: none;
+  border: 0;
+  padding: 4px 6px;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--vp-action, #2c5282);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.vp-at-weg::before {
+  content: '';
+  position: absolute;
+  inset: -8px -4px;
+}
+
+.vp-at-weg:focus-visible {
+  outline: 2px solid var(--vp-focus, #2563eb);
+  outline-offset: 2px;
+}
+
+/* Am Telefon ist der Weg selbst eine volle Tippfläche (≥ 44 px) — die Standort-Übersicht trägt ihn je Karte. */
+@media (max-width: 720px) {
+  .vp-at-weg {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+  }
+}
+
+.vp-at-karte-wege {
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+}
+.vp-at-unzugeordnet {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 3px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--vp-warn-soft, #fff7ed);
+  color: var(--vp-warn-ink, #b45309);
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1.25;
 }

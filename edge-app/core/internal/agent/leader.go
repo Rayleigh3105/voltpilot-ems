@@ -131,9 +131,15 @@ func (a *Agent) innerLoop(dec guards.NativeDecision, r guards.Reading, limits gu
 // ceiling and only then throttles the PV inverters on export <= 0. The curtailment
 // still never outlives its slot - without the plan's pv_limit_kw nothing here
 // runs.
+//
+// anteilCap is the share half's verdict (GEMEINSAME STEUERUNG, AP-15 IP-18),
+// evaluated in applySetpoint BEFORE the Wegwahl because it may lower the
+// discharge: with a share document it IS the watchdog here and the cascade does
+// not run; nil = the single-box watchdog with the leader as its inner loop. The
+// watchdog's verdict is returned for the Sprungprobe (AP-15 IP-21).
 func (a *Agent) composeCurtailment(now, readingAt time.Time, r guards.Reading, kw float64,
-	pvLimit, exportLimit *float64, inner guards.InnerLoop,
-) (*float64, *state.CurtailTrackInfo, *state.ExportGuardInfo) {
+	pvLimit, exportLimit *float64, inner guards.InnerLoop, anteilCap *guards.ExportCap,
+) (*float64, *state.CurtailTrackInfo, *state.ExportGuardInfo, guards.ExportCap) {
 	if !readingAt.IsZero() {
 		a.curtailTrack.Observe(readingAt, r.LoadKw, kw)
 	}
@@ -162,7 +168,12 @@ func (a *Agent) composeCurtailment(now, readingAt time.Time, r guards.Reading, k
 		}
 	}
 
-	exportCap := a.export.CapCascade(now, exportLimit, exportSafeStaticCap(exportLimit, kw), inner)
+	var exportCap guards.ExportCap
+	if anteilCap != nil {
+		exportCap = *anteilCap
+	} else {
+		exportCap = a.export.CapCascade(now, exportLimit, exportSafeStaticCap(exportLimit, kw), inner)
+	}
 	if exportCap.Active {
 		if pvLimit == nil || exportCap.CapKw < *pvLimit {
 			v := exportCap.CapKw
@@ -171,7 +182,7 @@ func (a *Agent) composeCurtailment(now, readingAt time.Time, r guards.Reading, k
 	}
 	exportGuard := a.exportGuardInfo(exportCap)
 	a.logExportGuard(exportGuard)
-	return pvLimit, curtailTrack, exportGuard
+	return pvLimit, curtailTrack, exportGuard, exportCap
 }
 
 // exportBackstop judges whether the site's feed-in limit survives the box

@@ -108,7 +108,7 @@
         },
         "herkunft_art": {
           "type": "array",
-          "items": { "type": "string", "enum": ["eingabe", "import", "messkanal", "stammdatum_ap02"] },
+          "items": { "type": "string", "enum": ["eingabe", "import", "messkanal", "stammdatum_ap02", "bezogen"] },
           "description": "§4.8: woher ein Wert kommt. Jeder Wert trägt genau eine Art."
         },
         "status": {
@@ -177,6 +177,19 @@
       "minProperties": 1,
       "additionalProperties": { "type": "string", "minLength": 1 },
       "description": "C8: je Befund ein Kundensatz de-DE. Das Portal zeigt ihn, ergänzt um die Werte der Zeile; es erfindet keinen zweiten Wortlaut."
+    },
+    "stammdatum_saetze": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["herkunft", "regel", "geaendert", "beginnt", "endet"],
+      "description": "S3 (AP-09 IP-6): die Kennzeichen-Sätze eines Übergangs in einer Periode. Platzhalter {bezeichnung}, {tag}, {alt}, {neu}, {einheit}; die Java-Regel hält ihre Vorlagen Zeichen für Zeichen daran.",
+      "properties": {
+        "herkunft": { "type": "string", "minLength": 1 },
+        "regel": { "type": "string", "minLength": 1 },
+        "geaendert": { "type": "string", "minLength": 1, "description": "Ein Wert vorher und nachher." },
+        "beginnt": { "type": "string", "minLength": 1, "description": "Vorher war kein Wert erhoben." },
+        "endet": { "type": "string", "minLength": 1, "description": "Ab dem Übergang ist kein Wert erhoben; {tag} ist der letzte Tag mit Wert." }
+      }
     },
     "regeln": {
       "type": "object",
@@ -247,6 +260,170 @@
         }
       }
     },
+    "verwalten": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["herkunft", "kennzeichen", "fest_nach_erstem_wert", "immer_aenderbar", "pruefreihenfolge", "lesarten", "eingabe", "ablehnungen"],
+      "description": "AP-09 IP-5: das Verwalten einer Bezugsgröße (M1–M6) — Kennzeichen-Vergabe, was nach dem ersten Wert fest bleibt, die Prüfreihenfolge je Vorgang, die Lesarten des Lesemodells und der GESCHLOSSENE Satz der Ablehnungen mit Status und Kundensatz. Die Regel `verwalten` der Fälle prüft ihn.",
+      "properties": {
+        "herkunft": { "type": "string", "minLength": 1 },
+        "kennzeichen": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["praefix", "stellen", "muster", "regel"],
+          "properties": {
+            "praefix": { "type": "string", "const": "BZ-" },
+            "stellen": { "type": "integer", "minimum": 1 },
+            "muster": { "type": "string", "minLength": 1 },
+            "regel": { "type": "string", "minLength": 1 }
+          }
+        },
+        "fest_nach_erstem_wert": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/bezugsgroesse_feld" },
+          "description": "M1: was nach dem ersten Wert nicht mehr geändert wird."
+        },
+        "immer_aenderbar": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "enum": ["kennzeichen", "name"] },
+          "description": "M1: was immer änderbar bleibt (außer an einer archivierten Bezugsgröße, M6)."
+        },
+        "pruefreihenfolge": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["anlegen", "aendern", "archivieren", "loeschen", "stammdatum", "eingeben", "berichtigen"],
+          "description": "Je Vorgang die Reihenfolge der Prüfungen — die ERSTE, die nicht besteht, ist die Ablehnung.",
+          "properties": {
+            "anlegen": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+            "aendern": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+            "archivieren": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+            "loeschen": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+            "stammdatum": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "E15/S4 (AP-09 IP-6): ein Wert eines Stammdatums ab einem Tag." },
+            "eingeben": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "F1/F5 (AP-09 IP-7): ein Wert für eine Periode." },
+            "berichtigen": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "F2/F3 (AP-09 IP-7): die Berichtigung eines gespeicherten Werts." }
+          }
+        },
+        "lesarten": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": { "type": "string", "enum": ["wirksam", "alle"] },
+          "description": "`GET …/{id}/werte?fassungen=` — die erste ist die Vorgabe."
+        },
+        "eingabe": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["herkunft", "urteile", "ganze_zahlen", "kennung"],
+          "description": "AP-09 IP-7: was die Schnittstelle nach einem eingegebenen oder berichtigten Wert sagt (F1–F5), der Zusatz zu `zahl_unlesbar` bei ganzen Zahlen (U5) und die Kennung des Vorgangs einer Berichtigung.",
+          "properties": {
+            "herkunft": { "type": "string", "minLength": 1 },
+            "urteile": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["neu", "wiederholung", "berichtigung", "vorschlag"],
+              "properties": {
+                "neu": { "type": "string", "minLength": 1 },
+                "wiederholung": { "type": "string", "minLength": 1 },
+                "berichtigung": { "type": "string", "minLength": 1 },
+                "vorschlag": { "type": "string", "minLength": 1 }
+              }
+            },
+            "ganze_zahlen": { "type": "string", "minLength": 1, "description": "U5: `{einheit}` ist die Einheit der Bezugsgröße (Stück, Personen, Schichten)." },
+            "kennung": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["praefix", "muster"],
+              "properties": {
+                "praefix": { "type": "string", "const": "BK" },
+                "muster": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        },
+        "ablehnungen": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/ablehnung" } },
+        "hinweis": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "arten": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["herkunft", "je_art", "pruefungen"],
+      "description": "AP-09 §4.2 (nachgetragen am 13.09.2026): das Vokabular der ARTEN einer Bezugsgröße — die Schlüssel von `je_art` — und je Art, welche Einheiten, welche Wertart, welche Perioden, welche Geltungsbereiche und welche Herkünfte möglich sind. Jede Angabe ist ein Wort der VORHANDENEN Vokabulare dieser Datei (`einheiten`, `vokabulare`); ob sie dort steht, prüfen beide Zwillings-Tests, nicht dieses Schema — so gibt es keine zweite Liste. Keine Tabelle und keine Route tragen die Art.",
+      "properties": {
+        "herkunft": { "type": "string", "minLength": 1 },
+        "je_art": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "$ref": "#/$defs/art" },
+          "description": "Je Art (Schlüssel, in der Reihenfolge der Konzept-Tabelle) ihre Angaben."
+        },
+        "pruefungen": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/art_pruefung" },
+          "description": "Was beide Zwillinge nachrechnen: passt eine Bezugsgröße zu ihrer Art? Mit den Beispielen des Referenzunternehmens (`beispiel`)."
+        },
+        "hinweis": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
+    "csv": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["herkunft", "grenzen", "kodierungen", "zeilenenden", "trennzeichen", "erkennung_zeilen", "reihenfolge", "befunde", "neutralisieren", "zusaetze", "pruefungen"],
+      "description": "AP-09 §4.6 C1 (nachgetragen mit IP-11 am 13.09.2026): der CSV-Leser — Grenzen, Kodierungen, Zeilenenden, Trennzeichen, die Reihenfolge der Stufen, die Befunde, die Formel-Neutralisierung beim Anzeigen, die Zusätze und die Erkennungs-Fälle. Umsetzung Java `uems/CsvLeser`; kein TS-Zwilling (`zwillinge_grund.csv`).",
+      "properties": {
+        "herkunft": { "type": "string", "minLength": 1 },
+        "grenzen": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["bytes_hoechstens", "datenzeilen_hoechstens"],
+          "properties": {
+            "bytes_hoechstens": { "type": "integer", "const": 5242880, "description": "5 MB = 5 × 1 024 × 1 024 Bytes (E14)." },
+            "datenzeilen_hoechstens": { "type": "integer", "const": 100000, "description": "Ohne Kopfzeile und ohne Leerzeilen (E14)." }
+          }
+        },
+        "kodierungen": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/csv_kodierung" }, "description": "In der Reihenfolge, in der sie versucht werden." },
+        "zeilenenden": { "type": "array", "minItems": 1, "items": { "type": "string", "enum": ["\r\n", "\n", "\r"] } },
+        "trennzeichen": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/csv_trennzeichen" } },
+        "erkennung_zeilen": { "type": "integer", "minimum": 1, "description": "So viele Zeilen mit Inhalt stimmen über das Trennzeichen ab." },
+        "reihenfolge": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "enum": ["groesse", "leer", "kodierung", "trennzeichen", "anfuehrungszeichen", "leerzeilen", "kopfzeile", "datenzeilen"] }
+        },
+        "befunde": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/befund" }, "description": "Die Befunde aus C8, die der Leser nennen kann." },
+        "neutralisieren": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["zeichen", "praefix", "spiegel"],
+          "properties": {
+            "zeichen": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1, "maxLength": 1 } },
+            "praefix": { "type": "string", "const": "'" },
+            "spiegel": { "type": "string", "minLength": 1, "description": "Die Datei des Exports, dessen Regel gespiegelt wird." }
+          }
+        },
+        "zusaetze": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["befund", "satz"],
+            "properties": {
+              "befund": { "$ref": "#/$defs/befund" },
+              "satz": { "type": "string", "minLength": 1 }
+            }
+          },
+          "description": "Je Zusatz (Schlüssel = `csv_zusatz`) der Befund, zu dem er gehört, und sein Satz."
+        },
+        "pruefungen": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/csv_pruefung" } },
+        "hinweis": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
     "zwillinge": {
       "type": "object",
       "minProperties": 1,
@@ -255,6 +432,23 @@
         "items": { "type": "string", "enum": ["java", "ts"] }
       },
       "description": "Je Regel, WELCHE Umsetzung sie prüft. Beide Zwillings-Tests lesen diese Angabe und prüfen genau die Regeln, die sie nennt — so ist eine Regel, die nur eine Seite kennt, DEKLARIERT und nicht stillschweigend übersprungen. Ein Eintrag muss mindestens „java“ nennen."
+    },
+    "wetter_archiv": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["herkunft", "herkunft_art", "quelle_zuerst", "kennzeichen_muster", "kennzeichen_schluessel", "grund_ohne_zahl", "wort_tage", "grenze", "gespeichert_ab"],
+      "description": "AP-17 E9 = C (IP-12a): die Herkunft `bezogen` — Wortlaut und Grenzen, gegen die beide Zwillinge ihre Konstanten prüfen.",
+      "properties": {
+        "herkunft": { "type": "string", "minLength": 1 },
+        "herkunft_art": { "const": "bezogen" },
+        "quelle_zuerst": { "type": "string", "minLength": 1, "description": "LA1: die erste Quelle; welche gilt, ist Konfiguration des Betreibers." },
+        "kennzeichen_muster": { "type": "string", "minLength": 1 },
+        "kennzeichen_schluessel": { "const": "temperatur_bezogen" },
+        "grund_ohne_zahl": { "const": "variable_fehlt" },
+        "wort_tage": { "type": "string", "minLength": 1 },
+        "grenze": { "type": "string", "minLength": 1 },
+        "gespeichert_ab": { "type": "string", "minLength": 1 }
+      }
     },
     "zwillinge_grund": {
       "type": "object",
@@ -320,6 +514,179 @@
         "kodierung_unlesbar"
       ],
       "description": "C8: das geschlossene Befund-Vokabular."
+    },
+
+    "ablehnung_code": {
+      "type": "string",
+      "enum": [
+        "anfrage_ungueltig",
+        "wort_unbekannt",
+        "einheit_unbekannt",
+        "kennzeichen_format",
+        "zeitraum_ungueltig",
+        "wert_ungueltig",
+        "periode_passt_nicht_zur_wertart",
+        "flaeche_aus_struktur",
+        "kein_stammdatum",
+        "kein_periodenwert",
+        "periode_passt_nicht",
+        "periode_nicht_zu_ende",
+        "zahl_unlesbar",
+        "wert_negativ",
+        "begruendung_zu_kurz",
+        "begruendung_zu_lang",
+        "geltung_nicht_waehlbar",
+        "geltung_unbekannt",
+        "bedeutung_fest",
+        "kennzeichen_belegt",
+        "archiviert",
+        "hat_werte",
+        "konflikt_anderer_wert",
+        "kein_wert",
+        "vorschlag_offen",
+        "nicht_gefunden"
+      ],
+      "description": "AP-09 IP-5: der geschlossene Satz der Ablehnungen der Bezugsgrößen-Schnittstelle."
+    },
+
+    "ablehnung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code", "status", "regel", "satz"],
+      "properties": {
+        "code": { "$ref": "#/$defs/ablehnung_code" },
+        "status": { "type": "integer", "enum": [400, 404, 409, 422], "description": "400 Form · 404 nicht da (auch fremd, nie 403) · 409 Zustand · 422 Regel." },
+        "regel": { "type": "string", "minLength": 1, "description": "Die Regel des Konzepts, aus der die Ablehnung folgt." },
+        "satz": { "type": "string", "minLength": 1, "description": "Der Kundensatz — die EINE Formulierung." }
+      }
+    },
+
+    "bezugsgroesse_feld": {
+      "type": "string",
+      "enum": ["art", "wertart", "einheit", "periode_art", "geltung_art", "geltung_id"],
+      "description": "verwalten (M1): ein Feld, das die Bedeutung eines Betrags trägt."
+    },
+
+    "bezugsgroesse_entwurf": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kennzeichen", "name", "wertart", "einheit", "periode_art", "geltung_art", "geltung_id"],
+      "description": "verwalten: die Felder einer Bezugsgröße, wie die Schnittstelle sie liest. `geltung_id` ist hier das Kennzeichen des Objekts im Referenzunternehmen; die Schnittstelle nimmt dessen ID.",
+      "properties": {
+        "kennzeichen": { "type": ["string", "null"], "description": "null heißt: der Server vergibt es (M2)." },
+        "name": { "type": ["string", "null"] },
+        "wertart": { "type": ["string", "null"] },
+        "einheit": { "type": ["string", "null"] },
+        "periode_art": { "type": ["string", "null"] },
+        "geltung_art": { "type": ["string", "null"] },
+        "geltung_id": { "type": ["string", "null"] },
+        "art": { "type": ["string", "null"] }
+      }
+    },
+
+    "verwaltung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["vorgang"],
+      "description": "verwalten (M1–M6): der Eingang eines Vorgangs an einer Bezugsgröße.",
+      "properties": {
+        "vorgang": { "type": "string", "enum": ["anlegen", "aendern", "archivieren", "loeschen", "stammdatum", "eingeben", "berichtigen"] },
+        "entwurf": { "$ref": "#/$defs/bezugsgroesse_entwurf" },
+        "bestand": { "$ref": "#/$defs/bezugsgroesse_entwurf" },
+        "archiviert": { "type": "boolean" },
+        "werte": { "type": "integer", "minimum": 0, "description": "Wie viele Wert-Zeilen (alle Fassungen) die Bezugsgröße trägt." },
+        "waehlbar": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Die Geltungsbereich-Arten, deren Objekte gebaut sind (E1: „wählbar, sobald gebaut“)." },
+        "belegt": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Jedes Kennzeichen, das eine ANDERE Bezugsgröße des Kundenbereichs trägt oder je trug." },
+        "wert": { "type": ["string", "null"], "description": "stammdatum (E15): der Wert, wie die Schnittstelle ihn liest — Dezimaltext, nichts wird umgewandelt." },
+        "wertart": { "type": "string", "minLength": 1, "description": "eingeben · berichtigen (AP-09 IP-7): die Wertart der Bezugsgröße." },
+        "periode_befund": { "anyOf": [{ "$ref": "#/$defs/befund" }, { "type": "null" }], "description": "eingeben · berichtigen: der Befund der Periode (Regel `periode`), oder null." },
+        "zahl_befund": { "anyOf": [{ "$ref": "#/$defs/befund" }, { "type": "null" }], "description": "eingeben · berichtigen: der Befund der Zahl (Regel `zahl`), oder null." },
+        "betrag": { "type": ["string", "null"], "description": "eingeben · berichtigen: der gelesene Betrag, oder null (nicht lesbar)." },
+        "wirksamer_betrag": { "type": ["string", "null"], "description": "eingeben · berichtigen: der wirksame Betrag des Werts (Regel `fassung`), null = kein Wert." },
+        "begruendung": { "type": ["string", "null"], "description": "berichtigen (F2): die Begründung, wie sie ankam." },
+        "vorschlag_offen": { "type": "boolean", "description": "berichtigen (F3): für diesen Wert liegt ein offener Vorschlag vor." }
+      }
+    },
+
+    "art": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "einheiten", "wertart", "perioden", "geltung", "herkunft", "konzept"],
+      "description": "arten (§4.2): eine Art einer Bezugsgröße. `konzept` hält die Zellen der Konzept-Tabelle wörtlich fest; die übrigen Felder sind ihre Lesart in den Wörtern der vorhandenen Vokabulare.",
+      "properties": {
+        "name": { "type": "string", "minLength": 1, "description": "Das Kundenwort, wie §4.2 die Art nennt." },
+        "einheiten": {
+          "anyOf": [
+            { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+            { "type": "string", "enum": ["alle", "messstelle"] }
+          ],
+          "description": "Wörter aus `einheiten`; `alle` = jede Einheit des Vokabulars, `messstelle` = die Einheit der Messstelle, an der die Größe hängt."
+        },
+        "wertart": { "type": "string", "minLength": 1, "description": "Ein Wort aus `vokabulare.wertart`." },
+        "perioden": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Wörter aus `vokabulare.periode_art`; leer = keine Periode (jede Wertart außer `periodenwert`)." },
+        "geltung": {
+          "anyOf": [
+            { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+            { "type": "string", "const": "alle" }
+          ],
+          "description": "Wörter aus `vokabulare.geltung_art`; `alle` = jedes Objekt."
+        },
+        "herkunft": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "Wörter aus `vokabulare.herkunft_art`." },
+        "konzept": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["einheiten", "wertart", "periode", "geltungsbereich", "herkunft", "ahrenberg"],
+          "description": "Die Zellen der Zeile in §4.2, Zeichen für Zeichen — Beleg, keine Regel.",
+          "properties": {
+            "einheiten": { "type": "string", "minLength": 1 },
+            "wertart": { "type": "string", "minLength": 1 },
+            "periode": { "type": "string", "minLength": 1 },
+            "geltungsbereich": { "type": "string", "minLength": 1 },
+            "herkunft": { "type": "string", "minLength": 1 },
+            "ahrenberg": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+
+    "art_feld": {
+      "type": "string",
+      "enum": ["art", "wertart", "geltung_art", "einheit", "periode_art", "herkunft_art"],
+      "description": "arten: ein Feld, das nicht zur Art passt — in dieser Reihenfolge genannt."
+    },
+
+    "art_pruefung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "art", "beispiel", "eingang", "ergebnis"],
+      "description": "arten: passt eine Bezugsgröße zu ihrer Art?",
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "art": { "type": "string", "minLength": 1 },
+        "beispiel": { "type": ["string", "null"], "description": "Das Kennzeichen der Bezugsgröße im Referenzunternehmen, deren Angaben der Eingang trägt." },
+        "eingang": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["wertart", "geltung_art", "einheit", "periode_art", "herkunft_art", "einheit_der_messstelle"],
+          "properties": {
+            "wertart": { "type": ["string", "null"] },
+            "geltung_art": { "type": ["string", "null"] },
+            "einheit": { "type": ["string", "null"] },
+            "periode_art": { "type": ["string", "null"] },
+            "herkunft_art": { "type": ["string", "null"], "description": "null = nicht geprüft; die Herkunft gehört zum Wert (§4.1)." },
+            "einheit_der_messstelle": { "type": ["string", "null"], "description": "Nur für `einheiten: messstelle`." }
+          }
+        },
+        "ergebnis": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["abweichend"],
+          "properties": {
+            "abweichend": { "type": "array", "items": { "$ref": "#/$defs/art_feld" }, "description": "Leer = passt." }
+          }
+        },
+        "hinweis": { "type": "string", "minLength": 1 }
+      }
     },
 
     "urteil_wort": {
@@ -422,8 +789,10 @@
         "urheber": { "type": "string", "minLength": 1 },
         "freigeber": { "type": ["string", "null"], "description": "F3: bei eingeschaltetem Vier-Augen-Prinzip die ZWEITE Person; gleich dem Urheber ist nie eine Freigabe." },
         "zeitpunkt": { "$ref": "#/$defs/zeitpunkt" },
-        "herkunft_art": { "type": "string", "enum": ["eingabe", "import", "messkanal", "stammdatum_ap02"] },
-        "import_kennung": { "type": ["string", "null"] }
+        "herkunft_art": { "type": "string", "enum": ["eingabe", "import", "messkanal", "stammdatum_ap02", "bezogen"] },
+        "import_kennung": { "type": ["string", "null"] },
+        "bezug_quelle": { "type": ["string", "null"], "description": "bezogen (AP-17 E9 = C): das Wetter-Archiv, aus dem VoltPilot das Tagesmittel bezogen hat — wie `import_kennung` beim Import." },
+        "abgerufen_am": { "anyOf": [{ "$ref": "#/$defs/zeitpunkt" }, { "type": "null" }], "description": "bezogen: wann VoltPilot den Wert abgerufen hat. Quelle und Abrufzeit stehen als Kennzeichen „Temperatur von VoltPilot bezogen (Quelle, abgerufen am …)“ an der Zahl." }
       }
     },
 
@@ -438,8 +807,10 @@
         "status": { "type": "string", "minLength": 1, "description": "„wirksam“, „vorschlag“, „zurueckgenommen“ oder „wirksam bis Fassung n“ für eine abgelöste Fassung." },
         "begruendung": { "type": ["string", "null"] },
         "ersetzt_fassung": { "type": ["integer", "null"], "minimum": 1 },
-        "herkunft_art": { "type": "string", "enum": ["eingabe", "import", "messkanal", "stammdatum_ap02"] },
-        "import_kennung": { "type": ["string", "null"] }
+        "herkunft_art": { "type": "string", "enum": ["eingabe", "import", "messkanal", "stammdatum_ap02", "bezogen"] },
+        "import_kennung": { "type": ["string", "null"] },
+        "bezug_quelle": { "type": ["string", "null"], "description": "bezogen (AP-17 E9 = C): das Wetter-Archiv, aus dem VoltPilot das Tagesmittel bezogen hat — wie `import_kennung` beim Import." },
+        "abgerufen_am": { "anyOf": [{ "$ref": "#/$defs/zeitpunkt" }, { "type": "null" }], "description": "bezogen: wann VoltPilot den Wert abgerufen hat. Quelle und Abrufzeit stehen als Kennzeichen „Temperatur von VoltPilot bezogen (Quelle, abgerufen am …)“ an der Zahl." }
       }
     },
 
@@ -453,6 +824,18 @@
         "fassung_alt": { "type": "integer", "minimum": 1 },
         "fassung_neu": { "type": "integer", "minimum": 2 },
         "import_kennung": { "type": ["string", "null"] }
+      }
+    },
+
+    "stammdatum_wechsel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tag", "alt", "neu"],
+      "description": "S3: an `tag` (00:00) gilt ein anderer Wert als am Vortag; null heißt „nicht erhoben“, nie 0.",
+      "properties": {
+        "tag": { "$ref": "#/$defs/tag" },
+        "alt": { "anyOf": [{ "$ref": "#/$defs/betrag" }, { "type": "null" }] },
+        "neu": { "anyOf": [{ "$ref": "#/$defs/betrag" }, { "type": "null" }] }
       }
     },
 
@@ -564,12 +947,27 @@
         "kadenz_s": { "type": "integer", "minimum": 1, "description": "menge: die Kadenz der Reihe in Sekunden, wie die Verbrauchsregel sie braucht." },
         "vier_augen": { "type": "boolean", "description": "fassung (F3/E6): die Einstellung des Unternehmens." },
         "vorgaenge": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/vorgang" }, "description": "fassung: die Vorgänge in der Reihenfolge, in der sie geschehen sind." },
-        "intervalle": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/intervall" }, "description": "stammdatum (E17)." },
+        "intervalle": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/intervall" }, "description": "stammdatum (E17) · stammdatum_eintrag (S4): die wirksamen Intervalle." },
+        "bezeichnung": { "type": "string", "minLength": 1, "description": "stammdatum (S3): wie das Stammdatum im Kennzeichen-Satz heißt („Fläche“)." },
+        "gueltig_ab": { "$ref": "#/$defs/tag", "description": "stammdatum_eintrag (S4): der Tag, ab dem der neue Wert gilt." },
+        "wert": { "$ref": "#/$defs/betrag", "description": "stammdatum_eintrag (S4): der neue Wert." },
         "perioden": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 }, "description": "stammdatum: die Perioden, für die der Wert gefragt ist." },
+        "raumtemperatur": { "$ref": "#/$defs/betrag" },
+        "heizgrenze": { "$ref": "#/$defs/betrag" },
+        "tage": { "type": "array", "items": { "type": "object", "required": ["mittel", "zustand"], "additionalProperties": false, "properties": { "mittel": { "anyOf": [{ "$ref": "#/$defs/betrag" }, { "type": "null" }] }, "zustand": { "$ref": "#/$defs/zustand_wort" } } } },
+        "standort": { "type": "string", "minLength": 1, "description": "wetter_archiv: der Standort, für den bezogen wird — er steht im Satz ohne Koordinaten." },
+        "koordinaten": { "anyOf": [{ "type": "null" }, { "type": "object", "additionalProperties": false, "required": ["breite", "laenge"], "properties": { "breite": { "$ref": "#/$defs/betrag" }, "laenge": { "$ref": "#/$defs/betrag" } } }], "description": "wetter_archiv: die Lage des Standorts; null heißt „kein Abruf“ (§5.8)." },
+        "monat": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}$", "description": "wetter_archiv: der Kalendermonat, dessen Gradtagzahl gebildet wird." },
+        "archivtage": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["datum", "mittel", "quelle", "abgerufen_am"], "properties": { "datum": { "$ref": "#/$defs/tag" }, "mittel": { "anyOf": [{ "$ref": "#/$defs/betrag" }, { "type": "null" }] }, "quelle": { "type": "string", "minLength": 1 }, "abgerufen_am": { "$ref": "#/$defs/zeitpunkt" } } }, "description": "wetter_archiv: was das Archiv je Tag geliefert hat. Ein ausgefallener Tag fehlt hier ganz." },
+        "leistungen": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["zeit", "kw", "gut"], "properties": { "zeit": { "$ref": "#/$defs/zeitpunkt" }, "kw": { "anyOf": [{ "$ref": "#/$defs/betrag" }, { "type": "null" }] }, "gut": { "type": "boolean" } } } },
+        "schwellen": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["von", "bis", "kw"], "properties": { "von": { "$ref": "#/$defs/zeitpunkt" }, "bis": { "anyOf": [{ "$ref": "#/$defs/zeitpunkt" }, { "type": "null" }] }, "kw": { "$ref": "#/$defs/betrag" } } } },
         "zustand_gewaehlt": { "type": "string", "minLength": 1, "description": "kanal (K): der Zustand, dessen Dauer gezählt wird." },
         "zustand_am_anfang": { "type": ["string", "null"], "description": "kanal: der Zustand am Periodenanfang = letzter Wechsel davor; null heißt „vor dem ersten Wechsel wurde nicht gemessen“." },
         "wechsel": { "type": "array", "items": { "$ref": "#/$defs/zustandswechsel" }, "description": "kanal: die Statuswechsel innerhalb der Periode." },
-        "luecken": { "type": "array", "items": { "$ref": "#/$defs/luecke" }, "description": "kanal: die Strecken ohne Werte." }
+        "luecken": { "type": "array", "items": { "$ref": "#/$defs/luecke" }, "description": "kanal: die Strecken ohne Werte." },
+        "verwaltung": { "$ref": "#/$defs/verwaltung" },
+        "csv": { "$ref": "#/$defs/csv_eingang", "description": "csv (C1, AP-09 IP-11): die Datei als Bytes und was die Vorlage festhält." },
+        "vorschau": { "$ref": "#/$defs/vorschau_eingang", "description": "vorschau (C2–C5, AP-09 IP-12): die Datei, die Zuordnung und was schon gespeichert ist." }
       }
     },
 
@@ -627,10 +1025,311 @@
           "description": "stammdatum: der Tag, an dem gelesen wurde — der LETZTE Tag der Periode (E17)."
         },
         "rueckwirkend_tage": { "type": "integer", "minimum": 0, "description": "stammdatum: Tage zwischen „gültig ab“ und dem Eintrag; 0 heißt „nicht rückwirkend“." },
+        "wechsel_je_periode": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "array", "items": { "$ref": "#/$defs/stammdatum_wechsel" } },
+          "description": "stammdatum (S3): je Periode die Übergänge nach ihrem ersten Tag bis einschließlich zum Stichtag, nach Tag sortiert."
+        },
+        "kennzeichen_je_periode": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+          "description": "stammdatum (S3): je Periode der Satz zu jedem Übergang (`stammdatum_saetze`), in derselben Reihenfolge — Vertrag nach Text UND Reihenfolge."
+        },
+        "eintrag": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["unveraendert", "beendet", "aufgehoben", "neu"],
+          "description": "stammdatum_eintrag (S4): was der neue Wert an den Intervallen ändert.",
+          "properties": {
+            "unveraendert": { "type": "boolean", "description": "An dem Tag gilt schon genau dieser Wert — nichts wird geschrieben." },
+            "beendet": { "anyOf": [{ "$ref": "#/$defs/intervall" }, { "type": "null" }], "description": "Das laufende Intervall mit seinem neuen letzten Tag (dem Vortag)." },
+            "aufgehoben": { "anyOf": [{ "$ref": "#/$defs/intervall" }, { "type": "null" }], "description": "Das Intervall, das am selben Tag begann (Korrektur) — es bleibt lesbar." },
+            "neu": { "anyOf": [{ "$ref": "#/$defs/intervall" }, { "type": "null" }], "description": "Das neue Intervall." }
+          }
+        },
         "minuten_im_zustand": { "type": "integer", "minimum": 0, "description": "kanal: die gemessene Zeit im gewählten Zustand." },
         "abdeckung_prozent": { "type": "number", "minimum": 0, "maximum": 100, "description": "kanal: gemessene Zeit ÷ Periodenlänge. ⚠ Zeitbasiert — nicht die wertbasierte Abdeckung der Verbrauchsregel." },
         "gemessene_stunden": { "$ref": "#/$defs/betrag", "description": "kanal: wie viele Stunden der Periode überhaupt gemessen wurden." },
-        "kennzeichen": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "kanal: was an dieser Periode zu sagen ist, in der Reihenfolge der Feststellung — Vertrag nach Text UND Reihenfolge." }
+        "abruf": { "type": "boolean", "description": "wetter_archiv: ob VoltPilot für diesen Standort überhaupt abruft — ohne Koordinaten nie." },
+        "grund": { "type": ["string", "null"], "enum": ["variable_fehlt", null], "description": "wetter_archiv: warum keine Zahl entsteht (G2) — nie 0." },
+        "satz": { "type": ["string", "null"], "description": "wetter_archiv: der Kundensatz zum Grund (§5.8, `UEMS_KOORDINATEN_FEHLEN_SATZ`)." },
+        "tage": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["datum", "betrag", "zustand", "kennzeichen"], "properties": { "datum": { "$ref": "#/$defs/tag" }, "betrag": { "$ref": "#/$defs/betrag" }, "zustand": { "$ref": "#/$defs/zustand_wort" }, "kennzeichen": { "type": "array", "items": { "type": "string", "minLength": 1 } } } }, "description": "wetter_archiv: die geschriebenen Tageswerte in Kd — ein fehlender Tag steht hier nicht, nie als 0." },
+        "nie_geschrieben": { "type": "array", "items": { "$ref": "#/$defs/tag" }, "description": "wetter_archiv: gelieferte Tage, die kein Archiv-Tag sind (heute oder später) — nie geschrieben." },
+        "monat": { "type": "object", "additionalProperties": false, "required": ["betrag", "zustand", "grund", "kennzeichen", "erbt"], "properties": { "betrag": { "anyOf": [{ "$ref": "#/$defs/betrag" }, { "type": "null" }] }, "zustand": { "$ref": "#/$defs/zustand_wort" }, "grund": { "type": ["string", "null"], "enum": ["variable_fehlt", null] }, "kennzeichen": { "type": "array", "items": { "type": "string", "minLength": 1 } }, "erbt": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "Was eine Kennzahl mit dieser Zahl als Nenner erbt (KennzahlRegeln.erbe)." } }, "description": "wetter_archiv: die Gradtagzahl des Monats über GradtagRegeln, mit „x von y Tagen“, wenn Tage fehlen." },
+        "kennzeichen": { "type": "array", "items": { "type": "string", "minLength": 1 }, "description": "kanal: was an dieser Periode zu sagen ist, in der Reihenfolge der Feststellung — Vertrag nach Text UND Reihenfolge." },
+        "ablehnung": { "anyOf": [{ "$ref": "#/$defs/ablehnung_code" }, { "type": "null" }], "description": "verwalten: die Ablehnung, oder null — der Vorgang ist erlaubt." },
+        "ablehnung_felder": { "type": "array", "items": { "$ref": "#/$defs/bezugsgroesse_feld" }, "description": "verwalten (`bedeutung_fest`): die Felder, die nach dem ersten Wert nicht geändert werden." },
+        "kennzeichen_vorschlag": { "type": "string", "minLength": 1, "description": "verwalten (M2): das Kennzeichen, das der Server ohne Angabe vergibt." },
+        "csv": { "$ref": "#/$defs/csv_ergebnis", "description": "csv (C1, AP-09 IP-11): was der Leser aus der Datei macht." },
+        "vorschau": { "$ref": "#/$defs/vorschau_ergebnis", "description": "vorschau (C2–C5, AP-09 IP-12): die Vorschau der ganzen Datei — sie schreibt nichts." }
+      }
+    },
+
+    "csv_datei": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "csv: eine Datei als Bytes. `zeilen` (mit `zeilenende` und einem Zeilenende nach jeder Zeile, außer `ohne_schluss`) ODER `text` (roh) ODER `hex` (rohe Bytes); `fuellen` hängt `anzahl`-mal `zeile` + Zeilenende an; `kodierung` und `bom` machen aus dem Text Bytes.",
+      "properties": {
+        "zeilen": { "type": "array", "items": { "type": "string" } },
+        "text": { "type": "string" },
+        "hex": { "type": "string", "pattern": "^([0-9a-f]{2})*$" },
+        "zeilenende": { "type": "string", "enum": ["\r\n", "\n", "\r"], "description": "Vorgabe \\n." },
+        "ohne_schluss": { "type": "boolean", "description": "Kein Zeilenende nach der letzten Zeile von `zeilen`. Vorgabe false." },
+        "fuellen": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["zeile", "anzahl"],
+          "properties": {
+            "zeile": { "type": "string", "minLength": 1 },
+            "anzahl": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "kodierung": { "$ref": "#/$defs/csv_kodierung", "description": "Vorgabe utf-8." },
+        "bom": { "type": "boolean", "description": "Ein UTF-8-BOM vor dem Text. Vorgabe false." }
+      }
+    },
+
+    "csv_kodierung": { "type": "string", "enum": ["utf-8", "windows-1252"], "description": "C1: die lesbaren Kodierungen." },
+
+    "csv_trennzeichen": { "type": "string", "enum": [";", ",", "\t"], "description": "C1: die Trennzeichen, in der Reihenfolge, die einen Gleichstand entscheidet." },
+
+    "csv_zusatz": {
+      "type": "string",
+      "enum": ["zu_viele_bytes", "zu_viele_datenzeilen", "leer_0_byte", "nur_leerzeilen", "nur_kopfzeile", "kodierung_nicht_erlaubt", "kodierung_nicht_wie_vorgabe", "anfuehrungszeichen_offen"],
+      "description": "csv: WORAN ein Befund lag. Der Befund bleibt das geschlossene Wort aus C8."
+    },
+
+    "csv_eingang": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["datei"],
+      "properties": {
+        "datei": { "$ref": "#/$defs/csv_datei" },
+        "vorgabe": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Was die Vorlage festhält; ein fehlendes Feld wird erkannt.",
+          "properties": {
+            "kodierung": { "$ref": "#/$defs/csv_kodierung" },
+            "trennzeichen": { "$ref": "#/$defs/csv_trennzeichen" },
+            "kopfzeile": { "type": "boolean" }
+          }
+        }
+      }
+    },
+
+    "csv_ergebnis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["befund", "zusatz", "zeile", "kodierung", "bom", "trennzeichen", "kopfzeile", "kopf", "spalten", "datenzeilen"],
+      "description": "csv: befund null heißt gelesen. Was vor einer Ablehnung feststand, steht da; alles danach ist null. Fehlen `zeilen` oder `anzeige`, werden sie nicht verglichen.",
+      "properties": {
+        "befund": { "anyOf": [{ "type": "string", "enum": ["datei_zu_gross", "kodierung_unlesbar", "keine_datenzeilen"] }, { "type": "null" }] },
+        "zusatz": { "anyOf": [{ "$ref": "#/$defs/csv_zusatz" }, { "type": "null" }] },
+        "zeile": { "type": ["integer", "null"], "minimum": 1, "description": "Die Zeile der Datei, an der es lag, wenn es eine gibt." },
+        "kodierung": { "anyOf": [{ "$ref": "#/$defs/csv_kodierung" }, { "type": "null" }] },
+        "bom": { "type": ["boolean", "null"] },
+        "trennzeichen": { "anyOf": [{ "$ref": "#/$defs/csv_trennzeichen" }, { "type": "null" }] },
+        "kopfzeile": { "type": ["boolean", "null"] },
+        "kopf": { "anyOf": [{ "type": "array", "items": { "type": "string" } }, { "type": "null" }] },
+        "spalten": { "type": ["integer", "null"], "minimum": 1 },
+        "datenzeilen": { "type": ["integer", "null"], "minimum": 0 },
+        "zeilen": { "type": "array", "items": { "$ref": "#/$defs/csv_zeile" } },
+        "anzeige": {
+          "type": "array",
+          "items": { "type": "array", "items": { "type": "string" } },
+          "description": "Die Felder je Datenzeile, wie sie ANGEZEIGT werden (Formel-Neutralisierung)."
+        }
+      }
+    },
+
+    "csv_zeile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["nr", "text", "felder"],
+      "properties": {
+        "nr": { "type": "integer", "minimum": 1, "description": "Die Zeile der Datei, in der die Zeile beginnt." },
+        "text": { "type": "string", "description": "Der Zeilentext ohne Zeilenende." },
+        "felder": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "Die Felder nach RFC 4180, unverändert." }
+      }
+    },
+
+    "csv_pruefung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "eingang", "ergebnis"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "eingang": { "$ref": "#/$defs/csv_eingang" },
+        "ergebnis": { "$ref": "#/$defs/csv_ergebnis" }
+      }
+    },
+
+    "vorschau_zuordnung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["csv", "spalten", "deutung", "zahlformat", "einheit", "bezugsgroesse", "bezug_tabelle", "synonyme"],
+      "description": "vorschau (C3): die Zuordnung, wie die Route sie nimmt. Spalten 1-basiert. `einheit` gilt ohne Einheitsspalte (U3), `bezugsgroesse` (ein Kennzeichen) ohne Bezug-Spalte; genau eins von Bezug-Spalte und `bezugsgroesse`.",
+      "properties": {
+        "csv": {
+          "anyOf": [{ "type": "null" }, {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "kodierung": { "$ref": "#/$defs/csv_kodierung" },
+              "trennzeichen": { "$ref": "#/$defs/csv_trennzeichen" },
+              "kopfzeile": { "type": "boolean" }
+            }
+          }]
+        },
+        "spalten": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["periode", "bis", "wert", "einheit", "bezug", "bemerkung"],
+          "properties": {
+            "periode": { "type": "integer", "minimum": 1, "description": "Periode, Periodenbeginn/-ende, „von“ oder Zeitpunkt (Z3)." },
+            "bis": { "type": ["integer", "null"], "minimum": 1, "description": "Nur bei der Deutung von_bis." },
+            "wert": { "type": "integer", "minimum": 1 },
+            "einheit": { "type": ["integer", "null"], "minimum": 1 },
+            "bezug": { "type": ["integer", "null"], "minimum": 1 },
+            "bemerkung": { "type": ["integer", "null"], "minimum": 1 }
+          }
+        },
+        "deutung": { "type": "string", "enum": ["periode", "periodenbeginn", "periodenende", "von_bis", "zeitpunkt"] },
+        "zahlformat": { "type": "string", "enum": ["de", "en", "auto"] },
+        "einheit": { "type": ["string", "null"], "minLength": 1 },
+        "bezugsgroesse": { "type": ["string", "null"], "pattern": "^BZ-[0-9]+$" },
+        "bezug_tabelle": { "type": "object", "additionalProperties": { "type": "string", "pattern": "^BZ-[0-9]+$" } },
+        "synonyme": { "type": "object", "additionalProperties": { "type": "string", "minLength": 1 } }
+      }
+    },
+
+    "vorschau_eingang": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["datei", "zuordnung", "bezugsgroessen", "bestand", "importe_dieser_datei", "jetzt"],
+      "properties": {
+        "datei": { "$ref": "#/$defs/csv_datei" },
+        "zuordnung": { "$ref": "#/$defs/vorschau_zuordnung" },
+        "bezugsgroessen": {
+          "type": "array",
+          "description": "Die Bezugsgrößen, die Werte aufnehmen können, mit der Zeitzone ihres Standorts (Z1). `id` ist Teil des Zeilen-Fingerabdrucks.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kennzeichen", "id", "wertart", "einheit", "periode_art", "zeitzone", "einheiten_gebunden"],
+            "properties": {
+              "kennzeichen": { "type": "string", "pattern": "^BZ-[0-9]+$" },
+              "id": { "type": "string", "format": "uuid" },
+              "wertart": { "type": "string", "enum": ["periodenwert", "stand"] },
+              "einheit": { "type": "string", "minLength": 1 },
+              "periode_art": { "type": ["string", "null"] },
+              "zeitzone": { "type": "string", "minLength": 1 },
+              "einheiten_gebunden": { "type": "integer", "minimum": 1 }
+            }
+          }
+        },
+        "bestand": {
+          "type": "array",
+          "description": "Der wirksame Stand je belegtem Schlüssel: Periodenschlüssel oder Zeitpunkt in UTC.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["bezugsgroesse", "schluessel", "betrag", "fassung", "import_kennung"],
+            "properties": {
+              "bezugsgroesse": { "type": "string", "pattern": "^BZ-[0-9]+$" },
+              "schluessel": { "type": "string", "minLength": 1 },
+              "betrag": { "$ref": "#/$defs/betrag" },
+              "fassung": { "type": "integer", "minimum": 1 },
+              "import_kennung": { "type": ["string", "null"] }
+            }
+          }
+        },
+        "importe_dieser_datei": {
+          "type": "array",
+          "description": "Was die Datenbank über gespeicherte Importe mit DIESEM Datei-Fingerabdruck sagt: Kennung, heutiger Status, Zeitpunkt.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kennung", "status", "am"],
+            "properties": {
+              "kennung": { "type": "string", "pattern": "^I-[0-9]{4}-[0-9]{4,}$" },
+              "status": { "type": "string", "enum": ["uebernommen", "teilweise_uebernommen", "wiederholt", "zurueckgenommen", "verworfen"] },
+              "am": { "$ref": "#/$defs/zeitpunkt" }
+            }
+          }
+        },
+        "jetzt": { "$ref": "#/$defs/zeitpunkt" }
+      }
+    },
+
+    "vorschau_ergebnis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["datei", "frueherer_import", "zeilen", "import"],
+      "properties": {
+        "datei": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sha256", "bytes", "befund", "zusatz", "kodierung", "trennzeichen", "kopfzeile", "datenzeilen"],
+          "properties": {
+            "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "C2/E8: SHA-256 der hochgeladenen Bytes." },
+            "bytes": { "type": "integer", "minimum": 0 },
+            "befund": { "anyOf": [{ "type": "string", "enum": ["datei_zu_gross", "kodierung_unlesbar", "keine_datenzeilen"] }, { "type": "null" }] },
+            "zusatz": { "anyOf": [{ "$ref": "#/$defs/csv_zusatz" }, { "type": "null" }] },
+            "kodierung": { "anyOf": [{ "$ref": "#/$defs/csv_kodierung" }, { "type": "null" }] },
+            "trennzeichen": { "anyOf": [{ "$ref": "#/$defs/csv_trennzeichen" }, { "type": "null" }] },
+            "kopfzeile": { "type": ["boolean", "null"] },
+            "datenzeilen": { "type": ["integer", "null"], "minimum": 0 }
+          }
+        },
+        "frueherer_import": {
+          "anyOf": [{ "type": "null" }, {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kennung", "status"],
+            "description": "Der jüngste gespeicherte Import dieser Datei, der etwas geschrieben hat — die Grundlage von `datei_bekannt`.",
+            "properties": {
+              "kennung": { "type": "string" },
+              "status": { "type": "string" }
+            }
+          }]
+        },
+        "zeilen": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["nr", "bezugsgroesse", "schluessel", "betrag", "einheit", "urteil", "befunde", "fingerabdruck"],
+            "properties": {
+              "nr": { "type": "integer", "minimum": 1 },
+              "bezugsgroesse": { "type": ["string", "null"] },
+              "schluessel": { "type": ["string", "null"], "description": "Der FACHLICHE Schlüssel (C2) zur Anzeige — null, bevor die Zeile die Stufe Schlüssel erreicht." },
+              "betrag": { "anyOf": [{ "$ref": "#/$defs/betrag" }, { "type": "null" }] },
+              "einheit": { "type": ["string", "null"] },
+              "urteil": { "$ref": "#/$defs/urteil_wort" },
+              "befunde": { "type": "array", "items": { "$ref": "#/$defs/befund" } },
+              "fingerabdruck": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$", "description": "C2: SHA-256 von `<bezugsgroesse_id>|<schluessel>|<betrag>` — nie der Zeilentext." }
+            }
+          }
+        },
+        "import": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "zaehler", "uebernahme_moeglich", "import_datensatz", "bestaetigung", "aenderungen", "befunde"],
+          "description": "Was die Regel `import` über diese Zeilen sagt — dieselben Felder.",
+          "properties": {
+            "status": { "type": ["string", "null"] },
+            "zaehler": { "$ref": "#/$defs/zaehler" },
+            "uebernahme_moeglich": { "type": "boolean" },
+            "import_datensatz": { "type": "boolean" },
+            "bestaetigung": { "type": ["string", "null"] },
+            "aenderungen": { "type": "integer", "minimum": 0 },
+            "befunde": { "type": "array", "items": { "$ref": "#/$defs/befund" } }
+          }
+        }
       }
     },
 
@@ -641,7 +1340,7 @@
       "properties": {
         "regel": {
           "type": "string",
-          "enum": ["zahl", "einheit", "periode", "zeit", "stunden", "plausibilitaet", "zuordnung", "urteil", "import", "menge", "fassung", "stammdatum", "kanal"],
+          "enum": ["zahl", "einheit", "periode", "zeit", "stunden", "plausibilitaet", "zuordnung", "urteil", "import", "menge", "fassung", "stammdatum", "stammdatum_eintrag", "kanal", "gradtage", "betriebszeit_aus_leistung", "wetter_archiv", "verwalten", "csv", "vorschau"],
           "description": "Welche Regel gefragt wird. `zwillinge` sagt, wer sie prüft."
         },
         "name": { "type": "string", "minLength": 1, "description": "Was die Prüfung behauptet — sie steht in der Meldung, wenn sie bricht." },

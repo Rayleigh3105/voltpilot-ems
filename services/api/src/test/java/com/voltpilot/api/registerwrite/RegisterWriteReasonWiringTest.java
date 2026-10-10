@@ -56,7 +56,7 @@ class RegisterWriteReasonWiringTest {
         when(provider.getIfAvailable()).thenReturn(publisher);
         // Kurze Fristen: bewiesen wird die WAHL des Grundes, nicht die Geduld.
         return new RegisterWriteService(devices, knowledge, targets, registry, journal, provider,
-                Duration.ofMillis(120), Duration.ofMillis(120), true);
+                Duration.ofMillis(120), Duration.ofMillis(120), true, mock(com.voltpilot.api.entities.EinmalAuftragZiel.class));
     }
 
     private void deviceLastSeen(Instant lastSeen) {

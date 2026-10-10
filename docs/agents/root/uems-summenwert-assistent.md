@@ -7,13 +7,13 @@ Autorität: [Rollen-Vertrag](../../contracts/v2/rollen-zuordnung.md),
 - `frontend/portal/src/components/SummenwertAssistent.tsx` implementiert den einen
   Fluss: Register wählen → Rechnen → Name → Rolle → Fertig. Der frühere
   `GesamtwertDialog.tsx` ist nur noch ein kompatibler Einstieg ohne Vorauswahl;
-  Keine zweite Quellen-/Speicherlogik.
+  auch der Kennzahlen-Dialog verwendet ihn. Keine zweite Quellen-/Speicherlogik.
 - Karten verwenden `useSummenwertAssistent()`: der Hook liefert
   `oeffneSummenwertAssistent({siteId, kontext, deviceId?, entityId?, geraetName?, onGespeichert?})`
   und `assistent` zum Rendern. `onGespeichert` lädt die Anzeige neu und schließt
   **nicht**; „Fertig“ bleibt bis zur ausdrücklichen Bestätigung sichtbar.
 - Quellenliste: `GET /api/v1/sites/{siteId}/summenwert-quellen` ordnet Komponenten
-  ihrer lesenden Box über **dieselbe `LeadDeviceService`-Regel wie der Registry-Push auf main** zu.
+  ihrer lesenden Box über **dieselbe `PushJeBox`-Regel wie der Registry-Push** zu.
   `measurement_point.device_id` darf null sein und ist deshalb keine vollständige
   Quellenliste. Ohne zuständige Box bleibt das Gerät mit Grund sichtbar.
 - Je gebundener Komponente wird der volle verfügbare Registerkatalog paginiert
@@ -22,7 +22,9 @@ Autorität: [Rollen-Vertrag](../../contracts/v2/rollen-zuordnung.md),
   boxId, geraetId}` und bietet ausschließlich serverseitig zugeordnete Komponenten
   dieses physischen Geräts an. Nur der Anlagen-Einstieg darf mehrere Geräte summieren.
   Quellenliste und Anlegen prüfen dieselbe stabile Referenz; rekursive Quellen gehören
-  zur Grenze. Vertrag und gemeinsame Vektoren: [Formelvertrag §1.2](../../contracts/v2/messstelle-formel.md).
+  zur Grenze. Auf `uems` liest die Prüfung die heute gültige Formel-Fassung einschließlich
+  Verteilungs-Termen; Standort-Zaun, `messstelle.formel` und lesende Box aus
+  `PushJeBox` bleiben maßgeblich. Vertrag und gemeinsame Vektoren: [Formelvertrag §1.2](../../contracts/v2/messstelle-formel.md).
 - Die verfügbare Familie führt gespeichertes Soll vor eindeutig zugeordnetem Ist
   (`MeasurementSelectionRepository.geraeteKomponenten`). Keine Modell-/Box-Vermutung;
   fehlt eine bekannte Familie, zeigt der Assistent „Registerfamilie nicht zugeordnet“.
@@ -44,15 +46,39 @@ Autorität: [Rollen-Vertrag](../../contracts/v2/rollen-zuordnung.md),
   Beobachten erfolgt erst beim Speichern, mit frischer Revision je Box und UUID
   als Idempotenzschlüssel. Die Budgetzeile bleibt sichtbar.
 - Rollen-Vorgabe: keine. PV benötigt Erzeugungsleistung, Verbrauch Bezugsleistung,
-  Netz richtungslose Leistung (z.B. Bezug minus Abgabe). Zugriff wie die vorhandenen
-  Kundenpfade auf main: Anmeldung und Mandanten-RLS, keine AP-03-Rechte-Weiche.
+  Netz richtungslose Leistung (z.B. Bezug minus Abgabe). Rolle nur mit
+  `geraet.einrichten`, Anlegen nur mit `messstelle.formel` aus `rollen.ts`.
   Vor Ersetzen werden die aktuellen Halter gelesen und ausdrücklich bestätigt.
 - Speichern verwendet H-10: **ein** `POST …/messstellen/berechnet` mit optionalem
   `rolle: {entity_id, role, ersetzen}`. Keine zweistufige Rollen-Kompensation.
 - Kundenwort `SUMMENWERT`; `GESAMTWERT` ist nur noch ein gleichwertiger Alias für
   ältere Aufrufer. Seit H-9 hat der Textwächter keine Alttext-Ausnahmen mehr.
 
+## Formeltypen und Tagesfassungen (AP-10 IP-16, nur auf `uems`)
+
+- `formelAssistent.ts` ergänzt den vorhandenen Entwurf um Typ und Gültigkeitstag;
+  Ableitung/Rechnung bleiben in `uemsMessstelleFormel.ts` und `gesamtwert.ts`.
+  Summe und Saldo stehen zur Wahl, Rest verweist zur elektrischen Stellung.
+- `FormelMessstellen.tsx` ergänzt Anlegen und Formeländerung um Hauptzähler-Paare
+  bzw. Kostenstellen-Anteile gemessener Messstellen. Die führende Komponente muss
+  in der vorhandenen Quellenliste liegen; vom Gerät aus bleibt die Auswahl auf
+  dieses Gerät begrenzt. Der Anlagen-Einstieg darf mehrere Geräte verwenden.
+- Verteilungs-Terme speichern Messstelle, Ziel und `anteil: gesamt`, Faktor 1.
+  Der Hinweis bei Faktor 0,7 ersetzt keinen Term automatisch. Ohne vollständige
+  Intervallmengen bleiben Referenz-/Saldo-Vorschauen `null`; Zählerstände werden
+  nicht als Periodenmengen verrechnet. Saldo leitet `Wirkenergie · saldiert · kWh`
+  ab; Rollen für Momentanleistung bleiben ausgeschlossen.
+- Unter Messen gibt es seit Konzept Messen m1 (§6.10) keinen eigenen Einstieg mehr; angelegt wird an der Anlage
+  (Energie › Messwerte), an der Gerätekarte und an der Kennzahl.
+  `SummenwertFormelDialog.tsx` erhält vorhandene Referenzen beim Fortschreiben ab
+  Tag. Schreiben und Geräteprüfung: [Saldo-Schreibweg](uems-saldo-schreibweg.md).
+- Ergänzende Nachweise: `formelAssistent.test.ts`, `e2e/formel-assistent.spec.ts`
+  (Referenzunternehmen, Saldo/Anteil/Fassung, 375/1440). Die bestehenden Flüsse
+  `e2e/summenwert*.spec.ts`, `gesamtwert`, `kennzahl-anlegen` weiter mitfahren.
+
 Prüfen: `DeviceMeasurementSelectionApiTest`, `SummenwertQuellenServiceTest`,
-`RechteKennungenDerRoutenTest`; Vitest `gesamtwert`, `summenwertQuellen`,
-`components/GesamtwertDialog`, `copy`; Playwright `summenwert`, `gesamtwert`.
+`RechtRoutenArchitekturTest`, `RechteKennungenDerRoutenTest`; Vitest
+`gesamtwert`, `summenwertQuellen`, `components/GesamtwertDialog`, `kennzahlAnlegen`,
+`components/KennzahlAnlegenDialog`, `copy`, `migration`, `uemsKeineRechnung`;
+Playwright `summenwert`, `gesamtwert`, `summenwert-hybrid`, `kennzahl-anlegen`.
 Die E2E-Bühnen stellen Uhr/Cloud; keine echten Kundenwerte fotografieren.

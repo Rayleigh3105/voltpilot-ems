@@ -325,13 +325,13 @@ func TestGarbageMeasurementsAreIgnored(t *testing.T) {
 	}
 }
 
-// TestAnOutOfOrderSampleIsIgnored - the newest measurement is the truth.
-func TestAnOutOfOrderSampleIsIgnored(t *testing.T) {
+// An older timestamp is a clock jump: the next box release accepts it.
+func TestAnOutOfOrderSampleReanchorsTheClock(t *testing.T) {
 	set := dynSite()
 	tr := NewBudgetTracker()
 	tr.Observe(t0, 20, 0, true)
 	tr.Observe(t0.Add(-time.Minute), 200, 0, true)
-	near(t, "budget", tr.Budget(t0, set).Kw, 229.3)
+	near(t, "budget", tr.Budget(t0, set).Kw, 69.3)
 }
 
 // TestTheStaticBudgetStillHonoursTheGridOperator: §14a binds in every mode -

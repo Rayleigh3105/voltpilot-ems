@@ -31,6 +31,26 @@ Der Test beweist die Kompressionstransparenz ausdrücklich (Prüfsummen über ko
 Zusatznutzen des WAL-Archivs: **Point-in-Time-Recovery**.
 Ein "oops, Tabelle geleert um 14:32" ist auf den Stand 14:31 wiederherstellbar, nicht nur auf das letzte nächtliche Backup.
 
+## UEMS-Speicherklassen im Backup
+
+Alle UEMS-Klassen liegen im selben physischen TimescaleDB-Cluster und reisen deshalb gemeinsam
+mit Basis-Backup und WAL: Rohwerte `device_measurement_sample` (90 Tage),
+`messreihe_viertelstunde`, `messreihe_tag` und `messreihe_periode` (je 3 653 Tage) sowie die
+append-only Ereignisse `messreihe_ereignis` ohne Retention
+(`services/api/src/main/resources/db/migration/V20260848000000__additional_measurement_pipeline.sql:198-202`,
+`services/api/src/main/resources/db/migration/V20260912170000__uems_messreihe_viertelstunde.sql:239-258`,
+`services/api/src/main/resources/db/migration/V20260912190000__uems_endgueltigkeit_tageswerte.sql:328-344`,
+`services/api/src/main/resources/db/migration/V20260912205000__uems_periodenmengen.sql:171-188`,
+`services/api/src/main/resources/db/migration/V20260911260000__uems_messreihe_ereignis.sql:324-373`). Die RLS-geschützten UEMS-Klassen sind
+nicht komprimiert; ihre Verdichtungen sind Anwendungs-Jobs mit dauerhaften Arbeitslisten, keine
+Continuous Aggregates. Ein physischer Restore stellt Tabellen, Arbeitslisten, Laufzeiger,
+Timescale-Retention-Jobs, Policies und Rollen zusammen auf denselben Datenstand zurück
+(`services/api/src/main/resources/db/migration/V20260912170000__uems_messreihe_viertelstunde.sql:293-374`,
+`services/api/src/main/java/com/voltpilot/api/uems/ViertelstundeLaeufer.java:29-42`).
+
+Der zusammenfassende Betriebsweg steht unter
+[Messwert-Strecke, Herkunft und Speicherklassen](agents/root/messwert-strecke-herkunft-speicherklassen.md).
+
 ## Aufbewahrung: 7 tägliche + 4 wöchentliche
 
 - **7 tägliche** decken die Klasse "gestern/diese Woche ist etwas kaputtgegangen und wir haben es binnen Tagen gemerkt" mit Tages-Granularität - zusammen mit dem WAL-Archiv sogar minutengenau innerhalb der 7 Tage.
@@ -119,6 +139,16 @@ Vorab-Fakten, die man im Ernstfall nicht suchen will:
 - `vp-db-restore.sh` stellt in ein **leeres** Ziel her, niemals über Bestehendes.
 - Das Backup-Verzeichnis wird beim Restore **read-only** gemountet - die Wiederherstellung kann die Backups nicht beschädigen.
 - Ohne `--target-time` wird bis zum Ende des WAL-Archivs wiederhergestellt (= Verlust höchstens der letzten ~5 min, siehe RPO unten); mit `--target-time` bis zu einem Zeitpunkt (PITR).
+
+**Kein fachliches `restore`-Ereignis behaupten:** Der gebaute Ereignisvertrag und seine Schreiber
+kennen derzeit keine Art `restore`; die Datenannahme erzeugt nur ihre drei eigenen Arten und der
+Cloud-Schreibweg akzeptiert nur das geschlossene Vokabular
+(`services/ingest/src/main/java/com/voltpilot/ingest/Ereignisart.java:3-12`,
+`services/api/src/main/java/com/voltpilot/api/uems/EreignisVokabular.java:414-550`). Der Restore ist
+heute im Betriebsprotokoll des Skripts und der systemd-Unit zu dokumentieren. Nach dem Start sind
+Datenstand, Arbeitslistenrückstand und Lücken/Nachlieferungen zu prüfen; ein vorhandenes
+`data_gap` oder `backfill` bleibt ein Messdatenfakt, ist aber kein Ersatz für ein nicht gebautes
+`restore`-Ereignis (`services/api/src/main/java/com/voltpilot/api/uems/LueckenMelder.java:35-62`).
 
 ### Fall A: TimescaleDB kaputt/verloren, VM lebt
 
@@ -220,3 +250,28 @@ Nach einem reinen TimescaleDB-PITR können in Keycloak Benutzer existieren, dere
 - Außer-Haus-Kopie (rsync/restic/S3) + Verschlüsselung at rest.
 - Streaming-Standby (zweite VM, `primary_conninfo`) sobald das Restore-Fenster bei TB-Skala die Anforderungen reißt - das WAL-Archiv hier ist dafür die halbe Miete.
 - Backup-Alter als Prometheus-Gauge (zusammen mit den §6.3-Gauges des Skalierungs-Gutachtens).
+
+## Sicherungsalter als Metrik (AP-20 IP-19)
+
+Gebaut als Vorstufe zum Alarm, der Alarm selbst ist ein gitops-Vorschlag. Bis Export, Regel und
+Alarm-Übung in Produktion stehen, gilt oben weiter: `systemctl --failed` ist der Alarm (Lücke L-003,
+`in_arbeit`).
+
+- **Export:** `tools/backup/vp-db-backup-metrics.sh` schreibt alle 5 min
+  (`systemd/vp-db-backup-metrics.{service,timer}`) die Datei
+  `/var/lib/node_exporter/textfile_collector/voltpilot_sicherung.prom` für den Textfile-Collector des
+  node-exporters: `voltpilot_sicherung_basis_timestamp_seconds`, `…_wal_timestamp_seconds` und
+  `…_export_timestamp_seconds`. Es sind **Zeitpunkte, kein Alter**. Das Alter rechnet die Regel mit
+  `time() - x`, also meldet sich auch ein stehender Export. Für „jüngstes Basis-Backup“ und „jüngste
+  WAL-Datei“ gelten dieselben Regeln wie beim Alterscheck. Gibt es keines, fehlt die Zeile: unbekannt
+  ist keine Null. Der Export liest nur `DB_BACKUP_DIR` und braucht weder Docker noch die Datenbank.
+- **Alarm:** `VoltPilotSicherungZuAlt` mit denselben Schwellen wie der Alterscheck (Basis 26 h,
+  kritisch ab 50 h; WAL 60 min; dazu „keine Sicherung“ und „Export steht/fehlt“), als Vorschlag mit
+  promtool-Test unter [`bewertung/vorschlaege/gitops/`](bewertung/vorschlaege/gitops/README.md).
+  Dort stehen auch der Einbau in gitops und die Schritte auf der VM.
+- **Beleg:** eine Wiederherstellung zählt nur mit Übung und Artefakt, der Alarm nur mit einer
+  ausgelösten Übung (AP-20 BT1, NR8). Ablauf, Vorlagen und Leser:
+  [`bewertung/uebungen/`](bewertung/uebungen/README.md). Q15 „WAL-Archiv läuft“ bestätigt der
+  Betreiber im Stand-Blatt (`q15_wal_archiv`, Tor G1 M-1b).
+- **Prüfen:** `bash tools/backup/test-backup-metrics.sh` (offline, auch in Phase 0 von
+  `test-backup-restore.sh`).

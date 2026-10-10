@@ -72,7 +72,8 @@ public class ComponentApplyRepository {
         List<ApplyState> rows = jdbc.query(
                 "SELECT authority, applied_revision, applied_at, refused_revision, refused_reason, "
                         + "held_revision, held_reason, reported_at FROM device_component_apply "
-                        + "WHERE site_id = ? "
+                        + "WHERE site_id = ? AND EXISTS (SELECT 1 FROM device d "
+                        + "  WHERE d.id = device_component_apply.device_id AND d.ausgebaut_am IS NULL) "
                         + "ORDER BY reported_at DESC LIMIT 1",
                 (rs, n) -> new ApplyState(rs.getString("authority"),
                         rs.getString("applied_revision"), instant(rs.getObject("applied_at",

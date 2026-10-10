@@ -1,8 +1,13 @@
 package com.voltpilot.api.config;
 
+import com.voltpilot.api.kundenbereich.KundenbereichEndeFilter;
+import com.voltpilot.api.kundenbereich.KundenbereichEndeRepository;
 import com.voltpilot.api.tenant.TenantFilter;
+import com.voltpilot.api.zugriff.ZugriffFilter;
+import com.voltpilot.api.zugriff.ZugriffKontextLader;
 import jakarta.servlet.DispatcherType;
 import java.util.List;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -30,6 +35,11 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
  * <p>The {@link TenantFilter} runs right after bearer-token authentication so the
  * validated {@code tenant_id} claim is published to {@code TenantContext} for the
  * duration of the request, driving Postgres Row-Level-Security.
+ *
+ * <p>The {@link ZugriffFilter} (UEMS AP-03 IP-4) runs right after it: it loads the
+ * caller's Zuweisungen into {@code ZugriffContext}, accepts {@code X-Kundenbereich}
+ * for partner and platform accounts only against a valid Unterstützung, and answers
+ * 404 on every customer route when it does not.
  */
 @Configuration
 @EnableMethodSecurity
@@ -45,7 +55,9 @@ public class SecurityConfig {
     @Bean
     @ConditionalOnProperty(name = "voltpilot.security.oidc.enabled", havingValue = "true",
             matchIfMissing = true)
-    SecurityFilterChain secured(HttpSecurity http, TenantFilter tenantFilter) throws Exception {
+    SecurityFilterChain secured(HttpSecurity http, TenantFilter tenantFilter, ZugriffFilter zugriffFilter,
+            KundenbereichEndeFilter kundenbereichEndeFilter)
+            throws Exception {
         http
             .cors(Customizer.withDefaults())
             .csrf(csrf -> csrf.disable())
@@ -126,7 +138,10 @@ public class SecurityConfig {
             // admin API can gate Portal-Admins (platform-admin) from Portal-Users.
             .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt ->
                 jwt.jwtAuthenticationConverter(new KeycloakRealmRoleConverter())))
-            .addFilterAfter(tenantFilter, BearerTokenAuthenticationFilter.class);
+            .addFilterAfter(tenantFilter, BearerTokenAuthenticationFilter.class)
+            .addFilterAfter(zugriffFilter, TenantFilter.class)
+            // UEMS AP-20 IP-16: nach dem angenommenen Kundenbereich die Sperre des beendeten (409 an jedem Schreibweg).
+            .addFilterAfter(kundenbereichEndeFilter, ZugriffFilter.class);
         return http.build();
     }
 
@@ -151,12 +166,24 @@ public class SecurityConfig {
     }
 
     @Bean
+    ZugriffFilter zugriffFilter(ZugriffKontextLader lader) {
+        return new ZugriffFilter(lader);
+    }
+
+    @Bean
+    KundenbereichEndeFilter kundenbereichEndeFilter(ObjectProvider<KundenbereichEndeRepository> zustand) {
+        return new KundenbereichEndeFilter(zustand);
+    }
+
+    @Bean
     CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration cfg = new CorsConfiguration();
         cfg.setAllowedOrigins(allowedOrigins);
         cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        // X-Tenant-Id is the Portal-Admin tenant switcher (see TenantFilter).
-        cfg.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Tenant-Id"));
+        // X-Tenant-Id is the Portal-Admin tenant switcher (see TenantFilter);
+        // X-Kundenbereich the partner/platform choice against an Unterstützung (ZugriffFilter).
+        cfg.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Tenant-Id",
+                ZugriffKontextLader.KUNDENBEREICH_HEADER));
         cfg.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", cfg);

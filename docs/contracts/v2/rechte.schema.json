@@ -41,7 +41,7 @@
       "type": "array",
       "minItems": 7,
       "items": {
-        "enum": ["darf", "sichtbare_standorte", "teilansicht", "ocpp_stufe", "unterstuetzung", "entzug", "aenderung"]
+        "enum": ["darf", "sichtbare_standorte", "teilansicht", "ocpp_stufe", "unterstuetzung", "entzug", "aenderung", "vieraugen", "verantwortung"]
       }
     },
     "abnahmefaelle": {
@@ -186,7 +186,8 @@
         "bedienberechtigt",
         "leser",
         "unterstuetzer",
-        "voltpilot_betrieb"
+        "voltpilot_betrieb",
+        "einsicht"
       ]
     },
     "zelle": { "enum": ["U", "S", "E", "-", "P", "A", "Ei", "B"] },
@@ -196,7 +197,8 @@
     "art": { "enum": ["installateur", "voltpilot", "notfall"] },
     "ocpp_stufe": { "enum": ["keine", "CUSTOMER", "SITE_ADMIN", "PLATFORM"] },
     "unterstuetzung_zustand": { "enum": ["entwurf", "eingerichtet", "aktiv", "archiviert"] },
-    "aenderung_art": { "enum": ["zuweisen", "entziehen", "sperren", "entfernen"] },
+    "_aenderung_art": "AP-03 IP-8: verlaengern und ablaufen sind PROTOKOLLwoerter der Unterstuetzung (\u00a74.6, A4); ueber sie urteilt zuweisungAendern nicht.",
+    "aenderung_art": { "enum": ["zuweisen", "entziehen", "sperren", "entfernen", "verlaengern", "ablaufen", "erste_anmeldung", "startpasswort_neu"] },
     "grund": {
       "enum": [
         "erlaubt",
@@ -208,14 +210,15 @@
         "letzter_kundenadministrator",
         "standort_fehlt",
         "hoechstens_12_monate",
-        "grund_fehlt"
+        "grund_fehlt",
+        "zweite_person_noetig"
       ]
     },
     "aktion_kennung": { "type": "string", "pattern": "^[a-z][a-z_]*\\.[a-z][a-z_]*$" },
     "abschnitt": {
-      "description": "Paket und Abschnitt eines Konzepts, z. B. „AP-06 §4.8“.",
+      "description": "Paket und Abschnitt eines Konzepts, z. B. „AP-06 §4.8“, oder ein Abschnitt eines späteren Konzepts, z. B. „Verbessern v1 §10.8“ (Entscheid 8).",
       "type": "string",
-      "pattern": "^AP-[0-9]{2} §[0-9]+(\\.[0-9]+)*$"
+      "pattern": "^(AP-[0-9]{2}|[A-Z][a-z]+ v[0-9]+) §[0-9]+(\\.[0-9]+)*$"
     },
 
     "matrix": {
@@ -255,9 +258,9 @@
           }
         },
         "rollen": {
-          "description": "Die sieben Spalten in der Spaltenreihenfolge der Konzept-Tabelle.",
+          "description": "Die sieben Spalten in der Spaltenreihenfolge der Konzept-Tabelle, danach die Spalten späterer Pakete (mit `nachtrag`, heute Einsicht aus AP-19 §4.11).",
           "type": "array",
-          "minItems": 7,
+          "minItems": 8,
           "items": {
             "type": "object",
             "required": ["kennung", "kundenwort", "kuerzel", "geltungsbereich", "zuweisbar", "zellen", "achsen"],
@@ -276,7 +279,11 @@
                 "minItems": 1,
                 "items": { "$ref": "#/$defs/zelle" }
               },
-              "achsen": { "type": "string", "minLength": 1 }
+              "achsen": { "type": "string", "minLength": 1 },
+              "nachtrag": {
+                "description": "Die Spalte stammt aus dem Rechte-Abschnitt eines späteren Pakets: sie steht nicht in der Konzept-Tabelle AP-03 §4.3 (die bleibt byte-gleich), sondern in der Nachtrags-Tabelle und in „Spalten der Nachträge“.",
+                "$ref": "#/$defs/abschnitt"
+              }
             },
             "additionalProperties": false
           }
@@ -345,7 +352,8 @@
                   "bedienberechtigt",
                   "leser",
                   "unterstuetzer",
-                  "voltpilot_betrieb"
+                  "voltpilot_betrieb",
+                  "einsicht"
                 ],
                 "properties": {
                   "kundenadministrator": { "enum": ["U", "E", "-"] },
@@ -354,7 +362,8 @@
                   "bedienberechtigt": { "enum": ["S", "E", "-"] },
                   "leser": { "enum": ["S", "E", "-"] },
                   "unterstuetzer": { "enum": ["A", "Ei", "B", "E", "-"] },
-                  "voltpilot_betrieb": { "enum": ["P", "E", "-"] }
+                  "voltpilot_betrieb": { "enum": ["P", "E", "-"] },
+                  "einsicht": { "enum": ["U", "E", "-"] }
                 },
                 "additionalProperties": false
               },
@@ -559,7 +568,7 @@
       "properties": {
         "name": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
         "familie": {
-          "enum": ["darf", "sichtbare_standorte", "teilansicht", "ocpp_stufe", "unterstuetzung", "entzug", "aenderung"]
+          "enum": ["darf", "sichtbare_standorte", "teilansicht", "ocpp_stufe", "unterstuetzung", "entzug", "aenderung", "vieraugen", "verantwortung"]
         },
         "ableitung": {
           "description": "Welche Funktion der Fall fährt.",
@@ -573,7 +582,9 @@
             "unterstuetzung",
             "gewaehren",
             "handeingriff",
-            "zuweisung_aendern"
+            "zuweisung_aendern",
+            "korrektur_entscheiden",
+            "eigene_massnahme"
           ]
         },
         "abnahme": { "type": ["string", "null"], "pattern": "^A[0-9]+$" },
@@ -661,6 +672,20 @@
           },
           "additionalProperties": false
         },
+        "ersteller": {
+          "description": "korrektur_entscheiden: die Kennung der Person, die die Korrektur angelegt hat — null = ein Vorschlag des Systems (AP-08 E14).",
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "vieraugen": {
+          "description": "korrektur_entscheiden: „Freigabe durch eine zweite Person“ des Unternehmens zum Zeitpunkt der Entscheidung (AP-08 E8, Vorgabe aus).",
+          "type": "boolean"
+        },
+        "verantwortlich": {
+          "description": "eigene_massnahme: die Kennung der verantwortlichen Person der Maßnahme (Verbessern v1 Entscheid 8).",
+          "type": ["string", "null"],
+          "minLength": 1
+        },
         "handelnder": { "$ref": "#/$defs/benutzer" },
         "betroffener": { "$ref": "#/$defs/person" },
         "aenderung": {
@@ -668,7 +693,7 @@
           "required": ["art", "rolle", "standorte"],
           "properties": {
             "art": { "$ref": "#/$defs/aenderung_art" },
-            "rolle": { "enum": ["kundenadministrator", "energiemanager", "bearbeiter", "bedienberechtigt", "leser", null] },
+            "rolle": { "enum": ["kundenadministrator", "energiemanager", "bearbeiter", "bedienberechtigt", "leser", "einsicht", null] },
             "standorte": { "type": ["array", "null"], "items": { "$ref": "#/$defs/standort_kennzeichen" } }
           },
           "additionalProperties": false
@@ -688,7 +713,7 @@
         "http": { "enum": [200, 201, 401, 403, 404, 409, 422] },
         "grund": { "$ref": "#/$defs/grund" },
         "standort": { "type": ["string", "null"], "pattern": "^ST-[0-9]+$" },
-        "rolle": { "enum": ["kundenadministrator", "energiemanager", "bearbeiter", "bedienberechtigt", "leser", "unterstuetzer", "voltpilot_betrieb", null] },
+        "rolle": { "enum": ["kundenadministrator", "energiemanager", "bearbeiter", "bedienberechtigt", "leser", "unterstuetzer", "voltpilot_betrieb", "einsicht", null] },
         "rolle_noetig": { "enum": ["kundenadministrator", "energiemanager", "bearbeiter", "bedienberechtigt", "leser", "voltpilot_betrieb", null] },
         "umfang_noetig": { "enum": ["ansehen", "einrichten", "einrichten_und_bedienen", null] },
         "text": { "type": ["string", "null"], "minLength": 1 },

@@ -23,6 +23,9 @@ import {
   type Summand as FormelSummand,
   type Term as FormelTerm,
 } from './uemsMessstelleFormel';
+import { SALDIERT as KATALOG_SALDIERT, groessePruefen } from './uemsMessstelle';
+import { SATZ_REST_KEINE_WERTE, SATZ_REST_NEGATIV, SATZ_REST_ZUGEORDNET } from './uemsBilanzSaetze';
+import { zahl } from './uemsErgebnis';
 
 // ------------------------------------------------------------------------ Wörter und Schwellen
 
@@ -39,17 +42,18 @@ export const ZUSTAND_RANG = [VOLLSTAENDIG, MIT_ERSATZWERT, UNVOLLSTAENDIG, KEINE
 const RANG_RECHENBAR = ZUSTAND_RANG.indexOf(MIT_ERSATZWERT);
 
 export const MENGE_NACHKOMMASTELLEN = 6;
-export const TAUSENDER_TRENNZEICHEN = ' ';
-/** U+2212 — das Minuszeichen der Kundensätze, nicht der ASCII-Bindestrich. */
-export const MINUS = '−';
 
 export const BERECHNET_DIFFERENZ = 'berechnet (Differenz)';
 export const BERECHNET_SUMME = 'berechnet (Summe)';
 export const BERECHNET_SALDO = 'berechnet (Saldo)';
 export const NICHT_ZUGEORDNET = 'nicht zugeordnet';
 export const UNPLAUSIBEL_NEGATIV = 'unplausibel (negativ)';
-export const SALDIERT = 'saldiert';
+/** Das Katalog-Wort steht EINMAL — im Größen-Katalog der Messstelle (AP-10 IP-4). */
+export const SALDIERT = KATALOG_SALDIERT;
 export const SALDIERT_KENNZEICHEN = 'saldiert (Bezug − Abgabe)';
+
+/** Die Kundensätze des Rests wohnen in `uemsBilanzSaetze.ts` (Einstiegs-Bündel). */
+export { SATZ_REST_KEINE_WERTE, SATZ_REST_NEGATIV, SATZ_REST_ZUGEORDNET };
 
 /** Wörter, die eine URSACHE behaupten — kein Satz dieses Vertrags darf sie tragen. */
 export const VERBOTENE_WOERTER = ['Verlust', 'Verluste', 'Verlusten', 'Schwund', 'Diebstahl', 'Leckage'];
@@ -103,25 +107,6 @@ export const dezKuerze = (d: Dez): Dez => {
     e -= 1;
   }
   return { z, e };
-};
-
-/**
- * Die Zahl eines Kundensatzes: Tausender mit Leerzeichen, Minuszeichen U+2212. Sie steht nur in
- * SÄTZEN — die Beträge des Vertrags reisen als Dezimaltext.
- */
-export const zahlDe = (wert: Dez): string => {
-  const kurz = dezKuerze(wert);
-  const negativ = dezVorzeichen(kurz) < 0;
-  const text = dezText(negativ ? { z: -kurz.z, e: kurz.e } : kurz);
-  const punkt = text.indexOf('.');
-  const ganz = punkt < 0 ? text : text.slice(0, punkt);
-  const rest = punkt < 0 ? '' : text.slice(punkt + 1);
-  let gruppiert = '';
-  for (let i = 0; i < ganz.length; i += 1) {
-    if (i > 0 && (ganz.length - i) % 3 === 0) gruppiert += TAUSENDER_TRENNZEICHEN;
-    gruppiert += ganz[i];
-  }
-  return `${negativ ? MINUS : ''}${gruppiert}${rest ? `,${rest}` : ''}`;
 };
 
 // ------------------------------------------------------------------------------ Tage (Muster A)
@@ -288,6 +273,8 @@ export function rest(
   // Wessen Bilanz das ist — sie steht im Vertrag und in der Herkunft, die Rechnung braucht sie nicht.
   _hauptzaehler: string,
   einheit: string,
+  // Die Ebene der Periode (tag, monat …) — sie bestimmt die Stellen der Zahl im Kundensatz (E11).
+  zahlEbene: string | null,
   version: number,
   vermerke: string[],
   eingaenge: Eingang[],
@@ -321,7 +308,7 @@ export function rest(
       abdeckung_prozent: abdeckung,
       fehlend,
       kennzeichen,
-      kundensatz: 'nicht zugeordnet: keine Werte',
+      kundensatz: SATZ_REST_KEINE_WERTE,
     };
   }
 
@@ -335,9 +322,8 @@ export function rest(
   kennzeichen.push(...geerbt(eingaenge.map((e) => e.kennzeichen)));
   kennzeichen.push(...vermerke);
   if (version > 1) kennzeichen.push(korrigiert(version));
-  const kundensatz = negativ
-    ? `Messwerte passen nicht zusammen (${zahlDe(menge)} ${einheit})`
-    : `${zahlDe(menge)} ${einheit} sind keiner Messstelle zugeordnet`;
+  const kundensatz = (negativ ? SATZ_REST_NEGATIV : SATZ_REST_ZUGEORDNET)
+    .replace('{zahl}', zahl(dezText(menge), einheit, zahlEbene));
   return {
     zufluss,
     abfluss,
@@ -353,6 +339,102 @@ export function rest(
     kennzeichen,
     kundensatz,
   };
+}
+
+// ----------------------------------------------------------------------- Rest aus der Stellung
+
+/** Fehler: an diesem Tag ist die Messstelle kein Hauptzähler Bezug — es gibt keinen Rest (§4.3). */
+export const REST_OHNE_HAUPTZAEHLER = 'rest_ohne_hauptzaehler';
+
+/**
+ * Eine zeitgültige elektrische Stellung einer Messstelle (AP-04 `messstelle_stellung`), mit den
+ * Merkmalen der Messstelle, die die Rolle braucht. `ab`/`bis` sind TAGE (`JJJJ-MM-TT`), der letzte
+ * Tag gehört dazu; `null` heißt offen.
+ */
+export interface StellungZeile {
+  messstelle: string;
+  anlage: string | null;
+  stellung: string;
+  richtung: string | null;
+  art: string;
+  medium: string;
+  unterzaehler_von: string | null;
+  ab: string | null;
+  bis: string | null;
+}
+
+/** Ein Term des Rests: welche Messstelle mit welcher Rolle und welchem Anteil eingeht. */
+export interface RestTerm {
+  messstelle: string;
+  rolle: string;
+  anteil: string;
+}
+
+/**
+ * Die Fassung eines Rests an EINEM Tag, aus der Stellung abgeleitet. `fehler !== null` heißt: an
+ * diesem Tag gibt es keinen Rest (`terme` leer). `ausserhalb` nennt die Abzweige desselben Systems.
+ */
+export interface RestFassung {
+  hauptzaehler: string;
+  anlage: string | null;
+  terme: RestTerm[];
+  ausserhalb: string[];
+  fehler: string | null;
+}
+
+/**
+ * §4.3 / E3 — der Rest eines Hauptzählers X an einem TAG, aus den Stellungen dieses Tages: ein `rest`
+ * speichert keine Terme. Zieht ein Unterzähler um, ändern sich beide Reste am selben Tag, ohne dass
+ * jemand eine Formel anfasst (F7).
+ *
+ * - X muss an dem Tag Hauptzähler mit der Rolle Zufluss sein (Richtung Bezug), sonst
+ *   `rest_ohne_hauptzaehler`.
+ * - Zufluss und Abfluss sind X selbst und die Erzeuger, Speicher (mit beiden Anteilen, E4) und der
+ *   Hauptzähler Abgabe DESSELBEN Systems (Anlage); ein zweiter Hauptzähler Bezug (den der
+ *   Messstellen-Vertrag §6 nicht zulässt) ginge nicht als zweiter Zufluss ein.
+ * - Zugeordnet sind genau die Unterzähler VON X — ein Unterzähler eines Unterzählers zählt im Rest
+ *   von X nicht doppelt.
+ *
+ * Reihenfolge: Zufluss (X zuerst) · Abfluss · zugeordnet, je in der Reihenfolge der Zeilen. Vermerke
+ * wie „Stellung geändert (…)" leitet diese Regel NICHT ab.
+ */
+export function restAusStellung(hauptzaehler: string, tag: string, zeilen: StellungZeile[]): RestFassung {
+  const amTag = zeilen.filter((z) => (z.ab === null || z.ab <= tag) && (z.bis === null || tag <= z.bis));
+  const x = amTag.find((z) => z.messstelle === hauptzaehler);
+  const rolleVon = (z: StellungZeile): RolleUrteil =>
+    rolle({
+      stellung: z.stellung,
+      richtung: z.richtung,
+      art: z.art,
+      medium: z.medium,
+      unterzaehler_von: z.unterzaehler_von,
+    });
+  const xRollen = x ? rolleVon(x).rollen : [];
+  const xIstZufluss = xRollen.length === 1 && xRollen[0].rolle === ZUFLUSS && xRollen[0].anteil === 'gesamt';
+  if (!x || x.stellung !== 'Hauptzähler' || !xIstZufluss) {
+    return { hauptzaehler, anlage: null, terme: [], ausserhalb: [], fehler: REST_OHNE_HAUPTZAEHLER };
+  }
+  const zufluss: RestTerm[] = [{ messstelle: x.messstelle, rolle: ZUFLUSS, anteil: 'gesamt' }];
+  const abfluss: RestTerm[] = [];
+  const zugeordnet: RestTerm[] = [];
+  const ausserhalb: string[] = [];
+  for (const z of amTag) {
+    if (z.messstelle === x.messstelle) continue;
+    const u = rolleVon(z);
+    if (u.ziel === hauptzaehler) {
+      zugeordnet.push({ messstelle: z.messstelle, rolle: ZUGEORDNET, anteil: 'gesamt' });
+      continue;
+    }
+    const imSystem = x.anlage !== null && x.anlage === z.anlage;
+    const zweiterBezug = z.stellung === 'Hauptzähler' && z.richtung === 'Bezug';
+    if (!imSystem || u.ziel !== null || zweiterBezug) continue;
+    for (const r of u.rollen) {
+      if (r.rolle === ZUFLUSS) zufluss.push({ messstelle: z.messstelle, rolle: ZUFLUSS, anteil: r.anteil });
+      else if (r.rolle === ABFLUSS) abfluss.push({ messstelle: z.messstelle, rolle: ABFLUSS, anteil: r.anteil });
+      else if (r.rolle === AUSSERHALB) ausserhalb.push(z.messstelle);
+    }
+  }
+  return { hauptzaehler, anlage: x.anlage, terme: [...zufluss, ...abfluss, ...zugeordnet], ausserhalb, fehler: null };
 }
 
 // --------------------------------------------------------------------------------------- Summe
@@ -384,7 +466,19 @@ export interface SummeUrteil {
  * §4.5 Zeile „Summe" — die Summe der VORHANDENEN Eingänge, Zustand „schlechtester Eingang"; fehlt
  * einer, heißt die Zahl „mindestens …" und NENNT ihn. Eine Summe verschweigt nie einen Summanden.
  */
-export function summe(einheit: string, eingaenge: Summand[]): SummeUrteil {
+export function summe(einheit: string, zahlEbene: string | null, eingaenge: Summand[]): SummeUrteil {
+  const s = summeOhneAnzeige(eingaenge);
+  const anzeige =
+    s.fehlend.length === 0
+      ? null
+      : `mindestens ${zahl(dezText(s.menge), einheit, zahlEbene)} (${s.fehlend.join(', ')} ${
+          s.fehlend.length === 1 ? 'fehlt' : 'fehlen'
+        })`;
+  return { ...s, anzeige };
+}
+
+/** Die Summe ohne Kundensatz — die Standort-Ebene (`ebene`) spricht ihn nicht. */
+function summeOhneAnzeige(eingaenge: Summand[]): SummeUrteil {
   let menge = NULL_BETRAG;
   let vorhanden = 0;
   const fehlend: string[] = [];
@@ -404,12 +498,6 @@ export function summe(einheit: string, eingaenge: Summand[]): SummeUrteil {
   if (vorhanden === 0) zustand = KEINE_WERTE;
   else if (rang(zustand) > rang(UNVOLLSTAENDIG)) zustand = UNVOLLSTAENDIG;
   const kennzeichen = [BERECHNET_SUMME, ...geerbt(eingaenge.map((e) => e.kennzeichen))];
-  const anzeige =
-    fehlend.length === 0
-      ? null
-      : `mindestens ${zahlDe(menge)} ${einheit} (${fehlend.join(', ')} ${
-          fehlend.length === 1 ? 'fehlt' : 'fehlen'
-        })`;
   return {
     menge,
     zustand,
@@ -418,7 +506,7 @@ export function summe(einheit: string, eingaenge: Summand[]): SummeUrteil {
     gesamt: eingaenge.length,
     fehlend,
     kennzeichen,
-    anzeige,
+    anzeige: null,
   };
 }
 
@@ -554,7 +642,14 @@ export function richtung(
       : { groesse: 'Wirkenergie', richtung: 'Bezug', einheit: 'kWh', wertart, fehler: null, grund: null };
   }
   if (typ === 'saldo') {
-    return art === 'berechnet'
+    // Ob `saldiert` an dieser Messstelle stehen darf, sagt der KATALOG (AP-10 IP-4) — nicht eine
+    // zweite Liste hier: nur `art = berechnet` darf die Richtung tragen.
+    const imKatalog = groessePruefen(
+      'Strom',
+      { groesse: 'Wirkenergie', richtung: SALDIERT, einheit: 'kWh', wertart: 'Intervallmenge' },
+      art,
+    );
+    return imKatalog.fehler === null
       ? { groesse: 'Wirkenergie', richtung: SALDIERT, einheit: 'kWh', wertart, fehler: null, grund: null }
       : {
           groesse: null,
@@ -599,9 +694,13 @@ export interface EbeneUrteil {
  * wird in der Anzeige seinem Namen vorangestellt („Lindach ab 15.10.2026") — an der Zahl selbst
  * steht nur, was die Regel sagt.
  */
-export function ebene(einheit: string, wort: string, systeme: SystemZeile[]): EbeneUrteil {
-  const s = summe(
-    einheit,
+export function ebene(
+  // Die Einheit der Ebene steht im Vertrag; die Summe der Systeme spricht keinen Zahlensatz.
+  _einheit: string,
+  wort: string,
+  systeme: SystemZeile[],
+): EbeneUrteil {
+  const s = summeOhneAnzeige(
     systeme.map((z) => ({
       messstelle: z.messstelle,
       menge: z.menge,

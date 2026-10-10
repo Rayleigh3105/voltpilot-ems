@@ -1,0 +1,73 @@
+/*
+ * „Quelle binden“ / „Vergleichsquelle hinzufügen“ (UEMS AP-04 IP-14, D3 · V1). Der Rahmen ist das
+ * zentrierte `Modal` (am Telefon Vollbild); hier wohnt nur der Stapel des Dialogs.
+ * ⚠ 375 px: jedes Kind darf schrumpfen (`min-width: 0`), Datum und Uhrzeit stehen erst
+ * nebeneinander, wenn beide mindestens 11 rem breit sein können.
+ */
+
+.vp-qb {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg);
+}
+
+.vp-qb > * {
+  min-width: 0;
+}
+
+.vp-qb-vorspann,
+.vp-qb-grund {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-qb-zeit {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+}
+
+.vp-qb-zeit > * {
+  min-width: 0;
+}
+
+.vp-qb-folgen {
+  margin: 0;
+  padding: var(--vp-c-space-3);
+  border-radius: var(--vp-c-radius);
+  background: var(--vp-c-muted);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-qb-folgen-titel {
+  display: block;
+  margin-bottom: var(--vp-c-space-1);
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-qb-fehler {
+  margin: 0;
+  color: var(--vp-industry-end);
+  font-size: var(--vp-c-fs-12);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-qb-fertig {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-c-space-3);
+  margin: 0;
+  min-width: 0;
+  font-size: var(--vp-c-fs-16, 1rem);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}

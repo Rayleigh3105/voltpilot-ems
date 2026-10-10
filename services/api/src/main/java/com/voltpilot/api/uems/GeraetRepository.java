@@ -181,6 +181,18 @@ public class GeraetRepository {
                 + "VALUES (?,?,?,?,?)", tenantId, geraetId, entityId, teilId, Timestamp.from(ab));
     }
 
+    /** Eine Karten-Zeile ist ihr Einbau im Controller. Der alte Einbau bleibt samt Seriennummer erhalten. */
+    public UUID karteWechseln(UUID tenant, Teil alt, UUID neu, Instant am, boolean uebernommen) {
+        if (jdbc.update("UPDATE geraet_teil SET ausgebaut_am = ? WHERE id = ? AND ausgebaut_am IS NULL",
+                Timestamp.from(am), alt.id()) != 1) {
+            throw new IllegalStateException("Karten-Einbau wurde inzwischen verändert");
+        }
+        return jdbc.queryForObject("INSERT INTO geraet_teil (tenant_id, geraet_id, teilart, steckplatz, "
+                + "bezeichnung, typ, seriennummer, eingebaut_am) VALUES (?,?,?,?,?,?,?,?) RETURNING id",
+                UUID.class, tenant, neu, alt.teilart(), alt.steckplatz(), alt.bezeichnung(), alt.typ(),
+                uebernommen ? alt.seriennummer() : null, Timestamp.from(am));
+    }
+
     /** Jedes Einbau-Kennzeichen des Kundenbereichs — Vorlage für ein freies (IP-17). */
     public List<String> einbauKennzeichen() {
         return jdbc.queryForList("SELECT einbau_kennzeichen FROM geraet", String.class);

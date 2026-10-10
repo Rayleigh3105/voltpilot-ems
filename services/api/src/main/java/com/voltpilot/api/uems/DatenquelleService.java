@@ -3,10 +3,12 @@ package com.voltpilot.api.uems;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.components.WagoSollLesung;
+import com.voltpilot.api.probe.ProbePublisher;
 import com.voltpilot.api.probe.ProbeRequest;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.probe.ProbeService;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.DatenquelleAbgelehnt.Schnittstelle;
 import com.voltpilot.api.uems.DatenquelleAenderungRepository.Eintrag;
@@ -91,6 +93,22 @@ public class DatenquelleService {
     /** Die Kennung des einen Lese-Schritts der Prüfung (Muster {@code op.id} des Probe-Vertrags). */
     static final String PRUEF_SCHRITT = "erreichbarkeit";
 
+    /** Der Prüf-Schritt einer WAGO-Steuerung ({@code op: wago_kopf} des Probe-Vertrags, AP-05 IP-7). */
+    static final String WAGO_KOPF = "wago_kopf";
+
+    /**
+     * Höchstens so viele Karten liest die WAGO-Prüfung nach dem Kopf (zwei je Probe) — eine
+     * Steuerung, die eine unsinnige Kartenzahl meldet, hält den Assistenten nicht minutenlang auf.
+     */
+    static final int WAGO_KARTEN_HOECHSTENS = 32;
+
+    /**
+     * Die Katalog-Schreibweise eines Datentyps (Portal, Messpunkt-Katalog) → das Wort des
+     * Probe-Vertrags. Zur Box geht nur das Vertragswort.
+     */
+    private static final Map<String, String> VERTRAGSWORT = Map.of(
+            "uint16", "u16", "int16", "s16", "uint32", "u32", "int32", "s32");
+
     /** SunSpec: Register 40000 trägt die Kennung „SunS“ — der Einstieg jeder SunSpec-Karte. */
     static final int SUNSPEC_KENNUNG = 40000;
 
@@ -111,11 +129,33 @@ public class DatenquelleService {
     private final DatenquelleRepository quellen;
     private final ZustaendigkeitRepository zustaendigkeiten;
     private final DatenquelleAenderungRepository protokoll;
-    private final SiteRepository anlagen;
+    private final Geltungsbereich geltungsbereich;
     private final ProbeService probes;
     private final TransactionTemplate transaktion;
     private final ObjectMapper json;
     private final Clock uhr;
+    private UebergabeRepository uebergaben;
+    private DatenquelleBudgetService budget;
+    private DeviceDataSourceStatusRepository quellstatus;
+    private SteuerungsverbundRepository verbund;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void uebergaben(UebergabeRepository repo) { this.uebergaben = repo; }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void budget(DatenquelleBudgetService service) { this.budget = service; }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void quellstatus(DeviceDataSourceStatusRepository repo) { this.quellstatus = repo; }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void verbund(SteuerungsverbundRepository repo) { this.verbund = repo; }
+
+    /** AP-15 IP-21 (I3): ein Zuständigkeitswechsel entwertet die Sprungproben der betroffenen Mitglieder. */
+    private SprungprobeDienst sprungproben;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void sprungproben(SprungprobeDienst dienst) { this.sprungproben = dienst; }
 
     /**
      * @param uhr die Uhr des Dienstes — ohne eigene {@link Clock}-Bean die Systemuhr (UTC);
@@ -123,12 +163,12 @@ public class DatenquelleService {
      *     spielen
      */
     public DatenquelleService(DatenquelleRepository quellen, ZustaendigkeitRepository zustaendigkeiten,
-            DatenquelleAenderungRepository protokoll, SiteRepository anlagen, ProbeService probes,
+            DatenquelleAenderungRepository protokoll, Geltungsbereich geltungsbereich, ProbeService probes,
             PlatformTransactionManager transaktionen, ObjectMapper json, ObjectProvider<Clock> uhr) {
         this.quellen = quellen;
         this.zustaendigkeiten = zustaendigkeiten;
         this.protokoll = protokoll;
-        this.anlagen = anlagen;
+        this.geltungsbereich = geltungsbereich;
         this.probes = probes;
         this.transaktion = new TransactionTemplate(transaktionen);
         this.json = json;
@@ -249,6 +289,10 @@ public class DatenquelleService {
      * („ok“ oder eine Fehlerklasse der Box, §7), steht danach im Protokoll und zählt für eine
      * Zuständigkeit; schweigt die Box oder lehnt ihr Prüf-Kanal ab, zählt nichts und nichts wird
      * geschrieben. Die Antwort ist ein ehrlicher AUSGANG (200), auch wenn die Prüfung scheitert.
+     *
+     * <p>Bei {@code op: wago_kopf} (AP-05) ist der Schritt der Kopf des WAGO-Registerbilds — über
+     * denselben Probe-Weg wie die Soll-Lesung ({@link WagoSollLesung}); nur hinter einem erkannten
+     * v1-Kopf liest die Box danach je Karte die drei Kennwörter. Gewertet wird allein der Kopf.
      */
     public DatenquelleDto.Pruefergebnis pruefen(UUID siteId, UUID id, DatenquelleDto.Pruefen p,
             ProtokollAkteur wer) {
@@ -257,11 +301,18 @@ public class DatenquelleService {
         if (p.deviceId() == null) {
             throw DatenquelleAbgelehnt.anfrage("device_id", "Welche Box soll die Quelle prüfen?");
         }
+        if (p.op() != null && !p.op().equals("read") && !p.op().equals(WAGO_KOPF)) {
+            throw DatenquelleAbgelehnt.anfrage("op", "Der Prüf-Schritt ist „read“ oder „wago_kopf“.");
+        }
+        boolean wago = WAGO_KOPF.equals(p.op());
         UUID mandant = mandant();
         Box box = boxImZaun(p.deviceId(), boxen());
-        ProbeRequest.Op schritt = leseSchritt(q, p);
+        ProbeRequest.Op schritt = wago ? null : leseSchritt(q, p);
+        ProbePublisher.WagoKopfOp kopf = wago ? kopfSchritt(q, p) : null;
         long start = System.nanoTime();
-        Optional<ProbeResult> antwort = probes.probeBox(box.id(), List.of(schritt), wer.sub());
+        Optional<ProbeResult> antwort = wago
+                ? probes.probeBox(box.id(), kopf, List.of(), wer.sub())
+                : probes.probeBox(box.id(), List.of(schritt), wer.sub());
         long dauerMs = (System.nanoTime() - start) / 1_000_000;
         Instant jetzt = uhr.instant();
         Bewertung b = bewerte(antwort, anzeigename(box), q.adresse());
@@ -270,11 +321,60 @@ public class DatenquelleService {
             neu.put("protokoll", q.protokoll());
             neu.put("adresse", q.adresse());
             neu.put("dauer_ms", dauerMs);
+            if (wago) {
+                neu.put("op", WAGO_KOPF);
+            }
             eintragen(mandant, q.id(), "erreichbarkeit_geprueft", box.id(), b.ergebnis(), null, neu,
                     minute(jetzt), wer);
         }
+        DatenquelleDto.WagoPruefung wagoErgebnis = wago ? wagoKopfUndKarten(box.id(), kopf, antwort, wer) : null;
         return new DatenquelleDto.Pruefergebnis(dto(box.id(), Map.of(box.id(), box)), q.adresse(),
-                b.ergebnis(), b.gewertet(), b.text(), jetzt, dauerMs, antwort.orElse(null));
+                b.ergebnis(), b.gewertet(), b.text(), jetzt, dauerMs, antwort.orElse(null), wagoErgebnis);
+    }
+
+    /**
+     * Was die WAGO-Prüfung dem Kunden sagt — nur aus dem Gelesenen. Ein erkannter v1-Kopf nennt
+     * Controller-Kennung und Kartenzahl, danach liest die Box je Karte Steckplatz, Kartentyp und
+     * Variante; alles andere ist ein ehrlicher Ausgang ohne eine einzige Karte.
+     */
+    private DatenquelleDto.WagoPruefung wagoKopfUndKarten(UUID box, ProbePublisher.WagoKopfOp schritt,
+            Optional<ProbeResult> antwort, ProtokollAkteur wer) {
+        if (antwort.isEmpty()) {
+            return new DatenquelleDto.WagoPruefung(false,
+                    "Die Box hat nicht geantwortet — der Kopf des Registerbilds wurde nicht gelesen.", null, null, null);
+        }
+        ProbeResult.WagoKopf kopf = antwort.flatMap(r -> Optional.ofNullable(r.results()))
+                .flatMap(l -> l.stream().filter(z -> PRUEF_SCHRITT.equals(z.id())).findFirst())
+                .map(ProbeResult.OpResult::wagoKopf).orElse(null);
+        if (kopf == null) {
+            return new DatenquelleDto.WagoPruefung(false,
+                    "Der Kopf des Registerbilds wurde nicht gelesen — es wurde keine Karte gelesen.", null, null, null);
+        }
+        if (!Boolean.TRUE.equals(kopf.erkannt())) {
+            return new DatenquelleDto.WagoPruefung(false,
+                    "Unter der Basisadresse steht kein VoltPilot-Registerbild v1 — es wurde keine Karte gelesen.",
+                    null, null, null);
+        }
+        int gemeldet = kopf.kartenzahl() == null ? 0 : kopf.kartenzahl();
+        int anzahl = Math.min(gemeldet, WAGO_KARTEN_HOECHSTENS);
+        WagoSollLesung.Verbindung v = new WagoSollLesung.Verbindung(schritt.host(), schritt.port(), schritt.unitId(),
+                schritt.address(), schritt.registerKind(), schritt.wordOrder());
+        List<WagoSollLesung.Kennung> woerter = anzahl == 0 ? List.of()
+                : WagoSollLesung.kennwoerter(probes, box, v, kopf, anzahl, wer.sub());
+        List<DatenquelleDto.WagoKarteGelesen> karten = new ArrayList<>();
+        for (int n = 0; n < woerter.size(); n++) {
+            WagoSollLesung.Kennung k = woerter.get(n);
+            karten.add(new DatenquelleDto.WagoKarteGelesen(n + 1, k.steckplatz(), k.kartentyp(), k.variante()));
+        }
+        String kennung = kopf.controllerKennung() == null ? "Controller-Kennung nicht gelesen"
+                : "Controller-Kennung " + kopf.controllerKennung();
+        String zahl = gemeldet == 1 ? "1 Energiekarte" : gemeldet + " Energiekarten";
+        String satz = "Registerbild v1 erkannt — " + kennung + ", " + zahl
+                + (gemeldet > anzahl ? "; gelesen sind die ersten " + anzahl + "." : ".");
+        if (woerter.stream().anyMatch(k -> !k.vollstaendig())) {
+            satz += " Nicht jede Karte hat geantwortet — Fehlendes bleibt „nicht gelesen“.";
+        }
+        return new DatenquelleDto.WagoPruefung(true, satz, kopf.controllerKennung(), gemeldet, karten);
     }
 
     /** Wie eine Antwort der Box zählt — rein, damit die Regel ohne Box prüfbar ist. */
@@ -339,6 +439,8 @@ public class DatenquelleService {
         Datenquelle q = quellen.sperren(id).orElseThrow(DatenquelleService::quelleFehlt);
         nichtArchiviert(q);
         Lage lage = lage();
+        WegImVerbund imVerbund = wegInGemeinsamerSteuerung(q, !lage.von(id).isEmpty(), z.deviceId());
+        DatenquelleRegeln.WechselWeg weg = imVerbund.weg();
         Box box = boxImZaun(z.deviceId(), lage.boxen());
         Instant ab = z.effectiveFrom() == null ? minute(lage.jetzt()) : z.effectiveFrom().toInstant();
         List<ZustaendigkeitRepository.Zeitraum> eigene = lage.von(id);
@@ -346,13 +448,21 @@ public class DatenquelleService {
         String ziel = box.id().toString();
         boolean bestaetigt = Boolean.TRUE.equals(z.vergleichBestaetigt()) || q.vergleichsquelle();
         Antrag antrag = wechsel
-                ? new Antrag(Art.WECHSEL, q.kennzeichen(), null, ziel, ab, pruefung(q, box.id()), bestaetigt)
+                ? new Antrag(Art.WECHSEL, q.kennzeichen(), null, ziel, ab, pruefung(q, box.id()), bestaetigt,
+                        weg == DatenquelleRegeln.WechselWeg.INNERHALB_DER_GEMEINSAMEN_STEUERUNG)
                 : new Antrag(Art.ANLEGEN, null, Felder.aus(q).kandidat(), ziel, ab, pruefung(q, box.id()),
                         bestaetigt);
         AntragErgebnis e = DatenquelleRegeln.pruefeAntrag(antrag, regelQuellen(lage, wechsel ? null : id),
                 lage.boxNamen(), lage.jetzt(), ZONE);
         if (e.urteil() != Urteil.ERLAUBT) {
             throw DatenquelleAbgelehnt.regel(e);
+        }
+
+        // E6: erst vollständig vorrechnen, dann überhaupt einen Zeitraum anfassen. So kann eine
+        // neue Quelle nie die ganze bestehende Auswahl einer Box in den Edge-Deckel laufen lassen.
+        DatenquelleBudget.Ablehnung ueber = budget == null ? null : budget.pruefe(q.id(), box.id(), ab);
+        if (ueber != null) {
+            throw DatenquelleAbgelehnt.budget(ueber);
         }
 
         // Die Speicher-Regel (§4) über jeden Zeitraum, der sich ändert oder neu ist — dieselbe
@@ -382,6 +492,12 @@ public class DatenquelleService {
         DatenquelleRegeln.Zeitraum neuer = danach.get(danach.size() - 1);
         zustaendigkeiten.eintragen(mandant, id, box.id(), neuer.von(), neuer.bis(), wer.sub())
                 .orElseThrow(DatenquelleService::quelleFehlt);
+        if (wechsel && imVerbund.verbund() != null && sprungproben != null) {
+            // I3 (Befund aus IP-26): Netzzähler, Messpunkt oder Steuerquelle eines Mitglieds wechselt — die Proben
+            // der betroffenen Boxen gelten nicht mehr, eine geprüfte Anlage geht auf S1 zurück.
+            sprungproben.zustaendigkeitGewechselt(imVerbund.verbund(), q.id(), q.steuerquelle(), imVerbund.bisher(),
+                    box.id(), wer);
+        }
         if (e.vergleichsquelle() && !q.vergleichsquelle()) {
             quellen.alsVergleichsquelleKennzeichnen(id);
         }
@@ -407,6 +523,37 @@ public class DatenquelleService {
         eintragen(mandant, id, wechsel ? "zustaendigkeit_gewechselt" : "zustaendigkeit_begonnen", box.id(),
                 null, alt, neu, neuer.von(), wer);
         return e;
+    }
+
+    /** Nimmt genau einen noch nicht begonnenen Zeitraum zurück; seine historische Zeile bleibt. */
+    public DatenquelleDto.Datenquelle geplanteZustaendigkeitZuruecknehmen(UUID siteId, UUID id,
+            UUID assignmentId, ProtokollAkteur wer) {
+        finde(siteId, id);
+        transaktion.executeWithoutResult(s -> {
+            Datenquelle q = quellen.sperren(id).orElseThrow(DatenquelleService::quelleFehlt);
+            nichtArchiviert(q);
+            var stand = zustaendigkeiten.ruecknahmeStand(id, assignmentId)
+                    .orElseThrow(DatenquelleService::quelleFehlt);
+            if (stand.zurueckgenommenAm() != null) {
+                throw DatenquelleAbgelehnt.konflikt("bereits_zurueckgenommen",
+                        "Dieser geplante Wechsel wurde bereits zurückgenommen.");
+            }
+            Instant jetzt = uhr.instant();
+            var plan = stand.zeitraum();
+            if (!plan.effectiveFrom().isAfter(jetzt)) {
+                throw DatenquelleAbgelehnt.konflikt("bereits_wirksam",
+                        "Dieser Wechsel ist bereits wirksam und kann nicht mehr zurückgenommen werden.");
+            }
+            if (!zustaendigkeiten.zuruecknehmen(plan.id(), jetzt, wer.sub())
+                    || !zustaendigkeiten.vorgaengerWiederOeffnen(id, plan.effectiveFrom())) {
+                throw DatenquelleAbgelehnt.konflikt("gleichzeitig_geaendert",
+                        "Die Zuständigkeit wurde inzwischen geändert. Bitte laden Sie die Seite neu.");
+            }
+            eintragen(mandant(), id, "zustaendigkeit_zurueckgenommen", plan.deviceId(), null,
+                    Map.of("assignment_id", plan.id(), "box", plan.deviceId(), "ab", plan.effectiveFrom()),
+                    Map.of("zustand", "zurueckgenommen"), minute(jetzt), wer);
+        });
+        return eine(siteId, id);
     }
 
     /**
@@ -476,11 +623,34 @@ public class DatenquelleService {
     private DatenquelleDto.Datenquelle darstellung(Datenquelle q, Lage lage) {
         List<ZustaendigkeitRepository.Zeitraum> zs = lage.von(q.id());
         String jetzt = DatenquelleRegeln.zustaendigeBox(regelZeitraeume(zs), lage.jetzt());
+        UUID box = jetzt == null ? null : UUID.fromString(jetzt);
         return new DatenquelleDto.Datenquelle(q.id(), q.kennzeichen(), q.name(), q.siteId(), q.protokoll(),
                 q.adresse(), q.geraeteIds(), q.netz(), q.mehrereLeser(), q.steuerquelle(), q.vergleichsquelle(),
-                q.kadenzS(), q.archiviertAm(), jetzt == null ? null : dto(UUID.fromString(jetzt), lage.boxen()),
-                zs.stream().map(z -> new DatenquelleDto.Zeitraum(dto(z.deviceId(), lage.boxen()),
-                        z.effectiveFrom(), z.effectiveTo())).toList());
+                q.kadenzS(), q.archiviertAm(), box == null ? null : dto(box, lage.boxen()),
+                zs.stream().map(z -> new DatenquelleDto.Zeitraum(z.id(), dto(z.deviceId(), lage.boxen()),
+                        z.effectiveFrom(), z.effectiveTo())).toList(), uebergabe(q.id(), lage),
+                rueckmeldung(box, q.id()));
+    }
+
+    private DatenquelleDto.Rueckmeldung rueckmeldung(UUID box, UUID quelle) {
+        if (box == null || quellstatus == null) return null;
+        DeviceDataSourceStatusRepository.Status status = quellstatus.find(box, quelle);
+        DeviceDataSourceStatusRepository.Ableitung ableitung =
+                DeviceDataSourceStatusRepository.ableiten(status);
+        return new DatenquelleDto.Rueckmeldung(
+                ableitung.zustand().name().toLowerCase(java.util.Locale.ROOT),
+                status == null ? null : status.errorClass(), ableitung.seit(),
+                status == null ? null : status.readAt(),
+                status == null ? null : status.requestsPerMin(),
+                status == null ? null : status.samplesPerMin(),
+                status == null ? null : status.reportedAt(), ableitung.text());
+    }
+
+    private DatenquelleDto.Uebergabe uebergabe(UUID quelle, Lage lage) {
+        var s = uebergaben == null ? null : uebergaben.stand(quelle);
+        if (s == null || s.phase().equals("active")) return null;
+        return new DatenquelleDto.Uebergabe("Übergabe ausstehend", s.faellig(),
+                dto(s.leser(), lage.boxen()), dto(s.ziel(), lage.boxen()));
     }
 
     private DatenquelleDto.ProtokollEintrag eintrag(Eintrag e, Map<UUID, Box> boxen) {
@@ -574,8 +744,14 @@ public class DatenquelleService {
         if (kadenzS < 1 || kadenzS > 86_400) {
             throw DatenquelleAbgelehnt.anfrage("kadenz_s", "Der Lesetakt liegt zwischen einer Sekunde und einem Tag.");
         }
-        return new Felder(n, protokoll, a, List.copyOf(ids), text(netz), Boolean.TRUE.equals(mehrereLeser),
-                Boolean.TRUE.equals(steuerquelle), kadenzS);
+        boolean steuert = Boolean.TRUE.equals(steuerquelle);
+        // Das Eingabefeld ist die aufgelöste Vorlagen-Eigenschaft. Zwei katalogseitige
+        // Ein-Leser-Wege bleiben zusätzlich serverseitig unverhandelbar: Solarman-Logger und
+        // jede Steuerquelle (darunter der WAGO-Koppler-Weg). Ein Client kann sie nicht mit
+        // mehrere_leser=true öffnen.
+        boolean katalogEinLeser = Protokoll.SOLARMAN_V5.code().equals(protokoll) || steuert;
+        return new Felder(n, protokoll, a, List.copyOf(ids), text(netz),
+                Boolean.TRUE.equals(mehrereLeser) && !katalogEinLeser, steuert, kadenzS);
     }
 
     /**
@@ -603,7 +779,8 @@ public class DatenquelleService {
         if (!art.equals("holding") && !art.equals("input")) {
             throw DatenquelleAbgelehnt.anfrage("register_kind", "Die Registerart ist „holding“ oder „input“.");
         }
-        String typ = p.dataType() != null ? p.dataType() : p.register() == null ? "u32" : "u16";
+        String typ = p.dataType() != null ? VERTRAGSWORT.getOrDefault(p.dataType(), p.dataType())
+                : p.register() == null ? "u32" : "u16";
         if (!Set.of("u16", "s16", "u32", "s32", "float32").contains(typ)) {
             throw DatenquelleAbgelehnt.anfrage("data_type", "Der Datentyp ist u16, s16, u32, s32 oder float32.");
         }
@@ -615,12 +792,46 @@ public class DatenquelleService {
                 p.wordOrder(), null, null);
     }
 
+    /**
+     * Der Kopf-Schritt der WAGO-Prüfung ({@code op: wago_kopf}): Host und Port von der Quelle,
+     * Basisadresse ({@code register}), Registerart und Wortfolge sind Parameter je Anlage
+     * (Registerbild-Vertrag §2). Das Registerbild ist ein Modbus-TCP-Wortbereich mit festem
+     * Aufbau — darum weder SunSpec noch ein Datentyp.
+     */
+    private static ProbePublisher.WagoKopfOp kopfSchritt(Datenquelle q, DatenquelleDto.Pruefen p) {
+        Protokoll proto = Protokoll.vonCode(q.protokoll()).orElseThrow();
+        if (proto == Protokoll.SUNSPEC_MODBUS) {
+            throw DatenquelleAbgelehnt.anfrage("op", "Den Kopf eines WAGO-Registerbilds liest die Box nur über Modbus TCP.");
+        }
+        if (proto != Protokoll.MODBUS_TCP) {
+            leseSchritt(q, p); // derselbe benannte Ausgang (422) wie bei jeder Quelle ohne Prüf-Schritt
+        }
+        if (p.unitId() == null || p.unitId() < 0 || p.unitId() > 255) {
+            throw DatenquelleAbgelehnt.anfrage("unit_id", "Welche Geräte-ID (0 bis 255) soll die Box lesen?");
+        }
+        if (p.register() == null || p.register() < 0 || p.register() > 65_535) {
+            throw DatenquelleAbgelehnt.anfrage("register", "Unter welcher Basisadresse (0 bis 65535) beginnt das Registerbild?");
+        }
+        String art = p.registerKind() == null ? "holding" : p.registerKind();
+        if (!art.equals("holding") && !art.equals("input")) {
+            throw DatenquelleAbgelehnt.anfrage("register_kind", "Die Registerart ist „holding“ oder „input“.");
+        }
+        if (p.dataType() != null) {
+            throw DatenquelleAbgelehnt.anfrage("data_type", "Den Kopf liest die Box ohne Datentyp — sein Aufbau ist fest.");
+        }
+        String wortfolge = p.wordOrder() == null ? "big" : p.wordOrder();
+        if (!wortfolge.equals("big") && !wortfolge.equals("little")) {
+            throw DatenquelleAbgelehnt.anfrage("word_order", "Die Wortfolge ist „big“ oder „little“.");
+        }
+        DatenquelleAdresse.HostPort hp = DatenquelleAdresse.hostPort(q.adresse());
+        return new ProbePublisher.WagoKopfOp(PRUEF_SCHRITT, hp.host(), hp.port(), p.unitId(), art, p.register(),
+                wortfolge);
+    }
+
     // ------------------------------------------------------------------ Gerüst
 
     void anlage(UUID siteId) {
-        if (!anlagen.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 
     /** Die Quelle DIESER Anlage im Zaun — sonst 404 (auch für eine fremde, nie 403). */
@@ -648,6 +859,46 @@ public class DatenquelleService {
             throw DatenquelleAbgelehnt.schnittstelle(Schnittstelle.QUELLE_ARCHIVIERT,
                     q.kennzeichen() + " ist archiviert", Map.of("kennzeichen", q.kennzeichen()));
         }
+    }
+
+    /**
+     * AP-15 T6: in einer Anlage mit eingerichteter Gemeinsamer Steuerung zieht eine Steuerquelle vor dem Scharfschalten
+     * (S0–S2) nur zu einem Mitglied DIESER Gemeinsamen Steuerung um (IP-26, der Schritt „ändern“ — dann ohne die
+     * AP-06-Sperre {@code steuerquelle}); zu jeder anderen Box und solange die Anteile in Kraft sind nur über
+     * „Gemeinsame Steuerung ändern“, ebenso Netzzähler und Messpunkt eines Mitglieds in {@code anteile_aktiv} oder
+     * angehalten (IP-8). Die Antwort nennt den Weg und die Anlage, deren Gemeinsame Steuerung sich ändern muss
+     * ({@code GET …/sites/{anlage}/gemeinsame-steuerung}). Ohne Gemeinsame Steuerung greift das nie; der
+     * Zuständigkeitswechsel bleibt, wie er war. Die erste Box einer neuen Quelle ist kein Wechsel ({@code anlegen}):
+     * so entstehen die Steuerquellen einer mitsteuernden Box (Ahrenberg 1.5 DQ-8/DQ-9).
+     */
+    /** Der Weg des Wechsels und, mit Gemeinsamer Steuerung, ihr Verbund und die Box, die die Quelle bisher las. */
+    private record WegImVerbund(DatenquelleRegeln.WechselWeg weg, SteuerungsverbundRepository.VerbundZeile verbund,
+            UUID bisher) {}
+
+    private WegImVerbund wegInGemeinsamerSteuerung(Datenquelle q, boolean wechsel, UUID ziel) {
+        Optional<SteuerungsverbundRepository.VerbundZeile> v =
+                verbund == null ? Optional.empty() : verbund.derAnlage(q.siteId());
+        if (v.isEmpty()) {
+            // Bestand: eine Abfrage mehr, sonst nichts
+            return new WegImVerbund(DatenquelleRegeln.WechselWeg.ZUSTAENDIGKEITSWECHSEL, null, null);
+        }
+        Instant jetzt = uhr.instant();
+        SteuerungsverbundRegeln.Verbund stand = verbund.regelStand(q.siteId(), jetzt, jetzt.atZone(ZONE).toLocalDate())
+                .orElseThrow().verbund();
+        SteuerungsverbundRegeln.Datenquelle quelle = verbund.quellen(List.of(q.id()), jetzt).get(0);
+        boolean nurAlsAenderung =
+                SteuerungsverbundRegeln.wechseltNurAlsAenderung(v.get().stufe(), stand, quelle, q.steuerquelle());
+        String zustand = stand.mitglieder().isEmpty() ? GemeinsameSteuerungService.ZUSTAND_AUFGELOEST
+                : v.get().stufe().code();
+        boolean zielIstMitglied = ziel != null && SteuerungsverbundRegeln.istMitglied(stand, ziel.toString());
+        DatenquelleRegeln.WechselWeg weg =
+                DatenquelleRegeln.wegDesWechsels(wechsel && q.steuerquelle(), zustand, nurAlsAenderung, zielIstMitglied);
+        if (weg == DatenquelleRegeln.WechselWeg.GEMEINSAME_STEUERUNG_AENDERN) {
+            throw DatenquelleAbgelehnt.schnittstelle(Schnittstelle.GEMEINSAME_STEUERUNG_AENDERN,
+                    DatenquelleRegeln.gemeinsameSteuerungAendern(q.kennzeichen()),
+                    Map.of("kennzeichen", q.kennzeichen(), "anlage", q.siteId().toString()));
+        }
+        return new WegImVerbund(weg, v.get(), quelle.gelesenVon() == null ? null : UUID.fromString(quelle.gelesenVon()));
     }
 
     static UUID mandant() {

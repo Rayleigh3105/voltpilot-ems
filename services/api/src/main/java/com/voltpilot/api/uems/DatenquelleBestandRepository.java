@@ -27,7 +27,7 @@ import org.springframework.stereotype.Repository;
  *       Hausverbrauch ohne Pin, Marke, Modell und eigene Verbindung —, und sein Wechselrichter
  *       ({@code anker}) ist das andere Mitglied seines laufenden Geräts.</li>
  *   <li><b>Station</b>: die Ladepunkt-Kennung aus {@code device_charge_point} und die Box, an
- *       deren Zentrale die Station hängt.</li>
+ *       deren Zentrale die Station hängt — nur eine Box, die nicht ausgebaut ist (AP-07 IP-11).</li>
  * </ul>
  */
 @Repository
@@ -73,6 +73,13 @@ public class DatenquelleBestandRepository {
                                  OR mp.connection_json IN ('null'::jsonb, '{}'::jsonb))) AS geschwister
                     FROM measurement_point mp
                     WHERE mp.site_id = ?
+                ),
+                station AS (
+                    -- Nur Stationen hinter einer Box, die am Betrieb teilnimmt (UEMS AP-07 IP-11):
+                    -- die Zeilen einer ausgebauten Box bleiben, sie ist aber keine Station-Box mehr.
+                    SELECT c.entity_id, c.device_id, c.charge_point_id
+                    FROM device_charge_point c
+                    WHERE EXISTS (SELECT 1 FROM device d WHERE d.id = c.device_id AND d.ausgebaut_am IS NULL)
                 )
                 SELECT k.id, k.label, k.art, k.device_id, k.communication,
                        k.connection_json::text AS connection_json, k.control,
@@ -85,10 +92,10 @@ public class DatenquelleBestandRepository {
                        coalesce((SELECT min(v.gueltig_ab) FROM geraet_komponente v WHERE v.entity_id = k.id),
                                 date_trunc('minute', k.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'UTC')
                            AS reihenbeginn,
-                       (SELECT count(*) FROM device_charge_point c WHERE c.entity_id = k.id) AS stationen,
-                       (SELECT c.device_id FROM device_charge_point c WHERE c.entity_id = k.id
+                       (SELECT count(*) FROM station c WHERE c.entity_id = k.id) AS stationen,
+                       (SELECT c.device_id FROM station c WHERE c.entity_id = k.id
                         ORDER BY c.device_id, c.charge_point_id LIMIT 1) AS station_box,
-                       (SELECT c.charge_point_id FROM device_charge_point c WHERE c.entity_id = k.id
+                       (SELECT c.charge_point_id FROM station c WHERE c.entity_id = k.id
                         ORDER BY c.device_id, c.charge_point_id LIMIT 1) AS station_id
                 FROM k
                 ORDER BY k.created_at, k.id

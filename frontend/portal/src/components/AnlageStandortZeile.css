@@ -1,0 +1,35 @@
+/*
+ * Die Zeile „Standort“ in „Meine Anlage“ (UEMS AP-02 IP-8, T6a). Der Wert steht
+ * rechtsbündig wie jede `vp-kv-v`; Adresse und „seit“ darunter, leiser.
+ * ⚠ 375 px: die Zeile bricht um (`overflow-wrap`), nie über den Rand.
+ */
+
+.vp-as {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.vp-as-name {
+  overflow-wrap: anywhere;
+}
+
+.vp-as-zeile {
+  color: var(--vp-text-gray);
+  font-size: 0.83rem;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+
+.vp-as-verweis {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary);
+  font: inherit;
+  font-size: 0.83rem;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}

@@ -1,3 +1,4 @@
+import { bestandSnapshot, bestandsZeit } from '../test/bestandsschutzSnapshot';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { PortfolioCockpit } from './PortfolioCockpit';
@@ -122,6 +123,16 @@ function renderCockpit(props: Partial<Parameters<typeof PortfolioCockpit>[0]> = 
   );
 }
 
+it('AP-13 Bestandsschutz · Portfolio Übersicht ohne Messfunktion', async () => {
+  bestandsZeit();
+  const fest = <T,>(daten: T): T => JSON.parse(JSON.stringify(daten).replaceAll(JETZT.toISOString(), '2026-09-02T10:19:00Z'));
+  vi.spyOn(api, 'overview').mockResolvedValue(fest(MONITORING_OVERVIEW));
+  const view = renderCockpit();
+  await screen.findByRole('region', { name: 'Ihre Anlagen' });
+  expect(view.container.querySelector('[data-testid="uebersicht-bausteine"]')).toBeNull();
+  await bestandSnapshot('portfolio-uebersicht', view);
+});
+
 /** Öffnet „Anpassen" über das ⋯-Menü und liefert die Anpassen-Leiste. */
 async function anpassenOeffnen(): Promise<HTMLElement> {
   await screen.findByRole('region', { name: 'Ihre Anlagen' });
@@ -209,14 +220,16 @@ describe('der KOPF: EINE Zeile statt einer Karte', () => {
     expect(screen.queryByText(/Guten Tag/)).toBeNull();
   });
 
-  it('legt Anpassen, Anlage anlegen und Gerät hinzufügen ins „···"-Menü - keine großen Knöpfe', async () => {
+  it('legt Anpassen und Anlage anlegen ins „···"-Menü - keine großen Knöpfe; Boxen kommen im Aufbau hinzu', async () => {
     renderCockpit();
     await screen.findByRole('region', { name: 'Ihre Anlagen' });
     expect(screen.queryByRole('button', { name: 'Anpassen' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
     expect(screen.getByText('Anpassen')).toBeTruthy();
     expect(screen.getByText('Anlage anlegen')).toBeTruthy();
-    expect(screen.getByText('Gerät hinzufügen')).toBeTruthy();
+    // EIN Ort für Boxen: der Aufbau der Anlage — die Flotte meldet keine Box mehr an.
+    expect(screen.queryByText('Gerät hinzufügen')).toBeNull();
+    expect(screen.queryByText('VoltPilot-Box hinzufügen')).toBeNull();
   });
 });
 

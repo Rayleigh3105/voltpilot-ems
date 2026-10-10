@@ -31,6 +31,8 @@ SELECT create_hypertable('site_plan_run', 'generated_at',
                          if_not_exists => TRUE);
 CREATE INDEX IF NOT EXISTS idx_site_plan_run_site
     ON site_plan_run (site_id, generated_at DESC);
+-- AP-15 IP-15 (P1): Laufnummer je Anlage - Spiegel von V20260922000000__site_plan_run_lauf_nr.sql.
+ALTER TABLE site_plan_run ADD COLUMN IF NOT EXISTS lauf_nr BIGINT;
 
 CREATE TABLE IF NOT EXISTS entity_plan_slot (
     time           TIMESTAMPTZ    NOT NULL,

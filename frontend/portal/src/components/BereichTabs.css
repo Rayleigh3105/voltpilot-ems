@@ -174,4 +174,48 @@ html.vp-vt-fade .vp-welt-strich {
     min-height: 44px;
     padding: 0 var(--vp-space-3, 0.75rem);
   }
+  /* UEMS AP-02 IP-6: VIER Reiter der Übersicht (Übersicht · Standorte ·
+     Messwerte · Erlöse) sind mit 12 px Polster 347 px breit — bei 375 px
+     bleiben 343 px, „Erlöse“ wäre 4 px angeschnitten. GEMESSEN mit 8 px:
+     315 px, passt bei 375 und 360 px. Nur die Leiste mit vier Reitern wird
+     dichter (`PortfolioTabs`), jede Leiste mit bis zu drei bleibt, wie sie war. */
+  .vp-bereich-tabs-dicht .vp-bereich-tab {
+    padding: 0 var(--vp-space-2, 0.5rem);
+  }
 }
+
+/* Die Kante, hinter der noch Reiter liegen, blendet weich aus — sonst wüsste niemand, dass rechts
+   noch „Managementbewertung“ wartet (`reiterRand.ts` setzt `data-rand`). Keine `mask-image`: am
+   Telefon verlängert ein Schatten die klebende Leiste in die Seitenrinnen, eine Maske schnitte ihn
+   ab. Stattdessen zwei klebende Verläufe im Seitengrund (jede Leiste steht auf ihm), durch die jeder
+   Tipp hindurchgeht; die Linie darunter bleibt durchgehend. */
+.vp-bereich-tabs[data-rand]::before,
+.vp-bereich-tabs[data-rand]::after {
+  content: '';
+  position: sticky;
+  z-index: 1;
+  flex: 0 0 32px;
+  pointer-events: none;
+  visibility: hidden;
+}
+.vp-bereich-tabs[data-rand]::before {
+  left: 0;
+  margin-right: -32px;
+  background: linear-gradient(to right, var(--vp-c-bg, #f8fafc) 20%, transparent);
+}
+.vp-bereich-tabs[data-rand]::after {
+  right: 0;
+  margin-left: -32px;
+  background: linear-gradient(to left, var(--vp-c-bg, #f8fafc) 20%, transparent);
+}
+.vp-bereich-tabs[data-rand='links']::before,
+.vp-bereich-tabs[data-rand='beide']::before,
+.vp-bereich-tabs[data-rand='rechts']::after,
+.vp-bereich-tabs[data-rand='beide']::after {
+  visibility: visible;
+}
+
+/* Konzept „Navigation aus einem Guss“ (N1/R3): Gruppen und Bereiche einer Ebene stehen in der Seitenleiste und in der
+   Telefon-Leiste; über der Seite steht höchstens EINE Reihe — die Reiter der offenen Gruppe (`.vp-gruppen-reiter`)
+   oder die Seiten, die keine Leiste trägt. Die frühere Gruppenreihe mit Fragezeile (K1) und das Ausblenden am Telefon
+   (`vp-nur-rechner`) sind entfallen: was eine Leiste trägt, wird gar nicht erst Reiter. */

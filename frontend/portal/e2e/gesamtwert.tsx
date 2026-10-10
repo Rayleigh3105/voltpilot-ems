@@ -1,3 +1,4 @@
+import './rollen-fixture';
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import type { Site } from '../src/api';
@@ -53,13 +54,15 @@ function Fixture() {
         />
       </section>
 
+      {/* Wie die echten Wirte (`MesswerteSection`, `KennzahlAnlegenDialog`): `onGespeichert`
+          lädt nur die Anzeige neu und schließt NICHT. Schloss die Bühne hier, blendete das
+          Modal im selben Frame aus, in dem „ist angelegt" erschien — der Abschluss-Schritt
+          stand nur ~180 ms, und die Spec wurde zum Zeitrennen. Zu geht es über „Fertig". */}
       <GesamtwertDialog
         open={open}
         siteId={site.id}
         onClose={() => setOpen(false)}
-        onGespeichert={() => {
-          setVersion((v) => v + 1);
-        }}
+        onGespeichert={() => setVersion((v) => v + 1)}
       />
     </main>
   );

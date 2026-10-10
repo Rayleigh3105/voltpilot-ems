@@ -187,6 +187,8 @@ export interface SpeicherFreigabe {
 export interface SiteCharging {
   budget: ChargingBudget | null;
   chargers: ChargePoint[];
+  /** Additiv: der OCPP-Anschluss je Box; `budget` bleibt die Bestandssicht. */
+  budgets?: ChargingBudget[];
 }
 
 /** Die im Portal gepflegte Konfiguration (`GET/PUT /sites/{id}/charging-config`). */

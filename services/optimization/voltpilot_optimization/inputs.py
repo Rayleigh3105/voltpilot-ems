@@ -15,6 +15,9 @@ consumes what other layers produced:
   re-asserts itself in live telemetry - one old reading must never cap every
   future plan), a stale SoC falls back to the neutral default instead of
   silently planning from yesterday's value,
+- those two readings and the running slot's load/PV samples from the BOX of the
+  planned battery (``asset.device_id``, AP-15 P5): a second box of the site
+  never stands in for it, see :func:`_box_filter`,
 - the per-site backup-reserve SoC floor (``site.backup_reserve_soc_pct``, P11)
   and the grid-charging switch from ``site``,
 - the pricing master data for the P1 asymmetric objective: ``site.plant_kind``,
@@ -33,7 +36,7 @@ import logging
 import math
 import os
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -57,6 +60,7 @@ from voltpilot_optimization.config import (
     soc_max_age,
     terminal_value_override_eur_per_kwh,
 )
+from voltpilot_optimization import grenze_aufloesung, verbund
 from voltpilot_optimization.domain import (
     BatteryParams,
     DEFAULT_SOC_MAX_FRACTION,
@@ -383,7 +387,10 @@ class BatterySite:
     ``max_feed_in_kw`` (FK1) is the site's static feed-in cap at the grid
     connection point (``site.max_feed_in_kw``, nullable master data) - a hard
     EXPORT-ONLY cap in the MILP, separate from the telemetry-driven §14a
-    ``grid_limit_kw``.
+    ``grid_limit_kw``. Since UEMS AP-15 IP-3 it is the ENGERE value of the
+    site column and the Grenzblatt of the Netzanschluss bound today
+    (:func:`load_grenzblaetter`, twin :mod:`voltpilot_optimization.grenze_aufloesung`);
+    without a bound Netzanschluss or Fassung it is the site column, unchanged.
 
     ``latitude``/``longitude`` are the site's WGS84 coordinates
     (``site.latitude``/``site.longitude``, nullable) - used to night-floor the
@@ -419,6 +426,16 @@ class BatterySite:
     tariff: SiteTariff = SiteTariff()
     leistungspreis_eur_kw: float | None = None
     abrechnung_leistung: str = "jahr"
+    #: UEMS AP-15 IP-14: die Gemeinsame Steuerung der Anlage in Stufe
+    #: ``anteile_aktiv`` (:func:`voltpilot_optimization.verbund.load_verbund`);
+    #: ``None`` = kein Verbund, keine mitsteuernde Box oder eine andere Stufe.
+    verbund: verbund.VerbundStand | None = None
+    #: UEMS AP-15 Folgepunkt (W2, B1): die fuehrende Box einer MEHR-Box-Anlage
+    #: (:func:`load_fuehrende_boxen`) - sie liest den Netzzaehler, an ihr lesen
+    #: Lastspitze und Last; die PV ist die Summe der Boxen. ``None`` fuer jede
+    #: Ein-Box-Anlage und jede ohne bestimmte fuehrende Box: dann lesen die
+    #: Leser Wort fuer Wort wie vorher.
+    fuehrende_box: UUID | None = None
 
 
 def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySite]:
@@ -428,12 +445,26 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
     :mod:`voltpilot_optimization.whatif`) - deliberately the same resolution
     path as the tick loop, so a preview can never disagree with the plan that
     will actually run.
+
+    A site of a "beendet" customer area is absent (UEMS AP-20 E10 = A,
+    :mod:`voltpilot_forecast.kundenbereich`): no plan, no publish, and the
+    on-demand replan finds no site.
     """
     import psycopg  # lazy: optional [db] extra
+    from voltpilot_forecast.kundenbereich import NICHT_BEENDET
 
     # Platform default for assets without a per-asset wear override (NULL
     # column); resolved once per cycle so an env change needs only a restart.
     default_wear_ct = default_wear_cost_ct_per_kwh()
+    jetzt = datetime.now(timezone.utc)
+    # UEMS AP-15 IP-3: the Einspeisegrenze is read through the resolution twin
+    # - the tighter of site and Netzanschluss, else the site value unchanged.
+    # Each site gets its own calendar day from its Standort timezone.
+    grenzblaetter = load_grenzblaetter(dsn, jetzt, site_id)
+    # UEMS AP-15 IP-14: die Anteile der mitsteuernden Boxen je Anlage in
+    # `anteile_aktiv` (P4); jede andere Anlage fehlt und bleibt, wie sie war.
+    verbuende = verbund.load_verbund(dsn, jetzt, site_id)
+    fuehrende = load_fuehrende_boxen(dsn, site_id)
     sites: list[BatterySite] = []
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
@@ -457,10 +488,14 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
                    ssp.komponenten_stand
             FROM asset a
             JOIN site s ON s.id = a.site_id
+            JOIN tenant t ON t.id = s.tenant_id
             LEFT JOIN asset pv ON pv.site_id = a.site_id AND pv.type = 'pv' AND pv.is_primary
             LEFT JOIN site_supply_price ssp ON ssp.site_id = a.site_id
             WHERE a.type = 'battery' AND a.is_primary
               AND (%(site_id)s::uuid IS NULL OR a.site_id = %(site_id)s::uuid)
+              AND """
+            + NICHT_BEENDET
+            + """
             ORDER BY a.site_id
             """,
             {"site_id": str(site_id) if site_id is not None else None},
@@ -519,8 +554,10 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
                     netzladen_erlaubt=bool(netzladen),
                     latitude=float(lat) if lat is not None else None,
                     longitude=float(lon) if lon is not None else None,
-                    max_feed_in_kw=(
-                        float(max_feed_in) if max_feed_in is not None else None
+                    max_feed_in_kw=_einspeisegrenze(
+                        site_id,
+                        float(max_feed_in) if max_feed_in is not None else None,
+                        grenzblaetter,
                     ),
                     leistungspreis_eur_kw=(
                         float(leistungspreis) if leistungspreis is not None else None
@@ -528,6 +565,8 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
                     abrechnung_leistung=(
                         str(abrechnung) if abrechnung is not None else "jahr"
                     ),
+                    verbund=verbuende.get(site_id),
+                    fuehrende_box=fuehrende.get(site_id),
                     tariff=SiteTariff(
                         plant_kind=(
                             str(plant_kind) if plant_kind is not None
@@ -565,6 +604,168 @@ def load_battery_sites(dsn: str, site_id: UUID | None = None) -> list[BatterySit
                 )
             )
     return sites
+
+
+#: Fallback only for a site without a Standort timezone. A Grenzblatt Fassung
+#: is otherwise picked on the Standort's calendar day (contract §5).
+GRENZ_ZONE = ZoneInfo("Europe/Berlin")
+
+
+@dataclass
+class GrenzblattStand:
+    tag: date
+    fassungen: list[grenze_aufloesung.Fassung]
+
+
+def _grenz_tag(jetzt: datetime, zeitzone: str | None) -> date:
+    """The Grenzblatt day in the Standort timezone; Berlin only when absent."""
+    zone = ZoneInfo(zeitzone) if zeitzone else GRENZ_ZONE
+    return jetzt.astimezone(zone).date()
+
+
+def load_fuehrende_boxen(dsn: str, site_id: UUID | None = None) -> dict[UUID, UUID]:
+    """``{site_id: box}`` fuer jede MEHR-Box-Anlage mit bestimmter fuehrender Box.
+
+    UEMS AP-15 Folgepunkt ``vp-uems-v15-folge-leser-je-anlage`` (W2 "zwei
+    Fragen, zwei Anker", B1): Anlagen-Summen liest man an der fuehrenden Box -
+    sie liest den Netzzaehler. Bestimmt ist sie, wenn ``site.lead_device_id``
+    gesetzt ist, diese Box in DIESER Anlage angemeldet und nicht ausgebaut ist
+    (``FuehrendeBoxAbleitung``: sonst fuehrt keine, nie still eine andere) und
+    mindestens eine weitere Box der Anlage es auch ist. Dieselbe Bedingung
+    traegt die Rollup-Prozedur (api ``V20260922020000``); eine Ein-Box-Anlage
+    und jede ohne gespeicherte Wahl fehlen hier, ihre Leser bleiben, wie sie
+    waren. Vor den api-Migrationen der Spalten gilt "keine" (Muster
+    :func:`load_grenzblaetter`).
+    """
+    import psycopg  # lazy: optional [db] extra
+
+    sql = """
+        SELECT s.id, s.lead_device_id FROM site s
+        WHERE s.lead_device_id IS NOT NULL
+          AND EXISTS (SELECT 1 FROM device d
+                       WHERE d.id = s.lead_device_id AND d.site_id = s.id
+                         AND d.ausgebaut_am IS NULL)
+          AND EXISTS (SELECT 1 FROM device d
+                       WHERE d.site_id = s.id AND d.id <> s.lead_device_id
+                         AND d.ausgebaut_am IS NULL)
+        """
+    params: tuple = ()
+    if site_id is not None:
+        sql += "  AND s.id = %s\n"
+        params = (site_id,)
+    try:
+        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
+        logger.warning("fuehrende_box.schema_missing")
+        return {}
+    return {_uuid(sid): _uuid(box) for sid, box in rows}
+
+
+def _uuid(value) -> UUID:
+    return value if isinstance(value, UUID) else UUID(str(value))
+
+
+def load_grenzblaetter(dsn: str, jetzt: datetime, site_id: UUID | None = None) -> dict:
+    """``{site_id: GrenzblattStand}`` for each site bound on its local day.
+
+    A site bound without any Fassung maps to a stand with ``[]``; an unbound
+    site is absent (UEMS AP-15 IP-3). Only the raw rows are read here - WHICH
+    Fassung holds and the tighter value are the twin's
+    (:mod:`grenze_aufloesung`). Before the api migration ``V20260921120000``
+    has run there is no table and therefore no Fassung: that is exactly "no
+    Grenzblatt", so the site value stays.
+    The optional explicit-no-limit flag is read via the row JSON so the previous
+    Grenzblatt schema still yields its numeric limits before the additive migration.
+    """
+    import psycopg  # lazy: optional [db] extra
+
+    try:
+        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                WITH site_zone AS (
+                    SELECT s.id AS site_id,
+                           COALESCE(ort.zeitzone, 'Europe/Berlin') AS zeitzone
+                    FROM site s
+                    LEFT JOIN LATERAL (
+                        SELECT st.zeitzone
+                        FROM anlage_standort az
+                        JOIN standort st ON st.id = az.standort_id
+                                        AND st.tenant_id = az.tenant_id
+                        WHERE az.site_id = s.id AND az.tenant_id = s.tenant_id
+                          AND az.aufgehoben_am IS NULL
+                          AND az.gueltig_ab <= (%(jetzt)s AT TIME ZONE st.zeitzone)::date
+                          AND (az.gueltig_bis IS NULL
+                               OR az.gueltig_bis >= (%(jetzt)s AT TIME ZONE st.zeitzone)::date)
+                        ORDER BY az.gueltig_ab DESC
+                        LIMIT 1
+                    ) ort ON true
+                    WHERE (%(site_id)s::uuid IS NULL OR s.id = %(site_id)s::uuid)
+                )
+                SELECT z.site_id, z.zeitzone, b.id, b.gueltig_ab, b.gueltig_bis,
+                       g.gueltig_ab, g.einspeisegrenze_kw,
+                       g.bezugsgrenze_kw,
+                       COALESCE((to_jsonb(g)->>'einspeisegrenze_keine')::boolean, false)
+                FROM site_zone z
+                LEFT JOIN anlage_netzanschluss b
+                  ON b.site_id = z.site_id AND b.aufgehoben_am IS NULL
+                LEFT JOIN netzanschluss_grenze g
+                  ON g.netzanschluss_id = b.netzanschluss_id
+                 AND g.tenant_id = b.tenant_id
+                 AND g.aufgehoben_am IS NULL
+                ORDER BY z.site_id, b.gueltig_ab, g.gueltig_ab
+                """,
+                {
+                    "jetzt": jetzt,
+                    "site_id": str(site_id) if site_id is not None else None,
+                },
+            )
+            rows = cur.fetchall()
+    except (psycopg.errors.UndefinedTable, psycopg.errors.UndefinedColumn):
+        logger.warning("grenzblatt.table_missing")
+        return {}
+    out: dict = {}
+    for (
+        sid,
+        zeitzone,
+        bindung,
+        bindung_ab,
+        bindung_bis,
+        ab,
+        einspeisung,
+        bezug,
+        keine,
+    ) in rows:
+        tag = _grenz_tag(jetzt, zeitzone)
+        laeuft = (
+            bindung is not None
+            and bindung_ab <= tag
+            and (bindung_bis is None or bindung_bis >= tag)
+        )
+        if not laeuft:
+            continue
+        stand = out.setdefault(_uuid(sid), GrenzblattStand(tag, []))
+        if ab is not None:
+            stand.fassungen.append(
+                grenze_aufloesung.Fassung(
+                    ab, _opt_float(einspeisung), _opt_float(bezug), keine
+                )
+            )
+    return out
+
+
+def _einspeisegrenze(site_id, anlage_kw, grenzblaetter: dict):
+    """The effective feed-in cap: the twin's tighter value, else ``anlage_kw`` itself."""
+    stand = grenzblaetter.get(site_id)
+    return grenze_aufloesung.aufloesen(
+        anlage_kw,
+        None,
+        stand is not None,
+        stand.fassungen if stand is not None else (),
+        stand.tag if stand is not None else date.min,
+    ).einspeisung_kw
 
 
 def _opt_float(value) -> float | None:
@@ -702,7 +903,9 @@ def gather_inputs(
     # then a small bounded upper-load scenario protects against residual error.
     # Both remain INPUTS to the unchanged full-horizon objective, so lambda
     # still prices efficiency, wear, future scarcity and later cheap recharge.
-    recent_load = _recent_load_samples(dsn, site.tenant_id, site.site_id, now)
+    recent_load = _recent_load_samples(
+        dsn, site.tenant_id, site.site_id, now, device_id=site.device_id
+    )
     residual = ewma_residual(recent_load, load_kw[0]) if load_kw else None
     load_kw = apply_load_nowcast(load_kw, residual)
     # No fresh evidence means no robust-band claim and preserves the active
@@ -728,9 +931,12 @@ def gather_inputs(
 
     # Both live readings sit behind a freshness window (F4/P4): a stale
     # section-14a reading must NOT become a standing envelope over every future
-    # plan, and a stale SoC must not plan from yesterday's value.
+    # plan, and a stale SoC must not plan from yesterday's value. Both come
+    # from the battery's own box (P5): stale there means unknown, never the
+    # younger reading of another box of the site.
     soc_pct = _fresh_measurement(
-        dsn, site.site_id, "soc_pct", now, soc_max_age()
+        dsn, site.site_id, "soc_pct", now, soc_max_age(),
+        device_id=site.device_id,
     )
     # P7 (Scout ``vp-deye-diybms-luecke-l5`` §3.3 / Paket P7, Captain-Entscheid
     # E4=b): OHNE frische, ECHTE Messung wird kein Ladestand ERFUNDEN. Bis hier
@@ -775,7 +981,8 @@ def gather_inputs(
         soc_source = SOC_SOURCE_GEMESSEN
         initial_soc_kwh = DEFAULT_SOC_PCT / 100.0 * site.battery.capacity_kwh
     grid_limit = _fresh_measurement(
-        dsn, site.site_id, "grid_limit_kw", now, grid_limit_max_age()
+        dsn, site.site_id, "grid_limit_kw", now, grid_limit_max_age(),
+        device_id=site.device_id,
     )
 
     # P1 asymmetric pricing: build the per-slot import/export series from the
@@ -804,7 +1011,8 @@ def gather_inputs(
     peak_so_far = 0.0
     if site.leistungspreis_eur_kw is not None:
         peak_so_far = _peak_so_far_kw(
-            dsn, site.site_id, now, site.abrechnung_leistung
+            dsn, site.site_id, now, site.abrechnung_leistung,
+            fuehrende_box=site.fuehrende_box,
         )
 
     # P3 (Nachtreserve): die Nacht-Fehlerverteilung DIESER Anlage - EIN Lesen je
@@ -847,6 +1055,9 @@ def gather_inputs(
         night_error_quantiles=night_errors,
         # P7: WOHER der Start-Ladestand kam. `unbekannt` ist der Ruhe-Plan.
         soc_source=soc_source,
+        # AP-15 IP-14 (P4): die Anteile der mitsteuernden Boxen - nur in einer
+        # Anlage in `anteile_aktiv`, sonst () und der Eingang von heute.
+        verbund=verbund.fuer_lauf(site.verbund, pv_kw),
         # E6 A: die ehrliche Marge fuer Netzanteil beim Laden - nur am
         # Festpreis-Tarif, Spot-Anlagen bleiben bei 0 (kein Term).
         grid_charge_hurdle_ct_kwh=grid_charge_hurdle_ct_kwh(site.tariff),
@@ -981,7 +1192,12 @@ def plausible_peak(buckets_desc: list[float]) -> tuple[float, bool]:
 
 
 def _peak_so_far_kw(
-    dsn: str, site_id: UUID, now: datetime, abrechnung_leistung: str
+    dsn: str,
+    site_id: UUID,
+    now: datetime,
+    abrechnung_leistung: str,
+    *,
+    fuehrende_box: UUID | None = None,
 ) -> float:
     """The billing period's highest 15-min mean grid import so far (kW).
 
@@ -995,11 +1211,19 @@ def _peak_so_far_kw(
     that is forming right now. The raw blend is ungated - a spike there
     distorts at most ONE cycle (peak_so_far is recomputed fresh every 15 min,
     and the completed bucket is gated on the next cycle).
+
+    In a multi-box site ``fuehrende_box`` names the box that reads the grid
+    meter (AP-15 W2/B1): the running mean is read there only - the other
+    box's ``power_kw`` is its own feeder, and averaging both rows understated
+    R3's 367 kW as 222 kW. The completed buckets need no condition: the
+    rollup reads the same box since api ``V20260922020000``. Without it the
+    query is the one of before, word for word.
     """
     import psycopg  # lazy: optional [db] extra
 
     now = ensure_utc(now)
     period_start = billing_period_start(now, abrechnung_leistung)
+    box_sql, box_params = _box_filter(fuehrende_box)
     slot_start = floor_to_slot(now)
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
@@ -1016,8 +1240,9 @@ def _peak_so_far_kw(
             SELECT avg(greatest(power_kw, 0)) FROM telemetry
             WHERE site_id = %s AND power_kw IS NOT NULL
               AND time >= %s AND time <= %s
-            """,
-            (site_id, max(slot_start, period_start), now),
+            """
+            + box_sql,
+            (site_id, max(slot_start, period_start), now, *box_params),
         )
         row = cur.fetchone()
         running = float(row[0]) if row is not None and row[0] is not None else 0.0
@@ -1131,7 +1356,9 @@ def _forecast_or_fallback(
     if all(s in stored for s in slot_starts):
         return [stored[s] for s in slot_starts], False
 
-    history = _load_history(dsn, site.site_id, telemetry_column, now)
+    history = _load_history(
+        dsn, site.site_id, telemetry_column, now, fuehrende_box=site.fuehrende_box
+    )
     missing = sum(1 for s in slot_starts if s not in stored)
     logger.info(
         "forecast.fallback",
@@ -1179,7 +1406,11 @@ def _anchor_pv_input(
             return pv_kw, NO_EVIDENCE
         model = active_model("pv", choices=site_choices)
         measured = _measured_slot_means(
-            dsn, site.site_id, "pv_power_kw", lookback_slots
+            dsn,
+            site.site_id,
+            "pv_power_kw",
+            lookback_slots,
+            fuehrende_box=site.fuehrende_box,
         )
         predicted = _past_predictions(dsn, site.site_id, "pv", model, lookback_slots)
         evidence = anchor_evidence(
@@ -1279,6 +1510,7 @@ def _nowcast_pv_input(
             now,
             lookback=pv_nowcast_lookback(),
             max_age=pv_nowcast_max_age(),
+            device_id=site.device_id,
         )
         measured = window_mean(samples)
         if measured is None:
@@ -1383,7 +1615,12 @@ def _slot_minutes(slot_starts: list[datetime]) -> int:
 
 
 def _measured_slot_means(
-    dsn: str, site_id: UUID, column: str, slot_starts: list[datetime]
+    dsn: str,
+    site_id: UUID,
+    column: str,
+    slot_starts: list[datetime],
+    *,
+    fuehrende_box: UUID | None = None,
 ) -> dict[datetime, float]:
     """Measured slot MEANS over the evidence window (never a single sample).
 
@@ -1393,6 +1630,10 @@ def _measured_slot_means(
     from inside the quarter hour. Aggregated in Python, not in SQL, exactly
     like the two other telemetry-vs-forecast paths - the slot width belongs to
     the horizon, not to a query.
+
+    In a multi-box site (``fuehrende_box`` set) the slot value is the SITE's:
+    :func:`_anlagen_slot_werte` - PV the sum of the boxes' slot means, never
+    their mean (AP-15 W2). Without it the query is the one of before.
     """
     # Fixed set, never user input - a hard raise (not assert, which is
     # stripped under python -O) keeps the f-string interpolation safe (S15).
@@ -1406,6 +1647,9 @@ def _measured_slot_means(
 
     minutes = _slot_minutes(slot_starts)
     window_end = slot_starts[-1] + timedelta(minutes=minutes)
+    if fuehrende_box is not None:
+        rows = _telemetrie_je_box(dsn, site_id, slot_starts[0], window_end)
+        return _anlagen_slot_werte(rows, column, fuehrende_box, minutes)
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
             f"""
@@ -1537,13 +1781,26 @@ def _load_forecast(
 
 
 def _load_history(
-    dsn: str, site_id: UUID, column: str, now: datetime
+    dsn: str,
+    site_id: UUID,
+    column: str,
+    now: datetime,
+    *,
+    fuehrende_box: UUID | None = None,
 ) -> list[tuple[datetime, float]]:
+    """Raw fallback history of one channel; in a multi-box site (``fuehrende_box``
+    set) the SITE's quarter-hour values instead (:func:`_anlagen_slot_werte`):
+    the load at the leading box plus the other boxes' net output, PV the sum.
+    """
     # Fixed set, never user input - a hard raise (not assert, which is
     # stripped under python -O) keeps the f-string interpolation safe (S15).
     if column not in ("load_kw", "pv_power_kw"):
         raise ValueError(f"unsupported telemetry column: {column}")
     import psycopg  # lazy: optional [db] extra
+
+    if fuehrende_box is not None:
+        rows = _telemetrie_je_box(dsn, site_id, now - FALLBACK_HISTORY, None)
+        return sorted(_anlagen_slot_werte(rows, column, fuehrende_box, 15).items())
 
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
@@ -1557,22 +1814,119 @@ def _load_history(
         return [(ensure_utc(ts), float(v)) for ts, v in cur.fetchall()]
 
 
+def _telemetrie_je_box(
+    dsn: str, site_id: UUID, since: datetime, until: datetime | None
+) -> list[tuple]:
+    """``(time, device_id, pv_power_kw, load_kw, power_kw)`` of every box of the
+    site from ``since`` (to ``until``, exclusive) - the input of
+    :func:`_anlagen_slot_werte`."""
+    import psycopg  # lazy: optional [db] extra
+
+    sql = """
+        SELECT time, device_id, pv_power_kw, load_kw, power_kw FROM telemetry
+        WHERE site_id = %s AND time >= %s"""
+    params: tuple = (site_id, since)
+    if until is not None:
+        sql += " AND time < %s"
+        params = (*params, until)
+    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(sql + " ORDER BY time", params)
+        return list(cur.fetchall())
+
+
+def _anlagen_slot_werte(
+    rows: list[tuple], column: str, fuehrende_box: UUID, minutes: int
+) -> dict[datetime, float]:
+    """The SITE's slot means from the rows of several boxes (AP-15 W2, B1).
+
+    The twin of the multi-box branch of the api rollup (``V20260922020000``),
+    slot by slot:
+
+    * ``pv_power_kw``: the SUM of the boxes' slot means - the site's generation.
+      A box without a PV sample in the slot adds nothing (it has no PV channel).
+    * ``load_kw``: the leading box's slot mean PLUS, for every other box that
+      sent in the slot, its slot mean of ``load_kw - power_kw``. A box forms
+      ``load_kw`` from its OWN balance (pv + power - battery); the PV of another
+      box is invisible to it, so the leading box's load is short by exactly the
+      other boxes' net output (PV - charging) = their ``load_kw - power_kw``.
+      Missing that pair for a box that sent, or the leading box's own load,
+      the slot is unknown and absent - never the understated number.
+    """
+    from voltpilot_forecast.domain import Observation, slot_means
+
+    reihen: dict[UUID, dict[str, list]] = {}
+    for ts, box, pv, load, power in rows:
+        at = ensure_utc(ts)
+        eigen = reihen.setdefault(
+            _uuid(box), {"gesendet": [], "pv": [], "load": [], "abgabe": []}
+        )
+        eigen["gesendet"].append(Observation(at, 0.0))
+        if pv is not None:
+            eigen["pv"].append(Observation(at, float(pv)))
+        if load is not None:
+            eigen["load"].append(Observation(at, float(load)))
+            if power is not None:
+                eigen["abgabe"].append(Observation(at, float(load) - float(power)))
+    je_box = {
+        box: {name: slot_means(obs, minutes) for name, obs in eigen.items()}
+        for box, eigen in reihen.items()
+    }
+
+    out: dict[datetime, float] = {}
+    if column == "pv_power_kw":
+        for mittel in je_box.values():
+            for slot, wert in mittel["pv"].items():
+                out[slot] = out.get(slot, 0.0) + wert
+        return out
+    fuehrend = je_box.get(fuehrende_box)
+    if fuehrend is None:
+        return out
+    andere = [m for box, m in je_box.items() if box != fuehrende_box]
+    for slot, last in fuehrend["load"].items():
+        abgaben = [m["abgabe"].get(slot) for m in andere if slot in m["gesendet"]]
+        if all(a is not None for a in abgaben):
+            out[slot] = last + sum(abgaben)
+    return out
+
+
+def _box_filter(device_id: UUID | None) -> tuple[str, tuple[UUID, ...]]:
+    """The live readers' box condition: the planned battery's box, or none.
+
+    AP-15 P5 / R8: once a second box of the site sends telemetry, "the newest
+    row of the site" may be that box's - a SoC of a battery the plan does not
+    drive, a §14a limit that does not apply here, load/PV samples interleaved
+    from two meters. So a live input is read from the box of the entity it
+    belongs to, and a value that is missing or stale THERE is unknown; no other
+    box's reading stands in for it at any age.
+
+    Without a box (``asset.device_id`` NULL) the condition is empty and the
+    query is the one of before, byte for byte; with one box on the site the
+    condition removes nothing. The fragment is appended LAST, after every
+    existing placeholder, so the parameter positions of before stay put.
+    """
+    if device_id is None:
+        return "", ()
+    return " AND device_id = %s", (device_id,)
+
+
 def _recent_load_samples(
     dsn: str, tenant_id: UUID, site_id: UUID, now: datetime,
     *, lookback: timedelta = timedelta(minutes=2), max_age: timedelta = timedelta(seconds=30),
+    device_id: UUID | None = None,
 ) -> list[float]:
     """Fresh load samples for the short EWMA, oldest first; stale means none."""
     import psycopg  # lazy: optional [db] extra
 
+    box, box_params = _box_filter(device_id)
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
-            """
+            f"""
             SELECT time, load_kw FROM telemetry
             WHERE tenant_id = %s AND site_id = %s
-              AND load_kw IS NOT NULL AND time >= %s AND time <= %s
+              AND load_kw IS NOT NULL AND time >= %s AND time <= %s{box}
             ORDER BY time
             """,
-            (tenant_id, site_id, now - lookback, now),
+            (tenant_id, site_id, now - lookback, now, *box_params),
         )
         rows = cur.fetchall()
     if not rows or now - ensure_utc(rows[-1][0]) > max_age:
@@ -1582,7 +1936,7 @@ def _recent_load_samples(
 
 def _recent_pv_samples(
     dsn: str, tenant_id: UUID, site_id: UUID, now: datetime,
-    *, lookback: timedelta, max_age: timedelta,
+    *, lookback: timedelta, max_age: timedelta, device_id: UUID | None = None,
 ) -> list[float]:
     """Fresh PV samples for the window mean, oldest first; stale means none.
 
@@ -1598,15 +1952,16 @@ def _recent_pv_samples(
     """
     import psycopg  # lazy: optional [db] extra
 
+    box, box_params = _box_filter(device_id)
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
-            """
+            f"""
             SELECT time, pv_power_kw FROM telemetry
             WHERE tenant_id = %s AND site_id = %s
-              AND pv_power_kw IS NOT NULL AND time >= %s AND time <= %s
+              AND pv_power_kw IS NOT NULL AND time >= %s AND time <= %s{box}
             ORDER BY time
             """,
-            (tenant_id, site_id, now - lookback, now),
+            (tenant_id, site_id, now - lookback, now, *box_params),
         )
         rows = cur.fetchall()
     if not rows or now - ensure_utc(rows[-1][0]) > max_age:
@@ -1620,13 +1975,16 @@ def _fresh_measurement(
     column: str,
     now: datetime,
     max_age: timedelta,
+    *,
+    device_id: UUID | None = None,
 ) -> float | None:
     """The newest telemetry value for ``column`` IF it is fresh, else ``None``.
 
     Deliberately reads the newest row WITHOUT a time bound and applies the
     window here, so a discarded stale reading is FLAGGED with its age (F4: the
     silent-poisoning failure mode was invisible) instead of just vanishing
-    from the query result.
+    from the query result. With ``device_id`` only that box's rows count
+    (:func:`_box_filter`).
     """
     # Fixed set, never user input - a hard raise (not assert, which is
     # stripped under python -O) keeps the f-string interpolation safe (S15).
@@ -1637,14 +1995,15 @@ def _fresh_measurement(
         raise ValueError(f"unsupported telemetry column: {column}")
     import psycopg  # lazy: optional [db] extra
 
+    box, box_params = _box_filter(device_id)
     with psycopg.connect(dsn) as conn, conn.cursor() as cur:
         cur.execute(
             f"""
             SELECT time, {column} FROM telemetry
-            WHERE site_id = %s AND {column} IS NOT NULL
+            WHERE site_id = %s AND {column} IS NOT NULL{box}
             ORDER BY time DESC LIMIT 1
             """,
-            (site_id,),
+            (site_id, *box_params),
         )
         row = cur.fetchone()
     if row is None:
@@ -1652,17 +2011,17 @@ def _fresh_measurement(
     observed_at, val = ensure_utc(row[0]), float(row[1])
     age = now - observed_at
     if age > max_age:
+        context = {
+            "site_id": str(site_id),
+            "column": column,
+            "value": val,
+            "age_minutes": round(age.total_seconds() / 60.0, 1),
+            "max_age_minutes": round(max_age.total_seconds() / 60.0, 1),
+        }
+        if device_id is not None:
+            context["device_id"] = str(device_id)
         logger.warning(
-            "telemetry.stale_reading_ignored",
-            extra={
-                "context": {
-                    "site_id": str(site_id),
-                    "column": column,
-                    "value": val,
-                    "age_minutes": round(age.total_seconds() / 60.0, 1),
-                    "max_age_minutes": round(max_age.total_seconds() / 60.0, 1),
-                }
-            },
+            "telemetry.stale_reading_ignored", extra={"context": context}
         )
         return None
     return val

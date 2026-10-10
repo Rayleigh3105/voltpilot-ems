@@ -231,3 +231,40 @@ Auflösung einer mehrdeutigen Komponente bei einer älteren Box (IP-7, §4.7 c).
 ```bash
 (cd services/api && ./mvnw test -Dtest='MesswertHerkunftVectorsTest')   # rein, kein Docker
 ```
+
+## Ablesungen (AP-09 IP-8, additive Spur)
+
+Die bisherige Komponenten-/Messkanal-Spur bleibt unverändert. Eine Ablesung gehört zu
+Kundenbereich + Messstelle + Größe und trägt `spur = ablesung`, `woher = eingabe|import`
+und `urheber {sub, name, rolle, art}`. Sie hat weder Box noch Komponente, Geräte-Einbau,
+Sequenz oder Katalogfassung. `import` ist für den späteren Importweg vorbereitet; diese
+API nimmt ausschließlich Eingaben an. Die fünf Ablesungsvektoren stehen separat in
+`messwert-herkunft-vectors.json` unter `ablesungen` und laufen in API und Writer.
+
+Der Rohwert steht in `device_measurement_sample`; `ablesung_quelle_id` verweist auf
+`messstelle_quelle.art = ablesung`. Der exakte Dezimalstand steht in `ablesung_stand`.
+Ein Trigger bewahrt Eingang, Herkunft und jede Fassung dauerhaft in
+`messstelle_ablesung_fassung`, auch nach der 90-Tage-Aufbewahrung der Rohwertklasse.
+Der Kanalpfad verdichtet nur Werte mit Komponente; Ablesungen haben außerdem keine
+`long_term_cadence_s`. Monatszuordnung ist ein Kennzeichen, keine Interpolation.
+
+`POST /api/v1/messstellen/{kennzeichen}/ablesungen` nimmt `zeitpunkt` mit UTC-Versatz
+und voller Minute sowie `stand` als deutschen Zahltext an. `zuordnung_monat` ist
+`JJJJ-MM`, explizit `null` oder fehlt für die Vorgabe nach größtem Zeitanteil (höchstens
+zwei berührte Monate). Der erste Stand schließt keinen Zeitraum. Rücksprünge brauchen
+zunächst die Klärung des Zählerwechsels und werden nicht als Verbrauch gewertet.
+
+`POST …/ablesungen/{zeitpunkt}/berichtigung` nimmt `stand`, `zuordnung_monat` und
+`begruendung` (10–500 Zeichen) an. Eine unveränderte Wiederholung schreibt nichts;
+ein anderer Stand am selben Zeitpunkt braucht diesen Berichtigungsweg. Die gemeinsame
+Vier-Augen-Einstellung entscheidet über sofortige Wirkung oder einen `K-…`-Vorschlag.
+Freigabe und Rücknahme laufen über die vorhandenen Korrekturrouten. Jede wirksame
+Berichtigung hängt eine Rohwertfassung und betroffene Periodenversionen an; kein
+endgültiger Betrag wird überschrieben. Erstwerte selbst werden nicht zurückgenommen.
+`GET …/ablesungen` liefert alle Fassungen mit Herkunft. Rechte: `ablesung.erfassen`
+(U/U/S, keine Unterstützer), Lesen `messwerte.ansehen`, einschließlich Zielumfang.
+
+Das AP-08-Lesemodell liest zugeordnete Monate und Jahre aus der Periodenklasse:
+B8/F17 = Oktober 1 240 m³ mit Ablesezeitraum, November keine Werte. Ein Monat summiert
+seine zugeordneten Intervalle; Tageswerte werden nicht erzeugt. Ohne Monatszuordnung
+bleibt der Betrag unbekannt und der Monatswert trägt den entsprechenden Hinweis.

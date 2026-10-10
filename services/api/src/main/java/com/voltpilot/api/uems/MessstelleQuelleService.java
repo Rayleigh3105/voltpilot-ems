@@ -92,6 +92,7 @@ public class MessstelleQuelleService {
     private final MessstelleZuordnungRepository zuordnungen;
     private final GeraetRepository geraete;
     private final MesskanalService messkanaele;
+    private final MessstelleRegisterRepository register;
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transaktion;
     private final ObjectMapper json;
@@ -99,14 +100,15 @@ public class MessstelleQuelleService {
 
     public MessstelleQuelleService(MessstelleRepository messstellen, MessstelleQuelleRepository quellen,
             MessstelleAenderungRepository aenderungen, MessstelleZuordnungRepository zuordnungen,
-            GeraetRepository geraete, MesskanalService messkanaele, JdbcTemplate jdbc,
-            PlatformTransactionManager transactionManager, ObjectMapper json) {
+            GeraetRepository geraete, MesskanalService messkanaele, MessstelleRegisterRepository register,
+            JdbcTemplate jdbc, PlatformTransactionManager transactionManager, ObjectMapper json) {
         this.messstellen = messstellen;
         this.quellen = quellen;
         this.aenderungen = aenderungen;
         this.zuordnungen = zuordnungen;
         this.geraete = geraete;
         this.messkanaele = messkanaele;
+        this.register = register;
         this.jdbc = jdbc;
         this.transaktion = new TransactionTemplate(transactionManager);
         this.json = json;
@@ -150,6 +152,7 @@ public class MessstelleQuelleService {
         List<Quelle> alle = quellen.derMessstelle(m.id());
         Instant jetzt = uhr.instant();
         Instant stichtag = am == null ? jetzt : am;
+        Messwerte messwerte = messwerte(alle, stichtag);
         OffsetDateTime beginn = zeit(beginn(m));
         List<MessstelleQuelleDto.GroesseAmStichtag> groessen = new ArrayList<>();
         for (Ziel z : ziele(m, neben)) {
@@ -158,7 +161,7 @@ public class MessstelleQuelleService {
             Quelle fuehrend = fuehrende.stream().filter(q -> gilt(q, stichtag)).findFirst().orElse(null);
             List<MessstelleQuelleDto.Quelle> vergleich = derGroesse.stream()
                     .filter(q -> VERGLEICH.equals(q.rolle()) && gilt(q, stichtag))
-                    .map(q -> darstellung(q, jetzt)).toList();
+                    .map(q -> messwerte.an(darstellung(q, jetzt), q, stichtag)).toList();
             List<MessstelleQuelleDto.Abschnitt> strahl = new ArrayList<>();
             for (Abschnitt a : MessstelleRegeln.zeitstrahl(beginn, fuehrende.stream()
                     .map(MessstelleQuelleService::zeitraum).toList())) {
@@ -169,10 +172,50 @@ public class MessstelleQuelleService {
             Groesse g = z.groesse();
             groessen.add(new MessstelleQuelleDto.GroesseAmStichtag(g.groesse(), g.richtung(), g.einheit(),
                     g.wertart(), z.haupt(), z.archiviert() || m.archiviertAm() != null ? "archiviert" : "aktiv",
-                    fuehrend == null ? null : darstellung(fuehrend, jetzt), vergleich, strahl));
+                    fuehrend == null ? null : messwerte.an(darstellung(fuehrend, jetzt), fuehrend, stichtag),
+                    vergleich, strahl));
         }
         return new MessstelleQuelleDto.Liste(m.id(), m.kennzeichen(), zeit(stichtag), groessen,
-                alle.stream().map(q -> darstellung(q, jetzt)).toList());
+                alle.stream().map(q -> messwerte.an(darstellung(q, jetzt), q, stichtag)).toList());
+    }
+
+    /**
+     * Der Anzeigename JEDER Bindung und der letzte gute Wert der Bindungen, die zum Stichtag gelten
+     * (AP-04 IP-14, E3 · A8) — in EINEM Zug für die ganze Messstelle, nicht je Zeile.
+     *
+     * <p>Die Zahl ist die der Beobachtung: derselbe Werte-Zug des Registers
+     * ({@link MessstelleRegisterRepository#werte}), dieselbe Einheit des Messkanals ohne Umrechnung
+     * und derselbe Anteil-Schnitt ({@link MessstelleBeobachtung#letzterWert}). Die Quelle-Karte stellt
+     * die führende und die Vergleichsquelle nebeneinander — sie müssen auf dieselbe Weise entstanden
+     * sein, sonst vergleicht der Kunde zwei verschiedene Rechnungen.
+     */
+    private Messwerte messwerte(List<Quelle> alle, Instant stichtag) {
+        Map<String, MesskanalDto.Messkanal> kanaele = new LinkedHashMap<>();
+        List<MessstelleRegisterRepository.Messwert> gefragt = new ArrayList<>();
+        for (Quelle q : alle) {
+            kanaele.computeIfAbsent(q.entityId() + "|" + q.kanal(),
+                    x -> messkanaele.kanal(q.entityId(), q.kanal()).orElse(null));
+            if (gilt(q, stichtag)) {
+                gefragt.add(new MessstelleRegisterRepository.Messwert(q.entityId(), q.kanal(), q.gueltigAb()));
+            }
+        }
+        return new Messwerte(kanaele, gefragt.isEmpty() ? Map.of() : register.werte(gefragt, stichtag));
+    }
+
+    /** Die Messkanäle und die Werte-Fakten EINER Messstelle — gelesen, nicht gerechnet. */
+    private record Messwerte(Map<String, MesskanalDto.Messkanal> kanaele,
+            Map<MessstelleRegisterRepository.Messwert, MessstelleRegisterRepository.Werte> werte) {
+
+        MessstelleQuelleDto.Quelle an(MessstelleQuelleDto.Quelle dto, Quelle q, Instant stichtag) {
+            MesskanalDto.Messkanal k = kanaele.get(q.entityId() + "|" + q.kanal());
+            if (!gilt(q, stichtag)) {
+                return dto.mitMesswert(k == null ? null : k.anzeigename(), null);
+            }
+            MessstelleRegisterRepository.Werte w = werte
+                    .get(new MessstelleRegisterRepository.Messwert(q.entityId(), q.kanal(), q.gueltigAb()));
+            return dto.mitMesswert(k == null ? null : k.anzeigename(),
+                    MessstelleBeobachtung.letzterWert(w, k == null ? null : k.einheit(), q.anteil()));
+        }
     }
 
     public MessstelleQuelleDto.Quelle eine(UUID messstelleId, UUID quelleId) {
@@ -216,6 +259,10 @@ public class MessstelleQuelleService {
         if (b.kanal() == null || b.kanal().isBlank()) {
             throw MessstelleAbgelehnt.anfrage("kanal", "Der Messwert (Kanal) fehlt.");
         }
+        if (b.anteil() != null && !MessstelleRegeln.ANTEILE.contains(b.anteil())) {
+            throw MessstelleAbgelehnt.anfrage("anteil", "Der Anteil ist „positiv“ oder „negativ“ — ohne Anteil "
+                    + "liest die Quelle den ganzen Wert.");
+        }
         Instant ab = aufDieMinute(b.gueltigAb(), "gueltig_ab", minute);
         Instant bis = b.gueltigBis() == null ? null : aufDieMinute(b.gueltigBis(), "gueltig_bis", null);
         Stand anfangsstand = stand(b.anfangsstand(), "anfangsstand");
@@ -235,7 +282,7 @@ public class MessstelleQuelleService {
                         + k.anzeige() + " nicht."));
 
         Pruefung p = pruefen(m, ziel.groesse(), rolle, b.zweck(), k, kanal, ab, bis, anfangsstand,
-                endstandVorgaenger, jetzt);
+                endstandVorgaenger, jetzt, b.anteil());
         BindungUrteil u = p.urteil();
         if (u.fehler() != null) {
             throw abgelehnt(u, m, ziel.groesse(), k, kanal, p);
@@ -254,7 +301,7 @@ public class MessstelleQuelleService {
             UUID neu = quellen.anlegen(new NeueQuelle(tenant, m.id(), ziel.groesse().groesse(),
                     ziel.groesse().richtung(), k.id(), speisung.einbau().id(), b.kanal(), kanal.wertart(),
                     u.herleitung(), rolle, b.zweck(), ab, bis, repoStand(anfangsstand), u.rueckwirkend(),
-                    herkunft, jetzt, wer));
+                    herkunft, jetzt, wer, b.anteil()));
             Map<String, Object> eintrag = new LinkedHashMap<>();
             eintrag.put("quelle_id", neu.toString());
             eintrag.put("groesse", ziel.groesse().groesse());
@@ -268,6 +315,9 @@ public class MessstelleQuelleService {
             eintrag.put("gueltig_ab", iso(ab));
             eintrag.put("gueltig_bis", iso(bis));
             eintrag.put("herleitung", u.herleitung());
+            if (b.anteil() != null) {
+                eintrag.put("anteil", b.anteil());
+            }
             eintrag.put("anfangsstand", standAlsMap(anfangsstand));
             if (herkunft != null) {
                 eintrag.put("herkunft", herkunft);
@@ -290,7 +340,7 @@ public class MessstelleQuelleService {
         }), () -> {
             // Ein anderer war schneller (23P01 der Exklusion): mit dem neuen Stand neu urteilen.
             Pruefung neu = pruefen(m, ziel.groesse(), rolle, b.zweck(), k, kanal, ab, bis, anfangsstand,
-                    endstandVorgaenger, jetzt);
+                    endstandVorgaenger, jetzt, b.anteil());
             return neu.urteil().fehler() == null ? soebenVeraendert(m)
                     : abgelehnt(neu.urteil(), m, ziel.groesse(), k, kanal, neu);
         });
@@ -353,6 +403,14 @@ public class MessstelleQuelleService {
      * Archivieren zu diesem Zeitpunkt abgelehnt (409 {@code zustand_passt_nicht}) und nennt sie.
      */
     void archivierbar(Messstelle m, Instant am) {
+        for (var q : quellen.ablesungen(m.id())) {
+            if (!(q.bis() != null && !q.bis().isAfter(am))
+                    && !(q.bis() == null && q.von().isBefore(am))) {
+                throw MessstelleAbgelehnt.schnittstelle(Schnittstelle.ZUSTAND_PASST_NICHT,
+                        "Die Ablesungsquelle kann zu diesem Zeitpunkt nicht beendet werden.",
+                        Map.of("quelle_id", q.id().toString()));
+            }
+        }
         for (Quelle q : quellen.derMessstelle(m.id())) {
             boolean endetVorher = q.gueltigBis() != null && !q.gueltigBis().isAfter(am);
             boolean offenUndBegonnen = q.gueltigBis() == null && q.gueltigAb().isBefore(am);
@@ -375,6 +433,12 @@ public class MessstelleQuelleService {
     /** Beendet in der laufenden Transaktion jede offene Quelle zum Archivzeitpunkt; liefert ihre Kennungen. */
     List<UUID> zumArchivBeenden(Messstelle m, Instant am) {
         List<UUID> beendet = new ArrayList<>();
+        for (var q : quellen.ablesungen(m.id())) {
+            if (q.bis() == null) {
+                if (!quellen.beenden(q.id(), am, null)) throw soebenVeraendert(m);
+                beendet.add(q.id());
+            }
+        }
         for (Quelle q : quellen.derMessstelle(m.id())) {
             if (q.gueltigBis() == null) {
                 if (!quellen.beenden(q.id(), am, null)) {
@@ -408,7 +472,7 @@ public class MessstelleQuelleService {
 
     private Pruefung pruefen(Messstelle m, Groesse ziel, String rolle, String zweck, Komponente k,
             MesskanalDto.Messkanal kanal, Instant ab, Instant bis, Stand anfangsstand, Stand endstandVorgaenger,
-            Instant jetzt) {
+            Instant jetzt, String anteil) {
         SpeisungAm speisung = geraete.speisungAm(k.id(), ab).orElse(null);
         List<Quelle> bestehende = quellen.derMessstelle(m.id());
         List<Quelle> anderswo = quellen.fuehrendAnderswo(k.id(), kanal.kanal(), m.id());
@@ -416,11 +480,12 @@ public class MessstelleQuelleService {
                 speisung == null ? null : speisung.einbau().kennzeichen(),
                 speisung == null ? null : speisung.einbau().einbauKennzeichen(),
                 kanal.groesse(), kanal.richtung(), kanal.einheit(), kanal.wertart(), zeit(ab), zeit(bis),
-                endstandVorgaenger, anfangsstand, speisung == null ? null : zeit(speisung.gueltigBis()));
+                endstandVorgaenger, anfangsstand, speisung == null ? null : zeit(speisung.gueltigBis()),
+                kanal.direction(), anteil);
         BindungUrteil u = MessstelleRegeln.bindungPruefen(new BindungEingang("binden", zeit(jetzt), m.medium(),
                 zeit(beginn(m)), ziel, bestehende.stream().map(MessstelleQuelleService::bindung).toList(), neu,
                 anderswo.stream().map(q -> new FremdeFuehrung(q.messstelle(), zeit(q.gueltigAb()),
-                        zeit(q.gueltigBis()))).toList()));
+                        zeit(q.gueltigBis()), q.anteil())).toList()));
         return new Pruefung(u, bestehende, anderswo, speisung, zeit(beginn(m)));
     }
 
@@ -489,10 +554,15 @@ public class MessstelleQuelleService {
                     + ", nicht " + ziel.groesse() + ".";
             case "einheit" -> "seine Einheit " + kanal.einheit() + " lässt sich nicht in " + ziel.einheit()
                     + " umrechnen.";
-            case "richtung" -> kanal.richtung() == null || "import_export".equals(kanal.direction())
-                    ? "er misst Bezug und Abgabe in einem Wert mit Vorzeichen. Getrennt nach Richtung lässt er "
-                            + "sich noch nicht binden."
-                    : "er misst " + kanal.richtung() + ", nicht " + ziel.richtung() + ".";
+            case "richtung" -> kanal.richtung() != null && !"import_export".equals(kanal.direction())
+                    ? "er misst " + kanal.richtung() + ", nicht " + ziel.richtung() + "."
+                    : MessstelleRegeln.ANTEIL_RICHTUNGEN.containsKey(kanal.direction())
+                            ? "er misst Bezug und Abgabe in einem Wert mit Vorzeichen. Binden Sie seinen positiven "
+                                    + "Anteil an Bezug oder seinen negativen Anteil an Abgabe."
+                            : "er misst beide Richtungen in einem Wert mit Vorzeichen; getrennt nach Richtung lässt er "
+                                    + "sich nicht binden.";
+            case "anteil" -> "einen Anteil hat nur ein Leistungs-Messwert, der Bezug und Abgabe in einem Wert "
+                    + "mit Vorzeichen misst.";
             default -> "er passt nicht zur Größe.";
         };
     }
@@ -627,9 +697,9 @@ public class MessstelleQuelleService {
                 : q.gueltigBis() == null || q.gueltigBis().isAfter(minute) ? "gilt" : "beendet";
         return new MessstelleQuelleDto.Quelle(q.id(), q.messstelleId(), q.groesse(), q.richtung(), q.rolle(),
                 q.zweck(), q.entityId(), q.komponenteName(), q.siteId(), q.kanal(), q.kanalWertart(), q.herleitung(),
-                new MessstelleQuelleDto.Geraet(q.geraetId(), q.geraet(), q.einbau()), zeit(q.gueltigAb()),
+                new MessstelleQuelleDto.Geraet(q.geraetId(), q.geraet(), q.einbau(), q.hersteller()), zeit(q.gueltigAb()),
                 zeit(q.gueltigBis()), status, dtoStand(q.anfangsstand()), dtoStand(q.endstand()), q.rueckwirkend(),
-                q.herkunft(), zeit(q.eingetragenAm()), q.eingetragenVon());
+                q.herkunft(), zeit(q.eingetragenAm()), q.eingetragenVon(), q.anteil());
     }
 
     private static MessstelleQuelleDto.Stand dtoStand(MessstelleQuelleRepository.Stand s) {

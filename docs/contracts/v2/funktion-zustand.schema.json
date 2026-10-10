@@ -355,6 +355,7 @@
         "eingerichtet_am",
         "boxen",
         "messstellen",
+        "register_zeilen",
         "anlagen",
         "jetzt"
       ],
@@ -394,6 +395,11 @@
               "kadenz_s": { "type": "integer", "minimum": 1 }
             }
           }
+        },
+        "register_zeilen": {
+          "description": "AP-13 IP-7 (E13 = A): je Zeile des Messstellen-Registers an diesem Standort, wie das Register sie zählt (berechnete eingeschlossen, „keine Datenquelle“ im Nenner). Allein daraus entsteht die Datenlage; die Prüfliste liest weiter `messstellen`.",
+          "type": "array",
+          "items": { "enum": ["liefert", "liefert_nicht_seit", "wartet_auf_erste_daten", "keine_datenquelle"] }
         },
         "anlagen": {
           "description": "Die Anlagen des Standorts MIT Netzanschluss und die Zahl ihrer Hauptzähler — gefordert ist genau einer.",

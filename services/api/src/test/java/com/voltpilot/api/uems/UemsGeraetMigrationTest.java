@@ -388,7 +388,17 @@ class UemsGeraetMigrationTest {
         for (String t : TABELLEN) {
             assertThat(root.queryForObject("SELECT relrowsecurity AND relforcerowsecurity FROM pg_class "
                     + "WHERE relname = ?", Boolean.class, t)).as(t).isTrue();
-            assertThat(anzahl("SELECT count(*) FROM pg_policies WHERE tablename = ?", t)).as(t).isOne();
+            // GENAU eine Mandanten-Policy - in der Form der Schwesterklassen (UemsOrteMigrationTest,
+            // MessstelleZuordnungMigrationTest), die den Zaun an app.tenant_id festmachen statt an der
+            // blossen Anzahl. PR 949 legt auf geraet zusaetzlich den Standortzaun
+            // wago_geraet_site_scope AS RESTRICTIVE (wie measurement_point); eine RESTRICTIVE Policy
+            // wird UND-verknuepft und kann nur verengen, nie oeffnen.
+            assertThat(anzahl("SELECT count(*) FROM pg_policies WHERE tablename = ? AND qual LIKE "
+                    + "'%app.tenant_id%' AND with_check LIKE '%app.tenant_id%'", t)).as(t).isOne();
+            // Und die Zusicherung bleibt schaerfer als ein blosses count: PERMISSIVE Policies werden
+            // ODER-verknuepft und koennten den Zaun oeffnen - davon darf es genau die eine geben.
+            assertThat(anzahl("SELECT count(*) FROM pg_policies WHERE tablename = ? "
+                    + "AND permissive = 'PERMISSIVE'", t)).as(t + ": nur eine PERMISSIVE Policy").isOne();
             // Ohne gewählten Kundenbereich sieht die App-Rolle nichts.
             assertThat(app.queryForObject("SELECT count(*) FROM " + t, Long.class)).as(t).isZero();
         }
@@ -531,21 +541,26 @@ class UemsGeraetMigrationTest {
                 abgelehntWegen("42501", "permission denied", () -> app.update("DELETE FROM " + t));
             }
             for (String zuweisung : List.of("kennzeichen = 'GR-2'", "site_id = site_id",
-                    "geraeteart = 'zaehler'", "eingebaut_am = eingebaut_am - interval '1 day'",
+                    "geraeteart = 'zaehler'",
                     "aus_bestand = true", "created_by = 'jemand'", "tenant_id = tenant_id")) {
                 abgelehntWegen("42501", "permission denied",
                         () -> app.update("UPDATE geraet SET " + zuweisung + " WHERE id = ?", controller));
             }
-            for (String zuweisung : List.of("steckplatz = 3", "geraet_id = geraet_id",
-                    "eingebaut_am = eingebaut_am - interval '1 day'")) {
+            for (String zuweisung : List.of("steckplatz = 3", "geraet_id = geraet_id")) {
                 abgelehntWegen("42501", "permission denied",
                         () -> app.update("UPDATE geraet_teil SET " + zuweisung + " WHERE id = ?", karte));
             }
-            for (String zuweisung : List.of("gueltig_ab = gueltig_ab - interval '1 day'",
-                    "geraet_id = geraet_id", "entity_id = entity_id", "teil_id = NULL")) {
+            for (String zuweisung : List.of("geraet_id = geraet_id", "entity_id = entity_id", "teil_id = NULL")) {
                 abgelehntWegen("42501", "permission denied", () -> app.update(
                         "UPDATE geraet_komponente SET " + zuweisung + " WHERE entity_id = ?", k));
             }
+            // AP-04 A3: Beginnspalten sind nur für belegte zukünftige Wechsel freigegeben.
+            abgelehnt("23514", "uems_wechsel_nur_geplant", () -> app.update(
+                    "UPDATE geraet SET eingebaut_am=eingebaut_am-interval '1 day' WHERE id=?", controller));
+            abgelehnt("23514", "uems_wechsel_nur_geplant", () -> app.update(
+                    "UPDATE geraet_teil SET eingebaut_am=eingebaut_am-interval '1 day' WHERE id=?", karte));
+            abgelehnt("23514", "uems_wechsel_nur_geplant", () -> app.update(
+                    "UPDATE geraet_komponente SET gueltig_ab=gueltig_ab-interval '1 day' WHERE entity_id=?", k));
             // Was der Kunde nachträgt und was der Ausbau setzt, geht.
             Timestamp aus = Timestamp.from(Instant.parse("2027-02-05T13:00:00Z"));
             assertThat(app.update("UPDATE geraet SET seriennummer = 'C1-4711', bezeichnung = 'Controller "

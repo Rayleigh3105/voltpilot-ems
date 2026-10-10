@@ -3,6 +3,7 @@ package com.voltpilot.api.measurement;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
 import com.voltpilot.api.tenant.TenantContext;
 import jakarta.annotation.PreDestroy;
 import java.time.Instant;
@@ -30,13 +31,17 @@ import org.springframework.stereotype.Component;
 /** Authenticated, identity-bound apply acknowledgement consumer. */
 @Component
 @ConditionalOnProperty(name = "voltpilot.provisioning.enabled", havingValue = "true")
-public class MeasurementConfigStatusListener {
+public class MeasurementConfigStatusListener extends Rueckmeldeweg {
     private static final Logger log = LoggerFactory.getLogger(MeasurementConfigStatusListener.class);
     private static final String FILTER = "ems/+/+/+/v2/measurement-config-status";
     private static final Pattern POINT_KEY = Pattern.compile("^[a-z0-9][a-z0-9._*\\[\\]@-]{0,239}$");
+    private static final Pattern ENTITY_ID = Pattern.compile(
+            "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$");
     private static final Set<String> ROOT_FIELDS = Set.of("schema_version", "tenant_id", "site_id",
             "device_id", "revision", "applied_at", "accepted", "rejected", "edge_version");
-    private static final Set<String> REJECTION_FIELDS = Set.of("point_key", "reason");
+    // entity_id is additive (AP-07 IP-18b, x-rejection-entity-rule): it names ONE refused
+    // component of a shared point. A status without it is judged and applied exactly as before.
+    private static final Set<String> REJECTION_FIELDS = Set.of("point_key", "reason", "entity_id");
     // The CLOSED rejection vocabulary of mqtt-measurement-config-status. An
     // unknown word invalidates the WHOLE acknowledgement (see the loop below),
     // so a reason the edge starts sending must land here in the same release -
@@ -121,6 +126,7 @@ public class MeasurementConfigStatusListener {
 
     /** Test-visible strict validator and monotone state transition. */
     public boolean handle(String topic, byte[] payload) {
+        if (kundenbereichBeendet(topic)) return false; // Kundenbereich beendet: verworfen und gezählt
         try {
             String[] p = topic == null ? new String[0] : topic.split("/");
             if (p.length != 6 || !"ems".equals(p[0]) || !"v2".equals(p[4])
@@ -146,23 +152,43 @@ public class MeasurementConfigStatusListener {
                         || !accepted.add(n.asText())) return false;
             }
             Map<String, String> rejected = new LinkedHashMap<>();
+            Map<MeasurementSelectionRepository.KomponentenAblehnung, String> jeKomponente =
+                    new LinkedHashMap<>();
             for (JsonNode n : root.path("rejected")) {
                 if (!n.isObject() || !onlyFields(n, REJECTION_FIELDS)) return false;
                 String point = n.path("point_key").asText("");
                 String reason = n.path("reason").asText("");
-                if (!POINT_KEY.matcher(point).matches() || !REASONS.contains(reason)
-                        || accepted.contains(point)
+                if (!POINT_KEY.matcher(point).matches() || !REASONS.contains(reason)) return false;
+                if (n.has("entity_id")) {
+                    // One component of a shared point: the point_key may ALSO stand in accepted
+                    // (the box reads it for its other components), each pair is refused once,
+                    // and it never stands beside a refusal of the whole point.
+                    if (!n.path("entity_id").isTextual()
+                            || !ENTITY_ID.matcher(n.path("entity_id").asText()).matches()) return false;
+                    UUID entity = UUID.fromString(n.path("entity_id").asText());
+                    if (rejected.containsKey(point) || jeKomponente.put(
+                            new MeasurementSelectionRepository.KomponentenAblehnung(point, entity),
+                            reason) != null) return false;
+                    continue;
+                }
+                if (accepted.contains(point)
+                        || jeKomponente.keySet().stream().anyMatch(k -> k.pointKey().equals(point))
                         || rejected.put(point, reason) != null) return false;
             }
             TenantContext.set(tenant);
             try {
-                var scope = repository.deviceScope(device);
+                var scope = repository.aktiverDeviceScope(device);
                 if (scope == null || !site.equals(scope.siteId())
                         || revision > repository.revision(device)
                         || revision < repository.acknowledgedRevision(device)) {
                     return false;
                 }
-                repository.applyAcknowledgement(device, revision, appliedAt, accepted, rejected, edgeVersion);
+                if (jeKomponente.isEmpty()) {
+                    repository.applyAcknowledgement(device, revision, appliedAt, accepted, rejected, edgeVersion);
+                } else {
+                    repository.applyAcknowledgementJeKomponente(device, revision, appliedAt, accepted,
+                            rejected, jeKomponente, edgeVersion);
+                }
                 return true;
             } finally { TenantContext.clear(); }
         } catch (Exception e) {

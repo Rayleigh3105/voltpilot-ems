@@ -1,0 +1,19 @@
+# point_key="deye.hybrid_1p.meter.today-energy"
+# label="'=Zähler ""Halle 2"""
+# source_label="WAGO, Halle 2"
+# unit="kWh"
+# aggregation="counter"
+# semantic_status="known"
+# catalog_version="2026.08.26.3"
+# representation="decoded"
+# site_id="0a120000-0000-0000-0000-0000000000a2"
+# entity_id=
+# quelle="viertelstunde"
+# quelle_erklaerung="Aus den gespeicherten Viertelstunden."
+# raw_available=false
+# roh_grenze="2026-10-21T10:00:00Z"
+# catalog_version_gespeichert="2026.06.02.1 2026.08.26.3"
+time,value,min,max,text,sample_count,gap,quelle,wertart,abdeckung_prozent,erhalten,erwartet,n_good,n_uncertain,n_invalid,n_stale,n_device_error,zustand,endgueltig_ab,version,nachgeliefert,zustellart,letzte_eingangszeit,geraet_einbau,geraet_einbau_2,box,box_2,fassung,katalog_version,rolle,stand_anfang,stand_ende
+2026-10-19T22:00:00Z,3.75,0.1,0.4,,15,false,"viertelstunde","counter",100,15,15,15,0,0,0,0,"endgueltig",2026-10-28T00:00:00Z,1,0,"live",2026-10-19T22:14:30Z,0a120000-0000-0000-0000-0000000000e1,,0a120000-0000-0000-0000-0000000000b0,,3,"2026.06.02.1","fuehrend",1200.5,1204.25
+2026-10-20T08:15:00Z,,,,"'-Störung, ""kurz""",6,true,"viertelstunde","counter",40,6,15,6,0,0,0,0,"unvollstaendig",,1,2,"nachgeliefert",2026-10-20T08:29:00Z,0a120000-0000-0000-0000-0000000000e1,0a120000-0000-0000-0000-0000000000e1,0a120000-0000-0000-0000-0000000000b0,0a120000-0000-0000-0000-0000000000b0,3,"2026.06.02.1","fuehrend",,
+2026-10-20T08:30:00Z,9007199254740993,,,,1,false,,,,,,,,,,,,,,,,,,,,,,,,,

@@ -43,7 +43,7 @@ import {
 } from '../rollen';
 import { InfoTip } from '../components/InfoTip';
 import { fmtNum } from '../format';
-import { AUFBAU_REITER } from '../anlageNav';
+import { AUFBAU_REITER } from '../ebenenNav';
 
 /**
  * Anlagen-Zentrale Stufe 3 (PR 3a) — die AUFGELÖSTE Installateur-Ansicht.

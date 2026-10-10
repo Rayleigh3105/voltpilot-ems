@@ -178,7 +178,7 @@ export function grund(channel: string, aggregat: string, label?: string | null):
   if (aggregat === 'tagesmittel') {
     return `„${name}“ ist ein Zählerstand — ein Mittelwert daraus ist keine Aussage. Wählen Sie „Aktuell“ oder „Tagessumme“.`;
   }
-  return `Diese Kennzahl passt nicht zu „${name}“.`;
+  return `Dieser Zeitbezug passt nicht zu „${name}“.`;
 }
 
 // ---------------------------------------------------------------------------

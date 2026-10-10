@@ -6,14 +6,18 @@ import { dez, dezVergleich, type Dez } from './bezugsdaten';
 import { MENGE_NACHKOMMASTELLEN } from './uemsBilanz';
 import {
   ANTEIL_NACHKOMMASTELLEN,
+  ERBE_ANTEIL_WECHSELT,
+  GRUND_ANTEIL_WECHSELT,
   NICHT_VERTEILT,
   SUMME_PROZENT,
   VERTEILT,
+  ablesezeitraum,
   amTag,
   erbe,
   fassung,
   mengen,
   satz,
+  satzAbTag,
   term,
   type Abschnitt,
   type Bestandszeile,
@@ -114,6 +118,11 @@ describe('Verteilungs-Vertrag: Form der Vektor-Datei', () => {
     }
   });
 
+  it('der Grund und der Satz eines Anteils, der mitten im Ablesezeitraum wechselt, stehen in der Datei (Messen PR4)', () => {
+    expect(vectors.vokabulare.kostenstelle_grund).toContain(GRUND_ANTEIL_WECHSELT);
+    expect(vectors.saetze.erbe_anteil_wechselt).toBe(ERBE_ANTEIL_WECHSELT);
+  });
+
   it('jede Abweichung und jede ungeprüfte Erwartung ist benannt', () => {
     expect(vectors._abweichungen.length).toBeGreaterThan(0);
     for (const a of vectors._abweichungen) expect(a.grund).toBeTruthy();
@@ -176,6 +185,32 @@ describe('Verteilungs-Vertrag: die Vektoren', () => {
         expect(ist.fehler, `${why} · Fehler`).toBe(soll.fehler);
         break;
       }
+      case 'satz_ab_tag': {
+        const ist = satzAbTag(
+          ein.heute,
+          ein.tag,
+          zeilen(ein.zeilen),
+          ziele(ein.ziele),
+          bestand(ein.bestehend),
+          ein.korrektur === true,
+        );
+        expect(ist.fehler, `${why} · Fehler`).toBe(soll.fehler);
+        betragGleich(ist.summe, soll.summe, `${why} · Summe`);
+        expect(ist.fakten, `${why} · Fakten`).toEqual(soll.fakten);
+        expect(ist.aufgehoben, `${why} · aufgehoben`).toEqual(soll.aufgehoben);
+        expect(ist.beendet, `${why} · beendet`).toEqual(soll.beendet);
+        expect(
+          ist.neu.map((n) => `${n.kostenstelle}@${n.gueltig_ab}..${n.gueltig_bis}`),
+          `${why} · neue Zeilen (enden mit ihrem Ziel)`,
+        ).toEqual(soll.neu.map((n: Json) => `${n.kostenstelle}@${n.gueltig_ab}..${n.gueltig_bis}`));
+        ist.neu.forEach((n, i) =>
+          betragGleich(n.anteil_prozent, soll.neu[i].anteil_prozent, `${why} · Anteil ${n.kostenstelle}`),
+        );
+        expect(ist.rueckwirkend, `${why} · rückwirkend`).toBe(soll.rueckwirkend);
+        expect(ist.tage_rueckwirkend, `${why} · Tage rückwirkend`).toBe(soll.tage_rueckwirkend);
+        expect(ist.unveraendert, `${why} · unverändert`).toBe(soll.unveraendert);
+        break;
+      }
       case 'mengen': {
         const tage = ein.tage === null ? null : ein.tage.map((t: Json) => ({ tag: t.tag, menge: betrag(t.menge) }));
         const ist = mengen(ein.von, ein.bis, betrag(ein.periode_menge), tage, abschnitte(ein.verteilung));
@@ -211,6 +246,33 @@ describe('Verteilungs-Vertrag: die Vektoren', () => {
         expect(ist.grund, `${why} · Grund`).toBe(soll.grund);
         break;
       }
+      case 'ablesezeitraum': {
+        const ist = ablesezeitraum(ein.zone, ein.zeitraeume, betrag(ein.menge), bestand(ein.zeilen), ziele(ein.ziele));
+        expect(ist.erster_tag, `${why} · erster Tag`).toBe(soll.erster_tag);
+        expect(ist.letzter_tag, `${why} · letzter Tag`).toBe(soll.letzter_tag);
+        expect(
+          ist.ziele.map((z) => z.kostenstelle),
+          `${why} · Ziele`,
+        ).toEqual(soll.ziele.map((z: Json) => z.kostenstelle));
+        ist.ziele.forEach((z, i) => {
+          const s = soll.ziele[i];
+          betragGleich(z.anteil_prozent, s.anteil_prozent, `${why} · ${z.kostenstelle} · Anteil`);
+          betragGleich(z.menge, s.menge, `${why} · ${z.kostenstelle} · Menge`);
+          expect(z.grund, `${why} · ${z.kostenstelle} · Grund`).toBe(s.grund);
+          expect(z.geaendert_am, `${why} · ${z.kostenstelle} · geändert am`).toBe(s.geaendert_am);
+        });
+        if (soll.nicht_verteilt === null) {
+          expect(ist.nicht_verteilt, `${why} · nicht verteilt`).toBeNull();
+        } else {
+          expect(ist.nicht_verteilt, `${why} · nicht verteilt`).not.toBeNull();
+          betragGleich(ist.nicht_verteilt!.menge, soll.nicht_verteilt.menge, `${why} · nicht verteilt · Menge`);
+          expect(ist.nicht_verteilt!.grund, `${why} · nicht verteilt · Grund`).toBe(soll.nicht_verteilt.grund);
+          expect(ist.nicht_verteilt!.geaendert_am, `${why} · nicht verteilt · geändert am`).toBe(
+            soll.nicht_verteilt.geaendert_am,
+          );
+        }
+        break;
+      }
       case 'term': {
         const ist = term(
           {
@@ -233,6 +295,47 @@ describe('Verteilungs-Vertrag: die Vektoren', () => {
       }
       default:
         throw new Error(`unbekannte Regel ${p.regel}`);
+    }
+  });
+});
+
+/**
+ * AP-10 IP-5: der Block `leseweg`. Die Ablehnung eines Terms, dessen Anteil (noch) nicht lesbar ist,
+ * bildet der Server (Java `AnteilLeseweg`) und schickt Code + Kundensatz; das Portal bildet sie nie
+ * selbst. Hier steht fest, dass die Typen des Portals dieselben Wörter kennen wie der Vertrag und
+ * dass kein Kundensatz ein internes Wort trägt.
+ */
+describe('Verteilungs-Vertrag: der Leseweg des Formel-Terms', () => {
+  const block: Json = vectors.leseweg;
+  const apiTs = readFileSync(resolve(process.cwd(), 'src/api.ts'), 'utf8');
+  const union = (woerter: string[]): string => woerter.map((w) => `'${w}'`).join(' | ');
+
+  it('die Lücke ist begründet und die Prüfreihenfolge ist die der Ablehnungen', () => {
+    expect(block.zwillinge).toEqual(['java']);
+    expect(block.zwillinge_grund.length).toBeGreaterThan(20);
+    expect(block.pruefreihenfolge).toEqual(block.ablehnungen.map((a: Json) => a.code));
+    // AP-10 IP-8 hat die Verteilung gebaut: nur der Teil des Messwerts wartet noch.
+    expect(block.ablehnungen.filter((a: Json) => a.wartet_auf !== null).map((a: Json) => a.code)).toEqual([
+      'anteil_wartet_auf_ap08',
+    ]);
+    expect(JSON.stringify(vectors)).not.toContain('verteilung_wartet_auf_ip8"');
+    expect(apiTs).not.toContain("'verteilung_wartet_auf_ip8'");
+    expect(block.faelle.filter((f: Json) => f.ergebnis.lesung === 'tagesanteil').map((f: Json) => f.fall)).toEqual([
+      'F11',
+    ]);
+  });
+
+  it('die Portal-Typen kennen die Term-Arten und Anteil-Wörter des Vertrags', () => {
+    expect(apiTs).toContain(`eingang_art: ${union(vectors.vokabulare.term_art)};`);
+    expect(apiTs).toContain(`anteil?: ${union(vectors.vokabulare.anteil)};`);
+    // In der Antwort steht `gesamt` nie: ein Term ohne Teil trägt das Feld nicht.
+    expect(apiTs).toContain(`anteil?: ${union(vectors.vokabulare.anteil.filter((w: string) => w !== 'gesamt'))};`);
+  });
+
+  it('kein Kundensatz trägt ein internes Wort', () => {
+    for (const a of block.ablehnungen) {
+      expect(a.satz, a.code).not.toMatch(/AP-|IP-|Leseweg|_|null/);
+      expect(a.satz, a.code).toMatch(/\.$/);
     }
   });
 });

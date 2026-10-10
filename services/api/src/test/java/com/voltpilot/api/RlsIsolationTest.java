@@ -45,7 +45,7 @@ class RlsIsolationTest {
             .withPassword("voltpilot_dev_pw");
 
     @BeforeAll
-    static void migrate() {
+    static void migrate() throws Exception {
         // Flyway as the superuser creates the app role, schema, RLS + dev seed.
         Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
@@ -57,6 +57,7 @@ class RlsIsolationTest {
                         "adminDbUser", "voltpilot_admin", "adminDbPassword", "voltpilot_admin_test_pw"))
                 .load()
                 .migrate();
+        ahrenberg();
     }
 
     private DataSource appDataSource() {
@@ -94,6 +95,150 @@ class RlsIsolationTest {
             rs.next();
             // Default-deny: no app.tenant_id set => zero rows.
             assertThat(rs.getLong(1)).isZero();
+        }
+    }
+
+    // ------------------------------------------------ UEMS AP-03 IP-5: der Standort-Zaun `site_scope`
+
+    private static final String AHRENBERG = "a3000000-0000-0000-0000-000000000001";
+    private static final String ST1 = "a3000000-0000-0000-0001-000000000001";
+    private static final String ST2 = "a3000000-0000-0000-0001-000000000002";
+    private static final String ST3 = "a3000000-0000-0000-0001-000000000003";
+    private static final String AN1 = "a3000000-0000-0000-0002-000000000001";
+    private static final String AN2 = "a3000000-0000-0000-0002-000000000002";
+    private static final String AN3 = "a3000000-0000-0000-0002-000000000003";
+    private static final String AN4 = "a3000000-0000-0000-0002-000000000004";
+    /** Heute in der Zeitzone des Unternehmens — derselbe Tag, den {@code uems_zugriff_heute} rechnet. */
+    private static final String HEUTE = "(now() AT TIME ZONE 'Europe/Berlin')::date";
+    /** Peter Hollerbach: Bearbeiter nur für Werk Lindach (AP-03 A1). */
+    private static final String PETER = "{" + ST2 + "}";
+    /** Claudia: Leser für Werk Ahrenberg und Werk Lindach (AP-03 A13, A16). */
+    private static final String CLAUDIA = "{" + ST1 + "," + ST2 + "}";
+    private static final List<String> STANDORT_TABELLEN =
+            List.of("site", "standort", "anlage_standort", "ort", "measurement_point", "device");
+
+    /**
+     * AP-03 A1, die Hälfte des Zauns (IP-5): Peter sieht auf keiner Standort-Tabelle etwas von Werk Ahrenberg — auch
+     * nicht über die Kennung, und genau diese Abfrage stellt {@code Geltungsbereich.requireSite} (dann 404). Totals,
+     * Kennzahlen und Exporte aus A1 sind IP-10/IP-11.
+     */
+    @Test
+    void a1EinStandortBearbeiterSiehtNurSeinenStandort() throws Exception {
+        assertThat(spalte(PETER, "SELECT name FROM site")).containsExactly("Anlage Lindach");
+        assertThat(spalte(PETER, "SELECT kurzzeichen FROM standort")).containsExactly("ST-2");
+        assertThat(spalte(PETER, "SELECT site_id::text FROM anlage_standort")).containsExactly(AN3);
+        assertThat(spalte(PETER, "SELECT kurzzeichen FROM ort")).containsExactly("G-2");
+        assertThat(spalte(PETER, "SELECT label FROM measurement_point")).containsExactly("Netzbezug Lindach");
+        assertThat(spalte(PETER, "SELECT external_ref FROM device")).containsExactly("rls-ahrenberg-an3");
+        assertThat(spalte(PETER, "SELECT EXISTS (SELECT 1 FROM site WHERE id = '" + AN1 + "')::text"))
+                .containsExactly("false");
+    }
+
+    /**
+     * AP-03 A13, die Hälfte des Zauns (IP-5): Werk Ahrenberg Nord gibt es für Claudia nicht — nicht lesbar, nicht
+     * änderbar (0 Zeilen, also 404 statt einer Bestätigung). Dasselbe gilt für Halle 2, die heute dort hängt, und für
+     * die Anlage ohne Standort. 403 {@code recht_fehlt} INNERHALB ihrer Standorte ist IP-6.
+     */
+    @Test
+    void a13EinFremderStandortIstUnsichtbarUndUnveraenderbar() throws Exception {
+        assertThat(spalte(CLAUDIA, "SELECT kurzzeichen FROM standort ORDER BY kurzzeichen"))
+                .containsExactly("ST-1", "ST-2");
+        assertThat(spalte(CLAUDIA, "SELECT count(*)::text FROM standort WHERE id = '" + ST3 + "'")).containsExactly("0");
+        assertThat(aendere(CLAUDIA, "UPDATE standort SET name = 'fremd' WHERE id = '" + ST3 + "'")).isZero();
+        assertThat(aendere(CLAUDIA, "UPDATE site SET name = 'fremd' WHERE id = '" + AN2 + "'")).isZero();
+        assertThat(aendere(CLAUDIA, "UPDATE site SET name = 'fremd' WHERE id = '" + AN4 + "'")).isZero();
+        assertThat(aendere(CLAUDIA, "UPDATE measurement_point SET label = 'fremd' WHERE site_id = '" + AN2 + "'"))
+                .isZero();
+        assertThat(aendere(CLAUDIA, "UPDATE ort SET name = 'fremd' WHERE kurzzeichen = 'G-3'")).isZero();
+        assertThat(aendere(CLAUDIA, "DELETE FROM device WHERE site_id = '" + AN2 + "'")).isZero();
+        assertThat(aendereUndRollZurueck(CLAUDIA, "UPDATE site SET name = name WHERE id = '" + AN1 + "'"))
+                .isEqualTo(1);
+    }
+
+    /**
+     * AP-03 A16: Rechte hängen am Standort von HEUTE, Daten am Stichtag. Halle 2 ist heute nach Werk Ahrenberg Nord
+     * umgezogen: Claudia sieht die Anlage nicht mehr, ihre beendete Zuordnung an Werk Ahrenberg aber weiter (Berichte
+     * über die Vergangenheit); Werk Ahrenberg Nord sieht Halle 2 ab heute. Ein Gebäude, dessen Zuordnung gestern
+     * endete, ist weg; ein Bereich folgt seinem Gebäude.
+     */
+    @Test
+    void a16DieAnlageFolgtIhremStandortVonHeuteUndDieVergangenheitBleibtLesbar() throws Exception {
+        assertThat(spalte(CLAUDIA, "SELECT name FROM site ORDER BY name")).containsExactly("Anlage Lindach", "Halle 1");
+        assertThat(spalte(CLAUDIA, "SELECT site_id::text || ' ' || standort_id::text || ' ' || (gueltig_bis IS NULL) "
+                + "FROM anlage_standort")).containsExactlyInAnyOrder(AN1 + " " + ST1 + " true",
+                        AN2 + " " + ST1 + " false", AN3 + " " + ST2 + " true");
+        assertThat(spalte(CLAUDIA, "SELECT kurzzeichen FROM ort ORDER BY kurzzeichen")).containsExactly("B-1", "G-1", "G-2");
+        assertThat(spalte(CLAUDIA, "SELECT label FROM measurement_point ORDER BY label"))
+                .containsExactly("Netzbezug Halle 1", "Netzbezug Lindach");
+        assertThat(spalte("{" + ST3 + "}", "SELECT name FROM site")).containsExactly("Halle 2");
+        assertThat(spalte("{" + ST3 + "}", "SELECT label FROM measurement_point")).containsExactly("Zähler Halle 2");
+        assertThat(spalte(CLAUDIA, "SELECT external_ref FROM device ORDER BY external_ref"))
+                .containsExactly("rls-ahrenberg-an1", "rls-ahrenberg-an3");
+    }
+
+    /**
+     * Schreiben: der enge Zaun legt nie etwas an einem fremden Standort an (WITH CHECK); am eigenen geht es. Eine
+     * Anlage, die er nicht sieht, kann er nicht einmal zuordnen — die Einfüge-Prüfung von {@code anlage_standort}
+     * (W5-Grabstein) liest {@code site} unter derselben Rolle und antwortet wie für eine fremde Anlage.
+     */
+    @Test
+    void derEngeZaunLegtNieEtwasAnEinemFremdenStandortAn() throws Exception {
+        assertThatThrownBy(() -> aendere(CLAUDIA, "INSERT INTO anlage_standort (tenant_id, site_id, standort_id, "
+                + "gueltig_ab, gueltig_bis) VALUES ('" + AHRENBERG + "', '" + AN1 + "', '" + ST3 + "', '2020-01-01', "
+                + "'2020-12-31')")).hasMessageContaining("row-level security");
+        assertThatThrownBy(() -> aendere(CLAUDIA, "INSERT INTO anlage_standort (tenant_id, site_id, standort_id, "
+                + "gueltig_ab) VALUES ('" + AHRENBERG + "', '" + AN4 + "', '" + ST1 + "', '2030-01-01')"))
+                .hasMessageContaining("anlage_standort_site_fk");
+        assertThatThrownBy(() -> aendere(CLAUDIA, "INSERT INTO measurement_point (tenant_id, site_id, role, label, "
+                + "entity_type) VALUES ('" + AHRENBERG + "', '" + AN2 + "', 'grid-meter', 'fremd', 'grid-meter')"))
+                .hasMessageContaining("row-level security");
+        assertThatThrownBy(() -> aendere(CLAUDIA, "INSERT INTO standort (tenant_id, unternehmen_id, name, kurzzeichen, "
+                + "zeitzone, zustand) SELECT tenant_id, id, 'Neu', 'ST-9', 'Europe/Berlin', 'aktiv' FROM unternehmen"))
+                .hasMessageContaining("row-level security");
+        assertThat(aendereUndRollZurueck(CLAUDIA, "INSERT INTO anlage_standort (tenant_id, site_id, standort_id, "
+                + "gueltig_ab, gueltig_bis) VALUES ('" + AHRENBERG + "', '" + AN1 + "', '" + ST2 + "', '2020-01-01', "
+                + "'2020-12-31')")).isEqualTo(1);
+    }
+
+    /**
+     * Bestand: ohne Zugriff (frische Verbindung: NULL; nach dem Zurücksetzen: leer) und unternehmensweit sieht jede
+     * Standort-Tabelle genau die Zeilen des Kundenbereichs — dieselben wie der Mandanten-Zaun allein. Die
+     * Standort-Kennungen spielen unternehmensweit keine Rolle.
+     */
+    @Test
+    void ohneZugriffUndUnternehmensweitBleibenAlleZeilenDesKundenbereichs() throws Exception {
+        for (String tabelle : STANDORT_TABELLEN) {
+            String zaehle = "SELECT count(*) FROM " + tabelle;
+            long alle = superuserZahl(zaehle + " WHERE tenant_id = '" + AHRENBERG + "'");
+            assertThat(alle).as(tabelle).isPositive();
+            assertThat(scalar(AHRENBERG, zaehle)).as(tabelle + ", ohne Zugriff").isEqualTo(alle);
+            assertThat(zahl(AHRENBERG, "", "", zaehle)).as(tabelle + ", zurückgesetzt").isEqualTo(alle);
+            assertThat(zahl(AHRENBERG, "unternehmen", "{}", zaehle)).as(tabelle + ", unternehmensweit").isEqualTo(alle);
+            assertThat(zahl(AHRENBERG, "unternehmen", PETER, zaehle)).as(tabelle + ", mit Kennungen").isEqualTo(alle);
+        }
+        assertThat(sitesForTenant(TENANT_A)).containsExactlyInAnyOrder(
+                "Demo Site Berlin", "Solarpark Dachau", "Hof Lindenberg");
+    }
+
+    /** Fail closed: ohne Standort (Kundenkonto ohne Zuweisung) und bei jedem anderen Wert als „unternehmen" nichts. */
+    @Test
+    void ohneStandortUndMitUnbekanntemWertSiehtDerEngeZaunNichts() throws Exception {
+        for (String tabelle : STANDORT_TABELLEN) {
+            String zaehle = "SELECT count(*) FROM " + tabelle;
+            assertThat(zahl(AHRENBERG, "standorte", "{}", zaehle)).as(tabelle + ", ohne Standort").isZero();
+            assertThat(zahl(AHRENBERG, "Unternehmen", "{}", zaehle)).as(tabelle + ", Tippfehler").isZero();
+        }
+    }
+
+    /** Der Standort-Zaun öffnet nie den Mandanten-Zaun: Kennungen von Ahrenberg nützen in einem anderen Kundenbereich nichts. */
+    @Test
+    void derStandortZaunOeffnetNieDenMandantenZaun() throws Exception {
+        String alleDrei = "{" + ST1 + "," + ST2 + "," + ST3 + "}";
+        for (String tabelle : STANDORT_TABELLEN) {
+            String fremd = "SELECT count(*) FROM " + tabelle + " WHERE tenant_id = '" + AHRENBERG + "'";
+            assertThat(zahl(TENANT_B, "standorte", alleDrei, fremd)).as(tabelle).isZero();
+            assertThat(zahl(TENANT_B, "unternehmen", "{}", fremd)).as(tabelle).isZero();
+            assertThat(zahl(null, "unternehmen", alleDrei, fremd)).as(tabelle + ", ohne Mandant").isZero();
         }
     }
 
@@ -453,6 +598,112 @@ class RlsIsolationTest {
     private void setTenant(Connection c, String tenantId) throws Exception {
         try (PreparedStatement ps = c.prepareStatement("SELECT set_config('app.tenant_id', ?, false)")) {
             ps.setString(1, tenantId);
+            ps.execute();
+        }
+    }
+
+    /**
+     * Kunststoffwerk Ahrenberg im Kleinen (AP-00 §4.4, AP-02 Leitbeispiel): Werk Ahrenberg (ST-1) mit Halle 1 (AN-1),
+     * Werk Lindach (ST-2) mit seiner Anlage (AN-3), Werk Ahrenberg Nord (ST-3), an das Halle 2 (AN-2) HEUTE umgezogen
+     * ist, und eine Anlage ohne Standort (AN-4). Gebäude G-1 mit Bereich B-1 an ST-1, G-2 an ST-2, G-3 bis gestern an
+     * ST-1. Je Anlage mit Standort eine Messkomponente und ein Gerät.
+     */
+    private static void ahrenberg() throws Exception {
+        String t = "'" + AHRENBERG + "'";
+        try (Connection c = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(),
+                POSTGRES.getPassword()); Statement s = c.createStatement()) {
+            s.execute("INSERT INTO tenant (id, name) VALUES (" + t + ", 'Kunststoffwerk Ahrenberg GmbH')");
+            s.execute("INSERT INTO unternehmen (tenant_id, name, zeitzone) VALUES (" + t
+                    + ", 'Kunststoffwerk Ahrenberg GmbH', 'Europe/Berlin')");
+            s.execute("INSERT INTO standort (id, tenant_id, unternehmen_id, name, kurzzeichen, zeitzone, zustand) "
+                    + "SELECT v.id::uuid, u.tenant_id, u.id, v.name, v.kz, 'Europe/Berlin', 'aktiv' FROM unternehmen u, "
+                    + "(VALUES ('" + ST1 + "', 'Werk Ahrenberg', 'ST-1'), ('" + ST2 + "', 'Werk Lindach', 'ST-2'), ('"
+                    + ST3 + "', 'Werk Ahrenberg Nord', 'ST-3')) v(id, name, kz) WHERE u.tenant_id = " + t);
+            s.execute("INSERT INTO site (id, tenant_id, name) VALUES ('" + AN1 + "', " + t + ", 'Halle 1'), ('" + AN2
+                    + "', " + t + ", 'Halle 2'), ('" + AN3 + "', " + t + ", 'Anlage Lindach'), ('" + AN4 + "', " + t
+                    + ", 'Anlage ohne Standort')");
+            s.execute("INSERT INTO anlage_standort (tenant_id, site_id, standort_id, gueltig_ab, gueltig_bis) VALUES ("
+                    + t + ", '" + AN1 + "', '" + ST1 + "', '2024-01-01', NULL), (" + t + ", '" + AN2 + "', '" + ST1
+                    + "', '2024-01-01', " + HEUTE + " - 1), (" + t + ", '" + AN2 + "', '" + ST3 + "', " + HEUTE
+                    + ", NULL), (" + t + ", '" + AN3 + "', '" + ST2 + "', '2024-01-01', NULL)");
+            s.execute("INSERT INTO ort (id, tenant_id, art, name, kurzzeichen, zustand) VALUES "
+                    + "('a3000000-0000-0000-0003-000000000001', " + t + ", 'gebaeude', 'Halle 1', 'G-1', 'aktiv'), "
+                    + "('a3000000-0000-0000-0003-000000000002', " + t + ", 'bereich', 'Halle 1 Nord', 'B-1', 'aktiv'), "
+                    + "('a3000000-0000-0000-0003-000000000003', " + t + ", 'gebaeude', 'Werkhalle Lindach', 'G-2', 'aktiv'), "
+                    + "('a3000000-0000-0000-0003-000000000004', " + t + ", 'gebaeude', 'Altes Lager', 'G-3', 'aktiv')");
+            s.execute("INSERT INTO ort_zuordnung (tenant_id, ort_id, eltern_standort_id, gueltig_ab, gueltig_bis) VALUES "
+                    + "(" + t + ", 'a3000000-0000-0000-0003-000000000001', '" + ST1 + "', '2024-01-01', NULL), "
+                    + "(" + t + ", 'a3000000-0000-0000-0003-000000000003', '" + ST2 + "', '2024-01-01', NULL), "
+                    + "(" + t + ", 'a3000000-0000-0000-0003-000000000004', '" + ST1 + "', '2024-01-01', " + HEUTE + " - 1)");
+            s.execute("INSERT INTO ort_zuordnung (tenant_id, ort_id, eltern_ort_id, gueltig_ab) VALUES (" + t
+                    + ", 'a3000000-0000-0000-0003-000000000002', 'a3000000-0000-0000-0003-000000000001', '2024-01-01')");
+            s.execute("INSERT INTO measurement_point (tenant_id, site_id, role, label, entity_type) VALUES ("
+                    + t + ", '" + AN1 + "', 'grid-meter', 'Netzbezug Halle 1', 'grid-meter'), ("
+                    + t + ", '" + AN2 + "', 'grid-meter', 'Zähler Halle 2', 'grid-meter'), ("
+                    + t + ", '" + AN3 + "', 'grid-meter', 'Netzbezug Lindach', 'grid-meter')");
+            s.execute("INSERT INTO device (tenant_id, site_id, external_ref) VALUES (" + t + ", '" + AN1
+                    + "', 'rls-ahrenberg-an1'), (" + t + ", '" + AN2 + "', 'rls-ahrenberg-an2'), (" + t + ", '" + AN3
+                    + "', 'rls-ahrenberg-an3')");
+        }
+    }
+
+    private List<String> spalte(String standortIds, String sql) throws Exception {
+        return spalte(AHRENBERG, "standorte", standortIds, sql);
+    }
+
+    /** Die erste Spalte jeder Zeile — auf einer Verbindung mit genau den Sitzungs-Einstellungen, die IP-4 setzt. */
+    private List<String> spalte(String tenantId, String zugriff, String standortIds, String sql) throws Exception {
+        try (Connection c = appDataSource().getConnection()) {
+            setZugriff(c, tenantId, zugriff, standortIds);
+            List<String> aus = new ArrayList<>();
+            try (Statement s = c.createStatement(); ResultSet rs = s.executeQuery(sql)) {
+                while (rs.next()) {
+                    aus.add(rs.getString(1));
+                }
+            }
+            return aus;
+        }
+    }
+
+    private long zahl(String tenantId, String zugriff, String standortIds, String sql) throws Exception {
+        return Long.parseLong(spalte(tenantId, zugriff, standortIds, sql).get(0));
+    }
+
+    private int aendere(String standortIds, String sql) throws Exception {
+        try (Connection c = appDataSource().getConnection()) {
+            setZugriff(c, AHRENBERG, "standorte", standortIds);
+            try (Statement s = c.createStatement()) {
+                return s.executeUpdate(sql);
+            }
+        }
+    }
+
+    private int aendereUndRollZurueck(String standortIds, String sql) throws Exception {
+        try (Connection c = appDataSource().getConnection()) {
+            setZugriff(c, AHRENBERG, "standorte", standortIds);
+            c.setAutoCommit(false);
+            try (Statement s = c.createStatement()) {
+                return s.executeUpdate(sql);
+            } finally {
+                c.rollback();
+            }
+        }
+    }
+
+    private static long superuserZahl(String sql) throws Exception {
+        try (Connection c = DriverManager.getConnection(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(),
+                POSTGRES.getPassword()); Statement s = c.createStatement(); ResultSet rs = s.executeQuery(sql)) {
+            rs.next();
+            return rs.getLong(1);
+        }
+    }
+
+    private static void setZugriff(Connection c, String tenantId, String zugriff, String standortIds) throws Exception {
+        try (PreparedStatement ps = c.prepareStatement("SELECT set_config('app.tenant_id', ?, false), "
+                + "set_config('app.zugriff', ?, false), set_config('app.standort_ids', ?, false)")) {
+            ps.setString(1, tenantId);
+            ps.setString(2, zugriff);
+            ps.setString(3, standortIds);
             ps.execute();
         }
     }

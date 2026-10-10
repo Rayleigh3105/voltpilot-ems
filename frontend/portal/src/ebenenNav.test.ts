@@ -1,0 +1,1090 @@
+import { describe, expect, it } from 'vitest';
+import {
+  activeAreaKey,
+  aktiverEintrag,
+  anlageBereiche,
+  anlageSidebar,
+  bereichFor,
+  bereichLabel,
+  bottomBarSlots,
+  ebenenAktiv,
+  ebenenBereiche,
+  ebenenEintraege,
+  ebenenLeiste,
+  ebenenOrt,
+  ebenenReiter,
+  EBENEN_SEITEN,
+  flottenEintraege,
+  istDetailseite,
+  modeViewItems,
+  resolveAnlage,
+  STANDORT_BERICHTE,
+  STANDORT_KENNZAHLEN,
+  standortEinstiege,
+  standortBereichFuer,
+  tabsFor,
+  telefonReiterBereiche,
+  unternehmensGruppen,
+  LEISTE_HOECHSTENS,
+  type AnlageBereich,
+  type BereichId,
+  type EbenenLesemodell,
+  type EbenenSeiten,
+} from './ebenenNav';
+import {
+  berichtRoute,
+  canonicalStandortHash,
+  hashForRoute,
+  kennzahlRoute,
+  MAIN_PAGES,
+  messstelleRoute,
+  pageRoute,
+  parseRoute,
+  standortBereichRoute,
+  standortMessstellenRoute,
+  standortRoute,
+  type AnlagenSub,
+  type Route,
+} from './nav';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { anlageSurface, type AnlageSurfaceInput } from './surface';
+import { ahrenbergFunktionen, funktionWerkAhrenberg, funktionWerkLindach } from './test/funktionenFixtures';
+import { ahrenbergKennzahlen } from './test/kennzahlenFixtures';
+import { FIXTURE_IDS, werkAhrenberg, werkLindach } from './test/standorteFixtures';
+
+/**
+ * Jede `AnlagenSub`, die es gibt - die Wahrheit für „nichts ist verwaist".
+ *
+ * ⚠ `geraet`, `box` und `befehle` stehen bewusst NICHT hier: Geräte- und
+ * Box-Seite brauchen eine Referenz im Pfad; die Befehlsseite wird nur noch aus
+ * der jeweiligen Geräte-Detailseite gefiltert geöffnet. Ein Anlagen-Reiter
+ * könnte diese Ziele nicht korrekt erzeugen. Sie heben weiterhin den Bereich
+ * „Anlage" hervor (`activeAreaKey`).
+ */
+const ALL_SUBS: AnlagenSub[] = [
+  'fahrplan',
+  'ladevorgaenge',
+  'messwerte',
+  'erloese',
+  'einzelwerte',
+  'marktpreise',
+  'prognose',
+  'wetter',
+  'steuerung',
+  'laden',
+  'regeln',
+  'modell',
+  'technik',
+];
+
+const ENTITIES: AnlageSurfaceInput['entities'] = [
+  { id: 'e1', entityType: 'battery-hybrid', capabilities: { measure: [{ channel: 'soc_pct' }] } },
+];
+
+/** Eine Anlage ohne Speicher (nur Erzeugung) - kein Fahrplan an der Basis. */
+const PV_ONLY = {
+  id: 'e-pv',
+  entityType: 'producer',
+  capabilities: { measure: [{ channel: 'pv_power_kw' }] },
+};
+
+/** Die FÜNF Bereiche in ihrer festen Reihenfolge, auf einer Speicher-Anlage. */
+const FUENF: BereichId[] = ['cockpit', 'fahrplan', 'verlauf', 'steuerung', 'anlage'];
+
+/** A migrated plant with the market mode active. */
+const MARKT = anlageSurface({
+  entities: ENTITIES,
+  config: { plantKind: 'direktvermarktung', tarifArt: 'dynamisch' },
+});
+
+/** A migrated plant with the peak mode active. */
+const PEAK = anlageSurface({
+  entities: ENTITIES,
+  config: { plantKind: 'eigenverbrauch', leistungspreisEurKw: 120 },
+});
+
+/** Both money modes at once - the widest possible nav. */
+const ALLE = anlageSurface({
+  entities: ENTITIES,
+  config: { plantKind: 'direktvermarktung', tarifArt: 'dynamisch', leistungspreisEurKw: 120 },
+  signals: {
+    hasStorage: true,
+    hasPv: true,
+    activeStrategyNodeTypes: [],
+    plantKind: 'direktvermarktung',
+    hasLeistungspreis: true,
+  },
+});
+
+/** Eine Speicher-Anlage mit Ladepunkt - die Steuerung trägt dann den Reiter „Laden". */
+const MIT_LADEPUNKT = anlageSurface({
+  entities: [...ENTITIES, { id: 'cp', entityType: 'ev-charger', capabilities: { measure: [{ channel: 'power_kw' }] } }],
+  signals: { hasStorage: true, hasPv: true, activeStrategyNodeTypes: [] },
+  config: { plantKind: 'eigenverbrauch', tarifArt: 'fest' },
+});
+
+/** A plain self-consumption plant (no market, no peak). */
+const PRIVAT = anlageSurface({
+  entities: ENTITIES,
+  signals: { hasStorage: true, hasPv: true, activeStrategyNodeTypes: [] },
+  config: { plantKind: 'eigenverbrauch', tarifArt: 'fest' },
+});
+
+function keys(bereiche: AnlageBereich[]): BereichId[] {
+  return bereiche.map((b) => b.key);
+}
+
+function tabsOf(bereiche: AnlageBereich[], key: BereichId): string[] {
+  return bereiche.find((b) => b.key === key)?.tabs.map((t) => t.key) ?? [];
+}
+
+/** Jede Unterseite, die die fünf Bereiche + ihre Reiter erreichen. */
+function reachable(bereiche: AnlageBereich[]): (AnlagenSub | null)[] {
+  const out: (AnlagenSub | null)[] = [];
+  for (const b of bereiche) {
+    if (b.tabs.length > 0) out.push(...b.tabs.map((t) => t.sub));
+    else if (b.target.kind === 'sub') out.push(b.target.sub);
+  }
+  return out;
+}
+
+describe('anlageBereiche - die fünf Bereiche sind FEST und geordnet', () => {
+  it('sind Cockpit · Fahrplan · Verlauf · Steuerung · Anlage auf jeder Speicher-Anlage', () => {
+    for (const surface of [MARKT, PEAK, ALLE, PRIVAT]) {
+      expect(keys(anlageBereiche(surface))).toEqual(FUENF);
+    }
+  });
+
+  it('lässt den zweiten Bereich WEG, wo es weder Speicher noch Ladepunkte gibt', () => {
+    // „Ein Bereich ohne Inhalt existiert nicht" - der einzige Bereich, der der
+    // Komposition folgt.
+    const ohne = anlageSurface({ entities: [PV_ONLY], config: { plantKind: 'eigenverbrauch' } });
+    expect(keys(anlageBereiche(ohne))).toEqual(['cockpit', 'verlauf', 'steuerung', 'anlage']);
+  });
+
+  it('nennt ihn „Ladevorgänge" auf einem REINEN Ladepark', () => {
+    const ladepark = anlageSurface({
+      entities: [
+        { id: 'cp', entityType: 'ev-charger', capabilities: { measure: [{ channel: 'power_kw' }] } },
+      ],
+      config: { plantKind: 'eigenverbrauch' },
+    });
+    const bereiche = anlageBereiche(ladepark);
+    const zweiter = bereiche[1];
+    expect(zweiter.key).toBe('ladevorgaenge');
+    expect(zweiter.label).toBe('Ladevorgänge');
+    expect(zweiter.target).toEqual({ kind: 'sub', sub: 'ladevorgaenge' });
+    // Ein Bereich mit EINEM Reiter behauptet keine Wahl.
+    expect(tabsFor(anlageSidebar(ladepark), 'ladevorgaenge')).toEqual([]);
+  });
+
+  it('hängt die Ladevorgänge als ZWEITEN Reiter an den Fahrplan, wo es beides gibt', () => {
+    const beides = anlageSurface({
+      entities: [
+        ...(ENTITIES ?? []),
+        { id: 'cp', entityType: 'ev-charger', capabilities: { measure: [{ channel: 'power_kw' }] } },
+      ],
+      config: { plantKind: 'eigenverbrauch' },
+    });
+    const bereiche = anlageBereiche(beides);
+    expect(keys(bereiche)).toEqual(FUENF);
+    // Das Wetter erklärt den Plan und steht deshalb bei ihm (Verlauf-Rework E1).
+    expect(tabsOf(bereiche, 'fahrplan')).toEqual(['fahrplan', 'ladevorgaenge', 'wetter']);
+  });
+
+  it('öffnet jeder Bereich seine erste Seite', () => {
+    const b = anlageBereiche(MARKT);
+    expect(b.map((x) => (x.target.kind === 'sub' ? x.target.sub : null))).toEqual([
+      null, // Cockpit
+      'fahrplan',
+      'messwerte', // der erste Reiter des Verlaufs
+      'steuerung',
+      'modell', // der erste Reiter der Anlage
+    ]);
+  });
+});
+
+describe('die REITER entstehen aus dem M0-Read-Model', () => {
+  it('führt „Messwerte" auf JEDER Anlage - auch einer nie migrierten', () => {
+    for (const surface of [MARKT, PRIVAT, null, undefined]) {
+      const b = anlageBereiche(surface);
+      expect(tabsOf(b, 'verlauf')[0]).toBe('messwerte');
+    }
+  });
+
+  it('trägt „Erlöse" nur mit Geld-Modus', () => {
+    expect(tabsOf(anlageBereiche(MARKT), 'verlauf')).toContain('erloese');
+    expect(tabsOf(anlageBereiche(PRIVAT), 'verlauf')).not.toContain('erloese');
+  });
+
+  it('trägt „Preise" nur auf einem Börsentarif — beim Fahrplan, den sie erklären', () => {
+    expect(tabsOf(anlageBereiche(MARKT), 'fahrplan')).toContain('marktpreise');
+    expect(tabsOf(anlageBereiche(PRIVAT), 'fahrplan')).not.toContain('marktpreise');
+    expect(tabsOf(anlageBereiche(MARKT), 'verlauf')).not.toContain('marktpreise');
+  });
+
+  it('lässt Preise und Wetter ohne Fahrplan im Verlauf — nie heimatlos', () => {
+    const pvBoerse = anlageSurface({ entities: [PV_ONLY], config: { plantKind: 'eigenverbrauch', tarifArt: 'dynamisch' } });
+    const b = anlageBereiche(pvBoerse);
+    expect(keys(b)).not.toContain('fahrplan');
+    expect(tabsOf(b, 'verlauf')).toEqual(['messwerte', 'einzelwerte', 'marktpreise', 'wetter']);
+  });
+
+  it('führt die Lastspitze nicht mehr als Reiter — Geld auf Erlöse, Spitze auf Energie', () => {
+    for (const b of [anlageBereiche(PEAK), anlageBereiche(ALLE)]) {
+      expect(b.flatMap((x) => x.tabs.map((t) => t.sub))).not.toContain('lastspitzen');
+    }
+    // Die Seite bleibt erreichbar (Erlöse-Karte) und hebt den Verlauf hervor.
+    expect(activeAreaKey('lastspitzen', anlageSidebar(PEAK))).toBe('verlauf');
+  });
+
+  it('hält die Reihenfolge des Zielbilds ein: Energie · Erlöse · Messwerte', () => {
+    const b = anlageBereiche(ALLE);
+    expect(tabsOf(b, 'verlauf')).toEqual(['messwerte', 'erloese', 'einzelwerte']);
+    expect(b.find((x) => x.key === 'verlauf')?.tabs.map((t) => t.label)).toEqual([
+      'Energie',
+      'Erlöse',
+      'Messwerte',
+    ]);
+  });
+
+  it('trägt „Energiebilanz" nur mit Hauptzähler in der Stellung — direkt nach „Energie", sonst zeichengleich (UEMS AP-13 IP-8)', () => {
+    for (const surface of [MARKT, PRIVAT, ALLE]) {
+      expect(tabsOf(anlageBereiche(surface), 'verlauf')).not.toContain('energiebilanz');
+      const mit = tabsOf(anlageBereiche({ ...surface!, energiebilanz: true }), 'verlauf');
+      expect(mit.slice(0, 2)).toEqual(['messwerte', 'energiebilanz']);
+      expect(mit.filter((k) => k !== 'energiebilanz')).toEqual(tabsOf(anlageBereiche(surface), 'verlauf'));
+    }
+    const sidebar = anlageSidebar({ ...ALLE!, energiebilanz: true });
+    expect(tabsFor(sidebar, 'energiebilanz').map((x) => x.label)).toContain('Energiebilanz');
+    expect(bereichLabel(sidebar, 'energiebilanz')).toBe('Verlauf');
+  });
+
+  it('gibt dem Bereich „Anlage" die Prognosen nur für VoltPilot, wo es sie gibt', () => {
+    for (const surface of [MARKT, PRIVAT]) {
+      expect(tabsOf(anlageBereiche(surface, undefined, undefined, true), 'anlage')).toEqual([
+        'modell',
+        'technik',
+        'prognose',
+      ]);
+    }
+    expect(tabsOf(anlageBereiche(null, undefined, undefined, true), 'anlage')).toEqual([
+      'modell',
+      'technik',
+    ]);
+  });
+
+  it('gibt dem Kunden keinen Prognosen-Reiter (E6 = A: die Zeile steht im Fahrplan)', () => {
+    for (const surface of [MARKT, PRIVAT]) {
+      expect(tabsOf(anlageBereiche(surface), 'anlage')).toEqual(['modell', 'technik']);
+    }
+  });
+
+  it('gibt dem Cockpit GAR KEINE Reiter - es ist EINE Seite', () => {
+    const b = anlageBereiche(ALLE);
+    expect(tabsOf(b, 'cockpit')).toEqual([]);
+  });
+
+  it('gibt der Steuerung Geräte · Laden · Regeln - Laden nur mit Ladepunkten', () => {
+    // Konzept „Steuerung neu" (E4 = A): „Geräte" ist die Route `steuerung`
+    // selbst, damit jedes Lesezeichen gilt.
+    expect(tabsOf(anlageBereiche(MIT_LADEPUNKT), 'steuerung')).toEqual(['steuerung', 'laden', 'regeln']);
+    expect(tabsOf(anlageBereiche(PRIVAT), 'steuerung')).toEqual(['steuerung', 'regeln']);
+    const b = anlageBereiche(MIT_LADEPUNKT).find((x) => x.key === 'steuerung');
+    expect(b?.tabs.map((t) => t.label)).toEqual(['Geräte', 'Laden', 'Regeln']);
+    expect(b?.target).toEqual({ kind: 'sub', sub: 'steuerung' });
+  });
+});
+
+describe('das Abzeichen bleibt an der Steuerung', () => {
+  it('trägt die Modus-Zahl des M0-Read-Models', () => {
+    const b = anlageBereiche(MARKT, 3);
+    expect(b.find((x) => x.key === 'steuerung')?.badge).toBe(3);
+  });
+
+  it('rendert bei 0/null/NaN KEIN Abzeichen - nie eine entmutigende „0"', () => {
+    for (const n of [0, null, Number.NaN, -2]) {
+      expect(anlageBereiche(MARKT, n).find((x) => x.key === 'steuerung')?.badge).toBeNull();
+    }
+  });
+
+  it('badgt sonst NICHTS', () => {
+    const b = anlageBereiche(ALLE, 2);
+    expect(b.filter((x) => x.badge != null).map((x) => x.key)).toEqual(['steuerung']);
+  });
+
+  it('nimmt ohne Argument die eigene Modus-Zahl der Projektion', () => {
+    const b = anlageBereiche(MARKT);
+    expect(b.find((x) => x.key === 'steuerung')?.badge).toBe(MARKT.modes.length || null);
+  });
+});
+
+describe('anlageSidebar - Bereiche plus Fuß', () => {
+  it('trägt im Fuß NUR noch „Hilfe & Kontakt"', () => {
+    // Die „Einstellungen" sind ein Reiter des Bereichs „Anlage" geworden.
+    const { foot } = anlageSidebar(MARKT);
+    expect(foot.map((f) => f.key)).toEqual(['hilfe']);
+    expect(foot[0].target).toEqual({ kind: 'help' });
+  });
+
+  it('hat KEINE Anwendungs-Gruppen mehr - nur die fünf Bereiche', () => {
+    const s = anlageSidebar(ALLE);
+    expect(keys(s.bereiche)).toEqual(FUENF);
+  });
+});
+
+describe('bottomBarSlots - die Telefon-Leiste sind die fünf Bereiche', () => {
+  it('ist byte-gleich mit der Seitenleiste, ohne „Mehr"', () => {
+    const s = anlageSidebar(ALLE, 2);
+    const slots = bottomBarSlots(s);
+    expect(slots.map((i) => i.key)).toEqual(FUENF);
+    expect(slots.some((i) => i.key === 'more')).toBe(false);
+  });
+
+  it('trägt das Steuerungs-Abzeichen auf seiner eigenen Kachel', () => {
+    const slots = bottomBarSlots(anlageSidebar(MARKT, 4));
+    expect(slots.find((i) => i.key === 'steuerung')?.badge).toBe(4);
+  });
+
+  it('kürzt nur, wo das volle Wort am Telefon nicht trägt', () => {
+    const ladepark = anlageSurface({
+      entities: [
+        { id: 'cp', entityType: 'ev-charger', capabilities: { measure: [{ channel: 'power_kw' }] } },
+      ],
+      config: { plantKind: 'eigenverbrauch' },
+    });
+    const slots = bottomBarSlots(anlageSidebar(ladepark));
+    expect(slots.find((i) => i.key === 'ladevorgaenge')?.label).toBe('Laden');
+    expect(slots.find((i) => i.key === 'cockpit')?.label).toBe('Cockpit');
+  });
+
+  it('hat auf einer Anlage ohne Speicher/Ladepunkte VIER Kacheln - nie einen leeren Slot', () => {
+    const ohne = anlageSurface({ entities: [PV_ONLY], config: { plantKind: 'eigenverbrauch' } });
+    expect(bottomBarSlots(anlageSidebar(ohne)).map((i) => i.key)).toEqual([
+      'cockpit',
+      'verlauf',
+      'steuerung',
+      'anlage',
+    ]);
+  });
+});
+
+describe('tabsFor - EINE Ableitung für Leiste und Reiter', () => {
+  it('gibt einer Unterseite die Reiter IHRES Bereichs', () => {
+    const s = anlageSidebar(ALLE);
+    expect(tabsFor(s, 'erloese').map((t) => t.sub)).toEqual(['messwerte', 'erloese', 'einzelwerte']);
+    expect(tabsFor(s, 'technik').map((t) => t.sub)).toEqual(['modell', 'technik']);
+    expect(tabsFor(s, 'wetter').map((t) => t.sub)).toEqual(['fahrplan', 'marktpreise', 'wetter']);
+    const betreiber = anlageSidebar(ALLE, undefined, undefined, true);
+    expect(tabsFor(betreiber, 'technik').map((t) => t.sub)).toEqual(['modell', 'technik', 'prognose']);
+  });
+
+  it('liefert LEER, wo der Bereich EINE Seite ist', () => {
+    const s = anlageSidebar(ALLE);
+    expect(tabsFor(s, null)).toEqual([]);
+  });
+
+  it('liefert dieselben Reiter für alle drei Unterseiten der Steuerung', () => {
+    const s = anlageSidebar(MIT_LADEPUNKT);
+    for (const sub of ['steuerung', 'laden', 'regeln'] as const) {
+      expect(tabsFor(s, sub).map((t) => t.sub)).toEqual(['steuerung', 'laden', 'regeln']);
+    }
+  });
+
+  it('liefert LEER, wo der Bereich nur EINEN Reiter hätte', () => {
+    // Speicher, aber weder Ladepunkte noch Wetter: der Fahrplan ist EINE Seite.
+    const nurSpeicher = anlageSurface({
+      entities: [],
+      signals: { hasStorage: true, hasPv: true, activeStrategyNodeTypes: [] },
+      config: { plantKind: 'eigenverbrauch', tarifArt: 'fest' },
+    });
+    expect(tabsFor(anlageSidebar(nurSpeicher), 'fahrplan')).toEqual([]);
+  });
+
+  it('benennt den Bereich, in dem eine Unterseite wohnt', () => {
+    const s = anlageSidebar(ALLE);
+    expect(bereichLabel(s, 'marktpreise')).toBe('Fahrplan');
+    expect(bereichLabel(s, 'einzelwerte')).toBe('Verlauf');
+    expect(bereichLabel(s, 'befehle')).toBe('Anlage');
+    expect(bereichLabel(s, null)).toBe('Cockpit');
+  });
+});
+
+describe('nichts ist verwaist: jede AnlagenSub hat einen Bereich oder einen Reiter', () => {
+  it('erreicht auf der breitesten Anlage jede Unterseite - und keine zweimal', () => {
+    const beides = anlageSurface({
+      entities: [
+        ...(ENTITIES ?? []),
+        { id: 'cp', entityType: 'ev-charger', capabilities: { measure: [{ channel: 'power_kw' }] } },
+      ],
+      config: { plantKind: 'direktvermarktung', tarifArt: 'dynamisch', leistungspreisEurKw: 120 },
+      signals: {
+        hasStorage: true,
+        hasPv: true,
+        activeStrategyNodeTypes: [],
+        plantKind: 'direktvermarktung',
+        hasLeistungspreis: true,
+      },
+    });
+    const subs = reachable(anlageBereiche(beides, undefined, undefined, true));
+    // Die Lastspitze hat keinen Reiter mehr; sie wird von der Erlöse-Karte aus geöffnet.
+    for (const sub of ALL_SUBS) {
+      expect(subs.filter((s) => s === sub)).toHaveLength(1);
+    }
+    // Das Cockpit ist der einzige „sub: null"-Eintrag.
+    expect(subs.filter((s) => s === null)).toHaveLength(1);
+  });
+
+  it('ordnet JEDE Unterseite genau einem Bereich zu', () => {
+    for (const sub of [
+      ...ALL_SUBS,
+      'befehle' as AnlagenSub,
+      'geraet' as AnlagenSub,
+      'box' as AnlagenSub,
+    ]) {
+      expect(FUENF.concat('ladevorgaenge')).toContain(bereichFor(sub));
+    }
+  });
+});
+
+describe('tabsFor - eine Ebene unter dem Bereich traegt keine Bereichs-Reiter', () => {
+  it('gibt der Geraete- und der Box-Seite KEINE Reiter, obwohl ihr Bereich zwei hat', () => {
+    const sidebar = anlageSidebar(anlageSurface({ entities: [], config: {} }));
+    // Der Wirt hat wirklich mehr als einen Reiter - der Beweis waere sonst
+    // vakuum (die Regel `tabs.length > 1` haette ohnehin geschwiegen).
+    expect(tabsFor(sidebar, 'modell').map((t) => t.sub)).toEqual(['modell', 'technik']);
+    // ... und genau diese Leiste steht ueber einem einzelnen Geraet NICHT:
+    // sie gehoert dem BEREICH, die Seite zeigt EIN Geraet, und keiner ihrer
+    // Reiter waere aktiv (Stufe 0, Paragraph 2.1).
+    expect(tabsFor(sidebar, 'geraet')).toEqual([]);
+    expect(tabsFor(sidebar, 'box')).toEqual([]);
+    // Die Hervorhebung der Seitenleiste bleibt davon unberuehrt.
+    expect(activeAreaKey('geraet')).toBe('anlage');
+    expect(activeAreaKey('box')).toBe('anlage');
+  });
+});
+
+describe('activeAreaKey - EINE Hervorhebungs-Regel', () => {
+  it('bildet das Cockpit und jede Unterseite auf ihren BEREICH ab', () => {
+    expect(activeAreaKey(null)).toBe('cockpit');
+    expect(activeAreaKey('fahrplan')).toBe('fahrplan');
+    expect(activeAreaKey('ladevorgaenge')).toBe('fahrplan');
+    for (const sub of ['messwerte', 'erloese', 'einzelwerte', 'lastspitzen'] as const) {
+      expect(activeAreaKey(sub)).toBe('verlauf');
+    }
+    expect(activeAreaKey('steuerung')).toBe('steuerung');
+    for (const sub of ['modell', 'technik', 'prognose', 'befehle', 'geraet', 'box'] as const) {
+      expect(activeAreaKey(sub)).toBe('anlage');
+    }
+    // Mit Modell zählt der Reiter: Preise und Wetter wandern mit dem Fahrplan …
+    const s = anlageSidebar(MARKT);
+    expect(activeAreaKey('marktpreise', s)).toBe('fahrplan');
+    expect(activeAreaKey('wetter', s)).toBe('fahrplan');
+    // … und ein reiner Ladepark hebt SEINEN Bereich hervor.
+    const ladepark = anlageSidebar(
+      anlageSurface({
+        entities: [{ id: 'cp', entityType: 'ev-charger', capabilities: { measure: [{ channel: 'power_kw' }] } }],
+        config: { plantKind: 'eigenverbrauch' },
+      }),
+    );
+    expect(activeAreaKey('ladevorgaenge', ladepark)).toBe('ladevorgaenge');
+  });
+});
+
+describe('modeViewItems - die geteilte Ableitung des Anwendungs-Containers', () => {
+  it('bildet Ansichten auf ANLAGEN-Unterseiten ab, nie auf Seiten daneben', () => {
+    const items = modeViewItems(['marktpreise', 'prognosequalitaet']);
+    expect(items.map((i) => i.target)).toEqual([
+      { kind: 'sub', sub: 'marktpreise' },
+      { kind: 'sub', sub: 'prognose' },
+    ]);
+  });
+
+  it('zieht ab, was die Basis schon trägt', () => {
+    expect(modeViewItems(['fahrplan', 'lastspitzen'], ['fahrplan']).map((i) => i.key)).toEqual([
+      'lastspitzen',
+    ]);
+  });
+
+  it('ist leer für einen Modus, dessen Ansichten alle Basis-Bereiche sind', () => {
+    expect(modeViewItems(['live', 'geraete', 'telemetrie-historie'])).toEqual([]);
+  });
+});
+
+describe('Marktpreise/Prognose sind keine Seiten der oberen Ebene mehr', () => {
+  it('die Hauptnavigation ist nur noch die Übersicht', () => {
+    expect(MAIN_PAGES.map((p) => p.id)).toEqual(['uebersicht']);
+  });
+});
+
+describe('resolveAnlage - one resolution for the shell AND the page', () => {
+  const sites = [{ id: 'a' }, { id: 'b' }];
+
+  it('prefers the requested Anlage', () => {
+    expect(resolveAnlage(sites, 'b')).toEqual({ id: 'b' });
+  });
+
+  it('falls back to the single Anlage of a one-Anlage customer', () => {
+    expect(resolveAnlage([{ id: 'only' }], null)).toEqual({ id: 'only' });
+  });
+
+  it('resolves to null for a fleet without a selection (the list)', () => {
+    expect(resolveAnlage(sites, null)).toBeNull();
+  });
+
+  it('falls back rather than 404-ing on an unknown/stale site id', () => {
+    expect(resolveAnlage([{ id: 'only' }], 'gone')).toEqual({ id: 'only' });
+    expect(resolveAnlage(sites, 'gone')).toBeNull();
+  });
+
+  it('handles the empty account', () => {
+    expect(resolveAnlage([], null)).toBeNull();
+  });
+});
+
+/**
+ * Steuern-Regel (Captain über firstmate 004, 15.09.2026: „Okay ich will aber
+ * schon das Messkunden auch zu Kunden werden wo man verbraucher steuern kann."):
+ * eine Anlage, die nur misst, bekommt kein Steuern angeboten — aber der Weg
+ * dorthin bleibt offen. Still heißt nicht Sackgasse.
+ */
+describe('Steuern-Regel · Erreichbarkeit: eine Anlage, die nur misst, behält den Bereich „Steuerung"', () => {
+  it('eine frisch angelegte Anlage ohne Komponente (Modus „nur messen“ im Anlege-Fluss): „Steuerung“ steht mit Ziel', () => {
+    const frisch = anlageSurface({ entities: [], config: { plantKind: 'eigenverbrauch' } });
+    const sidebar = anlageSidebar(frisch);
+    expect(sidebar.bereiche.find((b) => b.key === 'steuerung')).toMatchObject({
+      label: 'Steuerung',
+      target: { kind: 'sub', sub: 'steuerung' },
+    });
+    expect(bottomBarSlots(sidebar).find((s) => s.key === 'steuerung')).toMatchObject({
+      label: 'Steuerung',
+      target: { kind: 'sub', sub: 'steuerung' },
+    });
+  });
+
+  it('nur ein Netzzähler: „Steuerung" steht in der Seitenleiste UND als Telefon-Kachel, jeweils mit Ziel', () => {
+    const nurMessen = anlageSurface({
+      entities: [{ id: 'e-netz', entityType: 'grid-meter', capabilities: { measure: [{ channel: 'power_kw' }] } }],
+      config: { plantKind: 'eigenverbrauch' },
+    });
+    const sidebar = anlageSidebar(nurMessen);
+    expect(sidebar.bereiche.find((b) => b.key === 'steuerung')).toMatchObject({
+      label: 'Steuerung',
+      target: { kind: 'sub', sub: 'steuerung' },
+    });
+    expect(bottomBarSlots(sidebar).find((s) => s.key === 'steuerung')).toMatchObject({
+      label: 'Steuerung',
+      target: { kind: 'sub', sub: 'steuerung' },
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// UEMS AP-01 IP-7 — die Telefon-Leiste je Ebene (E4 = A)
+// ---------------------------------------------------------------------------
+
+const UNTERNEHMEN = { art: 'unternehmen' } as const;
+const WERK = { art: 'standort', standortId: FIXTURE_IDS.st1 } as const;
+const LINDACH = { art: 'standort', standortId: FIXTURE_IDS.st2 } as const;
+
+/** Ahrenberg am 20.10.2026: zwei Standorte, beide messen, Kennzahlen aus dem Referenzunternehmen. */
+const MESSKUNDE: EbenenLesemodell = {
+  standorte: [werkAhrenberg(), werkLindach()],
+  funktionen: ahrenbergFunktionen(),
+  kennzahlen: ahrenbergKennzahlen(),
+};
+
+/** Ein Betriebskunde ohne „Messen": dieselben zwei Standorte, Messen hat kein Objekt (A11). */
+const BETRIEBSKUNDE: EbenenLesemodell = {
+  standorte: [werkAhrenberg(), werkLindach()],
+  funktionen: ahrenbergFunktionen({ messen: 'bestand' }),
+  kennzahlen: [],
+};
+
+/**
+ * Das Bild, sobald JEDER Bereich eine Seite hat (AP-04 IP-5, AP-13) — nur, um
+ * die Regel unabhängig vom heutigen Stand der Seiten zu prüfen.
+ */
+const ALLE_SEITEN: EbenenSeiten = (ort) => {
+  const hier = ort.art === 'unternehmen' ? pageRoute('portfolio') : standortRoute(ort.standortId);
+  return { uebersicht: hier, standorte: hier, aufbau: hier, netzanschluesse: hier, gebaeude: hier, messstellen: hier, bezugsgroessen: hier, kennzahlen: hier, berichte: hier };
+};
+
+const labels = (liste: { label: string }[]) => liste.map((b) => b.label);
+
+describe('ebenenBereiche - die Bereiche der Ebene kommen aus dem Read-Model, nicht aus einer festen Liste', () => {
+  it('Unternehmen eines Messkunden: Übersicht · Standorte · Messstellen · Kennzahlen · Berichte', () => {
+    expect(labels(ebenenBereiche(UNTERNEHMEN, MESSKUNDE))).toEqual([
+      'Übersicht',
+      'Standorte',
+      'Messstellen',
+      'Bezugsgrößen',
+      'Kennzahlen',
+      'Berichte',
+    ]);
+  });
+
+  it('Standort Werk Ahrenberg (3 Gebäude, 2 Anlagen, misst): Übersicht · Aufbau · Gebäude · Messstellen · Netzanschlüsse', () => {
+    // „Aufbau“ ist der EINE Ort für Anlagen, Boxen und Geräte — die früheren Bereiche „Boxen“ und „Anlagen“ sind darin.
+    expect(labels(ebenenBereiche(WERK, MESSKUNDE))).toEqual(['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
+  });
+
+  it('Werk Lindach (eine Anlage) hat denselben Aufbau-Bereich — ein Ort, gleich wie viele Anlagen', () => {
+    expect(labels(ebenenBereiche(LINDACH, MESSKUNDE))).toEqual(['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
+  });
+
+  it('Standorte erst ab zwei — ein archivierter zählt nicht', () => {
+    const einer = { ...MESSKUNDE, standorte: [werkAhrenberg(), werkLindach({ zustand: 'archiviert' })] };
+    expect(labels(ebenenBereiche(UNTERNEHMEN, einer))).not.toContain('Standorte');
+  });
+
+  it('Kennzahlen erst mit einer Kennzahl — eine archivierte zählt nicht', () => {
+    const archiviert = ahrenbergKennzahlen().map((k) => ({ ...k, archiviert_am: '2026-10-19T12:00:00+02:00' }));
+    expect(labels(ebenenBereiche(UNTERNEHMEN, { ...MESSKUNDE, kennzahlen: [] }))).not.toContain('Kennzahlen');
+    expect(labels(ebenenBereiche(UNTERNEHMEN, { ...MESSKUNDE, kennzahlen: archiviert }))).not.toContain('Kennzahlen');
+    // Ohne Messen gibt es keine Kennzahlen-Ebene, auch mit Kennzahl.
+    expect(labels(ebenenBereiche(UNTERNEHMEN, { ...BETRIEBSKUNDE, kennzahlen: ahrenbergKennzahlen() }))).toEqual([
+      'Übersicht',
+      'Standorte',
+    ]);
+  });
+
+  it('ein Entwurf misst noch nicht; eingerichtet schon', () => {
+    const mit = (zustand: 'entwurf' | 'eingerichtet') => {
+      const f = ahrenbergFunktionen({ messen: 'bestand' });
+      f.standorte[1].messen = { ...f.standorte[1].messen, zustand };
+      return { ...BETRIEBSKUNDE, funktionen: f };
+    };
+    expect(labels(ebenenBereiche(LINDACH, mit('entwurf')))).toEqual(['Übersicht', 'Gebäude']);
+    expect(labels(ebenenBereiche(LINDACH, mit('eingerichtet')))).toEqual(['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
+    // Am Standort zählt NUR er selbst: Werk Ahrenberg misst hier nicht.
+    expect(labels(ebenenBereiche(WERK, mit('eingerichtet')))).toEqual(['Übersicht', 'Gebäude']);
+  });
+
+  it('unbekannt ist nie vorhanden: ohne Funktionen und Kennzahlen nur, was die Standorte selbst tragen', () => {
+    const unbekannt: EbenenLesemodell = { standorte: MESSKUNDE.standorte, funktionen: null, kennzahlen: null };
+    expect(labels(ebenenBereiche(UNTERNEHMEN, unbekannt))).toEqual(['Übersicht', 'Standorte']);
+    expect(labels(ebenenBereiche(WERK, { standorte: null, funktionen: null, kennzahlen: null }))).toEqual(['Übersicht']);
+  });
+});
+
+describe('ebenenLeiste - Prüfnachweis AP-01 IP-7', () => {
+  it('1 · N3: ein Betriebskunde ohne „Messen“ bekommt die Einträge der Flotte — keine UEMS-Bereiche, auch wenn alle Seiten da wären', () => {
+    // Konzept „Navigation aus einem Guss“ (N3): dieselben Einträge wie „Meine Anlagen“ — die bisherigen Reiter der Flotte.
+    for (const seiten of [EBENEN_SEITEN, ALLE_SEITEN]) {
+      const leiste = ebenenLeiste(UNTERNEHMEN, BETRIEBSKUNDE, seiten);
+      expect(labels(leiste)).toEqual(['Übersicht', 'Standorte', 'Energie']);
+      expect(leiste.map((k) => k.seiten)).toEqual([['portfolio'], ['portfolio-standorte'], ['portfolio-messwerte']]);
+      expect(leiste.some((k) => k.frage)).toBe(false);
+    }
+    // Mit Geld auch „Erlöse“ — wie bisher der Reiter; ohne Geld nur, solange die Seite offen ist (keine Sackgasse).
+    expect(labels(ebenenLeiste(UNTERNEHMEN, { ...BETRIEBSKUNDE, geldWelt: true }))).toEqual(['Übersicht', 'Standorte', 'Energie', 'Erlöse']);
+    expect(labels(ebenenLeiste(UNTERNEHMEN, BETRIEBSKUNDE, EBENEN_SEITEN, 'portfolio-erloese'))).toContain('Erlöse');
+    // Keine Gruppen: `unternehmensGruppen` kennt sie erst, wenn ein Standort misst.
+    expect(unternehmensGruppen(BETRIEBSKUNDE)).toEqual([]);
+  });
+
+  it('2 · ein Messkunde bekommt am Unternehmen GRUPPEN-Kacheln — sechs Bereiche, vier Kacheln, keine über fünf', () => {
+    const leiste = ebenenLeiste(UNTERNEHMEN, MESSKUNDE, ALLE_SEITEN);
+    // K1/D2: die Berichte sind Belege — sie stehen in „Nachweisen“, nicht mehr in „Auswerten“.
+    expect(labels(leiste)).toEqual(['Übersicht', 'Messen', 'Auswerten', 'Nachweisen']);
+    expect(leiste.map((k) => k.icon)).toEqual(['dashboard', 'activity', 'trending-up', 'file-text']);
+    expect(leiste.map((k) => k.bereiche)).toEqual([
+      ['uebersicht', 'standorte'],
+      ['messstellen', 'bezugsgroessen'],
+      ['kennzahlen'],
+      ['berichte'],
+    ]);
+    // Jede Gruppe trägt ihre Arbeitsfrage (am Rechner zwischen den zwei Reihen).
+    expect(leiste.map((k) => k.frage)).toEqual([
+      'Läuft alles? Was steht an?',
+      'Wird alles erfasst?',
+      'Wo geht die Energie hin, wird es besser?',
+      'Können wir belegen, was wir tun?',
+    ]);
+  });
+
+  it('2 · mit allen Rechten zehn Bereiche — und doch nur fünf Kacheln, jede ein ganzes Wort', () => {
+    const alle: EbenenLesemodell = { ...MESSKUNDE, bewertung: true, verbesserung: true, energiemanagement: true };
+    // Konzept Auswerten a1 (Entscheid 10.1): „Verbrauch“ ist der zehnte Bereich, mit demselben Recht wie die Bewertung.
+    expect(ebenenBereiche(UNTERNEHMEN, alle)).toHaveLength(10);
+    const leiste = ebenenLeiste(UNTERNEHMEN, alle);
+    expect(labels(leiste)).toEqual(['Übersicht', 'Messen', 'Auswerten', 'Verbessern', 'Nachweisen']);
+    expect(leiste.length).toBeLessThanOrEqual(LEISTE_HOECHSTENS);
+    // Drei Fragen, drei Reiter (Richtungsfrage 1 = A): „Auswerten“ öffnet auf „Verbrauch“.
+    expect(leiste.find((k) => k.key === 'auswerten')?.bereiche).toEqual(['verbrauch', 'kennzahlen', 'bewertung']);
+    expect(leiste.find((k) => k.key === 'auswerten')?.ziel).toEqual(pageRoute('portfolio-verbrauch'));
+    expect(leiste.find((k) => k.key === 'verbessern')?.ziel).toEqual(pageRoute('portfolio-verbesserung'));
+    // Konzept Verbessern v1, Entscheid 1: die Gruppe fragt nach dem Zweck, nicht „Was tun wir dagegen?“.
+    expect(leiste.find((k) => k.key === 'verbessern')?.frage).toBe('Was tun wir, um Energie zu sparen?');
+    // „Nachweisen“ öffnet den Überblick des Energiemanagements (Nachweisen n1), die Berichte stehen daneben.
+    expect(leiste.find((k) => k.key === 'nachweisen')?.bereiche).toEqual(['energiemanagement', 'berichte']);
+    expect(leiste.find((k) => k.key === 'nachweisen')?.ziel).toEqual(pageRoute('portfolio-energiemanagement'));
+    // Am Telefon stehen über der Seite nur die Reiter der offenen Gruppe.
+    expect(telefonReiterBereiche(leiste, 'kennzahlen')).toEqual(['verbrauch', 'kennzahlen', 'bewertung']);
+    expect(telefonReiterBereiche(leiste, 'verbrauch')).toEqual(['verbrauch', 'kennzahlen', 'bewertung']);
+    expect(telefonReiterBereiche(leiste, 'berichte')).toEqual(['energiemanagement', 'berichte']);
+    expect(telefonReiterBereiche(leiste, 'standorte')).toEqual(['uebersicht', 'standorte']);
+    expect(telefonReiterBereiche(leiste, null)).toBeNull();
+  });
+
+  it('2 · heute: ein Bereich ohne Seite bekommt keine Kachel — seit AP-12 IP-13 hat Ahrenberg mit AP-09 SECHS Bereiche', () => {
+    expect(ebenenBereiche(UNTERNEHMEN, MESSKUNDE)).toHaveLength(6);
+    // Jeder Bereich des Unternehmens hat seine Seite; die Kachel einer Gruppe führt auf die Seite ihres ersten Bereichs.
+    const leiste = ebenenLeiste(UNTERNEHMEN, MESSKUNDE);
+    expect(labels(leiste)).toEqual(['Übersicht', 'Messen', 'Auswerten', 'Nachweisen']);
+    expect(leiste[0].ziel).toEqual(pageRoute('portfolio'));
+    expect(leiste[1].ziel).toEqual(pageRoute('portfolio-messstellen'));
+    expect(leiste[2].ziel).toEqual(pageRoute('portfolio-kennzahlen'));
+    expect(leiste[3].ziel).toEqual(pageRoute('portfolio-berichte'));
+    // Ohne eine lebende Kennzahl gibt es „Auswerten“ nicht (Gesetz 1) — die Berichte stehen weiter in „Nachweisen“.
+    const ohneKennzahl = ebenenLeiste(UNTERNEHMEN, { ...MESSKUNDE, kennzahlen: [] });
+    expect(labels(ohneKennzahl)).toEqual(['Übersicht', 'Messen', 'Nachweisen']);
+    expect(ohneKennzahl[2].ziel).toEqual(pageRoute('portfolio-berichte'));
+    // Am Standort: jeder Bereich ein Eintrag, höchstens fünf; die Seitenleiste sagt „Netzanschlüsse“, die Leiste kurz
+    // „Anschlüsse“.
+    expect(labels(ebenenLeiste(WERK, MESSKUNDE))).toEqual(['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
+    expect(ebenenLeiste(WERK, MESSKUNDE).map((k) => k.kurz ?? k.label)).toEqual(['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Anschlüsse']);
+    expect(labels(ebenenLeiste(LINDACH, MESSKUNDE))).toEqual(['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
+    // Wer nicht misst, bekommt die Messstellen gar nicht — nur die Einträge der Flotte (N3).
+    expect(labels(ebenenLeiste(UNTERNEHMEN, BETRIEBSKUNDE))).toEqual(['Übersicht', 'Standorte', 'Energie']);
+  });
+
+  it('jede Seite, die es heute gibt, ist eingetragen — und keine, die es nicht gibt', () => {
+    expect(EBENEN_SEITEN(UNTERNEHMEN)).toEqual({
+      uebersicht: pageRoute('portfolio'),
+      standorte: pageRoute('portfolio-standorte'),
+      messstellen: pageRoute('portfolio-messstellen'),
+      bezugsgroessen: pageRoute('portfolio-bezugsgroessen'),
+      kennzahlen: pageRoute('portfolio-kennzahlen'),
+      berichte: pageRoute('portfolio-berichte'),
+      // AP-16 IP-6: die Seite steht; die Kachel nur mit Recht (`EbenenLesemodell.bewertung`).
+      bewertung: pageRoute('portfolio-bewertung'),
+      // AP-18 IP-8: „Ziele und Maßnahmen“ — die Kachel nur mit Recht (`EbenenLesemodell.verbesserung`).
+      verbesserung: pageRoute('portfolio-verbesserung'),
+      // AP-19 IP-9: „Energiemanagement“ — die Kachel nur mit Recht (`EbenenLesemodell.energiemanagement`).
+      energiemanagement: pageRoute('portfolio-energiemanagement'),
+      // Konzept Auswerten a1: „Verbrauch“ — die Kachel nur mit dem Recht der Bewertung (`EbenenLesemodell.bewertung`).
+      verbrauch: pageRoute('portfolio-verbrauch'),
+    });
+    // AP-13 IP-2: der Standort hat jede Seite; Kennzahlen und Berichte stehen als Seiten da, sind aber kein Bereich.
+    expect(EBENEN_SEITEN(WERK, MESSKUNDE)).toEqual({
+      uebersicht: standortRoute(FIXTURE_IDS.st1),
+      aufbau: standortBereichRoute(FIXTURE_IDS.st1, 'aufbau'),
+      netzanschluesse: standortBereichRoute(FIXTURE_IDS.st1, 'netzanschluesse'),
+      gebaeude: standortBereichRoute(FIXTURE_IDS.st1, 'gebaeude'),
+      messstellen: standortMessstellenRoute(FIXTURE_IDS.st1),
+      kennzahlen: standortBereichRoute(FIXTURE_IDS.st1, 'kennzahlen'),
+      berichte: standortBereichRoute(FIXTURE_IDS.st1, 'berichte'),
+    });
+  });
+
+  it('AP-04 IP-5 · die Reiter einer Ebene: dieselben Bereiche mit Seite, schon ab zwei — der Weg am Rechner', () => {
+    expect(labels(ebenenReiter(WERK, MESSKUNDE))).toEqual(['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
+    expect(ebenenReiter(LINDACH, MESSKUNDE)[3].ziel).toEqual(standortMessstellenRoute(FIXTURE_IDS.st2));
+    expect(labels(ebenenReiter(UNTERNEHMEN, MESSKUNDE))).toEqual(['Übersicht', 'Standorte', 'Messstellen', 'Bezugsgrößen', 'Kennzahlen', 'Berichte']);
+    // Ohne Messfunktion bleibt der Standort wie vor AP-13 ohne neue Reiter.
+    const ohneMessen = structuredClone(MESSKUNDE);
+    for (const st of ohneMessen.funktionen!.standorte) st.messen.zustand = 'kein_objekt';
+    const einzeln: EbenenLesemodell = {
+      ...ohneMessen,
+      standorte: [werkAhrenberg({ gebaeudeZahl: 0, anlagen: werkAhrenberg().anlagen.slice(0, 1) }), werkLindach()],
+    };
+    expect(labels(ebenenReiter(WERK, einzeln))).toEqual([]);
+  });
+
+  it('AP-04 IP-5 · „Standort › Messstellen“ hat eine eigene Adresse und hebt die Kachel „Messstellen“ hervor', () => {
+    const route = standortMessstellenRoute(FIXTURE_IDS.st1);
+    expect(hashForRoute(route)).toBe(`#/standort/${FIXTURE_IDS.st1}/messstellen`);
+    expect(parseRoute(`#/standort/${FIXTURE_IDS.st1}/messstellen`)).toEqual(route);
+    expect(parseRoute(`#/standort/${FIXTURE_IDS.st1}`)).toEqual(standortRoute(FIXTURE_IDS.st1));
+    expect(hashForRoute(pageRoute('portfolio-messstellen'))).toBe('#/portfolio/messstellen');
+    expect(parseRoute('#/portfolio/messstellen')).toEqual(pageRoute('portfolio-messstellen'));
+    expect(ebenenOrt(route, { art: 'unternehmen' })).toEqual(WERK);
+    expect(ebenenAktiv('standort', 'messstellen')).toBe('messstellen');
+    expect(ebenenAktiv('portfolio-messstellen')).toBe('messstellen');
+    expect(ebenenAktiv('standort')).toBe('uebersicht');
+    expect(ebenenAktiv('portfolio-messwerte')).toBe('uebersicht');
+    // K1: die Wiedervorlage beantwortet „Was steht an?“ und wohnt in der Übersicht; die übrigen Reiter bleiben im Bereich.
+    expect(ebenenAktiv('portfolio-energiemanagement', undefined, 'wiedervorlage')).toBe('uebersicht');
+    expect(ebenenAktiv('portfolio-energiemanagement', undefined, 'dokumente')).toBe('energiemanagement');
+    expect(ebenenAktiv('portfolio-energiemanagement')).toBe('energiemanagement');
+  });
+
+  it('3 · die Anlagen-Ebene ist unverändert: Cockpit · Fahrplan · Verlauf · Steuerung · Anlage', () => {
+    expect(bottomBarSlots(anlageSidebar(ALLE, 2)).map((s) => [s.key, s.label, s.target])).toEqual([
+      ['cockpit', 'Cockpit', { kind: 'sub', sub: null }],
+      ['fahrplan', 'Fahrplan', { kind: 'sub', sub: 'fahrplan' }],
+      ['verlauf', 'Verlauf', { kind: 'sub', sub: 'messwerte' }],
+      ['steuerung', 'Steuerung', { kind: 'sub', sub: 'steuerung' }],
+      ['anlage', 'Anlage', { kind: 'sub', sub: 'modell' }],
+    ]);
+  });
+
+  it('4 · Steuern-Regel: in der Leiste eines reinen Messkunden steht keine Steuerungs-Kachel — und der Weg zum Steuern bleibt', () => {
+    // Reiner Messkunde: keine Anlage nimmt an „Steuern & Optimieren" teil, kein Standort spricht davon.
+    const still = structuredClone(ahrenbergFunktionen());
+    for (const st of still.standorte) for (const a of st.steuern.anlagen) a.teilnahme.zustand = 'kein_objekt';
+    const reinerMesskunde: EbenenLesemodell = { ...MESSKUNDE, funktionen: still };
+    for (const ort of [UNTERNEHMEN, WERK, LINDACH]) {
+      const leiste = ebenenLeiste(ort, reinerMesskunde, ALLE_SEITEN);
+      expect(leiste.length).toBeGreaterThanOrEqual(3);
+      expect(labels(leiste).join(' · ')).not.toMatch(/Steuer/);
+      // Der Weg: die erste Kachel ist die Übersicht, deren Anlagen-Tabelle jede Anlage öffnet …
+      expect(leiste[0].key).toBe('uebersicht');
+    }
+    expect(EBENEN_SEITEN(UNTERNEHMEN).uebersicht).toEqual(pageRoute('portfolio'));
+    // … und dort behält die Anlage, die nur misst, ihre Kachel „Steuerung" mit Ziel.
+    const nurMessen = anlageSurface({
+      entities: [{ id: 'e-netz', entityType: 'grid-meter', capabilities: { measure: [{ channel: 'power_kw' }] } }],
+      config: { plantKind: 'eigenverbrauch' },
+    });
+    expect(bottomBarSlots(anlageSidebar(nurMessen)).find((s) => s.key === 'steuerung')).toMatchObject({
+      label: 'Steuerung',
+      target: { kind: 'sub', sub: 'steuerung' },
+    });
+    // Auch wo ein Standort von Steuern spricht (Halle 1 steuert), bekommt die EBENE keine Steuerungs-Kachel:
+    // gesteuert wird je Anlage.
+    expect(labels(ebenenLeiste(UNTERNEHMEN, MESSKUNDE, ALLE_SEITEN)).join(' · ')).not.toMatch(/Steuer/);
+  });
+
+  it('5 · Schwelle: bei zwei Bereichen keine Leiste, bei drei eine', () => {
+    const ohneGebaeude: EbenenLesemodell = { ...MESSKUNDE, standorte: [werkAhrenberg({ gebaeudeZahl: 0 }), werkLindach()] };
+    const zwei: EbenenSeiten = (ort, lm) => ({ uebersicht: EBENEN_SEITEN(ort, lm).uebersicht, aufbau: EBENEN_SEITEN(ort, lm).aufbau });
+    expect(labels(ebenenBereiche(WERK, ohneGebaeude))).toEqual(['Übersicht', 'Aufbau', 'Messstellen', 'Netzanschlüsse']);
+    expect(labels(ebenenLeiste(WERK, ohneGebaeude, zwei))).toEqual([]);
+    expect(labels(ebenenLeiste(WERK, ohneGebaeude, ALLE_SEITEN))).toEqual(['Übersicht', 'Aufbau', 'Messstellen', 'Netzanschlüsse']);
+  });
+
+  it('5 · die Schwelle zählt nur Kacheln MIT Seite', () => {
+    const mitGebaeude: EbenenLesemodell = { ...BETRIEBSKUNDE, standorte: [werkAhrenberg()] };
+    // Ohne Messfunktion: Übersicht und Gebäude — zwei, also keine Leiste (der Aufbau bleibt über die Anlage erreichbar).
+    expect(labels(ebenenBereiche(WERK, mitGebaeude))).toEqual(['Übersicht', 'Gebäude']);
+    expect(ebenenLeiste(WERK, mitGebaeude, ALLE_SEITEN)).toEqual([]);
+    const ohneGebaeudeSeite: EbenenSeiten = (ort, lm) => ({ ...EBENEN_SEITEN(ort, lm), gebaeude: undefined });
+    expect(ebenenLeiste(WERK, mitGebaeude, ohneGebaeudeSeite)).toEqual([]);
+  });
+});
+
+describe('Konzept „Navigation aus einem Guss“ · Einträge, aktiver Eintrag, Detailseiten', () => {
+  it('R2 · Seitenleiste und Telefon-Leiste lesen dieselben Einträge in derselben Reihenfolge', () => {
+    const alle: EbenenLesemodell = { ...MESSKUNDE, bewertung: true, verbesserung: true, energiemanagement: true };
+    expect(ebenenEintraege(UNTERNEHMEN, alle)).toEqual(ebenenLeiste(UNTERNEHMEN, alle));
+    expect(ebenenEintraege(WERK, MESSKUNDE)).toEqual(ebenenLeiste(WERK, MESSKUNDE));
+    // Unter drei Einträgen gibt es keine Leiste — die Einträge selbst bleiben (dann tragen die Reiter die Wege).
+    const zwei: EbenenLesemodell = { ...BETRIEBSKUNDE, standorte: [werkAhrenberg()] };
+    expect(labels(ebenenEintraege(WERK, zwei, ALLE_SEITEN))).toEqual(['Übersicht', 'Gebäude']);
+    expect(ebenenLeiste(WERK, zwei, ALLE_SEITEN)).toEqual([]);
+  });
+
+  it('der aktive Eintrag: nach der Seite (Flotte), sonst nach dem Bereich (Gruppen, Standort)', () => {
+    const flotte = flottenEintraege({ standorte: true, geldWelt: true });
+    expect(aktiverEintrag(flotte, 'portfolio', 'uebersicht')).toBe('uebersicht');
+    // „Energie“ und „Erlöse“ wohnen im Bereich Übersicht, leuchten aber selbst.
+    expect(aktiverEintrag(flotte, 'portfolio-messwerte', 'uebersicht')).toBe('energie');
+    expect(aktiverEintrag(flotte, 'portfolio-erloese', 'uebersicht')).toBe('erloese');
+    expect(aktiverEintrag(flotte, 'portfolio-standorte', 'standorte')).toBe('standorte');
+    const gruppen = ebenenLeiste(UNTERNEHMEN, { ...MESSKUNDE, energiemanagement: true });
+    expect(aktiverEintrag(gruppen, 'portfolio-bezugsgroessen', 'bezugsgroessen')).toBe('messen');
+    expect(aktiverEintrag(gruppen, 'portfolio-energiemanagement', 'uebersicht')).toBe('uebersicht');
+    expect(aktiverEintrag(gruppen, 'hilfe', null)).toBeNull();
+  });
+
+  it('R4 · Detailseiten erkennt die Route — Listen und Reiter nicht', () => {
+    expect(istDetailseite(pageRoute('portfolio-kennzahlen'))).toBe(false);
+    expect(istDetailseite({ ...pageRoute('portfolio-kennzahlen'), kennzahlId: 'kz-1' })).toBe(true);
+    expect(istDetailseite({ ...pageRoute('portfolio-berichte'), berichtKennung: 'BR-2026-0001' })).toBe(true);
+    expect(istDetailseite({ ...pageRoute('portfolio-verbesserung'), verbesserungReiter: 'massnahmen' })).toBe(false);
+    expect(istDetailseite({ ...pageRoute('portfolio-verbesserung'), verbesserungReiter: 'massnahmen', massnahmeId: 'm-1' })).toBe(true);
+    expect(istDetailseite({ ...pageRoute('portfolio-energiemanagement'), energiemanagementReiter: 'dokumente', dokumentId: 'd-1' })).toBe(true);
+    expect(istDetailseite({ ...pageRoute('portfolio-messstellen'), messstelleId: 'ms-1' })).toBe(true);
+  });
+});
+
+describe('ebenenOrt / ebenenAktiv - welche Ebene eine Seite ohne Anlage zeigt', () => {
+  it('Standort-Übersicht, Portfolio-Seiten — und ohne Standorte keine Ebene', () => {
+    const unternehmen = { art: 'unternehmen' };
+    expect(ebenenOrt(standortRoute(FIXTURE_IDS.st2), unternehmen)).toEqual(LINDACH);
+    expect(ebenenOrt(pageRoute('portfolio-messwerte'), unternehmen)).toEqual(UNTERNEHMEN);
+    expect(ebenenOrt(pageRoute('portfolio'), { art: 'standort', standort: { id: FIXTURE_IDS.st1 } })).toEqual(WERK);
+    expect(ebenenOrt(pageRoute('portfolio'), { art: 'heute' })).toBeNull();
+    expect(ebenenOrt(pageRoute('hilfe'), unternehmen)).toBeNull();
+  });
+
+  it('die Reiter Messwerte · Erlöse wohnen in der Übersicht, „Standorte" in seinem Bereich', () => {
+    expect(ebenenAktiv('portfolio')).toBe('uebersicht');
+    expect(ebenenAktiv('portfolio-messwerte')).toBe('uebersicht');
+    expect(ebenenAktiv('portfolio-erloese')).toBe('uebersicht');
+    expect(ebenenAktiv('standort')).toBe('uebersicht');
+    expect(ebenenAktiv('portfolio-standorte')).toBe('standorte');
+    expect(ebenenAktiv('hilfe')).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// UEMS AP-13 IP-2 — die Ebenen-Seiten am Standort (E4, Ü7, Ü8; O17, O18)
+// ---------------------------------------------------------------------------
+
+describe('AP-13 IP-2 · die Leiste am Standort erscheint von selbst (O17, O18)', () => {
+  type Fall = { id: string; gegeben: Record<string, unknown>; erwartet: Record<string, unknown> };
+  const faelle: { faelle: Fall[] } = JSON.parse(readFileSync(resolve(process.cwd(), 'src/test/oberflaechenFaelle.json'), 'utf8'));
+  const fall = (id: string): Fall => faelle.faelle.find((f) => f.id === id)!;
+  const O17 = fall('O17');
+  const O18 = fall('O18');
+  const keys = (liste: { key: string }[]) => liste.map((k) => k.key);
+
+  it('O17 · Werk Ahrenberg und Werk Lindach: dieselben fünf Kacheln — „Anlagen“ ist im Aufbau aufgegangen', () => {
+    // Der Referenzfall nennt noch die Kacheln von AP-13 IP-2; seitdem kamen „Netzanschlüsse“ dazu, und „Anlagen“
+    // (samt der späteren „Boxen“) ging in den EINEN Ort „Aufbau“ auf.
+    const imAufbau = (kacheln: string[]) => kacheln.filter((k) => k !== 'anlagen').slice(1);
+    const werk = ebenenLeiste(WERK, MESSKUNDE);
+    expect(keys(werk)).toEqual(['uebersicht', 'aufbau', ...imAufbau(O17.gegeben.kacheln_st1_nach_ip2 as string[]), 'netzanschluesse']);
+    expect(werk).toHaveLength(5);
+    expect(labels(werk)).toEqual(['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Netzanschlüsse']);
+    expect(werk.map((k) => k.kurz ?? k.label)).toEqual(['Übersicht', 'Aufbau', 'Gebäude', 'Messstellen', 'Anschlüsse']);
+    const lindach = ebenenLeiste(LINDACH, MESSKUNDE);
+    expect(keys(lindach)).toEqual(['uebersicht', 'aufbau', ...imAufbau(O17.gegeben.kacheln_st2_nach_ip2 as string[]), 'netzanschluesse']);
+    // Am Unternehmen trägt die Leiste Gruppen; jeder Bereich des Referenzfalls liegt in genau einer.
+    const unternehmen = ebenenLeiste(UNTERNEHMEN, MESSKUNDE);
+    for (const bereich of O17.gegeben.kacheln_u as string[]) {
+      expect(unternehmen.filter((k) => k.bereiche.includes(bereich as never))).toHaveLength(1);
+    }
+  });
+
+  it('O17 · die Kacheln führen auf die Seiten des Standorts und heben ihren Bereich hervor', () => {
+    const [, aufbau, gebaeude, messstellen] = ebenenLeiste(WERK, MESSKUNDE);
+    expect(hashForRoute(aufbau.ziel)).toBe(`#/standort/${FIXTURE_IDS.st1}/aufbau`);
+    expect(hashForRoute(gebaeude.ziel)).toBe(`#/standort/${FIXTURE_IDS.st1}/gebaeude`);
+    expect(messstellen.ziel).toEqual(standortMessstellenRoute(FIXTURE_IDS.st1));
+    expect(ebenenAktiv('standort', 'gebaeude')).toBe('gebaeude');
+    expect(ebenenAktiv('standort', 'aufbau')).toBe('aufbau');
+    expect(ebenenOrt(standortBereichRoute(FIXTURE_IDS.st1, 'gebaeude'), { art: 'unternehmen' })).toEqual(WERK);
+  });
+
+  it('O18 · ein reiner Betriebskunde (ein Standort, keine Gebäude, Anlagen, kein Messen) hat auf keiner Ebene eine Leiste', () => {
+    const betrieb: EbenenLesemodell = {
+      standorte: [werkAhrenberg({ gebaeudeZahl: 0 })],
+      funktionen: ahrenbergFunktionen({ messen: 'bestand' }),
+      kennzahlen: [],
+    };
+    expect(keys(ebenenBereiche(UNTERNEHMEN, betrieb))).toEqual(O18.gegeben.betriebskunde_bereiche_u);
+    // Der Referenzfall nennt noch den früheren Bereich „anlagen“; seit dem Aufbau (der ohne Messfunktion über die
+    // Anlage erreichbar bleibt) trägt der Standort eines Betriebskunden nur seine Übersicht.
+    expect(keys(ebenenBereiche(WERK, betrieb))).toEqual((O18.gegeben.betriebskunde_bereiche_st as string[]).filter((b) => b !== 'anlagen'));
+    expect(O18.gegeben.betriebskunde_leiste).toBe(false);
+    for (const ort of [UNTERNEHMEN, WERK]) expect(ebenenLeiste(ort, betrieb)).toEqual([]);
+    expect(standortEinstiege(WERK, betrieb)).toEqual([]);
+  });
+
+  it('O18 · auch mit Gebäude-Objekten und zwei Anlagen bleiben Betriebskunden ohne neue Navigation', () => {
+    expect(ebenenLeiste(WERK, BETRIEBSKUNDE)).toEqual([]);
+    expect(labels(ebenenReiter(WERK, BETRIEBSKUNDE))).toEqual([]);
+    expect(standortEinstiege(WERK, BETRIEBSKUNDE)).toEqual([]);
+  });
+
+  it.each(['aufbau', 'gebaeude', 'netzanschluesse', 'kennzahlen', 'berichte'] as const)(
+    'O18 · Direktadresse %s fällt ohne Messfunktion wie vor AP-13 auf die Übersicht zurück',
+    (bereich) => {
+      const route = standortBereichRoute(FIXTURE_IDS.st1, bereich);
+      expect(standortBereichFuer(route, BETRIEBSKUNDE)).toBeUndefined();
+      expect(standortBereichFuer(route, { ...MESSKUNDE, funktionen: null })).toBeUndefined();
+      expect(standortBereichFuer(route, MESSKUNDE)).toBe(bereich);
+    },
+  );
+
+  it('Z4 · ohne Gebäude keinen Bereich „Gebäude“; der Aufbau bleibt', () => {
+    const ohneGebaeude: EbenenLesemodell = { ...MESSKUNDE, standorte: [werkAhrenberg(), werkLindach({ gebaeudeZahl: 0 })] };
+    expect(labels(ebenenBereiche(LINDACH, ohneGebaeude))).toEqual(['Übersicht', 'Aufbau', 'Messstellen', 'Netzanschlüsse']);
+    expect(labels(ebenenLeiste(LINDACH, ohneGebaeude))).toEqual(['Übersicht', 'Aufbau', 'Messstellen', 'Netzanschlüsse']);
+  });
+
+  it('Aufbau · Seite und Reiter nur, wo der Standort misst — ein Betriebskunde baut im Aufbau seiner Anlage (O18)', () => {
+    const route = standortBereichRoute(FIXTURE_IDS.st1, 'aufbau');
+    expect(standortBereichFuer(route, BETRIEBSKUNDE)).toBeUndefined();
+    expect(standortBereichFuer(route, MESSKUNDE)).toBe('aufbau');
+    expect(keys(ebenenBereiche(WERK, BETRIEBSKUNDE))).not.toContain('aufbau');
+    expect(keys(ebenenBereiche(WERK, MESSKUNDE))).toContain('aufbau');
+  });
+
+  it('Ü8 · Kennzahlen und Berichte des Standorts sind Seiten, aber keine Kachel — ihr Einstieg steht auf der Übersicht', () => {
+    for (const ort of [WERK, LINDACH]) {
+      expect(keys(ebenenBereiche(ort, MESSKUNDE))).not.toContain('kennzahlen');
+      expect(keys(ebenenBereiche(ort, MESSKUNDE))).not.toContain('berichte');
+    }
+    expect(standortEinstiege(WERK, MESSKUNDE).map((e) => [e.label, hashForRoute(e.ziel)])).toEqual([
+      [STANDORT_KENNZAHLEN, `#/standort/${FIXTURE_IDS.st1}/kennzahlen`],
+      [STANDORT_BERICHTE, `#/standort/${FIXTURE_IDS.st1}/berichte`],
+    ]);
+    expect(ebenenAktiv('standort', 'kennzahlen')).toBe('uebersicht');
+    expect(ebenenAktiv('standort', 'berichte')).toBe('uebersicht');
+    // Gilt keine Kennzahl im Standort (nur die des Unternehmens), bleibt nur „Berichte dieses Standorts“.
+    const nurUnternehmen: EbenenLesemodell = { ...MESSKUNDE, kennzahlen: ahrenbergKennzahlen().filter((k) => k.standort_id === null) };
+    expect(standortEinstiege(WERK, nurUnternehmen).map((e) => e.key)).toEqual(['berichte']);
+    const archiviert: EbenenLesemodell = {
+      ...MESSKUNDE,
+      kennzahlen: ahrenbergKennzahlen().map((k) => ({ ...k, archiviert_am: '2026-10-01T00:00:00Z' })),
+    };
+    expect(standortEinstiege(WERK, archiviert).map((e) => e.key)).toEqual(['berichte']);
+    // Unbekannt ist nie vorhanden; das Unternehmen hat keine Einstiege.
+    expect(standortEinstiege(WERK, { ...MESSKUNDE, funktionen: null })).toEqual([]);
+    expect(standortEinstiege(UNTERNEHMEN, MESSKUNDE)).toEqual([]);
+  });
+
+  it('Adressen: die neuen Seiten lesen sich zurück, und jedes bestehende Lesezeichen gilt unverändert', () => {
+    const st = FIXTURE_IDS.st1;
+    for (const bereich of ['aufbau', 'gebaeude', 'messstellen', 'kennzahlen', 'berichte'] as const) {
+      const route = standortBereichRoute(st, bereich);
+      expect(hashForRoute(route)).toBe(`#/standort/${st}/${bereich}`);
+      expect(parseRoute(hashForRoute(route))).toEqual(route);
+    }
+    expect(hashForRoute(kennzahlRoute('KZ-0001', st))).toBe(`#/standort/${st}/kennzahlen/KZ-0001`);
+    expect(parseRoute(`#/standort/${st}/kennzahlen/KZ-0001`)).toEqual(kennzahlRoute('KZ-0001', st));
+    // Konzept Auswerten a1 §6.6: die Bezugsbasis eine Ebene unter der Kennzahl - am Unternehmen und am Standort.
+    expect(hashForRoute(kennzahlRoute('KZ-0001', st, 'bezugsbasis'))).toBe(`#/standort/${st}/kennzahlen/KZ-0001/bezugsbasis`);
+    expect(parseRoute(`#/standort/${st}/kennzahlen/KZ-0001/bezugsbasis`)).toEqual(kennzahlRoute('KZ-0001', st, 'bezugsbasis'));
+    expect(hashForRoute(kennzahlRoute('KZ-0001', null, 'bezugsbasis'))).toBe('#/portfolio/kennzahlen/KZ-0001/bezugsbasis');
+    expect(parseRoute('#/portfolio/kennzahlen/KZ-0001/bezugsbasis')).toEqual(kennzahlRoute('KZ-0001', null, 'bezugsbasis'));
+    // Ein unbekannter dritter Abschnitt bleibt die Seite der Kennzahl.
+    expect(parseRoute('#/portfolio/kennzahlen/KZ-0001/unbekannt')).toEqual(kennzahlRoute('KZ-0001'));
+    expect(hashForRoute(berichtRoute('BR-2026-0001', st))).toBe(`#/standort/${st}/berichte/BR-2026-0001`);
+    expect(parseRoute(`#/standort/${st}/berichte/BR-2026-0001`)).toEqual(berichtRoute('BR-2026-0001', st));
+    // Die Aliase: die Welten des Unternehmens bleiben, wo sie waren — niemandes Lesezeichen bricht.
+    const lesezeichen: [string, Route][] = [
+      ['#/portfolio/kennzahlen', pageRoute('portfolio-kennzahlen')],
+      ['#/portfolio/kennzahlen/KZ-0001', kennzahlRoute('KZ-0001')],
+      ['#/portfolio/berichte', pageRoute('portfolio-berichte')],
+      ['#/portfolio/berichte/BR-2026-0001', berichtRoute('BR-2026-0001')],
+      ['#/portfolio/messstellen', pageRoute('portfolio-messstellen')],
+      ['#/portfolio/messstellen/MS-06', messstelleRoute('MS-06')],
+      [`#/standort/${st}`, standortRoute(st)],
+      [`#/standort/${st}/messstellen`, standortMessstellenRoute(st)],
+      [`#/standort/${st}/messstellen/MS-06`, messstelleRoute('MS-06', st)],
+    ];
+    for (const [hash, route] of lesezeichen) {
+      expect(parseRoute(hash), hash).toEqual(route);
+      expect(hashForRoute(route), hash).toBe(hash);
+    }
+    // Ein unbekannter Bereich führt auf die Übersicht, nie ins Leere.
+    expect(parseRoute(`#/standort/${st}/unbekannt`)).toEqual(standortRoute(st));
+    // Die früheren Seiten „Boxen“ und „Anlagen“ sind im Aufbau aufgegangen — ihre Lesezeichen führen dorthin,
+    // die Adresse schreibt sich um (Parameter reisen mit).
+    for (const alt of ['boxen', 'anlagen']) {
+      expect(parseRoute(`#/standort/${st}/${alt}`)).toEqual(standortBereichRoute(st, 'aufbau'));
+      expect(canonicalStandortHash(`#/standort/${st}/${alt}?anlage=x`)).toBe(`#/standort/${st}/aufbau?anlage=x`);
+    }
+    expect(canonicalStandortHash(`#/standort/${st}/aufbau`)).toBeNull();
+    expect(canonicalStandortHash(`#/standort/${st}/messstellen`)).toBeNull();
+  });
+});
+
+// Firstmate 001 (16.09.2026): Bezugsgrößen sind eine Unternehmenswelt für Messkunden.
+describe('AP-09 IP-9 · Bezugsgrößen', () => {
+  it('öffnet den Leerzustand ohne Kennzahl, aber nie ohne Messfunktion oder am Standort', () => {
+    expect(ebenenBereiche(UNTERNEHMEN, { ...MESSKUNDE, kennzahlen: [] }).map(b => b.key)).toContain('bezugsgroessen');
+    expect(ebenenBereiche(UNTERNEHMEN, BETRIEBSKUNDE).map(b => b.key)).not.toContain('bezugsgroessen');
+    expect(ebenenBereiche(WERK, MESSKUNDE).map(b => b.key)).not.toContain('bezugsgroessen');
+    expect(EBENEN_SEITEN(WERK, MESSKUNDE).bezugsgroessen).toBeUndefined();
+    expect(ebenenAktiv('portfolio-bezugsgroessen')).toBe('bezugsgroessen');
+  });
+});

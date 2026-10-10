@@ -130,7 +130,7 @@ export function ErloeseSection({
   site,
 }: {
   site: Site;
-  /** ⚠ Reserviert: die Seite leitet daraus nichts ab (die Reiter entscheidet `anlageNav`). */
+  /** ⚠ Reserviert: die Seite leitet daraus nichts ab (die Reiter entscheidet `ebenenNav`). */
   surface?: AnlageSurface | null;
   /** ⚠ Reserviert und ohne Wirkung — der Reiter-Wechsel wohnt in `BereichTabs`. */
   onOpenWelt?: (welt: WeltId) => void;

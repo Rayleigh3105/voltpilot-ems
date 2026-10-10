@@ -54,7 +54,7 @@ function has(map, key) {
  *
  * binding = { entities: {id: {entity_type, edge_source_id}}, sources: {id: source} }
  */
-function resolveTarget(selection, point, binding) {
+function resolveTargetBase(selection, point, binding) {
   const context = binding || {};
   // OCPP MeterValues arrive from the core over the local bus; there is no
   // connection to choose, so a binding can neither select nor refuse one.
@@ -83,6 +83,15 @@ function resolveTarget(selection, point, binding) {
     : { reason: REASON_UNBOUND };
 }
 
+// The source identity is a snapshot of the registry used to make this plan.
+// An in-flight read must not acquire a different identity after a new push.
+function resolveTarget(selection, point, binding) {
+  const target = resolveTargetBase(selection, point, binding);
+  const entity = binding && binding.entities && binding.entities[selection.entity_id];
+  return !target.reason && entity && entity.data_source_id
+    ? { ...target, dataSourceId:entity.data_source_id } : target;
+}
+
 /**
  * parseEntityConfig(raw) -> {entity_id, entity_type, edge_source_id} | null
  * Reads ONE retained edge/entities/{id}/config payload. An empty payload
@@ -95,6 +104,7 @@ function parseEntityConfig(raw) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
   if (typeof value.entity_id !== 'string' || !value.entity_id) return null;
   return {
+    ...(value.driver && typeof value.driver.data_source_id === 'string' ? { data_source_id:value.driver.data_source_id } : {}),
     entity_id: value.entity_id,
     entity_type: typeof value.entity_type === 'string' ? value.entity_type : '',
     edge_source_id: typeof value.edge_source_id === 'string' ? value.edge_source_id : '',

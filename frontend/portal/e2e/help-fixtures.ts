@@ -1,8 +1,9 @@
+import { rechteSeed, sichtbareListe } from '../src/test/rollenFixtures';
 /**
  * Fictional, frozen teaching data. Imported ONLY by /e2e/help.tsx.
  * No production API/auth fallback: the application bundle never imports this.
  */
-import { api } from '../src/api';
+import { api, type Funktionen, type Unternehmen } from '../src/api';
 import { entitiesApi } from '../src/entitiesApi';
 import { consumersApi } from '../src/consumers/consumersApi';
 import { keycloak } from '../src/auth';
@@ -172,8 +173,26 @@ export function installHelpFixtures() {
   for (const key of Object.keys(api)) (api as Record<string, unknown>)[key] = async () => { throw new Error('Missing help fixture: ' + key); };
   const result = (value: unknown) => async () => structuredClone(value);
   Object.assign(api, {
-    listSites: error ? async () => { throw new Error('Demo data unavailable'); } : result(empty || admin ? [] : single ? [site] : sites),
-    listDevices: result(empty || admin ? [] : single ? [devices[0]] : devices),
+    selbstauskunft: result({ ...rechteSeed().me, standorte: [] }),
+    funktionen: result({
+      unternehmen: {
+        messen: { laeuft_an: 0, standorte: 0, text: null },
+        steuern: { laeuft_an: 0, standorte: 0, text: null },
+      },
+      standorte: [],
+    } satisfies Funktionen),
+    unternehmen: result({
+      zustand: 'nicht_angelegt',
+      id: null,
+      name: null,
+      kurzname: null,
+      zeitzone: null,
+      standortZahl: 0,
+      anlagenZahl: 0,
+      nochNichtZugeordnetZahl: 0,
+    } satisfies Unternehmen),
+    listSites: error ? async () => { throw new Error('Demo data unavailable'); } : result(sichtbareListe(empty || admin ? [] : single ? [site] : sites)),
+    listDevices: result(sichtbareListe(empty || admin ? [] : single ? [devices[0]] : devices)),
     tenantContext: result({ tenantId: 'help-tenant', name: 'Beispielbetrieb', betriebsart: single || empty ? 'endkunde' : 'betreiber' }),
     overview: result(overview), earnings: result({ range: 'month', from: DAY, to: NOW, sites: sites.map((s) => ({ ...money, id: s.id, siteId: s.id, name: s.name })), totals: { ...money, coveredSlots: 98 } }),
     siteEarnings: result(money), history: result(history), schedule: result(plan), siteAssets: result([asset, { ...asset, id: 'help-pv', type: 'pv', capacityKwh: null, pvCapacityKwp: 10, moduleCount: 25 }]),
@@ -202,7 +221,7 @@ export function installHelpFixtures() {
     matchComponent: result(null),
     siteComponents: result({ componentAuthority: 'portal', sollRevision: '1', appliedRevision: '1', appliedAt: NOW, components: [{ id: 'help-battery', role: 'battery-hybrid', entityType: 'battery-hybrid', label: 'Speicher Scheune', brand: 'deye', model: 'sun-12k', family: 'deye-sg04lp3',
       communication: 'solarman_v5', connection: { ip: '192.0.2.10', port: 8899, serial: '1234567890' }, sourceKind: 'builtin', templateRef: 'builtin:deye:sun-12k', templateVersion: 1, definitionVersion: 1, syncStatus: 'in_sync' }] }),
-    siteSources: result([]), edgeVersions: result([]), registerWriteHistory: result([]), registerKnowledge: result([]), registerWriteTargets: result([]),
+    siteSources: result([]), edgeVersions: result(sichtbareListe([])), registerWriteHistory: result([]), registerKnowledge: result([]), registerWriteTargets: result([]),
     controlStatus: result({ deviceId: 'help-box', commandedKw: 2.2, confirmedKw: 2.2, allMatch: true, controlEnabled: true, certified: true, mismatchRoles: null, slotStart: NOW, checkedAt: NOW, controlSource: 'schedule', executionMode: 'plan', executionPlannedKw: 2.2 }), curtailmentStatus: result(null), eigeneAuswertung: result(null), autoStart: result(null),
     siteChargers: result(charging), chargingConfig: result({ siteId: site.id, gridLimitKw: 22, marginPct: 10, surplusPolicy: 'sonne_zuerst', storagePriority: 'speicher_vor_auto', priorityChargePointIds: ['CP-CARPORT'], chargePoints: [] }),
     siteVerbraucher: result({
@@ -238,7 +257,8 @@ export function installHelpFixtures() {
     ].map(([id,label,active]) => ({ id,label,active, state: active ? 'an' : 'aus', derivedActive: active,
       unlocks: { views: [], widgets: [], moneyStream: null }, requirements: [], blockedReason: null, origin: 'masterdata',
       flowRef: null, gatedNodeTypes: [], gatedNodesEnabled: true, exklusivGruppe: id === 'lastmanagement' ? null : 'speicher', seit: '2026-08-01T10:00:00Z' })), weitere: [] }),
-    // UEMS-Ortsstruktur: beide fiktiven Anlagen liegen am selben Standort.
+    // UEMS-Ortsstruktur: beide fiktiven Anlagen liegen am selben Standort (main 41ed67c26, Wurzel des Aufbau-Baums;
+    // die leere uems-Fassung derselben Route stand doppelt im Objekt und galt nie — die spätere gewinnt).
     standorte: result({ stichtag: '2026-09-10', nichtGezeigt: [], nochNichtZugeordnet: null, standorte: [{
       id: 'help-standort', kurzzeichen: 'ST-1', name: 'Sonnenhof', zeitzone: 'Europe/Berlin', zustand: 'aktiv', esFehlt: [],
       adresse: { strasse: 'Sonnenweg 1', plz: '80331', ort: 'München', land: 'DE' }, bestand: 'vorhanden', bestandText: null,

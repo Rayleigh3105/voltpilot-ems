@@ -1,0 +1,300 @@
+import { useEffect, useState } from 'react';
+import ReactDOM from 'react-dom/client';
+import { api } from '../src/api';
+import { benutzerApi } from '../src/benutzer';
+import { keycloak } from '../src/auth';
+import { PortfolioTabs } from '../src/components/PortfolioTabs';
+import { ebenenAktiv, ebenenBereiche, ebenenLeiste, ebenenTitel, type EbenenLesemodell, telefonReiterBereiche, istDetailseite } from '../src/ebenenNav';
+import { darfAnsehen } from '../src/energiemanagementPortal';
+import {
+  auditRoute,
+  dokumentRoute,
+  energiemanagementRoute,
+  feststellungRoute,
+  hashForRoute,
+  managementbewertungRoute,
+  mappeRoute,
+  pageRoute,
+  parseRoute,
+  personRoute,
+  type Route,
+} from '../src/nav';
+import { EnergiemanagementBereich } from '../src/pages/EnergiemanagementBereich';
+import { MassnahmeSeite } from '../src/pages/MassnahmeSeite';
+import { setSelbstauskunft, teilansichtKopf } from '../src/rollen';
+import { AppShell } from '../src/shell/AppShell';
+import { AF_IDS, auditFeststellungBuehne, R10_MASSNAHME, type AuditLage } from '../src/test/auditFeststellungFixtures';
+import { EM_IDS, energiemanagementBuehne, type EnergiemanagementLage } from '../src/test/energiemanagementFixtures';
+import { MB_KENNUNG, managementbewertungBuehne, type MbLage } from '../src/test/managementbewertungFixtures';
+import { MAPPE_IDS, mappeBuehne, type MappeLage } from '../src/test/mappeFixtures';
+import { wvLeer } from '../src/test/wiedervorlageFixtures';
+import { ahrenbergFunktionen } from '../src/test/funktionenFixtures';
+import { ahrenbergKennzahlen } from '../src/test/kennzahlenFixtures';
+import { kontenAhrenberg, massnahmeBuehne } from '../src/test/massnahmeFixtures';
+import { rechteSeed } from '../src/test/rollenFixtures';
+import { werkAhrenberg, werkLindach } from '../src/test/standorteFixtures';
+import { unterstuetzungApi } from '../src/unterstuetzung';
+import { useEntscheidFokus } from '../src/useEntscheidFokus';
+import '../designsystem/tokens/fonts.css';
+import '../designsystem/tokens/colors.css';
+import '../designsystem/tokens/typography.css';
+import '../designsystem/tokens/spacing.css';
+import '../designsystem/tokens/effects.css';
+import '../designsystem/components/core/core.css';
+import '../designsystem/components/shell/shell.css';
+import '../src/index.css';
+
+/**
+ * Bühne des Bereichs „Energiemanagement“ (UEMS AP-19 IP-9, IP-13): die ECHTE `AppShell` mit der ECHTEN Leiste und den ECHTEN
+ * Reitern (`PortfolioTabs`) — dieselben reinen Funktionen wie `App.tsx` — und darin der ECHTE
+ * `EnergiemanagementBereich`. Die Routen von IP-6/IP-7/IP-8 spielt `energiemanagementBuehne`
+ * (`src/test/energiemanagementFixtures.ts`); jeder Schreib-Körper steht in `window.__emGesendet` (Netzwerk-Probe).
+ *
+ * Adresse: `?person=IK|JW|CB|RF` (Vorgabe IK; RF = Robert Falk mit der Rolle „Einsicht“, IP-13) · `&lage=start|ahrenberg`
+ * (Vorgabe start) · `&dok=1|2|3` öffnet D-0001 … D-0003 der Lage `ahrenberg` · `&seite=dokumente|aufgaben|verantwortung|zuschnitt|verzeichnis`
+ * · `&ps=RF|IK|…` öffnet die Seite dieser Person (IP-13). Die Uhr stellt die Spec (`page.clock`).
+ * IP-20: `&al=leer|r10|r11` spielt dazu die Routen des internen Audits und der Feststellung (`auditFeststellungBuehne`)
+ * und die der Maßnahme (`massnahmeBuehne`, AP-18), die Konten der Maßnahme und die Maßnahmen-Seite unter
+ * `#/portfolio/verbesserung/massnahmen/{id}`; `&seite=audits|feststellungen` · `&au=1` öffnet AU-2029-0001 · `&fs=1`
+ * F-2029-0001 · `&m=1` die Maßnahme aus F-2029-0001 · `&vieraugen=1`. Ohne `al` bleibt die Bühne, wie sie war.
+ * IP-24: `&mb=leer|r13|r13f` spielt die Berichte-Routen der Managementbewertung und die Wiedervorlage R12
+ * (`managementbewertungBuehne`, Körper in `window.__mbGesendet`); `&seite=wiedervorlage|managementbewertung` · `&br=1`
+ * öffnet BR-2029-0001. Ohne `mb` steht eine leere Wiedervorlage am Tag der Uhr da; `&wv=fehler` spielt ihren Ladefehler.
+ * Nachweisen PR 6: `&mp=leer|r6` spielt die Mappen-Routen und das Anlegen eines Zugangs (`mappeBuehne`, Körper in
+ * `window.__mpGesendet`; Vorgabe leer); `&mappe=1|alt` öffnet die abrufbare oder die abgelaufene Mappe aus R6.
+ * Review r2, N-2.1: `&freigabe=scheitert` lässt die erste Freigabe einer Fassung am Netz scheitern (der Entwurf steht dann).
+ * Eigene Bühne, keine geteilte Datei wird angefasst.
+ */
+const params = new URLSearchParams(location.search);
+const person = params.get('person') ?? 'IK';
+const LAGEN: EnergiemanagementLage[] = ['start', 'ahrenberg'];
+const lage = LAGEN.find((l) => l === params.get('lage')) ?? 'start';
+const me = rechteSeed(person).me;
+setSelbstauskunft(me);
+keycloak.tokenParsed = { sub: me.kennung!, name: me.name!, tenant_id: me.kundenbereich!.id };
+Object.assign(unterstuetzungApi, { liste: async () => [], anfragen: async () => [], hinweise: async () => [] });
+const buehne = energiemanagementBuehne(lage, { kennung: me.kennung!, name: me.name! });
+Object.assign(api, buehne.routen);
+(window as unknown as { __emGesendet: unknown }).__emGesendet = buehne.gesendet;
+if (params.get('freigabe') === 'scheitert') {
+  const freigeben = api.energiemanagementFassungFreigeben;
+  let erste = true;
+  api.energiemanagementFassungFreigeben = async (...a: Parameters<typeof freigeben>) => {
+    if (erste) {
+      erste = false;
+      throw new Error('Netz nicht erreichbar');
+    }
+    return freigeben(...a);
+  };
+}
+// Der Überblick liest die Wiedervorlage; ohne sie gibt es kein „Als Nächstes“ und keine Ruhe-Zeile (Review Nachweisen
+// r1, P1-2: ein Ladefehler ist kein „nichts fällig“). Ohne `mb` steht die Bühne ohne Frist am Tag ihrer Uhr - so
+// zeigte der Überblick hier vorher stets den Ladefehler. `mb` ersetzt sie unten durch R12/R13.
+// `&wv=fehler` spielt ihren Ladefehler (der Überblick sagt „Fristen nicht geladen“).
+Object.assign(api, {
+  energiemanagementWiedervorlage: async () =>
+    params.get('wv') === 'fehler' ? Promise.reject(new Error('Wiedervorlage nicht erreichbar')) : { ...wvLeer(), stichtag: new Date().toISOString() },
+});
+
+// IP-20: Audits, Feststellungen und die Maßnahme aus AP-18 — nur mit `al`, sonst bleibt die Bühne byte-gleich.
+const AUDIT_LAGEN: AuditLage[] = ['leer', 'r10', 'r11'];
+const auditLage = AUDIT_LAGEN.find((l) => l === params.get('al')) ?? null;
+let massnahmeR10: Promise<string | null> = Promise.resolve(null);
+if (auditLage) {
+  const jetzt = () => new Date().toISOString();
+  const tag = jetzt().slice(0, 10);
+  Object.assign(benutzerApi, { liste: async () => kontenAhrenberg() });
+  Object.assign(api, massnahmeBuehne('leer', tag, me.name!, { sub: me.kennung! }), {
+    kennzahlen: async () => ({ kennzahlen: [] }),
+    energieeinsaetze: async () => ({ energieeinsaetze: [] }),
+    energieziele: async () => ({ energieziele: [] }),
+  });
+  const af = auditFeststellungBuehne(auditLage, { kennung: me.kennung!, name: me.name! }, jetzt, async () => (await api.massnahmen()).massnahmen, {
+    vieraugen: params.get('vieraugen') === '1',
+  });
+  Object.assign(api, af.routen);
+  (window as unknown as { __afGesendet: unknown }).__afGesendet = af.gesendet;
+  // R10/R11: M-2029-0001 über die echte Maßnahmen-Route der Bühne, umgesetzt am 01.03.2029 (R11).
+  if (auditLage !== 'leer') {
+    massnahmeR10 = api
+      .massnahmeAnlegen({
+        titel: R10_MASSNAHME, verantwortlich: 'JW', termin: '2029-02-28', herkunft: 'nichtkonformitaet', herkunft_kennung: 'F-2029-0001',
+        erwartete_wirkung_wortlaut: 'Zuständigkeit festgelegt; jede Freigabe einer Bezugsbasis nennt die zuständige Person und ihre Vertretung.',
+      })
+      .then(async (m) => {
+        if (tag >= '2029-03-01') {
+          await api.massnahmeUmgesetzt(m.id, { am: '2029-03-01', begruendung: 'Aufgabe seit 01.03.2029 Ines Kaltenbach, Vertretung Jonas Wendlinger.' });
+        }
+        return m.id;
+      });
+  }
+}
+
+// IP-24: Managementbewertung und Wiedervorlage — nur mit `mb`, sonst bleibt die Bühne byte-gleich.
+const MB_LAGEN: MbLage[] = ['leer', 'r13', 'r13f'];
+const mbLage = MB_LAGEN.find((l) => l === params.get('mb')) ?? null;
+if (mbLage) {
+  // Namen, Leitung am Tag und Folge-Objekte liest die Bühne über die Routen, die hier schon gespielt werden.
+  const mb = managementbewertungBuehne(mbLage, () => new Date().toISOString(), {
+    name: async (id) => (await api.energiemanagementPersonen()).personen.find((p) => p.id === id)?.name ?? null,
+    leitungAm: async (tag) => (await api.energiemanagementAufgaben(tag)).leitung.map((p) => p.id),
+    objekt: async (art, objekt) => {
+      if (art === 'dokument') {
+        const [kz, nr] = objekt.split('/');
+        const d = (await api.energiemanagementDokumente()).dokumente.find((x) => x.kennzeichen === kz && String(x.gueltige_fassung) === nr);
+        return d ? { zustand: 'freigegeben', angabe: d.titel } : null;
+      }
+      if (art === 'audit') {
+        const a = (await api.energiemanagementAudits().catch(() => ({ audits: [] as { kennzeichen: string; zustand: string; titel: string }[] }))).audits.find((x) => x.kennzeichen === objekt);
+        return a ? { zustand: a.zustand, angabe: a.titel } : null;
+      }
+      if (art === 'aufgabe') {
+        const z = (await api.energiemanagementAufgaben()).zuordnungen.find((x) => x.id === objekt);
+        return z ? { zustand: z.zustand, angabe: z.person.name } : null;
+      }
+      return null;
+    },
+    massnahmen: auditLage ? async () => (await api.massnahmen()).massnahmen : undefined,
+  });
+  Object.assign(api, mb.routen);
+  (window as unknown as { __mbGesendet: unknown }).__mbGesendet = mb.gesendet;
+}
+
+// Nachweisen PR 6: Unterlagen zusammenstellen und Einsicht geben. Der Überblick fragt immer nach den Mappen - ohne `mp`
+// spielt die Bühne eine leere Liste, damit keine Anfrage ins Netz geht.
+const MAPPE_LAGEN: MappeLage[] = ['leer', 'r6'];
+const mp = mappeBuehne(MAPPE_LAGEN.find((l) => l === params.get('mp')) ?? 'leer', () => new Date().toISOString(), { name: me.name! });
+Object.assign(api, mp.routen);
+// Die Konten der Maßnahme (`al`) bleiben in der Liste; die Mappen-Bühne bringt nur ihr vorhandenes Konto dazu (Review
+// r2, N-6.1) - sonst fände „Maßnahme planen“ keine Person mehr.
+const kontenVorher = auditLage ? benutzerApi.liste : null;
+Object.assign(benutzerApi, mp.benutzer);
+if (kontenVorher) benutzerApi.liste = async () => [...(await kontenVorher()), ...(await mp.benutzer.liste())];
+(window as unknown as { __mpGesendet: unknown }).__mpGesendet = mp.gesendet;
+const MAPPE: Record<string, string> = { '1': MAPPE_IDS.abrufbar, alt: MAPPE_IDS.abgelaufen };
+
+const lesemodell: EbenenLesemodell = {
+  standorte: [werkAhrenberg(), werkLindach()],
+  funktionen: ahrenbergFunktionen(),
+  kennzahlen: ahrenbergKennzahlen(),
+  energiemanagement: darfAnsehen(me),
+};
+const UNTERNEHMEN = { art: 'unternehmen' } as const;
+const DOK: Record<string, string> = { '1': EM_IDS.d1, '2': EM_IDS.d2, '3': EM_IDS.d3 };
+
+if (!location.hash.startsWith('#/portfolio/')) {
+  const seite = params.get('seite');
+  const dok = DOK[params.get('dok') ?? ''];
+  const ps = EM_IDS[(params.get('ps') ?? '') as keyof typeof EM_IDS];
+  const mappe = MAPPE[params.get('mappe') ?? ''];
+  const ziel = dok
+    ? dokumentRoute(dok)
+    : ps
+      ? personRoute(ps)
+      : params.get('au') === '1'
+        ? auditRoute(AF_IDS.au1)
+        : params.get('fs') === '1'
+          ? feststellungRoute(AF_IDS.f1)
+          : params.get('br') === '1'
+            ? managementbewertungRoute(MB_KENNUNG)
+            : seite === 'dokumente' || seite === 'zuschnitt' || seite === 'aufgaben' || seite === 'verantwortung' || seite === 'audits' ||
+                seite === 'feststellungen' || seite === 'wiedervorlage' || seite === 'managementbewertung' || seite === 'verzeichnis'
+              ? energiemanagementRoute(seite)
+              : energiemanagementRoute();
+  history.replaceState(null, '', hashForRoute(mappe ? mappeRoute(mappe) : ziel));
+  if (params.get('m') === '1') {
+    void massnahmeR10.then((id) => {
+      if (id) location.hash = `#/portfolio/verbesserung/massnahmen/${id}`;
+    });
+  }
+}
+
+function Ansicht() {
+  const [route, setRoute] = useState<Route>(() => parseRoute(location.hash));
+  // Wie `App.tsx`: ein Schritt der Wiedervorlage öffnet das Objekt mit offenem Entscheid (Konzept Wiedervorlage w1).
+  useEntscheidFokus();
+  useEffect(() => {
+    const weiter = () => setRoute(parseRoute(location.hash));
+    window.addEventListener('hashchange', weiter);
+    return () => window.removeEventListener('hashchange', weiter);
+  }, []);
+  useEffect(() => {
+    document.body.dataset.route = location.hash;
+  }, [route]);
+  const navigate = (ziel: Route) => {
+    location.hash = hashForRoute(ziel);
+  };
+  const kacheln = ebenenLeiste(UNTERNEHMEN, lesemodell);
+  const bereiche = ebenenBereiche(UNTERNEHMEN, lesemodell).map((b) => b.key);
+  return (
+    <AppShell
+      teilansicht={teilansichtKopf(me)}
+      ebenen={{
+        titel: ebenenTitel(UNTERNEHMEN, lesemodell, 'Kunststoffwerk Ahrenberg GmbH'),
+        kacheln,
+        aktiv: ebenenAktiv(route.page, undefined, route.energiemanagementReiter),
+        onOpen: navigate,
+      }}
+      page={route.page}
+      onNavigate={(p) => navigate(pageRoute(p))}
+      isAdmin={false}
+      showOverview={false}
+      showPortfolio
+      fleetLabel="Unternehmen"
+      counts={{ sites: 3, devices: 3 }}
+      tenants={[]}
+      tenantOverride={null}
+      onTenantChange={() => undefined}
+      showAddAnlage={false}
+      onAddAnlage={() => undefined}
+    >
+      <PortfolioTabs
+        page={route.page}
+        showErloese={false}
+        showMessstellen={bereiche.includes('messstellen')}
+        showBezugsgroessen={bereiche.includes('bezugsgroessen')}
+        showKennzahlen={bereiche.includes('kennzahlen')}
+        showBerichte={bereiche.includes('berichte')}
+        showEnergiemanagement={bereiche.includes('energiemanagement')}
+        // Wie `App.tsx`: die Leiste trägt Gruppen; was sie trägt, ist am Telefon kein zweites Mal Reiter —
+        // über der Seite stehen dort nur die Reiter der offenen Gruppe.
+        leiste={kacheln.flatMap((k) => k.bereiche)}
+        telefonReiter={telefonReiterBereiche(kacheln, ebenenAktiv(route.page, undefined, route.energiemanagementReiter))}
+        // K1 wie `App.tsx`: die Gruppen auch am Rechner, das Energiemanagement in „Nachweisen“.
+        gruppen={kacheln}
+        energiemanagementReiter={route.energiemanagementReiter ?? null}
+        // Wie `App.tsx`: „Verbessern“ trägt die Reiter von „Ziele und Maßnahmen“; Detailseiten zeigen ihren Rückweg.
+        verbesserungReiter={route.verbesserungReiter ?? null}
+        detail={istDetailseite(route)}
+        onOpenBereich={navigate}
+        fleetLabel="Unternehmen"
+        onNavigate={(p) => navigate(pageRoute(p))}
+      />
+      {route.page === 'portfolio-energiemanagement' ? (
+        <EnergiemanagementBereich
+          reiter={route.energiemanagementReiter ?? 'ueberblick'}
+          dokumentId={route.dokumentId ?? null}
+          personId={route.personId ?? null}
+          auditId={route.auditId ?? null}
+          feststellungId={route.feststellungId ?? null}
+          managementbewertungKennung={route.managementbewertungKennung ?? null}
+          mappeId={route.mappeId ?? null}
+          reiterOben={kacheln.length > 0}
+          onReiter={(r) => navigate(energiemanagementRoute(r))}
+          onDokument={(id) => navigate(dokumentRoute(id))}
+          onPerson={(id) => navigate(personRoute(id))}
+          onAudit={(id) => navigate(auditRoute(id))}
+          onFeststellung={(id) => navigate(feststellungRoute(id))}
+          onManagementbewertung={(kennung) => navigate(managementbewertungRoute(kennung))}
+          onSprung={navigate}
+        />
+      ) : auditLage && route.massnahmeId ? (
+        <MassnahmeSeite id={route.massnahmeId} onListe={() => history.back()} />
+      ) : (
+        <p>Diese Bühne zeigt nur das Energiemanagement.</p>
+      )}
+    </AppShell>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')!).render(<Ansicht />);

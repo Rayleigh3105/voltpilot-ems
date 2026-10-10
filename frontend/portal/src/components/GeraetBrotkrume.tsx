@@ -1,6 +1,6 @@
 import { Icon } from '../../designsystem/components/core/Icon';
 import './GeraetBrotkrume.css';
-import { AUFBAU_REITER } from '../anlageNav';
+import { AUFBAU_REITER } from '../ebenenNav';
 
 /**
  * Der EINE Rückweg einer Geräteseite: `Anlage › Aufbau › {Gerät}`.

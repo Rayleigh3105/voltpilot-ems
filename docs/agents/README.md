@@ -7,6 +7,8 @@ geloescht.** Die drei AGENTS.md sind seither Wegweiser mit einem Themen-Index.
 **Nicht ganze Dateien in den Kontext lesen — greppen.** Diese Sammlung ist die
 Projekt-Chronik; einzelne Dateien sind gross.
 
+`python3 tools/agents-md-split.py --verify` prueft den historischen Auslagerungsstand (Quelle/Ziel mit `--source-rev`/`--target-rev` waehlbar), nicht die seither weiterentwickelten Regeln im Arbeitsverzeichnis.
+
 ## `root/` — aus `AGENTS.md` (173 Einträge)
 
 - [Admin API & the Portal-Admin / Portal-User split (services/api + frontend)](root/admin-api-the-portal-admin-portal-user-s.md)
@@ -189,9 +191,14 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Zusätzliche Messwerte: Bibliothek und Historie (Slice 9)](root/zusaetzliche-messwerte-bibliothek-und-hi.md)
 - [Zusätzliche Messwerte: Desired State bis Timescale (Slices 6–8)](root/zusaetzliche-messwerte-desired-state-bis.md)
 
-## `portal/` — aus `frontend/portal/AGENTS.md` (47 Einträge)
+## `portal/` — aus `frontend/portal/AGENTS.md` (48 Einträge)
 
 - [Anzeige-Ehrlichkeit: Daten-Alter, die gemessene Null, der behauptete Verkauf](portal/anzeige-ehrlichkeit-daten-alter-die-geme.md)
+- [Messen: Kostenstellen, Prozesse und Bezugsgrößen](portal/messen-kostenstellen-prozesse-bezugsgroessen.md)
+- [Messen: die Liste der Messstellen und „Woher kommen die Werte?“](portal/messen-liste-und-woher-die-werte.md)
+- [Messen: die Seite einer Messstelle (Kacheln, Monate, Ablesen, Zuordnung)](portal/messen-seite-einer-messstelle.md)
+- [Messen: die Ablese-Runde je Gebäude (`?ablesen=G-1`)](portal/messen-ablese-runde.md)
+- [Messen: geplante Messstellen (offene Messbedarfe, „Einrichten“, Wiedervorlage)](portal/messen-geplante-messstellen.md)
 - [Build & test](portal/build-test/README.md) *(Sammlung, 95 Punkte)*
 - [Die Speicher-Kachel nennt ihre QUELLE (P6 Speiser-Bindung)](portal/die-speicher-kachel-nennt-ihre-quelle-p6.md)
 - [Der BATTERIE-ASSISTENT (P5d): Anschluss, Zuordnung, Kurve — und die Herkunft des Ladestands](portal/der-batterie-assistent-p5d-anschluss-zuo.md)
@@ -210,6 +217,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Die STEUERUNGS-AUSSAGE: die Kundenansicht misst gegen einen STUREN Speicher (`speicherAussage.ts`)](portal/die-steuerungs-aussage-die-kundenansicht.md)
 - [Eigene Auswertung: die Fläche der Kunden-Kennzahl (Anwendungs-Programm Stufe 5)](portal/eigene-auswertung-die-flaeche-der-kunden.md)
 - [⚠ Ein Haus-Token ist fuer SEINE Flaeche bemessen — P7 der Erloese-Seite](portal/ein-haus-token-ist-fuer-seine-flaeche-be.md)
+- [E2E: der kalte Entwicklungsserver und die veraltete Zusicherung (zwei rote Oberflächen-Prüfungen)](portal/e2e-kaltstart-und-veraltete-zusicherung.md)
 - [Erlöse „Neu modern" (Variante C) · P0 — das Fundament für die ganze Fläche](portal/erloese-neu-modern-variante-c-p0-das-fun.md)
 - [Erlöse „Neu modern" (Variante C) · P3+P4 — das CHROME der Welt-Seiten](portal/erloese-neu-modern-variante-c-p3-p4-das.md)
 - [Erlöse „Neu modern" (Variante C) · P5 — die COCKPIT-Erlöskarte](portal/erloese-neu-modern-variante-c-p5-die-coc.md)
@@ -242,6 +250,8 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Verlauf-Sprache P2b: EIN Aufklapper, und Zustände, die ihren Platz reservieren](portal/verlauf-sprache-p2b-ein-aufklapper-und-z.md)
 - [Verlauf-Sprache P8: die Portfolio-Zwillinge, und die Tabelle als LISTE](portal/verlauf-sprache-p8-die-portfolio-zwillin.md)
 - [VpPicker: EIN Picker fuer die ganze Plattform - kein natives `<select>` mehr](portal/vppicker-ein-picker-fuer-die-ganze-platt.md)
+- [Verbessern: eine Uhr, der Grund eines offenen Monats und die Wörter](portal/verbessern-woerter-und-eine-uhr.md)
+- [Nachweisen (Konzept n1 Runde 2): Zeilen-Bausteine, Blätter, Audits, Managementbewertung, Aufgaben, Mappe](portal/nachweisen-zeilen-blaetter-audits.md)
 
 ## `edge/` — aus `edge-app/AGENTS.md` (91 Einträge)
 

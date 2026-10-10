@@ -15,6 +15,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,6 +29,9 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class MeasurementSelectionService {
 
+    /** Ein WAGO-Kartenpunkt mit Kartentyp und Index ({@code wago.pm495.karte[2].…} oder die Vorlage {@code [*]}). */
+    private static final Pattern WAGO_KARTENPUNKT =
+            Pattern.compile("^wago\\.pm(494|495)\\.karte\\[(\\d{1,3}|\\*)]\\.");
     public static final String PENDING_REASON =
             "Angefordert; wartet auf die Bestätigung der VoltPilot-Box.";
 
@@ -67,21 +72,23 @@ public class MeasurementSelectionService {
             MeasurementBudget.Estimate volumeEstimate) {}
 
     private final MeasurementSelectionRepository repository;
+    private final com.voltpilot.api.entities.EinmalAuftragZiel ziel;
     private final MeasurementCatalog catalog;
     private final ObjectMapper mapper;
     private final MeasurementBudgetProperties budgetProperties;
 
     public MeasurementSelectionService(MeasurementSelectionRepository repository,
             MeasurementCatalog catalog, ObjectMapper mapper,
-            MeasurementBudgetProperties budgetProperties) {
+            MeasurementBudgetProperties budgetProperties, com.voltpilot.api.entities.EinmalAuftragZiel ziel) {
         this.repository = repository;
+        this.ziel = ziel;
         this.catalog = catalog;
         this.mapper = mapper;
         this.budgetProperties = budgetProperties;
     }
 
     public DeviceScope requireDevice(UUID deviceId) {
-        DeviceScope scope = repository.deviceScope(deviceId);
+        DeviceScope scope = repository.aktiverDeviceScope(deviceId);
         if (scope == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Gerät nicht gefunden.");
         }
@@ -108,17 +115,154 @@ public class MeasurementSelectionService {
         return entityId;
     }
 
+    /** Validate the requested box/site fence first, then follow the component's execution. */
+    public UUID deviceForEntity(UUID deviceId, UUID entityId) {
+        DeviceScope scope = requireDevice(deviceId);
+        requireEntity(scope, entityId);
+        return entityId == null ? deviceId : ziel.komponente(scope.siteId(), entityId).id();
+    }
+
+    /** Retained full plans must never re-enable a component on its former box. */
+    public State forPublishing(UUID deviceId) {
+        State state = state(deviceId);
+        Map<UUID, Boolean> owners = new java.util.HashMap<>();
+        List<SelectionPoint> points = state.selections().stream().filter(p -> p.entityId() == null
+                || owners.computeIfAbsent(p.entityId(), entity -> {
+                    try {
+                        return deviceId.equals(ziel.komponente(state.siteId(), entity).id());
+                    } catch (ResponseStatusException e) {
+                        if (e.getStatusCode().value() != 404 && e.getStatusCode().value() != 409) throw e;
+                        return false;
+                    }
+                })).toList();
+        return new State(state.deviceId(), state.siteId(), state.entityId(), state.desiredRevision(),
+                state.catalogVersion(), state.status(), state.statusReason(), state.activationNotice(),
+                state.disableNotice(), points, state.events(), state.volumeEstimate());
+    }
+
+    /** Wer die Anstoß-Revision im Verlauf der Auswahl anfordert (AP-07 IP-18b Einschalten). */
+    public static final String ANSTOSS_AKTEUR = "system:plan-je-komponente";
+    public static final String ANSTOSS_NAME = "VoltPilot";
+    public static final String ANSTOSS_GRUND =
+            "Die Box hat ihre Fähigkeit für den Plan je Komponente geändert; der Plan wird neu ausgeliefert.";
+
+    /**
+     * Revisions-Anstoß (AP-07 IP-18b Einschalten): die Box hat
+     * {@link MeasurementConfigPublisher#FAEHIGKEIT_JE_KOMPONENTE} neu gemeldet oder verloren. Ihr
+     * Core weist dieselbe Revision mit anderem Inhalt als {@code stale revision} ab und kann selbst
+     * keine erzeugen - darum legt die Cloud Revision + 1 an, und der
+     * {@link MeasurementConfigReconciler} liefert den Plan in der Form aus, die die Box jetzt kann.
+     *
+     * <p>Nur wenn beide Formen verschieden sind, also ein geteilter Punkt besteht: sonst sind die
+     * Bytes beider Formen gleich, und die Box behält ihre Revision. Die Revision trägt EIN Ereignis
+     * {@code selection_requested} (der Schlüssel {@code (device_id, desired_revision, event_kind)}
+     * erlaubt genau eines) an der ersten aktiven Zeile des geteilten Punkts mit ihren eigenen
+     * Werten; keine Auswahlzeile wird geändert, und die Quittung dieser Revision schreibt ihr
+     * {@code edge_ack} wie jede andere. Eigene Transaktion: der Aufruf kommt nach dem Commit der
+     * Fähigkeitsmeldung ({@link MessplanRevisionsAnstoss}).
+     *
+     * @return die neue Revision, {@code 0} ohne Anstoß
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public long planNeuAusliefern(UUID deviceId) {
+        DeviceScope scope = repository.lockDevice(deviceId);
+        if (scope == null) return 0;
+        List<SelectionPoint> punkte = forPublishing(deviceId).selections();
+        List<MeasurementPlan.Entry> jeKomponente = MeasurementPlan.composeJeKomponente(punkte, Map.of());
+        if (jeKomponente.equals(MeasurementPlan.compose(punkte, Map.of()))) return 0;
+        Map<String, Long> vorkommen = new java.util.HashMap<>();
+        for (MeasurementPlan.Entry e : jeKomponente) vorkommen.merge(e.pointKey(), 1L, Long::sum);
+        Row anker = repository.current(deviceId).stream()
+                .filter(r -> r.enabled() && r.entityId() != null && vorkommen.getOrDefault(r.pointKey(), 0L) > 1
+                        && punkte.stream().anyMatch(p -> p.enabled() && r.entityId().equals(p.entityId())
+                                && r.pointKey().equals(p.pointKey())))
+                .min(java.util.Comparator.comparing((Row r) -> r.pointKey())
+                        .thenComparing(r -> r.entityId().toString()))
+                .orElse(null);
+        if (anker == null) return 0;
+        long next = repository.revision(deviceId) + 1;
+        repository.appendEvent(scope, anker.entityId(), anker.pointKey(), next,
+                UUID.nameUUIDFromBytes(("plan-je-komponente:" + deviceId + ":" + next)
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                true, anker.cadenceS(), anker.enabledAt(), null, anker.catalogVersion(),
+                ANSTOSS_AKTEUR, ANSTOSS_NAME, ANSTOSS_GRUND, anker.customDefinitionJson(),
+                anker.retention());
+        return next;
+    }
+
+    /** Wer die Katalogstand-Revision im Verlauf der Auswahl anfordert (Generalprobe B2). */
+    public static final String KATALOGSTAND_AKTEUR = "system:katalogstand";
+    public static final String KATALOGSTAND_GRUND = "Die VoltPilot-Box hat den Messplan wegen eines anderen "
+            + "Katalogstands abgelehnt (etwa nach ihrem Update); der Plan wird im aktuellen Katalogstand neu "
+            + "ausgeliefert.";
+    /** Das Wort des Status-Vertrags, mit dem die Box einen Plan fremden Katalogstands ablehnt. */
+    static final String UNSUPPORTED_CATALOG = "unsupported_catalog";
+
+    /** Der Katalogstand, den der Publisher heute in jeden Plan schreibt. */
+    public String katalogstand() {
+        return catalog.version();
+    }
+
+    /**
+     * Nachlieferung nach einem Box-Update (Generalprobe B2): die Box hat ihre letzte Revision mit
+     * {@code unsupported_catalog} abgelehnt, und diese Revision trug einen ANDEREN Katalogstand als den,
+     * den die Cloud heute ausliefert. So sieht es aus, wenn der Core nach dem Update den gespeicherten Plan
+     * alten Stands wieder einspielt und die neue Palette ihn ablehnt: die Ablehnung zählt als Quittung,
+     * nichts ist offen, und ohne neue Revision bliebe die Box ohne Messplan, bis jemand ihre Auswahl ändert.
+     * Die Box nennt ihren Laufzeitstand nicht; das Urteil „ihr Stand passt nicht zu dieser Revision“ ist
+     * die Ablehnung selbst.
+     *
+     * <p>Legt Revision + 1 an, deren EIN {@code selection_requested} den heutigen Katalogstand trägt; der
+     * {@link MeasurementConfigReconciler} liefert sie aus. Keine Auswahlzeile ändert sich. Ohne Schleife:
+     * lehnt die Box auch diese Revision ab (eine Box OHNE Update gegen die neue Cloud), trägt die letzte
+     * Revision schon den heutigen Stand, und es kommt keine weitere. Nichts, solange eine Revision offen
+     * ist - die liefert der Reconciler ohnehin im heutigen Stand aus.
+     *
+     * @return die neue Revision, {@code 0} ohne Nachlieferung
+     */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.REQUIRES_NEW)
+    public long planImKatalogstandNeuAusliefern(UUID deviceId) {
+        DeviceScope scope = repository.lockDevice(deviceId);
+        if (scope == null) return 0;
+        long revision = repository.revision(deviceId);
+        if (revision == 0 || repository.acknowledgedRevision(deviceId) < revision) return 0;
+        if (catalog.version().equals(repository.katalogstandDerRevision(deviceId, revision))) return 0;
+        Row anker = repository.current(deviceId).stream()
+                .filter(r -> r.enabled() && "rejected".equals(r.applyStatus())
+                        && UNSUPPORTED_CATALOG.equals(r.applyReason()))
+                .min(java.util.Comparator.comparing((Row r) -> r.pointKey())
+                        .thenComparing(r -> r.entityId() == null ? "" : r.entityId().toString()))
+                .orElse(null);
+        if (anker == null) return 0;
+        long next = revision + 1;
+        repository.appendEvent(scope, anker.entityId(), anker.pointKey(), next,
+                UUID.nameUUIDFromBytes(("katalogstand:" + deviceId + ":" + next)
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                true, anker.cadenceS(), anker.enabledAt(), null, catalog.version(),
+                KATALOGSTAND_AKTEUR, ANSTOSS_NAME, KATALOGSTAND_GRUND, anker.customDefinitionJson(),
+                anker.retention());
+        return next;
+    }
+
+    public static State notDelivered(State state, String reason) {
+        return new State(state.deviceId(), state.siteId(), state.entityId(), state.desiredRevision(),
+                state.catalogVersion(), state.status(), reason, state.activationNotice(),
+                state.disableNotice(), state.selections(), state.events(), state.volumeEstimate());
+    }
+
     /** The whole device (the pre-3b box semantics). */
     public State state(UUID deviceId) {
         return state(deviceId, null);
     }
 
     public State state(UUID deviceId, UUID entityId) {
+        deviceId = deviceForEntity(deviceId, entityId);
         DeviceScope scope = requireDevice(deviceId);
         return state(scope, requireEntity(scope, entityId));
     }
 
     public Set<String> availableFamilies(UUID deviceId, UUID entityId) {
+        deviceId = deviceForEntity(deviceId, entityId);
         DeviceScope scope = requireDevice(deviceId);
         return MeasurementCatalogFamilies.expand(
                 repository.availableFamilies(deviceId, requireEntity(scope, entityId)),
@@ -126,6 +270,7 @@ public class MeasurementSelectionService {
     }
 
     public Map<String, Integer> selectedCadences(UUID deviceId, UUID entityId) {
+        deviceId = deviceForEntity(deviceId, entityId);
         DeviceScope scope = requireDevice(deviceId);
         return repository.selectedCadences(deviceId, requireEntity(scope, entityId));
     }
@@ -152,8 +297,10 @@ public class MeasurementSelectionService {
      */
     public MeasurementBudget.Estimate preview(UUID deviceId, UUID entityId, String pointKey,
             boolean enabled, Integer cadenceS) {
+        deviceId = deviceForEntity(deviceId, entityId);
         DeviceScope scope = requireDevice(deviceId);
         UUID entity = requireEntity(scope, entityId);
+        if (enabled) pointKey = wagoKartenIndex(entity, pointKey);
         List<Row> current = repository.current(deviceId);
         Row old = find(current, entity, pointKey);
         Resolved resolved = resolveForChange(pointKey, enabled, cadenceS, old);
@@ -169,6 +316,7 @@ public class MeasurementSelectionService {
     /** Preview a free register with the exact same validation/budget as create. */
     public MeasurementBudget.Estimate previewCustom(UUID deviceId, UUID entityId,
             Definition definition) {
+        deviceId = deviceForEntity(deviceId, entityId);
         requireEntity(requireDevice(deviceId), entityId);
         Canonical custom;
         MeasurementRetention retention;
@@ -191,8 +339,11 @@ public class MeasurementSelectionService {
         if (request == null || request.idempotencyKey() == null) {
             throw bad("Für eine Auswahländerung fehlt der Idempotenzschlüssel.");
         }
+        deviceId = deviceForEntity(deviceId, entityId);
         DeviceScope scope = lock(deviceId);
         UUID entity = requireEntity(scope, entityId);
+        // Abwählen bleibt immer möglich, auch für eine ältere Auswahl mit `karte[*]`.
+        if (request.enabled()) pointKey = wagoKartenIndex(entity, pointKey);
         List<Row> current = repository.current(deviceId);
         Row old = find(current, entity, pointKey);
         Event previous = repository.eventByRequest(deviceId, request.idempotencyKey());
@@ -257,6 +408,7 @@ public class MeasurementSelectionService {
         } catch (IllegalArgumentException e) {
             throw bad(e.getMessage());
         }
+        deviceId = deviceForEntity(deviceId, entityId);
         DeviceScope scope = lock(deviceId);
         UUID entity = requireEntity(scope, entityId);
         Event previous = repository.eventByRequest(deviceId, request.idempotencyKey());
@@ -363,7 +515,7 @@ public class MeasurementSelectionService {
             } else {
                 out.add(new MeasurementBudget.Candidate(key, row.enabled(),
                         row.cadenceS(), p.pollGroup(),
-                        MeasurementBudget.requestCostMs(p.sourceKind()), row.retention(),
+                        MeasurementBudget.requestCostMs(p.sourceKind(), p.family()), row.retention(),
                         p.family()));
             }
         }
@@ -388,8 +540,35 @@ public class MeasurementSelectionService {
                 point.retention().retentionClass(), point.retention().rawRetentionDays(),
                 point.retention().longTermCadenceS(), point.retention().longTermStrategy());
         return new Resolved(cadence, point.pollGroup(),
-                MeasurementBudget.requestCostMs(point.sourceKind()), retention, null,
+                MeasurementBudget.requestCostMs(point.sourceKind(), point.family()), retention, null,
                 point.family());
+    }
+
+    /**
+     * Ein WAGO-Kartenpunkt wählt die Karte SEINER Komponente: Karte n im Registerbild = n-te heute
+     * eingebaute Karte des Controllers nach Steckplatz. Die Vorlage {@code karte[*]} dehnte der Planer
+     * mit {@code entity_id} auf ALLE Karten des Controllers aus (Befund PR 1139); sie wird hier zum
+     * konkreten Index. Ein anderer Index, ein anderer Kartentyp oder eine Komponente ohne Karte mit
+     * Steckplatz werden abgelehnt — nie geraten.
+     */
+    private String wagoKartenIndex(UUID entity, String pointKey) {
+        Matcher m = WAGO_KARTENPUNKT.matcher(pointKey == null ? "" : pointKey);
+        if (!m.find()) return pointKey;
+        MeasurementSelectionRepository.WagoKarte karte = repository.wagoKarte(entity);
+        if (karte == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Zuerst die Energiekarte mit ihrem Steckplatz zuordnen.");
+        }
+        Matcher typ = WagoRegisterbilder.TYP.matcher(karte.typ() == null ? "" : karte.typ());
+        if (typ.find() && !typ.group(1).equals(m.group(1))) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Diese Komponente steckt in einer 750-"
+                    + typ.group(1) + ", der Messpunkt gehört zur 750-" + m.group(1) + ".");
+        }
+        if (!m.group(2).equals("*") && Integer.parseInt(m.group(2)) != karte.index()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Diese Komponente ist Karte "
+                    + karte.index() + " im Registerbild ihres Controllers.");
+        }
+        return pointKey.substring(0, m.start(2)) + karte.index() + pointKey.substring(m.end(2));
     }
 
     private Resolved resolveForChange(String pointKey, boolean enabled, Integer cadence,
@@ -404,7 +583,7 @@ public class MeasurementSelectionService {
             Point known = catalog.resolve(pointKey);
             return new Resolved(old.cadenceS(), known == null ? null : known.pollGroup(),
                     known == null ? MeasurementBudget.requestCostMs(null)
-                            : MeasurementBudget.requestCostMs(known.sourceKind()),
+                            : MeasurementBudget.requestCostMs(known.sourceKind(), known.family()),
                     old.retention(), null, known == null ? null : known.family());
         }
         return resolveCatalog(pointKey, cadence);

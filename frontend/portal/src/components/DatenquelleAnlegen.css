@@ -1,0 +1,26 @@
+.vp-dqa { display: grid; gap: var(--vp-space-4, 16px); min-width: 0; }
+.vp-dqa p, .vp-dqa h3 { margin: 0; overflow-wrap: anywhere; }
+.vp-dqa-einleitung { color: var(--vp-text-muted, #64748b); }
+.vp-dqa-felder { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: var(--vp-space-3, 12px); min-width: 0; }
+.vp-dqa-boxen { display: grid; gap: var(--vp-space-2, 8px); min-width: 0; margin: 0; padding: 0; border: 0; }
+.vp-dqa-boxen legend { margin-bottom: var(--vp-space-2, 8px); font-weight: 700; color: var(--vp-navy-1, #1e3a5f); }
+.vp-dqa-box { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--vp-space-3, 12px); align-items: start; min-width: 0; padding: var(--vp-space-3, 12px); border: 1px solid var(--vp-border, #e2e8f0); border-radius: var(--vp-radius-md, 10px); cursor: pointer; }
+.vp-dqa-box[data-gewaehlt="ja"] { border-color: var(--vp-action, #2c5282); background: var(--vp-surface-alt, #f8fafc); }
+.vp-dqa-box input { margin-top: 0.2rem; }
+.vp-dqa-box span { display: grid; gap: 0.15rem; min-width: 0; overflow-wrap: anywhere; }
+.vp-dqa-box span span { color: var(--vp-text-muted, #64748b); font-size: 0.8125rem; }
+.vp-dqa-entwurf, .vp-dqa-pruefung, .vp-dqa-budget, .vp-dqa-folgen, .vp-dqa-fehler { padding: var(--vp-space-3, 12px); border-radius: var(--vp-radius-md, 10px); }
+.vp-dqa-entwurf, .vp-dqa-folgen { background: var(--vp-surface-alt, #f8fafc); }
+.vp-dqa-pruefung.ist-ok { background: #ecfdf5; color: #166534; }
+.vp-dqa-pruefung.ist-fehler, .vp-dqa-budget, .vp-dqa-fehler { background: #fef2f2; color: #991b1b; }
+.vp-dqa-budget, .vp-dqa-folgen { display: grid; gap: var(--vp-space-2, 8px); }
+.vp-dqa-budget h3, .vp-dqa-folgen h3 { font-size: 0.9375rem; }
+.vp-dqa-folgen ul { display: grid; gap: var(--vp-space-2, 8px); margin: 0; padding-left: 1.25rem; }
+.vp-dqa-auswege { display: flex; flex-wrap: wrap; gap: var(--vp-space-2, 8px); min-width: 0; }
+.vp-dqa-auswege button { min-height: 44px; white-space: normal; }
+
+@media (max-width: 719px) {
+  .vp-dqa-felder { grid-template-columns: minmax(0, 1fr); }
+  .vp-dqa-auswege { display: grid; }
+  .vp-dqa-auswege button { width: 100%; }
+}

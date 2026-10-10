@@ -67,7 +67,9 @@ class UemsSummenwertAbnahmeTest {
             DockerImageName.parse("timescale/timescaledb:2.17.2-pg16").asCompatibleSubstituteFor("postgres"))
             .withDatabaseName("voltpilot")
             .withUsername("voltpilot")
-            .withPassword("voltpilot_dev_pw");
+            .withPassword("voltpilot_dev_pw")
+            // Die Abnahme startet keine Timescale-Jobs parallel zu Flyway.
+            .withCommand("postgres", "-c", "timescaledb.max_background_workers=0");
 
     @DynamicPropertySource
     static void properties(DynamicPropertyRegistry registry) {

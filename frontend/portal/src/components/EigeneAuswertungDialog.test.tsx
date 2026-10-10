@@ -81,7 +81,7 @@ describe('EigeneAuswertungDialog', () => {
     const { getByText } = mount();
     await waitFor(() => expect(getByText('1 · Komponente')).toBeTruthy());
     expect(getByText('2 · Messwert')).toBeTruthy();
-    expect(getByText('3 · Kennzahl')).toBeTruthy();
+    expect(getByText('3 · Zeitbezug')).toBeTruthy();
     expect(getByText('4 · Darstellung')).toBeTruthy();
     expect(getByText('5 · Überschrift')).toBeTruthy();
     // Die zwei ARTEN kommen aus dem Katalog, nicht aus dieser Datei.

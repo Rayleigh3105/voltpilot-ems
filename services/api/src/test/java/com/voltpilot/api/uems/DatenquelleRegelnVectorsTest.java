@@ -27,6 +27,7 @@ import com.voltpilot.api.uems.DatenquelleRegeln.TabellenEintrag;
 import com.voltpilot.api.uems.DatenquelleRegeln.TauschErgebnis;
 import com.voltpilot.api.uems.DatenquelleRegeln.Vorschlag;
 import com.voltpilot.api.uems.DatenquelleRegeln.Vorschlagsliste;
+import com.voltpilot.api.uems.DatenquelleRegeln.WechselWeg;
 import com.voltpilot.api.uems.DatenquelleRegeln.Zeitraum;
 import com.voltpilot.api.uems.DatenquelleRegeln.ZeitraumErgebnis;
 import java.nio.file.Files;
@@ -186,7 +187,8 @@ class DatenquelleRegelnVectorsTest {
                     instant(a.get("effective_from")),
                     p.isNull() ? null : new Pruefung(p.path("box").asText(), p.path("ergebnis").asText(),
                             instant(p.get("zeitpunkt"))),
-                    a.path("vergleich_bestaetigt").asBoolean());
+                    a.path("vergleich_bestaetigt").asBoolean(),
+                    a.path("innerhalb_gemeinsamer_steuerung").asBoolean());
             AntragErgebnis ist = DatenquelleRegeln.pruefeAntrag(antrag, quellen(in.path("quellen")),
                     boxNamen(in.path("boxen")), instant(in.get("jetzt")), zone(in));
             JsonNode exp = c.path("expected");
@@ -337,6 +339,29 @@ class DatenquelleRegelnVectorsTest {
         });
     }
 
+    /**
+     * AP-15 T6 (IP-26): vor der Prüfreihenfolge — der Weg eines Wechsels in einer Anlage mit Gemeinsamer Steuerung.
+     * Kein Grund des Vokabulars; der Code ist der der Schnittstelle, der Satz der aus {@code texte}.
+     */
+    @TestFactory
+    List<DynamicTest> gemeinsameSteuerung() throws Exception {
+        return faelle("gemeinsame_steuerung", c -> {
+            JsonNode in = c.path("input");
+            JsonNode q = in.path("quellen").get(0);
+            JsonNode gs = in.path("gemeinsame_steuerung");
+            WechselWeg ist = DatenquelleRegeln.wegDesWechsels(q.path("steuerquelle").asBoolean(),
+                    gs.isNull() ? null : gs.path("zustand").asText(), gs.path("nur_als_aenderung").asBoolean(),
+                    gs.path("ziel_ist_mitglied").asBoolean());
+            JsonNode exp = c.path("expected");
+            assertThat(ist.code()).isEqualTo(exp.path("weg").asText());
+            boolean aendern = ist == WechselWeg.GEMEINSAME_STEUERUNG_AENDERN;
+            assertThat(aendern ? DatenquelleAbgelehnt.Schnittstelle.GEMEINSAME_STEUERUNG_AENDERN.code() : null)
+                    .isEqualTo(text(exp.get("code")));
+            assertThat(aendern ? DatenquelleRegeln.gemeinsameSteuerungAendern(q.path("kennzeichen").asText()) : null)
+                    .isEqualTo(text(exp.get("text")));
+        });
+    }
+
     // ---------------------------------------------------- die Datei als Ganzes
 
     @Test
@@ -437,16 +462,19 @@ class DatenquelleRegelnVectorsTest {
     }
 
     /**
-     * Die echte Tabelle trägt die zwei Fähigkeiten, die AP-06 braucht, in der Reihenfolge des
-     * A7-Satzes — und heute noch kein Release (kein ausgeliefertes Release hat sie).
+     * Die echte Tabelle trägt die Fähigkeit, deren Fehlen der A7-Satz nennt — und heute noch kein
+     * Release (kein ausgeliefertes Release hat sie). „Zuständigkeit ab Zeitpunkt“ steht seit B06
+     * unter {@code keine_faehigkeit}: der Cloud-Zeitgeber erbringt sie für jede Box.
      */
     @Test
     void dieFaehigkeitenTabelleIstDieDesKonzepts() throws Exception {
         List<TabellenEintrag> tab = tabelle(lies(TABELLE).path("faehigkeiten"));
-        assertThat(tab).extracting(TabellenEintrag::code).containsExactly("data_sources", "assignment_effective_at");
+        assertThat(tab).extracting(TabellenEintrag::code).containsExactly("data_sources");
         assertThat(tab).extracting(TabellenEintrag::name)
-                .containsExactly("Rückmeldung je Datenquelle", "Zuständigkeit ab Zeitpunkt");
+                .containsExactly("Rückmeldung je Datenquelle");
         assertThat(tab).extracting(TabellenEintrag::abRelease).containsOnlyNulls();
+        assertThat(lies(TABELLE).path("keine_faehigkeit").findValuesAsText("was"))
+                .contains("Zuständigkeit ab Zeitpunkt");
     }
 
     // ------------------------------------------------ Referenzunternehmen
@@ -469,7 +497,8 @@ class DatenquelleRegelnVectorsTest {
                         || "erlaubt".equals(c.path("expected").path("urteil").asText());
                 Referenz r = new Referenz(ref);
                 boolean erfunden = pruefeGegenReferenz(c.path("input"), erlaubt, r, fehler);
-                pruefeVorschlaege(c.path("expected").path("vorschlaege"), r, fehler);
+                pruefeVorschlaege(c.path("expected").path("vorschlaege"), r,
+                        referenzStand(c.path("input")), fehler);
                 if (erfunden && !c.hasNonNull("annahme")) {
                     fehler.add("der Fall erfindet etwas, nennt aber keine `annahme`");
                 }
@@ -477,6 +506,17 @@ class DatenquelleRegelnVectorsTest {
             }));
         }
         return tests;
+    }
+
+    private static Instant referenzStand(JsonNode input) {
+        Instant stand = instant(input.get("jetzt"));
+        for (JsonNode komponente : input.path("komponenten")) {
+            Instant ab = instant(komponente.get("in_betrieb_ab"));
+            if (ab != null && (stand == null || ab.isAfter(stand))) {
+                stand = ab;
+            }
+        }
+        return stand;
     }
 
     /** Die Referenzdatei, nach Kennzeichen erschlossen. */
@@ -711,7 +751,8 @@ class DatenquelleRegelnVectorsTest {
      * derselbe Takt, derselbe Beginn — und ALLE Komponenten der Referenz, die an ihr hängen (A12:
      * „genau DQ-1…DQ-3“). Ein Vorschlag mit einer erfundenen Komponente nennt sie in `annahme`.
      */
-    private static void pruefeVorschlaege(JsonNode vorschlaege, Referenz r, List<String> fehler) {
+    private static void pruefeVorschlaege(JsonNode vorschlaege, Referenz r, Instant jetzt,
+            List<String> fehler) {
         for (JsonNode v : vorschlaege) {
             List<String> ks = texte(v.path("komponenten"));
             if (!r.komponenten().keySet().containsAll(ks)) {
@@ -726,13 +767,17 @@ class DatenquelleRegelnVectorsTest {
                 continue;
             }
             List<String> alle = new ArrayList<>();
-            r.komponenten().keySet().stream().filter(kz -> dq.equals(quelleDerKomponente(r, kz))).forEach(alle::add);
+            r.komponenten().entrySet().stream()
+                    .filter(e -> dq.equals(quelleDerKomponente(r, e.getKey())))
+                    .filter(e -> jetzt == null || istAktiv(e.getValue(), jetzt))
+                    .map(Map.Entry::getKey).forEach(alle::add);
             gleich(fehler, dq + " Komponenten", new TreeSet<>(alle).toString(),
                     new TreeSet<>(ks).toString());
             gleich(fehler, dq + " Anlage", rq.path("anlage").asText(), v.path("anlage").asText());
             gleich(fehler, dq + " Protokoll", rq.path("protokoll").asText(), v.path("protokoll").asText());
             gleich(fehler, dq + " Adresse", adresseAusReferenz(rq), v.path("adresse").asText());
-            gleich(fehler, dq + " Geräte-IDs", rq.path("geraete_ids").toString(), v.path("geraete_ids").toString());
+            gleich(fehler, dq + " Geräte-IDs", MAPPER.valueToTree(aktiveGeraeteIds(r, dq, jetzt)).toString(),
+                    v.path("geraete_ids").toString());
             gleich(fehler, dq + " Steuerquelle", rq.path("steuerquelle").asText(), v.path("steuerquelle").asText());
             gleich(fehler, dq + " Takt", text(rq.get("kadenz_s")), text(v.get("kadenz_s")));
             List<Zeitraum> perioden = r.perioden().get(dq);
@@ -743,6 +788,35 @@ class DatenquelleRegelnVectorsTest {
                 gleich(fehler, dq + " Box", DatenquelleRegeln.zustaendigeBox(perioden, ab), box);
             }
         }
+    }
+
+    private static boolean istAktiv(JsonNode objekt, Instant jetzt) {
+        Instant ab = instant(objekt.get("in_betrieb_ab"));
+        Instant bis = instant(objekt.get("in_betrieb_bis"));
+        return (ab == null || !jetzt.isBefore(ab)) && (bis == null || jetzt.isBefore(bis));
+    }
+
+    private static List<Integer> aktiveGeraeteIds(Referenz r, String dq, Instant jetzt) {
+        List<Integer> ids = new ArrayList<>();
+        for (JsonNode geraet : r.geraete().values()) {
+            if (!dq.equals(geraet.path("datenquelle").asText()) || geraet.path("modbus_geraete_id").isNull()) {
+                continue;
+            }
+            boolean aktiv = jetzt == null;
+            for (JsonNode einbau : geraet.path("einbauten")) {
+                if (jetzt == null) {
+                    break;
+                }
+                Instant ab = instant(einbau.get("gueltig_ab"));
+                Instant bis = instant(einbau.get("gueltig_bis"));
+                aktiv |= (ab == null || !jetzt.isBefore(ab)) && (bis == null || jetzt.isBefore(bis));
+            }
+            if (aktiv) {
+                ids.add(geraet.path("modbus_geraete_id").asInt());
+            }
+        }
+        ids.sort(Integer::compareTo);
+        return ids;
     }
 
     private static String quelleDerKomponente(Referenz r, String kz) {

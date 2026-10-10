@@ -1,0 +1,30 @@
+package com.voltpilot.api.uems;
+
+import com.voltpilot.api.uems.SteuerungsverbundVokabular.Grenzart;
+import java.math.BigDecimal;
+import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
+
+/**
+ * Die WIRKSAMEN Anteile einer Box je Richtung, wie sie ihr Herzschlag meldet (Y3, A18). Für jeden Zweischritt ist
+ * „alt“ das, was die Boxen als wirksam melden — nicht, was die Cloud zu wissen glaubt.
+ *
+ * <p>Die Bean ist {@link WirksameAnteileAusHerzschlag} (IP-17: der Herzschlag-Block trägt {@code anteile_kw}). Meldet
+ * ein Mitglied nichts, nimmt {@link SteuerungsverbundAnteilDienst} die gesendeten und quittierten Dokumente — und nach
+ * einem erkannten Rückspielen gar nichts (dann kein Scharfschalten).
+ */
+public interface WirksameAnteileQuelle {
+
+    /** Leer = die Box hat (noch) keine Anteile gemeldet; unbekannt ist keine Null. */
+    Optional<Map<Grenzart, BigDecimal>> wirksam(UUID siteId, UUID box);
+
+    /**
+     * Die Reserve der anderen steuerbaren Verbraucher, die die Box aus ihrem Dokument hält (Herzschlag
+     * {@code reserve_verbraucher_kw.bezug}, AP-15 Folge von IP-19). Leer = nicht gemeldet (alte Box oder ein Dokument
+     * ohne das Feld) — dann gilt auf der Box keine Reserve.
+     */
+    default Optional<BigDecimal> reserveVerbraucher(UUID siteId, UUID box) {
+        return Optional.empty();
+    }
+}

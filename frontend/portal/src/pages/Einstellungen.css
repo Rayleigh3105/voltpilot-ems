@@ -305,6 +305,20 @@ button.vp-einst-zeile:focus-visible {
   padding: 12px 14px;
 }
 
+/* UEMS AP-02 IP-8: das Standort-Objekt als Zeile der Gruppe „Anlage" (nur mit Standort). */
+.vp-einst-standort {
+  padding: 8px 14px;
+}
+
+.vp-einst-standort > .vp-kv {
+  margin: 0;
+}
+
+/* UEMS AP-15 IP-23: „Gemeinsame Steuerung" - eine Gruppe mit ihrer Karte statt einer Liste. */
+.vp-einst-gemeinsam > .vp-note {
+  margin: 0 0 0 4px;
+}
+
 .vp-einst-grenze {
   margin: 0;
   font-size: 0.82rem;

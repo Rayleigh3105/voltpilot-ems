@@ -4,21 +4,23 @@
  * Womit laden, Ladeziel, Ladeplan, Vorrang vor dem Speicher, Fahrzeuge.
  */
 import { liste } from './liste';
-import { useState } from 'react';
-import type { ChargingConfig } from '../api';
+import { useEffect, useId, useRef, useState } from 'react';
+import { api, type ChargingConfig } from '../api';
+import { Recht } from '../components/Recht';
 import { LADEQUELLE } from '../glossar';
 import type { SpeicherFreigabe } from '../ladepunkte';
 import type { SiteFahrzeuge } from '../fahrzeugProfile';
 import { fahrzeugName, fahrzeugZeilen, kartenKurz } from '../fahrzeugProfile';
 import type { LadeparkRahmen } from '../verbraucherZone';
 import type { SteuerartWunsch } from '../steuerartDialog';
+import { parseDecimal } from '../zahl';
 import { Blatt } from './Blatt';
 import type { BlattKontext } from './Blaetter';
 import { quellenAnteil, type GeraetBild } from './bild';
 import { Ic } from './Ic';
 import {
-  OPTION_SONNE_SPEICHER, band, hatSpeicherGrenze, ladeQuelle, ladeWahl, ladeplan, naechsteUhrzeit,
-  speicherZeile, type LadeQuelle,
+  OPTION_SONNE_SPEICHER, band, grenzePruefung, hatSpeicherGrenze, heutigerAnschluss, kwVereinbart, ladebudgetKw,
+  ladeQuelle, ladeWahl, ladeplan, lokalesDatum, naechsteUhrzeit, speicherZeile, type AnschlussStand, type LadeQuelle,
 } from './laden';
 import type { BlattZustand, SeitenBild } from './seite';
 import { Zeitband } from './Zeitband';
@@ -82,7 +84,7 @@ function BudgetKarte({ bild, rahmen, oeffne }: { bild: SeitenBild; rahmen: Ladep
       <section className="card" aria-label="Netzanschluss">
         <div className="card-h">
           <h2><Ic n="gauge" s={18} />Netzanschluss</h2>
-          <button type="button" className="tbtn" onClick={() => oeffne({ art: 'rahmen' })}><Ic n="sliders" s={16} />Rahmen</button>
+          <button type="button" className="tbtn" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'rahmen' }); }}><Ic n="sliders" s={16} />Rahmen</button>
         </div>
         <p className="leise">Die Grenze Ihres Netzanschlusses ist noch nicht hinterlegt. Ohne sie verteilt die Box nur, was sie sicher weiß.</p>
       </section>
@@ -92,7 +94,7 @@ function BudgetKarte({ bild, rahmen, oeffne }: { bild: SeitenBild; rahmen: Ladep
     <section className="card" aria-label="Netzanschluss">
       <div className="card-h">
         <h2><Ic n="gauge" s={18} />Netzanschluss {fKw(b.anschlussKw)}</h2>
-        <button type="button" className="tbtn" onClick={() => oeffne({ art: 'rahmen' })}><Ic n="sliders" s={16} />Rahmen</button>
+        <button type="button" className="tbtn" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'rahmen' }); }}><Ic n="sliders" s={16} />Rahmen</button>
       </div>
       <div className="budget">
         <div className="b-bar" role="img" aria-label="Aufteilung des Netzanschlusses">
@@ -182,7 +184,7 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, releas
   const ticks: number[] = [];
   for (let k = 0; k <= t1 - r.jetzt; k++) if ((r.jetzt + k) % 24 === 0) ticks.push(k);
   return (
-    <section className="card lp-card" aria-label={g.name}>
+    <section className={`card lp-card${bild.funktion.angehalten ? ' matt' : ''}`} aria-label={g.name}>
       <div className="lp-h">
         <span className={`ico${an ? ' on' : ''}`}><Ic n="car" s={26} /></span>
         <span className="t">
@@ -194,16 +196,17 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, releas
           <small>{an ? herkunftWort(bild, r.jetzt) : g.pill[1]}</small>
         </span>
       </div>
-      <div className="lmodes" role="group" aria-label="Lademodus" style={{ gridTemplateColumns: 'repeat(3,minmax(0,1fr))' }}>
+      <Recht aktion="handeingriff.setzen"><div className="lmodes" role="group" aria-label="Lademodus" style={{ gridTemplateColumns: 'repeat(3,minmax(0,1fr))' }}>
         {([['aus', 'pause', 'Aus'], ['smart', 'sun', 'Smart'], ['schnell', 'rocket', 'Schnell']] as const).map(([k, i, label]) => (
           <button
             type="button"
             key={k}
             data-m={k}
             aria-pressed={wahl === k}
-            disabled={busy || (!l?.angesteckt && k !== 'smart')}
-            onClick={() => {
+            disabled={busy || (k !== 'smart' && (!l?.angesteckt || bild.funktion.sperre != null))}
+            onClick={(e) => {
               if (k === 'smart') { if (wahl !== 'smart') onSmart(g); return; }
+              e.currentTarget.focus();
               oeffne({ art: 'geraet', id: g.id, modus: k === 'aus' ? 'aus' : 'an' });
             }}
           >
@@ -211,7 +214,8 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, releas
             {label}
           </button>
         ))}
-      </div>
+      </div></Recht>
+      {bild.funktion.sperre && <p className="leise" role="note">{bild.funktion.sperre}</p>}
       <p className="leise" style={{ color: 'var(--c-fg)', fontWeight: 600 }}>{ansage}</p>
       {l?.sitzungKwh != null && l.sitzungKwh > 0.05 && (
         <div className="soc">
@@ -228,21 +232,21 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, releas
         <>
           <div className="blk">
             <h3>Womit laden?</h3>
-            <div className="chips" role="group" aria-label="Womit laden">
+            <Recht aktion="betriebsweise.aendern"><div className="chips" role="group" aria-label="Womit laden">
               {quellen.filter(([, , id]) => frei.has(id)).map(([k, label]) => (
                 <button type="button" key={k} aria-pressed={q === k} disabled={busy} onClick={() => onQuelle(g, k)}>{label}</button>
               ))}
               {speicherSperre && (
                 <button type="button" key="speicher-gesperrt" aria-pressed={false} disabled title={speicherSperre.grund ?? undefined}>{LADEQUELLE.speicher}</button>
               )}
-            </div>
+            </div></Recht>
             {speicherSperre?.grund && <p className="leise">{LADEQUELLE.speicher}: {speicherSperre.grund}</p>}
             {q === 'speicher' && <p className="leise">{speicherZeile(release, bild.reihen.speicherGrenze?.[r.jetzt] ?? null, releaseGemeldet)}</p>}
             {q === 'guenstig' && !zielAn && s?.preisgrenzeCtKwh != null && <p className="leise">Lädt, solange der Börsenpreis unter {fCt(s.preisgrenzeCtKwh)} liegt.</p>}
             {q === 'min' && <p className="leise">Lädt immer mit mindestens {fKw(s?.mindestleistungKw ?? 1.4)}; was die Sonne mehr liefert, kommt dazu.</p>}
           </div>
           {zielMoeglich && (
-            <button type="button" className="lziel" onClick={() => oeffne({ art: 'ziel', id: g.id })}>
+            <button type="button" className="lziel" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'ziel', id: g.id }); }}>
               <Ic n="flag" s={20} />
               <span>
                 <b>{zielAn ? `+${zahl0(s?.zielEnergieKwh ?? 0)} kWh bis ${zielBis != null ? uhrTag(zielBis) : s?.zielFenster?.bis ?? ''}` : 'Kein Ziel · lädt, wenn es passt'}</b>
@@ -311,14 +315,14 @@ function ReserveKarte({ standard, eigen, busy, onReserve }: {
       <p style={{ margin: '0 0 10px', font: '600 15px/1.45 var(--font)' }}>
         Der Speicher behält {kwhText(wert)} mehr, als die vorsichtige Prognose bis zur nächsten Sonne verlangt{eigen == null ? ' (Vorgabe)' : ''}.
       </p>
-      <div className="chips" role="group" aria-label="Reserve">
+      <Recht aktion="betriebsweise.aendern"><div className="chips" role="group" aria-label="Reserve">
         {chips.map((v) => (
           <button type="button" key={v} aria-pressed={wert === v} disabled={busy}
             onClick={() => onReserve(v === standard ? null : v)}>
             {kwhText(v)}{v === standard ? ' · Vorgabe' : ''}
           </button>
         ))}
-      </div>
+      </div></Recht>
       <p className="leise">Gerechnet wird vorsichtig: eher viel Verbrauch, eher wenig Sonne, aus den gemessenen Prognosefehlern dieser Anlage. Mehr Reserve heißt: weniger für das Auto, mehr Sicherheit für die Nacht. Eine Änderung gilt ab dem nächsten Fahrplan, spätestens in einer Viertelstunde.</p>
     </section>
   );
@@ -332,10 +336,10 @@ function VorrangKarte({ config, busy, onVorrang, zuGeraete }: { config: Charging
       <p style={{ margin: '0 0 10px', font: '600 15px/1.45 var(--font)' }}>
         {speicherZuerst ? 'Der Speicher hat Vorrang. Die Autos bekommen, was er nicht aufnimmt.' : 'Die Autos haben Vorrang vor dem Speicher.'}
       </p>
-      <div className="chips" role="group" aria-label="Vorrang">
+      <Recht aktion="betriebsweise.aendern"><div className="chips" role="group" aria-label="Vorrang">
         <button type="button" aria-pressed={speicherZuerst} disabled={busy} onClick={() => !speicherZuerst && onVorrang(true)}>Speicher zuerst</button>
         <button type="button" aria-pressed={!speicherZuerst} disabled={busy} onClick={() => speicherZuerst && onVorrang(false)}>Autos zuerst</button>
-      </div>
+      </div></Recht>
       <button type="button" className="lnk" style={{ marginTop: 6 }} onClick={zuGeraete}>Ganze Reihenfolge ansehen <Ic n="chevR" s={16} /></button>
     </section>
   );
@@ -350,7 +354,7 @@ function FahrzeugKarte({ fahrzeuge, oeffne, bild }: { fahrzeuge: SiteFahrzeuge |
       {zeilen.length ? (
         <div className="fz">
           {zeilen.map((z) => (
-            <button type="button" key={z.key} className="fz-r" style={{ border: 0, background: 'none', width: '100%', textAlign: 'left', font: 'inherit', color: 'inherit', cursor: 'pointer' }} onClick={() => oeffne({ art: 'fahrzeug', tagRef: z.tagRef })}>
+            <button type="button" key={z.key} className="fz-r" style={{ border: 0, background: 'none', width: '100%', textAlign: 'left', font: 'inherit', color: 'inherit', cursor: 'pointer' }} onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'fahrzeug', tagRef: z.tagRef }); }}>
               <span className="li"><Ic n={z.benannt ? 'car' : 'help'} s={19} /></span>
               <span>
                 <b>{z.name}</b>
@@ -405,7 +409,7 @@ export function ZielBlatt({ k, id, onSpeichern }: { k: BlattKontext; id: string;
       voll
       onClose={k.zu}
       fuss={
-        <>
+        <Recht aktion="betriebsweise.aendern">
           {s?.ziel ? (
             <button type="button" className="btn sek" disabled={busy} onClick={async () => { if (await onSpeichern(g, wunsch(false))) k.zu(); }}>Kein Ziel</button>
           ) : (
@@ -415,7 +419,7 @@ export function ZielBlatt({ k, id, onSpeichern }: { k: BlattKontext; id: string;
             <Ic n="check" s={18} />
             {busy ? 'Speichere …' : 'Ziel übernehmen'}
           </button>
-        </>
+        </Recht>
       }
     >
       <div className="blk">
@@ -482,18 +486,50 @@ export function ZielBlatt({ k, id, onSpeichern }: { k: BlattKontext; id: string;
   );
 }
 
-export function RahmenBlatt({ k, rahmen, config, onGrenze }: {
-  k: BlattKontext; rahmen: LadeparkRahmen | null; config: ChargingConfig | null; onGrenze: (kw: number) => Promise<boolean>;
+/**
+ * Das Rahmen-Blatt: die Anschlussgrenze gehört dem Kunden, der Rest ist von der
+ * Box vorgegeben. Die Grenze schreibt der Kunden-Schritt `PUT /charging-frame`
+ * (AP-01 IP-13): er prüft sie gegen den heute gebundenen Netzanschluss, die
+ * Grundlast der letzten 7 Tage und die Hausreserve und lehnt mit 422 ab. Das
+ * Blatt zeigt denselben Grund schon vorher und sperrt „Übernehmen“. Ohne
+ * Bindung gilt der Übergang: die vereinbarte Leistung kommt aus dem Blatt.
+ */
+export function RahmenBlatt({ k, siteId, rahmen, config, onGrenze }: {
+  k: BlattKontext; siteId: string; rahmen: LadeparkRahmen | null; config: ChargingConfig | null;
+  onGrenze: (kw: number, vereinbartKw?: number) => Promise<boolean>;
 }) {
   const start = config?.gridLimitKw ?? rahmen?.gepflegteGrenzeKw ?? rahmen?.netzanschlussKw ?? null;
   const [kw, setKw] = useState<number | null>(start);
+  const anschluss = useAnschluss(siteId);
+  const [uebergang, setUebergang] = useState('');
+  const [uebergangBeruehrt, setUebergangBeruehrt] = useState(false);
+  const uebergangRef = useRef<HTMLInputElement>(null);
+  const uebergangId = useId();
   const geaendert = kw != null && kw !== start;
+  const ungebunden = anschluss.zustand === 'ungebunden';
+  const uebergangKw = parseDecimal(uebergang);
+  const uebergangFehlt = ungebunden && (uebergangKw == null || uebergangKw <= 0);
+  const grundlastKw = config?.frame?.maxHouseLoadKw ?? null;
+  const reserveKw = config?.frame?.houseReserveKw ?? null;
+  const einwand = grenzePruefung(kw, anschluss, uebergangKw, grundlastKw, reserveKw);
+  const budgetKw = ladebudgetKw(kw, grundlastKw, reserveKw);
   const zeilen: [string, string][] = [];
   if (rahmen?.sicherheitsabstandPct != null) zeilen.push(['Sicherheitsabstand', fPct(rahmen.sicherheitsabstandPct)]);
   if (rahmen?.mindestleistungKw != null) zeilen.push(['Mindestleistung je Auto', fKw(rahmen.mindestleistungKw)]);
   if (config?.frame?.rotationMinutes != null) zeilen.push(['Wechsel bei knapper Leistung', `alle ${config.frame.rotationMinutes} Min`]);
   if (rahmen?.modus) zeilen.push(['Budget', rahmen.modus === 'measured' || rahmen.modus === 'metered' ? 'gemessen am Netzanschluss' : 'fest']);
   zeilen.push(['§ 14a EnWG', 'Grenze gilt dann für alle']);
+
+  async function uebernehmen() {
+    if (kw == null) return;
+    if (uebergangFehlt) {
+      setUebergangBeruehrt(true);
+      uebergangRef.current?.focus();
+      return;
+    }
+    if (await onGrenze(kw, ungebunden && uebergangKw != null ? uebergangKw : undefined)) k.zu();
+  }
+
   return (
     <Blatt
       symbol="gauge"
@@ -502,11 +538,11 @@ export function RahmenBlatt({ k, rahmen, config, onGrenze }: {
       onClose={k.zu}
       fuss={geaendert ? (
         <>
-          <button type="button" className="btn sek" onClick={() => setKw(start)}>Abbrechen</button>
-          <button type="button" className="btn" disabled={k.busy === 'rahmen'} onClick={async () => { if (kw != null && (await onGrenze(kw))) k.zu(); }}>
+          <button type="button" className="btn sek" onClick={() => { setKw(start); setUebergangBeruehrt(false); }}>Abbrechen</button>
+          <Recht aktion="grenze.eintragen"><button type="button" className="btn" disabled={k.busy === 'rahmen' || anschluss.zustand === 'laden' || einwand != null} onClick={() => void uebernehmen()}>
             <Ic n="check" s={18} />
             Übernehmen
-          </button>
+          </button></Recht>
         </>
       ) : null}
     >
@@ -515,12 +551,50 @@ export function RahmenBlatt({ k, rahmen, config, onGrenze }: {
         <div className="param">
           <div className="prow">
             <span>Ihr Netzanschluss<small>gehört Ihnen; VoltPilot hält ihn ein</small></span>
-            <span className="stp">
-              <button type="button" aria-label="weniger" onClick={() => setKw(Math.max(6, (kw ?? 22) - 1))}><Ic n="minus" s={18} /></button>
-              <output>{kw != null ? fKw(kw) : '—'}</output>
-              <button type="button" aria-label="mehr" onClick={() => setKw(Math.min(400, (kw ?? 21) + 1))}><Ic n="plus" s={18} /></button>
-            </span>
+            <Recht aktion="grenze.eintragen">
+              <span className="stp">
+                <button type="button" aria-label="weniger" onClick={() => setKw(Math.max(6, (kw ?? 22) - 1))}><Ic n="minus" s={18} /></button>
+                <output>{kw != null ? fKw(kw) : '—'}</output>
+                <button type="button" aria-label="mehr" onClick={() => setKw(Math.min(400, (kw ?? 21) + 1))}><Ic n="plus" s={18} /></button>
+              </span>
+            </Recht>
           </div>
+          {ungebunden && geaendert && (
+            <div className="prow">
+              <span><label htmlFor={uebergangId}>Vereinbarte Leistung (kW)</label></span>
+              <input
+                ref={uebergangRef}
+                id={uebergangId}
+                className="zahl"
+                inputMode="decimal"
+                value={uebergang}
+                onChange={(e) => { setUebergang(e.target.value); setUebergangBeruehrt(true); }}
+                aria-invalid={uebergangBeruehrt && uebergangFehlt ? true : undefined}
+              />
+            </div>
+          )}
+        </div>
+        <div className="pruefung" aria-label="Plausibilitätsprüfung der Anschlussgrenze">
+          {anschluss.zustand === 'laden' && <p className="leise">Netzanschluss wird geprüft …</p>}
+          {anschluss.zustand === 'fehler' && <p className="leise">Der Netzanschluss konnte nicht geladen werden.</p>}
+          {anschluss.zustand === 'gebunden' && (
+            <p className="leise">
+              {anschluss.vereinbartKw == null
+                ? `Netzanschluss ${anschluss.kennzeichen}: vereinbarte Leistung fehlt.`
+                : `Netzanschluss ${anschluss.kennzeichen}: ${kwVereinbart(anschluss.vereinbartKw)} vereinbart.`}
+            </p>
+          )}
+          {ungebunden && (
+            <p className="leise">Heute ist kein Netzanschluss gebunden. Tragen Sie für den Übergang die vereinbarte Leistung im Dialog ein.</p>
+          )}
+          {grundlastKw != null && reserveKw != null && (
+            <p className="leise">
+              Grundlast der letzten 7 Tage {kwVereinbart(grundlastKw)} · Hausreserve {kwVereinbart(reserveKw)}
+              {budgetKw != null && budgetKw > 0 ? ` · Ladebudget ${kwVereinbart(budgetKw)}` : ''}
+            </p>
+          )}
+          {uebergangBeruehrt && uebergangFehlt && geaendert && <p className="stn-fehler">Tragen Sie die vereinbarte Leistung ein.</p>}
+          {einwand && <p className="stn-fehler">{einwand}</p>}
         </div>
       </div>
       <div className="blk">
@@ -542,6 +616,27 @@ export function RahmenBlatt({ k, rahmen, config, onGrenze }: {
   );
 }
 
+/** Der heute gebundene Netzanschluss der Anlage - gelesen, sobald das Rahmen-Blatt aufgeht. */
+function useAnschluss(siteId: string): AnschlussStand {
+  const [stand, setStand] = useState<AnschlussStand>({ zustand: 'laden' });
+  useEffect(() => {
+    let aktiv = true;
+    const heute = lokalesDatum(new Date());
+    api.siteDetail(siteId)
+      .then(async (detail): Promise<AnschlussStand> => {
+        if (!detail.standort) return { zustand: 'ungebunden' };
+        const liste = await api.netzanschluesse(detail.standort.id, heute);
+        return heutigerAnschluss(liste.netzanschluesse, siteId, heute);
+      })
+      .then(
+        (s) => { if (aktiv) setStand(s); },
+        () => { if (aktiv) setStand({ zustand: 'fehler' }); },
+      );
+    return () => { aktiv = false; };
+  }, [siteId]);
+  return stand;
+}
+
 export function FahrzeugBlatt({ k, tagRef, fahrzeuge, onSetzen }: {
   k: BlattKontext; tagRef: string; fahrzeuge: SiteFahrzeuge | null;
   onSetzen: (tagRef: string, w: { name?: string; quelle?: 'sofort' | 'ueberschuss' | '' }) => Promise<boolean>;
@@ -558,11 +653,11 @@ export function FahrzeugBlatt({ k, tagRef, fahrzeuge, onSetzen }: {
       unter="Einstellung für diese Ladekarte"
       onClose={k.zu}
       fuss={
-        <button type="button" className="btn" disabled={busy} onClick={async () => {
+        <Recht aktion="ladepunkt.betrieb"><button type="button" className="btn" disabled={busy} onClick={async () => {
           if (name.trim() !== (f.name ?? '')) { if (await onSetzen(tagRef, { name: name.trim() })) k.zu(); } else k.zu();
         }}>
           Fertig
-        </button>
+        </button></Recht>
       }
     >
       <div className="blk">
@@ -577,11 +672,11 @@ export function FahrzeugBlatt({ k, tagRef, fahrzeuge, onSetzen }: {
       </div>
       <div className="blk">
         <h3>Wenn diese Karte lädt</h3>
-        <div className="chips">
+        <Recht aktion="ladepunkt.betrieb"><div className="chips">
           <button type="button" aria-pressed={q == null} disabled={busy} onClick={() => void onSetzen(tagRef, { quelle: '' })}>wie der Ladepunkt</button>
           <button type="button" aria-pressed={q === 'ueberschuss'} disabled={busy} onClick={() => void onSetzen(tagRef, { quelle: 'ueberschuss' })}>Smart</button>
           <button type="button" aria-pressed={q === 'sofort'} disabled={busy} onClick={() => void onSetzen(tagRef, { quelle: 'sofort' })}>Schnell</button>
-        </div>
+        </div></Recht>
         <p>„Smart“ lädt mit Sonnenstrom, „Schnell“ sofort mit voller Leistung. Ohne Wahl gilt die Einstellung des Ladepunkts.</p>
       </div>
     </Blatt>

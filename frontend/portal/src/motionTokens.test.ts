@@ -228,7 +228,8 @@ describe('Bewegung P0 · EIN Schalter, EINE Stelle', () => {
       '.vp-flow-rev',
       '.vp-loader-ring',
       '.vp-spinner',
-      '.vp-auth-flow .spoke',
+      '.vp-auth .vp-auth-fl',
+      '.vp-auth .vp-auth-tile',
       '.vp-flowport.accepts',
       '.vp-ustate-busy .vp-ustate-dot',
       '.vp-fleet-dot',
@@ -240,8 +241,8 @@ describe('Bewegung P0 · EIN Schalter, EINE Stelle', () => {
 
   it('der EINE Block steht NACH jeder `infinite`-Animation (Kaskade)', () => {
     // ⚠ Im Browser gemessen, nicht theoretisch: eine Media-Query erhöht die
-    // Spezifität NICHT. Stand der Block oben in der Datei, gewann
-    // `.vp-auth-flow .spoke { animation: … infinite }` aus Zeile ~1130 und die
+    // Spezifität NICHT. Stand der Block oben in der Datei, gewann die
+    // Laufpunkt-Regel der Login-Bühne (damals `.vp-auth-flow .spoke`) und die
     // Login-Bühne lief unter reduzierter Bewegung weiter — obwohl der Block sie
     // namentlich nennt. Ein Text-Wächter kann die Kaskade nur so prüfen.
     const letzteLoop = index.lastIndexOf('infinite;');
@@ -357,6 +358,9 @@ const LOOP_AUSNAHMEN: Record<string, string> = {
   'vp-flowport-pulse': 'Fluss-Andockpunkt: gehört zum Energiefluss (Tempo aus `useFlowTempo`).',
   'vp-ustate-pulse': 'Zustands-Punkt „Auftrag unterwegs": Wartezeit, nicht Zustandswechsel.',
   'vp-auth-flow': 'Login-Bühne — die benannte Ausnahme E7 des Konzepts (1,8 s).',
+  'vp-auth-hl':
+    'Login-Bühne: der Lichtpunkt wandert alle 2 s zur nächsten Kachel (20 s für zehn) — EIN ' +
+    'Keyframe, je Kachel versetzt; der Knopf und reduzierte Bewegung halten ihn an.',
   'vp-flow':
     'Energiefluss: 0,9 s ist nur das Referenztempo bei 2 kW — das GEZEIGTE ' +
     'Tempo kommt aus `flowTempo(kW)` per `Animation.playbackRate` ' +

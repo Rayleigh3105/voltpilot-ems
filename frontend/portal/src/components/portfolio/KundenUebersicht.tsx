@@ -10,6 +10,7 @@ import type {
 } from '../../kundenUebersicht';
 import { Erklaert } from '../VerlaufRahmen';
 import { RowMenu, type RowMenuItem } from '../RowMenu';
+import { B, H, UNTEN, flaeche, pfad } from './kurveGeometrie';
 import './KundenUebersicht.css';
 
 /**
@@ -32,6 +33,7 @@ export function KundenUebersicht({
   anlagen,
   hrefFor,
   anpassen,
+  hinweis,
 }: {
   titel: string;
   titelVersteckt: boolean;
@@ -45,6 +47,8 @@ export function KundenUebersicht({
   hrefFor: (id: string) => string;
   /** Der Anpassen-Modus, falls offen (Leiste + Liste). */
   anpassen?: ReactNode;
+  /** UEMS AP-02 IP-10: ein Hinweis des Wirts unter der Statuszeile (Vorschlagskarte). */
+  hinweis?: ReactNode;
 }) {
   const block = (b: UebersichtBlock) => {
     if (b === 'heute' && heute) return <HeuteBlock key="heute" heute={heute} kurve={kurve} />;
@@ -72,6 +76,7 @@ export function KundenUebersicht({
         )}
         <RowMenu items={aktionen} label="Weitere Aktionen" />
       </div>
+      {hinweis}
       {anpassen}
       <div className="vp-ku-bloecke">{inhalt}</div>
     </div>
@@ -132,55 +137,6 @@ function HeuteBlock({ heute, kurve }: { heute: HeuteKarte; kurve: TagesKurve | n
       )}
     </section>
   );
-}
-
-const B = 960;
-const H = 130;
-const UNTEN = H;
-
-/** Ein Pfad mit Lücken: jede `null`-Viertelstunde bricht die Linie. */
-function pfad(werte: readonly (number | null)[], max: number, bis: number, hoehe = UNTEN, breite = B): string {
-  let d = '';
-  let offen = false;
-  for (let i = 0; i <= Math.min(bis, 95); i++) {
-    const v = werte[i];
-    if (v == null) {
-      offen = false;
-      continue;
-    }
-    const x = ((i + 0.5) / 96) * breite;
-    const y = hoehe - (Math.max(0, v) / max) * (hoehe - 8);
-    d += `${offen ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`;
-    offen = true;
-  }
-  return d;
-}
-
-/** Die Fläche unter einer Reihe — je zusammenhängendem Stück geschlossen. */
-function flaeche(werte: readonly (number | null)[], max: number, bis: number, hoehe = UNTEN, breite = B): string {
-  let d = '';
-  let start: number | null = null;
-  let letzte = 0;
-  const schliessen = () => {
-    if (start != null) d += `L${letzte.toFixed(1)},${hoehe}L${start.toFixed(1)},${hoehe}Z`;
-    start = null;
-  };
-  for (let i = 0; i <= Math.min(bis, 95); i++) {
-    const v = werte[i];
-    if (v == null) {
-      schliessen();
-      continue;
-    }
-    const x = ((i + 0.5) / 96) * breite;
-    const y = hoehe - (Math.max(0, v) / max) * (hoehe - 8);
-    if (start == null) {
-      start = x;
-      d += `M${x.toFixed(1)},${hoehe}L${x.toFixed(1)},${y.toFixed(1)}`;
-    } else d += `L${x.toFixed(1)},${y.toFixed(1)}`;
-    letzte = x;
-  }
-  schliessen();
-  return d;
 }
 
 function TagesKurveSvg({ kurve }: { kurve: TagesKurve }) {

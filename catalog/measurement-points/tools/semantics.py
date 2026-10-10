@@ -39,19 +39,21 @@ DIRECTIONLESS = frozenset({
 })
 # Einheiten einer Energiemenge. Ein Punkt mit einer davon MUSS eine Energie-Größe tragen,
 # sonst entkäme er der Richtungspflicht.
-ENERGY_UNITS = frozenset({"0,1 kWh", "MWh", "VAh", "Wh", "Wmin", "kWh", "mWh", "varh"})
+ENERGY_UNITS = frozenset({"MWh", "VAh", "Wh", "Wmin", "kWh", "mWh", "varh"})
 
 # Belegte Einheit → Größe (Dimension). Nur eindeutige Einheiten; „Pct“ und „%“ fehlen bewusst.
+# Eine Einheit mit eingebackenem Faktor („0,1 kWh“, „cHz“) gibt es nicht mehr: `unit` ist die Einheit
+# des DEKODIERTEN Werts, der Faktor steht an `scale` (`validate.py` lehnt eine Zahl vorn ab).
 UNIT_QUANTITY = {
     "W": "active_power", "kW": "active_power",
     "Wh": "active_energy", "kWh": "active_energy", "MWh": "active_energy",
-    "mWh": "active_energy", "0,1 kWh": "active_energy", "Wmin": "active_energy",
+    "mWh": "active_energy", "Wmin": "active_energy",
     "var": "reactive_power", "varh": "reactive_energy",
     "VA": "apparent_power", "VAh": "apparent_energy",
-    "V": "voltage", "0,1 V": "voltage", "0,01 V": "voltage",
-    "A": "current", "0,1 A": "current", "0,01 A": "current",
-    "Hz": "frequency", "cHz": "frequency",
-    "°C": "temperature", "0,1 °C": "temperature", "°F": "temperature", "C": "temperature",
+    "V": "voltage",
+    "A": "current",
+    "Hz": "frequency",
+    "°C": "temperature", "°F": "temperature", "C": "temperature",
     "PF": "power_factor", "cos()": "power_factor",
 }
 # ⚠ „K“ fehlt bewusst: der einzige Punkt in Kelvin (Shelly lights[].temp) ist eine
@@ -72,12 +74,71 @@ ENERGY_WITHOUT_DIRECTION = {
         "SunSpec 122 nennt nur „Quadrant 3“ ohne Bezugsrichtung (Erzeuger- oder Verbraucher-Zählpfeil)",
     "sunspec.model_122.actvarhq4":
         "SunSpec 122 nennt nur „Quadrant 4“ ohne Bezugsrichtung (Erzeuger- oder Verbraucher-Zählpfeil)",
+    # go-e nennt für seine Zähler nur „in Wh“ (generate.GOE_EINHEIT_IM_TEXT), nie eine Richtung.
+    **{
+        f"goe.api_v2.{key}": f"go-e API v2 `{key}`: „{text}“ — ohne Richtung"
+        for key, text in (
+            ("eto", "energy_total, measured in Wh"),
+            ("eto_mid", "MID energy_total, measured in Wh"),
+            ("wh", "energy in Wh since car connected"),
+            ("wh_mid", "MID energy in Wh since car connected"),
+            ("whb", "energy BATTERY in Wh since car connected"),
+            ("whg", "energy GRID in Wh since car connected"),
+            ("who", "energy OTHER in Wh since car connected"),
+            ("whs", "energy SOLAR in Wh since car connected"),
+        )
+    },
+}
+
+# Zähler (`aggregation_kind: counter`), deren Einheit KEINE Anzeige-Einheit des Vertrags
+# `docs/contracts/v2/ergebnis-zustand-vectors.json` (`rundung.anzeige_einheiten`) ist. Die Cloud nennt
+# für sie keine Zahl in einem Mengen-Satz („Zuwachs gemessen …“ ohne Zahl) — darum steht jeder
+# einzeln hier, mit der ART, warum, und nie geraten. Ein Nachtrag an `unit` hebt den Laufzeitstand
+# (`unit` ist ein Box-Feld, `cataloglib.EDGE_FIELDS`) und gehört damit zu einem Edge-Release.
+ZAEHLER_OHNE_ANZEIGE_EINHEIT_ARTEN = {
+    "keine_energie": "zählt Zyklen, Ereignisse oder Revisionen — es gibt keine Einheit nachzutragen",
+    "einheit_im_schluessel": "die Station nennt die Einheit je Wert; sie steht im konkreten Schlüssel "
+                             "der Reihe (`MeasurementCatalog.einheit`), nie im Katalog",
+    "faktor_zu_erheben": "der Faktor dieser Karte ist nicht belegt und wird am Gerät erhoben (UEMS AP-05 "
+                         "Befund 4) — ohne Faktor hat der dekodierte Wert keine Einheit",
+}
+ZAEHLER_OHNE_ANZEIGE_EINHEIT: dict[str, tuple[str, str]] = {
+    **{
+        f"deye.hybrid_3p.battery-{n}.battery-{n}-cycles":
+            ("keine_energie", f"ha-solarman „Battery {n} Cycles“ zählt Ladezyklen")
+        for n in range(1, 21)
+    },
+    "deye.hybrid_3p.meter.today-battery-life-cycles":
+        ("keine_energie", "ha-solarman „Today Battery Life Cycles“ zählt Ladezyklen"),
+    "deye.hybrid_3p.meter.total-battery-life-cycles":
+        ("keine_energie", "ha-solarman „Total Battery Life Cycles“ zählt Ladezyklen"),
+    "shelly.gen1.input[*].inputs[*].event_cnt": ("keine_energie", "Shelly `event_cnt` zählt Eingangs-Ereignisse"),
+    "shelly.gen1.system.cfg_changed_cnt": ("keine_energie", "Shelly `cfg_changed_cnt` zählt Konfigurationsänderungen"),
+    "shelly.gen1.system.serial": ("keine_energie", "Shelly `serial` zählt Neustarts"),
+    "shelly.gen2plus.sys.cfg_rev": ("keine_energie", "Shelly `cfg_rev` ist eine Konfigurationsrevision"),
+    "shelly.gen2plus.sys.kvs_rev": ("keine_energie", "Shelly `kvs_rev` ist eine KVS-Revision"),
+    "shelly.gen2plus.sys.schedule_rev": ("keine_energie", "Shelly `schedule_rev` ist eine Zeitplanrevision"),
+    "shelly.gen2plus.sys.webhook_rev": ("keine_energie", "Shelly `webhook_rev` ist eine Webhook-Revision"),
+    **{
+        f"ocpp.1_6.metervalues.energy.{art}.{richtung}.register.context[*].format[*].phase[*].location[*].unit[*]":
+            ("einheit_im_schluessel",
+             f"OCPP-1.6-SampledValue `unit` je Wert → `…unit[wh]`; `unit[none]` bleibt unbekannt, der "
+             f"OCPP-Vorgabewert wird nicht geraten ({art} {richtung})")
+        for art in ("active", "reactive") for richtung in ("export", "import")
+    },
+    **{
+        f"wago.pm494.karte[*].{key}": ("faktor_zu_erheben",
+                                       f"WAGO 750-494 `{key}`: die Messwert-Tabelle ist nur für die 750-495 "
+                                       f"belegt — Datentyp und Energie-Faktor erhebt Pilotschritt 1/2")
+        for key in ("energy_export_total", "energy_import_total")
+    },
 }
 
 SUNSPEC_METER = r"sunspec\.model_2(0[1-4]|1[1-4])"
 SUNSPEC_INVERTER = r"sunspec\.model_1(0[1-3]|1[1-3])"
 DEYE = r"(hybrid_1p|hybrid_3p|micro|string)"
 SHELLY_ENERGY = r"shelly\.gen2plus\.(cover|light_rgb_rgbw|pm1|switch)\[\*\]"
+WAGO = r"wago\.pm49[45]"
 
 # (Familie, Punktschlüssel, Größe oder None = aus der Einheit, Richtung, Beleg).
 # Beide Muster sind reguläre Ausdrücke über den GANZEN Wert; die erste passende Regel gewinnt.
@@ -235,6 +296,21 @@ RULES: tuple[tuple[str, str, str | None, str | None, str], ...] = (
      "Shelly Gen1 emeters[].power — Zweirichtungszähler (total und total_returned)"),
     ("shelly\\.gen1", r"shelly\.gen1\.meter\[\*\]\.meters\[\*\]\.(total|counters\[\*\])", "active_energy",
      "import", "Shelly Gen1 meters[] „energy consumed by the attached electrical appliance“"),
+
+    # --- WAGO 750-494/495 am Registerbild v1: WAS ein Messwert-Feld ist, legt der Vertrag fest (§4.3) und
+    # gilt für beide Karten; OB und WIE eine Karte es liefert, steht je Zahl in `angaben`.
+    (WAGO, WAGO + r"\.karte\[\*\]\.energy_import_total", "active_energy", "import",
+     "Registerbild WAGO v1 §4.3 Nr. 1 „Wirkenergie Bezug gesamt (Zählerstand)“"),
+    (WAGO, WAGO + r"\.karte\[\*\]\.energy_export_total", "active_energy", "export",
+     "Registerbild WAGO v1 §4.3 Nr. 2 „Wirkenergie Lieferung gesamt (Zählerstand)“"),
+    (WAGO, WAGO + r"\.karte\[\*\]\.power_l[123]", "active_power", None,
+     "Registerbild WAGO v1 §4.3 Nr. 3–5 „Wirkleistung L1–L3“ — das Vorzeichen ist zu erheben, keine Richtung"),
+    (WAGO, WAGO + r"\.karte\[\*\]\.voltage_l[123]", "voltage", "none",
+     "Registerbild WAGO v1 §4.3 Nr. 6–8 „Spannung L1–L3“"),
+    (WAGO, WAGO + r"\.karte\[\*\]\.current_l[123]", "current", None,
+     "Registerbild WAGO v1 §4.3 Nr. 9–11 „Strom L1–L3“"),
+    (WAGO, WAGO + r"\.karte\[\*\]\.frequency", "frequency", "none",
+     "Registerbild WAGO v1 §4.3 Nr. 12 „Netzfrequenz“"),
 )
 
 _COMPILED = tuple(

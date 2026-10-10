@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useId, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
 import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import { VpPicker } from './VpPicker';
@@ -104,6 +105,11 @@ function Auf({ offen, label, onClick }: { offen: boolean; label: string; onClick
 }
 
 export interface AufbauTabelleProps {
+  /**
+   * Im Standort-Aufbau: kein „Sie sind hier“; „Öffnen ›“ einer anderen Anlage bleibt im Standort. Die Zahl
+   * über der Tabelle nennt die aufgeklappte Anlage beim Namen — „an dieser Anlage“ wäre hier mehrdeutig.
+   */
+  standortSicht?: { wechselHref: (anlageId: string) => string; anlageName?: string } | null;
   wurzel: AufbauWurzel | null;
   anlagenZahl: number;
   boxZahl: number;
@@ -214,7 +220,9 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
           ) : (
             <span>
               <b>{n.geraete}</b> {n.geraete === 1 ? 'Gerät' : 'Geräte'}
-              <span className="vp-auf-breit"> an dieser Anlage</span>
+              <span className="vp-auf-breit">
+                {p.standortSicht?.anlageName ? ` an ${p.standortSicht.anlageName}` : ' an dieser Anlage'}
+              </span>
             </span>
           )}
           {n.achtung > 0 && (
@@ -233,9 +241,11 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
           )}
         </div>
         <div className="vp-auf-neu">
-          <button
+          <Recht aktion="geraet.einrichten"><button
             type="button"
             className="vp-btn vp-btn--primary vp-btn--sm vp-auf-neu-haupt"
+            // Schmal steht nur „Gerät“ da (die lange Beschriftung ist dann ausgeblendet) — der Name bleibt ganz.
+            aria-label="Gerät hinzufügen"
             onClick={() => p.onGeraetHinzufuegen?.(null)}
             disabled={!p.onGeraetHinzufuegen}
             title={p.onGeraetHinzufuegen ? undefined : p.geraetGesperrt ?? undefined}
@@ -245,14 +255,16 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
             <span className="vp-auf-neu-kurz" aria-hidden="true">
               Gerät
             </span>
-          </button>
+          </button></Recht>
+          {/* UEMS AP-03 IP-12: eine Box meldet man als Geräte-Einrichtung an, eine Anlage
+              legt die Anlagen-Verwaltung an - das Menü nennt nur, was die Rolle darf. */}
           <RowMenu
             label="Box oder Anlage hinzufügen"
             icon="chevron-down"
             buttonClassName="vp-btn vp-btn--primary vp-btn--sm vp-auf-neu-mehr"
             items={[
-              { label: 'VoltPilot-Box hinzufügen', icon: 'wifi', onClick: p.onBoxHinzufuegen },
-              { label: 'Anlage hinzufügen', icon: 'layers', onClick: p.onAnlageHinzufuegen },
+              { label: 'VoltPilot-Box hinzufügen', icon: 'wifi', recht: 'geraet.einrichten', onClick: p.onBoxHinzufuegen },
+              { label: 'Anlage hinzufügen', icon: 'layers', recht: 'anlage.verwalten', onClick: p.onAnlageHinzufuegen },
             ]}
           />
         </div>
@@ -347,6 +359,8 @@ function Zeile({ z, begriffe, p }: { z: TabellenZeile; begriffe: string[]; p: Au
       return <GeraetZeile z={z} begriffe={begriffe} p={p} />;
     case 'teil':
       return <TeilZeile z={z} begriffe={begriffe} />;
+    case 'quelle':
+      return <QuelleZeile z={z} begriffe={begriffe} />;
     case 'fund':
       return <FundZeile z={z} begriffe={begriffe} p={p} />;
     default:
@@ -354,9 +368,9 @@ function Zeile({ z, begriffe, p }: { z: TabellenZeile; begriffe: string[]; p: Au
         <div className={`vp-auf-t-zeile is-leer${ebeneKlasse(z.ebene)}`} role="row" style={ebene(z.ebene)}>
           <span role="cell" className="vp-auf-t-name">
             {z.boxHinzufuegen ? (
-              <button type="button" className="vp-auf-t-leer is-aktion" onClick={p.onBoxHinzufuegen}>
+              <Recht aktion="geraet.einrichten"><button type="button" className="vp-auf-t-leer is-aktion" onClick={p.onBoxHinzufuegen}>
                 <Icon name="plus" size={15} /> Noch keine VoltPilot-Box – jetzt hinzufügen
-              </button>
+              </button></Recht>
             ) : (
               <span className="vp-auf-t-leer">{z.text}</span>
             )}
@@ -388,12 +402,12 @@ function AnlageZeile({ z, p }: { z: Extract<TabellenZeile, { typ: 'anlage' }>; p
           <span className="vp-auf-t-text">
             <b className="vp-auf-t-titel">
               <span className="vp-auf-t-kuerze">Anlage {a.name}</span>
-              {a.aktuell && <span className="vp-auf-tag is-hier">Sie sind hier</span>}
+              {a.aktuell && !p.standortSicht && <span className="vp-auf-tag is-hier">Sie sind hier</span>}
             </b>
             <small>
               {a.boxen.length} {a.boxen.length === 1 ? 'Box' : 'Boxen'}
               {a.geraeteZahl != null && ` · ${a.geraeteZahl} ${a.geraeteZahl === 1 ? 'Gerät' : 'Geräte'}`}
-              {!a.aktuell && ' · nur lesend'}
+              {!a.aktuell && !p.standortSicht && ' · nur lesend'}
               {a.wertStand === 'veraltet' && <span className="is-warn"> · keine aktuellen Werte</span>}
             </small>
           </span>
@@ -408,17 +422,37 @@ function AnlageZeile({ z, p }: { z: Extract<TabellenZeile, { typ: 'anlage' }>; p
       </span>
       <span role="cell" className="vp-auf-t-aktion">
         {!a.aktuell && (
-          <a
-            className="vp-auf-t-wechsel"
-            href={hashForRoute(anlageRoute(a.id, 'modell'))}
-            aria-label={`Zu Anlage ${a.name} wechseln`}
-          >
-            Wechseln <Icon name="chevron-right" size={14} />
-          </a>
+          p.standortSicht ? (
+            <a
+              className="vp-auf-t-wechsel"
+              href={p.standortSicht.wechselHref(a.id)}
+              aria-label={`Anlage ${a.name} öffnen, um sie zu bearbeiten`}
+            >
+              Öffnen <Icon name="chevron-right" size={14} />
+            </a>
+          ) : (
+            <a
+              className="vp-auf-t-wechsel"
+              href={hashForRoute(anlageRoute(a.id, 'modell'))}
+              aria-label={`Zu Anlage ${a.name} wechseln`}
+            >
+              Wechseln <Icon name="chevron-right" size={14} />
+            </a>
+          )
         )}
       </span>
     </div>
   );
+}
+
+/** Was an einer Box hängt: „3 Geräte“, „liest 2 Datenquellen“ oder beides — eine lesende Box ist nie „0 Geräte“. */
+function boxInhalt(b: AufbauBox): string {
+  const n = b.geraete.filter((g) => g.art !== 'neu').length;
+  const geraete = `${n} ${n === 1 ? 'Gerät' : 'Geräte'}`;
+  const q = b.quellen.length;
+  if (q === 0) return geraete;
+  const quellen = `liest ${q} ${q === 1 ? 'Datenquelle' : 'Datenquellen'}`;
+  return n === 0 ? quellen : `${geraete} · ${quellen}`;
 }
 
 function BoxZeile({
@@ -450,8 +484,7 @@ function BoxZeile({
               <Treffer text={b.ref} begriffe={begriffe} />
             </span>
             {' · '}
-            {b.geraete.filter((g) => g.art !== 'neu').length}{' '}
-            {b.geraete.filter((g) => g.art !== 'neu').length === 1 ? 'Gerät' : 'Geräte'}
+            {boxInhalt(b)}
           </small>
         </span>
       </span>
@@ -465,7 +498,7 @@ function BoxZeile({
       </span>
       <span role="cell" className="vp-auf-t-aktion is-breit">
         {aktuell && p.onGeraetHinzufuegen && (
-          <button
+          <Recht aktion="geraet.einrichten"><button
             type="button"
             className="vp-auf-t-plus"
             onClick={() => p.onGeraetHinzufuegen?.(b)}
@@ -475,7 +508,7 @@ function BoxZeile({
             <span className="lbl" aria-hidden="true">
               Gerät
             </span>
-          </button>
+          </button></Recht>
         )}
         {aktuell && (
           <button
@@ -626,6 +659,43 @@ function TeilZeile({ z, begriffe }: { z: Extract<TabellenZeile, { typ: 'teil' }>
   );
 }
 
+/**
+ * Eine Datenquelle, die die Box liest (UEMS AP-06): Kennzeichen und Weg, ihr Zustand, und der Weg auf die
+ * Box-Seite, wo sie verwaltet wird (zuständige Box wechseln, neue anlegen).
+ */
+function QuelleZeile({ z, begriffe }: { z: Extract<TabellenZeile, { typ: 'quelle' }>; begriffe: string[] }) {
+  const q = z.quelle;
+  return (
+    <div className={`vp-auf-t-zeile is-quelle${ebeneKlasse(z.ebene)}`} role="row" style={ebene(z.ebene)} data-quelle-zeile={q.id}>
+      <span role="cell" className="vp-auf-t-name">
+        <span className="vp-auf-t-auf-platz" />
+        <AufbauSymbol kategorie="navy" icon="link" />
+        <span className="vp-auf-t-text">
+          <span className="vp-auf-t-titel">
+            <span className={`vp-health-dot vp-auf-nur-mobil ${TON_PUNKT[q.ton]}`} />
+            <a className="vp-auf-t-kuerze" href={z.box.href}>
+              <Treffer text={q.titel} begriffe={begriffe} />
+            </a>
+          </span>
+          <small>
+            <Treffer text={q.weg} begriffe={begriffe} />
+          </small>
+        </span>
+      </span>
+      <span role="cell" className="vp-auf-t-art">
+        Datenquelle
+      </span>
+      <span role="cell" className="vp-auf-t-zustand">
+        <span className={`vp-health-dot ${TON_PUNKT[q.ton]}`} />
+        <span className="w">{gross(q.zustandWort)}</span>
+        {q.zustandZeit && <small>{q.zustandZeit}</small>}
+      </span>
+      <span role="cell" className="vp-auf-t-wert" />
+      <span role="cell" />
+    </div>
+  );
+}
+
 function FundZeile({
   z,
   begriffe,
@@ -667,9 +737,9 @@ function FundZeile({
       <span role="cell" className="vp-auf-t-aktion is-breit">
         {!nurLesend && quelle && (
           <>
-            <button type="button" className="vp-btn vp-btn--outline vp-btn--sm" onClick={() => p.onUebernehmen(quelle)}>
+            <Recht aktion="geraet.einrichten"><button type="button" className="vp-btn vp-btn--outline vp-btn--sm" onClick={() => p.onUebernehmen(quelle)}>
               Übernehmen
-            </button>
+            </button></Recht>
             {/* Die TECHNISCHE Übernahme steht NEBEN der geführten - Typ,
                 Nennleistung und MaStR von Hand (nur VoltPilot). */}
             {p.onTechnischUebernehmen && (

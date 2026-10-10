@@ -41,6 +41,7 @@ import com.voltpilot.api.uems.MessstelleRegeln.VorschlagStandort;
 import com.voltpilot.api.uems.MessstelleRegeln.VorschlagZeile;
 import com.voltpilot.api.uems.MessstelleRegeln.WechselEingang;
 import com.voltpilot.api.uems.MessstelleRegeln.WechselUrteil;
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
@@ -50,7 +51,12 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
@@ -161,6 +167,9 @@ class MessstelleRegelnVectorsTest {
         assertThat(texte(v.path("stellungen"))).isEqualTo(MessstelleRegeln.STELLUNGEN);
         assertThat(texte(v.path("stellung_gruende"))).isEqualTo(MessstelleRegeln.STELLUNG_GRUENDE);
         assertThat(texte(v.path("passung_gruende"))).isEqualTo(MessstelleRegeln.PASSUNG_GRUENDE);
+        assertThat(texte(v.path("anteile"))).isEqualTo(MessstelleRegeln.ANTEILE);
+        assertThat(MAPPER.convertValue(v.path("anteil_richtungen"), Map.class))
+                .isEqualTo(MessstelleRegeln.ANTEIL_RICHTUNGEN);
         assertThat(texte(v.path("hinweise"))).isEqualTo(MessstelleRegeln.HINWEISE);
         assertThat(texte(v.path("rueckwirkung_arten"))).isEqualTo(MessstelleRegeln.RUECKWIRKUNG_ARTEN);
         assertThat(texte(v.path("vorschlag_fluesse"))).isEqualTo(MessstelleRegeln.VORSCHLAG_FLUESSE);
@@ -184,7 +193,8 @@ class MessstelleRegelnVectorsTest {
             e.path("quellen").forEach(q -> quellen.add(new KatalogQuelle(
                     q.path("kanal_groesse").asText(), q.path("kanal_wertart").asText(), text(q.path("nur_wertart")))));
             katalog.add(new KatalogEintrag(e.path("groesse").asText(), texte(e.path("medien")),
-                    e.path("einheit").asText(), texte(e.path("richtungen")), texte(e.path("wertarten")), quellen));
+                    e.path("einheit").asText(), texte(e.path("richtungen")), texte(e.path("wertarten")), quellen,
+                    texte(e.path("richtungen_nur_berechnet"))));
         }
         assertThat(katalog).isEqualTo(MessstelleRegeln.GROESSEN_KATALOG);
 
@@ -238,13 +248,36 @@ class MessstelleRegelnVectorsTest {
     @TestFactory
     List<DynamicTest> groesse() throws Exception {
         return fuerJedenFall("groesse", c -> {
+            // `art` fehlt in den Fällen von vor AP-10 IP-4: dann urteilt die Regel ohne Art.
             MessstelleRegeln.GroesseUrteil u = MessstelleRegeln.groessePruefen(
-                    c.at("/input/medium").asText(), groesse(c.at("/input/groesse")));
+                    c.at("/input/medium").asText(), text(c.at("/input/art")), groesse(c.at("/input/groesse")));
             ObjectNode out = MAPPER.createObjectNode();
             out.put("fehler", u.fehler() == null ? null : u.fehler().code());
             out.put("grund", u.grund());
             return out;
         });
+    }
+
+    /** AP-08 IP-7: der Höchstzuwachs je Kadenz aus der Anschlussleistung — numerisch verglichen. */
+    @TestFactory
+    List<DynamicTest> anschlussleistung() throws Exception {
+        List<DynamicTest> tests = new ArrayList<>();
+        for (JsonNode c : faelle("anschlussleistung")) {
+            tests.add(DynamicTest.dynamicTest(c.path("name").asText(), () -> {
+                JsonNode in = c.path("input");
+                BigDecimal ist = MessstelleRegeln.hoechstzuwachsJeKadenz(
+                        in.path("anschlussleistung_kw").isNull() ? null : in.path("anschlussleistung_kw").decimalValue(),
+                        in.path("einheit").asText(), in.path("kadenz_s").asInt());
+                JsonNode soll = c.at("/expected/hoechstzuwachs_je_kadenz");
+                if (soll.isNull()) {
+                    assertThat(ist).as(c.path("why").asText()).isNull();
+                } else {
+                    assertThat(ist).as(c.path("why").asText()).isEqualByComparingTo(soll.decimalValue());
+                }
+            }));
+        }
+        assertThat(tests).isNotEmpty();
+        return tests;
     }
 
     @TestFactory
@@ -266,8 +299,9 @@ class MessstelleRegelnVectorsTest {
         return fuerJedenFall("passung", c -> {
             JsonNode k = c.at("/input/kanal");
             MessstelleRegeln.Passung p = MessstelleRegeln.passung(c.at("/input/medium").asText(),
-                    groesse(c.at("/input/ziel")), k.path("groesse").asText(), k.path("richtung").asText(),
-                    k.path("einheit").asText(), k.path("wertart").asText());
+                    groesse(c.at("/input/ziel")), k.path("groesse").asText(), text(k.path("richtung")),
+                    k.path("einheit").asText(), k.path("wertart").asText(), text(k.path("direction")),
+                    text(c.at("/input/anteil")));
             ObjectNode out = MAPPER.createObjectNode();
             out.put("fehler", p.fehler() == null ? null : p.fehler().code());
             out.put("grund", p.grund());
@@ -311,6 +345,16 @@ class MessstelleRegelnVectorsTest {
             ObjectNode out = MAPPER.createObjectNode();
             out.put("fehler", u.fehler() == null ? null : u.fehler().code());
             out.put("ohne_geraet_ab", zeitText(u.ohneGeraetAb()));
+            if (in.has("karten")) {
+                JsonNode k = in.path("karten");
+                java.util.function.Function<JsonNode, List<String>> ids = n -> {
+                    List<String> values = new java.util.ArrayList<>();
+                    n.forEach(v -> values.add(v.asText()));
+                    return values;
+                };
+                out.put("karten_fehler", MessstelleRegeln.kartenWechselPruefen(ids.apply(k.path("vorhanden")),
+                        ids.apply(k.path("uebernommen")), ids.apply(k.path("fuehrende_bindungen")), ids.apply(k.path("ablesestaende"))));
+            }
             out.put("rueckwirkend", u.rueckwirkend());
             out.put("angekuendigt", u.angekuendigt());
             return out;
@@ -664,11 +708,66 @@ class MessstelleRegelnVectorsTest {
      * {@code fortschreibung} nach dem letzten Ereignis der Zeitachse ist — oder
      * noch offen sein, weil der Fall den Stand VOR dem Eintrag zeigt.
      */
+    /**
+     * Die Zeilen der Zeitachse, an denen der Horizont einer Fortschreibung gemessen wird: alle außer denen
+     * mit einem fachfremden Horizont-Merkmal: {@code gemeinsame_steuerung} (Fassung 1.5) oder
+     * {@code energetische_bewertung} (Fassung 1.6) oder {@code bezugsbasis} (Fassung 1.8) oder {@code verbesserung}
+     * (Fassung 1.9) oder {@code energiemanagement} (Fassung 1.10). Diese Zeilen sagen über
+     * Messstellen-Quellen nichts — das hält
+     * {@link #dieFachfremdenZeilenNennenKeineMessstelleDerVektoren} fest. Dieselbe Regel steht in
+     * {@code frontend/portal/src/uemsMessstelle.test.ts}.
+     */
+    private static List<JsonNode> horizontZeilen(JsonNode ref) {
+        List<JsonNode> out = new ArrayList<>();
+        ref.path("zeitachse").forEach(z -> {
+            if (!z.hasNonNull("gemeinsame_steuerung") && !z.hasNonNull("energetische_bewertung")
+                    && !z.hasNonNull("bezugsbasis") && !z.hasNonNull("verbesserung")
+                    && !z.hasNonNull("energiemanagement")) {
+                out.add(z);
+            }
+        });
+        return out;
+    }
+
+    /**
+     * Die Ausnahme vom Horizont ist durch die Daten begründet: keine Zeile der gemeinsamen Steuerung nennt eine
+     * Messstelle, Datenquelle oder Bezugsgröße, die ein Messstellen-Vektor benutzt. Sagt AP-15 doch etwas über
+     * eine solche Quelle, bricht dieser Fall — dann gehört die Zeile in den Horizont.
+     */
+    @Test
+    void dieFachfremdenZeilenNennenKeineMessstelleDerVektoren() throws Exception {
+        Pattern kz = Pattern.compile("\\b(?:MS|DQ|BZ)-[0-9]+\\b");
+        Set<String> benutzt = new TreeSet<>();
+        Matcher m = kz.matcher(Files.readString(VECTORS));
+        while (m.find()) {
+            benutzt.add(m.group());
+        }
+        assertThat(benutzt).as("Kennzeichen der Messstellen-Vektoren").isNotEmpty();
+        List<String> fehler = new ArrayList<>();
+        int ausgenommen = 0;
+        for (JsonNode z : lies(REFERENZ).path("zeitachse")) {
+            if (!z.hasNonNull("gemeinsame_steuerung") && !z.hasNonNull("energetische_bewertung")
+                    && !z.hasNonNull("bezugsbasis") && !z.hasNonNull("verbesserung")
+                    && !z.hasNonNull("energiemanagement")) {
+                continue;
+            }
+            ausgenommen++;
+            Matcher e = kz.matcher(z.path("ereignis").asText());
+            while (e.find()) {
+                if (benutzt.contains(e.group())) {
+                    fehler.add(z.path("zeitpunkt").asText() + " nennt " + e.group());
+                }
+            }
+        }
+        assertThat(ausgenommen).as("ausgenommene Zeilen").isPositive();
+        assertThat(fehler).isEmpty();
+    }
+
     @TestFactory
     List<DynamicTest> faelleUebernehmenDasReferenzunternehmen() throws Exception {
         JsonNode ref = lies(REFERENZ);
         OffsetDateTime letztes = null;
-        for (JsonNode z : ref.path("zeitachse")) {
+        for (JsonNode z : horizontZeilen(ref)) {
             OffsetDateTime t = OffsetDateTime.parse(z.path("zeitpunkt").asText());
             letztes = letztes == null || t.isAfter(letztes) ? t : letztes;
         }
@@ -905,10 +1004,12 @@ class MessstelleRegelnVectorsTest {
                 text(n.path("einbau")), text(n.path("kanal_groesse")), text(n.path("kanal_richtung")),
                 text(n.path("kanal_einheit")), text(n.path("kanal_wertart")),
                 zeit(n.path("gueltig_ab")), zeit(n.path("gueltig_bis")),
-                stand(n.path("endstand_vorgaenger")), stand(n.path("anfangsstand")), zeit(n.path("geraet_bis")));
+                stand(n.path("endstand_vorgaenger")), stand(n.path("anfangsstand")), zeit(n.path("geraet_bis")),
+                text(n.path("kanal_direction")), text(n.path("anteil")));
         List<FremdeFuehrung> anderswo = new ArrayList<>();
         in.path("kanal_fuehrend_anderswo").forEach(f -> anderswo.add(new FremdeFuehrung(
-                f.path("messstelle").asText(), zeit(f.path("gueltig_ab")), zeit(f.path("gueltig_bis")))));
+                f.path("messstelle").asText(), zeit(f.path("gueltig_ab")), zeit(f.path("gueltig_bis")),
+                text(f.path("anteil")))));
         return new BindungEingang(in.path("vorgang").asText(), zeit(in.path("jetzt")),
                 in.at("/messstelle/medium").asText(), zeit(in.at("/messstelle/beginn")),
                 groesse(in.path("ziel")), bestehende, neu, anderswo);

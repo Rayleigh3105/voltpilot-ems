@@ -14,9 +14,10 @@
  *
  * Rein: keine Netzzugriffe, keine Uhr, kein React.
  */
-import { type Dez } from './bezugsdaten';
+import { dezText, type Dez } from './bezugsdaten';
 import { kennzeichenFormatGueltig } from './uemsMessstelle';
-import { minusTage, zahlDe } from './uemsBilanz';
+import { minusTage } from './uemsBilanz';
+import { KVA, KW, zahl } from './uemsErgebnis';
 
 /** Dieselbe Kennzeichen-Form wie bei der Messstelle (AP-00 E10) — nur mit eigenem Präfix. */
 export const KENNZEICHEN_PRAEFIX = 'NA-';
@@ -171,27 +172,38 @@ export interface BindungUrteil {
 const laeuftAm = (b: Bindung, tag: string): boolean =>
   tag >= b.gueltig_ab && (b.gueltig_bis === null || tag <= b.gueltig_bis);
 
+/** Teilen sich zwei Bindungen mindestens einen Tag (`gueltig_bis === null` = offen)? */
+const ueberlappen = (a: Bindung, b: Bindung): boolean =>
+  !(a.gueltig_bis !== null && a.gueltig_bis < b.gueltig_ab) &&
+  !(b.gueltig_bis !== null && b.gueltig_bis < a.gueltig_ab);
+
 /**
  * Eine neue Bindung ab ihrem Tag. Läuft an diesem Tag schon eine Bindung DERSELBEN Anlage, die an
  * genau diesem Tag beginnt, ist das ein Konflikt; beginnt die neue später, wird die laufende am
- * Vortag beendet. Hängt der Anschluss am Tag schon an einer ANDEREN Anlage, ist er belegt.
+ * Vortag beendet. Hängt der Anschluss an einem ihrer Tage schon an einer ANDEREN Anlage, ist er
+ * belegt. Eine SPÄTERE Bindung derselben Anlage wird nie verkürzt — teilt die neue einen Tag mit
+ * ihr, ist das ebenfalls ein Konflikt (nur die laufende endet am Vortag, nichts wird überschrieben).
  */
 export function bindung(bestehend: Bindung[], neu: Bindung, heute: string): BindungUrteil {
   const rueckwirkend = neu.gueltig_ab < heute;
   const belegt = bestehend.some(
     (b) =>
-      b.netzanschluss === neu.netzanschluss &&
-      b.anlage !== neu.anlage &&
-      laeuftAm(b, neu.gueltig_ab),
+      b.netzanschluss === neu.netzanschluss && b.anlage !== neu.anlage && ueberlappen(b, neu),
   );
   if (belegt) {
     return { beendet: null, eintrag: null, fehler: FEHLER_ANSCHLUSS_BELEGT, rueckwirkend };
   }
   const laufend = bestehend.find((b) => b.anlage === neu.anlage && laeuftAm(b, neu.gueltig_ab));
-  if (!laufend) return { beendet: null, eintrag: neu, fehler: null, rueckwirkend };
-  if (neu.gueltig_ab <= laufend.gueltig_ab) {
+  if (laufend && neu.gueltig_ab <= laufend.gueltig_ab) {
     return { beendet: null, eintrag: null, fehler: FEHLER_BINDUNG_UEBERLAPPT, rueckwirkend };
   }
+  const spaeter = bestehend.some(
+    (b) => b !== laufend && b.anlage === neu.anlage && ueberlappen(b, neu),
+  );
+  if (spaeter) {
+    return { beendet: null, eintrag: null, fehler: FEHLER_BINDUNG_UEBERLAPPT, rueckwirkend };
+  }
+  if (!laufend) return { beendet: null, eintrag: neu, fehler: null, rueckwirkend };
   return {
     beendet: { ...laufend, gueltig_bis: minusTage(neu.gueltig_ab, 1) },
     eintrag: neu,
@@ -207,9 +219,43 @@ export interface KopfzeileUrteil {
   grenze_geprueft: boolean;
 }
 
+/** Der Grenz-Nachweis eines Monats für die Kopfzeile (AP-15 IP-31) — `monat` als `JJJJ-MM`. */
+export interface KopfzeileNachweis {
+  grenze_geprueft: boolean;
+  urteil: string | null;
+  monat: string | null;
+  richtungen?: Array<{ grenzhinweis?: string | null }>;
+}
+
+/** Die Monatsnamen der Kopfzeile — fest, nie aus der Sprache des Browsers. */
+const MONATE = [
+  'Januar',
+  'Februar',
+  'März',
+  'April',
+  'Mai',
+  'Juni',
+  'Juli',
+  'August',
+  'September',
+  'Oktober',
+  'November',
+  'Dezember',
+];
+
+/** Das Wort je Urteil des Grenz-Nachweises; ein anderes Wort ist kein Urteil und wird nicht gezeigt. */
+const URTEIL_TEXT: Record<string, string> = {
+  eingehalten: 'eingehalten',
+  ueberschritten: 'überschritten',
+  nicht_belegt: 'nicht belegt',
+};
+
 /**
  * Die Kopfzeile der Bilanz-Seite. Was fehlt, steht nicht da — ein fehlender Momentanwert wird nie
- * zu „0 kW". `grenze_geprueft` ist immer `false`: hier wird GEZEIGT, nicht geprüft (AP-15).
+ * zu „0 kW". `uemsErgebnis.zahl` unterscheidet vereinbarte Angaben und gemessene Leistung (E11).
+ * `grenze_geprueft` ist wahr, wo der Grenz-Nachweis (AP-15 IP-31) Grenze UND Hauptzähler hatte —
+ * dann sagt die Zeile „Grenze im September 2026 eingehalten" (überschritten · nicht belegt); sonst
+ * bleibt sie, wie sie war: sie zeigt, sie prüft nicht.
  */
 export function kopfzeile(
   // Die Kennung steht am Kopf der Seite, nicht in dieser Zeile.
@@ -217,10 +263,22 @@ export function kopfzeile(
   vereinbartKw: Dez | null,
   anschlussKva: Dez | null,
   momentanKw: Dez | null,
+  nachweis: KopfzeileNachweis | null = null,
 ): KopfzeileUrteil {
   const teile: string[] = [];
-  if (vereinbartKw !== null) teile.push(`vereinbart ${zahlDe(vereinbartKw)} kW`);
-  if (anschlussKva !== null) teile.push(`Anschluss ${zahlDe(anschlussKva)} kVA`);
-  if (momentanKw !== null) teile.push(`Momentan ${zahlDe(momentanKw)} kW`);
-  return { text: teile.join(KOPFZEILE_TRENNER), grenze_geprueft: false };
+  if (vereinbartKw !== null) teile.push(`vereinbart ${zahl(dezText(vereinbartKw), KW, null, 'vereinbart')}`);
+  if (anschlussKva !== null) teile.push(`Anschluss ${zahl(dezText(anschlussKva), KVA, null, 'vereinbart')}`);
+  if (momentanKw !== null) teile.push(`Momentan ${zahl(dezText(momentanKw), KW, null)}`);
+  const geprueft =
+    nachweis !== null &&
+    nachweis.grenze_geprueft &&
+    nachweis.urteil !== null &&
+    Object.prototype.hasOwnProperty.call(URTEIL_TEXT, nachweis.urteil) &&
+    nachweis.monat !== null &&
+    /^\d{4}-(0[1-9]|1[0-2])$/.test(nachweis.monat);
+  if (geprueft) {
+    const monat = `${MONATE[Number(nachweis.monat!.slice(5)) - 1]} ${nachweis.monat!.slice(0, 4)}`;
+    teile.push(`Grenze im ${monat} ${URTEIL_TEXT[nachweis.urteil!]}`);
+  }
+  return { text: teile.join(KOPFZEILE_TRENNER), grenze_geprueft: geprueft };
 }

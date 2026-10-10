@@ -7,6 +7,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.uems.BerichtsBelege;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.repo.FlowClaimRepository;
 import com.voltpilot.api.repo.AssetRepository;
@@ -49,7 +50,8 @@ class EntityRegistryChargePointTest {
         ObjectProvider<EntityRegistryPublisher> publisher = mock(ObjectProvider.class);
         return new EntityRegistryService(repo, publisher, MAPPER, mock(EntityTypeCatalog.class),
                 mock(AssetRepository.class), mock(FlowClaimRepository.class),
-                mock(DeviceOverrideRepository.class), new LeadDeviceService(repo));
+                mock(DeviceOverrideRepository.class), new LeadDeviceService(repo),
+                mock(BerichtsBelege.class));
     }
 
     private static EntityRegistryRepository repoWith(Map<UUID, String> chargePoints) {
@@ -63,6 +65,15 @@ class EntityRegistryChargePointTest {
     private static JsonNode push(EntityRegistryService svc, List<EntityRow> rows) throws Exception {
         return MAPPER.readTree(
                 svc.composePush(TENANT, SITE, DEVICE, Instant.parse("2026-08-28T12:00:00Z"), rows));
+    }
+
+    @Test
+    void sourceLabelTravelsOnlyWithItsOwnDescriptor() throws Exception {
+        var repo = repoWith(Map.of());
+        when(repo.datenquellenKennzeichen(SITE)).thenReturn(Map.of(CHARGER, "DQ-4"));
+        var entities = push(service(repo), List.of(row(CHARGER, "ev-charger"), row(BATTERY, "battery-hybrid"))).path("entities");
+        assertThat(entities.get(0).path("driver").path("data_source_id").asText()).isEqualTo("DQ-4");
+        assertThat(entities.get(1).has("driver")).isFalse();
     }
 
     @Test

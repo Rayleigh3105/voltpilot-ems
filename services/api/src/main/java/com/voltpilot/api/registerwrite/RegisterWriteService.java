@@ -1,9 +1,11 @@
 package com.voltpilot.api.registerwrite;
 
+import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.RegisterWriteEventRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.DeviceDto;
+import java.util.Optional;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
@@ -133,6 +135,7 @@ public class RegisterWriteService {
     public static final Duration BOX_ROUND_TRIP = Duration.ofSeconds(30);
 
     private final DeviceRepository devices;
+    private final com.voltpilot.api.entities.EinmalAuftragZiel ziel;
     private final RegisterKnowledge knowledge;
     private final RegisterWriteTargets targets;
     private final RegisterWriteRegistry registry;
@@ -168,8 +171,10 @@ public class RegisterWriteService {
             ObjectProvider<RegisterWritePublisher> publisher,
             @Value("${voltpilot.register-write.read-timeout:PT40S}") Duration readTimeout,
             @Value("${voltpilot.register-write.write-timeout:PT60S}") Duration writeTimeout,
-            @Value("${voltpilot.register-write.enabled:true}") boolean enabled) {
+            @Value("${voltpilot.register-write.enabled:true}") boolean enabled,
+            com.voltpilot.api.entities.EinmalAuftragZiel ziel) {
         this.devices = devices;
+        this.ziel = ziel;
         this.knowledge = knowledge;
         this.targets = targets;
         this.registry = registry;
@@ -339,13 +344,16 @@ public class RegisterWriteService {
         }
         // ERST veröffentlichen, DANN protokollieren - ab hier ist der Vorgang
         // aktenkundig, auch wenn diese api gleich abstürzt.
+        Optional<ProtokollAkteur> urheber = ProtokollAkteur.angemeldetAls(actor.subject());
         journal.recordRequest(new RegisterWriteEventRepository.Request(
                 requestId, RegisterWriteEventRepository.SOURCE_PORTAL, siteId, device.id(),
                 device.externalRef(), lane, cmd.entityId(), targetLabel,
                 kind, address, cmd.writeFc(), cmd.addressInput().trim(), cmd.valueInput().trim(),
                 note, value, cmd.expectedBefore(), known.label(), known.clazz(),
                 known.scaleNote(value), actor.origin(), actor.subject(), actor.name(),
-                actor.role(), actor.platformAdmin(), requestedAt));
+                actor.role(), actor.platformAdmin(), requestedAt,
+                // Das Akteur-Vokabular (AP-03 IP-7) neben der bisherigen Herkunft.
+                urheber.map(ProtokollAkteur::rolle).orElse(null), urheber.map(ProtokollAkteur::art).orElse(null)));
 
         RegisterWriteResult result;
         try {
@@ -566,13 +574,15 @@ public class RegisterWriteService {
         List<DeviceDto> ofSite = devices.findAll().stream()
                 .filter(d -> siteId.equals(d.siteId()))
                 .toList();
-        UUID owner = reportingDevice(siteId, lane, cmd);
+        UUID owner = cmd.entityId() != null ? ziel.komponente(siteId, cmd.entityId()).id()
+                : reportingDevice(siteId, lane, cmd);
+        UUID leading = owner == null && cmd.deviceId() == null ? ziel.fuehrend(siteId).id() : null;
         RegisterWriteGateway.Choice choice = RegisterWriteGateway.choose(
                 ofSite.stream()
                         .map(d -> new RegisterWriteGateway.Device(d.id(), deviceLabel(d),
                                 d.lastSeenAt()))
                         .toList(),
-                owner, cmd.deviceId(), Instant.now());
+                owner, cmd.deviceId(), leading, Instant.now());
         if (!choice.ok()) {
             // 404 bleibt 404 (der Mandanten-/Anlagen-Zaun spricht so), alles
             // andere ist ein Konflikt der ANFRAGE.
@@ -613,28 +623,27 @@ public class RegisterWriteService {
         if (RegisterWriteTargets.LANE_PRIMARY.equals(lane)) {
             return null;
         }
-        try {
-            return targets.forSite(siteId).stream()
-                    .filter(t -> ownsTarget(t, lane, cmd))
-                    .map(RegisterWriteTargets.Target::deviceId)
-                    .filter(java.util.Objects::nonNull)
-                    .findFirst().orElse(null);
-        } catch (RuntimeException e) {
-            // Die Ableitung ist eine VERBESSERUNG der Adresse, kein Tor: fällt
-            // sie aus, bleibt es bei der Angabe des Aufrufers.
-            log.warn("reporting device for the chosen target could not be resolved: {}",
-                    e.getMessage());
-            return null;
+        List<UUID> owners = targets.forSite(siteId).stream()
+                .filter(t -> ownsTarget(t, lane, cmd))
+                .map(RegisterWriteTargets.Target::deviceId)
+                .filter(java.util.Objects::nonNull).distinct().toList();
+        // Gleiche LAN-Adresse an zwei Boxen ist keine Geräteidentität.
+        if (cmd.deviceId() != null && owners.contains(cmd.deviceId())) return cmd.deviceId();
+        if (owners.size() > 1) {
+            UUID leading = ziel.fuehrend(siteId).id();
+            if (cmd.deviceId() == null && owners.contains(leading)) return leading;
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Für diese Adresse ist keine eindeutige zuständige Box bestimmt.");
         }
+        return owners.isEmpty() ? null : owners.get(0);
     }
 
     private static boolean ownsTarget(RegisterWriteTargets.Target t, String lane, Command cmd) {
-        if (!lane.equals(t.lane())) {
-            return false;
-        }
         if (RegisterWriteTargets.LANE_ENTITY.equals(lane)) {
-            return cmd.entityId() != null && cmd.entityId().equals(t.entityId());
+            return lane.equals(t.lane()) && cmd.entityId() != null && cmd.entityId().equals(t.entityId());
         }
+        // Eine Komponenten-Zeile auf Box A darf die gleiche freie Adresse auf Box B
+        // nicht verdecken. Für LAN-Ziele alle bekannten Boxen dieses Endpunkts prüfen.
         return cmd.host() != null && t.host() != null
                 && cmd.host().trim().equalsIgnoreCase(t.host().trim())
                 && port(cmd.port()) == port(t.port()) && unit(cmd.unitId()) == unit(t.unitId());

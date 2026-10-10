@@ -1,0 +1,112 @@
+/*
+ * Der Zeitstrahl-Baustein (UEMS AP-02 IP-12, V4): senkrechte Abschnitte mit Punkt, Linie und Zustand.
+ * ⚠ 375 px: jeder Text bricht um (`min-width: 0`, `overflow-wrap`), die Linie steht innen.
+ */
+
+.vp-zs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+  padding: var(--vp-c-space-3) var(--vp-c-space-4);
+  border-radius: var(--vp-c-radius-sm);
+  border: 1px solid var(--vp-c-border, #d9dde3);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-zs h4 {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-zs-liste {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-zs-abschnitt {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+  padding: var(--vp-c-space-2) 0;
+}
+
+/* Die Linie verbindet die Punkte: vom ersten Punkt bis zum letzten. */
+.vp-zs-abschnitt::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--vp-c-border, #d9dde3);
+}
+
+.vp-zs-abschnitt:first-child::before {
+  top: calc(var(--vp-c-space-2) + 0.6em);
+}
+
+.vp-zs-abschnitt:last-child::before {
+  bottom: calc(100% - var(--vp-c-space-2) - 0.6em);
+}
+
+.vp-zs-abschnitt:only-child::before {
+  display: none;
+}
+
+.vp-zs-punkt {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  margin-top: 0.35em;
+  border-radius: 50%;
+  background: var(--vp-c-muted-fg);
+}
+
+.vp-zs-gilt .vp-zs-punkt {
+  background: var(--vp-c-primary);
+}
+
+.vp-zs-geplant .vp-zs-punkt {
+  border: 2px solid var(--vp-c-primary);
+  background: var(--vp-c-card, #fff);
+}
+
+.vp-zs-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-zs-titel {
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-zs-beendet .vp-zs-titel {
+  font-weight: var(--vp-c-fw-500, 500);
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-zs-zeitraum {
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-13, 13px);
+}
+
+.vp-zs-chip {
+  flex: none;
+  padding: 0 var(--vp-c-space-2);
+  border-radius: 999px;
+  border: 1px solid var(--vp-c-border, #d9dde3);
+  font-size: var(--vp-c-fs-13, 13px);
+}

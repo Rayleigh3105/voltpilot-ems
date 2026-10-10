@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Recht } from '../components/Recht';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { IconName } from '../../designsystem/components/core/Icon';
@@ -18,7 +19,7 @@ import { BATTERY_NO_DEVICE_WARNING, parseFeedInCapInput, premiumInputText, tarif
 import { buildSitePayload } from '../anlage';
 import { fmtCoords, fmtNum, fmtRelative, plantKindLabel, zoneLabel } from '../format';
 import { settingsPageSettings, type ModeSettingDef } from '../modeSettings';
-import { parseSettingsAnchor, SETTING_HINT, settingsGroupFor, type SettingsGroupId } from '../settingsNav';
+import { parseSettingsAnchor, SETTING_HINT, settingsGroupFor, type TechnikAbschnitt } from '../settingsNav';
 import {
   effectChips,
   honestyNote,
@@ -38,6 +39,8 @@ import {
 } from '../speicherschonung';
 import { anlageRoute, hashForRoute } from '../nav';
 import { LocationMap } from '../components/LocationMap';
+import { AnlageStandortZeile, useAnlageStandort } from '../components/AnlageStandortZeile';
+import { koordinatenLabel } from '../anlageStandort';
 import { BezugspreisPreview } from '../components/BezugspreisPreview';
 import { DangerZone } from '../components/DangerZone';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -46,6 +49,10 @@ import { PRESETS, PROFIL_UNGESETZT, profilAenderungsFolgen, profilLabel, type Pr
 import { MastrDrawer } from '../components/MastrDrawer';
 import { canEditSetting, SettingEditForm, settingReadValue } from '../components/SettingEditors';
 import { ErrorState, TextSkeleton } from '../components/States';
+import { GemeinsameSteuerungKarte, useGemeinsameSteuerung, type GemeinsameSteuerungDaten } from '../components/GemeinsameSteuerungKarte';
+import type { VerlustVariante } from '../gemeinsameSteuerungFlaeche';
+import { showTechnicalLayer, useRollen } from '../rollen';
+import { FLAECHE } from '../uemsGemeinsameSteuerung';
 import '../components/Profile.css';
 import './Einstellungen.css';
 
@@ -73,6 +80,13 @@ import './Einstellungen.css';
  *
  * Die Direktlinks `…/technik?abschnitt=…` (`settingsNav.ts`) landen weiter auf
  * ihrer Gruppe; `geraet` führt in den Aufbau.
+ *
+ * **UEMS auf derselben Seite:** jede Zeile, die etwas ändert, trägt ihr Recht
+ * (AP-03 IP-12, `recht=` - ohne Recht bleibt der Wert lesbar, der Hebel wird
+ * zum Satz); „Anlage" nennt das Standort-Objekt über den Koordinaten
+ * (AP-02 IP-8); die Karte „Gemeinsame Steuerung" (AP-15 IP-23/24) steht als
+ * eigener Abschnitt `technik-gemeinsam` unter den Gruppen - nur an einer
+ * steuernden Anlage mit mehr als einer Box.
  */
 
 /** Die Folge nach dem Umlegen - sie steht, bis der nächste Schritt kommt. */
@@ -98,8 +112,8 @@ interface Folge {
 }
 
 /** Die per Direktlink angesprungene Gruppe - beim Aufbau UND bei jedem Hash-Wechsel. */
-function useSettingsAnchor(): SettingsGroupId | null {
-  const [group, setGroup] = useState<SettingsGroupId | null>(() =>
+function useSettingsAnchor(): TechnikAbschnitt | null {
+  const [group, setGroup] = useState<TechnikAbschnitt | null>(() =>
     typeof window === 'undefined' ? null : parseSettingsAnchor(window.location.hash),
   );
   useEffect(() => {
@@ -109,6 +123,59 @@ function useSettingsAnchor(): SettingsGroupId | null {
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
   return group;
+}
+
+/**
+ * Welches Recht ein Einstellungs-Formular braucht - dieselbe Regel wie `SettingRow`
+ * (`SettingEditors.tsx`): der Umgang mit dem Speicher ist Geräte-Einrichtung,
+ * alles andere Anlagen-Verwaltung.
+ */
+function einstellungsRecht(id: ModeSettingDef['id']): 'geraet.einrichten' | 'anlage.verwalten' {
+  return id === 'speicherschonung' ? 'geraet.einrichten' : 'anlage.verwalten';
+}
+
+/**
+ * AP-15 IP-24: das Betreiber-Blatt lädt nur für die Plattform-Rolle (eigener Chunk) — Kundenkonten laden es nie.
+ */
+const GemeinsameSteuerungBetreiberBlatt = lazy(() =>
+  import('./admin/GemeinsameSteuerungBetreiberBlatt').then((m) => ({ default: m.GemeinsameSteuerungBetreiberBlatt })),
+);
+
+/**
+ * Die Karte „Gemeinsame Steuerung“ (UEMS AP-15 IP-23, §5.2) als eigener Abschnitt der Einstellungen — erscheint
+ * nur, wenn die Anlage steuert UND mehr als eine Box hat; wer nur misst, sieht sie nie. Seit „Anlage – neu
+ * gedacht“ (E5) eine Gruppe wie die übrigen, unter ihnen; `?abschnitt=gemeinsam` springt sie an. Exportiert
+ * für die E2E-Bühne.
+ */
+export function GemeinsameSteuerungAbschnitt({
+  siteId,
+  siteDevices,
+  daten,
+  jetzt,
+  verlustVariante,
+}: {
+  siteId: string;
+  siteDevices: readonly Device[];
+  daten: GemeinsameSteuerungDaten;
+  /** Früher klappte die Telefon-Karte beim Direktlink auf; die Gruppe steht jetzt immer offen. */
+  deepLinked?: boolean;
+  jetzt?: Date;
+  verlustVariante?: VerlustVariante;
+}) {
+  if (!daten.sichtbar) return null;
+  return (
+    <section id="technik-gemeinsam" className="vp-einst-grp vp-einst-gemeinsam" aria-labelledby="technik-gemeinsam-h">
+      <h3 id="technik-gemeinsam-h">Gemeinsame Steuerung</h3>
+      <p className="vp-note">{FLAECHE.karte_erklaerung}</p>
+      <GemeinsameSteuerungKarte siteId={siteId} siteDevices={siteDevices} daten={daten} jetzt={jetzt} verlustVariante={verlustVariante} />
+      {/* IP-24: unter der Kundenkarte das Betreiber-Blatt — nur hinter dem EINEN Rollen-Tor, nur mit Einrichtung. */}
+      {showTechnicalLayer() && daten.zustand?.eingerichtet && (
+        <Suspense fallback={null}>
+          <GemeinsameSteuerungBetreiberBlatt siteId={siteId} siteDevices={siteDevices} daten={daten} jetzt={jetzt} />
+        </Suspense>
+      )}
+    </section>
+  );
 }
 
 export function TechnikSection({
@@ -145,8 +212,13 @@ export function TechnikSection({
   const siteRef = useRef(site);
   siteRef.current = site;
 
-  const siteDevices = devices.filter((d) => d.siteId === site.id);
+  const siteDevices = useMemo(() => devices.filter((d) => d.siteId === site.id), [devices, site.id]);
   const anchored = useSettingsAnchor();
+  // UEMS AP-02 IP-8 (T6a, W4): das Objekt „Standort“ der Anlage. Ohne eines bleibt
+  // die Gruppe „Anlage“ Zeichen für Zeichen, wie sie ist (AnlageTechnik.standort.test.tsx).
+  const { anlageStandort, antwort: standortAntwort, neuLaden: standortNeuLaden } = useAnlageStandort(site.id);
+  // UEMS AP-15 IP-23: die Karte „Gemeinsame Steuerung“ - sichtbar nur an steuernden Anlagen mit mehreren Boxen.
+  const gemeinsam = useGemeinsameSteuerung(site.id, siteDevices);
 
   useEffect(() => {
     setBlatt(null);
@@ -322,29 +394,44 @@ export function TechnikSection({
       <div className="vp-einst-raster">
         {/* ---------- Anlage ---------- */}
         <Gruppe id="anlage" titel="Anlage">
-          <Zeile icon="home" kat="home" label="Name" wert={site.name} onClick={() => oeffne({ art: 'stammdaten' })} />
+          <Zeile icon="home" kat="home" label="Name" wert={site.name} recht="anlage.verwalten" onClick={() => oeffne({ art: 'stammdaten' })} />
           <Zeile
             icon="euro"
             kat="dynamic"
             label={VERAEUSSERUNGSFORM_LABEL}
             wert={plantKindLabel(site.plantKind)}
+            recht="anlage.verwalten"
             onClick={() => oeffne({ art: 'stammdaten' })}
           />
-          <Zeile icon="users" kat="home" label="Profil" wert={profilLabel(site.profil)} onClick={() => setProfilOffen(true)} />
+          <Zeile icon="users" kat="home" label="Profil" wert={profilLabel(site.profil)} recht="betriebsweise.aendern" onClick={() => setProfilOffen(true)} />
           <Zeile
             icon="trending-up"
             kat="grid"
             label="Einspeisegrenze"
             wert={site.maxFeedInKw != null ? fmtNum(site.maxFeedInKw, 'kW', 1) : 'keine Grenze hinterlegt'}
+            recht="anlage.verwalten"
             onClick={() => oeffne({ art: 'stammdaten' })}
           />
+          {/* UEMS AP-02 IP-8: das Standort-OBJEKT über den Koordinaten - nur, wenn die Anlage eines hat. */}
+          {anlageStandort && standortAntwort && (
+            <li className="vp-einst-standort">
+              <dl className="vp-kv">
+                <AnlageStandortZeile
+                  anlageStandort={anlageStandort}
+                  antwort={standortAntwort}
+                  onGeaendert={standortNeuLaden}
+                />
+              </dl>
+            </li>
+          )}
           <Zeile
             icon="map-pin"
             kat="navy"
-            label="Standort"
+            label={koordinatenLabel(anlageStandort)}
             wert={coords ? `${coords} · ${zoneLabel(site.biddingZone)}` : 'noch nicht hinterlegt'}
             sub={coords ? null : 'Ohne Standort auf der Karte gibt es keine Wettervorhersage.'}
             warn={!coords}
+            recht="anlage.verwalten"
             onClick={() => oeffne({ art: 'stammdaten' })}
           />
         </Gruppe>
@@ -357,6 +444,7 @@ export function TechnikSection({
               kat="dynamic"
               label={tarif.label}
               wert={tarifArtLabel(site.tarifArt, site.tarifParamCtKwh)}
+              recht="anlage.verwalten"
               onClick={() => oeffne({ art: 'einstellung', setting: tarif })}
             />
           )}
@@ -366,6 +454,7 @@ export function TechnikSection({
               kat="dynamic"
               label={anzulegend.label}
               wert={settingReadValue(anzulegend.id, site, battery)}
+              recht="anlage.verwalten"
               onClick={() => oeffne({ art: 'einstellung', setting: anzulegend })}
             />
           )}
@@ -379,7 +468,7 @@ export function TechnikSection({
                 </span>
                 <span className="vp-einst-ende">
                   {canEditSetting(netzladen, battery) ? (
-                    <button
+                    <Recht aktion="anlage.verwalten"><button
                       type="button"
                       role="switch"
                       aria-checked={site.netzladenErlaubt}
@@ -389,7 +478,7 @@ export function TechnikSection({
                       onClick={() => void netzladenSetzen(!site.netzladenErlaubt, true)}
                     >
                       <span className="vp-switch-knob" aria-hidden="true" />
-                    </button>
+                    </button></Recht>
                   ) : (
                     <span className="vp-einst-wert">{site.netzladenErlaubt ? 'erlaubt' : 'nur Solarladen'}</span>
                   )}
@@ -419,9 +508,9 @@ export function TechnikSection({
             batteryNeedsDevice ? (
               <div className="vp-alert vp-alert-warn vp-einst-warnung">
                 <span>{BATTERY_NO_DEVICE_WARNING}</span>
-                <button type="button" className="vp-linklike" onClick={() => oeffne({ art: 'speicher', bearbeiten: true })}>
+                <Recht aktion="geraet.einrichten"><button type="button" className="vp-linklike" onClick={() => oeffne({ art: 'speicher', bearbeiten: true })}>
                   Gerät zuordnen
-                </button>
+                </button></Recht>
               </div>
             ) : null
           }
@@ -443,6 +532,7 @@ export function TechnikSection({
               kat="battery"
               label="Speicher hinzufügen"
               sub="Damit der Fahrplan ihn optimal lädt und entlädt."
+              recht="geraet.einrichten"
               onClick={() => oeffne({ art: 'speicher', bearbeiten: true })}
             />
           ) : (
@@ -494,6 +584,7 @@ export function TechnikSection({
                   ? `Verknüpft${lastFetched ? ` · abgerufen ${fmtRelative(lastFetched)}` : ''}`
                   : 'Nicht verknüpft'
             }
+            recht={linkedAssets.length > 0 || assetsError ? undefined : 'anlage.verwalten'}
             onClick={() => (linkedAssets.length > 0 || assetsError ? oeffne({ art: 'registrierung' }) : setMastrOpen(true))}
           />
           <Zeile
@@ -506,6 +597,8 @@ export function TechnikSection({
           />
         </Gruppe>
       </div>
+
+      <GemeinsameSteuerungAbschnitt siteId={site.id} siteDevices={siteDevices} daten={gemeinsam} deepLinked={anchored === 'gemeinsam'} />
 
       {/* Stufe ③: was ohne Einstellung mitläuft - aus derselben Ableitung wie
           auf der Steuerung; „EEG: nur Solarladen" nur, wenn es gilt. */}
@@ -545,7 +638,7 @@ export function TechnikSection({
             {SETTING_HINT[blattInhalt.setting.id] && <p className="vp-note">{SETTING_HINT[blattInhalt.setting.id]}</p>}
             <Wirkung id={blattInhalt.setting.id} />
             {blattInhalt.setting.id === 'stromtarif' && <BezugspreisPreview siteId={site.id} tarifArt={site.tarifArt} />}
-            <SettingEditForm
+            <Recht aktion={einstellungsRecht(blattInhalt.setting.id)}><SettingEditForm
               setting={blattInhalt.setting}
               site={site}
               battery={battery}
@@ -558,7 +651,7 @@ export function TechnikSection({
                 schliesse();
                 setAssets(a);
               }}
-            />
+            /></Recht>
           </div>
         )}
         {blattInhalt?.art === 'voltpilot' && (
@@ -598,6 +691,7 @@ export function TechnikSection({
           ))}
         {blattInhalt?.art === 'loeschen' && (
           <DangerZone
+            recht="anlage.verwalten"
             variant="inline"
             actionLabel="Anlage löschen"
             description="Eine gelöschte Anlage kann nicht wiederhergestellt werden."
@@ -660,7 +754,7 @@ function Gruppe({
   vorne,
   children,
 }: {
-  id: SettingsGroupId | 'weiteres';
+  id: TechnikAbschnitt | 'weiteres';
   titel: string;
   vorne?: ReactNode;
   children: ReactNode;
@@ -689,6 +783,7 @@ function Zeile({
   warn = false,
   schloss = false,
   gefahr = false,
+  recht,
   onClick,
 }: {
   id?: string;
@@ -700,8 +795,31 @@ function Zeile({
   warn?: boolean;
   schloss?: boolean;
   gefahr?: boolean;
+  /**
+   * Das Recht, das die Änderung hinter dieser Zeile braucht (UEMS AP-03 IP-12). Ohne
+   * es bleibt der Wert lesbar, die Zeile öffnet nichts, und der Grund steht darunter.
+   */
+  recht?: string;
   onClick: () => void;
 }) {
+  const rollen = useRollen();
+  if (recht && !rollen.darf(recht)) {
+    return (
+      <li id={id}>
+        <div className={`vp-einst-zeile is-statisch${gefahr ? ' is-gefahr' : ''}`}>
+          <Kachel icon={icon} kat={kat} />
+          <span className="vp-einst-lab">
+            <b>{label}</b>
+            {wert != null && <span className="vp-einst-wert">{wert}</span>}
+            <small>
+              <Recht aktion={recht}>{null}</Recht>
+            </small>
+          </span>
+          <span />
+        </div>
+      </li>
+    );
+  }
   return (
     <li id={id}>
       <button
@@ -761,6 +879,7 @@ function UmgangZeile({
         kat="battery"
         label={setting.label}
         wert={speicherschonungLabel(battery.speicherschonung)}
+        recht="geraet.einrichten"
         onClick={onBlatt}
       />
     );
@@ -782,7 +901,7 @@ function UmgangZeile({
         </span>
         <span />
       </div>
-      <div className="vp-einst-seg" role="radiogroup" aria-labelledby="einst-umgang-l">
+      <Recht aktion="geraet.einrichten"><div className="vp-einst-seg" role="radiogroup" aria-labelledby="einst-umgang-l">
         {SPEICHERSCHONUNG_OPTIONS.map((o) => (
           <button
             key={o.value}
@@ -796,7 +915,7 @@ function UmgangZeile({
             {o.label}
           </button>
         ))}
-      </div>
+      </div></Recht>
       {folge}
     </li>
   );
@@ -872,9 +991,9 @@ function RegistrierungInhalt({
           </div>
         )}
       </dl>
-      <Button variant="outline" size="sm" iconLeft={<Icon name="refresh-cw" size={16} />} onClick={onAbrufen}>
+      <Recht aktion="anlage.verwalten"><Button variant="outline" size="sm" iconLeft={<Icon name="refresh-cw" size={16} />} onClick={onAbrufen}>
         Neu aus dem Register abrufen
-      </Button>
+      </Button></Recht>
     </div>
   );
 }
@@ -1085,9 +1204,9 @@ export function StammdatenEditForm({
         <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
           Abbrechen
         </Button>
-        <Button variant="primary" size="sm" onClick={save} disabled={busy || !name.trim()}>
+        <Recht aktion="anlage.verwalten"><Button variant="primary" size="sm" onClick={save} disabled={busy || !name.trim()}>
           {busy ? 'Wird gespeichert…' : 'Änderungen speichern'}
-        </Button>
+        </Button></Recht>
       </div>
     </div>
   );
@@ -1153,13 +1272,13 @@ export function BatteryControlSection({
           Kein Speicher hinterlegt. Tragen Sie die Speicherdaten ein, damit der
           Fahrplan Ihren Speicher optimal lädt und entlädt.
         </p>
-        <Button
+        <Recht aktion="geraet.einrichten"><Button
           variant="outline"
           iconLeft={<Icon name="battery" size={16} />}
           onClick={() => setEditing(true)}
         >
           Speicher hinzufügen
-        </Button>
+        </Button></Recht>
       </>
     );
   }
@@ -1218,14 +1337,14 @@ export function BatteryControlSection({
         )}
       </dl>
       <p className="vp-note">Ihr Wechselrichter steuert diesen Speicher - er führt den Fahrplan aus.</p>
-      <Button
+      <Recht aktion="geraet.einrichten"><Button
         variant="outline"
         size="sm"
         iconLeft={<Icon name="pencil" size={16} />}
         onClick={() => setEditing(true)}
       >
         Speicher bearbeiten
-      </Button>
+      </Button></Recht>
     </>
   );
 }
@@ -1349,9 +1468,9 @@ function BatteryEditForm({
         <Button variant="ghost" size="sm" onClick={onCancel} disabled={busy}>
           Abbrechen
         </Button>
-        <Button variant="primary" size="sm" onClick={save} disabled={busy}>
+        <Recht aktion="geraet.einrichten"><Button variant="primary" size="sm" onClick={save} disabled={busy}>
           {busy ? 'Wird gespeichert…' : 'Speicher speichern'}
-        </Button>
+        </Button></Recht>
       </div>
     </div>
   );

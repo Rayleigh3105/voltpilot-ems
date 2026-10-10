@@ -28,20 +28,61 @@ public class OrtAenderungRepository {
         this.jdbc = jdbc;
     }
 
-    /** {@code akteurSub} {@code null} = VoltPilot selbst; {@code akteurName} sagt es immer. */
+    /**
+     * {@code actorSub} {@code null} = VoltPilot selbst; {@code actorName} sagt es immer. Das Akteur-Vokabular aller
+     * Protokolle (AP-03 IP-7, V20260916010000): {@code actorRolle} {@code null} = nicht festgehalten.
+     */
     public record NeuerEintrag(UUID tenantId, String objektArt, UUID objektId, String art,
             String altJson, String neuJson, LocalDate giltAb, boolean rueckwirkend,
-            String akteurSub, String akteurName) {}
+            String actorSub, String actorName, String actorRolle, String actorArt) {
+
+        /** Ohne Rolle; die Art wie die Nachtragung des Bestands: ohne Subject oder „VoltPilot (…)" = VoltPilot. */
+        public NeuerEintrag(UUID tenantId, String objektArt, UUID objektId, String art, String altJson,
+                String neuJson, LocalDate giltAb, boolean rueckwirkend, String actorSub, String actorName) {
+            this(tenantId, objektArt, objektId, art, altJson, neuJson, giltAb, rueckwirkend, actorSub, actorName,
+                    null, actorSub == null || (actorName != null && actorName.startsWith("VoltPilot ("))
+                            ? ProtokollAkteur.ART_VOLTPILOT : ProtokollAkteur.ART_KUNDE);
+        }
+    }
 
     public record Eintrag(long id, String objektArt, UUID objektId, String art, String altJson,
-            String neuJson, LocalDate giltAb, boolean rueckwirkend, String akteurSub,
-            String akteurName, Instant createdAt) {}
+            String neuJson, LocalDate giltAb, boolean rueckwirkend, String actorSub,
+            String actorName, String actorRolle, String actorArt, Instant createdAt) {}
 
     /** Ein Archiv-Schritt eines Objekts: {@code archiviert} oder {@code wiederhergestellt}, ab {@code giltAb}. */
     public record ArchivSchritt(UUID objektId, String art, LocalDate giltAb) {}
 
     public static final String ARCHIVIERT = "archiviert";
     public static final String WIEDERHERGESTELLT = "wiederhergestellt";
+
+    /**
+     * Ein Eintrag, der zum Protokoll eines Standorts gehören KANN (AP-02 IP-14) — nur, was das
+     * Urteil in {@link OrtProtokollUmfang} braucht. {@code anlageId} ist {@code neu.anlage_id}: der
+     * Umzug einer Anlage (IP-11) schreibt ihn am Standort, damit der Eintrag an der Anlage selbst
+     * dort nicht ein zweites Mal erscheint.
+     */
+    public record Kandidat(long id, String objektArt, UUID objektId, LocalDate giltAb, Instant eingetragenAm,
+            String anlageId) {}
+
+    /**
+     * Die Kandidaten des Protokolls EINES Standorts: seine eigenen Einträge und die aller Gebäude,
+     * Bereiche und Anlagen des Kundenbereichs — welche davon wirklich dazugehören, entscheidet der
+     * Ortsbaum ({@link OrtProtokollUmfang}), nicht diese Abfrage.
+     */
+    public List<Kandidat> kandidatenDesStandorts(UUID standortId) {
+        return List.copyOf(jdbc.query("SELECT id, objekt_art, objekt_id, gilt_ab, created_at, "
+                + "neu->>'anlage_id' AS anlage_id FROM ort_aenderung "
+                + "WHERE objekt_art IN ('gebaeude', 'bereich', 'anlage') "
+                + "OR (objekt_art = 'standort' AND objekt_id = ?)",
+                (rs, n) -> new Kandidat(
+                        rs.getLong("id"),
+                        rs.getString("objekt_art"),
+                        rs.getObject("objekt_id", UUID.class),
+                        rs.getObject("gilt_ab", LocalDate.class),
+                        rs.getTimestamp("created_at").toInstant(),
+                        rs.getString("anlage_id")),
+                standortId));
+    }
 
     /**
      * Die Archiv-Schritte aller Objekte einer Art, in der Reihenfolge des Schreibens —
@@ -59,17 +100,19 @@ public class OrtAenderungRepository {
 
     public long eintragen(NeuerEintrag e) {
         Long id = jdbc.queryForObject("INSERT INTO ort_aenderung (tenant_id, objekt_art, objekt_id, "
-                + "art, alt, neu, gilt_ab, rueckwirkend, akteur_sub, akteur_name) "
-                + "VALUES (?,?,?,?,?::jsonb,?::jsonb,?,?,?,?) RETURNING id",
+                + "art, alt, neu, gilt_ab, rueckwirkend, actor_sub, actor_name, actor_rolle, actor_art) "
+                + "VALUES (?,?,?,?,?::jsonb,?::jsonb,?,?,?,?,?,?) RETURNING id",
                 Long.class, e.tenantId(), e.objektArt(), e.objektId(), e.art(), e.altJson(),
-                e.neuJson(), e.giltAb(), e.rueckwirkend(), e.akteurSub(), e.akteurName());
+                e.neuJson(), e.giltAb(), e.rueckwirkend(), e.actorSub(), e.actorName(), e.actorRolle(),
+                e.actorArt());
         return id;
     }
 
     /** Das Protokoll EINES Objekts, jüngster Eintrag zuerst — leer für ein fremdes Objekt. */
     public List<Eintrag> fuerObjekt(String objektArt, UUID objektId) {
         return List.copyOf(jdbc.query("SELECT id, objekt_art, objekt_id, art, alt::text AS alt, "
-                + "neu::text AS neu, gilt_ab, rueckwirkend, akteur_sub, akteur_name, created_at "
+                + "neu::text AS neu, gilt_ab, rueckwirkend, actor_sub, actor_name, actor_rolle, actor_art, "
+                + "created_at "
                 + "FROM ort_aenderung WHERE objekt_art = ? AND objekt_id = ? "
                 + "ORDER BY created_at DESC, id DESC",
                 (rs, n) -> new Eintrag(
@@ -81,8 +124,10 @@ public class OrtAenderungRepository {
                         rs.getString("neu"),
                         rs.getObject("gilt_ab", LocalDate.class),
                         rs.getBoolean("rueckwirkend"),
-                        rs.getString("akteur_sub"),
-                        rs.getString("akteur_name"),
+                        rs.getString("actor_sub"),
+                        rs.getString("actor_name"),
+                        rs.getString("actor_rolle"),
+                        rs.getString("actor_art"),
                         rs.getTimestamp("created_at").toInstant()),
                 objektArt, objektId));
     }

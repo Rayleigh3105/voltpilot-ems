@@ -1,7 +1,11 @@
-import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { KundenbereichEndeHinweis } from '../components/KundenbereichEndeHinweis';
+import { UnterstuetzungBanner } from '../components/UnterstuetzungBanner';
+import { useRollen } from '../rollen';
+import { Fragment, lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Icon } from '../../designsystem/components/core/Icon';
+import { FUNKTIONEN_EINTRAG } from '../messenEinstieg';
 import { NavItem } from '../../designsystem/components/shell/NavItem';
 // Die BESCHNITTENE Wortmarke (640x152, 9 kB), nicht die 292-kB-Bestandsdatei
 // (Perf-Review `vp-cockpit-perf-p7` §2 U3): die grosse Datei traegt einen
@@ -13,18 +17,28 @@ import { NavItem } from '../../designsystem/components/shell/NavItem';
 import logoUrl from '../../designsystem/assets/voltpilot-wordmark.png';
 import { currentUser, logout } from '../auth';
 import type { Tenant } from '../admin/adminApi';
-import { MAIN_PAGES, PLATFORM_GROUPS, navPageFor, PORTFOLIO_PAGE, pageLabel, type PageId } from '../nav';
+import {
+  MAIN_PAGES,
+  PLATFORM_GROUPS,
+  navPageFor,
+  PORTFOLIO_PAGE,
+  pageLabel,
+  STANDORT_PAGE,
+  type PageId,
+} from '../nav';
 import {
   bottomBarSlots,
   HELP_ITEM,
   type AnlageSidebar,
+  type EbenenBereichId,
+  type EbenenLeistenKachel,
   type NavTarget,
   type SidebarItem,
-} from '../anlageNav';
+} from '../ebenenNav';
 import type { HealthBadge } from '../health';
 import { VpPicker } from '../components/VpPicker';
 import type { VpOption } from '../picker/optionen';
-import type { AnlagenSub } from '../nav';
+import type { AnlagenSub, Route } from '../nav';
 import { HealthBadgeButton } from './HealthBadgeButton';
 import './Shell.css';
 import { HelpProvider, HelpLink } from '../help/HelpProvider';
@@ -37,7 +51,7 @@ const KontoAppDialog = lazy(() => import('../components/KontoAppDialog'));
 /**
  * Die Anlagen-Navigation der Schale — seit der Navigations-Runde „zwei Ebenen"
  * (Konzept `data/vp-portfolio-konzept-r2` §5.5, Captain-Entscheide E3/E4 vom
- * 25.08.2026) sind es die FÜNF BEREICHE aus `anlageNav.ts`, der Pfad
+ * 25.08.2026) sind es die FÜNF BEREICHE aus `ebenenNav.ts`, der Pfad
  * („Portfolio › Solarpark Dachau ▾") in der Kopfzeile und der Fuß
  * (Hilfe & Kontakt).
  *
@@ -72,8 +86,50 @@ export interface AnlageNav {
   onOpenPage: (page: PageId) => void;
   /** Der Rückweg auf die Flotten-Ebene; null = es gibt keine. */
   onOpenFleet: (() => void) | null;
+  /**
+   * UEMS AP-01 IP-5: die Glieder des Pfades VOR dem Anlagennamen
+   * („Ahrenberg › Werk Ahrenberg ›", `betriebsart.kopfPfad`); jedes ist auch
+   * eine Zeile des Umschalters (`wert`). Absent = der Rückweg von heute
+   * (`onOpenFleet` unter `fleetLabel`).
+   */
+  pfad?: PfadEintrag[];
+  /**
+   * N2 (Konzept „Navigation aus einem Guss“): der Weg EINE Ebene höher, ganz oben in der Seitenleiste („‹ Werk
+   * Ahrenberg“) — er ersetzt dort den Eintrag der Flotte. `null` = es gibt keine Ebene darüber; absent = wie bisher.
+   */
+  hoch?: PfadEintrag | null;
   /** The aggregated plant state; null = not known yet (no badge is shown). */
   health: HealthBadge | null;
+}
+
+/**
+ * Die Telefon-Leiste der Unternehmens- oder Standort-Ebene (UEMS AP-01 IP-7,
+ * E4 = A). Die Kacheln kommen FERTIG aus `ebenenNav.ebenenLeiste` — Bereiche
+ * mit Seite, erst ab drei; die Schale leitet hier nichts ab.
+ */
+export interface EbenenLeisteNav {
+  /** Der Name der Leiste („Bereiche des Unternehmens Kunststoffwerk Ahrenberg GmbH"). */
+  titel: string;
+  /** Die Kacheln: am Standort je ein Bereich, am Unternehmen je eine Gruppe (`ebenenNav.ebenenLeiste`). */
+  kacheln: EbenenLeistenKachel[];
+  /** Welcher Bereich gerade offen ist (`ebenenAktiv`) — hervorgehoben ist die Kachel, die ihn trägt. */
+  aktiv: EbenenBereichId | null;
+  /**
+   * Welcher Eintrag leuchtet (`ebenenNav.aktiverEintrag`) — die Einträge der Flotte meinen Seiten, nicht Bereiche.
+   * Absent = der Eintrag, der `aktiv` trägt.
+   */
+  aktivKey?: string | null;
+  /** N2: der Weg eine Ebene höher über den Einträgen („‹ Ahrenberg“ am Standort); `null`/absent = keiner. */
+  hoch?: PfadEintrag | null;
+  onOpen: (ziel: Route) => void;
+}
+
+/** Ein Glied des Pfades in der Kopfzeile (UEMS AP-01 IP-5). */
+export interface PfadEintrag {
+  /** Zugleich der Wert seiner Zeile im Anlagen-Umschalter. */
+  wert: string;
+  label: string;
+  onOpen: () => void;
 }
 
 /**
@@ -102,14 +158,21 @@ export function AppShell({
   fleetLabel = PORTFOLIO_PAGE.label,
   showAddAnlage,
   onAddAnlage,
+  onFunktionen,
   counts,
   tenants,
   tenantOverride,
   onTenantChange,
   anlage = null,
+  ebenen = null,
+  ortsPfad = null,
   helpArticle = null,
   children,
+  ohneStandort = false,
+  teilansicht = null,
 }: {
+  ohneStandort?: boolean;
+  teilansicht?: string | null;
   page: PageId;
   onNavigate: (page: PageId) => void;
   isAdmin: boolean;
@@ -127,6 +190,12 @@ export function AppShell({
    */
   fleetLabel?: string;
   /**
+   * UEMS AP-01 IP-5: der Pfad einer Seite OHNE Anlage — die Standort-Übersicht
+   * („Ahrenberg › Werk Ahrenberg") und die Unternehmens-Übersicht („Ahrenberg").
+   * `null` = wie heute der Seitenname.
+   */
+  ortsPfad?: { vor: PfadEintrag[]; hier: string } | null;
+  /**
    * Show the always-visible "＋ Anlage hinzufügen" header action. Scoped to a
    * single-Anlage customer (see `showAddAnlageButton`) - their only obvious way
    * to a second Anlage, reachable from every page.
@@ -134,6 +203,11 @@ export function AppShell({
   showAddAnlage: boolean;
   /** Open the "Anlage anlegen" one-flow drawer (hosted by the caller). */
   onAddAnlage: () => void;
+  /**
+   * AP-01 E5 = A: „Funktionen“ im Avatar-Menü führt zur Karte „Funktionen“ der Übersicht. Ohne Ziel (Anlage-
+   * oder Bestands-Landung, keine Karte) gibt es den Eintrag nicht.
+   */
+  onFunktionen?: () => void;
   counts: { sites: number | null; devices: number | null };
   /** Admin only: tenants for the context switcher. */
   tenants: Tenant[];
@@ -142,10 +216,16 @@ export function AppShell({
   onTenantChange: (tenantId: string | null) => void;
   /** Die Anlagen-Navigation (fünf Bereiche + Pfad); null = keine Anlage offen. */
   anlage?: AnlageNav | null;
+  /**
+   * UEMS AP-01 IP-7: die Telefon-Leiste der Unternehmens- oder Standort-Ebene;
+   * null = keine (unter drei Bereichen mit Seite). In einer Anlage gilt IHRE Leiste.
+   */
+  ebenen?: EbenenLeisteNav | null;
   helpArticle?: HelpArticleId | null;
   children: React.ReactNode;
 }) {
   const user = currentUser();
+  const { benutzerLesen, selbst } = useRollen();
   const [menuOpen, setMenuOpen] = useState(false);
   // „Als App auf dem Handy" (E5): gilt dem Gerät, darum im Konto-Menü. Die
   // installierte App braucht den Eintrag nicht mehr.
@@ -236,13 +316,47 @@ export function AppShell({
   };
 
   /**
-   * Die Telefon-Leiste gibt es NUR in einer Anlage (E4): auf der Flotten-Ebene
-   * navigieren die Reiter der Portfolio-Seite, eine zweite Leiste daneben wäre
-   * ein zweites Menü für dieselbe Ebene.
+   * Leuchtet ein Eintrag der Ebene? Nach `aktivKey`, wo der Aufrufer ihn kennt (die Einträge der Flotte meinen Seiten),
+   * sonst nach dem Bereich, den er trägt — Seitenleiste und Telefon-Leiste fragen dieselbe Funktion.
    */
-  const barSlots = anlage ? bottomBarSlots(anlage.sidebar) : [];
+  const eintragAktiv = (kachel: EbenenLeistenKachel) =>
+    ebenen?.aktivKey !== undefined
+      ? ebenen.aktivKey === kachel.key
+      : ebenen?.aktiv != null && kachel.bereiche.includes(ebenen.aktiv);
+
+  /**
+   * Die Telefon-Leiste: in einer Anlage ihre fünf Bereiche (E4), auf der
+   * Unternehmens- oder Standort-Ebene deren Bereiche mit Seite, erst ab drei
+   * (UEMS AP-01 IP-7) — sonst keine: dann navigieren die Reiter der Seite, eine
+   * zweite Leiste daneben wäre ein zweites Menü für dieselbe Ebene.
+   */
+  const barSlots: { key: string; label: string; icon: SidebarItem['icon']; badge: number | null; aktiv: boolean; oeffnen: () => void }[] =
+    anlage
+      ? bottomBarSlots(anlage.sidebar).map((item) => ({
+          key: item.key,
+          label: item.label,
+          icon: item.icon,
+          badge: item.badge,
+          aktiv: anlage.activeKey === item.key,
+          oeffnen: () => openTarget(item.target),
+        }))
+      : (ebenen?.kacheln ?? []).map((kachel) => ({
+          key: kachel.key,
+          label: kachel.kurz ?? kachel.label,
+          icon: kachel.icon,
+          badge: null,
+          aktiv: eintragAktiv(kachel),
+          oeffnen: () => ebenen?.onOpen(kachel.ziel),
+        }));
+  const barName = anlage ? `Bereiche der Anlage ${anlage.siteName ?? ''}`.trim() : ebenen?.titel ?? '';
   /** 2+ Anlagen or a fleet level to return to = there is something to switch. */
-  const canSwitchAnlage = !!anlage && (anlage.sites.length > 1 || !!anlage.onOpenFleet);
+  const canSwitchAnlage =
+    !!anlage && (anlage.sites.length > 1 || !!anlage.onOpenFleet || (anlage.pfad?.length ?? 0) > 0);
+  /** Die Glieder VOR dem Anlagennamen: der Pfad (IP-5), sonst der Rückweg von heute. */
+  const anlagePfad: PfadEintrag[] = anlage
+    ? anlage.pfad
+      ?? (anlage.onOpenFleet ? [{ wert: ALL_SITES, label: fleetLabel ?? '', onOpen: anlage.onOpenFleet }] : [])
+    : [];
 
   const navEntry = (item: SidebarItem) => (
     <NavItem
@@ -278,7 +392,9 @@ export function AppShell({
 
   /** Der EINE Ort, an dem ein Anlagen-Wechsel entschieden wird. */
   const waehleAnlage = (wert: string) => {
-    if (wert === ALL_SITES) anlage?.onOpenFleet?.();
+    const glied = anlage?.pfad?.find((g) => g.wert === wert);
+    if (glied) glied.onOpen();
+    else if (wert === ALL_SITES) anlage?.onOpenFleet?.();
     else anlage?.onSelectSite(wert);
   };
 
@@ -292,6 +408,51 @@ export function AppShell({
     <div className="vp-anlagenav">{anlage.sidebar.bereiche.map(navEntry)}</div>
   );
 
+  /**
+   * Konzept „Navigation aus einem Guss“ (N1): auf der Unternehmens-, Standort- und Flotten-Ebene trägt die Seitenleiste
+   * die EINTRÄGE der Ebene — dieselben wie die Telefon-Leiste, wie in der Anlage ihre fünf Bereiche. Der offene
+   * Eintrag nennt seine Frage in einer zweiten Zeile (N4); der Titel nennt sie immer (Symbolleiste am Tablet).
+   */
+  const ebenenEintraege = !anlage && ebenen && ebenen.kacheln.length > 0 ? ebenen.kacheln : null;
+  const ebenenNavEintrag = (kachel: EbenenLeistenKachel) => {
+    const an = eintragAktiv(kachel);
+    return (
+      <NavItem
+        key={kachel.key}
+        icon={<Icon name={kachel.icon} size={18} />}
+        label={
+          an && kachel.frage ? (
+            <span className="vp-nav-lbl vp-nav-zwei">
+              <span>{kachel.label}</span>
+              <span className="vp-nav-frage">{kachel.frage}</span>
+            </span>
+          ) : (
+            <span className="vp-nav-lbl">{kachel.label}</span>
+          )
+        }
+        title={kachel.frage ? `${kachel.label} – ${kachel.frage}` : kachel.label}
+        active={an}
+        data-testid={`seitenleiste-${kachel.key}`}
+        onClick={() => ebenen?.onOpen(kachel.ziel)}
+      />
+    );
+  };
+  /**
+   * N2: der Weg EINE Ebene höher, ganz oben — in der Anlage zu ihrem Standort, am Standort zum Unternehmen. Er ersetzt
+   * den Eintrag der Flotte; der Pfad der Kopfzeile nennt weiter alle Ebenen. Absent (ältere Aufrufer) = wie bisher.
+   */
+  const hochEintrag: PfadEintrag | null | undefined = anlage ? anlage.hoch : ebenenEintraege ? (ebenen?.hoch ?? null) : undefined;
+  const hochNav = hochEintrag ? (
+    <NavItem
+      className="vp-nav-hoch"
+      icon={<Icon name="chevron-left" size={16} />}
+      label={<span className="vp-nav-lbl">{hochEintrag.label}</span>}
+      title={`Zurück zu ${hochEintrag.label}`}
+      data-testid="seitenleiste-hoch"
+      onClick={hochEintrag.onOpen}
+    />
+  ) : null;
+
   const sidebar = (
     // Desktop (>=1024px) and the tablet icon rail (721-1023px) are unchanged.
     // The phone slide-over is GONE since Mobil-Umbau Stufe 1: the bottom bar
@@ -302,7 +463,7 @@ export function AppShell({
         <img src={logoUrl} alt="VoltPilot EMS" />
       </div>
       <nav aria-label="Hauptnavigation">
-        {showPortfolio && (
+        {hochEintrag !== undefined ? hochNav : showPortfolio && (
           // Die FLOTTEN-Ebene führt die Leiste. Ihre zwei Welten (Messwerte ·
           // Erlöse) sind seit E3 REITER der Portfolio-Seite — die frühere
           // Gruppe der Flotten-Welten ist dort aufgegangen.
@@ -310,11 +471,11 @@ export function AppShell({
             icon={<Icon name={PORTFOLIO_PAGE.icon} size={18} />}
             label={<span className="vp-nav-lbl">{fleetLabel}</span>}
             title={fleetLabel}
-            active={page === PORTFOLIO_PAGE.id}
+            active={page === PORTFOLIO_PAGE.id || page === STANDORT_PAGE.id}
             onClick={() => onNavigate(PORTFOLIO_PAGE.id)}
           />
         )}
-        {MAIN_PAGES.filter((p) => p.id !== 'uebersicht' || showOverview).map((p) => (
+        {hochEintrag === undefined && MAIN_PAGES.filter((p) => !ohneStandort && (p.id !== 'uebersicht' || showOverview)).map((p) => (
           <NavItem
             key={p.id}
             icon={<Icon name={p.icon} size={18} />}
@@ -325,6 +486,7 @@ export function AppShell({
           />
         ))}
         {anlageNav}
+        {ebenenEintraege && <div className="vp-ebenennav">{ebenenEintraege.map(ebenenNavEintrag)}</div>}
         {isAdmin && (
           // Admin-Umbau Stufe 1 „Ordnung": die elf flachen Punkte sind vier
           // benannte Gruppen hinter der LANDUNG (Plattform-Übersicht). Seit S8
@@ -388,19 +550,21 @@ export function AppShell({
               Der Name IST der Anlagen-Umschalter, das führende Wort der
               Rückweg auf die Flotten-Ebene. Auf einer Anlage ohne Flotte
               bleibt nur der Name. */}
-          <div className={anlage ? 'vp-topbar-anlage' : 'crumbs'}>
+          <div className={anlage ? 'vp-topbar-anlage' : ortsPfad ? 'crumbs vp-crumbs-ort' : 'crumbs'}>
             {anlage ? (
               <div className="crumbs">
-                {anlage.onOpenFleet && (
-                  <>
-                    <button type="button" className="vp-crumb-up" onClick={anlage.onOpenFleet}>
-                      {fleetLabel}
+                {/* IP-5: „Ahrenberg › Werk Ahrenberg ›" — übersprungene Ebenen
+                    fehlen, ohne Standorte ist es der Rückweg von heute. */}
+                {anlagePfad.map((glied) => (
+                  <Fragment key={glied.wert}>
+                    <button type="button" className="vp-crumb-up" onClick={glied.onOpen}>
+                      {glied.label}
                     </button>
                     <span className="vp-crumb-sep" aria-hidden="true">
                       ›
                     </span>
-                  </>
-                )}
+                  </Fragment>
+                ))}
                 {/* The breadcrumb names the ANLAGE, not the menu item ("Hof
                     Lindenberg", not "Meine Anlagen") - that is what the
                     customer is looking at (G1). The full text stays in the
@@ -432,6 +596,24 @@ export function AppShell({
                   )}
                 </span>
               </div>
+            ) : ortsPfad ? (
+              // IP-5: die Standort- und die Unternehmens-Übersicht nennen ihren
+              // Ort; der Rückweg bleibt am Telefon sichtbar (keine Leiste dort).
+              <>
+                {ortsPfad.vor.map((glied) => (
+                  <Fragment key={glied.wert}>
+                    <button type="button" className="vp-crumb-up" onClick={glied.onOpen}>
+                      {glied.label}
+                    </button>
+                    <span className="vp-crumb-sep" aria-hidden="true">
+                      ›
+                    </span>
+                  </Fragment>
+                ))}
+                <span className="here" title={ortsPfad.hier}>
+                  {ortsPfad.hier}
+                </span>
+              </>
             ) : (
               // Die Flotten-Landung heißt wie im Menü („Meine Anlagen" beim
               // Endkunden, „Portfolio" beim Betreiber) — nie zwei Namen.
@@ -528,6 +710,24 @@ export function AppShell({
             </button>
             {menuOpen && (
               <div className="vp-avatarmenu" role="menu" aria-label="Konto-Menü">
+                {benutzerLesen && <button type="button" role="menuitem" className="vp-avatarmenu-item"
+                  onClick={() => openTarget({ kind: 'page', page: 'kunden-benutzer' })}>
+                  <Icon name="users" size={18} />Benutzer
+                </button>}
+                {onFunktionen && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="vp-avatarmenu-item"
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onFunktionen();
+                    }}
+                  >
+                    <Icon name="layers" size={18} />
+                    {FUNKTIONEN_EINTRAG}
+                  </button>
+                )}
                 <button
                   type="button"
                   role="menuitem"
@@ -588,29 +788,38 @@ export function AppShell({
 
         <main className="vp-main has-bottombar">
           {helpArticle && <div className="vp-context-help"><HelpLink article={helpArticle} /></div>}
+          {teilansicht && <p className="vp-alert" role="status">{teilansicht}</p>}
+          {selbst?.konto === 'partner' && <div className="vp-kundenbereich-wechsel"><VpPicker label="Kundenbereich"
+            value={tenantOverride ?? ''} onChange={v => onTenantChange(v || null)} options={[
+              { value: '', label: 'Kundenbereich wählen' },
+              ...[...new Map((selbst.kundenbereiche ?? []).filter(k => Date.parse(k.endet) > Date.now()).map(k => [k.id, k])).values()].map(k => ({ value: k.id, label: k.name })),
+            ]} /></div>}
+          <KundenbereichEndeHinweis beendet={selbst?.kundenbereich?.beendet} />
+          <UnterstuetzungBanner />
           {children}
         </main>
       </div>
 
       {/* Die Telefon-Leiste trägt seit E4 die FÜNF Bereiche der Anlage und
           KEINE „Mehr"-Kachel — es gibt nichts mehr zu falten. Auf der
-          Flotten-Ebene rendert sie gar nicht (dort navigieren die Reiter).
-          Oberhalb von 720 px blendet CSS sie aus. */}
+          Unternehmens- und Standort-Ebene trägt sie deren Bereiche mit Seite,
+          erst ab drei (IP-7); darunter rendert sie gar nicht (dort navigieren
+          die Reiter). Oberhalb von 720 px blendet CSS sie aus. */}
       {barSlots.length > 0 && (
         <nav
           className="vp-bottombar"
-          aria-label={`Bereiche der Anlage ${anlage?.siteName ?? ''}`.trim()}
+          aria-label={barName}
           style={{ ['--vp-bar-slots' as string]: String(barSlots.length) } as React.CSSProperties}
         >
           {barSlots.map((item) => {
-            const active = anlage?.activeKey === item.key;
+            const active = item.aktiv;
             return (
               <button
                 key={item.key}
                 type="button"
                 className={`vp-bottombar-item${active ? ' active' : ''}`}
                 aria-current={active ? 'page' : undefined}
-                onClick={() => openTarget(item.target)}
+                onClick={item.oeffnen}
               >
                 <span className="ic" aria-hidden="true">
                   <Icon name={item.icon} size={20} />

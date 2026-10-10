@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mqtt-verbund-anteile.schema.json",
+  "title": "Anteils-Dokument 1.0 (…/v2/verbund-anteile) und seine Quittung (…/v2/verbund-anteile-result)",
+  "type": "object",
+  "required": ["schema_version", "tenant_id", "site_id", "device_id", "epoche", "revision", "schritt", "verteilbar",
+    "anteile", "published_at"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "tenant_id": { "type": "string", "format": "uuid" },
+    "site_id": { "type": "string", "format": "uuid" },
+    "device_id": { "type": "string", "format": "uuid", "description": "die Box des Topics (Topic- und Payload-Identität)" },
+    "epoche": { "type": "integer", "minimum": 1 },
+    "revision": { "type": "integer", "minimum": 1 },
+    "schritt": { "enum": ["uebergang", "ziel"] },
+    "rolle": {
+      "enum": ["fuehrt", "steuert_mit"],
+      "description": "wahlfrei (IP-17): die Rolle der Box des Topics im Verbund; die Box spiegelt sie im Herzschlag"
+    },
+    "verteilbar": { "$ref": "#/$defs/je_richtung_kw" },
+    "anteile": {
+      "type": "object",
+      "description": "einspeisung fehlt genau dann, wenn auch verteilbar.einspeisung fehlt: Einspeisung unbegrenzt (AP-15 Folge) - kein Anteil, kein Wächter",
+      "required": ["bezug"],
+      "additionalProperties": false,
+      "properties": {
+        "einspeisung": { "$ref": "#/$defs/je_box_kw" },
+        "bezug": { "$ref": "#/$defs/je_box_kw" }
+      }
+    },
+    "reserve_verbraucher": {
+      "type": "object",
+      "description": "wahlfrei (AP-15 Folge von IP-19, V3): je Richtung (nur bezug) die Summe der Nennleistungen der steuerbaren Geräte DIESER Box außerhalb des Ladeparks, kW mit einer Nachkommastelle; die Box gibt dem Ladepark max(0, Anteil − Reserve), wo der Anteil bindet. Fehlt es, gilt keine Reserve.",
+      "additionalProperties": false,
+      "properties": { "bezug": { "$ref": "#/$defs/kw" } }
+    },
+    "ungeregelt_hinter_abgang": {
+      "type": "object",
+      "description": "wahlfrei (AP-15 Folge von IP-19, B3): je Richtung (nur bezug) der erklärte Höchstwert des Ungeregelten hinter dem Abgangszähler DIESER Box (Erklärung ungeregelt und Geräte ohne Schreibfreigabe), kW mit einer Nachkommastelle, aufgerundet; nur für eine Box, die nicht führt, und nur über 0. Die mitsteuernde Box hält ihren Anteil am eigenen Zähler und zieht diesen Wert nur blind ab: max(0, Anteil − Reserve − Höchstwert). Fehlt es, gilt blind Anteil − Reserve.",
+      "additionalProperties": false,
+      "properties": { "bezug": { "$ref": "#/$defs/kw" } }
+    },
+    "published_at": { "type": "string", "format": "date-time" }
+  },
+  "anyOf": [
+    { "properties": { "verteilbar": { "required": ["einspeisung"] }, "anteile": { "required": ["einspeisung"] } } },
+    { "properties": { "verteilbar": { "not": { "required": ["einspeisung"] } }, "anteile": { "not": { "required": ["einspeisung"] } } } }
+  ],
+  "$defs": {
+    "kw": { "type": "number", "minimum": 0 },
+    "je_richtung_kw": {
+      "type": "object",
+      "required": ["bezug"],
+      "additionalProperties": false,
+      "properties": { "einspeisung": { "$ref": "#/$defs/kw" }, "bezug": { "$ref": "#/$defs/kw" } }
+    },
+    "je_box_kw": {
+      "type": "object",
+      "propertyNames": { "format": "uuid" },
+      "additionalProperties": { "$ref": "#/$defs/kw" }
+    },
+    "stand": {
+      "type": "object",
+      "required": ["epoche", "revision"],
+      "additionalProperties": false,
+      "properties": {
+        "epoche": { "type": "integer", "minimum": 0 },
+        "revision": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "quittung": {
+      "title": "Quittung 1.0 auf …/v2/verbund-anteile-result",
+      "type": "object",
+      "required": ["schema_version", "tenant_id", "site_id", "device_id", "epoche", "revision", "urteil", "ts"],
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": { "const": "1.0" },
+        "tenant_id": { "type": "string", "format": "uuid" },
+        "site_id": { "type": "string", "format": "uuid" },
+        "device_id": { "type": "string", "format": "uuid" },
+        "epoche": { "type": "integer", "minimum": 0 },
+        "revision": { "type": "integer", "minimum": 0 },
+        "urteil": { "enum": ["angenommen", "abgelehnt"] },
+        "grund": { "enum": ["fremde_anlage", "box_fehlt_im_dokument", "revision_aelter", "summe_ueber_verteilbar"] },
+        "wirksam": { "$ref": "#/$defs/stand" },
+        "ts": { "type": "string", "format": "date-time" }
+      },
+      "anyOf": [
+        { "properties": { "urteil": { "const": "angenommen" } }, "not": { "required": ["grund"] } },
+        { "properties": { "urteil": { "const": "abgelehnt" } }, "required": ["grund"] }
+      ]
+    }
+  }
+}

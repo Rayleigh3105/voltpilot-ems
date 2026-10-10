@@ -12,12 +12,17 @@ import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.repo.DeviceOverrideRepository;
 import com.voltpilot.api.repo.FlowClaimRepository;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.uems.BerichtsBelege;
 import com.voltpilot.api.uems.FuehrendeBoxAbleitung.Grund;
+import com.voltpilot.api.uems.PushJeBox;
+import com.voltpilot.api.uems.RuheRegel;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -86,9 +91,24 @@ public class EntityRegistryService {
      */
     private static final String COMPOSED_LABEL = null;
 
-    /** Outcome of a best-effort registry push. */
+    /**
+     * Outcome of a best-effort registry push. {@code deviceId} is the lead box; {@code boxen} lists
+     * every box of a push je Box (UEMS AP-06 IP-6) with whether it got its push - empty on the
+     * Bestand path (one push to the lead box, exactly as before).
+     */
     public record PushOutcome(boolean attempted, boolean published, String reason,
-            UUID deviceId) {
+            UUID deviceId, List<BoxZustellung> boxen) {
+
+        /** Ob EINE Box ihren Push bekommen hat. */
+        public record BoxZustellung(UUID deviceId, boolean published) {}
+
+        public PushOutcome {
+            boxen = boxen == null ? List.of() : List.copyOf(boxen);
+        }
+
+        public PushOutcome(boolean attempted, boolean published, String reason, UUID deviceId) {
+            this(attempted, published, reason, deviceId, List.of());
+        }
 
         static PushOutcome notConfigured() {
             return new PushOutcome(false, false, "mqtt_not_configured", null);
@@ -101,6 +121,21 @@ public class EntityRegistryService {
         static PushOutcome result(boolean ok, UUID deviceId) {
             return new PushOutcome(true, ok, ok ? null : "publish_failed", deviceId);
         }
+
+        /** Der Push je Box: zugestellt heißt er nur, wenn JEDE Box ihren bekommen hat (W7). */
+        static PushOutcome jeBox(UUID fuehrend, List<BoxZustellung> boxen) {
+            boolean alle = boxen.stream().allMatch(BoxZustellung::published);
+            return new PushOutcome(true, alle, alle ? null : "publish_failed", fuehrend, boxen);
+        }
+
+        /**
+         * Ob mindestens eine Box den neuen Stand HAT und mindestens eine nicht - der Fall, in dem eine
+         * zurückgerollte Übernahme ihre Boxen zurückstellen muss (W7).
+         */
+        public boolean teilweiseZugestellt() {
+            return boxen.stream().anyMatch(BoxZustellung::published)
+                    && boxen.stream().anyMatch(b -> !b.published());
+        }
     }
 
     private final EntityRegistryRepository repo;
@@ -112,6 +147,13 @@ public class EntityRegistryService {
     private final DeviceOverrideRepository overrides;
     private final LeadDeviceService leadDevices;
     private final Clock clock;
+    private final BerichtsBelege berichtsBelege;
+    private com.voltpilot.api.uems.QuellenUebergabe uebergabe;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void uebergabe(com.voltpilot.api.uems.QuellenUebergabe uebergabe) {
+        this.uebergabe = uebergabe;
+    }
 
     /**
      * The @Autowired is LOAD-BEARING (the BrokerAuthzReloader two-constructor
@@ -123,15 +165,15 @@ public class EntityRegistryService {
     public EntityRegistryService(EntityRegistryRepository repo,
             ObjectProvider<EntityRegistryPublisher> publisher, ObjectMapper mapper,
             EntityTypeCatalog catalog, AssetRepository assets, FlowClaimRepository claims,
-            DeviceOverrideRepository overrides, LeadDeviceService leadDevices) {
+            DeviceOverrideRepository overrides, LeadDeviceService leadDevices, BerichtsBelege berichtsBelege) {
         this(repo, publisher, mapper, catalog, assets, claims, overrides, leadDevices,
-                Clock.systemUTC());
+                Clock.systemUTC(), berichtsBelege);
     }
 
     EntityRegistryService(EntityRegistryRepository repo,
             ObjectProvider<EntityRegistryPublisher> publisher, ObjectMapper mapper,
             EntityTypeCatalog catalog, AssetRepository assets, FlowClaimRepository claims,
-            DeviceOverrideRepository overrides, LeadDeviceService leadDevices, Clock clock) {
+            DeviceOverrideRepository overrides, LeadDeviceService leadDevices, Clock clock, BerichtsBelege berichtsBelege) {
         this.repo = repo;
         this.publisher = publisher;
         this.mapper = mapper;
@@ -141,6 +183,7 @@ public class EntityRegistryService {
         this.overrides = overrides;
         this.leadDevices = leadDevices;
         this.clock = clock;
+        this.berichtsBelege = berichtsBelege;
     }
 
     /**
@@ -496,8 +539,17 @@ public class EntityRegistryService {
      * Compose the current registry push payload and publish it retained to the
      * site's gateway device. Never throws; a missing publisher/gateway or a
      * broker failure is reported in the outcome only.
+     *
+     * <p>UEMS AP-06 IP-6: sobald eine Entität der Anlage eine Datenquelle trägt, stellt
+     * {@link #pushJeBox} jeder Box ihren eigenen Push zu. Ohne jede Datenquelle - der Stand jeder
+     * Bestandsanlage - bleibt es Zeile für Zeile der eine Push an die führende Box.
      */
     public PushOutcome pushRegistryBestEffort(UUID siteId) {
+        return pushRegistryBestEffort(siteId, clock.instant());
+    }
+
+    /** Der Zeitgeber reicht seine injizierbare Uhr bis in die Push-Revision durch. */
+    public PushOutcome pushRegistryBestEffort(UUID siteId, Instant now) {
         UUID tenantId = TenantContext.get();
         LeadDeviceService.FuehrendeBox lead = leadDevices.fuehrendeBox(siteId);
         UUID gateway = lead.box();
@@ -506,11 +558,20 @@ public class EntityRegistryService {
                     + "({})", siteId, lead.grund().code());
             return PushOutcome.noGateway();
         }
+        Map<UUID, UUID> quellen = repo.datenquelleJeEntitaet(siteId);
+        if (!quellen.isEmpty()) {
+            var zeitraeume = repo.zustaendigkeitenDerQuellen(siteId);
+            if (uebergabe != null) {
+                return uebergabe.zustellen(siteId, now, zeitraeume,
+                        plan -> pushJeBox(tenantId, siteId, gateway, quellen, now,
+                                plan.zeitraeume(), plan.boxen(), plan.revision()));
+            }
+            return pushJeBox(tenantId, siteId, gateway, quellen, now, zeitraeume, List.of(), now.toString());
+        }
         // The composed revision is the Soll the edge is expected to echo in
         // its heartbeat (E1b bidirectional sync) - recorded even when the
         // best-effort publish fails or MQTT is not configured (the Soll
         // changed regardless; retained delivery converges later).
-        Instant now = clock.instant();
         byte[] payload = composePush(tenantId, siteId, gateway, now, repo.entitiesForSite(siteId),
                 repo.componentAuthority(siteId));
         repo.upsertRegistryState(siteId, tenantId, gateway, now.toString());
@@ -519,6 +580,50 @@ public class EntityRegistryService {
             return PushOutcome.notConfigured();
         }
         return PushOutcome.result(pub.publishRegistry(tenantId, siteId, gateway, payload), gateway);
+    }
+
+    /**
+     * Der Push je Box (UEMS AP-06 IP-6, E4 = A): jede Box bekommt ihren eigenen vollständigen
+     * Sollbestand aus genau den Entitäten, deren Datenquelle sie ZUM ZEITPUNKT liest; die
+     * Anlagen-Rollen nur die führende Box. Welche Entität wohin gehört, entscheidet allein
+     * {@link PushJeBox}; eine ausgelassene Entität steht mit Grund im Log, nie still an einer Box.
+     *
+     * <p>Alles oder nichts je Box (W7): ERST werden alle Nutzlasten gebaut - scheitert eine, ist
+     * nichts aufgezeichnet und nichts zugestellt -, DANN steht das Soll aller Boxen in EINER
+     * Anweisung, und erst zuletzt wird zugestellt. Zugestellt heißt der Ausgang nur, wenn jede Box
+     * ihren Push bekommen hat.
+     */
+    private PushOutcome pushJeBox(UUID tenantId, UUID siteId, UUID fuehrend, Map<UUID, UUID> quellen,
+            Instant now, List<com.voltpilot.api.uems.ZustaendigkeitRepository.Zeitraum> zeitraeume,
+            List<UUID> bisherigeBoxen, String revision) {
+        List<EntityRow> rows = repo.entitiesForSite(siteId);
+        List<PushJeBox.Entitaet> entitaeten = new ArrayList<>();
+        Map<UUID, EntityRow> zeilen = new LinkedHashMap<>();
+        for (EntityRow row : rows) {
+            entitaeten.add(new PushJeBox.Entitaet(row.id(), row.entityType(), quellen.get(row.id())));
+            zeilen.put(row.id(), row);
+        }
+        List<UUID> mitSoll = new ArrayList<>(repo.boxenMitSoll(siteId));
+        mitSoll.addAll(bisherigeBoxen);
+        PushJeBox.Verteilung verteilung = PushJeBox.verteilen(entitaeten, fuehrend, repo.siteDeviceIds(siteId),
+                zeitraeume, now, mitSoll);
+        for (PushJeBox.Auslass auslass : verteilung.ausgelassen()) {
+            log.warn("v2 entity registry for site {}: entity {} is in no box push ({})", siteId,
+                    auslass.entitaet(), auslass.grund().code());
+        }
+        String authority = repo.componentAuthority(siteId);
+        Map<UUID, byte[]> payloads = new LinkedHashMap<>();
+        verteilung.boxen().forEach((box, ids) -> payloads.put(box, composePush(tenantId, siteId, box, now,
+                ids.stream().map(zeilen::get).toList(), authority, revision)));
+        repo.upsertRegistryStates(siteId, tenantId, List.copyOf(payloads.keySet()), revision);
+        EntityRegistryPublisher pub = publisher.getIfAvailable();
+        if (pub == null) {
+            return PushOutcome.notConfigured();
+        }
+        List<PushOutcome.BoxZustellung> zustellungen = new ArrayList<>();
+        payloads.forEach((box, payload) -> zustellungen.add(
+                new PushOutcome.BoxZustellung(box, pub.publishRegistry(tenantId, siteId, box, payload))));
+        return PushOutcome.jeBox(fuehrend, zustellungen);
     }
 
     // ---- E1b: catalog-driven entity CRUD (arbitrary types) ------------------
@@ -733,6 +838,8 @@ public class EntityRegistryService {
      * Pilsting ghost) reappears as "Neues Gerät gefunden" forever. The purge
      * releases the point's kWp from the aggregate {@code asset.pv} and deletes
      * the row, freeing its edge source for a clean adoption or re-pin.
+     * Cited components are refused with {@code 409 berichts_belege} before
+     * any write, including role removal and the non-purging admin path.
      */
     @Transactional
     public boolean deleteEntity(UUID siteId, UUID pointId, boolean purgePoint) {
@@ -740,6 +847,7 @@ public class EntityRegistryService {
         if (row == null) {
             return false;
         }
+        berichtsBelege.pruefeKomponente(siteId, pointId);
         repo.deleteRoleAssignments(pointId);
         if (purgePoint) {
             // The purge fully removes the entity, so its flow_claim would dangle
@@ -892,8 +1000,19 @@ public class EntityRegistryService {
      * Drop a de-entitied adopted point (and its kWp contribution) so its edge
      * source can be adopted as a v2-native entity instead - the pin is unique
      * per (site, source), so the stale row would otherwise refuse the new one.
+     * A cited point survives with its sources and kWp contribution; only its
+     * pin is released, and skipping the deletion is logged.
      */
     private void releaseStalePoint(UUID tenantId, UUID siteId, EntityRow stale) {
+        BerichtsBelege.Komponente belege = berichtsBelege.derKomponente(siteId, stale.id());
+        if (!belege.staende().isEmpty()) {
+            // The pin may move, but the cited row and its sources must survive.
+            // Keep its nameplate contribution too: no point was removed.
+            repo.setEdgeSource(stale.id(), null);
+            log.info("Belegschutz: Aufräumen der Komponente {} an Anlage {} übersprungen; Berichtsstände: {}",
+                    stale.id(), siteId, belege.staende());
+            return;
+        }
         if (stale.capacityKwp() != null && stale.capacityKwp().signum() != 0) {
             assets.addPvCapacity(tenantId, siteId, stale.capacityKwp().negate());
         }
@@ -1041,12 +1160,17 @@ public class EntityRegistryService {
 
     byte[] composePush(UUID tenantId, UUID siteId, UUID deviceId, Instant now,
             List<EntityRow> rows, String componentAuthority) {
+        return composePush(tenantId, siteId, deviceId, now, rows, componentAuthority, now.toString());
+    }
+
+    private byte[] composePush(UUID tenantId, UUID siteId, UUID deviceId, Instant now,
+            List<EntityRow> rows, String componentAuthority, String revision) {
         ObjectNode push = mapper.createObjectNode();
         push.put("schema_version", "1.0");
         push.put("tenant_id", tenantId.toString());
         push.put("site_id", siteId.toString());
         push.put("device_id", deviceId.toString());
-        push.put("revision", now.toString());
+        push.put("revision", revision);
         push.put("published_at", now.toString());
         // Einheitsmodell Stufe 1: WER die Geräte-Konfiguration dieser Anlage
         // besitzt. Nur ein ausdrückliches "portal" macht die Box zum Ausführenden
@@ -1064,8 +1188,19 @@ public class EntityRegistryService {
         // offline war, hebt die Sperre nach ihrer eigenen Uhr wieder auf, statt
         // auf eine Nachricht zu warten, die nie kommt. Ohne Pause fehlt das
         // Feld - die Nutzlast ist dann byte-gleich zu vorher.
-        overrides.activePause(siteId)
-                .ifPresent(pause -> push.put("automation_paused_until", pause.endsAt().toString()));
+        //
+        // UEMS AP-01 IP-4 (R0): die Ruhe bis zum Start hat KEIN Ende. Sie trägt
+        // zusätzlich `automation_paused_until_revoked: true` (die Box ruht bis auf
+        // Widerruf) und als Ende nur das rollierende jetzt + 4 h für eine ÄLTERE
+        // Box, die das neue Feld überliest; der Erneuerungs-Takt schiebt es weiter.
+        // Eine Pause von Hand bleibt byte-gleich: ihr Ende, kein zweites Feld.
+        overrides.activePause(siteId).ifPresent(pause -> {
+            RuheRegel.PushFelder felder = RuheRegel.push(pause.endsAt(), now);
+            push.put(RuheRegel.FELD_ENDE, felder.ende().toString());
+            if (felder.bisAufWiderruf()) {
+                push.put(RuheRegel.FELD_WIDERRUF, true);
+            }
+        });
         // The consumer cycle-guard limits (min-on/min-off/starts per day) live
         // in consumer_profile - the ONE profile truth - and ride the push as
         // guards.limits fields (D-9: limits live in registry config, never in
@@ -1105,12 +1240,20 @@ public class EntityRegistryService {
         // ignoriert ihn folgenlos. Ohne Bindung ist die Nutzlast byte-gleich.
         java.util.Map<UUID, EntityRegistryRepository.ConsumerIoBinding> ioBindings =
                 repo.consumerIoBindings(siteId);
+        // The existing opaque driver object is extensible even in old registry schemas.
+        // Never derive this identity from an address or from edge_source_id.
+        var sourceLabels = repo.datenquellenKennzeichen(siteId);
         ArrayNode entities = push.putArray("entities");
         for (EntityRow row : rows) {
             ObjectNode d = descriptor(row);
             EntityRegistryRepository.ConsumerIoBinding io = ioBindings.get(row.id());
             if (io != null && !d.has("driver")) {
                 d.set("driver", ioChannelDriver(io));
+            }
+            String sourceLabel = sourceLabels.get(row.id());
+            if (sourceLabel != null) {
+                ObjectNode driver = d.has("driver") ? (ObjectNode) d.get("driver") : d.putObject("driver");
+                driver.put("data_source_id", sourceLabel);
             }
             EntityRegistryRepository.ConsumerCycleLimits cl = cycle.get(row.id());
             if (cl != null) {

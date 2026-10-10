@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useEffect, useMemo, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
@@ -166,14 +167,14 @@ export function EigeneAuswertungDialog({
       footer={
         <div className="vp-eigen-dialog-footer">
           {bearbeiten && onEntfernen && (
-            <Button variant="ghost" onClick={() => onEntfernen(bearbeiten.id)}>
+            <Recht aktion="auswertung.anlegen"><Button variant="ghost" onClick={() => onEntfernen(bearbeiten.id)}>
               Entfernen
-            </Button>
+            </Button></Recht>
           )}
           <Button variant="ghost" onClick={onAbbrechen}>
             Abbrechen
           </Button>
-          <Button
+          <Recht aktion="auswertung.anlegen"><Button
             onClick={() => {
               if (fehler) return;
               onSpeichern({
@@ -187,7 +188,7 @@ export function EigeneAuswertungDialog({
             disabled={fehler != null}
           >
             {bearbeiten ? 'Übernehmen' : 'Anlegen'}
-          </Button>
+          </Button></Recht>
         </div>
       }
     >
@@ -229,7 +230,7 @@ export function EigeneAuswertungDialog({
             />
 
             <fieldset className="vp-eigen-feld" disabled={!entwurf.channel}>
-              <legend>3 · Kennzahl</legend>
+              <legend>3 · Zeitbezug</legend>
               <div className="vp-eigen-optionen">
                 {AGGREGATE.map((a) => {
                   const ok = !entwurf.channel || erlaubt(entwurf.channel, a);

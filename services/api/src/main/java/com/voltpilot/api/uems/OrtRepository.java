@@ -9,6 +9,7 @@ import java.sql.Types;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -23,9 +24,9 @@ import org.springframework.stereotype.Repository;
  * G-1 … / B-1 …, Name eindeutig je Elternknoten, Protokolleintrag — gehören den
  * Schreibrouten (IP-5). Die Datenbank hält trotzdem, was eine Zeile allein
  * entscheidet (Art, Vokabular, Namensregel, Kurzzeichen eindeutig je
- * Kundenbereich, Baujahr nur am Gebäude). Ein Ort wird archiviert, nie
- * gelöscht, und seine Art ändert sich nie: deshalb gibt es hier weder DELETE
- * noch ein Umschreiben der Art. Die Schreibroute ist {@link OrtService}.
+ * Kundenbereich, Baujahr nur am Gebäude). Ein Ort wird archiviert; gelöscht wird
+ * er nur ohne jede Historie (E1, IP-15), und das nur über die enge Funktion
+ * {@code uems_ort_loeschen} — die App-Rolle hat kein DELETE. Seine Art ändert sich nie. Die Schreibroute ist {@link OrtService}.
  */
 @Repository
 public class OrtRepository {
@@ -52,29 +53,34 @@ public class OrtRepository {
     public record Ort(UUID id, String art, String name, String kurzzeichen, List<String> nutzung,
             Integer baujahr, String notiz, String zustand, Instant archiviertAm) {}
 
+    /**
+     * Ohne {@code RETURNING}, die Kennung vergibt der Aufrufer hier: im engen Standort-Zaun (AP-03 IP-5, Policy
+     * {@code site_scope}) sieht ein Bearbeiter je Standort den neuen Ort erst, wenn seine Zuordnung steht —
+     * {@code RETURNING} läse ihn vorher und scheiterte an der Policy (AP-03 IP-6).
+     */
     public UUID anlegen(NeuerOrt o) {
-        return jdbc.query(con -> {
-            PreparedStatement ps = con.prepareStatement("INSERT INTO ort (tenant_id, art, name, "
+        UUID id = UUID.randomUUID();
+        jdbc.update(con -> {
+            PreparedStatement ps = con.prepareStatement("INSERT INTO ort (id, tenant_id, art, name, "
                     + "kurzzeichen, nutzung, baujahr, notiz, zustand, created_by) "
-                    + "VALUES (?,?,?,?,?,?,?,?,?) RETURNING id");
-            ps.setObject(1, o.tenantId());
-            ps.setString(2, o.art());
-            ps.setString(3, o.name());
-            ps.setString(4, o.kurzzeichen());
+                    + "VALUES (?,?,?,?,?,?,?,?,?,?)");
+            ps.setObject(1, id);
+            ps.setObject(2, o.tenantId());
+            ps.setString(3, o.art());
+            ps.setString(4, o.name());
+            ps.setString(5, o.kurzzeichen());
             if (o.nutzung() == null) {
-                ps.setNull(5, Types.ARRAY);
+                ps.setNull(6, Types.ARRAY);
             } else {
-                ps.setArray(5, con.createArrayOf("text", o.nutzung().toArray(String[]::new)));
+                ps.setArray(6, con.createArrayOf("text", o.nutzung().toArray(String[]::new)));
             }
-            ps.setObject(6, o.baujahr(), Types.INTEGER);
-            ps.setString(7, o.notiz());
-            ps.setString(8, o.zustand());
-            ps.setString(9, o.createdBy());
+            ps.setObject(7, o.baujahr(), Types.INTEGER);
+            ps.setString(8, o.notiz());
+            ps.setString(9, o.zustand());
+            ps.setString(10, o.createdBy());
             return ps;
-        }, rs -> {
-            rs.next();
-            return rs.getObject(1, UUID.class);
         });
+        return id;
     }
 
     /**
@@ -86,6 +92,37 @@ public class OrtRepository {
         return jdbc.update("UPDATE ort SET zustand = 'archiviert', archiviert_am = ?, "
                 + "archiviert_von = ? WHERE id = ? AND archiviert_am IS NULL",
                 Timestamp.from(am), von, id) == 1;
+    }
+
+    /**
+     * Holt einen archivierten Ort zurück (IP-15) — mit dem Namen, den er ab heute trägt (Umbenennen
+     * im selben Dialog); {@code false}: nicht archiviert oder nicht da. Das neue Intervall legt der
+     * Schreibweg an ({@link OrtZuordnungRepository#zuordnen}), die Lücke davor bleibt.
+     */
+    public boolean wiederherstellen(UUID id, String name, String zustand) {
+        return jdbc.update("UPDATE ort SET zustand = ?, name = ?, archiviert_am = NULL, "
+                + "archiviert_von = NULL WHERE id = ? AND archiviert_am IS NOT NULL",
+                zustand, name, id) == 1;
+    }
+
+    /**
+     * Löscht einen Ort OHNE Historie über {@code uems_ort_loeschen} (V20260914233000) — die
+     * App-Rolle hat kein DELETE. {@code false}: nicht da. Trägt er Historie, wirft die Datenbank
+     * {@code restrict_violation} ({@code ort_hat_historie}) und nichts ist gelöscht.
+     */
+    public boolean loeschen(UUID id) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("SELECT uems_ort_loeschen(?)", Boolean.class, id));
+    }
+
+    /** Die Orte, an denen eine Bezugsgröße hängt (auch eine archivierte) — Historie für E1. */
+    public Set<UUID> mitBezugsgroesse() {
+        return Set.copyOf(jdbc.queryForList(
+                "SELECT DISTINCT ort_id FROM bezugsgroesse WHERE ort_id IS NOT NULL", UUID.class));
+    }
+
+    /** AP-11 IP-5: die Orte, die Geltungsbereich einer Kennzahl sind — auch einer archivierten. */
+    public Set<UUID> mitKennzahl() {
+        return Set.copyOf(jdbc.queryForList("SELECT DISTINCT ort_id FROM kennzahl WHERE ort_id IS NOT NULL", UUID.class));
     }
 
     /** Der Ort im Zaun — leer, wenn es ihn nicht gibt ODER er einem anderen Mandanten gehört. */

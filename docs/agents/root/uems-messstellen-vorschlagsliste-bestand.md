@@ -9,7 +9,9 @@ Neu am 11.09.2026 (AP-04 IP-16, Entscheid E6, Konzept §5.10/§5.15, Abnahme A9)
 Migration `V20260911310000` (nur die Spalte `messstelle_quelle.herkunft`). Beweis:
 `uems/MessstelleVorschlagApiTest` (A9 mit Gleichheits-Beweis), `MessstelleRegelnVectorsTest`
 (elf Fälle + „die acht Vorschläge SIND MS-01…MS-08 des Referenzunternehmens“),
-`src/uemsMessstelle.test.ts`.
+`src/uemsMessstelle.test.ts`. Das Portal ruft beide Routen seit AP-01 IP-9b im Assistenten „Messen &
+Auswerten“ (Schritt 3, `uems-messen-assistent.md`); dazu im selben API-Test WAGO C-1 → vier Messstellen und
+„genau ein Hauptzähler je Anlage“ (`wagoC1…`, `einBestehenderHauptzaehler…`).
 
 ## ⚠ Die Fallen
 
@@ -22,7 +24,7 @@ Migration `V20260911310000` (nur die Spalte `messstelle_quelle.herkunft`). Bewei
   der Ladestand ist NEBENGRÖSSE des Speicher-Flusses derselben Komponente. Alles andere steht mit
   Grund unter `ausgelassen` — `attribut_kanal` (`soc_source_code`, Namensraum `bms_`, Grenzen,
   Freigaben), `abgeleitet` (Haus), `vergleich_kandidat` (die Netzleistung am Wechselrichter zum
-  Hauptzähler, E3), `vorzeichen_wert` (`import_export` wartet auf AP-08), `gleicher_fluss`,
+  Hauptzähler, E3), `vorzeichen_wert` (`import_export` — keine eigene Messstelle, sein Anteil kommt von Hand an Bezug und Abgabe, AP-08 IP-7), `gleicher_fluss`,
   `passt_nicht` (Regel 7), `ohne_messkanal`, `ohne_geraet`, `keine_messgroesse`, `ohne_richtung`,
   `weitere_groesse`.
 - **Die Stellung kommt aus der Topologie, nie aus einem Namen:** maßgebliche Netzmessung =

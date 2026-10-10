@@ -2,6 +2,8 @@ package com.voltpilot.api.uems;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
@@ -10,6 +12,7 @@ import com.voltpilot.api.web.dto.MessstelleQuelleDto;
 import com.voltpilot.api.web.dto.ZaehlerwechselDto;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.RecordComponent;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -48,6 +51,12 @@ class MessstelleSchnittstelleVertragTest {
         vertrag = MAPPER.readTree(CONTRACTS.resolve("v2").resolve("messstelle.schema.json").toFile());
     }
 
+    /** Der Name im JSON: {@code @JsonProperty} der Komponente, sonst ihr Name (AP-08 IP-7: `anschlussleistung_kw`). */
+    private static String jsonName(RecordComponent c) {
+        JsonProperty p = c.getAccessor().getAnnotation(JsonProperty.class);
+        return p == null ? c.getName() : p.value();
+    }
+
     @Test
     void dieFehlerCodesSindDieDesVertragsUndDieDerSchnittstelle() {
         List<String> openapi = liste(schema("MessstelleFehler"), "properties", "code", "enum");
@@ -67,8 +76,10 @@ class MessstelleSchnittstelleVertragTest {
 
     @Test
     void dieAntwortIstDieMessstelleDesVertragsPlusVierFelderDerSchnittstelle() {
+        // Jede Eigenschaft des Vertrags — die Pflichtfelder UND die optionalen, die die Antwort immer
+        // trägt (AP-08 IP-7: `anschlussleistung_kw`, leer = nicht deklariert).
         Set<String> soll = new LinkedHashSet<>();
-        vertrag.at("/$defs/messstelle/required").forEach(n -> soll.add(n.asText()));
+        vertrag.at("/$defs/messstelle/properties").fieldNames().forEachRemaining(soll::add);
         soll.addAll(NUR_SCHNITTSTELLE);
 
         Set<String> dto = new LinkedHashSet<>();
@@ -92,9 +103,11 @@ class MessstelleSchnittstelleVertragTest {
     @Test
     void dieAnfragenTragenGenauDieFelderDerOpenApi() {
         assertThat(map(schema("MessstelleAnlegen"), "properties").keySet()).containsExactlyInAnyOrderElementsOf(
-                Arrays.stream(MessstelleDto.Anlegen.class.getRecordComponents()).map(c -> c.getName()).toList());
+                Arrays.stream(MessstelleDto.Anlegen.class.getRecordComponents()).map(MessstelleSchnittstelleVertragTest::jsonName)
+                        .toList());
         assertThat(map(schema("MessstelleBearbeiten"), "properties").keySet()).containsExactlyInAnyOrderElementsOf(
-                Arrays.stream(MessstelleDto.Bearbeiten.class.getRecordComponents()).map(c -> c.getName()).toList());
+                Arrays.stream(MessstelleDto.Bearbeiten.class.getRecordComponents())
+                        .map(MessstelleSchnittstelleVertragTest::jsonName).toList());
         assertThat(map(schema("MessstelleUebergang"), "properties").keySet()).containsExactlyInAnyOrderElementsOf(
                 Arrays.stream(MessstelleDto.Uebergang.class.getRecordComponents()).map(c -> c.getName()).toList());
         // Der Größen-Katalog der OpenAPI benutzt dieselben Wörter wie der Vertrag.
@@ -225,12 +238,14 @@ class MessstelleSchnittstelleVertragTest {
         PropertyNamingStrategies.SnakeCaseStrategy snake = new PropertyNamingStrategies.SnakeCaseStrategy();
         for (Object[] paar : new Object[][] {{"MessstelleListe", MessstelleDto.Liste.class},
                 {"MessstelleRegisterZeile", MessstelleDto.RegisterZeile.class},
+                {"MessstelleRegisterMonat", MessstelleDto.RegisterMonat.class},
                 {"MessstelleRegisterOrt", MessstelleDto.RegisterOrt.class},
                 {"MessstelleRegisterStellung", MessstelleDto.RegisterStellung.class},
                 {"MessstelleRegisterQuelle", MessstelleDto.RegisterQuelle.class},
                 {"MessstelleRegisterBindung", MessstelleDto.RegisterBindung.class},
                 {"MessstelleRegisterGeraet", MessstelleDto.RegisterGeraet.class},
                 {"MessstelleRegisterBeobachtung", MessstelleDto.RegisterBeobachtung.class},
+                {"MessstelleRegisterBerechnung", MessstelleDto.RegisterBerechnung.class},
                 {"MessstelleRegisterWert", MessstelleDto.RegisterWert.class},
                 {"MessstelleRegisterNebengroesse", MessstelleDto.RegisterNebengroesse.class},
                 {"MessstelleRegisterAggregat", MessstelleDto.RegisterAggregat.class},
@@ -238,14 +253,19 @@ class MessstelleSchnittstelleVertragTest {
                 {"MessstelleRegisterStandortAbdeckung", MessstelleDto.RegisterStandortAbdeckung.class}}) {
             List<String> felder = Arrays.stream(((Class<?>) paar[1]).getRecordComponents())
                     .map(c -> snake.translate(c.getName())).toList();
+            // Ein Feld, das nur in seinem Fall erscheint (NON_NULL, z.B. beobachtung.zuordnung), ist nicht Pflicht.
+            List<String> pflicht = Arrays.stream(((Class<?>) paar[1]).getRecordComponents())
+                    .filter(c -> c.getAccessor().getAnnotation(JsonInclude.class) == null
+                            || c.getAccessor().getAnnotation(JsonInclude.class).value() != JsonInclude.Include.NON_NULL)
+                    .map(c -> snake.translate(c.getName())).toList();
             assertThat(map(schema((String) paar[0]), "properties").keySet()).as((String) paar[0])
                     .containsExactlyInAnyOrderElementsOf(felder);
             assertThat(liste(schema((String) paar[0]), "required")).as((String) paar[0])
-                    .containsExactlyInAnyOrderElementsOf(felder);
+                    .containsExactlyInAnyOrderElementsOf(pflicht);
         }
         assertThat(liste(map(map(schema("MessstelleRegisterQuelle"), "properties"), "stand"), "enum"))
-                .containsExactly(MessstelleRegisterService.GEBUNDEN, MessstelleRegisterService.BERECHNET,
-                        MessstelleRegisterService.KEINE_DATENQUELLE);
+                .containsExactly(MessstelleRegisterService.GEBUNDEN, MessstelleRegisterService.ABLESUNG,
+                        MessstelleRegisterService.BERECHNET, MessstelleRegisterService.KEINE_DATENQUELLE);
         // Der Grund der Verortung und der Lebenszyklus sind dieselben Vokabulare wie anderswo.
         assertThat(liste(map(map(schema("MessstelleRegisterOrt"), "properties"), "grund"), "enum"))
                 .containsExactlyElementsOf(liste(map(map(schema("MessstelleStandortAm"), "properties"), "grund"),
@@ -256,9 +276,19 @@ class MessstelleSchnittstelleVertragTest {
         assertThat(liste(map(map(schema("MessstelleRegisterBeobachtung"), "properties"), "zustand"), "enum"))
                 .containsExactlyElementsOf(Arrays.stream(ZustandAbleitung.LiefertDaten.values())
                         .map(ZustandAbleitung.LiefertDaten::code).toList());
-        // Die Filter der Route sind die des Berichts (§6.1) — in derselben Reihenfolge.
+        // „Werte kommen an, gehören aber zu keiner Reihe“: ein Wort, dasselbe im Register und an der Werte-Route.
+        assertThat(liste(map(map(schema("MessstelleRegisterBeobachtung"), "properties"), "zuordnung"), "enum"))
+                .containsExactly(MessstelleBeobachtung.NICHT_ZUGEORDNET);
+        assertThat(liste(map(map(schema("MessstelleWerte"), "properties"), "zuordnung"), "enum"))
+                .containsExactly(MessstelleBeobachtung.NICHT_ZUGEORDNET);
+        // Die Filter der Route sind die des Berichts (§6.1) - in derselben Reihenfolge; danach `letzterMonat`
+        // (Messen PR5), kein Filter: er fügt jeder Zeile ihren letzten vollständigen Monat hinzu.
         assertThat(parameter("/api/v1/messstellen"))
-                .containsExactly("standort", "ort", "anlage", "zustand", "ohneQuelle", "stichtag");
+                .containsExactly("standort", "ort", "anlage", "zustand", "ohneQuelle",
+                        "geplantFuerEinsatz", "stichtag", "letzterMonat");
+        // Der Wert des Monats ist der Schritt der Werte-Route - dieselbe Form, kein eigenes Schema.
+        assertThat(map(map(schema("MessstelleRegisterMonat"), "properties"), "wert").toString())
+                .contains("#/components/schemas/MessstelleWerteWert");
     }
 
     /** AP-03 E12: jeder heutige Kundenbenutzer ist Kundenadministrator; der Plattform-Admin ist VoltPilot. */

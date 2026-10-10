@@ -613,6 +613,13 @@ class UemsStandortMigrationTest {
         // als Grabstein stehen, nie still mitgenommen.
         assertThat(root.update("DELETE FROM site WHERE id = ?", anlage)).isOne();
         assertThat(anzahl("SELECT count(*) FROM anlage_standort WHERE site_id = ?", anlage)).isOne();
+        // Während der Laufzeit bleibt das Protokoll append-only — auch für Verwaltungsrolle und Eigentümer.
+        abgelehntWegen("P0001", "append-only",
+                () -> admin.update("DELETE FROM ort_aenderung WHERE tenant_id = ?", t));
+        abgelehntWegen("P0001", "append-only",
+                () -> root.update("DELETE FROM ort_aenderung WHERE tenant_id = ?", t));
+        abgelehntWegen("P0001", "append-only",
+                () -> root.update("UPDATE ort_aenderung SET tenant_id = tenant_id WHERE tenant_id = ?", t));
 
         // Das Offboarding ist der eine Weg, auf dem ein Unternehmen endet.
         new TenantRepository(admin).offboard(t);
@@ -621,8 +628,9 @@ class UemsStandortMigrationTest {
             assertThat(anzahl("SELECT count(*) FROM " + tabelle + " WHERE tenant_id = ?", t))
                     .as(tabelle).isZero();
         }
-        // Das Protokoll bleibt: append-only und ohne Fremdschlüssel.
-        assertThat(anzahl("SELECT count(*) FROM ort_aenderung WHERE tenant_id = ?", t)).isOne();
+        // Das Protokoll geht nach der Mandantenzeile mit (AP-20 E10 = A, V20260925234500): ohne Fremdschlüssel,
+        // aber nicht mehr übrig.
+        assertThat(anzahl("SELECT count(*) FROM ort_aenderung WHERE tenant_id = ?", t)).isZero();
     }
 
     // ---- Rechte: nie löschen, kein Intervall umschreiben, Protokoll unveränderlich
@@ -657,7 +665,7 @@ class UemsStandortMigrationTest {
             abgelehntWegen("42501", "permission denied", () -> app.update(
                     "UPDATE ort_aenderung SET art = 'bearbeitet' WHERE id = ?", eintrag));
             assertThat(aenderungen.fuerObjekt("anlage", anlage)).singleElement()
-                    .satisfies(e -> assertThat(e.akteurName()).isEqualTo("Ines Kaltenbach"));
+                    .satisfies(e -> assertThat(e.actorName()).isEqualTo("Ines Kaltenbach"));
         });
         // Auch der Eigentümer schreibt kein Protokoll um: der Trigger an der Datenbankgrenze.
         abgelehntWegen("P0001", "append-only", () -> root.update(
@@ -1004,7 +1012,12 @@ class UemsStandortMigrationTest {
                 .getVersion();
     }
 
-    /** Dieselbe Datei noch einmal, wie Flyway sie ausführt (Platzhalter ersetzt). */
+    /**
+     * Dieselbe Datei noch einmal, wie Flyway sie ausführt (Platzhalter ersetzt) — mit den SPALTENNAMEN VON HEUTE:
+     * AP-03 IP-7 (V20260916010000) hat {@code akteur_sub}/{@code akteur_name} des Ortsprotokolls in
+     * {@code actor_sub}/{@code actor_name} umbenannt, damit alle vier Journale dasselbe Vokabular tragen. Geprüft
+     * wird die Wiederholbarkeit der SCHRITTE (nichts doppelt, nichts überschrieben), nicht der Wortlaut der Datei.
+     */
     private static void fuehreDieseMigrationErneutAus() throws IOException {
         String sql;
         try (InputStream in = UemsStandortMigrationTest.class
@@ -1012,7 +1025,8 @@ class UemsStandortMigrationTest {
             sql = new String(Objects.requireNonNull(in, DATEI).readAllBytes(),
                     StandardCharsets.UTF_8);
         }
-        root.execute(sql.replace("${appDbUser}", APP_USER).replace("${adminDbUser}", ADMIN_USER));
+        root.execute(sql.replace("${appDbUser}", APP_USER).replace("${adminDbUser}", ADMIN_USER)
+                .replace("akteur_sub", "actor_sub").replace("akteur_name", "actor_name"));
     }
 
     private static FluentConfiguration flyway() {

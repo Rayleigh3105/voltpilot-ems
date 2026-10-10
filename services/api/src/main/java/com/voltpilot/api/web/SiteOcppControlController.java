@@ -7,8 +7,10 @@ import com.voltpilot.api.chargers.ChargingConfigRepository;
 import com.voltpilot.api.chargers.ChargingConfigService;
 import com.voltpilot.api.ocpp.OcppControlValidator;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -23,19 +25,23 @@ import org.springframework.web.server.ResponseStatusException;
 
 @RestController
 @RequestMapping("/api/v1/sites/{siteId}/ocpp/control")
-@PreAuthorize("hasAnyRole('operator', 'admin', 'site-admin', 'platform-admin')")
+// AP-03 IP-3: or a customer account without realm role (KONTO_benutzer, KeycloakRealmRoleConverter).
+// AP-03 IP-7: or a partner account in an accepted Unterstützung (KONTO_partner) — the gate is coarse; @Recht and the
+// level from the Zuweisung decide (a partner without Unterstützung never gets past ZugriffFilter: 404).
+@PreAuthorize("hasAnyRole('operator', 'admin', 'site-admin', 'platform-admin') or hasAuthority('KONTO_benutzer') "
+        + "or hasAuthority('KONTO_partner')")
 public class SiteOcppControlController {
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final ChargingConfigRepository configs;
     private final ChargingConfigService distribution;
     private final DeviceChargerStatusRepository status;
     private final OcppControlValidator validator;
     private final ObjectMapper mapper;
 
-    public SiteOcppControlController(SiteRepository sites, ChargingConfigRepository configs,
+    public SiteOcppControlController(Geltungsbereich geltungsbereich, ChargingConfigRepository configs,
             ChargingConfigService distribution, DeviceChargerStatusRepository status,
             OcppControlValidator validator, ObjectMapper mapper) {
-        this.sites = sites; this.configs = configs; this.distribution = distribution;
+        this.geltungsbereich = geltungsbereich; this.configs = configs; this.distribution = distribution;
         this.status = status; this.validator = validator; this.mapper = mapper;
     }
 
@@ -48,7 +54,10 @@ public class SiteOcppControlController {
     }
 
     @PutMapping
-    @PreAuthorize("hasAnyRole('admin', 'site-admin', 'platform-admin')")
+    @Recht(value = "freigabe.erteilen", ziel = RechtZiel.ANLAGE)
+    // AP-03 IP-7 (E13): the Recht decides — Kundenadministrator and VoltPilot-Betrieb. The realm roles stay only
+    // as the coarse gate; a customer account without realm role (KONTO_benutzer) now passes it like site-admin.
+    @PreAuthorize("hasAnyRole('admin', 'site-admin', 'platform-admin') or hasAuthority('KONTO_benutzer')")
     @Transactional
     public View save(@PathVariable UUID siteId, @RequestBody JsonNode input, Authentication caller) {
         requireSite(siteId);
@@ -80,6 +89,6 @@ public class SiteOcppControlController {
         try { return mapper.readTree(raw); } catch (Exception ex) { throw new IllegalStateException("Gespeicherte OCPP-Steuerung beschädigt", ex); }
     }
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
+        geltungsbereich.requireSite(siteId);
     }
 }

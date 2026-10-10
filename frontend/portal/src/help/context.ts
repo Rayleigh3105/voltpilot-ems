@@ -6,14 +6,15 @@ export const HELP_FOR_SUB: Record<AnlagenSub, HelpArticleId> = {
   marktpreise: 'marktpreise',
   prognose: 'prognosen', wetter: 'prognosen', technik: 'einstellungen', modell: 'anlagenmodell',
   steuerung: 'geraete-steuern', laden: 'ladepark', regeln: 'regeln', lastspitzen: 'lastspitzen', ladevorgaenge: 'ladevorgaenge',
-  befehle: 'geraete', geraet: 'geraete', box: 'geraete',
+  befehle: 'geraete', geraet: 'geraete', box: 'geraete', energiebilanz: 'messwerte',
 };
 
 export function helpForRoute(route: Route): HelpArticleId | null {
   if (route.page === 'anlagen') return route.sub ? HELP_FOR_SUB[route.sub] : 'cockpit';
   if (route.page === 'portfolio-messwerte') return 'messwerte';
   if (route.page === 'portfolio-erloese') return 'erloese';
-  if (route.page === 'portfolio' || route.page === 'uebersicht') return 'portfolio';
+  if (route.page === 'portfolio-energiemanagement') return 'energiemanagement';
+  if (route.page === 'portfolio' || route.page === 'uebersicht' || route.page === 'standort') return 'portfolio';
   return null;
 }
 

@@ -1,0 +1,22 @@
+{
+  "schema_version": "2.0",
+  "tenant_id": "00000000-0000-0000-0000-00000000a001",
+  "site_id": "00000000-0000-0000-0000-00000000a1a1",
+  "device_id": "00000000-0000-0000-0000-0000000000e4",
+  "plan_id": "5f0c2b1e-7d3a-4c6e-9b8f-1a2b3c4d4711",
+  "generated_at": "2027-06-13T11:00:00Z",
+  "horizon_slots": 2,
+  "slot_minutes": 15,
+  "lauf_nr": 4711,
+  "gemeinsame_steuerung": { "rolle": "steuert_mit" },
+  "entities": [
+    {
+      "entity_id": "pv-00000000-0000-0000-0000-0000000000e4",
+      "kind": "pv-generation",
+      "slots": [
+        { "start": "2027-06-13T11:00:00Z", "commands": { "limit_pct": 100.0 } },
+        { "start": "2027-06-13T11:15:00Z", "commands": { "limit_kw": 60.0 } }
+      ]
+    }
+  ]
+}

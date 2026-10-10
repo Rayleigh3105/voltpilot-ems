@@ -1,3 +1,4 @@
+import { bestandSnapshot, bestandsZeit } from '../test/bestandsschutzSnapshot';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MesswerteSection } from './MesswerteSection';
@@ -349,6 +350,20 @@ async function steuerErklaerung(): Promise<HTMLElement> {
   await screen.findAllByText(/Verglichen wird mit/);
   return document.querySelector('.vp-vr-mw-info') as HTMLElement;
 }
+
+/**
+ * AP-13 Bestandsschutz · Verlauf Messwerte ohne Messfunktion — seit dem
+ * Verlauf-Rework von main (763b87f39) ist die Fläche „Energie“; die Aufnahme
+ * folgt der ausgelieferten Fläche (`test/bestandsschutz/README.md`).
+ */
+it('AP-13 Bestandsschutz · Verlauf Messwerte ohne Messfunktion', async () => {
+  bestandsZeit();
+  window.location.hash = '#/anlage/s-1/messwerte?z=monat&at=2026-07-15';
+  vi.spyOn(api, 'history').mockResolvedValue(historyWithData);
+  const view = render(<MesswerteSection site={site} surface={MARKT} onOpenWelt={() => {}} />);
+  await screen.findByRole('group', { name: /^Energie · / });
+  await bestandSnapshot('verlauf-messwerte', view);
+});
 
 describe('Welt B · Erlöse', () => {
   const geladen = () => screen.findByRole('group', { name: /^Erlöse · / });
@@ -704,7 +719,7 @@ describe('Die Erlöse-Welt folgt dem Lese-Modell, ist aber nie eine Sackgasse', 
     stubMoney(moneyEmpty);
     render(<ErloeseSection site={site} surface={PRIVAT} onOpenWelt={() => {}} />);
     // E3: die Fläche bietet den Rückweg nicht mehr selbst an; die
-    // Bereichs-Reiter der Schale tun es (`anlageNav.tabsFor` führt „Messwerte"
+    // Bereichs-Reiter der Schale tun es (`ebenenNav.tabsFor` führt „Messwerte"
     // auf JEDER Anlage, auch einer ohne Geld-Modus).
     expect(screen.queryByRole('link', { name: /Messwerte/ })).toBeNull();
     // Was die Fläche sagt, sagt sie ehrlich: kein Ergebnis, kein leeres Bild.

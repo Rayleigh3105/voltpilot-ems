@@ -1,0 +1,3330 @@
+{
+  "_comment": [
+    "UEMS AP-08 IP-8 — der Ergebnis-Zustand und seine Sätze als Vertrag: eine Zahl sagt selbst, wie belastbar sie ist.",
+    "Die Regel steht in DIESER Datei; ergebnis-zustand.md erklärt sie. Java uems/ErgebnisZustand und TS frontend/portal/src/uemsErgebnis.ts fahren sie per Pfad.",
+    "zustaende: vier Wörter, geschlossen. Je Wort, ob eine Zahl dasteht (pflicht · erlaubt · verboten) und was die Kennzeichen dazu sagen müssen.",
+    "kennzeichen: die geschlossene Liste JEDES Satzes, den die Verbrauchsregel (VerbrauchRegeln ⟷ verbrauch.py) heute spricht — Wortlaut, Platzhalter, Rang. Ein Satz, der auf kein Muster passt, ist kein Kennzeichen.",
+    "Reihenfolge: der Rang steigt nie. Innerhalb von Rang 30 (Strecke) stehen die Sätze in zeitlicher Folge; die Uhrzeit HH:MM allein beweist das über Tagesgrenzen nicht und wird darum nicht verglichen. folgt_auf/verlangt_danach binden die Sätze der Gerätegrenze aneinander.",
+    "fehlbestand: true heißt, der Satz nennt einen nicht gezählten Teil. vollständig trägt keinen, unvollständig mindestens einen, keine Werte keinen.",
+    "fruehere_fassungen (1.1): Wortlaute, die eine frühere Fassung sprach und die in kennzeichen der Speicherklassen gespeichert sein können. Sie werden als ihr heutiges Muster ERKANNT (fruehere_fassung = true), aber nie mehr gesprochen — keine Zeile wird umgeschrieben, keine wird unlesbar.",
+    "kennzeichen_vorgesehen: Wörter des Vokabulars (verbrauch-vectors.json kennzeichen), deren Wortlaut das erzeugende Paket festlegt. Bis dahin sind sie kein Satz dieses Vertrags.",
+    "rundung (E11): gerechnet wird ungerundet, gerundet wird nur angezeigt; Wertbezug und Ebene bestimmen die Stellen, nie die Fläche. Vereinbart (seit 1.12, Entscheid B vom 15.09.2026): ganze Werte ganzzahlig, echte Dezimalstellen bleiben exakt. Gemessen wie bisher kaufmännisch, Tausenderpunkt, Komma, geschütztes Leerzeichen vor der Einheit, Minus U+2212, kein Wert = „—“. Export ungerundet mit Punkt und ISO-8601-Offset.",
+    "sommerzeit (E10): Ortszeit des Standorts; eine Beschriftung, die am Tag zweimal vorkommt, trägt MESZ/MEZ; die fehlende Stunde erscheint nicht; 23-/25-Stunden-Tage sagen es. Dieselbe Regel gilt für die Uhrzeit IN einem Kennzeichen (familie uhr, seit 1.1): „Rücksetzung 02:30 MEZ …“.",
+    "1.2 (additiv): die Einheit kVA (Anschluss-Scheinleistung) mit der Stelle der Leistung; Bilanz- und Netzanschluss-Sätze rufen zahl() an, statt selbst zu formatieren.",
+    "1.3: der Zuwachs-Satz trägt seine Einheit („Zuwachs 337,6 kWh“) — rundung.anzeige_einheiten (gespeichert bleibt die Zähler-Einheit, angezeigt kWh · kvarh · m³; Familie menge), rundung.kennzeichen_ebene (ein Satz rundet auf JEDER Ebene gleich), kvarh mit den Stellen von kWh, Platzhalter menge; ohne bekannte Einheit steht der Satz ohne Zahl (luecke_zuwachs_ohne_einheit). Die alte Form „Zuwachs 337.600“ lebt in fruehere_fassungen. Die Uhrzeiten sprechen in der Zone des Standorts, die der Träger ReihenKontext bis zur Rechenregel reicht — ohne neuen Wortlaut.",
+    "1.4 (AP-08 IP-13, additiv): „mit Ersatzwert (Methode …)“ ist kein vorgesehenes Wort mehr, sondern das Kennzeichen mit_ersatzwert — Rang 70, zuletzt: was ein Mensch gesetzt hat, nach allem, was gemessen ist. Die Methode steht mit ihrem Namen in Kundensprache (vokabular.ersatzwert_methode[].name der Ereignis-Vektoren, Platzhalter ersatzwert_methode), die Kennung EW-<Jahr>-<Nr.> (Platzhalter ersatzwert_kennung). Gesprochen von VerbrauchRegeln.mitErsatzwerten ⟷ verbrauch.mit_ersatzwerten; jede Kennzeichen-Erwartung des Blocks ersatzwerte von verbrauch-vectors.json steht in der Liste.",
+    "1.5 (AP-08 IP-17, additiv): „korrigiert (Version n)“ ist kein vorgesehenes Wort mehr, sondern das Kennzeichen korrigiert — Rang 80, ganz zuletzt: die Version sagt etwas über die ganze Zahl, nicht über einen Teil. Wortlaut „korrigiert (Version {version})“ mit version ≥ 2 (Version 1 ist das Original und nie korrigiert), derselbe Satz, den bilanz-vectors.json (F14) für berechnete Messstellen schon spricht. Gesprochen von der Korrektur-Kaskade (uems/KorrekturKaskade) an jeder Stufe, deren Version sie schreibt; kein Datum im Satz — wann und von wem, sagt die Versions-Historie (IP-18).",
+    "1.6 (AP-08 IP-11, additiv): mengen_herkunft — die Herkunft der Menge steht am Zustandswort, damit „vollständig“ neben „Verlauf 85 %“ lesbar ist (E1 = A: der Zustand der MENGE folgt aus den Periodenständen, die Abdeckung des VERLAUFS steht daneben): „vollständig (Menge aus Zählerständen)“. Nur an vollständig und unvollständig, nur MIT Zahl, nur bei den Herleitungen der Quellenbindung, die einen Zählerstand lesen (zaehlerstand, differenzen); integration spricht schon ihr Kennzeichen „aus Leistung integriert“, ein Momentanwert hat keine Menge, ohne Herleitung (berechnete Messstelle) steht das Wort allein. Wortlaut aus E1 (Empfehlung A, Beispiel F8) und §8 IP-11 — kein neuer Satz, keine neue Regel für den Zustand selbst.",
+    "1.7 (AP-08 IP-11, additiv, Captain 14.09.2026 „Ja, immer zeigen“): „vorläufig“ und „endgültig“ sind keine vorgesehenen Wörter mehr, sondern die Kennzeichen vorlaeufig und endgueltig — Rang 90, ganz zuletzt: die Fassung sagt über die ganze Zahl, ob sie sich noch ändern kann (wer eine Zahl abrechnet, muss das wissen). Wortlaut = das Wort, wie es kennzeichen_vorgesehen seit 1.0 führte, ohne Datum. Block fassung: das Feld fassung der Route „Werte je Messstelle“ (vorlaeufig · endgueltig) wird GENAU dieses Kennzeichen, null spricht nichts (die Route kennt die Fassung nicht) — nie abgeleitet, nie aus einer anderen Periode. Höchstens EINE Fassung je Liste (zwei = kennzeichen_doppelt). Die Fassung ist NICHT der Zustand (vollständig · unvollständig · keine Werte · mit Ersatzwert): der eine sagt, ob die Zahl feststeht, der andere, ob sie vollständig ist — beide stehen nebeneinander. Gespeichert wird der Satz nirgends; gesprochen von der Tages- und Monatskarte für die gezeigte Periode, immer, in beiden Fällen.",
+    "1.8 (Katalog-Einheiten, additiv, firstmate 14.09.2026): Scheinarbeit hat eine EIGENE Anzeige-Einheit — VAh und kVAh werden kVAh (Stellen wie kWh), nie als kWh getarnt: Scheinarbeit ist nicht in Wirkarbeit umrechenbar. Wmin (Wirkarbeit in Wattminuten, Shelly Gen1) wird kWh mit dem neuen, optionalen teiler 60000 — 1/60000 ist kein endlicher Dezimalfaktor, darum rechnet menge() wert × faktor ÷ teiler und rundet den EXAKTEN Quotienten kaufmännisch. „0,1 kWh“ ist KEINE Einheit, sondern eine Einheit mit eingebackenem Faktor; der Faktor gehört an die Skalierung des Katalogs und die Einheit bleibt einheit_unbekannt.",
+    "befunde:Sätze und Stellen, die bei der Inventur nicht zu E10/E11 oder zum Vokabular passten — benannt, nicht still umformuliert.",
+    "Seit 1.9 (AP-11 IP-1): der Block `kennzahl_kennzeichen` — die Kennzeichen-Sätze eines KENNZAHL-Werts mit eigenem Rang und die Erbregeln ihrer Eingänge (kennzahl.md). Die Verbrauchs-Liste `kennzeichen` bleibt Satz für Satz, wie sie ist.",
+    "Seit 1.11 (AP-13 IP-1, E11 = A): der Block `grund` - je Code des Feldes grund der Route „Werte je Messstelle“ genau EIN Kundensatz, warum eine Zahl fehlt; die Karte zeigt „—“ UND den Satz. Keine Regel: wann ein Grund gilt, entscheidet die Route. Gesprochen von ErgebnisZustand.grundSatz ⟷ uemsErgebnis.grundSatz; alle übrigen Blöcke bleiben Satz für Satz, wie sie sind.",
+    "1.13 (AP-09 F17, Messen-Bau, additiv): „Ablesezeitraum“ ist kein vorgesehenes Wort mehr, sondern zwei Kennzeichen - der Wortlaut, den AP-09 seit den Ablesungen spricht (AblesungRegeln ⟷ bezugsdaten-vectors.json B8): ablesezeitraum „Ablesezeitraum {von} – {bis} (Zuordnung durch den Kunden)“ an jedem Monat (und Jahr), dessen Menge aus einem Ablesezeitraum stammt, und ablesezeitraum_ohne_monat „Ablesezeitraum ohne Monatszuordnung“ an einem Monat ohne Zahl, dessen Ablesezeitraum der Kunde keinem Monat zugeordnet hat. Rang 60 wie die andere Herkunft (aus Leistung integriert), kein Fehlbestand; ein Jahr nennt jeden seiner Ablesezeiträume (nicht einmalig). Neuer Platzhalter tag_uhr „01.10. 07:15“ - Tag und Uhrzeit ohne Jahr, die Uhrzeit nach E10 mit dem Zusatz der doppelten Stunde. Ein Jahr mit weniger als zwölf abgelesenen Monaten ist unvollständig und sagt es mit dem Kennzeichen der fehlenden Intervallmengen (I2, „3 von 12 Intervallmengen fehlen …“) - bis 1.12 stand es ohne Grund da (unvollstaendig_ohne_grund) und wurde nicht gesprochen."
+  ],
+  "schema_version": "1.13",
+  "$schema_datei": "./ergebnis-zustand.schema.json",
+  "herkunft": "UEMS AP-08 §4.1 (Ergebnis-Zustand, Kennzeichen), §4.5 (Zustände), E10 (Sommerzeit), E11 (Rundung) — IP-8",
+  "zeitzone": "Europe/Berlin",
+  "referenzunternehmen": "./uems-referenzunternehmen.json",
+  "verbrauch_vektoren": "./verbrauch-vectors.json",
+  "zustaende": [
+    {
+      "wort": "vollständig",
+      "zahl": "pflicht",
+      "kennzeichen": "kein_fehlbestand",
+      "bedeutung": "Jede Kilowattstunde der Periode ist gezählt und der Periode zugeordnet."
+    },
+    {
+      "wort": "unvollständig",
+      "zahl": "erlaubt",
+      "kennzeichen": "mindestens_ein_fehlbestand",
+      "bedeutung": "Ein Teil ist nachweislich nicht gezählt; die Zahl ist der gemessene Teil und sagt, was fehlt. Ohne bildbare Menge steht keine Zahl."
+    },
+    {
+      "wort": "keine Werte",
+      "zahl": "verboten",
+      "kennzeichen": "kein_fehlbestand",
+      "bedeutung": "Kein guter Wert in der Periode: kein Wert, keine Null, keine Linie."
+    },
+    {
+      "wort": "mit Ersatzwert",
+      "zahl": "pflicht",
+      "kennzeichen": "frei",
+      "bedeutung": "Die Periode enthält mindestens einen Ersatzwert (E7); Methode und Kennung sagt das Kennzeichen mit_ersatzwert (seit 1.4)."
+    }
+  ],
+  "platzhalter": {
+    "uhr": "(?:[01][0-9]|2[0-3]):[0-5][0-9](?: (?:MESZ|MEZ|UTC[+-](?:[01][0-9]|2[0-3]):[0-5][0-9]))?",
+    "text": ".+",
+    "ganzzahl": "(?:0|[1-9][0-9]*)",
+    "ganzzahl_ab_2": "(?:[2-9]|[1-9][0-9]+)",
+    "sekunden": "[0-5][0-9]",
+    "dezimal_punkt": "(?:0|[1-9][0-9]*)\\.[0-9]{3}",
+    "dezimal_klartext": "(?:0|[1-9][0-9]*)(?:\\.[0-9]+)?",
+    "menge": "(?:0|[1-9][0-9]{0,2}(?:\\.[0-9]{3})*),[0-9] (?:kWh|kvarh|kVAh|m³)",
+    "ersatzwert_methode": "(?:Zuwachs gleichmäßig verteilen|Zuwachs nach dem Profil der Vorperiode verteilen|Zuwachs nach dem Profil der Vergleichsquelle verteilen|Ablesestand nachtragen|Wert eingeben \\(mit Beleg\\)|Vorperiode übernehmen|Vergleichsquelle übernehmen)",
+    "ersatzwert_kennung": "EW-[0-9]{4}-[0-9]{4,}",
+    "tag_uhr": "(?:0[1-9]|[12][0-9]|3[01])\\.(?:0[1-9]|1[0-2])\\. (?:[01][0-9]|2[0-3]):[0-5][0-9](?: (?:MESZ|MEZ|UTC[+-](?:[01][0-9]|2[0-3]):[0-5][0-9]))?"
+  },
+  "kennzeichen": [
+    {
+      "schluessel": "anteil_positiv",
+      "muster": "positiver Anteil von {quelle}",
+      "platzhalter": {"quelle": "text"},
+      "wort": "positiver Anteil",
+      "rang": 10,
+      "fehlbestand": false,
+      "einmalig": true,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "positiver Anteil von K-3 · Wirkleistung",
+      "fall": "F19"
+    },
+    {
+      "schluessel": "anteil_negativ",
+      "muster": "negativer Anteil von {quelle}",
+      "platzhalter": {"quelle": "text"},
+      "wort": "negativer Anteil",
+      "rang": 10,
+      "fehlbestand": false,
+      "einmalig": true,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "negativer Anteil von K-3 · Wirkleistung",
+      "fall": "F19"
+    },
+    {
+      "schluessel": "anfang_nicht_gemessen",
+      "muster": "Anfang nicht gemessen (kein Stand an der Periodengrenze)",
+      "platzhalter": {},
+      "wort": null,
+      "rang": 20,
+      "fehlbestand": true,
+      "einmalig": true,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "Anfang nicht gemessen (kein Stand an der Periodengrenze)",
+      "fall": "F4"
+    },
+    {
+      "schluessel": "ende_nicht_gemessen",
+      "muster": "Ende nicht gemessen (kein Stand an der Periodengrenze)",
+      "platzhalter": {},
+      "wort": null,
+      "rang": 21,
+      "fehlbestand": true,
+      "einmalig": true,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "Ende nicht gemessen (kein Stand an der Periodengrenze)",
+      "fall": "F4"
+    },
+    {
+      "schluessel": "nur_ein_stand",
+      "muster": "nur ein Stand in der Periode — keine Menge bildbar",
+      "platzhalter": {},
+      "wort": null,
+      "rang": 22,
+      "fehlbestand": true,
+      "einmalig": true,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "nur ein Stand in der Periode — keine Menge bildbar",
+      "fall": "F8"
+    },
+    {
+      "schluessel": "geraetegrenze_mit",
+      "muster": "Gerätegrenze {uhr} mit Ableseständen",
+      "platzhalter": {"uhr": "uhr"},
+      "wort": "Gerätegrenze",
+      "rang": 30,
+      "fehlbestand": false,
+      "einmalig": false,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "Gerätegrenze 10:40 mit Ableseständen",
+      "fall": "F4"
+    },
+    {
+      "schluessel": "geraetegrenze_ohne",
+      "muster": "Gerätegrenze {uhr} ohne Ablesestände",
+      "platzhalter": {"uhr": "uhr"},
+      "wort": "Gerätegrenze",
+      "rang": 30,
+      "fehlbestand": false,
+      "einmalig": false,
+      "folgt_auf": null,
+      "verlangt_danach": "zuwachs_nicht_messbar",
+      "beispiel": "Gerätegrenze 10:40 ohne Ablesestände",
+      "fall": "F5"
+    },
+    {
+      "schluessel": "zuwachs_nicht_messbar",
+      "muster": "Zuwachs am Wechsel nicht messbar (Ablesestände fehlen)",
+      "platzhalter": {},
+      "wort": "Gerätegrenze",
+      "rang": 30,
+      "fehlbestand": true,
+      "einmalig": false,
+      "folgt_auf": ["geraetegrenze_ohne"],
+      "verlangt_danach": null,
+      "beispiel": "Zuwachs am Wechsel nicht messbar (Ablesestände fehlen)",
+      "fall": "F5"
+    },
+    {
+      "schluessel": "luecke_am_wechsel",
+      "muster": "Lücke am Wechsel {von}–{bis} (nicht aufgefüllt)",
+      "platzhalter": {"von": "uhr", "bis": "uhr"},
+      "wort": "Gerätegrenze",
+      "rang": 30,
+      "fehlbestand": false,
+      "einmalig": false,
+      "folgt_auf": ["geraetegrenze_mit", "zuwachs_nicht_messbar"],
+      "verlangt_danach": null,
+      "beispiel": "Lücke am Wechsel 10:39–10:47 (nicht aufgefüllt)",
+      "fall": "F4"
+    },
+    {
+      "schluessel": "ueberlauf",
+      "muster": "Überlauf {uhr} (Wertebereich {modul})",
+      "platzhalter": {"uhr": "uhr", "modul": "dezimal_klartext"},
+      "wort": "Überlauf",
+      "rang": 30,
+      "fehlbestand": false,
+      "einmalig": false,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "Überlauf 10:03 (Wertebereich 65536)",
+      "fall": "F7"
+    },
+    {
+      "schluessel": "ruecksetzung",
+      "muster": "Rücksetzung {uhr} ohne Endstand — bis zu 1 Kadenz nicht gezählt",
+      "platzhalter": {"uhr": "uhr"},
+      "wort": "Rücksetzung",
+      "rang": 30,
+      "fehlbestand": true,
+      "einmalig": false,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "Rücksetzung 09:12 ohne Endstand — bis zu 1 Kadenz nicht gezählt",
+      "fall": "F6"
+    },
+    {
+      "schluessel": "luecke_zuwachs",
+      "muster": "Lücke {von}–{bis}: Zuwachs {zuwachs} gemessen, nicht auf Viertelstunden verteilbar",
+      "platzhalter": {"von": "uhr", "bis": "uhr", "zuwachs": "menge"},
+      "wort": "Lücke: Zuwachs gemessen",
+      "rang": 30,
+      "fehlbestand": false,
+      "einmalig": false,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht auf Viertelstunden verteilbar",
+      "fall": "F8"
+    },
+    {
+      "schluessel": "luecke_zuwachs_ohne_einheit",
+      "muster": "Lücke {von}–{bis}: Zuwachs gemessen, nicht auf Viertelstunden verteilbar",
+      "platzhalter": {"von": "uhr", "bis": "uhr"},
+      "wort": "Lücke: Zuwachs gemessen",
+      "rang": 30,
+      "fehlbestand": false,
+      "einmalig": false,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "Lücke 14:00–17:31: Zuwachs gemessen, nicht auf Viertelstunden verteilbar",
+      "fall": "konstruiert"
+    },
+    {
+      "schluessel": "neustart",
+      "muster": "Neustart {uhr}: bis zu {verlust_s} s Zählung möglicherweise verloren",
+      "platzhalter": {"uhr": "uhr", "verlust_s": "ganzzahl"},
+      "wort": "Neustart-Verlust",
+      "rang": 40,
+      "fehlbestand": true,
+      "einmalig": false,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "Neustart 10:22: bis zu 120 s Zählung möglicherweise verloren",
+      "fall": "F22"
+    },
+    {
+      "schluessel": "intervallmenge_fehlt",
+      "muster": "1 von {erwartet} Intervallmengen fehlt — Menge ist die Summe der gemessenen",
+      "platzhalter": {"erwartet": "ganzzahl"},
+      "wort": null,
+      "rang": 50,
+      "fehlbestand": true,
+      "einmalig": true,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "1 von 15 Intervallmengen fehlt — Menge ist die Summe der gemessenen",
+      "fall": "F2"
+    },
+    {
+      "schluessel": "intervallmengen_fehlen",
+      "muster": "{fehlend} von {erwartet} Intervallmengen fehlen — Menge ist die Summe der gemessenen",
+      "platzhalter": {"fehlend": "ganzzahl_ab_2", "erwartet": "ganzzahl"},
+      "wort": null,
+      "rang": 50,
+      "fehlbestand": true,
+      "einmalig": true,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "2 von 30 Intervallmengen fehlen — Menge ist die Summe der gemessenen",
+      "fall": "konstruiert (Mehrzahl-Form von I2; kein Referenzfall verliert zwei Intervallmengen)"
+    },
+    {
+      "schluessel": "gemessene_zeit",
+      "muster": "gemessene Zeit {minuten}:{sekunden} min von {periode_min} min",
+      "platzhalter": {"minuten": "ganzzahl", "sekunden": "sekunden", "periode_min": "ganzzahl"},
+      "wort": null,
+      "rang": 50,
+      "fehlbestand": true,
+      "einmalig": true,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "gemessene Zeit 11:00 min von 15 min",
+      "fall": "F18"
+    },
+    {
+      "schluessel": "aus_leistung_integriert",
+      "muster": "aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)",
+      "platzhalter": {},
+      "wort": "aus Leistung integriert",
+      "rang": 60,
+      "fehlbestand": false,
+      "einmalig": true,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)",
+      "fall": "F3"
+    },
+    {
+      "schluessel": "ablesezeitraum",
+      "muster": "Ablesezeitraum {von} – {bis} (Zuordnung durch den Kunden)",
+      "platzhalter": {"von": "tag_uhr", "bis": "tag_uhr"},
+      "wort": "Ablesezeitraum",
+      "rang": 60,
+      "fehlbestand": false,
+      "einmalig": false,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "Ablesezeitraum 01.10. 07:15 – 02.11. 07:40 (Zuordnung durch den Kunden)",
+      "fall": "F17"
+    },
+    {
+      "schluessel": "ablesezeitraum_ohne_monat",
+      "muster": "Ablesezeitraum ohne Monatszuordnung",
+      "platzhalter": {},
+      "wort": "Ablesezeitraum",
+      "rang": 60,
+      "fehlbestand": false,
+      "einmalig": true,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "Ablesezeitraum ohne Monatszuordnung",
+      "fall": "F17"
+    },
+    {
+      "schluessel": "mit_ersatzwert",
+      "muster": "mit Ersatzwert (Methode „{methode}“, {kennung})",
+      "platzhalter": {
+        "methode": "ersatzwert_methode",
+        "kennung": "ersatzwert_kennung"
+      },
+      "wort": "mit Ersatzwert (Methode …)",
+      "rang": 70,
+      "fehlbestand": false,
+      "einmalig": false,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "mit Ersatzwert (Methode „Zuwachs gleichmäßig verteilen“, EW-2026-0003)",
+      "fall": "F11"
+    },
+    {
+      "schluessel": "korrigiert",
+      "muster": "korrigiert (Version {version})",
+      "platzhalter": {
+        "version": "ganzzahl_ab_2"
+      },
+      "wort": "korrigiert (Version n)",
+      "rang": 80,
+      "fehlbestand": false,
+      "einmalig": true,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "korrigiert (Version 2)",
+      "fall": "F10"
+    },
+    {
+      "schluessel": "vorlaeufig",
+      "muster": "vorläufig",
+      "platzhalter": {},
+      "wort": "vorläufig",
+      "rang": 90,
+      "fehlbestand": false,
+      "einmalig": true,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "vorläufig",
+      "fall": "F9"
+    },
+    {
+      "schluessel": "endgueltig",
+      "muster": "endgültig",
+      "platzhalter": {},
+      "wort": "endgültig",
+      "rang": 90,
+      "fehlbestand": false,
+      "einmalig": true,
+      "folgt_auf": null,
+      "verlangt_danach": null,
+      "beispiel": "endgültig",
+      "fall": "F10"
+    }
+  ],
+  "fruehere_fassungen": [
+    {
+      "schluessel": "geraetegrenze_mit",
+      "muster": "Gerätegrenze {uhr} mit Ablesestände",
+      "platzhalter": {"uhr": "uhr"},
+      "bis_fassung": "1.0",
+      "beispiel": "Gerätegrenze 10:40 mit Ablesestände",
+      "warum": "Falscher Dativ (nach „mit“: „Ableseständen“). Seit AP-08 IP-4 gesprochen und in kennzeichen der Speicherklassen gespeichert; eine endgültige Viertelstunde wird nie neu geschrieben, und Tag, Monat und Jahr übernehmen die Sätze ihrer Teile. Darum bleibt die alte Form lesbar."
+    },
+    {
+      "schluessel": "luecke_zuwachs",
+      "muster": "Lücke {von}–{bis}: Zuwachs {zuwachs} gemessen, nicht auf Viertelstunden verteilbar",
+      "platzhalter": {"von": "uhr", "bis": "uhr", "zuwachs": "dezimal_punkt"},
+      "bis_fassung": "1.2",
+      "beispiel": "Lücke 14:00–17:31: Zuwachs 337.600 gemessen, nicht auf Viertelstunden verteilbar",
+      "warum": "Punkt als Dezimalzeichen, drei Nachkommastellen, ohne Einheit — ein de-DE-Leser las 337 600. Seit AP-08 IP-6 gesprochen und in kennzeichen der Speicherklassen gespeichert (auch für Reihen ohne bekannte Einheit); Tag, Monat und Jahr übernehmen die Sätze ihrer Teile. Darum bleibt die alte Form lesbar."
+    }
+  ],
+  "kennzeichen_vorgesehen": [
+    {
+      "wort": "nachgeliefert",
+      "anfang": "nachgeliefert",
+      "wortlaut_mit": "AP-08 IP-10 (Chip „nachgeliefert“ am Verlauf)"
+    }
+  ],
+  "kennzahl_kennzeichen": {
+    "herkunft": "UEMS AP-11 §4.7 (Q2, Q3, Q5, Q8, Q9), §4.9 (V2, V5), §4.11 (G3), §7 Vokabular `kennzeichen_neu` — Entscheid E4 vom 14.09.2026, IP-1. Gesprochen von uems/KennzahlRegeln ⟷ uemsKennzahl.ts gegen kennzahl-vectors.json.",
+    "platzhalter": {
+      "datum": "(?:0[1-9]|[12][0-9]|3[01])\\.(?:0[1-9]|1[0-2])\\.[0-9]{4}",
+      "text": ".+",
+      "bezeichnung": "(?!Berechnung\\b).+",
+      "objekt": "(?:MS-[0-9]{2,}|BZ-[0-9]+|KZ-[0-9]{4,})",
+      "geltung": "(?:U|[A-Z]{1,2}-[0-9]+|[0-9]{4})",
+      "ganzzahl": "(?:0|[1-9][0-9]*)",
+      "ganzzahl_ab_2": "(?:[2-9]|[1-9][0-9]+)",
+      "wort": "(?:Gebäuden|Standorten|Bereichen|Prozessen|Kostenstellen|Messstellen|Kennzahlen|Tagen|Wochen|Monaten|Jahren|Systemen)"
+    },
+    "saetze": [
+      {
+        "schluessel": "berechnet_kennzahl",
+        "muster": "berechnet (Kennzahl)",
+        "platzhalter": {},
+        "rang": 10,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "berechnet (Kennzahl)",
+        "fall": "K1"
+      },
+      {
+        "schluessel": "enthaelt_berechnet",
+        "muster": "enthält berechnet ({text})",
+        "platzhalter": {
+          "text": "text"
+        },
+        "rang": 20,
+        "herkunft": "geerbt",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "enthält berechnet (Summe)",
+        "fall": "K4"
+      },
+      {
+        "schluessel": "enthaelt_verteilt",
+        "muster": "enthält verteilt ({text})",
+        "platzhalter": {
+          "text": "text"
+        },
+        "rang": 21,
+        "herkunft": "geerbt",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "enthält verteilt (70 % von MS-07)",
+        "fall": "K5"
+      },
+      {
+        "schluessel": "gewichtet",
+        "muster": "gewichtet (Summe ÷ Summe)",
+        "platzhalter": {},
+        "rang": 30,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "gewichtet (Summe ÷ Summe)",
+        "fall": "K3"
+      },
+      {
+        "schluessel": "untergrenze",
+        "muster": "Untergrenze — Menge unvollständig ({text})",
+        "platzhalter": {
+          "text": "text"
+        },
+        "rang": 40,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "Untergrenze — Menge unvollständig (MS-16 fehlt)",
+        "fall": "K10"
+      },
+      {
+        "schluessel": "obergrenze",
+        "muster": "Obergrenze — Bezugsgröße unvollständig ({text})",
+        "platzhalter": {
+          "text": "text"
+        },
+        "rang": 40,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "Obergrenze — Bezugsgröße unvollständig (Ladezeit: 1 h ohne Statuswerte)",
+        "fall": "K11"
+      },
+      {
+        "schluessel": "richtung_unbestimmt",
+        "muster": "Richtung unbestimmt — Menge und Bezugsgröße unvollständig",
+        "platzhalter": {},
+        "rang": 40,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "Richtung unbestimmt — Menge und Bezugsgröße unvollständig",
+        "fall": "konstruiert"
+      },
+      {
+        "schluessel": "nenner_null",
+        "muster": "Nenner 0 ({text})",
+        "platzhalter": {
+          "text": "text"
+        },
+        "rang": 41,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": true,
+        "beispiel": "Nenner 0 (BZ-7 August 2027: 0 Stück)",
+        "fall": "K9"
+      },
+      {
+        "schluessel": "ab",
+        "muster": "ab {datum}",
+        "platzhalter": {
+          "datum": "datum"
+        },
+        "rang": 50,
+        "herkunft": "geerbt",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "ab 15.10.2026",
+        "fall": "K2"
+      },
+      {
+        "schluessel": "mit_ersatzwert",
+        "muster": "mit Ersatzwert ({text})",
+        "platzhalter": {
+          "text": "text"
+        },
+        "rang": 51,
+        "herkunft": "geerbt",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "mit Ersatzwert (Methode „Zuwachs gleichmäßig verteilen“, EW-2026-0003)",
+        "fall": "konstruiert"
+      },
+      {
+        "schluessel": "stammdatum_geaendert",
+        "muster": "{bezeichnung} geändert am {datum} ({wechsel})",
+        "platzhalter": {
+          "bezeichnung": "bezeichnung",
+          "datum": "datum",
+          "wechsel": "text"
+        },
+        "rang": 52,
+        "herkunft": "geerbt",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "Fläche geändert am 01.01.2027 (3.100 → 3.400 m²)",
+        "fall": "konstruiert"
+      },
+      {
+        "schluessel": "betriebszeit_annahme",
+        "muster": "aus Leistung über {text} kW (Annahme)",
+        "platzhalter": {
+          "text": "text"
+        },
+        "rang": 53,
+        "herkunft": "geerbt",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "aus Leistung über 5 kW (Annahme)",
+        "fall": "konstruiert"
+      },
+      {
+        "schluessel": "temperatur_bezogen",
+        "muster": "Temperatur von VoltPilot bezogen ({quelle}, abgerufen am {datum} {uhr})",
+        "platzhalter": {
+          "quelle": "text",
+          "datum": "datum",
+          "uhr": "text"
+        },
+        "rang": 54,
+        "herkunft": "geerbt",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "Temperatur von VoltPilot bezogen (Open-Meteo-Archiv, abgerufen am 01.03.2027 06:10)",
+        "fall": "konstruiert"
+      },
+      {
+        "schluessel": "berechnung_geaendert_am",
+        "muster": "Berechnung geändert am {datum} (Fassung {von} → {nach})",
+        "platzhalter": {
+          "datum": "datum",
+          "von": "ganzzahl",
+          "nach": "ganzzahl_ab_2"
+        },
+        "rang": 55,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "Berechnung geändert am 15.03.2027 (Fassung 1 → 2)",
+        "fall": "konstruiert"
+      },
+      {
+        "schluessel": "x_von_y",
+        "muster": "{mit} von {gesamt} {wort}",
+        "platzhalter": {
+          "mit": "ganzzahl",
+          "gesamt": "ganzzahl",
+          "wort": "wort"
+        },
+        "rang": 60,
+        "herkunft": "beides",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "2 von 2 Gebäuden",
+        "fall": "K3"
+      },
+      {
+        "schluessel": "x_von_y_fehlt",
+        "muster": "{mit} von {gesamt} {wort} ({fehlt})",
+        "platzhalter": {
+          "mit": "ganzzahl",
+          "gesamt": "ganzzahl",
+          "wort": "wort",
+          "fehlt": "text"
+        },
+        "rang": 60,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "1 von 2 Gebäuden (KZ-0002 fehlt)",
+        "fall": "konstruiert"
+      },
+      {
+        "schluessel": "ab_mit_geltung",
+        "muster": "{geltung} ab {datum}",
+        "platzhalter": {
+          "geltung": "geltung",
+          "datum": "datum"
+        },
+        "rang": 70,
+        "herkunft": "geerbt",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "G-5 ab 15.10.2026",
+        "fall": "K3"
+      },
+      {
+        "schluessel": "unplausibel_ueber_100",
+        "muster": "unplausibel (über 100 %)",
+        "platzhalter": {},
+        "rang": 80,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "unplausibel (über 100 %)",
+        "fall": "K15"
+      },
+      {
+        "schluessel": "unplausibel_negativ",
+        "muster": "unplausibel (negativ)",
+        "platzhalter": {},
+        "rang": 80,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "unplausibel (negativ)",
+        "fall": "konstruiert"
+      },
+      {
+        "schluessel": "eingang_ausserhalb",
+        "muster": "Eingang {objekt} seit {datum} außerhalb von {name}",
+        "platzhalter": {
+          "objekt": "objekt",
+          "datum": "datum",
+          "name": "text"
+        },
+        "rang": 81,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "Eingang MS-08 seit 01.03.2027 außerhalb von Halle 1",
+        "fall": "K22"
+      },
+      {
+        "schluessel": "bezugsgroesse_archiviert",
+        "muster": "Bezugsgröße archiviert ({objekt})",
+        "platzhalter": {
+          "objekt": "objekt"
+        },
+        "rang": 82,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "Bezugsgröße archiviert (BZ-3)",
+        "fall": "konstruiert"
+      },
+      {
+        "schluessel": "eingang_archiviert",
+        "muster": "Eingang archiviert ({objekt})",
+        "platzhalter": {
+          "objekt": "objekt"
+        },
+        "rang": 82,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": false,
+        "beispiel": "Eingang archiviert (KZ-0002)",
+        "fall": "konstruiert"
+      },
+      {
+        "schluessel": "korrigiert",
+        "muster": "korrigiert (Version {version})",
+        "platzhalter": {
+          "version": "ganzzahl_ab_2"
+        },
+        "rang": 90,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": true,
+        "beispiel": "korrigiert (Version 2)",
+        "fall": "K6"
+      },
+      {
+        "schluessel": "berechnung_geaendert",
+        "muster": "Berechnung geändert (Fassung {fassung})",
+        "platzhalter": {
+          "fassung": "ganzzahl_ab_2"
+        },
+        "rang": 90,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": true,
+        "beispiel": "Berechnung geändert (Fassung 2)",
+        "fall": "konstruiert"
+      },
+      {
+        "schluessel": "nenner_zurueckgenommen",
+        "muster": "Nenner zurückgenommen ({text})",
+        "platzhalter": {
+          "text": "text"
+        },
+        "rang": 91,
+        "herkunft": "eigen",
+        "stelle": "wert",
+        "ohne_zahl": true,
+        "beispiel": "Nenner zurückgenommen (BZ-1 Oktober 2026)",
+        "fall": "K19"
+      },
+      {
+        "schluessel": "stichtag",
+        "muster": "Stichtag {datum}",
+        "platzhalter": {
+          "datum": "datum"
+        },
+        "rang": 100,
+        "herkunft": "eigen",
+        "stelle": "eingang",
+        "ohne_zahl": false,
+        "beispiel": "Stichtag 31.10.2026",
+        "fall": "K12"
+      }
+    ],
+    "erbend": [
+      {
+        "muster": "^berechnet \\((?!Kennzahl\\)$).+\\)$",
+        "als": "enthält {0}",
+        "von": [
+          "messstelle"
+        ],
+        "warum": "Ein Gesamtwert (berechnete Messstelle, AP-10) als Menge: die Kennzahl ENTHÄLT eine Rechnung, sie ist keine (§4.4, Q8)."
+      },
+      {
+        "muster": "^verteilt \\(.+\\)$",
+        "als": "enthält {0}",
+        "von": [
+          "messstelle"
+        ],
+        "warum": "Wie AP-10 `kennzeichen_erbend`: ein verteilter Anteil bleibt an jeder Zahl sichtbar, die ihn enthält."
+      },
+      {
+        "muster": "^enthält (?:berechnet|verteilt) \\(.+\\)$",
+        "als": "{0}",
+        "von": [
+          "messstelle"
+        ],
+        "warum": "Ein Gesamtwert, der schon „enthält …“ sagt (MS-20), reicht den Satz unverändert weiter (K5)."
+      },
+      {
+        "muster": "^ab \\d{2}\\.\\d{2}\\.\\d{4}$",
+        "als": "{0}",
+        "von": [
+          "messstelle",
+          "bezugsgroesse"
+        ],
+        "warum": "P4: die Periode gilt erst ab dem Bestehen des Eingangs — kein Fehlbestand (K2)."
+      },
+      {
+        "muster": "^ab \\d{2}\\.\\d{2}\\.\\d{4}$",
+        "als": "{geltung} {0}",
+        "von": [
+          "kennzahl"
+        ],
+        "warum": "Q8: aus einer Kennzahl mit dem Geltungsobjekt davor — „G-5 ab 15.10.2026“ (K3)."
+      },
+      {
+        "muster": "^mit Ersatzwert \\(.+\\)$",
+        "als": "{0}",
+        "von": [
+          "messstelle"
+        ],
+        "warum": "AP-08 E7: ein Ersatzwert bleibt an jeder Zahl sichtbar, die ihn enthält."
+      },
+      {
+        "muster": "^(?!Berechnung\\b).+ geändert am \\d{2}\\.\\d{2}\\.\\d{4} \\(.+\\)$",
+        "als": "{0}",
+        "von": [
+          "bezugsgroesse"
+        ],
+        "warum": "AP-09 S3: ändert sich ein Stammdatum in der Periode, nennt sie den Übergang — gelesen wird trotzdem nur der Stichtag."
+      },
+      {
+        "muster": "^\\d+ von \\d+ Systemen$",
+        "als": "{0}",
+        "von": [
+          "messstelle"
+        ],
+        "warum": "AP-10: ein Gesamtwert, dem Systeme fehlen, sagt es; die Kennzahl verschweigt es nicht (K10)."
+      },
+      {
+        "muster": "^aus Leistung über .+ kW \\(Annahme\\)$",
+        "als": "{0}",
+        "von": [
+          "bezugsgroesse",
+          "kennzahl"
+        ],
+        "warum": "AP-16 E9: die Kundenannahme bleibt an jeder daraus gebildeten Kennzahl sichtbar."
+      },
+      {
+        "muster": "^Temperatur von VoltPilot bezogen \\(.+, abgerufen am \\d{2}\\.\\d{2}\\.\\d{4} \\d{2}:\\d{2}\\)$",
+        "als": "{0}",
+        "von": [
+          "bezugsgroesse",
+          "kennzahl"
+        ],
+        "warum": "AP-17 E9 = C (R3): die Herkunft „von VoltPilot bezogen“ mit Quelle und Abrufzeit bleibt an jeder daraus gebildeten Kennzahl sichtbar."
+      }
+    ],
+    "reihenfolge": [
+      "Der Rang steigt in einer Liste nie; Sätze gleichen Rangs stehen in der Folge, in der sie entstehen (Menge vor Bezugsgröße, Paare in ihrer Reihenfolge).",
+      "Ein Satz steht höchstens einmal — derselbe geerbte Satz aus zwei Eingängen einmal.",
+      "Ohne Zahl stehen nur die Sätze mit `ohne_zahl: true` da: nie „berechnet (Kennzahl)“ und nichts Geerbtes (K8, K9, K19).",
+      "Eine gröbere Periode aus ihren Teilperioden ersetzt jedes „ab …“ der Teile (auch mit Geltungsobjekt) durch ihr eigenes und behält einen geerbten Satz „x von y …“ nur, wenn er in JEDER Teilperiode gleich lautet (K14).",
+      "`stelle: eingang` heißt: der Satz steht nur am Eingang der Herkunft, nie in der Liste des Werts („Stichtag 31.10.2026“, K12)."
+    ]
+  },
+  "bericht_kennzeichen": {
+    "herkunft": "UEMS AP-12 §4.9 (R5), §4.10 (EW4), §4.12 (A5, G3), §7 Vokabular `kennzeichen_neu` — Entscheide E7, E8, E11, E14 vom 14.09.2026, IP-1. Gesprochen von uems/BerichtRegeln ⟷ uemsBericht.ts gegen bericht-vectors.json.",
+    "platzhalter": {
+      "nr": "[1-9][0-9]*",
+      "datum": "(?:0[1-9]|[12][0-9]|3[01])\\.(?:0[1-9]|1[0-2])\\.[0-9]{4}",
+      "uhr": "(?:[01][0-9]|2[0-3]):[0-5][0-9](?: (?:MESZ|MEZ|UTC[+-](?:[01][0-9]|2[0-3]):[0-5][0-9]))?",
+      "text": ".+"
+    },
+    "saetze": [
+      {
+        "schluessel": "berichtsstand",
+        "muster": "Berichtsstand Nr. {nr}",
+        "platzhalter": {
+          "nr": "nr"
+        },
+        "stelle": "bericht",
+        "beispiel": "Berichtsstand Nr. 1",
+        "fall": "B1"
+      },
+      {
+        "schluessel": "ersetzt_durch",
+        "muster": "ersetzt durch Nr. {nr} ({datum})",
+        "platzhalter": {
+          "nr": "nr",
+          "datum": "datum"
+        },
+        "stelle": "stand",
+        "beispiel": "ersetzt durch Nr. 2 (16.11.2026)",
+        "fall": "B1"
+      },
+      {
+        "schluessel": "revision_noetig",
+        "muster": "Revision nötig — {anlass}",
+        "platzhalter": {
+          "anlass": "text"
+        },
+        "stelle": "bericht",
+        "beispiel": "Revision nötig — Korrektur K-2026-0007",
+        "fall": "B1"
+      },
+      {
+        "schluessel": "entwurf",
+        "muster": "Entwurf · Datenstand {datum} {uhr}",
+        "platzhalter": {
+          "datum": "datum",
+          "uhr": "uhr"
+        },
+        "stelle": "bericht",
+        "beispiel": "Entwurf · Datenstand 12.11.2026 10:05",
+        "fall": "B2"
+      },
+      {
+        "schluessel": "zeitraum_laeuft",
+        "muster": "Zeitraum läuft",
+        "platzhalter": {},
+        "stelle": "entwurf",
+        "beispiel": "Zeitraum läuft",
+        "fall": "B4"
+      },
+      {
+        "schluessel": "vorlaeufig",
+        "muster": "vorläufig — endgültig ab {datum}",
+        "platzhalter": {
+          "datum": "datum"
+        },
+        "stelle": "wert",
+        "beispiel": "vorläufig — endgültig ab 08.11.2026",
+        "fall": "B4"
+      },
+      {
+        "schluessel": "heute",
+        "muster": "heute: {name}",
+        "platzhalter": {
+          "name": "text"
+        },
+        "stelle": "quelle",
+        "beispiel": "heute: Montage Linie M1 (Halle 2)",
+        "fall": "B10"
+      },
+      {
+        "schluessel": "teilansicht",
+        "muster": "Teilansicht: {standorte}",
+        "platzhalter": {
+          "standorte": "text"
+        },
+        "stelle": "datei",
+        "beispiel": "Teilansicht: Werk Ahrenberg, Werk Lindach",
+        "fall": "B13"
+      },
+      {
+        "schluessel": "vor_beginn",
+        "muster": "vor Beginn (Energiemanagement seit {datum})",
+        "platzhalter": {
+          "datum": "datum"
+        },
+        "stelle": "wert",
+        "beispiel": "vor Beginn (Energiemanagement seit 01.10.2026)",
+        "fall": "B6"
+      },
+      {
+        "schluessel": "anstoss_verworfen",
+        "muster": "Anstoß verworfen ({begruendung})",
+        "platzhalter": {
+          "begruendung": "text"
+        },
+        "stelle": "bericht",
+        "beispiel": "Anstoß verworfen (Ablesung geprüft, die Zahl bleibt)",
+        "fall": "B16"
+      }
+    ]
+  },
+  "grund": {
+    "herkunft": "UEMS AP-13 §4.10 D5, E11 = A (Captain 15.09.2026), §7 O15 — IP-1. Die Codes sind das Feld grund der Route „Werte je Messstelle“ (Java uems/MessstelleWerteRegeln.OhneZahl ⟷ TS MessstelleWerteWert.grund), in der Reihenfolge der Route. WANN ein Grund gilt, entscheidet die Route (AP-08 IP-9) — der Satz sagt nur, was sie geliefert hat, und nennt keine Ursache, die kein Modul geliefert hat. Gesprochen von uems/ErgebnisZustand.grundSatz ⟷ uemsErgebnis.grundSatz.",
+    "quelle": "GET /api/v1/messstellen/{kennzeichen}/werte · werte[].grund",
+    "platzhalter": {
+      "text": ".+",
+      "datum": "(?:0[1-9]|[12][0-9]|3[01])\\.(?:0[1-9]|1[0-2])\\.[0-9]{4}",
+      "anteil": "positiven|negativen",
+      "version": "[1-9][0-9]*"
+    },
+    "anteil": {
+      "positiv": "positiven",
+      "negativ": "negativen"
+    },
+    "ohne_grund": null,
+    "saetze": [
+      {
+        "code": "keine_quelle",
+        "muster": "Keine Quelle: {messstelle} hatte in diesem Zeitraum keine führende Quelle — es gibt keine Zahl, auch keine 0.",
+        "platzhalter": {
+          "messstelle": "text"
+        },
+        "woher": {
+          "messstelle": "messstelle.kennzeichen und messstelle.name der Antwort, durch ein Leerzeichen getrennt"
+        },
+        "beispiel": "Keine Quelle: MS-21 Gas Heizung Verwaltung hatte in diesem Zeitraum keine führende Quelle — es gibt keine Zahl, auch keine 0.",
+        "fall": "O15 · MS-21 Gas Heizung Verwaltung, Oktober 2026"
+      },
+      {
+        "code": "quelle_teilweise",
+        "muster": "Die Quelle deckt den Zeitraum nur zum Teil: {quelle} gilt seit {ab} — die gespeicherte Zahl gehört nicht ganz dieser Messstelle.",
+        "platzhalter": {
+          "quelle": "text",
+          "ab": "datum"
+        },
+        "woher": {
+          "quelle": "die Bindung aus quellen[], die im Zeitraum beginnt: Name der Komponente mit dem Kennzeichen ihres Geräts, wie die Quelle-Spalte des Registers sie nennt",
+          "ab": "gueltig_ab derselben Bindung als Tag in der Zone der Antwort"
+        },
+        "beispiel": "Die Quelle deckt den Zeitraum nur zum Teil: Netzzähler K-11 (GR-10) gilt seit 15.10.2026 — die gespeicherte Zahl gehört nicht ganz dieser Messstelle.",
+        "fall": "O15 · MS-16 Netzbezug Lindach, Oktober 2026 (Bindung seit 15.10.2026), O16"
+      },
+      {
+        "code": "anteil_nicht_gespeichert",
+        "muster": "Die Quelle liest nur den {anteil} Anteil von {kanal}; eine Menge je Anteil ist nicht gespeichert.",
+        "platzhalter": {
+          "anteil": "anteil",
+          "kanal": "text"
+        },
+        "woher": {
+          "anteil": "quellen[].anteil der Bindung des Schritts, gesprochen über den Block anteil",
+          "kanal": "der Name des Messwerts der Bindung mit dem Kennzeichen seiner Komponente"
+        },
+        "beispiel": "Die Quelle liest nur den positiven Anteil von Wirkenergie Bezug (K-3); eine Menge je Anteil ist nicht gespeichert.",
+        "fall": "O15 · MS-01 Netzbezug Halle 1, Viertelstunde (Vorzeichen-Kanal)"
+      },
+      {
+        "code": "berechnet",
+        "muster": "Für eine berechnete Messstelle gibt es hier keine gespeicherte Zahl: Stunden werden nie gespeichert, eine Formel aus Momentanwerten gar nicht.",
+        "platzhalter": {},
+        "woher": {},
+        "beispiel": "Für eine berechnete Messstelle gibt es hier keine gespeicherte Zahl: Stunden werden nie gespeichert, eine Formel aus Momentanwerten gar nicht.",
+        "fall": "O15 · MS-15 Halle 2 nicht zugeordnet, Stunde — Wortlaut geändert, siehe befunde grund.berechnet"
+      },
+      {
+        "code": "noch_nicht_gebildet",
+        "muster": "Noch nicht gerechnet — der Wert erscheint von selbst, Sie müssen nichts tun.",
+        "platzhalter": {},
+        "woher": {},
+        "beispiel": "Noch nicht gerechnet — der Wert erscheint von selbst, Sie müssen nichts tun.",
+        "fall": "O15 · MS-06, Monat Oktober 2026, gelesen am 20.10.2026 — Wortlaut der Tageskarte, siehe befunde grund.noch_nicht_gebildet"
+      },
+      {
+        "code": "ohne_menge_gespeichert",
+        "muster": "Dieser Zeitraum ist ohne Menge gespeichert (Stand vor der Umstellung) — der Verlauf ist bekannt, die Zahl nicht.",
+        "platzhalter": {},
+        "woher": {},
+        "beispiel": "Dieser Zeitraum ist ohne Menge gespeichert (Stand vor der Umstellung) — der Verlauf ist bekannt, die Zahl nicht.",
+        "fall": "O15 · ein endgültiger Tag von vor AP-08 IP-5 — Wortlaut geändert, siehe befunde grund.ohne_menge_gespeichert"
+      },
+      {
+        "code": "version_nicht_gespeichert",
+        "muster": "Version {n} ist für diesen Zeitraum nicht gespeichert; der neueste Stand ist Version {max}.",
+        "platzhalter": {
+          "n": "version",
+          "max": "version"
+        },
+        "woher": {
+          "n": "version der Antwort (die angefragte Version)",
+          "max": "versionen des Schritts (seine neueste Version)"
+        },
+        "beispiel": "Version 3 ist für diesen Zeitraum nicht gespeichert; der neueste Stand ist Version 2.",
+        "fall": "O15 · MS-12, Oktober 2026, ?version=3"
+      },
+      {
+        "code": "version_nicht_gebildet",
+        "muster": "Eine Stunde hat keine eigenen Versionen — eine ihrer Viertelstunden trägt eine spätere Version. Die Viertelstunden zeigen sie.",
+        "platzhalter": {},
+        "woher": {},
+        "beispiel": "Eine Stunde hat keine eigenen Versionen — eine ihrer Viertelstunden trägt eine spätere Version. Die Viertelstunden zeigen sie.",
+        "fall": "O15 · MS-12, Stunde 10:00–11:00 am 31.10.2026, ?version=1"
+      }
+    ]
+  },
+  "verstoesse": [
+    "zustand_unbekannt",
+    "einheit_unbekannt",
+    "ebene_unbekannt",
+    "ebene_fehlt",
+    "zahl_fehlt",
+    "zahl_verboten",
+    "kennzeichen_unbekannt",
+    "kennzeichen_vorgesehen",
+    "kennzeichen_doppelt",
+    "kennzeichen_reihenfolge",
+    "kennzeichen_folge",
+    "vollstaendig_mit_fehlbestand",
+    "unvollstaendig_ohne_grund",
+    "keine_werte_mit_fehlbestand"
+  ],
+  "satz": {
+    "trenner": " · ",
+    "ohne_zahl": "—",
+    "abdeckung": "Verlauf {prozent}",
+    "reihenfolge": ["zahl", "zustand", "abdeckung", "kennzeichen"]
+  },
+  "rundung": {
+    "wertbezug": {"gemessen": "Bestehende Stellen je Einheit und Ebene; Vorgabe bei fehlendem wertbezug, auch für abgeleitete Mengen. Keine Aussage über die fachliche Mengenherkunft.", "vereinbart": "Ganze Werte ganzzahlig; echte Dezimalstellen bleiben vollständig erhalten, nur nachgestellte Nullen entfallen. Keine Rundung des vereinbarten Betrags."},
+    "gerechnet": "ungerundet; verglichen auf 3 Nachkommastellen (verbrauch-vectors.json regeln.vergleich_nachkommastellen)",
+    "rundungsart": "kaufmännisch (halbe Stelle von der Null weg, BigDecimal HALF_UP)",
+    "tausender": ".",
+    "dezimal": ",",
+    "vor_einheit": " ",
+    "minus": "−",
+    "ebenen": ["viertelstunde", "stunde", "tag", "monat", "jahr"],
+    "stellen": [
+      {"einheit": "kWh", "ebene": "viertelstunde", "stellen": 1},
+      {"einheit": "kWh", "ebene": "stunde", "stellen": 1},
+      {"einheit": "kWh", "ebene": "tag", "stellen": 0},
+      {"einheit": "kWh", "ebene": "monat", "stellen": 0},
+      {"einheit": "kWh", "ebene": "jahr", "stellen": 0},
+      {"einheit": "kvarh", "ebene": "viertelstunde", "stellen": 1},
+      {"einheit": "kvarh", "ebene": "stunde", "stellen": 1},
+      {"einheit": "kvarh", "ebene": "tag", "stellen": 0},
+      {"einheit": "kvarh", "ebene": "monat", "stellen": 0},
+      {"einheit": "kvarh", "ebene": "jahr", "stellen": 0},
+      {"einheit": "kVAh", "ebene": "viertelstunde", "stellen": 1},
+      {"einheit": "kVAh", "ebene": "stunde", "stellen": 1},
+      {"einheit": "kVAh", "ebene": "tag", "stellen": 0},
+      {"einheit": "kVAh", "ebene": "monat", "stellen": 0},
+      {"einheit": "kVAh", "ebene": "jahr", "stellen": 0},
+      {"einheit": "kW", "ebene": null, "stellen": 1},
+      {"einheit": "%", "ebene": null, "stellen": 0},
+      {"einheit": "m³", "ebene": null, "stellen": 1},
+      {"einheit": "kVA", "ebene": null, "stellen": 1}
+    ],
+    "anzeige_einheiten": [
+      {"gespeichert": "Wh", "angezeigt": "kWh", "faktor": "0.001"},
+      {"gespeichert": "kWh", "angezeigt": "kWh", "faktor": "1"},
+      {"gespeichert": "MWh", "angezeigt": "kWh", "faktor": "1000"},
+      {"gespeichert": "Wmin", "angezeigt": "kWh", "faktor": "1", "teiler": "60000"},
+      {"gespeichert": "varh", "angezeigt": "kvarh", "faktor": "0.001"},
+      {"gespeichert": "kvarh", "angezeigt": "kvarh", "faktor": "1"},
+      {"gespeichert": "VAh", "angezeigt": "kVAh", "faktor": "0.001"},
+      {"gespeichert": "kVAh", "angezeigt": "kVAh", "faktor": "1"},
+      {"gespeichert": "m³", "angezeigt": "m³", "faktor": "1"}
+    ],
+    "anzeige_einheit_warum": "Ableitung aus E11 (firstmate 13.09.2026, kein Captain-Entscheid): gespeichert bleibt, was der Zähler liefert; angezeigt wird kWh für Wirkarbeit, kvarh für Blindarbeit, m³ für Volumen, mit den Stellen von E11 auf dieser Einheit — so wie der Jahreswert „1.482.300 kWh“ heißt, nicht „1.482,3 MWh“. Blindarbeit ist Arbeit und rundet darum wie kWh. Seit 1.8: Scheinarbeit (VAh, kVAh) wird kVAh mit denselben Stellen — eine EIGENE Anzeige-Einheit, nie kWh, denn Scheinarbeit ist nicht in Wirkarbeit umrechenbar; Wmin ist Wirkarbeit und wird kWh über teiler 60000 (gespeicherter Wert × faktor ÷ teiler, exakt kaufmännisch gerundet).",
+    "kennzeichen_ebene": "viertelstunde",
+    "kennzeichen_ebene_warum": "Eine Menge IN einem Kennzeichen spricht die Stellen der Viertelstunde: der Satz wandert unverändert von der Viertelstunde in Tag, Monat und Jahr (VerbrauchRegeln.zaehlerstandAusTeilperioden übernimmt ihn) und wird nie umgeschrieben — er darf also nicht je Periode anders runden.",
+    "differenz_satz": "Summe der angezeigten Werte {summe} · Rundungsdifferenz {differenz}",
+    "export": "CSV ungerundet, Punkt als Dezimalzeichen, Zeit ISO-8601 mit Offset"
+  },
+  "sommerzeit": {
+    "zusatz_normalzeit_utc_plus_1": {"+01:00": "MEZ", "+02:00": "MESZ"},
+    "zusatz_sonst": "UTC{offset}",
+    "schritte": {"viertelstunde": 15, "stunde": 60},
+    "beschriftung": "{von}–{bis}",
+    "tagesdauer": {"23": "23 Stunden (Zeitumstellung)", "25": "25 Stunden (Zeitumstellung)"}
+  },
+  "mengen_herkunft": {
+    "form": "{zustand} ({herkunft})",
+    "zustaende": ["vollständig", "unvollständig"],
+    "nur_mit_zahl": true,
+    "herleitungen": {
+      "zaehlerstand": "Menge aus Zählerständen",
+      "differenzen": "Menge aus Zählerständen",
+      "integration": null,
+      "momentanwert": null
+    }
+  },
+  "fassung": {
+    "quelle": "GET /api/v1/messstellen/{kennzeichen}/werte · werte[].fassung",
+    "kennzeichen": {
+      "vorlaeufig": "vorlaeufig",
+      "endgueltig": "endgueltig"
+    },
+    "ohne_fassung": null,
+    "hoechstens_eine": true
+  },
+  "befunde": [
+    {
+      "stelle": "mengen_herkunft (AP-08 IP-11)",
+      "befund": "Der Report schreibt an F8 „2 304 kWh · vollständig (Menge aus Zählerständen) · Verlauf 85 % — 14 Viertelstunden ohne Werte“ (§5.1, E1) und an F13/F14 „720 kWh · vollständig · 25 Stunden (Zeitumstellung)“ — einmal mit Zählung der leeren Viertelstunden, einmal ohne Verlauf.",
+      "warum_so_aufgenommen": "Die Zahl der Viertelstunden ohne Werte liefert das Lese-Modell „Werte je Messstelle“ nicht; sie in der Fläche zu zählen wäre eine zweite Rechnung — sie bleibt offen. Der Verlauf steht nach satz.reihenfolge überall, wo eine Abdeckung bekannt ist; die Tagesdauer setzt die Karte daneben, sie ist kein Teil des Satzes."
+    },
+    {
+      "stelle": "kennzeichen.luecke_zuwachs",
+      "befund": "Erledigt in 1.3: die Zahl stand mit Punkt als Dezimalzeichen, drei Nachkommastellen und ohne Einheit: „Zuwachs 337.600“ liest ein de-DE-Leser als 337 600. Seit 1.3 „Zuwachs 337,6 kWh“ — die Einheit reist im Träger ReihenKontext (Katalog-Einheit des Messkanals) bis VerbrauchRegeln, ErgebnisZustand.menge rechnet sie in die Anzeige-Einheit um; die alte Form steht in fruehere_fassungen.",
+      "warum_so_aufgenommen": "Wortlaut ist seit AP-08 IP-6 Vertrag (verbrauch-vectors.json, Python-Zwilling, gespeichert in kennzeichen der Speicherklassen). In 1.1 bewusst offen: die Rechenregel (VerbrauchRegeln.mengeZaehlerstand/zaehlerstandAusTeilperioden) kennt die Einheit nicht, und TagVerdichter/PeriodeVerdichter/ZeitraumMenge laden den Katalog nicht — das Durchreichen ist ein Folgepaket mit Datenbank-Lauf; die alte Form kommt dann nach fruehere_fassungen. Anzeige-Einheit (Ableitung aus E11, kein Captain-Entscheid zu Wh/varh/MWh): gespeichert bleibt die Einheit des Zählers, angezeigt wird kWh bzw. kvarh bzw. m³ mit den Stellen von E11 — so wie der Jahreswert „1.482.300 kWh“ heißt, nicht „1.482,3 MWh“."
+    },
+    {
+      "stelle": "kennzeichen.aus_leistung_integriert",
+      "befund": "Der Klammerzusatz „Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit“ ist Rechenmethode, kein Kundenwort.",
+      "warum_so_aufgenommen": "Vertrag seit AP-08 IP-3. Der Datenbank-CHECK prüft nur den Anfang „aus Leistung integriert%“ — eine Kürzung bräuchte keine Migration, wohl aber verbrauch-vectors.json und beide Rechen-Zwillinge."
+    },
+    {
+      "stelle": "kennzeichen.anfang_nicht_gemessen · ende_nicht_gemessen · nur_ein_stand · intervallmenge_fehlt · intervallmengen_fehlen · gemessene_zeit",
+      "befund": "Diese sechs Satzformen erzeugt die Verbrauchsregel heute, aber das Kennzeichen-Vokabular (AP-08 §4.1, verbrauch-vectors.json kennzeichen) hat kein Wort für sie.",
+      "warum_so_aufgenommen": "Mit wort = null in der geschlossenen Liste; ob sie ein Wort bekommen, entscheidet der Vokabular-Pfleger, nicht diese Inventur."
+    },
+    {
+      "stelle": "Uhrzeiten aller Kennzeichen",
+      "befund": "Erledigt in 1.3: die Uhrzeit stand in der festen Zone Europe/Berlin (VerbrauchRegeln.ANZEIGE_ZEITZONE, verbrauch.py ebenso), nicht in der Zeitzone des Standorts (E10). Seit 1.3 schlagen ViertelstundeVerdichter, TagVerdichter, PeriodeVerdichter und ZeitraumMenge die Zone nach (Standort → Unternehmen → Vorgabe, ReihenKontext.zeitzonen) und reichen sie im Träger ReihenKontext bis VerbrauchRegeln; die feste Konstante ist entfernt.",
+      "warum_so_aufgenommen": "Kein früherer Wortlaut: die Form HH:MM mit MESZ/MEZ bzw. Offset ist dieselbe, und die drei zugelassenen Zonen (Europe/Berlin, Europe/Vienna, Europe/Zurich) zeigen dieselbe Wanduhr — kein gespeicherter Satz nennt eine andere Uhrzeit, als sein Standort sie heute sähe. Der Platzhalter uhr erkennt jede Zone."
+    },
+    {
+      "stelle": "kennzeichen.ueberlauf",
+      "befund": "„Wertebereich 65536“ ohne Tausenderpunkt. Der Wertebereich ist eine Zählgröße, keine Menge; E11 regelt ihn nicht ausdrücklich.",
+      "warum_so_aufgenommen": "Vertrag seit AP-08 IP-4."
+    },
+    {
+      "stelle": "BilanzAbleitung.zahlDe (bilanz-vectors.json)",
+      "befund": "Erledigt in 1.2: die Zahlen der Bilanz-Sätze standen mit Leerzeichen als Tausendertrenner, ungerundet und mit normalem Leerzeichen vor der Einheit („mindestens 1 055 kWh“, Netzanschluss „vereinbart 550 kW“). BilanzAbleitung.zahlDe ist entfernt; rest/summe/periodenwert nehmen die Ebene der Periode und rufen zahl() an, NetzanschlussRegeln.kopfzeile ebenso (kW/kVA).",
+      "warum_so_aufgenommen": "Eigener Vertrag (AP-10), in 1.1 nur benannt. Die Bilanz-Kennzeichen (berechnet (…), nicht zugeordnet, unplausibel (negativ), saldiert) sind nicht Teil dieser Liste; „korrigiert (Version n)“ steht seit 1.5 mit demselben Wortlaut auch hier (Kennzeichen korrigiert)."
+    },
+    {
+      "stelle": "AP-08 F17 Anzeige",
+      "befund": "Der Report zeigt „1 240 m³“ (ganz) am Monat; E11 sagt „m³ 1 Nachkommastelle“.",
+      "warum_so_aufgenommen": "Der Vertrag folgt dem Entscheid-Wortlaut E11: „1.240,0 m³“."
+    },
+    {
+      "stelle": "E10 „23 Stunden“",
+      "befund": "E10 schreibt „25 Stunden (Zeitumstellung)“ bzw. „23 Stunden“; F14 desselben Reports schreibt zweimal „23 Stunden (Zeitumstellung)“.",
+      "warum_so_aufgenommen": "„bzw.“ gelesen als Ersetzung nur der Zahl, wie F14: „23 Stunden (Zeitumstellung)“. Ein Wort in sommerzeit.tagesdauer, falls anders gewollt."
+    },
+    {
+      "stelle": "Beschriftung der letzten Stunde",
+      "befund": "Die Stunde ab 23:00 heißt „23:00–00:00“; E10 regelt „24:00“ nicht.",
+      "warum_so_aufgenommen": "Die Beschriftung ist die Wanduhr des Beginns plus Schritt — keine Sonderregel erfunden."
+    },
+    {
+      "stelle": "kennzeichen.mit_ersatzwert",
+      "befund": "Der Satz nennt „mit Ersatzwert“ zweimal: „2.304 kWh · mit Ersatzwert · Verlauf 58 % · mit Ersatzwert (Methode „Zuwachs gleichmäßig verteilen“, EW-2026-0003)“ — einmal als Zustand, einmal als Anfang des Kennzeichens. Der Report schreibt am Wert „2 304 kWh · mit Ersatzwert (verteilt, EW-2026-0003)“ (§4.5) und je Methode ein eigenes Wort (§4.6: „verteilt (gleichmäßig)“, „Ersatzwert (Vorperiode dd.mm.)“ …).",
+      "warum_so_aufgenommen": "Das vorgesehene Wort des Vokabulars war „mit Ersatzwert (Methode …)“ mit dem Anfang „mit Ersatzwert (“; AP-08 IP-13 legt nur die Platzhalter fest (Methodenname aus dem Ereignis-Vokabular, Kennung) und erfindet keinen zweiten Wortlaut. Ob eine Fläche Zustand und Kennzeichen zusammenzieht, entscheidet ihr Paket (IP-10/IP-11/IP-16) — der gespeicherte Satz bleibt dieser."
+    },
+    {
+      "stelle": "grund.noch_nicht_gebildet",
+      "befund": "AP-13 O15 schlägt „{periode} ist noch nicht gebildet — der Wert entsteht nach dem Ende des Zeitraums ({bildung})“ vor („Monatslauf am 01.11.2026“). Die Tageskarte spricht denselben Grund seit PR 809 (Captain 15.09.2026, nach dem Konzeptstand 84f8307f) als „Noch nicht gerechnet — der Wert erscheint von selbst, Sie müssen nichts tun.“ (glossar.ts UEMS_NOCH_NICHT_GERECHNET_SATZ); und {bildung} liefert kein Feld der Antwort (D5: Platzhalter aus Quelle, Anteil, Periode, Version).",
+      "warum_so_aufgenommen": "Ein Grund, EIN Satz: der Vertrag übernimmt den gebauten, bestätigten Wortlaut, damit die Karte mit IP-6 nicht ihren Satz wechselt, und erfindet kein Bildungsdatum. Entscheidung an firstmate gemeldet (needs-decision o13-grund-wortlaut); der Gleichheitstest der Portal-Kopie nennt die Abweichung."
+    },
+    {
+      "stelle": "grund.ohne_menge_gespeichert",
+      "befund": "AP-13 O15 schlägt „Dieser Tag ist ohne Menge gespeichert (Stand vor der Umstellung) — Zustand und Verlauf sind bekannt, die Zahl nicht.“ vor. Die Route liefert an diesem Schritt zustand = null (nur erhalten, erwartet, abdeckung_prozent, fassung), und der Grund steht auch an einem Zeitraum aus Tagen (gebildet_aus zeitraum), nicht nur am Tag.",
+      "warum_so_aufgenommen": "D5: kein Satz behauptet, was die Route nicht geliefert hat — „Dieser Zeitraum“ statt „Dieser Tag“, „der Verlauf ist bekannt“ statt „Zustand und Verlauf“. Gemeldet mit o13-grund-wortlaut."
+    },
+    {
+      "stelle": "grund.berechnet",
+      "befund": "AP-13 O15 schlägt „Für eine berechnete Messstelle gibt es keine Stundenwerte — Viertelstunde, Tag, Monat und Jahr stehen in den Werten.“ vor. Die Route antwortet berechnet an der Stunde JEDER berechneten Messstelle und an JEDER Einteilung einer Formel aus Momentanwerten (MessstelleWerteService.gespeicherteSpur: nur live) — dort stünde der Satz falsch.",
+      "warum_so_aufgenommen": "D5: ein Satz, der in beiden Lagen stimmt, ohne Platzhalter (die Route nennt nicht, welche Lage es ist). Gemeldet mit o13-grund-wortlaut."
+    }
+  ],
+  "cases": [
+    {
+      "name": "vereinbart: 550 kW",
+      "familie": "zahl",
+      "fall": "E11 · Wertbezug (Entscheid B vom 15.09.2026)",
+      "why": "Vereinbarte Beträge bleiben exakt, ganze ohne Nachkommastelle; Messwerte behalten feste Stellen. Fehlend bleibt fehlend.",
+      "eingang": {
+        "wert": "550",
+        "einheit": "kW",
+        "ebene": null,
+        "wertbezug": "vereinbart"
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "text": "550 kW"
+      }
+    },
+    {
+      "name": "vereinbart: 630.000 kVA",
+      "familie": "zahl",
+      "fall": "E11 · Wertbezug (Entscheid B vom 15.09.2026)",
+      "why": "Vereinbarte Beträge bleiben exakt, ganze ohne Nachkommastelle; Messwerte behalten feste Stellen. Fehlend bleibt fehlend.",
+      "eingang": {
+        "wert": "630.000",
+        "einheit": "kVA",
+        "ebene": null,
+        "wertbezug": "vereinbart"
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "text": "630 kVA"
+      }
+    },
+    {
+      "name": "vereinbart: 27.6 kW",
+      "familie": "zahl",
+      "fall": "E11 · Wertbezug (Entscheid B vom 15.09.2026)",
+      "why": "Vereinbarte Beträge bleiben exakt, ganze ohne Nachkommastelle; Messwerte behalten feste Stellen. Fehlend bleibt fehlend.",
+      "eingang": {
+        "wert": "27.6",
+        "einheit": "kW",
+        "ebene": null,
+        "wertbezug": "vereinbart"
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "text": "27,6 kW"
+      }
+    },
+    {
+      "name": "vereinbart: 550.4500 kW",
+      "familie": "zahl",
+      "fall": "E11 · Wertbezug (Entscheid B vom 15.09.2026)",
+      "why": "Vereinbarte Beträge bleiben exakt, ganze ohne Nachkommastelle; Messwerte behalten feste Stellen. Fehlend bleibt fehlend.",
+      "eingang": {
+        "wert": "550.4500",
+        "einheit": "kW",
+        "ebene": null,
+        "wertbezug": "vereinbart"
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "text": "550,45 kW"
+      }
+    },
+    {
+      "name": "vereinbart: 27.625 kVA",
+      "familie": "zahl",
+      "fall": "E11 · Wertbezug (Entscheid B vom 15.09.2026)",
+      "why": "Vereinbarte Beträge bleiben exakt, ganze ohne Nachkommastelle; Messwerte behalten feste Stellen. Fehlend bleibt fehlend.",
+      "eingang": {
+        "wert": "27.625",
+        "einheit": "kVA",
+        "ebene": null,
+        "wertbezug": "vereinbart"
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "text": "27,625 kVA"
+      }
+    },
+    {
+      "name": "vereinbart: 1200.00 kW",
+      "familie": "zahl",
+      "fall": "E11 · Wertbezug (Entscheid B vom 15.09.2026)",
+      "why": "Vereinbarte Beträge bleiben exakt, ganze ohne Nachkommastelle; Messwerte behalten feste Stellen. Fehlend bleibt fehlend.",
+      "eingang": {
+        "wert": "1200.00",
+        "einheit": "kW",
+        "ebene": null,
+        "wertbezug": "vereinbart"
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "text": "1.200 kW"
+      }
+    },
+    {
+      "name": "vereinbart: 0.000 kW",
+      "familie": "zahl",
+      "fall": "E11 · Wertbezug (Entscheid B vom 15.09.2026)",
+      "why": "Vereinbarte Beträge bleiben exakt, ganze ohne Nachkommastelle; Messwerte behalten feste Stellen. Fehlend bleibt fehlend.",
+      "eingang": {
+        "wert": "0.000",
+        "einheit": "kW",
+        "ebene": null,
+        "wertbezug": "vereinbart"
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "text": "0 kW"
+      }
+    },
+    {
+      "name": "vereinbart: None kW",
+      "familie": "zahl",
+      "fall": "E11 · Wertbezug (Entscheid B vom 15.09.2026)",
+      "why": "Vereinbarte Beträge bleiben exakt, ganze ohne Nachkommastelle; Messwerte behalten feste Stellen. Fehlend bleibt fehlend.",
+      "eingang": {
+        "wert": null,
+        "einheit": "kW",
+        "ebene": null,
+        "wertbezug": "vereinbart"
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "text": "—"
+      }
+    },
+    {
+      "name": "vereinbart: -27.600 kW",
+      "familie": "zahl",
+      "fall": "E11 · Wertbezug (Entscheid B vom 15.09.2026)",
+      "why": "Vereinbarte Beträge bleiben exakt, ganze ohne Nachkommastelle; Messwerte behalten feste Stellen. Fehlend bleibt fehlend.",
+      "eingang": {
+        "wert": "-27.600",
+        "einheit": "kW",
+        "ebene": null,
+        "wertbezug": "vereinbart"
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "text": "−27,6 kW"
+      }
+    },
+    {
+      "name": "gemessen: 550 kW",
+      "familie": "zahl",
+      "fall": "E11 · Wertbezug (Entscheid B vom 15.09.2026)",
+      "why": "Vereinbarte Beträge bleiben exakt, ganze ohne Nachkommastelle; Messwerte behalten feste Stellen. Fehlend bleibt fehlend.",
+      "eingang": {
+        "wert": "550",
+        "einheit": "kW",
+        "ebene": null,
+        "wertbezug": "gemessen"
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "text": "550,0 kW"
+      }
+    },
+    {
+      "name": "gemessen: 630 kVA",
+      "familie": "zahl",
+      "fall": "E11 · Wertbezug (Entscheid B vom 15.09.2026)",
+      "why": "Vereinbarte Beträge bleiben exakt, ganze ohne Nachkommastelle; Messwerte behalten feste Stellen. Fehlend bleibt fehlend.",
+      "eingang": {
+        "wert": "630",
+        "einheit": "kVA",
+        "ebene": null,
+        "wertbezug": "gemessen"
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "text": "630,0 kVA"
+      }
+    },
+    {
+      "name": "gemessen: 312.44 kW",
+      "familie": "zahl",
+      "fall": "E11 · Wertbezug (Entscheid B vom 15.09.2026)",
+      "why": "Vereinbarte Beträge bleiben exakt, ganze ohne Nachkommastelle; Messwerte behalten feste Stellen. Fehlend bleibt fehlend.",
+      "eingang": {
+        "wert": "312.44",
+        "einheit": "kW",
+        "ebene": null,
+        "wertbezug": "gemessen"
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "text": "312,4 kW"
+      }
+    },
+    {
+      "name": "Viertelstunde eine Nachkommastelle",
+      "familie": "zahl",
+      "fall": "F1",
+      "why": "E11: Viertelstunde/Stunde 1 Nachkommastelle, geschütztes Leerzeichen vor der Einheit.",
+      "eingang": {"wert": "36.000", "einheit": "kWh", "ebene": "viertelstunde"},
+      "erwartet": {"verstoesse": [], "text": "36,0 kWh"}
+    },
+    {
+      "name": "Stunde eine Nachkommastelle",
+      "familie": "zahl",
+      "fall": "F13",
+      "why": "Die doppelte Stunde am 25.10.2026 trägt 28,8 kWh — Stunde ist 1 Nachkommastelle.",
+      "eingang": {"wert": "28.800", "einheit": "kWh", "ebene": "stunde"},
+      "erwartet": {"verstoesse": [], "text": "28,8 kWh"}
+    },
+    {
+      "name": "Tag ganze kWh mit Tausenderpunkt",
+      "familie": "zahl",
+      "fall": "F8",
+      "why": "E11: Tag ganze kWh, Tausenderpunkt nach de-DE — „2.304 kWh“, nie „2 304 kWh“.",
+      "eingang": {"wert": "2304.000", "einheit": "kWh", "ebene": "tag"},
+      "erwartet": {"verstoesse": [], "text": "2.304 kWh"}
+    },
+    {
+      "name": "Tag rundet kaufmännisch ab",
+      "familie": "zahl",
+      "fall": "F14",
+      "why": "662,4 kWh am 23-Stunden-Tag werden als ganze kWh angezeigt; gerechnet bleibt 662,4.",
+      "eingang": {"wert": "662.400", "einheit": "kWh", "ebene": "tag"},
+      "erwartet": {"verstoesse": [], "text": "662 kWh"}
+    },
+    {
+      "name": "Monat ganze kWh",
+      "familie": "zahl",
+      "fall": "F16",
+      "why": "Oktober 2026, MS-06.",
+      "eingang": {"wert": "55100.000", "einheit": "kWh", "ebene": "monat"},
+      "erwartet": {"verstoesse": [], "text": "55.100 kWh"}
+    },
+    {
+      "name": "Jahr ganze kWh, zwei Tausenderpunkte",
+      "familie": "zahl",
+      "fall": "MS-01 beispielwerte.jahr_2025_kwh",
+      "why": "Jahr ganze kWh.",
+      "eingang": {"wert": "1482300", "einheit": "kWh", "ebene": "jahr"},
+      "erwartet": {"verstoesse": [], "text": "1.482.300 kWh"}
+    },
+    {
+      "name": "Rundungsgrenze auf ganze kWh: halb rundet auf",
+      "familie": "zahl",
+      "fall": "konstruiert",
+      "why": "Kaufmännisch (von der Null weg) wie BigDecimal HALF_UP — kein Banker's Rounding. Kein Referenzfall liegt genau auf der Grenze.",
+      "eingang": {"wert": "2303.500", "einheit": "kWh", "ebene": "tag"},
+      "erwartet": {"verstoesse": [], "text": "2.304 kWh"}
+    },
+    {
+      "name": "Leistung eine Nachkommastelle, Rundungsgrenze",
+      "familie": "zahl",
+      "fall": "F3",
+      "why": "Mittel ungerundet (92,0 + 100,9) ÷ 2 = 96,45 kW → „96,5 kW“ (kaufmännisch).",
+      "eingang": {"wert": "96.45", "einheit": "kW", "ebene": "viertelstunde"},
+      "erwartet": {"verstoesse": [], "text": "96,5 kW"}
+    },
+    {
+      "name": "Leistung ohne Ebene",
+      "familie": "zahl",
+      "fall": "MS-01 beispielwerte.momentanleistung_kw",
+      "why": "Leistung, Prozent und m³ sind je Einheit fest — die Ebene ist dort nicht nötig.",
+      "eingang": {"wert": "312.4", "einheit": "kW", "ebene": null},
+      "erwartet": {"verstoesse": [], "text": "312,4 kW"}
+    },
+    {
+      "name": "negative Leistung mit echtem Minuszeichen",
+      "familie": "zahl",
+      "fall": "F19",
+      "why": "Der Vorzeichen-Kanal K-3 · Wirkleistung meldet −34,2 kW (Abgabe); das Minus ist U+2212.",
+      "eingang": {"wert": "-34.2", "einheit": "kW", "ebene": null},
+      "erwartet": {"verstoesse": [], "text": "−34,2 kW"}
+    },
+    {
+      "name": "auf null gerundet trägt kein Minus",
+      "familie": "zahl",
+      "fall": "konstruiert",
+      "why": "−0,04 kW wird „0,0 kW“, nicht „−0,0 kW“.",
+      "eingang": {"wert": "-0.04", "einheit": "kW", "ebene": null},
+      "erwartet": {"verstoesse": [], "text": "0,0 kW"}
+    },
+    {
+      "name": "Prozent ganzzahlig",
+      "familie": "zahl",
+      "fall": "F8",
+      "why": "Verlauf MS-10 am 03.11.: 1 230 von 1 440 = 85,4 % → „85 %“.",
+      "eingang": {"wert": "85.417", "einheit": "%", "ebene": null},
+      "erwartet": {"verstoesse": [], "text": "85 %"}
+    },
+    {
+      "name": "m³ eine Nachkommastelle",
+      "familie": "zahl",
+      "fall": "F17",
+      "why": "E11: m³ 1 Nachkommastelle — auch am Monat (die Anzeige in F17 schreibt „1 240 m³“, siehe befunde).",
+      "eingang": {"wert": "1240.000", "einheit": "m³", "ebene": "monat"},
+      "erwartet": {"verstoesse": [], "text": "1.240,0 m³"}
+    },
+    {
+      "name": "kVA eine Nachkommastelle (seit 1.2)",
+      "familie": "zahl",
+      "fall": "AP-10 F16",
+      "why": "E11: Leistung 1 Nachkommastelle — die Anschlussleistung NA-1 630 kVA ist Scheinleistung und folgt kW: „Anschluss 630,0 kVA“ (netzanschluss-vectors.json kopfzeile).",
+      "eingang": {"wert": "630", "einheit": "kVA", "ebene": null},
+      "erwartet": {"verstoesse": [], "text": "630,0 kVA"}
+    },
+    {
+      "name": "Bilanz-Tag: Tausenderpunkt und ganze kWh",
+      "familie": "zahl",
+      "fall": "AP-10 F5",
+      "why": "Die Summe am 04.11.2026 heißt „mindestens 1.055 kWh (MS-14 fehlt)“ (bilanz-vectors.json) — nicht mehr „1 055 kWh“ mit Leerzeichen; 1054,6 am Tag ist 1.055.",
+      "eingang": {"wert": "1054.6", "einheit": "kWh", "ebene": "tag"},
+      "erwartet": {"verstoesse": [], "text": "1.055 kWh"}
+    },
+    {
+      "name": "kein Wert ist ein Strich, nie 0",
+      "familie": "zahl",
+      "fall": "F8",
+      "why": "Unbekannt ist keine Null: „—“.",
+      "eingang": {"wert": null, "einheit": "kWh", "ebene": "viertelstunde"},
+      "erwartet": {"verstoesse": [], "text": "—"}
+    },
+    {
+      "name": "kWh ohne Ebene",
+      "familie": "zahl",
+      "fall": "konstruiert",
+      "why": "Für kWh bestimmt die Ebene die Stellen — ohne Ebene gibt es keine Anzeige.",
+      "eingang": {"wert": "36.000", "einheit": "kWh", "ebene": null},
+      "erwartet": {"verstoesse": ["ebene_fehlt"], "text": null}
+    },
+    {
+      "name": "unbekannte Ebene",
+      "familie": "zahl",
+      "fall": "konstruiert",
+      "why": "Die Woche ist keine Ebene des Vertrags.",
+      "eingang": {"wert": "36.000", "einheit": "kWh", "ebene": "woche"},
+      "erwartet": {"verstoesse": ["ebene_unbekannt"], "text": null}
+    },
+    {
+      "name": "unbekannte Einheit",
+      "familie": "zahl",
+      "fall": "konstruiert",
+      "why": "MWh steht nicht in E11 — eine neue Einheit ist eine Vertragsänderung.",
+      "eingang": {"wert": "2.304", "einheit": "MWh", "ebene": "tag"},
+      "erwartet": {"verstoesse": ["einheit_unbekannt"], "text": null}
+    },
+    {
+      "name": "vollständig",
+      "familie": "ergebnis",
+      "fall": "F1",
+      "why": "Normalfall Zählerstand, beide Periodenstände da.",
+      "eingang": {
+        "wert": "36.000",
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "100",
+        "kennzeichen": []
+      },
+      "erwartet": {"verstoesse": [], "satz": "36,0 kWh · vollständig · Verlauf 100 %"}
+    },
+    {
+      "name": "unvollständig mit Zahl",
+      "familie": "ergebnis",
+      "fall": "F6",
+      "why": "Rücksetzung ohne Endstand: die Zahl ist der gemessene Teil und sagt, was fehlt.",
+      "eingang": {
+        "wert": "14.280",
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "unvollständig",
+        "abdeckung_prozent": null,
+        "kennzeichen": ["Rücksetzung 09:12 ohne Endstand — bis zu 1 Kadenz nicht gezählt"]
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "satz": "14,3 kWh · unvollständig · Rücksetzung 09:12 ohne Endstand — bis zu 1 Kadenz nicht gezählt"
+      }
+    },
+    {
+      "name": "unvollständig ohne Zahl",
+      "familie": "ergebnis",
+      "fall": "F8",
+      "why": "Nur ein Stand in der Viertelstunde 14:00–14:15: keine Menge, nie 0,0.",
+      "eingang": {
+        "wert": null,
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "unvollständig",
+        "abdeckung_prozent": "6",
+        "kennzeichen": ["nur ein Stand in der Periode — keine Menge bildbar"]
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "satz": "— · unvollständig · Verlauf 6 % · nur ein Stand in der Periode — keine Menge bildbar"
+      }
+    },
+    {
+      "name": "keine Werte",
+      "familie": "ergebnis",
+      "fall": "F8",
+      "why": "Viertelstunde 14:15–14:30 ohne einen Rohwert: Strich, keine Null, keine Linie.",
+      "eingang": {
+        "wert": null,
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "keine Werte",
+        "abdeckung_prozent": null,
+        "kennzeichen": []
+      },
+      "erwartet": {"verstoesse": [], "satz": "— · keine Werte"}
+    },
+    {
+      "name": "mit Ersatzwert",
+      "familie": "ergebnis",
+      "fall": "F11",
+      "why": "Tag 03.11.2026 in Version 2: 2 304,000 kWh, Zustand „mit Ersatzwert“; das Kennzeichen mit Methode und Kennung spricht erst AP-08 IP-13.",
+      "eingang": {
+        "wert": "2304.000",
+        "einheit": "kWh",
+        "ebene": "tag",
+        "zustand": "mit Ersatzwert",
+        "abdeckung_prozent": null,
+        "kennzeichen": []
+      },
+      "erwartet": {"verstoesse": [], "satz": "2.304 kWh · mit Ersatzwert"}
+    },
+    {
+      "name": "mit Ersatzwert: Methode und Kennung (seit 1.4)",
+      "familie": "ergebnis",
+      "fall": "F11",
+      "why": "Tag 03.11.2026 in Version 2 mit dem Kennzeichen, das AP-08 IP-13 spricht: der Methodenname in Kundensprache, die Kennung — Wortlaut aus verbrauch-vectors.json (ersatzwerte).",
+      "eingang": {
+        "wert": "2304.000",
+        "einheit": "kWh",
+        "ebene": "tag",
+        "zustand": "mit Ersatzwert",
+        "abdeckung_prozent": "58",
+        "kennzeichen": [
+          "mit Ersatzwert (Methode „Zuwachs gleichmäßig verteilen“, EW-2026-0003)"
+        ]
+      },
+      "erwartet": {"verstoesse": [], "satz": "2.304 kWh · mit Ersatzwert · Verlauf 58 % · mit Ersatzwert (Methode „Zuwachs gleichmäßig verteilen“, EW-2026-0003)"}
+    },
+    {
+      "name": "mit Ersatzwert nach einem Rand, der außerhalb der Lücke fehlt (seit 1.4)",
+      "familie": "ergebnis",
+      "fall": "F11",
+      "why": "Rang 20 vor Rang 70: ein Rand, den der Ersatzwert nicht deckt, bleibt „nicht gemessen“ und steht vor dem Ersatzwert.",
+      "eingang": {
+        "wert": "24.000",
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "mit Ersatzwert",
+        "abdeckung_prozent": "6",
+        "kennzeichen": [
+          "Anfang nicht gemessen (kein Stand an der Periodengrenze)",
+          "mit Ersatzwert (Methode „Zuwachs nach dem Profil der Vergleichsquelle verteilen“, EW-2026-0005)"
+        ]
+      },
+      "erwartet": {"verstoesse": [], "satz": "24,0 kWh · mit Ersatzwert · Verlauf 6 % · Anfang nicht gemessen (kein Stand an der Periodengrenze) · mit Ersatzwert (Methode „Zuwachs nach dem Profil der Vergleichsquelle verteilen“, EW-2026-0005)"}
+    },
+    {
+      "name": "Gegenprobe: das Vertragswort statt des Kundennamens",
+      "familie": "ergebnis",
+      "fall": "F11",
+      "why": "Die Methode steht mit ihrem Namen in Kundensprache; „gleichmaessig_verteilen“ ist das Wort des Vertrags und kein Kennzeichen.",
+      "eingang": {
+        "wert": "2304.000",
+        "einheit": "kWh",
+        "ebene": "tag",
+        "zustand": "mit Ersatzwert",
+        "abdeckung_prozent": null,
+        "kennzeichen": [
+          "mit Ersatzwert (Methode „gleichmaessig_verteilen“, EW-2026-0003)"
+        ]
+      },
+      "erwartet": {"verstoesse": ["kennzeichen_unbekannt"], "satz": null}
+    },
+    {
+      "name": "Gegenprobe: der Ersatzwert vor einem Messsatz",
+      "familie": "ergebnis",
+      "fall": "F11",
+      "why": "Rang 70 steht zuletzt — erst was gemessen ist, dann was ein Mensch gesetzt hat.",
+      "eingang": {
+        "wert": "2304.000",
+        "einheit": "kWh",
+        "ebene": "tag",
+        "zustand": "mit Ersatzwert",
+        "abdeckung_prozent": null,
+        "kennzeichen": [
+          "mit Ersatzwert (Methode „Zuwachs gleichmäßig verteilen“, EW-2026-0003)",
+          "Rücksetzung 09:12 ohne Endstand — bis zu 1 Kadenz nicht gezählt"
+        ]
+      },
+      "erwartet": {"verstoesse": ["kennzeichen_reihenfolge"], "satz": null}
+    },
+    {
+      "name": "Tag vollständig trotz 85 % Verlauf, mit gezähltem Lücken-Zuwachs",
+      "familie": "ergebnis",
+      "fall": "F8",
+      "why": "Abdeckung ist nicht Vollständigkeit; das Kennzeichen trägt seit 1.3 Zahl und Einheit — mit den Stellen der Viertelstunde, auch am Tag (rundung.kennzeichen_ebene).",
+      "eingang": {
+        "wert": "2304.000",
+        "einheit": "kWh",
+        "ebene": "tag",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "85",
+        "kennzeichen": ["Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht auf Viertelstunden verteilbar"]
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "satz": "2.304 kWh · vollständig · Verlauf 85 % · Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht auf Viertelstunden verteilbar"
+      }
+    },
+    {
+      "name": "25-Stunden-Tag",
+      "familie": "ergebnis",
+      "fall": "F13",
+      "why": "720 kWh = 25 × 28,8; die Stundenzahl spricht `tagesdauer`.",
+      "eingang": {
+        "wert": "720.000",
+        "einheit": "kWh",
+        "ebene": "tag",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "100",
+        "kennzeichen": []
+      },
+      "erwartet": {"verstoesse": [], "satz": "720 kWh · vollständig · Verlauf 100 %"}
+    },
+    {
+      "name": "23-Stunden-Tag",
+      "familie": "ergebnis",
+      "fall": "F14",
+      "why": "662,4 kWh = 23 × 28,8 → ganze kWh.",
+      "eingang": {
+        "wert": "662.400",
+        "einheit": "kWh",
+        "ebene": "tag",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "100",
+        "kennzeichen": []
+      },
+      "erwartet": {"verstoesse": [], "satz": "662 kWh · vollständig · Verlauf 100 %"}
+    },
+    {
+      "name": "Momentanwert mit Integration",
+      "familie": "ergebnis",
+      "fall": "F3",
+      "why": "Mittel 96,5 kW; die Energie steht nie ohne ihr Kennzeichen.",
+      "eingang": {
+        "wert": "96.45",
+        "einheit": "kW",
+        "ebene": "viertelstunde",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "100",
+        "kennzeichen": ["aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)"]
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "satz": "96,5 kW · vollständig · Verlauf 100 % · aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)"
+      }
+    },
+    {
+      "name": "Anteil steht vorn",
+      "familie": "ergebnis",
+      "fall": "F19",
+      "why": "MS-01 Bezug aus dem Vorzeichen-Kanal: das Anteil-Kennzeichen zuerst (Rang 10), die Integration zuletzt (Rang 60).",
+      "eingang": {
+        "wert": "12.8",
+        "einheit": "kW",
+        "ebene": "viertelstunde",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "100",
+        "kennzeichen": [
+          "positiver Anteil von K-3 · Wirkleistung",
+          "aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)"
+        ]
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "satz": "12,8 kW · vollständig · Verlauf 100 % · positiver Anteil von K-3 · Wirkleistung · aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)"
+      }
+    },
+    {
+      "name": "Lücken-Zuwachs vor Neustart",
+      "familie": "ergebnis",
+      "fall": "F22",
+      "why": "Rang 30 vor Rang 40; der Neustart macht die Viertelstunde unvollständig.",
+      "eingang": {
+        "wert": "20.800",
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "unvollständig",
+        "abdeckung_prozent": "66",
+        "kennzeichen": [
+          "Lücke 10:20–10:26: Zuwachs 6.400 gemessen, nicht auf Viertelstunden verteilbar",
+          "Neustart 10:22: bis zu 120 s Zählung möglicherweise verloren"
+        ]
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "satz": "20,8 kWh · unvollständig · Verlauf 66 % · Lücke 10:20–10:26: Zuwachs 6.400 gemessen, nicht auf Viertelstunden verteilbar · Neustart 10:22: bis zu 120 s Zählung möglicherweise verloren"
+      }
+    },
+    {
+      "name": "Gerätegrenze ohne Ablesestände: drei Sätze in fester Folge",
+      "familie": "ergebnis",
+      "fall": "F5",
+      "why": "„Zuwachs am Wechsel nicht messbar“ folgt unmittelbar auf „ohne Ablesestände“, die Lücke am Wechsel danach.",
+      "eingang": {
+        "wert": "3413.400",
+        "einheit": "kWh",
+        "ebene": "tag",
+        "zustand": "unvollständig",
+        "abdeckung_prozent": "99",
+        "kennzeichen": [
+          "Gerätegrenze 10:40 ohne Ablesestände",
+          "Zuwachs am Wechsel nicht messbar (Ablesestände fehlen)",
+          "Lücke am Wechsel 10:39–10:47 (nicht aufgefüllt)"
+        ]
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "satz": "3.413 kWh · unvollständig · Verlauf 99 % · Gerätegrenze 10:40 ohne Ablesestände · Zuwachs am Wechsel nicht messbar (Ablesestände fehlen) · Lücke am Wechsel 10:39–10:47 (nicht aufgefüllt)"
+      }
+    },
+    {
+      "name": "gemessene Zeit vor Integration",
+      "familie": "ergebnis",
+      "fall": "F24",
+      "why": "Rang 50 vor Rang 60.",
+      "eingang": {
+        "wert": "80.0",
+        "einheit": "kW",
+        "ebene": "viertelstunde",
+        "zustand": "unvollständig",
+        "abdeckung_prozent": "92",
+        "kennzeichen": [
+          "gemessene Zeit 13:50 min von 15 min",
+          "aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)"
+        ]
+      },
+      "erwartet": {
+        "verstoesse": [],
+        "satz": "80,0 kW · unvollständig · Verlauf 92 % · gemessene Zeit 13:50 min von 15 min · aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)"
+      }
+    },
+    {
+      "name": "keine Werte mit Anteil",
+      "familie": "ergebnis",
+      "fall": "konstruiert (F19 ohne Rohwerte)",
+      "why": "Ein Anteil ist Herkunft, kein Fehlbestand — er darf an „keine Werte“ stehen.",
+      "eingang": {
+        "wert": null,
+        "einheit": "kW",
+        "ebene": "viertelstunde",
+        "zustand": "keine Werte",
+        "abdeckung_prozent": null,
+        "kennzeichen": ["positiver Anteil von K-3 · Wirkleistung"]
+      },
+      "erwartet": {"verstoesse": [], "satz": "— · keine Werte · positiver Anteil von K-3 · Wirkleistung"}
+    },
+    {
+      "name": "Gegenprobe: Neustart vor Lücken-Zuwachs",
+      "familie": "ergebnis",
+      "fall": "F22",
+      "why": "Die Reihenfolge ist Vertrag — vertauscht fliegt sie auf.",
+      "eingang": {
+        "wert": "20.800",
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "unvollständig",
+        "abdeckung_prozent": "66",
+        "kennzeichen": [
+          "Neustart 10:22: bis zu 120 s Zählung möglicherweise verloren",
+          "Lücke 10:20–10:26: Zuwachs 6.400 gemessen, nicht auf Viertelstunden verteilbar"
+        ]
+      },
+      "erwartet": {"verstoesse": ["kennzeichen_reihenfolge"], "satz": null}
+    },
+    {
+      "name": "Gegenprobe: Integration vor gemessener Zeit",
+      "familie": "ergebnis",
+      "fall": "F24",
+      "why": "Rang 60 vor Rang 50.",
+      "eingang": {
+        "wert": "80.0",
+        "einheit": "kW",
+        "ebene": "viertelstunde",
+        "zustand": "unvollständig",
+        "abdeckung_prozent": "92",
+        "kennzeichen": [
+          "aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)",
+          "gemessene Zeit 13:50 min von 15 min"
+        ]
+      },
+      "erwartet": {"verstoesse": ["kennzeichen_reihenfolge"], "satz": null}
+    },
+    {
+      "name": "Gegenprobe: Ende vor Anfang",
+      "familie": "ergebnis",
+      "fall": "F4",
+      "why": "Anfang (Rang 20) steht vor Ende (Rang 21).",
+      "eingang": {
+        "wert": null,
+        "einheit": "kWh",
+        "ebene": "stunde",
+        "zustand": "unvollständig",
+        "abdeckung_prozent": null,
+        "kennzeichen": [
+          "Ende nicht gemessen (kein Stand an der Periodengrenze)",
+          "Anfang nicht gemessen (kein Stand an der Periodengrenze)"
+        ]
+      },
+      "erwartet": {"verstoesse": ["kennzeichen_reihenfolge"], "satz": null}
+    },
+    {
+      "name": "Gegenprobe: Anteil nach der Integration",
+      "familie": "ergebnis",
+      "fall": "F19",
+      "why": "Das Anteil-Kennzeichen steht vor allen anderen.",
+      "eingang": {
+        "wert": "12.8",
+        "einheit": "kW",
+        "ebene": "viertelstunde",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "100",
+        "kennzeichen": [
+          "aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)",
+          "positiver Anteil von K-3 · Wirkleistung"
+        ]
+      },
+      "erwartet": {"verstoesse": ["kennzeichen_reihenfolge"], "satz": null}
+    },
+    {
+      "name": "Gegenprobe: die Sätze der Gerätegrenze auseinandergerissen",
+      "familie": "ergebnis",
+      "fall": "F5",
+      "why": "Gleicher Rang, aber falsche Folge: die Lücke am Wechsel steht zwischen „ohne Ablesestände“ und „nicht messbar“.",
+      "eingang": {
+        "wert": "3413.400",
+        "einheit": "kWh",
+        "ebene": "tag",
+        "zustand": "unvollständig",
+        "abdeckung_prozent": "99",
+        "kennzeichen": [
+          "Gerätegrenze 10:40 ohne Ablesestände",
+          "Lücke am Wechsel 10:39–10:47 (nicht aufgefüllt)",
+          "Zuwachs am Wechsel nicht messbar (Ablesestände fehlen)"
+        ]
+      },
+      "erwartet": {"verstoesse": ["kennzeichen_folge"], "satz": null}
+    },
+    {
+      "name": "Gegenprobe: vollständig mit Fehlbestand",
+      "familie": "ergebnis",
+      "fall": "F6",
+      "why": "Eine Rücksetzung ohne Endstand kann nicht vollständig sein.",
+      "eingang": {
+        "wert": "14.280",
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "vollständig",
+        "abdeckung_prozent": null,
+        "kennzeichen": ["Rücksetzung 09:12 ohne Endstand — bis zu 1 Kadenz nicht gezählt"]
+      },
+      "erwartet": {"verstoesse": ["vollstaendig_mit_fehlbestand"], "satz": null}
+    },
+    {
+      "name": "Gegenprobe: unvollständig ohne Grund",
+      "familie": "ergebnis",
+      "fall": "F1",
+      "why": "„unvollständig“ sagt, was fehlt — ohne Kennzeichen ist es eine Behauptung.",
+      "eingang": {
+        "wert": "36.000",
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "unvollständig",
+        "abdeckung_prozent": "100",
+        "kennzeichen": []
+      },
+      "erwartet": {"verstoesse": ["unvollstaendig_ohne_grund"], "satz": null}
+    },
+    {
+      "name": "Gegenprobe: keine Werte als Null",
+      "familie": "ergebnis",
+      "fall": "F8",
+      "why": "Unbekannt ist keine Null — „keine Werte“ trägt keine Zahl.",
+      "eingang": {
+        "wert": "0.000",
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "keine Werte",
+        "abdeckung_prozent": null,
+        "kennzeichen": []
+      },
+      "erwartet": {"verstoesse": ["zahl_verboten"], "satz": null}
+    },
+    {
+      "name": "Gegenprobe: vollständig ohne Zahl",
+      "familie": "ergebnis",
+      "fall": "F1",
+      "why": "Vollständig heißt: jede Kilowattstunde ist gezählt — dann gibt es eine Zahl.",
+      "eingang": {
+        "wert": null,
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "100",
+        "kennzeichen": []
+      },
+      "erwartet": {"verstoesse": ["zahl_fehlt"], "satz": null}
+    },
+    {
+      "name": "Gegenprobe: keine Werte mit Fehlbestand",
+      "familie": "ergebnis",
+      "fall": "F4",
+      "why": "Ohne Zahl fehlt kein Teil einer Zahl.",
+      "eingang": {
+        "wert": null,
+        "einheit": "kWh",
+        "ebene": "stunde",
+        "zustand": "keine Werte",
+        "abdeckung_prozent": null,
+        "kennzeichen": ["Ende nicht gemessen (kein Stand an der Periodengrenze)"]
+      },
+      "erwartet": {"verstoesse": ["keine_werte_mit_fehlbestand"], "satz": null}
+    },
+    {
+      "name": "Gegenprobe: internes Zustandswort",
+      "familie": "ergebnis",
+      "fall": "konstruiert",
+      "why": "Der Schlüssel `keine_werte` ist kein Kundenwort.",
+      "eingang": {
+        "wert": null,
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "keine_werte",
+        "abdeckung_prozent": null,
+        "kennzeichen": []
+      },
+      "erwartet": {"verstoesse": ["zustand_unbekannt"], "satz": null}
+    },
+    {
+      "name": "Gegenprobe: erfundener Zustand",
+      "familie": "ergebnis",
+      "fall": "konstruiert",
+      "why": "Vier Wörter, kein fünftes.",
+      "eingang": {
+        "wert": "36.000",
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "teilweise",
+        "abdeckung_prozent": null,
+        "kennzeichen": []
+      },
+      "erwartet": {"verstoesse": ["zustand_unbekannt"], "satz": null}
+    },
+    {
+      "name": "Gegenprobe: umformulierter Kennzeichen-Satz",
+      "familie": "ergebnis",
+      "fall": "F4",
+      "why": "Auch eine gut gemeinte Umformulierung ist ein unbekannter Satz — die Liste ist geschlossen; eine Änderung ist eine neue Fassung mit fruehere_fassungen.",
+      "eingang": {
+        "wert": "101.800",
+        "einheit": "kWh",
+        "ebene": "stunde",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "88",
+        "kennzeichen": ["Gerätegrenze 10:40 mit Zählerständen"]
+      },
+      "erwartet": {"verstoesse": ["kennzeichen_unbekannt"], "satz": null}
+    },
+    {
+      "name": "Gespeicherter Satz der Fassung 1.0 bleibt lesbar",
+      "familie": "ergebnis",
+      "fall": "F4",
+      "why": "„mit Ablesestände“ steht in endgültigen Zeilen, die nie neu geschrieben werden. Die Fläche liest sie weiter — als Satz, wie er gespeichert ist; gesprochen wird er nie mehr.",
+      "eingang": {
+        "wert": "101.800",
+        "einheit": "kWh",
+        "ebene": "stunde",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "88",
+        "kennzeichen": ["Gerätegrenze 10:40 mit Ablesestände"]
+      },
+      "erwartet": {"verstoesse": [], "satz": "101,8 kWh · vollständig · Verlauf 88 % · Gerätegrenze 10:40 mit Ablesestände"}
+    },
+    {
+      "name": "F10 Viertelstunde in Version 2 (seit 1.5)",
+      "familie": "ergebnis",
+      "fall": "F10",
+      "why": "Die freigegebene Nachlieferung K-2026-0007: 15 von 15 Werten, vollständig — und zuletzt, Rang 80, die Version. Kein Datum im Satz: wann und von wem sagt die Versions-Historie (IP-18).",
+      "eingang": {
+        "wert": "24.000",
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "100",
+        "kennzeichen": ["korrigiert (Version 2)"]
+      },
+      "erwartet": {"verstoesse": [], "satz": "24,0 kWh · vollständig · Verlauf 100 % · korrigiert (Version 2)"}
+    },
+    {
+      "name": "F12 Viertelstunde in Version 2 nach der Gerätegrenze (seit 1.5)",
+      "familie": "ergebnis",
+      "fall": "F12",
+      "why": "Rang 30 vor Rang 80: der nachgetragene Endstand macht die Viertelstunde vollständig (14,81 kWh), die Version steht nach dem Satz der Gerätegrenze.",
+      "eingang": {
+        "wert": "14.810",
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "100",
+        "kennzeichen": ["Gerätegrenze 09:12 mit Ableseständen", "korrigiert (Version 2)"]
+      },
+      "erwartet": {"verstoesse": [], "satz": "14,8 kWh · vollständig · Verlauf 100 % · Gerätegrenze 09:12 mit Ableseständen · korrigiert (Version 2)"}
+    },
+    {
+      "name": "F21 Tag in Version 3 mit Ersatzwert (seit 1.5)",
+      "familie": "ergebnis",
+      "fall": "F21",
+      "why": "Rang 70 vor Rang 80: erst, was ein Mensch gesetzt hat, dann die Version der ganzen Zahl.",
+      "eingang": {
+        "wert": "2354.400",
+        "einheit": "kWh",
+        "ebene": "tag",
+        "zustand": "mit Ersatzwert",
+        "abdeckung_prozent": "58",
+        "kennzeichen": [
+          "mit Ersatzwert (Methode „Zuwachs nach dem Profil der Vergleichsquelle verteilen“, EW-2026-0005)",
+          "korrigiert (Version 3)"
+        ]
+      },
+      "erwartet": {"verstoesse": [], "satz": "2.354 kWh · mit Ersatzwert · Verlauf 58 % · mit Ersatzwert (Methode „Zuwachs nach dem Profil der Vergleichsquelle verteilen“, EW-2026-0005) · korrigiert (Version 3)"}
+    },
+    {
+      "name": "Gegenprobe: die Version steht vor dem Ersatzwert",
+      "familie": "ergebnis",
+      "fall": "F21",
+      "why": "Der Rang steigt nie: Rang 80 vor Rang 70 ist ein Verstoß.",
+      "eingang": {
+        "wert": "2354.400",
+        "einheit": "kWh",
+        "ebene": "tag",
+        "zustand": "mit Ersatzwert",
+        "abdeckung_prozent": "58",
+        "kennzeichen": [
+          "korrigiert (Version 3)",
+          "mit Ersatzwert (Methode „Zuwachs nach dem Profil der Vergleichsquelle verteilen“, EW-2026-0005)"
+        ]
+      },
+      "erwartet": {"verstoesse": ["kennzeichen_reihenfolge"], "satz": null}
+    },
+    {
+      "name": "Gegenprobe: das Datum gehört nicht in den Satz",
+      "familie": "ergebnis",
+      "fall": "F10",
+      "why": "Die Anzeige des Reports („korrigiert (Version 2, 12.11.2026)“) ist Sache der Versions-Historie (IP-18); gespeichert und geprüft wird der Satz ohne Datum. Bis 1.4 war das ein vorgesehenes Wort, seit 1.5 ist es ein unbekannter Satz.",
+      "eingang": {
+        "wert": "24.000",
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "100",
+        "kennzeichen": ["korrigiert (Version 2, 12.11.2026)"]
+      },
+      "erwartet": {"verstoesse": ["kennzeichen_unbekannt"], "satz": null}
+    },
+    {
+      "name": "Gegenprobe: Kennzeichen, dessen Wortlaut noch nicht im Vertrag steht",
+      "familie": "ergebnis",
+      "fall": "F9",
+      "why": "„nachgeliefert“ ist vorgesehen; den Satz spricht erst das Paket, das ihn erzeugt (AP-08 IP-10).",
+      "eingang": {
+        "wert": "24.000",
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "100",
+        "kennzeichen": ["nachgeliefert am 05.11.2026 09:00"]
+      },
+      "erwartet": {"verstoesse": ["kennzeichen_vorgesehen"], "satz": null}
+    },
+    {
+      "name": "Monat aus einem Ablesezeitraum (seit 1.13)",
+      "familie": "ergebnis",
+      "fall": "F17",
+      "why": "MS-20 Spritzguss, September 2026, so wie die Route „Werte je Messstelle“ ihn liefert: die Menge stammt aus den Ablesungen am 01.09. und 01.10.; der Kunde hat den Ablesezeitraum dem September zugeordnet. Bis 1.12 war das ein vorgesehenes Wort - die Karte zeigte „—“.",
+      "eingang": {"wert": "88200.000", "einheit": "kWh", "ebene": "monat", "zustand": "vollständig", "abdeckung_prozent": null, "kennzeichen": ["Ablesezeitraum 01.09. 00:00 – 01.10. 00:00 (Zuordnung durch den Kunden)", "endgültig"]},
+      "erwartet": {"verstoesse": [], "satz": "88.200 kWh · vollständig · Ablesezeitraum 01.09. 00:00 – 01.10. 00:00 (Zuordnung durch den Kunden) · endgültig"}
+    },
+    {
+      "name": "Jahr mit drei abgelesenen Monaten (seit 1.13)",
+      "familie": "ergebnis",
+      "fall": "F17",
+      "why": "MS-20 im Jahr 2024: abgelesen wird erst seit 01.10.2024. Das Jahr nennt jeden seiner Ablesezeiträume und sagt mit I2, dass neun Monatsmengen fehlen - die Zahl ist die Summe der abgelesenen.",
+      "eingang": {"wert": "252910.000", "einheit": "kWh", "ebene": "jahr", "zustand": "unvollständig", "abdeckung_prozent": null, "kennzeichen": ["9 von 12 Intervallmengen fehlen — Menge ist die Summe der gemessenen", "Ablesezeitraum 01.10. 00:00 – 01.11. 00:00 (Zuordnung durch den Kunden)", "Ablesezeitraum 01.11. 00:00 – 01.12. 00:00 (Zuordnung durch den Kunden)", "Ablesezeitraum 01.12. 00:00 – 01.01. 00:00 (Zuordnung durch den Kunden)"]},
+      "erwartet": {"verstoesse": [], "satz": "252.910 kWh · unvollständig · 9 von 12 Intervallmengen fehlen — Menge ist die Summe der gemessenen · Ablesezeitraum 01.10. 00:00 – 01.11. 00:00 (Zuordnung durch den Kunden) · Ablesezeitraum 01.11. 00:00 – 01.12. 00:00 (Zuordnung durch den Kunden) · Ablesezeitraum 01.12. 00:00 – 01.01. 00:00 (Zuordnung durch den Kunden)"}
+    },
+    {
+      "name": "Gegenprobe: ein unvollständiges Ablese-Jahr ohne Grund",
+      "familie": "ergebnis",
+      "fall": "F17",
+      "why": "So speicherte AP-09 ein Jahr mit weniger als zwölf abgelesenen Monaten bis 1.12: unvollständig, aber kein Satz sagt, was fehlt. Es wird nicht gesprochen; eine neue Ablesung bildet das Jahr mit I2 neu.",
+      "eingang": {"wert": "252910.000", "einheit": "kWh", "ebene": "jahr", "zustand": "unvollständig", "abdeckung_prozent": null, "kennzeichen": ["Ablesezeitraum 01.10. 00:00 – 01.11. 00:00 (Zuordnung durch den Kunden)", "Ablesezeitraum 01.11. 00:00 – 01.12. 00:00 (Zuordnung durch den Kunden)", "Ablesezeitraum 01.12. 00:00 – 01.01. 00:00 (Zuordnung durch den Kunden)"]},
+      "erwartet": {"verstoesse": ["unvollstaendig_ohne_grund"], "satz": null}
+    },
+    {
+      "name": "Gegenprobe: der Ablesezeitraum steht nach den fehlenden Intervallmengen",
+      "familie": "ergebnis",
+      "fall": "F17",
+      "why": "Rang 60 nach Rang 50: erst was fehlt, dann woher die Menge stammt.",
+      "eingang": {"wert": "252910.000", "einheit": "kWh", "ebene": "jahr", "zustand": "unvollständig", "abdeckung_prozent": null, "kennzeichen": ["Ablesezeitraum 01.10. 00:00 – 01.11. 00:00 (Zuordnung durch den Kunden)", "9 von 12 Intervallmengen fehlen — Menge ist die Summe der gemessenen"]},
+      "erwartet": {"verstoesse": ["kennzeichen_reihenfolge"], "satz": null}
+    },
+    {
+      "name": "Monat ohne Zuordnung (seit 1.13)",
+      "familie": "ergebnis",
+      "fall": "F17",
+      "why": "Der Kunde hat den Ablesezeitraum keinem Monat zugeordnet: der Monat hat keine Zahl (nie 0) und sagt, warum (bezugsdaten-vectors.json B8).",
+      "eingang": {"wert": null, "einheit": "kWh", "ebene": "monat", "zustand": "keine Werte", "abdeckung_prozent": null, "kennzeichen": ["Ablesezeitraum ohne Monatszuordnung"]},
+      "erwartet": {"verstoesse": [], "satz": "— · keine Werte · Ablesezeitraum ohne Monatszuordnung"}
+    },
+    {
+      "name": "Gegenprobe: das Kennzeichen „korrigiert“ steht nur einmal",
+      "familie": "ergebnis",
+      "fall": "F21",
+      "why": "Eine Zahl hat genau eine Version.",
+      "eingang": {
+        "wert": "24.000",
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "100",
+        "kennzeichen": ["korrigiert (Version 2)", "korrigiert (Version 3)"]
+      },
+      "erwartet": {"verstoesse": ["kennzeichen_doppelt"], "satz": null}
+    },
+    {
+      "name": "Tag vorläufig: die Fassung steht ganz zuletzt (seit 1.7)",
+      "familie": "ergebnis",
+      "fall": "F8",
+      "why": "MS-10 am 03.11.2026, gelesen am 04.11.: die Menge ist vollständig, der Verlauf hat eine Lücke — und die Zahl kann sich noch ändern (Nachlieferung innerhalb von 7 Tagen, F9). Die Fassung sagt etwas über die ganze Zahl und steht nach jedem anderen Kennzeichen.",
+      "eingang": {
+        "wert": "2304.000",
+        "einheit": "kWh",
+        "ebene": "tag",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "85",
+        "kennzeichen": ["Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht auf Viertelstunden verteilbar", "vorläufig"]
+      },
+      "erwartet": {"verstoesse": [], "satz": "2.304 kWh · vollständig · Verlauf 85 % · Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht auf Viertelstunden verteilbar · vorläufig"}
+    },
+    {
+      "name": "Monat vorläufig, vollständig gemessen (seit 1.7)",
+      "familie": "ergebnis",
+      "fall": "F16",
+      "why": "Oktober 2026: jede Viertelstunde gezählt, aber der Monatswert ist vorläufig, bis seine letzte Viertelstunde endgültig ist. Vollständig und vorläufig zugleich — zwei verschiedene Aussagen.",
+      "eingang": {
+        "wert": "55100.000",
+        "einheit": "kWh",
+        "ebene": "monat",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "100",
+        "kennzeichen": ["vorläufig"]
+      },
+      "erwartet": {"verstoesse": [], "satz": "55.100 kWh · vollständig · Verlauf 100 % · vorläufig"}
+    },
+    {
+      "name": "endgültig nach der Korrektur-Version (seit 1.7)",
+      "familie": "ergebnis",
+      "fall": "F10",
+      "why": "Eine endgültige Viertelstunde in Version 2: Rang 80 vor Rang 90 — erst welche Version, dann ob sie feststeht.",
+      "eingang": {
+        "wert": "24.000",
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "100",
+        "kennzeichen": ["korrigiert (Version 2)", "endgültig"]
+      },
+      "erwartet": {"verstoesse": [], "satz": "24,0 kWh · vollständig · Verlauf 100 % · korrigiert (Version 2) · endgültig"}
+    },
+    {
+      "name": "keine Werte, aber vorläufig (seit 1.7)",
+      "familie": "ergebnis",
+      "fall": "F9",
+      "why": "Eine Viertelstunde ohne Rohwert kann innerhalb der Frist noch Werte bekommen. Die Fassung nennt keinen Fehlbestand und verträgt sich darum mit „keine Werte“ — ohne Zahl bleibt der Strich.",
+      "eingang": {
+        "wert": null,
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "keine Werte",
+        "abdeckung_prozent": null,
+        "kennzeichen": ["vorläufig"]
+      },
+      "erwartet": {"verstoesse": [], "satz": "— · keine Werte · vorläufig"}
+    },
+    {
+      "name": "Gegenprobe: vorläufig und endgültig zugleich (seit 1.7)",
+      "familie": "ergebnis",
+      "fall": "F10",
+      "why": "Eine Periode hat genau EINE Fassung (fassung.hoechstens_eine) — beide Wörter nebeneinander widersprechen sich, auch wenn jedes für sich einmalig ist.",
+      "eingang": {
+        "wert": "24.000",
+        "einheit": "kWh",
+        "ebene": "viertelstunde",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "100",
+        "kennzeichen": ["vorläufig", "endgültig"]
+      },
+      "erwartet": {"verstoesse": ["kennzeichen_doppelt"], "satz": null}
+    },
+    {
+      "name": "Gegenprobe: die Fassung vor einem Kennzeichen des Verlaufs (seit 1.7)",
+      "familie": "ergebnis",
+      "fall": "F8",
+      "why": "Rang 90 steht ganz zuletzt; davor gestellt verletzt sie die Reihenfolge.",
+      "eingang": {
+        "wert": "2304.000",
+        "einheit": "kWh",
+        "ebene": "tag",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "85",
+        "kennzeichen": ["endgültig", "Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht auf Viertelstunden verteilbar"]
+      },
+      "erwartet": {"verstoesse": ["kennzeichen_reihenfolge"], "satz": null}
+    },
+    {
+      "name": "Gegenprobe: einmaliges Kennzeichen doppelt",
+      "familie": "ergebnis",
+      "fall": "F3",
+      "why": "Die Integration steht höchstens einmal.",
+      "eingang": {
+        "wert": "96.45",
+        "einheit": "kW",
+        "ebene": "viertelstunde",
+        "zustand": "vollständig",
+        "abdeckung_prozent": "100",
+        "kennzeichen": [
+          "aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)",
+          "aus Leistung integriert (Rechteck-Halten ≤ 2 × Kadenz, nur gemessene Zeit)"
+        ]
+      },
+      "erwartet": {"verstoesse": ["kennzeichen_doppelt"], "satz": null}
+    },
+    {
+      "name": "Gegenprobe: mehrere Verstöße in Vertragsreihenfolge",
+      "familie": "ergebnis",
+      "fall": "konstruiert",
+      "why": "Die Verstöße kommen geordnet und ohne Doppel.",
+      "eingang": {
+        "wert": "0.000",
+        "einheit": "MWh",
+        "ebene": "tag",
+        "zustand": "keine Werte",
+        "abdeckung_prozent": null,
+        "kennzeichen": ["Gerätegrenze 10:40 mit Zählerständen", "Neustart 10:22: bis zu 120 s Zählung möglicherweise verloren"]
+      },
+      "erwartet": {
+        "verstoesse": ["einheit_unbekannt", "zahl_verboten", "kennzeichen_unbekannt", "keine_werte_mit_fehlbestand"],
+        "satz": null
+      }
+    },
+    {
+      "name": "Einzahl-Form mit zwei fehlenden Intervallmengen",
+      "familie": "erkennen",
+      "fall": "konstruiert",
+      "why": "„fehlt“ nur bei genau einer — „2 von 15 … fehlt“ ist kein Satz des Vertrags.",
+      "eingang": {"satz": "2 von 15 Intervallmengen fehlt — Menge ist die Summe der gemessenen"},
+      "erwartet": {"schluessel": null, "werte": null, "vorgesehen": false}
+    },
+    {
+      "name": "Mehrzahl-Form mit einer fehlenden Intervallmenge",
+      "familie": "erkennen",
+      "fall": "konstruiert",
+      "why": "„1 von 15 … fehlen“ ist kein Satz des Vertrags.",
+      "eingang": {"satz": "1 von 15 Intervallmengen fehlen — Menge ist die Summe der gemessenen"},
+      "erwartet": {"schluessel": null, "werte": null, "vorgesehen": false}
+    },
+    {
+      "name": "Uhrzeit ohne führende Null",
+      "familie": "erkennen",
+      "fall": "F6",
+      "why": "Uhrzeiten stehen als HH:MM.",
+      "eingang": {"satz": "Rücksetzung 9:12 ohne Endstand — bis zu 1 Kadenz nicht gezählt"},
+      "erwartet": {"schluessel": null, "werte": null, "vorgesehen": false}
+    },
+    {
+      "name": "Lücken-Zuwachs mit normalem Leerzeichen vor der Einheit",
+      "familie": "erkennen",
+      "fall": "F8",
+      "why": "Vor der Einheit steht das geschützte Leerzeichen U+00A0 (rundung.vor_einheit) — ein normales Leerzeichen ist ein anderer Satz.",
+      "eingang": {"satz": "Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht auf Viertelstunden verteilbar"},
+      "erwartet": {"schluessel": null, "werte": null, "vorgesehen": false}
+    },
+    {
+      "name": "Lücken-Zuwachs mit Zahl und Einheit ist der Vertragssatz",
+      "familie": "erkennen",
+      "fall": "F8",
+      "why": "Seit 1.3 trägt der Zuwachs Zahl und Anzeige-Einheit nach E11.",
+      "eingang": {"satz": "Lücke 14:00–17:31: Zuwachs 337,6 kWh gemessen, nicht auf Viertelstunden verteilbar"},
+      "erwartet": {"schluessel": "luecke_zuwachs", "werte": {"von": "14:00", "bis": "17:31", "zuwachs": "337,6 kWh"}, "fruehere_fassung": false, "vorgesehen": false}
+    },
+    {
+      "name": "Lücken-Zuwachs der Fassung 1.2 ist nur noch eine frühere Fassung",
+      "familie": "erkennen",
+      "fall": "F8",
+      "why": "„Zuwachs 337.600“ steht in gespeicherten Viertelstunden, Tagen, Monaten und Jahren — erkannt, nie mehr gesprochen.",
+      "eingang": {"satz": "Lücke 14:00–17:31: Zuwachs 337.600 gemessen, nicht auf Viertelstunden verteilbar"},
+      "erwartet": {"schluessel": "luecke_zuwachs", "werte": {"von": "14:00", "bis": "17:31", "zuwachs": "337.600"}, "fruehere_fassung": true, "vorgesehen": false}
+    },
+    {
+      "name": "Lücken-Zuwachs in der gespeicherten Einheit ist kein Satz",
+      "familie": "erkennen",
+      "fall": "konstruiert",
+      "why": "Gespeichert bleibt die Zähler-Einheit, gesprochen wird die Anzeige-Einheit: „337.600,0 Wh“ sagt kein Zwilling.",
+      "eingang": {"satz": "Lücke 14:00–17:31: Zuwachs 337.600,0 Wh gemessen, nicht auf Viertelstunden verteilbar"},
+      "erwartet": {"schluessel": null, "werte": null, "vorgesehen": false}
+    },
+    {
+      "name": "Lücken-Zuwachs mit den Stellen des Tages ist kein Satz",
+      "familie": "erkennen",
+      "fall": "F8",
+      "why": "Der Satz rundet auf JEDER Ebene wie die Viertelstunde (rundung.kennzeichen_ebene) — „338 kWh“ am Tag wäre ein zweiter Wortlaut desselben Satzes.",
+      "eingang": {"satz": "Lücke 14:00–17:31: Zuwachs 338 kWh gemessen, nicht auf Viertelstunden verteilbar"},
+      "erwartet": {"schluessel": null, "werte": null, "vorgesehen": false}
+    },
+    {
+      "name": "Lücken-Zuwachs einer Reihe ohne bekannte Einheit",
+      "familie": "erkennen",
+      "fall": "konstruiert",
+      "why": "Ohne Anzeige-Einheit (Katalog ohne Einheit, „0,1 kWh“ …) steht der Satz ohne Zahl — eine Zahl ohne Einheit liest sich um den Faktor 1 000 falsch.",
+      "eingang": {"satz": "Lücke 14:00–17:31: Zuwachs gemessen, nicht auf Viertelstunden verteilbar"},
+      "erwartet": {"schluessel": "luecke_zuwachs_ohne_einheit", "werte": {"von": "14:00", "bis": "17:31"}, "fruehere_fassung": false, "vorgesehen": false}
+    },
+    {
+      "name": "Dativ: die richtige Form ist der Vertragssatz",
+      "familie": "erkennen",
+      "fall": "F4",
+      "why": "Nach „mit“ steht der Dativ. Seit 1.1 der Wortlaut des Musters.",
+      "eingang": {"satz": "Gerätegrenze 10:40 mit Ableseständen"},
+      "erwartet": {"schluessel": "geraetegrenze_mit", "werte": {"uhr": "10:40"}, "vorgesehen": false}
+    },
+    {
+      "name": "Dativ: die alte Form ist nur noch eine frühere Fassung",
+      "familie": "erkennen",
+      "fall": "F4",
+      "why": "„mit Ablesestände“ wird erkannt (gespeicherte Zeilen), aber als frühere Fassung — kein Zwilling spricht ihn mehr.",
+      "eingang": {"satz": "Gerätegrenze 10:40 mit Ablesestände"},
+      "erwartet": {"schluessel": "geraetegrenze_mit", "werte": {"uhr": "10:40"}, "fruehere_fassung": true, "vorgesehen": false}
+    },
+    {
+      "name": "Uhrzeit mit Zusatz an der doppelten Stunde",
+      "familie": "erkennen",
+      "fall": "F13",
+      "why": "Der Zusatz gehört zur Uhrzeit — der Platzhalter uhr trägt ihn mit.",
+      "eingang": {"satz": "Rücksetzung 02:30 MEZ ohne Endstand — bis zu 1 Kadenz nicht gezählt"},
+      "erwartet": {"schluessel": "ruecksetzung", "werte": {"uhr": "02:30 MEZ"}, "vorgesehen": false}
+    },
+    {
+      "name": "Uhrzeit mit erfundenem Zusatz",
+      "familie": "erkennen",
+      "fall": "konstruiert",
+      "why": "Nur MESZ, MEZ oder ein UTC-Offset — „Sommerzeit“ ist kein Zusatz des Vertrags.",
+      "eingang": {"satz": "Rücksetzung 02:30 Sommerzeit ohne Endstand — bis zu 1 Kadenz nicht gezählt"},
+      "erwartet": {"schluessel": null, "werte": null, "vorgesehen": false}
+    },
+    {
+      "name": "Lücke am Wechsel ist nicht der Lücken-Zuwachs",
+      "familie": "erkennen",
+      "fall": "F4",
+      "why": "Jeder Satz passt auf höchstens EIN Muster.",
+      "eingang": {"satz": "Lücke am Wechsel 10:39–10:47 (nicht aufgefüllt)"},
+      "erwartet": {"schluessel": "luecke_am_wechsel", "werte": {"von": "10:39", "bis": "10:47"}, "vorgesehen": false}
+    },
+    {
+      "name": "Anteil mit Mittelpunkt in der Quelle",
+      "familie": "erkennen",
+      "fall": "F19",
+      "why": "Die Quelle heißt „Komponente · Messwert“ — der Mittelpunkt gehört zum Platzhalter.",
+      "eingang": {"satz": "negativer Anteil von K-3 · Wirkleistung"},
+      "erwartet": {"schluessel": "anteil_negativ", "werte": {"quelle": "K-3 · Wirkleistung"}, "vorgesehen": false}
+    },
+    {
+      "name": "vorgesehenes Wort",
+      "familie": "erkennen",
+      "fall": "F9",
+      "why": "„nachgeliefert“ ist ein Wort des Vokabulars ohne Wortlaut in diesem Vertrag.",
+      "eingang": {"satz": "nachgeliefert am 05.11. 09:00"},
+      "erwartet": {"schluessel": null, "werte": null, "vorgesehen": true}
+    },
+    {
+      "name": "korrigiert mit Version (seit 1.5)",
+      "familie": "erkennen",
+      "fall": "F21",
+      "why": "Seit 1.5 ein Kennzeichen des Vertrags, nicht mehr vorgesehen.",
+      "eingang": {"satz": "korrigiert (Version 3)"},
+      "erwartet": {"schluessel": "korrigiert", "werte": {"version": "3"}, "vorgesehen": false}
+    },
+    {
+      "name": "Version 1 ist nie korrigiert",
+      "familie": "erkennen",
+      "fall": "F10",
+      "why": "Version 1 ist das Original; der Platzhalter nimmt erst 2 an. Und der alte Anfang macht den Satz nicht mehr vorgesehen.",
+      "eingang": {"satz": "korrigiert (Version 1)"},
+      "erwartet": {"schluessel": null, "werte": null, "vorgesehen": false}
+    },
+    {
+      "name": "vorläufig (seit 1.7)",
+      "familie": "erkennen",
+      "fall": "F9",
+      "why": "Seit 1.7 ein Kennzeichen des Vertrags, nicht mehr vorgesehen.",
+      "eingang": {"satz": "vorläufig"},
+      "erwartet": {"schluessel": "vorlaeufig", "werte": {}, "vorgesehen": false}
+    },
+    {
+      "name": "endgültig (seit 1.7)",
+      "familie": "erkennen",
+      "fall": "F10",
+      "why": "Seit 1.7 ein Kennzeichen des Vertrags, nicht mehr vorgesehen.",
+      "eingang": {"satz": "endgültig"},
+      "erwartet": {"schluessel": "endgueltig", "werte": {}, "vorgesehen": false}
+    },
+    {
+      "name": "die Fassung trägt kein Datum",
+      "familie": "erkennen",
+      "fall": "F10",
+      "why": "Wann eine Zahl endgültig wurde, sagt die Route (endgueltig_ab), nicht der Satz. Der alte Anfang macht einen längeren Satz nicht mehr vorgesehen — er ist fremd.",
+      "eingang": {"satz": "endgültig seit 10.11.2026"},
+      "erwartet": {"schluessel": null, "werte": null, "vorgesehen": false}
+    },
+    {
+      "name": "Ablesezeitraum (seit 1.13)",
+      "familie": "erkennen",
+      "fall": "F17",
+      "why": "Seit 1.13 ein Kennzeichen des Vertrags, nicht mehr vorgesehen - der Satz, den AblesungRegeln spricht.",
+      "eingang": {"satz": "Ablesezeitraum 01.09. 00:00 – 01.10. 00:00 (Zuordnung durch den Kunden)"},
+      "erwartet": {"schluessel": "ablesezeitraum", "werte": {"von": "01.09. 00:00", "bis": "01.10. 00:00"}, "vorgesehen": false}
+    },
+    {
+      "name": "Ablesezeitraum in der doppelten Stunde",
+      "familie": "erkennen",
+      "fall": "F13",
+      "why": "E10: 02:30 gibt es am 25.10.2026 zweimal - die Uhrzeit trägt den Zusatz, wie in jedem Kennzeichen.",
+      "eingang": {"satz": "Ablesezeitraum 25.10. 02:30 MEZ – 02.11. 07:40 (Zuordnung durch den Kunden)"},
+      "erwartet": {"schluessel": "ablesezeitraum", "werte": {"von": "25.10. 02:30 MEZ", "bis": "02.11. 07:40"}, "vorgesehen": false}
+    },
+    {
+      "name": "Ablesezeitraum ohne Monatszuordnung (seit 1.13)",
+      "familie": "erkennen",
+      "fall": "F17",
+      "why": "Seit 1.13 ein Kennzeichen des Vertrags.",
+      "eingang": {"satz": "Ablesezeitraum ohne Monatszuordnung"},
+      "erwartet": {"schluessel": "ablesezeitraum_ohne_monat", "werte": {}, "vorgesehen": false}
+    },
+    {
+      "name": "Gegenprobe: der Ablesezeitraum ohne seine Zuordnung",
+      "familie": "erkennen",
+      "fall": "F17",
+      "why": "„gilt für Oktober 2026 · Ablesezeitraum 01.10. 07:15 – 02.11. 07:40“ ist der Satz AN der Ablesung (B8), kein Kennzeichen einer Zahl. Seit 1.13 ist der Anfang nicht mehr vorgesehen - ein solcher Satz ist fremd.",
+      "eingang": {"satz": "Ablesezeitraum 01.10. 07:15 – 02.11. 07:40"},
+      "erwartet": {"schluessel": null, "werte": null, "vorgesehen": false}
+    },
+    {
+      "name": "25-Stunden-Tag",
+      "familie": "tagesdauer",
+      "fall": "F13",
+      "why": "E10: die Tageskarte sagt „25 Stunden (Zeitumstellung)“.",
+      "eingang": {"tag": "2026-10-25", "zeitzone": "Europe/Berlin"},
+      "erwartet": {"stunden": 25, "satz": "25 Stunden (Zeitumstellung)"}
+    },
+    {
+      "name": "23-Stunden-Tag",
+      "familie": "tagesdauer",
+      "fall": "F14",
+      "why": "E10 „23 Stunden“, gelesen wie F14: „23 Stunden (Zeitumstellung)“ (siehe befunde).",
+      "eingang": {"tag": "2027-03-28", "zeitzone": "Europe/Berlin"},
+      "erwartet": {"stunden": 23, "satz": "23 Stunden (Zeitumstellung)"}
+    },
+    {
+      "name": "gewöhnlicher Tag sagt nichts",
+      "familie": "tagesdauer",
+      "fall": "F24",
+      "why": "24 Stunden sind keine Nachricht.",
+      "eingang": {"tag": "2026-10-20", "zeitzone": "Europe/Berlin"},
+      "erwartet": {"stunden": 24, "satz": null}
+    },
+    {
+      "name": "Stunden am Sommerzeit-Ende",
+      "familie": "raster",
+      "fall": "F13",
+      "why": "Die doppelte Stunde erscheint zweimal, mit MESZ und MEZ; der Export trägt den ISO-8601-Offset.",
+      "eingang": {"tag": "2026-10-25", "zeitzone": "Europe/Berlin", "schritt": "stunde"},
+      "erwartet": {
+        "anzahl": 25,
+        "felder": [
+          {"beschriftung": "00:00–01:00", "von": "2026-10-25T00:00:00+02:00"},
+          {"beschriftung": "01:00–02:00", "von": "2026-10-25T01:00:00+02:00"},
+          {"beschriftung": "02:00–03:00 MESZ", "von": "2026-10-25T02:00:00+02:00"},
+          {"beschriftung": "02:00–03:00 MEZ", "von": "2026-10-25T02:00:00+01:00"},
+          {"beschriftung": "03:00–04:00", "von": "2026-10-25T03:00:00+01:00"},
+          {"beschriftung": "04:00–05:00", "von": "2026-10-25T04:00:00+01:00"},
+          {"beschriftung": "05:00–06:00", "von": "2026-10-25T05:00:00+01:00"},
+          {"beschriftung": "06:00–07:00", "von": "2026-10-25T06:00:00+01:00"},
+          {"beschriftung": "07:00–08:00", "von": "2026-10-25T07:00:00+01:00"},
+          {"beschriftung": "08:00–09:00", "von": "2026-10-25T08:00:00+01:00"},
+          {"beschriftung": "09:00–10:00", "von": "2026-10-25T09:00:00+01:00"},
+          {"beschriftung": "10:00–11:00", "von": "2026-10-25T10:00:00+01:00"},
+          {"beschriftung": "11:00–12:00", "von": "2026-10-25T11:00:00+01:00"},
+          {"beschriftung": "12:00–13:00", "von": "2026-10-25T12:00:00+01:00"},
+          {"beschriftung": "13:00–14:00", "von": "2026-10-25T13:00:00+01:00"},
+          {"beschriftung": "14:00–15:00", "von": "2026-10-25T14:00:00+01:00"},
+          {"beschriftung": "15:00–16:00", "von": "2026-10-25T15:00:00+01:00"},
+          {"beschriftung": "16:00–17:00", "von": "2026-10-25T16:00:00+01:00"},
+          {"beschriftung": "17:00–18:00", "von": "2026-10-25T17:00:00+01:00"},
+          {"beschriftung": "18:00–19:00", "von": "2026-10-25T18:00:00+01:00"},
+          {"beschriftung": "19:00–20:00", "von": "2026-10-25T19:00:00+01:00"},
+          {"beschriftung": "20:00–21:00", "von": "2026-10-25T20:00:00+01:00"},
+          {"beschriftung": "21:00–22:00", "von": "2026-10-25T21:00:00+01:00"},
+          {"beschriftung": "22:00–23:00", "von": "2026-10-25T22:00:00+01:00"},
+          {"beschriftung": "23:00–00:00", "von": "2026-10-25T23:00:00+01:00"}
+        ]
+      }
+    },
+    {
+      "name": "Stunden am Sommerzeit-Beginn",
+      "familie": "raster",
+      "fall": "F14",
+      "why": "Die fehlende Stunde 02:00–03:00 erscheint nicht; kein Zusatz, weil keine Beschriftung doppelt ist.",
+      "eingang": {"tag": "2027-03-28", "zeitzone": "Europe/Berlin", "schritt": "stunde"},
+      "erwartet": {
+        "anzahl": 23,
+        "felder": [
+          {"beschriftung": "00:00–01:00", "von": "2027-03-28T00:00:00+01:00"},
+          {"beschriftung": "01:00–02:00", "von": "2027-03-28T01:00:00+01:00"},
+          {"beschriftung": "03:00–04:00", "von": "2027-03-28T03:00:00+02:00"},
+          {"beschriftung": "04:00–05:00", "von": "2027-03-28T04:00:00+02:00"},
+          {"beschriftung": "05:00–06:00", "von": "2027-03-28T05:00:00+02:00"},
+          {"beschriftung": "06:00–07:00", "von": "2027-03-28T06:00:00+02:00"},
+          {"beschriftung": "07:00–08:00", "von": "2027-03-28T07:00:00+02:00"},
+          {"beschriftung": "08:00–09:00", "von": "2027-03-28T08:00:00+02:00"},
+          {"beschriftung": "09:00–10:00", "von": "2027-03-28T09:00:00+02:00"},
+          {"beschriftung": "10:00–11:00", "von": "2027-03-28T10:00:00+02:00"},
+          {"beschriftung": "11:00–12:00", "von": "2027-03-28T11:00:00+02:00"},
+          {"beschriftung": "12:00–13:00", "von": "2027-03-28T12:00:00+02:00"},
+          {"beschriftung": "13:00–14:00", "von": "2027-03-28T13:00:00+02:00"},
+          {"beschriftung": "14:00–15:00", "von": "2027-03-28T14:00:00+02:00"},
+          {"beschriftung": "15:00–16:00", "von": "2027-03-28T15:00:00+02:00"},
+          {"beschriftung": "16:00–17:00", "von": "2027-03-28T16:00:00+02:00"},
+          {"beschriftung": "17:00–18:00", "von": "2027-03-28T17:00:00+02:00"},
+          {"beschriftung": "18:00–19:00", "von": "2027-03-28T18:00:00+02:00"},
+          {"beschriftung": "19:00–20:00", "von": "2027-03-28T19:00:00+02:00"},
+          {"beschriftung": "20:00–21:00", "von": "2027-03-28T20:00:00+02:00"},
+          {"beschriftung": "21:00–22:00", "von": "2027-03-28T21:00:00+02:00"},
+          {"beschriftung": "22:00–23:00", "von": "2027-03-28T22:00:00+02:00"},
+          {"beschriftung": "23:00–00:00", "von": "2027-03-28T23:00:00+02:00"}
+        ]
+      }
+    },
+    {
+      "name": "Stunden eines gewöhnlichen Tages",
+      "familie": "raster",
+      "fall": "F24",
+      "why": "Ohne Umstellung trägt keine Stunde einen Zusatz.",
+      "eingang": {"tag": "2026-10-20", "zeitzone": "Europe/Berlin", "schritt": "stunde"},
+      "erwartet": {
+        "anzahl": 24,
+        "felder": [
+          {"beschriftung": "00:00–01:00", "von": "2026-10-20T00:00:00+02:00"},
+          {"beschriftung": "01:00–02:00", "von": "2026-10-20T01:00:00+02:00"},
+          {"beschriftung": "02:00–03:00", "von": "2026-10-20T02:00:00+02:00"},
+          {"beschriftung": "03:00–04:00", "von": "2026-10-20T03:00:00+02:00"},
+          {"beschriftung": "04:00–05:00", "von": "2026-10-20T04:00:00+02:00"},
+          {"beschriftung": "05:00–06:00", "von": "2026-10-20T05:00:00+02:00"},
+          {"beschriftung": "06:00–07:00", "von": "2026-10-20T06:00:00+02:00"},
+          {"beschriftung": "07:00–08:00", "von": "2026-10-20T07:00:00+02:00"},
+          {"beschriftung": "08:00–09:00", "von": "2026-10-20T08:00:00+02:00"},
+          {"beschriftung": "09:00–10:00", "von": "2026-10-20T09:00:00+02:00"},
+          {"beschriftung": "10:00–11:00", "von": "2026-10-20T10:00:00+02:00"},
+          {"beschriftung": "11:00–12:00", "von": "2026-10-20T11:00:00+02:00"},
+          {"beschriftung": "12:00–13:00", "von": "2026-10-20T12:00:00+02:00"},
+          {"beschriftung": "13:00–14:00", "von": "2026-10-20T13:00:00+02:00"},
+          {"beschriftung": "14:00–15:00", "von": "2026-10-20T14:00:00+02:00"},
+          {"beschriftung": "15:00–16:00", "von": "2026-10-20T15:00:00+02:00"},
+          {"beschriftung": "16:00–17:00", "von": "2026-10-20T16:00:00+02:00"},
+          {"beschriftung": "17:00–18:00", "von": "2026-10-20T17:00:00+02:00"},
+          {"beschriftung": "18:00–19:00", "von": "2026-10-20T18:00:00+02:00"},
+          {"beschriftung": "19:00–20:00", "von": "2026-10-20T19:00:00+02:00"},
+          {"beschriftung": "20:00–21:00", "von": "2026-10-20T20:00:00+02:00"},
+          {"beschriftung": "21:00–22:00", "von": "2026-10-20T21:00:00+02:00"},
+          {"beschriftung": "22:00–23:00", "von": "2026-10-20T22:00:00+02:00"},
+          {"beschriftung": "23:00–00:00", "von": "2026-10-20T23:00:00+02:00"}
+        ]
+      }
+    },
+    {
+      "name": "Viertelstunden am Sommerzeit-Ende",
+      "familie": "raster",
+      "fall": "F13",
+      "why": "100 Viertelstunden; genau die acht der doppelten Stunde tragen den Zusatz.",
+      "eingang": {"tag": "2026-10-25", "zeitzone": "Europe/Berlin", "schritt": "viertelstunde"},
+      "erwartet": {
+        "anzahl": 100,
+        "felder": [
+          {"beschriftung": "01:30–01:45", "von": "2026-10-25T01:30:00+02:00"},
+          {"beschriftung": "01:45–02:00", "von": "2026-10-25T01:45:00+02:00"},
+          {"beschriftung": "02:00–02:15 MESZ", "von": "2026-10-25T02:00:00+02:00"},
+          {"beschriftung": "02:15–02:30 MESZ", "von": "2026-10-25T02:15:00+02:00"},
+          {"beschriftung": "02:30–02:45 MESZ", "von": "2026-10-25T02:30:00+02:00"},
+          {"beschriftung": "02:45–03:00 MESZ", "von": "2026-10-25T02:45:00+02:00"},
+          {"beschriftung": "02:00–02:15 MEZ", "von": "2026-10-25T02:00:00+01:00"},
+          {"beschriftung": "02:15–02:30 MEZ", "von": "2026-10-25T02:15:00+01:00"}
+        ]
+      },
+      "ausschnitt_ab": 6
+    },
+    {
+      "name": "Viertelstunden am Sommerzeit-Beginn",
+      "familie": "raster",
+      "fall": "F14",
+      "why": "92 Viertelstunden; nach 01:45–02:00 folgt 03:00–03:15.",
+      "eingang": {"tag": "2027-03-28", "zeitzone": "Europe/Berlin", "schritt": "viertelstunde"},
+      "erwartet": {
+        "anzahl": 92,
+        "felder": [
+          {"beschriftung": "01:30–01:45", "von": "2027-03-28T01:30:00+01:00"},
+          {"beschriftung": "01:45–02:00", "von": "2027-03-28T01:45:00+01:00"},
+          {"beschriftung": "03:00–03:15", "von": "2027-03-28T03:00:00+02:00"},
+          {"beschriftung": "03:15–03:30", "von": "2027-03-28T03:15:00+02:00"}
+        ]
+      },
+      "ausschnitt_ab": 6
+    },
+    {
+      "name": "Zone außerhalb Mitteleuropas: Offset statt Kurzname",
+      "familie": "raster",
+      "fall": "konstruiert",
+      "why": "E10 nennt MESZ/MEZ — das sind Namen der Zonen mit Normalzeit UTC+01:00. Jede andere Zone trägt an der doppelten Stunde ihren ISO-8601-Offset (keine Ahrenberg-Zone; der Fall hält nur fest, dass London nicht „MEZ“ heißt).",
+      "eingang": {"tag": "2026-10-25", "zeitzone": "Europe/London", "schritt": "stunde"},
+      "erwartet": {
+        "anzahl": 25,
+        "felder": [
+          {"beschriftung": "00:00–01:00", "von": "2026-10-25T00:00:00+01:00"},
+          {"beschriftung": "01:00–02:00 UTC+01:00", "von": "2026-10-25T01:00:00+01:00"},
+          {"beschriftung": "01:00–02:00 UTC+00:00", "von": "2026-10-25T01:00:00+00:00"},
+          {"beschriftung": "02:00–03:00", "von": "2026-10-25T02:00:00+00:00"}
+        ]
+      },
+      "ausschnitt_ab": 0
+    },
+    {
+      "name": "Rundungsdifferenz wird genannt",
+      "familie": "rundungsdifferenz",
+      "fall": "F24",
+      "why": "Vier Viertelstunden 24,167 + 18,667 + 31,112 + 33,363 kWh zeigen 24,2 + 18,7 + 31,1 + 33,4 = 107,4 kWh; die Stunde zeigt 107,3 kWh (ungerundet 107,308). Die Differenz wird genannt, nie „korrigiert“.",
+      "eingang": {
+        "einheit": "kWh",
+        "teile": ["24.167", "18.667", "31.112", "33.363"],
+        "ebene_teile": "viertelstunde",
+        "summe": "107.308",
+        "ebene_summe": "stunde"
+      },
+      "erwartet": {
+        "summe_der_angezeigten": "107,4 kWh",
+        "differenz": "0,1 kWh",
+        "satz": "Summe der angezeigten Werte 107,4 kWh · Rundungsdifferenz 0,1 kWh"
+      }
+    },
+    {
+      "name": "keine Rundungsdifferenz",
+      "familie": "rundungsdifferenz",
+      "fall": "F13",
+      "why": "25 Stunden × 28,8 kWh zeigen zusammen 720,0 kWh, der Tag zeigt 720 kWh — nichts zu nennen.",
+      "eingang": {
+        "einheit": "kWh",
+        "teile": [
+          "28.800",
+          "28.800",
+          "28.800",
+          "28.800",
+          "28.800",
+          "28.800",
+          "28.800",
+          "28.800",
+          "28.800",
+          "28.800",
+          "28.800",
+          "28.800",
+          "28.800",
+          "28.800",
+          "28.800",
+          "28.800",
+          "28.800",
+          "28.800",
+          "28.800",
+          "28.800",
+          "28.800",
+          "28.800",
+          "28.800",
+          "28.800",
+          "28.800"
+        ],
+        "ebene_teile": "stunde",
+        "summe": "720.000",
+        "ebene_summe": "tag"
+      },
+      "erwartet": {"summe_der_angezeigten": "720,0 kWh", "differenz": null, "satz": null}
+    },
+    {
+      "name": "Erste 02:30 am Sommerzeit-Ende",
+      "familie": "uhr",
+      "fall": "F13",
+      "why": "Die Uhrzeit gibt es am 25.10.2026 zweimal; die erste ist Sommerzeit.",
+      "eingang": {"zeit": "2026-10-25T02:30:00+02:00", "zeitzone": "Europe/Berlin"},
+      "erwartet": {"text": "02:30 MESZ"}
+    },
+    {
+      "name": "Zweite 02:30 am Sommerzeit-Ende",
+      "familie": "uhr",
+      "fall": "F13",
+      "why": "Eine Stunde später zeigt die Wanduhr wieder 02:30 — ohne Zusatz wären beide Sätze gleich.",
+      "eingang": {"zeit": "2026-10-25T02:30:00+01:00", "zeitzone": "Europe/Berlin"},
+      "erwartet": {"text": "02:30 MEZ"}
+    },
+    {
+      "name": "02:00 am Sommerzeit-Ende gibt es zweimal",
+      "familie": "uhr",
+      "fall": "F13",
+      "why": "Der Beginn der doppelten Stunde gehört zu ihr (wie „02:00–03:00 MEZ“ im Raster).",
+      "eingang": {"zeit": "2026-10-25T02:00:00+01:00", "zeitzone": "Europe/Berlin"},
+      "erwartet": {"text": "02:00 MEZ"}
+    },
+    {
+      "name": "03:00 am Sommerzeit-Ende gibt es nur einmal",
+      "familie": "uhr",
+      "fall": "F13",
+      "why": "Die Wanduhr springt von 02:59 MESZ auf 02:00 MEZ — 03:00 kommt danach genau einmal.",
+      "eingang": {"zeit": "2026-10-25T03:00:00+01:00", "zeitzone": "Europe/Berlin"},
+      "erwartet": {"text": "03:00"}
+    },
+    {
+      "name": "01:59 am Sommerzeit-Ende gibt es nur einmal",
+      "familie": "uhr",
+      "fall": "F13",
+      "why": "Vor der doppelten Stunde kein Zusatz.",
+      "eingang": {"zeit": "2026-10-25T01:59:00+02:00", "zeitzone": "Europe/Berlin"},
+      "erwartet": {"text": "01:59"}
+    },
+    {
+      "name": "Sommerzeit-Beginn: keine doppelte Uhrzeit",
+      "familie": "uhr",
+      "fall": "F14",
+      "why": "Am 28.03.2027 fehlt eine Stunde; keine Uhrzeit kommt zweimal vor, keine trägt einen Zusatz.",
+      "eingang": {"zeit": "2027-03-28T03:00:00+02:00", "zeitzone": "Europe/Berlin"},
+      "erwartet": {"text": "03:00"}
+    },
+    {
+      "name": "gewöhnlicher Tag",
+      "familie": "uhr",
+      "fall": "F6",
+      "why": "An jedem anderen Tag bleibt die Uhrzeit HH:MM.",
+      "eingang": {"zeit": "2026-11-19T09:12:00+01:00", "zeitzone": "Europe/Berlin"},
+      "erwartet": {"text": "09:12"}
+    },
+    {
+      "name": "Zone außerhalb Mitteleuropas: Offset statt Kurzname",
+      "familie": "uhr",
+      "fall": "konstruiert",
+      "why": "Wie im Raster: MESZ/MEZ nur in einer Zone mit Normalzeit UTC+01:00, sonst der Offset.",
+      "eingang": {"zeit": "2026-10-25T01:30:00+00:00", "zeitzone": "Europe/London"},
+      "erwartet": {"text": "01:30 UTC+00:00"}
+    },
+    {
+      "name": "Standort außerhalb von Europe/Berlin: seine eigene Wanduhr",
+      "familie": "uhr",
+      "fall": "konstruiert",
+      "why": "E10: die Uhrzeit spricht die Zone des STANDORTS, nie eine feste — 14:00 in Berlin ist 13:00 in Lissabon.",
+      "eingang": {"zeit": "2026-11-03T14:00:00+01:00", "zeitzone": "Europe/Lisbon"},
+      "erwartet": {"text": "13:00"}
+    },
+    {
+      "name": "Menge eines Wh-Zählers in kWh",
+      "familie": "menge",
+      "fall": "F8",
+      "why": "Gespeichert 337 600 Wh, angezeigt in der Anzeige-Einheit kWh mit den Stellen der Ebene — nie „337.600,0 Wh“.",
+      "eingang": {"wert": "337600.000", "einheit": "Wh", "ebene": "viertelstunde"},
+      "erwartet": {"verstoesse": [], "text": "337,6 kWh"}
+    },
+    {
+      "name": "Menge eines kWh-Zählers bleibt kWh",
+      "familie": "menge",
+      "fall": "F8",
+      "why": "Faktor 1: dieselbe Zahl wie zahl(…, kWh, …).",
+      "eingang": {"wert": "337.600", "einheit": "kWh", "ebene": "viertelstunde"},
+      "erwartet": {"verstoesse": [], "text": "337,6 kWh"}
+    },
+    {
+      "name": "Jahresmenge eines MWh-Zählers in kWh",
+      "familie": "menge",
+      "fall": "konstruiert",
+      "why": "Der Jahreswert heißt „1.482.300 kWh“, nicht „1.482,3 MWh“ — kWh ist die Anzeige-Einheit auf jeder Ebene.",
+      "eingang": {"wert": "1482.3", "einheit": "MWh", "ebene": "jahr"},
+      "erwartet": {"verstoesse": [], "text": "1.482.300 kWh"}
+    },
+    {
+      "name": "Blindarbeit eines varh-Zählers in kvarh",
+      "familie": "menge",
+      "fall": "konstruiert",
+      "why": "Blindarbeit ist Arbeit: kvarh mit den Stellen von kWh (Viertelstunde 1).",
+      "eingang": {"wert": "12345.678", "einheit": "varh", "ebene": "viertelstunde"},
+      "erwartet": {"verstoesse": [], "text": "12,3 kvarh"}
+    },
+    {
+      "name": "Blindarbeit am Tag ganz",
+      "familie": "menge",
+      "fall": "konstruiert",
+      "why": "kvarh rundet wie kWh: Tag, Monat, Jahr ohne Nachkommastelle.",
+      "eingang": {"wert": "2304.5", "einheit": "kvarh", "ebene": "tag"},
+      "erwartet": {"verstoesse": [], "text": "2.305 kvarh"}
+    },
+    {
+      "name": "Volumen bleibt m³",
+      "familie": "menge",
+      "fall": "F17",
+      "why": "m³ eine Nachkommastelle auf jeder Ebene (E11).",
+      "eingang": {"wert": "1240", "einheit": "m³", "ebene": "monat"},
+      "erwartet": {"verstoesse": [], "text": "1.240,0 m³"}
+    },
+    {
+      "name": "gespeicherte Einheit ohne Anzeige-Einheit",
+      "familie": "menge",
+      "fall": "konstruiert",
+      "why": "„0,1 kWh“ ist keine Einheit, sondern eine mit eingebackenem Faktor — der Faktor gehört an die Skalierung des Katalogs. Eine neue Einheit ist eine Vertragsänderung, nie ein Durchreichen (bis 1.7 stand hier VAh).",
+      "eingang": {"wert": "100", "einheit": "0,1 kWh", "ebene": "viertelstunde"},
+      "erwartet": {"verstoesse": ["einheit_unbekannt"], "text": null}
+    },
+    {
+      "name": "Scheinarbeit eines VAh-Zählers in kVAh, nie als kWh",
+      "familie": "menge",
+      "fall": "konstruiert",
+      "why": "Scheinarbeit ist NICHT in Wirkarbeit umrechenbar: sie hat ihre eigene Anzeige-Einheit kVAh mit den Stellen von kWh (seit 1.8). Eine Scheinarbeit als kWh wäre eine falsche Rechnung beim Kunden.",
+      "eingang": {"wert": "337600.000", "einheit": "VAh", "ebene": "viertelstunde"},
+      "erwartet": {"verstoesse": [], "text": "337,6 kVAh"}
+    },
+    {
+      "name": "Scheinarbeit am Tag ganz",
+      "familie": "menge",
+      "fall": "konstruiert",
+      "why": "kVAh rundet wie kWh: Tag, Monat, Jahr ohne Nachkommastelle.",
+      "eingang": {"wert": "2304.5", "einheit": "kVAh", "ebene": "tag"},
+      "erwartet": {"verstoesse": [], "text": "2.305 kVAh"}
+    },
+    {
+      "name": "kVAh ohne Ebene",
+      "familie": "menge",
+      "fall": "konstruiert",
+      "why": "Wie kWh braucht Scheinarbeit die Ebene — sie bestimmt die Stellen.",
+      "eingang": {"wert": "100", "einheit": "VAh", "ebene": null},
+      "erwartet": {"verstoesse": ["ebene_fehlt"], "text": null}
+    },
+    {
+      "name": "Wirkarbeit eines Wmin-Zählers in kWh",
+      "familie": "menge",
+      "fall": "konstruiert",
+      "why": "Wmin ist Wirkarbeit in Wattminuten: 20 256 000 Wmin ÷ 60 000 = 337,6 kWh (seit 1.8, teiler 60000).",
+      "eingang": {"wert": "20256000", "einheit": "Wmin", "ebene": "viertelstunde"},
+      "erwartet": {"verstoesse": [], "text": "337,6 kWh"}
+    },
+    {
+      "name": "Wmin: der exakte Quotient wird kaufmännisch gerundet",
+      "familie": "menge",
+      "fall": "konstruiert",
+      "why": "3 000 Wmin sind genau 0,05 kWh — die halbe Stelle geht von der Null weg („0,1 kWh“). Gerundet wird der EXAKTE Quotient, nie ein vorher abgeschnittener Faktor 0,0000167.",
+      "eingang": {"wert": "3000", "einheit": "Wmin", "ebene": "viertelstunde"},
+      "erwartet": {"verstoesse": [], "text": "0,1 kWh"}
+    },
+    {
+      "name": "Wmin knapp unter der halben Stelle",
+      "familie": "menge",
+      "fall": "konstruiert",
+      "why": "2 999 Wmin sind 0,049983… kWh — kaufmännisch „0,0 kWh“. Mit einem abgeschnittenen Faktor 0,0000167 wären es 0,0500833 und damit falsch „0,1 kWh“.",
+      "eingang": {"wert": "2999", "einheit": "Wmin", "ebene": "viertelstunde"},
+      "erwartet": {"verstoesse": [], "text": "0,0 kWh"}
+    },
+    {
+      "name": "Wmin am Jahr mit Tausenderpunkt",
+      "familie": "menge",
+      "fall": "konstruiert",
+      "why": "Der Jahreswert eines Wmin-Zählers heißt wie jeder Wirkarbeits-Jahreswert „… kWh“ ohne Nachkommastelle: 88 938 000 000 Wmin = 1.482.300 kWh.",
+      "eingang": {"wert": "88938000000", "einheit": "Wmin", "ebene": "jahr"},
+      "erwartet": {"verstoesse": [], "text": "1.482.300 kWh"}
+    },
+    {
+      "name": "kvarh ohne Ebene",
+      "familie": "menge",
+      "fall": "konstruiert",
+      "why": "Wie kWh braucht Blindarbeit die Ebene — sie bestimmt die Stellen.",
+      "eingang": {"wert": "100", "einheit": "varh", "ebene": null},
+      "erwartet": {"verstoesse": ["ebene_fehlt"], "text": null}
+    },
+    {
+      "name": "keine Menge ist ein Strich, auch in Wh",
+      "familie": "menge",
+      "fall": "F8",
+      "why": "Unbekannt ist keine Null.",
+      "eingang": {"wert": null, "einheit": "Wh", "ebene": "tag"},
+      "erwartet": {"verstoesse": [], "text": "—"}
+    },
+    {
+      "name": "negative Rundungsdifferenz",
+      "familie": "rundungsdifferenz",
+      "fall": "konstruiert",
+      "why": "Zwei Viertelstunden mit je 0,04 kWh zeigen 0,0 + 0,0 = 0,0 kWh, die Stunde zeigt 0,1 kWh (0,08 kaufmännisch). Die Differenz trägt ihr Vorzeichen: angezeigte Teile minus angezeigte Summe.",
+      "eingang": {
+        "einheit": "kWh",
+        "teile": ["0.040", "0.040"],
+        "ebene_teile": "viertelstunde",
+        "summe": "0.080",
+        "ebene_summe": "stunde"
+      },
+      "erwartet": {
+        "summe_der_angezeigten": "0,0 kWh",
+        "differenz": "−0,1 kWh",
+        "satz": "Summe der angezeigten Werte 0,0 kWh · Rundungsdifferenz −0,1 kWh"
+      }
+    },
+    {
+      "name": "Tag aus Zählerständen, Verlauf 85 %",
+      "familie": "herkunft",
+      "fall": "F8",
+      "why": "E1 = A: MS-10 am 03.11.2026 — 2 304,0 kWh aus den Ständen um 00:00 und 24:00, der Verlauf hat 3,5 Stunden Lücke. „vollständig“ gilt der Menge; die Herkunft sagt warum.",
+      "eingang": {"zustand": "vollständig", "herleitung": "zaehlerstand", "wert": "2304.000"},
+      "erwartet": {"text": "vollständig (Menge aus Zählerständen)"}
+    },
+    {
+      "name": "Stunde aus Zählerständen, unvollständig",
+      "familie": "herkunft",
+      "fall": "F8",
+      "why": "Stunde 17:00–18:00: 46,4 kWh als gemessener Teil (kein Stand um 17:00) — die Menge kommt weiter aus Zählerständen.",
+      "eingang": {"zustand": "unvollständig", "herleitung": "zaehlerstand", "wert": "46.400"},
+      "erwartet": {"text": "unvollständig (Menge aus Zählerständen)"}
+    },
+    {
+      "name": "ohne Zahl keine Herkunft",
+      "familie": "herkunft",
+      "fall": "F8",
+      "why": "Viertelstunde 14:00–14:15: nur ein Stand, keine Menge bildbar („—“) — die Herkunft einer Menge, die es nicht gibt, wäre eine Behauptung.",
+      "eingang": {"zustand": "unvollständig", "herleitung": "zaehlerstand", "wert": null},
+      "erwartet": {"text": "unvollständig"}
+    },
+    {
+      "name": "keine Werte trägt keine Herkunft",
+      "familie": "herkunft",
+      "fall": "F8",
+      "why": "Viertelstunde 14:15–14:30: kein Wert, keine Null, keine Herkunft.",
+      "eingang": {"zustand": "keine Werte", "herleitung": "zaehlerstand", "wert": null},
+      "erwartet": {"text": "keine Werte"}
+    },
+    {
+      "name": "25-Stunden-Tag aus Zählerständen",
+      "familie": "herkunft",
+      "fall": "F13",
+      "why": "MS-06 am 25.10.2026: 720,0 kWh aus den Ständen an beiden Tagesgrenzen.",
+      "eingang": {"zustand": "vollständig", "herleitung": "zaehlerstand", "wert": "720.000"},
+      "erwartet": {"text": "vollständig (Menge aus Zählerständen)"}
+    },
+    {
+      "name": "23-Stunden-Tag aus Zählerständen",
+      "familie": "herkunft",
+      "fall": "F14",
+      "why": "MS-06 am 28.03.2027: 662,4 kWh aus den Ständen an beiden Tagesgrenzen.",
+      "eingang": {"zustand": "vollständig", "herleitung": "zaehlerstand", "wert": "662.400"},
+      "erwartet": {"text": "vollständig (Menge aus Zählerständen)"}
+    },
+    {
+      "name": "Differenzen eines Zählerstands",
+      "familie": "herkunft",
+      "fall": "konstruiert",
+      "why": "Die Herleitung differenzen liest ebenfalls einen Zählerstand — die Menge folgt aus seinen Periodenständen.",
+      "eingang": {"zustand": "vollständig", "herleitung": "differenzen", "wert": "36.000"},
+      "erwartet": {"text": "vollständig (Menge aus Zählerständen)"}
+    },
+    {
+      "name": "integriert: das Kennzeichen spricht",
+      "familie": "herkunft",
+      "fall": "F3",
+      "why": "Eine aus Leistung integrierte Menge trägt das Kennzeichen „aus Leistung integriert“, ihr Zustand folgt aus der Abdeckung (E1) — eine zweite Herkunft am Wort wäre doppelt.",
+      "eingang": {"zustand": "vollständig", "herleitung": "integration", "wert": "5.200"},
+      "erwartet": {"text": "vollständig"}
+    },
+    {
+      "name": "Momentanwert ohne Menge",
+      "familie": "herkunft",
+      "fall": "F3",
+      "why": "Ein Momentanwert hat Mittel, Minimum und Maximum, nie eine Menge.",
+      "eingang": {"zustand": "vollständig", "herleitung": "momentanwert", "wert": "312.400"},
+      "erwartet": {"text": "vollständig"}
+    },
+    {
+      "name": "mit Ersatzwert: das Kennzeichen spricht",
+      "familie": "herkunft",
+      "fall": "F11",
+      "why": "Tag 03.11.2026 in Version 2: Methode und Kennung sagt das Kennzeichen „mit Ersatzwert (Methode …)“; eine eingegebene Menge (e–g) kommt nicht aus Zählerständen.",
+      "eingang": {"zustand": "mit Ersatzwert", "herleitung": "zaehlerstand", "wert": "2304.000"},
+      "erwartet": {"text": "mit Ersatzwert"}
+    },
+    {
+      "name": "ohne Herleitung: berechnete Messstelle",
+      "familie": "herkunft",
+      "fall": "AP-10 F5",
+      "why": "Eine berechnete Messstelle hat keine Quellenbindung; ihr Wort steht allein.",
+      "eingang": {"zustand": "vollständig", "herleitung": null, "wert": "850.000"},
+      "erwartet": {"text": "vollständig"}
+    },
+    {
+      "name": "unbekannte Herleitung",
+      "familie": "herkunft",
+      "fall": "konstruiert",
+      "why": "Die Herleitungen sind geschlossen (messstelle.schema.json) — ein fremdes Wort wird nicht gesprochen.",
+      "eingang": {"zustand": "vollständig", "herleitung": "schaetzung", "wert": "36.000"},
+      "erwartet": {"text": null}
+    },
+    {
+      "name": "unbekannter Zustand",
+      "familie": "herkunft",
+      "fall": "konstruiert",
+      "why": "„vorläufig“ ist die Fassung, kein Zustandswort — ein fremdes Wort wird nicht gesprochen.",
+      "eingang": {"zustand": "vorläufig", "herleitung": "zaehlerstand", "wert": "36.000"},
+      "erwartet": {"text": null}
+    },
+    {
+      "name": "die Route sagt vorlaeufig",
+      "familie": "fassung",
+      "fall": "F9",
+      "why": "Captain 14.09.2026 „Ja, immer zeigen“: wer eine Zahl abrechnet, muss wissen, ob sie sich noch ändern kann.",
+      "eingang": {"fassung": "vorlaeufig"},
+      "erwartet": {"text": "vorläufig", "unbekannt": false}
+    },
+    {
+      "name": "die Route sagt endgueltig",
+      "familie": "fassung",
+      "fall": "F10",
+      "why": "Auch der Normalfall wird gesagt — der Kunde soll nie die Abwesenheit eines Wortes deuten müssen.",
+      "eingang": {"fassung": "endgueltig"},
+      "erwartet": {"text": "endgültig", "unbekannt": false}
+    },
+    {
+      "name": "die Route kennt keine Fassung",
+      "familie": "fassung",
+      "fall": "konstruiert",
+      "why": "MS-21 ohne Datenquelle: kein Schritt, keine Fassung. Nichts wird gesprochen — „endgültig“ als Vorgabe wäre eine abgeleitete Behauptung.",
+      "eingang": {"fassung": null},
+      "erwartet": {"text": null, "unbekannt": false}
+    },
+    {
+      "name": "das Kundenwort ist kein Wert der Route",
+      "familie": "fassung",
+      "fall": "konstruiert",
+      "why": "Die Route liefert vorlaeufig · endgueltig; ein fremder Wert wird nicht gesprochen.",
+      "eingang": {"fassung": "vorläufig"},
+      "erwartet": {"text": null, "unbekannt": true}
+    },
+    {
+      "name": "die Vollständigkeit ist keine Fassung",
+      "familie": "fassung",
+      "fall": "konstruiert",
+      "why": "vollständig · unvollständig · keine Werte sagen, ob die Zahl VOLLSTÄNDIG ist; die Fassung, ob sie FESTSTEHT. Das eine wird nie als das andere gesprochen.",
+      "eingang": {"fassung": "vollständig"},
+      "erwartet": {"text": null, "unbekannt": true}
+    },
+    {
+      "name": "keine Quelle an MS-21",
+      "familie": "grund",
+      "fall": "O15",
+      "why": "Eine Messstelle ohne führende Quelle hat keine Zahl — auch keine 0; der Satz nennt die Messstelle, nie eine Ursache.",
+      "eingang": {"code": "keine_quelle", "werte": {"messstelle": "MS-21 Gas Heizung Verwaltung"}},
+      "erwartet": {"text": "Keine Quelle: MS-21 Gas Heizung Verwaltung hatte in diesem Zeitraum keine führende Quelle — es gibt keine Zahl, auch keine 0.", "fehler": null}
+    },
+    {
+      "name": "Quelle teilweise an MS-16 im Oktober",
+      "familie": "grund",
+      "fall": "O15, O16",
+      "why": "Die Bindung beginnt am 15.10. mitten im Monat: die gespeicherte Monatszahl gehört nicht ganz dieser Messstelle (W5, Regel AP-08).",
+      "eingang": {"code": "quelle_teilweise", "werte": {"quelle": "Netzzähler K-11 (GR-10)", "ab": "15.10.2026"}},
+      "erwartet": {"text": "Die Quelle deckt den Zeitraum nur zum Teil: Netzzähler K-11 (GR-10) gilt seit 15.10.2026 — die gespeicherte Zahl gehört nicht ganz dieser Messstelle.", "fehler": null}
+    },
+    {
+      "name": "nur der positive Anteil an MS-01",
+      "familie": "grund",
+      "fall": "O15",
+      "why": "Ein Vorzeichen-Kanal: die Speicherklassen tragen den ganzen Wert, eine Menge je Anteil ist nirgends gespeichert.",
+      "eingang": {"code": "anteil_nicht_gespeichert", "werte": {"anteil": "positiven", "kanal": "Wirkenergie Bezug (K-3)"}},
+      "erwartet": {"text": "Die Quelle liest nur den positiven Anteil von Wirkenergie Bezug (K-3); eine Menge je Anteil ist nicht gespeichert.", "fehler": null}
+    },
+    {
+      "name": "nur der negative Anteil",
+      "familie": "grund",
+      "fall": "konstruiert",
+      "why": "Dasselbe Muster mit dem anderen Wort des Blocks anteil — die Fläche beugt nicht selbst.",
+      "eingang": {"code": "anteil_nicht_gespeichert", "werte": {"anteil": "negativen", "kanal": "Wirkenergie Abgabe (K-3)"}},
+      "erwartet": {"text": "Die Quelle liest nur den negativen Anteil von Wirkenergie Abgabe (K-3); eine Menge je Anteil ist nicht gespeichert.", "fehler": null}
+    },
+    {
+      "name": "berechnete Messstelle an der Stunde",
+      "familie": "grund",
+      "fall": "O15",
+      "why": "MS-15 hat keine Reihe; die Stunde ist keine Speicherklasse.",
+      "eingang": {"code": "berechnet", "werte": {}},
+      "erwartet": {"text": "Für eine berechnete Messstelle gibt es hier keine gespeicherte Zahl: Stunden werden nie gespeichert, eine Formel aus Momentanwerten gar nicht.", "fehler": null}
+    },
+    {
+      "name": "Oktober am 20.10. noch nicht gebildet",
+      "familie": "grund",
+      "fall": "O15",
+      "why": "Der laufende Monat hat noch keinen Wert — derselbe Satz wie an der Tageskarte (PR 809), und nur diese Lage löst sich von selbst.",
+      "eingang": {"code": "noch_nicht_gebildet", "werte": {}},
+      "erwartet": {"text": "Noch nicht gerechnet — der Wert erscheint von selbst, Sie müssen nichts tun.", "fehler": null}
+    },
+    {
+      "name": "ohne Menge gespeichert",
+      "familie": "grund",
+      "fall": "O15",
+      "why": "Eine Periode von vor der Mengenregel: Verlauf und Fassung stehen da, Zustand und Zahl nicht.",
+      "eingang": {"code": "ohne_menge_gespeichert", "werte": {}},
+      "erwartet": {"text": "Dieser Zeitraum ist ohne Menge gespeichert (Stand vor der Umstellung) — der Verlauf ist bekannt, die Zahl nicht.", "fehler": null}
+    },
+    {
+      "name": "Version 3 von MS-12 gibt es nicht",
+      "familie": "grund",
+      "fall": "O15",
+      "why": "Angefragt ist Version 3, die neueste des Schritts ist 2 — beide Zahlen aus der Antwort.",
+      "eingang": {"code": "version_nicht_gespeichert", "werte": {"n": "3", "max": "2"}},
+      "erwartet": {"text": "Version 3 ist für diesen Zeitraum nicht gespeichert; der neueste Stand ist Version 2.", "fehler": null}
+    },
+    {
+      "name": "die Stunde hat keine eigenen Versionen",
+      "familie": "grund",
+      "fall": "O15",
+      "why": "Die Stunde ist nur aus Version 1 gebildet; eine ihrer Viertelstunden trägt eine spätere.",
+      "eingang": {"code": "version_nicht_gebildet", "werte": {}},
+      "erwartet": {"text": "Eine Stunde hat keine eigenen Versionen — eine ihrer Viertelstunden trägt eine spätere Version. Die Viertelstunden zeigen sie.", "fehler": null}
+    },
+    {
+      "name": "die Route nennt keinen Grund",
+      "familie": "grund",
+      "fall": "konstruiert",
+      "why": "Ein Schritt mit Zahl hat grund = null: nichts wird gesprochen, nie ein leerer Satz.",
+      "eingang": {"code": null, "werte": {}},
+      "erwartet": {"text": null, "fehler": null}
+    },
+    {
+      "name": "ein Grund der Kennzahl ist kein Grund der Messstelle",
+      "familie": "grund",
+      "fall": "konstruiert",
+      "why": "nenner_fehlt spricht die Kennzahl-Karte mit ihrem Vertrag (kennzahl-vectors.json) — hier wird er nicht gesprochen.",
+      "eingang": {"code": "nenner_fehlt", "werte": {}},
+      "erwartet": {"text": null, "fehler": "grund_unbekannt"}
+    },
+    {
+      "name": "das Zustandswort ist kein Grund",
+      "familie": "grund",
+      "fall": "konstruiert",
+      "why": "„keine Werte“ ist ein Zustand; der Grund ist ein Code der Route.",
+      "eingang": {"code": "keine Werte", "werte": {}},
+      "erwartet": {"text": null, "fehler": "grund_unbekannt"}
+    },
+    {
+      "name": "ein fehlender Platzhalter wird nicht geraten",
+      "familie": "grund",
+      "fall": "konstruiert",
+      "why": "Ohne Beginn der Bindung spräche der Satz eine halbe Aussage.",
+      "eingang": {"code": "quelle_teilweise", "werte": {"quelle": "Netzzähler K-11 (GR-10)"}},
+      "erwartet": {"text": null, "fehler": "platzhalter_falsch"}
+    },
+    {
+      "name": "ein überzähliger Platzhalter wird nicht verschluckt",
+      "familie": "grund",
+      "fall": "konstruiert",
+      "why": "Wer zu berechnet einen Namen mitgibt, erwartet einen anderen Satz.",
+      "eingang": {"code": "berechnet", "werte": {"messstelle": "MS-15 Halle 2 nicht zugeordnet"}},
+      "erwartet": {"text": null, "fehler": "platzhalter_falsch"}
+    }
+  ]
+}

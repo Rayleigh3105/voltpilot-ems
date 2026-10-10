@@ -116,6 +116,9 @@ class AenderungSatzTest {
                 "{\"einbau\":\"Z-5a\",\"seriennummer\":\"1EMH…\"}",
                 "{\"vorgaenger\":\"Z-5a\",\"einbau\":\"Z-5b\",\"geraet\":\"GR-4\"}"))
                 .isEqualTo("Zähler gewechselt: Z-5a → Z-5b");
+        assertThat(satz("messstelle", "zaehler_gewechselt", null,
+                "{\"anlass\":\"controllerwechsel\",\"vorgaenger\":\"C-1\",\"einbau\":\"C-1′\"}"))
+                .isEqualTo("Controller gewechselt: C-1 → C-1′");
     }
 
     // ---- Die Orts-Einträge (ort_aenderung) ----------------------------------------------------
@@ -128,10 +131,26 @@ class AenderungSatzTest {
                 .isEqualTo("Gebäude angelegt: Halle 2");
         assertThat(satz("bereich", "verschoben", null, "{\"kennzeichen\":\"G-2\"}"))
                 .isEqualTo("Bereich verschoben: G-2");
+        // IP-12: mit den Namen der Elternknoten — alt → neu, das Kurzzeichen des Ziels.
+        assertThat(satz("gebaeude", "verschoben", "{\"eltern_name\":\"Werk Ahrenberg\",\"eltern_kurzzeichen\":\"ST-1\"}",
+                "{\"eltern_name\":\"Werk Ahrenberg Nord\",\"eltern_kurzzeichen\":\"ST-3\"}"))
+                .isEqualTo("Gebäude verschoben: Werk Ahrenberg → Werk Ahrenberg Nord (ST-3)");
+        assertThat(satz("bereich", "verschoben", null, "{\"eltern_name\":\"Halle 1\"}"))
+                .isEqualTo("Bereich verschoben: Halle 1");
         assertThat(satz("bereich", "korrigiert", null, "{\"kennzeichen\":\"G-2\"}"))
                 .isEqualTo("Zuordnung berichtigt: G-2");
+        // Die Zuordnung einer Anlage (IP-9/IP-11) erzählt jede Seite — Anlage, neuer, bisheriger Standort.
+        assertThat(satz("anlage", "verschoben", null, "{\"anlage_name\":\"Werk Ahrenberg – Halle 2\","
+                + "\"standort_name\":\"Werk Ahrenberg Nord\",\"standort_kurzzeichen\":\"ST-3\"}"))
+                .isEqualTo("Standort zugeordnet: Werk Ahrenberg Nord (ST-3)");
+        assertThat(satz("standort", "verschoben", null,
+                "{\"anlage_name\":\"Werk Ahrenberg – Halle 2\",\"richtung\":\"hinzu\"}"))
+                .isEqualTo("Anlage zugeordnet: Werk Ahrenberg – Halle 2");
+        assertThat(satz("standort", "verschoben", null, "{\"anlage_name\":\"Werk Ahrenberg – Halle 2\","
+                + "\"richtung\":\"hinaus\",\"nach_standort_name\":\"Werk Ahrenberg Nord\"}"))
+                .isEqualTo("Anlage zieht um: Werk Ahrenberg – Halle 2 → Werk Ahrenberg Nord");
         assertThat(satz("bereich", "flaeche_geaendert", "{\"flaeche_m2\":1200}", "{\"flaeche_m2\":1400}"))
-                .isEqualTo("Bezugsfläche geändert: 1200 m² → 1400 m²");
+                .isEqualTo("Bezugsfläche geändert: 1.200 m² → 1.400 m²");
         assertThat(satz("standort", "archiviert", null, null)).isEqualTo("Standort archiviert");
         assertThat(satz("standort", "wiederhergestellt", null, null)).isEqualTo("Standort wiederhergestellt");
         assertThat(satz("anlage", "geloescht", null, null)).isEqualTo("Anlage gelöscht");
@@ -160,6 +179,42 @@ class AenderungSatzTest {
                 .isEqualTo("Datenquelle aus dem Bestand übernommen");
     }
 
+    /** AP-10 IP-3: eine eingetragene Formel-Fassung nennt ihre Nummer. */
+    @Test
+    void eineNeueFormelFassungNenntIhreNummer() throws Exception {
+        assertThat(satz("messstelle", "formel_geaendert", null,
+                "{\"fassung\": 2, \"formel_typ\": \"gewichtete_summe\", \"gueltig_ab\": \"2026-10-18\"}"))
+                .isEqualTo("Formel geändert: Fassung 2");
+        assertThat(satz("messstelle", "formel_geaendert", null, null)).isEqualTo("Formel geändert");
+    }
+
+    /** AP-10 IP-7: die Prozess-Zuordnung nennt die Prozesse ab dem Tag. */
+    @Test
+    void eineProzessZuordnungNenntDieProzesse() throws Exception {
+        assertThat(satz("messstelle", "prozesse_zugeordnet", "{\"gueltig_ab\": \"2026-10-01\", \"prozesse\": []}",
+                "{\"gueltig_ab\": \"2026-10-01\", \"prozesse\": [\"P-1\", \"P-3\"]}"))
+                .isEqualTo("Prozesse zugeordnet: P-1, P-3");
+        assertThat(satz("messstelle", "prozesse_zugeordnet", null, "{\"gueltig_ab\": \"2027-01-01\", \"prozesse\": []}"))
+                .isEqualTo("Prozesse zugeordnet: keine");
+    }
+
+    /** AP-10 IP-8: die Verteilung nennt die Anteile ab dem Tag — ohne Zeile „nicht verteilt“, nie 0 %. */
+    @Test
+    void eineVerteilungNenntDieAnteile() throws Exception {
+        assertThat(satz("messstelle", "verteilung_geaendert", null, "{\"gueltig_ab\": \"2027-01-15\", "
+                + "\"zeilen\": [{\"kostenstelle\": \"4100\", \"anteil_prozent\": \"60\"}, "
+                + "{\"kostenstelle\": \"4200\", \"anteil_prozent\": \"40\"}], \"korrektur\": false}"))
+                .isEqualTo("Verteilung auf Kostenstellen geändert: 60\u00a0% 4100, 40\u00a0% 4200");
+        assertThat(satz("messstelle", "verteilung_geaendert", null,
+                "{\"gueltig_ab\": \"2027-01-15\", \"zeilen\": [{\"kostenstelle\": \"4100\", "
+                        + "\"anteil_prozent\": \"33.5\"}, {\"kostenstelle\": \"4200\", \"anteil_prozent\": \"66.5\"}], "
+                        + "\"korrektur\": true}"))
+                .isEqualTo("Verteilung auf Kostenstellen berichtigt: 33,5\u00a0% 4100, 66,5\u00a0% 4200");
+        assertThat(satz("messstelle", "verteilung_geaendert", null,
+                "{\"gueltig_ab\": \"2027-02-01\", \"zeilen\": [], \"korrektur\": false}"))
+                .isEqualTo("Verteilung auf Kostenstellen geändert: nicht verteilt");
+    }
+
     // ---- Vollständigkeit ----------------------------------------------------------------------
 
     /**
@@ -173,7 +228,8 @@ class AenderungSatzTest {
                 "ort_korrigiert", "stellung_zugeordnet", "stellung_korrigiert", "quelle_gebunden",
                 "quelle_beendet", "einstellung_geaendert", "zaehler_gewechselt");
         List<String> ort = List.of("angelegt", "bearbeitet", "verschoben", "korrigiert",
-                "flaeche_geaendert", "archiviert", "wiederhergestellt", "geloescht");
+                "flaeche_geaendert", "archiviert", "wiederhergestellt", "geloescht",
+                "zugriff_zugewiesen", "zugriff_entzogen");
         List<String> quelle = List.of("angelegt", "bearbeitet", "erreichbarkeit_geprueft",
                 "zustaendigkeit_begonnen", "zustaendigkeit_gewechselt", "aus_bestand_uebernommen");
         for (String art : messstelle) {
@@ -197,9 +253,13 @@ class AenderungSatzTest {
                         "archiviert", "nebengroesse_hinzugefuegt", "nebengroesse_archiviert",
                         "ort_zugeordnet", "ort_korrigiert", "stellung_zugeordnet", "stellung_korrigiert",
                         "quelle_gebunden", "quelle_beendet", "einstellung_geaendert", "zaehler_gewechselt");
-        assertThat(arten("V20260911100000__uems_unternehmen_standort.sql", "ort_aenderung_art_chk"))
+        // Beide Ankunftsreihenfolgen müssen dasselbe Vokabular erlauben (main vor UEMS in Produktion).
+        assertThat(arten("V20260916150000__uems_zugriff_entzug_protokoll.sql", "ort_aenderung_art_chk"))
                 .containsExactlyInAnyOrder("angelegt", "bearbeitet", "verschoben", "korrigiert",
-                        "flaeche_geaendert", "archiviert", "wiederhergestellt", "geloescht");
+                        "flaeche_geaendert", "archiviert", "wiederhergestellt", "geloescht",
+                        "zugriff_zugewiesen", "zugriff_entzogen", "rolle_gesetzt", "rolle_entzogen")
+                .containsExactlyInAnyOrderElementsOf(arten(
+                        "V20260916203000__rollen_zuordnung_protokoll.sql", "ort_aenderung_art_chk"));
         assertThat(arten("V20260911270000__uems_datenquelle_bestand.sql", "data_source_aenderung_art_chk"))
                 .containsExactlyInAnyOrder("angelegt", "bearbeitet", "erreichbarkeit_geprueft",
                         "zustaendigkeit_begonnen", "zustaendigkeit_gewechselt", "aus_bestand_uebernommen");

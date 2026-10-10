@@ -42,8 +42,14 @@ public class MeasurementSelectionRepository {
             String customDefinitionJson, String retentionClass, int rawRetentionDays,
             Integer longTermCadenceS, String longTermStrategy) {}
 
+    /**
+     * Die letzte Beobachtung eines Punkts an der Geräteseite. {@code jeKomponente}: der Punkt ist
+     * geteilt (AP-07 IP-18b), die letzte Beobachtung nannte eine Komponente - er wird gelesen, aber
+     * sein Wert gehört einer Komponente und steht in deren Reihe, nicht hier (Wert und Qualität
+     * bleiben leer).
+     */
     public record Observation(Instant lastReadAt, String rawValue, String decodedValue,
-            String quality, boolean gap, long droppedSamples) {}
+            String quality, boolean gap, long droppedSamples, boolean jeKomponente) {}
 
     private static final String ROW_COLUMNS =
             "tenant_id, site_id, device_id, entity_id, point_key, enabled, cadence_s, "
@@ -76,10 +82,24 @@ public class MeasurementSelectionRepository {
         return rows.isEmpty() ? null : rows.get(0);
     }
 
+    /**
+     * The RLS-visible device that takes part in operation (not ausgebaut, UEMS AP-07 IP-11) - the
+     * gate of the selection API and of the box's acknowledgements. History reads of an ausgebaut
+     * box keep using {@link #deviceScope}.
+     */
+    public DeviceScope aktiverDeviceScope(UUID deviceId) {
+        List<DeviceScope> rows = jdbc.query(
+                "SELECT tenant_id, site_id, id FROM device WHERE id = ? AND ausgebaut_am IS NULL",
+                (rs, n) -> new DeviceScope(rs.getObject("tenant_id", UUID.class),
+                        rs.getObject("site_id", UUID.class), rs.getObject("id", UUID.class)),
+                deviceId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
     /** Locks the RLS-visible device, serializing revision checks per device. */
     public DeviceScope lockDevice(UUID deviceId) {
         List<DeviceScope> rows = jdbc.query(
-                "SELECT tenant_id, site_id, id FROM device WHERE id = ? FOR UPDATE",
+                "SELECT tenant_id, site_id, id FROM device WHERE id = ? AND ausgebaut_am IS NULL FOR UPDATE",
                 (rs, n) -> new DeviceScope(rs.getObject("tenant_id", UUID.class),
                         rs.getObject("site_id", UUID.class), rs.getObject("id", UUID.class)),
                 deviceId);
@@ -182,6 +202,29 @@ public class MeasurementSelectionRepository {
         return rows.isEmpty() ? null : rows.get(0);
     }
 
+    /** Die Karte einer WAGO-Komponente im Registerbild ihres Controllers ({@code index} = Karte n). */
+    public record WagoKarte(int index, String typ) {}
+
+    /**
+     * Karte n = n-te HEUTE eingebaute Karte des Controllers nach Steckplatz — dieselbe Zählung wie
+     * {@code WagoRegisterbilder}. {@code null}, wenn die Komponente heute keine Karte mit Steckplatz hat.
+     */
+    public WagoKarte wagoKarte(UUID entityId) {
+        List<WagoKarte> rows = jdbc.query("""
+                SELECT (SELECT count(*) FROM geraet_teil a
+                         WHERE a.geraet_id = t.geraet_id AND a.tenant_id = t.tenant_id
+                           AND a.teilart = 'energiekarte' AND a.steckplatz <= t.steckplatz
+                           AND a.eingebaut_am <= now() AND (a.ausgebaut_am IS NULL OR a.ausgebaut_am > now())),
+                       t.typ
+                  FROM geraet_komponente k
+                  JOIN geraet_teil t ON t.id = k.teil_id AND t.tenant_id = k.tenant_id
+                 WHERE k.entity_id = ? AND t.steckplatz IS NOT NULL
+                   AND k.gueltig_ab <= now() AND (k.gueltig_bis IS NULL OR k.gueltig_bis > now())
+                   AND t.eingebaut_am <= now() AND (t.ausgebaut_am IS NULL OR t.ausgebaut_am > now())
+                """, (rs, n) -> new WagoKarte(rs.getInt(1), rs.getString(2)), entityId);
+        return rows.size() == 1 ? rows.getFirst() : null;
+    }
+
     public Set<String> recordedPointKeys(UUID deviceId) {
         DeviceScope scope = deviceScope(deviceId);
         if (scope == null) return Set.of();
@@ -202,18 +245,26 @@ public class MeasurementSelectionRepository {
         DeviceScope scope = deviceScope(deviceId);
         if (scope == null) return Map.of();
         Map<String, Observation> out = new LinkedHashMap<>();
+        // Geteilter Punkt (AP-07 IP-18b): component_read_at = last_read_at heißt, die letzte
+        // Beobachtung nannte eine Komponente. „Zuletzt gelesen" bleibt aktuell, der Wert aber
+        // gehört einer der Komponenten - als Wert der Box wäre er an jeder anderen falsch. Er steht
+        // in der Reihe seiner Komponente, wie der Box-Verlauf (Entscheid firstmate 22.09.2026).
         jdbc.query("SELECT point_key, last_read_at, "
                         + "COALESCE(raw_text, raw_numeric::text) raw_value, "
                         + "COALESCE(decoded_text, decoded_numeric::text) decoded_value, "
-                        + "quality, gap, dropped_samples FROM device_measurement_point_state "
+                        + "quality, gap, dropped_samples, "
+                        + "COALESCE(component_read_at >= last_read_at, false) je_komponente "
+                        + "FROM device_measurement_point_state "
                         + "WHERE tenant_id=? AND site_id=? AND device_id=? ORDER BY point_key",
                 (org.springframework.jdbc.core.RowCallbackHandler) rs -> {
                     String pointKey = rs.getString("point_key");
+                    boolean jeKomponente = rs.getBoolean("je_komponente");
                     Observation observation = new Observation(
                             rs.getTimestamp("last_read_at").toInstant(),
-                            rs.getString("raw_value"), rs.getString("decoded_value"),
-                            rs.getString("quality"), rs.getBoolean("gap"),
-                            rs.getLong("dropped_samples"));
+                            jeKomponente ? null : rs.getString("raw_value"),
+                            jeKomponente ? null : rs.getString("decoded_value"),
+                            jeKomponente ? null : rs.getString("quality"), rs.getBoolean("gap"),
+                            rs.getLong("dropped_samples"), jeKomponente);
                     out.merge(pointKey, observation, MeasurementSelectionRepository::latest);
                     out.merge(templateKey(pointKey), observation,
                             MeasurementSelectionRepository::latest);
@@ -248,6 +299,17 @@ public class MeasurementSelectionRepository {
                         + "FROM device_measurement_selection_event WHERE device_id = ?",
                 Long.class, deviceId);
         return value == null ? 0L : value;
+    }
+
+    /**
+     * Der Katalogstand, den das {@code selection_requested} dieser Revision trägt ({@code null} ohne eines).
+     * Der Schlüssel {@code (device_id, desired_revision, event_kind)} erlaubt je Revision genau eines.
+     */
+    public String katalogstandDerRevision(UUID deviceId, long revision) {
+        List<String> rows = jdbc.queryForList("SELECT catalog_version FROM device_measurement_selection_event "
+                        + "WHERE device_id = ? AND desired_revision = ? AND event_kind = 'selection_requested'",
+                String.class, deviceId, revision);
+        return rows.isEmpty() ? null : rows.get(0);
     }
 
     /** Highest full-plan acknowledgement already applied for this device. */
@@ -412,6 +474,85 @@ public class MeasurementSelectionRepository {
                 "Vom Edge " + edgeVersion + " angewendet.", jsonObject(rejected),
                 Timestamp.from(appliedAt), deviceId, revision);
         return updated;
+    }
+
+    /** Die Ablehnung EINER Komponente eines geteilten Punkts (Status {@code rejected[].entity_id}). */
+    public record KomponentenAblehnung(String pointKey, UUID entityId) {}
+
+    /**
+     * Dieselbe monotone Quittung wie {@link #applyAcknowledgement}, aber mit Ablehnungen
+     * EINZELNER Komponenten eines geteilten Punkts (AP-07 IP-18b, {@code x-rejection-entity-rule}
+     * in {@code mqtt-measurement-config-status}).
+     *
+     * <p>Der Plan einer Box mit {@code measurement_config_per_component} nennt einen geteilten
+     * Punkt einmal je Komponente; die Box liest ihn für die übrigen und nennt ihn darum zugleich
+     * in {@code accepted}. Eine Zeile {@code (point_key, entity_id)} mit Ablehnung ist
+     * {@code rejected}, jede andere Komponente desselben Punkts folgt {@code accepted}. Eine
+     * Quittung OHNE {@code entity_id} nimmt nie diesen Weg: der Listener ruft dafür unverändert
+     * {@link #applyAcknowledgement} - Zeichen für Zeichen die Anweisung von vorher.
+     */
+    @Transactional
+    public int applyAcknowledgementJeKomponente(UUID deviceId, long revision, Instant appliedAt,
+            Collection<String> accepted, Map<String, String> rejected,
+            Map<KomponentenAblehnung, String> jeKomponente, String edgeVersion) {
+        Map<String, String> paare = new java.util.LinkedHashMap<>();
+        jeKomponente.forEach((k, reason) -> paare.put(paarSchluessel(k.pointKey(), k.entityId()), reason));
+        String paar = "(entity_id IS NOT NULL AND jsonb_exists(?::jsonb, point_key || '/' || entity_id::text))";
+        String angewendet = "Vom Edge " + edgeVersion + " angewendet.";
+        int updated = jdbc.update("UPDATE device_measurement_selection SET "
+                        + "apply_status = CASE "
+                        + " WHEN NOT enabled THEN 'applied' "
+                        + " WHEN " + paar + " THEN 'rejected' "
+                        + " WHEN point_key = ANY (string_to_array(?, E'\\x1f')) THEN 'rejected' "
+                        + " WHEN point_key = ANY (string_to_array(?, E'\\x1f')) THEN 'applied' "
+                        + " ELSE apply_status END, "
+                        + "apply_reason = CASE "
+                        + " WHEN NOT enabled THEN ? "
+                        + " WHEN " + paar + " THEN ?::jsonb ->> (point_key || '/' || entity_id::text) "
+                        + " WHEN point_key = ANY (string_to_array(?, E'\\x1f')) THEN ?::jsonb ->> point_key "
+                        + " WHEN point_key = ANY (string_to_array(?, E'\\x1f')) THEN ? "
+                        + " ELSE apply_reason END, "
+                        + "applied_at = CASE WHEN NOT enabled OR (point_key = ANY (string_to_array(?, E'\\x1f')) "
+                        + " AND NOT " + paar + ") THEN CAST(? AS timestamptz) ELSE NULL END "
+                        + "WHERE device_id = ? AND desired_revision <= ?",
+                jsonObject(paare), joined(rejected.keySet()), joined(accepted),
+                angewendet, jsonObject(paare), jsonObject(paare), joined(rejected.keySet()),
+                jsonObject(rejected), joined(accepted), angewendet,
+                joined(accepted), jsonObject(paare), Timestamp.from(appliedAt), deviceId, revision);
+
+        String eventPaar = "(e.entity_id IS NOT NULL AND jsonb_exists(?::jsonb, "
+                + "e.point_key || '/' || e.entity_id::text))";
+        String abgelehnt = "(" + eventPaar + " OR jsonb_exists(?::jsonb, e.point_key))";
+        jdbc.update("INSERT INTO device_measurement_selection_event "
+                        + "(tenant_id,site_id,device_id,entity_id,point_key,desired_revision,event_kind,"
+                        + "requested_at,requested_enabled,requested_cadence_s,enabled_at,disabled_at,"
+                        + "catalog_version,actor,actor_name,apply_status,apply_reason,applied_at,"
+                        + "custom_definition,retention_class,raw_retention_days,long_term_cadence_s,"
+                        + "long_term_strategy) "
+                        + "SELECT e.tenant_id,e.site_id,e.device_id,e.entity_id,e.point_key,"
+                        + "e.desired_revision,"
+                        + "'edge_ack',CAST(? AS timestamptz),e.requested_enabled,"
+                        + "e.requested_cadence_s,e.enabled_at,"
+                        + "e.disabled_at,e.catalog_version,'edge',?,"
+                        + "CASE WHEN " + abgelehnt + " THEN 'rejected' ELSE 'applied' END,"
+                        + "COALESCE(CASE WHEN e.entity_id IS NOT NULL THEN "
+                        + "?::jsonb ->> (e.point_key || '/' || e.entity_id::text) END, "
+                        + "?::jsonb ->> e.point_key, ?),"
+                        + "CASE WHEN " + abgelehnt + " THEN NULL "
+                        + "ELSE CAST(? AS timestamptz) END,"
+                        + "e.custom_definition,"
+                        + "e.retention_class,e.raw_retention_days,e.long_term_cadence_s,"
+                        + "e.long_term_strategy FROM device_measurement_selection_event e "
+                        + "WHERE e.device_id=? AND e.desired_revision=? "
+                        + "AND e.event_kind='selection_requested' ON CONFLICT DO NOTHING",
+                Timestamp.from(appliedAt), edgeVersion, jsonObject(paare), jsonObject(rejected),
+                jsonObject(paare), jsonObject(rejected), angewendet,
+                jsonObject(paare), jsonObject(rejected), Timestamp.from(appliedAt), deviceId, revision);
+        return updated;
+    }
+
+    private static String paarSchluessel(String pointKey, UUID entityId) {
+        return pointKey + "/" + entityId;
     }
 
     private static String joined(Collection<String> values) {

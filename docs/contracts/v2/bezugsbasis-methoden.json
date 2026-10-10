@@ -1,0 +1,71 @@
+{
+  "_comment": [
+    "Der Methoden-Katalog der Bezugsbasis (UEMS AP-17 IP-5, §4.5, E4 = A vom 23.09.2026): die vier Methoden der Bereinigung — Verhältnis, Modell mit einer Einflussgröße, Modell mit zwei Einflussgrößen, Wetterbereinigung über Gradtage. Eine VoltPilot-Vorgabe: kein Kundenobjekt, keine Fassung, kein Mandant, kein Recht.",
+    "Jede Methode: Formel, Anzahl und Rolle der Variablen, Datenbedarf mit Mindestumfang als Startwert, Grenze und das Kennzeichen an jeder Zahl. Die Texte sind die Zeilen von `methoden.json` des Konzepts (Stand 23.09.2026) wörtlich; `variablen_anzahl` ist die Zahl aus dem Satz `variablen` (höchstens zwei, V5/E4). Die Spalte „Ahrenberg“ des Konzepts steht nicht hier, sondern in `uems-referenzunternehmen.json` 1.8.",
+    "`parameter` sind die Startwerte ohne Norm-Herleitung (G6): Mindestlänge der Referenzperiode 12 Monate, Toleranz 2 %, Spannweite ± 10 %, Abhängigkeit |r| ≥ 0,9, Wiedervorlage 12 Monate. Toleranz und Wiedervorlage ändert der Kunde je Bezugsbasis als Fassung mit Begründung; Mindestlänge, Spannweite und Abhängigkeits-Schwelle stehen im Vertrag.",
+    "Die Methode einer Fassung ist eingefroren (M4); eine andere Methode ist eine neue Fassung mit Anpassungsgrund `methode_geaendert`. Die Kennungen und Wörter richtet der Vertrag `bezugsbasis.md` (IP-2) aus; gerechnet wird hier nichts (IP-10, IP-13).",
+    "Drei byte-gleiche Kopien — DIESE Datei `docs/contracts/v2/bezugsbasis-methoden.json` (Vertrag), `services/api/src/main/resources/bezugsbasis/bezugsbasis-methoden.json` (GET /api/v1/bezugsbasis-methoden, Byte für Byte) und `frontend/portal/src/bezugsbasis/bezugsbasis-methoden.json` — alle drei zusammen ändern (BezugsbasisMethodenControllerTest, bezugsbasisMethoden.sync.test.ts)."
+  ],
+  "schema_version": "1.0",
+  "$schema_datei": "./bezugsbasis-methoden.schema.json",
+  "herkunft": "UEMS AP-17 §4.5 (M1–M6) und §4.8 (G1–G6), methoden.json des Konzepts; E4 = A vom 23.09.2026",
+  "methoden": [
+    {
+      "kennung": "verhaeltnis",
+      "kundenwort": "Verhältnis",
+      "formel": "erwartet = Basiswert × Bezugsgröße der Periode; Basiswert = Σ Zähler ÷ Σ Nenner der Referenzperiode (Summe durch Summe, nie ein Mittel)",
+      "variablen_anzahl": 1,
+      "variablen": "genau eine: der Nenner der Kennzahl (Periodenwert oder Kanal); die Bezugsfläche als Stammdatum ist erlaubt (Verhältnis je m²), aber nie eine Regressions-Variable",
+      "datenbedarf": "ein abgeschlossener Monat mit Zähler und Nenner; belastbar ab der Mindestlänge der Referenzperiode (Startwert 12 volle Monate), darunter `vorlaeufig`",
+      "mindest_perioden_startwert": 1,
+      "belastbar_ab_monaten_startwert": 12,
+      "grenze": "kennt keine Grundlast: ein Anteil, der nicht mit der Bezugsgröße mitwächst (Heizung, Beleuchtung, Stand-by), macht schwache Monate rechnerisch „schlechter“ und starke „besser“; für Wetter (Gradtage) deshalb nur mit Kennzeichen „ohne Grundlast“ (M3)",
+      "kennzeichen": "„bereinigt um {Bezugsgröße} (Bezugsbasis BB-…, Fassung n)“; unter der Mindestlänge zusätzlich „Bezugsbasis vorläufig (n von 12 Monaten)“"
+    },
+    {
+      "kennung": "regression_eine_variable",
+      "kundenwort": "Modell mit einer Einflussgröße",
+      "formel": "erwartet = a + b × Variable der Periode; a und b aus der Referenzperiode nach kleinsten Quadraten; a ist der Anteil, der nicht mit der Variablen mitgeht (Grundlast)",
+      "variablen_anzahl": 1,
+      "variablen": "genau eine Variable mit Periodenwerten oder Kanal (Produktionsmenge, Betriebszeit, Gradtagzahl); der Nenner der Kennzahl ist die Vorgabe",
+      "datenbedarf": "mindestens 12 abgeschlossene Monate mit Zähler UND Variable (Startwert); Spannweite der Variablen wird gespeichert",
+      "mindest_perioden_startwert": 12,
+      "belastbar_ab_monaten_startwert": 12,
+      "grenze": "gilt nur innerhalb der Spannweite der Referenzperiode (Startwert ± 10 %): außerhalb `nicht_anwendbar` mit Grund `variable_ausserhalb`; die Modellgüte (Bestimmtheitsmaß, Streuung der Residuen) wird immer gezeigt, ein Modell mit Streuung über der Toleranz urteilt nur außerhalb seiner Streuung (U3)",
+      "kennzeichen": "„bereinigt um {Variable} (Modell mit einer Einflussgröße, Bezugsbasis BB-…, Fassung n; Streuung ± x %)“"
+    },
+    {
+      "kennung": "regression_zwei_variablen",
+      "kundenwort": "Modell mit zwei Einflussgrößen",
+      "formel": "erwartet = a + b × Variable 1 + c × Variable 2; Koeffizienten nach kleinsten Quadraten aus der Referenzperiode",
+      "variablen_anzahl": 2,
+      "variablen": "zwei Variablen mit Periodenwerten oder Kanal, die voneinander unabhängig sind (|r| unter 0,9, Startwert); der Nenner der Kennzahl ist Variable 1",
+      "datenbedarf": "mindestens 12 abgeschlossene Monate mit Zähler und beiden Variablen (Startwert); mehr Variablen sind nicht vorgesehen (E4)",
+      "mindest_perioden_startwert": 12,
+      "belastbar_ab_monaten_startwert": 12,
+      "grenze": "abhängige Variablen (Ahrenberg: Betriebsstunden BZ-3 gehen fast eins zu eins mit der Produktionsmenge BZ-1, r = 0,997) liefern kein belastbares Modell — die zweite Variable wird mit Grund `variablen_abhaengig` abgelehnt; sonst wie eine Variable (Spannweite je Variable)",
+      "kennzeichen": "„bereinigt um {Variable 1} und {Variable 2} (Modell mit zwei Einflussgrößen, Bezugsbasis BB-…, Fassung n; Streuung ± x %)“"
+    },
+    {
+      "kennung": "gradtage",
+      "kundenwort": "Wetterbereinigung über Gradtage",
+      "formel": "wie „Modell mit einer Einflussgröße“ mit der Gradtagzahl (Kd, G20/15 nach VDI 3807) als Variable: erwartet = a + b × Kd; a = witterungsunabhängiger Anteil",
+      "variablen_anzahl": 1,
+      "variablen": "genau eine: Bezugsgröße der Art `gradtagzahl` am Standort der Kennzahl-Geltung — aus einem gemessenen Temperaturkanal (heute gebaut) oder aus einer Temperatur-Tagesreihe, die VoltPilot aus dem Wetter-Archiv bezieht (E9 = C; nur an Standorten mit Koordinaten)",
+      "datenbedarf": "mindestens 12 abgeschlossene Monate MIT einer Heizperiode (Startwert); ein Sommer allein hat keine Spannweite",
+      "mindest_perioden_startwert": 12,
+      "belastbar_ab_monaten_startwert": 12,
+      "grenze": "nur Heizen: Kühlgradtage sind nicht gebaut (Kühlung bleibt Variable „Außentemperatur“ ohne Zahl); Vorhersage-Wetter ist nie eine Quelle (AP-09 E13); das Verhältnis m³/Kd ohne Konstante täuscht bei milden Monaten (Ahrenberg Januar 2028: Verhältnis „besser“ um −5,3 %, Modell „im Rahmen“ −0,7 %)",
+      "kennzeichen": "„bereinigt um Gradtage (G20/15, Bezugsbasis BB-…, Fassung n)“; bei bezogener Reihe zusätzlich „Temperatur von VoltPilot bezogen (Quelle …, abgerufen am …)“"
+    }
+  ],
+  "parameter": {
+    "mindest_monate_referenzperiode": 12,
+    "toleranz_prozent_startwert": 2.0,
+    "spannweite_prozent_startwert": 10,
+    "abhaengigkeit_r_startwert": 0.9,
+    "wiedervorlage_monate_startwert": 12,
+    "grundperiode": "Monatswerte der Kennzahl; Vergleich je Monat, je Jahr und je Zeitraum als Summe durch Summe",
+    "hinweis": "alle Werte sind Startwerte ohne Norm-Herleitung (AP-16 §8.5-Muster); der Kunde ändert Toleranz und Wiedervorlage je Bezugsbasis als Fassung mit Begründung, die Mindestlänge und die Spannweite stehen im Vertrag"
+  }
+}

@@ -2,6 +2,7 @@ package com.voltpilot.api.ota;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.repo.EdgeReleaseRepository;
 import com.voltpilot.api.repo.RolloutRepository;
 import com.voltpilot.api.web.dto.AdminDevicesDto;
@@ -22,6 +23,7 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -75,6 +77,14 @@ public class RolloutService {
     private final ObjectMapper json;
     private final Duration republishAfter;
 
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
+
     public RolloutService(RolloutRepository rollouts, EdgeReleaseRepository releases,
             ObjectProvider<OtaTargetPublisher> publisher, ObjectMapper json,
             @Value("${voltpilot.ota.republish-after:PT30M}") Duration republishAfter) {
@@ -101,6 +111,9 @@ public class RolloutService {
         RolloutRepository.FleetDeviceRow device = rollouts.fleetDevice(deviceId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Gerät nicht gefunden."));
+        if (beendete.beendet(device.tenantId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "kundenbereich_beendet");
+        }
         EdgeReleaseDto release = signedRelease(releaseSeq);
         String grund = BoxArt.sperrgrund(boxArt(device), releaseBoxArt(release));
         if (grund != null) {
@@ -171,7 +184,13 @@ public class RolloutService {
      * Geräten und dem Grund) - auch nicht den passenden: ein halb verteilter
      * Auftrag wäre eine Überraschung, ein abgelehnter eine klare Aussage.
      */
-    public UUID createRollout(long releaseSeq, List<UUID> deviceIds, String actor) {
+    /** Ein angelegter Flotten-Auftrag und die Boxen, die er ausgelassen hat. */
+    public record Rollout(UUID id, List<Ausgelassen> ausgelassen) {}
+
+    /** Eine ausgelassene Box: ihr Kundenbereich ist beendet (AP-20, E10 = A) — sie bekommt keine Zuweisung. */
+    public record Ausgelassen(UUID deviceId, String label, String kundenbereich) {}
+
+    public Rollout createRollout(long releaseSeq, List<UUID> deviceIds, String actor) {
         EdgeReleaseDto release = signedRelease(releaseSeq);
         if (deviceIds == null || deviceIds.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -186,6 +205,23 @@ public class RolloutService {
             }
             unique.add(d);
         }
+        // Boxen beendeter Kundenbereiche bekommen nichts (AP-20, E10 = A „alles gesperrt"): keine Zeile, keine
+        // retained Anweisung. Der Auftrag nennt sie; enthält er nur solche, entsteht keiner.
+        List<Ausgelassen> ausgelassen = new ArrayList<>();
+        unique.removeIf(d -> {
+            RolloutRepository.FleetDeviceRow row = fleet.get(d);
+            if (!beendete.beendet(row.tenantId())) {
+                return false;
+            }
+            ausgelassen.add(new Ausgelassen(d, label(row), row.tenantName()));
+            return true;
+        });
+        if (unique.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "kundenbereich_beendet: "
+                    + "Alle gewählten Geräte gehören zu beendeten Kundenbereichen - es entsteht keine Aktualisierung.");
+        }
+        // Box-Art (main, Edge Light): passt sie bei einer der verbliebenen Boxen nicht, wird NICHTS zugewiesen.
+        // Ausgelassene Boxen beendeter Kundenbereiche bekommen ohnehin nichts und zählen hier nicht.
         String releaseArt = releaseBoxArt(release);
         Map<String, List<String>> gesperrt = new LinkedHashMap<>();
         for (UUID d : unique) {
@@ -207,7 +243,8 @@ public class RolloutService {
         rollouts.insertRollout(id, releaseSeq, release.version(), actor);
         rollouts.appendEvent(actor, "rollout_created", id, null,
                 release.version() + " → " + unique.size() + " Gerät"
-                        + (unique.size() == 1 ? "" : "e"));
+                        + (unique.size() == 1 ? "" : "e")
+                        + (ausgelassen.isEmpty() ? "" : ", " + ausgelassen.size() + " ausgelassen (Kundenbereich beendet)"));
         for (UUID deviceId : unique) {
             RolloutRepository.FleetDeviceRow d = fleet.get(deviceId);
             // Der NAMENS-Schnappschuss entsteht hier, nicht beim Lesen: die
@@ -221,7 +258,7 @@ public class RolloutService {
             publishTarget(d, release.version(), release.releaseSeq(), id,
                     release.manifest(), release.signature(), Instant.now());
         }
-        return id;
+        return new Rollout(id, List.copyOf(ausgelassen));
     }
 
     // ── Der Wächter: Zustände fortschreiben, Drift nachliefern ──────────
@@ -274,8 +311,8 @@ public class RolloutService {
         // fehlt (Broker-Ausfall beim Zuweisen, gelöschter Broker-Zustand).
         for (RolloutRepository.TargetRow t : rollouts.allTargets()) {
             RolloutRepository.FleetDeviceRow d = fleet.get(t.deviceId());
-            if (d == null) {
-                continue;
+            if (d == null || beendete.beendet(t.tenantId())) {
+                continue; // unbekannt, oder Kundenbereich beendet: nichts nachveröffentlichen
             }
             boolean deviceKnowsIt = t.releaseVersion().equals(d.reportedTarget())
                     || RolloutStates.releaseIsRunning(t.releaseVersion(), reportedRunning(d));

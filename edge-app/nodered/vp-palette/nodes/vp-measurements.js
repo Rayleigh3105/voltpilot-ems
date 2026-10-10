@@ -6,6 +6,7 @@ const https = require('https');
 const losslessJSON = require('../lib/lossless-json');
 const sourcesConfig = require('./vp-sources-config');
 const binding = require('../../measurements/measurement-binding');
+const sourceStatus = require('../../measurements/data-source-status');
 
 const CONFIG = 'edge/measurements/config';
 const INVERTER = 'edge/inverter/config';
@@ -29,7 +30,7 @@ function request(host, port, frame, expectedLength, timeoutMs) {
       if (settled) return; settled = true; socket.destroy();
       error ? reject(error) : resolve(value);
     };
-    socket.setTimeout(timeoutMs || 3000, () => finish(new Error('Zeitüberschreitung')));
+    socket.setTimeout(timeoutMs || 3000, () => finish(Object.assign(new Error('Zeitüberschreitung'), { code:'no_answer' })));
     socket.on('connect', () => socket.write(frame));
     socket.on('data', (chunk) => {
       data = Buffer.concat([data, chunk]);
@@ -48,11 +49,11 @@ function getJSON(url) {
       let body = ''; res.setEncoding('utf8');
       res.on('data', (chunk) => { if (body.length < 1024 * 1024) body += chunk; });
       res.on('end', () => {
-        if (res.statusCode < 200 || res.statusCode >= 300) return reject(new Error('HTTP ' + res.statusCode));
-        try { resolve(losslessJSON.parse(body)); } catch (error) { reject(error); }
+        if (res.statusCode < 200 || res.statusCode >= 300) return reject(Object.assign(new Error('HTTP ' + res.statusCode),{code:'invalid_response'}));
+        try { resolve(losslessJSON.parse(body)); } catch (error) { reject(Object.assign(error,{code:'invalid_response'})); }
       });
     });
-    req.on('timeout', () => req.destroy(new Error('Zeitüberschreitung')));
+    req.on('timeout', () => req.destroy(Object.assign(new Error('Zeitüberschreitung'),{code:'no_answer'})));
     req.on('error', reject);
   });
 }
@@ -114,6 +115,19 @@ async function discoverSunSpec(read) {
   return { models:{} };
 }
 
+/**
+ * The Modbus function code of one planned read. A WAGO register image names its own
+ * (`registerbilder[].funktionscode`, 3 or 4 - a parameter of the plant, AP-05 Befund 9); every
+ * other source keeps the rule it always had. Anything else is refused, never read as FC 3.
+ */
+function modbusFunktionscode(sourceKind, funktionscode) {
+  if (sourceKind === 'wago_registerbild') {
+    if (funktionscode === 3 || funktionscode === 4) return funktionscode;
+    throw new Error('Registerbild ohne Funktionscode');
+  }
+  return sourceKind === 'modbus_input' ? 4 : 3;
+}
+
 module.exports = function (RED) {
   function VpMeasurements(config) {
     RED.nodes.createNode(this, config);
@@ -141,6 +155,22 @@ module.exports = function (RED) {
     const deviceFor = (target) =>
       binding.resolveDevice(target, { inverter, sources:bindingContext.sources });
     const io = {
+      sourceStatus: (evidence) => {
+        const pin = evidence.target && evidence.target.sourceId || binding.PRIMARY_PIN;
+        const selection = desired && evidence.point_key && desired.selections.find(s => s.point_key === evidence.point_key);
+        const entityID = evidence.entity_id || (selection && selection.entity_id);
+        const matching = Object.values(bindingContext.entities).filter(e => entityID ? e.entity_id === entityID
+          : e.edge_source_id === pin || (pin === binding.PRIMARY_PIN && !e.edge_source_id && binding.COMPOSED_TYPES.includes(e.entity_type)));
+        // One physical request belongs to one source even if several components share it.
+        const ids = evidence.target && evidence.target.dataSourceId
+          ? new Set([evidence.target.dataSourceId])
+          : new Set(matching.map(e => e.data_source_id).filter(Boolean));
+        for (const id of ids) {
+          const value = sourceStatus.event({ id, requests:evidence.requests, samples:evidence.samples,
+            failed:evidence.failed, error_class:evidence.error_class });
+          if (value) core.client.publish(sourceStatus.TOPIC, JSON.stringify(value), { qos:1, retain:false });
+        }
+      },
       // The setpoint lane announces control before the existing write flow
       // touches the device. Measurement requests yield a bounded exclusive
       // window, so control communication cannot queue behind catalog polling.
@@ -151,7 +181,7 @@ module.exports = function (RED) {
         return busArbiter.runPoll(busArbiter.targetKey(conn,
           device&&device.communication==='solarman_v5'?8899:502),run);
       },
-      readModbus: async ({ start, count, source_kind, target }) => {
+      readModbus: async ({ start, count, source_kind, target, funktionscode }) => {
         const device = deviceFor(target);
         const conn = device.connection || {};
         if (!conn.ip) throw new Error('keine Geräteverbindung');
@@ -163,7 +193,7 @@ module.exports = function (RED) {
           return deye.readRegistersFromResponse(response, { expectLoggerSerial:conn.serial,
             expectSlaveId:Number(conn.mb_slave_id) || 1 });
         }
-        const fc = source_kind === 'modbus_input' ? 4 : 3;
+        const fc = modbusFunktionscode(source_kind, funktionscode);
         const requestId = txid++ & 0xffff;
         const frame = modbus.buildReadRequest({ txid:requestId, unitId:Number(conn.unit_id) || 1,
           addr:start, count, fc });
@@ -333,6 +363,7 @@ module.exports = function (RED) {
 };
 
 module.exports.request = request;
+module.exports.modbusFunktionscode = modbusFunktionscode;
 module.exports.getJSON = getJSON;
 module.exports.discoverSunSpec = discoverSunSpec;
 module.exports.shapeShellyStatus = shapeShellyStatus;

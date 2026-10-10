@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useEffect, useState, type ChangeEvent } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -399,14 +400,14 @@ export function RegisterWriteDrawer({
               />
               <p className="vp-text-sm">{EEPROM_HINWEIS}</p>
               <p className="vp-text-sm">{VERANTWORTUNG}</p>
-              <Button
+              <Recht aktion="register.schreiben"><Button
                 variant="primary"
                 onClick={() => setFrage(true)}
                 disabled={busy || !kannSchreiben}
                 data-testid="regwrite-schreiben"
               >
                 {bestaetigenLabel(adresse, wert || '0', skaliert(), ist?.scaleUnit ?? null)}
-              </Button>
+              </Button></Recht>
             </>
           )}
 

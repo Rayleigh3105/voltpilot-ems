@@ -148,6 +148,9 @@ class ZaehlerwechselApiTest {
     @Autowired
     MessstelleRegisterService register;
 
+    @Autowired
+    WechselzeitpunktService berichtigung;
+
     private record Anrufer(String benutzer, UUID kundenbereich) {}
 
     private record Token(String wert, long geholt) {}
@@ -182,6 +185,8 @@ class ZaehlerwechselApiTest {
     void uhrZurueck() {
         quellen.uhrStellen(Clock.systemUTC());
         wechsel.uhrStellen(Clock.systemUTC());
+        berichtigung.uhrStellen(Clock.systemUTC());
+        berichtigung.letzterSchritt(() -> { });
         wechsel.letzterSchritt(() -> { });
         register.uhrStellen(Clock.systemUTC());
     }
@@ -468,6 +473,63 @@ class ZaehlerwechselApiTest {
                 .singleElement().satisfies(e -> assertThat(e.get("rueckwirkend")).isEqualTo(false));
     }
 
+    @Test
+    void a3AngekuendigtenWechselzeitpunktKorrigieren() {
+        Werk w = ahrenberg("A3"); String ms = messstelleMs06(w); UUID alt = einbau(w, "Z-5a");
+        bindeMs06(w, ms); wandlerFassung(w, alt);
+        // Die DB-Sperre nutzt die echte Uhr: dieser Fall bleibt auch nach dem Referenzjahr zukünftig.
+        int jahr = java.time.Year.now().getValue() + 1;
+        String vorher = jahr + "-11-18T10:00:00+01:00", nachher = jahr + "-11-18T10:40:00+01:00";
+        uhr(jahr + "-11-10T09:00:00+01:00");
+        JsonNode v = erfolgreich(rufe(HttpMethod.POST, "/api/v1/geraete/" + alt + "/austausch", w.admin(),
+                wechselAnfrage(vorher, element(element(referenz.get("geraete"), "GR-4").get("einbauten"), "Z-5b"))));
+        UUID neu = UUID.fromString(v.at("/geraet/neu/id").asText());
+        String pfad = "/api/v1/geraete/" + alt + "/austausch/zeitpunkt";
+        long journal = anzahl("SELECT count(*) FROM component_change_event WHERE tenant_id=?", w.tenant());
+        var body = Map.of("bisher", vorher, "zeitpunkt", nachher, "grund", "Montage beginnt später");
+        JsonNode antwort = ok(rufe(HttpMethod.POST, pfad, w.admin(), body));
+        assertThat(zeitpunkt(antwort.get("zeitpunkt"))).isEqualTo(zeitpunkt(nachher));
+        assertThat(bindungZu(ms, vorher)).isEqualTo("Z-5a");
+        assertThat(bindungZu(ms, nachher)).isEqualTo("Z-5b");
+        assertThat(root.queryForObject("SELECT ausgebaut_am FROM geraet WHERE id=?", Timestamp.class, alt))
+                .isEqualTo(Timestamp.from(zeitpunkt(nachher)));
+        for (String t : List.of("geraet_komponente", "messstelle_quelle", "quelle_einstellung"))
+            assertThat(anzahl("SELECT count(*) FROM " + t + " WHERE geraet_id=? AND gueltig_ab=?", neu, Timestamp.from(zeitpunkt(nachher))))
+                    .as(t).isPositive();
+        assertThat(protokoll(ms).stream().filter(e -> "zaehler_gewechselt".equals(e.get("art")))).hasSize(2);
+        assertThat(anzahl("SELECT count(*) FROM component_change_event WHERE tenant_id=?", w.tenant())).isEqualTo(journal + 1);
+        assertThat(anzahl("SELECT count(*) FROM component_change_event WHERE tenant_id=? AND event_type='device_replaced' AND effective_at=?",
+                w.tenant(), Timestamp.from(zeitpunkt(vorher)))).isEqualTo(1);
+        // Die Gegenrichtung muss ebenfalls ohne Exklusions-Konflikt funktionieren.
+        ok(rufe(HttpMethod.POST, pfad, w.admin(), Map.of("bisher", nachher, "zeitpunkt", vorher)));
+        assertThat(bindungZu(ms, vorher)).isEqualTo("Z-5b");
+        // Letzter Schritt scheitert: Grenzen UND beide Journale rollen zurück.
+        berichtigung.letzterSchritt(() -> { throw new IllegalStateException("A3 Rollback"); });
+        assertThat(status(rufe(HttpMethod.POST, pfad, w.admin(), body))).isEqualTo(500);
+        berichtigung.letzterSchritt(() -> { });
+        assertThat(bindungZu(ms, vorher)).isEqualTo("Z-5b");
+        assertThat(protokoll(ms).stream().filter(e -> "zaehler_gewechselt".equals(e.get("art")))).hasSize(3);
+        assertThat(status(rufe(HttpMethod.POST, pfad, DEMO, body))).isEqualTo(404);
+        // Bereits wirksam: expliziter Korrekturweg, keine neue Protokollzeile.
+        berichtigung.uhrStellen(Clock.fixed(zeitpunkt(vorher), BERLIN));
+        var wirksam = rufe(HttpMethod.POST, pfad, w.admin(), body);
+        assertThat(status(wirksam)).isEqualTo(409);
+        assertThat(wirksam.getBody().path("grund").asText()).isEqualTo("wechsel_bereits_wirksam");
+        assertThat(wirksam.getBody().path("satz").asText()).contains("Korrekturweg");
+        berichtigung.uhrStellen(Clock.systemUTC());
+        // Unplausible vorgezogene Messwerte sperren trotz Zukunft.
+        root.update("INSERT INTO telemetry_v2 (time,received_at,tenant_id,site_id,device_id,entity_id,channel,value) VALUES (?,?,?,?,?,?,?,?)",
+                Timestamp.from(zeitpunkt(jahr + "-11-18T10:20:00+01:00")), Timestamp.from(Instant.now()),
+                w.tenant(), w.an1(), w.box(), w.k("K-5").toString(), ENERGIE_BEZUG, 123);
+        var werte = rufe(HttpMethod.POST, pfad, w.admin(), body);
+        assertThat(status(werte)).isEqualTo(409);
+        assertThat(werte.getBody().path("grund").asText()).isEqualTo("messwerte_im_zeitraum");
+        // DB schützt auch einen direkten Schreibweg außerhalb des Dienstes.
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> root.update(
+                "UPDATE geraet SET eingebaut_am=? WHERE id=?", Timestamp.from(Instant.parse("2020-01-01T00:00:00Z")), neu))
+                .hasMessageContaining("Nur ein noch nicht wirksamer Wechsel");
+    }
+
     // ---- Die Ablehnungen sind Teil des Vertrags ---------------------------------------------------
 
     /**
@@ -626,11 +688,11 @@ class ZaehlerwechselApiTest {
         uhr(EINGETRAGEN);
 
         Map<String, Object> fremdesFeld = wechselAnfrage(WECHSEL, null);
-        fremdesFeld.put("karten_uebernommen", List.of());
+        fremdesFeld.put("unbekanntes_feld", List.of());
         ResponseEntity<JsonNode> r = rufe(HttpMethod.POST, "/api/v1/geraete/" + z5a + "/austausch", w.admin(),
                 fremdesFeld);
         abgelehnt(r, 400, "anfrage_ungueltig");
-        assertThat(r.getBody().get("feld").asText()).isEqualTo("karten_uebernommen");
+        assertThat(r.getBody().get("feld").asText()).isEqualTo("unbekanntes_feld");
 
         Map<String, Object> sekunden = wechselAnfrage("2026-11-18T10:40:30+01:00", null);
         anfrage(rufe(HttpMethod.POST, "/api/v1/geraete/" + z5a + "/austausch", w.admin(), sekunden), "zeitpunkt");
@@ -645,6 +707,90 @@ class ZaehlerwechselApiTest {
                 .containsExactlyInAnyOrderElementsOf(eigenschaften("ZaehlerwechselBindung"));
         assertThat(felder(v.get("rueckwirkung")))
                 .containsExactlyInAnyOrderElementsOf(eigenschaften("MessstelleQuelleRueckwirkung"));
+    }
+
+    @Test
+    void a6ControllerWechseltVierKartenUndBindungenAtomarMitEigenenEndstaenden() {
+        int jahr = java.time.Year.now().getValue() + 1;
+        Werk w = ahrenberg("A6 Controller");
+        UUID controller = root.queryForObject("INSERT INTO geraet (tenant_id,site_id,kennzeichen,einbau_kennzeichen,"
+                + "geraeteart,hersteller,typ,seriennummer,eingebaut_am) "
+                + "VALUES (?,?,'GR-7','C-1','controller','WAGO','PFC200','C-alt',?) RETURNING id",
+                UUID.class, w.tenant(), w.an1(), Timestamp.from(zeitpunkt("2026-10-01T00:00:00+02:00")));
+        List<UUID> karten = new ArrayList<>();
+        List<String> bindungen = new ArrayList<>();
+        List<Map<String, Object>> staende = new ArrayList<>();
+        int n = 0;
+        for (String komponente : List.of("K-4", "K-5", "K-6", "K-7")) {
+            n++;
+            UUID karte = root.queryForObject("INSERT INTO geraet_teil (tenant_id,geraet_id,teilart,steckplatz,"
+                    + "bezeichnung,typ,seriennummer,eingebaut_am) VALUES (?,?,'energiekarte',?,?,'750-495',?,?) RETURNING id",
+                    UUID.class, w.tenant(), controller, n, "EK-" + n, "EK-SN-" + n, Timestamp.from(zeitpunkt("2026-10-01T00:00:00+02:00")));
+            karten.add(karte);
+            // Fixture neu anlegen: auch der DB-Owner darf bestehende Zeitachsen nicht mehr umschreiben.
+            root.update("DELETE FROM geraet_komponente WHERE entity_id=?", w.k(komponente));
+            root.update("INSERT INTO geraet_komponente (tenant_id,geraet_id,teil_id,gueltig_ab,entity_id) VALUES (?,?,?,?,?)",
+                    w.tenant(), controller, karte, Timestamp.from(zeitpunkt("2026-10-01T00:00:00+02:00")), w.k(komponente));
+            messkanalAuswahl(w, komponente, ENERGIE_BEZUG);
+            String ms = anlegen(w.admin(), wieReferenz("MS-" + (9 + n), referenzMessstelle("MS-" + (9 + n)))).get("id").asText();
+            uhr("2026-10-01T09:00:00+02:00");
+            String q = erfolgreich(rufe(HttpMethod.POST, "/api/v1/messstellen/" + ms + "/quellen", w.admin(),
+                    binden(w.k(komponente), ENERGIE_BEZUG, "fuehrend", null, "2026-10-01T00:00:00+02:00")))
+                    .at("/quelle/id").asText();
+            bindungen.add(q);
+            staende.add(Map.of("bindung", q, "endstand", Map.of("wert", n * 1000, "einheit", "kWh")));
+        }
+        uhr(jahr + "-02-05T14:00:00+01:00");
+        String pfad = "/api/v1/geraete/" + controller + "/austausch";
+        JsonNode vorschau = ok(rufe(HttpMethod.GET, pfad + "/vorschau?zeitpunkt=" + jahr + "-02-05T13:00:00Z", w.admin(), null));
+        assertThat(vorschau.get("folgen")).hasSize(4);
+        assertThat(vorschau.get("karten")).hasSize(4);
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("zeitpunkt", jahr + "-02-05T14:00:00+01:00");
+        body.put("neues_geraet", Map.of("einbau_kennzeichen", "C-1′", "seriennummer", "C-neu"));
+        body.put("karten_uebernommen", karten.subList(0, 3)); // EK-4 ebenfalls neu, Seriennummer unbekannt
+        body.put("ablesestaende", staende);
+        body.put("bestaetigte_bindungen", bindungen);
+        int vorher = root.queryForObject("SELECT count(*) FROM geraet WHERE tenant_id=?", Integer.class, w.tenant());
+        letzterFehlerFuerController();
+        assertThat(status(rufe(HttpMethod.POST, pfad, w.admin(), body))).isEqualTo(500);
+        assertThat(root.queryForObject("SELECT count(*) FROM geraet WHERE tenant_id=?", Integer.class, w.tenant())).isEqualTo(vorher);
+        assertThat(root.queryForObject("SELECT count(*) FROM geraet_teil WHERE geraet_id=? AND ausgebaut_am IS NULL", Integer.class, controller)).isEqualTo(4);
+        assertThat(root.queryForObject("SELECT count(*) FROM messstelle_quelle WHERE geraet_id=? AND gueltig_bis IS NULL", Integer.class, controller)).isEqualTo(4);
+        wechsel.letzterSchritt(() -> { });
+        Map<String,Object> veraltet = new LinkedHashMap<>(body);
+        veraltet.put("bestaetigte_bindungen", bindungen.subList(0, 3));
+        abgelehnt(rufe(HttpMethod.POST, pfad, w.admin(), veraltet), 409, "zustand_passt_nicht");
+        Map<String,Object> fremderStand = new LinkedHashMap<>(body);
+        fremderStand.put("ablesestaende", List.of(Map.of("bindung", UUID.randomUUID(), "endstand", Map.of("wert", 1))));
+        anfrage(rufe(HttpMethod.POST, pfad, w.admin(), fremderStand), "ablesestaende");
+        JsonNode antwort = erfolgreich(rufe(HttpMethod.POST, pfad, w.admin(), body));
+        assertThat(antwort.get("bindungen")).hasSize(4);
+        UUID neu = UUID.fromString(antwort.at("/geraet/neu/id").asText());
+        for (JsonNode bindung : antwort.get("bindungen")) {
+            assertThat(zeitpunkt(bindung.at("/beendet/gueltig_bis").asText())).isEqualTo(zeitpunkt(jahr + "-02-05T14:00:00+01:00"));
+            assertThat(zeitpunkt(bindung.at("/neu/gueltig_ab").asText())).isEqualTo(zeitpunkt(jahr + "-02-05T14:00:00+01:00"));
+            int nummer = Integer.parseInt(bindung.get("kennzeichen").asText().substring(3)) - 9;
+            assertThat(bindung.at("/beendet/endstand/wert").asInt()).isEqualTo(nummer * 1000);
+        }
+        assertThat(root.queryForObject("SELECT count(*) FROM geraet_komponente WHERE geraet_id=? AND teil_id IS NOT NULL", Integer.class, neu)).isEqualTo(4);
+        assertThat(root.queryForList("SELECT seriennummer FROM geraet_teil WHERE geraet_id=? ORDER BY steckplatz", String.class, neu))
+                .containsExactly("EK-SN-1", "EK-SN-2", "EK-SN-3", null);
+        assertThat(root.queryForObject("SELECT count(*) FROM messstelle_aenderung WHERE tenant_id=? AND art='zaehler_gewechselt'", Integer.class, w.tenant())).isEqualTo(4);
+        String berichtigt = jahr + "-02-05T14:40:00+01:00";
+        ok(rufe(HttpMethod.POST, pfad + "/zeitpunkt", w.admin(),
+                Map.of("bisher", body.get("zeitpunkt"), "zeitpunkt", berichtigt)));
+        assertThat(anzahl("SELECT count(*) FROM geraet_teil WHERE geraet_id=? AND eingebaut_am=?",
+                neu, Timestamp.from(zeitpunkt(berichtigt)))).isEqualTo(4);
+        assertThat(anzahl("SELECT count(*) FROM geraet_teil WHERE geraet_id=? AND ausgebaut_am=?",
+                controller, Timestamp.from(zeitpunkt(berichtigt)))).isEqualTo(4);
+        Werk fremd = ahrenberg("A6 fremd");
+        assertThat(status(rufe(HttpMethod.POST, pfad, fremd.admin(), body))).isEqualTo(404);
+        assertThat(status(rufe(HttpMethod.GET, pfad + "/vorschau", fremd.admin(), null))).isEqualTo(404);
+    }
+
+    private void letzterFehlerFuerController() {
+        wechsel.letzterSchritt(() -> { throw new IllegalStateException("A6 erzwungener letzter Fehler"); });
     }
 
     // ---- Gerüst: das Referenzunternehmen ----------------------------------------------------------
@@ -753,11 +899,13 @@ class ZaehlerwechselApiTest {
         alle.addAll(WERTE_Z5B);
         long folge = 1;
         for (String t : alle) {
+            // Zugeordnet (Reihe von K-5, führend), wie der Writer ihn heute ablegt — nur so „liefert“ das Register.
             root.update("INSERT INTO device_measurement_sample (time, received_at, tenant_id, site_id, device_id, "
                     + "point_key, raw_numeric, decoded_numeric, quality, catalog_version, edge_sequence, "
-                    + "aggregation_kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'good', '2026.08.26.3', ?, 'counter')",
+                    + "aggregation_kind, entity_id, role) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'good', '2026.08.26.3', ?, "
+                    + "'counter', ?, 'fuehrend')",
                     Timestamp.from(zeitpunkt(t)), Timestamp.from(zeitpunkt(t)), w.tenant(), w.an1(), w.box(),
-                    ENERGIE_BEZUG, 1083000.0 + folge, 1083000.0 + folge, folge);
+                    ENERGIE_BEZUG, 1083000.0 + folge, 1083000.0 + folge, folge, w.k("K-5"));
             root.update("INSERT INTO telemetry_v2 (time, received_at, tenant_id, site_id, device_id, entity_id, "
                     + "channel, value) VALUES (?, ?, ?, ?, ?, ?, ?, ?)", Timestamp.from(zeitpunkt(t)),
                     Timestamp.from(zeitpunkt(t)), w.tenant(), w.an1(), w.box(), w.k("K-5").toString(),

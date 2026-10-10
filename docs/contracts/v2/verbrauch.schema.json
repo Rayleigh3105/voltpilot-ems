@@ -65,13 +65,53 @@
           "type": "string",
           "const": "Zählerstand einer gröberen Periode aus ihren Teilperioden = Kettenende − Kettenanfang + Bruch je Teilperiode + Nachbarschaft über jede Grenze ohne Stand; nie Summe der Teilmengen",
           "description": "P7/§4.5 (AP-08 IP-5). Additiv: eine gröbere Periode wird aus den Periodenständen ihrer gespeicherten Teilperioden gebildet, nie als Summe ihrer (gerundeten) Teilmengen. Randkennzeichen an inneren Grenzen entfallen, Abdeckung = Summe erhalten ÷ Summe erwartet."
+        },
+        "werte_teilperioden": {
+          "type": "string",
+          "const": "Momentanwert und Intervallmenge einer gröberen Periode aus ihren Teilperioden: Mittel = Summe der ungerundeten Teilsummen ÷ Summe erhalten, Lücke auch zwischen den Teilen und zu den Nachbarn, Energie = Summe der ungerundeten Teil-Energien + Halten über Strecken ohne Werte; Intervallmenge = Summe der ungerundeten Teilsummen; nie Mittel von Mitteln, nie Mittel × Länge",
+          "description": "M1–M4, I1–I2 über Perioden (AP-08 IP-3, §4.5). Additiv: Momentanwert- und Intervallmengen-Reihen einer gröberen Periode aus den gespeicherten Teilperioden (Summe, Energie, gemessene Zeit, Lücke im Teil). Die Energie aus Leistung steht nie ohne das Kennzeichen „aus Leistung integriert“ (E5)."
+        },
+        "luecke_zuwachs": {
+          "type": "string",
+          "const": "Zuwachs über eine Lücke = Stand nach − Stand vor zweier guter Nachbarn über luecke_faktor × Kadenz (nicht fallend, keine Gerätegrenze dazwischen); er zählt zu [von, bis) genau dann, wenn die Periode die Lücke ganz enthält: Messzeit vor > von − Kadenz und Messzeit nach ≤ bis; nie verteilt, nie in einer Periode, die sie nur anschneidet",
+          "description": "Z2/E2 (AP-08 IP-6). Additiv: der Zuwachs über eine Lücke ist GEMESSEN, aber NICHT VERTEILBAR. Er steht genau einmal je Stufe — in der Periode, die die Lücke ganz enthält; die Viertelstunden der Lücke bleiben „keine Werte“, eine angeschnittene Periode ist „Anfang/Ende nicht gemessen“."
+        },
+        "anteil": {
+          "type": "string",
+          "const": "Anteil eines Vorzeichen-Werts JE ROHWERT, vor jeder Verdichtung: positiv = max(0, P), negativ = max(0, −P); daraus Mittel/Min/Max (die Nullen zählen mit) und die Energie je Anteil; das Kennzeichen „positiver Anteil von <Quelle>“ bzw. „negativer Anteil von <Quelle>“ steht zuerst; nie das Mittel des Vorzeichen-Werts nach seinem Vorzeichen zugeordnet",
+          "description": "M5/E15 (AP-08 IP-7). Additiv: eine Quellenbindung mit `anteil` liest nur den positiven oder nur den negativen Teil eines Vorzeichen-Werts (Katalog import_export). Geteilt wird JE ROHWERT — Option C (erst mitteln, dann nach Vorzeichen zuordnen) hat der Captain verworfen: an F19 ergäbe sie 12,8 − 22,8 = −10,0 und damit nur Abgabe 10,0. Das Box-Vorzeichen ist schon im Rohwert (AP-04 E5) und wirkt hier nie ein zweites Mal."
+        },
+        "luecke_zeitraeume": {
+          "type": "array",
+          "const": ["viertelstunde", "stunde", "tag", "monat", "jahr"],
+          "description": "E2 (AP-08 IP-6): die Kette der Kalender-Zeiträume, vom feinsten zum gröbsten, in der der KLEINSTE ganz enthaltende Zeitraum gesucht wird. Viertelstunde und Stunde im UTC-Raster, Tag/Monat/Jahr in der Zeitzone des Standorts. Ein freier Zeitraum folgt derselben Regel (luecke_zuwachs), steht aber nicht in der Kette."
+        },
+        "ersatzwert_stellen": {
+          "type": "integer",
+          "const": 9,
+          "description": "E7 (AP-08 IP-13): auf so viele Nachkommastellen wird ein verteilter Anteil zum Speichern ABGESCHNITTEN; den Rest bekommt die letzte Viertelstunde der Lücke."
+        },
+        "ersatzwert_verteilung": {
+          "type": "string",
+          "minLength": 1,
+          "description": "E7 a–c (AP-08 IP-13): die Invariante „Summe = gemessener Zuwachs“ — wie verteilt wird und wohin der Rest aus dem Abschneiden geht."
+        },
+        "ersatzwert_version": {
+          "type": "string",
+          "minLength": 1,
+          "description": "E7 (AP-08 IP-13): wie eine Periode mit Ersatzwerten zur neuen Version über dem Bestand wird — welche gelten, was a–c, d und e–g an Menge, Rand, Zustand und Kennzeichen tun."
+        },
+        "ersatzwert_ablehnungen": {
+          "type": "array",
+          "const": ["wertart_passt_nicht", "kein_gemessener_zuwachs", "zeitraum_nicht_die_luecke", "vorperiode_fehlt", "vergleichsquelle_fehlt", "profil_negativ", "profil_ohne_verbrauch", "betrag_fuer_mehrere_viertelstunden", "einheit_passt_nicht", "endstand_unter_letztem_wert", "anfangsstand_ueber_naechstem_wert", "ueberschneidet_ersatzwert"],
+          "description": "E7 (AP-08 IP-13): die geschlossene Liste der benannten Ablehnungen. Eine Methode, die nicht rechnen kann, lehnt mit ihrem Grund ab — nie ein stiller Rückfall auf eine andere Methode."
         }
       }
     },
     "zustaende": {
       "type": "array",
       "minItems": 4,
-      "description": "Das geschlossene Vokabular der Ergebnis-Zustände (§4.5). „mit Ersatzwert“ entsteht erst mit AP-08 IP-13.",
+      "description": "Das geschlossene Vokabular der Ergebnis-Zustände (§4.5). „mit Ersatzwert“ entsteht seit AP-08 IP-13 (Block ersatzwerte).",
       "items": { "$ref": "#/$defs/zustand_wort" }
     },
     "kennzeichen": {
@@ -85,6 +125,27 @@
       "description": "Jede Stelle, an der diese Datei bewusst von der Vorlage data/vp-uems-ap08-verbrauch/referenzfaelle.json abweicht. Leer heißt: nichts wurde stillschweigend geändert.",
       "items": { "$ref": "#/$defs/abweichung" }
     },
+    "luecken_zuordnung": {
+      "type": "array",
+      "description": "E2 (AP-08 IP-6): je Lücke der KLEINSTE Zeitraum der Kette regeln.luecke_zeitraeume, der sie ganz enthält. Fälle mit `fall` gehören zu einem Referenzfall (seine Reihe hat genau diese Lücke); die übrigen prüfen die Ränder der Kette (Monatsgrenze, 23-/25-Stunden-Tag, Viertelstunde, Stand aus dem Fenster, Jahreswechsel).",
+      "items": { "$ref": "#/$defs/zuordnung" }
+    },
+    "ersatzwerte": {
+      "type": "array",
+      "description": "E7 (AP-08 IP-13): Versionen mit Ersatzwerten an den Reihen der Referenzfälle — F11 (Version 2), F21 (Widerruf, Version 3) und konstruierte Fälle je Methode und je benannter Ablehnung. Beide Zwillinge rechnen jede Erwartung per Pfad.",
+      "items": { "$ref": "#/$defs/ersatzwert_fall" }
+    },
+    "ersatzwert_perioden": {
+      "type": "array", "minItems": 1,
+      "description": "E7/E9: gröbere Perioden aus bereits geprüften Beiträgen, Java und TypeScript.",
+      "items": { "type": "object", "required": ["name", "why", "basis", "von", "bis", "beitraege", "expected"],
+        "additionalProperties": false,
+        "properties": { "name": {"type":"string"}, "why": {"type":"string"},
+          "basis": {"$ref":"#/$defs/ersatzwert_perioden_ergebnis"}, "von": {"$ref":"#/$defs/zeitpunkt"},
+          "bis": {"$ref":"#/$defs/zeitpunkt"}, "beitraege": {"type":"array", "items":{"$ref":"#/$defs/ersatzwert_perioden_beitrag"}},
+          "expected": {"$ref":"#/$defs/ersatzwert_perioden_ergebnis"} }
+      }
+    },
     "cases": {
       "type": "array",
       "minItems": 23,
@@ -94,6 +155,28 @@
   },
 
   "$defs": {
+    "ersatzwert_perioden_ergebnis": {
+      "type": "object", "additionalProperties": false,
+      "required": ["menge", "zustand", "kennzeichen", "abdeckung_prozent"],
+      "properties": {
+        "menge": {"type": ["number", "null"]},
+        "zustand": {"enum": ["vollständig", "unvollständig", "keine Werte", "mit Ersatzwert"]},
+        "kennzeichen": {"type":"array", "items":{"type":"string"}},
+        "abdeckung_prozent": {"type":["integer", "null"], "minimum":0, "maximum":100}
+      }
+    },
+    "ersatzwert_perioden_beitrag": {
+      "type":"object", "additionalProperties":false,
+      "required":["von", "bis", "vorher", "nachher", "vorher_kennzeichen", "nachher_kennzeichen", "kennung", "methode"],
+      "properties": {
+        "von":{"$ref":"#/$defs/zeitpunkt"}, "bis":{"$ref":"#/$defs/zeitpunkt"},
+        "vorher":{"type":["number", "null"]}, "nachher":{"type":["number", "null"]},
+        "vorher_kennzeichen":{"type":"array", "items":{"type":"string"}},
+        "nachher_kennzeichen":{"type":"array", "items":{"type":"string"}},
+        "kennung":{"type":"string", "pattern":"^EW-[0-9]{4}-[0-9]{4,}$"},
+        "methode":{"enum":["ablesestand_nachtragen", "wert_eingeben", "vorperiode_uebernehmen", "vergleichsquelle_uebernehmen"]}
+      }
+    },
     "zeitpunkt": {
       "type": "string",
       "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}$",
@@ -231,6 +314,8 @@
         "von": { "$ref": "#/$defs/zeitpunkt" },
         "bis": { "$ref": "#/$defs/zeitpunkt" },
         "reihe": { "type": "string", "minLength": 1, "description": "Nur bei mehreren Reihen: welche gemeint ist." },
+        "anteil": { "type": "string", "enum": ["positiv", "negativ"], "description": "AP-08 IP-7 (regeln.anteil): die Erwartung liest nur diesen Anteil der Reihe, geteilt JE ROHWERT. Fehlt = der ganze Wert." },
+        "quelle": { "type": "string", "minLength": 1, "description": "Nur mit anteil: wie das Kennzeichen die Quelle nennt („K-3 · Wirkleistung“)." },
         "menge": { "type": ["number", "null"], "description": "Die Menge der Periode in der Einheit der Reihe. null heißt „keine Menge bildbar“ — nie 0." },
         "mittel": { "type": ["number", "null"], "description": "Momentanwert: arithmetisches Mittel der guten Werte (M2)." },
         "min": { "type": ["number", "null"] },
@@ -251,7 +336,57 @@
           "items": { "$ref": "#/$defs/ereignis" },
           "description": "Ereignisse einer Fall-VARIANTE (etwa ein nachgetragener Ablesestand, der aus der Rücksetzung eine Gerätegrenze macht). Sie treten zu den Ereignissen der Reihe hinzu."
         },
-        "stunden": { "type": "integer", "minimum": 0, "description": "P3: die Länge der Periode in Stunden — am Umstellungstag 23 oder 25." }
+        "stunden": { "type": "integer", "minimum": 0, "description": "P3: die Länge der Periode in Stunden — am Umstellungstag 23 oder 25." },
+        "luecken_zuwachs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/lueckenzuwachs" },
+          "description": "E2 (AP-08 IP-6): die Lücken, deren gemessenen Zuwachs DIESE Periode zählt — genau die, die sie ganz enthält, in Zeitfolge. Leer heißt: sie schneidet eine Lücke höchstens an und bekommt ihren Zuwachs nicht. Jede genannte Lücke steht zugleich als Kennzeichen „Lücke HH:MM–HH:MM: Zuwachs … gemessen, nicht auf Viertelstunden verteilbar“ da, jede andere nicht."
+        }
+      }
+    },
+
+    "lueckenzuwachs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["messzeit_vor", "messzeit_nach", "stand_vor", "stand_nach", "zuwachs", "einheit"],
+      "description": "Z2/E2 (AP-08 IP-6): der gemessene Zuwachs über EINE Lücke. Dieselben vier Felder (stand_vor, stand_nach, zuwachs, einheit) trägt das Ereignis data_gap (events-vocabulary).",
+      "properties": {
+        "messzeit_vor": { "$ref": "#/$defs/zeitpunkt" },
+        "messzeit_nach": { "$ref": "#/$defs/zeitpunkt" },
+        "stand_vor": { "type": "number", "description": "Der letzte gute Stand vor der Lücke, in der Einheit der Reihe (Rohwert × faktor)." },
+        "stand_nach": { "type": "number", "description": "Der erste gute Stand danach, ebenso." },
+        "zuwachs": { "type": "number", "minimum": 0, "description": "stand_nach − stand_vor: gemessen, nicht verteilbar." },
+        "einheit": { "type": "string", "minLength": 1, "description": "Die Einheit der Reihe." }
+      }
+    },
+
+    "zuordnung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "fall", "why", "kadenz_s", "messzeit_vor", "messzeit_nach", "kleinster_zeitraum"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "fall": { "type": ["string", "null"], "description": "Der Referenzfall, dessen Reihe genau diese Lücke hat, sonst null." },
+        "why": { "type": "string", "minLength": 1 },
+        "kadenz_s": { "type": "integer", "minimum": 1 },
+        "messzeit_vor": { "$ref": "#/$defs/zeitpunkt" },
+        "messzeit_nach": { "$ref": "#/$defs/zeitpunkt" },
+        "kleinster_zeitraum": {
+          "description": "Der kleinste ganz enthaltende Zeitraum der Kette; null heißt: keiner (dann zählt der Zuwachs nur in einem freien Zeitraum, der die Lücke umfasst).",
+          "anyOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["art", "von", "bis"],
+              "properties": {
+                "art": { "type": "string", "enum": ["viertelstunde", "stunde", "tag", "monat", "jahr"] },
+                "von": { "$ref": "#/$defs/zeitpunkt" },
+                "bis": { "$ref": "#/$defs/zeitpunkt" }
+              }
+            }
+          ]
+        }
       }
     },
 
@@ -271,11 +406,105 @@
         "abnahme": { "type": ["string", "null"], "enum": ["1", "2", null], "description": "Bezug auf eine Plan-Abnahme des Programms, sonst null." },
         "messstelle": { "type": "string", "minLength": 1, "description": "Die Messstelle des Referenzunternehmens, in der der Fall spielt." },
         "input": { "$ref": "#/$defs/eingang" },
+        "gegenprobe": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reihe", "von", "bis", "mittel_vorzeichen", "falsch_bezug", "falsch_abgabe", "warum"],
+          "description": "AP-08 IP-7: die verworfene Rechnung (E15 Option C) als benannte Gegenprobe — das Mittel des GANZEN Vorzeichen-Werts, danach nach seinem Vorzeichen zugeordnet. Beide Zwillinge prüfen, dass sie herauskommt UND von den Anteil-Erwartungen abweicht.",
+          "properties": {
+            "reihe": { "type": "string", "minLength": 1 },
+            "von": { "$ref": "#/$defs/zeitpunkt" },
+            "bis": { "$ref": "#/$defs/zeitpunkt" },
+            "mittel_vorzeichen": { "type": "number", "description": "Mittel des ganzen Werts." },
+            "falsch_bezug": { "type": "number", "description": "max(0, Mittel) — was Option C als Bezug zeigte." },
+            "falsch_abgabe": { "type": "number", "description": "max(0, −Mittel) — was Option C als Abgabe zeigte." },
+            "warum": { "type": "string", "minLength": 1 }
+          }
+        },
         "expected": {
           "type": "array",
           "minItems": 1,
           "items": { "$ref": "#/$defs/erwartung" }
         }
+      }
+    },
+
+    "ersatzwert_fall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "fall", "why", "ersatzwerte", "status", "verteilung", "abgelehnt", "expected"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "fall": { "type": "string", "pattern": "^f[0-9]+-[a-z0-9-]+$", "description": "Der Referenzfall, dessen Reihe gerechnet wird." },
+        "why": { "type": "string", "minLength": 1 },
+        "ersatzwerte": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/ersatzwert" } },
+        "status": {
+          "type": "object",
+          "additionalProperties": { "type": "string", "enum": ["wirksam", "zurueckgenommen"] },
+          "description": "Je Kennung ihr Status zu DIESER Version — nur wirksame gelten."
+        },
+        "verteilung": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kennung", "anzahl", "summe", "erster", "letzter", "je_tag"],
+            "description": "Die Anteile eines a–c-Ersatzwerts: Anzahl der Viertelstunden, Summe (EXAKT der Zuwachs), erster und letzter Anteil (der letzte trägt den Rest), Summe je Tag in der Zeitzone des Standorts.",
+            "properties": {
+              "kennung": { "type": "string", "pattern": "^EW-[0-9]{4}-[0-9]{4,}$" },
+              "anzahl": { "type": "integer", "minimum": 1 },
+              "summe": { "type": "number" },
+              "erster": { "type": "number" },
+              "letzter": { "type": "number" },
+              "je_tag": { "type": "object", "additionalProperties": { "type": "number" } }
+            }
+          }
+        },
+        "abgelehnt": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Je abgelehnter Kennung ihr Grund aus regeln.ersatzwert_ablehnungen; leer = keine."
+        },
+        "expected": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/erwartung" } }
+      }
+    },
+
+    "ersatzwert": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kennung", "methode", "von", "bis"],
+      "description": "Ein Ersatzwert, wie messreihe_ersatzwert ihn trägt (AP-08 IP-12). a–c nennen ihre Lücke nur mit {von, bis} (erste fehlende Messzeit, Messzeit danach); der Zuwachs kommt aus den Rohwerten. profil: Abschnitte je Viertelstunde {von, bis, je_viertelstunde} oder {von, bis, fehlt: true}.",
+      "properties": {
+        "kennung": { "type": "string", "pattern": "^EW-[0-9]{4}-[0-9]{4,}$" },
+        "methode": { "type": "string", "enum": ["gleichmaessig_verteilen", "profil_vorperiode", "profil_vergleichsquelle", "ablesestand_nachtragen", "wert_eingeben", "vorperiode_uebernehmen", "vergleichsquelle_uebernehmen"] },
+        "von": { "$ref": "#/$defs/zeitpunkt" },
+        "bis": { "$ref": "#/$defs/zeitpunkt" },
+        "luecke": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["von", "bis"],
+          "properties": { "von": { "$ref": "#/$defs/zeitpunkt" }, "bis": { "$ref": "#/$defs/zeitpunkt" } }
+        },
+        "profil": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["von", "bis"],
+            "properties": {
+              "von": { "$ref": "#/$defs/zeitpunkt" },
+              "bis": { "$ref": "#/$defs/zeitpunkt" },
+              "je_viertelstunde": { "type": "number" },
+              "fehlt": { "type": "boolean", "const": true }
+            }
+          }
+        },
+        "profil_einheit": { "type": "string", "minLength": 1 },
+        "betrag": { "type": "number" },
+        "einheit": { "type": "string", "minLength": 1 },
+        "zeitpunkt": { "$ref": "#/$defs/zeitpunkt" },
+        "endstand": { "type": "number" },
+        "anfangsstand": { "type": "number" }
       }
     },
 

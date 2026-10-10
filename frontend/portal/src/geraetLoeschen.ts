@@ -5,6 +5,7 @@ import {
   type PlantComponent,
 } from './komponenten';
 import type { SiteEntity } from './api';
+import { berichtsBelege } from './uemsBericht';
 
 /**
  * Die REINE Ableitung der Geräteseiten-Gefahrenzone (Konzept
@@ -185,4 +186,35 @@ export function gefahrenzone(
   // Not deletable and not the battery path (house-load / a synthesized meter):
   // show the reason, never a disabled button.
   return { kind: 'geschuetzt', grund: GRUND_GRUNDAUSSTATTUNG };
+}
+
+/**
+ * Die Ablehnung „Beleg freigegebener Berichtsstände“ (UEMS AP-12 E13 S2): das Entfernen antwortet 409 mit
+ * `codes` ∋ `berichts_belege`, der Liste `berichtsstaende` und den zitierten `messstellen` — geschrieben ist
+ * nichts. Der Satz kommt aus dem Berichts-Vertrag (`berichtsBelege`, Zwilling von `BerichtRegeln`), die
+ * Messstellen sind der Weg: dort endet die Bindung, statt dass die Komponente geht.
+ */
+export interface BerichtsBeleg {
+  satz: string;
+  messstellen: Array<{ id: string; kennzeichen: string; name: string }>;
+}
+
+/** Status und JSON-Körper einer Ablehnung → der Beleg, oder `null`, wenn es eine andere Ablehnung ist. */
+export function berichtsBelegAus(status: number, body: unknown): BerichtsBeleg | null {
+  if (status !== 409 || body == null || typeof body !== 'object') return null;
+  const b = body as { code?: unknown; codes?: unknown; berichtsstaende?: unknown; messstellen?: unknown };
+  const codes: unknown[] = Array.isArray(b.codes) ? b.codes : [b.code];
+  if (!codes.includes('berichts_belege') || !Array.isArray(b.berichtsstaende)) return null;
+  const staende = b.berichtsstaende.filter((s: unknown): s is { kennung: string; nr: number } => {
+    const x = s as { kennung?: unknown; nr?: unknown } | null;
+    return typeof x?.kennung === 'string' && typeof x?.nr === 'number';
+  });
+  if (staende.length === 0) return null;
+  const messstellen = (Array.isArray(b.messstellen) ? b.messstellen : []).filter(
+    (m: unknown): m is { id: string; kennzeichen: string; name: string } => {
+      const x = m as { id?: unknown; kennzeichen?: unknown; name?: unknown } | null;
+      return typeof x?.id === 'string' && typeof x?.kennzeichen === 'string' && typeof x?.name === 'string';
+    },
+  );
+  return { satz: berichtsBelege(staende), messstellen };
 }

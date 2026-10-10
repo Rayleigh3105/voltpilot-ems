@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { PortfolioPage } from './PortfolioPage';
-import { api, type Overview, type OverviewSite, type Site } from '../api';
+import { api, type Overview, type OverviewSite, type Site, type StandorteAmStichtag } from '../api';
+import { setSelbstauskunft } from '../rollen';
+import { rechteSeed } from '../test/rollenFixtures';
 
 /**
  * Die Landung `#/portfolio` zeigt seit dem Entscheid vom 25.09.2026 für JEDE
@@ -75,10 +77,14 @@ beforeEach(() => {
   } as never);
   vi.spyOn(api, 'tenantCockpitLayout').mockResolvedValue({ vorgabe: null, eigen: null } as never);
   vi.spyOn(api, 'history').mockRejectedValue(new Error('keine Historie im Test'));
+  vi.spyOn(api, 'standortZuordnungVorschlag').mockResolvedValue({ gruppen: [], anlagenZahl: 0 });
+  vi.spyOn(api, 'standorte').mockResolvedValue(
+    { stichtag: '2026-10-20', standorte: [], nichtGezeigt: [], nochNichtZugeordnet: null } as StandorteAmStichtag,
+  );
 });
 
 function renderPage() {
-  return render(<PortfolioPage sites={SITES} onReload={() => {}} />);
+  return render(<PortfolioPage sites={SITES} onNavigate={() => {}} onReload={() => {}} />);
 }
 
 describe('Portfolio-Landung: dieselbe Übersicht für jede Betriebsart', () => {
@@ -102,5 +108,45 @@ describe('Portfolio-Landung: dieselbe Übersicht für jede Betriebsart', () => {
     expect(werk.getAttribute('href')).toBe('#/anlage/werk');
     const alt = within(anlagen).getByText('Bestandsanlage').closest('a') as HTMLAnchorElement;
     expect(alt.getAttribute('href')).toBe('#/anlage/alt');
+  });
+});
+
+/**
+ * firstmate K2 (09.10.2026): vor der Bestätigung gibt es keine UEMS-Ebene — die frühere grosse
+ * Vorschlagskarte unter der Statuszeile ist entfallen. Ersatz ist der leise Einstieg „Messen &
+ * Auswerten einrichten" im ⋯-Menü der Flotte (nur mit `standort.verwalten`, von `RowMenu` selbst
+ * gefiltert), der ohne Standorte denselben „Standorte einrichten"-Dialog öffnet wie bisher — die
+ * Daten laden erst beim Klick, nicht mehr im Hintergrund.
+ */
+describe('UEMS · leiser Einstieg „Messen & Auswerten einrichten" auf der Flotte', () => {
+  const VORSCHLAG = {
+    anlagenZahl: 2,
+    gruppen: [
+      { name: 'Werk Nord', zeitzone: 'Europe/Berlin', adresse: null,
+        anlagen: [{ vorschlagId: 'v1', anlageId: 'werk', anlageName: 'Werk Nord', gueltigAb: '2025-01-03' }] },
+      { name: 'Bestand', zeitzone: 'Europe/Berlin', adresse: null,
+        anlagen: [{ vorschlagId: 'v2', anlageId: 'alt', anlageName: 'Bestandsanlage', gueltigAb: '2025-06-04' }] },
+    ],
+  };
+
+  it('zeigt den Eintrag im Menü mit Recht und öffnet ohne Standorte „Standorte einrichten"', async () => {
+    vi.mocked(api.standortZuordnungVorschlag).mockResolvedValue(VORSCHLAG);
+    renderPage();
+    expect(await screen.findByRole('region', { name: 'Ihre Anlagen' })).toBeTruthy();
+    expect(screen.queryByText('Noch nicht zugeordnet')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
+    const eintrag = await screen.findByRole('menuitem', { name: 'Messen & Auswerten einrichten' });
+    fireEvent.click(eintrag);
+    expect(await screen.findByRole('dialog', { name: 'Standorte einrichten' })).toBeTruthy();
+  });
+
+  it('ein reiner Betriebskunde sieht den Eintrag nicht und ruft nichts ab', async () => {
+    setSelbstauskunft(rechteSeed('CB').me);
+    renderPage();
+    await screen.findByRole('region', { name: 'Ihre Anlagen' });
+    fireEvent.click(screen.getByRole('button', { name: 'Weitere Aktionen' }));
+    expect(screen.queryByRole('menuitem', { name: 'Messen & Auswerten einrichten' })).toBeNull();
+    expect(api.standorte).not.toHaveBeenCalled();
+    expect(api.standortZuordnungVorschlag).not.toHaveBeenCalled();
   });
 });

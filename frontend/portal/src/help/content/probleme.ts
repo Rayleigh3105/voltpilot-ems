@@ -1,4 +1,4 @@
-import { HELP_TEXT } from '../../anlageNav';
+import { HELP_TEXT } from '../../ebenenNav';
 import { GLOSSAR } from '../../glossar';
 import type { HelpArticle } from '../model';
 

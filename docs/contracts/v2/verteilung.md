@@ -1,7 +1,8 @@
 # Verteilungs-Vertrag: eine Messstelle auf Kostenstellen (UEMS AP-10)
 
-Stand 12.09.2026 · Vertrag 1.0 · Konzept `data/vp-uems-ap10-bilanzen` §4.6, Entscheide E4, E11,
-E12, E13 vom 12.09.2026.
+Stand 06.10.2026 · Vertrag 1.5 · Konzept `data/vp-uems-ap10-bilanzen` §4.6, §5.7, Entscheide E4, E11,
+E12, E13 vom 12.09.2026; Regel `doppelzaehlung` nach dem Captain-Entscheid vom 14.09.2026; Regel
+`ablesezeitraum` nach dem Messen-Konzept `data/vp-messen-konzept-m1` §10.3 (Entscheid 3, Messen PR4).
 
 Eine **feste Verteilung** ist eine eigene zeitgültige Beziehung **Messstelle → Kostenstelle** mit
 Anteil (Tage, Muster A). Sie verteilt MENGEN, nie Stammdaten, und sie wirkt je Tag auf die
@@ -9,28 +10,39 @@ Tagesmenge.
 
 | Datei | Rolle |
 |---|---|
-| [`verteilung-vectors.json`](./verteilung-vectors.json) | **die eine Wahrheit**: die Referenzfälle F3, F6, F10–F13 mit Eingang und erwartetem Ergebnis je Prüfung |
+| [`verteilung-vectors.json`](./verteilung-vectors.json) | **die eine Wahrheit**: die Referenzfälle F3, F6, F10–F14 und F17 (Ablesezeitraum, seit 1.5) mit Eingang und erwartetem Ergebnis je Prüfung |
 | [`verteilung.schema.json`](./verteilung.schema.json) | das Schema für Vokabulare, Regeln und die Vektor-Datei selbst (JSON-Schema 2020-12) |
 | `services/api/.../uems/VerteilungRegeln.java` | der **Java-Zwilling** (rein: ohne Spring, ohne DB, ohne Uhr) |
+| `services/api/.../uems/KostenstelleEnergieRegeln.java` | die Regel `kostenstelle` (rein, nur Java — sie RUFT `am_tag`, `erbe` und die Summenregel der Bilanz) |
+| `services/api/.../uems/KostenstelleDoppelzaehlung.java` | die Regel `doppelzaehlung` (rein, nur Java — sie RUFT `am_tag` und die Abhängigkeitsordnung `BerechnetePeriode.reihenfolge`) |
 | `frontend/portal/src/uemsVerteilung.ts` | der **TypeScript-Zwilling** |
 | `…/uems/VerteilungVectorsTest.java` · `…/src/uemsVerteilung.test.ts` | beide fahren DIESELBE Vektor-Datei, per Pfad |
 
 **Wer eine Regel ändert, ändert die Vektor-Datei UND beide Zwillinge.**
 
-> **Wer anruft (Stand AP-10 IP-1): niemand.** Die Tabelle `messstelle_verteilung`, die Routen und
-> der Verteilen-Dialog kommen mit IP-7, IP-8, IP-11 und IP-15.
+> **Wer anruft (Stand AP-10 IP-8):** der Schreibweg `PUT /api/v1/messstellen/{id}/verteilung`
+> (`uems/VerteilungService` → `satz_ab_tag`), das Lesen `GET …/verteilung?am=` (`am_tag`) und der Leseweg
+> des Formel-Terms (`AnteilLeseweg#lies` → `am_tag` + `term`). Tabelle `messstelle_verteilung`
+> (`V20260913230000`). Seit AP-10 IP-11 die Kostenstellen-Sicht
+> `GET /api/v1/unternehmen/kostenstellen/{id}/energie` (`uems/KostenstelleEnergieService` → `kostenstelle`,
+> seit 14.09.2026 daneben `doppelzaehlung` mit den Formeln je Tag aus `BerechnetePeriodenLauf.formelnJeTag`).
+> Der Verteilen-Dialog kommt mit IP-15.
 
-## 1. Die sieben Regeln
+## 1. Die elf Regeln
 
 | Regel | Was sie beantwortet |
 |---|---|
 | `satz` | §4.6: Darf dieser Verteilungs-Satz an diesem Tag geschrieben werden? |
 | `am_tag` | §4.6/F12: Welche Zeilen gelten an diesem Tag — und was heißt „keine“? |
 | `fassung` | §4.6: Was passiert mit der laufenden Fassung, wenn ab einem Tag eine neue gilt? |
+| `satz_ab_tag` | AP-10 IP-8: Was schreibt `PUT …/verteilung` — ab einem Tag GENAU dieser Satz (Anteil, Ziel, Summe, Ende mit dem Ziel, Wiederholung, Korrektur, Fassung)? |
 | `mengen` | E12/F13: Wie viel bekommt jedes Ziel über eine Periode? |
 | `erbe` | §4.5: Was erbt der verteilte Wert von seiner Quelle? |
 | `term` | E11/F11: Wie liest ein Formel-Term „Anteil 4100 von MS-07“? |
+| `ablesezeitraum` | Messen PR4: Welchen Teil eines Ablesezeitraums (ohne Tagesmengen) bekommt jede Kostenstelle - als Ganzes oder gar keinen? |
 | `herkunft` | §4.7/E13: Woher kommt dieser verteilte Wert? (gemeinsam mit [`bilanzwert-herkunft.md`](./bilanzwert-herkunft.md)) |
+| `kostenstelle` | AP-10 IP-11, §5.7: Was bekommt eine Kostenstelle über eine Periode — gemessen · verteilt · berechnet — und was gehört daneben niemandem (nicht verteilt)? |
+| `doppelzaehlung` | Captain-Entscheid 14.09.2026: Welcher Posten einer Kostenstelle ist an welchen Tagen bereits in einem anderen enthalten — ohne eine Zahl zu ändern? |
 
 ## 2. Die Fallen
 
@@ -60,12 +72,76 @@ Tagesmenge.
 8. **Rückwirkend ist erlaubt, aber nie unsichtbar.** Eine Fassung mit Beginn vor heute trägt ihr
    Abzeichen samt Zahl der Tage; eine Fassung, die vor der laufenden beginnt, überlappt und wird
    abgelehnt.
+9. **Der Schreibweg ist EIN Satz ab einem Tag (`satz_ab_tag`, AP-10 IP-8).** Reihenfolge: jeder Anteil
+   in (0, 100] mit höchstens EINER Nachkommastelle (33,33 % ist `anteil_ungueltig`, nie still
+   gerundet) → `satz` (Ziel besteht, 100 %) → jede neue Zeile endet mit ihrem Ziel, und an keinem Tag
+   danach bleibt ein Rest ≠ 100 % (50 % an 9000 + 50 % an 9100 ab 01.12.2026 ergäben ab 01.01.2027 nur
+   50 % → `verteilung_summe` mit diesem Tag) → steht derselbe Stand schon da, ändert sich nichts
+   (`unveraendert`: kein Protokoll, kein Ereignis) → mit `korrektur` werden die Zeilen, die GENAU am Tag
+   beginnen, aufgehoben → `fassung`. Ein **leerer Satz** heißt ab dem Tag „nicht verteilt“ — nie
+   „zu 0 % verteilt“. Die Datenbank hält die 100 % noch einmal **zur Commit-Zeit**: ein Satz mit zwei
+   Zielen verschiebt Anteile zwischen ihnen und ist zwischen zwei Anweisungen nie 100 %.
+
+10. **Die Kostenstellen-Sicht nennt vier Herkünfte nebeneinander (`kostenstelle`, AP-10 IP-11).**
+   Je Tag und Messstelle: geht sie zu **100 %** an die Kostenstelle und ist sie gemessen → `gemessen`; zu
+   einem Anteil **unter 100 %** → `verteilt`; ist sie eine **berechnete** Messstelle (Summe, Rest) →
+   `berechnet`, gleich zu welchem Anteil. Hat sie an einem Tag einen Wert, aber **keine Zeile** →
+   `nicht verteilt`. Der Tagesanteil kommt aus `erbe` (Version und Kennzeichen der Quelle reisen mit),
+   die Periode ist die **Summe der Tage** (E12, Summenregel der Bilanz: ein unvollständiger Tag zählt
+   nicht mit und steht in `fehlend`); die höchste Version der Tage steht EINMAL als „korrigiert
+   (Version n)“ am Posten, ein Wechsel des Anteils innerhalb der Periode als „Verteilung geändert am
+   TT.MM.JJJJ“.
+11. **„Nicht verteilt“ gehört keiner Kostenstelle — es wird nie aufgeteilt und nie weggelassen.** Der
+   Block steht in JEDER Kostenstellen-Sicht des Kundenbereichs gleich da und zählt in ihrer `summe` nie
+   mit: eine Summe der Kostenstellen, die den Gesamtverbrauch trifft, weil der Rest still verteilt wurde,
+   wäre eine Lüge mit stimmiger Summe. Ein Posten entsteht nur, wenn an einem nicht verteilten Tag eine
+   Menge da ist — ohne jede Menge ist nichts gemessen, das niemandem gehört.
+12. **Ohne Zuordnung keine Menge — nie 0.** Eine Kostenstelle ohne Zeile hat `menge: null` mit
+   `grund: keine_zuordnung` (F12: nicht „9010 Druckluft 0 kWh“); ein zugeordneter Tag ohne Wert ist
+   „keine Werte“. Verschiedene Größen, Richtungen oder Einheiten werden nie zu einer Zahl
+   (`groessen_gemischt`, je Größe eine Summe — Erzeugung und Abgabe an 9000 bleiben getrennt).
+13. **Die Sicht warnt vor doppelter Zählung und ändert keine Zahl (`doppelzaehlung`).** Geht eine
+   berechnete Messstelle an eine Kostenstelle, an die auch Messstellen ihrer Formel gehen, zählt deren
+   `summe` sie doppelt (F11: MS-20 = MS-06 + MS-11 + Anteil 4100 von MS-07, alle an 4100). Kein Posten
+   wird ausgelassen, keine Summe bereinigt, keine Zuordnung abgelehnt — die Sicht nennt je Paar den
+   Satz „MS-06 ist bereits in MS-20 enthalten“ und die Tage. Je TAG (die Verteilung wirkt je Tag),
+   rekursiv über die Abhängigkeitsordnung der Formeln (ein Kreis wird mit `formel_kreis`/
+   `haengt_an_kreis` benannt, nie aufgelöst). **Anteile:** nie eine Menge — „ganz“, wenn Anteil der Summe
+   × Beitrag des Terms ≥ 100 % ist, sonst „zum Teil“; ein Term „Anteil 4200 von MS-07“ trägt einen
+   anderen Teil als der Posten MS-07 an 4100 (keine Warnung), ein abgezogener Term (−, beim Rest Abfluss
+   und zugeordnet) ist nicht enthalten, ein Term auf den positiven/negativen Teil eines Messwerts trägt
+   höchstens zum Teil. Es zählt die Einrichtung, nicht der Wert von heute: ein Term ohne Menge ist
+   trotzdem enthalten. Nur Posten derselben Größe, Richtung und Einheit; ein Messkanal-Term ist kein Posten.
+
+14. **Ein Ablesezeitraum geht als Ganzes - oder gar nicht (`ablesezeitraum`, Messen PR4, Fall F17).**
+   Ein Ablesezeitraum hat keine Tagesmengen und wird nie auf Tage verteilt.
+   Gilt der Anteil einer Kostenstelle an JEDEM Tag, den er berührt, unverändert, ist Anteil × Menge genau die Summe der Tagesanteile, die E12 aus den (unbekannten) Tagesmengen ergäbe - die Menge geht als Ganzes an sie (MS-21: 1 240 m³ zu 100 % an 9100).
+   Wechselt er, auch von keiner Zeile zu einer, gibt es für sie keine Zahl: Grund `anteil_wechselt_im_ablesezeitraum`, Satz „keine Werte (Verteilung im Ablesezeitraum geändert)“ und „Verteilung geändert am …“ - nie ein Stichtag-Anteil, nie eine Aufteilung nach Tagen.
+   Anders als `mengen` urteilt die Regel JE Kostenstelle: ändert sich der Satz nur für eine andere, bleibt diese Zahl exakt (744 m³ = 60 % × 1 240).
+   Die Tage sind halboffen in der Zone der Messstelle: eine Ablesung am 01.12. 00:00 schließt mit dem 30.11., eine um 07:40 am 02.11. berührt den 02.11.
+   Benannte Grenze: der Tag einer Ablesung, die nicht um 00:00 liegt, gehört beiden Zeiträumen, die sie trennt.
+   Darum kostet jeder Wechsel der Verteilung genau einen Ablesezeitraum seine Zahl - gleich, ob er am Tag der Ablesung oder am Tag danach gilt (Ablesungen 01.09. und 01.10. um 07:15, 02.11. um 07:40; 70/30 bis 30.09., ab 01.10. 60/40: der September hat keine Zahl; ab 02.10.: der Oktober).
+   Nur eine Ablesung um 00:00 am Tag des Wechsels trennt ohne Verlust; ob ein Wechsel an einer Ablesung ausgerichtet werden darf, ist ein offener Produktentscheid (Prüfung r4 S13).
+   „Nicht verteilt“: an ALLEN Tagen ohne Zeile die ganze Menge, an nur einigen keine Zahl.
+   Die Kostenstellen-Sicht liest eine Messstelle aus Ablesungen über Monat und Jahr in MONATEN statt Tagen (`posten[].monate`): je Monat die gespeicherte Menge (dieselbe Zahl wie `…/werte?raster=monat`) mit den Ablesezeiträumen, die der Kunde ihm zugeordnet hat; ein Monat mit Zeile, aber ohne Ablesung ist `keine_ablesung`.
+   Ein Tag bekommt nie einen Anteil eines Ablesezeitraums.
+
+## 2.1 Der Leseweg des Formel-Terms (AP-10 IP-5, eingelöst mit IP-8)
+
+Ein Term der Art `verteilung` („4100 von MS-07“, `messstelle-formel.md` §1.1) liest den Anteil des
+TAGES aus dieser Verteilung — über EINE Stelle, `uems/AnteilLeseweg#lies`. Seit AP-10 IP-8 liest sie die
+Zeilen von `messstelle_verteilung` am Tag (`am_tag`) und rechnet `term`; ohne Zeile ist das Urteil
+`nicht_verteilt`. Solange der Teil eines Messwerts (`anteil` = `positiv`/`negativ`) nicht lesbar ist
+(AP-08 IP-7), lehnt sie **benannt** ab. Der Block `leseweg` der Vektor-Datei trägt die geschlossene Menge
+dieser Ablehnungen mit Kundensatz, ihre Prüfreihenfolge und je Referenzfall (F1, F4, F11) das erwartete
+Urteil samt `lesung` (`ganz` · `tagesanteil`). `verteilung_wartet_auf_ip8` gibt es nicht mehr. Der
+TS-Zwilling bildet die Ablehnung nicht (`zwillinge_grund`).
 
 ## 3. Was hier NICHT steht
 
-Die Tabelle mit ihrem Commit-Zeit-Trigger für die 100 %, die Routen `PUT …/messstellen/{id}/verteilung`
-und `GET …/verteilung?am=`, das Kostenstellen-Lesemodell und die Korrektur-Kaskade. Sie kommen mit
-IP-8 und IP-11 — gegen diesen Vertrag.
+Die Tabelle und die Routen (gebaut mit IP-8 gegen diesen Vertrag, Wegweiser
+`docs/agents/root/uems-verteilung.md`) und die Kostenstellen-Route mit ihrem Kaskaden-Anschluss
+(IP-11, `docs/agents/root/uems-kostenstelle-energie.md`).
 
 ## 4. Herkunft der Zahlen
 
@@ -77,6 +153,7 @@ ohne Zwilling.
 ## Prüfen
 
 ```bash
-(cd services/api && ./mvnw test -Dtest='VerteilungVectorsTest')      # rein, kein Docker
+(cd services/api && ./mvnw test -Dtest='VerteilungVectorsTest,AnteilLesewegVectorsTest,VerteilungSchnittstelleVertragTest')  # rein, kein Docker
+(cd services/api && ./mvnw test -Dtest='UemsMessstelleVerteilungMigrationTest,VerteilungApiTest,MessstelleFormelVerteilungsTermApiTest,KostenstelleEnergieApiTest')  # Docker
 (cd frontend/portal && npx vitest run src/uemsVerteilung.test.ts)
 ```

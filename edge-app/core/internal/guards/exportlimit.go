@@ -47,14 +47,20 @@
 // and is sufficient for ANY house load: export = pv + discharge - load - charge
 // <= pv + discharge <= (limit - discharge) + discharge = limit, because load and
 // charge are non-negative. It needs no measurement at all - which is precisely
-// why it is the blind fallback.
+// why it is the blind fallback. It holds for every house load, but NOT for every
+// producer: pv is the generation THIS box controls, and a producer that another
+// box reads or controls behind the same connection point is not in it (UEMS
+// AP-15 W11). Where several boxes share one connection point, each holds its
+// own share instead (exportanteil.go), and this guard's blind fallback becomes
+// that share.
 //
 // Safety posture, the parts that are structural rather than argued:
 //
 //   - It NEVER widens anything. The caller composes the live cap with the plan's
 //     own curtailment most-restrictive-wins (min), and the cap only ever REDUCES
-//     generation - it can never command production, never touch the battery,
-//     never raise an import, never affect the §14a envelope or a SoC bound.
+//     generation - it can never command production, never raise an import, never
+//     affect the §14a envelope or a SoC bound. It never touches the battery -
+//     except that, with a share document, it may LOWER a discharge (W12 below).
 //   - It only ever regulates the CONTROLLABLE producers. The uncontrollable
 //     share (the primary hybrid) rides inside pv_total, so the loop accounts for
 //     it - but if that share alone exceeds the limit, the writable budget floors
@@ -66,10 +72,16 @@
 //     what gets written, so the register readback matches it (the PR #280 lesson,
 //     applied to the curtailment path).
 //
-// WHAT IT DOES NOT DO. It regulates ONLY the controllable producers - never the
-// battery. Absorbing a surplus into the battery is an OPTIMIZER decision (see
-// guards/surpluscharge.go, which acts on a CLOUD-priced flag); a live guard that
-// also commanded the battery would fight the plan it is supposed to execute.
+// WHAT IT DOES NOT DO. Without a share document it regulates ONLY the
+// controllable producers - never the battery. Absorbing a surplus into the
+// battery is an OPTIMIZER decision (see guards/surpluscharge.go, which acts on a
+// CLOUD-priced flag); a live guard that commanded the battery for anything
+// ECONOMIC would fight the plan it is supposed to execute - that stays true in
+// every case. What changes with a share (UEMS AP-15 W12, V6): a share smaller
+// than the battery's discharge power cannot be held by the producers alone, so
+// the share guard (exportanteil.go) also LOWERS the discharge - never charges,
+// never raises, blind to the share and with a fresh measurement only once the
+// producers are already at 0. That costs a planned discharge, never safety.
 package guards
 
 import (
@@ -184,6 +196,31 @@ type ExportCap struct {
 	// Blind is true whenever the verdict was NOT formed from a fresh
 	// measurement (hold / contract / safe cap).
 	Blind bool
+	// DischargeCapKw is the ceiling on the battery DISCHARGE (kW, >= 0) that a
+	// share demands (V6, CapAnteil only); nil = none binds. The caller only
+	// ever LOWERS a commanded discharge to it - never a charge, never a raise.
+	DischargeCapKw *float64
+	// AnteilKw echoes the box's own feed-in share; nil without a share
+	// document (Cap).
+	AnteilKw *float64
+	// HeuteCapKw is the cap the SAME box would command without a share - the
+	// shadow of CapAnteil (V5) - nil when that shadow holds nothing (no
+	// feed-in limit in the plan). The distance to CapKw is what the share
+	// holds back (IP-22, anteilverlust.go). CapAnteil only; Cap leaves it nil.
+	HeuteCapKw *float64
+	// Eingefroren is true while the verdict is blind because the measured
+	// value stands still although the box itself moved its actuators (B2,
+	// eingefroren.go; CapAnteil only). MeasurementAge then counts from the
+	// last change of the value.
+	Eingefroren bool
+	// Uhrsprung is true while the verdict is blind because the box's clock
+	// went back behind its newest measurement (IP-27 A8): an
+	// age below zero is no age.
+	Uhrsprung bool
+	// Pruefung is true when this evaluation made the probing adjustment of
+	// IP-27 A7 (CapAnteil only): the caller reports it to the Einfrierprobe
+	// (Geprueft), whose answer window starts now.
+	Pruefung bool
 	// Cascade names the watchdog's role next to the leader's own regulation
 	// (K6, CapCascade): "" without an inner loop, else one of the Cascade*
 	// words. Box-local on purpose - the State vocabulary is closed at cloud
@@ -202,6 +239,11 @@ type ExportLimiter struct {
 	at     time.Time
 	gridKw float64
 	pvKw   float64
+	// A negative age starts the ordinary blind fallback on the new clock.
+	// Nonnegative ages keep their original behavior, including concurrent
+	// samples which arrived just after the caller captured its evaluation time.
+	uhrBlind bool
+	uhrAb    time.Time
 
 	// the currently commanded cap
 	capValid bool
@@ -213,6 +255,55 @@ type ExportLimiter struct {
 	limitValid bool
 	limit      float64
 
+	// Only with a share document (exportanteil.go, CapAnteil) - untouched by
+	// Cap. The measured battery of the newest sample (+ charge / - discharge).
+	battValid bool
+	battKw    float64
+	// the commanded discharge ceiling (V6)
+	dcapValid bool
+	dcap      float64
+	dcapAt    time.Time
+	// the operating point at the onset of blindness, origin of the linear
+	// ramp to the share (V2)
+	rampValid       bool
+	rampPv, rampDis float64
+	// the battery push (+ discharge / - charge, kW) the ramp began with -
+	// rampAnstieg (exportanteil.go) lowers by any rise above it
+	rampSchub float64
+	// heute is the same box WITHOUT a share, evaluated alongside (V5)
+	heute *ExportLimiter
+	// the probing adjustment of IP-27 A7 (exportanteil.go, pruefen): the
+	// point it lowered to, held until the Einfrierprobe answers; +Inf = that
+	// actuator is not probed
+	pruefValid        bool
+	pruefPv, pruefDis float64
+	// a standing value proves no headroom (exportanteil.go, stehBeleg): the
+	// grid value of the newest sample, steht when it repeats the one before
+	// bit for bit, and the PV and measured battery (+ charge / - discharge;
+	// ankerBattValid = measured) of the sample on which it last moved.
+	// Written by ObserveMitSpeicher only - Cap never reads them.
+	wertValid, steht   bool
+	wertKw             float64
+	ankerPv, ankerBatt float64
+	ankerBattValid     bool
+	// messung counts the accepted samples (Observe) - the identity of the
+	// measurement an evaluation reads. einSpielraum gives the headroom of one
+	// measurement out once: spielraumVor is the discharge ceiling before the
+	// first evaluation of measurement spielraumMessung (exportanteil.go).
+	messung, spielraumMessung uint64
+	spielraumVor              float64
+	spielraumValid            bool
+	// einAnstieg (exportanteil.go): the battery push (+ discharge / - charge,
+	// kW) the last evaluation let through, and the push before the first
+	// evaluation of measurement anstiegMessung.
+	stellValid, anstiegValid bool
+	stellKw, anstiegVor      float64
+	anstiegMessung           uint64
+	// the clock went back behind sprungBis, the newest sample before the jump:
+	// vergangenheit until a sample after it arrives (exportanteil.go,
+	// ladungVorDemSprung). Written by ObserveMitSpeicher only.
+	vergangenheit bool
+	sprungBis     time.Time
 	// K6 cascade state (CapCascade): the inner loop of the last call, when an
 	// export above the limit was first seen while the storage still had
 	// headroom, and whether this slot's inner loop already failed to absorb.
@@ -240,11 +331,13 @@ func (l *ExportLimiter) Observe(ts time.Time, gridKw, pvKw float64) (urgent bool
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	// Out-of-order samples are ignored: the newest measurement is the truth.
+	// Like ObserveMitSpeicher: an older timestamp re-anchors the clock.
+	// A reordered sample must not earn release credit from before the jump.
 	if l.seen && ts.Before(l.at) {
-		return false
+		l.verankern(ts)
 	}
 	l.seen, l.at, l.gridKw, l.pvKw = true, ts, gridKw, math.Max(pvKw, 0)
+	l.messung++
 	if !l.limitValid || !l.capValid {
 		return false
 	}
@@ -305,21 +398,49 @@ func (l *ExportLimiter) CapCascade(now time.Time, limitKw *float64, safeStaticCa
 
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.limit, l.limitValid = limit, true
 	l.armInner(inner)
+	return l.capLocked(now, limit, safeStaticCapKw)
+}
+
+// capLocked is the staged evaluation behind Cap (and CapAnteil, which runs it
+// against the loop limit and the share's safe cap first - so a share can only
+// ever narrow what this returns). Caller holds l.mu.
+func (l *ExportLimiter) capLocked(now time.Time, limit, safeStaticCapKw float64) ExportCap {
+	return l.capLockedAb(now, l.at, limit, safeStaticCapKw)
+}
+
+// capLockedAb is capLocked with the time of the newest usable measurement
+// given: CapAnteil passes the last CHANGE of a frozen value (B2,
+// eingefroren.go), Cap always the newest sample. Caller holds l.mu.
+func (l *ExportLimiter) capLockedAb(now, at time.Time, limit, safeStaticCapKw float64) ExportCap {
+	l.limit, l.limitValid = limit, true
 
 	res := ExportCap{Active: true, LimitKw: limit}
 
 	age := time.Duration(0)
 	fresh := false
 	if l.seen {
-		age = now.Sub(l.at)
+		age = now.Sub(at)
 		if age < 0 {
-			age = 0
+			if !l.uhrBlind || now.Before(l.uhrAb) {
+				l.uhrAb = now
+			}
+			l.uhrBlind = true
+		} else {
+			l.uhrBlind = false
 		}
-		fresh = age <= ExportFreshWindow
+		if l.uhrBlind {
+			age = now.Sub(l.uhrAb)
+		}
+		fresh = !l.uhrBlind && age <= ExportFreshWindow
 	}
 	res.MeasurementAge = age
+	res.Uhrsprung = l.uhrBlind
+	if l.uhrBlind {
+		// Keep the actual (possibly negative) age visible; only the fallback
+		// windows count from detecting the jump on the new clock.
+		res.MeasurementAge = now.Sub(at)
+	}
 
 	switch {
 	case l.seen && fresh:
@@ -344,6 +465,9 @@ func (l *ExportLimiter) CapCascade(now time.Time, limitKw *float64, safeStaticCa
 					"Eigenverbrauch einhaelt.",
 				age1(age), kw1(safeStaticCapKw), kw1(limit))
 		}
+	}
+	if res.Uhrsprung {
+		res.Reason = "Die Uhr der Box ist hinter die letzte Messung am Netzverknuepfungspunkt zurückgesprungen - " + res.Reason
 	}
 	return res
 }
@@ -489,6 +613,7 @@ func (l *ExportLimiter) forget() {
 	l.mu.Lock()
 	l.capValid, l.cap, l.capAt = false, 0, time.Time{}
 	l.limitValid, l.limit = false, 0
+	l.dcapValid, l.dcap, l.dcapAt, l.rampValid = false, 0, time.Time{}, false
 	l.inner, l.innerSlot, l.overSince, l.innerFailed = InnerLoop{}, time.Time{}, time.Time{}, false
 	l.mu.Unlock()
 }

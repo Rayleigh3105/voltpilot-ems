@@ -40,6 +40,7 @@ import { geldWort, speicherAussage, type SpeicherAussage } from './speicherAussa
 import { batteryState, deriveBatteryKw, gridState } from './live';
 import { activeModes } from './surface';
 import { portfolioSurfaceInput, siteSoc, siteStatus } from './portfolio';
+import { aggregatLiefertDaten, type AggregatErgebnis, type LiefertDatenZustand } from './uemsZustand';
 
 // ---------------------------------------------------------------------------
 // Vokabular
@@ -48,6 +49,8 @@ import { portfolioSurfaceInput, siteSoc, siteStatus } from './portfolio';
 /** Ein Baustein-Schlüssel der Kunden-Fläche. */
 export type PortfolioBausteinId =
   | 'flotten-status'
+  | 'datenlage'
+  | 'netzbezug-gesamt'
   | 'erloese'
   | 'speicher'
   | 'lastspitzen'
@@ -56,6 +59,12 @@ export type PortfolioBausteinId =
   | 'erzeugung-heute'
   | 'verbrauch-heute'
   | 'netz-heute'
+  | 'messstellen'
+  | 'energiebilanz'
+  | 'kennzahlen'
+  | 'bewertung'
+  | 'ziele-massnahmen'
+  | 'energiemanagement'
   | 'anlagen';
 
 /** Alle Portfolio-Bausteine aus dem EINEN Katalog, in Katalog-Reihenfolge. */
@@ -75,6 +84,10 @@ export const PORTFOLIO_BAUSTEINE: BausteinDef[] = bausteineFuer('portfolio');
  */
 export const CANONICAL_PORTFOLIO: PortfolioBausteinId[] = [
   'flotten-status',
+  // UEMS AP-01 IP-6: nur auf der Unternehmens- und Standort-Übersicht verfügbar
+  // ({@link UEBERSICHT_BAUSTEINE}) — für jede andere Flotte ändert sich nichts.
+  'datenlage',
+  'netzbezug-gesamt',
   'erloese',
   'speicher',
   'lastspitzen',
@@ -83,6 +96,17 @@ export const CANONICAL_PORTFOLIO: PortfolioBausteinId[] = [
   'erzeugung-heute',
   'verbrauch-heute',
   'netz-heute',
+  // UEMS AP-13 IP-7 (Ü1): die Bausteine der Messstellen-Welt — nur auf einer Übersicht und nur mit Inhalt
+  // ({@link UEMS_UEBERSICHT_BAUSTEINE}); sie rendern unter der Anlagen-Tabelle, vor der Karte „Funktionen“.
+  'messstellen',
+  'energiebilanz',
+  'kennzahlen',
+  // UEMS AP-16 IP-24 (S5/S6): die Frist der energetischen Bewertung — nur am Unternehmen, nur mit Stand und Recht.
+  'bewertung',
+  // UEMS AP-18 IP-19 (F2/F3): Ziele und Maßnahmen — nur am Unternehmen, nur mit einem Vorgang im Zaun.
+  'ziele-massnahmen',
+  // UEMS AP-19 IP-21 (WV5): Energiemanagement — nur am Unternehmen, nur mit einer fälligen oder bald fälligen Frist.
+  'energiemanagement',
   'anlagen',
 ];
 
@@ -110,6 +134,11 @@ export interface BausteinOrt {
 const ORT: Record<PortfolioBausteinId, BausteinOrt> = {
   // Der Kopf-Satz und die Zustands-Spalte — beides Pflicht, beides kein Auge.
   'flotten-status': { leiste: false, spalte: true },
+  // UEMS AP-01 IP-6: die Datenlage steht in der KOPFZEILE (je Anlage steht sie
+  // schon als Zustands-Spalte); der Netzbezug gesamt ist über die Flotte eine
+  // Zelle und je Anlage die Spalte „Netz jetzt" (dieselbe wie bei „Netz heute").
+  datenlage: { leiste: false, spalte: false },
+  'netzbezug-gesamt': { leiste: true, spalte: true },
   erloese: { leiste: true, spalte: true },
   // ⚠ NUR die Spalte: der kumulierte Ladestand ist raus (Captain 25.08.2026).
   speicher: { leiste: false, spalte: true },
@@ -119,6 +148,13 @@ const ORT: Record<PortfolioBausteinId, BausteinOrt> = {
   'erzeugung-heute': { leiste: true, spalte: true },
   'verbrauch-heute': { leiste: true, spalte: true },
   'netz-heute': { leiste: true, spalte: true },
+  // UEMS AP-13 IP-7: eigene Abschnitte unter der Tabelle — weder Zelle noch Spalte.
+  messstellen: { leiste: false, spalte: false },
+  energiebilanz: { leiste: false, spalte: false },
+  kennzahlen: { leiste: false, spalte: false },
+  bewertung: { leiste: false, spalte: false },
+  'ziele-massnahmen': { leiste: false, spalte: false },
+  energiemanagement: { leiste: false, spalte: false },
   // Die Tabelle SELBST — sie steht immer, und immer zuletzt.
   anlagen: { leiste: false, spalte: false },
 };
@@ -127,6 +163,46 @@ const ORT: Record<PortfolioBausteinId, BausteinOrt> = {
 export function bausteinOrt(id: string): BausteinOrt {
   return ORT[id as PortfolioBausteinId] ?? { leiste: false, spalte: false };
 }
+
+/**
+ * Die GELD-Bausteine der Kunden-Fläche — Vorteil/Erlöse und die vermiedene
+ * Spitze in Euro (UEMS AP-01 §4.6, Geld-Regel).
+ *
+ * ⚠ **Captain-Vorgabe 10.09.2026: „Die Messdatenkunden brauchen keine
+ * Geldanzeige."** Auf der Unternehmens- und Standort-Übersicht erscheinen diese
+ * Bausteine nur, wenn eine Anlage der Ebene steuert oder Erzeuger/Speicher hat,
+ * und zählen dann nur diese Anlagen. Wer einen Baustein mit Euro-Wert ergänzt,
+ * trägt ihn HIER ein — `uebersicht.test.ts` (A13) prüft jede Zelle und jede
+ * Spalte mit Euro gegen diese Liste.
+ */
+export const GELD_BAUSTEINE: readonly PortfolioBausteinId[] = ['erloese', 'lastspitzen'];
+
+/**
+ * Die Bausteine, die NUR die Unternehmens- und Standort-Übersicht tragen (UEMS
+ * AP-01 IP-6, Katalog-Einträge der Funktion „Messen & Auswerten"). Die Flotte
+ * eines Betreibers oder eines Kunden ohne Standorte bleibt zeichengleich.
+ */
+export const UEBERSICHT_BAUSTEINE: readonly PortfolioBausteinId[] = [
+  'datenlage',
+  'netzbezug-gesamt',
+  'messstellen',
+  'energiebilanz',
+  'kennzahlen',
+];
+
+/**
+ * UEMS AP-13 IP-7 (E3 = A, Ü1): die drei Bausteine der Messstellen-Welt. Ob sie da sind, entscheidet ihr INHALT
+ * (`uebersichtBausteine.bausteineMitInhalt`), nicht eine Kennzahl der Anlagen — ein Baustein ohne Inhalt wird nicht
+ * angeboten und nicht gezeigt.
+ */
+export const UEMS_UEBERSICHT_BAUSTEINE: readonly PortfolioBausteinId[] = [
+  'messstellen',
+  'energiebilanz',
+  'kennzahlen',
+  'bewertung',
+  'ziele-massnahmen',
+  'energiemanagement',
+];
 
 /**
  * Wie dicht die Fläche rendert — die EINZIGE Wirkung der Betriebsart neben der
@@ -225,20 +301,44 @@ export interface PortfolioKennzahlen {
   vermiedeneSpitzeEur: number | null;
   /** Σ vermiedene Spitze (kW). */
   vermiedeneSpitzeKw: number | null;
+  vermiedeneSpitzeAnlagen: number;
   /** Σ Ladepunkte der Flotte. */
   ladepunkte: number | null;
+  ladepunkteAnlagen: number;
   /** Σ PV-Leistung JETZT (kW) — nur über Anlagen mit FRISCHEM Messwert. */
   pvJetztKw: number | null;
   /** Wie viele Anlagen dazu einen frischen Messwert hatten. */
   pvJetztAnlagen: number;
+  /**
+   * Wie viele Anlagen überhaupt PV haben (Rolle oder je ein PV-Wert) — der
+   * Nenner von „x von y Anlagen melden gerade". Eine Anlage ohne Erzeuger
+   * meldet keine PV, sie meldet sich nicht „nicht" (Befund UEMS AP-01 IP-6).
+   */
+  pvAnlagen: number;
   /** Σ Erzeugung heute (kWh). */
   erzeugungHeuteKwh: number | null;
+  erzeugungHeuteAnlagen: number;
   /** Σ Verbrauch heute (kWh). */
   verbrauchHeuteKwh: number | null;
+  verbrauchHeuteAnlagen: number;
   /** Σ Netzbezug heute (kWh). */
   bezugHeuteKwh: number | null;
+  bezugHeuteAnlagen: number;
   /** Σ Einspeisung heute (kWh). */
   einspeisungHeuteKwh: number | null;
+  einspeisungHeuteAnlagen: number;
+  /** Σ Netzbezug JETZT (kW) — nur über Anlagen mit FRISCHEM Messwert; Einspeisung zählt 0. */
+  netzbezugJetztKw: number | null;
+  /** Wie viele Anlagen dazu einen frischen Netz-Messwert hatten. */
+  netzbezugJetztAnlagen: number;
+  /** „3 von 3 Anlagen liefern Daten" (Vertrag `uemsZustand`); null ohne Anlage. */
+  datenlage: AggregatErgebnis | null;
+  /**
+   * Geld-Regel (UEMS AP-01 IP-6): die Namen der Anlagen, über die Geld zählt;
+   * `null` = die Regel ist hier nicht angewendet (jede Flotte ausserhalb der
+   * Unternehmens- und Standort-Übersicht).
+   */
+  geldNamen: string[] | null;
 }
 
 /** Summiert, aber gibt `null` zurück, wenn KEIN Summand da war. */
@@ -249,6 +349,10 @@ function summe(werte: (number | null | undefined)[]): number | null {
     sum = (sum ?? 0) + v;
   }
   return sum;
+}
+
+function anzahl(werte: (number | null | undefined)[]): number {
+  return werte.filter((v) => v != null && Number.isFinite(v)).length;
 }
 
 /**
@@ -289,6 +393,8 @@ export function portfolioKennzahlen(
   overview: Overview | null,
   earnings: Earnings | null,
   now: Date = new Date(),
+  /** Geld-Regel: nur diese Anlagen zählen Geld; `null` = alle (heutiges Verhalten). */
+  geld: ReadonlySet<string> | null = null,
 ): PortfolioKennzahlen {
   const sites = overview?.sites ?? [];
 
@@ -297,14 +403,27 @@ export function portfolioKennzahlen(
   const pvFrisch = sites.filter((s) => siteLiveFresh(s, now) && s.live?.pvKw != null);
 
   const heute = berlinDay(now);
-  const beitragend = (earnings?.sites ?? []).filter(
+  // Geld-Regel (UEMS A13): eine Anlage, die weder steuert noch Erzeuger/Speicher hat,
+  // trägt kein Geld bei — auch wenn der Server für sie eine Zahl liefert.
+  const geldSites = (earnings?.sites ?? []).filter((s) => geld == null || geld.has(s.id));
+  // z1: nur BEITRAGENDE Anlagen (mit Tageszahl) zählen in Summe und Unterzeile.
+  const beitragend = geldSites.filter(
     (s: EarningsSite) => savedOnDay(s.dailySaved, heute) != null,
   );
   const erloesHeute = summe(beitragend.map((s) => savedOnDay(s.dailySaved, heute)));
 
-  const peakSites = (earnings?.sites ?? []).filter((s) => s.peakShaving?.avoidedEur != null);
+  const peakSites = geldSites.filter((s) => s.peakShaving?.avoidedEur != null);
 
-  const ladepunkte = summe(sites.map((s) => s.chargePointCount));
+  // Netzbezug jetzt: dieselbe Frische-Regel wie PV jetzt; eine einspeisende
+  // Anlage bezieht gerade 0 kW (gemessen), ihre Einspeisung wird nie verrechnet.
+  const netzFrisch = sites.filter((s) => siteLiveFresh(s, now) && s.live?.gridKw != null);
+
+  const ladepunktWerte = sites.map((s) => s.chargePointCount);
+  const ladepunkte = summe(ladepunktWerte);
+  const erzeugung = sites.map((s) => s.energyToday?.pvKwh ?? null);
+  const verbrauch = sites.map((s) => s.energyToday?.loadKwh ?? null);
+  const bezug = sites.map((s) => s.energyToday?.gridImportKwh ?? null);
+  const einspeisung = sites.map((s) => s.energyToday?.gridExportKwh ?? null);
 
   return {
     ladestandAnlagen: sites.filter((s) => siteSoc(s) != null).length,
@@ -313,14 +432,51 @@ export function portfolioKennzahlen(
     erloesHeuteEinordnung: kachelEinordnung(beitragend, earnings?.to ?? null, now),
     vermiedeneSpitzeEur: summe(peakSites.map((s) => s.peakShaving?.avoidedEur ?? null)),
     vermiedeneSpitzeKw: summe(peakSites.map((s) => s.peakShaving?.avoidedKw ?? null)),
+    vermiedeneSpitzeAnlagen: peakSites.length,
     ladepunkte: ladepunkte != null && ladepunkte > 0 ? ladepunkte : null,
+    ladepunkteAnlagen: anzahl(ladepunktWerte),
     pvJetztKw: summe(pvFrisch.map((s) => s.live?.pvKw ?? null)),
     pvJetztAnlagen: pvFrisch.length,
-    erzeugungHeuteKwh: summe(sites.map((s) => s.energyToday?.pvKwh ?? null)),
-    verbrauchHeuteKwh: summe(sites.map((s) => s.energyToday?.loadKwh ?? null)),
-    bezugHeuteKwh: summe(sites.map((s) => s.energyToday?.gridImportKwh ?? null)),
-    einspeisungHeuteKwh: summe(sites.map((s) => s.energyToday?.gridExportKwh ?? null)),
+    pvAnlagen: sites.filter(
+      (s) => (s.roleCounts?.pv ?? 0) > 0 || s.live?.pvKw != null || s.energyToday?.pvKwh != null,
+    ).length,
+    erzeugungHeuteKwh: summe(erzeugung),
+    erzeugungHeuteAnlagen: anzahl(erzeugung),
+    verbrauchHeuteKwh: summe(verbrauch),
+    verbrauchHeuteAnlagen: anzahl(verbrauch),
+    bezugHeuteKwh: summe(bezug),
+    bezugHeuteAnlagen: anzahl(bezug),
+    einspeisungHeuteKwh: summe(einspeisung),
+    einspeisungHeuteAnlagen: anzahl(einspeisung),
+    netzbezugJetztKw: summe(netzFrisch.map((s) => Math.max(s.live?.gridKw ?? 0, 0))),
+    netzbezugJetztAnlagen: netzFrisch.length,
+    datenlage: sites.length > 0 ? datenlageAnlagen(sites) : null,
+    geldNamen: geld == null ? null : sites.filter((s) => geld.has(s.id)).map((s) => s.name),
   };
+}
+
+/**
+ * Das Urteil der Zeile ({@link siteStatus}) im Wort des Vertrags „liefert Daten"
+ * (`uemsZustand`). Bis das Messstellen-Register die Datenlage je Messstelle
+ * trägt (AP-04), ist das die Datenlage der ANLAGE — zwei Wahrheiten über
+ * denselben Zustand gibt es nicht.
+ */
+export function liefertDatenZustand(site: OverviewSite): LiefertDatenZustand {
+  switch (siteStatus(site).label) {
+    case 'Online':
+      return 'liefert';
+    case 'Wartet auf Daten':
+      return 'wartet_auf_erste_daten';
+    case 'Kein Gerät':
+      return 'keine_datenquelle';
+    default:
+      return 'liefert_nicht_seit';
+  }
+}
+
+/** „2 von 3 Anlagen liefern Daten" — gezählt vom Vertrag, nie hier formuliert. */
+export function datenlageAnlagen(sites: readonly OverviewSite[]): AggregatErgebnis {
+  return aggregatLiefertDaten(sites.map(liefertDatenZustand), 'anlage');
 }
 
 // ---------------------------------------------------------------------------
@@ -338,6 +494,10 @@ export function bausteinHatWert(id: string, k: PortfolioKennzahlen, anlagen: num
     case 'flotten-status':
     case 'anlagen':
       return anlagen > 0;
+    case 'datenlage':
+      return k.datenlage != null && k.datenlage.gesamt > 0;
+    case 'netzbezug-gesamt':
+      return k.netzbezugJetztKw != null;
     case 'erloese':
       return k.erloesHeuteEur != null;
     case 'speicher':
@@ -372,12 +532,27 @@ export function verfuegbareBausteine(input: {
   anwendungen: readonly string[];
   kennzahlen: PortfolioKennzahlen;
   anlagen: number;
+  /**
+   * UEMS AP-01 IP-6 — nur auf der Unternehmens- und Standort-Übersicht gesetzt:
+   * dann gibt es die Übersichts-Bausteine, und `geld` sagt, ob die Geld-Regel
+   * erfüllt ist (eine Anlage der Ebene steuert oder hat Erzeuger/Speicher).
+   */
+  uebersicht?: { geld: boolean; /** AP-13 IP-7: die Messstellen-Bausteine MIT Inhalt. */ uems?: readonly string[] } | null;
 }): PortfolioBausteinId[] {
   const aktiv = new Set(input.anwendungen);
   const out: PortfolioBausteinId[] = [];
   for (const b of PORTFOLIO_BAUSTEINE) {
+    const id = b.id as PortfolioBausteinId;
+    if (!input.uebersicht && UEBERSICHT_BAUSTEINE.includes(id)) continue;
+    // Die Geld-Regel steht VOR der Anwendungs-Frage: auch eine eingeschaltete
+    // Anwendung bringt einem reinen Messkunden kein Geld auf die Seite.
+    if (input.uebersicht && !input.uebersicht.geld && GELD_BAUSTEINE.includes(id)) continue;
     const von = anwendungenFuerPortfolioBaustein(b.id);
     if (!von.some((a) => aktiv.has(a))) continue;
+    if (UEMS_UEBERSICHT_BAUSTEINE.includes(id)) {
+      if (input.uebersicht?.uems?.includes(id)) out.push(id);
+      continue;
+    }
     if (!bausteinHatWert(b.id, input.kennzahlen, input.anlagen)) continue;
     out.push(b.id as PortfolioBausteinId);
   }
@@ -408,17 +583,30 @@ export function flottenAussage(
   const online = sites.filter((s) => siteStatus(s).tone === 'ok').length;
   const stumm = sites.filter((s) => siteStatus(s).label === 'Meldet sich nicht');
   const wartet = sites.filter((s) => siteStatus(s).label === 'Wartet auf Daten');
-  const ohne = sites.filter((s) => siteStatus(s).label === 'Kein Gerät');
 
   if (online === gesamt) {
     return { tone: 'ok', text: gesamt === 1 ? '1 Anlage online' : `Alle ${gesamt} Anlagen online` };
   }
 
   const teile = [`${online} von ${gesamt} Anlagen online`];
-  if (stumm.length > 0) teile.push(stummSatz(stumm, now));
-  else if (wartet.length > 0) teile.push(wartetSatz(wartet));
-  else if (ohne.length > 0) teile.push(ohneGeraetSatz(ohne));
+  const hinweis = flottenHinweis(sites, now);
+  if (hinweis) teile.push(hinweis);
   return { tone: stumm.length > 0 || wartet.length > 0 ? 'warn' : 'off', text: teile.join(' · ') };
+}
+
+/**
+ * Der zweite Teil der Flotten-Aussage: WELCHE Anlage Aufmerksamkeit braucht,
+ * beim Namen und mit ihrem Alter; `null`, wenn alle online sind. Die Kopfzeile
+ * der Unternehmens- und Standort-Übersicht hängt ihn an ihre Datenlage.
+ */
+export function flottenHinweis(sites: readonly OverviewSite[], now: Date = new Date()): string | null {
+  const stumm = sites.filter((s) => siteStatus(s).label === 'Meldet sich nicht');
+  if (stumm.length > 0) return stummSatz(stumm, now);
+  const wartet = sites.filter((s) => siteStatus(s).label === 'Wartet auf Daten');
+  if (wartet.length > 0) return wartetSatz(wartet);
+  const ohne = sites.filter((s) => siteStatus(s).label === 'Kein Gerät');
+  if (ohne.length > 0) return ohneGeraetSatz(ohne);
+  return null;
 }
 
 function stummSatz(stumm: readonly OverviewSite[], now: Date): string {
@@ -474,26 +662,57 @@ export function vorteilLabel(kind: FleetKind): string {
 /** Die Unterzeile des Vorteils — sie sagt den BEZUG, in beiden Flächen gleich. */
 export const VORTEIL_BEZUG = 'gegenüber Speicher ohne Steuerung';
 
-/**
- * Die Unterzeile zählt nur BEITRAGENDE Anlagen: „1 von 2 Anlagen", wenn eine
- * schweigt; „2 Anlagen", wenn alle beitragen; bei einer Anlage nichts.
- */
-export function vorteilUnterzeile(beitragend: number, anlagen: number): string {
-  if (beitragend < anlagen && anlagen > 1) return `${VORTEIL_BEZUG} · ${beitragend} von ${anlagen} Anlagen`;
-  return anlagen > 1 ? `${VORTEIL_BEZUG} · ${anlagen} Anlagen` : VORTEIL_BEZUG;
-}
-
 /** „+33,13" / „-0,80" / „0,00" — eine echte Null trägt kein Vorzeichen. */
 export function signiertesGeld(v: number): string {
   const wert = Math.abs(v) < 0.005 ? 0 : v;
   return wert > 0 ? `+${eur(wert)}` : eur(wert);
 }
 
+/**
+ * Die Unterzeile des Vorteils. Sie zählt nur BEITRAGENDE Anlagen (z1, k1 E5 = A):
+ * „1 von 2 Anlagen", wenn eine schweigt; „2 Anlagen", wenn alle beitragen; bei
+ * einer Anlage nichts. Zählt die Zelle auf einer UEMS-Ebene wegen der Geld-Regel
+ * nur einen Teil der Anlagen (`geldNamen`), sagt sie, welchen (A13: „nur Werk
+ * Ahrenberg – Halle 1"), und nennt die Deckung immer (AP-10 E16).
+ */
+export function vorteilUnterzeile(
+  beitragend: number,
+  anlagen: number,
+  geldNamen: readonly string[] | null = null,
+): string {
+  if (geldNamen != null) {
+    const deckung = anlagenText(beitragend, anlagen);
+    if (geldNamen.length > 0 && geldNamen.length < anlagen && geldNamen.length <= 2) {
+      return `${VORTEIL_BEZUG} · ${deckung} · nur ${namenListe(geldNamen)}`;
+    }
+    return `${VORTEIL_BEZUG} · ${deckung}`;
+  }
+  if (beitragend < anlagen && anlagen > 1) return `${VORTEIL_BEZUG} · ${beitragend} von ${anlagen} Anlagen`;
+  return anlagen > 1 ? `${VORTEIL_BEZUG} · ${anlagen} Anlagen` : VORTEIL_BEZUG;
+}
+
+/** Die Fussnote des Netzbezugs — die Summe nennt, über wie viele Anlagen sie geht. */
+export function netzbezugFussnote(k: PortfolioKennzahlen, anlagen: number): string | null {
+  if (k.netzbezugJetztKw == null) return null;
+  return meldenGerade(k.netzbezugJetztAnlagen, anlagen);
+}
+
 /** Die Fussnote der PV-Zelle — „jetzt" gilt nur für Anlagen, die gerade melden. */
 export function pvJetztFussnote(k: PortfolioKennzahlen, anlagen: number): string | null {
   if (k.pvJetztKw == null) return null;
-  if (k.pvJetztAnlagen >= anlagen) return null;
-  return `${k.pvJetztAnlagen} von ${anlagen} Anlagen melden gerade`;
+  return meldenGerade(k.pvJetztAnlagen, anlagen);
+}
+
+function anlagenText(zaehler: number, nenner: number): string {
+  return `${zaehler} von ${nenner} ${nenner === 1 ? 'Anlage' : 'Anlagen'}`;
+}
+
+function meldenGerade(zaehler: number, nenner: number): string {
+  return `${anlagenText(zaehler, nenner)} ${nenner === 1 ? 'meldet' : 'melden'} gerade`;
+}
+
+function mitUntergrenze(wert: string, zaehler: number, nenner: number): string {
+  return zaehler < nenner ? `mindestens ${wert}` : wert;
 }
 
 /**
@@ -523,8 +742,19 @@ export function leistenZellen(input: {
           wert: signiertesGeld(k.erloesHeuteEur),
           einheit: '€',
           einordnung: k.erloesHeuteEinordnung,
-          unterzeile: vorteilUnterzeile(k.erloesHeuteAnlagen, anlagen),
+          unterzeile: vorteilUnterzeile(k.erloesHeuteAnlagen, anlagen, k.geldNamen),
           lead: true,
+        });
+        break;
+      case 'netzbezug-gesamt':
+        if (k.netzbezugJetztKw == null) break;
+        out.push({
+          id,
+          label: 'Netzbezug jetzt',
+          wert: mitUntergrenze(fmtNum(k.netzbezugJetztKw, ''), k.netzbezugJetztAnlagen, anlagen),
+          einheit: 'kW',
+          unterzeile: netzbezugFussnote(k, anlagen),
+          ton: k.netzbezugJetztAnlagen < anlagen ? 'warn' : 'ruhig',
         });
         break;
       case 'pv-jetzt':
@@ -532,10 +762,12 @@ export function leistenZellen(input: {
         out.push({
           id,
           label: 'PV jetzt',
-          wert: fmtNum(k.pvJetztKw, ''),
+          wert: mitUntergrenze(fmtNum(k.pvJetztKw, ''), k.pvJetztAnlagen, k.pvAnlagen ?? anlagen),
           einheit: 'kW',
-          unterzeile: pvJetztFussnote(k, anlagen),
-          ton: pvJetztFussnote(k, anlagen) ? 'warn' : 'ruhig',
+          // Der Nenner sind die Anlagen MIT PV (Befund UEMS AP-01 IP-6): Halle 2
+          // ohne Erzeuger macht aus „PV jetzt" keinen Vorbehalt.
+          unterzeile: pvJetztFussnote(k, k.pvAnlagen ?? anlagen),
+          ton: k.pvJetztAnlagen < (k.pvAnlagen ?? anlagen) ? 'warn' : 'ruhig',
         });
         break;
       case 'erzeugung-heute':
@@ -543,9 +775,9 @@ export function leistenZellen(input: {
         out.push({
           id,
           label: 'Erzeugung heute',
-          wert: fmtNum(k.erzeugungHeuteKwh, '', 0),
+          wert: mitUntergrenze(fmtNum(k.erzeugungHeuteKwh, '', 0), k.erzeugungHeuteAnlagen, anlagen),
           einheit: 'kWh',
-          unterzeile: null,
+          unterzeile: anlagenText(k.erzeugungHeuteAnlagen, anlagen),
         });
         break;
       case 'verbrauch-heute':
@@ -553,25 +785,27 @@ export function leistenZellen(input: {
         out.push({
           id,
           label: 'Verbrauch heute',
-          wert: fmtNum(k.verbrauchHeuteKwh, '', 0),
+          wert: mitUntergrenze(fmtNum(k.verbrauchHeuteKwh, '', 0), k.verbrauchHeuteAnlagen, anlagen),
           einheit: 'kWh',
-          unterzeile: null,
+          unterzeile: anlagenText(k.verbrauchHeuteAnlagen, anlagen),
         });
         break;
       case 'netz-heute': {
         // Bezug und Einspeisung stehen in EINER Zelle und werden nie saldiert
         // (die Katalog-Regel); eine fehlende Richtung wird ausgelassen, nie 0.
         const teile: string[] = [];
-        if (k.bezugHeuteKwh != null) teile.push(`↓ ${fmtNum(k.bezugHeuteKwh, '', 0)}`);
-        if (k.einspeisungHeuteKwh != null) teile.push(`↑ ${fmtNum(k.einspeisungHeuteKwh, '', 0)}`);
+        if (k.bezugHeuteKwh != null) teile.push(`↓ ${mitUntergrenze(fmtNum(k.bezugHeuteKwh, '', 0), k.bezugHeuteAnlagen, anlagen)}`);
+        if (k.einspeisungHeuteKwh != null) teile.push(`↑ ${mitUntergrenze(fmtNum(k.einspeisungHeuteKwh, '', 0), k.einspeisungHeuteAnlagen, anlagen)}`);
         if (teile.length === 0) break;
         out.push({
           id,
           label: 'Netz heute',
           wert: teile.join(' · '),
           einheit: 'kWh',
-          unterzeile:
-            teile.length === 2 ? 'Bezug · Einspeisung' : k.bezugHeuteKwh != null ? 'Bezug' : 'Einspeisung',
+          unterzeile: [
+            k.bezugHeuteKwh != null ? `Bezug: ${anlagenText(k.bezugHeuteAnlagen, anlagen)}` : null,
+            k.einspeisungHeuteKwh != null ? `Einspeisung: ${anlagenText(k.einspeisungHeuteAnlagen, anlagen)}` : null,
+          ].filter(Boolean).join(' · '),
         });
         break;
       }
@@ -583,7 +817,8 @@ export function leistenZellen(input: {
           wert: eur(k.vermiedeneSpitzeEur),
           einheit: '€',
           unterzeile:
-            k.vermiedeneSpitzeKw != null ? `${fmtNum(k.vermiedeneSpitzeKw, 'kW', 0)} gekappt` : null,
+            [k.vermiedeneSpitzeKw != null ? `${fmtNum(k.vermiedeneSpitzeKw, 'kW', 0)} gekappt` : null,
+              anlagenText(k.vermiedeneSpitzeAnlagen, anlagen)].filter(Boolean).join(' · '),
         });
         break;
       case 'ladepunkte':
@@ -591,9 +826,9 @@ export function leistenZellen(input: {
         out.push({
           id,
           label: 'Ladepunkte',
-          wert: String(k.ladepunkte),
+          wert: mitUntergrenze(String(k.ladepunkte), k.ladepunkteAnlagen, anlagen),
           einheit: null,
-          unterzeile: null,
+          unterzeile: anlagenText(k.ladepunkteAnlagen, anlagen),
         });
         break;
       default:
@@ -653,6 +888,8 @@ export const SPALTEN_KOPF: Record<SpaltenId, { titel: string; einheit: string | 
  */
 export function tabellenSpalten(zeilen: readonly AnlagenZeile[], sichtbar: readonly string[]): SpaltenId[] {
   const an = new Set(sichtbar);
+  // UEMS AP-01 IP-6: der Netzbezug gesamt ist je Anlage die Spalte „Netz jetzt".
+  if (an.has('netzbezug-gesamt')) an.add('netz-heute');
   const gefuellt: Record<SpaltenId, (z: AnlagenZeile) => boolean> = {
     'pv-jetzt': (z) => z.pvJetztKw != null,
     'erzeugung-heute': (z) => z.erzeugungKwh != null,
@@ -736,12 +973,15 @@ export function anlagenZeilen(input: {
   configById?: Map<string, Pick<Site, 'tarifArt' | 'leistungspreisEurKw'>> | null;
   dichte: Dichte;
   now: Date;
+  /** Geld-Regel (UEMS AP-01 IP-6): nur diese Anlagen tragen „Heute €"; `null` = alle. */
+  geld?: ReadonlySet<string> | null;
 }): AnlagenZeile[] {
   const { now, dichte } = input;
+  const geld = input.geld ?? null;
   const erloesBySite = new Map((input.earnings?.sites ?? []).map((s) => [s.id, s]));
   const heute = berlinDay(now);
   const zeilen = (input.overview?.sites ?? []).map((s) => zeileVon(s, {
-    earnings: erloesBySite.get(s.id) ?? null,
+    earnings: geld != null && !geld.has(s.id) ? null : (erloesBySite.get(s.id) ?? null),
     to: input.earnings?.to ?? null,
     config: input.configById?.get(s.id) ?? null,
     heute,

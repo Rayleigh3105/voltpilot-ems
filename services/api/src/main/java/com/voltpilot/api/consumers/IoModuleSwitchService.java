@@ -87,7 +87,9 @@ public class IoModuleSwitchService {
         }
         Integer port = c.hasNonNull("port") ? c.get("port").asInt() : null;
         Integer unit = c.hasNonNull("unit_id") ? c.get("unit_id").asInt() : null;
-        ProbeResult result = probes.switchOp(siteId, null,
+        // Wie jeder Einmal-Auftrag (UEMS AP-06 IP-8): an die Box, die das Modul
+        // liest, sonst an die führende - nie an eine beliebige Box der Anlage.
+        ProbeResult result = probes.switchOp(siteId, null, ioEntityId,
                 ProbePublisher.SwitchOp.ioSet(host.trim(), port, unit, channel, on), actor);
         return outcome(channel, on, result);
     }

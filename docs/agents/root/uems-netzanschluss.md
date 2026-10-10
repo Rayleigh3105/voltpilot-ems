@@ -1,0 +1,121 @@
+# UEMS-Netzanschluss als eigenes Objekt am Standort, Bindung 1 : 1 je Tag (AP-10 IP-6)
+
+Neu am 13.09.2026. Entscheid **E8 = A**: der Netzanschluss ist ein Objekt am STANDORT, die Anlage hängt
+zeitgültig an ihm — **an jedem Tag an genau EINEM**. Konzept `vp-uems-ap10-bilanzen` §4.2, §5.1, §8 IP-6;
+Vertrag [`docs/contracts/v2/netzanschluss.md`](../../contracts/v2/netzanschluss.md) (seit AP-10 IP-1).
+
+| Was | Wo |
+|---|---|
+| Migration | `V20260913235000__uems_netzanschluss.sql` — `netzanschluss`, `netzanschluss_kennzeichen` (Belegung), `netzanschluss_kennzeichen_seq`, `anlage_netzanschluss`, `netzanschluss_aenderung` |
+| Regeln | `uems/NetzanschlussRegeln` ⟷ `uemsNetzanschluss.ts` gegen `netzanschluss-vectors.json` — AUFGERUFEN, nie nachgebaut |
+| Schreibweg | `uems/NetzanschlussService` (+ `…Repository`, `…Abgelehnt` = geschlossener Satz, gepinnt gegen OpenAPI `NetzanschlussFehler`) |
+| Routen | `web/NetzanschlussController`: `GET/POST /api/v1/standorte/{id}/netzanschluesse`, `GET/PUT …/{id}`, `POST …/{id}/anlagen` |
+| Lesemodell | `StandortLesemodell`: `ZugeordneteAnlage.netzanschluss` (am Stichtag) und `OrtsbaumAbleitung.Anlage.netzanschluss` (Kennzeichen, `baum(z, tag)`) — vorher `null` |
+| Rechte | `netzanschluss.verwalten` (Zellen wie `standort.verwalten`), lesen ohne eigene Kennung — Matrix-Nachtrag, KEINE Durchsetzung |
+| Tests | `UemsNetzanschlussMigrationTest`, `NetzanschlussApiTest`, `NetzanschlussSchnittstelleVertragTest`, `StandortLesemodellTest` (Feld gegen `ortsbaum-vectors.json`) |
+
+## ⚠ Die 1:1-je-Tag-Regel
+
+- **Zwei Exklusionen, nicht eine:** `anlage_netzanschluss_eine_je_anlage` UND `…_eine_je_anschluss`
+  (`daterange(ab, bis, '[]')`, `WHERE aufgehoben_am IS NULL`). Eine zweite Bindung derselben Anlage am
+  selben Tag ist **409 `bindung_ueberlappt`** — ein Widerspruch, kein Nachtrag.
+- **Ein Wechsel beendet die laufende Bindung am VORTAG** (`NetzanschlussRegeln.bindung`), die neue gilt
+  ab ihrem Tag. Seit IP-6 sieht die Regel ALLE Tage: ein früherer Beginn vor einer späteren Bindung
+  derselben Anlage ist ebenfalls `bindung_ueberlappt`, ein Anschluss, der an IRGENDEINEM Tag der neuen
+  an einer anderen Anlage hängt, `anschluss_belegt` (zwei Fälle in den Vektoren, beide Zwillinge).
+- **Eine Bindung endet mit ihrem Anschluss** (Trigger-Paar `uems_zuordnung_im_ziel` /
+  `uems_ziel_deckt_zuordnungen` aus V20260913160000, AUFGERUFEN): vor/nach seinen Tagen 422
+  `netzanschluss_besteht_nicht`, ein Ende, das eine Bindung abschnitte, 409 `bindung_besteht` mit Liste.
+  `gueltig_ab` am Anschluss darf `null` sein (Ahrenberg nennt keinen; die Bindung von AN-1 beginnt
+  12.03.2024) — dann begrenzt er nur nach hinten.
+- **Die Anlage darf gehen (W5):** kein Fremdschlüssel auf `site`, Einfüge-Trigger mit Constraint-Name
+  `anlage_netzanschluss_site_fk`; `SiteController.deleteSite` ruft `NetzanschlussService.beimLoeschen`
+  (läuft heute → endet heute, später → aufgehoben, je Bindung ein Eintrag `anlage_entfernt`).
+
+## ⚠ Die Kennzeichen-Regel (AP-00 E10)
+
+- Einmal vergeben, **nie an einen anderen Anschluss weitergegeben** — auch nach Beenden oder Umbenennen
+  (Trigger `netzanschluss_kennzeichen_belegen` → PK `netzanschluss_kennzeichen_belegt`, Muster
+  `messstelle_kennzeichen`). Der Anschluss selbst darf zu seinem früheren zurück.
+- Ohne Kennzeichen vergibt `NetzanschlussRegeln.kennzeichen(null, belegt, zaehler)` das nächste freie
+  `NA-0001` unter der Zeilensperre des Zählers (Tabelle, keine Sequenz; rückt nur vor).
+  `GET …/netzanschluesse` nennt es als `kennzeichen_vorschlag`, ohne zu vergeben.
+- „Archivieren“ = das Ende setzen (`PUT` mit `gueltig_bis`, Tage wie §4.2 „bestehend ab/bis“); ein Ende
+  wird nur vorgezogen (409 `bereits_beendet`).
+
+## ⚠ Bewusst NICHT umgezogen (W9)
+
+Die Preis- und Grenzspalten der Anlage (`site.max_feed_in_kw`, `site_supply_price` …) bleiben unverändert
+an der Anlage; ein Preisblatt ist ein eigenes, ungeplantes Paket. `site` hat
+KEINE Spalte `netzanschluss_id` — die Bindung ist die Tabelle (die Migrationsprobe prüft das).
+
+## Grenzblatt (AP-15 IP-3, W1)
+
+`V20260921120000` `netzanschluss_grenze` (Fassung ab Tag, aufheben statt ändern, RLS+`FORCE`) · Protokoll-Art
+`grenze` in `netzanschluss_aenderung` (CHECK erweitert) · Regel `uems/GrenzeAufloesung` ⟷
+`voltpilot_optimization/grenze_aufloesung.py` gegen `netzanschluss-grenze-vectors.json` · Leseweg Java
+`uems/AnlageGrenzen` · Routen `GET/POST …/netzanschluesse/{id}/grenzen` · Tests `GrenzeAufloesungVectorsTest`,
+`chargers/NetzanschlussGrenzeApiTest` (Paarbeweis Ladepark), `test_grenze_aufloesung.py`, `test_freshness.py`
+(Paarbeweis Optimierer). Vertrag [§5](../../contracts/v2/netzanschluss.md#5-das-grenzblatt-am-netzanschluss-ap-15-ip-3-kasten-w1).
+
+- **I1, ausdrücklich keine Einspeisegrenze:** `einspeisegrenze_keine` je Fassung
+  (`V20260922200000`), nur ohne Zahl; weggelassen/`false` bleibt unbekannt. Ein Anlagenwert ist enger
+  als „keine“. `Wirksam.grenzenGesetzt()` verlangt weiterhin Bezug. API/Protokoll und Java/Python
+  lesen das Kennzeichen, kein Portal-Schreibformular vorhanden. Anteilsweg: „keine“ = Einspeisung
+  unbegrenzt (`SteuerungsverbundAbleitung.unbegrenzt`, nur Bezug im Anteils-Dokument, Planer
+  `einspeisung_unbegrenzt`); ⚠ „nur fehlend“ bleibt `auslegung_passt_nicht`; ⚠ gespeichert als
+  `verteilbar_einspeisung_kw` NULL + kein Schlüssel `einspeisung` (V20260924061500, CHECK), nie 0; wirksam
+  auf der Box erst mit dem Box-Release (heutige Boxen verwerfen das Dokument als unlesbar). Portal: `…/einrichten`
+  trägt `grenzen.einspeisung_keine`; `einspeisungUnbegrenzt` (`gemeinsameSteuerungFlaeche.ts`) spricht „Einspeisung
+  unbegrenzt — nur der Bezug wird aufgeteilt“ an Frage 3/6, Karte, Box-Zeile und Betreiber-Blatt; ⚠ nur fehlend bleibt dort „nicht eingetragen“.
+- **Engerer Wert, ohne Eintrag dasselbe Objekt:** Byte-Gleichheit hängt an `isSameAs`, nicht an `equals` —
+  `AnlageGrenzen.bezugKw` gibt das `Double` des Rahmens zurück, der Python-Zwilling den `float` der Anlage.
+- **Wer liest:** Einspeisung = Optimierer-Eingang (`load_grenzblaetter` + Zwilling, eigener Verbindungsaufbau;
+  fehlt die Tabelle vor der api-Migration, gilt „kein Grenzblatt“), Bezug = Ladepark-Dokument
+  (`ChargingConfigService.netzgrenze`, Setter-Injektion — Konstruktor unverändert).
+- **Nicht über die Regel (Folgepunkte):** `AdminFleetRepository.maxFeedInPerSite` (Flotten-Pflege vergleicht die
+  gemessene Decke mit `site.max_feed_in_kw`), `FunktionFakten`/`SiteProfileService` (fragen nur, ob ein
+  Rahmen gesetzt ist).
+- **Anstoß (Folgepaket):** `ChargingConfigService.netzgrenzeNachziehen` vergleicht den heute wirksamen Bezug mit
+  `ladepark_netzgrenze_zugestellt` (`V20260921170000`, gemerkt in jedem erfolgreichen Push; ohne Zeile gilt der
+  Rahmen als zugestellt) und stellt nur bei Unterschied zu. Aufrufer: Grenzblatt setzen, `NetzanschlussService.binden`
+  (nach Commit), stündlich `chargers/LadeparkGrenzeLaeufer` (Schalter `voltpilot.uems.ladepark-grenze.enabled`, im
+  Testlauf aus). Tests `chargers/LadeparkGrenzeAnstossApiTest` (Publisher-Mock, `ladepark.uhrStellen` für den Tag).
+
+## Befunde (PR-Text)
+
+- **MaLo-Prüfziffer:** der Vertrag prüft nur `^[0-9]{11}$`, keine Prüfziffer — die Schnittstelle erfindet
+  keine. Nach der gängigen BDEW-Regel (ungerade Stellen + 2 × gerade Stellen, Rest zu 10) ergäbe
+  `4711000000` die Prüfziffer 9: die Ahrenberg-Nummern `…01`/`…02`/`…03` fielen durch. Eine Prüfziffer
+  kommt nur mit Vertrag, Vektoren und neuen Beispielnummern.
+- **Eindeutigkeit der Marktlokation** ist nicht Vertrag (zwei Anschlüsse mit derselben MaLo sind möglich).
+- **Anlage am Standort des Anschlusses** ist nicht Vertrag und wird nicht geprüft (AN-2 zieht in den
+  Ortsbaum-Vektoren den Standort, der Anschluss bleibt).
+- Vektor-Familie: liegt seit IP-1 in `netzanschluss-vectors.json`, nicht in `ortsbaum-vectors.json`
+  (`_abweichungen`); `ortsbaum-vectors.json` bleibt unverändert, ihr Anlagen-Feld wird jetzt gefüllt.
+
+## Grenz-Nachweis (AP-15 IP-31, NW-8, M-1)
+
+Gerechnet, nie gespeichert (keine Migration): `uems/GrenzNachweisService` → `GrenzNachweisRegel` gegen
+`netzanschluss-grenznachweis-vectors.json` · Route `GET …/netzanschluesse/{id}/grenznachweis?monat=` oder
+`?von=&bis=` (≤ 31 Tage) · Vertrag
+[§6](../../contracts/v2/netzanschluss.md#6-der-grenz-nachweis-am-netzanschluss-ap-15-ip-31-nw-8-m-1-m-2-b5-w10) ·
+Tests `GrenzNachweisVectorsTest`, `NetzanschlussGrenznachweisApiTest`.
+
+- **Viertelstunden kommen aus `MessstelleWerteService.werte(…, "viertelstunde", …)`** — höchstens 2 200 Schritte je
+  Aufruf, darum in Läufen zu 20 Tagen. kWh × 4 = kW; nur `vollständig` belegt, Ersatzwert zählt wie unvollständig.
+- **Hauptzähler je Tag aus `BilanzStellungen`** (Bezug = `Bezug`, Einspeisung = `Abgabe`), genau einer — zwei am
+  selben Tag lassen den Tag fehlen. Ohne Bindung am Tag keine Grenze (wie `AnlageGrenzen`).
+- **Heute zählt nicht mit**; am 1. des laufenden Monats ist der Grund `kein_abgeschlossener_tag`.
+- **Die Kopfzeile** (`kopfzeile(…, nachweis)` beider Zwillinge) sagt „Grenze im September 2026 eingehalten“;
+  `grenze_geprueft` nur mit Nachweis. Der Bilanz-Kopf fragt den Monat des Stichtags und schweigt bei Lesefehler.
+- **Grenzherkunft:** `grenzblatt` ist zeitgültig; beim Rückfall auf `anlage` nennt Antwort und Portal-Kopfzeile den
+  nicht zeitgültigen Anlagenwert und fordert das Grenzblatt. Das Anlagenfeld bleibt bewusst unverändert.
+- **Steckerprobe NW-8:** `POST /api/v1/admin/sites/{id}/gemeinsame-steuerung/steckerprobe` speichert Zeitraum, Box und
+  Bemerkung (`steuerungsverbund_steckerprobe`, V20260922190000); das Betreiber-Blatt rechnet dieselbe Regel genau für
+  diesen Zeitraum. Lücke = „nicht belegt“.
+- **Testdaten:** `messreihe_viertelstunde.endgueltig_ab` muss `intervall_beginn + 10095 minutes` sein (CHECK).
+
+**Portal:** [Reiter, Dialoge und Bilanzkopf (IP-13)](uems-netzanschluss-portal.md).
+
+Preis-Umzug (W9) bleibt ein eigenes Paket. Aktuelle Routenrechte stehen an `NetzanschlussController` (`@Recht`, AP-03).

@@ -18,7 +18,8 @@ import org.springframework.stereotype.Component;
  * Schreibt {@link EventsRawEvent}s auf das Redpanda-Topic {@code events.raw} (UEMS AP-07 IP-5),
  * geschlüsselt {@code {tenant_id}:{site_id}}. Der Verbraucher (die Ereignis-Tabelle) ist IP-8.
  *
- * <p><b>Fehlt das Topic</b> ({@link EventsTopicPruefung}), wird NICHTS gesendet: die Ablehnung
+ * <p><b>Fehlt das Topic</b> ({@link EventsTopicPruefung} legt es an; solange das nicht gelungen
+ * ist, etwa ohne Rechte oder abgeschaltet), wird NICHTS gesendet: die Ablehnung
  * steht wie vor IP-5 nur im Log, der Zähler {@value #NICHT_ZUGESTELLT} zählt jedes nicht
  * zugestellte Ereignis, und der Aufrufer quittiert, sobald seine Messwerte bestätigt sind — der
  * Messwert-Weg wartet nie auf {@code events.raw}. Sobald die Prüfung das Topic findet, fließen

@@ -67,14 +67,41 @@ public class ZustaendigkeitRepository {
      */
     public boolean beenden(UUID id, Instant effectiveTo) {
         return jdbc.update("UPDATE data_source_assignment SET effective_to = ? "
-                + "WHERE id = ? AND (effective_to IS NULL OR effective_to > ?)",
+                + "WHERE id = ? AND zurueckgenommen_am IS NULL AND (effective_to IS NULL OR effective_to > ?)",
                 utc(effectiveTo), id, utc(effectiveTo)) == 1;
+    }
+
+    public record RuecknahmeStand(Zeitraum zeitraum, Instant zurueckgenommenAm) {}
+
+    /** Auch eine bereits zurückgenommene Zeile bleibt auffindbar, damit der zweite Versuch 409 statt 404 ist. */
+    public Optional<RuecknahmeStand> ruecknahmeStand(UUID dataSourceId, UUID id) {
+        return jdbc.query("SELECT id, data_source_id, device_id, effective_from, effective_to, "
+                        + "zurueckgenommen_am FROM data_source_assignment "
+                        + "WHERE data_source_id=? AND id=? FOR UPDATE",
+                (rs, n) -> new RuecknahmeStand(map(rs, n),
+                        rs.getObject("zurueckgenommen_am", OffsetDateTime.class) == null ? null
+                                : rs.getObject("zurueckgenommen_am", OffsetDateTime.class).toInstant()),
+                dataSourceId, id).stream().findFirst();
+    }
+
+    public boolean zuruecknehmen(UUID id, Instant am, String von) {
+        return jdbc.update("UPDATE data_source_assignment SET zurueckgenommen_am=?, zurueckgenommen_von=? "
+                + "WHERE id=? AND zurueckgenommen_am IS NULL AND effective_from>?",
+                utc(am), von, id, utc(am)) == 1;
+    }
+
+    /** Öffnet genau den Zeitraum wieder, den der zurückgenommene Plan an seinem Beginn beendet hatte. */
+    public boolean vorgaengerWiederOeffnen(UUID dataSourceId, Instant planBeginn) {
+        return jdbc.update("UPDATE data_source_assignment SET effective_to=NULL "
+                + "WHERE data_source_id=? AND zurueckgenommen_am IS NULL AND effective_to=?",
+                dataSourceId, utc(planBeginn)) == 1;
     }
 
     /** Alle Zeiträume einer Quelle, nach Beginn. */
     public List<Zeitraum> fuerQuelle(UUID dataSourceId) {
         return List.copyOf(jdbc.query("SELECT id, data_source_id, device_id, effective_from, "
                 + "effective_to FROM data_source_assignment WHERE data_source_id = ? "
+                + "AND zurueckgenommen_am IS NULL "
                 + "ORDER BY effective_from, id",
                 ZustaendigkeitRepository::map, dataSourceId));
     }
@@ -87,6 +114,7 @@ public class ZustaendigkeitRepository {
     public List<Zeitraum> alle() {
         return List.copyOf(jdbc.query("SELECT id, data_source_id, device_id, effective_from, "
                 + "effective_to FROM data_source_assignment "
+                + "WHERE zurueckgenommen_am IS NULL "
                 + "ORDER BY data_source_id, effective_from, id",
                 ZustaendigkeitRepository::map));
     }

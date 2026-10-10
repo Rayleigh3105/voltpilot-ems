@@ -23,6 +23,7 @@ import { delta, ENERGIE_WERTUNG, vergleichsName, type VergleichsModus } from './
 import { vollerVergleichsName } from './vergleichLaufend';
 import { fmtNum, NBSP } from './format';
 import { mengeText } from './erloeseSeite';
+import { quoteSatz, quoteUnplausibel, quoteZahl } from './quoteUnplausibel';
 import {
   energieZellen,
   feinesRaster,
@@ -323,6 +324,12 @@ export interface Quote {
   pct: number | null;
   teile: QuotenTeil[];
   info: string;
+  /**
+   * Die Quote liegt außerhalb 0…100 % (AP-10 E16 Nr. 5): die Zahl steht
+   * ungeklemmt, statt der Erklärung steht der Satz aus dem Bilanz-Vertrag, und
+   * es gibt keinen Balken - eine Füllung bräuchte wieder eine Klemme.
+   */
+  unplausibel: boolean;
 }
 
 function pctText(v: number | null): string {
@@ -341,29 +348,49 @@ export function energieQuoten(history: History): Quote[] {
   const teil = (label: string, rolle: EnergieRolle, v: number | null, anteil: number | null): QuotenTeil[] =>
     v == null || anteil == null ? [] : [{ label, rolle, menge: mengeText(Math.max(0, v)) ?? '—', anteilPct: anteil }];
   return [
-    {
-      key: 'autarkie',
-      name: 'Autarkie',
-      wert: pctText(aut),
-      pct: aut,
-      teile: [
+    quote(
+      'autarkie',
+      'Autarkie',
+      aut,
+      history.totals.autarkieUnplausibel,
+      [
         ...teil('aus eigener Anlage', 'pv', load != null && imp != null ? load - imp : null, aut),
         ...teil('aus dem Netz', 'grid', imp, aut == null ? null : 100 - aut),
       ],
-      info: 'Anteil Ihres Verbrauchs, den Sie selbst gedeckt haben — der Rest kam aus dem Netz.',
-    },
-    {
-      key: 'eigenverbrauch',
-      name: 'Eigenverbrauch',
-      wert: pctText(eig),
-      pct: eig,
-      teile: [
+      'Anteil Ihres Verbrauchs, den Sie selbst gedeckt haben — der Rest kam aus dem Netz.',
+    ),
+    quote(
+      'eigenverbrauch',
+      'Eigenverbrauch',
+      eig,
+      history.totals.eigenverbrauchUnplausibel,
+      [
         ...teil('selbst genutzt', 'pv', pv != null && exp != null ? pv - exp : null, eig),
         ...teil('eingespeist', 'grid', exp, eig == null ? null : 100 - eig),
       ],
-      info: 'Anteil Ihrer Erzeugung, den Sie selbst genutzt statt eingespeist haben.',
-    },
+      'Anteil Ihrer Erzeugung, den Sie selbst genutzt statt eingespeist haben.',
+    ),
   ];
+}
+
+/**
+ * Eine Quote. Außerhalb 0…100 % wird die Zahl NICHT in den Bereich gebogen
+ * (AP-10 E16 Nr. 5, vorher `messwerteZeilen.messwerteQuoten`): sie steht
+ * ungeklemmt, und statt der Erklärung, die einen echten Anteil voraussetzt,
+ * steht der Satz aus dem Bilanz-Vertrag.
+ */
+function quote(
+  key: Quote['key'],
+  name: string,
+  pct: number | null,
+  flag: boolean | null | undefined,
+  teile: QuotenTeil[],
+  info: string,
+): Quote {
+  if (pct != null && Number.isFinite(pct) && quoteUnplausibel(pct, flag)) {
+    return { key, name, wert: quoteZahl(pct), pct, teile: [], info: quoteSatz(pct), unplausibel: true };
+  }
+  return { key, name, wert: pctText(pct), pct, teile, info, unplausibel: false };
 }
 
 // ---------------------------------------------------------------------------

@@ -21,7 +21,7 @@ public class AdminProvisionedDeviceRepository {
     private static final String SELECT =
             "SELECT p.external_ref, p.kind, p.note, p.provisioned_at, t.name AS claimed_by "
                     + "FROM provisioned_device p "
-                    + "LEFT JOIN device d ON d.external_ref = p.external_ref "
+                    + "LEFT JOIN device d ON d.external_ref = p.external_ref AND d.ausgebaut_am IS NULL "
                     + "LEFT JOIN tenant t ON t.id = d.tenant_id ";
 
     private final JdbcTemplate jdbc;

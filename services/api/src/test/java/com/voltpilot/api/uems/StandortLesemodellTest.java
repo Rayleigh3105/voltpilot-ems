@@ -96,6 +96,13 @@ class StandortLesemodellTest {
                     .as("Anlagen %s", st.kurzzeichen())
                     .containsExactlyElementsOf(anlagenAm(erwartet, st.kurzzeichen()));
             assertThat(st.anlagenZahl()).isEqualTo(st.anlagen().size());
+            // AP-10 IP-6: jede Anlage nennt den Netzanschluss, den das Szenario ihr gibt — nicht mehr null.
+            for (StandortLesemodell.ZugeordneteAnlage an : st.anlagen()) {
+                JsonNode soll = anlageImSzenario(szenario, an.name()).path("netzanschluss");
+                assertThat(an.netzanschluss() == null ? null : an.netzanschluss().kennzeichen())
+                        .as("Netzanschluss %s am %s", an.name(), stichtag)
+                        .isEqualTo(soll.isNull() ? null : soll.asText());
+            }
         }
 
         List<JsonNode> nicht = StreamSupport.stream(erwartet.path("nicht_gezeigt").spliterator(), false)
@@ -343,6 +350,62 @@ class StandortLesemodellTest {
         assertThat(u.anlagenZahl()).isZero();
     }
 
+    /**
+     * AP-10 IP-6: das Feld {@code netzanschluss} jeder Anlage des Ortsbaums ist gefüllt — mit genau dem
+     * Kennzeichen, das die Anlagen der Vektor-Datei tragen (NA-1, NA-2, NA-3), in JEDEM Szenario.
+     */
+    @TestFactory
+    Stream<DynamicTest> derBaumTraegtDenNetzanschlussJederAnlageWieDieVektorDatei() throws IOException {
+        List<DynamicTest> out = new ArrayList<>();
+        vektoren().path("szenarien").fields().forEachRemaining(e -> out.add(DynamicTest.dynamicTest(e.getKey(), () -> {
+            JsonNode s = e.getValue();
+            Zeilen z = zeilen(s, Map.of());
+            Map<String, String> ist = new LinkedHashMap<>();
+            StandortLesemodell.baum(z).anlagen().forEach(a -> ist.put(a.kennzeichen(), a.netzanschluss()));
+            for (JsonNode a : s.path("anlagen")) {
+                String soll = a.path("netzanschluss").isNull() ? null : a.path("netzanschluss").asText(null);
+                String kz = id(a.path("kennzeichen").asText()).toString();
+                assertThat(ist.get(kz)).as("%s %s", e.getKey(), a.path("kennzeichen").asText())
+                        .isEqualTo(a.path("zuordnungen").isEmpty() ? null : soll);
+            }
+        })));
+        return out.stream();
+    }
+
+    /** Je Tag genau EIN Anschluss (E8): der Wechsel gilt ab seinem Tag, der Vortag zeigt noch den alten. */
+    @Test
+    void derNetzanschlussEinerAnlageFolgtDemTag() throws IOException {
+        Zeilen basis = zeilen(szenario("ahrenberg"), Map.of());
+        List<StandortLesemodell.NetzanschlussBindung> bindungen = new ArrayList<>(basis.netzanschluesse().stream()
+                .filter(b -> !b.siteId().equals(id("AN-2"))).toList());
+        bindungen.add(new StandortLesemodell.NetzanschlussBindung(id("AN-2"), id("NA-2"), "NA-2",
+                LocalDate.of(2026, 10, 1), LocalDate.of(2026, 12, 31)));
+        bindungen.add(new StandortLesemodell.NetzanschlussBindung(id("AN-2"), id("NA-1"), "NA-1",
+                LocalDate.of(2027, 1, 1), null));
+        Zeilen z = new Zeilen(basis.unternehmen(), basis.standorte(), basis.orte(), basis.ortZuordnungen(),
+                basis.anlageZuordnungen(), basis.flaechen(), basis.anlagen(), basis.standortArchiv(), bindungen);
+
+        assertThat(netzanschlussAm(z, "ST-1", "Werk Ahrenberg – Halle 2", LocalDate.of(2026, 12, 31))).isEqualTo("NA-2");
+        assertThat(netzanschlussAm(z, "ST-1", "Werk Ahrenberg – Halle 2", LocalDate.of(2027, 1, 1))).isEqualTo("NA-1");
+        assertThat(StandortLesemodell.baum(z, LocalDate.of(2026, 12, 31)).anlagen().stream()
+                .filter(a -> a.kennzeichen().equals(id("AN-2").toString())).findFirst().orElseThrow().netzanschluss())
+                .isEqualTo("NA-2");
+        // Ohne Tag: die jüngste Bindung. Ohne Bindung: null, nie geraten.
+        assertThat(StandortLesemodell.baum(z).anlagen().stream()
+                .filter(a -> a.kennzeichen().equals(id("AN-2").toString())).findFirst().orElseThrow().netzanschluss())
+                .isEqualTo("NA-1");
+        Zeilen ohne = new Zeilen(basis.unternehmen(), basis.standorte(), basis.orte(), basis.ortZuordnungen(),
+                basis.anlageZuordnungen(), basis.flaechen(), basis.anlagen(), basis.standortArchiv());
+        assertThat(StandortLesemodell.baum(ohne).anlagen()).allSatisfy(a -> assertThat(a.netzanschluss()).isNull());
+        assertThat(netzanschlussAm(ohne, "ST-1", "Werk Ahrenberg – Halle 2", LocalDate.of(2026, 12, 31))).isNull();
+    }
+
+    private static String netzanschlussAm(Zeilen z, String standort, String anlage, LocalDate tag) {
+        StandortLesemodell.ZugeordneteAnlage a = StandortLesemodell.standort(z, id(standort), tag).orElseThrow()
+                .anlagen().stream().filter(x -> x.name().equals(anlage)).findFirst().orElseThrow();
+        return a.netzanschluss() == null ? null : a.netzanschluss().kennzeichen();
+    }
+
     @Test
     void derStandortJeAnlageFolgtDemTag() throws IOException {
         Zeilen z = zeilen(szenario("ahrenberg"), Map.of());
@@ -376,6 +439,15 @@ class StandortLesemodellTest {
             }
         }
         return out;
+    }
+
+    private static JsonNode anlageImSzenario(JsonNode szenario, String name) {
+        for (JsonNode a : szenario.path("anlagen")) {
+            if (a.path("name").asText().equals(name)) {
+                return a;
+            }
+        }
+        throw new AssertionError("keine Anlage " + name);
     }
 
     private static String kennzeichenDerAnlage(JsonNode szenario, String name) {
@@ -466,17 +538,26 @@ class StandortLesemodellTest {
 
         List<Anlage> anlagen = new ArrayList<>();
         List<AnlageStandortRepository.Zuordnung> anlageZuordnungen = new ArrayList<>();
+        List<StandortLesemodell.NetzanschlussBindung> netzanschluesse = new ArrayList<>();
         for (JsonNode a : s.path("anlagen")) {
             UUID siteId = id(a.path("kennzeichen").asText());
             anlagen.add(new Anlage(siteId, a.path("name").asText()));
+            LocalDate erste = null;
             for (JsonNode iv : a.path("zuordnungen")) {
                 anlageZuordnungen.add(new AnlageStandortRepository.Zuordnung(UUID.randomUUID(),
                         siteId, id(iv.path("eltern").asText()), tag(iv.path("ab")),
                         tag(iv.path("bis")), null));
+                erste = erste == null || tag(iv.path("ab")).isBefore(erste) ? tag(iv.path("ab")) : erste;
+            }
+            // AP-10 IP-6: der Netzanschluss der Anlage, gebunden ab ihrem ersten Tag am Standort (die
+            // Bindungstage selbst prüft netzanschluss-vectors.json; der Ortsbaum kennt nur das Kennzeichen).
+            String na = a.path("netzanschluss").asText(null);
+            if (na != null && !a.path("netzanschluss").isNull() && erste != null) {
+                netzanschluesse.add(new StandortLesemodell.NetzanschlussBindung(siteId, id(na), na, erste, null));
             }
         }
         return new Zeilen(unternehmen, standorte, orte, ortZuordnungen, anlageZuordnungen,
-                flaechen, anlagen);
+                flaechen, anlagen, List.of(), netzanschluesse);
     }
 
     static JsonNode szenario(String name) throws IOException {

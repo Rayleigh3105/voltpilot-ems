@@ -4,6 +4,7 @@ import com.voltpilot.api.measurement.MesskanalService;
 import com.voltpilot.api.uems.MessstelleQuelleRepository.Quelle;
 import com.voltpilot.api.uems.MessstelleRegeln.Groesse;
 import com.voltpilot.api.uems.MessstelleRegisterRepository.Bestand;
+import com.voltpilot.api.uems.MessstelleRegisterRepository.Fakt;
 import com.voltpilot.api.uems.MessstelleRegisterRepository.Messwert;
 import com.voltpilot.api.uems.MessstelleRegisterRepository.QuelleZeile;
 import com.voltpilot.api.uems.MessstelleRegisterRepository.Werte;
@@ -16,6 +17,8 @@ import com.voltpilot.api.web.dto.MessstelleDto;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -28,6 +31,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,8 +64,9 @@ import org.springframework.transaction.annotation.Transactional;
  * Deckel 1 Tag); 2 × Kadenz ist die LÜCKE — eine andere Aussage, die hier nicht vorkommt (AP-07
  * IP-9).
  *
- * <p><b>Was noch nicht da ist, ist {@code null}:</b> die Formel einer berechneten Messstelle
- * (AP-10; die Quelle sagt {@code berechnet}), Prozesse und Kostenstellen (ihre Objekte fehlen),
+ * <p><b>Was noch nicht da ist, ist {@code null}:</b> die Beobachtung einer berechneten Messstelle (sie
+ * hat keine Quelle; ihre Vollständigkeit steht seit AP-10 IP-9 in {@code berechnung}), Prozesse und
+ * Kostenstellen (ihre Objekte fehlen),
  * {@code teilansicht} ist {@code false} bis AP-03.
  */
 @Service
@@ -70,6 +75,7 @@ public class MessstelleRegisterService {
     /** Die Wörter von {@code quelle.stand}. */
     public static final String GEBUNDEN = "gebunden";
     public static final String BERECHNET = "berechnet";
+    public static final String ABLESUNG = "ablesung";
     public static final String KEINE_DATENQUELLE = "keine_datenquelle";
 
     private static final String FUEHREND = "fuehrend";
@@ -82,9 +88,10 @@ public class MessstelleRegisterService {
      * {@code ohneQuelle} findet die gemessenen ohne führende Quelle zum Zeitpunkt — die berechneten
      * haben keine und sind deshalb nicht „ohne Quelle“.
      */
-    public record Filter(String standort, String ort, UUID anlage, String zustand, boolean ohneQuelle) {
+    public record Filter(String standort, String ort, UUID anlage, String zustand, boolean ohneQuelle,
+            boolean geplantFuerEinsatz) {
 
-        public static final Filter KEINER = new Filter(null, null, null, null, false);
+        public static final Filter KEINER = new Filter(null, null, null, null, false, false);
     }
 
     private final MessstelleRegisterRepository register;
@@ -92,15 +99,25 @@ public class MessstelleRegisterService {
     private final StandortService standorte;
     private final MesskanalService kanaele;
     private final QuelleKadenzRepository kadenzen;
+    private final BilanzRestRepository reste;
+    private final MessstelleFormelTermRepository formelTerme;
+    private final MessbedarfRepository messbedarfe;
+    private final MessstelleWerteService werte;
     private volatile Clock uhr = Clock.systemUTC();
 
     public MessstelleRegisterService(MessstelleRegisterRepository register, MessstelleService messstellen,
-            StandortService standorte, MesskanalService kanaele, QuelleKadenzRepository kadenzen) {
+            StandortService standorte, MesskanalService kanaele, QuelleKadenzRepository kadenzen,
+            BilanzRestRepository reste, MessstelleFormelTermRepository formelTerme,
+            MessbedarfRepository messbedarfe, MessstelleWerteService werte) {
         this.register = register;
         this.messstellen = messstellen;
         this.standorte = standorte;
         this.kanaele = kanaele;
         this.kadenzen = kadenzen;
+        this.reste = reste;
+        this.formelTerme = formelTerme;
+        this.messbedarfe = messbedarfe;
+        this.werte = werte;
     }
 
     /** Nur für Tests: die Uhr, an der „ohne Stichtag = jetzt“ hängt. */
@@ -115,6 +132,25 @@ public class MessstelleRegisterService {
      */
     @Transactional(readOnly = true)
     public MessstelleDto.Liste liste(Instant am, Filter filter) {
+        return liste(am, filter, id -> true, komponente -> true, null);
+    }
+
+    /**
+     * Die Liste der Route: nur Messstellen, die {@code sichtbar} zulässt — sie fehlen in beiden Listen und im Aggregat,
+     * ohne Hinweis und ohne Anzahl. Als Eingang einer sichtbaren berechneten Messstelle nennt {@code berechnung} sie
+     * nicht, ebenso wenig den Messkanal einer Komponente, die {@code komponenteSichtbar} nicht zulässt
+     * ({@link RegisterBerechnung#ableiten}, AP-03 R-A3/R-A6). Interne Leser (Standort-Übersicht, Ausfall) nehmen
+     * {@link #liste(Instant, Filter)}.
+     *
+     * <p><b>Der letzte vollständige Monat (Messen PR5):</b> mit {@code letzterMonat} ≠ {@code null} trägt jede Zeile der
+     * Antwort ({@code letzter_monat}) den Monat vor dem Monat des Zeitpunkts in der Zone ihres Standorts und seinen Wert
+     * aus dem Lese-Modell „Werte je Messstelle“ ({@link MessstelleWerteService#monatswert}) - dieselbe Regel wie
+     * {@code …/werte?raster=monat}, keine zweite; {@code letzterMonat} ist dessen Zaun über die Eingänge einer berechneten
+     * Messstelle. ⚠ Das kostet einen Lesezug JE gezeigter Messstelle (der Rest des Registers bleibt eine feste Zahl) -
+     * darum nur auf Verlangen der Route ({@code letzterMonat=true}), nie für die Leser im Haus.
+     */
+    public MessstelleDto.Liste liste(Instant am, Filter filter, Predicate<UUID> sichtbar,
+            Predicate<UUID> komponenteSichtbar, MessstelleWerteService.EingaengeImZugriff letzterMonat) {
         Instant zeitpunkt = am != null ? am : uhr.instant();
         LocalDate tag = LocalDate.ofInstant(zeitpunkt, MessstelleService.ZEITZONE);
         List<Bestand> bestand = register.alle();
@@ -133,23 +169,129 @@ public class MessstelleRegisterService {
         StandortService.Baum baum = standorte.baum(imBaum);
         Map<UUID, String> anlagen = baum.zeilen().anlagen().stream()
                 .collect(Collectors.toMap(StandortLesemodell.Anlage::id, StandortLesemodell.Anlage::name));
-        Map<Messwert, Werte> werte = register.werte(messwerte(bestand, zeitpunkt), zeitpunkt);
+        // AP-10 IP-9: die Eingänge der berechneten Messstellen am Tag — Messkanal-Terme reisen im selben Werte-Zug.
+        RegisterBerechnung.Plan plan = RegisterBerechnung.planen(bestand, tag, reste, formelTerme);
+        Set<Messwert> gefragt = messwerte(bestand, zeitpunkt);
+        gefragt.addAll(plan.kanaele());
+        Map<Messwert, Werte> werte = register.werte(gefragt, zeitpunkt);
         // ⚠ ZUM ZEITPUNKT, nie „jetzt": die Kadenz ist seit AP-07 IP-10 eine Tatsache mit
         // Geschichte, und ein alter Stichtag sieht die alte Erwartung.
         Map<UUID, Integer> fassungen = kadenzen.jeBindung(bindungen(bestand, zeitpunkt), zeitpunkt);
         Auswahl auswahl = Auswahl.aus(filter, baum);
+        Map<UUID, List<MessbedarfRepository.Planung>> planungen = messbedarfe.planungenJeMessstelle();
+        Map<UUID, MessstelleRegisterRepository.Ablesung> ablesungen = register.ablesungen(zeitpunkt);
         List<MessstelleDto.Messstelle> messstellenListe = new ArrayList<>();
         List<MessstelleDto.RegisterZeile> zeilen = new ArrayList<>();
+        Map<UUID, MessstelleDto.RegisterZeile> alle = new LinkedHashMap<>();
         for (int i = 0; i < bestand.size(); i++) {
-            MessstelleDto.RegisterZeile z = zeile(bestand.get(i), voll.get(i), baum, anlagen, tag, zeitpunkt,
-                    werte, fassungen);
-            if (auswahl.passt(z)) {
+            MessstelleDto.RegisterZeile z = zeile(bestand.get(i), voll.get(i), baum, anlagen, tag,
+                    zeitpunkt, werte, fassungen, ablesungen.get(bestand.get(i).messstelle().id()));
+            alle.put(bestand.get(i).messstelle().id(), mitPlanungen(z,
+                    planungen.getOrDefault(z.id(), List.of())));
+        }
+        Map<UUID, MessstelleDto.RegisterBerechnung> berechnungen = RegisterBerechnung.ableiten(plan, alle, werte,
+                m -> kanaele.kadenz(m.kanal(), werte.get(m) == null ? null : werte.get(m).kadenzS(), null).erwartetS(),
+                zeitpunkt, id -> OrtsbaumAbleitung.zeitzoneVon(baum.baum(), alle.get(id).ort().standort()), sichtbar,
+                komponenteSichtbar);
+        for (int i = 0; i < bestand.size(); i++) {
+            MessstelleDto.RegisterZeile z = mitBerechnung(alle.get(bestand.get(i).messstelle().id()),
+                    berechnungen.get(bestand.get(i).messstelle().id()));
+            if (auswahl.passt(z) && sichtbar.test(z.id())) {
                 messstellenListe.add(voll.get(i));
-                zeilen.add(z);
+                zeilen.add(letzterMonat == null ? z : mitMonat(z, bestand.get(i).messstelle(),
+                        OrtsbaumAbleitung.zeitzoneVon(baum.baum(), z.ort().standort()), zeitpunkt, letzterMonat));
             }
         }
         return new MessstelleDto.Liste(List.copyOf(messstellenListe), List.copyOf(zeilen), tag,
                 MessstelleService.zeit(zeitpunkt), false, aggregat(zeilen));
+    }
+
+    // ------------------------------------------------------------ Ablesungen
+
+    /**
+     * Eine Messstelle, deren Werte zum Zeitpunkt aus Ablesungen kommen ({@code quelle.stand = ablesung}), wie die
+     * Wiedervorlage sie braucht (Konzept Wiedervorlage w1, Entscheid 7). {@code ort} ist, wo man sie abliest
+     * ({@link #ableseort}); {@code null}, wo sie an dem Tag an keinem Ort im Baum hängt. {@code seit}: seit wann die
+     * Ablesungs-Quelle führt; {@code zuletzt}: die letzte Ablesung bis zum Zeitpunkt ({@code null} = noch keine).
+     * {@code faelligAb}: ab wann die nächste Ablesung fehlt, derselbe Zeitpunkt wie in der Beobachtung des Registers
+     * ({@link MessstelleBeobachtung#ausAblesungen}): „Ablesung überfällig seit …“ ab der letzten Ablesung + zwei
+     * Kalendermonate ({@link AblesungRegeln#ueberfaelligAb}), „Noch keine Ablesung“ ab dem Beginn der Quelle.
+     */
+    public record Ablesestelle(UUID id, String kennzeichen, String name, Ableseort ort, ZoneId zone, Instant seit,
+            Instant zuletzt, Instant faelligAb) {}
+
+    /**
+     * Wo abgelesen wird: Kurzzeichen ({@code U} für das Unternehmen), Kennung (das Unternehmen hat keine) und Name.
+     */
+    public record Ableseort(String kennzeichen, UUID id, String name) {}
+
+    /**
+     * Die Messstellen, deren Werte zum Zeitpunkt {@code am} ({@code null} = jetzt) aus Ablesungen kommen, soweit
+     * {@code sichtbar} sie zulässt: dieselbe Bedingung wie {@code quelle.stand = ablesung} im Register ({@link #zeile}:
+     * gemessen, eine führende Ablesungs-Quelle, keine gebundene führende Quelle der Hauptgröße). Nur
+     * aktive: eine archivierte, angehaltene oder noch nicht eingerichtete Messstelle erwartet keine Ablesung. Ein
+     * Kundenbereich ohne Ablesungs-Quelle kostet einen Lesezug; sonst kommen die Messstellen und der Ortsbaum dazu, die
+     * Werte nicht.
+     */
+    @Transactional(readOnly = true)
+    public List<Ablesestelle> ablesestellen(Instant am, Predicate<UUID> sichtbar) {
+        Instant zeitpunkt = am != null ? am : uhr.instant();
+        Map<UUID, MessstelleRegisterRepository.Ablesung> ablesungen = register.ablesungen(zeitpunkt);
+        if (ablesungen.isEmpty()) {
+            return List.of();
+        }
+        LocalDate tag = LocalDate.ofInstant(zeitpunkt, MessstelleService.ZEITZONE);
+        OffsetDateTime jetzt = OffsetDateTime.ofInstant(zeitpunkt, MessstelleService.ZEITZONE);
+        List<Bestand> abgelesen = new ArrayList<>();
+        List<OrtsbaumAbleitung.Messstelle> imBaum = new ArrayList<>();
+        for (Bestand b : register.alle()) {
+            MessstelleRepository.Messstelle m = b.messstelle();
+            if (!ablesungen.containsKey(m.id()) || MessstelleRegeln.BERECHNET.equals(m.art())
+                    || fuehrend(b, m.hauptgroesse(), zeitpunkt) != null || !sichtbar.test(m.id())
+                    || !"aktiv".equals(MessstelleService.lebenszyklus(m, MessstelleService.ortVorhanden(b.orte()),
+                            jetzt).lebenszyklus())) {
+                continue;
+            }
+            abgelesen.add(b);
+            imBaum.add(new OrtsbaumAbleitung.Messstelle(m.kennzeichen(), MessstelleOrtsbaumMessstellen.anzeigename(m),
+                    null, ObjektZustand.AKTIV, MessstelleOrtsbaumMessstellen.intervalle(b.orte())));
+        }
+        if (abgelesen.isEmpty()) {
+            return List.of();
+        }
+        StandortService.Baum baum = standorte.baum(imBaum);
+        List<Ablesestelle> aus = new ArrayList<>();
+        for (Bestand b : abgelesen) {
+            MessstelleRepository.Messstelle m = b.messstelle();
+            Verortung v = OrtsbaumAbleitung.verortung(baum.baum(), m.kennzeichen(), tag);
+            ZoneId zone = OrtsbaumAbleitung.zeitzoneVon(baum.baum(), v.standort());
+            MessstelleRegisterRepository.Ablesung a = ablesungen.get(m.id());
+            Instant faelligAb = a.zuletzt() == null ? a.seit() : AblesungRegeln.ueberfaelligAb(a.zuletzt(), zone);
+            aus.add(new Ablesestelle(m.id(), m.kennzeichen(), m.name(), ableseort(v, baum), zone, a.seit(),
+                    a.zuletzt(), faelligAb));
+        }
+        return List.copyOf(aus);
+    }
+
+    /**
+     * Wo man eine Messstelle abliest: das erste Gebäude auf dem Pfad von ihrem Ort hinauf (auch für einen Bereich darin),
+     * ohne Gebäude ihr Standort, am Unternehmen das Unternehmen.
+     */
+    private static Ableseort ableseort(Verortung v, StandortService.Baum baum) {
+        if (OrtsbaumAbleitung.UNTERNEHMEN.equals(v.ort())) {
+            return new Ableseort(OrtsbaumAbleitung.UNTERNEHMEN, null,
+                    baum.zeilen().unternehmen() == null ? null : baum.zeilen().unternehmen().name());
+        }
+        if (v.standort() == null) {
+            return null;
+        }
+        String kurzzeichen = v.pfad().stream()
+                .filter(k -> baum.baum().ort(k).map(o -> o.art() == OrtsbaumAbleitung.OrtArt.GEBAEUDE).orElse(false))
+                .findFirst().orElse(v.standort());
+        UUID id = baum.standorte().containsKey(kurzzeichen) ? baum.standorte().get(kurzzeichen)
+                : baum.ort(kurzzeichen) == null ? null : baum.ort(kurzzeichen).id();
+        return new Ableseort(kurzzeichen, id,
+                baum.baum().ort(kurzzeichen).map(OrtsbaumAbleitung.Ort::name).orElse(null));
     }
 
     /**
@@ -172,14 +314,18 @@ public class MessstelleRegisterService {
 
     private MessstelleDto.RegisterZeile zeile(Bestand b, MessstelleDto.Messstelle voll, StandortService.Baum baum,
             Map<UUID, String> anlagen, LocalDate tag, Instant zeitpunkt, Map<Messwert, Werte> werte,
-            Map<UUID, Integer> fassungen) {
+            Map<UUID, Integer> fassungen, MessstelleRegisterRepository.Ablesung ablesung) {
         MessstelleRepository.Messstelle m = b.messstelle();
         Groesse h = m.hauptgroesse();
         MessstelleDto.RegisterOrt ort = ort(b, baum, tag);
         ZoneId zone = OrtsbaumAbleitung.zeitzoneVon(baum.baum(), ort.standort());
         boolean gemessen = !MessstelleRegeln.BERECHNET.equals(m.art());
-        MessstelleBeobachtung.Ergebnis haupt = gemessen
-                ? beobachtung(fuehrend(b, h, zeitpunkt), werte, fassungen, zeitpunkt, zone) : null;
+        QuelleZeile gebunden = gemessen ? fuehrend(b, h, zeitpunkt) : null;
+        // Eine Ablesungs-Quelle führt nur, wo keine gebundene führt (AP-09 IP-8: Ablesung und Kanal schließen sich aus).
+        boolean abgelesen = gemessen && gebunden == null && ablesung != null;
+        MessstelleBeobachtung.Ergebnis haupt = !gemessen ? null
+                : abgelesen ? MessstelleBeobachtung.ausAblesungen(ablesung, h.einheit(), zeitpunkt, zone)
+                : beobachtung(gebunden, werte, fassungen, zeitpunkt, zone);
         List<MessstelleDto.RegisterNebengroesse> neben = new ArrayList<>();
         for (MessstelleRepository.Nebengroesse n : b.nebengroessen()) {
             Groesse g = n.groesse();
@@ -191,10 +337,51 @@ public class MessstelleRegisterService {
         }
         return new MessstelleDto.RegisterZeile(m.id(), m.kennzeichen(), m.name(), m.art(), m.medium(),
                 new MessstelleDto.Groesse(h.groesse(), h.richtung(), h.einheit(), h.wertart()),
-                ort, stellung(b, anlagen, tag), quelle(b, zeitpunkt),
+                ort, stellung(b, anlagen, tag), quelle(b, zeitpunkt, abgelesen ? ablesung : null, zone),
                 voll.lebenszyklus(), voll.fehlt(), voll.angehaltenAb(), voll.archiviertAm(),
                 haupt == null ? null : haupt.beobachtung(), haupt == null ? null : haupt.letzterWert(),
-                List.copyOf(neben));
+                List.copyOf(neben), fakten(b.fakten(), zeitpunkt), null, List.of(), null);
+    }
+
+    private static MessstelleDto.RegisterZeile mitPlanungen(MessstelleDto.RegisterZeile z,
+            List<MessbedarfRepository.Planung> planungen) {
+        return new MessstelleDto.RegisterZeile(z.id(), z.kennzeichen(), z.name(), z.art(), z.medium(),
+                z.hauptgroesse(), z.ort(), z.elektrischeStellung(), z.quelle(), z.lebenszyklus(), z.fehlt(),
+                z.angehaltenAb(), z.archiviertAm(), z.beobachtung(), z.letzterWert(), z.nebengroessen(), z.fakten(),
+                z.berechnung(), planungen.stream().map(p -> new MessstelleDto.GeplanterEinsatz(
+                        p.einsatzId(), p.einsatzKennzeichen(), p.einsatzName())).toList(), z.letzterMonat());
+    }
+
+    private static MessstelleDto.RegisterZeile mitBerechnung(MessstelleDto.RegisterZeile z,
+            MessstelleDto.RegisterBerechnung b) {
+        return b == null ? z : new MessstelleDto.RegisterZeile(z.id(), z.kennzeichen(), z.name(), z.art(), z.medium(),
+                z.hauptgroesse(), z.ort(), z.elektrischeStellung(), z.quelle(), z.lebenszyklus(), z.fehlt(),
+                z.angehaltenAb(), z.archiviertAm(), z.beobachtung(), z.letzterWert(), z.nebengroessen(), z.fakten(), b,
+                z.geplantFuerEinsaetze(), z.letzterMonat());
+    }
+
+    /**
+     * Die Zeile mit ihrem letzten vollständigen Monat: dem Kalendermonat vor dem Monat von {@code zeitpunkt} in
+     * {@code zone} (der Zone ihres Standorts), mit dem Wert, den {@code …/werte?raster=monat} für ihn zeigt.
+     */
+    private MessstelleDto.RegisterZeile mitMonat(MessstelleDto.RegisterZeile z, MessstelleRepository.Messstelle m,
+            ZoneId zone, Instant zeitpunkt, MessstelleWerteService.EingaengeImZugriff eingaenge) {
+        YearMonth monat = YearMonth.from(zeitpunkt.atZone(zone)).minusMonths(1);
+        MessstelleWerteService.Monatswert w = werte.monatswert(m, monat, eingaenge);
+        return new MessstelleDto.RegisterZeile(z.id(), z.kennzeichen(), z.name(), z.art(), z.medium(),
+                z.hauptgroesse(), z.ort(), z.elektrischeStellung(), z.quelle(), z.lebenszyklus(), z.fehlt(),
+                z.angehaltenAb(), z.archiviertAm(), z.beobachtung(), z.letzterWert(), z.nebengroessen(), z.fakten(),
+                z.berechnung(), z.geplantFuerEinsaetze(),
+                new MessstelleDto.RegisterMonat(monat.toString(), w.zeitzone(), w.wert(), w.ausserhalbZugriff()));
+    }
+
+    private static List<MessstelleDto.RegisterFakt> fakten(List<Fakt> fakten, Instant zeitpunkt) {
+        return fakten.stream().filter(f -> !f.giltAb().isAfter(zeitpunkt))
+                .collect(Collectors.toMap(Fakt::art, Function.identity(),
+                        (a, b) -> a.giltAb().isAfter(b.giltAb()) ? a : b, LinkedHashMap::new))
+                .values().stream()
+                .map(f -> new MessstelleDto.RegisterFakt(f.art(), MessstelleService.zeit(f.giltAb())))
+                .toList();
     }
 
     /**
@@ -255,19 +442,20 @@ public class MessstelleRegisterService {
     /**
      * „x von y Messstellen liefern Daten“ (§5.16) über {@link ZustandAbleitung#aggregatLiefertDaten}
      * — für das Unternehmen und je Standort, über GENAU die Zeilen dieser Antwort. Gezählt werden
-     * die Zeilen mit einer Beobachtung; eine BERECHNETE Messstelle hat keine (ihre Vollständigkeit
-     * kommt mit AP-10) und steht deshalb in keinem der beiden Nenner. Eine Zeile ohne Standort an
-     * dem Tag zählt nur beim Unternehmen — nie unter einem geratenen Standort.
+     * JEDE Zeile. Seit AP-10 IP-9 zählen BERECHNETE Messstellen mit: vollständig heißt „liefert“,
+     * unvollständig „liefert nicht“ — und eine berechnete ohne Formel am Tag steht wie eine gemessene
+     * ohne Quelle im Nenner, nie im Zähler. Eine Zeile ohne Standort an dem Tag zählt nur beim
+     * Unternehmen — nie unter einem geratenen Standort.
      */
     private static MessstelleDto.RegisterAggregat aggregat(List<MessstelleDto.RegisterZeile> zeilen) {
         List<ZustandAbleitung.LiefertDaten> alle = new ArrayList<>();
         Map<String, List<ZustandAbleitung.LiefertDaten>> jeStandort = new LinkedHashMap<>();
         Map<String, MessstelleDto.RegisterOrt> orte = new LinkedHashMap<>();
         for (MessstelleDto.RegisterZeile z : zeilen) {
-            if (z.beobachtung() == null) {
+            ZustandAbleitung.LiefertDaten zustand = aggregatZustand(z);
+            if (zustand == null) {
                 continue;
             }
-            ZustandAbleitung.LiefertDaten zustand = ZustandAbleitung.LiefertDaten.vonCode(z.beobachtung().zustand());
             alle.add(zustand);
             String standort = z.ort().standort();
             if (standort != null) {
@@ -289,6 +477,26 @@ public class MessstelleRegisterService {
                 ZustandAbleitung.Einheit.MESSSTELLE);
         return new MessstelleDto.RegisterAggregat(
                 new MessstelleDto.RegisterAbdeckung(u.erfuellt(), u.gesamt(), u.text()), standorte);
+    }
+
+    /**
+     * Wie EINE Zeile im Aggregat zählt — {@code null} = gar nicht: gemessene über ihre Beobachtung, berechnete über
+     * {@code berechnung} (vollständig = liefert, unvollständig = liefert nicht, ohne Formel am Tag = keine Datenquelle;
+     * {@code ausserhalb_zugriff} — ein Eingang außerhalb des Zugriffs, alle sichtbaren liefern — steht wie
+     * „liefert nicht“ im Nenner, nie im Zähler: ein Urteil, das der Leser nicht fällen darf, ist kein „liefert“).
+     * ⚠ AP-13 IP-7 (E13 = A): die Datenlage von „Messen &amp; Auswerten“ ({@link FunktionService}) zählt über GENAU
+     * diese Stelle — Register, Baustein „Messstellen“ der Übersicht und Karte „Funktionen“ sagen dieselbe Zahl.
+     */
+    public static ZustandAbleitung.LiefertDaten aggregatZustand(MessstelleDto.RegisterZeile z) {
+        if (z.beobachtung() != null) {
+            return ZustandAbleitung.LiefertDaten.vonCode(z.beobachtung().zustand());
+        }
+        if (!MessstelleRegeln.BERECHNET.equals(z.art())) {
+            return null;
+        }
+        return z.berechnung() == null ? ZustandAbleitung.LiefertDaten.KEINE_DATENQUELLE
+                : RegisterBerechnung.VOLLSTAENDIG.equals(z.berechnung().zustand())
+                        ? ZustandAbleitung.LiefertDaten.LIEFERT : ZustandAbleitung.LiefertDaten.LIEFERT_NICHT_SEIT;
     }
 
     /** Die Verortung am Tag (Regel 7 des Ortsbaums) mit den Namen aus demselben Baum. */
@@ -321,7 +529,8 @@ public class MessstelleRegisterService {
      * Die Quelle der Hauptgröße zum Zeitpunkt: die führende, die dann läuft; davor die führende, die
      * zuletzt VOR ihr (bzw. vor dem Zeitpunkt) endete; die Zahl der laufenden Vergleichsquellen.
      */
-    private MessstelleDto.RegisterQuelle quelle(Bestand b, Instant zeitpunkt) {
+    private MessstelleDto.RegisterQuelle quelle(Bestand b, Instant zeitpunkt,
+            MessstelleRegisterRepository.Ablesung ablesung, ZoneId zone) {
         Groesse h = b.messstelle().hauptgroesse();
         List<QuelleZeile> derHaupt = b.quellen().stream()
                 .filter(z -> z.quelle().groesse().equals(h.groesse()) && z.quelle().richtung().equals(h.richtung()))
@@ -337,8 +546,11 @@ public class MessstelleRegisterService {
         int vergleich = (int) derHaupt.stream().filter(z -> VERGLEICH.equals(z.quelle().rolle())
                 && MessstelleQuelleService.gilt(z.quelle(), zeitpunkt)).count();
         String stand = MessstelleRegeln.BERECHNET.equals(b.messstelle().art()) ? BERECHNET
-                : gilt != null ? GEBUNDEN : KEINE_DATENQUELLE;
-        return new MessstelleDto.RegisterQuelle(stand, bindung(gilt), bindung(davor), vergleich);
+                : gilt != null ? GEBUNDEN : ablesung != null ? ABLESUNG : KEINE_DATENQUELLE;
+        return new MessstelleDto.RegisterQuelle(stand, bindung(gilt), bindung(davor), vergleich,
+                ablesung == null ? null : new MessstelleDto.RegisterAblesung(MessstelleService.zeit(ablesung.seit()),
+                        MessstelleService.zeit(ablesung.zuletzt()), MessstelleService.zeit(ablesung.zuletzt() == null
+                                ? ablesung.seit() : AblesungRegeln.ueberfaelligAb(ablesung.zuletzt(), zone))));
     }
 
     private MessstelleDto.RegisterBindung bindung(QuelleZeile z) {
@@ -404,7 +616,10 @@ public class MessstelleRegisterService {
             if (filter.zustand() != null && !filter.zustand().equals(z.lebenszyklus())) {
                 return false;
             }
-            return !filter.ohneQuelle() || KEINE_DATENQUELLE.equals(z.quelle().stand());
+            if (filter.ohneQuelle() && !KEINE_DATENQUELLE.equals(z.quelle().stand())) {
+                return false;
+            }
+            return !filter.geplantFuerEinsatz() || !z.geplantFuerEinsaetze().isEmpty();
         }
 
         private static String kurzzeichen(String wert, StandortService.Baum baum) {

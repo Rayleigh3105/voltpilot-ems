@@ -328,31 +328,34 @@ func TestTheSelfTestObservesTheWholeSwapAndThenRecordsTheRunningRelease(t *testi
 		t.Fatal(err)
 	}
 
+	// Der Kern schreibt bewusst erst das Urteil und danach den Stand
+	// (ota_autonomy.go: WriteJSON(FileSelfTest) vor OtaRecordApplied). Beides gehoert
+	// deshalb in DIESELBE Warteschleife - sonst liegt zwischen den Schreibvorgaengen ein
+	// Fenster, das unter Last aufgeht.
 	deadline := time.Now().Add(time.Second)
+	urteilGesehen := false
+	var letzterStand *otaapply.Current
 	for {
-		res, readErr := otaapply.ReadJSON[otaapply.SelfTest](a.Cfg.DataDir, otaapply.FileSelfTest)
-		if readErr == nil && res != nil {
-			if !res.Passed || res.Token != p.Token {
-				t.Fatalf("der neue Stand muss SEINEN Selbsttest bestehen: %+v", res)
+		if !urteilGesehen {
+			res, readErr := otaapply.ReadJSON[otaapply.SelfTest](a.Cfg.DataDir, otaapply.FileSelfTest)
+			if readErr == nil && res != nil {
+				if !res.Passed || res.Token != p.Token {
+					t.Fatalf("der neue Stand muss SEINEN Selbsttest bestehen: %+v", res)
+				}
+				urteilGesehen = true
 			}
-			break
+		}
+		if urteilGesehen {
+			letzterStand = otaapply.ReadCurrent(a.Cfg.DataDir)
+			if letzterStand != nil && letzterStand.ReleaseSeq == 12 {
+				break
+			}
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("die spaetere Selbsttest-Phase wurde nicht beobachtet")
-		}
-		time.Sleep(2 * time.Millisecond)
-	}
-	// Die Schleife legt das Urteil AB, bevor sie den Stand aufzeichnet - also
-	// auf die Aufzeichnung warten, statt sie im selben Augenblick zu erwarten
-	// (unter Last lief die Pruefung sonst davor, und das Zuruecksetzen von
-	// Version kollidierte mit der noch laufenden Schleife: DATA RACE).
-	for {
-		cur := otaapply.ReadCurrent(a.Cfg.DataDir)
-		if cur != nil && cur.ReleaseSeq == 12 {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("der bewiesene Stand muss aufgezeichnet sein: %+v", cur)
+			if !urteilGesehen {
+				t.Fatal("die spaetere Selbsttest-Phase wurde nicht beobachtet")
+			}
+			t.Fatalf("der bewiesene Stand muss aufgezeichnet sein: %+v", letzterStand)
 		}
 		time.Sleep(2 * time.Millisecond)
 	}

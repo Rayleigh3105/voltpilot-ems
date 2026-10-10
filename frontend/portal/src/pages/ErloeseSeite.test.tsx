@@ -1,3 +1,4 @@
+import { bestandSnapshot } from '../test/bestandsschutzSnapshot';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { ErloeseSection } from './ErloeseSection';
@@ -169,6 +170,20 @@ beforeEach(() => {
 afterEach(() => {
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+/**
+ * AP-13 Bestandsschutz · Verlauf Erlöse ohne Messfunktion — bis zum Neubau
+ * der Seite (main a32805fc8) stand der Fall in `ErloeseKarten.test.tsx`; er
+ * folgt der ausgelieferten Fläche (`test/bestandsschutz/README.md`).
+ */
+it('AP-13 Bestandsschutz · Verlauf Erlöse ohne Messfunktion', async () => {
+  stub();
+  const view = render(<ErloeseSection site={site()} />);
+  await geladen();
+  // Der Vergleich kommt aus einer eigenen Abfrage; unter Last steht er sonst noch nicht im Bild.
+  await screen.findByText(/25 % weniger als gestern bis 12 Uhr/);
+  await bestandSnapshot('verlauf-erloese', view);
 });
 
 describe('Aufbau · Kennzahlen, Verlauf, Abrechnung, Kontext', () => {

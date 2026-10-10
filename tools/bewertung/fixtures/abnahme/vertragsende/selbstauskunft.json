@@ -1,0 +1,11 @@
+{
+ "fixture": "FIXTURE AP-20 IP-23 (RF-08): Feld kundenbereich.beendet aus GET /api/v1/me für den Kundenadministrator, erfunden.",
+ "kundenbereich": {
+  "beendet": {
+   "beendet_am": "2029-06-30",
+   "loeschung_fruehestens": "2029-09-28",
+   "liest": true,
+   "text": "Ihr Vertrag ist beendet. Ihre Daten werden frühestens am 28.09.2029 gelöscht. Bis dahin können Sie den Gesamtabzug laden."
+  }
+ }
+}

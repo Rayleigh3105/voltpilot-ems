@@ -172,7 +172,7 @@ export interface ZentraleListeInput {
   /**
    * Der gemeldete Ist-Stand je Gerät (`/sources`) - er trägt den ZWEITEN
    * Frische-Anker: ein Gerät hinter der Box altert gegen `readAt`, nie gegen
-   * die Telemetrie der Box.
+   * den Status-Herzschlag der Box.
    */
   sources: SiteSource[] | null;
   /** `GET /sites/{id}/chargers`, fail-soft geholt; null = nicht gemeldet. */
@@ -194,10 +194,11 @@ export function zentraleListe(input: ZentraleListeInput): GeraeteKarte[] {
   // --- Die EINE VoltPilot-Box ------------------------------------------------
   const boxen = input.devices ?? [];
   if (boxen.length > 0) {
-    const box = boxen.find((d) => d.externalRef === boxRef) ?? boxen[0];
-    const health = boxHealth(boxen, input.devicesFetchedAt, now);
-    const n = model.devices.length;
-    karten.push({
+    const box = boxen.find((d) => d.externalRef === boxRef);
+    if (box) {
+      const health = boxHealth([box], input.devicesFetchedAt, now);
+      const n = model.devices.length;
+      karten.push({
       id: `box:${box.externalRef}`,
       art: 'box',
       titel: `VoltPilot-Box ${deviceName({ storedLabel: box.name }) || box.externalRef}`,
@@ -212,7 +213,8 @@ export function zentraleListe(input: ZentraleListeInput): GeraeteKarte[] {
           : `Vermittelt zwischen Ihren Geräten und VoltPilot — ${n} ${
               n === 1 ? 'Gerät' : 'Geräte'
             } angebunden.`,
-    });
+      });
+    }
   }
 
   // --- Die Geräte AN der Box -------------------------------------------------
@@ -326,7 +328,7 @@ export function boxLage(
   return { ton: HEALTH_TON[health], zustand: mitZeit(wort, rel), zustandWort: wort, zustandZeit: rel };
 }
 
-/** Die Lebendigkeit der Box - der Anker ist ihre Telemetrie (`liveness.ts`). */
+/** Die Lebendigkeit der Box - der Anker ist ihr Status-Herzschlag (`liveness.ts`). */
 function boxHealth(
   devices: Device[],
   fetchedAt: number | null | undefined,

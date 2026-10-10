@@ -3,8 +3,9 @@ package com.voltpilot.api.uems;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
+import com.voltpilot.api.measurement.MeasurementCatalog;
 import java.math.BigDecimal;
-import java.math.MathContext;
 import java.sql.Connection;
 import java.sql.Date;
 import java.sql.PreparedStatement;
@@ -25,6 +26,7 @@ import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -112,7 +114,9 @@ public class TagVerdichter {
         "box", "box_2", "box_weitere", "fassung", "katalog", "rolle",
         "zustand", "endgueltig_ab", "berechnet_am", "version",
         "n_nachgeliefert", "letzte_eingangszeit", "zustellart", "ereignisse",
-        "menge", "menge_zustand", "kennzeichen", "kadenz_s"};
+        "menge", "menge_zustand", "kennzeichen", "kadenz_s",
+        "summe", "energie", "gemessen_s", "luecke_innen",
+        "menge_positiv", "menge_negativ"};
 
     private static final Set<String> JSONB_SPALTEN = Set.of("ereignisse", "kennzeichen");
 
@@ -124,18 +128,29 @@ public class TagVerdichter {
             Set.of("tag", "tenant_id", "entity_id", "messkanal", "version");
 
     private final JdbcTemplate adminJdbc;
+    private final MeasurementCatalog katalog;
     private final int stapelGroesse;
     private final int stapelJeLauf;
     private final int fristJeLauf;
     private final int arbeitHochwasser;
 
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
+
     public TagVerdichter(
             @Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
+            MeasurementCatalog katalog,
             @Value("${voltpilot.uems.tag.stapel:200}") int stapelGroesse,
             @Value("${voltpilot.uems.tag.stapel-je-lauf:40}") int stapelJeLauf,
             @Value("${voltpilot.uems.tag.frist-je-lauf:20000}") int fristJeLauf,
             @Value("${voltpilot.uems.tag.arbeit-hochwasser:200000}") int arbeitHochwasser) {
         this.adminJdbc = adminJdbc;
+        this.katalog = katalog;
         this.stapelGroesse = stapelGroesse;
         this.stapelJeLauf = stapelJeLauf;
         this.fristJeLauf = fristJeLauf;
@@ -174,6 +189,8 @@ public class TagVerdichter {
     }
 
     // ------------------------------------------------------- Quelle 1: die Viertelstunden
+    // Alle drei Quellen lesen nur REIHEN (`entity_id IS NOT NULL`): eine Zeile der Spur `berechnet`
+    // (AP-10 IP-10) bildet ihr eigener Lauf aus den Tageswerten ihrer Eingänge, nie aus Viertelstunden.
 
     /**
      * Trägt den UTC-Tag jeder Viertelstunde ein, die seit dem Zeiger neu GEBILDET wurde — und
@@ -206,12 +223,29 @@ public class TagVerdichter {
                       FROM messreihe_viertelstunde v
                      WHERE v.berechnet_am > ? AND v.berechnet_am <= ?
                        AND v.intervall_beginn >= ?
+                       AND v.entity_id IS NOT NULL
                     ON CONFLICT DO NOTHING
                     """)) {
                 ps.setTimestamp(1, Timestamp.from(von));
                 ps.setTimestamp(2, Timestamp.from(bis));
                 ps.setTimestamp(3, Timestamp.from(jetzt.minus(ZEIGER_TIEFE)));
                 n = ps.executeUpdate();
+            }
+            // AP-08 IP-4: ein Bruch, der SEIT DEM ZEIGER eingegangen ist, bildet seinen Tag neu — auch
+            // wenn keine Viertelstunde sich ändert (F4/F5: die Gerätegrenze liegt in der Lücke
+            // 10:39–10:47 und wirkt erst über die Viertelstundengrenze, also erst im Tag).
+            try (PreparedStatement ps = con.prepareStatement("""
+                    INSERT INTO messreihe_tag_arbeit
+                           (tenant_id, entity_id, messkanal, utc_tag, grund)
+                    SELECT DISTINCT tenant_id, entity_id, messkanal, (beginn AT TIME ZONE 'UTC')::date, 'ereignis'
+                      FROM (""" + BruchEreignisse.VIERTELSTUNDEN + """
+                           ) betroffen
+                    ON CONFLICT DO NOTHING
+                    """)) {
+                ps.setTimestamp(1, Timestamp.from(von));
+                ps.setTimestamp(2, Timestamp.from(bis));
+                ps.setTimestamp(3, Timestamp.from(jetzt.minus(ZEIGER_TIEFE)));
+                n += ps.executeUpdate();
             }
             standSetzen(con, ZEIGER, bis, n, null);
             return n;
@@ -242,6 +276,8 @@ public class TagVerdichter {
                      WHERE t.zustand = 'vorlaeufig'
                        AND t.endgueltig_ab <= ?
                        AND t.tag <= ?
+                       AND t.entity_id IS NOT NULL
+                       AND NOT (t.tenant_id = ANY (?::uuid[]))
                      ORDER BY t.tag
                      LIMIT ?
                     ON CONFLICT DO NOTHING
@@ -250,7 +286,8 @@ public class TagVerdichter {
                 // Grobe, sichere Obergrenze auf der Partitionierungs-Spalte (Chunk-Ausschluss):
                 // ein Tag, dessen Frist abgelaufen ist, liegt mindestens sieben Tage zurück.
                 ps.setObject(2, LocalDate.ofInstant(jetzt.minus(TagRegeln.FRIST), UTC));
-                ps.setInt(3, fristJeLauf);
+                ps.setObject(3, beendete.sqlFeld()); // Kundenbereich beendet: der Tag bleibt vorläufig
+                ps.setInt(4, fristJeLauf);
                 return ps.executeUpdate();
             }
         });
@@ -289,6 +326,7 @@ public class TagVerdichter {
                            (v.intervall_beginn AT TIME ZONE 'UTC')::date, 'rueckrechnung'
                       FROM messreihe_viertelstunde v
                      WHERE v.intervall_beginn >= ? AND v.intervall_beginn < ?
+                       AND v.entity_id IS NOT NULL
                     ON CONFLICT DO NOTHING
                     """)) {
                 ps.setTimestamp(1, Timestamp.from(von));
@@ -345,6 +383,7 @@ public class TagVerdichter {
                 DELETE FROM messreihe_tag_arbeit a
                  USING (SELECT tenant_id, entity_id, messkanal, utc_tag
                           FROM messreihe_tag_arbeit
+                         WHERE NOT (tenant_id = ANY (?::uuid[]))
                          ORDER BY utc_tag, eingetragen_am
                          LIMIT ?
                          FOR UPDATE SKIP LOCKED) c
@@ -352,7 +391,8 @@ public class TagVerdichter {
                    AND a.messkanal = c.messkanal AND a.utc_tag = c.utc_tag
                 RETURNING a.tenant_id, a.entity_id, a.messkanal, a.utc_tag
                 """)) {
-            ps.setInt(1, limit);
+            ps.setObject(1, beendete.sqlFeld()); // Kundenbereich beendet: der Auftrag bleibt liegen
+            ps.setInt(2, limit);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     aus.add(new Auftrag(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class),
@@ -385,65 +425,17 @@ public class TagVerdichter {
      * nicht verschieben — gespeichert wird sie trotzdem.
      */
     private List<Ortstag> ortstage(Connection con, List<Auftrag> stapel) throws SQLException {
-        Map<Integer, String[]> zonen = new LinkedHashMap<>();
-        Map<Integer, UUID> sites = new LinkedHashMap<>();
-        StringBuilder werte = new StringBuilder();
-        for (int i = 0; i < stapel.size(); i++) {
-            werte.append(i == 0 ? "" : ", ")
-                    .append(i == 0 ? "(?::int, ?::uuid, ?::uuid, ?::date)" : "(?, ?, ?, ?)");
-        }
-        try (PreparedStatement ps = con.prepareStatement("""
-                SELECT v.i, mp.site_id,
-                       (SELECT st.zeitzone
-                          FROM anlage_standort a
-                          JOIN standort st ON st.id = a.standort_id AND st.tenant_id = a.tenant_id
-                         WHERE a.tenant_id = v.tenant_id AND a.site_id = mp.site_id
-                           AND a.aufgehoben_am IS NULL
-                           AND a.gueltig_ab <= v.utc_tag
-                           AND (a.gueltig_bis IS NULL OR a.gueltig_bis >= v.utc_tag)
-                         ORDER BY a.gueltig_ab DESC
-                         LIMIT 1),
-                       (SELECT un.zeitzone FROM unternehmen un
-                         WHERE un.tenant_id = v.tenant_id
-                         ORDER BY un.created_at, un.id LIMIT 1)
-                  FROM (VALUES """ + werte + """
-                       ) AS v(i, tenant_id, entity_id, utc_tag)
-                  LEFT JOIN measurement_point mp
-                         ON mp.id = v.entity_id AND mp.tenant_id = v.tenant_id
-                """)) {
-            int p = 1;
-            for (int i = 0; i < stapel.size(); i++) {
-                Auftrag a = stapel.get(i);
-                ps.setInt(p++, i);
-                ps.setObject(p++, a.tenant(), Types.OTHER);
-                ps.setObject(p++, a.entity(), Types.OTHER);
-                ps.setObject(p++, a.utcTag());
-            }
-            try (ResultSet rs = ps.executeQuery()) {
-                while (rs.next()) {
-                    int i = rs.getInt(1);
-                    sites.put(i, rs.getObject(2, UUID.class));
-                    String ausStandort = rs.getString(3);
-                    String ausUnternehmen = rs.getString(4);
-                    if (ausStandort != null && TagRegeln.ZONEN.contains(ausStandort)) {
-                        zonen.put(i, new String[] {ausStandort, TagRegeln.AUS_STANDORT});
-                    } else if (ausUnternehmen != null && TagRegeln.ZONEN.contains(ausUnternehmen)) {
-                        zonen.put(i, new String[] {ausUnternehmen, TagRegeln.AUS_UNTERNEHMEN});
-                    } else {
-                        zonen.put(i, new String[] {TagRegeln.VORGABE_ZONE, TagRegeln.AUS_VORGABE});
-                    }
-                }
-            }
-        }
+        Map<Integer, ReihenKontext.Zeitzone> zonen = ReihenKontext.zeitzonen(con, stapel.stream()
+                .map(a -> new ReihenKontext.Frage(a.tenant(), a.entity(), a.utcTag()))
+                .toList());
         Set<Ortstag> aus = new LinkedHashSet<>();
         for (int i = 0; i < stapel.size(); i++) {
             Auftrag a = stapel.get(i);
-            String[] z = zonen.getOrDefault(i,
-                    new String[] {TagRegeln.VORGABE_ZONE, TagRegeln.AUS_VORGABE});
-            ZoneId zone = TagRegeln.zone(z[0]);
+            ReihenKontext.Zeitzone z = zonen.get(i);
+            ZoneId zone = z.zone();
             for (LocalDate tag : TagRegeln.ortstageEinesUtcTages(a.utcTag(), zone)) {
-                aus.add(new Ortstag(a.tenant(), a.entity(), a.kanal(), tag, zone, z[0], z[1],
-                        sites.get(i)));
+                aus.add(new Ortstag(a.tenant(), a.entity(), a.kanal(), tag, zone, z.name(), z.herkunft(),
+                        z.siteId()));
             }
         }
         return List.copyOf(aus);
@@ -585,10 +577,6 @@ public class TagVerdichter {
         int nStale = 0;
         int nDeviceError = 0;
         int nNachgeliefert = 0;
-        BigDecimal min = null;
-        BigDecimal max = null;
-        BigDecimal mittelSumme = BigDecimal.ZERO;
-        int mittelGewicht = 0;
         Slot erster = null;
         Slot letzter = null;
         Slot letzterMitAnker = null;
@@ -613,13 +601,6 @@ public class TagVerdichter {
             nStale += s.nStale();
             nDeviceError += s.nDeviceError();
             nNachgeliefert += s.nNachgeliefert();
-            min = kleiner(min, s.minWert());
-            max = groesser(max, s.maxWert());
-            if (s.mittel() != null && s.erhalten() > 0) {
-                mittelSumme = mittelSumme.add(
-                        s.mittel().multiply(BigDecimal.valueOf(s.erhalten())));
-                mittelGewicht += s.erhalten();
-            }
             if (s.ersterZeit() != null && erster == null) {
                 erster = s;
             }
@@ -670,8 +651,10 @@ public class TagVerdichter {
         // AP-08 IP-5 — die MENGE aus den PERIODENSTÄNDEN des Tages, nie als Summe der
         // Viertelstunden: gerechnet von VerbrauchRegeln, hier nur angerufen. Für eine Reihe ohne
         // Zählerstand gibt es keine Periodenregel über Ständen (null).
-        VerbrauchRegeln.Teilperiode menge = ViertelstundenTeile.zaehlerstand(teile.teile(), teile.ereignisse(),
-                wertart, teile.kadenzS(), beginn, ende);
+        // Einheit des Messkanals und Zone des Standorts: der EINE Träger, in dem die Kennzeichen sprechen.
+        ReihenKontext reihe = ReihenKontext.aus(katalog, t.kanal(), t.zone());
+        VerbrauchRegeln.Teilperiode menge = ViertelstundenTeile.zaehlerstand(reihe, teile.teile(),
+                teile.ereignisse(), teile.deklaration(), wertart, teile.kadenzS(), beginn, ende);
         // §4.5: Summe erhalten ÷ Summe erwartet — eine Viertelstunde OHNE Zeile zählt mit ihrer
         // Erwartung (F8: 85 %, nicht 98 %). Vor IP-5 zählten nur die vorhandenen.
         if (teile.kadenzS() != null) {
@@ -680,8 +663,15 @@ public class TagVerdichter {
         }
         // Die Abdeckung wird ABGESCHNITTEN, nie auf 100 % gerundet (§4.9 Nr. 6).
         Integer abdeckung = erwartet == 0 ? null : Math.min(100, (int) (100L * erhalten / erwartet));
-        BigDecimal mittel = mittelGewicht == 0 ? null
-                : mittelSumme.divide(BigDecimal.valueOf(mittelGewicht), MathContext.DECIMAL64);
+        // AP-08 IP-3 — Momentanwert (und Intervallmenge) des Tages aus den Viertelstunden: Mittel aus
+        // der Summe der guten Werte ÷ erhalten (nie ein Mittel von Mitteln), Vollständigkeit aus den
+        // Lücken und Rändern (M3), gemessene Zeit, Energie nur gekennzeichnet — gerechnet von
+        // VerbrauchRegeln, hier nur angerufen. Vor IP-3 bildete dieser Lauf das Mittel selbst aus
+        // den gerundeten Viertelstunden-Mitteln.
+        VerbrauchRegeln.Werteteil werteteil = ViertelstundenTeile.werte(teile.werteteile(), wertart,
+                teile.kadenzS(), beginn, ende);
+        VerbrauchRegeln.Ergebnis werteErgebnis = werteteil == null ? null : werteteil.teil().ergebnis();
+        boolean momentan = "momentanwert".equals(ViertelstundeRegeln.regelWort(wertart));
 
         Map<String, Object> z = new LinkedHashMap<>();
         z.put("tag", Date.valueOf(t.tag()));
@@ -706,9 +696,9 @@ public class TagVerdichter {
         z.put("stand_anfang_zeit", ts(sA == null ? null : sA.zeit()));
         z.put("stand_ende", sE == null ? null : sE.wert());
         z.put("stand_ende_zeit", ts(sE == null ? null : sE.zeit()));
-        z.put("mittel", mittel);
-        z.put("min_wert", min);
-        z.put("max_wert", max);
+        z.put("mittel", werteErgebnis == null ? null : werteErgebnis.mittel());
+        z.put("min_wert", werteErgebnis == null ? null : werteErgebnis.min());
+        z.put("max_wert", werteErgebnis == null ? null : werteErgebnis.max());
         z.put("erster_wert", erster == null ? null : erster.ersterWert());
         z.put("erster_text", erster == null ? null : erster.ersterText());
         z.put("erster_zeit", ts(erster == null ? null : erster.ersterZeit()));
@@ -740,11 +730,24 @@ public class TagVerdichter {
         z.put("letzte_eingangszeit", ts(letzteEingangszeit));
         z.put("zustellart", ViertelstundeRegeln.zustellart(zustellarten));
         z.put("ereignisse", ereignisJson(ereignisse));
-        z.put("menge", menge == null ? null : menge.ergebnis().menge());
-        z.put("menge_zustand", menge == null ? null : menge.ergebnis().zustand());
+        // Zählerstand: aus den Periodenständen (IP-5). Momentanwert/Intervallmenge: aus der Regel
+        // von IP-3 — ein Momentanwert trägt NIE eine Menge (M6), seine Energie steht in `energie`.
+        VerbrauchRegeln.Ergebnis mengeErgebnis = menge != null ? menge.ergebnis() : werteErgebnis;
+        z.put("menge", mengeErgebnis == null ? null : mengeErgebnis.menge());
+        z.put("menge_zustand", mengeErgebnis == null ? null : mengeErgebnis.zustand());
         z.put("kennzeichen", ViertelstundeRegeln.kennzeichenJson(
-                menge == null ? List.of() : menge.ergebnis().kennzeichen()));
+                mengeErgebnis == null ? List.of() : mengeErgebnis.kennzeichen()));
         z.put("kadenz_s", teile.kadenzS());
+        z.put("summe", werteteil == null ? null : werteteil.summe());
+        z.put("energie", werteteil == null ? null : werteteil.energie());
+        z.put("gemessen_s", momentan && werteteil != null ? (int) werteteil.gemessenS() : null);
+        z.put("luecke_innen", momentan && werteteil != null ? werteteil.lueckeInnen() : null);
+        // Das Richtungspaar (V20260918101000): neben der Netto-Menge die beiden Anteile, SUMMIERT
+        // aus den je Rohwert gebildeten Anteilen der Viertelstunden (V20260918104000, AP-08 E15/M5).
+        // Hier wird nichts gerechnet - ein Bericht schreibt ab (bericht.md EW3).
+        BigDecimal[] paar = Richtungspaar.ausTeilen(teile.anteile(), beginn, ende);
+        z.put("menge_positiv", paar == null ? null : paar[0]);
+        z.put("menge_negativ", paar == null ? null : paar[1]);
 
         Object[] werte = new Object[SPALTEN.length];
         for (int i = 0; i < SPALTEN.length; i++) {
@@ -755,14 +758,6 @@ public class TagVerdichter {
 
     private static Timestamp ts(Instant t) {
         return t == null ? null : Timestamp.from(t);
-    }
-
-    private static BigDecimal kleiner(BigDecimal a, BigDecimal b) {
-        return b == null ? a : a == null ? b : a.min(b);
-    }
-
-    private static BigDecimal groesser(BigDecimal a, BigDecimal b) {
-        return b == null ? a : a == null ? b : a.max(b);
     }
 
     /** Die Zählung je Ereignisart summiert sich über die Viertelstunden; eine 0 steht nie da. */

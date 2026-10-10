@@ -1,19 +1,20 @@
 package com.voltpilot.api.web;
 
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.verbraucher.RanglisteAbleitung;
 import com.voltpilot.api.verbraucher.RanglisteService;
 import com.voltpilot.api.verbraucher.SteuerartService;
 import com.voltpilot.api.verbraucher.SteuerartWunsch;
 import com.voltpilot.api.verbraucher.VerbraucherService;
 import com.voltpilot.api.web.dto.VerbraucherDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -78,14 +79,14 @@ public class SiteVerbraucherController {
      */
     public record RanglisteEintragRequest(@NotNull @Size(max = 32) String art, UUID entityId) {}
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final VerbraucherService verbraucher;
     private final RanglisteService rangliste;
     private final SteuerartService steuerarten;
 
-    public SiteVerbraucherController(SiteRepository sites, VerbraucherService verbraucher,
+    public SiteVerbraucherController(Geltungsbereich geltungsbereich, VerbraucherService verbraucher,
             RanglisteService rangliste, SteuerartService steuerarten) {
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.verbraucher = verbraucher;
         this.rangliste = rangliste;
         this.steuerarten = steuerarten;
@@ -109,6 +110,7 @@ public class SiteVerbraucherController {
      * Entwurf bleibt gespeichert.
      */
     @PutMapping("/verbraucher/{entityId}/steuerart")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public SteuerartService.Ergebnis setzeSteuerart(@PathVariable UUID siteId,
             @PathVariable UUID entityId, @RequestBody SteuerartWunsch wunsch,
             @AuthenticationPrincipal Jwt jwt) {
@@ -122,6 +124,7 @@ public class SiteVerbraucherController {
      * {@code RanglisteProjektion}).
      */
     @PutMapping("/rangliste")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public VerbraucherDto rangliste(@PathVariable UUID siteId,
             @Valid @RequestBody RanglisteRequest req, @AuthenticationPrincipal Jwt caller) {
         requireSite(siteId);
@@ -139,9 +142,7 @@ public class SiteVerbraucherController {
     }
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 
     /**

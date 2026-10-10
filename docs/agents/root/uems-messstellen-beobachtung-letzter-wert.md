@@ -62,8 +62,9 @@ gebaute Vertrag (AP-07 E9 vom 10.09.2026, umgesetzt in PR 650):
   geben jeder Messstelle ihre eigene Box.
 - **Eine BERECHNETE Messstelle hat keine Beobachtung** (`null`, wie `quelle.stand = berechnet`):
   sie ist nicht ohne Quelle, sie wird gerechnet. Ihre Vollständigkeit („Vollständig“ /
-  „Unvollständig seit … (fehlt: MS-12)“) bringt AP-10 mit der Formel. Deshalb steht sie in
-  KEINEM Nenner des Aggregats — Ahrenberg zählt 17 gemessene, nicht 21.
+  „Unvollständig seit … (fehlt: MS-12)“) steht seit AP-10 IP-9 in `berechnung`, und sie zählt im
+  Aggregat MIT (vollständig = liefert; ohne Formel am Tag im Nenner wie „keine Datenquelle“) —
+  Ahrenberg zählt 22, nicht mehr 17 gemessene (`uems-bilanz-lesemodell.md`).
 - **Das Aggregat zählt GENAU die gezeigten Zeilen.** Ein Filter schneidet auch das Aggregat; eine
   Messstelle ohne Standort an dem Tag zählt nur beim Unternehmen, nie unter einem geratenen
   Standort.
@@ -83,6 +84,27 @@ gebaute Vertrag (AP-07 E9 vom 10.09.2026, umgesetzt in PR 650):
 - **Die Beobachtung gilt zum `zeitpunkt` der Antwort**, nicht „jetzt“: mit `?stichtag=` wandert
   auch das Werte-Fenster (`time <= zeitpunkt`) — so ist „Stand am“ eine Aussage über DIESEN
   Augenblick, keine Mischung aus altem Ort und heutigem Wert.
+
+## Box und Reihe: „Daten kommen an – noch keiner Messreihe zugeordnet“ (21.09.2026)
+
+Seit dem Paket `vp-uems-messstelle-liefert-daten-ehrlich` spricht `beobachtung.zustand` über die
+**Reihe**: `MessstelleRegisterRepository.WERTE` liest dieselben Fakten zweimal — über die Box (wie oben)
+und nur über die zugeordneten Werte (`entity_id` = Komponente, Rolle nicht `spiegel`; das Kriterium von
+Verdichtung, Lücken-Melder und `SpeicherklasseHistorie.mitDaten`, kein drittes; `Werte.reihe`).
+Liefert die Box, die Reihe aber nicht (der Komponente fehlt die Datenquelle, der Writer legt
+Bestandswerte ohne `entity_id` ab), trägt die Zeile `beobachtung.zuordnung = nicht_zugeordnet`
+(NON_NULL: ohne den Fall fehlt das Feld, eine Zeile mit zugeordneten Werten bleibt byte-gleich) und den
+Satz „Daten kommen an – noch keiner Messreihe zugeordnet“; `letzter_wert` bleibt der der Box. Die
+Werte-Route trägt dasselbe Wort als `zuordnung` (Box hat gute Werte im Zeitraum, die Reihe keinen) —
+KEIN Schritt bekommt einen `grund`, denn Kostenstelle/Bilanz/Kennzahl lesen `grund != null` als „ohne
+Zahl“. Den Satz mit dem Weg spricht die Werte-Karte (`frontend/portal/src/werteOhneReihe.ts`).
+
+- ⚠ **Test-Bühnen, die „liefert“ zeigen wollen, säen zugeordnete Werte** (`entity_id` + `role`), wie
+  der Writer sie heute schreibt; ein Box-Wert ohne `entity_id` ist jetzt „nicht zugeordnet“.
+- ⚠ `RegisterBerechnung` liest Kanal-Eingänge weiter über die Box (`Werte` ohne `nurReihe()`); nur
+  Messstellen-Eingänge sehen den Reihen-Zustand.
+- ⚠ Der genannte Weg (Messen-Assistent Schritt 2) hat im Portal heute keinen Einstiegsknopf
+  (`uems-messen-assistent.md` Punkt 7).
 
 ## Was IP-15 NICHT anfasst
 

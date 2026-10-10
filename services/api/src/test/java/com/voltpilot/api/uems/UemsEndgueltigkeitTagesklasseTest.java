@@ -64,6 +64,9 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers(disabledWithoutDocker = true)
 class UemsEndgueltigkeitTagesklasseTest {
 
+    /** Katalog mit den Testkanälen {@code energy_kwh_*} als kWh-Zähler ({@link UemsTestKatalog}). */
+    private static final MeasurementCatalog KATALOG = UemsTestKatalog.mitKwhTestkanaelen();
+
     private static final String DIESE = "20260912190000";
     private static final String APP_USER = "voltpilot_app";
     private static final String APP_PW = "voltpilot_app_test_pw";
@@ -100,6 +103,13 @@ class UemsEndgueltigkeitTagesklasseTest {
             "device_measurement_selection", "measurement_point", "messstelle", "geraet",
             "standort", "unternehmen", "anlage_standort", "telemetry", "telemetry_v2",
             "schedule", "site_supply_price", "entity_registry_state", "device_command_log");
+
+    /**
+     * Die Tabellen, die dieses Paket bearbeitet, und die Rohtabelle — nicht Teil des
+     * Bestands-Fingerabdrucks. Die Rohtabelle wächst in diesem Test selbst; dass keine BESTEHENDE
+     * Rohzeile sich ändert, prüft {@link #rohwerteFinger()} eigens.
+     */
+    private static final List<String> AUSNAHMEN = List.of("messreihe_%", "device_measurement_sample");
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -157,10 +167,10 @@ class UemsEndgueltigkeitTagesklasseTest {
 
         admin = new JdbcTemplate(ds(ADMIN_USER, ADMIN_PW));
         app = new JdbcTemplate(new TenantAwareDataSource(ds(APP_USER, APP_PW)));
-        verdichter = new ViertelstundeVerdichter(admin, new MeasurementCatalog(new ObjectMapper()),
+        verdichter = new ViertelstundeVerdichter(admin, KATALOG,
                 new SpaetankunftMelder(), 500, 40, 200_000);
         endgueltigkeit = new EndgueltigkeitLauf(admin, 2000, 200);
-        tage = new TagVerdichter(admin, 200, 40, 20_000, 200_000);
+        tage = new TagVerdichter(admin, KATALOG, 200, 40, 20_000, 200_000);
 
         // ---- 1. Die Viertelstunden bilden (alles, was bis hierher gesät ist) -------------
         arbeitFuellen();
@@ -239,14 +249,25 @@ class UemsEndgueltigkeitTagesklasseTest {
     /** Die Migration legt NUR daneben, und der ganze Lauf lässt den Bestand zeichengleich. */
     @Test
     void dieMigrationLegtNurDanebenUndDerGanzeLaufLaesstDenBestandZeichengleich() {
-        assertThat(fingerNachMigration).as("nach der Migration").isEqualTo(fingerVorher);
-        assertThat(fingerNachAllem).as("nach allen Läufen").isEqualTo(fingerVorher);
+        assertThat(Bestandsschutz.abweichungen(fingerVorher, fingerNachMigration)).as("nach der Migration")
+                .isEmpty();
+        assertThat(Bestandsschutz.abweichungen(fingerVorher, fingerNachAllem)).as("nach allen Läufen")
+                .isEmpty();
         assertThat(fingerVorher).as("gemessen wird jede Tabelle des Schemas")
                 .hasSizeGreaterThan(100)
                 .containsKeys(BESTAND.toArray(String[]::new));
         assertThat(rohNachAllem)
                 .as("und keine bestehende Rohzeile ändert sich — die Spätankunft SPEICHERT nur")
                 .isEqualTo(rohVorher);
+    }
+
+    /** Der Vergleich beißt noch: eine geänderte Bestandszeile und eine neue Tabelle mit Inhalt fallen auf. */
+    @Test
+    void derBestandsvergleichFaengtEineGeaenderteZeile() {
+        Bestandsschutz.mutationsprobe(root, AUSNAHMEN, "measurement_point",
+                "UPDATE measurement_point SET label = label || ' (Probe)'");
+        Bestandsschutz.inhaltsprobe(root, UemsEndgueltigkeitTagesklasseTest::rohwerteFinger, "device_measurement_sample",
+                "UPDATE device_measurement_sample SET catalog_version = catalog_version || '.probe'");
     }
 
     /** Die Tagesklasse ist eine Hypertable mit RLS + FORCE und ohne Kompression (E7). */
@@ -296,16 +317,20 @@ class UemsEndgueltigkeitTagesklasseTest {
     }
 
     /**
-     * Die Tagesklasse trägt KEINE Summe — und ihre Menge kam nicht mit dieser Migration, sondern mit
-     * AP-08 IP-5 ({@code V20260912205000}), aus den Periodenständen gebildet.
+     * Die Tagesklasse trägt KEINE Summe der Viertelstunden-Mengen — und ihre Menge kam nicht mit dieser
+     * Migration, sondern mit AP-08 IP-5 ({@code V20260912205000}), aus den Periodenständen gebildet. Die
+     * Spalte {@code summe} (AP-08 IP-3) ist die Summe der guten MOMENTANWERTE; an einer Zählerreihe
+     * weist die Datenbank sie ab.
      */
     @Test
     void dieTagesklasseTraegtKeineSummeUndIhreMengeKommtAusIp5() {
         List<String> spalten = root.queryForList("SELECT column_name FROM information_schema.columns "
                 + "WHERE table_name = 'messreihe_tag' ORDER BY column_name", String.class);
+        assertThatThrownBy(() -> root.update("UPDATE messreihe_tag SET summe = 1 WHERE wertart = 'counter'"))
+                .as("eine Summe der Viertelstunden-Mengen gibt es nie").hasMessageContaining("summe_chk");
         assertThat(spalten)
-                .as("eine Summe der Viertelstunden gibt es nie, einen Faktor nur an der Viertelstunde")
-                .doesNotContain("summe", "faktor")
+                .as("einen Faktor gibt es nur an der Viertelstunde")
+                .doesNotContain("faktor")
                 .as("die Menge bildet AP-08 IP-5 aus den Periodenständen")
                 .contains("menge", "menge_zustand", "kennzeichen", "kadenz_s")
                 .as("die FAKTEN, aus denen IP-5 sie bildet, stehen da")
@@ -905,29 +930,7 @@ class UemsEndgueltigkeitTagesklasseTest {
      * Migrations-Protokoll.
      */
     private static Map<String, String> fingerabdruck() {
-        List<String> tabellen = root.queryForList(
-                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' "
-                        + "AND table_type = 'BASE TABLE' "
-                        + "AND table_name NOT LIKE 'messreihe_%' "
-                        // Die Rohtabelle waechst in diesem Test selbst: A4 saet die zwoelf
-                        // Nachzuegler NACH der ersten Messung. Dass keine BESTEHENDE Rohzeile
-                        // sich aendert, prueft rohwerteFinger() eigens.
-                        + "AND table_name <> 'device_measurement_sample' "
-                        // Was eine SPAETERE Migration anlegt, gehoert nicht in diese Messung:
-                        // die Szenen (V20260929120000), die Speichersteuerung
-                        // (V20261007120000) und die Fernwartung (V20261007163700).
-                        + "AND table_name <> 'site_scene' "
-                        + "AND table_name <> 'device_battery_control' "
-                        + "AND table_name NOT LIKE 'fernwartung%' "
-                        + "AND table_name <> 'flyway_schema_history' ORDER BY table_name",
-                String.class);
-        Map<String, String> aus = new LinkedHashMap<>();
-        for (String tabelle : tabellen) {
-            aus.put(tabelle, root.queryForObject(
-                    "SELECT coalesce(md5(string_agg(t::text, '|' ORDER BY t::text)), 'leer') FROM "
-                            + tabelle + " t", String.class));
-        }
-        return aus;
+        return Bestandsschutz.fingerabdruck(root, AUSNAHMEN);
     }
 
     /**
@@ -936,9 +939,7 @@ class UemsEndgueltigkeitTagesklasseTest {
      * ändert nie.
      */
     private static String rohwerteFinger() {
-        return root.queryForObject(
-                "SELECT coalesce(md5(string_agg(t::text, '|' ORDER BY t::text)), 'leer') FROM "
-                        + "device_measurement_sample t WHERE t.received_at <= ?", String.class,
+        return Bestandsschutz.inhalt(root, "device_measurement_sample", "t.received_at <= ?",
                 Timestamp.from(A4_FRIST));
     }
 

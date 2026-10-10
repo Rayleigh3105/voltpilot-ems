@@ -15,7 +15,9 @@ import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.Timestamp;
 import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -233,12 +235,38 @@ class StandortApiTest {
             assertThat(e.get("alt")).isNull();
             assertThat(json(e.get("neu")).get("kurzzeichen").asText()).isEqualTo(st.get("kurzzeichen").asText());
             assertThat(json(e.get("neu")).get("zustand").asText()).isEqualTo("aktiv");
-            assertThat(e.get("akteur_sub")).isEqualTo(adminSub);
-            assertThat(e.get("akteur_name")).isEqualTo("VoltPilot (admin)");
+            assertThat(e.get("actor_sub")).isEqualTo(adminSub);
+            assertThat(e.get("actor_name")).isEqualTo("VoltPilot (admin)");
             assertThat(e.get("rueckwirkend")).isEqualTo(false);
         }
         assertThat(eintraege.get(0).get("gilt_ab").toString()).isEqualTo("2026-10-01");
         assertThat(eintraege.get(1).get("gilt_ab").toString()).isEqualTo("2026-10-15");
+    }
+
+    @Test
+    void dieStandortFlaecheBekommtZeitgueltigeFassungenStattUeberschriebenZuWerden() {
+        UUID t = neuerKundenbereich();
+        Anrufer wer = admin(t);
+        uhr("2026-10-01T09:12:00+02:00");
+        String id = anlegen(wer, ausReferenz("ST-1")).get("id").asText();
+
+        JsonNode erste = rufe(HttpMethod.PUT, "/standorte/" + id + "/flaeche", wer,
+                Map.of("m2", 8450, "gueltigAb", "2026-10-01")).getBody();
+        assertThat(erste.get("flaecheM2").asInt()).isEqualTo(8450);
+        assertThat(erste.get("flaecheQuelle").asText()).isEqualTo("eigen");
+
+        uhr("2027-01-15T14:40:00+01:00");
+        JsonNode zweite = rufe(HttpMethod.PUT, "/standorte/" + id + "/flaeche", wer,
+                Map.of("m2", 9000, "gueltigAb", "2027-01-01")).getBody();
+        assertThat(zweite.get("flaecheM2").asInt()).isEqualTo(9000);
+        assertThat(bestandFlaeche(wer, id, "2026-12-31")).isEqualTo(8450);
+        assertThat(bestandFlaeche(wer, id, "2027-01-01")).isEqualTo(9000);
+
+        List<Map<String, Object>> fassungen = root.queryForList("SELECT m2, gueltig_ab, gueltig_bis, "
+                + "aufgehoben_am FROM flaeche_gueltigkeit WHERE standort_id = ?::uuid ORDER BY gueltig_ab", id);
+        assertThat(fassungen).hasSize(2);
+        assertThat(fassungen.get(0).get("gueltig_bis").toString()).isEqualTo("2026-12-31");
+        assertThat(fassungen.get(0).get("aufgehoben_am")).isNull();
     }
 
     // ---- Kurzzeichen: eigenes, belegt (auch archiviert, früher, Gebäude) ----------
@@ -578,8 +606,8 @@ class StandortApiTest {
                 String.class, UUID.fromString(id)));
         // Ein Kundenbenutzer steht mit seinem Namen im Protokoll.
         Map<String, Object> e = letzter(mandantA, "standort");
-        assertThat(e.get("akteur_name")).isEqualTo("demo");
-        assertThat(e.get("akteur_sub")).isEqualTo(anspruch("demo").get("sub").asText());
+        assertThat(e.get("actor_name")).isEqualTo("demo");
+        assertThat(e.get("actor_sub")).isEqualTo(anspruch("demo").get("sub").asText());
         long vorher = eintraege(mandantA);
 
         Map<String, Object> b = ausReferenz("ST-1");
@@ -756,6 +784,85 @@ class StandortApiTest {
     // ---- Die Vokabulare und die neuen Tabellen ----------------------------------------
 
     @Test
+    void a2A15AusfallAm03112026LiestNurFestgehalteneFaktenUndFremdBleibt404() {
+        UUID t = neuerKundenbereich();
+        Anrufer wer = admin(t);
+        UUID site = UUID.fromString(neueAnlage(t, "Halle 2"));
+        UUID standort = UUID.fromString(anlegen(wer, ausReferenz("ST-1")).get("id").asText());
+        root.update("INSERT INTO anlage_standort (tenant_id, site_id, standort_id, gueltig_ab) "
+                + "VALUES (?,?,?,DATE '2024-03-12')", t, site, standort);
+        UUID e1 = root.queryForObject("INSERT INTO device (tenant_id, site_id, external_ref, kind, name, status) "
+                + "VALUES (?,?,'VP-BOX-2026-0481','edge','Box Halle 1','claimed') RETURNING id", UUID.class,
+                t, site);
+        UUID e2 = root.queryForObject("INSERT INTO device (tenant_id, site_id, external_ref, kind, name, status) "
+                + "VALUES (?,?,'VP-BOX-2026-0482','edge','Box Halle 2','claimed') RETURNING id", UUID.class,
+                t, site);
+        UUID dq = root.queryForObject("INSERT INTO data_source (tenant_id, site_id, kennzeichen, name, protokoll, "
+                + "adresse, kadenz_s) VALUES (?,?,'DQ-A2','WAGO Halle 2','modbus_tcp','10.0.0.9:502/1',60) "
+                + "RETURNING id", UUID.class, t, site);
+        UUID komponente = root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, label, "
+                + "entity_type, device_id, communication, connection_json, data_source_id, created_at) VALUES "
+                + "(?,?,'grid-meter','Netzbezug Halle 2','grid-meter',?,'modbus_tcp',"
+                + "'{\"ip\":\"10.0.0.9\",\"unit_id\":1}'::jsonb,?,'2024-03-12T00:00:00Z') RETURNING id",
+                UUID.class, t, site, e2, dq);
+        UUID geraet = root.queryForObject("SELECT geraet_id FROM geraet_komponente WHERE entity_id = ? "
+                + "AND gueltig_bis IS NULL", UUID.class, komponente);
+        UUID ms10 = root.queryForObject("INSERT INTO messstelle (tenant_id, kennzeichen, name, art, medium, groesse, "
+                + "richtung, einheit, wertart) VALUES (?,'MS-A2','Netzbezug Halle 2','gemessen','Strom',"
+                + "'Wirkenergie','Bezug','kWh','Zählerstand') RETURNING id", UUID.class, t);
+        root.update("INSERT INTO messstelle_ort (tenant_id, messstelle_id, standort_id, gueltig_ab) "
+                + "VALUES (?,?,?,'2024-03-12')", t, ms10, standort);
+        root.update("INSERT INTO messstelle_quelle (tenant_id, messstelle_id, groesse, richtung, entity_id, "
+                + "geraet_id, kanal, kanal_wertart, herleitung, rolle, gueltig_ab, rueckwirkend, eingetragen_am, "
+                + "actor_name, actor_art) VALUES (?,?,'Wirkenergie','Bezug',?,?,'energy_kwh','counter',"
+                + "'zaehlerstand','fuehrend','2024-03-12T00:00:00Z',true,now(),'Fixture','voltpilot')",
+                t, ms10, komponente, geraet);
+        Instant von = OffsetDateTime.parse("2026-11-03T14:00:00+01:00").toInstant();
+        UUID ereignis = UUID.randomUUID();
+        UUID quellenEreignis = UUID.randomUUID();
+        root.update("INSERT INTO messreihe_ereignis (zeit, tenant_id, ereignis_id, art, urheber, von, bis, "
+                + "site_id, kennungen, device_id, nutzlast, eingang) VALUES (?,?,?,'data_gap','cloud',?,NULL,"
+                + "?,jsonb_build_object('box', ?::text),?,jsonb_build_object('erkannt_aus','herzschlag',"
+                + "'fehlerklasse','box_meldet_sich_nicht'),?)", Timestamp.from(von), t, ereignis,
+                Timestamp.from(von), site, e2, e2, Timestamp.from(von.plusSeconds(301)));
+        root.update("INSERT INTO messreihe_ereignis (zeit, tenant_id, ereignis_id, art, urheber, von, bis, "
+                + "site_id, kennungen, device_id, data_source_id, nutzlast, eingang) VALUES "
+                + "(?,?,?,'data_gap','cloud',?,NULL,?,jsonb_build_object('box', ?::text, 'datenquelle', ?::text),"
+                + "?,?,jsonb_build_object('erkannt_aus','herzschlag','fehlerklasse','box_meldet_sich_nicht'),?)",
+                Timestamp.from(von), t, quellenEreignis, Timestamp.from(von), site, e2, dq, e2, dq,
+                Timestamp.from(von.plusSeconds(301)));
+
+        JsonNode offen = rufe(HttpMethod.GET, "/standorte/" + standort + "/ausfall", wer, null).getBody();
+        assertThat(offen.get("boxen_gesamt").asInt()).isEqualTo(2);
+        assertThat(offen.get("boxen_ausgefallen").asInt()).isEqualTo(1);
+        assertThat(offen.at("/boxen/0/name").asText()).isEqualTo("Box Halle 2");
+        assertThat(offen.at("/boxen/0/seit").asText()).startsWith("2026-11-03T14:00:00+01:00");
+        assertThat(offen.get("messstellen_unvollstaendig").asInt()).isEqualTo(1);
+        assertThat(offen.at("/messstellen/0/kennzeichen").asText()).isEqualTo("MS-A2");
+        assertThat(offen.at("/messstellen/0/box").asText()).isEqualTo("Box Halle 2");
+        assertThat(rufe(HttpMethod.GET, "/standorte/" + standort + "/ausfall", DEMO2, null)
+                .getStatusCode().value()).isEqualTo(404);
+
+        Instant rueckkehr = OffsetDateTime.parse("2026-11-03T17:30:00+01:00").toInstant();
+        root.update("INSERT INTO messreihe_ereignis (zeit, tenant_id, ereignis_id, art, urheber, von, bis, "
+                + "site_id, kennungen, device_id, nutzlast, eingang) VALUES (?,?,?,'data_gap','cloud',?,?,"
+                + "?,jsonb_build_object('box', ?::text),?,jsonb_build_object('erkannt_aus','herzschlag',"
+                + "'fehlerklasse','box_meldet_sich_nicht'),?)", Timestamp.from(von), t, ereignis,
+                Timestamp.from(von), Timestamp.from(rueckkehr), site, e2, e2, Timestamp.from(rueckkehr));
+        root.update("INSERT INTO messreihe_ereignis (zeit, tenant_id, ereignis_id, art, urheber, von, bis, "
+                + "site_id, kennungen, device_id, data_source_id, nutzlast, eingang) VALUES "
+                + "(?,?,?,'data_gap','cloud',?,?,?,jsonb_build_object('box', ?::text, 'datenquelle', ?::text),"
+                + "?,?,jsonb_build_object('erkannt_aus','herzschlag','fehlerklasse','box_meldet_sich_nicht'),?)",
+                Timestamp.from(von), t, quellenEreignis, Timestamp.from(von), Timestamp.from(rueckkehr), site,
+                e2, dq, e2, dq, Timestamp.from(rueckkehr));
+        JsonNode geschlossen = rufe(HttpMethod.GET, "/standorte/" + standort + "/ausfall", wer, null).getBody();
+        assertThat(geschlossen.get("boxen_ausgefallen").asInt()).isZero();
+        assertThat(geschlossen.get("boxen")).isEmpty();
+        assertThat(geschlossen.get("messstellen")).isEmpty();
+        assertThat(e1).isNotNull();
+    }
+
+    @Test
     void dieVokabulareSindDieDerDatenbankUndDieBelegungStehtUnterDemZaun() throws SQLException {
         for (String n : OrtFelder.NUTZUNGEN) {
             assertThat(root.queryForObject("SELECT uems_nutzung_gueltig(ARRAY[?]::text[])", Boolean.class, n))
@@ -825,6 +932,11 @@ class StandortApiTest {
     private String bestand(Anrufer wer, String standort, String stichtag) {
         return rufe(HttpMethod.GET, "/standorte/" + standort + "?stichtag=" + stichtag, wer, null).getBody()
                 .get("bestand").asText();
+    }
+
+    private int bestandFlaeche(Anrufer wer, String standort, String stichtag) {
+        return rufe(HttpMethod.GET, "/standorte/" + standort + "?stichtag=" + stichtag, wer, null).getBody()
+                .get("flaecheM2").asInt();
     }
 
     private UUID neuerKundenbereich() {
@@ -917,7 +1029,7 @@ class StandortApiTest {
 
     private static List<Map<String, Object>> protokoll(UUID tenant, String objektArt) {
         return root.queryForList("SELECT objekt_id, art, alt::text AS alt, neu::text AS neu, gilt_ab, rueckwirkend, "
-                + "akteur_sub, akteur_name FROM ort_aenderung WHERE tenant_id = ? AND objekt_art = ? ORDER BY id",
+                + "actor_sub, actor_name FROM ort_aenderung WHERE tenant_id = ? AND objekt_art = ? ORDER BY id",
                 tenant, objektArt);
     }
 

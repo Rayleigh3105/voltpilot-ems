@@ -28,12 +28,14 @@ public class TelemetryRawConsumer {
     private final ObjectMapper mapper;
     private final TelemetryWriteRepository repository;
     private final ComposedEntityFanout fanout;
+    private final WriterVerwerfMetriken verworfen;
 
     public TelemetryRawConsumer(ObjectMapper mapper, TelemetryWriteRepository repository,
-            ComposedEntityFanout fanout) {
+            ComposedEntityFanout fanout, WriterVerwerfMetriken verworfen) {
         this.mapper = mapper;
         this.repository = repository;
         this.fanout = fanout;
+        this.verworfen = verworfen;
     }
 
     @KafkaListener(
@@ -45,11 +47,13 @@ public class TelemetryRawConsumer {
             event = mapper.readValue(value, TelemetryRawEvent.class);
         } catch (JsonProcessingException e) {
             log.warn("Skipping unparseable telemetry.raw record: {}", e.getMessage());
+            verworfen.umschlag("telemetry", WriterVerwerfMetriken.UNLESBAR);
             return;
         }
         if (event.tenant_id() == null || event.site_id() == null
                 || event.device_id() == null || event.observed_at() == null) {
             log.warn("Skipping telemetry.raw record missing required identity/timestamp: {}", value);
+            verworfen.umschlag("telemetry", WriterVerwerfMetriken.PFLICHTFELD);
             return;
         }
 

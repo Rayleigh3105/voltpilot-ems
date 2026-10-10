@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.uems.VerbrauchRegeln.Ergebnis;
 import com.voltpilot.api.uems.VerbrauchRegeln.Rohwert;
 import com.voltpilot.api.uems.VerbrauchRegeln.Teilperiode;
+import com.voltpilot.api.uems.VerbrauchRegeln.Werteteil;
 import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -18,6 +19,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -32,12 +34,25 @@ import java.util.UUID;
  * <p><b>Gelesen wird ein wenig mehr als die Periode</b>: die Viertelstunde an {@code bis} und die
  * letzte mit einem guten Wert vor {@code von} (höchstens einen Tag zurück). Aus ihnen bestimmt die
  * Regel die Periodenstände an den Grenzen, wenn dort selbst keine Viertelstunde anliegt.
+ *
+ * <p><b>Seit AP-08 IP-3</b> dieselben Zeilen auch als {@link Werteteil} (Summe, Energie, gemessene
+ * Zeit, Lücke im Intervall) für {@link VerbrauchRegeln#momentanwertAusTeilperioden} und
+ * {@link VerbrauchRegeln#intervallmengeAusTeilperioden} — dazu die erste Viertelstunde mit gutem
+ * Wert AB {@code bis} (höchstens einen Tag voraus): der Nachbar der Lücke und des Haltens über die
+ * Endgrenze. Sie geht NICHT in {@code teile} ein; die Zählerstand-Regel sieht, was sie vorher sah.
  */
 final class ViertelstundenTeile {
 
     private static final ObjectMapper JSON = new ObjectMapper();
     private static final Duration VIERTELSTUNDE = Duration.ofMinutes(15);
     private static final Duration RUECKBLICK = Duration.ofDays(1);
+
+    /** Die Spalten einer gelesenen Viertelstunde — {@link #teilperiode} und {@link #werteteil} lesen nach Index. */
+    private static final String SPALTEN = "intervall_beginn, zustand, wertart, site_id, stand_anfang, stand_anfang_zeit, "
+            + "stand_ende, stand_ende_zeit, erster_wert, erster_zeit, letzter_wert, letzter_zeit, "
+            + "menge, menge_zustand, erhalten, erwartet, kennzeichen::text, kadenz_s, n_nachgeliefert, "
+            + "summe, mittel, min_wert, max_wert, energie, gemessen_s, luecke_innen, "
+            + "energie_positiv, energie_negativ";
 
     private ViertelstundenTeile() {}
 
@@ -49,10 +64,20 @@ final class ViertelstundenTeile {
      * @param endgueltig davon endgültig
      * @param kadenzS die Kadenz der jüngsten Viertelstunde in der Periode, {@code null} ohne eine
      * @param wertart die Wertart der jüngsten Viertelstunde in der Periode
+     * @param werteteile dieselben Viertelstunden wie {@code teile} als {@link Werteteil}, dazu die
+     *     erste mit gutem Wert ab {@code bis}
      */
+    /**
+     * Der gespeicherte Anteil EINER Viertelstunde (AP-08 E15/M5, {@code V20260918104000}) — beide
+     * Zahlen zusammen oder gar keine. {@code null} in beiden heißt: diese Viertelstunde macht über
+     * ihre Richtungen keine Aussage (kein Zwei-Richtungs-Kanal, oder vor der Migration verdichtet).
+     */
+    record Anteil(Instant von, BigDecimal positiv, BigDecimal negativ) {}
+
     record Geladen(List<Teilperiode> teile, List<VerbrauchRegeln.Ereignis> ereignisse, int vorhanden,
             int endgueltig, int nachgeliefert, Integer kadenzS, String wertart, UUID siteId,
-            boolean siteEindeutig) {
+            boolean siteEindeutig, List<Werteteil> werteteile, List<Anteil> anteile,
+            ZaehlerDeklaration deklaration) {
 
         /** Nur die Viertelstunden IN {@code [von, bis)}. */
         List<Teilperiode> innen(Instant von, Instant bis) {
@@ -63,10 +88,10 @@ final class ViertelstundenTeile {
     /** Die Viertelstunden und Ereignisse einer Reihe für {@code [von, bis)}. */
     static Geladen laden(Connection con, UUID tenant, UUID entity, String kanal, Instant von, Instant bis)
             throws SQLException {
-        String spalten = "intervall_beginn, zustand, wertart, site_id, stand_anfang, stand_anfang_zeit, "
-                + "stand_ende, stand_ende_zeit, erster_wert, erster_zeit, letzter_wert, letzter_zeit, "
-                + "menge, menge_zustand, erhalten, erwartet, kennzeichen::text, kadenz_s, n_nachgeliefert";
+        String spalten = SPALTEN;
         List<Teilperiode> teile = new ArrayList<>();
+        List<Werteteil> werteteile = new ArrayList<>();
+        List<Anteil> anteile = new ArrayList<>();
         int vorhanden = 0;
         int endgueltig = 0;
         int nachgeliefert = 0;
@@ -100,11 +125,10 @@ final class ViertelstundenTeile {
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     Instant beginn = zeit(rs, 1);
-                    Teilperiode t = new Teilperiode(beginn, beginn.plus(VIERTELSTUNDE),
-                            wert(rs, 5, 6), wert(rs, 7, 8), wert(rs, 9, 10), wert(rs, 11, 12),
-                            new Ergebnis(rs.getBigDecimal(13), null, null, null, null, rs.getString(14),
-                                    rs.getInt(15), rs.getInt(16), null, kennzeichen(rs.getString(17))));
+                    Teilperiode t = teilperiode(rs);
                     teile.add(t);
+                    werteteile.add(werteteil(rs, t));
+                    anteile.add(new Anteil(beginn, rs.getBigDecimal(27), rs.getBigDecimal(28)));
                     if (!beginn.isBefore(von) && beginn.isBefore(bis)) {
                         vorhanden++;
                         if (ViertelstundeRegeln.ENDGUELTIG.equals(rs.getString(2))) {
@@ -127,32 +151,92 @@ final class ViertelstundenTeile {
                 }
             }
         }
-        return new Geladen(teile, ereignisse(con, tenant, entity, kanal, von, bis), vorhanden, endgueltig,
-                nachgeliefert, kadenzS, wertart, site, siteEindeutig);
+        try (PreparedStatement ps = con.prepareStatement("SELECT " + spalten + " FROM messreihe_viertelstunde"
+                + " WHERE tenant_id = ? AND entity_id = ? AND messkanal = ?"
+                + " AND intervall_beginn >= ? AND intervall_beginn < ? AND erster_zeit IS NOT NULL"
+                + " ORDER BY intervall_beginn LIMIT 1")) {
+            ps.setObject(1, tenant, Types.OTHER);
+            ps.setObject(2, entity, Types.OTHER);
+            ps.setString(3, kanal);
+            ps.setTimestamp(4, Timestamp.from(bis));
+            ps.setTimestamp(5, Timestamp.from(bis.plus(RUECKBLICK)));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    werteteile.add(werteteil(rs, teilperiode(rs)));
+                }
+            }
+        }
+        // AP-08 IP-4: Wertebereich, Höchstzuwachs und Neustart-Verlust der Reihe zum Periodenbeginn —
+        // dieselbe Quelle wie im Viertelstunden-Lauf und im Writer.
+        ZaehlerDeklaration deklaration = ZaehlerDeklaration.lesen(con, tenant, entity, kanal, von);
+        return new Geladen(teile, ereignisse(con, tenant, entity, kanal, von, bis, deklaration), vorhanden,
+                endgueltig, nachgeliefert, kadenzS, wertart, site, siteEindeutig, List.copyOf(werteteile),
+                List.copyOf(anteile), deklaration);
+    }
+
+    /** Eine gelesene Viertelstunde (Spalten wie in {@link #laden}) als {@link Teilperiode}. */
+    private static Teilperiode teilperiode(ResultSet rs) throws SQLException {
+        Instant beginn = zeit(rs, 1);
+        return new Teilperiode(beginn, beginn.plus(VIERTELSTUNDE),
+                wert(rs, 5, 6), wert(rs, 7, 8), wert(rs, 9, 10), wert(rs, 11, 12),
+                new Ergebnis(rs.getBigDecimal(13), null, null, null, null, rs.getString(14),
+                        rs.getInt(15), rs.getInt(16), null, kennzeichen(rs.getString(17))));
+    }
+
+    /**
+     * Die gespeicherte Viertelstunde als {@link Werteteil}: Mittel/Min/Max, ungerundete Summe und
+     * Energie, gemessene Zeit, Lücke im Intervall (Spalten 20–26). Die Stände bleiben weg — ein
+     * Momentanwert hat keinen Periodenstand. Die gerundete Energie liest die Zusammensetzung nie.
+     */
+    private static Werteteil werteteil(ResultSet rs, Teilperiode t) throws SQLException {
+        Ergebnis e = t.ergebnis();
+        Integer gemessen = (Integer) rs.getObject(25);
+        Boolean luecke = (Boolean) rs.getObject(26);
+        return new Werteteil(
+                new Teilperiode(t.von(), t.bis(), null, null, t.erster(), t.letzter(),
+                        new Ergebnis(e.menge(), rs.getBigDecimal(21), rs.getBigDecimal(22), rs.getBigDecimal(23),
+                                null, e.zustand(), e.erhalten(), e.erwartet(), null, e.kennzeichen())),
+                rs.getBigDecimal(20),
+                rs.getBigDecimal(24),
+                gemessen == null ? 0 : gemessen,
+                luecke != null && luecke);
     }
 
     /**
      * Die Gerätegrenzen und Neustarts der Reihe in {@code (von, bis]} — dieselbe Auswahl und
-     * dieselbe Umwandlung wie im Verdichtungs-Lauf ({@link ViertelstundeVerdichter#fuerVerbrauchRegeln}).
+     * dieselbe Umwandlung wie im Verdichtungs-Lauf ({@link ViertelstundeVerdichter#fuerVerbrauchRegeln}):
+     * eine Gerätegrenze an der Komponente, ein Neustart an der DATENQUELLE, die die Komponente liest
+     * (die Box meldet ihn je Datenquelle, AP-08 IP-4).
      */
     static List<VerbrauchRegeln.Ereignis> ereignisse(Connection con, UUID tenant, UUID entity, String kanal,
-            Instant von, Instant bis) throws SQLException {
+            Instant von, Instant bis, ZaehlerDeklaration deklaration) throws SQLException {
+        return List.copyOf(ViertelstundeVerdichter.fuerVerbrauchRegeln(
+                ereignisseRoh(con, tenant, entity, kanal, von, bis), deklaration));
+    }
+
+    /** Die Gerätegrenzen und Neustarts von {@code (von, bis]}, wie gespeichert — noch ohne Deklaration. */
+    private static List<ViertelstundeVerdichter.Ereignis> ereignisseRoh(Connection con, UUID tenant, UUID entity,
+            String kanal, Instant von, Instant bis) throws SQLException {
         List<ViertelstundeVerdichter.Ereignis> roh = new ArrayList<>();
         try (PreparedStatement ps = con.prepareStatement("""
                 SELECT e.art, e.zeit, e.nutzlast->>'endstand', e.nutzlast->>'anfangsstand',
                        e.nutzlast->>'verlust_s'
                   FROM messreihe_ereignis e
-                 WHERE e.tenant_id = ? AND e.entity_id = ?
-                   AND (e.messkanal IS NULL OR e.messkanal = ?)
+                 WHERE e.tenant_id = ?
                    AND e.zeit > ? AND e.zeit <= ?
                    AND e.art IN ('device_boundary', 'device_restart')
+                   AND ((e.entity_id = ? AND (e.messkanal IS NULL OR e.messkanal = ?))
+                        OR (e.art = 'device_restart' AND e.data_source_id IS NOT NULL
+                            AND e.data_source_id = (SELECT mp.data_source_id FROM measurement_point mp
+                                                     WHERE mp.id = ? AND mp.tenant_id = e.tenant_id)))
                  ORDER BY e.zeit
                 """)) {
             ps.setObject(1, tenant, Types.OTHER);
-            ps.setObject(2, entity, Types.OTHER);
-            ps.setString(3, kanal);
-            ps.setTimestamp(4, Timestamp.from(von));
-            ps.setTimestamp(5, Timestamp.from(bis));
+            ps.setTimestamp(2, Timestamp.from(von));
+            ps.setTimestamp(3, Timestamp.from(bis));
+            ps.setObject(4, entity, Types.OTHER);
+            ps.setString(5, kanal);
+            ps.setObject(6, entity, Types.OTHER);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     roh.add(new ViertelstundeVerdichter.Ereignis(rs.getString(1), zeit(rs, 2),
@@ -162,7 +246,7 @@ final class ViertelstundenTeile {
                 }
             }
         }
-        return List.copyOf(ViertelstundeVerdichter.fuerVerbrauchRegeln(roh));
+        return roh;
     }
 
     /** Die Kennzeichen einer gespeicherten Zeile — ein jsonb-Array von Sätzen. */
@@ -198,15 +282,274 @@ final class ViertelstundenTeile {
     }
 
     /**
-     * Die Menge von {@code [von, bis)} aus diesen Teilperioden — {@code null}, wenn die Reihe kein
-     * Zählerstand ist (für sie hat AP-08 keine Periodenregel über Ständen).
+     * Momentanwert bzw. Intervallmenge von {@code [von, bis)} aus diesen Teilen (AP-08 IP-3) —
+     * {@code null} für jede andere Wertart. Integriert wird genau dann, wenn JEDER Teil mit gutem
+     * Wert in der Periode seine Energie trägt: fehlt einem die Bindung {@code integration} (oder war
+     * er vor IP-3 gebildet), gibt es für die ganze Periode keine Energie — eine zu kleine Summe wäre
+     * eine Behauptung.
      */
-    static Teilperiode zaehlerstand(Collection<Teilperiode> teile, List<VerbrauchRegeln.Ereignis> ereignisse,
-            String wertart, Integer kadenzS, Instant von, Instant bis) {
+    static Werteteil werte(List<Werteteil> teile, String wertart, Integer kadenzS, Instant von, Instant bis) {
+        String regel = ViertelstundeRegeln.regelWort(wertart);
+        if (kadenzS == null || regel == null || "zaehlerstand".equals(regel)) {
+            return null;
+        }
+        Duration kadenz = Duration.ofSeconds(kadenzS);
+        if ("intervallmenge".equals(regel)) {
+            return VerbrauchRegeln.intervallmengeAusTeilperioden(teile, von, bis, kadenz);
+        }
+        List<Werteteil> gut = teile.stream()
+                .filter(w -> !w.teil().von().isBefore(von) && !w.teil().bis().isAfter(bis))
+                .filter(w -> w.teil().erster() != null)
+                .toList();
+        boolean integrieren = !gut.isEmpty() && gut.stream().allMatch(w -> w.energie() != null);
+        return VerbrauchRegeln.momentanwertAusTeilperioden(teile, von, bis, kadenz, integrieren);
+    }
+
+    /**
+     * Die Menge von {@code [von, bis)} aus diesen Teilperioden — {@code null}, wenn die Reihe kein
+     * Zählerstand ist (für sie hat AP-08 keine Periodenregel über Ständen). {@code reihe} ist der Träger,
+     * den der Aufrufer gebildet hat: in seiner Einheit und Zone sprechen die neuen Kennzeichen.
+     */
+    static Teilperiode zaehlerstand(ReihenKontext reihe, Collection<Teilperiode> teile,
+            List<VerbrauchRegeln.Ereignis> ereignisse,
+            ZaehlerDeklaration deklaration, String wertart, Integer kadenzS, Instant von, Instant bis) {
         if (!"counter".equals(wertart) || kadenzS == null) {
             return null;
         }
-        return VerbrauchRegeln.zaehlerstandAusTeilperioden(List.copyOf(teile), von, bis,
-                Duration.ofSeconds(kadenzS), ereignisse, ViertelstundeRegeln.FAKTOR_DER_FASSUNG, null, null);
+        Duration kadenz = Duration.ofSeconds(kadenzS);
+        // Z6 auch über eine Grenze ohne Stand (die Nachbarschaft, die erst die gröbere Periode sieht).
+        return VerbrauchRegeln.zaehlerstandAusTeilperioden(reihe, List.copyOf(teile), von, bis, kadenz, ereignisse,
+                ViertelstundeRegeln.FAKTOR_DER_FASSUNG, deklaration.modulFuer(kadenz),
+                deklaration.hoechstzuwachsFuer(kadenz));
     }
+
+    /**
+     * Ein Schritt eines gröberen Rasters: Zählerstand-Menge ({@link #zaehlerstand}) bzw. Momentanwert
+     * ({@link #werte}) von {@code [von, bis)} — je {@code null} für die andere Wertart.
+     *
+     * @param innen die gespeicherten Viertelstunden IN {@code [von, bis)}, für Abdeckung und Erwartung
+     *     ({@link #erwartet}); eine ohne Rohwert fehlt hier, wie überall
+     */
+    record Schritt(Instant von, Instant bis, String wertart, Teilperiode menge, Werteteil werte,
+            List<Teilperiode> innen) {}
+
+    /**
+     * Die Kadenz-Kette einer Reihe über eine Zeitspanne (AP-07 IP-10, E9): Fassung der Quellenbindung →
+     * Mess-Selektion → Katalog → 300 s ({@link KadenzRegeln#wirksam}), ausgewertet ZU JEDEM ZEITPUNKT
+     * ({@link #am}) statt einmal für die Spanne. Spiegel von {@code ViertelstundeVerdichter.kadenzJeAuftrag}:
+     * lesen mehrere Bindungen denselben Messkanal, gilt die SCHNELLSTE ihrer Fassungen, von der Mess-Selektion
+     * die kleinste Kadenz — eine Viertelstunde ohne Zeile erwartet so viel, wie ihre Zeile erwartet hätte.
+     *
+     * @param fassungen die Fassungen der Bindungen des Messkanals, je auf die Gültigkeit ihrer Bindung
+     *     geschnitten
+     */
+    record Kadenzkette(List<KadenzRegeln.Fassung> fassungen, Integer auswahlS, Integer katalogS) {
+
+        /** Die Kadenz, die zu {@code t} gilt — nie die von jetzt, nie die der jüngsten Zeile. */
+        Duration am(Instant t) {
+            Integer fassungS = null;
+            for (KadenzRegeln.Fassung f : fassungen) {
+                if (!f.gueltigAb().isAfter(t) && (f.gueltigBis() == null || t.isBefore(f.gueltigBis()))
+                        && (fassungS == null || f.erwartetS() < fassungS)) {
+                    fassungS = f.erwartetS();
+                }
+            }
+            return Duration.ofSeconds(KadenzRegeln.wirksam(fassungS, auswahlS, katalogS).erwartetS());
+        }
+    }
+
+    /**
+     * Die Kadenz-Kette der Reihe für {@code [von, bis)} in zwei Abfragen, über die Verbindung des Aufrufers
+     * (hinter RLS: eine fremde Reihe hat weder Fassung noch Selektion, es bleibt der Katalog).
+     *
+     * @param katalogS die Vorgabe des Katalogs für den Messkanal, {@code null} ohne eine
+     */
+    static Kadenzkette kadenzkette(Connection con, UUID tenant, UUID entity, String kanal, Integer katalogS,
+            Instant von, Instant bis) throws SQLException {
+        List<KadenzRegeln.Fassung> fassungen = new ArrayList<>();
+        try (PreparedStatement ps = con.prepareStatement("""
+                SELECT k.id::text, k.erwartet_s, greatest(q.gueltig_ab, k.gueltig_ab),
+                       least(q.gueltig_bis, k.gueltig_bis)
+                  FROM messstelle_quelle q
+                  JOIN quelle_kadenz k ON k.messstelle_quelle_id = q.id AND k.tenant_id = q.tenant_id
+                 WHERE q.tenant_id = ? AND q.entity_id = ? AND q.kanal = ?
+                   AND q.gueltig_ab < ? AND (q.gueltig_bis IS NULL OR q.gueltig_bis > ?)
+                   AND k.gueltig_ab < ? AND (k.gueltig_bis IS NULL OR k.gueltig_bis > ?)
+                """)) {
+            ps.setObject(1, tenant, Types.OTHER);
+            ps.setObject(2, entity, Types.OTHER);
+            ps.setString(3, kanal);
+            for (int p = 4; p <= 7; p += 2) {
+                ps.setTimestamp(p, Timestamp.from(bis));
+                ps.setTimestamp(p + 1, Timestamp.from(von));
+            }
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Instant ab = zeit(rs, 3);
+                    Instant endet = zeit(rs, 4);
+                    // LEAST übergeht NULL: offen ist nur, was Bindung UND Fassung offen lassen.
+                    if (endet == null || endet.isAfter(ab)) {
+                        fassungen.add(new KadenzRegeln.Fassung(rs.getString(1), rs.getInt(2), ab, endet));
+                    }
+                }
+            }
+        }
+        Integer auswahlS = null;
+        try (PreparedStatement ps = con.prepareStatement("SELECT min(cadence_s) FROM device_measurement_selection"
+                + " WHERE tenant_id = ? AND entity_id = ? AND point_key = ?")) {
+            ps.setObject(1, tenant, Types.OTHER);
+            ps.setObject(2, entity, Types.OTHER);
+            ps.setString(3, kanal);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    auswahlS = (Integer) rs.getObject(1);
+                }
+            }
+        }
+        return new Kadenzkette(List.copyOf(fassungen), auswahlS, katalogS);
+    }
+
+    /**
+     * §4.5 ZUR MESSZEIT — die erwarteten Werte von {@code [von, bis)} aus den gespeicherten Viertelstunden
+     * und der Kadenz-Kette, nie aus der Zahl der vorhandenen Zeilen. Die Zeit wird an jedem Kadenz-Wechsel
+     * geteilt (geprüft je Viertelstunden-Beginn — dort nimmt auch der Viertelstunden-Lauf seine Kadenz), und
+     * je Stück gilt {@link VerbrauchRegeln#erwartetAusTeilperioden} mit der Kadenz DIESES Stücks: eine
+     * Viertelstunde mit Zeile zählt mit ihrer gespeicherten Erwartung, eine ohne mit {@code Länge ÷ Kadenz}
+     * zu ihrer Zeit. Ohne Wechsel ist es genau ein Aufruf der Regel.
+     *
+     * @param innen die Viertelstunden IN {@code [von, bis)}; {@code von} und {@code bis} liegen im
+     *     Viertelstunden-Raster
+     */
+    static int erwartet(List<Teilperiode> innen, Instant von, Instant bis, Kadenzkette kette) {
+        int summe = 0;
+        Instant stueck = von;
+        Duration kadenz = kette.am(von);
+        for (Instant q = von.plus(VIERTELSTUNDE); q.isBefore(bis); q = q.plus(VIERTELSTUNDE)) {
+            Duration hier = kette.am(q);
+            if (!hier.equals(kadenz)) {
+                summe += erwartetIm(innen, stueck, q, kadenz);
+                stueck = q;
+                kadenz = hier;
+            }
+        }
+        return summe + erwartetIm(innen, stueck, bis, kadenz);
+    }
+
+    private static int erwartetIm(List<Teilperiode> innen, Instant von, Instant bis, Duration kadenz) {
+        return VerbrauchRegeln.erwartetAusTeilperioden(
+                innen.stream().filter(t -> !t.von().isBefore(von) && !t.bis().isAfter(bis)).toList(),
+                von, bis, kadenz);
+    }
+
+    /**
+     * Die Schritte eines Rasters aus EINEM Lesezug (Lesepfad, AP-07 IP-14): je Beginn genau das, was
+     * {@link #laden} für {@code [Beginn, Beginn + Raster)} läse — die Viertelstunden darin samt der an
+     * {@code bis}, die letzte mit gutem Wert davor und die erste danach (je höchstens einen Tag), die
+     * Kadenz der jüngsten und die Wertart der jüngsten benannten Viertelstunde, die Ereignisse in
+     * {@code (von, bis]} und die Deklaration zum Beginn —, gegeben an dieselben Regeln. Gerechnet wird
+     * hier nichts; {@code UemsLesepfadMengenTest} hält jeden Schritt gegen {@link ZeitraumMenge#zeitraum}.
+     *
+     * <p>Warum nicht {@link #laden} je Schritt: 80 Tage im Stundenraster sind 1 920 Schritte mit je vier
+     * Abfragen. Hier sind es drei, gleich wie viele Schritte.
+     */
+    static List<Schritt> schritte(Connection con, ReihenKontext reihe, UUID tenant, UUID entity, String kanal,
+            Collection<Instant> beginne, Duration raster) throws SQLException {
+        List<Instant> reihenfolge = beginne.stream().distinct().sorted().toList();
+        if (reihenfolge.isEmpty()) {
+            return List.of();
+        }
+        Instant erster = reihenfolge.get(0);
+        Instant letzter = reihenfolge.get(reihenfolge.size() - 1).plus(raster);
+        List<Gelesen> zeilen = new ArrayList<>();
+        try (PreparedStatement ps = con.prepareStatement("SELECT " + SPALTEN + " FROM messreihe_viertelstunde"
+                + " WHERE tenant_id = ? AND entity_id = ? AND messkanal = ?"
+                + " AND intervall_beginn >= ? AND intervall_beginn < ? ORDER BY intervall_beginn")) {
+            ps.setObject(1, tenant, Types.OTHER);
+            ps.setObject(2, entity, Types.OTHER);
+            ps.setString(3, kanal);
+            ps.setTimestamp(4, Timestamp.from(erster.minus(RUECKBLICK)));
+            ps.setTimestamp(5, Timestamp.from(letzter.plus(RUECKBLICK)));
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    Teilperiode t = teilperiode(rs);
+                    zeilen.add(new Gelesen(zeit(rs, 1), t, werteteil(rs, t), (Integer) rs.getObject(18),
+                            rs.getString(3), zeit(rs, 10) != null, zeit(rs, 12) != null));
+                }
+            }
+        }
+        boolean zaehler = zeilen.stream().anyMatch(z -> "counter".equals(z.wertart()));
+        List<ViertelstundeVerdichter.Ereignis> ereignisse = zaehler
+                ? ereignisseRoh(con, tenant, entity, kanal, erster, letzter) : List.of();
+        Map<Instant, ZaehlerDeklaration> deklarationen = zaehler
+                ? ZaehlerDeklaration.lesen(con, tenant, entity, kanal, reihenfolge) : Map.of();
+
+        List<Schritt> aus = new ArrayList<>();
+        for (Instant von : reihenfolge) {
+            Instant bis = von.plus(raster);
+            List<Teilperiode> teile = new ArrayList<>();
+            List<Teilperiode> innen = new ArrayList<>();
+            List<Werteteil> werteteile = new ArrayList<>();
+            Gelesen davor = null;
+            Gelesen danach = null;
+            Integer kadenzS = null;
+            String wertart = null;
+            // Nur das Fenster [von − 1 Tag, bis + 1 Tag) — mehr liest auch `laden` nicht.
+            for (int i = erstesAb(zeilen, von.minus(RUECKBLICK)); i < zeilen.size()
+                    && zeilen.get(i).beginn().isBefore(bis.plus(RUECKBLICK)); i++) {
+                Gelesen z = zeilen.get(i);
+                if (z.beginn().isBefore(von)) {
+                    if (!z.beginn().isBefore(von.minus(RUECKBLICK)) && z.letzterZeit()) {
+                        davor = z;
+                    }
+                } else if (!z.beginn().isAfter(bis)) {
+                    teile.add(z.teil());
+                    werteteile.add(z.werteteil());
+                    if (z.beginn().isBefore(bis)) {
+                        innen.add(z.teil());
+                        kadenzS = z.kadenzS();
+                        wertart = z.wertart() != null ? z.wertart() : wertart;
+                    }
+                }
+                if (danach == null && !z.beginn().isBefore(bis) && z.beginn().isBefore(bis.plus(RUECKBLICK))
+                        && z.ersterZeit()) {
+                    danach = z;
+                }
+            }
+            if (davor != null) {
+                teile.add(0, davor.teil());
+                werteteile.add(0, davor.werteteil());
+            }
+            if (danach != null) {
+                werteteile.add(danach.werteteil());
+            }
+            List<ViertelstundeVerdichter.Ereignis> imSchritt = ereignisse.stream()
+                    .filter(e -> e.zeit().isAfter(von) && !e.zeit().isAfter(bis)).toList();
+            ZaehlerDeklaration deklaration = deklarationen.getOrDefault(von, ZaehlerDeklaration.NICHTS);
+            List<VerbrauchRegeln.Ereignis> fuerRegel =
+                    List.copyOf(ViertelstundeVerdichter.fuerVerbrauchRegeln(imSchritt, deklaration));
+            aus.add(new Schritt(von, bis, wertart,
+                    zaehlerstand(reihe, teile, fuerRegel, deklaration, wertart, kadenzS, von, bis),
+                    werte(werteteile, wertart, kadenzS, von, bis), List.copyOf(innen)));
+        }
+        return aus;
+    }
+
+    /** Der Index der ersten Zeile mit Beginn ab {@code zeit} (die Zeilen sind nach Beginn sortiert). */
+    private static int erstesAb(List<Gelesen> zeilen, Instant zeit) {
+        int links = 0;
+        int rechts = zeilen.size();
+        while (links < rechts) {
+            int mitte = (links + rechts) >>> 1;
+            if (zeilen.get(mitte).beginn().isBefore(zeit)) {
+                links = mitte + 1;
+            } else {
+                rechts = mitte;
+            }
+        }
+        return links;
+    }
+
+    /** Eine Viertelstunde aus dem Lesezug von {@link #schritte}. */
+    private record Gelesen(Instant beginn, Teilperiode teil, Werteteil werteteil, Integer kadenzS, String wertart,
+            boolean ersterZeit, boolean letzterZeit) {}
 }

@@ -17,7 +17,7 @@
 //  3. Was den Schreibvorgang verhindern WIRD, steht VOR dem Klick.
 //  4. Ein Wort außerhalb des Vokabulars erzeugt KEINE Behauptung.
 import type { RegisterWriteEvent, RegisterWriteOutcome, RegisterWriteTarget } from './api';
-import { AUFBAU_REITER } from './anlageNav';
+import { AUFBAU_REITER } from './ebenenNav';
 
 /** Die drei Warnklassen des Register-Wissens. */
 export type RegisterKlasse = 'netz_compliance' | 'bekannt' | 'unbekannt';

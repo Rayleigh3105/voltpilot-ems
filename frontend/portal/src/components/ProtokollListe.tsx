@@ -18,12 +18,24 @@ import { protokollListe, SEITE, type ProtokollView } from '../uemsProtokoll';
 import { ErrorState, Skeleton } from './States';
 import '../pages/Befehle.css';
 
-/** Welches Protokoll geladen wird — die drei Lesewege des Servers. */
+/** Welches Protokoll geladen wird — die Lesewege des Servers (Ort und Standort: AP-02 IP-14). */
 export type ProtokollZiel =
   | { art: 'messstelle'; id: string }
   | { art: 'geraet'; id: string }
+  | { art: 'ort'; id: string }
   | { art: 'anlage'; id: string }
+  | { art: 'standort'; id: string }
   | { art: 'unternehmen' };
+
+/** Wie ein Wirt die Liste will — Achse, Objekt-Angabe je Zeile und der Anlege-Satz. */
+export interface ProtokollOptionen {
+  achse?: ProtokollAbfrage['achse'];
+  mitBezug?: boolean;
+  /** Das Objekt, dessen Protokoll es ist — seine eigenen Zeilen nennen es nicht. */
+  ohneBezug?: string | null;
+  /** „Seit dem Anlegen am … keine Änderung." bei nur dem Anlege-Eintrag. */
+  anlegeSatz?: boolean;
+}
 
 /** Was der Haken einem Wirt gibt. */
 export interface ProtokollState {
@@ -41,6 +53,8 @@ function lade(ziel: ProtokollZiel, f: ProtokollAbfrage): Promise<Protokoll> {
   if (ziel.art === 'messstelle') return api.messstelleAenderungen(ziel.id, f);
   if (ziel.art === 'geraet') return api.geraetAenderungen(ziel.id, f);
   if (ziel.art === 'anlage') return api.anlageAenderungen(ziel.id, f);
+  if (ziel.art === 'ort') return api.ortAenderungen(ziel.id, f);
+  if (ziel.art === 'standort') return api.standortAenderungen(ziel.id, f);
   return api.unternehmenAenderungen(f);
 }
 
@@ -51,11 +65,8 @@ function lade(ziel: ProtokollZiel, f: ProtokollAbfrage): Promise<Protokoll> {
  * ⚠ Zustand und Bezugszeit werden ZUSAMMEN gesetzt — ein Fehlschlag lässt beides
  * unberührt stehen, statt eine halbe Liste mit neuer Uhr zu zeigen.
  */
-export function useProtokoll(
-  ziel: ProtokollZiel | null,
-  opts: { achse?: ProtokollAbfrage['achse']; mitBezug?: boolean } = {},
-): ProtokollState {
-  const { achse, mitBezug = false } = opts;
+export function useProtokoll(ziel: ProtokollZiel | null, opts: ProtokollOptionen = {}): ProtokollState {
+  const { achse, mitBezug = false, ohneBezug = null, anlegeSatz = false } = opts;
   const schluessel = ziel ? `${ziel.art}:${'id' in ziel ? ziel.id : ''}` : '';
   const [seite, setSeite] = useState<Protokoll | null>(null);
   const [mehr, setMehr] = useState<Protokoll[]>([]);
@@ -99,7 +110,7 @@ export function useProtokoll(
   }, [schluessel, achse, seite, mehr, laedtMehr]);
 
   return {
-    view: protokollListe([seite, ...mehr], now, { mitBezug }),
+    view: protokollListe([seite, ...mehr], now, { mitBezug, ohneBezug, anlegeSatz }),
     seite,
     now,
     error,
@@ -122,6 +133,7 @@ export function ProtokollListe({ state }: { state: ProtokollState }) {
   return (
     <>
       <p className="vp-note vp-verlauf-bilanz">{view.achseSatz}</p>
+      {!error && view.hinweis && <p className="vp-note">{view.hinweis}</p>}
       {error && <ErrorState message={error} onRetry={state.reload} />}
       {!error && !seite && <Skeleton height={120} />}
       {!error && seite && view.leer && <p className="vp-muted">{view.leer}</p>}

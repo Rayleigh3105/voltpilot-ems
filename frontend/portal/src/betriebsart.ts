@@ -1,5 +1,7 @@
-import type { Betriebsart } from './api';
-import { anlageRoute, hashForRoute, isPortfolioPage, pageRoute, type Route } from './nav';
+import type { Betriebsart, Funktionen, StandorteAmStichtag, Unternehmen } from './api';
+import { misst } from './ebenenNav';
+import { UEMS_STANDORT, UEMS_UNTERNEHMEN } from './glossarEinstieg';
+import { anlageRoute, hashForRoute, isPortfolioPage, pageRoute, standortRoute, type Route } from './nav';
 
 /**
  * U0 shell decision (design vp-ems-ui-overhaul §2 / epic UO #509): which
@@ -36,6 +38,12 @@ export interface ShellInput {
   /** EFFECTIVE betriebsart from /tenant-context; null = unknown. */
   betriebsart: Betriebsart | null;
   siteCount: number;
+  /**
+   * UEMS AP-01 IP-5: die Ebene, die {@link startEbene} aus den Standorten
+   * abgeleitet hat. Absent (ältere Aufrufer, Standorte nicht geladen) = `heute`:
+   * dann entscheidet alles wie vor IP-5.
+   */
+  ebene?: Ebene;
 }
 
 /**
@@ -79,6 +87,17 @@ export function fleetLabel(betriebsart: Betriebsart | null): string {
 }
 
 /**
+ * D6 (Konzept „Energiemanagement ohne Fachsprache“): führt ein Kunde mehrere Standorte (Ebene `unternehmen`), heißt die
+ * Flotten-Ebene in der Seitenleiste wie sein Unternehmen — so wie das erste Glied des Pfads (`unternehmenGlied`). Ohne
+ * Standorte, mit nur einem Standort oder ohne Namen bleibt {@link fleetLabel}: ein Kunde mit einer Box sieht nichts
+ * Neues, ein Betreiber behält „Portfolio“.
+ */
+export function flottenName(betriebsart: Betriebsart | null, ebene: Ebene | null | undefined): string {
+  if (betriebsart !== 'betreiber' && ebene?.art === 'unternehmen' && ebene.name?.trim()) return ebene.name.trim();
+  return fleetLabel(betriebsart);
+}
+
+/**
  * Zeigt die Schale den Punkt `Portfolio` — und ist die Landung damit das
  * Portfolio-Cockpit?
  *
@@ -102,7 +121,7 @@ export function fleetLabel(betriebsart: Betriebsart | null): string {
  */
 export function showPortfolioNav(i: ShellInput): boolean {
   if (!i.loaded || !i.tenantReady) return false;
-  return isFleetShell(i.betriebsart, i.siteCount);
+  return hatFlottenEbene(i);
 }
 
 /**
@@ -130,7 +149,7 @@ export function showOverviewNav(i: ShellInput): boolean {
 export function redirectOverviewToAnlage(i: ShellInput): boolean {
   if (i.isAdmin || !i.loaded) return false;
   if (isBetreiberShell(i.betriebsart)) return false;
-  return !isFleetShell(i.betriebsart, i.siteCount);
+  return !hatFlottenEbene(i);
 }
 
 /**
@@ -145,10 +164,241 @@ export function redirectToPortfolio(i: ShellInput): boolean {
   return showPortfolioNav(i);
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+   DIE STARTANSICHT-WEICHE (UEMS AP-01 IP-5, Captain-Entscheid E1 = A)
+   „Die tiefste Ebene, die alles zeigt": 1 Standort/1 Anlage → Cockpit ·
+   1 Standort/n Anlagen → Standort-Übersicht · n Standorte → Unternehmens-
+   Übersicht; die Betriebsart-Regel bleibt. Ohne Standorte gilt ALLES wie heute
+   — das ist die härteste Anforderung des Pakets, `migration.test.ts` beweist sie.
+
+   firstmate K2 (09.10.2026): die Standort-/Unternehmensebene ist erst die
+   Landung, wenn mindestens ein lebender Standort MISST (`ebenenNav.ts misst()`
+   — „Messen & Auswerten" eingerichtet, angehalten oder aktiv; ein Entwurf
+   misst noch nicht). Wer nur Standorte angelegt, aber noch nichts eingerichtet
+   hat, bleibt auf der gewohnten Übersicht — viele Kunden wollen genau das.
+   Unbekannte/nicht geladene Funktionen sind nie „ja". Der Betreiber-Rahmen und
+   Admins entscheiden weiter VOR dieser Prüfung (unverändert); eine Teilansicht
+   (AP-03) unterliegt ihr genauso wie der volle Zugriff.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/** Ein Standort, wie die Weiche ihn braucht: Kennung, Name und die Anlagen, die ihm HEUTE zugeordnet sind. */
+export interface OrtStandort {
+  id: string;
+  name: string;
+  anlagen: string[];
+}
+
+/**
+ * Die Ortsstruktur des Kundenbereichs HEUTE (`GET /api/v1/standorte` +
+ * `GET /api/v1/unternehmen`). Am Aufrufer heisst `null`: nicht geladen, älteres
+ * Backend oder Fehler — unbekannt ist keine Null, also gilt dann alles wie heute.
+ */
+export interface Orte {
+  /** Die Standorte, die dieser Benutzer heute sieht (archivierte zählen nicht). */
+  standorte: OrtStandort[];
+  /** Die Standorte des Unternehmens insgesamt; `null` = unbekannt. */
+  standorteGesamt: number | null;
+  /** Kurzname, sonst Name des Unternehmens; `null` = keines angelegt. */
+  unternehmen: string | null;
+}
+
+/**
+ * Die oberste Ebene, die ein Kunde sieht.
+ *
+ * - `heute` — keine Standorte (oder nicht geladen), Betreiber oder Admin: die
+ *   Weiche vor IP-5 entscheidet unverändert.
+ * - `anlage` — ein Standort mit genau einer Anlage: beide oberen Ebenen sind
+ *   übersprungen, der Kunde sieht, was er heute sieht.
+ * - `standort` — ein Standort mit mehreren Anlagen, oder der Zugriff reicht nur
+ *   auf einen Standort (`teilansicht`, AP-03): die Unternehmensebene ist übersprungen.
+ * - `unternehmen` — mehrere Standorte, oder Anlagen, die noch keinem Standort
+ *   zugeordnet sind (die Standort-Übersicht zeigte dann nicht alles).
+ */
+export type Ebene =
+  | { art: 'heute' }
+  | { art: 'anlage' }
+  | { art: 'standort'; standort: OrtStandort; teilansicht: boolean }
+  | { art: 'unternehmen'; name: string | null; standorte: OrtStandort[] };
+
+export const EBENE_HEUTE: Ebene = { art: 'heute' };
+
+/** Die zwei Antworten des Lesemodells → {@link Orte}. Das Portal zählt nichts nach. */
+export function orteAus(liste: StandorteAmStichtag, unternehmen: Unternehmen | null): Orte {
+  const angelegt = unternehmen?.zustand === 'angelegt' ? unternehmen : null;
+  return {
+    standorte: liste.standorte
+      .filter((s) => s.zustand !== 'archiviert')
+      .map((s) => ({ id: s.id, name: s.name, anlagen: s.anlagen.map((a) => a.id) })),
+    standorteGesamt: angelegt ? angelegt.standortZahl : null,
+    unternehmen: angelegt ? angelegt.kurzname?.trim() || angelegt.name?.trim() || null : null,
+  };
+}
+
+/**
+ * Welche Ebene ist die Landung (E1)? Die Reihenfolge ist Regel: erst was
+ * „wie heute" bleibt, dann die Zahl der Standorte, dann die der Anlagen.
+ */
+export function startEbene(i: {
+  isAdmin: boolean;
+  betriebsart: Betriebsart | null;
+  siteIds: string[];
+  orte: Orte | null | undefined;
+  eingeschraenkt?: boolean;
+  /**
+   * `GET /api/v1/funktionen`; `null` = unbekannt oder (noch) nicht geladen —
+   * unbekannt ist nie „ja". Mindestens ein lebender Standort aus `orte` muss
+   * nach derselben Prüfung wie `ebenenNav.ts misst()` messen, sonst bleibt
+   * die Landung die gewohnte Übersicht (firstmate K2).
+   */
+  funktionen: Funktionen | null;
+}): Ebene {
+  const { orte } = i;
+  // Ohne Standorte, als Admin (behält seine Übersicht) und als Betreiber
+  // („Übersicht ab der ersten Anlage — unverändert") entscheidet die Weiche von heute.
+  if ((!i.eingeschraenkt && i.isAdmin) || !orte || orte.standorte.length === 0) return EBENE_HEUTE;
+  if (!i.eingeschraenkt && isBetreiberShell(i.betriebsart)) return EBENE_HEUTE;
+  // 0 Anlagen: der Leerzustand der Übersicht ist die Landung — wie heute.
+  if (!i.eingeschraenkt && i.siteIds.length === 0) return EBENE_HEUTE;
+  // K2: ohne einen messenden Standort bleibt JEDE Standort-/Unternehmensebene
+  // aus — auch eingeschränkt (Teilansicht), ein Betreiber/Admin ist oben schon entschieden.
+  const gemessen = orte.standorte.some((s) => misst({ standorte: null, funktionen: i.funktionen, kennzahlen: null }, s.id));
+  if (!gemessen) return EBENE_HEUTE;
+  if (orte.standorte.length >= 2) {
+    return { art: 'unternehmen', name: orte.unternehmen, standorte: orte.standorte };
+  }
+  const standort = orte.standorte[0];
+  // Zugriff nur auf einen von mehreren Standorten (AP-03): dessen Übersicht,
+  // die Unternehmensebene ist nicht sichtbar — auch mit nur einer Anlage dort.
+  if (orte.standorteGesamt != null && orte.standorteGesamt > 1) {
+    return { art: 'standort', standort, teilansicht: true };
+  }
+  if (i.siteIds.length === 1) return { art: 'anlage' };
+  if (i.siteIds.every((id) => standort.anlagen.includes(id))) {
+    return { art: 'standort', standort, teilansicht: false };
+  }
+  // Eine Anlage ohne Standort: nur die Unternehmensebene zeigt alles.
+  return { art: 'unternehmen', name: orte.unternehmen, standorte: orte.standorte };
+}
+
+/** Gibt es eine Flotten-Ebene über der Anlage? Ohne Ebene die Frage von heute. */
+export function hatFlottenEbene(i: ShellInput): boolean {
+  const art = i.ebene?.art ?? 'heute';
+  if (art === 'anlage') return false;
+  if (art === 'standort' || art === 'unternehmen') return true;
+  return isFleetShell(i.betriebsart, i.siteCount);
+}
+
+/**
+ * Wohin der Rückweg auf die Flotten-Ebene führt: auf die Standort-Übersicht,
+ * wenn der Standort die oberste Ebene ist, sonst dorthin, wo er heute führt.
+ */
+export function flottenLandung(i: ShellInput): Route {
+  if (i.ebene?.art === 'standort') return standortRoute(i.ebene.standort.id);
+  return pageRoute(showPortfolioNav(i) ? 'portfolio' : 'uebersicht');
+}
+
+/** Ein Glied des Pfades im Seitenkopf VOR dem, was gerade offen ist. */
+export interface PfadGlied {
+  /** Die Ebene des Glieds; `flotte` = der Rückweg von heute („Meine Anlagen"). */
+  ebene: 'flotte' | 'unternehmen' | 'standort';
+  label: string;
+  route: Route;
+}
+
+/** Der Pfad im Seitenkopf. */
+export interface KopfPfad {
+  /** Die Glieder davor, vom obersten an; leer = kein Rückweg im Pfad. */
+  vor: PfadGlied[];
+  /** Das letzte Glied, wenn es KEINE Anlage ist; `null` = wie heute (`pageLabel`). */
+  hier: string | null;
+}
+
+function unternehmenGlied(name: string | null, fleet: string): PfadGlied {
+  return { ebene: 'unternehmen', label: name ?? fleet, route: pageRoute('portfolio') };
+}
+
+function standortGlied(standort: OrtStandort): PfadGlied {
+  return { ebene: 'standort', label: standort.name, route: standortRoute(standort.id) };
+}
+
+/**
+ * Der Pfad „Unternehmen › Standort › Anlage" (IP-5). Übersprungene Ebenen
+ * entfallen: ein Kunde mit genau einer Anlage an genau einem Standort sieht
+ * nur „Halle 1 ▾" — genau das, was er heute sieht. `anlageId` ist die Anlage,
+ * die die Schale zeigt (bei einer Anlagen-Route).
+ */
+export function kopfPfad(i: {
+  shell: ShellInput;
+  route: Route;
+  anlageId: string | null;
+  fleetLabel: string;
+}): KopfPfad {
+  const { shell, route, anlageId } = i;
+  const ebene = shell.ebene ?? EBENE_HEUTE;
+  if (route.page === 'anlagen') {
+    if (ebene.art === 'standort') return { vor: [standortGlied(ebene.standort)], hier: null };
+    if (ebene.art === 'unternehmen') {
+      const standort = ebene.standorte.find((s) => anlageId != null && s.anlagen.includes(anlageId));
+      return {
+        vor: [unternehmenGlied(ebene.name, i.fleetLabel), ...(standort ? [standortGlied(standort)] : [])],
+        hier: null,
+      };
+    }
+    if (ebene.art === 'anlage') return { vor: [], hier: null };
+    // `heute`: genau der Rückweg, den die Schale vor IP-5 zeigte.
+    const flotte = showPortfolioNav(shell) || showOverviewNav(shell);
+    return {
+      vor: flotte ? [{ ebene: 'flotte', label: i.fleetLabel, route: flottenLandung(shell) }] : [],
+      hier: null,
+    };
+  }
+  if (route.page === 'standort') {
+    if (ebene.art === 'standort' && route.standortId === ebene.standort.id) {
+      return { vor: [], hier: ebene.standort.name };
+    }
+    if (ebene.art === 'unternehmen') {
+      const standort = ebene.standorte.find((s) => s.id === route.standortId);
+      if (standort) return { vor: [unternehmenGlied(ebene.name, i.fleetLabel)], hier: standort.name };
+    }
+    return { vor: [], hier: null };
+  }
+  // N6 (Konzept „Navigation aus einem Guss“): jede Seite einer Ebene nennt in der Kopfzeile den ORT, nie ihren eigenen
+  // Namen — der steht in der Seite, und die Seitenleiste zeigt, wo man ist.
+  if (isPortfolioPage(route.page)) {
+    if (ebene.art === 'unternehmen') return { vor: [], hier: ebene.name ?? i.fleetLabel };
+    if (ebene.art === 'standort') return { vor: [], hier: ebene.standort.name };
+    if (showPortfolioNav(shell) || showOverviewNav(shell)) return { vor: [], hier: i.fleetLabel };
+  }
+  return { vor: [], hier: null };
+}
+
+/** Der Wert, mit dem der Anlagen-Umschalter ein Pfad-Glied meint. `flotte` = `anlagenWahl.ALLE_ANLAGEN`. */
+export function pfadWert(glied: PfadGlied): string {
+  return glied.ebene === 'flotte' ? '__all__' : `__${glied.ebene}__`;
+}
+
+/**
+ * Die Zeile eines Pfad-Glieds im Anlagen-Umschalter. Am Telefon zeigt die
+ * Kopfzeile nur den Anlagennamen — dort SIND diese Zeilen der Rückweg.
+ */
+export function pfadZeile(glied: PfadGlied): { value: string; label: string; sub: string } {
+  const sub =
+    glied.ebene === 'unternehmen'
+      ? `${UEMS_UNTERNEHMEN} · Übersicht`
+      : glied.ebene === 'standort'
+        ? `${UEMS_STANDORT} · Übersicht`
+        : 'Zurück zur Übersicht';
+  return { value: pfadWert(glied), label: glied.label, sub };
+}
+
 /**
  * One post-hydration canonical destination for the shell. The caller applies
  * at most one history replacement; no intermediate `#/anlagen` or
  * `#/uebersicht` route is ever emitted.
+ *
+ * UEMS AP-01 IP-5: `shell.ebene` legt die Landung auf die Standort- oder die
+ * Unternehmens-Übersicht; ohne Ebene (`heute`) ist jeder Zweig der von vorher,
+ * und `#/standort/…` führt dorthin, wo der Kunde heute landet.
  */
 export function canonicalShellRoute(input: {
   shell: ShellInput;
@@ -157,32 +407,49 @@ export function canonicalShellRoute(input: {
 }): Route | null {
   const { shell, route, siteIds } = input;
   if (!shell.loaded || !shell.tenantReady) return null;
-  const fleet = isFleetShell(shell.betriebsart, siteIds.length);
+  const ebene = shell.ebene ?? EBENE_HEUTE;
+  const fleet = ebene.art === 'heute' ? isFleetShell(shell.betriebsart, siteIds.length) : ebene.art !== 'anlage';
   const nakedAnlage = route.page === 'anlagen' && route.siteId == null && route.sub == null;
   const invalidSite = route.page === 'anlagen'
     && route.siteId != null
     && !siteIds.includes(route.siteId);
+  const standortSeite = route.page === 'standort';
 
   // Admins keep their explicit customer overview. A fleet context has exactly
   // one portfolio landing; without that shell level, old portfolio bookmarks
   // return to the customer overview instead of rendering an orphaned surface.
   if (shell.isAdmin) {
     if (fleet) {
-      if (route.page === 'uebersicht' || nakedAnlage || invalidSite) return pageRoute('portfolio');
+      if (route.page === 'uebersicht' || nakedAnlage || invalidSite || standortSeite) return pageRoute('portfolio');
       return null;
     }
-    if (isPortfolioPage(route.page) || invalidSite) return pageRoute('uebersicht');
+    if (isPortfolioPage(route.page) || invalidSite || standortSeite) return pageRoute('uebersicht');
+    return null;
+  }
+
+  if (ebene.art === 'standort') {
+    // Die Unternehmensebene ist übersprungen: auch `#/portfolio` landet hier.
+    // Die Reiter Messwerte · Erlöse · Standorte bleiben erreichbar.
+    const landung = standortRoute(ebene.standort.id);
+    if (route.page === 'uebersicht' || route.page === 'portfolio' || nakedAnlage || invalidSite) return landung;
+    if (standortSeite && route.standortId !== ebene.standort.id) return landung;
+    return null;
+  }
+
+  if (ebene.art === 'unternehmen') {
+    if (route.page === 'uebersicht' || nakedAnlage || invalidSite) return pageRoute('portfolio');
+    if (standortSeite && !ebene.standorte.some((s) => s.id === route.standortId)) return pageRoute('portfolio');
     return null;
   }
 
   if (fleet) {
-    if (route.page === 'uebersicht' || nakedAnlage || invalidSite) return pageRoute('portfolio');
+    if (route.page === 'uebersicht' || nakedAnlage || invalidSite || standortSeite) return pageRoute('portfolio');
     return null;
   }
 
   const soleSiteId = siteIds.length === 1 ? siteIds[0] : null;
-  if (!soleSiteId) return null;
-  if (route.page === 'uebersicht' || nakedAnlage || isPortfolioPage(route.page)) {
+  if (!soleSiteId) return standortSeite ? pageRoute('uebersicht') : null;
+  if (route.page === 'uebersicht' || nakedAnlage || isPortfolioPage(route.page) || standortSeite) {
     return anlageRoute(soleSiteId);
   }
   if (invalidSite) {

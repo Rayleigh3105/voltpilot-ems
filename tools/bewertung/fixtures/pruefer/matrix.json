@@ -1,0 +1,485 @@
+{
+  "schema_version": "1.0",
+  "matrix_fassung": 1,
+  "lesehilfe": "Betreiber-Dokument: nie auf einer Kundenfläche. Abschnittsnummern stehen hier und in der Übersicht für Prüfende, nirgends sonst. Vertrag und Regeln: docs/bewertung/README.md.",
+  "normfassung": {
+    "international": "ISO 50001:2018 einschließlich Amd 1:2024",
+    "deutsch": "DIN EN ISO 50001:2018-12 mit DIN EN ISO 50001/A1:2024-12",
+    "stichtag": "2026-09-25",
+    "normtext": "nicht im Repo; Zeilen tragen Abschnittsnummer und eigene Umschreibung; die Gliederung ist von der Fachperson an ihrer lizenzierten Ausgabe zu prüfen"
+  },
+  "norm_teil": [
+    {
+      "abschnitt": "6.3",
+      "umschreibung": "Umschreibung 6.3 (Fixture)",
+      "traeger": "haelt_fest",
+      "zusagen": [],
+      "kundenaufgabe": "KA-07",
+      "herkunft": "Fixture",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [
+        {
+          "wer": "Fachperson",
+          "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"
+        }
+      ]
+    },
+    {
+      "abschnitt": "7.2",
+      "umschreibung": "Umschreibung 7.2 (Fixture)",
+      "traeger": "verweis",
+      "zusagen": [],
+      "kundenaufgabe": "KA-02",
+      "herkunft": "Fixture",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [
+        {
+          "wer": "Fachperson",
+          "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"
+        }
+      ],
+      "fachperson": {
+        "name": "Fachperson F. (Auditorin, extern; Fixture)",
+        "datum": "2026-09-24",
+        "lesart": "anmerkung",
+        "text": "Die Grenze Verweis/geführt ist zu schärfen."
+      }
+    },
+    {
+      "abschnitt": "7.5.3",
+      "umschreibung": "Umschreibung 7.5.3 (Fixture)",
+      "traeger": "haelt_fest",
+      "zusagen": [],
+      "kundenaufgabe": "KA-06",
+      "herkunft": "Fixture",
+      "luecken": [
+        "L-004"
+      ],
+      "urteil": "offen",
+      "wer_liefert": [
+        {
+          "wer": "Fachperson",
+          "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"
+        }
+      ],
+      "fachperson": {
+        "name": "Fachperson F. (Auditorin, extern; Fixture)",
+        "datum": "2026-09-24",
+        "lesart": "traegt",
+        "text": "Die Zuordnung trägt."
+      }
+    },
+    {
+      "abschnitt": "9.2.1",
+      "umschreibung": "Umschreibung 9.2.1 (Fixture)",
+      "traeger": "haelt_fest",
+      "zusagen": [],
+      "kundenaufgabe": "KA-08",
+      "herkunft": "Fixture",
+      "luecken": [],
+      "urteil": "offen",
+      "wer_liefert": [
+        {
+          "wer": "Fachperson",
+          "was": "Lesart an der lizenzierten Ausgabe (AP-20 IP-12)"
+        }
+      ],
+      "fachperson": {
+        "name": "Fachperson",
+        "datum": "2026-09-24",
+        "lesart": "traegt",
+        "text": "Die Zuordnung trägt."
+      }
+    },
+    {
+      "abschnitt": "9.2.2",
+      "umschreibung": "Umschreibung 9.2.2 (Fixture)",
+      "traeger": "haelt_fest",
+      "zusagen": [],
+      "kundenaufgabe": "KA-08",
+      "herkunft": "Fixture",
+      "luecken": [],
+      "urteil": "nicht_maschinell_pruefbar",
+      "fachperson": {
+        "name": "Fachperson F. (Auditorin, extern; Fixture)",
+        "datum": "2026-09-24",
+        "lesart": "traegt",
+        "text": "VoltPilot hält Programm, Auditorin, Umfang und Bericht fest; Auswahl und Durchführung bleiben beim Kunden."
+      }
+    }
+  ],
+  "zusagen": [
+    {
+      "kennzeichen": "Z-001",
+      "art": "plan_abnahme",
+      "wortlaut": "Zwei Methoden einer Abnahme-Klasse tragen die Zusage (Fixture)",
+      "quelle": "Fixture:1",
+      "traeger": "voltpilot",
+      "norm": [],
+      "nachweis_kandidaten": [
+        "UemsFixtureAbnahmeTest#erstensGruen",
+        "UemsFixtureAbnahmeTest#zweitensGruen"
+      ],
+      "nachweise": [],
+      "urteil": "offen",
+      "wer_liefert": [
+        {
+          "wer": "Crew",
+          "was": "Lauf am Stand (AP-20 IP-10)"
+        }
+      ],
+      "luecken": []
+    },
+    {
+      "kennzeichen": "Z-002",
+      "art": "plan_abnahme",
+      "wortlaut": "Eine ganze Klasse trägt die Zusage (Fixture)",
+      "quelle": "Fixture:1",
+      "traeger": "voltpilot",
+      "norm": [],
+      "nachweis_kandidaten": [
+        "UemsKlasseApiTest (ganze Klasse)"
+      ],
+      "nachweise": [],
+      "urteil": "offen",
+      "wer_liefert": [
+        {
+          "wer": "Crew",
+          "was": "Lauf am Stand (AP-20 IP-10)"
+        }
+      ],
+      "luecken": []
+    },
+    {
+      "kennzeichen": "Z-003",
+      "art": "flaeche",
+      "wortlaut": "Ein Portal-Test trägt den Satz der Fläche (Fixture)",
+      "quelle": "Fixture:1",
+      "traeger": "voltpilot",
+      "norm": [],
+      "nachweis_kandidaten": [
+        "frontend/portal/src/copy.test.ts (S1, SP2)"
+      ],
+      "nachweise": [],
+      "urteil": "offen",
+      "wer_liefert": [
+        {
+          "wer": "Crew",
+          "was": "Lauf am Stand (AP-20 IP-10)"
+        }
+      ],
+      "luecken": []
+    },
+    {
+      "kennzeichen": "Z-004",
+      "art": "betrieb",
+      "wortlaut": "Sicherung mit Rückweg (Fixture)",
+      "quelle": "Fixture:1",
+      "traeger": "voltpilot",
+      "norm": [],
+      "nachweis_kandidaten": [
+        "tools/generalprobe/rueckweg.sh → rueckweg.json (AP-14 NW-8)"
+      ],
+      "nachweise": [],
+      "urteil": "offen",
+      "wer_liefert": [
+        {
+          "wer": "Betreiber",
+          "was": "Q15 „WAL-Archiv läuft“ mit Datum bestätigen"
+        }
+      ],
+      "luecken": [
+        "L-001"
+      ]
+    },
+    {
+      "kennzeichen": "Z-005",
+      "art": "plan_abnahme",
+      "wortlaut": "Grüner Test neben einer offenen Lücke (Fixture)",
+      "quelle": "Fixture:1",
+      "traeger": "voltpilot",
+      "norm": [],
+      "nachweis_kandidaten": [
+        "UemsFixtureAbnahmeTest#erstensGruen"
+      ],
+      "nachweise": [],
+      "urteil": "offen",
+      "wer_liefert": [
+        {
+          "wer": "Crew",
+          "was": "Lauf am Stand (AP-20 IP-10)"
+        }
+      ],
+      "luecken": [
+        "L-002"
+      ]
+    },
+    {
+      "kennzeichen": "Z-006",
+      "art": "anmeldung",
+      "wortlaut": "Server in Deutschland (Fixture)",
+      "quelle": "Fixture:1",
+      "traeger": "voltpilot",
+      "norm": [],
+      "nachweis_kandidaten": [],
+      "nachweise": [],
+      "urteil": "nicht_maschinell_pruefbar",
+      "luecken": [],
+      "bestaetigung": {
+        "von": "Betreiber (A. Muster)",
+        "datum": "2026-09-20",
+        "aussage": "Plattform und Datenebene laufen in Rechenzentren in Deutschland."
+      }
+    },
+    {
+      "kennzeichen": "Z-007",
+      "art": "betrieb",
+      "wortlaut": "Support-Weg geprobt (Fixture)",
+      "quelle": "Fixture:1",
+      "traeger": "voltpilot",
+      "norm": [],
+      "nachweis_kandidaten": [],
+      "nachweise": [],
+      "urteil": "offen",
+      "wer_liefert": [
+        {
+          "wer": "Betreiber",
+          "was": "Support-Weg proben und mit Datum bestätigen"
+        }
+      ],
+      "luecken": []
+    },
+    {
+      "kennzeichen": "Z-008",
+      "art": "betrieb",
+      "wortlaut": "Gewährung und Notfall-Zugriff (Fixture)",
+      "quelle": "Fixture:1",
+      "traeger": "voltpilot",
+      "norm": [],
+      "nachweis_kandidaten": [
+        "docs/contracts/v2/wago-registerbild-vectors.json (Simulator)"
+      ],
+      "nachweise": [],
+      "urteil": "offen",
+      "wer_liefert": [
+        {
+          "wer": "Crew",
+          "was": "Lauf am Stand (AP-20 IP-10)"
+        }
+      ],
+      "luecken": []
+    },
+    {
+      "kennzeichen": "Z-009",
+      "art": "release_notiz",
+      "wortlaut": "Eine Zusage ohne Kandidat (Fixture)",
+      "quelle": "Fixture:1",
+      "traeger": "voltpilot",
+      "norm": [],
+      "nachweis_kandidaten": [],
+      "nachweise": [],
+      "urteil": "offen",
+      "wer_liefert": [
+        {
+          "wer": "Crew",
+          "was": "Lauf am Stand (AP-20 IP-10)"
+        }
+      ],
+      "luecken": []
+    },
+    {
+      "kennzeichen": "Z-010",
+      "art": "anmeldung",
+      "wortlaut": "Zurückgenommene Aussage (Fixture)",
+      "quelle": "Fixture:1",
+      "traeger": "voltpilot",
+      "norm": [],
+      "nachweis_kandidaten": [],
+      "nachweise": [],
+      "urteil": "nicht_zugesagt",
+      "luecken": [],
+      "grund": "zurückgenommen, erscheint als Grenze (Fixture)"
+    },
+    {
+      "kennzeichen": "Z-011",
+      "art": "plan_abnahme",
+      "wortlaut": "Grüner Test neben einem Restpunkt (Fixture)",
+      "quelle": "Fixture:1",
+      "traeger": "voltpilot",
+      "norm": [],
+      "nachweis_kandidaten": [
+        "UemsFixtureAbnahmeTest#erstensGruen"
+      ],
+      "nachweise": [],
+      "urteil": "offen",
+      "wer_liefert": [
+        {
+          "wer": "Crew",
+          "was": "Lauf am Stand (AP-20 IP-10)"
+        }
+      ],
+      "luecken": [
+        "L-003"
+      ]
+    },
+    {
+      "kennzeichen": "Z-012",
+      "art": "release_notiz",
+      "wortlaut": "Grüner Test, aber ein Rest der Crew (Fixture)",
+      "quelle": "Fixture:1",
+      "traeger": "voltpilot",
+      "norm": [],
+      "nachweis_kandidaten": [
+        "UemsKlasseApiTest#eins"
+      ],
+      "nachweise": [],
+      "urteil": "offen",
+      "wer_liefert": [
+        {
+          "wer": "Crew",
+          "was": "Lauf am Stand (AP-20 IP-10)"
+        },
+        {
+          "wer": "Crew",
+          "was": "Zusicherung ergänzen: kein Test hält, dass die Anzeige nichts speichert (Fixture)"
+        }
+      ],
+      "luecken": []
+    },
+    {
+      "kennzeichen": "Z-013",
+      "art": "release_notiz",
+      "wortlaut": "Ein Rest des Captains (Fixture)",
+      "quelle": "Fixture:1",
+      "traeger": "voltpilot",
+      "norm": [],
+      "nachweis_kandidaten": [],
+      "nachweise": [],
+      "urteil": "offen",
+      "wer_liefert": [
+        {
+          "wer": "Captain",
+          "was": "neue Fassung bei der ersten Kundenanlage (Fixture)"
+        }
+      ],
+      "luecken": []
+    },
+    {
+      "kennzeichen": "Z-014",
+      "art": "flaeche",
+      "wortlaut": "Ein Vitest-Fall unter describe (Fixture)",
+      "quelle": "Fixture:1",
+      "traeger": "voltpilot",
+      "norm": [],
+      "nachweis_kandidaten": [
+        "frontend/portal/src/copy.test.ts#der Grenz-Satz steht an jeder Fläche"
+      ],
+      "nachweise": [],
+      "urteil": "offen",
+      "wer_liefert": [
+        {
+          "wer": "Crew",
+          "was": "Lauf am Stand (AP-20 IP-10)"
+        }
+      ],
+      "luecken": []
+    },
+    {
+      "kennzeichen": "Z-015",
+      "art": "box_notiz",
+      "wortlaut": "Ein Fall aus node --test (Fixture)",
+      "quelle": "Fixture:1",
+      "traeger": "voltpilot",
+      "norm": [],
+      "nachweis_kandidaten": [
+        "edge-app/nodered/measurements/fixture.test.js#die Vertragsfaelle V1…V13 lesen sich wie beschrieben"
+      ],
+      "nachweise": [],
+      "urteil": "offen",
+      "wer_liefert": [
+        {
+          "wer": "Crew",
+          "was": "Lauf am Stand (AP-20 IP-10)"
+        }
+      ],
+      "luecken": []
+    },
+    {
+      "kennzeichen": "Z-016",
+      "art": "plan_abnahme",
+      "wortlaut": "Ein pytest-Fall (Fixture)",
+      "quelle": "Fixture:1",
+      "traeger": "voltpilot",
+      "norm": [],
+      "nachweis_kandidaten": [
+        "tools/edge-simulator/test_fixture.py#test_a1_zwei_boxen"
+      ],
+      "nachweise": [],
+      "urteil": "offen",
+      "wer_liefert": [
+        {
+          "wer": "Crew",
+          "was": "Lauf am Stand (AP-20 IP-10)"
+        }
+      ],
+      "luecken": []
+    },
+    {
+      "kennzeichen": "Z-017",
+      "art": "box_notiz",
+      "wortlaut": "Ein Go-Test (Fixture)",
+      "quelle": "Fixture:1",
+      "traeger": "voltpilot",
+      "norm": [],
+      "nachweis_kandidaten": [
+        "edge-app/core/internal/fixture/fixture_test.go#TestFixtureGruen"
+      ],
+      "nachweise": [],
+      "urteil": "offen",
+      "wer_liefert": [
+        {
+          "wer": "Crew",
+          "was": "Lauf am Stand (AP-20 IP-10)"
+        }
+      ],
+      "luecken": []
+    }
+  ],
+  "kundenaufgaben": [
+    {
+      "kennzeichen": "KA-02",
+      "text": "Kompetenz festlegen und nachweisen (Fixture)",
+      "norm": [
+        "7.2"
+      ],
+      "herkunft": "Fixture"
+    },
+    {
+      "kennzeichen": "KA-06",
+      "text": "Den Gesamtabzug vor dem Vertragsende selbst aufbewahren (Fixture)",
+      "norm": [
+        "7.5.3"
+      ],
+      "herkunft": "Fixture"
+    },
+    {
+      "kennzeichen": "KA-07",
+      "text": "Eine Einstufung fachlich tragen (Fixture)",
+      "norm": [
+        "6.3"
+      ],
+      "herkunft": "Fixture"
+    },
+    {
+      "kennzeichen": "KA-08",
+      "text": "Interne Audits auswählen und durchführen (Fixture)",
+      "norm": [
+        "9.2.1",
+        "9.2.2"
+      ],
+      "herkunft": "Fixture"
+    }
+  ]
+}

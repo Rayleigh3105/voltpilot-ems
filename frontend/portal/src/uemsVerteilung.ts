@@ -13,6 +13,7 @@
  * Rein: keine Netzzugriffe, keine Uhr, kein React.
  */
 import { dez, dezRunde, dezText, dezVergleich, type Dez } from './bezugsdaten';
+import { ortsteile, tagPlus, zwei } from './bezugsPeriode';
 import {
   KEINE_WERTE,
   MENGE_NACHKOMMASTELLEN,
@@ -45,8 +46,13 @@ export const FEHLER_NICHT_VERTEILT = 'nicht_verteilt';
 /** Der Satz, den ein Ziel bekommt, dessen Quelle ein unplausibler Rest ist. */
 export const ERBE_REST_UNPLAUSIBEL = 'keine Werte (Rest unplausibel)';
 
+/** Der Satz, den ein Ziel bekommt, dessen Anteil sich mitten in einem Ablesezeitraum ändert (Messen PR4). */
+export const ERBE_ANTEIL_WECHSELT = 'keine Werte (Verteilung im Ablesezeitraum geändert)';
+
 export const GRUND_REST_UNPLAUSIBEL = 'rest_unplausibel';
 export const GRUND_QUELLE_KEINE_WERTE = 'quelle_keine_werte';
+/** Der Anteil (oder „nicht verteilt") ändert sich innerhalb eines Ablesezeitraums - keine Zahl (Messen PR4). */
+export const GRUND_ANTEIL_WECHSELT = 'anteil_wechselt_im_ablesezeitraum';
 
 // ------------------------------------------------------------------------------------ Tage
 
@@ -207,6 +213,134 @@ export function fassung(
   };
 }
 
+// ------------------------------------------------------------------------------ Satz ab Tag
+
+/** Eine Zeile, die eine Korrektur aufhebt: sie bleibt lesbar, gilt aber nie mehr. */
+export interface Aufgehoben {
+  kostenstelle: string;
+  gueltig_ab: string;
+}
+
+export interface SatzAbTagUrteil {
+  fehler: string | null;
+  summe: Dez;
+  fakten: Record<string, string>;
+  aufgehoben: Aufgehoben[];
+  beendet: Beendet[];
+  neu: NeueZeile[];
+  rueckwirkend: boolean;
+  tage_rueckwirkend: number;
+  unveraendert: boolean;
+}
+
+/**
+ * AP-10 IP-8 — der Schreibweg `PUT …/verteilung` als EINE Regel: ab `tag` gilt GENAU dieser Satz
+ * (`zeilen` leer = ab dem Tag „nicht verteilt"). Reihenfolge: Anteil in (0, 100] mit höchstens einer
+ * Nachkommastelle → `satz` → neue Zeilen enden mit ihrem Ziel, danach kein Rest ≠ 100 % →
+ * derselbe Stand steht schon da (`unveraendert`) → Korrektur hebt die Zeilen GENAU am Tag auf →
+ * `fassung`.
+ */
+export function satzAbTag(
+  heute: string,
+  tag: string,
+  zeilen: Zeile[],
+  ziele: Ziel[],
+  bestehend: Bestandszeile[],
+  korrektur: boolean,
+): SatzAbTagUrteil {
+  const rueckwirkend = tag < heute;
+  const tage = rueckwirkend ? tageZwischen(tag, heute) : 0;
+  const summe = dezRunde(
+    zeilen.reduce((s, z) => dezPlus(s, z.anteil_prozent), NULL_BETRAG),
+    ANTEIL_NACHKOMMASTELLEN,
+  );
+  const abgelehnt = (fehler: string, fakten: Record<string, string>): SatzAbTagUrteil => ({
+    fehler,
+    summe,
+    fakten,
+    aufgehoben: [],
+    beendet: [],
+    neu: [],
+    rueckwirkend,
+    tage_rueckwirkend: tage,
+    unveraendert: false,
+  });
+  for (const z of zeilen) {
+    const a = z.anteil_prozent;
+    if (
+      dezVorzeichen(a) <= 0 ||
+      dezVergleich(a, SUMME_PROZENT) > 0 ||
+      dezKuerze(a).e > ANTEIL_NACHKOMMASTELLEN
+    ) {
+      return abgelehnt(FEHLER_ANTEIL, { kostenstelle: z.kostenstelle, anteil_prozent: text(a) });
+    }
+  }
+  if (zeilen.length > 0) {
+    const s = satz(tag, '', zeilen, ziele);
+    if (!s.gueltig) return abgelehnt(s.fehler as string, s.fakten);
+  }
+  const neu: NeueZeile[] = zeilen.map((z) => ({
+    kostenstelle: z.kostenstelle,
+    anteil_prozent: z.anteil_prozent,
+    gueltig_ab: tag,
+    gueltig_bis: ziele.find((y) => y.kostenstelle === z.kostenstelle)?.gueltig_bis ?? null,
+  }));
+  // Ein Rest am Tag nach dem Ende eines Ziels: die übrigen Zeilen ergäben weniger als 100 %.
+  const enden = [...new Set(neu.map((n) => n.gueltig_bis).filter((e): e is string => e !== null))].sort();
+  for (const ende of enden) {
+    const danach = minusTage(ende, -1);
+    const rest = neu
+      .filter((n) => gilt(danach, n.gueltig_ab, n.gueltig_bis))
+      .reduce((s, n) => dezPlus(s, n.anteil_prozent), NULL_BETRAG);
+    if (dezVorzeichen(rest) > 0 && dezVergleich(rest, SUMME_PROZENT) !== 0) {
+      return abgelehnt(FEHLER_SUMME, { summe: text(rest), tag: danach });
+    }
+  }
+  const wirksam = bestehend.filter((b) => b.aufgehoben_am === null);
+  const stand = (k: string, a: Dez, bis: string | null): string => `${k}=${text(a)}@${bis}`;
+  const spaeter = wirksam.some((b) => b.gueltig_ab !== null && b.gueltig_ab > tag);
+  const vorher = wirksam
+    .filter((b) => gilt(tag, b.gueltig_ab, b.gueltig_bis))
+    .map((b) => stand(b.kostenstelle, b.anteil_prozent, b.gueltig_bis))
+    .sort();
+  const nachher = neu.map((n) => stand(n.kostenstelle, n.anteil_prozent, n.gueltig_bis)).sort();
+  if (!spaeter && vorher.length === nachher.length && vorher.every((v, i) => v === nachher[i])) {
+    return {
+      fehler: null,
+      summe,
+      fakten: {},
+      aufgehoben: [],
+      beendet: [],
+      neu: [],
+      rueckwirkend,
+      tage_rueckwirkend: tage,
+      unveraendert: true,
+    };
+  }
+  const aufgehoben: Aufgehoben[] = [];
+  const rest: Bestandszeile[] = [];
+  for (const b of wirksam) {
+    if (korrektur && b.gueltig_ab === tag) aufgehoben.push({ kostenstelle: b.kostenstelle, gueltig_ab: tag });
+    else rest.push(b);
+  }
+  const f = fassung(heute, rest, tag, zeilen);
+  if (f.fehler !== null) {
+    const laufend = rest.map((b) => b.gueltig_ab ?? '').sort().reverse()[0] ?? '';
+    return abgelehnt(f.fehler, { gueltig_ab: tag, laufend_ab: laufend });
+  }
+  return {
+    fehler: null,
+    summe,
+    fakten: {},
+    aufgehoben,
+    beendet: f.beendet,
+    neu,
+    rueckwirkend,
+    tage_rueckwirkend: tage,
+    unveraendert: false,
+  };
+}
+
 // ----------------------------------------------------------------------------------- Mengen
 
 /** Eine Tagesmenge der Quelle; `menge === null` heißt „keine Werte". */
@@ -283,6 +417,105 @@ const anteilVon = (menge: Dez, anteilProzent: Dez): Dez => {
   const produkt = dezMal(menge, anteilProzent);
   return dezRunde({ z: produkt.z, e: produkt.e + 2 }, MENGE_NACHKOMMASTELLEN);
 };
+
+// --------------------------------------------------------------------------- Ablesezeitraum
+
+/** Ein Ablesezeitraum von der öffnenden bis zur schließenden Ablesung - halboffen, [von, bis); ISO mit Versatz. */
+export interface Ablesezeitraum {
+  von: string;
+  bis: string;
+}
+
+/**
+ * Was EINE Kostenstelle aus der Menge der Ablesezeiträume bekommt: Anteil und Anteil × Menge, wenn ihr Anteil an
+ * JEDEM Tag derselbe ist; sonst beide `null`, `grund` {@link GRUND_ANTEIL_WECHSELT} und `geaendert_am` der erste Tag
+ * mit anderem Anteil.
+ */
+export interface AblesezeitraumZiel {
+  kostenstelle: string;
+  anteil_prozent: Dez | null;
+  menge: Dez | null;
+  grund: string | null;
+  geaendert_am: string | null;
+}
+
+/** Was an keinem Tag eine Zeile hat: an ALLEN Tagen die ganze Menge, an nur EINIGEN keine Zahl. */
+export interface AblesezeitraumOffen {
+  menge: Dez | null;
+  grund: string | null;
+  geaendert_am: string | null;
+}
+
+export interface AblesezeitraumUrteil {
+  erster_tag: string;
+  letzter_tag: string;
+  ziele: AblesezeitraumZiel[];
+  /** `null`, wenn jeder Tag eine Zeile hat. */
+  nicht_verteilt: AblesezeitraumOffen | null;
+}
+
+/** Der Kalendertag eines Zeitpunkts (Millisekunden) in der Zone. */
+const tagVon = (ms: number, zone: string): string => {
+  const t = ortsteile(ms, zone);
+  return `${t.jahr}-${zwei(t.monat)}-${zwei(t.tag)}`;
+};
+
+/**
+ * Messen PR4 (Konzept §10.3, Entscheid 3): ein Ablesezeitraum hat KEINE Tagesmengen. Gilt der Anteil einer
+ * Kostenstelle an JEDEM Tag, den die Ablesezeiträume berühren, unverändert, ist Anteil × Menge genau die Summe, die
+ * die Tagesregel (E12) ergäbe; wechselt er (auch von keiner Zeile zu einer), gibt es für sie keine Zahl. Anders als
+ * {@link mengen} urteilt die Regel je Kostenstelle. Die Tage: vom Tag der öffnenden Ablesung bis zum Tag der letzten
+ * Sekunde davor (halboffen), in `zone`.
+ */
+export function ablesezeitraum(
+  zone: string,
+  zeitraeume: Ablesezeitraum[],
+  menge: Dez | null,
+  zeilen: Bestandszeile[],
+  ziele: Ziel[],
+): AblesezeitraumUrteil {
+  const tage = new Set<string>();
+  for (const z of zeitraeume) {
+    const bis = tagVon(Date.parse(z.bis) - 1, zone);
+    for (let d = tagVon(Date.parse(z.von), zone); d <= bis; d = tagPlus(d, 1)) tage.add(d);
+  }
+  const sortiert = [...tage].sort();
+  if (sortiert.length === 0) throw new Error('ein Ablesezeitraum berührt mindestens einen Tag');
+  const jeTag = new Map<string, Map<string, Dez>>();
+  const kostenstellen = new Set<string>();
+  for (const d of sortiert) {
+    const anteile = new Map<string, Dez>();
+    for (const z of amTag(d, zeilen, ziele).zeilen) anteile.set(z.kostenstelle, z.anteil_prozent);
+    jeTag.set(d, anteile);
+    for (const k of anteile.keys()) kostenstellen.add(k);
+  }
+  const erster = sortiert[0];
+  const gleich = (a: Dez | undefined, b: Dez | undefined): boolean =>
+    a === undefined ? b === undefined : b !== undefined && dezVergleich(a, b) === 0;
+  const raus: AblesezeitraumZiel[] = [...kostenstellen].sort().map((k) => {
+    const anteil = jeTag.get(erster)?.get(k);
+    const geaendert = sortiert.find((d) => !gleich(jeTag.get(d)?.get(k), anteil)) ?? null;
+    if (geaendert !== null || anteil === undefined) {
+      return { kostenstelle: k, anteil_prozent: null, menge: null, grund: GRUND_ANTEIL_WECHSELT, geaendert_am: geaendert };
+    }
+    return menge === null
+      ? { kostenstelle: k, anteil_prozent: dezKuerze(anteil), menge: null, grund: GRUND_QUELLE_KEINE_WERTE, geaendert_am: null }
+      : { kostenstelle: k, anteil_prozent: dezKuerze(anteil), menge: dezKuerze(anteilVon(menge, anteil)), grund: null, geaendert_am: null };
+  });
+  const ersterOhne = (jeTag.get(erster)?.size ?? 0) === 0;
+  const wechsel = sortiert.find((d) => ((jeTag.get(d)?.size ?? 0) === 0) !== ersterOhne) ?? null;
+  const nichtVerteilt: AblesezeitraumOffen | null =
+    wechsel !== null
+      ? { menge: null, grund: GRUND_ANTEIL_WECHSELT, geaendert_am: wechsel }
+      : ersterOhne
+        ? {
+            menge: menge === null ? null : dezKuerze(menge),
+            grund: menge === null ? GRUND_QUELLE_KEINE_WERTE : null,
+            geaendert_am: null,
+          }
+        : null;
+  return { erster_tag: erster, letzter_tag: sortiert[sortiert.length - 1], ziele: raus, nicht_verteilt: nichtVerteilt };
+}
 
 // ------------------------------------------------------------------------------------- Erbe
 

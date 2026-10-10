@@ -17,12 +17,16 @@ import com.voltpilot.api.web.dto.MessstelleDto;
 import com.voltpilot.api.web.dto.MessstelleQuelleDto;
 import com.voltpilot.api.web.dto.MessstelleVorschlagDto;
 import com.voltpilot.api.web.dto.MesskanalDto;
+import com.voltpilot.api.zugriff.RechtPruefung;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -32,6 +36,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Predicate;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -98,13 +103,16 @@ public class MessstelleVorschlagService {
     private final EntityTypeCatalog typen;
     private final JdbcTemplate jdbc;
     private final TransactionTemplate transaktion;
+    private final RechtPruefung rechte;
 
     public MessstelleVorschlagService(StandortLesemodellService standorte, StandortService standortDienst,
             MessstelleRepository messstellen, MessstelleQuelleRepository quellenRepo,
             MessstelleZuordnungRepository zuordnungenRepo, MessstelleService messstellenDienst,
             MessstelleZuordnungService zuordnungen, MessstelleQuelleService quellen,
             MesskanalService messkanaele, GeraetRepository geraete, TopologyService topologie,
-            EntityTypeCatalog typen, JdbcTemplate jdbc, PlatformTransactionManager transaktionen) {
+            EntityTypeCatalog typen, JdbcTemplate jdbc, PlatformTransactionManager transaktionen,
+            RechtPruefung rechte) {
+        this.rechte = rechte;
         this.standorte = standorte;
         this.standortDienst = standortDienst;
         this.messstellen = messstellen;
@@ -389,10 +397,72 @@ public class MessstelleVorschlagService {
         }
 
         MessstelleRepository.Kennzeichenstand stand = messstellen.kennzeichenstand();
-        Vorschlagsliste liste = MessstelleRegeln.vorschlagsliste(new VorschlagEingang(
+        Vorschlagsliste liste = imZugriff(MessstelleRegeln.vorschlagsliste(new VorschlagEingang(
                 new VorschlagStandort(st.kurzzeichen(), st.name(), beginn, zone), anlagen, komponenten,
-                stand.zaehler(), stand.belegt()));
+                stand.zaehler(), stand.belegt())), messstellenJeId.values(), komponentenNamen, st.name());
         return new Lage(standortId, st.kurzzeichen(), st.name(), zone, liste, anlagenNamen, komponentenNamen);
+    }
+
+    /** Der Grund einer Zeile, die an einer Messstelle außerhalb des Zugriffs hinge (AP-03 R-A6). */
+    static final String AUSSERHALB_ZUGRIFF = "ausserhalb_zugriff";
+
+    /**
+     * Die Liste, wie sie der Leser sehen darf (AP-03 R-A3/R-A6/R-A7): ein Vorschlag, der Unterzähler einer BESTEHENDEN
+     * Messstelle außerhalb des Zugriffs würde (oder eines so ausgelassenen Vorschlags), wird nicht vorgeschlagen —
+     * auch nicht als zweiter Hauptzähler —, sondern steht unter {@code ausgelassen} mit dem Hinweis, ohne Kennzeichen;
+     * ebenso ein Ausgelassener, dessen {@code zu} außerhalb liegt. Die Übernahme liest DIESELBE Liste
+     * ({@link #lage}): eine solche Zeile ist dort „geändert“, nie still unter eine fremde Messstelle gehängt. Mit
+     * einer unternehmensweiten Rolle, dem Bestandskonto und ohne Kontext bleibt die Liste Zeichen für Zeichen.
+     */
+    private Vorschlagsliste imZugriff(Vorschlagsliste liste, Collection<MessstelleRepository.Messstelle> alle,
+            Map<String, String> komponentenNamen, String standortName) {
+        Map<String, UUID> idJeKennzeichen = new HashMap<>();
+        alle.forEach(m -> idJeKennzeichen.put(m.kennzeichen(), m.id()));
+        Map<String, Boolean> urteile = new HashMap<>();
+        Predicate<String> fremd = kz -> kz != null && idJeKennzeichen.containsKey(kz)
+                && !urteile.computeIfAbsent(kz, k -> rechte.lesbar(RechtZiel.MESSSTELLE, idJeKennzeichen.get(k)));
+        Set<String> weg = new HashSet<>();
+        boolean weiter = true;
+        while (weiter) {
+            weiter = false;
+            for (VorschlagZeile z : liste.vorschlaege()) {
+                MessstelleRegeln.VorschlagBezug b = z.unterzaehlerVon();
+                if (b != null && !weg.contains(z.kennzeichen())
+                        && (b.bestehend() ? fremd.test(b.messstelle()) : weg.contains(b.messstelle()))) {
+                    weg.add(z.kennzeichen());
+                    weiter = true;
+                }
+            }
+        }
+        boolean zuFremd = liste.ausgelassen().stream().anyMatch(a -> fremd.test(a.zu()));
+        if (weg.isEmpty() && !zuFremd) {
+            return liste;
+        }
+        List<VorschlagZeile> bleiben = new ArrayList<>();
+        List<MessstelleRegeln.Ausgelassen> ohne = new ArrayList<>();
+        for (VorschlagZeile z : liste.vorschlaege()) {
+            if (weg.contains(z.kennzeichen())) {
+                ohne.add(new MessstelleRegeln.Ausgelassen(z.anlage(), z.komponente(), z.quelle().kanal(),
+                        AUSSERHALB_ZUGRIFF, null, ausserhalbText(komponentenNamen.get(z.komponente()))));
+            } else {
+                bleiben.add(z);
+            }
+        }
+        for (MessstelleRegeln.Ausgelassen a : liste.ausgelassen()) {
+            ohne.add(fremd.test(a.zu()) ? new MessstelleRegeln.Ausgelassen(a.anlage(), a.komponente(), a.kanal(),
+                    AUSSERHALB_ZUGRIFF, null, ausserhalbText(komponentenNamen.get(a.komponente()))) : a);
+        }
+        String leer = liste.leer();
+        String text = liste.text();
+        if (bleiben.isEmpty() && leer == null) {
+            leer = "keine_komponente";
+            text = "In " + standortName + " gibt es keine Komponente, aus der eine Messstelle werden kann.";
+        }
+        return new Vorschlagsliste(List.copyOf(bleiben), List.copyOf(ohne), leer, text, liste.zaehler());
+    }
+
+    private static String ausserhalbText(String komponente) {
+        return (komponente == null ? "" : "„" + komponente + "“ — ") + RechtPruefung.AUSSERHALB_ZUGRIFF + ".";
     }
 
     /** Der erste Tag des heutigen Bestehens des Standorts (AP-02): keine Messstelle beginnt davor. */

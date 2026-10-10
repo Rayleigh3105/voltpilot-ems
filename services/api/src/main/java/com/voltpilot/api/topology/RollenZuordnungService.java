@@ -10,7 +10,7 @@ import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.uems.RollenZuordnungRegeln;
 import com.voltpilot.api.uems.RollenZuordnungRegeln.Quelle;
 import com.voltpilot.api.web.dto.RollenDto;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
@@ -32,17 +32,17 @@ public class RollenZuordnungService {
     public static final String ROLLE_PV = "pv";
     private static final String MESSKANAL = "messkanal";
     private static final String GESAMTWERT = "gesamtwert"; // bestehendes API-Vokabular
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final EntityRegistryRepository registry;
     private final RollenZuordnungRepository repo;
     private final MessstelleRepository messstellen;
     private final RollenQuellen quellen;
     private final RollenProtokoll protokoll;
 
-    public RollenZuordnungService(SiteRepository sites, EntityRegistryRepository registry,
+    public RollenZuordnungService(Geltungsbereich geltungsbereich, EntityRegistryRepository registry,
             RollenZuordnungRepository repo, MessstelleRepository messstellen,
             RollenQuellen quellen, RollenProtokoll protokoll) {
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.registry = registry;
         this.repo = repo;
         this.messstellen = messstellen;
@@ -57,7 +57,7 @@ public class RollenZuordnungService {
     }
 
     public java.util.Set<UUID> geleseneGeraete(UUID site, UUID messstelle) {
-        pruefeAnlage(site);
+        geltungsbereich.requireSite(site);
         return quellen.herkunft(messstelle, site, Instant.now()).stream()
                 .filter(q -> q.entity_id() != null).map(q -> UUID.fromString(q.entity_id()))
                 .collect(java.util.stream.Collectors.toSet());
@@ -81,7 +81,7 @@ public class RollenZuordnungService {
     public RollenDto.AnlageAntwort zuordnenAnlage(UUID site, String rolle,
             RollenDto.AnlageEingabe eingabe, ProtokollAkteur wer) {
         pruefeRolle(rolle);
-        pruefeAnlage(site);
+        geltungsbereich.requireSite(site);
         repo.sperreAnlage(site);
         if (eingabe == null || !GESAMTWERT.equals(eingabe.art())) {
             throw badRequest("Die Anlagen-Zuordnung braucht einen Summenwert.");
@@ -236,7 +236,7 @@ public class RollenZuordnungService {
 
     public RollenDto.KanonischerWert kanonisch(UUID site, String rolle) {
         pruefeRolle(rolle);
-        pruefeAnlage(site);
+        geltungsbereich.requireSite(site);
         return baueKanonisch(site, rolle, repo.primaereDerAnlage(site, rolle));
     }
 
@@ -314,14 +314,8 @@ public class RollenZuordnungService {
         return row == null || row.label() == null || row.label().isBlank() ? "Gerät" : row.label();
     }
 
-    private void pruefeAnlage(UUID site) {
-        if (!sites.existsForCurrentTenant(site)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
-    }
-
     private void pruefeGeraet(UUID site, UUID entity) {
-        pruefeAnlage(site);
+        geltungsbereich.requireSite(site);
         if (registry.entityForSite(site, entity) == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Komponente nicht gefunden.");
         }

@@ -22,10 +22,13 @@ public class TelemetryV2RawConsumer {
 
     private final ObjectMapper mapper;
     private final TelemetryV2WriteRepository repository;
+    private final WriterVerwerfMetriken verworfen;
 
-    public TelemetryV2RawConsumer(ObjectMapper mapper, TelemetryV2WriteRepository repository) {
+    public TelemetryV2RawConsumer(ObjectMapper mapper, TelemetryV2WriteRepository repository,
+            WriterVerwerfMetriken verworfen) {
         this.mapper = mapper;
         this.repository = repository;
+        this.verworfen = verworfen;
     }
 
     @KafkaListener(topics = "${voltpilot.redpanda.telemetry-v2-topic:telemetry-v2.raw}",
@@ -36,6 +39,7 @@ public class TelemetryV2RawConsumer {
             event = mapper.readValue(value, TelemetryV2RawEvent.class);
         } catch (JsonProcessingException e) {
             log.warn("Skipping unparseable telemetry-v2.raw record: {}", e.getMessage());
+            verworfen.umschlag("telemetry_v2", WriterVerwerfMetriken.UNLESBAR);
             return;
         }
         if (event.tenant_id() == null || event.site_id() == null || event.device_id() == null
@@ -43,6 +47,7 @@ public class TelemetryV2RawConsumer {
                 || !event.entities().isObject()) {
             log.warn("Skipping telemetry-v2.raw record with missing identity/entities "
                     + "(event_id={})", event.event_id());
+            verworfen.umschlag("telemetry_v2", WriterVerwerfMetriken.PFLICHTFELD);
             return;
         }
         int rows = repository.insert(event);

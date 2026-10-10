@@ -37,6 +37,26 @@ public class MeasurementCatalog {
     public static final Set<String> SEMANTIC_STATUSES =
             Set.of("known", "vendor_label_only", "unknown");
     private static final Pattern MODULE_INDEX = Pattern.compile("\\[([0-9]{1,3})]", Pattern.CASE_INSENSITIVE);
+    /** Jeder Abschnitt {@code […]} eines konkreten Schlüssels — die Vorlage trägt {@code [*]} (wie der Writer). */
+    private static final Pattern ABSCHNITT = Pattern.compile("\\[[^]\\r\\n]+]");
+    /** Der letzte Abschnitt eines konkreten OCPP-Schlüssels, wie die Palette ihn schreibt (ocppPointKey). */
+    private static final Pattern OCPP_EINHEIT = Pattern.compile("\\.unit\\[([a-z0-9-]+)]$");
+
+    /**
+     * OCPP 1.6 {@code UnitOfMeasure} je Schlüssel-Abschnitt {@code unit[…]}, so geschrieben, wie die Palette
+     * ihn bildet (klein, anderes Zeichen als „-“, {@code measurement-driver.js} {@code ocppPointKey}). Die
+     * Einheit eines OCPP-Messwerts steht NICHT im Katalog ({@code scale} = {@code protocol_value}): die
+     * Station nennt sie in jedem SampledValue, und die Palette schreibt sie in den konkreten Schlüssel der
+     * Reihe. {@code unit[none]} — die Station nannte keine — bleibt unbekannt: OCPP nimmt dann für Energie
+     * „Wh“ an, aber eine Station, die kWh ohne Einheit schickt, läge um den Faktor 1 000 daneben. Benannt,
+     * nicht geraten.
+     */
+    static final Map<String, String> OCPP_EINHEITEN = Map.ofEntries(
+            Map.entry("wh", "Wh"), Map.entry("kwh", "kWh"), Map.entry("varh", "varh"),
+            Map.entry("kvarh", "kvarh"), Map.entry("w", "W"), Map.entry("kw", "kW"), Map.entry("va", "VA"),
+            Map.entry("kva", "kVA"), Map.entry("var", "var"), Map.entry("kvar", "kvar"), Map.entry("a", "A"),
+            Map.entry("v", "V"), Map.entry("k", "K"), Map.entry("celcius", "°C"), Map.entry("celsius", "°C"),
+            Map.entry("fahrenheit", "°F"), Map.entry("percent", "%"));
 
     public record RetentionView(String retentionClass, int rawRetentionDays,
             Integer longTermCadenceS, String longTermStrategy) {
@@ -71,7 +91,9 @@ public class MeasurementCatalog {
                 MeasurementSelectionRepository.Observation observation) {
             boolean seen = observation != null;
             String availability = seen ? "read" : familyAvailable ? "family_configured" : "not_configured";
-            String reason = seen ? "Von diesem Gerät gelesen."
+            String reason = seen && observation.jeKomponente()
+                    ? "Von diesem Gerät gelesen, je Komponente: der Wert steht in der Reihe der Komponente."
+                    : seen ? "Von diesem Gerät gelesen."
                     : familyAvailable ? "Für die konfigurierte Anbindungsfamilie vorgesehen; noch nicht gelesen."
                     : "Für die aktuelle Geräteanbindung nicht als verfügbar bestätigt.";
             int effectiveCadence = cadence == null
@@ -119,6 +141,21 @@ public class MeasurementCatalog {
     /** Größe und Richtung eines Punkts in den Katalogwörtern ({@code null} = nicht belegt). */
     public record Semantik(String quantity, String direction) {}
 
+    /**
+     * Eine reine Cloud-Angabe des Herstellers (AP-16 G4). Sie ist weder die Angabe am Einbau noch
+     * Bestandteil der Box-Laufzeitprojektion und wird niemals zu einer Genauigkeit der Messkette verrechnet.
+     */
+    public record HerstellerGenauigkeit(String hersteller, String modell, String zustand, String klasse,
+            String wert, String bezug, String fundstelle, String sourceUrl, String sourceSha256) {}
+
+    /**
+     * Was ein Gerät dieser Familie tut, wenn seine Box schweigt, in EINER Richtung ({@code families[].rueckfall_ohne_box},
+     * UEMS AP-15 IP-6): ein Wort des geschlossenen Vokabulars {@code geraete_rueckfall}; {@code rueckfallKw} nur bei
+     * {@code faellt_auf_wert} mit einem festen Wert des Modells, sonst {@code null}. Die Zahl macht allein
+     * {@code uems.GeraeteRueckfallRegel}.
+     */
+    public record RueckfallOhneBox(String rueckfall, java.math.BigDecimal rueckfallKw, Integer nachS) {}
+
     public record SearchResult(String catalogVersion, String edgeMinVersion,
             String customPointActionLabel, long total, int offset, int limit,
             List<Facet> groups, List<Facet> semanticStatuses, List<Point> points, String availabilityReason) {}
@@ -129,6 +166,9 @@ public class MeasurementCatalog {
     private final List<Point> points;
     private final Map<String, Point> byKey;
     private final Map<String, Semantik> semantik;
+    private final List<HerstellerGenauigkeit> herstellerGenauigkeiten;
+    private final Set<String> nochNichtAnDerBox;
+    private final Map<String, Map<String, RueckfallOhneBox>> rueckfallOhneBox;
 
     public MeasurementCatalog(ObjectMapper mapper) {
         JsonNode root = readCanonical(mapper);
@@ -136,10 +176,44 @@ public class MeasurementCatalog {
         String runtime = text(root, "runtime_catalog_version");
         this.version = runtime == null ? inhaltsstand : runtime;
         this.edgeMinVersion = required(root, "edge_min_version");
+        List<HerstellerGenauigkeit> genauigkeiten = new ArrayList<>();
+        for (JsonNode m : root.path("models")) {
+            JsonNode a = m.path("accuracy");
+            genauigkeiten.add(new HerstellerGenauigkeit(required(m, "hersteller"), required(m, "modell"),
+                    required(a, "zustand"), text(a, "klasse"), text(a, "wert"), text(a, "bezug"),
+                    text(a, "fundstelle"), text(a, "source_url"), text(a, "source_sha256")));
+        }
+        this.herstellerGenauigkeiten = List.copyOf(genauigkeiten);
+        // Familien, die der Inhaltsstand führt, die aber noch an KEINE Box gehen (an_der_box: false,
+        // Katalog-README „Familien noch nicht an der Box“; die WAGO-Karten bis 2026.09.23.3, UEMS AP-05 IP-6b): ihre
+        // Punkte gibt es für die api nicht — keine Suche, keine Auswahl, keine Mess-Konfiguration, die die
+        // Box mit unknown_point ablehnen würde. Sie erscheinen mit dem Edge-Release, das sie lesen kann.
+        Set<String> zurueckgehalten = new java.util.TreeSet<>();
+        // Der Geräte-Rückfall je steuerbarer Familie (UEMS AP-15 IP-6): nur Familien mit Objekt; null = VoltPilot
+        // steuert die Familie nicht. Eine Richtung ohne Eintrag hat keine Angabe — sie zählt mit Nennleistung.
+        Map<String, Map<String, RueckfallOhneBox>> rueckfaelle = new LinkedHashMap<>();
+        for (JsonNode f : root.path("families")) {
+            if (f.path("an_der_box").isBoolean() && !f.path("an_der_box").asBoolean()) {
+                zurueckgehalten.add(text(f, "family"));
+            }
+            JsonNode r = f.get("rueckfall_ohne_box");
+            if (r != null && r.isObject()) {
+                Map<String, RueckfallOhneBox> jeRichtung = new LinkedHashMap<>();
+                r.fields().forEachRemaining(e -> jeRichtung.put(e.getKey(), new RueckfallOhneBox(
+                        required(e.getValue(), "rueckfall"),
+                        e.getValue().path("rueckfall_kw").isNumber() ? e.getValue().get("rueckfall_kw").decimalValue()
+                                : null,
+                        nullableInt(e.getValue().get("nach_s")))));
+                rueckfaelle.put(text(f, "family"), Map.copyOf(jeRichtung));
+            }
+        }
         List<Point> loaded = new ArrayList<>();
         Map<String, Point> indexed = new LinkedHashMap<>();
         Map<String, Semantik> meanings = new LinkedHashMap<>();
         for (JsonNode n : root.path("points")) {
+            if (zurueckgehalten.contains(text(n, "family"))) {
+                continue;
+            }
             MeasurementRetention retention = MeasurementRetention.ofCatalog(n);
             Point p = new Point(text(n, "family"), text(n, "point_key"),
                     text(n, "source_kind"), copyOrNull(n.get("address")), text(n, "selector"),
@@ -171,6 +245,8 @@ public class MeasurementCatalog {
         this.points = List.copyOf(loaded);
         this.byKey = Map.copyOf(indexed);
         this.semantik = Map.copyOf(meanings);
+        this.nochNichtAnDerBox = Set.copyOf(zurueckgehalten);
+        this.rueckfallOhneBox = Map.copyOf(rueckfaelle);
     }
 
     /** The runtime version the box speaks (see the class comment). */
@@ -184,9 +260,31 @@ public class MeasurementCatalog {
     }
 
     /**
+     * Die Familien des Inhaltsstands, die noch an keine Box gehen ({@code an_der_box: false}). Ihre Punkte
+     * fehlen in {@link #families()}, {@link #resolve(String)} und {@link #search}.
+     */
+    public Set<String> familienNochNichtAnDerBox() {
+        return nochNichtAnDerBox;
+    }
+
+    /**
      * Größe und Richtung eines Punkts; ein konkreter Modul-Schlüssel ({@code module[3]})
      * trägt die seiner Vorlage. {@code null} für einen Schlüssel, den der Katalog nicht kennt.
      */
+    /** Die Familien, die VoltPilot steuert (sie tragen {@code rueckfall_ohne_box}), UEMS AP-15 IP-6. */
+    public Set<String> steuerbareFamilien() {
+        return rueckfallOhneBox.keySet();
+    }
+
+    /**
+     * Der Katalog-Eintrag des Geräte-Rückfalls einer Familie in einer Richtung ({@code einspeisung}/{@code bezug}),
+     * oder {@code null}: die Familie wird nicht gesteuert, oder der Katalog sagt für diese Richtung nichts.
+     */
+    public RueckfallOhneBox rueckfallOhneBox(String family, String richtung) {
+        Map<String, RueckfallOhneBox> jeRichtung = family == null ? null : rueckfallOhneBox.get(family);
+        return jeRichtung == null ? null : jeRichtung.get(richtung);
+    }
+
     public Semantik semantik(String pointKey) {
         Semantik exact = pointKey == null ? null : semantik.get(pointKey);
         if (exact != null || pointKey == null || !pointKey.contains("[")) {
@@ -202,6 +300,60 @@ public class MeasurementCatalog {
 
     public Set<String> families() {
         return points.stream().map(Point::family).collect(java.util.stream.Collectors.toUnmodifiableSet());
+    }
+
+    /**
+     * „Laut Hersteller“ für einen eingebauten Typ. {@code x} in einem Katalogmodell steht für genau eine
+     * Ziffer (z. B. 879-30xx); ein konkreter Kartentyp darf die Variante nach {@code /} ergänzen.
+     */
+    public HerstellerGenauigkeit herstellerGenauigkeit(String hersteller, String modell) {
+        if (hersteller == null || hersteller.isBlank() || modell == null || modell.isBlank()) {
+            return null;
+        }
+        String h = hersteller.strip();
+        String m = modell.strip();
+        for (HerstellerGenauigkeit kandidat : herstellerGenauigkeiten) {
+            if (kandidat.hersteller().equalsIgnoreCase(h) && modellPasst(kandidat.modell(), m)) {
+                return kandidat;
+            }
+        }
+        return null;
+    }
+
+    private static boolean modellPasst(String muster, String modell) {
+        if (muster.indexOf('x') >= 0 || muster.indexOf('X') >= 0) {
+            StringBuilder regex = new StringBuilder("^");
+            for (int i = 0; i < muster.length(); i++) {
+                char c = muster.charAt(i);
+                regex.append(c == 'x' || c == 'X' ? "[0-9]" : Pattern.quote(String.valueOf(c)));
+            }
+            return Pattern.compile(regex.append("(?:$|[/ (].*)").toString(), Pattern.CASE_INSENSITIVE)
+                    .matcher(modell).matches();
+        }
+        return modell.regionMatches(true, 0, muster, 0, muster.length())
+                && (modell.length() == muster.length() || "/ (".indexOf(modell.charAt(muster.length())) >= 0);
+    }
+
+    /**
+     * Die Einheit eines Messkanals, wie der Katalog sie nennt; {@code null} ohne Eintrag oder ohne
+     * Einheit. Die UEMS-Verdichtung liest die Einheit einer Reihe NUR hier ({@code uems.ReihenKontext}).
+     * Ein OCPP-Messwert ({@code scale} = {@code protocol_value}) hat keine Katalog-Einheit; seine steht
+     * im konkreten Schlüssel ({@code …unit[wh]} → „Wh“, {@link #OCPP_EINHEITEN}). Die Vorlage selbst
+     * ({@code unit[*]}) und {@code unit[none]} haben keine.
+     */
+    public String einheit(String pointKey) {
+        Point p = resolve(pointKey);
+        if (p != null && p.unit() != null) {
+            return p.unit();
+        }
+        Point vorlage = p != null || pointKey == null ? p : byKey.get(ABSCHNITT.matcher(pointKey).replaceAll("[*]"));
+        if (vorlage == null || vorlage.scale() == null
+                || !"protocol_value".equals(vorlage.scale().path("kind").asText())
+                || !vorlage.pointKey().endsWith(".unit[*]")) {
+            return null;
+        }
+        Matcher m = OCPP_EINHEIT.matcher(pointKey);
+        return m.find() ? OCPP_EINHEITEN.get(m.group(1)) : null;
     }
 
     public Point resolve(String pointKey) {

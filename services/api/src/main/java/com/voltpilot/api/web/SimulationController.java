@@ -6,6 +6,8 @@ import com.voltpilot.api.simulation.SimulationClient;
 import com.voltpilot.api.simulation.SimulationJobRegistry;
 import com.voltpilot.api.simulation.SimulationPayload;
 import com.voltpilot.api.web.dto.SimulationRequestDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -50,6 +52,7 @@ public class SimulationController {
     }
 
     @PostMapping
+    @Recht(value = "messwerte.ansehen", ziel = RechtZiel.ANLAGE)
     public ResponseEntity<Map<String, Object>> start(@PathVariable UUID siteId,
             @RequestBody(required = false) SimulationRequestDto request) {
         SimulationDefaults site = defaults.findForSite(siteId);

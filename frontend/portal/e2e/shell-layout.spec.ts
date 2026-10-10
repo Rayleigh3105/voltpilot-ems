@@ -1,4 +1,6 @@
 import { expect, test } from '@playwright/test';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 
 const widths = [320, 375, 390, 430, 560, 561, 720, 721, 768, 834, 1023, 1024, 1100, 1200, 1279, 1280, 1440];
 
@@ -72,6 +74,27 @@ test('plant, health, tenant and account controls stay independently reachable', 
     expect(header!.y).toBe(0);
     await expect(page.getByRole('button', { name: /Konto-Menü/ })).toBeInViewport();
     await expect.poll(async () => (await page.locator('.vp-mob-sticky').boundingBox())!.y).toBeCloseTo(header!.height, 1);
+  }
+});
+
+test('anlage shows the connected share of all boxes at 375 and 1440', async ({ page }) => {
+  await page.goto('/e2e/shell-layout.html?multi');
+  await page.evaluate(() => document.fonts.ready);
+  for (const width of [375, 1440]) {
+    await page.setViewportSize({ width, height: width === 375 ? 812 : 900 });
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const status = page.getByText('2 von 2 Boxen verbunden', { exact: false });
+    await expect(status).toBeVisible();
+    await expect(status).toBeInViewport();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    if (process.env.VERBUNDEN_BILDER) {
+      mkdirSync(process.env.VERBUNDEN_BILDER, { recursive: true });
+      await page.screenshot({
+        path: join(process.env.VERBUNDEN_BILDER, `verbunden-je-box-${width}.png`),
+        fullPage: true,
+        animations: 'disabled',
+      });
+    }
   }
 });
 

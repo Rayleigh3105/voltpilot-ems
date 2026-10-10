@@ -1,0 +1,406 @@
+/*
+ * „Energiemanagement“ (UEMS AP-19 IP-9): Bereich, Verzeichnis, Dokumente, Dokument-Seite, Dialoge, Zuschnitt-Hilfe.
+ * Die Grundformen (Karte, Tafel, Formular, Sätze) leiht der Bereich aus `Verbesserung.css` (`vp-ez-`); hier stehen
+ * nur seine eigenen Teile mit `vp-em-`.
+ * ⚠ 375 px: Tafeln werden unter 720 px zu Karten (`data-label`), Filter stapeln sich, nichts läuft quer.
+ */
+
+.vp-em-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--vp-c-space-2) var(--vp-c-space-4);
+  min-width: 0;
+}
+
+.vp-em-hilfe {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary);
+  font: inherit;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+  text-align: left;
+  cursor: pointer;
+  min-height: 44px;
+}
+
+.vp-em-saetze {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+  padding-top: var(--vp-c-space-3);
+  border-top: 1px solid var(--vp-c-border);
+}
+/* K7: im Bereich stehen die Sätze im Kopf — ein leerer Satz-Block nimmt keinen Platz. */
+.vp-em-saetze:empty {
+  display: none;
+}
+
+.vp-em-gruppe {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+  min-width: 0;
+}
+
+.vp-em-stufe {
+  display: inline-block;
+  padding: 2px 8px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 999px;
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-600);
+  white-space: nowrap;
+}
+
+.vp-em-wortlaut {
+  margin: 0;
+  padding: var(--vp-c-space-3) var(--vp-c-space-4);
+  border-left: 3px solid var(--vp-c-border);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-em-verweis {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 8px;
+  min-width: 0;
+}
+
+.vp-em-verweis legend {
+  padding: 0 4px;
+  font-weight: var(--vp-c-fw-700);
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-em-datei {
+  position: relative;
+  display: inline-flex;
+  width: fit-content;
+}
+
+.vp-em-datei input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.vp-em-datei-knopf {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px dashed var(--vp-c-border);
+  border-radius: 8px;
+  font-weight: var(--vp-c-fw-600);
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-em-datei:focus-within .vp-em-datei-knopf {
+  outline: 2px solid var(--vp-c-primary);
+  outline-offset: 2px;
+}
+
+.vp-em-paar {
+  display: grid;
+  gap: var(--vp-c-space-3);
+}
+
+@media (min-width: 640px) {
+  .vp-em-paar {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.vp-em-dl {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 6px var(--vp-c-space-4);
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-em-dl dt {
+  color: var(--vp-c-muted-fg);
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-em-dl dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 479px) {
+  .vp-em-dl {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+  }
+
+  .vp-em-dl dd {
+    margin-bottom: var(--vp-c-space-2);
+  }
+}
+
+@media (min-width: 720px) {
+  .vp-ez-tafel .vp-em-tag {
+    white-space: nowrap;
+  }
+}
+
+/* IP-13: Reiter „Aufgaben“, „Wer ist wofür verantwortlich“, Personen-Seite. */
+.vp-em-aufgaben-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+}
+
+.vp-em-aufgaben {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-em-aufgabe {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--vp-c-space-2);
+  min-width: 0;
+  padding: var(--vp-c-space-3) 0;
+  border-top: 1px solid var(--vp-c-border);
+}
+
+.vp-em-aufgabe h3 {
+  margin: 0;
+  font-size: var(--vp-c-fs-16);
+}
+
+.vp-em-zuordnung {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--vp-c-space-1);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-em-kurzliste {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+  margin: 0;
+  padding-left: 20px;
+  overflow-wrap: anywhere;
+}
+
+/* UEMS AP-19 IP-15: der Abschnitt „Nachweise“ am Energieeinsatz und an der Person. */
+.vp-nw-liste {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-nw-zeile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-top: var(--vp-c-space-3);
+  border-top: 1px solid var(--vp-c-border);
+  overflow-wrap: anywhere;
+}
+
+.vp-nw-zeile:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.vp-nw-titel {
+  color: var(--vp-c-fg);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.vp-nw-titel:hover,
+.vp-nw-titel:focus-visible {
+  text-decoration: underline;
+}
+
+.vp-nw-kz {
+  color: var(--vp-c-muted-fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-nw-adresse {
+  font-family: var(--vp-c-font-mono, monospace);
+}
+
+/* UEMS AP-19 IP-24: Reiter „Wiedervorlage“ — eine Zeile je Frist, bei 375 px untereinander, ab 720 px in vier Spalten. */
+.vp-wv-titel {
+  margin: var(--vp-c-space-4) 0 var(--vp-c-space-2);
+  font-size: 1rem;
+}
+
+.vp-wv-liste,
+.vp-mb-liste,
+.vp-mb-zeilen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-wv-zeile,
+.vp-mb-zeile,
+.vp-mb-zeilen > li {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-top: var(--vp-c-space-3);
+  border-top: 1px solid var(--vp-c-border);
+  overflow-wrap: anywhere;
+}
+
+.vp-wv-zeile:first-child,
+.vp-mb-zeile:first-child,
+.vp-mb-zeilen > li:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.vp-wv-art,
+.vp-wv-wer,
+.vp-mb-zustand,
+.vp-mb-pruef {
+  color: var(--vp-c-muted-fg);
+  font-size: 0.875rem;
+}
+
+.vp-wv-kz {
+  color: var(--vp-c-muted-fg);
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-wv-gegenstand,
+.vp-mb-gegenstand {
+  min-width: 0;
+  font-weight: 600;
+  text-align: left;
+}
+
+.vp-wv-zeile.is-faellig .vp-wv-frist strong {
+  color: var(--vp-c-warn-fg);
+}
+
+.vp-mb-pruef {
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-mb-stand {
+  font-weight: 600;
+}
+
+/* Vier Spalten erst ab 960 px: darunter blieben dem Gegenstand zwischen 11 + 13 + 12 rem kaum Zeichen. */
+@media (min-width: 960px) {
+  .vp-wv-zeile {
+    display: grid;
+    grid-template-columns: minmax(8rem, 11rem) minmax(0, 1fr) minmax(9rem, 13rem) minmax(8rem, 12rem);
+    gap: var(--vp-c-space-4);
+    align-items: baseline;
+  }
+}
+
+@media (min-width: 720px) {
+  .vp-mb-zeile {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 9rem 12rem;
+    gap: var(--vp-c-space-4);
+    align-items: baseline;
+  }
+}
+
+/* Seite einer Managementbewertung: die Abschnitte der Vorlage untereinander, Unterüberschriften der Grundlagen. */
+.vp-mb-eingaben {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-5);
+}
+
+.vp-mb-abschnitt h3 {
+  margin: 0 0 var(--vp-c-space-2);
+  font-size: 1rem;
+}
+
+.vp-mb-grundlage h4 {
+  margin: var(--vp-c-space-3) 0 var(--vp-c-space-1);
+  font-size: 0.875rem;
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-mb-abschnitt > .vp-mb-zeilen + .vp-mb-zeilen,
+.vp-mb-abschnitt > .vp-mb-zeilen + p,
+.vp-mb-abschnitt > p + .vp-mb-zeilen {
+  margin-top: var(--vp-c-space-3);
+}
+
+.vp-mb-quellen summary {
+  cursor: pointer;
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-mb-entwurf .vp-em-kopf p {
+  margin: 0;
+}
+
+.vp-mb-folgen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-1);
+  margin-top: var(--vp-c-space-2);
+  padding-left: var(--vp-c-space-3);
+  border-left: 2px solid var(--vp-c-border);
+}
+
+.vp-mb-folgen-titel {
+  color: var(--vp-c-muted-fg);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.vp-mb-vorige {
+  margin-top: var(--vp-c-space-3);
+}
+
+.vp-mb-zeilen > li > .vp-btn {
+  align-self: flex-start;
+}
+
+/* Konzept Wiedervorlage w1: die Rückmeldung nach „geprüft, bleibt“, das Gegenstück zur Warnkarte, in Speicher-Grün. */
+.vp-em-bestaetigt {
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--vp-flow-batt, #16a34a) 30%, var(--vp-c-border, #e2e8f0));
+  border-radius: var(--vp-radius-md, 16px);
+  background: var(--vp-flow-batt-soft, #e7f6ec);
+}

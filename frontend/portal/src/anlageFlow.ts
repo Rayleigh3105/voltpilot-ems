@@ -1,5 +1,7 @@
+import { parseDecimal } from './zahl';
 import type { MastrApplyInput, MastrPreview, SaveBatteryInput } from './api';
 import { fmtNum } from './format';
+import { FLOW_STEPS } from './anlageFlowSchritte';
 
 /**
  * Pure logic of the REGISTER-FIRST "Anlage anlegen" flow (captain
@@ -16,19 +18,8 @@ import { fmtNum } from './format';
  * from this module so it stays unit-testable without a DOM.
  */
 
-/**
- * The step rail of the flow, in order (register-first). AE5 (spec §3) moved the
- * device claim ("Gerät") ahead of the adaptive last step: the entity bootstrap +
- * usage-profile + auto-start seeding need the Anlage's master data AND its
- * gateway device in place, so it is the last, adaptive step.
- *
- * Its LABEL is **„Betrieb"** since Steuerung Stufe 0 „Entwirrung"
- * (Captain 25.08.2026: „Anwendung" ist kein Kundenwort mehr; der Schritt fragt
- * nach dem BETRIEB der Anlage — Profil, EIN Betriebsmodell, Speicherschonung).
- * Es war davor „Anwendungen" und davor „Nutzung"; die Komponenten-Id und jede
- * Route bleiben.
- */
-export const FLOW_STEPS = ['Anlage', 'Register', 'Gerät', 'Betrieb'] as const;
+/** Die Schrittleiste wohnt in `anlageFlowSchritte.ts` (Einstiegs-Bündel). */
+export { FLOW_STEPS };
 
 export type FlowStep = 1 | 2 | 3 | 4;
 
@@ -44,9 +35,15 @@ const ZAHLWORT = ['null', 'einem', 'zwei', 'drei', 'vier', 'fünf', 'sechs'] as 
  * bemerkte es, weil Satz und Schrittleiste keine gemeinsame Quelle hatten.
  * Jetzt haben sie eine — ein fünfter Schritt korrigiert den Satz von selbst.
  */
-export const STARTKLAR_SATZ = `In ${
-  ZAHLWORT[FLOW_STEPS.length] ?? FLOW_STEPS.length
-} Schritten ist Ihre Anlage startklar.`;
+export const STARTKLAR_SATZ = startklarSatz(FLOW_STEPS.length);
+
+/**
+ * Derselbe Satz für die Schritte, die der Fluss wirklich zeigt — der Modus „nur messen“
+ * hat ohne „Betrieb“ drei (`anlegeNurMessen.ts`).
+ */
+export function startklarSatz(anzahl: number): string {
+  return `In ${ZAHLWORT[anzahl] ?? anzahl} Schritten ist Ihre Anlage startklar.`;
+}
 
 /**
  * Where the flow starts: a customer who already created an Anlage (but has no
@@ -93,20 +90,16 @@ export function normalizeDeviceIdInput(value: string): string {
 export const DEVICE_ID_FIELD = {
   label: 'Geräte-ID',
   placeholder: 'z. B. edge-k7m2xq3',
-  help: 'Die Geräte-ID zeigt Ihnen Ihr VoltPilot-Gerät direkt an - in der Geräte-App unter „Einrichten" → „Kopplung mit dem VoltPilot-Portal" als „Referenz-ID dieses Geräts". Sie erscheint dort, sobald ein Wechselrichter oder eine Ladesäule Daten liefert. Manche Geräte tragen sie zusätzlich auf einem Aufkleber.',
+  // Die Einrichtungsseite der Box nennt sie „Referenz-ID dieses Geräts“ (edge-app `web/static/einrichten.html`,
+  // Karte #portal); einen Menüpunkt „Gerät verbinden“ gibt es dort nicht.
+  help: 'Die Geräte-ID zeigt Ihre VoltPilot-Box in ihrer App unter „Einrichten" → „Kopplung mit dem VoltPilot-Portal" als „Referenz-ID dieses Geräts" an. Sie erscheint dort, sobald ein Wechselrichter oder eine Ladesäule Daten liefert. Manche Boxen tragen sie zusätzlich auf einem Aufkleber.',
 } as const;
 
 /** One 422 message for both gates (unknown sticker OR mistyped edge reference). */
 export const DEVICE_ID_UNKNOWN_MSG =
   'Diese Geräte-ID kennen wir nicht. Bitte vergleichen Sie Ihre Eingabe Zeichen für Zeichen mit der ID, die Ihr Gerät anzeigt - schon ein Tippfehler verhindert die Verbindung.';
 
-/** Parse a German-or-plain decimal; null when empty or not a finite number. */
-export function parseDecimal(text: string): number | null {
-  const normalized = text.trim().replace(/\s/g, '').replace(',', '.');
-  if (normalized === '') return null;
-  const n = Number(normalized);
-  return Number.isFinite(n) ? n : null;
-}
+export { parseDecimal } from './zahl';
 
 export type BatteryFormResult =
   | { ok: true; value: SaveBatteryInput }

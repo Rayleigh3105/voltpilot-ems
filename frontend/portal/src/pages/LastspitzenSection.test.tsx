@@ -1,3 +1,4 @@
+import { bestandSnapshot, bestandsZeit } from '../test/bestandsschutzSnapshot';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { LastspitzenSection } from './LastspitzenSection';
@@ -118,6 +119,13 @@ beforeEach(() => {
   schedule.mockReset();
   earnings.mockResolvedValue(earningsDoc(peakShaving()));
   schedule.mockResolvedValue(plan());
+});
+
+it('AP-13 Bestandsschutz · Verlauf Lastspitzen ohne Messfunktion', async () => {
+  bestandsZeit();
+  const view = render(<LastspitzenSection site={SITE} />);
+  await screen.findByText('8,7 kW', { selector: '.vp-c-stm-zahl' });
+  await bestandSnapshot('verlauf-lastspitzen', view);
 });
 
 describe('P6 · Karte 1 — das Statement (E8 = a)', () => {

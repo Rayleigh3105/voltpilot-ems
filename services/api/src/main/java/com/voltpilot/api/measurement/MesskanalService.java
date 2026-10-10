@@ -3,7 +3,7 @@ package com.voltpilot.api.measurement;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.measurement.MeasurementCatalog.Semantik;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.uems.GeraetRepository;
 import com.voltpilot.api.uems.KadenzRegeln;
 import com.voltpilot.api.uems.MessstelleQuelleRepository;
@@ -42,16 +42,16 @@ import org.springframework.web.server.ResponseStatusException;
 public class MesskanalService {
 
     private final JdbcTemplate jdbc;
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final MeasurementCatalog catalog;
     private final ObjectMapper json;
     private final GeraetRepository geraete;
     private final MessstelleQuelleRepository quellen;
 
-    public MesskanalService(JdbcTemplate jdbc, SiteRepository sites, MeasurementCatalog catalog,
+    public MesskanalService(JdbcTemplate jdbc, Geltungsbereich geltungsbereich, MeasurementCatalog catalog,
             ObjectMapper json, GeraetRepository geraete, MessstelleQuelleRepository quellen) {
         this.jdbc = jdbc;
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.catalog = catalog;
         this.json = json;
         this.geraete = geraete;
@@ -72,14 +72,15 @@ public class MesskanalService {
     public MesskanalDto.Liste messkanaele(UUID siteId, UUID komponente, Instant stichtag) {
         List<UUID> standort = jdbc.query("SELECT site_id FROM measurement_point WHERE id = ?",
                 (rs, n) -> rs.getObject(1, UUID.class), komponente);
-        if (!sites.existsForCurrentTenant(siteId) || standort.isEmpty() || !siteId.equals(standort.get(0))) {
+        if (!geltungsbereich.siteVisible(siteId) || standort.isEmpty() || !siteId.equals(standort.get(0))) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Komponente nicht gefunden.");
         }
         List<Zeile> zeilen = jdbc.query("""
-                SELECT device_id, point_key, enabled, cadence_s, custom_definition::text AS custom
-                  FROM device_measurement_selection
-                 WHERE entity_id = ?
-                 ORDER BY point_key, device_id
+                SELECT s.device_id, s.point_key, s.enabled, s.cadence_s, s.custom_definition::text AS custom
+                  FROM device_measurement_selection s
+                  JOIN device d ON d.id = s.device_id AND d.ausgebaut_am IS NULL
+                 WHERE s.entity_id = ?
+                 ORDER BY s.point_key, s.device_id
                 """, (rs, n) -> new Zeile(rs.getObject("device_id", UUID.class),
                         rs.getString("point_key"), rs.getBoolean("enabled"),
                         (Integer) rs.getObject("cadence_s"), rs.getString("custom")), komponente);
@@ -91,7 +92,7 @@ public class MesskanalService {
         for (MessstelleQuelleRepository.Quelle q : quellen.derKomponenteAm(komponente, stichtag)) {
             speist.computeIfAbsent(q.kanal(), k -> new ArrayList<>()).add(new MesskanalDto.Speist(
                     q.messstelleId(), q.messstelle(), q.groesse(), q.richtung(), q.rolle(), q.zweck(),
-                    zeit(q.gueltigAb()), zeit(q.gueltigBis())));
+                    zeit(q.gueltigAb()), zeit(q.gueltigBis()), q.anteil()));
         }
         return new MesskanalDto.Liste(siteId, komponente, catalog.inhaltsstand(),
                 zeilen.stream().map(z -> kanal(z, geraet, speist.getOrDefault(z.pointKey(), List.of()))).toList());
@@ -105,10 +106,11 @@ public class MesskanalService {
      */
     public Optional<MesskanalDto.Messkanal> kanal(UUID komponente, String pointKey) {
         return jdbc.query("""
-                SELECT device_id, point_key, enabled, cadence_s, custom_definition::text AS custom
-                  FROM device_measurement_selection
-                 WHERE entity_id = ? AND point_key = ?
-                 ORDER BY device_id
+                SELECT s.device_id, s.point_key, s.enabled, s.cadence_s, s.custom_definition::text AS custom
+                  FROM device_measurement_selection s
+                  JOIN device d ON d.id = s.device_id AND d.ausgebaut_am IS NULL
+                 WHERE s.entity_id = ? AND s.point_key = ?
+                 ORDER BY s.device_id
                  LIMIT 1
                 """, (rs, n) -> new Zeile(rs.getObject("device_id", UUID.class),
                         rs.getString("point_key"), rs.getBoolean("enabled"),
@@ -119,11 +121,17 @@ public class MesskanalService {
     private MesskanalDto.Messkanal kanal(Zeile z, MesskanalDto.GeraetEinbau geraet,
             List<MesskanalDto.Speist> speist) {
         if (z.customDefinition() != null) {
-            // Selbstbau: Name und Einheit aus der eigenen Definition; eine Wertart, Größe oder
-            // Richtung trägt sie (noch) nicht — also keine.
+            // Selbstbau: Name und Einheit aus der eigenen Definition; Größe, Richtung und Wertart nur,
+            // wenn der Kunde angegeben hat, was der Wert misst („measures“, Katalogwörter wie
+            // bei einem Katalog-Kanal) — ohne Angabe keine, wie vor Schnitt 2.
             JsonNode d = lesen(z.customDefinition());
+            JsonNode m = d == null ? null : d.get("measures");
+            String quantity = text(m, "quantity");
+            String direction = text(m, "direction");
             return new MesskanalDto.Messkanal(z.pointKey(), text(d, "label"), text(d, "unit"),
-                    null, null, null, null, null, z.cadenceS(), z.enabled(), z.deviceId(), geraet, speist);
+                    MesskanalAbbildung.wertart(text(m, "aggregationKind")), MesskanalAbbildung.groesse(quantity),
+                    MesskanalAbbildung.richtung(direction), quantity, direction, z.cadenceS(), z.enabled(),
+                    z.deviceId(), geraet, speist);
         }
         MeasurementCatalog.Point p = catalog.resolve(z.pointKey());
         Semantik s = catalog.semantik(z.pointKey());

@@ -1,3 +1,4 @@
+import { bestandSnapshot, bestandsZeit } from '../test/bestandsschutzSnapshot';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { LadevorgaengeSection } from './LadevorgaengeSection';
@@ -86,6 +87,15 @@ const charging: SiteCharging = {
     },
   ],
 };
+
+it('AP-13 Bestandsschutz · Verlauf Ladevorgänge ohne Messfunktion', async () => {
+  bestandsZeit();
+  vi.spyOn(api, 'siteChargers').mockResolvedValue(charging);
+  const view = render(<LadevorgaengeSection site={site} />);
+  await screen.findByText('246 kW von 277 kW');
+  await bestandSnapshot('verlauf-ladevorgaenge', view);
+  vi.restoreAllMocks();
+});
 
 describe('LadevorgaengeSection', () => {
   beforeEach(() => vi.restoreAllMocks());

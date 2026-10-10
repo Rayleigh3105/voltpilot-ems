@@ -27,8 +27,6 @@ public class KeycloakAdminProperties {
     private String clientId = "voltpilot-api";
     /** Client secret (env/config only). */
     private String clientSecret = "voltpilot-api-dev-secret";
-    /** Realm role assigned to every provisioned customer (Portal-User). */
-    private String customerRole = "operator";
 
     public String getBaseUrl() {
         return baseUrl;
@@ -60,13 +58,5 @@ public class KeycloakAdminProperties {
 
     public void setClientSecret(String clientSecret) {
         this.clientSecret = clientSecret;
-    }
-
-    public String getCustomerRole() {
-        return customerRole;
-    }
-
-    public void setCustomerRole(String customerRole) {
-        this.customerRole = customerRole;
     }
 }

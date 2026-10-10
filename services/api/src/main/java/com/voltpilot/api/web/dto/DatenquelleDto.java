@@ -1,5 +1,6 @@
 package com.voltpilot.api.web.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
@@ -27,15 +28,27 @@ public final class DatenquelleDto {
     public record Box(UUID id, String name, UUID heimatAnlage) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Zeitraum(Box box, Instant effectiveFrom, Instant effectiveTo) {}
+    public record Zeitraum(UUID id, Box box, Instant effectiveFrom, Instant effectiveTo) {}
+
+    /** Latest source-specific feedback from the responsible box; missing only without a box. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Rueckmeldung(
+            String zustand,
+            String fehlerklasse,
+            Instant seit,
+            Instant gelesenAm,
+            Double anfragenProMinute,
+            Double messwerteProMinute,
+            Instant gemeldetAm,
+            String text) {}
 
     /**
      * Eine Datenquelle. {@code zustaendige_box} ist die Box, deren Zeitraum JETZT läuft —
      * {@code null}, wenn keine liest (Entwurf, Lücke oder erst geplant). Lebenszyklus und
-     * „liefert Daten“ sind bewusst KEINE Felder: „aktiv“ ist eine Beobachtung aus dem
-     * Herzschlag (IP-14) und wird hier nicht geraten. {@code kadenz_s} ist {@code null}, wo der
-     * Takt nicht erhoben ist — eine aus dem Bestand übernommene Quelle, deren Komponenten keinen
-     * nennen (IP-4).
+     * {@code rueckmeldung} ist die jüngste Beobachtung der zuständigen Box aus dem Herzschlag
+     * (IP-14), nie aus Lebenszyklus oder Messwerten geraten. {@code kadenz_s} ist {@code null}, wo
+     * der Takt nicht erhoben ist — eine aus dem Bestand übernommene Quelle, deren Komponenten
+     * keinen nennen (IP-4).
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Datenquelle(
@@ -53,7 +66,12 @@ public final class DatenquelleDto {
             Integer kadenzS,
             Instant archiviertAm,
             Box zustaendigeBox,
-            List<Zeitraum> zeitraeume) {}
+            List<Zeitraum> zeitraeume,
+            Uebergabe uebergabe,
+            Rueckmeldung rueckmeldung) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Uebergabe(String zustand, Instant seit, Box boxAlt, Box boxNeu) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Liste(List<Datenquelle> datenquellen) {}
@@ -111,7 +129,13 @@ public final class DatenquelleDto {
      * {@code POST …/{id}/reachability-check}: EIN Lese-Schritt von GENAU {@code device_id} an die
      * Adresse der Quelle (Host und Port kommen von der Quelle, nie aus der Anfrage).
      * {@code unit_id} ist die Modbus-Geräte-ID; {@code register} ist bei SunSpec-Modbus mit
-     * 40000 (Kennung „SunS“) vorbelegt und bei Modbus TCP Pflicht.
+     * 40000 (Kennung „SunS“) vorbelegt und bei Modbus TCP Pflicht. {@code data_type} nimmt das
+     * Wort des Probe-Vertrags ({@code u16} …) oder die Katalog-Schreibweise ({@code uint16} …) —
+     * zur Box geht immer das Vertragswort.
+     *
+     * <p>{@code op} (AP-05): {@code read} (Vorgabe, EIN Lese-Schritt) oder {@code wago_kopf} — der
+     * Kopf eines VoltPilot-Registerbilds WAGO v1 an der Basisadresse {@code register} (nur Modbus
+     * TCP, ohne {@code data_type}), danach je gemeldeter Karte Steckplatz, Kartentyp und Variante.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Pruefen(
@@ -120,7 +144,8 @@ public final class DatenquelleDto {
             Integer register,
             String registerKind,
             String dataType,
-            String wordOrder) {}
+            String wordOrder,
+            String op) {}
 
     /**
      * Das Ergebnis einer Prüfung. {@code ergebnis} ist „ok“, eine Fehlerklasse des Vertrags
@@ -128,6 +153,8 @@ public final class DatenquelleDto {
      * {@code not_supported}, {@code invalid_request}) bzw. {@code box_meldet_sich_nicht}.
      * {@code gewertet}: zählt sie für eine Zuständigkeit (und steht sie im Protokoll)?
      * {@code antwort} ist die rohe Antwort der Box, fehlt, wenn sie nicht geantwortet hat.
+     * {@code wago} steht NUR bei {@code op: wago_kopf} — eine Lese-Prüfung antwortet Byte für Byte
+     * wie zuvor.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Pruefergebnis(
@@ -138,7 +165,34 @@ public final class DatenquelleDto {
             String text,
             Instant zeitpunkt,
             long dauerMs,
-            ProbeResult antwort) {}
+            ProbeResult antwort,
+            @JsonInclude(JsonInclude.Include.NON_NULL) WagoPruefung wago) {}
+
+    /**
+     * Was die Steuerung bei {@code op: wago_kopf} über ihr Registerbild gemeldet hat — nur Gelesenes,
+     * Lücke statt Null. {@code erkannt}: an der Basisadresse steht ein VoltPilot-Registerbild WAGO v1;
+     * nur dann stehen Kennung, Kartenzahl und Karten da. {@code satz} ist der Satz für den Kunden.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    public record WagoPruefung(
+            boolean erkannt,
+            String satz,
+            Long controllerKennung,
+            Integer kartenzahl,
+            List<WagoKarteGelesen> karten) {}
+
+    /**
+     * Die drei Kennwörter von Karte {@code karte} (1 = erster Kartenblock, Vertrag §4 Offset 0–2),
+     * so wie die Steuerung sie meldet; {@code null} = nicht gelesen. {@code kartentyp} ist die
+     * Artikelnummer ohne „750-“.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record WagoKarteGelesen(
+            int karte,
+            Integer steckplatz,
+            Integer kartentyp,
+            Integer variante) {}
 
     /** Wer einen Eintrag geschrieben hat — im Akteur-Vokabular von AP-03. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -171,7 +225,9 @@ public final class DatenquelleDto {
      * (dem Reihenbeginn) ohnehin liest. {@code kennzeichen} ist das, das eine Bestätigung in
      * dieser Reihenfolge bekäme; {@code grund} ist {@code null}, wenn der Vorschlag übernommen
      * werden kann, sonst der Grund des Vertrags ({@code adresse_an_box_vergeben}); {@code text}
-     * ist der Satz dazu.
+     * ist der Satz dazu. {@code ziel} nennt bei {@code adresse_an_box_vergeben} die EINE
+     * vorhandene Quelle derselben Anlage, an die die Bestätigung die Komponenten hängen kann
+     * („Gerät dort hinzufügen?"), sonst {@code null}.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Vorschlag(
@@ -185,7 +241,12 @@ public final class DatenquelleDto {
             Instant ab,
             List<VorschlagKomponente> komponenten,
             String grund,
-            String text) {}
+            String text,
+            VorschlagZiel ziel) {}
+
+    /** Die vorhandene Quelle, die einen gesperrten Vorschlag aufnehmen kann: Kennung, Kennzeichen, Name. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record VorschlagZiel(UUID id, String kennzeichen, String name) {}
 
     /** Eine Komponente ohne Vorschlag — mit dem Grund des Vertrags und seinem Satz. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -208,9 +269,19 @@ public final class DatenquelleDto {
             List<Vorschlag> vorschlaege,
             List<Ausgelassen> ausgelassen) {}
 
-    /** Ein bestätigter Vorschlag — genau so, wie das GET ihn zeigte: Box, Weg, Komponenten. */
+    /**
+     * Ein bestätigter Vorschlag — genau so, wie das GET ihn zeigte: Box, Weg, Komponenten. Mit
+     * {@code datenquelle_id} (dem {@code ziel} des GET) hängt die Bestätigung die Komponenten an
+     * diese vorhandene Quelle, statt eine neue anzulegen; ohne bleibt ein gesperrter Vorschlag 409.
+     */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Bestaetigt(UUID deviceId, String protokoll, String adresse, List<UUID> komponenten) {}
+    public record Bestaetigt(UUID deviceId, String protokoll, String adresse, List<UUID> komponenten,
+            UUID datenquelleId) {
+
+        public Bestaetigt(UUID deviceId, String protokoll, String adresse, List<UUID> komponenten) {
+            this(deviceId, protokoll, adresse, komponenten, null);
+        }
+    }
 
     /** {@code POST …/vorschlag/uebernehmen}. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -218,9 +289,9 @@ public final class DatenquelleDto {
 
     /**
      * Was die Bestätigung geschrieben hat: {@code neu} Quellen angelegt, {@code unveraendert}
-     * waren schon übernommen (ein zweiter Aufruf ist 0 neue); {@code datenquellen} in der
-     * Reihenfolge der Anfrage.
+     * waren schon übernommen (ein zweiter Aufruf ist 0 neue), {@code angehaengt} Vorschläge an
+     * eine vorhandene Quelle gehängt; {@code datenquellen} in der Reihenfolge der Anfrage.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-    public record Uebernommen(int neu, int unveraendert, List<Datenquelle> datenquellen) {}
+    public record Uebernommen(int neu, int unveraendert, int angehaengt, List<Datenquelle> datenquellen) {}
 }

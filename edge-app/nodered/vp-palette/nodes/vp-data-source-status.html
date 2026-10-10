@@ -1,0 +1,9 @@
+<script type="text/javascript">
+RED.nodes.registerType('vp-data-source-status', { category:'VoltPilot', color:'#c7e9c0',
+  defaults:{ name:{value:''}, core:{value:'',type:'vp-core',required:true} },
+  inputs:1, outputs:0, icon:'bridge.svg', label:function(){return this.name || 'Quellenstatus';} });
+</script>
+<script type="text/x-red" data-template-name="vp-data-source-status">
+<div class="form-row"><label for="node-input-core">Core</label><input type="text" id="node-input-core"></div>
+<div class="form-row"><label for="node-input-name">Name</label><input type="text" id="node-input-name"></div>
+</script>

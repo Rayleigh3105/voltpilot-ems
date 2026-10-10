@@ -1,0 +1,145 @@
+import './rollen-fixture';
+import ReactDOM from 'react-dom/client';
+import { keycloak } from '../src/auth';
+import type { UemsGemeinsameSteuerungEinrichten, UemsGemeinsameSteuerungSetzen, UemsGemeinsameSteuerungZustand } from '../src/api';
+import { useGemeinsameSteuerung } from '../src/components/GemeinsameSteuerungKarte';
+import type { VerlustVariante } from '../src/gemeinsameSteuerungFlaeche';
+import { GemeinsameSteuerungAbschnitt } from '../src/pages/AnlageTechnik';
+import { RechteStandort } from '../src/rollen';
+import { ahrenbergFunktionen } from '../src/test/funktionenFixtures';
+import { GS_ABWEICHEND, GS_IDS, gsBoxen, gsDatenquellen, gsEingerichtet, gsVorschlag, gsZustand, type GsLage } from '../src/test/gemeinsameSteuerungFixtures';
+import { FIXTURE_IDS } from '../src/test/standorteFixtures';
+import '../designsystem/tokens/fonts.css';
+import '../designsystem/tokens/colors.css';
+import '../designsystem/tokens/typography.css';
+import '../designsystem/tokens/spacing.css';
+import '../designsystem/tokens/effects.css';
+import '../designsystem/components/core/core.css';
+import '../designsystem/components/shell/shell.css';
+import '../src/index.css';
+
+/**
+ * AP-15 IP-23 — Bühne der Karte „Gemeinsame Steuerung“ (Anlage → Technik) mit der echten Komponente. Die Routen der
+ * Gemeinsamen Steuerung, `/funktionen` und `…/data-sources` stellt dieser `fetch`, mit einem kleinen Zustand, damit
+ * die Folge wirklich einrichtet (Frage 6 aus `POST …/einrichten/vorschau`, die NICHTS schreibt; erst „Absenden“ =
+ * PUT → Stufe S1). Zahlen aus der Referenzdatei 1.5 (V-1 an AN-1). Parameter: `lage`, `ausfall` (verwaltung · halle1
+ * · beide; der Herzschlag steht in `zuletzt_gehoert` der Route), `wirksam=abweichend` (der Betreiber ist beim
+ * Scharfschalten abgewichen: 30/70, Bezug 5/72), `kwh`/`gebunden` (Verlust-Zeile von E-4), `variante` (A · B),
+ * `boxen=1`, `anlage=an2` (misst nur), `ungeregelt=<kW>` (per API erklärtes Ungeregeltes hinter dem Abgang von E-4,
+ * AP-15 Folge von IP-19).
+ */
+(keycloak as unknown as { token: string; updateToken: () => Promise<boolean> }).token = 'e2e-token';
+(keycloak as unknown as { updateToken: () => Promise<boolean> }).updateToken = async () => false;
+
+const p = new URLSearchParams(location.search);
+const siteId = p.get('anlage') === 'an2' ? FIXTURE_IDS.an2 : FIXTURE_IDS.an1;
+const ausfall = p.get('ausfall');
+const verlust = p.has('gebunden') ? { kwh: Number(p.get('kwh') ?? 0), gebunden_s: Number(p.get('gebunden')), tage: 1 } : null;
+const variante = (p.get('variante') ?? undefined) as VerlustVariante | undefined;
+
+/**
+ * AP-15 Folge (PR 1149): `einspeisegrenze=keine` — das Grenzblatt erklärt ausdrücklich keine Einspeisegrenze (Einspeisung
+ * unbegrenzt, keine Auslegung, kein Anteil); `=fehlt` — nicht eingetragen (unbekannt). Ohne Parameter wie bisher.
+ */
+const einspeisegrenze = p.get('einspeisegrenze');
+const ohneEinspeisegrenze = (e: UemsGemeinsameSteuerungEinrichten): UemsGemeinsameSteuerungEinrichten =>
+  einspeisegrenze !== 'keine' && einspeisegrenze !== 'fehlt' ? e : {
+    ...e,
+    grenzen: { einspeisung_kw: null, bezug_kw: e.grenzen?.bezug_kw ?? null, einspeisung_keine: einspeisegrenze === 'keine' },
+    ergebnis: e.ergebnis ? { ...e.ergebnis, einspeisung: null } : e.ergebnis,
+  };
+
+let lage = (p.get('lage') ?? 'nicht_eingerichtet') as GsLage;
+let einrichten: UemsGemeinsameSteuerungEinrichten = ohneEinspeisegrenze(lage === 'nicht_eingerichtet' ? gsVorschlag() : gsEingerichtet());
+if (p.has('ungeregelt')) {
+  const hoechstwert = Number(p.get('ungeregelt'));
+  einrichten = { ...einrichten, boxen: einrichten.boxen.map((b) =>
+    b.box_id === GS_IDS.e4 ? { ...b, ungeregelt: [{ richtung: 'bezug' as const, hoechstwert_kw: hoechstwert }] } : b) };
+}
+let geschrieben: UemsGemeinsameSteuerungSetzen | null = null;
+let vorschauen = 0;
+let k12Rueckfall: number | null = null;
+(window as unknown as Record<string, unknown>).__gsGeschrieben = () => geschrieben;
+(window as unknown as Record<string, unknown>).__gsVorschauen = () => vorschauen;
+
+const jetzt = new Date();
+const seit = {
+  halle1Seit: ausfall === 'halle1' || ausfall === 'beide' ? 25 * 60 : 40,
+  verwaltungSeit: ausfall === 'verwaltung' || ausfall === 'beide' ? 30 * 60 : 35,
+};
+const wirksam = p.get('wirksam') === 'abweichend' ? GS_ABWEICHEND
+  : einspeisegrenze === 'keine' ? { e1: { einspeisung_kw: null, bezug_kw: 0 }, e4: { einspeisung_kw: null, bezug_kw: 77 } } : undefined;
+const zustand = (l: GsLage = lage): UemsGemeinsameSteuerungZustand => {
+  const z = gsZustand(l, verlust, { jetzt, wirksam, ...seit });
+  if (!p.has('aufloesen')) return z;
+  return { ...z, zustand: 'wird_aufgeloest', stufe: null, fehlt: [], naechster_schritt: null,
+    aufloesen: { bestaetigt: 0, gesamt: 1, wartet_auf: [GS_IDS.e4] },
+    mitglieder: z.mitglieder?.map((m) => m.box_id !== GS_IDS.e4 ? m : {
+      ...m, ausscheiden: { seit: jetzt.toISOString(), wartet_auf: 'box' },
+    }),
+  };
+};
+/** Die Auslegung mit dem am Gerät hinterlegten Rückfall von K-12 (eine gespeicherte Tatsache am Gerät). */
+const ausgelegt = (): UemsGemeinsameSteuerungEinrichten => {
+  const e = ohneEinspeisegrenze(gsEingerichtet());
+  if (k12Rueckfall == null) return e;
+  return { ...e, boxen: e.boxen.map((b) => ({ ...b, geraete: (b.geraete ?? []).map((g) =>
+    g.komponente_id === GS_IDS.k12 ? { ...g, rueckfall: 'faellt_auf_wert', rueckfall_kw: k12Rueckfall, rueckfall_herkunft: 'am_geraet' as const } : g) })) };
+};
+const echtesFetch = window.fetch.bind(window);
+window.fetch = async (input, init) => {
+  const url = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url, location.href);
+  const methode = (init?.method ?? 'GET').toUpperCase();
+  const pfad = url.pathname;
+  if (pfad === '/api/v1/funktionen') return Response.json(ahrenbergFunktionen());
+  if (pfad.endsWith('/data-sources')) return Response.json({ datenquellen: gsDatenquellen() });
+  const gs = /^\/api\/v1\/sites\/[^/]+\/gemeinsame-steuerung(\/.*)?$/.exec(pfad);
+  if (gs) {
+    const rest = gs[1] ?? '';
+    if (rest === '' && methode === 'GET') return Response.json(zustand());
+    if (rest === '/einrichten') return Response.json(einrichten);
+    if (rest === '/einrichten/vorschau' && methode === 'POST') {
+      // Frage 6 für den Entwurf — schreibt nichts: weder `lage` noch `einrichten` noch `geschrieben` ändern sich
+      if (lage === 'anteile_aktiv') return Response.json({ code: 'erst_anhalten', message: 'Erst anhalten.' }, { status: 409 });
+      vorschauen += 1;
+      return Response.json({ einrichten: ausgelegt(), zustand: zustand('beobachtet') });
+    }
+    if (rest === '' && methode === 'PUT') {
+      if (lage === 'anteile_aktiv') return Response.json({ code: 'erst_anhalten', message: 'Erst anhalten.' }, { status: 409 });
+      geschrieben = JSON.parse(String(init?.body));
+      lage = 'beobachtet';
+      einrichten = ausgelegt();
+      return Response.json(zustand());
+    }
+    if (rest.endsWith('/rueckfall') && methode === 'PUT') {
+      k12Rueckfall = (JSON.parse(String(init?.body)) as { rueckfall_kw: number }).rueckfall_kw;
+      if (lage !== 'nicht_eingerichtet') einrichten = ausgelegt();
+      return Response.json({});
+    }
+    if (rest === '/anhalten' && methode === 'POST') { lage = 'angehalten'; return Response.json(zustand()); }
+    if (rest === '/fortsetzen' && methode === 'POST') { lage = 'anteile_aktiv'; return Response.json(zustand()); }
+  }
+  return echtesFetch(input, init);
+};
+
+// Die Geräteliste bleibt frisch: die Ausfall-Sätze lesen `zuletzt_gehoert` aus der Route, nicht diese Liste.
+const boxen = gsBoxen(jetzt).map((b) => ({ ...b, siteId })).slice(0, p.get('boxen') === '1' ? 1 : 2);
+
+function Buehne() {
+  const daten = useGemeinsameSteuerung(siteId, boxen);
+  return (
+    <div className="vp-technik">
+      {/* Die Spalte der Sprung-Navigation bleibt leer: die Karte steht in ihrer echten Breite. */}
+      <div aria-hidden="true" />
+      <div className="vp-technik-sections">
+        <GemeinsameSteuerungAbschnitt siteId={siteId} siteDevices={boxen} daten={daten} verlustVariante={variante} />
+        {!daten.sichtbar && <p data-testid="gs-ohne-karte">Keine Karte „Gemeinsame Steuerung“.</p>}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')!).render(<div className="vp-content">
+  <header className="vp-topbar"><div className="crumbs">Kunststoffwerk Ahrenberg · Werk Ahrenberg – Halle 1 · Technik</div></header>
+  <main className="vp-main"><RechteStandort.Provider value={FIXTURE_IDS.st1}><Buehne /></RechteStandort.Provider></main>
+</div>);

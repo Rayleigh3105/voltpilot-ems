@@ -25,7 +25,7 @@ import org.springframework.web.server.ResponseStatusException;
 class CockpitLayoutServiceTest {
 
     private final AnwendungKatalog katalog = new AnwendungKatalog(new ObjectMapper());
-    private final CockpitLayoutService service = new CockpitLayoutService(null, null, katalog, null, new ObjectMapper());
+    private final CockpitLayoutService service = new CockpitLayoutService(null, null, katalog, null, new ObjectMapper(), null);
 
     private static LayoutDoc doc(List<String> order, List<String> hidden, List<String> shown,
             String lead) {
@@ -121,8 +121,9 @@ class CockpitLayoutServiceTest {
     void derPortfolioKatalogTraegtSeineEigenenBausteine() {
         var portfolio = katalog.bausteine("portfolio");
         assertThat(portfolio.stream().map(b -> b.id())).containsExactly("flotten-status",
-                "erloese", "speicher", "lastspitzen", "ladepunkte", "pv-jetzt", "erzeugung-heute",
-                "verbrauch-heute", "netz-heute", "anlagen");
+                "datenlage", "netzbezug-gesamt", "erloese", "speicher", "lastspitzen", "ladepunkte", "pv-jetzt", "erzeugung-heute",
+                "verbrauch-heute", "netz-heute", "messstellen", "energiebilanz", "kennzahlen", "bewertung", "ziele-massnahmen", "energiemanagement",
+                "anlagen");
         // Pflicht sind der Kopf und die Anlagen-Liste: eine Flotten-Fläche ohne
         // ihre Anlagen wäre keine.
         assertThat(portfolio.stream().filter(b -> b.pflicht()).map(b -> b.id()))

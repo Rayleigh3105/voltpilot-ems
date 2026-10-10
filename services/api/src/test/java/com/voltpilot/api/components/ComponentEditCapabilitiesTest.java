@@ -18,7 +18,7 @@ import com.voltpilot.api.entities.EntityTypeCatalog;
 import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.MeasurementPointRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.templates.ComponentTemplateRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.ComponentTemplateDto;
@@ -60,7 +60,7 @@ class ComponentEditCapabilitiesTest {
 
     private final ObjectMapper json = new ObjectMapper();
 
-    private final SiteRepository sites = mock(SiteRepository.class);
+    private final Geltungsbereich sites = mock(Geltungsbereich.class);
     private final MeasurementPointRepository points = mock(MeasurementPointRepository.class);
     private final EntityRegistryRepository entityRepo = mock(EntityRegistryRepository.class);
     private final EntityRegistryService registry = mock(EntityRegistryService.class);
@@ -179,7 +179,6 @@ class ComponentEditCapabilitiesTest {
 
     private void stubEdit(EntityRow existing) {
         TenantContext.set(TENANT);
-        when(sites.existsForCurrentTenant(SITE)).thenReturn(true);
         when(definitions.componentAuthority(SITE)).thenReturn("portal");
         when(entityRepo.entityForSite(SITE, ENTITY)).thenReturn(existing);
         when(entityRepo.entitiesForSite(SITE)).thenReturn(List.of());

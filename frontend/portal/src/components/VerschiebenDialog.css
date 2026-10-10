@@ -1,0 +1,67 @@
+/*
+ * „… verschieben“ (UEMS AP-02 IP-12, Mockups V2–V4). Schale `vp-sd`, Kopf aus „Fläche ändern“, die
+ * Folgen-Karte aus „Anlage zuordnen“ (`vp-au-*`); hier nur, was dazukommt: der Weg unter einem
+ * Bleibenden und der Protokolleintrag nach dem Speichern.
+ * ⚠ 375 px: jeder Satz bricht um, nie über den Rand (`min-width: 0`, `overflow-wrap`).
+ */
+
+.vp-vd-heute {
+  font-weight: var(--vp-c-fw-500, 500);
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-vd-bleibt-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.vp-vd-weg {
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-13, 13px);
+}
+
+.vp-vd-leer {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-vd-protokoll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-2);
+  padding: var(--vp-c-space-3) var(--vp-c-space-4);
+  border-radius: var(--vp-c-radius-sm);
+  border: 1px solid var(--vp-c-border, #d9dde3);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-vd-protokoll h4 {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-vd-protokoll dl {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-1, 4px);
+  margin: 0;
+}
+
+.vp-vd-protokoll dl > div {
+  display: grid;
+  grid-template-columns: 5rem minmax(0, 1fr);
+  gap: var(--vp-c-space-2);
+}
+
+.vp-vd-protokoll dt {
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-vd-protokoll dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}

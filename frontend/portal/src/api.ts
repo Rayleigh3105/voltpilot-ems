@@ -1,4 +1,8 @@
 import { AuthRedirectError, freshToken } from './auth';
+import type { BezugsbasisUebersicht, BezugsbasisZustand } from './bezugsbasisUebersicht';
+import type { BezugsbasisVergleich, BezugsbasisVergleichMonat, BezugsbasisVergleichWahl } from './bezugsbasisVergleich';
+import type { VerbesserungUebersicht } from './verbesserungUebersicht';
+import type { Wiedervorlage, WiedervorlageZuletzt } from './wiedervorlage';
 import type { SimulationRequestInput, SimulationStatus } from './simulation';
 import type { SocCurveTemplate } from './batterieAnschluss';
 import type { ProfileState, SiteProfiles } from './profiles';
@@ -9,6 +13,7 @@ import type {
   Flaeche as CockpitLayoutFlaeche,
 } from './cockpitLayout';
 import type { Profil } from './anwendungen';
+import type { BezugsgroesseLesart } from './bezugsgroesse';
 import type { EigeneAuswertungWerte } from './eigeneAuswertung';
 import type {
   ChargingBoostResult,
@@ -25,6 +30,7 @@ export type {
   SurplusPolicy,
 } from './ladepunkte';
 import type { SiteVerbraucher } from './verbraucherZone';
+import type { Aktion as FunktionAktion, FunktionZustand, Pruefung as FunktionPruefung } from './uemsFunktion';
 export type { SiteVerbraucher } from './verbraucherZone';
 import type { SteuerartErgebnis, SteuerartWunsch } from './steuerartDialog';
 export type { SteuerartErgebnis, SteuerartWunsch } from './steuerartDialog';
@@ -34,6 +40,40 @@ export type { Fahrzeug, FahrzeugWunsch, SiteFahrzeuge } from './fahrzeugProfile'
 import type { Topology } from './topology';
 import type { ModellWahlZustand } from './prognose';
 import type { ComponentMatch } from './komponentenAssistent';
+
+/** AP-08 IP-16: Prüfseite und Ersatzwerte; Werte entstehen erst nach Freigabe im Rechenlauf. */
+export type ErsatzwertMethode = 'gleichmaessig_verteilen' | 'profil_vorperiode' | 'profil_vergleichsquelle'
+  | 'ablesestand_nachtragen' | 'wert_eingeben' | 'vorperiode_uebernehmen' | 'vergleichsquelle_uebernehmen';
+export interface ErsatzwertLuecke { id: string; art: 'data_gap' | 'counter_reset' | 'device_boundary'; von: string; bis: string | null; zuwachs: number | null; einheit: string | null }
+export interface ErsatzwertEingabe {
+  quelle_id: string; methode: ErsatzwertMethode; von: string; bis: string; begruendung: string;
+  beleg?: string; luecke_ereignis_id?: string; vorperiode_von?: string; vergleich_quelle_id?: string;
+  zeitpunkt?: string; endstand?: number; anfangsstand?: number; betrag?: number; einheit?: string;
+}
+export interface KorrekturPeriodenStand {
+  menge: number | null; menge_zustand: string; kennzeichen?: string[];
+  erhalten?: number; erwartet?: number; abdeckung_prozent?: number | null;
+}
+export interface KorrekturPeriode {
+  periode: string; von: string; bis: string; version_alt?: number; version_neu?: number;
+  alt?: KorrekturPeriodenStand; neu: KorrekturPeriodenStand;
+}
+export interface KorrekturAuswirkungen {
+  perioden: string[]; berechnete_messstellen: string; kennzahlen: string; berichte: string;
+}
+export interface KorrekturAktion { erlaubt: boolean; grund: string | null }
+export interface KorrekturDetail {
+  kennung: string; art: string; status: 'vorschlag' | 'freigegeben' | 'abgelehnt' | 'zurueckgenommen';
+  fassung: number; von: string; bis: string; begruendung: string; beleg: string | null;
+  ersatzwert_kennung: string | null; methode: ErsatzwertMethode | null; einheit: string | null;
+  messstellen: { kennzeichen: string; name: string }[];
+  ersteller: { name: string; rolle: string; art: string }; erstellt_am: string; vieraugen: boolean;
+  vorschau: KorrekturPeriode[]; auswirkungen: KorrekturAuswirkungen;
+  freigeben: KorrekturAktion; zuruecknehmen: KorrekturAktion; ablehnen: KorrekturAktion;
+}
+export interface ErsatzwertVorschau {
+  perioden: KorrekturPeriode[]; auswirkungen: KorrekturAuswirkungen; vieraugen: boolean; freigabe_noetig: boolean;
+}
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8090';
 
@@ -164,6 +204,25 @@ export interface Site {
  */
 export interface SiteDetail extends Site {
   standort: StandortBezug | null;
+}
+
+/** Belegte offene Ausfälle eines Standorts; Ursachen stehen nur an Fakten aus `data_gap`. */
+export interface StandortAusfall {
+  standort_id: string;
+  boxen_gesamt: number;
+  boxen_ausgefallen: number;
+  messstellen_unvollstaendig: number;
+  boxen: Array<{ id: string; name: string; seit: string; anlagen: string[] }>;
+  messstellen: Array<{
+    id: string;
+    kennzeichen: string;
+    name: string | null;
+    art: 'gemessen' | 'berechnet';
+    seit: string | null;
+    box_id: string | null;
+    box: string | null;
+    fehlt: string[];
+  }>;
 }
 
 /**
@@ -307,6 +366,14 @@ export interface Intervention {
   endsAt: string;
   createdBy: string | null;
   createdAt: string;
+  /** AP-03 IP-7: wer den Eingriff gesetzt hat; null für einen Eingriff von vor dieser Fassung. */
+  urheber?: ProtokollUrheber | null;
+  /**
+   * AP-03 IP-9 (E15): der Satz der Jetzt-Zone — „gesetzt von Murat Demirci" und, wenn dessen Bedienrecht
+   * inzwischen endete, „… (Bedienrecht beendet am 14.11.2026 09:02)". Der Eingriff selbst bleibt und wirkt
+   * bis zu seinem Ende; ein Entzug schaltet nie. null ohne bekannten Urheber.
+   */
+  etikett?: string | null;
 }
 
 /**
@@ -375,6 +442,8 @@ export interface InterventionOutcome {
   applied: boolean;
   /** Ist der Wunsch wirklich hinausgegangen? Sonst sagt `message` das. */
   pushed: boolean;
+  /** Benannter Zustellgrund, wenn der Wunsch die Box noch nicht erreicht hat. */
+  pushReason?: string | null;
   kind: string;
   endsAt: string | null;
   effectivePowerKw: number | null;
@@ -726,8 +795,17 @@ export interface HistoryTotals {
    * customer-facing plan line stays ABSENT rather than showing the old one.
    */
   steuerungPlannedEur?: number | null;
+  /** Ungeklemmt — außerhalb 0…100 % trägt `autarkieUnplausibel` es (AP-10 E16 Nr. 5). */
   autarkiePct: number | null;
+  /** Ungeklemmt — außerhalb 0…100 % trägt `eigenverbrauchUnplausibel` es. */
   eigenverbrauchPct: number | null;
+  /**
+   * Die Quote liegt außerhalb 0…100 %: die Messwerte passen nicht zusammen.
+   * OPTIONAL, weil ein älterer Server es nicht liefert — gelesen wird es nur über
+   * `quoteUnplausibel`, das dann am Wertebereich prüft.
+   */
+  autarkieUnplausibel?: boolean | null;
+  eigenverbrauchUnplausibel?: boolean | null;
 }
 
 export type ProtocolEventType =
@@ -923,7 +1001,7 @@ export interface Device {
   /** Optional customer-facing label (Bezeichnung); externalRef stays the identity. */
   name: string | null;
   status: string;
-  /** Newest telemetry timestamp; null until the first data arrives. */
+  /** Newest status-heartbeat arrival; legacy telemetry is the migration fallback. */
   lastSeenAt: string | null;
   /** When the device was claimed; drives the waiting-too-long escalation. */
   createdAt: string | null;
@@ -943,6 +1021,20 @@ export interface Device {
    * aus einem Browser-Aufruf (der auch über ein Service-VPN erfolgt sein kann).
    */
   lanSource?: 'erreicht' | 'schnittstelle' | null;
+  /** Server-derived role; absent on older backends. Never infer it from list order. */
+  fuehrtAnlage?: boolean | null;
+}
+
+/** AP-06 IP-19: Ergebnis der Nachfolger-Anmeldung; `zugestellt=false` ist erst vorbereitet. */
+export interface BoxTauschAntwort {
+  tausch: {
+    oldDeviceId: string;
+    newDeviceId: string;
+    siteId: string;
+    effectiveAt: string;
+    transferred: Record<string, number>;
+  };
+  zugestellt: boolean;
 }
 
 export interface MeasurementCatalogPoint {
@@ -1046,9 +1138,21 @@ export interface MeasurementSelectionState {
       label: string; sourceKind: string; address: number; selector: string; valueType: string;
       widthBits: number; signed: boolean; endian: string; scale: number; unit: string;
       cadenceS: number; retentionClass: string; readOnly: boolean; requestCostMs: number;
+      measures?: CustomMeasurementMeasures;
     } | null;
   }>;
   volumeEstimate: MeasurementBudgetEstimate;
+}
+
+/**
+ * Was ein eigener Messwert misst (openapi `CustomMeasurementMeasures`) — in den
+ * Katalogwörtern; nur damit trägt er eine Messstelle. Fehlt es, bleibt der Wert
+ * Beobachtung wie bisher.
+ */
+export interface CustomMeasurementMeasures {
+  quantity: 'active_energy' | 'active_power';
+  direction: 'import' | 'export' | 'generation' | 'charge' | 'discharge';
+  aggregationKind: 'counter' | 'gauge';
 }
 
 export type MeasurementRange = '24h' | '7d' | '30d' | '90d' | 'year' | 'free';
@@ -1073,6 +1177,11 @@ export interface MeasurementHerkunft {
   box: string | null; boxZwei: string | null;
   fassung: number | null; katalogVersion: string | null; rolle: string | null;
   standAnfang: number | null; standEnde: number | null;
+  /** Nur Speicherklassen: Vollständigkeit der Menge (bzw. des Momentanwerts) und ihre Kennzeichen. */
+  mengeZustand?: 'vollständig' | 'unvollständig' | 'keine Werte';
+  kennzeichen?: string[];
+  /** Energie aus Leistung — interpoliert, darum nie ohne ihr Kennzeichen „aus Leistung integriert …". */
+  energieAusLeistung?: { wert: number; kennzeichen: string };
 }
 
 export interface MeasurementHistory {
@@ -1311,7 +1420,7 @@ export interface SiteDeletionPreview {
 /** Portal onboarding state derived from telemetry recency. */
 export type DeviceLiveStatus = 'online' | 'stale' | 'waiting';
 
-/** A device counts as online when telemetry arrived within this window. */
+/** A box counts as connected when its status heartbeat arrived within this window. */
 export const ONLINE_WINDOW_MS = 5 * 60 * 1000;
 
 export function deviceLiveStatus(d: Device, now: Date = new Date()): DeviceLiveStatus {
@@ -1901,15 +2010,53 @@ export interface EntityHistory {
  * snake_case schreiben — `request()` wandelt NICHT um.
  */
 export interface Messkanal {
+  quantity?: string | null;
   kanal: string;
   anzeigename: string | null;
   einheit: string | null;
   wertart: string | null;
   groesse: string | null;
   richtung: string | null;
-  /** Rohe Katalog-Richtung, bereits Teil von MesskanalDto (z. B. import_export). */
-  direction: string | null;
   aktiv: boolean;
+  /** Die Box, die den Kanal liest (AP-04-Read-Model); Kennung, nicht Anzeigename. */
+  lesende_box?: string | null;
+  /** Das zum Stichtag eingebaute Gerät; `null` heißt: nicht erfasst. */
+  geraet?: MesskanalGeraet | null;
+  /**
+   * Das KATALOGWORT der Richtung (`import_export`, `import`, …) — nicht das Kundenwort `richtung`.
+   * Nur daran hängt der Anteil eines Vorzeichen-Werts (AP-08 IP-7, E15); fehlend = keiner.
+   */
+  direction?: string | null;
+  /** Die gewünschte Kadenz der Mess-Selektion in Sekunden; `null` = nicht festgelegt. */
+  kadenz_s?: number | null;
+  /** Welche Messstellen der Kanal jetzt speist (AP-04 IP-13) — leer ohne laufende Quellenbindung. */
+  speist?: MesskanalSpeist[];
+}
+
+export interface MesskanalGeraet {
+  id: string;
+  geraet: string;
+  einbau: string | null;
+  seriennummer: string | null;
+}
+
+/** Eine laufende Quellenbindung des Kanals — genug für „speist MS-06 (führend)“. */
+export interface MesskanalSpeist {
+  messstelle_id: string;
+  messstelle: string;
+  groesse: string | null;
+  richtung: string | null;
+  rolle: 'fuehrend' | 'vergleich';
+  /** Nur bei `vergleich`: Plausibilität · Ersatz bei Ausfall · Abrechnungszähler. */
+  zweck: string | null;
+  gueltig_ab: string;
+  gueltig_bis: string | null;
+  /**
+   * Additiv (AP-04 IP-14): welchen Teil eines Vorzeichen-Werts die Bindung liest (AP-08 IP-7,
+   * E15); fehlend/`null` = der ganze Wert. Erst damit graut „Quelle binden“ richtig aus — EIN
+   * Vorzeichen-Kanal führt den Bezug der einen und die Abgabe der anderen Messstelle.
+   */
+  anteil?: 'positiv' | 'negativ' | null;
 }
 
 export interface MesskanalListe {
@@ -1935,9 +2082,17 @@ export interface Messstelle {
   art: string;
   medium: string | null;
   lebenszyklus: string;
-  hauptgroesse?: MessstelleGroesse | null;
   fehlt: string[];
   notiz: string | null;
+  // Additiv (AP-04 IP-6): die volle Form der Detail-Route, snake_case — der Messstellen-Dialog
+  // „bearbeiten“ liest daraus Hauptgröße, Zuordnungen und ob schon eine Quelle führt.
+  hauptgroesse?: MessstelleGroesse | null;
+  nebengroessen?: (MessstelleGroesse & { lebenszyklus: string; fuehrende_quelle?: MessstelleQuelleZeitraum[] })[];
+  orte?: MessstelleOrtZuordnung[];
+  elektrische_stellung?: MessstelleStellungZuordnung[];
+  fuehrende_quelle?: MessstelleQuelleZeitraum[];
+  /** PUT ersetzt die Felder GANZ — wer umbenennt, schickt die Anschlussleistung mit. */
+  anschlussleistung_kw?: number | null;
 }
 
 /**
@@ -1955,11 +2110,39 @@ export interface MessstelleFormelTerm {
   quell_messstelle_id: string | null;
   vorzeichen: string;
   faktor: number;
+  /** AP-08: der Haken „gilt als Erzeugung“ an einem richtungslosen Kanal (`messstelle-formel.md` §2.2). */
+  gilt_als_erzeugung: boolean;
   groesse: MessstelleGroesse | null;
   eingerichtet: boolean;
+  /** AP-10 IP-5: nur bei `eingang_art` = `verteilung` — die Kostenstelle. */
+  verteilung_ziel?: string;
+  /** AP-10 IP-5: nur der positive/negative Teil; fehlt = gesamt. */
+  anteil?: 'positiv' | 'negativ';
 }
 
-/** Die Formel einer berechneten Messstelle (`GET …/{id}/formel`, snake_case). */
+/**
+ * Eine Fassung der Formel (AP-10 IP-3, `messstelle-formel.md` §6), snake_case wie
+ * `MessstelleFormelDto.Fassung`. `gueltig_ab` null = gilt seit Beginn (Fassung 1
+ * des Bestands und des Anlegens); `gueltig_bis` ist der LETZTE Tag, einschließlich.
+ */
+export interface MessstelleFormelFassung {
+  nummer: number;
+  formel_typ: 'gewichtete_summe' | 'rest' | 'saldo';
+  gueltig_ab: string | null;
+  gueltig_bis: string | null;
+  herkunft: 'bestand' | 'anlage' | 'eintrag';
+  rueckwirkend: boolean;
+  /** „rückwirkend (5 Tage)“ — null, wenn nicht rückwirkend. */
+  abzeichen: string | null;
+  begruendung: string | null;
+  eingetragen_am: string;
+}
+
+/**
+ * Die Formel einer berechneten Messstelle (`GET …/{id}/formel`, snake_case): die
+ * Terme der Fassung, die am Tag gilt. `fassung_am` steht NUR in der Antwort, wenn
+ * `am` gefragt war — ohne Tag ist die Antwort die von vor AP-10 IP-3.
+ */
 export interface MessstelleFormel {
   messstelle_id: string;
   schema_version: string;
@@ -1967,6 +2150,17 @@ export interface MessstelleFormel {
   terme: MessstelleFormelTerm[];
   formel_vorhanden: boolean;
   eingaenge_eingerichtet: boolean;
+  fassung_am?: { tag: string; fassung: MessstelleFormelFassung | null };
+  /** NUR mit einem Eingang außerhalb des Zugriffs (AP-03 R-A6): der Hinweis; Terme außerhalb fehlen. */
+  ausserhalb_zugriff?: string;
+  /** Summen-Wächter des geteilten Punkts (AP-07 IP-18b): fehlt ohne Fund; ändert keine Zahl. */
+  geteilte_register?: MessstelleFormelGeteiltesRegister[];
+}
+
+/** Terme mit demselben Vorzeichen lesen denselben Messpunkt derselben Box über zwei Komponenten (`position` der Terme). */
+export interface MessstelleFormelGeteiltesRegister {
+  register: string;
+  positionen: number[];
 }
 
 /** Ein fehlender/veralteter Term des Live-Werts — genannt, nie verschwiegen. */
@@ -1978,7 +2172,8 @@ export interface MessstelleWertFehlend {
 /**
  * Der Live-Wert einer berechneten Messstelle (`GET …/{id}/wert`): die gewichtete
  * Summe der frischesten Eingänge. Fehlt/veraltet EIN Term, ist `wert` null
- * (`unvollstaendig`) und `fehlende` nennt die Terme — NIE eine Teilsumme.
+ * (`unvollstaendig`) und `fehlende` nennt die Terme — NIE eine Teilsumme. Der Live-Wert wird nie
+ * gespeichert; die Periodenwerte liegen seit AP-10 IP-10 in der Speicherklasse (`…/{kennzeichen}/werte`).
  */
 export interface MessstelleWert {
   wert: number | null;
@@ -1986,6 +2181,8 @@ export interface MessstelleWert {
   unvollstaendig: boolean;
   fehlende: MessstelleWertFehlend[];
   stand: string | null;
+  /** NUR mit einem Eingang außerhalb des Zugriffs (AP-03 R-A3): die Zahl fehlt ganz, dies ist der Hinweis. */
+  ausserhalb_zugriff?: string;
 }
 
 /** Ein 15-min-Zeitraster des Verlaufs; `wert` null = unvollständig (nie 0). */
@@ -1999,6 +2196,159 @@ export interface MessstelleVerlauf {
   messstelle_id: string;
   einheit: string | null;
   punkte: MessstelleVerlaufPunkt[];
+  /** NUR mit einem Eingang außerhalb des Zugriffs (AP-03 R-A3): keine Punkte, dies ist der Hinweis. */
+  ausserhalb_zugriff?: string;
+}
+
+// ---- Werte je Messstelle (UEMS AP-08 IP-9) ----------------------------------
+// Die Form von GET /api/v1/messstellen/{kennzeichen}/werte (snake_case, OpenAPI
+// `MessstelleWerte`). Jedes Feld steht immer da; `null` heißt unbekannt oder nicht
+// gebildet, nie 0. Die Fläche dazu ist die Tages- und Monatskarte (IP-11).
+
+export type MessstelleWerteRaster = 'viertelstunde' | 'stunde' | 'tag' | 'monat' | 'jahr';
+
+/** Eine FÜHRENDE Bindung der Hauptgröße, die den Zeitraum berührt. */
+export interface MessstelleWerteQuelle {
+  id: string;
+  komponente: string;
+  kanal: string;
+  herleitung: 'zaehlerstand' | 'differenzen' | 'integration' | 'momentanwert';
+  anteil: 'positiv' | 'negativ' | null;
+  gueltig_ab: string;
+  gueltig_bis: string | null;
+}
+
+/** Ein Schritt des Rasters — ungerundet; gerundet wird nur angezeigt (E11). */
+export interface MessstelleWerteWert {
+  von: string;
+  bis: string;
+  /** Viertelstunde und Stunde: „02:00–03:00 MESZ“ (E10). */
+  beschriftung: string | null;
+  /** Tag, Monat, Jahr: die Stunden der Periode. */
+  stunden: number | null;
+  /** Tag: „25 Stunden (Zeitumstellung)“, an einem 24-Stunden-Tag null. */
+  tagesdauer: string | null;
+  menge: number | null;
+  mittel: number | null;
+  min: number | null;
+  max: number | null;
+  zustand: 'vollständig' | 'unvollständig' | 'keine Werte' | 'mit Ersatzwert' | null;
+  kennzeichen: string[];
+  erhalten: number | null;
+  erwartet: number | null;
+  abdeckung_prozent: number | null;
+  fassung: 'vorlaeufig' | 'endgueltig' | null;
+  endgueltig_ab: string | null;
+  version: number | null;
+  gebildet_aus: 'viertelstunde' | 'zeitraum' | 'tag' | 'monat' | 'jahr' | null;
+  /** Die Bindung, deren Reihe den Schritt beantwortet. */
+  quelle: string | null;
+  grund:
+    | 'keine_quelle'
+    | 'quelle_teilweise'
+    | 'anteil_nicht_gespeichert'
+    | 'berechnet'
+    | 'noch_nicht_gebildet'
+    | 'ohne_menge_gespeichert'
+    | 'version_nicht_gespeichert'
+    /** Die Stunde hat keine eigenen Versionen: eine ihrer Viertelstunden trägt eine spätere (IP-18). */
+    | 'version_nicht_gebildet'
+    | null;
+  ereignisse: Array<{ id: string; art: string; von: string; bis: string | null }>;
+  /**
+   * AP-10 IP-12: die Hülle `{satz, fehlt}` nach `bilanzwert-herkunft.schema.json` an jeder BERECHNETEN
+   * Zahl; `null` an einem gemessenen Schritt oder einem ohne Zahl.
+   */
+  herkunft: { satz: Record<string, unknown> | null; fehlt: string[] } | null;
+  /**
+   * AP-08 IP-18: wie viele Versionen die Periode hat — ab 2 gibt es eine Historie unter
+   * `…/werte/versionen`. `null` an der Stunde (keine eigenen Versionen), ohne Reihe und wo nichts gebildet ist.
+   */
+  versionen: number | null;
+}
+
+// ---- Versionen am Wert (UEMS AP-08 IP-18) -----------------------------------
+// Die Form von GET /api/v1/messstellen/{kennzeichen}/werte/versionen (OpenAPI
+// `MessstelleWerteHistorie`): die Historie GENAU EINER Periode.
+
+/** Wer eine Fassung geschrieben hat; ein System-Vorschlag: `VoltPilot`, `art` `voltpilot`. */
+export interface MessstelleWerteUrheber {
+  name: string;
+  rolle: string | null;
+  art: string;
+}
+
+/** Eine Fassung eines Ersatzwerts (`EW-…`) oder einer Korrektur (`K-…`), die eine Version ausmacht. */
+export interface MessstelleWerteEntscheidung {
+  vorgang: 'ersatzwert' | 'korrektur';
+  kennung: string;
+  fassung: number;
+  status: string | null;
+  methode: string | null;
+  art: string | null;
+  wer: MessstelleWerteUrheber | null;
+  /** In der Zeitzone des Standorts, mit Versatz. */
+  wann: string | null;
+  /** Der Text DIESER Fassung (Begründung bzw. Grund) — `null`, wenn keiner geschrieben wurde. */
+  warum: string | null;
+  beleg: string | null;
+  fehlt: Array<'warum' | 'fassung'>;
+  /** Die anlegende Fassung, an einer späteren — mit IHREM Urheber. */
+  angelegt: { wer: MessstelleWerteUrheber; wann: string; warum: string | null; beleg: string | null } | null;
+}
+
+export interface MessstelleWerteVersion {
+  version: number;
+  /** Was vorher dastand (Version n − 1); an Version 1 `null`. */
+  wert_alt: MessstelleWerteWert | null;
+  wert_neu: MessstelleWerteWert;
+  gebildet_am: string | null;
+  nachgezogen_am: string | null;
+  anlass: { kennung: string; fassung: number } | null;
+  entscheidungen: MessstelleWerteEntscheidung[];
+}
+
+export interface MessstelleWerteHistorie {
+  messstelle: MessstelleWerte['messstelle'];
+  raster: Exclude<MessstelleWerteRaster, 'stunde'>;
+  von: string;
+  bis: string;
+  zeitzone: string;
+  zeitzone_herkunft: MessstelleWerte['zeitzone_herkunft'];
+  /** Ein Wort von `MessstelleWerteWert.grund` — warum die Periode keine Versionen hat. */
+  grund: string | null;
+  /** Aufsteigend: Version 1 zuerst. */
+  versionen: MessstelleWerteVersion[];
+  /** AP-03 R-A3/R-A6: ein Eingang der berechneten Messstelle liegt außerhalb des Zugriffs — dann ohne Versionen. */
+  ausserhalb_zugriff?: string;
+}
+
+export interface MessstelleWerte {
+  messstelle: {
+    id: string;
+    kennzeichen: string;
+    name: string | null;
+    art: string;
+    groesse: string;
+    richtung: string;
+    einheit: string;
+    wertart: string;
+  };
+  raster: MessstelleWerteRaster;
+  von: string;
+  bis: string;
+  zeitzone: string;
+  zeitzone_herkunft: 'standort' | 'unternehmen' | 'vorgabe';
+  version: number | null;
+  quellen: MessstelleWerteQuelle[];
+  werte: MessstelleWerteWert[];
+  /** `nicht_zugeordnet`: im Zeitraum kamen an der Box Werte an, die Reihe trägt keinen; die Schritte bleiben. */
+  zuordnung: MessstelleZuordnung | null;
+  /**
+   * AP-03 R-A3/R-A6: ein Eingang der berechneten Messstelle liegt im Zeitraum außerhalb des Zugriffs — dann ist
+   * `werte` leer (keine Zahl, keine Abdeckung) und hier steht der Hinweis ohne Namen. Sonst fehlt das Feld.
+   */
+  ausserhalb_zugriff?: string;
 }
 
 /**
@@ -2044,11 +2394,13 @@ export interface GeraetSummenwert {
 export type SummenwertKontext = { art: 'anlage' } | { art: 'geraet'; boxId: string; geraetId: string };
 
 export interface BerechneteMessstelleAnlegen {
+  formel_typ?: 'gewichtete_summe' | 'saldo';
+  gueltig_ab?: string;
   kontext?: { art: 'anlage' | 'geraet'; site_id: string; box_id?: string; geraet_id?: string };
   rolle?: { entity_id: string; role: SummenwertRolle; ersetzen?: boolean };
   name: string;
   terme: Array<{
-    eingang_art: 'messkanal' | 'messstelle';
+    eingang_art: 'messkanal' | 'messstelle' | 'verteilung';
     entity_id?: string;
     point_key?: string;
     quell_messstelle_id?: string;
@@ -2056,7 +2408,2305 @@ export interface BerechneteMessstelleAnlegen {
     faktor: number;
     /** AP-08: nur bei einem richtungslosen Kanal, der als Erzeugung zählen soll. */
     gilt_als_erzeugung?: boolean;
+    /**
+     * AP-10 IP-5: die Kostenstelle eines Verteilungs-Terms; seit AP-10 IP-8 liest der Term den Anteil
+     * des Tages aus der Verteilung (eine unbekannte Kostenstelle ist 404).
+     */
+    verteilung_ziel?: string;
+    /** AP-10 IP-5: fehlt = gesamt; `positiv`/`negativ` lehnt der Server ab (422 `anteil_wartet_auf_ap08`). */
+    anteil?: 'gesamt' | 'positiv' | 'negativ';
   }>;
+}
+
+/** Der Körper von `POST /api/v1/messstellen/{id}/formel/fassungen` (AP-10 IP-3, streng, snake_case). */
+export interface MessstelleFormelFassungEintragen {
+  /** Der erste Tag der neuen Fassung (JJJJ-MM-TT); die laufende endet am Vortag. */
+  gueltig_ab: string;
+  formel_typ?: 'gewichtete_summe' | 'saldo';
+  terme: BerechneteMessstelleAnlegen['terme'];
+  begruendung?: string;
+}
+
+/**
+ * Eine Bezugsgröße (UEMS AP-09 IP-5, `/api/v1/bezugsgroessen`, snake_case wie der
+ * Bezugsdaten-Vertrag). Die Wörter sind die Vokabulare von
+ * `docs/contracts/v2/bezugsdaten-vectors.json`; `hat_werte` sagt, ob die Bedeutung
+ * schon fest ist (M1) und ob sie noch löschbar ist (M6).
+ */
+export interface Bezugsgroesse {
+  /** Gespeicherte Art; fehlt bei älteren Antworten oder ungeklärtem Bestand. */
+  art?: string | null;
+  id: string;
+  kennzeichen: string;
+  name: string;
+  wertart: 'periodenwert' | 'stand' | 'stammdatum';
+  einheit: string;
+  periode_art: 'tag' | 'woche' | 'monat' | 'jahr' | null;
+  geltung_art: 'unternehmen' | 'standort' | 'gebaeude' | 'bereich' | 'prozess' | 'kostenstelle' | 'messstelle';
+  geltung_id: string;
+  geltung_name: string;
+  hat_werte: boolean;
+  archiviert_am: string | null;
+  angelegt_am: string;
+}
+
+/** Listenumschlag einschließlich der nur gelesenen Flächen aus der Struktur (IP-9). */
+export interface BezugsgroessenListe {
+  bezugsgroessen: Bezugsgroesse[];
+  bezugsflaechen: Bezugsflaeche[];
+}
+
+/**
+ * Der Körper von `POST /api/v1/bezugsgroessen` (ohne `kennzeichen` vergibt der Server
+ * BZ-0001 …) und `PUT …/{id}` (die GANZE Bezugsgröße, mit Kennzeichen). Streng gelesen.
+ */
+export interface BezugsgroesseAnfrage {
+  /** Gespeicherte Art; fehlt bei älteren Antworten oder ungeklärtem Bestand. */
+  art?: string | null;
+  kennzeichen?: string;
+  name: string;
+  wertart: Bezugsgroesse['wertart'];
+  einheit: string;
+  periode_art?: Bezugsgroesse['periode_art'];
+  geltung_art: Bezugsgroesse['geltung_art'];
+  geltung_id: string;
+}
+
+/** Spaltenzuordnung eines Bezugsdaten-Imports (AP-09 IP-15, C3). Spalten sind 1-basiert. */
+export interface BezugsdatenZuordnung {
+  csv: { kodierung: string | null; trennzeichen: string | null; kopfzeile: boolean | null } | null;
+  spalten: { periode: number | null; bis: number | null; wert: number | null; einheit: number | null; bezug: number | null; bemerkung: number | null };
+  deutung: 'periode' | 'periodenbeginn' | 'periodenende' | 'von_bis' | 'zeitpunkt';
+  zahlformat: 'de' | 'en' | 'auto';
+  einheit: string | null;
+  bezugsgroesse: string | null;
+  bezug_tabelle: Record<string, string>;
+  synonyme: Record<string, string>;
+}
+
+export interface BezugsdatenBefund { befund: string; satz: string; hinweis: boolean }
+export interface BezugsdatenZaehler {
+  zeilen: number; neu: number; wiederholung: number; konflikt: number; berichtigung: number;
+  uebersprungen: number; abgelehnt: number; mit_hinweis: number;
+}
+export interface BezugsdatenVorschau {
+  vorschau: { kennung: string; status: 'vorschau'; ausgestellt_am: string; gueltig_bis: string; ergebnis_fingerabdruck: string };
+  vorlage: { vorlage_id: string; fassung: number; name: string } | null;
+  datei: {
+    name: string; bytes: number; sha256: string; befund: BezugsdatenBefund | null; zusatz: string | null;
+    zusatz_satz: string | null; zeile: number | null; kodierung: string | null; bom: boolean | null;
+    trennzeichen: string | null; kopfzeile: boolean | null; kopf: string[] | null; spalten: number | null; datenzeilen: number | null;
+  };
+  frueherer_import: { kennung: string; status: string; am: string } | null;
+  zeilen: Array<{
+    nr: number; felder: string[]; bezugsgroesse: string | null; bezugsgroesse_id: string | null; schluessel: string | null;
+    periode_von: string | null; periode_bis: string | null; zeitpunkt: string | null; betrag: string | null; einheit: string | null;
+    geliefert: { wert: string; einheit: string | null } | null; urteil: string; befunde: BezugsdatenBefund[];
+    fingerabdruck: string | null; bestand: { betrag: string; fassung: number; import_kennung: string | null } | null;
+  }>;
+  import: {
+    status: string | null; zaehler: BezugsdatenZaehler; uebernahme_moeglich: boolean; import_datensatz: boolean;
+    bestaetigung: string | null; aenderungen: number; befunde: BezugsdatenBefund[];
+  };
+}
+
+export interface BezugsdatenVorlage {
+  vorlage_id: string; fassung: number; name: string; zuordnung: BezugsdatenZuordnung;
+  urheber: { name: string; rolle: string; art: string }; erstellt_am: string;
+}
+
+export interface BezugsdatenImportErgebnis {
+  kennung: string; status: string; aenderungen: number; vorschlaege: number;
+  zaehler: BezugsdatenZaehler | null; vorlage: { vorlage_id: string; fassung: number; name: string } | null;
+}
+
+export interface BezugsdatenImportZeile {
+  nr: number; urteil: string; befunde: BezugsdatenBefund[]; bezugsgroesse: string | null;
+  periode_von: string | null; periode_bis: string | null; zeitpunkt: string | null;
+  betrag: string | null; einheit: string | null; geliefert_wert: string | null; geliefert_einheit: string | null;
+}
+export interface BezugsdatenImportProtokollEintrag {
+  kennung: string; status: string; datei_name: string; datei_bytes: number; erstellt_am: string; geaendert_am: string;
+  aenderungen: number; vorschlaege: number; zaehler: BezugsdatenZaehler; vorlage: { vorlage_id: string; fassung: number; name: string } | null; begruendung: string | null;
+  urheber: { name: string; rolle: string; art: string }; zeilen: BezugsdatenImportZeile[];
+}
+export interface BezugsdatenRuecknahmeVorschau {
+  kennung: string; aenderungen: number; vieraugen: boolean; werte: Array<{
+    bezugsgroesse_id: string; kennzeichen: string; name: string; periode_von: string | null; periode_bis: string | null;
+    zeitpunkt: string | null; bisheriger_betrag: string | null; neuer_betrag: string | null; einheit: string;
+    vorgang: 'zurueckgenommen' | 'vorfassung_wiederhergestellt';
+  }>;
+}
+
+/**
+ * UEMS AP-03 IP-4: die Selbstauskunft `GET /api/v1/me` (OpenAPI `Selbstauskunft`) - wer fragt und was er darf.
+ * Rollen, Umfänge und Aktionen sind Kennungen der Rechte-Matrix (`docs/contracts/v2/rechte-matrix.json`);
+ * `standorte`, `kuenftig`, `text` und `teilansicht` sind die Ableitung `sichtbare_standorte` aus
+ * `rechte-vectors.json`. `rollen.ts` liest sie als einzige Rechte-Quelle (AP-03 IP-12).
+ */
+export interface Selbstauskunft {
+  /** Das Subject des Kontos. */
+  kennung: string | null;
+  name: string | null;
+  konto: 'benutzer' | 'partner' | 'plattform' | null;
+  zustand: 'angelegt' | 'aktiv' | 'gesperrt' | 'entfernt';
+  /** `null` ohne angenommenen Kundenbereich (Partner ohne wirksame Unterstützung). */
+  kundenbereich: SelbstauskunftKundenbereich | null;
+  /** `umschalter` = Plattform über `X-Tenant-Id` (bis AP-03 IP-8). */
+  zugang: 'konto' | 'unterstuetzung' | 'umschalter' | null;
+  rollen: string[];
+  unternehmensweit: boolean;
+  standorte: SelbstauskunftStandort[];
+  /** Die Aktionen, die der Aufrufer auf Unternehmensebene darf. */
+  unternehmen_rechte: string[];
+  kuenftig: SelbstauskunftKuenftig[];
+  /** Der Satz ohne Standort, sonst `null`. */
+  text: string | null;
+  teilansicht: SelbstauskunftTeilansicht | null;
+  unterstuetzungen: SelbstauskunftUnterstuetzungen;
+  kundenadministratoren: SelbstauskunftPerson[];
+  kundenbereiche?: { id: string; name: string; umfang: SelbstauskunftUmfang; endet: string }[];
+}
+
+export type SelbstauskunftUmfang = 'ansehen' | 'einrichten' | 'einrichten_und_bedienen';
+
+export interface SelbstauskunftKundenbereich {
+  id: string;
+  name: string;
+  /**
+   * UEMS AP-20 IP-16: `null` (bzw. fehlend in älteren Antworten), solange der Kundenbereich aktiv ist. Den Satz bildet
+   * die API; `liest` ist nur für den Kundenadministrator wahr — jede andere Person liest nicht mehr.
+   */
+  beendet?: SelbstauskunftKundenbereichBeendet | null;
+}
+
+export interface SelbstauskunftKundenbereichBeendet {
+  beendet_am: string;
+  loeschung_fruehestens: string;
+  liest: boolean;
+  text: string;
+}
+
+export interface SelbstauskunftStandort {
+  id: string;
+  kennzeichen: string;
+  name: string;
+  rollen: string[];
+  umfang: SelbstauskunftUmfang | null;
+  ocpp_stufe: 'keine' | 'CUSTOMER' | 'SITE_ADMIN' | 'PLATFORM';
+  /** Die Aktionen (Kennungen der Matrix), die der Aufrufer an diesem Standort darf. */
+  rechte: string[];
+}
+
+export interface SelbstauskunftKuenftig {
+  standort: string;
+  ab: string;
+  text: string;
+}
+
+export interface SelbstauskunftTeilansicht {
+  sichtbar: number;
+  gesamt: number;
+  unternehmensebene: boolean;
+  teilansicht: boolean;
+  kopfzeile: string | null;
+  export_kopfzeile: string | null;
+  unternehmensweite_objekte: boolean;
+}
+
+export interface SelbstauskunftUnterstuetzungen {
+  eigene: SelbstauskunftUnterstuetzung[];
+  gewaehrte: SelbstauskunftUnterstuetzung[];
+}
+
+export interface SelbstauskunftUnterstuetzung {
+  art: 'installateur' | 'voltpilot' | 'notfall';
+  umfang: SelbstauskunftUmfang | null;
+  standorte: string[];
+  gueltig_ab: string;
+  /** Enddatum einschließlich; der Notfall-Zugriff hat keins, nur `endet`. */
+  gueltig_bis: string | null;
+  endet: string | null;
+  zustand: 'entwurf' | 'eingerichtet' | 'aktiv' | 'archiviert';
+  erinnerung: boolean;
+  unterstuetzer: SelbstauskunftPerson;
+  banner: string | null;
+}
+
+export interface SelbstauskunftPerson {
+  kennung: string;
+  name: string;
+}
+
+/**
+ * UEMS AP-03 IP-8: die Unterstützung (`/api/v1/unterstuetzung`, OpenAPI `Unterstuetzung`) - gewähren,
+ * verlängern, beenden, die Anfragen von VoltPilot und das Hinweis-Postfach. Die Wörter `art`, `umfang` und
+ * `zustand` sind die des Rechte-Vertrags; `anlass` ist das geschlossene Vokabular dieses Pakets (Zwilling des
+ * CHECK `unterstuetzung_hinweis_anlass_chk`). Noch liest das Portal sie nicht (AP-03 IP-15).
+ */
+export type UnterstuetzungArt = 'installateur' | 'voltpilot' | 'notfall';
+export type UnterstuetzungAnlass =
+  | 'anfrage'
+  | 'gewaehrt'
+  | 'notfall'
+  | 'erinnerung'
+  | 'abgelaufen'
+  | 'beendet';
+
+export interface Unterstuetzung {
+  /** Der Griff der Gewährung - die kleinste Kennung ihrer Zeilen; er bleibt, auch nachdem sie endete. */
+  id: string;
+  art: UnterstuetzungArt;
+  umfang: SelbstauskunftUmfang | null;
+  standorte: string[];
+  /** Dieselben Standorte als Kennzeichen des Vertrags (ST-1 …). */
+  standort_kennzeichen: string[];
+  unterstuetzer: SelbstauskunftPerson;
+  gueltig_ab: string;
+  /** Enddatum einschließlich; der Notfall-Zugriff hat keins, nur `endet`. */
+  gueltig_bis: string | null;
+  endet: string | null;
+  zustand: 'entwurf' | 'eingerichtet' | 'aktiv' | 'archiviert';
+  erinnerung: boolean;
+  grund: string | null;
+  /** Der Banner-Satz, solange sie wirkt. */
+  banner: string | null;
+  /** Der Satz danach („Endete am … durch Zeitablauf“, „Beendet am … durch …“, „Wirkt ab …“). */
+  text: string | null;
+  /** GENAU EINMAL in der Antwort des Gewährens, wenn dafür ein Partner-Konto entstand (E14). */
+  startpasswort: string | null;
+}
+
+/** Der Körper von `POST /api/v1/unterstuetzung` (streng gelesen, snake_case). */
+export interface UnterstuetzungGewaehren {
+  art?: 'installateur' | 'voltpilot';
+  email?: string | null;
+  standorte?: string[];
+  umfang?: SelbstauskunftUmfang | null;
+  gueltig_ab?: string | null;
+  gueltig_bis?: string | null;
+  grund?: string | null;
+  anfrage_id?: string | null;
+}
+
+/** Ein Wunsch von VoltPilot (E8, A5) - er gewährt nichts, bis der Kundenadministrator bestätigt. */
+export interface UnterstuetzungAnfrage {
+  id: string;
+  art: 'voltpilot';
+  umfang: SelbstauskunftUmfang;
+  standorte: string[];
+  angefragt_von: SelbstauskunftPerson;
+  gueltig_ab: string;
+  gueltig_bis: string;
+  grund: string | null;
+  /** Abgeleitet, nie gespeichert. */
+  zustand: 'offen' | 'bestaetigt' | 'abgelehnt';
+  entschieden_am: string | null;
+  /** Der Griff der gewährten Unterstützung, sonst `null`. */
+  unterstuetzung: string | null;
+  angefragt_am: string;
+}
+
+/** Ein Hinweis im Postfach eines Kundenadministrators - Karte im Portal, mit SMTP zusätzlich eine E-Mail. */
+export interface UnterstuetzungHinweis {
+  id: string;
+  anlass: UnterstuetzungAnlass;
+  text: string;
+  unterstuetzung: string | null;
+  anfrage: string | null;
+  erzeugt_am: string;
+  gelesen_am: string | null;
+  /** `null`, solange kein SMTP steht - dann ist das Portal der Weg. */
+  email_versandt_am: string | null;
+}
+
+/** Der geschlossene Satz der Ablehnungen (OpenAPI `UnterstuetzungFehler`). */
+export type UnterstuetzungFehlerCode =
+  | 'anfrage_ungueltig'
+  | 'nicht_gefunden'
+  | 'bereits_beendet'
+  | 'anfrage_entschieden'
+  | 'standort_fehlt'
+  | 'standort_unbekannt'
+  | 'hoechstens_12_monate'
+  | 'grund_fehlt'
+  | 'ende_nicht_spaeter'
+  | 'notfall_nicht_verlaengerbar'
+  | 'konto_nicht_erreichbar';
+
+/** UEMS AP-11: die Wörter des Kennzahl-Vertrags (`docs/contracts/v2/kennzahl-vectors.json`). */
+export type KennzahlRechenform = 'quotient' | 'anteil' | 'zusammenfassung';
+export type KennzahlPeriodeArt = 'tag' | 'woche' | 'monat' | 'jahr';
+export type KennzahlGeltungArt = 'unternehmen' | 'standort' | 'gebaeude' | 'bereich' | 'prozess' | 'kostenstelle' | 'messstelle';
+
+/** Ein Eingang über das Kennzeichen seines Objekts (MS-12, BZ-6, KZ-0001). */
+export interface KennzahlEingang {
+  rolle: 'zaehler' | 'nenner' | 'paar';
+  art: 'messstelle' | 'bezugsgroesse' | 'kennzahl';
+  kennzeichen: string;
+}
+
+/**
+ * Eine Kennzahl (UEMS AP-11 IP-5, `/api/v1/kennzahlen`, snake_case wie der Kennzahl-Vertrag).
+ * `rechte_geltung` und `kennung` folgen aus dem Geltungsbereich (G1); `fassung`, `einheit`,
+ * `grundperiode` und `perioden` beschreiben die HEUTE geltende Berechnung.
+ */
+export interface Kennzahl {
+  id: string;
+  kennzeichen: string;
+  name: string;
+  rechenform: KennzahlRechenform;
+  geltung_art: KennzahlGeltungArt;
+  geltung_id: string;
+  geltung_name: string | null;
+  rechte_geltung: 'standort' | 'unternehmen';
+  standort_id: string | null;
+  kennung: 'kennzahl.standort_definieren' | 'kennzahl.unternehmen_definieren';
+  verantwortlich_name: string;
+  zweck: string | null;
+  fassung: number | null;
+  einheit: string | null;
+  einheit_anzeige: string | null;
+  grundperiode: KennzahlPeriodeArt | null;
+  perioden: KennzahlPeriodeArt[];
+  hat_werte: boolean;
+  archiviert_am: string | null;
+  angelegt_am: string;
+  /**
+   * UEMS AP-17 IP-8 (B3, bezugsbasis.md §13 „Register-Eintrag“): die laufende Bezugsbasis als abgeleitetes Feld —
+   * `null` ohne laufende Basis; kein Zustand an der Kennzahl. Gelesen wird es nur in `bezugsbasisAnlegen.energieleistung`.
+   * `fassung`/`freigabe_status` sind `null`, solange die Basis noch keine erste Fassung trägt (`anlegen` ohne
+   * `entwerfen`, B1) - ein erreichbarer Zustand, keine Null aus Versehen.
+   */
+  bezugsbasis?: {
+    kennzeichen: string;
+    fassung: number | null;
+    freigabe_status: 'entwurf' | 'beantragt' | 'freigegeben' | 'abgelehnt' | null;
+    vorlaeufig: boolean;
+  } | null;
+  /**
+   * Konzept Auswerten a1 §6.4 (PR1, `kennzahl.md` „Die Auswertung an der Liste“): nur mit `api.kennzahlen('auswertung')`,
+   * nur an einer nicht archivierten Kennzahl mit Monatswerten. Dieselbe Ableitung trägt die Leitkachel der Übersicht.
+   */
+  auswertung?: KennzahlAuswertung;
+  /**
+   * Nur an `GET /api/v1/kennzahlen/{id}?mit=auswertung`: ob sie die Leitkennzahl der Übersicht ist - dieselbe Wahl wie
+   * `leit` der Übersicht und `leitkennzahl` der Liste (§10.8).
+   */
+  leitkennzahl?: boolean;
+}
+
+/** Das Urteil der Operation `vergleich` (bezugsbasis.md §8, U1–U6). */
+export type BezugsbasisUrteil = 'besser' | 'schlechter' | 'im_rahmen' | 'ohne_urteil' | 'nicht_anwendbar';
+/** Warum ein Monat kein Urteil trägt (bezugsbasis.md §9 `grund`). */
+export type BezugsbasisGrund =
+  | 'basis_fehlt' | 'basis_beendet' | 'zu_wenig_perioden' | 'variable_fehlt' | 'variable_ausserhalb'
+  | 'variablen_abhaengig' | 'keine_werte' | 'periode_nicht_zu_ende';
+export type BezugsbasisRichtung = 'mehr' | 'weniger' | 'gleich';
+
+/** OpenAPI `KennzahlAuswertung`: wie eine Kennzahl steht - gerechnet ist alles auf dem Server. */
+export interface KennzahlAuswertung {
+  /** Der letzte abgeschlossene Monat `JJJJ-MM` in der Zone der Geltung - für ihn gilt das Urteil. */
+  monat: string;
+  /** Der jüngste Monatswert der zwölf Monate bis `monat`; kann älter sein als `monat`. */
+  wert: { periode: string; wert: string; einheit: string | null; zustand: string | null; richtung: string | null } | null;
+  /** Operation `roh` gegen denselben Monat ein Jahr davor - nie ein Urteil. */
+  vorjahr: KennzahlAuswertungRoh | null;
+  /** PR2: Operation `roh` gegen den Monat davor - nie ein Urteil. */
+  vormonat: KennzahlAuswertungRoh | null;
+  /** Die zwölf Monate bis `monat`, der älteste zuerst. */
+  monate: KennzahlAuswertungMonat[];
+  /** `null` ohne freigegebene Bezugsbasis. */
+  vergleich: {
+    bezugsbasis: string | null;
+    urteil: BezugsbasisUrteil;
+    delta_prozent: string | null;
+    band_prozent: string | null;
+    richtung: BezugsbasisRichtung | null;
+    grund: BezugsbasisGrund | null;
+    satz: string | null;
+    /** Solange für `monat` noch keine Fassung gilt: der erste Monat, dessen letzter Tag sie trägt. */
+    erster_monat: string | null;
+  } | null;
+  /**
+   * PR2 (§10.6): der Vergleich über die Monate der zwölf, für die schon eine Fassung gilt (Operation `zeitraum`,
+   * Σ ÷ Σ) - nie davor. `null` ohne Bezugsbasis oder solange noch keine Fassung gilt.
+   */
+  zeitraum: KennzahlAuswertungZeitraum | null;
+  energieziel: KennzahlAuswertungZiel | null;
+}
+
+/** OpenAPI `KennzahlAuswertungRoh`: die rohe Veränderung gegen den Monat `periode` - nie ein Urteil (VG3). */
+export interface KennzahlAuswertungRoh {
+  periode: string;
+  wert: string;
+  delta_prozent: string;
+  richtung: BezugsbasisRichtung;
+}
+
+/** OpenAPI `KennzahlAuswertungMonat`: ein Monat der zwölf. Die Mengen rechnet der Server exakt (ungerundeter Text). */
+export interface KennzahlAuswertungMonat {
+  periode: string;
+  wert: string | null;
+  delta_prozent: string | null;
+  urteil: BezugsbasisUrteil | null;
+  grund: BezugsbasisGrund | null;
+  /** PR2: der erwartete Kennzahlwert (erwartet ÷ Nenner). */
+  erwartet_wert: string | null;
+  /** PR2: gemessen − erwartet in der Einheit des Zählers; positiv = mehr als erwartet. */
+  abweichung: string | null;
+  /** PR2: die Abweichungen der Monate mit Urteil bis hierher zusammengezählt; `null` an einem Monat ohne Urteil. */
+  zusammen: string | null;
+  /** PR2: derselbe Monat ein Jahr davor mit der rohen Veränderung (nie ein Urteil); `null` ohne beide Werte. */
+  vorjahr: KennzahlAuswertungRoh | null;
+}
+
+/** OpenAPI `KennzahlAuswertungZeitraum`: der Vergleich über `von` … `bis` (Σ gemessen ÷ Σ erwartet, U5). */
+export interface KennzahlAuswertungZeitraum {
+  von: string;
+  bis: string;
+  delta_prozent: string | null;
+  band_prozent: string | null;
+  richtung: BezugsbasisRichtung | null;
+  urteil: BezugsbasisUrteil;
+  grund: BezugsbasisGrund | null;
+  /** „x von y“ Monaten mit Vergleich. */
+  monate: string | null;
+  satz: string;
+}
+
+/** OpenAPI `KennzahlAuswertungZiel`: das offene Energieziel mit dem Stand seiner Summe (Z3). */
+export interface KennzahlAuswertungZiel {
+  id: string;
+  kennzeichen: string;
+  /** Dezimaltext, negativ = weniger als erwartet. */
+  zielwert_prozent: string;
+  /** `JJJJ-MM/JJJJ-MM`. */
+  zielperiode: string;
+  delta_prozent: string | null;
+  richtung: BezugsbasisRichtung | null;
+  urteil: BezugsbasisUrteil | null;
+  monate_bewertbar: number;
+  monate_soll: number;
+}
+
+// ---------------------------------------------------------------------------------------- Maßnahmen (UEMS AP-18)
+
+export type MassnahmeZustand = 'geplant' | 'umgesetzt' | 'bewertet' | 'verworfen';
+/** Wie sich die Wirkung zeigt (Verbessern-Konzept v1, Entscheid 6) - `gemessen` genau mit Messgrundlage. */
+export type MassnahmeArt = 'gemessen' | 'nicht_gemessen' | 'organisatorisch';
+
+/**
+ * Die erwartete Einsparung in kWh im Jahr (Entscheid 13): eine Schätzung, nie mit beobachteten Werten summiert -
+ * mit Kennzahl von der Route umgerechnet (mit Grundlage), ohne Kennzahl von einer Person geschätzt.
+ */
+export interface MassnahmeEinsparung {
+  /** Dezimaltext, ganze kWh im Jahr, weniger Energie positiv. */
+  kwh_jahr: string;
+  grundlage_kwh: string | null;
+  /** `JJJJ-MM/JJJJ-MM`. */
+  grundlage_monate: string | null;
+}
+
+/** Die beobachtete Wirkung in Kurzform für die Liste (§6.5) - die Summe der Operation `wirkung`, nur in der Liste. */
+export interface MassnahmeWirkungKurz {
+  delta_prozent: string;
+  richtung: string;
+  urteil: 'besser' | 'schlechter' | 'im_rahmen' | 'nicht_anwendbar' | 'ohne_urteil';
+  monate_bewertbar: number;
+  monate_soll: number;
+  monate_text: string;
+  vorlaeufig: boolean;
+  zeitraum_von: string;
+  zeitraum_bis: string;
+  gemessen: string;
+  erwartet: string;
+  /** Σ gemessen − Σ erwartet, weniger negativ. */
+  differenz: string;
+  /** Prozent der Person × Σ erwartet derselben Monate, weniger negativ; ohne Zahl `null`. */
+  erwartete_wirkung: string | null;
+  einheit: string | null;
+  energie: string;
+}
+
+/** `GET /api/v1/massnahmen/schaetzung` (Entscheid 13): die Umrechnung der Prozent in kWh im Jahr, vor dem Anlegen. */
+export interface MassnahmeSchaetzung {
+  kennzahl: string;
+  prozent: string;
+  kwh_jahr: string | null;
+  grundlage_kwh: string | null;
+  grundlage_monate: string;
+  monate_mit_wert: number;
+  grund: 'monate_fehlen' | 'einheit_nicht_kwh' | 'kennzahl_ohne_bezugsbasis' | 'zu_klein' | null;
+}
+/** Die Herkunft einer Maßnahme; die letzten drei kommen aus dem Energiemanagement (AP-19 IP-17, Kennung F-/AU-/BR-…/Bn). */
+export type MassnahmeHerkunft =
+  | 'abweichung' | 'energieziel' | 'einsatz' | 'von_hand' | 'nichtkonformitaet' | 'audit' | 'managementbewertung';
+
+/** Ein Verweis der Maßnahme (OpenAPI `MassnahmeVerweis`) — Kennzahl, Bezugsbasis, Einsatz, Energieziel. */
+export interface MassnahmeVerweis {
+  id: string;
+  kennzeichen: string;
+  name: string | null;
+}
+
+/** M2/M3 (OpenAPI `MassnahmeMessgrundlage`): Kennzahl × Fassung × Ausgangslage als Kopie mit Prüfsumme. */
+export interface MassnahmeMessgrundlage {
+  kennzahl: MassnahmeVerweis;
+  bezugsbasis: MassnahmeVerweis;
+  fassung: number;
+  /** Die Methode der Fassung in Kundenwörtern — ein Satz, nie eine Wahl (M3). */
+  bewertungsmethode: string;
+  /** Der gespeicherte kanonische Text, byte-gleich. */
+  ausgangslage: string;
+  pruefsumme: string;
+  ausgangslage_inhalt: Record<string, unknown>;
+  /** Kundensatz `messgrundlage` (§5.9) für einen Monat mit Zahl, sonst `null`. */
+  satz: string | null;
+}
+
+/** Eine Zeile des Protokolls `massnahme_aenderung` (OpenAPI `MassnahmeEintrag`) — der Verlauf. */
+export interface MassnahmeEintrag {
+  nr: number;
+  art:
+    | 'massnahme_angelegt' | 'massnahme_geaendert' | 'verantwortlicher_geaendert' | 'kommentar' | 'massnahme_umgesetzt'
+    | 'massnahme_verworfen' | 'bewertung_beantragt' | 'bewertung_abgelehnt' | 'massnahme_bewertet' | 'anstoss_gesetzt'
+    | 'anstoss_beantwortet';
+  alt: Record<string, unknown> | null;
+  neu: Record<string, unknown> | null;
+  begruendung: string | null;
+  kommentar: string | null;
+  person: string;
+  am: string;
+}
+
+/** Eine Maßnahme (OpenAPI `Massnahme`, AP-18 IP-10, M1–M4, M6); `messgrundlage` ODER `ohne_messgrundlage`. */
+export interface Massnahme {
+  id: string;
+  kennzeichen: string;
+  titel: string;
+  verantwortlich: { sub: string; name: string };
+  termin: string;
+  standort_id: string | null;
+  zustand: MassnahmeZustand;
+  herkunft: { art: MassnahmeHerkunft; kennung: string | null };
+  messgrundlage: MassnahmeMessgrundlage | null;
+  ohne_messgrundlage: { kennzeichen: string; hinweis: string; satz: string } | null;
+  einsatz: MassnahmeVerweis | null;
+  einstufung_fassung: number | null;
+  energieziel: MassnahmeVerweis | null;
+  /** Dezimaltext, eine Stelle, weniger Energie negativ; nur mit Messgrundlage. */
+  erwartete_wirkung_prozent: string | null;
+  erwartete_wirkung_wortlaut: string;
+  angelegt_am: string;
+  umgesetzt_am: string | null;
+  umgesetzt_begruendung: string | null;
+  verworfen_am: string | null;
+  verworfen_grund: string | null;
+  /** E5 = A: beim Abruf abgeleitet — Zahl und Satz von der Route. */
+  frist: { abruf: string; termin: string; faellig: 'ueberfaellig' | null; seit_tagen: number | null; satz: string | null };
+  /** Kundensatz `massnahme_kopf` (§5.9), erst ab umgesetzt. */
+  kopf_satz: string | null;
+  /** WK6 (IP-12): der jüngste BEWERTETE Stand; `null` ohne Stand — die Fläche sagt dann „beobachtet — nicht belegt“. */
+  bewertung: MassnahmeBewertung | null;
+  /** WK6 (IP-12): der offene Antrag (Vier-Augen) oder `null`. */
+  bewertung_antrag: MassnahmeBewertung | null;
+  /** IP-17-NAHT (M5, OpenAPI `MassnahmeAnstoss`): die Anstöße am Vorgang, älteste zuerst — wie `verlauf` nur an der einzelnen. */
+  anstoesse: VorgangAnstoss[] | null;
+  verlauf: MassnahmeEintrag[] | null;
+  /** Entscheid 6. */
+  art: MassnahmeArt;
+  /** Entscheid 13 - die Schätzung beim Anlegen; `null` ohne Zahl. */
+  erwartete_einsparung: MassnahmeEinsparung | null;
+  /** Nur in der Liste: die beobachtete Wirkung in Kurzform (§6.5), sonst `null`. */
+  wirkung_kurz: MassnahmeWirkungKurz | null;
+}
+
+export type MassnahmeErgebnis = 'belegt' | 'nicht_belegt' | 'nicht_messbar';
+
+/**
+ * Ein Stand Nr. n der Bewertung (OpenAPI `MassnahmeBewertung`, IP-12, WK6) — nie zurückgenommen. `kopie` ist der
+ * kanonische Text der Wirkung zum Bewertungstag (ohne Messgrundlage `null`), `pruefsumme` sein sha256; `satz` der
+ * Kundensatz `bewertung_belegt` bzw. `bewertung_nicht_messbar` (§5.9) an einem bewerteten Stand, sonst `null`.
+ */
+export interface MassnahmeBewertung {
+  stand_nr: number;
+  status: 'beantragt' | 'bewertet' | 'abgelehnt';
+  ergebnis: MassnahmeErgebnis;
+  begruendung: string;
+  vieraugen: boolean;
+  person: { sub: string | null; name: string };
+  am: string;
+  entscheidung: { sub: string | null; name: string } | null;
+  entschieden_am: string | null;
+  entscheidungs_begruendung: string | null;
+  kopie: string | null;
+  pruefsumme: string | null;
+  satz: string | null;
+}
+
+export interface MassnahmeBewertungen {
+  id: string;
+  kennzeichen: string;
+  zustand: MassnahmeZustand;
+  bewertungen: MassnahmeBewertung[];
+}
+
+export type MassnahmeBewertungSchritt = 'bewerten' | 'beantragen' | 'freigeben' | 'ablehnen';
+
+export type MassnahmeWirkungGrund =
+  | 'umsetzungsmonat' | 'basis_nach_umsetzung' | 'unvollstaendig' | 'basis_fehlt' | 'basis_beendet' | 'zu_wenig_perioden'
+  | 'variable_fehlt' | 'variable_ausserhalb' | 'periode_nicht_zu_ende' | 'keine_werte';
+
+/**
+ * Die Wirkung (OpenAPI `MassnahmeWirkung`, IP-11, WK1–WK5) — ein Leser, kein gespeicherter Wert; das Portal rechnet
+ * nichts. Mit `grund` (`ohne_messgrundlage`, `nicht_umgesetzt`) sind die Zahlen `null` und die Listen leer.
+ */
+export interface MassnahmeWirkung {
+  massnahme: Massnahme;
+  abruf: string;
+  grund: 'ohne_messgrundlage' | 'nicht_umgesetzt' | null;
+  umsetzungsmonat: string | null;
+  nachher_von: string | null;
+  nachher_bis: string | null;
+  /** Vom Umsetzungsmonat an: `gezaehlt` nur endgültig und bewertbar, sonst `grund` mit Kundensatz. */
+  monate: {
+    periode: string;
+    endgueltig: boolean;
+    gezaehlt: boolean;
+    grund: MassnahmeWirkungGrund | null;
+    satz: string | null;
+    /** Der rohe Kennzahl-Wert ohne Wort (WK5). */
+    kennzahl_roh: string | null;
+    vergleich: BezugsbasisVergleichMonat;
+  }[];
+  monate_bewertbar: number | null;
+  monate_endgueltig: number | null;
+  monate_soll: number | null;
+  /** „x von N“. */
+  monate_text: string | null;
+  vorlaeufig: boolean | null;
+  nicht_gezaehlt: { monat: string; grund: MassnahmeWirkungGrund }[];
+  summe: EnergiezielStand['summe'] | null;
+  /** Kundensatz `wirkung_vorlaeufig` (ohne Zahl der Person `wirkung_ohne_erwartung`) bzw. `ohne_messgrundlage` (§5.9). */
+  satz: string | null;
+  /** Der Energieträger des Zählers („Strom“, sonst „Energie“); ohne Nachher-Monate `null`. */
+  energie: string | null;
+}
+
+/**
+ * IP-17-NAHT (M5, Z5): ein Anstoß am Vorgang (`vorgang_anstoss`, OpenAPI `MassnahmeAnstoss` bzw. `EnergiezielAnstoss`)
+ * — die Kopie bleibt byte-gleich, eine Person antwortet (`POST …/anstoesse/{aid}/antwort`, IP-17 #1209).
+ */
+export interface VorgangAnstoss {
+  id: string;
+  art: 'ausgangslage_korrigiert' | 'bewertung_korrigiert' | 'messgrundlage_beendet' | 'messgrundlage_neu_gefasst';
+  anlass_kennung: string;
+  angestossen_am: string;
+  zustand: 'offen' | 'beantwortet';
+  antwort: VorgangAnstossAntwortArt | null;
+  antwort_begruendung: string | null;
+  beantwortet_am: string | null;
+  beantwortet_von: string | null;
+}
+
+export type VorgangAnstossAntwortArt = 'bleibt' | 'neu_kopiert' | 'neu_bewertet';
+
+/** IP-17-NAHT: der Körper von `POST …/anstoesse/{aid}/antwort` — `ergebnis` nur bei `neu_bewertet`. */
+export interface VorgangAnstossAntwort {
+  antwort: VorgangAnstossAntwortArt;
+  begruendung?: string;
+  ergebnis?: string;
+}
+
+export interface MassnahmeListe {
+  abruf: string;
+  massnahmen: Massnahme[];
+  /** Nur mit `?energieziel=`: die Maßnahmen, deren Wirkung im Stand enthalten ist, ohne für das Energieziel zu sein. */
+  im_stand_enthalten?: string[];
+}
+
+/** `POST /api/v1/massnahmen` — die Zahl der erwarteten Wirkung nur mit `kennzahl` (M4). */
+export interface MassnahmeNeu {
+  titel: string;
+  verantwortlich: string;
+  termin: string;
+  herkunft?: MassnahmeHerkunft;
+  herkunft_kennung?: string;
+  kennzahl?: string;
+  /** `JJJJ-MM` oder `JJJJ-MM/JJJJ-MM`. */
+  monate?: string;
+  einsatz?: string;
+  einstufung_fassung?: number;
+  energieziel?: string;
+  standort?: string;
+  erwartete_wirkung_prozent?: number;
+  erwartete_wirkung_wortlaut: string;
+  /** Entscheid 6; ohne Angabe `gemessen` mit Kennzahl, sonst `nicht_gemessen`. */
+  art?: MassnahmeArt;
+  /** Entscheid 13: die Schätzung einer Person - nur ohne Kennzahl und nicht organisatorisch. */
+  erwartete_einsparung_kwh_jahr?: number;
+}
+
+/** `PUT /api/v1/massnahmen/{id}` — nur solange geplant, mit Begründung. */
+export interface MassnahmeAendern {
+  titel?: string;
+  termin?: string;
+  erwartete_wirkung_prozent?: number;
+  erwartete_wirkung_wortlaut?: string;
+  /** Nur ohne Kennzahl; mit Kennzahl folgt sie der Zahl in Prozent. */
+  erwartete_einsparung_kwh_jahr?: number;
+  begruendung: string;
+}
+
+// ---------------------------------------------------------------------------------------- Abweichungen (UEMS AP-18)
+
+/** Ein Verweis der Abweichung (OpenAPI `AbweichungVerweis`) — Kennzahl, Bezugsbasis, Maßnahme, Abweichung. */
+export interface AbweichungVerweis {
+  id: string;
+  kennzeichen: string | null;
+  name: string | null;
+}
+
+/**
+ * Ein Vermerk an der Kennzahl (OpenAPI `Auffaelligkeit`, AP-18 IP-15/IP-16, A1, A2): `anlass` die gespeicherte Kopie des
+ * Vergleichsergebnisses (byte-gleich) mit Prüfsumme, `vorbehalte` geerbt; `satz` nur bei `zur_kenntnis`.
+ */
+export interface Auffaelligkeit {
+  id: string;
+  kennzahl: AbweichungVerweis;
+  bezugsbasis: AbweichungVerweis;
+  fassung: number;
+  /** `JJJJ-MM`. */
+  periode: string;
+  standort_id: string | null;
+  anlass: string;
+  anlass_pruefsumme: string;
+  anlass_inhalt: Record<string, unknown>;
+  vorbehalte: string[];
+  vermerkt_am: string;
+  zustand: 'offen' | 'beantwortet';
+  antwort: 'abweichung' | 'zur_kenntnis' | null;
+  antwort_begruendung: string | null;
+  abweichung: AbweichungVerweis | null;
+  beantwortet_am: string | null;
+  beantwortet_von: string | null;
+  satz: string | null;
+}
+
+export interface AuffaelligkeitListe {
+  kennzahl: AbweichungVerweis;
+  abruf: string;
+  offen: number;
+  vermerke: Auffaelligkeit[];
+}
+
+/**
+ * `GET /api/v1/auffaelligkeiten` (Verbessern, Entscheid 4): die Vermerke aller sichtbaren Kennzahlen, ältester Monat
+ * zuerst; die Kennzahl steht an jedem Vermerk, `offen` zählt alle sichtbaren offenen.
+ */
+export interface AuffaelligkeitenAlle {
+  abruf: string;
+  offen: number;
+  vermerke: Auffaelligkeit[];
+}
+
+/** `POST /api/v1/kennzahlen/{id}/auffaelligkeiten/{aid}/antwort` — einmalig. */
+export type AuffaelligkeitAntwort =
+  | { antwort: 'abweichung'; verantwortlich: string; frist?: string }
+  | { antwort: 'zur_kenntnis'; begruendung: string };
+
+export type AbweichungErgebnis = 'massnahme' | 'erklaert' | 'keine_abweichung' | 'nicht_bewertbar';
+
+/** U1/U2 (OpenAPI `AbweichungAussage`): die Aussage einer Person, nie ein Fakt des Systems. */
+export interface AbweichungAussage {
+  wortlaut: string;
+  sub: string | null;
+  name: string;
+  am: string;
+  beleg_kennung: string | null;
+  /** „Aussage von …, TT.MM.JJJJ — keine Messung“ bzw. „— mit Beleg …“ von der Route. */
+  kennzeichen: string;
+  satz: string | null;
+}
+
+/** Eine Zeile des Protokolls `abweichung_aenderung` (OpenAPI `AbweichungEintrag`); `person` hat eingetragen. */
+export interface AbweichungEintrag {
+  nr: number;
+  art:
+    | 'abweichung_eroeffnet' | 'kommentar' | 'ursache_aussage' | 'abweichung_geaendert' | 'verantwortlicher_geaendert'
+    | 'abweichung_abgeschlossen';
+  alt: Record<string, unknown> | null;
+  neu: Record<string, unknown> | null;
+  begruendung: string | null;
+  kommentar: string | null;
+  aussage: AbweichungAussage | null;
+  person: string;
+  am: string;
+}
+
+/** Eine Abweichung (OpenAPI `Abweichung`, AP-18 IP-16, A3–A6); `vermerke` und `verlauf` nur an der einzelnen. */
+export interface Abweichung {
+  id: string;
+  kennzeichen: string;
+  kennzahl: AbweichungVerweis;
+  bezugsbasis: AbweichungVerweis;
+  fassung: number;
+  monate: string[];
+  herkunft: { art: 'auffaelligkeit' | 'von_hand'; wortlaut: string | null };
+  anlass: string;
+  anlass_pruefsumme: string;
+  anlass_inhalt: Record<string, unknown>;
+  vorbehalte: string[];
+  verantwortlich: { sub: string; name: string };
+  /** E5 = A: beim Abruf abgeleitet — Zahl von der Route. */
+  frist: { abruf: string; termin: string; faellig: 'ueberfaellig' | null; seit_tagen: number | null };
+  standort_id: string | null;
+  zustand: 'offen' | 'abgeschlossen';
+  eroeffnet_am: string;
+  eroeffnet_von: string;
+  abschluss: {
+    ergebnis: AbweichungErgebnis;
+    massnahme: AbweichungVerweis | null;
+    begruendung: string;
+    am: string;
+    person: string;
+    satz: string | null;
+  } | null;
+  /** Kundensatz `abweichung_kopf` (§5.9) — nur für einen Monat mit Δ. */
+  kopf_satz: string | null;
+  vermerke: Auffaelligkeit[] | null;
+  verlauf: AbweichungEintrag[] | null;
+}
+
+export interface AbweichungListe {
+  abruf: string;
+  abweichungen: Abweichung[];
+}
+
+/** `POST /api/v1/abweichungen` — von Hand an Vergleichszeilen, mit Wortlaut, warum (A3). */
+export interface AbweichungNeu {
+  kennzahl: string;
+  bezugsbasis?: string;
+  /** `JJJJ-MM` oder `JJJJ-MM/JJJJ-MM`. */
+  monate: string;
+  wortlaut: string;
+  verantwortlich: string;
+  frist?: string;
+}
+
+/** `POST /api/v1/abweichungen/{id}/eintraege` — Kommentar oder Ursache-Aussage (A4, U1–U3). */
+export type AbweichungEintragNeu =
+  | { art: 'kommentar'; text: string }
+  | { art: 'ursache_aussage'; wortlaut: string; aussage_sub?: string; aussage_name?: string; aussage_am: string; beleg_kennung?: string };
+
+// ---------------------------------------------------------------------------------------- Energieziele (UEMS AP-18)
+
+export type EnergiezielZustand = 'offen' | 'bewertet' | 'beendet';
+export type EnergiezielErgebnis = 'erreicht' | 'verfehlt' | 'nicht_bewertbar';
+export type EnergiezielBewertungSchritt = 'bewerten' | 'beantragen' | 'freigeben' | 'ablehnen';
+
+/** Ein Energieziel (OpenAPI `Energieziel`, AP-18 IP-6/IP-7, Z1/Z2/Z5); `anstoesse` und `verlauf` nur am einzelnen Ziel. */
+export interface Energieziel {
+  id: string;
+  kennzeichen: string;
+  kennzahl: { id: string; kennzeichen: string; name: string };
+  bezugsbasis: { id: string; kennzeichen: string; fassung: number };
+  /** Dezimaltext mit einer Stelle, weniger Energie negativ. */
+  zielwert_prozent: string;
+  /** `JJJJ-MM/JJJJ-MM`. */
+  zielperiode: string;
+  wortlaut: string;
+  begruendung: string;
+  verantwortlich: { sub: string; name: string };
+  standort_id: string | null;
+  zustand: EnergiezielZustand;
+  angelegt_am: string;
+  beendet_zum: string | null;
+  beendet_grund: string | null;
+  ergebnis: EnergiezielErgebnis | null;
+  /** F1 (IP-7): beim Abruf vom Server abgeleitet — nie im Portal gerechnet. */
+  frist: EnergiezielFrist;
+  /** Z5 (IP-7): die Bewertung bzw. bei Vier-Augen der Antrag; ohne Bewertung `null`. */
+  bewertung: EnergiezielBewertung | null;
+  anstoesse: EnergiezielAnstoss[] | null;
+  verlauf: EnergiezielEintrag[] | null;
+}
+
+/** Z5 (OpenAPI `EnergiezielBewertung`): Kopie des Ziel-Stands zum Bewertungstag mit Prüfsumme, nie zurückgenommen. */
+export interface EnergiezielBewertung {
+  status: 'beantragt' | 'bewertet' | 'abgelehnt';
+  ergebnis: EnergiezielErgebnis;
+  begruendung: string;
+  /** Der Vorschlag des Lesers zum Bewertungstag — `null` bei unvollständiger Periode (Z4). */
+  vorschlag: 'erreicht' | 'nicht_erreicht' | null;
+  vieraugen: boolean;
+  /** Wer bewertet bzw. beantragt hat. */
+  person: { sub: string | null; name: string };
+  am: string;
+  /** Bei Vier-Augen die zweite Person, die bestätigt oder abgelehnt hat. */
+  entscheidung: { sub: string | null; name: string } | null;
+  entschieden_am: string | null;
+  entscheidungs_begruendung: string | null;
+  kopie: string;
+  pruefsumme: string;
+  /** Konzept Verbessern, Entscheid 11: derselbe Stand wie `kopie`, lesbar (OpenAPI `EnergiezielFestgehaltenerStand`). */
+  stand?: EnergiezielFestgehaltenerStand;
+}
+
+/** Der Ziel-Stand der Kopie zum Bewertungstag - Σ in `einheit`, Δ mit Richtung, „x von y“, Ausschlüsse mit Grund. */
+export interface EnergiezielFestgehaltenerStand {
+  abruf: string | null;
+  gemessen: string | null;
+  erwartet: string | null;
+  einheit: string | null;
+  delta_prozent: string | null;
+  richtung: 'mehr' | 'weniger' | 'gleich' | null;
+  urteil: string | null;
+  band_prozent: string | null;
+  monate_bewertbar: number;
+  monate_gesamt: number;
+  ausgeschlossen: { monat: string; grund: string }[];
+  grund_kein_vorschlag: string | null;
+}
+
+/**
+ * Operation `kurs` (Vertrag verbesserung.md §4a, Konzept Verbessern Entscheid 3): der Zwischenstand über die bisher
+ * bewertbaren Monate - `hoechstens` und `luecke` (positiv = darüber) in der Einheit der Summe, `noetig_prozent` der
+ * nötige Schnitt der offenen Monate gegen erwartet (Näherung bei gleich großen Monaten).
+ */
+export interface EnergiezielKurs {
+  lage: 'auf_kurs' | 'knapp_dahinter' | 'nicht_auf_kurs' | 'noch_keine_aussage';
+  monate_bewertbar: number;
+  monate_offen: number;
+  hoechstens: string | null;
+  luecke: string | null;
+  noetig_prozent: string | null;
+  noetig_richtung: 'mehr' | 'weniger' | 'gleich' | null;
+}
+
+/** F1 (OpenAPI `EnergiezielFrist`): Termin = letzter Tag der Zielperiode; fällig erst, wenn der letzte Monat endgültig ist. */
+export interface EnergiezielFrist {
+  termin: string;
+  faellig: 'bewertung_faellig' | null;
+  seit_tagen: number | null;
+}
+
+/** Ein Anstoß am Energieziel (Z5, `vorgang_anstoss`) — eine Person antwortet; dieselbe Form wie an der Maßnahme. */
+export type EnergiezielAnstoss = VorgangAnstoss;
+
+export interface EnergiezielEintrag {
+  art:
+    | 'energieziel_angelegt' | 'energieziel_geaendert' | 'verantwortlicher_geaendert' | 'bewertung_beantragt'
+    | 'bewertung_abgelehnt' | 'energieziel_bewertet' | 'energieziel_beendet' | 'anstoss_gesetzt' | 'anstoss_beantwortet';
+  alt: Record<string, unknown> | null;
+  neu: Record<string, unknown> | null;
+  begruendung: string | null;
+  person: string;
+  am: string;
+}
+
+export interface EnergiezielListe {
+  energieziele: Energieziel[];
+}
+
+export interface EnergiezielNeu {
+  kennzahl: string;
+  zielwert_prozent: number;
+  zielperiode: string;
+  wortlaut: string;
+  begruendung: string;
+  verantwortlich?: string;
+}
+
+export type EnergiezielNichtGezaehltGrund =
+  | 'basis_fehlt' | 'basis_beendet' | 'zu_wenig_perioden' | 'variable_fehlt' | 'variable_ausserhalb'
+  | 'periode_nicht_zu_ende' | 'keine_werte' | 'unvollstaendig';
+
+/** Der Ziel-Stand (OpenAPI `EnergiezielStand`, Z3/Z4) — alles vom Leser, das Portal rechnet nichts. */
+export interface EnergiezielStand {
+  energieziel: Energieziel;
+  abruf: string;
+  zielperiode: string;
+  zielwert_prozent: string;
+  monate: { periode: string; endgueltig: boolean; vergleich: BezugsbasisVergleichMonat }[];
+  monate_bewertbar: number;
+  monate_endgueltig: number;
+  monate_soll: number;
+  /** „x von y“. */
+  monate_text: string;
+  vollstaendig: boolean;
+  nicht_gezaehlt: { monat: string; grund: EnergiezielNichtGezaehltGrund }[];
+  summe: {
+    gemessen: string | null;
+    erwartet: string | null;
+    delta_prozent: string | null;
+    band_prozent: string | null;
+    richtung: 'mehr' | 'weniger' | 'gleich' | null;
+    urteil: 'besser' | 'schlechter' | 'im_rahmen' | 'nicht_anwendbar' | 'ohne_urteil';
+    kennzeichen: string[];
+  };
+  vorschlag: 'erreicht' | 'nicht_erreicht' | null;
+  satz: string | null;
+  vorschlag_satz: string | null;
+  /** Konzept Verbessern, Entscheid 3: der Zwischenstand (Operation `kurs`); ältere Antworten ohne. */
+  kurs?: EnergiezielKurs;
+}
+
+// ---------------------------------------------------------------------------------------- Bezugsbasis (UEMS AP-17)
+
+/** Eine Fassung in Kurzform (`GET …/bezugsbasen/{bid}`, bezugsbasis.md §13). */
+export interface BezugsbasisFassungKurz {
+  fassung: number;
+  referenzperiode: string;
+  methode: string;
+  datenlage: 'vollstaendig' | 'vorlaeufig';
+  freigabe_status: 'entwurf' | 'beantragt' | 'freigegeben' | 'abgelehnt';
+  basiswert: string | null;
+  gilt_ab: string;
+  gilt_bis?: string | null;
+  pruefsumme: string | null;
+}
+
+/** Die Bezugsbasis BB-… mit ihren Fassungen (IP-7). */
+export interface Bezugsbasis {
+  id: string;
+  kennzeichen: string;
+  kennzahl_id: string;
+  kennzahl: string;
+  zweck: string | null;
+  verantwortlich_name: string;
+  beendet_zum: string | null;
+  beendet_grund: string | null;
+  angelegt_am: string;
+  fassungen: BezugsbasisFassungKurz[];
+  /**
+   * AP-17 IP-18 (A2–A4, F5) — additive Felder von Nachlese 3 (`bezugsbasis.md` §15 „Anstöße und Frist lesen“) an
+   * `GET …/bezugsbasen/{bid}` und jedem Eintrag von `GET …/bezugsbasen`: die Anstöße der Basis (jüngste zuerst) und die
+   * Frist der laufenden Fassung (`null` ohne freigegebene Fassung oder an einer beendeten Basis). Optional für ältere
+   * Antworten: fehlen sie, liest der Reiter Frist und „Anstoß liegt vor“ als Rückfall aus der Übersicht (IP-17).
+   */
+  anstoesse?: BezugsbasisAnstoss[];
+  frist?: BezugsbasisFrist | null;
+}
+
+/** Ein Anstoß an einer freigegebenen Fassung (A2–A4, `bezugsbasis_anstoss`); `anlass_satz` ist der §5.8-Satz des Servers. */
+export interface BezugsbasisAnstoss {
+  art: 'grundlage_korrigiert' | 'struktur_geaendert' | 'variable_geaendert' | 'nicht_mehr_anwendbar';
+  pfad: 1 | 2;
+  anlass_kennung: string;
+  anlass_satz: string;
+  zeitpunkt: string;
+  fassung: number;
+  offen: boolean;
+  antwort: { art: 'neue_fassung' | 'beendet' | 'bleibt'; person: string | null; am: string; begruendung: string | null } | null;
+}
+
+/** Die Frist der laufenden Fassung (F5), beim Abruf vom Server abgeleitet — nie im Portal gerechnet. */
+export interface BezugsbasisFrist {
+  ueberpruefung_faellig: boolean;
+  faellig_am: string | null;
+  faellig_seit_tagen: number | null;
+  wiedervorlage_monate: number;
+  /** Das jüngste „geprüft, bleibt“ dieser Fassung (Beginn der Frist), sonst null. */
+  bestaetigt_am?: string | null;
+}
+
+/** Ein statischer Faktor der Fassung — die Kopie zum Stichtag (§17, IP-16b); `satz` ist der Kundensatz des Servers. */
+export interface BezugsbasisFaktor {
+  position: number;
+  art: 'flaeche' | 'standort' | 'anlage' | 'prozess' | 'kostenstelle' | 'wortlaut';
+  objekt_id: string | null;
+  kennung: string | null;
+  bezeichnung: string | null;
+  wortlaut: string | null;
+  wert: string | null;
+  einheit: string | null;
+  gueltig_ab: string | null;
+  stichtag: string;
+  ohne_anstoss: boolean;
+  satz: string;
+}
+
+/** Ein Monat der eingefrorenen Grundlage (F3): mit Zahl, oder nur mit `grund` (zählt nicht). */
+export interface BezugsbasisGrundlagePeriode {
+  periode: string;
+  grund?: string;
+  kennzahl?: { objekt: string; wert: string; version: number; definition_fassung: number; zustand: string; menge_zustand: string | null; kennzeichen: string[] };
+  zaehler?: string;
+  nenner?: string;
+}
+
+export interface BezugsbasisVariable {
+  position: number;
+  rolle: 'nenner' | 'variable';
+  bezugsgroesse_id: string;
+  kennzeichen: string;
+  fassung: number | null;
+  spannweite_von: string | null;
+  spannweite_bis: string | null;
+}
+
+/** Vorschau und gespeicherte Fassung in einem (`POST …/fassungen`, `GET …/fassungen/{n}`). */
+export interface BezugsbasisFassung {
+  bezugsbasis_id: string;
+  bezugsbasis: string;
+  kennzahl_id: string;
+  kennzahl: string;
+  fassung: number;
+  referenzperiode: string;
+  methode: string;
+  gilt_ab: string;
+  monate: number;
+  mindest_monate: number;
+  datenlage: 'vollstaendig' | 'vorlaeufig';
+  datenlage_gruende: Array<Record<string, unknown> & { grund: string }>;
+  vorbehalte: string[];
+  /** Wie an der Kurzform wahlfrei — die Referenzdatei (BB-0003 Fassung 2) lässt ihn ohne Monatswerte leer, nie 0. */
+  basiswert: string | null;
+  /** IP-10 (M2/M4): a, b und beim Modell mit zwei Einflussgrößen c — beim Verhältnis null. */
+  koeffizienten?: Record<string, string> | null;
+  r2?: string | null;
+  streuung_prozent?: string | null;
+  /** G4: eine abhängige zweite Variable — `objekt`, `position`, `grund`, `r`, `startwert_r`. */
+  abgelehnte_variablen?: Array<Record<string, unknown>>;
+  kennzeichen?: string[];
+  toleranz_prozent: string;
+  wiedervorlage_monate: number;
+  variablen: BezugsbasisVariable[];
+  faktoren: BezugsbasisFaktor[];
+  freigabe_status: 'entwurf' | 'beantragt' | 'freigegeben' | 'abgelehnt';
+  gebildet_am: string;
+  gebildet_von: string;
+  /**
+   * Die eingefrorene Grundlage — die Spalte ist wahlfrei, die Route reicht `null` durch (dann auch `pruefsumme`; `monate`
+   * ist dann 0 und heißt „unbekannt“, nie „kein Monat“). Die Referenzdatei kennt so eine Fassung: BB-0003 Fassung 2.
+   */
+  grundlage: ({ perioden?: BezugsbasisGrundlagePeriode[] } & Record<string, unknown>) | null;
+  pruefsumme: string | null;
+  /** IP-8 (F1/F2/F4): Freigabe und Vier-Augen — `freigabe` hat freigegeben bzw. beantragt, `entscheidung` ist die zweite Person. */
+  gilt_bis?: string | null;
+  anpassungsgruende?: string[];
+  anpassung_wortlaut?: string | null;
+  begruendung?: string | null;
+  vieraugen?: boolean;
+  freigabe?: BezugsbasisPerson | null;
+  entscheidung?: BezugsbasisPerson | null;
+  entscheidungs_begruendung?: string | null;
+  freigegeben_am?: string | null;
+}
+
+export interface BezugsbasisPerson { name: string; rolle: string | null; am: string }
+
+export interface BezugsbasisEntwurf {
+  referenzperiode: string;
+  methode: string;
+  variablen?: string[] | null;
+  toleranz_prozent?: string | null;
+  wiedervorlage_monate?: number | null;
+  /** IP-16b (§17): Verweise aus dem Faktoren-Vorschlag oder ein Wortlaut. */
+  faktoren?: Array<{ art: string; objekt_id?: string; wortlaut?: string }> | null;
+  /** IP-8 (A1, F4): ab Fassung 2 Pflicht — Anpassungsgründe, bei `sonstiger` der Wortlaut, Begründung 10–500; `gilt_ab` wahlfrei. */
+  anpassungsgruende?: string[];
+  anpassung_wortlaut?: string | null;
+  begruendung?: string;
+  gilt_ab?: string | null;
+}
+
+/** `GET /api/v1/kennzahlen/{id}/faktoren-vorschlag` (IP-16a, bezugsbasis.md „Faktoren-Vorschlag“). */
+export interface FaktorVorschlag {
+  art: 'flaeche' | 'standort' | 'anlage' | 'prozess' | 'kostenstelle';
+  objekt_id: string;
+  kennung: string | null;
+  bezeichnung: string;
+  wert: number | null;
+  einheit: string | null;
+  gueltig_ab: string | null;
+  gueltig_bis: string | null;
+  satz: string;
+}
+export interface FaktorenVorschlag {
+  kennzahl_id: string;
+  kennzeichen: string;
+  geltung_art: string;
+  geltung_id: string;
+  geltung_name: string | null;
+  stichtag: string;
+  faktoren: FaktorVorschlag[];
+  flaeche: { wert: number | null; einheit: string | null; objekte: string[]; ohne_flaeche: string[]; gueltig_ab: string | null; gueltig_bis: string | null; satz: string } | null;
+  hinweis: string;
+}
+
+/** `GET /api/v1/kennzahlen/{id}/variablen-vorschlag` (IP-11a, kennzahl-variablen-vorschlag.md). */
+export interface VariablenVorschlagGroesse {
+  id: string; kennzeichen: string; name: string; art: string | null; wertart: 'periodenwert' | 'stammdatum';
+  einheit: string; periode_art: string | null; hat_werte: boolean; hat_kanal: boolean;
+}
+export interface VariablenVorschlagKandidat {
+  bezugsgroesse: VariablenVorschlagGroesse;
+  einfluss_art: string;
+  vorschlag: 'variable_1' | 'variable' | 'statischer_faktor';
+  einsaetze: string[];
+  abhaengigkeit: {
+    ergebnis: 'unabhaengig' | 'variablen_abhaengig' | 'nicht_pruefbar'; r: number | null; paare: number;
+    grund: string | null; gegen: string | null; schwelle: number;
+  } | null;
+  satz: string | null;
+}
+export interface VariablenVorschlag {
+  geltung_art: string;
+  bezug: 'prozess' | 'zaehler_messstellen' | 'keiner';
+  referenzperiode: string;
+  einsaetze: Array<{ id: string; kennzeichen: string; name: string; traeger: string }>;
+  variable_1: VariablenVorschlagGroesse | null;
+  kandidaten: VariablenVorschlagKandidat[];
+  ohne_zahl: Array<{ wortlaut: string; einfluss_art: string; einsatz: string; satz: string }>;
+  satz: string | null;
+}
+
+/** Der Körper von `POST /api/v1/kennzahlen` und `…/vorschau` (streng gelesen; `periode_art` ist ein Wunsch). */
+export interface KennzahlAnfrage {
+  kennzeichen?: string | null;
+  name: string;
+  rechenform: string;
+  geltung_art: KennzahlGeltungArt;
+  geltung_id: string;
+  verantwortlich_name?: string | null;
+  zweck?: string | null;
+  periode_art?: KennzahlPeriodeArt | null;
+  komplement?: boolean | null;
+  eingaenge: KennzahlEingang[];
+}
+
+/** Eine Fassung der Berechnung; `gueltig_ab` null = gilt seit Beginn, `gueltig_bis` = letzter Tag einschließlich. */
+export interface KennzahlFassung {
+  nummer: number;
+  gueltig_ab: string | null;
+  gueltig_bis: string | null;
+  aufgehoben_am: string | null;
+  herkunft: 'anlage' | 'eintrag' | 'kopie';
+  rueckwirkend: boolean;
+  abzeichen: string | null;
+  begruendung: string | null;
+  eingetragen_von: { name: string; rolle: string | null; art: 'kunde' | 'unterstuetzung' | 'voltpilot' | 'notfall' };
+  eingetragen_am: string;
+  rechenform: KennzahlRechenform;
+  einheit: string;
+  einheit_anzeige: string;
+  komplement: boolean;
+  eingaenge: { rolle: KennzahlEingang['rolle']; art: KennzahlEingang['art']; id: string; kennzeichen: string; name: string | null }[];
+}
+
+/** Eine Periode der Vorschau — gerechnet, nie gespeichert; `wert` null heißt keine Werte, nie 0. */
+export interface KennzahlVorschauPeriode {
+  periode_art: KennzahlPeriodeArt;
+  schluessel: string;
+  beschriftung: string;
+  von: string;
+  bis: string;
+  wert: string | null;
+  zaehler: string | null;
+  nenner: string | null;
+  zustand: string;
+  richtung: 'untergrenze' | 'obergrenze' | 'unbestimmt' | null;
+  grund: string | null;
+  abdeckung_prozent: string | null;
+  fassung: string | null;
+  kennzeichen: string[];
+  anzeige: string;
+  kundensatz: string | null;
+}
+
+/** Die Antwort von `POST /api/v1/kennzahlen/vorschau`: `befunde` leer = das Anlegen würde gelingen. */
+export interface KennzahlVorschau {
+  befunde: { code: KennzahlFehlerCode; message: string; fakten: Record<string, unknown> }[];
+  rechte_geltung: 'standort' | 'unternehmen' | null;
+  standort_id: string | null;
+  kennung: string | null;
+  einheit: string | null;
+  einheit_anzeige: string | null;
+  grundperiode: KennzahlPeriodeArt | null;
+  perioden: KennzahlPeriodeArt[];
+  periode_art: KennzahlPeriodeArt | null;
+  letzte_perioden: KennzahlVorschauPeriode[];
+}
+
+/** Was eine Vorlage an einer Seite erwartet (UEMS AP-11 IP-10, `kennzahl-vorlagen.schema.json`); `berechnet` = Gesamtwert. */
+export interface KennzahlVorlageMessstelle {
+  art: 'messstelle';
+  messstelle_arten: ('gemessen' | 'berechnet')[];
+  groesse: string;
+  /** null = die Vorlage verlangt keine Richtung. */
+  richtungen: string[] | null;
+  wertarten: string[];
+  satz: string;
+}
+
+/** Arten aus `bezugsdaten-vectors.json → arten.je_art`; Einheiten werden nie umgerechnet. */
+export interface KennzahlVorlageBezugsgroesse {
+  art: 'bezugsgroesse';
+  bezugsgroesse_arten: string[];
+  einheiten: string[];
+  wertarten: ('periodenwert' | 'stammdatum')[];
+  satz: string;
+}
+
+export type KennzahlVorlageErwartung = KennzahlVorlageMessstelle | KennzahlVorlageBezugsgroesse;
+
+/**
+ * Eine Vorlage des VoltPilot-Katalogs (`GET /api/v1/kennzahl-vorlagen`, byte-gleich `src/kennzahlen/kennzahl-vorlagen.json`):
+ * `zaehler_erwartung` ist Menge bzw. Teil, `nenner_erwartung` Bezugsgröße bzw. Ganzes.
+ */
+export interface KennzahlVorlage {
+  kennung: string;
+  name_vorschlag: string;
+  zweck_vorschlag: string;
+  hilfesatz: string;
+  rechenform: 'quotient' | 'anteil';
+  komplement: boolean;
+  zaehler_erwartung: KennzahlVorlageErwartung;
+  nenner_erwartung: KennzahlVorlageErwartung;
+}
+
+export interface KennzahlVorlagen {
+  schema_version: string;
+  vorlagen: KennzahlVorlage[];
+}
+
+/** Eine Gruppe möglicher Paare einer Zusammenfassung: dieselbe Rechenform, dieselbe Einheit (UEMS AP-11 IP-11, R4). */
+export interface KennzahlPaarGruppe {
+  rechenform: KennzahlRechenform;
+  einheit: string;
+  einheit_anzeige: string | null;
+  kennzahlen: Kennzahl[];
+}
+
+/** Die Antwort von `GET /api/v1/kennzahlen/paare?rechenform=&einheit=&standort_id=` (alle Filter optional). */
+export interface KennzahlPaare {
+  gruppen: KennzahlPaarGruppe[];
+}
+
+/** Der geschlossene Satz der Ablehnungen (`schnittstelle.ablehnungen`); der Satz steht in `message`. */
+export type KennzahlFehlerCode =
+  | 'anfrage_ungueltig' | 'kennzeichen_format' | 'recht_fehlt' | 'nicht_gefunden' | 'kennzeichen_belegt'
+  | 'archiviert' | 'hat_werte' | 'wird_gelesen' | 'periode_passt_nicht' | 'einheit_unpassend' | 'groesse_unbekannt'
+  | 'eingang_ausserhalb_geltung' | 'formel_zyklus' | 'fassung_ueberlappt' | 'geltung_unbekannt' | 'eingang_unbekannt'
+  | 'rechenform_unbekannt';
+
+// ---- Werte einer Kennzahl (UEMS AP-11 IP-7) ---------------------------------
+// Die Formen von GET /api/v1/kennzahlen/{id}/werte und …/werte/versionen (OpenAPI `KennzahlWerte`,
+// `KennzahlWerteHistorie`). Beträge sind DEZIMALTEXT und ungerundet — gerundet wird nur in der Anzeige (U4).
+
+export type KennzahlZustand = 'vollständig' | 'unvollständig' | 'keine Werte' | 'mit Ersatzwert';
+export type KennzahlRichtung = 'untergrenze' | 'obergrenze' | 'unbestimmt';
+/** `grund_ohne_zahl` des Vertrags — ohne die zwei Gründe des Lesers. */
+export type KennzahlGrundOhneZahl =
+  | 'nenner_fehlt' | 'nenner_null' | 'zaehler_fehlt' | 'periode_nicht_zu_ende' | 'vor_bestehen' | 'haengt_an_kreis'
+  | 'eingang_archiviert';
+/** Warum ein Schritt keine Zahl trägt: ein Wort der Zeile oder eines des Lesers (dieselben wie am Messstellen-Wert). */
+export type KennzahlWertGrund = KennzahlGrundOhneZahl | 'noch_nicht_gebildet' | 'version_nicht_gespeichert';
+
+/** Ein Eingang im Herkunfts-Satz (`kennzahlwert-herkunft.schema.json` → `$defs/eingang`), wie er beim Bilden stand. */
+export interface KennzahlwertHerkunftEingang {
+  rolle: 'zaehler' | 'nenner' | 'paar';
+  art: 'messstelle' | 'bezugsgroesse' | 'kennzahl';
+  /** Das Kennzeichen des Eingangs (MS-12, BZ-6, KZ-0001) — beim Stammdatum seine Bezeichnung. */
+  objekt: string;
+  wert: string | null;
+  /** Nur bei `paar`. */
+  zaehler: string | null;
+  nenner: string | null;
+  einheit: string;
+  zustand: KennzahlZustand;
+  abdeckung_prozent: string | null;
+  /** Messstelle und Kennzahl. */
+  version: number | null;
+  /** Bezugsgröße mit Periodenwert; ein Stammdatum hat keine. */
+  fassung: number | null;
+  kennzeichen: string[];
+}
+
+/** Die Hülle `{satz, fehlt}` eines Kennzahl-Werts — nie eine halbe Herkunft: ohne Satz nennt `fehlt` jede Lücke. */
+export interface KennzahlwertHerkunft {
+  satz: {
+    art: 'kennzahl';
+    kennzahl: string;
+    rechenform: KennzahlRechenform;
+    definition_fassung: number;
+    periode: { art: KennzahlPeriodeArt; schluessel: string };
+    berechnet_am: string;
+    version: number;
+    anlass: string | null;
+    eingaenge: KennzahlwertHerkunftEingang[];
+    ergebnis: {
+      wert: string | null;
+      einheit: string;
+      zustand: KennzahlZustand;
+      richtung: KennzahlRichtung | null;
+      grund: KennzahlGrundOhneZahl | null;
+      abdeckung_prozent: string | null;
+      kennzeichen: string[];
+    };
+  } | null;
+  fehlt: Array<'kennzahl' | 'definition_fassung' | 'berechnet_am' | 'eingaenge' | 'anlass'>;
+}
+
+/** Eine Periode einer Kennzahl — die Trägerform des Messstellen-Werts mit Wert, Zähler und Nenner. */
+export interface KennzahlWert {
+  von: string;
+  /** Der LETZTE Tag der Periode, einschließlich. */
+  bis: string;
+  /** 2026-10-05 · 2026-W40 · 2026-10 · 2026. */
+  schluessel: string;
+  /** „05.10.2026“ · „KW 40/2026“ · „Oktober 2026“ · „2026“. */
+  beschriftung: string;
+  /** Dezimaltext, ungerundet; `null` = keine Zahl, nie 0. Ein Anteil in Prozent. */
+  wert: string | null;
+  zaehler: string | null;
+  nenner: string | null;
+  /** Die Einheit der Fassung, mit der der Wert gebildet wurde. */
+  einheit: string | null;
+  /** `null` nur ohne Zeile oder ohne die angefragte Version — dann steht `grund`. */
+  zustand: KennzahlZustand | null;
+  richtung: KennzahlRichtung | null;
+  kennzeichen: string[];
+  abdeckung_prozent: string | null;
+  fassung: 'vorlaeufig' | 'endgueltig' | null;
+  endgueltig_ab: string | null;
+  /** Die Version, deren Zahl der Schritt zeigt; `null` = noch keine. */
+  version: number | null;
+  /** Die Fassung der Berechnung am letzten Tag der Periode. */
+  definition_fassung: number | null;
+  berechnet_am: string | null;
+  grund: KennzahlWertGrund | null;
+  /** An jeder Version, auch ohne Zahl; `null` ohne Zeile oder ohne Version. */
+  herkunft: KennzahlwertHerkunft | null;
+  /** Ab 2 gibt es eine Historie unter `…/werte/versionen`; `null`, solange keine gebildet ist. */
+  versionen: number | null;
+}
+
+export interface KennzahlWerte {
+  kennzahl: {
+    id: string;
+    kennzeichen: string;
+    name: string;
+    rechenform: KennzahlRechenform;
+    einheit: string | null;
+    einheit_anzeige: string | null;
+  };
+  periode: KennzahlPeriodeArt;
+  von: string;
+  bis: string;
+  zeitzone: string;
+  /** Die angefragte Version; `null` = je Schritt die neueste. */
+  version: number | null;
+  werte: KennzahlWert[];
+  /** Summen-Wächter des geteilten Punkts (AP-07 IP-18b), nur an einer Zusammenfassung: fehlt ohne Fund. */
+  geteilte_register?: KennzahlGeteiltesRegister[];
+}
+
+/** In Σ `rolle` der Paare lesen die `messstellen` denselben Messpunkt derselben Box über zwei Komponenten. */
+export interface KennzahlGeteiltesRegister {
+  rolle: 'zaehler' | 'nenner';
+  register: string;
+  messstellen: string[];
+}
+
+/** Eine Entscheidung hinter einer Version — die Form der Messstelle mit dem weiteren Vorgang `berechnung`. */
+export interface KennzahlWertEntscheidung extends Omit<MessstelleWerteEntscheidung, 'vorgang' | 'fassung'> {
+  vorgang: MessstelleWerteEntscheidung['vorgang'] | 'berechnung';
+  /** `null`, wenn die Fassung des genannten Vorgangs nicht lesbar ist (`fehlt` nennt `fassung`). */
+  fassung: number | null;
+}
+
+export interface KennzahlWertVersion {
+  version: number;
+  /** Version n − 1; an Version 1 `null`. */
+  wert_alt: KennzahlWert | null;
+  wert_neu: KennzahlWert;
+  gebildet_am: string;
+  nachgezogen_am: string | null;
+  anlass: { art: 'eingang' | 'definition'; beleg: string } | null;
+  entscheidungen: KennzahlWertEntscheidung[];
+}
+
+export interface KennzahlWerteHistorie {
+  kennzahl: KennzahlWerte['kennzahl'];
+  periode: KennzahlPeriodeArt;
+  von: string;
+  bis: string;
+  zeitzone: string;
+  /** Nur ohne Version: warum die Periode keine hat. */
+  grund: KennzahlWertGrund | null;
+  /** Aufsteigend: Version 1 zuerst. */
+  versionen: KennzahlWertVersion[];
+}
+
+// Die Formen der Berichts-Routen (UEMS AP-12 IP-7, OpenAPI Tag `berichte`) — snake_case wie der Bericht-Vertrag,
+// streng: jedes Feld ist da, `null` heißt „gibt es nicht“. Zeitpunkte UTC; die Fakten einer Ablehnung in der Zone
+// der Geltung. Rechte (E12): 403 `recht_fehlt`, fremd 404 `nicht_gefunden` — die Unterstützung liest keinen Bericht.
+
+/** R5 — der Vermerk eines Berichts als Wort; der Kundensatz steht in `stand_text`. */
+export type BerichtStandZeichen = 'entwurf' | 'berichtsstand' | 'revision_noetig' | 'anstoss_verworfen';
+export type BerichtAnstossArt =
+  | 'korrektur_freigegeben'
+  | 'korrektur_zurueckgenommen'
+  | 'ersatzwert_wirksam'
+  | 'ersatzwert_zurueckgenommen'
+  | 'bezugsgroesse_fassung'
+  | 'kennzahl_fassung_rueckwirkend'
+  | 'zuordnung_rueckwirkend'
+  | 'anlage_umzug_rueckwirkend'
+  | 'flaeche_rueckwirkend'
+  | 'verteilung_rueckwirkend'
+  | 'einstufung_fassung'
+  | 'kriterien_fassung'
+  | 'umfang_fassung'
+  | 'messbedarf_zustand'
+  | 'prozess_zuordnung_rueckwirkend'
+  | 'messmittel_angabe'
+  | 'bezugsbasis_anstoss'
+  | 'bezugsbasis_fassung'
+  | 'bezugsbasis_beendet';
+/** Der geschlossene Satz der Ablehnungen (`uems/BerichtAbgelehnt`, OpenAPI `BerichtFehler`). */
+export type BerichtFehlerCode =
+  | 'anfrage_ungueltig'
+  | 'nicht_gefunden'
+  | 'recht_fehlt'
+  | 'vorlage_unbekannt'
+  | 'geltung_unbekannt'
+  | 'bericht_gibt_es_schon'
+  | 'keine_quellen'
+  | 'zeitraum_nicht_zu_ende'
+  | 'werte_vorlaeufig'
+  | 'entwurf_veraltet'
+  | 'stand_gibt_es_nicht'
+  | 'abzug_beschaedigt'
+  | 'begruendung_fehlt'
+  | 'anstoss_nicht_offen'
+  | 'gleichzeitig'
+  /** AP-17 IP-21b: Leistungsvergleich ohne freigegebene Bezugsbasis; PDF/CSV des Leistungsvergleichs (bis IP-22). */
+  | 'basis_fehlt'
+  | 'ausgabe_fehlt';
+
+/** Wer etwas tat: der Name und — wo gespeichert — die Rolle, die das Recht gab. */
+export interface BerichtPerson {
+  name: string;
+  rolle: string | null;
+}
+
+/** Ein Bericht in der Liste und im Kopf. */
+export interface Bericht {
+  kennung: string;
+  vorlage: string;
+  vorlage_fassung: number;
+  geltung_art: 'standort' | 'unternehmen';
+  geltung_id: string;
+  geltung_name: string | null;
+  zeitraum_art: 'monat' | 'jahr' | 'datengrundlage';
+  zeitraum: string;
+  zeitraum_text: string;
+  zeitzone: string;
+  angelegt_von: BerichtPerson;
+  angelegt_am: string;
+  archiviert_am: string | null;
+  stand_zeichen: BerichtStandZeichen;
+  stand_text: string | null;
+  neueste_nr: number | null;
+  entwurf_datenstand: string | null;
+  /** AP-16 S5: nur bei der energetischen Bewertung (Startwert 12), sonst `null`. */
+  wiedervorlage_monate?: number | null;
+  /** AP-16 S5/S6 (IP-24): beim Abruf abgeleitet — nur an einer energetischen Bewertung mit freigegebenem Stand. */
+  ueberpruefung?: BerichtUeberpruefung | null;
+  /** Die Freigabe des gültigen Stands; ohne Stand `null` (Konzept Nachweisen n1, §6.4: Datumsblock „frei“). */
+  freigegeben_am: string | null;
+  /** Der früheste offene Anstoß am gültigen Stand (`revision_noetig`), sonst `null` (Datumsblock „seit“). */
+  anstoss_seit: string | null;
+}
+
+/**
+ * AP-16 S5/S6 (IP-24): die Überprüfung der energetischen Bewertung, vom Server beim Abruf abgeleitet — `faellig_am` =
+ * Freigabetag des jüngsten gültigen Stands + Wiedervorlage; eine abgelöste Bewertung hat keine Frist.
+ */
+export interface BerichtUeberpruefung {
+  stand_nr: number;
+  stand_vom: string;
+  wiedervorlage_monate: number;
+  faellig_am: string | null;
+  ueberpruefung_faellig: boolean;
+  faellig_seit_tagen: number | null;
+  abgeloest_durch: string | null;
+  wesentliche_einsaetze: number;
+  offene_bedarfe: number;
+  verantwortliche: { name: string; einsaetze: string[] }[];
+  ohne_verantwortliche: string[];
+}
+
+/** Der Körper von `POST /api/v1/berichte` (streng gelesen). */
+export interface BerichtAnlegen {
+  vorlage: string;
+  geltung_id: string;
+  zeitraum: string;
+  /** AP-12 IP-14 (V3, Q4): die abgewählten Kennzahlen (IDs) — fehlt das Feld, sind alle gewählt. */
+  kennzahlen_abgewaehlt?: string[];
+  /** AP-17 IP-21b: genau beim Leistungsvergleich Pflicht — die Kennzahl (ID); ein Bericht je Kennzahl (V4). */
+  kennzahl?: string;
+}
+
+/** Ein Berichtsstand im Verlauf — ohne Abzug. */
+export interface BerichtStandKurz {
+  nr: number;
+  datenstand: string;
+  freigegeben_am: string;
+  freigegeben_von: BerichtPerson;
+  pruefsumme: string;
+  ersetzt_durch_nr: number | null;
+  anlass_anstoss_id: string | null;
+}
+
+/** Ein Revisions-Anstoß an Stand `nr` (R1–R4). */
+export interface BerichtAnstoss {
+  id: string;
+  nr: number;
+  art: BerichtAnstossArt;
+  anlass_kennung: string;
+  anlass_fassung: number | null;
+  anlass_text: string;
+  erkannt_am: string;
+  zustand: 'offen' | 'erledigt' | 'verworfen';
+  erledigt_durch_nr: number | null;
+  verworfen_begruendung: string | null;
+  verworfen_von: BerichtPerson | null;
+  verworfen_am: string | null;
+}
+
+export interface BerichtDetail {
+  bericht: Bericht;
+  staende: BerichtStandKurz[];
+  anstoesse: BerichtAnstoss[];
+  /** Der Augenblick der Route (ihre Uhr): daran misst die Seite „Zeitraum läuft“, nie an der Uhr des Browsers. */
+  abruf: string;
+}
+
+/** Ein Abzug: `docs/contracts/v2/bericht.schema.json` `$defs/abzug` — gelesen über `uemsBericht.ts`. */
+export type BerichtAbzug = Record<string, unknown>;
+
+/** Die Strukturänderung, nach deren Folgen für freigegebene Berichte `GET /api/v1/berichte/betroffen` fragt (AP-12 IP-9). */
+export type BerichtStrukturAnlass =
+  | 'flaeche_rueckwirkend'
+  | 'zuordnung_rueckwirkend'
+  | 'anlage_umzug_rueckwirkend'
+  | 'verteilung_rueckwirkend';
+
+/** Ein Berichtsstand, genannt über die Kennung des Berichts und seine Nr. */
+export interface BerichtStandRef {
+  kennung: string;
+  nr: number;
+}
+
+/** `GET /api/v1/berichte/betroffen` — welche freigegebenen Berichtsstände eine Strukturänderung träfe (AP-12 IP-9). */
+export interface BerichteBetroffen {
+  anlass: BerichtStrukturAnlass;
+  gilt_ab: string;
+  /** Es gibt im Unternehmen mindestens einen Bericht, den die Person lesen darf. */
+  berichte_vorhanden: boolean;
+  /** Gültige (nicht ersetzte) Berichtsstände, die mit Wirkung ab `gilt_ab` einen Revisions-Anstoß bekämen. */
+  betroffen: BerichtStandRef[];
+  /** Alle freigegebenen Berichtsstände (auch ersetzte), die eine Quelle des Objekts zitieren — ohne Zeitschnitt. */
+  zitieren: BerichtStandRef[];
+}
+
+/** `GET …/entwurf` nach der D4-Prüfung; `neu_gebildet` = dieser Abruf hat ihn neu gebildet. */
+export interface BerichtEntwurf {
+  kennung: string;
+  datenstand: string;
+  gebildet_von: 'anlegen' | 'abruf' | 'kaskade' | 'struktur';
+  neu_gebildet: boolean;
+  pruefsumme: string;
+  kopf: string;
+  teilansicht: string[] | null;
+  abzug: BerichtAbzug;
+}
+
+/** Eine Abweichung zwischen Stand und Entwurf (R1); Zahlen als Dezimaltext. */
+export interface BerichtAbweichung {
+  quelle: string;
+  menge_art: string | null;
+  vorher: string | null;
+  nachher: string | null;
+  version: string;
+  anlass: string | null;
+}
+
+export interface BerichtVergleich {
+  kennung: string;
+  gegen: number;
+  entwurf_datenstand: string;
+  abweichungen: BerichtAbweichung[];
+}
+
+/** Ein freigegebener Berichtsstand — die Prüfsumme hat der Server geprüft (`pruefsumme_geprueft` ist immer true). */
+export interface BerichtStand {
+  kennung: string;
+  nr: number;
+  datenstand: string;
+  freigegeben_am: string;
+  freigegeben_von: BerichtPerson;
+  pruefsumme: string;
+  pruefsumme_geprueft: true;
+  ersetzt_durch_nr: number | null;
+  anlass_anstoss_id: string | null;
+  vorlage_fassung: number;
+  kopf: string;
+  teilansicht: string[] | null;
+  darstellung: Record<string, unknown>;
+  regelwerk: Record<string, unknown>;
+  abzug: BerichtAbzug;
+}
+
+/** Wer eine Fassung eingetragen oder freigegeben hat. */
+export interface BezugsgroessePerson {
+  name: string;
+  rolle: string | null;
+  art: 'kunde' | 'unterstuetzung' | 'voltpilot' | 'notfall';
+}
+
+/** Eine Fassung eines Werts mit ihrer Herkunft; `stand` ist null, solange `stand_offen`. */
+export interface BezugsgroesseFassung {
+  kanal?: { entity_id: string; kanal: string; regel: string; zustand: string; abdeckung_prozent: number; vorlaeufig: boolean; bindungen?: { kanal: string; regel?: string }[] };
+  fassung: number;
+  vorgang: 'erstwert' | 'berichtigung' | 'ruecknahme';
+  status: 'wirksam' | 'vorschlag' | 'zurueckgenommen' | 'abgelehnt';
+  stand: string | null;
+  /** Dezimaltext in der Einheit der Bezugsgröße — nie als Gleitkommazahl rechnen. */
+  betrag: string | null;
+  ersetzt_fassung: number | null;
+  begruendung: string | null;
+  kennzeichen: string[];
+  herkunft: {
+    art: 'eingabe' | 'import' | 'messkanal';
+    von_hand: boolean;
+    import_kennung: string | null;
+    import_zeile: number | null;
+    geliefert_text: string | null;
+    geliefert_einheit: string | null;
+  };
+  urheber: BezugsgroessePerson;
+  freigeber: BezugsgroessePerson | null;
+  eingetragen_am: string;
+}
+
+/** Ein Wert: eine Periode (letzter Tag einschließlich) oder ein Zeitpunkt, mit seinen Fassungen. */
+export interface BezugsgroesseWert {
+  periode_von: string | null;
+  periode_bis: string | null;
+  zeitpunkt: string | null;
+  zeitzone: string;
+  /** null nach einer Rücknahme (nie 0) und solange `stand_offen`. */
+  wirksamer_betrag: string | null;
+  wirksame_fassung: number | null;
+  stand_offen: boolean;
+  fassungen: BezugsgroesseFassung[];
+  vorschlag?: { kennung: string; betrag: string; ersetzt_fassung: number; begruendung: string; urheber: BezugsgroessePerson; eingetragen_am: string } | null;
+}
+
+export interface BezugswertAntwort {
+  urteil: string; satz: string; kennung: string | null;
+  hinweise: { code: string; satz: string }[]; wert: BezugsgroesseWert;
+}
+export interface Ablesung {
+  quelle: string; zeitpunkt: string; fassung: number; stand: number; monat: string | null;
+  woher: string; urheber: { name: string; rolle: string | null }; korrektur: string | null; eingetragen_am: string;
+}
+export interface AblesungAntwort {
+  urteil: string; korrektur: string | null; ablesung: Ablesung;
+  ablesezeitraum: { menge: number | null; zustand: string; kennzeichen: string } | null;
+}
+
+/**
+ * Eine Kostenstelle (UEMS AP-10 IP-7, `/api/v1/unternehmen/kostenstellen`) — FLACH, ohne
+ * Elternteil. `gueltig_bis` ist der LETZTE gültige Tag (einschließlich), `null` = offen; beendet,
+ * nie gelöscht.
+ */
+export interface Kostenstelle {
+  id: string;
+  kennzeichen: string;
+  name: string;
+  gueltig_ab: string;
+  gueltig_bis: string | null;
+  /** Fehlt im Auswahl-Katalog der Liste (nur Stammdaten, Standort-Zaun Lesart B, 21.09.2026). */
+  angelegt_am?: string;
+}
+
+/** Ein Verweis auf eine Kostenstelle oder einen Prozess. */
+export interface KostenstelleProzessVerweis {
+  id: string;
+  kennzeichen: string;
+}
+
+/** Ein Prozess (AP-10 IP-7, `/api/v1/unternehmen/prozesse`) — höchstens ein Elternteil, nur eine Ebene. */
+export interface Prozess {
+  id: string;
+  kennzeichen: string;
+  name: string;
+  eltern: KostenstelleProzessVerweis | null;
+  gueltig_ab: string;
+  gueltig_bis: string | null;
+  /** Fehlt im Auswahl-Katalog der Liste (wie an der Kostenstelle). */
+  angelegt_am?: string;
+}
+
+/** Der Körper von `POST …/kostenstellen` und `POST …/prozesse`; `eltern_id` nur beim Prozess. */
+export interface KostenstelleProzessAnlegen {
+  kennzeichen: string;
+  name: string;
+  eltern_id?: string | null;
+  gueltig_ab: string;
+  gueltig_bis?: string | null;
+}
+
+/** Ein Intervall Messstelle → Prozess; `endet_mit_prozess`: der letzte Tag ist der des Prozesses. */
+export interface MessstelleProzessZuordnung {
+  id: string;
+  prozess: KostenstelleProzessVerweis;
+  name: string;
+  gueltig_ab: string;
+  gueltig_bis: string | null;
+  endet_mit_prozess: boolean;
+}
+
+/** Die Antwort von `GET/PUT /api/v1/messstellen/{id}/prozesse`. */
+export interface MessstelleProzesse {
+  messstelle_id: string;
+  kennzeichen: string;
+  am: string | null;
+  prozesse: MessstelleProzessZuordnung[];
+}
+
+export interface ProzessMessstellenVerweis { id: string; kennzeichen: string; name: string }
+export interface ProzessMessstelle { id: string; kennzeichen: string; name: string }
+export interface ProzessSummeHinweis {
+  code: 'prozess_summe_passt';
+  summe: ProzessMessstelle;
+  messstelle: ProzessMessstelle;
+  prozesse: ProzessMessstellenVerweis[];
+  ueber_verteilung: boolean;
+  verteilung: string | null;
+  anteil_prozent: string | null;
+}
+export interface ProzessMessstellen {
+  prozess: ProzessMessstellenVerweis;
+  am: string;
+  gemessen: ProzessMessstelle[];
+  berechnet: ProzessMessstelle[];
+  hinweise: ProzessSummeHinweis[];
+}
+
+/** Der Zeitraum der Kostenstellen-Sicht (AP-10 IP-11): der Tag, Monat oder das Jahr, das `am` enthält. */
+export type KostenstelleEnergiePeriode = 'tag' | 'monat' | 'jahr';
+
+/** Eine Summe JE Größe/Richtung/Einheit eines Blocks (`KostenstelleEnergieDto.Summe`, snake_case). */
+export interface KostenstelleEnergieSumme {
+  groesse: string;
+  richtung: string;
+  einheit: string;
+  menge: number | null;
+  zustand: string | null;
+  abdeckung_prozent: number | null;
+  vorhanden: number;
+  gesamt: number;
+  fehlend: string[];
+}
+
+/** Ein Tagesanteil eines Postens: der Anteil DIESES Tages (`null` = an dem Tag kein Anteil). */
+export interface KostenstelleEnergieTag {
+  tag: string;
+  anteil_prozent: number | null;
+  quelle_menge: number | null;
+  menge: number | null;
+  zustand: string | null;
+  abdeckung_prozent: number | null;
+  version: number;
+  grund: string | null;
+  herkunft: { satz: Record<string, unknown> | null; fehlt: string[] } | null;
+}
+
+/** Eine Messstelle in einem Block; `kennzeichen` sind die Sätze der Route („verteilt (30 % von MS-07)“). */
+export interface KostenstelleEnergiePosten {
+  messstelle: { id: string; kennzeichen: string; name: string | null; art: 'gemessen' | 'berechnet' };
+  groesse: string;
+  richtung: string;
+  einheit: string;
+  menge: number | null;
+  zustand: string | null;
+  abdeckung_prozent: number | null;
+  version: number;
+  kennzeichen: string[];
+  fassungen: number[];
+  fehlend: string[];
+  tage: KostenstelleEnergieTag[];
+  /** Art `verteilt`; bei „nicht verteilt“ `null`. */
+  herkunft: { satz: Record<string, unknown> | null; fehlt: string[] } | null;
+  /**
+   * Messen PR4: NUR an einer Messstelle aus Ablesungen über `monat`/`jahr` - je Monat der Anteil der Ablesezeiträume,
+   * die ihm zugeordnet sind; `tage` ist dann leer. Sonst fehlt das Feld.
+   */
+  monate?: KostenstelleEnergieMonat[];
+}
+
+/** Ein Ablesezeitraum von der öffnenden bis zur schließenden Ablesung (`bis` ausschließlich), mit Versatz. */
+export interface KostenstelleEnergieAblesezeitraum {
+  von: string;
+  bis: string;
+}
+
+/**
+ * Ein Monat eines Postens aus Ablesungen (Messen PR4, Konzept §10.3): `quelle_menge` ist die Menge des Monats an der
+ * Messstelle (dieselbe Zahl wie `…/werte?raster=monat`), `anteil_prozent` der Anteil, der an JEDEM Tag ihrer
+ * Ablesezeiträume galt, `menge` der Teil daraus. Wechselt der Anteil mitten im Zeitraum, sind Anteil und Menge `null`
+ * (`grund` `anteil_wechselt_im_ablesezeitraum`, `geaendert_am` der Tag); ohne Ablesung `keine_ablesung`. Nie 0.
+ */
+export interface KostenstelleEnergieMonat {
+  /** JJJJ-MM */
+  monat: string;
+  ablesezeitraeume: KostenstelleEnergieAblesezeitraum[];
+  anteil_prozent: number | null;
+  quelle_menge: number | null;
+  menge: number | null;
+  zustand: string | null;
+  abdeckung_prozent: number | null;
+  version: number;
+  grund: 'quelle_keine_werte' | 'rest_unplausibel' | 'anteil_wechselt_im_ablesezeitraum' | 'keine_ablesung' | null;
+  /** Der Tag, an dem der Anteil mitten im Ablesezeitraum wechselt. */
+  geaendert_am: string | null;
+}
+
+/**
+ * Ein Block der Sicht (gemessen · verteilt · berechnet · Summe · nicht verteilt): `menge`/`einheit`/`zustand` nur bei
+ * GENAU einer Größe; `grund` `keine_zuordnung` (keine Posten) oder `groessen_gemischt` (je Größe eine `summen`-Zeile).
+ */
+export interface KostenstelleEnergieBlock {
+  menge: number | null;
+  einheit: string | null;
+  zustand: string | null;
+  grund: 'keine_zuordnung' | 'groessen_gemischt' | null;
+  summen: KostenstelleEnergieSumme[];
+  posten: KostenstelleEnergiePosten[];
+}
+
+/** Ein Posten, der an diesen Tagen bereits in einem anderen enthalten ist — `satz` aus `verteilung-vectors.json`. */
+export interface KostenstelleDoppeltEnthalten {
+  teil: string;
+  summe: string;
+  umfang: 'ganz' | 'teilweise';
+  kette: string[];
+  zeitraeume: { von: string; bis: string }[];
+  satz: string;
+}
+
+/** Ein Posten, dessen Formel im Kreis führt — nicht prüfbar, mit Satz. */
+export interface KostenstelleNichtPruefbar {
+  messstelle: string;
+  grund: 'formel_kreis' | 'haengt_an_kreis';
+  kette: string[];
+  satz: string;
+}
+
+/**
+ * Die Antwort von `GET /api/v1/unternehmen/kostenstellen/{id}/energie?periode=&am=&version=` (UEMS AP-10 IP-11,
+ * `KostenstelleEnergieDto.Energie`). „Nicht verteilt“ gehört keiner Kostenstelle und zählt in `summe` nie mit — es steht
+ * in JEDER Antwort des Kundenbereichs gleich. `doppelzaehlung` ist eine Warnung neben den Blöcken und ändert keine Zahl.
+ */
+export interface KostenstelleEnergie {
+  kostenstelle: { id: string; kennzeichen: string; name: string; gueltig_ab: string; gueltig_bis: string | null };
+  periode: KostenstelleEnergiePeriode;
+  am: string;
+  von: string;
+  bis: string;
+  zeitzone: string;
+  version: number | null;
+  berechnet_am: string;
+  gemessen: KostenstelleEnergieBlock;
+  verteilt: KostenstelleEnergieBlock;
+  berechnet: KostenstelleEnergieBlock;
+  summe: KostenstelleEnergieBlock;
+  nicht_verteilt: KostenstelleEnergieBlock;
+  doppelzaehlung: { enthalten: KostenstelleDoppeltEnthalten[]; nicht_pruefbar: KostenstelleNichtPruefbar[] };
+}
+
+/**
+ * Die Ablehnungen der Kostenstellen- und Prozess-Schnittstelle — der geschlossene Satz aus
+ * `uems/KostenstelleProzessAbgelehnt` (gepinnt gegen OpenAPI `KostenstelleProzessFehler`).
+ */
+export type KostenstelleProzessFehlerCode =
+  | 'anfrage_ungueltig'
+  | 'nicht_gefunden'
+  | 'unternehmen_nicht_angelegt'
+  | 'kennzeichen_format'
+  | 'kennzeichen_belegt'
+  | 'zeitraum_ungueltig'
+  | 'bereits_beendet'
+  | 'zuordnung_besteht'
+  | 'eine_ebene'
+  | 'eltern_unbekannt'
+  | 'prozess_unbekannt'
+  | 'ziel_besteht_nicht'
+  | 'messstelle_archiviert'
+  | 'zuordnung_ueberlappt';
+
+/** Eine Zeile des Verteilungs-Satzes (AP-10 IP-8): die Kostenstelle und ihr Anteil als Dezimaltext. */
+export interface VerteilungZeileEingabe {
+  kostenstelle_id: string;
+  anteil_prozent: string;
+}
+
+/** Ein Anteil der Messstelle an einer Kostenstelle über Tage; `endet_mit_kostenstelle`: gilt nie länger als sie. */
+export interface MessstelleVerteilungAnteil {
+  id: string;
+  kostenstelle: { id: string; kennzeichen: string };
+  name: string;
+  anteil_prozent: string;
+  gueltig_ab: string;
+  gueltig_bis: string | null;
+  endet_mit_kostenstelle: boolean;
+}
+
+/**
+ * Die Antwort von `GET/PUT /api/v1/messstellen/{id}/verteilung`: mit `am` der Zustand des Tages —
+ * `verteilt` oder ausdrücklich `nicht verteilt` (nie „zu 0 % verteilt“); ohne `am` `null`.
+ */
+export interface MessstelleVerteilung {
+  messstelle_id: string;
+  kennzeichen: string;
+  am: string | null;
+  zustand: 'verteilt' | 'nicht verteilt' | null;
+  anteile: MessstelleVerteilungAnteil[];
+  /**
+   * Nur in der Antwort auf PUT: je Ziel-Kostenstelle, welcher Posten dort ab `gueltig_ab` bereits in welchem enthalten
+   * ist — ein Hinweis, keine Ablehnung (Captain „Warnen“); leer = nichts zählt doppelt.
+   */
+  doppelzaehlung?: {
+    kostenstelle: { id: string; kennzeichen: string };
+    am: string;
+    enthalten: KostenstelleDoppeltEnthalten[];
+    nicht_pruefbar: KostenstelleNichtPruefbar[];
+  }[];
+}
+
+/**
+ * Die Ablehnungen der Verteilungs-Schnittstelle — der geschlossene Satz aus `uems/VerteilungAbgelehnt`
+ * (gepinnt gegen OpenAPI `VerteilungFehler`).
+ */
+export type VerteilungFehlerCode =
+  | 'anfrage_ungueltig'
+  | 'nicht_gefunden'
+  | 'unternehmen_nicht_angelegt'
+  | 'messstelle_archiviert'
+  | 'kostenstelle_unbekannt'
+  | 'anteil_ungueltig'
+  | 'ziel_besteht_nicht'
+  | 'verteilung_summe'
+  | 'formel_fassung_ueberlappt'
+  | 'zuordnung_ueberlappt';
+
+/** Eine Messstelle, auf die die Bilanz zeigt (AP-10 IP-9). */
+export interface BilanzMessstelleRef {
+  id: string;
+  kennzeichen: string;
+  name: string | null;
+}
+
+/** Die Summe einer Rolle: „mindestens …“ (`anzeige`) und `mit_werten` von `gesamt`; `menge` ungerundet, null nie 0. */
+export interface BilanzSumme {
+  menge: number | null;
+  zustand: string | null;
+  abdeckung_prozent: number | null;
+  mit_werten: number;
+  gesamt: number;
+  fehlend: string[];
+  kennzeichen: string[];
+  anzeige: string | null;
+}
+
+/** Der Rest (fest Wirkenergie · Bezug): „10 kWh sind keiner Messstelle zugeordnet“ — nie „Verlust“. */
+export interface BilanzRest {
+  menge: number | null;
+  groesse: string;
+  richtung: string;
+  einheit: string;
+  zustand: string;
+  abdeckung_prozent: number | null;
+  fehlend: string[];
+  kennzeichen: string[];
+  kundensatz: string | null;
+  /** AP-10 IP-12: die Hülle `{satz, fehlt}` nach `bilanzwert-herkunft.schema.json` (Art `berechnet`, Typ `rest`). */
+  herkunft?: { satz: Record<string, unknown> | null; fehlt: string[] } | null;
+}
+
+export interface BilanzEingang {
+  messstelle: string;
+  rolle: 'zufluss' | 'abfluss' | 'zugeordnet';
+  anteil: 'gesamt' | 'positiv' | 'negativ';
+  menge: number | null;
+  zustand: string;
+  abdeckung_prozent: number | null;
+  version: number;
+  kennzeichen: string[];
+  grund: string | null;
+}
+
+export interface BilanzWerte {
+  von: string;
+  bis: string;
+  zufluss: BilanzSumme;
+  abfluss: BilanzSumme;
+  zugeordnet: BilanzSumme;
+  rest: BilanzRest;
+  eingaenge: BilanzEingang[];
+}
+
+/** Tage mit denselben Termen aus der Stellung (E3); `raster` `tag`, wenn die Stellung in der Periode wechselt. */
+export interface BilanzAbschnitt {
+  von: string;
+  bis: string;
+  raster: 'tag' | 'monat' | 'jahr';
+  terme: Array<{
+    messstelle: string;
+    messstelle_id: string | null;
+    name: string | null;
+    rolle: 'zufluss' | 'abfluss' | 'zugeordnet';
+    anteil: 'gesamt' | 'positiv' | 'negativ';
+  }>;
+  ausserhalb: string[];
+  werte: BilanzWerte[];
+  /** Summen-Wächter des geteilten Punkts (AP-07 IP-18b): fehlt ohne Fund; ändert keine Zahl. */
+  geteilte_register?: BilanzGeteiltesRegister[];
+}
+
+/** In der Summe `rolle` lesen die `messstellen` denselben Messpunkt derselben Box über zwei Komponenten. */
+export interface BilanzGeteiltesRegister {
+  rolle: 'zufluss' | 'abfluss' | 'zugeordnet';
+  register: string;
+  messstellen: string[];
+}
+
+/** Der Rest JETZT in kW (F18): `wert` null, sobald ein Term fehlt oder veraltet ist — nie 0. */
+export interface BilanzLive {
+  wert: number | null;
+  einheit: string;
+  unvollstaendig: boolean;
+  fehlende: Array<{ term: string; grund: 'kein_geraet' | 'kein_wert' | 'veraltet' }>;
+  stand: string | null;
+}
+
+export interface BilanzHauptzaehler {
+  messstelle: BilanzMessstelleRef;
+  rest_messstelle: BilanzMessstelleRef | null;
+  /** E18: „Rest anlegen“ — nur ohne Rest-Messstelle. */
+  vorschlag: { aktion: 'rest_anlegen'; hauptzaehler_id: string; name: string } | null;
+  stellung_geaendert: boolean;
+  abschnitte: BilanzAbschnitt[];
+  live: BilanzLive;
+}
+
+/** Die Antwort von `GET /api/v1/sites/{id}/bilanz?periode=&am=` (AP-10 IP-9). */
+export interface Bilanz {
+  anlage: { id: string; name: string };
+  periode: 'tag' | 'monat' | 'jahr';
+  am: string;
+  von: string;
+  bis: string;
+  zeitzone: string;
+  hauptzaehler: BilanzHauptzaehler[];
+  /** NUR wenn ein Hauptzähler fehlt, weil sein Block eine Messstelle außerhalb des Zugriffs braucht (AP-03 R-A3). */
+  ausserhalb_zugriff?: string;
+}
+
+/** `POST /api/v1/sites/{id}/bilanz/rest`: `neu` = false, wenn der Hauptzähler schon einen Rest hatte. */
+export interface BilanzRestAngelegt {
+  neu: boolean;
+  hauptzaehler: BilanzMessstelleRef;
+  messstelle: Messstelle;
+}
+
+/** Die Ablehnungen der Bilanz-Schnittstelle (`uems/BilanzAbgelehnt`, OpenAPI `BilanzFehler`). */
+export type BilanzFehlerCode = 'anfrage_ungueltig' | 'rest_ohne_hauptzaehler';
+
+/**
+ * Eine Bezugsfläche aus der Ortsstruktur als Bezugsgröße (AP-09 IP-6, E17): GELESEN aus
+ * `flaeche_gueltigkeit`, ohne ID und Kennzeichen einer Bezugsgröße. `schreibbar` ist immer
+ * false — geändert wird sie am Gebäude; `pflegen` sagt es in Kundensprache.
+ */
+export interface Bezugsflaeche {
+  name: string;
+  wertart: 'stammdatum';
+  einheit: 'm²';
+  herkunft_art: 'stammdatum_ap02';
+  geltung_art: 'standort' | 'gebaeude' | 'bereich';
+  geltung_id: string;
+  geltung_kennzeichen: string | null;
+  geltung_name: string;
+  schreibbar: false;
+  pflegen: string;
+}
+
+/**
+ * Der Wert eines Stammdatums für EINE Periode am Stichtag = ihrem letzten Tag (E17).
+ * `betrag` null heißt „nicht erhoben“, nie 0; `kennzeichen` nennt jeden Übergang in der Periode (S3).
+ */
+export interface BezugsgroesseStichtagwert {
+  periode: string;
+  von: string;
+  stichtag: string;
+  betrag: string | null;
+  quelle: 'eigen' | 'aus_gebaeuden_summiert' | null;
+  gilt_ab: string | null;
+  eingetragen_am: string | null;
+  abzeichen: string | null;
+  kennzeichen: string[];
+}
+
+/** Die Antwort von `GET /api/v1/bezugsflaechen?periode_art&von&bis`. */
+export interface Bezugsflaechen {
+  periode_art: 'tag' | 'woche' | 'monat' | 'jahr';
+  von: string;
+  bis: string;
+  bezugsflaechen: { bezugsflaeche: Bezugsflaeche; perioden: BezugsgroesseStichtagwert[] }[];
+}
+
+/** Die Antwort von `GET/PUT /api/v1/bezugsgroessen/{id}/stammdatum` (E15). */
+export interface BezugsgroesseStammdatum {
+  bezugsgroesse_id: string;
+  kennzeichen: string;
+  name: string;
+  einheit: string;
+  zeitzone: string;
+  schreibbar: boolean;
+  intervalle: {
+    wert: string;
+    gueltig_ab: string;
+    gueltig_bis: string | null;
+    aufgehoben_am: string | null;
+    eingetragen_am: string;
+    abzeichen: string | null;
+  }[];
+  periode_art: 'tag' | 'woche' | 'monat' | 'jahr' | null;
+  von: string | null;
+  bis: string | null;
+  perioden: BezugsgroesseStichtagwert[];
+}
+
+/** Die Antwort von `GET /api/v1/bezugsgroessen/{id}/werte`. */
+export interface BezugsgroesseWerte {
+  bezugsgroesse_id: string;
+  kennzeichen: string;
+  wertart: string;
+  einheit: string;
+  periode_art: string | null;
+  von: string | null;
+  bis: string | null;
+  fassungen: BezugsgroesseLesart;
+  werte: BezugsgroesseWert[];
 }
 
 /**
@@ -2291,10 +4941,32 @@ export interface OverviewDailySavings {
   savingsEur: number;
 }
 
+/**
+ * Das additive Feld `teilansicht` der Flotten-Antworten (UEMS AP-03 IP-10, Regel R-A2):
+ * über wie viele Standorte die Antwort gebildet wurde und wie viele der Kundenbereich hat.
+ *
+ * `gesamt` ist eine ANZAHL von Standorten — keine Energie- und keine Geldsumme. Jede Liste
+ * und jede Summe der Antwort entsteht ausschliesslich über die `sichtbar` Standorte; das
+ * Portal rechnet nie selbst über Standorte hinweg, sondern nur über das, was es bekommt.
+ * Der Satz „Teilansicht: n von m Standorten" kommt fertig aus `GET /api/v1/me`
+ * (`teilansicht.kopfzeile`); dieses Feld sagt je Antwort, worüber sie gebildet wurde.
+ */
+export interface SichtbareListe<T> {
+  eintraege: T[];
+  teilansicht: Teilansicht;
+}
+
+export interface Teilansicht {
+  sichtbar: number;
+  gesamt: number;
+}
+
 export interface Overview {
   sites: OverviewSite[];
   totals: OverviewTotals;
   dailySavings: OverviewDailySavings[];
+  /** Additiv (AP-03 IP-10); absent auf einem älteren Backend. */
+  teilansicht?: Teilansicht;
 }
 
 // ---- UEMS-Ortsstruktur: Unternehmen und Standorte (AP-02 IP-3) -------------
@@ -2344,8 +5016,102 @@ export interface StandortAdresse {
 export interface StandortAnlage {
   id: string;
   name: string;
+  /** IP-6: Bindung am Stichtag, auch wenn die Anlage inzwischen den Standort gewechselt hat. */
+  netzanschluss?: { id: string; kennzeichen: string; gueltigAb: string; gueltigBis: string | null } | null;
   gueltigAb: string;
   gueltigBis: string | null;
+}
+
+/** AP-10 IP-6: Tage einschließlich Endtag; Preise bleiben an der Anlage. */
+export interface NetzanschlussAnfrage {
+  kennzeichen: string | null; name: string; malo: string | null; netzbetreiber: string | null;
+  anschluss_kva: string | number | null; vereinbart_kw: string | number | null;
+  messung: 'RLM' | 'SLP'; gueltig_ab: string | null; gueltig_bis: string | null;
+}
+export interface NetzanschlussBindung {
+  id: string; anlage: { id: string; name: string | null }; gueltig_ab: string; gueltig_bis: string | null;
+}
+export interface Netzanschluss extends NetzanschlussAnfrage {
+  id: string; kennzeichen: string; standort: { id: string; kurzzeichen: string };
+  hinweise: string[]; anlagen: NetzanschlussBindung[]; angelegt_am: string;
+}
+export interface Netzanschluesse {
+  standort: { id: string; kurzzeichen: string }; stichtag: string | null;
+  kennzeichen_vorschlag: string; netzanschluesse: Netzanschluss[];
+}
+export interface NetzanschlussVorschlag {
+  anlage_id: string; anlage_name: string; bindung_ab: string; kennzeichen: string; name: string;
+}
+export interface NetzanschlussUebernehmen extends NetzanschlussAnfrage { bindung_ab: string; grund: string | null }
+export interface NetzanschlussBinden { anlage_id: string; gueltig_ab: string; grund: string | null }
+/** AP-15 IP-31/NW-8: Grenz-Nachweis eines Monats oder eines freien Zeitraums. */
+export interface NetzanschlussGrenzNachweis {
+  netzanschluss_id: string; kennzeichen: string; monat: string | null; von: string | null; bis: string | null;
+  zeitraum_von?: string | null; zeitraum_bis?: string | null;
+  zeitzone: string; grenze_geprueft: boolean;
+  grund: 'keine_grenze' | 'kein_hauptzaehler' | 'kein_abgeschlossener_tag' | null;
+  urteil: 'eingehalten' | 'ueberschritten' | 'nicht_belegt' | null;
+  richtungen: Array<{
+    richtung: 'bezug' | 'einspeisung'; grenze_geprueft: boolean; urteil: string | null;
+    hoechstes_mittel?: { von: string; bis: string; mittel_kw: number; grenze_kw: number; abstand_kw: number } | null;
+    grenzherkunft?: Array<'grenzblatt' | 'anlage'>; grenzhinweis?: string | null;
+  }>;
+}
+
+// ---- UEMS AP-02 IP-11: Anlage einem Standort zuordnen oder umziehen
+
+/** Rumpf von `PUT /api/v1/sites/{id}/standort`; `gueltigAb` fehlend = heute am Ziel. */
+export interface AnlageUmzugAnfrage {
+  standortId: string;
+  gueltigAb?: string;
+  begruendung?: string;
+}
+
+export interface AnlageUmzugStandort {
+  id: string;
+  kurzzeichen: string | null;
+  name: string | null;
+}
+
+/** Was eine Zuordnung nie berührt — die Codes des Servers in der Reihenfolge der Folgen-Karte. */
+export type AnlageUmzugBleibt =
+  | 'box'
+  | 'topics'
+  | 'freigaben'
+  | 'betriebsmodell'
+  | 'ladepark_rahmen'
+  | 'fahrplaene'
+  | 'messstellen';
+
+/**
+ * Vorschau (`GET …/standort/vorschau`) und Eintrag (`PUT …/standort`) antworten gleich: was die
+ * Zuordnung bewirkt. `protokoll` ist in der Vorschau leer, `befehle` immer 0.
+ */
+export interface AnlageUmzug {
+  anlageId: string;
+  anlageName: string;
+  /** Der Standort am „gültig ab“ ohne die Zuordnung; `null` = noch keiner. */
+  bisher: AnlageUmzugStandort | null;
+  neu: AnlageUmzugStandort;
+  gueltigAb: string;
+  /** Das Ende der neuen Zuordnung, von der laufenden geerbt; `null` = offen. */
+  gueltigBis: string | null;
+  /** Die schon geplante Zuordnung ab dem Tag nach `gueltigBis`. */
+  danach: AnlageUmzugStandort | null;
+  rueckwirkung: OrtRueckwirkung;
+  zuordnungen: {
+    standort: AnlageUmzugStandort;
+    gueltigAb: string;
+    gueltigBis: string | null;
+    zustand: 'gueltig' | 'geplant' | 'beendet' | 'aufgehoben';
+  }[];
+  bleibt: AnlageUmzugBleibt[];
+  boxen: number;
+  netzanschluss: { id: string; kennzeichen: string } | null;
+  steuern: { funktion: 'messen' | 'steuern'; zustand: string; standort: AnlageUmzugStandort } | null;
+  befehle: number;
+  begruendung: string | null;
+  protokoll: { id: number; objektArt: 'anlage' | 'standort'; objektId: string }[];
 }
 
 /**
@@ -2397,6 +5163,74 @@ export interface StandorteAmStichtag {
   nichtGezeigt: StandortAmStichtag[];
   /** `null`, sobald jede Anlage zugeordnet ist. */
   nochNichtZugeordnet: NochNichtZugeordnet | null;
+  /** Additiv (AP-03 IP-10); absent auf einem älteren Backend. */
+  teilansicht?: Teilansicht;
+}
+
+/** GET /api/v1/standorte/{id}/versorgung?stichtag= — F15, reine Sicht aus Ort × Stellung. */
+export interface Versorgung {
+  stichtag: string;
+  standort: VersorgungBezug;
+  gebaeude: GebaeudeVersorgung[];
+  ausserhalbGebaeude: VersorgungAusserhalb[];
+}
+
+export interface VersorgungBezug {
+  id: string;
+  kennzeichen: string;
+  name: string;
+}
+
+export interface VersorgungAnlage {
+  id: string;
+  name: string;
+  netzanschlussKennzeichen: string | null;
+}
+
+export interface VersorgungMessstelle {
+  kennzeichen: string;
+  name: string | null;
+}
+
+export interface GebaeudeVersorgung {
+  gebaeude: VersorgungBezug;
+  messbar: boolean;
+  systeme: { anlage: VersorgungAnlage; messstellen: VersorgungMessstelle[] }[];
+}
+
+export interface VersorgungAusserhalb {
+  messstelle: VersorgungMessstelle;
+  anlage: VersorgungAnlage;
+}
+
+/** Rein lesende Vorschau der Bestandsanlagen-Zuordnung (AP-02 IP-10). */
+export interface StandortZuordnungAnlage {
+  vorschlagId: string;
+  anlageId: string;
+  anlageName: string;
+  gueltigAb: string;
+}
+export interface StandortZuordnungGruppe {
+  name: string;
+  zeitzone: string;
+  adresse: StandortAdresse | null;
+  anlagen: StandortZuordnungAnlage[];
+}
+export interface StandortZuordnungVorschau {
+  gruppen: StandortZuordnungGruppe[];
+  anlagenZahl: number;
+}
+export interface StandortZuordnungBestaetigen {
+  gruppen: {
+    name: string;
+    zeitzone: string;
+    adresse: StandortAdresse;
+    vorschlagIds: string[];
+  }[];
+}
+export interface StandortZuordnungErgebnis {
+  standortIds: string[];
+  zuordnungen: number;
 }
 
 // ---- Ortsstruktur schreiben (UEMS AP-02 IP-4) --------------------------------
@@ -2452,6 +5286,9 @@ export interface StandortKurzzeichenVorschlag {
   kurzzeichen: string;
 }
 
+/** Dieselbe Form für das nächste freie G-/B-Kurzzeichen eines Standorts. */
+export type OrtKurzzeichenVorschlag = StandortKurzzeichenVorschlag;
+
 /** PUT /api/v1/unternehmen — die ganze Menge; ein fehlendes Feld ist leer. */
 export interface UnternehmenBearbeiten {
   name: string;
@@ -2501,13 +5338,22 @@ export interface OrtFehler {
     | 'ziel_archiviert'
     | 'flaeche_ungueltig'
     | 'gab_es_noch_nicht'
-    | 'gleiche_flaeche';
+    | 'gleiche_flaeche'
+    // Löschen ohne Historie (IP-15)
+    | 'loeschen_gesperrt'
+    // Anlage zuordnen/umziehen (IP-11): die übrigen Gründe des Vertrags beim Eintrag.
+    | 'vor_dem_ersten_intervall'
+    | 'objekt_archiviert'
+    | 'gleicher_tag'
+    | 'ziel_ist_bisheriger_eltern';
   message: string;
   feld?: string;
   verweis?: OrtVerweis;
   archiviert_am?: string | null;
   grund?: 'nicht_archiviert' | 'eltern_archiviert' | 'name_belegt';
   gruende?: ArchivSperrgrund[];
+  /** `loeschen_gesperrt`: was der Ort je getragen hat. */
+  historie?: OrtLoeschGrund[];
 }
 
 // ---- UEMS-Ortsstruktur: Gebäude und Bereiche (AP-02 IP-5) -------------------
@@ -2539,11 +5385,33 @@ export interface OrtsbaumBereich {
    * seiner Bereiche; AP-04 IP-7); 0, wenn keine — `null` nur ohne Messstellen-Quelle.
    */
   messstellenZahl: number | null;
+  /** Die Register-Zählung dieses Knotens: „n von m Messstellen liefern Daten“. */
+  datenlage?: OrtsbaumDatenlage | null;
+  /** IP-12 (V4): wohin der Knoten nach `gueltigBis` zieht — „ab 01.03.2027 → Werk Ahrenberg Nord“; `null` ohne Ende. */
+  danach?: OrtsbaumDanach | null;
+  /** IP-15: was man heute mit dem Knoten tun kann; `null` mit Stichtag. */
+  aktionen?: OrtAktionen | null;
+}
+
+/** IP-12 (V4): die schon eingetragene Zuordnung ab dem Tag nach `gueltigBis`. */
+export interface OrtsbaumDanach {
+  ab: string;
+  elternId: string;
+  elternArt: 'standort' | 'gebaeude';
+  elternName: string | null;
+  standortId: string | null;
+  standortName: string | null;
 }
 
 export interface OrtsbaumGebaeude extends OrtsbaumBereich {
   baujahr: number | null;
   bereiche: OrtsbaumBereich[];
+}
+
+export interface OrtsbaumDatenlage {
+  erfuellt: number;
+  gesamt: number;
+  text: string;
 }
 
 /**
@@ -2561,7 +5429,151 @@ export interface OrtsbaumAmStichtag {
   /** Die Gebäude, denen am Stichtag die Fläche fehlt („für kWh/m² fehlt die Fläche“). */
   gebaeudeOhneFlaeche: string[];
   gebaeude: OrtsbaumGebaeude[];
-  direktAmStandort: { bereiche: OrtsbaumBereich[]; messstellenZahl: number | null } | null;
+  direktAmStandort: {
+    bereiche: OrtsbaumBereich[];
+    messstellenZahl: number | null;
+    datenlage?: OrtsbaumDatenlage | null;
+  } | null;
+  /** IP-15 (Z3): die am Stichtag archivierten Gebäude und Bereiche dieses Standorts. */
+  archiviert?: OrtsbaumArchivierterOrt[];
+  /** IP-15: was man heute mit dem Standort tun kann (nur `archivieren`); `null` mit Stichtag. */
+  aktionen?: OrtAktionen | null;
+}
+
+/** IP-15: warum ein Ort nicht gelöscht wird (E1); `hat_bezugsgroessen` und `hat_kennzahlen` ergänzt die Datenbank. */
+export type OrtLoeschGrund = 'hat_messstellen' | 'hat_anlagen' | 'hat_flaeche' | 'hat_kinder' | 'hat_bezugsgroessen' | 'hat_kennzahlen';
+
+/**
+ * IP-15: was man HEUTE mit einem Knoten tun kann, bevor jemand drückt — dieselben Urteile und
+ * Sätze wie die Schreibrouten. Was nicht zum Knoten gehört, ist `null`.
+ */
+export interface OrtAktionen {
+  archivieren: {
+    erlaubt: boolean;
+    /** Gesperrt: der Satz mit Grund und Weg (Z1). */
+    text: string | null;
+    gruende: ArchivSperrgrund[];
+    /** Erlaubt: der letzte Tag der Zuordnung (gestern). */
+    letzterTag: string | null;
+    mitarchiviert: { id: string; art: 'gebaeude' | 'bereich'; kurzzeichen: string; name: string }[];
+  } | null;
+  wiederherstellen: {
+    erlaubt: boolean;
+    grund: 'nicht_archiviert' | 'eltern_archiviert' | 'name_belegt' | null;
+    text: string | null;
+    /** Der erste Tag des neuen Intervalls (heute). */
+    ab: string;
+  } | null;
+  loeschen: { erlaubt: boolean; gruende: OrtLoeschGrund[]; text: string | null } | null;
+  /** IP-12: nur an einem Gebäude oder Bereich, der heute im Baum steht. */
+  verschieben?: OrtVerschiebenAktion | null;
+}
+
+/**
+ * IP-12 (V1/V2): wohin der Knoten heute ziehen kann — jeder Knoten, der heute im Baum steht und als
+ * Elternknoten erlaubt ist (nie ein Bereich), OHNE den bisherigen. Ob der Tag geht, urteilt die Vorschau.
+ */
+export interface OrtVerschiebenAktion {
+  erlaubt: boolean;
+  /** Ohne Ziel: warum nicht. */
+  text: string | null;
+  ziele: OrtVerschiebenZiel[];
+}
+
+export interface OrtVerschiebenZiel {
+  id: string;
+  art: 'standort' | 'gebaeude';
+  kurzzeichen: string;
+  name: string;
+  /** Nur beim Gebäude. */
+  standortName: string | null;
+}
+
+/** POST /api/v1/orte/{id}/verschieben */
+export interface OrtVerschiebenAnfrage {
+  zielId: string;
+  gueltigAb?: string;
+  begruendung?: string;
+}
+
+export interface OrtVerschiebungKnoten {
+  id: string | null;
+  art: 'unternehmen' | 'standort' | 'gebaeude' | 'bereich' | null;
+  kurzzeichen: string | null;
+  name: string | null;
+}
+
+/** Eine Messstelle mit dem Ort, an dem sie am „gültig ab“ hängt — das Verschieben ändert ihn nie. */
+export interface OrtVerschiebungMessstelle {
+  id: string | null;
+  kennzeichen: string;
+  name: string | null;
+  ort: OrtVerschiebungKnoten | null;
+}
+
+/**
+ * Vorschau (`GET …/verschieben/vorschau`) und Eintrag (`POST …/verschieben`) antworten gleich: was
+ * das Verschieben bewirkt. `folgen` ist das Urteil des Vertrags (E11/A13), `protokoll` in der Vorschau
+ * leer, `befehle` immer 0.
+ */
+export interface OrtVerschiebung {
+  ortId: string;
+  art: 'gebaeude' | 'bereich';
+  kurzzeichen: string;
+  name: string;
+  /** Der Elternknoten am „gültig ab“ ohne das Verschieben. */
+  bisher: OrtVerschiebungKnoten;
+  bisherStandort: OrtVerschiebungKnoten | null;
+  neu: OrtVerschiebungKnoten;
+  neuStandort: OrtVerschiebungKnoten | null;
+  gueltigAb: string;
+  /** Von der laufenden Zuordnung geerbt; `null` = offen. */
+  gueltigBis: string | null;
+  /** Der Elternknoten der schon geplanten Zuordnung ab dem Tag nach `gueltigBis`. */
+  danach: OrtVerschiebungKnoten | null;
+  rueckwirkung: OrtRueckwirkung;
+  /** Nur rückwirkend: die Tage, die nachträglich anders zählen. */
+  rueckwirkendBetroffen: { von: string; bis: string } | null;
+  zuordnungen: {
+    eltern: OrtVerschiebungKnoten;
+    gueltigAb: string;
+    gueltigBis: string | null;
+    zustand: 'gueltig' | 'geplant' | 'beendet' | 'aufgehoben';
+  }[];
+  folgen: {
+    ziehenMit: OrtVerschiebungKnoten[];
+    messstellenWechselnStandort: OrtVerschiebungMessstelle[];
+    bleibenAnlagen: { id: string; name: string; standort: OrtVerschiebungKnoten | null }[];
+    bleibenNetzanschluesse: { id: string | null; kennzeichen: string }[];
+    bleibenMessstellen: OrtVerschiebungMessstelle[];
+  };
+  befehle: number;
+  begruendung: string | null;
+  protokoll: {
+    id: number;
+    objektArt: 'gebaeude' | 'bereich';
+    objektId: string;
+    text: string;
+    giltAb: string;
+    rueckwirkend: boolean;
+    wer: string;
+    eingetragenAm: string;
+  }[];
+}
+
+/** IP-15 (Z3): ein am Stichtag archiviertes Gebäude oder ein archivierter Bereich. */
+export interface OrtsbaumArchivierterOrt {
+  id: string;
+  art: 'gebaeude' | 'bereich';
+  kurzzeichen: string;
+  name: string;
+  nutzung: Nutzung[] | null;
+  /** Der Archivtag (ISO-Tag). */
+  archiviertAm: string;
+  /** Der Knoten, an dem der Ort zuletzt hing. */
+  elternId: string;
+  elternArt: 'standort' | 'gebaeude';
+  aktionen: OrtAktionen | null;
 }
 
 /** POST /api/v1/standorte/{id}/orte */
@@ -2639,6 +5651,182 @@ export interface Ort {
   rueckwirkung: OrtRueckwirkung | null;
 }
 
+// ---- Funktionen je Standort (UEMS AP-01 IP-3) --------------------------------
+
+/**
+ * `GET /api/v1/funktionen` (snake_case wie der Vertrag `funktion-zustand`): je nicht archiviertem
+ * Standort beide Funktionen, dazu „läuft an x von y Standorten“. Zustände, Prüfungen und Aktionen
+ * sind die Wörter von `uemsFunktion.ts`; jeder Satz kommt fertig vom Server. NUR Typen — die
+ * Flächen sind AP-01 IP-5 bis IP-8.
+ */
+export interface Funktionen {
+  unternehmen: FunktionUnternehmen;
+  standorte: FunktionStandort[];
+}
+
+export interface FunktionUnternehmen {
+  messen: FunktionVerbreitung;
+  steuern: FunktionVerbreitung;
+}
+
+/** „Steuern & Optimieren läuft an 1 von 2 Standorten“; `text` null ohne Standort. */
+export interface FunktionVerbreitung {
+  laeuft_an: number;
+  standorte: number;
+  text: string | null;
+}
+
+export interface FunktionStandort {
+  id: string;
+  kurzzeichen: string;
+  name: string;
+  zeitzone: string;
+  messen: FunktionMessen;
+  steuern: FunktionSteuern;
+}
+
+export interface FunktionMessen {
+  zustand: FunktionZustand;
+  seit: string | null;
+  text: string;
+  fehlt: string[];
+  datenlage: string | null;
+}
+
+/** Der höchste Zustand der Teilnahmen; `aktionen` = die Standort-Aktionen, die jetzt erlaubt wären. */
+export interface FunktionSteuern {
+  zustand: FunktionZustand;
+  seit: string | null;
+  text: string;
+  fehlt: string[];
+  aktionen: FunktionAktion[];
+  anlagen: FunktionAnlage[];
+}
+
+export interface FunktionAnlage {
+  id: string;
+  name: string;
+  teilnahme: FunktionTeilnahme;
+}
+
+/**
+ * Die Teilnahme einer Anlage. `pruefliste` nur in entwurf, eingerichtet und angehalten;
+ * `wege` je roter Zeile, was zu tun ist; ein Knopf nur für eine Aktion aus `aktionen` (R2).
+ */
+export interface FunktionTeilnahme {
+  zustand: FunktionZustand;
+  seit: string | null;
+  text: string;
+  uebernommen: boolean;
+  /** Additive API-Angabe; fehlt nur bei einem älteren Server. */
+  ruhe_hinweis?: FunktionRuheHinweis;
+  pruefliste: FunktionPruefZeile[];
+  fehlt: string[];
+  wege: FunktionWeg[];
+  aktionen: FunktionAktion[];
+}
+
+export interface FunktionRuheHinweis {
+  jetzt: boolean;
+  beim_anhalten: boolean;
+}
+
+/** `bestanden: null` = nicht prüfbar, nie „bestanden“. */
+export interface FunktionPruefZeile {
+  pruefung: FunktionPruefung;
+  bestanden: boolean | null;
+}
+
+export interface FunktionWeg {
+  pruefung: FunktionPruefung;
+  satz: string;
+}
+
+/** `PUT /api/v1/sites/{id}/funktionen/steuern` bzw. `/api/v1/standorte/{id}/funktionen/steuern`. */
+export interface FunktionSteuernAnfrage {
+  aktion: 'aufnehmen' | 'starten' | 'anhalten' | 'fortsetzen' | 'beenden';
+}
+
+export interface FunktionSteuernErgebnis {
+  aktion: FunktionSteuernAnfrage['aktion'];
+  betroffen: FunktionAnlageRef[];
+  standort: FunktionStandort;
+}
+
+/** `GET /api/v1/sites/{id}/funktionen/steuern/pruefung` — frische Fakten für Schritt 5. */
+export interface FunktionSteuernPruefung {
+  anlage_id: string;
+  anlage: string;
+  standort_id: string;
+  standort: string;
+  bereit: boolean;
+  zeilen: FunktionSteuernPruefZeile[];
+  freigaben: FunktionFreigabeStand;
+  folgen: string;
+}
+
+export interface FunktionFreigabeStand {
+  freigegeben: number;
+  gesamt: number;
+  text: string;
+  komponenten: FunktionFreigabeZeile[];
+}
+
+export interface FunktionFreigabeZeile {
+  entity_id: string;
+  name: string;
+  weg: 'selbstbau' | 'ocpp' | 'wechselrichter';
+  freigegeben: boolean;
+  status: string;
+  station_verbunden: boolean | null;
+  steuerart_gesetzt: boolean | null;
+}
+
+export interface FunktionSteuernPruefZeile {
+  pruefung: FunktionPruefung;
+  bestanden: boolean | null;
+  fakt: string;
+  grund: string | null;
+  weg: string | null;
+}
+
+export interface FunktionAnlageRef {
+  id: string;
+  name: string;
+}
+
+/** `PUT /api/v1/standorte/{id}/funktionen/messen` (AP-01 IP-9a) — „Messen & Auswerten“ im Entwurf anlegen. */
+export interface FunktionMessenAnfrage {
+  aktion: 'einrichten';
+}
+
+export interface FunktionMessenErgebnis {
+  aktion: FunktionMessenAnfrage['aktion'];
+  standort: FunktionStandort;
+}
+
+/** Die Ablehnungen der Funktions-Schnittstelle (`uems/FunktionAbgelehnt`, OpenAPI `FunktionFehler`). */
+export type FunktionFehlerCode =
+  | 'anfrage_ungueltig'
+  | 'nicht_gefunden'
+  | 'nicht_aufgenommen'
+  | 'pruefliste_offen'
+  | 'noch_nicht_gestartet'
+  | 'laeuft_bereits'
+  | 'ist_angehalten'
+  | 'bereits_angehalten'
+  | 'beendet'
+  | 'bereits_angelegt'
+  | 'standort_archiviert';
+
+/** `{code, message, fehlt, wege}` — bei `pruefliste_offen` die roten Zeilen. */
+export interface FunktionFehler {
+  code: FunktionFehlerCode;
+  message: string;
+  fehlt: string[];
+  wege: FunktionWeg[];
+}
+
 // ---- Messstelle zuordnen: Ort und elektrische Stellung (UEMS AP-04 IP-7) -----
 // Nur die Formen von PUT /api/v1/messstellen/{id}/ort, …/stellung (Antwort: die
 // Messstelle, deren `orte`/`elektrische_stellung` diese Zuordnungen tragen) und
@@ -2681,6 +5869,158 @@ export interface MessstelleStellungAendern {
   gueltig_ab: string;
   korrektur?: boolean | null;
   grund?: string | null;
+}
+
+// ---- Messstellen-Dialog (UEMS AP-04 IP-6): anlegen und Quelle binden --------
+
+/** Eine führende Quelle der Messstelle (IP-13), soweit der Dialog sie liest; Zeitpunkte mit Versatz. */
+export interface MessstelleQuelleZeitraum {
+  komponente: string;
+  kanal: string;
+  gueltig_ab: string;
+  gueltig_bis: string | null;
+}
+
+/**
+ * POST /api/v1/messstellen (IP-3) — `kennzeichen` fehlt = automatisch (der Zähler rückt nur dann
+ * vor); Art, Medium und Hauptgröße sind danach nie mehr änderbar.
+ */
+export interface MessstelleAnlegen {
+  kennzeichen?: string;
+  name: string;
+  art: 'gemessen';
+  medium: string;
+  hauptgroesse: MessstelleGroesse;
+  nebengroessen: MessstelleGroesse[];
+  notiz?: string;
+}
+
+/**
+ * POST /api/v1/messstellen/{id}/quellen (IP-13) — ohne `groesse` die Hauptgröße, sonst Größe +
+ * Richtung einer Nebengröße; `gueltig_ab` auf die Minute mit Versatz.
+ *
+ * `rolle: 'vergleich'` braucht IMMER einen `zweck` (E3); `anteil` liest nur einen Teil eines
+ * Vorzeichen-Werts (AP-08 IP-7) — fehlend = der ganze Wert.
+ */
+export interface MessstelleQuelleBinden {
+  groesse?: { groesse: string; richtung: string };
+  komponente: string;
+  kanal: string;
+  rolle: 'fuehrend' | 'vergleich';
+  zweck?: string;
+  anteil?: 'positiv' | 'negativ';
+  gueltig_ab: string;
+}
+
+// ---- Quelle binden (UEMS AP-04 IP-14): GET/POST …/quellen, PUT …/quellen/{qid}/beenden ------
+// Die Formen von `GET /api/v1/messstellen/{id}/quellen?stichtag=` (OpenAPI `MessstelleQuellenListe`,
+// snake_case wie das echte Backend). Je Größe der Stand zum Stichtag, dazu die ganze Historie.
+
+/** Die drei Zwecke einer Vergleichsquelle (E3) — eine Vergleichsquelle gibt es nie ohne Zweck. */
+export type MessstelleQuelleZweck = 'Plausibilität' | 'Ersatz bei Ausfall' | 'Abrechnungszähler';
+
+/** Das Gerät des Messwerts: `geraet` das Kennzeichen (GR-4), `einbau` der Einbau (Z-5b). */
+export interface MessstelleQuelleGeraet {
+  id: string | null;
+  geraet: string | null;
+  einbau: string | null;
+  /**
+   * AP-05 IP-11, additiv: der Hersteller des Einbaus. Die Fläche fragt Kartenangaben nur dort
+   * nach, wo ein Hersteller sie haben kann — sonst liefe jede Messstellen-Seite in ein 404.
+   * `undefined` an einer älteren Antwort; dann wird nicht gefragt (nie geraten).
+   */
+  hersteller?: string | null;
+}
+
+/** Ein abgelesener Zählerstand an einer Bindung. */
+export interface MessstelleQuelleStand {
+  wert: number | null;
+  einheit: string | null;
+}
+
+/**
+ * Eine Quellenbindung, wie sie gespeichert ist. `letzter_wert` trägt nur, was zum Stichtag GILT
+ * (AP-04 IP-14, E3): so stehen der Wert der führenden und der der Vergleichsquelle nebeneinander,
+ * beide nach derselben Regel gebildet. `null` heißt „nichts bekannt“, nie eine 0.
+ */
+export interface MessstelleQuelle {
+  id: string;
+  messstelle_id: string;
+  groesse: string;
+  richtung: string;
+  rolle: 'fuehrend' | 'vergleich';
+  zweck: string | null;
+  komponente: string;
+  komponente_name: string | null;
+  anlage: string;
+  kanal: string;
+  /** Additiv (IP-14): der Anzeigename des Messwerts; `null`, wenn keiner bekannt ist. */
+  kanal_name?: string | null;
+  kanal_wertart: string;
+  herleitung: 'zaehlerstand' | 'differenzen' | 'integration' | 'momentanwert';
+  geraet: MessstelleQuelleGeraet;
+  gueltig_ab: string;
+  gueltig_bis: string | null;
+  status: 'geplant' | 'gilt' | 'beendet';
+  anfangsstand: MessstelleQuelleStand | null;
+  endstand: MessstelleQuelleStand | null;
+  rueckwirkend: boolean;
+  herkunft: string | null;
+  eingetragen_am: string;
+  eingetragen_von: string;
+  anteil: 'positiv' | 'negativ' | null;
+  /** Additiv (IP-14): der letzte gute Wert DIESER Bindung — nur an einer, die zum Stichtag gilt. */
+  letzter_wert?: MessstelleRegisterWert | null;
+}
+
+/** Ein Abschnitt des Zeitstrahls der führenden Quellen; `quelle === null` ist eine sichtbare Lücke. */
+export interface MessstelleQuelleAbschnitt {
+  von: string;
+  bis: string | null;
+  quelle: string | null;
+}
+
+/** Eine Größe der Messstelle zum Stichtag: ihre führende Quelle, die Vergleichsquellen, der Zeitstrahl. */
+export interface MessstelleQuelleGroesse {
+  groesse: string;
+  richtung: string;
+  einheit: string;
+  wertart: string;
+  hauptgroesse: boolean;
+  lebenszyklus: string;
+  fuehrend: MessstelleQuelle | null;
+  vergleich: MessstelleQuelle[];
+  zeitstrahl: MessstelleQuelleAbschnitt[];
+}
+
+export interface MessstelleQuellenListe {
+  messstelle_id: string;
+  kennzeichen: string;
+  stichtag: string;
+  /** Hauptgröße zuerst, dann die Nebengrößen. */
+  groessen: MessstelleQuelleGroesse[];
+  /** Die ganze Historie, beendete eingeschlossen. */
+  quellen: MessstelleQuelle[];
+}
+
+/** Wie weit ein eingetragenes „gültig ab“ von jetzt entfernt ist (E2). */
+export interface MessstelleQuelleRueckwirkung {
+  art: 'rueckwirkend' | 'ab_jetzt' | 'angekuendigt';
+  minuten: number;
+  abzeichen: string | null;
+}
+
+/** Die Antwort auf Binden und Beenden; `beendet` ist die laufende Quelle, die die neue beendet hat. */
+export interface MessstelleQuelleVorgang {
+  quelle: MessstelleQuelle;
+  beendet: MessstelleQuelle | null;
+  rueckwirkung: MessstelleQuelleRueckwirkung;
+  hinweise: string[];
+}
+
+/** PUT …/quellen/{qid}/beenden — ohne Inhalt endet die Quelle jetzt. Gelöscht wird nie. */
+export interface MessstelleQuelleBeenden {
+  gueltig_bis?: string;
 }
 
 /**
@@ -2751,14 +6091,20 @@ export interface MessstelleRegisterBindung {
 
 /**
  * Die Quelle der Hauptgröße zum Zeitpunkt. `berechnet` heißt: eine berechnete Messstelle hat
- * keine Quelle (ihre Formel kommt mit AP-10); `keine_datenquelle`: gemessen, aber keine
+ * keine Quelle (ihre Formel kommt mit AP-10); `ablesung`: die Werte kommen aus Ablesungen; `keine_datenquelle`: gemessen, aber keine
  * führende Quelle — nie eine 0. `davor` ist die führende Quelle, die zuletzt davor endete.
  */
 export interface MessstelleRegisterQuelle {
-  stand: 'gebunden' | 'berechnet' | 'keine_datenquelle';
+  stand: 'gebunden' | 'berechnet' | 'ablesung' | 'keine_datenquelle';
   fuehrend: MessstelleRegisterBindung | null;
   davor: MessstelleRegisterBindung | null;
   vergleichsquellen: number;
+  /** Nur bei `stand = ablesung`: die Werte kommen aus Ablesungen — seit wann und wann zuletzt (`null` = noch nie). */
+  /**
+   * `faellig_ab` (Messen-Bau m2, additiv): ab wann die nächste Ablesung fehlt - letzte Ablesung + zwei Kalendermonate,
+   * ohne Ablesung der Beginn der Quelle; derselbe Zeitpunkt wie „Ablesung überfällig seit …“ der Beobachtung.
+   */
+  ablesung?: { seit: string; zuletzt: string | null; faellig_ab: string };
 }
 
 /**
@@ -2778,7 +6124,15 @@ export interface MessstelleRegisterBeobachtung {
   toleranz_s: number | null;
   kadenz_s: number | null;
   geraet: string | null;
+  /**
+   * Nur im Fall „Werte kommen an der Box an, gehören aber zu keiner Reihe“ (der Komponente fehlt die
+   * Datenquelle): `zustand` spricht über die Reihe, `text` sagt den Fall, `letzter_wert` bleibt der der Box.
+   */
+  zuordnung?: MessstelleZuordnung;
 }
+
+/** „Werte kommen an, gehören aber zu keiner Messreihe“ — dasselbe Wort im Register und an der Werte-Route. */
+export type MessstelleZuordnung = 'nicht_zugeordnet';
 
 /**
  * Der letzte Wert mit Qualität „gut“ der führenden Quelle. Genau eines von `wert` und `text` ist
@@ -2802,8 +6156,8 @@ export interface MessstelleRegisterNebengroesse {
 /**
  * Eine Zeile des Registers zum Stichtag. `lebenszyklus` ist der HEUTIGE (ein Stichtag verschiebt
  * Ort, Stellung und Quelle, nicht ihn); `beobachtung` und `letzter_wert` gelten der Hauptgröße
- * über ihre führende Quelle — `null` nur bei einer BERECHNETEN Messstelle (AP-10), nie geraten,
- * nie eine 0.
+ * über ihre führende Quelle — `null` nur bei einer BERECHNETEN Messstelle, nie geraten, nie eine 0;
+ * deren Vollständigkeit steht in `berechnung` (AP-10 IP-9).
  */
 export interface MessstelleRegisterZeile {
   id: string;
@@ -2822,6 +6176,45 @@ export interface MessstelleRegisterZeile {
   beobachtung: MessstelleRegisterBeobachtung | null;
   letzter_wert: MessstelleRegisterWert | null;
   nebengroessen: MessstelleRegisterNebengroesse[];
+  /** Wirksame, append-only protokollierte Tatsachen an dieser Messstelle. */
+  fakten?: MessstelleRegisterFakt[];
+  berechnung: MessstelleRegisterBerechnung | null;
+  /** UEMS AP-16 IP-19: eingelöste Messbedarfe — die Messstelle ist „geplant für EE-…“. Ältere Antworten ohne Feld = keiner. */
+  geplant_fuer_einsaetze?: { id: string; kennzeichen: string; name: string }[];
+  /**
+   * Messen PR5: NUR mit `letzterMonat: true` in der Anfrage - der letzte vollständige Monat und sein Wert, genau der
+   * Schritt von `…/werte?raster=monat`. Ohne die Anfrage fehlt das Feld.
+   */
+  letzter_monat?: MessstelleRegisterMonat;
+}
+
+/**
+ * Der letzte vollständige Kalendermonat einer Messstelle (Messen PR5, Konzept §10.2): der Monat vor dem des Stichtags in
+ * der Zone ihres Standorts. `wert` ist der Schritt, den `GET …/{kennzeichen}/werte?raster=monat` für ihn zeigt - eine
+ * Fläche spricht ihn wie jeden anderen Schritt (Zustand, Kennzeichen, Grund) und rechnet nichts nach; `menge: null` ist
+ * nie 0. `wert` ist `null` NUR mit `ausserhalb_zugriff` (ein Eingang einer berechneten Messstelle liegt außerhalb).
+ */
+export interface MessstelleRegisterMonat {
+  /** JJJJ-MM, z. B. `2026-09`. */
+  monat: string;
+  /** Die Zone, in der `wert.von`/`wert.bis` den Monat schneiden. */
+  zeitzone: string;
+  wert: MessstelleWerteWert | null;
+  ausserhalb_zugriff?: string;
+}
+
+export interface MessstelleRegisterFakt {
+  art: 'einstellung_geaendert';
+  gilt_ab: string;
+}
+
+/** Nur berechnet (AP-10 IP-9): vollständig nur, wenn ALLE Eingänge der Formel des Tages liefern. */
+export interface MessstelleRegisterBerechnung {
+  /** `ausserhalb_zugriff`: ein Eingang liegt außerhalb des Zugriffs, das Urteil ist nicht zu fällen (AP-03 R-A6). */
+  zustand: 'vollstaendig' | 'unvollstaendig' | 'ausserhalb_zugriff';
+  fehlend: string[];
+  seit: string | null;
+  text: string;
 }
 
 /** „x von y Messstellen liefern Daten“ — nur `liefert` zählt im Zähler. */
@@ -2839,13 +6232,52 @@ export interface MessstelleRegisterStandortAbdeckung extends MessstelleRegisterA
 }
 
 /**
- * Das Aggregat der Antwort: gezählt werden GENAU die gezeigten Zeilen mit einer Beobachtung
- * (die Filter gelten also auch hier); eine berechnete Messstelle steht in keinem Nenner, eine
+ * Das Aggregat der Antwort: gezählt werden GENAU die gezeigten Zeilen (die Filter gelten also auch
+ * hier); seit AP-10 IP-9 auch die berechneten (vollständig = liefert, ohne Formel im Nenner), eine
  * Zeile ohne Standort nur beim Unternehmen.
  */
 export interface MessstelleRegisterAggregat {
   unternehmen: MessstelleRegisterAbdeckung;
   standorte: MessstelleRegisterStandortAbdeckung[];
+}
+
+/** Ein zeitgültiger Eintrag der Vertrags-Form: Tage bei Ort und Stellung, Zeitpunkte bei Quellen. */
+interface MessstelleVertragsIntervall {
+  gueltig_ab: string;
+  gueltig_bis: string | null;
+}
+
+/**
+ * Nur der Teil der Vertrags-Form (`MessstelleDto.Messstelle`, IP-3), den das Register im Portal
+ * liest: ALLE wirksamen Intervalle (aufgehobene nicht) — daraus erkennt „Stand am …“, dass es eine
+ * Messstelle an einem Tag noch nicht gab. Die übrigen Felder trägt die Antwort weiter.
+ */
+export interface MessstelleVertragsform {
+  id: string;
+  kennzeichen: string;
+  orte: MessstelleVertragsIntervall[];
+  elektrische_stellung: MessstelleVertragsIntervall[];
+  fuehrende_quelle: MessstelleVertragsIntervall[];
+  vergleichsquellen: MessstelleVertragsIntervall[];
+  nebengroessen: { fuehrende_quelle: MessstelleVertragsIntervall[]; vergleichsquellen: MessstelleVertragsIntervall[] }[];
+}
+
+/** Die Filter von `GET /api/v1/messstellen` — ein leerer Filter wird nicht gesendet. */
+export interface MessstellenRegisterAnfrage {
+  standort?: string;
+  ort?: string;
+  anlage?: string;
+  zustand?: string;
+  ohneQuelle?: boolean;
+  /** UEMS AP-16 IP-19: nur Messstellen, die einen Messbedarf eines Energieeinsatzes einlösen. */
+  geplantFuerEinsatz?: boolean;
+  /** Ein Tag (`2026-11-20`); fehlt = jetzt. */
+  stichtag?: string;
+  /**
+   * Messen PR5: jede Zeile trägt `letzter_monat` (kein Filter). Kostet einen Lesezug je Messstelle - nur setzen, wo der
+   * Monatswert gezeigt wird.
+   */
+  letzterMonat?: boolean;
 }
 
 /**
@@ -2855,7 +6287,7 @@ export interface MessstelleRegisterAggregat {
  * der Quelle.
  */
 export interface MessstellenRegister {
-  messstellen: unknown[];
+  messstellen: MessstelleVertragsform[];
   register: MessstelleRegisterZeile[];
   stichtag: string;
   zeitpunkt: string;
@@ -2906,9 +6338,19 @@ export interface Zaehlerwechsel {
   anfangsstand?: MessstelleStand | null;
   einstellungen_uebernehmen?: boolean | null;
   grund?: string | null;
+  karten_uebernommen?: string[];
+  ablesestaende?: { bindung: string; endstand?: MessstelleQuelleStand | null; anfangsstand?: MessstelleQuelleStand | null }[];
+  bestaetigte_bindungen?: string[];
 }
 
 /** Ein Einbau der Antwort: `geraet` ist die Stelle (GR-4), `einbau` das Kästchen (Z-5a). */
+export interface ControllerwechselVorschau {
+  zeitpunkt: string;
+  karten: { id: string; steckplatz: number | null; bezeichnung: string | null; typ: string | null; seriennummer: string | null }[];
+  folgen: { bindung: string; karte: string | null; komponente: string; messstelle: string; kennzeichen: string;
+    groesse: string; richtung: string; rolle: string; einheit: string | null; zaehlerstand: boolean }[];
+}
+
 export interface ZaehlerwechselEinbau {
   id: string;
   geraet: string;
@@ -2931,8 +6373,8 @@ export interface ZaehlerwechselBindung {
   groesse: string;
   richtung: string;
   rolle: 'fuehrend' | 'vergleich';
-  beendet: unknown;
-  neu: unknown;
+  beendet: MessstelleQuelle;
+  neu: MessstelleQuelle;
 }
 
 /** Eine Einstellungs-Fassung, die auf den neuen Einbau übernommen wurde. */
@@ -2957,6 +6399,18 @@ export interface ZaehlerwechselVorgang {
   marken: number;
   rueckwirkung: { art: 'rueckwirkend' | 'ab_jetzt' | 'angekuendigt'; minuten: number; abzeichen: string | null };
   hinweise: 'ablesestand_pruefen'[];
+}
+
+/** Bestehender Komponenten-Ereignispfad; unbekannte Arten bleiben beim jeweiligen Leser. */
+export interface KomponentenEreignis {
+  revision: number;
+  eventType: string;
+  effectiveAt: string;
+  fromValue?: string | null;
+  toValue?: string | null;
+  createdAt: string;
+  createdBy?: string | null;
+  note?: string | null;
 }
 
 // ---- Vorschlagsliste der Bestandsübernahme (UEMS AP-04 IP-16) ---------------
@@ -3041,7 +6495,8 @@ export interface MessstelleVorschlagAusgelassen {
     | 'vorzeichen_wert'
     | 'vergleich_kandidat'
     | 'gleicher_fluss'
-    | 'passt_nicht';
+    | 'passt_nicht'
+    | 'ausserhalb_zugriff';
   zu: string | null;
   text: string;
 }
@@ -3091,6 +6546,9 @@ export interface MessstelleVorschlagUebernommen<T = unknown> {
  * dass weder der moderne Top-Level-Stand noch der ältere Flow-Beleg vorliegt.
  */
 export interface EdgeVersion {
+  supports?: string[] | null;
+  /** Known reported capabilities OR release table, resolved by the cloud. */
+  capabilities?: string[] | null;
   deviceId: string;
   siteId: string;
   coreVersion: string | null;
@@ -3507,6 +6965,9 @@ export interface RegisterWriteEvent {
   actorRole: string | null;
   viaTenantSwitcher: boolean;
   requestedAt: string;
+  /** AP-03 IP-7: das Akteur-Vokabular neben `origin`; null im Bestand und an Box-Meldungen. */
+  actorRolle?: string | null;
+  actorArt?: 'kunde' | 'unterstuetzung' | 'voltpilot' | 'notfall' | null;
   beforeRaw: number | null;
   afterRaw: number | null;
   /** DREIWERTIG: null = keine Aussage, false = nicht übernommen, true = übernommen. */
@@ -3641,6 +7102,8 @@ export interface CommandEntry {
    * Zeile ohnehin nicht (das Strom-Wort ist ihm auch unbekannt).
    */
   register?: RegisterWriteEvent | null;
+  /** AP-03 IP-7: wer die Zeile ausgelöst hat (Register-Vorgang, „Jetzt voll laden“); null an abgeleiteten Zeilen. */
+  urheber?: ProtokollUrheber | null;
 }
 
 export interface CommandDetail {
@@ -4057,6 +7520,8 @@ export interface Earnings {
   totals: EarningsTotals;
   /** Absent auf einem älteren Backend — die Zeile bleibt dann weg. */
   vergleich?: EarningsVergleich | null;
+  /** Additiv (AP-03 IP-10); absent auf einem älteren Backend. */
+  teilansicht?: Teilansicht;
 }
 
 // ---- Anlagen-scharfe Erlöse (GET /api/v1/sites/{id}/earnings) ---------------
@@ -4169,6 +7634,11 @@ export interface SiteEarnings extends CockpitMoney {
 }
 
 export class ApiError extends Error {
+  /**
+   * `body`: der JSON-Körper der Ablehnung, wie der Server ihn schickte (additiv,
+   * UEMS AP-02 IP-6) — die Ortsstruktur braucht `code`, `feld` und `verweis`
+   * aus {@link OrtFehler}, nicht nur den Satz. Ohne JSON-Körper `undefined`.
+   */
   constructor(readonly status: number, message: string, readonly body?: unknown) {
     super(message);
   }
@@ -4181,6 +7651,8 @@ export class ApiError extends Error {
  * tenant's data through the same RLS scoping the customer gets.
  */
 let tenantOverride: string | null = null;
+let kundenbereich: string | null = null;
+export function setKundenbereich(id: string | null): void { kundenbereich = id; }
 
 export function setTenantOverride(tenantId: string | null): void {
   tenantOverride = tenantId;
@@ -4201,10 +7673,14 @@ export function setTenantOverride(tenantId: string | null): void {
  * 30-s-Takt holt also weiterhin wirklich neu - eine zwischengespeicherte
  * Antwort wäre genau die stille Veraltung, die dieses Portal nirgends duldet.
  *
- * Zwei Grenzen sind tragend: **nur GET** (eine Mutation darf nie geteilt
- * werden) und der Schlüssel trägt den **Mandanten-Umschalter** - sonst könnte
+ * Drei Grenzen sind tragend: **nur GET** (eine Mutation darf nie geteilt
+ * werden), der Schlüssel trägt den **Mandanten-Umschalter** - sonst könnte
  * ein Admin, der mitten im Flug umschaltet, die Antwort des vorherigen
- * Mandanten bekommen.
+ * Mandanten bekommen - und **Lesen nach Schreiben**: sobald eine Änderung
+ * geantwortet hat, teilt kein neuer Leser mehr eine Lese-Anfrage, die vor
+ * dieser Antwort losging. Sonst bekäme, wer nach „eingelöst“ neu liest, den
+ * Stand von davor (Messen m2: die geplante Messstelle blieb nach dem
+ * Einrichten stehen, weil das Schließen des Dialogs schon gelesen hatte).
  */
 const inFlight = new Map<string, Promise<unknown>>();
 
@@ -4212,7 +7688,7 @@ function coalesceKey(path: string, init: RequestInit): string | null {
   const method = (init.method ?? 'GET').toUpperCase();
   if (method !== 'GET') return null;
   if (init.body != null || init.signal != null) return null;
-  return `${tenantOverride ?? ''}|${path}`;
+  return `${tenantOverride ?? ''}|${kundenbereich ?? ''}|${path}`;
 }
 
 export async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -4220,16 +7696,63 @@ export async function request<T>(path: string, init: RequestInit = {}): Promise<
   if (key != null) {
     const running = inFlight.get(key);
     if (running) return running as Promise<T>;
-    const p = requestUncoalesced<T>(path, init).finally(() => {
-      inFlight.delete(key);
+    const p: Promise<T> = requestUncoalesced<T>(path, init).finally(() => {
+      // Nach einer Änderung kann unter dem Schlüssel schon eine neuere Anfrage stehen - nur die eigene austragen.
+      if (inFlight.get(key) === p) inFlight.delete(key);
     });
     inFlight.set(key, p);
     return p;
   }
-  return requestUncoalesced<T>(path, init);
+  const antwort = requestUncoalesced<T>(path, init);
+  if ((init.method ?? 'GET').toUpperCase() === 'GET') return antwort;
+  // Eine Änderung hat geantwortet (oder ist gescheitert - ob sie schrieb, weiß nur der Server): wer jetzt liest, fragt
+  // neu. Wer schon wartet, behält seine Antwort.
+  return antwort.finally(() => inFlight.clear());
+}
+
+/**
+ * Der EINE Ergebnis-Zwischenspeicher dieses Moduls — nur für die Kostenstellen-Sicht (UEMS AP-13 IP-9, E8).
+ *
+ * Bis AP-10 eine Route „alle Kostenstellen einer Periode“ liefert, ruft die Fläche JE Kostenstelle einmal (Ahrenberg:
+ * fünf Aufrufe je Zeitraum). Wer zwischen den Reitern oder Zeiträumen hin und her wechselt, fragt dieselbe Antwort nicht
+ * erneut. Die Veraltung bleibt sichtbar und begrenzt: jede Antwort trägt `berechnet_am` (die Fläche zeigt es), und nach
+ * {@link GEMERKT_MS} fragt der nächste Aufruf neu. Der Schlüssel trägt den Mandanten-Umschalter wie `inFlight`; eine
+ * Ablehnung wird nie gemerkt.
+ */
+export const GEMERKT_MS = 120_000;
+const gemerkt = new Map<string, { seit: number; antwort: Promise<unknown> }>();
+
+function gemerkteAnfrage<T>(path: string): Promise<T> {
+  const key = `${tenantOverride ?? ''}|${kundenbereich ?? ''}|${path}`;
+  const jetzt = Date.now();
+  const da = gemerkt.get(key);
+  if (da && jetzt - da.seit < GEMERKT_MS) return da.antwort as Promise<T>;
+  const antwort = request<T>(path).catch((e: unknown) => {
+    if (gemerkt.get(key)?.antwort === antwort) gemerkt.delete(key);
+    throw e;
+  });
+  gemerkt.set(key, { seit: jetzt, antwort });
+  return antwort;
+}
+
+/** Leert den Zwischenspeicher der Kostenstellen-Sicht (Tests, „Erneut versuchen“). */
+export function vergissGemerkte(): void {
+  gemerkt.clear();
+}
+
+/**
+ * Welcher Kundenbereich gemeint ist: `X-Kundenbereich` (Partner und Plattform in einer Unterstützung, Kunden ohnehin),
+ * sonst der Plattform-Umschalter `X-Tenant-Id`. Jeder Abruf trägt ihn gleich - auch die Datei-Abrufe (CSV, PDF, ICS);
+ * ohne ihn lief der CSV-Abruf des Verzeichnisses in einem fremden Kundenbereich ohne Wahl (Konzept Nachweisen n1, A16).
+ */
+function bereichKopf(path: string, bereich = kundenbereich, mandant = tenantOverride): Record<string, string> {
+  return bereich && !path.startsWith('/api/v1/admin/') ? { 'X-Kundenbereich': bereich }
+    : mandant ? { 'X-Tenant-Id': mandant } : {};
 }
 
 async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const angefragterMandant = tenantOverride;
+  const angefragterKundenbereich = kundenbereich;
   let token: string | undefined;
   try {
     token = await freshToken();
@@ -4243,9 +7766,9 @@ async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Prom
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
-      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(init.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(tenantOverride ? { 'X-Tenant-Id': tenantOverride } : {}),
+      ...bereichKopf(path, angefragterKundenbereich, angefragterMandant),
       ...(init.headers ?? {}),
     },
   });
@@ -4269,6 +7792,11 @@ async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Prom
     } catch {
       // non-JSON error body: keep the generic message
     }
+    if ((res.status === 404 || res.status === 403) && errorBody && typeof errorBody === 'object'
+      && 'code' in errorBody && errorBody.code === 'zugriff_beendet'
+      && angefragterMandant === tenantOverride && angefragterKundenbereich === kundenbereich) {
+      window.dispatchEvent(new CustomEvent('vp-zugriff-beendet', { detail: message }));
+    }
     throw new ApiError(res.status, message, errorBody);
   }
   // 201 with body for claim; others JSON. 204 would be empty.
@@ -4290,7 +7818,7 @@ export async function downloadMeasurementExport(
   const response = await fetch(`${API_BASE}${path}`, {
     headers: {
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(tenantOverride ? { 'X-Tenant-Id': tenantOverride } : {}),
+      ...bereichKopf(path),
     },
   });
   if (!response.ok) throw new ApiError(response.status, 'Der Export konnte nicht erstellt werden.');
@@ -4301,6 +7829,36 @@ export async function downloadMeasurementExport(
   link.download = `messwert-${pointKey.replace(/[^a-zA-Z0-9._-]/g, '_')}.csv`;
   link.click();
   URL.revokeObjectURL(href);
+}
+
+/** UEMS AP-20 IP-17 (§5.8): der Knopf und seine Erklärung — ein Wortlaut für den Hinweis „beendet“ und das Konto-Menü. */
+export const GESAMTABZUG_KNOPF = 'Gesamtabzug laden';
+export const GESAMTABZUG_ERKLAERUNG = 'Gesamtabzug laden — alle Stände, Berichte, Nachweise und Messreihen Ihres Unternehmens, mit Prüfsumme je Datei.';
+
+/**
+ * UEMS AP-20 IP-17: lädt den Gesamtabzug (`GET /api/v1/unternehmen/abzug`, nur der Kundenadministrator, auch im
+ * Zustand „beendet“) und legt ihn als ZIP ab — der Name kommt vom Server (`gesamtabzug-<Tag>.zip`). Eine Ablehnung
+ * (403 `recht_fehlt`, 409 `kundenbereich_beendet`) kommt als {@link ApiError} mit dem Satz der API.
+ */
+export async function ladeGesamtabzug(): Promise<void> {
+  const token = await freshToken();
+  const res = await fetch(`${API_BASE}/api/v1/unternehmen/abzug`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...bereichKopf('/api/v1/unternehmen/abzug'),
+    },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => undefined);
+    throw new ApiError(res.status, (body as { message?: string } | undefined)?.message ?? 'Der Gesamtabzug konnte nicht geladen werden.', body);
+  }
+  const name = /filename=([^;]+)/.exec(res.headers.get('Content-Disposition') ?? '')?.[1]?.trim() ?? 'gesamtabzug.zip';
+  const href = URL.createObjectURL(await res.blob());
+  const link = document.createElement('a');
+  link.href = href;
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(href), 0);
 }
 
 export interface RegisterInput {
@@ -4428,6 +7986,700 @@ export interface UemsGeraet {
   einbau_kennzeichen: string;
   ausgebaut_am: string | null;
   komponenten: Array<{ entity_id: string; gueltig_ab: string; gueltig_bis: string | null }>;
+  /**
+   * Die Datenquelle, aus der die Box dieses Gerät liest (`geraet.data_source_id`) — der EINZIGE
+   * Weg von einer Komponente zu ihrer Datenquelle, den die Schnittstellen heute anbieten
+   * (AP-13 IP-12, Befund: `…/data-sources` nennt ihre Geräte und Komponenten nicht). `null` =
+   * nicht erhoben; dann steht kein Box-Satz, nie eine geratene Box.
+   */
+  data_source_id?: string | null;
+  /*
+   * Die übrigen Felder von `GeraetDto.Geraet` — die Geräteseite (AP-04 IP-12)
+   * braucht sie für die Karte „Gerät“. Optional, weil das Protokoll und seine
+   * Tests nur die Felder oben kennen. `null` = nicht erhoben, nie geraten.
+   */
+  geraeteart?: 'zaehler' | 'wechselrichter' | 'controller' | 'ladestation' | 'speicher' | 'sonstiges';
+  hersteller?: string | null;
+  typ?: string | null;
+  seriennummer?: string | null;
+  bezeichnung?: string | null;
+  eingebaut_am?: string;
+  /** `true`: aus der Komponente abgeleitet — `eingebaut_am` ist der Beginn ihres Verlaufs, nicht der Einbautag. */
+  aus_bestand?: boolean;
+  teile?: UemsGeraetTeil[];
+  /** Die früheren Einbauten desselben Geräts, der jüngste zuerst. */
+  vorgaenger?: UemsGeraetVorgaenger[];
+}
+
+/** Eine Energiekarte im Steckplatz eines Controllers; `steckplatz` null = nicht erhoben. */
+export interface UemsGeraetTeil {
+  id: string;
+  teilart: string;
+  steckplatz: number | null;
+  bezeichnung: string | null;
+  typ: string | null;
+  seriennummer: string | null;
+  eingebaut_am: string;
+  ausgebaut_am: string | null;
+}
+
+/** Ein früherer Einbau desselben Geräts — „Z-5a · ausgebaut am 18.11.2026, 10:40 Uhr“. */
+export interface UemsGeraetVorgaenger {
+  id: string;
+  einbau_kennzeichen: string;
+  hersteller: string | null;
+  typ: string | null;
+  seriennummer: string | null;
+  eingebaut_am: string;
+  ausgebaut_am: string | null;
+}
+
+// ---- Datenquellen (UEMS AP-06 IP-3): GET /api/v1/sites/{siteId}/data-sources ----
+// Die Formen von `DatenquelleDto` — `snake_case` wie das echte Backend. AP-13 IP-12 ist der
+// ERSTE Aufrufer dieser Routen im Portal; gelesen wird nur, wer wann liest (die Zuständigkeit).
+//
+// ⚠ BEFUND (AP-13 IP-12 an AP-06): eine `UemsDatenquelle` nennt WEDER ihre Geräte NOCH ihre
+// Komponenten — `geraete_ids` sind Modbus-Geräte-IDs, keine Kennungen des Portals. Der Weg
+// „Komponente → ihre Datenquelle“, den AP-13 §8 voraussetzt, geht deshalb über
+// `GET …/sites/{id}/geraete` und dessen `data_source_id`. Zwei Aufrufe je Anlage statt einem.
+
+/** Eine Box, wie ein Satz sie nennt; `name` ist `null`, wenn es die Box nicht mehr gibt. */
+export interface UemsDatenquelleBox {
+  id: string;
+  name: string | null;
+  heimat_anlage: string | null;
+}
+
+/** Ein Zuständigkeits-Zeitraum, halboffen auf die Minute: `effective_to` gehört NICHT dazu. */
+export interface UemsDatenquelleZeitraum {
+  /** Seit AP-06 IP-12; bei älteren Antworten fehlt die Kennung und damit die Rücknahme-Aktion. */
+  id?: string;
+  box: UemsDatenquelleBox;
+  effective_from: string;
+  effective_to: string | null;
+}
+
+/**
+ * Eine Datenquelle. `zustaendige_box` ist die Box, deren Zeitraum JETZT läuft — `null`, wenn
+ * keine liest (Entwurf, Lücke oder erst geplant); „aktiv“ und „liefert Daten“ sind bewusst keine
+ * Felder. Das Portal liest heute nur `id`, `kennzeichen` und `zeitraeume`; die übrigen Felder
+ * stehen für den nächsten Aufrufer.
+ */
+/**
+ * `GET …/gemeinsame-steuerung` (AP-15 IP-5, Vertrag `steuerungsverbund.md` §6). Die Box-Seite liest nur
+ * `zustand` (IP-26); die Karte unter Anlage → Technik (IP-23) liest Mitglieder, Befunde und den nächsten
+ * Schritt. Alle weiteren Felder sind wahlfrei, damit ältere Antworten und die Bühnen gültig bleiben.
+ */
+export interface UemsGemeinsameSteuerungZustand {
+  aufloesen?: { bestaetigt: number; gesamt: number; wartet_auf: string[] } | null;
+  eingerichtet: boolean;
+  zustand: 'nicht_eingerichtet' | 'erklaert' | 'beobachtet' | 'geprueft' | 'anteile_aktiv' | 'angehalten' | 'aufgeloest' | 'wird_aufgeloest';
+  stufe?: 'S0' | 'S1' | 'S2' | 'S3' | null;
+  mitglieder?: UemsGemeinsameSteuerungMitglied[];
+  naechster_schritt?: 'beobachtet' | 'anteile_aktiv' | 'vom_betreiber_angehalten' | null;
+  fehlt?: UemsGemeinsameSteuerungBefund[];
+  /** Das Betreiber-Blatt (IP-24) liest dazu Epoche, Bilanz (IP-12) und Vorbehalt (IP-13). */
+  epoche?: number | null;
+  bilanz?: UemsVerbundBilanz | null;
+  vorbehalt?: UemsVerbundVorbehalt | null;
+}
+
+/** Die Verbund-Bilanz (IP-12): Urteil des jüngsten gerechneten Tages. */
+export interface UemsVerbundBilanz {
+  zustand: 'plausibel' | 'unplausibel' | 'unbekannt';
+  tag: string;
+  seit?: string | null;
+  grund?: string | null;
+  gerechnet_am?: string | null;
+}
+
+export interface UemsVerbundVorbehaltRichtung {
+  kw: number | null;
+  herkunft: 'erklaert' | 'gemessen';
+  seit?: string | null;
+  zweischritt?: string | null;
+}
+
+/** Der Vorbehalt (IP-13) je Richtung, dazu ein offener Vorschlag zum Senken. */
+export interface UemsVerbundVorbehalt {
+  einspeisung: UemsVerbundVorbehaltRichtung;
+  bezug: UemsVerbundVorbehaltRichtung;
+  vorschlag?: { richtung: UemsSteuerRichtung; alt_kw: number; neu_kw: number; messtage: number } | null;
+}
+
+export type UemsSteuerRichtung = 'einspeisung' | 'bezug';
+export type UemsDreiwert = 'ja' | 'nein' | 'unbekannt';
+
+export interface UemsGemeinsameSteuerungMitglied {
+  box_id: string;
+  rolle: 'fuehrt' | 'steuert_mit';
+  messpunkt_id?: string | null;
+  /** R17: wann der Betreiber das Mitglied bestätigt hat; `null` = noch nicht (Box-Tausch). */
+  bestaetigt_am?: string | null;
+  vorgabe_signal: UemsDreiwert;
+  verbraucher14a: UemsDreiwert;
+  /** IP-22: `kwh` ist eine UNTERGRENZE, `gebunden_s` exakt; `null`, solange die Box keinen Tag gemeldet hat. */
+  anteil_verlust?: { heute?: UemsVerlustSumme | null; monat?: UemsVerlustSumme | null } | null;
+  /** IP-21: die jüngste Sprungprobe der Box; `null` ohne Probe. */
+  sprungprobe?: UemsSprungprobe | null;
+  /**
+   * IP-23-Folge (G4): was der Box zugestellt UND von ihr quittiert ist — nach einer Abweichung des Betreibers beim
+   * Scharfschalten dessen Zahl, im Übergangsstand der Übergangswert. `null` = nichts quittiert (unbekannt, keine Null).
+   */
+  wirksame_anteile?: { einspeisung_kw?: number | null; bezug_kw?: number | null } | null;
+  /** IP-23-Folge: der letzte Status-Herzschlag der Box; `null` = nie gehört. */
+  zuletzt_gehoert?: string | null;
+  /** AP-15 §5.5: die Box scheidet aus; `null`, solange nicht. */
+  ausscheiden?: UemsAusscheiden | null;
+}
+
+/**
+ * AP-15 §5.5: das Mitglied scheidet aus — sein Anteil fällt im Zweischritt auf den Rückfall seiner Geräte.
+ * `box` = wartet auf die Quittung der Box, `voltpilot` = die Box ist abgemeldet, VoltPilot bestätigt, dass ihre Geräte
+ * vom Netz sind.
+ */
+export interface UemsAusscheiden {
+  seit: string;
+  wartet_auf: 'box' | 'voltpilot';
+  vom_netz_bestaetigt_am?: string | null;
+}
+
+/** Eine Sprungprobe (IP-21). `ausgeloest` = der Bericht steht aus; `nicht_auswertbar` ist kein Bestanden. */
+export interface UemsSprungprobe {
+  probe_id: string;
+  box_id: string;
+  art: 'erzeugung_senken' | 'verbrauch_senken';
+  sprung_kw: number;
+  dauer_s: number;
+  wiederholungen: number;
+  ausgeloest_am: string;
+  urteil: 'ausgeloest' | 'bestanden' | 'nicht_bestanden' | 'abgebrochen' | 'nicht_auswertbar';
+  grund?: string | null;
+  ausgewertet_am?: string | null;
+  entwertet_am?: string | null;
+  gilt: boolean;
+}
+
+/**
+ * `GET /api/v1/admin/sites/{siteId}/gemeinsame-steuerung` (AP-15 IP-24, nur Plattform-Rolle): je Box, was nur der
+ * Betreiber sieht. `null` heißt „nicht gemeldet“ — nie eine Null.
+ */
+export interface UemsBetreiberblatt {
+  boxen: UemsBoxStand[];
+  zweischritt?: UemsZweischritt | null;
+  sprungproben: UemsSprungprobeProtokoll[];
+  steckerproben: UemsSteckerprobe[];
+}
+
+/** AP-15 NW-8: vom Betreiber benannter Kabelzug mit dem Grenz-Nachweis genau dieses Zeitraums. */
+export interface UemsSteckerprobe {
+  id: string;
+  von: string;
+  bis: string;
+  box_id: string;
+  bemerkung?: string | null;
+  eingetragen_am: string;
+  grund?: 'kein_netzanschluss' | null;
+  nachweis?: NetzanschlussGrenzNachweis | null;
+}
+
+export type UemsFaehigkeitHerkunft = 'gemeldet' | 'versions_tabelle' | 'fehlt';
+
+export interface UemsRevision {
+  epoche: number;
+  revision: number;
+  am?: string | null;
+}
+
+export interface UemsPlanZeile {
+  plan_id: string;
+  erzeugt_am?: string | null;
+  am?: string | null;
+  urteil?: string | null;
+  grund?: string | null;
+}
+
+export interface UemsBoxStand {
+  box_id: string;
+  rolle: 'fuehrt' | 'steuert_mit';
+  zuletzt_gesehen?: string | null;
+  faehigkeit: { steuerungsverbund_anteil: UemsFaehigkeitHerkunft; sprungprobe: UemsFaehigkeitHerkunft };
+  messpunkt?: { data_source_id: string; zustand: 'ok' | 'stale' | 'never' | 'nicht_gemeldet'; gelesen_am?: string | null } | null;
+  waechter?: { einspeisung?: string | null; bezug?: string | null } | null;
+  plan: { veroeffentlicht?: UemsPlanZeile | null; angenommen?: UemsPlanZeile | null };
+  anteile: { gesendet?: UemsRevision | null; quittiert?: UemsRevision | null; wirksam_kw?: { einspeisung?: number; bezug?: number } | null; reserve_verbraucher_kw?: number | null; ungeregelt_hinter_abgang_kw?: number | null };
+  /** Folgepaket zu IP-22: `null` = die Box hat für gestern keinen Anteils-Verlust gemeldet. */
+  verlust_gestern?: UemsVerlustTag | null;
+  /** AP-15 §5.5: die Box scheidet aus; `null`, solange nicht. */
+  ausscheiden?: UemsAusscheiden | null;
+}
+
+/** Das jüngste Anteils-Dokument; der Zielstand gilt erst mit `schritt = ziel` und leerem `wartet_auf`. */
+export interface UemsZweischritt {
+  schritt: 'uebergang' | 'ziel';
+  epoche: number;
+  revision: number;
+  am?: string | null;
+  bestaetigt: string[];
+  wartet_auf: string[];
+}
+
+export interface UemsSprungMessung {
+  eigene_kw?: number | null;
+  erwartet_kw?: number | null;
+  gesehen_kw?: number | null;
+  toleranz_kw?: number | null;
+  abweichung_kw?: number | null;
+  urteil?: string | null;
+  grund?: string | null;
+}
+
+export interface UemsSprungprobeProtokoll {
+  probe: UemsSprungprobe;
+  spruenge: UemsSprungMessung[];
+}
+
+export interface UemsVerlustSumme {
+  kwh: number;
+  gebunden_s: number;
+  tage: number;
+  /**
+   * Folgepaket zu IP-22: die SCHÄTZUNG der Cloud aus der PV-Prognose über `tage_geschaetzt` Tage (`null`, solange
+   * keiner). Die Kundenfläche zeigt sie nicht — Wortlaut-Entscheid offen.
+   */
+  schaetzung_kwh?: number | null;
+  tage_geschaetzt?: number;
+}
+
+/** Folgepaket zu IP-22: der gestrige Tag einer Box — Untergrenze der Box und Schätzung der Cloud getrennt. */
+export interface UemsVerlustTag {
+  tag: string;
+  verlust_kwh: number;
+  gebunden_s: number;
+  /** `null` bei `keine` oder solange noch nicht gerechnet (`schaetzung_grundlage` null). */
+  schaetzung_kwh?: number | null;
+  schaetzung_grundlage?: 'prognose' | 'nowcast' | 'keine' | null;
+}
+
+export interface UemsGemeinsameSteuerungBefund {
+  wort: 'box_nicht_in_anlage' | 'kein_netzanschluss' | 'grenze_fehlt' | 'faehigkeit_fehlt' | 'nachweis_fehlt'
+    | 'auslegung_passt_nicht' | 'fuehrende_box_misst_nicht' | 'vorgabe_signal_nicht_an_jeder_box' | 'mitsteuernde_box_misst_nicht';
+  box_id?: string | null;
+  richtung?: UemsSteuerRichtung | null;
+}
+
+/** Frage 6: die Auslegung einer Richtung; `null`, solange sie nicht rechenbar ist. */
+export interface UemsGemeinsameSteuerungAuslegung {
+  urteil: 'passt' | 'auslegung_passt_nicht' | 'vorbehalt_ueber_grenze';
+  grenze_kw: number;
+  vorbehalt_kw: number;
+  verteilbar_kw: number;
+  summe_rueckfall_kw: number;
+  anteile: { box_id: string; kw: number }[];
+  ungenutzt_kw?: number;
+  /** Puffer für den Ausfall der führenden Box (Übergangszuschlag); 0 ohne Speicher dort. */
+  uebergangszuschlag_kw?: number;
+  /** Was davon über den Rückfällen keinen Platz fand (nur bei `passt`) — nie eine Ablehnung. */
+  uebergangszuschlag_fehlt_kw?: number | null;
+}
+
+export interface UemsEinrichtenKomponente {
+  komponente_id: string;
+  name: string | null;
+  typ: string;
+  schreibfreigabe: boolean;
+  richtungen: UemsSteuerRichtung[];
+  nenn_kw: number | null;
+}
+
+export interface UemsEinrichtenGeraet {
+  komponente_id: string;
+  richtung: UemsSteuerRichtung;
+  nenn_kw: number;
+  schreibfreigabe?: boolean;
+  rueckfall?: string | null;
+  rueckfall_kw?: number | null;
+  rueckfall_herkunft?: 'am_geraet' | 'katalog' | 'ohne_angabe' | null;
+}
+
+export interface UemsEinrichtenBox {
+  box_id: string;
+  name: string;
+  rolle: 'fuehrt' | 'steuert_mit' | null;
+  messpunkt_id: string | null;
+  liest_netzzaehler: boolean;
+  komponenten: UemsEinrichtenKomponente[];
+  geraete_erklaert?: boolean;
+  geraete?: UemsEinrichtenGeraet[];
+  ungeregelt?: { richtung: UemsSteuerRichtung; hoechstwert_kw: number }[];
+}
+
+export interface UemsErzeuger {
+  bezeichnung: string;
+  nenn_kw: number;
+}
+
+/** `GET …/gemeinsame-steuerung/einrichten` (Vertrag §6a): der Vorschlag für die sechs Fragen, schreibt nie. */
+export interface UemsGemeinsameSteuerungEinrichten {
+  eingerichtet: boolean;
+  netzzaehler_box_id: string | null;
+  /** `einspeisung_keine`: das Grenzblatt erklärt ausdrücklich keine Einspeisegrenze — nie aus einem nur fehlenden Wert. */
+  grenzen: { einspeisung_kw: number | null; bezug_kw: number | null; einspeisung_keine?: boolean } | null;
+  boxen: UemsEinrichtenBox[];
+  ungesteuerte_erzeuger?: 'keine' | UemsErzeuger[] | null;
+  vorbehalt?: {
+    einspeisung_kw?: number | null;
+    bezug_kw?: number | null;
+    bezug_herkunft?: 'erklaert' | 'gemessen' | null;
+    aus_messwerten?: { kw: number; hoechstwert_kw: number; messtage: number } | null;
+  } | null;
+  ergebnis?: { einspeisung?: UemsGemeinsameSteuerungAuslegung | null; bezug?: UemsGemeinsameSteuerungAuslegung | null } | null;
+  hinweise?: {
+    wort: 'nennleistung_weicht_ab' | 'ohne_schreibfreigabe' | 'geraete_nicht_erklaert' | 'geraet_nicht_erklaert'
+      | 'erzeuger_nicht_erklaert' | 'vorbehalt_nicht_erklaert' | 'netzzaehler_nicht_gelesen';
+    box_id?: string | null;
+    komponente_id?: string | null;
+  }[];
+}
+
+/** Körper von `PUT …/gemeinsame-steuerung` mit der Erklärung (Vertrag §6a). */
+export interface UemsGemeinsameSteuerungSetzen {
+  mitglieder: {
+    box_id: string;
+    rolle: 'fuehrt' | 'steuert_mit';
+    messpunkt_id: string | null;
+    vorgabe_signal: UemsDreiwert;
+    geraete: { komponente_id: string; richtung: UemsSteuerRichtung; nenn_kw: number }[];
+    /** Ungeregeltes hinter dem Abgang dieser Box (B3) — fehlt es, löscht das PUT ein erklärtes. */
+    ungeregelt?: { richtung: UemsSteuerRichtung; hoechstwert_kw: number }[];
+  }[];
+  ungesteuerte_erzeuger: 'keine' | UemsErzeuger[];
+  vorbehalt?: { bezug_kw: number };
+}
+
+/** Eine Lücke der 422 `erklaerung_unvollstaendig` — an IHRER Stelle angezeigt. */
+export interface UemsErklaerungLuecke {
+  wort: 'geraete' | 'komponente' | 'ungesteuerte_erzeuger';
+  box_id?: string | null;
+  komponente_id?: string | null;
+}
+
+export interface UemsDatenquelle {
+  id: string;
+  kennzeichen: string;
+  name: string | null;
+  anlage: string;
+  protokoll: string;
+  adresse: string;
+  geraete_ids: number[];
+  netz: string | null;
+  mehrere_leser: boolean;
+  steuerquelle: boolean;
+  vergleichsquelle: boolean;
+  kadenz_s: number | null;
+  archiviert_am: string | null;
+  zustaendige_box: UemsDatenquelleBox | null;
+  zeitraeume: UemsDatenquelleZeitraum[];
+  rueckmeldung?: UemsDatenquelleRueckmeldung | null;
+  uebergabe?: {
+    zustand: string;
+    seit: string;
+    box_alt: UemsDatenquelleBox | null;
+    box_neu: UemsDatenquelleBox | null;
+  } | null;
+}
+
+export interface UemsDatenquelleRueckmeldung {
+  zustand: 'liefert' | 'liefert_nicht' | 'meldet_noch_nicht_je_quelle';
+  fehlerklasse: string | null;
+  seit: string | null;
+  gelesen_am: string | null;
+  anfragen_pro_minute: number | null;
+  messwerte_pro_minute: number | null;
+  gemeldet_am: string | null;
+  text: string;
+}
+
+export interface UemsDatenquellenListe {
+  datenquellen: UemsDatenquelle[];
+}
+
+// ---- Datenquellen-Vorschlag (AP-06 IP-4, Vertrag §8): GET/POST …/data-sources/vorschlag[/uebernehmen] ----
+// Erster Aufrufer ist Schritt 2 des Messen-Assistenten (`DatenquelleVorschlagListe`); der
+// Übernahme-Assistent für Bestandskunden nutzt dieselbe Liste. Das GET schreibt nichts.
+
+/** Eine Komponente hinter einem Vorschlag: `name` ist `null`, wenn der Kunde keinen vergeben hat. */
+export interface UemsVorschlagKomponente {
+  id: string;
+  name: string | null;
+  art: string | null;
+}
+
+/**
+ * Ein Vorschlag: EINE Quelle, die `box` ab `ab` liest. `grund` ist `null`, wenn er übernommen
+ * werden kann, sonst der Vertragsgrund (`adresse_an_box_vergeben`); `text` ist der Satz dazu.
+ * `ziel` nennt dann die vorhandene Quelle, an die „Hinzufügen“ die Komponenten hängt.
+ */
+export interface UemsDatenquelleVorschlag {
+  kennzeichen: string;
+  box: UemsDatenquelleBox;
+  protokoll: string;
+  adresse: string;
+  geraete_ids: number[];
+  kadenz_s: number | null;
+  steuerquelle: boolean;
+  ab: string;
+  komponenten: UemsVorschlagKomponente[];
+  grund: string | null;
+  text: string;
+  ziel?: { id: string; kennzeichen: string; name: string | null } | null;
+}
+
+/** Eine Komponente ohne Vorschlag — mit Grund und Satz des Vertrags. */
+export interface UemsDatenquelleAusgelassen {
+  komponente: UemsVorschlagKomponente;
+  grund: string;
+  protokoll: string | null;
+  anker: UemsVorschlagKomponente | null;
+  text: string;
+}
+
+export interface UemsDatenquelleVorschlagsliste {
+  fuehrende_box: UemsDatenquelleBox | null;
+  fuehrung: string;
+  vorschlaege: UemsDatenquelleVorschlag[];
+  ausgelassen: UemsDatenquelleAusgelassen[];
+}
+
+/** Ein bestätigter Vorschlag — so, wie die Liste ihn zeigte; `datenquelle_id` = sein `ziel`. */
+export interface UemsDatenquelleBestaetigt {
+  device_id: string;
+  protokoll: string;
+  adresse: string;
+  komponenten: string[];
+  datenquelle_id?: string;
+}
+
+export interface UemsDatenquelleUebernommen {
+  neu: number;
+  unveraendert: number;
+  angehaengt?: number;
+  datenquellen: UemsDatenquelle[];
+}
+
+export interface UemsDatenquelleAnlegen {
+  name: string;
+  protokoll: string;
+  adresse: string;
+  geraete_ids: number[];
+  netz: string;
+  mehrere_leser: boolean;
+  steuerquelle: boolean;
+  kadenz_s: number;
+  device_id: string;
+  vergleich_bestaetigt?: boolean;
+}
+
+export type UemsDatenquelleBearbeiten = Omit<UemsDatenquelleAnlegen, 'device_id' | 'vergleich_bestaetigt'>;
+
+export interface UemsDatenquellePruefergebnis {
+  box: UemsDatenquelleBox;
+  adresse: string;
+  ergebnis: string;
+  gewertet: boolean;
+  text: string;
+  zeitpunkt: string;
+  dauer_ms: number;
+  antwort: unknown | null;
+  /** Nur bei `op: 'wago_kopf'`: was die Steuerung über ihr Registerbild gemeldet hat. */
+  wago?: UemsWagoPruefung;
+}
+
+/** Eine Karte hinter einem erkannten WAGO-Kopf, so wie gelesen; `null` = nicht gelesen. */
+export interface UemsWagoKarteGelesen {
+  karte: number;
+  steckplatz: number | null;
+  /** Artikelnummer ohne „750-“. */
+  kartentyp: number | null;
+  variante: number | null;
+}
+
+/** Die WAGO-Prüfung in Kundensprache — nur Gelesenes, Kennung und Karten nur bei erkanntem v1-Kopf. */
+export interface UemsWagoPruefung {
+  erkannt: boolean;
+  satz: string;
+  controller_kennung?: number;
+  kartenzahl?: number;
+  karten?: UemsWagoKarteGelesen[];
+}
+
+/** Dokumentierte WAGO-Kartenangaben; fehlend bleibt fehlend und wird nie zu einem Faktor. */
+export interface WagoKartenangaben {
+  slot: number | null;
+  /**
+   * AP-05 „WAGO-Soll speichern“: die aus der Steuerung GELESENE Variante dieser Karte und die
+   * Kennung ihres Controllers — `null` = noch nicht gelesen (die Box prüft sie dann nicht), nie 0.
+   * Fehlt das Feld (ältere api), zeigt die Karte nichts dazu.
+   */
+  variante?: number | null;
+  controllerKennung?: number | null;
+  anwenderskalierung: boolean | null;
+  register35: number | null;
+  version: number;
+  /**
+   * AP-05 IP-11: der Zeitpunkt der jüngsten GESPEICHERTEN Gerätegrenze „Karte getauscht“ an
+   * dieser Komponente — `null`, solange keine eingetragen ist. Er ist der Beleg, der (zusammen
+   * mit einer fehlenden `anwenderskalierung`) den Hebel „Wandler/Anwenderskalierung prüfen“
+   * trägt; ohne ihn gibt es keinen Hebel.
+   */
+  kartenwechsel: string | null;
+}
+
+/** AP-05 IP-11 (E6): Gerätegrenze an der Karte — Zeitpunkt, wahlweise Endstand, Prüfaufgabe. */
+export interface WagoKartenwechsel {
+  zeitpunkt: string;
+  endstand: number | null;
+  einheit: string | null;
+  einstellungenPruefen: boolean;
+}
+
+/** Gerätestammdaten der WAGO-Steuerung. */
+export interface WagoGeraeteangaben {
+  seriennummer: string | null;
+  firmware: string | null;
+  anwendung: string | null;
+}
+
+/** AP-05 „WAGO-Soll speichern“: das gespeicherte Soll eines WAGO-Registerbilds. */
+export interface WagoSoll {
+  controllerKennung: number | null;
+  karten: { steckplatz: number | null; typ: string | null; variante: number | null }[];
+}
+
+/**
+ * B05: Ausgang von `POST /api/v1/sites/{siteId}/wago/karten` — EIN Controller, je Karte ein Teil mit
+ * Steckplatz. `index` ist Karte n im Registerbild (n-te nach Steckplatz).
+ */
+export interface WagoKartenAnlage {
+  geraetId: string;
+  kennzeichen: string;
+  eingebautAm: string;
+  karten: { entityId: string; teilId: string; steckplatz: number; typ: string | null; index: number }[];
+}
+
+/** Ausgang von `POST /api/v1/geraete/{id}/wago/soll-lesen` — gespeichert wird nur aus der Lesung. */
+export interface WagoSollLesung {
+  ergebnis: 'gespeichert' | 'unveraendert' | 'abweichung' | 'nicht_gelesen';
+  satz: string;
+  soll: WagoSoll;
+  abweichungen: {
+    feld: 'controller_kennung' | 'kartenzahl' | 'steckplatz' | 'kartentyp' | 'variante';
+    steckplatz: number | null;
+    soll: number | null;
+    gelesen: number | null;
+  }[];
+}
+
+export interface DatenquelleBudgetZahlen {
+  channels: number;
+  samples_per_minute: number;
+  requests_per_minute: number;
+  duty_cycle_percent: number;
+}
+
+export interface DatenquelleBudgetBox {
+  id: string;
+  name: string;
+  belegt: DatenquelleBudgetZahlen;
+  frei: DatenquelleBudgetZahlen;
+  quelle_passt: boolean;
+}
+
+/** Der strukturierte 422-Satz von `POST …/assignments` (AP-06 IP-10). */
+export interface DatenquelleBudgetFehler {
+  code: 'budget_ueberschritten';
+  message: string;
+  urteil: 'abgelehnt';
+  rechnung: {
+    code: 'budget_ueberschritten';
+    kennzeichen: string;
+    box: string;
+    quelle: {
+      protokoll: string;
+      channels: number;
+      takt_s: number;
+      anfragen: Array<{ anfragen_je_takt: number; kosten_ms_je_anfrage: number }>;
+      last: DatenquelleBudgetZahlen;
+    };
+    box_nachher: DatenquelleBudgetZahlen;
+    grenzen: Omit<DatenquelleBudgetZahlen, 'channels'>;
+    freie_kapazitaet: DatenquelleBudgetBox[];
+    auswege: {
+      takt_s: number | null;
+      takt: string | null;
+      boxen: DatenquelleBudgetBox[];
+      andere_box: string | null;
+    };
+    gruende: string[];
+  };
+}
+
+/**
+ * Eine Einstellungs-Fassung (`GET /api/v1/geraete/{id}/einstellungen`, AP-04
+ * IP-11, `EinstellungDto.Fassung`). Die Quelle ist der Einbau (`entity_id`
+ * null), eine Komponente oder ein Kanal der Komponente. `wert_text`,
+ * `art_kundenwort` und `anwendung_text` sind die Sätze des Vertrags.
+ */
+export interface EinstellungFassung {
+  id: string;
+  entity_id: string | null;
+  kanal: string | null;
+  art: string;
+  art_kundenwort: string;
+  wert: Record<string, unknown>;
+  wert_text: string;
+  anwendung: 'angewendet' | 'dokumentiert';
+  anwendung_text: string;
+  zustellung: 'verbindung' | 'ausstehend' | null;
+  herkunft: 'bestand' | 'verbindung' | 'eintrag';
+  gueltig_ab: string;
+  gueltig_bis: string | null;
+  status: 'geplant' | 'gueltig' | 'beendet';
+  tatsaechlich_ab: string | null;
+  rueckwirkend: boolean;
+  begruendung: string | null;
+  eingetragen: { am: string; von: string; rolle: string | null; art: string | null } | null;
+}
+
+export interface GeraetEinstellungen {
+  geraet_id: string;
+  geraet: string;
+  einbau: string;
+  stichtag: string;
+  /** Je Quelle und Art die zum Stichtag gültige Fassung. */
+  gueltig: EinstellungFassung[];
+  /** Alle Fassungen, nach Quelle, Art und Beginn. */
+  historie: EinstellungFassung[];
+}
+
+/** Eine neue Fassung; `entity_id`/`kanal` leer = sie gilt für den Einbau. */
+export interface EinstellungNeu {
+  entity_id: string | null;
+  kanal: string | null;
+  art: string;
+  wert: Record<string, unknown>;
+  anwendung: 'angewendet' | 'dokumentiert';
+  gueltig_ab: string;
+  tatsaechlich_ab: string | null;
+  begruendung: string | null;
+}
+
+/** Antwort 201: die neue, die beendete Fassung, die Folgen-Sätze und die Messstellen des Protokolls. */
+export interface EinstellungEingetragen {
+  fassung: EinstellungFassung;
+  beendet: EinstellungFassung | null;
+  folgen: string[];
+  messstellen: string[];
 }
 
 /** Wer den Eintrag geschrieben hat; `rolle`/`art` null = vom Journal nicht festgehalten. */
@@ -4453,6 +8705,11 @@ export interface ProtokollEintrag {
   text: string;
   bezug: ProtokollBezug;
   gilt_ab: string;
+  /**
+   * Der letzte TAG, an dem ein Eintrag der Ortsstruktur noch gilt (AP-02 IP-14) — null = bis heute
+   * offen; bei Messstellen und Datenquellen immer null.
+   */
+  gilt_bis: string | null;
   eingetragen_am: string;
   zeitform: 'rueckwirkend' | 'angekuendigt' | 'sofort';
   grund: string | null;
@@ -4464,7 +8721,7 @@ export interface ProtokollEintrag {
 /** `weiter` ist der Fortsetzungszeiger der nächsten Seite — null, wenn es keine gibt. */
 export interface Protokoll {
   eintraege: ProtokollEintrag[];
-  achse: 'wirkung' | 'eintrag';
+  achse: 'wirkung' | 'eintrag' | 'gueltigkeit';
   von: string | null;
   bis: string | null;
   weiter: string | null;
@@ -4474,8 +8731,11 @@ export interface Protokoll {
 export interface ProtokollAbfrage {
   von?: string;
   bis?: string;
-  /** Vorgabe `wirkung` = „gilt ab"; `eintrag` = „eingetragen am". */
-  achse?: 'wirkung' | 'eintrag';
+  /**
+   * Vorgabe `wirkung` = „gilt ab"; `eintrag` = „eingetragen am"; `gueltigkeit` = welche Einträge
+   * in einen Zeitraum aus TAGEN reichen (AP-02 IP-14, `von`/`bis` zählen beide mit).
+   */
+  achse?: 'wirkung' | 'eintrag' | 'gueltigkeit';
   limit?: number;
   /** Der Wert `weiter` der vorigen Seite. */
   nach?: string;
@@ -4495,14 +8755,826 @@ function protokollFrage(f?: ProtokollAbfrage): string {
   return s ? `?${s}` : '';
 }
 
+// ------------------------------------------------------------------ Energiemanagement (UEMS AP-19 IP-6/IP-7/IP-8)
+
+/** Wer eingetragen hat (ein Konto) und wann — `EnergiemanagementEingetragen` in openapi.yaml. */
+export interface EnergiemanagementEingetragen {
+  akteur: { sub: string | null; name: string; rolle: string | null; art: 'kunde' | 'unterstuetzung' | 'voltpilot' | 'notfall' };
+  am: string;
+}
+/** Eine Person im Energiemanagement — auch ohne Konto (PA1). */
+export interface EnergiemanagementPerson {
+  id: string;
+  name: string;
+  funktion: string;
+  kuerzel: string | null;
+  organisation: string | null;
+  konto: { sub: string; name: string | null; zustand: string | null } | null;
+  seit: string | null;
+  bis: string | null;
+  zustand: 'aktiv' | 'beendet';
+  beendet_begruendung: string | null;
+  eingetragen: EnergiemanagementEingetragen;
+}
+export interface EnergiemanagementPersonKurz {
+  id: string;
+  name: string;
+  funktion: string;
+  kuerzel: string | null;
+  mit_konto: boolean;
+}
+export interface EnergiemanagementPersonAnlegen {
+  name: string;
+  funktion: string;
+  kuerzel?: string | null;
+  organisation?: string | null;
+  konto_sub?: string | null;
+  seit?: string | null;
+}
+/** Ein Verweis auf ein Original beim Kunden (G3) — nie die Datei, höchstens ihre im Browser gebildete Prüfsumme. */
+export interface EnergiemanagementBeleg {
+  bezeichnung?: string | null;
+  ablage?: string | null;
+  kennung?: string | null;
+  adresse?: string | null;
+  sha256?: string | null;
+}
+export interface EnergiemanagementVerweis extends EnergiemanagementBeleg {
+  fassungsangabe?: string | null;
+  datum?: string | null;
+}
+export interface EnergiemanagementZuordnung {
+  id: string;
+  aufgabe: string;
+  wort: string;
+  aufgabe_wortlaut: string | null;
+  person: EnergiemanagementPersonKurz;
+  vertretung: EnergiemanagementPersonKurz | null;
+  gilt_ab: string;
+  gilt_bis: string | null;
+  zustand: 'laufend' | 'beendet';
+  entschieden_von: EnergiemanagementPersonKurz | null;
+  begruendung: string;
+  beleg: EnergiemanagementBeleg | null;
+  beschluss_kennung: string | null;
+  beendet_begruendung: string | null;
+  eingetragen: EnergiemanagementEingetragen;
+}
+// UEMS AP-19 IP-23 (MG4–MG6): Sitzung, Beschlüsse und Folgen einer Managementbewertung
+// (`/api/v1/energiemanagement/managementbewertungen/{kennung}`, openapi `Managementbewertung…`). Namen sind die von heute.
+export interface ManagementbewertungPerson {
+  id: string;
+  name: string | null;
+}
+export interface ManagementbewertungSitzung {
+  tag: string;
+  leitung: ManagementbewertungPerson;
+  /** PA3: die Person hat am Tag der Sitzung die laufende Aufgabe „Leitung des Unternehmens“ — sonst sperrt die Freigabe. */
+  leitung_gilt: boolean;
+  teilnehmende: ManagementbewertungPerson[];
+  ort?: string | null;
+  eingetragen_von?: string;
+  eingetragen_am?: string;
+}
+export type ManagementbewertungFolgeArt = 'energieziel' | 'massnahme' | 'dokument' | 'aufgabe' | 'audit';
+export interface ManagementbewertungFolge {
+  art: ManagementbewertungFolgeArt;
+  /** Kennzeichen (EZ-…, M-…, D-…/n, D-…, AU-…) oder das Aufgaben-Wort. */
+  objekt: string;
+  objekt_id?: string | null;
+  wie: 'von_hand' | 'herkunft' | 'zuordnung' | 'fassung' | 'geprueft_bleibt';
+  /** Das Zustandswort des Objekts von heute. */
+  zustand: string;
+  tag?: string | null;
+  angabe?: string | null;
+  verknuepft_am?: string | null;
+  eingetragen_von?: string | null;
+}
+export type ManagementbewertungBeschlussArt =
+  | 'energieziel' | 'massnahme' | 'dokument' | 'aufgabe' | 'ressourcen' | 'audit' | 'keine_aenderung' | 'weitere';
+export interface ManagementbewertungBeschluss {
+  nr: number;
+  /** BR-JJJJ-nnnn/Bn */
+  kennung: string;
+  art: ManagementbewertungBeschlussArt;
+  wortlaut: string;
+  entschieden_von: ManagementbewertungPerson;
+  zustaendig?: ManagementbewertungPerson | null;
+  termin?: string | null;
+  eingetragen_von?: string;
+  eingetragen_am?: string;
+  folgen: ManagementbewertungFolge[];
+  /** Nach der Freigabe ohne Folge: „Keine Folge in VoltPilot — der Beschluss steht im Stand vom …“. */
+  satz?: string | null;
+}
+export interface Managementbewertung {
+  kennung: string;
+  freigegeben: boolean;
+  stand_nr?: number | null;
+  sitzung?: ManagementbewertungSitzung | null;
+  beschluesse: ManagementbewertungBeschluss[];
+}
+export interface ManagementbewertungSitzungFesthalten {
+  tag: string;
+  leitung: string;
+  teilnehmende?: string[];
+  ort?: string;
+}
+export interface ManagementbewertungBeschlussFesthalten {
+  art: ManagementbewertungBeschlussArt;
+  wortlaut: string;
+  entschieden_von?: string;
+  zustaendig?: string;
+  termin?: string;
+}
+export interface ManagementbewertungFolgeVerknuepfen {
+  art: Exclude<ManagementbewertungFolgeArt, 'massnahme'>;
+  objekt: string;
+}
+
+export interface EnergiemanagementAufgaben {
+  tag: string;
+  leitung: EnergiemanagementPersonKurz[];
+  aufgaben: { aufgabe: string; wort: string; laufend: EnergiemanagementZuordnung[]; satz: string | null }[];
+  zuordnungen: EnergiemanagementZuordnung[];
+}
+/** Die Leitung am Tag (PA3) für wen am Standort bzw. am Unternehmen freigibt (Konzept Nachweisen n1, Befund A4). */
+export interface EnergiemanagementLeitung {
+  tag: string;
+  leitung: EnergiemanagementPersonKurz[];
+}
+export interface EnergiemanagementAufgabeZuordnen {
+  aufgabe: string;
+  aufgabe_wortlaut?: string | null;
+  person_id: string;
+  gilt_ab: string;
+  vertretung_person_id?: string | null;
+  entschieden_von?: string | null;
+  begruendung: string;
+  beleg?: EnergiemanagementBeleg | null;
+  beschluss_kennung?: string | null;
+}
+/** Ein Übergang im Verlauf einer Person (`EnergiemanagementAenderung` in openapi.yaml, IP-6). */
+export interface EnergiemanagementPersonVerlauf {
+  id: number;
+  art: string;
+  alt: unknown;
+  neu: unknown;
+  begruendung: string | null;
+  akteur: EnergiemanagementEingetragen['akteur'];
+  zeit: string;
+}
+export interface EnergiemanagementPersonMitVerlauf {
+  person: EnergiemanagementPerson;
+  verlauf: EnergiemanagementPersonVerlauf[];
+}
+/** Der ganze änderbare Stand (PUT, IP-6): ein fehlendes wahlfreies Feld heißt „keins“. */
+export interface EnergiemanagementPersonAendern {
+  name: string;
+  funktion: string;
+  kuerzel: string | null;
+  organisation: string | null;
+  konto_sub: string | null;
+  seit: string | null;
+  bis?: string | null;
+  begruendung?: string | null;
+}
+export interface EnergiemanagementAufgabeBeenden {
+  gilt_bis: string;
+  begruendung: string;
+}
+/** „Wer ist wofür verantwortlich“ (IP-10, PA4) — ein Leser: Aufgaben, Verantwortliche der Objekte, Freigaben der Bezugsbasen. */
+export interface EnergiemanagementVerantwortungObjekt {
+  art: string;
+  id: string;
+  kennzeichen: string;
+  titel: string;
+  verantwortlich: { sub: string | null; name: string } | null;
+  zustand: string | null;
+}
+export interface EnergiemanagementBezugsbasisFreigabe {
+  bezugsbasis_id: string;
+  bezugsbasis: string;
+  kennzahl_id: string;
+  kennzahl: string;
+  fassung: number;
+  freigegeben_von: string | null;
+  freigegeben_am: string | null;
+  vieraugen: boolean;
+  zweite_person: string | null;
+}
+export interface EnergiemanagementVerantwortung {
+  tag: string;
+  leitung: EnergiemanagementPersonKurz[];
+  aufgaben: EnergiemanagementAufgaben['aufgaben'];
+  ohne_person: string[];
+  objekte: EnergiemanagementVerantwortungObjekt[];
+  bezugsbasen_freigaben: EnergiemanagementBezugsbasisFreigabe[];
+}
+export interface EnergiemanagementVerzeichnisZeile {
+  gruppe: string;
+  art: string;
+  kennzeichen: string;
+  titel: string;
+  nr: number | null;
+  entschieden_von: string | null;
+  eingetragen_von: string | null;
+  tag: string | null;
+  pruefsumme: string | null;
+  ort: 'in_voltpilot' | 'wortlaut_original_beim_kunden' | 'verweis';
+  gruppe_wort: string;
+  ort_satz: string;
+}
+export interface EnergiemanagementVerzeichnis {
+  stichtag: string;
+  verantwortung: string;
+  filter: { gruppe: string | null; von: string | null; bis: string | null; person: string | null; person_name: string | null };
+  gruppen: {
+    gruppe: string;
+    gruppe_wort: string;
+    zuschnitt: { teil: string; stufe: string }[];
+    satz: string | null;
+    zeilen: EnergiemanagementVerzeichnisZeile[];
+  }[];
+}
+export interface EnergiemanagementVerzeichnisFilter {
+  gruppe?: string | null;
+  von?: string | null;
+  bis?: string | null;
+  person?: string | null;
+}
+/**
+ * Konzept Nachweisen n1, Entscheid 5 (Vertrag energiemanagement 1.3): „Trifft bei uns zurzeit nicht zu“ für einen Teil
+ * des Überblicks - mit Satz und der Person, die es entschieden hat; höchstens ein geltender Vermerk je Teil.
+ */
+export interface EnergiemanagementTeilVermerk {
+  id: string;
+  /** Vokabular `teil`. */
+  teil: string;
+  teil_wort: string;
+  satz: string;
+  entschieden_von: EnergiemanagementPersonKurz;
+  entschieden_am: string;
+  eingetragen: EnergiemanagementEingetragen;
+  /** Gesetzt, sobald der Vermerk aufgehoben ist; er bleibt dann lesbar. */
+  aufgehoben: { akteur: EnergiemanagementEingetragen['akteur']; am: string } | null;
+}
+export interface EnergiemanagementTeilVermerke {
+  stichtag: string;
+  vermerke: EnergiemanagementTeilVermerk[];
+}
+/**
+ * Nachweisen n1, Entscheid 7: die Mappe „Unterlagen zusammenstellen“ (`…/energiemanagement/mappen`, openapi
+ * `EnergiemanagementMappe…`). `abrufbar_tage` zählt die Datenbank in echter Zeit; 0 nach der Frist von 30 Tagen.
+ */
+export interface EnergiemanagementMappe {
+  id: string;
+  titel: string;
+  /** Vokabular `mappe_anlass` (Vertrag energiemanagement 1.6). */
+  anlass: string;
+  anlass_wort: string;
+  von: string | null;
+  bis: string;
+  stichtag: string;
+  gruppen: string[];
+  gruppen_woerter: string[];
+  offen: string[];
+  offen_woerter: string[];
+  eintraege: number;
+  gilt: number;
+  datei_titel: string;
+  datei_name: string;
+  pdf_pruefsumme: string;
+  csv_pruefsumme: string;
+  abrufbar: boolean;
+  abrufbar_tage: number;
+  aufbewahrung_tage: number;
+  abrufe: number;
+  erstellt: { name: string; am: string };
+  /** Der Augenblick des Abrufs auf der Uhr der Route (Befund 3). */
+  abruf: string;
+}
+export interface EnergiemanagementMappeAnlegen {
+  anlass: string;
+  /** Ab welchem Tag; ohne alles bis zum Stichtag. */
+  von?: string | null;
+  /** Gruppen des Verzeichnisses (Vokabular `verzeichnis_gruppe`), mindestens eine. */
+  gruppen: string[];
+  /** Die Teile, die der Überblick als offen zeigt (Vokabular `teil`). */
+  offen?: string[];
+}
+export interface EnergiemanagementTeilVermerkAnlegen {
+  teil: string;
+  satz: string;
+  /** ID einer Person im Energiemanagement. */
+  entschieden_von: string;
+  /** Ohne Angabe: heute nach der Uhr des Unternehmens. */
+  entschieden_am?: string | null;
+}
+export interface EnergiemanagementStandortKurz {
+  id: string;
+  kurzzeichen: string | null;
+  name: string | null;
+}
+export interface EnergiemanagementAusschluss {
+  art: 'standort' | 'anlage' | 'prozess';
+  verweis: string;
+  begruendung: string;
+}
+export interface EnergiemanagementAnwendungsbereich {
+  standorte: EnergiemanagementStandortKurz[];
+  traeger: string[];
+  ausschluesse: EnergiemanagementAusschluss[];
+}
+export interface EnergiemanagementUeberpruefung {
+  abruf: string;
+  faellig_am: string | null;
+  basis: string | null;
+  fassung: number | null;
+  tage: number | null;
+  satz: string | null;
+  grund: 'nachweis' | 'keine_fassung' | null;
+}
+export interface EnergiemanagementFassung {
+  nr: number;
+  form: 'wortlaut' | 'verweis';
+  wortlaut: string | null;
+  verweis: EnergiemanagementVerweis | null;
+  anwendungsbereich: EnergiemanagementAnwendungsbereich | null;
+  status: 'entwurf' | 'beantragt' | 'freigegeben' | 'abgelehnt' | 'abgeloest';
+  begruendung: string | null;
+  beschluss_kennung: string | null;
+  pruefsumme: string | null;
+  vieraugen: boolean;
+  entschieden_von: EnergiemanagementPersonKurz | null;
+  entschieden_am: string | null;
+  freigabe_begruendung: string | null;
+  freigabe: EnergiemanagementEingetragen | null;
+  zweite_person: EnergiemanagementEingetragen | null;
+  ablehnung_begruendung: string | null;
+  freigegeben_am: string | null;
+  eingetragen: EnergiemanagementEingetragen;
+  /**
+   * Additiv (Konzept Nachweisen n1, Entscheid 10): wo das unterschriebene Original DIESER Fassung liegt - nur an einem
+   * Wortlaut, sonst `null`. Eine API vor dieser Version liefert das Feld nicht (dann gilt das Original am Dokument).
+   */
+  original?: EnergiemanagementBeleg | null;
+}
+export interface EnergiemanagementDokumentEintrag {
+  id: number;
+  art: 'bekannt_gemacht' | 'geprueft_bleibt' | 'aufgehoben' | 'kommentar';
+  fassung: number | null;
+  am: string | null;
+  person: EnergiemanagementPersonKurz | null;
+  entschieden_von: EnergiemanagementPersonKurz | null;
+  kreis: string | null;
+  weg: string | null;
+  weg_wortlaut: string | null;
+  begruendung: string | null;
+  beschluss_kennung: string | null;
+  kommentar: string | null;
+  satz: string | null;
+  eingetragen: EnergiemanagementEingetragen;
+}
+export interface EnergiemanagementDokumentKurz {
+  id: string;
+  kennzeichen: string;
+  art: string;
+  art_wort: string;
+  klasse: 'vorgabe' | 'nachweis';
+  titel: string;
+  /** Seit IP-14 auch Energieeinsatz, Person und Aufgabe; `standort` ist der Zaun. */
+  bezug: {
+    art: string;
+    standort: EnergiemanagementStandortKurz | null;
+    energieeinsatz?: { id: string; kennzeichen: string | null; name: string | null } | null;
+    person?: EnergiemanagementPersonKurz | null;
+    aufgabe?: { id: string; aufgabe: string | null; wort: string | null; person: EnergiemanagementPersonKurz | null } | null;
+  };
+  zustand: 'entwurf' | 'gueltig' | 'aufgehoben';
+  gueltige_fassung: number | null;
+  ueberpruefung: EnergiemanagementUeberpruefung | null;
+  eingetragen: EnergiemanagementEingetragen;
+}
+export interface EnergiemanagementDokument extends EnergiemanagementDokumentKurz {
+  ueberpruefung_monate: number | null;
+  beleg: EnergiemanagementBeleg | null;
+  fassungen: EnergiemanagementFassung[];
+  eintraege: EnergiemanagementDokumentEintrag[];
+  saetze: { kopf: string | null; ueberpruefung: string | null; freigabe_gesperrt: string | null };
+  verlauf: { id: number; art: string; begruendung: string | null; akteur: EnergiemanagementEingetragen['akteur']; zeit: string }[];
+}
+export interface EnergiemanagementDokumentAnlegen {
+  art: string;
+  titel: string;
+  /** Seit IP-14 auch Energieeinsatz, Person und Aufgabe — genau die Kennung der Art (`EnergiemanagementDokumentBezug`). */
+  bezug: {
+    art: 'unternehmen' | 'standort' | 'energieeinsatz' | 'person' | 'aufgabe';
+    standort_id?: string | null;
+    energieeinsatz_id?: string | null;
+    person_id?: string | null;
+    aufgabe_id?: string | null;
+  };
+  ueberpruefung_monate?: number | null;
+  beleg?: EnergiemanagementBeleg | null;
+}
+/** KS1, G1 (AP-19 IP-14): wo der Inhalt der gültigen Fassung liegt — `EnergiemanagementNachweisOrt` in openapi.yaml. */
+export interface EnergiemanagementNachweisOrt {
+  ort: 'in_voltpilot' | 'wortlaut_original_beim_kunden' | 'verweis';
+  /** Die Zeile des Verzeichnisses: „Geführt in Ihrem System: <Ablage>“. */
+  ort_satz: string;
+  /** Der Kundensatz `ort_verweis` bzw. `ort_wortlaut`; in VoltPilot `null`. */
+  satz: string | null;
+  inhalt_in_voltpilot: boolean;
+  fassung: number;
+  festgehalten_am: string | null;
+  ablage: string | null;
+  kennung: string | null;
+  adresse: string | null;
+  /** Nur mit `https:` — VoltPilot öffnet, prüft und lädt nichts. */
+  adresse_als_verweis: boolean;
+  fassungsangabe: string | null;
+  datum: string | null;
+  sha256: string | null;
+}
+/** DK6: eine Mitteilung an einen Kreis an einem Tag durch eine Person, über einen oder mehrere Wege. */
+export interface EnergiemanagementKommunikationsnachweis {
+  dokument_id: string;
+  kennzeichen: string;
+  titel: string;
+  art: string;
+  fassung: number;
+  am: string;
+  kreis: string;
+  wege: string[];
+  wege_wort: string;
+  person: EnergiemanagementPersonKurz | null;
+  satz: string;
+}
+/** Ein Dokument im Abschnitt „Nachweise“ (IP-14) — mit Ort, Überprüfung beim Abruf und Bekanntmachungen. */
+export interface EnergiemanagementNachweis {
+  id: string;
+  kennzeichen: string;
+  art: string;
+  art_wort: string;
+  klasse: 'vorgabe' | 'nachweis';
+  titel: string;
+  bezug: EnergiemanagementDokumentKurz['bezug'];
+  zustand: 'entwurf' | 'gueltig' | 'aufgehoben';
+  gueltige_fassung: number | null;
+  /** Ohne gültige Fassung `null`. */
+  ort: EnergiemanagementNachweisOrt | null;
+  /** Kompetenz und Auslegung haben keine (Grund `nachweis`). */
+  ueberpruefung: EnergiemanagementUeberpruefung | null;
+  bekanntmachungen: EnergiemanagementKommunikationsnachweis[];
+}
+export interface EnergiemanagementNachweiseAmEinsatz {
+  energieeinsatz: { id: string; kennzeichen: string | null; name: string | null };
+  abruf: string;
+  nachweise: EnergiemanagementNachweis[];
+}
+export interface EnergiemanagementNachweiseDerPerson {
+  person: EnergiemanagementPersonKurz;
+  abruf: string;
+  nachweise: EnergiemanagementNachweis[];
+}
+export interface EnergiemanagementFassungEntwerfen {
+  form: 'wortlaut' | 'verweis';
+  wortlaut?: string | null;
+  verweis?: EnergiemanagementVerweis | null;
+  anwendungsbereich?: { standort_ids: string[]; traeger: string[]; ausschluesse?: EnergiemanagementAusschluss[] } | null;
+  begruendung?: string | null;
+  beschluss_kennung?: string | null;
+  /** Entscheid 10: das Original dieser Fassung - nur an einem Wortlaut. */
+  original?: EnergiemanagementBeleg | null;
+}
+export interface EnergiemanagementEntscheid {
+  entschieden_von?: string | null;
+  entschieden_am?: string | null;
+  begruendung?: string | null;
+  /** Entscheid 10: das Original beim Übergang aus dem Entwurf (Antrag, Freigabe) - nur an einem Wortlaut. */
+  original?: EnergiemanagementBeleg | null;
+}
+/** DK6: bekannt machen - an wen, am (leer = heute beim Server), über welchen Weg, durch welche Person. */
+export interface EnergiemanagementBekanntmachen {
+  kreis: string;
+  am?: string | null;
+  weg: string;
+  weg_wortlaut?: string | null;
+  person_id?: string | null;
+}
+/** DK8: aufheben - wer entschieden hat, am, warum; das Dokument bleibt lesbar. */
+export interface EnergiemanagementAufheben {
+  entschieden_von: string;
+  am?: string | null;
+  begruendung: string;
+  beschluss_kennung?: string | null;
+}
+/** AP-08 E8: die Vier-Augen-Einstellung des Unternehmens (`vorgabe` = nie eingestellt, dann gilt aus). */
+export interface UnternehmenVierAugen {
+  vieraugen: boolean;
+  vorgabe: boolean;
+}
+/** DK5 (`EnergiemanagementDokumentDto.Geprueft`): wer entschieden hat, an welchem Tag (ab der Freigabe der gültigen Fassung), warum. */
+export interface EnergiemanagementGeprueft {
+  entschieden_von: string;
+  am: string | null;
+  begruendung: string;
+  beschluss_kennung?: string | null;
+}
+export interface EnergiemanagementVergleich {
+  abruf: string;
+  fassung: number | null;
+  anwendungsbereich: EnergiemanagementAnwendungsbereich | null;
+  betrachtungsumfang: { fassung: number; gueltig_ab: string; standorte: EnergiemanagementStandortKurz[]; traeger: string[]; begruendung: string | null } | null;
+  vergleich: {
+    standorte_nur_im_anwendungsbereich: EnergiemanagementStandortKurz[];
+    standorte_nur_im_betrachtungsumfang: EnergiemanagementStandortKurz[];
+    traeger_nur_im_anwendungsbereich: string[];
+    traeger_nur_im_betrachtungsumfang: string[];
+    deckungsgleich: boolean;
+  } | null;
+  saetze: string[];
+}
+
+// ------------------------------------------------------------------ Internes Audit und Feststellung (UEMS AP-19 IP-18/IP-19)
+
+/** Ein Verantwortlicher mit Konto (openapi `EnergiemanagementVerantwortlich`). */
+export interface EnergiemanagementVerantwortlich {
+  sub: string | null;
+  name: string;
+}
+export type InternesAuditZustand = 'geplant' | 'durchgefuehrt' | 'abgeschlossen' | 'abgesagt';
+/** Planen und ändern (IA1) — beim Ändern der ganze Stand (`InternesAuditStand`). */
+export interface InternesAuditStand {
+  titel: string;
+  termin: string;
+  auditor_ids: string[];
+  unabhaengigkeit: string;
+  was: string;
+  woran: string;
+  verantwortlich: string;
+  standort_ids?: string[] | null;
+  begruendung?: string | null;
+}
+/** Der unterschriebene Bericht als Verweis (G3) — nie die Datei, höchstens ihre im Browser gebildete Prüfsumme. */
+export type InternesAuditBericht = EnergiemanagementBeleg;
+export interface InternesAuditAbschliessen {
+  entschieden_von: string;
+  am?: string | null;
+  zusammenfassung?: string | null;
+  bericht?: InternesAuditBericht | null;
+  massnahmen?: { hinweis: number; massnahme: string }[] | null;
+}
+export interface InternesAuditHinweis {
+  nr: number;
+  am: string;
+  festgestellt_von: EnergiemanagementPersonKurz;
+  wortlaut: string;
+  eingetragen: EnergiemanagementEingetragen;
+}
+export interface InternesAuditAbschluss {
+  am: string;
+  entschieden_von: EnergiemanagementPersonKurz;
+  zusammenfassung: string | null;
+  bericht: InternesAuditBericht | null;
+  kopie: Record<string, unknown>;
+  pruefsumme: string;
+  eingetragen: EnergiemanagementEingetragen;
+}
+export interface InternesAudit {
+  id: string;
+  kennzeichen: string;
+  titel: string;
+  termin: string;
+  auditoren: EnergiemanagementPersonKurz[];
+  unabhaengigkeit: string;
+  was: string;
+  woran: string;
+  verantwortlich: EnergiemanagementVerantwortlich;
+  standort_ids: string[];
+  zustand: InternesAuditZustand;
+  durchgefuehrt_am: string | null;
+  abgesagt_begruendung: string | null;
+  /** Anzahl der Hinweise. */
+  hinweise: number;
+  /** Die Kennzeichen der Feststellungen mit Quelle dieses Audit. */
+  feststellungen: string[];
+  abschluss: InternesAuditAbschluss | null;
+  eingetragen: EnergiemanagementEingetragen;
+}
+export interface InternesAuditAenderung {
+  id: number;
+  art: 'audit_geplant' | 'audit_geaendert' | 'audit_durchgefuehrt' | 'hinweis' | 'audit_abgeschlossen' | 'audit_abgesagt';
+  alt: unknown;
+  neu: unknown;
+  begruendung: string | null;
+  akteur: EnergiemanagementEingetragen['akteur'];
+  zeit: string;
+}
+export interface InternesAuditMitVerlauf {
+  audit: InternesAudit;
+  hinweise: InternesAuditHinweis[];
+  verlauf: InternesAuditAenderung[];
+}
+/** Das nächste interne Audit (IA4) — gerechnet beim Abruf, ohne durchgeführtes Audit keine Frist (`grund` = `kein_audit`). */
+export interface InternesAuditNaechstes {
+  rhythmus_monate: number;
+  faellig_am: string | null;
+  basis: string | null;
+  tage: number | null;
+  satz: string | null;
+  grund: string | null;
+}
+export interface InternesAuditprogramm {
+  tag: string;
+  audits: InternesAudit[];
+  naechstes: InternesAuditNaechstes;
+}
+
+export type FeststellungQuelleArt = 'internes_audit' | 'eigene' | 'extern' | 'managementbewertung';
+export type FeststellungEintragArt = 'kommentar' | 'behebung' | 'ursache_aussage' | 'aehnliche_faelle';
+export type FeststellungErgebnis = 'wirksam' | 'nicht_wirksam' | 'ohne_massnahme' | 'zurueckgenommen';
+/** Erfassen (FS1): `quelle` mit genau ihrem Verweis, eine `vorgabe`, wahlfrei ein `bezug`. */
+export interface FeststellungErfassen {
+  quelle: { art: FeststellungQuelleArt; audit_id?: string | null; kennung?: string | null; wortlaut?: string | null };
+  wortlaut: string;
+  vorgabe: { dokument_id?: string | null; fassung?: number | null; wortlaut?: string | null };
+  bezug?: { standort_id?: string | null; aufgabe?: string | null; dokument_id?: string | null; objekte?: string[] | null } | null;
+  festgestellt_von: string;
+  festgestellt_am?: string | null;
+  verantwortlich: string;
+  frist?: string | null;
+}
+export interface FeststellungEintragFesthalten {
+  art: FeststellungEintragArt;
+  wortlaut: string;
+  person_id: string;
+  am?: string | null;
+}
+/** Ein Stand (FS4, FS5): `…/wirksamkeit` nimmt `wirksam · nicht_wirksam`, `…/abschliessen` die anderen zwei. */
+export interface FeststellungStandFesthalten {
+  ergebnis: FeststellungErgebnis;
+  begruendung: string;
+  entschieden_von: string;
+  am?: string | null;
+}
+export interface Feststellung {
+  id: string;
+  kennzeichen: string;
+  quelle: { art: FeststellungQuelleArt; audit_id: string | null; kennung: string | null; wortlaut: string | null };
+  wortlaut: string;
+  vorgabe: { dokument_id: string | null; dokument: string | null; fassung: number | null; wortlaut: string | null };
+  bezug: { standort_id: string | null; aufgabe: string | null; dokument_id: string | null; dokument: string | null; objekte: string[] };
+  festgestellt_von: EnergiemanagementPersonKurz;
+  festgestellt_am: string;
+  verantwortlich: EnergiemanagementVerantwortlich;
+  frist: string;
+  zustand: 'offen' | 'abgeschlossen';
+  /** Vertrag `ueberpruefung` (Art `feststellung`) am Abruf-Tag — „seit n Tagen fällig“; abgeschlossen ohne Frist. */
+  lage: { abruf: string; faellig_am: string | null; tage: number | null; satz: string | null; grund: string | null };
+  ergebnis: 'wirksam' | 'ohne_massnahme' | 'zurueckgenommen' | null;
+  /** Der Tag des schließenden Stands („wirksam seit …“); offen `null`. */
+  abgeschlossen_am: string | null;
+  eintraege: number;
+  massnahmen: string[];
+  eingetragen: EnergiemanagementEingetragen;
+}
+export interface FeststellungEintrag {
+  id: number;
+  art: FeststellungEintragArt;
+  am: string;
+  person: EnergiemanagementPersonKurz;
+  wortlaut: string;
+  eingetragen: EnergiemanagementEingetragen;
+}
+export interface FeststellungMassnahme {
+  id: string;
+  kennzeichen: string;
+  titel: string;
+  zustand: MassnahmeZustand;
+  termin: string;
+  umgesetzt_am: string | null;
+  verantwortlich: EnergiemanagementVerantwortlich;
+}
+export interface FeststellungStand {
+  nr: number;
+  ergebnis: FeststellungErgebnis;
+  begruendung: string;
+  am: string;
+  entschieden_von: EnergiemanagementPersonKurz;
+  kopie: Record<string, unknown>;
+  pruefsumme: string;
+  vieraugen: boolean;
+  status: 'beantragt' | 'freigegeben' | 'abgelehnt';
+  eingetragen: EnergiemanagementEingetragen;
+  zweite_person: EnergiemanagementEingetragen | null;
+  ablehnung_begruendung: string | null;
+}
+/** FS6/W15 als Antwortfeld: wer zweite Person sein kann — ohne jemanden der Satz „Vier-Augen nicht erfüllbar: …“. */
+export interface FeststellungVierAugen {
+  an: boolean;
+  erfuellbar: boolean;
+  berechtigte: EnergiemanagementVerantwortlich[];
+  zweite_person: EnergiemanagementVerantwortlich[];
+  satz: string | null;
+}
+export interface FeststellungAenderung {
+  id: number;
+  art: 'feststellung_erfasst' | 'eintrag' | 'feststellung_geaendert' | 'wirksamkeit_beantragt' | 'wirksamkeit_geprueft' | 'wirksamkeit_abgelehnt' | 'feststellung_abgeschlossen';
+  alt: unknown;
+  neu: unknown;
+  begruendung: string | null;
+  akteur: EnergiemanagementEingetragen['akteur'];
+  zeit: string;
+}
+export interface FeststellungMitVerlauf {
+  feststellung: Feststellung;
+  eintraege: FeststellungEintrag[];
+  massnahmen: FeststellungMassnahme[];
+  wirksamkeit: FeststellungStand[];
+  vieraugen: FeststellungVierAugen;
+  verlauf: FeststellungAenderung[];
+}
+export interface FeststellungListe {
+  tag: string;
+  feststellungen: Feststellung[];
+}
+
+/**
+ * Die Portfolio-Kennzahlen des UEMS-Übersichts-Kachelrasters (Konzept
+ * `vp-portfolio-konzept2-p2` §4.2), aggregiert über die sichtbaren Anlagen für
+ * den letzten abgeschlossenen Monat (`GET /api/v1/portfolio/kpis`). Jede Menge/
+ * jeder Betrag ist `null`, wenn keine Quelle ihn trägt (nie 0).
+ */
+export interface PortfolioKpi {
+  periode: { von: string; bis: string; jahr: number; monat: number };
+  /** Netzbezug (kWh) dieser Monat / Vorjahr aus der UEMS-Ablesewelt. */
+  verbrauch: { kwh: number | null; kwh_vorjahr: number | null; vollstaendig: boolean };
+  /** Σ(Netzbezug × Arbeitspreis); `tarif_hinterlegt` false → kein Arbeitspreis, Beträge null. */
+  kosten: { eur: number | null; eur_vorjahr: number | null; tarif_hinterlegt: boolean };
+  /**
+   * Höchste gemessene 15-min-Netzbezugsleistung im laufenden Abrechnungszeitraum (Leistungspreis-Basis) + vereinbarte
+   * Leistung ihrer Anlage; `kw` null = keine 15-min-Daten. `zeitpunkt` = ISO-Zeitpunkt der Spitze, `zeitraum` = Label
+   * des Abrechnungszeitraums (z. B. „2026" bei Jahresabrechnung, „Oktober 2026" bei Monatsabrechnung).
+   */
+  lastspitze: {
+    kw: number | null;
+    vereinbart_kw: number | null;
+    anteil_prozent: number | null;
+    anlage: string | null;
+    zeitpunkt: string | null;
+    zeitraum: string | null;
+  };
+  /** Datenlage: wie viele Messstellen aktuell Daten liefern (von gesamt); `null` ohne Messstellen. */
+  datenlage: { aktuell: number | null; gesamt: number | null } | null;
+  /** Der EnPI mit Bezugsbasis + Ziel; `null` → Datenlage-Fallback. */
+  leit: PortfolioLeitkennzahl | null;
+}
+
+export interface PortfolioLeitkennzahl {
+  kennzeichen: string;
+  name: string;
+  wert: number | null;
+  einheit: string | null;
+  jahr: number;
+  monat: number;
+  zustand: string | null;
+  /** Ziel als Prozent gegen die Bezugsbasis (z. B. 5 = „5 % unter Bezugsbasis"). */
+  ziel_prozent: number | null;
+  zielperiode: string | null;
+  ziel_wortlaut: string | null;
+  /** Trend des jüngsten Werts zum Vormonat in Prozent; fehlt ohne Vormonat. */
+  trend_prozent?: number | null;
+  /**
+   * Urteil gegen die Bezugsbasis im letzten abgeschlossenen Monat: besser · schlechter · im_rahmen · …; fehlt ohne
+   * Vergleich. Dieselbe Ableitung wie die Karte der Kennzahl (Konzept Auswerten a1 §10.8).
+   */
+  urteil?: string | null;
+  /** Der Stand des Energieziels über seine Zielperiode - getrennt vom Urteil des Monats (§10.8). */
+  ziel_stand?: KennzahlAuswertungZiel | null;
+}
+
 export const api = {
+  korrekturen: (standortId: string) => request<KorrekturDetail[]>(`/api/v1/standorte/${encodeURIComponent(standortId)}/korrekturen`),
+  korrektur: (kennung: string) => request<KorrekturDetail>(`/api/v1/korrekturen/${encodeURIComponent(kennung)}`),
+  ersatzwertLuecken: (kennzeichen: string, quelle_id: string, von: string, bis: string) => request<ErsatzwertLuecke[]>(`/api/v1/messstellen/${encodeURIComponent(kennzeichen)}/ersatzwerte/luecken?${new URLSearchParams({ quelle_id, von, bis })}`),
+  ersatzwertVorschau: (kennzeichen: string, eingabe: ErsatzwertEingabe) => request<ErsatzwertVorschau>(`/api/v1/messstellen/${encodeURIComponent(kennzeichen)}/ersatzwerte/vorschau`, { method: 'POST', body: JSON.stringify(eingabe) }),
+  ersatzwertErfassen: (kennzeichen: string, eingabe: ErsatzwertEingabe) => request<KorrekturDetail>(`/api/v1/messstellen/${encodeURIComponent(kennzeichen)}/ersatzwerte`, { method: 'POST', body: JSON.stringify(eingabe) }),
+  korrekturFreigeben: (kennung: string, begruendung: string) => request<unknown>(`/api/v1/korrekturen/${encodeURIComponent(kennung)}/freigeben`, { method: 'POST', body: JSON.stringify({ begruendung }) }),
+  korrekturAblehnen: (kennung: string, grund: string) => request<KorrekturDetail>(`/api/v1/korrekturen/${encodeURIComponent(kennung)}/ablehnen`, { method: 'POST', body: JSON.stringify({ grund }) }),
+  korrekturZuruecknehmen: (kennung: string, grund: string) => request<unknown>(`/api/v1/korrekturen/${encodeURIComponent(kennung)}/zuruecknehmen`, { method: 'POST', body: JSON.stringify({ grund }) }),
+  ersatzwertZuruecknehmen: (kennung: string, grund: string) => request<{ kennung: string; status: string; fassung: number; korrektur: string | null }>(`/api/v1/ersatzwerte/${encodeURIComponent(kennung)}/zuruecknehmen`, { method: 'POST', body: JSON.stringify({ grund }) }),
+
   /** Tenant-wide fleet overview (the adaptive Übersicht's fleet mode). */
   overview: () => request<Overview>('/api/v1/overview'),
+  /** Portfolio-Kennzahlen des UEMS-Kachelrasters (Leitkennzahl, Verbrauch, Lastspitze, Kosten). */
+  portfolioKpis: () => request<PortfolioKpi>('/api/v1/portfolio/kpis'),
   /**
    * Der gemeldete Edge-Stand aller Geräte des Mandanten (Plattform-Übersicht).
    * Eine leere Liste heißt „kein Gerät hat je gemeldet", nicht „alle aktuell".
    */
-  edgeVersions: () => request<EdgeVersion[]>('/api/v1/edge-versions'),
+  edgeVersions: () => request<SichtbareListe<EdgeVersion>>('/api/v1/edge-versions'),
   /**
    * ⚠ `entityId` schneidet Auswahl und Papier-Spur auf EINE Komponente dieses
    * Geraets (Stufe 3b). Es ist ueberall OPTIONAL: ohne es antwortet der Server
@@ -4832,6 +9904,18 @@ export const api = {
       body: JSON.stringify(body),
     }),
   /**
+   * Kunden-Schritt „Grenze“ (AP-01 IP-13): der Server prüft die heute
+   * gebundene vereinbarte Leistung und das verbleibende Ladebudget. Der
+   * Übergangswert ist nur nötig, solange kein Netzanschluss gebunden ist.
+   */
+  saveCustomerChargingFrame: (
+    siteId: string,
+    body: { gridLimitKw: number; vereinbartKw?: number },
+  ) => request<ChargingConfig>(`/api/v1/sites/${siteId}/charging-frame`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  }),
+  /**
    * „Sonne + Speicher“: die Reserve der Anlage in kWh. `null` nimmt die eigene
    * Angabe zurück - dann gilt die Vorgabe des Optimierers.
    */
@@ -4884,6 +9968,8 @@ export const api = {
        * wird nichts gesagt" - die Box behält dann, was sie hat.
        */
       connection?: 'haus' | 'eigen';
+      /** Die Box, deren echte Adresse der Anbinde-Assistent zeigt. */
+      deviceId?: string;
     },
   ) =>
     request<ChargingConfig>(`/api/v1/sites/${siteId}/charging-config/charge-points`, {
@@ -5013,7 +10099,8 @@ export const api = {
    * admin without a selected tenant (RLS default-deny).
    */
   tenantContext: () => request<TenantContext>('/api/v1/tenant-context'),
-  listSites: () => request<Site[]>('/api/v1/sites'),
+  listSites: () => request<SichtbareListe<Site>>('/api/v1/sites'),
+  siteDetail: (siteId: string) => request<SiteDetail>(`/api/v1/sites/${siteId}`),
   createSite: (input: NeueAnlageInput) =>
     request<Site>('/api/v1/sites', {
       method: 'POST',
@@ -5038,12 +10125,14 @@ export const api = {
     request<void>(`/api/v1/sites/${siteId}`, { method: 'DELETE' }),
   siteDeletionPreview: (siteId: string) =>
     request<SiteDeletionPreview>(`/api/v1/sites/${siteId}/deletion-preview`),
-  listDevices: () => request<Device[]>('/api/v1/devices'),
+  listDevices: () => request<SichtbareListe<Device>>('/api/v1/devices'),
   claimDevice: (siteId: string, externalRef: string) =>
     request<Device>('/api/v1/devices/claim', {
       method: 'POST',
       body: JSON.stringify({ siteId, externalRef }),
     }),
+  boxTauschen: (newId: string, oldId: string) =>
+    request<BoxTauschAntwort>(`/api/v1/devices/${newId}/succeed/${oldId}`, { method: 'POST' }),
   updateDevice: (deviceId: string, input: UpdateDeviceInput) =>
     request<Device>(`/api/v1/devices/${deviceId}`, {
       method: 'PUT',
@@ -5107,8 +10196,9 @@ export const api = {
       templateVersion?: number;
       role?: string;
       connection: Record<string, unknown>;
+      /** Gewählte Box für ein neues Gerät; ohne Wahl entscheidet die führende Box. */
       deviceId?: string;
-      /** Bestehende Komponente: der Server ergänzt unveränderte Secrets. */
+      /** Bestehende Komponente: der Server wählt die ausführende Box und ergänzt Secrets. */
       entityId?: string;
     },
   ) =>
@@ -5559,11 +10649,29 @@ export const api = {
   // --- UEMS: Messkanäle + berechnete Messstelle („Gesamtwert") ---
 
   /** Die Messkanäle einer Komponente mit ihrer Vertrags-Größe (Read-Model AP-04). */
-  komponenteMesskanaele: (siteId: string, entityId: string) =>
-    request<MesskanalListe>(`/api/v1/sites/${siteId}/komponenten/${entityId}/messkanaele`),
+  komponenteMesskanaele: (siteId: string, entityId: string, stichtag?: string) =>
+    request<MesskanalListe>(`/api/v1/sites/${siteId}/komponenten/${entityId}/messkanaele${stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''}`),
 
   /** Alle Messstellen des Kundenbereichs (für die Auswahl der berechneten). */
   messstellen: () => request<{ messstellen: Messstelle[] }>(`/api/v1/messstellen`),
+
+  /**
+   * Das Messstellen-Register (AP-04 IP-4/IP-15) — dieselbe Route, mit ihren Filtern und dem
+   * Stichtag. Die Fläche „Messstellen“ (IP-5) liest NUR diese eine Abfrage.
+   */
+  messstellenRegister: (anfrage: MessstellenRegisterAnfrage = {}) => {
+    const q = new URLSearchParams();
+    for (const [schluessel, wert] of Object.entries(anfrage)) {
+      if (wert === undefined || wert === false || wert === '') continue;
+      q.set(schluessel, String(wert));
+    }
+    const text = q.toString();
+    return request<MessstellenRegister>(`/api/v1/messstellen${text ? `?${text}` : ''}`);
+  },
+
+  /** AP-06 IP-17: reine, standortbezogene Sicht auf offene, festgehaltene Ausfall-Fakten. */
+  standortAusfall: (standortId: string) =>
+    request<StandortAusfall>(`/api/v1/standorte/${standortId}/ausfall`),
 
   /** Eine einzelne Messstelle. */
   messstelle: (id: string) => request<Messstelle>(`/api/v1/messstellen/${id}`),
@@ -5572,18 +10680,193 @@ export const api = {
   kennzeichenVorschlag: () =>
     request<{ kennzeichen: string }>(`/api/v1/messstellen/kennzeichen-vorschlag`),
 
-  /**
-   * Die Standorte des Kundenbereichs mit ihren Anlagen (UEMS AP-02 IP-3) —
-   * die Wurzel des Aufbau-Baums. Ohne Stichtag antwortet der Server für heute.
-   */
-  standorte: (stichtag?: string) =>
-    request<StandorteAmStichtag>(
-      `/api/v1/standorte${stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''}`,
-    ),
-
   /** Die UEMS-Geräte einer Anlage (AP-04 IP-10) — der Weg von der Komponente zum Gerät. */
   uemsGeraete: (siteId: string) =>
     request<{ geraete: UemsGeraet[] }>(`/api/v1/sites/${siteId}/geraete`),
+
+  /** AP-05 IP-9/IP-10: Kartendaten dokumentieren; Steckplatz kommt aus der physischen Zuordnung. */
+  wagoKarteEintragen: (siteId: string, entityId: string, body: {
+    // Der Name der Schnittstelle ist `expectedRevision` (WagoMetadataService.KartenEintrag);
+    // `expected_revision` kam nie an und lief in ein 400 (gefunden in AP-05 IP-11).
+    expectedRevision: number;
+    anwenderskalierung: boolean | null;
+    register35: number | null;
+  }) => request<WagoKartenangaben>(
+    `/api/v1/sites/${siteId}/components/${entityId}/wago`,
+    { method: 'PUT', body: JSON.stringify(body) },
+  ),
+
+  /** AP-05 IP-11: die WAGO-Kartenangaben einer Komponente; keine WAGO-Komponente = 404. */
+  wagoKarte: (siteId: string, entityId: string) =>
+    request<WagoKartenangaben>(`/api/v1/sites/${siteId}/components/${entityId}/wago`),
+
+  /** AP-05 IP-11 (E6): „Karte getauscht“ — Gerätegrenze OHNE Gerätewechsel. */
+  wagoKartenwechsel: (siteId: string, entityId: string, body: WagoKartenwechsel) =>
+    request<WagoKartenangaben>(
+      `/api/v1/sites/${siteId}/components/${entityId}/wago/kartenwechsel`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+
+  /**
+   * B05: die Karten-Komponenten EINER WAGO-Steuerung und ihren Controller in einer Transaktion
+   * anlegen — je Karte Steckplatz und gelesener Kartentyp (ungelesen `null`, nie geraten).
+   */
+  wagoKartenAnlegen: (siteId: string, body: {
+    karten: { steckplatz: number; kartentyp: number | null; komponente: SaveComponentBody }[];
+  }) => request<WagoKartenAnlage>(`/api/v1/sites/${siteId}/wago/karten`, {
+    method: 'POST', body: JSON.stringify(body),
+  }),
+
+  /**
+   * AP-05 „WAGO-Soll speichern“: die Box liest Kopf und Kartenkennungen der Steuerung; die api
+   * speichert nur daraus und nur in leere Stellen — eine Abweichung überschreibt nichts.
+   */
+  wagoSollLesen: (geraetId: string, body: { deviceId: string }) =>
+    request<WagoSollLesung>(`/api/v1/geraete/${geraetId}/wago/soll-lesen`, {
+      method: 'POST', body: JSON.stringify(body),
+    }),
+
+  /** AP-05 IP-9/IP-10: abgelesene Controller-Angaben, keine Geräteerkennung. */
+  wagoGeraetEintragen: (id: string, body: WagoGeraeteangaben) =>
+    request<WagoGeraeteangaben>(`/api/v1/geraete/${id}/wago`, {
+      method: 'PUT', body: JSON.stringify(body),
+    }),
+
+  komponentenEreignisse: (siteId: string, entityId: string) =>
+    request<KomponentenEreignis[]>(`/api/v1/sites/${siteId}/components/${entityId}/events`),
+
+  messstelleZaehlerwechsel: (id: string, body: Zaehlerwechsel) =>
+    request<ZaehlerwechselVorgang>(`/api/v1/messstellen/${id}/quellen/wechsel`, {
+      method: 'POST', body: JSON.stringify(body),
+    }),
+  controllerwechselVorschau: (id: string, zeitpunkt: string) =>
+    request<ControllerwechselVorschau>(`/api/v1/geraete/${id}/austausch/vorschau?zeitpunkt=${encodeURIComponent(zeitpunkt)}`),
+  wechselzeitpunktBerichtigen: (id: string, body: { bisher: string; zeitpunkt: string; grund?: string }) =>
+    request<{ vorgaenger: string; nachfolger: string; bisher: string; zeitpunkt: string; satz: string }>(
+      `/api/v1/geraete/${id}/austausch/zeitpunkt`, { method: 'POST', body: JSON.stringify(body) }),
+  geraetAustauschen: (id: string, body: Zaehlerwechsel) =>
+    request<ZaehlerwechselVorgang>(`/api/v1/geraete/${id}/austausch`, {
+      method: 'POST', body: JSON.stringify(body),
+    }),
+
+  /**
+   * Die Datenquellen EINER Anlage (AP-06 IP-3) — AP-13 IP-12 ist ihr erster Aufrufer im Portal.
+   * Gelesen wird daraus allein die Zuständigkeit: welche Box liest die Quelle, seit wann.
+   */
+  datenquellen: (siteId: string) =>
+    request<UemsDatenquellenListe>(`/api/v1/sites/${siteId}/data-sources`),
+
+  /**
+   * Die Gemeinsame Steuerung der Anlage (UEMS AP-15 IP-5). Die Box-Seite liest daraus nur den
+   * Zustand: in einer eingerichteten Anlage führt die Sperre `steuerquelle` auf „Gemeinsame
+   * Steuerung ändern“ (IP-26). Ohne Gemeinsame Steuerung `zustand: nicht_eingerichtet`.
+   */
+  gemeinsameSteuerung: (siteId: string) =>
+    request<UemsGemeinsameSteuerungZustand>(`/api/v1/sites/${siteId}/gemeinsame-steuerung`),
+  /** Der Vorschlag für die sechs Fragen (Vertrag §6a) — schreibt nie. */
+  gemeinsameSteuerungEinrichten: (siteId: string) =>
+    request<UemsGemeinsameSteuerungEinrichten>(`/api/v1/sites/${siteId}/gemeinsame-steuerung/einrichten`),
+  /** Einrichten und Ändern (Recht `funktion.steuern_einrichten`); 422 `erklaerung_unvollstaendig` nennt die Lücken. */
+  gemeinsameSteuerungSetzen: (siteId: string, body: UemsGemeinsameSteuerungSetzen) =>
+    request<UemsGemeinsameSteuerungZustand>(`/api/v1/sites/${siteId}/gemeinsame-steuerung`,
+      { method: 'PUT', body: JSON.stringify(body) }),
+  /**
+   * Frage 6 für einen ENTWURF (§5.2 Nr. 6, vor „Absenden“): derselbe Körper und dieselben 422-Lücken wie das PUT,
+   * die Antwort wie `GET …/einrichten` und das PUT (`zustand` mit `fehlt`) — schreibt nichts.
+   */
+  gemeinsameSteuerungVorschau: (siteId: string, body: UemsGemeinsameSteuerungSetzen) =>
+    request<{ einrichten: UemsGemeinsameSteuerungEinrichten; zustand: UemsGemeinsameSteuerungZustand }>(`/api/v1/sites/${siteId}/gemeinsame-steuerung/einrichten/vorschau`,
+      { method: 'POST', body: JSON.stringify(body) }),
+  /** Den sicheren Rückfallwert am Gerät hinterlegen (Vertrag §6a, `GeraeteRueckfallDienst`). */
+  gemeinsameSteuerungRueckfall: (siteId: string, komponenteId: string,
+    body: { richtung: UemsSteuerRichtung; rueckfall: 'faellt_auf_wert'; rueckfall_kw: number }) =>
+    request<unknown>(`/api/v1/sites/${siteId}/gemeinsame-steuerung/komponenten/${komponenteId}/rueckfall`,
+      { method: 'PUT', body: JSON.stringify(body) }),
+  /** Anhalten · Fortsetzen (Recht `steuerung.starten_beenden`); Scharfschalten ist nie eine Kundenroute (I5). */
+  /** Betreiber-Blatt (IP-24): nur die Plattform-Rolle; die Handgriffe unter `/admin` (I4). */
+  gemeinsameSteuerungBlatt: (siteId: string) =>
+    request<UemsBetreiberblatt>(`/api/v1/admin/sites/${siteId}/gemeinsame-steuerung`),
+
+  gemeinsameSteuerungBetreiber: (siteId: string, schritt: 'scharfschalten' | 'fortsetzen') =>
+    request<UemsGemeinsameSteuerungZustand>(`/api/v1/admin/sites/${siteId}/gemeinsame-steuerung/${schritt}`, { method: 'POST' }),
+
+  gemeinsameSteuerungBestaetigen: (siteId: string, boxId: string) =>
+    request<UemsGemeinsameSteuerungZustand>(`/api/v1/admin/sites/${siteId}/gemeinsame-steuerung/mitglieder/${boxId}/bestaetigen`, { method: 'POST' }),
+
+  /** AP-15 §5.5 (nur Plattform-Rolle, I4): die Geräte einer ausscheidenden Box sind vom Netz. */
+  gemeinsameSteuerungVomNetz: (siteId: string, boxId: string) =>
+    request<UemsGemeinsameSteuerungZustand>(`/api/v1/admin/sites/${siteId}/gemeinsame-steuerung/mitglieder/${boxId}/ausscheiden-bestaetigen`, { method: 'POST' }),
+
+  gemeinsameSteuerungSprungprobe: (siteId: string, body: { box_id: string; art: UemsSprungprobe['art']; sprung_kw: number }) =>
+    request<UemsSprungprobe>(`/api/v1/admin/sites/${siteId}/gemeinsame-steuerung/sprungprobe`,
+      { method: 'POST', body: JSON.stringify(body) }),
+
+  gemeinsameSteuerungSteckerprobe: (siteId: string, body: {
+    von: string; bis: string; box_id: string; bemerkung?: string;
+  }) => request<UemsSteckerprobe>(`/api/v1/admin/sites/${siteId}/gemeinsame-steuerung/steckerprobe`,
+    { method: 'POST', body: JSON.stringify(body) }),
+
+  gemeinsameSteuerungSchritt: (siteId: string, schritt: 'anhalten' | 'fortsetzen') =>
+    request<UemsGemeinsameSteuerungZustand>(`/api/v1/sites/${siteId}/gemeinsame-steuerung/${schritt}`, { method: 'POST' }),
+
+  datenquelleAnlegen: (siteId: string, body: UemsDatenquelleAnlegen) =>
+    request<UemsDatenquelle>(`/api/v1/sites/${siteId}/data-sources`, {
+      method: 'POST', body: JSON.stringify(body),
+    }),
+
+  datenquelleBearbeiten: (siteId: string, id: string, body: UemsDatenquelleBearbeiten) =>
+    request<UemsDatenquelle>(`/api/v1/sites/${siteId}/data-sources/${id}`, {
+      method: 'PUT', body: JSON.stringify(body),
+    }),
+
+  datenquellePruefen: (siteId: string, id: string, body: {
+    device_id: string; unit_id: number; register: number;
+    register_kind?: string; data_type?: string; word_order?: string;
+    /** `wago_kopf`: der Kopf eines WAGO-Registerbilds an der Basisadresse `register` (ohne `data_type`). */
+    op?: 'read' | 'wago_kopf';
+  }) => request<UemsDatenquellePruefergebnis>(
+    `/api/v1/sites/${siteId}/data-sources/${id}/reachability-check`,
+    { method: 'POST', body: JSON.stringify(body) },
+  ),
+
+  /** Eine 422-Ablehnung trägt {@link DatenquelleBudgetFehler} in `ApiError.body`. */
+  datenquelleZuweisen: (siteId: string, id: string, body: {
+    device_id: string; effective_from?: string; vergleich_bestaetigt?: boolean;
+  }) => request<{ urteil: 'erlaubt'; text: string; hinweis: string | null;
+    vergleichsquelle: boolean; datenquelle: UemsDatenquelle }>(
+    `/api/v1/sites/${siteId}/data-sources/${id}/assignments`,
+    { method: 'POST', body: JSON.stringify(body) },
+  ),
+
+  /** Die Datenquellen-Vorschlagsliste der Anlage (AP-06 IP-4) — liest nur. */
+  datenquellenVorschlag: (siteId: string) =>
+    request<UemsDatenquelleVorschlagsliste>(`/api/v1/sites/${siteId}/data-sources/vorschlag`),
+
+  /**
+   * Bestätigt Vorschläge genau so, wie die Liste sie zeigte (sonst 409 `vorschlag_geaendert`).
+   * Ein leerer Auftrag ist 400 — der Assistent schickt ihn nie.
+   */
+  datenquellenVorschlagUebernehmen: (siteId: string, vorschlaege: UemsDatenquelleBestaetigt[]) =>
+    request<UemsDatenquelleUebernommen>(`/api/v1/sites/${siteId}/data-sources/vorschlag/uebernehmen`, {
+      method: 'POST', body: JSON.stringify({ vorschlaege }),
+    }),
+
+  datenquelleZuweisungZuruecknehmen: (siteId: string, id: string, assignmentId: string) =>
+    request<UemsDatenquelle>(
+      `/api/v1/sites/${siteId}/data-sources/${id}/assignments/${assignmentId}`,
+      { method: 'DELETE' },
+    ),
+
+  /** Die Einstellungs-Fassungen eines Einbaus (AP-04 IP-11) — gültig jetzt und die Historie. */
+  geraetEinstellungen: (id: string) =>
+    request<GeraetEinstellungen>(`/api/v1/geraete/${id}/einstellungen`),
+
+  /** Trägt eine neue Fassung ein — sie legt sich zwischen die bestehenden, nie überschreibend. */
+  geraetEinstellungEintragen: (id: string, body: EinstellungNeu) =>
+    request<EinstellungEingetragen>(`/api/v1/geraete/${id}/einstellungen`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
   /**
    * Das Änderungsprotokoll EINER Messstelle (AP-04 IP-21) — jüngster Eintrag
@@ -5604,6 +10887,17 @@ export const api = {
   unternehmenAenderungen: (f?: ProtokollAbfrage) =>
     request<Protokoll>(`/api/v1/unternehmen/aenderungen${protokollFrage(f)}`),
 
+  /** Das Änderungsprotokoll EINES Gebäudes oder Bereichs (AP-02 IP-14, H2). */
+  ortAenderungen: (id: string, f?: ProtokollAbfrage) =>
+    request<Protokoll>(`/api/v1/orte/${id}/aenderungen${protokollFrage(f)}`),
+
+  /**
+   * Das Änderungsprotokoll EINES Standorts samt seinen Gebäuden, Bereichen und
+   * Anlagen-Zuordnungen (AP-02 IP-14) — jedes Kind aus seiner Zeit an diesem Standort.
+   */
+  standortAenderungen: (id: string, f?: ProtokollAbfrage) =>
+    request<Protokoll>(`/api/v1/standorte/${id}/aenderungen${protokollFrage(f)}`),
+
   /** Legt eine berechnete Messstelle (Gesamtwert) mit ihrer gewichteten Summe an. */
   berechneteMessstelleAnlegen: (body: BerechneteMessstelleAnlegen) =>
     request<Messstelle>(`/api/v1/messstellen/berechnet`, {
@@ -5611,9 +10905,19 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
-  /** Die Formel (Terme + abgeleitete Hauptgröße) einer berechneten Messstelle. */
-  messstelleFormel: (id: string) =>
-    request<MessstelleFormel>(`/api/v1/messstellen/${id}/formel`),
+  /**
+   * Die Formel (Terme + abgeleitete Hauptgröße) einer berechneten Messstelle —
+   * ohne `am` die von heute (unverändert), mit `am` (JJJJ-MM-TT) die Fassung des Tages.
+   */
+  messstelleFormel: (id: string, am?: string) =>
+    request<MessstelleFormel>(`/api/v1/messstellen/${id}/formel${am ? `?am=${am}` : ''}`),
+
+  /** Trägt eine neue Fassung der Formel ab einem Tag ein (AP-10 IP-3). */
+  messstelleFormelFassungEintragen: (id: string, body: MessstelleFormelFassungEintragen) =>
+    request<MessstelleFormel>(`/api/v1/messstellen/${id}/formel/fassungen`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
   /** Der Live-Wert einer berechneten Messstelle (null, wenn unvollständig). */
   messstelleWert: (id: string) => request<MessstelleWert>(`/api/v1/messstellen/${id}/wert`),
@@ -5662,11 +10966,42 @@ export const api = {
     ),
 
   /**
+   * Die Werte je Messstelle (UEMS AP-08 IP-9) über ihr HEUTIGES Kennzeichen: `von`/`bis` als Tag
+   * (JJJJ-MM-TT, `bis` = letzter Tag einschließlich) in der Zeitzone des Standorts. Mit `version` (AP-08 IP-18)
+   * genau diese Version der gespeicherten Zeile, ohne sie die neueste.
+   */
+  messstelleWerte: (kennzeichen: string, raster: MessstelleWerteRaster, von: string, bis: string, version?: number | null) =>
+    request<MessstelleWerte>(
+      `/api/v1/messstellen/${encodeURIComponent(kennzeichen)}/werte?raster=${raster}&von=${von}&bis=${bis}` +
+        (version == null ? '' : `&version=${version}`),
+    ),
+
+  /**
+   * Die Versions-Historie EINER Periode (UEMS AP-08 IP-18): `von`/`bis` sind die des Schritts, wie die Route
+   * `…/werte` sie liefert (Zeitpunkte mit Versatz, `bis` ausschließlich) — kodiert, sonst würde das `+` des
+   * Versatzes zum Leerzeichen.
+   */
+  messstelleWerteVersionen: (
+    kennzeichen: string,
+    raster: MessstelleWerteHistorie['raster'],
+    von: string,
+    bis: string,
+  ) =>
+    request<MessstelleWerteHistorie>(
+      `/api/v1/messstellen/${encodeURIComponent(kennzeichen)}/werte/versionen?raster=${raster}` +
+        `&von=${encodeURIComponent(von)}&bis=${encodeURIComponent(bis)}`,
+    ),
+
+  /**
    * Bearbeitet die drei änderbaren Felder einer Messstelle (Kennzeichen · Name ·
    * Notiz) — der Server ersetzt sie GANZ, ein fehlendes Feld wird leer. Zum
-   * Umbenennen also das bestehende Kennzeichen mitschicken.
+   * Umbenennen also das bestehende Kennzeichen mitschicken — und seit AP-08 IP-7 die
+   * Anschlussleistung, sonst wird auch sie leer.
    */
-  messstelleBearbeiten: (id: string, body: { kennzeichen?: string; name: string; notiz?: string }) =>
+  messstelleBearbeiten: (
+    id: string,
+    body: { kennzeichen?: string; name: string; notiz?: string; anschlussleistung_kw?: number | null },
+  ) =>
     request<Messstelle>(`/api/v1/messstellen/${id}`, {
       method: 'PUT',
       body: JSON.stringify(body),
@@ -5683,4 +11018,1298 @@ export const api = {
   /** Archiviert eine Messstelle (statt hartem Löschen; das Kennzeichen bleibt belegt). */
   messstelleArchivieren: (id: string) =>
     request<Messstelle>(`/api/v1/messstellen/${id}/archivieren`, { method: 'POST' }),
+
+  // ---- Messstellen-Dialog (UEMS AP-04 IP-6): jeder Schritt schreibt über seine Route
+  /** Legt eine gemessene Messstelle an; eine Ablehnung trägt Code und Fakten in `ApiError.body`. */
+  messstelleAnlegen: (body: MessstelleAnlegen) =>
+    request<Messstelle>(`/api/v1/messstellen`, { method: 'POST', body: JSON.stringify(body) }),
+
+  /** Der Ort ab einem Tag (IP-7) — Antwort: die Messstelle mit ihren Orten. */
+  messstelleOrtAendern: (id: string, body: MessstelleOrtAendern) =>
+    request<Messstelle>(`/api/v1/messstellen/${id}/ort`, { method: 'PUT', body: JSON.stringify(body) }),
+
+  /** Die elektrische Stellung ab einem Tag (IP-7) — 409 `hauptzaehler_vorhanden` nennt `bestehend`. */
+  messstelleStellungAendern: (id: string, body: MessstelleStellungAendern) =>
+    request<Messstelle>(`/api/v1/messstellen/${id}/stellung`, { method: 'PUT', body: JSON.stringify(body) }),
+
+  /** Bindet eine führende Quelle oder eine Vergleichsquelle (IP-13) — nie überschreibend. */
+  messstelleQuelleBinden: (id: string, body: MessstelleQuelleBinden) =>
+    request<MessstelleQuelleVorgang>(`/api/v1/messstellen/${id}/quellen`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  /** UEMS AP-04 IP-14: je Größe die Quellen zum Stichtag (mit ihrem letzten Wert) und die Historie. */
+  messstelleQuellen: (id: string, stichtag?: string | null) =>
+    request<MessstelleQuellenListe>(
+      `/api/v1/messstellen/${id}/quellen` + (stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''),
+    ),
+  /** Beendet eine Quelle (IP-13) — eine Quelle wird nie gelöscht, sie endet. */
+  messstelleQuelleBeenden: (id: string, quelleId: string, body: MessstelleQuelleBeenden = {}) =>
+    request<MessstelleQuelleVorgang>(`/api/v1/messstellen/${id}/quellen/${quelleId}/beenden`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
+  // ---- Ortsstruktur: Unternehmen und Standorte (UEMS AP-02 IP-3/IP-4; Fläche dazu IP-6)
+  /** Das Unternehmen des Kundenbereichs — die Zeitzonen-Vorgabe eines neuen Standorts. */
+  unternehmen: () => request<Unternehmen>('/api/v1/unternehmen'),
+  /** UEMS AP-01 IP-6: beide Funktionen je Standort (`GET /api/v1/funktionen`, Routen aus IP-3). */
+  funktionen: () => request<Funktionen>('/api/v1/funktionen'),
+  /** AP-01 IP-10b: Startprüfung aus frischen Fakten; fremde Anlage = 404. */
+  funktionSteuernPruefung: (siteId: string) =>
+    request<FunktionSteuernPruefung>(`/api/v1/sites/${encodeURIComponent(siteId)}/funktionen/steuern/pruefung`),
+  /** AP-01 IP-3/IP-10b: Anlage aufnehmen bzw. Steuerung starten. */
+  funktionSteuern: (siteId: string, aktion: FunktionSteuernAnfrage['aktion']) =>
+    request<FunktionSteuernErgebnis>(`/api/v1/sites/${encodeURIComponent(siteId)}/funktionen/steuern`, {
+      method: 'PUT', body: JSON.stringify({ aktion }),
+    }),
+  /** AP-01 IP-3/IP-11: alle teilnehmenden Anlagen eines Standorts anhalten bzw. fortsetzen. */
+  funktionSteuernStandort: (standortId: string, aktion: 'anhalten' | 'fortsetzen') =>
+    request<FunktionSteuernErgebnis>(`/api/v1/standorte/${encodeURIComponent(standortId)}/funktionen/steuern`, {
+      method: 'PUT', body: JSON.stringify({ aktion }),
+    }),
+  /** UEMS AP-01 IP-9a: „Messen & Auswerten“ für einen Standort einrichten (Entwurf); ein zweites Mal ist 409 `bereits_angelegt`. */
+  funktionMessenEinrichten: (standortId: string) =>
+    request<FunktionMessenErgebnis>(`/api/v1/standorte/${encodeURIComponent(standortId)}/funktionen/messen`, {
+      method: 'PUT',
+      body: JSON.stringify({ aktion: 'einrichten' }),
+    }),
+  /** UEMS AP-04 IP-16 (Fläche AP-01 IP-9b): die Vorschlagsliste je Standort — liest nur, nichts entsteht ungefragt. */
+  messstellenVorschlag: (standortId: string) =>
+    request<MessstelleVorschlagsliste>(`/api/v1/standorte/${encodeURIComponent(standortId)}/messstellen-vorschlag`),
+  /** Übernimmt die gewählten Zeilen, wie die Liste sie zeigte (nur `name` darf anders sein) — in EINER Transaktion. */
+  messstellenVorschlagUebernehmen: (standortId: string, body: MessstelleVorschlagUebernehmen) =>
+    request<MessstelleVorschlagUebernommen<Messstelle>>(
+      `/api/v1/standorte/${encodeURIComponent(standortId)}/messstellen-vorschlag/uebernehmen`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+
+  /**
+   * Die Standorte zum Stichtag (ohne: heute) samt der Gruppe „Noch nicht zugeordnet“ — auch die Wurzel des
+   * Aufbau-Baums (main 41ed67c26 hatte dieselbe Funktion ein zweites Mal angelegt).
+   */
+  standorte: (stichtag?: string) =>
+    request<StandorteAmStichtag>(
+      `/api/v1/standorte${stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''}`,
+    ),
+  /** AP-10 IP-17/F15: welches System welches Gebäude am Tag versorgt. */
+  versorgung: (standortId: string, stichtag?: string) =>
+    request<Versorgung>(
+      `/api/v1/standorte/${encodeURIComponent(standortId)}/versorgung${
+        stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''
+      }`,
+    ),
+  /** AP-02 IP-10: liest nur; vor der Bestätigung entsteht nichts. */
+  standortZuordnungVorschlag: () =>
+    request<StandortZuordnungVorschau>('/api/v1/standorte/vorschlag'),
+  /** Legt alle gezeigten Gruppen und Zuordnungen in einer Transaktion an. */
+  standortZuordnungBestaetigen: (body: StandortZuordnungBestaetigen) =>
+    request<StandortZuordnungErgebnis>('/api/v1/standorte/vorschlag/bestaetigen', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  netzanschluesse: (standortId: string, stichtag?: string) =>
+    request<Netzanschluesse>(`/api/v1/standorte/${encodeURIComponent(standortId)}/netzanschluesse${stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''}`),
+  netzanschlussGrenznachweis: (standortId: string, id: string, monat: string) =>
+    request<NetzanschlussGrenzNachweis>(`/api/v1/standorte/${encodeURIComponent(standortId)}/netzanschluesse/${encodeURIComponent(id)}/grenznachweis?monat=${encodeURIComponent(monat)}`),
+  netzanschlussVorschlaege: (standortId: string) =>
+    request<NetzanschlussVorschlag[]>(`/api/v1/standorte/${encodeURIComponent(standortId)}/netzanschluesse/vorschlaege`),
+  netzanschlussUebernehmen: (standortId: string, anlageId: string, body: NetzanschlussUebernehmen) =>
+    request<Netzanschluss>(`/api/v1/standorte/${encodeURIComponent(standortId)}/netzanschluesse/vorschlaege/${encodeURIComponent(anlageId)}/uebernehmen`, { method: 'POST', body: JSON.stringify(body) }),
+  netzanschlussVerwerfen: (standortId: string, anlageId: string) =>
+    request<void>(`/api/v1/standorte/${encodeURIComponent(standortId)}/netzanschluesse/vorschlaege/${encodeURIComponent(anlageId)}/verwerfen`, { method: 'POST' }),
+  netzanschlussAnlegen: (standortId: string, body: NetzanschlussAnfrage) =>
+    request<Netzanschluss>(`/api/v1/standorte/${encodeURIComponent(standortId)}/netzanschluesse`, { method: 'POST', body: JSON.stringify(body) }),
+  netzanschlussBinden: (standortId: string, id: string, body: NetzanschlussBinden) =>
+    request<Netzanschluss>(`/api/v1/standorte/${encodeURIComponent(standortId)}/netzanschluesse/${encodeURIComponent(id)}/anlagen`, { method: 'POST', body: JSON.stringify(body) }),
+
+  /** Das Kurzzeichen, das ein neuer Standort bekäme — bewegt den Zähler nicht. */
+  standortKurzzeichenVorschlag: () =>
+    request<StandortKurzzeichenVorschlag>('/api/v1/standorte/kurzzeichen-vorschlag'),
+
+  /** Legt einen Standort an; eine Ablehnung trägt {@link OrtFehler} in `ApiError.body`. */
+  standortAnlegen: (body: StandortStammdaten) =>
+    request<StandortAmStichtag>('/api/v1/standorte', { method: 'POST', body: JSON.stringify(body) }),
+
+  /** Schreibt die Stammdaten eines Standorts — die GANZE Menge, ein fehlendes Feld ist leer. */
+  standortBearbeiten: (id: string, body: StandortStammdaten) =>
+    request<StandortAmStichtag>(`/api/v1/standorte/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
+  /** Schreibt eine neue zeitgültige Bezugsflächen-Fassung des Standorts. */
+  standortFlaeche: (id: string, body: OrtFlaeche) =>
+    request<StandortAmStichtag>(`/api/v1/standorte/${encodeURIComponent(id)}/flaeche`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
+  // ---- Ortsstruktur: Gebäude und Bereiche (UEMS AP-02 IP-5; Fläche dazu IP-7)
+  /** Der Ortsbaum eines Standorts zum Stichtag (ohne: heute) — Gebäude mit Bereichen und „direkt am Standort“. */
+  standortOrte: (standortId: string, stichtag?: string) =>
+    request<OrtsbaumAmStichtag>(
+      `/api/v1/standorte/${encodeURIComponent(standortId)}/orte${
+        stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''
+      }`,
+    ),
+
+  /** Das nächste freie G-/B-Kurzzeichen; bewegt den Zähler nicht. */
+  ortKurzzeichenVorschlag: (standortId: string, art: 'gebaeude' | 'bereich') =>
+    request<OrtKurzzeichenVorschlag>(
+      `/api/v1/standorte/${encodeURIComponent(standortId)}/orte/kurzzeichen-vorschlag?art=${encodeURIComponent(art)}`,
+    ),
+
+  /** Legt ein Gebäude oder einen Bereich an; eine Ablehnung trägt {@link OrtFehler} in `ApiError.body`. */
+  ortAnlegen: (standortId: string, body: OrtAnlegen) =>
+    request<Ort>(`/api/v1/standorte/${encodeURIComponent(standortId)}/orte`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  /** Schreibt die einfachen Felder eines Gebäudes oder Bereichs — die GANZE Menge. */
+  ortBearbeiten: (ortId: string, body: OrtBearbeiten) =>
+    request<Ort>(`/api/v1/orte/${encodeURIComponent(ortId)}`, { method: 'PUT', body: JSON.stringify(body) }),
+
+  /** Die Bezugsfläche eines Gebäudes oder Bereichs ab einem Tag (E3). */
+  ortFlaeche: (ortId: string, body: OrtFlaeche) =>
+    request<Ort>(`/api/v1/orte/${encodeURIComponent(ortId)}/flaeche`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
+  // ---- Archivieren · Wiederherstellen · Löschen (UEMS AP-02 IP-15); eine Ablehnung trägt OrtFehler.
+  ortArchivieren: (ortId: string) =>
+    request<Ort>(`/api/v1/orte/${encodeURIComponent(ortId)}/archivieren`, { method: 'POST' }),
+  /** `name`: das Umbenennen im selben Dialog, wenn der alte Name inzwischen vergeben ist. */
+  ortWiederherstellen: (ortId: string, name?: string) =>
+    request<Ort>(`/api/v1/orte/${encodeURIComponent(ortId)}/wiederherstellen`, {
+      method: 'POST',
+      ...(name ? { body: JSON.stringify({ name }) } : {}),
+    }),
+  /** Nur ohne Historie (E1) — sonst 409 `loeschen_gesperrt`. */
+  ortLoeschen: (ortId: string) => request<void>(`/api/v1/orte/${encodeURIComponent(ortId)}`, { method: 'DELETE' }),
+  /** IP-12: was das Verschieben bewirken würde — schreibt nichts; eine Ablehnung trägt OrtFehler (mit `feld`). */
+  ortVerschiebenVorschau: (ortId: string, zielId: string, gueltigAb: string) =>
+    request<OrtVerschiebung>(
+      `/api/v1/orte/${encodeURIComponent(ortId)}/verschieben/vorschau?zielId=${encodeURIComponent(
+        zielId,
+      )}&gueltigAb=${encodeURIComponent(gueltigAb)}`,
+    ),
+  /** IP-12: verschiebt ab `gueltigAb`; die Antwort nennt die Zuordnungen danach und den Protokolleintrag. */
+  ortVerschieben: (ortId: string, body: OrtVerschiebenAnfrage) =>
+    request<OrtVerschiebung>(`/api/v1/orte/${encodeURIComponent(ortId)}/verschieben`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  standortArchivieren: (id: string) =>
+    request<StandortAmStichtag>(`/api/v1/standorte/${encodeURIComponent(id)}/archivieren`, { method: 'POST' }),
+  standortWiederherstellen: (id: string, name?: string) =>
+    request<StandortAmStichtag>(`/api/v1/standorte/${encodeURIComponent(id)}/wiederherstellen`, {
+      method: 'POST',
+      ...(name ? { body: JSON.stringify({ name }) } : {}),
+    }),
+
+  /** Die Folgen, bevor eine Anlage einem Standort zugeordnet wird (UEMS AP-02 IP-11) — schreibt nichts. */
+  anlageStandortVorschau: (siteId: string, standortId: string, gueltigAb: string) =>
+    request<AnlageUmzug>(
+      `/api/v1/sites/${encodeURIComponent(siteId)}/standort/vorschau?standortId=${encodeURIComponent(
+        standortId,
+      )}&gueltigAb=${encodeURIComponent(gueltigAb)}`,
+    ),
+
+  /** Ordnet die Anlage ab `gueltigAb` einem Standort zu; eine Ablehnung trägt {@link OrtFehler} in `ApiError.body`. */
+  anlageStandortSetzen: (siteId: string, body: AnlageUmzugAnfrage) =>
+    request<AnlageUmzug>(`/api/v1/sites/${encodeURIComponent(siteId)}/standort`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
+  /** Die Kostenstellen des Unternehmens (AP-10 IP-7); mit `stichtag` nur die an dem Tag bestehenden. */
+  kostenstellen: (stichtag?: string) =>
+    request<{ stichtag: string | null; kostenstellen: Kostenstelle[] }>(
+      `/api/v1/unternehmen/kostenstellen${stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''}`,
+    ),
+
+  kostenstelleAnlegen: (body: KostenstelleProzessAnlegen) =>
+    request<Kostenstelle>(`/api/v1/unternehmen/kostenstellen`, { method: 'POST', body: JSON.stringify(body) }),
+
+  kostenstelleUmbenennen: (id: string, name: string) =>
+    request<Kostenstelle>(`/api/v1/unternehmen/kostenstellen/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+
+  /** Beendet (der letzte Tag) — beenden statt löschen; 409 `zuordnung_besteht` nennt, was länger gilt. */
+  kostenstelleBeenden: (id: string, gueltig_bis: string) =>
+    request<Kostenstelle>(`/api/v1/unternehmen/kostenstellen/${id}/beenden`, {
+      method: 'PUT',
+      body: JSON.stringify({ gueltig_bis }),
+    }),
+
+  /**
+   * Die Kostenstellen-Sicht EINER Kostenstelle (AP-10 IP-11): gemessen · verteilt · berechnet · Summe · nicht verteilt
+   * und die Warnung vor doppelter Zählung. Gemerkt je Kostenstelle und Zeitraum ({@link GEMERKT_MS}, AP-13 IP-9).
+   */
+  kostenstelleEnergie: (id: string, periode: KostenstelleEnergiePeriode, am: string, version?: number | null) =>
+    gemerkteAnfrage<KostenstelleEnergie>(
+      `/api/v1/unternehmen/kostenstellen/${encodeURIComponent(id)}/energie?periode=${periode}&am=${am}` +
+        (version == null ? '' : `&version=${version}`),
+    ),
+
+  /** Die Prozesse des Unternehmens (AP-10 IP-7); mit `stichtag` nur die an dem Tag bestehenden. */
+  prozesse: (stichtag?: string) =>
+    request<{ stichtag: string | null; prozesse: Prozess[] }>(
+      `/api/v1/unternehmen/prozesse${stichtag ? `?stichtag=${encodeURIComponent(stichtag)}` : ''}`,
+    ),
+
+  prozessAnlegen: (body: KostenstelleProzessAnlegen) =>
+    request<Prozess>(`/api/v1/unternehmen/prozesse`, { method: 'POST', body: JSON.stringify(body) }),
+
+  prozessUmbenennen: (id: string, name: string) =>
+    request<Prozess>(`/api/v1/unternehmen/prozesse/${id}`, { method: 'PUT', body: JSON.stringify({ name }) }),
+
+  prozessBeenden: (id: string, gueltig_bis: string) =>
+    request<Prozess>(`/api/v1/unternehmen/prozesse/${id}/beenden`, {
+      method: 'PUT',
+      body: JSON.stringify({ gueltig_bis }),
+    }),
+
+  /** Die Prozesse einer Messstelle: alle wirksamen Intervalle, mit `am` die an dem Tag geltenden. */
+  messstelleProzesse: (id: string, am?: string) =>
+    request<MessstelleProzesse>(`/api/v1/messstellen/${id}/prozesse${am ? `?am=${encodeURIComponent(am)}` : ''}`),
+  /** AP-16 IP-14: gemessene und berechnete Messstellen des Prozesses samt P4-Hinweisen. */
+  prozessMessstellen: (id: string, am: string) =>
+    request<ProzessMessstellen>(`/api/v1/unternehmen/prozesse/${id}/messstellen?am=${encodeURIComponent(am)}`),
+
+  /** Ab `gueltig_ab` gehört die Messstelle zu GENAU diesen Prozessen (leer = zu keinem). */
+  messstelleProzesseSetzen: (id: string, body: { gueltig_ab: string; prozesse: string[]; grund?: string | null }) =>
+    request<MessstelleProzesse>(`/api/v1/messstellen/${id}/prozesse`, { method: 'PUT', body: JSON.stringify(body) }),
+
+  /** Die Verteilung einer Messstelle auf Kostenstellen (AP-10 IP-8): alle Anteile, mit `am` die des Tages. */
+  messstelleVerteilung: (id: string, am?: string) =>
+    request<MessstelleVerteilung>(`/api/v1/messstellen/${id}/verteilung${am ? `?am=${encodeURIComponent(am)}` : ''}`),
+
+  /** Ab `gueltig_ab` gilt GENAU dieser Satz (alle Ziele des Tages; leer = nicht verteilt); `korrektur` ersetzt den vom selben Tag. */
+  messstelleVerteilungSetzen: (
+    id: string,
+    body: { gueltig_ab: string; zeilen: VerteilungZeileEingabe[]; korrektur?: boolean | null; grund?: string | null },
+  ) => request<MessstelleVerteilung>(`/api/v1/messstellen/${id}/verteilung`, { method: 'PUT', body: JSON.stringify(body) }),
+
+  /** Die Bilanz einer Anlage je Hauptzähler (AP-10 IP-9): Periode `tag` · `monat` · `jahr`, die `am` enthält. */
+  anlageBilanz: (siteId: string, periode?: 'tag' | 'monat' | 'jahr', am?: string) => {
+    const q = new URLSearchParams();
+    if (periode) q.set('periode', periode);
+    if (am) q.set('am', am);
+    const qs = q.toString();
+    return request<Bilanz>(`/api/v1/sites/${siteId}/bilanz${qs ? `?${qs}` : ''}`);
+  },
+
+  /** Bestätigt „Rest anlegen“ (E18) — nie zweimal: ein zweiter Klick liefert `neu` = false. */
+  anlageRestAnlegen: (siteId: string, body: { hauptzaehler_id: string; name?: string }) =>
+    request<BilanzRestAngelegt>(`/api/v1/sites/${siteId}/bilanz/rest`, { method: 'POST', body: JSON.stringify(body) }),
+
+  /** Die Bezugsgrößen des Kundenbereichs, archivierte eingeschlossen (AP-09 IP-5) — daneben die Bezugsflächen der Ortsstruktur (IP-6). */
+  bezugsgroessen: () =>
+    request<BezugsgroessenListe>(`/api/v1/bezugsgroessen`),
+
+  /** Die Bezugsflächen mit ihrem Wert je Periode am Stichtag (E17, S3) — nur lesen, es gibt keinen Schreibweg. */
+  bezugsflaechen: (periodeArt: 'tag' | 'woche' | 'monat' | 'jahr', von: string, bis: string) =>
+    request<Bezugsflaechen>(
+      `/api/v1/bezugsflaechen?periode_art=${periodeArt}&von=${encodeURIComponent(von)}&bis=${encodeURIComponent(bis)}`,
+    ),
+
+  /** Die Intervalle eines Stammdatums (E15); mit Periode zusätzlich der Wert je Periode am Stichtag. */
+  bezugsgroesseStammdatum: (id: string, periode?: { periodeArt: 'tag' | 'woche' | 'monat' | 'jahr'; von: string; bis: string }) =>
+    request<BezugsgroesseStammdatum>(
+      `/api/v1/bezugsgroessen/${id}/stammdatum` +
+        (periode
+          ? `?periode_art=${periode.periodeArt}&von=${encodeURIComponent(periode.von)}&bis=${encodeURIComponent(periode.bis)}`
+          : ''),
+    ),
+
+  /** Ein Wert eines Stammdatums ab einem Tag (E15/S4); eine Ablehnung trägt `code` aus `bezugsgroesse.ts`. */
+  bezugsgroesseStammdatumEintragen: (id: string, body: { wert: string; gueltig_ab: string }) =>
+    request<BezugsgroesseStammdatum>(`/api/v1/bezugsgroessen/${id}/stammdatum`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
+  bezugsgroesse: (id: string) => request<Bezugsgroesse>(`/api/v1/bezugsgroessen/${id}`),
+
+  /** Legt eine Bezugsgröße an; eine Ablehnung trägt `code` aus `bezugsgroesse.ts` (`ABLEHNUNGEN`). */
+  bezugsgroesseAnlegen: (body: BezugsgroesseAnfrage) =>
+    request<Bezugsgroesse>(`/api/v1/bezugsgroessen`, { method: 'POST', body: JSON.stringify(body) }),
+
+  /** Ändert die GANZE Bezugsgröße (mit Kennzeichen); nach dem ersten Wert nur Name und Kennzeichen. */
+  bezugsgroesseAendern: (id: string, body: BezugsgroesseAnfrage & { kennzeichen: string }) =>
+    request<Bezugsgroesse>(`/api/v1/bezugsgroessen/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+
+  /** Archiviert eine Bezugsgröße — die Werte bleiben lesbar, das Kennzeichen belegt. */
+  bezugsgroesseArchivieren: (id: string) =>
+    request<Bezugsgroesse>(`/api/v1/bezugsgroessen/${id}/archivieren`, { method: 'POST' }),
+
+  /** Löscht eine Bezugsgröße ohne einen einzigen Wert (sonst 409 `hat_werte`). */
+  bezugsgroesseLoeschen: (id: string) =>
+    request<void>(`/api/v1/bezugsgroessen/${id}`, { method: 'DELETE' }),
+
+  /** Vorschau und Übernahme schicken die Datei erneut; der Browser setzt die Multipart-Grenze. */
+  bezugsdatenVorschau: (datei: File, zuordnung: BezugsdatenZuordnung | null, vorlageId: string | null = null) => {
+    const body = new FormData(); body.append('datei', datei);
+    if (vorlageId) body.append('vorlage_id', vorlageId); else body.append('zuordnung', JSON.stringify(zuordnung));
+    return request<BezugsdatenVorschau>('/api/v1/bezugsdaten/importe/vorschau', { method: 'POST', body });
+  },
+  bezugsdatenImportieren: (datei: File, zuordnung: BezugsdatenZuordnung | null, vorlageId: string | null, bestaetigung: { vorschau: string; entscheidungen: Record<number, string>; begruendung: string | null; teiluebernahme: string | null }) => {
+    const body = new FormData(); body.append('datei', datei);
+    if (vorlageId) body.append('vorlage_id', vorlageId); else body.append('zuordnung', JSON.stringify(zuordnung));
+    body.append('bestaetigung', JSON.stringify(bestaetigung));
+    return request<BezugsdatenImportErgebnis>('/api/v1/bezugsdaten/importe', { method: 'POST', body });
+  },
+  bezugsdatenImporte: () => request<{ importe: BezugsdatenImportProtokollEintrag[] }>('/api/v1/bezugsdaten/importe'),
+  bezugsdatenImport: (kennung: string) => request<BezugsdatenImportProtokollEintrag>(`/api/v1/bezugsdaten/importe/${encodeURIComponent(kennung)}`),
+  bezugsdatenRuecknahmeVorschau: (kennung: string) => request<BezugsdatenRuecknahmeVorschau>(`/api/v1/bezugsdaten/importe/${encodeURIComponent(kennung)}/ruecknahme/vorschau`),
+  bezugsdatenImportZuruecknehmen: (kennung: string, begruendung: string) => request<BezugsdatenImportErgebnis>(`/api/v1/bezugsdaten/importe/${encodeURIComponent(kennung)}/ruecknahme`, { method: 'POST', body: JSON.stringify({ begruendung }) }),
+  bezugsdatenVorlagen: () => request<{ vorlagen: BezugsdatenVorlage[] }>('/api/v1/bezugsdaten/vorlagen'),
+  bezugsdatenVorlageSpeichern: (body: { vorlage_id?: string; name: string; zuordnung: BezugsdatenZuordnung }) =>
+    request<BezugsdatenVorlage>('/api/v1/bezugsdaten/vorlagen', { method: 'POST', body: JSON.stringify(body) }),
+
+  /** Die Kennzahlen des Kundenbereichs, archivierte eingeschlossen (AP-11 IP-5); Ablehnungen tragen `KennzahlFehlerCode`. */
+  /** Mit `'auswertung'` trägt jede auswertbare Kennzahl ihre `auswertung` (Konzept Auswerten a1, PR1). */
+  kennzahlen: (mit?: 'auswertung') =>
+    request<{
+      kennzahlen: Kennzahl[];
+      ausserhalb_zugriff?: { anzahl: number; text: string };
+      /** Nur mit `mit=auswertung`: die Kennzahl der Leitkachel der Übersicht (§10.8); fehlt ohne eine. */
+      leitkennzahl?: string;
+    }>(`/api/v1/kennzahlen${mit ? `?mit=${mit}` : ''}`),
+  /** Konzept Auswerten a1 (PR2): mit `mit = 'auswertung'` trägt die Kennzahl dieselbe Auswertung wie in der Liste. */
+  kennzahl: (id: string, mit?: 'auswertung') =>
+    request<Kennzahl>(`/api/v1/kennzahlen/${id}${mit ? `?mit=${mit}` : ''}`),
+  /** Legt die Kennzahl mit Fassung 1 „gilt seit Beginn“ an. */
+  kennzahlAnlegen: (body: KennzahlAnfrage) =>
+    request<Kennzahl>(`/api/v1/kennzahlen`, { method: 'POST', body: JSON.stringify(body) }),
+  /** Prüft und rechnet die letzten drei Perioden — schreibt nichts. */
+  kennzahlVorschau: (body: KennzahlAnfrage) =>
+    request<KennzahlVorschau>(`/api/v1/kennzahlen/vorschau`, { method: 'POST', body: JSON.stringify(body) }),
+  /** Der Vorlagen-Katalog (AP-11 IP-10) — dieselben Knoten wie die Portal-Kopie `src/kennzahlen/kennzahl-vorlagen.json`. */
+  kennzahlVorlagen: () => request<KennzahlVorlagen>(`/api/v1/kennzahl-vorlagen`),
+  /** Die GANZEN Stammdaten ohne Fassung. */
+  kennzahlAendern: (id: string, body: { kennzeichen: string; name: string; verantwortlich_name: string; zweck?: string | null }) =>
+    request<Kennzahl>(`/api/v1/kennzahlen/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  kennzahlArchivieren: (id: string) => request<Kennzahl>(`/api/v1/kennzahlen/${id}/archivieren`, { method: 'POST' }),
+  /** Nur ohne Wert und ohne lesende Kennzahl (sonst 409 `hat_werte` bzw. `wird_gelesen`). */
+  kennzahlLoeschen: (id: string) => request<void>(`/api/v1/kennzahlen/${id}`, { method: 'DELETE' }),
+  kennzahlFassungen: (id: string) =>
+    request<{ kennzahl_id: string; kennzeichen: string; fassungen: KennzahlFassung[] }>(`/api/v1/kennzahlen/${id}/fassungen`),
+  /** Die Berechnung ab einem Tag als Fassung n + 1, mit Begründung, auch rückwirkend. */
+  kennzahlFassungEintragen: (
+    id: string,
+    body: { gueltig_ab: string; begruendung: string; periode_art?: KennzahlPeriodeArt | null; komplement?: boolean | null; eingaenge: KennzahlEingang[] },
+  ) =>
+    request<{ kennzahl_id: string; kennzeichen: string; fassungen: KennzahlFassung[] }>(`/api/v1/kennzahlen/${id}/fassungen`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  /** Die Fassung, die am Tag `am` (JJJJ-MM-TT, Vorgabe heute) galt. */
+  kennzahlBerechnung: (id: string, am?: string) =>
+    request<{ kennzahl_id: string; kennzeichen: string; am: string; fassung: KennzahlFassung }>(
+      `/api/v1/kennzahlen/${id}/berechnung` + (am ? `?am=${encodeURIComponent(am)}` : ''),
+    ),
+  /**
+   * Die Werte einer Kennzahl je Periode (AP-11 IP-7): `von` der erste, `bis` der LETZTE Tag einer Periode; ohne
+   * `version` je Schritt die neueste. Ungerundet — gerundet wird nur in der Anzeige.
+   */
+  kennzahlWerte: (id: string, periode: KennzahlPeriodeArt, von: string, bis: string, version?: number) =>
+    request<KennzahlWerte>(
+      `/api/v1/kennzahlen/${id}/werte?periode=${periode}&von=${von}&bis=${bis}` + (version ? `&version=${version}` : ''),
+    ),
+  /** Die Versionen EINER Periode (`von` = ihr erster Tag) — wer, wann, warum, und was vorher dastand. */
+  kennzahlWertVersionen: (id: string, periode: KennzahlPeriodeArt, von: string) =>
+    request<KennzahlWerteHistorie>(`/api/v1/kennzahlen/${id}/werte/versionen?periode=${periode}&von=${von}`),
+  /**
+   * UEMS AP-17 IP-8 — die Bezugsbasen einer Kennzahl (je Eintrag die Form von `GET …/bezugsbasen/{bid}`, laufende
+   * zuerst): die EINE Naht, über die Reiter, Basis-Zeile (IP-9) und der Vergleich (IP-20, Wahl erst ab zwei) ihre Basen finden.
+   */
+  kennzahlBezugsbasen: (id: string) => request<{ bezugsbasen: Bezugsbasis[] }>(`/api/v1/kennzahlen/${id}/bezugsbasen`),
+  /** Legt BB-… an (IP-7, B1/B4) — noch ohne Fassung. */
+  bezugsbasisAnlegen: (id: string) =>
+    request<Bezugsbasis>(`/api/v1/kennzahlen/${id}/bezugsbasen`, { method: 'POST', body: JSON.stringify({}) }),
+  /** Entwurf mit Vorschau (F1): der offene Entwurf wird neu gebildet; die Antwort ist die gespeicherte Fassung. */
+  bezugsbasisEntwurf: (id: string, bid: string, body: BezugsbasisEntwurf) =>
+    request<BezugsbasisFassung>(`/api/v1/kennzahlen/${id}/bezugsbasen/${bid}/fassungen`, { method: 'POST', body: JSON.stringify(body) }),
+  bezugsbasisFassung: (id: string, bid: string, n: number) =>
+    request<BezugsbasisFassung>(`/api/v1/kennzahlen/${id}/bezugsbasen/${bid}/fassungen/${n}`),
+  /**
+   * IP-8 (F1/F2): `beantragen` nur bei Vier-Augen (sonst 409 `vieraugen_aus`), `freigeben` gibt ohne Vier-Augen den
+   * Entwurf frei bzw. bestätigt mit Vier-Augen den Antrag (Entwurf dann 409 `vieraugen_beantragen`), `ablehnen` einen
+   * Antrag — je mit Begründung 10–500, Recht `bezugsbasis.freigeben`.
+   */
+  bezugsbasisFreigabe: (id: string, bid: string, n: number, schritt: 'beantragen' | 'freigeben' | 'ablehnen', begruendung: string) =>
+    request<BezugsbasisFassung>(`/api/v1/kennzahlen/${id}/bezugsbasen/${bid}/fassungen/${n}/${schritt}`, {
+      method: 'POST', body: JSON.stringify({ begruendung }),
+    }),
+  /** AP-17 IP-17 (F5, A4): „geprüft, bleibt“ mit Begründung 10–500 — die Fassung bleibt, die Frist beginnt neu. */
+  bezugsbasisBleibt: (id: string, bid: string, begruendung: string) =>
+    request<BezugsbasisZustand>(`/api/v1/kennzahlen/${id}/bezugsbasen/${bid}/bleibt`, { method: 'POST', body: JSON.stringify({ begruendung }) }),
+  /** AP-17 IP-17 (F4): beenden — `tag` ist der letzte eingeschlossene Tag, vor heute nur mit `rueckwirkend`. */
+  bezugsbasisBeenden: (id: string, bid: string, body: { tag: string; grund: string; begruendung: string; rueckwirkend?: boolean }) =>
+    request<BezugsbasisZustand>(`/api/v1/kennzahlen/${id}/bezugsbasen/${bid}/beenden`, { method: 'POST', body: JSON.stringify(body) }),
+  // ------------------------------------------------------------------ Energieziele (UEMS AP-18 IP-6/IP-7)
+  /** IP-6 (Z1): das Register — wahlweise einer Kennzahl oder eines Zustands; Recht `verbesserung.ansehen`. */
+  energieziele: (filter: { kennzahl?: string; zustand?: EnergiezielZustand } = {}) => {
+    const q = new URLSearchParams(Object.entries(filter).filter((e): e is [string, string] => !!e[1])).toString();
+    return request<EnergiezielListe>(`/api/v1/energieziele${q ? `?${q}` : ''}`);
+  },
+  /** IP-6 (Z1/Z2): anlegen an einer Kennzahl mit freigegebener Bezugsbasis; Recht `verbesserung.verwalten`. */
+  energiezielAnlegen: (body: EnergiezielNeu) =>
+    request<Energieziel>('/api/v1/energieziele', { method: 'POST', body: JSON.stringify(body) }),
+  energieziel: (id: string) => request<Energieziel>(`/api/v1/energieziele/${id}`),
+  /** IP-6 (Z3/Z4): der Ziel-Stand — je Monat der Vergleich, Σ ÷ Σ, „x von y“, Vorschlag nur bei vollständiger Periode. */
+  energiezielStand: (id: string) => request<EnergiezielStand>(`/api/v1/energieziele/${id}/stand`),
+  /** IP-6 (Z5): vorzeitig beenden (Tag, Begründung 10–500) — endgültig, nie gelöscht. */
+  energiezielBeenden: (id: string, body: { zum?: string; begruendung: string }) =>
+    request<Energieziel>(`/api/v1/energieziele/${id}/beenden`, { method: 'POST', body: JSON.stringify(body) }),
+  /**
+   * IP-7 (Z4/Z5, Muster Basis-Fassung AP-17 IP-8): `bewerten` setzt Ergebnis und Begründung (mit Vier-Augen 409
+   * `vieraugen_beantragen`), `beantragen` stellt den Antrag (ohne Vier-Augen 409 `vieraugen_aus`), `freigeben` (Begründung
+   * wahlfrei) und `ablehnen` entscheidet eine ZWEITE Person mit Rolle KA/EM; Recht `verbesserung.abschliessen`.
+   */
+  energiezielBewertung: (id: string, schritt: EnergiezielBewertungSchritt, body: { ergebnis?: EnergiezielErgebnis; begruendung?: string }) =>
+    request<Energieziel>(`/api/v1/energieziele/${id}/${schritt === 'bewerten' ? 'bewerten' : `bewertung/${schritt}`}`, {
+      method: 'POST', body: JSON.stringify(body),
+    }),
+  /** IP-17-NAHT (Z5): Antwort auf einen Anstoß am Energieziel — `bleibt` (Begründung) oder `neu_bewertet`. */
+  energiezielAnstossAntwort: (id: string, aid: string, body: VorgangAnstossAntwort) =>
+    request<Energieziel>(`/api/v1/energieziele/${id}/anstoesse/${aid}/antwort`, { method: 'POST', body: JSON.stringify(body) }),
+  // ------------------------------------------------------------------ Maßnahmen (UEMS AP-18 IP-10)
+  /** Das Register im Zaun; `frist` beim Abruf (E5 = A). Gefiltert wird im Portal über die gelesene Liste. */
+  massnahmen: () => request<MassnahmeListe>('/api/v1/massnahmen'),
+  /**
+   * Konzept Verbessern, Entscheid 5: die Maßnahmen für ein Energieziel und die, deren Wirkung schon im Stand enthalten
+   * ist (an derselben Kennzahl umgesetzt) - diese zusätzlich in `im_stand_enthalten`.
+   */
+  massnahmenZumEnergieziel: (energiezielId: string) =>
+    request<MassnahmeListe>(`/api/v1/massnahmen?energieziel=${encodeURIComponent(energiezielId)}`),
+  massnahme: (id: string) => request<Massnahme>(`/api/v1/massnahmen/${id}`),
+  /** Entscheid 13: die Umrechnung der erwarteten Wirkung in kWh im Jahr - liest nur, festgehalten wird beim Anlegen. */
+  massnahmeSchaetzung: (kennzahl: string, prozent: number) =>
+    request<MassnahmeSchaetzung>(
+      `/api/v1/massnahmen/schaetzung?kennzahl=${encodeURIComponent(kennzahl)}&prozent=${encodeURIComponent(String(prozent))}`,
+    ),
+  massnahmeAnlegen: (body: MassnahmeNeu) =>
+    request<Massnahme>('/api/v1/massnahmen', { method: 'POST', body: JSON.stringify(body) }),
+  massnahmeAendern: (id: string, body: MassnahmeAendern) =>
+    request<Massnahme>(`/api/v1/massnahmen/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  massnahmeVerantwortlicher: (id: string, body: { benutzer: string; begruendung: string }) =>
+    request<Massnahme>(`/api/v1/massnahmen/${id}/verantwortlicher`, { method: 'PUT', body: JSON.stringify(body) }),
+  massnahmeUmgesetzt: (id: string, body: { am: string; begruendung: string }) =>
+    request<Massnahme>(`/api/v1/massnahmen/${id}/umgesetzt`, { method: 'POST', body: JSON.stringify(body) }),
+  massnahmeVerwerfen: (id: string, body: { begruendung: string }) =>
+    request<Massnahme>(`/api/v1/massnahmen/${id}/verwerfen`, { method: 'POST', body: JSON.stringify(body) }),
+  massnahmeKommentar: (id: string, body: { text: string }) =>
+    request<Massnahme>(`/api/v1/massnahmen/${id}/eintraege`, { method: 'POST', body: JSON.stringify(body) }),
+  /** IP-11 (WK1–WK5): die Wirkung — ein Leser; `monate` 12 … 36 (Vorgabe 12), sonst 400. */
+  massnahmeWirkung: (id: string, monate?: number) =>
+    request<MassnahmeWirkung>(`/api/v1/massnahmen/${id}/wirkung${monate ? `?monate=${monate}` : ''}`),
+  /** IP-12 (WK6): alle Stände der Bewertung nach Nr., auch beantragte und abgelehnte. */
+  massnahmeBewertungen: (id: string) => request<MassnahmeBewertungen>(`/api/v1/massnahmen/${id}/bewertungen`),
+  /**
+   * IP-12 (WK6, Muster Energieziel IP-7): `bewerten` setzt Stand Nr. n (mit Vier-Augen 409 `vieraugen_beantragen`),
+   * `beantragen` stellt den Antrag, `freigeben` (Begründung wahlfrei) und `ablehnen` entscheidet eine ZWEITE Person —
+   * nie der Urheber, nie der Verantwortliche; Recht `verbesserung.abschliessen`.
+   */
+  massnahmeBewertung: (id: string, schritt: MassnahmeBewertungSchritt, body: { ergebnis?: MassnahmeErgebnis; begruendung?: string }) =>
+    request<Massnahme>(`/api/v1/massnahmen/${id}/bewertungen${schritt === 'bewerten' ? '' : `/${schritt}`}`, {
+      method: 'POST', body: JSON.stringify(body),
+    }),
+  /** IP-17-NAHT (M5): Antwort auf einen Anstoß an der Maßnahme — `bleibt` (Begründung), `neu_kopiert`, `neu_bewertet`. */
+  massnahmeAnstossAntwort: (id: string, aid: string, body: VorgangAnstossAntwort) =>
+    request<Massnahme>(`/api/v1/massnahmen/${id}/anstoesse/${aid}/antwort`, { method: 'POST', body: JSON.stringify(body) }),
+  // ------------------------------------------------------------------ Auffälligkeiten und Abweichungen (UEMS AP-18 IP-16)
+  /** Die Vermerke einer Kennzahl — offen und beantwortet; `offen` zählt immer alle offenen. */
+  auffaelligkeiten: (kennzahlId: string) => request<AuffaelligkeitListe>(`/api/v1/kennzahlen/${kennzahlId}/auffaelligkeiten`),
+  /** Verbessern (Entscheid 4): die Vermerke aller sichtbaren Kennzahlen; beantwortet wird an der Kennzahl. */
+  alleAuffaelligkeiten: (zustand?: Auffaelligkeit['zustand']) =>
+    request<AuffaelligkeitenAlle>(`/api/v1/auffaelligkeiten${zustand ? `?zustand=${zustand}` : ''}`),
+  auffaelligkeitAntworten: (kennzahlId: string, vermerkId: string, body: AuffaelligkeitAntwort) =>
+    request<{ vermerk: Auffaelligkeit; abweichung: Abweichung | null }>(
+      `/api/v1/kennzahlen/${kennzahlId}/auffaelligkeiten/${vermerkId}/antwort`, { method: 'POST', body: JSON.stringify(body) }),
+  /** Das Register im Zaun; `frist` beim Abruf (E5 = A). Gefiltert wird im Portal über die gelesene Liste. */
+  abweichungen: () => request<AbweichungListe>('/api/v1/abweichungen'),
+  abweichung: (id: string) => request<Abweichung>(`/api/v1/abweichungen/${id}`),
+  abweichungEroeffnen: (body: AbweichungNeu) =>
+    request<Abweichung>('/api/v1/abweichungen', { method: 'POST', body: JSON.stringify(body) }),
+  abweichungEintrag: (id: string, body: AbweichungEintragNeu) =>
+    request<Abweichung>(`/api/v1/abweichungen/${id}/eintraege`, { method: 'POST', body: JSON.stringify(body) }),
+  abweichungFrist: (id: string, body: { frist: string; begruendung: string }) =>
+    request<Abweichung>(`/api/v1/abweichungen/${id}/frist`, { method: 'PUT', body: JSON.stringify(body) }),
+  abweichungVerantwortlicher: (id: string, body: { benutzer: string; begruendung: string }) =>
+    request<Abweichung>(`/api/v1/abweichungen/${id}/verantwortlicher`, { method: 'PUT', body: JSON.stringify(body) }),
+  abweichungAbschliessen: (id: string, body: { ergebnis: AbweichungErgebnis; begruendung: string; massnahme?: string }) =>
+    request<Abweichung>(`/api/v1/abweichungen/${id}/abschliessen`, { method: 'POST', body: JSON.stringify(body) }),
+  kennzahlVariablenVorschlag: (id: string, referenzperiode?: string) =>
+    request<VariablenVorschlag>(`/api/v1/kennzahlen/${id}/variablen-vorschlag` + (referenzperiode ? `?referenzperiode=${encodeURIComponent(referenzperiode)}` : '')),
+  kennzahlFaktorenVorschlag: (id: string, stichtag?: string) =>
+    request<FaktorenVorschlag>(`/api/v1/kennzahlen/${id}/faktoren-vorschlag` + (stichtag ? `?stichtag=${stichtag}` : '')),
+
+  /**
+   * Die Werte mit ihren Fassungen und der Herkunft je Fassung. `von`/`bis` sind Tage
+   * (JJJJ-MM-TT, der letzte einschließlich); `fassungen` `wirksam` (Vorgabe) oder `alle`.
+   */
+  bezugswertEingeben: (id: string, body: { periode: string; wert: string }) =>
+    request<BezugswertAntwort>(`/api/v1/bezugsgroessen/${encodeURIComponent(id)}/werte`, { method: 'POST', body: JSON.stringify(body) }),
+  bezugswertBerichtigen: (id: string, periode: string, body: { wert: string; begruendung: string }) =>
+    request<BezugswertAntwort>(`/api/v1/bezugsgroessen/${encodeURIComponent(id)}/werte/${encodeURIComponent(periode)}/berichtigung`, { method: 'POST', body: JSON.stringify(body) }),
+  ablesungen: (kz: string) => request<Ablesung[]>(`/api/v1/messstellen/${encodeURIComponent(kz)}/ablesungen`),
+  ablesungEintragen: (kz: string, body: { zeitpunkt: string; stand: string; zuordnung_monat: string | null }) =>
+    request<AblesungAntwort>(`/api/v1/messstellen/${encodeURIComponent(kz)}/ablesungen`, { method: 'POST', body: JSON.stringify(body) }),
+  ablesungBerichtigen: (kz: string, zeitpunkt: string, body: { stand: string; zuordnung_monat: string | null; begruendung: string }) =>
+    request<AblesungAntwort>(`/api/v1/messstellen/${encodeURIComponent(kz)}/ablesungen/${encodeURIComponent(zeitpunkt)}/berichtigung`, { method: 'POST', body: JSON.stringify(body) }),
+
+  bezugsKanaele: (id: string) => request<BezugsKanalAuswahl[]>(`/api/v1/bezugsgroessen/${id}/kanalbindung/kanaele`),
+  kanalbindungen: (id: string) => request<BezugsKanalbindung[]>(`/api/v1/bezugsgroessen/${id}/kanalbindung`),
+  kanalBinden: (id: string, body: BezugsKanalAnfrage) => request<BezugsKanalbindung>(`/api/v1/bezugsgroessen/${id}/kanalbindung`, { method: 'POST', body: JSON.stringify(body) }),
+  kanalBeenden: (id: string, bindung: string, bis: string) => request<BezugsKanalbindung>(`/api/v1/bezugsgroessen/${id}/kanalbindung/${bindung}/beenden`, { method: 'POST', body: JSON.stringify({ bis }) }),
+  /** AP-17 IP-12c: Wetter-Archiv an der Gradtagzahl — lesen, binden (kein Abruf), lösen (Werte bleiben). */
+  wetterbezug: (id: string) => request<Wetterbezug>(`/api/v1/bezugsgroessen/${id}/wetterbezug`),
+  wetterBinden: (id: string, body: WetterbezugAnfrage) => request<Wetterbezug>(`/api/v1/bezugsgroessen/${id}/wetterbezug`, { method: 'PUT', body: JSON.stringify(body) }),
+  wetterLoesen: (id: string) => request<void>(`/api/v1/bezugsgroessen/${id}/wetterbezug`, { method: 'DELETE' }),
+  /** AP-17 IP-12c: die Zeile „Wetter“ am Standort. */
+  standortWetter: (standortId: string) => request<StandortWetter>(`/api/v1/standorte/${standortId}/wetter`),
+  bezugsgroesseWerte: (id: string, abfrage: { von?: string; bis?: string; fassungen?: BezugsgroesseLesart } = {}) => {
+    const q = new URLSearchParams();
+    if (abfrage.von) q.set('von', abfrage.von);
+    if (abfrage.bis) q.set('bis', abfrage.bis);
+    if (abfrage.fassungen) q.set('fassungen', abfrage.fassungen);
+    const s = q.toString();
+    return request<BezugsgroesseWerte>(`/api/v1/bezugsgroessen/${id}/werte${s ? `?${s}` : ''}`);
+  },
+  /**
+   * UEMS AP-03 IP-4: die Selbstauskunft — wer fragt und was er darf. Die Berichts-Dialoge (AP-12 IP-14) lesen daraus,
+   * welche Hebel sie zeigen; entscheiden tut weiter die Route.
+   */
+  selbstauskunft: () => request<Selbstauskunft>('/api/v1/me'),
+  /**
+   * Die Berichte, die die Person lesen darf (AP-12 IP-7); Ablehnungen tragen `BerichtFehlerCode`. `abruf` ist der
+   * Augenblick der Route - die Uhr der Zeitraum-Wahl beim Anlegen (Konzept Nachweisen n1, Befund 3).
+   */
+  /** Mit `archiviert: true` auch die archivierten Berichte (Konzept Nachweisen n1, C8: die Zeile „Archiviert · n“). */
+  berichte: (o: { archiviert?: boolean } = {}) => request<{ berichte: Bericht[]; abruf: string }>(`/api/v1/berichte${o.archiviert ? '?archiviert=true' : ''}`),
+  /** AP-17 IP-17: laufende Bezugsbasen nach Zustand und die fälligen Überprüfungen — Frist beim Abruf abgeleitet. */
+  bezugsbasisUebersicht: () => request<BezugsbasisUebersicht>(`/api/v1/bezugsbasen/uebersicht`),
+  /** AP-18 IP-19: Ziele und Maßnahmen — Zähler je Art und die fälligen Vorgänge, beim Abruf abgeleitet (F1–F3, W7). */
+  verbesserungUebersicht: () => request<VerbesserungUebersicht>(`/api/v1/verbesserung/uebersicht`),
+  /**
+   * AP-17 IP-20: der Vergleich mit der Bezugsbasis (Leser IP-19, §16) — je Monat roh ohne Urteil und bereinigt mit
+   * Band; ohne `basis` die laufende, ohne `von`/`bis` die zwölf abgeschlossenen Monate vor dem laufenden.
+   */
+  bezugsbasisVergleich: (kennzahlId: string, wahl: BezugsbasisVergleichWahl = {}) => {
+    const q = new URLSearchParams(
+      (['basis', 'von', 'bis'] as const).flatMap((k) => (wahl[k] ? [[k, wahl[k]] as [string, string]] : [])),
+    ).toString();
+    return request<BezugsbasisVergleich>(`/api/v1/kennzahlen/${kennzahlId}/vergleich${q ? `?${q}` : ''}`);
+  },
+  /** Legt den Bericht an und bildet seinen Entwurf. */
+  berichtAnlegen: (body: BerichtAnlegen) =>
+    request<Bericht>(`/api/v1/berichte`, { method: 'POST', body: JSON.stringify(body) }),
+  bericht: (kennung: string) => request<BerichtDetail>(`/api/v1/berichte/${kennung}`),
+  /** Der Entwurf nach der D4-Prüfung, nötigenfalls neu gebildet. */
+  berichtEntwurf: (kennung: string) => request<BerichtEntwurf>(`/api/v1/berichte/${kennung}/entwurf`),
+  berichtVergleich: (kennung: string, gegen: number) =>
+    request<BerichtVergleich>(`/api/v1/berichte/${kennung}/entwurf/vergleich?gegen=${gegen}`),
+  /** Gibt genau den gesehenen Entwurf frei (F2); dieselbe Freigabe noch einmal ist derselbe Stand (F5, 200). */
+  berichtFreigeben: (kennung: string, entwurfDatenstand: string) =>
+    request<BerichtStand>(`/api/v1/berichte/${kennung}/freigeben`, {
+      method: 'POST',
+      body: JSON.stringify({ entwurf_datenstand: entwurfDatenstand }),
+    }),
+  berichtStand: (kennung: string, nr: number) => request<BerichtStand>(`/api/v1/berichte/${kennung}/staende/${nr}`),
+  /**
+   * AP-16 IP-25: die Datei eines Stands (`GET …/staende/{nr}/pdf|csv`, AP-12 IP-10/IP-11) — nur aus dem Abzug, jeder Abruf
+   * protokolliert (`bericht_abgerufen`). Ein Entwurf hat keine Datei (EW4).
+   */
+  berichtDatei: async (kennung: string, nr: number, format: 'pdf' | 'csv'): Promise<Blob> => {
+    const token = await freshToken();
+    const res = await fetch(`${API_BASE}/api/v1/berichte/${kennung}/staende/${nr}/${format}`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...bereichKopf(`/api/v1/berichte/${kennung}/staende/${nr}/${format}`),
+      },
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => undefined);
+      throw new ApiError(res.status, (body as { message?: string } | undefined)?.message ?? 'Die Datei konnte nicht abgerufen werden.', body);
+    }
+    return res.blob();
+  },
+  /** Verwirft einen offenen Anstoß — die Begründung ist Pflicht (10 bis 500 Zeichen). */
+  berichtAnstossVerwerfen: (kennung: string, id: string, begruendung: string) =>
+    request<BerichtAnstoss>(`/api/v1/berichte/${kennung}/anstoesse/${id}/verwerfen`, {
+      method: 'POST',
+      body: JSON.stringify({ begruendung }),
+    }),
+  /**
+   * „Nein, Stand n behalten“ (Konzept Nachweisen n1, Entscheid 16): die gesehenen offenen Anstöße mit EINEM Grund in
+   * einer Transaktion - alle oder keiner (409 `anstoss_nicht_offen` mit `anstoss_id`).
+   */
+  berichtAnstoesseVerwerfen: (kennung: string, anstossIds: readonly string[], begruendung: string) =>
+    request<{ anstoesse: BerichtAnstoss[] }>(`/api/v1/berichte/${kennung}/anstoesse/verwerfen`, {
+      method: 'POST',
+      body: JSON.stringify({ anstoss_ids: anstossIds, begruendung }),
+    }),
+  berichtArchivieren: (kennung: string) =>
+    request<Bericht>(`/api/v1/berichte/${kennung}/archivieren`, { method: 'POST' }),
+  /**
+   * Welche freigegebenen Berichtsstände eine Strukturänderung an `objekt` mit Wirkung ab `giltAb` träfe
+   * (AP-12 IP-9). 403, wenn die Person keinen Bericht lesen darf — die Folgen-Karten zeigen dann nichts.
+   */
+  berichteBetroffen: (objekt: string, giltAb: string, anlass: BerichtStrukturAnlass) =>
+    request<BerichteBetroffen>(
+      `/api/v1/berichte/betroffen?${new URLSearchParams({ objekt, gilt_ab: giltAb, anlass }).toString()}`,
+    ),
+  /** UEMS AP-16 IP-5: der Betrachtungsumfang am Stichtag; ohne Fassung die ungespeicherte Vorgabe (`fassung: null`). */
+  bewertungUmfang: (am?: string) =>
+    request<BewertungUmfang>(`/api/v1/unternehmen/bewertung/umfang${am ? `?am=${encodeURIComponent(am)}` : ''}`),
+  /** Speichert den Umfang als neue Fassung; identischer Inhalt liefert dieselbe Fassung. */
+  bewertungUmfangSpeichern: (body: BewertungUmfangSpeichern) =>
+    request<BewertungUmfang>(`/api/v1/unternehmen/bewertung/umfang`, { method: 'PUT', body: JSON.stringify(body) }),
+  /** UEMS AP-16 IP-12: Rangliste mit Urteil und Vorschlag; die Einstufung bleibt eine Entscheidung einer Person. */
+  bewertungRangliste: (von: string, bis: string) =>
+    request<BewertungRangliste>(`/api/v1/unternehmen/bewertung/rangliste?${new URLSearchParams({ von, bis }).toString()}`),
+  /** UEMS AP-16 IP-13: Messabdeckung je Einsatz und je Ort — gemessen, geplant (Menge null, nie 0), Ersatz, ungemessen. */
+  bewertungMessabdeckung: (von: string, bis: string) =>
+    request<BewertungMessabdeckung>(`/api/v1/unternehmen/bewertung/messabdeckung?${new URLSearchParams({ von, bis }).toString()}`),
+  /** UEMS AP-16 IP-15: die Messmittel-Angaben des Einbaus; ohne Angabe `nicht_erhoben` (G3). */
+  geraetMessmittel: (id: string) => request<MessmittelAngaben>(`/api/v1/geraete/${id}/messmittel`),
+  /** Trägt die ganze Angabe ein; der Beleg ist ein Verweis mit SHA-256 — die Datei verlässt den Browser nie (G2). */
+  geraetMessmittelEintragen: (id: string, body: MessmittelEintrag) =>
+    request<MessmittelAngaben>(`/api/v1/geraete/${id}/messmittel`, { method: 'PUT', body: JSON.stringify(body) }),
+  /** UEMS AP-16 IP-17: neue Toleranz-Fassung einer Vergleichsquelle; gilt ab dem laufenden Monat, nie rückwirkend. */
+  vergleichToleranzEintragen: (messstelleId: string, quelleId: string, body: { prozent: string; begruendung: string }) =>
+    request<VergleichToleranzFassung>(`/api/v1/messstellen/${messstelleId}/quellen/${quelleId}/toleranz`, {
+      method: 'POST', body: JSON.stringify(body),
+    }),
+  bewertungKriterien: () => request<BewertungKriterienFassung>(`/api/v1/unternehmen/bewertung/kriterien`),
+  bewertungKriterienSpeichern: (body: BewertungKriterienSpeichern) =>
+    request<BewertungKriterienFassung>(`/api/v1/unternehmen/bewertung/kriterien`, { method: 'PUT', body: JSON.stringify(body) }),
+  /** Konzept Auswerten a1, Befund 6: alle Fassungen, auch eine beantragte (Vier-Augen) — sie wartet auf eine zweite Person. */
+  bewertungKriterienHistorie: () =>
+    request<{ fassungen: BewertungKriterienFassung[] }>(`/api/v1/unternehmen/bewertung/kriterien/fassungen`),
+  /** Die zweite Person gibt eine beantragte Fassung frei (403 `zweite_person_noetig`, 409 `bereits_entschieden`). */
+  bewertungKriterienFreigeben: (nummer: number) =>
+    request<BewertungKriterienFassung>(`/api/v1/unternehmen/bewertung/kriterien/${nummer}/freigeben`, { method: 'POST', body: JSON.stringify({}) }),
+  /** Die zweite Person lehnt ab — mit Begründung (422 `begruendung_fehlt`). */
+  bewertungKriterienAblehnen: (nummer: number, begruendung: string) =>
+    request<BewertungKriterienFassung>(`/api/v1/unternehmen/bewertung/kriterien/${nummer}/ablehnen`, {
+      method: 'POST', body: JSON.stringify({ begruendung }),
+    }),
+  /** UEMS AP-16 IP-4: die Energieeinsätze, laufende zuerst; Ablehnungen tragen `EnergieeinsatzFehlerCode`. */
+  energieeinsaetze: () => request<{ energieeinsaetze: Energieeinsatz[] }>(`/api/v1/unternehmen/energieeinsaetze`),
+  /** Prozesse ohne laufenden Einsatz für Strom — die Vorschläge des Prozess-Pickers. */
+  energieeinsatzVorschlaege: () =>
+    request<{ vorschlaege: EnergieeinsatzVorschlag[] }>(`/api/v1/unternehmen/energieeinsaetze/vorschlaege`),
+  energieeinsatz: (id: string) => request<Energieeinsatz>(`/api/v1/unternehmen/energieeinsaetze/${id}`),
+  energieeinsatzAnlegen: (body: EnergieeinsatzAnlegen) =>
+    request<Energieeinsatz>(`/api/v1/unternehmen/energieeinsaetze`, { method: 'POST', body: JSON.stringify(body) }),
+  energieeinsatzBearbeiten: (id: string, body: EnergieeinsatzBearbeiten) =>
+    request<Energieeinsatz>(`/api/v1/unternehmen/energieeinsaetze/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  energieeinsatzBeenden: (id: string, body: { grund: string; gueltig_bis?: string }) =>
+    // Server und Vertrag kennen nur POST (`EnergieeinsatzController.beenden`); mit PUT antwortete die Route 405.
+    request<Energieeinsatz>(`/api/v1/unternehmen/energieeinsaetze/${id}/beenden`, { method: 'POST', body: JSON.stringify(body) }),
+  /** Verantwortlich ist eine Zuständigkeit, kein Recht (R14); `null` hebt sie auf. */
+  energieeinsatzVerantwortlicher: (id: string, verantwortlichSub: string | null) =>
+    request<Energieeinsatz>(`/api/v1/unternehmen/energieeinsaetze/${id}/verantwortlicher`, {
+      method: 'PUT',
+      body: JSON.stringify({ verantwortlich_sub: verantwortlichSub }),
+    }),
+  /** Ersetzt die Einflussgrößen; die Vorgänger bleiben im Protokoll. */
+  energieeinsatzEinflussgroessen: (id: string, einflussgroessen: EnergieeinsatzEinfluss[]) =>
+    request<Energieeinsatz>(`/api/v1/unternehmen/energieeinsaetze/${id}/einflussgroessen`, {
+      method: 'PUT',
+      body: JSON.stringify({ einflussgroessen }),
+    }),
+  energieeinsatzProtokoll: (id: string) =>
+    request<{ aenderungen: EnergieeinsatzAenderung[] }>(`/api/v1/unternehmen/energieeinsaetze/${id}/protokoll`),
+  energieeinsatzEinstufungen: (id: string) =>
+    request<EnergieeinsatzEinstufungHistorie>(`/api/v1/unternehmen/energieeinsaetze/${id}/einstufungen`),
+  energieeinsatzEinstufen: (id: string, body: EnergieeinsatzEinstufungSpeichern) =>
+    request<EnergieeinsatzEinstufungFassung>(`/api/v1/unternehmen/energieeinsaetze/${id}/einstufung`, {
+      method: 'PUT', body: JSON.stringify(body),
+    }),
+  energieeinsatzEinstufungBestaetigen: (id: string) =>
+    request<EnergieeinsatzEinstufungFassung>(`/api/v1/unternehmen/energieeinsaetze/${id}/einstufung/bestaetigen`, { method: 'POST' }),
+  /** UEMS AP-16 IP-19: alle Messbedarfe des Einsatzes — eingelöste und verworfene bleiben lesbar. */
+  messbedarfe: (einsatzId: string) =>
+    request<{ messbedarfe: Messbedarf[] }>(`/api/v1/unternehmen/energieeinsaetze/${einsatzId}/messbedarf`),
+  /**
+   * UEMS AP-16 P1: die Messbedarfe aller Einsätze, die die Anfrage sieht — mit `standort` nur die, deren strukturierter Ort
+   * heute dort hängt (ein Bedarf nur mit Ort-Wortlaut steht an keinem Standort).
+   */
+  messbedarfeAlle: (standort?: string) =>
+    request<{ messbedarfe: Messbedarf[] }>(`/api/v1/unternehmen/messbedarf${standort ? `?standort=${encodeURIComponent(standort)}` : ''}`),
+  /** Bearbeitet einen offenen Bedarf (ersetzt alle Felder); 409 `messbedarf_abgeschlossen` bzw. `berichts_belege`. */
+  messbedarfBearbeiten: (einsatzId: string, messbedarfId: string, body: MessbedarfAnlegen) =>
+    request<Messbedarf>(`/api/v1/unternehmen/energieeinsaetze/${einsatzId}/messbedarf/${messbedarfId}`, {
+      method: 'PUT', body: JSON.stringify(body),
+    }),
+  /** Das unveränderliche Protokoll des Bedarfs: Akteur, Zeitpunkt, Vorher-/Nachher-Stand. */
+  messbedarfProtokoll: (einsatzId: string, messbedarfId: string) =>
+    request<{ aenderungen: MessbedarfAenderung[] }>(`/api/v1/unternehmen/energieeinsaetze/${einsatzId}/messbedarf/${messbedarfId}/protokoll`),
+  /** Erfasst einen offenen Messbedarf; Recht `energieeinsatz.verwalten`. */
+  messbedarfErfassen: (einsatzId: string, body: MessbedarfAnlegen) =>
+    request<Messbedarf>(`/api/v1/unternehmen/energieeinsaetze/${einsatzId}/messbedarf`, { method: 'POST', body: JSON.stringify(body) }),
+  /** Löst ein — nur mit einer eingerichteten Messstelle (sonst 422 `messstelle_nicht_eingerichtet`). */
+  messbedarfEinloesen: (einsatzId: string, messbedarfId: string, messstelleId: string) =>
+    request<Messbedarf>(`/api/v1/unternehmen/energieeinsaetze/${einsatzId}/messbedarf/${messbedarfId}/einloesen`, {
+      method: 'POST', body: JSON.stringify({ messstelle_id: messstelleId }),
+    }),
+  /** Verwirft mit Pflicht-Begründung; der Bedarf bleibt lesbar. */
+  messbedarfVerwerfen: (einsatzId: string, messbedarfId: string, begruendung: string) =>
+    request<Messbedarf>(`/api/v1/unternehmen/energieeinsaetze/${einsatzId}/messbedarf/${messbedarfId}/verwerfen`, {
+      method: 'POST', body: JSON.stringify({ begruendung }),
+    }),
+  // ------------------------------------------------------------------ Energiemanagement (UEMS AP-19 IP-6/IP-7/IP-8)
+  /** IP-6 (PA1): die Personen im Energiemanagement — aktive zuerst; Recht `energiemanagement.ansehen`. */
+  energiemanagementPersonen: () => request<{ personen: EnergiemanagementPerson[] }>('/api/v1/energiemanagement/personen'),
+  /** IP-6 (PA1): Person erfassen, auch ohne Konto; Recht `energiemanagement.verwalten` am Unternehmen. */
+  energiemanagementPersonAnlegen: (body: EnergiemanagementPersonAnlegen) =>
+    request<{ person: EnergiemanagementPerson }>('/api/v1/energiemanagement/personen', { method: 'POST', body: JSON.stringify(body) }),
+  /** IP-6 (PA2, PA3): die Aufgaben am Tag mit der Leitung — nur unternehmensweit. */
+  energiemanagementAufgaben: (tag?: string) =>
+    request<EnergiemanagementAufgaben>(`/api/v1/energiemanagement/aufgaben${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`),
+  /**
+   * PA3, DK3: die Leitung am Tag für die Freigabe mit Leitungs-Pflicht - Recht `energiemanagement.freigeben` am Standort
+   * (ohne Standort am Unternehmen), auch ohne die Aufgaben unternehmensweit zu lesen (Konzept Nachweisen n1, Befund A4).
+   */
+  energiemanagementLeitung: (tag?: string | null, standort?: string | null) => {
+    const q = new URLSearchParams();
+    if (tag) q.set('tag', tag);
+    if (standort) q.set('standort', standort);
+    const s = q.toString();
+    return request<EnergiemanagementLeitung>(`/api/v1/energiemanagement/leitung${s ? `?${s}` : ''}`);
+  },
+  /** IP-6 (PA2): Aufgabe zuordnen — bei `unternehmensleitung` ohne „entschieden von“. */
+  energiemanagementAufgabeZuordnen: (body: EnergiemanagementAufgabeZuordnen) =>
+    request<EnergiemanagementZuordnung>('/api/v1/energiemanagement/aufgaben', { method: 'POST', body: JSON.stringify(body) }),
+  /** IP-6 (PA1): eine Person mit ihrem Verlauf (jede Konto-Verknüpfung steht darin). */
+  energiemanagementPerson: (id: string) =>
+    request<EnergiemanagementPersonMitVerlauf>(`/api/v1/energiemanagement/personen/${encodeURIComponent(id)}`),
+  /** IP-6 (PA1, PA5): der ganze Stand — Konto verknüpfen oder mit „bis“ beenden verlangt eine Begründung. */
+  energiemanagementPersonAendern: (id: string, body: EnergiemanagementPersonAendern) =>
+    request<EnergiemanagementPersonMitVerlauf>(`/api/v1/energiemanagement/personen/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(body) }),
+  /** IP-6 (PA2): Zuordnung beenden — einmal, der letzte Tag zählt mit. */
+  energiemanagementAufgabeBeenden: (id: string, body: EnergiemanagementAufgabeBeenden) =>
+    request<EnergiemanagementZuordnung>(`/api/v1/energiemanagement/aufgaben/${encodeURIComponent(id)}/beenden`, { method: 'POST', body: JSON.stringify(body) }),
+  /** IP-10 (PA4): „Wer ist wofür verantwortlich“ am Tag — gelesen, nichts kopiert. */
+  energiemanagementVerantwortung: (tag?: string) =>
+    request<EnergiemanagementVerantwortung>(`/api/v1/energiemanagement/verantwortung${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`),
+  /** IP-8 (VZ1–VZ4): das Verzeichnis zum Abruf — ein Leser über alle Quellen, gefiltert nach Gruppe, Tag, Person. */
+  energiemanagementVerzeichnis: (filter: EnergiemanagementVerzeichnisFilter = {}) => {
+    const q = new URLSearchParams(Object.entries(filter).filter((e): e is [string, string] => !!e[1])).toString();
+    return request<EnergiemanagementVerzeichnis>(`/api/v1/energiemanagement/verzeichnis${q ? `?${q}` : ''}`);
+  },
+  /** IP-8 (KS2): dasselbe Verzeichnis als CSV-Datei (`format=csv`) — ein Abruf, nichts wird verschickt. */
+  energiemanagementVerzeichnisCsv: async (filter: EnergiemanagementVerzeichnisFilter = {}): Promise<Blob> => {
+    const q = new URLSearchParams([...Object.entries(filter).filter((e): e is [string, string] => !!e[1]), ['format', 'csv']]).toString();
+    const token = await freshToken();
+    const res = await fetch(`${API_BASE}/api/v1/energiemanagement/verzeichnis?${q}`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...bereichKopf(`/api/v1/energiemanagement/verzeichnis?${q}`),
+      },
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => undefined);
+      throw new ApiError(res.status, (body as { message?: string } | undefined)?.message ?? 'Die Datei konnte nicht abgerufen werden.', body);
+    }
+    return res.blob();
+  },
+  /** Nachweisen n1, Entscheid 7: die Mappen, die jüngste zuerst (nur unternehmensweit). */
+  energiemanagementMappen: () => request<{ mappen: EnergiemanagementMappe[] }>('/api/v1/energiemanagement/mappen'),
+  energiemanagementMappe: (id: string) =>
+    request<EnergiemanagementMappe>(`/api/v1/energiemanagement/mappen/${encodeURIComponent(id)}`),
+  /** Nachweisen n1, Entscheid 7: Unterlagen zusammenstellen - PDF mit Inhaltsverzeichnis und Verzeichnis-CSV. */
+  energiemanagementMappeAnlegen: (body: EnergiemanagementMappeAnlegen) =>
+    request<EnergiemanagementMappe>('/api/v1/energiemanagement/mappen', { method: 'POST', body: JSON.stringify(body) }),
+  /** Nachweisen n1, Entscheid 7: eine Datei der Mappe - jeder Abruf protokolliert, nach 30 Tagen 410. */
+  energiemanagementMappeDatei: async (id: string, format: 'pdf' | 'csv'): Promise<Blob> => {
+    const pfad = `/api/v1/energiemanagement/mappen/${encodeURIComponent(id)}/${format}`;
+    const token = await freshToken();
+    const res = await fetch(`${API_BASE}${pfad}`, {
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}), ...bereichKopf(pfad) },
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => undefined);
+      throw new ApiError(res.status, (body as { message?: string } | undefined)?.message ?? 'Die Datei konnte nicht abgerufen werden.', body);
+    }
+    return res.blob();
+  },
+  /** Nachweisen n1, Entscheid 5: die Vermerke „Trifft bei uns zurzeit nicht zu“, geltende zuerst. */
+  energiemanagementTeilVermerke: () => request<EnergiemanagementTeilVermerke>('/api/v1/energiemanagement/teil-vermerke'),
+  /** Nachweisen n1, Entscheid 5: einen Teil als „trifft bei uns zurzeit nicht zu“ festhalten (409 `vermerk_besteht`). */
+  energiemanagementTeilVermerkAnlegen: (body: EnergiemanagementTeilVermerkAnlegen) =>
+    request<EnergiemanagementTeilVermerk>('/api/v1/energiemanagement/teil-vermerke', { method: 'POST', body: JSON.stringify(body) }),
+  /** Nachweisen n1, Entscheid 5: einen Vermerk aufheben; er bleibt lesbar. */
+  energiemanagementTeilVermerkAufheben: (id: string) =>
+    request<EnergiemanagementTeilVermerk>(`/api/v1/energiemanagement/teil-vermerke/${encodeURIComponent(id)}/aufheben`, { method: 'POST' }),
+  /** IP-21 (WV1–WV4): die Wiedervorlage — fällig und Vorschau über alle Objekte, beim Abruf abgeleitet. */
+  energiemanagementWiedervorlage: () => request<Wiedervorlage>('/api/v1/energiemanagement/wiedervorlage'),
+  /** Konzept Wiedervorlage w1: „Zuletzt erledigt“, die letzten Entscheidungen, die eine Frist beendet oder neu begonnen haben. */
+  energiemanagementWiedervorlageZuletzt: () => request<WiedervorlageZuletzt>('/api/v1/energiemanagement/wiedervorlage/zuletzt'),
+  /** IP-21 (E10 = A): dieselben Zeilen als Kalender-Abzug (`format=ics`) — ein Abruf, nichts wird verschickt. */
+  energiemanagementWiedervorlageIcs: async (): Promise<Blob> => {
+    const token = await freshToken();
+    const res = await fetch(`${API_BASE}/api/v1/energiemanagement/wiedervorlage?format=ics`, {
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...bereichKopf('/api/v1/energiemanagement/wiedervorlage?format=ics'),
+      },
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => undefined);
+      throw new ApiError(res.status, (body as { message?: string } | undefined)?.message ?? 'Die Datei konnte nicht abgerufen werden.', body);
+    }
+    return res.blob();
+  },
+  /** AP-19 IP-23 (MG4–MG6): Sitzung, Beschlüsse und ihre Folgen mit dem Zustand von heute; Recht `energiemanagement.ansehen`. */
+  managementbewertung: (kennung: string) =>
+    request<Managementbewertung>(`/api/v1/energiemanagement/managementbewertungen/${encodeURIComponent(kennung)}`),
+  /** MG4: die Sitzung festhalten (ersetzt die vorige Angabe) — bis zur Freigabe; `energiemanagement.verwalten`. */
+  managementbewertungSitzung: (kennung: string, body: ManagementbewertungSitzungFesthalten) =>
+    request<Managementbewertung>(`/api/v1/energiemanagement/managementbewertungen/${encodeURIComponent(kennung)}/sitzung`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  /** MG5: einen Beschluss festhalten (nächste Nr.) — nach der Sitzung, bis zur Freigabe. */
+  managementbewertungBeschluss: (kennung: string, body: ManagementbewertungBeschlussFesthalten) =>
+    request<Managementbewertung>(`/api/v1/energiemanagement/managementbewertungen/${encodeURIComponent(kennung)}/beschluesse`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  /** MG5: Beschluss `nr` ändern — bis zur Freigabe; die Nr. bleibt. */
+  managementbewertungBeschlussAendern: (kennung: string, nr: number, body: ManagementbewertungBeschlussFesthalten) =>
+    request<Managementbewertung>(`/api/v1/energiemanagement/managementbewertungen/${encodeURIComponent(kennung)}/beschluesse/${nr}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  /** MG6: eine Folge mit Beschluss `nr` verknüpfen — nach der Freigabe, nur anhängen; die Maßnahme verknüpft sich selbst. */
+  managementbewertungFolge: (kennung: string, nr: number, body: ManagementbewertungFolgeVerknuepfen) =>
+    request<Managementbewertung>(`/api/v1/energiemanagement/managementbewertungen/${encodeURIComponent(kennung)}/beschluesse/${nr}/folgen`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  /** IP-7 (DK1): die Dokumente im Zaun, je mit der Überprüfung beim Abruf. */
+  energiemanagementDokumente: () => request<{ dokumente: EnergiemanagementDokumentKurz[] }>('/api/v1/energiemanagement/dokumente'),
+  energiemanagementDokument: (id: string) => request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}`),
+  /** IP-7 (DK7, W5): Anwendungsbereich neben dem Betrachtungsumfang der energetischen Bewertung — ohne Urteil. */
+  energiemanagementVergleich: (id: string) => request<EnergiemanagementVergleich>(`/api/v1/energiemanagement/dokumente/${id}/vergleich`),
+  /** IP-14 (R7): der Abschnitt „Nachweise“ am Energieeinsatz — der Zaun folgt dem Standort des Einsatzes, sonst 404. */
+  energiemanagementNachweiseAmEinsatz: (id: string) =>
+    request<EnergiemanagementNachweiseAmEinsatz>(`/api/v1/energiemanagement/energieeinsaetze/${encodeURIComponent(id)}/nachweise`),
+  /** IP-14 (R8): die Nachweise an einer Person und an ihren Aufgaben — ohne Standort, wer nur Standorte liest, liest eine leere Liste. */
+  energiemanagementNachweiseDerPerson: (id: string) =>
+    request<EnergiemanagementNachweiseDerPerson>(`/api/v1/energiemanagement/personen/${encodeURIComponent(id)}/nachweise`),
+  energiemanagementDokumentAnlegen: (body: EnergiemanagementDokumentAnlegen) =>
+    request<EnergiemanagementDokument>('/api/v1/energiemanagement/dokumente', { method: 'POST', body: JSON.stringify(body) }),
+  /** IP-7 (DK2, G3): Fassung entwerfen — Wortlaut oder Verweis; ein offener Entwurf wird überschrieben. */
+  energiemanagementFassungEntwerfen: (id: string, body: EnergiemanagementFassungEntwerfen) =>
+    request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/fassungen`, { method: 'POST', body: JSON.stringify(body) }),
+  /** IP-7 (DK3): Freigabe beantragen — nur mit Vier-Augen. */
+  energiemanagementFassungBeantragen: (id: string, nr: number, body: EnergiemanagementEntscheid) =>
+    request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/fassungen/${nr}/beantragen`, { method: 'POST', body: JSON.stringify(body) }),
+  /** IP-7 (DK3, DK4): freigeben — mit „entschieden von“; bei Vier-Augen bestätigt eine zweite Person. */
+  energiemanagementFassungFreigeben: (id: string, nr: number, body: EnergiemanagementEntscheid) =>
+    request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/fassungen/${nr}/freigeben`, { method: 'POST', body: JSON.stringify(body) }),
+  /** DK5: „geprüft, bleibt“ an der gültigen Fassung einer Vorgabe; die Überprüfung beginnt neu. Recht `energiemanagement.freigeben`. */
+  energiemanagementDokumentGeprueft: (id: string, body: EnergiemanagementGeprueft) =>
+    request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/geprueft`, { method: 'POST', body: JSON.stringify(body) }),
+  /** DK3 (Entscheid 11): die zweite Person lehnt einen Antrag mit Begründung ab; danach ist ein neuer Entwurf möglich. */
+  energiemanagementFassungAblehnen: (id: string, nr: number, begruendung: string) =>
+    request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/fassungen/${nr}/ablehnen`, { method: 'POST', body: JSON.stringify({ begruendung }) }),
+  /** DK6 (Entscheid 12): bekannt gemacht an einem Kreis über EINEN Weg - mehrere Wege sind mehrere Einträge. */
+  energiemanagementBekanntmachen: (id: string, body: EnergiemanagementBekanntmachen) =>
+    request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/bekanntmachungen`, { method: 'POST', body: JSON.stringify(body) }),
+  /** DK8 (Entscheid 12): aufheben - Recht `energiemanagement.freigeben`; das Dokument bleibt mit allen Fassungen lesbar. */
+  energiemanagementDokumentAufheben: (id: string, body: EnergiemanagementAufheben) =>
+    request<EnergiemanagementDokument>(`/api/v1/energiemanagement/dokumente/${id}/aufheben`, { method: 'POST', body: JSON.stringify(body) }),
+  /** AP-08 E8 (Entscheid 11): ob bei diesem Unternehmen zwei Personen freigeben - das Blatt zeigt es vorab. */
+  unternehmenVierAugen: () => request<UnternehmenVierAugen>('/api/v1/unternehmen/vieraugen'),
+  /** AP-19 IP-18 (IA4): das Auditprogramm — alle internen Audits und das nächste fällige; Recht `energiemanagement.ansehen`. */
+  energiemanagementAudits: (tag?: string) =>
+    request<InternesAuditprogramm>(`/api/v1/energiemanagement/audits${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`),
+  energiemanagementAudit: (id: string) => request<InternesAuditMitVerlauf>(`/api/v1/energiemanagement/audits/${encodeURIComponent(id)}`),
+  /** IA1: planen — `energiemanagement.verwalten` am Unternehmen. */
+  energiemanagementAuditPlanen: (body: InternesAuditStand) =>
+    request<InternesAuditMitVerlauf>('/api/v1/energiemanagement/audits', { method: 'POST', body: JSON.stringify(body) }),
+  energiemanagementAuditDurchgefuehrt: (id: string, am: string) =>
+    request<InternesAuditMitVerlauf>(`/api/v1/energiemanagement/audits/${encodeURIComponent(id)}/durchgefuehrt`, { method: 'POST', body: JSON.stringify({ am }) }),
+  /** IA2, IA5: ein Hinweis — „festgestellt von“ ist die Person, die prüft. */
+  energiemanagementAuditHinweis: (id: string, body: { wortlaut: string; festgestellt_von: string; am?: string | null }) =>
+    request<InternesAuditMitVerlauf>(`/api/v1/energiemanagement/audits/${encodeURIComponent(id)}/hinweise`, { method: 'POST', body: JSON.stringify(body) }),
+  /** IA3: abschließen — `energiemanagement.freigeben`; danach unveränderlich. */
+  energiemanagementAuditAbschliessen: (id: string, body: InternesAuditAbschliessen) =>
+    request<InternesAuditMitVerlauf>(`/api/v1/energiemanagement/audits/${encodeURIComponent(id)}/abschliessen`, { method: 'POST', body: JSON.stringify(body) }),
+  energiemanagementAuditAbsagen: (id: string, begruendung: string) =>
+    request<InternesAuditMitVerlauf>(`/api/v1/energiemanagement/audits/${encodeURIComponent(id)}/absagen`, { method: 'POST', body: JSON.stringify({ begruendung }) }),
+  /** AP-19 IP-19 (FS1): offene zuerst, am längsten überfällig oben, dann abgeschlossene. */
+  energiemanagementFeststellungen: (tag?: string) =>
+    request<FeststellungListe>(`/api/v1/energiemanagement/feststellungen${tag ? `?tag=${encodeURIComponent(tag)}` : ''}`),
+  energiemanagementFeststellung: (id: string) =>
+    request<FeststellungMitVerlauf>(`/api/v1/energiemanagement/feststellungen/${encodeURIComponent(id)}`),
+  energiemanagementFeststellungErfassen: (body: FeststellungErfassen) =>
+    request<FeststellungMitVerlauf>('/api/v1/energiemanagement/feststellungen', { method: 'POST', body: JSON.stringify(body) }),
+  /** FS2: Einträge nur anhängen — immer die Aussage einer Person an einem Tag. */
+  energiemanagementFeststellungEintrag: (id: string, body: FeststellungEintragFesthalten) =>
+    request<FeststellungMitVerlauf>(`/api/v1/energiemanagement/feststellungen/${encodeURIComponent(id)}/eintraege`, { method: 'POST', body: JSON.stringify(body) }),
+  /** FS4 (`wirksam · nicht_wirksam`) über `…/wirksamkeit`, FS5 (`ohne_massnahme · zurueckgenommen`) über `…/abschliessen`, mit Vier-Augen `…/wirksamkeit/beantragen`. */
+  energiemanagementFeststellungStand: (id: string, weg: 'wirksamkeit' | 'abschliessen' | 'wirksamkeit/beantragen', body: FeststellungStandFesthalten) =>
+    request<FeststellungMitVerlauf>(`/api/v1/energiemanagement/feststellungen/${encodeURIComponent(id)}/${weg}`, { method: 'POST', body: JSON.stringify(body) }),
+  energiemanagementFeststellungFreigeben: (id: string) =>
+    request<FeststellungMitVerlauf>(`/api/v1/energiemanagement/feststellungen/${encodeURIComponent(id)}/wirksamkeit/freigeben`, { method: 'POST', body: JSON.stringify({}) }),
+  energiemanagementFeststellungAblehnen: (id: string, begruendung: string) =>
+    request<FeststellungMitVerlauf>(`/api/v1/energiemanagement/feststellungen/${encodeURIComponent(id)}/wirksamkeit/ablehnen`, { method: 'POST', body: JSON.stringify({ begruendung }) }),
 };
+
+/** AP-09 K1/K7: Minutenintervall [von,bis), Parameter bleiben mit der Bindung erhalten. */
+export interface BezugsKanalAnfrage {
+  entity_id?: string; kanal?: string; zustand?: string; von: string; raumtemperatur?: number; heizgrenze?: number;
+  messstelle_id?: string; schwelle_kw?: number; begruendung?: string;
+}
+/** AP-17 IP-12c: `PUT /api/v1/bezugsgroessen/{id}/wetterbezug` — `von` ist ein Tag (bei Monatswerten der Erste). */
+export interface WetterbezugAnfrage { von: string; raumtemperatur?: number; heizgrenze?: number }
+/** Der Stand des letzten Monats mit bezogenen Tagen: `monat` JJJJ-MM, „tage von tage_erwartet Tagen“. */
+export interface WetterStand { monat: string; tage: number; tage_erwartet: number; zustand: string }
+export interface WetterBindung {
+  raumtemperatur: number; heizgrenze: number; regel: string; von: string; gebunden_von: string; gebunden_am: string;
+  quelle?: string; letzter_abruf?: string; stand?: WetterStand;
+}
+/** `GET …/wetterbezug`: `moeglich` (Gradtagzahl am Standort, Tag/Monat), `koordinaten`, ohne Koordinaten der `satz` (§5.8). */
+export interface Wetterbezug { moeglich: boolean; koordinaten: boolean; satz?: string; bindung: WetterBindung | null }
+/** `GET /api/v1/standorte/{id}/wetter`: die Zeile „Wetter“. */
+export interface StandortWetter {
+  koordinaten: boolean; satz?: string; quelle?: string; letzter_abruf?: string;
+  gradtagzahlen: { id: string; kennzeichen: string; name: string; quelle?: string; letzter_abruf?: string }[];
+}
+export interface BezugsKanalbindung extends BezugsKanalAnfrage {
+  id: string; entity_id: string; kanal: string; wertart: string; bis: string | null;
+  regel?: string; fassung?: number; ersetzt_bindung_id?: string;
+}
+
+export interface BezugsKanalAuswahl {
+  entity_id: string; komponente: string; kanal: string; name: string; wertart: string; einheit: string;
+  erste_messung: string | null; liefert: boolean; zustaende: string[]; messstelle_id?: string;
+}
+
+// ---------------------------------------------------------------------------
+// UEMS AP-16 IP-4/IP-5 · Energieeinsätze und Betrachtungsumfang (openapi `energieeinsaetze`)
+// ---------------------------------------------------------------------------
+
+export type EnergieTraeger = 'Strom' | 'Gas' | 'Wärme' | 'Kälte' | 'Wasser' | 'Druckluft';
+
+export interface BewertungUmfangAusschluss {
+  art: 'standort' | 'anlage' | 'prozess';
+  verweis: string;
+  begruendung: string;
+}
+
+export interface BewertungUmfangAnlage {
+  id: string;
+  name: string;
+}
+
+export interface BewertungUmfangStandort {
+  id: string;
+  name: string;
+  anlagen_im_umfang: BewertungUmfangAnlage[];
+  anzahl_anlagen_im_umfang: number;
+}
+
+/**
+ * UEMS AP-16 IP-19 (`Messbedarf`): Ort und Größe als Wortlaut und (AP-16 P1) optional als Struktur — `ort_id` ist ein
+ * Standort, Gebäude oder Bereich, `messgroesse`/`richtung` stammen aus dem Größen-Katalog. `messstelle` erst nach dem
+ * Einlösen. Ohne Struktur bleibt der Wortlaut führend für die Anzeige.
+ */
+export interface MessbedarfAnlegen {
+  wortlaut: string; ort: string | null; groesse: string | null; frist: string | null;
+  ort_id?: string | null; messgroesse?: string | null; richtung?: string | null;
+}
+/** Der strukturierte Ort; `standort_*` ist der Standort, an dem er heute hängt (`null`: keiner). */
+export interface MessbedarfOrtZiel {
+  id: string; art: 'standort' | 'gebaeude' | 'bereich'; kurzzeichen: string; name: string | null;
+  standort_id: string | null; standort_name: string | null;
+}
+export interface Messbedarf {
+  id: string; kennzeichen: string; energieeinsatz_id: string; wortlaut: string; ort: string | null; groesse: string | null;
+  frist: string | null; zustand: 'offen' | 'eingeloest' | 'verworfen';
+  messstelle: { id: string; kennzeichen: string; name: string | null } | null;
+  begruendung: string | null; akteur: BewertungAkteur; angelegt_am: string; geaendert_am: string;
+  /** Ältere Antworten ohne die Felder = keine Struktur. */
+  ort_ziel?: MessbedarfOrtZiel | null; messgroesse?: string | null; richtung?: string | null;
+  /**
+   * Review r4 M4: `zitiert_von` = die freigegebenen Berichtsstände, die den Bedarf zitieren (wie `berichtsstaende` der
+   * 409 `berichts_belege`); `einloesbar` = offen und von keinem Stand zitiert. Eine ältere API lässt beide weg.
+   */
+  einloesbar?: boolean; zitiert_von?: { kennung: string; nr: number }[];
+}
+/** Ein Protokolleintrag: `alt`/`neu` sind die Schnappschüsse der Zeile (snake_case-Spalten). */
+export interface MessbedarfAenderung {
+  id: number; art: 'erfasst' | 'bearbeitet' | 'eingeloest' | 'verworfen';
+  alt: Record<string, unknown> | null; neu: Record<string, unknown> | null; akteur: BewertungAkteur; zeit: string;
+}
+
+export interface BewertungAkteur {
+  sub: string | null;
+  name: string;
+  rolle: string | null;
+  art: 'kunde' | 'unterstuetzung' | 'voltpilot' | 'notfall';
+}
+
+/** `fassung: null` = der ungespeicherte Vorschlag (alle sichtbaren Standorte, Strom). Die Anlagenzahl ist nur y. */
+export interface BewertungUmfang {
+  id: string | null;
+  fassung: number | null;
+  gueltig_ab: string | null;
+  am: string;
+  standorte: BewertungUmfangStandort[];
+  traeger: { name: EnergieTraeger; mit_anteil: boolean }[];
+  ausschluesse: BewertungUmfangAusschluss[];
+  anlagen_im_umfang: BewertungUmfangAnlage[];
+  anzahl_anlagen_im_umfang: number;
+  nenner_traeger: 'Strom' | null;
+  begruendung: string | null;
+  akteur: BewertungAkteur | null;
+  created_at: string | null;
+  aufgehoben_am: string | null;
+  teilansicht: boolean;
+}
+
+export interface BewertungUmfangSpeichern {
+  gueltig_ab: string;
+  standort_ids: string[];
+  traeger: EnergieTraeger[];
+  ausschluesse: BewertungUmfangAusschluss[];
+  begruendung?: string | null;
+}
+
+export interface BewertungKriterienWerte {
+  K1: string; K2: string; K3: string; K5: string; K6: string; K7: number; K8: string; mindest_monate: number;
+}
+export type BewertungUrteil = 'ueber_schwelle' | 'unter_schwelle' | 'nicht_anwendbar' | 'nicht_belastbar';
+export type BewertungGueltigkeitsUrteil = 'erfuellt' | 'vorbehalt_datenlage' | 'vorbehalt_ersatzwerte';
+export interface BewertungEinsatzUrteil {
+  K1: BewertungUrteil; K2: BewertungUrteil; K3: BewertungUrteil;
+  K5: BewertungGueltigkeitsUrteil; K6: BewertungGueltigkeitsUrteil;
+}
+export interface BewertungHerkunftEingang {
+  objekt: string; von: string; bis: string; wert: string | null; version: number | null; zustand: string | null;
+}
+export interface BewertungBilanzEingang { objekt: string; wert: string | null; version: number; zustand: string | null }
+export interface BewertungBilanzwert {
+  anlage: string; von: string; bis: string; wert: string | null; version: number; zustand: string;
+  eingaenge: BewertungBilanzEingang[];
+}
+export interface BewertungHerkunftEntwurf {
+  zeitraum: string; kriterien_fassung: number; eingaenge: BewertungHerkunftEingang[];
+  nenner: { wert: string | null; anlagen: string; bilanzwerte: BewertungBilanzwert[] } | null;
+  urteil: BewertungEinsatzUrteil; vorschlag: 'ueber_schwelle' | 'unter_schwelle';
+}
+export interface BewertungRanglisteEinsatz {
+  id: string; kennzeichen: string; name: string; prozess_id: string; traeger: EnergieTraeger; einheit: string | null;
+  menge: string | null; zustand: string; ersatz: string | null; ersatz_prozent: string | null; datenlage_prozent: string | null;
+  anteil_prozent: string | null; kumuliert_zugeordnet_prozent: string | null; anteil_zustand: string; rang: number | null;
+  urteil: BewertungEinsatzUrteil; vorschlag: 'ueber_schwelle' | 'unter_schwelle'; herkunft: BewertungHerkunftEntwurf;
+  /**
+   * Je Messstelle des Einsatzes Menge und Zustand im Zeitraum; `monatswerte` sind ihre Monatsmengen (dieselbe Form wie
+   * `…/messstellen/{kennzeichen}/werte`), `null` ohne Werte — nie 0 (Konzept Auswerten a1 §4.7).
+   */
+  messstellen: Array<{
+    id: string; kennzeichen: string; anlage_id: string | null; einheit: string | null; menge: string | null;
+    zustand?: string | null; ersatz?: string | null; ersatz_prozent?: string | null; monatswerte?: MessstelleWerte | null;
+  }>;
+  prozess_summe_hinweise: ProzessSummeHinweis[];
+}
+export interface BewertungRangliste {
+  von: string; bis: string; umfang_id: string | null; umfang_fassung: number | null; teilansicht: boolean; monate: number;
+  kriterien: { fassung: number; werte: BewertungKriterienWerte };
+  urteil: { K7: 'erfuellt' | 'unter_zwoelf' | 'vorlaeufig'; K8: BewertungUrteil };
+  nenner: { wert: string | null; einheit: 'kWh' | null; vorhanden: number; gesamt: number; anlagen: string; zustand: string };
+  zugeordnet: string | null; rest: string | null; abdeckung_prozent: string | null; zustand: string;
+  anlagen: { id: string; name: string; ab: string | null; nenner: string | null; zugeordnet: string | null; rest: string | null; rest_anteil_prozent: string | null; zustand: string }[];
+  einsaetze: BewertungRanglisteEinsatz[]; weitere_traeger: BewertungRanglisteEinsatz[];
+}
+/** UEMS AP-16 IP-13 (`BewertungMessabdeckung*`): Mengen als Dezimaltext; `null` heißt keine Werte, nie 0. */
+export interface BewertungMessabdeckungMesswert { id: string; kennzeichen: string; ort: string | null; menge: string | null; einheit: string | null }
+export interface BewertungMessabdeckungPlan {
+  messstelle_id: string | null; kennzeichen: string | null; ort: string | null; keine_datenquelle_seit: string | null; messbedarf: string | null;
+}
+export interface BewertungMessabdeckungRest { anlage_id: string; anlage: string; menge: string | null; anteil_prozent: string | null }
+export interface BewertungMessabdeckungEinsatz {
+  id: string; kennzeichen: string; name: string; prozess_id: string; traeger: EnergieTraeger; einheit: string | null; menge: string | null;
+  gemessen: BewertungMessabdeckungMesswert[]; geplant: BewertungMessabdeckungPlan[]; ersatz: BewertungMessabdeckungMesswert[];
+  ungemessen: BewertungMessabdeckungRest[];
+}
+export interface BewertungMessabdeckungOrt {
+  art: 'anlage' | 'standort' | 'gebaeude' | 'bereich' | 'unternehmen' | 'ort'; id: string | null; kennzeichen: string | null; name: string | null;
+  traeger: EnergieTraeger; einheit: string | null; gemessen: BewertungMessabdeckungMesswert[]; geplant: BewertungMessabdeckungPlan[];
+  ersatz: BewertungMessabdeckungMesswert[]; ungemessen: BewertungMessabdeckungRest | null;
+}
+export interface BewertungMessabdeckung {
+  von: string; bis: string; umfang_id: string | null; umfang_fassung: number | null; teilansicht: boolean;
+  summe: {
+    nenner: BewertungRangliste['nenner']; gemessen_zugeordnet: string | null; abdeckung_prozent: string | null;
+    k8: 'ueber_schwelle' | 'unter_schwelle' | 'nicht_anwendbar'; ersatz: string | null; ungemessen: string | null; ungemessen_prozent: string | null;
+  };
+  je_einsatz: BewertungMessabdeckungEinsatz[]; je_ort: BewertungMessabdeckungOrt[];
+}
+
+/** UEMS AP-16 IP-15 (G1–G3): Angaben am EINBAU; `null` heißt nicht erhoben, nie ein Vorgabewert. */
+export type MessmittelPruefungsart = 'eichung' | 'mid_konformitaet' | 'kalibrierung' | 'werksbescheinigung' | 'keine' | 'nicht_erhoben';
+export interface MessmittelBeleg { bezeichnung: string; ablage: string | null; sha256: string; person: BewertungAkteur | null; zeitpunkt: string }
+export interface MessmittelWandler {
+  fassung: string; art: 'wandler_strom' | 'wandler_spannung'; wert: Record<string, unknown>; gueltig_ab: string; gueltig_bis: string | null;
+  klasse: string | null; zustand: 'erhoben' | 'nicht_erhoben';
+}
+export interface MessmittelAngaben {
+  geraet_id: string; kennzeichen: string; einbau_kennzeichen: string; zustand: 'erhoben' | 'nicht_erhoben';
+  genauigkeitsklasse: string | null; pruefungsart: MessmittelPruefungsart; pruefung_am: string | null; pruefung_gueltig_bis: string | null;
+  beleg: MessmittelBeleg | null; wandler: MessmittelWandler[];
+  /** IP-16 (G4): Katalog-Angaben für Gerätetyp und Karten — getrennt, nie eine Einbau-Angabe. */
+  laut_hersteller: MessmittelHerstellerangabe[];
+}
+export interface MessmittelHerstellerangabe {
+  ziel_art: 'geraet' | 'teil'; ziel: string; bezeichnung: string; hersteller: string; modell: string; zustand: 'belegt' | 'nicht_belegt';
+  klasse: string | null; wert: string | null; bezug: string | null; fundstelle: string | null; source_url: string | null; source_sha256: string | null;
+}
+/** Der PUT: die ganze Angabe. `beleg.sha256` ist im Browser gebildet — nie der Inhalt der Datei. */
+export interface MessmittelEintrag {
+  genauigkeitsklasse: string | null; pruefungsart: MessmittelPruefungsart | null; pruefung_am: string | null; pruefung_gueltig_bis: string | null;
+  beleg: { bezeichnung: string; ablage: string | null; sha256: string } | null;
+  wandler?: { fassung: string; klasse: string | null }[] | null;
+}
+export type MessmittelFehlerCode =
+  | 'anfrage_ungueltig' | 'nicht_gefunden' | 'pruefsumme_ungueltig' | 'beleg_unvollstaendig' | 'pruefungsart_unbekannt'
+  | 'zeitraum_ungueltig' | 'text_zu_lang' | 'fassung_unbekannt' | 'klasse_nur_am_wandler';
+
+/** UEMS AP-16 IP-17: eine Toleranz-Fassung; Fassung 1 ist der Startwert 2 % ohne Person und Begründung. */
+export interface VergleichToleranzFassung {
+  fassung: number; prozent: string; startwert: boolean; gilt_ab_monat: string; begruendung: string | null;
+  person: BewertungAkteur | null; eingetragen_am: string | null;
+}
+
+export interface BewertungKriterium {
+  kennung: 'K1' | 'K2' | 'K3' | 'K4' | 'K5' | 'K6' | 'K7' | 'K8';
+  schwelle: string | number | null; einheit: '%' | 'kWh' | 'Monate' | null; vergleich: '>=' | '<=' | '=' | 'kumuliert bis' | null;
+}
+export interface BewertungKriterienFassung {
+  fassung: number; werte: BewertungKriterienWerte; kriterien: BewertungKriterium[]; herkunft: 'Vorgabe' | 'Unternehmen';
+  gueltig_ab: string | null; begruendung: string | null; akteur: BewertungAkteur | null; vieraugen: boolean;
+  freigabe_status: 'beantragt' | 'freigegeben' | 'abgelehnt'; entschieden_von: BewertungAkteur | null;
+  entschieden_am: string | null; entscheidungs_begruendung: string | null; created_at: string | null; aufgehoben_am: string | null;
+}
+export interface BewertungKriterienSpeichern { werte: BewertungKriterienWerte; begruendung: string }
+
+export interface EnergieeinsatzEinstufungSpeichern {
+  einstufung: 'wesentlich' | 'nicht_wesentlich'; begruendung: string; grund: ('K1' | 'K2' | 'K3' | 'K4')[];
+  gueltig_ab?: string; herkunft: BewertungHerkunftEntwurf;
+}
+export interface EnergieeinsatzEinstufungFassung extends Omit<EnergieeinsatzEinstufungSpeichern, 'gueltig_ab'> {
+  fassung: number; vorgeschlagen_ab: string; gueltig_ab: string | null; gueltig_bis: string | null; rueckwirkend: boolean;
+  akteur: BewertungAkteur; vieraugen: boolean; freigabe_status: 'beantragt' | 'freigegeben';
+  entschieden_von: BewertungAkteur | null; entschieden_am: string | null; created_at: string;
+}
+export interface EnergieeinsatzEinstufungHistorie { fassungen: EnergieeinsatzEinstufungFassung[] }
+
+export type BewertungUmfangFehlerCode =
+  | 'anfrage_ungueltig' | 'nicht_gefunden' | 'traeger_unbekannt' | 'standort_unbekannt'
+  | 'ausschluss_ungueltig' | 'begruendung_fehlt' | 'gueltig_ab_ungueltig';
+
+export type EnergieeinsatzFehlerCode =
+  | 'anfrage_ungueltig' | 'nicht_gefunden' | 'prozess_unbekannt' | 'traeger_unbekannt' | 'einsatz_laeuft_bereits'
+  | 'verantwortlicher_unbekannt' | 'einflussgroesse_ungueltig' | 'name_fehlt' | 'grund_fehlt' | 'zeitraum_ungueltig'
+  | 'einsatz_beendet' | 'bezugsgroesse_in_verwendung' | 'recht_fehlt';
+
+export interface EnergieeinsatzVerweis {
+  id: string;
+  kennzeichen: string;
+  name: string;
+}
+
+/** Genau ein Bezugsgrößen-Verweis ODER ein nicht leerer Wortlaut. */
+export interface EnergieeinsatzEinfluss {
+  bezugsgroesse_id?: string | null;
+  bezugsgroesse?: EnergieeinsatzVerweis | null;
+  wortlaut?: string | null;
+  art: 'produktion' | 'betriebszeit' | 'wetter' | 'sonstige';
+}
+
+export interface EnergieeinsatzVerantwortlicher {
+  sub?: string | null;
+  /** Schnappschuss beim Setzen — bleibt, wenn das Konto endet. */
+  name?: string | null;
+  konto?: string | null;
+  zustand?: string | null;
+  ohne_konto_seit?: string | null;
+}
+
+export interface EnergieeinsatzMessstelle {
+  id: string;
+  kennzeichen: string;
+  name: string;
+  art: 'gemessen' | 'berechnet';
+  traeger: string;
+  orte: MessstelleOrtZuordnung[];
+  zustand: string;
+  /**
+   * Die Menge des letzten vollen Monats (`EnergieeinsatzDto.Messstelle`, Form wie `…/werte` mit `raster: monat`);
+   * `null`, wo die Route keine liefert — nie als Null darstellen.
+   */
+  letzter_monat?: MessstelleWerte | null;
+}
+
+export interface Energieeinsatz {
+  id: string;
+  kennzeichen: string;
+  prozess: EnergieeinsatzVerweis;
+  traeger: EnergieTraeger;
+  name: string;
+  wortlaut?: string | null;
+  verbraucher_wortlaut?: string | null;
+  verantwortlich: EnergieeinsatzVerantwortlicher;
+  einflussgroessen: EnergieeinsatzEinfluss[];
+  messstellen: EnergieeinsatzMessstelle[];
+  /** Keine gemessene Menge im letzten vollen Monat — nie als Null darstellen. */
+  keine_werte: boolean;
+  gueltig_ab: string;
+  gueltig_bis?: string | null;
+  beendet_am?: string | null;
+  beendet_grund?: string | null;
+}
+
+export interface EnergieeinsatzVorschlag {
+  prozess: EnergieeinsatzVerweis;
+  traeger: 'Strom';
+}
+
+export interface EnergieeinsatzAnlegen {
+  prozess_id: string;
+  traeger: EnergieTraeger;
+  name: string;
+  wortlaut?: string | null;
+  verbraucher_wortlaut?: string | null;
+  verantwortlich_sub?: string | null;
+  gueltig_ab?: string;
+  einflussgroessen?: EnergieeinsatzEinfluss[];
+}
+
+export interface EnergieeinsatzBearbeiten {
+  name: string;
+  wortlaut?: string | null;
+  verbraucher_wortlaut?: string | null;
+}
+
+export interface EnergieeinsatzAenderung {
+  id: number;
+  art: 'angelegt' | 'bearbeitet' | 'verantwortlicher' | 'einflussgroessen' | 'beendet';
+  alt: unknown;
+  neu: unknown;
+  akteur: BewertungAkteur;
+  zeit: string;
+}

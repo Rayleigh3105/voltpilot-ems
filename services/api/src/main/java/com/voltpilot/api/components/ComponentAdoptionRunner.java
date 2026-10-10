@@ -1,10 +1,12 @@
 package com.voltpilot.api.components;
 
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.tenant.TenantContext;
 import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -65,6 +67,14 @@ public class ComponentAdoptionRunner {
     private final ComponentRebindService rebind;
     private final boolean enabled;
     private final boolean reconcileEnabled;
+
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
 
     /**
      * Das {@code @Autowired} ist TRAGEND (die BrokerAuthzReloader-Falle): mit
@@ -139,6 +149,7 @@ public class ComponentAdoptionRunner {
         int waiting = 0;
         int failed = 0;
         for (Candidate c : candidates) {
+            if (beendete.beendet(c.tenantId())) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
             try {
                 TenantContext.set(c.tenantId());
                 ComponentAdoptionService.Outcome outcome = adoption.adoptIfComplete(c.siteId());
@@ -157,6 +168,12 @@ public class ComponentAdoptionRunner {
                 waiting++;
                 log.info("Bestands-Übernahme: Anlage {} (\"{}\") wartet noch: {}", c.siteId(),
                         c.name(), e.getMessage());
+            } catch (ComponentAdoptionService.PushNotDeliveredException e) {
+                failed++;
+                log.warn("Bestands-Übernahme: Anlage {} bleibt am Gerät verwaltet: {}", c.siteId(),
+                        e.toString());
+                // UEMS AP-06 W7: hat eine Box den Push schon, stellt erst das sie zurück.
+                adoption.nachAbbruchZurueckstellen(c.siteId(), e);
             } catch (RuntimeException e) {
                 failed++;
                 log.warn("Bestands-Übernahme: Anlage {} bleibt am Gerät verwaltet: {}", c.siteId(),
@@ -196,6 +213,7 @@ public class ComponentAdoptionRunner {
         int rebound = 0;
         int failed = 0;
         for (Candidate c : candidates) {
+            if (beendete.beendet(c.tenantId())) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
             try {
                 TenantContext.set(c.tenantId());
                 rebound += rebind.rebindOrphanedPins(c.siteId()).rebound();
@@ -225,9 +243,11 @@ public class ComponentAdoptionRunner {
                 "SELECT DISTINCT s.id, s.tenant_id, s.name, s.created_at FROM site s "
                         + "JOIN measurement_point mp ON mp.site_id = s.id "
                         + "WHERE EXISTS (SELECT 1 FROM entity_observed_state o "
+                        + "  JOIN device d ON d.id = o.device_id AND d.ausgebaut_am IS NULL "
                         + "  WHERE o.site_id = s.id AND o.source = 'local') "
                         + "AND ((mp.edge_source_id IS NOT NULL "
                         + "  AND NOT EXISTS (SELECT 1 FROM entity_observed_state o2 "
+                        + "  JOIN device d2 ON d2.id = o2.device_id AND d2.ausgebaut_am IS NULL "
                         + "  WHERE o2.site_id = s.id AND o2.source = 'local' "
                         + "  AND o2.entity_id = 'local:' || mp.edge_source_id)) "
                         // Erstbindung: eine im Portal angelegte Komponente mit

@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { AnlagenTabelle } from './AnlagenTabelle';
 import type { AnlagenZeile, SpaltenId } from '../portfolioCockpit';
 import type { VorschauZeile } from '../portfolioVorschau';
+import { setSelbstauskunft } from '../rollen';
+import { rechteSeed } from '../test/rollenFixtures';
 
 /**
  * Die EINE Anlagen-Tabelle in zwei Dichten (Portfolio Revision 2 §5.2 / E1).
@@ -166,6 +168,24 @@ describe('AnlagenTabelle — die Zeile ist die Komponenten-Zeile eine Ebene höh
     });
     fireEvent.click(screen.getByRole('button', { name: /Cockpit öffnen/ }));
     expect(onOeffnen).toHaveBeenCalledWith('a');
+  });
+
+  it('zeigt den geführten Korrektur-Einstieg nur mit anlage.zuordnen', () => {
+    const onKorrigieren = vi.fn();
+    const { rerender } = tabelle({ onZuordnungKorrigieren: onKorrigieren });
+    fireEvent.click(screen.getByRole('button', { name: 'Zuordnung korrigieren' }));
+    expect(onKorrigieren).toHaveBeenCalledWith('a');
+
+    const me = rechteSeed().me;
+    act(() => setSelbstauskunft({
+      ...me,
+      unternehmen_rechte: me.unternehmen_rechte.filter((r) => r !== 'anlage.zuordnen'),
+      standorte: me.standorte.map((s) => ({ ...s, rechte: s.rechte.filter((r) => r !== 'anlage.zuordnen') })),
+    }));
+    rerender(<AnlagenTabelle zeilen={[zeile({ id: 'a', name: 'Filiale Nord' })]} spalten={SPALTEN}
+      dichte="kompakt" offen={null} onToggle={() => {}} onOeffnen={() => {}} vorschau={null}
+      onZuordnungKorrigieren={onKorrigieren} />);
+    expect(screen.queryByRole('button', { name: 'Zuordnung korrigieren' })).toBeNull();
   });
 });
 

@@ -47,6 +47,7 @@ class DbHealthMetricsWiringTest {
                     .setConversionService(ApplicationConversionService.getSharedInstance()))
             .withConfiguration(AutoConfigurations.of(PropertyPlaceholderAutoConfiguration.class))
             .withUserConfiguration(Nachbarn.class, DbHealthMetricsCollector.class,
+                    DbStorageMetricsCollector.class,
                     DbMetricsSchedulingConfig.class);
 
     @Test
@@ -54,6 +55,7 @@ class DbHealthMetricsWiringTest {
         runner.withPropertyValues("voltpilot.metrics.db.enabled=true").run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context).hasSingleBean(DbHealthMetricsCollector.class);
+            assertThat(context).hasSingleBean(DbStorageMetricsCollector.class);
             assertThat(context).hasSingleBean(DbMetricsSchedulingConfig.class);
         });
     }
@@ -63,6 +65,7 @@ class DbHealthMetricsWiringTest {
         runner.withPropertyValues("voltpilot.metrics.db.enabled=false").run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context).doesNotHaveBean(DbHealthMetricsCollector.class);
+            assertThat(context).doesNotHaveBean(DbStorageMetricsCollector.class);
             assertThat(context).doesNotHaveBean(DbMetricsSchedulingConfig.class);
         });
     }

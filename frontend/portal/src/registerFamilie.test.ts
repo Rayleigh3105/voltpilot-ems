@@ -15,8 +15,12 @@ const katalogVersion = readFileSync(
   resolve(wurzel, 'catalog/measurement-points/VERSION'), 'utf8').trim();
 const katalog = JSON.parse(readFileSync(
   resolve(wurzel, `catalog/measurement-points/dist/measurement-point-catalog-${katalogVersion}.json`),
-  'utf8')) as { points: { family: string }[] };
-const echteFamilien = Array.from(new Set(katalog.points.map((p) => p.family))).sort();
+  'utf8')) as { points: { family: string }[]; families: { family: string; an_der_box: boolean }[] };
+const alleFamilien = Array.from(new Set(katalog.points.map((p) => p.family))).sort();
+// `an_der_box: false` (Katalog-README „Familien noch nicht an der Box“): der Server bietet diese Familien
+// nicht an, die Kopie führt sie darum nicht. Die WAGO-Karten gingen mit 2026.09.23.3 an die Box (AP-05 IP-6b).
+const nochNichtAnDerBox = katalog.families.filter((f) => !f.an_der_box).map((f) => f.family).sort();
+const echteFamilien = alleFamilien.filter((f) => !nochNichtAnDerBox.includes(f));
 
 // Die Java-Hälfte des Zwillings - Zeichen für Zeichen der Vergleich, der beide
 // Seiten zusammenhält.
@@ -25,8 +29,19 @@ const javaQuelle = readFileSync(resolve(wurzel,
   'utf8');
 
 describe('KATALOG_FAMILIEN ist eine geprüfte Kopie, keine zweite Wahrheit', () => {
-  it('führt GENAU die Familien des kanonischen Katalogs', () => {
+  it('führt GENAU die Familien des kanonischen Katalogs, die an eine Box gehen', () => {
     expect([...KATALOG_FAMILIEN].sort()).toEqual(echteFamilien);
+    expect(katalog.families.map((f) => f.family).sort()).toEqual(alleFamilien);
+  });
+
+  it('lässt die Familien weg, die noch an keine Box gehen - sonst stünde dort ein leerer Kasten', () => {
+    expect(nochNichtAnDerBox).toEqual([]);
+    expect(KATALOG_FAMILIEN.filter((f) => nochNichtAnDerBox.includes(f))).toEqual([]);
+  });
+
+  it('führt die WAGO-Karten, seit sie an der Box sind (Laufzeitstand 2026.09.23.3)', () => {
+    expect(geraetFamilien({ soll: 'wago.pm495' })).toEqual(['wago.pm495']);
+    expect(geraetFamilien({ soll: 'wago.pm494' })).toEqual(['wago.pm494']);
   });
 
   it('deckt jede Wildcard-Regel mit den echten Katalog-Namen ab', () => {

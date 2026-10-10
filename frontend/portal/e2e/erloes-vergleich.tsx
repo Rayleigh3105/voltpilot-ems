@@ -1,3 +1,4 @@
+import './rollen-fixture';
 import ReactDOM from 'react-dom/client';
 
 import '../designsystem/tokens/fonts.css';

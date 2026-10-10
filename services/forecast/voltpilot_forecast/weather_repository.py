@@ -14,10 +14,14 @@ swap an in-memory fake for the psycopg-backed writer, which lazy-imports psycopg
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 
 from voltpilot_forecast.domain import ensure_utc
+from voltpilot_forecast.kundenbereich import lebenden_bereich_sperren
 from voltpilot_forecast.openmeteo import WeatherForecast, WeatherPoint
+
+logger = logging.getLogger(__name__)
 
 
 class WeatherForecastRepository(ABC):
@@ -113,6 +117,13 @@ class TimescaleWeatherForecastRepository(WeatherForecastRepository):
         if not rows:
             return 0
         with self._conn.cursor() as cur:
+            if not lebenden_bereich_sperren(cur, forecast.tenant_id):
+                logger.info(
+                    "weather.bereich_ausgelassen",
+                    extra={"context": {"site_id": forecast.site_id}},
+                )
+                self._conn.commit()
+                return 0
             cur.executemany(_UPSERT_SQL, rows)
         self._conn.commit()
         return len(rows)

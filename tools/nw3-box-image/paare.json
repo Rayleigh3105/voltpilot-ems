@@ -1,0 +1,36 @@
+{
+  "_kommentar": [
+    "NW-3 prueft je (core, palette)-Paar, das im Feld laeuft. WELCHE Paare das sind,",
+    "sagt Q07 des Bestandsblatts (tools/betriebsabfragen/bestand-vor-uems.sql) - und",
+    "diese Abfrage faehrt allein der Betreiber gegen Produktion. Die Liste ist darum",
+    "ein PARAMETER des Werkzeugs, kein eingebauter Wert: der Betreiber traegt die",
+    "Paare aus seiner Q07-Ausgabe hier ein (oder gibt eine eigene Datei mit --paare).",
+    "",
+    "Heute stehen hier die Paare, die ohne Q07 belegbar sind: die letzten drei",
+    "Release-Tags edge-2026.09.4, edge-2026.09.5 und edge-2026.09.6 (alle aus main, je",
+    "mit eigenem Protokoll unter docs/rollout/nw3-protokoll-<name>.json). Core und",
+    "Palette werden GEMEINSAM ausgeliefert (X6), darum tragen beide dasselbe Tag - ein",
+    "Paar mit zwei verschiedenen Staenden waere moeglich und das Werkzeug wuerde es",
+    "fahren, aber es entstuende nie aus einem regulaeren Release."
+  ],
+  "paare": [
+    {
+      "name": "edge-2026.09.4",
+      "core_ref": "edge-2026.09.4",
+      "palette_ref": "edge-2026.09.4",
+      "herkunft": "Release-Tag auf main (19.09.); Q07 nicht gefahren"
+    },
+    {
+      "name": "edge-2026.09.5",
+      "core_ref": "edge-2026.09.5",
+      "palette_ref": "edge-2026.09.5",
+      "herkunft": "Release-Tag auf main (24.09., 1b6b79175); Q07 nicht gefahren"
+    },
+    {
+      "name": "edge-2026.09.6",
+      "core_ref": "edge-2026.09.6",
+      "palette_ref": "edge-2026.09.6",
+      "herkunft": "letztes Release-Tag auf main (29.09., becfa44e4, PR 1307; seit 29.09. an Herzogau); Q07 nicht gefahren"
+    }
+  ]
+}

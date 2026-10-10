@@ -1,0 +1,1252 @@
+{
+  "_comment": [
+    "Die Herkunft berechneter und verteilter Werte IN DEN ROUTEN (UEMS AP-10 IP-12, E13): wie aus gespeicherten",
+    "Zeilen — der Spur `berechnet` (IP-10), `bilanzwert_eingang` in der Version des Werts, dem Anlass einer Version ≥ 2",
+    "aus `messreihe_periode_version` und den Tag-Sätzen einer Verteilung — der Satz nach bilanzwert-herkunft.schema.json",
+    "wird. Die Sätze selbst stehen NICHT hier: `satz_aus` verweist auf die Prüfung `herkunft` in bilanz-vectors.json",
+    "bzw. verteilung-vectors.json, und der Test vergleicht BYTE-GLEICH (Inhalt UND Form, Schlüssel-Reihenfolge,",
+    "Dezimaltext, null). `zuordnung` sagt für JEDEN Herkunfts-Satz der beiden Dateien, über welchen Weg eine Route ihn",
+    "liefert — oder warum keine es heute kann. Nur Java (`BilanzwertHerkunftVectorsTest`): die Routen bauen den Satz",
+    "serverseitig; das Portal liest ihn nur (IP-14). Der Messwert-Herkunftsvertrag bleibt unberührt."
+  ],
+  "schema_version": "1.0",
+  "zeitzone": "Europe/Berlin",
+  "referenzunternehmen": "uems-referenzunternehmen.json",
+  "saetze_aus": [
+    "bilanz-vectors.json",
+    "verteilung-vectors.json"
+  ],
+  "regeln_kurz": {
+    "betrag": "Ein Betrag als Dezimaltext ohne nachgestellte Nullen und ohne Exponent; null bleibt null.",
+    "schluessel": "Der Schlüssel der Periode aus ihrem Beginn in der Zone des Standorts; eine Viertelstunde mit Versatz.",
+    "periode_ende": "Die letzte Sekunde der Periode in der Zone des Standorts.",
+    "ausloeser": "`correction`/`substitute` · Eingänge in neuerer Version (ohne sie die Kennung des Anlasses) · Periode · Version; ohne Anlass null.",
+    "verteilung_der_periode": "Nur wenn an JEDEM Tag genau eine Zeile gilt und alle dasselbe Ziel, denselben Anteil und dieselbe Fassung tragen.",
+    "aus_gespeichert": "Der Satz aus gespeicherten Fakten; zusätzlich zu den Regeln des Satzes fehlen `formel_fassung` ohne Nummer und `eingang_messstelle` bei einem Messkanal-Term."
+  },
+  "cases": [
+    {
+      "regel": "betrag",
+      "name": "Nachgestellte Nullen entfallen (NUMERIC(…, 3) aus der Speicherklasse)",
+      "eingang": "58.000",
+      "ergebnis": "58"
+    },
+    {
+      "regel": "betrag",
+      "name": "Negativ bleibt negativ — ausgewiesen, nie geklemmt (F6)",
+      "eingang": "-5.0",
+      "ergebnis": "-5"
+    },
+    {
+      "regel": "betrag",
+      "name": "Null gemessen ist „0“ — nie null",
+      "eingang": "0.000",
+      "ergebnis": "0"
+    },
+    {
+      "regel": "betrag",
+      "name": "Der verteilte Betrag F10: eine Form für jede Route",
+      "eingang": "11130.0",
+      "ergebnis": "11130"
+    },
+    {
+      "regel": "betrag",
+      "name": "Nie ein Exponent",
+      "eingang": "1E+3",
+      "ergebnis": "1000"
+    },
+    {
+      "regel": "betrag",
+      "name": "Echte Nachkommastellen bleiben",
+      "eingang": "12.50",
+      "ergebnis": "12.5"
+    },
+    {
+      "regel": "betrag",
+      "name": "null bleibt null — nie 0",
+      "eingang": null,
+      "ergebnis": null
+    },
+    {
+      "regel": "schluessel",
+      "name": "Tag in der Zone des Standorts, nicht UTC",
+      "eingang": {
+        "periode_art": "tag",
+        "beginn": "2026-10-17T22:00:00Z"
+      },
+      "ergebnis": "2026-10-18"
+    },
+    {
+      "regel": "schluessel",
+      "name": "Monat",
+      "eingang": {
+        "periode_art": "monat",
+        "beginn": "2026-09-30T22:00:00Z"
+      },
+      "ergebnis": "2026-10"
+    },
+    {
+      "regel": "schluessel",
+      "name": "Jahr",
+      "eingang": {
+        "periode_art": "jahr",
+        "beginn": "2025-12-31T23:00:00Z"
+      },
+      "ergebnis": "2026"
+    },
+    {
+      "regel": "schluessel",
+      "name": "Die ERSTE 02:45 der doppelten Stunde trägt MESZ",
+      "eingang": {
+        "periode_art": "viertelstunde",
+        "beginn": "2026-10-25T00:45:00Z"
+      },
+      "ergebnis": "2026-10-25T02:45:00+02:00"
+    },
+    {
+      "regel": "schluessel",
+      "name": "Die ZWEITE 02:45 trägt MEZ — der Versatz unterscheidet sie",
+      "eingang": {
+        "periode_art": "viertelstunde",
+        "beginn": "2026-10-25T01:45:00Z"
+      },
+      "ergebnis": "2026-10-25T02:45:00+01:00"
+    },
+    {
+      "regel": "periode_ende",
+      "name": "F1: die letzte Sekunde des Tages",
+      "eingang": {
+        "periode_art": "tag",
+        "schluessel": "2026-10-18"
+      },
+      "ergebnis": "2026-10-18T23:59:59+02:00"
+    },
+    {
+      "regel": "periode_ende",
+      "name": "Der 25-Stunden-Tag endet in MEZ",
+      "eingang": {
+        "periode_art": "tag",
+        "schluessel": "2026-10-25"
+      },
+      "ergebnis": "2026-10-25T23:59:59+01:00"
+    },
+    {
+      "regel": "periode_ende",
+      "name": "Der Oktober endet nach der Umstellung",
+      "eingang": {
+        "periode_art": "monat",
+        "schluessel": "2026-10"
+      },
+      "ergebnis": "2026-10-31T23:59:59+01:00"
+    },
+    {
+      "regel": "periode_ende",
+      "name": "Der März endet in MESZ",
+      "eingang": {
+        "periode_art": "monat",
+        "schluessel": "2027-03"
+      },
+      "ergebnis": "2027-03-31T23:59:59+02:00"
+    },
+    {
+      "regel": "periode_ende",
+      "name": "Jahr",
+      "eingang": {
+        "periode_art": "jahr",
+        "schluessel": "2026"
+      },
+      "ergebnis": "2026-12-31T23:59:59+01:00"
+    },
+    {
+      "regel": "periode_ende",
+      "name": "Die erste 02:45–03:00 endet vor der Umstellung",
+      "eingang": {
+        "periode_art": "viertelstunde",
+        "schluessel": "2026-10-25T02:45:00+02:00"
+      },
+      "ergebnis": "2026-10-25T02:59:59+02:00"
+    },
+    {
+      "regel": "periode_ende",
+      "name": "Vor der fehlenden Stunde",
+      "eingang": {
+        "periode_art": "viertelstunde",
+        "schluessel": "2026-03-29T01:45:00+01:00"
+      },
+      "ergebnis": "2026-03-29T01:59:59+01:00"
+    },
+    {
+      "regel": "ausloeser",
+      "name": "F14: eine Korrektur, der Eingang MS-17 in Version 2",
+      "eingang": {
+        "anlass": "K-2026-0011",
+        "messstellen": [
+          "MS-17"
+        ],
+        "schluessel": "2026-10-18",
+        "version": 2
+      },
+      "ergebnis": "correction MS-17 2026-10-18 Version 2"
+    },
+    {
+      "regel": "ausloeser",
+      "name": "Ein gerechneter Ersatzwert ist `substitute`",
+      "eingang": {
+        "anlass": "EW-2026-0003",
+        "messstellen": [
+          "MS-17"
+        ],
+        "schluessel": "2026-10-18",
+        "version": 2
+      },
+      "ergebnis": "substitute MS-17 2026-10-18 Version 2"
+    },
+    {
+      "regel": "ausloeser",
+      "name": "Zwei Eingänge in neuerer Version werden beide genannt, in ihrer Reihenfolge",
+      "eingang": {
+        "anlass": "K-2026-0012",
+        "messstellen": [
+          "MS-17",
+          "MS-18"
+        ],
+        "schluessel": "2026-10",
+        "version": 3
+      },
+      "ergebnis": "correction MS-17, MS-18 2026-10 Version 3"
+    },
+    {
+      "regel": "ausloeser",
+      "name": "Ohne Eingang in neuerer Version nennt er den Anlass selbst",
+      "eingang": {
+        "anlass": "K-2026-0013",
+        "messstellen": [],
+        "schluessel": "2026-10-18",
+        "version": 2
+      },
+      "ergebnis": "correction K-2026-0013 2026-10-18 Version 2"
+    },
+    {
+      "regel": "ausloeser",
+      "name": "Ohne Anlass kein Auslöser — der Satz nennt ihn dann als fehlend, statt eine Ursache zu erfinden",
+      "eingang": {
+        "anlass": null,
+        "messstellen": [
+          "MS-17"
+        ],
+        "schluessel": "2026-10-18",
+        "version": 2
+      },
+      "ergebnis": null
+    },
+    {
+      "regel": "verteilung_der_periode",
+      "name": "F3: MS-15 an jedem Tag des Oktobers zu 100 % an 4300",
+      "eingang": {
+        "zeilen": [
+          {
+            "ziel": "4300",
+            "anteil_prozent": "100.0",
+            "fassung": 1,
+            "gueltig_ab": "2026-10-01",
+            "gueltig_bis": null
+          }
+        ],
+        "von": "2026-10-01",
+        "bis": "2026-10-31"
+      },
+      "ergebnis": {
+        "fassung": 1,
+        "ziel": "4300",
+        "anteil_prozent": "100"
+      }
+    },
+    {
+      "regel": "verteilung_der_periode",
+      "name": "F10: 70/30 an zwei Ziele — ein Satz nennt nur EIN Ziel, darum keiner",
+      "eingang": {
+        "zeilen": [
+          {
+            "ziel": "4100",
+            "anteil_prozent": "70.0",
+            "fassung": 1,
+            "gueltig_ab": "2026-10-01",
+            "gueltig_bis": null
+          },
+          {
+            "ziel": "4200",
+            "anteil_prozent": "30.0",
+            "fassung": 1,
+            "gueltig_ab": "2026-10-01",
+            "gueltig_bis": null
+          }
+        ],
+        "von": "2026-10-01",
+        "bis": "2026-10-31"
+      },
+      "ergebnis": null
+    },
+    {
+      "regel": "verteilung_der_periode",
+      "name": "Ein Tag ohne Zeile — nicht die ganze Periode verteilt, darum keiner",
+      "eingang": {
+        "zeilen": [
+          {
+            "ziel": "4300",
+            "anteil_prozent": "100.0",
+            "fassung": 1,
+            "gueltig_ab": "2026-10-02",
+            "gueltig_bis": null
+          }
+        ],
+        "von": "2026-10-01",
+        "bis": "2026-10-31"
+      },
+      "ergebnis": null
+    },
+    {
+      "regel": "verteilung_der_periode",
+      "name": "F13-Muster: die Fassung wechselt mitten im Monat — darum keiner",
+      "eingang": {
+        "zeilen": [
+          {
+            "ziel": "4300",
+            "anteil_prozent": "100.0",
+            "fassung": 1,
+            "gueltig_ab": "2027-01-01",
+            "gueltig_bis": "2027-01-14"
+          },
+          {
+            "ziel": "4300",
+            "anteil_prozent": "100.0",
+            "fassung": 2,
+            "gueltig_ab": "2027-01-15",
+            "gueltig_bis": null
+          }
+        ],
+        "von": "2027-01-01",
+        "bis": "2027-01-31"
+      },
+      "ergebnis": null
+    },
+    {
+      "regel": "verteilung_der_periode",
+      "name": "Ein Tag: die Zeile, die an ihm gilt (letzter Tag einschließlich)",
+      "eingang": {
+        "zeilen": [
+          {
+            "ziel": "4300",
+            "anteil_prozent": "100.0",
+            "fassung": 1,
+            "gueltig_ab": "2026-10-01",
+            "gueltig_bis": "2026-10-18"
+          }
+        ],
+        "von": "2026-10-18",
+        "bis": "2026-10-18"
+      },
+      "ergebnis": {
+        "fassung": 1,
+        "ziel": "4300",
+        "anteil_prozent": "100"
+      }
+    },
+    {
+      "regel": "aus_gespeichert",
+      "name": "F1: Werte je Messstelle MS-22, Tag 18.10.2026 (IP-10) und Rest der Bilanz je Anlage (IP-9)",
+      "satz_aus": {
+        "datei": "bilanz-vectors.json",
+        "fall": "F1",
+        "pruefung": "Die Herkunft nennt drei Eingänge, ihre Rolle und die aus der Stellung abgeleitete Fassung"
+      },
+      "eingang": {
+        "messstelle": "MS-22",
+        "periode_art": "tag",
+        "beginn": "2026-10-17T22:00:00Z",
+        "zeitzone": "Europe/Berlin",
+        "formel_typ": "rest",
+        "formel_fassung": 1,
+        "berechnet_am": "2026-10-18T22:12:00Z",
+        "version": 1,
+        "anlass": null,
+        "verteilungen": [],
+        "eingaenge": [
+          {
+            "messstelle": "MS-16",
+            "rolle": "zufluss",
+            "anteil": "gesamt",
+            "menge": "100.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          },
+          {
+            "messstelle": "MS-17",
+            "rolle": "zugeordnet",
+            "anteil": "gesamt",
+            "menge": "60.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          },
+          {
+            "messstelle": "MS-18",
+            "rolle": "zugeordnet",
+            "anteil": "gesamt",
+            "menge": "30.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          }
+        ],
+        "ergebnis": {
+          "menge": "10.000",
+          "zustand": "vollständig",
+          "abdeckung_prozent": 100,
+          "kennzeichen": [
+            "berechnet (Differenz)",
+            "nicht zugeordnet"
+          ]
+        }
+      },
+      "ergebnis": {
+        "satz": "satz_aus",
+        "fehlt": []
+      }
+    },
+    {
+      "regel": "aus_gespeichert",
+      "name": "F2: Werte je Messstelle MS-22, Monat Oktober 2026 — das Kennzeichen der Periode steht an Eingang und Ergebnis",
+      "satz_aus": {
+        "datei": "bilanz-vectors.json",
+        "fall": "F2",
+        "pruefung": "Die Herkunft trägt das Kennzeichen der Periode weiter"
+      },
+      "eingang": {
+        "messstelle": "MS-22",
+        "periode_art": "monat",
+        "beginn": "2026-09-30T22:00:00Z",
+        "zeitzone": "Europe/Berlin",
+        "formel_typ": "rest",
+        "formel_fassung": 1,
+        "berechnet_am": "2026-10-31T23:15:00Z",
+        "version": 1,
+        "anlass": null,
+        "verteilungen": [],
+        "eingaenge": [
+          {
+            "messstelle": "MS-16",
+            "rolle": "zufluss",
+            "anteil": "gesamt",
+            "menge": "9100.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": [
+              "ab 15.10.2026"
+            ]
+          },
+          {
+            "messstelle": "MS-17",
+            "rolle": "zugeordnet",
+            "anteil": "gesamt",
+            "menge": "4300.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          },
+          {
+            "messstelle": "MS-18",
+            "rolle": "zugeordnet",
+            "anteil": "gesamt",
+            "menge": "3600.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          }
+        ],
+        "ergebnis": {
+          "menge": "1200.000",
+          "zustand": "vollständig",
+          "abdeckung_prozent": 100,
+          "kennzeichen": [
+            "berechnet (Differenz)",
+            "nicht zugeordnet",
+            "ab 15.10.2026"
+          ]
+        }
+      },
+      "ergebnis": {
+        "satz": "satz_aus",
+        "fehlt": []
+      }
+    },
+    {
+      "regel": "aus_gespeichert",
+      "name": "F3: Werte je Messstelle MS-15, Monat Oktober 2026 — die Verteilung der Rest-Messstelle aus ihren Tag-Sätzen",
+      "satz_aus": {
+        "datei": "bilanz-vectors.json",
+        "fall": "F3",
+        "pruefung": "Die Herkunft des Rests nennt fünf Eingänge und seine Verteilung"
+      },
+      "eingang": {
+        "messstelle": "MS-15",
+        "periode_art": "monat",
+        "beginn": "2026-09-30T22:00:00Z",
+        "zeitzone": "Europe/Berlin",
+        "formel_typ": "rest",
+        "formel_fassung": 1,
+        "berechnet_am": "2026-10-31T23:15:00Z",
+        "version": 1,
+        "anlass": null,
+        "verteilungen": [
+          {
+            "ziel": "4300",
+            "anteil_prozent": "100.0",
+            "fassung": 1,
+            "gueltig_ab": "2026-10-01",
+            "gueltig_bis": null
+          }
+        ],
+        "eingaenge": [
+          {
+            "messstelle": "MS-10",
+            "rolle": "zufluss",
+            "anteil": "gesamt",
+            "menge": "36900.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          },
+          {
+            "messstelle": "MS-11",
+            "rolle": "zugeordnet",
+            "anteil": "gesamt",
+            "menge": "22400.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          },
+          {
+            "messstelle": "MS-12",
+            "rolle": "zugeordnet",
+            "anteil": "gesamt",
+            "menge": "6100.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          },
+          {
+            "messstelle": "MS-13",
+            "rolle": "zugeordnet",
+            "anteil": "gesamt",
+            "menge": "3500.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          },
+          {
+            "messstelle": "MS-14",
+            "rolle": "zugeordnet",
+            "anteil": "gesamt",
+            "menge": "1100.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          }
+        ],
+        "ergebnis": {
+          "menge": "3800.000",
+          "zustand": "vollständig",
+          "abdeckung_prozent": 100,
+          "kennzeichen": [
+            "berechnet (Differenz)",
+            "nicht zugeordnet"
+          ]
+        }
+      },
+      "ergebnis": {
+        "satz": "satz_aus",
+        "fehlt": []
+      }
+    },
+    {
+      "regel": "aus_gespeichert",
+      "name": "F5: Werte je Messstelle MS-15, Tag 04.11.2026 — MS-14 ohne gespeicherte Zeile: Menge null, „keine Werte“, Version 1",
+      "satz_aus": {
+        "datei": "bilanz-vectors.json",
+        "fall": "F5",
+        "pruefung": "Die Herkunft nennt den Eingang ohne Werte mit Menge `null`"
+      },
+      "eingang": {
+        "messstelle": "MS-15",
+        "periode_art": "tag",
+        "beginn": "2026-11-03T23:00:00Z",
+        "zeitzone": "Europe/Berlin",
+        "formel_typ": "rest",
+        "formel_fassung": 1,
+        "berechnet_am": "2026-11-04T23:12:00Z",
+        "version": 1,
+        "anlass": null,
+        "verteilungen": [],
+        "eingaenge": [
+          {
+            "messstelle": "MS-10",
+            "rolle": "zufluss",
+            "anteil": "gesamt",
+            "menge": "1200.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          },
+          {
+            "messstelle": "MS-11",
+            "rolle": "zugeordnet",
+            "anteil": "gesamt",
+            "menge": "740.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          },
+          {
+            "messstelle": "MS-12",
+            "rolle": "zugeordnet",
+            "anteil": "gesamt",
+            "menge": "200.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          },
+          {
+            "messstelle": "MS-13",
+            "rolle": "zugeordnet",
+            "anteil": "gesamt",
+            "menge": "115.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          },
+          {
+            "messstelle": "MS-14",
+            "rolle": "zugeordnet",
+            "anteil": "gesamt",
+            "menge": null,
+            "zustand": "keine Werte",
+            "abdeckung_prozent": 0,
+            "version": null,
+            "kennzeichen": []
+          }
+        ],
+        "ergebnis": {
+          "menge": null,
+          "zustand": "keine Werte",
+          "abdeckung_prozent": 0,
+          "kennzeichen": [
+            "berechnet (Differenz)",
+            "keine Werte"
+          ]
+        }
+      },
+      "ergebnis": {
+        "satz": "satz_aus",
+        "fehlt": []
+      }
+    },
+    {
+      "regel": "aus_gespeichert",
+      "name": "F6: Werte je Messstelle MS-22, Tag 08.11.2026 — der negative Rest reist als −5, nie geklemmt",
+      "satz_aus": {
+        "datei": "bilanz-vectors.json",
+        "fall": "F6",
+        "pruefung": "Die Herkunft des unplausiblen Rests nennt jeden Eingang, keine Ursache"
+      },
+      "eingang": {
+        "messstelle": "MS-22",
+        "periode_art": "tag",
+        "beginn": "2026-11-07T23:00:00Z",
+        "zeitzone": "Europe/Berlin",
+        "formel_typ": "rest",
+        "formel_fassung": 1,
+        "berechnet_am": "2026-11-08T23:12:00Z",
+        "version": 1,
+        "anlass": null,
+        "verteilungen": [],
+        "eingaenge": [
+          {
+            "messstelle": "MS-16",
+            "rolle": "zufluss",
+            "anteil": "gesamt",
+            "menge": "100.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          },
+          {
+            "messstelle": "MS-17",
+            "rolle": "zugeordnet",
+            "anteil": "gesamt",
+            "menge": "60.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          },
+          {
+            "messstelle": "MS-18",
+            "rolle": "zugeordnet",
+            "anteil": "gesamt",
+            "menge": "45.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          }
+        ],
+        "ergebnis": {
+          "menge": "-5.000",
+          "zustand": "vollständig",
+          "abdeckung_prozent": 100,
+          "kennzeichen": [
+            "berechnet (Differenz)",
+            "unplausibel (negativ)"
+          ]
+        }
+      },
+      "ergebnis": {
+        "satz": "satz_aus",
+        "fehlt": []
+      }
+    },
+    {
+      "regel": "aus_gespeichert",
+      "name": "F8: Werte je Messstelle MS-19, Monat Oktober 2026 — eine gewichtete Summe speichert keinen Anteil (NULL → gesamt)",
+      "satz_aus": {
+        "datei": "bilanz-vectors.json",
+        "fall": "F8",
+        "pruefung": "Die Herkunft von MS-19 nennt die drei Hauptzähler"
+      },
+      "eingang": {
+        "messstelle": "MS-19",
+        "periode_art": "monat",
+        "beginn": "2026-09-30T22:00:00Z",
+        "zeitzone": "Europe/Berlin",
+        "formel_typ": "gewichtete_summe",
+        "formel_fassung": 1,
+        "berechnet_am": "2026-10-31T23:15:00Z",
+        "version": 1,
+        "anlass": null,
+        "verteilungen": [],
+        "eingaenge": [
+          {
+            "messstelle": "MS-01",
+            "rolle": null,
+            "anteil": null,
+            "menge": "128400.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          },
+          {
+            "messstelle": "MS-10",
+            "rolle": null,
+            "anteil": null,
+            "menge": "36900.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          },
+          {
+            "messstelle": "MS-16",
+            "rolle": null,
+            "anteil": null,
+            "menge": "9100.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": [
+              "ab 15.10.2026"
+            ]
+          }
+        ],
+        "ergebnis": {
+          "menge": "174400.000",
+          "zustand": "vollständig",
+          "abdeckung_prozent": 100,
+          "kennzeichen": [
+            "berechnet (Summe)",
+            "3 von 3 Systemen"
+          ]
+        }
+      },
+      "ergebnis": {
+        "satz": "satz_aus",
+        "fehlt": []
+      }
+    },
+    {
+      "regel": "aus_gespeichert",
+      "name": "F14: Kostenstellen-Sicht 4300, Tag 18.10.2026, Version 2 — Eingänge in Version 2, Anlass K-2026-0011",
+      "satz_aus": {
+        "datei": "bilanz-vectors.json",
+        "fall": "F14",
+        "pruefung": "Version 2 nennt ihren Auslöser und den Eingang in seiner Version 2"
+      },
+      "eingang": {
+        "messstelle": "MS-22",
+        "periode_art": "tag",
+        "beginn": "2026-10-17T22:00:00Z",
+        "zeitzone": "Europe/Berlin",
+        "formel_typ": "rest",
+        "formel_fassung": 1,
+        "berechnet_am": "2026-10-21T07:40:00Z",
+        "version": 2,
+        "anlass": "K-2026-0011",
+        "verteilungen": [],
+        "eingaenge": [
+          {
+            "messstelle": "MS-16",
+            "rolle": "zufluss",
+            "anteil": "gesamt",
+            "menge": "100.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          },
+          {
+            "messstelle": "MS-17",
+            "rolle": "zugeordnet",
+            "anteil": "gesamt",
+            "menge": "58.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 2,
+            "kennzeichen": [
+              "nachgeliefert"
+            ]
+          },
+          {
+            "messstelle": "MS-18",
+            "rolle": "zugeordnet",
+            "anteil": "gesamt",
+            "menge": "30.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          }
+        ],
+        "ergebnis": {
+          "menge": "12.000",
+          "zustand": "vollständig",
+          "abdeckung_prozent": 100,
+          "kennzeichen": [
+            "berechnet (Differenz)",
+            "nicht zugeordnet",
+            "korrigiert (Version 2)"
+          ]
+        }
+      },
+      "ergebnis": {
+        "satz": "satz_aus",
+        "fehlt": []
+      }
+    },
+    {
+      "regel": "aus_gespeichert",
+      "name": "Ohne Nummer der Formel-Fassung ist die Zahl nicht nachrechenbar — kein halber Satz",
+      "eingang": {
+        "messstelle": "MS-22",
+        "periode_art": "tag",
+        "beginn": "2026-10-17T22:00:00Z",
+        "zeitzone": "Europe/Berlin",
+        "formel_typ": "rest",
+        "formel_fassung": null,
+        "berechnet_am": "2026-10-18T22:12:00Z",
+        "version": 1,
+        "anlass": null,
+        "verteilungen": [],
+        "eingaenge": [
+          {
+            "messstelle": "MS-16",
+            "rolle": "zufluss",
+            "anteil": "gesamt",
+            "menge": "100.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          },
+          {
+            "messstelle": "MS-17",
+            "rolle": "zugeordnet",
+            "anteil": "gesamt",
+            "menge": "60.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          },
+          {
+            "messstelle": "MS-18",
+            "rolle": "zugeordnet",
+            "anteil": "gesamt",
+            "menge": "30.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          }
+        ],
+        "ergebnis": {
+          "menge": "10.000",
+          "zustand": "vollständig",
+          "abdeckung_prozent": 100,
+          "kennzeichen": [
+            "berechnet (Differenz)",
+            "nicht zugeordnet"
+          ]
+        }
+      },
+      "ergebnis": {
+        "satz": null,
+        "fehlt": [
+          "formel_fassung"
+        ]
+      }
+    },
+    {
+      "regel": "aus_gespeichert",
+      "name": "Ein Messkanal-Term (PR #688) hat keine Messstelle — `eingang_messstelle` fehlt, nichts wird erfunden",
+      "eingang": {
+        "messstelle": "MS-22",
+        "periode_art": "tag",
+        "beginn": "2026-10-17T22:00:00Z",
+        "zeitzone": "Europe/Berlin",
+        "formel_typ": "gewichtete_summe",
+        "formel_fassung": 1,
+        "berechnet_am": "2026-10-18T22:12:00Z",
+        "version": 1,
+        "anlass": null,
+        "verteilungen": [],
+        "eingaenge": [
+          {
+            "messstelle": "MS-16",
+            "rolle": null,
+            "anteil": "gesamt",
+            "menge": "100.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          },
+          {
+            "messstelle": "MS-17",
+            "rolle": null,
+            "anteil": "gesamt",
+            "menge": "60.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          },
+          {
+            "messstelle": null,
+            "rolle": null,
+            "anteil": "gesamt",
+            "menge": "30.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          }
+        ],
+        "ergebnis": {
+          "menge": "10.000",
+          "zustand": "vollständig",
+          "abdeckung_prozent": 100,
+          "kennzeichen": [
+            "berechnet (Differenz)",
+            "nicht zugeordnet"
+          ]
+        }
+      },
+      "ergebnis": {
+        "satz": null,
+        "fehlt": [
+          "eingang_messstelle"
+        ]
+      }
+    },
+    {
+      "regel": "aus_gespeichert",
+      "name": "Bilanz je Anlage ohne bestätigte Rest-Messstelle: wessen Zahl das ist, lässt sich nicht sagen",
+      "eingang": {
+        "messstelle": null,
+        "periode_art": "tag",
+        "beginn": "2026-10-17T22:00:00Z",
+        "zeitzone": "Europe/Berlin",
+        "formel_typ": "rest",
+        "formel_fassung": null,
+        "berechnet_am": "2026-10-18T22:12:00Z",
+        "version": 1,
+        "anlass": null,
+        "verteilungen": [],
+        "eingaenge": [
+          {
+            "messstelle": "MS-16",
+            "rolle": "zufluss",
+            "anteil": "gesamt",
+            "menge": "100.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          },
+          {
+            "messstelle": "MS-17",
+            "rolle": "zugeordnet",
+            "anteil": "gesamt",
+            "menge": "60.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          },
+          {
+            "messstelle": "MS-18",
+            "rolle": "zugeordnet",
+            "anteil": "gesamt",
+            "menge": "30.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          }
+        ],
+        "ergebnis": {
+          "menge": "10.000",
+          "zustand": "vollständig",
+          "abdeckung_prozent": 100,
+          "kennzeichen": [
+            "berechnet (Differenz)",
+            "nicht zugeordnet"
+          ]
+        }
+      },
+      "ergebnis": {
+        "satz": null,
+        "fehlt": [
+          "messstelle",
+          "formel_fassung"
+        ]
+      }
+    },
+    {
+      "regel": "aus_gespeichert",
+      "name": "Version 2 ohne Anlass: der Auslöser fehlt — er wird nie geraten",
+      "eingang": {
+        "messstelle": "MS-22",
+        "periode_art": "tag",
+        "beginn": "2026-10-17T22:00:00Z",
+        "zeitzone": "Europe/Berlin",
+        "formel_typ": "rest",
+        "formel_fassung": 1,
+        "berechnet_am": "2026-10-18T22:12:00Z",
+        "version": 2,
+        "anlass": null,
+        "verteilungen": [],
+        "eingaenge": [
+          {
+            "messstelle": "MS-16",
+            "rolle": "zufluss",
+            "anteil": "gesamt",
+            "menge": "100.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          },
+          {
+            "messstelle": "MS-17",
+            "rolle": "zugeordnet",
+            "anteil": "gesamt",
+            "menge": "60.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 2,
+            "kennzeichen": []
+          },
+          {
+            "messstelle": "MS-18",
+            "rolle": "zugeordnet",
+            "anteil": "gesamt",
+            "menge": "30.000",
+            "zustand": "vollständig",
+            "abdeckung_prozent": 100,
+            "version": 1,
+            "kennzeichen": []
+          }
+        ],
+        "ergebnis": {
+          "menge": "10.000",
+          "zustand": "vollständig",
+          "abdeckung_prozent": 100,
+          "kennzeichen": [
+            "berechnet (Differenz)",
+            "nicht zugeordnet"
+          ]
+        }
+      },
+      "ergebnis": {
+        "satz": null,
+        "fehlt": [
+          "ausloeser"
+        ]
+      }
+    },
+    {
+      "regel": "aus_gespeichert",
+      "name": "Ohne Eingänge in der Version fehlt auch ihr Rechenzeitpunkt",
+      "eingang": {
+        "messstelle": "MS-22",
+        "periode_art": "tag",
+        "beginn": "2026-10-17T22:00:00Z",
+        "zeitzone": "Europe/Berlin",
+        "formel_typ": "rest",
+        "formel_fassung": 1,
+        "berechnet_am": null,
+        "version": 1,
+        "anlass": null,
+        "verteilungen": [],
+        "eingaenge": [],
+        "ergebnis": {
+          "menge": "10.000",
+          "zustand": "vollständig",
+          "abdeckung_prozent": 100,
+          "kennzeichen": [
+            "berechnet (Differenz)",
+            "nicht zugeordnet"
+          ]
+        }
+      },
+      "ergebnis": {
+        "satz": null,
+        "fehlt": [
+          "eingaenge",
+          "berechnet_am"
+        ]
+      }
+    }
+  ],
+  "zuordnung": [
+    {
+      "datei": "bilanz-vectors.json",
+      "fall": "F1",
+      "pruefung": "Die Herkunft nennt drei Eingänge, ihre Rolle und die aus der Stellung abgeleitete Fassung",
+      "weg": "aus_gespeichert",
+      "grund": null
+    },
+    {
+      "datei": "bilanz-vectors.json",
+      "fall": "F2",
+      "pruefung": "Die Herkunft trägt das Kennzeichen der Periode weiter",
+      "weg": "aus_gespeichert",
+      "grund": null
+    },
+    {
+      "datei": "bilanz-vectors.json",
+      "fall": "F3",
+      "pruefung": "Die Herkunft des Rests nennt fünf Eingänge und seine Verteilung",
+      "weg": "aus_gespeichert",
+      "grund": null
+    },
+    {
+      "datei": "bilanz-vectors.json",
+      "fall": "F4",
+      "pruefung": "Die Herkunft führt den Speicher ZWEIMAL — mit seinen beiden Anteilen",
+      "weg": "nicht_ueber_route",
+      "grund": "Der Speicher MS-04 geht mit einem Anteil (positiv/negativ) ein — die Periodenwerte berechneter Messstellen speichern einen Anteils-Term ohne Menge (`anteil_nicht_gespeichert`, AP-10 IP-10), und die Bilanz je Anlage liest ihn aus dem Lese-Modell ebenfalls ohne Menge. Nur der Satz aus seinen Eingängen ist geprüft (`BilanzVectorsTest`)."
+    },
+    {
+      "datei": "bilanz-vectors.json",
+      "fall": "F5",
+      "pruefung": "Die Herkunft nennt den Eingang ohne Werte mit Menge `null`",
+      "weg": "aus_gespeichert",
+      "grund": null
+    },
+    {
+      "datei": "bilanz-vectors.json",
+      "fall": "F6",
+      "pruefung": "Die Herkunft des unplausiblen Rests nennt jeden Eingang, keine Ursache",
+      "weg": "aus_gespeichert",
+      "grund": null
+    },
+    {
+      "datei": "bilanz-vectors.json",
+      "fall": "F7",
+      "pruefung": "Die Formel-Fassung des Typs `rest` ist „aus der Stellung je Tag“",
+      "weg": "nicht_ueber_route",
+      "grund": "Die Formel-Fassung als Satz „aus der Stellung je Tag“ und der Vermerk „Stellung geändert (…)“ gehören zusammen — Vermerke reicht weder der Lauf noch die Bilanz je Anlage herein (nicht gebaut). Eine Route nennt an diesem Tag die Nummer der Rest-Fassung und das Kennzeichen ohne Vermerk."
+    },
+    {
+      "datei": "bilanz-vectors.json",
+      "fall": "F8",
+      "pruefung": "Die Herkunft von MS-19 nennt die drei Hauptzähler",
+      "weg": "aus_gespeichert",
+      "grund": null
+    },
+    {
+      "datei": "bilanz-vectors.json",
+      "fall": "F9",
+      "pruefung": "Die Herkunft des Saldos nennt beide Seiten getrennt",
+      "weg": "nicht_ueber_route",
+      "grund": "Der Formel-Typ `saldo` hat noch keinen Schreibweg (AP-10 IP-16): es gibt keine gespeicherte Zeile und keine Route, die ihn zeigt."
+    },
+    {
+      "datei": "bilanz-vectors.json",
+      "fall": "F11",
+      "pruefung": "Die Herkunft von MS-20 weist den verteilten Eingang als solchen aus",
+      "weg": "nicht_ueber_route",
+      "grund": "Der Verteilungs-Term MS-07 (70 % an 4100) wird gespeichert, aber ohne Menge (`verteilung_nicht_gespeichert`, AP-10 IP-10) — die Summe MS-20 hat darum an keinem Tag die Zahl des Falls."
+    },
+    {
+      "datei": "bilanz-vectors.json",
+      "fall": "F14",
+      "pruefung": "Version 2 nennt ihren Auslöser und den Eingang in seiner Version 2",
+      "weg": "aus_gespeichert",
+      "grund": null
+    },
+    {
+      "datei": "verteilung-vectors.json",
+      "fall": "F10",
+      "pruefung": "Die Herkunft eines VERTEILTEN Werts nennt Fassung, Ziel und Anteil",
+      "weg": "kostenstelle",
+      "grund": "Die Kostenstellen-Sicht 4100, Monat Oktober 2026, baut den verteilten Satz beim Lesen (nichts gespeichert) — geprüft in `KostenstelleEnergieApiTest.f10DieHerkunftDesVerteiltenPostensIstByteGleichZumVektor`."
+    },
+    {
+      "datei": "verteilung-vectors.json",
+      "fall": "F13",
+      "pruefung": "Die Herkunft nennt beide Verteilungs-Fassungen und den Auslöser",
+      "weg": "nicht_ueber_route",
+      "grund": "Version 2 entsteht hier aus einer RÜCKWIRKEND geänderten Verteilung — die erzeugt keine Version (Befund der Kostenstellen-Sicht, AP-10 IP-11); die Sicht zeigt die Zahl mit der neuen Fassung als Version 1 ohne Auslöser."
+    }
+  ]
+}

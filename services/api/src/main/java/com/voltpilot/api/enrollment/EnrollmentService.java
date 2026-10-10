@@ -260,6 +260,12 @@ public class EnrollmentService {
      * so polling reveals nothing about which refs exist (no enumeration).
      */
     public Optional<IssuedEnrollment> certificateFor(String externalRef) {
+        synchronized (refLocks[Math.floorMod(externalRef.hashCode(), LOCK_STRIPES)]) {
+            return certificateForLocked(externalRef);
+        }
+    }
+
+    private Optional<IssuedEnrollment> certificateForLocked(String externalRef) {
         Optional<Enrollment> found = enrollments.find(externalRef);
         if (found.isEmpty()) {
             return Optional.empty();
@@ -352,6 +358,30 @@ public class EnrollmentService {
         } catch (RuntimeException e) {
             log.warn("Could not remove broker ACL grant for unclaimed device {}: {}",
                     deviceId, e.getMessage());
+        }
+    }
+
+    /** Box-Tausch: erst nach bestätigtem ACL-Entzug darf der Nachfolger seine Quellen erhalten.
+     * Verwendet denselben Grant-Schreiber und Broker-Reload wie Unclaim; keine neue PKI.
+     * Ein Ausfall bleibt als Zustellauftrag erhalten. CRL bleibt der Betreiberweg.
+     */
+    public boolean blockSucceededDevice(String externalRef, UUID deviceId) {
+        // Eine bereits laufende Ausstellung darf den entzogenen Grant nicht nachträglich
+        // wieder anlegen. Nach dem Commit sieht jeder neue Poll die Box als ausgebaut.
+        synchronized (refLocks[Math.floorMod(externalRef.hashCode(), LOCK_STRIPES)]) {
+            return blockSucceededDeviceLocked(deviceId);
+        }
+    }
+
+    private boolean blockSucceededDeviceLocked(UUID deviceId) {
+        BrokerAuthzReloader reloader = authzReloader.getIfAvailable();
+        if (aclWriter == null || reloader == null) return false;
+        try {
+            aclWriter.removeGrant(deviceId);
+            return reloader.reloadNowBlocking(1, Duration.ZERO);
+        } catch (RuntimeException e) {
+            log.warn("Box succession ACL removal failed for {}: {}", deviceId, e.getMessage());
+            return false;
         }
     }
 }

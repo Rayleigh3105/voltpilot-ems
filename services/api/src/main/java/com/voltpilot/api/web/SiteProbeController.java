@@ -3,11 +3,12 @@ package com.voltpilot.api.web;
 import com.voltpilot.api.probe.ProbeRequest;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.probe.ProbeService;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -41,18 +42,16 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/v1/sites/{siteId}")
 public class SiteProbeController {
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final ProbeService probes;
 
-    public SiteProbeController(SiteRepository sites, ProbeService probes) {
-        this.sites = sites;
+    public SiteProbeController(Geltungsbereich geltungsbereich, ProbeService probes) {
+        this.geltungsbereich = geltungsbereich;
         this.probes = probes;
     }
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 
     /**
@@ -61,6 +60,7 @@ public class SiteProbeController {
      * yields the honest {@code timeout} outcome, not an error.
      */
     @PostMapping("/modbus-probe")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public ProbeResult probe(@PathVariable UUID siteId,
             @Valid @RequestBody ProbeRequest request, @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);

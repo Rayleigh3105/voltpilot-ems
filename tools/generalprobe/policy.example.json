@@ -1,0 +1,7 @@
+{
+  "copy_volume": "vp-generalprobe-kopie",
+  "copy_database": "voltpilot",
+  "deny_hosts": ["*prod*", "*production*", "*live*", "timescaledb", "host.docker.internal"],
+  "deny_databases": ["*prod*", "*production*", "*live*"],
+  "deny_volumes": ["*prod*", "*production*", "*live*", "voltpilot_timescale-data"]
+}

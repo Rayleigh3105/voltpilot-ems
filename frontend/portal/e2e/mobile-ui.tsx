@@ -1,3 +1,4 @@
+import './rollen-fixture';
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { AddDeviceDrawer } from '../src/components/DeviceDrawers';
@@ -21,7 +22,7 @@ function Fixture() {
   const [open, setOpen] = useState(false);
   if (new URLSearchParams(location.search).has('register')) return <App initialAuth={false} initialView="register" />;
   return <main>
-    <button onClick={() => setOpen(true)}>Gerät hinzufügen</button>
+    <button onClick={() => setOpen(true)}>VoltPilot-Box hinzufügen</button>
     <a href="#background">Link im Hintergrund</a>
     <AddDeviceDrawer open={open} onClose={() => setOpen(false)} sites={sites} onClaimed={() => {}} />
   </main>;

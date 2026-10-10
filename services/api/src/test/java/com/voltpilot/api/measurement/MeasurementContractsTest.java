@@ -2,6 +2,7 @@ package com.voltpilot.api.measurement;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -40,10 +41,10 @@ class MeasurementContractsTest {
         MeasurementConfigPublisher publisher = new MeasurementConfigPublisher(
                 "tcp://unused:1883", "", "", mapper, ErwarteteKadenz.KEINE);
         SelectionPoint point = new SelectionPoint(null, "deye.hybrid_1p.battery.battery", true, 10,
-                7, null, null, "2026.08.26.3", "test", null, null, "pending_edge",
+                7, null, null, "2026.09.23.3", "test", null, null, "pending_edge",
                 null, null, null, "thermal_bms", 90, 900, "fifteen_minute",
                 null, null, null, null);
-        State state = new State(DEVICE, SITE, null, 7, "2026.08.26.3", "pending_edge", null,
+        State state = new State(DEVICE, SITE, null, 7, "2026.09.23.3", "pending_edge", null,
                 null, null, List.of(point), List.of(), null);
         var actual = mapper.readTree(publisher.payload(new DeviceScope(TENANT, SITE, DEVICE), state));
         var fixture = mapper.readTree(Files.readString(Path.of("..", "..", "docs", "contracts",
@@ -52,6 +53,61 @@ class MeasurementContractsTest {
         assertThat(MeasurementConfigPublisher.topic(TENANT, SITE, DEVICE))
                 .isEqualTo("ems/" + TENANT + "/" + SITE + "/" + DEVICE
                         + "/v2/measurement-config");
+    }
+
+    /**
+     * UEMS AP-05: {@code registerbilder} steht NUR an einem Plan mit Kartenpunkten; ein Plan ohne
+     * WAGO bleibt Byte für Byte der von vorher, auch wenn die Quelle verdrahtet ist.
+     */
+    @Test
+    void registerbilderNurAnEinemPlanMitKartenpunktenSonstByteGleich() throws Exception {
+        UUID karte = UUID.fromString("00000000-0000-0000-0000-00000000c495");
+        JdbcTemplate jdbc = mock(JdbcTemplate.class);
+        MeasurementConfigPublisher ohne = new MeasurementConfigPublisher(
+                "tcp://unused:1883", "", "", mapper, ErwarteteKadenz.KEINE);
+        MeasurementConfigPublisher mit = new MeasurementConfigPublisher(
+                "tcp://unused:1883", "", "", mapper, ErwarteteKadenz.KEINE);
+        mit.setRegisterbilder(new WagoRegisterbilder(jdbc, mapper) {
+            @Override
+            public List<Map<String, Object>> fuer(UUID siteId, List<MeasurementPlan.Entry> plan) {
+                if (plan.stream().noneMatch(e -> e.pointKey().startsWith("wago."))) return super.fuer(siteId, plan);
+                assertThat(siteId).isEqualTo(SITE);
+                return List.of(inVertragsReihenfolge(Map.of("entity_id", karte, "basisadresse", 4096,
+                        "funktionscode", 4, "wortfolge", "little", "kartenzahl", 2, "karten", List.of(
+                                Map.of("steckplatz", 2, "kartentyp", 494), Map.of("steckplatz", 3, "kartentyp", 495)))));
+            }
+        });
+        SelectionPoint battery = new SelectionPoint(null, "deye.hybrid_1p.battery.battery", true, 10,
+                7, null, null, "2026.08.26.3", "test", null, null, "pending_edge",
+                null, null, null, "thermal_bms", 90, 900, "fifteen_minute",
+                null, null, null, null);
+        State bestand = new State(DEVICE, SITE, null, 7, "2026.08.26.3", "pending_edge", null,
+                null, null, List.of(battery), List.of(), null);
+        DeviceScope scope = new DeviceScope(TENANT, SITE, DEVICE);
+        assertThat(mit.payload(scope, bestand)).isEqualTo(ohne.payload(scope, bestand));
+        verify(jdbc, never()).query(anyString(), any(RowMapper.class), any(Object[].class));
+        SelectionPoint wago = new SelectionPoint(karte, "wago.pm495.karte[1].frequency", true, 60,
+                11, null, null, "2026.09.23.3", "test", null, null, "pending_edge",
+                null, null, null, "thermal_bms", 90, 900, "fifteen_minute",
+                null, null, null, null);
+        SelectionPoint battery11 = new SelectionPoint(null, "deye.hybrid_1p.battery.battery", true, 10,
+                11, null, null, "2026.09.23.3", "test", null, null, "pending_edge",
+                null, null, null, "thermal_bms", 90, 900, "fifteen_minute",
+                null, null, null, null);
+        State mitKarte = new State(DEVICE, SITE, null, 11, "2026.09.23.3", "pending_edge", null,
+                null, null, List.of(wago, battery11), List.of(), null);
+        var fixture = mapper.readTree(Files.readString(Path.of("..", "..", "docs", "contracts",
+                "v2", "examples", "mqtt-measurement-config.valid.registerbild.json")));
+        assertThat(mapper.readTree(mit.payload(scope, mitKarte))).isEqualTo(fixture);
+        assertThat(mapper.readTree(ohne.payload(scope, mitKarte)).has("registerbilder")).isFalse();
+    }
+
+    private static Map<String, Object> inVertragsReihenfolge(Map<String, Object> m) {
+        Map<String, Object> out = new java.util.LinkedHashMap<>();
+        for (String k : List.of("entity_id", "basisadresse", "funktionscode", "wortfolge", "kartenzahl", "karten")) {
+            out.put(k, m.get(k));
+        }
+        return out;
     }
 
     @Test
@@ -75,10 +131,83 @@ class MeasurementContractsTest {
         assertThat(payload).isEqualTo(fixture);
     }
 
+    /**
+     * Schnitt 2: was ein eigener Messwert misst ({@code measures}) bleibt in der Cloud. Die Box
+     * bekommt dieselben Bytes wie ohne Angabe — der Vertrag ist geschlossen, und eine ältere Box
+     * verwürfe sonst die ganze Auswahl.
+     */
+    @Test
+    void publisherGibtDieAngabeDesEigenenMesswertsNichtAnDieBox() throws Exception {
+        MeasurementConfigPublisher publisher = new MeasurementConfigPublisher(
+                "tcp://unused:1883", "", "", mapper, ErwarteteKadenz.KEINE);
+        String ohne = "{\"label\":\"Test\",\"sourceKind\":\"modbus_input\",\"address\":42,"
+                + "\"selector\":\"input:0x002a\",\"valueType\":\"uint16\",\"widthBits\":16,"
+                + "\"signed\":false,\"endian\":\"big\",\"scale\":1,\"unit\":\"V\","
+                + "\"cadenceS\":30,\"retentionClass\":\"unclassified\",\"readOnly\":true,"
+                + "\"requestCostMs\":400";
+        var definition = mapper.readTree(ohne + ",\"measures\":{\"quantity\":\"active_power\","
+                + "\"direction\":\"import\",\"aggregationKind\":\"gauge\"}}");
+        SelectionPoint point = new SelectionPoint(null, "custom.abc", true, 30, 8, null, null,
+                "2026.08.25.1", "test", null, null, "pending_edge", null, null, definition,
+                "unclassified", 90, 900, "fifteen_minute", "Test", "custom", "custom", "known");
+        State state = new State(DEVICE, SITE, null, 8, "2026.08.25.1", "pending_edge", null,
+                null, null, List.of(point), List.of(), null);
+        var payload = mapper.readTree(publisher.payload(new DeviceScope(TENANT, SITE, DEVICE), state));
+        assertThat(payload.at("/selections/0/definition")).isEqualTo(mapper.readTree(ohne + "}"));
+        var fixture = mapper.readTree(Files.readString(Path.of("..", "..", "docs", "contracts",
+                "v2", "examples", "mqtt-measurement-config.valid.custom.json")));
+        assertThat(payload).isEqualTo(fixture);
+        assertThat(definition.has("measures")).as("die gespeicherte Zeile bleibt unberührt").isTrue();
+    }
+
+    /**
+     * <b>NW-3 Punkt 4 (AP-14 IP-6): die Auswahl, die die AUSGELIEFERTE Box am Simulator des
+     * Release-Tags wirklich liest.</b> Der Lauf {@code tools/nw3-box-image/nw3.sh --strecke}
+     * stellt genau diese Bytes ueber den echten Broker zu - sie sind darum hier an den ERZEUGER
+     * gebunden und nicht von Hand geschrieben.
+     *
+     * <p><b>Warum ein {@code custom.}-Punkt und kein {@code sunspec.*} aus dem Katalog:</b> der
+     * Simulator des Tags ({@code edge/sim/sunspec-sim.js}) ist eine kompakte 64-Register-Karte
+     * und KEIN echtes SunSpec-Geraet - er traegt keine SID-Marke, also findet die
+     * Modell-Erkennung der Palette nichts und ein modell-relativer Punkt wird zwar ANGENOMMEN,
+     * aber nie gelesen. Ein {@code custom.}-Punkt adressiert das Halteregister absolut; er ist
+     * derselbe Weg, den die Cloud fuer jeden nicht-katalogisierten Kunden-Punkt geht
+     * (vgl. {@link #publisherCarriesConcreteCustomDefinitionToTheEdge()}), und Register 4 ist
+     * der dokumentierte Ladezustand der simulierten Anlage (uint16, 0,1 %).
+     */
+    @Test
+    void nw3AuswahlAmSimulatorIstDieFestgenagelteNutzlast() throws Exception {
+        MeasurementConfigPublisher publisher = new MeasurementConfigPublisher(
+                "tcp://unused:1883", "", "", mapper, ErwarteteKadenz.KEINE);
+        var definition = mapper.readTree("{\"label\":\"Ladezustand (Simulator)\","
+                + "\"sourceKind\":\"modbus_holding\",\"address\":4,"
+                + "\"selector\":\"holding:0x0004\",\"valueType\":\"uint16\",\"widthBits\":16,"
+                + "\"signed\":false,\"endian\":\"big\",\"scale\":0.1,\"unit\":\"%\","
+                + "\"cadenceS\":10,\"retentionClass\":\"unclassified\",\"readOnly\":true,"
+                + "\"requestCostMs\":400}");
+        SelectionPoint point = new SelectionPoint(null, "custom.sim.soc", true, 10, 8, null, null,
+                "2026.09.23.3", "test", null, null, "pending_edge", null, null, definition,
+                "unclassified", 90, 900, "fifteen_minute", "Ladezustand (Simulator)", "custom",
+                "custom", "known");
+        State state = new State(DEVICE, SITE, null, 8, "2026.09.23.3", "pending_edge", null,
+                null, null, List.of(point), List.of(), null);
+        var payload = mapper.readTree(publisher.payload(new DeviceScope(TENANT, SITE, DEVICE), state));
+        var fixture = mapper.readTree(Files.readString(Path.of("..", "..", "docs", "contracts",
+                "v2", "examples", "mqtt-measurement-config.valid.nw3-simulator.json")));
+        assertThat(payload).isEqualTo(fixture);
+        // Die Revision liegt UEBER der von Punkt 3 (7): die Box wendet nur eine hoehere an.
+        assertThat(fixture.path("revision").asInt()).isGreaterThan(
+                mapper.readTree(Files.readString(Path.of("..", "..", "docs", "contracts", "v2",
+                        "examples", "mqtt-measurement-config.valid.json"))).path("revision").asInt());
+        // Der Katalogstand ist der des Tags - eine Abweichung weist die Box als
+        // `unsupported_catalog` KOMPLETT ab (measurement-planner.js buildPlan).
+        assertThat(fixture.path("catalog_version").asText()).isEqualTo("2026.09.23.3");
+    }
+
     @Test
     void statusIdentityAndMonotoneRevisionAreEnforced() throws Exception {
         MeasurementSelectionRepository repository = mock(MeasurementSelectionRepository.class);
-        when(repository.deviceScope(DEVICE)).thenReturn(new DeviceScope(TENANT, SITE, DEVICE));
+        when(repository.aktiverDeviceScope(DEVICE)).thenReturn(new DeviceScope(TENANT, SITE, DEVICE));
         when(repository.revision(DEVICE)).thenReturn(8L);
         when(repository.acknowledgedRevision(DEVICE)).thenReturn(6L);
         MeasurementConfigStatusListener listener = new MeasurementConfigStatusListener(
@@ -100,6 +229,81 @@ class MeasurementContractsTest {
         assertThat(listener.handle(STATUS_TOPIC.replace(TENANT.toString(),
                 "10000000-0000-0000-0000-000000000001"), valid)).isFalse();
         verify(repository, never()).applyAcknowledgement(eq(DEVICE), eq(8L), any(), any(), any(), any());
+        // Eine Quittung ohne entity_id nimmt nie den Weg je Komponente (AP-07 IP-18b).
+        verify(repository, never()).applyAcknowledgementJeKomponente(any(), anyLong(), any(), any(), any(),
+                any(), any());
+    }
+
+    /**
+     * AP-07 IP-18b Einschalten, Status je Komponente ({@code x-rejection-entity-rule}): die Box lehnt
+     * EINE Komponente eines geteilten Punkts ab und liest ihn für die andere - vorher verwarf der
+     * Listener eine solche Quittung ganz ({@code entity_id} war kein erlaubtes Feld). Die Fälle,
+     * die der Core ablehnt ({@code geteilter_punkt_test.go}), lehnt auch die Cloud ab.
+     */
+    @Test
+    void statusJeKomponenteNimmtDieAblehnungEinerKomponenteAn() throws Exception {
+        MeasurementSelectionRepository repository = mock(MeasurementSelectionRepository.class);
+        when(repository.aktiverDeviceScope(DEVICE)).thenReturn(new DeviceScope(TENANT, SITE, DEVICE));
+        when(repository.revision(DEVICE)).thenReturn(10L);
+        when(repository.acknowledgedRevision(DEVICE)).thenReturn(9L);
+        MeasurementConfigStatusListener listener = new MeasurementConfigStatusListener(
+                "tcp://unused:1883", "", "", repository, mapper);
+        UUID b = UUID.fromString("00000000-0000-0000-0000-0000000000a2");
+        String geteilt = "deye.hybrid_1p.battery.battery";
+        java.util.function.Function<String, byte[]> status = rejected -> ("{\"schema_version\":\"2.0\","
+                + "\"tenant_id\":\"" + TENANT + "\",\"site_id\":\"" + SITE + "\",\"device_id\":\"" + DEVICE
+                + "\",\"revision\":10,\"applied_at\":\"2026-09-23T10:00:00Z\",\"accepted\":[\"" + geteilt
+                + "\"],\"rejected\":[" + rejected + "],\"edge_version\":\"edge-test\"}").getBytes();
+
+        assertThat(listener.handle(STATUS_TOPIC, status.apply("{\"point_key\":\"" + geteilt
+                + "\",\"reason\":\"binding_unavailable\",\"entity_id\":\"" + b + "\"}"))).isTrue();
+        verify(repository).applyAcknowledgementJeKomponente(eq(DEVICE), eq(10L),
+                eq(Instant.parse("2026-09-23T10:00:00Z")), eq(Set.of(geteilt)), eq(Map.of()),
+                eq(Map.of(new MeasurementSelectionRepository.KomponentenAblehnung(geteilt, b),
+                        "binding_unavailable")), eq("edge-test"));
+        verify(repository, never()).applyAcknowledgement(any(), anyLong(), any(), any(), any(), any());
+
+        String a = "00000000-0000-0000-0000-0000000000a1";
+        for (String kaputt : List.of(
+                // ganzer Punkt angenommen UND abgelehnt
+                "{\"point_key\":\"" + geteilt + "\",\"reason\":\"binding_unavailable\"}",
+                // dieselbe Komponente zweimal, auch in anderer Schreibweise
+                "{\"point_key\":\"p.other\",\"reason\":\"binding_unavailable\",\"entity_id\":\"" + a + "\"},"
+                        + "{\"point_key\":\"p.other\",\"reason\":\"unknown_point\",\"entity_id\":\""
+                        + a.toUpperCase() + "\"}",
+                // Komponente neben ganzem Punkt, in beiden Reihenfolgen
+                "{\"point_key\":\"p.other\",\"reason\":\"unknown_point\"},"
+                        + "{\"point_key\":\"p.other\",\"reason\":\"binding_unavailable\",\"entity_id\":\"" + a + "\"}",
+                "{\"point_key\":\"p.other\",\"reason\":\"binding_unavailable\",\"entity_id\":\"" + a + "\"},"
+                        + "{\"point_key\":\"p.other\",\"reason\":\"unknown_point\"}",
+                // kaputte Komponente
+                "{\"point_key\":\"p.other\",\"reason\":\"binding_unavailable\",\"entity_id\":\"nope\"}",
+                "{\"point_key\":\"p.other\",\"reason\":\"binding_unavailable\",\"entity_id\":\"1-1-1-1-1\"}",
+                "{\"point_key\":\"p.other\",\"reason\":\"binding_unavailable\",\"entity_id\":7}",
+                // unbekanntes Wort bleibt unbekannt, auch je Komponente
+                "{\"point_key\":\"p.other\",\"reason\":\"erfunden\",\"entity_id\":\"" + a + "\"}")) {
+            assertThat(listener.handle(STATUS_TOPIC, status.apply(kaputt))).as(kaputt).isFalse();
+        }
+        verify(repository).applyAcknowledgementJeKomponente(any(), anyLong(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void statusOfAnAusgebauteBoxIsDiscarded() throws Exception {
+        // The box is still RLS-visible for its history (deviceScope), but no longer takes part in
+        // operation (aktiverDeviceScope, UEMS AP-07 IP-11): its acknowledgement must not land.
+        MeasurementSelectionRepository repository = mock(MeasurementSelectionRepository.class);
+        when(repository.deviceScope(DEVICE)).thenReturn(new DeviceScope(TENANT, SITE, DEVICE));
+        when(repository.aktiverDeviceScope(DEVICE)).thenReturn(null);
+        when(repository.revision(DEVICE)).thenReturn(8L);
+        when(repository.acknowledgedRevision(DEVICE)).thenReturn(6L);
+        MeasurementConfigStatusListener listener = new MeasurementConfigStatusListener(
+                "tcp://unused:1883", "", "", repository, mapper);
+
+        assertThat(listener.handle(STATUS_TOPIC,
+                fixture("mqtt-measurement-config-status.valid.json"))).isFalse();
+        verify(repository).aktiverDeviceScope(DEVICE);
+        verify(repository, never()).applyAcknowledgement(any(), anyLong(), any(), any(), any(), any());
+        assertThat(TenantContext.get()).isNull();
     }
 
     @Test
@@ -123,7 +327,7 @@ class MeasurementContractsTest {
         UUID right = UUID.fromString("00000000-0000-0000-0000-0000000000a2");
         String shared = "deye.hybrid_1p.battery.battery";
 
-        State bound = new State(DEVICE, SITE, null, 9, "2026.08.26.3", "pending_edge", null,
+        State bound = new State(DEVICE, SITE, null, 9, "2026.09.23.3", "pending_edge", null,
                 null, null,
                 List.of(selection(left, shared, 10),
                         selection(null, "deye.hybrid_1p.battery.battery-voltage", 30)),
@@ -137,7 +341,7 @@ class MeasurementContractsTest {
         // The edge keys its poll plan on the point key alone and refuses a
         // duplicate, so two components watching ONE register arrive once - with
         // the faster wish and WITHOUT a binding nobody could honour.
-        State ambiguous = new State(DEVICE, SITE, null, 10, "2026.08.26.3", "pending_edge",
+        State ambiguous = new State(DEVICE, SITE, null, 10, "2026.09.23.3", "pending_edge",
                 null, null, null,
                 List.of(selection(left, shared, 30), selection(right, shared, 10)),
                 List.of(), null);
@@ -148,7 +352,7 @@ class MeasurementContractsTest {
         assertThat(collapsed.at("/selections/0/entity_id").isMissingNode()).isTrue();
 
         // A component row next to the box row for the same key is ambiguous too.
-        State mixed = new State(DEVICE, SITE, null, 11, "2026.08.26.3", "pending_edge",
+        State mixed = new State(DEVICE, SITE, null, 11, "2026.09.23.3", "pending_edge",
                 null, null, null,
                 List.of(selection(null, shared, 30), selection(left, shared, 60)),
                 List.of(), null);
@@ -178,7 +382,7 @@ class MeasurementContractsTest {
     void dieKadenzKommtAusDerFassungUndDerDrahtBleibtDerselbe() throws Exception {
         UUID left = UUID.fromString("00000000-0000-0000-0000-0000000000a1");
         String shared = "deye.hybrid_1p.battery.battery";
-        State state = new State(DEVICE, SITE, null, 9, "2026.08.26.3", "pending_edge", null, null, null,
+        State state = new State(DEVICE, SITE, null, 9, "2026.09.23.3", "pending_edge", null, null, null,
                 List.of(selection(left, shared, 10),
                         selection(null, "deye.hybrid_1p.battery.battery-voltage", 30)),
                 List.of(), null);
@@ -211,7 +415,7 @@ class MeasurementContractsTest {
         }
 
         // Eine Zeile ohne Komponente fragt nie nach einer Fassung.
-        State ohneKomponente = new State(DEVICE, SITE, null, 9, "2026.08.26.3", "pending_edge", null, null,
+        State ohneKomponente = new State(DEVICE, SITE, null, 9, "2026.09.23.3", "pending_edge", null, null,
                 null, List.of(selection(null, shared, 10)), List.of(), null);
         MeasurementConfigPublisher zaehlend = new MeasurementConfigPublisher("tcp://unused:1883", "", "",
                 mapper, (kanaele, zeitpunkt) -> {
@@ -235,7 +439,7 @@ class MeasurementContractsTest {
 
     private static SelectionPoint selection(UUID entityId, String pointKey, Integer cadenceS) {
         return new SelectionPoint(entityId, pointKey, true, cadenceS, 9, null, null,
-                "2026.08.26.3", "test", null, null, "pending_edge", null, null, null,
+                "2026.09.23.3", "test", null, null, "pending_edge", null, null, null,
                 "thermal_bms", 90, 900, "fifteen_minute", null, null, null, null);
     }
 
@@ -248,7 +452,7 @@ class MeasurementContractsTest {
         State state = new State(DEVICE, SITE, null, 9, "2026.08.25.1", "pending_edge", null,
                 null, null, List.of(), List.of(), null);
         when(admin.query(anyString(), any(RowMapper.class))).thenReturn(List.of(scope));
-        when(service.state(DEVICE)).thenReturn(state);
+        when(service.forPublishing(DEVICE)).thenReturn(state);
         new MeasurementConfigReconciler(admin, service, publisher).reconcile();
         verify(publisher).publish(scope, state);
         assertThat(TenantContext.get()).isNull();

@@ -10,6 +10,7 @@ je Messstelle zum Stichtag), `stichtag`, `zeitpunkt` und `teilansicht`. Arbeit:
 `RegisterGeraet`), Route in `web/MessstelleController`. Beweise: `MessstelleRegisterApiTest`
 (15 Fälle, Keycloak + Timescale: §5.16 Zeile für Zeile, A17, jeder Filter, Mandantenzaun, Laufzeit, IP-15)
 und `MessstelleSchnittstelleVertragTest` (Java-Formen ⟷ OpenAPI, ohne Docker).
+Die Fläche dazu (AP-04 IP-5): [`uems-messstellen-register-portal.md`](uems-messstellen-register-portal.md).
 
 ## Die Zeile und was sie NICHT sagt
 
@@ -30,7 +31,7 @@ und `MessstelleSchnittstelleVertragTest` (Java-Formen ⟷ OpenAPI, ohne Docker).
 - `beobachtung`, `letzter_wert`, `nebengroessen` und `aggregat`: **seit IP-15 gefüllt** (die
   Platzhalter-Zusage „IMMER `null`“ ist damit eingelöst, nicht mehr gültig) — Einzelheiten und
   Fallen in [`uems-messstellen-beobachtung-letzter-wert.md`](uems-messstellen-beobachtung-letzter-wert.md).
-  `null` bleibt die Beobachtung nur bei einer BERECHNETEN Messstelle (AP-10). `teilansicht` bleibt
+  `null` bleibt die Beobachtung nur bei einer BERECHNETEN Messstelle — ihre Vollständigkeit steht seit AP-10 IP-9 in `berechnung`. `teilansicht` bleibt
   `false`, bis AP-03 Rechte je Standort durchsetzt; Prozess- und Kostenstellen-Filter fehlen,
   solange ihre Objekte fehlen.
 
@@ -61,3 +62,17 @@ und `MessstelleSchnittstelleVertragTest` (Java-Formen ⟷ OpenAPI, ohne Docker).
   `MessstelleService.darstellung(…)` wie `GET …/{id}`; `dieListeUndDieEinzelneMessstelleSagenDasselbe`
   hält beide zusammen. Wer `messstelle_quelle` & Co. um eine Spalte erweitert, muss sie in der
   Abfrage MIT aufnehmen, sonst schlägt genau dieser Test zu.
+
+## Der letzte vollständige Monat (Messen PR5, 06.10.2026)
+
+Konzept `data/vp-messen-konzept-m1/report.md` §10.2 (Variante 2A): die Liste zeigt je Messstelle den Verbrauch des letzten vollständigen Monats.
+`GET /api/v1/messstellen?letzterMonat=true` gibt jeder Zeile `letzter_monat {monat, zeitzone, wert, ausserhalb_zugriff?}`.
+`monat` ist der Kalendermonat vor dem Monat des Stichtags in der Zone des Standorts der Zeile.
+`wert` ist GENAU der Schritt von `…/{kennzeichen}/werte?raster=monat` (`MessstelleWerteService.monatswert`, derselbe `lesen` + `schritte` wie die Route, neueste Version, mit Herkunft) - das Portal spricht ihn wie jeden Werte-Schritt und rechnet nichts.
+
+- **Nur auf Verlangen.** Der Monat kostet einen Lesezug JE gezeigter Messstelle; die Zusage „feste Zahl von Abfragen“ gilt nur ohne den Parameter (`hundertMessstellenKosten…`).
+  Rund acht Portal-Flächen lesen das Register - nur die Fläche, die den Monat zeigt, setzt `letzterMonat: true` (`MessstellenRegisterAnfrage`).
+  Ohne den Parameter fehlt das Feld (`NON_NULL`), die Antwort ist Zeichen für Zeichen die von vorher.
+- **Derselbe Zaun wie `…/werte`.** Liegt ein Eingang einer berechneten Messstelle im Monat außerhalb des Zugriffs, ist `wert` `null` und `ausserhalb_zugriff` der Hinweis (`LesewegImZugriffApiTest`).
+- **Keine Frist der Route.** Ein Monat jenseits der Aufbewahrung ist hier „keine Werte“ wie für jeden Leser im Haus, nie 404.
+- Beweise: `MessstelleRegisterApiTest.derLetzteMonatIstDerSchrittDerWerteRoute` (jede Zeile des Referenzunternehmens = Schritt der Werte-Route, ohne Parameter unverändert), `AblesungApiTest.registerNenntDenLetztenVollstaendigenMonatAusDerWerteRegel` (Ablesezeitraum, Monat ohne Ablesung), `MessstelleSchnittstelleVertragTest` (Form ⟷ OpenAPI `MessstelleRegisterMonat`).

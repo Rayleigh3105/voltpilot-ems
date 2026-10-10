@@ -32,7 +32,7 @@ public class AdminEnrollmentRepository {
         return jdbc.query(
                 "SELECT e.external_ref, e.device_info, e.csr_updated_at, e.issued_at "
                         + "FROM device_enrollment e "
-                        + "LEFT JOIN device d ON d.external_ref = e.external_ref "
+                        + "LEFT JOIN device d ON d.external_ref = e.external_ref AND d.ausgebaut_am IS NULL "
                         + "WHERE d.id IS NULL "
                         + "ORDER BY e.csr_updated_at DESC, e.external_ref",
                 AdminEnrollmentRepository::map);

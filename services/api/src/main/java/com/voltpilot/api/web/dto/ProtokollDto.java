@@ -3,6 +3,7 @@ package com.voltpilot.api.web.dto;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -47,7 +48,9 @@ public final class ProtokollDto {
      * ({@code messstelle:42}) — die drei Journale zählen unabhängig voneinander.
      * {@code text} ist der Kundensatz „was wurde geändert“ ({@link
      * com.voltpilot.api.uems.AenderungSatz}); {@code alt}/{@code neu} sind die rohen Fakten,
-     * aus denen er gebaut ist.
+     * aus denen er gebaut ist. {@code gilt_bis} (AP-02 IP-14) ist der letzte TAG, an dem ein Eintrag
+     * der Ortsstruktur noch gilt — {@code null} = bis heute offen; Einträge der Messstellen und
+     * Datenquellen tragen keins (immer {@code null}).
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Eintrag(
@@ -57,6 +60,7 @@ public final class ProtokollDto {
             String text,
             Bezug bezug,
             OffsetDateTime giltAb,
+            LocalDate giltBis,
             OffsetDateTime eingetragenAm,
             String zeitform,
             String grund,
@@ -66,7 +70,8 @@ public final class ProtokollDto {
 
     /**
      * Die Antwort. {@code achse} nennt die Zeitachse, nach der gefiltert und sortiert wurde
-     * ({@code wirkung} = „gilt ab“, die Vorgabe; {@code eintrag} = „eingetragen am“).
+     * ({@code wirkung} = „gilt ab“, die Vorgabe; {@code eintrag} = „eingetragen am“;
+     * {@code gueltigkeit} = welche Einträge in den Zeitraum reichen, sortiert wie {@code wirkung}).
      * {@code von}/{@code bis} sind der Zeitraum, halboffen {@code [von, bis)};
      * {@code null} heißt „ohne Grenze“. {@code weiter} ist der Fortsetzungszeiger für die
      * nächste Seite — {@code null}, wenn es keine weitere gibt.

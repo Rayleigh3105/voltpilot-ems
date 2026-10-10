@@ -52,6 +52,7 @@
  * koennte.
  */
 'use strict';
+const sourceStatus = require('../../measurements/data-source-status');
 
 const http = require('http');
 const https = require('https');
@@ -241,6 +242,11 @@ module.exports = function (RED) {
     const node = this;
     const core = RED.nodes.getNode(config.core);
     const entity = String(config.entity || '');
+    const report = (failed, errorClass) => {
+      if (!core || !core.client) return;
+      const evidence=sourceStatus.event({entity_id:entity,requests:1,failed,error_class:errorClass});
+      if(evidence) core.client.publish(sourceStatus.TOPIC,JSON.stringify(evidence),{qos:1,retain:false});
+    };
     const endpoint = {
       host: String(config.host || ''),
       port: boundedInt(config.port, 1, 65535, config.tls ? 443 : 80),
@@ -335,6 +341,7 @@ module.exports = function (RED) {
         .then((res) => {
           inFlight.delete(hostKey);
           if (!res.ok) {
+            report(true,res.error_code);
             const text = ERROR_TEXT[res.error_code] || res.error_code;
             node.status({ fill: 'red', shape: 'ring',
               text: res.status ? text + ' (HTTP ' + res.status + ')' : text });
@@ -346,11 +353,13 @@ module.exports = function (RED) {
           const decoded = map.decode(res.doc, mappings, now);
           const names = Object.keys(decoded.channels);
           if (names.length === 0) {
+            report(true,'invalid_response');
             node.status({ fill: 'yellow', shape: 'ring', text: 'keine Werte in der Antwort' });
             warnLimited('die Antwort enthielt keinen der zugeordneten Wertepfade');
             done();
             return;
           }
+          report(false);
           if (core.client) {
             core.client.publish('edge/entities/' + entity + '/telemetry',
               envelope(entity, decoded.channels, new Date(now).toISOString()), { qos: 1 });
@@ -366,6 +375,7 @@ module.exports = function (RED) {
           done();
         })
         .catch((err) => {
+          report(true,sourceStatus.errorClass(err));
           inFlight.delete(hostKey);
           node.status({ fill: 'red', shape: 'ring', text: String(err && err.message).slice(0, 64) });
           warnLimited(String(err && err.message));

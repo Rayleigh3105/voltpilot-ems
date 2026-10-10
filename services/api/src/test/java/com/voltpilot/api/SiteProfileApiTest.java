@@ -637,7 +637,7 @@ class SiteProfileApiTest {
     /** Die Demo-Anlage, wie der Kunde sie sieht. */
     private JsonNode site(String token) {
         for (JsonNode candidate : customer("/api/v1/sites", HttpMethod.GET, token, null)
-                .getBody()) {
+                .getBody().get("eintraege")) {
             if (BERLIN_SITE.equals(candidate.path("id").asText())) {
                 return candidate;
             }
@@ -722,7 +722,7 @@ class SiteProfileApiTest {
      * representation, so the current values are carried through.
      */
     private void giveMarketAccess(String token) {
-        JsonNode all = customer("/api/v1/sites", HttpMethod.GET, token, null).getBody();
+        JsonNode all = customer("/api/v1/sites", HttpMethod.GET, token, null).getBody().get("eintraege");
         JsonNode site = null;
         for (JsonNode candidate : all) {
             if (BERLIN_SITE.equals(candidate.path("id").asText())) {

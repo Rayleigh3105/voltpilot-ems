@@ -272,7 +272,8 @@ public final class OrtsbaumAbleitung {
                 .toList();
     }
 
-    private static Intervall intervallAm(List<Intervall> liste, LocalDate tag) {
+    // Paket-sichtbar: das Protokoll eines Standorts (AP-02 IP-14) fragt, wo eine Anlage an einem Tag hing.
+    static Intervall intervallAm(List<Intervall> liste, LocalDate tag) {
         return wirksam(liste).stream().filter(i -> i.deckt(tag)).findFirst().orElse(null);
     }
 
@@ -347,10 +348,14 @@ public final class OrtsbaumAbleitung {
         return baum.ort(kz).map(Ort::name).orElse(kz);
     }
 
-    private record Pfad(List<String> knoten, String standort) {}
+    record Pfad(List<String> knoten, String standort) {}
 
-    /** Von einem Ort hinauf bis zum Standort; bricht ab, wo ein Knoten an dem Tag nicht im Baum ist. */
-    private static Pfad pfadAm(Ortsbaum baum, String kz, LocalDate tag) {
+    /**
+     * Von einem Ort hinauf bis zum Standort; bricht ab, wo ein Knoten an dem Tag nicht im Baum ist.
+     * Paket-sichtbar: das Protokoll eines Standorts (AP-02 IP-14) fragt damit, wo ein Gebäude oder
+     * Bereich am Tag eines Eintrags hing — dieselbe Ableitung wie die Verortung einer Messstelle.
+     */
+    static Pfad pfadAm(Ortsbaum baum, String kz, LocalDate tag) {
         List<String> pfad = new ArrayList<>();
         String k = kz;
         // Bereich → Gebäude → Standort: mehr als drei Schritte sind ein kaputter Baum.

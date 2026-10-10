@@ -24,10 +24,12 @@ CREATE UNIQUE INDEX uq_device_measurement_sample_reihe
   derselben Reihe und Messzeit verdrängt den führenden nicht und wird nicht von ihm verdrängt.
 - **`entity_id IS NOT NULL`** hält den Index auf den Werten, die eine Reihe HABEN; eine Zeile
   ohne Komponente wäre darin ohnehin nie ein Konflikt (NULL ist verschieden von NULL).
-- ⚠ **Der ALTE Index `uq_device_measurement_sample_idempotency`
-  `(device_id, point_key, time, edge_sequence)` BLEIBT STEHEN** — auch nach der Umschaltung
-  (IP-7): er ist der Schlüssel JEDES Bestandswerts ohne Komponente und JEDES Spiegels, denn beide
-  liegen ausserhalb des partiellen Index oben. Wer ihn entfernt, nimmt ihnen ihre Idempotenz.
+- ⚠ **Der Box-Schlüssel `(device_id, point_key, time, edge_sequence)` BLEIBT** — auch nach der
+  Umschaltung (IP-7): er ist der Schlüssel JEDES Bestandswerts ohne Komponente und JEDES Spiegels,
+  denn beide liegen ausserhalb des partiellen Index oben. Seit IP-18b Teil 1b heißt er
+  `uq_device_measurement_sample_box` (`WHERE edge_entity_id IS NULL`, für den Bestand dieselbe
+  Semantik); der geteilte Punkt hat daneben `uq_device_measurement_sample_box_komponente`
+  ([Box-Schlüssel des geteilten Punkts](uems-geteilter-punkt-box-schluessel.md)).
 - ⚠ Die **Spiegel-Spur je lesender Box** hat weiter KEINEN eigenen Schlüssel: zwei Spiegelwerte
   derselben Reihe und Messzeit aus zwei Boxen sind beide erlaubt. Den Doppel-Schutz trägt für sie
   der alte Index (gleiche Box, gleiche Sequenz); IP-7 hat daran nichts geändert und entscheidet die
@@ -64,7 +66,8 @@ und ist nicht die Wertart des Vertrags (E12). Nachgeschlagen wird ab IP-7, **zur
   jeder Spiegel liegt ausserhalb des neuen partiellen Index, und für sie ist er der einzige
   Doppel-Schutz.
 - **Kein Fremdschlüssel** auf `entity_id`/`device_install_id`: die Löschwege der Messreihen
-  gehören **IP-11** (`ON DELETE RESTRICT`, Unclaim/Purge). Ein CASCADE-Verweis würde HEUTE einen
+  gehören **IP-11** (`ON DELETE RESTRICT`, Unclaim/Purge — gebaut, [`uems-loeschwege.md`](uems-loeschwege.md);
+  auch dort bekam `entity_id` keinen Verweis). Ein CASCADE-Verweis würde HEUTE einen
   neuen Löschweg für Kundenmesswerte aufmachen, ein RESTRICT-Verweis das heutige Löschen einer
   Komponente brechen. Es ist dasselbe Muster wie bei `device_measurement_selection_event`.
 - Aufbewahrung (90 Tage) und Verdichtung sind **unberührt**; die Tabelle ist wegen RLS nie

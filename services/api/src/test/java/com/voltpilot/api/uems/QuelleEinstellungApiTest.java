@@ -270,6 +270,15 @@ class QuelleEinstellungApiTest {
         assertThat(ab.get("geraet").asText()).isEqualTo("GR-2");
         assertThat(ab.get("einbau").asText()).isEqualTo("GR-2");
 
+        JsonNode register = status(200, rufe(HttpMethod.GET,
+                "/api/v1/messstellen?stichtag=2027-01-15T08:00:00Z", ah, null));
+        for (String ms : List.of("MS-01", "MS-02")) {
+            JsonNode zeile = element(register.get("register"), ms);
+            assertThat(zeile.get("fakten")).as(ms).hasSize(1);
+            assertThat(zeile.at("/fakten/0/art").asText()).isEqualTo("einstellung_geaendert");
+            assertThat(zeit(zeile.at("/fakten/0/gilt_ab"))).isEqualTo(zeit(exp.get("gueltig_ab")));
+        }
+
         // KEIN gespeicherter Wert hat sich geändert.
         assertThat(rollupHash()).isEqualTo(hashVorher);
     }

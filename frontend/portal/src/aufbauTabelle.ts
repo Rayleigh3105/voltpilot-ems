@@ -17,7 +17,7 @@
  * Rein + deterministisch: kein React, kein Netz, keine Uhr. Die Fläche
  * (`components/AufbauTabelle.tsx`) rendert nur, was hier entschieden wird.
  */
-import type { AufbauAnlage, AufbauBaum, AufbauBox, AufbauGeraet } from './aufbauBaum';
+import type { AufbauAnlage, AufbauBaum, AufbauBox, AufbauGeraet, AufbauQuelle } from './aufbauBaum';
 import type { PlantComponent } from './komponenten';
 import { normalisiereSuche, passt, suchBegriffe } from './picker/suche';
 
@@ -89,6 +89,14 @@ function heuhaufen(g: AufbauGeraet, box: AufbauBox | null, anlage: AufbauAnlage)
   );
 }
 
+/** Wonach eine Datenquelle gefunden wird: Kennzeichen, Name, Weg und ihre Box. */
+function quelleTrifft(q: AufbauQuelle, box: AufbauBox, f: AufbauFilter, begriffe: string[]): boolean {
+  // Art, Zustand und Hersteller beschreiben Geräte — mit einem dieser Filter steht keine Quelle da.
+  if (f.art.length + f.zustand.length + f.marke.length > 0) return false;
+  if (f.box.length > 0 && !f.box.includes(box.id)) return false;
+  return begriffe.length === 0 || passt(normalisiereSuche([q.titel, q.weg, box.name, box.ref].join(' ')), begriffe);
+}
+
 export function filterAktiv(f: AufbauFilter): boolean {
   return f.q.trim() !== '' || f.art.length + f.zustand.length + f.box.length + f.marke.length > 0;
 }
@@ -123,6 +131,8 @@ export type TabellenZeile =
       offen: boolean;
     }
   | { typ: 'teil'; key: string; ebene: number; geraet: AufbauGeraet; komponente: PlantComponent }
+  /** Eine Datenquelle, die die Box liest (UEMS AP-06) — kein Gerät, darum fällt sie aus Art-, Zustand- und Herstellerfilter. */
+  | { typ: 'quelle'; key: string; ebene: number; anlage: AufbauAnlage; box: AufbauBox; quelle: AufbauQuelle }
   | {
       typ: 'fund';
       key: string;
@@ -189,20 +199,22 @@ export function tabellenZeilen(
     const boxen = a.boxen.map((b) => ({
       b,
       treffer: b.geraete.filter((g) => trifft(g, b, a, f, begriffe)),
+      quellen: b.quellen.filter((q) => quelleTrifft(q, b, f, begriffe)),
     }));
     const ohneBox = a.ohneBox.filter((g) => trifft(g, null, a, f, begriffe));
-    const summe = boxen.reduce((n, x) => n + x.treffer.length, 0) + ohneBox.length;
+    const summe = boxen.reduce((n, x) => n + x.treffer.length + x.quellen.length, 0) + ohneBox.length;
     if (aktiv && summe === 0) continue;
     const aOffen = aktiv || z.offen(a.id, a.aktuell);
     out.push({ typ: 'anlage', key: a.id, ebene: 0, anlage: a, offen: aOffen });
     if (!aOffen) continue;
-    for (const { b, treffer } of boxen) {
-      if (aktiv && treffer.length === 0) continue;
+    for (const { b, treffer, quellen } of boxen) {
+      if (aktiv && treffer.length === 0 && quellen.length === 0) continue;
       const bOffen = aktiv || z.offen(b.id, true);
       out.push({ typ: 'box', key: b.id, ebene: 1, anlage: a, box: b, offen: bOffen });
       if (!bOffen) continue;
       geraeteZeilen(out, a, b, treffer, 2, z);
-      if (!aktiv && b.geraete.length === 0) {
+      for (const q of quellen) out.push({ typ: 'quelle', key: `${b.id}::quelle::${q.id}`, ebene: 2, anlage: a, box: b, quelle: q });
+      if (!aktiv && b.geraete.length === 0 && b.quellen.length === 0) {
         out.push({
           typ: 'leer',
           key: `${b.id}::leer`,

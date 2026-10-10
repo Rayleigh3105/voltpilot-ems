@@ -4,7 +4,11 @@ import com.voltpilot.api.entities.EntityObservedRepository;
 import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.entities.EntityTypeCatalog;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
+import com.voltpilot.api.uems.BelegeImWeg;
+import com.voltpilot.api.uems.BerichtsBelege;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
@@ -79,29 +83,30 @@ public class SiteEntityAdoptController {
      */
     private static final Set<String> COMPOSED_BASE_ROLES = Set.of("grid-meter", "house-load");
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final EntityRegistryService service;
     private final EntityTypeCatalog catalog;
     private final EntityObservedRepository observed;
     private final EntityRegistryRepository registry;
+    private final BerichtsBelege berichtsBelege;
 
-    public SiteEntityAdoptController(SiteRepository sites, EntityRegistryService service,
+    public SiteEntityAdoptController(Geltungsbereich geltungsbereich, EntityRegistryService service,
             EntityTypeCatalog catalog, EntityObservedRepository observed,
-            EntityRegistryRepository registry) {
-        this.sites = sites;
+            EntityRegistryRepository registry, BerichtsBelege berichtsBelege) {
+        this.geltungsbereich = geltungsbereich;
         this.service = service;
         this.catalog = catalog;
         this.observed = observed;
         this.registry = registry;
+        this.berichtsBelege = berichtsBelege;
     }
 
     @PostMapping("/adopt")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     @Transactional
     public AdoptedEntityDto adopt(@PathVariable UUID siteId,
             @Valid @RequestBody AdoptRequest request) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         String type = request.entityType();
         if (type == null || type.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "entityType ist erforderlich.");
@@ -143,12 +148,11 @@ public class SiteEntityAdoptController {
      * between the two calls would strand BOTH components unassigned.
      */
     @PostMapping("/{entityId}/edge-source")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     @Transactional
     public AdoptedEntityDto repin(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @Valid @RequestBody RepinRequest request) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         String sourceId = request.sourceId() == null ? "" : request.sourceId().trim();
         if (sourceId.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "sourceId ist erforderlich.");
@@ -208,12 +212,11 @@ public class SiteEntityAdoptController {
      * Duplicates are allowed on purpose: two arrays may both be called "Dach".
      */
     @PutMapping("/{entityId}/label")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     @Transactional
     public AdoptedEntityDto rename(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @Valid @RequestBody LabelRequest request) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         EntityRegistryRepository.EntityRow row = service.updateEntity(siteId, entityId,
                 normalizeLabel(request.label()), null, null, null);
         if (row == null) {
@@ -272,14 +275,18 @@ public class SiteEntityAdoptController {
      * create time, so a grid-meter composed before that column existed carries
      * {@code source_kind = NULL} (never back-filled) - guarding by role too keeps
      * those legacy rows protected without a data migration.
+     *
+     * <p><b>A component that is a Beleg is refused</b> (UEMS AP-12 E13 S2): when a released
+     * Berichtsstand cites a Messstelle this component ever fed, the delete is 409
+     * {@code berichts_belege} with the list of those Stände - checked after the guards above and
+     * before anything is written ({@link BerichtsBelege#pruefeKomponente}).
      */
     @DeleteMapping("/{entityId}")
+    @Recht(value = "komponente.loeschen", ziel = RechtZiel.ANLAGE)
     @ResponseStatus(HttpStatus.NO_CONTENT)
     @Transactional
     public void delete(@PathVariable UUID siteId, @PathVariable UUID entityId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         EntityRegistryRepository.EntityRow row = registry.entityForSite(siteId, entityId);
         if (row == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Entity not found");
@@ -292,6 +299,7 @@ public class SiteEntityAdoptController {
                     "Diese Komponente gehört zur Grundausstattung Ihrer Anlage und kann nicht "
                             + "entfernt werden.");
         }
+        berichtsBelege.pruefeKomponente(siteId, entityId);
         if (!service.deleteEntity(siteId, entityId, true)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Entity not found");
         }
@@ -361,6 +369,12 @@ public class SiteEntityAdoptController {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Diese Geräteart richtet VoltPilot für Sie ein — sprechen Sie uns an.");
         }
+    }
+
+    /** The component is a Beleg of released Berichtsstände: 409 with the list - nothing written. */
+    @ExceptionHandler(BelegeImWeg.class)
+    public ResponseEntity<Map<String, Object>> belegeImWeg(BelegeImWeg e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(e.koerper());
     }
 
     /** German reasons reach the portal as {"message": ...} (SiteFlowController pattern). */

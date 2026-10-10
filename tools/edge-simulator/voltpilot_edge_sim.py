@@ -53,6 +53,23 @@ except ImportError:  # pragma: no cover - only hit when the dep is missing
 SCHEMA_VERSION = "1.0"
 SW_VERSION = "voltpilot-edge-sim/1.1.0"
 
+# Load/generation profiles. The profile picks the SHAPE of a day and which
+# measurement fields a device reports; the demo compose carries the per-site
+# SCALE (base/peak/PV/battery) next to the site ids.
+#   pv-haus           Residential PV + battery + household load (the original
+#                     model). Reports power/soc/pv/load/grid_limit.
+#   gewerbe-steuernd  Industrial site that GENERATES and STEERS: shift load +
+#                     PV + battery doing Lastspitzenkappung and PV self-
+#                     consumption, feed-in capped at the Einspeisegrenze.
+#                     Reports power/soc/pv/load/grid_limit.
+#   gewerbe-mess      Pure-measurement industrial site: shift load only, grid
+#                     draw equals the load and never goes negative (no feed-in).
+#                     Reports power/load/grid_limit - no PV, no battery.
+PROFILE_PV_HAUS = "pv-haus"
+PROFILE_GEWERBE_STEUERND = "gewerbe-steuernd"
+PROFILE_GEWERBE_MESS = "gewerbe-mess"
+PROFILES = (PROFILE_PV_HAUS, PROFILE_GEWERBE_STEUERND, PROFILE_GEWERBE_MESS)
+
 # Edge reference charset per docs/contracts/mqtt-provisioning.schema.json
 # ($defs/ref): MQTT-topic-safe by construction (no '/', '+', '#').
 REF_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
@@ -104,16 +121,25 @@ class Config:
     qos: int = 1
 
     # Simulation
+    profile: str = PROFILE_PV_HAUS   # day shape + reported fields (see PROFILES)
     time_scale: float = 1.0        # simulated seconds per real second (>1 = fast day)
     start_hour: float | None = None  # sim start hour-of-day (default: real local now)
     pv_peak_kw: float = 8.0
-    load_base_kw: float = 0.35
+    load_base_kw: float = 0.35     # pv-haus: household base; gewerbe: night/weekend floor
     batt_capacity_kwh: float = 10.0
     batt_max_kw: float = 5.0
     soc_init_pct: float = 40.0
     grid_limit_kw: float = 11.0
     noise: float = 0.04            # relative measurement noise (0 = perfectly smooth)
     seed: int | None = None        # deterministic noise when set
+
+    # Commercial/industrial shape (gewerbe-* profiles only; ignored by pv-haus).
+    load_peak_kw: float = 0.0      # production adder at full shift load (on top of base)
+    shift_start_hour: float = 6.0  # production ramps up from here on weekdays
+    shift_end_hour: float = 18.0   # ...and down to the base floor by here
+    weekend_factor: float = 0.12   # fraction of weekday production kept on Sat/Sun
+    peak_grid_kw: float = 0.0      # gewerbe-steuernd: Lastspitzenkappung target (0 = off)
+    export_limit_kw: float = 0.0   # gewerbe-steuernd: Einspeisegrenze for feed-in (kW)
 
     verbose: bool = False
 
@@ -223,6 +249,10 @@ def build_config(argv: list[str] | None = None) -> Config:
     p.add_argument("--qos", type=int, choices=(0, 1, 2), default=int(_env("EDGE_SIM_QOS") or d.qos))
 
     # Simulation
+    p.add_argument("--profile", default=_env("EDGE_SIM_PROFILE") or d.profile, choices=PROFILES,
+                   help="Day shape and reported fields: pv-haus (residential PV+battery+load), "
+                        "gewerbe-steuernd (industrial shift load + PV + Lastspitzenkappung battery), "
+                        "gewerbe-mess (pure-measurement industrial load, grid draw only, no feed-in).")
     p.add_argument("--time-scale", type=float, default=float(_env("EDGE_SIM_TIME_SCALE") or d.time_scale),
                    help="Simulated seconds per real second. 1=realtime; e.g. 288 plays a full day in 5 min.")
     p.add_argument("--start-hour", type=float,
@@ -240,6 +270,23 @@ def build_config(argv: list[str] | None = None) -> Config:
     p.add_argument("--seed", type=int,
                    default=(int(_env("EDGE_SIM_SEED")) if _env("EDGE_SIM_SEED") else d.seed),
                    help="Seed for deterministic noise (useful for tests/proofs).")
+
+    # Commercial/industrial shape (gewerbe-* profiles)
+    p.add_argument("--load-peak-kw", type=float, default=float(_env("EDGE_SIM_LOAD_PEAK_KW") or d.load_peak_kw),
+                   help="Production load added on top of the base at full shift (gewerbe-*).")
+    p.add_argument("--shift-start-hour", type=float,
+                   default=float(_env("EDGE_SIM_SHIFT_START_HOUR") or d.shift_start_hour),
+                   help="Hour the weekday production ramps up (gewerbe-*).")
+    p.add_argument("--shift-end-hour", type=float,
+                   default=float(_env("EDGE_SIM_SHIFT_END_HOUR") or d.shift_end_hour),
+                   help="Hour the weekday production has ramped back to the base (gewerbe-*).")
+    p.add_argument("--weekend-factor", type=float,
+                   default=float(_env("EDGE_SIM_WEEKEND_FACTOR") or d.weekend_factor),
+                   help="Fraction of weekday production kept on Saturday/Sunday (gewerbe-*).")
+    p.add_argument("--peak-grid-kw", type=float, default=float(_env("EDGE_SIM_PEAK_GRID_KW") or d.peak_grid_kw),
+                   help="Lastspitzenkappung target for grid import; 0 = off (gewerbe-steuernd).")
+    p.add_argument("--export-limit-kw", type=float, default=float(_env("EDGE_SIM_EXPORT_LIMIT_KW") or d.export_limit_kw),
+                   help="Einspeisegrenze: feed-in is capped (PV curtailed) at this many kW (gewerbe-steuernd).")
     p.add_argument("--verbose", "-v", action="store_true",
                    default=_as_bool(_env("EDGE_SIM_VERBOSE"), d.verbose))
 
@@ -255,11 +302,14 @@ def build_config(argv: list[str] | None = None) -> Config:
         tenant_id=a.tenant_id, site_id=a.site_id, device_id=a.device_id,
         ref=a.ref, provision_retry=a.provision_retry, provision_timeout=a.provision_timeout,
         interval=a.interval, status_interval=a.status_interval, count=a.count, qos=a.qos,
-        time_scale=a.time_scale, start_hour=a.start_hour,
+        profile=a.profile, time_scale=a.time_scale, start_hour=a.start_hour,
         pv_peak_kw=a.pv_peak_kw, load_base_kw=a.load_base_kw,
         batt_capacity_kwh=a.batt_capacity_kwh, batt_max_kw=a.batt_max_kw,
         soc_init_pct=a.soc_init_pct, grid_limit_kw=a.grid_limit_kw,
         noise=a.noise, seed=a.seed, verbose=a.verbose,
+        load_peak_kw=a.load_peak_kw, shift_start_hour=a.shift_start_hour,
+        shift_end_hour=a.shift_end_hour, weekend_factor=a.weekend_factor,
+        peak_grid_kw=a.peak_grid_kw, export_limit_kw=a.export_limit_kw,
     )
     validate_config(cfg)
     return cfg
@@ -291,6 +341,12 @@ def validate_config(cfg: Config) -> None:
         raise SystemExit("error: --client-cert requires --client-key for mTLS")
     if cfg.batt_capacity_kwh <= 0:
         raise SystemExit("error: --batt-capacity-kwh must be > 0")
+    if cfg.profile not in PROFILES:
+        raise SystemExit(f"error: --profile must be one of {PROFILES}, got {cfg.profile!r}")
+    if cfg.profile != PROFILE_PV_HAUS and cfg.shift_end_hour <= cfg.shift_start_hour:
+        raise SystemExit("error: --shift-end-hour must be greater than --shift-start-hour")
+    if cfg.export_limit_kw < 0:
+        raise SystemExit("error: --export-limit-kw must be >= 0")
 
 
 # ---------------------------------------------------------------------------
@@ -378,34 +434,132 @@ def battery_dispatch(pv: float, load: float, soc: float, hour: float,
     return batt, new_soc
 
 
-def simulate_measurements(cfg: Config, state: SimState, hour: float, dt_h: float) -> dict:
+def commercial_shift_envelope(hour: float, weekday: int, cfg: Config) -> float:
+    """0..1 production envelope for an industrial site.
+
+    A weekday shift block between shift_start and shift_end with ~1.5 h cosine
+    ramps at each edge, a gentle lunch dip (~12:00) and a shift-change dip
+    (~14:00); nights fall back to zero production. Weekends keep only a
+    weekend_factor sliver (standby/maintenance). The result scales load_peak_kw.
+    """
+    start, end = cfg.shift_start_hour, cfg.shift_end_hour
+    if end <= start or hour <= start or hour >= end:
+        env = 0.0
+    else:
+        ramp = 1.5  # hours to ramp fully up (and down)
+        env = max(0.0, min(1.0, (hour - start) / ramp, (end - hour) / ramp))
+        env *= 1.0 - 0.18 * math.exp(-0.5 * ((hour - 12.0) / 0.6) ** 2)   # lunch dip
+        env *= 1.0 - 0.12 * math.exp(-0.5 * ((hour - 14.0) / 0.4) ** 2)   # shift change
+    if weekday >= 5:  # Sat/Sun
+        env *= cfg.weekend_factor
+    return env
+
+
+def commercial_load_kw(hour: float, weekday: int, cfg: Config, rng: "_Rng", noise: float) -> float:
+    """Industrial site load: a constant base plus the shift production block.
+
+    The base never disappears (building, standby, cooling); production rides on
+    top during the shift. Measurement noise rides on the whole draw so each
+    15-minute window carries a slightly different peak - the Lastspitze is real.
+    """
+    load = cfg.load_base_kw + cfg.load_peak_kw * commercial_shift_envelope(hour, weekday, cfg)
+    if noise:
+        load *= 1.0 + rng.uniform(-noise, noise)
+    return max(cfg.load_base_kw * 0.75, load)
+
+
+def commercial_dispatch(pv: float, load: float, soc: float, hour: float,
+                        cfg: Config, dt_h: float) -> tuple[float, float, float, float]:
+    """Battery rule for a steering industrial site (Lastspitzenkappung).
+
+    Priority: shave the grid-import peak above peak_grid_kw by discharging, then
+    soak up any PV surplus, then trickle-charge overnight to be ready for the
+    morning peak. Charge/discharge clamp to the 10..100% SoC band and batt_max.
+    Returns (battery_kw>0=charging, pv_kw after any Einspeisegrenze curtailment,
+    new_soc, grid_kw).
+    """
+    demand = load - pv            # net site demand before the battery
+    batt = 0.0
+    target = cfg.peak_grid_kw
+    if target > 0 and demand > target and soc > 15.0:
+        batt = -min(demand - target, cfg.batt_max_kw)          # discharge to cap the peak
+    elif demand < -0.05 and soc < 98.0:
+        batt = min(-demand, cfg.batt_max_kw)                   # soak PV surplus
+    elif target > 0 and demand < 0.4 * target and soc < 85.0 and (hour < 6.0 or hour >= 22.0):
+        batt = 0.25 * cfg.batt_max_kw                          # gentle night charge
+
+    if dt_h > 0:
+        if batt > 0:  # charging: cap by headroom to 100%
+            headroom_kwh = (100.0 - soc) / 100.0 * cfg.batt_capacity_kwh
+            batt = min(batt, headroom_kwh / dt_h)
+        elif batt < 0:  # discharging: cap by energy above the 10% floor
+            avail_kwh = (soc - 10.0) / 100.0 * cfg.batt_capacity_kwh
+            batt = -min(-batt, avail_kwh / dt_h)
+
+    new_soc = max(0.0, min(100.0, soc + (batt * dt_h) / cfg.batt_capacity_kwh * 100.0))
+    grid = load - pv + batt
+    pv_eff = pv
+    # Einspeisegrenze: never export more than the limit; curtail PV to hold it.
+    if cfg.export_limit_kw >= 0 and grid < -cfg.export_limit_kw:
+        pv_eff = max(0.0, pv - (-cfg.export_limit_kw - grid))
+        grid = load - pv_eff + batt
+    return batt, pv_eff, new_soc, grid
+
+
+def simulate_measurements(cfg: Config, state: SimState, hour: float, dt_h: float,
+                          weekday: int = 0) -> dict:
     """Advance the model one step and return the `measurements` block.
 
     Grid coupling identity: power_kw = load_kw - pv_power_kw + battery_power_kw
-    (positive = import from grid, negative = export).
+    (positive = import from grid, negative = export). The profile decides the
+    day shape and which fields a device reports (see PROFILES).
     """
     rng = state._rng
     n = max(0.0, cfg.noise)
 
-    # Slowly varying cloud factor keyed off the sim hour so PV isn't jittery.
+    if cfg.profile == PROFILE_PV_HAUS:
+        # Slowly varying cloud factor keyed off the sim hour so PV isn't jittery.
+        cloud = 0.85 + 0.15 * math.sin(hour * 0.7) + (rng.uniform(-n, n) if n else 0.0)
+        cloud = max(0.5, min(1.05, cloud))
+
+        pv = pv_power_kw(hour, cfg.pv_peak_kw, cloud)
+        load = household_load_kw(hour, cfg.load_base_kw)
+        if n:
+            load *= 1.0 + rng.uniform(-n, n)
+
+        batt, new_soc = battery_dispatch(pv, load, state.soc_pct, hour,
+                                         cfg.batt_max_kw, cfg.batt_capacity_kwh, dt_h)
+        state.soc_pct = new_soc
+        grid = load - pv + batt
+        return {
+            "power_kw": round(grid, 3),
+            "soc_pct": round(max(0.0, min(100.0, new_soc)), 2),
+            "pv_power_kw": round(max(0.0, pv), 3),
+            "load_kw": round(max(0.0, load), 3),
+            "grid_limit_kw": round(cfg.grid_limit_kw, 3),
+        }
+
+    load = commercial_load_kw(hour, weekday, cfg, rng, n)
+
+    if cfg.profile == PROFILE_GEWERBE_MESS:
+        # Pure measurement: the meter sees the load as grid draw, never a feed-in,
+        # and there is no PV and no battery to report.
+        return {
+            "power_kw": round(load, 3),
+            "load_kw": round(load, 3),
+            "grid_limit_kw": round(cfg.grid_limit_kw, 3),
+        }
+
+    # PROFILE_GEWERBE_STEUERND: industrial load + PV + Lastspitzenkappung battery.
     cloud = 0.85 + 0.15 * math.sin(hour * 0.7) + (rng.uniform(-n, n) if n else 0.0)
     cloud = max(0.5, min(1.05, cloud))
-
     pv = pv_power_kw(hour, cfg.pv_peak_kw, cloud)
-    load = household_load_kw(hour, cfg.load_base_kw)
-    if n:
-        load *= 1.0 + rng.uniform(-n, n)
-
-    batt, new_soc = battery_dispatch(pv, load, state.soc_pct, hour,
-                                     cfg.batt_max_kw, cfg.batt_capacity_kwh, dt_h)
+    batt, pv_eff, new_soc, grid = commercial_dispatch(pv, load, state.soc_pct, hour, cfg, dt_h)
     state.soc_pct = new_soc
-
-    grid = load - pv + batt
-
     return {
         "power_kw": round(grid, 3),
         "soc_pct": round(max(0.0, min(100.0, new_soc)), 2),
-        "pv_power_kw": round(max(0.0, pv), 3),
+        "pv_power_kw": round(max(0.0, pv_eff), 3),
         "load_kw": round(max(0.0, load), 3),
         "grid_limit_kw": round(cfg.grid_limit_kw, 3),
     }
@@ -460,18 +614,24 @@ def topic(cfg: Config, leaf: str) -> str:
 class SimClock:
     def __init__(self, time_scale: float, start_hour: float | None):
         self.scale = time_scale
+        lt = time.localtime()
         if start_hour is None:
-            lt = time.localtime()
             start_s = lt.tm_hour * 3600 + lt.tm_min * 60 + lt.tm_sec
         else:
             start_s = (start_hour % 24.0) * 3600.0
         self._start_s = start_s
+        self._start_wday = lt.tm_wday  # 0=Mon .. 6=Sun, so weekend profiles line up
         self._t0 = time.monotonic()
 
+    def _sim_seconds(self) -> float:
+        return self._start_s + (time.monotonic() - self._t0) * self.scale
+
     def hour_of_day(self) -> float:
-        elapsed = time.monotonic() - self._t0
-        sim_s = self._start_s + elapsed * self.scale
-        return (sim_s % 86400.0) / 3600.0
+        return (self._sim_seconds() % 86400.0) / 3600.0
+
+    def weekday(self) -> int:
+        """Weekday of the (optionally accelerated) sim clock: 0=Mon .. 6=Sun."""
+        return (self._start_wday + int(self._sim_seconds() // 86400.0)) % 7
 
 
 # ---------------------------------------------------------------------------
@@ -480,9 +640,9 @@ class SimClock:
 
 def _make_client(cfg: Config) -> "mqtt.Client":
     client_id = cfg.client_id or cfg.device_id
-    # VERSION1 callbacks give a stable signature across paho-mqtt 1.x and 2.x.
+    # VERSION2 callbacks (paho-mqtt 2.x); the callbacks below accept the 1.x signatures as well.
     try:
-        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id=client_id, clean_session=False)
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=client_id, clean_session=False)
     except (AttributeError, TypeError):  # paho-mqtt 1.x
         client = mqtt.Client(client_id=client_id, clean_session=False)
 
@@ -629,7 +789,7 @@ def provision(cfg: Config, stopping: dict | None = None) -> bool:
 def _make_bare_client(cfg: Config, client_id: str) -> "mqtt.Client":
     """A client with the transport (TLS/auth) settings but no telemetry will."""
     try:
-        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id=client_id, clean_session=True)
+        client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=client_id, clean_session=True)
     except (AttributeError, TypeError):  # paho-mqtt 1.x
         client = mqtt.Client(client_id=client_id, clean_session=True)
     if cfg.username:
@@ -662,7 +822,9 @@ def run(cfg: Config) -> int:
             connected["ok"] = False
             _log(cfg, f"connect failed rc={rc}", err=True)
 
-    def on_disconnect(client, userdata, rc, *args):
+    def on_disconnect(client, userdata, *args):
+        # paho 2: (disconnect_flags, reason_code, properties); paho 1.x: (rc,).
+        rc = args[1] if len(args) >= 2 else args[0]
         connected["ok"] = False
         if rc != 0:
             _log(cfg, f"disconnected (rc={rc}); auto-reconnecting", err=True)
@@ -709,13 +871,13 @@ def run(cfg: Config) -> int:
         last_tick = now
         hour = clock.hour_of_day()
 
-        measurements = simulate_measurements(cfg, state, hour, dt_h)
+        measurements = simulate_measurements(cfg, state, hour, dt_h, clock.weekday())
         ts = rfc3339_now()
         payload = build_telemetry_payload(cfg, ts, state.seq, measurements)
         ok = _publish(client, tel_topic, payload, cfg.qos)
         if cfg.verbose:
-            _log(cfg, f"[{ts} h={hour:04.1f}] tx#{state.seq} pv={measurements['pv_power_kw']}kW "
-                      f"load={measurements['load_kw']}kW soc={measurements['soc_pct']}% "
+            _log(cfg, f"[{ts} h={hour:04.1f}] tx#{state.seq} pv={measurements.get('pv_power_kw', '-')}kW "
+                      f"load={measurements.get('load_kw', '-')}kW soc={measurements.get('soc_pct', '-')}% "
                       f"grid={measurements['power_kw']}kW {'ok' if ok else 'QUEUED'}")
         state.seq += 1
         published += 1

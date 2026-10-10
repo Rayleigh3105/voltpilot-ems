@@ -17,6 +17,9 @@
 #      recovered by the retry loop: it re-derives from the new main and lands
 #      on top - the two bumps never collide.
 #   6. A shape change in the overlay is refused and nothing is pushed.
+#   7. Both workflows gate the job on `github.ref == 'refs/heads/main'`, so a
+#      dispatch on a collecting branch (uems, mispel, ...) builds images but
+#      never moves the prod overlay.
 #
 #   bash tools/deploy/test-gitops-bump-workflow.sh
 # =============================================================================
@@ -72,6 +75,29 @@ then
   bad "could not extract a matching step script from both workflows"; exit 1
 fi
 pass "both workflows carry the same gitops-tag-bump step (script + job env)"
+
+# --------------------------------------------------------------------------
+# 1b. The bump runs only for a dispatch on main. workflow_dispatch builds the
+#     chosen branch's copy of the workflow, so the guard must sit in BOTH files.
+# --------------------------------------------------------------------------
+if $PY - <<'PY'
+import sys, pathlib, yaml
+want = "github.ref == 'refs/heads/main'"
+bad = []
+for name in ("deploy.yaml", "deploy-fast.yaml"):
+    job = yaml.safe_load((pathlib.Path(".forgejo/workflows") / name).read_text())["jobs"]["gitops-tag-bump"]
+    cond = " ".join(str(job.get("if", "")).replace("${{", "").replace("}}", "").split())
+    if cond != want:
+        bad.append(f"{name}: if={job.get('if')!r}")
+for b in bad:
+    print("      " + b)
+sys.exit(1 if bad else 0)
+PY
+then
+  pass "both workflows run gitops-tag-bump only for refs/heads/main"
+else
+  bad "gitops-tag-bump lacks the main-only guard (if: github.ref == 'refs/heads/main') in a workflow"
+fi
 
 # Job-level env, minus the remote we redirect at the local repo.
 BARE="$WORK/gitops.git"

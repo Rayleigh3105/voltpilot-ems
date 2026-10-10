@@ -2,13 +2,12 @@ package com.voltpilot.api.web;
 
 import com.voltpilot.api.ocpp.OcppActionPolicy;
 import com.voltpilot.api.ocpp.OcppRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.web.dto.OcppDto;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.http.HttpStatus;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,7 +15,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Tenant-scoped, strictly read-only OCPP 1.6 data API. There is intentionally
@@ -25,14 +23,18 @@ import org.springframework.web.server.ResponseStatusException;
  */
 @RestController
 @RequestMapping("/api/v1/sites/{siteId}/ocpp")
-@PreAuthorize("hasAnyRole('operator', 'admin', 'site-admin', 'platform-admin')")
+// AP-03 IP-3: or a customer account without realm role (KONTO_benutzer, KeycloakRealmRoleConverter).
+// AP-03 IP-7: or a partner account in an accepted Unterstützung (KONTO_partner) — the gate is coarse; @Recht and the
+// level from the Zuweisung decide (a partner without Unterstützung never gets past ZugriffFilter: 404).
+@PreAuthorize("hasAnyRole('operator', 'admin', 'site-admin', 'platform-admin') or hasAuthority('KONTO_benutzer') "
+        + "or hasAuthority('KONTO_partner')")
 public class SiteOcppController {
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final OcppRepository ocpp;
     private final OcppActionPolicy policy;
 
-    public SiteOcppController(SiteRepository sites, OcppRepository ocpp, OcppActionPolicy policy) {
-        this.sites = sites;
+    public SiteOcppController(Geltungsbereich geltungsbereich, OcppRepository ocpp, OcppActionPolicy policy) {
+        this.geltungsbereich = geltungsbereich;
         this.ocpp = ocpp;
         this.policy = policy;
     }
@@ -89,12 +91,10 @@ public class SiteOcppController {
     @GetMapping("/action-permissions")
     public OcppDto.ActionPermissions permissions(@PathVariable UUID siteId, Authentication auth) {
         requireSite(siteId);
-        return policy.permissions(auth);
+        return policy.permissions(auth, siteId);
     }
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 }

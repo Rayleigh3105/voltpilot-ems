@@ -6,7 +6,7 @@ Starten Sie mit der Frage, die Sie beantworten möchten. Jede Erklärung hat ein
 |---|---|
 | Überblick | [Architektur](architecture.md), [Portal und Bedienmodell](portal.md) |
 | Entwicklung | [Lokal starten und testen](development.md), [API und Datenbank](api.md) |
-| Cloud-Betrieb | [Deployment](deploy.md), [Kubernetes-Betriebsvertrag](k8s-readiness.md) |
+| Cloud-Betrieb | [Deployment](deploy.md), [Kubernetes-Betriebsvertrag](k8s-readiness.md), [Rollout-Drehbuch der ersten UEMS-Freigabe](rollout/uems-erste-freigabe.md), [Prüfstand- und Pilot-Drehbuch der Gemeinsamen Steuerung](rollout/gemeinsame-steuerung-pilot.md) |
 | Geräte verbinden | [Enrollment](connect-a-device.md), [MQTT-Sicherheit](security-mqtt.md) |
 | Box betreiben | [Edge-App](../edge-app/README.md), [Installation](../edge-app/DEPLOY.md), [Laufzeitregeln](edge-runtime.md), [Fernwartung](fernwartung.md) |
 | Updates | [Edge-Updates bedienen](ota-autonomie.md), [Signaturkette und Schlüssel](ota-signing.md) |
@@ -39,4 +39,4 @@ Die [Portal-Hilfe](../frontend/portal/src/help/README.md) erklärt Kundenaufgabe
 
 ## Ergänzungen auf dem aktuellen Hauptzweig
 
-[Fachmodell und UEMS-Begriffe](fachmodell/README.md), [Backup und Wiederherstellung](backup-restore.md), [OCPP-Steuerung](ocpp-control.md) und [ergänzende Arbeitsregeln](agents/README.md) werden eigenständig gepflegt. Die folgenden Vertragsübersichten verlinken auch die neueren UEMS-Schnittstellen.
+[Fachmodell und UEMS-Begriffe](fachmodell/README.md), [Backup und Wiederherstellung](backup-restore.md), [OCPP-Steuerung](ocpp-control.md), [Bewertung von VoltPilot: Nachweismatrix](bewertung/README.md) und [ergänzende Arbeitsregeln](agents/README.md) werden eigenständig gepflegt. Die folgenden Vertragsübersichten verlinken auch die neueren UEMS-Schnittstellen.

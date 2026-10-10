@@ -1,0 +1,241 @@
+package com.voltpilot.api.uems;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
+
+import com.voltpilot.api.metrics.GemeinsameSteuerungHerzschlag;
+import com.voltpilot.api.metrics.GemeinsameSteuerungUhrMetrik;
+import com.voltpilot.api.repo.DeviceRepository;
+import com.voltpilot.api.uems.DeviceDataSourceStatusRepository.Ableitung;
+import com.voltpilot.api.uems.DeviceDataSourceStatusRepository.Meldung;
+import com.voltpilot.api.uems.DeviceDataSourceStatusRepository.Status;
+import com.voltpilot.api.web.dto.DeviceDto;
+import io.micrometer.prometheusmetrics.PrometheusConfig;
+import io.micrometer.prometheusmetrics.PrometheusMeterRegistry;
+import java.io.InputStream;
+import java.time.Clock;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.config.YamlPropertiesFactoryBean;
+import org.springframework.core.io.ClassPathResource;
+
+class DataSourceStatusListenerTest {
+
+    private static final UUID TENANT = UUID.fromString("00000000-0000-0000-0000-000000000001");
+    private static final UUID SITE = UUID.fromString("00000000-0000-0000-0000-000000000002");
+    private static final UUID DEVICE = UUID.fromString("00000000-0000-0000-0000-000000000003");
+    private static final String TOPIC = "ems/" + TENANT + "/" + SITE + "/" + DEVICE + "/status";
+
+    private DeviceRepository devices;
+    private DeviceDataSourceStatusRepository statuses;
+    private DataSourceStatusListener listener;
+
+    @BeforeEach
+    void setUp() {
+        devices = mock(DeviceRepository.class);
+        statuses = mock(DeviceDataSourceStatusRepository.class);
+        listener = new DataSourceStatusListener("tcp://unused", "", "", devices, statuses, mock(BoxFaehigkeiten.class));
+        when(devices.findById(DEVICE)).thenReturn(Optional.of(new DeviceDto(DEVICE, SITE,
+                "VP-BOX-1", "gateway", null, "claimed", Instant.now(), Instant.now())));
+    }
+
+    @Test
+    void neuerHerzschlagSchreibtDieFaktenJeQuelle() throws Exception {
+        listener.handle(TOPIC, fixture("data-source-status-heartbeat-new.json"));
+
+        verify(devices).markStatusSeen(DEVICE);
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<Meldung>> rows = ArgumentCaptor.forClass(List.class);
+        verify(statuses).replaceForDevice(eq(DEVICE), eq(TENANT),
+                eq(Instant.parse("2026-11-03T14:02:15Z")), rows.capture());
+        assertThat(rows.getValue()).containsExactly(
+                new Meldung("DQ-4", "ok", null, null,
+                        Instant.parse("2026-11-03T14:02:12Z"), 6.0, 24.0),
+                new Meldung("DQ-5", "stale", "unreachable",
+                        Instant.parse("2026-11-03T14:02:10Z"),
+                        Instant.parse("2026-11-03T14:01:50Z"), 1.0, 0.0));
+    }
+
+    /**
+     * AP-15 IP-11: der Block {@code gemeinsame_steuerung} landet im Halter der Box-Metriken; ein
+     * Herzschlag ohne Block nimmt ihn wieder heraus, ein Wort außerhalb des Vokabulars wird überlesen.
+     */
+    @Test
+    void derBlockGemeinsameSteuerungLandetImHalterUndFaelltOhneBlockWeg() {
+        GemeinsameSteuerungHerzschlag halter = new GemeinsameSteuerungHerzschlag();
+        listener.gemeinsameSteuerung(halter);
+        UUID plan = UUID.fromString("00000000-0000-0000-0000-000000004711");
+
+        listener.handle(TOPIC, herzschlag(",\"gemeinsame_steuerung\":{\"plan_id\":\"" + plan + "\","
+                + "\"waechter\":{\"einspeisung\":\"sicherheitskappe\",\"bezug\":\"erfunden\"},"
+                + "\"messpunkt_alter_s\":4}"));
+
+        assertThat(halter.block(DEVICE).planId()).isEqualTo(plan);
+        assertThat(halter.block(DEVICE).waechter()).containsExactly(entry("einspeisung", "sicherheitskappe"));
+
+        listener.handle(TOPIC, herzschlag(""));
+        assertThat(halter.block(DEVICE)).as("Plan gelöscht: kein Block, kein Eintrag").isNull();
+        assertThat(halter.boxen()).isEmpty();
+    }
+
+    @Test
+    void einBlockMitFalscherIdentitaetLandetNicht() {
+        GemeinsameSteuerungHerzschlag halter = new GemeinsameSteuerungHerzschlag();
+        listener.gemeinsameSteuerung(halter);
+        String fremd = "ems/" + TENANT + "/" + SITE + "/" + UUID.randomUUID() + "/status";
+
+        listener.handle(fremd, herzschlag(",\"gemeinsame_steuerung\":{\"waechter\":{\"einspeisung\":\"regelt\"}}"));
+
+        assertThat(halter.boxen()).isEmpty();
+    }
+
+    @Test
+    void uhrversatzKommtAusHerzschlagUndZaehlerAusEreignisstand() {
+        PrometheusMeterRegistry registry = new PrometheusMeterRegistry(PrometheusConfig.DEFAULT);
+        GemeinsameSteuerungUhrMetrik metrik = new GemeinsameSteuerungUhrMetrik(registry);
+        listener.gemeinsameSteuerungUhr(metrik);
+        Instant boxZeit = Instant.parse("2026-11-03T14:02:15Z");
+
+        listener.uhrStellen(Clock.fixed(boxZeit.minusSeconds(840), ZoneOffset.UTC));
+        listener.handle(TOPIC, herzschlag(""));
+
+        assertThat(registry.scrape()).contains(
+                "voltpilot_uems_box_uhr_versatz_seconds{device=\"" + DEVICE + "\"} 840.0");
+
+        listener.uhrStellen(Clock.fixed(boxZeit.plusSeconds(840), ZoneOffset.UTC));
+        listener.handle(TOPIC, herzschlag(""));
+
+        metrik.uhrereignisse(java.util.Map.of(DEVICE, 2L));
+        assertThat(registry.scrape()).contains(
+                "voltpilot_uems_box_uhr_versatz_seconds{device=\"" + DEVICE + "\"} -840.0",
+                "voltpilot_uems_box_uhrsprung_total{device=\"" + DEVICE + "\"} 2.0");
+    }
+
+    private static byte[] herzschlag(String rest) {
+        return ("{\"tenant_id\":\"" + TENANT + "\",\"site_id\":\"" + SITE + "\",\"device_id\":\"" + DEVICE
+                + "\",\"ts\":\"2026-11-03T14:02:15Z\"" + rest + "}").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    }
+
+    @Test
+    void alterHerzschlagErfindetKeinenQuellstatus() throws Exception {
+        listener.handle(TOPIC, fixture("data-source-status-heartbeat-old.json"));
+        verify(devices).markStatusSeen(DEVICE);
+        verifyNoInteractions(statuses);
+
+        Ableitung abgeleitet = DeviceDataSourceStatusRepository.ableiten(null);
+        assertThat(abgeleitet.zustand()).isEqualTo(
+                DeviceDataSourceStatusRepository.Lieferzustand.MELDET_NOCH_NICHT_JE_QUELLE);
+        assertThat(abgeleitet.text()).isEqualTo("Box meldet noch nicht je Quelle");
+        assertThat(abgeleitet.grund()).isNull();
+    }
+
+    @Test
+    void leitetLiefertUndFehlerMitSeitUndBelegtemGrundAb() {
+        Status ok = new Status("ok", null, null, Instant.parse("2026-11-03T14:02:12Z"),
+                6.0, 24.0, Instant.parse("2026-11-03T14:02:15Z"));
+        assertThat(DeviceDataSourceStatusRepository.ableiten(ok).text()).isEqualTo("Liefert Daten");
+
+        Instant seit = Instant.parse("2026-11-03T14:02:10Z");
+        Status fehler = new Status("stale", "unreachable", seit, null, 1.0, 0.0,
+                Instant.parse("2026-11-03T14:02:15Z"));
+        Ableitung abgeleitet = DeviceDataSourceStatusRepository.ableiten(fehler);
+        assertThat(abgeleitet.seit()).isEqualTo(seit);
+        assertThat(abgeleitet.grund()).isEqualTo("unreachable");
+        assertThat(abgeleitet.text())
+                .isEqualTo("Liefert keine Daten seit 2026-11-03T14:02:10Z — nicht erreichbar");
+    }
+
+    @Test
+    void falscheIdentitaetUndUnbekannteFehlerklasseWerdenNichtBehauptet() throws Exception {
+        byte[] fixture = fixture("data-source-status-heartbeat-new.json");
+        listener.handle(TOPIC.replace(DEVICE.toString(),
+                "10000000-0000-0000-0000-000000000009"), fixture);
+        verifyNoInteractions(statuses);
+
+        String payload = new String(fixture, java.nio.charset.StandardCharsets.UTF_8)
+                .replace("unreachable", "connection_refused");
+        listener.handle(TOPIC, payload.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<Meldung>> rows = ArgumentCaptor.forClass(List.class);
+        verify(statuses).replaceForDevice(eq(DEVICE), eq(TENANT), any(), rows.capture());
+        assertThat(rows.getValue().get(1).errorClass()).isNull();
+    }
+
+    @Test
+    void ausgelieferteVorgabeIstAn() {
+        YamlPropertiesFactoryBean yaml = new YamlPropertiesFactoryBean();
+        yaml.setResources(new ClassPathResource("application.yml"));
+        assertThat(yaml.getObject()).isNotNull();
+        assertThat(yaml.getObject().getProperty(
+                "voltpilot.uems.data-source-status.mqtt-listener-enabled"))
+                .isEqualTo("${VOLTPILOT_UEMS_DATA_SOURCE_STATUS_MQTT_LISTENER_ENABLED:true}");
+    }
+
+    @Test
+    void sharedWireVectorsReachTheBuiltListener() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var dir = java.nio.file.Path.of("../../docs/contracts/v2");
+        var vectors = mapper.readTree(java.nio.file.Files.readString(dir.resolve("data-source-status-vectors.json")));
+        var schema = mapper.readTree(java.nio.file.Files.readString(dir.resolve("data-source-status.schema.json")));
+        for (var v : vectors.path("cases")) {
+            setUp();
+            var block = v.path("expected");
+            assertThat(UemsSchemaLaeufer.verstoesse(block, schema)).as(v.path("name").asText()).isEmpty();
+            var payload = mapper.createObjectNode();
+            payload.put("schema_version", "1.0").put("tenant_id", TENANT.toString())
+                    .put("site_id", SITE.toString()).put("device_id", DEVICE.toString())
+                    .put("ts", v.path("at").asText());
+            payload.set("data_sources", block);
+            listener.handle(TOPIC, mapper.writeValueAsBytes(payload));
+            @SuppressWarnings("unchecked")
+            ArgumentCaptor<List<Meldung>> rows = ArgumentCaptor.forClass(List.class);
+            verify(statuses).replaceForDevice(eq(DEVICE), eq(TENANT),
+                    eq(Instant.parse(v.path("at").asText())), rows.capture());
+            assertThat(rows.getValue()).hasSize(block.size());
+            for (int i = 0; i < block.size(); i++) {
+                var r = block.get(i);
+                assertThat(rows.getValue().get(i)).isEqualTo(new Meldung(
+                        r.path("id").asText(), r.path("health").asText(), r.path("error_class").asText(null),
+                        r.has("since") ? Instant.parse(r.path("since").asText()) : null,
+                        r.has("read_at") ? Instant.parse(r.path("read_at").asText()) : null,
+                        r.path("requests_per_min").isNull() ? null : r.path("requests_per_min").asDouble(), r.path("samples_per_min").asDouble()));
+            }
+        }
+    }
+
+    @Test
+    void sourceLabelFitsTheUnchangedLegacyRegistrySchema() throws Exception {
+        var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        var dir = java.nio.file.Path.of("../../docs/contracts/v2");
+        var document = mapper.readTree(java.nio.file.Files.readString(dir.resolve("edge-entity.schema.json")));
+        var schema = mapper.createObjectNode();
+        schema.put("$ref", "#/$defs/registry_push"); schema.set("$defs", document.path("$defs"));
+        var push = mapper.readTree(java.nio.file.Files.readString(dir.resolve("examples/edge-entity.valid.registry-push.json")));
+        for (var entity : push.path("entities")) {
+            var object = (com.fasterxml.jackson.databind.node.ObjectNode) entity;
+            var driver = object.has("driver") ? (com.fasterxml.jackson.databind.node.ObjectNode) object.get("driver") : object.putObject("driver");
+            driver.put("data_source_id", "DQ-4");
+        }
+        assertThat(UemsSchemaLaeufer.verstoesse(push, schema)).isEmpty();
+    }
+
+    private static byte[] fixture(String name) throws Exception {
+        try (InputStream in = DataSourceStatusListenerTest.class
+                .getResourceAsStream("/fixtures/" + name)) {
+            assertThat(in).as(name).isNotNull();
+            return in.readAllBytes();
+        }
+    }
+}

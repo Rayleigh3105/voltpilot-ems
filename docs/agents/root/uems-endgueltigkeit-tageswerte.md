@@ -44,6 +44,10 @@ Partitionierungs-Spalte (Chunk-Ausschluss), und der CHECK aus V20260912170000 bi
 zeichengleich aneinander. Dazu der TEILWEISE Index `idx_messreihe_viertelstunde_vorlaeufig`, der
 mit jeder endgültig gewordenen Zeile schrumpft.
 
+⚠ Seit AP-10 IP-10 wählt er nur REIHEN (`entity_id IS NOT NULL`): eine Zeile der Spur `berechnet` wird endgültig,
+wenn ihre Eingänge es sind (`BerechnetePeriodenLauf`) — ausgewählt, aber über den Reihen-Schlüssel nie umgeschaltet,
+hielte sie jeden Stapel voll. Dasselbe Filter tragen die Quellen des Tageslaufs (`uems-berechnete-periodenwerte.md`).
+
 ## Die Spätankunft (`SpaetankunftMelder`)
 
 Ein **Nachzügler** ist ein Rohwert dieser Reihe in diesem Intervall, dessen **Eingangszeit nach der
@@ -54,13 +58,25 @@ Frist** liegt. Findet der Verdichtungs-Lauf für einen `eingang`-Eintrag welche,
    Intervall, Nutzlast `eingangszeit` + `anzahl`,
 3. **schreibt einen Vorschlag** in `messreihe_korrektur_vorschlag`,
 
-und zwar alles **in DERSELBEN Transaktion**, in der der Eintrag aus der Arbeitsliste entnommen
-wird — sonst gäbe es einen Augenblick, in dem der Wert abgelehnt, aber noch nicht gemeldet ist.
+und zwar in der Transaktion, in der der Eintrag aus der Arbeitsliste entnommen wird. Der Zusatz liegt
+in einem eigenen **Savepoint**: scheitert eine Meldung oder ein Vorschlag, werden alle Nachzügler des
+Stapels erneut eingereiht, aber die normale Verdichtung der übrigen Intervalle darf festschreiben.
+Fang, Warn-Log, `spaetankunftFehlerAnzahl()` und
+`voltpilot_uems_spaetankunft_total{ergebnis="fehler"}` machen den Fehler laut. Der nächste Takt
+versucht den Zusatz erneut; ein Nachzügler gelangt auch in diesem Fehlerfall nie in die Neubildung.
 
 ⚠ **Nur bei einem WIRKLICHEN Nachzügler.** Ein geschlossenes Intervall kann auch ohne einen wieder
 in der Arbeitsliste landen (die Überlappung des Zeigers, ein Betriebs-Anstoß, die Rückrechnung);
 dann ist das Bilden harmlos — es entsteht dieselbe Zeile, und eine endgültige rührt der Schreibsatz
 ohnehin nicht an. Verboten ist genau das eine: einen zu spät eingetroffenen Wert ANWENDEN.
+
+⚠ **Die Frist fragt JEDEN Grund, nicht nur `eingang`** (AP-08 IP-19): vor der Frist wird eine
+Nachlieferung automatisch neu gebildet (F9), nach der Frist gemeldet und über IP-14 vorgeschlagen (F10)
+— auch wenn der Eintrag aus der Rückrechnung oder einem Bruch stammt oder der Eingang einen schon
+belegten Schlüssel fand (`ON CONFLICT DO NOTHING`). Die Vorprüfung ist EINE Abfrage je Stapel
+(`SpaetankunftMelder.mitNachzueglern`). Auch die Rückrechnung bildet ein geschlossenes Intervall
+mit Nachzügler darum NICHT (keine Zeile, Vorschau „alt“ = keine Werte), sondern meldet es. Paar-Test:
+`UemsFristVorschlagTest`.
 
 ⚠ **Die Ereignis-Kennung ist ABGELEITET** (aus Reihe, Intervall, letzter Eingangszeit und Anzahl),
 nicht gewürfelt: eine Wiederholung trifft denselben Idempotenz-Schlüssel und schreibt nichts,
@@ -85,7 +101,8 @@ der Rohwerte** — ein wiederholter Lauf schreibt denselben Inhalt.
 
 **AP-07 schreibt hier nur `offen`.** `zustand`/`erledigt_am`/`erledigt_notiz` sind die Hälfte von
 AP-08; von dieser Liste aus führt **kein Weg** zu einer Zeile der Viertelstunden- oder
-Tagesklasse. Die versionierte Korrektur ist **AP-08 IP-12 ff.**
+Tagesklasse. Die versionierte Korrektur ist **AP-08 IP-12 ff.** — seit 13.09.2026 die Tabelle
+`messreihe_korrektur` (der Vorgang; diese Liste bleibt die Erkennung), siehe `uems-korrektur-ersatzwert.md`.
 
 ## Die Tagesklasse `messreihe_tag`
 
@@ -125,11 +142,15 @@ Summe der Viertelstunden. Genau diese Stände liefert die Zeile.
 **Nachtrag AP-08 IP-5:** die Zeile trägt jetzt `menge`/`menge_zustand`/`kennzeichen`/`kadenz_s`
 aus den Periodenständen, `stand_anfang`/`stand_ende` sind die Stände an den TAGESGRENZEN, und
 `erwartet`/`abdeckung_prozent` zählen fehlende Viertelstunden mit — siehe
-`uems-periodenmengen.md`.
+`uems-periodenmengen.md`. Ein Tag, der VOR IP-5 schon endgültig war, behält Version 1 ohne Menge; die Menge
+kommt nie still, sondern als Korrektur `menge_nachgetragen` (Vorschlag des Systems → Freigabe → Version 2),
+siehe `uems-periodenmengen.md` § „Nachtrag“.
 
-`mittel` ist das mit `erhalten` **gewichtete** Mittel der Viertelstunden — also exakt das Mittel
-der guten Werte des Tages, nie ein Mittel von Mitteln; `min_wert`/`max_wert` sind Minimum und
-Maximum. Das sind Momentanwert-Fakten, keine Mengen.
+`mittel`, `min_wert`, `max_wert` sind Momentanwert-Fakten, keine Mengen. **Seit AP-08 IP-3**
+rechnet sie `VerbrauchRegeln.momentanwertAusTeilperioden`: Mittel = Summe der guten Werte ÷
+erhalten (Spalte `summe`), auf eine Nachkommastelle wie die Viertelstunde. Vorher gewichtete dieser
+Lauf die GERUNDETEN Viertelstunden-Mittel mit `erhalten` — das war nur auf 0,05 genau. Siehe
+`uems-intervall-momentanwert.md`.
 
 ## Der Tageslauf (`TagVerdichter`)
 
@@ -153,7 +174,8 @@ beide.
 
 `EndgueltigkeitLaeufer`: **einmal je Stunde**, erst umschalten, dann Tage nachziehen (die
 Reihenfolge ist Absicht — so trägt eine frisch gebildete Tageszeile schon die umgeschalteten
-Slots). Schalter `voltpilot.uems.endgueltigkeit.enabled`, **Vorgabe AN** in `application.yml`, **im
+Slots), dann Monate/Jahre, dann die berechneten Messstellen (AP-10 IP-10, NACH allen gemessenen Stufen,
+`EndgueltigkeitLaeuferReihenfolgeTest`), zuletzt die Korrektur-Vorschläge. Schalter `voltpilot.uems.endgueltigkeit.enabled`, **Vorgabe AN** in `application.yml`, **im
 Testlauf AUS** (surefire, `pom.xml`) — die dokumentierte `@Scheduled`-Falle; `EndgueltigkeitWiringTest`
 prüft beides an den echten Dateien.
 

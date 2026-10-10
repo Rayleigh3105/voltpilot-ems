@@ -1,9 +1,10 @@
 package com.voltpilot.api.chargers;
 
+import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.command.CommandLog;
 import com.voltpilot.api.repo.CommandLogRepository;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.SiteChargingDto.ChargeConnectorDto;
 import com.voltpilot.api.web.dto.SiteChargingDto.ChargePointDto;
@@ -56,14 +57,14 @@ public class ChargingBoostService {
 
     static final String EVENT_PAUSE_ENDE = "laden_pausiert_beendet";
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final DeviceChargerStatusRepository chargers;
     private final CommandLogRepository commandLog;
     private final ObjectProvider<ChargingBoostPublisher> publisher;
 
-    public ChargingBoostService(SiteRepository sites, DeviceChargerStatusRepository chargers,
+    public ChargingBoostService(Geltungsbereich geltungsbereich, DeviceChargerStatusRepository chargers,
             CommandLogRepository commandLog, ObjectProvider<ChargingBoostPublisher> publisher) {
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.chargers = chargers;
         this.commandLog = commandLog;
         this.publisher = publisher;
@@ -107,9 +108,7 @@ public class ChargingBoostService {
      */
     public BoostResult boost(UUID siteId, String chargePointId, int connectorId, Integer minutes,
             boolean cancel, Action action, String actor) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
         ChargePointDto point = point(siteId, chargePointId);
         ChargeConnectorDto connector = connector(point, connectorId);
         // ⚠ Nur ein LAUFENDER Ladevorgang lässt sich übersteuern. Eine Zusage
@@ -137,7 +136,7 @@ public class ChargingBoostService {
                     "VoltPilot kann Ihre Ladesäule gerade nicht erreichen. Bitte gleich noch "
                             + "einmal versuchen - an Ihrer Anlage ändert sich dadurch nichts.");
         }
-        record(siteId, point, connectorId, cancel, action, now);
+        record(siteId, point, connectorId, cancel, action, now, actor);
         return new BoostResult(point.chargePointId(), connectorId, !cancel, now,
                 note(cancel, action));
     }
@@ -165,10 +164,12 @@ public class ChargingBoostService {
      * diesem Zeitpunkt bereits hinausgegangen.
      */
     private void record(UUID siteId, ChargePointDto point, int connectorId, boolean cancel,
-            Action action, Instant at) {
+            Action action, Instant at, String actor) {
         try {
+            // Der Urheber im Akteur-Vokabular (AP-03 IP-7): „Jetzt voll laden" ist ein Handeingriff.
             commandLog.appendEvent(siteId, point.deviceId(), point.entityId(),
-                    CommandLog.STREAM_LADEPUNKT, eventKind(cancel, action), at, at);
+                    CommandLog.STREAM_LADEPUNKT, eventKind(cancel, action), at, at,
+                    ProtokollAkteur.angemeldetAls(actor).orElse(null));
         } catch (RuntimeException e) {
             log.warn("charging boost not recorded in the command log (site {} charge point {}): {}",
                     siteId, point.chargePointId(), e.getMessage());

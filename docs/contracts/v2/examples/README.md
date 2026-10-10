@@ -12,7 +12,7 @@ Ausführbare JSON-Fixtures für Schema- und Laufzeitprüfungen. Dateinamen und I
 | `mqtt-measurement-config-status.*.json` | 1 | 0 |
 | `mqtt-measurement-config.*.json` | 3 | 1 |
 | `mqtt-measurement-samples.*.json` | 1 | 1 |
-| `mqtt-schedule-2.0.*.json` | 3 | 1 |
+| `mqtt-schedule-2.0.*.json` | 5 | 2 |
 | `mqtt-telemetry-2.0.*.json` | 2 | 1 |
 
 `valid` muss die jeweils geprüfte Regel erfüllen; `invalid` benennt den gezielten Verstoß. Negative Beispiele nicht mit beliebigen Zusatzfeldern ungültig machen. Datumswerte sind eingefrorene Testdaten, keine aktuellen Fahrpläne.

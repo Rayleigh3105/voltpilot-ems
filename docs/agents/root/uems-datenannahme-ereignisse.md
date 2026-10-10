@@ -25,7 +25,9 @@ schreibt“; Betrieb und Topic-Tabelle: [`services/ingest/README.md`](../../../s
   erst mit IP-7/IP-9.
 - **Readiness:** `/health/readiness` = `readinessState` + `eventsTopic` (der Ingest bedient keinen
   fachlichen HTTP-Verkehr); `K8sReadinessConfigTest` bewacht die Gruppe, `ProbeEndpointsTest` zeigt
-  503 ohne / 200 mit Topic, `IngestPipeTest` fragt das echte Redpanda, `DatenannahmeTest` und
+  503 ohne / 200 mit Topic, `IngestPipeTest` fragt das echte Redpanda (die App legt `events.raw`
+  dort selbst an), `EventsTopicAnlageTest` fährt die Anlage gegen ein echtes Redpanda (fehlt,
+  vorhanden, abweichend, keine Rechte, Broker weg, abgeschaltet), `DatenannahmeTest` und
   `BoxEreignisTorTest` den Rückfall.
 - **Box-Weg:** `MqttEventsIngestConfig` (Fabrik der Messwerte: persistente Sitzung, manuelle
   Quittung) → `BoxEventsValidator` = Zwilling von `EreignisVokabular.pruefeUmschlag` für die sechs
@@ -40,14 +42,24 @@ schreibt“; Betrieb und Topic-Tabelle: [`services/ingest/README.md`](../../../s
 
 ## ⚠ Fallen
 
-1. **`events.raw` VOR dem nächsten Deploy im gitops-Repo `mamotec/gitops` anlegen** (Produktion
-   = k3s seit dem Cutover 03.08.2026, Argo CD; `redpanda-init` der Compose-Dateien gilt lokal).
-   Fehlt es, fällt die Datenannahme auf das Verhalten VOR IP-5 zurück (Entscheid b07-recreate D):
-   Messwert- und Kern-Weg senden KEIN Ereignis, die Ablehnung steht nur im Log und im Zähler
-   `voltpilot.ingest.events.undelivered`, quittiert wird nach den Messwerten — der Messwert-Weg
-   wartet nie auf `events.raw`. Der Box-Adapter verbindet sich erst mit dem Topic
-   (`BoxEreignisTor`, ohne Autostart), die Readiness bleibt DOWN. `EventsTopicPruefung` fragt
-   höchstens alle 10 s und merkt sich den ersten Treffer. Kein Topic-Anlegen aus dem Code.
+1. **`events.raw` legt die Datenannahme selbst an, VOR ihrer Bereitschaft** (seit 15.09.2026,
+   `voltpilot.redpanda.events-topic-anlegen`, Vorgabe an, 3 Partitionen × 1 Replikat wie
+   `redpanda-init`): anlegen → zurücklesen → bereit. Ein vorhandenes Topic wird nie ein zweites Mal
+   angelegt und nie angepasst; eine Abweichung ist WARN + Health-Detail `abweichung`. Damit ist
+   Punkt 4 von Entscheid b07-recreate D („kein Topic-Anlegen aus dem Code“) ersetzt — firstmate
+   15.09.2026 auf den ausdrücklichen Captain-Wunsch „ich will nicht händisch topic erstellen
+   müssen“. **Grund:** Punkt 4 war eine Abgrenzung ohne Sicherheitsabwägung (D löste den
+   Recreate-Stillstand ohne Anlage, nirgends steht ein Grund), und das gefährliche Muster — der
+   Broker legt das Topic beim ersten Senden mit seinen Vorgabewerten an — verhindert gerade der
+   ausdrückliche Weg vor jeder Sendung. **Nie ein vorhandenes Topic aus dem Code umbauen:**
+   Partitionen umzuverteilen verschiebt die Schlüssel, weniger geht gar nicht. Wer Topics selbst
+   verwaltet (Redpanda im Cluster mit PreSync-Job), schaltet ab. Punkte 1–3 von D gelten weiter:
+   fehlt das Topic trotzdem (abgeschaltet, keine Rechte, Broker weg — der Grund steht im Log),
+   fällt die Datenannahme auf das Verhalten VOR IP-5 zurück: Messwert- und Kern-Weg senden KEIN
+   Ereignis, die Ablehnung steht nur im Log und im Zähler `voltpilot.ingest.events.undelivered`,
+   quittiert wird nach den Messwerten — der Messwert-Weg wartet nie auf `events.raw`. Der
+   Box-Adapter verbindet sich erst mit dem Topic (`BoxEreignisTor`, ohne Autostart), die Readiness
+   bleibt DOWN. `EventsTopicPruefung` fragt höchstens alle 10 s und merkt sich den ersten Treffer.
 2. **Nie `Instant.now()` als Eingangszeit gegen Beispiele mit festen Messzeiten** — nach 90 Tagen
    werden sie still `too_old`. Die Unit-Tests nehmen feste Eingangszeiten, `IngestPipeTest` eine
    `@Primary`-`Clock` (`FesteEingangsuhr`).

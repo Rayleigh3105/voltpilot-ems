@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '../../designsystem/components/core/Button';
@@ -1201,6 +1202,7 @@ export function BatterieAssistent({
               onClick: () => void anlegen(),
               disabled: speichern || grund !== null,
               testId: 'einrichten-speichern',
+              aktion: 'geraet.einrichten',
             }}
           />
         }
@@ -1305,9 +1307,9 @@ export function BatterieAssistent({
             <Button variant="ghost" onClick={() => setSchritt(3)}>
               Zurück
             </Button>
-            <Button onClick={anlegen} disabled={speichern}>
+            <Recht aktion="geraet.einrichten"><Button onClick={anlegen} disabled={speichern}>
               {speichern ? 'Speichere …' : bearbeiten ? 'Änderungen speichern' : 'Batterie anlegen'}
-            </Button>
+            </Button></Recht>
           </Nav>
         </>
       )}

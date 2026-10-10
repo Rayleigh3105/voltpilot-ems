@@ -30,6 +30,14 @@ const BOX = {
   lanSource: 'erreicht',
 } as unknown as Device;
 
+const BOX_B = {
+  ...BOX,
+  id: 'd2',
+  externalRef: 'edge-halle-2',
+  name: 'Box Halle 2',
+  lanHost: '192.168.10.31:8484',
+} as unknown as Device;
+
 const LEER: ChargingConfig = { gridLimitKw: null, priorityChargePointIds: [], chargePoints: [] };
 
 function charging(over: Partial<SiteCharging> = {}): SiteCharging {
@@ -69,6 +77,7 @@ describe('LadesaeuleAnbinden', () => {
         // Cockpit Phase 1 / C1: beim ERSTEN Eintragen reist die Wahl mit -
         // der Kunde hat sie gesehen und stehen lassen.
         connection: 'haus',
+        deviceId: 'd1',
       }),
     );
     expect(await screen.findByText(/lässt diese Kennung ab jetzt herein/)).toBeTruthy();
@@ -89,6 +98,27 @@ describe('LadesaeuleAnbinden', () => {
     );
     expect(screen.getByText('ws://192.168.1.5:8887/ocpp')).toBeTruthy();
     expect(screen.getAllByRole('button', { name: 'Kopieren' })).toHaveLength(2);
+  });
+
+  it('bietet bei mehreren Boxen die Zielwahl und zeigt die Adresse der gewählten Box', async () => {
+    siteChargers.mockResolvedValue({
+      ...charging(),
+      budgets: [
+        { deviceId: 'd1', ocppPort: 8887, ocppUrlPath: '/ocpp' },
+        { deviceId: 'd2', ocppPort: 8890, ocppUrlPath: '/ocpp' },
+      ],
+    });
+    render(<LadesaeuleAnbinden siteId="s1" devices={[BOX, BOX_B]} />);
+    expect(screen.getByText(/Bitte wählen Sie die Box für diesen Ladepark/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('combobox', { name: 'Box für die Ladepunkte' }));
+    fireEvent.click(screen.getByRole('option', { name: /Box Halle 2/ }));
+    fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'halle-2' } });
+    expect(await screen.findByText('ws://192.168.10.31:8890/ocpp/halle-2')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Kennung eintragen' }));
+    await waitFor(() => expect(admitChargePoint).toHaveBeenCalledWith('s1', expect.objectContaining({
+      chargePointId: 'halle-2',
+      deviceId: 'd2',
+    })));
   });
 
   it('behauptet ohne gemeldete Adresse KEINE - und nennt den Weg', async () => {
@@ -216,6 +246,7 @@ describe('LadesaeuleAnbinden · Anschluss', () => {
         chargePointId: 'strasse',
         label: 'Straße',
         connection: 'eigen',
+        deviceId: 'd1',
       }),
     );
   });
@@ -252,6 +283,7 @@ describe('LadesaeuleAnbinden · Anschluss', () => {
         chargePointId: 'strasse',
         label: undefined,
         connection: 'eigen',
+        deviceId: 'd1',
       }),
     );
   });

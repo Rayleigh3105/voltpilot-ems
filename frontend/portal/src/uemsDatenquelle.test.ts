@@ -13,12 +13,15 @@ import {
   TEXTE,
   URTEILE,
   boxTausch,
+  budgetAblehnungAnzeige,
   faehigkeiten,
   fehlerklasse,
   fuehrendeBox,
+  gemeinsameSteuerungAendern,
   pruefeAntrag,
   pruefeZeitraum,
   vorschlagsliste,
+  wegDesWechsels,
   zustaendigeBox,
   type Herkunft,
   type TabellenEintrag,
@@ -46,7 +49,8 @@ type Familie =
   | 'fuehrende_box'
   | 'faehigkeiten'
   | 'fehlerklasse'
-  | 'bestand';
+  | 'bestand'
+  | 'gemeinsame_steuerung';
 
 interface Fall {
   name: string;
@@ -130,6 +134,48 @@ describe('Datenquelle und Zuständigkeit — Fehlerklassen', () => {
   });
 });
 
+describe('Datenquelle und Zuständigkeit — Gemeinsame Steuerung (AP-15 T6, IP-26)', () => {
+  it.each(vonFamilie('gemeinsame_steuerung').map((c) => [c.name, c] as const))('%s', (_, c) => {
+    const q = c.input.quellen[0];
+    const gs = c.input.gemeinsame_steuerung;
+    const weg = wegDesWechsels(q.steuerquelle, gs?.zustand ?? null, gs?.nur_als_aenderung ?? false, gs?.ziel_ist_mitglied ?? false);
+    const aendern = weg === 'gemeinsame_steuerung_aendern';
+    expect({ weg, code: aendern ? 'gemeinsame_steuerung_aendern' : null, text: aendern ? gemeinsameSteuerungAendern(q.kennzeichen) : null })
+      .toEqual(c.expected);
+  });
+});
+
+describe('Datenquelle und Zuständigkeit — Lesebudget 422', () => {
+  it('A10 zeigt Rechnung und beide Auswege in Kundenwörtern', () => {
+    const anzeige = budgetAblehnungAnzeige({
+      code: 'budget_ueberschritten', urteil: 'abgelehnt',
+      message: 'Diese Quelle passt nicht mehr in das Lesebudget von Box Halle 1 — Takt strecken oder andere Box wählen.',
+      rechnung: {
+        code: 'budget_ueberschritten', kennzeichen: 'DQ-3', box: 'Box Halle 1',
+        quelle: { protokoll: 'modbus_tcp', channels: 8, takt_s: 10,
+          anfragen: [{ anfragen_je_takt: 4, kosten_ms_je_anfrage: 400 }],
+          last: { channels: 8, samples_per_minute: 48, requests_per_minute: 24, duty_cycle_percent: 16 } },
+        box_nachher: { channels: 74, samples_per_minute: 114, requests_per_minute: 46, duty_cycle_percent: 30.667 },
+        grenzen: { samples_per_minute: 600, requests_per_minute: 30, duty_cycle_percent: 20 },
+        freie_kapazitaet: [], gruende: ['Mehr als 30 Leseanfragen pro Minute.'],
+        auswege: { takt_s: 60, takt: 'Takt 60 s wählen', boxen: [],
+          andere_box: 'Box Halle 2 wählen (29 Anfragen/min frei)' },
+      },
+    });
+    expect(anzeige).toEqual({
+      titel: 'Diese Quelle passt nicht mehr in das Lesebudget von Box Halle 1 — Takt strecken oder andere Box wählen.',
+      quelle: '8 Kanäle × alle 10 s = 48 Messwerte/min',
+      anfragen: '4 Anfragen je Takt (4 × 400 ms) = 24 Anfragen/min · 16 % Buszeit',
+      box: 'Box Halle 1 danach: 114 von 600 Messwerten/min · 46 von 30 Anfragen/min · 30,667 von 20 % Buszeit',
+      auswege: ['Takt 60 s wählen', 'Box Halle 2 wählen (29 Anfragen/min frei)'],
+    });
+  });
+
+  it('mischt andere Fehler nicht in die Budgetanzeige', () => {
+    expect(budgetAblehnungAnzeige({ code: 'pruefung_fehlt' })).toBeNull();
+  });
+});
+
 describe('Datenquelle und Zuständigkeit — Bestand', () => {
   it.each(vonFamilie('bestand').map((c) => [c.name, c] as const))('%s', (_, c) => {
     const ist = vorschlagsliste(c.input.komponenten, c.input.naechste_nummer, c.input.belegt ?? []);
@@ -171,7 +217,8 @@ describe('Datenquelle und Zuständigkeit — die Datei als Ganzes', () => {
   });
 
   it('die echte Fähigkeiten-Tabelle trägt heute noch kein Release', () => {
-    expect(tabelle.map((e) => e.code)).toEqual(['data_sources', 'assignment_effective_at']);
+    expect(tabelle.map((e) => e.code)).toEqual(['data_sources']);
+    expect(tabellenDatei.keine_faehigkeit.map((e: { was: string }) => e.was)).toContain('Zuständigkeit ab Zeitpunkt');
     expect(tabelle.every((e) => e.ab_release === null)).toBe(true);
   });
 });

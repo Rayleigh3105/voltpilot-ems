@@ -101,7 +101,9 @@ export function energieAnlagen(inputs: readonly PortfolioHistoryInput[]): Anlage
     const aut = i.history && hat ? energieQuoten(i.history)[0] : null;
     const teile = [
       verbraucht == null ? null : `Verbrauch ${mengeText(verbraucht)}`,
-      aut?.pct == null ? null : `${aut.wert} selbst versorgt`,
+      // AP-10 E16 Nr. 5: eine Quote außerhalb 0…100 % ist keine Selbstversorgung — sie steht mit dem Satz des
+      // Bilanz-Vertrags („Messwerte passen nicht zusammen (−20 %)“), wie auf der Energie-Seite.
+      aut?.pct == null ? null : aut.unplausibel ? aut.info : `${aut.wert} selbst versorgt`,
     ].filter((t): t is string => t != null);
     return {
       id: i.siteId,

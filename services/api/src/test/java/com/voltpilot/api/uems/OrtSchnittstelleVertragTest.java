@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.web.dto.AnlageUmzugDto;
 import com.voltpilot.api.web.dto.OrtDto;
+import com.voltpilot.api.web.dto.OrtVerschiebungDto;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -66,17 +68,29 @@ class OrtSchnittstelleVertragTest {
 
     @Test
     void dieFormenSindDieDerSchnittstelle() {
-        Map<String, Class<?>> formen = Map.of(
-                "OrtAnlegen", OrtDto.Anlegen.class,
-                "OrtBearbeiten", OrtDto.Bearbeiten.class,
-                "OrtFlaeche", OrtDto.Flaeche.class,
-                "Ort", OrtDto.Ort.class,
-                "OrtZuordnung", OrtDto.Zuordnung.class,
-                "OrtFlaechenStand", OrtDto.FlaechenStand.class,
-                "OrtRueckwirkung", OrtDto.Rueckwirkung.class,
-                "OrtsbaumAmStichtag", OrtsbaumLesemodell.OrtsbaumAmStichtag.class,
-                "OrtsbaumGebaeude", OrtsbaumLesemodell.Gebaeude.class,
-                "OrtsbaumBereich", OrtsbaumLesemodell.Bereich.class);
+        Map<String, Class<?>> formen = Map.ofEntries(
+                Map.entry("OrtAnlegen", OrtDto.Anlegen.class),
+                Map.entry("OrtBearbeiten", OrtDto.Bearbeiten.class),
+                Map.entry("OrtFlaeche", OrtDto.Flaeche.class),
+                Map.entry("Ort", OrtDto.Ort.class),
+                Map.entry("OrtZuordnung", OrtDto.Zuordnung.class),
+                Map.entry("OrtFlaechenStand", OrtDto.FlaechenStand.class),
+                Map.entry("OrtRueckwirkung", OrtDto.Rueckwirkung.class),
+                Map.entry("OrtsbaumAmStichtag", OrtsbaumLesemodell.OrtsbaumAmStichtag.class),
+                Map.entry("OrtsbaumGebaeude", OrtsbaumLesemodell.Gebaeude.class),
+                Map.entry("OrtsbaumBereich", OrtsbaumLesemodell.Bereich.class),
+                Map.entry("OrtsbaumDatenlage", OrtsbaumLesemodell.Datenlage.class),
+                // IP-15: der Grabstein und die Aktionen je Knoten
+                Map.entry("OrtsbaumArchivierterOrt", OrtsbaumLesemodell.ArchivierterOrt.class),
+                Map.entry("OrtAktionen", OrtAktionen.Aktionen.class),
+                Map.entry("OrtArchivierenAktion", OrtAktionen.Archivieren.class),
+                Map.entry("OrtMitarchiviert", OrtAktionen.Mitarchiviert.class),
+                Map.entry("OrtWiederherstellenAktion", OrtAktionen.Wiederherstellen.class),
+                Map.entry("OrtLoeschenAktion", OrtAktionen.Loeschen.class),
+                // IP-12: das Ziel-Menü je Knoten und das Abzeichen „ab … → …“
+                Map.entry("OrtVerschiebenAktion", OrtAktionen.Verschieben.class),
+                Map.entry("OrtVerschiebenZiel", OrtAktionen.Ziel.class),
+                Map.entry("OrtsbaumDanach", OrtsbaumLesemodell.Danach.class));
         formen.forEach((name, form) -> {
             List<String> felder = Arrays.stream(form.getRecordComponents()).map(c -> c.getName()).toList();
             assertThat(map(schema(name), "properties").keySet()).as(name).containsExactlyInAnyOrderElementsOf(felder);
@@ -84,6 +98,44 @@ class OrtSchnittstelleVertragTest {
         assertThat(map(schema("OrtsbaumDirektAmStandort"), "properties").keySet()).containsExactlyInAnyOrderElementsOf(
                 Arrays.stream(OrtsbaumLesemodell.DirektAmStandort.class.getRecordComponents())
                         .map(c -> c.getName()).toList());
+    }
+
+    /** Gebäude/Bereich verschieben (IP-12): Rumpf und Antwort sind die Formen der Schnittstelle. */
+    @Test
+    void dieFormenDesVerschiebensSindDieDerSchnittstelle() {
+        Map<String, Class<?>> formen = Map.ofEntries(
+                Map.entry("OrtVerschiebenAnfrage", OrtVerschiebungDto.Anfrage.class),
+                Map.entry("OrtVerschiebung", OrtVerschiebungDto.Verschiebung.class),
+                Map.entry("OrtVerschiebungKnoten", OrtVerschiebungDto.Knoten.class),
+                Map.entry("OrtVerschiebungZuordnung", OrtVerschiebungDto.Zuordnung.class),
+                Map.entry("OrtVerschiebungMessstelle", OrtVerschiebungDto.Messstelle.class),
+                Map.entry("OrtVerschiebungAnlage", OrtVerschiebungDto.Anlage.class),
+                Map.entry("OrtVerschiebungNetzanschluss", OrtVerschiebungDto.Netzanschluss.class),
+                Map.entry("OrtVerschiebungFolgen", OrtVerschiebungDto.Folgen.class),
+                Map.entry("OrtVerschiebungZeitraum", OrtVerschiebungDto.Zeitraum.class),
+                Map.entry("OrtVerschiebungEintrag", OrtVerschiebungDto.Eintrag.class));
+        formen.forEach((name, form) -> {
+            List<String> felder = Arrays.stream(form.getRecordComponents()).map(c -> c.getName()).toList();
+            assertThat(map(schema(name), "properties").keySet()).as(name).containsExactlyInAnyOrderElementsOf(felder);
+        });
+    }
+
+    /** Anlage zuordnen/umziehen (IP-11): Rumpf und Antwort sind die Formen der Schnittstelle. */
+    @Test
+    void dieFormenDesUmzugsSindDieDerSchnittstelle() {
+        Map<String, Class<?>> formen = Map.of(
+                "AnlageUmzugAnfrage", AnlageUmzugDto.Anfrage.class,
+                "AnlageUmzug", AnlageUmzugDto.Umzug.class,
+                "AnlageUmzugStandort", AnlageUmzugDto.StandortRef.class,
+                "AnlageUmzugZuordnung", AnlageUmzugDto.Zuordnung.class);
+        formen.forEach((name, form) -> {
+            List<String> felder = Arrays.stream(form.getRecordComponents()).map(c -> c.getName()).toList();
+            assertThat(map(schema(name), "properties").keySet()).as(name).containsExactlyInAnyOrderElementsOf(felder);
+        });
+        assertThat(liste(schema("AnlageUmzug"), "properties", "bleibt", "items", "enum"))
+                .containsExactlyElementsOf(AnlageUmzugService.BLEIBT);
+        assertThat(OrtAbgelehnt.CODES).contains("vor_dem_ersten_intervall", "objekt_archiviert", "gleicher_tag",
+                "ziel_ist_bisheriger_eltern");
     }
 
     @SuppressWarnings("unchecked")

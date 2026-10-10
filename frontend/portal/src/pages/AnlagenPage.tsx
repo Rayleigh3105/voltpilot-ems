@@ -1,3 +1,4 @@
+import { Recht } from '../components/Recht';
 import { Fragment, lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { SUB_CHUNK } from '../pageChunks';
@@ -21,6 +22,7 @@ import {
   type RollenKanonischerWert,
   type SchedulePlan,
   type Site,
+  type StandortAusfall,
   type SiteEarnings,
   type SiteSource,
   type TelemetryPoint,
@@ -52,6 +54,7 @@ import { LIST_POLL_MS, LIVE_POLL_MS } from '../pollCadence';
 import { useIsPhone } from '../useIsPhone';
 import { useScrolledPast } from '../useScrolledPast';
 import { useWake } from '../useWake';
+import { anlageAusfallSatz } from '../ausfallAnzeige';
 import { nextHourIndex, weatherWhy } from '../weather';
 import { controlReasonSlot, controlStrip, isWrAutomatik, nextChargeStart, planOutlook } from '../control';
 import { curtailTruth, curtailTruthForSlot, exportGuardView } from '../curtailment';
@@ -68,7 +71,9 @@ import { todaySlots } from '../schedule';
 import { slotWhy, surplusWhy } from '../fahrplanWhy';
 import { healthChecklist, type AnlageHealthFacts } from '../health';
 import { AnlageAnlegenDrawerLazy as AnlageAnlegenDrawer } from '../components/AnlageAnlegenDrawerLazy';
-import { AUFBAU_REITER, resolveAnlage } from '../anlageNav';
+import { anlageLeertext } from '../anlegeNurMessen';
+import { useAnlegeArt } from '../useAnlegeArt';
+import { AUFBAU_REITER, resolveAnlage } from '../ebenenNav';
 import { fetchGate, readFace, rememberFace } from '../anlageFace';
 import { consumersApi } from '../consumers/consumersApi';
 import { ladeFlussKnoten, ladenKachel } from '../ladenKachel';
@@ -111,7 +116,9 @@ import {
   AusgeblendetZeile,
 } from '../components/CockpitAnpassen';
 import { useAnlageSurface } from '../useAnlageSurface';
+import { CockpitMessstellenWeg } from '../components/CockpitMessstellenWeg';
 import type { AnlageSurface } from '../surface';
+import { bausteineOhneGeld, unterseiteOhneGeld } from '../anlageGeld';
 import { anlageDecision, hasBlock } from '../cockpit';
 import {
   cockpitHero,
@@ -133,7 +140,7 @@ import { NetzladenBadge } from '../components/NetzladenBadge';
 import { ErrorState, Skeleton } from '../components/States';
 import { LazyBoundary } from '../components/Lazy';
 import { BereichTabs } from '../components/BereichTabs';
-import { anlageSidebar, bereichLabel, tabsFor } from '../anlageNav';
+import { anlageSidebar, bereichLabel, tabsFor } from '../ebenenNav';
 import { useSiteEarnings } from '../useSiteEarnings';
 import { isoDate } from '../periodNav';
 // Die Unterseiten einer Anlage werden LAZY geladen. Das Cockpit (`sub === null`)
@@ -152,6 +159,9 @@ const MesswerteSection = lazy(() =>
 );
 const ErloeseSection = lazy(() =>
   SUB_CHUNK.erloese().then((m) => ({ default: m.ErloeseSection })),
+);
+const EnergiebilanzSection = lazy(() =>
+  SUB_CHUNK.energiebilanz().then((m) => ({ default: m.EnergiebilanzSection })),
 );
 const EinzelwerteSection = lazy(() =>
   SUB_CHUNK.einzelwerte().then((m) => ({ default: m.EinzelwerteSection })),
@@ -287,6 +297,14 @@ export interface AnlagenPageProps {
    * KEINEN eigenen Abruf brauchen, um zu wissen, ob es die Erlöse-Welt gibt.
    */
   surface?: AnlageSurface | null;
+  /**
+   * UEMS AP-13 IP-11 (E2 = A, O18): misst der Standort DIESER Anlage? Nur dann bekommt das Cockpit den
+   * EINEN Weg „Messstellen dieser Anlage“ — und nur dann fragt es das Register überhaupt. Ein reiner
+   * Betriebskunde sieht und lädt nichts Neues. Die Zahlen des Cockpits ändert der Weg NIE.
+   */
+  misstHier?: boolean;
+  /** Standort der Anlage für die additive, fail-soft Ausfall-Lesesicht. */
+  standortId?: string | null;
 }
 
 /**
@@ -307,7 +325,7 @@ export function AnlagenPage(props: AnlagenPageProps) {
     return <AnlagenEmpty onReload={props.onReload} isAdmin={isAdmin} />;
   }
 
-  // The SAME resolution the shell uses to scope its trio (anlageNav.ts).
+  // The SAME resolution the shell uses to scope its trio (ebenenNav.ts).
   const site = resolveAnlage(sites, route.siteId);
 
   if (!site) {
@@ -322,7 +340,7 @@ export function AnlagenPage(props: AnlagenPageProps) {
 
   // Portal v3 M1: every area of an Anlage lives in the SHELL now - the grouped
   // sidebar (base group + one group per active mode) plus the phone 5-slot
-  // bottom bar with its Mehr sheet (`anlageNav.ts`). The page head carries no
+  // bottom bar with its Mehr sheet (`ebenenNav.ts`). The page head carries no
   // navigation of its own any more; the cockpit's drill-in links stay as
   // shortcuts. Routes are unchanged, so every bookmark keeps working.
   return route.sub ? (
@@ -360,6 +378,7 @@ function AnlagenEmpty({
   isAdmin: boolean;
 }) {
   const [drawer, setDrawer] = useState(false);
+  const anlegeArt = useAnlegeArt();
   return (
     <>
       <div className="vp-page-head">
@@ -368,7 +387,11 @@ function AnlagenEmpty({
           <p>
             {isAdmin
               ? 'Dieser Mandant hat noch keine Anlage.'
-              : 'Hier erscheint Ihre Anlage: Live-Daten, Fahrplan, Technik und Erlöse an einem Ort.'}
+              : anlageLeertext(
+                  anlegeArt,
+                  'Hier erscheint Ihre Anlage: Live-Daten, Fahrplan, Technik und Erlöse an einem Ort.',
+                  'Hier erscheint Ihre Anlage mit ihren Messwerten und ihrem technischen Zustand.',
+                )}
           </p>
         </div>
       </div>
@@ -381,11 +404,15 @@ function AnlagenEmpty({
           <p>
             {isAdmin
               ? 'Sobald für diesen Mandanten eine Anlage angelegt ist, erscheint sie hier. Sie können im Namen des Mandanten eine Anlage anlegen.'
-              : 'Legen Sie Ihre Anlage an - danach verbinden Sie Ihr Gerät und sehen Live-Daten, Fahrplan und Erlöse.'}
+              : anlageLeertext(
+                  anlegeArt,
+                  'Legen Sie Ihre Anlage an - danach verbinden Sie Ihr Gerät und sehen Live-Daten, Fahrplan und Erlöse.',
+                  'Legen Sie Ihre Anlage an - danach verbinden Sie Ihr Gerät und sehen ihre Messwerte.',
+                )}
           </p>
-          <Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setDrawer(true)}>
+          <Recht aktion="anlage.verwalten"><Button variant="primary" iconLeft={<Icon name="plus" size={18} />} onClick={() => setDrawer(true)}>
             Anlage anlegen
-          </Button>
+          </Button></Recht>
         </div>
       </Card>
       <AnlageAnlegenDrawer
@@ -457,9 +484,9 @@ function AnlagenListe({
           <p>Wählen Sie eine Anlage - jede hat ihre eigene Seite.</p>
         </div>
         <div className="actions">
-          <Button variant="outline" iconLeft={<Icon name="plus" size={18} />} onClick={() => setDrawer(true)}>
+          <Recht aktion="anlage.verwalten"><Button variant="outline" iconLeft={<Icon name="plus" size={18} />} onClick={() => setDrawer(true)}>
             Anlage anlegen
-          </Button>
+          </Button></Recht>
         </div>
       </div>
 
@@ -564,7 +591,7 @@ function AnlagenSubPage({
   sites,
   devices,
   devicesFetchedAt,
-  sub,
+  sub: adresse,
   geraet,
   isAdmin,
   surface,
@@ -585,6 +612,9 @@ function AnlagenSubPage({
   onOpenSub: (sub: AnlagenSub) => void;
   onReload: (selectSiteId?: string) => void;
 }) {
+  // UEMS AP-01 IP-8: ein Lesezeichen auf eine Geld-Seite einer geldfreien
+  // Anlage landet auf den Messwerten — die Reiter bieten sie ohnehin nicht an.
+  const sub = unterseiteOhneGeld(adresse, surface);
   const meta = SUB_PAGES[sub];
   // Die REITER dieses Bereichs - aus DEMSELBEN Modell wie die Seitenleiste
   // (`anlageSidebar`), damit Leiste und Reiter nie Verschiedenes behaupten.
@@ -676,6 +706,8 @@ function AnlagenSubPage({
             onOpenWelt={(welt) => onOpenSub(welt)}
           />
         )}
+        {/* UEMS AP-13 IP-8: die Energiebilanz je Anlage — geldfrei, aus der Bilanz-Route (E7 = A). */}
+        {sub === 'energiebilanz' && <EnergiebilanzSection site={site} />}
         {sub === 'erloese' && (
           <ErloeseSection site={site} surface={surface} onOpenWelt={(welt) => onOpenSub(welt)} />
         )}
@@ -786,8 +818,9 @@ export function AnlageSeite({
   sites,
   devices,
   onOpenSub,
-  onReload,
   onHealthFacts,
+  misstHier = false,
+  standortId = null,
 }: AnlagenPageProps & {
   site: Site;
   onOpenSub: (sub: AnlagenSub) => void;
@@ -801,6 +834,7 @@ export function AnlageSeite({
 }) {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [overviewFailed, setOverviewFailed] = useState(false);
+  const [ausfall, setAusfall] = useState<StandortAusfall | null>(null);
   // Das GEMESSENE Geld dieser Anlage. Seit dem Perf-Audit (vp-portal-perf-a4,
   // B2) vom anlagen-scharfen `/sites/{id}/earnings` (3 Queries, ~0,42 s) statt
   // vom mandantenweiten `/earnings` (8 Queries, 1,8 s bei range=year) mit
@@ -913,6 +947,19 @@ export function AnlageSeite({
     // `sites` identity changes on explicit App reloads (device claimed, site
     // edited), keeping a fresh claim's status current without the 30 s poll.
   }, [site.id, sites, reloadKey]);
+
+  useEffect(() => {
+    let active = true;
+    if (!standortId) {
+      setAusfall(null);
+      return () => { active = false; };
+    }
+    api.standortAusfall(standortId).then(
+      (a) => { if (active) setAusfall(a); },
+      () => { if (active) setAusfall(null); },
+    );
+    return () => { active = false; };
+  }, [standortId, site.id, reloadKey]);
 
   // The measured money numbers - site-scoped (B2). Refetched when the period
   // (range/at) changes; the page keeps the previous numbers until the new ones
@@ -1590,8 +1637,10 @@ export function AnlageSeite({
     // Projektion; eine Kachel ohne Daten rendert sich selbst weg.
     if ((blocks ?? []).length > 0) out.push('kacheln');
     if (ovSite != null && health.length > 0) out.push('zustand');
-    return out;
-  }, [blocks, controlView, guardView, fahrplanVerfuegbar, strompreisVerfuegbar, ovSite, health, ladenView]);
+    // UEMS AP-01 IP-8, Geld-Regel je Anlage: eine geldfreie Anlage hat weder
+    // Geld-Held noch Steuerungs-Karte noch Marktpreise (`anlageGeld`).
+    return bausteineOhneGeld(out, surface);
+  }, [blocks, controlView, guardView, fahrplanVerfuegbar, strompreisVerfuegbar, ovSite, health, ladenView, surface]);
   // ⚠ Steuerung Stufe 8: es gibt hier KEIN Tor mehr. „Eigene Auswertung" ist
   // die Katalog-Klasse `cockpit` und hat keinen Schalter — der Weg zu einer
   // eigenen Kachel ist der Anpassen-Modus, und wer dort eine anlegt, hat seine
@@ -1692,7 +1741,7 @@ export function AnlageSeite({
     const def = layout.eigene.find((d) => d.id === zeile.id);
     if (!def) return null;
     return (
-      <button
+      <Recht aktion="auswertung.anlegen"><button
         type="button"
         className="vp-anpassen-icon"
         onClick={() => setEigenDialog({ offen: true, bearbeiten: def })}
@@ -1700,7 +1749,7 @@ export function AnlageSeite({
         title="Ändern"
       >
         <Icon name="pencil" size={16} />
-      </button>
+      </button></Recht>
     );
   };
   const eigenEinheiten = useMemo(() => {
@@ -1717,6 +1766,19 @@ export function AnlageSeite({
   // peak -> Geld -> Fluss, die `leadBlock` oben schon liefert.
   const effektiverLead = layout.resolved.lead;
   const zeigt = (id: BausteinId) => layout.resolved.order.includes(id);
+
+  /**
+   * AP-13 IP-11 (E2 = A, O18): der EINE neue Weg steht UNTER DER BÜHNE — keine
+   * zweite Leiste, keine Kachel und kein getauschter Wert. Die Bühne steht nie
+   * im Kachelraster, der Weg bleibt so über die volle Breite.
+   */
+  const mitMessstellenWeg = (id: string, node: ReactNode): ReactNode =>
+    id === 'energiefluss' ? (
+      <>
+        {node}
+        <CockpitMessstellenWeg siteId={site.id} misst={misstHier} />
+      </>
+    ) : node;
 
   /**
    * Der Knoten EINER eigenen Auswertung. Ohne Wert vom Server rendert sie
@@ -2089,6 +2151,8 @@ export function AnlageSeite({
       ) : null,
   };
 
+  const ausfallText = anlageAusfallSatz(ausfall, site.id);
+
   return (
     <>
       {/* Anwendungs-Programm Stufe 5: der geführte Dialog. Er hängt an der
@@ -2136,10 +2200,13 @@ export function AnlageSeite({
             />
             {site.name}
           </h1>
-          {showSetup ? (
+          {ausfallText ? (
+            <p className="vp-anlage-sentence tone-warn" data-testid="anlage-ausfall">{ausfallText}</p>
+          ) : null}
+          {!ausfallText && showSetup ? (
             // M5: der Leer-Zustand spricht nicht von "offline", sondern vom Weg.
             <p className="vp-anlage-sentence tone-warn">{SETUP_STATUS_LINE}</p>
-          ) : !showHeadSentence ? null : sentence ? (
+          ) : ausfallText ? null : !showHeadSentence ? null : sentence ? (
             <p className={`vp-anlage-sentence tone-${sentence.tone}`}>{sentence.text}</p>
           ) : overviewFailed ? (
             <p className="vp-anlage-sentence tone-off">
@@ -2190,7 +2257,7 @@ export function AnlageSeite({
                 Kunde auf das Cockpit schaut, das er anordnen will. Er erscheint
                 nur, wenn es einen Stapel zum Anordnen gibt. */}
             {showStack && !layout.anpassen && (
-              <button
+              <Recht aktion="cockpit.anpassen"><button
                 type="button"
                 className="vp-gear-btn"
                 onClick={layout.start}
@@ -2198,7 +2265,7 @@ export function AnlageSeite({
                 title="Cockpit anpassen"
               >
                 <Icon name="sliders" size={18} />
-              </button>
+              </button></Recht>
             )}
             <button
               type="button"
@@ -2246,7 +2313,6 @@ export function AnlageSeite({
           deviceCount={ovSite?.deviceCount ?? 0}
           onOpenSteuerung={() => onOpenSub('steuerung')}
           onOpenGeraete={() => onOpenSub('modell')}
-          onReload={onReload}
           onStay={setSetupPinned}
         />
       ) : showStack ? (
@@ -2302,13 +2368,13 @@ export function AnlageSeite({
               (Captain 25.08.2026: „Beobachten/Auswertung nur im Cockpit"). */}
           {layout.anpassen && (
             <div className="vp-eigen-neu">
-              <Button
+              <Recht aktion="auswertung.anlegen"><Button
                 variant="ghost"
                 onClick={() => setEigenDialog({ offen: true, bearbeiten: null })}
                 disabled={eigenDeckelSatz(layout.eigene.length) != null}
               >
                 + Eigene Auswertung
-              </Button>
+              </Button></Recht>
               {/* vp-agg §2.5/C: „+ Gesamtwert" ist aus der Cockpit-Bühne entfernt
                   und lebt jetzt in „Verlauf › Messwerte" (der gerätefreie
                   Summenwert gehört zu den Auswertungen, nicht auf die Bühne). */}
@@ -2355,11 +2421,17 @@ export function AnlageSeite({
                   );
                 }
                 if (node == null) return null;
-                return <Fragment key={id}>{node}</Fragment>;
+                return <Fragment key={id}>{mitMessstellenWeg(id, node)}</Fragment>;
               })
-            : stapelMitRaster(layout.resolved.order, (id) =>
-                istEigen(id) ? eigenerKnoten(id) : bausteinNodes[id as BausteinId],
+            : stapelMitRaster(layout.resolved.order, (id) => {
+                const node = istEigen(id) ? eigenerKnoten(id) : bausteinNodes[id as BausteinId];
+                return node == null ? node : mitMessstellenWeg(id, node);
+              },
               isPhone ? leitArt : null)}
+          {/* Hat der Kunde die Bühne ausgeblendet, steht der Weg am Fuß des Stapels statt gar nicht. */}
+          {!layout.resolved.order.includes('energiefluss') && (
+            <CockpitMessstellenWeg siteId={site.id} misst={misstHier} />
+          )}
 
           {/* „Ausgeblendet (n)" bleibt erreichbar (§3.4) - ausblenden darf
               kein Weg ohne Rückweg sein. Am Telefon steht die Reihe schon in

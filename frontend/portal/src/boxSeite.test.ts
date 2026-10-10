@@ -257,8 +257,16 @@ describe('boxSeite · Identität', () => {
   it('nennt den GRUND, wenn die Referenz keine Box dieser Anlage ist', () => {
     const v = boxSeite(input({ ref: 'edge-fremd' }));
     expect(v.gefunden).toBe(false);
-    expect(v.grund).toMatch(/keine VoltPilot-Box/);
+    expect(v.grund).toMatch(/nennt keine VoltPilot-Box/);
     expect(v.kacheln).toEqual([]);
+  });
+
+  it('bietet bei mehreren Boxen ohne Kennung eine Wahl statt einer Entfernungs-Behauptung', () => {
+    const zweite = { ...BOX, id: 'dev-box-2', externalRef: 'edge-zwei', name: 'Halle 2' };
+    const v = boxSeite(input({ ref: null, devices: [BOX, zweite] }));
+    expect(v.gefunden).toBe(false);
+    expect(v.auswahl.map((b) => b.name)).toEqual(['Pilsting', 'Halle 2']);
+    expect(v.grund).not.toMatch(/entfernt/i);
   });
 
   it('misst die BOX gegen ihre Telemetrie, nie gegen eine laufende Uhr', () => {

@@ -17,14 +17,14 @@ Portal genau dasselbe Urteil und derselbe Kundensatz wird.
 
 **Wer die Regel ändert, ändert beide Zwillinge UND die Vektor-Datei.**
 
-> ⚠ **Wer anruft (Stand IP-4):** die Datenquellen-Schnittstelle
+> ⚠ **Wer anruft (Stand IP-6):** die Datenquellen-Schnittstelle
 > `/api/v1/sites/{siteId}/data-sources` (`DatenquelleService`: anlegen, von genau der Box
 > prüfen, zuweisen) über die Tabellen aus IP-2, und die Vorschlagsliste der Bestands-Übernahme
 > `…/data-sources/vorschlag` + `…/vorschlag/uebernehmen` (`DatenquelleVorschlagService`, §8). Noch
-> NICHT: die Liste im Übernahme-Assistenten des Portals und der Push je Box (IP-6) — Registry-Push,
-> Mess-Plan und Herzschlag sind unverändert, eine gespeicherte Zuständigkeit erreicht also noch
-> keine Box. Heute ist die lesende Box weiter implizit `measurement_point.device_id` bzw. die
-> führende Box der Anlage.
+> NICHT: die Liste im Übernahme-Assistenten des Portals. Seit IP-6 stellt der Registry-Push je Box zu
+> (§8 „Der Push je Box“); Mess-Plan und Herzschlag sind unverändert, und wer eine Zuständigkeit
+> schreibt, löst noch keinen Push aus (die Übergabe zum Zeitpunkt ist IP-7) — die Zuständigkeit
+> erreicht ihre Box mit dem nächsten Registry-Push der Anlage.
 
 ## 1. Begriffe
 
@@ -146,6 +146,34 @@ alte Box darf lesen (E8 = A).
 Das Lesebudget je Box (E6) prüft der Endpunkt danach mit den bestehenden Zwillingen
 `MeasurementBudget.java` / `measurement-planner.js`; es ist nicht Teil dieser Regeln.
 
+### 5.1 Vor der Reihenfolge: Gemeinsame Steuerung (AP-15 T6, IP-8 und IP-26)
+
+Hat die Anlage der Quelle eine eingerichtete Gemeinsame Steuerung (Zustand `erklaert`,
+`beobachtet`, `geprueft`, `anteile_aktiv` oder `angehalten`), gilt Grund 4 `steuerquelle`
+(„…erst mit der gemeinsamen Steuerung“) nicht mehr — er wäre dort eine Sackgasse. T6 heißt
+anhalten → ändern → prüfen → scharfschalten, und der Umzug einer Steuerquelle ist „ändern“:
+
+| Lage | Steuerquelle | Netzzähler / Messpunkt eines Mitglieds | andere Quelle |
+|---|---|---|---|
+| vor dem Scharfschalten (S0–S2), Ziel-Box ist Mitglied (`fuehrt`/`steuert_mit`, jetzt) | Wechsel wie jede Quelle: Reihenfolge **ohne** Grund 4 (Antrag-Feld `innerhalb_gemeinsamer_steuerung`) | Wechsel wie bisher (IP-8) | wie bisher |
+| vor dem Scharfschalten, Ziel-Box kein Mitglied (Lese-Box, andere Anlage, ausgeschieden) | 409 `gemeinsame_steuerung_aendern` — erst die Box aufnehmen | wie bisher | wie bisher |
+| `anteile_aktiv`, angehalten (die Anteile sind in Kraft) | 409 `gemeinsame_steuerung_aendern` | 409 (IP-8, `SteuerungsverbundRegeln#wechseltNurAlsAenderung`) | wie bisher |
+
+Alle übrigen Gründe der Reihenfolge gelten unverändert. Die Regel „höchstens eine Steuerquelle je
+Anlage“ erzwingt die Reihenfolge nicht (es gibt keinen solchen Grund); sie gilt nach der
+Referenz 1.5 nur noch für Anlagen OHNE Gemeinsame Steuerung. Die erste Box einer NEUEN Quelle ist
+kein Wechsel (`anlegen`). Gepinnt: Vektoren `zustaendigkeitswechsel` in
+`steuerungsverbund-objekt-vectors.json` (IP-8) und die Familie `gemeinsame_steuerung` hier.
+
+Das ist **kein Grund dieses Vokabulars**: ob eine Anlage eine Gemeinsame Steuerung hat und ob die
+Ziel-Box Mitglied ist, sind Fakten von `steuerungsverbund.md`, nicht der Datenquelle. Die
+Schnittstelle antwortet 409 `gemeinsame_steuerung_aendern` mit dem Satz
+`texte.gemeinsame_steuerung_aendern` („{kennzeichen} gehört zur Gemeinsamen Steuerung — ihre Box
+wechselt nur über „Gemeinsame Steuerung ändern““) und den Fakten `kennzeichen` und `anlage` (deren
+`GET/PUT …/sites/{anlage}/gemeinsame-steuerung` der Weg ist). Ohne Gemeinsame Steuerung und nach
+dem Auflösen entscheidet die Reihenfolge oben, Byte für Byte wie bisher (I6). Familie
+`gemeinsame_steuerung` der Vektor-Datei.
+
 ## 6. Doppel-Lesen nur als gekennzeichnete Vergleichsquelle (E10 = B)
 
 Gleiche Adresse UND gleiche dokumentierte Netzlage an einer zweiten Box heißt: dasselbe Gerät
@@ -217,6 +245,39 @@ Die Box des Speichers gilt wie bis IP-5 ohne Anmelde-Prüfung. Für jede Bestand
 und wo die keine hatte, bleibt das Beobachtbare gleich (kein Push, `refused(no_gateway_device)`,
 Vorschau-Grund `no_claimed_device` bzw. `multiple_devices_no_battery_link`).
 
+**Der Push je Box (IP-6, E4 = A, W7).** Der Registry-Push (`…/v2/entities`) geht je Box: jede Box
+bekommt ihren eigenen vollständigen Sollbestand aus genau den Komponenten, deren Datenquelle sie ZUM
+Zeitpunkt des Pushs liest (§4, halboffen); die Anlagen-Rollen — Netz-Summe `grid-meter`, Haus-Summe
+`house-load`, Speicher `battery-hybrid` — stehen nur im Push der führenden Box. Die Regel ist
+`uems/PushJeBox` (rein), in Prüfreihenfolge:
+
+1. Ohne führende Box kein Push, auch keiner je Box (`keine_fuehrende_box`) — wie bis IP-5.
+2. Trägt keine Komponente der Anlage eine Datenquelle (jede Bestandsanlage bis zur Bestätigung der
+   Vorschlagsliste), bleibt es der eine Push an die führende Box, Byte für Byte.
+3. Eine Anlagen-Rolle gehört der führenden Box. Liest ihre Quelle eine andere Box, steht sie in
+   keinem Push (`anlagen_rolle_an_anderer_box`); liest keine Box sie: `quelle_ohne_zustaendige_box`.
+4. Eine Komponente ohne Datenquelle gehört der führenden Box.
+5. Eine Komponente mit Datenquelle gehört der Box, die die Quelle zum Zeitpunkt liest. Liest keine:
+   `quelle_ohne_zustaendige_box`; liest eine Box, die weder in der Anlage angemeldet noch ihre
+   führende Box ist: `box_ausserhalb_der_anlage` — der Anlagen-übergreifende Fall wartet auf IP-7
+   (A3, 10.04.2027 07:30: K-4 … K-7 stehen dann in keinem Push, nie bei Box Halle 1).
+
+Ein Verbraucher an einem Ausgang eines I/O-Moduls (`consumer_profile.io_entity_id`) hat keinen
+eigenen Transport; sein Treiber ist der Modul-Kanal (`io_entity_id`, `channel`). Für Regel 4 und 5
+trägt er darum die Datenquelle SEINES MODULS (auch keine) und steht im Push derselben Box wie das
+Modul; eine eigene `data_source_id` zählt für ihn nicht. Dieselbe Quelle adressiert seine
+Einmal-Aufträge (Handeingriff, `EinmalAuftragZiel`), wie `switch_set` am Modul
+(`EntityRegistryRepository.datenquelleJeEntitaet`/`auftragsQuelle`).
+
+Einen Push bekommen die führende Box, jede Box mit mindestens einer Komponente und jede Box der
+Anlage, für die schon ein Soll aufgezeichnet ist — auch mit leerer Menge, damit sie eine Quelle, die
+sie nicht mehr liest, sicher vergisst. Die Mengen sind disjunkt durch Bau: jede Komponente wird genau
+einmal entschieden. Das Soll steht je (Anlage, Box) in `entity_registry_state`. Ein Push-Lauf baut
+ERST alle Nutzlasten, schreibt DANN das Soll aller Boxen in einer Anweisung und stellt zuletzt zu;
+zugestellt heißt er nur, wenn jede Box ihren Push bekommen hat. Die Bestands-Übernahme
+(Einheitsmodell Stufe 2) gilt erst mit beiden Pushes; hatte eine Box ihren schon, stellt ein neuer
+Push nach dem Rückrollen beide zurück.
+
 **Bestands-Übernahme (A9, A12, IP-4):** die vorhandenen Komponenten werden nach Box + Protokoll +
 Adresse zu Vorschlägen gruppiert (Reihenfolge des ersten Auftretens, Kennzeichen ab der
 nächsten freien Nummer des Kundenbereichs, Geräte-IDs aufsteigend, Steuerquelle, wenn eine
@@ -250,6 +311,15 @@ Protokoll-Eintrag `aus_bestand_uebernommen` (`gilt_ab` = Reihenbeginn — die ei
 Bestätigt wird nur, was gezeigt wurde (Box, Protokoll, Adresse, Komponenten; sonst 409
 `vorschlag_geaendert`); hat eine Komponente inzwischen auf anderem Weg eine Quelle, 409
 `komponente_hat_quelle`; ein schon übernommener Vorschlag zählt als unverändert.
+**Gerät dort hinzufügen:** trägt ein Vorschlag `adresse_an_box_vergeben` und hat an seiner Box
+genau EINE Quelle derselben Anlage unter demselben Weg eine nicht beendete Zuständigkeit (nicht archiviert, mit allen
+Geräte-IDs des Vorschlags, Steuerquelle, wenn er es ist), nennt das GET sie als `ziel`
+(`id`, `kennzeichen`, `name`, sonst `null`). Bestätigt der Kunde den Vorschlag mit
+`datenquelle_id` = dieses Ziel, hängt `uebernehmen` die Komponenten an die vorhandene Quelle
+(`measurement_point`/`geraet.data_source_id`, Protokoll `aus_bestand_uebernommen` mit
+`angehaengt: true`, `gilt_ab` = jetzt) — keine neue Quelle, keine neue Zuständigkeit, nichts
+rückwirkend; die Antwort zählt sie als `angehaengt`. Zeigt das GET dieses Ziel nicht mehr: 409
+`vorschlag_geaendert`. Ohne `datenquelle_id` bleibt der gesperrte Vorschlag 409.
 
 **Vom Transport zum Protokoll** (`BestandAnschluss`, nur Cloud — die Box kennt keine Quelle, bevor
 IP-6 sie ihr zustellt): gelesen wird `measurement_point.communication` + `connection_json`, so, wie
@@ -281,24 +351,27 @@ Zeile, erreicht die Box nicht und ist darum kein Beleg.
 ## 9. Fähigkeiten einer Box (E12 = A)
 
 [`edge-capabilities.json`](./edge-capabilities.json) nennt die Fähigkeiten, deren Fehlen eine
-Fläche benennt — heute **Rückmeldung je Datenquelle** (`data_sources`) und **Zuständigkeit ab
-Zeitpunkt** (`assignment_effective_at`) — mit dem ersten Release, das sie trägt (`ab_release`).
+Fläche benennt — heute **Rückmeldung je Datenquelle** (`data_sources`) — mit dem ersten Release,
+das sie trägt (`ab_release`).
 
-1. Meldet die Box `supports[]` im Herzschlag (IP-18), entscheidet **allein** ihre Meldung — auch
-   eine leere Liste. Fremde Wörter werden verworfen.
-2. Sonst die Tabelle: die Fähigkeit ist da, wenn der Stempel der Box zu einem Release des
+1. Eine bekannte Fähigkeit aus `supports[]` gilt auch ohne Tabellenbeleg. Fremde Wörter
+   werden verworfen; Details und Vokabular: [Fähigkeitsmeldung](edge-supports.md).
+2. Zusätzlich gilt die Tabelle (auch bei fehlendem, leerem oder teilweisem Block): die
+   Fähigkeit ist da, wenn der Stempel der Box zu einem Release des
    Registers `edge_release` gehört (Präfix-Regel `RolloutStates.releaseIsRunning`) und dieses
    Release in der Ordnung `release_seq` nicht vor `ab_release` liegt (Captain-Entscheid D5 —
    nie ein Zeichenketten- oder SHA-Vergleich).
 3. Ein Stempel ohne Release (nackte SHA, „dev“, das semver-Beispiel „2.5.0“) beweist nichts.
-   Die Fläche zeigt „Software 2.5.0 · Update nötig für: Rückmeldung je Datenquelle,
-   Zuständigkeit ab Zeitpunkt“ (A7), mit dem Release-Tag statt des Builds, wo es eines gibt.
+   Die Fläche zeigt „Software 2.5.0 · Update nötig für: Rückmeldung je Datenquelle“ (A7), mit
+   dem Release-Tag statt des Builds, wo es eines gibt.
 
-⚠ **Heute trägt kein ausgeliefertes Release eine der beiden Fähigkeiten** — `ab_release` ist
-`null`, jede Box fährt das Übergangs-Verhalten (E8). Wer das Release baut, das eine Fähigkeit
-bringt, trägt sein Tag dort ein. Keine Fähigkeit sind Zustellung je Box (E4, Cloud),
-Nachfolger-Anmeldung (E7, Cloud) und die lesende Box je Wert (Topic) — dafür gibt es nie ein
-„Update nötig“.
+⚠ **Heute trägt kein ausgeliefertes Release die Fähigkeit** — `ab_release` ist `null`. Wer das
+Release baut, das sie bringt, trägt sein Tag dort ein. Keine Fähigkeit sind Zustellung je Box
+(E4, Cloud), **Zuständigkeit ab Zeitpunkt** (E8, Cloud-Zeitgeber für jede Box), Nachfolger-Anmeldung
+(E7, Cloud) und die lesende Box je Wert (Topic) — dafür gibt es nie ein „Update nötig“. Fällt bei
+einer Übergabe eine der beiden Boxen zum Zeitpunkt aus, wartet die Übergabe, bis sie wieder
+meldet — sichtbar als „Übergabe ausstehend“, nie als Update-Hinweis. Das Meldewort
+`assignment_effective_at` bleibt bekannt ([Fähigkeitsmeldung](edge-supports.md)).
 
 ## 10. Die Fälle
 
@@ -346,6 +419,9 @@ künftige Tabelle), nennt er in `annahme` — sonst ist der Test rot.
    Vertrag schließt die Lücke konservativ (`netzlage_fehlt`, nie „anderes Netz“ geraten).
 8. **„Update nötig für …“** nennt der Satz auch, solange noch kein Release die Fähigkeit trägt;
    einen Weg zu Edge-Updates bietet die Fläche (IP-16) erst an, wenn `ab_release` gesetzt ist.
+   Nur was ein Box-Release bringen kann, steht in der Tabelle: „Zuständigkeit ab Zeitpunkt“
+   erbringt der Cloud-Zeitgeber für jede Box (E8 = A, B06) und steht darum seit dem 23.09.2026 unter
+   `keine_faehigkeit` — der A7-Satz nennt sie nicht mehr.
 9. **K-1 in der Datenbank (IP-4).** Die Referenz führt K-1 (Wechselrichter) und K-2 (der über ihn
    gemeldete Speicher) als zwei Komponenten an EINEM Gerät GR-1; die Datenbank hält beide in EINER
    Zeile (`battery-hybrid`), die PV eines Hybrid-Wechselrichters als komponiertes Geschwister an

@@ -10,6 +10,8 @@ import com.fasterxml.jackson.databind.node.NullNode;
 import com.voltpilot.api.tenant.TenantContext;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -149,15 +151,23 @@ class MessstelleFormelApiTest {
     }
 
     @Test
-    void geraetekarteVerbirgtArchivierteSummen() throws Exception {
+    void geraetekarteVerwendetDieAktuelleFassungUndVerbirgtArchivierteSummen() throws Exception {
         Welt w = welt();
+        UUID zweite = root.queryForObject("INSERT INTO measurement_point (tenant_id, site_id, role, label, entity_type, device_id, control, communication, created_at) "
+                + "VALUES (?, ?, 'pv-generation', 'Dach Ost', 'pv-inverter', ?, false, 'modbus_tcp', now()) RETURNING id",
+                UUID.class, w.mandant(), w.anlage(), w.box());
+        Welt b = new Welt(w.mandant(), w.anlage(), w.box(), zweite);
         JsonNode neu = ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet",
-                anlegen("Dach", term(w, PV1))), 201);
+                anlegen("Wechselnde Eingänge", term(w, PV1))), 201);
         String id = neu.path("id").asText();
-        String pfad = "/api/v1/sites/" + w.anlage() + "/komponenten/" + w.komponente() + "/summenwerte";
-        assertThat(ok(ruf(w, HttpMethod.GET, pfad, null), 200).size()).isEqualTo(1);
-        ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/" + id + "/archivieren", null), 200);
-        assertThat(ok(ruf(w, HttpMethod.GET, pfad, null), 200).size()).isZero();
+        String heute = java.time.LocalDate.now(MessstelleService.ZEITZONE).toString();
+        ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/" + id + "/formel/fassungen",
+                Map.of("gueltig_ab", heute, "terme", List.of(term(b, PV2)))), 201);
+        String basis = "/api/v1/sites/" + w.anlage() + "/komponenten/";
+        assertThat(ok(ruf(w, HttpMethod.GET, basis + w.komponente() + "/summenwerte", null), 200).size()).isZero();
+        assertThat(ok(ruf(w, HttpMethod.GET, basis + zweite + "/summenwerte", null), 200).size()).isEqualTo(1);
+        root.update("UPDATE messstelle SET archiviert_am = now() WHERE id = ?", UUID.fromString(id));
+        assertThat(ok(ruf(w, HttpMethod.GET, basis + zweite + "/summenwerte", null), 200).size()).isZero();
     }
 
     // ================================================================ Anlegen + Wert
@@ -332,6 +342,20 @@ class MessstelleFormelApiTest {
         }
         assertThat(root.queryForObject("SELECT count(*) FROM messstelle WHERE tenant_id = ?",
                 Integer.class, w.mandant())).isZero();
+        UUID id = UUID.fromString(ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet",
+                anlegen("PV", term(w, PV1))), 201).get("id").asText());
+        var vorher = root.queryForList("SELECT * FROM messstelle_formel_fassung WHERE messstelle_id = ?", id);
+        for (boolean haken : List.of(true, false)) {
+            Antwort a = ruf(w, HttpMethod.POST, "/api/v1/messstellen/" + id + "/formel/fassungen",
+                    Map.of("gueltig_ab", LocalDate.now(ZoneId.of("Europe/Berlin")).toString(),
+                            "terme", List.of(haken ? termHaken(w, NETZ) : term(w, NETZ))));
+            assertThat(a.status()).isEqualTo(400);
+            assertThat(a.body().get("code").asText()).isEqualTo("anfrage_ungueltig");
+            assertThat(a.body().get("feld").asText())
+                    .isEqualTo(haken ? "terme[0].gilt_als_erzeugung" : "terme[0]");
+        }
+        assertThat(root.queryForList("SELECT * FROM messstelle_formel_fassung WHERE messstelle_id = ?", id))
+                .isEqualTo(vorher);
     }
 
     @Test
@@ -340,12 +364,13 @@ class MessstelleFormelApiTest {
         selektion(w, NETZ);
         UUID id = UUID.fromString(ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/berechnet",
                 anlegen("Bestand", term(w, PV1))), 201).get("id").asText());
-        // Altbestand direkt herstellen: dieser Term konnte vor W1 über die API entstehen.
-        root.update("DELETE FROM messstelle_formel_term WHERE messstelle_id = ?", id);
-        root.update("INSERT INTO messstelle_formel_term (tenant_id, messstelle_id, position, "
-                + "eingang_art, entity_id, point_key, vorzeichen, faktor, gilt_als_erzeugung) "
-                + "VALUES (?, ?, 0, 'messkanal', ?, ?, '+', 1.5, true)",
-                w.mandant(), id, w.komponente(), NETZ);
+        LocalDate heute = LocalDate.now(ZoneId.of("Europe/Berlin"));
+        ok(ruf(w, HttpMethod.POST, "/api/v1/messstellen/" + id + "/formel/fassungen",
+                Map.of("gueltig_ab", heute.minusDays(1).toString(), "terme", List.of(term(w, PV1)))), 201);
+        // Altbestand in beiden Fassungen herstellen: vor W1 über die API möglich.
+        root.update("UPDATE messstelle_formel_term SET point_key = ?, faktor = 1.5, "
+                + "gilt_als_erzeugung = true WHERE messstelle_id = ?", NETZ, id);
+        var alteFassungen = root.queryForList("SELECT * FROM messstelle_formel_fassung WHERE messstelle_id = ?", id);
         var alteTerme = root.queryForList("SELECT * FROM messstelle_formel_term WHERE messstelle_id = ?", id);
         var alteMessstelle = root.queryForList("SELECT * FROM messstelle WHERE id = ?", id);
         probe(w, NETZ, -2000);
@@ -357,6 +382,16 @@ class MessstelleFormelApiTest {
         assertThat(formel.at("/terme/0/groesse/richtung").asText()).isEqualTo("Erzeugung");
         assertThat(formel.at("/hauptgroesse/richtung").asText()).isEqualTo("Erzeugung");
         assertThat(formel.get("eingaenge_eingerichtet").asBoolean()).isTrue();
+        for (int nummer : List.of(1, 2)) {
+            LocalDate tag = nummer == 1 ? heute.minusDays(2) : heute;
+            JsonNode amTag = ok(ruf(w, HttpMethod.GET,
+                    "/api/v1/messstellen/" + id + "/formel?am=" + tag, null), 200);
+            assertThat(amTag.at("/fassung_am/fassung/nummer").asInt()).isEqualTo(nummer);
+            assertThat(amTag.at("/terme/0/gilt_als_erzeugung").asBoolean()).isTrue();
+            assertThat(amTag.at("/terme/0/groesse/richtung").asText()).isEqualTo("Erzeugung");
+            assertThat(amTag.at("/terme/0/faktor").asDouble()).isEqualTo(1.5);
+            assertThat(amTag.get("eingaenge_eingerichtet").asBoolean()).isTrue();
+        }
         JsonNode wert = ok(ruf(w, HttpMethod.GET, "/api/v1/messstellen/" + id + "/wert", null), 200);
         assertThat(wert.get("wert").asDouble()).isEqualTo(-3.0);
         assertThat(wert.get("unvollstaendig").asBoolean()).isFalse();
@@ -369,6 +404,8 @@ class MessstelleFormelApiTest {
         assertThat(werte).containsExactly(6.0);
         assertThat(root.queryForList("SELECT * FROM messstelle_formel_term WHERE messstelle_id = ?", id))
                 .isEqualTo(alteTerme);
+        assertThat(root.queryForList("SELECT * FROM messstelle_formel_fassung WHERE messstelle_id = ?", id))
+                .isEqualTo(alteFassungen);
         assertThat(root.queryForList("SELECT * FROM messstelle WHERE id = ?", id)).isEqualTo(alteMessstelle);
     }
 

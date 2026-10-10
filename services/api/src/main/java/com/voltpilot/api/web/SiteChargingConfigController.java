@@ -2,6 +2,9 @@ package com.voltpilot.api.web;
 
 import com.voltpilot.api.chargers.ChargingConfigService;
 import com.voltpilot.api.web.dto.ChargingConfigDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
+import com.voltpilot.api.zugriff.RechtPruefung;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -56,6 +59,9 @@ public class SiteChargingConfigController {
              */
             @Size(max = 32) String surplusPolicy, @Size(max = 32) String storagePriority) {}
 
+    /** Der Kunden-Schritt „Grenze": die zweite Zahl gilt nur ohne gebundenen Netzanschluss. */
+    public record SaveChargingFrameRequest(Double gridLimitKw, Double vereinbartKw) {}
+
     /**
      * Der Rumpf des Anbinde-Assistenten: nur die Kennung ist Pflicht, alles
      * Weitere ist das, was der Betreiber zufällig schon weiß.
@@ -75,7 +81,9 @@ public class SiteChargingConfigController {
              * null heisst „fuer sie aeussert sich das Portal nicht" und es gilt
              * der ANLAGEN-STANDARD (surplusPolicy oben).
              */
-            @Size(max = 32) String source, Double minKw) {}
+            @Size(max = 32) String source, Double minKw,
+            /* Die Box, deren echte LAN-Adresse der Assistent zeigt. */
+            UUID deviceId) {}
 
     /**
      * Der Rumpf der Steuerart je Säule (P5): beide Felder optional, aber nicht
@@ -84,8 +92,10 @@ public class SiteChargingConfigController {
     public record SaveChargePointSourceRequest(@Size(max = 32) String source, Double minKw) {}
 
     private final ChargingConfigService service;
+    private final RechtPruefung recht;
 
-    public SiteChargingConfigController(ChargingConfigService service) {
+    public SiteChargingConfigController(ChargingConfigService service, RechtPruefung recht) {
+        this.recht = recht;
         this.service = service;
     }
 
@@ -94,12 +104,38 @@ public class SiteChargingConfigController {
         return service.read(siteId);
     }
 
+    /**
+     * Zwei Rechte in EINEM Rumpf (AP-03 IP-7): die Anschlussgrenze ist Rahmen ({@code grenze.eintragen} —
+     * Kundenadministrator, Unterstützer ab „Einrichten"), Reihenfolge und Quellen-Wahl sind Betrieb
+     * ({@code betriebsweise.aendern} — auch Bedienberechtigt). Der Interceptor prüft vor, ob eines davon irgendwo
+     * gilt; hier wird jedes Feld, das der Rumpf wirklich trägt, an der Anlage geprüft.
+     */
     @PutMapping("/charging-config")
+    @Recht(value = {"grenze.eintragen", "betriebsweise.aendern"}, ziel = RechtZiel.DIENST)
     public ChargingConfigDto save(@PathVariable UUID siteId,
             @Valid @RequestBody SaveChargingConfigRequest req,
             @AuthenticationPrincipal Jwt caller) {
+        if (req.gridLimitKw() != null) {
+            recht.pruefen("grenze.eintragen", RechtZiel.ANLAGE, siteId, null);
+        }
+        if (req.priorityChargePointIds() != null || req.surplusPolicy() != null || req.storagePriority() != null) {
+            recht.pruefen("betriebsweise.aendern", RechtZiel.ANLAGE, siteId, null);
+        }
         return service.save(siteId, req.gridLimitKw(), req.priorityChargePointIds(),
                 req.surplusPolicy(), req.storagePriority(),
+                caller == null ? "unbekannt" : caller.getSubject());
+    }
+
+    /**
+     * Recht {@code grenze.eintragen}: setzt die Anschlussgrenze erst nach der Plausibilitätsprüfung
+     * gegen den heute gebundenen Netzanschluss und das verbleibende Ladebudget.
+     */
+    @PutMapping("/charging-frame")
+    @Recht(value = "grenze.eintragen", ziel = RechtZiel.ANLAGE)
+    public ChargingConfigDto saveCustomerFrame(@PathVariable UUID siteId,
+            @Valid @RequestBody SaveChargingFrameRequest req,
+            @AuthenticationPrincipal Jwt caller) {
+        return service.saveCustomerFrame(siteId, req.gridLimitKw(), req.vereinbartKw(),
                 caller == null ? "unbekannt" : caller.getSubject());
     }
 
@@ -112,11 +148,13 @@ public class SiteChargingConfigController {
      * zurückzunehmen ist eine eigene, ausdrückliche Handlung (DELETE unten).
      */
     @PostMapping("/charging-config/charge-points")
+    @Recht(value = "ladepunkt.anbinden", ziel = RechtZiel.ANLAGE)
     public ChargingConfigDto admit(@PathVariable UUID siteId,
             @Valid @RequestBody AdmitChargePointRequest req,
             @AuthenticationPrincipal Jwt caller) {
         return service.admit(siteId, req.chargePointId(), req.label(), req.ratedKw(),
                 req.connectors(), req.source(), req.minKw(), req.connection(),
+                req.deviceId(),
                 caller == null ? "unbekannt" : caller.getSubject());
     }
 
@@ -130,6 +168,7 @@ public class SiteChargingConfigController {
      * unverändert, und die zwei komponieren most-restrictive-wins.
      */
     @PutMapping("/charging-config/charge-points/{chargePointId}/source")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public ChargingConfigDto setChargePointSource(@PathVariable UUID siteId,
             @PathVariable String chargePointId,
             @Valid @RequestBody SaveChargePointSourceRequest req) {
@@ -139,8 +178,12 @@ public class SiteChargingConfigController {
     /**
      * Setzt die Reserve von „Sonne + Speicher" (06.10.2026). {@code reserveKwh
      * == null} nimmt die eigene Angabe zurueck - dann gilt die Vorgabe.
+     *
+     * <p>Recht {@code betriebsweise.aendern} wie Quellen-Wahl und Speicher-Vorrang im Rumpf von
+     * {@code PUT /charging-config} (Nachzug main → uems 07.10.2026): die Reserve ist Betrieb, kein Rahmen.
      */
     @PutMapping("/charging-config/storage-release")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public ChargingConfigDto setStorageReleaseReserve(@PathVariable UUID siteId,
             @RequestBody StorageReleaseReserveRequest req, @AuthenticationPrincipal Jwt caller) {
         return service.setStorageReleaseReserve(siteId, req == null ? null : req.reserveKwh(),
@@ -162,6 +205,7 @@ public class SiteChargingConfigController {
      * ein stiller Erfolg über etwas, das es nicht gab.
      */
     @DeleteMapping("/charging-config/charge-points/{chargePointId}")
+    @Recht(value = "ladepunkt.anbinden", ziel = RechtZiel.ANLAGE)
     public ChargingConfigDto remove(@PathVariable UUID siteId,
             @PathVariable String chargePointId, @AuthenticationPrincipal Jwt caller) {
         return service.remove(siteId, chargePointId,

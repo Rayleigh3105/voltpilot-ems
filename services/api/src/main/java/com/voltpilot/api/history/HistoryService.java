@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 /**
@@ -44,6 +45,7 @@ public class HistoryService {
      * selbst bleibt unangetastet.
      */
     private final OptimizerDiagnosticsService diagnostics;
+    private final boolean ungeklemmteQuoten;
 
     /**
      * Der Planwert der Steuerung (M2): gegen denselben durchlaufenden
@@ -53,10 +55,12 @@ public class HistoryService {
     private final EarningsRepository earnings;
 
     public HistoryService(HistoryRepository repo, OptimizerDiagnosticsService diagnostics,
-            EarningsRepository earnings) {
+            EarningsRepository earnings,
+            @Value("${voltpilot.uems.historie.ungeklemmte-quoten-enabled:true}") boolean ungeklemmteQuoten) {
         this.repo = repo;
         this.diagnostics = diagnostics;
         this.earnings = earnings;
+        this.ungeklemmteQuoten = ungeklemmteQuoten;
     }
 
     public HistoryDto history(UUID siteId, String biddingZone, HistoryRange range, LocalDate at) {
@@ -75,7 +79,7 @@ public class HistoryService {
                 new HistoryRepository.PlannedSavings(
                         repo.savings(siteId, window.from(), window.to()),
                         earnings.steuerungGeplantForSite(siteId, window.from(), window.to())),
-                repo.tariffContext(siteId));
+                repo.tariffContext(siteId), ungeklemmteQuoten);
 
         List<ProtocolEventDto> protocol = range == HistoryRange.DAY
                 ? Tagesprotokoll.build(buckets)
@@ -388,6 +392,18 @@ public class HistoryService {
     static HistoryTotalsDto totals(List<HistoryBucketDto> buckets,
             HistoryRepository.PlannedSavings planned,
             HistoryRepository.TariffContext tariff) {
+        return totals(buckets, planned, tariff, true);
+    }
+
+    /**
+     * Der Auslieferungsschalter gilt nur fuer die sichtbare Bestandsaenderung der
+     * beiden Historienquoten. AUS stellt die alte Klemme wieder her; Rollups,
+     * Summen und Exporte liegen vor dieser Darstellung und bleiben unberuehrt.
+     */
+    static HistoryTotalsDto totals(List<HistoryBucketDto> buckets,
+            HistoryRepository.PlannedSavings planned,
+            HistoryRepository.TariffContext tariff,
+            boolean ungeklemmteQuoten) {
         BigDecimal savings = planned.batteryEur();
         BigDecimal consumption = sum(buckets, HistoryBucketDto::loadKwh);
         BigDecimal pv = sum(buckets, HistoryBucketDto::pvKwh);
@@ -403,18 +419,25 @@ public class HistoryService {
         }
 
         // A ratio needs BOTH of its inputs; an unknown denominator/numerator is
-        // undefined, never silently 0.
+        // undefined, never silently 0. A ratio outside 0..100 is NOT bent back
+        // into the range (AP-10 E16 Nr. 5): it travels as measured and the DTO
+        // flags it `unplausibel` - a clamped 100 % would look like a perfect
+        // result and hide that the meters do not add up.
         BigDecimal autarkie = null;
         if (consumption != null && gridImport != null && consumption.signum() > 0) {
-            autarkie = clampPct(BigDecimal.ONE
+            autarkie = pct(BigDecimal.ONE
                     .subtract(gridImport.divide(consumption, MathContext.DECIMAL64))
                     .multiply(BigDecimal.valueOf(100)));
         }
         BigDecimal eigenverbrauch = null;
         if (pv != null && gridExport != null && pv.signum() > 0) {
-            eigenverbrauch = clampPct(pv.subtract(gridExport)
+            eigenverbrauch = pct(pv.subtract(gridExport)
                     .divide(pv, MathContext.DECIMAL64)
                     .multiply(BigDecimal.valueOf(100)));
+        }
+        if (!ungeklemmteQuoten) {
+            autarkie = clampPct(autarkie);
+            eigenverbrauch = clampPct(eigenverbrauch);
         }
 
         return HistoryTotalsDto.of(
@@ -456,9 +479,13 @@ public class HistoryService {
         return total;
     }
 
+    private static BigDecimal pct(BigDecimal pct) {
+        return pct.setScale(1, RoundingMode.HALF_UP);
+    }
+
     private static BigDecimal clampPct(BigDecimal pct) {
-        BigDecimal clamped = pct.max(BigDecimal.ZERO).min(BigDecimal.valueOf(100));
-        return clamped.setScale(1, RoundingMode.HALF_UP);
+        return pct == null ? null : pct.max(BigDecimal.ZERO).min(BigDecimal.valueOf(100))
+                .setScale(1, RoundingMode.HALF_UP);
     }
 
     private static BigDecimal round(BigDecimal v) {

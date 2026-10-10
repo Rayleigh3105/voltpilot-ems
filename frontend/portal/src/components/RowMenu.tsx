@@ -1,3 +1,4 @@
+import { useRollen } from '../rollen';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -5,6 +6,10 @@ import type { IconName } from '../../designsystem/components/core/Icon';
 
 export type RowMenuItem = {
   label: string;
+  /** Eine leise zweite Zeile unter dem Eintrag („Nur lesen, z. B. für eine Prüfung“). */
+  hinweis?: string;
+  recht?: string;
+  standort?: string | null;
   icon?: IconName;
   onClick: () => void;
   /** Renders the item in the destructive style and after a separator. */
@@ -22,6 +27,11 @@ export type RowMenuItem = {
  * pattern InfoTip uses), so it is never clipped by the host card's
  * `overflow: hidden` - the last/only row's actions stay fully visible and
  * clickable. It flips upward when there is no room below.
+ *
+ * Tastatur wie ein Menü-Knopf (WAI-ARIA): beim Öffnen steht der Fokus auf dem
+ * ersten Eintrag, Pfeiltasten, Pos1 und Ende wandern, Escape und Tab schließen.
+ * Schließen und Wählen geben den Fokus an den Auslöser zurück - ein Dialog, den
+ * ein Eintrag öffnet, kehrt beim Schließen dorthin zurück statt auf `body`.
  */
 export function RowMenu({
   items,
@@ -41,8 +51,11 @@ export function RowMenu({
   const btnRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
 
-  const routine = items.filter((i) => !i.danger);
-  const danger = items.filter((i) => i.danger);
+  const rollen = useRollen();
+  const erlaubt = items.filter((i) => !i.recht || rollen.darf(i.recht, i.standort));
+  const abgewiesen = erlaubt.length < items.length;
+  const routine = erlaubt.filter((i) => !i.danger);
+  const danger = erlaubt.filter((i) => i.danger);
 
   const place = useCallback(() => {
     const btn = btnRef.current;
@@ -72,11 +85,30 @@ export function RowMenu({
     if (open) place();
   }, [open, place]);
 
+  const eintraege = () => Array.from(popRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []);
+  const schliessen = useCallback(() => {
+    setOpen(false);
+    btnRef.current?.focus();
+  }, []);
+
+  // Erst sichtbar (Koordinaten gesetzt), dann der Fokus auf den ersten Eintrag - einmal je Öffnen, nicht bei jedem
+  // Neuplatzieren (Scrollen, Größe).
+  const fokusGesetzt = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      fokusGesetzt.current = false;
+      return;
+    }
+    if (!coords || fokusGesetzt.current) return;
+    fokusGesetzt.current = true;
+    popRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+  }, [open, coords]);
+
   useEffect(() => {
     if (!open) return;
     const reposition = () => place();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key === 'Escape') schliessen();
     };
     window.addEventListener('scroll', reposition, true);
     window.addEventListener('resize', reposition);
@@ -86,7 +118,12 @@ export function RowMenu({
       window.removeEventListener('resize', reposition);
       window.removeEventListener('keydown', onKey);
     };
-  }, [open, place]);
+  }, [open, place, schliessen]);
+
+  const waehle = (it: RowMenuItem) => {
+    schliessen();
+    it.onClick();
+  };
 
   return (
     <span className="vp-rowmenu">
@@ -124,9 +161,25 @@ export function RowMenu({
                   : { top: 0, left: 0, visibility: 'hidden' }
               }
               onKeyDown={(e) => {
-                if (e.key === 'Escape') setOpen(false);
+                if (e.key === 'Escape' || e.key === 'Tab') {
+                  e.preventDefault();
+                  schliessen();
+                  return;
+                }
+                const alle = eintraege();
+                const hier = alle.indexOf(document.activeElement as HTMLButtonElement);
+                const ziel =
+                  e.key === 'ArrowDown' ? (hier + 1) % alle.length
+                  : e.key === 'ArrowUp' ? (hier - 1 + alle.length) % alle.length
+                  : e.key === 'Home' ? 0
+                  : e.key === 'End' ? alle.length - 1
+                  : null;
+                if (ziel === null || alle.length === 0) return;
+                e.preventDefault();
+                alle[ziel].focus();
               }}
             >
+              {abgewiesen && <p className="vp-muted">{rollen.grund}</p>}
               {routine.map((it) => (
                 <button
                   key={it.label}
@@ -134,12 +187,18 @@ export function RowMenu({
                   role="menuitem"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setOpen(false);
-                    it.onClick();
+                    waehle(it);
                   }}
                 >
                   {it.icon && <Icon name={it.icon} size={16} />}
-                  {it.label}
+                  {it.hinweis ? (
+                    <span className="vp-rowmenu-text">
+                      {it.label}
+                      <small>{it.hinweis}</small>
+                    </span>
+                  ) : (
+                    it.label
+                  )}
                 </button>
               ))}
               {danger.length > 0 && routine.length > 0 && <div className="vp-rowmenu-sep" />}
@@ -151,8 +210,7 @@ export function RowMenu({
                   className="danger"
                   onClick={(e) => {
                     e.stopPropagation();
-                    setOpen(false);
-                    it.onClick();
+                    waehle(it);
                   }}
                 >
                   {it.icon && <Icon name={it.icon} size={16} />}

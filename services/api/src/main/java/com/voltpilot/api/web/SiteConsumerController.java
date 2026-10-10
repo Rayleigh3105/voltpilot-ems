@@ -17,11 +17,15 @@ import com.voltpilot.api.consumers.ConsumerService.PolicyDto;
 import com.voltpilot.api.consumers.ConsumerService.SavePolicyRequest;
 import com.voltpilot.api.repo.ConsumerOverrideRepository;
 import com.voltpilot.api.repo.ConsumerRuntimeStatusRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
+import com.voltpilot.api.uems.BelegeImWeg;
 import com.voltpilot.api.web.dto.ConsumerDeviationDto;
 import com.voltpilot.api.web.dto.ConsumerFulfillmentDto;
 import com.voltpilot.api.web.dto.ConsumerOverrideDto;
 import com.voltpilot.api.web.dto.ConsumerRuntimeStatusDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtPruefung;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -63,7 +67,7 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/v1/sites/{siteId}")
 public class SiteConsumerController {
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final ConsumerService consumers;
     private final ConsumerScheduleRepository consumerSchedules;
     private final ConsumerRuntimeStatusRepository runtimeStatus;
@@ -73,16 +77,18 @@ public class SiteConsumerController {
     private final ConsumerOverrideService overrideService;
     private final ConsumerOverrideRepository overrides;
     private final com.voltpilot.api.consumers.IoModuleSwitchService ioSwitch;
+    private final RechtPruefung recht;
 
-    public SiteConsumerController(SiteRepository sites, ConsumerService consumers,
+    public SiteConsumerController(Geltungsbereich geltungsbereich, ConsumerService consumers,
             ConsumerScheduleRepository consumerSchedules,
             ConsumerRuntimeStatusRepository runtimeStatus,
             ConsumerPolicyActivationService activation, ConsumerFulfillmentReader fulfillment,
             ConsumerDeviationReader deviation, ConsumerOverrideService overrideService,
             ConsumerOverrideRepository overrides,
-            com.voltpilot.api.consumers.IoModuleSwitchService ioSwitch) {
+            com.voltpilot.api.consumers.IoModuleSwitchService ioSwitch, RechtPruefung recht) {
         this.ioSwitch = ioSwitch;
-        this.sites = sites;
+        this.recht = recht;
+        this.geltungsbereich = geltungsbereich;
         this.consumers = consumers;
         this.consumerSchedules = consumerSchedules;
         this.runtimeStatus = runtimeStatus;
@@ -94,9 +100,7 @@ public class SiteConsumerController {
     }
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 
     @GetMapping("/consumer-options")
@@ -108,10 +112,11 @@ public class SiteConsumerController {
     /**
      * Ein/Aus EINES freien Ausgangs eines I/O-Moduls von der Geräteseite - wie
      * ein Schalter in Home Assistant: der Zustand bleibt, bis erneut geschaltet
-     * wird. Ein Ausgang, der einem Verbraucher gehört, wird über dessen
-     * Handeingriff eingeschaltet (409 mit Hinweis); Ausschalten geht immer.
+     * wird. Einen Ausgang, der einem Verbraucher gehört, schaltet dessen
+     * Handeingriff ein (409 mit Hinweis); Ausschalten geht immer.
      */
     @PutMapping("/io-modules/{entityId}/outputs/{channel}")
+    @Recht(value = "schalttest.durchfuehren", ziel = RechtZiel.ANLAGE)
     public com.voltpilot.api.consumers.IoModuleSwitchService.Outcome switchOutput(
             @PathVariable UUID siteId, @PathVariable UUID entityId, @PathVariable int channel,
             @RequestBody com.voltpilot.api.consumers.IoModuleSwitchService.Request request,
@@ -135,6 +140,7 @@ public class SiteConsumerController {
     }
 
     @PostMapping("/consumers")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public ResponseEntity<ConsumerDto> create(@PathVariable UUID siteId,
             @RequestBody CreateConsumerRequest request) {
         requireSite(siteId);
@@ -147,14 +153,38 @@ public class SiteConsumerController {
         return consumers.get(siteId, id);
     }
 
+    /**
+     * Zwei Rechte in EINEM Rumpf (Nachzug der neuen Steuerung, Paket 1b): „Speicher darf aushelfen“
+     * ({@code allowStorageDischarge}) ist Betrieb ({@code betriebsweise.aendern} — wie früher über die Regel, auch
+     * Bedienberechtigt), alles andere ist Einrichtung ({@code geraet.einrichten}). Der Interceptor prüft vor, ob eines
+     * davon irgendwo gilt; hier wird jedes Feld, das der Rumpf wirklich trägt, an der Anlage geprüft — ein Rumpf ohne
+     * Feld bleibt Einrichtung.
+     */
     @PatchMapping("/consumers/{id}")
+    @Recht(value = {"geraet.einrichten", "betriebsweise.aendern"}, ziel = RechtZiel.DIENST)
     public ConsumerDto patch(@PathVariable UUID siteId, @PathVariable UUID id,
             @RequestBody PatchConsumerRequest request) {
         requireSite(siteId);
+        if (request.allowStorageDischarge() != null) {
+            recht.pruefen("betriebsweise.aendern", RechtZiel.ANLAGE, siteId, null);
+        }
+        if (traegtEinrichtung(request) || request.allowStorageDischarge() == null) {
+            recht.pruefen("geraet.einrichten", RechtZiel.ANLAGE, siteId, null);
+        }
         return consumers.patch(siteId, id, request);
     }
 
+    /** Ein Feld außer „Speicher darf aushelfen“ (und der erwarteten Fassung) ist Einrichtung. */
+    private static boolean traegtEinrichtung(PatchConsumerRequest r) {
+        return r.name() != null || r.ratedPowerKw() != null || r.controlKind() != null || r.levelsKw() != null
+                || r.minPowerKw() != null || r.resolutionKw() != null || r.powerRangesKw() != null
+                || r.storageRelation() != null || r.defaultGridEnergyPolicy() != null || r.failsafe() != null
+                || r.enabled() != null || r.minOnSeconds() != null || r.minOffSeconds() != null
+                || r.maxStartsPerDay() != null;
+    }
+
     @DeleteMapping("/consumers/{id}")
+    @Recht(value = "komponente.loeschen", ziel = RechtZiel.ANLAGE)
     public ResponseEntity<Void> delete(@PathVariable UUID siteId, @PathVariable UUID id) {
         requireSite(siteId);
         consumers.delete(siteId, id);
@@ -171,6 +201,7 @@ public class SiteConsumerController {
 
     /** Store a NEW draft policy version (lifecycle stays draft in Increment 1). */
     @PutMapping("/consumers/{id}/policy")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public PolicyDto putPolicy(@PathVariable UUID siteId, @PathVariable UUID id,
             @RequestBody SavePolicyRequest request,
             @AuthenticationPrincipal Jwt jwt) {
@@ -189,6 +220,7 @@ public class SiteConsumerController {
      * the previously active version stays untouched.
      */
     @PostMapping("/consumers/{id}/policy/activate")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public ConsumerPolicyActivationService.ActivationOutcome activatePolicy(
             @PathVariable UUID siteId, @PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);
@@ -201,6 +233,7 @@ public class SiteConsumerController {
      * disabled flag must never leave a deployed rule looking stopped.
      */
     @PostMapping("/consumers/{id}/policy/deactivate")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public ConsumerPolicyActivationService.StopOutcome deactivatePolicy(
             @PathVariable UUID siteId, @PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);
@@ -209,6 +242,7 @@ public class SiteConsumerController {
 
     /** Pause = Gesamtschalter aus + Artefakt-Rückzug → the device failsafe (§11). */
     @PostMapping("/consumers/{id}/pause")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public ConsumerPolicyActivationService.StopOutcome pause(
             @PathVariable UUID siteId, @PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);
@@ -217,6 +251,7 @@ public class SiteConsumerController {
 
     /** Resume after a pause: re-enable + re-deploy the stored artifact (no compile). */
     @PostMapping("/consumers/{id}/resume")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public ConsumerPolicyActivationService.ActivationOutcome resume(
             @PathVariable UUID siteId, @PathVariable UUID id, @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);
@@ -305,6 +340,7 @@ public class SiteConsumerController {
      * the arbiter's bounded override TTL is the failsafe (§16).
      */
     @PostMapping("/consumers/{id}/override")
+    @Recht(value = "handeingriff.setzen", ziel = RechtZiel.ANLAGE)
     public OverrideOutcome startOverride(@PathVariable UUID siteId, @PathVariable UUID id,
             @RequestBody OverrideRequest request, @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);
@@ -313,6 +349,7 @@ public class SiteConsumerController {
 
     /** "Automatik fortsetzen" (§14.13): end the manual intervention now. */
     @DeleteMapping("/consumers/{id}/override")
+    @Recht(value = "handeingriff.setzen", ziel = RechtZiel.ANLAGE)
     public OverrideOutcome clearOverride(@PathVariable UUID siteId, @PathVariable UUID id,
             @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);
@@ -320,6 +357,12 @@ public class SiteConsumerController {
     }
 
     /** German reasons reach the portal as {"message": ...} (MastrController pattern). */
+    /** The consumer is a Beleg of released Berichtsstände (UEMS AP-12 E13 S2): 409 with the list - nothing written. */
+    @ExceptionHandler(BelegeImWeg.class)
+    public ResponseEntity<Map<String, Object>> belegeImWeg(BelegeImWeg e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(e.koerper());
+    }
+
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<Map<String, Object>> onStatusException(ResponseStatusException e) {
         return ResponseEntity.status(e.getStatusCode())

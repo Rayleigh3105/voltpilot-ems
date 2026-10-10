@@ -1,3 +1,5 @@
+import { useRollen } from '../rollen';
+import { Recht } from '../components/Recht';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -67,6 +69,7 @@ import type { Zeile } from '../geraetSeite';
 import './OcppWallboxPage.css';
 // Uhr: nie seltener als der Live-Takt (sonst behauptet sie ein altes Alter).
 import { LIVE_POLL_MS } from '../pollCadence';
+import { fokusAusloeser, sperreSeitenScroll } from '../../designsystem/components/shell/ueberlagerung';
 
 const DATA_AREAS = [
   'Verbindung', 'Ereignisse', 'Datenlücken', 'Ladevorgänge', 'Messwerte',
@@ -127,6 +130,10 @@ export function OcppWallboxPage({
 }) {
   const [data, setData] = useState<OcppData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const rollen = useRollen();
+  // Plattformbefehle behalten die bestehende serverseitige OCPP-Freigabe.
+  const darfOcpp = (d: OcppActionDefinition) => d.role === 'platform-admin'
+    ? true : rollen.darf(d.role === 'operator' ? 'handeingriff.setzen' : 'ladepunkt.betrieb');
   const [reload, setReload] = useState(0);
   const [actionOpen, setActionOpen] = useState<OcppActionDefinition | null>(null);
   const [meterSearch, setMeterSearch] = useState('');
@@ -308,8 +315,8 @@ export function OcppWallboxPage({
     || state.action === 'UnlockConnector'
     ? state.action
     : null;
-  const actionAllowed = remoteAction ? data.permissions.actions[remoteAction] === true : true;
-  const allowedActions = OCPP_ACTIONS.filter((definition) => data.permissions.actions[definition.action] === true);
+  const actionAllowed = remoteAction ? data.permissions.actions[remoteAction] === true && darfOcpp(findAction(remoteAction)) : true;
+  const allowedActions = OCPP_ACTIONS.filter((definition) => data.permissions.actions[definition.action] === true && darfOcpp(definition));
   const showCommandCenter = allowedActions.some((definition) => definition.role !== 'operator');
 
   const searchedMeter = meter.filter((row) => contains(row, meterSearch));
@@ -327,7 +334,7 @@ export function OcppWallboxPage({
   const anschlussVorbehalt = state.connectorId == null || !state.connectorStatus
     || !(connectorCurrent || connection.source === 'edge');
   const menue: MenueEintrag[] = onRename
-    ? [{ key: 'umbenennen', label: 'Anzeigename ändern', icon: 'pencil', onClick: onRename }]
+    ? [{ key: 'umbenennen', label: 'Anzeigename ändern', icon: 'pencil', onClick: onRename, recht: 'geraet.einrichten' }]
     : [];
 
   // --- Jetzt: EIN Zustand, EINE Hauptaktion --------------------------------
@@ -335,7 +342,7 @@ export function OcppWallboxPage({
   const leistungKw = hero.power ? Number(hero.power.replace(/[^\d,.-]/g, '').replace(',', '.')) : null;
   const hauptaktion = remoteAction && state.actionLabel ? (
     <div className="vp-ocpp-primary-action">
-      <button
+      {actionAllowed && <button
         type="button"
         className={`vp-btn ${remoteAction === 'RemoteStopTransaction' ? 'vp-btn--outline' : 'vp-btn--primary'} vp-btn--md`}
         disabled={!connection.sendable || !actionAllowed}
@@ -343,9 +350,9 @@ export function OcppWallboxPage({
         onClick={() => setActionOpen(findAction(remoteAction))}
       >
         {state.actionLabel}
-      </button>
+      </button>}
       {!actionAllowed && (
-        <small id="ocpp-primary-action-help">Diese Fernaktion ist für Ihr Konto nicht freigegeben.</small>
+        <small id="ocpp-primary-action-help">{rollen.grund}</small>
       )}
     </div>
   ) : null;
@@ -548,7 +555,7 @@ export function OcppWallboxPage({
           )}
           <OcppSection id="einrichtung" label="Einrichtung" title="Einrichtung, Grenzen und Regelprüfung">
             <OcppControlPanel siteId={siteId} stationId={chargePointId} deviceId={station?.deviceId}
-              canEdit={data.permissions.actions.ChangeConfiguration === true} />
+              canEdit={data.permissions.actions.ChangeConfiguration === true && rollen.darf('ladepunkt.betrieb')} />
           </OcppSection>
           <OcppSection id="stecker" label="Stecker" title="Jeder Anschluss für sich">
             {displayConnectors.length ? (
@@ -670,9 +677,9 @@ export function OcppWallboxPage({
         }}
         menue={menue}
         kopfAktion={onRename ? (
-          <button type="button" className="vp-btn vp-btn--outline vp-btn--md" onClick={onRename}>
+          <Recht aktion="geraet.einrichten"><button type="button" className="vp-btn vp-btn--outline vp-btn--md" onClick={onRename}>
             <Icon name="pencil" size={15} /> Anzeigename ändern
-          </button>
+          </button></Recht>
         ) : null}
         unterKopf={(
           <>
@@ -858,12 +865,12 @@ function ActionDialog({ definition, siteId, chargePointId, connected, connection
   const requestSeedRef = useRef(crypto.randomUUID());
   closeRef.current = onClose;
   useEffect(() => {
-    const previousFocus = document.activeElement as HTMLElement | null;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    const previousFocus = fokusAusloeser();
+    // The house's single counted scroll lock (`ueberlagerung.js`), never a per-dialog "previous" value.
+    const releaseScroll = sperreSeitenScroll();
     dialogRef.current?.focus();
     return () => {
-      document.body.style.overflow = previousOverflow;
+      releaseScroll();
       previousFocus?.focus();
     };
   }, []);

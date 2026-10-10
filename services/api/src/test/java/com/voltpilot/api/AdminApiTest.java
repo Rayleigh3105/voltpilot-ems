@@ -41,7 +41,7 @@ import org.testcontainers.utility.DockerImageName;
  *   <li><b>A Portal-Admin can create a tenant and a customer user.</b> The admin
  *       token ({@code platform-admin} realm role) creates a tenant via the
  *       BYPASSRLS admin datasource and provisions a customer in Keycloak with the
- *       {@code tenant_id} attribute + {@code operator} role via the Admin REST
+ *       {@code tenant_id} attribute (no realm role since AP-03 IP-3) via the Admin REST
  *       API.</li>
  *   <li><b>That new customer logs in and sees only their tenant.</b> The
  *       provisioned user gets a token from Keycloak; through the same OIDC + RLS
@@ -179,7 +179,7 @@ class AdminApiTest {
         String customer = token("nordsee-operator", "nordsee-pw");
 
         // They see exactly their own site - not the seeded demo tenant's Berlin.
-        ResponseEntity<List<Map<String, Object>>> sites = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> sites = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/sites"), HttpMethod.GET, new HttpEntity<>(bearer(customer)),
                 new ParameterizedTypeReference<>() {});
         assertThat(sites.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -219,7 +219,7 @@ class AdminApiTest {
 
         // And the tenant's own customer, through the RLS-scoped portal, sees it too.
         String customer = token("rhein-operator", "rhein-pw");
-        ResponseEntity<List<Map<String, Object>>> customerSites = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> customerSites = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/sites"), HttpMethod.GET, new HttpEntity<>(bearer(customer)),
                 new ParameterizedTypeReference<>() {});
         assertThat(customerSites.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -240,7 +240,7 @@ class AdminApiTest {
         String admin = token("admin", "admin");
 
         // Tenant A selected: the admin sees exactly what `demo` sees.
-        ResponseEntity<List<Map<String, Object>>> tenantA = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> tenantA = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/sites"), HttpMethod.GET,
                 new HttpEntity<>(withTenant(bearer(admin), "00000000-0000-0000-0000-000000000001")),
                 new ParameterizedTypeReference<>() {});
@@ -248,7 +248,7 @@ class AdminApiTest {
         assertThat(tenantA.getBody()).extracting(s -> s.get("name")).contains("Demo Site Berlin");
 
         // Switch to tenant B: now exactly what `demo2` sees - never both at once.
-        ResponseEntity<List<Map<String, Object>>> tenantB = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> tenantB = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/sites"), HttpMethod.GET,
                 new HttpEntity<>(withTenant(bearer(admin), "10000000-0000-0000-0000-000000000001")),
                 new ParameterizedTypeReference<>() {});
@@ -256,14 +256,14 @@ class AdminApiTest {
         assertThat(tenantB.getBody()).extracting(s -> s.get("name")).doesNotContain("Demo Site Berlin");
 
         // Devices follow the same context (RLS on the same app datasource).
-        ResponseEntity<List<Map<String, Object>>> devices = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> devices = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/devices"), HttpMethod.GET,
                 new HttpEntity<>(withTenant(bearer(admin), "00000000-0000-0000-0000-000000000001")),
                 new ParameterizedTypeReference<>() {});
         assertThat(devices.getBody()).extracting(d -> d.get("externalRef")).contains("demo-inverter-01");
 
         // No tenant selected ("Alle Mandanten"): default-deny, zero rows.
-        ResponseEntity<List<Map<String, Object>>> none = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> none = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/sites"), HttpMethod.GET, new HttpEntity<>(bearer(admin)),
                 new ParameterizedTypeReference<>() {});
         assertThat(none.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -275,7 +275,7 @@ class AdminApiTest {
     void customerCannotSwitchTenantsViaHeader() {
         String operator = token("demo", "demo"); // tenant A
 
-        ResponseEntity<List<Map<String, Object>>> sites = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> sites = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/sites"), HttpMethod.GET,
                 new HttpEntity<>(withTenant(bearer(operator), "10000000-0000-0000-0000-000000000001")),
                 new ParameterizedTypeReference<>() {});
@@ -376,53 +376,18 @@ class AdminApiTest {
      * lockout. A user addressed under the wrong tenant's path is never touched.
      */
     @Test
-    void supportResetsAForgottenPasswordAndLiftsTheLockout() {
+    void startpasswortGehoertDemKundenadministratorUndNichtMehrDemSupport() {
         String admin = token("admin", "admin");
         String tenantId = (String) createTenant(admin, "Alpenstrom GmbH", "B2C").get("id");
-        Map<String, Object> user = createUser(admin, tenantId, "alpen-kunde",
-                "kunde@alpen.example", "vergessen-pw-1");
-        String userId = (String) user.get("id");
-
-        // Baseline: the customer can log in.
-        assertThat(tryToken("alpen-kunde", "vergessen-pw-1")).containsKey("access_token");
-
-        // They forgot the password; guessing locks the account...
-        for (int i = 0; i < 10; i++) {
-            assertThat(tryToken("alpen-kunde", "falsch-" + i)).doesNotContainKey("access_token");
-        }
-        // ...so even the correct password is refused now.
-        assertThat(tryToken("alpen-kunde", "vergessen-pw-1")).doesNotContainKey("access_token");
-
-        // A user addressed under the WRONG tenant's path is not found - never reset.
+        String userId = (String) createUser(admin, tenantId, "alpen-kunde", "kunde@alpen.example", "eigenes-passwort-1").get("id");
         String otherTenant = (String) createTenant(admin, "Fremdstrom AG", "B2C").get("id");
-        assertThat(rest.exchange(
-                url("/api/v1/admin/tenants/" + otherTenant + "/users/" + userId + "/reset-password"),
-                HttpMethod.POST,
-                new HttpEntity<>(Map.of("password", "neues-passwort-1", "temporary", false),
-                        bearer(admin)),
+        assertThat(rest.exchange(url("/api/v1/admin/tenants/" + otherTenant + "/users/" + userId + "/reset-password"),
+                HttpMethod.POST, new HttpEntity<>(Map.of("password", "unbenutzt"), bearer(admin)),
                 String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-
-        // A too-short password is refused (same rule as self-registration).
-        assertThat(rest.exchange(
-                url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId + "/reset-password"),
-                HttpMethod.POST,
-                new HttpEntity<>(Map.of("password", "kurz"), bearer(admin)),
-                String.class).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-
-        // Support resets the password through the right tenant path.
-        ResponseEntity<Map<String, Object>> reset = rest.exchange(
-                url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId + "/reset-password"),
-                HttpMethod.POST,
-                new HttpEntity<>(Map.of("password", "neues-passwort-1", "temporary", false),
-                        bearer(admin)),
-                new ParameterizedTypeReference<>() {});
-        assertThat(reset.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(reset.getBody()).containsEntry("username", "alpen-kunde");
-
-        // The new password works IMMEDIATELY (the reset lifted the lockout)...
-        assertThat(tryToken("alpen-kunde", "neues-passwort-1")).containsKey("access_token");
-        // ...and the old one no longer does.
-        assertThat(tryToken("alpen-kunde", "vergessen-pw-1")).doesNotContainKey("access_token");
+        assertThat(rest.exchange(url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId + "/reset-password"),
+                HttpMethod.POST, new HttpEntity<>(Map.of("password", "unbenutzt"), bearer(admin)),
+                String.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(tryToken("alpen-kunde", "eigenes-passwort-1")).containsKey("access_token");
     }
 
     // ---- (c) a Portal-User is forbidden from the admin API ------------------
@@ -759,6 +724,14 @@ class AdminApiTest {
                 new HttpEntity<>(Map.of("confirmName", "Weggezogen GmbH"), bearer(customer)),
                 String.class).getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
 
+        // UEMS AP-20 IP-18: an active tenant is refused (409) BEFORE any account is blocked - nothing moves.
+        ResponseEntity<Map<String, Object>> aktiv = offboard(admin, tenantId, "Weggezogen GmbH");
+        assertThat(aktiv.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(aktiv.getBody()).containsEntry("code", "kundenbereich_nicht_beendet");
+        assertThat(queryLong("SELECT count(*) FROM device WHERE tenant_id = '" + tenantId + "'")).isEqualTo(1L);
+        assertThat(tryToken("weggezogen-operator", "weg-pw-123")).containsKey("access_token");
+        vertragsendeUndFristAbgelaufen(tenantId);
+
         // The exact name unlocks the cascade; the report says what was removed.
         ResponseEntity<Map<String, Object>> report = rest.exchange(
                 url("/api/v1/admin/tenants/" + tenantId + "/delete"), HttpMethod.POST,
@@ -771,6 +744,8 @@ class AdminApiTest {
         assertThat((List<?>) report.getBody().get("deletedUsers"))
                 .isEqualTo(List.of("weggezogen-operator"));
         assertThat((List<?>) report.getBody().get("failedUsers")).isEmpty();
+        assertThat(queryLong("SELECT count(*) FROM mandant_loeschnachweis WHERE kundenbereich = '" + tenantId + "'"))
+                .isEqualTo(1L);
 
         // Database: tenant, site, device, telemetry - all gone.
         assertThat(queryLong("SELECT count(*) FROM tenant WHERE id = '" + tenantId + "'")).isZero();
@@ -789,12 +764,145 @@ class AdminApiTest {
         assertThat(tenants.getBody()).extracting(t -> t.get("id")).doesNotContain(tenantId);
     }
 
+    @org.springframework.boot.test.mock.mockito.SpyBean
+    com.voltpilot.api.repo.TenantRepository offboardingTenants;
+
+    @Test
+    @org.junit.jupiter.api.extension.ExtendWith(org.springframework.boot.test.system.OutputCaptureExtension.class)
+    void offboardingDeletionFailureLeavesDisabledAccountAndRetryableCleanup(
+            org.springframework.boot.test.system.CapturedOutput output) {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Offboarding Fehlerfall", "CI").get("id");
+        String userId = (String) createUser(admin, tenantId, "offboarding-fehler",
+                "offboarding@fehler.example", "offboarding-pw-123").get("id");
+        Map<String, Object> tokens = tryToken("offboarding-fehler", "offboarding-pw-123");
+        String before = (String) tokens.get("access_token");
+        assertThat(before).isNotBlank();
+        vertragsendeUndFristAbgelaufen(tenantId);
+        org.mockito.Mockito.doThrow(new IllegalStateException("simulated directory deletion failure"))
+                .when(keycloakAdmin).deleteUser(userId);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            // A concurrent enable between the first commit and teardown must be fenced out again.
+            keycloakAdmin.setEnabled(userId, true);
+            return invocation.callRealMethod();
+        }).when(offboardingTenants).offboard(org.mockito.ArgumentMatchers.eq(UUID.fromString(tenantId)),
+                org.mockito.ArgumentMatchers.any(Runnable.class), org.mockito.ArgumentMatchers.any());
+
+        var report = offboard(admin, tenantId, "Offboarding Fehlerfall");
+        assertThat(report.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(report.getBody().get("failedUsers")).isEqualTo(List.of("offboarding-fehler"));
+        assertThat(queryLong("SELECT count(*) FROM tenant WHERE id = '" + tenantId + "'")).isZero();
+        assertThat(keycloakAdmin.getUser(userId).enabled()).isFalse();
+        assertThat(tryToken("offboarding-fehler", "offboarding-pw-123")).doesNotContainKey("access_token");
+        MultiValueMap<String, String> refresh = new LinkedMultiValueMap<>();
+        refresh.add("grant_type", "refresh_token");
+        refresh.add("refresh_token", (String) tokens.get("refresh_token"));
+        refresh.add("client_id", "voltpilot-api");
+        refresh.add("client_secret", "voltpilot-api-dev-secret");
+        HttpHeaders form = new HttpHeaders();
+        form.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
+        Map<?, ?> renewed = keycloakRest().postForObject(KEYCLOAK.getAuthServerUrl()
+                + "/realms/voltpilot/protocol/openid-connect/token", new HttpEntity<>(refresh, form), Map.class);
+        assertThat(renewed.containsKey("access_token")).isFalse();
+        for (String path : List.of("/api/v1/me", "/api/v1/sites")) {
+            assertThat(rest.exchange(url(path), HttpMethod.GET, new HttpEntity<>(bearer(before)), String.class)
+                    .getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        }
+        var order = org.mockito.Mockito.inOrder(keycloakAdmin, offboardingTenants);
+        order.verify(keycloakAdmin).setEnabled(userId, false);
+        order.verify(offboardingTenants).offboard(org.mockito.ArgumentMatchers.eq(UUID.fromString(tenantId)), org.mockito.ArgumentMatchers.any(Runnable.class), org.mockito.ArgumentMatchers.any());
+        order.verify(keycloakAdmin).deleteUser(userId);
+        assertThat(output).contains("disabled Keycloak user " + userId + " pending cleanup");
+
+        String cleanupPath = "/api/v1/admin/tenants/" + tenantId + "/offboarding/cleanup";
+        assertThat(rest.exchange(url(cleanupPath), HttpMethod.POST,
+                new HttpEntity<>(bearer(token("demo", "demo"))), String.class).getStatusCode())
+                .isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(cleanup(admin, tenantId).getBody().get("failedUsers")).isEqualTo(List.of("offboarding-fehler"));
+        org.mockito.Mockito.doCallRealMethod().when(keycloakAdmin).deleteUser(userId);
+        assertThat(cleanup(admin, tenantId).getBody()).containsEntry("deletedUsers", List.of("offboarding-fehler"))
+                .containsEntry("failedUsers", List.of());
+        assertThat(cleanup(admin, tenantId).getBody()).containsEntry("deletedUsers", List.of())
+                .containsEntry("failedUsers", List.of());
+        assertThat(tryToken("demo", "demo")).containsKey("access_token");
+    }
+
+    @Test
+    void offboardingBlockingFailureRetainsDatabaseAndCanBeRetried() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Sperrfehler", "CI").get("id");
+        String userId = (String) createUser(admin, tenantId, "offboarding-sperre",
+                "sperre@offboarding.example", "offboarding-pw-123").get("id");
+        vertragsendeUndFristAbgelaufen(tenantId);
+        org.mockito.Mockito.doThrow(new IllegalStateException("simulated blocking failure"))
+                .when(keycloakAdmin).setEnabled(userId, false);
+        assertThat(offboard(admin, tenantId, "Sperrfehler").getStatusCode()).isEqualTo(HttpStatus.BAD_GATEWAY);
+        assertThat(queryLong("SELECT count(*) FROM tenant WHERE id = '" + tenantId + "'")).isEqualTo(1);
+        org.mockito.Mockito.verify(offboardingTenants, org.mockito.Mockito.never()).offboard(org.mockito.ArgumentMatchers.eq(UUID.fromString(tenantId)), org.mockito.ArgumentMatchers.any(Runnable.class), org.mockito.ArgumentMatchers.any());
+        org.mockito.Mockito.verify(keycloakAdmin, org.mockito.Mockito.never()).deleteUser(userId);
+        assertThat(cleanup(admin, tenantId).getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        org.mockito.Mockito.doCallRealMethod().when(keycloakAdmin).setEnabled(userId, false);
+        assertThat(offboard(admin, tenantId, "Sperrfehler").getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    @Test
+    void offboardingDatabaseFailureKeepsCommittedAccountBlockAndCanBeRetried() {
+        String admin = token("admin", "admin");
+        String tenantId = (String) createTenant(admin, "Datenbankfehler", "CI").get("id");
+        String userId = (String) createUser(admin, tenantId, "offboarding-datenbank",
+                "datenbank@offboarding.example", "offboarding-pw-123").get("id");
+        String customer = token("offboarding-datenbank", "offboarding-pw-123");
+        vertragsendeUndFristAbgelaufen(tenantId);
+        org.mockito.Mockito.doThrow(new IllegalStateException("simulated database failure"))
+                .when(offboardingTenants).offboard(org.mockito.ArgumentMatchers.eq(UUID.fromString(tenantId)), org.mockito.ArgumentMatchers.any(Runnable.class), org.mockito.ArgumentMatchers.any());
+        assertThat(offboard(admin, tenantId, "Datenbankfehler").getStatusCode()).isEqualTo(HttpStatus.INTERNAL_SERVER_ERROR);
+        assertThat(queryLong("SELECT count(*) FROM tenant WHERE id = '" + tenantId + "'")).isEqualTo(1);
+        assertThat(queryLong("SELECT count(*) FROM benutzer WHERE tenant_id = '" + tenantId
+                + "' AND sub = '" + userId + "' AND zustand = 'gesperrt'")).isEqualTo(1);
+        assertThat(keycloakAdmin.getUser(userId).enabled()).isFalse();
+        assertThat(tryToken("offboarding-datenbank", "offboarding-pw-123")).doesNotContainKey("access_token");
+        assertThat(rest.exchange(url("/api/v1/sites"), HttpMethod.GET,
+                new HttpEntity<>(bearer(customer)), String.class).getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        org.mockito.Mockito.verify(keycloakAdmin, org.mockito.Mockito.never()).deleteUser(userId);
+        org.mockito.Mockito.doCallRealMethod().when(offboardingTenants).offboard(org.mockito.ArgumentMatchers.eq(UUID.fromString(tenantId)), org.mockito.ArgumentMatchers.any(Runnable.class), org.mockito.ArgumentMatchers.any());
+        assertThat(offboard(admin, tenantId, "Datenbankfehler").getStatusCode()).isEqualTo(HttpStatus.OK);
+    }
+
+    /**
+     * UEMS AP-20 IP-18: the delete route takes only a tenant in the state „beendet" whose period has run out. The
+     * transition itself is {@code KundenbereichBeendetApiTest}'s; here the tenant is set 91 days back directly.
+     */
+    private static void vertragsendeUndFristAbgelaufen(String tenantId) {
+        exec("UPDATE tenant SET beendet_am = now() - interval '91 days', beendet_frist_tage = 90,"
+                + " beendet_von = 'Betrieb' WHERE id = '" + tenantId + "'");
+    }
+
+    private ResponseEntity<Map<String, Object>> offboard(String admin, String tenantId, String name) {
+        return rest.exchange(url("/api/v1/admin/tenants/" + tenantId + "/delete"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("confirmName", name), bearer(admin)), new ParameterizedTypeReference<>() {});
+    }
+
+    private ResponseEntity<Map<String, Object>> cleanup(String admin, String tenantId) {
+        return rest.exchange(url("/api/v1/admin/tenants/" + tenantId + "/offboarding/cleanup"), HttpMethod.POST,
+                new HttpEntity<>(bearer(admin)), new ParameterizedTypeReference<>() {});
+    }
+
     @Test
     void adminEditsEnablesAndDeletesUsersButNeverTheirOwnAccount() throws Exception {
         String admin = token("admin", "admin");
         String tenantId = (String) createTenant(admin, "Benutzerpflege AG", "CI").get("id");
         String userId = (String) createUser(admin, tenantId, "pflege-operator",
                 "alt@pflege.example", "pflege-pw").get("id");
+        // Der Entzugsprüfpunkt schützt jetzt auch am Plattformweg den letzten Kundenadministrator.
+        // Ein zweiter aktiver Administrator bleibt beim Sperren/Löschen des Testkontos erhalten.
+        var zweiter = keycloakAdmin.createCustomerUser(UUID.fromString(tenantId), "pflege-admin",
+                "admin@pflege.example", "Ines", "Kaltenbach", "pflege-admin-pw", false);
+        var seed = new org.springframework.jdbc.core.JdbcTemplate(new org.springframework.jdbc.datasource.DriverManagerDataSource(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword()));
+        seed.update("INSERT INTO benutzer (tenant_id, sub, konto, anzeigename, zustand) VALUES (?::uuid, ?, 'benutzer', ?, 'aktiv')",
+                tenantId, zweiter.id(), zweiter.username());
+        seed.update("INSERT INTO zugriff (tenant_id, benutzer_sub, rolle, gueltig_ab, zeitzone) "
+                + "VALUES (?::uuid, ?, 'kundenadministrator', now(), 'Europe/Berlin')", tenantId, zweiter.id());
 
         // Edit email + name; the username is immutable and stays.
         ResponseEntity<Map<String, Object>> updated = rest.exchange(
@@ -815,8 +923,8 @@ class AdminApiTest {
                 .getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
 
         // Disable blocks the login; enable (the new counterpart) restores it.
-        rest.exchange(url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId + "/disable"),
-                HttpMethod.POST, new HttpEntity<>(bearer(admin)), String.class);
+        assertThat(rest.exchange(url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId + "/disable"),
+                HttpMethod.POST, new HttpEntity<>(bearer(admin)), String.class).getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(tryToken("pflege-operator", "pflege-pw")).doesNotContainKey("access_token");
         ResponseEntity<Map<String, Object>> enabled = rest.exchange(
                 url("/api/v1/admin/tenants/" + tenantId + "/users/" + userId + "/enable"),
@@ -1468,7 +1576,7 @@ class AdminApiTest {
                 + "AND peak_reserve_soc_pct = 40")).isEqualTo(1);
 
         // The customer-facing SiteDto echoes the module READ-ONLY...
-        ResponseEntity<List<Map<String, Object>>> sites = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> sites = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/sites"), HttpMethod.GET, new HttpEntity<>(adminTenant),
                 new ParameterizedTypeReference<>() {});
         Map<String, Object> siteDto = sites.getBody().stream()
@@ -2878,10 +2986,12 @@ class AdminApiTest {
         UUID sued = UUID.randomUUID();
         UUID ost = UUID.randomUUID();
         UUID west = UUID.randomUUID();
+        UUID leser = UUID.randomUUID();
         seedSite(nord, UUID.fromString(tenantId), "Puls Nord");
         seedSite(sued, UUID.fromString(tenantId), "Puls Sued");
         seedSite(ost, UUID.fromString(tenantId), "Puls Ost");
         seedSite(west, UUID.fromString(tenantId), "Puls West");
+        seedSite(leser, UUID.fromString(tenantId), "Puls Lese-Box");
 
         // Nord: der Sorgenfall. Tarifart 'ohne' (rechnet mit Standard-Komponenten),
         // ein Speicher OHNE steuerndes Gerät, ein Gerät das gerade gemeldet hat,
@@ -2897,8 +3007,17 @@ class AdminApiTest {
         UUID nordDevice = UUID.randomUUID();
         exec("INSERT INTO device (id, tenant_id, site_id, external_ref, kind) VALUES ('"
                 + nordDevice + "', '" + tenantId + "', '" + nord + "', 'fleet-nord-01', 'inverter')");
+        UUID nordSecondary = UUID.randomUUID();
+        exec("INSERT INTO device (id, tenant_id, site_id, external_ref, kind, name, device_status_seen_at) VALUES ('"
+                + nordSecondary + "', '" + tenantId + "', '" + nord
+                + "', 'fleet-nord-02', 'gateway', 'Box Nord 2', now())");
+        exec("UPDATE site SET lead_device_id = '" + nordDevice + "' WHERE id = '" + nord + "'");
         exec("INSERT INTO telemetry (time, tenant_id, site_id, device_id, received_at, pv_power_kw) "
                 + "VALUES (now(), '" + tenantId + "', '" + nord + "', '" + nordDevice + "', now(), 3.2)");
+        UUID leserDevice = UUID.randomUUID();
+        exec("INSERT INTO device (id, tenant_id, site_id, external_ref, kind, device_status_seen_at) VALUES ('"
+                + leserDevice + "', '" + tenantId + "', '" + leser
+                + "', 'fleet-reader-01', 'gateway', now())");
         exec("INSERT INTO schedule (site_id, tenant_id, plan_id, generated_at, time, battery_kw) "
                 + "VALUES ('" + nord + "', '" + tenantId + "', gen_random_uuid(), "
                 + "now() - interval '10 minutes', now(), 1.0)");
@@ -2911,6 +3030,9 @@ class AdminApiTest {
         exec("INSERT INTO device_edge_version (device_id, tenant_id, site_id, core_version, "
                 + "palette_version, reported_at) VALUES ('" + nordDevice + "', '" + tenantId + "', '"
                 + nord + "', '1.4.0', '0.3.0', now())");
+        exec("INSERT INTO device_edge_version (device_id, tenant_id, site_id, core_version, "
+                + "palette_version, reported_at) VALUES ('" + nordSecondary + "', '" + tenantId + "', '"
+                + nord + "', '1.3.0', '0.2.0', now() - interval '1 minute')");
         exec("INSERT INTO device_source_status (device_id, source_id, tenant_id, site_id, kind, "
                 + "health, reported_at) VALUES ('" + nordDevice + "', 'primary', '" + tenantId + "', '"
                 + nord + "', 'primary', 'ok', now())");
@@ -2942,13 +3064,13 @@ class AdminApiTest {
         }
 
         // (1) cross-tenant: der neue Mandant UND der Demo-Mandant stehen drin.
-        assertThat(bySite).containsKeys("Puls Nord", "Puls Sued", "Puls Ost", "Puls West");
+        assertThat(bySite).containsKeys("Puls Nord", "Puls Sued", "Puls Ost", "Puls West", "Puls Lese-Box");
         assertThat(fleet).extracting(r -> r.get("tenantName")).contains("Demo C&I Tenant");
         assertThat(bySite.get("Puls Nord")).containsEntry("tenantName", "Flottenpuls GmbH");
 
         // (2) Nord: Overview-Kernfelder + Plan-Alter + die drei Kurzbelege.
         Map<String, Object> n = bySite.get("Puls Nord");
-        assertThat(n).containsEntry("deviceCount", 1).containsEntry("onlineCount", 1)
+        assertThat(n).containsEntry("deviceCount", 2).containsEntry("onlineCount", 2)
                 .containsEntry("waitingCount", 0).containsEntry("worstStatus", "online")
                 .containsEntry("hasStorage", true).containsEntry("batteryWithoutDevice", true);
         assertThat(n.get("lastSeenAt")).isNotNull();
@@ -2961,6 +3083,27 @@ class AdminApiTest {
                 .containsEntry("paletteVersion", "0.3.0");
         assertThat((Map<String, Object>) n.get("sources")).containsEntry("total", 2)
                 .containsEntry("ok", 1).containsEntry("stale", 1);
+        List<Map<String, Object>> nordBoxes = (List<Map<String, Object>>) n.get("boxes");
+        assertThat(nordBoxes).hasSize(2);
+        Map<String, Object> leadingBox = nordBoxes.stream()
+                .filter(box -> "fleet-nord-01".equals(box.get("externalRef"))).findFirst().orElseThrow();
+        Map<String, Object> secondaryBox = nordBoxes.stream()
+                .filter(box -> "fleet-nord-02".equals(box.get("externalRef"))).findFirst().orElseThrow();
+        assertThat(leadingBox).containsEntry("fuehrtAnlage", true);
+        assertThat((Map<String, Object>) leadingBox.get("edge")).containsEntry("coreVersion", "1.4.0");
+        assertThat(secondaryBox).containsEntry("fuehrtAnlage", false).containsEntry("name", "Box Nord 2");
+        assertThat((Map<String, Object>) secondaryBox.get("edge")).containsEntry("coreVersion", "1.3.0");
+
+        // Zeichengleicher API-Zustand: die bestehende Ein-Box-Anlage Nord
+        // (nur Telemetrie-Fallback) und die reine Lese-Box (nur Herzschlag,
+        // keine v1-Telemetrie) sind beide verbunden.
+        Map<String, Object> l = bySite.get("Puls Lese-Box");
+        assertThat(l).containsEntry("deviceCount", 1)
+                .containsEntry("onlineCount", 1)
+                .containsEntry("waitingCount", 0)
+                .containsEntry("worstStatus", "online");
+        assertThat(n.get("lastSeenAt")).isNotNull();
+        assertThat(l.get("lastSeenAt")).isNotNull();
 
         // (3) die Pflege-Flags sind SERVER-abgeleitet (Stufe-1-Regeln + B4).
         assertThat((List<Map<String, Object>>) n.get("pflege"))
@@ -3072,6 +3215,73 @@ class AdminApiTest {
         assertThat((Map<String, Object>) r.get("feedIn")).containsEntry("verdict", "ok");
         assertThat((List<Map<String, Object>>) r.get("pflege")).extracting(f -> f.get("code"))
                 .doesNotContain("einspeisegrenze-unplausibel");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void adminFleetComparesAgainstTheEffectiveGrenzblattLimit() {
+        String admin = token("admin", "admin");
+        UUID tenant = UUID.fromString((String) createTenant(admin, "Grenzblatt Pflege GmbH", "CI").get("id"));
+        UUID standort = UUID.randomUUID();
+        exec("INSERT INTO standort (id, tenant_id, unternehmen_id, name, kurzzeichen, zeitzone, zustand) "
+                + "SELECT '" + standort + "', tenant_id, id, 'Werk Pflege', 'ST-PF', 'Europe/Berlin', 'aktiv' "
+                + "FROM unternehmen WHERE tenant_id = '" + tenant + "'");
+
+        UUID enger = UUID.randomUUID();
+        UUID keine = UUID.randomUUID();
+        UUID unbekannt = UUID.randomUUID();
+        seedSite(enger, tenant, "Pflege Grenzblatt 80");
+        seedSite(keine, tenant, "Pflege ausdrücklich keine");
+        seedSite(unbekannt, tenant, "Pflege unbekannt");
+        exec("UPDATE site SET tarif_art = 'fest', tarif_param_ct_kwh = 30 WHERE id IN ('"
+                + enger + "', '" + keine + "', '" + unbekannt + "')");
+        exec("UPDATE site SET max_feed_in_kw = 100 WHERE id = '" + enger + "'");
+
+        for (UUID site : new UUID[] {enger, keine, unbekannt}) {
+            exec("INSERT INTO anlage_standort (tenant_id, site_id, standort_id, gueltig_ab) VALUES ('"
+                    + tenant + "', '" + site + "', '" + standort + "', current_date - 30)");
+            exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, grid_export_kwh, n_samples) "
+                    + "SELECT date_trunc('day', now()) - (d || ' days')::interval "
+                    + "+ (q * interval '15 minutes'), '" + tenant + "', '" + site
+                    + "', 7.5, 90 FROM generate_series(1, 8) d, generate_series(0, 47) q");
+        }
+
+        UUID naEnger = UUID.randomUUID();
+        UUID naKeine = UUID.randomUUID();
+        UUID naUnbekannt = UUID.randomUUID();
+        int nr = 0;
+        for (UUID na : new UUID[] {naEnger, naKeine, naUnbekannt}) {
+            nr++;
+            exec("INSERT INTO netzanschluss (id, tenant_id, standort_id, kennzeichen, name, messung) VALUES ('"
+                    + na + "', '" + tenant + "', '" + standort + "', 'NA-PF-" + nr
+                    + "', 'Pflege " + nr + "', 'RLM')");
+        }
+        exec("INSERT INTO anlage_netzanschluss (tenant_id, site_id, netzanschluss_id, gueltig_ab) VALUES "
+                + "('" + tenant + "', '" + enger + "', '" + naEnger + "', current_date - 30),"
+                + "('" + tenant + "', '" + keine + "', '" + naKeine + "', current_date - 30),"
+                + "('" + tenant + "', '" + unbekannt + "', '" + naUnbekannt + "', current_date - 30)");
+        exec("INSERT INTO netzanschluss_grenze (tenant_id, netzanschluss_id, gueltig_ab, einspeisegrenze_kw, "
+                + "einspeisegrenze_keine) VALUES "
+                + "('" + tenant + "', '" + naEnger + "', current_date - 10, 80, false),"
+                + "('" + tenant + "', '" + naKeine + "', current_date - 10, NULL, true),"
+                + "('" + tenant + "', '" + naUnbekannt + "', current_date - 10, NULL, false)");
+
+        Map<String, Map<String, Object>> bySite = new java.util.HashMap<>();
+        for (Map<String, Object> row : fleet(admin)) {
+            bySite.put((String) row.get("siteName"), row);
+        }
+        Map<String, Object> wirksam = (Map<String, Object>) bySite.get("Pflege Grenzblatt 80").get("feedIn");
+        assertThat((Number) wirksam.get("configuredKw")).extracting(Number::doubleValue).isEqualTo(80.0);
+        assertThat(wirksam).containsEntry("verdict", "zu_hoch");
+        assertThat((String) wirksam.get("reason")).contains("Einspeisegrenze aus dem Grenzblatt");
+
+        for (String name : List.of("Pflege ausdrücklich keine", "Pflege unbekannt")) {
+            Map<String, Object> site = bySite.get(name);
+            assertThat((Map<String, Object>) site.get("feedIn"))
+                    .containsEntry("configuredKw", null).containsEntry("verdict", "unbekannt");
+            assertThat((List<Map<String, Object>>) site.get("pflege")).extracting(f -> f.get("code"))
+                    .doesNotContain("einspeisegrenze-unplausibel");
+        }
     }
 
     // ---- OTA Stufe 0 „Sehen" (Scout vp-ota-rollout-h4) ----------------------
@@ -3396,13 +3606,13 @@ class AdminApiTest {
         // Mandanten-Kontext leer -> RLS ist default-deny. Der
         // Umschalter-Header hilft ihm nicht: den ehrt TenantFilter NUR fuer
         // platform-admin-Token.
-        ResponseEntity<List<Map<String, Object>>> sites = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> sites = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/sites"), HttpMethod.GET, new HttpEntity<>(bearer(publisher)),
                 new ParameterizedTypeReference<>() {});
         assertThat(sites.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(sites.getBody()).as("kein Mandant => keine Zeilen").isEmpty();
 
-        ResponseEntity<List<Map<String, Object>>> switched = rest.exchange(
+        ResponseEntity<List<Map<String, Object>>> switched = com.voltpilot.api.SichtbareListenTestLeser.lesen(rest,
                 url("/api/v1/sites"), HttpMethod.GET,
                 new HttpEntity<>(withTenant(bearer(publisher),
                         "00000000-0000-0000-0000-000000000001")),
@@ -3627,15 +3837,21 @@ class AdminApiTest {
         return res.getBody();
     }
 
+    @org.springframework.boot.test.mock.mockito.SpyBean
+    com.voltpilot.api.admin.KeycloakAdminClient keycloakAdmin;
+
     private Map<String, Object> createUser(String token, String tenantId, String username,
             String email, String password) {
         ResponseEntity<Map<String, Object>> res = rest.exchange(
                 url("/api/v1/admin/tenants/" + tenantId + "/users"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("username", username, "email", email,
-                        "password", password, "temporaryPassword", false), bearer(token)),
+                new HttpEntity<>(Map.of("username", username, "email", email), bearer(token)),
                 new ParameterizedTypeReference<>() {});
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        return res.getBody();
+        Map<String, Object> konto = (Map<String, Object>) res.getBody().get("benutzer");
+        String sub = (String) konto.get("sub");
+        // Bestandsprüfungen setzen nach dem Pflichtwechsel an; der volle Weg steht im IP-14-Test.
+        keycloakAdmin.resetPassword(sub, password, false);
+        return Map.of("id", sub, "username", username, "email", email, "tenantId", tenantId, "enabled", true);
     }
 
     /** Register a sticker Geräte-ID in the manufacturing registry. */

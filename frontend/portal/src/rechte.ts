@@ -23,11 +23,15 @@
  */
 import { datum } from './uemsFunktion';
 import { datumText, mitternacht, plusTage } from './uemsOrtsbaum';
+import { TEXTE, datumZeit, ortszeit, text, type TeilansichtErgebnis, teilansicht, zwei } from './rechteTexte';
 import { aufzaehlung, VORGABE_ZEITZONE } from './uemsZustand';
 
 // ─────────────────────────────────────────────────────────────── Vokabular
 
-/** Die sieben Spalten der Matrix, in der Spaltenreihenfolge der Konzept-Tabelle. */
+/**
+ * Die Spalten der Matrix: die sieben der Konzept-Tabelle in ihrer Reihenfolge, dahinter
+ * `einsicht` (Nachtrag AP-19 §4.11, IP-12 — nur lesen, unternehmensweit, befristbar).
+ */
 export const ROLLEN = [
   'kundenadministrator',
   'energiemanager',
@@ -36,6 +40,7 @@ export const ROLLEN = [
   'leser',
   'unterstuetzer',
   'voltpilot_betrieb',
+  'einsicht',
 ] as const;
 export type Rolle = (typeof ROLLEN)[number];
 
@@ -48,11 +53,13 @@ export const ROLLE_KUNDENWORT: Record<Rolle, string> = {
   leser: 'Leser',
   unterstuetzer: 'Unterstützer',
   voltpilot_betrieb: 'VoltPilot-Betrieb',
+  einsicht: 'Einsicht',
 };
 
 /**
  * Die Reihenfolge, in der `rolleNoetig` die KLEINSTE Rolle sucht, die das Recht
- * hätte. Wo Leser es hat, haben es Bearbeiter und Bedienberechtigt auch.
+ * hätte. Wo Leser es hat, haben es Bearbeiter und Bedienberechtigt auch. Einsicht
+ * steht nicht darin: `rolleNoetig` nennt weiter die Rollen von vorher (AP-19 IP-12, NW-5).
  */
 export const ROLLE_NOETIG_REIHENFOLGE: readonly Rolle[] = [
   'leser',
@@ -96,8 +103,21 @@ export type OcppStufe = (typeof OCPP_STUFEN)[number];
 export const UNTERSTUETZUNG_ZUSTAENDE = ['entwurf', 'eingerichtet', 'aktiv', 'archiviert'] as const;
 export type UnterstuetzungsZustand = (typeof UNTERSTUETZUNG_ZUSTAENDE)[number];
 
-/** Was an den Rechten einer Person geändert wird (§4.7, §5.2). */
-export const AENDERUNGEN = ['zuweisen', 'entziehen', 'sperren', 'entfernen'] as const;
+/**
+ * Was an den Rechten einer Person geändert wird (§4.7, §5.2) — dazu seit AP-03 IP-8 die zwei
+ * Protokollwörter der Unterstützung: `verlaengern` (neues Enddatum, §4.6) und `ablaufen`
+ * (Ende durch Zeitablauf, A4). Über sie urteilt `zuweisungAendern` nicht.
+ */
+export const AENDERUNGEN = [
+  'zuweisen',
+  'entziehen',
+  'sperren',
+  'entfernen',
+  'verlaengern',
+  'ablaufen',
+  'erste_anmeldung',
+  'startpasswort_neu',
+] as const;
 export type AenderungsArt = (typeof AENDERUNGEN)[number];
 
 /** Das Grund-Vokabular mit seinem HTTP-Status — die Fehlerkörper des API (§6.2). */
@@ -112,6 +132,7 @@ export const GRUENDE = {
   standort_fehlt: 422,
   hoechstens_12_monate: 422,
   grund_fehlt: 422,
+  zweite_person_noetig: 403,
 } as const;
 export type Grund = keyof typeof GRUENDE;
 
@@ -124,50 +145,8 @@ export const ERINNERUNG_TAGE = 7;
 /** Die Dauer eines Notfall-Zugriffs (E8). */
 export const NOTFALL_STUNDEN = 24;
 
-/**
- * Die Kundensätze als Vorlagen (`{…}` wird eingesetzt) — dieselben stehen im
- * Block `texte` der Vektor-Datei; beide Zwillinge prüfen sie dagegen.
- */
-export const TEXTE = {
-  recht_fehlt: 'Dafür fehlt Ihnen das Recht.',
-  weg_ein_kundenadministrator: 'Ihr Kundenadministrator: {namen}.',
-  weg_kundenadministratoren: 'Ihre Kundenadministratoren: {namen}.',
-  weg_voltpilot: 'Das übernimmt VoltPilot.',
-  ausserhalb_geltungsbereich: 'Diese Seite gibt es für Sie nicht.',
-  zugriff_beendet: 'Ihr Zugriff auf {standort} wurde beendet.',
-  unterstuetzung_beendet: 'Ihre Unterstützung für {kundenbereich} ist beendet.',
-  kein_standort: 'Ihnen ist derzeit kein Standort zugewiesen.',
-  kein_standort_ein_weg: 'Ihr Kundenadministrator {namen} kann das ändern.',
-  kein_standort_wege: 'Ihre Kundenadministratoren {namen} können das ändern.',
-  wirkt_ab: 'Wirkt ab {datum}',
-  teilansicht: 'Teilansicht: {n} von {m} Standorten',
-  teilansicht_export: 'Teilansicht: {namen} ({n} von {m} Standorten)',
-  standortuebergreifend: 'umfasst Standorte außerhalb Ihres Zugriffs',
-  banner_installateur: '{anzeigename} (Installateur) hat Zugriff auf {standorte} bis {ende} — {umfang}',
-  banner_voltpilot: 'VoltPilot-Support hat Zugriff auf {standorte} bis {ende} — {umfang}',
-  banner_notfall: 'VoltPilot-Support hat Notfall-Zugriff auf {standorte} bis {ende} — Grund: {grund}',
-  banner_unterstuetzer: 'Sie arbeiten im Kundenbereich {kundenbereich} · {standorte} · bis {ende}',
-  urheber_installateur: '{anzeigename} (Unterstützung)',
-  urheber_voltpilot: 'VoltPilot-Support (Unterstützung)',
-  urheber_notfall: 'VoltPilot (Notfall-Zugriff)',
-  endete_zeitablauf: 'Endete am {datum} durch Zeitablauf',
-  beendet: 'Beendet am {datum}',
-  beendet_von: 'Beendet am {datum} durch {name}',
-  gesetzt_von: 'gesetzt von {urheber}',
-  bedienrecht_beendet: 'gesetzt von {urheber} (Bedienrecht beendet am {zeitpunkt})',
-  hoechstens_12_monate:
-    'Eine Unterstützung ist höchstens 12 Monate gültig. Sie können sie jederzeit verlängern.',
-  standort_fehlt: 'Wählen Sie mindestens einen Standort.',
-  grund_fehlt: 'Für einen Notfall-Zugriff ist ein Grund Pflicht.',
-  letzter_kundenadministrator:
-    '{kundenbereich} braucht mindestens einen Kundenadministrator. Ernennen Sie zuerst eine weitere Person.',
-} as const;
-
-function text(schluessel: keyof typeof TEXTE, werte: Record<string, string> = {}): string {
-  let s: string = TEXTE[schluessel];
-  for (const [k, v] of Object.entries(werte)) s = s.replace(`{${k}}`, v);
-  return s;
-}
+/** Die Kundensätze (`TEXTE`), die Teilansicht-Regel und `datumZeit` wohnen in `rechteTexte.ts` (Einstiegs-Bündel). */
+export { TEXTE, datumZeit, teilansicht, type TeilansichtErgebnis } from './rechteTexte';
 
 // ─────────────────────────────────────────────────────────────────── Matrix
 
@@ -186,7 +165,7 @@ export function matrixAus(datei: { aktionen: Aktion[] }): Matrix {
   const m = new Map<string, Aktion>();
   for (const a of datei.aktionen) {
     if (ROLLEN.some((r) => a.zellen[r] === undefined)) {
-      throw new Error(`Zeile ohne alle sieben Rollen: ${a.kennung}`);
+      throw new Error(`Zeile ohne alle Rollen: ${a.kennung}`);
     }
     m.set(a.kennung, { kennung: a.kennung, kundenwort: a.kundenwort, zellen: { ...a.zellen } });
   }
@@ -512,6 +491,95 @@ export function darf(
   };
 }
 
+// ─────────────────────────────────────────────────── Vier-Augen (AP-08 E8)
+
+/**
+ * Darf `b` diese Korrektur freigeben oder zurücknehmen? (AP-08 E8, IP-15 — Familie
+ * `vieraugen`.) Erst `darf` — was dort nicht erlaubt ist, bleibt, wie es ist. Dann: der
+ * Bearbeiter gibt nur bei Vier-Augen aus frei und nimmt nur bei aus und nur die eigene zurück
+ * (sonst 403 `recht_fehlt`, `rolleNoetig` Energiemanager); bei an gibt nie der Ersteller frei —
+ * auch mit Recht (403 `zweite_person_noetig`).
+ *
+ * @param ersteller Kennung der Person, die die Korrektur angelegt hat; `null` = Vorschlag des Systems
+ * @param vierAugen die Einstellung des Unternehmens zum Zeitpunkt DIESER Entscheidung
+ */
+export function korrekturEntscheiden(
+  m: Matrix,
+  b: Benutzer,
+  k: Kundenbereich,
+  aktion: 'korrektur.freigeben' | 'korrektur.zuruecknehmen',
+  ziel: Ziel,
+  jetzt: string,
+  ersteller: string | null,
+  vierAugen: boolean,
+): DarfErgebnis {
+  const freigeben = aktion === 'korrektur.freigeben';
+  if (!freigeben && aktion !== 'korrektur.zuruecknehmen') {
+    throw new Error(`keine Entscheidung über eine Korrektur: ${aktion}`);
+  }
+  const d = darf(m, b, k, aktion, ziel, jetzt);
+  if (!d.darf) return d;
+  const eigene = ersteller !== null && ersteller === b.kennung;
+  if (d.rolle === 'bearbeiter' && (vierAugen || (!freigeben && !eigene))) {
+    const weg = wegZumKundenadministrator(k);
+    return {
+      ...d,
+      darf: false,
+      http: 403,
+      grund: 'recht_fehlt',
+      rolle: null,
+      rolleNoetig: 'energiemanager',
+      text: TEXTE.recht_fehlt + (weg === null ? '' : ` ${weg}`),
+    };
+  }
+  if (freigeben && vierAugen && eigene) {
+    // Der Weg nennt nie den Ersteller selbst.
+    const weg = wegZumKundenadministrator({
+      ...k,
+      kundenadministratoren: k.kundenadministratoren.filter((p) => p.kennung !== b.kennung),
+    });
+    return {
+      ...d,
+      darf: false,
+      http: 403,
+      grund: 'zweite_person_noetig',
+      rolle: null,
+      text: TEXTE.zweite_person + (weg === null ? '' : ` ${weg}`),
+    };
+  }
+  return d;
+}
+
+
+// ─────────────────────────────────── Verantwortliche (Verbessern v1, Entscheid 8)
+
+/** Wer Maßnahmen verwaltet (AP-18 §4.9). */
+export const VERBESSERUNG_VERWALTEN = 'verbesserung.verwalten';
+/** Die eigene Maßnahme als umgesetzt melden und kommentieren (Verbessern-Konzept v1, Entscheid 8). */
+export const EIGENE_MASSNAHME = 'verbesserung.eigene_massnahme';
+
+/**
+ * Darf `b` diese Maßnahme als umgesetzt melden oder kommentieren? (Verbessern v1 Entscheid 8, eng gefasst - Familie
+ * `verantwortung`.) Erst `darf` mit `verbesserung.verwalten`: erlaubt es, gilt es; außerhalb des Geltungsbereichs
+ * (404) bleibt es dabei. Sonst trägt `verbesserung.eigene_massnahme` - aber nur, wenn `b` die verantwortliche Person
+ * ist; sonst bleibt die Ablehnung von `verwalten`. Ändern, Verwerfen und Bewerten fragen diese Funktion nie.
+ *
+ * @param verantwortlich die Kennung der verantwortlichen Person der Maßnahme
+ */
+export function eigeneMassnahme(
+  m: Matrix,
+  b: Benutzer,
+  k: Kundenbereich,
+  ziel: Ziel,
+  jetzt: string,
+  verantwortlich: string | null,
+): DarfErgebnis {
+  const v = darf(m, b, k, VERBESSERUNG_VERWALTEN, ziel, jetzt);
+  if (v.darf || v.http === 404) return v;
+  if (verantwortlich === null || verantwortlich !== b.kennung) return v;
+  const e = darf(m, b, k, EIGENE_MASSNAHME, ziel, jetzt);
+  return e.darf ? e : v;
+}
 // ────────────────────────────────────────────────────── sichtbare Standorte
 
 export interface StandortSicht {
@@ -597,38 +665,6 @@ export function sichtbareStandorte(
 }
 
 // ─────────────────────────────────────────────────────────────── Teilansicht
-
-/**
- * Die Teilansicht-Regel (E10): die Unternehmensebene gibt es ab zwei
- * zugänglichen Standorten; mit weniger als allen ist sie eine Teilansicht.
- * Unternehmensweite Objekte sehen nur unternehmensweite Rollen (R-A1).
- */
-export interface TeilansichtErgebnis {
-  sichtbar: number;
-  gesamt: number;
-  unternehmensebene: boolean;
-  teilansicht: boolean;
-  kopfzeile: string | null;
-  exportKopfzeile: string | null;
-  unternehmensweiteObjekte: boolean;
-}
-
-/** teilansicht(n, m) — `namen` sind die n sichtbaren Standorte in Anzeige-Reihenfolge. */
-export function teilansicht(namen: string[], gesamt: number, uw: boolean): TeilansichtErgebnis {
-  const n = namen.length;
-  const ebene = n >= 2;
-  const teil = ebene && n < gesamt;
-  const zahlen = { n: String(n), m: String(gesamt) };
-  return {
-    sichtbar: n,
-    gesamt,
-    unternehmensebene: ebene,
-    teilansicht: teil,
-    kopfzeile: teil ? text('teilansicht', zahlen) : null,
-    exportKopfzeile: teil ? text('teilansicht_export', { namen: namen.join(', '), ...zahlen }) : null,
-    unternehmensweiteObjekte: uw,
-  };
-}
 
 /** Ein Wert je Messstelle mit ihrem Standort — `kwh === null` heißt „nicht gemessen". */
 export interface Wert {
@@ -967,24 +1003,6 @@ export function zuweisungAendern(
 }
 
 // ───────────────────────────────────────────────────────────────────── Text
-
-/** [Jahr, Monat, Tag, Stunde, Minute, Sekunde] in der Zeitzone des Kundenbereichs. */
-function ortszeit(iso: string, zone: string): number[] {
-  // 'sv-SE' liefert die ISO-Schreibweise "2026-12-15 00:00:00" — dieselbe Art, eine
-  // Zeitzone anzuwenden, wie `uemsZustand.ts`.
-  const s = new Date(iso).toLocaleString('sv-SE', { timeZone: zone });
-  const m = /(\d{4})-(\d{2})-(\d{2})\D+(\d{2}):(\d{2}):(\d{2})/.exec(s);
-  if (m === null) throw new Error(`unlesbarer Zeitpunkt: ${iso}`);
-  return m.slice(1).map(Number);
-}
-
-const zwei = (n: number): string => String(n).padStart(2, '0');
-
-/** „14.11.2026 09:02" — Datum und Uhrzeit in der Zeitzone des Kundenbereichs. */
-export function datumZeit(iso: string, zeitzone: string = VORGABE_ZEITZONE): string {
-  const [j, mo, t, h, mi] = ortszeit(iso, zeitzone);
-  return `${zwei(t)}.${zwei(mo)}.${j} ${zwei(h)}:${zwei(mi)}`;
-}
 
 /** Ein Enddatum um Mitternacht heißt „15.12.2026", sonst mit Uhrzeit „19.11.2026 22:15". */
 export function endeText(iso: string, zeitzone: string = VORGABE_ZEITZONE): string {

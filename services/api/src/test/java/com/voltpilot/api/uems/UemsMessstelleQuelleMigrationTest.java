@@ -257,12 +257,14 @@ class UemsMessstelleQuelleMigrationTest {
         UUID q = w.quelle(ms, "Wirkenergie", "Bezug", k, "fuehrend", null, BEGINN, null);
         alsTue(w.tenant, () -> {
             abgelehntWegen("42501", "permission denied", () -> app.update("DELETE FROM messstelle_quelle"));
-            for (String zuweisung : List.of("gueltig_ab = gueltig_ab - interval '1 day'", "kanal = 'x'",
+            for (String zuweisung : List.of("kanal = 'x'",
                     "rolle = 'vergleich'", "geraet_id = geraet_id", "entity_id = entity_id",
                     "anfangsstand = 0", "rueckwirkend = false", "actor_name = 'jemand'", "tenant_id = tenant_id")) {
                 abgelehntWegen("42501", "permission denied",
                         () -> app.update("UPDATE messstelle_quelle SET " + zuweisung + " WHERE id = ?", q));
             }
+            abgelehnt("23514", "messstelle_quelle_nie_ueberschrieben", () -> app.update(
+                    "UPDATE messstelle_quelle SET gueltig_ab=gueltig_ab-interval '1 day' WHERE id=?", q));
             // Beenden: das Ende und der Endstand, genau einmal.
             assertThat(app.update("UPDATE messstelle_quelle SET gueltig_bis = ?, endstand = 1083415.2, "
                     + "endstand_einheit = 'kWh' WHERE id = ?", ts(WECHSEL), q)).isOne();

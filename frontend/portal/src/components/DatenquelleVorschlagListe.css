@@ -1,0 +1,89 @@
+/* Die Datenquellen-Vorschlagsliste (AP-06 IP-4) — in Schritt 2 des Messen-Assistenten je Anlage. */
+.vp-dqv {
+  display: grid;
+  gap: var(--vp-space-2, 8px);
+  padding-top: var(--vp-space-3, 12px);
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  min-width: 0;
+}
+
+.vp-dqv-titel {
+  margin: 0;
+  font-weight: 600;
+  font-size: 0.9375rem;
+}
+
+.vp-dqv-satz,
+.vp-dqv-ergebnis,
+.vp-dqv-hinweis {
+  margin: 0;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.vp-dqv-satz {
+  color: var(--vp-text-muted, #64748b);
+}
+
+.vp-dqv-ergebnis {
+  font-weight: 600;
+  color: var(--vp-navy-1, #1e3a5f);
+}
+
+.vp-dqv-hinweis {
+  padding: var(--vp-space-2, 8px) var(--vp-space-3, 12px);
+  border-radius: var(--vp-radius-sm, 6px);
+  background: #fffbeb;
+  color: #92400e;
+}
+
+.vp-dqv-liste {
+  display: grid;
+  gap: var(--vp-space-2, 8px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.vp-dqv-zeile {
+  display: grid;
+  gap: 0.2rem;
+  justify-items: start;
+  padding: var(--vp-space-3, 12px);
+  border: 1px solid var(--vp-border, #e2e8f0);
+  border-radius: var(--vp-radius-md, 10px);
+  min-width: 0;
+}
+
+.vp-dqv-kopf {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.vp-dqv-geraete,
+.vp-dqv-folge,
+.vp-dqv-sperre {
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+}
+
+.vp-dqv-folge,
+.vp-dqv-geraete {
+  color: var(--vp-text-muted, #64748b);
+}
+
+.vp-dqv-sperre {
+  color: #92400e;
+}
+
+.vp-dqv-fehler {
+  display: grid;
+  gap: var(--vp-space-2, 8px);
+  justify-items: start;
+}
+
+.vp-dqv-fehler p {
+  margin: 0;
+  font-size: 0.875rem;
+}

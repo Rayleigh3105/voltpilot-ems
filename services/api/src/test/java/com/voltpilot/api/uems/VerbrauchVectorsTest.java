@@ -6,12 +6,15 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.uems.VerbrauchRegeln.Ereignis;
 import com.voltpilot.api.uems.VerbrauchRegeln.Ergebnis;
+import com.voltpilot.api.uems.VerbrauchRegeln.LueckenZuwachs;
 import com.voltpilot.api.uems.VerbrauchRegeln.Rohwert;
+import com.voltpilot.api.uems.VerbrauchRegeln.Zeitraum;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -78,14 +81,16 @@ class VerbrauchVectorsTest {
     }
 
     /**
-     * 23 Fälle — der vollständige Referenzfallkatalog AP-08 §7. {@code minItems} prüft der
-     * Läufer, die genaue Zahl steht hier.
+     * 23 Fälle — der vollständige Referenzfallkatalog AP-08 §7 — plus F24, den AP-08 IP-3 für die
+     * Zusammensetzung von Momentanwerten handgerechnet hat. {@code minItems} prüft der Läufer, die
+     * genaue Zahl steht hier.
      */
     @Test
-    void dreiundzwanzigFaelleMitEindeutigenNamen() throws Exception {
+    void dreiundzwanzigFaelleUndF24MitEindeutigenNamen() throws Exception {
         List<String> namen = new ArrayList<>();
         lies(VECTORS).path("cases").forEach(c -> namen.add(c.path("name").asText()));
-        assertThat(namen).hasSize(23).doesNotHaveDuplicates();
+        assertThat(namen).hasSize(24).doesNotHaveDuplicates();
+        assertThat(namen.get(23)).startsWith("f24-");
     }
 
     /** Die Schwellen stehen in der Datei; die Klasse schreibt sie nicht für sich allein fest. */
@@ -95,7 +100,12 @@ class VerbrauchVectorsTest {
         assertThat(regeln.path("luecke_faktor").asInt()).isEqualTo(VerbrauchRegeln.LUECKE_FAKTOR);
         assertThat(regeln.path("integration_halten_faktor").asInt()).isEqualTo(VerbrauchRegeln.HALTEN_FAKTOR);
         assertThat(regeln.path("vergleich_nachkommastellen").asInt()).isEqualTo(VerbrauchRegeln.NACHKOMMASTELLEN);
-        assertThat(lies(VECTORS).path("zeitzone").asText()).isEqualTo(VerbrauchRegeln.ANZEIGE_ZEITZONE.getId());
+        // Die Zeitzone der Datei ist die der Beispielwelt Ahrenberg; die Regel nimmt die der Reihe (E10).
+        assertThat(lies(VECTORS).path("zeitzone").asText()).isEqualTo("Europe/Berlin");
+        List<String> zeitraeume = new ArrayList<>();
+        regeln.path("luecke_zeitraeume").forEach(z -> zeitraeume.add(z.asText()));
+        assertThat(zeitraeume).isEqualTo(VerbrauchRegeln.LUECKE_ZEITRAEUME);
+        assertThat(regeln.path("anteil").asText()).contains("JE ROHWERT");
     }
 
     /**
@@ -148,6 +158,7 @@ class VerbrauchVectorsTest {
         ereignisse.addAll(ereignisse(erwartung.path("ereignisse_zusatz")));
 
         Ergebnis ist = VerbrauchRegeln.ergebnis(
+                kontext(reihe),
                 reihe.path("wertart").asText(),
                 rohwerte(reihe),
                 von,
@@ -157,7 +168,9 @@ class VerbrauchVectorsTest {
                 dezimal(reihe.path("faktor"), BigDecimal.ONE),
                 dezimal(reihe.path("wertebereich_modul"), null),
                 dezimal(reihe.path("hoechstzuwachs_je_kadenz"), null),
-                reihe.path("integrieren").asBoolean(false));
+                reihe.path("integrieren").asBoolean(false),
+                erwartung.hasNonNull("anteil") ? erwartung.path("anteil").asText() : null,
+                erwartung.hasNonNull("quelle") ? erwartung.path("quelle").asText() : null);
 
         zahl(why + " · menge", erwartung.path("menge"), ist.menge());
         zahl(why + " · mittel", erwartung.path("mittel"), ist.mittel());
@@ -190,6 +203,111 @@ class VerbrauchVectorsTest {
                     .as(why + " · stunden")
                     .isEqualTo(erwartung.path("stunden").asLong());
         }
+        if (erwartung.has("luecken_zuwachs")) {
+            pruefeLueckenZuwachs(why, reihe, erwartung, von, bis, kadenz, ereignisse, ist);
+        }
+    }
+
+    /** Weit genug, um jede Lücke einer Reihe zu sehen — für „jede ANDERE Lücke steht nicht da“. */
+    private static final Instant IMMER_VON = Instant.parse("2000-01-01T00:00:00Z");
+    private static final Instant IMMER_BIS = Instant.parse("2100-01-01T00:00:00Z");
+
+    /**
+     * E2 (AP-08 IP-6) — der Zuwachs über eine Lücke steht GENAU EINMAL: die Periode, die die Lücke
+     * ganz enthält, zählt ihn mit beiden Ständen, Zuwachs, Einheit und dem vertraglichen Kennzeichen;
+     * jede Periode, die sie nur anschneidet, nennt ihn nicht — weder als Lücke noch als Kennzeichen.
+     */
+    private static void pruefeLueckenZuwachs(String why, JsonNode reihe, JsonNode erwartung, Instant von,
+            Instant bis, Duration kadenz, List<Ereignis> ereignisse, Ergebnis ist) {
+        BigDecimal faktor = dezimal(reihe.path("faktor"), BigDecimal.ONE);
+        List<LueckenZuwachs> gezaehlt =
+                VerbrauchRegeln.lueckenZuwaechse(rohwerte(reihe), von, bis, kadenz, ereignisse, faktor);
+        JsonNode soll = erwartung.path("luecken_zuwachs");
+        assertThat(gezaehlt).as(why + " · luecken_zuwachs (Anzahl)").hasSize(soll.size());
+        for (int i = 0; i < soll.size(); i++) {
+            JsonNode s = soll.get(i);
+            LueckenZuwachs l = gezaehlt.get(i);
+            assertThat(l.messzeitVor()).as(why + " · messzeit_vor")
+                    .isEqualTo(VerbrauchRegeln.zeit(s.path("messzeit_vor").asText()));
+            assertThat(l.messzeitNach()).as(why + " · messzeit_nach")
+                    .isEqualTo(VerbrauchRegeln.zeit(s.path("messzeit_nach").asText()));
+            zahl(why + " · stand_vor", s.path("stand_vor"), l.standVor());
+            zahl(why + " · stand_nach", s.path("stand_nach"), l.standNach());
+            zahl(why + " · zuwachs", s.path("zuwachs"), l.zuwachs());
+            assertThat(s.path("einheit").asText()).as(why + " · einheit").isEqualTo(reihe.path("einheit").asText());
+            assertThat(ist.kennzeichen()).as(why + " · Kennzeichen des gezählten Zuwachses")
+                    .contains(VerbrauchRegeln.lueckenKennzeichen(l, kontext(reihe)));
+        }
+        for (LueckenZuwachs l : VerbrauchRegeln.lueckenZuwaechse(
+                rohwerte(reihe), IMMER_VON, IMMER_BIS, kadenz, ereignisse, faktor)) {
+            if (!gezaehlt.contains(l)) {
+                assertThat(ist.kennzeichen()).as(why + " · angeschnittene Lücke steht nicht da")
+                        .doesNotContain(VerbrauchRegeln.lueckenKennzeichen(l, kontext(reihe)));
+            }
+        }
+    }
+
+    /**
+     * E2 (AP-08 IP-6) — der KLEINSTE Zeitraum, der eine Lücke ganz enthält. Die Fälle mit {@code fall}
+     * gehören zu einem Referenzfall: dessen Reihe hat genau diese eine Lücke mit gemessenem Zuwachs.
+     */
+    @TestFactory
+    List<DynamicTest> lueckenZuordnung() throws Exception {
+        JsonNode datei = lies(VECTORS);
+        ZoneId zone = ZoneId.of(datei.path("zeitzone").asText());
+        List<DynamicTest> tests = new ArrayList<>();
+        for (JsonNode z : datei.path("luecken_zuordnung")) {
+            tests.add(DynamicTest.dynamicTest(z.path("name").asText(), () -> {
+                Duration kadenz = Duration.ofSeconds(z.path("kadenz_s").asLong());
+                Instant vor = VerbrauchRegeln.zeit(z.path("messzeit_vor").asText());
+                Instant nach = VerbrauchRegeln.zeit(z.path("messzeit_nach").asText());
+                Zeitraum ist = VerbrauchRegeln.kleinsterZeitraum(
+                        new LueckenZuwachs(vor, nach, null, null, null), kadenz, zone);
+                JsonNode soll = z.path("kleinster_zeitraum");
+                String why = z.path("why").asText();
+                if (soll.isNull()) {
+                    assertThat(ist).as(why).isNull();
+                } else {
+                    assertThat(ist).as(why).isEqualTo(new Zeitraum(soll.path("art").asText(),
+                            VerbrauchRegeln.zeit(soll.path("von").asText()),
+                            VerbrauchRegeln.zeit(soll.path("bis").asText())));
+                }
+                if (!z.path("fall").isNull()) {
+                    JsonNode reihe = null;
+                    for (JsonNode fall : datei.path("cases")) {
+                        if (fall.path("name").asText().equals(z.path("fall").asText())) {
+                            reihe = fall.path("input").path("reihe");
+                        }
+                    }
+                    assertThat(reihe).as("Fall " + z.path("fall").asText()).isNotNull();
+                    List<LueckenZuwachs> alle = VerbrauchRegeln.lueckenZuwaechse(rohwerte(reihe), IMMER_VON,
+                            IMMER_BIS, Duration.ofSeconds(reihe.path("kadenz_s").asLong()),
+                            ereignisse(reihe.path("ereignisse")), dezimal(reihe.path("faktor"), BigDecimal.ONE));
+                    assertThat(alle).as(why).hasSize(1);
+                    assertThat(alle.get(0).messzeitVor()).isEqualTo(vor);
+                    assertThat(alle.get(0).messzeitNach()).isEqualTo(nach);
+                }
+            }));
+        }
+        assertThat(tests).as("Zuordnungsfälle").hasSizeGreaterThanOrEqualTo(10);
+        return tests;
+    }
+
+    /** Die Abnahme von AP-08 IP-6: F8, F11, F20 und F23 tragen an JEDER Erwartung ihre Zuwachs-Felder. */
+    @Test
+    void dieAbnahmefaelleVonIp6TragenIhreZuwachsFelder() throws Exception {
+        List<String> abnahme = List.of("f8-", "f11-", "f20-", "f23-");
+        int gesehen = 0;
+        for (JsonNode fall : lies(VECTORS).path("cases")) {
+            if (abnahme.stream().anyMatch(fall.path("name").asText()::startsWith)) {
+                gesehen++;
+                for (JsonNode e : fall.path("expected")) {
+                    assertThat(e.has("luecken_zuwachs")).as(fall.path("name").asText() + " :: " + e.path("name").asText())
+                            .isTrue();
+                }
+            }
+        }
+        assertThat(gesehen).isEqualTo(4);
     }
 
     static void zahl(String was, JsonNode soll, BigDecimal ist) {
@@ -204,7 +322,56 @@ class VerbrauchVectorsTest {
         assertThat(ist).as(was).usingComparator(BigDecimal::compareTo).isEqualTo(soll.decimalValue());
     }
 
+    /**
+     * AP-08 IP-7, E15 Option C als benannte Gegenprobe: ERST MITTELN, DANN NACH VORZEICHEN ZUORDNEN
+     * IST FALSCH. Das Mittel des ganzen Werts ergibt genau die Zahl der Datei (−10,0 → nur Abgabe
+     * 10,0) — und sie weicht von beiden Anteil-Erwartungen ab, die je Rohwert geteilt sind.
+     */
+    @Test
+    void erstMittelnDannZuordnenIstFalsch() throws Exception {
+        for (JsonNode fall : lies(VECTORS).path("cases")) {
+            JsonNode g = fall.path("gegenprobe");
+            if (g.isMissingNode()) {
+                continue;
+            }
+            JsonNode reihe = fall.path("input").path("reihen").path(g.path("reihe").asText());
+            Instant von = VerbrauchRegeln.zeit(g.path("von").asText());
+            Instant bis = VerbrauchRegeln.zeit(g.path("bis").asText());
+            Duration kadenz = Duration.ofSeconds(reihe.path("kadenz_s").asLong());
+            BigDecimal mittel = VerbrauchRegeln.momentanwerte(rohwerte(reihe), von, bis, kadenz, false).mittel();
+            assertThat(mittel).isEqualByComparingTo(g.path("mittel_vorzeichen").decimalValue());
+            BigDecimal falschBezug = VerbrauchRegeln.anteilDesWerts(mittel, VerbrauchRegeln.ANTEIL_POSITIV);
+            BigDecimal falschAbgabe = VerbrauchRegeln.anteilDesWerts(mittel, VerbrauchRegeln.ANTEIL_NEGATIV);
+            assertThat(falschBezug).isEqualByComparingTo(g.path("falsch_bezug").decimalValue());
+            assertThat(falschAbgabe).isEqualByComparingTo(g.path("falsch_abgabe").decimalValue());
+            int anteile = 0;
+            for (JsonNode e : fall.path("expected")) {
+                if (!e.hasNonNull("anteil")) {
+                    continue;
+                }
+                anteile++;
+                BigDecimal falsch = VerbrauchRegeln.ANTEIL_POSITIV.equals(e.path("anteil").asText())
+                        ? falschBezug : falschAbgabe;
+                assertThat(falsch).as(e.path("name").asText() + ": die verworfene Rechnung darf nicht stimmen")
+                        .isNotEqualByComparingTo(e.path("mittel").decimalValue());
+            }
+            assertThat(anteile).as("die Gegenprobe steht neben beiden Anteilen").isEqualTo(2);
+            return;
+        }
+        throw new AssertionError("kein Fall mit gegenprobe — F19 trägt sie (AP-08 IP-7)");
+    }
+
     // ------------------------------------------------------------ Die Vektor-Form lesen
+
+    /**
+     * Der Träger einer Reihe der Datei: ihre Einheit und ihre Zeitzone — ohne eigene Zone die der
+     * Beispielwelt ({@code zeitzone} der Datei).
+     */
+    static ReihenKontext kontext(JsonNode reihe) {
+        String zone = reihe.hasNonNull("zeitzone") ? reihe.path("zeitzone").asText() : "Europe/Berlin";
+        return new ReihenKontext(reihe.hasNonNull("einheit") ? reihe.path("einheit").asText() : null,
+                ZoneId.of(zone));
+    }
 
     static JsonNode reihe(JsonNode fall, JsonNode erwartung) {
         JsonNode eingang = fall.path("input");
@@ -220,6 +387,60 @@ class VerbrauchVectorsTest {
      * {@code {t, v, q}} übernommen; {@code luecken} entfernen anschließend Werte in
      * {@code [von, bis)}.
      */
+    /**
+     * Z6 (AP-08 IP-4) — die EINE Überlauf-Entscheidung {@link VerbrauchRegeln#ueberlauf} steht genau
+     * dort, wo eine Erwartung des Falls „Überlauf HH:MM" nennt: an jedem fallenden Nachbarn guter
+     * Werte jeder Zählerstand-Reihe (eine Gerätegrenze dazwischen ist Z4). F7: 767 ≤ 1 667 ist ein
+     * Überlauf, 53 179 nicht. Ohne Wertebereich oder ohne Höchstzuwachs wird nie einer geraten (E4).
+     * Der Python-Zwilling und die Writer-Erkennung prüfen dieselbe Ableitung aus derselben Datei.
+     */
+    @Test
+    void dieUeberlaufEntscheidungStehtGenauDortWoDieErwartungEinenUeberlaufNennt() throws Exception {
+        int ueberlaeufe = 0;
+        int ruecksetzungen = 0;
+        for (JsonNode fall : lies(VECTORS).path("cases")) {
+            JsonNode reihe = fall.path("input").path("reihe");
+            if (!"zaehlerstand".equals(fall.path("familie").asText()) || reihe.isMissingNode()) {
+                continue;
+            }
+            List<Rohwert> gute = rohwerte(reihe).stream().filter(Rohwert::gut).toList();
+            List<Instant> grenzen = ereignisse(reihe.path("ereignisse")).stream()
+                    .filter(e -> Ereignis.GERAETEGRENZE.equals(e.art())).map(Ereignis::zeit).toList();
+            List<String> genannt = new ArrayList<>();
+            fall.path("expected").forEach(e -> e.path("kennzeichen").forEach(k -> {
+                if (k.asText().startsWith("Überlauf ")) {
+                    genannt.add(k.asText().split(" ")[1]);
+                }
+            }));
+            Duration kadenz = Duration.ofSeconds(reihe.path("kadenz_s").asLong());
+            BigDecimal modul = dezimal(reihe.path("wertebereich_modul"), null);
+            BigDecimal hoechst = dezimal(reihe.path("hoechstzuwachs_je_kadenz"), null);
+            for (int i = 0; i + 1 < gute.size(); i++) {
+                Rohwert vorher = gute.get(i);
+                Rohwert nachher = gute.get(i + 1);
+                if (nachher.wert().compareTo(vorher.wert()) >= 0 || grenzen.stream()
+                        .anyMatch(g -> g.isAfter(vorher.zeit()) && !g.isAfter(nachher.zeit()))) {
+                    continue;
+                }
+                String uhr = java.time.format.DateTimeFormatter.ofPattern("HH:mm")
+                        .format(nachher.zeit().atZone(kontext(reihe).zeitzone()));
+                BigDecimal ueber = VerbrauchRegeln.ueberlauf(vorher, nachher, kadenz, modul, hoechst);
+                assertThat(ueber != null).as(fall.path("name").asText() + " " + uhr)
+                        .isEqualTo(genannt.contains(uhr));
+                if (ueber != null) {
+                    assertThat(ueber).isEqualByComparingTo(modul.subtract(vorher.wert()).add(nachher.wert()));
+                    ueberlaeufe++;
+                } else {
+                    ruecksetzungen++;
+                }
+                assertThat(VerbrauchRegeln.ueberlauf(vorher, nachher, kadenz, null, hoechst)).isNull();
+                assertThat(VerbrauchRegeln.ueberlauf(vorher, nachher, kadenz, modul, null)).isNull();
+            }
+        }
+        assertThat(ueberlaeufe).as("F7 10:03").isPositive();
+        assertThat(ruecksetzungen).as("F6, F7 10:20, F12").isPositive();
+    }
+
     static List<Rohwert> rohwerte(JsonNode reihe) {
         List<Rohwert> out = new ArrayList<>();
         for (JsonNode a : reihe.path("rohwerte")) {
@@ -257,8 +478,6 @@ class VerbrauchVectorsTest {
         array.forEach(e -> out.add(new Ereignis(
                 e.path("art").asText(),
                 VerbrauchRegeln.zeit(e.path("t").asText()),
-                // Die Uhrzeit, wie die Meldung sie trägt: Stunde und Minute des Zeitpunkts.
-                e.path("t").asText().substring(11, 16),
                 dezimal(e.path("endstand"), null),
                 dezimal(e.path("anfangsstand"), null),
                 e.path("verlust_s").asLong(Ereignis.VERLUST_VORGABE))));

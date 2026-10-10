@@ -1,0 +1,63 @@
+/* Rückfragen zu Archivieren, Wiederherstellen und Löschen (UEMS AP-02 IP-15, Z1–Z3) — in der
+   Schale des Standort-Dialogs (.vp-sd). */
+
+.vp-ad-satz {
+  margin: 0;
+  padding: var(--vp-c-space-3);
+  border-radius: 8px;
+  background: var(--vp-c-muted);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-ad-titel {
+  margin: 0 0 var(--vp-c-space-2);
+  font-size: inherit;
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-ad-folgen {
+  display: grid;
+  gap: var(--vp-c-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-ad-folgen li {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-c-space-2);
+  min-width: 0;
+}
+
+.vp-ad-folgen li > svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--vp-c-primary);
+}
+
+.vp-ad-folgen-gesperrt li > svg {
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-ad-folge {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-ad-folge-text {
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-ad-fuss {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+  line-height: var(--vp-c-lh-text);
+}

@@ -5,20 +5,21 @@
  * ⚠ EIGENES MODUL (UX-Review V-01, 24.09.2026): Cockpit und Komponenten-Board
  * brauchten aus `geraetSeite.ts` (1 150 Zeilen Geräteseiten-Ableitung) nur diese
  * Einzeiler - und zogen dafür das ganze Modul samt `selbstbau.ts` ins
- * Einstiegs-Bündel. `geraetSeite.ts` reicht alle vier unverändert weiter; die
- * Regel „eine Anlage hat genau EINE Box" lebt weiterhin genau einmal - hier.
+ * Einstiegs-Bündel. `geraetSeite.ts` reicht sie unverändert weiter; die
+ * Regel „welche Box führt diese Anlage" lebt weiterhin genau einmal - hier.
  */
 import type { Device } from './api';
 
 /**
- * Die Referenz der EINEN VoltPilot-Box dieser Anlage - sonst null.
+ * Die Referenz der führenden VoltPilot-Box dieser Anlage - sonst null.
  *
- * Eine Anlage hat per Captain-Korrektur genau EINE Box; sind es (noch) mehrere
- * oder keine, wird KEINE geraten: ein Weg auf eine Geräteseite, die vielleicht
- * die falsche Box meint, ist schlechter als kein Weg.
+ * Bei mehreren Boxen entscheidet ausschließlich das additive API-Fakt
+ * {@code fuehrtAnlage} (UEMS AP-06 IP-16); nur für eine echte Ein-Box-Anlage
+ * bleibt der alte Rückfall erhalten. So wechselt kein bestehender Aufrufer
+ * still auf irgendeine Box.
  */
 export function boxRefOf(devices: Device[] | null | undefined, siteId: string): string | null {
-  return boxOf(devices, siteId)?.externalRef ?? null;
+  return fuehrendeBoxOf(devices, siteId)?.externalRef ?? null;
 }
 
 /**
@@ -28,8 +29,10 @@ export function boxRefOf(devices: Device[] | null | undefined, siteId: string): 
  * ⚠ Sie lebt EINMAL: zwei Stellen, die „welche Box ist es denn?" verschieden
  * beantworten, wären zwei Wahrheiten über dieselbe Anlage.
  */
-export function boxOf(devices: Device[] | null | undefined, siteId: string): Device | null {
+export function fuehrendeBoxOf(devices: Device[] | null | undefined, siteId: string): Device | null {
   const eigene = (devices ?? []).filter((d) => d.siteId === siteId);
+  const markiert = eigene.filter((d) => d.fuehrtAnlage === true);
+  if (markiert.length === 1) return markiert[0];
   return eigene.length === 1 ? eigene[0] : null;
 }
 

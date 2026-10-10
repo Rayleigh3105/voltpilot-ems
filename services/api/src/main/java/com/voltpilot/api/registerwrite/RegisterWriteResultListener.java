@@ -2,6 +2,7 @@ package com.voltpilot.api.registerwrite;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.RegisterWriteEventRepository;
 import com.voltpilot.api.tenant.TenantContext;
@@ -57,7 +58,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @ConditionalOnProperty(name = "voltpilot.provisioning.enabled", havingValue = "true")
-public class RegisterWriteResultListener {
+public class RegisterWriteResultListener extends Rueckmeldeweg {
 
     private static final Logger log = LoggerFactory.getLogger(RegisterWriteResultListener.class);
     private static final String RESULT_FILTER = "ems/+/+/+/v2/register-write-result";
@@ -170,6 +171,7 @@ public class RegisterWriteResultListener {
 
     /** Test-sichtbar: eine Quittung auswerten, persistieren und zustellen. */
     public void handle(String topic, byte[] payload) {
+        if (kundenbereichBeendet(topic)) return; // Kundenbereich beendet: verworfen und gezählt
         JsonNode json;
         try {
             json = mapper.readTree(new String(payload, StandardCharsets.UTF_8));

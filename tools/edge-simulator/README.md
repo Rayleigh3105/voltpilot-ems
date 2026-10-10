@@ -44,16 +44,29 @@ Der Ref-Modus benötigt einen Brokerzugang, der die Provisioning-Topics erlaubt.
 
 ## Simulation und Optionen
 
-PV folgt einer Tageskurve, Last einem synthetischen Haushaltsprofil. Die Batterie lädt/entlädt innerhalb des Modells. `power_kw = load - pv + battery`: positiv Netzbezug, negativ Einspeisung.
+`--profile` wählt die Tageskurve und die gemeldeten Felder.
+`power_kw = load - pv + battery`: positiv Netzbezug, negativ Einspeisung.
+
+| Profil | Tageskurve / gemeldete Felder |
+|---|---|
+| `pv-haus` (Vorgabe) | PV-Tageskurve, synthetische Hauslast, Batterie; meldet power/soc/pv/load/grid_limit |
+| `gewerbe-steuernd` | Industrie-Schichtlast + PV + Batterie mit Lastspitzenkappung und gekappter Einspeisung; meldet alle Felder |
+| `gewerbe-mess` | reine Messung: nur Industrie-Schichtlast, Netzbezug nie negativ, kein PV/Speicher; meldet power/load/grid_limit |
+
+Die drei Ahrenberg-Anlagen der [Demo](../../infra/local/demo/README.md) nutzen diese Profile passend zur Referenzwelt (Halle 1 steuernd, Halle 2 und Werk Lindach reine Messung).
 
 | Option | Zweck / Vorgabe |
 |---|---|
+| `--profile` | Tageskurve und gemeldete Felder, Vorgabe `pv-haus` |
 | `--interval` | Abstand der Messungen, 5 Sekunden |
 | `--count` | Nach N Nachrichten stoppen, 0 = unbegrenzt |
 | `--time-scale` | Simulierte Zeit pro Echtzeit; 288 spielt einen Tag in 5 Minuten |
 | `--provision-retry` | Hello-Abstand, 10 Sekunden |
 | `--provision-timeout` | Wartezeit auf Claim, 0 = unbegrenzt |
 | `--pv-peak-kw`, `--batt-capacity-kwh`, `--batt-max-kw` | Größe der simulierten Anlage |
+| `--load-base-kw`, `--load-peak-kw` | Grund- und Produktionslast der `gewerbe-*`-Profile |
+| `--shift-start-hour`, `--shift-end-hour`, `--weekend-factor` | Schichtfenster und Wochenendanteil (`gewerbe-*`) |
+| `--peak-grid-kw`, `--export-limit-kw` | Lastspitzenkappung-Ziel und Einspeisegrenze (`gewerbe-steuernd`) |
 
 CLI-Werte gehen vor Umgebung/`.env` und Defaults. Vollständige Optionen: `--help` und [`.env.example`](.env.example). `--insecure` überspringt Zertifikatsprüfung und ist nur für kontrollierte Tests gedacht.
 
@@ -62,3 +75,134 @@ CLI-Werte gehen vor Umgebung/`.env` und Defaults. Vollständige Optionen: `--hel
 ```
 
 Die Tests prüfen Modell, MQTT-Austausch und Vertragsform ohne einen externen Broker. Sie ersetzen nicht den Nachweis des vollständigen Cloud-Pfads.
+
+## UEMS: zwei Boxen im Werk Ahrenberg
+
+`uems_ahrenberg.py` liest ausschließlich das Referenzunternehmen
+`docs/contracts/v2/uems-referenzunternehmen.json`. Es löst die zeitgültigen
+Zuständigkeiten von DQ-1…DQ-5 auf zwei getrennte Box-Identitäten auf und gibt
+deren Herzschläge samt `data_sources[]` als JSON aus. Der Lauf ist offline und
+benötigt weder Broker noch Zugangsdaten:
+
+```bash
+python3 uems_ahrenberg.py
+python3 uems_ahrenberg.py --at 2027-04-10T07:30:00+02:00
+python3 uems_ahrenberg.py --offline-box E-2
+python3 -m pytest test_edge_sim.py test_uems_ahrenberg.py -q
+```
+
+Der Zeitpunkt ist halboffen ausgewertet. Dadurch liest DQ-3 beim Wechsel um
+07:30 Uhr nie auf beiden Boxen. `--offline-box` unterdrückt nur die
+Quellmeldungen dieser Box; die andere Identität und ihre Quellen bleiben
+unverändert.
+
+## UEMS: Störungen der Messdatenstrecke (AP-07 IP-20)
+
+`uems_szenarien.py` baut fünf Abnahmefälle der Messdatenstrecke als
+deterministische Nachrichtenfolgen. Es liest nur Verträge und das
+Referenzunternehmen und löst die Box-Zuständigkeiten über `uems_ahrenberg.py`
+auf — kein Broker, keine Datenbank, keine Uhr des Rechners.
+
+| Szenario | Abnahmefall | Was die Folge zeigt |
+|---|---|---|
+| `A1` | Doppel-Zustellung | derselbe Umschlag 48 213 dreimal: einmal frisch, einmal als QoS-1-Wiederholung (DUP), einmal mit zurückgesetzter Sequenz — 256 Zeilen, 512 gezählte Wiederholungen, ein `sequence_reset` |
+| `A3` | Ausfall mit Nachlieferung | Uplink weg 14:00–17:30, die Outbox spielt 210 Takte FIFO mit Original-Messzeit nach; der Cloud-Lücken-Melder schreibt `data_gap` je Quelle und Reihe sowie `backfill` je Quelle |
+| `A4` | Verdrängung | 8 Tage Ausfall, die ältesten 3 Tage sind fort: Box-Ereignis `data_gap` mit `erkannt_aus: verdraengung`, vier Sequenzsprünge in der Randstichprobe, Cloud-`late_arrival` nach der Endgültigkeit |
+| `A6` | Übergabe | DQ-3 wechselt am 10.04.2027 07:30 die Box; zwei Nachzügler der alten Box — einer vor dem Wechsel bleibt führend, einer danach wird Spiegel mit einem gebündelten `unassigned_reader` |
+| `A13` | Uhr geht vor | Box Lindach stempelt 840 s in die Zukunft: drei Umschläge abgewiesen (`clock_ahead`); die Nachlieferung bleibt erhalten und macht die drei verworfenen Sequenzen als `sequence_gap` sichtbar |
+
+```bash
+make test                                   # alle Tests, ohne Broker und ohne Datenbank
+make plan SZENARIO="--szenario A3"          # Trockenlauf: die Folge als JSON
+make zustellungen SZENARIO="--szenario A1"  # die vollständigen Nutzlasten
+VP_SIM_BROKER=<broker> make szenarien       # spielt alle fünf gegen den genannten Broker
+```
+
+Der Broker steht **nur** in der Umgebung (`VP_SIM_BROKER`, `VP_SIM_PORT`,
+`VP_SIM_TLS`, `VP_SIM_USER`, `VP_SIM_PASSWORD`); ohne ihn druckt das Werkzeug den
+Plan und sendet nichts. `make abhaengigkeiten` installiert `requirements-dev.txt`
+(`pytest` und `jsonschema` für die Vertragsprüfung).
+
+**Naht zu AP-07 IP-21:** `szenarien()` gibt die fünf Fälle als Bibliothek zurück.
+Jedes `Szenario` nennt seine `zustellungen` (geprüft gegen
+[`mqtt-measurement-samples`](../../docs/contracts/v2/mqtt-measurement-samples-2.1.md)
+2.0/2.1 und `mqtt-events-2.1`), die `erwarteten_ereignisse` als gültige
+`events.raw`-Nutzlasten und die `erwarteten_reihen` mit Zeilenzahl und Rolle.
+Dieses Paket prüft die erzeugte Nachrichtenfolge; die Prüfung der Zeilen und
+Ereignisse in der Datenbank gehört zur Testcontainers-Abnahme A1…A16 (IP-21).
+
+## UEMS: Lastprofil „100 Messstellen“ (AP-14 IP-8)
+
+`uems_lastprofil.py` erzeugt vier Box-Identitäten im Kundenbereich Ahrenberg.
+Jede liefert 25 Messstellen × 13 Kanäle × 60 Takte/h, also exakt 325
+Samples/min; zusammen sind es 1 300. Die Nachrichten bleiben im bestehenden
+`mqtt-measurement-samples`-Vertrag 2.0. Weil dieser höchstens 256 Samples je
+Umschlag erlaubt, besteht ein Minutentakt je Box aus 256 + 69 Samples.
+
+```bash
+# 24 h in Echtzeit beziehungsweise in fünf Minuten
+python3 uems_lastprofil.py --profil dauerlast --minuten 1440 --broker <broker>
+python3 uems_lastprofil.py --profil dauerlast --minuten 1440 --time-scale 288 --broker <broker>
+
+# 210 min Trennung einer Box, dann 68 250 Samples FIFO nachliefern
+python3 uems_lastprofil.py --profil nachliefer-stoss --time-scale 288 --broker <broker>
+
+# erster historischer Puffer aller Boxen
+python3 uems_lastprofil.py --profil kaltstart --minuten 1440 --time-scale 288 --broker <broker>
+```
+
+Ohne `--broker` wird nur die Zusammenfassung berechnet und nichts gesendet.
+`--zustellungen` schreibt reproduzierbares JSONL. Der feste `--seed` verändert
+nur Werte, nie Identitäten oder Raten. Die Eingangszeit ist Simulationsmetadatum;
+der echte Writer setzt `received_at` beim Eingang. Das Messwerkzeug unter
+[`tools/lastprofil-messung`](../lastprofil-messung/README.md) beobachtet diesen
+Eingang ausschließlich über bestehende Metriken und lesende Zählabfragen.
+
+## UEMS: Dauerläufer (AP-14 IP-18)
+
+`uems_dauerlaeufer.py` ist die Box-Seite des internen Kundenbereichs „VoltPilot
+Dauerläufer (intern)“. Zwei Box-Identitäten senden endlos im Normalbetrieb:
+E-1 sendet MS-05…MS-08, E-2 sendet MS-10…MS-14, je Box ein
+`measurement-samples`-2.0-Umschlag pro Minute. Störungs-Szenarien gibt es hier
+nicht. Die Kennungen kommen aus der Umgebung, die Zertifikate aus einem
+eingehängten Geheimnis ([`.env.dauerlaeufer.example`](.env.dauerlaeufer.example)).
+Einrichtung für den Betreiber:
+[Drehbuch](../../docs/rollout/uems-erste-freigabe.md) §14.
+
+| Eigenschaft | Umsetzung |
+|---|---|
+| Neustart | Sequenz, Messzeit und Zählerstand folgen aus der Minute seit 1970. Nach dem Neustart gibt es keinen Reset und keinen Zählerbruch |
+| Broker-Trennung | paho verbindet neu. QoS-1-Umschläge warten in der Warteschlange, höchstens ein Tag |
+| Ende | SIGTERM/SIGINT → beide Boxen trennen, Exit 0 |
+| Probe | `python uems_dauerlaeufer.py --probe` → Exit 0, wenn das Lebenszeichen jünger als drei Takte ist |
+| Datenmenge | `--menge`: 2 880 Umschläge, 12 960 Samples, 2 577 600 Byte Nutzlast je Tag (≈ 2,6 MB) |
+| Image | `docker build -f Dockerfile.dauerlaeufer .`: ohne root, `paho-mqtt==2.1.0`, ohne Zugangsdaten |
+
+```bash
+PYTHONPATH=. python3 -m pytest test_uems_dauerlaeufer.py -q   # braucht paho-mqtt nicht
+```
+
+## Demo: die Mess-Seite der Box Halle 1 (Messen-Bau m2)
+
+`uems_messbox.py` steht in der Demo neben der simulierten v1-Box der Anlage Halle 1 (`edge-sim-ahrenberg-halle1`).
+Sie ist die Mess-Seite derselben Box: sie liest den PV-Ertragszähler des Hybrid-Wechselrichters (Dach Halle 1), aus
+dem die Messstelle MS-03 „PV-Erzeugung Dach Halle 1“ automatisch liest.
+Den Weg legt der Rundgang über die Routen an, wie bei einem Messkunden (`docs/rollout/uems-erste-freigabe.md` §14.2):
+„Vorschlag übernehmen“ (Datenquelle des Wechselrichters und Zuständigkeit der Box), „Eigenen Messwert hinzufügen“
+(Register 3000) und MS-03 mit führender Quelle ab der nächsten Mitternacht.
+Die Plattform stellt die Auswahl zu, die Box lernt sie wie eine echte Box, quittiert und sendet genau die zugestellten
+Schlüssel.
+Werte gibt es erst ab der Quittung: Tag und Woche von MS-03 füllen sich ab dem ersten ganzen Tag Tag für Tag.
+
+| Eigenschaft | Umsetzung |
+|---|---|
+| Zähler | Zählerstand in 0,1 kWh (u32, Eingangsregister 3000), Kadenz aus der Auswahl (fünf Minuten) |
+| Leistung | Sonnenstand am Standort (Tageslänge und Höhe je Jahreszeit) × Wetter je Tag; nur eine Funktion der Zeit |
+| Neustart | Zählerstand und Sequenz folgen aus der Zeit: kein Zählersprung, kein Sequenz-Reset |
+| Nachliefern | nach dem Lernen die letzten 160 Stunden (unter der Frist von sieben Tagen): schließt die Lücke eines Ausfalls; Werte vor der Auswahl verwirft der Writer, dieselben Werte noch einmal schreiben nichts |
+| Image | `docker build -f Dockerfile.messbox .`: ohne root, `paho-mqtt==2.1.0`, ohne Zugangsdaten |
+
+```bash
+python3 -m pytest test_uems_messbox.py -q   # braucht paho-mqtt nicht
+VP_MESSBOX_TENANT=… VP_MESSBOX_SITE=… VP_MESSBOX_DEVICE=… python3 uems_messbox.py --tag 2026-10-06
+```

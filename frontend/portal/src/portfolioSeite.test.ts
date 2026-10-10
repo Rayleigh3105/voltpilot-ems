@@ -82,6 +82,11 @@ describe('energieAnlagen · Erzeugung je Anlage', () => {
     expect(nb(z[1].unter)).toBe('Verbrauch 4,0 kWh · 75 % selbst versorgt');
   });
 
+  it('eine Quote außerhalb 0…100 % heißt nie „selbst versorgt“ — sie trägt den Satz des Bilanz-Vertrags (AP-10 E16 Nr. 5)', () => {
+    const [z] = energieAnlagen([{ siteId: 'u', name: 'Unplausibel', history: hist([eimer('2026-07-01T00:00:00Z', 5, 4, 1)], -20) }]);
+    expect(nb(z.unter)).toBe('Verbrauch 4,0 kWh · Messwerte passen nicht zusammen (−20 %)');
+  });
+
   it('eine Anlage ohne Werte ist nie 0 — sie trägt ihren Grund', () => {
     const z = energieAnlagen(EINGABEN);
     const leer = z.find((x) => x.id === 'l')!;

@@ -7,14 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.io.IOException;
-import java.lang.reflect.InvocationHandler;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.lang.reflect.Proxy;
 import java.nio.file.Path;
-import java.sql.Connection;
-import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
@@ -24,29 +17,26 @@ import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
-import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.config.BeanPostProcessor;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DelegatingDataSource;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -89,6 +79,7 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers(disabledWithoutDocker = true)
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("local")
+@Import(AbfragenZaehlwerk.class)
 class MessstelleRegisterApiTest {
 
     private static final String APP_USER = "voltpilot_app";
@@ -141,84 +132,9 @@ class MessstelleRegisterApiTest {
 
     // ---- Der Abfragen-Zähler ------------------------------------------------------------------
 
-    /**
-     * Zählt, WELCHE Anweisungen die App-Verbindung schickt — der Beleg für „eine Abfrage, keine
-     * N+1“. Er hängt AUSSERHALB von {@code TenantAwareDataSource}: dessen
-     * {@code set_config('app.tenant_id', …)} läuft auf der rohen Verbindung und wird nicht gezählt.
-     */
-    @TestConfiguration
-    static class Zaehlwerk {
-
-        @Bean
-        static BeanPostProcessor abfragenZaehler() {
-            return new BeanPostProcessor() {
-                @Override
-                public Object postProcessAfterInitialization(Object bean, String name) {
-                    return "dataSource".equals(name) && bean instanceof DataSource ds
-                            ? new ZaehlendeDataSource(ds) : bean;
-                }
-            };
-        }
-    }
-
-    private static final List<String> ABFRAGEN = Collections.synchronizedList(new ArrayList<>());
-    private static volatile boolean zaehlen;
-
-    static class ZaehlendeDataSource extends DelegatingDataSource {
-
-        ZaehlendeDataSource(DataSource ziel) {
-            super(ziel);
-        }
-
-        @Override
-        public Connection getConnection() throws SQLException {
-            return verbindung(super.getConnection());
-        }
-
-        @Override
-        public Connection getConnection(String benutzer, String kennwort) throws SQLException {
-            return verbindung(super.getConnection(benutzer, kennwort));
-        }
-    }
-
-    private static Connection verbindung(Connection c) {
-        return (Connection) Proxy.newProxyInstance(MessstelleRegisterApiTest.class.getClassLoader(),
-                new Class<?>[] {Connection.class}, new Handler(c, true));
-    }
-
-    /** Zählt beim Vorbereiten (PreparedStatement) bzw. beim Ausführen (Statement) genau einmal. */
-    private record Handler(Object ziel, boolean verbindung) implements InvocationHandler {
-
-        @Override
-        public Object invoke(Object proxy, Method methode, Object[] args) throws Throwable {
-            String name = methode.getName();
-            String sql = args != null && args.length > 0 && args[0] instanceof String s ? s : null;
-            if (zaehlen && sql != null
-                    && (verbindung ? name.startsWith("prepare") : name.startsWith("execute"))) {
-                ABFRAGEN.add(sql);
-            }
-            Object ergebnis;
-            try {
-                ergebnis = methode.invoke(ziel, args);
-            } catch (InvocationTargetException e) {
-                throw e.getCause();
-            }
-            return verbindung && ergebnis instanceof Statement st && "createStatement".equals(name)
-                    ? Proxy.newProxyInstance(MessstelleRegisterApiTest.class.getClassLoader(),
-                            new Class<?>[] {Statement.class}, new Handler(st, false))
-                    : ergebnis;
-        }
-    }
-
+    /** Was die App-Verbindung schickt ({@link AbfragenZaehlwerk}, eingebunden über {@code @Import}). */
     private List<String> abfragen(Runnable was) {
-        ABFRAGEN.clear();
-        zaehlen = true;
-        try {
-            was.run();
-        } finally {
-            zaehlen = false;
-        }
-        return List.copyOf(ABFRAGEN);
+        return AbfragenZaehlwerk.zaehle(was).abfragen();
     }
 
     // ---- Gerüst -------------------------------------------------------------------------------
@@ -371,6 +287,8 @@ class MessstelleRegisterApiTest {
             JsonNode beobachtung = zeile.get("beobachtung");
             if ("berechnet".equals(soll.get("art").asText())) {
                 assertThat(beobachtung.isNull()).as(kz + " berechnet hat keine Beobachtung (AP-10)").isTrue();
+                // Ohne Formel am Tag gibt es keine Berechnung (AP-10 IP-9) — nie ein erfundenes „Vollständig“.
+                assertThat(zeile.get("berechnung").isNull()).as(kz + " ohne Formel keine Berechnung").isTrue();
             } else if (quelleSoll == null) {
                 assertThat(beobachtung.get("zustand").asText()).as(kz).isEqualTo("keine_datenquelle");
                 assertThat(beobachtung.get("text").asText()).as(kz).isEqualTo("Keine Datenquelle");
@@ -400,23 +318,21 @@ class MessstelleRegisterApiTest {
             }
         }
 
-        // Das Aggregat „x von y“ — nur die GEMESSENEN stehen im Nenner (berechnete kommen mit AP-10).
+        // Das Aggregat „x von y“ — seit AP-10 IP-9 stehen auch die BERECHNETEN im Nenner (bis dahin stand
+        // hier „berechnete kommen mit AP-10“): ohne Formel wie eine gemessene ohne Quelle, nie im Zähler.
         Map<String, Integer> jeStandort = new LinkedHashMap<>();
-        int gemessen = 0;
+        int alle = 0;
         for (JsonNode soll : referenz.get("messstellen")) {
-            if ("berechnet".equals(soll.get("art").asText())) {
-                continue;
-            }
-            gemessen++;
+            alle++;
             String st = standortVon(ortAm(soll.get("kennzeichen").asText(), tag));
             if (st != null) {
                 jeStandort.merge(st, 1, Integer::sum);
             }
         }
-        assertThat(antwort.at("/aggregat/unternehmen/gesamt").asInt()).isEqualTo(gemessen);
+        assertThat(antwort.at("/aggregat/unternehmen/gesamt").asInt()).isEqualTo(alle);
         assertThat(antwort.at("/aggregat/unternehmen/erfuellt").asInt()).isZero();
         assertThat(antwort.at("/aggregat/unternehmen/text").asText())
-                .isEqualTo("0 von " + gemessen + " Messstellen liefern Daten");
+                .isEqualTo("0 von " + alle + " Messstellen liefern Daten");
         Map<String, Integer> gezaehlt = new LinkedHashMap<>();
         antwort.get("aggregat").get("standorte").forEach(a -> gezaehlt.put(a.get("kurzzeichen").asText(),
                 a.get("gesamt").asInt()));
@@ -465,6 +381,34 @@ class MessstelleRegisterApiTest {
         assertThat(nachher.get("id")).isEqualTo(vorher.get("id"));
     }
 
+    /**
+     * Messen PR5: {@code letzterMonat=true} gibt JEDER Zeile den Monat vor dem Stichtag (Oktober 2026) mit genau dem
+     * Schritt, den {@code …/werte?raster=monat} für sie zeigt - gemessen mit Gerät, gemessen ohne Quelle, berechnet;
+     * keine zweite Rechnung. Ohne den Parameter fehlt das Feld, und das Register bleibt Zeichen für Zeichen dasselbe.
+     */
+    @Test
+    void derLetzteMonatIstDerSchrittDerWerteRoute() {
+        Ahrenberg ah = ahrenberg();
+        JsonNode mit = register(ah.wer(), "?letzterMonat=true&stichtag=" + NACH_DEM_WECHSEL);
+        JsonNode ohne = register(ah.wer(), "?stichtag=" + NACH_DEM_WECHSEL);
+        assertThat(mit.get("register")).hasSize(ohne.get("register").size()).isNotEmpty();
+        for (JsonNode z : mit.get("register")) {
+            String kz = z.get("kennzeichen").asText();
+            JsonNode monat = z.get("letzter_monat");
+            assertThat(monat.get("monat").asText()).as(kz).isEqualTo("2026-10");
+            assertThat(monat.has("ausserhalb_zugriff")).as(kz).isFalse();
+            JsonNode schritt = ok(rufe(HttpMethod.GET, "/messstellen/" + kz
+                    + "/werte?raster=monat&von=2026-10-01&bis=2026-10-31", ah.wer())).get("werte").get(0);
+            assertThat(monat.get("wert")).as(kz).isEqualTo(schritt);
+            assertThat(monat.get("zeitzone").asText()).as(kz).isEqualTo("Europe/Berlin");
+            com.fasterxml.jackson.databind.node.ObjectNode ohneMonat = z.deepCopy();
+            ohneMonat.remove("letzter_monat");
+            assertThat(ohneMonat).as(kz).isEqualTo(zeile(ohne, kz));
+        }
+        assertThat(ohne.toString()).doesNotContain("letzter_monat");
+        abgelehnt(rufe(HttpMethod.GET, "/messstellen?letzterMonat=1", ah.wer()), "letzterMonat");
+    }
+
     /** Ohne Stichtag gilt jetzt: der Tag von heute in der Zeitzone der Schnittstelle. */
     @Test
     void ohneStichtagGiltJetzt() {
@@ -480,8 +424,9 @@ class MessstelleRegisterApiTest {
 
     /**
      * Jeder Filter des Berichts (§5.16): Standort (Kurzzeichen ODER ID), Ort mit seinem Teilbaum,
-     * Anlage, Zustand, „ohne Quelle“ — und ihre Kombination. „Ohne Quelle“ findet MS-21 (E8), nie
-     * eine berechnete: die hat keine Quelle, weil sie gerechnet wird.
+     * Anlage, Zustand, „ohne Quelle“ — und ihre Kombination. „Ohne Quelle“ findet MS-21 (E8) und MS-23
+     * (Referenz 1.6: eingerichtet, Quelle erst ab 01.03.2027), nie eine berechnete: die hat keine Quelle,
+     * weil sie gerechnet wird.
      */
     @Test
     void dieFilterSchneidenStandortOrtAnlageZustandUndOhneQuelle() {
@@ -513,12 +458,13 @@ class MessstelleRegisterApiTest {
         // Zustand: die berechneten sind bis AP-10 Entwürfe (ihre Formel fehlt), die anderen aktiv.
         assertThat(kennzeichen(register(ah.wer(), am + "&zustand=entwurf")))
                 .containsExactly("MS-09", "MS-15", "MS-19", "MS-20", "MS-22");
-        assertThat(kennzeichen(register(ah.wer(), am + "&zustand=aktiv"))).hasSize(17).contains("MS-21");
+        assertThat(kennzeichen(register(ah.wer(), am + "&zustand=aktiv"))).hasSize(18).contains("MS-21", "MS-23");
         assertThat(kennzeichen(register(ah.wer(), am + "&zustand=archiviert"))).isEmpty();
 
-        // Ohne Quelle: MS-21 (Gas, manuelle Ablesung) — keine berechnete.
-        assertThat(kennzeichen(register(ah.wer(), am + "&ohneQuelle=true"))).containsExactly("MS-21");
-        assertThat(kennzeichen(register(ah.wer(), am + "&ohneQuelle=false"))).hasSize(22);
+        // Ohne Quelle: MS-21 (Gas, manuelle Ablesung) und MS-23 (GR-19 erst 2027) — keine berechnete.
+        assertThat(kennzeichen(register(ah.wer(), am + "&ohneQuelle=true"))).containsExactly("MS-21", "MS-23");
+        assertThat(kennzeichen(register(ah.wer(), am + "&ohneQuelle=false")))
+                .hasSize(referenz.get("messstellen").size());
         // Vor dem 01.10.2026 hatte MS-10 seine Quelle noch nicht — dann sagt das Register das.
         assertThat(kennzeichen(register(ah.wer(), "?stichtag=2026-09-30&ohneQuelle=true")))
                 .contains("MS-10", "MS-21");
@@ -619,6 +565,56 @@ class MessstelleRegisterApiTest {
         // Und am nächsten Tag trägt der Satz das Datum (Zeitzone des Standorts).
         assertThat(zeile(register(b.wer(), "?stichtag=2026-05-02T08:00:00Z"), "MS-0001")
                 .at("/beobachtung/text").asText()).isEqualTo("Liefert keine Daten seit 01.05.2026 10:00 Uhr");
+    }
+
+    /**
+     * Werte kommen an der Box an, gehören aber zu keiner Reihe (Untersuchung Messkunde-Portalweg, verdeckende
+     * Bedingung 1): die Zeile sagt NICHT „Liefert Daten“, sondern was das System sieht — der Zustand spricht
+     * über die Reihe, {@code zuordnung} benennt den Fall, der letzte Wert bleibt. Die Werte-Karte trägt dasselbe
+     * Wort; ihre Schritte, Zahlen und Gründe bleiben. Kommen die Werte zugeordnet an, ist die Zeile wieder
+     * Zeichen für Zeichen die eines liefernden Zählers — ohne das Feld.
+     */
+    @Test
+    void werteOhneReiheSindNichtLiefertDaten() {
+        Buehne b = buehne("Nicht zugeordnet", 60);
+        boxWert(b, "2026-05-01T08:00:00Z", 500.0);
+        boxWert(b, "2026-05-01T08:01:00Z", 501.0);
+
+        JsonNode vorher = zeile(register(b.wer(), "?stichtag=2026-05-01T08:02:00Z"), "MS-0001");
+        assertThat(vorher.at("/beobachtung/zustand").asText()).as("die Reihe hat nichts")
+                .isEqualTo("wartet_auf_erste_daten");
+        assertThat(vorher.at("/beobachtung/zuordnung").asText()).isEqualTo("nicht_zugeordnet");
+        assertThat(vorher.at("/beobachtung/text").asText())
+                .isEqualTo("Daten kommen an – noch keiner Messreihe zugeordnet");
+        assertThat(vorher.at("/letzter_wert/wert").asDouble()).as("keine Zahl ändert sich").isEqualTo(501.0);
+        assertThat(register(b.wer(), "?stichtag=2026-05-01T08:02:00Z").at("/aggregat/unternehmen/erfuellt").asInt())
+                .as("zählt nicht als liefernd").isZero();
+
+        JsonNode werte = ok(rufe(HttpMethod.GET, "/messstellen/MS-0001/werte?raster=tag&von=2026-05-01&bis=2026-05-01",
+                b.wer()));
+        assertThat(werte.get("zuordnung").asText()).isEqualTo("nicht_zugeordnet");
+        assertThat(werte.at("/werte/0/menge").isNull()).as("keine Zahl " + werte.at("/werte/0")).isTrue();
+        assertThat(werte.at("/werte/0/grund").isNull()).as("kein Schritt bekommt einen Grund").isTrue();
+
+        // Ohne Werte an der Box: kein Fall, das Wort fehlt (null an der Werte-Route, kein Feld im Register).
+        JsonNode frueher = ok(rufe(HttpMethod.GET,
+                "/messstellen/MS-0001/werte?raster=tag&von=2026-04-30&bis=2026-04-30", b.wer()));
+        assertThat(frueher.get("zuordnung").isNull()).isTrue();
+
+        // Nach der Übernahme kommen die Werte zugeordnet an: „Liefert Daten“, und die Zeile ist die eines
+        // liefernden Zählers ohne Box-Werte — Zeichen für Zeichen.
+        wert(b, "2026-05-01T08:02:00Z", 502.0, "good");
+        JsonNode nachher = zeile(register(b.wer(), "?stichtag=2026-05-01T08:03:00Z"), "MS-0001");
+        assertThat(nachher.at("/beobachtung/zustand").asText()).isEqualTo("liefert");
+        assertThat(nachher.at("/beobachtung/text").asText()).isEqualTo("Liefert Daten");
+        assertThat(nachher.get("beobachtung").has("zuordnung")).as("das Feld fehlt ohne den Fall").isFalse();
+        assertThat(nachher.at("/letzter_wert/wert").asDouble()).isEqualTo(502.0);
+
+        Buehne bestand = buehne("Bestand zugeordnet", 60);
+        wert(bestand, "2026-05-01T08:02:00Z", 502.0, "good");
+        JsonNode soll = zeile(register(bestand.wer(), "?stichtag=2026-05-01T08:03:00Z"), "MS-0001");
+        assertThat(nachher.get("beobachtung")).isEqualTo(soll.get("beobachtung"));
+        assertThat(nachher.get("letzter_wert")).isEqualTo(soll.get("letzter_wert"));
     }
 
     /**
@@ -887,14 +883,29 @@ class MessstelleRegisterApiTest {
         wert(b, b.erste(), zeit, zahl, qualitaet);
     }
 
-    /** EIN Messwert, wie ihn der Writer ablegt — je Box und Kanal, nie je Messstelle. */
+    /**
+     * EIN Messwert, wie ihn der Writer ablegt, wenn die Komponente eine Datenquelle hat: an seiner Box UND in der
+     * Reihe der Komponente ({@code entity_id}, Rolle {@code fuehrend}) — ein zugeordneter Wert.
+     */
     private void wert(Buehne b, String kennzeichen, String zeit, double zahl, String qualitaet) {
         root.update("INSERT INTO device_measurement_sample (time, tenant_id, site_id, device_id, point_key, "
-                + "raw_numeric, decoded_numeric, quality, catalog_version, edge_sequence, aggregation_kind) "
-                + "VALUES (?,?,?,?,?,?,?,?,'2026.08.26.3',?,'counter')",
+                + "raw_numeric, decoded_numeric, quality, catalog_version, edge_sequence, aggregation_kind, "
+                + "entity_id, role) VALUES (?,?,?,?,?,?,?,?,'2026.08.26.3',?,'counter',?,'fuehrend')",
                 Timestamp.from(Instant.parse(zeit)), b.wer().kundenbereich(), b.anlage(),
                 b.boxen().get(kennzeichen), ENERGIE_BEZUG, zahl, zahl, qualitaet,
-                Math.abs(zeit.hashCode()) % 100000);
+                Math.abs(zeit.hashCode()) % 100000, b.komponenten().get(kennzeichen));
+    }
+
+    /**
+     * EIN Messwert, der an der Box ankommt, aber zu keiner Reihe gehört — der Writer legt ihn als Bestandswert ohne
+     * {@code entity_id} ab, weil der Komponente die Datenquelle fehlt (Messkunde vor Schritt 2 des Assistenten).
+     */
+    private void boxWert(Buehne b, String zeit, double zahl) {
+        root.update("INSERT INTO device_measurement_sample (time, tenant_id, site_id, device_id, point_key, "
+                + "raw_numeric, decoded_numeric, quality, catalog_version, edge_sequence, aggregation_kind) "
+                + "VALUES (?,?,?,?,?,?,?,'good','2026.08.26.3',?,'counter')",
+                Timestamp.from(Instant.parse(zeit)), b.wer().kundenbereich(), b.anlage(),
+                b.boxen().get(b.erste()), ENERGIE_BEZUG, zahl, zahl, Math.abs(zeit.hashCode()) % 100000);
     }
 
     /**
@@ -974,10 +985,13 @@ class MessstelleRegisterApiTest {
             }
         }
         Map<String, UUID> komponenten = new LinkedHashMap<>();
+        Set<String> gemeinsam = komponentenDerMitsteuerndenBoxen();
         for (JsonNode k : referenz.get("komponenten")) {
             String kz = k.get("kennzeichen").asText();
-            if ("K-2".equals(kz) || "K-8.7".equals(kz)) {
-                continue; // K-2 meldet der Wechselrichter mit; K-8.7 kommt erst 2027 (A18).
+            if ("K-2".equals(kz) || "K-8.7".equals(kz) || "K-15".equals(kz) || gemeinsam.contains(kz)) {
+                // K-2 meldet der Wechselrichter mit; K-8.7 kommt erst 2027 (A18), K-15 (GR-19 an DQ-3,
+                // Referenz 1.6) ebenso erst am 01.03.2027 - bis dahin trägt MS-23 keine Datenquelle.
+                continue;
             }
             komponenten.put(kz, komponente(t, anlagen.get(k.get("anlage").asText()), k));
         }
@@ -1035,6 +1049,39 @@ class MessstelleRegisterApiTest {
                 .containsExactly("GR-1", "GR-2", "GR-3", "GR-4", "GR-5", "GR-6");
         ahrenberg = new Ahrenberg(t, standorte, anlagen, messstellen, komponenten, geraeteJeKomponente(t));
         return ahrenberg;
+    }
+
+    /**
+     * Die EINE Ausnahme vom Anlegen: die Komponenten der mitsteuernden Boxen einer gemeinsamen Steuerung
+     * (Referenzunternehmen 1.5, AP-15 E8) — hinter den Datenquellen, für die eine Box mit der Rolle
+     * {@code steuert_mit} zuständig ist. Das Register zeigt den Bestand ohne gemeinsame Steuerung.
+     */
+    private static Set<String> komponentenDerMitsteuerndenBoxen() {
+        Set<String> boxen = new HashSet<>();
+        referenz.path("gemeinsame_steuerungen").forEach(v -> v.path("mitglieder").forEach(m -> {
+            if ("steuert_mit".equals(m.path("rolle").asText())) {
+                boxen.add(m.path("box").asText());
+            }
+        }));
+        Set<String> quellen = new HashSet<>();
+        referenz.path("zuordnungen").forEach(z -> {
+            if ("datenquelle_box".equals(z.path("art").asText()) && boxen.contains(z.path("nach").asText())) {
+                quellen.add(z.path("von").asText());
+            }
+        });
+        Set<String> geraete = new HashSet<>();
+        referenz.path("geraete").forEach(g -> {
+            if (quellen.contains(g.path("datenquelle").asText())) {
+                geraete.add(g.path("kennzeichen").asText());
+            }
+        });
+        Set<String> out = new HashSet<>();
+        referenz.path("komponenten").forEach(k -> {
+            if (geraete.contains(k.path("geraet").asText())) {
+                out.add(k.path("kennzeichen").asText());
+            }
+        });
+        return out;
     }
 
     /** Erst die Hauptzähler, dann die, die auf sie zeigen — in der Reihenfolge der Referenz. */

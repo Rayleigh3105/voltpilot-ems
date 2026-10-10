@@ -3,6 +3,8 @@ package com.voltpilot.api.web;
 import com.voltpilot.api.profile.SiteProfileService;
 import com.voltpilot.api.web.dto.SiteDto;
 import com.voltpilot.api.web.dto.SiteProfilesDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
@@ -63,6 +65,7 @@ public class SiteProfileController {
     }
 
     @PutMapping("/profiles")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public SiteProfilesDto set(@PathVariable UUID siteId,
             @RequestBody ProfileStateRequest request) {
         if (request == null || request.profile() == null || request.profile().isBlank()) {
@@ -79,6 +82,7 @@ public class SiteProfileController {
      * {@link SiteProfileService#setProfil}).
      */
     @PutMapping("/anwendungs-preset")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public SiteDto setAnwendungsPreset(@PathVariable UUID siteId,
             @RequestBody(required = false) AnwendungsPresetRequest request) {
         String profil = request == null || request.profil() == null ? null

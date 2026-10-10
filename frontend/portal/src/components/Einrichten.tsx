@@ -4,6 +4,7 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import type { AufbauKategorie } from '../aufbauBaum';
 import { AufbauSymbol } from './AufbauTabelle';
+import { Recht } from './Recht';
 import './Einrichten.css';
 
 /**
@@ -150,10 +151,16 @@ export function EinrichtenFuss({
   grund: string | null;
   /** Ohne = es gibt nichts abzubrechen (die Ladesäule legt nichts an). */
   onAbbrechen?: () => void;
-  primaer: { label: string; onClick: () => void; disabled?: boolean; testId?: string };
+  /** `aktion`: die Rechte-Weiche (AP-03 IP-12) für einen schreibenden Knopf; ohne = kein Schreibweg. */
+  primaer: { label: string; onClick: () => void; disabled?: boolean; testId?: string; aktion?: string };
   /** Eine zweite Handlung neben „Abbrechen" (selten). */
   zweit?: ReactNode;
 }) {
+  const knopf = (
+    <Button onClick={primaer.onClick} disabled={primaer.disabled} data-testid={primaer.testId}>
+      {primaer.label}
+    </Button>
+  );
   return (
     <div className="vp-ein-fuss">
       {grund && (
@@ -168,9 +175,7 @@ export function EinrichtenFuss({
           </Button>
         )}
         {zweit}
-        <Button onClick={primaer.onClick} disabled={primaer.disabled} data-testid={primaer.testId}>
-          {primaer.label}
-        </Button>
+        {primaer.aktion ? <Recht aktion={primaer.aktion}>{knopf}</Recht> : knopf}
       </div>
     </div>
   );

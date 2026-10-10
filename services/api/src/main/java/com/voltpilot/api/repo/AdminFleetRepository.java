@@ -1,5 +1,6 @@
 package com.voltpilot.api.repo;
 
+import com.voltpilot.api.uems.GrenzeAufloesung;
 import com.voltpilot.api.web.dto.ControlStatusDto;
 import com.voltpilot.api.web.dto.CurtailmentStatusDto;
 import java.math.BigDecimal;
@@ -55,9 +56,40 @@ public class AdminFleetRepository {
         this.jdbc = adminJdbcTemplate;
     }
 
+    /** IP-15: gültige Unterstützungen, nicht offene Anfragen oder künftige Gewährungen. */
+    public Map<UUID, Instant> unterstuetzungBis() {
+        Map<UUID, Instant> aus = new HashMap<>();
+        jdbc.query("SELECT tenant_id, max(endet_am) AS ende FROM zugriff WHERE rolle = 'unterstuetzer' "
+                + "AND public.zugriff_zeitraum(gueltig_ab, endet_am, beendet_am) @> now() GROUP BY tenant_id",
+                (org.springframework.jdbc.core.RowCallbackHandler) rs -> aus.put(rs.getObject("tenant_id", UUID.class),
+                        rs.getTimestamp("ende").toInstant()));
+        return aus;
+    }
+
+    /** Bestehender Admin-Zaun; nur Auswahlfakten für Anfrage/Notfall vor der Gewährung. */
+    public record UnterstuetzungStandort(UUID id, UUID tenantId, String name) {}
+    public List<UnterstuetzungStandort> unterstuetzungStandorte() {
+        return jdbc.query("SELECT id, tenant_id, name FROM standort WHERE zustand <> 'archiviert' ORDER BY name, id",
+                (rs, n) -> new UnterstuetzungStandort(rs.getObject("id", UUID.class),
+                        rs.getObject("tenant_id", UUID.class), rs.getString("name")));
+    }
+
     /** Eine Anlage samt ihrem Mandanten - die Zeilenbasis des Pulses. */
     public record FleetSiteRow(UUID siteId, String siteName, UUID tenantId, String tenantName,
             String plantKind, boolean netzladenErlaubt, String tarifArt) {
+    }
+
+    /** Eine aktive Box mit ihren eigenen, nie anlagenweit geratenen Ständen. */
+    public record FleetBoxRow(UUID deviceId, UUID siteId, String externalRef, String name,
+            Instant lastSeenAt, EdgeVersionRow edge, UpdateStatusRow update, List<String> supports) {
+        public FleetBoxRow(UUID deviceId, UUID siteId, String externalRef, String name,
+                Instant lastSeenAt, EdgeVersionRow edge, UpdateStatusRow update) {
+            this(deviceId, siteId, externalRef, name, lastSeenAt, edge, update, null);
+        }
+    }
+
+    /** Eingänge der gemeinsamen {@code FuehrendeBoxAbleitung}, je Anlage. */
+    public record LeadFacts(UUID storedDeviceId, UUID batteryDeviceId) {
     }
 
     /** Geräte-Zustand einer Anlage (identische Semantik wie im Overview). */
@@ -120,10 +152,91 @@ public class AdminFleetRepository {
     }
 
     /**
-     * Geräte-Zahlen je Anlage. Lebendigkeit hängt an {@code max(received_at)} -
-     * der ANKUNFT, nie am Beobachtungszeitpunkt: eine Edge, die ihren Puffer
-     * nachspielt, trägt stundenalte Beobachtungszeiten und ist trotzdem online
-     * (Migration V20260703000000). Wortgleich mit
+     * Alle aktiven Boxen der Plattform. Versions- und Lebendigkeitsstand bleiben
+     * je Box; ein {@code LEFT JOIN LATERAL} hält auch eine noch nie meldende Box
+     * sichtbar. Damit kann die Admin-Flotte Anlagen nur gruppieren, ohne ihre
+     * Boxen wieder zu einer vermeintlichen Anlagen-Version zusammenzufalten.
+     */
+    public List<FleetBoxRow> boxes() {
+        return jdbc.query("""
+                SELECT d.id AS device_id, d.site_id, d.external_ref, d.name, d.supports,
+                       coalesce(d.device_status_seen_at, telemetry.last_seen) AS last_seen,
+                       edge.core_version, edge.palette_version,
+                       edge.reported_at AS edge_reported_at,
+                       update.version, update.backend, update.current_version,
+                       update.target_version, update.state, update.reason,
+                       update.last_known_good, update.reported_at AS update_reported_at
+                  FROM device d
+                  LEFT JOIN LATERAL (
+                       SELECT max(t.received_at) AS last_seen
+                         FROM telemetry t WHERE t.device_id = d.id
+                  ) telemetry ON true
+                  LEFT JOIN LATERAL (
+                       SELECT e.core_version, e.palette_version, e.reported_at
+                         FROM device_edge_version e WHERE e.device_id = d.id
+                        ORDER BY e.reported_at DESC LIMIT 1
+                  ) edge ON true
+                  LEFT JOIN LATERAL (
+                       SELECT u.version, u.backend, u.current_version, u.target_version,
+                              u.state, u.reason, u.last_known_good, u.reported_at
+                         FROM device_update_status u WHERE u.device_id = d.id
+                        ORDER BY u.reported_at DESC LIMIT 1
+                  ) update ON true
+                 WHERE d.ausgebaut_am IS NULL
+                 ORDER BY d.site_id, d.created_at, d.id
+                """, (rs, i) -> {
+                    Timestamp lastSeen = rs.getTimestamp("last_seen");
+                    Timestamp edgeReported = rs.getTimestamp("edge_reported_at");
+                    Timestamp updateReported = rs.getTimestamp("update_reported_at");
+                    return new FleetBoxRow(
+                            rs.getObject("device_id", UUID.class),
+                            rs.getObject("site_id", UUID.class),
+                            rs.getString("external_ref"),
+                            rs.getString("name"),
+                            lastSeen == null ? null : lastSeen.toInstant(),
+                            edgeReported == null ? null : new EdgeVersionRow(
+                                    rs.getString("core_version"),
+                                    rs.getString("palette_version"),
+                                    edgeReported.toInstant()),
+                            updateReported == null ? null : new UpdateStatusRow(
+                                    rs.getString("version"),
+                                    rs.getString("backend"),
+                                    rs.getString("current_version"),
+                                    rs.getString("target_version"),
+                                    rs.getString("state"),
+                                    rs.getString("reason"),
+                                    rs.getString("last_known_good"),
+                                    updateReported.toInstant()),
+                            com.voltpilot.api.uems.EdgeSupports.fromJson(rs.getString("supports")));
+                });
+    }
+
+    /**
+     * Gespeicherte Wahl und primäre Speicher-Box je Anlage. Die eigentliche
+     * Vorrang-Regel bleibt in {@code FuehrendeBoxAbleitung}; dieses Admin-Read
+     * liefert nur deren Cross-Tenant-Eingänge.
+     */
+    public Map<UUID, LeadFacts> leadFactsPerSite() {
+        Map<UUID, LeadFacts> out = new HashMap<>();
+        jdbc.query("""
+                SELECT s.id AS site_id, s.lead_device_id, battery.device_id AS battery_device_id
+                  FROM site s
+                  LEFT JOIN LATERAL (
+                       SELECT a.device_id FROM asset a
+                        WHERE a.site_id = s.id AND a.type = 'battery' AND a.is_primary
+                        ORDER BY a.created_at, a.id LIMIT 1
+                  ) battery ON true
+                """, (org.springframework.jdbc.core.RowCallbackHandler) rs -> out.put(
+                        rs.getObject("site_id", UUID.class), new LeadFacts(
+                        rs.getObject("lead_device_id", UUID.class),
+                        rs.getObject("battery_device_id", UUID.class))));
+        return out;
+    }
+
+    /**
+     * Geräte-Zahlen je Anlage. Verbunden folgt der Status-Ankunft je Box; bis
+     * zum ersten Status-Herzschlag einer Bestandsbox bleibt deren jüngste
+     * Telemetrie-Ankunft der Bestandsschutz. Wortgleich mit
      * {@link OverviewRepository#deviceStatsPerSite()} - dieselbe Frage, dieselbe
      * Antwort, nur ohne Mandanten-Zaun.
      */
@@ -131,13 +244,16 @@ public class AdminFleetRepository {
         Map<UUID, DeviceStats> stats = new HashMap<>();
         jdbc.query(
                 "SELECT d.site_id, count(*) AS device_count,"
-                        + " count(*) FILTER (WHERE ls.last_seen >= now() - interval '" + ONLINE_WINDOW + "')"
+                        + " count(*) FILTER (WHERE coalesce(d.device_status_seen_at, ls.last_seen)"
+                        + " >= now() - interval '" + ONLINE_WINDOW + "')"
                         + "   AS online_count,"
-                        + " count(*) FILTER (WHERE ls.last_seen IS NULL) AS waiting_count,"
-                        + " max(ls.last_seen) AS last_seen "
+                        + " count(*) FILTER (WHERE coalesce(d.device_status_seen_at, ls.last_seen) IS NULL)"
+                        + " AS waiting_count,"
+                        + " max(coalesce(d.device_status_seen_at, ls.last_seen)) AS last_seen "
                         + "FROM device d "
                         + "LEFT JOIN LATERAL (SELECT max(received_at) AS last_seen"
                         + "  FROM telemetry t WHERE t.device_id = d.id) ls ON true "
+                        + "WHERE d.ausgebaut_am IS NULL "
                         + "GROUP BY d.site_id",
                 rs -> {
                     Timestamp lastSeen = rs.getTimestamp("last_seen");
@@ -192,7 +308,8 @@ public class AdminFleetRepository {
     /**
      * Der jüngste Steuerungs-Beleg je Anlage - dieselbe Zeile, die
      * {@link ControlStatusRepository#latestForSite} je Anlage liefert, nur
-     * flottenweit in EINER Abfrage ({@code DISTINCT ON}).
+     * flottenweit in EINER Abfrage ({@code DISTINCT ON}) - also auch nur von einer
+     * Box, die nicht ausgebaut ist (UEMS AP-07 IP-11).
      */
     public Map<UUID, ControlStatusDto> controlPerSite() {
         Map<UUID, ControlStatusDto> out = new HashMap<>();
@@ -202,7 +319,9 @@ public class AdminFleetRepository {
                         + "checked_at, control_source, execution_mode, execution_direction, "
                         + "execution_planned_kw, execution_target_kw, cert_source, platform_cert_verdict, "
                         + "platform_cert_model, platform_cert_reason "
-                        + "FROM device_control_status ORDER BY site_id, checked_at DESC",
+                        + "FROM device_control_status s WHERE EXISTS (SELECT 1 FROM device d "
+                        + "  WHERE d.id = s.device_id AND d.ausgebaut_am IS NULL) "
+                        + "ORDER BY site_id, checked_at DESC",
                 rs -> {
                     Timestamp slotStart = rs.getTimestamp("slot_start");
                     out.put(rs.getObject("site_id", UUID.class), new ControlStatusDto(
@@ -236,13 +355,15 @@ public class AdminFleetRepository {
      *
      * <p>Gelesen und abgebildet über {@link CurtailmentStatusRepository#COLUMNS}
      * / {@code map} (dasselbe Paket): die Flotten-Sicht und der Anlagen-Lesepfad
-     * dürfen über DIESELBE Zeile nicht Verschiedenes behaupten.
+     * dürfen über DIESELBE Zeile nicht Verschiedenes behaupten - darum auch
+     * derselbe Filter {@link CurtailmentStatusRepository#BOX_AKTIV}.
      */
     public Map<UUID, CurtailmentStatusDto> curtailmentPerSite() {
         Map<UUID, CurtailmentStatusDto> out = new HashMap<>();
         jdbc.query(
                 "SELECT DISTINCT ON (site_id) site_id, " + CurtailmentStatusRepository.COLUMNS
-                        + " FROM device_curtailment_status ORDER BY site_id, checked_at DESC",
+                        + " FROM device_curtailment_status WHERE " + CurtailmentStatusRepository.BOX_AKTIV
+                        + " ORDER BY site_id, checked_at DESC",
                 rs -> {
                     out.put(rs.getObject("site_id", UUID.class),
                             CurtailmentStatusRepository.map(rs));
@@ -254,13 +375,16 @@ public class AdminFleetRepository {
      * Der zuletzt gemeldete Edge-Stand je Anlage. <b>Keine Zeile heißt
      * „unbekannt", nie „veraltet"</b>: die Edge baut den {@code flows}-Block des
      * Herzschlags erst nach ihrem ersten Deployment-Satz, ein Gerät ohne
-     * ausgerollte Automation meldet also gar keine Version.
+     * ausgerollte Automation meldet also gar keine Version. Der Stand einer
+     * ausgebauten Box ist kein Stand der Anlage (UEMS AP-07 IP-11).
      */
     public Map<UUID, EdgeVersionRow> edgeVersionPerSite() {
         Map<UUID, EdgeVersionRow> out = new HashMap<>();
         jdbc.query(
                 "SELECT DISTINCT ON (site_id) site_id, core_version, palette_version, reported_at "
-                        + "FROM device_edge_version ORDER BY site_id, reported_at DESC",
+                        + "FROM device_edge_version s WHERE EXISTS (SELECT 1 FROM device d "
+                        + "  WHERE d.id = s.device_id AND d.ausgebaut_am IS NULL) "
+                        + "ORDER BY site_id, reported_at DESC",
                 rs -> {
                     out.put(rs.getObject("site_id", UUID.class), new EdgeVersionRow(
                             rs.getString("core_version"),
@@ -277,14 +401,17 @@ public class AdminFleetRepository {
      * genau deshalb sieht diese Abfrage auch die Geräte, auf denen nie eine
      * Automation ausgerollt wurde (das Loch, das Stufe 0 schließt). Beide
      * Blöcke haben ihren eigenen Frische-Anker, und keine Zeile heißt
-     * weiterhin „unbekannt", nie „veraltet".
+     * weiterhin „unbekannt", nie „veraltet". Der Stand einer ausgebauten Box
+     * zählt nicht (UEMS AP-07 IP-11).
      */
     public Map<UUID, UpdateStatusRow> updateStatusPerSite() {
         Map<UUID, UpdateStatusRow> out = new HashMap<>();
         jdbc.query(
                 "SELECT DISTINCT ON (site_id) site_id, version, backend, current_version, "
                         + "target_version, state, reason, last_known_good, reported_at "
-                        + "FROM device_update_status ORDER BY site_id, reported_at DESC",
+                        + "FROM device_update_status s WHERE EXISTS (SELECT 1 FROM device d "
+                        + "  WHERE d.id = s.device_id AND d.ausgebaut_am IS NULL) "
+                        + "ORDER BY site_id, reported_at DESC",
                 rs -> {
                     out.put(rs.getObject("site_id", UUID.class), new UpdateStatusRow(
                             rs.getString("version"),
@@ -317,7 +444,7 @@ public class AdminFleetRepository {
      * Die vom Gerät gemeldeten Quellen je Anlage, nach Gesundheit gezählt -
      * dieselbe Grundlage wie {@code GET /api/v1/sites/{id}/sources}, nur
      * aggregiert. Eine Anlage ohne Meldung ist abwesend („keine Meldung"), nie
-     * „0 gesund".
+     * „0 gesund". Die Meldungen einer ausgebauten Box zählen nicht (UEMS AP-07 IP-11).
      */
     public Map<UUID, SourceCounts> sourceCountsPerSite() {
         Map<UUID, SourceCounts> out = new HashMap<>();
@@ -326,7 +453,9 @@ public class AdminFleetRepository {
                         + "count(*) FILTER (WHERE health = 'ok') AS ok_n, "
                         + "count(*) FILTER (WHERE health = 'stale') AS stale_n, "
                         + "count(*) FILTER (WHERE health NOT IN ('ok', 'stale')) AS never_n "
-                        + "FROM device_source_status GROUP BY site_id",
+                        + "FROM device_source_status s WHERE EXISTS (SELECT 1 FROM device d "
+                        + "  WHERE d.id = s.device_id AND d.ausgebaut_am IS NULL) "
+                        + "GROUP BY site_id",
                 rs -> {
                     out.put(rs.getObject("site_id", UUID.class), new SourceCounts(
                             rs.getInt("total"), rs.getInt("ok_n"), rs.getInt("stale_n"),
@@ -401,17 +530,60 @@ public class AdminFleetRepository {
     }
 
     /**
-     * Die gepflegte Einspeisegrenze je Anlage ({@code site.max_feed_in_kw}, die
-     * statische Kappe am Netzverknüpfungspunkt, FK1). {@code NULL} = nicht
-     * gepflegt (dann ist die gemessene Decke nicht einzuordnen).
+     * Die wirksame Einspeisegrenze je Anlage am heutigen Tag des Standorts. Eine
+     * Abfrage liest Anlagenwert, heutige Bindung und alle Fassungen des gebundenen
+     * Grenzblatts; die EINE Fachregel {@link GrenzeAufloesung} entscheidet danach
+     * in Java. So bleibt der Admin-Leser mandantenübergreifend, aber ohne N+1.
      */
-    public Map<UUID, BigDecimal> maxFeedInPerSite() {
-        Map<UUID, BigDecimal> out = new HashMap<>();
+    public Map<UUID, GrenzeAufloesung.Wirksam> maxFeedInPerSite(Instant jetzt) {
+        Map<UUID, GrenzeAufloesung.Grenzen> anlagen = new HashMap<>();
+        Map<UUID, LocalDate> tage = new HashMap<>();
+        Map<UUID, Boolean> gebunden = new HashMap<>();
+        Map<UUID, List<GrenzeAufloesung.Fassung>> fassungen = new HashMap<>();
         jdbc.query(
-                "SELECT id, max_feed_in_kw FROM site WHERE max_feed_in_kw IS NOT NULL",
+                "WITH jetzt AS (SELECT ?::timestamptz AS zeit), site_zone AS ("
+                        + " SELECT s.id, s.max_feed_in_kw, coalesce(ort.zeitzone, 'Europe/Berlin') AS zeitzone"
+                        + " FROM site s CROSS JOIN jetzt j LEFT JOIN LATERAL ("
+                        + "  SELECT st.zeitzone FROM anlage_standort az"
+                        + "  JOIN standort st ON st.id = az.standort_id AND st.tenant_id = az.tenant_id"
+                        + "  WHERE az.site_id = s.id AND az.tenant_id = s.tenant_id AND az.aufgehoben_am IS NULL"
+                        + "    AND az.gueltig_ab <= (j.zeit AT TIME ZONE st.zeitzone)::date"
+                        + "    AND (az.gueltig_bis IS NULL OR az.gueltig_bis >= (j.zeit AT TIME ZONE st.zeitzone)::date)"
+                        + "  ORDER BY az.gueltig_ab DESC LIMIT 1"
+                        + " ) ort ON true"
+                        + ") SELECT z.id, z.max_feed_in_kw, z.zeitzone, b.id AS bindung_id,"
+                        + " b.gueltig_ab AS bindung_ab, b.gueltig_bis AS bindung_bis,"
+                        + " g.gueltig_ab, g.einspeisegrenze_kw, g.bezugsgrenze_kw, g.einspeisegrenze_keine"
+                        + " FROM site_zone z"
+                        + " LEFT JOIN anlage_netzanschluss b ON b.site_id = z.id AND b.aufgehoben_am IS NULL"
+                        + " LEFT JOIN netzanschluss_grenze g ON g.netzanschluss_id = b.netzanschluss_id"
+                        + "  AND g.tenant_id = b.tenant_id AND g.aufgehoben_am IS NULL"
+                        + " ORDER BY z.id, b.gueltig_ab, g.gueltig_ab",
                 rs -> {
-                    out.put(rs.getObject("id", UUID.class), rs.getBigDecimal("max_feed_in_kw"));
-                });
+                    UUID site = rs.getObject("id", UUID.class);
+                    LocalDate tag = GrenzeAufloesung.tagAm(jetzt, rs.getString("zeitzone"));
+                    anlagen.putIfAbsent(site, new GrenzeAufloesung.Grenzen(rs.getBigDecimal("max_feed_in_kw"), null));
+                    tage.putIfAbsent(site, tag);
+                    UUID bindung = rs.getObject("bindung_id", UUID.class);
+                    LocalDate ab = rs.getObject("bindung_ab", LocalDate.class);
+                    LocalDate bis = rs.getObject("bindung_bis", LocalDate.class);
+                    boolean laeuft = bindung != null && !ab.isAfter(tag) && (bis == null || !bis.isBefore(tag));
+                    if (laeuft) {
+                        gebunden.put(site, true);
+                        LocalDate fassungAb = rs.getObject("gueltig_ab", LocalDate.class);
+                        if (fassungAb != null) {
+                            fassungen.computeIfAbsent(site, ignored -> new ArrayList<>()).add(
+                                    new GrenzeAufloesung.Fassung(fassungAb,
+                                            rs.getBigDecimal("einspeisegrenze_kw"),
+                                            rs.getBigDecimal("bezugsgrenze_kw"),
+                                            rs.getBoolean("einspeisegrenze_keine")));
+                        }
+                    }
+                },
+                Timestamp.from(jetzt));
+        Map<UUID, GrenzeAufloesung.Wirksam> out = new HashMap<>();
+        anlagen.forEach((site, anlage) -> out.put(site, GrenzeAufloesung.aufloesen(anlage,
+                gebunden.getOrDefault(site, false), fassungen.getOrDefault(site, List.of()), tage.get(site))));
         return out;
     }
 

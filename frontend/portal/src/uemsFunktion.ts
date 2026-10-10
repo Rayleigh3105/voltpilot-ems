@@ -457,7 +457,13 @@ export interface MessenEingang {
   /** Wann Messen eingerichtet wurde; einmal gesetzt, bleibt es aktiv. */
   eingerichtetAm: string | null;
   boxen: BoxZustand[];
+  /** Die gemessenen Messstellen der Prüfliste (was fehlt, was blockiert). */
   messstellen: Messstelle[];
+  /**
+   * AP-13 IP-7 (E13 = A): je Zeile des Messstellen-Registers am Standort, wie das Register sie zählt
+   * (`MessstelleRegisterService.aggregatZustand`) — allein daraus entsteht die Datenlage.
+   */
+  registerZeilen: LiefertDatenZustand[];
   anlagen: MessenAnlage[];
   jetzt: string;
   zeitzone?: string;
@@ -497,7 +503,6 @@ export function messen(e: MessenEingang): MessenErgebnis {
       datenlage: null,
     };
   }
-  const reihen: LiefertDatenZustand[] = [];
   const messstellenFehlen: string[] = [];
   let manuell = 0;
   let mitDaten = false;
@@ -515,7 +520,6 @@ export function messen(e: MessenEingang): MessenErgebnis {
       jetzt: e.jetzt,
       zeitzone: zone,
     });
-    reihen.push(r.zustand);
     if (r.zustand === 'liefert') mitDaten = true;
     else if (r.zustand === 'wartet_auf_erste_daten') messstellenFehlen.push(`erste Daten ${m.kennzeichen}`);
     else if (r.zustand === 'liefert_nicht_seit') {
@@ -523,11 +527,7 @@ export function messen(e: MessenEingang): MessenErgebnis {
     }
     // keine_datenquelle: AP-04 E8 — eingerichtet und aktiv, nie eine 0; blockiert nicht.
   }
-  const datenlage =
-    reihen.length === 0 && manuell > 0
-      ? `${manuell} manuell abgelesen`
-      : aggregatLiefertDaten(reihen, 'messstelle').text +
-        (manuell > 0 ? ` · ${manuell} manuell abgelesen` : '');
+  const datenlageText = datenlage(e.registerZeilen, manuell);
 
   if (e.eingerichtetAm !== null) {
     return {
@@ -535,7 +535,7 @@ export function messen(e: MessenEingang): MessenErgebnis {
       seit: e.eingerichtetAm,
       fehlt: [],
       text: `Eingerichtet am ${datum(e.eingerichtetAm, zone)}`,
-      datenlage,
+      datenlage: datenlageText,
     };
   }
   const fehlt: string[] = [];
@@ -547,14 +547,25 @@ export function messen(e: MessenEingang): MessenErgebnis {
     if (a.hauptzaehlerAnzahl === 0) fehlt.push(`Hauptzähler ${a.name}`);
     else if (a.hauptzaehlerAnzahl > 1) fehlt.push(`eindeutiger Hauptzähler ${a.name}`);
   }
-  if (fehlt.length === 0) return { zustand: 'aktiv', seit: null, fehlt: [], text: 'Eingerichtet', datenlage };
+  if (fehlt.length === 0) return { zustand: 'aktiv', seit: null, fehlt: [], text: 'Eingerichtet', datenlage: datenlageText };
   return {
     zustand: 'entwurf',
     seit: null,
     fehlt,
     text: fehltSatz('Noch nicht eingerichtet', fehlt),
-    datenlage,
+    datenlage: datenlageText,
   };
+}
+
+/**
+ * Die Datenlage-Zeile von „Messen & Auswerten" (AP-13 IP-7, E13 = A): „x von y Messstellen liefern Daten" über die
+ * Zeilen des Messstellen-Registers am Standort — dieselbe Zählung wie das Register und der Baustein „Messstellen"
+ * der Übersicht: berechnete zählen mit, „keine Datenquelle" steht im Nenner — dazu manuell abgelesene als Zusatz.
+ * Bis IP-7 zählte die Zeile nur die gemessenen, nicht archivierten Messstellen (W6).
+ */
+export function datenlage(registerZeilen: readonly LiefertDatenZustand[], manuell: number): string {
+  if (registerZeilen.length === 0 && manuell > 0) return `${manuell} manuell abgelesen`;
+  return aggregatLiefertDaten([...registerZeilen], 'messstelle').text + (manuell > 0 ? ` · ${manuell} manuell abgelesen` : '');
 }
 
 // ────────────────────────────────────────────────────────────────── Übergänge

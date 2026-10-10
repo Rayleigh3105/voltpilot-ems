@@ -1,0 +1,245 @@
+/*
+ * Der Ortsbaum „Standort › Gebäude“ (UEMS AP-02 IP-7, Mockup T3, Leerzustand L1).
+ * Klassen mit `vp-ob-`; Name und Kurzzeichen teilen die Klassen des Standort-Kopfs.
+ * ⚠ 375 px: die Bereiche rücken nur 12 px ein (Linie + Abstand) — jede Stufe mehr
+ * kostet dem Namen Breite; Name, Kurzzeichen und Zeile brechen um, der Stift bleibt.
+ * Die Datenlage (heute die Messstellen-Zahl) steht am Telefon als eigene Zeile, ab
+ * 520 px Baumbreite als Spalte rechts — dort, wo T3 „liefert“ zeigt. GEMESSEN
+ * (Vorschau IP-7, Werk Ahrenberg): 1440 px Baum 731 → 566 px, 375 px unverändert 833 px;
+ * als Chip auch am Telefon wären es 883 px (Variante B der Vorschau).
+ */
+
+.vp-ob {
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+  margin-top: var(--vp-c-space-4);
+  padding-top: var(--vp-c-space-4);
+  border-top: 1px solid var(--vp-c-border);
+}
+
+.vp-ob-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--vp-c-space-2) var(--vp-c-space-3);
+}
+
+.vp-ob-titel {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+  line-height: var(--vp-c-lh-title);
+}
+
+.vp-ob-knoepfe {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-2);
+  min-width: 0;
+}
+
+.vp-ob-hinweis {
+  margin: 0 0 var(--vp-c-space-2);
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-14);
+}
+
+.vp-ob-leer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+  padding: var(--vp-c-space-3) var(--vp-c-space-4);
+  border-radius: var(--vp-c-radius-sm);
+  background: var(--vp-c-muted);
+}
+
+.vp-ob-leer-satz {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-ob-baum,
+.vp-ob-kinder {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+
+.vp-ob-baum > .vp-ob-knoten + .vp-ob-knoten {
+  border-top: 1px solid var(--vp-c-border);
+}
+
+.vp-ob-kinder {
+  margin: 0 0 var(--vp-c-space-2) 15px;
+  padding-left: var(--vp-c-space-3);
+  border-left: 2px solid var(--vp-c-border);
+}
+
+.vp-ob-zeile {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-c-space-3);
+  min-width: 0;
+  padding: var(--vp-c-space-2) 0;
+}
+
+/* Ausgegraut werden Symbol und Text — das Menü eines archivierten Knotens bleibt voll lesbar (IP-15). */
+.vp-ob-zeile-still > .vp-ob-icon,
+.vp-ob-zeile-still > .vp-ob-text {
+  opacity: 0.7;
+}
+
+/* IP-12 (V4): „ab 01.03.2027 → Werk Ahrenberg Nord“ — bricht bei 375 px um, nie über den Rand. */
+.vp-ob-danach {
+  display: inline-block;
+  max-width: 100%;
+  margin: 4px 0 0;
+  padding: 1px 8px;
+  border-radius: var(--vp-c-radius-sm);
+  background: var(--vp-c-muted);
+  color: var(--vp-c-primary);
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-600);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-ob-archiviert-am {
+  margin: 2px 0 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-600);
+  line-height: var(--vp-c-lh-text);
+}
+
+.vp-ob-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--vp-c-radius-sm);
+  background: var(--vp-c-muted);
+  color: var(--vp-c-primary);
+}
+
+.vp-ob-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.vp-ob-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px var(--vp-c-space-2);
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+  line-height: var(--vp-c-lh-title);
+}
+
+.vp-ob-beschreibung,
+.vp-ob-datenlage,
+.vp-ob-flaeche-fehlt {
+  margin: 2px 0 0;
+  color: var(--vp-c-muted-fg);
+  font-size: var(--vp-c-fs-12);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: anywhere;
+}
+
+.vp-ob-verweis {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary);
+  font: inherit;
+  font-weight: var(--vp-c-fw-600);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.vp-ob-bearbeiten {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  margin-top: -4px;
+  border: 0;
+  border-radius: var(--vp-c-radius-sm);
+  background: none;
+  color: var(--vp-c-muted-fg);
+  cursor: pointer;
+}
+
+.vp-ob-bearbeiten-platz {
+  flex: none;
+  width: 40px;
+}
+
+.vp-ob-bearbeiten:hover,
+.vp-ob-bearbeiten:focus-visible {
+  background: var(--vp-c-muted);
+  color: var(--vp-c-primary);
+}
+
+@container (min-width: 520px) {
+  .vp-ob-text {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: var(--vp-c-space-4);
+    align-items: start;
+  }
+
+  .vp-ob-text > * {
+    grid-column: 1;
+  }
+
+  .vp-ob-text > .vp-ob-datenlage {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    align-self: center;
+    margin: 0;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: var(--vp-c-muted);
+    font-weight: var(--vp-c-fw-600);
+    white-space: nowrap;
+  }
+}
+
+/* AP-13 IP-2: die Hülle der Karte je Gebäude — nur mit Inhalt (IP-10 reicht die Blöcke herein). */
+.vp-ob-aufklapper {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--vp-c-radius);
+  background: transparent;
+  color: var(--vp-c-muted-fg);
+  cursor: pointer;
+}
+
+.vp-ob-aufklapper:hover,
+.vp-ob-aufklapper:focus-visible {
+  background: var(--vp-c-muted);
+  color: var(--vp-c-primary);
+}
+
+.vp-ob-karte {
+  min-width: 0;
+  margin: var(--vp-c-space-2) 0 var(--vp-c-space-3);
+}

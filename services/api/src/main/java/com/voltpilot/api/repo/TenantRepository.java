@@ -3,8 +3,13 @@ package com.voltpilot.api.repo;
 import com.voltpilot.api.tenant.Betriebsart;
 import com.voltpilot.api.web.dto.TenantDto;
 import java.time.OffsetDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -21,6 +26,22 @@ import org.springframework.stereotype.Repository;
  */
 @Repository
 public class TenantRepository {
+
+    private static final Logger log = LoggerFactory.getLogger(TenantRepository.class);
+
+    /**
+     * Every table that can hold a tenant's rows: each table in {@code public} with a {@code tenant_id} column (a
+     * hypertable's chunks live in {@code _timescaledb_internal}, a partition counts through its parent). The
+     * Löschnachweis counts over it before and after, the teardown's last step deletes over it (UEMS AP-20, E10 = A).
+     */
+    public static final String KATALOG_MIT_MANDANT = "SELECT c.relname FROM pg_class c"
+            + " JOIN pg_namespace n ON n.oid = c.relnamespace AND n.nspname = 'public'"
+            + " JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'tenant_id' AND NOT a.attisdropped"
+            + " WHERE c.relkind IN ('r', 'p') AND NOT c.relispartition ORDER BY c.relname";
+
+    /** {@link #KATALOG_MIT_MANDANT}, as far as the connected role may DELETE there (the rest has its own function). */
+    private static final String KATALOG_LOESCHBAR = KATALOG_MIT_MANDANT.replace(" ORDER BY",
+            " AND has_table_privilege(c.oid, 'DELETE') ORDER BY");
 
     private final JdbcTemplate jdbc;
 
@@ -59,10 +80,11 @@ public class TenantRepository {
                         + " RETURNING id, tenant_id, name, zeitzone, created_at),"
                         + " p AS ("
                         + " INSERT INTO ort_aenderung (tenant_id, objekt_art, objekt_id, art, alt,"
-                        + " neu, gilt_ab, rueckwirkend, akteur_sub, akteur_name)"
+                        + " neu, gilt_ab, rueckwirkend, actor_sub, actor_name, actor_rolle, actor_art)"
                         + " SELECT u.tenant_id, 'unternehmen', u.id, 'angelegt', NULL,"
                         + " jsonb_build_object('name', u.name, 'zeitzone', u.zeitzone),"
-                        + " (u.created_at AT TIME ZONE u.zeitzone)::date, false, NULL, 'VoltPilot'"
+                        + " (u.created_at AT TIME ZONE u.zeitzone)::date, false, NULL, 'VoltPilot',"
+                        + " 'voltpilot_betrieb', 'voltpilot'"
                         + " FROM u)"
                         + " SELECT id, name, segment, plan, betriebsart, created_at FROM t",
                 TenantRepository::map, name, segment);
@@ -95,8 +117,8 @@ public class TenantRepository {
      * this fail by FK, which is the safety we want. The ONE exception is the
      * {@code unternehmen} {@link #create} made with it (FK ON DELETE RESTRICT):
      * it goes first, in the same transaction - so a tenant that has grown any
-     * other data still refuses. Its log entry stays (append-only, no FK - the
-     * offboarding rule).
+     * other data still refuses. Its log entry goes after the tenant row, like in
+     * {@link #offboard} (E10 = A).
      */
     public void deleteById(UUID tenantId) {
         jdbc.execute((java.sql.Connection con) -> {
@@ -105,6 +127,7 @@ public class TenantRepository {
             try {
                 deleteByTenant(con, "unternehmen", tenantId);
                 deleteByTenant(con, "tenant", tenantId, "id");
+                protokolleOhneMandantLoeschen(con, tenantId);
                 con.commit();
                 return null;
             } catch (Exception e) {
@@ -140,15 +163,54 @@ public class TenantRepository {
      * carry no FKs; {@code messreihe_ereignis} holds a RESTRICT one to the
      * tenant, so it must go first) and then the tenant row itself, whose FKs cascade
      * site/device/asset - all in ONE database transaction, so a failure leaves
-     * the tenant fully intact. Keycloak cleanup is separate and best-effort
-     * (see the controller): the directory is another system and must not be
-     * able to roll back the data deletion the operator confirmed.
+     * the tenant fully intact. The controller must first commit account blocking through
+     * AdminBenutzerService. Final Keycloak deletion is separate and best-effort; a failure
+     * leaves disabled accounts for the repeatable cleanup route.
      */
     public OffboardCounts offboard(UUID tenantId) {
+        return offboard(tenantId, () -> {});
+    }
+
+    /** Recheck directory blocking under the same tenant lock as account administration, before any DELETE. */
+    public OffboardCounts offboard(UUID tenantId, Runnable beforeTeardown) {
+        return offboard(tenantId, beforeTeardown, null);
+    }
+
+    /**
+     * Runs inside the offboarding transaction (UEMS AP-20 IP-18): {@link #vorDemAbbau} under the tenant lock and
+     * before any DELETE, {@link #nachDemAbbau} after the tenant row is gone and before the commit. Whatever either
+     * throws rolls the whole teardown back; an {@link AbbauVerweigert} reaches the caller unwrapped.
+     */
+    public interface Abbauwache {
+        void vorDemAbbau(java.sql.Connection con) throws java.sql.SQLException;
+
+        void nachDemAbbau(java.sql.Connection con) throws java.sql.SQLException;
+    }
+
+    /** The {@link Abbauwache} refused the teardown; nothing was deleted. */
+    public static class AbbauVerweigert extends RuntimeException {
+        public AbbauVerweigert(String message) {
+            super(message);
+        }
+    }
+
+    /**
+     * The guarded teardown of the delete route: {@code wache} (may be {@code null} only for the migration fixtures,
+     * which run today's teardown against older schemas) decides and records inside the same transaction.
+     */
+    public OffboardCounts offboard(UUID tenantId, Runnable beforeTeardown, Abbauwache wache) {
         return jdbc.execute((java.sql.Connection con) -> {
             boolean autoCommit = con.getAutoCommit();
             con.setAutoCommit(false);
             try {
+                try (var lock = con.prepareStatement("SELECT pg_advisory_xact_lock(hashtext(?))")) {
+                    lock.setString(1, "uems-benutzerverwaltung:" + tenantId);
+                    lock.execute();
+                }
+                if (wache != null) {
+                    wache.vorDemAbbau(con);
+                }
+                beforeTeardown.run();
                 for (String table : new String[] {
                         "ocpp_station", "ocpp_connector_state", "ocpp_protocol_event",
                         "ocpp_connector_status_event", "ocpp_authorization_event", "ocpp_transaction",
@@ -168,6 +230,17 @@ public class TenantRepository {
                 // purge or site deletion; it carries no FK to anything deletable. The
                 // offboarding is its ONE deletion path (tenant FK RESTRICT; the admin
                 // role holds DELETE only for this).
+                // Older migration fixtures intentionally run this code before the Ablesungs migration.
+                try (var probe = con.prepareStatement("SELECT to_regprocedure('uems_ablesungen_entfernen(uuid)') IS NOT NULL");
+                        var vorhanden = probe.executeQuery()) {
+                    vorhanden.next();
+                    if (vorhanden.getBoolean(1)) {
+                        try (var ps = con.prepareStatement("SELECT uems_ablesungen_entfernen(?)")) {
+                            ps.setObject(1, tenantId);
+                            ps.executeQuery().close();
+                        }
+                    }
+                }
                 deleteByTenant(con, "messreihe_ereignis", tenantId);
                 // The quarter-hour storage class (AP-07 IP-12) and its work list carry no FK
                 // either (hypertable + operational queue); offboarding is the ONE way out, like
@@ -181,10 +254,40 @@ public class TenantRepository {
                 deleteByTenant(con, "messreihe_tag", tenantId);
                 deleteByTenant(con, "messreihe_tag_arbeit", tenantId);
                 deleteByTenant(con, "messreihe_korrektur_vorschlag", tenantId);
+                // Corrections and substitute values (AP-08 IP-12) are receipts: append-only, never
+                // deleted, the tenant held by RESTRICT. Offboarding is the ONE way out - the
+                // correction first, it holds its substitute value by FK.
+                deleteByTenant(con, "messreihe_korrektur", tenantId);
+                deleteByTenant(con, "messreihe_ersatzwert", tenantId);
+                // The quarter-hour versions with substitute values and the run's per-value state
+                // (AP-08 IP-13): append-only versions + a work state, the tenant held by RESTRICT.
+                deleteByTenant(con, "messreihe_viertelstunde_version", tenantId);
+                deleteByTenant(con, "messreihe_ersatzwert_wirkung", tenantId);
+                // The correction cascade (AP-08 IP-17): append-only day/month/year and computed versions plus
+                // the per-cause work state, the tenant held by RESTRICT - the same one way out.
+                deleteByTenant(con, "messreihe_periode_version", tenantId);
+                deleteByTenant(con, "messreihe_kaskade_wirkung", tenantId);
                 // Month and year values and their work list (AP-08 IP-5): hypertable + queue,
                 // no FK — the same one way out.
                 deleteByTenant(con, "messreihe_periode", tenantId);
                 deleteByTenant(con, "messreihe_periode_arbeit", tenantId);
+                // The gap detector's state and work list (AP-07 IP-9): an operational queue, no
+                // FK — the same one way out. Its gaps live in messreihe_ereignis (above); the
+                // run-state row is not tenant-bound and stays.
+                deleteByTenant(con, "messreihe_luecke_stand", tenantId);
+                // The inputs of computed period values and the run's backfill state (AP-10 IP-10): a
+                // hypertable + a work state, no FK - the same one way out. The computed rows themselves
+                // live in the classes above (track `berechnet`).
+                deleteByTenant(con, "bilanzwert_eingang", tenantId);
+                deleteByTenant(con, "messreihe_berechnet_stand", tenantId);
+                // The measurement pipeline (device_measurement_*, AP-07 IP-11): since
+                // V20260913150000 its FKs to device and site RESTRICT, so the tenant's cascade
+                // below would be refused. The admin role holds no DELETE on the selection
+                // history - one narrow SECURITY DEFINER function, executable only by it.
+                try (var ps = con.prepareStatement("SELECT uems_messwerte_des_kundenbereichs_entfernen(?)")) {
+                    ps.setObject(1, tenantId);
+                    ps.executeQuery().close();
+                }
                 int sites = count(con, "SELECT count(*) FROM site WHERE tenant_id = ?", tenantId);
                 int devices = count(con, "SELECT count(*) FROM device WHERE tenant_id = ?", tenantId);
                 // The UEMS master data (V20260911100000, V20260911110000,
@@ -206,8 +309,8 @@ public class TenantRepository {
                 // Kurzzeichen occupancy and counter of the Orte (no FK to the Orte, only
                 // to the tenant) with them. The
                 // append-only logs ort_aenderung, messstelle_aenderung and
-                // data_source_aenderung carry no FK and stay (the component_change_event
-                // pattern). The components go with the
+                // data_source_aenderung carry no FK: they go after the tenant row (see
+                // protokolleOhneMandantLoeschen). The components go with the
                 // tenant cascade below, but their data_source_id is RESTRICT too: they
                 // let go of their source first.
                 try (java.sql.PreparedStatement st = con.prepareStatement(
@@ -216,30 +319,274 @@ public class TenantRepository {
                     st.setObject(1, tenantId);
                     st.executeUpdate();
                 }
+                // AP-16 IP-3/IP-5/IP-8/IP-11: before Benutzer, Bezugsgröße, Prozess, Standort and Unternehmen (RESTRICT).
+                // AP-16 IP-15: the Einbau journal geraet_aenderung holds only the tenant (RESTRICT, no FK to geraet).
+                // AP-16 IP-17: the Toleranz-Fassungen name the tenant (RESTRICT) and their Vergleichsquelle.
+                // AP-17 IP-6: the Bezugsbasen name their Kennzahl, Benutzer and Bezugsgroessen (RESTRICT):
+                // parts before their Fassung, Fassungen and protocol before the Basis.
+                // AP-18 IP-5: the Energieziele cite a Fassung, Kennzahl, Standort and Benutzer (RESTRICT):
+                // protocol and Ziel before all of them, their Kennzeichen counter with them.
+                // AP-18 IP-9: an Anstoss names a Massnahme or an Energieziel, a Stand its Massnahme, and the
+                // Massnahme cites Ziel, Fassung, Einstufung, Kennzahl, Standort and Benutzer (RESTRICT): first.
+                // AP-18 IP-14: an Auffaelligkeit names its Abweichung, and the Abweichung cites its Massnahme,
+                // Fassung, Kennzahl, Standort and Benutzer (RESTRICT): before the Massnahme.
+                // AP-19 IP-5: the Energiemanagement protocol, entries, scope, Fassungen and Dokumente name their
+                // Person, Aufgabe, Energieeinsatz and Standort (RESTRICT), Aufgaben name their Person: all of them
+                // first, Personen before Benutzer, the setting and the Kennzeichen counter with them.
+                // AP-19 IP-16: Staende and entries name their Feststellung, the Feststellung its Audit,
+                // Fassung, Dokument, Person, Standort and Benutzer, a Hinweis its Audit (RESTRICT): before IP-5.
+                // AP-19 IP-23: a Folge names its Beschluss and the linked Energieziel, Fassung, Aufgabe or Audit,
+                // Sitzung and Beschluss name their Personen (RESTRICT) and their Bericht by value: before all of them.
+                // Nachweisen n1: a Teil-Vermerk names its Person (RESTRICT): before energiemanagement_person.
+                // Nachweisen n1 PR 6: an Abruf names its Mappe (RESTRICT): the protocol before the Mappe.
+                // Current repository code also runs against older migration fixtures.
+                for (String table : new String[] {"managementbewertung_folge", "managementbewertung_beschluss",
+                        "managementbewertung_sitzung", "feststellung_wirksamkeit", "feststellung_eintrag", "feststellung",
+                        "internes_audit_eintrag", "internes_audit",
+                        "energiemanagement_aenderung", "energiemanagement_dokument_eintrag",
+                        "energiemanagement_anwendungsbereich", "energiemanagement_dokument_fassung",
+                        "energiemanagement_dokument", "energiemanagement_aufgabe", "energiemanagement_teil_vermerk",
+                        "energiemanagement_mappe_abruf", "energiemanagement_mappe",
+                        "energiemanagement_person",
+                        "energiemanagement_einstellung", "energiemanagement_kennung_seq",
+                        "auffaelligkeit", "abweichung_aenderung", "abweichung",
+                        "vorgang_anstoss", "massnahme_bewertung", "massnahme_aenderung", "massnahme",
+                        "energieziel_aenderung", "energieziel", "verbesserung_kennung_seq",
+                        "bezugsbasis_anstoss", "bezugsbasis_faktor", "bezugsbasis_variable",
+                        "bezugsbasis_fassung", "bezugsbasis_aenderung", "bezugsbasis", "bezugsbasis_kennzeichen_seq",
+                        "geraet_aenderung", "vergleich_toleranz",
+                        "bewertung_aenderung", "bewertung_kriterien_fassung", "bewertung_umfang_ausschluss",
+                        "bewertung_umfang_standort", "bewertung_umfang",
+                        "messbedarf_aenderung", "messbedarf", "messbedarf_kennzeichen_seq",
+                        "energieeinsatz_aenderung", "energieeinsatz_einstufung", "energieeinsatz_einflussgroesse",
+                        "energieeinsatz", "energieeinsatz_kennzeichen_seq"}) {
+                    try (var probe = con.prepareStatement("SELECT to_regclass(?)")) {
+                        probe.setString(1, "public." + table);
+                        try (var result = probe.executeQuery()) {
+                            if (result.next() && result.getObject(1) != null) deleteByTenant(con, table, tenantId);
+                        }
+                    }
+                }
+                // The Zugriffe (V20260915030000, AP-03 IP-2) go before the Standort they name and the
+                // Benutzer they belong to; the protocol names its Zugriff (RESTRICT), so it goes first.
+                // The Stichtag (V20260916060000) holds only the tenant (RESTRICT) and goes with them.
+                // Ahead of them all: the Unterstuetzung's companions (V20260916070000, AP-03 IP-8) - a Hinweis
+                // names its Zugriff and its Anfrage, an Anfrage names its Zugriff and its Standorte, all
+                // RESTRICT.
+                for (String table : new String[] {"unterstuetzung_hinweis", "unterstuetzung_anfrage_standort",
+                    "unterstuetzung_anfrage", "zugriff_protokoll", "zugriff", "benutzer", "zugriff_bestand"}) {
+                    deleteByTenant(con, table, tenantId);
+                }
+                // The Berichte (V20260915050000) go before the Standort or Unternehmen their Geltung
+                // names. A Berichtsstand, the sources of a Stand, the Anstoesse, the Abrufe and the
+                // protocol are append-only for EVERY role - not even the admin role holds DELETE - so one
+                // narrow SECURITY DEFINER function, executable only by it, removes them. Then the draft
+                // before its Bericht; the Kennung counter holds only the tenant (RESTRICT). The Kennzahl
+                // Abwahl (V20260915113000) holds only the tenant too and goes with the Berichte.
+                try (var ps = con.prepareStatement("SELECT uems_berichte_des_kundenbereichs_entfernen(?)")) {
+                    ps.setObject(1, tenantId);
+                    ps.executeQuery().close();
+                }
+                for (String table : new String[] {"bericht_kennzahl_abwahl", "bericht_entwurf", "bericht",
+                    "bericht_kennung_seq"}) {
+                    deleteByTenant(con, table, tenantId);
+                }
+                // The Kennzahlen (V20260915003000) go before everything they read or apply to
+                // (Bezugsgroessen, Messstellen, Orte, Prozesse, Kostenstellen, Standort, Unternehmen).
+                // Their values are append-only for EVERY role - not even the admin role holds DELETE -
+                // so one narrow SECURITY DEFINER function, executable only by it, removes them. Then an
+                // input binding before its Fassung, a Fassung and the Kennzeichen occupancy before the
+                // Kennzahl; the protocol holds only the tenant (RESTRICT).
+                try (var ps = con.prepareStatement("SELECT uems_kennzahlwerte_des_kundenbereichs_entfernen(?)")) {
+                    ps.setObject(1, tenantId);
+                    ps.executeQuery().close();
+                }
                 for (String table : new String[] {
+                        "kennzahl_eingang", "kennzahl_fassung", "kennzahl_kennzeichen_verlauf", "kennzahl",
+                        "kennzahl_aenderung"}) {
+                    deleteByTenant(con, table, tenantId);
+                }
+                // The Bezugsgroessen (V20260913104500) go first: a value's Fassungen and
+                // the Kennzeichen occupancy before their Bezugsgroesse, the Bezugsgroesse
+                // before the Messstelle, Ort, Standort or Unternehmen it applies to. Its
+                // protocol has no FK to the Bezugsgroesse but holds the tenant (RESTRICT),
+                // so - unlike the older journals - it goes with the company. The Stammdaten
+                // with validity (V20260914151500) are values too: before their Bezugsgroesse.
+                // Kostenstelle and Prozess (V20260913160000) follow everything that points at
+                // them (Bezugsgroessen, Verteilungs-Terme, the Messstelle's Prozess intervals and
+                // Kostenstellen-Anteile, V20260913230000); sub-processes go before their parent
+                // (the self reference is RESTRICT, checked row by row). The imports of
+                // Bezugsdaten (V20260914173000) go before everything: a row before its
+                // import (RESTRICT), an import before the template version it names. The correction processes of
+                // Bezugsgroessen values (V20260915010000) point at their Bezugsgroesse: before it (RESTRICT).
+                // Older migration fixtures use the current offboarding code too.
+                try (java.sql.PreparedStatement exists = con.prepareStatement("SELECT to_regclass('public.bezugsdaten_import_freigabe')")) {
+                    try (java.sql.ResultSet result = exists.executeQuery()) {
+                        if (result.next() && result.getObject(1) != null) deleteByTenant(con, "bezugsdaten_import_freigabe", tenantId);
+                    }
+                }
+                // AP-09 IP-17: vor Komponenten/Bezugsgrößen, auch gegen ältere Migrationsstände aufrufbar.
+                for (String table : new String[] {"bezugsgroesse_kanallauf", "bezugsgroesse_kanalbindung", "device_succession"}) {
+                    try (var probe = con.prepareStatement("SELECT to_regclass(?)")) {
+                        probe.setString(1, "public." + table);
+                        try (var result = probe.executeQuery()) {
+                            if (result.next() && result.getObject(1) != null) deleteByTenant(con, table, tenantId);
+                        }
+                    }
+                }
+                for (String table : new String[] {
+                        "bezugsdaten_import_zeile", "bezugsdaten_import", "bezugsdaten_vorlage_bezug",
+                        "bezugsdaten_vorlage",
+                        "bezugsgroesse_berichtigung",
+                        "bezugsgroesse_wert", "bezugsgroesse_stammdatum", "bezugsgroesse_kennzeichen_verlauf",
+                        "bezugsgroesse",
+                        "bezugsgroesse_aenderung",
+                        "messstelle_formel_term", "messstelle_formel_fassung",
+                        "messstelle_prozess", "messstelle_verteilung"}) {
+                    deleteByTenant(con, table, tenantId);
+                }
+                try (java.sql.PreparedStatement st = con.prepareStatement(
+                        "DELETE FROM prozess WHERE tenant_id = ? AND eltern_id IS NOT NULL")) {
+                    st.setObject(1, tenantId);
+                    st.executeUpdate();
+                }
+                for (String table : new String[] {
+                        // The Gemeinsame Steuerung (V20260921140000): a member holds its
+                        // Messpunkt (data_source, RESTRICT) and goes before it; the Verbund
+                        // before the tenant (RESTRICT); the protocol holds only the tenant. Its
+                        // Geräte and Anteils-Dokumente (V20260921190000) hold the tenant (RESTRICT).
+                        // The Verbund-Bilanz (V20260921210000) and the Vorbehalt from measurements
+                        // (V20260921230000) hang at the Verbund and go first, so do the ungesteuerte
+                        // Erzeuger of its Erklärung (V20260922070000) and the Sprungprobe protocol
+                        // (V20260922080000). The share loss per box and day (V20260922050000) holds
+                        // the tenant (RESTRICT).
+                        "steuerungsverbund_bilanz", "steuerungsverbund_vorbehalt", "steuerungsverbund_erzeuger",
+                        "steuerungsverbund_anteil_verlust", "steuerungsverbund_sprungprobe",
+                        "steuerungsverbund_steckerprobe",
+                        "steuerungsverbund_geraet", "steuerungsverbund_anteile",
+                        "steuerungsverbund_mitglied", "steuerungsverbund", "steuerungsverbund_aenderung",
+                        "prozess", "kostenstelle",
+                        // The Geräte-Rückfall (V20260921150000) holds only the tenant (RESTRICT).
+                        "komponente_geraete_rueckfall",
                         "quelle_kadenz", "messstelle_quelle", "quelle_einstellung",
                         "geraet_komponente", "geraet_teil", "geraet", "geraet_kennzeichen_seq",
-                        "data_source_assignment", "data_source", "data_source_kennzeichen_seq",
+                        "device_data_source_status", "data_source_assignment", "data_source",
+                        "data_source_kennzeichen_seq",
                         "messstelle_ort", "messstelle_stellung",
                         "messstelle_groesse", "messstelle_kennzeichen", "messstelle",
                         "messstelle_kennzeichen_seq",
                         "flaeche_gueltigkeit", "ort_zuordnung", "ort",
+                        // The Netzanschluss (V20260913235000): its bindings and Kennzeichen
+                        // occupancy before it, it before its Standort; counter and protocol hold
+                        // only the tenant (RESTRICT). The Grenzblatt (V20260921120000) is a child
+                        // of the Netzanschluss (RESTRICT) and goes before it.
+                        "netzanschluss_vorschlag_entscheidung", "anlage_netzanschluss", "netzanschluss_kennzeichen",
+                        "netzanschluss_grenze", "netzanschluss",
+                        "netzanschluss_kennzeichen_seq", "netzanschluss_aenderung",
+                        // The Funktionen (V20260914190000): a Teilnahme before its Funktion
+                        // (RESTRICT), the Funktion before its Standort.
+                        "funktion_teilnahme", "funktion",
                         "standort_vorschlag", "anlage_standort", "standort", "ort_kurzzeichen",
                         "ort_kurzzeichen_seq",
                         "unternehmen"}) {
                     deleteByTenant(con, table, tenantId);
                 }
                 deleteByTenant(con, "tenant", tenantId, "id");
+                // After the tenant row, before the Löschnachweis counts what remains.
+                protokolleOhneMandantLoeschen(con, tenantId);
+                katalogRestLoeschen(con, tenantId);
+                if (wache != null) {
+                    wache.nachDemAbbau(con);
+                }
                 con.commit();
                 return new OffboardCounts(sites, devices, telemetryRows);
             } catch (Exception e) {
                 con.rollback();
+                if (e instanceof AbbauVerweigert verweigert) {
+                    throw verweigert;
+                }
                 throw e instanceof java.sql.SQLException sql ? sql
                         : new java.sql.SQLException("tenant offboarding failed", e);
             } finally {
                 con.setAutoCommit(autoCommit);
             }
         });
+    }
+
+    /**
+     * The append-only logs without a FK to the tenant (E10 = A: deleted, not anonymised): ort_aenderung,
+     * messstelle_aenderung, data_source_aenderung, component_change_event, device_site_assignment. Their trigger lets a
+     * DELETE through only once the tenant row is gone, and one narrow SECURITY DEFINER function, executable only by
+     * the admin role, removes them (V20260925234500) - so this runs after {@code DELETE FROM tenant}, in the same
+     * transaction. Older migration fixtures run this code before that migration: there the logs stay.
+     */
+    private static void protokolleOhneMandantLoeschen(java.sql.Connection con, UUID tenantId)
+            throws java.sql.SQLException {
+        try (var probe = con.prepareStatement(
+                "SELECT to_regprocedure('uems_protokolle_ohne_mandant_entfernen(uuid)') IS NOT NULL");
+                var vorhanden = probe.executeQuery()) {
+            vorhanden.next();
+            if (!vorhanden.getBoolean(1)) {
+                return;
+            }
+        }
+        try (var ps = con.prepareStatement("SELECT uems_protokolle_ohne_mandant_entfernen(?)")) {
+            ps.setObject(1, tenantId);
+            ps.executeQuery().close();
+        }
+    }
+
+    /**
+     * The teardown's last step (UEMS AP-20, E10 = A): whatever still carries the tenant's id once the tenant row, its
+     * cascade, the functions above and the logs are through. Those are the tables without any FK to the tenant -
+     * telemetry_v2 and its rollups, the device status, command and plan tables, flow acknowledgements, the outboxes.
+     * They come from the catalog, not from a hand list, so a new table cannot stay behind silently. Each table the
+     * admin role may delete gets ONE set-based DELETE by tenant: on a hypertable TimescaleDB runs it chunk by chunk
+     * (the chunks are cut by time and hold every tenant, so drop_chunks is no option; the rollups are plain
+     * hypertables filled by jobs, not continuous aggregates - RLS forbids those). Running last means nothing earlier
+     * in this transaction writes the tenant's rows again. A DELETE that fails (a FK between two leftovers, an
+     * append-only trigger) goes back to its savepoint and is retried while another table still makes progress; what
+     * is left, the Löschnachweis names under {@code verblieben}.
+     */
+    private static Map<String, Long> katalogRestLoeschen(java.sql.Connection con, UUID tenantId)
+            throws java.sql.SQLException {
+        List<String> offen = new ArrayList<>();
+        try (var st = con.prepareStatement(KATALOG_LOESCHBAR); var rs = st.executeQuery()) {
+            while (rs.next()) {
+                offen.add(rs.getString(1));
+            }
+        }
+        Map<String, Long> geloescht = new TreeMap<>();
+        Map<String, String> fehler = new TreeMap<>();
+        boolean fortschritt = true;
+        while (fortschritt && !offen.isEmpty()) {
+            fortschritt = false;
+            for (var it = offen.iterator(); it.hasNext(); ) {
+                String tabelle = it.next();
+                java.sql.Savepoint savepoint = con.setSavepoint();
+                try {
+                    long zeilen = deleteByTenant(con, "\"" + tabelle.replace("\"", "\"\"") + "\"", tenantId);
+                    con.releaseSavepoint(savepoint);
+                    if (zeilen > 0) {
+                        geloescht.put(tabelle, zeilen);
+                        fortschritt = true;
+                    }
+                    fehler.remove(tabelle);
+                    it.remove();
+                } catch (java.sql.SQLException e) {
+                    con.rollback(savepoint);
+                    fehler.put(tabelle, e.getSQLState());
+                }
+            }
+        }
+        if (!geloescht.isEmpty()) {
+            log.info("Löschzug {}: ohne Fremdschlüssel gelöscht {}", tenantId, geloescht);
+        }
+        if (!fehler.isEmpty()) {
+            log.warn("Löschzug {}: nicht löschbar {} (SQLState) - der Löschnachweis nennt, was verbleibt", tenantId,
+                    fehler);
+        }
+        return geloescht;
     }
 
     private static long deleteByTenant(java.sql.Connection con, String table, UUID tenantId)

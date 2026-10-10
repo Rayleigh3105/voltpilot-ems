@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.uems.BerichtsBelege;
 import com.voltpilot.api.entities.EntityRegistryRepository.BatteryAsset;
 import com.voltpilot.api.entities.EntityRegistryService.BackfillOutcome;
 import com.voltpilot.api.entities.EntityRegistryService.ConversionPreview;
@@ -130,7 +131,8 @@ class LeadDeviceBestandVerhaltensgleichTest {
             LeadDeviceService lead = new LeadDeviceService(repo);
             registry = new EntityRegistryService(repo, provider(registryBroker), MAPPER,
                     mock(EntityTypeCatalog.class), mock(AssetRepository.class),
-                    mock(FlowClaimRepository.class), mock(DeviceOverrideRepository.class), lead);
+                    mock(FlowClaimRepository.class), mock(DeviceOverrideRepository.class), lead,
+                    mock(BerichtsBelege.class));
             JsonNode artifact = MAPPER.readTree(Files.readString(Path.of("..", "..", "docs",
                     "contracts", "v2", "examples", "flow-artifact.valid.artifact.json")));
             flowService = new FlowActivationService(flows, lead, mock(FlowClaimRepository.class),

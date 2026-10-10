@@ -129,6 +129,18 @@
       "minLength": 1,
       "maxLength": 16
     },
+    "einheit_zuwachs": {
+      "type": "string",
+      "enum": [
+        "Wh",
+        "kWh",
+        "MWh",
+        "varh",
+        "kvarh",
+        "m³"
+      ],
+      "description": "Die Einheit des Zuwachses über eine Lücke (AP-08 IP-6): die Zählerstand-Einheiten des Größen-Katalogs der Messstellen mit ihren umrechenbaren Einheiten — vokabular.einheit_zuwachs."
+    },
     "ganz_ab_0": {
       "type": "integer",
       "minimum": 0
@@ -178,7 +190,13 @@
           "$ref": "#/$defs/rohwert"
         },
         "decoded": {
-          "$ref": "#/$defs/rohwert"
+          "type": [
+            "number",
+            "string",
+            "boolean",
+            "null"
+          ],
+          "description": "null, wenn der Kanal keinen decodierten Wert liefert (measurement-samples 2.1 lässt decoded weg) — nie weggelassen, nie 0."
         },
         "qualitaet": {
           "$ref": "#/$defs/qualitaet"
@@ -266,6 +284,84 @@
         "box_tausch"
       ]
     },
+    "ersatzwert_methode": {
+      "type": "string",
+      "enum": [
+        "gleichmaessig_verteilen",
+        "profil_vorperiode",
+        "profil_vergleichsquelle",
+        "ablesestand_nachtragen",
+        "wert_eingeben",
+        "vorperiode_uebernehmen",
+        "vergleichsquelle_uebernehmen"
+      ],
+      "description": "Die sieben Methoden eines Ersatzwerts (AP-08 E7) — vokabular.ersatzwert_methode."
+    },
+    "ersatzwert_status": {
+      "type": "string",
+      "enum": [
+        "wirksam",
+        "zurueckgenommen"
+      ]
+    },
+    "korrektur_art": {
+      "type": "string",
+      "enum": [
+        "nachlieferung_nach_endgueltigkeit",
+        "ablesestaende_nachgetragen",
+        "umklassifizierung",
+        "ersatzwert",
+        "wert_berichtigt",
+        "menge_nachgetragen"
+      ]
+    },
+    "korrektur_status": {
+      "type": "string",
+      "enum": [
+        "vorschlag",
+        "freigegeben",
+        "abgelehnt",
+        "zurueckgenommen"
+      ]
+    },
+    "anstoss_art": {
+      "type": "string",
+      "description": "AP-12 IP-4: was einen Anstoß an einen Berichtsstand auslöst (bericht-vectors.json → vokabulare.anstoss_art).",
+      "enum": [
+        "korrektur_freigegeben",
+        "korrektur_zurueckgenommen",
+        "ersatzwert_wirksam",
+        "ersatzwert_zurueckgenommen",
+        "bezugsgroesse_fassung",
+        "kennzahl_fassung_rueckwirkend",
+        "zuordnung_rueckwirkend",
+        "anlage_umzug_rueckwirkend",
+        "flaeche_rueckwirkend",
+        "verteilung_rueckwirkend",
+        "einstufung_fassung",
+        "kriterien_fassung",
+        "umfang_fassung",
+        "messbedarf_zustand",
+        "prozess_zuordnung_rueckwirkend",
+        "messmittel_angabe",
+        "bezugsbasis_anstoss",
+        "bezugsbasis_fassung",
+        "bezugsbasis_beendet"
+      ]
+    },
+    "bericht_format": {
+      "type": "string",
+      "description": "AP-12 IP-4: die abgerufene Ausgabe eines Berichtsstands (DA5).",
+      "enum": [
+        "pdf",
+        "csv"
+      ]
+    },
+    "pruefsumme": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "description": "AP-12 A6: die Prüfsumme eines Abzugs — sha256: und 64 Hex-Ziffern (klein)."
+    },
     "urheber": {
       "type": "string",
       "enum": [
@@ -299,6 +395,9 @@
         },
         {
           "$ref": "#/$defs/art_counter_reset"
+        },
+        {
+          "$ref": "#/$defs/art_counter_overflow"
         },
         {
           "$ref": "#/$defs/art_device_boundary"
@@ -347,6 +446,42 @@
         },
         {
           "$ref": "#/$defs/art_text_change"
+        },
+        {
+          "$ref": "#/$defs/art_substitute"
+        },
+        {
+          "$ref": "#/$defs/art_correction"
+        },
+        {
+          "$ref": "#/$defs/art_verteilung_geaendert"
+        },
+        {
+          "$ref": "#/$defs/art_bilanz_neu_berechnet"
+        },
+        {
+          "$ref": "#/$defs/art_bericht_freigegeben"
+        },
+        {
+          "$ref": "#/$defs/art_bericht_revision_angestossen"
+        },
+        {
+          "$ref": "#/$defs/art_bericht_entwurf_neu_gebildet"
+        },
+        {
+          "$ref": "#/$defs/art_bericht_abgerufen"
+        },
+        {
+          "$ref": "#/$defs/art_kennzahl_neu_gebildet"
+        },
+        {
+          "$ref": "#/$defs/art_einstufung_gesetzt"
+        },
+        {
+          "$ref": "#/$defs/art_messbedarf_erfasst"
+        },
+        {
+          "$ref": "#/$defs/art_messbedarf_eingeloest"
         }
       ]
     },
@@ -359,7 +494,6 @@
         "art",
         "von",
         "bis",
-        "box",
         "erkannt_aus"
       ],
       "properties": {
@@ -375,11 +509,11 @@
         "bis": {
           "$ref": "#/$defs/zeit_utc_oder_leer"
         },
-        "box": {
-          "$ref": "#/$defs/kennung"
-        },
         "erkannt_aus": {
           "$ref": "#/$defs/erkannt_aus"
+        },
+        "box": {
+          "$ref": "#/$defs/kennung"
         },
         "datenquelle": {
           "$ref": "#/$defs/kennung"
@@ -404,12 +538,41 @@
         },
         "ursache_ereignis": {
           "$ref": "#/$defs/uuid"
+        },
+        "zuwachs": {
+          "$ref": "#/$defs/stand"
+        },
+        "einheit": {
+          "$ref": "#/$defs/einheit_zuwachs"
+        },
+        "stand_vor": {
+          "$ref": "#/$defs/stand"
+        },
+        "stand_nach": {
+          "$ref": "#/$defs/stand"
         }
-      }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "box"
+          ]
+        },
+        {
+          "required": [
+            "messstelle"
+          ],
+          "properties": {
+            "erkannt_aus": {
+              "const": "kadenz"
+            }
+          }
+        }
+      ]
     },
     "art_backfill": {
       "type": "object",
-      "description": "backfill — Nachlieferung. Urheber: writer.",
+      "description": "backfill — Nachlieferung. Urheber: writer, cloud.",
       "additionalProperties": false,
       "required": [
         "ereignis_id",
@@ -678,6 +841,68 @@
         },
         "messzeit_alt": {
           "$ref": "#/$defs/zeit_utc"
+        },
+        "einheit": {
+          "$ref": "#/$defs/einheit"
+        }
+      }
+    },
+    "art_counter_overflow": {
+      "type": "object",
+      "description": "counter_overflow — Zähler übergelaufen. Urheber: writer.",
+      "additionalProperties": false,
+      "required": [
+        "ereignis_id",
+        "art",
+        "zeitpunkt",
+        "komponente",
+        "messkanal",
+        "stand_alt",
+        "stand_neu",
+        "messzeit_alt",
+        "wertebereich_modul",
+        "hoechstzuwachs_je_kadenz",
+        "kadenz_s"
+      ],
+      "properties": {
+        "ereignis_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "art": {
+          "const": "counter_overflow"
+        },
+        "zeitpunkt": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "komponente": {
+          "$ref": "#/$defs/kennung"
+        },
+        "messkanal": {
+          "$ref": "#/$defs/messkanal"
+        },
+        "stand_alt": {
+          "$ref": "#/$defs/stand"
+        },
+        "stand_neu": {
+          "$ref": "#/$defs/stand"
+        },
+        "messzeit_alt": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "wertebereich_modul": {
+          "$ref": "#/$defs/stand"
+        },
+        "hoechstzuwachs_je_kadenz": {
+          "$ref": "#/$defs/stand"
+        },
+        "kadenz_s": {
+          "$ref": "#/$defs/sekunden"
+        },
+        "box": {
+          "$ref": "#/$defs/kennung"
+        },
+        "messstelle": {
+          "$ref": "#/$defs/kennung"
         },
         "einheit": {
           "$ref": "#/$defs/einheit"
@@ -1332,6 +1557,424 @@
         "messstelle": {
           "$ref": "#/$defs/kennung"
         }
+      }
+    },
+    "art_substitute": {
+      "type": "object",
+      "description": "substitute — Ersatzwert. Urheber: kunde.",
+      "additionalProperties": false,
+      "required": [
+        "ereignis_id",
+        "art",
+        "von",
+        "bis",
+        "komponente",
+        "messkanal",
+        "ersatzwert",
+        "methode",
+        "status"
+      ],
+      "properties": {
+        "ereignis_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "art": {
+          "const": "substitute"
+        },
+        "von": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "bis": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "komponente": {
+          "$ref": "#/$defs/kennung"
+        },
+        "messkanal": {
+          "$ref": "#/$defs/messkanal"
+        },
+        "ersatzwert": {
+          "$ref": "#/$defs/kennung"
+        },
+        "methode": {
+          "$ref": "#/$defs/ersatzwert_methode"
+        },
+        "status": {
+          "$ref": "#/$defs/ersatzwert_status"
+        },
+        "messstelle": {
+          "$ref": "#/$defs/kennung"
+        }
+      }
+    },
+    "art_correction": {
+      "type": "object",
+      "description": "correction — Korrektur. Urheber: cloud, kunde. Seit AP-09 IP-7 GENAU EIN Bezug: die Reihe (komponente + messkanal) oder die Bezugsgröße (bezugsgroesse + fassung_alt + fassung_neu); beides zugleich prüft die Regel.",
+      "additionalProperties": false,
+      "required": [
+        "ereignis_id",
+        "art",
+        "von",
+        "bis",
+        "korrektur",
+        "korrektur_art",
+        "status"
+      ],
+      "properties": {
+        "ereignis_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "art": {
+          "const": "correction"
+        },
+        "von": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "bis": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "korrektur": {
+          "$ref": "#/$defs/kennung"
+        },
+        "korrektur_art": {
+          "$ref": "#/$defs/korrektur_art"
+        },
+        "status": {
+          "$ref": "#/$defs/korrektur_status"
+        },
+        "komponente": {
+          "$ref": "#/$defs/kennung"
+        },
+        "messkanal": {
+          "$ref": "#/$defs/messkanal"
+        },
+        "messstelle": {
+          "$ref": "#/$defs/kennung"
+        },
+        "bezugsgroesse": {
+          "$ref": "#/$defs/kennung"
+        },
+        "ersatzwert": {
+          "$ref": "#/$defs/kennung"
+        },
+        "fassung_alt": {
+          "$ref": "#/$defs/ganz_ab_1"
+        },
+        "fassung_neu": {
+          "$ref": "#/$defs/ganz_ab_1"
+        },
+        "import": {
+          "$ref": "#/$defs/kennung"
+        }
+      },
+      "anyOf": [
+        {
+          "required": [
+            "komponente",
+            "messkanal"
+          ]
+        },
+        {
+          "required": [
+            "bezugsgroesse",
+            "fassung_alt",
+            "fassung_neu"
+          ]
+        },
+        {
+          "required": [
+            "messstelle"
+          ],
+          "properties": {
+            "korrektur_art": {
+              "const": "ablesestaende_nachgetragen"
+            }
+          }
+        }
+      ]
+    },
+    "art_verteilung_geaendert": {
+      "type": "object",
+      "description": "verteilung_geaendert — Verteilung geändert. Urheber: kunde.",
+      "additionalProperties": false,
+      "required": [
+        "ereignis_id",
+        "art",
+        "zeitpunkt",
+        "messstelle",
+        "eingetragen_am"
+      ],
+      "properties": {
+        "ereignis_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "art": {
+          "const": "verteilung_geaendert"
+        },
+        "zeitpunkt": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "messstelle": {
+          "$ref": "#/$defs/kennung"
+        },
+        "eingetragen_am": {
+          "$ref": "#/$defs/zeit_utc"
+        }
+      }
+    },
+    "art_bilanz_neu_berechnet": {
+      "type": "object",
+      "description": "bilanz_neu_berechnet — Bilanz neu berechnet. Urheber: cloud.",
+      "additionalProperties": false,
+      "required": [
+        "ereignis_id",
+        "art",
+        "von",
+        "bis",
+        "messstelle",
+        "ausloeser"
+      ],
+      "properties": {
+        "ereignis_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "art": {
+          "const": "bilanz_neu_berechnet"
+        },
+        "von": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "bis": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "messstelle": {
+          "$ref": "#/$defs/kennung"
+        },
+        "ausloeser": {
+          "$ref": "#/$defs/kennung"
+        }
+      }
+    },
+    "art_bericht_freigegeben": {
+      "type": "object",
+      "description": "bericht_freigegeben — Bericht freigegeben. Urheber: kunde.",
+      "additionalProperties": false,
+      "required": [
+        "ereignis_id",
+        "art",
+        "zeitpunkt",
+        "bericht",
+        "nr",
+        "datenstand",
+        "pruefsumme"
+      ],
+      "properties": {
+        "ereignis_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "art": {
+          "const": "bericht_freigegeben"
+        },
+        "zeitpunkt": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "bericht": {
+          "$ref": "#/$defs/kennung"
+        },
+        "nr": {
+          "$ref": "#/$defs/ganz_ab_1"
+        },
+        "datenstand": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "pruefsumme": {
+          "$ref": "#/$defs/pruefsumme"
+        }
+      }
+    },
+    "art_bericht_revision_angestossen": {
+      "type": "object",
+      "description": "bericht_revision_angestossen — Revision angestoßen. Urheber: cloud.",
+      "additionalProperties": false,
+      "required": [
+        "ereignis_id",
+        "art",
+        "zeitpunkt",
+        "bericht",
+        "nr",
+        "anstoss_art",
+        "anlass_kennung"
+      ],
+      "properties": {
+        "ereignis_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "art": {
+          "const": "bericht_revision_angestossen"
+        },
+        "zeitpunkt": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "bericht": {
+          "$ref": "#/$defs/kennung"
+        },
+        "nr": {
+          "$ref": "#/$defs/ganz_ab_1"
+        },
+        "anstoss_art": {
+          "$ref": "#/$defs/anstoss_art"
+        },
+        "anlass_kennung": {
+          "$ref": "#/$defs/kennung"
+        },
+        "anlass_fassung": {
+          "$ref": "#/$defs/ganz_ab_1"
+        }
+      }
+    },
+    "art_bericht_entwurf_neu_gebildet": {
+      "type": "object",
+      "description": "bericht_entwurf_neu_gebildet — Entwurf neu gebildet. Urheber: cloud.",
+      "additionalProperties": false,
+      "required": [
+        "ereignis_id",
+        "art",
+        "zeitpunkt",
+        "bericht",
+        "datenstand"
+      ],
+      "properties": {
+        "ereignis_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "art": {
+          "const": "bericht_entwurf_neu_gebildet"
+        },
+        "zeitpunkt": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "bericht": {
+          "$ref": "#/$defs/kennung"
+        },
+        "datenstand": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "anlass_kennung": {
+          "$ref": "#/$defs/kennung"
+        }
+      }
+    },
+    "art_bericht_abgerufen": {
+      "type": "object",
+      "description": "bericht_abgerufen — Bericht abgerufen. Urheber: kunde.",
+      "additionalProperties": false,
+      "required": [
+        "ereignis_id",
+        "art",
+        "zeitpunkt",
+        "bericht",
+        "nr",
+        "format"
+      ],
+      "properties": {
+        "ereignis_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "art": {
+          "const": "bericht_abgerufen"
+        },
+        "zeitpunkt": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "bericht": {
+          "$ref": "#/$defs/kennung"
+        },
+        "nr": {
+          "$ref": "#/$defs/ganz_ab_1"
+        },
+        "format": {
+          "$ref": "#/$defs/bericht_format"
+        }
+      }
+    },
+    "art_kennzahl_neu_gebildet": {
+      "type": "object",
+      "description": "kennzahl_neu_gebildet — Kennzahl neu gebildet. Urheber: cloud.",
+      "additionalProperties": false,
+      "required": [
+        "ereignis_id",
+        "art",
+        "von",
+        "bis",
+        "kennzahl",
+        "ausloeser",
+        "version"
+      ],
+      "properties": {
+        "ereignis_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "art": {
+          "const": "kennzahl_neu_gebildet"
+        },
+        "von": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "bis": {
+          "$ref": "#/$defs/zeit_utc"
+        },
+        "kennzahl": {
+          "$ref": "#/$defs/kennung"
+        },
+        "ausloeser": {
+          "$ref": "#/$defs/kennung"
+        },
+        "version": {
+          "$ref": "#/$defs/ganz_ab_1"
+        }
+      }
+    },
+    "art_einstufung_gesetzt": {
+      "type": "object",
+      "description": "einstufung_gesetzt — Eine Person hat eine Einstufungs-Fassung gesetzt. Urheber: kunde.",
+      "additionalProperties": false,
+      "required": ["ereignis_id", "art", "zeitpunkt", "energieeinsatz", "fassung", "einstufung", "gruende"],
+      "properties": {
+        "ereignis_id": { "$ref": "#/$defs/uuid" },
+        "art": { "const": "einstufung_gesetzt" },
+        "zeitpunkt": { "$ref": "#/$defs/zeit_utc" },
+        "energieeinsatz": { "$ref": "#/$defs/kennung" },
+        "fassung": { "$ref": "#/$defs/ganz_ab_1" },
+        "einstufung": { "type": "string", "enum": ["wesentlich", "nicht_wesentlich"] },
+        "gruende": {
+          "type": "array", "uniqueItems": true,
+          "items": { "type": "string", "enum": ["K1", "K2", "K3", "K4"] }
+        }
+      }
+    },
+    "art_messbedarf_erfasst": {
+      "type": "object",
+      "description": "messbedarf_erfasst — eine Person erfasst einen offenen Messbedarf.",
+      "additionalProperties": false,
+      "required": ["ereignis_id", "art", "zeitpunkt", "messbedarf"],
+      "properties": {
+        "ereignis_id": { "$ref": "#/$defs/uuid" },
+        "art": { "const": "messbedarf_erfasst" },
+        "zeitpunkt": { "$ref": "#/$defs/zeit_utc" },
+        "messbedarf": { "$ref": "#/$defs/kennung" }
+      }
+    },
+    "art_messbedarf_eingeloest": {
+      "type": "object",
+      "description": "messbedarf_eingeloest — eine Person löst den Bedarf durch eine eingerichtete Messstelle ein.",
+      "additionalProperties": false,
+      "required": ["ereignis_id", "art", "zeitpunkt", "messbedarf", "messstelle"],
+      "properties": {
+        "ereignis_id": { "$ref": "#/$defs/uuid" },
+        "art": { "const": "messbedarf_eingeloest" },
+        "zeitpunkt": { "$ref": "#/$defs/zeit_utc" },
+        "messbedarf": { "$ref": "#/$defs/kennung" },
+        "messstelle": { "$ref": "#/$defs/kennung" }
       }
     }
   }

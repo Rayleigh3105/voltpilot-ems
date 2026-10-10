@@ -4,6 +4,8 @@ import com.voltpilot.api.optimizer.WhatIfClient;
 import com.voltpilot.api.repo.OptimizerDiagnosticsRepository;
 import com.voltpilot.api.repo.OptimizerDiagnosticsRepository.SiteContext;
 import com.voltpilot.api.vorschau.Vorschau;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMin;
@@ -112,6 +114,7 @@ public class SiteVorschauController {
      * keinen Platz im Fenster des Deckels verbrauchen.
      */
     @PostMapping("/steuerung-vorschau")
+    @Recht(value = "messwerte.ansehen", ziel = RechtZiel.ANLAGE)
     public VorschauDto vorschau(@PathVariable UUID siteId,
             @Valid @RequestBody(required = false) VorschauRequest request,
             HttpServletRequest http) {

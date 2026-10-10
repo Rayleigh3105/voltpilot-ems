@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.SeriesRepository;
 import com.voltpilot.api.repo.TenantRepository;
 import com.voltpilot.api.tenant.TenantAwareDataSource;
@@ -63,7 +64,7 @@ import org.testcontainers.utility.DockerImageName;
  * zeichengleich, nichts wird zurückgeschrieben); das Vokabular der Datenbank ist Zeile für Zeile
  * das von {@link EreignisVokabular} und die CHECKs urteilen wie die Klasse; JEDER Fall der
  * Vektor-Datei {@code events-vocabulary-vectors.json} läuft durch den Schreibweg und bekommt dort
- * dasselbe Urteil (jede der 23 Arten landet in der Tabelle); eine Wiederholung erzeugt keine
+ * dasselbe Urteil (jede der 34 Arten landet in der Tabelle); eine Wiederholung erzeugt keine
  * zweite Zeile, eine Fortschreibung eine weitere; der Zaun steht; niemand ändert, die App löscht
  * nie; Anlage, Box, Komponente und Datenaufzeichnung zu löschen lässt die Ereignisse stehen, nur
  * das Offboarding räumt sie. Keine Retention, keine Kompression: {@code DataRetentionPolicyTest}.
@@ -194,7 +195,10 @@ class MessreiheEreignisMigrationTest {
                 .isEqualTo("30 days");
         List<String> indizes = root.queryForList("SELECT indexdef FROM pg_indexes WHERE tablename = "
                 + "'messreihe_ereignis' ORDER BY indexname", String.class);
-        assertThat(indizes).hasSize(6).allSatisfy(i -> assertThat(i).contains("(tenant_id,"));
+        // Sieben seit AP-11 IP-9 (V20260915150000): der Teilindex, über den die Kaskade Bezugsgrößen-Meldungen sucht.
+        assertThat(indizes).hasSize(7).allSatisfy(i -> assertThat(i).contains("(tenant_id,"));
+        assertThat(indizes).anySatisfy(i -> assertThat(i).contains("idx_messreihe_ereignis_correction_bezugsgroesse")
+                .contains("(tenant_id, eingang)"));
         assertThat(indizes).anySatisfy(i -> assertThat(i).contains("UNIQUE").contains("(tenant_id, meldung, zeit)"));
         assertThat(root.queryForObject("SELECT relrowsecurity AND relforcerowsecurity FROM pg_class "
                 + "WHERE relname = 'messreihe_ereignis'", Boolean.class)).isTrue();
@@ -361,7 +365,7 @@ class MessreiheEreignisMigrationTest {
                 }
             }
         }
-        tests.add(DynamicTest.dynamicTest("jede der 23 Arten steht in der Tabelle", () ->
+        tests.add(DynamicTest.dynamicTest("jede der 34 Arten steht in der Tabelle", () ->
                 assertThat(root.queryForList("SELECT DISTINCT art FROM messreihe_ereignis WHERE tenant_id = ? "
                         + "AND NOT aus_bestand", String.class, kb))
                         .containsExactlyInAnyOrderElementsOf(Stream.of(Art.values()).map(Art::code).toList())));
@@ -511,9 +515,12 @@ class MessreiheEreignisMigrationTest {
 
         alsTue(w, () -> new SeriesRepository(app).purgeDeviceRecordings(box, site, null));
         assertThat(als(w, () -> app.update("DELETE FROM measurement_point WHERE id = ?", komponente))).isOne();
-        assertThat(als(w, () -> app.update("DELETE FROM device WHERE id = ?", box))).as("Unclaim").isOne();
+        // Unclaim baut die Box aus (AP-07 IP-11): der Bestand der Messwert-Strecke bleibt mit ihr.
+        assertThat(als(w, () -> new DeviceRepository(app).ausbauen(box))).as("Unclaim").isTrue();
         assertThat(root.queryForObject("SELECT count(*) FROM device_measurement_event WHERE device_id = ?",
-                Long.class, box)).as("der Bestand geht mit der Box").isZero();
+                Long.class, box)).as("der Bestand bleibt mit der ausgebauten Box").isOne();
+        // Die Anlage ohne Belege wird wie im SiteController entfernt: erst ihre Serien, dann sie selbst.
+        alsTue(w, () -> new SeriesRepository(app).deleteForSite(site));
         assertThat(als(w, () -> app.update("DELETE FROM site WHERE id = ?", site))).isOne();
         assertThat(root.queryForObject(ereignisseVonW, Long.class, w)).as("die Ereignisse bleiben").isEqualTo(2);
         assertThat(root.queryForObject("SELECT count(*) FROM messreihe_ereignis WHERE tenant_id = ? AND "

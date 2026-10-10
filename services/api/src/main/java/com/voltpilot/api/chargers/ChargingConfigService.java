@@ -2,22 +2,38 @@ package com.voltpilot.api.chargers;
 
 import com.voltpilot.api.verbraucher.SteuerartProjektion;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.uems.AnlageGrenzen;
+import com.voltpilot.api.uems.AnlageStandortRepository;
+import com.voltpilot.api.uems.LadeparkJeBox;
+import com.voltpilot.api.uems.LadeparkJeBox.Verteilung;
+import com.voltpilot.api.uems.NetzanschlussRepository;
+import com.voltpilot.api.uems.StandortRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.fahrzeuge.SiteVehicleRepository;
 import com.voltpilot.api.web.dto.ChargingConfigDto;
 import com.voltpilot.api.web.dto.FahrzeugDto.VehicleProfileDto;
+import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -79,10 +95,21 @@ public class ChargingConfigService {
 
     private static final int MAX_CONNECTORS = 32;
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final ChargingConfigRepository configs;
     private final DeviceChargerStatusRepository chargers;
     private final ObjectProvider<ChargingConfigPublisher> publisher;
+    /** UEMS AP-15 IP-3: der Leseweg des Grenzblatts; ohne (Einzeltests) reist der Rahmen unverändert. */
+    private volatile AnlageGrenzen grenzen;
+    /** AP-15 IP-3 Folgepaket: der zuletzt zugestellte Bezugswert; ohne (Einzeltests) wird nichts verglichen. */
+    private volatile LadeparkNetzgrenzeRepository zugestellt;
+    /** UEMS AP-15 IP-16: die Boxen einer Anlage mit scharfer oder angehaltener Gemeinsamer Steuerung. */
+    private volatile LadeparkJeBox verbund;
+    /** Die Uhr, an der „heute am Standort“ hängt — nur Tests stellen sie ({@link #uhrStellen}). */
+    private volatile Clock uhr = Clock.systemUTC();
+    private final NetzanschlussRepository netzanschluesse;
+    private final AnlageStandortRepository anlageStandorte;
+    private final StandortRepository standorte;
     /**
      * Die Fahrzeug-Profile (P7). Als {@link ObjectProvider}, damit ein
      * Deployment ohne diese Bohne (ein Test-Kontext etwa) hier nichts anderes
@@ -90,15 +117,21 @@ public class ChargingConfigService {
      */
     private final ObjectProvider<SiteVehicleRepository> vehicles;
 
-    public ChargingConfigService(SiteRepository sites, ChargingConfigRepository configs,
+    public ChargingConfigService(Geltungsbereich geltungsbereich, ChargingConfigRepository configs,
             DeviceChargerStatusRepository chargers,
             ObjectProvider<ChargingConfigPublisher> publisher,
-            ObjectProvider<SiteVehicleRepository> vehicles) {
-        this.sites = sites;
+            ObjectProvider<SiteVehicleRepository> vehicles,
+            NetzanschlussRepository netzanschluesse,
+            AnlageStandortRepository anlageStandorte,
+            StandortRepository standorte) {
+        this.geltungsbereich = geltungsbereich;
         this.configs = configs;
         this.chargers = chargers;
         this.publisher = publisher;
         this.vehicles = vehicles;
+        this.netzanschluesse = netzanschluesse;
+        this.anlageStandorte = anlageStandorte;
+        this.standorte = standorte;
     }
 
     /** Die gepflegte Konfiguration (leer = noch nichts gepflegt). */
@@ -153,6 +186,108 @@ public class ChargingConfigService {
     }
 
     /**
+     * Setzt die Anschlussgrenze über den Kunden-Schritt (AP-01 IP-13). Anders als der ältere,
+     * allgemeine Konfigurationsweg prüft dieser Weg den Netzanschluss und das verbleibende
+     * Ladebudget, bevor derselbe gespeicherte Wunsch zur Box reist.
+     *
+     * <p>Ist heute kein Netzanschluss gebunden, gilt der beschlossene Übergang: die vereinbarte
+     * Leistung kommt ausdrücklich aus dem Dialog. Sobald eine Bindung besteht, ist ausschließlich
+     * deren {@code vereinbart_kw} maßgeblich; ein mitgesendeter Übergangswert kann sie nie ersetzen.
+     */
+    @Transactional
+    public ChargingConfigDto saveCustomerFrame(UUID siteId, Double gridLimitKw,
+            Double vereinbartKwDialog, String actor) {
+        requireSite(siteId);
+        pruefeNetzgrenze(gridLimitKw);
+
+        LocalDate heute = heuteAmStandort(siteId);
+        NetzanschlussRepository.Bindung bindung = netzanschluesse.bindungenDerAnlage(siteId).stream()
+                .filter(b -> b.laeuftAm(heute)).findFirst().orElse(null);
+        BigDecimal vereinbart;
+        String herkunft;
+        if (bindung == null) {
+            if (vereinbartKwDialog == null || vereinbartKwDialog.isNaN()
+                    || !(vereinbartKwDialog > 0) || vereinbartKwDialog > MAX_GRID_LIMIT_KW) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                        "An diese Anlage ist heute kein Netzanschluss gebunden. Tragen Sie die vereinbarte Leistung im Dialog ein.");
+            }
+            vereinbart = BigDecimal.valueOf(vereinbartKwDialog);
+            herkunft = "Ihrer Eingabe";
+        } else {
+            var anschluss = netzanschluesse.finde(bindung.netzanschlussId()).orElse(null);
+            vereinbart = anschluss == null ? null : anschluss.vereinbartKw();
+            herkunft = "Netzanschluss " + bindung.netzanschlussKennzeichen();
+            if (vereinbart == null) {
+                throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                        "Beim Netzanschluss " + bindung.netzanschlussKennzeichen()
+                                + " ist keine vereinbarte Leistung hinterlegt.");
+            }
+        }
+
+        BigDecimal grenze = BigDecimal.valueOf(gridLimitKw);
+        if (grenze.compareTo(vereinbart) > 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    kw(grenze) + " kW liegen über " + kw(vereinbart)
+                            + " kW vereinbarter Leistung (" + herkunft + ") — bitte prüfen.");
+        }
+
+        ChargingConfigDto vorhanden = configs.forSite(siteId);
+        var rahmen = vorhanden.frame();
+        Double grundlast = rahmen == null ? null : rahmen.maxHouseLoadKw();
+        Double reserve = rahmen == null ? null : rahmen.houseReserveKw();
+        if (grundlast == null || reserve == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Für die Plausibilitätsprüfung fehlen die Grundlast der letzten 7 Tage oder die Hausreserve. VoltPilot richtet diese Werte ein.");
+        }
+        BigDecimal budget = grenze.subtract(BigDecimal.valueOf(grundlast))
+                .subtract(BigDecimal.valueOf(reserve));
+        if (budget.signum() <= 0) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Die Grundlast der letzten 7 Tage (" + kw(BigDecimal.valueOf(grundlast))
+                            + " kW) und die Hausreserve (" + kw(BigDecimal.valueOf(reserve))
+                            + " kW) lassen innerhalb von " + kw(grenze)
+                            + " kW kein Ladebudget übrig.");
+        }
+
+        UUID tenantId = TenantContext.get();
+        configs.saveGridLimit(tenantId, siteId, gridLimitKw, actor);
+        ChargingConfigDto saved = configs.forSite(siteId);
+        push(tenantId, siteId, saved);
+        return saved;
+    }
+
+    private void pruefeNetzgrenze(Double gridLimitKw) {
+        if (gridLimitKw == null || gridLimitKw.isNaN() || !(gridLimitKw > 0)
+                || gridLimitKw > MAX_GRID_LIMIT_KW) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Die Anschlussgrenze muss eine Leistung größer 0 kW sein.");
+        }
+    }
+
+    /** Tagesbindungen gelten in der Zeitzone des zugeordneten Standorts, nie nach Server-Mitternacht. */
+    private LocalDate heuteAmStandort(UUID siteId) {
+        Instant jetzt = uhr.instant();
+        for (AnlageStandortRepository.Zuordnung z : anlageStandorte.fuerAnlage(siteId)) {
+            if (z.aufgehoben()) {
+                continue;
+            }
+            var standort = standorte.finde(z.standortId()).orElse(null);
+            if (standort == null) {
+                continue;
+            }
+            LocalDate tag = LocalDate.ofInstant(jetzt, ZoneId.of(standort.zeitzone()));
+            if (!tag.isBefore(z.gueltigAb()) && (z.gueltigBis() == null || !tag.isAfter(z.gueltigBis()))) {
+                return tag;
+            }
+        }
+        return LocalDate.ofInstant(jetzt, ZoneOffset.UTC);
+    }
+
+    private static String kw(BigDecimal wert) {
+        return wert.stripTrailingZeros().toPlainString().replace('.', ',');
+    }
+
+    /**
      * Der Schreibweg der RANGLISTE (P6) - Vorrang, Speicher-Frage und die zwei
      * P6-Zahlen in EINEM Vorgang, mit GENAU EINEM Push.
      *
@@ -191,14 +326,6 @@ public class ChargingConfigService {
     }
 
     /**
-     * Schickt die gespeicherte Konfiguration an jedes Gerät der Anlage.
-     *
-     * <p>An JEDES, nicht nur an das mit den Ladesäulen: welches Gerät das CSMS
-     * fährt, weiß nur die Box selbst, und eine Box ohne Ladepunkte übernimmt
-     * eine Anschlussgrenze folgenlos (ihr Budget verteilt sie an niemanden).
-     * Raten wäre die schlechtere Hälfte.
-     */
-    /**
      * Schickt die AKTUELL gespeicherte Konfiguration erneut hinaus - der Weg,
      * den ein Nachbar-Feature nimmt, das im selben Dokument mitreist (P7: die
      * Fahrzeug-Profile). Es gibt bewusst nur EINEN Kanal zur Box, also auch nur
@@ -208,12 +335,95 @@ public class ChargingConfigService {
         push(tenantId, siteId, configs.forSite(siteId));
     }
 
+    /** Setter statt Konstruktor: bestehende Aufrufer und Tests bauen den Dienst unverändert. */
+    @Autowired(required = false)
+    void grenzenLesen(AnlageGrenzen grenzen) {
+        this.grenzen = grenzen;
+    }
+
+    /**
+     * Die Anschlussgrenze, mit der das Ladepark-Dokument reist (UEMS AP-15 IP-3, Kasten W1): der ENGERE Wert aus
+     * Rahmen ({@code site_charging_config.grid_limit_kw}) und Bezugsgrenze des heute gebundenen Netzanschlusses,
+     * entschieden von {@code GrenzeAufloesung}. Ohne Bindung oder Fassung dasselbe {@code Double} — Byte für Byte.
+     */
+    @Autowired(required = false)
+    void zugestelltLesen(LadeparkNetzgrenzeRepository zugestellt) {
+        this.zugestellt = zugestellt;
+    }
+
+    /** Setter statt Konstruktor (IP-16): ohne die Bohne reist das eine Dokument von heute. */
+    @Autowired(required = false)
+    void verbundLesen(LadeparkJeBox verbund) {
+        this.verbund = verbund;
+    }
+
+    private Optional<Verteilung> verteilung(UUID siteId) {
+        LadeparkJeBox v = verbund;
+        return v == null ? Optional.empty() : v.derAnlage(siteId);
+    }
+
+    /** Nur für Tests: der Tageswechsel am Standort. */
+    void uhrStellen(Clock uhr) {
+        this.uhr = uhr;
+    }
+
+    /**
+     * Der Grenzblatt-Anstoß (UEMS AP-15 IP-3, Folgepaket): stellt das Ladepark-Dokument neu zu, wenn der HEUTE
+     * wirksame Bezug ({@link #netzgrenze}) ein anderer ist als der zuletzt zugestellte — nach einer Fassung, die am
+     * Tageswechsel beginnt oder endet, einer neuen, geänderten oder beendeten Bindung, einer aufgehobenen Fassung.
+     * Ohne Rahmen nie (kein neues Dokument); ohne Zeile gilt der Rahmen als zugestellt (Stand vor dem Grenzblatt),
+     * darum bekommt eine Anlage ohne Bindung/Fassung nie eine Zustellung. Idempotent: ein zweiter Aufruf ist still.
+     *
+     * @return ob das Dokument hinausging
+     */
+    public boolean netzgrenzeNachziehen(UUID tenantId, UUID siteId) {
+        LadeparkNetzgrenzeRepository z = zugestellt;
+        if (z == null || !z.hatRahmen(siteId)) {
+            return false;
+        }
+        Double rahmen = configs.forSite(siteId).gridLimitKw();
+        Double zuletzt = z.zuletzt(siteId).map(LadeparkNetzgrenzeRepository.Zugestellt::kw).orElse(rahmen);
+        if (Objects.equals(netzgrenze(siteId, rahmen), zuletzt)) {
+            return false;
+        }
+        return republishForSite(tenantId, siteId);
+    }
+
+    Double netzgrenze(UUID siteId, Double rahmen) {
+        AnlageGrenzen g = grenzen;
+        return g == null ? rahmen : g.bezugKw(siteId, heuteAmStandort(siteId), rahmen);
+    }
+
     void push(UUID tenantId, UUID siteId, ChargingConfigDto config) {
+        pushResult(tenantId, siteId, config);
+    }
+
+    /** Repeated delivery after a box succession must retain a failed transport as pending. */
+    public boolean republishForSite(UUID tenantId, UUID siteId) {
+        return pushResult(tenantId, siteId, configs.forSite(siteId));
+    }
+
+    private boolean pushResult(UUID tenantId, UUID siteId, ChargingConfigDto config) {
+        Optional<Verteilung> jeBox = verteilung(siteId);
+        if (jeBox.isPresent()) {
+            return pushJeBox(tenantId, siteId, config, jeBox.get(), jeBox(siteId, jeBox.get(), null), null);
+        }
+        return push(tenantId, siteId, config,
+                zielBoxen(configs.deviceIds(siteId), configs.deviceIdsWithChargePoints(siteId)));
+    }
+
+    private boolean push(UUID tenantId, UUID siteId, ChargingConfigDto config,
+            List<UUID> deviceIds) {
         ChargingConfigPublisher pub = publisher.getIfAvailable();
         if (pub == null) {
             log.debug("no charging-config publisher configured - nothing pushed for site {}",
                     siteId);
-            return;
+            return false;
+        }
+        if (deviceIds.isEmpty()) {
+            log.warn("charging config for site {} not pushed: no unambiguous station box",
+                    siteId);
+            return false;
         }
         Instant now = Instant.now();
         // ⚠ Die FAHRZEUG-PROFILE (P7) werden hier GELESEN, nicht durchgereicht:
@@ -224,19 +434,204 @@ public class ChargingConfigService {
         // Rücknahme bei einer Box an, die gerade offline war.
         List<VehicleProfileDto> vehicles = vehicleProfiles(siteId);
         String control = configs.ocppControl(siteId);
-        for (UUID deviceId : configs.deviceIds(siteId)) {
+        Double netzgrenze = netzgrenze(siteId, config.gridLimitKw());
+        boolean delivered = true;
+        for (UUID deviceId : deviceIds) {
             if (control != null) {
-                pub.publish(tenantId, siteId, deviceId, config.gridLimitKw(), config.priorityChargePointIds(),
+                delivered &= pub.publish(tenantId, siteId, deviceId, netzgrenze, config.priorityChargePointIds(),
                         config.surplusPolicy(), config.storagePriority(), config.chargePoints(), config.removedChargePointIds(),
                         config.frame(), config.storageRank(), config.wallboxes(), vehicles, control, now);
                 continue;
             }
-            pub.publish(tenantId, siteId, deviceId, config.gridLimitKw(),
+            delivered &= pub.publish(tenantId, siteId, deviceId, netzgrenze,
                     config.priorityChargePointIds(), config.surplusPolicy(),
                     config.storagePriority(), config.chargePoints(),
                     config.removedChargePointIds(), config.frame(), config.storageRank(),
                     config.wallboxes(), vehicles, now);
         }
+        if (delivered) {
+            merken(tenantId, siteId, netzgrenze);
+        }
+        return delivered;
+    }
+
+    /**
+     * Wer in einer Anlage mit Gemeinsamer Steuerung ein Ladepark-Dokument bekommt, und welche Ladepunkte je Box
+     * reisen (IP-16). Die führende Box bekommt es immer (der Empfänger von heute); eine mitsteuernde nur, wenn sie
+     * Ladepunkte gemeldet hat, eine Wallbox trägt oder gerade das Ziel des Anbindens ist.
+     */
+    private record JeBox(List<UUID> empfaenger, Map<UUID, Set<String>> saeulen, Set<String> gemeldet,
+            Map<UUID, Set<UUID>> wallboxen, Set<UUID> zugeordnet) {}
+
+    private JeBox jeBox(UUID siteId, Verteilung v, Map.Entry<UUID, String> angebunden) {
+        Map<UUID, Set<String>> gemeldetJe = configs.chargePointsPerDevice(siteId);
+        Map<UUID, Set<UUID>> wallboxenJe = configs.wallboxesPerDevice(siteId);
+        Map<UUID, Set<String>> saeulen = new HashMap<>();
+        Map<UUID, Set<UUID>> wallboxen = new HashMap<>();
+        Set<String> gemeldet = new HashSet<>();
+        Set<UUID> zugeordnet = new HashSet<>();
+        List<UUID> empfaenger = new ArrayList<>();
+        for (UUID box : v.boxen()) {
+            Set<String> eigene = new HashSet<>(gemeldetJe.getOrDefault(box, Set.of()));
+            gemeldet.addAll(eigene);
+            if (angebunden != null && angebunden.getKey().equals(box)) {
+                eigene.add(angebunden.getValue());
+            }
+            Set<UUID> w = wallboxenJe.getOrDefault(box, Set.of());
+            zugeordnet.addAll(w);
+            saeulen.put(box, eigene);
+            wallboxen.put(box, w);
+            if (box.equals(v.fuehrende()) || !eigene.isEmpty() || !w.isEmpty()) {
+                empfaenger.add(box);
+            }
+        }
+        if (angebunden != null) {
+            gemeldet.add(angebunden.getValue());
+        }
+        return new JeBox(List.copyOf(empfaenger), saeulen, gemeldet, wallboxen, zugeordnet);
+    }
+
+    /**
+     * Das Ladepark-Dokument JE BOX (UEMS AP-15 IP-16, P6/W6/E4 = A): je Empfänger sein Ausschnitt der Rangliste in
+     * unveränderter Reihenfolge ({@link LadeparkAusschnitt}) und die Netzgrenze der Anlage wie heute — für JEDE Box.
+     * Der Anteil reist nur im Anteils-Dokument (Y1); die Box rechnet min(heute, Anteil) (IP-19), die Netzgrenze kann
+     * dort nur verengen. {@code nur} = nur an diese Boxen (Anbinden). Gemerkt wird die Netzgrenze nur, wenn JEDER
+     * Empfänger sie bekommen hat: „je Anlage zugestellt“ heißt „an alle ihre Boxen zugestellt“, sonst stellt der
+     * Anstoß beim nächsten Mal allen noch einmal zu (dasselbe retained Dokument, also unschädlich).
+     */
+    private boolean pushJeBox(UUID tenantId, UUID siteId, ChargingConfigDto config, Verteilung v, JeBox plan,
+            Set<UUID> nur) {
+        ChargingConfigPublisher pub = publisher.getIfAvailable();
+        if (pub == null) {
+            log.debug("no charging-config publisher configured - nothing pushed for site {}", siteId);
+            return false;
+        }
+        Instant now = Instant.now();
+        List<VehicleProfileDto> vehicles = vehicleProfiles(siteId);
+        String control = configs.ocppControl(siteId);
+        Double netzgrenze = netzgrenze(siteId, config.gridLimitKw());
+        boolean delivered = true;
+        boolean alle = true;
+        for (UUID deviceId : plan.empfaenger()) {
+            if (nur != null && !nur.contains(deviceId)) {
+                alle = false;
+                continue;
+            }
+            boolean fuehrt = deviceId.equals(v.fuehrende());
+            Set<String> eigene = plan.saeulen().get(deviceId);
+            List<String> vorrang = LadeparkAusschnitt.vorrang(config.priorityChargePointIds(), fuehrt, eigene,
+                    plan.gemeldet());
+            List<ChargingConfigDto.AllowedChargePointDto> saeulen = LadeparkAusschnitt.saeulen(config.chargePoints(),
+                    fuehrt, eigene, plan.gemeldet());
+            List<ChargingConfigDto.WallboxDto> wallboxen = LadeparkAusschnitt.wallboxen(config.wallboxes(), fuehrt,
+                    plan.wallboxen().get(deviceId), plan.zugeordnet());
+            delivered &= control != null
+                    ? pub.publish(tenantId, siteId, deviceId, netzgrenze, vorrang, config.surplusPolicy(),
+                            config.storagePriority(), saeulen, config.removedChargePointIds(), config.frame(),
+                            config.storageRank(), wallboxen, vehicles, control, now)
+                    : pub.publish(tenantId, siteId, deviceId, netzgrenze, vorrang, config.surplusPolicy(),
+                            config.storagePriority(), saeulen, config.removedChargePointIds(), config.frame(),
+                            config.storageRank(), wallboxen, vehicles, now);
+        }
+        if (delivered && alle) {
+            merken(tenantId, siteId, netzgrenze);
+        }
+        return delivered;
+    }
+
+    /**
+     * Merkt den zugestellten Bezug für den Anstoß ({@link #netzgrenzeNachziehen}). Nur im eigenen Kundenbereich (RLS);
+     * ein Fehler hier nimmt die Zustellung nie zurück — schlimmstenfalls stellt der Anstoß einmal zu viel zu.
+     */
+    private void merken(UUID tenantId, UUID siteId, Double netzgrenze) {
+        LadeparkNetzgrenzeRepository z = zugestellt;
+        if (z == null || !Objects.equals(TenantContext.get(), tenantId)) {
+            return;
+        }
+        try {
+            z.zugestellt(tenantId, siteId, netzgrenze);
+        } catch (RuntimeException e) {
+            log.warn("zugestellte Netzgrenze der Anlage {} nicht gemerkt: {}", siteId, e.getMessage());
+        }
+    }
+
+    /**
+     * Genau eine Box fuehrt den Ladepark. Solange noch keine Station gemeldet
+     * ist, bleibt ausschliesslich die bestehende Ein-Box-Anlage auf ihrem
+     * bisherigen Empfaenger; bei mehreren Boxen wird nie geraten.
+     */
+    static List<UUID> zielBoxen(List<UUID> aktiveBoxen, List<UUID> boxenMitLadepunkten) {
+        if (boxenMitLadepunkten.size() == 1) {
+            return List.of(boxenMitLadepunkten.get(0));
+        }
+        if (boxenMitLadepunkten.isEmpty() && aktiveBoxen.size() == 1) {
+            return List.of(aktiveBoxen.get(0));
+        }
+        return List.of();
+    }
+
+    private UUID zielBoxFuerAnbinden(UUID siteId, UUID gewaehlt) {
+        List<UUID> aktive = configs.deviceIds(siteId);
+        List<UUID> belegt = configs.deviceIdsWithChargePoints(siteId);
+        Optional<Verteilung> jeBox = verteilung(siteId);
+        if (jeBox.isPresent()) {
+            return zielBoxJeBox(gewaehlt, aktive, belegt, jeBox.get());
+        }
+        if (belegt.size() > 1) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Die Ladepunkte dieser Anlage sind bereits auf mehrere Boxen verteilt. "
+                            + "VoltPilot sendet keine weitere Ladepark-Konfiguration, bis die "
+                            + "Zuständigkeit geklärt ist.");
+        }
+        UUID vorhanden = belegt.isEmpty() ? null : belegt.get(0);
+        UUID ziel = gewaehlt != null ? gewaehlt
+                : vorhanden != null ? vorhanden
+                : aktive.size() == 1 ? aktive.get(0) : null;
+        if (ziel == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Wählen Sie die Box, mit der sich die Ladesäule verbinden soll.");
+        }
+        if (!aktive.contains(ziel)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Die gewählte Box gehört nicht zu dieser Anlage oder ist nicht mehr eingebaut.");
+        }
+        if (vorhanden != null && !vorhanden.equals(ziel)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Die Ladepunkte dieser Anlage sind bereits an eine andere Box angebunden. "
+                            + "Eine zweite Box für Ladepunkte ist erst mit der gemeinsamen "
+                            + "Steuerung verfügbar.");
+        }
+        return ziel;
+    }
+
+    /**
+     * Die Ziel-Box des Anbindens in einer Anlage mit Gemeinsamer Steuerung (IP-16). Scharf ({@code anteile_aktiv})
+     * fällt die 422 „zweite Box für Ladepunkte“: jede steuernde Box darf Ladepunkte tragen. Angehalten bleiben die
+     * Anteile in Kraft und die Ladepunkte an einer zweiten Box werden weiter bedient, eine NEUE zweite Box wird aber
+     * wie seit AP-06 abgelehnt — angehalten heißt „zurück zum AP-06-Betrieb“ (Konzept §3.9, §5.5). Eine Box, die nur
+     * liest oder nicht mitmacht, bekommt kein Ladepark-Dokument, also auch keine Ladepunkte.
+     */
+    private static UUID zielBoxJeBox(UUID gewaehlt, List<UUID> aktive, List<UUID> belegt, Verteilung v) {
+        UUID ziel = gewaehlt != null ? gewaehlt : belegt.size() == 1 ? belegt.get(0) : null;
+        if (ziel == null) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Wählen Sie die Box, mit der sich die Ladesäule verbinden soll.");
+        }
+        if (!aktive.contains(ziel)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Die gewählte Box gehört nicht zu dieser Anlage oder ist nicht mehr eingebaut.");
+        }
+        if (!v.boxen().contains(ziel)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Diese Box liest in der Gemeinsamen Steuerung nur. Verbinden Sie die Ladesäule mit einer Box, "
+                            + "die die Anlage führt oder mitsteuert.");
+        }
+        if (!v.scharf() && !belegt.isEmpty() && !belegt.contains(ziel)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Die Gemeinsame Steuerung dieser Anlage ist angehalten. Eine weitere Box für Ladepunkte "
+                            + "ist erst wieder möglich, wenn sie aktiv ist.");
+        }
+        return ziel;
     }
 
     /**
@@ -286,9 +681,10 @@ public class ChargingConfigService {
     @Transactional
     public ChargingConfigDto admit(UUID siteId, String chargePointId, String label,
             Double ratedKw, Integer connectors, String source, Double minKw, String connection,
-            String actor) {
+            UUID deviceId, String actor) {
         requireSite(siteId);
         UUID tenantId = TenantContext.get();
+        UUID zielBox = zielBoxFuerAnbinden(siteId, deviceId);
         String id = chargePointId == null ? "" : chargePointId.trim();
         // ⚠ Das Zeichen-Vokabular ist das des KONTRAKTS (und damit das der Box):
         // eine Kennung, die kein MQTT-Topic-Segment sein kann, erreichte die
@@ -337,7 +733,18 @@ public class ChargingConfigService {
         configs.admitChargePoint(tenantId, siteId, id, name, ratedKw, connectors, src, minKw, conn,
                 actor);
         ChargingConfigDto saved = configs.forSite(siteId);
-        push(tenantId, siteId, saved);
+        // Vor der ersten Meldung gibt es noch keinen device_charge_point-Beleg.
+        // Genau dieser explizite Assistenten-Schritt darf deshalb an die
+        // gewaehlte Box zustellen; alle spaeteren Pushes lesen den physischen
+        // Beleg und raten bei mehreren Boxen nie.
+        Optional<Verteilung> jeBox = verteilung(siteId);
+        if (jeBox.isPresent()) {
+            // IP-16: nur das Dokument der gewählten Box reist, und die neue Säule steht in IHREM Ausschnitt.
+            pushJeBox(tenantId, siteId, saved, jeBox.get(), jeBox(siteId, jeBox.get(), Map.entry(zielBox, id)),
+                    Set.of(zielBox));
+        } else {
+            push(tenantId, siteId, saved, List.of(zielBox));
+        }
         return saved;
     }
 
@@ -555,8 +962,6 @@ public class ChargingConfigService {
     }
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 }

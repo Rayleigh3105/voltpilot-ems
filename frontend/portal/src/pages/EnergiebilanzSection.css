@@ -1,0 +1,731 @@
+/*
+ * DIE ENERGIEBILANZ JE ANLAGE (UEMS AP-13 IP-8; Konzept Auswerten a1 §6.9) - Anlage › Verlauf › Energiebilanz. Bausteine
+ * der Familie (Portfolio R4, Wiedervorlage w1, Messen m1), nur aus Haus-Tokens:
+ *   .vp-bil-kopf      Titel mit erklärender Unterzeile, Menü ⋯ rechts
+ *   .vp-bil-zeitleiste Tag | Monat | Jahr und ‹ Zeitraum › in einer Zeile, am Telefon umbrechend
+ *   .vp-bil-antwort   Antwortsatz mit sachlichem Untertitel (Antwort zuerst)
+ *   .vp-bil-stack     Zwei Teile eines Ganzen: erfasst (Rolle Verbrauch) und ohne eigenen Zähler (grau)
+ *   .vp-bil-zeile     Bilanzzeile: Farbfeld, Wort, Zahl rechts, leise Unterzeile
+ *   .vp-bil-reihe     Unterzähler: Name mit Kennzeichen leise, Anteil darunter, Menge rechts, Pfeil
+ * Farbe nur mit Bedeutung: Lila ist die Rolle Verbrauch, Grau der Teil ohne eigenen Zähler. Telefon zuerst: nichts
+ * verbreitert die Seite, Tippflächen ≥ 44 px. Ab 900 px Breite der Fläche stehen Karte und Unterzähler nebeneinander.
+ *
+ * Eigenes Präfix `vp-bil-`: `vp-eb-` teilt sich die Fläche des Reiters „Energie“ (EnergieBuehne.css). Nur die vier
+ * Knöpfe tragen ihre Klassen `vp-eb-schritt`/`vp-eb-knopf` unverändert (Fingerabdruck-Wächter, migration.test.ts) und
+ * werden hier unter `.vp-bil` gestaltet.
+ */
+
+.vp-bil {
+  container: vp-bil / inline-size;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+
+/* ---------- Kopf ------------------------------------------------------------- */
+.vp-bil-kopf {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px 14px;
+  min-width: 0;
+}
+
+.vp-bil-kopf-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.vp-bil-titel {
+  margin: 0;
+  font: 700 1.5rem/1.2 var(--vp-c-font);
+  letter-spacing: -0.01em;
+  color: var(--vp-navy-1, #1e3a5f);
+}
+
+.vp-bil-meta {
+  margin: 3px 0 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-bil-menue {
+  flex: 0 0 auto;
+}
+
+.vp-bil-menue-knopf {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-muted-fg, #475569);
+  cursor: pointer;
+}
+
+/* Das sichtbare Kästchen ist 34 px wie im Konzept; die Tippfläche bleibt 44 px. */
+.vp-bil-menue-knopf::before,
+.vp-bil .vp-eb-schritt::before {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: 10px;
+  background: var(--vp-c-card, #fff);
+  z-index: -1;
+}
+
+.vp-bil-menue-knopf {
+  position: relative;
+  z-index: 0;
+}
+
+.vp-bil-menue-knopf::before {
+  border-radius: var(--vp-radius-btn, 12px);
+}
+
+/* ---------- Zeitleiste ------------------------------------------------------- */
+.vp-bil-zeitleiste {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.vp-bil .vp-seg {
+  border-color: var(--vp-c-border, #e2e8f0);
+  background: var(--vp-c-bg, #f8fafc);
+}
+
+.vp-bil .vp-seg button {
+  padding: 6px 12px;
+  border-radius: 9px;
+  font: 600 0.8125rem var(--vp-c-font);
+  color: var(--vp-c-muted-fg, #475569);
+  white-space: nowrap;
+}
+
+.vp-bil .vp-seg button.active {
+  background: var(--vp-c-card, #fff);
+  color: var(--vp-c-primary, #2563eb);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.vp-bil-zeitnav {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  min-width: 0;
+}
+
+.vp-bil .vp-eb-schritt {
+  position: relative;
+  z-index: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-fg, #1e293b);
+  cursor: pointer;
+}
+
+.vp-bil .vp-eb-schritt:disabled {
+  color: #cbd5e1;
+  cursor: default;
+}
+
+.vp-bil-zeitraum {
+  padding: 0 4px;
+  font: 700 0.9375rem var(--vp-c-font);
+  color: var(--vp-navy-1, #1e3a5f);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Antwort ---------------------------------------------------------- */
+.vp-bil-hz {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.vp-bil-antwort {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+}
+
+.vp-bil-satz {
+  margin: 0;
+  font: 700 1.0625rem/1.38 var(--vp-c-font);
+  letter-spacing: -0.005em;
+  color: var(--vp-navy-1, #1e3a5f);
+  text-wrap: pretty;
+}
+
+.vp-bil-satz.is-warn {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+
+.vp-bil-formal {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* ---------- Karten ----------------------------------------------------------- */
+.vp-bil-karte {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  padding: 14px 16px;
+  background: var(--vp-c-card, #fff);
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-radius-lg, 24px);
+}
+
+.vp-bil-raster {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.vp-bil-blockkopf {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.vp-bil-blockkopf h3 {
+  margin: 0;
+  font: 700 1rem var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+
+.vp-bil-blockkopf-m {
+  font-size: 0.75rem;
+  color: var(--vp-c-muted-fg, #475569);
+  white-space: nowrap;
+}
+
+/* ---------- Zwei Teile eines Ganzen ------------------------------------------ */
+.vp-bil-stack {
+  display: flex;
+  gap: 2px;
+  height: 14px;
+  margin-top: 4px;
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--vp-c-card, #fff);
+}
+
+.vp-bil-stack i {
+  display: block;
+  min-width: 0;
+  height: 100%;
+}
+
+.vp-bil-stack i.is-erfasst {
+  background: var(--vp-flow-load, #8b5cf6);
+}
+
+.vp-bil-stack i.is-ohne {
+  background: #cbd5e1;
+}
+
+.vp-bil-stack i:first-child {
+  border-radius: 7px 0 0 7px;
+}
+
+.vp-bil-stack i:last-child {
+  border-radius: 0 7px 7px 0;
+}
+
+.vp-bil-stack i:only-child {
+  border-radius: 7px;
+}
+
+.vp-bil-zeilen {
+  display: grid;
+  min-width: 0;
+}
+
+.vp-bil-zeile {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 3px 9px;
+  padding: 10px 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  font-size: 0.875rem;
+  min-width: 0;
+}
+
+.vp-bil-zeile:first-child {
+  border-top: 0;
+}
+
+.vp-bil-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.vp-bil-zeile.is-ganz .vp-bil-swatch {
+  background: var(--vp-c-card, #fff);
+  box-shadow: inset 0 0 0 1.5px #94a3b8;
+}
+
+.vp-bil-zeile.is-erfasst .vp-bil-swatch {
+  background: var(--vp-flow-load, #8b5cf6);
+}
+
+.vp-bil-zeile.is-ohne .vp-bil-swatch {
+  background: #cbd5e1;
+}
+
+.vp-bil-wort {
+  min-width: 0;
+  color: var(--vp-c-fg, #1e293b);
+}
+
+.vp-bil-zahl {
+  font: 700 0.9375rem var(--vp-font-heading, 'Inter Tight', 'Inter', sans-serif);
+  font-variant-numeric: tabular-nums;
+  color: var(--vp-navy-1, #1e3a5f);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* „mindestens 1.055 kWh (MS-14 fehlt)“ darf umbrechen, statt die Karte zu verbreitern. */
+.vp-bil-zeile.ton-warn .vp-bil-zahl,
+.vp-bil-zeile.ton-off .vp-bil-zahl {
+  white-space: normal;
+}
+
+.vp-bil-zeile.ton-warn .vp-bil-zahl {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+
+.vp-bil-zeile.ton-off .vp-bil-zahl {
+  color: var(--vp-text-gray, #66717c);
+}
+
+.vp-bil-unter {
+  grid-column: 2 / -1;
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-bil-unter-text {
+  display: block;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-bil-restweg,
+.vp-bil-vorschlag {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  justify-items: start;
+}
+
+/* „Als eigene Messstelle führen“ ist ein Link im Satz (Konzept a1 §6.9), kein Rahmenknopf: höhere Spezifität als der
+   Rahmenknopf `.vp-bil .vp-eb-knopf` weiter unten. */
+.vp-bil .vp-bil-restweg .vp-eb-knopf,
+.vp-bil-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary, #2563eb);
+  font: 600 0.85rem var(--vp-c-font);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.vp-bil .vp-bil-restweg .vp-eb-knopf:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.vp-bil-link {
+  display: inline;
+  min-height: 0;
+  padding: 14px 0;
+  font-weight: 500;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  overflow-wrap: break-word;
+}
+
+/* ---------- Unterzähler ------------------------------------------------------ */
+.vp-bil-reihen {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.vp-bil-reihen > li {
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  min-width: 0;
+}
+
+.vp-bil-reihen > li:first-child {
+  border-top: 0;
+}
+
+.vp-bil-reihe {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 12px 0;
+  color: inherit;
+  text-decoration: none;
+  min-width: 0;
+}
+
+.vp-bil-reihe-text {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 3px;
+  min-width: 0;
+}
+
+.vp-bil-reihe-name {
+  min-width: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--vp-c-fg, #1e293b);
+  hyphens: auto;
+  overflow-wrap: break-word;
+}
+
+.vp-bil-reihe-name .vp-bil-kz {
+  font: 500 0.75rem var(--vp-c-font);
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-bil-reihe-unter {
+  font-size: 0.8125rem;
+  color: var(--vp-c-muted-fg, #475569);
+  min-width: 0;
+}
+
+.vp-bil-reihe-wert {
+  flex: 0 0 auto;
+  font: 700 1rem var(--vp-font-heading, 'Inter Tight', 'Inter', sans-serif);
+  font-variant-numeric: tabular-nums;
+  color: var(--vp-navy-1, #1e3a5f);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.is-ohne-wert .vp-bil-reihe-wert {
+  color: var(--vp-text-gray, #66717c);
+}
+
+.vp-bil-chev {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+a.vp-bil-reihe:hover .vp-bil-reihe-name {
+  color: var(--vp-c-primary, #2563eb);
+}
+
+/* Ein Kennzeichen („AZ-8“) bricht nie am Bindestrich um. */
+.vp-bil-kz {
+  white-space: nowrap;
+}
+
+/* ---------- Hinweise, Abschnitte, Woraus gerechnet --------------------------- */
+.vp-bil-hinweis {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: break-word;
+}
+
+.vp-bil-leise {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
+
+.vp-bil-leer-titel {
+  margin: 0;
+  font-weight: 700;
+  color: var(--vp-navy-1, #1e3a5f);
+}
+
+.vp-bil .vp-eb-knopf,
+.vp-bil-knopf {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--vp-navy-1, #1e3a5f);
+  border-radius: var(--vp-radius-btn, 12px);
+  background: var(--vp-c-card, #fff);
+  color: var(--vp-navy-1, #1e3a5f);
+  font: 600 0.9375rem var(--vp-c-font);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.vp-bil-rueckmeldung {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--vp-c-bg, #f8fafc);
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  font-size: 0.875rem;
+  color: var(--vp-c-fg, #1e293b);
+}
+
+.vp-bil-rueckmeldung.is-warn {
+  color: var(--vp-c-warn-fg, #9a3412);
+  background: var(--vp-c-warn-bg, #fff7ed);
+}
+
+.vp-bil-tage {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.vp-bil-tage > li + li {
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+
+.vp-bil-tag > summary,
+.vp-bil-woraus > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 12px;
+  min-height: 44px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.vp-bil-tag > summary::-webkit-details-marker,
+.vp-bil-woraus > summary::-webkit-details-marker {
+  display: none;
+}
+
+.vp-bil-tag > summary {
+  padding: 8px 0;
+}
+
+.vp-bil-tag-titel {
+  font-weight: 700;
+  color: var(--vp-navy-1, #1e3a5f);
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-bil-tag-zahlen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 12px;
+  min-width: 0;
+  font-size: 0.8125rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* Zugeklappt nur so hoch wie seine Zeile: ein `details` als Raster hielte den Abstand zum leeren Inhalt. */
+.vp-bil .vp-bil-woraus {
+  display: block;
+  padding-block: 4px;
+}
+
+.vp-bil-woraus > summary {
+  font: 700 1rem var(--vp-c-font);
+  color: var(--vp-c-fg, #1e293b);
+}
+
+.vp-bil-woraus[open] > .vp-bil-woraus-zeilen,
+.vp-bil-tag[open] > .vp-bil-woraus-zeilen {
+  margin: 8px 0 10px;
+}
+
+.vp-bil-woraus > summary::after,
+.vp-bil-tag > summary::after {
+  content: '';
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg) translateY(-2px);
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-bil-woraus[open] > summary::after,
+.vp-bil-tag[open] > summary::after {
+  transform: rotate(-135deg) translateY(-2px);
+}
+
+.vp-bil-woraus > summary:focus-visible,
+.vp-bil-tag > summary:focus-visible,
+.vp-bil-reihe:focus-visible,
+.vp-bil-link:focus-visible,
+.vp-bil .vp-eb-schritt:focus-visible,
+.vp-bil .vp-eb-knopf:focus-visible,
+.vp-bil-menue-knopf:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color, var(--vp-action, #2c5282));
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+
+.vp-bil-woraus-zeilen {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+
+.vp-bil-woraus-zeilen > li {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+
+.vp-bil-woraus-kopf {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.vp-bil-woraus-kopf b {
+  font-family: var(--vp-font-heading, 'Inter Tight', 'Inter', sans-serif);
+  color: var(--vp-navy-1, #1e3a5f);
+  text-align: right;
+}
+
+.vp-bil-woraus-text,
+.vp-bil-woraus-titel {
+  margin: 0;
+  /* 13 px: mit den Innenabständen des Sprungs (HerkunftsZeile.css) ist jedes Kennzeichen am Telefon 44 px hoch. */
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
+
+.vp-bil-woraus-titel {
+  margin-top: 4px;
+  font-weight: 700;
+}
+
+.vp-bil-woraus-eingaenge {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding-left: 16px;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
+
+.vp-bil-woraus a,
+.vp-bil-tag a {
+  color: var(--vp-c-primary, #2563eb);
+}
+
+/* ---------- Laden und Fuß ---------------------------------------------------- */
+.vp-bil-laedt {
+  display: grid;
+  gap: 16px;
+}
+
+.vp-bil-skelett {
+  display: block;
+  border-radius: 12px;
+  background: linear-gradient(90deg, #eef2f7 0%, #f6f8fb 50%, #eef2f7 100%);
+}
+
+.vp-bil-skelett.is-satz {
+  height: 52px;
+  border-radius: 8px;
+}
+
+.vp-bil-skelett.is-karte {
+  height: 190px;
+  border-radius: var(--vp-radius-lg, 24px);
+}
+
+.vp-bil-skelett.is-liste {
+  height: 260px;
+  border-radius: var(--vp-radius-lg, 24px);
+}
+
+.vp-bil-fuss {
+  margin: 2px 0 0;
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
+
+/* ---------- Rechner: Antwort über zwei Spalten, links die Bilanz, rechts die Unterzähler ---------- */
+@container vp-bil (min-width: 900px) {
+  .vp-bil-satz {
+    font-size: 1.25rem;
+    line-height: 1.32;
+  }
+
+  .vp-bil-karte {
+    padding: 16px 22px;
+  }
+
+  .vp-bil-raster {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: start;
+  }
+}

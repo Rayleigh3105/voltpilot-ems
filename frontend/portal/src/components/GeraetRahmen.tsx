@@ -101,6 +101,9 @@ export interface MenueEintrag {
   onClick: () => void;
   /** Destruktiv - steht abgesetzt am Ende. */
   danger?: boolean;
+  /** Die Rechte-Weiche (AP-03 IP-12) wie am `RowMenu`: ohne das Recht fehlt der Eintrag. */
+  recht?: string;
+  standort?: string | null;
 }
 
 /** Was ein Baustein mitbringt. */
@@ -277,12 +280,14 @@ export function GeraetRahmen({
   }, [springeZu, technikOeffnen]);
 
   const menueEintraege: RowMenuItem[] = [
-    ...menue.filter((m) => !m.danger).map((m) => ({ label: m.label, icon: m.icon, onClick: m.onClick })),
+    ...menue.filter((m) => !m.danger).map((m) => ({
+      label: m.label, icon: m.icon, onClick: m.onClick, recht: m.recht, standort: m.standort,
+    })),
     ...(hatTechnik
       ? [{ label: TECHNIK_ANSICHT_TITEL, icon: 'sliders' as IconName, onClick: () => technikOeffnen() }]
       : []),
     ...menue.filter((m) => m.danger).map((m) => ({
-      label: m.label, icon: m.icon, onClick: m.onClick, danger: true,
+      label: m.label, icon: m.icon, onClick: m.onClick, danger: true, recht: m.recht, standort: m.standort,
     })),
   ];
 

@@ -68,7 +68,10 @@ class ForecastTableDisciplineTest {
             // previewForSite: `WHERE site_id = ?` mit einer site_id, die der
             // Controller vorher über die RLS-gefencte SiteRepository aufgelöst
             // hat (fremde Anlage = 404, bevor die Query läuft).
-            "SeriesRepository.java", 1);
+            "SeriesRepository.java", 1,
+            // pvPrognose (Verlust-Schätzung, Läufer unter TenantContext): `FROM forecast f JOIN site s ON s.id =
+            // f.site_id` im selben Statement, App-Rolle - fremde Anlage = leer (AnteilVerlustSchaetzungApiTest).
+            "AnteilVerlustRepository.java", 1);
 
     /**
      * Nackte {@code "forecast"}-Literale: Datei -> erwartete Zahl + Zaun.
@@ -120,6 +123,12 @@ class ForecastTableDisciplineTest {
         String earnings = read("com/voltpilot/api/repo/EarningsRepository.java");
         assertThat(earnings).contains("FROM site s");
         assertThat(earnings).contains("WHERE f.site_id = s.id");
+        // AnteilVerlustRepository fenced pvPrognose im selben Statement an der
+        // RLS-Tabelle site und liest über die RLS-gebundene App-Rolle (kein
+        // adminJdbcTemplate - sonst wäre der Join wirkungslos).
+        String anteilVerlust = read("com/voltpilot/api/uems/AnteilVerlustRepository.java");
+        assertThat(anteilVerlust).contains("FROM forecast f JOIN site s ON s.id = f.site_id");
+        assertThat(anteilVerlust).doesNotContain("adminJdbcTemplate");
         // SeriesRepository löscht forecast NUR über die tenant-gebundene
         // SECURITY-DEFINER-Funktion, nie per direktem DELETE.
         assertThat(read("com/voltpilot/api/repo/SeriesRepository.java"))

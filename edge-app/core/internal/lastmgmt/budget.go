@@ -172,6 +172,26 @@ type BudgetVerdict struct {
 	// Capped is true when the measured budget was cut back to the connection's
 	// own planable power (see the cap in measuredBudget).
 	Capped bool `json:"capped,omitempty"`
+	// AnteilKw is the box's own import share of a held share document (AP-15
+	// IP-19, bezuganteil.go); nil without one - then nothing below changed.
+	AnteilKw *float64 `json:"anteil_kw,omitempty"`
+	// AnteilBinds is true when that share is what caps the vehicles.
+	AnteilBinds bool `json:"anteil_binds,omitempty"`
+	// ReserveVerbraucherKw echoes the reserve of the box's other controllable
+	// consumers the charge park's share was lowered by; nil without one.
+	ReserveVerbraucherKw *float64 `json:"reserve_verbraucher_kw,omitempty"`
+	// UngeregeltHinterAbgangKw echoes the declared maximum of the uncontrolled
+	// load behind a co-controlling box's feeder its blind figure subtracts;
+	// nil without one.
+	UngeregeltHinterAbgangKw *float64 `json:"ungeregelt_hinter_abgang_kw,omitempty"`
+	// EigenerZaehler is true when a co-controlling box held its share against
+	// a FRESH value of its own meter (bezuganteil.go): the reserve and the
+	// declared uncontrolled maximum were measured there, not assumed.
+	EigenerZaehler bool `json:"-"`
+	// Pruefung is true when this evaluation made the probing adjustment of
+	// IP-27 A7 (BudgetAnteil only): the caller reports it to the
+	// Einfrierprobe, whose answer window starts now.
+	Pruefung bool `json:"-"`
 }
 
 // Measured reports whether this verdict came out of the closed loop.
@@ -229,6 +249,79 @@ type BudgetTracker struct {
 	planableValid bool
 	planable      float64
 	marginKw      float64
+	// rampFrom is the budget in force when the LEADING box of a share
+	// document went blind (bezuganteil.go); rampValid while that ramp runs.
+	rampValid bool
+	rampFrom  float64
+	rampSchub float64
+	// Signed battery sample and published command, only read by the share ramp.
+	bezugBattKw float64
+	bezugSollKw float64
+	// mitKw is the last FRESH budget of a co-controlling box (bezuganteil.go),
+	// mitValid while it may still cap a blind evaluation.
+	mitValid bool
+	mitKw    float64
+
+	// zwilling is the share path's twin (IP-27 A8): it is fed every input of
+	// this tracker. Both re-anchor after a backward clock jump; the twin still
+	// differs for standing values and the immediate blind fallback on a share.
+	// Only BudgetAnteil and Netzpunkt read it.
+	zwilling  *BudgetTracker
+	verankert bool
+	// uhrsprung: the last Budget found its newest sample in the
+	// future of now (an age below zero is no age - blind)
+	uhrsprung bool
+	// The single-box fallback holds for 90 s from detecting a negative age,
+	// then contracts as for missing telemetry while the age stays negative.
+	uhrBlind bool
+	uhrAb    time.Time
+	// steht: the twin's newest sample repeats the grid value of the one
+	// before bit for bit (AP-15 Folge of IP-28 finding 1, ObserveM);
+	// ankerLadenKw/ankerBattKw are the charging and the (signed) battery power
+	// of the sample on which the value last moved
+	steht                     bool
+	ankerLadenKw, ankerBattKw float64
+	// the probing adjustment of the leading box (IP-27 A7, BudgetAnteil): the
+	// budget it lowered to, held until the Einfrierprobe answers
+	pruefValid bool
+	pruefKw    float64
+}
+
+// twin returns the share path's twin, created with the first input; nil for
+// the twin itself.
+func (t *BudgetTracker) twin() *BudgetTracker {
+	if t.verankert {
+		return nil
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.zwilling == nil {
+		t.zwilling = &BudgetTracker{verankert: true}
+	}
+	return t.zwilling
+}
+
+// verankernLocked re-anchors the tracker on a clock that went back to ts
+// (A8): the sample at ts becomes the newest, and every time the tracker keeps
+// is brought back to it at the latest - the smoothing window and the plan
+// ceiling then hold from the jump on, never shorter (a merely reordered
+// sample can only make them hold longer). Caller holds t.mu.
+func (t *BudgetTracker) verankernLocked(ts time.Time) {
+	t.at = ts
+	for i := range t.samples {
+		if t.samples[i].at.After(ts) {
+			t.samples[i].at = ts
+		}
+	}
+	if t.planLimitAt.After(ts) {
+		t.planLimitAt = ts
+	}
+	if t.incompleteAt.After(ts) {
+		t.incompleteAt = ts
+	}
+	if t.settlingAt.After(ts) {
+		t.settlingAt = ts
+	}
 }
 
 // urgentDropKw is how much smaller a sample must demand the budget to be
@@ -305,8 +398,11 @@ type Measurement struct {
 	// "Nur Sonnenstrom" kept the car on the house battery (Edge-Light-Pilot,
 	// 04.10.2026). Taken out signed, restNoBatt = rest − batt is exactly
 	// "house minus PV" and the surplus is 0.
-	BatteryKw   float64
-	HaveBattery bool
+	BatteryKw float64
+	// BatteryPowerKw preserves the signed sample (+ charge / - discharge)
+	// paired with GridKw for the import-share ramp. Nil: not measured.
+	BatteryPowerKw *float64
+	HaveBattery    bool
 	// Complete is false when a connector that currently claims budget reports
 	// no fresh measurement of its own.
 	Complete bool
@@ -335,6 +431,9 @@ func (t *BudgetTracker) ObserveM(ts time.Time, m Measurement) (urgent bool) {
 		// Signed, discharge included (see Measurement.BatteryKw).
 		batt, haveBatt = m.BatteryKw, true
 	}
+	if z := t.twin(); z != nil {
+		z.ObserveM(ts, m)
+	}
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if !m.Complete {
@@ -346,13 +445,33 @@ func (t *BudgetTracker) ObserveM(ts time.Time, m Measurement) (urgent bool) {
 		}
 		return false
 	}
-	// Out-of-order samples are ignored: the newest measurement is the truth.
+	// An older timestamp re-anchors both paths. Existing smoothing samples
+	// and the plan ceiling survive on the new clock (IP-27 A8).
 	if t.seen && ts.Before(t.at) {
-		return false
+		t.verankernLocked(ts)
 	}
+	// AP-15 Folge of IP-28 finding 1 (the twin only - today's tracker is
+	// untouched): a sample that repeats the grid value bit for bit is no new
+	// measurement of the connection point, only its charging is new. The
+	// charging follows every release while a frozen meter does not show it,
+	// so on such a sample the loop reads the charging of the sample on which
+	// the value last moved (never more than now) - a standing value proves
+	// no headroom; the smoothing window keeps sliding as today.
+	steht := t.verankert && t.seen && gridKw == t.gridKw
 	t.seen, t.at, t.gridKw, t.chargingKw = true, ts, gridKw, chargingKw
 	t.battKw, t.haveBatt = batt, haveBatt
+	t.steht = steht
+	if !steht {
+		t.ankerLadenKw, t.ankerBattKw = chargingKw, batt
+		t.bezugBattKw = 0
+		if m.BatteryPowerKw != nil && budgetFinite(*m.BatteryPowerKw) {
+			t.bezugBattKw = *m.BatteryPowerKw
+		}
+	}
 	rest := gridKw - chargingKw
+	if steht {
+		rest, batt = gridKw-math.Min(chargingKw, t.ankerLadenKw), math.Min(batt, t.ankerBattKw)
+	}
 	t.samples = append(t.samples, restSample{at: ts, rest: rest, restNoBatt: rest - batt})
 	t.pruneLocked(ts)
 
@@ -374,6 +493,9 @@ func (t *BudgetTracker) ObserveM(ts time.Time, m Measurement) (urgent bool) {
 func (t *BudgetTracker) ObserveGridLimit(kw float64) {
 	if !budgetFinite(kw) || kw < 0 {
 		return
+	}
+	if z := t.twin(); z != nil {
+		z.ObserveGridLimit(kw)
 	}
 	t.mu.Lock()
 	t.have14a, t.kw14a = true, kw
@@ -401,6 +523,9 @@ func (t *BudgetTracker) ObservePlanLimit(ts time.Time, allowedImportKw float64) 
 		t.ClearPlanLimit()
 		return
 	}
+	if z := t.twin(); z != nil {
+		z.ObservePlanLimit(ts, allowedImportKw)
+	}
 	t.mu.Lock()
 	t.planLimit, t.planLimitAt, t.havePlan = allowedImportKw, ts, true
 	t.mu.Unlock()
@@ -409,6 +534,9 @@ func (t *BudgetTracker) ObservePlanLimit(ts time.Time, allowedImportKw float64) 
 // ClearPlanLimit drops the Fahrplan lane - the local logic then applies
 // unchanged.
 func (t *BudgetTracker) ClearPlanLimit() {
+	if z := t.twin(); z != nil {
+		z.ClearPlanLimit()
+	}
 	t.mu.Lock()
 	t.havePlan, t.planLimit, t.planLimitAt = false, 0, time.Time{}
 	t.mu.Unlock()
@@ -473,10 +601,32 @@ func (t *BudgetTracker) Budget(now time.Time, set Settings) BudgetVerdict {
 	}
 
 	age := now.Sub(t.at)
+	t.uhrsprung = false
 	if age < 0 {
-		age = 0
+		if t.verankert {
+			// the twin (IP-27 A8): an age below zero is no age - blind,
+			// past every stage, until the next sample re-anchors the clock
+			t.uhrsprung = true
+			age = BudgetHoldWindow + BudgetContractWindow + time.Second
+		} else {
+			if !t.uhrBlind || now.Before(t.uhrAb) {
+				t.uhrAb = now
+			}
+			t.uhrBlind = true
+		}
+	} else {
+		t.uhrBlind = false
+	}
+	if t.uhrBlind {
+		t.uhrsprung = true
+		age = now.Sub(t.uhrAb)
 	}
 	res.MeasurementAge = age
+	if t.uhrBlind {
+		// Do not report a negative measurement age as zero/fresh. The fallback
+		// duration above has its own anchor, independent of this stale sample.
+		res.MeasurementAge = now.Sub(t.at)
+	}
 	grid, charging := t.gridKw, t.chargingKw
 	res.GridKw, res.ChargingKw = &grid, &charging
 
@@ -488,7 +638,7 @@ func (t *BudgetTracker) Budget(now time.Time, set Settings) BudgetVerdict {
 	safeKw := round3(math.Max(0, planable-safeHouse))
 
 	switch {
-	case age <= BudgetFreshWindow:
+	case !t.uhrBlind && age <= BudgetFreshWindow:
 		rest := t.restHoldLocked()
 		res.SiteLoadKw = &rest
 		kw := measuredBudget(planable, rest)
@@ -546,6 +696,9 @@ func (t *BudgetTracker) finishStatic(res BudgetVerdict) BudgetVerdict {
 // REAL cause: a dead telemetry path and a station that stopped metering are two
 // different problems with two different levers.
 func (t *BudgetTracker) blindPrefix(age time.Duration) string {
+	if t.uhrsprung {
+		return "Die Uhr der Box ist hinter die letzte Messung am Netzanschluss zurückgesprungen — "
+	}
 	if t.settlingAt.After(t.at) && !t.settlingAt.Before(t.incompleteAt) {
 		return "Ein Ladepunkt läuft gerade an, seit " + ageText(age) + " ohne verwertbares Messpaar — "
 	}

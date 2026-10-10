@@ -68,6 +68,9 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers(disabledWithoutDocker = true)
 class UemsViertelstundeMigrationTest {
 
+    /** Katalog mit den Testkanälen {@code energy_kwh_*} als kWh-Zähler ({@link UemsTestKatalog}). */
+    private static final MeasurementCatalog KATALOG = UemsTestKatalog.mitKwhTestkanaelen();
+
     private static final String DIESE = "20260912170000";
     private static final String APP_USER = "voltpilot_app";
     private static final String APP_PW = "voltpilot_app_test_pw";
@@ -144,7 +147,7 @@ class UemsViertelstundeMigrationTest {
 
         admin = new JdbcTemplate(ds(ADMIN_USER, ADMIN_PW));
         app = new JdbcTemplate(new TenantAwareDataSource(ds(APP_USER, APP_PW)));
-        verdichter = new ViertelstundeVerdichter(admin, new MeasurementCatalog(new ObjectMapper()),
+        verdichter = new ViertelstundeVerdichter(admin, KATALOG,
                 new SpaetankunftMelder(), 500, 40, 200_000);
 
         // 1. Der ERSTE Lauf überhaupt trägt nichts ein — er setzt nur den Zeiger; die
@@ -237,6 +240,13 @@ class UemsViertelstundeMigrationTest {
         assertThat(fingerNachLauf).as("nach Rückrechnung, Verdichtung und Wiederholung")
                 .isEqualTo(fingerVorher);
         assertThat(fingerVorher).containsKeys(BESTAND.toArray(String[]::new));
+    }
+
+    /** Der Vergleich beißt noch: ein geänderter Messpunkt fällt auf, eine leere neue Spalte nicht. */
+    @Test
+    void derBestandsvergleichFaengtEineGeaenderteZeile() {
+        Bestandsschutz.inhaltsprobe(root, UemsViertelstundeMigrationTest::fingerabdruck, "measurement_point",
+                "UPDATE measurement_point SET label = label || ' (Probe)'");
     }
 
     @Test
@@ -844,13 +854,15 @@ class UemsViertelstundeMigrationTest {
                 .orElseThrow(() -> new AssertionError("kein Viertelstundenwert " + kanal + " " + beginn));
     }
 
-    /** Der Inhalt jeder Bestands-Tabelle als ein Wert — ändert sich eine Zeile, ändert er sich. */
+    /**
+     * Je Bestandstabelle ein Wert über ihre Zeilen ({@link Bestandsschutz#inhalt}): eine spätere Migration,
+     * die eine überall leere Spalte ergänzt (AP-08 IP-7: {@code messstelle.anschlussleistung_kw},
+     * {@code messstelle_quelle.anteil}), ändert keine Bestandszeile; ein Wert in einer Spalte bleibt eine Abweichung.
+     */
     private static Map<String, String> fingerabdruck() {
         Map<String, String> aus = new LinkedHashMap<>();
         for (String tabelle : BESTAND) {
-            aus.put(tabelle, root.queryForObject(
-                    "SELECT coalesce(md5(string_agg(t::text, '|' ORDER BY t::text)), 'leer') FROM "
-                            + tabelle + " t", String.class));
+            aus.put(tabelle, Bestandsschutz.inhalt(root, tabelle, null));
         }
         return aus;
     }

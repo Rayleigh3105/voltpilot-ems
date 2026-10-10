@@ -19,7 +19,7 @@ Vite startet auf <http://localhost:5173>. API-/Keycloak-Adressen werden über `V
 | Bereich | Quelle |
 |---|---|
 | Routen und alte Lesezeichen | `src/nav.ts` |
-| Anlagenbereiche und verfügbare Ansichten | `src/anlageNav.ts`, `src/surface.ts` |
+| Anlagenbereiche und verfügbare Ansichten | `src/ebenenNav.ts`, `src/surface.ts` |
 | Gemeinsame UI / Tokens | `designsystem/` |
 | Kundenhilfe mit Screenshots | [src/help](src/help/README.md) |
 | Browserprüfung | `e2e/`, `playwright.config.ts` |
@@ -30,4 +30,4 @@ Gezielte Browserfälle: `npm run test:e2e -- help.spec.ts`; weitere Fälle entsp
 
 ## Messbare Ladezeiten
 
-Wiederholbare Cockpit-/Anlagenwechsel-Messungen: [Performance-Rig](e2e/performance/README.md). `npm run test:bundle` prüft die Grenzen für Einstieg (230 kB gzip) und gemeinsames Chart-Bundle (210 kB gzip).
+Wiederholbare Cockpit-/Anlagenwechsel-Messungen: [Performance-Rig](e2e/performance/README.md). `npm run test:bundle` prüft die Grenzen für Einstieg (256 kB gzip) und gemeinsames Chart-Bundle (210 kB gzip).

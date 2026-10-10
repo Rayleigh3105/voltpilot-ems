@@ -9,10 +9,16 @@ import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.voltpilot.api.uems.MessstelleAbgelehnt;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.uems.ZaehlerwechselService;
+import com.voltpilot.api.uems.WechselzeitpunktService;
 import com.voltpilot.api.web.dto.ZaehlerwechselDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.time.OffsetDateTime;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -48,9 +54,12 @@ public class GeraetWechselController {
 
     private final ZaehlerwechselService wechsel;
     private final ObjectMapper streng;
+    private final WechselzeitpunktService berichtigung;
 
-    public GeraetWechselController(ZaehlerwechselService wechsel, ObjectMapper json) {
+    public GeraetWechselController(ZaehlerwechselService wechsel, ObjectMapper json,
+            WechselzeitpunktService berichtigung) {
         this.wechsel = wechsel;
+        this.berichtigung = berichtigung;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
 
@@ -60,10 +69,26 @@ public class GeraetWechselController {
      * Zeitpunkt vor jetzt außerdem {@code aenderung.rueckwirkend}.
      */
     @PostMapping("/api/v1/geraete/{id}/austausch")
+    @Recht(value = "messstelle.quelle", ziel = RechtZiel.GERAET)
     @ResponseStatus(HttpStatus.CREATED)
     public ZaehlerwechselDto.Vorgang austausch(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return wechsel.amGeraet(id, lies(body), akteur(auth));
+    }
+
+    /** Recht: keine eigene Kennung — lesende Vorschau; derselbe Standort-Zaun wie am Gerät. */
+    @GetMapping("/api/v1/geraete/{id}/austausch/vorschau")
+    public ZaehlerwechselDto.Vorschau vorschau(@PathVariable UUID id,
+            @RequestParam(required = false) OffsetDateTime zeitpunkt) {
+        return wechsel.vorschau(id, zeitpunkt);
+    }
+
+    /** Recht: {@code messstelle.quelle} — dieselbe Kennung wie der ursprüngliche Wechsel. */
+    @PostMapping("/api/v1/geraete/{id}/austausch/zeitpunkt")
+    @Recht(value = "messstelle.quelle", ziel = RechtZiel.GERAET)
+    public ZaehlerwechselDto.Berichtigt zeitpunkt(@PathVariable UUID id,
+            @RequestBody(required = false) JsonNode body, Authentication auth) {
+        return berichtigung.berichtigen(id, lies(body, ZaehlerwechselDto.Berichtigung.class), akteur(auth));
     }
 
     // ---------------------------------------------------------------- Gerüst
@@ -74,11 +99,15 @@ public class GeraetWechselController {
     }
 
     private ZaehlerwechselDto.Wechsel lies(JsonNode body) {
+        return lies(body, ZaehlerwechselDto.Wechsel.class);
+    }
+
+    private <T> T lies(JsonNode body, Class<T> typ) {
         if (body == null || !body.isObject()) {
             throw MessstelleAbgelehnt.anfrage("", "Die Anfrage braucht ein JSON-Objekt.");
         }
         try {
-            return streng.treeToValue(body, ZaehlerwechselDto.Wechsel.class);
+            return streng.treeToValue(body, typ);
         } catch (UnrecognizedPropertyException e) {
             String feld = pfad(e);
             throw MessstelleAbgelehnt.anfrage(feld, "„" + feld + "“ gibt es hier nicht.");

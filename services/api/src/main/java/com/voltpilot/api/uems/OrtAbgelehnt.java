@@ -34,6 +34,8 @@ public final class OrtAbgelehnt extends RuntimeException {
         ARCHIVIEREN_GESPERRT("archivieren_gesperrt", 409),
         /** Wiederherstellen gesperrt; {@code grund} sagt, warum (nicht archiviert, Name belegt …). */
         WIEDERHERSTELLEN_GESPERRT("wiederherstellen_gesperrt", 409),
+        /** Löschen gesperrt (E1): der Ort trägt Historie; {@code historie} nennt sie, der Satz den Weg. */
+        LOESCHEN_GESPERRT("loeschen_gesperrt", 409),
         // Die Gründe des Ortsbaum-Vertrags beim Anlegen und bei der Fläche (IP-5) — Code und
         // Satz aus OrtsbaumAbleitung#eintrag bzw. #flaecheEintrag, Status nach AP-02 §5.10.
         /** Woran der Ort hängen soll, geht nicht (Bereich unter Bereich, Gebäude unter Gebäude …). */
@@ -48,6 +50,18 @@ public final class OrtAbgelehnt extends RuntimeException {
         GAB_ES_NOCH_NICHT("gab_es_noch_nicht", 422),
         /** Dieselbe Fläche gilt an dem Tag schon — es gäbe nichts zu ändern. */
         GLEICHE_FLAECHE("gleiche_flaeche", 400),
+        // Anlage zuordnen/umziehen (IP-11): die übrigen Gründe des Vertrags beim Eintrag
+        // (OrtsbaumAbleitung#eintrag, Vorgang VERSCHIEBEN) mit seinem Satz, Status nach §5.10.
+        /** „gültig ab“ liegt vor der ersten Zuordnung der Anlage. */
+        VOR_DEM_ERSTEN_INTERVALL("vor_dem_ersten_intervall", 422),
+        /** Am „gültig ab“ gilt keine Zuordnung der Anlage mehr (sie ist dort beendet). */
+        OBJEKT_ARCHIVIERT("objekt_archiviert", 409),
+        /** Am „gültig ab“ beginnt schon eine Zuordnung — ändern statt eine zweite anlegen. */
+        GLEICHER_TAG("gleicher_tag", 409),
+        /** Die Anlage gehört an dem Tag schon zu diesem Standort. */
+        ZIEL_IST_BISHERIGER_ELTERN("ziel_ist_bisheriger_eltern", 400),
+        /** Die bestätigte Vorschlagsmenge ist nicht mehr die aktuell offene Menge. */
+        VORSCHLAG_GEAENDERT("vorschlag_geaendert", 409),
         /**
          * Eine neue Anlage ohne {@code standortId} in einem Kundenbereich mit MEHREREN Standorten
          * (IP-9, §6.3: vorbelegt nur bei genau einem); {@code standorte} nennt die Auswahl.

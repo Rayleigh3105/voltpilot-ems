@@ -14,7 +14,7 @@
  * Geräte legt die Steuerung nicht an; das geschieht in der Anlage.
  */
 import type { Site } from '../api';
-import type { BereichTab } from '../anlageNav';
+import type { BereichTab } from '../ebenenNav';
 import type { AnlagenSub } from '../nav';
 import { SteuerungSeite, type SteuerungReiter } from '../steuerung/SteuerungSeite';
 

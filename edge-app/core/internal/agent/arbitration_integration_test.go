@@ -108,6 +108,12 @@ func startFakeNR(t *testing.T) (*fakeNRServer, *httptest.Server) {
 
 // planV2 builds a schedule-2.0 payload whose single slot covers "now".
 func planV2(generatedAt time.Time, battKw, pvLimitKw float64) []byte {
+	// Two consecutive slots: the current quarter hour AND the next one. A
+	// single slot ran out when a quarter-hour boundary fell between publishing
+	// the plan and a later "plan resumes" wait - the entity then went to the
+	// standing desired value instead (seen as a 95 s timeout in the pause
+	// test). The plan still has an active slot NOW, so "a fresh plan must not
+	// break the pause" keeps its teeth.
 	slotStart := time.Now().UTC().Truncate(15 * time.Minute)
 	raw, _ := json.Marshal(map[string]any{
 		"schema_version": "2.0",
@@ -128,6 +134,9 @@ func planV2(generatedAt time.Time, battKw, pvLimitKw float64) []byte {
 				"slots": []any{map[string]any{
 					"start":    slotStart.Format(time.RFC3339),
 					"commands": map[string]any{"setpoint_kw": battKw},
+				}, map[string]any{
+					"start":    slotStart.Add(15 * time.Minute).Format(time.RFC3339),
+					"commands": map[string]any{"setpoint_kw": battKw},
 				}},
 			},
 			map[string]any{
@@ -135,6 +144,9 @@ func planV2(generatedAt time.Time, battKw, pvLimitKw float64) []byte {
 				"kind":      "pv-generation",
 				"slots": []any{map[string]any{
 					"start":    slotStart.Format(time.RFC3339),
+					"commands": map[string]any{"limit_kw": pvLimitKw},
+				}, map[string]any{
+					"start":    slotStart.Add(15 * time.Minute).Format(time.RFC3339),
 					"commands": map[string]any{"limit_kw": pvLimitKw},
 				}},
 			},
@@ -364,9 +376,15 @@ func TestArbitrationChainDesiredPlanOverrideStaleness(t *testing.T) {
 	if lastEventWhere(func(e map[string]any) bool { return e["outcome"] == "superseded" }) == nil {
 		t.Fatal("the plan holder must receive a superseded event")
 	}
+	// Der Kern veroeffentlicht bewusst erst den Befehl und danach das Ereignis
+	// (arbiter.go: publishCommand vor emitEvent, in applyDecision wie in
+	// fallToFailsafe). Auf den Befehl warten und das Ereignis danach EINMAL
+	// lesen laesst dazwischen ein Fenster aufgehen - beides gehoert deshalb in
+	// dieselbe Warteschleife.
 	waitFor(t, 30*time.Second, "plan resumes after override TTL", func() bool {
 		v, src, ok := cmdSetpoint(entBattery)
-		return ok && src == "plan" && v == 1.5
+		return ok && src == "plan" && v == 1.5 &&
+			lastEventWhere(func(e map[string]any) bool { return e["outcome"] == "expired" }) != nil
 	})
 	if lastEventWhere(func(e map[string]any) bool { return e["outcome"] == "expired" }) == nil {
 		t.Fatal("override expiry must emit an expired event")
@@ -399,11 +417,17 @@ func TestArbitrationChainDesiredPlanOverrideStaleness(t *testing.T) {
 		v, src, ok := cmdSetpoint(entBattery)
 		return ok && src == "failsafe" && v == 2
 	})
+	// Auch hier: der geleerte Befehl steht VOR dem fallback-Ereignis, also
+	// wartet die Schleife auf beides.
 	waitFor(t, 30*time.Second, "producer command cleared (release failsafe)", func() bool {
-		mu.Lock()
-		defer mu.Unlock()
-		list := commands["edge/entities/"+entProducer+"/command"]
-		return len(list) > 0 && list[len(list)-1] == ""
+		geleert := func() bool {
+			mu.Lock()
+			defer mu.Unlock()
+			list := commands["edge/entities/"+entProducer+"/command"]
+			return len(list) > 0 && list[len(list)-1] == ""
+		}
+		return geleert() &&
+			lastEventWhere(func(e map[string]any) bool { return e["outcome"] == "fallback" }) != nil
 	})
 	if lastEventWhere(func(e map[string]any) bool { return e["outcome"] == "fallback" }) == nil {
 		t.Fatal("plan staleness must emit fallback events")

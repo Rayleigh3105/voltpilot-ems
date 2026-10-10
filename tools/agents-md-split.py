@@ -24,10 +24,20 @@ import argparse
 import pathlib
 import re
 import sys
+import subprocess
 import unicodedata
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 STAMP = "05.09.2026"
+# Letzter vollstaendiger Quellstand und der daraus erzeugte Auslagerungsstand.
+SOURCE_REV = "657aa93ae83f0cab6234a9325c02c6821e8cd48f"
+TARGET_REV = "8d77b125f49664b94bf481376d4d633051ecf471"
+SLUG_ALIASES = {"Was das ist": "What this is"}
+VERIFY_NOTE = (
+    "`python3 tools/agents-md-split.py --verify` prueft den historischen "
+    "Auslagerungsstand (Quelle/Ziel mit `--source-rev`/`--target-rev` waehlbar), "
+    "nicht die seither weiterentwickelten Regeln im Arbeitsverzeichnis."
+)
 COLLECTION_BYTES = 100_000
 PREAMBLE_COLLECTION_BYTES = 4_000
 
@@ -43,7 +53,7 @@ UMLAUT = {"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss", "Ä": "Ae", "Ö": "Oe"
 
 
 def slugify(text: str, taken: set[str]) -> str:
-    s = text
+    s = SLUG_ALIASES.get(text, text)
     for k, v in UMLAUT.items():
         s = s.replace(k, v)
     s = unicodedata.normalize("NFKD", s)
@@ -293,16 +303,23 @@ def build(area, cap, verbatim_titles, dry: bool):
     }
 
 
-def verify():
-    """Beweist fuer JEDEN Abschnitt: Zieldatei ohne die 3 erzeugten Kopfzeilen == Original."""
-    import subprocess
+def revision_text(revision: str, path: str) -> str:
+    return subprocess.run(
+        ["git", "show", f"{revision}:{path}"], cwd=ROOT,
+        capture_output=True, text=True, check=True).stdout
+
+
+def verify(source_rev=SOURCE_REV, target_rev=TARGET_REV):
+    """Vergleicht den historischen Quelltext mit den ausgelagerten Zieltexten."""
+    print(f"Quelle: {source_rev}; Auslagerungsstand: {target_rev}")
 
     bad = 0
     total = 0
     for area, bereich, cap, verb in AREAS:
-        old = subprocess.run(
-            ["git", "show", f"origin/main:{area}"], cwd=ROOT,
-            capture_output=True, text=True, check=True).stdout
+        old = revision_text(source_rev, area)
+        if MARKER in old:
+            raise ValueError(f"{source_rev}:{area} ist bereits ein Wegweiser; "
+                             "--source-rev muss vor der Auslagerung liegen.")
         lines = old.split("\n")
         fence = False
         heads = []
@@ -325,21 +342,20 @@ def verify():
                 continue
             slug = slugify(title, taken)
             size = len(("## " + title + "\n" + "\n".join(body)).encode())
-            d = ROOT / "docs" / "agents" / bereich / slug
-            if size > COLLECTION_BYTES and d.is_dir():
-                head, chunks = split_bullets(body)
+            d = f"docs/agents/{bereich}/{slug}"
+            head, chunks = split_bullets(body)
+            if size > COLLECTION_BYTES and len(chunks) >= 8:
                 sub_taken: set[str] = set()
                 for i, ch in enumerate(chunks, 1):
                     total += 1
                     name = f"{i:03d}-{slugify(bullet_title(ch), sub_taken)}.md"
-                    got = (d / name).read_text(encoding="utf-8").split("\n", 4)[4]
+                    got = revision_text(target_rev, f"{d}/{name}").split("\n", 4)[4]
                     if got.rstrip("\n") != "\n".join(ch).rstrip("\n"):
                         print("ABWEICHUNG:", bereich, slug, name)
                         bad += 1
             else:
                 total += 1
-                p = ROOT / "docs" / "agents" / bereich / f"{slug}.md"
-                got = p.read_text(encoding="utf-8").split("\n", 4)[4]
+                got = revision_text(target_rev, f"{d}.md").split("\n", 4)[4]
                 if got.rstrip("\n") != "\n".join(body).rstrip("\n"):
                     print("ABWEICHUNG:", bereich, slug)
                     bad += 1
@@ -353,7 +369,7 @@ def write_toc():
              "und `edge-app/AGENTS.md` stand. **Byte-verbatim ausgelagert am " + STAMP + ", nichts",
              "geloescht.** Die drei AGENTS.md sind seither Wegweiser mit einem Themen-Index.", "",
              "**Nicht ganze Dateien in den Kontext lesen — greppen.** Diese Sammlung ist die",
-             "Projekt-Chronik; einzelne Dateien sind gross.", ""]
+             "Projekt-Chronik; einzelne Dateien sind gross.", "", VERIFY_NOTE, ""]
     for area, bereich, cap, verb in AREAS:
         d = ROOT / "docs" / "agents" / bereich
         if not d.is_dir():
@@ -376,12 +392,22 @@ def write_toc():
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("--verify", action="store_true")
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--dry-run", action="store_true", help="Auslagerung nur planen")
+    ap.add_argument("--verify", action="store_true",
+                    help="Historische Textgleichheit pruefen; liest Git-Staende, nicht den Worktree")
+    ap.add_argument("--source-rev", default=SOURCE_REV,
+                    help=f"Quelle vor der Auslagerung (nur --verify; Vorgabe: {SOURCE_REV})")
+    ap.add_argument("--target-rev", default=TARGET_REV,
+                    help=f"Ausgelagerter Zielstand (nur --verify; Vorgabe: {TARGET_REV})")
     a = ap.parse_args()
     if a.verify:
-        sys.exit(verify())
+        try:
+            sys.exit(verify(a.source_rev, a.target_rev))
+        except (subprocess.CalledProcessError, ValueError, IndexError) as exc:
+            detail = exc.stderr.strip() if isinstance(exc, subprocess.CalledProcessError) else str(exc)
+            print(f"Pruefung fehlgeschlagen: {detail}", file=sys.stderr)
+            sys.exit(1)
     done = 0
     for area in AREAS:
         before = len((ROOT / area[0]).read_bytes())

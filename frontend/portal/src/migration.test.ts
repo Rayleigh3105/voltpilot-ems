@@ -1,7 +1,16 @@
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import ts from 'typescript';
+import { createHash } from 'node:crypto';
+import kundenBestand from './test/kundenBestand-vor-ip12.json';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { Recht } from './components/Recht';
+import { darf, setSelbstauskunft } from './rollen';
+import { rechteSeed, RECHTE_MATRIX } from './test/rollenFixtures';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
-import { anlageSidebar } from './anlageNav';
+import { createElement } from 'react';
+import { cleanup, render } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { anlageSidebar } from './ebenenNav';
 import { healthBadge } from './health';
 import { flussKnoten, ladenKachel } from './ladenKachel';
 import { layoutFlow } from './adaptiveFlow';
@@ -49,13 +58,33 @@ import {
   verfuegbareBausteine,
 } from './portfolioCockpit';
 import {
+  canonicalShellRoute,
   isFleetShell,
+  kopfPfad,
+  orteAus,
+  pfadWert,
+  pfadZeile,
   redirectOverviewToAnlage,
   redirectToPortfolio,
   showOverviewNav,
   showPortfolioNav,
+  startEbene,
+  type Orte,
+  type ShellInput,
 } from './betriebsart';
-import type { OverviewSite } from './api';
+import type { OverviewSite, Site } from './api';
+import { anlagenOptionen } from './anlagenWahl';
+import { anlageRoute, hashForRoute, parseRoute, pageRoute, standortRoute, type Route } from './nav';
+import { AppShell } from './shell/AppShell';
+import { ahrenbergUnternehmen, bestandEineAnlage, FIXTURE_IDS, halle1Entwurf } from './test/standorteFixtures';
+import { ahrenbergFunktionen } from './test/funktionenFixtures';
+
+// Die Schale braucht für den Byte-Vergleich (UEMS AP-01 IP-5) nur einen Namen
+// am Avatar; alles andere aus `auth` bleibt echt (`rollen` liest `isPlatformAdmin`).
+vi.mock('./auth', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./auth')>()),
+  currentUser: () => ({ name: 'Jonas Wendlinger', email: 'jonas@example.test', roles: [] }),
+}));
 
 /**
  * M6 (#534) — die Migrations-Invarianten der „Projektion" an EINER Stelle
@@ -363,7 +392,7 @@ describe('Abbau-Invarianten (M6)', () => {
     expect(files.some((f) => /adaptiveNav\.tsx?$/.test(f))).toBe(false);
     for (const f of files) {
       const code = readFileSync(f, 'utf8');
-      // Der Doc-Kommentar in anlageNav.ts erklärt die LÖSCHUNG - erlaubt ist
+      // Der Doc-Kommentar in ebenenNav.ts erklärt die LÖSCHUNG - erlaubt ist
       // nur die Erwähnung in einem Kommentar, nie eine echte Verwendung.
       expect(code).not.toMatch(/\bconst\s+FACES\b|\bFACES\s*[:=]|from\s+'.*adaptiveNav'/);
     }
@@ -968,6 +997,10 @@ describe('Anwendungs-Programm Stufe 4 — das Portfolio-Cockpit über Bestandsda
     // eigene Zeile in `cockpit_layout` hat - also fast aller.
     expect(CANONICAL_PORTFOLIO).toEqual([
       'flotten-status',
+      // UEMS AP-01 IP-6: nur auf der Unternehmens-/Standort-Übersicht verfügbar,
+      // jede andere Flotte behält ihre Anordnung (`verfuegbareBausteine`).
+      'datenlage',
+      'netzbezug-gesamt',
       'erloese',
       'speicher',
       'lastspitzen',
@@ -976,6 +1009,16 @@ describe('Anwendungs-Programm Stufe 4 — das Portfolio-Cockpit über Bestandsda
       'erzeugung-heute',
       'verbrauch-heute',
       'netz-heute',
+      // UEMS AP-13 IP-7: nur auf einer Übersicht UND nur mit Inhalt — jede andere Flotte bleibt, wie sie ist.
+      'messstellen',
+      'energiebilanz',
+      'kennzahlen',
+      // UEMS AP-16 IP-24: nur am Unternehmen, nur mit freigegebenem Bewertungsstand und `energieeinsatz.ansehen`.
+      'bewertung',
+      // UEMS AP-18 IP-19: nur am Unternehmen, nur mit einem Energieziel, einer Maßnahme, Abweichung oder Auffälligkeit.
+      'ziele-massnahmen',
+      // UEMS AP-19 IP-21: nur am Unternehmen, nur mit einer fälligen oder in den nächsten Tagen fälligen Frist.
+      'energiemanagement',
       'anlagen',
     ]);
     expect([...CANONICAL_PORTFOLIO].sort()).toEqual(PORTFOLIO_BAUSTEINE.map((b) => b.id).sort());
@@ -1333,5 +1376,393 @@ describe('Steuerung Stufen 8+9: Umzüge und Datenbereinigung', () => {
     for (const a of ANWENDUNGEN) {
       expect(a.leer_zustand ?? '', a.id).not.toContain('Komponenten & Regeln');
     }
+  });
+});
+
+describe('UEMS AP-01 IP-5 — die Startansicht-Weiche lässt den Einzel-Anlagen-Kunden stehen', () => {
+  /**
+   * Die härteste Anforderung des Pakets: ein Kunde mit genau einer Anlage merkt
+   * NICHTS — gleich, in welcher Form die Standorte ankommen (gar nicht, ohne
+   * Standort, mit dem Standort der Bestandsübernahme, mit einem Standort ohne
+   * Zuordnung). Verglichen wird gegen die Schale OHNE Ebene — genau die
+   * Eingabe, die `canonicalShellRoute` vor IP-5 bekam — und die gerenderte
+   * Schale Zeichen für Zeichen gegen die von vorher (Aufruf ohne `pfad`).
+   */
+  const halle1 = FIXTURE_IDS.an1;
+  const ids = [halle1];
+  const heute: ShellInput = { isAdmin: false, loaded: true, tenantReady: true, betriebsart: 'endkunde', siteCount: 1 };
+  const formen: [string, Orte | null][] = [
+    ['nicht geladen / älteres Backend', null],
+    [
+      'Unternehmen ohne Standort',
+      orteAus(
+        {
+          stichtag: '2026-09-20',
+          standorte: [],
+          nichtGezeigt: [],
+          nochNichtZugeordnet: { anlagenZahl: 1, anlagen: [{ id: halle1, name: 'Werk Ahrenberg – Halle 1' }] },
+        },
+        ahrenbergUnternehmen({ standortZahl: 0, anlagenZahl: 1, nochNichtZugeordnetZahl: 1, sitz: null }),
+      ),
+    ],
+    [
+      'Standort aus der Bestandsübernahme (AP-02 A5)',
+      orteAus(bestandEineAnlage(), ahrenbergUnternehmen({ standortZahl: 1, anlagenZahl: 1, sitz: null })),
+    ],
+    [
+      'Standort, die Anlage noch nicht zugeordnet',
+      orteAus(
+        { ...bestandEineAnlage(), standorte: [{ ...halle1Entwurf(), anlagen: [], anlagenZahl: 0 }] },
+        ahrenbergUnternehmen({ standortZahl: 1, anlagenZahl: 1, nochNichtZugeordnetZahl: 1, sitz: null }),
+      ),
+    ],
+  ];
+  // firstmate K2: Werk Ahrenberg misst bereits (ahrenbergFunktionen Vorgabe) — die härteste
+  // Anforderung gilt für einen Bestandskunden, der längst misst, nicht für einen Entwurf.
+  const mitEbene = (orte: Orte | null): ShellInput => ({
+    ...heute,
+    ebene: startEbene({ isAdmin: false, betriebsart: 'endkunde', siteIds: ids, orte, funktionen: ahrenbergFunktionen() }),
+  });
+  const routen: Route[] = [
+    pageRoute('uebersicht'),
+    pageRoute('anlagen'),
+    anlageRoute(halle1),
+    anlageRoute(halle1, 'fahrplan'),
+    anlageRoute('unbekannt', 'messwerte'),
+    { page: 'anlagen', siteId: halle1, sub: 'geraet', geraet: { ref: 'VP-DEMO-0001', geraetId: 'inverter' } },
+    pageRoute('portfolio'),
+    pageRoute('portfolio-messwerte'),
+    pageRoute('portfolio-standorte'),
+    pageRoute('hilfe'),
+    standortRoute(FIXTURE_IDS.st1),
+  ];
+
+  it('Einzel-Anlagen-Kunde byte-identisch', () => {
+    for (const [form, orte] of formen) {
+      const shell = mitEbene(orte);
+      for (const route of routen) {
+        const fall = `${form} · ${hashForRoute(route)}`;
+        expect(JSON.stringify(canonicalShellRoute({ shell, route, siteIds: ids })), fall)
+          .toBe(JSON.stringify(canonicalShellRoute({ shell: heute, route, siteIds: ids })));
+        expect(JSON.stringify(kopfPfad({ shell, route, anlageId: halle1, fleetLabel: 'Meine Anlagen' })), fall)
+          .toBe(JSON.stringify(kopfPfad({ shell: heute, route, anlageId: halle1, fleetLabel: 'Meine Anlagen' })));
+      }
+      expect([showPortfolioNav(shell), showOverviewNav(shell), redirectOverviewToAnlage(shell)], form)
+        .toEqual([showPortfolioNav(heute), showOverviewNav(heute), redirectOverviewToAnlage(heute)]);
+    }
+
+    // Die Schale, wie `App.tsx` sie baut — vorher ohne Pfad, nachher mit dem Pfad der Weiche.
+    const sites = [{ id: halle1, name: 'Werk Ahrenberg – Halle 1' }] as Site[];
+    const devices = { devices: [], fetchedAt: null };
+    const surface = anlageSurface({
+      entities: [],
+      config: { plantKind: 'eigenverbrauch', tarifArt: 'dynamisch' },
+    } as unknown as AnlageSurfaceInput);
+    const schaleHtml = (anlage: Parameters<typeof AppShell>[0]['anlage']) => {
+      const { container } = render(
+        createElement(AppShell, {
+          page: 'anlagen',
+          onNavigate: () => {},
+          isAdmin: false,
+          showOverview: false,
+          showPortfolio: false,
+          fleetLabel: 'Meine Anlagen',
+          showAddAnlage: true,
+          onAddAnlage: () => {},
+          counts: { sites: 1, devices: 1 },
+          tenants: [],
+          tenantOverride: null,
+          onTenantChange: () => {},
+          anlage,
+          children: createElement('p', null, 'Cockpit'),
+        }),
+      );
+      const html = container.innerHTML;
+      cleanup();
+      return html;
+    };
+    const gemeinsam = {
+      siteId: halle1,
+      siteName: 'Werk Ahrenberg – Halle 1',
+      sites,
+      onSelectSite: () => {},
+      sidebar: anlageSidebar(surface, 0),
+      activeKey: 'cockpit',
+      onOpenSub: () => {},
+      onOpenPage: () => {},
+      onOpenFleet: null,
+      health: null,
+    };
+    const vorher = schaleHtml({
+      ...gemeinsam,
+      siteOptions: anlagenOptionen({ sites, devices, mitFlotte: false, flottenLabel: 'Meine Anlagen' }),
+    });
+    expect(vorher).toContain('Werk Ahrenberg – Halle 1');
+    // Der Vergleich beisst: ein einziges Glied davor wäre ein anderes Bild.
+    expect(
+      schaleHtml({
+        ...gemeinsam,
+        pfad: [{ wert: '__standort__', label: 'Werk Ahrenberg – Halle 1', onOpen: () => {} }],
+      }),
+    ).not.toBe(vorher);
+    for (const [form, orte] of formen) {
+      const p = kopfPfad({ shell: mitEbene(orte), route: anlageRoute(halle1), anlageId: halle1, fleetLabel: 'Meine Anlagen' });
+      const rueckwege = p.vor.some((g) => g.ebene !== 'flotte') ? p.vor.map(pfadZeile) : undefined;
+      const nachher = schaleHtml({
+        ...gemeinsam,
+        siteOptions: anlagenOptionen({ sites, devices, mitFlotte: false, flottenLabel: 'Meine Anlagen', rueckwege }),
+        pfad: p.vor.map((g) => ({ wert: pfadWert(g), label: g.label, onOpen: () => {} })),
+      });
+      expect(nachher, form).toBe(vorher);
+    }
+  });
+});
+
+
+describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
+  it('alle 922 bestehenden Bedienelemente in den 162 Kundendateien entsprechen dem Ausgangsstand mit einzeln belegten Fortschreibungen', () => {
+    // Vor IP-12 aus origin/uems aufgenommen: sämtliche Kunden-TSX, nicht nur die angefassten Dateien.
+    // Der Schlüssel wandert beim Einklammern vom Knopf zum Recht; React rendert ihn nie ins DOM.
+    // Leerraum normalisiert nur die TSX-Schreibweise, niemals Texte/Handler/Attribute.
+    const drucker = ts.createPrinter({ removeComments: true });
+    const tags = new Set(['Button', 'button', 'Switch', 'Input', 'input', 'select', 'textarea']);
+    const verwendeteFortschreibungen = new Set<(typeof kundenBestand.fortschreibungen)[number]>();
+    // Nachzüge main → uems (26.09.2026, 04.10.2026 Steuerung neu, 05.10.2026 OCPP): ausgelieferte Neubauten von main, je
+    // Bedienelement mit Commit und Nachfolger. Steht eine Datei in mehreren, gilt `main` des neuesten; die Entfallenen zählen zusammen.
+    type NachzugDatei = { main?: string[]; entfallen_datei?: boolean; wohin: string; entfallen: { vorher: string; commit: string }[] };
+    type Nachzug = { main: string; dateien: Record<string, NachzugDatei> };
+    const nachzuege: Nachzug[] = [kundenBestand.mainNachzug, kundenBestand.mainNachzugSteuerung, kundenBestand.mainNachzugOcpp];
+    const nachzugDateien: Record<string, NachzugDatei & { nachzug: string }> = {};
+    for (const n of nachzuege) {
+      for (const [pfad, d] of Object.entries(n.dateien)) {
+        const frueher = nachzugDateien[pfad];
+        nachzugDateien[pfad] = {
+          main: d.main ?? frueher?.main,
+          entfallen_datei: d.entfallen_datei || frueher?.entfallen_datei,
+          wohin: d.wohin,
+          entfallen: [...(frueher?.entfallen ?? []), ...d.entfallen],
+          nachzug: n.main,
+        };
+      }
+    }
+    const verwendeteEntfallene = new Set<string>();
+    // Ein Bedienelement kann mehrmals belegt fortgeschrieben werden (AP-10 IP-15, dann Messen-Bau m2): jeder Schritt
+    // trägt seinen eigenen Commit und Grund, und die Kette führt vom Bestand bis zur heutigen Fassung (`null` = entfallen).
+    const kette = (pfad: string, start: string): string | null => {
+      let soll: string | null = start;
+      for (let schritt = 0; soll !== null && schritt < 20; schritt++) {
+        const f = kundenBestand.fortschreibungen.find(x => x.datei === pfad && x.vorher === soll);
+        if (!f || 'menue' in f) break;
+        verwendeteFortschreibungen.add(f);
+        soll = f.nachher;
+      }
+      return soll;
+    };
+    let zahl = 0;
+    for (const [pfad, vorher] of Object.entries(kundenBestand.bedienelemente)) {
+      const nachfolger = kundenBestand.fortschreibungen.find(f => f.datei === pfad && 'nachher_datei' in f);
+      const quellpfad = nachfolger && 'nachher_datei' in nachfolger ? String(nachfolger.nachher_datei) : pfad;
+      const nz = nachzugDateien[pfad];
+      if (nz?.entfallen_datei) {
+        // main hat die Datei gelöscht: sie kehrt nicht still zurück, und jedes ihrer Bedienelemente ist einzeln belegt.
+        expect(existsSync(join(SRC, quellpfad)), `${pfad}: von main ${nz.nachzug} gelöscht`).toBe(false);
+        expect(nz.entfallen.map(e => e.vorher).sort(), `${pfad}: ${nz.wohin}`).toEqual([...vorher].sort());
+        nz.entfallen.forEach((_, i) => verwendeteEntfallene.add(`${pfad}#${i}`));
+        zahl += vorher.length;
+        continue;
+      }
+      // Ein beschlossener Umbau einer uems-Fläche (Konzept mit Entscheid): die Datei entfällt und nennt, wohin ihre Aufgabe
+      // ging, oder sie trägt danach genau die Bedienelemente des Umbaus (geschützt wie ein Neubau, unten). Ihre bisherigen
+      // Fortschreibungen gehen im Umbau auf.
+      const umbau = kundenBestand.umbauten.find((u) => pfad in u.dateien);
+      const umbauZiel = umbau ? (umbau.dateien[pfad as keyof typeof umbau.dateien] as { nachher?: string[]; entfaellt?: boolean; wohin?: string }) : null;
+      if (umbau && umbauZiel) {
+        kundenBestand.fortschreibungen.filter((f) => f.datei === pfad).forEach((f) => verwendeteFortschreibungen.add(f));
+        if (umbauZiel.entfaellt) {
+          expect(existsSync(join(SRC, pfad)), `${pfad}: ${umbau.entscheid} (${umbauZiel.wohin})`).toBe(false);
+          zahl += vorher.length;
+          continue;
+        }
+      }
+      const datei = ts.createSourceFile(quellpfad, readFileSync(join(SRC, quellpfad), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+      const jetzt: string[] = [];
+      const besuche = (knoten: ts.Node) => {
+        if (ts.isJsxElement(knoten) || ts.isJsxSelfClosingElement(knoten)) {
+          const auf = ts.isJsxElement(knoten) ? knoten.openingElement : knoten;
+          if (tags.has(auf.tagName.getText(datei))) {
+            const text = drucker.printNode(ts.EmitHint.Unspecified, knoten, datei)
+              .replace(/\s+/g, ' ').replace(/\bkey=\{[^}]*\} /g, '').trim();
+            jetzt.push(createHash('sha256').update(text).digest('hex'));
+          }
+        }
+        ts.forEachChild(knoten, besuche);
+      };
+      besuche(datei);
+      if (umbau && umbauZiel) {
+        expect(jetzt, `${pfad}: ${umbau.entscheid}`).toEqual(umbauZiel.nachher);
+        zahl += vorher.length;
+        continue;
+      }
+      const zusammen = kundenBestand.assistentZusammenfuehrung;
+      const umgebaut = zusammen.dateien[pfad as keyof typeof zusammen.dateien];
+      if (umgebaut) {
+        // E1/H-5 ersetzt ausdrücklich beide Flüsse durch EINEN Assistenten. Der ursprüngliche
+        // Bestand bleibt in der Datei; die neuen Bedienelemente werden vollständig geschützt.
+        expect(jetzt, zusammen.entscheid).toEqual(umgebaut);
+        if (pfad === 'components/GesamtwertDialog.tsx') {
+          expect(createHash('sha256').update(readFileSync(join(SRC, pfad))).digest('hex')).toBe(zusammen.wrapper);
+        }
+        zahl += vorher.length;
+        continue;
+      }
+      if (nz?.main) {
+        // Der ausgelieferte Neubau ist geschützt: jedes Bedienelement der main-Fassung steht unverändert im Merge.
+        const rest = [...jetzt];
+        for (const fingerabdruck of nz.main) {
+          // Auch ein Bedienelement der main-Fassung ändert sich nur mit einzeln belegter Fortschreibung.
+          const stelle = rest.indexOf(kette(pfad, fingerabdruck) ?? fingerabdruck);
+          expect(stelle, `${pfad}: Bedienelement von main ${nz.nachzug}`).toBeGreaterThanOrEqual(0);
+          rest.splice(stelle, 1);
+        }
+      }
+      for (const fingerabdruck of vorher) {
+        // Der ursprüngliche Bestand bleibt erhalten. Nur ein ausdrücklich belegter Nachfolger
+        // ersetzt seinen Fingerabdruck; auch dessen gesamte Attribute/Handler bleiben geschützt.
+        const fortschreibung = kundenBestand.fortschreibungen.find(f => f.datei === pfad && f.vorher === fingerabdruck);
+        if (fortschreibung && 'menue' in fortschreibung) {
+          verwendeteFortschreibungen.add(fortschreibung);
+          // Ins Menü ⋯ verlegt (Konzept Auswerten a1 §6.5): kein eigener Knopf mehr, sondern ein Eintrag des RowMenu -
+          // Beschriftung, Recht und Handler stehen wörtlich in der Datei, sonst gilt der Knopf als verloren. Trägt der
+          // Eintrag sein Recht über eine Variable, steht deren Belegung als `recht` daneben und ebenso wörtlich in der
+          // Datei (Review r3: sonst prüfte niemand, welches Recht der Eintrag verlangt).
+          const quelle = readFileSync(join(SRC, quellpfad), 'utf8');
+          expect(quelle, `${pfad}: ${fortschreibung.grund}`).toContain(String(fortschreibung.menue));
+          expect('recht' in fortschreibung, `${pfad}: Fortschreibung ins Menü ohne belegtes Recht`).toBe(true);
+          expect(quelle, `${pfad}: das Recht des Menüeintrags`).toContain(String((fortschreibung as { recht?: string }).recht));
+          zahl++;
+          continue;
+        }
+        const soll = kette(pfad, fingerabdruck);
+        if (soll === null) {
+          // Ein ausdrücklich belegter Wegfall (Neubau einer Fläche nach freigegebenem Konzept, Grund und Commit am
+          // Eintrag): das Bedienelement ist wirklich weg, nicht nur verschoben.
+          expect(jetzt, `${pfad}: als entfallen belegt, steht aber noch da`).not.toContain(fingerabdruck);
+          zahl++;
+          continue;
+        }
+        const stelle = jetzt.indexOf(soll);
+        if (stelle < 0 && nz) {
+          // Nur was main selbst entfernt hat, darf fehlen — einzeln belegt und auf main wirklich nicht mehr da.
+          const i = nz.entfallen.findIndex((e, j) => e.vorher === fingerabdruck && !verwendeteEntfallene.has(`${pfad}#${j}`));
+          expect(i, `${pfad}: Bedienelement aus ${kundenBestand.basis} ohne Beleg im Nachzug`).toBeGreaterThanOrEqual(0);
+          expect(nz.main ?? [], `${pfad}: steht auf main ${nz.nachzug} noch`).not.toContain(soll);
+          verwendeteEntfallene.add(`${pfad}#${i}`);
+          zahl++;
+          continue;
+        }
+        expect(stelle, `${pfad}: Bedienelement aus ${kundenBestand.basis}`).toBeGreaterThanOrEqual(0);
+        jetzt.splice(stelle, 1);
+        zahl++;
+      }
+    }
+    expect(zahl).toBe(922);
+    expect(verwendeteFortschreibungen).toEqual(new Set(kundenBestand.fortschreibungen));
+    // Kein Nachzug-Eintrag ohne Wirkung: jeder belegt genau ein fehlendes Bedienelement.
+    expect(verwendeteEntfallene.size).toBe(Object.values(nachzugDateien).reduce((n, d) => n + d.entfallen.length, 0));
+  });
+  it('jeder Rechte-Hebel aller Kundenflächen erhält das bisherige Markup ohne zusätzliche Hülle', () => {
+    setSelbstauskunft(rechteSeed('JW').me);
+    const hebel = sourceFiles().filter(f => !f.includes('/admin/') && !f.includes('/test/'))
+      .flatMap(f => [...readFileSync(f, 'utf8').matchAll(/(?:aktion|recht)=["']([a-z_]+\.[a-z_]+)["']/g)]
+        .map(m => ({ f, aktion: m[1] })));
+    expect(hebel.length).toBeGreaterThan(180);
+    for (const { f, aktion } of hebel) {
+      expect(RECHTE_MATRIX.has(aktion), f + ': ' + aktion).toBe(true);
+      expect(darf(aktion), f + ': ' + aktion).toBe(true);
+      const vorher = createElement('button', { type: 'button', className: 'vp-btn', disabled: true }, 'Bestehender Knopf');
+      expect(renderToStaticMarkup(createElement(Recht, { aktion, children: vorher })), f)
+        .toBe(renderToStaticMarkup(vorher));
+    }
+  });
+  it('auch dynamische Aktionen behalten für Jonas an jedem sichtbaren Standort das Markup', () => {
+    const { me } = rechteSeed('JW'); setSelbstauskunft(me);
+    for (const aktion of RECHTE_MATRIX.keys()) {
+      for (const standort of [null, ...me.standorte.map(s => s.id)]) {
+        if (!darf(aktion, standort)) continue;
+        const vorher = createElement('section', { 'aria-label': 'Bestandsfläche' }, createElement('button', null, 'Speichern'));
+        expect(renderToStaticMarkup(createElement(Recht, { aktion, standort, children: vorher })))
+          .toBe(renderToStaticMarkup(vorher));
+      }
+    }
+  });
+});
+
+// AP-09 IP-10 ergänzt Kundenhebel für bereits vorhandene Schreibrouten. Der Fingerabdruck
+// des Bestands oben bleibt unverändert: kein vorhandener Knopf wird ersetzt oder entfernt.
+describe('AP-09 IP-10 · additive Kundenhebel für Werte und Ablesungen', () => {
+  it.each([
+    ['components/BezugsKanalbindung.tsx', 'bezugsgroesse.verwalten'],
+    ['components/BezugswertDialog.tsx', 'bezugsgroesse.eingeben'],
+    // Messen m1 §6.8: die Werte einer Bezugsgröße stehen auf ihrer Seite (die frühere Inline-Liste entfällt).
+    ['pages/BezugsgroesseSeite.tsx', 'bezugsgroesse.eingeben'],
+    ['components/AblesungDialog.tsx', 'ablesung.erfassen'],
+    ['components/Ablesungen.tsx', 'ablesung.erfassen'],
+  ])('%s verwendet die bestehende Rechte-Weiche für %s', (pfad, recht) => {
+    const quelle = readFileSync(join(SRC, pfad), 'utf8');
+    expect(quelle).toContain('useRollen');
+    expect(quelle).toContain(`darf('${recht}'`);
+    expect(quelle).toContain('{erlaubt &&');
+  });
+});
+
+describe('AP-03 IP-13 · Benutzerverwaltung additiv', () => {
+  it('hängt die Kundenseite unter Unternehmen/Einstellungen ein und erhält den bisherigen Plattform-Link', () => {
+    expect(hashForRoute(pageRoute('kunden-benutzer'))).toBe('#/unternehmen/einstellungen/benutzer');
+    expect(parseRoute('#/unternehmen/einstellungen/benutzer').page).toBe('kunden-benutzer');
+    expect(parseRoute('#/benutzer').page).toBe('mandanten');
+  });
+});
+
+describe('AP-01 IP-13 · Ladegrenze bleibt eine additive Bestandsfläche', () => {
+  it('verwendet die Rechte-Weiche und fügt für O18 weder Seite noch Navigation hinzu', () => {
+    // Seit dem Nachzug „Steuerung neu“ wohnt der Rahmen im Rahmen-Blatt des Reiters Laden (Paket 1c bringt die Prüfung dorthin).
+    const karte = readFileSync(join(SRC, 'steuerung/LadenReiter.tsx'), 'utf8');
+    const api = readFileSync(join(SRC, 'api.ts'), 'utf8');
+    const nav = readFileSync(join(SRC, 'ebenenNav.ts'), 'utf8') + readFileSync(join(SRC, 'nav.ts'), 'utf8');
+    expect(karte).toContain('<Recht aktion="grenze.eintragen">');
+    expect(api).toContain('/api/v1/sites/${siteId}/charging-frame');
+    expect(nav).not.toContain('charging-frame');
+    expect(nav).not.toContain('ladegrenze');
+  });
+});
+
+// AP-02 IP-10: die Unternehmens-Ebene zeigt die Vorschlagskarte weiterhin nur bei einer
+// tatsächlich offenen Vorschlagsmenge. Ohne sie bleibt der O18-Bestand zeichengleich.
+describe('AP-02 IP-10 · Vorschau-Zuordnung auf der Unternehmens-Ebene bleibt additiv', () => {
+  it('lädt und rendert die Karte nur mit Unternehmensrecht und offenen Anlagen', () => {
+    const quelle = ohneKommentare(readFileSync(join(SRC, 'components/EbenenCockpit.tsx'), 'utf8'));
+    expect(quelle).toContain("rollen.darf('standort.verwalten', null)");
+    expect(quelle).toContain('v.anlagenZahl > 0 ? v : null');
+    expect(quelle).toContain('{standortVorschlag &&');
+  });
+});
+
+// firstmate K2 (09.10.2026): die grosse Vorschlagskarte verschwindet aus der Kunden-Übersicht
+// (`EBENE_HEUTE`) — Ersatz ist der leise Einstieg im ⋯-Menü, nur sichtbar mit `standort.verwalten`
+// (von `RowMenu` selbst gefiltert) und ohne Hintergrund-Abruf vor dem Klick.
+describe('firstmate K2 · der leise Einstieg ersetzt die Vorschlagskarte auf der gewohnten Übersicht', () => {
+  it('trägt das Recht am Menü-Eintrag, lädt erst beim Klick und zeigt keine Karte von sich aus', () => {
+    const quelle = ohneKommentare(readFileSync(join(SRC, 'components/MessenEinrichtenEintrag.tsx'), 'utf8'));
+    expect(quelle).toContain("recht: 'standort.verwalten'");
+    expect(quelle).not.toContain('NochNichtZugeordnetKarte');
+    expect(quelle).not.toMatch(/useEffect/);
+    // `PortfolioCockpit` selbst bleibt blind für die Betriebsart (siehe oben) — der Hook läuft
+    // in den Aufrufern, die das fertige Paar nur noch als Prop einhängen.
+    for (const datei of ['pages/UebersichtPage.tsx', 'pages/PortfolioPage.tsx']) {
+      expect(ohneKommentare(readFileSync(join(SRC, datei), 'utf8')), datei).toContain('useMessenEinrichtenEintrag');
+    }
+    const cockpit = ohneKommentare(readFileSync(join(SRC, 'components/PortfolioCockpit.tsx'), 'utf8'));
+    expect(cockpit).toContain('messenEinrichtenEintrag');
+    expect(cockpit).not.toMatch(/\bbetriebsart\b/i);
   });
 });

@@ -1,0 +1,44 @@
+{
+  "schema_version": "1.0",
+  "models": [
+    {
+      "accuracy": {
+        "bezug": "Messbereichsendwert der Wirkleistung",
+        "fundstelle": "Handbuch Version 1.5.0, Tabelle 16 „Messfehler“, Seite 37",
+        "klasse": "Messfehler",
+        "source_sha256": "7a31954179fdf075af202f085f2418b09c960678e02eb106974a0c96c80bac7f",
+        "source_url": "https://www.wago.com/wagoweb/documentation/750/ger_manu/modules/m07500494_xxxxxxxx_0de.pdf",
+        "wert": "± 0,5 %",
+        "zustand": "belegt"
+      },
+      "hersteller": "WAGO",
+      "modell": "750-494"
+    },
+    {
+      "accuracy": {
+        "bezug": "Messbereichsendwert der Wirkleistung",
+        "fundstelle": "Handbuch Version 1.3.0, Tabelle 13 „Messgenauigkeit“, Seite 37",
+        "klasse": "Messgenauigkeit",
+        "source_sha256": "0fabd583c67c3ac7554db641cf5d0a91a8ba74a0d89fa2193d21278990bb5b03",
+        "source_url": "https://www.wago.com/wagoweb/documentation/750/ger_manu/modules/m07500495_xxxxxxxx_0de.pdf",
+        "wert": "± 0,5 %",
+        "zustand": "belegt"
+      },
+      "hersteller": "WAGO",
+      "modell": "750-495"
+    },
+    {
+      "accuracy": {
+        "bezug": "Wirkenergiezähler der Modellreihe 879-30xx",
+        "fundstelle": "WAGO-Webseite „Energy Meters (MID)“, Modelle 879-3000, 879-3020 und 879-3040",
+        "klasse": "MID",
+        "source_sha256": "3e67e7bcf5b9ae21999b65f5b14cf4977f1330c927314f04188d8f22400bebd6",
+        "source_url": "https://www.wago.com/gb/products/interface-electronic/discover-current-transformers/mid-energy-meters",
+        "wert": "MID",
+        "zustand": "belegt"
+      },
+      "hersteller": "WAGO",
+      "modell": "879-30xx"
+    }
+  ]
+}

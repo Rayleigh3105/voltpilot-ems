@@ -8,6 +8,7 @@ import {
   type SummenwertRolle,
 } from "../api";
 import { SUMMENWERT } from "../glossar";
+import { useRollen } from "../rollen";
 import { ROLLEN } from "../uemsRollen";
 import "./GeraetSummenwerte.css";
 
@@ -32,6 +33,7 @@ export function RolleAendernDialog({
   onClose: () => void;
   onGespeichert: () => void;
 }) {
+  const rechte = useRollen();
   const [wahl, setWahl] = useState<SummenwertRolle | "keine">(
     zeile.rolle ?? "keine",
   );
@@ -50,7 +52,7 @@ export function RolleAendernDialog({
           r
         ]);
   async function speichern() {
-    if (busy) return;
+    if (!rechte.darf("geraet.einrichten") || busy) return;
     setBusy(true);
     setFehler(null);
     try {
@@ -94,7 +96,7 @@ export function RolleAendernDialog({
           <Button variant="ghost" onClick={onClose} disabled={busy}>
             Abbrechen
           </Button>
-          {(
+          {rechte.darf("geraet.einrichten") && (
             <Button
               onClick={() => void speichern()}
               disabled={busy || !passend(wahl) || (konflikt && !ersetzen)}

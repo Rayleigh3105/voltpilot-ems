@@ -44,6 +44,13 @@
  * Datei PER PFAD und vergleicht - ein neuer SunSpec-Modellsatz macht den
  * Testlauf rot, statt hier still zu fehlen. Mit Stufe 3b (der Server nimmt die
  * Komponente entgegen und expandiert selbst) entfällt die Kopie ersatzlos.
+ *
+ * ⚠ **Nur Familien, die an eine Box gehen.** Eine Familie mit `an_der_box: false`
+ * bietet der Server nicht an - hier stünde sonst eine Familie ohne Registerliste,
+ * also genau der leere Kasten, den der Schnitt verhindern soll. Der Test liest
+ * `an_der_box` aus derselben Datei. `wago.pm494`/`wago.pm495` waren solche
+ * Familien, bis sie mit dem Laufzeitstand 2026.09.23.3 an die Box gingen (UEMS
+ * AP-05 IP-6b).
  */
 export const KATALOG_FAMILIEN: readonly string[] = [
   'fronius_solar_api',
@@ -77,6 +84,8 @@ export const KATALOG_FAMILIEN: readonly string[] = [
   'sunspec.model_211',
   'sunspec.model_212',
   'sunspec.model_213',
+  'wago.pm494',
+  'wago.pm495',
 ];
 
 /**

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.voltpilot.api.repo.AdminFleetRepository.ExportCeiling;
 import com.voltpilot.api.repo.AdminFleetRepository.ForecastRow;
 import com.voltpilot.api.repo.AdminFleetRepository.PvPeak;
+import com.voltpilot.api.uems.GrenzeAufloesung;
 import com.voltpilot.api.web.dto.AdminFleetDto.FleetFeedInDto;
 import com.voltpilot.api.web.dto.AdminFleetDto.FleetForecastDto;
 import com.voltpilot.api.web.dto.AdminFleetDto.FleetKwpDto;
@@ -187,6 +188,15 @@ class FleetPflegeTest {
         assertThat(v.verdict()).isEqualTo("unbekannt");
         assertThat(v.reason()).contains("0").contains("Export-Tage");
         assertThat(FleetPflege.flags("dynamisch", false, null, v, List.of())).isEmpty();
+    }
+
+    @Test
+    void aLimitFromTheGrenzblattNamesItsSource() {
+        FleetFeedInDto v = FleetPflege.feedIn(new BigDecimal("80"),
+                GrenzeAufloesung.QUELLE_NETZANSCHLUSS,
+                new ExportCeiling(new BigDecimal("30"), 20, 18));
+        assertThat(v.verdict()).isEqualTo("zu_hoch");
+        assertThat(v.reason()).contains("Einspeisegrenze aus dem Grenzblatt").contains("80,0 kW");
     }
 
     // ---- Prognose-Ausreißer --------------------------------------------------

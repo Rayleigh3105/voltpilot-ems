@@ -1,0 +1,7 @@
+# FIXTURE AP-20 IP-23 (RF-07): Stand-Blatt nach der Übung. Person und Datum sind erfunden; die echte
+# Bestätigung liefert der Betreiber (AP-20 IP-19).
+q15_wal_archiv:
+  bestaetigt: ja
+  am: 2026-10-05
+  durch: Betreiber (A. Muster, Fixture)
+  beleg: vp-db-backup-check.sh Exit 0, WAL-Archiv aktuell (2 min), archive_mode=on, Archiver ok

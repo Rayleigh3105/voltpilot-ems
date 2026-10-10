@@ -1,0 +1,92 @@
+import { act, render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { api, ApiError } from '../api';
+import { ALLE_NICHT_ABRUFBAR, MENGEN_RECHT, MENGEN_ROLLEN, OHNE_MENGEN } from '../kostenstellenUebersicht';
+import { ahrenbergRegister } from '../test/messstellenRegisterFixtures';
+import { setSelbstauskunft } from '../rollen';
+import { ahrenbergKostenstelleEnergie } from '../test/kostenstellenFixtures';
+import { kostenstellenAhrenberg } from '../test/messstelleSeiteFixtures';
+import { rechteSeed } from '../test/rollenFixtures';
+import matrixDatei from '../../../../docs/contracts/v2/rechte-matrix.json';
+import { KostenstellenReiter } from './KostenstellenSection';
+
+/**
+ * Kostenstelle B (21.09.2026) am Reiter „Kostenstellen“: unternehmensweit wie bisher; ein standortbeschränkter
+ * Bearbeiter sieht Kennzeichen und Namen mit EINEM Satz, wer die Mengen sieht, und fragt `…/energie` nie; ein echter
+ * Fehler bleibt die Störungsmeldung mit „Erneut versuchen“.
+ */
+
+const wahl = { periode: 'monat' as const, am: '2026-10-01' };
+
+/** Das Register und die Werte-Route der Fläche: das Referenzunternehmen, Werte „keine“ (die Zahl der Karten kommt aus …/energie). */
+function registerUndWerte() {
+  vi.spyOn(api, 'messstellenRegister').mockResolvedValue(ahrenbergRegister());
+  vi.spyOn(api, 'messstelleWerte').mockRejectedValue(new ApiError(404, 'Keine Werte'));
+}
+
+async function zeige() {
+  render(<KostenstellenReiter katalog={kostenstellenAhrenberg()} wahl={wahl} heute="2026-11-05" onWahl={() => {}} />);
+  await act(async () => {});
+}
+
+afterEach(() => vi.restoreAllMocks());
+
+describe('Kostenstellen-Reiter nach Recht', () => {
+  it('unternehmensweit (Kundenadministrator): Summe je Karte, „Ohne Kostenstelle“, kein Satz über Summen', async () => {
+    registerUndWerte();
+    const energie = vi.spyOn(api, 'kostenstelleEnergie').mockImplementation(async (id, p, am) => ahrenbergKostenstelleEnergie(id, p, am));
+    await zeige();
+    expect(energie).toHaveBeenCalled();
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Kostenstellen');
+    expect(screen.queryByText(/nicht summierbar/)).toBeNull();
+    expect(screen.queryByTestId('kostenstellen-ohne-mengen')).toBeNull();
+    expect(screen.getAllByTestId('kostenstelle-summe').length).toBeGreaterThan(0);
+    expect(screen.getByTestId('ohne-kostenstelle').textContent).toContain('8 Messstellen');
+  });
+
+  it('Doppelt gezählt: der Satz steht an der Karte UND an jedem Posten, der schon in der Summe steckt', async () => {
+    registerUndWerte();
+    vi.spyOn(api, 'kostenstelleEnergie').mockImplementation(async (id, p, am) => ahrenbergKostenstelleEnergie(id, p, am));
+    await zeige();
+    const karte = screen.getAllByTestId('kostenstelle-karte').find((k) => k.getAttribute('data-kennzeichen') === '4100');
+    expect(karte?.querySelector('[data-testid="doppelzaehlung"]')?.textContent).toContain('MS-07 ist bereits in MS-20 enthalten (Anteil 70 %)');
+    const amPosten = [...(karte?.querySelectorAll('[data-testid="posten-doppelt"]') ?? [])].map((n) => n.textContent);
+    expect(amPosten).toEqual([
+      'MS-06 ist bereits in MS-20 enthalten',
+      'MS-11 ist bereits in MS-20 enthalten',
+      'MS-07 ist bereits in MS-20 enthalten (Anteil 70 %)',
+    ]);
+    expect(screen.getAllByTestId('posten-doppelt')).toHaveLength(3);
+  });
+
+  it('Bearbeiter an einem Standort: Kennzeichen und Namen, EIN Satz mit Rollen und Kundenadministrator, kein Aufruf von …/energie', async () => {
+    registerUndWerte();
+    setSelbstauskunft(rechteSeed('PH').me);
+    const energie = vi.spyOn(api, 'kostenstelleEnergie');
+    await zeige();
+    expect(energie).not.toHaveBeenCalled();
+    expect(screen.getByTestId('kostenstellen-ohne-mengen').textContent).toBe(`${OHNE_MENGEN} Ihr Kundenadministrator: Jonas Wendlinger.`);
+    const karten = screen.getAllByTestId('kostenstelle-karte');
+    expect(karten.map((k) => k.getAttribute('data-kennzeichen'))).toContain('4200');
+    expect(karten.find((k) => k.getAttribute('data-kennzeichen') === '4200')?.textContent).toContain('Montage');
+    for (const leer of ['kostenstelle-summe', 'ohne-kostenstelle', 'kostenstellen-ablesung']) expect(screen.queryByTestId(leer)).toBeNull();
+    expect(screen.queryByText(ALLE_NICHT_ABRUFBAR)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Erneut versuchen' })).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('echter Fehler (503) bei unternehmensweiter Sicht: weiter die Störungsmeldung mit „Erneut versuchen“', async () => {
+    registerUndWerte();
+    vi.spyOn(api, 'kostenstelleEnergie').mockRejectedValue(new ApiError(503, 'Nicht erreichbar'));
+    await zeige();
+    expect(screen.getByText(ALLE_NICHT_ABRUFBAR)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Erneut versuchen' })).toBeTruthy();
+    expect(screen.queryByTestId('kostenstellen-ohne-mengen')).toBeNull();
+  });
+
+  it('der Satz nennt genau die Rollen, die `messwerte.ansehen` unternehmensweit tragen (rechte-matrix.json)', () => {
+    const zeile = (matrixDatei as { aktionen: { kennung: string; zellen: Record<string, string> }[] }).aktionen.find((a) => a.kennung === MENGEN_RECHT);
+    const mitU = Object.entries(zeile?.zellen ?? {}).filter(([, z]) => z === 'U').map(([r]) => r).sort();
+    expect(mitU).toEqual([...MENGEN_ROLLEN].sort());
+  });
+});

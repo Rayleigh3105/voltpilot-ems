@@ -1,0 +1,23 @@
+{
+ "fall": "RF-09: Eine Produktbeschreibung mit einem verbotenen Wort, das der Wächter findet (FM/vp-uems-ap20-fundament/report.md §7, wörtlich)",
+ "eingang": "Entwurf PB-01 mit fünf Sätzen, gegen die Bewertung BWB-2027-01 (Annahme: Z-004 belegt, Z-010 offen).",
+ "saetze": [
+  {"satz": "VoltPilot macht Ihr Energiemanagement auditfest und ISO 50001-konform.", "zusage": null},
+  {"satz": "Ihre Daten liegen DSGVO-konform in Deutschland.", "zusage": "Z-012"},
+  {"satz": "VoltPilot hält Ihre Energiepolitik, Ihre Aufgaben, Ihre internen Audits und Ihre Managementbewertung mit Datum, Person und Prüfsumme fest und zeigt, wo jedes Original liegt.", "zusage": "Z-004"},
+  {"satz": "An Ihren Zahlen, Ihrer Steuerung und Ihren Fahrplänen ändert sich nichts.", "zusage": "Z-010"},
+  {"satz": "Eine Zertifizierung nach ISO 50001 wird nicht versprochen.", "zusage": null}
+ ],
+ "positiv_in_bewertung": {"Z-004": "belegt"},
+ "erwartet": {
+  "ergebnis": [
+   {"satz": "VoltPilot macht Ihr Energiemanagement auditfest und ISO 50001-konform.", "funde": ["auditfest", "konform", "ISO 50001"], "gebunden_an_positive_zeile": false, "zugelassen": false},
+   {"satz": "Ihre Daten liegen DSGVO-konform in Deutschland.", "funde": ["konform", "DSGVO-konform"], "gebunden_an_positive_zeile": false, "zugelassen": false},
+   {"satz": "VoltPilot hält Ihre Energiepolitik, Ihre Aufgaben, Ihre internen Audits und Ihre Managementbewertung mit Datum, Person und Prüfsumme fest und zeigt, wo jedes Original liegt.", "funde": [], "gebunden_an_positive_zeile": true, "zugelassen": true},
+   {"satz": "An Ihren Zahlen, Ihrer Steuerung und Ihren Fahrplänen ändert sich nichts.", "funde": [], "gebunden_an_positive_zeile": false, "zugelassen": false},
+   {"satz": "Eine Zertifizierung nach ISO 50001 wird nicht versprochen.", "funde": [], "gebunden_an_positive_zeile": true, "zugelassen": true}
+  ],
+  "zugelassen": 2,
+  "abgelehnt": 3
+ }
+}

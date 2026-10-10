@@ -117,6 +117,9 @@
   outline: none;
   background: transparent;
   font: inherit;
+  /* So hoch wie der Text des Datums-Knopfs daneben (ein Knopf erbt die Zeilenhöhe nicht) - sonst ist das Uhrzeit-Feld
+     zwölf Pixel höher als das Datum. */
+  line-height: normal;
   color: inherit;
   padding: 0;
 }
@@ -127,6 +130,8 @@
   justify-content: center;
   width: 32px;
   height: 32px;
+  /* Die Tippfläche bleibt 32 px, das Feld wächst nicht über die Höhe des Datums-Knopfs. */
+  margin-block: -8px;
   border: 0;
   background: transparent;
   border-radius: var(--vp-radius-sm);
@@ -509,10 +514,13 @@
 }
 
 /* --- Telefon: BOTTOM-SHEET (Captain-Entscheid 2). ------------------------- */
+/* Dieselbe Ebene wie das Bottom-Sheet (`.vp-bs-wrap`, 1200): ein Picker IN einem Blatt (Nachweisen-Blätter) öffnet
+   später und liegt deshalb darüber - Tippen daneben schließt den Picker, nicht das Blatt darunter. Mit 1190 lag der
+   Hintergrund unter dem Blatt, und der Tipp traf dessen Schleier. */
 .vp-picker-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 1190;
+  z-index: 1200;
   background: rgba(15, 23, 42, 0.42);
 }
 .vp-picker-panel.is-sheet {

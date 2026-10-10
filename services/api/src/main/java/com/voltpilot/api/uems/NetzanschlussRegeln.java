@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.regex.Pattern;
 
 /**
@@ -167,17 +168,26 @@ public final class NetzanschlussRegeln {
         return !tag.isBefore(b.gueltigAb()) && (b.gueltigBis() == null || !tag.isAfter(b.gueltigBis()));
     }
 
+    /** Teilen sich zwei Bindungen mindestens einen Tag ({@code gueltigBis == null} = offen)? */
+    private static boolean ueberlappen(Bindung a, Bindung b) {
+        boolean aVorB = a.gueltigBis() != null && a.gueltigBis().isBefore(b.gueltigAb());
+        boolean bVorA = b.gueltigBis() != null && b.gueltigBis().isBefore(a.gueltigAb());
+        return !aVorB && !bVorA;
+    }
+
     /**
      * Eine neue Bindung ab ihrem Tag. Läuft an diesem Tag schon eine Bindung DERSELBEN Anlage, die
      * an genau diesem Tag beginnt, ist das ein Konflikt; beginnt die neue später, wird die laufende
-     * am Vortag beendet. Hängt der Anschluss am Tag schon an einer ANDEREN Anlage, ist er belegt.
+     * am Vortag beendet. Hängt der Anschluss an einem ihrer Tage schon an einer ANDEREN Anlage, ist er
+     * belegt. Eine SPÄTERE Bindung derselben Anlage wird nie verkürzt — teilt die neue einen Tag mit
+     * ihr, ist das ebenfalls ein Konflikt (nur die laufende endet am Vortag, nichts wird überschrieben).
      */
     public static BindungUrteil bindung(List<Bindung> bestehend, Bindung neu, LocalDate heute) {
         boolean rueckwirkend = neu.gueltigAb().isBefore(heute);
         for (Bindung b : bestehend) {
             if (b.netzanschluss().equals(neu.netzanschluss())
                     && !b.anlage().equals(neu.anlage())
-                    && laeuftAm(b, neu.gueltigAb())) {
+                    && ueberlappen(b, neu)) {
                 return new BindungUrteil(null, null, FEHLER_ANSCHLUSS_BELEGT, rueckwirkend);
             }
         }
@@ -185,11 +195,16 @@ public final class NetzanschlussRegeln {
                 .filter(b -> b.anlage().equals(neu.anlage()) && laeuftAm(b, neu.gueltigAb()))
                 .findFirst()
                 .orElse(null);
+        if (laufend != null && !neu.gueltigAb().isAfter(laufend.gueltigAb())) {
+            return new BindungUrteil(null, null, FEHLER_BINDUNG_UEBERLAPPT, rueckwirkend);
+        }
+        for (Bindung b : bestehend) {
+            if (b != laufend && b.anlage().equals(neu.anlage()) && ueberlappen(b, neu)) {
+                return new BindungUrteil(null, null, FEHLER_BINDUNG_UEBERLAPPT, rueckwirkend);
+            }
+        }
         if (laufend == null) {
             return new BindungUrteil(null, neu, null, rueckwirkend);
-        }
-        if (!neu.gueltigAb().isAfter(laufend.gueltigAb())) {
-            return new BindungUrteil(null, null, FEHLER_BINDUNG_UEBERLAPPT, rueckwirkend);
         }
         Bindung beendet = new Bindung(laufend.anlage(), laufend.netzanschluss(), laufend.gueltigAb(),
                 neu.gueltigAb().minusDays(1));
@@ -201,22 +216,53 @@ public final class NetzanschlussRegeln {
     public record KopfzeileUrteil(String text, boolean grenzeGeprueft) {}
 
     /**
-     * Die Kopfzeile der Bilanz-Seite. Was fehlt, steht nicht da — ein fehlender Momentanwert wird
-     * nie zu „0 kW“. {@code grenzeGeprueft} ist immer {@code false}: hier wird GEZEIGT, nicht
-     * geprüft (AP-15).
+     * Der Grenz-Nachweis eines Monats für die Kopfzeile (AP-15 IP-31): ob geprüft wurde, das Urteil
+     * ({@code eingehalten} · {@code ueberschritten} · {@code nicht_belegt}) und der Monat ({@code JJJJ-MM}).
      */
+    public record KopfzeileNachweis(boolean grenzeGeprueft, String urteil, String monat) {}
+
+    /** Die Monatsnamen der Kopfzeile — fest, nie aus der Sprache der Maschine. */
+    private static final List<String> MONATE = List.of("Januar", "Februar", "März", "April", "Mai", "Juni", "Juli",
+            "August", "September", "Oktober", "November", "Dezember");
+
+    /** Das Wort je Urteil des Grenz-Nachweises; ein anderes Wort ist kein Urteil und wird nicht gezeigt. */
+    private static final Map<String, String> URTEIL_TEXT = Map.of("eingehalten", "eingehalten",
+            "ueberschritten", "überschritten", "nicht_belegt", "nicht belegt");
+
+    /** Die Kopfzeile ohne Grenz-Nachweis — {@code grenzeGeprueft} ist dann {@code false}. */
     public static KopfzeileUrteil kopfzeile(
             String netzanschluss, BigDecimal vereinbartKw, BigDecimal anschlussKva, BigDecimal momentanKw) {
+        return kopfzeile(netzanschluss, vereinbartKw, anschlussKva, momentanKw, null);
+    }
+
+    /**
+     * Die Kopfzeile der Bilanz-Seite. Was fehlt, steht nicht da — ein fehlender Momentanwert wird
+     * nie zu „0 kW“. {@link ErgebnisZustand#zahl} unterscheidet vereinbarte Angaben und Messung (E11).
+     * {@code grenzeGeprueft} ist wahr, wo der Grenz-Nachweis (AP-15 IP-31) Grenze UND Hauptzähler hatte — dann sagt
+     * die Zeile „Grenze im September 2026 eingehalten“ (überschritten · nicht belegt); sonst bleibt sie, wie sie war:
+     * sie zeigt, sie prüft nicht.
+     */
+    public static KopfzeileUrteil kopfzeile(String netzanschluss, BigDecimal vereinbartKw, BigDecimal anschlussKva,
+            BigDecimal momentanKw, KopfzeileNachweis nachweis) {
         List<String> teile = new ArrayList<>();
         if (vereinbartKw != null) {
-            teile.add("vereinbart " + BilanzAbleitung.zahlDe(vereinbartKw) + " kW");
+            teile.add("vereinbart " + ErgebnisZustand.zahl(vereinbartKw, ErgebnisZustand.KW, null,
+                    ErgebnisZustand.Wertbezug.VEREINBART));
         }
         if (anschlussKva != null) {
-            teile.add("Anschluss " + BilanzAbleitung.zahlDe(anschlussKva) + " kVA");
+            teile.add("Anschluss " + ErgebnisZustand.zahl(anschlussKva, ErgebnisZustand.KVA, null,
+                    ErgebnisZustand.Wertbezug.VEREINBART));
         }
         if (momentanKw != null) {
-            teile.add("Momentan " + BilanzAbleitung.zahlDe(momentanKw) + " kW");
+            teile.add("Momentan " + ErgebnisZustand.zahl(momentanKw, ErgebnisZustand.KW, null));
         }
-        return new KopfzeileUrteil(String.join(KOPFZEILE_TRENNER, teile), false);
+        boolean geprueft = nachweis != null && nachweis.grenzeGeprueft() && URTEIL_TEXT.containsKey(nachweis.urteil())
+                && nachweis.monat() != null && nachweis.monat().matches("\\d{4}-(0[1-9]|1[0-2])");
+        if (geprueft) {
+            String monat = MONATE.get(Integer.parseInt(nachweis.monat().substring(5)) - 1) + " "
+                    + nachweis.monat().substring(0, 4);
+            teile.add("Grenze im " + monat + " " + URTEIL_TEXT.get(nachweis.urteil()));
+        }
+        return new KopfzeileUrteil(String.join(KOPFZEILE_TRENNER, teile), geprueft);
     }
 }

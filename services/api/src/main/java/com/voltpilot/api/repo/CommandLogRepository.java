@@ -1,5 +1,6 @@
 package com.voltpilot.api.repo;
 
+import com.voltpilot.api.uems.ProtokollAkteur;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.command.CommandFilter;
@@ -44,7 +45,7 @@ public class CommandLogRepository {
                     + "last_seen_at, mode, path, why_kind, why_ref, commanded_kw_first, "
                     + "commanded_kw_last, commanded_kw_min, commanded_kw_max, verdict, cycles, "
                     + "cycles_confirmed, cycles_no_answer, cycles_mismatch, control_enabled, "
-                    + "released, foreign_influence, detail, source";
+                    + "released, foreign_influence, detail, source, actor_name, actor_rolle, actor_art";
 
     /** Eine gelesene Zeile - Periode ODER Punkt-Ereignis (siehe {@code kind}). */
     public record Row(long id, UUID deviceId, UUID entityId, String stream, String kind,
@@ -53,7 +54,7 @@ public class CommandLogRepository {
             Double commandedKwLast, Double commandedKwMin, Double commandedKwMax, String verdict,
             Integer cycles, Integer cyclesConfirmed, Integer cyclesNoAnswer, Integer cyclesMismatch,
             Boolean controlEnabled, Boolean released, Boolean foreignInfluence, Detail detail,
-            String source) {
+            String source, String actorName, String actorRolle, String actorArt) {
     }
 
     private final JdbcTemplate jdbc;
@@ -159,6 +160,24 @@ public class CommandLogRepository {
     }
 
     /**
+     * Der Ausbau einer Box (UEMS AP-07 IP-11) beendet ihre offenen Perioden - alle Ströme, alle
+     * Komponenten. Nach dem Ausbau kommt kein Herzschlag dieser Box mehr an, also schlösse sie
+     * sonst niemand: im Verlauf „liefe" die letzte Anweisung der alten Box für immer, und das
+     * Aufräumen ({@link #prune}) nähme eine offene Periode nie. Geschlossen wird wie in
+     * {@link #closeOpenExcept} an ihrem letzten belegten Zeitpunkt, ohne Ereignis: der Ausbau ist
+     * kein Stopp. Gelöscht wird nichts - die Periode bleibt im Verlauf. Dieselbe Regel zieht
+     * {@code V20260913200000} für die Perioden nach, deren Box schon vorher nicht mehr am Betrieb
+     * teilnahm.
+     *
+     * @return wie viele Perioden beendet wurden
+     */
+    public int beimAusbauBeenden(UUID deviceId) {
+        return jdbc.update("UPDATE device_command_log SET ended_at = last_seen_at "
+                + "WHERE device_id = ? AND kind = '" + CommandLog.KIND_PERIODE + "' AND ended_at IS NULL",
+                deviceId);
+    }
+
+    /**
      * Die KOMPONENTE, an die der Schreibweg dieses Geräts geht: ihr Steuer-Punkt
      * (heute die Batterie-Hybrid-Zeile). {@code null} heisst ehrlich „keiner
      * einzelnen Komponente zuzuordnen" - die Zeile bleibt gerätebezogen und
@@ -175,6 +194,26 @@ public class CommandLogRepository {
     /** Ein Punkt-Ereignis anhängen. */
     public void appendEvent(UUID siteId, UUID deviceId, UUID entityId, String stream,
             String eventKind, Instant startedAt, Instant endedAt) {
+        appendEvent(siteId, deviceId, entityId, stream, eventKind, startedAt, endedAt, null);
+    }
+
+    /**
+     * Ein Punkt-Ereignis, das ein Mensch ausgelöst hat — mit seinem Urheber im Akteur-Vokabular (AP-03 IP-7).
+     * {@code urheber} {@code null} = abgeleitet, ohne Urheber (wie jede Zeile vor V20260916010000).
+     */
+    public void appendEvent(UUID siteId, UUID deviceId, UUID entityId, String stream,
+            String eventKind, Instant startedAt, Instant endedAt, ProtokollAkteur urheber) {
+        if (urheber != null) {
+            jdbc.update("INSERT INTO device_command_log (tenant_id, site_id, device_id, entity_id, "
+                    + "stream, kind, event_kind, started_at, ended_at, last_seen_at, source, "
+                    + "actor_sub, actor_name, actor_rolle, actor_art) VALUES ("
+                    + "NULLIF(current_setting('app.tenant_id', true), '')::uuid, ?, ?, ?, ?, '"
+                    + CommandLog.KIND_EREIGNIS + "', ?, ?, ?, ?, '" + CommandLog.SOURCE_CLOUD + "', ?, ?, ?, ?)",
+                    siteId, deviceId, entityId, stream, eventKind, Timestamp.from(startedAt),
+                    Timestamp.from(endedAt), Timestamp.from(endedAt), urheber.sub(), urheber.name(),
+                    urheber.rolle(), urheber.art());
+            return;
+        }
         jdbc.update("INSERT INTO device_command_log (tenant_id, site_id, device_id, entity_id, "
                 + "stream, kind, event_kind, started_at, ended_at, last_seen_at, source) VALUES ("
                 + "NULLIF(current_setting('app.tenant_id', true), '')::uuid, ?, ?, ?, ?, '"
@@ -484,7 +523,8 @@ public class CommandLogRepository {
                 rs.getObject("control_enabled", Boolean.class),
                 rs.getObject("released", Boolean.class),
                 rs.getObject("foreign_influence", Boolean.class), fromJson(rs.getString("detail")),
-                rs.getString("source"));
+                rs.getString("source"), rs.getString("actor_name"), rs.getString("actor_rolle"),
+                rs.getString("actor_art"));
     }
 
     // -- Der Roh-Blick als JSON ----------------------------------------------

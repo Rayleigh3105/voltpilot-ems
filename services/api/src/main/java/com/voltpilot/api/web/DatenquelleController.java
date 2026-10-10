@@ -11,6 +11,8 @@ import com.voltpilot.api.uems.DatenquelleService;
 import com.voltpilot.api.uems.DatenquelleVorschlagService;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.web.dto.DatenquelleDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -34,10 +36,11 @@ import org.springframework.web.server.ResponseStatusException;
  * {@code docs/contracts/v2/data-source-assignment.md}). Die Arbeit macht {@link DatenquelleService},
  * die Vorschlagsliste der Bestands-Übernahme (IP-4) {@link DatenquelleVorschlagService}.
  *
- * <p><b>Rechte:</b> bis AP-03 durchsetzt, gilt {@code authenticated()} (SecurityConfig) plus die
+ * <p><b>Rechte:</b> es gilt {@code authenticated()} (SecurityConfig) plus die
  * Mandanten-RLS wie unter {@code /api/v1/sites/**} — eine fremde Anlage, Quelle oder Box ist
- * 404, nie 403; der Plattform-Admin wählt den Kundenbereich über {@code X-Tenant-Id}. Eine
- * eigene Rechte-Annotation gibt es hier bewusst nicht. Jede Route nennt im Kommentar ihr Recht
+ * 404, nie 403; der Plattform-Admin wählt den Kundenbereich über {@code X-Tenant-Id}. Seit AP-03 IP-6 setzt {@code
+ * @Recht} sie vor dem
+ * Handler durch (403 {@code recht_fehlt}, außerhalb des Geltungsbereichs 404). Jede Route nennt im Kommentar ihr Recht
  * nach AP-06 §4.8 — {@code datenquelle.ansehen}, {@code datenquelle.bearbeiten} und
  * {@code datenquelle.zustaendigkeit} stehen als Nachtrag in
  * {@code docs/contracts/v2/rechte-matrix.json} (die Zuständigkeit ohne Energiemanager,
@@ -82,6 +85,7 @@ public class DatenquelleController {
 
     /** Recht: {@code datenquelle.bearbeiten} (AP-06 §4.8). */
     @PostMapping
+    @Recht(value = "datenquelle.bearbeiten", ziel = RechtZiel.ANLAGE)
     public ResponseEntity<DatenquelleDto.Datenquelle> anlegen(@PathVariable UUID siteId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         DatenquelleDto.Datenquelle neu = datenquellen.anlegen(siteId,
@@ -92,6 +96,7 @@ public class DatenquelleController {
 
     /** Recht: {@code datenquelle.bearbeiten} (AP-06 §4.8). */
     @PutMapping("/{id}")
+    @Recht(value = "datenquelle.bearbeiten", ziel = RechtZiel.ANLAGE)
     public DatenquelleDto.Datenquelle bearbeiten(@PathVariable UUID siteId, @PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return datenquellen.bearbeiten(siteId, id, lies(body, DatenquelleDto.Bearbeiten.class), akteur(auth));
@@ -102,6 +107,7 @@ public class DatenquelleController {
      * (AP-06 §4.8). Ein gescheitertes Ergebnis ist ein ehrlicher Ausgang (200), kein Fehler.
      */
     @PostMapping("/{id}/reachability-check")
+    @Recht(value = "datenquelle.bearbeiten", ziel = RechtZiel.ANLAGE)
     public DatenquelleDto.Pruefergebnis pruefen(@PathVariable UUID siteId, @PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return datenquellen.pruefen(siteId, id, lies(body, DatenquelleDto.Pruefen.class), akteur(auth));
@@ -112,11 +118,20 @@ public class DatenquelleController {
      * und in diesem Paket gesperrt — Grund {@code steuerquelle}).
      */
     @PostMapping("/{id}/assignments")
+    @Recht(value = "datenquelle.zustaendigkeit", ziel = RechtZiel.ANLAGE)
     public ResponseEntity<DatenquelleDto.Zugewiesen> zuweisen(@PathVariable UUID siteId,
             @PathVariable UUID id, @RequestBody(required = false) JsonNode body, Authentication auth) {
         DatenquelleDto.Zugewiesen z = datenquellen.zuweisen(siteId, id,
                 lies(body, DatenquelleDto.Zuweisen.class), akteur(auth));
         return ResponseEntity.status(HttpStatus.CREATED).body(z);
+    }
+
+    /** Recht: {@code datenquelle.zustaendigkeit}; nur ein noch nicht wirksamer Plan. */
+    @org.springframework.web.bind.annotation.DeleteMapping("/{id}/assignments/{assignmentId}")
+    @Recht(value = "datenquelle.zustaendigkeit", ziel = RechtZiel.ANLAGE)
+    public DatenquelleDto.Datenquelle geplanteZustaendigkeitZuruecknehmen(@PathVariable UUID siteId,
+            @PathVariable UUID id, @PathVariable UUID assignmentId, Authentication auth) {
+        return datenquellen.geplanteZustaendigkeitZuruecknehmen(siteId, id, assignmentId, akteur(auth));
     }
 
     /**
@@ -134,6 +149,7 @@ public class DatenquelleController {
      * Zuständigkeit, die sie mitschreibt, ist die der HEUTIGEN Box ab Reihenbeginn — kein Wechsel.
      */
     @PostMapping("/vorschlag/uebernehmen")
+    @Recht(value = "datenquelle.bearbeiten", ziel = RechtZiel.ANLAGE)
     public DatenquelleDto.Uebernommen uebernehmen(@PathVariable UUID siteId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return vorschlaege.uebernehmen(siteId, lies(body, DatenquelleDto.Uebernehmen.class), akteur(auth));

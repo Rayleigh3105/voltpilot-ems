@@ -93,7 +93,7 @@ public class RollenQuellen {
         if (!pfad.add(id) || pfad.size() > 16) throw konflikt("quelle_nicht_aufloesbar");
         var m = messstellen.finde(id).orElseThrow(() -> konflikt("quelle_nicht_aufloesbar"));
         if (MessstelleRegeln.BERECHNET.equals(m.art())) {
-            var f = formeln.formel(id); // ausschließlich die JETZT wirksame Fassung
+            var f = formeln.formel(id, null); // ausschließlich die JETZT wirksame Fassung
             if (f.terme().isEmpty()) throw konflikt("quelle_nicht_aufloesbar");
             for (var t : f.terme()) {
                 if ("messkanal".equals(t.eingangArt())) {

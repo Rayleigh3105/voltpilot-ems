@@ -1,0 +1,10 @@
+{
+ "fixture": "FIXTURE AP-20 IP-23 (RF-03): keine stattgefundene Lesart. Name, Datum und Aussage sind die Annahmen des Konzepts (E4); die echte Lesart liefert die Fachperson an ihrer lizenzierten Ausgabe (AP-20 IP-12).",
+ "abschnitt": "9.2.2",
+ "fachperson": {
+  "name": "Fachperson F. (Auditorin für Energiemanagementsysteme, extern; Name im Bau)",
+  "datum": "2026-11-12",
+  "lesart": "traegt",
+  "text": "Die Zuordnung trägt: VoltPilot hält Programm, Auditorin, Unabhängigkeit, Umfang und Bericht fest; Durchführung und Auswahl bleiben beim Kunden (KA-08)."
+ }
+}

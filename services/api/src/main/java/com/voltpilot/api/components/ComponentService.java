@@ -12,7 +12,7 @@ import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.repo.MeasurementPointRepository;
 import com.voltpilot.api.repo.RegisterWriteEventRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.templates.BuiltinComponentTemplates;
 import com.voltpilot.api.templates.ComponentTemplateRepository;
 import com.voltpilot.api.tenant.TenantContext;
@@ -115,7 +115,7 @@ public class ComponentService {
     private static final String SOURCE_KIND_BUILTIN = "builtin";
     private static final String SOURCE_KIND_CERTIFIED = "certified";
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final MeasurementPointRepository points;
     private final EntityRegistryRepository entityRepo;
     /** Nur zum LESEN, was die Box gerade meldet - die Übernahme-Regel braucht es. */
@@ -132,14 +132,14 @@ public class ComponentService {
     private final QuelleEinstellungService einstellungen;
     private final ObjectMapper mapper = new ObjectMapper();
 
-    public ComponentService(SiteRepository sites, MeasurementPointRepository points,
+    public ComponentService(Geltungsbereich geltungsbereich, MeasurementPointRepository points,
             EntityRegistryRepository entityRepo, EntityRegistryService entityRegistry,
             ComponentDefinitionRepository definitions, ComponentApplyRepository applyState,
             ComponentTemplateRepository templates, ComponentConnectionReceipts receipts,
             AssetRepository assets, EntityObservedRepository observed,
             ComponentActivationOutboxService activationOutbox, DeviceRepository deviceTopology,
             EntityTypeCatalog entityTypes, QuelleEinstellungService einstellungen) {
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.points = points;
         this.entityRepo = entityRepo;
         this.observed = observed;
@@ -424,6 +424,11 @@ public class ComponentService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Diese historische Fassung enthält keinen vollständigen Sicherheits-Snapshot und kann nicht automatisch zurückgesetzt werden.");
         }
+        if (old.definition().slot() != null
+                && !definitions.currentWagoSlotMatches(siteId, entityId, old.definition().slot())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Diese Fassung gehört zu einer anderen Karten-Zuordnung. Bitte prüfen Sie den Steckplatz.");
+        }
         BigDecimal restoredCapacity = old.capacityKwp();
         ComponentDefinitionRepository.FullDefinition restored = old;
         ComponentDefinitionRepository.Applied applied = definitions.applyDefinitionFull(siteId, entityId,
@@ -445,9 +450,7 @@ public class ComponentService {
     // ---- Regeln -----------------------------------------------------------
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 
     /**
@@ -988,7 +991,7 @@ public class ComponentService {
                 row.connection() == null ? null
                         : ComponentSecrets.maskedJson(row.connection(), ComponentSecrets.keys(template), failClosed),
                 row.sourceKind(), row.templateRef(), row.templateVersion(), row.createdAt(),
-                row.createdBy(), row.note());
+                row.createdBy(), row.note(), row.slot(), row.wagoAnwenderskalierung(), row.wagoRegister35());
     }
 
     private SiteComponentsDto.ComponentRowDto toRow(EntityRow row, String soll, String applied,

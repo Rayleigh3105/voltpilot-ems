@@ -1,6 +1,9 @@
 package com.voltpilot.api.probe;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import java.util.List;
 
 /**
@@ -29,7 +32,20 @@ public record ProbeResult(String requestId, String errorCode, String message,
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record OpResult(String id, boolean ok, Double raw, List<Integer> registers,
             Double value, String errorCode, String message, Reading reading, Switched switched,
-            Finding finding, List<Sample> samples) {
+            Finding finding, List<Sample> samples, @JsonProperty("wago_kopf") WagoKopf wagoKopf) {
+
+        /** Every shape before the WAGO head (AP-05 IP-7) — unchanged. */
+        public OpResult(String id, boolean ok, Double raw, List<Integer> registers,
+                Double value, String errorCode, String message, Reading reading, Switched switched,
+                Finding finding, List<Sample> samples) {
+            this(id, ok, raw, registers, value, errorCode, message, reading, switched, finding, samples, null);
+        }
+
+        /** The {@code wago_kopf} shape: the head block, also next to a refusal. */
+        public static OpResult ausKopf(String id, boolean ok, String errorCode, String message,
+                WagoKopf kopf) {
+            return new OpResult(id, ok, null, null, null, errorCode, message, null, null, null, null, kopf);
+        }
 
         /** The register-read shape (no {@code reading}, no {@code switched}). */
         public OpResult(String id, boolean ok, Double raw, List<Integer> registers,
@@ -67,6 +83,20 @@ public record ProbeResult(String requestId, String errorCode, String message,
     }
 
     /**
+     * Der gelesene KOPF eines VoltPilot-Registerbilds WAGO v1 (Vertrag {@code op_result.wago_kopf},
+     * AP-05 IP-7). Eigener Block: er trägt keinen Messwert. Die Namen sind die des Vertrags
+     * ({@code wago_kopf}, {@code controller_kennung}) — so liest ihn der Portal-Assistent.
+     * Lücke statt Null — ein Feld, das die Lesung nicht ergeben hat, fehlt (bei fremder Signatur
+     * steht nur {@code signaturOk} da).
+     */
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record WagoKopf(Boolean signaturOk, Boolean erkannt, String grund, Integer hauptversion,
+            Integer nebenversion, Integer kopflaenge, Integer kartenblocklaenge, Integer kartenzahl,
+            Integer herzschlag, Long controllerKennung, String typenschild) {
+    }
+
+    /**
      * What ONE field mapping of a self-connected device received during the
      * listening window (contract {@code op_result.samples}, P5 {@code
      * mqtt_local} + the P5d mapping surface).
@@ -83,6 +113,7 @@ public record ProbeResult(String requestId, String errorCode, String message,
      * at all - never a 0 that reads like a measurement. That is the same
      * gap-instead-of-zero rule the edge already applies when it publishes.
      */
+
     @JsonInclude(JsonInclude.Include.NON_NULL)
     public record Sample(String channel, String topic, Double raw, Double value, int count,
             String at) {

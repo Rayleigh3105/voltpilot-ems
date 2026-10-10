@@ -30,6 +30,7 @@ export const EREIGNIS_ARTEN = [
   'sequence_reset',
   'late_arrival',
   'counter_reset',
+  'counter_overflow',
   'device_boundary',
   'handover',
   'unassigned_reader',
@@ -46,6 +47,18 @@ export const EREIGNIS_ARTEN = [
   'state_change',
   'bitfield_change',
   'text_change',
+  'substitute',
+  'correction',
+  'verteilung_geaendert',
+  'bilanz_neu_berechnet',
+  'bericht_freigegeben',
+  'bericht_revision_angestossen',
+  'bericht_entwurf_neu_gebildet',
+  'bericht_abgerufen',
+  'kennzahl_neu_gebildet',
+  'einstufung_gesetzt',
+  'messbedarf_erfasst',
+  'messbedarf_eingeloest',
 ] as const;
 export type EreignisArt = (typeof EREIGNIS_ARTEN)[number];
 
@@ -77,6 +90,7 @@ export type Feldtyp =
   | 'stand'
   | 'messwert'
   | 'ganz_liste'
+  | 'wort_liste'
   | 'wert';
 
 /** Jedes Feld mit seinem Typ — der Typ bestimmt, wie es im Satz steht. */
@@ -118,6 +132,9 @@ export const FELDTYP: Record<string, Feldtyp> = {
   stand_alt: 'stand',
   stand_neu: 'stand',
   messzeit_alt: 'zeit',
+  wertebereich_modul: 'stand',
+  hoechstzuwachs_je_kadenz: 'stand',
+  kadenz_s: 'sekunden',
   anlass: 'wort',
   eingetragen_am: 'zeit',
   endstand: 'stand',
@@ -138,6 +155,34 @@ export const FELDTYP: Record<string, Feldtyp> = {
   karten_gelesen: 'ganz_ab_0',
   alt: 'wert',
   neu: 'wert',
+  zuwachs: 'stand',
+  stand_vor: 'stand',
+  stand_nach: 'stand',
+  ersatzwert: 'kennung',
+  methode: 'wort',
+  status: 'wort',
+  korrektur: 'kennung',
+  korrektur_art: 'wort',
+  bezugsgroesse: 'kennung',
+  fassung_alt: 'ganz_ab_1',
+  fassung_neu: 'ganz_ab_1',
+  import: 'kennung',
+  ausloeser: 'kennung',
+  bericht: 'kennung',
+  nr: 'ganz_ab_1',
+  datenstand: 'zeit',
+  pruefsumme: 'kennung',
+  anstoss_art: 'wort',
+  anlass_kennung: 'kennung',
+  anlass_fassung: 'ganz_ab_1',
+  format: 'wort',
+  kennzahl: 'kennung',
+  version: 'ganz_ab_1',
+  energieeinsatz: 'kennung',
+  fassung: 'ganz_ab_1',
+  einstufung: 'wort',
+  gruende: 'wort_liste',
+  messbedarf: 'kennung',
 };
 
 export interface ArtText {
@@ -173,7 +218,10 @@ export const EREIGNIS_TEXTE: Record<EreignisArt, ArtText> = {
       standard: 'Lücke von {von} bis {bis} — nie als 0 gerechnet',
       standard_offen: 'Lücke seit {von} — nie als 0 gerechnet',
     },
-    zusaetze: { nachgeliefert_am: ' · nachgeliefert am {nachgeliefert_am}' },
+    zusaetze: {
+      zuwachs: ' · der Zähler hat weitergezählt: Zuwachs {zuwachs} — nicht auf Viertelstunden verteilbar',
+      nachgeliefert_am: ' · nachgeliefert am {nachgeliefert_am}',
+    },
   },
   backfill: {
     name: 'Nachlieferung',
@@ -223,6 +271,16 @@ export const EREIGNIS_TEXTE: Record<EreignisArt, ArtText> = {
     zeitraum: false,
     varianteNach: null,
     saetze: { standard: 'Zähler zurückgesetzt am {zeitpunkt}: von {stand_alt} auf {stand_neu} (Ursache unbekannt)' },
+    zusaetze: {},
+  },
+  counter_overflow: {
+    name: 'Zähler übergelaufen',
+    zeitraum: false,
+    varianteNach: null,
+    saetze: {
+      standard:
+        'Zähler am {zeitpunkt} über das Ende seines Wertebereichs ({wertebereich_modul}) gelaufen: von {stand_alt} auf {stand_neu} — der Verbrauch dazwischen ist mitgezählt',
+    },
     zusaetze: {},
   },
   device_boundary: {
@@ -331,6 +389,157 @@ export const EREIGNIS_TEXTE: Record<EreignisArt, ArtText> = {
   state_change: UEBERGANG('Zustand', 'Zustand geändert: {alt} → {neu}'),
   bitfield_change: UEBERGANG('Statusbits', 'Statusbits geändert: {alt} → {neu}'),
   text_change: UEBERGANG('Text', 'Text geändert: {alt} → {neu}'),
+  substitute: {
+    name: 'Ersatzwert',
+    zeitraum: true,
+    varianteNach: 'status',
+    saetze: {
+      wirksam: 'Ersatzwert {ersatzwert} für {von} bis {bis}: {methode} — kein gemessener Wert',
+      zurueckgenommen: 'Ersatzwert {ersatzwert} für {von} bis {bis} zurückgenommen: {methode}',
+    },
+    zusaetze: {},
+  },
+  correction: {
+    name: 'Korrektur',
+    zeitraum: true,
+    varianteNach: 'status',
+    saetze: {
+      vorschlag:
+        'Korrektur {korrektur} vorgeschlagen für {von} bis {bis}: {korrektur_art} — die Werte bleiben bis zur Freigabe unverändert',
+      freigegeben: 'Korrektur {korrektur} freigegeben für {von} bis {bis}: {korrektur_art}',
+      abgelehnt: 'Korrektur {korrektur} abgelehnt für {von} bis {bis}: {korrektur_art} — die Werte bleiben unverändert',
+      zurueckgenommen: 'Korrektur {korrektur} zurückgenommen für {von} bis {bis}: {korrektur_art}',
+    },
+    zusaetze: {
+      ersatzwert: ' ({ersatzwert})',
+      bezugsgroesse: ' · Bezugsgröße {bezugsgroesse}, Fassung {fassung_alt} → {fassung_neu}',
+      import: ' · Import {import}',
+    },
+  },
+  verteilung_geaendert: {
+    name: 'Verteilung geändert',
+    zeitraum: false,
+    varianteNach: null,
+    saetze: { standard: 'Verteilung auf Kostenstellen geändert ab {zeitpunkt} (eingetragen am {eingetragen_am})' },
+    zusaetze: {},
+  },
+  bilanz_neu_berechnet: {
+    name: 'Bilanz neu berechnet',
+    zeitraum: true,
+    varianteNach: null,
+    saetze: { standard: 'Bilanz neu berechnet für {von} bis {bis} nach {ausloeser}' },
+    zusaetze: {},
+  },
+  bericht_freigegeben: {
+    name: 'Bericht freigegeben',
+    zeitraum: false,
+    varianteNach: null,
+    saetze: { standard: 'Berichtsstand Nr. {nr} von {bericht} freigegeben (Datenstand {datenstand})' },
+    zusaetze: {},
+  },
+  bericht_revision_angestossen: {
+    name: 'Revision angestoßen',
+    zeitraum: false,
+    varianteNach: null,
+    saetze: { standard: 'Revision nötig für Berichtsstand Nr. {nr} von {bericht}: {anstoss_art} ({anlass_kennung})' },
+    zusaetze: {},
+  },
+  bericht_entwurf_neu_gebildet: {
+    name: 'Entwurf neu gebildet',
+    zeitraum: false,
+    varianteNach: null,
+    saetze: { standard: 'Entwurf von {bericht} neu gebildet (Datenstand {datenstand})' },
+    zusaetze: { anlass_kennung: ' nach {anlass_kennung}' },
+  },
+  bericht_abgerufen: {
+    name: 'Bericht abgerufen',
+    zeitraum: false,
+    varianteNach: null,
+    saetze: { standard: 'Berichtsstand Nr. {nr} von {bericht} als {format} abgerufen' },
+    zusaetze: {},
+  },
+  kennzahl_neu_gebildet: {
+    name: 'Kennzahl neu gebildet',
+    zeitraum: true,
+    varianteNach: null,
+    saetze: { standard: 'Kennzahl {kennzahl} neu gebildet für {von} bis {bis}: Version {version} nach {ausloeser}' },
+    zusaetze: {},
+  },
+  einstufung_gesetzt: {
+    name: 'Einstufung gesetzt',
+    zeitraum: false,
+    varianteNach: null,
+    saetze: { standard: '{energieeinsatz}: Fassung {fassung} als {einstufung} gesetzt (Gründe: {gruende})' },
+    zusaetze: {},
+  },
+  messbedarf_erfasst: {
+    name: 'Messbedarf erfasst',
+    zeitraum: false,
+    varianteNach: null,
+    saetze: { standard: 'Messbedarf {messbedarf} erfasst' },
+    zusaetze: {},
+  },
+  messbedarf_eingeloest: {
+    name: 'Messbedarf eingelöst',
+    zeitraum: false,
+    varianteNach: null,
+    saetze: { standard: 'Messbedarf {messbedarf} durch Messstelle {messstelle} eingelöst' },
+    zusaetze: {},
+  },
+};
+
+/**
+ * AP-08 IP-12 — die Namen der Ersatzwert-Methoden (E7, a–g) und der Korrektur-Arten (§4.6) in
+ * Kundensprache; der Satz spricht nie das Vertragswort.
+ */
+export const METHODE_TEXT: Record<string, string> = {
+  gleichmaessig_verteilen: 'Zuwachs gleichmäßig verteilen',
+  profil_vorperiode: 'Zuwachs nach dem Profil der Vorperiode verteilen',
+  profil_vergleichsquelle: 'Zuwachs nach dem Profil der Vergleichsquelle verteilen',
+  ablesestand_nachtragen: 'Ablesestand nachtragen',
+  wert_eingeben: 'Wert eingeben (mit Beleg)',
+  vorperiode_uebernehmen: 'Vorperiode übernehmen',
+  vergleichsquelle_uebernehmen: 'Vergleichsquelle übernehmen',
+};
+
+export const KORREKTUR_ART_TEXT: Record<string, string> = {
+  nachlieferung_nach_endgueltigkeit: 'Nachlieferung nach Endgültigkeit',
+  ablesestaende_nachgetragen: 'Ablesestände nachgetragen',
+  umklassifizierung: 'Rücksetzung und Überlauf umklassifiziert',
+  ersatzwert: 'Ersatzwert',
+  wert_berichtigt: 'Wert berichtigt (mit Beleg)',
+  menge_nachgetragen: 'Menge nachgetragen',
+};
+
+/**
+ * AP-12 IP-4 — was einen Anstoß an einen Berichtsstand auslöst, und die abgerufenen Ausgaben, in Kundensprache; der
+ * Satz spricht nie das Vertragswort.
+ */
+export const ANSTOSS_ART_TEXT: Record<string, string> = {
+  korrektur_freigegeben: 'Korrektur freigegeben',
+  korrektur_zurueckgenommen: 'Korrektur zurückgenommen',
+  ersatzwert_wirksam: 'Ersatzwert wirksam',
+  ersatzwert_zurueckgenommen: 'Ersatzwert zurückgenommen',
+  bezugsgroesse_fassung: 'Wert einer Bezugsgröße berichtigt',
+  kennzahl_fassung_rueckwirkend: 'Berechnung einer Kennzahl rückwirkend geändert',
+  zuordnung_rueckwirkend: 'Zuordnung rückwirkend geändert',
+  anlage_umzug_rueckwirkend: 'Anlage rückwirkend umgezogen',
+  flaeche_rueckwirkend: 'Fläche rückwirkend geändert',
+  verteilung_rueckwirkend: 'Verteilung rückwirkend geändert',
+  einstufung_fassung: 'Einstufungs-Fassung geändert',
+  kriterien_fassung: 'Kriterien-Fassung geändert',
+  umfang_fassung: 'Betrachtungsumfang geändert',
+  messbedarf_zustand: 'Messbedarf geändert',
+  prozess_zuordnung_rueckwirkend: 'Prozess-Zuordnung rückwirkend geändert',
+  messmittel_angabe: 'Messmittel-Angaben geändert',
+  bezugsbasis_anstoss: 'Anstoß an der Bezugsbasis',
+  bezugsbasis_fassung: 'Neue Fassung der Bezugsbasis',
+  bezugsbasis_beendet: 'Bezugsbasis beendet',
+};
+
+export const BERICHT_FORMAT_TEXT: Record<string, string> = {
+  pdf: 'PDF',
+  csv: 'CSV',
 };
 
 /** Die Hauptwörter, die `{anzahl_…}` zu `anzahl` spricht. */
@@ -423,12 +632,21 @@ function feldText(feld: string, e: Ereignis, namen: Namen, zone: string): string
     case 'stand':
       return `${zahlText(Number(w))}${einheit(e)}`;
     case 'messwert': {
-      const m = w as { raw: unknown; decoded?: unknown };
+      // decoded ist null, wenn der Kanal keinen decodierten Wert liefert — dann spricht der Rohwert.
+      const m = w as { raw: unknown; decoded: unknown };
       const x = m.decoded ?? m.raw;
       return typeof x === 'number' ? `${zahlText(x)}${einheit(e)}` : wertText(x);
     }
     case 'wort':
-      return feld === 'grund' ? (GRUND_TEXT[w as Grund] ?? String(w)) : String(w);
+      if (feld === 'einstufung') return w === 'nicht_wesentlich' ? 'nicht wesentlich' : String(w);
+      if (feld === 'grund') return GRUND_TEXT[w as Grund] ?? String(w);
+      if (feld === 'methode') return METHODE_TEXT[String(w)] ?? String(w);
+      if (feld === 'korrektur_art') return KORREKTUR_ART_TEXT[String(w)] ?? String(w);
+      if (feld === 'anstoss_art') return ANSTOSS_ART_TEXT[String(w)] ?? String(w);
+      if (feld === 'format') return BERICHT_FORMAT_TEXT[String(w)] ?? String(w);
+      return String(w);
+    case 'wort_liste':
+      return (w as unknown[]).join(', ') || 'keine Kriteriennummer';
     default:
       return wertText(w);
   }

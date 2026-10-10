@@ -3,6 +3,7 @@ package com.voltpilot.api.curtailment;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.command.CommandLogWriter;
+import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
 import com.voltpilot.api.repo.CurtailmentStatusRepository;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.tenant.TenantContext;
@@ -77,7 +78,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @ConditionalOnProperty(name = "voltpilot.curtailment.mqtt-listener-enabled", havingValue = "true")
-public class CurtailmentStatusListener {
+public class CurtailmentStatusListener extends Rueckmeldeweg {
 
     private static final Logger log = LoggerFactory.getLogger(CurtailmentStatusListener.class);
     private static final String STATUS_FILTER = "ems/+/+/+/status";
@@ -201,6 +202,7 @@ public class CurtailmentStatusListener {
 
     /** Package-visible + test-visible: parse one heartbeat's curtailment block. */
     public void handle(String topic, byte[] payload) {
+        if (kundenbereichBeendet(topic)) return; // Kundenbereich beendet: verworfen und gezählt
         JsonNode json;
         try {
             json = mapper.readTree(new String(payload, StandardCharsets.UTF_8));

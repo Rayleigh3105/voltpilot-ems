@@ -3,6 +3,7 @@ package com.voltpilot.api.fleet;
 import com.voltpilot.api.repo.AdminFleetRepository.ExportCeiling;
 import com.voltpilot.api.repo.AdminFleetRepository.ForecastRow;
 import com.voltpilot.api.repo.AdminFleetRepository.PvPeak;
+import com.voltpilot.api.uems.GrenzeAufloesung;
 import com.voltpilot.api.web.dto.AdminFleetDto.FleetFeedInDto;
 import com.voltpilot.api.web.dto.AdminFleetDto.FleetForecastDto;
 import com.voltpilot.api.web.dto.AdminFleetDto.FleetKwpDto;
@@ -36,7 +37,7 @@ import java.util.UUID;
  *   <li><b>kWp unplausibel</b> - gemessene PV-Spitze gegen gepflegte
  *       Nennleistung, siehe {@link #kwp}.</li>
  *   <li><b>Einspeisegrenze unplausibel</b> - gemessene Export-Decke gegen die
- *       gepflegte {@code max_feed_in_kw}, siehe {@link #feedIn}.</li>
+ *       wirksame Grenze aus Anlage und Grenzblatt, siehe {@link #feedIn}.</li>
  *   <li><b>Prognose auffällig</b> - der normierte Prognosefehler dieser Anlage
  *       gegen den Flotten-MEDIAN, siehe {@link #forecastChecks}.</li>
  * </ol>
@@ -221,6 +222,11 @@ public final class FleetPflege {
      * Behauptung - genau wie B4a die Frage „fehlt ein Erzeuger?" stellt.
      */
     public static FleetFeedInDto feedIn(BigDecimal configuredKw, ExportCeiling c) {
+        return feedIn(configuredKw, null, c);
+    }
+
+    /** Wie {@link #feedIn(BigDecimal, ExportCeiling)}, mit sichtbarer Herkunft einer wirksamen Grenzblatt-Grenze. */
+    public static FleetFeedInDto feedIn(BigDecimal configuredKw, String quelleEinspeisung, ExportCeiling c) {
         BigDecimal ceilingKw = c == null ? null : c.ceilingKw();
         int exportDays = c == null ? 0 : c.exportDays();
         int clingDays = c == null ? 0 : c.clingDays();
@@ -237,19 +243,25 @@ public final class FleetPflege {
         double ceiling = ceilingKw == null ? 0.0 : ceilingKw.doubleValue();
         if (ceiling >= limit * FEED_IN_OVERSHOOT_FACTOR) {
             return new FleetFeedInDto(configuredKw, ceilingKw, exportDays, clingDays, "nicht_gehalten",
-                    "Gemessene Einspeisung erreicht wiederholt " + kw(ceiling) + " über der gepflegten"
-                            + " Grenze " + kw(limit) + " - die Grenze wird nicht gehalten oder ist zu"
-                            + " niedrig gepflegt.");
+                    "Gemessene Einspeisung erreicht wiederholt " + kw(ceiling) + " über der "
+                            + grenze(quelleEinspeisung) + " " + kw(limit)
+                            + " - die Grenze wird nicht gehalten oder ist zu niedrig gepflegt.");
         }
         if (ceiling >= FEED_IN_PLATEAU_MIN_KW && clingDays >= FEED_IN_CLING_MIN_DAYS
                 && ceiling <= limit * FEED_IN_DRIFT_FACTOR) {
             return new FleetFeedInDto(configuredKw, ceilingKw, exportDays, clingDays, "zu_hoch",
-                    "Die Anlage klebt an " + clingDays + " Tagen bei " + kw(ceiling) + ", die gepflegte"
-                            + " Einspeisegrenze " + kw(limit) + " liegt deutlich darüber - vermutlich zu"
-                            + " hoch gepflegt.");
+                    "Die Anlage klebt an " + clingDays + " Tagen bei " + kw(ceiling) + ", die "
+                            + grenze(quelleEinspeisung) + " " + kw(limit)
+                            + " liegt deutlich darüber - vermutlich zu hoch gepflegt.");
         }
         return new FleetFeedInDto(configuredKw, ceilingKw, exportDays, clingDays, "ok",
-                "Gemessene Einspeise-Decke " + kw(ceiling) + " bei Grenze " + kw(limit) + ".");
+                "Gemessene Einspeise-Decke " + kw(ceiling) + " bei " + grenze(quelleEinspeisung) + " "
+                        + kw(limit) + ".");
+    }
+
+    private static String grenze(String quelleEinspeisung) {
+        return GrenzeAufloesung.QUELLE_NETZANSCHLUSS.equals(quelleEinspeisung)
+                ? "wirksamer Einspeisegrenze aus dem Grenzblatt" : "gepflegter Einspeisegrenze";
     }
 
     /**

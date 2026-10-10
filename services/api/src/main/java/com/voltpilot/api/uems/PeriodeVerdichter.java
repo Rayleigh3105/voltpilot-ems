@@ -1,7 +1,10 @@
 package com.voltpilot.api.uems;
 
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
+import com.voltpilot.api.measurement.MeasurementCatalog;
 import com.voltpilot.api.uems.VerbrauchRegeln.Ergebnis;
 import com.voltpilot.api.uems.VerbrauchRegeln.Teilperiode;
+import java.math.BigDecimal;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -19,6 +22,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -66,19 +70,32 @@ public class PeriodeVerdichter {
         "wertart", "stand_anfang", "stand_anfang_zeit", "stand_ende", "stand_ende_zeit",
         "erster_wert", "erster_zeit", "letzter_wert", "letzter_zeit",
         "menge", "menge_zustand", "kennzeichen", "erhalten", "erwartet", "abdeckung_prozent",
-        "kadenz_s", "n_nachgeliefert", "zustand", "endgueltig_ab", "berechnet_am", "version"};
+        "kadenz_s", "n_nachgeliefert", "zustand", "endgueltig_ab", "berechnet_am", "version",
+        "mittel", "min_wert", "max_wert", "summe", "energie", "gemessen_s", "luecke_innen",
+        "menge_positiv", "menge_negativ"};
 
     private final JdbcTemplate adminJdbc;
+    private final MeasurementCatalog katalog;
     private final int stapelGroesse;
     private final int stapelJeLauf;
     private final int nachholenJeLauf;
 
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
+
     public PeriodeVerdichter(
             @Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
+            MeasurementCatalog katalog,
             @Value("${voltpilot.uems.periode.stapel:50}") int stapelGroesse,
             @Value("${voltpilot.uems.periode.stapel-je-lauf:40}") int stapelJeLauf,
             @Value("${voltpilot.uems.periode.nachholen-je-lauf:2000}") int nachholenJeLauf) {
         this.adminJdbc = adminJdbc;
+        this.katalog = katalog;
         this.stapelGroesse = stapelGroesse;
         this.stapelJeLauf = stapelJeLauf;
         this.nachholenJeLauf = nachholenJeLauf;
@@ -109,6 +126,8 @@ public class PeriodeVerdichter {
     }
 
     // ================================================================== Eingang
+    // Beide Quellen lesen nur REIHEN (`entity_id IS NOT NULL`): Monat und Jahr einer berechneten Messstelle
+    // (Spur `berechnet`, AP-10 IP-10) rechnet ihr eigener Lauf aus den Perioden ihrer Eingänge.
 
     /** Perioden, die noch vorläufig sind und deren Frist abgelaufen ist — sie werden endgültig. */
     int eintragenAusFrist(Instant jetzt) {
@@ -117,8 +136,10 @@ public class PeriodeVerdichter {
                 SELECT p.tenant_id, p.entity_id, p.messkanal, p.art, p.tag, 'frist'
                   FROM messreihe_periode p
                  WHERE p.zustand = 'vorlaeufig' AND p.endgueltig_ab <= ?
+                   AND p.entity_id IS NOT NULL
+                   AND NOT (p.tenant_id = ANY (?::uuid[]))
                 ON CONFLICT DO NOTHING
-                """, Timestamp.from(jetzt));
+                """, Timestamp.from(jetzt), beendete.sqlFeld()); // Kundenbereich beendet: bleibt vorläufig
     }
 
     /**
@@ -136,9 +157,11 @@ public class PeriodeVerdichter {
                                     WHERE p.tenant_id = t.tenant_id AND p.entity_id = t.entity_id
                                       AND p.messkanal = t.messkanal AND p.art = 'monat'
                                       AND p.tag = date_trunc('month', t.tag)::date)
+                   AND t.entity_id IS NOT NULL
+                   AND NOT (t.tenant_id = ANY (?::uuid[]))
                  LIMIT ?
                 ON CONFLICT DO NOTHING
-                """, nachholenJeLauf);
+                """, beendete.sqlFeld(), nachholenJeLauf);
     }
 
     // ================================================================== Das Bilden
@@ -189,6 +212,7 @@ public class PeriodeVerdichter {
                 DELETE FROM messreihe_periode_arbeit a
                  USING (SELECT tenant_id, entity_id, messkanal, art, tag
                           FROM messreihe_periode_arbeit
+                         WHERE NOT (tenant_id = ANY (?::uuid[]))
                          ORDER BY art DESC, tag, eingetragen_am
                          LIMIT ?
                          FOR UPDATE SKIP LOCKED) c
@@ -196,7 +220,8 @@ public class PeriodeVerdichter {
                    AND a.messkanal = c.messkanal AND a.art = c.art AND a.tag = c.tag
                 RETURNING a.tenant_id, a.entity_id, a.messkanal, a.art, a.tag
                 """)) {
-            ps.setInt(1, stapelGroesse);
+            ps.setObject(1, beendete.sqlFeld()); // Kundenbereich beendet: der Auftrag bleibt liegen
+            ps.setInt(2, stapelGroesse);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
                     aus.add(new Auftrag(rs.getObject(1, UUID.class), rs.getObject(2, UUID.class),
@@ -254,9 +279,13 @@ public class PeriodeVerdichter {
         String zustand = alleSlotsEndgueltig
                 ? TagRegeln.zustand(tage.vorhanden(), tage.endgueltig(), TagRegeln.endgueltigAb(ende), jetzt)
                 : ViertelstundeRegeln.VORLAEUFIG;
-        return zeile(a, erster, zone, tage, beginn, ende, erster.lengthOfMonth(),
-                tage.endgueltig(), v.innen(beginn, ende), v.teile(), v.ereignisse(), v.wertart(), v.kadenzS(),
-                v.nachgeliefert(), v.siteEindeutig() ? v.siteId() : null, zustand, jetzt);
+        return zeile(a, erster, ReihenKontext.aus(katalog, a.kanal(), zone), tage, beginn, ende,
+                erster.lengthOfMonth(),
+                tage.endgueltig(), v.innen(beginn, ende), v.teile(), v.ereignisse(), v.deklaration(), v.wertart(),
+                v.kadenzS(),
+                v.nachgeliefert(), v.siteEindeutig() ? v.siteId() : null, zustand,
+                ViertelstundenTeile.werte(v.werteteile(), v.wertart(), v.kadenzS(), beginn, ende),
+                Richtungspaar.ausTeilen(v.anteile(), beginn, ende), jetzt);
     }
 
     /** Ein JAHR aus seinen Monaten. */
@@ -273,6 +302,8 @@ public class PeriodeVerdichter {
 
         List<Teilperiode> teile = new ArrayList<>();
         List<Teilperiode> innen = new ArrayList<>();
+        List<VerbrauchRegeln.Werteteil> werteteile = new ArrayList<>();
+        Richtungspaar.Summe paar = new Richtungspaar.Summe();
         String wertart = null;
         Integer kadenzS = null;
         int nachgeliefert = 0;
@@ -281,7 +312,9 @@ public class PeriodeVerdichter {
         try (PreparedStatement ps = con.prepareStatement(
                 "SELECT tag, beginn, ende, stand_anfang, stand_anfang_zeit, stand_ende, stand_ende_zeit, "
                         + "erster_wert, erster_zeit, letzter_wert, letzter_zeit, menge, menge_zustand, "
-                        + "erhalten, erwartet, kennzeichen::text, kadenz_s, wertart, n_nachgeliefert, site_id "
+                        + "erhalten, erwartet, kennzeichen::text, kadenz_s, wertart, n_nachgeliefert, site_id, "
+                        + "summe, mittel, min_wert, max_wert, energie, gemessen_s, luecke_innen, "
+                        + "menge_positiv, menge_negativ "
                         + "FROM messreihe_periode WHERE tenant_id = ? AND entity_id = ? AND messkanal = ? "
                         + "AND art = 'monat' AND tag >= ? AND tag <= ? ORDER BY tag")) {
             ps.setObject(1, a.tenant(), Types.OTHER);
@@ -300,8 +333,20 @@ public class PeriodeVerdichter {
                                     rs.getInt(14), rs.getInt(15), null,
                                     ViertelstundenTeile.kennzeichen(rs.getString(16))));
                     teile.add(t);
+                    // AP-08 IP-3: derselbe Monat als Werteteil (Mittel, Summe, Energie, gemessene Zeit).
+                    Integer gemessen = (Integer) rs.getObject(26);
+                    Boolean luecke = (Boolean) rs.getObject(27);
+                    werteteile.add(new VerbrauchRegeln.Werteteil(
+                            new Teilperiode(t.von(), t.bis(), null, null, t.erster(), t.letzter(),
+                                    new Ergebnis(t.ergebnis().menge(), rs.getBigDecimal(22), rs.getBigDecimal(23),
+                                            rs.getBigDecimal(24), null, t.ergebnis().zustand(),
+                                            t.ergebnis().erhalten(), t.ergebnis().erwartet(), null,
+                                            t.ergebnis().kennzeichen())),
+                            rs.getBigDecimal(21), rs.getBigDecimal(25), gemessen == null ? 0 : gemessen,
+                            luecke != null && luecke));
                     if (!tag.isBefore(erster) && tag.isBefore(naechster)) {
                         innen.add(t);
+                        paar.nimm(rs.getBigDecimal(28), rs.getBigDecimal(29));
                         kadenzS = (Integer) rs.getObject(17);
                         wertart = rs.getString(18) != null ? rs.getString(18) : wertart;
                         nachgeliefert += rs.getInt(19);
@@ -317,19 +362,34 @@ public class PeriodeVerdichter {
         }
         // Ein Monat einer anderen Zone kachelt dieses Jahr nicht — die Regel weist ihn ab, statt
         // ihn still zu kappen. Heute tragen alle zugelassenen Zonen denselben Versatz.
+        ZaehlerDeklaration deklaration = ZaehlerDeklaration.lesen(con, a.tenant(), a.entity(), a.kanal(), beginn);
         List<VerbrauchRegeln.Ereignis> ereignisse = ViertelstundenTeile.ereignisse(con, a.tenant(), a.entity(),
-                a.kanal(), beginn, ende);
+                a.kanal(), beginn, ende, deklaration);
         String zustand = TagRegeln.zustand(monate.vorhanden(), monate.endgueltig(), TagRegeln.endgueltigAb(ende),
                 jetzt);
-        return zeile(a, erster, zone, monate, beginn, ende, 12, monate.endgueltig(), innen, teile, ereignisse,
-                wertart, kadenzS, nachgeliefert, siteEindeutig ? site : null, zustand, jetzt);
+        return zeile(a, erster, ReihenKontext.aus(katalog, a.kanal(), zone), monate, beginn, ende, 12,
+                monate.endgueltig(), innen, teile, ereignisse,
+                deklaration, wertart, kadenzS, nachgeliefert, siteEindeutig ? site : null, zustand,
+                ViertelstundenTeile.werte(werteteile, wertart, kadenzS, beginn, ende), paar.fertig(), jetzt);
     }
 
-    private static Object[] zeile(Auftrag a, LocalDate erster, ZoneId zone, Teile teile, Instant beginn,
+    /**
+     * @param reihe der Träger dieser Reihe: Einheit aus dem Katalog, Zone der Tage bzw. Monate — in ihm
+     *     sprechen die Kennzeichen, die die Regel an dieser Periode neu bildet
+     */
+    private static Object[] zeile(Auftrag a, LocalDate erster, ReihenKontext reihe, Teile teile, Instant beginn,
             Instant ende, int teileErwartet, int teileEndgueltig, List<Teilperiode> innen,
-            List<Teilperiode> alle, List<VerbrauchRegeln.Ereignis> ereignisse, String wertart, Integer kadenzS,
-            int nachgeliefert, UUID site, String zustand, Instant jetzt) {
-        Teilperiode menge = ViertelstundenTeile.zaehlerstand(alle, ereignisse, wertart, kadenzS, beginn, ende);
+            List<Teilperiode> alle, List<VerbrauchRegeln.Ereignis> ereignisse, ZaehlerDeklaration deklaration,
+            String wertart, Integer kadenzS,
+            int nachgeliefert, UUID site, String zustand, VerbrauchRegeln.Werteteil werteteil,
+            BigDecimal[] richtungspaar, Instant jetzt) {
+        Teilperiode menge = ViertelstundenTeile.zaehlerstand(reihe, alle, ereignisse, deklaration, wertart,
+                kadenzS, beginn, ende);
+        // Zählerstand aus den Periodenständen (IP-5), Momentanwert/Intervallmenge aus der Regel von
+        // IP-3 — ein Momentanwert trägt NIE eine Menge (M6), seine Energie steht in `energie`.
+        Ergebnis mengeErgebnis = menge != null ? menge.ergebnis()
+                : werteteil == null ? null : werteteil.teil().ergebnis();
+        boolean momentan = "momentanwert".equals(ViertelstundeRegeln.regelWort(wertart));
         int erhalten = innen.stream().mapToInt(t -> t.ergebnis().erhalten()).sum();
         int erwartet = kadenzS == null
                 ? innen.stream().mapToInt(t -> t.ergebnis().erwartet()).sum()
@@ -366,10 +426,14 @@ public class PeriodeVerdichter {
         z.put("erster_zeit", ersterWert == null ? null : Timestamp.from(ersterWert.zeit()));
         z.put("letzter_wert", letzterWert == null ? null : letzterWert.wert());
         z.put("letzter_zeit", letzterWert == null ? null : Timestamp.from(letzterWert.zeit()));
-        z.put("menge", menge == null ? null : menge.ergebnis().menge());
-        z.put("menge_zustand", menge == null ? null : menge.ergebnis().zustand());
+        z.put("menge", mengeErgebnis == null ? null : mengeErgebnis.menge());
+        z.put("menge_zustand", mengeErgebnis == null ? null : mengeErgebnis.zustand());
         z.put("kennzeichen", ViertelstundeRegeln.kennzeichenJson(
-                menge == null ? List.of() : menge.ergebnis().kennzeichen()));
+                mengeErgebnis == null ? List.of() : mengeErgebnis.kennzeichen()));
+        // Das Richtungspaar (V20260918101000) — der Monat aus seinen Viertelstunden, das Jahr aus
+        // den gespeicherten Monaten. Unbekannt ist keine Null: fehlt es an EINEM Teil, fehlt es ganz.
+        z.put("menge_positiv", richtungspaar == null ? null : richtungspaar[0]);
+        z.put("menge_negativ", richtungspaar == null ? null : richtungspaar[1]);
         z.put("erhalten", erhalten);
         z.put("erwartet", erwartet);
         z.put("abdeckung_prozent", abdeckung);
@@ -379,6 +443,14 @@ public class PeriodeVerdichter {
         z.put("endgueltig_ab", Timestamp.from(TagRegeln.endgueltigAb(ende)));
         z.put("berechnet_am", Timestamp.from(jetzt));
         z.put("version", 1);
+        Ergebnis w = werteteil == null ? null : werteteil.teil().ergebnis();
+        z.put("mittel", w == null ? null : w.mittel());
+        z.put("min_wert", w == null ? null : w.min());
+        z.put("max_wert", w == null ? null : w.max());
+        z.put("summe", werteteil == null ? null : werteteil.summe());
+        z.put("energie", werteteil == null ? null : werteteil.energie());
+        z.put("gemessen_s", momentan && werteteil != null ? (int) werteteil.gemessenS() : null);
+        z.put("luecke_innen", momentan && werteteil != null ? werteteil.lueckeInnen() : null);
         Object[] werte = new Object[SPALTEN.length];
         for (int i = 0; i < SPALTEN.length; i++) {
             werte[i] = z.get(SPALTEN[i]);

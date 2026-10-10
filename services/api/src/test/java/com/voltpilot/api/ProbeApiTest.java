@@ -249,7 +249,7 @@ class ProbeApiTest {
         ResponseEntity<Map<String, Object>> none = post("/api/v1/sites/" + empty + "/modbus-probe",
                 customer, Map.of("ops", List.of(op())));
         assertThat(none.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-        assertThat(none.getBody().get("message").toString()).contains("Gerät");
+        assertThat(none.getBody().get("message").toString()).contains("keine führende Box");
 
         UUID site = createSite(customer, "Anlage mit zwei Geraeten");
         UUID first = claim(customer, site, "edge-probe-e2e-a");
@@ -259,7 +259,7 @@ class ProbeApiTest {
                 "/api/v1/sites/" + site + "/modbus-probe", customer,
                 Map.of("ops", List.of(op())));
         assertThat(ambiguous.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
-        assertThat(ambiguous.getBody().get("message").toString()).contains("mehrere Geräte");
+        assertThat(ambiguous.getBody().get("message").toString()).contains("keine führende Box");
 
         // Ein Geraet einer ANDEREN Anlage ist 404, auch wenn es dem Kunden
         // gehoert - die Frage geht an die Anlage, die er gerade einrichtet.

@@ -13,8 +13,10 @@
     "bezug": { "type": "string", "minLength": 1, "description": "Woher die Regel stammt: Konzeptpaket und Entscheide." },
     "referenzunternehmen": { "type": "string", "const": "./uems-referenzunternehmen.json", "description": "Die EINE Beispielwelt. Jedes Kennzeichen, jede Seriennummer, jeder Einbau und jede Zuständigkeit eines Falls stammt von dort." },
 
+    "ablesungen": {"type": "object", "additionalProperties": false, "required": ["bezug", "reihe", "spur", "cases"], "properties": {"bezug": {"type": "string"}, "reihe": {"type": "array", "items": {"enum": ["kundenbereich", "messstelle", "groesse"]}}, "spur": {"const": "ablesung"}, "cases": {"type": "array", "items": {"type": "object", "additionalProperties": false, "required": ["name", "input", "expected", "grund"], "properties": {"name": {"type": "string"}, "input": {"type": "object", "additionalProperties": false, "required": ["kundenbereich", "messstelle", "groesse", "messzeit", "eingangszeit", "stand", "einheit", "woher", "urheber"], "properties": {"kundenbereich": {"type": "string"}, "messstelle": {"type": "string"}, "groesse": {"type": "string"}, "messzeit": {"type": "string"}, "eingangszeit": {"type": "string"}, "stand": {"type": "string"}, "einheit": {"type": "string"}, "woher": {"type": "string"}, "urheber": {"type": ["object", "null"], "additionalProperties": false, "required": ["sub", "name", "rolle", "art"], "properties": {"sub": {"type": "string"}, "name": {"type": "string"}, "rolle": {"type": "string"}, "art": {"type": "string"}}}}}, "expected": {"type": ["object", "null"]}, "grund": {"enum": [null, "herkunft_unvollstaendig"]}}}}}},
+
     "angaben": {
-      "type": "array", "minItems": 15, "maxItems": 15,
+      "type": "array", "minItems": 15, "maxItems": 16,
       "description": "Die fünfzehn Angaben, die jeder gespeicherte Wert trägt und die bis in den Viertelstundenwert überleben — in der Reihenfolge von AP-07 §4.2.",
       "items": {
         "type": "object", "additionalProperties": false,
@@ -86,7 +88,7 @@
     "ereignis_art": { "type": "string", "enum": ["clock_ahead", "too_old", "clock_jump", "sequence_gap", "sequence_reset", "rejected", "unassigned_reader", "duplicate_conflict"], "description": "Eine Ereignisart aus AP-07 §4.8." },
     "qualitaet": { "type": "string", "enum": ["good", "uncertain", "invalid", "stale", "device_error"], "description": "Gut · unsicher · ungültig · veraltet · Gerätefehler." },
     "wertart": { "type": "string", "enum": ["counter", "gauge", "state", "bitfield", "text"], "description": "Zählerstand · Momentanwert · Zustand · Bitfeld · Text." },
-    "woher": { "type": "string", "enum": ["box", "datenannahme", "nachschlag", "ableitung"], "description": "Die Box liefert es · die Datenannahme stempelt es · die Cloud schlägt es zur Messzeit nach · es wird abgeleitet." },
+    "woher": { "type": "string", "enum": ["box", "datenannahme", "nachschlag", "ableitung", "eingabe", "import"], "description": "Die Box liefert es · die Datenannahme stempelt es · die Cloud schlägt es zur Messzeit nach · es wird abgeleitet." },
 
     "box": {
       "type": "object", "additionalProperties": false, "required": ["kennzeichen", "seriennummer"],

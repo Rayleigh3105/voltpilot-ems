@@ -1,3 +1,5 @@
+import { useRollen } from '../rollen';
+import { Recht } from './Recht';
 import { useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -70,6 +72,7 @@ export function SchaltFreigabeDrawer({
   onClose: () => void;
   onChanged: () => void;
 }) {
+  const rollen = useRollen();
   const [schritt, setSchritt] = useState<1 | 2 | 3>(1);
   const [form, setForm] = useState<SchaltForm>(neueSchaltForm());
   const [testWert, setTestWert] = useState('');
@@ -182,7 +185,7 @@ export function SchaltFreigabeDrawer({
           </IconTile>
         }
       >
-        <section className="vp-freigabe">
+        <section className="vp-freigabe"><Recht aktion={['freigabe.erteilen', 'schalttest.durchfuehren']}>
           <p className="vp-assist-sub">{komponentenName}</p>
 
           {bereitsFreigegeben ? (
@@ -203,13 +206,13 @@ export function SchaltFreigabeDrawer({
                 <Button variant="ghost" onClick={onClose}>
                   Schließen
                 </Button>
-                <Button
+                <Recht aktion="freigabe.erteilen"><Button
                   variant="outline"
                   className="vp-btn-danger"
                   onClick={() => setRuecknahmeFrage(true)}
                 >
                   Freigabe zurücknehmen
-                </Button>
+                </Button></Recht>
               </div>
             </>
           ) : (
@@ -537,15 +540,15 @@ export function SchaltFreigabeDrawer({
                   )}
 
                   <div className="vp-freigabe-testrow">
-                    <Button onClick={testen} disabled={laeuft || busy || testMangel !== null}>
+                    <Recht aktion="schalttest.durchfuehren"><Button onClick={testen} disabled={laeuft || busy || testMangel !== null}>
                       {form.art === 'on_off'
                         ? `Jetzt für ${TEST_SEKUNDEN} Sekunden einschalten`
                         : `Testwert für ${TEST_SEKUNDEN} Sekunden schreiben`}
-                    </Button>
+                    </Button></Recht>
                     {testLaeuft && (
-                      <Button variant="outline" onClick={abbrechen} disabled={busy}>
+                      <Recht aktion="schalttest.durchfuehren"><Button variant="outline" onClick={abbrechen} disabled={busy}>
                         Sofort ausschalten
-                      </Button>
+                      </Button></Recht>
                     )}
                   </div>
 
@@ -588,7 +591,7 @@ export function SchaltFreigabeDrawer({
                     <Button variant="ghost" onClick={() => setSchritt(2)}>
                       Zurück
                     </Button>
-                    <Button
+                    <Recht aktion="freigabe.erteilen"><Button
                       onClick={() => setFreigabeFrage(true)}
                       disabled={
                         !testLaeuft || !bestaetigt || busy
@@ -596,17 +599,17 @@ export function SchaltFreigabeDrawer({
                       }
                     >
                       Steuern freigeben
-                    </Button>
+                    </Button></Recht>
                   </div>
                 </>
               )}
             </>
           )}
-        </section>
+        </Recht></section>
       </Modal>
 
       <ConfirmDialog
-        open={freigabeFrage}
+        open={freigabeFrage && rollen.darf('freigabe.erteilen')}
         title="Steuern freigeben?"
         intro={`VoltPilot darf „${komponentenName}" danach selbst schalten.`}
         consequences={folgenListe}
@@ -617,7 +620,7 @@ export function SchaltFreigabeDrawer({
       />
 
       <ConfirmDialog
-        open={ruecknahmeFrage}
+        open={ruecknahmeFrage && rollen.darf('freigabe.erteilen')}
         title="Freigabe zurücknehmen?"
         intro={`VoltPilot schaltet „${komponentenName}" danach nicht mehr.`}
         consequences={RUECKNAHME_FOLGEN}

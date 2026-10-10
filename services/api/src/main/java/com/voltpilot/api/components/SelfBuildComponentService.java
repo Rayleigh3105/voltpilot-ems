@@ -21,7 +21,8 @@ import com.voltpilot.api.consumers.ConsumerAuditRepository;
 import com.voltpilot.api.probe.ProbePublisher;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.probe.ProbeService;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
+import com.voltpilot.api.uems.BerichtsBelege;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.web.dto.SaveSelfBuildRequest;
 import com.voltpilot.api.web.dto.SelfBuildReadResult;
@@ -107,7 +108,7 @@ public class SelfBuildComponentService {
             SwitchDefinition.Consumer consumer, Boolean physicallyConfirmed) {
     }
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final EntityRegistryRepository entityRepo;
     private final EntityRegistryService entityRegistry;
     private final ComponentDefinitionRepository definitions;
@@ -121,15 +122,16 @@ public class SelfBuildComponentService {
     private final ProbeService probes;
     private final ConsumerAuditRepository audit;
     private final ObjectMapper mapper;
+    private final BerichtsBelege berichtsBelege;
 
-    public SelfBuildComponentService(SiteRepository sites, EntityRegistryRepository entityRepo,
+    public SelfBuildComponentService(Geltungsbereich geltungsbereich, EntityRegistryRepository entityRepo,
             EntityRegistryService entityRegistry, ComponentDefinitionRepository definitions,
             ComponentService components, ComponentConnectionReceipts receipts,
             SiteComponentTemplateRepository templates, SelfBuildFlowCompiler compiler,
             FlowRepository flows, FlowActivationService deployments,
             ObjectProvider<FlowCompiler> flowc, ProbeService probes,
-            ConsumerAuditRepository audit, ObjectMapper mapper) {
-        this.sites = sites;
+            ConsumerAuditRepository audit, ObjectMapper mapper, BerichtsBelege berichtsBelege) {
+        this.geltungsbereich = geltungsbereich;
         this.entityRepo = entityRepo;
         this.entityRegistry = entityRegistry;
         this.definitions = definitions;
@@ -143,6 +145,7 @@ public class SelfBuildComponentService {
         this.probes = probes;
         this.audit = audit;
         this.mapper = mapper;
+        this.berichtsBelege = berichtsBelege;
     }
 
     // ---- Anlegen / Ändern -------------------------------------------------
@@ -202,6 +205,8 @@ public class SelfBuildComponentService {
         requireSite(siteId);
         requirePortalManaged(siteId);
         EntityRow row = requireSelfBuilt(siteId, entityId);
+        // UEMS AP-12 E13 S2: ein Beleg freigegebener Berichtsstände → 409, bevor irgendetwas geschrieben wird.
+        berichtsBelege.pruefeKomponente(siteId, row.id());
 
         // Erst den Leseplan zurückziehen, dann die Komponente: andersherum
         // bliebe für einen Moment ein Flow ausgerollt, dessen Ziel-Entität es
@@ -358,9 +363,7 @@ public class SelfBuildComponentService {
     // ---- Regeln -----------------------------------------------------------
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 
     private void requirePortalManaged(UUID siteId) {
@@ -465,7 +468,7 @@ public class SelfBuildComponentService {
             throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY, valueError);
         }
         int raw = SwitchDefinition.testRaw(sw, req.testValue());
-        ProbeResult res = probes.switchOp(siteId, null,
+        ProbeResult res = probes.switchOp(siteId, null, entityId,
                 new ProbePublisher.SwitchOp("switch_test", "schalten", transport.host(),
                         transport.effectivePort(), transport.effectiveUnitId(), sw.registerKind(),
                         sw.address(), sw.writeFc(), raw, sw.safeRaw(),
@@ -494,7 +497,7 @@ public class SelfBuildComponentService {
         EntityRow row = requireSelfBuilt(siteId, entityId);
         SwitchDefinition.NormalizedSwitch sw = requireValidSwitch(req.switchDef());
         Transport transport = storedTransport(row);
-        ProbeResult res = probes.switchOp(siteId, null,
+        ProbeResult res = probes.switchOp(siteId, null, entityId,
                 new ProbePublisher.SwitchOp("switch_cancel", "schalten", transport.host(),
                         transport.effectivePort(), transport.effectiveUnitId(), sw.registerKind(),
                         sw.address(), sw.writeFc(), null, sw.safeRaw(), null,

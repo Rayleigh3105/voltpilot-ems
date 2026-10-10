@@ -1,0 +1,22 @@
+.vp-korr { display: grid; gap: var(--vp-c-space-4); min-width: 0; color: var(--vp-c-fg); font-family: var(--vp-c-font); }
+.vp-korr p { margin: 0; line-height: var(--vp-c-lh-text); overflow-wrap: anywhere; }
+.vp-korr-zone, .vp-korr small { color: var(--vp-c-muted-fg); font-size: var(--vp-c-fs-14); }
+.vp-korr form, .vp-korr-vorschau, .vp-korr-kopf { display: grid; gap: var(--vp-c-space-3); min-width: 0; }
+.vp-korr fieldset { display: grid; border: 0; padding: 0; margin: 0; min-width: 0; }
+.vp-korr legend { font-weight: var(--vp-c-fw-600); margin-bottom: var(--vp-c-space-2); }
+.vp-korr-raster { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: var(--vp-c-space-3); }
+.vp-korr-raster > * { min-width: 0; }
+.vp-korr-folgen { display: grid; gap: var(--vp-c-space-3); padding: var(--vp-c-space-4); background: var(--vp-c-muted); border-radius: var(--vp-c-radius); }
+.vp-korr-folgen h3 { margin: 0; font-size: var(--vp-c-fs-16); }
+.vp-korr-tabelle { overflow: auto; max-height: 32rem; border: 1px solid var(--vp-border); border-radius: var(--vp-c-radius); }
+.vp-korr-tabelle table { width: 100%; border-collapse: collapse; font-size: var(--vp-c-fs-14); }
+.vp-korr-tabelle th, .vp-korr-tabelle td { padding: var(--vp-c-space-3); text-align: left; vertical-align: top; min-width: 8rem; border-bottom: 1px solid var(--vp-border); overflow-wrap: anywhere; }
+.vp-korr-tabelle thead { position: sticky; top: 0; background: var(--vp-c-muted); }
+.vp-korr-tabelle small { display: block; margin-top: var(--vp-c-space-2); font-weight: normal; }
+.vp-korr-liste { display: grid; gap: var(--vp-c-space-3); list-style: none; margin: 0; padding: 0; }
+.vp-korr-liste button { display: grid; gap: var(--vp-c-space-2); width: 100%; text-align: left; padding: var(--vp-c-space-4); border: 1px solid var(--vp-border); border-radius: var(--vp-c-radius); background: var(--vp-c-bg); color: inherit; font: inherit; cursor: pointer; overflow-wrap: anywhere; }
+.vp-korr-profil { margin: 0; display: grid; gap: var(--vp-c-space-2); }
+.vp-korr-profil svg { width: 100%; height: 8rem; fill: var(--vp-primary-deep); }
+.vp-korr-aktionen { display: flex; gap: var(--vp-c-space-3); flex-wrap: wrap; margin-block: var(--vp-c-space-4); }
+.vp-korr [role="alert"] { color: var(--vp-industry-end); }
+.vp-mv-korrektur { display: block; min-height: 44px; padding: var(--vp-c-space-2) 0; border: 0; background: none; font: inherit; color: var(--vp-primary-deep); text-align: left; cursor: pointer; }

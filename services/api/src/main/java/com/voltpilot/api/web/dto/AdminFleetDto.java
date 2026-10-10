@@ -7,13 +7,13 @@ import java.util.UUID;
 
 /**
  * Der EINE Flotten-Aggregat hinter {@code GET /api/v1/admin/fleet} (Admin-Umbau
- * Stufe 2): eine Zeile je Anlage über ALLE Mandanten, mit allem, was der
- * Flotten-Puls braucht - und nur damit.
+ * Stufe 2): Anlagen als Gruppen über ALLE Mandanten, darin eine Zeile je Box,
+ * mit allem, was der Flotten-Puls braucht - und nur damit.
  *
  * <p>Er löst die Client-Schleife der Stufe 1 ab (je Mandant {@code /overview} +
  * Anlagen + {@code /edge-versions}, dazu je Anlage die Quellen und beim
- * Aufklappen zwei Steuerungs-Belege). Die Oberfläche bleibt dieselbe - nur die
- * Datenquelle wechselt.
+ * Aufklappen zwei Steuerungs-Belege). Die Anlagen-Fakten bleiben erhalten;
+ * {@code boxes} ergänzt die je-Box-Sicht.
  *
  * <p><b>Ehrlichkeit ist Teil des Vertrags:</b> ein Block, den niemand gemessen
  * hat, ist {@code null} und trägt seinen Grund ({@code reason}) - nie eine
@@ -28,14 +28,19 @@ import java.util.UUID;
  * ausdrücklich nicht „veraltet". Leere Liste = kein Maßstab, also wird nichts
  * als veraltet behauptet.
  */
-public record AdminFleetDto(List<FleetSiteDto> sites, List<FleetReleaseDto> releases) {
+public record AdminFleetDto(List<FleetSiteDto> sites, List<FleetReleaseDto> releases,
+        java.util.Map<UUID, Instant> unterstuetzungBis,
+        List<com.voltpilot.api.repo.AdminFleetRepository.UnterstuetzungStandort> unterstuetzungStandorte) {
+    public AdminFleetDto(List<FleetSiteDto> sites, List<FleetReleaseDto> releases) {
+        this(sites, releases, java.util.Map.of(), List.of());
+    }
 
     /**
      * Eine Anlage der Flotte.
      *
      * <p>Die Geräte-Felder tragen exakt die Semantik von
-     * {@link OverviewDto.OverviewSiteDto} (Lebendigkeit aus der ANKUNFT der
-     * Telemetrie, 5-Minuten-Fenster; {@code worstStatus} = {@code stale} schlägt
+     * {@link OverviewDto.OverviewSiteDto} (Lebendigkeit aus der ANKUNFT des
+     * Status-Herzschlags, 5-Minuten-Fenster; {@code worstStatus} = {@code stale} schlägt
      * {@code waiting} schlägt {@code online}, {@code null} ohne Gerät).
      *
      * <p>{@code lastPlanGeneratedAt} ist der jüngste Optimierer-Lauf im
@@ -58,6 +63,7 @@ public record AdminFleetDto(List<FleetSiteDto> sites, List<FleetReleaseDto> rele
             String plantKind,
             boolean netzladenErlaubt,
             String tarifArt,
+            List<FleetBoxDto> boxes,
             int deviceCount,
             int onlineCount,
             int waitingCount,
@@ -91,6 +97,16 @@ public record AdminFleetDto(List<FleetSiteDto> sites, List<FleetReleaseDto> rele
      * beide Versionsfelder können einzeln fehlen.
      */
     public record FleetEdgeDto(String coreVersion, String paletteVersion, Instant reportedAt) {
+    }
+
+    /**
+     * Eine Box innerhalb ihrer Anlagen-Gruppe. {@code fuehrtAnlage == null}
+     * heißt, dass keine führende Box bestimmt ist; {@code false} ist dagegen
+     * die belegte Nebenrolle neben einer anderen führenden Box.
+     */
+    public record FleetBoxDto(UUID deviceId, String externalRef, String name,
+            Boolean fuehrtAnlage, Instant lastSeenAt, FleetEdgeDto edge, FleetUpdateDto update,
+            List<String> supports) {
     }
 
     /**

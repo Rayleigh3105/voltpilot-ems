@@ -3,17 +3,23 @@ package com.voltpilot.api.web;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.repo.AssetRepository;
 import com.voltpilot.api.repo.MeasurementPointRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.uems.BelegeImWeg;
+import com.voltpilot.api.uems.BerichtsBelege;
 import com.voltpilot.api.web.dto.CreateMeasurementPointRequest;
 import com.voltpilot.api.web.dto.MeasurementPointDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -60,17 +66,19 @@ public class MeasurementPointController {
     // topic and (topology layer) renders as a consumer entity.
     private static final String ROLE_CONSUMER = "consumer";
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final MeasurementPointRepository points;
     private final AssetRepository assets;
     private final EntityRegistryService entityRegistry;
+    private final BerichtsBelege berichtsBelege;
 
-    public MeasurementPointController(SiteRepository sites, MeasurementPointRepository points,
-            AssetRepository assets, EntityRegistryService entityRegistry) {
-        this.sites = sites;
+    public MeasurementPointController(Geltungsbereich geltungsbereich, MeasurementPointRepository points,
+            AssetRepository assets, EntityRegistryService entityRegistry, BerichtsBelege berichtsBelege) {
+        this.geltungsbereich = geltungsbereich;
         this.points = points;
         this.assets = assets;
         this.entityRegistry = entityRegistry;
+        this.berichtsBelege = berichtsBelege;
     }
 
     @GetMapping
@@ -87,6 +95,7 @@ public class MeasurementPointController {
      */
     @Transactional
     @PostMapping
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public List<MeasurementPointDto> create(@PathVariable UUID siteId,
             @Valid @RequestBody CreateMeasurementPointRequest request) {
         requireSite(siteId);
@@ -131,6 +140,7 @@ public class MeasurementPointController {
      */
     @Transactional
     @DeleteMapping("/{pointId}")
+    @Recht(value = "komponente.loeschen", ziel = RechtZiel.ANLAGE)
     public List<MeasurementPointDto> delete(@PathVariable UUID siteId,
             @PathVariable UUID pointId) {
         requireSite(siteId);
@@ -146,6 +156,7 @@ public class MeasurementPointController {
                     "Dieser Eintrag gehört zum Wechselrichter Ihrer Anlage und kann hier nicht "
                             + "entfernt werden.");
         }
+        berichtsBelege.pruefeKomponente(siteId, pointId);
         BigDecimal removedKwp = points.deleteReturningCapacity(siteId, pointId);
         if (removedKwp == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Measurement point not found");
@@ -161,10 +172,13 @@ public class MeasurementPointController {
         return remaining;
     }
 
+    @ExceptionHandler(BelegeImWeg.class)
+    public ResponseEntity<java.util.Map<String, Object>> belegeImWeg(BelegeImWeg e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(e.koerper());
+    }
+
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 
     private static String blankToNull(String s) {

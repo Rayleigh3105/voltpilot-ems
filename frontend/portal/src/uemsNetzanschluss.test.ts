@@ -150,9 +150,10 @@ describe('Netzanschluss-Vertrag: die Vektoren', () => {
           betrag(ein.vereinbart_kw),
           betrag(ein.anschluss_kva),
           betrag(ein.momentan_kw),
+          ein.nachweis ?? null,
         );
         expect(ist.text, `${why} · Kopfzeile`).toBe(soll.text);
-        expect(ist.grenze_geprueft, `${why} · hier wird gezeigt, nicht geprüft`).toBe(
+        expect(ist.grenze_geprueft, `${why} · geprüft nur mit Grenz-Nachweis`).toBe(
           soll.grenze_geprueft,
         );
         break;

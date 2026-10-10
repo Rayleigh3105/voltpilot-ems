@@ -28,7 +28,8 @@ am“, §4.5 Invarianten; Entscheide E1, E2, E3, E9, E11, E12 vom 10.09.2026). D
 Das Standort-Lesemodell (IP-3) und das Ortsbaum-Lesemodell (IP-5) für „Stand am“, die
 Standort-Schreibrouten (IP-4) für Namensregel, Archivieren und Wiederherstellen, die
 Gebäude/Bereich-Schreibrouten (IP-5) für `eintrag`, `nameBelegt` und `flaecheEintrag`
-(`uems-orte-schreibweg-gebaeude-bereich-fl.md`). Die Portal-Flächen rufen den TS-Zwilling noch
+(`uems-orte-schreibweg-gebaeude-bereich-fl.md`), das Verschieben von Gebäude/Bereich (IP-12) für `eintrag` und
+`verschiebenFolgen` (`uems-ort-verschieben.md`). Die Portal-Flächen rufen den TS-Zwilling noch
 nicht.
 
 **Fläche ab einem Tag** (Familie `flaeche/eintrag`, seit IP-5): dieselbe Mechanik wie eine

@@ -3,6 +3,8 @@ package com.voltpilot.api.web;
 import com.voltpilot.api.fahrzeuge.FahrzeugService;
 import com.voltpilot.api.fahrzeuge.FahrzeugSteuerart;
 import com.voltpilot.api.web.dto.FahrzeugDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.constraints.Size;
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -58,6 +60,7 @@ public class SiteFahrzeugController {
     }
 
     @PutMapping("/{tagRef}")
+    @Recht(value = "ladepunkt.betrieb", ziel = RechtZiel.ANLAGE)
     public FahrzeugDto save(@PathVariable UUID siteId, @PathVariable String tagRef,
             @RequestBody FahrzeugRequest body, @AuthenticationPrincipal Jwt jwt) {
         FahrzeugRequest b = body == null ? new FahrzeugRequest(null, null, null, null) : body;
@@ -68,6 +71,7 @@ public class SiteFahrzeugController {
     }
 
     @DeleteMapping("/{tagRef}")
+    @Recht(value = "ladepunkt.betrieb", ziel = RechtZiel.ANLAGE)
     public FahrzeugDto delete(@PathVariable UUID siteId, @PathVariable String tagRef,
             @AuthenticationPrincipal Jwt jwt) {
         return service.entferne(siteId, tagRef, actor(jwt));

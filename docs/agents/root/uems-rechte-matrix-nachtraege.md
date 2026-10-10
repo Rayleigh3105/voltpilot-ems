@@ -26,6 +26,39 @@ Neue Zeilen: `messstelle.ansehen` (AP-04), `ereignisse.ansehen` (AP-07, wie `mes
 `datenquelle.bearbeiten`, `datenquelle.zustaendigkeit`, `datenquelle.ansehen` (AP-06, eigene Gruppe
 „Datenquellen und Boxen“). Umbenannt: `messstelle.quelle_binden` → `messstelle.quelle` (AP-04 nennt
 die Kennung, W-R8). Keine neuen Zellen-Codes, `RechteAbleitung` Java/TS unverändert.
+Seit AP-08 IP-15: `ersatzwert.erfassen` (wie `korrektur.erfassen`, bis dahin nur zugeordnet), `korrektur.freigeben`,
+`vieraugen.einstellen` (AP-08 §4.8, vorher „Regeln ohne Zeile“) und `korrektur.zuruecknehmen` (eigener Abschnitt
+AP-08 §5); die Bedingung „Ersteller ≠ Freigeber, Bearbeiter nur bei aus“ ist die Familie `vieraugen` (neu in beiden
+Zwillingen, `uems-vieraugen-freigabe.md`).
+Seit AP-19 IP-11 (Nachtrag `AP-19 §4.2`, RE4, W10): Lesen und Freigeben getrennt — `bericht.unternehmen_abrufen` neben
+`bericht.unternehmen`, `bewertung.ansehen` neben `bewertung.abrufen`, je mit `wie` auf die alte Zeile (gleiche Zellen,
+keine Bestandsrolle darf mehr oder weniger; `BerichtRechteTest` vergleicht vorher/nachher). Die Kundenwörter tragen den
+Konzept-Zusatz „(getrennt von …, W10)“ nicht, denn `benutzer.ts#rechteVorschau` zeigt `kundenwort` in der
+Benutzerverwaltung; der Zusatz steht in `nachtraege[].handlung`. Die Spalte „Einsicht“ (IP-12) gibt den neuen Zeilen
+andere Zellen als den alten — darum tragen sie kein `wie` mehr.
+Seit AP-19 IP-5 (derselbe Nachtrag `AP-19 §4.2`, RE1): `energiemanagement.verwalten · .freigeben · .ansehen` mit `wie`
+auf `verbesserung.verwalten`, `bezugsbasis.freigeben`, `verbesserung.ansehen` (Zellen gleich, seit IP-12 auch in der
+Spalte Einsicht: − an verwalten/freigeben, U an ansehen), je ein `darf`-Fall `ap19-energiemanagement-*`, reserviert in `RechtMatrixApiTest.OHNE_SCHREIBROUTE` bis zu den Routen (IP-6 ff.).
+
+Seit AP-19 IP-12 (Nachtrag `AP-19 §4.11`, RE3, RE5, E8 = A, R6): **Rolle `einsicht`** — unternehmensweit, zuweisbar,
+befristbar (`gueltig_bis` an `POST /api/v1/zugriff`, seit der Folge von IP-13 auch an `POST /api/v1/benutzer` und
+`PUT /api/v1/benutzer/{sub}/zugriff`; nur diese Rolle), U genau an den lesenden Zeilen (R6-Liste),
+E am eigenen Konto, sonst − (auch `export.*`, `zugriffsprotokoll.lesen`, jede Freigabe). Sie ist die erste Spalte MIT
+`nachtrag`: die Konzept-Tabelle bleibt byte-gleich mit sieben Spalten (`konzept_rollen` im Generator,
+`konzeptRollen` im Test), die Spalte steht unter „Spalten der Nachträge“ und in der Nachtrags-Tabelle. Datenbank:
+`V20260925030000` ersetzt `zugriff_rolle()` (Vereinigung, Zeile 8) und tauscht `bericht_abruf_actor_rolle_chk`; wer
+`zugriff_rolle()` oder `bericht_abruf` später ersetzt, schreibt die Vereinigung. `V20260926001500` weitet generisch jeden
+CHECK mit fester Liste der sieben (`…, 'leser', 'unterstuetzer', 'voltpilot_betrieb'`) um `einsicht` (Akteur-, Urheber-,
+Freigeber-Rollen; ein Vokabular) — ⚠ neue feste Rollen-Listen tragen alle acht, `MessstelleMigrationTest` prüft jeden
+solchen CHECK gegen `RechteAbleitung.Rolle`; wer eine Rolle anlegt, fährt `rg -l "Rolle.values()" services/api/src/test`
+(die Klasse liest das Enum, nicht die Matrix-Datei). Nicht in `rolle_noetig_reihenfolge`
+(die Sätze der Bestandsrollen bleiben). Fallen: ⚠ `BerichtRegeln.teilansicht` (G3) nahm „darf das Unternehmen
+exportieren“ als Merkmal für „sieht alles“ — mit Einsicht falsch; jetzt ist eine wirksame unternehmensweite
+Zuweisung nie eine Teilansicht (Java/TS, `bericht-vectors.json` B13 zwei Prüfungen). ⚠ Kundensätze, die Rollen mit
+einem Lese-U aufzählen (`OHNE_MENGEN` der Kostenstellen), nennen Einsicht mit. Nachweis: `RolleEinsichtBestandTest`
+(sieben Spalten byte-gleich zu vorher), `RechtMatrixApiTest` (neunte Person RF, jede `@Recht`-Route 403 außer eigenem
+Konto und den rechnenden Lese-Routen), `BerichtApiTest` (PDF mit `actor_rolle` einsicht, CSV 403),
+`ZugriffEntzugApiTest` (Befristung, danach Teilansicht).
 
 ## Die benannten Widersprüche (rechte-vectors.json)
 
@@ -37,6 +70,9 @@ die Kennung, W-R8). Keine neuen Zellen-Codes, `RechteAbleitung` Java/TS unverän
   (AP-06, EM U) + `geraet.einrichten`, keine eigene Zeile.
 - **W-R11** Unterstützer „Ansehen“ sieht die Herkunft (`messwerte.ansehen`), exportiert sie nicht
   (`export.standort` bleibt `-`, AP-07 nennt dafür AP-03).
+- **W-R12** ⚠ Den Ersatzwert widerruft `ersatzwert.erfassen` (AP-08 §4.8 wörtlich, Bearbeiter S), obwohl §5
+  „Bearbeiter nur für eigene, wenn Vier-Augen aus“ sagt — die Bedingung trägt nur `korrektur.zuruecknehmen`.
+  Captain-Frage bis zur Ersatzwert-Route (IP-16).
 
 ## Die Routen-Kommentare sind geprüft
 
@@ -49,6 +85,11 @@ ausdrücklich „keine eigene Kennung“ (Standort-/Unternehmen-Lesemodell: Sich
 ihr Recht — so war `GET /standorte/{id}` nach dem Kurzzeichen-Vorschlag an `standort.verwalten`
 geraten). Eine neue UEMS-Route: Kommentar nach demselben Muster; ein neuer UEMS-Controller ist
 über sein Klassen-Javadoc von selbst dabei.
+
+Auch ein vollständig lesender Controller wie `OverviewController` gehört dazu: jede Route nennt
+ausdrücklich „keine eigene Kennung“, wenn sie wie `GET /standorte` nur die sichtbare Menge liest
+(AP-03 §4.5 R-A2, §6.2 IP-10). Der Wächter verlangt Rechte-Kommentare, nicht mindestens eine
+Aktionskennung je Controller; jede tatsächlich genannte Kennung bleibt gegen die Matrix geprüft.
 
 ## Prüfen
 

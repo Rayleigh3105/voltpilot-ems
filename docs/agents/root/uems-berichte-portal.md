@@ -1,0 +1,86 @@
+# UEMS-Fläche: die Welt „Berichte“ — Liste und Berichtsseite (AP-12 IP-13)
+
+Neu am 15.09.2026. Portfolio-Welt `#/portfolio/berichte` (Liste) und `#/portfolio/berichte/{kennung}` (Berichtsseite);
+seit AP-13 IP-2 dieselbe Liste als „Berichte dieses Standorts“ unter `#/standort/{id}/berichte`
+(`uems-oberflaechen-ebenen.md`). Die Fläche LIEST nur: `GET /api/v1/berichte`, `…/{kennung}`, `…/staende/{nr}`
+bzw. `…/entwurf` (IP-7, `uems-bericht-routen.md`), für „heute: …“ das Messstellen-Register und die Kennzahlen, erst auf
+„heutigen Wert zeigen“ `GET /api/v1/messstellen/{kennzeichen}/werte`. Spezifikation: AP-12 §8 IP-13, §5.1–§5.6, §5.8, E14.
+
+| Datei (`frontend/portal/…`) | Was |
+|---|---|
+| `src/berichtSeite.ts` | reine Ableitung: Listen-Karte, Reiter der Stände, Seitenkopf, Abschnitte nach Vorlage mit Nachweis je Zahl (Form `uemsWerteKarte.Karte`), Tagesverlauf, Verlauf der Stände, PDF/CSV-Ableitung, „heutigen Wert zeigen“ |
+| `src/pages/BerichtePage.tsx`, `src/pages/BerichtSeite.tsx`, `BerichtePage.css` | Seite (Kopf, Status-Zeile, Stufen, Weitergeben, Kasten „Stand“, Entscheidung) und die Abschnitte des Abzugs; `WerteKarte` und `MiniBarSpark` wiederverwendet, Aufklappen als natives `<details>` |
+| `src/nachweisBerichte.ts`, `src/components/nachweisen/BerichteListe.tsx`, `BerichtBlaetter.tsx`, `NwBerichte.css` | Konzept Nachweisen n1, Runde 2 (§6.4): Liste mit Zählern, Status-Zeile und Stufen, Werte alt → neu, Gründe; Blätter Erstellen, Prüfen/Bestätigung, Behalten, Grund, Archivieren (C8) |
+| `src/test/berichtFixtures.ts`, `src/test/berichtAbzuege.json` | Antworten entlang der Zeitachse der Referenzdatei 1.4 (10.11. Nr. 1 · 12.11. K-2026-0007 · 16.11. Nr. 2); die Abzüge sind die Vektor-Abzüge BR-2026-0001/1 und /2, byte-gleich |
+| `src/berichtSeite.test.ts` | B1 Nr. 1/Nr. 2, B10 („heute: …“), B16 (nach den Fristen) gegen `bericht-vectors.json`; beweist auch die Gleichheit der Fixture-Kopie |
+| `e2e/berichte.spec.ts` | Bühne `startansicht`: `ansicht=berichte`, `ansicht=bericht&br=BR-2026-0001`, `heute=b10`, `tagesverlauf=gefuellt`; vier Uhren (13.11., 20.11., 03.12.2026, 02.11.2036) |
+
+```bash
+(cd frontend/portal && npx vitest run src/berichtSeite.test.ts src/copy.test.ts src/ebenenNav.test.ts src/uemsBericht.test.ts)
+(cd frontend/portal && npx playwright test e2e/berichte.spec.ts --project=desktop-chromium --project=mobile-chromium)
+```
+
+## Die Fallen
+
+- **Der Abzug IST das Dokument.** Die Seite spricht ihn wörtlich (Zahl nach DA1 über `uemsBericht.anzeige`, Zustand,
+  Kennzeichen, Namen und Orte zum Datenstand) und prüft ihn NICHT gegen `uemsErgebnis.pruefe` nach — „berechnet“ kennt der
+  Wert-Vertrag nicht, und eine Zahl eines freigegebenen Stands wird nie stumm. Nichts wird aus lebenden Zeilen ersetzt.
+- **Abschnitte nach Vorlage, nur wenn der Vertrag sie kann.** Ein Abzug nach 1.0/1.1 ohne `tagesverlauf` zeigt den
+  Abschnitt nicht (`abschnitte(...).ohneInhalt`). Vertrag 1.2 zeigt dagegen jede Reihe; `tage: []` bleibt als sichtbare
+  Lücke stehen. Tagesmengen werden mit `MiniBarSpark` nur aus dem Abzug gezeichnet, `null` bleibt eine Lücke.
+- **Laden/Entladen:** MS-04 steht als EINE Gruppe mit den zwei Kundenwörtern aus `MessstelleRegeln.RICHTUNGSPAAR`.
+  Fehlt eine gespeicherte Menge, nennt die Gruppe den Grund und zeigt einen Strich, nie 0; „heutigen Wert zeigen“ fehlt
+  dort, weil der heutige Leseweg die beiden Richtungen nicht trennt.
+- **Kennzahlen-Nachweis 1.2:** `ort_zum_datenstand` und `endgueltig_ab` stehen in derselben Herkunftsliste wie an einer
+  Messstellen-Zahl. Fehlen die optionalen Felder in 1.0/1.1, entsteht keine Ersatzangabe.
+- **PDF und CSV an jedem Stand (Konzept Nachweisen n1, PR 0).** `ausgabeKnoepfe` leitet ab (nur Stände, EW4; Dateiname
+  §5.4), `darfAusgabe` das Recht: PDF nach dem Lesen (G1), CSV mit `export.*` an der Geltung, die energetische Bewertung
+  mit `bewertung.abrufen`, die Managementbewertung ohne CSV (wie `BerichtService.ausgabe`); ohne Selbstauskunft kein CSV.
+  `BerichtSeite` ruft `api.berichtDatei` selbst ab und meldet „… abgerufen - der Abruf ist protokolliert“; der
+  Leistungsvergleich trägt seine Knöpfe weiter selbst. Offen: „zuletzt abgerufen …“ und die Spalte „letzter Abruf“.
+- **Eine Uhr.** Liste und Seite tragen `abruf` (Augenblick der Route, `BerichtService.jetzt()`); „Zeitraum läuft“, die
+  Freigabe-Vorschau und die Zeitraum-Wahl beim Anlegen messen daran, nie an `Date.now()`.
+- **Name der Person, nicht der Anmeldename.** `ProtokollAkteur` nimmt den Spiegel `benutzer.anzeigename` des eigenen
+  Subjects (über `ZugriffContext.Zugriff.anzeigename`), sonst `preferred_username` - nie den Claim `name`: den ändert jedes
+  Konto über die Kontoseite selbst (Review r1, P0-1; im Realm sind `firstName`/`lastName` darum nur für admin editierbar);
+  `BerichtRepository` (und `ManagementbewertungVerzeichnis`) lesen `angelegt_von_name`, `freigeber_name` und
+  `verworfen_von_name` über `benutzer.anzeigename` - ein freigegebener Stand wird nie geändert (E13 S1), der Bestand
+  mit „ines“ zeigt so trotzdem „Ines Kaltenbach“. Das Verzeichnis löst Kriterien, Einstufungen, Messbedarfe,
+  Kennzahl- und Bezugsbasis-Fassungen über `PersonenNamen` auf (eigene Komponente: `VerzeichnisBestand` darf laut
+  `EnergiemanagementVerzeichnisSchnittstelleVertragTest` keine eigene Abfrage tragen). Test-Fixtures, die
+  `preferred_username` = voller Name setzen, verdecken den Unterschied; Tests mit echtem Keycloak sehen ohne Spiegelzeile
+  den Anmeldenamen („admin“, „demo“), nie den Realm-Namen („Platform Admin“).
+- **Rechte-Satz nur, wo etwas zu tun wäre.** Am freigegebenen Stand steht nichts; am Entwurf ohne Freigabe-Recht
+  „Freigeben: <Kundenadministratoren>“ mit i-Knopf (`seitenHebel().ohneRecht`, `freigebenErklaerung`); die Liste trägt
+  keinen Satz im Kopf.
+- **`copy.test.ts` liest JSX-Bedingungen als Text:** ein Name wie `onAusgabe` in einer Bedingung trüge das verbotene
+  „Ausgabe“ (§4.15) - darum heißen Abruf-Hebel `abrufen`/`dateiAbruf`. Die Typ-Namen in `berichtSeite.ts` sind kein
+  Kundentext.
+- **„heute: …“ (A5)** kommt aus `messstellenRegister()` und `kennzahlen()`; fällt eine Quelle aus, fehlt nur der Hinweis.
+  B10 (MS-12 heißt ab 01.12.2026 anders) ist eine Vektor-Annahme — die Bühne nennt sie nur mit `heute=b10`.
+- **B16:** seit IP-16 antwortet `…/werte` `404 wert_nicht_mehr_gespeichert` — aber ohne `version` nur, wo es keine spätere
+  Version gibt (nach einer Korrektur zeigt die Route Version 2, `uems-bericht-nach-den-fristen.md`); `heutigerWert` spricht den Satz
+  schon, sobald der Code kommt — jede andere Ablehnung ist „konnte nicht geladen werden“, nie „nicht mehr gespeichert“.
+- **Kopf-Abschnitt zugeklappt (Variante B, 15.09.2026):** Datenstand, Stand, Freigabe und Prüfsumme trägt der Seitenkopf
+  (Satz der Route, D5); die acht Angaben samt Regelwerk bleiben einen Tipp entfernt. Rundung und Sommerzeit der
+  `darstellung` sind Verweise auf Konzept-Regeln („AP-08 E11“) und stehen nicht da (Befund für IP-11/Vertrag).
+- **Die Bühne liest keine Vertragsdateien:** Vite serviert nur `frontend/portal` — deshalb die JSON-Kopie der Abzüge;
+  die Playwright-Spec importiert keine Fixtures (`api.ts` ohne `import.meta.env` im Node-Lauf).
+- **Ahrenberg hat FÜNF Kacheln** (Berichte, sobald ein Standort misst) und am Rechner den Reiter „Berichte“ vor
+  „Messwerte“: `ebenenNav.test.ts`, `telefonleiste.spec.ts`, `messstellen.spec.ts`, `kennzahlen.spec.ts` tragen es.
+- **Seit AP-12 IP-14 schreibt die Welt:** „Bericht anlegen“, Freigabe-Dialog, Vergleich, „Anstoß verwerfen“ und das
+  Banner „Revision nötig“ — `uems-bericht-dialoge.md`. Die Liste zeigt die 403 der Unterstützung weiter mit dem Satz der
+  Route (Rechte-Ableitung, nicht §5.8), ohne „Erneut versuchen“ und ohne „Bericht anlegen“.
+- **`.vp-br-hebel` ist der Knopf „heutigen Wert zeigen“** (IP-13) — die Hebel-Leisten von IP-14 heißen `.vp-br-aktionen`.
+- **Seit Konzept Nachweisen n1, Runde 2 (§6.4)** ist die Welt eine Fläche von Nachweisen: Liste mit „● n gelten“ und
+  „● n wartet auf Sie“, die Entscheidung zuerst (Datumsblock „seit“ aus `anstoss_seit`), sonst „frei“ (`freigegeben_am`)
+  und „PDF“; Bewertung und Managementbewertung öffnen ihre Seite (Entscheid 15). Die Seite zeigt die Abschnitte des Abzugs
+  am Handy hinter „Alle Werte“, am Rechner links als Werte-Zeilen mit „Ganzer Bericht“ (Text-Grenzen §0.4). Nach einer
+  Korrektur EINE Entscheidung für alle offenen Anstöße (Entscheid 16): Werte alt → neu nur mit Zahl, „Ja, Stand n+1
+  freigeben“ (Prüfen → Bestätigung mit PDF) oder „Nein, Stand n behalten“ (ein Grund, `POST …/anstoesse/verwerfen` in
+  EINER Transaktion; 409 lädt die Seite neu). Die Werte der Entscheidung rechnet `N.entscheidWerte` aus genau dem Entwurf
+  und dem gültigen Stand, die freigegeben bzw. gezeigt werden - kein zweiter Abruf des Vergleichs. `darf()` immer
+  mit der Vorlage aufrufen (Bewertung und Managementbewertung haben eigene Kennungen). Die Bedienelemente dieser Flächen
+  stehen in `kundenBestand-vor-ip12.json` unter `umbauten` (`migration.test.ts`): bei jeder Änderung neu aufnehmen.
+- Archivieren (Konzept Nachweisen n1, C8): im Menü der Seite mit dem Recht wie Freigeben; die Liste lädt `?archiviert=true`
+  und zeigt die archivierten als eine Zeile „Archiviert · n“ (nie gezählt). Zurückholen gibt es nicht (V4).

@@ -1,0 +1,566 @@
+/*
+ * Tages- und Monatskarte (UEMS AP-08 IP-11). Mobil zuerst: bei 375 px läuft
+ * nichts quer — Abzeichen und Kennzeichen brechen um, kein Satz wird gekürzt.
+ * Optik = Portal „Variante C" (--vp-c-*); der Rahmen ist das zentrierte `Modal`.
+ */
+
+.vp-wk {
+  display: grid;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+  font-family: var(--vp-c-font);
+  color: var(--vp-c-fg);
+}
+
+.vp-wk-messstelle {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: anywhere;
+}
+
+/* --- Zeitraum-Wahl: Tag|Monat und Datum als EIN Bedienelement ---
+   Ein Rahmen trägt Segment, Blätter-Knöpfe und Datumsfeld; die Teile verlieren
+   ihre eigenen Ränder, damit sie nicht als drei Kästen nebeneinander stehen. */
+.vp-wk-zeitwahl {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--vp-bg-light);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-btn);
+  padding: 3px;
+  gap: 3px;
+}
+.vp-wk-zeitwahl .vp-seg {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  flex: 0 0 auto;
+}
+.vp-wk-datumzeile {
+  display: flex;
+  align-items: stretch;
+  flex: 1 1 auto;
+  min-width: 0;
+  background: var(--vp-surface);
+  border-radius: calc(var(--vp-radius-btn) - 3px);
+  box-shadow: var(--vp-shadow-sm);
+}
+.vp-wk-schritt {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--vp-text-dark);
+  border-radius: calc(var(--vp-radius-btn) - 3px);
+  cursor: pointer;
+}
+.vp-wk-schritt:hover:not(:disabled) {
+  background: var(--vp-bg-light);
+}
+.vp-wk-schritt:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.vp-wk-schritt:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: -2px;
+}
+.vp-wk-datum {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.vp-wk-datum .vp-picker-ausloeser {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  justify-content: center;
+  padding: 0 0.35rem;
+  min-height: 44px;
+  font-size: var(--vp-text-sm, 0.875rem);
+  font-weight: 600;
+}
+.vp-wk-datum .vp-picker-wert {
+  flex: 0 1 auto;
+}
+.vp-wk-datum .vp-picker-caret {
+  display: none;
+}
+/* Das Jahr hat kein Kalenderblatt (AP-13 IP-4): die Zahl steht mittig wie das Datum der anderen Zeiträume. */
+.vp-wk-jahr {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 44px;
+  font-size: var(--vp-c-fs-15, 15px);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-text-dark);
+}
+.vp-wk-datum .vp-picker-ausloeser:focus-visible,
+.vp-wk-datum .vp-picker-ausloeser[aria-expanded='true'] {
+  box-shadow: inset 0 0 0 2px var(--vp-action);
+}
+
+/* Ein Kasten, oben die Zeiträume über die ganze Breite, darunter ‹ Datum › (Captain 14.09.2026: Variante B).
+   Seit AP-13 IP-4 vier in EINER Reihe (Tag · Woche · Monat · Jahr, E5) — nie 2 × 2, das läse sich wie zwei Wahlen. */
+.vp-wk-zeitwahl .vp-seg {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+/* --- auf der Seite einer Messstelle (Konzept Messen m1, §6.4 Punkt 5) ---
+   Kopf in der Rolle („Verbrauch je Monat“ · „12 Monate“), das Segment kompakt links und ‹ Datum › rechts; am Telefon
+   untereinander. Die Zahl der Periode steht als eine Zeile unter den Balken. */
+.vp-wk-seitenkopf {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.vp-wk-seitenkopf h2 {
+  margin: 0;
+  font: 700 1.0625rem/1.3 var(--vp-font-heading);
+  color: var(--vp-c-fg);
+}
+.vp-wk-umfang {
+  font-size: 0.75rem;
+  color: var(--vp-c-muted-fg);
+}
+.vp-wk-zeitwahl.is-seite {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.vp-wk-zeitwahl.is-seite .vp-seg {
+  display: inline-grid;
+  grid-auto-flow: column;
+  grid-template-columns: none;
+  grid-auto-columns: minmax(64px, auto);
+  padding: 3px;
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-btn);
+  background: var(--vp-bg-light);
+}
+.vp-wk-zeitwahl.is-seite .vp-wk-datumzeile {
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  box-shadow: none;
+}
+.vp-wk-zeitwahl.is-seite .vp-wk-schritt {
+  min-width: 36px;
+  min-height: 36px;
+  border: 1px solid var(--vp-border);
+  border-radius: 10px;
+  background: var(--vp-surface);
+}
+.vp-wk-zeitwahl.is-seite .vp-wk-datum .vp-picker-ausloeser,
+.vp-wk-zeitwahl.is-seite .vp-wk-jahr {
+  min-height: 36px;
+  font: 700 1rem/1.2 var(--vp-font-heading);
+}
+@media (max-width: 640px) {
+  .vp-wk-zeitwahl.is-seite {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+.vp-wk-summe {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.vp-wk-summe-zeile {
+  margin: 0;
+  font-size: var(--vp-c-fs-14, 14px);
+  line-height: 1.45;
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: anywhere;
+}
+.vp-wk-summe-zeile strong {
+  font-weight: 700;
+  color: var(--vp-c-fg);
+}
+.vp-wk-summe-zeile > span::before {
+  content: ' · ';
+}
+.vp-wk-summe-zeile > span.is-warn {
+  color: var(--vp-c-warn-fg, #9a3412);
+}
+.vp-wk-alle > summary {
+  cursor: pointer;
+  font: 600 0.875rem/1.4 var(--vp-font-heading);
+  color: var(--vp-action);
+}
+
+/* --- die Karte --- */
+.vp-wk-karte {
+  border: 1px solid var(--vp-c-border);
+  border-radius: 14px;
+  padding: var(--vp-c-space-4);
+  background: var(--vp-c-card);
+  min-width: 0;
+}
+.vp-wk-kopf {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-c-space-2);
+}
+.vp-wk-titel {
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-700);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg);
+}
+.vp-wk-zahl {
+  margin-top: var(--vp-c-space-2);
+  font-size: var(--vp-c-fs-48);
+  font-weight: var(--vp-c-fw-800);
+  line-height: var(--vp-c-lh-tight);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 719px) {
+  .vp-wk-zahl {
+    font-size: var(--vp-c-fs-hero-phone, 40px);
+  }
+}
+.vp-wk-abzeichen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-2);
+  margin-top: var(--vp-c-space-3);
+  min-width: 0;
+}
+.vp-wk-abzeichen > * {
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+/* Der Satz eines Schritts ohne Zahl — an der Messstelle „noch nicht gerechnet“ (wie `.vp-kz .vp-wk-grund`). */
+.vp-wk-grund {
+  margin: var(--vp-c-space-3) 0 0;
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: break-word;
+}
+
+.vp-wk-kennzeichen {
+  list-style: none;
+  margin: var(--vp-c-space-3) 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+.vp-wk-kennzeichen li {
+  position: relative;
+  padding-left: 14px;
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: anywhere;
+}
+.vp-wk-kennzeichen li::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 0.62em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--vp-c-warn-fg);
+}
+
+/* --- die Liste --- */
+.vp-wk-liste {
+  min-width: 0;
+}
+.vp-wk-liste-titel {
+  margin: 0 0 var(--vp-c-space-2);
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+}
+.vp-wk-liste ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--vp-c-border);
+  border-radius: 14px;
+  background: var(--vp-c-card);
+  overflow: hidden;
+}
+.vp-wk-zeile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--vp-c-space-3);
+  row-gap: 2px;
+  padding: 10px var(--vp-c-space-4);
+  min-width: 0;
+}
+.vp-wk-zeile + .vp-wk-zeile {
+  border-top: 1px solid var(--vp-c-border);
+}
+.vp-wk-zeile-name {
+  font-weight: var(--vp-c-fw-600);
+  font-size: var(--vp-c-fs-14);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.vp-wk-zeile-zahl {
+  font-weight: var(--vp-c-fw-700);
+  font-size: var(--vp-c-fs-14);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.vp-wk-zeile-info {
+  grid-column: 1 / -1;
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: anywhere;
+}
+.vp-wk-zeile-info.is-warn {
+  color: var(--vp-c-warn-fg);
+}
+.vp-wk-zeile .vp-wk-kennzeichen {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+}
+.vp-wk-zeile .vp-wk-kennzeichen li {
+  font-size: var(--vp-c-fs-12);
+}
+
+/* --- Werte an der Messstelle (AP-13 IP-3) ---
+   Die Sektion trägt oben Kopf, Zone, Zeit-Leiste und Karte, darunter die Liste. Im Dialog steht alles
+   untereinander; die Messstellen-Seite legt die Liste am Rechner daneben (`MessstelleSeite.css`). */
+.vp-wk-oben {
+  display: grid;
+  gap: var(--vp-c-space-4);
+  min-width: 0;
+}
+
+/* Die Zone der Antwort, einmal im Kopf, immer (E12 = A) — Text, keine Warnung. */
+.vp-wk-zone {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-muted-fg);
+  overflow-wrap: break-word;
+}
+
+/* Die Version der Adresse über der Karte: ein Hinweis in einem ruhigen Kasten. */
+.vp-wk-version {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--vp-c-space-3);
+  margin: 0;
+  padding: var(--vp-c-space-2) var(--vp-c-space-3);
+  background: var(--vp-bg-light);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-btn);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: break-word;
+}
+
+/* Werte kommen an der Box an, gehören aber zu keiner Messreihe: ein ruhiger Hinweis, kein Alarm, kein Knopf. */
+.vp-wk-zuordnung {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-1);
+  min-width: 0;
+  margin: 0;
+  padding: var(--vp-c-space-2) var(--vp-c-space-3);
+  background: var(--vp-bg-light);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-btn);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: break-word;
+}
+
+.vp-wk-zuordnung-titel {
+  margin: 0;
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+}
+
+.vp-wk-zuordnung p {
+  margin: 0;
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-wk-neueste {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--vp-c-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.vp-wk-neueste:hover {
+  text-decoration: underline;
+}
+
+.vp-wk-neueste:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+
+/* AP-13 IP-6 · eine Auskunft statt einer Fehlermeldung (400, 404, nicht mehr gespeichert): ruhig wie der Versions-Hinweis,
+   ohne „Erneut versuchen“ — dieselbe Anfrage gäbe dieselbe Antwort. */
+.vp-wk-auskunft {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--vp-c-space-3);
+  margin: 0;
+  padding: var(--vp-c-space-3);
+  background: var(--vp-bg-light);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-btn);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: break-word;
+}
+
+.vp-wk-auskunft > span {
+  min-width: 0;
+}
+
+/* AP-13 IP-6 · Z4: der Zeitraum ohne Datenquelle — Titel · Satz · nächster Schritt, an der Stelle der Karte. */
+.vp-wk-leer {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--vp-c-space-2);
+  min-width: 0;
+  padding: var(--vp-c-space-4, 16px);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-btn);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  overflow-wrap: break-word;
+}
+
+.vp-wk-leer-titel {
+  margin: 0;
+  font-size: var(--vp-c-fs-16, 16px);
+  font-weight: var(--vp-c-fw-700);
+}
+
+.vp-wk-leer p {
+  margin: 0;
+  max-width: 100%;
+}
+
+/* UEMS AP-13 IP-11 (D4): die Herkunft einer BERECHNETEN Zahl unter der Karte — aufklappbar wie an der
+   Bilanz-Fläche, damit die Karte selbst kurz bleibt. */
+.vp-wk-herkunft {
+  margin-top: var(--vp-c-space-3);
+  font-size: var(--vp-c-fs-14);
+  line-height: var(--vp-c-lh-text);
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-wk-herkunft > summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  color: var(--vp-c-fg);
+}
+
+.vp-wk-herkunft-zeile,
+.vp-wk-herkunft-fehlt {
+  margin: 0 0 var(--vp-c-space-1);
+  overflow-wrap: anywhere;
+}
+
+.vp-wk-herkunft-eingaenge {
+  margin: 0 0 var(--vp-c-space-1);
+  padding-left: var(--vp-c-space-4);
+}
+
+.vp-wk-herkunft-eingaenge > li {
+  overflow-wrap: anywhere;
+}
+
+/* Seite einer Messstelle: das Datum ohne Kalender-Zeichen (Konzept „‹ September 2026 ›“), die Kennzeichen der Zahl
+   leise unter ihrer Zeile, der Vergleich als Aufklapper, die Korrekturen als Verweise. */
+.vp-wk-zeitwahl.is-seite .vp-picker-ic {
+  display: none;
+}
+.vp-wk-summe .vp-wk-kennzeichen {
+  margin: 0;
+}
+.vp-wk-summe .vp-wk-kennzeichen li {
+  padding-left: 0;
+  font-size: var(--vp-c-fs-12, 12px);
+}
+.vp-wk-summe .vp-wk-kennzeichen li::before {
+  display: none;
+}
+.vp-wk-vergleich-auf > summary {
+  cursor: pointer;
+  width: fit-content;
+  font: 600 0.875rem/1.4 var(--vp-font-heading);
+  color: var(--vp-action);
+}
+.vp-wk-vergleich-auf .vp-vg-titel {
+  display: none;
+}
+.vp-wk-vergleich-auf[open] > summary {
+  margin-bottom: var(--vp-c-space-3);
+}
+
+/* Ein Zeitraum des Ablesezählers ohne Ablesung (Seite einer Messstelle): der Satz und der Weg in einer ruhigen Zeile. */
+.vp-wk-fehlt {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 12px 0 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: var(--vp-c-fg, #1e293b);
+}
+.vp-wk-weg {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: 600 0.875rem/1.4 var(--vp-font-heading);
+  color: var(--vp-action, #2563eb);
+  cursor: pointer;
+}
+
+/* Am Telefon (und mit dem Finger am Tablet) mindestens 44 px Tippfläche für die Aufklapper (Review r4 S23). */
+@media (pointer: coarse), (max-width: 720px) {
+  .vp-wk-alle > summary,
+  .vp-wk-vergleich-auf > summary {
+    padding-block: 12px;
+  }
+}

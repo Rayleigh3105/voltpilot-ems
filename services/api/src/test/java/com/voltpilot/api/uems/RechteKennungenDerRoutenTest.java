@@ -47,13 +47,28 @@ class RechteKennungenDerRoutenTest {
      * Die UEMS-Controller von heute: Messstellen, Messkanäle, Geräte und ihre Einstellungen (AP-04),
      * das Änderungsprotokoll (AP-04 IP-21), Datenquellen (AP-06), Standorte, Unternehmen, Gebäude
      * und Bereiche (AP-02) — und seit AP-07 IP-14 der LESEPFAD der Messdatenstrecke (Verlauf,
-     * Herkunft, Export) auf {@code DeviceMeasurementSelectionController}.
+     * Herkunft, Export) auf {@code DeviceMeasurementSelectionController} — und seit AP-01 IP-3 die Funktionen,
+     * seit AP-12 IP-7 die Berichte, seit AP-03 IP-8 die Unterstützung (Kunden- und Plattform-Routen) und seit
+     * AP-19 IP-6 Personen und Aufgaben im Energiemanagement, seit IP-7 seine Dokumente, seit IP-8 sein
+     * Verzeichnis, seit IP-18 das interne Audit, seit IP-19 die Feststellung und seit IP-21 die Wiedervorlage; seit
+     * Nachweisen n1 „Trifft bei uns zurzeit nicht zu“.
      */
     private static final List<String> MINDESTENS = List.of("MessstelleController", "KomponenteMesskanalController",
             "GeraetController", "GeraetEinstellungController", "GeraetWechselController",
             "DatenquelleController", "StandortController", "UnternehmenController", "OrtController",
             "MessstelleVorschlagController", "AenderungsprotokollController",
-            "DeviceMeasurementSelectionController");
+            "DeviceMeasurementSelectionController", "BezugsgroesseController",
+            "KostenstelleProzessController", "EnergieeinsatzController", "BewertungUmfangController",
+            "MessstelleWerteController", "VerteilungController", "VerbesserungUebersichtController",
+            "NetzanschlussController", "BilanzController", "KostenstelleEnergieController",
+            "BezugsdatenImportController", "FunktionController", "KorrekturFreigabeController", "KorrekturPortalController",
+            "AnlageStandortController", "KennzahlController", "KennzahlWerteController",
+            "KennzahlVorlagenController", "EnergiezielController", "MassnahmeController", "AbweichungController",
+            "AuffaelligkeitController", "AuffaelligkeitenController", "EnergiemanagementPersonenController", "EnergiemanagementDokumentController",
+            "EnergiemanagementVerzeichnisController", "EnergiemanagementWiedervorlageController",
+            "InternesAuditController", "FeststellungController", "EnergiemanagementTeilVermerkController",
+            "BerichtController", "MeController",
+            "UnterstuetzungController", "AdminUnterstuetzungController", "OverviewController");
 
     private static final Pattern KLASSE = Pattern.compile("(?m)^public (?:final )?class ");
     private static final Pattern JAVADOC_BEGINN = Pattern.compile("(?m)^/\\*\\*");
@@ -144,7 +159,7 @@ class RechteKennungenDerRoutenTest {
 
     @Test
     void derSucherFindetDieUemsController() throws Exception {
-        assertThat(uemsController()).containsAll(MINDESTENS).doesNotContain("SiteController", "OverviewController");
+        assertThat(uemsController()).containsAll(MINDESTENS).doesNotContain("SiteController");
     }
 
     private static int routen(Path datei) throws Exception {
@@ -165,7 +180,10 @@ class RechteKennungenDerRoutenTest {
                         genannt.addAll(k.kennungen());
                     }
                 }
-                assertThat(genannt).as("%s nennt keine Kennung — liest der Test noch die Kommentare?", name)
+                // Ein rein lesender Controller darf an jeder Route ausdrücklich „keine eigene Kennung“
+                // nennen. Rechte-Kommentare bleiben Pflicht; ihre Kennungen prüft die Matrix darunter.
+                assertThat(alle).filteredOn(Kommentar::rechte)
+                        .as("%s nennt kein Recht — liest der Test noch die Kommentare?", name)
                         .isNotEmpty();
                 assertThat(matrix).as("%s: Kennung im Rechte-Kommentar, die nicht in rechte-matrix.json steht", name)
                         .containsAll(genannt);

@@ -89,7 +89,9 @@ class ProvisioningPipeTest {
         exec("CREATE TABLE IF NOT EXISTS device ("
                 + "id uuid PRIMARY KEY DEFAULT gen_random_uuid(), "
                 + "tenant_id uuid NOT NULL, site_id uuid NOT NULL, "
-                + "external_ref text NOT NULL UNIQUE, kind text, status text)");
+                + "external_ref text NOT NULL, kind text, status text, ausgebaut_am timestamptz)");
+        exec("CREATE UNIQUE INDEX IF NOT EXISTS uq_device_external_ref ON device (external_ref) "
+                + "WHERE ausgebaut_am IS NULL");
     }
 
     @AfterEach
@@ -156,6 +158,27 @@ class ProvisioningPipeTest {
         client.connect(options);
         client.subscribe(topic, 1, (t, msg) -> received.add(new String(msg.getPayload())));
         return received;
+    }
+
+    /**
+     * UEMS AP-07 IP-11: an ausgebaut box keeps its row and ref as the provenance of its
+     * recordings, but a hello is answered only for the box that is NOT ausgebaut - never with the
+     * old identity, also not after the same ref was claimed again.
+     */
+    @Test
+    void anAusgebautBoxIsNoIdentityForItsRef() throws Exception {
+        String ref = "box-ausgebaut-" + UUID.randomUUID();
+        UUID alt = UUID.randomUUID();
+        insertDevice(ref, alt);
+        exec("UPDATE device SET status = 'ausgebaut', ausgebaut_am = now() WHERE id = '" + alt + "'");
+        JdbcDeviceDirectory directory = new JdbcDeviceDirectory(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(),
+                POSTGRES.getPassword());
+        assertThat(directory.findByRef(ref)).isEmpty();
+
+        UUID neu = UUID.randomUUID();
+        insertDevice(ref, neu);
+        assertThat(directory.findByRef(ref)).get().extracting(DeviceDirectory.DeviceIdentity::deviceId)
+                .isEqualTo(neu);
     }
 
     private void publishHello(String ref) throws Exception {

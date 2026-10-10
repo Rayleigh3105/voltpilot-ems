@@ -355,6 +355,35 @@ class AnwendungKatalogTest {
     }
 
     @Test
+    void theTwoOverviewBlocksOfMessenCountSitesAndSumTheGridImport() {
+        // UEMS AP-01 IP-6: die Unternehmens- und Standort-Übersicht bringt zwei
+        // Bausteine der Funktion „Messen & Auswerten" mit (hier die
+        // Basis-Anwendung, die jede Anlage hat). Die DATENLAGE zählt Anlagen und
+        // verrechnet keinen Messwert (je_anlage); der NETZBEZUG GESAMT ist eine
+        // Summe von Leistung, nie mit der Einspeisung saldiert (summe). Beide
+        // sind abwählbar - kein Pflicht-Baustein über der Anlagen-Tabelle.
+        AnwendungKatalog.Baustein datenlage = portfolioBaustein("datenlage");
+        assertThat(datenlage.aggregation()).isEqualTo("je_anlage");
+        assertThat(datenlage.aggregationRegel()).contains("KEIN Messwert");
+        assertThat(datenlage.pflicht()).isFalse();
+
+        AnwendungKatalog.Baustein netzbezug = portfolioBaustein("netzbezug-gesamt");
+        assertThat(netzbezug.aggregation()).isEqualTo("summe");
+        assertThat(netzbezug.aggregationRegel()).contains("nicht saldiert");
+        assertThat(netzbezug.pflicht()).isFalse();
+
+        assertThat(katalog.beigesteuertVon("datenlage")).containsExactly("monitoring");
+        assertThat(katalog.beigesteuertVon("netzbezug-gesamt")).containsExactly("monitoring");
+    }
+
+    private AnwendungKatalog.Baustein portfolioBaustein(String id) {
+        return katalog.bausteine(AnwendungKatalog.FLAECHE_PORTFOLIO).stream()
+                .filter(b -> id.equals(b.id()))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    @Test
     void aReservedEntryIsNeverPreselected() {
         // Ein Schalter, den es nicht gibt, kann auch nicht vorgeschlagen werden.
         for (String profil : List.of(AnwendungKatalog.PROFIL_PRIVAT,

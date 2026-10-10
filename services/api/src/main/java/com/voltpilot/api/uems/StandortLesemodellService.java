@@ -39,11 +39,13 @@ public class StandortLesemodellService {
     private final FlaecheRepository flaechen;
     private final SiteRepository sites;
     private final OrtAenderungRepository aenderungen;
+    private final NetzanschlussRepository netzanschluesse;
 
     public StandortLesemodellService(JdbcTemplate jdbc, UnternehmenRepository unternehmen,
             StandortRepository standorte, OrtRepository orte,
             OrtZuordnungRepository ortZuordnungen, AnlageStandortRepository anlageZuordnungen,
-            FlaecheRepository flaechen, SiteRepository sites, OrtAenderungRepository aenderungen) {
+            FlaecheRepository flaechen, SiteRepository sites, OrtAenderungRepository aenderungen,
+            NetzanschlussRepository netzanschluesse) {
         this.jdbc = jdbc;
         this.unternehmen = unternehmen;
         this.standorte = standorte;
@@ -53,6 +55,7 @@ public class StandortLesemodellService {
         this.flaechen = flaechen;
         this.sites = sites;
         this.aenderungen = aenderungen;
+        this.netzanschluesse = netzanschluesse;
     }
 
     /**
@@ -122,7 +125,12 @@ public class StandortLesemodellService {
         if (st.isEmpty()) {
             return new Zeilen(u, st, List.of(), List.of(), List.of(), List.of(), anlagen);
         }
+        // Ein Netzanschluss hängt an einem Standort (AP-10 IP-6) — ohne Standort gibt es keine Bindung.
+        List<StandortLesemodell.NetzanschlussBindung> bindungen = netzanschluesse.bindungen().stream()
+                .map(b -> new StandortLesemodell.NetzanschlussBindung(b.siteId(), b.netzanschlussId(),
+                        b.netzanschlussKennzeichen(), b.gueltigAb(), b.gueltigBis()))
+                .toList();
         return new Zeilen(u, st, orte.alle(), ortZuordnungen.alle(), anlageZuordnungen.alle(),
-                flaechen.alle(), anlagen, aenderungen.archivVerlauf("standort"));
+                flaechen.alle(), anlagen, aenderungen.archivVerlauf("standort"), bindungen);
     }
 }

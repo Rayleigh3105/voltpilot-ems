@@ -1,7 +1,10 @@
 package com.voltpilot.api.web.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -40,7 +43,8 @@ public final class MessstelleDto {
             OffsetDateTime gueltigAb,
             OffsetDateTime gueltigBis,
             Stand anfangsstand,
-            Stand endstand) {}
+            Stand endstand,
+            String anteil) {}
 
     /** Eine Vergleichsquelle wie {@code $defs/vergleichsbindung} (IP-13), mit Zweck. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -82,7 +86,8 @@ public final class MessstelleDto {
             List<String> fehlt,
             String notiz,
             OffsetDateTime angehaltenAb,
-            OffsetDateTime archiviertAm) {}
+            OffsetDateTime archiviertAm,
+            BigDecimal anschlussleistungKw) {}
 
     /**
      * Ein Ort mit Gültigkeit wie {@code $defs/ortZuordnung}: {@code ort_art} unternehmen · standort ·
@@ -136,6 +141,7 @@ public final class MessstelleDto {
      * der heutige Eingang); ein Stichtag verschiebt Ort, Stellung und Quelle, nicht ihn.
      * {@code beobachtung} und {@code letzter_wert} gelten der HAUPTGRÖSSE über ihre führende Quelle
      * (IP-15); {@code nebengroessen} sagt dasselbe je Nebengröße über deren eigene führende Quelle.
+     * {@code letzter_monat} steht NUR, wenn die Anfrage ihn verlangt ({@code letzterMonat=true}, Messen PR5).
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record RegisterZeile(
@@ -154,7 +160,42 @@ public final class MessstelleDto {
             OffsetDateTime archiviertAm,
             RegisterBeobachtung beobachtung,
             RegisterWert letzterWert,
-            List<RegisterNebengroesse> nebengroessen) {}
+            List<RegisterNebengroesse> nebengroessen,
+            List<RegisterFakt> fakten,
+            RegisterBerechnung berechnung,
+            List<GeplanterEinsatz> geplantFuerEinsaetze,
+            @JsonInclude(JsonInclude.Include.NON_NULL) RegisterMonat letzterMonat) {}
+
+    /**
+     * Der letzte vollständige Kalendermonat einer Messstelle (Messen PR5, Konzept §10.2): der Monat vor dem Monat des
+     * Zeitpunkts in der Zone ihres Standorts ({@code monat}, JJJJ-MM). {@code wert} ist GENAU der Schritt, den
+     * {@code GET /api/v1/messstellen/{kennzeichen}/werte?raster=monat} für diesen Monat in der neuesten Version zeigt -
+     * Menge, Zustand, Kennzeichen, Abdeckung, Fassung, Version, Grund; das Portal rechnet nichts nach. {@code zeitzone}
+     * ist die Zone dieser Werte. Liegt ein Eingang einer berechneten Messstelle im Monat außerhalb des Zugriffs (AP-03
+     * R-A3), fehlt die Zahl ganz: {@code wert} {@code null}, {@code ausserhalb_zugriff} der Hinweis.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    @JsonInclude(JsonInclude.Include.ALWAYS)
+    public record RegisterMonat(String monat, String zeitzone, MessstelleWerteDto.Wert wert,
+            @JsonInclude(JsonInclude.Include.NON_NULL) String ausserhalbZugriff) {}
+
+    /** Ein eingelöster Messbedarf: die Messstelle ist für diesen Energieeinsatz geplant. */
+    public record GeplanterEinsatz(UUID id, String kennzeichen, String name) {}
+
+    /** Ein wirksamer, append-only protokollierter Fakt an der Messstelle. */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record RegisterFakt(String art, OffsetDateTime giltAb) {}
+
+    /**
+     * Die Vollständigkeit einer BERECHNETEN Messstelle zum Zeitpunkt (AP-10 IP-9) — abgeleitet von
+     * {@code ZustandAbleitung.berechnet} über die Eingänge der Formel DES TAGES (bei einem Rest aus der
+     * Stellung): {@code zustand} {@code vollstaendig} · {@code unvollstaendig}, {@code fehlend} die
+     * Kennzeichen der Eingänge, die nicht liefern, {@code seit} der früheste Zeitpunkt, seit dem einer
+     * schweigt, {@code text} der Kundensatz („Unvollständig seit 14:00 Uhr (fehlt: MS-12)“). {@code null}
+     * an einer gemessenen Messstelle und an einer berechneten ohne Formel am Tag.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record RegisterBerechnung(String zustand, List<String> fehlend, OffsetDateTime seit, String text) {}
 
     /**
      * Die Beobachtung EINER Größe (AP-04 IP-15) — abgeleitet, nie gespeichert und nie geraten:
@@ -173,10 +214,16 @@ public final class MessstelleDto {
      * <p>{@code geraet} ist der Einbau der führenden Quelle (Z-5b) — er steht auch im Satz, sobald
      * eine Größe nach einem Zählerwechsel noch auf ihre ersten Werte wartet („Wartet auf erste
      * Daten von Z-5b“); {@code null}, wenn keine Quelle gebunden ist.
+     *
+     * <p>{@code zustand} spricht über die REIHE der Messstelle — nur zugeordnete Werte zählen, wie in der
+     * Werte-Karte. {@code zuordnung} = {@code nicht_zugeordnet}, wenn an der Box Werte ankommen (sie
+     * „liefert“), die zu keiner Reihe gehören, während die Reihe selbst nicht liefert; {@code text} sagt das
+     * dann. Ohne diesen Fall fehlt das Feld in der Antwort — eine Zeile mit zugeordneten Werten bleibt
+     * Zeichen für Zeichen, wie sie war.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record RegisterBeobachtung(String zustand, String text, OffsetDateTime seit, Long toleranzS,
-            Long kadenzS, String geraet) {}
+            Long kadenzS, String geraet, @JsonInclude(JsonInclude.Include.NON_NULL) String zuordnung) {}
 
     /**
      * Der letzte Wert mit Qualität „gut“ der führenden Quelle — {@code null}, solange es keinen
@@ -229,7 +276,7 @@ public final class MessstelleDto {
 
     /**
      * Die Quelle der Hauptgröße zum Zeitpunkt. {@code stand}: {@code gebunden} (eine führende Quelle
-     * gilt), {@code berechnet} (eine berechnete Messstelle hat keine Quelle — ihre Formel kommt mit
+     * gilt), {@code ablesung} (eine führende Ablesungs-Quelle gilt, {@code ablesung} nennt die letzte), {@code berechnet} (eine berechnete Messstelle hat keine Quelle — ihre Formel kommt mit
      * AP-10) oder {@code keine_datenquelle} (gemessen, aber zu dem Zeitpunkt keine führende Quelle —
      * nie eine 0). {@code davor}: die führende Quelle, die vor der geltenden (bzw. vor dem Zeitpunkt)
      * zuletzt endete — „seit 18.11.2026 10:40 · davor Z-5a“. {@code vergleichsquellen}: wie viele
@@ -237,7 +284,17 @@ public final class MessstelleDto {
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record RegisterQuelle(String stand, RegisterBindung fuehrend, RegisterBindung davor,
-            int vergleichsquellen) {}
+            int vergleichsquellen, @JsonInclude(JsonInclude.Include.NON_NULL) RegisterAblesung ablesung) {}
+
+    /**
+     * {@code stand = ablesung}: die Werte kommen aus Ablesungen (AP-09 IP-8) — seit wann die Ablesungs-Quelle führt und
+     * wann zuletzt abgelesen wurde ({@code null} = noch nie). {@code faellig_ab} (Messen-Bau m2, additiv): ab wann die
+     * nächste Ablesung fehlt — derselbe Zeitpunkt wie in der Beobachtung, die letzte Ablesung plus zwei Kalendermonate
+     * ({@link com.voltpilot.api.uems.AblesungRegeln#ueberfaelligAb}), ohne Ablesung der Beginn der Quelle. Das Portal
+     * nennt damit „Nächste Ablesung“, ohne die Regel selbst zu rechnen. Bei jedem anderen Stand fehlt das Feld.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record RegisterAblesung(OffsetDateTime seit, OffsetDateTime zuletzt, OffsetDateTime faelligAb) {}
 
     /**
      * Eine führende Bindung, wie das Register sie nennt: Komponente, Messwert (Kanal und sein
@@ -270,10 +327,27 @@ public final class MessstelleDto {
             String medium,
             Groesse hauptgroesse,
             List<Groesse> nebengroessen,
-            String notiz) {}
+            String notiz,
+            @JsonProperty("anschlussleistung_kw") BigDecimal anschlussleistungKw) {
 
-    /** {@code PUT /api/v1/messstellen/{id}}: die drei änderbaren Felder, ganz (fehlend = leer). */
-    public record Bearbeiten(String kennzeichen, String name, String notiz) {}
+        /** Ohne Anschlussleistung — die Form von vor AP-08 IP-7. */
+        public Anlegen(String kennzeichen, String name, String art, String medium, Groesse hauptgroesse,
+                List<Groesse> nebengroessen, String notiz) {
+            this(kennzeichen, name, art, medium, hauptgroesse, nebengroessen, notiz, null);
+        }
+    }
+
+    /**
+     * {@code PUT /api/v1/messstellen/{id}}: die änderbaren Felder, ganz (fehlend = leer) — seit AP-08
+     * IP-7 auch die optionale {@code anschlussleistung_kw}.
+     */
+    public record Bearbeiten(String kennzeichen, String name, String notiz,
+            @JsonProperty("anschlussleistung_kw") BigDecimal anschlussleistungKw) {
+
+        public Bearbeiten(String kennzeichen, String name, String notiz) {
+            this(kennzeichen, name, notiz, null);
+        }
+    }
 
     /**
      * {@code POST …/anhalten|fortsetzen|archivieren}. {@code zeitpunkt} auf die Minute mit

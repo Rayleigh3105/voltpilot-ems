@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 /**
  * „Meine Vorlagen" - die EIGENEN Gerätevorlagen einer Anlage (Einheitsmodell
  * Stufe 6, Vervollständigung der Selbstbau-Tür).
@@ -130,7 +131,7 @@ export function EigeneVorlagenPanel({
         <h3>Meine Vorlagen</h3>
         <p className="vp-muted">{kopfSatz(rows.length)}</p>
         {quellen.length > 0 && !dupOpen && (
-          <Button
+          <Recht aktion="geraet.einrichten"><Button
             size="sm"
             variant="ghost"
             onClick={() => {
@@ -141,7 +142,7 @@ export function EigeneVorlagenPanel({
             }}
           >
             ＋ Aus einem Gerät eine Vorlage machen
-          </Button>
+          </Button></Recht>
         )}
       </header>
 
@@ -167,7 +168,7 @@ export function EigeneVorlagenPanel({
             <Button variant="ghost" size="sm" onClick={() => setDupOpen(false)}>
               Abbrechen
             </Button>
-            <Button
+            <Recht aktion="geraet.einrichten"><Button
               size="sm"
               disabled={busy || !dupId}
               onClick={async () => {
@@ -178,7 +179,7 @@ export function EigeneVorlagenPanel({
               }}
             >
               Vorlage anlegen
-            </Button>
+            </Button></Recht>
           </div>
         </div>
       )}
@@ -212,9 +213,9 @@ export function EigeneVorlagenPanel({
                       <Button variant="ghost" size="sm" onClick={() => setEdit(null)}>
                         Abbrechen
                       </Button>
-                      <Button size="sm" disabled={busy} onClick={() => void speichern(r.templateRef)}>
+                      <Recht aktion="geraet.einrichten"><Button size="sm" disabled={busy} onClick={() => void speichern(r.templateRef)}>
                         Speichern
-                      </Button>
+                      </Button></Recht>
                     </div>
                   </div>
                 ) : (
@@ -226,7 +227,7 @@ export function EigeneVorlagenPanel({
                     </div>
                     <div className="vp-ev-actions">
                       {onAnlegen && r.verwendbar && (
-                        <Button
+                        <Recht aktion="geraet.einrichten"><Button
                           size="sm"
                           variant="ghost"
                           onClick={() => {
@@ -235,24 +236,24 @@ export function EigeneVorlagenPanel({
                           }}
                         >
                           Gerät daraus anlegen
-                        </Button>
+                        </Button></Recht>
                       )}
-                      <button
+                      <Recht aktion="geraet.einrichten"><button
                         type="button"
                         className="vp-ev-icon"
                         aria-label={`„${r.label}" umbenennen`}
                         onClick={() => starteEdit(r)}
                       >
                         <Icon name="pencil" size={16} />
-                      </button>
-                      <button
+                      </button></Recht>
+                      <Recht aktion="geraet.einrichten"><button
                         type="button"
                         className="vp-ev-icon vp-ev-del"
                         aria-label={`„${r.label}" löschen`}
                         onClick={() => setAsk(r)}
                       >
                         <Icon name="trash" size={16} />
-                      </button>
+                      </button></Recht>
                     </div>
                   </>
                 )}

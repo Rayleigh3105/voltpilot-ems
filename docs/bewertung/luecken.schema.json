@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/schemas/bewertung/luecken-1.0.schema.json",
+  "title": "Lückenliste des Betreibers 1.0 (AP-20 IP-3, LU1–LU5, AP-20 NW-3)",
+  "description": "Die eigenen Lücken von VoltPilot: ein Betreiber-Dokument, nie auf einer Kundenfläche (G2). Gebunden an die Nachweismatrix: eine Lücke nennt die Zeilen, die sie betrifft, und jede dieser Zeilen nennt die Lücke, solange sie nicht behoben ist. Die Vokabulare Wer, Datum und Nachweis kommen aus nachweismatrix.schema.json; das Vokabular Zustand steht hier und gleichlautend in docs/bewertung/README.md und tools/bewertung/test_luecken.py.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "lesehilfe", "luecken"],
+  "properties": {
+    "schema_version": { "const": "1.0" },
+    "lesehilfe": { "type": "string", "minLength": 1 },
+    "luecken": {
+      "type": "array",
+      "description": "L-001 … L-nnn, lückenlos aufsteigend. Eine Lücke wird nie gelöscht: sie wird behoben oder vom Captain als Restpunkt angenommen.",
+      "items": { "$ref": "#/$defs/luecke" }
+    }
+  },
+  "$defs": {
+    "zustand": {
+      "description": "Vokabular Zustand (LU2). offen: erkannt, niemand arbeitet daran. in_arbeit: ein Paket hat begonnen. behoben: nur mit einem Nachweis an einem Stand. restpunkt: nur vom Captain angenommen, mit Grenze und Datum bis (LU3).",
+      "enum": ["offen", "in_arbeit", "behoben", "restpunkt"]
+    },
+    "betrifft": {
+      "description": "Eine Zusage Z-nnn oder eine Norm-Zeile (Abschnittsnummer). Eine Kundenaufgabe ist nie betroffen (NR5).",
+      "anyOf": [
+        { "$ref": "nachweismatrix-1.0.schema.json#/$defs/zusage_kennzeichen" },
+        { "$ref": "nachweismatrix-1.0.schema.json#/$defs/abschnitt" }
+      ]
+    },
+    "uebergang": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["am", "nach", "person", "begruendung"],
+      "description": "Ein Übergang mit Datum, Person und Begründung (LU1). Welche Übergänge erlaubt sind, prüft tools/bewertung/luecken.py (UEBERGAENGE).",
+      "properties": {
+        "am": { "$ref": "nachweismatrix-1.0.schema.json#/$defs/datum" },
+        "nach": { "$ref": "#/$defs/zustand" },
+        "person": { "$ref": "nachweismatrix-1.0.schema.json#/$defs/text" },
+        "begruendung": { "$ref": "nachweismatrix-1.0.schema.json#/$defs/text" },
+        "nachweis": { "$ref": "nachweismatrix-1.0.schema.json#/$defs/nachweis" },
+        "angenommen_von": { "const": "Captain", "description": "LU3: einen Restpunkt nimmt nur der Captain an." },
+        "grenze": { "$ref": "nachweismatrix-1.0.schema.json#/$defs/text", "description": "Was dann nicht gilt; steht in Bericht und Beschreibung (LU4)." },
+        "bis": { "$ref": "nachweismatrix-1.0.schema.json#/$defs/datum", "description": "Frist des Restpunkts; eine überschrittene Frist zeigt die Liste beim Abruf (LU3)." }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["nach"], "properties": { "nach": { "const": "behoben" } } },
+          "then": { "required": ["nachweis"], "description": "LU2: behoben nur mit einem Nachweis an einem Stand." }
+        },
+        {
+          "if": { "required": ["nach"], "properties": { "nach": { "const": "restpunkt" } } },
+          "then": { "required": ["angenommen_von", "grenze", "bis"], "description": "LU3: Restpunkt nur mit angenommen_von Captain, Grenze und Datum bis." },
+          "else": {
+            "not": { "anyOf": [{ "required": ["angenommen_von"] }, { "required": ["grenze"] }, { "required": ["bis"] }] },
+            "description": "Annahme, Grenze und Frist gibt es nur an einem Übergang zum Restpunkt."
+          }
+        }
+      ]
+    },
+    "luecke": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kennzeichen", "text", "quelle", "betrifft", "wer_liefert", "zustand", "verlauf"],
+      "properties": {
+        "kennzeichen": { "$ref": "nachweismatrix-1.0.schema.json#/$defs/luecke_kennzeichen" },
+        "text": { "$ref": "nachweismatrix-1.0.schema.json#/$defs/text", "description": "Was fehlt (LU1)." },
+        "quelle": { "$ref": "nachweismatrix-1.0.schema.json#/$defs/text", "description": "Woraus die Lücke erkannt ist: Matrix, Review, Durchlauf oder Betrieb (datei:zeile, FM/…, Widerspruchskasten)." },
+        "betrifft": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/betrifft" },
+          "uniqueItems": true
+        },
+        "wer_liefert": { "$ref": "nachweismatrix-1.0.schema.json#/$defs/wer_liefert" },
+        "zustand": { "$ref": "#/$defs/zustand", "description": "Gleich dem Zustand des letzten Übergangs." },
+        "verlauf": {
+          "type": "array",
+          "minItems": 1,
+          "description": "Je Übergang ein Eintrag, der erste nach offen; nie umgeschrieben, nur ergänzt.",
+          "items": { "$ref": "#/$defs/uebergang" }
+        }
+      }
+    }
+  }
+}

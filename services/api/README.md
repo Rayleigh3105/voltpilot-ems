@@ -19,3 +19,6 @@ Konfiguration: [`application.yml`](src/main/resources/application.yml), lokale/p
 ## Referenzen
 
 [API und Datenbank](../../docs/api.md), [OpenAPI](../../docs/contracts/openapi.yaml); [Betriebsvertrag](../../docs/k8s-readiness.md).
+
+Die ergänzende Cloud-Dokumentation für WAGO-Energiekarten, ihre vorhandenen
+Fassungswege und die Pilotgrenze stehen in [WAGO.md](WAGO.md).

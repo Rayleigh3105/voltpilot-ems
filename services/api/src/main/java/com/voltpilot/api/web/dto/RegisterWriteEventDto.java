@@ -30,5 +30,5 @@ public record RegisterWriteEventDto(long id, String requestId, String source, St
         Integer expectedBefore, String registerLabel, String registerClass, String scaleNote,
         String origin, String actorName, String actorRole, boolean viaTenantSwitcher,
         Instant requestedAt, Integer beforeRaw, Integer afterRaw, Boolean adopted, String outcome,
-        String reason, Instant answeredAt) {
+        String reason, Instant answeredAt, String actorRolle, String actorArt) {
 }

@@ -41,13 +41,28 @@ function resolvePoint(key, discovery, definition) {
     address.offset_words = evalDynamicOffset(address.offset_words, Number(moduleMatch[1]));
     point = Object.assign({}, point, { point_key: key, address });
   }
+  // The same instance arithmetic for a WAGO register image: card n starts at
+  // Kopflaenge + n · Kartenblocklaenge (UEMS AP-05 IP-6). Unlike a SunSpec
+  // module count, how many cards exist is not discovered on the wire - it is
+  // the Soll from the Hardwareblatt, checked when the image is read.
+  const kartenMatch = key.match(/^wago\.pm49[45]\.karte\[(\d+)]\./);
+  if (kartenMatch && point.address && point.address.kind === 'registerbild_relative') {
+    const address = Object.assign({}, point.address);
+    address.offset_words = evalDynamicOffset(address.offset_words, Number(kartenMatch[1]));
+    point = Object.assign({}, point, { point_key: key, address });
+  }
   return point;
 }
 
+/**
+ * `base+index*stride+offset` - one instance of a repeated block. Used by the
+ * SunSpec model 160 modules and by the cards of a WAGO register image; the
+ * expression itself carries the geometry, so neither caller needs constants.
+ */
 function evalDynamicOffset(expr, index) {
   if (Number.isInteger(expr)) return expr;
   const m = String(expr).match(/^(\d+)\+index\*(\d+)\+(\d+)$/);
-  if (!m) throw new Error('invalid dynamic SunSpec offset');
+  if (!m) throw new Error('invalid dynamic instance offset');
   return Number(m[1]) + index * Number(m[2]) + Number(m[3]);
 }
 
@@ -319,6 +334,13 @@ function decodeRegisters(point, words, scaleFactors, addresses, options) {
   if (decoded === null || (typeof decoded === 'number' && !Number.isFinite(decoded))) {
     return { point_key: point.point_key, raw, quality: 'invalid' };
   }
+  // ⚠ "Invalid" is NOT zero: a range.invalid in the catalog names the ONE value
+  // of this data type that means "no reading" - WAGO 750-495 uses the type's
+  // largest (UInt32 4 294 967 295, Int32 2 147 483 647; Handbuch S. 79 Tab. 27).
+  // Without this reader that number would arrive as a real meter total
+  // (AP-05 Befund 7). The FIELD's type decides: 0xFFFFFFFF in an int32 field is
+  // -1 and stays a value. No sample at all - silence is a gap, never a zero.
+  if (point.range && typeof decoded === 'number' && decoded === point.range.invalid) return null;
   const scale = point.scale || { kind: 'none' };
   if (scale.kind === 'factor' && typeof decoded === 'number') decoded *= Number(scale.value);
   else if (scale.kind === 'divisor' && typeof decoded === 'number') decoded /= Number(scale.value);

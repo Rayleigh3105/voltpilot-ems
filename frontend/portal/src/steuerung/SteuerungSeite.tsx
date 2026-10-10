@@ -8,18 +8,33 @@
  *
  * Die Seite rechnet nichts selbst: das Bild kommt aus `seite.ts`/`bild.ts`,
  * die Schreibwege sind die bestehenden (Steuerart, Handeingriff, Speicher,
- * Pause, Betriebsmodell, Reihenfolge, Ladepark, Regeln der Box).
+ * Pause, Betriebsmodell, Reihenfolge, Ladepark, Regeln der Box). Jeder
+ * Schreibknopf trägt das Recht seines Schreibwegs (AP-03 IP-12, `components/Recht`).
+ *
+ * UEMS: die Funktion „Steuern & Optimieren“ (`funktion.ts`) trägt die Bänder
+ * über allen Reitern - Einstieg (#965), Ruhe-Zustand, Ruhe-Satz der älteren
+ * Box (#986). In Ruhe sagt die Plakette nie „Automatik an“, und Eingriffe wie
+ * Pause sind gesperrt, mit Grund statt 409. Anhalten und Fortsetzen an EINEM Ort
+ * (SZ-2 A): die Plakette öffnet „Steuerung anhalten“ (Dauern + „Bis ich
+ * fortsetze“), das Band „Steuerung angehalten seit …“ trägt „Fortsetzen“. Eine
+ * Anlage ohne Teilnahme hat keine Plakette (SZ-1 A, Messen-Ansicht).
  */
 import { liste } from './liste';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError, type Site, type SzeneKey } from '../api';
-import type { BereichTab } from '../anlageNav';
+import { Recht } from '../components/Recht';
+import { SteuernAssistent } from '../components/SteuernAssistent';
+import { RUHE_VERBINDUNG_HINWEIS } from '../ruheHinweis';
+import { STEUERN_EINSTIEG_AKTION, STEUERN_EINSTIEG_SATZ } from '../steuernAssistent';
+import { STEUERN_EINSTIEG_MESSEN } from './funktion';
+import type { BereichTab } from '../ebenenNav';
 import type { AnlagenSub } from '../nav';
 import { consumersApi } from '../consumers/consumersApi';
 import { customerFlowApi } from '../flows/flowsApi';
 import { buildGuidedFlow } from '../flows/guidedBuilder';
 import { replaceCurrentNavigation } from '../navigationBlocker';
 import { LIST_POLL_MS } from '../pollCadence';
+import { useRollen } from '../rollen';
 import type { SteuerartWunsch } from '../steuerartDialog';
 import { Blatt } from './Blatt';
 import {
@@ -29,6 +44,7 @@ import {
   NeuBlatt,
   P14aBlatt,
   PauseBlatt,
+  FortsetzenBlatt,
   SpeicherBlatt,
   SzeneBlatt,
   VorrangBlatt,
@@ -63,6 +79,7 @@ const fehlerText = (e: unknown, sonst: string) =>
 
 export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeiteProps) {
   const { daten, geladen, fehler, neuLaden, setze } = useSteuerungDaten(site);
+  const rollen = useRollen();
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const t = window.setInterval(() => setNow(new Date()), LIST_POLL_MS);
@@ -70,7 +87,9 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
   }, []);
   // Jede neue Antwort ist auch ein neues „jetzt“.
   useEffect(() => setNow(new Date()), [daten.live, daten.status]);
-  const bild = useMemo(() => seitenBild(daten, now), [daten, now]);
+  const bild = useMemo(() => seitenBild(daten, now, site.id), [daten, now, site.id]);
+  const funktion = bild.funktion;
+  const [einrichten, setEinrichten] = useState(false);
   const [blatt, setBlatt] = useState<BlattZustand | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; warn?: boolean } | null>(null);
@@ -114,7 +133,15 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
     }
   };
 
+  /** In Ruhe endete jeder Eingriff mit 409: vorher sperren und den Grund sagen. „Smart“ beendet nur. */
+  const gesperrt = (art: 'aus' | 'an' | 'smart' | 'pause') => {
+    if (!funktion.sperre || art === 'smart') return false;
+    meldung(funktion.sperre, true);
+    return true;
+  };
+
   const eingriff: Aktionen['eingriff'] = async (g, art, minuten) => {
+    if (gesperrt(art)) return false;
     let ok = false;
     await lauf(g.id, async () => {
       try {
@@ -140,6 +167,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
   };
 
   const speicherEingriff: Aktionen['speicherEingriff'] = async (art, minuten) => {
+    if (gesperrt(art)) return false;
     let ok = false;
     await lauf(SPEICHER, async () => {
       try {
@@ -227,15 +255,48 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
       });
     },
     pause: async (minuten) => {
+      if (gesperrt('pause')) return false;
+      let ok = false;
       await lauf('pause', async () => {
         try {
           await api.pauseAutomation(site.id, { durationMinutes: minuten });
           meldung(`Automatik pausiert bis ${uhrVon(bild.raster, Date.now() + minuten * 60_000)}.`);
+          ok = true;
           neuLaden();
         } catch (e) {
           meldung(fehlerText(e, 'Die Pause konnte nicht gesetzt werden.'), true);
         }
       });
+      return ok;
+    },
+    // „Bis ich fortsetze“ und „Fortsetzen“ (SZ-2 A): der Weg der Funktion, den Übergang prüft der Server.
+    anhalten: async () => {
+      let ok = false;
+      await lauf('pause', async () => {
+        try {
+          await api.funktionSteuern(site.id, 'anhalten');
+          meldung('Steuerung angehalten. Sie bleibt angehalten, bis Sie fortsetzen.');
+          ok = true;
+          neuLaden();
+        } catch (e) {
+          meldung(fehlerText(e, 'Die Steuerung konnte nicht angehalten werden.'), true);
+        }
+      });
+      return ok;
+    },
+    fortsetzen: async () => {
+      let ok = false;
+      await lauf('fortsetzen', async () => {
+        try {
+          await api.funktionSteuern(site.id, 'fortsetzen');
+          meldung('Die Steuerung läuft wieder.');
+          ok = true;
+          neuLaden();
+        } catch (e) {
+          meldung(fehlerText(e, 'Die Steuerung konnte nicht fortgesetzt werden.'), true);
+        }
+      });
+      return ok;
     },
     betriebsmodell: async (neu) => {
       let ok = false;
@@ -389,6 +450,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
   };
 
   const automatik = async () => {
+    if (gesperrt('pause')) return;
     if (bild.pausiertBisMs == null) {
       setBlatt({ art: 'pause' });
       return;
@@ -504,14 +566,37 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
   }
 
   const pausiert = bild.pausiertBisMs != null;
+  const baender = pausiert || bild.szene || funktion.satz || funktion.ruheHinweis || funktion.einstieg;
+  // Der Automatik-Knopf zeigt zugleich den Zustand: ohne Recht bleibt er sichtbar, aber gesperrt.
+  // Sein Blatt trägt zwei Rechte (SZ-2 A): die Dauern `handeingriff.setzen`, „Bis ich fortsetze“
+  // `steuerung.anhalten_fortsetzen` - offen ist es, wenn eines davon reicht.
+  const darfPausieren = rollen.darf('handeingriff.setzen');
+  const darfAnhalten = funktion.anhaltenMoeglich && rollen.darf('steuerung.anhalten_fortsetzen', funktion.standortId);
+  const darfKnopf = pausiert ? darfPausieren : darfPausieren || darfAnhalten;
+  // Die Zahlen an den Reitern zählen, was läuft bzw. eingeschaltet ist - an einer Messanlage (SZ-1 A)
+  // und einer angehaltenen Anlage (SZ-2 A) steuert VoltPilot nichts davon, also keine Zahl.
+  const ohneZahlen = funktion.ohneTeilnahme || funktion.angehalten;
   return (
     <div className="stn">
       <div className="stn-kopf">
         <h1>Steuerung</h1>
-        <button type="button" className={`auto${pausiert ? ' aus' : ''}`} onClick={() => void automatik()} disabled={busy === 'pause'}>
-          <i />
-          {pausiert ? `pausiert bis ${uhrVon(bild.raster, bild.pausiertBisMs ?? 0)}` : 'Automatik an'}
-        </button>
+        {funktion.ohneTeilnahme ? null : funktion.plakette ? (
+          <span className="auto aus ruht" role="status" title={funktion.sperre ?? undefined}>
+            <i />
+            {funktion.plakette}
+          </span>
+        ) : (
+          <button
+            type="button"
+            className={`auto${pausiert ? ' aus' : ''}`}
+            onClick={() => void automatik()}
+            disabled={busy === 'pause' || !darfKnopf}
+            title={darfKnopf ? undefined : rollen.grund}
+          >
+            <i />
+            {pausiert ? `Pausiert bis ${uhrVon(bild.raster, bild.pausiertBisMs ?? 0)}` : 'Automatik an'}
+          </button>
+        )}
       </div>
       <div className="stn-reiter" role="tablist" aria-label="Reiter der Steuerung">
         {tabs.map((t) => (
@@ -523,18 +608,51 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
             onClick={() => t.sub !== reiter && onOpenSub(t.sub)}
           >
             {t.label}
-            {zahlen[t.sub] ? <span className="n">{zahlen[t.sub]}</span> : null}
+            {zahlen[t.sub] && !ohneZahlen ? <span className="n">{zahlen[t.sub]}</span> : null}
           </button>
         ))}
       </div>
-      {(pausiert || bild.szene) && (
+      {baender && (
         <div className="stn-baender">
+          {funktion.einstieg && (
+            <div className="stn-band info" data-testid="steuern-einstieg">
+              <Ic n="info" s={18} />
+              <span>
+                <b>{STEUERN_EINSTIEG_SATZ}</b> {STEUERN_EINSTIEG_MESSEN}{' '}
+                <Recht standort={funktion.standortId} aktion="funktion.steuern_einrichten">
+                  <button type="button" className="lnk" onClick={() => setEinrichten(true)}>{STEUERN_EINSTIEG_AKTION}</button>
+                </Recht>
+              </span>
+            </div>
+          )}
+          {funktion.satz && (
+            <div className="stn-band" role="status" data-testid="steuern-ruhe">
+              <Ic n="pause" s={18} />
+              <span>
+                <b>{funktion.satz}.</b> {funktion.folge}
+                {funktion.angehalten && funktion.fortsetzenMoeglich && (
+                  <>
+                    {' '}
+                    <Recht standort={funktion.standortId} aktion="steuerung.anhalten_fortsetzen">
+                      <button type="button" className="lnk" onClick={(e) => { e.currentTarget.focus(); setBlatt({ art: 'fortsetzen' }); }}>Fortsetzen</button>
+                    </Recht>
+                  </>
+                )}
+              </span>
+            </div>
+          )}
+          {funktion.ruheHinweis && (
+            <div className="stn-band info" data-testid="ruhe-verbindung-hinweis">
+              <Ic n="info" s={18} />
+              <span>{RUHE_VERBINDUNG_HINWEIS}</span>
+            </div>
+          )}
           {pausiert && (
             <div className="stn-band">
               <Ic n="pause" s={18} />
               <span>
                 <b>Automatik pausiert bis {uhrVon(bild.raster, bild.pausiertBisMs ?? 0)}.</b> Geräte sind im sicheren Zustand; Schutzgrenzen gelten weiter.{' '}
-                <button type="button" className="lnk" onClick={() => void automatik()}>Fortsetzen</button>
+                <Recht aktion="handeingriff.setzen"><button type="button" className="lnk" onClick={() => void automatik()}>Fortsetzen</button></Recht>
               </span>
             </div>
           )}
@@ -543,7 +661,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
               <Ic n={bild.szene.def.icon} s={18} />
               <span>
                 <b>Szene „{bild.szene.def.name}“ ist an.</b> {bild.szene.def.kurz}.{' '}
-                <button type="button" className="lnk" disabled={busy === 'szene'} onClick={() => void szeneAus()}>Beenden</button>
+                <Recht aktion="betriebsweise.aendern"><button type="button" className="lnk" disabled={busy === 'szene'} onClick={() => void szeneAus()}>Beenden</button></Recht>
               </span>
             </div>
           )}
@@ -552,11 +670,13 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
       <main className={`stn-main ${reiter}`}>
         {inhalt}
       </main>
-      {blatt && <BlattWahl blatt={blatt} k={k} ziele={ziele} karten={karten} bezug={bezug} rahmen={rahmen} daten={daten} onRegel={regelAktivieren} onLoeschen={regelLoeschen} onSteuerart={steuerart} onGrenze={async (kw) => {
+      {blatt && <BlattWahl blatt={blatt} k={k} siteId={site.id} ziele={ziele} karten={karten} bezug={bezug} rahmen={rahmen} daten={daten} onRegel={regelAktivieren} onLoeschen={regelLoeschen} onSteuerart={steuerart} onGrenze={async (kw, vereinbartKw) => {
         let ok = false;
         await lauf('rahmen', async () => {
           try {
-            const c = await api.saveChargingConfig(site.id, { gridLimitKw: kw });
+            // Der Kunden-Schritt (AP-01 IP-13) prüft gegen den Netzanschluss und lehnt mit 422 und Grund ab;
+            // `/charging-config` speicherte die Grenze ungeprüft.
+            const c = await api.saveCustomerChargingFrame(site.id, { gridLimitKw: kw, ...(vereinbartKw != null ? { vereinbartKw } : {}) });
             setze('chargingConfig', c);
             meldung('Rahmen übernommen.');
             ok = true;
@@ -581,6 +701,16 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
         });
         return ok;
       }} />}
+      {einrichten && funktion.standortId && (
+        <SteuernAssistent
+          standortId={funktion.standortId}
+          anlageId={site.id}
+          onClose={() => {
+            setEinrichten(false);
+            neuLaden();
+          }}
+        />
+      )}
       {toast && (
         <div className="stn-toast" role="status">
           <Ic n={toast.warn ? 'info' : 'check'} s={18} />
@@ -591,9 +721,10 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
   );
 }
 
-function BlattWahl({ blatt, k, ziele, karten, bezug, rahmen, daten, onRegel, onLoeschen, onSteuerart, onGrenze, onFahrzeug }: {
+function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, onRegel, onLoeschen, onSteuerart, onGrenze, onFahrzeug }: {
   blatt: BlattZustand;
   k: BlattKontext;
+  siteId: string;
   ziele: GeraetBild[];
   karten: RegelKarte[];
   bezug: ReturnType<typeof bezugAus>;
@@ -602,7 +733,7 @@ function BlattWahl({ blatt, k, ziele, karten, bezug, rahmen, daten, onRegel, onL
   onRegel: (e: RegelEntwurf) => Promise<boolean>;
   onLoeschen: (flowId: string) => Promise<boolean>;
   onSteuerart: (g: GeraetBild, w: SteuerartWunsch) => Promise<boolean>;
-  onGrenze: (kw: number) => Promise<boolean>;
+  onGrenze: (kw: number, vereinbartKw?: number) => Promise<boolean>;
   onFahrzeug: (tagRef: string, w: { name?: string; quelle?: 'sofort' | 'ueberschuss' | '' }) => Promise<boolean>;
 }) {
   switch (blatt.art) {
@@ -612,6 +743,8 @@ function BlattWahl({ blatt, k, ziele, karten, bezug, rahmen, daten, onRegel, onL
       return <SpeicherBlatt k={k} />;
     case 'pause':
       return <PauseBlatt k={k} />;
+    case 'fortsetzen':
+      return <FortsetzenBlatt k={k} />;
     case 'vorrang':
       return <VorrangBlatt k={k} />;
     case 'p14a':
@@ -625,7 +758,7 @@ function BlattWahl({ blatt, k, ziele, karten, bezug, rahmen, daten, onRegel, onL
     case 'szene':
       return <SzeneBlatt k={k} id={blatt.id} />;
     case 'rahmen':
-      return <RahmenBlatt k={k} rahmen={rahmen} config={daten.chargingConfig} onGrenze={onGrenze} />;
+      return <RahmenBlatt k={k} siteId={siteId} rahmen={rahmen} config={daten.chargingConfig} onGrenze={onGrenze} />;
     case 'ziel':
       return <ZielBlatt k={k} id={blatt.id} onSpeichern={onSteuerart} />;
     case 'fahrzeug':

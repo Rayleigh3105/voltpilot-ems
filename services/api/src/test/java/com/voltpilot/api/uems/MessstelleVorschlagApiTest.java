@@ -322,6 +322,126 @@ class MessstelleVorschlagApiTest {
         assertThat(alle(a.jonas, "/api/v1/messstellen").get("messstellen")).isEmpty();
     }
 
+    // ====================================================== AP-01 IP-9b
+
+    /**
+     * Schritt 3 des Assistenten „Messen & Auswerten“ speichert über diese Route (AP-01 IP-9b): der
+     * Vorschlag für den WAGO-Controller C-1 von Halle 2 ergibt vier Messstellen, und je Anlage gibt es
+     * danach GENAU EINEN Hauptzähler — ein zweiter über die AP-04-Route ist 409 mit dem Satz, den der
+     * Messstellen-Dialog (PR 788) schon zeigt.
+     */
+    @Test
+    void wagoC1ErgibtVierMessstellenUndGenauEinenHauptzaehlerJeAnlage() throws Exception {
+        Welt w = halle2();
+        JsonNode v = ok(ruf(w.jonas, HttpMethod.GET, vorschlag(w), null)).get("vorschlaege");
+        assertThat(v).as("vier Energiekarten, vier Vorschläge").hasSize(4);
+        assertThat(kennzeichen(v)).containsExactly("MS-0001", "MS-0002", "MS-0003", "MS-0004");
+        assertThat(zeile(v, 0)).extracting("komponente", "kanal", "groesse", "richtung", "stellung", "ort")
+                .containsExactly(w.k("K-8.1").toString(), ENERGIE_BEZUG, "Wirkenergie", "Bezug", "Hauptzähler", "ST-1");
+        for (int i = 1; i < 4; i++) {
+            assertThat(zeile(v, i)).extracting("komponente", "kanal", "stellung")
+                    .containsExactly(w.k("K-8." + (i + 1)).toString(), ENERGIE_BEZUG, "Unterzähler");
+            assertThat(v.get(i).at("/unterzaehler_von/messstelle").asText()).isEqualTo("MS-0001");
+            assertThat(v.get(i).at("/unterzaehler_von/bestehend").asBoolean()).isFalse();
+        }
+        for (JsonNode z : v) {
+            assertThat(java.time.OffsetDateTime.parse(z.get("ab").asText()).toInstant())
+                    .as("Beginn der Speisung von C-1").isEqualTo(HALLE2_AB.toInstant());
+        }
+
+        // Übernommen mit den Namen der Referenzdatei (MS-10 … MS-13).
+        List<String> namen = List.of("Netzbezug Halle 2", "Spritzguss SG07–SG10", "Montage Linie M1",
+                "Lager Halle 2 (Allgemein)");
+        List<Map<String, Object>> bestaetigt = new ArrayList<>();
+        for (int i = 0; i < 4; i++) {
+            bestaetigt.add(bestaetigt(v.get(i), namen.get(i)));
+        }
+        JsonNode u = ok(ruf(w.jonas, HttpMethod.POST, vorschlag(w) + "/uebernehmen", Map.of("vorschlaege", bestaetigt)));
+        assertThat(u.get("neu").asInt()).isEqualTo(4);
+        assertThat(hauptzaehler(w)).as("genau ein Hauptzähler an Halle 2").containsExactly("MS-0001 Netzbezug Halle 2");
+
+        // Ein zweiter Hauptzähler derselben Anlage über die AP-04-Route: abgelehnt, mit dem Satz aus PR 788.
+        String spritzguss = idVon(alle(w.jonas, "/api/v1/messstellen").get("messstellen"), "MS-0002");
+        String heute = java.time.LocalDate.now(BERLIN).toString();
+        Antwort zweiter = ruf(w.jonas, HttpMethod.PUT, "/api/v1/messstellen/" + spritzguss + "/stellung",
+                Map.of("anlage", w.anlage().toString(), "stellung", "Hauptzähler", "gueltig_ab", heute));
+        assertThat(zweiter.status()).as("Antwort " + zweiter.body()).isEqualTo(409);
+        assertThat(zweiter.body().get("code").asText()).isEqualTo("hauptzaehler_vorhanden");
+        assertThat(zweiter.body().get("message").asText()).isEqualTo("Werk Ahrenberg – Halle 2 hat bereits einen "
+                + "Hauptzähler: MS-0001 Netzbezug Halle 2. Wählen Sie „Unterzähler von MS-0001“ oder ändern Sie MS-0001.");
+        assertThat(hauptzaehler(w)).as("nach der Ablehnung weiter genau einer").containsExactly("MS-0001 Netzbezug Halle 2");
+
+        JsonNode danach = ok(ruf(w.jonas, HttpMethod.GET, vorschlag(w), null));
+        assertThat(danach.get("vorschlaege")).as("kein zweiter Vorschlag").isEmpty();
+        assertThat(danach.get("leer").asText()).isEqualTo("alle_zugeordnet");
+    }
+
+    /**
+     * Hat Halle 2 schon einen Hauptzähler (von Hand angelegt, noch ohne Quelle), wird EK-1 kein zweiter:
+     * sie steht als Kandidat für eine Vergleichsquelle unter den ausgelassenen Messwerten, und die drei
+     * übrigen Karten hängen als Unterzähler am BESTEHENDEN — nach der Übernahme bleibt es bei einem.
+     */
+    @Test
+    void einBestehenderHauptzaehlerBleibtDerEinzigeUndDieKartenHaengenAnIhm() throws Exception {
+        Welt w = halle2();
+        String tag = HALLE2_AB.toLocalDate().toString();
+        JsonNode ms10 = ok(ruf(w.jonas, HttpMethod.POST, "/api/v1/messstellen", Map.of(
+                "kennzeichen", "MS-10", "name", "Netzbezug Halle 2", "art", "gemessen", "medium", "Strom",
+                "hauptgroesse", Map.of("groesse", "Wirkenergie", "richtung", "Bezug", "einheit", "kWh",
+                        "wertart", "Zählerstand"),
+                "nebengroessen", List.of())));
+        String id = ms10.get("id").asText();
+        ok(ruf(w.jonas, HttpMethod.PUT, "/api/v1/messstellen/" + id + "/ort",
+                Map.of("kennzeichen", "ST-1", "gueltig_ab", tag)));
+        ok(ruf(w.jonas, HttpMethod.PUT, "/api/v1/messstellen/" + id + "/stellung",
+                Map.of("anlage", w.anlage().toString(), "stellung", "Hauptzähler", "gueltig_ab", tag)));
+
+        JsonNode liste = ok(ruf(w.jonas, HttpMethod.GET, vorschlag(w), null));
+        JsonNode v = liste.get("vorschlaege");
+        assertThat(v).as("EK-1 wird kein zweiter Hauptzähler").hasSize(3);
+        assertThat(ausgelassen(liste, ENERGIE_BEZUG)).isEqualTo("vergleich_kandidat");
+        for (JsonNode z : v) {
+            assertThat(z.get("stellung").asText()).isEqualTo("Unterzähler");
+            assertThat(z.at("/unterzaehler_von/messstelle").asText()).isEqualTo("MS-10");
+            assertThat(z.at("/unterzaehler_von/bestehend").asBoolean()).isTrue();
+        }
+
+        JsonNode u = ok(ruf(w.jonas, HttpMethod.POST, vorschlag(w) + "/uebernehmen", alle(v)));
+        assertThat(u.get("neu").asInt()).isEqualTo(3);
+        assertThat(hauptzaehler(w)).as("genau ein Hauptzähler an Halle 2").containsExactly("MS-10 Netzbezug Halle 2");
+        int unterzaehler = 0;
+        for (JsonNode z : alle(w.jonas, "/api/v1/messstellen").get("register")) {
+            JsonNode s = z.get("elektrische_stellung");
+            if (s != null && !s.isNull() && "Unterzähler".equals(s.get("stellung").asText())) {
+                assertThat(s.get("unterzaehler_von").asText()).isEqualTo("MS-10");
+                unterzaehler++;
+            }
+        }
+        assertThat(unterzaehler).isEqualTo(3);
+    }
+
+    /** „MS-0001 Netzbezug Halle 2“ je Hauptzähler der Anlage im Register von heute. */
+    private List<String> hauptzaehler(Welt w) throws Exception {
+        List<String> out = new ArrayList<>();
+        for (JsonNode z : alle(w.jonas, "/api/v1/messstellen").get("register")) {
+            JsonNode s = z.get("elektrische_stellung");
+            if (s != null && !s.isNull() && "Hauptzähler".equals(s.get("stellung").asText())
+                    && w.anlage().toString().equals(s.get("anlage").asText())) {
+                out.add(z.get("kennzeichen").asText() + " " + z.get("name").asText());
+            }
+        }
+        return out;
+    }
+
+    private static String idVon(JsonNode messstellen, String kennzeichen) {
+        for (JsonNode m : messstellen) {
+            if (kennzeichen.equals(m.get("kennzeichen").asText())) {
+                return m.get("id").asText();
+            }
+        }
+        throw new AssertionError(kennzeichen + " gibt es nicht");
+    }
+
     // ============================================================ die Welt
 
     /** Ein Kundenbereich mit Standort ST-1, Anlage AN-1, Box E-1 und den Komponenten K-1…K-7. */
@@ -380,6 +500,57 @@ class MessstelleVorschlagApiTest {
                 + "?, 'power_kw', 312.4)", t, anlage, box, k.get("K-3").toString());
         return new Welt(t, standort, anlage, box, k,
                 new Wer("sub-jonas-" + t, "Jonas Wendlinger", false, t));
+    }
+
+    private static final java.time.ZoneId BERLIN = java.time.ZoneId.of("Europe/Berlin");
+
+    /**
+     * Der Beginn von C-1 in diesem Lauf. Die Referenzdatei datiert ihn auf den 01.10.2026; der Test läuft
+     * an der echten Uhr, und eine Speisung, die erst beginnt, ist keine laufende (ein Vorschlag beginnt nie
+     * davor) — darum eine Woche vor heute, 00:00 am Standort.
+     */
+    private static final java.time.ZonedDateTime HALLE2_AB = java.time.ZonedDateTime.now(BERLIN).minusDays(7)
+            .truncatedTo(java.time.temporal.ChronoUnit.DAYS);
+
+    /**
+     * Ein Kundenbereich mit Standort ST-1 und der Anlage Halle 2 (AN-2): Box Halle 2 (E-2) und der
+     * WAGO-Controller C-1 mit den Energiekarten K-8.1 (Hauptmessung) … K-8.4 — Namen aus der Referenzdatei.
+     */
+    private Welt halle2() {
+        int nr = NR.incrementAndGet();
+        String ab = HALLE2_AB.toOffsetDateTime().toString();
+        UUID t = root.queryForObject("INSERT INTO tenant (name) VALUES (?) RETURNING id", UUID.class,
+                "Kunststoffwerk Ahrenberg GmbH #" + nr);
+        UUID u = root.queryForObject("INSERT INTO unternehmen (tenant_id, name) VALUES (?, ?) RETURNING id",
+                UUID.class, t, "Kunststoffwerk Ahrenberg GmbH");
+        UUID standort = root.queryForObject("INSERT INTO standort (tenant_id, unternehmen_id, name, "
+                + "kurzzeichen, zeitzone, zustand) VALUES (?, ?, 'Werk Ahrenberg', 'ST-1', 'Europe/Berlin', "
+                + "'aktiv') RETURNING id", UUID.class, t, u);
+        UUID anlage = root.queryForObject("INSERT INTO site (tenant_id, name, created_at) "
+                + "VALUES (?, 'Werk Ahrenberg – Halle 2', ?::timestamptz) RETURNING id", UUID.class, t, ab);
+        root.update("INSERT INTO anlage_standort (tenant_id, site_id, standort_id, gueltig_ab) "
+                + "VALUES (?, ?, ?, ?::date)", t, anlage, standort, HALLE2_AB.toLocalDate().toString());
+        UUID box = root.queryForObject("INSERT INTO device (tenant_id, site_id, external_ref, name, status, "
+                + "created_at) VALUES (?, ?, ?, 'Box Halle 2', 'claimed', ?::timestamptz) RETURNING id",
+                UUID.class, t, anlage, "VP-BOX-2026-0482-" + nr, ab);
+
+        Map<String, UUID> k = new LinkedHashMap<>();
+        k.put("K-8.1", komponente(t, anlage, box, "Zähler Energiekarte EK-1 (Hauptmessung Halle 2)", "grid-meter",
+                "{\"ip\":\"192.168.20.30\",\"port\":502,\"unit_id\":1}", "power_kw",
+                HALLE2_AB.plusSeconds(1).toOffsetDateTime().toString()));
+        k.put("K-8.2", komponente(t, anlage, box, "Zähler Energiekarte EK-2 (Spritzguss SG07–SG10)", "modbus-generic",
+                "{\"ip\":\"192.168.20.30\",\"port\":502,\"unit_id\":2}", null,
+                HALLE2_AB.plusSeconds(2).toOffsetDateTime().toString()));
+        k.put("K-8.3", komponente(t, anlage, box, "Zähler Energiekarte EK-3 (Montage M1)", "modbus-generic",
+                "{\"ip\":\"192.168.20.30\",\"port\":502,\"unit_id\":3}", null,
+                HALLE2_AB.plusSeconds(3).toOffsetDateTime().toString()));
+        k.put("K-8.4", komponente(t, anlage, box, "Zähler Energiekarte EK-4 (Lager Halle 2)", "modbus-generic",
+                "{\"ip\":\"192.168.20.30\",\"port\":502,\"unit_id\":4}", null,
+                HALLE2_AB.plusSeconds(4).toOffsetDateTime().toString()));
+        for (String kz : List.of("K-8.1", "K-8.2", "K-8.3", "K-8.4")) {
+            kanaele(t, anlage, box, k.get(kz), ENERGIE_BEZUG, LEISTUNG_VORZEICHEN);
+        }
+        return new Welt(t, standort, anlage, box, k, new Wer("sub-jonas-" + t, "Jonas Wendlinger", false, t));
     }
 
     private UUID komponente(UUID tenant, UUID anlage, UUID box, String name, String art, String verbindung,

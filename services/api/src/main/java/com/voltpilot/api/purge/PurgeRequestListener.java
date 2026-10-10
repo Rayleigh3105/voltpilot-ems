@@ -2,8 +2,10 @@ package com.voltpilot.api.purge;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
 import com.voltpilot.api.repo.DeviceRepository;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.uems.BelegeImWeg;
 import com.voltpilot.api.web.dto.DeviceDto;
 import jakarta.annotation.PreDestroy;
 import java.nio.charset.StandardCharsets;
@@ -46,7 +48,7 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @ConditionalOnProperty(name = "voltpilot.purge.mqtt-listener-enabled", havingValue = "true")
-public class PurgeRequestListener {
+public class PurgeRequestListener extends Rueckmeldeweg {
 
     private static final Logger log = LoggerFactory.getLogger(PurgeRequestListener.class);
     private static final String STATUS_FILTER = "ems/+/+/+/status";
@@ -142,6 +144,7 @@ public class PurgeRequestListener {
     }
 
     void handle(String topic, byte[] payload) {
+        if (kundenbereichBeendet(topic)) return; // Kundenbereich beendet: verworfen und gezählt
         JsonNode json;
         try {
             json = mapper.readTree(new String(payload, StandardCharsets.UTF_8));
@@ -181,6 +184,12 @@ public class PurgeRequestListener {
             }
             DevicePurgeService.Result r = purgeService.purge(device.get());
             log.info("Device-initiated purge completed for device {} ({} rows)", deviceId, r.purgedRows());
+        } catch (BelegeImWeg e) {
+            // UEMS AP-07 E8: the box's series are Belege of Messstellen - refused like the
+            // portal path, nothing written. The contract has no "refused" answer, so the box
+            // keeps its intent and asks again on its next connect (known, see IP-11 notes).
+            log.warn("Device-initiated purge for device {} (tenant {}) refused: {}", deviceId, tenantId,
+                    e.getMessage());
         } finally {
             TenantContext.clear();
         }

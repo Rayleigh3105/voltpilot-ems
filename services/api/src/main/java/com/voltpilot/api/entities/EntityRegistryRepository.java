@@ -124,12 +124,17 @@ public class EntityRegistryRepository {
      * <p>Nur BEIDES gebunden zaehlt: eine Zeile ohne {@code entity_id} ist eine
      * noch nicht komponierte Saeule, und ohne Kennung gaebe es nichts zu
      * binden.
+     *
+     * <p>Nur die Säulen einer Box, die am Betrieb teilnimmt (UEMS AP-07 IP-11): die
+     * Zeilen einer ausgebauten Box bleiben gespeichert, ihre Kennung reist aber
+     * nicht mehr in Push und Steuerart.
      */
     public java.util.Map<UUID, String> chargePointIdsByEntity(UUID siteId) {
         java.util.Map<UUID, String> out = new java.util.HashMap<>();
         jdbc.query(
-                "SELECT entity_id, charge_point_id FROM device_charge_point "
-                        + "WHERE site_id = ? AND entity_id IS NOT NULL",
+                "SELECT c.entity_id, c.charge_point_id FROM device_charge_point c "
+                        + "WHERE c.site_id = ? AND c.entity_id IS NOT NULL AND EXISTS (SELECT 1 FROM device d "
+                        + "WHERE d.id = c.device_id AND d.ausgebaut_am IS NULL)",
                 rs -> {
                     out.put(rs.getObject("entity_id", UUID.class),
                             rs.getString("charge_point_id"));
@@ -309,6 +314,35 @@ public class EntityRegistryRepository {
         return rows.isEmpty() ? null : rows.get(0);
     }
 
+    public record AuftragsQuelle(UUID dataSourceId) {}
+
+    /**
+     * Die Quelle, der Push je Box und Einmal-Auftrag einer Komponente folgen: ihre eigene
+     * {@code data_source_id} - außer bei einem Verbraucher an einem Ausgang eines I/O-Moduls
+     * ({@code consumer_profile.io_entity_id}). Der hat keinen eigenen Transport; sein Treiber ist der
+     * Modul-Kanal, und den schaltet nur die Box, die das Modul liest. Er folgt darum der Quelle SEINES
+     * MODULS, auch keiner (dann der führenden Box, wie das Modul) - so wie {@code switch_set} es über
+     * die Modul-Komponente schon tut. Das Modul liegt durch Fremdschlüssel in derselben Anlage.
+     */
+    private static final String FOLGE_QUELLE = "CASE WHEN cp.io_entity_id IS NULL THEN mp.data_source_id "
+            + "ELSE io.data_source_id END";
+    private static final String FOLGE_QUELLE_JOINS =
+            " LEFT JOIN consumer_profile cp ON cp.entity_id = mp.id AND cp.site_id = mp.site_id"
+                    + " LEFT JOIN measurement_point io ON io.id = cp.io_entity_id AND io.site_id = mp.site_id";
+
+    /**
+     * Includes legacy measurement points; null means absent, not merely unconfigured for v2. Ein
+     * Kanal-Verbraucher trägt die Quelle seines I/O-Moduls ({@link #FOLGE_QUELLE}).
+     */
+    public AuftragsQuelle auftragsQuelle(UUID siteId, UUID pointId) {
+        List<AuftragsQuelle> rows = jdbc.query(
+                "SELECT " + FOLGE_QUELLE + " AS data_source_id FROM measurement_point mp" + FOLGE_QUELLE_JOINS
+                        + " WHERE mp.site_id = ? AND mp.id = ?",
+                (rs, n) -> new AuftragsQuelle(rs.getObject("data_source_id", UUID.class)),
+                siteId, pointId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
     /**
      * Create a v2-native entity row (E1b admin CRUD: the open catalog types -
      * wallbox/heating-rod/generic-load/...). role mirrors the entity type;
@@ -434,32 +468,122 @@ public class EntityRegistryRepository {
 
     // ---- Bidirectional sync state (E1b) ------------------------------------
 
-    /** The last composed Soll of one site (entity_registry_state), or null. */
+    /**
+     * The last composed Soll of one site (entity_registry_state), or null. Seit UEMS AP-06 IP-6 hält
+     * die Tabelle eine Zeile je (Anlage, Box); {@link #registryState} liest die JÜNGSTE. Ein Push-Lauf
+     * schreibt alle seine Boxen mit derselben Revision, und eine Anlage mit einer Box hat genau ihre
+     * eine Zeile wie bisher.
+     */
     public record RegistryState(UUID deviceId, String revision, java.time.Instant composedAt) {}
 
     /**
      * Record the freshly composed Soll revision - on EVERY compose, even when
      * the best-effort publish fails (the Soll changed regardless; the edge's
-     * echoed revision is compared against exactly this value).
+     * echoed revision is compared against exactly this value). Je (Anlage, Box) seit IP-6: eine
+     * andere Box überschreibt die Zeile nicht mehr, sie bekommt ihre eigene.
      */
     public void upsertRegistryState(UUID siteId, UUID tenantId, UUID deviceId, String revision) {
         jdbc.update(
                 "INSERT INTO entity_registry_state (site_id, tenant_id, device_id, revision, composed_at) "
                         + "VALUES (?, ?, ?, ?, now()) "
-                        + "ON CONFLICT (site_id) DO UPDATE SET device_id = EXCLUDED.device_id, "
+                        + "ON CONFLICT (tenant_id, site_id, device_id) DO UPDATE SET "
                         + "revision = EXCLUDED.revision, composed_at = EXCLUDED.composed_at",
                 siteId, tenantId, deviceId, revision);
     }
 
+    /**
+     * Das Soll ALLER Boxen eines Push-Laufs je Box (UEMS AP-06 IP-6, W7) in EINER Anweisung: die
+     * Revision steht an jeder dieser Boxen oder an keiner, auch ohne umgebende Transaktion.
+     */
+    public void upsertRegistryStates(UUID siteId, UUID tenantId, List<UUID> deviceIds, String revision) {
+        if (deviceIds.isEmpty()) {
+            return;
+        }
+        StringBuilder sql = new StringBuilder("INSERT INTO entity_registry_state "
+                + "(site_id, tenant_id, device_id, revision, composed_at) VALUES ");
+        List<Object> args = new java.util.ArrayList<>();
+        for (int i = 0; i < deviceIds.size(); i++) {
+            sql.append(i == 0 ? "" : ", ").append("(?, ?, ?, ?, now())");
+            args.add(siteId);
+            args.add(tenantId);
+            args.add(deviceIds.get(i));
+            args.add(revision);
+        }
+        sql.append(" ON CONFLICT (tenant_id, site_id, device_id) DO UPDATE SET "
+                + "revision = EXCLUDED.revision, composed_at = EXCLUDED.composed_at");
+        jdbc.update(sql.toString(), args.toArray());
+    }
+
     public RegistryState registryState(UUID siteId) {
         List<RegistryState> rows = jdbc.query(
-                "SELECT device_id, revision, composed_at FROM entity_registry_state WHERE site_id = ?",
+                "SELECT device_id, revision, composed_at FROM entity_registry_state WHERE site_id = ? "
+                        + "ORDER BY composed_at DESC, device_id NULLS LAST LIMIT 1",
                 (rs, n) -> new RegistryState(
                         rs.getObject("device_id", UUID.class),
                         rs.getString("revision"),
                         rs.getTimestamp("composed_at").toInstant()),
                 siteId);
         return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /**
+     * Die Boxen, für die diese Anlage schon ein Soll aufgezeichnet hat (UEMS AP-06 IP-6): sie
+     * bekommen ihre Vollmenge weiter, auch eine leere, damit sie eine Quelle sicher vergessen.
+     */
+    public List<UUID> boxenMitSoll(UUID siteId) {
+        return jdbc.query("SELECT device_id FROM entity_registry_state WHERE site_id = ? "
+                        + "AND device_id IS NOT NULL ORDER BY device_id",
+                (rs, n) -> rs.getObject("device_id", UUID.class), siteId);
+    }
+
+    /**
+     * Die Datenquelle je v2-Entität der Anlage ({@code measurement_point.data_source_id}), nur die
+     * gesetzten, in Push-Reihenfolge. Leer ist der Stand jeder Bestandsanlage (UEMS AP-06 IP-6: dann
+     * bleibt der Registry-Push der eine Push an die führende Box). Ein Kanal-Verbraucher trägt die
+     * Quelle seines I/O-Moduls ({@link #FOLGE_QUELLE}) und steht so im Push derselben Box wie das Modul.
+     */
+    public java.util.Map<UUID, UUID> datenquelleJeEntitaet(UUID siteId) {
+        java.util.Map<UUID, UUID> out = new java.util.LinkedHashMap<>();
+        jdbc.query("SELECT mp.id, " + FOLGE_QUELLE + " AS data_source_id FROM measurement_point mp"
+                        + FOLGE_QUELLE_JOINS + " WHERE mp.site_id = ? AND mp.entity_type IS NOT NULL AND "
+                        + FOLGE_QUELLE + " IS NOT NULL ORDER BY mp.created_at, mp.id",
+                (org.springframework.jdbc.core.RowCallbackHandler) rs -> out.put(
+                        rs.getObject("id", UUID.class), rs.getObject("data_source_id", UUID.class)),
+                siteId);
+        return out;
+    }
+
+    /** Stable source labels for the additive read-status metadata, under tenant RLS. */
+    public java.util.Map<UUID, String> datenquellenKennzeichen(UUID siteId) {
+        java.util.Map<UUID, String> out = new java.util.LinkedHashMap<>();
+        jdbc.query("SELECT mp.id, dq.kennzeichen FROM measurement_point mp "
+                        + "JOIN data_source dq ON dq.id = mp.data_source_id AND dq.tenant_id = mp.tenant_id "
+                        + "WHERE mp.site_id = ? AND mp.entity_type IS NOT NULL",
+                (org.springframework.jdbc.core.RowCallbackHandler) rs -> out.put(
+                        rs.getObject("id", UUID.class), rs.getString("kennzeichen")), siteId);
+        return out;
+    }
+
+    /**
+     * Alle Zeiträume der Datenquellen, hinter denen Entitäten dieser Anlage antworten — auch
+     * beendete und geplante. Welche Box zum Zeitpunkt liest, entscheidet die reine Regel
+     * ({@code uems.PushJeBox} über {@code DatenquelleRegeln.zustaendigeBox}), nicht diese Abfrage.
+     */
+    public List<com.voltpilot.api.uems.ZustaendigkeitRepository.Zeitraum> zustaendigkeitenDerQuellen(UUID siteId) {
+        return jdbc.query("SELECT a.id, a.data_source_id, a.device_id, a.effective_from, a.effective_to "
+                        + "FROM data_source_assignment a WHERE a.zurueckgenommen_am IS NULL "
+                        + "AND a.data_source_id IN (SELECT mp.data_source_id "
+                        + "FROM measurement_point mp WHERE mp.site_id = ? AND mp.data_source_id IS NOT NULL) "
+                        + "ORDER BY a.data_source_id, a.effective_from, a.id",
+                (rs, n) -> {
+                    java.time.OffsetDateTime bis = rs.getObject("effective_to", java.time.OffsetDateTime.class);
+                    return new com.voltpilot.api.uems.ZustaendigkeitRepository.Zeitraum(
+                            rs.getObject("id", UUID.class), rs.getObject("data_source_id", UUID.class),
+                            rs.getObject("device_id", UUID.class),
+                            rs.getObject("effective_from", java.time.OffsetDateTime.class).toInstant(),
+                            bis == null ? null : bis.toInstant());
+                },
+                siteId);
     }
 
     /** The site's battery asset slice, or null when the site has no battery. */
@@ -479,7 +603,7 @@ public class EntityRegistryRepository {
 
     /** Ids of the site's claimed devices, stable order. */
     public List<UUID> siteDeviceIds(UUID siteId) {
-        return jdbc.query("SELECT id FROM device WHERE site_id = ? ORDER BY created_at, id",
+        return jdbc.query("SELECT id FROM device WHERE site_id = ? AND ausgebaut_am IS NULL ORDER BY created_at, id",
                 (rs, n) -> rs.getObject("id", UUID.class), siteId);
     }
 

@@ -25,6 +25,7 @@ public final class RegisterWriteEvents {
                 e.addressInput(), e.valueInput(), e.note(), e.valueRaw(), e.expectedBefore(),
                 e.registerLabel(), e.registerClass(), e.scaleNote(), e.origin(), e.actorName(),
                 e.actorRole(), e.viaTenantSwitcher(), e.requestedAt(), e.beforeRaw(),
-                e.afterRaw(), e.adopted(), e.outcome(), e.reason(), e.answeredAt());
+                e.afterRaw(), e.adopted(), e.outcome(), e.reason(), e.answeredAt(), e.actorRolle(),
+                e.actorArt());
     }
 }

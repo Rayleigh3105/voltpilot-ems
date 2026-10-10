@@ -87,6 +87,9 @@ class MeasurementSelectionApiTest {
     @Autowired
     MeasurementSelectionRepository repository;
 
+    @Autowired
+    com.voltpilot.api.uems.BoxFaehigkeiten capabilities;
+
     private final TestRestTemplate rest = new TestRestTemplate();
 
     @Test
@@ -115,7 +118,7 @@ class MeasurementSelectionApiTest {
         assertThat(enabled.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(enabled.getBody()).containsEntry("desiredRevision", 1);
         assertThat(enabled.getBody()).containsEntry("status", "pending_edge");
-        assertThat((String) enabled.getBody().get("statusReason")).contains("wartet");
+        assertThat((String) enabled.getBody().get("statusReason")).contains("Zustellung", "nicht verfügbar");
         Map<String, Object> selected = first(enabled, "selections");
         assertThat(selected).containsEntry("enabled", true)
                 .containsEntry("applyStatus", "pending_edge")
@@ -305,6 +308,8 @@ class MeasurementSelectionApiTest {
         assertThat(csv.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(csv.getHeaders().getContentDisposition().getFilename()).contains("messwert-");
         assertThat(csv.getBody()).contains("# point_key=", "# aggregation=", "# representation=\"raw\"");
+        // UEMS AP-12 IP-10 (DA4): der Kunde mit Recht bekommt die Datei — mit neun Kopfzeilen mehr
+        assertThat(csv.getBody()).contains("\n# erzeugt_von=\"demo\"\n", "\n# zeitzone=\"UTC\"\n# dezimal=\".\"\n");
     }
 
     @Test
@@ -551,6 +556,62 @@ class MeasurementSelectionApiTest {
         assertThat(row).containsEntry("recorded", true).containsEntry("decodedValue", "25");
     }
 
+    /**
+     * AP-07 IP-18b Punktzustand: ein geteilter Punkt (die letzte Beobachtung nannte eine
+     * Komponente, {@code component_read_at = last_read_at}) steht an der Geräteseite als gelesen
+     * mit aktuellem „zuletzt gelesen“ - aber ohne Wert und Qualität, denn die gehören einer
+     * Komponente und stehen in deren Reihe. Ein späterer Wert ohne Komponente ist wieder der Wert
+     * der Box.
+     */
+    @Test
+    @SuppressWarnings("unchecked")
+    void catalogZeigtEinenGeteiltenPunktGelesenJeKomponenteOhneWertDerBox() throws Exception {
+        String point = "deye.hybrid_1p.battery.battery-capacity";
+        String catalog = path(DEVICE_A) + "/catalog?q=battery-capacity&recorded=true&limit=10";
+        String demo = token("demo", "demo");
+        try (Connection connection = POSTGRES.createConnection("");
+                Statement statement = connection.createStatement()) {
+            statement.execute("INSERT INTO device_measurement_point_state(tenant_id,site_id,device_id,"
+                    + "point_key,first_read_at,last_read_at,edge_sequence,raw_numeric,decoded_numeric,"
+                    + "quality,gap,dropped_samples,catalog_version,component_read_at) VALUES ("
+                    + "'00000000-0000-0000-0000-000000000001',"
+                    + "'00000000-0000-0000-0000-000000000002','" + DEVICE_A + "','" + point
+                    + "',now()-interval '2 minutes',now()-interval '1 minute',93401,270,27,"
+                    + "'good',false,0,'2026.08.26.2',now()-interval '1 minute')");
+        }
+        try {
+            Map<String, Object> geteilt = (Map<String, Object>)
+                    ((List<?>) get(demo, catalog).getBody().get("points")).get(0);
+            assertThat(geteilt).containsEntry("pointKey", point).containsEntry("recorded", true)
+                    .containsEntry("availabilityStatus", "read")
+                    .containsEntry("rawValue", null).containsEntry("decodedValue", null)
+                    .containsEntry("quality", null)
+                    .containsEntry("availabilityReason", "Von diesem Gerät gelesen, je Komponente: "
+                            + "der Wert steht in der Reihe der Komponente.");
+            assertThat(java.time.Instant.parse((String) geteilt.get("lastReadAt")))
+                    .as("zuletzt gelesen bleibt aktuell")
+                    .isAfter(java.time.Instant.now().minusSeconds(600));
+
+            try (Connection connection = POSTGRES.createConnection("");
+                    Statement statement = connection.createStatement()) {
+                statement.execute("UPDATE device_measurement_point_state SET last_read_at=now(),"
+                        + "edge_sequence=93402,raw_numeric=280,decoded_numeric=28 WHERE device_id='"
+                        + DEVICE_A + "' AND point_key='" + point + "'");
+            }
+            Map<String, Object> box = (Map<String, Object>)
+                    ((List<?>) get(demo, catalog).getBody().get("points")).get(0);
+            assertThat(box).containsEntry("decodedValue", "28").containsEntry("rawValue", "280")
+                    .containsEntry("quality", "good")
+                    .containsEntry("availabilityReason", "Von diesem Gerät gelesen.");
+        } finally {
+            try (Connection connection = POSTGRES.createConnection("");
+                    Statement statement = connection.createStatement()) {
+                statement.execute("DELETE FROM device_measurement_point_state WHERE device_id='"
+                        + DEVICE_A + "' AND point_key='" + point + "'");
+            }
+        }
+    }
+
     @Test
     void ocppTemplateShowsConcreteMeterValuesInCatalogHistoryAndCsvWithoutWeakeningRls()
             throws Exception {
@@ -627,6 +688,7 @@ class MeasurementSelectionApiTest {
     @Test
     void selectionsAreScopedPerComponentWhileTheDeviceKeepsOnePlanAndOneBudget()
             throws Exception {
+        UUID site = UUID.fromString("00000000-0000-0000-0000-0000000000b6");
         UUID device = UUID.fromString("00000000-0000-0000-0000-0000000000b0");
         UUID left = UUID.fromString("00000000-0000-0000-0000-0000000000b1");
         UUID right = UUID.fromString("00000000-0000-0000-0000-0000000000b2");
@@ -636,9 +698,13 @@ class MeasurementSelectionApiTest {
         String goePoint = null;
         try (Connection connection = POSTGRES.createConnection("");
                 Statement statement = connection.createStatement()) {
+            // A dedicated one-box legacy site has an unambiguous leading box.
+            statement.execute("INSERT INTO site(id,tenant_id,name,bidding_zone) VALUES ('"
+                    + site + "','00000000-0000-0000-0000-000000000001',"
+                    + "'Stufe3b Einzelbox','DE-LU') ON CONFLICT DO NOTHING");
             statement.execute("INSERT INTO device(id,tenant_id,site_id,external_ref,kind,status) "
                     + "VALUES ('" + device + "','00000000-0000-0000-0000-000000000001',"
-                    + "'00000000-0000-0000-0000-000000000002','stufe3b-box','inverter','claimed') "
+                    + "'" + site + "','stufe3b-box','inverter','claimed') "
                     + "ON CONFLICT DO NOTHING");
             statement.execute("INSERT INTO site(id,tenant_id,name,bidding_zone) VALUES ('"
                     + otherSite + "','00000000-0000-0000-0000-000000000001',"
@@ -648,11 +714,11 @@ class MeasurementSelectionApiTest {
             // page has to be able to observe.
             statement.execute("INSERT INTO measurement_point(id,tenant_id,site_id,role,label,"
                     + "family) VALUES ('" + left + "','00000000-0000-0000-0000-000000000001',"
-                    + "'00000000-0000-0000-0000-000000000002','pv-inverter','Fronius Eco 1',"
+                    + "'" + site + "','pv-inverter','Fronius Eco 1',"
                     + "'hybrid_1p'),('" + right + "','00000000-0000-0000-0000-000000000001',"
-                    + "'00000000-0000-0000-0000-000000000002','pv-inverter','Fronius Eco 2',"
+                    + "'" + site + "','pv-inverter','Fronius Eco 2',"
                     + "'hybrid_1p'),('" + wallbox + "','00000000-0000-0000-0000-000000000001',"
-                    + "'00000000-0000-0000-0000-000000000002','consumer','Wallbox',"
+                    + "'" + site + "','consumer','Wallbox',"
                     + "'goe_http_api'),('" + otherSiteEntity
                     + "','00000000-0000-0000-0000-000000000001','" + otherSite
                     + "','pv-inverter','Fremde Anlage','hybrid_1p') ON CONFLICT DO NOTHING");
@@ -783,6 +849,94 @@ class MeasurementSelectionApiTest {
                 .filteredOn(e -> "edge_ack".equals(e.get("eventKind")))
                 .as("die Quittung einer fremden Revision taucht hier nicht auf")
                 .isEmpty();
+    }
+
+    /**
+     * AP-07 IP-18b Einschalten, Punkte (2) und (3) gegen die echte Datenbank: zwei Komponenten wählen denselben
+     * Punkt OHNE Box-Zeile daneben - ein geteilter Punkt. (3) Meldet die Box {@code measurement_config_per_component}
+     * neu, legt die Cloud Revision + 1 an (vorher lief der zusammengelegte Plan unbegrenzt weiter, weil der Core
+     * dieselbe Revision mit anderem Inhalt abweist); ohne geteilten Punkt und bei gleichbleibendem Wort nicht.
+     * (2) Die Quittung dieser Revision lehnt EINE Komponente ab und liest den Punkt für die andere - vorher verwarf
+     * der Listener sie ganz, jetzt steht der Status je Komponente.
+     */
+    @SuppressWarnings("unchecked")
+    @Test
+    void einGeteilterPunktBekommtRevisionsAnstossUndStatusJeKomponente() throws Exception {
+        UUID tenant = UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID site = UUID.fromString("00000000-0000-0000-0000-0000000000c6");
+        UUID device = UUID.fromString("00000000-0000-0000-0000-0000000000c0");
+        UUID a = UUID.fromString("00000000-0000-0000-0000-0000000000c1");
+        UUID b = UUID.fromString("00000000-0000-0000-0000-0000000000c2");
+        try (Connection connection = POSTGRES.createConnection("");
+                Statement statement = connection.createStatement()) {
+            statement.execute("INSERT INTO site(id,tenant_id,name,bidding_zone) VALUES ('" + site + "','" + tenant
+                    + "','IP-18b Einschalten','DE-LU') ON CONFLICT DO NOTHING");
+            statement.execute("INSERT INTO device(id,tenant_id,site_id,external_ref,kind,status) VALUES ('" + device
+                    + "','" + tenant + "','" + site + "','ip18b-einschalten-box','inverter','claimed') "
+                    + "ON CONFLICT DO NOTHING");
+            statement.execute("INSERT INTO measurement_point(id,tenant_id,site_id,role,label,family) VALUES ('" + a
+                    + "','" + tenant + "','" + site + "','pv-inverter','Hybrid A','hybrid_1p'),('" + b + "','" + tenant
+                    + "','" + site + "','pv-inverter','Hybrid B','hybrid_1p') ON CONFLICT DO NOTHING");
+        }
+        String demo = token("demo", "demo");
+        String wort = com.voltpilot.api.measurement.MeasurementConfigPublisher.FAEHIGKEIT_JE_KOMPONENTE;
+        Instant t = Instant.parse("2026-09-23T10:00:00Z");
+        assertThat(put(demo, device, POINT, a, Map.of("expectedRevision", 0, "idempotencyKey",
+                UUID.randomUUID().toString(), "enabled", true, "cadenceS", 30)).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+
+        TenantContext.set(tenant);
+        try {
+            // Ohne geteilten Punkt sind beide Formen dieselben Bytes: kein Anstoß, weder beim Melden noch beim Verlust.
+            capabilities.record(device, t, List.of("data_sources", wort));
+            capabilities.record(device, t.plusSeconds(1), List.of("data_sources"));
+            assertThat(repository.revision(device)).isEqualTo(1);
+        } finally {
+            TenantContext.clear();
+        }
+        assertThat(put(demo, device, POINT, b, Map.of("expectedRevision", 1, "idempotencyKey",
+                UUID.randomUUID().toString(), "enabled", true, "cadenceS", 10)).getStatusCode())
+                .isEqualTo(HttpStatus.OK);
+
+        TenantContext.set(tenant);
+        try {
+            capabilities.record(device, t.plusSeconds(2), List.of("data_sources", wort));
+            assertThat(repository.revision(device)).as("das Wort neu gemeldet: Revision + 1").isEqualTo(3);
+            capabilities.record(device, t.plusSeconds(3), List.of("data_sources", wort, "events"));
+            capabilities.record(device, t.plusSeconds(1), List.of("data_sources"));
+            assertThat(repository.revision(device)).as("gleiches Wort oder veraltete Meldung: nichts").isEqualTo(3);
+        } finally {
+            TenantContext.clear();
+        }
+        List<Map<String, Object>> events = (List<Map<String, Object>>) get(demo, path(device)).getBody()
+                .get("events");
+        assertThat(events).filteredOn(e -> Integer.valueOf(3).equals(e.get("desiredRevision")))
+                .singleElement().satisfies(e -> assertThat(e)
+                        .containsEntry("eventKind", "selection_requested")
+                        .containsEntry("entityId", a.toString())
+                        .containsEntry("pointKey", POINT));
+
+        var listener = new com.voltpilot.api.measurement.MeasurementConfigStatusListener("tcp://127.0.0.1:9", "", "",
+                repository, new com.fasterxml.jackson.databind.ObjectMapper());
+        String topic = "ems/" + tenant + "/" + site + "/" + device + "/v2/measurement-config-status";
+        String quittung = "{\"schema_version\":\"2.0\",\"tenant_id\":\"" + tenant + "\",\"site_id\":\"" + site
+                + "\",\"device_id\":\"" + device + "\",\"revision\":3,\"applied_at\":\"2026-09-23T10:01:00Z\","
+                + "\"accepted\":[\"" + POINT + "\"],\"rejected\":[{\"point_key\":\"" + POINT
+                + "\",\"reason\":\"binding_unavailable\",\"entity_id\":\"" + b + "\"}],\"edge_version\":\"edge-ip18b\"}";
+        assertThat(listener.handle(topic, quittung.getBytes())).as("Status je Komponente angenommen").isTrue();
+        assertThat(first(get(demo, path(device) + "?entityId=" + a), "selections"))
+                .containsEntry("applyStatus", "applied");
+        assertThat(first(get(demo, path(device) + "?entityId=" + b), "selections"))
+                .containsEntry("applyStatus", "rejected").containsEntry("applyReason", "binding_unavailable");
+        TenantContext.set(tenant);
+        try {
+            assertThat(repository.acknowledgedRevision(device)).isEqualTo(3);
+            // Zurückgesetzte Box: sie braucht den zusammengelegten Plan wieder, also wieder Revision + 1.
+            capabilities.record(device, t.plusSeconds(4), List.of("data_sources"));
+            assertThat(repository.revision(device)).isEqualTo(4);
+        } finally {
+            TenantContext.clear();
+        }
     }
 
     @SuppressWarnings("unchecked")

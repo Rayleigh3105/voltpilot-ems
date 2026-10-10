@@ -1,0 +1,2 @@
+# Der Gesamtabzug trägt CSV mit CRLF (Form des Produkts); seine Prüfsummen gelten für die Bytes.
+vertragsende/abzug/** -text

@@ -1,0 +1,349 @@
+{
+  "_comment": [
+    "Der Katalog der Berichtsvorlagen (UEMS AP-12 IP-1, AP-16 IP-21, AP-17 IP-21a, AP-19 IP-22): sieben Vorlagen mit Fassungsnummer und festen Abschnitten.",
+    "Der Kunde wählt Vorlage, Geltung, Zeitraum und abgewählte Kennzahlen — sonst nichts (V3). Eine neue Fassung ändert keinen Berichtsstand.",
+    "IP-5 legt eine byte-gleiche Kopie in die API-Ressourcen und ins Portal; BerichtVectorsTest und uemsBericht.test.ts prüfen diese Datei gegen BerichtRegeln.VORLAGEN.",
+    "`schema_version` ist der Vertragsstand des Berichts (bericht.md): AP-17 W10 hat ihn am 23.09.2026 von 1.0 auf 1.3 vereinheitlicht — nur die Angabe, keine Vorlage und keine Fassung hat sich geändert.",
+    "1.4 (AP-17 IP-21a, S1/S2/W8): die Vorlage `leistungsvergleich` (Fassung 1). Sie gilt für Unternehmen oder Standort und für Monat, Jahr oder Datengrundlage (`geltung_arten`, `zeitraum_arten`; `geltung_art`/`zeitraum_art` nennen die Vorgabe). Ihr Vergleich ist die Bezugsbasis als Quelle, nicht Vormonat oder Vorjahr — darum `vergleiche` leer. Anlegbar erst mit ihrem Leser (IP-21b).",
+    "1.5 (AP-19 IP-22, MG1–MG3): die Vorlage `managementbewertung` (Nr. 7, Fassung 1) am Unternehmen für ein Jahr. Ihre Abschnitte sind die Eingaben der Managementbewertung — sie zitieren Stände und Zustände (Kennzeichen, Nr., Prüfsumme), nie ein neu gerechnetes Urteil und nie einen Kennzahl-Wert; darum trifft keine Kaskade sie. Rechte `energiemanagement.*`; angelegt wird sie im Energiemanagement, nicht über die Berichte-Karten. Sitzung und Beschlüsse füllt AP-19 IP-23."
+  ],
+  "schema_version": "1.5",
+  "$schema_datei": "./bericht.schema.json#/$defs/vorlagen_datei",
+  "herkunft": "UEMS AP-12 §4.5 (V1–V5), E9 vom 14.09.2026",
+  "vorlagen": [
+    {
+      "schluessel": "monatsbericht_standort",
+      "fassung": 1,
+      "name": "Monatsbericht Standort",
+      "geltung_art": "standort",
+      "zeitraum_art": "monat",
+      "vergleiche": ["vormonat", "vorjahresmonat"],
+      "abschnitte": [
+        {
+          "schluessel": "kopf",
+          "titel": "Kopf",
+          "inhalt": [
+            "Bericht",
+            "Vorlage und Fassung",
+            "Standort mit Name zum Datenstand",
+            "Unternehmen und Sitz",
+            "Zeitraum mit Zeitzone",
+            "Vergleichszeiträume",
+            "Datenstand",
+            "Regelwerk",
+            "Darstellung",
+            "Quellenverzeichnis"
+          ]
+        },
+        {
+          "schluessel": "zusammenfassung",
+          "titel": "Zusammenfassung",
+          "inhalt": [
+            "Netzbezug",
+            "Einspeisung",
+            "PV-Erzeugung",
+            "Speicher laden",
+            "Speicher entladen",
+            "Gas und Wärme, falls vorhanden",
+            "Anzahl Werte, davon endgültig und vollständig"
+          ]
+        },
+        {
+          "schluessel": "verbrauch_je_messstelle",
+          "titel": "Verbrauch je Messstelle",
+          "inhalt": ["Monat", "Vormonat", "Vorjahresmonat", "Differenz", "Zustand", "Abdeckung", "Kennzeichen", "Version"]
+        },
+        {"schluessel": "tagesverlauf", "titel": "Tagesverlauf je Messstelle", "inhalt": ["Menge", "Zustand"]},
+        {
+          "schluessel": "kennzahlen",
+          "titel": "Kennzahlen",
+          "inhalt": ["Wert", "Vergleich", "Zustand", "Fassung der Berechnung", "Version", "Richtung"]
+        },
+        {
+          "schluessel": "qualitaet",
+          "titel": "Qualität",
+          "inhalt": [
+            "Abdeckung",
+            "Lücken",
+            "Nachlieferungen",
+            "Ersatzwerte",
+            "Korrekturen im Zeitraum",
+            "vorläufig und endgültig"
+          ]
+        },
+        {
+          "schluessel": "quellenverzeichnis",
+          "titel": "Quellenverzeichnis",
+          "inhalt": ["Kennzeichen", "Name zum Datenstand", "Bezug", "Zeitraum", "Version oder Fassung"]
+        }
+      ]
+    },
+    {
+      "schluessel": "jahresbericht_standort",
+      "fassung": 1,
+      "name": "Jahresbericht Standort",
+      "geltung_art": "standort",
+      "zeitraum_art": "jahr",
+      "vergleiche": ["vorjahr"],
+      "abschnitte": [
+        {
+          "schluessel": "kopf",
+          "titel": "Kopf",
+          "inhalt": [
+            "Bericht",
+            "Vorlage und Fassung",
+            "Standort mit Name zum Datenstand",
+            "Unternehmen und Sitz",
+            "Zeitraum mit Zeitzone",
+            "Vergleichszeiträume",
+            "Datenstand",
+            "Regelwerk",
+            "Darstellung",
+            "Quellenverzeichnis"
+          ]
+        },
+        {
+          "schluessel": "zusammenfassung",
+          "titel": "Zusammenfassung",
+          "inhalt": [
+            "Netzbezug",
+            "Einspeisung",
+            "PV-Erzeugung",
+            "Speicher laden",
+            "Speicher entladen",
+            "Gas und Wärme, falls vorhanden",
+            "Anzahl Werte, davon endgültig und vollständig"
+          ]
+        },
+        {
+          "schluessel": "verbrauch_je_messstelle",
+          "titel": "Verbrauch je Messstelle",
+          "inhalt": ["Jahr", "Vorjahr", "Differenz", "Zustand", "Abdeckung", "Kennzeichen", "Version"]
+        },
+        {"schluessel": "monatswerte", "titel": "Monatswerte je Messstelle", "inhalt": ["Menge", "Zustand"]},
+        {
+          "schluessel": "kennzahlen",
+          "titel": "Kennzahlen",
+          "inhalt": ["Wert", "Vergleich", "Zustand", "Fassung der Berechnung", "Version", "Richtung"]
+        },
+        {
+          "schluessel": "qualitaet",
+          "titel": "Qualität",
+          "inhalt": [
+            "Abdeckung",
+            "Lücken",
+            "Nachlieferungen",
+            "Ersatzwerte",
+            "Korrekturen im Zeitraum",
+            "vorläufig und endgültig"
+          ]
+        },
+        {
+          "schluessel": "quellenverzeichnis",
+          "titel": "Quellenverzeichnis",
+          "inhalt": ["Kennzeichen", "Name zum Datenstand", "Bezug", "Zeitraum", "Version oder Fassung"]
+        }
+      ]
+    },
+    {
+      "schluessel": "monatsbericht_unternehmen",
+      "fassung": 1,
+      "name": "Monatsbericht Unternehmen",
+      "geltung_art": "unternehmen",
+      "zeitraum_art": "monat",
+      "vergleiche": ["vormonat", "vorjahresmonat"],
+      "abschnitte": [
+        {
+          "schluessel": "kopf",
+          "titel": "Kopf",
+          "inhalt": [
+            "Bericht",
+            "Vorlage und Fassung",
+            "Unternehmen mit Name zum Datenstand und Sitz",
+            "Zeitraum mit Zeitzone",
+            "Vergleichszeiträume",
+            "Datenstand",
+            "Regelwerk",
+            "Darstellung",
+            "Quellenverzeichnis"
+          ]
+        },
+        {
+          "schluessel": "zusammenfassung",
+          "titel": "Zusammenfassung",
+          "inhalt": ["Netzbezug gesamt", "Netzbezug je Standort", "Anzahl Werte, davon endgültig und vollständig"]
+        },
+        {
+          "schluessel": "standorte",
+          "titel": "Standorte",
+          "inhalt": ["Summen des Standorts", "Messstellen des Standorts"]
+        },
+        {
+          "schluessel": "kostenstellen",
+          "titel": "Prozesse und Kostenstellen",
+          "inhalt": ["Energie je Prozess", "Energie je Kostenstelle", "Verteilung zum Tag"]
+        },
+        {
+          "schluessel": "kennzahlen",
+          "titel": "Kennzahlen des Unternehmens",
+          "inhalt": ["Wert", "Vergleich", "Zustand", "Fassung der Berechnung", "Version", "Richtung"]
+        },
+        {
+          "schluessel": "qualitaet",
+          "titel": "Qualität",
+          "inhalt": [
+            "Abdeckung",
+            "Lücken",
+            "Nachlieferungen",
+            "Ersatzwerte",
+            "Korrekturen im Zeitraum",
+            "vorläufig und endgültig"
+          ]
+        },
+        {
+          "schluessel": "quellenverzeichnis",
+          "titel": "Quellenverzeichnis",
+          "inhalt": ["Kennzeichen", "Name zum Datenstand", "Bezug", "Zeitraum", "Version oder Fassung"]
+        }
+      ]
+    },
+    {
+      "schluessel": "jahresbericht_unternehmen",
+      "fassung": 1,
+      "name": "Jahresbericht Unternehmen",
+      "geltung_art": "unternehmen",
+      "zeitraum_art": "jahr",
+      "vergleiche": ["vorjahr"],
+      "abschnitte": [
+        {
+          "schluessel": "kopf",
+          "titel": "Kopf",
+          "inhalt": [
+            "Bericht",
+            "Vorlage und Fassung",
+            "Unternehmen mit Name zum Datenstand und Sitz",
+            "Zeitraum mit Zeitzone",
+            "Vergleichszeiträume",
+            "Datenstand",
+            "Regelwerk",
+            "Darstellung",
+            "Quellenverzeichnis"
+          ]
+        },
+        {
+          "schluessel": "zusammenfassung",
+          "titel": "Zusammenfassung",
+          "inhalt": ["Netzbezug gesamt", "Netzbezug je Standort", "Anzahl Werte, davon endgültig und vollständig"]
+        },
+        {
+          "schluessel": "standorte",
+          "titel": "Standorte",
+          "inhalt": ["Summen des Standorts", "Messstellen des Standorts"]
+        },
+        {
+          "schluessel": "kostenstellen",
+          "titel": "Prozesse und Kostenstellen",
+          "inhalt": ["Energie je Prozess", "Energie je Kostenstelle", "Verteilung zum Tag"]
+        },
+        {"schluessel": "monatswerte", "titel": "Monatswerte", "inhalt": ["Menge", "Zustand"]},
+        {
+          "schluessel": "kennzahlen",
+          "titel": "Kennzahlen des Unternehmens",
+          "inhalt": ["Wert", "Vergleich", "Zustand", "Fassung der Berechnung", "Version", "Richtung"]
+        },
+        {
+          "schluessel": "qualitaet",
+          "titel": "Qualität",
+          "inhalt": [
+            "Abdeckung",
+            "Lücken",
+            "Nachlieferungen",
+            "Ersatzwerte",
+            "Korrekturen im Zeitraum",
+            "vorläufig und endgültig"
+          ]
+        },
+        {
+          "schluessel": "quellenverzeichnis",
+          "titel": "Quellenverzeichnis",
+          "inhalt": ["Kennzeichen", "Name zum Datenstand", "Bezug", "Zeitraum", "Version oder Fassung"]
+        }
+      ]
+    },
+    {
+      "schluessel": "energetische_bewertung",
+      "fassung": 1,
+      "name": "Energetische Bewertung",
+      "geltung_art": "unternehmen",
+      "zeitraum_art": "datengrundlage",
+      "vergleiche": [],
+      "abschnitte": [
+        {"schluessel": "umfang", "titel": "Umfang", "inhalt": ["Fassung", "Standorte", "Anlagen", "Träger"]},
+        {"schluessel": "rangliste", "titel": "Rangliste", "inhalt": ["Einsatz", "Menge mit Version", "Anteil", "Rang", "Kriterien-Fassung"]},
+        {"schluessel": "einstufungen", "titel": "Einstufungen", "inhalt": ["Einstufung", "Fassung", "Begründung", "Person", "Herkunft"]},
+        {"schluessel": "messabdeckung", "titel": "Messabdeckung", "inhalt": ["gemessen", "geplant", "Ersatz", "ungemessen"]},
+        {"schluessel": "messplanung", "titel": "Messplanung", "inhalt": ["Messbedarf", "Zustand", "Frist", "Messstelle"]},
+        {"schluessel": "messmittel", "titel": "Messmittel", "inhalt": ["Einbau", "Genauigkeitsklasse", "Prüfungsart", "Prüfung", "Beleg", "Wandler-Fassung"]},
+        {"schluessel": "qualitaet", "titel": "Qualität", "inhalt": ["Datenlage", "Ersatzwerte", "Messabdeckung", "Vorläufigkeit"]},
+        {"schluessel": "quellenverzeichnis", "titel": "Quellenverzeichnis", "inhalt": ["Kennzeichen", "Name zum Datenstand", "Bezug", "Zeitraum", "Version oder Fassung"]}
+      ]
+    },
+    {
+      "schluessel": "leistungsvergleich",
+      "fassung": 1,
+      "name": "Leistungsvergleich",
+      "geltung_art": "unternehmen",
+      "zeitraum_art": "monat",
+      "geltung_arten": ["unternehmen", "standort"],
+      "zeitraum_arten": ["monat", "jahr", "datengrundlage"],
+      "vergleiche": [],
+      "abschnitte": [
+        {
+          "schluessel": "kopf",
+          "titel": "Kopf",
+          "inhalt": [
+            "Bericht",
+            "Vorlage und Fassung",
+            "Geltung mit Name zum Datenstand",
+            "Zeitraum mit Zeitzone",
+            "Referenzperiode der Bezugsbasis",
+            "Datenstand",
+            "Regelwerk",
+            "Darstellung",
+            "Quellenverzeichnis",
+            "VoltPilot unterstützt Ihr Energiemanagement mit Messung, Kennzahlen und Berichten. Eine Aussage zur Konformität mit einer Norm ist damit nicht verbunden."
+          ]
+        },
+        {"schluessel": "kennzahl", "titel": "Kennzahl", "inhalt": ["Kennzeichen", "Name zum Datenstand", "Wert mit Version", "Zustand", "Fassung der Berechnung"]},
+        {"schluessel": "bezugsbasis", "titel": "Bezugsbasis", "inhalt": ["Kennzeichen", "Fassung", "Methode", "Referenzperiode", "Einflussgrößen mit Fassung", "Streuung", "Toleranz", "gilt seit"]},
+        {"schluessel": "vergleich_je_periode", "titel": "Vergleich je Periode", "inhalt": ["Periode", "gemessen mit Version", "Einflussgröße mit Wert", "erwartet", "Abweichung", "Band", "Kennzeichen"]},
+        {"schluessel": "urteil", "titel": "Urteil", "inhalt": ["besser", "schlechter", "im Rahmen", "nicht bewertbar mit Grund", "Bedingung", "Bezugsbasis mit Fassung"]},
+        {"schluessel": "grenzen_und_vorbehalte", "titel": "Grenzen und Vorbehalte", "inhalt": ["vorläufige Bezugsbasis", "außerhalb der Spannweite", "Temperatur bezogen", "vorläufige Werte", "keine Aussage zur Ursache"]},
+        {"schluessel": "statische_faktoren", "titel": "Statische Faktoren", "inhalt": ["statischer Faktor", "Wert zur Fassung", "Änderung seit der Fassung"]},
+        {"schluessel": "quellenverzeichnis", "titel": "Quellenverzeichnis", "inhalt": ["Kennzeichen", "Name zum Datenstand", "Bezug", "Zeitraum", "Version oder Fassung"]}
+      ]
+    },
+    {
+      "schluessel": "managementbewertung",
+      "fassung": 1,
+      "name": "Managementbewertung",
+      "geltung_art": "unternehmen",
+      "zeitraum_art": "jahr",
+      "vergleiche": [],
+      "abschnitte": [
+        {"schluessel": "vorige_beschluesse", "titel": "Beschlüsse der letzten Managementbewertung und ihre Folgen", "inhalt": ["letzte Managementbewertung mit Stand Nr. und Prüfsumme", "Beschluss mit Art und Wortlaut", "Folge mit Zustand", "keine frühere Managementbewertung"]},
+        {"schluessel": "grundlagen", "titel": "Grundlagen", "inhalt": ["Energiepolitik", "Anwendungsbereich", "rechtliche Anforderungen", "Risiken und Chancen", "Fassung mit Prüfsumme und entschieden von", "Überprüfung fällig seit", "Aufgaben im Energiemanagement", "Aufgabe ohne Person"]},
+        {"schluessel": "energieziele", "titel": "Energieziele", "inhalt": ["Kennzeichen", "Zielwert und Zielperiode", "Zustand", "Ergebnis der Bewertung wie festgehalten", "bewertet am", "Prüfsumme"]},
+        {"schluessel": "energieleistung", "titel": "Energieleistung", "inhalt": ["Leistungsvergleich mit Stand Nr. und Prüfsumme", "Urteil des Stands wie festgehalten", "Revision angestoßen", "Bezugsbasen mit Fassung und Überprüfung"]},
+        {"schluessel": "massnahmen", "titel": "Maßnahmen", "inhalt": ["Kennzeichen", "Herkunft", "Zustand", "Bewertung mit Stand Nr. und Prüfsumme", "Ergebnis wie festgehalten"]},
+        {"schluessel": "abweichungen", "titel": "Abweichungen und Auffälligkeiten", "inhalt": ["Kennzeichen", "Monat", "Zustand", "offen"]},
+        {"schluessel": "audits_feststellungen", "titel": "Interne Audits und Feststellungen", "inhalt": ["Audit mit Zustand und Prüfsumme", "Feststellung mit Zustand und Frist", "Wirksamkeit mit Stand Nr.", "offen"]},
+        {"schluessel": "bewertung_messplanung", "titel": "Energetische Bewertung und Messplanung", "inhalt": ["Bewertung mit Stand Nr. und Prüfsumme", "Überprüfung fällig seit", "Messbedarf mit Zustand"]},
+        {"schluessel": "wiedervorlage", "titel": "Wiedervorlage zum Stichtag", "inhalt": ["Stichtag", "fällig seit", "Vorschau", "nichts wird verschickt"]},
+        {"schluessel": "beschluesse", "titel": "Beschlüsse", "inhalt": ["Nr.", "Art", "Wortlaut", "entschieden von", "zuständig", "Termin"]},
+        {"schluessel": "sitzung", "titel": "Sitzung", "inhalt": ["Tag", "Leitung", "Teilnehmende"]},
+        {"schluessel": "quellenverzeichnis", "titel": "Quellenverzeichnis", "inhalt": ["Kennzeichen", "Name zum Datenstand", "Bezug", "Zeitraum", "Version oder Fassung"]}
+      ]
+    }
+  ]
+}

@@ -12,11 +12,15 @@
  * `docs/contracts/v2/edge-capabilities.json`.
  * **Wer die Regel ändert, ändert beide Seiten UND die Vektor-Datei.**
  *
- * ⚠ IM PORTAL RUFT NOCH NIEMAND AN: keine Fläche ist umgestellt. Der Java-Zwilling trägt die
- * Datenquellen-Schnittstelle, seit IP-4 auch die Vorschlagsliste (`…/data-sources/vorschlag`);
- * die Liste im Übernahme-Assistenten kommt mit einem Portal-Paket.
+ * Die Regeln hier ruft noch keine Fläche; der Java-Zwilling trägt die Datenquellen-Schnittstelle.
+ * Die Vorschlagsliste (`…/data-sources/vorschlag`) zeigt seit dem Paket
+ * `vp-uems-messen-assistent-datenquelle-vorschlag` Schritt 2 des Messen-Assistenten
+ * (`datenquelleVorschlag.ts`, `DatenquelleVorschlagListe`); der Übernahme-Assistent für
+ * Bestandskunden soll dieselbe Liste nutzen.
  */
 import { VORGABE_ZEITZONE, teile } from './uemsZustand';
+import type { DatenquelleBudgetFehler } from './api';
+import { WECHSEL_NUR_ALS_AENDERUNG } from './uemsGemeinsameSteuerung';
 
 // ───────────────────────────────────────────────────────────────────── Vokabular
 
@@ -196,6 +200,36 @@ export function fehlerklasse(code: string, von: Herkunft): Fehlerklasse | null {
   return FEHLERKLASSEN.find((k) => k.code === code && k.von === von) ?? null;
 }
 
+export interface BudgetAblehnungAnzeige {
+  titel: string;
+  quelle: string;
+  anfragen: string;
+  box: string;
+  auswege: string[];
+}
+
+/**
+ * Übersetzt den strukturierten 422-Körper in Kundensätze. IP-11/IP-12 können diese Funktion im
+ * Anlege-/Wechsel-Dialog direkt rendern; bis dahin bleibt die API-Ablehnung trotzdem vollständig.
+ */
+export function budgetAblehnungAnzeige(body: unknown): BudgetAblehnungAnzeige | null {
+  const fehler = body as Partial<DatenquelleBudgetFehler> | null;
+  if (!fehler || fehler.code !== 'budget_ueberschritten' || !fehler.rechnung?.quelle) return null;
+  const r = fehler.rechnung;
+  const q = r.quelle;
+  const n = (wert: number): string => Number.isFinite(wert)
+    ? wert.toLocaleString('de-DE', { maximumFractionDigits: 3 }) : '—';
+  const jeTakt = q.anfragen.reduce((summe, a) => summe + a.anfragen_je_takt, 0);
+  const kosten = q.anfragen.map((a) => `${n(a.anfragen_je_takt)} × ${n(a.kosten_ms_je_anfrage)} ms`).join(' + ');
+  return {
+    titel: fehler.message ?? `Diese Quelle passt nicht mehr in das Lesebudget von ${r.box}.`,
+    quelle: `${n(q.channels)} Kanäle × alle ${n(q.takt_s)} s = ${n(q.last.samples_per_minute)} Messwerte/min`,
+    anfragen: `${n(jeTakt)} Anfragen je Takt (${kosten || 'keine Busanfrage'}) = ${n(q.last.requests_per_minute)} Anfragen/min · ${n(q.last.duty_cycle_percent)} % Buszeit`,
+    box: `${r.box} danach: ${n(r.box_nachher.samples_per_minute)} von ${n(r.grenzen.samples_per_minute)} Messwerten/min · ${n(r.box_nachher.requests_per_minute)} von ${n(r.grenzen.requests_per_minute)} Anfragen/min · ${n(r.box_nachher.duty_cycle_percent)} von ${n(r.grenzen.duty_cycle_percent)} % Buszeit`,
+    auswege: [r.auswege.takt, r.auswege.andere_box].filter((satz): satz is string => Boolean(satz)),
+  };
+}
+
 /** Woher die führende Box einer Anlage kommt, in Vorrang-Reihenfolge (E3). */
 export const FUEHRUNGS_GRUENDE = ['gespeichert', 'speicher', 'einzige', 'keine_wahl'] as const;
 export type FuehrungsGrund = (typeof FUEHRUNGS_GRUENDE)[number];
@@ -217,7 +251,50 @@ export const TEXTE = {
   software_unbekannt: 'Software-Stand unbekannt',
   alle_faehigkeiten: 'alle Fähigkeiten',
   update_noetig: 'Update nötig für: {liste}',
+  gemeinsame_steuerung_aendern: WECHSEL_NUR_ALS_AENDERUNG,
 } as const;
+
+// ─────────────────────────────────────────── Gemeinsame Steuerung (AP-15 T6, IP-26)
+
+/**
+ * Wohin ein Wechsel der zuständigen Box führt, VOR der Prüfreihenfolge (Familie
+ * `gemeinsame_steuerung`). Kein Grund des Vokabulars: die Schnittstelle antwortet mit ihrem Code
+ * `gemeinsame_steuerung_aendern` (409).
+ */
+export const WECHSEL_WEGE = ['zustaendigkeitswechsel', 'innerhalb_der_gemeinsamen_steuerung', 'gemeinsame_steuerung_aendern'] as const;
+export type WechselWeg = (typeof WECHSEL_WEGE)[number];
+
+/** Die Zustände aus `GET …/gemeinsame-steuerung`, in denen eine Gemeinsame Steuerung Mitglieder trägt. */
+const EINGERICHTET = new Set(['erklaert', 'beobachtet', 'geprueft', 'anteile_aktiv', 'angehalten']);
+
+/** Die Zustände, in denen die Anteile an den Boxen in Kraft sind. */
+const ANTEILE_IN_KRAFT = new Set(['anteile_aktiv', 'angehalten']);
+
+/**
+ * T6: in einer Anlage MIT eingerichteter Gemeinsamer Steuerung gilt die AP-06-Sperre `steuerquelle`
+ * nicht mehr. Vor dem Scharfschalten (S0–S2) zieht eine Steuerquelle zu einem Mitglied DIESER
+ * Gemeinsamen Steuerung um wie jede Quelle (IP-26, der Schritt „ändern“: die Prüfreihenfolge ohne
+ * Grund 4); zu jeder anderen Box und solange die Anteile in Kraft sind nur über „Gemeinsame
+ * Steuerung ändern“ — ebenso jede Quelle, die sie in einer scharfen oder angehaltenen Anlage trägt
+ * (`nurAlsAenderung`, IP-8). Ohne, nach dem Auflösen und für jede andere Quelle entscheidet die
+ * Prüfreihenfolge wie bisher (I6).
+ */
+export function wegDesWechsels(
+  steuerquelle: boolean,
+  zustand: string | null,
+  nurAlsAenderung: boolean,
+  zielIstMitglied: boolean,
+): WechselWeg {
+  if (zustand === null || !EINGERICHTET.has(zustand)) return 'zustaendigkeitswechsel';
+  if (nurAlsAenderung) return 'gemeinsame_steuerung_aendern';
+  if (!steuerquelle) return 'zustaendigkeitswechsel';
+  return !ANTEILE_IN_KRAFT.has(zustand) && zielIstMitglied ? 'innerhalb_der_gemeinsamen_steuerung' : 'gemeinsame_steuerung_aendern';
+}
+
+/** Der Satz zu `gemeinsame_steuerung_aendern`: Grund und Weg (Muster AP-03). */
+export function gemeinsameSteuerungAendern(kennzeichen: string): string {
+  return fuelle(TEXTE.gemeinsame_steuerung_aendern, { kennzeichen });
+}
 
 /**
  * Warum eine vorhandene Komponente in der Vorschlagsliste der Bestands-Übernahme KEINE Quelle
@@ -287,6 +364,8 @@ export interface Antrag {
   effective_from: string;
   pruefung: Pruefung | null;
   vergleich_bestaetigt: boolean;
+  /** AP-15 IP-26: der Weg `innerhalb_der_gemeinsamen_steuerung` — Grund 4 `steuerquelle` entfällt. */
+  innerhalb_gemeinsamer_steuerung?: boolean;
 }
 
 export interface AntragErgebnis {
@@ -492,7 +571,7 @@ export function pruefeAntrag(
   if (ms(t) < minuteVon(jetzt)) return abgelehnt('rueckwirkend');
   const l = letzter(q.zeitraeume);
   if (wechsel) {
-    if (q.steuerquelle) return abgelehnt('steuerquelle');
+    if (q.steuerquelle && !antrag.innerhalb_gemeinsamer_steuerung) return abgelehnt('steuerquelle');
     if (l !== null && ms(t) < ms(l.effective_from)) {
       return abgelehnt('spaeterer_wechsel_geplant', {
         zeitpunkt: zeit(l.effective_from, zeitzone),
@@ -654,11 +733,12 @@ export function fuehrendeBox(
   speicherBox: string | null,
   gespeichert: string | null,
 ): FuehrungsErgebnis {
+  const [erste] = boxen;
   let box: string | null;
   let grund: FuehrungsGrund;
   if (gespeichert !== null) [box, grund] = [gespeichert, 'gespeichert'];
   else if (speicherBox !== null) [box, grund] = [speicherBox, 'speicher'];
-  else if (boxen.length === 1) [box, grund] = [boxen[0].kennzeichen, 'einzige'];
+  else if (boxen.length === 1) [box, grund] = [erste.kennzeichen, 'einzige'];
   else [box, grund] = [null, 'keine_wahl'];
   const rollen = boxen.map((b) => ({
     box: b.kennzeichen,
@@ -672,8 +752,8 @@ export function fuehrendeBox(
 // ─────────────────────────────────────────────────────────────────── Fähigkeiten
 
 /**
- * Welche Fähigkeiten hat eine Box (E12 = A)? Meldet sie `supports[]`, entscheidet allein die
- * Meldung (auch eine leere; fremde Wörter werden verworfen). Sonst die Tabelle: vorhanden, wenn
+ * Welche Fähigkeiten hat eine Box (E12 = A)? Gemeldet ODER laut Tabelle: eine leere oder
+ * teilweise Meldung entzieht keine belegte Fähigkeit. Laut Tabelle vorhanden, wenn
  * das Release der Box im Register nicht vor `ab_release` liegt. Ein Stand ohne Release beweist
  * nichts. `register`: die Releases in der Ordnung des Registers (`release_seq`), älteste zuerst.
  */
@@ -683,8 +763,8 @@ export function faehigkeiten(
   register: string[],
 ): FaehigkeitenErgebnis {
   const status = tabelle.map((e) => {
-    if (stand.supports !== null) {
-      return { code: e.code, vorhanden: stand.supports.includes(e.code), nachweis: 'supports' as const };
+    if (stand.supports?.includes(e.code)) {
+      return { code: e.code, vorhanden: true, nachweis: 'supports' as const };
     }
     const ist = stand.release === null ? -1 : register.indexOf(stand.release);
     const ab = e.ab_release === null ? -1 : register.indexOf(e.ab_release);

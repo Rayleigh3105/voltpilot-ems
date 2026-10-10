@@ -27,7 +27,7 @@
     "realm": [
       {
         "name": "operator",
-        "description": "Portal-User: customer, scoped to one tenant via tenant_id (dev)"
+        "description": "Portal-User, legacy accounts only: customer scoped to one tenant via tenant_id. Since UEMS AP-03 IP-3 new customer accounts get no realm role (dev)"
       },
       {
         "name": "admin",
@@ -40,6 +40,10 @@
       {
         "name": "platform-admin",
         "description": "Portal-Admin: platform operator, manages tenants and users across all tenants (dev)"
+      },
+      {
+        "name": "partner",
+        "description": "Partner account (installer, UEMS AP-03 E7): NEVER a tenant_id; reaches a customer area only through a granted Unterstuetzung (dev)"
       },
       {
         "name": "edge-release-publisher",
@@ -248,6 +252,177 @@
       "realmRoles": [
         "operator"
       ]
+    },
+    {
+      "username": "ahrenberg",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "ahrenberg@voltpilot.local",
+      "firstName": "Ahrenberg",
+      "lastName": "Operator",
+      "attributes": {
+        "tenant_id": [
+          "20000000-0000-0000-0000-000000000001"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ahrenberg",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "operator"
+      ]
+    },
+    {
+      "id": "20000000-0000-0000-0000-0000000008a1",
+      "username": "jonas",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "jonas@voltpilot.local",
+      "firstName": "Jonas",
+      "lastName": "Wendlinger",
+      "attributes": {
+        "tenant_id": [
+          "20000000-0000-0000-0000-000000000001"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "jonas",
+          "temporary": false
+        }
+      ],
+      "realmRoles": []
+    },
+    {
+      "id": "20000000-0000-0000-0000-0000000008a2",
+      "username": "ines",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "ines@voltpilot.local",
+      "firstName": "Ines",
+      "lastName": "Kaltenbach",
+      "attributes": {
+        "tenant_id": [
+          "20000000-0000-0000-0000-000000000001"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "ines",
+          "temporary": false
+        }
+      ],
+      "realmRoles": []
+    },
+    {
+      "id": "20000000-0000-0000-0000-0000000008a3",
+      "username": "peter",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "peter@voltpilot.local",
+      "firstName": "Peter",
+      "lastName": "Hollerbach",
+      "attributes": {
+        "tenant_id": [
+          "20000000-0000-0000-0000-000000000001"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "peter",
+          "temporary": false
+        }
+      ],
+      "realmRoles": []
+    },
+    {
+      "id": "20000000-0000-0000-0000-0000000008a4",
+      "username": "murat",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "murat@voltpilot.local",
+      "firstName": "Murat",
+      "lastName": "Demirci",
+      "attributes": {
+        "tenant_id": [
+          "20000000-0000-0000-0000-000000000001"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "murat",
+          "temporary": false
+        }
+      ],
+      "realmRoles": []
+    },
+    {
+      "id": "20000000-0000-0000-0000-0000000008a5",
+      "username": "claudia",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "claudia@voltpilot.local",
+      "firstName": "Claudia",
+      "lastName": "Berger",
+      "attributes": {
+        "tenant_id": [
+          "20000000-0000-0000-0000-000000000001"
+        ]
+      },
+      "credentials": [
+        {
+          "type": "password",
+          "value": "claudia",
+          "temporary": false
+        }
+      ],
+      "realmRoles": []
+    },
+    {
+      "id": "20000000-0000-0000-0000-0000000008b1",
+      "username": "partner-brunner",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "partner-brunner@voltpilot.local",
+      "firstName": "Thomas",
+      "lastName": "Brunner",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "partner-brunner",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "partner"
+      ]
+    },
+    {
+      "id": "20000000-0000-0000-0000-0000000008b2",
+      "username": "support-voss",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "support-voss@voltpilot.local",
+      "firstName": "Lena",
+      "lastName": "Voss",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "support-voss",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "platform-admin"
+      ]
     }
   ],
   "components": {
@@ -258,7 +433,7 @@
         "subComponents": {},
         "config": {
           "kc.user.profile.config": [
-            "{\"unmanagedAttributePolicy\": \"ADMIN_EDIT\", \"attributes\": [{\"name\": \"username\", \"displayName\": \"${username}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}, {\"name\": \"email\", \"displayName\": \"${email}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}, {\"name\": \"firstName\", \"displayName\": \"${firstName}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}, {\"name\": \"lastName\", \"displayName\": \"${lastName}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}, {\"name\": \"tenant_id\", \"displayName\": \"Tenant ID\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}}]}"
+            "{\"unmanagedAttributePolicy\": \"ADMIN_EDIT\", \"attributes\": [{\"name\": \"username\", \"displayName\": \"${username}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}, {\"name\": \"email\", \"displayName\": \"${email}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\", \"user\"]}}, {\"name\": \"firstName\", \"displayName\": \"${firstName}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}}, {\"name\": \"lastName\", \"displayName\": \"${lastName}\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}}, {\"name\": \"tenant_id\", \"displayName\": \"Tenant ID\", \"permissions\": {\"view\": [\"admin\", \"user\"], \"edit\": [\"admin\"]}}]}"
           ]
         }
       }

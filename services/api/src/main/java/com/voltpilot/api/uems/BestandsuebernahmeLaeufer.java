@@ -1,14 +1,19 @@
 package com.voltpilot.api.uems;
 
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
+import com.voltpilot.api.metrics.UemsLaeuferMelder;
 import com.voltpilot.api.tenant.TenantContext;
 import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
 
@@ -66,9 +71,40 @@ public class BestandsuebernahmeLaeufer {
         }
     }
 
+    /**
+     * Die Stelle dieses Start-Laufs unter den {@link ApplicationReadyEvent}-Hörern: VOR den
+     * unsortierten (die Vorgabe ist {@link Ordered#LOWEST_PRECEDENCE}), damit wer auf den Standorten
+     * aufbaut, sich mit {@code ORDER + 1} zugesagt DANACH einreihen kann — der Umstieg der
+     * Funktionen ({@link FunktionBestandLaeufer}). Ohne Angabe ist die Reihenfolge zweier Hörer
+     * nicht zugesagt.
+     */
+    public static final int ORDER = Ordered.LOWEST_PRECEDENCE - 100;
+
     private final JdbcTemplate adminJdbc;
     private final BestandsuebernahmeService dienst;
+
+    /**
+     * AP-14 IP-9: der Betriebs-Melder (§3.5, Schicht „Übernahme“). Nachgereicht statt in den
+     * Konstruktor gelegt, damit kein bestehender Aufrufer sich ändert; {@link UemsLaeuferMelder#STUMM}
+     * hält ihn ohne Spring UND in den Minimal-Kontexten der Wiring-Tests gültig (darum
+     * {@code required = false}). Melden darf einen Lauf NIE brechen — der Melder schluckt alles.
+     */
+    private UemsLaeuferMelder melder = UemsLaeuferMelder.STUMM;
+
+    @Autowired(required = false)
+    void melder(UemsLaeuferMelder melder) {
+        this.melder = melder;
+    }
+
     private final boolean enabled;
+
+    /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
 
     public BestandsuebernahmeLaeufer(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
             BestandsuebernahmeService dienst,
@@ -79,6 +115,7 @@ public class BestandsuebernahmeLaeufer {
     }
 
     @EventListener(ApplicationReadyEvent.class)
+    @Order(ORDER)
     public void beimStart() {
         if (!enabled) {
             log.info("UEMS-Bestandsübernahme der Standorte abgeschaltet "
@@ -87,6 +124,7 @@ public class BestandsuebernahmeLaeufer {
         }
         try {
             Lauf l = lauf();
+            melder.bestandGelaufen(UemsLaeuferMelder.BESTAND_STANDORT, l.kundenbereiche(), l.fehler());
             if (l.geaendert() || l.fehler() > 0) {
                 log.info("UEMS-Bestandsübernahme: {} Kundenbereich(e) betrachtet, {} Standort(e) angelegt, "
                         + "{} Zuordnung(en), {} Vorschlag/Vorschläge, {} Fehler", l.kundenbereiche(),
@@ -94,6 +132,7 @@ public class BestandsuebernahmeLaeufer {
             }
         } catch (RuntimeException e) {
             // Eine Übernahme darf die api nie am Dienen hindern.
+            melder.fehler(UemsLaeuferMelder.BESTAND_STANDORT);
             log.error("UEMS-Bestandsübernahme gescheitert, nichts übernommen: {}", e.toString(), e);
         }
     }
@@ -107,6 +146,7 @@ public class BestandsuebernahmeLaeufer {
         int vorschlaege = 0;
         int fehler = 0;
         for (UUID tenant : kundenbereiche) {
+            if (beendete.beendet(tenant)) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
             try {
                 TenantContext.set(tenant);
                 BestandsuebernahmeService.Ergebnis e = dienst.uebernehmen();

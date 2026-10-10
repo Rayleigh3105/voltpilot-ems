@@ -14,7 +14,7 @@ Portal-Arbeit — kein Endpunkt, keine Migration, kein Feld auf dem Draht.
 Reiter-Leiste ihres Bereichs — in der die Seite gar nicht vorkommt, also war
 **kein Reiter aktiv** — und der Link „Zurück zu den Komponenten".
 
-- **`anlageNav.OHNE_BEREICHS_REITER`** ist die Regel: `tabsFor` schweigt für
+- **`ebenenNav.OHNE_BEREICHS_REITER`** ist die Regel: `tabsFor` schweigt für
   `geraet`/`box`. Sie wohnen im Bereich „Anlage" (`SUB_BEREICH`, damit die
   Seitenleiste ihren Wirt hervorhebt), stehen aber eine Ebene DARUNTER — sie
   zeigen EIN Gerät. `activeAreaKey` ist unberührt.

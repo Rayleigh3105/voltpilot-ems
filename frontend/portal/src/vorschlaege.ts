@@ -65,7 +65,7 @@ import type { Consumer } from './consumers/types';
 import type { SteuerartWunsch } from './steuerartDialog';
 import { fmtNum } from './format';
 import { MIN_SPANNE_CT } from './preisFenster';
-import { AUFBAU_REITER } from './anlageNav';
+import { AUFBAU_REITER } from './ebenenNav';
 
 // ---------------------------------------------------------------------------
 // Vokabular

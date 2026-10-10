@@ -35,6 +35,57 @@ const redeliverySlack = 5 * time.Minute
 
 var idPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`)
 
+// Grund* is the CLOSED rejection vocabulary of the plan receipt
+// (docs/contracts/v2/mqtt-plan-result.md, AP-15 IP-10). A new word needs the
+// contract, plan-result-vectors.json, the api listener and the CHECK of
+// plan_zustellung in the same release.
+const (
+	GrundUnlesbar               = "unlesbar"
+	GrundSchemaVersionUnbekannt = "schema_version_unbekannt"
+	GrundSlotMinutesUngueltig   = "slot_minutes_ungueltig"
+	GrundKeineEntitaeten        = "keine_entitaeten"
+	GrundFremdeBox              = "fremde_box"
+)
+
+// rejection carries the receipt word beside the unchanged log message.
+type rejection struct {
+	grund string
+	err   error
+}
+
+func (r *rejection) Error() string { return r.err.Error() }
+func (r *rejection) Unwrap() error { return r.err }
+
+func reject(grund string, err error) error { return &rejection{grund: grund, err: err} }
+
+// Grund names the receipt word of a Parse error ("" for nil). An error Parse
+// did not classify reads as unlesbar - never as accepted.
+func Grund(err error) string {
+	if err == nil {
+		return ""
+	}
+	var r *rejection
+	if errors.As(err, &r) {
+		return r.grund
+	}
+	return GrundUnlesbar
+}
+
+// Kennung reads plan_id and generated_at from a payload WITHOUT judging it, so
+// a rejected plan can still be named in its receipt. Unreadable = both empty.
+func Kennung(payload []byte) (planID, generatedAt string) {
+	var msg struct {
+		PlanID      any `json:"plan_id"`
+		GeneratedAt any `json:"generated_at"`
+	}
+	if json.Unmarshal(payload, &msg) != nil {
+		return "", ""
+	}
+	planID, _ = msg.PlanID.(string)
+	generatedAt, _ = msg.GeneratedAt.(string)
+	return planID, generatedAt
+}
+
 // Slot is one entity's dispatch slot.
 type Slot struct {
 	Start    time.Time
@@ -97,16 +148,16 @@ func Parse(payload []byte, receivedAt time.Time) (*Plan, error) {
 		} `json:"entities"`
 	}
 	if err := json.Unmarshal(payload, &msg); err != nil {
-		return nil, fmt.Errorf("plan payload unreadable: %w", err)
+		return nil, reject(GrundUnlesbar, fmt.Errorf("plan payload unreadable: %w", err))
 	}
 	if msg.SchemaVersion != SchemaVersion {
-		return nil, fmt.Errorf("unsupported plan schema_version %q", msg.SchemaVersion)
+		return nil, reject(GrundSchemaVersionUnbekannt, fmt.Errorf("unsupported plan schema_version %q", msg.SchemaVersion))
 	}
 	if msg.SlotMinutes < 1 {
-		return nil, fmt.Errorf("slot_minutes %d invalid", msg.SlotMinutes)
+		return nil, reject(GrundSlotMinutesUngueltig, fmt.Errorf("slot_minutes %d invalid", msg.SlotMinutes))
 	}
 	if len(msg.Entities) == 0 {
-		return nil, errors.New("plan carries no entities")
+		return nil, reject(GrundKeineEntitaeten, errors.New("plan carries no entities"))
 	}
 	p := &Plan{
 		PlanID:      msg.PlanID,
@@ -169,7 +220,7 @@ func Parse(payload []byte, receivedAt time.Time) (*Plan, error) {
 		}
 	}
 	if len(p.Entities) == 0 {
-		return nil, errors.New("plan carries no usable entity slots")
+		return nil, reject(GrundKeineEntitaeten, errors.New("plan carries no usable entity slots"))
 	}
 	return p, nil
 }

@@ -10,6 +10,7 @@
 import { liste } from './liste';
 import { useState, type ChangeEvent, type ReactNode } from 'react';
 import type { RuleEvents } from '../api';
+import { Recht } from '../components/Recht';
 import { ereignisZeile } from '../regeln/verlauf';
 import { Blatt } from './Blatt';
 import type { BlattKontext } from './Blaetter';
@@ -84,41 +85,41 @@ export function RegelnReiter(p: RegelnReiterProps) {
   log.sort((a, b) => b.t - a.t);
   return (
     <>
-      <button
+      <Recht aktion="betriebsweise.aendern"><button
         type="button"
         className="btn voll"
         style={{ width: '100%', minHeight: 52, fontSize: 16 }}
         disabled={!p.ziele.length}
-        onClick={() => p.oeffne({ art: 'regel' })}
+        onClick={(e) => { e.currentTarget.focus(); p.oeffne({ art: 'regel' }); }}
       >
         <Ic n="plus" s={20} />
         Neue Regel
-      </button>
+      </button></Recht>
       {!p.ziele.length && (
         <p className="leise voll">Noch gibt es kein Gerät, das eine Regel schalten kann. Schaltbare Geräte verbinden Sie in der Anlage.</p>
       )}
       {vorlagen.length > 0 && (
         <section aria-label="Vorlagen" className="voll">
           <div className="grp-h"><h3>Vorlagen</h3><span>antippen und anpassen</span></div>
-          <div className="vorl">
+          <Recht aktion="betriebsweise.aendern"><div className="vorl">
             {vorlagen.map((v) => {
               const g = vorlagenZiel(v, p.ziele);
               const [bg, fg] = FARBE[v.farbe];
               return (
-                <button type="button" className="vk" key={v.id} onClick={() => p.oeffne({ art: 'regel', vorlage: v.id })}>
+                <button type="button" className="vk" key={v.id} onClick={(e) => { e.currentTarget.focus(); p.oeffne({ art: 'regel', vorlage: v.id }); }}>
                   <span className="ico" style={{ background: bg, color: fg }}><Ic n={v.icon} s={19} /></span>
                   <b>{v.titel}</b>
                   <small>{g ? v.satz.replace(/: .*$/, `: ${g.name} einschalten`) : v.satz}</small>
                 </button>
               );
             })}
-          </div>
+          </div></Recht>
         </section>
       )}
       {bild.geraete.some(szenenfaehig) && (
         <section aria-label="Szenen" className="voll">
           <div className="grp-h"><h3>Szenen</h3><span>ein Tipp, mehrere Geräte</span></div>
-          <div className="szenen">
+          <Recht aktion="betriebsweise.aendern"><div className="szenen">
             {SZENEN.map((sz) => {
               const an = bild.szene?.def.id === sz.id;
               return (
@@ -128,7 +129,11 @@ export function RegelnReiter(p: RegelnReiterProps) {
                   key={sz.id}
                   aria-pressed={an}
                   disabled={p.busy === 'szene'}
-                  onClick={() => (an ? p.onSzeneBeenden() : p.oeffne({ art: 'szene', id: sz.id }))}
+                  onClick={(e) => {
+                    if (an) { p.onSzeneBeenden(); return; }
+                    e.currentTarget.focus();
+                    p.oeffne({ art: 'szene', id: sz.id });
+                  }}
                 >
                   <Ic n={sz.icon} s={20} />
                   <b>{sz.name}</b>
@@ -136,7 +141,7 @@ export function RegelnReiter(p: RegelnReiterProps) {
                 </button>
               );
             })}
-          </div>
+          </div></Recht>
         </section>
       )}
       <section aria-label="Ihre Regeln" style={{ display: 'grid', gap: 8 }} className="links">
@@ -175,20 +180,26 @@ function RegelKarteView({ k, bild, busy, oeffne, onSchalter }: {
   const jetzt = heute ? heute[r.jetzt] : null;
   const kommend = heute ? spannen(heute.slice(r.jetzt), r.jetzt) : [];
   const vorbei = heute ? spannen(heute.slice(0, r.jetzt), 0) : [];
+  // Angehalten (UEMS SZ-2 A): eine eingeschaltete Regel wirkt nicht, bis die Steuerung fortgesetzt ist.
+  const ruht = k.an && bild.funktion.angehalten;
   let pill: ReactNode;
   if (!k.an) pill = <span className="pill off"><i />aus</span>;
+  else if (ruht) pill = <span className="pill lock"><i />wirkt nicht</span>;
   else if (jetzt) pill = <span className="pill on"><i />greift gerade</span>;
   else pill = <span className="pill wait"><i />wartet</span>;
   const info: string[] = [];
-  if (k.an && vorbei.length) info.push(`heute schon ${spannenText(vorbei, 2)}`);
-  if (k.an && kommend.length && !jetzt) info.push(`als Nächstes ${uhrTag(kommend[0][0])}`);
-  if (k.an && heute && !kommend.length) info.push('greift heute nicht mehr');
+  if (ruht) info.push('bis Sie fortsetzen');
+  else {
+    if (k.an && vorbei.length) info.push(`heute schon ${spannenText(vorbei, 2)}`);
+    if (k.an && kommend.length && !jetzt) info.push(`als Nächstes ${uhrTag(kommend[0][0])}`);
+    if (k.an && heute && !kommend.length) info.push('greift heute nicht mehr');
+  }
   return (
-    <article className={`rule${k.an ? '' : ' aus'}`} id={`regel-${k.flowId}`}>
-      <button type="button" className="r-satz" onClick={() => oeffne({ art: 'regel', flowId: k.flowId })}>
+    <article className={`rule${k.an ? '' : ' aus'}${ruht ? ' matt' : ''}`} id={`regel-${k.flowId}`}>
+      <button type="button" className="r-satz" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'regel', flowId: k.flowId }); }}>
         {k.satz ? <><span className="h">{k.satz.wenn}</span>: <span className="d">{k.satz.dann}</span>.</> : <>{k.name}</>}
       </button>
-      <button
+      <Recht aktion="betriebsweise.aendern"><button
         type="button"
         className="sw"
         role="switch"
@@ -196,14 +207,14 @@ function RegelKarteView({ k, bild, busy, oeffne, onSchalter }: {
         aria-label={`Regel ${k.name} ${k.an ? 'ausschalten' : 'einschalten'}`}
         disabled={busy}
         onClick={() => onSchalter(k)}
-      />
+      /></Recht>
       <div className="r-meta">
         {pill}
         <span>{k.name}</span>
         {!k.satz && <span>· {k.freiText}</span>}
         {info.length > 0 && <span>· {info.join(' · ')}</span>}
       </div>
-      {heute && <Streifen bits={heute} an={k.an} jetzt={r.jetzt} />}
+      {heute && <Streifen bits={heute} an={k.an && !ruht} jetzt={r.jetzt} />}
     </article>
   );
 }
@@ -278,10 +289,10 @@ export function RegelBlatt(p: RegelBlattProps) {
         fuss={
           <>
             <button type="button" className="btn sek" onClick={() => setSchritt('bau')}>Zurück</button>
-            <button type="button" className="btn" disabled={busy || !d.name.trim()} onClick={async () => { if (await p.onAktivieren(d)) k.zu(); }}>
+            <Recht aktion="betriebsweise.aendern"><button type="button" className="btn" disabled={busy || !d.name.trim()} onClick={async () => { if (await p.onAktivieren(d)) k.zu(); }}>
               <Ic n="check" s={18} />
               {busy ? 'Aktiviere …' : 'Regel aktivieren'}
-            </button>
+            </button></Recht>
           </>
         }
       >
@@ -480,7 +491,7 @@ export function RegelBlatt(p: RegelBlattProps) {
       fuss={
         <>
           {p.bearbeiten && d.flowId ? (
-            <button
+            <Recht aktion="betriebsweise.aendern"><button
               type="button"
               className="btn sek"
               style={loeschen ? { color: 'var(--c-destructive)', boxShadow: 'inset 0 0 0 1.5px var(--c-destructive)' } : undefined}
@@ -491,7 +502,7 @@ export function RegelBlatt(p: RegelBlattProps) {
               }}
             >
               {loeschen ? 'Endgültig löschen' : 'Löschen'}
-            </button>
+            </button></Recht>
           ) : (
             <button type="button" className="btn sek" onClick={k.zu}>Abbrechen</button>
           )}

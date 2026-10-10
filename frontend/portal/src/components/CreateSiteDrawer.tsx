@@ -1,3 +1,4 @@
+import { Recht } from './Recht';
 import { useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -116,9 +117,9 @@ export function CreateSiteDrawer({
           <Button variant="ghost" onClick={onClose}>
             Abbrechen
           </Button>
-          <Button variant="primary" onClick={submit} disabled={busy || !name.trim()}>
+          <Recht aktion="anlage.verwalten"><Button variant="primary" onClick={submit} disabled={busy || !name.trim()}>
             {busy ? 'Wird angelegt…' : 'Anlage anlegen'}
-          </Button>
+          </Button></Recht>
         </>
       }
     >

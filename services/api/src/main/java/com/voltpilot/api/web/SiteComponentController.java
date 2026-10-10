@@ -7,7 +7,8 @@ import com.voltpilot.api.components.UserDefinedBatteryDefinition;
 import com.voltpilot.api.components.UserDefinedBatteryService;
 import com.voltpilot.api.probe.ProbeResult;
 import com.voltpilot.api.probe.ProbeService;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
+import com.voltpilot.api.uems.BelegeImWeg;
 import com.voltpilot.api.web.dto.ComponentDefinitionDto;
 import com.voltpilot.api.web.dto.ComponentMatchDto;
 import com.voltpilot.api.web.dto.ComponentTemplateDto;
@@ -22,6 +23,8 @@ import com.voltpilot.api.web.dto.SelfBuildReadResult;
 import com.voltpilot.api.web.dto.SiteComponentTemplateDto;
 import com.voltpilot.api.web.dto.SiteComponentTemplateRequest;
 import com.voltpilot.api.web.dto.SiteComponentsDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -70,20 +73,20 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/v1/sites/{siteId}")
 public class SiteComponentController {
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final ComponentService components;
     private final ComponentConnectionReceipts receipts;
     private final ProbeService probes;
     private final SelfBuildComponentService selfBuild;
     private final UserDefinedBatteryService batteries;
 
-    public SiteComponentController(SiteRepository sites, ComponentService components,
+    public SiteComponentController(Geltungsbereich geltungsbereich, ComponentService components,
             ComponentConnectionReceipts receipts,
             ProbeService probes, SelfBuildComponentService selfBuild,
             UserDefinedBatteryService batteries) {
         this.selfBuild = selfBuild;
         this.batteries = batteries;
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.components = components;
         this.receipts = receipts;
         this.probes = probes;
@@ -97,6 +100,7 @@ public class SiteComponentController {
 
     /** Anlegen. Ohne bestandenen Verbindungstest: 422 mit dem Grund. */
     @PostMapping("/components")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public SiteComponentsDto create(@PathVariable UUID siteId,
             @Valid @RequestBody SaveComponentRequest request, @AuthenticationPrincipal Jwt jwt) {
         return components.create(siteId, request, subject(jwt));
@@ -104,6 +108,7 @@ public class SiteComponentController {
 
     /** Verbindung ändern - eine NEUE Fassung, die alte bleibt abrufbar. */
     @PutMapping("/components/{entityId}")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public SiteComponentsDto update(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @Valid @RequestBody SaveComponentRequest request, @AuthenticationPrincipal Jwt jwt) {
         return components.update(siteId, entityId, request, subject(jwt));
@@ -131,6 +136,7 @@ public class SiteComponentController {
 
     /** Zurück auf eine frühere Fassung - ein Klick, kein Support-Fall. */
     @PostMapping("/components/{entityId}/versions/{version}/rollback")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public SiteComponentsDto rollback(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @PathVariable int version, @Valid @RequestBody RollbackComponentRequest request,
             @AuthenticationPrincipal Jwt jwt) {
@@ -149,6 +155,7 @@ public class SiteComponentController {
      * {@code errorCode}), kein Fehler.
      */
     @PostMapping("/components/custom/read")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public SelfBuildReadResult readCustom(@PathVariable UUID siteId,
             @Valid @RequestBody SelfBuildReadRequest request, @AuthenticationPrincipal Jwt jwt) {
         return selfBuild.read(siteId, request.deviceId(), request.connection(), request.channel(),
@@ -157,6 +164,7 @@ public class SiteComponentController {
 
     /** Ein selbst definiertes Modbus-Gerät anlegen. */
     @PostMapping("/components/custom")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public SiteComponentsDto createCustom(@PathVariable UUID siteId,
             @Valid @RequestBody SaveSelfBuildRequest request, @AuthenticationPrincipal Jwt jwt) {
         return selfBuild.create(siteId, request, subject(jwt));
@@ -164,6 +172,7 @@ public class SiteComponentController {
 
     /** Ein selbst definiertes Gerät ändern - eine NEUE Fassung. */
     @PutMapping("/components/custom/{entityId}")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public SiteComponentsDto updateCustom(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @Valid @RequestBody SaveSelfBuildRequest request, @AuthenticationPrincipal Jwt jwt) {
         return selfBuild.update(siteId, entityId, request, subject(jwt));
@@ -178,6 +187,7 @@ public class SiteComponentController {
      * dieses Modell vermeidet.
      */
     @DeleteMapping("/components/custom/{entityId}")
+    @Recht(value = "komponente.loeschen", ziel = RechtZiel.ANLAGE)
     public SiteComponentsDto deleteCustom(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @AuthenticationPrincipal Jwt jwt) {
         return selfBuild.delete(siteId, entityId, subject(jwt));
@@ -201,6 +211,7 @@ public class SiteComponentController {
      * Pflicht ohne Tür wäre eine Sackgasse. Die LAN-Regel gilt unverändert.
      */
     @PostMapping("/components/battery")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public SiteComponentsDto createBattery(@PathVariable UUID siteId,
             @Valid @RequestBody SaveUserDefinedBatteryRequest request,
             @AuthenticationPrincipal Jwt jwt) {
@@ -224,18 +235,20 @@ public class SiteComponentController {
      * ein Urteil über die Zuordnung, und die Fläche sagt das genau so.
      */
     @PostMapping("/components/battery/preview")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public ProbeResult previewBattery(@PathVariable UUID siteId,
             @Valid @RequestBody SaveUserDefinedBatteryRequest request,
             @RequestParam(name = "entityId", required = false) UUID entityId,
             @AuthenticationPrincipal Jwt jwt) {
         Map<String, Object> connection = batteries.previewConnection(siteId, request, entityId);
-        return probes.testConnection(siteId, null, "batterie",
+        return probes.testConnection(siteId, null, entityId, "batterie",
                 UserDefinedBatteryDefinition.ENTITY_TYPE, null, null, null, connection,
                 subject(jwt));
     }
 
     /** Eine selbst angebundene Batterie ändern - eine NEUE Fassung. */
     @PutMapping("/components/battery/{entityId}")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public SiteComponentsDto updateBattery(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @Valid @RequestBody SaveUserDefinedBatteryRequest request,
             @AuthenticationPrincipal Jwt jwt) {
@@ -244,6 +257,7 @@ public class SiteComponentController {
 
     /** Eine selbst angebundene Batterie entfernen - samt ihrem Lese-Flow. */
     @DeleteMapping("/components/battery/{entityId}")
+    @Recht(value = "komponente.loeschen", ziel = RechtZiel.ANLAGE)
     public SiteComponentsDto deleteBattery(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @AuthenticationPrincipal Jwt jwt) {
         return batteries.delete(siteId, entityId, subject(jwt));
@@ -257,6 +271,7 @@ public class SiteComponentController {
      * Freigabe - die entsteht erst mit der Bestaetigung des Kunden.
      */
     @PostMapping("/components/custom/{entityId}/switch-test")
+    @Recht(value = "schalttest.durchfuehren", ziel = RechtZiel.ANLAGE)
     public SelfBuildComponentService.SwitchTestResult switchTest(@PathVariable UUID siteId,
             @PathVariable UUID entityId,
             @RequestBody SelfBuildComponentService.SwitchTestRequest request,
@@ -266,6 +281,7 @@ public class SiteComponentController {
 
     /** Bricht den laufenden Test ab und schreibt den Sicherheitswert SOFORT. */
     @PostMapping("/components/custom/{entityId}/switch-test/cancel")
+    @Recht(value = "schalttest.durchfuehren", ziel = RechtZiel.ANLAGE)
     public SelfBuildComponentService.SwitchTestResult switchCancel(@PathVariable UUID siteId,
             @PathVariable UUID entityId,
             @RequestBody SelfBuildComponentService.SwitchTestRequest request,
@@ -275,6 +291,7 @@ public class SiteComponentController {
 
     /** Die Freigabe - nur mit bestandenem Test UND bestaetigter Wirkung. */
     @PostMapping("/components/custom/{entityId}/switch-release")
+    @Recht(value = "freigabe.erteilen", ziel = RechtZiel.ANLAGE)
     public SiteComponentsDto switchRelease(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @RequestBody SelfBuildComponentService.SwitchReleaseRequest request,
             @AuthenticationPrincipal Jwt jwt) {
@@ -283,6 +300,7 @@ public class SiteComponentController {
 
     /** Nimmt die Freigabe zurueck - das Geraet ist danach wieder ein Sensor. */
     @DeleteMapping("/components/custom/{entityId}/switch-release")
+    @Recht(value = "freigabe.erteilen", ziel = RechtZiel.ANLAGE)
     public SiteComponentsDto switchRevoke(@PathVariable UUID siteId, @PathVariable UUID entityId,
             @AuthenticationPrincipal Jwt jwt) {
         return selfBuild.switchRevoke(siteId, entityId, subject(jwt));
@@ -296,6 +314,7 @@ public class SiteComponentController {
 
     /** „Duplizieren": aus einem Gerät wird eine private Vorlage dieser Anlage. */
     @PostMapping("/components/custom/{entityId}/duplicate")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public List<SiteComponentTemplateDto> duplicate(@PathVariable UUID siteId,
             @PathVariable UUID entityId,
             @Valid @RequestBody(required = false) SiteComponentTemplateRequest body,
@@ -312,6 +331,7 @@ public class SiteComponentController {
      * leere Notiz LÖSCHT sie - die Semantik des Komponenten-Alias.
      */
     @PutMapping("/component-templates/{templateRef}")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public List<SiteComponentTemplateDto> renameTemplate(@PathVariable UUID siteId,
             @PathVariable String templateRef,
             @Valid @RequestBody SiteComponentTemplateRequest body) {
@@ -320,6 +340,7 @@ public class SiteComponentController {
 
     /** Eine private Vorlage entfernen. Geräte, die daraus entstanden, bleiben. */
     @DeleteMapping("/component-templates/{templateRef}")
+    @Recht(value = "komponente.loeschen", ziel = RechtZiel.ANLAGE)
     public List<SiteComponentTemplateDto> deleteTemplate(@PathVariable UUID siteId,
             @PathVariable String templateRef) {
         return selfBuild.deleteTemplate(siteId, templateRef);
@@ -340,6 +361,7 @@ public class SiteComponentController {
      * Register-Probe.
      */
     @PostMapping("/component-test")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public ProbeResult test(@PathVariable UUID siteId,
             @Valid @RequestBody ComponentTestRequest request, @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);
@@ -356,7 +378,7 @@ public class SiteComponentController {
         // dieselbe Auskunft bekommen wie beim Klick auf Speichern.
         components.requireUsableVoltageBounds(connection);
 
-        ProbeResult result = probes.testConnection(siteId, request.deviceId(), "verbindung",
+        ProbeResult result = probes.testConnection(siteId, request.deviceId(), request.entityId(), "verbindung",
                 template.brand(), template.model(), template.family(), request.role(), connection,
                 subject(jwt));
         if (passed(result)) {
@@ -423,6 +445,7 @@ public class SiteComponentController {
      * neue Komponente" ist ein völlig normaler Ausgang.
      */
     @PostMapping("/component-match")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     public ResponseEntity<ComponentMatchDto> match(@PathVariable UUID siteId,
             @Valid @RequestBody ComponentTestRequest request) {
         ComponentMatchDto hit = components.match(siteId, request.role(), request.templateRef(),
@@ -445,9 +468,7 @@ public class SiteComponentController {
     }
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 
     private static String subject(Jwt jwt) {
@@ -455,6 +476,15 @@ public class SiteComponentController {
     }
 
     /** Deutsche Gründe erreichen das Portal als {"message": ...} (MastrController-Muster). */
+    /**
+     * Ein selbst definiertes Gerät oder eine eigene Batterie ist Beleg freigegebener Berichtsstände
+     * (UEMS AP-12 E13 S2): 409 {@code berichts_belege} mit der Liste - nichts geschrieben.
+     */
+    @ExceptionHandler(BelegeImWeg.class)
+    public ResponseEntity<Map<String, Object>> belegeImWeg(BelegeImWeg e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(e.koerper());
+    }
+
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<Map<String, Object>> onStatusException(ResponseStatusException e) {
         return ResponseEntity.status(e.getStatusCode())

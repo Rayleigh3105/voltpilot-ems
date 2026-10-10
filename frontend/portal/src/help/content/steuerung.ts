@@ -4,7 +4,7 @@ export const controlArticles: HelpArticle[] = [
   {
     id: 'geraete-steuern', category: 'steuern', title: 'Geräte steuern: Aus, Smart, Ein',
     summary: 'Was gerade läuft und warum, wer Sonnenstrom zuerst bekommt und wie Sie ein Gerät mit Ende ein- oder ausschalten.',
-    keywords: ['Steuerung', 'Geräte', 'Smart', 'Eingriff', 'Reihenfolge', 'Sonnenstrom', 'Tagesbild', 'Szene', 'Urlaub', 'nur messen', 'Heizstab', 'Wärmepumpe', 'Pool'],
+    keywords: ['Steuerung', 'Geräte', 'Smart', 'Eingriff', 'Reihenfolge', 'Sonnenstrom', 'Tagesbild', 'Szene', 'Urlaub', 'nur messen', 'anhalten', 'fortsetzen', 'Heizstab', 'Wärmepumpe', 'Pool'],
     sections: [
       { id: 'jetzt', title: 'Lesen, was jetzt läuft', paragraphs: [
         "Unter Steuerung → Geräte steht oben in einem Satz, was gerade läuft und warum, darunter, wohin der Sonnenstrom geht. Das Tagesbild zeigt bis jetzt Gemessenes, danach Plan und Erwartung. Ein Gerät ohne Leistungsmessung nennt seinen Zustand, aber keine erfundene Leistung.",
@@ -17,6 +17,10 @@ export const controlArticles: HelpArticle[] = [
       ] },
       { id: 'neu', title: 'Ein neu verbundenes Gerät', paragraphs: [
         "Geräte legen Sie in der Anlage an, nicht in der Steuerung. Hat ein Gerät noch keinen Auftrag, fragt die Steuerung einmal: Vorschlag übernehmen, anders einstellen oder nur messen. „Nur messen“ gilt, bis Sie unter „noch nicht gesteuert“ auf „Steuern“ tippen.",
+      ] },
+      { id: 'anhalten', title: 'Steuerung anhalten und fortsetzen', paragraphs: [
+        "Oben rechts steht, was gilt: „Automatik an“, „Pausiert bis …“ oder „Angehalten seit …“. Ein Tipp darauf öffnet „Steuerung anhalten“: für 30 Minuten bis 4 Stunden oder „Bis ich fortsetze“, wofür ein eigenes Recht nötig ist. Erst „Anhalten“ hält an. Solange angehalten ist, schaltet VoltPilot nichts; Regeln und das Betriebsmodell des Speichers wirken nicht, Schutzgrenzen gelten weiter. „Fortsetzen“ steht dann im Band über allen Reitern.",
+        "Nimmt eine Anlage nicht an „Steuern & Optimieren“ teil, zeigt Steuerung → Geräte nur, was gemessen wird, und die Geräte als Liste. Ein Tipp auf ein Gerät zeigt seine Messwerte und seine Steuerart.",
       ] },
       { id: 'szenen', title: 'Szenen: ein Tipp, mehrere Geräte', paragraphs: [
         "Unter Regeln pausieren Szenen wie „Urlaub“ mehrere Geräte zugleich. Im Blatt wählen Sie die Geräte; die Szene gilt, bis Sie sie beenden, und setzt dann genau diese Geräte fort. Pausiert heißt: VoltPilot schaltet das Gerät nicht, es gilt sein sicherer Zustand. Eine Szene stellt keine Temperatur und keine Ladeart um.",

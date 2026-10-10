@@ -20,6 +20,102 @@ import { isPlatformAdmin } from './auth';
 import { channelLabel } from './channels';
 import { deviceName } from './entityLabel';
 import { defaultRole } from './topology';
+import { createContext, useContext, useSyncExternalStore } from 'react';
+import type { Selbstauskunft } from './api';
+import { teilansicht, TEXTE } from './rechteTexte';
+
+/** AP-03 IP-12: Kundenrechte kommen ausschließlich aus der Selbstauskunft.
+ * Die Route wendet den Java-Zwilling der Matrix an und liefert die wirksamen
+ * Rechte je Standort. Sie liefert keine rohen Zuweisungen; das Portal erfindet
+ * deshalb weder Gültigkeitszeiten noch Rechte aus Realm-Rollen.
+ */
+let selbst: Selbstauskunft | null = null;
+const zuhoerer = new Set<() => void>();
+export function setSelbstauskunft(neu: Selbstauskunft | null): void {
+  selbst = neu;
+  zuhoerer.forEach((f) => f());
+}
+export function selbstauskunft(): Selbstauskunft | null { return selbst; }
+const abonnieren = (f: () => void) => { zuhoerer.add(f); return () => { zuhoerer.delete(f); }; };
+export const RechteStandort = createContext<string | null>(null);
+
+export function sichtbareStandorte(s = selbst): Selbstauskunft['standorte'] {
+  return s?.standorte ?? [];
+}
+
+/** null = Unternehmensebene, eine Kennung = exakt dieser sichtbare Standort. */
+export function darf(aktion: string, standort: string | null = null, s = selbst): boolean {
+  if (!s || s.zustand !== 'aktiv') return false;
+  return darfInListen({ unternehmen: s.unternehmen_rechte, standorte: new Map(s.standorte.map((x) => [x.id, x.rechte])) }, aktion, standort);
+}
+
+
+/** Gemeinsamer Leser der API-Aktionslisten, auch für bestehende reine Berichtsableitungen. */
+export function darfInListen(rechte: { unternehmen: readonly string[]; standorte: ReadonlyMap<string, readonly string[]> } | null,
+  aktion: string, standort: string | null): boolean {
+  if (!rechte) return false;
+  return (standort === null ? rechte.unternehmen : rechte.standorte.get(standort))?.includes(aktion) ?? false;
+}
+
+export function grundUndWeg(s = selbst): string {
+  const weg = wegZuKundenadministratoren(s);
+  return TEXTE.recht_fehlt + (weg ? ` ${weg}` : '');
+}
+
+/** „Ihr Kundenadministrator: Jonas Wendlinger.“ - wer es kann; leer ohne bekannte Person. */
+export function wegZuKundenadministratoren(s = selbst): string {
+  const personen = s?.kundenadministratoren ?? [];
+  if (!personen.length) return '';
+  const weg = personen.length === 1 ? TEXTE.weg_ein_kundenadministrator : TEXTE.weg_kundenadministratoren;
+  return weg.replace('{namen}', personen.map((p) => p.name).join(', '));
+}
+
+/**
+ * Konzept Messen m1 (§8.2 Punkt 9, Rechte mit Grund und Person): wer die Aktion darf, aber nicht rückwirkend, liest,
+ * was nicht geht und wer es kann - „Rückwirkend eintragen dürfen Kundenadministratoren und Energiemanager. Ab heute
+ * können Sie es selbst eintragen. Ihr Kundenadministrator: Jonas Wendlinger.“
+ */
+export function rueckwirkendGrund(s = selbst): string {
+  const weg = wegZuKundenadministratoren(s);
+  return TEXTE.recht_rueckwirkend + (weg ? ` ${weg}` : '');
+}
+
+export function teilansichtKopf(s = selbst): string | null {
+  if (!s?.teilansicht) return null;
+  // Wortlaut aus dem TS-Zwilling; nur Namen und Anzahl aus /me, keine Summen.
+  return teilansicht(s.standorte.map((x) => x.name), s.teilansicht.gesamt, s.unternehmensweit).exportKopfzeile;
+}
+
+export function ohneStandort(s = selbst): boolean {
+  return s !== null && !s.unternehmensweit && s.standorte.length === 0;
+}
+
+/**
+ * UEMS AP-20 IP-17: den Gesamtabzug lädt nur der Kundenadministrator mit eigenem Konto — der Zwilling von
+ * `KundenbereichEndeFilter.kundenadministrator` (Java); die API entscheidet trotzdem selbst (403).
+ */
+export function gesamtabzugLaden(s = selbst): boolean {
+  return !!s && s.zustand === 'aktiv' && s.konto === 'benutzer' && s.zugang === 'konto' && s.rollen.includes('kundenadministrator');
+}
+
+/** Die Benutzerliste hat keine eigene Aktionskennung (AP-03 E2): Energiemanager lesen mit. */
+export function benutzerLesen(s = selbst): boolean {
+  return !!s && s.zustand === 'aktiv' && s.konto === 'benutzer' && s.zugang === 'konto'
+    && (darf('benutzer.verwalten', null, s) || s.rollen.includes('energiemanager'));
+}
+
+export function useRollen() {
+  const s = useSyncExternalStore(abonnieren, selbstauskunft, selbstauskunft);
+  const standort = useContext(RechteStandort);
+  return {
+    selbst: s,
+    benutzerLesen: benutzerLesen(s),
+    standort,
+    darf: (aktion: string, ziel: string | null = standort) => darf(aktion, ziel, s),
+    grund: grundUndWeg(s),
+    rueckwirkendGrund: rueckwirkendGrund(s),
+  };
+}
 
 /**
  * Portal v3 · M7 — THE single decision for whether the technical/installer

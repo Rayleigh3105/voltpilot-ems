@@ -77,7 +77,7 @@ test('Box-Art: Chip, Filter und keine Docker-Zuweisung für Edge Light', async (
 });
 
 test('Versionsübersicht bleibt bei 320, 768, 1024 und 1440 px innerhalb des Bildschirms', async ({ page }, info) => {
-  test.skip(info.project.name !== 'desktop-chromium', 'Gezielte zusätzliche Viewport-Prüfung');
+  test.skip(info.project.name !== 'desktop-chromium' && info.project.use.browserName !== 'webkit', 'Gezielte zusätzliche Viewport-Prüfung');
   await page.goto('/e2e/box-updates.html');
   await expect(page.getByTestId('box-versions')).toBeVisible();
   for (const width of [320, 768, 1024, 1440]) {

@@ -25,6 +25,8 @@ import type { AnlagenSub, PageId, Route, TransitionKind } from './nav';
 interface ViewTransitionLike {
   finished: Promise<void>;
   updateCallbackDone: Promise<void>;
+  /** Lehnt ab („Transition was skipped“), wenn ein Nachfolger den Übergang überspringt, bevor er bereit ist. */
+  ready?: Promise<void>;
   skipTransition: () => void;
 }
 
@@ -81,6 +83,10 @@ export function runPageTransition(kind: TransitionKind, apply: () => void): void
   // Ein Fehler im Rückruf lehnt diese Zusage ab; ohne Fänger wäre es eine
   // unbehandelte Ablehnung in der Konsole des Kunden.
   transition.updateCallbackDone.catch(() => {});
+  // Überspringt ein schneller zweiter Wechsel diesen Übergang, bevor er bereit
+  // ist, lehnt `ready` mit „Transition was skipped“ ab - gewollt (der Neue
+  // gewinnt), also kein Fehler in der Konsole.
+  transition.ready?.catch(() => {});
 }
 
 /* -------------------------------------------------------------------------
@@ -120,6 +126,7 @@ const SUB_LOADER: Partial<Record<AnlagenSub, Loader>> = {
   wetter: SUB_CHUNK.daten,
   marktpreise: SUB_CHUNK.daten,
   messwerte: SUB_CHUNK.messwerte,
+  energiebilanz: SUB_CHUNK.energiebilanz,
   erloese: SUB_CHUNK.erloese,
   einzelwerte: SUB_CHUNK.einzelwerte,
   modell: SUB_CHUNK.modell,
@@ -144,8 +151,19 @@ const PAGE_LOADER: Partial<Record<PageId, Loader>> = {
   hilfe: PAGE_CHUNK.hilfe,
   uebersicht: PAGE_CHUNK.uebersicht,
   portfolio: PAGE_CHUNK.portfolio,
+  'portfolio-standorte': PAGE_CHUNK['portfolio-standorte'],
+  'portfolio-messstellen': PAGE_CHUNK['portfolio-messstellen'],
+  'portfolio-bezugsgroessen': PAGE_CHUNK['portfolio-bezugsgroessen'],
+  'portfolio-kennzahlen': PAGE_CHUNK['portfolio-kennzahlen'],
+  'portfolio-berichte': PAGE_CHUNK['portfolio-berichte'],
+  'portfolio-bewertung': PAGE_CHUNK['portfolio-bewertung'],
+  'portfolio-verbrauch': PAGE_CHUNK['portfolio-verbrauch'],
+  'portfolio-verbesserung': PAGE_CHUNK['portfolio-verbesserung'],
+  'portfolio-energiemanagement': PAGE_CHUNK['portfolio-energiemanagement'],
   'portfolio-messwerte': PAGE_CHUNK['portfolio-messwerte'],
   'portfolio-erloese': PAGE_CHUNK['portfolio-erloese'],
+  'kunden-benutzer': PAGE_CHUNK['kunden-benutzer'],
+  standort: PAGE_CHUNK.standort,
   mandanten: PAGE_CHUNK.mandanten,
   'plattform-uebersicht': PAGE_CHUNK['plattform-uebersicht'],
   'geraete-registry': PAGE_CHUNK['geraete-registry'],

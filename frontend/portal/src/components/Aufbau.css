@@ -550,6 +550,13 @@
   min-height: 38px;
   color: var(--vp-text-gray);
 }
+/* Eine Datenquelle der Box (UEMS AP-06): ein Weg, kein Gerät — ruhiger als eine Gerätezeile. */
+.vp-auf-t-zeile.is-quelle {
+  min-height: 42px;
+}
+.vp-auf-t-zeile.is-quelle .vp-auf-t-titel {
+  font-weight: var(--vp-weight-medium, 500);
+}
 .vp-auf-t-zeile.is-geraet:not(.is-lesend) {
   cursor: pointer;
 }
@@ -1179,4 +1186,22 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--vp-space-2);
+}
+
+/* Der Rückweg in den Assistenten „Messen & Auswerten“ (er führt für Box und Geräte in den Aufbau). */
+.vp-auf-einrichtung {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--vp-space-2) var(--vp-space-3);
+  margin: 0 0 var(--vp-space-3);
+  padding: var(--vp-space-3) var(--vp-space-4);
+  border: 1px solid color-mix(in srgb, var(--vp-primary) 45%, var(--vp-border));
+  border-radius: var(--vp-radius-md);
+  background: color-mix(in srgb, var(--vp-paleblue-start) 80%, var(--vp-surface));
+  color: var(--vp-text);
+}
+.vp-auf-einrichtung > span {
+  flex: 1 1 16rem;
+  min-width: 0;
 }

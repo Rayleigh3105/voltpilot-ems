@@ -23,6 +23,7 @@ else stays measurement material for the daily evaluation.
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 
 from voltpilot_forecast.domain import (
@@ -31,6 +32,9 @@ from voltpilot_forecast.domain import (
     ForecastSeries,
     ensure_utc,
 )
+from voltpilot_forecast.kundenbereich import lebenden_bereich_sperren
+
+logger = logging.getLogger(__name__)
 
 
 class ForecastRepository(ABC):
@@ -118,6 +122,14 @@ class TimescaleForecastRepository(ForecastRepository):
         if not rows:
             return
         with self._conn.cursor() as cur:
+            if not lebenden_bereich_sperren(cur, series.tenant_id):
+                logger.info(
+                    "forecast.bereich_ausgelassen site=%s model=%s",
+                    series.site_id,
+                    series.model,
+                )
+                self._conn.commit()
+                return
             cur.executemany(
                 """
                 INSERT INTO forecast (

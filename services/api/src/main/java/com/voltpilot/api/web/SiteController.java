@@ -1,5 +1,8 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.web.dto.SichtbareListe;
+import com.voltpilot.api.zugriff.TeilansichtDienst;
+
 import com.voltpilot.api.forecast.ForecastModelService;
 import com.voltpilot.api.forecast.ForecastModels;
 import com.voltpilot.api.history.HistoryRange;
@@ -19,6 +22,10 @@ import com.voltpilot.api.repo.TelemetryRepository;
 import com.voltpilot.api.repo.WeatherRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.AnlageStandortService;
+import com.voltpilot.api.uems.BelegeImWeg;
+import com.voltpilot.api.uems.BerichtsBelege;
+import com.voltpilot.api.uems.MessreihenBelege;
+import com.voltpilot.api.uems.NetzanschlussService;
 import com.voltpilot.api.uems.OrtAbgelehnt;
 import com.voltpilot.api.uems.ProtokollAkteur;
 import com.voltpilot.api.uems.StandortLesemodellService;
@@ -39,6 +46,9 @@ import com.voltpilot.api.web.dto.SiteSourceDto;
 import com.voltpilot.api.web.dto.TelemetryPointDto;
 import com.voltpilot.api.web.dto.UpdateSiteRequest;
 import com.voltpilot.api.web.dto.WeatherForecastDto;
+import com.voltpilot.api.zugriff.Geltungsbereich;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -69,15 +79,21 @@ import org.springframework.web.server.ResponseStatusException;
  * Sites and their telemetry for the caller's tenant. Results are transparently
  * scoped by Postgres Row-Level-Security via the {@code tenant_id} JWT claim, so
  * one tenant can never read another's sites or telemetry.
+ *
+ * <p>AP-03 IP-12: Der Umschlag nennt die sichtbaren Einträge und mit
+ * {@code teilansicht} den Umfang derselben Antwort. Der Standort-Zaun bleibt erhalten.
  */
 @RestController
 @RequestMapping("/api/v1/sites")
 public class SiteController {
 
+    private final TeilansichtDienst teilansicht;
+
     private static final int MAX_POINTS = 5000;
     private static final int MAX_PRICE_POINTS = 1000;
 
     private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final DeviceRepository devices;
     private final SeriesRepository series;
     private final TelemetryRepository telemetry;
@@ -94,6 +110,9 @@ public class SiteController {
     private final CockpitLayoutRepository cockpitLayouts;
     private final StandortLesemodellService standortLesemodell;
     private final AnlageStandortService anlageStandort;
+    private final MessreihenBelege belege;
+    private final NetzanschlussService netzanschluesse;
+    private final BerichtsBelege berichtsBelege;
 
     public SiteController(
             SiteRepository sites,
@@ -112,8 +131,14 @@ public class SiteController {
             ForecastModelService forecastModels,
             CockpitLayoutRepository cockpitLayouts,
             StandortLesemodellService standortLesemodell,
-            AnlageStandortService anlageStandort) {
+            AnlageStandortService anlageStandort,
+            MessreihenBelege belege,
+            NetzanschlussService netzanschluesse,
+            BerichtsBelege berichtsBelege,
+            Geltungsbereich geltungsbereich, TeilansichtDienst teilansicht) {
         this.sites = sites;
+        this.teilansicht = teilansicht;
+        this.geltungsbereich = geltungsbereich;
         this.devices = devices;
         this.series = series;
         this.telemetry = telemetry;
@@ -130,11 +155,14 @@ public class SiteController {
         this.cockpitLayouts = cockpitLayouts;
         this.standortLesemodell = standortLesemodell;
         this.anlageStandort = anlageStandort;
+        this.belege = belege;
+        this.netzanschluesse = netzanschluesse;
+        this.berichtsBelege = berichtsBelege;
     }
 
     @GetMapping
-    public List<SiteDto> listSites() {
-        return sites.findAll();
+    public SichtbareListe<SiteDto> listSites() {
+        return new SichtbareListe<>(sites.findAll(), teilansicht.jetzt());
     }
 
     /**
@@ -159,7 +187,7 @@ public class SiteController {
      * guarantees the row lands in that tenant, so a customer can only ever create a
      * site for themselves. This unblocks the device-claim flow: a fresh customer
      * makes a site here, then claims devices into it.
-     *
+ *
      * <p>Additively (Bestandsübernahme der Standorte, AP-02 IP-9) the new site
      * gets its Standort in the SAME transaction: the given {@code standortId}, or
      * the one Standort of the Kundenbereich when there is exactly one; none when
@@ -169,6 +197,7 @@ public class SiteController {
      */
     // Recht: `anlage.verwalten` (die Anlage anlegen); die Zuordnung dazu `anlage.zuordnen`.
     @PostMapping
+    @Recht(value = "anlage.verwalten", ziel = RechtZiel.UNTERNEHMEN)
     @Transactional
     public ResponseEntity<SiteDto> createSite(@Valid @RequestBody CreateSiteRequest request,
             Authentication auth) {
@@ -204,6 +233,7 @@ public class SiteController {
      * tenant switcher can ever move a site across tenants.
      */
     @PutMapping("/{siteId}")
+    @Recht(value = "anlage.verwalten", ziel = RechtZiel.ANLAGE)
     public SiteDto updateSite(@PathVariable UUID siteId,
             @Valid @RequestBody UpdateSiteRequest request) {
         SiteDto updated = sites.update(siteId, request.name().trim(),
@@ -224,9 +254,7 @@ public class SiteController {
      */
     @GetMapping("/{siteId}/deletion-preview")
     public SiteDeletionPreviewDto deletionPreview(@PathVariable UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         return series.previewForSite(siteId, devices.countForSite(siteId));
     }
 
@@ -237,22 +265,38 @@ public class SiteController {
      * schedule/weather/quality rows) is removed in the same transaction. All
      * through the RLS-scoped datasource: a foreign site is a 404 and the
      * cascade can never touch another tenant's rows.
-     *
+ *
      * <p>Its Standort assignment is NOT deleted (AP-02 W5, the Grabstein): it ends
      * today and stays as an ended interval with a "geloescht" log entry, in the
      * same transaction (V20260911290000 let the row outlive the site).
      */
+    /**
+     * Das Entfernen einer Anlage mit Belegen: 409 mit der Liste der Messstellen und der freigegebenen
+     * Berichtsstände, die sie zitieren - nichts geschrieben.
+     */
+    @ExceptionHandler(BelegeImWeg.class)
+    public ResponseEntity<java.util.Map<String, Object>> belegeImWeg(BelegeImWeg e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(e.koerper());
+    }
+
     @DeleteMapping("/{siteId}")
+    @Recht(value = "anlage.verwalten", ziel = RechtZiel.ANLAGE)
     @Transactional
     public ResponseEntity<Void> deleteSite(@PathVariable UUID siteId, Authentication auth) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         int deviceCount = devices.countForSite(siteId);
         if (deviceCount > 0) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Der Standort hat noch " + deviceCount + " Gerät(e). "
                             + "Bitte entfernen Sie zuerst alle Geräte dieses Standorts.");
+        }
+        // UEMS AP-07 E8: Messwerte, die je an eine Messstelle gebunden waren, sind Belege -
+        // abgelehnt MIT der Liste, bevor irgendetwas geschrieben wird. AP-12 E13 S2: dieselbe Antwort
+        // nennt die freigegebenen Berichtsstände, die diese Messstellen zitieren (ein Stand zitiert nur
+        // Messstellen - ohne Messstellen-Beleg gibt es hier keinen Berichts-Beleg).
+        List<MessreihenBelege.Beleg> imWeg = belege.derAnlage(siteId);
+        if (!imWeg.isEmpty()) {
+            throw new BelegeImWeg(BelegeImWeg.Gegenstand.ANLAGE, imWeg, berichtsBelege.derMessstellen(imWeg));
         }
         series.deleteForSite(siteId);
         // Das Cockpit-Layout haengt bewusst OHNE Fremdschluessel an der Anlage
@@ -261,6 +305,9 @@ public class SiteController {
         // wie die Serien-Zeilen darueber.
         cockpitLayouts.deleteForScope(CockpitLayoutRepository.SCOPE_SITE, siteId);
         anlageStandort.beimLoeschen(siteId, () -> OrtAnfrage.akteur(auth));
+        // UEMS AP-10 IP-6: die Bindung an den Netzanschluss endet heute und bleibt stehen — sonst hielte
+        // die gelöschte Anlage ihren Anschluss für immer belegt.
+        netzanschluesse.beimLoeschen(siteId, () -> OrtAnfrage.akteur(auth));
         if (!sites.delete(siteId)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
         }
@@ -273,9 +320,7 @@ public class SiteController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to) {
         // RLS makes an out-of-tenant site invisible; treat that as 404.
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         Instant effectiveTo = to != null ? to : Instant.now();
         Instant effectiveFrom = from != null ? from : effectiveTo.minus(24, ChronoUnit.HOURS);
         return telemetry.findForSite(siteId, effectiveFrom, effectiveTo, MAX_POINTS);
@@ -367,9 +412,7 @@ public class SiteController {
      */
     @GetMapping("/{siteId}/weather")
     public WeatherForecastDto weather(@PathVariable UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         WeatherForecastDto forecast = weather.latestForSite(siteId);
         // No run stored yet: return an empty (but well-formed) forecast, not 404.
         return forecast != null ? forecast : new WeatherForecastDto(null, List.of());
@@ -424,9 +467,7 @@ public class SiteController {
     public ForecastQualityDto forecastQuality(
             @PathVariable UUID siteId,
             @RequestParam(defaultValue = "30") int days) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         int window = Math.min(Math.max(days, 1), 90);
         LocalDate since = LocalDate.now(HistoryRange.ZONE).minusDays(window);
         Map<String, String> effective = forecastModels.activeModels(siteId);
@@ -480,9 +521,7 @@ public class SiteController {
                         "date must be yesterday, today or tomorrow (YYYY-MM-DD, Europe/Berlin)");
             }
         }
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         SchedulePlanDto plan;
         if (parsed != ScheduleMode.DAY) {
             plan = schedules.latestForSite(siteId);
@@ -507,9 +546,7 @@ public class SiteController {
      */
     @GetMapping("/{siteId}/control-status")
     public ResponseEntity<ControlStatusDto> controlStatus(@PathVariable UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         return controlStatus.latestForSite(siteId)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.noContent().build());
@@ -519,7 +556,7 @@ public class SiteController {
      * The latest FEED-IN CURTAILMENT truth this site's device(s) reported: does
      * the plant actually throttle its PV in an "Abregeln" slot, or is the plan
      * a plan because the curtailment actor is not released yet?
-     *
+ *
      * <p>Deliberately its OWN read next to {@code control-status} rather than
      * extra fields there - the two heartbeat blocks arrive independently and
      * each carries its own freshness (see {@link CurtailmentStatusDto}).
@@ -529,9 +566,7 @@ public class SiteController {
      */
     @GetMapping("/{siteId}/curtailment-status")
     public ResponseEntity<CurtailmentStatusDto> curtailmentStatus(@PathVariable UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         return curtailmentStatus.latestForSite(siteId)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.noContent().build());
@@ -543,16 +578,14 @@ public class SiteController {
      * The portal turns this into the calm PV breakdown under the live PV figure
      * ("39,0 kW = Deye 8,3 + Fronius 21,3 + …"), so a multi-inverter site's
      * composite number is explainable without opening the device's own page.
-     *
+ *
      * <p>Empty list while no device has reported the block (an older edge, or a
      * device that has not yet sent a heartbeat) - the portal then simply keeps
      * the single PV number.
      */
     @GetMapping("/{siteId}/sources")
     public List<SiteSourceDto> siteSources(@PathVariable UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
-        }
+        geltungsbereich.requireSite(siteId);
         return sourceStatus.forSite(siteId);
     }
 }

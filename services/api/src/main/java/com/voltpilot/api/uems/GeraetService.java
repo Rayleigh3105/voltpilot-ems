@@ -1,6 +1,6 @@
 package com.voltpilot.api.uems;
 
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.uems.GeraetRepository.Einbau;
 import com.voltpilot.api.uems.GeraetRepository.Speisung;
 import com.voltpilot.api.uems.GeraetRepository.Teil;
@@ -35,19 +35,17 @@ public class GeraetService {
     static final ZoneId ZEITZONE = MessstelleService.ZEITZONE;
 
     private final GeraetRepository geraete;
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
 
-    public GeraetService(GeraetRepository geraete, SiteRepository sites) {
+    public GeraetService(GeraetRepository geraete, Geltungsbereich geltungsbereich) {
         this.geraete = geraete;
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
     }
 
     /** Alle Einbauten der Anlage, ausgebaute eingeschlossen — nach Gerät, dann nach Einbau. */
     @Transactional(readOnly = true)
     public GeraetDto.Liste derAnlage(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
         Map<UUID, List<Speisung>> speisungen =
                 nach(geraete.speisungenDerAnlage(siteId), Speisung::geraetId);
         Map<UUID, List<Teil>> teile = nach(geraete.teileDerAnlage(siteId), Teil::geraetId);

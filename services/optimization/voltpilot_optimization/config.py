@@ -128,7 +128,13 @@ commissioning year (expiry handled in :mod:`voltpilot_optimization.pricing`).
 
 The EEG-2023 era (2022-07-30 onward, incl. the 1%-per-6-months degression
 steps from 2024-02) is encoded EXACTLY - the era virtually every
-battery-equipped VoltPilot plant was commissioned in. Earlier years are
+battery-equipped VoltPilot plant was commissioned in. Each band is the
+Bundesnetzagentur's published rounded rate (anzulegender Wert, §48 EEG 2023,
+x 0.99 per half-year, §49, minus 0.4 ct, §53 Abs. 1; source: BNetzA "EEG-
+Förderung und -Fördersätze", archive files VergSaetze*.xlsx); the formula is
+pinned in tests/test_pricing.py. The last band is the BNetzA window
+2026-08-01 .. 2026-12-31: later commissionings keep using it until the next
+published band is added. Earlier years are
 coarse ANNUAL anchor values (documented approximation, +/- ~1-2 ct: the real
 schedule degressed monthly in some years); they exist so a pre-2022 plant
 gets a defensible order-of-magnitude rate (7-25 ct, far above spot's negative
@@ -756,7 +762,10 @@ DEFAULT_EEG_RATE_SCHEDULE: tuple[EegRateBand, ...] = (
     EegRateBand(date(2024, 8, 1), 8.03, 6.95, 5.68),
     EegRateBand(date(2025, 2, 1), 7.94, 6.88, 5.62),
     EegRateBand(date(2025, 8, 1), 7.86, 6.80, 5.56),
-    EegRateBand(date(2026, 2, 1), 7.78, 6.73, 5.51),
+    # 2026-02 le100: 5.50 per BNetzA (5.4961 rounded); was 5.51 until MiSpeL MP-1.
+    EegRateBand(date(2026, 2, 1), 7.78, 6.73, 5.50),
+    # BNetzA validity "01.08.2026 bis 31.12.2026" (VergSaetzeAug26bisDez26.xlsx).
+    EegRateBand(date(2026, 8, 1), 7.70, 6.66, 5.44),
 )
 
 

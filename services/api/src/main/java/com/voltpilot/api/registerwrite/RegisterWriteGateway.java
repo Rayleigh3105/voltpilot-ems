@@ -34,12 +34,13 @@ import java.util.UUID;
  *       Schweige-Grund, falls nichts zurückkommt.</li>
  * </ol>
  *
- * <p><b>⚠ WARUM DIE LEBENDIGKEIT KEIN TOR IST.</b> {@code lastSeenAt} ist
- * {@code max(received_at)} der TELEMETRIE - eine ganz andere Kette als das
- * MQTT-Abonnement des Cores. Eine frisch eingerichtete Box, deren Layer 1 noch
- * keinen Wechselrichter kennt, sendet keine einzige Telemetrie-Zeile und hört
- * trotzdem zu; sie abzuweisen wäre genau die Art Fehlurteil, gegen die dieser
- * Pfad sonst überall argumentiert („Schweigen ist eine Lücke, kein Beweis").
+ * <p><b>⚠ WARUM DIE LEBENDIGKEIT KEIN TOR IST.</b> {@code lastSeenAt} ist die
+ * Cloud-Ankunft des Status-Herzschlags (mit Telemetrie-Fallback fuer den
+ * Migrationsbestand), aber noch immer kein Beweis für das MQTT-Abonnement in
+ * genau diesem Moment. Eine frisch eingerichtete oder kurz getrennte Box darf
+ * deshalb nicht vorab abgewiesen werden; das wäre genau die Art Fehlurteil,
+ * gegen die dieser Pfad sonst überall argumentiert („Schweigen ist eine Lücke,
+ * kein Beweis").
  * Der Auftrag geht deshalb hinaus, und die drei Schweige-Gründe
  * ({@link RegisterWriteSilence}) benennen den Ausgang hinterher - jetzt mit dem
  * Verwechslungs-Verdacht darin.
@@ -83,7 +84,9 @@ public final class RegisterWriteGateway {
         /** Vom Aufrufer benannt (primäre Lane, freie Adresse). */
         REQUESTED,
         /** Die einzige Box der Anlage. */
-        ONLY
+        ONLY,
+        /** Aus dem gemeinsamen Dienst für die führende Box. */
+        LEAD
     }
 
     /**
@@ -113,6 +116,10 @@ public final class RegisterWriteGateway {
      * @param requested die vom Aufrufer benannte Geräte-Zeile, oder {@code null}.
      */
     public static Choice choose(List<Device> devices, UUID owner, UUID requested, Instant now) {
+        return choose(devices, owner, requested, null, now);
+    }
+
+    public static Choice choose(List<Device> devices, UUID owner, UUID requested, UUID lead, Instant now) {
         if (devices == null || devices.isEmpty()) {
             return refused("Diese Anlage hat noch kein verbundenes Gerät.");
         }
@@ -124,6 +131,7 @@ public final class RegisterWriteGateway {
                 return chosen(byOwner.get(), Origin.TARGET,
                         requested != null && !requested.equals(owner), devices, now);
             }
+            return refused("Die zuständige Box ist in dieser Anlage nicht verfügbar.");
         }
         if (requested != null) {
             Optional<Device> byId = find(devices, requested);
@@ -131,6 +139,10 @@ public final class RegisterWriteGateway {
                 return refused(DEVICE_NOT_FOUND);
             }
             return chosen(byId.get(), Origin.REQUESTED, false, devices, now);
+        }
+        if (lead != null) {
+            return find(devices, lead).map(d -> chosen(d, Origin.LEAD, false, devices, now))
+                    .orElseGet(() -> refused("Die führende Box ist in dieser Anlage nicht verfügbar."));
         }
         if (devices.size() > 1) {
             return refused("Diese Anlage hat mehrere Geräte. Bitte wählen Sie aus, "

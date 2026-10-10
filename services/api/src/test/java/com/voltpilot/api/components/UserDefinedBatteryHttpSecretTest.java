@@ -18,9 +18,10 @@ import com.voltpilot.api.entities.EntityTypeCatalog;
 import com.voltpilot.api.flows.FlowActivationService;
 import com.voltpilot.api.flows.FlowCompiler;
 import com.voltpilot.api.repo.FlowRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.topology.TopologyRepository;
+import com.voltpilot.api.uems.BerichtsBelege;
 import com.voltpilot.api.web.dto.SaveUserDefinedBatteryRequest;
 import com.voltpilot.api.web.dto.SaveUserDefinedBatteryRequest.AuthRequest;
 import com.voltpilot.api.web.dto.SaveUserDefinedBatteryRequest.EndpointRequest;
@@ -76,7 +77,7 @@ class UserDefinedBatteryHttpSecretTest {
 
     @BeforeEach
     void setUp() {
-        SiteRepository sites = mock(SiteRepository.class);
+        Geltungsbereich sites = mock(Geltungsbereich.class);
         entityRepo = mock(EntityRegistryRepository.class);
         EntityRegistryService entityRegistry = mock(EntityRegistryService.class);
         definitions = mock(ComponentDefinitionRepository.class);
@@ -88,7 +89,6 @@ class UserDefinedBatteryHttpSecretTest {
         @SuppressWarnings("unchecked")
         ObjectProvider<FlowCompiler> flowc = mock(ObjectProvider.class);
 
-        when(sites.existsForCurrentTenant(eq(SITE))).thenReturn(true);
         when(definitions.componentAuthority(eq(SITE))).thenReturn("portal");
         when(entityRepo.siteDeviceIds(eq(SITE)))
                 .thenReturn(List.of(UUID.fromString("00000000-0000-0000-0000-00000000e001")));
@@ -105,7 +105,7 @@ class UserDefinedBatteryHttpSecretTest {
                 new EntityTypeCatalog(mapper), definitions, components,
                 new SocCurveTemplateCatalog(mapper), new ProtectionProfileCatalog(mapper),
                 new UserDefinedBatteryFlowCompiler(mapper),
-                flows, deployments, flowc, topology, mapper);
+                flows, deployments, flowc, topology, mapper, mock(BerichtsBelege.class));
         TenantContext.set(TENANT);
     }
 

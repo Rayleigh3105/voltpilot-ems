@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
  * übrige API behält ihre Fehlerform.
  */
 @RestControllerAdvice(assignableTypes = {StandortController.class, UnternehmenController.class,
-        OrtController.class})
+        OrtController.class, AnlageStandortController.class})
 public class OrtAbgelehntHandler {
 
     @ExceptionHandler(OrtAbgelehnt.class)

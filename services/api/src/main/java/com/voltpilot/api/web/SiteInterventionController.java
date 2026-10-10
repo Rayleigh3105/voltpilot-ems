@@ -1,17 +1,20 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.web.dto.ProtokollDto;
 import com.voltpilot.api.interventions.DeviceOverrideService;
 import com.voltpilot.api.interventions.DeviceOverrideService.Outcome;
 import com.voltpilot.api.interventions.Handeingriff;
 import com.voltpilot.api.repo.DeviceOverrideRepository;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
+import com.voltpilot.api.zugriff.ZugriffEtikett;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -50,19 +53,29 @@ public class SiteInterventionController {
             BigDecimal setpointKw) {}
 
     /** Eine laufende Handlung, wie die Jetzt-Zone sie rendert. */
+    /**
+     * {@code urheber} im Akteur-Vokabular (AP-03 IP-7); {@code null} für einen Eingriff von vor V20260916010000.
+     *
+     * <p>{@code etikett} ist der Satz der Jetzt-Zone (AP-03 IP-9, E15): „gesetzt von Murat Demirci" — und, wenn
+     * dessen Bedienrecht inzwischen endete, „… (Bedienrecht beendet am 14.11.2026 09:02)". Der Eingriff selbst
+     * bleibt davon unberührt und wirkt bis zu seinem Ende; ein Entzug schaltet nie.
+     */
     public record InterventionDto(String kind, UUID entityId, BigDecimal targetValueKw,
-            Instant endsAt, String createdBy, Instant createdAt) {}
+            Instant endsAt, String createdBy, Instant createdAt, ProtokollDto.Urheber urheber, String etikett) {}
 
     /** Alles, was gerade von Hand gesetzt ist. */
     public record InterventionsDto(boolean automationPaused, Instant pausedUntil,
             List<InterventionDto> interventions) {}
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final DeviceOverrideService service;
+    private final ZugriffEtikett etiketten;
 
-    public SiteInterventionController(SiteRepository sites, DeviceOverrideService service) {
-        this.sites = sites;
+    public SiteInterventionController(Geltungsbereich geltungsbereich, DeviceOverrideService service,
+            ZugriffEtikett etiketten) {
+        this.geltungsbereich = geltungsbereich;
         this.service = service;
+        this.etiketten = etiketten;
     }
 
     /** Der EINE Lesepfad der Jetzt-Zone: laufende Eingriffe + die Pause. */
@@ -71,13 +84,27 @@ public class SiteInterventionController {
         requireSite(siteId);
         List<InterventionDto> rows = new ArrayList<>();
         Instant pausedUntil = null;
-        for (DeviceOverrideRepository.Row row : service.active(siteId)) {
+        List<DeviceOverrideRepository.Row> aktiv = service.active(siteId);
+        // Nur lesen, wenn überhaupt jemand als Urheber dasteht (E15): ein Eingriff ohne Subject bekommt
+        // ohnehin kein Etikett, und dieser Lesepfad wird gepollt.
+        ZugriffEtikett.Anlage anlage = aktiv.stream().anyMatch(r -> r.actorArt() != null)
+                ? etiketten.anlage(siteId) : null;
+        for (DeviceOverrideRepository.Row row : aktiv) {
+            if (row.ausFunktion()) {
+                // Die Ruhe bis zum Start (R0) ist kein Handeingriff: sie hat kein Ende und
+                // gehört der Funktion, nicht der Jetzt-Zone - dieser Lesepfad bleibt
+                // byte-gleich, bis die Steuerungsseite sie selbst zeigt (AP-01 IP-11).
+                continue;
+            }
             if (row.isPause()) {
                 pausedUntil = row.endsAt();
                 continue;
             }
             rows.add(new InterventionDto(row.kind(), row.entityId(), row.targetValue(),
-                    row.endsAt(), row.createdBy(), row.createdAt()));
+                    row.endsAt(), row.createdBy(), row.createdAt(), row.actorArt() == null ? null
+                            : new ProtokollDto.Urheber(row.actorName(), row.actorRolle(), row.actorArt()),
+                    row.actorArt() == null ? null
+                            : etiketten.etikett(anlage, row.createdBy(), row.actorName(), row.endsAt())));
         }
         return new InterventionsDto(pausedUntil != null, pausedUntil, rows);
     }
@@ -88,6 +115,7 @@ public class SiteInterventionController {
      * die Box gegen ihre Registry-Guards - nicht diese Route.
      */
     @PostMapping("/battery-override")
+    @Recht(value = "handeingriff.setzen", ziel = RechtZiel.ANLAGE)
     public Outcome startBattery(@PathVariable UUID siteId,
             @RequestBody InterventionRequest request, @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);
@@ -96,6 +124,7 @@ public class SiteInterventionController {
 
     /** „Automatik fortsetzen" für den Speicher. */
     @DeleteMapping("/battery-override")
+    @Recht(value = "handeingriff.setzen", ziel = RechtZiel.ANLAGE)
     public Outcome clearBattery(@PathVariable UUID siteId, @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);
         return service.clearBattery(siteId, actor(jwt));
@@ -107,6 +136,7 @@ public class SiteInterventionController {
      * sie liegen unterhalb der Arbitrierung.
      */
     @PostMapping("/automation-pause")
+    @Recht(value = "handeingriff.setzen", ziel = RechtZiel.ANLAGE)
     public Outcome pause(@PathVariable UUID siteId, @RequestBody InterventionRequest request,
             @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);
@@ -115,6 +145,7 @@ public class SiteInterventionController {
 
     /** „Automatik fortsetzen" für die Anlage. */
     @DeleteMapping("/automation-pause")
+    @Recht(value = "handeingriff.setzen", ziel = RechtZiel.ANLAGE)
     public Outcome resume(@PathVariable UUID siteId, @AuthenticationPrincipal Jwt jwt) {
         requireSite(siteId);
         return service.resume(siteId, actor(jwt));
@@ -131,9 +162,7 @@ public class SiteInterventionController {
     }
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 
     /** Deutsche Gründe erreichen das Portal als {"message": …}. */

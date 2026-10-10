@@ -1,8 +1,10 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.admin.AdminBenutzerService;
 import com.voltpilot.api.admin.KeycloakAdminClient;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakAdminException;
 import com.voltpilot.api.admin.KeycloakAdminClient.KeycloakUser;
+import com.voltpilot.api.kundenbereich.KundenbereichLoeschung;
 import com.voltpilot.api.provisioning.ProvisioningPublisher;
 import com.voltpilot.api.repo.AdminEnrollmentRepository;
 import com.voltpilot.api.repo.AdminProvisionedDeviceRepository;
@@ -18,15 +20,20 @@ import com.voltpilot.api.web.dto.DeleteTenantRequest;
 import com.voltpilot.api.web.dto.PendingEnrollmentDto;
 import com.voltpilot.api.web.dto.ProvisionDeviceRequest;
 import com.voltpilot.api.web.dto.ProvisionedDeviceDto;
-import com.voltpilot.api.web.dto.ResetPasswordRequest;
 import com.voltpilot.api.web.dto.SiteDto;
 import com.voltpilot.api.web.dto.TenantDto;
 import com.voltpilot.api.web.dto.TenantOffboardingReportDto;
+import com.voltpilot.api.web.dto.TenantOffboardingCleanupDto;
 import com.voltpilot.api.web.dto.UpdateTenantRequest;
 import com.voltpilot.api.web.dto.UpdateUserRequest;
+import com.voltpilot.api.benutzer.BenutzerService;
+import com.voltpilot.api.benutzer.BenutzerFehler;
+import com.voltpilot.api.uems.ProtokollAkteur;
+import org.springframework.security.core.Authentication;
 import jakarta.validation.Valid;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,6 +45,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -50,7 +58,7 @@ import org.springframework.web.server.ResponseStatusException;
 /**
  * Platform-admin API: manage tenants and customer users across the whole
  * platform. Every method is gated by {@code hasRole('platform-admin')}, so a
- * Portal-User (customer, {@code operator}) calling any of these gets HTTP 403 -
+ * Portal-User (customer, tenant-scoped) calling any of these gets HTTP 403 -
  * the backend, not the UI, is the boundary between operators and customers.
  *
  * <p>Tenants are read/written through the {@code voltpilot_admin} BYPASSRLS
@@ -73,17 +81,24 @@ public class AdminController {
     private final AdminEnrollmentRepository enrollments;
     private final KeycloakAdminClient keycloak;
     private final ObjectProvider<ProvisioningPublisher> provisioning;
+    private final BenutzerService benutzer;
+    private final AdminBenutzerService adminBenutzer;
+    private final KundenbereichLoeschung loeschung;
 
     public AdminController(TenantRepository tenants, AdminSiteRepository sites,
             AdminProvisionedDeviceRepository provisionedDevices,
             AdminEnrollmentRepository enrollments, KeycloakAdminClient keycloak,
-            ObjectProvider<ProvisioningPublisher> provisioning) {
+            ObjectProvider<ProvisioningPublisher> provisioning, BenutzerService benutzer,
+            AdminBenutzerService adminBenutzer, KundenbereichLoeschung loeschung) {
         this.tenants = tenants;
         this.sites = sites;
         this.provisionedDevices = provisionedDevices;
         this.enrollments = enrollments;
         this.keycloak = keycloak;
         this.provisioning = provisioning;
+        this.benutzer = benutzer;
+        this.adminBenutzer = adminBenutzer;
+        this.loeschung = loeschung;
     }
 
     // ---- tenants -------------------------------------------------------------
@@ -115,14 +130,18 @@ public class AdminController {
      * Offboard a tenant - the most destructive action on the platform, so it is
      * type-to-confirm: the body must carry the tenant's EXACT name or nothing
      * happens (400). The database cascade (sites, devices, assets, all series
-     * data, the tenant row) runs in ONE transaction; the tenant's retained MQTT
-     * topics and Keycloak users are then cleaned best-effort, and every user
-     * whose deletion failed is reported by name - a partial directory failure
-     * is visible, never silent.
+     * data, the tenant row) runs in ONE transaction, AFTER all accounts have been
+     * disabled through the shared account path. Failed final deletions leave disabled
+     * accounts and are reported/logged; the cleanup route can repeat them without a tenant row.
+     *
+     * <p>UEMS AP-20 IP-18 (E10 = A, BT4, BT5): only a tenant in the state „beendet" whose period has run out
+     * ({@code 409 kundenbereich_nicht_beendet} / {@code 409 frist_laeuft}, checked BEFORE any account is blocked and
+     * again under the row lock in the teardown); the same transaction writes the deletion record
+     * {@code mandant_loeschnachweis} without the customer's personal data ({@link KundenbereichLoeschung}).
      */
     @PostMapping("/tenants/{tenantId}/delete")
     public TenantOffboardingReportDto deleteTenant(@PathVariable UUID tenantId,
-            @Valid @RequestBody DeleteTenantRequest request) {
+            @Valid @RequestBody DeleteTenantRequest request, Authentication auth) {
         TenantDto tenant = tenants.findById(tenantId);
         if (tenant == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tenant not found");
@@ -131,25 +150,87 @@ public class AdminController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "confirmName does not match the tenant name");
         }
+        loeschung.pruefen(tenantId);
+        KundenbereichLoeschung.Wache wache = loeschung.wache(tenantId, ProtokollAkteur.aus(auth)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED)));
 
         // Collected BEFORE the cascade: afterwards the rows are gone.
         List<TenantDevice> devices = tenants.devicesOfTenant(tenantId);
         List<KeycloakUser> users;
         try {
-            users = keycloak.listUsersForTenant(tenantId);
-        } catch (KeycloakAdminException ex) {
-            // Refuse rather than orphan logins we could not even enumerate.
-            throw toResponse(ex);
+            users = new ArrayList<>(adminBenutzer.offboardingSperren(tenantId));
+        } catch (RuntimeException ex) {
+            log.warn("Offboarding tenant {}: account blocking failed; database retained", tenantId);
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Konten konnten nicht vollständig gesperrt werden.");
         }
 
-        OffboardCounts counts = tenants.offboard(tenantId);
+        OffboardCounts counts;
+        try {
+            counts = tenants.offboard(tenantId, () -> {
+                // Close the gap between the blocking commit and the teardown transaction:
+                // a concurrent account enable/create must not leave an enabled orphan.
+                List<KeycloakUser> current = adminBenutzer.offboardingResteSperren(tenantId);
+                users.clear();
+                users.addAll(current);
+            }, wache);
+        } catch (KundenbereichLoeschung.Verweigert ex) {
+            log.warn("Offboarding tenant {}: refused under the row lock ({}); accounts remain disabled", tenantId,
+                    ex.getMessage());
+            throw ex;
+        } catch (RuntimeException ex) {
+            log.error("Offboarding tenant {}: database removal failed; accounts remain disabled; retry offboarding", tenantId);
+            throw ex;
+        }
 
         // Broker cleanup (best-effort): clear each device's retained
         // provisioning config + schedule so the hardware falls back to its
         // watchdog default and the refs become claimable again.
-        provisioning.ifAvailable(p -> devices.forEach(d ->
-                p.clearRetained(d.externalRef(), tenantId, d.siteId(), d.id())));
+        provisioning.ifAvailable(p -> devices.forEach(d -> {
+            try {
+                p.clearRetained(d.externalRef(), tenantId, d.siteId(), d.id());
+            } catch (RuntimeException ex) {
+                log.warn("Offboarding tenant {}: retained cleanup failed for device {}", tenantId, d.id());
+            }
+        }));
 
+        TenantOffboardingCleanupDto cleanup = deleteOffboardingUsers(tenantId, users);
+        log.info("Offboarded tenant {} ('{}'): {} sites, {} devices, {} telemetry rows, "
+                + "{} users deleted, {} disabled users pending cleanup", tenantId, tenant.name(),
+                counts.sites(), counts.devices(), counts.telemetryRows(),
+                cleanup.deletedUsers().size(), cleanup.failedUsers().size());
+        KundenbereichLoeschung.Nachweis nachweis = wache.nachweis();
+        log.info("Offboarded tenant {}: deletion record {}, {} tables with remaining rows", tenantId,
+                nachweis.kennzeichen(), nachweis.verblieben().size());
+        return new TenantOffboardingReportDto(tenantId, tenant.name(), counts.sites(),
+                counts.devices(), counts.telemetryRows(), cleanup.deletedUsers(), cleanup.failedUsers(),
+                new TenantOffboardingReportDto.Loeschnachweis(nachweis.kennzeichen(), nachweis.geloeschtAm(),
+                        nachweis.zaehlungen(), nachweis.verblieben(), nachweis.abzugSha256()));
+    }
+
+    /** IP-18: the delete route's refusal in the form of the UEMS refusals ({@code code}, {@code message}, facts). */
+    @ExceptionHandler(KundenbereichLoeschung.Verweigert.class)
+    public ResponseEntity<Map<String, Object>> loeschenVerweigert(KundenbereichLoeschung.Verweigert ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(ex.koerper());
+    }
+
+    /** Only the platform may repeat cleanup, and only after the tenant's data has been removed. */
+    @PostMapping("/tenants/{tenantId}/offboarding/cleanup")
+    public TenantOffboardingCleanupDto cleanupTenantUsers(@PathVariable UUID tenantId) {
+        if (tenants.findById(tenantId) != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Mandant ist noch vorhanden.");
+        }
+        List<KeycloakUser> users;
+        try {
+            // Also covers legacy orphans and a crash after DB commit but before final deletion.
+            users = adminBenutzer.offboardingResteSperren(tenantId);
+        } catch (RuntimeException ex) {
+            log.warn("Offboarding tenant {}: cleanup blocking failed; no accounts deleted", tenantId);
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Konten konnten nicht vollständig gesperrt werden.");
+        }
+        return deleteOffboardingUsers(tenantId, users);
+    }
+
+    private TenantOffboardingCleanupDto deleteOffboardingUsers(UUID tenantId, List<KeycloakUser> users) {
         List<String> deletedUsers = new ArrayList<>();
         List<String> failedUsers = new ArrayList<>();
         for (KeycloakUser user : users) {
@@ -157,17 +238,17 @@ public class AdminController {
                 keycloak.deleteUser(user.id());
                 deletedUsers.add(user.username());
             } catch (RuntimeException ex) {
-                log.warn("Offboarding tenant {}: could not delete Keycloak user '{}': {}",
-                        tenantId, user.username(), ex.getMessage());
+                if (ex instanceof KeycloakAdminException kc && kc.status() == 404) {
+                    deletedUsers.add(user.username()); // Another retry already removed it.
+                    continue;
+                }
+                log.warn("Offboarding tenant {}: disabled Keycloak user {} pending cleanup", tenantId, user.id());
                 failedUsers.add(user.username());
             }
         }
-        log.info("Offboarded tenant {} ('{}'): {} sites, {} devices, {} telemetry rows, "
-                + "{} users deleted, {} user deletions failed", tenantId, tenant.name(),
-                counts.sites(), counts.devices(), counts.telemetryRows(),
-                deletedUsers.size(), failedUsers.size());
-        return new TenantOffboardingReportDto(tenantId, tenant.name(), counts.sites(),
-                counts.devices(), counts.telemetryRows(), deletedUsers, failedUsers);
+        log.info("Offboarding cleanup tenant {}: {} deleted, {} disabled users pending cleanup",
+                tenantId, deletedUsers.size(), failedUsers.size());
+        return new TenantOffboardingCleanupDto(tenantId, deletedUsers, failedUsers);
     }
 
     // ---- sites (cross-tenant) ------------------------------------------------
@@ -246,17 +327,13 @@ public class AdminController {
     }
 
     @PostMapping("/tenants/{tenantId}/users")
-    public ResponseEntity<AdminUserDto> createUser(@PathVariable UUID tenantId,
-            @Valid @RequestBody CreateUserRequest request) {
+    public ResponseEntity<BenutzerService.Angelegt> createUser(@PathVariable UUID tenantId,
+            @Valid @RequestBody CreateUserRequest request, Authentication auth) {
         requireTenant(tenantId);
-        try {
-            KeycloakUser user = keycloak.createCustomerUser(tenantId, request.username(),
-                    request.email(), request.firstName(), request.lastName(),
-                    request.password(), request.temporaryPassword());
-            return ResponseEntity.status(HttpStatus.CREATED).body(toDto(user));
-        } catch (KeycloakAdminException ex) {
-            throw toResponse(ex);
-        }
+        return ResponseEntity.status(HttpStatus.CREATED).cacheControl(org.springframework.http.CacheControl.noStore())
+                .body(benutzer.erster(tenantId, new BenutzerService.Anlage(request.username(), request.email(),
+                        request.firstName(), request.lastName(), null, List.of(), null),
+                        ProtokollAkteur.aus(auth).orElseThrow()));
     }
 
     /** Update a customer user's profile (email/name; the username is immutable). */
@@ -279,8 +356,7 @@ public class AdminController {
         requireNotSelf(caller, userId, "deaktivieren");
         requireTenant(tenantId);
         try {
-            requireUserInTenant(tenantId, userId);
-            return toDto(keycloak.setEnabled(userId, false));
+            return toDto(adminBenutzer.sperren(tenantId, userId));
         } catch (KeycloakAdminException ex) {
             throw toResponse(ex);
         }
@@ -291,8 +367,7 @@ public class AdminController {
     public AdminUserDto enableUser(@PathVariable UUID tenantId, @PathVariable String userId) {
         requireTenant(tenantId);
         try {
-            requireUserInTenant(tenantId, userId);
-            return toDto(keycloak.setEnabled(userId, true));
+            return toDto(adminBenutzer.aktivieren(tenantId, userId));
         } catch (KeycloakAdminException ex) {
             throw toResponse(ex);
         }
@@ -305,32 +380,20 @@ public class AdminController {
         requireNotSelf(caller, userId, "löschen");
         requireTenant(tenantId);
         try {
-            requireUserInTenant(tenantId, userId);
-            keycloak.deleteUser(userId);
+            adminBenutzer.entfernen(tenantId, userId);
             return ResponseEntity.noContent().build();
         } catch (KeycloakAdminException ex) {
             throw toResponse(ex);
         }
     }
 
-    /**
-     * Support-driven password reset: without SMTP there is no self-service
-     * reset, so this is how a customer who forgot their password (or locked
-     * themselves out guessing) gets back in. Sets the new password (temporary by
-     * default: must change on next login) and lifts any brute-force lockout so
-     * it works immediately.
-     */
+    /** IP-14: der Kundenadministrator vergibt das Startpasswort über die Kundenroute neu. */
     @PostMapping("/tenants/{tenantId}/users/{userId}/reset-password")
-    public AdminUserDto resetPassword(@PathVariable UUID tenantId, @PathVariable String userId,
-            @Valid @RequestBody ResetPasswordRequest request) {
+    public AdminUserDto resetPassword(@PathVariable UUID tenantId, @PathVariable String userId) {
         requireTenant(tenantId);
-        try {
-            KeycloakUser user = requireUserInTenant(tenantId, userId);
-            keycloak.resetPassword(userId, request.password(), request.temporaryOrDefault());
-            return toDto(user);
-        } catch (KeycloakAdminException ex) {
-            throw toResponse(ex);
-        }
+        requireUserInTenant(tenantId, userId);
+        throw new BenutzerFehler(403, "recht_fehlt",
+                "Ein Startpasswort vergibt der Kundenadministrator in der Benutzerverwaltung neu.");
     }
 
     /**

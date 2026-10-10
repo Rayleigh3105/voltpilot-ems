@@ -1,3 +1,4 @@
+import { sichtbareListe } from '../test/rollenFixtures';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { BoxSeiteSection } from './BoxSeiteSection';
@@ -251,7 +252,7 @@ function stub(over: {
   });
   vi.spyOn(api, 'controlStatus').mockResolvedValue(null);
   vi.spyOn(api, 'curtailmentStatus').mockResolvedValue(null);
-  vi.spyOn(api, 'edgeVersions').mockResolvedValue([
+  vi.spyOn(api, 'edgeVersions').mockResolvedValue(sichtbareListe([
     {
       deviceId: 'gw',
       siteId: 's-1',
@@ -259,7 +260,7 @@ function stub(over: {
       paletteVersion: '0.9.0',
       reportedAt: FRISCH,
     },
-  ]);
+  ]));
   vi.spyOn(api, 'siteChargers').mockResolvedValue({ budget: null, chargers: [] });
   vi.spyOn(api, 'entityStrategies').mockResolvedValue({});
   vi.spyOn(api, 'commandHistory').mockResolvedValue(over.commands ?? commands());
@@ -534,8 +535,9 @@ describe('BoxSeiteSection · Kern', () => {
     expect(ids).not.toContain('steuerung');
     expect(ids).not.toContain('heute');
     expect(ids).toEqual(['buehne', 'aktivitaet', 'details']);
-    // Die Geräte an der Box stehen als eigener Baustein direkt neben der Bühne.
-    expect(screen.getByTestId('baustein-modul')).toHaveTextContent('Geräte an dieser Box');
+    // Die Quellen und Geräte an der Box stehen als eigener Baustein direkt neben
+    // der Bühne (UEMS AP-06 IP-16: „Datenquellen und Geräte").
+    expect(screen.getByTestId('baustein-modul')).toHaveTextContent('Datenquellen und Geräte');
     // Register hat ein Rechner nicht - Technik & Diagnose führt nur Rohdaten.
     expect(screen.getByTestId('geraet-technik-oeffnen')).toHaveTextContent('Rohdaten');
     expect(screen.getByTestId('geraet-technik-oeffnen')).not.toHaveTextContent('Register');

@@ -14,6 +14,9 @@ import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.YearMonth;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -93,6 +96,50 @@ class VerteilungVectorsTest {
                 .containsExactly(VerteilungRegeln.VERTEILT, VerteilungRegeln.NICHT_VERTEILT);
     }
 
+    /**
+     * Messen PR4: die Gründe der Kostenstellen-Sicht und der Satz eines Anteils, der mitten im Ablesezeitraum wechselt,
+     * stehen in der Datei - dieselben Wörter wie im Modul.
+     */
+    @Test
+    void dieGruendeUndDerSatzDesAblesezeitraumsStehenInDerDatei() throws Exception {
+        JsonNode v = vektoren();
+        assertThat(texte(v.path("vokabulare").path("kostenstelle_grund")))
+                .containsExactlyElementsOf(KostenstelleEnergieRegeln.GRUENDE);
+        assertThat(v.path("saetze").path("erbe_anteil_wechselt").asText())
+                .isEqualTo(VerteilungRegeln.ERBE_ANTEIL_WECHSELT);
+        assertThat(v.path("saetze").path("erbe_rest_unplausibel").asText())
+                .isEqualTo(VerteilungRegeln.ERBE_REST_UNPLAUSIBEL);
+    }
+
+    /**
+     * Die Warnung vor doppelter Zählung spricht mit den Sätzen des Vertrags — Zeichen für Zeichen, ohne internes Wort —
+     * und kennt genau seine Vokabulare.
+     */
+    @Test
+    void dieDoppelzaehlungSprichtMitDenSaetzenDesVertrags() throws Exception {
+        JsonNode v = vektoren();
+        JsonNode saetze = v.path("saetze");
+        assertThat(saetze.path("doppelt_enthalten").asText()).isEqualTo(KostenstelleDoppelzaehlung.SATZ_ENTHALTEN);
+        assertThat(saetze.path("doppelt_enthalten_teilweise").asText())
+                .isEqualTo(KostenstelleDoppelzaehlung.SATZ_ENTHALTEN_TEILWEISE);
+        assertThat(saetze.path("doppelt_kreis").asText()).isEqualTo(KostenstelleDoppelzaehlung.SATZ_KREIS);
+        assertThat(saetze.path("doppelt_haengt_an_kreis").asText())
+                .isEqualTo(KostenstelleDoppelzaehlung.SATZ_HAENGT_AN_KREIS);
+        assertThat(texte(v.path("vokabulare").path("doppelzaehlung_umfang")))
+                .containsExactlyElementsOf(KostenstelleDoppelzaehlung.UMFAENGE);
+        assertThat(texte(v.path("vokabulare").path("doppelzaehlung_grund")))
+                .containsExactly(BerechnetePeriode.FORMEL_KREIS, BerechnetePeriode.HAENGT_AN_KREIS);
+        List<String> verboten = texte(v.path("regeln").path("doppelzaehlung_verbotene_woerter"));
+        assertThat(verboten).isNotEmpty();
+        for (String satz : List.of(KostenstelleDoppelzaehlung.SATZ_ENTHALTEN,
+                KostenstelleDoppelzaehlung.SATZ_ENTHALTEN_TEILWEISE, KostenstelleDoppelzaehlung.SATZ_KREIS,
+                KostenstelleDoppelzaehlung.SATZ_HAENGT_AN_KREIS)) {
+            for (String wort : verboten) {
+                assertThat(satz).as("ein Kundensatz ohne internes Wort").doesNotContainIgnoringCase(wort);
+            }
+        }
+    }
+
     /** Jede Regel ist deklariert, jede Lücke im Portal begründet. */
     @Test
     void jedeRegelIstDeklariertUndJedeLueckeBegruendet() throws Exception {
@@ -148,7 +195,7 @@ class VerteilungVectorsTest {
                 tests.add(DynamicTest.dynamicTest(name, () -> pruefe(fall, p)));
             }
         }
-        assertThat(tests).as("Prüfungen über alle Fälle").hasSizeGreaterThanOrEqualTo(18);
+        assertThat(tests).as("Prüfungen über alle Fälle").hasSizeGreaterThanOrEqualTo(26);
         return tests;
     }
 
@@ -200,6 +247,35 @@ class VerteilungVectorsTest {
                 assertThat(ist.tageRueckwirkend()).as(why + " · Tage rückwirkend")
                         .isEqualTo(soll.path("tage_rueckwirkend").asLong());
                 assertThat(ist.fehler()).as(why + " · Fehler").isEqualTo(str(soll.path("fehler")));
+            }
+            case "satz_ab_tag" -> {
+                VerteilungRegeln.SatzAbTagUrteil ist = VerteilungRegeln.satzAbTag(tag(ein.path("heute")),
+                        tag(ein.path("tag")), zeilen(ein.path("zeilen")), ziele(ein.path("ziele")),
+                        bestand(ein.path("bestehend")), ein.path("korrektur").asBoolean());
+                assertThat(ist.fehler()).as(why + " · Fehler").isEqualTo(str(soll.path("fehler")));
+                betragGleich(ist.summe(), soll.path("summe"), why + " · Summe");
+                Map<String, String> sollFakten = new LinkedHashMap<>();
+                soll.path("fakten").fields().forEachRemaining(e -> sollFakten.put(e.getKey(), e.getValue().asText()));
+                assertThat(ist.fakten()).as(why + " · Fakten").isEqualTo(sollFakten);
+                assertThat(ist.aufgehoben().stream().map(a -> a.kostenstelle() + "@" + a.gueltigAb()).toList())
+                        .as(why + " · aufgehoben").isEqualTo(paare(soll.path("aufgehoben"), "gueltig_ab"));
+                assertThat(ist.beendet().stream().map(b -> b.kostenstelle() + "@" + b.gueltigBis()).toList())
+                        .as(why + " · beendet").isEqualTo(paare(soll.path("beendet"), "gueltig_bis"));
+                List<String> neu = ist.neu().stream()
+                        .map(n -> n.kostenstelle() + "=" + n.anteilProzent().stripTrailingZeros().toPlainString()
+                                + "@" + n.gueltigAb() + ".." + n.gueltigBis())
+                        .toList();
+                List<String> sollNeu = new ArrayList<>();
+                soll.path("neu").forEach(n -> sollNeu.add(n.path("kostenstelle").asText() + "="
+                        + new BigDecimal(n.path("anteil_prozent").asText()).stripTrailingZeros().toPlainString()
+                        + "@" + n.path("gueltig_ab").asText() + ".." + str(n.path("gueltig_bis"))));
+                assertThat(neu).as(why + " · neue Zeilen (enden mit ihrem Ziel)").isEqualTo(sollNeu);
+                assertThat(ist.rueckwirkend()).as(why + " · rückwirkend")
+                        .isEqualTo(soll.path("rueckwirkend").asBoolean());
+                assertThat(ist.tageRueckwirkend()).as(why + " · Tage rückwirkend")
+                        .isEqualTo(soll.path("tage_rueckwirkend").asLong());
+                assertThat(ist.unveraendert()).as(why + " · unverändert")
+                        .isEqualTo(soll.path("unveraendert").asBoolean());
             }
             case "mengen" -> {
                 List<VerteilungRegeln.Tagesmenge> tage = null;
@@ -263,8 +339,195 @@ class VerteilungVectorsTest {
                         .as(why + " · der Satz hält bilanzwert-herkunft.schema.json")
                         .isEmpty();
             }
+            case "ablesezeitraum" -> {
+                List<VerteilungRegeln.Ablesezeitraum> zeitraeume = new ArrayList<>();
+                ein.path("zeitraeume").forEach(z -> zeitraeume.add(zeitraum(z)));
+                VerteilungRegeln.AblesezeitraumUrteil ist = VerteilungRegeln.ablesezeitraum(
+                        ZoneId.of(ein.path("zone").asText()), zeitraeume, bd(ein.path("menge")),
+                        bestand(ein.path("zeilen")), ziele(ein.path("ziele")));
+                assertThat(ist.ersterTag()).as(why + " · erster Tag").isEqualTo(tag(soll.path("erster_tag")));
+                assertThat(ist.letzterTag()).as(why + " · letzter Tag").isEqualTo(tag(soll.path("letzter_tag")));
+                assertThat(ist.ziele().stream().map(VerteilungRegeln.AblesezeitraumZiel::kostenstelle).toList())
+                        .as(why + " · Ziele").isEqualTo(sollNamenVon(soll.path("ziele"), "kostenstelle"));
+                for (int i = 0; i < ist.ziele().size(); i++) {
+                    VerteilungRegeln.AblesezeitraumZiel z = ist.ziele().get(i);
+                    JsonNode zs = soll.path("ziele").get(i);
+                    String hier = why + " · " + z.kostenstelle();
+                    betragGleich(z.anteilProzent(), zs.path("anteil_prozent"), hier + " · Anteil");
+                    betragGleich(z.menge(), zs.path("menge"), hier + " · Menge");
+                    assertThat(z.grund()).as(hier + " · Grund").isEqualTo(str(zs.path("grund")));
+                    assertThat(z.geaendertAm()).as(hier + " · geändert am").isEqualTo(tag(zs.path("geaendert_am")));
+                }
+                JsonNode offen = soll.path("nicht_verteilt");
+                if (offen.isNull()) {
+                    assertThat(ist.nichtVerteilt()).as(why + " · nicht verteilt").isNull();
+                } else {
+                    assertThat(ist.nichtVerteilt()).as(why + " · nicht verteilt").isNotNull();
+                    betragGleich(ist.nichtVerteilt().menge(), offen.path("menge"), why + " · nicht verteilt · Menge");
+                    assertThat(ist.nichtVerteilt().grund()).as(why + " · nicht verteilt · Grund")
+                            .isEqualTo(str(offen.path("grund")));
+                    assertThat(ist.nichtVerteilt().geaendertAm()).as(why + " · nicht verteilt · geändert am")
+                            .isEqualTo(tag(offen.path("geaendert_am")));
+                }
+            }
+            case "kostenstelle" -> {
+                List<KostenstelleEnergieRegeln.Quelle> quellen = quellen(ein.path("quellen"));
+                KostenstelleEnergieRegeln.Urteil ist = KostenstelleEnergieRegeln.energie(
+                        ein.path("kostenstelle").asText(), tag(ein.path("von")), tag(ein.path("bis")),
+                        ziele(ein.path("ziele")), quellen);
+                blockGleich(ist.gemessen(), soll.path("gemessen"), why + " · gemessen");
+                blockGleich(ist.verteilt(), soll.path("verteilt"), why + " · verteilt");
+                blockGleich(ist.berechnet(), soll.path("berechnet"), why + " · berechnet");
+                blockGleich(ist.summe(), soll.path("summe"), why + " · Summe der Kostenstelle");
+                blockGleich(ist.nichtVerteilt(), soll.path("nicht_verteilt"), why + " · nicht verteilt");
+            }
+            case "doppelzaehlung" -> {
+                List<KostenstelleDoppelzaehlung.Formel> formeln = new ArrayList<>();
+                for (JsonNode f : ein.path("formeln")) {
+                    List<KostenstelleDoppelzaehlung.Term> terme = new ArrayList<>();
+                    f.path("terme").forEach(t -> terme.add(new KostenstelleDoppelzaehlung.Term(str(t.path("messstelle")),
+                            str(t.path("verteilung_ziel")), str(t.path("anteil")), str(t.path("vorzeichen")),
+                            bd(t.path("faktor")))));
+                    formeln.add(new KostenstelleDoppelzaehlung.Formel(f.path("messstelle").asText(),
+                            tag(f.path("gueltig_ab")), tag(f.path("gueltig_bis")), terme));
+                }
+                KostenstelleDoppelzaehlung.Urteil ist = KostenstelleDoppelzaehlung.pruefe(
+                        ein.path("kostenstelle").asText(), tag(ein.path("von")), tag(ein.path("bis")),
+                        ziele(ein.path("ziele")), quellen(ein.path("quellen")), formeln);
+                List<String> enthalten = new ArrayList<>();
+                ist.enthalten().forEach(e -> enthalten.add(e.teil() + " in " + e.summe() + " · " + e.umfang() + " · "
+                        + e.kette() + " · " + e.zeitraeume().stream().map(z -> z.von() + ".." + z.bis()).toList()
+                        + " · " + e.satz()));
+                List<String> sollEnthalten = new ArrayList<>();
+                soll.path("enthalten").forEach(e -> {
+                    List<String> zeitraeume = new ArrayList<>();
+                    e.path("zeitraeume").forEach(z -> zeitraeume.add(z.path("von").asText() + ".." + z.path("bis").asText()));
+                    sollEnthalten.add(e.path("teil").asText() + " in " + e.path("summe").asText() + " · "
+                            + e.path("umfang").asText() + " · " + texte(e.path("kette")) + " · " + zeitraeume + " · "
+                            + e.path("satz").asText());
+                });
+                assertThat(enthalten).as(why + " · enthalten").containsExactlyElementsOf(sollEnthalten);
+                List<String> nicht = new ArrayList<>();
+                ist.nichtPruefbar().forEach(n -> nicht.add(n.messstelle() + " · " + n.grund() + " · " + n.kette() + " · "
+                        + n.satz()));
+                List<String> sollNicht = new ArrayList<>();
+                soll.path("nicht_pruefbar").forEach(n -> sollNicht.add(n.path("messstelle").asText() + " · "
+                        + n.path("grund").asText() + " · " + texte(n.path("kette")) + " · " + n.path("satz").asText()));
+                assertThat(nicht).as(why + " · nicht prüfbar").containsExactlyElementsOf(sollNicht);
+            }
             default -> throw new IllegalStateException("unbekannte Regel " + p.path("regel").asText());
         }
+    }
+
+    /** Ein Block der Kostenstellen-Sicht: Zahl, Einheit, Zustand, Grund und JEDER Posten mit seinen Stichproben. */
+    private static void blockGleich(KostenstelleEnergieRegeln.Block ist, JsonNode soll, String wo) {
+        betragGleich(ist.menge(), soll.path("menge"), wo + " · Menge");
+        assertThat(ist.einheit()).as(wo + " · Einheit").isEqualTo(str(soll.path("einheit")));
+        assertThat(ist.zustand()).as(wo + " · Zustand").isEqualTo(str(soll.path("zustand")));
+        assertThat(ist.grund()).as(wo + " · Grund").isEqualTo(str(soll.path("grund")));
+        if (soll.has("anzahl_summen")) {
+            assertThat(ist.summen()).as(wo + " · Summen je Größe").hasSize(soll.path("anzahl_summen").asInt());
+        }
+        assertThat(ist.posten().stream().map(KostenstelleEnergieRegeln.Posten::messstelle).toList())
+                .as(wo + " · Posten").isEqualTo(sollNamen(soll.path("posten")));
+        for (int i = 0; i < ist.posten().size(); i++) {
+            KostenstelleEnergieRegeln.Posten p = ist.posten().get(i);
+            JsonNode s = soll.path("posten").get(i);
+            String hier = wo + " · " + p.messstelle();
+            assertThat(p.art()).as(hier + " · Art").isEqualTo(s.path("art").asText());
+            betragGleich(p.menge(), s.path("menge"), hier + " · Menge");
+            assertThat(p.zustand()).as(hier + " · Zustand").isEqualTo(str(s.path("zustand")));
+            assertThat(p.version()).as(hier + " · Version").isEqualTo(s.path("version").asInt());
+            assertThat(p.kennzeichen()).as(hier + " · Kennzeichen").isEqualTo(texte(s.path("kennzeichen")));
+            List<Integer> fassungen = new ArrayList<>();
+            s.path("fassungen").forEach(f -> fassungen.add(f.asInt()));
+            assertThat(p.fassungen()).as(hier + " · Fassungen").isEqualTo(fassungen);
+            for (JsonNode stichprobe : s.path("tage_stichproben")) {
+                LocalDate t = tag(stichprobe.path("tag"));
+                KostenstelleEnergieRegeln.Tag tagIst = p.tage().stream().filter(x -> x.tag().equals(t)).findFirst()
+                        .orElseThrow(() -> new AssertionError(hier + " · kein Tag " + t));
+                betragGleich(tagIst.anteilProzent(), stichprobe.path("anteil_prozent"), hier + " · Anteil " + t);
+                betragGleich(tagIst.menge(), stichprobe.path("menge"), hier + " · Tagesanteil " + t);
+                assertThat(tagIst.grund()).as(hier + " · Grund " + t).isEqualTo(str(stichprobe.path("grund")));
+            }
+            if (s.has("monate_stichproben")) {
+                assertThat(p.monate()).as(hier + " · Monate").hasSize(s.path("monate_stichproben").size());
+                assertThat(p.tage()).as(hier + " · ein Posten aus Ablesungen hat keine Tage").isEmpty();
+            } else {
+                assertThat(p.monate()).as(hier + " · ein Posten aus Tagen hat keine Monate").isEmpty();
+            }
+            for (JsonNode stichprobe : s.path("monate_stichproben")) {
+                YearMonth m = YearMonth.parse(stichprobe.path("monat").asText());
+                KostenstelleEnergieRegeln.Monat monatIst = p.monate().stream().filter(x -> x.monat().equals(m))
+                        .findFirst().orElseThrow(() -> new AssertionError(hier + " · kein Monat " + m));
+                betragGleich(monatIst.anteilProzent(), stichprobe.path("anteil_prozent"), hier + " · Anteil " + m);
+                betragGleich(monatIst.menge(), stichprobe.path("menge"), hier + " · Monatsanteil " + m);
+                assertThat(monatIst.grund()).as(hier + " · Grund " + m).isEqualTo(str(stichprobe.path("grund")));
+                assertThat(monatIst.geaendertAm()).as(hier + " · geändert am " + m)
+                        .isEqualTo(tag(stichprobe.path("geaendert_am")));
+            }
+        }
+    }
+
+    private static VerteilungRegeln.Ablesezeitraum zeitraum(JsonNode z) {
+        return new VerteilungRegeln.Ablesezeitraum(OffsetDateTime.parse(z.path("von").asText()).toInstant(),
+                OffsetDateTime.parse(z.path("bis").asText()).toInstant());
+    }
+
+    private static List<String> sollNamenVon(JsonNode liste, String feld) {
+        List<String> raus = new ArrayList<>();
+        liste.forEach(x -> raus.add(x.path(feld).asText()));
+        return raus;
+    }
+
+    /** Die Monate einer Messstelle aus Ablesungen ({@code ablesung}); ohne das Feld {@code null}. */
+    private static KostenstelleEnergieRegeln.Ablesung ablesung(JsonNode a) {
+        if (a.isMissingNode() || a.isNull()) {
+            return null;
+        }
+        List<KostenstelleEnergieRegeln.Monatswert> monate = new ArrayList<>();
+        for (JsonNode m : a.path("monate")) {
+            List<VerteilungRegeln.Ablesezeitraum> zeitraeume = new ArrayList<>();
+            m.path("ablesezeitraeume").forEach(z -> zeitraeume.add(zeitraum(z)));
+            monate.add(new KostenstelleEnergieRegeln.Monatswert(YearMonth.parse(m.path("monat").asText()),
+                    zeitraeume, bd(m.path("menge")), m.path("zustand").asText(), ganz(m.path("abdeckung_prozent")),
+                    m.path("version").asInt(), texte(m.path("kennzeichen"))));
+        }
+        return new KostenstelleEnergieRegeln.Ablesung(ZoneId.of(a.path("zone").asText()), monate);
+    }
+
+    private static List<KostenstelleEnergieRegeln.Quelle> quellen(JsonNode n) {
+        List<KostenstelleEnergieRegeln.Quelle> quellen = new ArrayList<>();
+        for (JsonNode q : n) {
+            List<KostenstelleEnergieRegeln.Anteil> anteile = new ArrayList<>();
+            for (JsonNode a : q.path("anteile")) {
+                anteile.add(new KostenstelleEnergieRegeln.Anteil(a.path("kostenstelle").asText(),
+                        bd(a.path("anteil_prozent")), tag(a.path("gueltig_ab")), tag(a.path("gueltig_bis")),
+                        a.path("fassung").asInt()));
+            }
+            List<KostenstelleEnergieRegeln.Tageswert> tage = new ArrayList<>();
+            for (JsonNode t : q.path("tage")) {
+                tage.add(new KostenstelleEnergieRegeln.Tageswert(tag(t.path("tag")), bd(t.path("menge")),
+                        t.path("zustand").asText(), ganz(t.path("abdeckung_prozent")), t.path("version").asInt(),
+                        texte(t.path("kennzeichen"))));
+            }
+            quellen.add(new KostenstelleEnergieRegeln.Quelle(q.path("messstelle").asText(),
+                    q.path("art").asText(), q.path("groesse").asText(), q.path("richtung").asText(),
+                    q.path("einheit").asText(), anteile, tage, ablesung(q.path("ablesung"))));
+        }
+        return quellen;
+    }
+
+    private static List<String> sollNamen(JsonNode posten) {
+        List<String> raus = new ArrayList<>();
+        posten.forEach(p -> raus.add(p.path("messstelle").asText()));
+        return raus;
+    }
+
+    private static List<String> paare(JsonNode n, String tagFeld) {
+        List<String> raus = new ArrayList<>();
+        n.forEach(x -> raus.add(x.path("kostenstelle").asText() + "@" + x.path(tagFeld).asText()));
+        return raus;
     }
 
     private static List<String> namen(JsonNode obj) {

@@ -1,0 +1,236 @@
+package com.voltpilot.api.uems;
+
+import static org.assertj.core.api.Assertions.assertThat;
+
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import org.junit.jupiter.api.Test;
+
+/**
+ * Die Kundensätze des Vergleichs (AP-17 IP-19, {@code bezugsbasis.md} §10/§16) aus den Ergebnissen der Regeln — rein,
+ * mit den Fassungen der Vektordatei (BB-0001 wörtlich aus der Referenzdatei 1.8). Der Leser selbst läuft im
+ * {@code BezugsbasisVergleichApiTest} (Testcontainers).
+ */
+class BezugsbasisVergleichSatzTest {
+
+    private static final BezugsbasisRegeln.Spannweite SPANNWEITE =
+            new BezugsbasisRegeln.Spannweite("254000", "341000", "228600", "375100");
+    private static final List<BezugsbasisRegeln.Variable> PRODUKTION =
+            List.of(new BezugsbasisRegeln.Variable("Produktionsmenge", "kg", "produktionsmenge"));
+    private static final BezugsbasisRegeln.Fassung MODELL = new BezugsbasisRegeln.Fassung("BB-0001", 2,
+            "regression_eine_variable", 12, "0.2685", new BezugsbasisRegeln.Koeffizienten("10523", "0.2343", null), "0.8",
+            "2.0", List.of(SPANNWEITE), PRODUKTION);
+    private static final BezugsbasisRegeln.Fassung VORLAEUFIG = new BezugsbasisRegeln.Fassung("BB-0001", 1,
+            "verhaeltnis", 1, "0.2837", null, null, "2.0", null, PRODUKTION);
+
+    private final List<String> saetze = new ArrayList<>();
+
+    private static BezugsbasisRegeln.Wert wert(String w) {
+        return new BezugsbasisRegeln.Wert(w, "vollstaendig", List.of());
+    }
+
+    private String monat(String schluessel, BezugsbasisRegeln.Fassung f, String gemessen, String x) {
+        Map<String, Object> e = BezugsbasisRegeln.vergleich(
+                new BezugsbasisRegeln.VergleichEingang(f, false, true, wert(gemessen), List.of(wert(x))));
+        String satz = BezugsbasisVergleichSatz.monat(e, new BezugsbasisVergleichSatz.Monat(
+                KennzahlRegeln.periodeText("monat", schluessel), "kWh",
+                new BezugsbasisVergleichSatz.Variable("Produktionsmenge", x, "kg", "254000", "341000"), "BB-0001", null,
+                null, null, null));
+        saetze.add(satz);
+        return satz;
+    }
+
+    @Test
+    void r2DezemberSchlechterJanuarBesserFebruarImRahmen() {
+        assertThat(monat("2027-12", MODELL, "78000", "250000")).isEqualTo("Dezember 2027: 78 000 kWh gemessen, "
+                + "69 098 kWh erwartet bei 250 000 kg — 12,9 % mehr als die Bezugsbasis erwarten lässt: schlechter.");
+        assertThat(monat("2028-01", MODELL, "78000", "300000")).isEqualTo(
+                "Januar 2028: 78 000 kWh gemessen, 80 813 kWh erwartet bei 300 000 kg — 3,5 % weniger: besser.");
+        assertThat(monat("2028-02", MODELL, "81500", "305000")).isEqualTo("Februar 2028: 81 500 kWh gemessen, "
+                + "81 985 kWh erwartet bei 305 000 kg — 0,6 % weniger: im Rahmen (± 2 %).");
+        keineUrsacheKeinNormwort();
+    }
+
+    @Test
+    void r2RohTraegtNieEinUrteil() {
+        Map<String, Object> roh = BezugsbasisRegeln.roh("78000", "85500");
+        assertThat(roh).containsEntry("urteil", "ohne_urteil").containsEntry("delta_prozent", "-8.8")
+                .containsEntry("richtung", "weniger");
+    }
+
+    @Test
+    void r6VorlaeufigNenntEsImSatz() {
+        assertThat(monat("2027-03", VORLAEUFIG, "88265", "331000")).isEqualTo("März 2027: 88 265 kWh gemessen, "
+                + "93 905 kWh erwartet bei 331 000 kg — 6,0 % weniger: besser. Die Bezugsbasis ist vorläufig "
+                + "(1 von 12 Monaten).");
+    }
+
+    @Test
+    void g3MaerzAusserhalbDerSpannweite() {
+        assertThat(monat("2028-03", MODELL, "100000", "390000")).isEqualTo("Modell nicht anwendbar: Produktionsmenge "
+                + "im März 2028 (390 000 kg) liegt außerhalb der Bezugsbasis (254 000–341 000 kg).");
+    }
+
+    @Test
+    void r11ZeitraumSummeDurchSumme() {
+        List<BezugsbasisRegeln.Monat> monate = List.of(
+                new BezugsbasisRegeln.Monat(true, wert("85500"), List.of(wert("320000"))),
+                new BezugsbasisRegeln.Monat(true, wert("78000"), List.of(wert("250000"))),
+                new BezugsbasisRegeln.Monat(true, wert("78000"), List.of(wert("300000"))),
+                new BezugsbasisRegeln.Monat(true, wert("81500"), List.of(wert("305000"))));
+        Map<String, Object> e = BezugsbasisRegeln.zeitraum(new BezugsbasisRegeln.ZeitraumEingang(MODELL, false, 4, monate));
+        assertThat(e).containsEntry("delta_prozent", "1.8").containsEntry("urteil", "im_rahmen");
+        String satz = BezugsbasisVergleichSatz.zeitraum(e, "November 2027", "Februar 2028", "kWh", 4);
+        saetze.add(satz);
+        assertThat(satz).isEqualTo("November 2027 bis Februar 2028: 323 000 kWh gemessen, 317 395 kWh erwartet — "
+                + "1,8 %: im Rahmen der Bezugsbasis (Summe über vier Monate).");
+        keineUrsacheKeinNormwort();
+    }
+
+    /**
+     * P4 je Monat (Entscheid 07.10.2026): BB-0003 Fassung 1 gilt ab 01.11.2026 (R5). Oktober 2026 zählt nicht mit - der
+     * Satz sagt vorn, wie viele Monate bewertbar sind und ab wann die Basis gilt; die Summe läuft über die übrigen.
+     */
+    @Test
+    void p4ZeitraumZaehltNurMonateMitFassung() {
+        BezugsbasisRegeln.Fassung flaeche = new BezugsbasisRegeln.Fassung("BB-0003", 1, "verhaeltnis", 1, "11.9032", null,
+                null, "2.0", null, List.of(new BezugsbasisRegeln.Variable("Bezugsfläche", "m²", "flaeche")));
+        BezugsbasisRegeln.Monat oktober = new BezugsbasisRegeln.Monat(true, wert("36900"), List.of(), true);
+        BezugsbasisRegeln.Monat november = new BezugsbasisRegeln.Monat(true, wert("38400"), List.of(wert("3100")));
+        BezugsbasisRegeln.Monat dezember = new BezugsbasisRegeln.Monat(true, wert(null), List.of(wert("3100")));
+
+        Map<String, Object> e = BezugsbasisRegeln.zeitraum(new BezugsbasisRegeln.ZeitraumEingang(flaeche, false, 2,
+                List.of(oktober, november)));
+        assertThat(e).containsEntry("urteil", "schlechter").containsEntry("delta_prozent", "4.1")
+                .containsEntry("monate", "1 von 2");
+        String ab = BezugsbasisVergleichSatz.zeitraum(e, "Oktober 2026", "November 2026", "kWh", 2,
+                new BezugsbasisVergleichSatz.Geltung(1, "November 2026", false, null));
+        assertThat(ab).isEqualTo("Oktober 2026 bis November 2026: 1 von 2 Monaten bewertbar, die Bezugsbasis gilt erst "
+                + "ab November 2026. 38 400 kWh gemessen, 36 900 kWh erwartet — 4,1 % mehr: schlechter (Summe über einen "
+                + "Monat). Die Bezugsbasis ist vorläufig (1 von 12 Monaten).");
+
+        // U5 bleibt für die Monate mit Fassung: fehlt der Dezember, ist der Zeitraum ohne Urteil (1 von 2 mit Vergleich).
+        Map<String, Object> luecke = BezugsbasisRegeln.zeitraum(new BezugsbasisRegeln.ZeitraumEingang(flaeche, false, 3,
+                List.of(oktober, november, dezember)));
+        assertThat(luecke).containsEntry("urteil", "ohne_urteil").containsEntry("monate", "1 von 3");
+        String ohneUrteil = BezugsbasisVergleichSatz.zeitraum(luecke, "Oktober 2026", "Dezember 2026", "kWh", 3,
+                new BezugsbasisVergleichSatz.Geltung(2, "November 2026", false, null));
+        assertThat(ohneUrteil).isEqualTo("Oktober 2026 bis Dezember 2026: 1 von 3 Monaten bewertbar, die Bezugsbasis gilt "
+                + "erst ab November 2026. 38 400 kWh gemessen, 36 900 kWh erwartet — 4,1 % mehr; ohne Urteil: 1 von 2 "
+                + "Monaten mit Vergleich. Die Bezugsbasis ist vorläufig (1 von 12 Monaten).");
+
+        // Liegt eine Lücke zwischen Monaten mit Fassung, nennt der Satz nur die Zahl der Monate ohne Fassung.
+        String zwischen = BezugsbasisVergleichSatz.zeitraum(e, "Oktober 2026", "November 2026", "kWh", 2,
+                new BezugsbasisVergleichSatz.Geltung(1, null, false, null));
+        assertThat(zwischen).startsWith("Oktober 2026 bis November 2026: 1 von 2 Monaten bewertbar, in 1 Monat gilt "
+                + "keine Fassung der Bezugsbasis. 38 400 kWh gemessen");
+
+        // Kein Monat bewertbar: die Basis gilt erst nach dem Zeitraum.
+        Map<String, Object> keiner = BezugsbasisRegeln.zeitraum(new BezugsbasisRegeln.ZeitraumEingang(null, false, 3,
+                List.of(oktober, oktober, oktober)));
+        assertThat(keiner).containsEntry("urteil", "nicht_anwendbar").containsEntry("grund", "basis_fehlt")
+                .containsEntry("monate", "0 von 3");
+        String vorDemBeginn = BezugsbasisVergleichSatz.zeitraum(keiner, "August 2026", "Oktober 2026", "kWh", 3,
+                new BezugsbasisVergleichSatz.Geltung(0, "November 2026", false, null));
+        assertThat(vorDemBeginn).isEqualTo("August 2026 bis Oktober 2026: nicht bewertbar — kein Monat mit Vergleich. Die "
+                + "Bezugsbasis gilt erst ab November 2026.");
+        saetze.addAll(List.of(ab, ohneUrteil, zwischen, vorDemBeginn));
+        keineUrsacheKeinNormwort();
+    }
+
+    /**
+     * Review #1446 S2 (a): endet die Basis im Zeitraum, rechnet der Kopf gegen die Fassung des letzten Monats mit Fassung,
+     * die Monate danach zählen nicht - „endete am“; nach einem Ende „gilt wieder ab“ statt „gilt erst ab“ (R5: Fassung 1
+     * beendet 31.12.2026, Fassung 2 ab 01.03.2027).
+     */
+    @Test
+    void p4BasisEndetUndGiltWieder() {
+        BezugsbasisRegeln.Fassung flaeche = new BezugsbasisRegeln.Fassung("BB-0003", 1, "verhaeltnis", 1, "11.9032", null,
+                null, "2.0", null, List.of(new BezugsbasisRegeln.Variable("Bezugsfläche", "m²", "flaeche")));
+        BezugsbasisRegeln.Monat nachDemEnde = new BezugsbasisRegeln.Monat(true, wert("40100"), List.of(), true);
+        Map<String, Object> e = BezugsbasisRegeln.zeitraum(new BezugsbasisRegeln.ZeitraumEingang(flaeche, false, 3,
+                List.of(new BezugsbasisRegeln.Monat(true, wert("38400"), List.of(wert("3100"))),
+                        new BezugsbasisRegeln.Monat(true, wert("37500"), List.of(wert("3100"))), nachDemEnde)));
+        assertThat(e).containsEntry("urteil", "schlechter").containsEntry("delta_prozent", "2.8")
+                .containsEntry("monate", "2 von 3");
+        String endete = BezugsbasisVergleichSatz.zeitraum(e, "November 2026", "Januar 2027", "kWh", 3,
+                new BezugsbasisVergleichSatz.Geltung(2, null, false, LocalDate.of(2026, 12, 31)));
+        assertThat(endete).isEqualTo("November 2026 bis Januar 2027: 2 von 3 Monaten bewertbar, die Bezugsbasis endete am "
+                + "31.12.2026. 75 900 kWh gemessen, 73 800 kWh erwartet — 2,8 % mehr: schlechter (Summe über zwei Monate). "
+                + "Die Bezugsbasis ist vorläufig (1 von 12 Monaten).");
+
+        // Vorn ein Beginn, hinten ein Ende: in der Folge der Zeit.
+        String beides = BezugsbasisVergleichSatz.zeitraum(e, "Oktober 2026", "Januar 2027", "kWh", 4,
+                new BezugsbasisVergleichSatz.Geltung(2, "November 2026", false, LocalDate.of(2026, 12, 31)));
+        assertThat(beides).startsWith("Oktober 2026 bis Januar 2027: 2 von 4 Monaten bewertbar, die Bezugsbasis gilt erst "
+                + "ab November 2026 und endete am 31.12.2026. 75 900 kWh gemessen");
+
+        // Der Zeitraum beginnt in der Lücke nach dem Ende: „gilt wieder ab“.
+        String wieder = BezugsbasisVergleichSatz.zeitraum(e, "Januar 2027", "März 2027", "kWh", 3,
+                new BezugsbasisVergleichSatz.Geltung(2, "März 2027", true, null));
+        assertThat(wieder).startsWith("Januar 2027 bis März 2027: 2 von 3 Monaten bewertbar, die Bezugsbasis gilt wieder "
+                + "ab März 2027. ");
+
+        // Kein Monat bewertbar, alle nach dem Ende: Ende und neuer Beginn, in der Folge der Zeit.
+        Map<String, Object> keiner = BezugsbasisRegeln.zeitraum(new BezugsbasisRegeln.ZeitraumEingang(null, true, 2,
+                List.of(nachDemEnde, nachDemEnde)));
+        assertThat(keiner).containsEntry("urteil", "nicht_anwendbar").containsEntry("grund", "basis_beendet")
+                .containsEntry("monate", "0 von 2");
+        String inDerLuecke = BezugsbasisVergleichSatz.zeitraum(keiner, "Januar 2027", "Februar 2027", "kWh", 2,
+                new BezugsbasisVergleichSatz.Geltung(0, "März 2027", true, LocalDate.of(2026, 12, 31)));
+        assertThat(inDerLuecke).isEqualTo("Januar 2027 bis Februar 2027: nicht bewertbar — kein Monat mit Vergleich. Die "
+                + "Bezugsbasis endete am 31.12.2026 und gilt wieder ab März 2027.");
+        String nurEnde = BezugsbasisVergleichSatz.zeitraum(keiner, "Januar 2027", "Februar 2027", "kWh", 2,
+                new BezugsbasisVergleichSatz.Geltung(0, null, true, LocalDate.of(2026, 12, 31)));
+        assertThat(nurEnde).endsWith("kein Monat mit Vergleich. Die Bezugsbasis endete am 31.12.2026.");
+        saetze.addAll(List.of(endete, beides, wieder, inDerLuecke, nurEnde));
+        keineUrsacheKeinNormwort();
+    }
+
+    @Test
+    void r5BeendetUndR10OhneBasis() {
+        Map<String, Object> beendet = BezugsbasisRegeln.vergleich(
+                new BezugsbasisRegeln.VergleichEingang(null, true, true, wert("40000"), List.of()));
+        assertThat(BezugsbasisVergleichSatz.monat(beendet, new BezugsbasisVergleichSatz.Monat("Januar 2027", "kWh", null,
+                "BB-0003", LocalDate.of(2026, 12, 31), "Anbau Halle 2", 2, LocalDate.of(2027, 3, 1))))
+                .isEqualTo("Nicht bewertbar: Bezugsbasis beendet am 31.12.2026 (Anbau Halle 2). "
+                        + "Fassung 2 gilt seit 01.03.2027.");
+        Map<String, Object> fehlt = BezugsbasisRegeln.vergleich(
+                new BezugsbasisRegeln.VergleichEingang(null, false, true, wert("40000"), List.of()));
+        assertThat(fehlt).containsEntry("grund", "basis_fehlt");
+        assertThat(BezugsbasisVergleichSatz.monat(fehlt, new BezugsbasisVergleichSatz.Monat("Januar 2027", "kWh", null,
+                null, null, null, null, null))).isEqualTo(BezugsbasisVergleichSatz.LEER);
+    }
+
+    /** G2 (IP-13): die fehlende Variable steht im Satz, ohne Koordinaten mit dem Satz des Wetter-Archivs (§5.8). */
+    @Test
+    void g2VariableFehltMitKoordinatenSatz() {
+        BezugsbasisRegeln.Fassung gradtage = new BezugsbasisRegeln.Fassung("BB-0003", 1, "gradtage", 12, "4.2465",
+                new BezugsbasisRegeln.Koeffizienten("119", "3.8", null), "4.6", "2.0", null,
+                List.of(new BezugsbasisRegeln.Variable("Gradtagzahl Lindach", "Kd", "gradtagzahl")));
+        Map<String, Object> e = BezugsbasisRegeln.vergleich(new BezugsbasisRegeln.VergleichEingang(gradtage, false, true,
+                wert("1200"), List.of(new BezugsbasisRegeln.Wert(null, null, List.of()))));
+        assertThat(e).containsEntry("urteil", "nicht_anwendbar").containsEntry("grund", "variable_fehlt")
+                .containsEntry("erwartet", null);
+        String satz = BezugsbasisVergleichSatz.monat(e, new BezugsbasisVergleichSatz.Monat("Januar 2026", "kWh",
+                new BezugsbasisVergleichSatz.Variable("Gradtagzahl Lindach", null, "Kd", null, null), "BB-0003", null,
+                null, null, null, WetterArchivRegeln.koordinatenFehlen("Lindach")));
+        saetze.add(satz);
+        assertThat(satz).isEqualTo("Januar 2026: nicht bewertbar — Gradtagzahl Lindach hat keinen Wert. Für den Standort "
+                + "Lindach kann VoltPilot kein Wetter beziehen: die Koordinaten fehlen. Eine Wetterbereinigung über Gradtage "
+                + "ist hier erst möglich, wenn der Standort Koordinaten hat.");
+        keineUrsacheKeinNormwort();
+    }
+
+    /** U6 und SP2: kein Satz nennt eine Ursache oder ein Norm-Wort. */
+    private void keineUrsacheKeinNormwort() {
+        for (String s : saetze) {
+            for (String verboten : List.of("Leckage", "Maßnahme", "wirkt", "EnPI", "EnB", "Baseline", "Normalisierung",
+                    "KPI", "automatisch bewertet")) {
+                assertThat(s).doesNotContain(verboten);
+            }
+        }
+    }
+}

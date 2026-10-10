@@ -17,6 +17,7 @@ Zeilen = konkrete Kundenaktionen, Spalten = Rollen, Zellen = eindeutiger Geltung
 | Leser | `leser` | LE | je Standort | Daten: sehen (je Standort) · Steuerung ✘ · Verwaltung ✘ |
 | Unterstützer | `unterstuetzer` | US | je Standort · befristet | je Umfang: Daten sehen/pflegen · Steuerung Betrieb · nie Rahmen, nie Verwaltung · immer befristet + Banner + Protokoll |
 | VoltPilot-Betrieb | `voltpilot_betrieb` | VP | Plattform | Plattform-Betrieb |
+| Einsicht | `einsicht` | EI | Unternehmen | Daten: nur sehen (alle Standorte) · Steuerung ✘ · Verwaltung ✘ · nie eine Freigabe, nie ein Eintrag, kein Export von Messwerten; das Verzeichnis als CSV ja |
 
 ## Unterstützer-Umfang (E9)
 
@@ -28,7 +29,7 @@ Zeilen = konkrete Kundenaktionen, Spalten = Rollen, Zellen = eindeutiger Geltung
 
 ## Matrix
 
-48 Aktionen × 7 Rollen — zeichengleich zur Tabelle im AP-03-Konzept §4.3 (SHA-256 `fa96d75444e46487274d89b23cac88ff4190760cef604db7c07e83fe836cc20a`).
+48 Aktionen × 7 Rollen — zeichengleich zur Tabelle im AP-03-Konzept §4.3 (SHA-256 `fa96d75444e46487274d89b23cac88ff4190760cef604db7c07e83fe836cc20a`). Die Spalten späterer Pakete stehen darunter in „Spalten der Nachträge“.
 
 | Aktion | Herkunft | Kundenadministrator | Energiemanager | Bearbeiter | Bedienberechtigt | Leser | Unterstützer | VoltPilot-Betrieb | Anmerkung |
 |---|---|---|---|---|---|---|---|---|---|
@@ -87,19 +88,107 @@ Zeilen = konkrete Kundenaktionen, Spalten = Rollen, Zellen = eindeutiger Geltung
 | Ladepark-Rahmen auslegen (Hausreserve, Marge, Rotation, Budget) | Ladepark-Rahmen (Admin-Route) | - | - | - | - | - | - | P | AP-01 W6: Admin-Route bleibt; die Anschlussgrenze gehört dem Kunden. |
 | Flotte, OTA, Registry-Push, Optimierer-Konfiguration, What-if, Vorlagen, Plattform-Prognosevorgabe | `/api/v1/admin/**` | - | - | - | - | - | - | P | unverändert. |
 
+### Spalten der Nachträge
+
+Rollen aus dem Rechte-Abschnitt eines späteren Pakets, je Zeile der Konzept-Tabelle. Die Nachtrags-Zeilen tragen sie in ihrer eigenen Tabelle.
+
+| Kennung | Aktion | Einsicht (AP-19 §4.11) |
+|---|---|---|
+| `unternehmen.bearbeiten` | Unternehmen bearbeiten (Name, Kurzname, Zeitzone-Vorgabe, Sitz) | - |
+| `standort.verwalten` | Standort anlegen · bearbeiten · archivieren · wiederherstellen | - |
+| `gebaeude.pflegen` | Gebäude und Bereiche pflegen (anlegen, bearbeiten, verschieben, Fläche, archivieren) | - |
+| `anlage.zuordnen` | Anlage einem Standort zuordnen / umziehen | - |
+| `aenderung.rueckwirkend` | Rückwirkend ändern („gültig ab“ in der Vergangenheit) | - |
+| `aenderungsprotokoll.lesen` | Änderungsprotokoll und „Stand am“ lesen | U |
+| `anlage.verwalten` | Anlage anlegen (Assistent) · archivieren · löschen (nur ohne Historie) | - |
+| `geraet.einrichten` | Box anmelden; Gerät / Komponente anlegen, verbinden, bearbeiten; Verbindungstest | - |
+| `komponente.loeschen` | Komponente löschen · Gerät entfernen | - |
+| `aufzeichnungen.loeschen` | Datenaufzeichnungen löschen | - |
+| `mess_selektion.bearbeiten` | Mess-Selektion je Komponente (zusätzliche Messwerte) | - |
+| `messstelle.bearbeiten` | Messstelle anlegen · bearbeiten · Ort, Prozess, Kostenstelle zuordnen | - |
+| `messstelle.quelle` | Führende Quelle binden · Zählerwechsel · Wandlerfaktoren | - |
+| `korrektur.erfassen` | Korrektur / Ersatzwert erfassen (versioniert, begründet) | - |
+| `bezugsgroesse.eingeben` | Bezugsgröße eingeben / berichtigen (manuell) | - |
+| `bezugsgroesse.importieren` | CSV-Import mit Vorschau (Bezugsgrößen) | - |
+| `messwerte.ansehen` | Messwerte, Zeitreihen, Datenqualität ansehen | U |
+| `kennzahl.standort_definieren` | Kennzahl definieren — Geltungsbereich Standort | - |
+| `kennzahl.unternehmen_definieren` | Kennzahl definieren — Geltungsbereich Unternehmen | - |
+| `bericht.standort_abrufen` | Standort-Bericht abrufen (Entwurf, PDF/CSV auf Abruf) | U |
+| `bericht.standort_freigeben` | Standort-Bericht freigeben (Berichtsstand) | - |
+| `bericht.unternehmen` | Unternehmens-Bericht abrufen / freigeben | - |
+| `export.standort` | Export je Standort (CSV: Messwerte, Kennzahlen) | - |
+| `export.unternehmen` | Unternehmens-Export (alle Standorte) | - |
+| `cockpit.anpassen` | Cockpit anpassen — Eigen-Schicht der Organisation (Anlage / Unternehmen) | - |
+| `auswertung.anlegen` | Eigene Auswertung anlegen (je Anlage) | - |
+| `funktion.messen_einrichten` | Funktion „Messen & Auswerten“ je Standort einrichten | - |
+| `funktion.steuern_einrichten` | Funktion „Steuern & Optimieren“ je Standort einrichten (Anlage aufnehmen, Freigeben, Grenze, Betriebsweise) | - |
+| `steuerung.starten_beenden` | Steuerung starten · beenden je Anlage (nach bestandenen Prüfungen) | - |
+| `steuerung.anhalten_fortsetzen` | Steuerung anhalten · fortsetzen je Anlage; Standort anhalten · fortsetzen | - |
+| `handeingriff.setzen` | Handeingriff: Speicher jetzt laden, Ladestand halten, Automatik pausieren, Gerät jetzt an/aus, „Jetzt voll laden“, „Laden pausieren“ | - |
+| `betriebsweise.aendern` | Betriebsweise ändern: Betriebsmodell wechseln, Regeln anlegen/aktivieren, Steuerart je Verbraucher, Rangliste | - |
+| `ladepunkt.betrieb` | Ladekarten und Fahrzeug-Profile pflegen; OCPP-Betriebsaktionen (Reservieren, Verfügbarkeit, sanft neu starten) | - |
+| `schalttest.durchfuehren` | Schalt-Test / Verbindungstest durchführen | - |
+| `freigabe.erteilen` | Steuern freigeben je Komponente · Freigabe zurücknehmen | - |
+| `grenze.eintragen` | Anschlussgrenze, Einspeisegrenze, Netzladen-Schalter eintragen | - |
+| `register.schreiben` | Register schreiben (Kunden-Lane, Vorschau + Schreiben) | - |
+| `ladepunkt.anbinden` | Ladepunkt anbinden · Kennung zurücknehmen | - |
+| `prognose.befoerdern` | Prognose-Modell je Anlage befördern | - |
+| `benutzer.verwalten` | Benutzer anlegen (Startpasswort, Pflichtwechsel bei der ersten Anmeldung) · sperren · entfernen | - |
+| `zuweisung.verwalten` | Rollen und Standorte zuweisen · entziehen | - |
+| `unterstuetzung.verwalten` | Unterstützung gewähren · verlängern · beenden | - |
+| `zugriffsprotokoll.lesen` | Zugriffsprotokoll lesen (wer hat wem wann was gewährt/entzogen; Anmeldungen der Unterstützer) | - |
+| `konto.eigenes` | Eigenes Konto: Name, Passwort, Abmelden; eigene Standorte und Rollen sehen | E |
+| `plattform.kundenbereich` | Kundenbereich anlegen / löschen; ersten Kundenadministrator anlegen | - |
+| `plattform.zertifizierung` | Modell zertifizieren · Steuer-Scharfschaltung je Wechselrichter (S1) | - |
+| `plattform.ladepark_rahmen` | Ladepark-Rahmen auslegen (Hausreserve, Marge, Rotation, Budget) | - |
+| `plattform.betrieb` | Flotte, OTA, Registry-Push, Optimierer-Konfiguration, What-if, Vorlagen, Plattform-Prognosevorgabe | - |
+
 ## Nachträge der später konzipierten Pakete
 
-AP-03 wurde vor AP-04 … AP-07 konzipiert; deren Rechte-Abschnitte hat der Captain mit dem jeweiligen Paket abgenommen: AP-04 §6.7 (UEMS AP-04 Messstellen — report.md §6.7, abgenommen mit E1–E12 am 10.09.2026) · AP-05 §6 (UEMS AP-05 WAGO — report.md §6, abgenommen mit E1–E9 am 10.09.2026) · AP-06 §4.8 (UEMS AP-06 Edges — report.md §4.8, abgenommen mit E1–E12 am 10.09.2026) · AP-07 §4.10 (UEMS AP-07 Messdaten — report.md §4.10, abgenommen mit E1–E13 am 10.09.2026). Die 5 Zeilen darunter entstehen dort; ihre Zellen sind die des Abschnitts („wie Zeile X“ = die Zellen von X). Widersprüche zu einer Konzept-Zeile stehen benannt in [`rechte-vectors.json`](./rechte-vectors.json) (`widersprueche`), samt Fällen.
+AP-03 wurde vor AP-04 … AP-07 konzipiert; deren Rechte-Abschnitte hat der Captain mit dem jeweiligen Paket abgenommen: AP-04 §6.7 (UEMS AP-04 Messstellen — report.md §6.7, abgenommen mit E1–E12 am 10.09.2026) · AP-05 §6 (UEMS AP-05 WAGO — report.md §6, abgenommen mit E1–E9 am 10.09.2026) · AP-06 §4.8 (UEMS AP-06 Edges — report.md §4.8, abgenommen mit E1–E12 am 10.09.2026) · AP-07 §4.10 (UEMS AP-07 Messdaten — report.md §4.10, abgenommen mit E1–E13 am 10.09.2026) · AP-10 §4.10 (UEMS AP-10 Bilanzen — report.md §4.10, abgenommen mit E15 = A am 12.09.2026) · AP-09 §4.11 (UEMS AP-09 Bezugsgrößen — report.md §4.11 und W8, abgenommen mit E1–E17 = A am 12.09.2026) · AP-08 §4.8 (UEMS AP-08 Verbrauch — report.md §4.8, abgenommen mit E1–E15 = A am 11.09.2026) · AP-08 §5 (UEMS AP-08 Verbrauch — report.md §5, Bedienablauf „Eine Korrektur oder einen Ersatzwert widerrufen“, abgenommen mit E1–E15 = A am 11.09.2026) · AP-16 §6.1 (AP-16 §4.4, §6.1, R14; entschieden am 22.09.2026) · AP-17 §6.1 (AP-17 §4.2, §4.6, §6.1; entschieden am 23.09.2026) · AP-18 §4.9 (AP-18 §4.2, §4.9, §6.1; entschieden am 24.09.2026) · AP-19 §4.2 (AP-19 §4.2 (Rechte), §4.11 (RE1, RE2, RE4, RE5), W10; entschieden am 24.09.2026) · AP-19 §4.11 (AP-19 §4.11 (RE3, RE5), E8, R6; entschieden am 24.09.2026) · Verbessern v1 §10.8 (Verbessern-Konzept v1 §10 Entscheid 8 (Empfehlung: ja, eng gefasst); entschieden am 06.10.2026). Die 34 Zeilen darunter entstehen dort; ihre Zellen sind die des Abschnitts („wie Zeile X“ = die Zellen von X). Widersprüche zu einer Konzept-Zeile stehen benannt in [`rechte-vectors.json`](./rechte-vectors.json) (`widersprueche`), samt Fällen.
 
-| Aktion | Herkunft | Kundenadministrator | Energiemanager | Bearbeiter | Bedienberechtigt | Leser | Unterstützer | VoltPilot-Betrieb | Anmerkung |
-|---|---|---|---|---|---|---|---|---|---|
-| **Messstellen und Messdaten (AP-04, AP-08, AP-09)** |  |  |  |  |  |  |  |  |  |
-| Messstellen-Register lesen (Messstelle, Ort, Quelle, Zustand, letzter Wert) | AP-04 §6.7 | U | U | S | S | S | A | - | AP-04: „Register lesbar für Leser und Bedienberechtigte“; wer Messstellen pflegt, liest sie; Unterstützer „Ansehen“ liest wie ein Leser (AP-03 §4.2). |
-| Ereignisse einsehen | AP-07 §4.10 | U | U | S | S | S | A | - | AP-07: „wie Verlauf“ — Zellen der Zeile „Messwerte, Zeitreihen, Datenqualität ansehen“. |
-| **Datenquellen und Boxen (AP-06)** |  |  |  |  |  |  |  |  |  |
-| Datenquelle anlegen · bearbeiten · Netzlage · Erreichbarkeitsprüfung | AP-06 §4.8 | U | U | S | - | - | Ei | - | Auch Erhebungsbogen und Assistent „WAGO-Steuerung anbinden“ (AP-05 §6, W-R10). |
-| Zuständige Box wechseln · Box tauschen | AP-06 §4.8 | U | - | S | - | - | Ei | - | Steuerquelle: nur Kundenadministrator — in AP-06 gesperrt. Den Energiemanager nennt AP-06 hier nicht (W-R9). |
-| Box-Übersicht, Rückmeldung, Ausfall-Anzeige lesen | AP-06 §4.8 | U | U | S | S | S | A | - | AP-06: „alle Rollen des Standorts inkl. Leser; Unterstützer ab „Ansehen““. |
+| Aktion | Herkunft | Kundenadministrator | Energiemanager | Bearbeiter | Bedienberechtigt | Leser | Unterstützer | VoltPilot-Betrieb | Einsicht | Anmerkung |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13)** |  |  |  |  |  |  |  |  |  |  |
+| Unternehmens-Bericht und Stände ansehen, PDF abrufen | AP-19 §4.2 (RE4, W10) | U | U | - | - | - | - | - | U | Getrennt von „freigeben“ (W10): Abrufen und PDF am Unternehmens-Bericht; Anlegen, Freigeben, Verwerfen und Archivieren bleiben bei bericht.unternehmen, die CSV bei export.unternehmen. KA und EM behalten dieselben Zellen (RE4); seit AP-19 IP-12 trägt die Spalte Einsicht hier U, die Zeile daneben − — darum ohne `wie`. |
+| Energetische Bewertung anlegen · freigeben · abrufen | AP-16 §6.1 (S1–S5, R7/R10) | U | U | - | - | - | - | - | - | Nur die Vorlage energetische_bewertung; derselbe Unternehmenszaun wie bei bericht.unternehmen, ohne andere Berichtsvorlagen zu öffnen. |
+| Energetische Bewertung und Stände ansehen, PDF abrufen | AP-19 §4.2 (RE4, W10) | U | U | - | - | - | - | - | U | Getrennt von „anlegen · freigeben“ (W10): Abrufen und PDF der Vorlage energetische_bewertung; Anlegen, Freigeben, Verwerfen, Archivieren, Wiedervorlage und CSV bleiben bei bewertung.abrufen. KA und EM behalten dieselben Zellen (RE4); seit AP-19 IP-12 trägt die Spalte Einsicht hier U, die Zeile daneben − — darum ohne `wie`. |
+| Bezugsbasis anlegen · Fassung bilden · beenden | AP-17 §6.1 (B1/B4, F4) | U | U | S | - | - | - | - | - | Gebaut in AP-17 IP-7/IP-8 (Routen), „geprüft, bleibt“ und Beenden in IP-17; Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht. |
+| Bezugsbasis freigeben · ablehnen | AP-17 §6.1 (F1/F2) | U | U | - | - | - | - | - | - | Gebaut in AP-17 IP-8 (Routen); Freigabe mit Begründung (10–500 Zeichen), bei Vier-Augen bestätigt eine zweite Person (Kundenadministrator oder Energiemanager). |
+| Bezugsbasen und Vergleich ansehen | AP-17 §6.1 (B1, U1–U6) | U | U | S | S | S | A | - | U | Gebaut in AP-17 IP-7/IP-8 (Routen), Übersicht in IP-17, Vergleich in IP-19; Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht. |
+| Energieziele, Maßnahmen und Abweichungen anlegen, bearbeiten, umgesetzt melden, Auffälligkeiten beantworten | AP-18 §4.9 (RE1, Z1, M1, A3) | U | U | S | - | - | - | - | - | Reserviert für AP-18 IP-6 ff. (Routen); Datenhaltung des Energieziels seit IP-5. Standort-Zaun über die Geltung des Ankers und standort_id des Vorgangs (RE2); ein Vorgang am Unternehmen nur unternehmensweit. Zuständigkeit verleiht kein Recht. |
+| Abweichung abschließen · Maßnahme bewerten · Energieziel bewerten | AP-18 §4.9 (RE1, Z4/Z5, WK6) | U | U | - | - | - | - | - | - | Reserviert für AP-18 IP-7 ff. (Routen); Ergebnis mit Begründung (10–500 Zeichen), bei Vier-Augen bestätigt eine zweite Person (Kundenadministrator oder Energiemanager). |
+| Energieziele, Maßnahmen, Abweichungen und Auffälligkeiten ansehen | AP-18 §4.9 (RE1, RE2) | U | U | S | S | S | A | - | U | Reserviert für AP-18 IP-6 ff. (Routen); Standort-Zaun über die Geltung des Ankers und standort_id des Vorgangs (RE2); ein Vorgang am Unternehmen nur unternehmensweit. Zuständigkeit verleiht kein Recht. |
+| Die eigene Maßnahme als umgesetzt melden und kommentieren (als verantwortliche Person) | Verbessern v1 §10.8 (Entscheid 8, eng gefasst) | U | U | S | S | S | - | - | - | Nur die eigene Maßnahme (verantwortlich = angemeldete Person) und nur zwei Schritte: umgesetzt melden und kommentieren. Alles andere an der Maßnahme bleibt bei verbesserung.verwalten. Standort-Zaun wie verbesserung.ansehen; Unterstützer und Einsicht nie (kein Eintrag). |
+| Dokumente, Aufgaben, Personen, Audits, Feststellungen und Managementbewertungen anlegen und bearbeiten | AP-19 §4.2 (RE1, DK1, PA1, PA2) | U | U | S | - | - | - | - | - | Reserviert für AP-19 IP-6 ff. (Routen); Datenhaltung von Person, Aufgabe und Dokument seit IP-5. Standort-Zaun über den Standort des Bezugs, ohne Standort = Unternehmen (RE1, RE2): ein Dokument am Unternehmen, an einer Person oder einer Aufgabe nur unternehmensweit. Zuständigkeit verleiht kein Recht. |
+| Fassung freigeben · „geprüft, bleibt“ · Wirksamkeit festhalten · Audit abschließen · Managementbewertung freigeben | AP-19 §4.2 (RE1, DK3, DK5, DK8) | U | U | - | - | - | - | - | - | Reserviert für AP-19 IP-7 ff. (Routen); Freigabe mit „entschieden von“ (Person) und Begründung (10–500 Zeichen), bei Energiepolitik, Anwendungsbereich und Bestellung die Leitung des Unternehmens; bei Vier-Augen bestätigt eine zweite Person (Kundenadministrator oder Energiemanager). |
+| Energiemanagement ansehen (Verzeichnis, Wiedervorlage, Dokumente, Aufgaben, Audits, Feststellungen, Managementbewertungen) | AP-19 §4.2 (RE1, RE5) | U | U | S | S | S | A | - | U | Reserviert für AP-19 IP-6 ff. (Routen); der Unterstützer liest nur an Standort-Bezügen (RE5). Standort-Zaun über den Standort des Bezugs, ohne Standort = Unternehmen (RE1, RE2): ein Dokument am Unternehmen, an einer Person oder einer Aufgabe nur unternehmensweit. Zuständigkeit verleiht kein Recht. |
+| **Messstellen und Messdaten (AP-04, AP-08, AP-09)** |  |  |  |  |  |  |  |  |  |  |
+| Messstellen-Register lesen (Messstelle, Ort, Quelle, Zustand, letzter Wert) | AP-04 §6.7 | U | U | S | S | S | A | - | U | AP-04: „Register lesbar für Leser und Bedienberechtigte“; wer Messstellen pflegt, liest sie; Unterstützer „Ansehen“ liest wie ein Leser (AP-03 §4.2). |
+| Ereignisse einsehen | AP-07 §4.10 | U | U | S | S | S | A | - | U | AP-07: „wie Verlauf“ — Zellen der Zeile „Messwerte, Zeitreihen, Datenqualität ansehen“. |
+| **Datenquellen und Boxen (AP-06)** |  |  |  |  |  |  |  |  |  |  |
+| Datenquelle anlegen · bearbeiten · Netzlage · Erreichbarkeitsprüfung | AP-06 §4.8 | U | U | S | - | - | Ei | - | - | Auch Erhebungsbogen und Assistent „WAGO-Steuerung anbinden“ (AP-05 §6, W-R10). |
+| Zuständige Box wechseln · Box tauschen | AP-06 §4.8 | U | - | S | - | - | Ei | - | - | Steuerquelle: nur Kundenadministrator — in AP-06 gesperrt. Den Energiemanager nennt AP-06 hier nicht (W-R9). |
+| Box-Übersicht, Rückmeldung, Ausfall-Anzeige lesen | AP-06 §4.8 | U | U | S | S | S | A | - | U | AP-06: „alle Rollen des Standorts inkl. Leser; Unterstützer ab „Ansehen““. |
+| **Messstellen und Messdaten (AP-04, AP-08, AP-09)** |  |  |  |  |  |  |  |  |  |  |
+| Berechnete Messstelle anlegen · Formel ab einem Tag ändern (Fassung) | AP-10 §4.10 (E15) | U | U | S | - | - | Ei | - | - | AP-10 E15: „Zellen wie `messstelle.bearbeiten`: KA U · EM U · BE S · sonst −“ — die Zeile folgt dem „wie“ (Unterstützer „Einrichten“ wie jede Pflege-Zeile der Messstellen). Bis AP-10 IP-3 trugen das Anlegen der berechneten Messstelle `messstelle.bearbeiten`. |
+| Messstelle auf Kostenstellen verteilen · Verteilung ab einem Tag ändern oder berichtigen | AP-10 §4.10 (E15) | U | U | S | - | - | Ei | - | - | AP-10 E15: „`messstelle.verteilung` (Zellen wie `messstelle.bearbeiten`)“ — die Zeile folgt dem „wie“ (Unterstützer „Einrichten“ wie jede Pflege-Zeile der Messstellen). Seit AP-10 IP-8 nennt `PUT /api/v1/messstellen/{id}/verteilung` die Kennung; gelesen wird über `messstelle.ansehen`. Die Durchsetzung bringt AP-03. |
+| **Unternehmen, Standorte, Struktur (AP-02)** |  |  |  |  |  |  |  |  |  |  |
+| Kostenstelle anlegen · umbenennen · beenden | AP-10 §4.10 (E15) | U | U | - | - | - | - | - | - | AP-10 E15: „Zellen wie `unternehmen.bearbeiten`: KA U · EM U“. Beendet, nie gelöscht (§5.7); seit AP-10 IP-7 nennen `POST /api/v1/unternehmen/kostenstellen`, `PUT …/{id}` und `PUT …/{id}/beenden` die Kennung. |
+| Prozess anlegen · umbenennen · beenden | AP-10 §4.10 (E15) | U | U | - | - | - | - | - | - | AP-10 E15: „Zellen wie `unternehmen.bearbeiten`: KA U · EM U“. Beendet, nie gelöscht (§5.7); seit AP-10 IP-7 nennen `POST /api/v1/unternehmen/prozesse`, `PUT …/{id}` und `PUT …/{id}/beenden` die Kennung. Eine Messstelle einem Prozess zuordnen bleibt `messstelle.bearbeiten` („Ort, Prozess, Kostenstelle zuordnen“). |
+| Energieeinsatz anlegen · bearbeiten · beenden | AP-16 §6.1 (B1/B4, R14) | U | U | - | - | - | - | - | - | Reserviert für AP-16 IP-4 (Routen); Zuständigkeit verleiht kein Recht. Einstufung erst mit IP-11/IP-12. |
+| Kriterien ändern | AP-16 §6.1 (KR1, R15/R17) | U | U | - | - | - | - | - | - | Kriterien als Fassung mit Begründung ändern, freigeben oder ablehnen. Lesen über energieeinsatz.ansehen; Vier-Augen nach Unternehmen. |
+| Energieeinsatz einstufen | AP-16 §6.1 (B1/B4, R14) | U | U | - | - | - | - | - | - | Seit AP-16 IP-11 setzen PUT …/einstufung und POST …/einstufung/bestaetigen die Kennung durch; Begründung, vollständige Herkunft und gegebenenfalls eine zweite Person sind Pflicht. |
+| Energieeinsätze ansehen | AP-16 §6.1 (B1/B4, R14) | U | U | S | S | S | A | - | U | Reserviert für AP-16 IP-4 (Routen); Zuständigkeit verleiht kein Recht. Einstufung erst mit IP-11/IP-12. |
+| Messmittel-Angaben und Belege eintragen | AP-16 §6.1 (G1–G3, R8, E7) | U | U | S | - | - | Ei | - | - | Angaben am Einbau (Klasse, Prüfung, Beleg als Verweis mit SHA-256) und die Wandler-Klasse; Standort-Zaun über die Anlage des Geräts. Lesen über messwerte.ansehen; ohne Angabe nicht erhoben. |
+| Netzanschluss anlegen · bearbeiten · beenden · Anlage binden | AP-10 §4.10 (E15) | U | U | - | - | - | - | - | - | AP-10 E15: „`netzanschluss.verwalten` (Zellen wie `standort.verwalten`)“. Beendet, nie gelöscht (§5.1); seit AP-10 IP-6 nennen `POST /api/v1/standorte/{id}/netzanschluesse`, `PUT …/netzanschluesse/{id}` und `POST …/netzanschluesse/{id}/anlagen` die Kennung. Lesen bleibt ohne eigene Kennung (wie das Standort-Lesemodell). |
+| **Messstellen und Messdaten (AP-04, AP-08, AP-09)** |  |  |  |  |  |  |  |  |  |  |
+| Bezugsgröße anlegen · bearbeiten · archivieren · Messkanal binden/lösen | AP-09 §4.11 (W8) | U | U | S | - | - | - | - | - | AP-09 W8: „U U S - - - -“ — Bearbeiter nur für Geltungsbereiche seines Standorts, nie Unterstützer. Seit AP-09 IP-5 nennen `POST /api/v1/bezugsgroessen`, `PUT`/`DELETE …/{id}` und `POST …/{id}/archivieren` die Kennung; auch das Löschen einer Bezugsgröße ohne Wert (M6). |
+| Ersatzwert erfassen / zurücknehmen | AP-08 §4.8 (AP-03 Z. 202, IP-15) | U | U | S | - | - | - | - | - | AP-08 §4.8 nennt als Recht die Konzept-Zeile `korrektur.erfassen` (AP-03 Z. 202); AP-08 IP-15 gibt dem Ersatzwert eine eigene Kennung mit denselben Zellen — nie der Unterstützer. Auch der Widerruf eines Ersatzwerts gehört hierher (§4.8 wörtlich, W-R12). Die Route kommt mit AP-08 IP-16. |
+| Korrektur prüfen und freigeben | AP-08 §4.8 (E8, IP-15) | U | U | S | - | - | - | - | - | E8: bei Vier-Augen an gibt eine zweite Person frei (Ersteller ≠ Freigeber), und nur Energiemanager oder Kundenadministrator; der Bearbeiter nur bei Vier-Augen aus. Die Zelle sagt, wer überhaupt freigeben kann — Einstellung und Ersteller prüft `korrekturEntscheiden` (rechte-vectors.json, Familie `vieraugen`). Nie der Unterstützer. Seit AP-08 IP-15 nennt `POST /api/v1/korrekturen/{kennung}/freigeben` die Kennung und setzt sie durch. |
+| Korrektur zurücknehmen (widerrufen) | AP-08 §5 (Bedienablauf „Eine Korrektur oder einen Ersatzwert widerrufen“, IP-15) | U | U | S | - | - | - | - | - | Bearbeiter nur für eigene Korrekturen und nur bei Vier-Augen aus — die Bedingung prüft `korrekturEntscheiden` (Familie `vieraugen`). Die Zeile regelt die Korrektur; den Ersatzwert widerruft `ersatzwert.erfassen` (§4.8 wörtlich, W-R12). Nie der Unterstützer. Seit AP-08 IP-15 nennt `POST /api/v1/korrekturen/{kennung}/zuruecknehmen` die Kennung und setzt sie durch. |
+| Vier-Augen-Einstellung ändern | AP-08 §4.8 (E8, IP-15) | U | - | - | - | - | - | - | - | E8: „Konfigurierbar je Unternehmen durch den Kundenadministrator: ‚Freigabe durch eine zweite Person‘ aus (Vorgabe) oder an“. Seit AP-08 IP-15 nennt `PUT /api/v1/unternehmen/vieraugen` die Kennung und setzt sie durch; gelesen wird ohne eigene Kennung (`GET /api/v1/unternehmen/vieraugen`, wie das Unternehmen-Lesemodell). |
+| Ablesung an einer Messstelle erfassen / berichtigen | AP-09 §4.11 (W8) | U | U | S | - | - | - | - | - | AP-09 IP-8: Erstwert und Berichtigung an der Messstelle; U U S - - - -, nie Unterstützer. |
 
 ### Jede Handlung der Rechte-Abschnitte
 
@@ -121,6 +210,41 @@ Welche Kennung jede Handlung trägt: eine **neue Zeile** (oben) oder eine **best
 | AP-07 §4.10 | Ereignisse einsehen | wie Verlauf | Standortleser | `ereignisse.ansehen` | neue Zeile |  |
 | AP-07 §4.10 | Korrektur nach `late_arrival` anstoßen | Messdatenpflege (AP-03 Achse Messdaten), Ablauf AP-08 | Bearbeiter | `korrektur.erfassen` | bestehende Zeile | Der Anstoß öffnet den Korrektur-Ablauf von AP-08; das Recht ist die Messdatenpflege dieser Zeile — nie der Unterstützer. |
 | AP-07 §4.10 | Datenaufzeichnungen löschen (Purge) | Kundenadministrator; für Messstellen-gebundene Reihen gesperrt (E8) | Kundenadministrator | `aufzeichnungen.loeschen` | bestehende Zeile | Die Sperre für Messstellen-gebundene Reihen (AP-07 E8) ist eine Regel des Objekts, keine Zelle — sie gilt auch für den Kundenadministrator und wird im Löschweg geprüft, nicht in `darf`. |
+| AP-10 §4.10 | berechnete Messstelle anlegen, Fassung ändern | Zellen wie `messstelle.bearbeiten`: KA U · EM U · BE S · sonst − | `messstelle.formel` | `messstelle.formel` | neue Zeile | Seit AP-10 IP-3 nennen `POST /api/v1/messstellen/berechnet` und `POST …/messstellen/{id}/formel/fassungen` die Kennung (davor `messstelle.bearbeiten`); seit AP-10 IP-9 auch `POST /api/v1/sites/{siteId}/bilanz/rest` (Vorschlag „Rest anlegen“ bestätigen). |
+| AP-10 §4.10 | Lesen der Bilanz, Verteilung und Herkunft | über `messstelle.ansehen` | `messstelle.ansehen` | `messstelle.ansehen` | bestehende Zeile | Auch die Formel zu einem Tag (`GET …/formel?am=`) seit AP-10 IP-9 die Bilanz je Anlage (`GET /api/v1/sites/{siteId}/bilanz`, mit ihrer Live-Zeile) und seit AP-10 IP-11 die Kostenstellen-Sicht (`GET /api/v1/unternehmen/kostenstellen/{id}/energie`: gemessen · verteilt · berechnet · nicht verteilt, mit Herkunft); Live-Wert und Verlauf der berechneten Messstelle bleiben `messwerte.ansehen`. |
+| AP-10 §4.10 | Kostenstellen und Prozesse verwalten | Zellen wie `unternehmen.bearbeiten`: KA U · EM U | `kostenstelle.verwalten` · `prozess.verwalten` | `kostenstelle.verwalten` · `prozess.verwalten` | neue Zeile | Seit AP-10 IP-7 (Tabellen `kostenstelle`, `prozess`, `messstelle_prozess`); die Durchsetzung bringt AP-03. |
+| AP-10 §4.10 | Messstelle auf Kostenstellen verteilen (Satz ab einem Tag) | Zellen wie `messstelle.bearbeiten`: KA U · EM U · BE S · sonst − | `messstelle.verteilung` | `messstelle.verteilung` | neue Zeile | Seit AP-10 IP-8 (Tabelle `messstelle_verteilung`, `PUT /api/v1/messstellen/{id}/verteilung`); gelesen wird über `messstelle.ansehen` (`GET …/verteilung?am=`). Die Durchsetzung bringt AP-03. |
+| AP-10 §4.10 | Netzanschlüsse verwalten und Anlagen binden | Zellen wie `standort.verwalten`: KA U · EM U | `netzanschluss.verwalten` | `netzanschluss.verwalten` | neue Zeile | Seit AP-10 IP-6 (Tabellen `netzanschluss`, `anlage_netzanschluss`); die Durchsetzung bringt AP-03. |
+| AP-09 §4.11 | Bezugsgrößen und Werte, Herkunft, Fassungen, Importe ansehen | Leser · Bearbeiter · Energiemanager · Kundenadministrator · Bedienberechtigt (Standort) · Unterstützer ab „Ansehen“ | `messwerte.ansehen` (Zuordnung wie AP-07 „Herkunft eines Werts sehen“) | `messwerte.ansehen` | bestehende Zeile | Seit AP-09 IP-5 nennen `GET /api/v1/bezugsgroessen`, `GET …/{id}` und `GET …/{id}/werte` die Kennung. |
+| AP-09 §4.11 | Bezugsgröße anlegen · bearbeiten · archivieren · Messkanal binden/lösen | Kundenadministrator · Energiemanager (U) · Bearbeiter (S, nur Geltungsbereiche seines Standorts) | `bezugsgroesse.verwalten` (Nachtrag, W8) | `bezugsgroesse.verwalten` | neue Zeile | W8: neue Zeile „U U S - - - -“. Das Binden eines Messkanals kommt mit AP-09 IP-17 an dieselbe Kennung. |
+| AP-09 §4.11 | Wert eingeben · berichtigen · Zuordnung ändern | KA · EM (U) · Bearbeiter (S) — nie Unterstützer | `bezugsgroesse.eingeben` (vorhanden) | `bezugsgroesse.eingeben` | bestehende Zeile | Die Route kommt mit AP-09 IP-7. |
+| AP-09 §4.11 | CSV hochladen · Vorschau · übernehmen · zurücknehmen · Vorlagen pflegen | wie oben | `bezugsgroesse.importieren` (vorhanden; Rücknahme und Vorlagen zugeordnet) | `bezugsgroesse.importieren` | bestehende Zeile | W8: Rücknahme und Vorlagen gehören zur bestehenden Zeile; die Routen kommen mit AP-09 IP-12 ff. |
+| AP-09 §4.11 | Ablesung an einer Messstelle erfassen · berichtigen | KA · EM (U) · Bearbeiter (S) — nie Unterstützer | `ablesung.erfassen` (Nachtrag W8) | `ablesung.erfassen` | neue Zeile | AP-09 IP-8: POST …/messstellen/{kennzeichen}/ablesungen und Berichtigung. |
+| AP-08 §4.8 | Werte, Zustände, Kennzeichen, Versionen ansehen | Leser · Bearbeiter · Energiemanager · Kundenadministrator · Bedienberechtigt (Standort) · Unterstützer (Ansehen) | AP-03 Matrix „Messwerte ansehen“ | `messwerte.ansehen` | bestehende Zeile | Seit AP-08 IP-9 nennt `GET /api/v1/messstellen/{kennzeichen}/werte` die Kennung; die Durchsetzung bringt AP-03. |
+| AP-08 §4.8 | Ersatzwert erfassen / zurücknehmen | Bearbeiter (je Standort) · Energiemanager · Kundenadministrator — nie Unterstützer | AP-03 Z. 202 | `ersatzwert.erfassen` | neue Zeile | AP-08 IP-15 gibt dem Ersatzwert eine eigene Kennung mit den Zellen der genannten Zeile AP-03 Z. 202 (`korrektur.erfassen`). Die Route kommt mit AP-08 IP-16. |
+| AP-08 §4.8 | Korrektur vorschlagen (Ablesestände, Umklassifizierung, Wert berichtigen) | Bearbeiter · Energiemanager · Kundenadministrator | AP-03 Z. 202 | `korrektur.erfassen` | bestehende Zeile | Die Routen kommen mit AP-08 IP-12 ff. |
+| AP-08 §4.8 | Korrektur prüfen und freigeben | Energiemanager · Kundenadministrator; Bearbeiter nur, wenn Vier-Augen aus (E8); Ersteller ≠ Freigeber bei Vier-Augen an | E8 | `korrektur.freigeben` | neue Zeile | Die Zelle nennt, wer freigeben kann; „nur, wenn Vier-Augen aus“ und „Ersteller ≠ Freigeber“ stehen in rechte-vectors.json, Familie `vieraugen`. Bis AP-08 IP-15 stand die Handlung unter den Regeln ohne Zeile. |
+| AP-08 §4.8 | Vier-Augen-Einstellung ändern | Kundenadministrator | E8 | `vieraugen.einstellen` | neue Zeile | Die Einstellung je Unternehmen, Vorgabe aus (E8). Bis AP-08 IP-15 stand die Handlung unter den Regeln ohne Zeile. |
+| AP-08 §5 | Eine Korrektur oder einen Ersatzwert widerrufen | Energiemanager · Kundenadministrator (Bearbeiter nur für eigene, wenn Vier-Augen aus) | — | `korrektur.zuruecknehmen` | neue Zeile | Für den Ersatzwert gilt die Zeile aus §4.8 wörtlich (`ersatzwert.erfassen`, W-R12). |
+| AP-16 §6.1 | Kriterien ändern | KA U · EM U | `bewertung.kriterien` | `bewertung.kriterien` | neue Zeile | Kriterien als Fassung mit Begründung ändern, freigeben oder ablehnen. Lesen über energieeinsatz.ansehen; Vier-Augen nach Unternehmen. |
+| AP-16 §6.1 | Energetische Bewertung anlegen · freigeben · abrufen | KA U · EM U | `bewertung.abrufen` | `bewertung.abrufen` | neue Zeile | Nur die Vorlage energetische_bewertung; Bericht-Maschine und Unternehmenszaun bleiben dieselben. |
+| AP-16 §6.1 | Energieeinsatz anlegen · bearbeiten · beenden | KA U · EM U | `energieeinsatz.verwalten` | `energieeinsatz.verwalten` | neue Zeile | Reserviert für AP-16 IP-4 (Routen); Zuständigkeit verleiht kein Recht. Einstufung erst mit IP-11/IP-12. |
+| AP-16 §6.1 | Energieeinsatz einstufen | KA U · EM U | `energieeinsatz.einstufen` | `energieeinsatz.einstufen` | neue Zeile | Seit AP-16 IP-11 setzen PUT …/einstufung und POST …/einstufung/bestaetigen die Kennung durch; gelesen wird über energieeinsatz.ansehen. |
+| AP-16 §6.1 | Energieeinsätze ansehen | KA U · EM U · BE S · BD S · LE S · US A | `energieeinsatz.ansehen` | `energieeinsatz.ansehen` | neue Zeile | Reserviert für AP-16 IP-4 (Routen); Zuständigkeit verleiht kein Recht. Einstufung erst mit IP-11/IP-12. |
+| AP-16 §6.1 | Messmittel-Angaben und Belege eintragen | KA U · EM U · BE S · US Ei | `messmittel.angaben` | `messmittel.angaben` | neue Zeile | Angaben am Einbau (Klasse, Prüfung, Beleg als Verweis mit SHA-256) und die Wandler-Klasse; Standort-Zaun über die Anlage des Geräts. Lesen über messwerte.ansehen; ohne Angabe nicht erhoben. |
+| AP-17 §6.1 | Bezugsbasis anlegen · Fassung bilden · beenden | KA U · EM U · BE S | `bezugsbasis.verwalten` | `bezugsbasis.verwalten` | neue Zeile | Gebaut in AP-17 IP-7/IP-8 (Routen), „geprüft, bleibt“ und Beenden in IP-17; Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht. |
+| AP-17 §6.1 | Bezugsbasis freigeben · ablehnen | KA U · EM U | `bezugsbasis.freigeben` | `bezugsbasis.freigeben` | neue Zeile | Gebaut in AP-17 IP-8 (Routen); Freigabe mit Begründung (10–500 Zeichen), bei Vier-Augen bestätigt eine zweite Person (Kundenadministrator oder Energiemanager). |
+| AP-17 §6.1 | Bezugsbasen und Vergleich ansehen | KA U · EM U · BE S · BD S · LE S · US A | `bezugsbasis.ansehen` | `bezugsbasis.ansehen` | neue Zeile | Gebaut in AP-17 IP-7/IP-8 (Routen), Übersicht in IP-17, Vergleich in IP-19; Standort-Zaun über die Kennzahl. Zuständigkeit verleiht kein Recht. |
+| AP-18 §4.9 | Energieziele, Maßnahmen und Abweichungen anlegen, bearbeiten, umgesetzt melden, Auffälligkeiten beantworten | KA U · EM U · BE S | `verbesserung.verwalten` | `verbesserung.verwalten` | neue Zeile | Reserviert für AP-18 IP-6 ff. (Routen); Datenhaltung des Energieziels seit IP-5. Standort-Zaun über die Geltung des Ankers und standort_id des Vorgangs (RE2); ein Vorgang am Unternehmen nur unternehmensweit. Zuständigkeit verleiht kein Recht. |
+| AP-18 §4.9 | Abweichung abschließen · Maßnahme bewerten · Energieziel bewerten | KA U · EM U | `verbesserung.abschliessen` | `verbesserung.abschliessen` | neue Zeile | Reserviert für AP-18 IP-7 ff. (Routen); Ergebnis mit Begründung (10–500 Zeichen), bei Vier-Augen bestätigt eine zweite Person (Kundenadministrator oder Energiemanager). |
+| AP-18 §4.9 | Energieziele, Maßnahmen, Abweichungen und Auffälligkeiten ansehen | KA U · EM U · BE S · BD S · LE S · US A | `verbesserung.ansehen` | `verbesserung.ansehen` | neue Zeile | Reserviert für AP-18 IP-6 ff. (Routen); Standort-Zaun über die Geltung des Ankers und standort_id des Vorgangs (RE2); ein Vorgang am Unternehmen nur unternehmensweit. Zuständigkeit verleiht kein Recht. |
+| AP-19 §4.2 | Unternehmens-Bericht und Stände ansehen, PDF abrufen (getrennt von „freigeben“, W10) | KA U · EM U · BE − · BD − · LE − · US − · EI U · VB − | `bericht.unternehmen_abrufen` | `bericht.unternehmen_abrufen` | neue Zeile | Muster bericht.standort_abrufen; Zellen wie bericht.unternehmen. EI (Einsicht) trägt seit AP-19 IP-12 U. |
+| AP-19 §4.2 | Energetische Bewertung und Stände ansehen, PDF abrufen (getrennt von „anlegen · freigeben“, W10) | KA U · EM U · BE − · BD − · LE − · US − · EI U · VB − | `bewertung.ansehen` | `bewertung.ansehen` | neue Zeile | Muster bericht.standort_abrufen; Zellen wie bewertung.abrufen. EI (Einsicht) trägt seit AP-19 IP-12 U. |
+| AP-19 §4.2 | Dokumente, Aufgaben, Personen, Audits, Feststellungen und Managementbewertungen anlegen und bearbeiten | KA U · EM U · BE S · BD − · LE − · US − · EI − · VB − | `energiemanagement.verwalten` | `energiemanagement.verwalten` | neue Zeile | Muster verbesserung.verwalten; Zellen wie verbesserung.verwalten. EI (Einsicht) trägt seit AP-19 IP-12 − (nie ein Eintrag, nie eine Freigabe). |
+| AP-19 §4.2 | Fassung freigeben · „geprüft, bleibt“ · Wirksamkeit festhalten · Audit abschließen · Managementbewertung freigeben | KA U · EM U · sonst − | `energiemanagement.freigeben` | `energiemanagement.freigeben` | neue Zeile | Muster bezugsbasis.freigeben; Zellen wie bezugsbasis.freigeben. EI (Einsicht) trägt seit AP-19 IP-12 − (nie ein Eintrag, nie eine Freigabe). |
+| AP-19 §4.2 | Energiemanagement ansehen (Verzeichnis, Wiedervorlage, Dokumente, Aufgaben, Audits, Feststellungen, Managementbewertungen) | KA U · EM U · BE S · BD S · LE S · US A · EI U · VB − | `energiemanagement.ansehen` | `energiemanagement.ansehen` | neue Zeile | Muster verbesserung.ansehen; Zellen wie verbesserung.ansehen. EI (Einsicht) trägt seit AP-19 IP-12 U. |
+| AP-19 §4.11 | Einsicht: unternehmensweit lesen — Nachweise, Änderungsprotokoll, Messwerte, Messstellen, Ereignisse, Boxen, Energieeinsätze, Bezugsbasen, Ziele und Maßnahmen, Berichte und die energetische Bewertung mit ihren Ständen, PDF eines Stands (RE3) | EI U; KA, EM und alle anderen Spalten unverändert | — | `aenderungsprotokoll.lesen` · `bericht.standort_abrufen` · `bericht.unternehmen_abrufen` · `bewertung.ansehen` · `bezugsbasis.ansehen` · `datenquelle.ansehen` · `energieeinsatz.ansehen` · `energiemanagement.ansehen` · `ereignisse.ansehen` · `messstelle.ansehen` · `messwerte.ansehen` · `verbesserung.ansehen` | bestehende Zeile | Keine neue Zeile: die Spalte Einsicht trägt U genau an den lesenden Zeilen (R6), E am eigenen Konto, sonst −. energiemanagement.ansehen bekommt U mit seiner Zeile (IP-5). |
+| Verbessern v1 §10.8 | Die eigene Maßnahme als umgesetzt melden und kommentieren (als verantwortliche Person) | KA U · EM U · BE S · BD S · LE S · US − · EI − · VB − | `verbesserung.eigene_massnahme` | `verbesserung.eigene_massnahme` | neue Zeile | Eigene Zellen (keine Vorlage): wie verbesserung.ansehen am Standort, aber ohne Unterstützer und Einsicht; die Zellen tragen die Rolle, die Person trägt die Maßnahme - wirksam nur, wenn die angemeldete Person die verantwortliche ist. |
 
 ### Regeln ohne eigene Zeile
 
@@ -134,6 +258,24 @@ Sätze der Abschnitte, die keine Handlung sind — und wo sie gelten.
 | AP-04 §6.7 | Aggregate („x von y Messstellen liefern Daten“) serverseitig über die sichtbare Menge mit `teilansicht` | rechte-vectors.json, Familie teilansicht (Ableitungen `teilansicht` und `summe`) |
 | AP-05 §6 | Pilot-Protokolle als Verlauf-Einträge mit Urheber | keine Handlung — Urheber-Regel (services/api uems/ProtokollAkteur) |
 | AP-05 §6 | „AP-05 sagt nur, wer den Bogen ausfüllt, wer die Karte einstellt und wer die Vorlage freigibt“ (§6.1) | Bogen → `datenquelle.bearbeiten`; die Karte stellt der Installateur AM GERÄT ein (WAGO-I/O-CHECK, §4.7) — keine Portal-Handlung, die Einstellungs-Fassung trägt `messstelle.quelle` (Wandlerfaktoren, AP-04); Vorlage → `plattform.betrieb` |
+| AP-10 §4.10 | `messstelle.verteilung` (Zellen wie `messstelle.bearbeiten`), `kostenstelle.verwalten` und `prozess.verwalten` (Zellen wie `unternehmen.bearbeiten`: KA U · EM U), `netzanschluss.verwalten` (Zellen wie `standort.verwalten`) | `kostenstelle.verwalten` und `prozess.verwalten` stehen seit AP-10 IP-7 als Zeilen, `messstelle.verteilung` seit AP-10 IP-8, `netzanschluss.verwalten` seit AP-10 IP-6 |
+| AP-10 §4.10 | Unterstützer nach Umfang („Ansehen“ sieht, „Pflegen“ verteilt nie Rahmen) | keine eigene Zeile — der Unterstützer-Umfang der Matrix (`umfaenge`); in `messstelle.formel` die Zelle Ei |
+| AP-09 §4.11 | Ablesung an einer Messstelle erfassen · berichtigen — `ablesung.erfassen` (Nachtrag, W8: „U U S - - - -“) | Seit AP-09 IP-8 Zeile und Schreibrouten `ablesung.erfassen`. |
+| AP-09 §4.11 | Berichtigung / Rücknahme freigeben (Vier-Augen an) — `korrektur.freigeben` (AP-08 IP-15), Ersteller ≠ Freigeber; Vier-Augen-Einstellung — `vieraugen.einstellen` (AP-08) | `korrektur.freigeben` und `vieraugen.einstellen` stehen seit AP-08 IP-15 (Nachtrag AP-08 §4.8); die Freigabe an Bezugsgrößen kommt mit AP-09 IP-7 |
+| AP-09 §4.11 | Werte, Fassungen, Importe löschen — niemand (Offboarding ausgenommen) | keine Zeile — die Tabellen lassen es nicht zu (V20260913104500: Werte append-only); V20260913120000 öffnet nur das Löschen einer Bezugsgröße OHNE Wert (M6) |
+| AP-08 §4.8 | Rohwerte, Ereignisse, Korrekturen löschen — niemand (AP-07 E8/E11; Offboarding ausgenommen) | keine Zeile — die Tabellen lassen es nicht zu (`messreihe_ereignis` append-only; der Purge lehnt Messstellen-gebundene Reihen ab, AP-07 IP-11) |
+| AP-08 §5 | Bei Vier-Augen an ist der Knopf für den Ersteller gesperrt: „Freigabe durch eine zweite Person (Jonas Wendlinger, …)“ (§5, Bedienablauf „Einen Korrektur-Vorschlag prüfen und freigeben“) | rechte-vectors.json, Familie `vieraugen`: 403 `zweite_person_noetig` mit dem Satz „Freigabe durch eine zweite Person.“ und dem Weg zu den übrigen Kundenadministratoren; der Knopf ist AP-08 IP-16 |
+| AP-16 §6.1 | Verantwortlichkeit ist Zuständigkeit, kein Recht (B4/R14). | bewertung.md §Datenhaltung; Rechte-Zellen dieser drei Kennungen |
+| AP-17 §6.1 | Wer eine Fassung bildet, gibt sie nicht ohne das Recht `bezugsbasis.freigeben` frei; bei Vier-Augen bestätigt nie der Urheber (F1/F2). | V20260924071500 (bezugsbasis_fassung_entscheidung_chk); Rechte-Zellen dieser drei Kennungen |
+| AP-18 §4.9 | Verantwortung verleiht kein Recht; wer bewertet oder abschließt, braucht `verbesserung.abschliessen`, bei Vier-Augen bestätigt nie der Urheber (RE3, Z5). | V20260924223000 (energieziel_entscheidung_chk); Rechte-Zellen dieser drei Kennungen |
+| AP-19 §4.2 | Lesen und Freigeben werden getrennt, wo eine Kennung beides trägt: `bericht.unternehmen_abrufen` neben `bericht.unternehmen`, `bewertung.ansehen` neben `bewertung.abrufen`; KA und EM behalten dieselben Zellen — kein bestehender Weg wird enger (RE4). | BerichtRegeln.kennung und BerichtRechte.kennung (Abrufen und PDF); BerichtRechteTest vergleicht je Bestandsrolle vorher und nachher |
+| AP-19 §4.2 | Keine Entscheidung ohne Person: wer freigibt, „geprüft, bleibt“ festhält oder aufhebt, braucht `energiemanagement.freigeben` und nennt „entschieden von“ (eine Person im Energiemanagement, auch ohne Konto); bei Vier-Augen bestätigt nie der Urheber (G2, DK3). | V20260925013500 (energiemanagement_fassung_freigabe_chk, energiemanagement_fassung_entscheidung_chk, energiemanagement_fassung_leitung); Rechte-Zellen dieser drei Kennungen |
+| AP-19 §4.11 | nie eine Freigabe, nie ein Eintrag — jede Schreibroute 403 recht_fehlt | Spalte einsicht: − an jeder Zeile außer den lesenden (RechtMatrixApiTest, EinsichtApiTest) |
+| AP-19 §4.11 | auch − an den Exporten von Messdaten und Berichts-CSV (export.*) und am Zugriffsprotokoll | Zeilen export.standort, export.unternehmen, zugriffsprotokoll.lesen; die CSV eines Berichtsstands prüft export.* (BerichtRechte#CSV) |
+| AP-19 §4.11 | PDF eines Stands: ja, protokolliert mit Rolle einsicht | bericht_abruf.actor_rolle (CHECK bericht_abruf_actor_rolle_chk, getauscht in V20260925030000) |
+| AP-19 §4.11 | unternehmensweit, vom Kundenadministrator zuweisbar, befristbar; nach dem Ende gilt wieder die Teilansicht der übrigen Zuweisungen (AP-03 E10) | zugriff_rolle() Zeile 8 (V20260925030000); Zuweisung mit gueltig_bis; rechte-vectors.json Fälle r6-* |
+| AP-19 §4.11 | der Unterstützer bekommt kein Unternehmensrecht und keine Freigabe (RE5) | Spalte unterstuetzer unverändert; energiemanagement.* mit ihrer Zeile (IP-5) |
+| Verbessern v1 §10.8 | Ausnahme von „Verantwortung verleiht kein Recht“ (AP-18 RE3), eng gefasst: wer für eine Maßnahme verantwortlich ist und `verbesserung.eigene_massnahme` hat, meldet SIE als umgesetzt und kommentiert SIE; ändern, verwerfen, bewerten und jede fremde Maßnahme bleiben bei `verbesserung.verwalten` bzw. `verbesserung.abschliessen`. | RechteAbleitung.eigeneMassnahme und rechte.ts eigeneMassnahme (Familie verantwortung); MassnahmeService umgesetzt und eintrag |
 
 ## Kennungen
 
@@ -163,6 +305,19 @@ Jede Zeile hat eine stabile Kennung; eine Route, eine Fläche und ein Vektor ver
 | `bericht.standort_abrufen` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Standort-Bericht abrufen (Entwurf, PDF/CSV auf Abruf) | AP-03 §4.3 |
 | `bericht.standort_freigeben` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Standort-Bericht freigeben (Berichtsstand) | AP-03 §4.3 |
 | `bericht.unternehmen` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Unternehmens-Bericht abrufen / freigeben | AP-03 §4.3 |
+| `bericht.unternehmen_abrufen` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Unternehmens-Bericht und Stände ansehen, PDF abrufen | AP-19 §4.2 |
+| `bewertung.abrufen` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Energetische Bewertung anlegen · freigeben · abrufen | AP-16 §6.1 |
+| `bewertung.ansehen` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Energetische Bewertung und Stände ansehen, PDF abrufen | AP-19 §4.2 |
+| `bezugsbasis.verwalten` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Bezugsbasis anlegen · Fassung bilden · beenden | AP-17 §6.1 |
+| `bezugsbasis.freigeben` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Bezugsbasis freigeben · ablehnen | AP-17 §6.1 |
+| `bezugsbasis.ansehen` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Bezugsbasen und Vergleich ansehen | AP-17 §6.1 |
+| `verbesserung.verwalten` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Energieziele, Maßnahmen und Abweichungen anlegen, bearbeiten, umgesetzt melden, Auffälligkeiten beantworten | AP-18 §4.9 |
+| `verbesserung.abschliessen` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Abweichung abschließen · Maßnahme bewerten · Energieziel bewerten | AP-18 §4.9 |
+| `verbesserung.ansehen` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Energieziele, Maßnahmen, Abweichungen und Auffälligkeiten ansehen | AP-18 §4.9 |
+| `verbesserung.eigene_massnahme` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Die eigene Maßnahme als umgesetzt melden und kommentieren (als verantwortliche Person) | Verbessern v1 §10.8 |
+| `energiemanagement.verwalten` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Dokumente, Aufgaben, Personen, Audits, Feststellungen und Managementbewertungen anlegen und bearbeiten | AP-19 §4.2 |
+| `energiemanagement.freigeben` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Fassung freigeben · „geprüft, bleibt“ · Wirksamkeit festhalten · Audit abschließen · Managementbewertung freigeben | AP-19 §4.2 |
+| `energiemanagement.ansehen` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Energiemanagement ansehen (Verzeichnis, Wiedervorlage, Dokumente, Aufgaben, Audits, Feststellungen, Managementbewertungen) | AP-19 §4.2 |
 | `export.standort` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Export je Standort (CSV: Messwerte, Kennzahlen) | AP-03 §4.3 |
 | `export.unternehmen` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Unternehmens-Export (alle Standorte) | AP-03 §4.3 |
 | `cockpit.anpassen` | Kennzahlen, Berichte, Exporte (AP-11, AP-12, AP-13) | Cockpit anpassen — Eigen-Schicht der Organisation (Anlage / Unternehmen) | AP-03 §4.3 |
@@ -194,3 +349,19 @@ Jede Zeile hat eine stabile Kennung; eine Route, eine Fläche und ein Vektor ver
 | `datenquelle.bearbeiten` | Datenquellen und Boxen (AP-06) | Datenquelle anlegen · bearbeiten · Netzlage · Erreichbarkeitsprüfung | AP-06 §4.8 |
 | `datenquelle.zustaendigkeit` | Datenquellen und Boxen (AP-06) | Zuständige Box wechseln · Box tauschen | AP-06 §4.8 |
 | `datenquelle.ansehen` | Datenquellen und Boxen (AP-06) | Box-Übersicht, Rückmeldung, Ausfall-Anzeige lesen | AP-06 §4.8 |
+| `messstelle.formel` | Messstellen und Messdaten (AP-04, AP-08, AP-09) | Berechnete Messstelle anlegen · Formel ab einem Tag ändern (Fassung) | AP-10 §4.10 |
+| `messstelle.verteilung` | Messstellen und Messdaten (AP-04, AP-08, AP-09) | Messstelle auf Kostenstellen verteilen · Verteilung ab einem Tag ändern oder berichtigen | AP-10 §4.10 |
+| `kostenstelle.verwalten` | Unternehmen, Standorte, Struktur (AP-02) | Kostenstelle anlegen · umbenennen · beenden | AP-10 §4.10 |
+| `prozess.verwalten` | Unternehmen, Standorte, Struktur (AP-02) | Prozess anlegen · umbenennen · beenden | AP-10 §4.10 |
+| `energieeinsatz.verwalten` | Unternehmen, Standorte, Struktur (AP-02) | Energieeinsatz anlegen · bearbeiten · beenden | AP-16 §6.1 |
+| `bewertung.kriterien` | Unternehmen, Standorte, Struktur (AP-02) | Kriterien ändern | AP-16 §6.1 |
+| `energieeinsatz.einstufen` | Unternehmen, Standorte, Struktur (AP-02) | Energieeinsatz einstufen | AP-16 §6.1 |
+| `energieeinsatz.ansehen` | Unternehmen, Standorte, Struktur (AP-02) | Energieeinsätze ansehen | AP-16 §6.1 |
+| `messmittel.angaben` | Unternehmen, Standorte, Struktur (AP-02) | Messmittel-Angaben und Belege eintragen | AP-16 §6.1 |
+| `netzanschluss.verwalten` | Unternehmen, Standorte, Struktur (AP-02) | Netzanschluss anlegen · bearbeiten · beenden · Anlage binden | AP-10 §4.10 |
+| `bezugsgroesse.verwalten` | Messstellen und Messdaten (AP-04, AP-08, AP-09) | Bezugsgröße anlegen · bearbeiten · archivieren · Messkanal binden/lösen | AP-09 §4.11 |
+| `ersatzwert.erfassen` | Messstellen und Messdaten (AP-04, AP-08, AP-09) | Ersatzwert erfassen / zurücknehmen | AP-08 §4.8 |
+| `korrektur.freigeben` | Messstellen und Messdaten (AP-04, AP-08, AP-09) | Korrektur prüfen und freigeben | AP-08 §4.8 |
+| `korrektur.zuruecknehmen` | Messstellen und Messdaten (AP-04, AP-08, AP-09) | Korrektur zurücknehmen (widerrufen) | AP-08 §5 |
+| `vieraugen.einstellen` | Messstellen und Messdaten (AP-04, AP-08, AP-09) | Vier-Augen-Einstellung ändern | AP-08 §4.8 |
+| `ablesung.erfassen` | Messstellen und Messdaten (AP-04, AP-08, AP-09) | Ablesung an einer Messstelle erfassen / berichtigen | AP-09 §4.11 |

@@ -1,0 +1,101 @@
+import { chromium, type Browser, type FullConfig } from '@playwright/test';
+
+/* =========================================================================
+   DIE ERSTE SEITE EINES LAUFS ZAHLT DIE ÜBERSETZUNG — NICHT EINE ZUSICHERUNG
+
+   Der Vite-Entwicklungsserver übersetzt jedes Modul erst beim ersten Abruf.
+   Gemessen am 16.09.2026 auf dieser Bühne (`help.spec.ts:7`, vier Worker):
+
+     erste Seite des Laufs   nav 2,9–4,9 s   bis zur Überschrift 5,9–8,9 s
+     jede weitere Seite      nav 0,3–1,2 s   bis zur Überschrift 0,4–1,3 s
+
+   Dieselbe Seite, 0,5 s später neu geladen, steht in 0,5 s. Am Produkt ändert
+   sich zwischen beiden Ladevorgängen nichts — nur der Übersetzungs-Cache des
+   Entwicklungsservers ist dann warm. Der ausgelieferte Portal-Build kennt
+   diese Wartezeit gar nicht: er ist fertig übersetzt, bevor ein Kunde ihn
+   abruft. Kein echter Verwender wartet hier also auf irgendetwas.
+
+   Wer die Rechnung bezahlt, entschied bisher allein die Worker-Verteilung:
+   der Test, der als Erster einen Wirt mit ganzem `src/App.tsx` lud, lief in
+   das 5-Sekunden-Budget seiner ersten Zusicherung. Im Oberflächen-Durchlauf
+   vom 15.09.2026 traf es `help.spec.ts:7`; in Wiederholungsläufen ebenso
+   `help.spec.ts:17`, `:35` und `:67` — je nachdem, wer zuerst drankam.
+
+   ⚠ Deshalb wird die Rechnung HIER bezahlt, einmal pro Lauf, vor der ersten
+     Zusicherung — und NICHT durch ein größeres Zusicherungs-Budget, durch
+     `retries` oder durch erzwungene Klicks. Jede Zusicherung behält ihre
+     strengen 5 s: wird die Hilfe wirklich einmal langsam, fällt sie weiterhin
+     auf. `e2e/help.html` ist der Wirt mit dem größten geteilten Graphen
+     (`src/App.tsx` samt Designsystem); ihn zu wärmen wärmt fast jeden anderen
+     Wirt gleich mit.
+
+   Das Wärmen ist BESTENFALLS-Arbeit: schlägt es fehl, läuft der Lauf wie
+   zuvor weiter. Ein kalter Server ist langsam, kein Fehler.
+
+   ⚠ Der Hilfe-Wirt wärmt NICHT jedes nachgeladene Stück. Die Unterseite
+     „Steuerung“ einer Anlage (`SUB_CHUNK.steuerung`, rund 670 Module samt
+     Regel-Editor) zieht er nicht mit. Gemessen am 24.09.2026 an
+     `portal-rechte.spec.ts` „R1 · MD“ (allein gefahren, zwei Container,
+     61 % Speicher frei): `goto` endet nach 4–11 s, das Stück braucht danach
+     4,4 s bis über 60 s, einzelne Module 28–38 s — rot in 3 von 6, 4 von 6
+     und 4 von 4 Läufen. Im Gesamtlauf blieb es grün, weil andere Specs das
+     Stück schon übersetzt hatten. Die Spec wartet seither auf `networkidle`
+     (warme Streuung); die kalte Übersetzung aber hielt die ganze erste Welle
+     über 30 s fest, auch Fälle ohne Steuerung. Darum steht die Steuerung als
+     zweiter Wirt hier; „fertig“ heisst: der Platzhalter der nachladenden
+     Unterseite (`PageLoading`, `.vp-lazy-page`) ist weg.
+
+   ⚠ Die Berichtsseite des Unternehmens (`ansicht=bericht`, mit Tagesverlauf)
+     zieht ein drittes Stück, das keiner der beiden Wirte übersetzt
+     (Bezugsbasis-Vergleich, Kennzahl-Stammdaten, Wert-Versionen …). Im
+     Gesamtlauf vom 04./05.10.2026 blieben 139 seiner Modulanfragen in der
+     ersten Welle (tablet-chromium, vier Worker, erste Minute nach dem
+     Serverstart) ohne Antwort — `berichte.spec.ts:210` lief in `page.goto`
+     über 30 s; allein und kalt war die Spec dreimal grün. Darum steht sie
+     als dritter Wirt hier, bezahlt wie die anderen vor der ersten Zusicherung.
+   ========================================================================= */
+
+const WIRTE = [
+  '/e2e/help.html#/hilfe/fahrplan',
+  '/e2e/startansicht.html?bild=unternehmen&rechte=1&person=MD',
+  '/e2e/startansicht.html?bild=unternehmen&ansicht=bericht&br=BR-2026-0001&tagesverlauf=gefuellt',
+];
+const GEDULD = 120_000;
+
+export default async function globalSetup(config: FullConfig): Promise<void> {
+  const baseURL = config.projects.find((p) => p.use?.baseURL)?.use?.baseURL;
+  if (!baseURL) return;
+
+  // ⚠ Auch das Starten des Browsers steht IM Versuch: fehlt Chromium (etwa
+  //   weil jemand nur ein WebKit-Projekt fährt), soll der Lauf trotzdem
+  //   beginnen — nicht schon vor dem ersten Test scheitern.
+  let browser: Browser;
+  try {
+    browser = await chromium.launch();
+  } catch (fehler) {
+    console.warn(`[e2e] Kein Browser zum Vorwaermen: ${String(fehler)}`);
+    return;
+  }
+  try {
+    // Nacheinander: der zweite Wirt teilt `src/App.tsx` mit dem ersten und
+    // bezahlt dann nur noch sein eigenes Stück.
+    for (const wirt of WIRTE) await waerme(browser, new URL(wirt, baseURL).href);
+  } finally {
+    await browser.close();
+  }
+}
+
+async function waerme(browser: Browser, url: string): Promise<void> {
+  const page = await browser.newPage();
+  try {
+    await page.goto(url, { waitUntil: 'load', timeout: GEDULD });
+    // Erst wenn die nachgeladene Seite steht, ist auch ihr Stück
+    // übersetzt — `load` allein sagt darüber nichts.
+    await page.locator('main h1').first().waitFor({ state: 'visible', timeout: GEDULD });
+    await page.locator('.vp-lazy-page').first().waitFor({ state: 'detached', timeout: GEDULD });
+  } catch (fehler) {
+    console.warn(`[e2e] Wirt ${url} liess sich nicht vorwaermen: ${String(fehler)}`);
+  } finally {
+    await page.close();
+  }
+}

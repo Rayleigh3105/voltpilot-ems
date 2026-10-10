@@ -1,3 +1,5 @@
+import { bestandSnapshot, bestandsZeit } from '../test/bestandsschutzSnapshot';
+import { sichtbareListe } from '../test/rollenFixtures';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { GeraetSeiteSection } from './GeraetSeiteSection';
@@ -23,6 +25,7 @@ import {
   type SiteSource,
   type SiteTopology,
 } from '../api';
+import { gr4Einstellungen, gr4Z5b, k5Kanaele } from '../test/geraetHerkunftFixtures';
 
 const site: Site = {
   id: 's-1',
@@ -340,7 +343,7 @@ function stub(over: {
   });
   vi.spyOn(api, 'controlStatus').mockResolvedValue(null);
   vi.spyOn(api, 'curtailmentStatus').mockResolvedValue(null);
-  vi.spyOn(api, 'edgeVersions').mockResolvedValue([
+  vi.spyOn(api, 'edgeVersions').mockResolvedValue(sichtbareListe([
     {
       deviceId: 'gw',
       siteId: 's-1',
@@ -348,7 +351,7 @@ function stub(over: {
       paletteVersion: '0.9.0',
       reportedAt: FRISCH,
     },
-  ]);
+  ]));
   vi.spyOn(api, 'siteChargers').mockResolvedValue({ budget: null, chargers: [] });
   vi.spyOn(api, 'entityStrategies').mockResolvedValue({});
   vi.spyOn(api, 'commandHistory').mockResolvedValue(over.commands ?? commands());
@@ -380,6 +383,17 @@ function stub(over: {
     },
   ]);
 }
+
+it('AP-13 Bestandsschutz · Geräteseite ohne Messfunktion', async () => {
+  bestandsZeit();
+  const fest = <T,>(daten: T): T => JSON.parse(JSON.stringify(daten).replaceAll(FRISCH, '2026-09-02T10:19:00Z'));
+  stub({ sources: fest(sources), entities: async () => fest(entities) });
+  vi.spyOn(api, 'topology').mockResolvedValue(fest(topology));
+  const view = render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[fest(box)]} />);
+  await screen.findByRole('heading', { name: 'Deye SUN-30K' });
+  await bestandSnapshot('geraeteseite', view);
+  vi.restoreAllMocks();
+});
 
 /**
  * Öffnet „Technik & Diagnose" (E1 a) - die eigene Ansicht für Register,
@@ -520,6 +534,28 @@ describe('GeraetSeiteSection', () => {
     expect(await screen.findByRole('heading', { name: 'BMS' })).toBeInTheDocument();
     expect(screen.getByText('Ladestand laut BMS')).toBeInTheDocument();
     expect(screen.getByText('Shenggao Electric CAN')).toBeInTheDocument();
+  });
+
+  // UEMS AP-04 IP-12: „Gerät & Verbindung" (vor V7 die Sektion „Komponenten —
+  // Was misst und steuert es?") trägt Gerät, Einstellungen und Messkanäle -
+  // ergänzt, nicht neu gebaut: die Detail-Zeilen stehen weiter darüber.
+  it('trägt in „Gerät & Verbindung“ die Karte „Gerät“, die Einstellungen und die Messkanäle mit „speist …“', async () => {
+    stub();
+    vi.spyOn(api, 'uemsGeraete').mockResolvedValue({
+      geraete: [{ ...gr4Z5b(), komponenten: [{ entity_id: 'batt', gueltig_ab: '2026-11-18T10:40:00+01:00', gueltig_bis: null }] }],
+    });
+    vi.spyOn(api, 'komponenteMesskanaele').mockResolvedValue(k5Kanaele());
+    vi.spyOn(api, 'geraetEinstellungen').mockResolvedValue(gr4Einstellungen());
+    render(
+      <GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />,
+    );
+    const sektion = await screen.findByTestId('baustein-details');
+    const karte = await within(sektion).findByTestId('geraet-karte');
+    expect(within(karte).getByText('Zähler Z-5b')).toBeInTheDocument();
+    expect(within(karte).getByText('Wechselrichter Scheune')).toBeInTheDocument();
+    expect(await within(sektion).findByTestId('geraet-einstellungen')).toBeInTheDocument();
+    expect(within(sektion).getAllByText('speist MS-06 (führend)')).toHaveLength(2);
+    expect(api.komponenteMesskanaele).toHaveBeenCalledWith('s-1', 'batt');
   });
 
   it('zeigt die gespeicherte Anbindung eines Geräts', async () => {

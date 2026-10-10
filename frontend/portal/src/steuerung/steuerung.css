@@ -49,6 +49,7 @@
   --st-hand: #6d28d9; --st-hand-soft: #efe9fd;
   --st-lock: #b91c1c; --st-lock-soft: #fcebea;
   --st-done: #0e7490; --st-done-soft: #dcf0f5;
+  --st-mess: #3730a3; --st-mess-soft: #e8ebfd;
   --scrim: var(--vp-c-scrim, color-mix(in srgb, #1e293b 40%, transparent));
   font-family: var(--font);
   color: var(--c-fg);
@@ -100,6 +101,9 @@
 .stn-band { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 8px; padding: 10px 12px; border-radius: 12px; background: var(--st-hand-soft); font: 600 13.5px/1.4 var(--font); color: #4c1d95; }
 .stn-band svg { width: 18px; height: 18px; color: var(--st-hand); }
 .stn-band .lnk { min-height: 28px; }
+/* Sachlicher Hinweis (Einstieg, Ruhe-Satz der älteren Box): kein Handeingriff, darum ohne Violett. */
+.stn-band.info { background: var(--c-card); border: 1px solid var(--c-border); color: var(--c-fg); }
+.stn-band.info svg { color: var(--c-muted-fg); }
 .stn-fehler { padding: 10px 12px; border-radius: 12px; background: var(--c-warn-bg, #fff7ed); color: var(--c-warn-fg, #9a3412); font: 600 13.5px/1.4 var(--font); }
 
 /* Rückmeldung nach einer Änderung */
@@ -142,10 +146,13 @@
 :is(.stn, .stn-blatt) .btn.sek{background:var(--c-card);color:var(--action);box-shadow:inset 0 0 0 1.5px var(--action)}
 :is(.stn, .stn-blatt) .btn.sek:hover{background:color-mix(in srgb,var(--action) 6%,var(--c-card))}
 :is(.stn, .stn-blatt) .btn svg{width:18px;height:18px}
+:is(.stn, .stn-blatt) .btn:disabled{opacity:.5;cursor:default;background:var(--action)}
+:is(.stn, .stn-blatt) .btn.sek:disabled{background:var(--c-card)}
 
 :is(.stn, .stn-blatt) .auto{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 12px 0 10px;border-radius:999px;border:1px solid var(--c-border);background:var(--c-card);font:700 13px var(--font);color:var(--st-on);cursor:pointer;flex:none}
 :is(.stn, .stn-blatt) .auto i{width:8px;height:8px;border-radius:50%;background:currentColor;box-shadow:0 0 0 3px color-mix(in srgb,currentColor 20%,transparent)}
 :is(.stn, .stn-blatt) .auto.aus{color:var(--st-hand)}
+:is(.stn, .stn-blatt) .auto.ruht{cursor:default}
 
 
 /* Karten */
@@ -176,6 +183,7 @@
 :is(.stn, .stn-blatt) .pill.lock{background:var(--st-lock-soft);color:var(--st-lock)}
 :is(.stn, .stn-blatt) .pill.done{background:var(--st-done-soft);color:var(--st-done)}
 :is(.stn, .stn-blatt) .pill.stale{background:transparent;color:var(--st-off);box-shadow:inset 0 0 0 1px #cbd5e1}
+:is(.stn, .stn-blatt) .pill.mess{background:var(--st-mess-soft);color:var(--st-mess)}
 
 /* Jetzt-Kopf */
 :is(.stn, .stn-blatt) .jetzt{padding:16px 14px 12px}
@@ -208,6 +216,10 @@
 :is(.stn, .stn-blatt) .l-legend span{display:inline-flex;align-items:center;gap:5px;min-width:0}
 :is(.stn, .stn-blatt) .l-legend span b{color:var(--c-fg);font-weight:700}
 :is(.stn, .stn-blatt) .l-legend i{width:10px;height:10px;border-radius:3px;flex:none}
+/* Messen-Ansicht (UEMS SZ-1 A): gemessener Verbrauch, keine Sonnenfarbe - der Anteil der Quelle wäre ein Schluss. */
+:is(.stn, .stn-blatt) .l-top b.mess{color:var(--c-fg)}
+:is(.stn, .stn-blatt) .l-seg.mess,:is(.stn, .stn-blatt) .l-legend i.mess{background:color-mix(in srgb,var(--st-mess) 72%,#fff)}
+:is(.stn, .stn-blatt) .l-legend i.haus{background:#94a3b8}
 :is(.stn, .stn-blatt) .l-wait{display:flex;align-items:center;gap:10px;margin-top:10px;padding:9px 11px;border-radius:12px;background:var(--st-wait-soft);color:#7c2d12;font:600 13.5px/1.35 var(--font)}
 :is(.stn, .stn-blatt) .l-wait svg{width:17px;height:17px;color:var(--st-wait);flex:none}
 :is(.stn, .stn-blatt) .l-nacht{margin-top:12px;padding:10px 12px;border-radius:12px;background:var(--c-bg);font:600 13.5px/1.4 var(--font);color:var(--c-muted-fg);display:flex;gap:10px;align-items:center}
@@ -294,6 +306,10 @@
 :is(.stn, .stn-blatt) .dev.offen .ico{background:transparent;box-shadow:inset 0 0 0 1.5px #cbd5e1;color:#64748b}
 :is(.stn, .stn-blatt) .dev.offen{grid-template-columns:auto minmax(0,1fr)}
 :is(.stn, .stn-blatt) .dev.offen .tbtn{justify-self:start;margin-top:6px;min-height:40px}
+/* Angehalten (UEMS SZ-2 A): abgedimmt, der Grund steht in Pille und Satz; Text bleibt lesbar. */
+:is(.stn, .stn-blatt) :is(.dev, .rule, .lp-card).matt{background:var(--c-bg)}
+:is(.stn, .stn-blatt) .dev.matt :is(.ico, .d-kw){opacity:.55}
+:is(.stn, .stn-blatt) .rule.matt .r-satz,:is(.stn, .stn-blatt) .rule.matt .r-satz :is(.h, .d){color:var(--c-muted-fg)}
 :is(.stn, .stn-blatt) .nk-knoepfe .btn{padding:0 10px;font-size:14.5px;white-space:nowrap}
 :is(.stn, .stn-blatt) .immer{display:grid;gap:0;padding:6px 14px}
 :is(.stn, .stn-blatt) .immer-r{display:flex;align-items:center;gap:12px;min-height:54px;padding:8px 0;border:0;background:none;text-align:left;width:100%;font:inherit;color:inherit;cursor:pointer}
@@ -330,6 +346,9 @@
 :is(.stn, .stn-blatt) .stp button{width:44px;height:42px;border:0;background:none;display:grid;place-items:center;color:var(--action);cursor:pointer}
 :is(.stn, .stn-blatt) .stp button svg{width:18px;height:18px}
 :is(.stn, .stn-blatt) .stp output{min-width:78px;text-align:center;font:800 15px var(--font);font-variant-numeric:tabular-nums}
+:is(.stn, .stn-blatt) .prow input.zahl{width:110px;min-height:44px;border-radius:12px;border:1px solid var(--field);background:var(--c-card);color:inherit;padding:0 12px;font:800 16px var(--font);font-variant-numeric:tabular-nums;text-align:right;flex:none}
+:is(.stn, .stn-blatt) .prow input.zahl[aria-invalid="true"]{border-color:var(--c-warn-fg, #9a3412)}
+:is(.stn, .stn-blatt) .pruefung{display:grid;gap:6px}
 :is(.stn, .stn-blatt) .chips{display:flex;flex-wrap:wrap;gap:6px}
 :is(.stn, .stn-blatt) .chips button{min-height:40px;padding:0 13px;border-radius:12px;border:1px solid var(--c-border);background:var(--c-card);font:700 14px var(--font);color:var(--c-fg);cursor:pointer;font-variant-numeric:tabular-nums}
 :is(.stn, .stn-blatt) .chips button[aria-pressed="true"]{background:var(--c-fg);border-color:var(--c-fg);color:#fff}
@@ -364,6 +383,16 @@
 :is(.stn, .stn-blatt) .dauer{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
 :is(.stn, .stn-blatt) .dauer button{min-height:44px;border-radius:12px;border:1px solid var(--c-border);background:var(--c-card);font:700 14px var(--font);cursor:pointer}
 :is(.stn, .stn-blatt) .dauer button[aria-pressed="true"]{background:var(--st-hand-soft);border-color:var(--st-hand);color:var(--st-hand)}
+:is(.stn, .stn-blatt) .dauer button:disabled,:is(.stn, .stn-blatt) .bif:disabled{opacity:.5;cursor:default}
+/* „Steuerung anhalten“ (UEMS SZ-2 A): die Dauern, „oder“, „Bis ich fortsetze“. */
+:is(.stn, .stn-blatt) .oder{display:flex;align-items:center;gap:10px;margin:12px 0 4px;font:700 13px var(--font);color:var(--c-muted-fg)}
+:is(.stn, .stn-blatt) .oder::before,:is(.stn, .stn-blatt) .oder::after{content:"";flex:1;border-top:1px solid var(--c-border)}
+:is(.stn, .stn-blatt) .bif{display:grid;grid-template-columns:20px minmax(0,1fr);gap:10px;align-items:start;width:100%;margin:6px 0 0;padding:12px 14px;border-radius:14px;border:1px solid var(--c-border);background:var(--c-card);font:inherit;color:var(--c-fg);text-align:left;cursor:pointer}
+:is(.stn, .stn-blatt) .bif[aria-pressed="true"]{background:var(--st-hand-soft);border-color:var(--st-hand)}
+:is(.stn, .stn-blatt) .bif .rad{width:18px;height:18px;margin-top:2px;border-radius:50%;border:2px solid var(--c-muted-fg)}
+:is(.stn, .stn-blatt) .bif[aria-pressed="true"] .rad{border-color:var(--st-hand);background:var(--st-hand);box-shadow:inset 0 0 0 3px var(--c-card)}
+:is(.stn, .stn-blatt) .bif b{display:block;font:700 15px var(--font)}
+:is(.stn, .stn-blatt) .bif small{display:block;margin-top:2px;font:500 13.5px/1.4 var(--font);color:var(--c-muted-fg)}
 :is(.stn, .stn-blatt) .eingriff{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 
 /* Regel-Baukasten */
@@ -431,6 +460,10 @@
 :is(.stn, .stn-blatt) .rule .r-strip>svg{display:block;width:100%;height:12px}
 :is(.stn, .stn-blatt) .rule.aus{background:var(--c-bg)}
 :is(.stn, .stn-blatt) .rule.aus .r-satz{color:var(--c-muted-fg)}
+/* AP-03 IP-12: Grund und Weg ersetzen einen Hebel ohne Recht - der Satz bekommt die ganze Zeile. */
+.stn-main > .vp-recht-hinweis,
+:is(.stn, .stn-blatt) .rule > .vp-recht-hinweis{grid-column:1/-1}
+:is(.stn, .stn-blatt) :is(.prow, .card-h):has(> .vp-recht-hinweis){flex-wrap:wrap}
 :is(.stn, .stn-blatt) .szenen{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
 :is(.stn, .stn-blatt) .sz{display:grid;gap:4px;justify-items:start;padding:12px;border-radius:16px;border:1.5px solid var(--c-border);background:var(--c-card);cursor:pointer;text-align:left;font:inherit;color:inherit;min-width:0}
 :is(.stn, .stn-blatt) .sz svg{width:20px;height:20px;color:var(--navy)}

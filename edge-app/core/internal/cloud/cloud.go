@@ -44,6 +44,8 @@ type Link struct {
 	onCommand           func(payload []byte) bool
 	onEntities          func(payload []byte)
 	onPlanV2            func(payload []byte)
+	onVerbundAnteile    func(payload []byte)
+	onSprungprobe       func(payload []byte)
 	onFlows             func(payload []byte)
 	onUpdateTarget      func(payload []byte)
 	onProbeRequest      func(payload []byte)
@@ -87,6 +89,15 @@ type Options struct {
 	// (docs/contracts/v2/mqtt-schedule-2.0.md). Empty payload = retained
 	// clear. nil = the v2 plan executor is not wired.
 	OnPlanV2 func(payload []byte)
+	// OnVerbundAnteile receives the retained share document of a Gemeinsame
+	// Steuerung on .../v2/verbund-anteile (docs/contracts/v2/
+	// mqtt-verbund-anteile.md, AP-15 IP-17). An EMPTY payload is delivered
+	// too; the handler keeps the held share. nil = not wired.
+	OnVerbundAnteile func(payload []byte)
+	// OnSprungprobe receives a Sprungprobe order on .../v2/sprungprobe
+	// (docs/contracts/v2/mqtt-sprungprobe.md, AP-15 IP-21). NOT retained, an
+	// empty payload is never delivered. nil = not wired.
+	OnSprungprobe func(payload []byte)
 	// OnFlows receives the retained flow deployment set on .../v2/flows
 	// (docs/contracts/v2/flow-artifact.md §3). Empty payload = retained
 	// clear (every artifact tab removed). nil = flow deployment not wired.
@@ -214,6 +225,8 @@ func New(o Options) (*Link, error) {
 		onCommand:        o.OnCommand, onEntities: o.OnEntities, onPlanV2: o.OnPlanV2,
 		onFlows: o.OnFlows, onUpdateTarget: o.OnUpdateTarget,
 		onControlCert:       o.OnControlCert,
+		onVerbundAnteile:    o.OnVerbundAnteile,
+		onSprungprobe:       o.OnSprungprobe,
 		onChargingConfig:    o.OnChargingConfig,
 		onChargingBoost:     o.OnChargingBoost,
 		onProbeRequest:      o.OnProbeRequest,
@@ -296,6 +309,8 @@ func (l *Link) buildDownlinkRoutes() []downlinkRoute {
 	}
 	add("v2/entities", l.onEntities, true)
 	add("v2/plan", l.onPlanV2, true)
+	add("v2/verbund-anteile", l.onVerbundAnteile, true)
+	add("v2/sprungprobe", l.onSprungprobe, false)
 	add("v2/flows", l.onFlows, true)
 	add("v2/update", l.onUpdateTarget, true)
 	add("v2/control-certification", l.onControlCert, true)
@@ -1536,7 +1551,7 @@ func (l *Link) PublishStatus(controlSource string, socPct *float64, control *Con
 	entities *EntitiesSummary, flows *FlowsSummary, sources *SourcesSummary,
 	flowNodes *FlowNodeStatusSummary, curtail *CurtailmentSummary,
 	update *UpdateSummary, consumers ConsumersSummary,
-	registerWrites *RegisterWritesSummary, chargers *ChargersSummary) error {
+	registerWrites *RegisterWritesSummary, chargers *ChargersSummary, extensions ...StatusExtension) error {
 	payload := map[string]any{
 		"schema_version": "1.0",
 		"tenant_id":      l.identity.TenantID,
@@ -1546,6 +1561,17 @@ func (l *Link) PublishStatus(controlSource string, socPct *float64, control *Con
 		"online":         true,
 		"control_source": controlSource,
 		"soc_pct":        socPct,
+	}
+	for _, extension := range extensions {
+		if extension.Supports != nil {
+			payload["supports"] = extension.Supports
+		}
+		if extension.DataSources != nil {
+			payload["data_sources"] = extension.DataSources
+		}
+		if extension.GemeinsameSteuerung != nil {
+			payload["gemeinsame_steuerung"] = extension.GemeinsameSteuerung
+		}
 	}
 	if l.version != "" {
 		payload["version"] = l.version
@@ -1734,6 +1760,18 @@ func (l *Link) PublishMeasurementSamples(payload []byte) error {
 	tok := l.client.Publish(l.topic("v2/measurement-samples"), 1, false, payload)
 	if !tok.WaitTimeout(30 * time.Second) {
 		return fmt.Errorf("measurement samples publish timed out")
+	}
+	return tok.Error()
+}
+
+// PublishBoxEvents drains one durable event envelope of the box on
+// .../v2/events (mqtt-events 2.1, QoS1, non-retained). The payload is sent
+// UNCHANGED: identity, sequence and every ereignis_id were fixed when the
+// envelope was persisted, so a retry after a WAN outage repeats the same bytes.
+func (l *Link) PublishBoxEvents(payload []byte) error {
+	tok := l.client.Publish(l.topic("v2/events"), 1, false, payload)
+	if !tok.WaitTimeout(30 * time.Second) {
+		return fmt.Errorf("box events publish timed out")
 	}
 	return tok.Error()
 }

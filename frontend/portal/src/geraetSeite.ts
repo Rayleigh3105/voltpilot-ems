@@ -23,8 +23,8 @@
  *    und trägt seinen Grund; ein fehlender Wert ist `—`, nie eine 0.
  * 3. **Jede leere Sektion nennt ihren Grund** („Dieses Gerät meldet keine
  *    Verbindungsdaten"), nie ein leerer Kasten.
- * 4. **Zwei Frische-Anker, beide benannt.** Die BOX altert gegen ihre
- *    Telemetrie (`Device.lastSeenAt`, die `liveness.ts`-Bezugszeit), ein GERÄT
+ * 4. **Zwei Frische-Anker, beide benannt.** Die BOX altert gegen ihren
+ *    Status-Herzschlag (`Device.lastSeenAt`, die `liveness.ts`-Bezugszeit), ein GERÄT
  *    dahinter gegen `sources.readAt`. Die Seite sagt, worauf sich „vor 12 s"
  *    bezieht - sie mischt die beiden nie.
  *
@@ -53,7 +53,7 @@ import type { ComponentHealth, PlantComponent, PlantModel } from './komponenten'
 import { deviceState } from './komponenten';
 import { isPrivateHost } from './selbstbau';
 import { chargePointIdOf, ioVerbraucherIdOf } from './geraetAdresse';
-import { AUFBAU_REITER } from './anlageNav';
+import { AUFBAU_REITER } from './ebenenNav';
 
 /** Welche ART von Gerät die Seite zeigt. */
 /**
@@ -391,7 +391,7 @@ function str(v: unknown): string | null {
 
 /** Box- und Säulen-Adressen wohnen in `geraetAdresse.ts` (Einstiegs-Bündel). */
 export {
-  boxOf, boxRefOf, chargePointIdOf, chargerGeraetId, ioVerbraucherGeraetId, ioVerbraucherIdOf,
+  boxRefOf, chargePointIdOf, chargerGeraetId, fuehrendeBoxOf, ioVerbraucherGeraetId, ioVerbraucherIdOf,
 } from './geraetAdresse';
 
 /**
@@ -473,7 +473,7 @@ export function quellenZustand(
 }
 
 /**
- * Die Zustands-Pill der BOX (Anker: Telemetrie-`lastSeenAt`).
+ * Die Zustands-Pill der BOX (Anker: Status-Herzschlag in `lastSeenAt`).
  *
  * Exportiert, weil die BOX-Seite (`boxSeite.ts`) sie teilt - zwei Ableitungen
  * desselben Zustands wären zwei Wahrheiten über dieselbe Box.

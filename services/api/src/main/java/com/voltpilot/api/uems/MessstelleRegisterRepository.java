@@ -49,9 +49,12 @@ public class MessstelleRegisterRepository {
      */
     public record QuelleZeile(Quelle quelle, String geraetBezeichnung, JsonNode kanalDefinition) {}
 
+    /** Ein wirksamer Fakt, den das Register unmittelbar an der Messstelle zeigt. */
+    public record Fakt(String art, Instant giltAb) {}
+
     /** Eine Messstelle mit allem, woraus ihre Register-Zeile und ihre Vertrags-Form entstehen. */
     public record Bestand(Messstelle messstelle, List<Nebengroesse> nebengroessen, List<OrtZeile> orte,
-            List<StellungZeile> stellungen, List<QuelleZeile> quellen) {}
+            List<StellungZeile> stellungen, List<QuelleZeile> quellen, List<Fakt> fakten) {}
 
     /**
      * Der Messwert EINER führenden Bindung: Komponente + Kanal (unter diesem Paar kommen die Werte
@@ -77,9 +80,27 @@ public class MessstelleRegisterRepository {
      * @param text sein Textwert; {@code null} bei einem Zahlen-Kanal
      * @param jeEinWert ob überhaupt je ein Wert ankam — auch ein schlechter (ändert den Zustand
      *     NICHT, gezählt werden nur gute; der Vertrag will den Eingang trotzdem ehrlich)
+     * @param reihe dieselben Fakten, nur über die Werte, die der Reihe (Komponente, Kanal) ZUGEORDNET
+     *     sind — dasselbe Kriterium wie Verdichtung und Werte-Karte ({@code entity_id} = Komponente,
+     *     Rolle nicht {@code spiegel}). Die fünf Felder davor lesen die BOX: alles, was sie unter
+     *     diesem Kanal geliefert hat, zugeordnet oder nicht.
      */
     public record Werte(Integer kadenzS, Instant letzterGuterWert, Double zahl, String text,
-            boolean jeEinWert) {}
+            boolean jeEinWert, Reihe reihe) {
+
+        /** Ein Messwert, dessen Box-Werte alle zugeordnet sind — die Reihe sieht dasselbe wie die Box. */
+        public Werte(Integer kadenzS, Instant letzterGuterWert, Double zahl, String text, boolean jeEinWert) {
+            this(kadenzS, letzterGuterWert, zahl, text, jeEinWert, new Reihe(letzterGuterWert, zahl, text, jeEinWert));
+        }
+
+        /** Die Werte der Reihe in derselben Form — die Eingänge der Ableitung, nur über die Reihe. */
+        public Werte nurReihe() {
+            return new Werte(kadenzS, reihe.letzterGuterWert(), reihe.zahl(), reihe.text(), reihe.jeEinWert(), reihe);
+        }
+    }
+
+    /** Der letzte gute Wert der REIHE und ob je einer ankam (UEMS: Messstelle liefert Daten ehrlich). */
+    public record Reihe(Instant letzterGuterWert, Double zahl, String text, boolean jeEinWert) {}
 
     /**
      * Die Abfrage. Je Tabelle EIN Durchgang, gruppiert je Messstelle (Hash-Verbund statt einer
@@ -134,26 +155,37 @@ public class MessstelleRegisterRepository {
                                'endstand', CASE WHEN q.endstand IS NOT NULL THEN json_build_object(
                                    'wert', q.endstand, 'einheit', q.endstand_einheit) END,
                                'rueckwirkend', q.rueckwirkend, 'eingetragenAm', q.eingetragen_am,
-                               'eingetragenVon', q.actor_name),
+                               'eingetragenVon', q.actor_name, 'anteil', q.anteil),
                            'geraetBezeichnung', g.bezeichnung,
                            'kanalDefinition', (SELECT d.custom_definition FROM device_measurement_selection d
+                                                JOIN device b ON b.id = d.device_id
                                                 WHERE d.entity_id = q.entity_id AND d.point_key = q.kanal
-                                                ORDER BY d.device_id LIMIT 1))
+                                                ORDER BY (b.ausgebaut_am IS NOT NULL), d.device_id LIMIT 1))
                            ORDER BY q.groesse, q.richtung, q.rolle, q.gueltig_ab, q.id) AS j
                   FROM messstelle_quelle q
                   JOIN messstelle m ON m.id = q.messstelle_id
                   JOIN geraet g ON g.id = q.geraet_id
                   JOIN measurement_point p ON p.id = q.entity_id
-                 GROUP BY q.messstelle_id)
+                 GROUP BY q.messstelle_id),
+            fakten AS (
+                SELECT a.messstelle_id, json_agg(json_build_object(
+                           'art', a.art, 'giltAb', a.gilt_ab)
+                           ORDER BY a.gilt_ab, a.id) AS j
+                  FROM messstelle_aenderung a
+                 WHERE a.art = 'einstellung_geaendert'
+                 GROUP BY a.messstelle_id)
             SELECT m.id, m.kennzeichen, m.name, m.art, m.medium, m.groesse, m.richtung, m.einheit,
                    m.wertart, m.notiz, m.angehalten_ab, m.archiviert_am,
+                   (to_jsonb(m) ->> 'anschlussleistung_kw')::numeric AS anschlussleistung_kw,
                    coalesce(n.j, '[]') AS neben, coalesce(o.j, '[]') AS orte,
-                   coalesce(s.j, '[]') AS stellungen, coalesce(q.j, '[]') AS quellen
+                   coalesce(s.j, '[]') AS stellungen, coalesce(q.j, '[]') AS quellen,
+                   coalesce(f.j, '[]') AS fakten
               FROM messstelle m
               LEFT JOIN neben n ON n.messstelle_id = m.id
               LEFT JOIN orte o ON o.messstelle_id = m.id
               LEFT JOIN stellungen s ON s.messstelle_id = m.id
               LEFT JOIN quellen q ON q.messstelle_id = m.id
+              LEFT JOIN fakten f ON f.messstelle_id = m.id
              ORDER BY m.kennzeichen
             """;
 
@@ -161,6 +193,7 @@ public class MessstelleRegisterRepository {
     private static final TypeReference<List<OrtZeile>> ORTE = new TypeReference<>() {};
     private static final TypeReference<List<StellungZeile>> STELLUNGEN = new TypeReference<>() {};
     private static final TypeReference<List<QuelleZeile>> QUELLEN = new TypeReference<>() {};
+    private static final TypeReference<List<Fakt>> FAKTEN = new TypeReference<>() {};
 
     private final JdbcTemplate jdbc;
     private final ObjectMapper streng;
@@ -176,6 +209,35 @@ public class MessstelleRegisterRepository {
     }
 
     /**
+     * Eine führende Ablesungs-Quelle (AP-09 IP-8) zum Zeitpunkt: seit wann sie gilt und wann zuletzt abgelesen wurde
+     * ({@code null} = noch nie). Sie hat weder Gerät noch Komponente — darum fehlt sie in {@link #alle()}, das die
+     * Bindungen über Gerät und Messpunkt liest (Demo-Befund 27.09.2026: MS-20 rechnete aus 24 Ablesungen und hieß im
+     * Register „Keine Datenquelle“).
+     */
+    public record Ablesung(Instant seit, Instant zuletzt, java.math.BigDecimal stand) {}
+
+    /** Je Messstelle die Ablesungs-Quelle, die zum {@code zeitpunkt} führt, mit der letzten Ablesung bis dahin. */
+    public Map<UUID, Ablesung> ablesungen(Instant zeitpunkt) {
+        Map<UUID, Ablesung> out = new HashMap<>();
+        Timestamp t = Timestamp.from(zeitpunkt);
+        jdbc.query("""
+                SELECT q.messstelle_id, q.gueltig_ab, l.zeitpunkt AS zuletzt, l.stand
+                  FROM messstelle_quelle q
+                  LEFT JOIN LATERAL (SELECT f.zeitpunkt, f.stand FROM messstelle_ablesung_fassung f
+                                      WHERE f.quelle_id = q.id AND f.zeitpunkt <= ?
+                                      ORDER BY f.zeitpunkt DESC, f.fassung DESC LIMIT 1) l ON true
+                 WHERE q.art = 'ablesung' AND q.rolle = 'fuehrend'
+                   AND q.gueltig_ab <= ? AND (q.gueltig_bis IS NULL OR q.gueltig_bis > ?)
+                """, rs -> {
+                    Timestamp zuletzt = rs.getTimestamp("zuletzt");
+                    out.put(rs.getObject("messstelle_id", UUID.class), new Ablesung(
+                            rs.getTimestamp("gueltig_ab").toInstant(), zuletzt == null ? null : zuletzt.toInstant(),
+                            rs.getBigDecimal("stand")));
+                }, t, t, t);
+        return out;
+    }
+
+    /**
      * Der EINE zusätzliche Lesezug der Beobachtung (IP-15): je Messwert (Komponente + Kanal +
      * Beginn der Bindung) die Kadenz seiner Mess-Selektion, sein letzter GUTER Wert SEIT dem
      * Beginn und bis {@code bis} und ob überhaupt je einer ankam. Die drei Felder kommen als
@@ -187,6 +249,17 @@ public class MessstelleRegisterRepository {
      * seiner Zeile) — nie eine Summe, nie ein Mittel. Ohne Zeile der Mess-Selektion fehlt der
      * Messwert in der Antwort: dann gibt es weder Kadenz noch Wert, und die Ableitung sagt
      * „wartet auf erste Daten“ statt eine 0 zu raten.
+     *
+     * <p><b>Box und Reihe.</b> Über (Box, Kanal) sieht die Abfrage alles, was die Box geliefert hat — auch
+     * Werte, die der Writer keiner Reihe zuordnen konnte (Komponente ohne Datenquelle). Darum liest sie
+     * dieselben Fakten ein zweites Mal NUR über die Reihe ({@link Werte#reihe}): {@code entity_id} = Komponente,
+     * Rolle nicht {@code spiegel} — das Kriterium von Verdichtung, Lücken-Melder und Werte-Karte
+     * ({@code SpeicherklasseHistorie.mitDaten}), kein drittes.
+     *
+     * <p><b>Standort-Zaun:</b> der Box-Zweig zählt nur Werte an einer Anlage im Zugriff ({@code JOIN site}, RLS
+     * {@code site_scope}) — wie die Zuordnung der Werte-Karte ({@code MessstelleWerteService}). Die Mess-Selektion
+     * bindet die Komponente ohne {@code site_id}, und jeder Wert trägt die Anlage, an der er ankam; ohne den Join
+     * zeigte das Register den letzten Box-Wert einer fremden Anlage. Außerhalb fehlen Wert und Wort ganz.
      */
     static final String WERTE = """
             WITH paare AS (
@@ -206,6 +279,7 @@ public class MessstelleRegisterRepository {
                              coalesce(s.decoded_numeric, s.raw_numeric) AS zahl,
                              coalesce(s.decoded_text, s.raw_text) AS text
                         FROM device_measurement_sample s
+                        JOIN site st ON st.id = s.site_id
                        WHERE s.device_id = l.device_id AND s.point_key = l.kanal
                          AND s.quality = 'good' AND s.time >= l.ab AND s.time <= ?
                        ORDER BY s.time DESC
@@ -213,6 +287,7 @@ public class MessstelleRegisterRepository {
                   LEFT JOIN LATERAL (
                       SELECT true AS gab_es
                         FROM device_measurement_sample s
+                        JOIN site st ON st.id = s.site_id
                        WHERE s.device_id = l.device_id AND s.point_key = l.kanal
                          AND s.time >= l.ab AND s.time <= ?
                        LIMIT 1) j ON TRUE),
@@ -224,10 +299,28 @@ public class MessstelleRegisterRepository {
                        komponente, kanal, ab, cadence_s, zeit, zahl, text
                   FROM gemessen
                  ORDER BY komponente, kanal, ab, zeit DESC NULLS LAST, device_id)
-            SELECT j.komponente, j.kanal, j.ab, j.cadence_s, j.zeit, j.zahl, j.text, k.je_ein_wert
+            SELECT j.komponente, j.kanal, j.ab, j.cadence_s, j.zeit, j.zahl, j.text, k.je_ein_wert,
+                   rg.zeit AS r_zeit, rg.zahl AS r_zahl, rg.text AS r_text, re.gab_es IS NOT NULL AS r_je_ein_wert
               FROM juengste j
               JOIN je_bindung k
                 ON k.komponente = j.komponente AND k.kanal = j.kanal AND k.ab = j.ab
+              LEFT JOIN LATERAL (
+                  SELECT s.time AS zeit,
+                         coalesce(s.decoded_numeric, s.raw_numeric) AS zahl,
+                         coalesce(s.decoded_text, s.raw_text) AS text
+                    FROM device_measurement_sample s
+                   WHERE s.entity_id = j.komponente AND s.point_key = j.kanal
+                     AND s.entity_id IS NOT NULL AND s.role IS DISTINCT FROM 'spiegel'
+                     AND s.quality = 'good' AND s.time >= j.ab AND s.time <= ?
+                   ORDER BY s.time DESC
+                   LIMIT 1) rg ON TRUE
+              LEFT JOIN LATERAL (
+                  SELECT true AS gab_es
+                    FROM device_measurement_sample s
+                   WHERE s.entity_id = j.komponente AND s.point_key = j.kanal
+                     AND s.entity_id IS NOT NULL AND s.role IS DISTINCT FROM 'spiegel'
+                     AND s.time >= j.ab AND s.time <= ?
+                   LIMIT 1) re ON TRUE
             """;
 
     /**
@@ -251,24 +344,31 @@ public class MessstelleRegisterRepository {
             ps.setArray(3, con.createArrayOf("timestamptz", ab));
             ps.setTimestamp(4, Timestamp.from(bis));
             ps.setTimestamp(5, Timestamp.from(bis));
+            ps.setTimestamp(6, Timestamp.from(bis));
+            ps.setTimestamp(7, Timestamp.from(bis));
             return ps;
         }, (ResultSet rs) -> {
             Timestamp zeit = rs.getTimestamp("zeit");
             double zahl = rs.getDouble("zahl");
             boolean textwert = rs.wasNull();
+            Timestamp rZeit = rs.getTimestamp("r_zeit");
+            double rZahl = rs.getDouble("r_zahl");
+            boolean rTextwert = rs.wasNull();
             out.put(new Messwert(rs.getObject("komponente", UUID.class), rs.getString("kanal"),
                             rs.getTimestamp("ab").toInstant()),
                     new Werte((Integer) rs.getObject("cadence_s"),
                             zeit == null ? null : zeit.toInstant(),
                             textwert ? null : zahl, rs.getString("text"),
-                            rs.getBoolean("je_ein_wert")));
+                            rs.getBoolean("je_ein_wert"),
+                            new Reihe(rZeit == null ? null : rZeit.toInstant(), rTextwert ? null : rZahl,
+                                    rs.getString("r_text"), rs.getBoolean("r_je_ein_wert"))));
         });
         return Map.copyOf(out);
     }
 
     private Bestand bestand(ResultSet rs, int n) throws SQLException {
         return new Bestand(MessstelleRepository.map(rs, n), lesen(rs, "neben", NEBEN), lesen(rs, "orte", ORTE),
-                lesen(rs, "stellungen", STELLUNGEN), lesen(rs, "quellen", QUELLEN));
+                lesen(rs, "stellungen", STELLUNGEN), lesen(rs, "quellen", QUELLEN), lesen(rs, "fakten", FAKTEN));
     }
 
     private <T> List<T> lesen(ResultSet rs, String spalte, TypeReference<List<T>> typ) throws SQLException {

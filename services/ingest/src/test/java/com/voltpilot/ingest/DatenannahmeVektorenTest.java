@@ -71,12 +71,15 @@ class DatenannahmeVektorenTest {
         switch (topic.substring(topic.lastIndexOf('/') + 1)) {
             case "measurement-samples" -> new MeasurementIngestHandler(
                     new MeasurementSamplesValidator(MAPPER, Messzeitregel.E13), MAPPER, kafka,
-                    "measurements.raw", producer, uhr).handle(nachricht, topic, quittung);
+                    "measurements.raw", producer, uhr, new IngestMetriken(new SimpleMeterRegistry(), uhr))
+                    .handle(nachricht, topic, quittung);
             case "telemetry" -> new TelemetryV2IngestHandler(
                     new TelemetryV2Validator(MAPPER, Messzeitregel.E13), MAPPER, kafka,
-                    "telemetry-v2.raw", producer, uhr).handle(nachricht, topic);
+                    "telemetry-v2.raw", producer, uhr, new IngestMetriken(new SimpleMeterRegistry(), uhr))
+                    .handle(nachricht, topic);
             case "events" -> new BoxEventsIngestHandler(
-                    new BoxEventsValidator(MAPPER, Messzeitregel.E13), producer, uhr)
+                    new BoxEventsValidator(MAPPER, Messzeitregel.E13), producer, uhr,
+                    new IngestMetriken(new SimpleMeterRegistry(), uhr))
                     .handle(nachricht, topic, quittung);
             default -> throw new AssertionError("unbekannter Strom: " + topic);
         }

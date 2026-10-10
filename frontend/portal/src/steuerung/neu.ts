@@ -12,6 +12,10 @@
  *  - **noch nicht steuerbar**: der Server sagt `schreibbar: false` und nennt den
  *    Grund; der Weg dorthin, wo er sich lösen lässt, ist die Anlage.
  *
+ * An einer Anlage, die nicht an „Steuern & Optimieren“ teilnimmt, fragt die
+ * Steuerung nicht (Steuern-Regel #779): was sonst **neu** wäre, steht dort
+ * **still** - ohne Vorschlag, mit dem Weg zur Steuerart (`seite.ts`).
+ *
  * Rein und getestet (`neu.test.ts`).
  */
 import { liste } from './liste';
@@ -27,6 +31,8 @@ export interface Einordnung {
   neu: GeraetBild[];
   nurMessen: GeraetBild[];
   nichtSteuerbar: GeraetBild[];
+  /** Ohne Auftrag an einer Anlage ohne Teilnahme: kein Vorschlag. */
+  still: GeraetBild[];
 }
 
 export function einordnen(alle: GeraetBild[], vorschlaege: SuggestionStates | null | undefined, nowMs: number): Einordnung {
@@ -35,7 +41,7 @@ export function einordnen(alle: GeraetBild[], vorschlaege: SuggestionStates | nu
       .filter((s) => s.state === 'nur_messen' || (s.mutedUntil != null && Date.parse(s.mutedUntil) > nowMs))
       .map((s) => s.key),
   );
-  const out: Einordnung = { neu: [], nurMessen: [], nichtSteuerbar: [] };
+  const out: Einordnung = { neu: [], nurMessen: [], nichtSteuerbar: [], still: [] };
   for (const g of alle) {
     if (!g.ohneAuftrag) continue;
     if (!g.schreibbar) out.nichtSteuerbar.push(g);

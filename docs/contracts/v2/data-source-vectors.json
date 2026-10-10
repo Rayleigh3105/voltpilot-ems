@@ -31,7 +31,7 @@
     "„jetzt“ zählt auf die Minute abgerundet: ein Beginn in der laufenden Minute ist nicht",
     "rückwirkend. Kundensätze nennen Datum und Uhrzeit in `zeitzone`.",
     "",
-    "ACHT FAMILIEN:",
+    "NEUN FAMILIEN:",
     "  antrag        – darf diese Box diese Quelle ab diesem Zeitpunkt lesen? (anlegen | wechsel)",
     "                  Prüfreihenfolge = `pruefreihenfolge_antrag`, der ERSTE Grund entscheidet.",
     "  zeitraeume    – die Speicher-Regel (IP-2: Ausschluss überlappender Zeiträume); sie",
@@ -47,7 +47,23 @@
     "                  einem Grund aus `auslass_gruende` benannt ausgelassen — nie geraten.",
     "                  Prüfreihenfolge je Komponente: keine_box → keine_adresse (kein",
     "                  Protokoll) → protokoll_unbekannt → keine_adresse (keine Adresse); ein",
-    "                  Geschwister, dessen Wechselrichter keinen Vorschlag hat: anker_ohne_vorschlag."
+    "                  Geschwister, dessen Wechselrichter keinen Vorschlag hat: anker_ohne_vorschlag.",
+    "  gemeinsame_steuerung – AP-15 T6 (IP-8, IP-26), VOR der Prüfreihenfolge eines Wechsels: in einer",
+    "                  Anlage mit eingerichteter Gemeinsamer Steuerung (Zustand erklaert … angehalten)",
+    "                  gilt die AP-06-Sperre `steuerquelle` („…erst mit der gemeinsamen Steuerung“) nicht",
+    "                  mehr — sie wäre dort eine Sackgasse. Vor dem Scharfschalten (S0–S2) zieht eine",
+    "                  Steuerquelle zu einem MITGLIED dieser Gemeinsamen Steuerung um wie jede Quelle",
+    "                  (`innerhalb_der_gemeinsamen_steuerung`: die Prüfreihenfolge ohne Grund 4, Antrag-Feld",
+    "                  `innerhalb_gemeinsamer_steuerung`); zu jeder anderen Box und solange die Anteile in",
+    "                  Kraft sind (anteile_aktiv, angehalten) nur über „Gemeinsame Steuerung ändern“.",
+    "                  Netzzähler und Messpunkt eines Mitglieds ebenso, solange die Anteile in Kraft sind",
+    "                  (`nur_als_aenderung` ist das Urteil von SteuerungsverbundRegeln, gepinnt in",
+    "                  steuerungsverbund-objekt-vectors.json, Gruppe zustaendigkeitswechsel). Ohne",
+    "                  Gemeinsame Steuerung und nach dem Auflösen entscheidet die Prüfreihenfolge wie bisher",
+    "                  (I6). KEIN Grund des Vokabulars: ob eine Anlage eine Gemeinsame Steuerung hat, ist",
+    "                  ein Fakt eines anderen Vertrags; die Schnittstelle antwortet 409",
+    "                  `gemeinsame_steuerung_aendern` mit dem Satz `texte.gemeinsame_steuerung_aendern` und",
+    "                  den Fakten `kennzeichen` und `anlage`."
   ],
   "schema_version": "1.0",
   "$schema_datei": "./data-source-assignment.schema.json",
@@ -63,7 +79,8 @@
     "fuehrende_box",
     "faehigkeiten",
     "fehlerklasse",
-    "bestand"
+    "bestand",
+    "gemeinsame_steuerung"
   ],
   "abnahmefaelle": [
     "A3",
@@ -279,7 +296,8 @@
     "software": "Software {stand}",
     "software_unbekannt": "Software-Stand unbekannt",
     "alle_faehigkeiten": "alle Fähigkeiten",
-    "update_noetig": "Update nötig für: {liste}"
+    "update_noetig": "Update nötig für: {liste}",
+    "gemeinsame_steuerung_aendern": "{kennzeichen} gehört zur Gemeinsamen Steuerung — ihre Box wechselt nur über „Gemeinsame Steuerung ändern“"
   },
   "auslass_gruende": [
     {
@@ -1534,6 +1552,76 @@
       }
     },
     {
+      "name": "t6-steuerquelle-innerhalb-der-gemeinsamen-steuerung-erlaubt",
+      "familie": "antrag",
+      "annahme": "AN-1 hat ab 03.05.2027 die Gemeinsame Steuerung V-1 (Referenz 1.5), hier noch nicht scharf (S1); Box Verwaltung ist Mitglied (steuert mit). Der Umzug von DQ-1 an Box Verwaltung ist erfunden; Box Verwaltung erreichte 192.168.10.21 — angenommen.",
+      "why": "IP-26 (T6 „ändern“): mit `innerhalb_gemeinsamer_steuerung` (Weg `innerhalb_der_gemeinsamen_steuerung` aus der Familie gemeinsame_steuerung) entfällt Grund 4 `steuerquelle`; alle übrigen Gründe gelten unverändert, das Urteil ist das eines gewöhnlichen Wechsels. Ohne das Feld bleibt es A13.",
+      "input": {
+        "jetzt": "2027-05-10T10:00:00+02:00",
+        "zeitzone": "Europe/Berlin",
+        "boxen": [
+          {
+            "kennzeichen": "E-1",
+            "name": "Box Halle 1"
+          },
+          {
+            "kennzeichen": "E-4",
+            "name": "Box Verwaltung"
+          }
+        ],
+        "quellen": [
+          {
+            "kennzeichen": "DQ-1",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.21:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": true,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "antrag": {
+          "art": "wechsel",
+          "quelle": "DQ-1",
+          "box": "E-4",
+          "effective_from": "2027-05-10T10:00:00+02:00",
+          "pruefung": {
+            "box": "E-4",
+            "ergebnis": "ok",
+            "zeitpunkt": "2027-05-10T09:55:00+02:00"
+          },
+          "vergleich_bestaetigt": false,
+          "innerhalb_gemeinsamer_steuerung": true
+        }
+      },
+      "expected": {
+        "urteil": "erlaubt",
+        "grund": null,
+        "text": "Ab 10.05.2027 10:00 liest Box Verwaltung",
+        "hinweis": null,
+        "vergleichsquelle": false,
+        "zeitraeume": [
+          {
+            "box": "E-1",
+            "effective_from": "2024-03-12T00:00:00+01:00",
+            "effective_to": "2027-05-10T10:00:00+02:00"
+          },
+          {
+            "box": "E-4",
+            "effective_from": "2027-05-10T10:00:00+02:00",
+            "effective_to": null
+          }
+        ]
+      }
+    },
+    {
       "name": "protokoll-ausserhalb-des-katalogs",
       "familie": "antrag",
       "annahme": "Eine OPC-UA-Steuerung unter 192.168.10.40:4840 ist erfunden.",
@@ -2443,7 +2531,7 @@
       "name": "a7-box-lindach-2-5-0-update-noetig",
       "familie": "faehigkeiten",
       "abnahme": "A7",
-      "why": "A7 / E8 = A / E12 = A: Box Lindach meldet 2.5.0, keinen Block `supports[]`. Die echte Tabelle (edge-capabilities.json) sagt: kein ausgeliefertes Release trägt die Fähigkeiten — also fehlen beide, und die Fläche nennt sie in der Reihenfolge der Tabelle. „2.5.0“ gehört zu keinem Release des Registers und beweist deshalb auch künftig nichts.",
+      "why": "A7 / E8 = A / E12 = A: Box Lindach meldet 2.5.0, keinen Block `supports[]`. Die echte Tabelle (edge-capabilities.json) sagt: kein ausgeliefertes Release trägt „Rückmeldung je Datenquelle“ — also fehlt sie. „Zuständigkeit ab Zeitpunkt“ ist keine Fähigkeit (keine_faehigkeit, B06): der Cloud-Zeitgeber erbringt sie für jede Box, darum nennt die Fläche sie nie als Update. „2.5.0“ gehört zu keinem Release des Registers und beweist deshalb auch künftig nichts.",
       "input": {
         "box": "E-3",
         "stand": {
@@ -2459,20 +2547,15 @@
             "code": "data_sources",
             "status": "fehlt",
             "nachweis": "tabelle"
-          },
-          {
-            "code": "assignment_effective_at",
-            "status": "fehlt",
-            "nachweis": "tabelle"
           }
         ],
-        "text": "Software 2.5.0 · Update nötig für: Rückmeldung je Datenquelle, Zuständigkeit ab Zeitpunkt"
+        "text": "Software 2.5.0 · Update nötig für: Rückmeldung je Datenquelle"
       }
     },
     {
       "name": "tabelle-release-traegt-eine-faehigkeit",
       "familie": "faehigkeiten",
-      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute bei beiden Fähigkeiten `ab_release: null`.",
+      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute nur `data_sources` mit `ab_release: null`; die zweite Zeile („Zuständigkeit ab Zeitpunkt“, seit B06 keine_faehigkeit) steht hier nur, um die Regel an zwei Zeilen zu zeigen.",
       "why": "E12 = A: ohne `supports[]` entscheidet die Tabelle über die Ordnung des Release-Registers (release_seq, D5) — edge-2026.10.1 liegt nicht vor edge-2026.10.0, also ist die Rückmeldung je Datenquelle da. Die zweite Fähigkeit trägt noch kein Release. Die Fläche nennt das Release-Tag, nicht den Build.",
       "input": {
         "stand": {
@@ -2517,7 +2600,7 @@
     {
       "name": "tabelle-release-zu-alt",
       "familie": "faehigkeiten",
-      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute bei beiden Fähigkeiten `ab_release: null`.",
+      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute nur `data_sources` mit `ab_release: null`; die zweite Zeile („Zuständigkeit ab Zeitpunkt“, seit B06 keine_faehigkeit) steht hier nur, um die Regel an zwei Zeilen zu zeigen.",
       "why": "E12 = A: edge-2026.09.4 liegt im Register VOR edge-2026.10.0 — die Fähigkeit fehlt.",
       "input": {
         "stand": {
@@ -2562,7 +2645,7 @@
     {
       "name": "stand-ohne-release-beweist-nichts",
       "familie": "faehigkeiten",
-      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute bei beiden Fähigkeiten `ab_release: null`.",
+      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute nur `data_sources` mit `ab_release: null`; die zweite Zeile („Zuständigkeit ab Zeitpunkt“, seit B06 keine_faehigkeit) steht hier nur, um die Regel an zwei Zeilen zu zeigen.",
       "why": "Hausregel `releaseIsRunning`: ein Bestandsbau mit nackter SHA gehört zu KEINEM Release. Er beweist keine Fähigkeit — sie fehlt, statt geraten „ist wohl aktuell“ (E12 C: „kann alles“ wäre falsch).",
       "input": {
         "stand": {
@@ -2607,7 +2690,7 @@
     {
       "name": "alle-faehigkeiten",
       "familie": "faehigkeiten",
-      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute bei beiden Fähigkeiten `ab_release: null`.",
+      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute nur `data_sources` mit `ab_release: null`; die zweite Zeile („Zuständigkeit ab Zeitpunkt“, seit B06 keine_faehigkeit) steht hier nur, um die Regel an zwei Zeilen zu zeigen.",
       "why": "§4.5: eine Box, deren Release beide Fähigkeiten trägt, zeigt „alle Fähigkeiten“.",
       "input": {
         "stand": {
@@ -2652,8 +2735,8 @@
     {
       "name": "supports-uebersteuert-die-tabelle",
       "familie": "faehigkeiten",
-      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute bei beiden Fähigkeiten `ab_release: null`.",
-      "why": "E12 = A: meldet die Box `supports[]`, entscheidet ALLEIN ihre Meldung — auch gegen die Tabelle (etwa ein Sonderbau). Ein Wort, das die Tabelle nicht kennt („vlan_tagging“), wird verworfen und taucht nirgends auf.",
+      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute nur `data_sources` mit `ab_release: null`; die zweite Zeile („Zuständigkeit ab Zeitpunkt“, seit B06 keine_faehigkeit) steht hier nur, um die Regel an zwei Zeilen zu zeigen.",
+      "why": "E12 / IP-18: Eine gemeldete Fähigkeit gilt auch ohne Tabellenbeleg; fehlende Namen und ein leerer Block entziehen keine Fähigkeit aus der Tabelle. Unbekannte Namen werden ignoriert.",
       "input": {
         "stand": {
           "version": "edge-2026.10.1-3bf8c038e1d2",
@@ -2690,18 +2773,18 @@
           },
           {
             "code": "assignment_effective_at",
-            "status": "fehlt",
-            "nachweis": "supports"
+            "status": "vorhanden",
+            "nachweis": "tabelle"
           }
         ],
-        "text": "Software edge-2026.10.1 · Update nötig für: Zuständigkeit ab Zeitpunkt"
+        "text": "Software edge-2026.10.1 · alle Fähigkeiten"
       }
     },
     {
-      "name": "supports-leer-uebersteuert-auch",
+      "name": "supports-leer-erhaelt-tabelle",
       "familie": "faehigkeiten",
-      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute bei beiden Fähigkeiten `ab_release: null`.",
-      "why": "E12 = A: ein LEERER Block `supports[]` ist eine Meldung („ich kann keine davon“) und übersteuert die Tabelle ebenfalls — nur ein FEHLENDER Block lässt die Tabelle sprechen.",
+      "annahme": "Die Tabelle in diesem Fall ist angenommen (künftige Releases edge-2026.10.x); die echte Tabelle edge-capabilities.json trägt heute nur `data_sources` mit `ab_release: null`; die zweite Zeile („Zuständigkeit ab Zeitpunkt“, seit B06 keine_faehigkeit) steht hier nur, um die Regel an zwei Zeilen zu zeigen.",
+      "why": "E12 / IP-18: Eine gemeldete Fähigkeit gilt auch ohne Tabellenbeleg; fehlende Namen und ein leerer Block entziehen keine Fähigkeit aus der Tabelle. Unbekannte Namen werden ignoriert.",
       "input": {
         "stand": {
           "version": "edge-2026.10.1-3bf8c038e1d2",
@@ -2730,23 +2813,23 @@
         "faehigkeiten": [
           {
             "code": "data_sources",
-            "status": "fehlt",
-            "nachweis": "supports"
+            "status": "vorhanden",
+            "nachweis": "tabelle"
           },
           {
             "code": "assignment_effective_at",
-            "status": "fehlt",
-            "nachweis": "supports"
+            "status": "vorhanden",
+            "nachweis": "tabelle"
           }
         ],
-        "text": "Software edge-2026.10.1 · Update nötig für: Rückmeldung je Datenquelle, Zuständigkeit ab Zeitpunkt"
+        "text": "Software edge-2026.10.1 · alle Fähigkeiten"
       }
     },
     {
       "name": "supports-meldet-mehr-als-die-echte-tabelle",
       "familie": "faehigkeiten",
       "annahme": "Ein künftiges Release edge-2026.10.0 mit Block `supports[]` (AP-06 IP-18) ist angenommen.",
-      "why": "E12 = A: die echte Tabelle kennt noch kein Release mit den Fähigkeiten — eine Box, die sie in `supports[]` meldet, hat sie trotzdem. Die Meldung der Box ist der Fakt; die Tabelle deckt nur Boxen ab, die nichts melden.",
+      "why": "E12 / IP-18: Eine gemeldete Fähigkeit gilt auch ohne Tabellenbeleg; fehlende Namen und ein leerer Block entziehen keine Fähigkeit aus der Tabelle. Namen ohne Tabellenzeile werden ignoriert — so auch `assignment_effective_at`, das seit B06 keine Fähigkeit der Tabelle ist.",
       "input": {
         "stand": {
           "version": "edge-2026.10.0-3bf8c038e1d2",
@@ -2765,11 +2848,6 @@
         "faehigkeiten": [
           {
             "code": "data_sources",
-            "status": "vorhanden",
-            "nachweis": "supports"
-          },
-          {
-            "code": "assignment_effective_at",
             "status": "vorhanden",
             "nachweis": "supports"
           }
@@ -2795,14 +2873,9 @@
             "code": "data_sources",
             "status": "fehlt",
             "nachweis": "tabelle"
-          },
-          {
-            "code": "assignment_effective_at",
-            "status": "fehlt",
-            "nachweis": "tabelle"
           }
         ],
-        "text": "Software-Stand unbekannt · Update nötig für: Rückmeldung je Datenquelle, Zuständigkeit ab Zeitpunkt"
+        "text": "Software-Stand unbekannt · Update nötig für: Rückmeldung je Datenquelle"
       }
     },
     {
@@ -3768,6 +3841,370 @@
           }
         ],
         "ausgelassen": []
+      }
+    },
+    {
+      "name": "t6-steuerquelle-ohne-gemeinsame-steuerung-wie-heute",
+      "familie": "gemeinsame_steuerung",
+      "why": "Bestand (I6): ohne Gemeinsame Steuerung entscheidet die Prüfreihenfolge wie bisher — für DQ-1 die Sperre `steuerquelle` mit ihrem Satz (A13), Byte für Byte.",
+      "input": {
+        "jetzt": "2027-05-10T10:00:00+02:00",
+        "quellen": [
+          {
+            "kennzeichen": "DQ-1",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.21:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": true,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "gemeinsame_steuerung": null
+      },
+      "expected": {
+        "weg": "zustaendigkeitswechsel",
+        "code": null,
+        "text": null
+      }
+    },
+    {
+      "name": "t6-steuerquelle-nicht-eingerichtet-wie-heute",
+      "familie": "gemeinsame_steuerung",
+      "why": "Der Zustand `nicht_eingerichtet` aus GET …/gemeinsame-steuerung ist dasselbe wie keine Gemeinsame Steuerung: das Portal liest ihn so und bekommt den Bestand.",
+      "input": {
+        "jetzt": "2027-05-10T10:00:00+02:00",
+        "quellen": [
+          {
+            "kennzeichen": "DQ-1",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.21:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": true,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "gemeinsame_steuerung": {
+          "zustand": "nicht_eingerichtet",
+          "nur_als_aenderung": false,
+          "ziel_ist_mitglied": false
+        }
+      },
+      "expected": {
+        "weg": "zustaendigkeitswechsel",
+        "code": null,
+        "text": null
+      }
+    },
+    {
+      "name": "t6-steuerquelle-zu-einer-box-ausserhalb-fuehrt-auf-aendern",
+      "familie": "gemeinsame_steuerung",
+      "annahme": "AN-1 hat ab 03.05.2027 die Gemeinsame Steuerung V-1 (Referenz 1.5); ihr Zustand und das Urteil nur_als_aenderung sind für diesen Fall angenommen.",
+      "why": "IP-26: in S0 (erklärt) hat die Anlage schon eine Gemeinsame Steuerung — die AP-06-Sperre „…erst mit der gemeinsamen Steuerung“ wäre eine Sackgasse. Ist die Ziel-Box KEIN Mitglied (Lese-Box, fremde Anlage, ausgeschieden), wechselt die Steuerquelle nur über „Gemeinsame Steuerung ändern“: erst die Box aufnehmen.",
+      "input": {
+        "jetzt": "2027-05-10T10:00:00+02:00",
+        "quellen": [
+          {
+            "kennzeichen": "DQ-1",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.21:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": true,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "gemeinsame_steuerung": {
+          "zustand": "erklaert",
+          "nur_als_aenderung": false,
+          "ziel_ist_mitglied": false
+        }
+      },
+      "expected": {
+        "weg": "gemeinsame_steuerung_aendern",
+        "code": "gemeinsame_steuerung_aendern",
+        "text": "DQ-1 gehört zur Gemeinsamen Steuerung — ihre Box wechselt nur über „Gemeinsame Steuerung ändern“"
+      }
+    },
+    {
+      "name": "t6-steuerquelle-zu-einem-mitglied-vor-dem-scharfschalten",
+      "familie": "gemeinsame_steuerung",
+      "annahme": "AN-1 hat ab 03.05.2027 die Gemeinsame Steuerung V-1 (Referenz 1.5); ihr Zustand und das Urteil nur_als_aenderung sind für diesen Fall angenommen.",
+      "why": "IP-26 (T6 „ändern“): vor dem Scharfschalten (S1, beobachtet) zieht die Steuerquelle zu einem Mitglied DIESER Gemeinsamen Steuerung um wie jede Quelle — die Prüfreihenfolge ohne Grund `steuerquelle` (Antrag-Fall t6-steuerquelle-innerhalb-der-gemeinsamen-steuerung-erlaubt).",
+      "input": {
+        "jetzt": "2027-05-10T10:00:00+02:00",
+        "quellen": [
+          {
+            "kennzeichen": "DQ-1",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.21:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": true,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "gemeinsame_steuerung": {
+          "zustand": "beobachtet",
+          "nur_als_aenderung": false,
+          "ziel_ist_mitglied": true
+        }
+      },
+      "expected": {
+        "weg": "innerhalb_der_gemeinsamen_steuerung",
+        "code": null,
+        "text": null
+      }
+    },
+    {
+      "name": "t6-steuerquelle-zu-einer-lese-box-vor-dem-scharfschalten",
+      "familie": "gemeinsame_steuerung",
+      "annahme": "AN-1 hat ab 03.05.2027 die Gemeinsame Steuerung V-1 (Referenz 1.5); ihr Zustand und das Urteil nur_als_aenderung sind für diesen Fall angenommen.",
+      "why": "IP-26: dieselbe Lage (S1), aber die Ziel-Box ist kein Mitglied — eine Lese-Box oder die Box einer anderen Anlage (R21: Lesen macht kein Mitglied). Nur über „Gemeinsame Steuerung ändern“.",
+      "input": {
+        "jetzt": "2027-05-10T10:00:00+02:00",
+        "quellen": [
+          {
+            "kennzeichen": "DQ-1",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.21:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": true,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "gemeinsame_steuerung": {
+          "zustand": "beobachtet",
+          "nur_als_aenderung": false,
+          "ziel_ist_mitglied": false
+        }
+      },
+      "expected": {
+        "weg": "gemeinsame_steuerung_aendern",
+        "code": "gemeinsame_steuerung_aendern",
+        "text": "DQ-1 gehört zur Gemeinsamen Steuerung — ihre Box wechselt nur über „Gemeinsame Steuerung ändern“"
+      }
+    },
+    {
+      "name": "t6-steuerquelle-scharf-nur-als-aenderung",
+      "familie": "gemeinsame_steuerung",
+      "annahme": "AN-1 hat ab 03.05.2027 die Gemeinsame Steuerung V-1 (Referenz 1.5); ihr Zustand und das Urteil nur_als_aenderung sind für diesen Fall angenommen.",
+      "why": "R21 Schritt 3: in einer scharfen Anlage wechselt die Steuerquelle eines Mitglieds nie als einfacher Zuständigkeitswechsel (IP-8) — derselbe Weg und derselbe Satz.",
+      "input": {
+        "jetzt": "2027-05-10T10:00:00+02:00",
+        "quellen": [
+          {
+            "kennzeichen": "DQ-1",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.21:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": true,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "gemeinsame_steuerung": {
+          "zustand": "anteile_aktiv",
+          "nur_als_aenderung": true,
+          "ziel_ist_mitglied": true
+        }
+      },
+      "expected": {
+        "weg": "gemeinsame_steuerung_aendern",
+        "code": "gemeinsame_steuerung_aendern",
+        "text": "DQ-1 gehört zur Gemeinsamen Steuerung — ihre Box wechselt nur über „Gemeinsame Steuerung ändern“"
+      }
+    },
+    {
+      "name": "t6-steuerquelle-angehalten-auch-zu-einem-mitglied-aendern",
+      "familie": "gemeinsame_steuerung",
+      "annahme": "AN-1 hat ab 03.05.2027 die Gemeinsame Steuerung V-1 (Referenz 1.5); ihr Zustand und das Urteil nur_als_aenderung sind für diesen Fall angenommen.",
+      "why": "Angehalten sind die Anteile in Kraft: auch zu einem Mitglied zieht die Steuerquelle nur über „Gemeinsame Steuerung ändern“ um (anhalten → PUT ändern, die Stufe fällt → Wechsel → prüfen → scharfschalten) — auch wenn IP-8 sie nicht sperrt, weil kein Mitglied sie liest.",
+      "input": {
+        "jetzt": "2027-05-10T10:00:00+02:00",
+        "quellen": [
+          {
+            "kennzeichen": "DQ-1",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.21:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": true,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "gemeinsame_steuerung": {
+          "zustand": "angehalten",
+          "nur_als_aenderung": false,
+          "ziel_ist_mitglied": true
+        }
+      },
+      "expected": {
+        "weg": "gemeinsame_steuerung_aendern",
+        "code": "gemeinsame_steuerung_aendern",
+        "text": "DQ-1 gehört zur Gemeinsamen Steuerung — ihre Box wechselt nur über „Gemeinsame Steuerung ändern“"
+      }
+    },
+    {
+      "name": "t6-netzzaehler-vor-dem-scharfschalten-wie-heute",
+      "familie": "gemeinsame_steuerung",
+      "annahme": "AN-1 hat ab 03.05.2027 die Gemeinsame Steuerung V-1 (Referenz 1.5); ihr Zustand und das Urteil nur_als_aenderung sind für diesen Fall angenommen.",
+      "why": "IP-8: vor dem Scharfschalten (S2, geprüft) wechselt der Netzzähler DQ-2 wie heute; die Gemeinsame Steuerung sagt danach nur, was fehlt. Keine Steuerquelle, also kein IP-26-Weg.",
+      "input": {
+        "jetzt": "2027-05-10T10:00:00+02:00",
+        "quellen": [
+          {
+            "kennzeichen": "DQ-2",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.30:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "gemeinsame_steuerung": {
+          "zustand": "geprueft",
+          "nur_als_aenderung": false,
+          "ziel_ist_mitglied": true
+        }
+      },
+      "expected": {
+        "weg": "zustaendigkeitswechsel",
+        "code": null,
+        "text": null
+      }
+    },
+    {
+      "name": "t6-netzzaehler-angehalten-nur-als-aenderung",
+      "familie": "gemeinsame_steuerung",
+      "annahme": "AN-1 hat ab 03.05.2027 die Gemeinsame Steuerung V-1 (Referenz 1.5); ihr Zustand und das Urteil nur_als_aenderung sind für diesen Fall angenommen.",
+      "why": "IP-8: angehalten sind die Anteile in Kraft — der Netzzähler DQ-2 wechselt nur über „Gemeinsame Steuerung ändern“.",
+      "input": {
+        "jetzt": "2027-05-10T10:00:00+02:00",
+        "quellen": [
+          {
+            "kennzeichen": "DQ-2",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.30:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": false,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "gemeinsame_steuerung": {
+          "zustand": "angehalten",
+          "nur_als_aenderung": true,
+          "ziel_ist_mitglied": false
+        }
+      },
+      "expected": {
+        "weg": "gemeinsame_steuerung_aendern",
+        "code": "gemeinsame_steuerung_aendern",
+        "text": "DQ-2 gehört zur Gemeinsamen Steuerung — ihre Box wechselt nur über „Gemeinsame Steuerung ändern“"
+      }
+    },
+    {
+      "name": "t6-steuerquelle-nach-dem-aufloesen-wie-heute",
+      "familie": "gemeinsame_steuerung",
+      "annahme": "AN-1 hat ab 03.05.2027 die Gemeinsame Steuerung V-1 (Referenz 1.5); ihr Zustand und das Urteil nur_als_aenderung sind für diesen Fall angenommen.",
+      "why": "Nach dem Auflösen (keine Mitglieder mehr) ist die Anlage wieder eine mit EINER steuernden Box: die Prüfreihenfolge entscheidet wie im Bestand.",
+      "input": {
+        "jetzt": "2027-05-10T10:00:00+02:00",
+        "quellen": [
+          {
+            "kennzeichen": "DQ-1",
+            "anlage": "AN-1",
+            "protokoll": "modbus_tcp",
+            "adresse": "192.168.10.21:502",
+            "netz": "192.168.10.0/24",
+            "steuerquelle": true,
+            "mehrere_leser": false,
+            "zeitraeume": [
+              {
+                "box": "E-1",
+                "effective_from": "2024-03-12T00:00:00+01:00",
+                "effective_to": null
+              }
+            ]
+          }
+        ],
+        "gemeinsame_steuerung": {
+          "zustand": "aufgeloest",
+          "nur_als_aenderung": false,
+          "ziel_ist_mitglied": false
+        }
+      },
+      "expected": {
+        "weg": "zustaendigkeitswechsel",
+        "code": null,
+        "text": null
       }
     }
   ]

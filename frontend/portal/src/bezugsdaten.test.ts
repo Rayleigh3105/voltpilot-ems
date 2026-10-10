@@ -1,3 +1,8 @@
+import { KENNZEICHEN, erbe, erkenne } from './uemsKennzahl';
+import { betriebszeit } from './betriebszeit';
+import { gradtage } from './gradtage';
+import { HERKUNFT_BEZOGEN, TEMPERATUR_BEZOGEN, VARIABLE_FEHLT, WORT_TAGE, ZONE as WETTER_ZONE, kennzeichenBezogen, wetterArchivMonat } from './wetterArchiv';
+import { UEMS_TEMPERATUR_BEZOGEN } from './glossar';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -30,6 +35,7 @@ import {
   type Dez,
   type Umrechnung,
 } from './bezugsdaten';
+import { ABLEHNUNGEN, EINGABE_SAETZE, GANZE_ZAHLEN, LESARTEN } from './bezugsgroesse';
 
 /**
  * Die Regeln der BEZUGSDATEN (UEMS AP-09 IP-1) gegen die EINE geteilte
@@ -136,6 +142,19 @@ describe('Bezugsdaten-Vertrag: Form der Vektor-Datei', () => {
     for (const b of befunde) expect(satz(b, vectors.befund_saetze)).toBeTruthy();
   });
 
+  it('der geschlossene Satz der Ablehnungen des Verwaltens ist der der Datei (AP-09 IP-5)', () => {
+    const datei = vectors.verwalten.ablehnungen.map(
+      (a: Json) => `${a.code} · ${a.status} · ${a.satz}`,
+    );
+    const portal = Object.entries(ABLEHNUNGEN).map(([code, a]) => `${code} · ${a.status} · ${a.satz}`);
+    expect(portal).toEqual(datei);
+    expect(ABLEHNUNGEN.einheit_unbekannt.satz).toBe(vectors.befund_saetze.einheit_unbekannt);
+    expect([...LESARTEN]).toEqual(vectors.verwalten.lesarten);
+    // AP-09 IP-7: die Sätze nach einem Wert und der Zusatz für ganze Zahlen.
+    expect(EINGABE_SAETZE).toEqual(vectors.verwalten.eingabe.urteile);
+    expect(GANZE_ZAHLEN).toBe(vectors.verwalten.eingabe.ganze_zahlen);
+  });
+
   it('jede Regel ist deklariert, und jede Lücke im Portal ist begründet', () => {
     const benutzt = new Set<string>();
     for (const fall of vectors.cases) for (const p of fall.pruefungen) benutzt.add(p.regel);
@@ -164,6 +183,21 @@ describe('Bezugsdaten-Vertrag: Form der Vektor-Datei', () => {
   });
 });
 
+describe('Bezugsdaten-Vertrag: Wetter-Archiv (AP-17 E9 = C)', () => {
+  it('Herkunft, Grund und Kennzeichen sprechen die Wörter der Datei, des Kennzeichen-Vokabulars und des Glossars', () => {
+    const w = vectors.wetter_archiv;
+    expect(HERKUNFT_BEZOGEN).toBe(w.herkunft_art);
+    expect(VARIABLE_FEHLT).toBe(w.grund_ohne_zahl);
+    expect(WORT_TAGE).toBe(w.wort_tage);
+    expect(WETTER_ZONE).toBe(vectors.zeitzone);
+    const k = KENNZEICHEN.find((x) => x.schluessel === w.kennzeichen_schluessel);
+    expect(k?.muster).toBe(w.kennzeichen_muster);
+    expect(k?.muster.startsWith(`${TEMPERATUR_BEZOGEN} (`)).toBe(true);
+    expect(UEMS_TEMPERATUR_BEZOGEN.startsWith(`${TEMPERATUR_BEZOGEN} (`)).toBe(true);
+    expect(erkenne(kennzeichenBezogen(w.quelle_zuerst, '2027-11-01T06:10:00+01:00'))?.schluessel).toBe(w.kennzeichen_schluessel);
+  });
+});
+
 describe('Bezugsdaten-Vertrag: die Vektoren', () => {
   const faelle: Array<[string, Json, Json]> = [];
   for (const fall of vectors.cases) {
@@ -182,6 +216,44 @@ describe('Bezugsdaten-Vertrag: die Vektoren', () => {
     const soll = p.ergebnis;
 
     switch (p.regel) {
+      case 'betriebszeit_aus_leistung': {
+        const ist = betriebszeit(ein.von, ein.bis, ein.kadenz_s, ein.leistungen, ein.schwellen, ein.luecken);
+        betragGleich(ist.betrag, soll.betrag);
+        expect(ist.zustand).toBe(soll.zustand);
+        expect(ist.abdeckung_prozent).toBe(soll.abdeckung_prozent);
+        expect(ist.kennzeichen).toEqual(soll.kennzeichen);
+        expect(erbe('bezugsgroesse', null, ist.kennzeichen)).toEqual(soll.kennzeichen);
+        expect(erbe('kennzahl', null, ist.kennzeichen)).toEqual(soll.kennzeichen);
+        break;
+      }
+      case 'gradtage': {
+        const ist = gradtage(ein.tage, ein.raumtemperatur, ein.heizgrenze);
+        betragGleich(ist.betrag, soll.betrag);
+        expect(ist.zustand).toBe(soll.zustand);
+        expect(ist.kennzeichen).toEqual(soll.kennzeichen);
+        break;
+      }
+      case 'wetter_archiv': {
+        const ist = wetterArchivMonat(ein.standort, ein.koordinaten, ein.monat, ein.archivtage, ein.raumtemperatur, ein.heizgrenze);
+        expect(ist.abruf).toBe(soll.abruf);
+        expect(ist.grund).toBe(soll.grund);
+        expect(ist.satz).toBe(soll.satz);
+        expect(ist.nie_geschrieben).toEqual(soll.nie_geschrieben);
+        expect(ist.tage.map((t) => t.datum)).toEqual(soll.tage.map((t: Json) => t.datum));
+        ist.tage.forEach((t, i) => {
+          betragGleich(t.betrag, soll.tage[i].betrag);
+          expect(t.zustand).toBe(soll.tage[i].zustand);
+          expect(t.kennzeichen).toEqual(soll.tage[i].kennzeichen);
+        });
+        betragGleich(ist.monat.betrag, soll.monat.betrag);
+        expect(ist.monat.zustand).toBe(soll.monat.zustand);
+        expect(ist.monat.grund).toBe(soll.monat.grund);
+        expect(ist.monat.kennzeichen).toEqual(soll.monat.kennzeichen);
+        // R3: die Kennzahl erbt das Kennzeichen — aus der Bezugsgröße und über weitere Kennzahlen.
+        expect(erbe('bezugsgroesse', null, ist.monat.kennzeichen)).toEqual(soll.monat.erbt);
+        expect(erbe('kennzahl', null, soll.monat.erbt)).toEqual(soll.monat.erbt);
+        break;
+      }
       case 'zahl': {
         const ist = zahl(ein.text, ein.format, ein.ganzzahlig);
         betragGleich(ist.betrag, soll.betrag);

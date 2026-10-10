@@ -1,0 +1,17 @@
+# syntax=docker/dockerfile:1
+# AP-15 IP-29: die sechs OCPP-Säulen von Box Verwaltung (R3) für den Bezugs-Punkt.
+# Gebaut wird das unveränderte edge-app/core/cmd/vp-ocpp-sim; Kontext ist
+# edge-app/core, das Startskript kommt aus dem zweiten Kontext `hier`:
+#   docker build -f Dockerfile.ladepunkte --build-context hier=. ../../edge-app/core
+FROM golang:1.26-alpine AS build
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY cmd ./cmd
+COPY internal ./internal
+RUN CGO_ENABLED=0 go build -trimpath -o /out/vp-ocpp-sim ./cmd/vp-ocpp-sim
+
+FROM alpine:3.20
+COPY --from=build /out/vp-ocpp-sim /usr/local/bin/vp-ocpp-sim
+COPY --from=hier ladepunkte.sh /usr/local/bin/ladepunkte.sh
+ENTRYPOINT ["/bin/sh", "/usr/local/bin/ladepunkte.sh"]

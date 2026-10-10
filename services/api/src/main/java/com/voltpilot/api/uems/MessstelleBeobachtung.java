@@ -3,6 +3,7 @@ package com.voltpilot.api.uems;
 import com.voltpilot.api.uems.MessstelleRegisterRepository.QuelleZeile;
 import com.voltpilot.api.uems.MessstelleRegisterRepository.Werte;
 import com.voltpilot.api.web.dto.MessstelleDto;
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.ZoneId;
 
@@ -45,17 +46,69 @@ final class MessstelleBeobachtung {
      */
     static Ergebnis ableiten(QuelleZeile fuehrend, Werte werte, long kadenzS, String einheit,
             Instant zeitpunkt, ZoneId zeitzone) {
-        Instant letzterGuterWert = werte == null ? null : werte.letzterGuterWert();
-        ZustandAbleitung.LiefertDatenErgebnis e = ZustandAbleitung.liefertDaten(
-                new ZustandAbleitung.LiefertDatenEingang(fuehrend != null, letzterGuterWert,
-                        werte != null && werte.jeEinWert(), kadenzS, zeitpunkt, zeitzone));
+        // Der Zustand spricht über die REIHE: nur zugeordnete Werte zählen (dasselbe Kriterium wie die Werte-Karte).
+        ZustandAbleitung.LiefertDatenErgebnis e = liefert(fuehrend, werte == null ? null : werte.nurReihe(),
+                kadenzS, zeitpunkt, zeitzone);
+        // Die Box liefert, die Reihe nicht: die Werte kommen an, gehören aber zu keiner Reihe — das wird gesagt,
+        // nicht verschwiegen und nicht als „liefert“ ausgegeben. Keine Zahl ändert sich (der letzte Wert bleibt).
+        boolean nichtZugeordnet = e.zustand() != ZustandAbleitung.LiefertDaten.LIEFERT
+                && liefert(fuehrend, werte, kadenzS, zeitpunkt, zeitzone).zustand()
+                        == ZustandAbleitung.LiefertDaten.LIEFERT;
         String einbau = fuehrend == null ? null : fuehrend.quelle().einbau();
         // Ohne Quelle gibt es keinen Kanal — also auch keine Kadenz und kein Fenster. Die Vorgabe,
         // mit der die Ableitung gerufen wurde, ist eine RECHENGRÖSSE, keine Auskunft: sie bleibt drin.
         MessstelleDto.RegisterBeobachtung b = new MessstelleDto.RegisterBeobachtung(
-                e.zustand().code(), satz(e, einbau), MessstelleService.zeit(e.seit()),
-                fuehrend == null ? null : e.toleranzS(), fuehrend == null ? null : kadenzS, einbau);
-        return new Ergebnis(b, wert(werte, einheit));
+                e.zustand().code(), nichtZugeordnet ? SATZ_NICHT_ZUGEORDNET : satz(e, einbau),
+                MessstelleService.zeit(e.seit()),
+                fuehrend == null ? null : e.toleranzS(), fuehrend == null ? null : kadenzS, einbau,
+                nichtZugeordnet ? NICHT_ZUGEORDNET : null);
+        return new Ergebnis(b, letzterWert(werte, einheit, fuehrend == null ? null : fuehrend.quelle().anteil()));
+    }
+
+    /**
+     * Die Beobachtung einer Größe, deren führende Quelle Ablesungen sind (AP-09 IP-8): kein Kanal, keine Kadenz — die
+     * Frist ist die der überfälligen Ablesung ({@link AblesungRegeln#ueberfaelligAb}, derselbe Maßstab wie die Lücke des
+     * {@code AblesungLueckenLauf}). Bis dahin „liefert“ mit „Abgelesen am …“, danach „liefert nicht seit“ der Frist;
+     * kein neues Zustandswort. Der letzte Wert ist der zuletzt abgelesene Stand in der Einheit der Messstelle.
+     */
+    static Ergebnis ausAblesungen(MessstelleRegisterRepository.Ablesung a, String einheit, Instant zeitpunkt,
+            ZoneId zeitzone) {
+        if (a.zuletzt() == null) {
+            return new Ergebnis(new MessstelleDto.RegisterBeobachtung(
+                    ZustandAbleitung.LiefertDaten.LIEFERT_NICHT_SEIT.code(), SATZ_KEINE_ABLESUNG,
+                    MessstelleService.zeit(a.seit()), null, null, null, null), null);
+        }
+        Instant faellig = AblesungRegeln.ueberfaelligAb(a.zuletzt(), zeitzone);
+        boolean liefert = zeitpunkt.isBefore(faellig);
+        String tag = TAG.format(a.zuletzt().atZone(zeitzone));
+        MessstelleDto.RegisterBeobachtung b = new MessstelleDto.RegisterBeobachtung(
+                (liefert ? ZustandAbleitung.LiefertDaten.LIEFERT : ZustandAbleitung.LiefertDaten.LIEFERT_NICHT_SEIT).code(),
+                liefert ? SATZ_ABGELESEN.replace("{tag}", tag)
+                        : SATZ_UEBERFAELLIG.replace("{tag}", TAG.format(faellig.atZone(zeitzone))),
+                MessstelleService.zeit(liefert ? a.zuletzt() : faellig), null, null, null, null);
+        return new Ergebnis(b, a.stand() == null ? null : new MessstelleDto.RegisterWert(a.stand().doubleValue(), null,
+                einheit, MessstelleService.zeit(a.zuletzt())));
+    }
+
+    private static final java.time.format.DateTimeFormatter TAG = java.time.format.DateTimeFormatter.ofPattern("dd.MM.yyyy");
+    static final String SATZ_ABGELESEN = "Abgelesen am {tag}";
+    static final String SATZ_UEBERFAELLIG = "Ablesung überfällig seit {tag}";
+    static final String SATZ_KEINE_ABLESUNG = "Noch keine Ablesung";
+
+    /** Das Wort von {@code beobachtung.zuordnung}: Werte kommen an der Box an, gehören aber zu keiner Reihe. */
+    static final String NICHT_ZUGEORDNET = "nicht_zugeordnet";
+
+    /**
+     * Der Kundensatz dazu — sagt, was das System sieht, ohne Technikwort. Die Werte-Karte spricht denselben
+     * Anfang ({@code werteOhneReihe.ts}); den Weg nennt nur sie, die Liste hat dafür keinen Platz.
+     */
+    static final String SATZ_NICHT_ZUGEORDNET = "Daten kommen an – noch keiner Messreihe zugeordnet";
+
+    private static ZustandAbleitung.LiefertDatenErgebnis liefert(QuelleZeile fuehrend, Werte werte, long kadenzS,
+            Instant zeitpunkt, ZoneId zeitzone) {
+        return ZustandAbleitung.liefertDaten(new ZustandAbleitung.LiefertDatenEingang(fuehrend != null,
+                werte == null ? null : werte.letzterGuterWert(), werte != null && werte.jeEinWert(), kadenzS,
+                zeitpunkt, zeitzone));
     }
 
     /**
@@ -70,12 +123,22 @@ final class MessstelleBeobachtung {
                 : e.text();
     }
 
-    /** Der letzte gute Wert; {@code null}, solange es keinen gibt — nie eine 0. */
-    private static MessstelleDto.RegisterWert wert(Werte werte, String einheit) {
+    /**
+     * Der letzte gute Wert; {@code null}, solange es keinen gibt — nie eine 0. Liest die Bindung einen
+     * Anteil (AP-08 IP-7), ist der Wert der Anteil DIESES Rohwerts ({@link VerbrauchRegeln#anteilDesWerts}):
+     * −10,0 kW an K-3 zeigt MS-01 als 0,0 kW Bezug und MS-02 als 10,0 kW Abgabe.
+     *
+     * <p>Seit AP-04 IP-14 liest auch die Quelle-Karte ({@code GET …/quellen}) hier — die führende und
+     * die Vergleichsquelle nennen ihren Wert nach DERSELBEN Regel, sonst stünden zwei Zahlen
+     * nebeneinander, die verschieden gebildet wurden (E3).
+     */
+    static MessstelleDto.RegisterWert letzterWert(Werte werte, String einheit, String anteil) {
         if (werte == null || werte.letzterGuterWert() == null) {
             return null;
         }
-        return new MessstelleDto.RegisterWert(werte.zahl(), werte.text(), einheit,
+        Double zahl = anteil == null || werte.zahl() == null ? werte.zahl()
+                : VerbrauchRegeln.anteilDesWerts(BigDecimal.valueOf(werte.zahl()), anteil).doubleValue();
+        return new MessstelleDto.RegisterWert(zahl, werte.text(), einheit,
                 MessstelleService.zeit(werte.letzterGuterWert()));
     }
 }

@@ -27,10 +27,12 @@ import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.errors.TopicExistsException;
 import org.apache.kafka.common.serialization.StringSerializer;
+import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -108,6 +110,15 @@ class EventsRawConsumerTest {
                 throw e;
             }
         }
+    }
+
+    /**
+     * Stops this context's listeners while their broker still runs, so they do not take the
+     * {@code timescale-writer} partitions over on the next class's broker (see {@link WriterPipeTest}).
+     */
+    @AfterAll
+    static void zuhoererBeenden(@Autowired KafkaListenerEndpointRegistry zuhoerer) {
+        zuhoerer.stop();
     }
 
     @DynamicPropertySource

@@ -1,0 +1,32 @@
+/* K7: „Was VoltPilot leistet“ — ein leiser Aufklapper im Kopf eines Bereichs statt derselben Sätze unter jedem Teil. */
+.vp-grenzhinweis {
+  font-size: var(--vp-c-fs-14, 14px);
+  color: var(--vp-c-muted-fg, #475569);
+  min-width: 0;
+}
+.vp-grenzhinweis > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  cursor: pointer;
+  color: var(--vp-c-primary, #2563eb);
+  font-weight: var(--vp-c-fw-600, 600);
+  list-style: none;
+}
+.vp-grenzhinweis > summary::-webkit-details-marker {
+  display: none;
+}
+.vp-grenzhinweis-text {
+  display: grid;
+  gap: 6px;
+  max-width: 68ch;
+  padding: 10px 12px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-c-radius-sm, 10px);
+  background: var(--vp-c-card, #fff);
+}
+.vp-grenzhinweis-text p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}

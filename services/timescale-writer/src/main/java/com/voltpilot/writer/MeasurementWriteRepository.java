@@ -9,12 +9,16 @@ import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
@@ -46,6 +50,14 @@ import org.springframework.transaction.annotation.Transactional;
  *       ausserhalb.
  * </ul>
  *
+ * <p><b>Geteilter Punkt (AP-07 IP-18b).</b> Nennt die Box an einem point_key je Wert die
+ * Komponente, schreibt die Zeile diese Nennung zusätzlich nach {@code edge_entity_id}. Ihr
+ * Box-Schlüssel ist dann {@code (device_id, point_key, edge_entity_id, time, edge_sequence)} -
+ * beide Komponenten desselben Ticks werden gespeichert. Ihre Werte gehören nur in ihre Reihe, nie
+ * in den Box-Verlauf. Den Punktzustand führen sie fort (die Geräteseite sieht, dass der Punkt
+ * gelesen wird), gekennzeichnet mit {@code component_read_at}: sein Wert ist dann der einer
+ * Komponente, nicht der Box. Ohne Nennung ist die Zeile Zeichen für Zeichen die bisherige.
+ *
  * <p><b>⚠ Ein Wert geht NIE verloren.</b> Scheitert ein Nachschlag, gibt er {@code null} zurück
  * (eigener Savepoint, geloggt, gezählt) und der Wert wird als Bestandswert gespeichert. Weist der
  * Vertrag ihn als {@code rejected} ab (Herkunft unvollständig), wird er ebenfalls als Bestandswert
@@ -56,6 +68,7 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Repository
 public class MeasurementWriteRepository {
+    private static final Logger log = LoggerFactory.getLogger(MeasurementWriteRepository.class);
 
     /** Die Metrik, an der das Urteil des Herkunftsvertrags je Wert ablesbar ist. */
     static final String URTEIL_METRIK = "voltpilot.writer.herkunft.urteil";
@@ -66,6 +79,7 @@ public class MeasurementWriteRepository {
     private final JdbcTemplate jdbc;
     private final MessreiheEreignisRepository ereignisse;
     private final HerkunftNachschlag nachschlag;
+    private final UeberlaufErkennung ueberlauf;
     private final MeterRegistry meters;
 
     /**
@@ -95,10 +109,11 @@ public class MeasurementWriteRepository {
     }
 
     public MeasurementWriteRepository(JdbcTemplate jdbc, MessreiheEreignisRepository ereignisse,
-            HerkunftNachschlag nachschlag, MeterRegistry meters) {
+            HerkunftNachschlag nachschlag, UeberlaufErkennung ueberlauf, MeterRegistry meters) {
         this.jdbc = jdbc;
         this.ereignisse = ereignisse;
         this.nachschlag = nachschlag;
+        this.ueberlauf = ueberlauf;
         this.meters = meters;
     }
 
@@ -106,13 +121,18 @@ public class MeasurementWriteRepository {
     public int insert(MeasurementRawEvent event) {
         jdbc.queryForObject("SELECT set_config('app.tenant_id', ?, true)", String.class,
                 event.tenant_id().toString());
-        List<Instant> purgeRows = jdbc.query("SELECT data_purged_before FROM device "
+        // Neben dem Purge-Wasserzeichen der Ausbau (api V20260913150000, AP-07 IP-11): eine
+        // ausgebaute Box behält jeden Wert, der VOR ihrem Ausbau gemessen wurde (auch einen, der
+        // noch unterwegs war) - einen Wert ab dem Ausbau nimmt sie nicht mehr an.
+        List<Instant[]> purgeRows = jdbc.query("SELECT data_purged_before, ausgebaut_am FROM device "
                         + "WHERE id=? FOR SHARE",
-                (rs, row) -> instant(rs.getTimestamp(1)), event.device_id());
+                (rs, row) -> new Instant[] {instant(rs.getTimestamp(1)), instant(rs.getTimestamp(2))},
+                event.device_id());
         if (purgeRows.isEmpty()) {
             return 0;
         }
-        Instant purgedBefore = purgeRows.get(0);
+        Instant purgedBefore = purgeRows.get(0)[0];
+        Instant ausgebautAm = purgeRows.get(0)[1];
         // Der zuletzt gesehene Umschlag DIESER Box - und ab jetzt ist es dieser.
         MesswertHerkunft.VorherigerUmschlag vorher = umschlaege.put(event.device_id(),
                 new MesswertHerkunft.VorherigerUmschlag(event.sequence(), event.observed_at()));
@@ -122,11 +142,14 @@ public class MeasurementWriteRepository {
         for (JsonNode sample : event.samples()) {
             String pointKey = sample.path("point_key").asText();
             Instant observedAt = sampleTime(sample, event.observed_at());
-            Meta meta = metadata(event, pointKey);
+            // Nur an einem geteilten Punkt (IP-18b) nennt das Ereignis die Komponente - als
+            // Schlüssel des Nachschlags in der EIGENEN Auswahl, nie als Fakt vom Draht.
+            UUID komponente = komponente(sample);
+            Meta meta = metadata(event, pointKey, komponente);
             // Die Reihe (E2): Komponente + Datenquelle des Messkanals. EIN gecachter Nachschlag
             // je Messkanal - er wächst mit der Zahl der Kanäle, nie mit der Zahl der Werte.
             HerkunftNachschlag.Reihe reihe = meta == null ? null
-                    : nachschlag.reihe(event, pointKey, templateKey(pointKey));
+                    : nachschlag.reihe(event, pointKey, templateKey(pointKey), komponente);
             boolean uems = reihe != null && reihe.uems();
             // ⚠ Diese Prüfung ist UNVERÄNDERT, und das ist die Auflösung von W8, nicht ihr
             // Gegenteil: `enabled_at`, `disabled_at` und das Purge-Wasserzeichen werden schon
@@ -136,6 +159,7 @@ public class MeasurementWriteRepository {
             // Übergabe eintrifft, ist deshalb willkommen (bis 90 Tage zurück) und führend,
             // wenn seine Box damals zuständig war.
             if (meta == null || observedAt == null || atOrBefore(observedAt, purgedBefore)
+                    || abAusbau(observedAt, ausgebautAm)
                     || meta.enabledAt() == null
                     || observedAt.isBefore(meta.enabledAt()) || !withinCutover(meta, observedAt)) {
                 continue;
@@ -162,15 +186,25 @@ public class MeasurementWriteRepository {
             int inserted = schreiben(event, sample, pointKey, observedAt, raw, decoded, quality,
                     meta, urteil, herkunft);
             HerkunftNachschlag.Urteil endgueltig = urteil;
-            if (inserted == 0 && herkunft != null) {
+            List<MesswertHerkunft.Gespeichert> liegt = inserted == 0 && herkunft != null
+                    ? nachschlag.gespeichertZurMesszeit(event, urteil.entityId(), pointKey, observedAt)
+                    : List.of();
+            if (inserted == 0 && herkunft != null && komponente != null && liegt.isEmpty()) {
+                // Geteilter Punkt, und in SEINER Reihe liegt nichts: abgewiesen hat der Box-Schlüssel
+                // je Komponente (device_id, point_key, edge_entity_id, time, edge_sequence). Dieselbe
+                // Nennung desselben Umschlags liegt also schon - nur ausserhalb dieser Reihe, weil der
+                // Nachschlag der ersten Zustellung anders ausfiel. Kein Urteil wird als gespeichert
+                // gezählt.
+                endgueltig = null;
+                log.warn("Geteilter Punkt {} der Box {} zur Messzeit {}: Komponente {} liegt schon "
+                        + "ausserhalb ihrer Reihe", pointKey, event.device_id(), observedAt, komponente);
+            } else if (inserted == 0 && herkunft != null) {
                 // E3 am lebenden Schlüssel: die Datenbank hat abgewiesen. Liegt dort DERSELBE
                 // Wert (Wiederholung - gezählt, kein Ereignis) oder ein WIDERSPRUCH
                 // (duplicate_conflict)? Das ist die EINZIGE Abfrage je Wert in diesem Paket,
                 // und sie entsteht nur, wenn wirklich schon etwas liegt.
                 HerkunftNachschlag.Urteil zweit = nachschlag.beurteilen(eingang(event, reihe,
-                        pointKey, observedAt, raw, decoded, quality, meta, null,
-                        nachschlag.gespeichertZurMesszeit(event, urteil.entityId(), pointKey,
-                                observedAt)));
+                        pointKey, observedAt, raw, decoded, quality, meta, null, liegt));
                 if (zweit != null) {
                     sammler.sammelnNurKonflikt(zweit, pointKey);
                     // Gezählt wird das ENDGÜLTIGE Urteil: der erste Durchgang wusste noch nicht,
@@ -182,14 +216,36 @@ public class MeasurementWriteRepository {
                 urteilGezaehlt(endgueltig, gespeicherteHerkunft(endgueltig));
             }
             if (inserted > 0) {
-                updatePointState(event, pointKey, observedAt, raw, decoded, quality);
-                appendTransitions(event, pointKey, observedAt, raw, decoded, quality, meta);
+                // Der Punktzustand trägt die letzte Beobachtung des Punkts - auch eines geteilten
+                // (IP-18b), sonst stünde „zuletzt gelesen" an der Geräteseite still. Nennt die
+                // Beobachtung eine Komponente, kennzeichnet sie das (component_read_at), denn ihr
+                // Wert gehört dann dieser einen Komponente und nicht der Box.
+                updatePointState(event, pointKey, observedAt, raw, decoded, quality, komponente != null);
+                // Geteilter Punkt (IP-18b): ein Wechsel ist nur gegen den Vorgänger DERSELBEN
+                // Komponente einer - nie zwischen zwei Zählern an einem point_key. Ohne eindeutige
+                // Reihe lässt sich das nicht sagen, dann entsteht kein Wechsel-Ereignis.
+                if (komponente == null || herkunft != null) {
+                    appendTransitions(event, pointKey, observedAt, raw, decoded, quality, meta,
+                            komponente == null ? null : urteil.entityId());
+                }
+                // AP-08 IP-4: Überlauf (Z6) nur an einem GUTEN Zählerstand der Reihe, der als
+                // führend oder Vergleich gespeichert ist. Eigener Savepoint, wirft nie - ein Fehler
+                // der Erkennung kostet diesen Wert nicht (UeberlaufErkennung).
+                if (herkunft != null && "counter".equals(meta.aggregationKind()) && "good".equals(quality)
+                        && herkunft.rolle() != MesswertHerkunft.Rolle.SPIEGEL) {
+                    UeberlaufErkennung.Ueberlauf u = ueberlauf.pruefen(event.tenant_id(), urteil.entityId(),
+                            pointKey, observedAt, Value.prefer(decoded, raw).numeric());
+                    if (u != null) {
+                        sammler.ueberlauf(urteil, pointKey, observedAt, Value.prefer(decoded, raw).numeric(), u);
+                    }
+                }
                 markFirstSample(event, meta.selectionKey(), observedAt);
                 rows++;
             }
         }
         if ((event.gap() || event.dropped_samples() > 0)
-                && !atOrBefore(event.observed_at(), purgedBefore)) {
+                && !atOrBefore(event.observed_at(), purgedBefore)
+                && !abAusbau(event.observed_at(), ausgebautAm)) {
             insertGap(event);
         }
         melden(event, sammler);
@@ -220,20 +276,16 @@ public class MeasurementWriteRepository {
     /**
      * Schreibt EINE Zeile. Ohne Herkunft sind die sieben neuen Spalten {@code null} - das ist
      * dieselbe Zeile wie vor IP-7, nur ausdrücklich hingeschrieben. {@code ON CONFLICT DO NOTHING}
-     * ohne Ziel sieht BEIDE Schlüssel: den alten (Bestand, Spiegel-Spur) und den neuen
-     * (Reihe + Messzeit der zuständigen Spur) - er ist der Wettlauf-Schutz unter dem Urteil.
+     * ohne Ziel sieht ALLE Schlüssel: den Box-Schlüssel (Bestand, Spiegel-Spur; am geteilten Punkt
+     * je genannter Komponente) und den der Reihe (Reihe + Messzeit der zuständigen Spur) - er ist
+     * der Wettlauf-Schutz unter dem Urteil. Nur ein geteilter Punkt (IP-18b) nennt
+     * {@code edge_entity_id}; ohne ihn ist die Anweisung Zeichen für Zeichen die bisherige.
      */
     private int schreiben(MeasurementRawEvent event, JsonNode sample, String pointKey,
             Instant observedAt, Value raw, Value decoded, String quality, Meta meta,
             HerkunftNachschlag.Urteil urteil, MesswertHerkunft.Herkunft herkunft) {
-        return jdbc.update("INSERT INTO device_measurement_sample "
-                        + "(time,received_at,tenant_id,site_id,device_id,point_key,raw_numeric,"
-                        + "raw_text,decoded_numeric,decoded_text,quality,catalog_version,"
-                        + "edge_sequence,aggregation_kind,long_term_cadence_s,gap,dropped_samples,"
-                        + "signed_data,signed_data_format,entity_id,device_install_id,"
-                        + "applied_revision,value_kind,role,delivery,delay_s) "
-                        + "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) "
-                        + "ON CONFLICT DO NOTHING",
+        UUID komponente = komponente(sample);
+        List<Object> werte = new ArrayList<>(Arrays.asList(
                 Timestamp.from(observedAt), Timestamp.from(event.ingested_at()),
                 event.tenant_id(), event.site_id(), event.device_id(), pointKey,
                 raw.numeric(), raw.text(), decoded.numeric(), decoded.text(),
@@ -246,7 +298,19 @@ public class MeasurementWriteRepository {
                 herkunft == null ? null : herkunft.wertart(),
                 herkunft == null ? null : herkunft.rolle().code(),
                 herkunft == null ? null : herkunft.zustellart().art().code(),
-                herkunft == null ? null : sekunden(herkunft.zustellart().verzoegerungS()));
+                herkunft == null ? null : sekunden(herkunft.zustellart().verzoegerungS())));
+        if (komponente != null) werte.add(komponente);
+        return jdbc.update("INSERT INTO device_measurement_sample "
+                        + "(time,received_at,tenant_id,site_id,device_id,point_key,raw_numeric,"
+                        + "raw_text,decoded_numeric,decoded_text,quality,catalog_version,"
+                        + "edge_sequence,aggregation_kind,long_term_cadence_s,gap,dropped_samples,"
+                        + "signed_data,signed_data_format,entity_id,device_install_id,"
+                        + "applied_revision,value_kind,role,delivery,delay_s"
+                        + (komponente == null ? "" : ",edge_entity_id") + ") "
+                        + "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?"
+                        + (komponente == null ? "" : ",?") + ") "
+                        + "ON CONFLICT DO NOTHING",
+                werte.toArray());
     }
 
     /** Die Verzögerung als {@code integer} der Spalte; sie liegt immer zwischen -300 s und 90 Tagen. */
@@ -285,30 +349,57 @@ public class MeasurementWriteRepository {
                 .increment();
     }
 
+    /**
+     * Der Punktzustand der Box: eine Zeile je {@code point_key}, die jüngste Beobachtung gewinnt.
+     * Eine Beobachtung, die eine Komponente nennt (geteilter Punkt, IP-18b), setzt zusätzlich
+     * {@code component_read_at} auf ihre Messzeit; ein späterer Wert ohne Komponente rückt
+     * {@code last_read_at} darüber hinaus und hebt das Kennzeichen damit auf. Ohne Komponente ist
+     * die Anweisung Zeichen für Zeichen die bisherige - sie läuft auch gegen ein Schema ohne die
+     * Spalte.
+     */
     private void updatePointState(MeasurementRawEvent event, String pointKey, Instant observedAt,
-            Value raw, Value decoded, String quality) {
-        jdbc.update("INSERT INTO device_measurement_point_state (tenant_id,site_id,device_id,"
-                        + "point_key,first_read_at,last_read_at,edge_sequence,raw_numeric,raw_text,"
-                        + "decoded_numeric,decoded_text,quality,gap,dropped_samples,catalog_version) "
-                        + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT "
-                        + "(tenant_id,site_id,device_id,point_key) DO UPDATE SET "
-                        + "first_read_at=LEAST(device_measurement_point_state.first_read_at,"
-                        + "EXCLUDED.first_read_at),last_read_at=EXCLUDED.last_read_at,"
-                        + "edge_sequence=EXCLUDED.edge_sequence,raw_numeric=EXCLUDED.raw_numeric,"
-                        + "raw_text=EXCLUDED.raw_text,decoded_numeric=EXCLUDED.decoded_numeric,"
-                        + "decoded_text=EXCLUDED.decoded_text,quality=EXCLUDED.quality,gap=EXCLUDED.gap,"
-                        + "dropped_samples=EXCLUDED.dropped_samples,catalog_version=EXCLUDED.catalog_version "
-                        + "WHERE (EXCLUDED.last_read_at,EXCLUDED.edge_sequence) > "
-                        + "(device_measurement_point_state.last_read_at,"
-                        + "device_measurement_point_state.edge_sequence)",
-                event.tenant_id(), event.site_id(), event.device_id(), pointKey,
-                Timestamp.from(observedAt), Timestamp.from(observedAt), event.sequence(),
-                raw.numeric(), raw.text(), decoded.numeric(), decoded.text(), quality,
-                event.gap(), event.dropped_samples(), event.catalog_version());
+            Value raw, Value decoded, String quality, boolean jeKomponente) {
+        List<Object> werte = new ArrayList<>(List.of(event.tenant_id(), event.site_id(),
+                event.device_id(), pointKey, Timestamp.from(observedAt), Timestamp.from(observedAt),
+                event.sequence()));
+        werte.addAll(Arrays.asList(raw.numeric(), raw.text(), decoded.numeric(), decoded.text(),
+                quality, event.gap(), event.dropped_samples(), event.catalog_version()));
+        if (jeKomponente) {
+            werte.add(Timestamp.from(observedAt));
+        }
+        jdbc.update(punktzustandSql(jeKomponente), werte.toArray());
     }
 
-    private Meta metadata(MeasurementRawEvent event, String pointKey) {
+    /** Die Anweisung des Punktzustands; ohne Komponente die bisherige, Zeichen für Zeichen. */
+    static String punktzustandSql(boolean jeKomponente) {
+        return "INSERT INTO device_measurement_point_state (tenant_id,site_id,device_id,"
+                + "point_key,first_read_at,last_read_at,edge_sequence,raw_numeric,raw_text,"
+                + "decoded_numeric,decoded_text,quality,gap,dropped_samples,catalog_version"
+                + (jeKomponente ? ",component_read_at" : "") + ") "
+                + "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?" + (jeKomponente ? ",?" : "")
+                + ") ON CONFLICT "
+                + "(tenant_id,site_id,device_id,point_key) DO UPDATE SET "
+                + "first_read_at=LEAST(device_measurement_point_state.first_read_at,"
+                + "EXCLUDED.first_read_at),last_read_at=EXCLUDED.last_read_at,"
+                + "edge_sequence=EXCLUDED.edge_sequence,raw_numeric=EXCLUDED.raw_numeric,"
+                + "raw_text=EXCLUDED.raw_text,decoded_numeric=EXCLUDED.decoded_numeric,"
+                + "decoded_text=EXCLUDED.decoded_text,quality=EXCLUDED.quality,gap=EXCLUDED.gap,"
+                + "dropped_samples=EXCLUDED.dropped_samples,catalog_version=EXCLUDED.catalog_version"
+                + (jeKomponente ? ",component_read_at=EXCLUDED.component_read_at" : "") + " "
+                + "WHERE (EXCLUDED.last_read_at,EXCLUDED.edge_sequence) > "
+                + "(device_measurement_point_state.last_read_at,"
+                + "device_measurement_point_state.edge_sequence)";
+    }
+
+    /**
+     * Die Auswahlzeile des Punkts. Nennt ein geteilter Punkt seine Komponente, gewinnt DEREN Zeile
+     * (Freigabe und Takt je Komponente); fehlt sie, bleibt es die Zeile wie ohne Komponente. Ohne
+     * Komponente ist die Abfrage Zeichen für Zeichen die bisherige.
+     */
+    private Meta metadata(MeasurementRawEvent event, String pointKey, UUID komponente) {
         String template = templateKey(pointKey);
+        String reihenfolge = komponente == null ? ""
+                : ",CASE WHEN s.entity_id=? THEN 0 ELSE 1 END";
         List<Meta> rows = jdbc.query("SELECT s.point_key,s.enabled,s.enabled_at,s.disabled_at,s.apply_status,"
                         + "s.applied_at,"
                         + "COALESCE(m.aggregation_kind,CASE s.retention_class "
@@ -321,11 +412,15 @@ public class MeasurementWriteRepository {
                         + "WHERE m.catalog_version=? AND m.point_key IN (s.point_key,?) "
                         + "ORDER BY CASE WHEN m.point_key=s.point_key THEN 0 ELSE 1 END LIMIT 1) m ON true "
                         + "WHERE s.device_id=? AND s.point_key IN (?,?) "
-                        + "ORDER BY CASE WHEN s.point_key=? THEN 0 ELSE 1 END LIMIT 1",
+                        + "ORDER BY CASE WHEN s.point_key=? THEN 0 ELSE 1 END" + reihenfolge + " LIMIT 1",
                 (rs, n) -> new Meta(rs.getString(1), rs.getBoolean(2), instant(rs.getTimestamp(3)),
                         instant(rs.getTimestamp(4)), rs.getString(5), instant(rs.getTimestamp(6)),
                         rs.getString(7), (Integer) rs.getObject(8)),
-                event.catalog_version(), template, event.device_id(), pointKey, template, pointKey);
+                komponente == null
+                        ? new Object[] {event.catalog_version(), template, event.device_id(), pointKey,
+                                template, pointKey}
+                        : new Object[] {event.catalog_version(), template, event.device_id(), pointKey,
+                                template, pointKey, komponente});
         return rows.isEmpty() ? null : rows.get(0);
     }
 
@@ -338,11 +433,12 @@ public class MeasurementWriteRepository {
     }
 
     private void appendTransitions(MeasurementRawEvent event, String pointKey, Instant at,
-            Value raw, Value decoded, String quality, Meta meta) {
+            Value raw, Value decoded, String quality, Meta meta, UUID reihe) {
         List<Previous> rows = jdbc.query("SELECT decoded_numeric,decoded_text,raw_numeric,raw_text,"
                         + "quality FROM device_measurement_sample "
                         + "WHERE tenant_id=? AND site_id=? AND device_id=? AND point_key=? AND "
                         + "(time<? OR (time=? AND edge_sequence<?)) "
+                        + (reihe == null ? "" : "AND entity_id=? ")
                         + "ORDER BY time DESC,edge_sequence DESC LIMIT 1",
                 (rs, n) -> {
                     Value dec = new Value(rs.getBigDecimal(1), rs.getString(2));
@@ -351,8 +447,11 @@ public class MeasurementWriteRepository {
                             dec.text() != null ? dec.text() : was.text(), rs.getString(5),
                             Value.prefer(dec, was));
                 },
-                event.tenant_id(), event.site_id(), event.device_id(), pointKey,
-                Timestamp.from(at), Timestamp.from(at), event.sequence());
+                reihe == null
+                        ? new Object[] {event.tenant_id(), event.site_id(), event.device_id(), pointKey,
+                                Timestamp.from(at), Timestamp.from(at), event.sequence()}
+                        : new Object[] {event.tenant_id(), event.site_id(), event.device_id(), pointKey,
+                                Timestamp.from(at), Timestamp.from(at), event.sequence(), reihe});
         Previous previous = rows.isEmpty() ? null : rows.get(0);
         if (previous == null) {
             return;
@@ -479,6 +578,11 @@ public class MeasurementWriteRepository {
         return watermark != null && !value.isAfter(watermark);
     }
 
+    /** Gemessen am oder nach dem Ausbau der Box. */
+    private static boolean abAusbau(Instant value, Instant ausgebautAm) {
+        return ausgebautAm != null && !value.isBefore(ausgebautAm);
+    }
+
     private static String bitfieldDetails(BigDecimal previous, BigDecimal current) {
         if (previous == null || current == null || previous.signum() < 0 || current.signum() < 0) {
             return "{}";
@@ -490,6 +594,18 @@ public class MeasurementWriteRepository {
                     + ",\"cleared_bits\":" + before.andNot(after) + "}";
         } catch (ArithmeticException e) {
             return "{}";
+        }
+    }
+
+    /** Die Komponente eines Samples im Ereignis, {@code null} ohne oder ohne lesbare Angabe. */
+    static UUID komponente(JsonNode sample) {
+        JsonNode e = sample.get("entity_id");
+        if (e == null || !e.isTextual()) return null;
+        try {
+            UUID id = UUID.fromString(e.asText());
+            return id.toString().equalsIgnoreCase(e.asText()) ? id : null;
+        } catch (IllegalArgumentException ex) {
+            return null;
         }
     }
 

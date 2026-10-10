@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { BatteryControlSection, StammdatenEditForm, TechnikSection } from './AnlageTechnik';
 import { api, type Device, type Site, type SiteAsset, type SupplyPrice } from '../api';
+import { setSelbstauskunft } from '../rollen';
+import { rechteSeed } from '../test/rollenFixtures';
 
 // Leaflet (pulled in via LocationMap) needs real layout that jsdom lacks -
 // mock it like LocationMap.test.tsx does; the map itself is not under test.
@@ -814,5 +816,78 @@ describe('Einstellungen · Speicher, Registrierung, Löschen', () => {
     await waitFor(() => expect(del).toHaveBeenCalledWith('s-1'));
     del.mockRestore();
     restore();
+  });
+});
+
+describe('AP-15 IP-23 · Karte „Gemeinsame Steuerung“ auf der Einstellungs-Seite', () => {
+  /** Rendert die Einstellungen einer steuernden Anlage mit `boxen` Boxen. */
+  async function renderMitBoxen(boxen: number, teilnahme: 'aktiv' | 'kein_objekt') {
+    const spies = [
+      vi.spyOn(api, 'siteAssets').mockResolvedValue([battery({ deviceId: 'd-1' })]),
+      vi.spyOn(api, 'siteDeletionPreview').mockRejectedValue(new Error('n/a')),
+      vi.spyOn(api, 'supplyPrice').mockResolvedValue(null as never),
+      vi.spyOn(api, 'schedule').mockRejectedValue(new Error('kein Plan')),
+      vi.spyOn(api, 'funktionen').mockResolvedValue({
+        standorte: [{ id: 'st-1', steuern: { anlagen: [{ id: 's-1', teilnahme: { zustand: teilnahme } }] } }],
+      } as never),
+      vi.spyOn(api, 'gemeinsameSteuerung').mockResolvedValue({ eingerichtet: false, zustand: 'nicht_eingerichtet', mitglieder: [], fehlt: [] }),
+    ];
+    const devices = Array.from({ length: boxen }, (_, i) => device({ id: `d-${i + 1}`, kind: 'edge', name: `Box ${i + 1}` }));
+    render(
+      <TechnikSection site={eegSite} devices={devices} sites={[eegSite]} onReload={() => {}} onSiteSaved={() => {}} onSiteDeleted={() => {}} />,
+    );
+    await screen.findByText('Kapazität');
+    await waitFor(() => expect(api.gemeinsameSteuerung).toHaveBeenCalled());
+    return () => spies.forEach((m) => m.mockRestore());
+  }
+
+  // Seit „Anlage – neu gedacht“ (E5) gibt es keine Abschnitts-Navigation mehr: die Karte ist
+  // eine eigene Gruppe mit Überschrift unter den übrigen, `?abschnitt=gemeinsam` springt sie an.
+  it('steuernd mit zwei Boxen: die Gruppe mit Karte erscheint', async () => {
+    const restore = await renderMitBoxen(2, 'aktiv');
+    const karte = await screen.findByTestId('gemeinsame-steuerung');
+    const gruppe = karte.closest('#technik-gemeinsam') as HTMLElement | null;
+    expect(gruppe).not.toBeNull();
+    expect(within(gruppe!).getByRole('heading', { name: 'Gemeinsame Steuerung' })).toBeInTheDocument();
+    restore();
+  });
+
+  it('eine Box oder nur messend: keine Gruppe', async () => {
+    for (const [boxen, teilnahme] of [[1, 'aktiv'], [2, 'kein_objekt']] as const) {
+      const restore = await renderMitBoxen(boxen, teilnahme);
+      await act(async () => { await new Promise((r) => setTimeout(r, 0)); });
+      expect(document.getElementById('technik-gemeinsam')).toBeNull();
+      expect(screen.queryByRole('heading', { name: 'Gemeinsame Steuerung' })).toBeNull();
+      restore();
+      cleanup();
+    }
+  });
+});
+
+describe('AP-03 IP-12 · Rechte an der kurzen Liste', () => {
+  it('ohne „anlage.verwalten“: Werte bleiben lesbar, die Zeilen öffnen nichts, der Grund steht da', async () => {
+    const me = rechteSeed('JW').me;
+    const ohne = (rechte: readonly string[]) => rechte.filter((r) => r !== 'anlage.verwalten');
+    setSelbstauskunft({
+      ...me,
+      unternehmen_rechte: ohne(me.unternehmen_rechte),
+      standorte: me.standorte.map((s) => ({ ...s, rechte: ohne(s.rechte) })),
+    });
+    const spies = [
+      vi.spyOn(api, 'siteAssets').mockResolvedValue([]),
+      vi.spyOn(api, 'siteDeletionPreview').mockRejectedValue(new Error('n/a')),
+      vi.spyOn(api, 'supplyPrice').mockResolvedValue(null as never),
+      vi.spyOn(api, 'schedule').mockRejectedValue(new Error('kein Plan')),
+    ];
+    render(
+      <TechnikSection site={eegSite} devices={[]} sites={[eegSite]} onReload={() => {}} onSiteSaved={() => {}} onSiteDeleted={() => {}} />,
+    );
+    const gruppe = document.getElementById('technik-anlage')!;
+    expect(within(gruppe).getByText(eegSite.name)).toBeInTheDocument();
+    expect(within(gruppe).queryByRole('button', { name: /Name/ })).toBeNull();
+    expect(within(gruppe).getAllByRole('note').length).toBeGreaterThan(0);
+    // Das Profil ist die Betriebsweise - ein eigenes Recht, das diese Person behält.
+    expect(within(gruppe).getByRole('button', { name: /Profil/ })).toBeInTheDocument();
+    spies.forEach((m) => m.mockRestore());
   });
 });

@@ -12,6 +12,7 @@ import { VerlaufExplorer } from '../components/VerlaufExplorer';
 import { SiteMeasurementComparison } from '../components/SiteMeasurementComparison';
 import { GesamtwertKarten } from '../components/GesamtwertKarten';
 import { GesamtwertDialog } from '../components/GesamtwertDialog';
+import { Recht } from '../components/Recht';
 import '../components/Historie.css';
 
 /**
@@ -79,9 +80,9 @@ export function EinzelwerteSection({ site }: { site: Site }) {
             text: 'Aus den Messwerten Ihrer Geräte zusammengestellte Werte. Sie erscheinen mit einem dezenten „berechnet".',
           }}
           aktionen={
-            <button type="button" className="vp-vr-textbtn" onClick={() => setGwOffen(true)}>
+            <Recht aktion="messstelle.formel"><button type="button" className="vp-vr-textbtn" onClick={() => setGwOffen(true)}>
               <Icon name="plus" size={15} /> {SUMMENWERT}
-            </button>
+            </button></Recht>
           }
         >
           <GesamtwertKarten siteId={site.id} version={gwVersion} eingebettet />

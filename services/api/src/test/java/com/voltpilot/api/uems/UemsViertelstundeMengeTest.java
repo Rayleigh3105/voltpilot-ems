@@ -11,6 +11,7 @@ import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -69,6 +70,9 @@ import org.testcontainers.utility.DockerImageName;
 @Testcontainers(disabledWithoutDocker = true)
 class UemsViertelstundeMengeTest {
 
+    /** Katalog mit den Testkanälen {@code energy_kwh_*} als kWh-Zähler ({@link UemsTestKatalog}). */
+    private static final MeasurementCatalog KATALOG = UemsTestKatalog.mitKwhTestkanaelen();
+
     private static final String DIESE = "20260912180000";
     private static final String APP_USER = "voltpilot_app";
     private static final String APP_PW = "voltpilot_app_test_pw";
@@ -100,6 +104,16 @@ class UemsViertelstundeMengeTest {
             "quelle_einstellung", "telemetry", "telemetry_v2", "schedule",
             "site_supply_price", "monthly_market_value", "entity_registry_state",
             "device_command_log", "site_plan_run");
+
+    /**
+     * Nicht Teil des Bestands-Fingerabdrucks: die Tabellen, die dieses Paket bearbeitet, und die
+     * Laufzustände späterer Läufe — {@code V20260912190000} (AP-07 IP-13, Tagesklasse) und
+     * {@code V20260913130500} (AP-07 IP-9, Lücken-Melder) legen sie MIT ihrer Startzeile an; das ist
+     * neuer Inhalt einer späteren Migration, kein Bestand. Alle anderen später angelegten Tabellen
+     * misst {@link Bestandsschutz} mit: sie müssen leer bleiben.
+     */
+    private static final List<String> AUSNAHMEN =
+            List.of("messreihe_viertelstunde%", "messreihe_tag_lauf", "messreihe_luecke_lauf");
 
     @Container
     static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>(
@@ -149,7 +163,7 @@ class UemsViertelstundeMengeTest {
 
         admin = new JdbcTemplate(ds(ADMIN_USER, ADMIN_PW));
         app = new JdbcTemplate(new TenantAwareDataSource(ds(APP_USER, APP_PW)));
-        verdichter = new ViertelstundeVerdichter(admin, new MeasurementCatalog(new ObjectMapper()),
+        verdichter = new ViertelstundeVerdichter(admin, KATALOG,
                 new SpaetankunftMelder(), 500, 40, 200_000);
 
         arbeitFuellen();
@@ -215,11 +229,20 @@ class UemsViertelstundeMengeTest {
 
     @Test
     void dieMigrationLegtNurDanebenUndDerGanzeLaufLaesstDenBestandZeichengleich() {
-        assertThat(fingerNachMigration).as("nach der Migration").isEqualTo(fingerVorher);
-        assertThat(fingerNachLauf).as("nach dem ganzen Lauf").isEqualTo(fingerVorher);
+        assertThat(Bestandsschutz.abweichungen(fingerVorher, fingerNachMigration)).as("nach der Migration")
+                .isEmpty();
+        assertThat(Bestandsschutz.abweichungen(fingerVorher, fingerNachLauf)).as("nach dem ganzen Lauf")
+                .isEmpty();
         assertThat(fingerVorher).as("gemessen wird jede Tabelle des Schemas")
                 .hasSizeGreaterThan(100)
                 .containsKeys(BESTAND.toArray(String[]::new));
+    }
+
+    /** Der Vergleich beißt noch: eine geänderte Bestandszeile und eine neue Tabelle mit Inhalt fallen auf. */
+    @Test
+    void derBestandsvergleichFaengtEineGeaenderteZeile() {
+        Bestandsschutz.mutationsprobe(root, AUSNAHMEN, "measurement_point",
+                "UPDATE measurement_point SET label = label || ' (Probe)'");
     }
 
     /** Was PR 698 schon anlegte, wird NICHT doppelt angelegt; ergänzt sind genau vier Spalten. */
@@ -256,7 +279,97 @@ class UemsViertelstundeMengeTest {
                 .hasMessageContaining("abdeckung_chk");
     }
 
+    /**
+     * H2 (unabhängige Produktionssicherheits-Prüfung vp-prod-safety §4.6, echte Prod-Daten): ein
+     * ereignisgetriebener Kanal (Vorbild Deye „work-mode", Mess-Selektion 300 s) sendet bei jedem
+     * Zustandswechsel ZUSÄTZLICH zur periodischen Kadenz — an der echten Produktionskopie kamen so
+     * in 26 Viertelstunden-Fenstern 4–5 gute Werte statt der erwarteten 3 an ({@code erhalten >
+     * erwartet}). Ungeklemmt lieferte {@code Ergebnis.mitAbdeckung} dafür
+     * {@code abdeckung_prozent > 100}, und die Zeile verletzte
+     * {@code messreihe_viertelstunde_abdeckung_chk} — derselbe Stapel kommt alle 5 Minuten wieder
+     * (der Lauf nimmt das ÄLTESTE Intervall zuerst), der Verdichtungs-Lauf stand in Produktion
+     * dauerhaft. Ohne den {@code Math.min(100, …)}-Klemmwert in {@code Ergebnis#mitAbdeckung} ist
+     * dieser Test rot (SQL-Fehler {@code abdeckung_chk}); die „keine Regel"-Zustandsreihen
+     * (state/bitfield/text, Zeile oben) laufen durch GENAU dieselbe Methode wie Momentanwerte.
+     */
+    @Test
+    void h2EreignisgetriebeneBurstkadenzUeberschreitetDieErwartungNieDieAbdeckung() {
+        String kanal = "deye.hybrid_3p.work-mode.work-mode";
+        UUID entity = reihe("H2 Burstkadenz Zustandskanal (Deye work-mode)", kanal, 300);
+        try {
+            // Periodisch 10:00/10:05/10:10 (erwartet = 900 s / 300 s = 3) plus zwei
+            // Zustandswechsel mitten im Fenster (10:02:30, 10:07:45) -> erhalten = 5, genau das
+            // reale Muster der betroffenen Kanäle.
+            einzeln(kanal, entity, "2026-12-10T10:00:00Z", new BigDecimal("1"), "state");
+            einzeln(kanal, entity, "2026-12-10T10:02:30Z", new BigDecimal("2"), "state");
+            einzeln(kanal, entity, "2026-12-10T10:05:00Z", new BigDecimal("2"), "state");
+            einzeln(kanal, entity, "2026-12-10T10:07:45Z", new BigDecimal("1"), "state");
+            einzeln(kanal, entity, "2026-12-10T10:10:00Z", new BigDecimal("1"), "state");
+            arbeitFuellen();
+            verdichtenBisLeer();
+            Map<String, Object> z = eineZeile(entity, kanal, "2026-12-10T10:00:00Z");
+            assertThat(z.get("erhalten")).isEqualTo(5);
+            assertThat(z.get("erwartet")).isEqualTo(3);
+            assertThat(z.get("abdeckung_prozent")).as("mehr Werte als erwartet bleiben voll abgedeckt, "
+                    + "nie über 100").isEqualTo(100);
+        } finally {
+            // Isolation von Testreihenfolge und -wiederholung: kein Eintrag dieses Kanals bleibt
+            // in der Arbeitsliste stehen, egal ob der Lauf oben erfolgreich war.
+            root.update("DELETE FROM messreihe_viertelstunde_arbeit WHERE entity_id = ?", entity);
+        }
+    }
+
     // ==================================================================== Die Vektoren
+
+    /** IP-17: historical roles remain unknown; leading source bindings govern consumption. */
+    @Test
+    void ip17BestandOhneDoppelwegHatAuchOhneRohwertRolleEineMenge() {
+        String kanal = "energy_kwh_ip17_bestand";
+        UUID entity = reihe("IP17 Bestand ohne Doppelweg", kanal, 60);
+        reiheSaeen(kanal, entity, "2026-10-20T08:00:00Z", 16, "1000.0", "2.4", List.of());
+        root.update("UPDATE device_measurement_sample SET role = NULL WHERE entity_id = ?", entity);
+        assertThat(root.queryForObject("SELECT count(*) FROM telemetry_v2 WHERE entity_id = ?",
+                Long.class, entity.toString())).isZero();
+        assertThat(root.queryForObject("SELECT count(*) FROM device_measurement_sample "
+                + "WHERE entity_id = ? AND role IS DISTINCT FROM 'spiegel'", Long.class, entity)).isEqualTo(16L);
+        assertThat(root.queryForObject("SELECT count(*) FROM device_measurement_sample "
+                + "WHERE entity_id = ? AND role = 'fuehrend'", Long.class, entity)).isZero();
+        arbeitFuellen();
+        verdichtenBisLeer();
+        BigDecimal menge = root.queryForObject("SELECT menge FROM messreihe_viertelstunde "
+                + "WHERE entity_id = ? AND messkanal = ? AND intervall_beginn = '2026-10-20T08:00:00Z'",
+                BigDecimal.class, entity, kanal);
+        assertThat(menge).isEqualByComparingTo("36.000");
+    }
+
+    @Test
+    void a10KernSpiegelAendertDieKatalogVerdichtungNicht() {
+        String kanal = "sunspec.model_213.w";
+        UUID entity = reihe("IP17 K-3 Register mit zwei Wegen", kanal, 60);
+        for (int minute = 0; minute <= 15; minute++) {
+            einzeln(kanal, entity, Instant.parse("2026-10-20T08:00:00Z").plusSeconds(60L * minute).toString(),
+                    new BigDecimal("1000"), "gauge");
+        }
+        arbeitFuellen();
+        verdichtenBisLeer();
+        String vorher = Bestandsschutz.inhalt(root, "messreihe_viertelstunde", "entity_id = ?", entity);
+        assertThat(root.queryForObject("SELECT mittel FROM messreihe_viertelstunde WHERE entity_id=? "
+                + "AND intervall_beginn='2026-10-20T08:00:00Z'", BigDecimal.class, entity))
+                .isEqualByComparingTo("1000");
+        assertThat(root.queryForObject("SELECT energie FROM messreihe_viertelstunde WHERE entity_id=? "
+                + "AND intervall_beginn='2026-10-20T08:00:00Z'", BigDecimal.class, entity))
+                .as("ohne ausdrueckliche Integrationsbindung bleibt Wirkleistung eine Leistung").isNull();
+        root.update("INSERT INTO telemetry_v2(time,received_at,tenant_id,site_id,device_id,entity_id,channel,value,"
+                + "role,spiegel_point_key) VALUES ('2026-10-20T08:00:00Z','2026-10-20T08:00:02Z',"
+                + "?,?,?,?,'power_kw',1,'spiegel',?)", KB, IDS.get("AN2"), IDS.get("BOX"), entity.toString(), kanal);
+        arbeitFuellen();
+        verdichtenBisLeer();
+        assertThat(Bestandsschutz.inhalt(root, "messreihe_viertelstunde", "entity_id = ?", entity))
+                .as("gleicher Registerwert im Kern verdoppelt weder Menge noch Qualitaetszaehler")
+                .isEqualTo(vorher);
+        assertThat(root.queryForObject("SELECT value FROM telemetry_v2 WHERE entity_id=?", BigDecimal.class,
+                entity.toString())).as("Kernwert fuer bestehendes Cockpit bleibt erhalten").isEqualByComparingTo("1");
+    }
 
     /** F1 — die Grundregel: Menge = Stand(Ende) − Stand(Anfang), 15 von 15, 100 %. */
     @Test
@@ -771,7 +884,8 @@ class UemsViertelstundeMengeTest {
     /** Der REINE Zwilling zu derselben Viertelstunde — die Gegenprobe zur geschriebenen Zeile. */
     private static VerbrauchRegeln.Ergebnis zwilling(String kanal, String beginn, int kadenzS) {
         Instant von = Instant.parse(beginn);
-        return VerbrauchRegeln.ergebnis("zaehlerstand", SERIE.get(kanal), von,
+        return VerbrauchRegeln.ergebnis(new ReihenKontext("kWh", ZoneId.of("Europe/Berlin")), "zaehlerstand",
+                SERIE.get(kanal), von,
                 von.plus(Duration.ofMinutes(15)), Duration.ofSeconds(kadenzS), List.of(),
                 ViertelstundeRegeln.FAKTOR_DER_FASSUNG, null, null, false);
     }
@@ -828,37 +942,11 @@ class UemsViertelstundeMengeTest {
 
     /**
      * Der Inhalt JEDER Tabelle des Schemas als ein Wert — ändert sich irgendwo eine Zeile, ändert
-     * er sich. Ausgenommen sind nur die drei Tabellen, die dieses Paket bearbeitet, und das
-     * Migrations-Protokoll.
+     * er sich. Ausgenommen ist nur {@link #AUSNAHMEN}; was eine SPÄTERE Migration anlegt, misst
+     * {@link Bestandsschutz} mit (leer oder Abweichung).
      */
     private static Map<String, String> fingerabdruck() {
-        List<String> tabellen = root.queryForList(
-                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' "
-                        + "AND table_type = 'BASE TABLE' "
-                        + "AND table_name NOT LIKE 'messreihe_viertelstunde%' "
-                        // Und was eine SPAETERE Migration anlegt, gehoert nicht in diese
-                        // Messung: AP-07 IP-13 bringt die Tagesklasse und die Korrektur-Liste
-                        // (V20260912190000), die es zum Zeitpunkt der ersten Messung noch gar
-                        // nicht gab.
-                        + "AND table_name NOT LIKE 'messreihe_tag%' "
-                        // … ebenso Monat und Jahr aus AP-08 IP-5 (V20260912205000).
-                        + "AND table_name NOT LIKE 'messreihe_periode%' "
-                        + "AND table_name <> 'messreihe_korrektur_vorschlag' "
-                        // … ebenso die Szenen (V20260929120000), die Speichersteuerung
-                        // (V20261007120000) und die Fernwartung (V20261007163700):
-                        // alle ohne Bezug zu Messreihen.
-                        + "AND table_name <> 'site_scene' "
-                        + "AND table_name <> 'device_battery_control' "
-                        + "AND table_name NOT LIKE 'fernwartung%' "
-                        + "AND table_name <> 'flyway_schema_history' ORDER BY table_name",
-                String.class);
-        Map<String, String> aus = new LinkedHashMap<>();
-        for (String tabelle : tabellen) {
-            aus.put(tabelle, root.queryForObject(
-                    "SELECT coalesce(md5(string_agg(t::text, '|' ORDER BY t::text)), 'leer') FROM "
-                            + tabelle + " t", String.class));
-        }
-        return aus;
+        return Bestandsschutz.fingerabdruck(root, AUSNAHMEN);
     }
 
     private static String letzteFassungVorDieser() {

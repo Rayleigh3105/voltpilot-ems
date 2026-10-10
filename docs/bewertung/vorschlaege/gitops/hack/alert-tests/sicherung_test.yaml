@@ -1,0 +1,270 @@
+# VORSCHLAG aus voltpilot-ems (AP-20 IP-19) - gehoert nach gitops
+# hack/alert-tests/sicherung_test.yaml und in die PAIRS von hack/alert-tests/run.sh:
+#   "infra/monitoring/datenebene/prometheusrule-sicherung.yaml|sicherung_test.yaml|sicherung_rules.yaml"
+# Im Anwendungsrepo faehrt ihn docs/bewertung/vorschlaege/gitops/pruefe.sh.
+#
+# Die Zeitreihen sind die Textdatei von tools/backup/vp-db-backup-metrics.sh,
+# so wie sie ueber das Ziel `datenebene-node` hereinkommt. In promtool beginnt
+# die Uhr bei 0: ein Zeitpunkt-Wert x ist damit genau `time() - x` Sekunden alt.
+# `0+60x3000` ist ein Export, der jede Minute frisch schreibt (Alter 0).
+#
+# NR8 (AP-20): ein Alarm, der nie ausgeloest wurde, ist nicht geliefert. Dieser
+# Test loest VoltPilotSicherungZuAlt in jedem `teil` und `zustand` einmal aus
+# und zeigt, dass er im Normalfall und beim Ausfall des ganzen Rechners
+# schweigt. Die Uebung in Produktion ersetzt er nicht (README.md daneben).
+rule_files:
+  - sicherung_rules.yaml
+
+evaluation_interval: 1m
+
+tests:
+  # =========================================================================
+  # 1. ALLES IN ORDNUNG: taeglich ein Basis-Backup, WAL und Export frisch.
+  # Erwartet: zwei Tage lang keine einzige Meldung.
+  # =========================================================================
+  - interval: 1m
+    name: "Normalbetrieb -> keine Meldung"
+    input_series:
+      - series: 'up{namespace="monitoring",job="datenebene-node",service="datenebene-node",instance="192.168.178.128:9100"}'
+        values: "1x3000"
+      - series: 'voltpilot_sicherung_basis_timestamp_seconds{namespace="monitoring",job="datenebene-node",service="datenebene-node",instance="192.168.178.128:9100"}'
+        values: "0x1439 86400x1439 172800x120"
+      - series: 'voltpilot_sicherung_wal_timestamp_seconds{namespace="monitoring",job="datenebene-node",service="datenebene-node",instance="192.168.178.128:9100"}'
+        values: "0+60x3000"
+      - series: 'voltpilot_sicherung_export_timestamp_seconds{namespace="monitoring",job="datenebene-node",service="datenebene-node",instance="192.168.178.128:9100"}'
+        values: "0+60x3000"
+    alert_rule_test:
+      - eval_time: 23h59m
+        alertname: VoltPilotSicherungZuAlt
+        exp_alerts: []
+      - eval_time: 47h59m
+        alertname: VoltPilotSicherungZuAlt
+        exp_alerts: []
+      - eval_time: 50h
+        alertname: VoltPilotSicherungZuAlt
+        exp_alerts: []
+
+  # =========================================================================
+  # 2. DER TAEGLICHE LAUF FAELLT AUS - DER ALARM LOEST AUS (NR8)
+  # Das Basis-Backup von Minute 0 wird nie erneuert. Ab 26 h (1560 min) ist
+  # es zu alt, `for: 10m` -> Meldung ab 1571 min. Ab 50 h (3000 min) wird
+  # daraus die kritische Stufe, und die Warnung verschwindet dafuer.
+  # =========================================================================
+  - interval: 1m
+    name: "Basis-Backup zu alt -> Warnung, nach zwei Tagen kritisch"
+    input_series:
+      - series: 'up{namespace="monitoring",job="datenebene-node",service="datenebene-node",instance="192.168.178.128:9100"}'
+        values: "1x3100"
+      - series: 'voltpilot_sicherung_basis_timestamp_seconds{namespace="monitoring",job="datenebene-node",service="datenebene-node",instance="192.168.178.128:9100"}'
+        values: "0x3100"
+      - series: 'voltpilot_sicherung_wal_timestamp_seconds{namespace="monitoring",job="datenebene-node",service="datenebene-node",instance="192.168.178.128:9100"}'
+        values: "0+60x3100"
+      - series: 'voltpilot_sicherung_export_timestamp_seconds{namespace="monitoring",job="datenebene-node",service="datenebene-node",instance="192.168.178.128:9100"}'
+        values: "0+60x3100"
+    alert_rule_test:
+      - eval_time: 1565m
+        alertname: VoltPilotSicherungZuAlt
+        exp_alerts: []
+      - eval_time: 1575m
+        alertname: VoltPilotSicherungZuAlt
+        exp_alerts:
+          - exp_labels:
+              namespace: monitoring
+              teil: basis
+              zustand: zu_alt
+              severity: warning
+            exp_annotations:
+              summary: "Die letzte Basissicherung der Datenebene ist älter als 26 Stunden"
+              description: "Die jüngste Basissicherung der Messwert-Datenbank ist 1d 2h 15m 0s alt; der tägliche Lauf ist mindestens einmal ausgefallen. Die Wiederherstellung auf den Punkt trägt weiter über das WAL-Archiv, dauert aber mit jedem Tag länger."
+              massnahme: "Auf 192.168.178.128 `systemctl status vp-db-backup.timer` und `journalctl -u vp-db-backup.service -n 50` ansehen; danach einmal von Hand `/srv/docker/voltpilot/tools/backup/vp-db-backup.sh` fahren (docs/backup-restore.md, Täglicher Betrieb)."
+      - eval_time: 3015m
+        alertname: VoltPilotSicherungZuAlt
+        exp_alerts:
+          - exp_labels:
+              namespace: monitoring
+              teil: basis
+              zustand: zu_alt
+              severity: critical
+            exp_annotations:
+              summary: "Die letzte Basissicherung der Datenebene ist älter als 50 Stunden"
+              description: "Die jüngste Basissicherung der Messwert-Datenbank ist 2d 2h 15m 0s alt; mindestens zwei tägliche Läufe in Folge sind ausgefallen. Das ist ein Notfall: die Wiederherstellung hängt an immer mehr WAL-Segmenten."
+              massnahme: "Heute noch eine Basissicherung ziehen (`/srv/docker/voltpilot/tools/backup/vp-db-backup.sh`) und die Ursache im Journal von vp-db-backup.service suchen; häufig ist die Sicherungsplatte voll."
+
+  # =========================================================================
+  # 3. DAS WAL-ARCHIV STEHT
+  # Die letzte Archivdatei entsteht bei Minute 120. Ab Minute 180 ist sie
+  # eine Stunde alt, `for: 10m` -> Meldung ab 191 min, sofort kritisch.
+  # =========================================================================
+  - interval: 1m
+    name: "WAL-Archiv steht -> kritisch"
+    input_series:
+      - series: 'up{namespace="monitoring",job="datenebene-node",service="datenebene-node",instance="192.168.178.128:9100"}'
+        values: "1x300"
+      - series: 'voltpilot_sicherung_basis_timestamp_seconds{namespace="monitoring",job="datenebene-node",service="datenebene-node",instance="192.168.178.128:9100"}'
+        values: "0x300"
+      - series: 'voltpilot_sicherung_wal_timestamp_seconds{namespace="monitoring",job="datenebene-node",service="datenebene-node",instance="192.168.178.128:9100"}'
+        values: "0+60x120 7200x180"
+      - series: 'voltpilot_sicherung_export_timestamp_seconds{namespace="monitoring",job="datenebene-node",service="datenebene-node",instance="192.168.178.128:9100"}'
+        values: "0+60x300"
+    alert_rule_test:
+      - eval_time: 185m
+        alertname: VoltPilotSicherungZuAlt
+        exp_alerts: []
+      - eval_time: 195m
+        alertname: VoltPilotSicherungZuAlt
+        exp_alerts:
+          - exp_labels:
+              namespace: monitoring
+              teil: wal
+              zustand: zu_alt
+              severity: critical
+            exp_annotations:
+              summary: "Das WAL-Archiv der Datenebene steht"
+              description: "Die jüngste WAL-Archivdatei ist 1h 15m 0s alt. Eine Wiederherstellung auf den Punkt reicht nur bis dorthin, und das WAL-Verzeichnis der Datenbank wächst, bis die Platte voll ist."
+              massnahme: "`/srv/docker/voltpilot/tools/backup/vp-db-backup-check.sh` fahren; es nennt den Archiver-Zustand. Häufigste Ursachen: Besitz des Verzeichnisses (uid 70) oder volle Sicherungsplatte (docs/backup-restore.md, Einrichtung Schritt 1)."
+
+  # =========================================================================
+  # 4. ES GIBT GAR KEINE SICHERUNG
+  # Der Export laeuft, findet aber weder Basis-Backup noch WAL-Datei - seine
+  # Datei hat nur die Export-Zeile. Unbekannt ist keine Null: gemeldet wird
+  # das Fehlen, nicht ein Alter von 56 Jahren.
+  # =========================================================================
+  - interval: 1m
+    name: "Keine Sicherung -> zwei kritische Zeilen"
+    input_series:
+      - series: 'up{namespace="monitoring",job="datenebene-node",service="datenebene-node",instance="192.168.178.128:9100"}'
+        values: "1x60"
+      - series: 'voltpilot_sicherung_export_timestamp_seconds{namespace="monitoring",job="datenebene-node",service="datenebene-node",instance="192.168.178.128:9100"}'
+        values: "0+60x60"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: VoltPilotSicherungZuAlt
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: VoltPilotSicherungZuAlt
+        exp_alerts:
+          - exp_labels:
+              namespace: monitoring
+              teil: basis
+              zustand: keine
+              severity: critical
+            exp_annotations:
+              summary: "Die Datenebene hat keine Basissicherung"
+              description: "Der Export des Sicherungsalters läuft, findet aber unter dem Sicherungsverzeichnis kein abgeschlossenes Basis-Backup. Ohne Basis-Backup gibt es keinen Weg zurück."
+              massnahme: "Prüfen, ob `--backup-dir` in vp-db-backup-metrics.service auf DB_BACKUP_DIR zeigt; stimmt es, eine Basissicherung ziehen (docs/backup-restore.md, Einrichtung Schritt 4)."
+          - exp_labels:
+              namespace: monitoring
+              teil: wal
+              zustand: keine
+              severity: critical
+            exp_annotations:
+              summary: "Die Datenebene hat kein WAL-Archiv"
+              description: "Der Export des Sicherungsalters läuft, findet aber keine einzige WAL-Archivdatei. Ohne Archiv ist keine Wiederherstellung auf den Punkt möglich."
+              massnahme: "DB_BACKUP=enabled und archive_mode=on prüfen (`/srv/docker/voltpilot/tools/backup/vp-db-backup-check.sh`, docs/backup-restore.md, Einrichtung Schritte 1–3)."
+
+  # =========================================================================
+  # 5. DER EXPORT STEHT (Timer tot, Sicherung selbst vielleicht in Ordnung)
+  # Ab Minute 60 schreibt niemand mehr die Datei; alle drei Werte frieren
+  # ein. Nach 30 min + `for: 5m` meldet sich zuerst der Export (96 min). Weil
+  # die Werte weiter altern, kommt ab 131 min auch das WAL dazu - der
+  # Alertmanager fasst beide ueber den Namen zu einer Nachricht zusammen.
+  # =========================================================================
+  - interval: 1m
+    name: "Export steht -> erst Export, dann WAL"
+    input_series:
+      - series: 'up{namespace="monitoring",job="datenebene-node",service="datenebene-node",instance="192.168.178.128:9100"}'
+        values: "1x200"
+      - series: 'voltpilot_sicherung_basis_timestamp_seconds{namespace="monitoring",job="datenebene-node",service="datenebene-node",instance="192.168.178.128:9100"}'
+        values: "0x200"
+      - series: 'voltpilot_sicherung_wal_timestamp_seconds{namespace="monitoring",job="datenebene-node",service="datenebene-node",instance="192.168.178.128:9100"}'
+        values: "0+60x60 3600x140"
+      - series: 'voltpilot_sicherung_export_timestamp_seconds{namespace="monitoring",job="datenebene-node",service="datenebene-node",instance="192.168.178.128:9100"}'
+        values: "0+60x60 3600x140"
+    alert_rule_test:
+      - eval_time: 94m
+        alertname: VoltPilotSicherungZuAlt
+        exp_alerts: []
+      - eval_time: 100m
+        alertname: VoltPilotSicherungZuAlt
+        exp_alerts:
+          - exp_labels:
+              namespace: monitoring
+              teil: export
+              zustand: zu_alt
+              severity: warning
+            exp_annotations:
+              summary: "Das Alter der Sicherung wird nicht mehr gemessen"
+              description: "Der Export des Sicherungsalters ist seit 40m 0s nicht mehr gelaufen. Ob die Sicherung läuft, ist damit unbekannt."
+              massnahme: "Auf 192.168.178.128 `systemctl status vp-db-backup-metrics.timer` und `journalctl -u vp-db-backup-metrics.service -n 20` ansehen."
+      - eval_time: 135m
+        alertname: VoltPilotSicherungZuAlt
+        exp_alerts:
+          - exp_labels:
+              namespace: monitoring
+              teil: wal
+              zustand: zu_alt
+              severity: critical
+            exp_annotations:
+              summary: "Das WAL-Archiv der Datenebene steht"
+              description: "Die jüngste WAL-Archivdatei ist 1h 15m 0s alt. Eine Wiederherstellung auf den Punkt reicht nur bis dorthin, und das WAL-Verzeichnis der Datenbank wächst, bis die Platte voll ist."
+              massnahme: "`/srv/docker/voltpilot/tools/backup/vp-db-backup-check.sh` fahren; es nennt den Archiver-Zustand. Häufigste Ursachen: Besitz des Verzeichnisses (uid 70) oder volle Sicherungsplatte (docs/backup-restore.md, Einrichtung Schritt 1)."
+          - exp_labels:
+              namespace: monitoring
+              teil: export
+              zustand: zu_alt
+              severity: warning
+            exp_annotations:
+              summary: "Das Alter der Sicherung wird nicht mehr gemessen"
+              description: "Der Export des Sicherungsalters ist seit 1h 15m 0s nicht mehr gelaufen. Ob die Sicherung läuft, ist damit unbekannt."
+              massnahme: "Auf 192.168.178.128 `systemctl status vp-db-backup-metrics.timer` und `journalctl -u vp-db-backup-metrics.service -n 20` ansehen."
+
+  # =========================================================================
+  # 6. DER EXPORT FEHLT (auf der VM nie eingerichtet)
+  # node-exporter antwortet, liefert aber keine Zeile zur Sicherung. Nach
+  # 30 min meldet sich das - vorher nicht, damit ein Neustart nicht meldet.
+  # =========================================================================
+  - interval: 1m
+    name: "Export fehlt -> Warnung nach 30 min"
+    input_series:
+      - series: 'up{namespace="monitoring",job="datenebene-node",service="datenebene-node",instance="192.168.178.128:9100"}'
+        values: "1x60"
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: VoltPilotSicherungZuAlt
+        exp_alerts: []
+      - eval_time: 31m
+        alertname: VoltPilotSicherungZuAlt
+        exp_alerts:
+          - exp_labels:
+              namespace: monitoring
+              teil: export
+              zustand: fehlt
+              severity: warning
+            exp_annotations:
+              summary: "Das Alter der Sicherung wird nicht gemessen"
+              description: "Der node-exporter der Datenebene antwortet, liefert aber keine Zahlen zur Sicherung. Entweder ist der Export auf dem Rechner nicht eingerichtet, oder der node-exporter liest das Textfile-Verzeichnis nicht."
+              massnahme: "Timer vp-db-backup-metrics.timer einrichten und im node-exporter `--collector.textfile.directory=/host/var/lib/node_exporter/textfile_collector` setzen (docs/backup-restore.md, Sicherungsalter als Metrik)."
+
+  # =========================================================================
+  # 7. DER GANZE RECHNER IST WEG
+  # Ohne Scrape enden alle Zeitreihen. Erwartet: keine Sicherungs-Meldung -
+  # das ist DatenebeneNichtErreichbar allein (datenebene_test.yaml, Fall 1).
+  # =========================================================================
+  - interval: 1m
+    name: "Rechner weg -> keine Sicherungs-Meldung"
+    input_series:
+      - series: 'up{namespace="monitoring",job="datenebene-node",service="datenebene-node",instance="192.168.178.128:9100"}'
+        values: "1+0x5 0+0x120"
+      - series: 'voltpilot_sicherung_basis_timestamp_seconds{namespace="monitoring",job="datenebene-node",service="datenebene-node",instance="192.168.178.128:9100"}'
+        values: "0x5"
+      - series: 'voltpilot_sicherung_wal_timestamp_seconds{namespace="monitoring",job="datenebene-node",service="datenebene-node",instance="192.168.178.128:9100"}'
+        values: "0+60x5"
+      - series: 'voltpilot_sicherung_export_timestamp_seconds{namespace="monitoring",job="datenebene-node",service="datenebene-node",instance="192.168.178.128:9100"}'
+        values: "0+60x5"
+    alert_rule_test:
+      - eval_time: 45m
+        alertname: VoltPilotSicherungZuAlt
+        exp_alerts: []
+      - eval_time: 120m
+        alertname: VoltPilotSicherungZuAlt
+        exp_alerts: []

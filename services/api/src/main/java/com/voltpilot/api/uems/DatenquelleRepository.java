@@ -160,7 +160,7 @@ public class DatenquelleRepository {
      */
     public List<Box> boxen() {
         return List.copyOf(jdbc.query("SELECT id, site_id, name, external_ref FROM device "
-                + "ORDER BY created_at, id",
+                + "WHERE ausgebaut_am IS NULL ORDER BY created_at, id",
                 (rs, n) -> new Box(rs.getObject("id", UUID.class), rs.getObject("site_id", UUID.class),
                         rs.getString("name"), rs.getString("external_ref"))));
     }

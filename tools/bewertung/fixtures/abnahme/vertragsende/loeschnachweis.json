@@ -1,0 +1,17 @@
+{
+ "kennzeichen": "LN-2029-0001",
+ "kundenbereich": "0b8a6d2e-5a41-4c1e-9d47-2c3f6e1a7b90",
+ "beendet_am": "2029-06-30T00:00:00Z",
+ "frist_tage": 90,
+ "loeschung_fruehestens": "2029-09-28",
+ "geloescht_am": "2029-09-28T10:00:00Z",
+ "geloescht_von": "Betreiber (A. Muster, Fixture)",
+ "zaehlungen": {
+  "benutzer": 7,
+  "energiemanagement_person": 6,
+  "telemetry": 35040
+ },
+ "verblieben": {},
+ "abzug_sha256": "60b117a7548a5005fdd5b1978a4f303d3d8dc06c26d229bf18116ea386a067e1",
+ "abzug_am": "2029-07-02T09:15:00Z"
+}

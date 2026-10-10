@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.voltpilot.api.uems.KadenzAbgelehnt;
 import com.voltpilot.api.uems.MessstelleAbgelehnt;
+import com.voltpilot.api.uems.MessstelleFormelService;
 import com.voltpilot.api.uems.MessstelleQuelleService;
 import com.voltpilot.api.uems.MessstelleRegeln;
 import com.voltpilot.api.uems.MessstelleRegisterService;
@@ -20,6 +21,9 @@ import com.voltpilot.api.web.dto.KadenzDto;
 import com.voltpilot.api.web.dto.MessstelleDto;
 import com.voltpilot.api.web.dto.MessstelleQuelleDto;
 import com.voltpilot.api.web.dto.ZaehlerwechselDto;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtPruefung;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.net.URI;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -52,12 +56,13 @@ import org.springframework.web.server.ResponseStatusException;
  * {@code …/{id}/quellen}). Die Arbeit machen {@link MessstelleService} und
  * {@link MessstelleQuelleService}.
  *
- * <p><b>Rechte:</b> bis AP-03 durchsetzt, gilt {@code authenticated()} (SecurityConfig) plus
+ * <p><b>Rechte:</b> es gilt {@code authenticated()} (SecurityConfig) plus
  * die Mandanten-RLS wie unter {@code /api/v1/sites/**} — eine fremde Messstelle ist 404, nie
  * 403; der Plattform-Admin wählt den Kundenbereich über {@code X-Tenant-Id}. Jede Route nennt
  * im Kommentar ihre Kennung aus {@code docs/contracts/v2/rechte-matrix.json}, damit AP-03 sie
- * findet ({@code RechteKennungenDerRoutenTest} hält sie an die Matrix); eine eigene
- * Rechte-Annotation gibt es hier bewusst nicht.
+ * findet ({@code RechteKennungenDerRoutenTest} hält sie an die Matrix); seit AP-03 IP-6 setzt {@code @Recht} sie vor
+ * dem Handler
+ * durch (403 {@code recht_fehlt}, außerhalb des Geltungsbereichs 404).
  *
  * <p><b>Die Anfrage wird streng gelesen:</b> ein Feld, das es an der Route nicht gibt, ist 400
  * {@code anfrage_ungueltig} mit {@code feld} — nie still verworfen. Wer an {@code PUT} ein
@@ -73,21 +78,25 @@ public class MessstelleController {
 
     private final MessstelleService messstellen;
     private final MessstelleRegisterService register;
+    private final MessstelleFormelService formeln;
     private final MessstelleZuordnungService zuordnungen;
     private final MessstelleQuelleService quellen;
     private final QuelleKadenzService kadenzen;
     private final ZaehlerwechselService wechsel;
+    private final RechtPruefung rechte;
     private final ObjectMapper streng;
 
     public MessstelleController(MessstelleService messstellen, MessstelleRegisterService register,
-            MessstelleZuordnungService zuordnungen, MessstelleQuelleService quellen,
-            QuelleKadenzService kadenzen, ZaehlerwechselService wechsel, ObjectMapper json) {
+            MessstelleFormelService formeln, MessstelleZuordnungService zuordnungen, MessstelleQuelleService quellen,
+            QuelleKadenzService kadenzen, ZaehlerwechselService wechsel, RechtPruefung rechte, ObjectMapper json) {
         this.messstellen = messstellen;
         this.register = register;
+        this.formeln = formeln;
         this.zuordnungen = zuordnungen;
         this.quellen = quellen;
         this.kadenzen = kadenzen;
         this.wechsel = wechsel;
+        this.rechte = rechte;
         this.streng = json.copy().enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
     }
 
@@ -96,9 +105,14 @@ public class MessstelleController {
      * weiter die Vertrags-Form jeder Messstelle, {@code register} die Zeile zum {@code stichtag}
      * (Ort mit abgeleitetem Standort, Stellung, Quelle mit „davor“, Zustand). Die Filter gelten für
      * beide Listen; ein Standort, Ort oder eine Anlage, die es im Kundenbereich nicht gibt, findet
-     * nichts (leer, nie 403) — {@code teilansicht} bleibt {@code false}, bis AP-03 Rechte durchsetzt.
+     * nichts (leer, nie 403). Eine Messstelle außerhalb des Zugriffs fehlt in beiden Listen und im Aggregat — ohne
+     * Hinweis und ohne Anzahl ({@link RechtPruefung#lesbar}, AP-03 R-A1); {@code teilansicht} bleibt {@code false}. Die
+     * {@code berechnung} einer sichtbaren berechneten Messstelle urteilt nur über Eingänge im Zugriff — Messstellen wie
+     * Messkanäle ({@link MessstelleFormelService#komponenteSichtbar}, AP-03 R-A3/R-A6/R-A7).
      * Ein Stichtag ist ein Tag ({@code 2026-11-20}, dann gilt sein Beginn) oder ein Zeitpunkt mit
-     * Versatz; fehlend = jetzt.
+     * Versatz; fehlend = jetzt. Mit {@code letzterMonat=true} trägt jede Zeile {@code letzter_monat}: den Monat vor dem
+     * des Stichtags und seinen Wert, wie {@code …/werte?raster=monat} ihn zeigt (Messen PR5) - bei einer berechneten
+     * Messstelle mit einem Eingang außerhalb des Zugriffs ohne Zahl, wie an der Werte-Route.
      */
     @GetMapping
     public MessstelleDto.Liste alle(
@@ -107,10 +121,35 @@ public class MessstelleController {
             @RequestParam(required = false) String anlage,
             @RequestParam(required = false) String zustand,
             @RequestParam(required = false) String ohneQuelle,
-            @RequestParam(required = false) String stichtag) {
-        return register.liste(stichtag(stichtag), new MessstelleRegisterService.Filter(
+            @RequestParam(required = false) String geplantFuerEinsatz,
+            @RequestParam(required = false) String stichtag,
+            @RequestParam(required = false) String letzterMonat) {
+        MessstelleRegisterService.Filter filter = new MessstelleRegisterService.Filter(
                 leer(standort) ? null : standort.strip(), leer(ort) ? null : ort.strip(),
-                anlage(anlage), zustand(zustand), ohneQuelle(ohneQuelle)));
+                anlage(anlage), zustand(zustand), wahrFalsch(ohneQuelle, "ohneQuelle", "ohne Quelle"),
+                wahrFalsch(geplantFuerEinsatz, "geplantFuerEinsatz", "geplant für Einsatz"));
+        boolean mitMonat = wahrFalsch(letzterMonat, "letzterMonat", "letzter Monat");
+        return register.liste(stichtag(stichtag), filter, id -> rechte.lesbar(RechtZiel.MESSSTELLE, id),
+                formeln::komponenteSichtbar, mitMonat ? this::eingaengeImZugriff : null);
+    }
+
+    /**
+     * Liegt jeder Eingang einer berechneten Messstelle im Zeitraum im Zugriff (AP-03 R-A3)? Derselbe Zaun wie an
+     * {@code …/werte} ({@link MessstelleWerteController}).
+     */
+    private boolean eingaengeImZugriff(UUID messstelle, LocalDate von, LocalDate bis) {
+        return formeln.imZugriff(formeln.eingaenge(messstelle, von, bis),
+                ms -> rechte.alleLesbar(RechtZiel.MESSSTELLE, ms));
+    }
+
+    /**
+     * Der Leseweg einer Route zur Messstelle (AP-03 R-A1, A1 „MS-19 unsichtbar“): außerhalb des Zugriffs Status und
+     * Körper einer unbekannten Kennung — nach der Prüfung der Parameter, wie für eine unbekannte Kennung. Die Dienste
+     * selbst bleiben ungezäunt (Bilanz, Formel, Kennzahl, Bericht lesen intern).
+     */
+    private void imZugriff(UUID id) {
+        rechte.pruefenLesen(RechtZiel.MESSSTELLE, id,
+                () -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Messstelle nicht gefunden."));
     }
 
     /** Der Stichtag beider Lese-Routen: ein Tag (dann sein Beginn) oder ein Zeitpunkt; fehlend = jetzt. */
@@ -146,13 +185,13 @@ public class MessstelleController {
         return wert;
     }
 
-    private static boolean ohneQuelle(String text) {
+    private static boolean wahrFalsch(String text, String feld, String name) {
         if (leer(text)) {
             return false;
         }
         String wert = text.strip();
         if (!"true".equals(wert) && !"false".equals(wert)) {
-            throw MessstelleAbgelehnt.anfrage("ohneQuelle", "„ohne Quelle“ ist true oder false.");
+            throw MessstelleAbgelehnt.anfrage(feld, "„" + name + "“ ist true oder false.");
         }
         return "true".equals(wert);
     }
@@ -170,11 +209,13 @@ public class MessstelleController {
     /** Recht: {@code messstelle.ansehen}. */
     @GetMapping("/{id}")
     public MessstelleDto.Messstelle eine(@PathVariable UUID id) {
+        imZugriff(id);
         return messstellen.eine(id);
     }
 
     /** Recht: {@code messstelle.bearbeiten}. */
     @PostMapping
+    @Recht(value = "messstelle.bearbeiten", ziel = RechtZiel.DIENST)
     public ResponseEntity<MessstelleDto.Messstelle> anlegen(
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         MessstelleDto.Anlegen anfrage = lies(body, MessstelleDto.Anlegen.class);
@@ -184,6 +225,7 @@ public class MessstelleController {
 
     /** Recht: {@code messstelle.bearbeiten}. */
     @PutMapping("/{id}")
+    @Recht(value = "messstelle.bearbeiten", ziel = RechtZiel.MESSSTELLE)
     public MessstelleDto.Messstelle bearbeiten(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return messstellen.bearbeiten(id, lies(body, MessstelleDto.Bearbeiten.class), akteur(auth));
@@ -191,6 +233,7 @@ public class MessstelleController {
 
     /** Recht: {@code messstelle.bearbeiten}; mit einem Zeitpunkt vor jetzt zusätzlich {@code aenderung.rueckwirkend}. */
     @PostMapping("/{id}/anhalten")
+    @Recht(value = "messstelle.bearbeiten", ziel = RechtZiel.MESSSTELLE)
     public MessstelleDto.Messstelle anhalten(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return messstellen.anhalten(id, uebergang(body), akteur(auth));
@@ -198,6 +241,7 @@ public class MessstelleController {
 
     /** Recht: {@code messstelle.bearbeiten}; mit einem Zeitpunkt vor jetzt zusätzlich {@code aenderung.rueckwirkend}. */
     @PostMapping("/{id}/fortsetzen")
+    @Recht(value = "messstelle.bearbeiten", ziel = RechtZiel.MESSSTELLE)
     public MessstelleDto.Messstelle fortsetzen(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return messstellen.fortsetzen(id, uebergang(body), akteur(auth));
@@ -205,6 +249,7 @@ public class MessstelleController {
 
     /** Recht: {@code messstelle.bearbeiten}; mit einem Zeitpunkt vor jetzt zusätzlich {@code aenderung.rueckwirkend}. */
     @PostMapping("/{id}/archivieren")
+    @Recht(value = "messstelle.bearbeiten", ziel = RechtZiel.MESSSTELLE)
     public MessstelleDto.Messstelle archivieren(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         return messstellen.archivieren(id, uebergang(body), akteur(auth));
@@ -217,6 +262,7 @@ public class MessstelleController {
      * zusätzlich {@code aenderung.rueckwirkend}. Antwort: die Messstelle mit ihren Orten.
      */
     @PutMapping("/{id}/ort")
+    @Recht(value = "messstelle.bearbeiten", ziel = RechtZiel.MESSSTELLE)
     public MessstelleDto.Messstelle ort(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         zuordnungen.ortZuordnen(id, lies(body, MessstelleDto.OrtAendern.class), akteur(auth));
@@ -228,6 +274,7 @@ public class MessstelleController {
      * {@code aenderung.rueckwirkend}. Antwort: die Messstelle mit ihrer elektrischen Stellung.
      */
     @PutMapping("/{id}/stellung")
+    @Recht(value = "messstelle.bearbeiten", ziel = RechtZiel.MESSSTELLE)
     public MessstelleDto.Messstelle stellung(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         zuordnungen.stellungZuordnen(id, lies(body, MessstelleDto.StellungAendern.class), akteur(auth));
@@ -238,6 +285,7 @@ public class MessstelleController {
     @GetMapping("/{id}/standort")
     public MessstelleDto.StandortAm standort(@PathVariable UUID id,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate am) {
+        imZugriff(id);
         return zuordnungen.standortAm(id, am);
     }
 
@@ -251,12 +299,15 @@ public class MessstelleController {
     @GetMapping("/{id}/quellen")
     public MessstelleQuelleDto.Liste quellen(@PathVariable UUID id,
             @RequestParam(required = false) String stichtag) {
-        return quellen.liste(id, stichtag(stichtag));
+        Instant am = stichtag(stichtag);
+        imZugriff(id);
+        return quellen.liste(id, am);
     }
 
     /** Recht: {@code messstelle.ansehen}. */
     @GetMapping("/{id}/quellen/{quelleId}")
     public MessstelleQuelleDto.Quelle quelle(@PathVariable UUID id, @PathVariable UUID quelleId) {
+        imZugriff(id);
         return quellen.eine(id, quelleId);
     }
 
@@ -266,6 +317,7 @@ public class MessstelleController {
      * laufende Quelle, die die neue beendet hat, und die Rückwirkung.
      */
     @PostMapping("/{id}/quellen")
+    @Recht(value = "messstelle.quelle", ziel = RechtZiel.MESSSTELLE)
     public ResponseEntity<MessstelleQuelleDto.Vorgang> binden(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         MessstelleQuelleDto.Vorgang v = quellen.binden(id, lies(body, MessstelleQuelleDto.Binden.class), akteur(auth));
@@ -281,6 +333,7 @@ public class MessstelleController {
      * {@code POST /api/v1/geraete/{id}/austausch}; entweder alle Wirkungen landen oder keine.
      */
     @PostMapping("/{id}/quellen/wechsel")
+    @Recht(value = "messstelle.quelle", ziel = RechtZiel.MESSSTELLE)
     @ResponseStatus(HttpStatus.CREATED)
     public ZaehlerwechselDto.Vorgang wechseln(@PathVariable UUID id,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
@@ -292,6 +345,7 @@ public class MessstelleController {
      * Ohne Inhalt endet die Quelle jetzt. Eine Quelle wird nie gelöscht — sie endet.
      */
     @PutMapping("/{id}/quellen/{quelleId}/beenden")
+    @Recht(value = "messstelle.quelle", ziel = RechtZiel.MESSSTELLE)
     public MessstelleQuelleDto.Vorgang beenden(@PathVariable UUID id, @PathVariable UUID quelleId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {
         MessstelleQuelleDto.Beenden b = body == null || body.isNull() ? null
@@ -309,7 +363,9 @@ public class MessstelleController {
     @GetMapping("/{id}/quellen/{quelleId}/kadenz")
     public KadenzDto.Kadenz kadenz(@PathVariable UUID id, @PathVariable UUID quelleId,
             @RequestParam(required = false) String stichtag) {
-        return kadenzen.kadenz(id, quelleId, stichtag(stichtag));
+        Instant am = stichtag(stichtag);
+        imZugriff(id);
+        return kadenzen.kadenz(id, quelleId, am);
     }
 
     /**
@@ -319,6 +375,7 @@ public class MessstelleController {
      * bekommt dieselbe Nachricht wie bisher — nur mit dieser Zahl in {@code cadence_s}.
      */
     @PostMapping("/{id}/quellen/{quelleId}/kadenz")
+    @Recht(value = "messstelle.quelle", ziel = RechtZiel.MESSSTELLE)
     @ResponseStatus(HttpStatus.CREATED)
     public KadenzDto.Vorgang kadenzEintragen(@PathVariable UUID id, @PathVariable UUID quelleId,
             @RequestBody(required = false) JsonNode body, Authentication auth) {

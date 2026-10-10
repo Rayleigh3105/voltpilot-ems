@@ -12,6 +12,9 @@ import com.voltpilot.api.measurement.MeasurementSelectionService.Actor;
 import com.voltpilot.api.measurement.MeasurementSelectionService.Change;
 import com.voltpilot.api.measurement.MeasurementSelectionService.CustomChange;
 import com.voltpilot.api.measurement.MeasurementSelectionService.State;
+import com.voltpilot.api.uems.BestandGeraeteCsv;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
@@ -23,6 +26,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -48,6 +52,10 @@ import org.springframework.web.server.ResponseStatusException;
  * ({@code RechteKennungenDerRoutenTest} erzwingt es). AP-03 ist NICHT gebaut - durchgesetzt
  * wird heute {@code authenticated()} plus die Zeilen-Abschirmung des Kundenbereichs; ein
  * fremdes Geraet ist 404, nie 403. Eine Durchsetzung je Standort entsteht erst mit AP-03.
+ *
+ * <p>Die EINE Ausnahme seit UEMS AP-12 IP-10 (E12 G1): der Export gehoert zu
+ * {@code export.standort} und wird ueber {@code uems/BestandGeraeteCsv} durchgesetzt - wer das
+ * Recht nicht hat (heute die VoltPilot-Unterstuetzung), bekommt 403 statt der Datei.
  */
 @RestController
 @RequestMapping("/api/v1/devices/{deviceId}/measurement-selection")
@@ -75,21 +83,24 @@ public class DeviceMeasurementSelectionController {
     private final MeasurementCatalog catalog;
     private final ObjectProvider<MeasurementConfigPublisher> publisher;
     private final MeasurementHistoryService history;
+    private final BestandGeraeteCsv bestandCsv;
     private final com.voltpilot.api.measurement.MeasurementPointReadService reads;
 
     public DeviceMeasurementSelectionController(MeasurementSelectionService selections,
             MeasurementCatalog catalog, ObjectProvider<MeasurementConfigPublisher> publisher,
-            MeasurementHistoryService history,
+            MeasurementHistoryService history, BestandGeraeteCsv bestandCsv,
             com.voltpilot.api.measurement.MeasurementPointReadService reads) {
         this.selections = selections;
         this.catalog = catalog;
         this.publisher = publisher;
         this.history = history;
+        this.bestandCsv = bestandCsv;
         this.reads = reads;
     }
 
     /** Recht: {@code messwerte.ansehen}; flüchtige Einmal-Lesung, keine Selektion und kein Journal. */
     @PostMapping("/lesen")
+    @Recht(value = "messwerte.ansehen", ziel = RechtZiel.DEVICE)
     public com.voltpilot.api.measurement.MeasurementPointReadService.Reading lesen(
             @PathVariable UUID deviceId, @RequestParam UUID entityId, @RequestParam String pointKey,
             @AuthenticationPrincipal Jwt caller) {
@@ -117,6 +128,11 @@ public class DeviceMeasurementSelectionController {
     /**
      * Recht: {@code export.standort} (AP-07 §4.10 „Export mit Herkunfts-Spalten"); der
      * gelesene Inhalt ist der des Verlaufs, also zusaetzlich {@code messwerte.ansehen}.
+     *
+     * <p>Seit UEMS AP-12 IP-10 DURCHGESETZT ({@link BestandGeraeteCsv}, E12 G1): ein fremdes
+     * Geraet bleibt 404, dann das Recht - wer es nicht hat (heute die VoltPilot-Unterstuetzung),
+     * bekommt 403 statt der Datei. Die Datei traegt neun Kopfzeilen mehr (DA4); Spalten und
+     * Zeilen bleiben Byte fuer Byte.
      */
     @GetMapping(value = "/{pointKey}/export", produces = "text/csv")
     public ResponseEntity<byte[]> export(@PathVariable UUID deviceId,
@@ -125,13 +141,15 @@ public class DeviceMeasurementSelectionController {
             @RequestParam(required = false) Instant to,
             @RequestParam(defaultValue = "decoded") String representation,
             @RequestParam(required = false) UUID siteId,
-            @RequestParam(required = false) UUID entityId) {
+            @RequestParam(required = false) UUID entityId, Authentication auth) {
+        var wer = OrtAnfrage.akteur(auth);
         var result = history.history(deviceId, pointKey, range, from, to, representation, siteId,
                 entityId);
+        var erzeugung = bestandCsv.erzeugung(wer, result.meta().siteId());
         return ResponseEntity.ok().contentType(MediaType.parseMediaType("text/csv;charset=UTF-8"))
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=messwert-" + pointKey.replaceAll("[^a-zA-Z0-9._-]", "_") + ".csv")
-                .body(history.csv(result));
+                .body(history.csv(result, erzeugung));
     }
 
     /**
@@ -175,6 +193,7 @@ public class DeviceMeasurementSelectionController {
             @RequestParam(defaultValue = "0") int offset,
             @RequestParam(defaultValue = "100") int limit) {
         try {
+            deviceId = selections.deviceForEntity(deviceId, entityId);
             return catalog.search(q, family, group, semanticStatus, recorded, availableOnly,
                     selectedOnly,
                     selections.availableFamilies(deviceId, entityId),
@@ -208,6 +227,7 @@ public class DeviceMeasurementSelectionController {
      * <p>Recht: {@code mess_selektion.bearbeiten} - dieselbe Vorschau, sie schreibt nichts.
      */
     @PostMapping("/custom/estimate")
+    @Recht(value = "mess_selektion.bearbeiten", ziel = RechtZiel.DEVICE)
     public MeasurementBudget.Estimate estimateCustom(@PathVariable UUID deviceId,
             @RequestParam(required = false) UUID entityId,
             @Valid @RequestBody Definition definition) {
@@ -220,6 +240,7 @@ public class DeviceMeasurementSelectionController {
      * <p>Recht: {@code mess_selektion.bearbeiten}.
      */
     @PutMapping("/{pointKey}")
+    @Recht(value = "mess_selektion.bearbeiten", ziel = RechtZiel.DEVICE)
     public State change(@PathVariable UUID deviceId, @PathVariable String pointKey,
             @RequestParam(required = false) UUID entityId,
             @Valid @RequestBody SelectionChangeRequest request,
@@ -227,8 +248,7 @@ public class DeviceMeasurementSelectionController {
         State state = selections.change(deviceId, entityId, pointKey,
                 new Change(request.expectedRevision().longValue(), request.idempotencyKey(),
                         request.enabled().booleanValue(), request.cadenceS()), actor(caller));
-        publish(deviceId, state);
-        return state;
+        return publish(state);
     }
 
     /**
@@ -237,6 +257,7 @@ public class DeviceMeasurementSelectionController {
      * <p>Recht: {@code mess_selektion.bearbeiten}.
      */
     @PostMapping("/custom")
+    @Recht(value = "mess_selektion.bearbeiten", ziel = RechtZiel.DEVICE)
     public State custom(@PathVariable UUID deviceId,
             @RequestParam(required = false) UUID entityId,
             @Valid @RequestBody CustomPointRequest request,
@@ -244,8 +265,7 @@ public class DeviceMeasurementSelectionController {
         State state = selections.addCustom(deviceId, entityId,
                 new CustomChange(request.expectedRevision(), request.idempotencyKey(),
                         request.definition()), actor(caller));
-        publish(deviceId, state);
-        return state;
+        return publish(state);
     }
 
     /**
@@ -253,11 +273,14 @@ public class DeviceMeasurementSelectionController {
      * publish the device's complete desired state, never the filtered view it
      * returned to the caller.
      */
-    private void publish(UUID deviceId, State state) {
+    private State publish(State state) {
         MeasurementConfigPublisher p = publisher.getIfAvailable();
-        if (p == null) return;
-        p.publish(selections.requireDevice(deviceId),
-                state.entityId() == null ? state : selections.state(deviceId));
+        if (p == null) return MeasurementSelectionService.notDelivered(state,
+                "Die Auswahl ist gespeichert. Die Zustellung an die Box ist derzeit nicht verfügbar.");
+        boolean sent = p.publish(selections.requireDevice(state.deviceId()),
+                selections.forPublishing(state.deviceId()));
+        return sent ? state : MeasurementSelectionService.notDelivered(state,
+                "Die Auswahl ist gespeichert. Die Zustellung an die Box ist fehlgeschlagen.");
     }
 
     private static Actor actor(Jwt caller) {

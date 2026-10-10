@@ -81,11 +81,34 @@ class EreignisVokabularZwillingTest {
         assertThat(texte(w.path("anlass_uebergabe")))
                 .containsExactlyElementsOf(EreignisVokabular.ANLASS_UEBERGABE);
         assertThat(texte(w.path("qualitaet"))).containsExactlyElementsOf(EreignisVokabular.QUALITAET);
+        // AP-08 IP-12 (additiv): die Wörter von Ersatzwert und Korrektur.
+        assertThat(texte(w.path("ersatzwert_methode"))).containsExactlyElementsOf(EreignisVokabular.ERSATZWERT_METHODE);
+        assertThat(texte(w.path("ersatzwert_status"))).containsExactlyElementsOf(EreignisVokabular.ERSATZWERT_STATUS);
+        assertThat(texte(w.path("korrektur_art"))).containsExactlyElementsOf(EreignisVokabular.KORREKTUR_ART);
+        assertThat(texte(w.path("korrektur_status"))).containsExactlyElementsOf(EreignisVokabular.KORREKTUR_STATUS);
+        // AP-12 IP-4 (additiv): die Wörter der Berichts-Ereignisse.
+        assertThat(texte(w.path("anstoss_art"))).containsExactlyElementsOf(EreignisVokabular.ANSTOSS_ART);
+        assertThat(texte(w.path("bericht_format"))).containsExactlyElementsOf(EreignisVokabular.BERICHT_FORMAT);
+        w.path("korrektur_art").forEach(a -> assertThat(a.path("ersatzwert").asBoolean()).as(a.path("code").asText())
+                .isEqualTo(EreignisVokabular.KORREKTUR_ART_ERSATZWERT.equals(a.path("code").asText())));
+        assertThat(w.path("korrektur_status").get(0).path("folgt_auf").isEmpty()).as("vorschlag ist der Anfang").isTrue();
+        assertThat(texte(w.path("einheit_zuwachs"))).containsExactlyElementsOf(EreignisVokabular.EINHEITEN_ZUWACHS);
         Map<String, String> erkannt = new LinkedHashMap<>();
         w.path("erkannt_aus").forEach(e -> erkannt.put(e.path("code").asText(), e.path("urheber").asText()));
         Map<String, String> twin = new LinkedHashMap<>();
         EreignisVokabular.ERKANNT_AUS.forEach((k, u) -> twin.put(k, u.code()));
         assertThat(erkannt).containsExactlyEntriesOf(twin);
+        // Additiv (AP-07 IP-9): wer dasselbe ZUSÄTZLICH feststellen darf — Vektor-Datei `auch_urheber`.
+        Map<String, String> auch = new LinkedHashMap<>();
+        w.path("erkannt_aus").forEach(e -> {
+            if (e.has("auch_urheber")) {
+                auch.put(e.path("code").asText(), String.join(",", texte(e.path("auch_urheber"))));
+            }
+        });
+        Map<String, String> auchKlasse = new LinkedHashMap<>();
+        EreignisVokabular.ERKANNT_AUS_AUCH.forEach((k, us) -> auchKlasse.put(k,
+                String.join(",", us.stream().map(u -> u.code()).toList())));
+        assertThat(auch).isEqualTo(auchKlasse);
         Map<String, String> felder = new LinkedHashMap<>();
         w.path("felder").fields().forEachRemaining(f -> felder.put(f.getKey(), f.getValue().path("typ").asText()));
         Map<String, String> twinFelder = new LinkedHashMap<>();

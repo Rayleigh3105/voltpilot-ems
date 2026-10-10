@@ -1,5 +1,8 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.web.dto.SichtbareListe;
+import com.voltpilot.api.zugriff.TeilansichtDienst;
+
 import com.voltpilot.api.ota.EdgeStandVerdict;
 import com.voltpilot.api.repo.EdgeVersionRepository;
 import com.voltpilot.api.web.dto.EdgeVersionDto;
@@ -32,30 +35,37 @@ import org.springframework.web.bind.annotation.RestController;
  * gebildet von {@link EdgeStandVerdict}) - der Maßstab erreichte den Kunden bis
  * dahin überhaupt nicht, seine Box zeigte also eine Version, die niemand
  * einordnen konnte. Es reist das Urteil, NIE das Register.
+ *
+ * <p>AP-03 IP-12: Der Umschlag nennt die sichtbaren Einträge und mit
+ * {@code teilansicht} den Umfang derselben Antwort. Der Standort-Zaun bleibt erhalten.
  */
 @RestController
 @RequestMapping("/api/v1/edge-versions")
 public class EdgeVersionController {
 
+    private final TeilansichtDienst teilansicht;
+
     private final EdgeVersionRepository edgeVersions;
 
-    public EdgeVersionController(EdgeVersionRepository edgeVersions) {
+    public EdgeVersionController(EdgeVersionRepository edgeVersions, TeilansichtDienst teilansicht) {
         this.edgeVersions = edgeVersions;
+        this.teilansicht = teilansicht;
     }
 
     @GetMapping
-    public List<EdgeVersionDto> list() {
+    public SichtbareListe<EdgeVersionDto> list() {
         // EINMAL gelesen, N-mal befragt: das Register ist für alle Geräte
         // dasselbe, und der Kunden-Lesepfad soll es nicht je Zeile holen.
         List<EdgeVersionRepository.RegisterEntry> register = edgeVersions.releases();
-        return edgeVersions.findAll().stream()
+        return new SichtbareListe<>(edgeVersions.findAll().stream()
                 .map(v -> {
                     EdgeStandVerdict.Verdict urteil =
                             EdgeStandVerdict.of(v.coreVersion(), register);
                     return new EdgeVersionDto(v.deviceId(), v.siteId(), v.coreVersion(),
                             v.paletteVersion(), v.reportedAt(), urteil.newestRelease(),
-                            urteil.upToDate());
+                            urteil.upToDate(), v.supports(),
+                            com.voltpilot.api.uems.BoxFaehigkeiten.effective(v.coreVersion(), v.supports(), register));
                 })
-                .toList();
+                .toList(), teilansicht.jetzt());
     }
 }

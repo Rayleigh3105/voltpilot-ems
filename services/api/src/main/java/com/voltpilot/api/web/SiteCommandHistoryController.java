@@ -4,7 +4,7 @@ import com.voltpilot.api.command.CommandFilter;
 import com.voltpilot.api.command.CommandLogReader;
 import com.voltpilot.api.command.DeviceScopes;
 import com.voltpilot.api.history.HistoryRange;
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.web.dto.CommandHistoryDto;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -58,13 +58,13 @@ import org.springframework.web.server.ResponseStatusException;
 @RequestMapping("/api/v1/sites/{siteId}")
 public class SiteCommandHistoryController {
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final CommandLogReader reader;
     private final DeviceScopes scopes;
 
-    public SiteCommandHistoryController(SiteRepository sites, CommandLogReader reader,
+    public SiteCommandHistoryController(Geltungsbereich geltungsbereich, CommandLogReader reader,
             DeviceScopes scopes) {
-        this.sites = sites;
+        this.geltungsbereich = geltungsbereich;
         this.reader = reader;
         this.scopes = scopes;
     }
@@ -85,9 +85,7 @@ public class SiteCommandHistoryController {
             @RequestParam(name = "verdicts", required = false) String verdicts,
             @RequestParam(name = "limit", required = false) Integer limit,
             @RequestParam(name = "before", required = false) Instant before) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
         HistoryRange parsed = HistoryRange.parse(range);
         if (parsed == null || !CommandFilter.RANGES.contains(parsed)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,

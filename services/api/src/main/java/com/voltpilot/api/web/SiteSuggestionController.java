@@ -1,8 +1,10 @@
 package com.voltpilot.api.web;
 
-import com.voltpilot.api.repo.SiteRepository;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import com.voltpilot.api.repo.SiteSuggestionStateRepository;
 import com.voltpilot.api.suggestions.Vorschlaege;
+import com.voltpilot.api.zugriff.Recht;
+import com.voltpilot.api.zugriff.RechtZiel;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -52,11 +54,11 @@ public class SiteSuggestionController {
     /** Alles, was gerade stumm ist. */
     public record SuggestionStatesDto(List<SuggestionStateDto> states) {}
 
-    private final SiteRepository sites;
+    private final Geltungsbereich geltungsbereich;
     private final SiteSuggestionStateRepository store;
 
-    public SiteSuggestionController(SiteRepository sites, SiteSuggestionStateRepository store) {
-        this.sites = sites;
+    public SiteSuggestionController(Geltungsbereich geltungsbereich, SiteSuggestionStateRepository store) {
+        this.geltungsbereich = geltungsbereich;
         this.store = store;
     }
 
@@ -79,6 +81,7 @@ public class SiteSuggestionController {
      * Form wird geprüft, nie zurechtgebogen.
      */
     @PutMapping("/suggestion-states/{key}")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public SuggestionStateDto put(@PathVariable UUID siteId, @PathVariable String key,
             @RequestBody(required = false) SuggestionStateRequest request,
             @AuthenticationPrincipal Jwt jwt) {
@@ -101,6 +104,7 @@ public class SiteSuggestionController {
      * doch steuern will. Idempotent: eine fehlende Haltung ist kein Fehler.
      */
     @DeleteMapping("/suggestion-states/{key}")
+    @Recht(value = "betriebsweise.aendern", ziel = RechtZiel.ANLAGE)
     public ResponseEntity<Void> delete(@PathVariable UUID siteId, @PathVariable String key) {
         requireSite(siteId);
         store.delete(siteId, schluessel(key));
@@ -116,9 +120,7 @@ public class SiteSuggestionController {
     }
 
     private void requireSite(UUID siteId) {
-        if (!sites.existsForCurrentTenant(siteId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anlage nicht gefunden.");
-        }
+        geltungsbereich.requireSite(siteId);
     }
 
     /** Deutsche Gründe erreichen das Portal als {"message": …}. */

@@ -1,0 +1,82 @@
+# NW-3 Punkt 4: die Strecke Datenannahme -> Redpanda -> Writer -> TimescaleDB als
+# ZWEITE Container-Gruppe, gebaut aus DIESEM Arbeitsbaum (der "neuen Cloud").
+#
+# Sie ist bewusst getrennt von der Box-Gruppe: die Box-Gruppe ist das AUSGELIEFERTE
+# Artefakt des Release-Tags, diese Gruppe ist der heutige Stand. Verbunden werden
+# beide nur an EINER Stelle - die Datenannahme wird zusaetzlich in das Netz der
+# Box-Gruppe gehaengt und hoert dort am selben Broker mit, an dem die Box sendet
+# (die "Broker-Bruecke" in nw3.sh).
+#
+# Hausregeln wie bei der Box-Gruppe: eigenes Compose-Projekt, eigenes Netz, KEIN
+# Host-Port (kein `ports:` - erreicht wird alles ueber das Netz bzw. docker exec),
+# abgeraeumt wird nur Eigenes.
+services:
+  timescaledb:
+    image: timescale/timescaledb:2.17.2-pg16
+    environment:
+      POSTGRES_DB: voltpilot
+      POSTGRES_USER: voltpilot
+      POSTGRES_PASSWORD: voltpilot_dev_pw
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U voltpilot -d voltpilot"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 10s
+
+  redpanda:
+    image: redpandadata/redpanda:v24.2.7
+    command:
+      - redpanda
+      - start
+      - --smp=1
+      - --memory=768M
+      - --reserve-memory=0M
+      - --overprovisioned
+      - --node-id=0
+      - --check=false
+      - --kafka-addr=INTERNAL://0.0.0.0:29092
+      - --advertise-kafka-addr=INTERNAL://redpanda:29092
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 5s
+      timeout: 10s
+      retries: 24
+      start_period: 10s
+
+  # Die echte Datenannahme dieses Standes. Ihr Themenfilter ist der VORGEGEBENE
+  # (services/ingest/application.yml): ems/+/+/+/v2/measurement-samples - hier
+  # steht er NICHT im Environment, damit der Lauf den Vorgabewert prueft.
+  ingest:
+    image: ${NW3_INGEST_IMAGE:-nw3-ingest:local}
+    pull_policy: never
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: "8091"
+      MQTT_BROKER_URL: tcp://cloud-broker:1883
+      MQTT_CLIENT_ID: nw3-ingest
+      REDPANDA_BOOTSTRAP_SERVERS: redpanda:29092
+      POSTGRES_JDBC_URL: jdbc:postgresql://timescaledb:5432/voltpilot
+      POSTGRES_USER: voltpilot
+      POSTGRES_PASSWORD: voltpilot_dev_pw
+
+  # Der echte Writer dieses Standes. Er verbindet als voltpilot_app - die
+  # unprivilegierte Rolle mit RLS, genau wie in Produktion.
+  writer:
+    image: ${NW3_WRITER_IMAGE:-nw3-writer:local}
+    pull_policy: never
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: "8092"
+      REDPANDA_BOOTSTRAP_SERVERS: redpanda:29092
+      POSTGRES_JDBC_URL: jdbc:postgresql://timescaledb:5432/voltpilot
+      APP_DB_USER: voltpilot_app
+      APP_DB_PASSWORD: voltpilot_app_test_pw

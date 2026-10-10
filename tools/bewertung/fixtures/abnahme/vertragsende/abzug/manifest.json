@@ -1,0 +1,53 @@
+{
+  "art": "voltpilot-gesamtabzug",
+  "fassung": 1,
+  "fixture": "FIXTURE AP-20 IP-23 (RF-08): Auszug, erfunden",
+  "kundenbereich": {
+    "id": "0b8a6d2e-5a41-4c1e-9d47-2c3f6e1a7b90",
+    "name": "Kunststoffwerk Ahrenberg GmbH"
+  },
+  "zustand": "beendet",
+  "beendet_am": "2029-06-30",
+  "loeschung_fruehestens": "2029-09-28",
+  "gebildet_am": "2029-07-02T09:15:00Z",
+  "gebildet_fuer": "JW",
+  "hinweis": "Beim Abruf gebildet, auf dem Server nicht gespeichert.",
+  "dateien": [
+    {
+      "pfad": "staende/BR-2029-0001.txt",
+      "objektart": "staende",
+      "quelle": "Fixture",
+      "format": "txt",
+      "zeilen": 1,
+      "bytes": 31,
+      "sha256": "5bfa3344c2cc1783e10f184300844136661d90fc350320a42827da11bac687b7"
+    },
+    {
+      "pfad": "verzeichnis/verzeichnis.json",
+      "objektart": "verzeichnis",
+      "quelle": "Fixture",
+      "format": "json",
+      "zeilen": 1,
+      "bytes": 51,
+      "sha256": "4d3d89059f29fea8c4254ceaf764964d81b8d327963299e5088865d40b8f74cf"
+    },
+    {
+      "pfad": "messreihen/messwert.csv",
+      "objektart": "messreihen",
+      "quelle": "Fixture",
+      "format": "csv",
+      "zeilen": 2,
+      "bytes": 41,
+      "sha256": "5fa11b592481901773143dad5e92c536eca7d9672bd2f21007a37d7ef9b7af09"
+    },
+    {
+      "pfad": "protokolle/ort_aenderung.csv",
+      "objektart": "protokolle",
+      "quelle": "Fixture",
+      "format": "csv",
+      "zeilen": 2,
+      "bytes": 42,
+      "sha256": "faad5ae5dc326b375bb5e4acd15ca0a4d882d0febc0d3e91fa64c30d6408245a"
+    }
+  ]
+}

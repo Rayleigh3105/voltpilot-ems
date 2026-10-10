@@ -1,0 +1,118 @@
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { expect, test, type Page } from '@playwright/test';
+
+/**
+ * Der Einstieg in den Assistenten „Messen & Auswerten“ (AP-01 E5 = A) auf der ECHTEN App-Schale: die Bühne
+ * `startansicht.html` mit `rechte=1` rendert `<App initialAuth />` (nicht die Vorschau), der Assistent kommt also
+ * aus `App.tsx` — nachgeladen, an genau einer Stelle. Karte „Funktionen“ (seit Konzept §5.1, #1403, nur auf der
+ * Standort-Übersicht) → Knopf → Schritt 1; Entwurf → „Einrichtung
+ * fortsetzen (Schritt n von 5)“ → dieser Schritt; Satz „Daten kommen an“ → Schritt 2; Avatar-Menü „Funktionen“ →
+ * Karte; Leerzustand der Messstellen → Assistent. Ohne Recht: Grund und Weg statt Knopf.
+ *
+ * Mit `EINSTIEG_BILDER=<Ordner>` legt der Lauf je Fall ein Bild ab (Ansicht).
+ */
+
+const BILDER = process.env.EINSTIEG_BILDER;
+const JETZT = new Date('2026-10-20T08:15:30Z');
+const ST1 = '5a1d0000-0000-4000-8000-000000000001';
+const ENTWURF = 'vp.uems.messen-assistent.entwurf.v1';
+
+async function bild(page: Page, name: string) {
+  if (!BILDER) return;
+  mkdirSync(BILDER, { recursive: true });
+  const breite = page.viewportSize()?.width ?? 0;
+  await page.screenshot({ path: join(BILDER, `${name}-${breite}.png`), fullPage: false });
+}
+
+async function oeffnen(page: Page, query: string, hash = '#/portfolio') {
+  await page.clock.setFixedTime(JETZT);
+  await page.goto(`/e2e/startansicht.html?bild=unternehmen&rechte=1&${query}${hash}`);
+}
+
+const karte = (page: Page) => page.getByTestId('funktionen-karte');
+const assistent = (page: Page) => page.getByRole('dialog');
+
+for (const breite of [375, 1440] as const) {
+  test.describe(`${breite} px`, () => {
+    test.use({ viewport: { width: breite, height: breite === 375 ? 812 : 900 } });
+
+    // firstmate K2 (09.10.2026): die Karte „Funktionen“ wohnt auf einer Standort-/Unternehmens-
+    // Übersicht — die ist nur die Landung, wenn mindestens ein Standort misst. `&messenWerk=`
+    // lässt gezielt NUR Werk Ahrenberg nicht messen (Lindach bleibt eingerichtet): die Ebene bleibt
+    // erreichbar, Werk Ahrenbergs eigene Karte zeigt weiterhin „Noch nicht eingerichtet".
+    test('Übersicht → Karte „Funktionen“ → Knopf → Schritt 1', async ({ page }) => {
+      await oeffnen(page, 'person=JW&messenWerk=bestand', `#/standort/${ST1}`);
+      const knopf = karte(page).getByRole('button', { name: 'Messen & Auswerten für Werk Ahrenberg einrichten' });
+      await expect(knopf).toBeVisible();
+      await knopf.scrollIntoViewIfNeeded();
+      // Kein Querlauf, gemessen am Dokument: der lange Knopf bricht um (375 px).
+      expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+      await bild(page, 'karte-knopf');
+      await knopf.click();
+      await expect(assistent(page).getByText('Wo wird gemessen?')).toBeVisible();
+      await bild(page, 'assistent-schritt1');
+    });
+
+    test('Wiedereinstieg: Entwurf → „Einrichtung fortsetzen (Schritt 3 von 5)“ → Schritt 3', async ({ page }) => {
+      await page.addInitScript(
+        ([schluessel, wert]) => window.localStorage.setItem(schluessel, wert),
+        [ENTWURF, JSON.stringify({ standortId: ST1, schritt: 3 })] as const,
+      );
+      await oeffnen(page, 'person=JW&messenWerk=entwurf', `#/standort/${ST1}`);
+      const knopf = karte(page).getByRole('button', { name: 'Einrichtung fortsetzen (Schritt 3 von 5)' });
+      await expect(knopf).toBeVisible();
+      await knopf.scrollIntoViewIfNeeded();
+      await bild(page, 'karte-fortsetzen');
+      await knopf.click();
+      await expect(assistent(page).getByText(/Schritt 3 von 5/).first()).toBeVisible();
+    });
+
+    test('Satz „Daten kommen an“ → Schritt 2 der Anlage', async ({ page }) => {
+      await oeffnen(page, 'person=JW&messen=entwurf&zuordnung=offen', '#/portfolio/messstellen/MS-06');
+      const satz = page.getByTestId('werte-zuordnung');
+      await expect(satz).toBeVisible();
+      await satz.scrollIntoViewIfNeeded();
+      await bild(page, 'satz-weg');
+      await satz.getByRole('button', { name: 'Im Messen-Assistenten zuordnen' }).click();
+      await expect(assistent(page).getByText('Womit wird gemessen?')).toBeVisible();
+    });
+
+    // #1407 P1 (PR #1471, von K2 unabhängig behoben): `funktionenZiel` in App.tsx bietet den
+    // Avatar-Eintrag „Funktionen" nicht mehr an, wenn die Landung die Unternehmens-Übersicht ist -
+    // die Karte wohnt seit Review PR2 §5.1 nur noch auf der Standort-Übersicht (EbenenCockpit.tsx).
+    // Darum PH statt JW: ihr Zugriff ist auf EINEN Standort beschränkt (Teilansicht AP-03). JW sieht
+    // beide Standorte (Landung `unternehmen`) - dort bleibt das Menü seit #1407 P1 ganz weg.
+    test('Avatar-Menü „Funktionen“ → Karte', async ({ page }) => {
+      // firstmate K2: ohne das Standard-`messen` (misst) bliebe auch PHs einziger sichtbarer Standort
+      // (Lindach) ohne Messfunktion - dann gilt K2s „kein Standort misst" auch für ihre Teilansicht,
+      // und die Landung wäre die gewohnte Übersicht statt der Standort-Übersicht (kein `funktionenZiel`).
+      await oeffnen(page, 'person=PH', '#/portfolio/messstellen');
+      await page.getByRole('button', { name: /Konto-Menü/ }).click();
+      const eintrag = page.getByRole('menuitem', { name: 'Funktionen' });
+      await expect(eintrag).toBeVisible();
+      await bild(page, 'avatar-menue');
+      await eintrag.click();
+      await expect(karte(page).getByRole('heading', { name: 'Funktionen' })).toBeFocused();
+      await expect(karte(page)).toBeInViewport();
+    });
+
+    test('Leerzustand der Messstellen → Assistent', async ({ page }) => {
+      await oeffnen(page, 'person=JW&messen=bestand', '#/portfolio/messstellen');
+      const knopf = page.getByRole('button', { name: 'Messen & Auswerten einrichten', exact: true });
+      await expect(knopf).toBeVisible();
+      await bild(page, 'leer-messstellen');
+      await knopf.click();
+      await expect(assistent(page).getByText('Wo wird gemessen?')).toBeVisible();
+    });
+
+    test('ohne Recht: Grund und Weg statt Knopf', async ({ page }) => {
+      await oeffnen(page, 'person=CB&messenWerk=bestand', `#/standort/${ST1}`);
+      await expect(karte(page)).toBeVisible();
+      await expect(karte(page).getByRole('button', { name: /Messen & Auswerten für/ })).toHaveCount(0);
+      await expect(karte(page).getByRole('note').first()).toBeVisible();
+      await karte(page).scrollIntoViewIfNeeded();
+      await bild(page, 'ohne-recht');
+    });
+  });
+}

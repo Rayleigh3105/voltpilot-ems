@@ -1,32 +1,45 @@
 package com.voltpilot.api.uems;
 
+import com.voltpilot.api.uems.RechteAbleitung.Art;
+import com.voltpilot.api.uems.RechteAbleitung.Rolle;
+import com.voltpilot.api.zugriff.ZugriffContext;
+import com.voltpilot.api.zugriff.ZugriffContext.Zugang;
+import com.voltpilot.api.zugriff.ZugriffContext.Zugriff;
+import com.voltpilot.api.zugriff.ZugriffRepository;
+import java.util.Arrays;
 import java.util.Optional;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
 
 /**
  * Der Urheber eines Protokolleintrags im Akteur-Vokabular von AP-03 ({@code actor_sub},
- * {@code actor_name}, {@code actor_rolle}, {@code actor_art}; CHECKs in
- * V20260911140000 an {@code messstelle_aenderung}).
+ * {@code actor_name}, {@code actor_rolle}, {@code actor_art}) — dasselbe in Register-Journal,
+ * Handeingriff, Befehls-Verlauf und Änderungsprotokoll (AP-03 IP-7, V20260916010000).
  *
- * <p><b>Die EINE Stelle, die aus dem Aufrufer eine Rolle macht — bis AP-03 Zuweisungen
- * bringt.</b> Heute gibt es nur zwei Prinzipale (Kundenbenutzer mit {@code tenant_id}-Claim,
- * Plattform-Admin mit dem Mandanten-Umschalter {@code X-Tenant-Id}); die Rolle wird deshalb
- * nicht nachgeschlagen, sondern festgelegt:
+ * <p><b>Die EINE Stelle, die aus dem Aufrufer Rolle und Art macht.</b> Sie liest den
+ * {@link ZugriffContext} der Anfrage (IP-4), nie einen Anfragekörper:
  * <ul>
- *   <li>Kundenbenutzer → {@code kundenadministrator}, Art {@code kunde} — AP-03 E12: „jeder
- *       heutige Kundenbenutzer wird Kundenadministrator“.</li>
- *   <li>Plattform-Admin → {@code voltpilot_betrieb}, Art {@code voltpilot} — die
- *       Plattform-Rolle. Die Rechte-Matrix gibt ihr {@code messstelle.bearbeiten} NICHT
- *       („-“, AP-03 E8: Admin-Zugriff wird Unterstützung); bis AP-03 durchsetzt, darf sie wie
- *       auf {@code /api/v1/sites/**} und steht dann ehrlich als VoltPilot im Protokoll.</li>
+ *   <li>Kundenkonto → Art {@code kunde}; Rolle = die, unter der die Anfrage ihr Recht bekam
+ *       ({@link ZugriffContext#handelndeRolle()}, gesetzt von der Rechte-Prüfung), sonst die
+ *       höchste wirksame Zuweisung; nie zugewiesen → {@code kundenadministrator} (E12).</li>
+ *   <li>Angenommene Unterstützung → Art {@code unterstuetzung}, beim Notfall-Zugriff
+ *       {@code notfall}; Rolle {@code unterstuetzer} (bzw. die handelnde Rolle).</li>
+ *   <li>Plattform am Umschalter {@code X-Tenant-Id} → {@code voltpilot_betrieb}, Art
+ *       {@code voltpilot} — wie vor IP-7.</li>
+ *   <li>Ohne Zugriff-Kontext (OIDC aus, Token ohne Kontoart): die Festlegung von vor IP-7 —
+ *       Plattform-Admin → {@code voltpilot}, sonst {@code kundenadministrator}/{@code kunde}.</li>
  * </ul>
- * Wer das ändert (AP-03 IP-7 vereinheitlicht die Journale), ändert es HIER.
+ * Der NAME ist der der Person: {@code name} (Vor- und Nachname aus dem Konto), sonst {@code preferred_username}, sonst das
+ * Subject. Bis Konzept Nachweisen n1 (Befund 4) stand der Anmeldename vorn; dann hieß es im Verlauf, im Kopf eines
+ * Berichtsstands und im PDF „freigegeben von ines“ statt „Ines Kaltenbach“.
  */
 public record ProtokollAkteur(String sub, String name, String rolle, String art) {
 
     static final String ART_KUNDE = "kunde";
+    static final String ART_UNTERSTUETZUNG = "unterstuetzung";
     static final String ART_VOLTPILOT = "voltpilot";
+    static final String ART_NOTFALL = "notfall";
 
     /** Dieselbe Realm-Rolle, an der {@code TenantFilter} den Mandanten-Umschalter freigibt. */
     private static final String PLATTFORM_ADMIN = "ROLE_platform-admin";
@@ -37,35 +50,108 @@ public record ProtokollAkteur(String sub, String name, String rolle, String art)
      * Subject ist {@code null} — dasselbe Wort wie der Unternehmen-Backfill (V20260911100000).
      */
     public static ProtokollAkteur bestandsuebernahme() {
-        return new ProtokollAkteur(null, "Bestandsübernahme", RechteAbleitung.Rolle.VOLTPILOT_BETRIEB.code(),
-                ART_VOLTPILOT);
+        return new ProtokollAkteur(null, "Bestandsübernahme", Rolle.VOLTPILOT_BETRIEB.code(), ART_VOLTPILOT);
     }
 
-    /** Der Urheber des angemeldeten Aufrufers; leer ohne JWT (nur bei abgeschaltetem OIDC). */
+    /**
+     * VoltPilot selbst, ohne Person: der tägliche Lauf der Verbund-Bilanz (AP-15 IP-12), der eine unplausible Anlage
+     * auf S1 zurückführt. Eigener Name, damit das Protokoll ihn von einem Handgriff des Betreibers unterscheidet.
+     */
+    public static ProtokollAkteur verbundBilanz() {
+        return new ProtokollAkteur(null, "Verbund-Bilanz", Rolle.VOLTPILOT_BETRIEB.code(), ART_VOLTPILOT);
+    }
+
+    /**
+     * VoltPilot selbst, ohne Person: die Auswertung der Sprungprobe (AP-15 IP-21), die eine Anlage nach der letzten
+     * bestandenen Probe auf S2 {@code geprueft} hebt. Wer die Probe auslöste, steht in ihrem Protokoll.
+     */
+    public static ProtokollAkteur sprungprobe() {
+        return new ProtokollAkteur(null, "Sprungprobe", Rolle.VOLTPILOT_BETRIEB.code(), ART_VOLTPILOT);
+    }
+
+    /**
+     * VoltPilot selbst, ohne Person: der tägliche Lauf des Vorbehalts aus Messwerten (AP-15 IP-13), der den Vorbehalt
+     * der Bezugsseite selbsttätig ERHÖHT (verengt nur) und Vorschläge zum Senken anlegt.
+     */
+    public static ProtokollAkteur vorbehaltAusMesswerten() {
+        return new ProtokollAkteur(null, "Vorbehalt aus Messwerten", Rolle.VOLTPILOT_BETRIEB.code(), ART_VOLTPILOT);
+    }
+
+    /**
+     * Der Urheber des angemeldeten Aufrufers; leer ohne JWT (nur bei abgeschaltetem OIDC). Der Name kommt aus dem
+     * Spiegel {@code benutzer.anzeigename} des eigenen Subjects (Konzept Nachweisen n1, Befund 4: „Ines Kaltenbach“
+     * statt „ines“), sonst aus {@code preferred_username} - nie vor ihm aus dem Claim {@code name}: den darf jedes Konto
+     * in Keycloak selbst ändern, und jede Freigabe stünde dann unter einem gewählten Namen (Review Nachweisen r1, P0-1).
+     * Nur ein Token ganz ohne {@code preferred_username} fällt wie bisher auf {@code name} zurück; Keycloak stellt
+     * {@code preferred_username} in jedes Token (auch Servicekonten), der Rückfall trifft nur Test-Fixtures.
+     */
     public static Optional<ProtokollAkteur> aus(Authentication auth) {
         if (auth == null || !(auth.getPrincipal() instanceof Jwt jwt)
                 || jwt.getSubject() == null || jwt.getSubject().isBlank()) {
             return Optional.empty();
         }
-        Object name = jwt.getClaims().get("preferred_username");
+        Zugriff z = ZugriffContext.get();
+        String spiegel = z != null && jwt.getSubject().equals(z.sub()) ? z.anzeigename() : null;
+        Object name = spiegel != null && !spiegel.isBlank() ? spiegel : jwt.getClaims().get("preferred_username");
         if (name == null) {
             name = jwt.getClaims().get("name");
         }
         boolean plattformAdmin = auth.getAuthorities().stream()
                 .anyMatch(a -> PLATTFORM_ADMIN.equals(a.getAuthority()));
-        return Optional.of(fuer(jwt.getSubject(), name == null ? null : name.toString(), plattformAdmin));
+        return Optional.of(fuer(z, jwt.getSubject(), name == null ? null : name.toString(), plattformAdmin));
     }
 
     /**
+     * Der Urheber der laufenden Anfrage, wenn {@code sub} ihr Aufrufer ist — für die Journale,
+     * deren Schreibweg seit jeher nur das Subject weiterreicht (Handeingriffe, Befehls-Verlauf,
+     * Register-Journal). Leer ohne Anmeldung (Jobs, Listener) und für ein fremdes Subject: dort
+     * wird kein Urheber behauptet.
+     */
+    public static Optional<ProtokollAkteur> angemeldetAls(String sub) {
+        if (sub == null || sub.isBlank()) {
+            return Optional.empty();
+        }
+        return aus(SecurityContextHolder.getContext().getAuthentication()).filter(a -> sub.equals(a.sub()));
+    }
+
+    /**
+     * Ohne Zugriff-Kontext — die Festlegung von vor IP-7.
+     *
      * @param sub das JWT-Subject — die maschinenstabile Identität
-     * @param anzeigename {@code preferred_username} bzw. {@code name}; leer → das Subject, damit
+     * @param anzeigename der Spiegelname bzw. {@code preferred_username}; leer → das Subject, damit
      *     der Eintrag immer einen Namen trägt
      * @param plattformAdmin trägt der Aufrufer die Realm-Rolle {@code platform-admin}?
      */
     public static ProtokollAkteur fuer(String sub, String anzeigename, boolean plattformAdmin) {
+        return fuer(null, sub, anzeigename, plattformAdmin);
+    }
+
+    /** Mit dem Zugriff der Anfrage; ein Kontext eines anderen Subjects zählt nicht. */
+    static ProtokollAkteur fuer(Zugriff z, String sub, String anzeigename, boolean plattformAdmin) {
         String name = anzeigename == null || anzeigename.isBlank() ? sub : anzeigename.trim();
-        return plattformAdmin
-                ? new ProtokollAkteur(sub, name, RechteAbleitung.Rolle.VOLTPILOT_BETRIEB.code(), ART_VOLTPILOT)
-                : new ProtokollAkteur(sub, name, RechteAbleitung.Rolle.KUNDENADMINISTRATOR.code(), ART_KUNDE);
+        if (z == null || sub == null || !sub.equals(z.sub())) {
+            return plattformAdmin
+                    ? new ProtokollAkteur(sub, name, Rolle.VOLTPILOT_BETRIEB.code(), ART_VOLTPILOT)
+                    : new ProtokollAkteur(sub, name, Rolle.KUNDENADMINISTRATOR.code(), ART_KUNDE);
+        }
+        Optional<Rolle> handelnd = ZugriffContext.handelndeRolle();
+        return switch (z.zugang()) {
+            case UMSCHALTER -> new ProtokollAkteur(sub, name, Rolle.VOLTPILOT_BETRIEB.code(), ART_VOLTPILOT);
+            case KONTO -> new ProtokollAkteur(sub, name,
+                    handelnd.or(() -> hoechsteRolle(z)).map(Rolle::code).orElse(null), ART_KUNDE);
+            case UNTERSTUETZUNG -> new ProtokollAkteur(sub, name,
+                    handelnd.orElse(Rolle.UNTERSTUETZER).code(),
+                    z.zuweisungen().stream().anyMatch(x -> x.art() == Art.NOTFALL) ? ART_NOTFALL : ART_UNTERSTUETZUNG);
+        };
+    }
+
+    /** Nie zugewiesen = Kundenadministrator (E12); sonst die erste wirksame Rolle in der Reihenfolge der Matrix. */
+    private static Optional<Rolle> hoechsteRolle(Zugriff z) {
+        if (z.zugang() == Zugang.KONTO && z.bestandskonto()) {
+            return Optional.of(Rolle.KUNDENADMINISTRATOR);
+        }
+        return Arrays.stream(Rolle.values())
+                .filter(r -> z.zuweisungen().stream().map(ZugriffRepository.Zeile::rolle).anyMatch(r::equals))
+                .findFirst();
     }
 }

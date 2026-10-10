@@ -448,7 +448,8 @@ class MessstelleMigrationTest {
                 alsTue(t, () -> assertThat(messstellen.nebengroesseHinzufuegen(id, groesse(ng))).isPresent());
             }
         }
-        assertThat(ids).hasSize(22);
+        // Jede Messstelle der Referenz genau einmal (Fassung 1.6: 23 mit MS-23).
+        assertThat(ids).hasSize(referenz.get("messstellen").size());
 
         alsTue(t, () -> {
             Map<String, Messstelle> gespeichert = messstellen.alle().stream()
@@ -466,7 +467,7 @@ class MessstelleMigrationTest {
                                 ms.get("nebengroessen").spliterator(), false)
                                 .map(MessstelleMigrationTest::groesse).toList());
             }
-            assertThat(messstellen.vergeben()).hasSize(22)
+            assertThat(messstellen.vergeben()).hasSize(ids.size())
                     .allSatisfy(v -> assertThat(v.frueher() || v.archiviert()).isFalse());
         });
 
@@ -701,13 +702,30 @@ class MessstelleMigrationTest {
         protokollChk("messstelle_aenderung_actor_chk", "bearbeitet", "NULL", "'kunde'", "now()", false);
         protokollChk("messstelle_aenderung_actor_chk", "bearbeitet", "''", "'kunde'", "now()", false);
         // „rückwirkend" an einer Änderung, die erst später gilt: nie.
-        // Die Rolle ist die KENNUNG des Rechte-Vertrags — genau seine sieben, nie das Kundenwort.
+        // Die Rolle ist die KENNUNG des Rechte-Vertrags — genau seine Rollen (seit V20260926001500 auch
+        // „einsicht“), nie das Kundenwort.
         String rollenChk = root.queryForObject("SELECT pg_get_constraintdef(oid) FROM pg_constraint "
                 + "WHERE conname = 'messstelle_aenderung_actor_rolle_chk'", String.class);
         assertThat(rollenChk.split("'").length / 2).isEqualTo(RechteAbleitung.Rolle.values().length);
         for (RechteAbleitung.Rolle r : RechteAbleitung.Rolle.values()) {
             assertThat(rollenChk).contains("'" + r.code() + "'");
         }
+        // Dasselbe Vokabular an JEDEM CHECK, der die Rollen als feste Liste trägt (die Akteur-Rolle jedes
+        // Protokolls, Urheber-, Freigeber-, Beantworter-Rolle): ein Paket, das eine Rolle anlegt, zieht sie alle
+        // mit. Kürzere Listen (Freigabe nur durch drei Rollen) tragen „leser“ nicht und bleiben außen vor.
+        List<String> unvollstaendig = new ArrayList<>();
+        for (Map<String, Object> c : root.queryForList("SELECT conrelid::regclass::text AS tabelle, conname, "
+                + "pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE contype = 'c' AND coninhcount = 0 "
+                + "AND pg_get_constraintdef(oid) LIKE '%''leser''%' "
+                + "AND pg_get_constraintdef(oid) LIKE '%''voltpilot_betrieb''%'")) {
+            String def = (String) c.get("def");
+            for (RechteAbleitung.Rolle r : RechteAbleitung.Rolle.values()) {
+                if (!def.contains("'" + r.code() + "'")) {
+                    unvollstaendig.add(c.get("tabelle") + "." + c.get("conname") + " ohne " + r.code());
+                }
+            }
+        }
+        assertThat(unvollstaendig).as("feste Rollen-Listen ohne jede Rolle des Rechte-Vertrags").isEmpty();
         abgelehnt("23514", "messstelle_aenderung_actor_rolle_chk", () -> root.update(
                 "INSERT INTO messstelle_aenderung (tenant_id, messstelle_id, art, gilt_ab, "
                         + "rueckwirkend, actor_sub, actor_name, actor_rolle, actor_art) "
@@ -763,6 +781,14 @@ class MessstelleMigrationTest {
         // Nie Kaskade: weder der Mandant noch eine Messstelle mit Geschichte gehen still.
         abgelehnt("23503", null, () -> root.update("DELETE FROM tenant WHERE id = ?", t));
         abgelehnt("23503", null, () -> root.update("DELETE FROM messstelle WHERE id = ?", ms));
+        // Während der Laufzeit bleibt das Protokoll append-only — auch für Verwaltungsrolle und Eigentümer.
+        abgelehntWegen("42501", "permission denied",
+                () -> new JdbcTemplate(ds(ADMIN_USER, ADMIN_PW))
+                        .update("DELETE FROM messstelle_aenderung WHERE tenant_id = ?", t));
+        abgelehntWegen("P0001", "append-only",
+                () -> root.update("DELETE FROM messstelle_aenderung WHERE tenant_id = ?", t));
+        abgelehntWegen("P0001", "append-only",
+                () -> root.update("UPDATE messstelle_aenderung SET tenant_id = tenant_id WHERE tenant_id = ?", t));
 
         // Das Offboarding ist der eine Weg, auf dem ein Kundenbereich endet.
         new TenantRepository(new JdbcTemplate(ds(ADMIN_USER, ADMIN_PW))).offboard(t);
@@ -772,8 +798,9 @@ class MessstelleMigrationTest {
             assertThat(anzahl("SELECT count(*) FROM " + tabelle + " WHERE tenant_id = ?", t))
                     .as(tabelle).isZero();
         }
-        // Das Protokoll bleibt: append-only und ohne Fremdschlüssel.
-        assertThat(anzahl("SELECT count(*) FROM messstelle_aenderung WHERE tenant_id = ?", t)).isOne();
+        // Das Protokoll geht nach der Mandantenzeile mit (AP-20 E10 = A, V20260925234500): ohne Fremdschlüssel,
+        // aber nicht mehr übrig.
+        assertThat(anzahl("SELECT count(*) FROM messstelle_aenderung WHERE tenant_id = ?", t)).isZero();
     }
 
     // ---- Gerüst: Referenz und Vektor-Datei -----------------------------------

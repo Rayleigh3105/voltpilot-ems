@@ -88,6 +88,22 @@ class BezugsdatenVectorsTest {
         assertThat(Files.exists(REFERENZ)).isTrue();
     }
 
+    /** AP-17 E9 = C: Herkunft, Grund und Kennzeichen des Wetter-Archivs stehen in der Datei und im Kennzeichen-Vokabular. */
+    @Test
+    void wetterArchivSprichtDieWoerterDerDatei() throws Exception {
+        JsonNode w = vektoren().path("wetter_archiv");
+        assertThat(WetterArchivRegeln.HERKUNFT).isEqualTo(w.path("herkunft_art").asText());
+        assertThat(WetterArchivRegeln.VARIABLE_FEHLT).isEqualTo(w.path("grund_ohne_zahl").asText());
+        assertThat(WetterArchivRegeln.WORT_TAGE).isEqualTo(w.path("wort_tage").asText());
+        assertThat(WetterArchivRegeln.ZONE.getId()).isEqualTo(vektoren().path("zeitzone").asText());
+        KennzahlRegeln.Kennzeichen k = KennzahlRegeln.KENNZEICHEN.stream()
+                .filter(x -> x.schluessel().equals(w.path("kennzeichen_schluessel").asText())).findFirst().orElseThrow();
+        assertThat(k.muster()).isEqualTo(w.path("kennzeichen_muster").asText()).startsWith(WetterArchivRegeln.TEMPERATUR_BEZOGEN + " (");
+        String beispiel = WetterArchivRegeln.kennzeichen(w.path("quelle_zuerst").asText(),
+                java.time.OffsetDateTime.parse("2027-11-01T06:10:00+01:00"));
+        assertThat(KennzahlRegeln.erkenne(beispiel)).isEqualTo(k);
+    }
+
     /** Prosa und TS-Zwilling liegen, wo die Datei sie nennt — sonst ist der Gleichlauf nur behauptet. */
     @Test
     void prosaUndTsZwillingLiegen() {
@@ -155,6 +171,73 @@ class BezugsdatenVectorsTest {
                 .as("Hinweis-Befunde")
                 .isSubsetOf(befunde)
                 .containsExactlyElementsOf(BezugsdatenRegeln.HINWEIS_BEFUNDE);
+    }
+
+    /**
+     * AP-09 IP-5: der GESCHLOSSENE Satz der Ablehnungen steht in der Datei — Code, Status und Kundensatz
+     * — und {@link BezugsgroesseRegeln.Ablehnung} ist Zeile für Zeile derselbe. Die Konstanten des
+     * Verwaltens (Kennzeichen, M1, Lesarten) ebenso; {@code einheit_unbekannt} spricht denselben Satz
+     * wie der Befund.
+     */
+    @Test
+    void dieAblehnungenDesVerwaltensSindDieDerDatei() throws Exception {
+        JsonNode vw = vektoren().path("verwalten");
+        List<String> datei = new ArrayList<>();
+        vw.path("ablehnungen").forEach(a -> datei.add(a.path("code").asText() + " · " + a.path("status").asInt()
+                + " · " + a.path("satz").asText()));
+        List<String> klasse = new ArrayList<>();
+        for (BezugsgroesseRegeln.Ablehnung a : BezugsgroesseRegeln.Ablehnung.values()) {
+            klasse.add(a.code() + " · " + a.status() + " · " + a.satz());
+        }
+        assertThat(klasse).as("Ablehnungen in Reihenfolge").containsExactlyElementsOf(datei);
+        assertThat(vw.path("ablehnungen").findValuesAsText("code")).doesNotHaveDuplicates();
+        assertThat(BezugsgroesseRegeln.Ablehnung.EINHEIT_UNBEKANNT.satz())
+                .isEqualTo(vektoren().path("befund_saetze").path("einheit_unbekannt").asText());
+        assertThat(vw.path("kennzeichen").path("praefix").asText()).isEqualTo(BezugsgroesseRegeln.KENNZEICHEN_PRAEFIX);
+        assertThat(vw.path("kennzeichen").path("stellen").asInt()).isEqualTo(BezugsgroesseRegeln.KENNZEICHEN_STELLEN);
+        assertThat(vw.path("kennzeichen").path("muster").asText()).isEqualTo(BezugsgroesseRegeln.KENNZEICHEN_MUSTER);
+        assertThat(texte(vw.path("fest_nach_erstem_wert"))).isEqualTo(BezugsgroesseRegeln.FEST_NACH_ERSTEM_WERT);
+        assertThat(texte(vw.path("immer_aenderbar"))).isEqualTo(BezugsgroesseRegeln.IMMER_AENDERBAR);
+        assertThat(texte(vw.path("lesarten"))).isEqualTo(BezugsgroesseRegeln.LESARTEN);
+        assertThat(texte(vektoren().path("vokabulare").path("geltung_art")))
+                .as("wählbar ist eine Teilmenge des Vokabulars").containsAll(BezugsgroesseRegeln.GELTUNG_WAEHLBAR);
+    }
+
+    /** S3 (AP-09 IP-6): die Vorlagen der Kennzeichen-Sätze sind Zeichen für Zeichen die des Vertrags. */
+    @Test
+    void dieStammdatumSaetzeSindDieDesVertrags() throws Exception {
+        JsonNode saetze = vektoren().path("stammdatum_saetze");
+        assertThat(BezugsdatenRegeln.STAMMDATUM_GEAENDERT).isEqualTo(saetze.path("geaendert").asText());
+        assertThat(BezugsdatenRegeln.STAMMDATUM_BEGINNT).isEqualTo(saetze.path("beginnt").asText());
+        assertThat(BezugsdatenRegeln.STAMMDATUM_ENDET).isEqualTo(saetze.path("endet").asText());
+        assertThat(texte(vektoren().path("verwalten").path("pruefreihenfolge").path("stammdatum")))
+                .containsExactly("archiviert", "wertart", "flaeche", "wert");
+        assertThat(BezugsgroesseRegeln.STAMMDATUM).isIn(texte(vektoren().path("vokabulare").path("wertart")));
+    }
+
+    /**
+     * AP-09 IP-7: die Sätze nach einem Wert, der Zusatz für ganze Zahlen, die Kennung der Berichtigung und die
+     * Prüfreihenfolgen sind die des Vertrags — und eine Ablehnung, die ein Befund ist, spricht dessen Satz.
+     */
+    @Test
+    void dieEingabeSprichtDieSaetzeDesVertrags() throws Exception {
+        JsonNode vw = vektoren().path("verwalten");
+        JsonNode eingabe = vw.path("eingabe");
+        java.util.Map<String, String> urteile = new java.util.LinkedHashMap<>();
+        eingabe.path("urteile").fields().forEachRemaining(f -> urteile.put(f.getKey(), f.getValue().asText()));
+        assertThat(BezugsgroesseRegeln.EINGABE_SAETZE).isEqualTo(urteile);
+        assertThat(BezugsgroesseRegeln.GANZE_ZAHLEN).isEqualTo(eingabe.path("ganze_zahlen").asText());
+        assertThat(BezugsgroesseRegeln.BERICHTIGUNG_PRAEFIX).isEqualTo(eingabe.path("kennung").path("praefix").asText());
+        assertThat(BezugsgroesseRegeln.BERICHTIGUNG_MUSTER).isEqualTo(eingabe.path("kennung").path("muster").asText());
+        assertThat(texte(vw.path("pruefreihenfolge").path("eingeben")))
+                .containsExactly("archiviert", "wertart", "periode", "zahl", "wert_negativ", "wert_vorhanden");
+        assertThat(texte(vw.path("pruefreihenfolge").path("berichtigen"))).containsExactly("archiviert", "wertart",
+                "periode", "zahl", "wert_negativ", "begruendung", "kein_wert", "vorschlag_offen");
+        for (String befund : List.of("periode_passt_nicht", "periode_nicht_zu_ende", "zahl_unlesbar", "wert_negativ",
+                "konflikt_anderer_wert")) {
+            assertThat(BezugsgroesseRegeln.Ablehnung.valueOf(befund.toUpperCase(java.util.Locale.ROOT)).satz()).as(befund)
+                    .isEqualTo(vektoren().path("befund_saetze").path(befund).asText());
+        }
     }
 
     /**
@@ -381,7 +464,9 @@ class BezugsdatenVectorsTest {
                 ein.path("staende")
                         .forEach(s -> staende.add(new VerbrauchRegeln.Rohwert(
                                 BezugsdatenRegeln.zeit(s.path("t").asText()), dezimal(s.path("stand")))));
+                // Die Ablesungen des Falls nennen keine Einheit — ohne Lücke spricht die Regel auch keine.
                 VerbrauchRegeln.Ergebnis ist = BezugsdatenRegeln.mengeAblesezeitraum(
+                        new ReihenKontext(null, BezugsdatenRegeln.ANZEIGE_ZEITZONE),
                         staende,
                         BezugsdatenRegeln.zeit(ein.path("von").asText()),
                         BezugsdatenRegeln.zeit(ein.path("bis").asText()),
@@ -447,8 +532,8 @@ class BezugsdatenVectorsTest {
                                 i.path("eingetragen_am").isNull() || i.path("eingetragen_am").isMissingNode()
                                         ? null
                                         : LocalDate.parse(i.path("eingetragen_am").asText()))));
-                Stammdatenstand ist = BezugsdatenRegeln.stammdatum(
-                        intervalle, texte(ein.path("perioden")), ein.path("periode_art").asText());
+                Stammdatenstand ist = BezugsdatenRegeln.stammdatum(intervalle, texte(ein.path("perioden")),
+                        ein.path("periode_art").asText(), ein.path("bezeichnung").asText(), ein.path("einheit").asText());
                 soll.path("je_periode").fields().forEachRemaining(e -> betrag(
                         why + " · Nenner " + e.getKey(), e.getValue(), ist.jePeriode().get(e.getKey())));
                 soll.path("stichtage").fields().forEachRemaining(e -> assertThat(
@@ -459,6 +544,91 @@ class BezugsdatenVectorsTest {
                         .as(why + " · rueckwirkend_tage")
                         .isEqualTo(soll.path("rueckwirkend_tage").asLong());
                 assertThat(ist.ereignisse()).as(why + " · Ereignisse (Plan-Abnahme 2: keine)").isEmpty();
+                assertThat(ist.wechsel().keySet()).as(why + " · Perioden mit Übergängen")
+                        .containsExactlyElementsOf(texte(ein.path("perioden")));
+                soll.path("wechsel_je_periode").fields().forEachRemaining(e -> {
+                    List<BezugsdatenRegeln.Wechsel> erwartet = new ArrayList<>();
+                    e.getValue().forEach(w -> erwartet.add(new BezugsdatenRegeln.Wechsel(
+                            LocalDate.parse(w.path("tag").asText()), dezimal(w.path("alt")), dezimal(w.path("neu")))));
+                    List<BezugsdatenRegeln.Wechsel> wechsel = ist.wechsel().get(e.getKey());
+                    assertThat(wechsel).as(why + " · Übergänge " + e.getKey()).hasSize(erwartet.size());
+                    for (int i = 0; i < erwartet.size(); i++) {
+                        assertThat(wechsel.get(i).tag()).as(why + " · Übergang " + i).isEqualTo(erwartet.get(i).tag());
+                        betrag(why + " · alt", e.getValue().get(i).path("alt"), wechsel.get(i).alt());
+                        betrag(why + " · neu", e.getValue().get(i).path("neu"), wechsel.get(i).neu());
+                    }
+                });
+                soll.path("kennzeichen_je_periode").fields().forEachRemaining(e -> assertThat(
+                                ist.kennzeichen().get(e.getKey()))
+                        .as(why + " · Kennzeichen " + e.getKey() + " (Text UND Reihenfolge)")
+                        .containsExactlyElementsOf(texte(e.getValue())));
+            }
+            case "stammdatum_eintrag" -> {
+                List<Intervall> wirksame = new ArrayList<>();
+                ein.path("intervalle").forEach(i -> wirksame.add(intervall(i)));
+                BezugsdatenRegeln.StammdatumEintrag ist = BezugsdatenRegeln.stammdatumEintrag(
+                        wirksame, LocalDate.parse(ein.path("gueltig_ab").asText()), dezimal(ein.path("wert")));
+                JsonNode e = soll.path("eintrag");
+                assertThat(ist.unveraendert()).as(why + " · unveraendert").isEqualTo(e.path("unveraendert").asBoolean());
+                intervallGleich(why + " · beendet", e.path("beendet"), ist.beendet());
+                intervallGleich(why + " · aufgehoben", e.path("aufgehoben"), ist.aufgehoben());
+                intervallGleich(why + " · neu", e.path("neu"), ist.neu());
+            }
+            case "betriebszeit_aus_leistung" -> {
+                List<BetriebszeitRegeln.Leistung> werte=new ArrayList<>();
+                ein.path("leistungen").forEach(r->werte.add(new BetriebszeitRegeln.Leistung(Instant.parse(r.path("zeit").asText()), dezimal(r.path("kw")),r.path("gut").asBoolean())));
+                List<BetriebszeitRegeln.Schwelle> schwellen=new ArrayList<>();
+                ein.path("schwellen").forEach(r->schwellen.add(new BetriebszeitRegeln.Schwelle(Instant.parse(r.path("von").asText()),r.path("bis").isNull()?null:Instant.parse(r.path("bis").asText()),dezimal(r.path("kw")))));
+                List<Luecke> luecken=new ArrayList<>();
+                ein.path("luecken").forEach(r->luecken.add(new Luecke(Instant.parse(r.path("von").asText()),Instant.parse(r.path("bis").asText()),r.path("quelle").asText())));
+                var ist=BetriebszeitRegeln.rechnen(Instant.parse(ein.path("von").asText()),Instant.parse(ein.path("bis").asText()),ein.path("kadenz_s").asInt(),werte,schwellen,luecken);
+                betrag(why,soll.path("betrag"),ist.betrag());
+                assertThat(ist.zustand()).isEqualTo(soll.path("zustand").asText());
+                betrag(why,soll.path("abdeckung_prozent"),ist.abdeckungProzent());
+                assertThat(ist.kennzeichen()).isEqualTo(texte(soll.path("kennzeichen")));
+                assertThat(KennzahlRegeln.erbe("bezugsgroesse",null,ist.kennzeichen())).isEqualTo(ist.kennzeichen());
+                assertThat(KennzahlRegeln.erbe("kennzahl",null,ist.kennzeichen())).isEqualTo(ist.kennzeichen());
+            }
+            case "gradtage" -> {
+                List<GradtagRegeln.Tag> tage=new ArrayList<>();
+                ein.path("tage").forEach(t->tage.add(new GradtagRegeln.Tag(t.path("mittel").isNull()?null:new java.math.BigDecimal(t.path("mittel").asText()),t.path("zustand").asText())));
+                var ist=GradtagRegeln.gradtage(tage,new java.math.BigDecimal(ein.path("raumtemperatur").asText()),new java.math.BigDecimal(ein.path("heizgrenze").asText()));
+                betrag(why,soll.path("betrag"),ist.betrag());
+                assertThat(ist.zustand()).isEqualTo(soll.path("zustand").asText());
+                assertThat(ist.kennzeichen()).isEqualTo(texte(soll.path("kennzeichen")));
+            }
+            case "wetter_archiv" -> {
+                List<WetterArchivRegeln.Archivtag> archiv=new ArrayList<>();
+                ein.path("archivtage").forEach(t->archiv.add(new WetterArchivRegeln.Archivtag(LocalDate.parse(t.path("datum").asText()),
+                        t.path("mittel").isNull()?null:dezimal(t.path("mittel")),t.path("quelle").asText(),
+                        java.time.OffsetDateTime.parse(t.path("abgerufen_am").asText()))));
+                JsonNode k=ein.path("koordinaten");
+                var ist=WetterArchivRegeln.monat(ein.path("standort").asText(),
+                        k.isNull()?null:new WetterArchivRegeln.Koordinaten(dezimal(k.path("breite")),dezimal(k.path("laenge"))),
+                        java.time.YearMonth.parse(ein.path("monat").asText()),archiv,
+                        dezimal(ein.path("raumtemperatur")),dezimal(ein.path("heizgrenze")));
+                assertThat(ist.abruf()).as(why+" · abruf").isEqualTo(soll.path("abruf").asBoolean());
+                assertThat(ist.grund()).as(why+" · grund").isEqualTo(text(soll.path("grund")));
+                assertThat(ist.satz()).as(why+" · satz").isEqualTo(text(soll.path("satz")));
+                assertThat(ist.nieGeschrieben().stream().map(LocalDate::toString).toList()).as(why+" · nie geschrieben")
+                        .isEqualTo(texte(soll.path("nie_geschrieben")));
+                assertThat(ist.tage()).as(why+" · Tage").hasSize(soll.path("tage").size());
+                for (int i=0;i<ist.tage().size();i++) {
+                    JsonNode t=soll.path("tage").get(i);
+                    var tag=ist.tage().get(i);
+                    assertThat(tag.datum()).hasToString(t.path("datum").asText());
+                    betrag(why+" · "+tag.datum(),t.path("betrag"),tag.betrag());
+                    assertThat(tag.zustand()).isEqualTo(t.path("zustand").asText());
+                    assertThat(tag.kennzeichen()).isEqualTo(texte(t.path("kennzeichen")));
+                }
+                JsonNode m=soll.path("monat");
+                betrag(why+" · Monat",m.path("betrag"),ist.monat().betrag());
+                assertThat(ist.monat().zustand()).as(why+" · Monat").isEqualTo(m.path("zustand").asText());
+                assertThat(ist.monat().grund()).as(why+" · Monat").isEqualTo(text(m.path("grund")));
+                assertThat(ist.monat().kennzeichen()).as(why+" · Monat").isEqualTo(texte(m.path("kennzeichen")));
+                // R3: die Kennzahl erbt das Kennzeichen — aus der Bezugsgröße und über weitere Kennzahlen.
+                assertThat(KennzahlRegeln.erbe("bezugsgroesse",null,ist.monat().kennzeichen())).isEqualTo(texte(m.path("erbt")));
+                assertThat(KennzahlRegeln.erbe("kennzahl",null,texte(m.path("erbt")))).isEqualTo(texte(m.path("erbt")));
             }
             case "kanal" -> {
                 List<Zustandswechsel> wechsel = new ArrayList<>();
@@ -489,8 +659,80 @@ class BezugsdatenVectorsTest {
                 betrag(why + " · gemessene_stunden", soll.path("gemessene_stunden"), ist.gemesseneStunden());
                 assertThat(ist.kennzeichen()).as(why + " · kennzeichen").isEqualTo(texte(soll.path("kennzeichen")));
             }
+            case "verwalten" -> {
+                JsonNode vw = ein.path("verwaltung");
+                BezugsgroesseRegeln.Urteil ist = verwalten(wurzel, vw);
+                wort(why + " · ablehnung", soll.path("ablehnung"), ist.erlaubt() ? null : ist.ablehnung().code());
+                if (soll.has("ablehnung_felder")) {
+                    assertThat(ist.fakten().get("felder")).as(why + " · ablehnung_felder")
+                            .isEqualTo(texte(soll.path("ablehnung_felder")));
+                }
+                if (soll.has("kennzeichen_vorschlag")) {
+                    assertThat(BezugsgroesseRegeln.kennzeichenVorschlag(texte(vw.path("belegt"))))
+                            .as(why + " · kennzeichen_vorschlag")
+                            .isEqualTo(soll.path("kennzeichen_vorschlag").asText());
+                }
+            }
+            case "csv" -> CsvVektoren.pruefe(why, ein.path("csv"), soll.path("csv"));
+            case "vorschau" -> VorschauVektoren.pruefe(why, wurzel, ein.path("vorschau"), soll.path("vorschau"));
             default -> throw new IllegalStateException("unbekannte Regel " + p.path("regel").asText());
         }
+    }
+
+    /** Ein Intervall der Vektor-Datei; {@code gueltig_bis}/{@code eingetragen_am} dürfen fehlen. */
+    private static Intervall intervall(JsonNode i) {
+        return new Intervall(dezimal(i.path("betrag")), LocalDate.parse(i.path("gueltig_ab").asText()),
+                i.path("gueltig_bis").isNull() || i.path("gueltig_bis").isMissingNode()
+                        ? null : LocalDate.parse(i.path("gueltig_bis").asText()),
+                i.path("eingetragen_am").isNull() || i.path("eingetragen_am").isMissingNode()
+                        ? null : LocalDate.parse(i.path("eingetragen_am").asText()));
+    }
+
+    /** S4: Betrag numerisch, Tage genau; {@code null} in der Datei heißt: kein solches Intervall. */
+    private static void intervallGleich(String why, JsonNode soll, Intervall ist) {
+        if (soll.isNull() || soll.isMissingNode()) {
+            assertThat(ist).as(why).isNull();
+            return;
+        }
+        assertThat(ist).as(why).isNotNull();
+        betrag(why + " · betrag", soll.path("betrag"), ist.betrag());
+        assertThat(ist.gueltigAb()).as(why + " · gueltig_ab").isEqualTo(LocalDate.parse(soll.path("gueltig_ab").asText()));
+        assertThat(ist.gueltigBis()).as(why + " · gueltig_bis").isEqualTo(
+                soll.path("gueltig_bis").isNull() ? null : LocalDate.parse(soll.path("gueltig_bis").asText()));
+    }
+
+    /** AP-09 IP-5: ein Vorgang der Regel {@code verwalten} gegen {@link BezugsgroesseRegeln}. */
+    private static BezugsgroesseRegeln.Urteil verwalten(JsonNode wurzel, JsonNode vw) {
+        JsonNode vok = wurzel.path("vokabulare");
+        BezugsgroesseRegeln.Vokabular v = new BezugsgroesseRegeln.Vokabular(texte(vok.path("wertart")),
+                texte(vok.path("geltung_art")), texte(vok.path("periode_art")), einheiten(wurzel));
+        return switch (vw.path("vorgang").asText()) {
+            case "anlegen" -> BezugsgroesseRegeln.anlegen(entwurf(vw.path("entwurf")), v, texte(vw.path("waehlbar")),
+                    texte(vw.path("belegt")));
+            case "aendern" -> BezugsgroesseRegeln.aendern(entwurf(vw.path("bestand")), entwurf(vw.path("entwurf")),
+                    vw.path("archiviert").asBoolean(), vw.path("werte").asLong(), v, texte(vw.path("waehlbar")),
+                    texte(vw.path("belegt")));
+            case "archivieren" -> BezugsgroesseRegeln.archivieren(vw.path("archiviert").asBoolean());
+            case "loeschen" -> BezugsgroesseRegeln.loeschen(vw.path("werte").asLong());
+            case "stammdatum" -> BezugsgroesseRegeln.stammdatum(entwurf(vw.path("bestand")), vw.path("archiviert").asBoolean(),
+                    text(vw.path("wert")), v);
+            case "eingeben" -> BezugsgroesseRegeln.eingeben(werteingang(vw));
+            case "berichtigen" -> BezugsgroesseRegeln.berichtigen(werteingang(vw));
+            default -> throw new IllegalStateException("unbekannter Vorgang " + vw.path("vorgang").asText());
+        };
+    }
+
+    /** AP-09 IP-7: der Eingang der Vorgänge {@code eingeben} und {@code berichtigen}. */
+    private static BezugsgroesseRegeln.Werteingang werteingang(JsonNode vw) {
+        return new BezugsgroesseRegeln.Werteingang(text(vw.path("wertart")), vw.path("archiviert").asBoolean(),
+                text(vw.path("periode_befund")), text(vw.path("zahl_befund")), dezimal(vw.path("betrag")),
+                dezimal(vw.path("wirksamer_betrag")), text(vw.path("begruendung")), vw.path("vorschlag_offen").asBoolean());
+    }
+
+    private static BezugsgroesseRegeln.Entwurf entwurf(JsonNode e) {
+        return new BezugsgroesseRegeln.Entwurf(text(e.path("kennzeichen")), text(e.path("name")),
+                text(e.path("wertart")), text(e.path("einheit")), text(e.path("periode_art")),
+                text(e.path("geltung_art")), text(e.path("geltung_id")), text(e.path("art")));
     }
 
     // ------------------------------------------------------------ Die Vektor-Form lesen

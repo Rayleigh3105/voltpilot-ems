@@ -11,7 +11,11 @@ import {
   type Site,
   type SiteEntities,
   type SiteSource,
+  type StandorteAmStichtag,
+  type UemsDatenquelle,
+  type UemsGemeinsameSteuerungZustand,
 } from '../api';
+import { gemeinsameSteuerungAendern, wegDesWechsels } from '../uemsDatenquelle';
 import type { SiteCharging } from '../ladepunkte';
 import {
   BOX_ROLLE,
@@ -30,9 +34,13 @@ import {
 } from '../components/GeraetRahmen';
 import { GeraetBuehne } from '../components/GeraetBuehne';
 import { ConfirmDialog } from '../components/ConfirmDialog';
-import { unclaimConsequences } from '../components/DeviceDrawers';
+import { AddDeviceDrawer, unclaimConsequences } from '../components/DeviceDrawers';
+import { DatenquelleWechselDialog } from '../components/DatenquelleWechselDialog';
+import { DatenquelleAnlegen } from '../components/DatenquelleAnlegen';
+import { Recht } from '../components/Recht';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
-import { anlageRoute, geraetSeiteHash, hashForRoute, pageRoute } from '../nav';
+import { anlageRoute, boxSeiteHash, geraetSeiteHash, hashForRoute, pageRoute } from '../nav';
+import { einstellungenHash } from '../settingsNav';
 import {
   aufzeichnungSeit,
   genauigkeitsSatz,
@@ -99,6 +107,10 @@ export function BoxSeiteSection({
   const [curtailment, setCurtailment] = useState<CurtailmentStatus | null>(null);
   const [edgeVersions, setEdgeVersions] = useState<EdgeVersion[] | null>(null);
   const [charging, setCharging] = useState<SiteCharging | null>(null);
+  const [datenquellen, setDatenquellen] = useState<UemsDatenquelle[] | null>(null);
+  const [gemeinsameSteuerung, setGemeinsameSteuerung] = useState<UemsGemeinsameSteuerungZustand | null>(null);
+  // Wohin der Wechsel einer Steuerquelle zu einem Mitglied führt (T6) — ohne Gemeinsame Steuerung der Bestand.
+  const steuerquelleWeg = wegDesWechsels(true, gemeinsameSteuerung?.zustand ?? null, false, true);
   const [adminView, setAdminView] = useState<GeraetView | null>(null);
   const [adminBusy, setAdminBusy] = useState(false);
   const [adminFehler, setAdminFehler] = useState<string | null>(null);
@@ -106,6 +118,11 @@ export function BoxSeiteSection({
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const [loeschen, setLoeschen] = useState<'purge' | 'entfernen' | null>(null);
+  const [wechselQuelle, setWechselQuelle] = useState<UemsDatenquelle | null>(null);
+  // „Datenquelle anlegen“ braucht den Standort der Anlage (Box-Wahl und Netzlage gelten je Standort).
+  const [standorte, setStandorte] = useState<StandorteAmStichtag | null>(null);
+  const [quelleAnlegen, setQuelleAnlegen] = useState(false);
+  const [tauschOffen, setTauschOffen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -129,8 +146,11 @@ export function BoxSeiteSection({
     soft(api.siteSources(site.id), setSources);
     soft(api.controlStatus(site.id), setControl);
     soft(api.curtailmentStatus(site.id), setCurtailment);
-    soft(api.edgeVersions(), setEdgeVersions);
+    soft(api.edgeVersions().then((antwort) => antwort.eintraege), setEdgeVersions);
     soft(api.siteChargers(site.id), setCharging);
+    soft(api.datenquellen(site.id).then((a) => a.datenquellen), setDatenquellen);
+    soft(api.gemeinsameSteuerung(site.id), setGemeinsameSteuerung);
+    soft(api.standorte(), setStandorte);
     setNow(Date.now());
     if (showTechnicalLayer() && boxDevice) {
       void Promise.all([
@@ -190,6 +210,7 @@ export function BoxSeiteSection({
     });
   }, LIVE_POLL_MS);
 
+  const standortDerAnlage = standorte?.standorte.find((st) => st.anlagen.some((a) => a.id === site.id)) ?? null;
   const view: BoxSeiteView | null = useMemo(() => {
     if (!data) return null;
     return boxSeite({
@@ -203,11 +224,12 @@ export function BoxSeiteSection({
       curtailment,
       geraete: boxGeraeteListe(data.localSetup, sources, charging?.chargers ?? null, now),
       localSetup: data.localSetup,
+      datenquellen,
       now,
     });
   }, [
     data, boxRef, site.name, site.id, devices, devicesFetchedAt, edgeVersions, control,
-    curtailment, sources, charging, now,
+    curtailment, sources, charging, datenquellen, now,
   ]);
 
   // DERSELBE Verlauf wie überall - der Server entscheidet weiterhin, was der
@@ -252,6 +274,15 @@ export function BoxSeiteSection({
             title="Diese Box ist hier nicht (mehr) zu finden"
             description={view.grund ?? ''}
           />
+          {view.auswahl.length > 0 && (
+            <div className="vp-box-auswahl" aria-label="VoltPilot-Box wählen">
+              {view.auswahl.map((b) => (
+                <a key={b.ref} href={boxSeiteHash(site.id, b.ref)}>
+                  {b.name}<Icon name="chevron-right" size={14} />
+                </a>
+              ))}
+            </div>
+          )}
         </Card>
       )}
 
@@ -275,7 +306,9 @@ export function BoxSeiteSection({
               }}
               satz={view.geraete.length > 0
                 ? `${liefern} von ${view.geraete.length} ${view.geraete.length === 1 ? 'Gerät liefert' : 'Geräten liefern'} Daten.`
-                : view.geraeteLeer}
+                : view.quellen.length > 0 && view.quellenSatz
+                  ? `${view.quellenSatz}.`
+                  : view.geraeteLeer}
               satzTon={view.zustand.ton}
               grafik={{ art: 'box', verbunden, geraete: view.geraete.length }}
               // Die Software-Version steht in „Gerät & Verbindung" (auch im
@@ -289,12 +322,58 @@ export function BoxSeiteSection({
           ),
         };
 
-        // --- Zusatz: die Geräte AN der Box ------------------------------------
+        // --- Zusatz: zuerst die Quellen der Box (UEMS AP-06 IP-16), dann ihre Geräte ---
         const modul: BausteinInhalt = {
-          titel: 'Geräte an dieser Box',
+          titel: 'Datenquellen und Geräte',
           inhalt: (
             <>
-              {view.geraeteLeer && <p className="vp-note">{view.geraeteLeer}</p>}
+              {view.quellenSatz && (
+                <div className="vp-box-quellen" data-testid="box-quellen">
+                  <div className="vp-box-quellen-kopf">
+                    <h3>{view.quellenSatz}</h3>
+                    {view.budgetSumme && <span>{view.budgetSumme}</span>}
+                  </div>
+                  {view.quellen.length === 0 ? <p className="vp-note">Diese Box liest noch keine Datenquelle.</p> : (
+                    <ul>
+                      {view.quellen.map((q) => (
+                        <li key={q.id}>
+                          <span className={`vp-health-dot vp-health-${q.ton}`} />
+                          <div>
+                            <b>{q.titel}</b>
+                            <span>{q.weg}</span>
+                            <span>{[q.zustand, q.fehlerklasse, q.seit].filter(Boolean).join(' · ')}</span>
+                            <small>{q.budget}</small>
+                            {/* AP-15 IP-26: der Weg zu einem Mitglied — vor dem Scharfschalten bleibt der Knopf, der Server
+                                urteilt je Ziel-Box; scharf oder angehalten nur „Gemeinsame Steuerung ändern“. */}
+                            {datenquellen?.find((d) => d.id === q.id)?.steuerquelle
+                              && steuerquelleWeg !== 'innerhalb_der_gemeinsamen_steuerung' ? (
+                              steuerquelleWeg === 'gemeinsame_steuerung_aendern'
+                                ? <small data-testid="steuerquelle-weg">
+                                  <a href={einstellungenHash(site.id, 'gemeinsam')}>{gemeinsameSteuerungAendern(q.kennzeichen)}</a>
+                                </small>
+                                : <small>Diese Quelle steuert — ihre Box kann erst mit der gemeinsamen Optimierung mehrerer Boxen wechseln.</small>
+                            ) : (
+                              <Recht aktion="datenquelle.zustaendigkeit"><button type="button" className="vp-box-quellen-aktion"
+                                onClick={() => setWechselQuelle(datenquellen?.find((d) => d.id === q.id) ?? null)}>
+                                Zuständige Box wechseln
+                              </button></Recht>
+                            )}
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {/* Datenquellen entstehen hier, an der Box, die sie liest — nicht mehr nur im Messen-Assistenten. */}
+                  {standortDerAnlage && (
+                    <Recht aktion="datenquelle.bearbeiten"><button type="button" className="vp-box-quellen-aktion" onClick={() => setQuelleAnlegen(true)}>
+                      <Icon name="plus" size={14} /> Datenquelle anlegen
+                    </button></Recht>
+                  )}
+                </div>
+              )}
+              {view.geraeteLeer && (
+                <p className="vp-note">{view.quellen.length > 0 ? KEINE_GERAETE_ABER_QUELLEN : view.geraeteLeer}</p>
+              )}
               {view.geraete.length > 0 && (
                 <>
                   <ul className="vp-geraet-liste" data-testid="box-geraete">
@@ -350,6 +429,16 @@ export function BoxSeiteSection({
           inhalt: (
             <>
               <ZeilenListe zeilen={detailZeilen} />
+              {view.faehigkeiten && (
+                <div className="vp-box-faehigkeiten" data-testid="box-faehigkeiten">
+                  <b>{view.faehigkeiten}</b>
+                  {view.updateNoetig && (
+                    <a href={hashForRoute(pageRoute('edge-updates'))}>
+                      Update planen <Icon name="chevron-right" size={14} />
+                    </a>
+                  )}
+                </div>
+              )}
               {netzwerk?.url && (
                 <p className="vp-geraet-sec-sub">
                   <a className="vp-box-oberflaeche" href={netzwerk.url} target="_blank" rel="noreferrer">
@@ -396,10 +485,13 @@ export function BoxSeiteSection({
           });
         }
 
-        // V7: das Unumkehrbare im Menü „⋯" - mit denselben Folgen wie bisher.
+        // V7: das Unumkehrbare im Menü „⋯" - mit denselben Folgen wie bisher;
+        // „Box tauschen" (UEMS AP-06, E7 = A) steht als Handlung davor. Jeder
+        // Eintrag trägt die Rechte-Weiche (AP-03 IP-12) wie vorher sein Knopf.
         const menue: MenueEintrag[] = boxDevice ? [
-          { key: 'purge', label: 'Datenaufzeichnungen löschen …', icon: 'trash', danger: true, onClick: () => setLoeschen('purge') },
-          { key: 'entfernen', label: 'Gerät entfernen …', icon: 'trash', danger: true, onClick: () => setLoeschen('entfernen') },
+          { key: 'tauschen', label: 'Box tauschen', icon: 'refresh-cw', onClick: () => setTauschOffen(true), recht: 'datenquelle.zustaendigkeit' },
+          { key: 'purge', label: 'Datenaufzeichnungen löschen …', icon: 'trash', danger: true, onClick: () => setLoeschen('purge'), recht: 'aufzeichnungen.loeschen' },
+          { key: 'entfernen', label: 'Gerät entfernen …', icon: 'trash', danger: true, onClick: () => setLoeschen('entfernen'), recht: 'komponente.loeschen' },
         ] : [];
 
         return (
@@ -433,9 +525,30 @@ export function BoxSeiteSection({
           onRemoved={onDeviceRemoved}
         />
       )}
+      {wechselQuelle && <DatenquelleWechselDialog quelle={wechselQuelle} devices={devices ?? []}
+        onClose={() => setWechselQuelle(null)} onChanged={(neu) => {
+          setDatenquellen((alt) => alt?.map((q) => q.id === neu.id ? neu : q) ?? [neu]);
+          setWechselQuelle(neu);
+        }} />}
+      {quelleAnlegen && standortDerAnlage && (
+        <DatenquelleAnlegen
+          anlage={{ id: site.id, name: site.name }}
+          standortId={standortDerAnlage.id}
+          anlagenAmStandort={standortDerAnlage.anlagen.map((a) => a.id)}
+          onClose={() => {
+            setQuelleAnlegen(false);
+            setReloadKey((k) => k + 1);
+          }}
+        />
+      )}
+      {tauschOffen && boxDevice && <AddDeviceDrawer open onClose={() => setTauschOffen(false)}
+        sites={[site]} onClaimed={() => {}} nachfolgerVon={boxDevice} datenquellen={datenquellen ?? []} />}
     </div>
   );
 }
+
+/** Eine Box, die über Datenquellen liest, ist nicht „ohne Gerät“ — sie hat nur keine angelegten Geräte-Karten. */
+const KEINE_GERAETE_ABER_QUELLEN = 'Keine Geräte angelegt — die Box liest über die Datenquellen oben.';
 
 /** Ein Gerät AN der Box - eine Zeile mit dem Weg auf seine eigene Seite. */
 function BoxGeraetZeile({

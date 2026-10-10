@@ -1,3 +1,5 @@
+import { useRollen } from '../rollen';
+import { Recht } from './Recht';
 import { useEffect, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, type Messstelle, type MessstelleFormel, type MessstelleWert } from '../api';
@@ -7,6 +9,7 @@ import { ladeSiteGesamtwerte as ladeQuellen } from '../gesamtwertQuelle';
 import { ConfirmDialog } from './ConfirmDialog';
 import { PROTOKOLL_LABEL, ProtokollDialog } from './ProtokollDialog';
 import { RowMenu, type RowMenuItem } from './RowMenu';
+import { WERTE_LABEL, WerteDialog } from './WerteDialog';
 import './Gesamtwert.css';
 
 /**
@@ -45,11 +48,14 @@ export function GesamtwertKarten({
    */
   eingebettet?: boolean;
 }) {
+  const rechte = useRollen();
   const [zeilen, setZeilen] = useState<GwZeile[] | null>(null);
   const [umbenennen, setUmbenennen] = useState<{ id: string; name: string } | null>(null);
   const [archivieren, setArchivieren] = useState<GwZeile | null>(null);
   // Das Änderungsprotokoll JE MESSSTELLE (AP-04 IP-21) — es liest nur.
   const [protokoll, setProtokoll] = useState<GwZeile | null>(null);
+  // Die Tages- und Monatswerte JE MESSSTELLE (AP-08 IP-11) — sie lesen nur.
+  const [werte, setWerte] = useState<GwZeile | null>(null);
   const [busy, setBusy] = useState(false);
   const [neuLaden, setNeuLaden] = useState(0);
 
@@ -67,7 +73,7 @@ export function GesamtwertKarten({
   const auffrischen = () => setNeuLaden((n) => n + 1);
 
   const anhalten = async (z: GwZeile, an: boolean) => {
-    if (busy) return;
+    if (busy || !rechte.darf("messstelle.bearbeiten")) return;
     setBusy(true);
     try {
       if (an) await api.messstelleAnhalten(z.messstelle.id);
@@ -79,7 +85,7 @@ export function GesamtwertKarten({
   };
 
   const speichereName = async () => {
-    if (!umbenennen || busy) return;
+    if (!umbenennen || busy || !rechte.darf("messstelle.bearbeiten")) return;
     setBusy(true);
     try {
       const z = zeilen?.find((x) => x.messstelle.id === umbenennen.id);
@@ -98,7 +104,7 @@ export function GesamtwertKarten({
   };
 
   const bestaetigeArchiv = async () => {
-    if (!archivieren || busy) return;
+    if (!archivieren || busy || !rechte.darf("messstelle.bearbeiten")) return;
     setBusy(true);
     try {
       await api.messstelleArchivieren(archivieren.messstelle.id);
@@ -118,9 +124,9 @@ export function GesamtwertKarten({
         <div className="vp-gwk-head">
           <h3>Zusammengestellte Werte</h3>
           {onNeu && (
-            <button type="button" className="vp-gwk-neu" onClick={onNeu}>
+            <Recht aktion="messstelle.formel"><button type="button" className="vp-gwk-neu" onClick={onNeu}>
               <Icon name="plus" size={15} /> {SUMMENWERT}
-            </button>
+            </button></Recht>
           )}
         </div>
       )}
@@ -138,6 +144,7 @@ export function GesamtwertKarten({
             onUmbenennen={() => setUmbenennen({ id: z.messstelle.id, name: z.messstelle.name ?? '' })}
             onArchivieren={() => setArchivieren(z)}
             onProtokoll={() => setProtokoll(z)}
+            onWerte={() => setWerte(z)}
           />
         ))}
       </div>
@@ -149,8 +156,16 @@ export function GesamtwertKarten({
         onClose={() => setProtokoll(null)}
       />
 
+      <WerteDialog
+        key={werte?.messstelle.id ?? 'zu'}
+        open={werte != null}
+        kennzeichen={werte?.messstelle.kennzeichen ?? null}
+        titel={werte ? `${werte.messstelle.kennzeichen} · ${werte.messstelle.name || SUMMENWERT}` : SUMMENWERT}
+        onClose={() => setWerte(null)}
+      />
+
       <ConfirmDialog
-        open={archivieren != null}
+        open={archivieren != null && rechte.darf("messstelle.bearbeiten")}
         title={`„${archivieren?.messstelle.name ?? SUMMENWERT}" archivieren?`}
         intro="Der Wert verschwindet aus Übersicht und Verlauf — seine bisherige Definition und sein Verlauf bleiben aber erhalten."
         consequences={[
@@ -178,6 +193,7 @@ function Karte({
   onUmbenennen,
   onArchivieren,
   onProtokoll,
+  onWerte,
 }: {
   zeile: GwZeile;
   bearbeiten: { id: string; name: string } | null;
@@ -189,14 +205,23 @@ function Karte({
   onUmbenennen: () => void;
   onArchivieren: () => void;
   onProtokoll: () => void;
+  onWerte: () => void;
 }) {
   const { messstelle: m, wert } = zeile;
   const angehalten = m.lebenszyklus === 'angehalten';
+  const chipZustand = angehalten
+    ? 'angehalten'
+    : wert == null
+      ? 'nicht abrufbar'
+      : wert.unvollstaendig
+        ? 'unvollständig'
+        : 'vollständig';
   const menu: RowMenuItem[] = [
-    { label: 'Umbenennen', icon: 'pencil', onClick: onUmbenennen },
-    { label: angehalten ? 'Fortsetzen' : 'Anhalten', icon: angehalten ? 'refresh-cw' : 'eye-off', onClick: onAnhalten },
+    { recht: 'messstelle.bearbeiten', label: 'Umbenennen', icon: 'pencil', onClick: onUmbenennen },
+    { recht: 'messstelle.bearbeiten', label: angehalten ? 'Fortsetzen' : 'Anhalten', icon: angehalten ? 'refresh-cw' : 'eye-off', onClick: onAnhalten },
+    { label: WERTE_LABEL, icon: 'calendar', onClick: onWerte },
     { label: PROTOKOLL_LABEL, icon: 'history', onClick: onProtokoll },
-    { label: 'Archivieren', icon: 'trash', danger: true, onClick: onArchivieren },
+    { recht: 'messstelle.bearbeiten', label: 'Archivieren', icon: 'trash', danger: true, onClick: onArchivieren },
   ];
 
   return (
@@ -218,9 +243,9 @@ function Karte({
               }}
               aria-label="Name"
             />
-            <button type="button" aria-label="Speichern" disabled={busy || !bearbeiten.name.trim()} onClick={onNameSpeichern}>
+            <Recht aktion="messstelle.bearbeiten"><button type="button" aria-label="Speichern" disabled={busy || !bearbeiten.name.trim()} onClick={onNameSpeichern}>
               <Icon name="check" size={16} />
-            </button>
+            </button></Recht>
             <button type="button" aria-label="Abbrechen" onClick={onNameAbbrechen}>
               <Icon name="x" size={16} />
             </button>
@@ -228,7 +253,17 @@ function Karte({
         ) : (
           <span className="vp-gwk-name">{m.name || SUMMENWERT}</span>
         )}
-        {!bearbeiten && <span className="vp-gwk-chip calc">berechnet</span>}
+        {!bearbeiten && (
+          <button
+            type="button"
+            className="vp-gwk-chip calc"
+            data-zustand={chipZustand}
+            aria-label={`${m.name || SUMMENWERT}: Herkunft und Werte öffnen (${chipZustand})`}
+            onClick={onWerte}
+          >
+            berechnet · {chipZustand}
+          </button>
+        )}
         {!bearbeiten && (
           <span className="vp-gwk-menu">
             <RowMenu items={menu} />

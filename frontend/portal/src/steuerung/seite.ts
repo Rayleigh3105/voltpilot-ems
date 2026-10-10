@@ -5,16 +5,20 @@
 import { liste } from './liste';
 import type { SiteProfile } from '../profiles';
 import {
+  ANGEHALTEN_ZUSTAND,
   SPEICHER,
   geraete,
+  jetztWerte,
   ordnen,
   reihen,
   reihenfolgeAus,
   speicherBild,
   type GeraetBild,
+  type JetztWerte,
   type Reihen,
   type SpeicherBild,
 } from './bild';
+import { funktionsLage, type FunktionsLage } from './funktion';
 import { einordnen, type Einordnung } from './neu';
 import { bezugAus, greift, regelKarten } from './regeln';
 import type { SteuerungDaten } from './useSteuerungDaten';
@@ -40,6 +44,10 @@ export interface SeitenBild {
   ladepunkte: GeraetBild[];
   /** Die laufende Szene (E6), sonst `null`. */
   szene: SzenenStand | null;
+  /** „Steuern & Optimieren“ dieser Anlage: Ruhe, Teilnahme, Bänder, Sperre. */
+  funktion: FunktionsLage;
+  /** Die jüngste Telemetrie, nur gemessen (≤ 20 Minuten) - die Quelle der Messen-Ansicht. */
+  jetztGemessen: JetztWerte | null;
 }
 
 /** Das Betriebsmodell, das den Speicher gerade fährt (die exklusive Gruppe). */
@@ -47,8 +55,9 @@ export function laufendesModell(profiles: SiteProfile[] | null | undefined): Sit
   return liste(profiles).find((p) => p.exklusivGruppe === 'speicher' && p.active) ?? null;
 }
 
-export function seitenBild(d: SteuerungDaten, now: Date): SeitenBild {
+export function seitenBild(d: SteuerungDaten, now: Date, siteId = ''): SeitenBild {
   const r = raster(now);
+  const funktion = funktionsLage(d.funktionen, siteId);
   const rh = reihen({ raster: r, verlauf: d.verlauf, plan: d.plan, preise: d.preise, wetter: d.wetter, live: d.live });
   // Welche aktive Regel greift gerade? (Die Bedingung gilt jetzt.)
   const regelJetzt: Record<string, string> = {};
@@ -71,13 +80,14 @@ export function seitenBild(d: SteuerungDaten, now: Date): SeitenBild {
     gemessen: d.gemessen,
     regelJetzt,
     szene: szene ? { name: szene.def.name, ids: szene.ids } : null,
+    angehalten: funktion.angehalten,
   });
   const reihenfolge = reihenfolgeAus(d.verbraucher?.rangliste);
   const batterie = liste(d.assets).find((a) => a.type === 'battery') ?? null;
   const hatSpeicher = reihenfolge.includes(SPEICHER) || batterie != null;
   const { rang, rest } = ordnen(reihenfolge, gs, hatSpeicher);
   const speicherName = liste(d.verbraucher?.rangliste).find((e) => e.art === 'speicher')?.name ?? null;
-  const speicher = hatSpeicher
+  const sp = hatSpeicher
     ? speicherBild({
         raster: r,
         reihen: rh,
@@ -87,8 +97,16 @@ export function seitenBild(d: SteuerungDaten, now: Date): SeitenBild {
         reservePct: d.plan?.effectiveFloorSocPct ?? null,
       })
     : null;
+  // Angehalten (SZ-2 A): das Betriebsmodell wirkt nicht - der Speicher sagt es wie jedes Gerät.
+  const speicher = sp && funktion.angehalten ? { ...sp, pill: ANGEHALTEN_ZUSTAND.pill, warum: ANGEHALTEN_ZUSTAND.kurz } : sp;
   const bis = d.interventions?.automationPaused ? Date.parse(d.interventions.pausedUntil ?? '') : NaN;
   const modell = laufendesModell(d.profiles?.profiles);
+  const einordnung = einordnen(gs, d.vorschlaege, r.nowMs);
+  if (funktion.ohneTeilnahme) {
+    // Steuern-Regel #779: wer nicht teilnimmt, bekommt keinen Vorschlag.
+    einordnung.still = einordnung.neu;
+    einordnung.neu = [];
+  }
   const iv = liste(d.interventions?.interventions).find(
     (x) => /^speicher_/.test(x.kind) && Date.parse(x.endsAt) > r.nowMs,
   );
@@ -100,12 +118,14 @@ export function seitenBild(d: SteuerungDaten, now: Date): SeitenBild {
     reihenfolge: [...rang, ...rest],
     rang,
     rest,
-    einordnung: einordnen(gs, d.vorschlaege, r.nowMs),
+    einordnung,
     pausiertBisMs: d.interventions?.automationPaused ? (Number.isFinite(bis) ? bis : r.nowMs) : null,
     speicherEingriff: iv ? { art: iv.kind === 'speicher_laden' ? 'an' : 'aus', bisMs: Date.parse(iv.endsAt) } : null,
     betriebsmodell: modell?.label ?? 'Eigenverbrauch',
     ladepunkte: gs.filter((g) => g.eintrag.ladepunkt),
     szene,
+    funktion,
+    jetztGemessen: jetztWerte(d.live, r.nowMs),
   };
 }
 
@@ -113,7 +133,9 @@ export function seitenBild(d: SteuerungDaten, now: Date): SeitenBild {
 export type BlattZustand =
   | { art: 'geraet'; id: string; modus?: 'aus' | 'an' }
   | { art: 'speicher' }
+  /** „Steuerung anhalten“: die Dauern der Pause und „Bis ich fortsetze“ (SZ-2 A). */
   | { art: 'pause' }
+  | { art: 'fortsetzen' }
   | { art: 'vorrang' }
   | { art: 'p14a' }
   | { art: 'negativ' }
