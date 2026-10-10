@@ -53,6 +53,10 @@ cd "$(dirname "$0")/.."
 #   224,57  V-01 (Grenze 230)  — vier Hilfs-Module statt ganzer Fach-Module
 #   357,89  uems am 09.10.2026 — der Wächter war rot (Gesamtlauf vor uems → main)
 #   252,37  UEMS-Schnitt (Grenze 256) — firstmate-Entscheid `bel-grenze-230` = B
+#   259,77  main → mispel am 10.10.2026 — der Wächter war rot: `speicherAussage.ts` (MiSpeL
+#           MP-18c) holte drei Wörter aus `glossar.ts` und damit das ganze Glossar zurück
+#   253,81  MiSpeL-Nachzug (Grenze 256) — die drei Wörter stehen in `glossarEinstieg.ts`;
+#           die +1,44 kB über `main` sind `speicherAussage.ts`, `main.tsx` und `api.ts`
 #
 # WAS DER UEMS-SCHNITT HERAUSGENOMMEN HAT (−105,52 kB gz, ohne eine Funktion zu ändern):
 #   Der Sammelzweig `uems` hatte 71 Quellen neu im Einstieg. Zwei Flächen sind

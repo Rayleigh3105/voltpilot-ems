@@ -221,9 +221,9 @@ export const STEUERUNG_SZENE = {
  * „Netzladen nach MiSpeL“ mit den Viertelstunden-Mengen (1)¼ und (2)¼. Dieselben Wörter in Cockpit, Verlauf ›
  * Erlöse, Fahrplan und Portfolio (`speicherAussage.ts`).
  */
-export const MISPEL_NETZLADEN = 'Netzladen nach MiSpeL';
-export const MISPEL_STROMRECHNUNG = 'auf der Stromrechnung';
-export const MISPEL_GUTSCHRIFT = 'Gutschrift nach Anlage 1';
+export { MISPEL_NETZLADEN } from './glossarEinstieg';
+export { MISPEL_STROMRECHNUNG } from './glossarEinstieg';
+export { MISPEL_GUTSCHRIFT } from './glossarEinstieg';
 
 /**
  * MiSpeL MP-41c (Bedienkonzept BK-41c = A/A/A, Captain 05.10.2026; `docs/fachmodell/glossar.md` › Zurückspeisen ruht,
