@@ -17,7 +17,10 @@ import { normalizeDeviceIdInput } from '../anlageFlow';
 import {
   boxBefehl,
   dauerOptionen,
+  nurNetzwegSatz,
   schluesselGueltig,
+  sshSchluesselPruefen,
+  sshText,
   technikerKonfig,
   technikerOptionen,
   UNBEKANNT_SATZ,
@@ -29,6 +32,7 @@ import {
   type FernwartungTechnikerAntwort,
   type Lage,
 } from '../adminFernwartung';
+import { SshErzeugenHinweis, SshFingerabdruck, SshSchluesselFeld } from './FernwartungSsh';
 import { VpPicker } from './VpPicker';
 
 /** Eine Lage-Zeile (Server, Tunnel-Dienst): Ton, Titel, ein Satz. */
@@ -95,6 +99,7 @@ export function FensterDialog({
   if (!box) return null;
   const grundFehler = grund.trim().length < 3 ? 'Ein Grund ist Pflicht (mindestens 3 Zeichen).' : null;
   const technikerFehler = technikerId ? null : 'Bitte einen Techniker-Zugang wählen.';
+  const gewaehlt = techniker.find((t) => t.id === technikerId) ?? null;
 
   async function absenden() {
     setGeprueft(true);
@@ -123,7 +128,7 @@ export function FensterDialog({
     <Modal
       open
       onClose={onClose}
-      title={`Fernwartung öffnen · ${box.edgeRef}`}
+      title="Fernwartung öffnen"
       icon={<Kopf icon="lock" />}
       footer={
         <>
@@ -136,6 +141,10 @@ export function FensterDialog({
         </>
       }
     >
+      {/* Die Box steht hier und nicht im Titel: der ist einzeilig und schnitte sie am Telefon ab. */}
+      <p className="vp-fw-umbruch" style={{ marginTop: 0 }} data-testid="fw-fenster-box">
+        Box {box.edgeRef} ({box.adresse})
+      </p>
       <p className="vp-note" style={{ marginTop: 0 }}>
         Der Techniker erreicht die Box über den Wartungstunnel nur in diesem Zeitfenster; danach
         schließt der Server den Weg von selbst. {UNBEKANNT_SATZ}
@@ -150,6 +159,16 @@ export function FensterDialog({
           placeholder="Zugang wählen"
         />
         {geprueft && technikerFehler && <p className="vp-alert vp-alert-err">{technikerFehler}</p>}
+        {gewaehlt &&
+          (gewaehlt.sshFingerabdruck ? (
+            <p className="vp-note vp-fw-umbruch" style={{ margin: 0 }} data-testid="fw-fenster-ssh">
+              SSH-Schlüssel dieses Zugangs: {sshText(gewaehlt)}
+            </p>
+          ) : (
+            <p className="vp-alert vp-alert-warn" style={{ margin: 0 }} data-testid="fw-fenster-nur-netzweg">
+              {nurNetzwegSatz(gewaehlt.name)}
+            </p>
+          ))}
         <VpPicker
           id="fw-fenster-dauer"
           label="Dauer *"
@@ -367,6 +386,7 @@ export function TechnikerDialog({
 }) {
   const [name, setName] = useState('');
   const [key, setKey] = useState('');
+  const [ssh, setSsh] = useState('');
   const [notiz, setNotiz] = useState('');
   const [busy, setBusy] = useState(false);
   const [fehler, setFehler] = useState<string | null>(null);
@@ -374,11 +394,13 @@ export function TechnikerDialog({
   const [geprueft, setGeprueft] = useState(false);
   const nameFeld = useRef<HTMLInputElement>(null);
   const keyFeld = useRef<HTMLInputElement>(null);
+  const sshFeld = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     if (!offen) return;
     setName('');
     setKey('');
+    setSsh('');
     setNotiz('');
     setFehler(null);
     setAntwort(null);
@@ -390,11 +412,14 @@ export function TechnikerDialog({
   const keyFehler = schluesselGueltig(key)
     ? null
     : 'Das ist kein öffentlicher WireGuard-Schlüssel (44 Zeichen Base64, endet auf „=“).';
+  // Der SSH-Schlüssel ist freiwillig; ein eingetragener muss aber stimmen.
+  const sshPruefung = ssh.trim() ? sshSchluesselPruefen(ssh) : null;
+  const sshFehler = sshPruefung && !sshPruefung.ok ? sshPruefung.fehler : null;
 
   async function absenden() {
     setGeprueft(true);
-    if (nameFehler || keyFehler) {
-      (nameFehler ? nameFeld : keyFeld).current?.focus();
+    if (nameFehler || keyFehler || sshFehler) {
+      (nameFehler ? nameFeld : keyFehler ? keyFeld : sshFeld).current?.focus();
       return;
     }
     setBusy(true);
@@ -404,6 +429,7 @@ export function TechnikerDialog({
         name: name.trim(),
         publicKey: key.trim(),
         notiz: notiz.trim() || null,
+        sshPublicKey: ssh.trim() || null,
       });
       setAntwort(a);
       onFertig();
@@ -438,12 +464,24 @@ export function TechnikerDialog({
       }
     >
       {antwort ? (
-        <TechnikerKonfigAnzeige techniker={antwort.techniker} server={antwort.server} neu />
+        <div className="vp-form-stack">
+          <TechnikerKonfigAnzeige techniker={antwort.techniker} server={antwort.server} neu />
+          {antwort.techniker.sshFingerabdruck ? (
+            <SshFingerabdruck techniker={antwort.techniker} />
+          ) : (
+            <p className="vp-alert vp-alert-warn" style={{ margin: 0 }} data-testid="fw-techniker-ohne-ssh">
+              Kein SSH-Schlüssel hinterlegt: Fenster für diesen Zugang öffnen nur den Netzweg. Er lässt
+              sich später am Zugang unter „SSH-Schlüssel“ nachtragen.
+            </p>
+          )}
+        </div>
       ) : (
         <>
           <p className="vp-note" style={{ marginTop: 0 }}>
-            Ein Zugang je Gerät. Das Schlüsselpaar entsteht auf dem Gerät des Technikers
-            (<code>wg genkey | tee privat.key | wg pubkey</code>); hier kommt nur der öffentliche Teil hin.
+            Ein Zugang je Gerät. Beide Schlüsselpaare entstehen auf dem Gerät des Technikers; hier kommen
+            nur die öffentlichen Teile hin. WireGuard öffnet den Weg zum Wartungsserver
+            (<code>wg genkey | tee privat.key | wg pubkey</code>), der SSH-Schlüssel ist für die Anmeldung
+            an der Box.
           </p>
           <div className="vp-form-stack">
             <Input
@@ -465,6 +503,14 @@ export function TechnikerDialog({
               error={geprueft ? keyFehler : null}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setKey(e.target.value)}
             />
+            <SshSchluesselFeld
+              id="fw-techniker-ssh"
+              wert={ssh}
+              onChange={setSsh}
+              fehler={geprueft ? sshFehler : null}
+              feld={sshFeld}
+            />
+            <SshErzeugenHinweis />
             <Input
               label="Notiz"
               value={notiz}

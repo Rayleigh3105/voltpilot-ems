@@ -35,7 +35,6 @@ import {
   ebenenOrt,
   ebenenReiter,
   ebenenTitel,
-  flottenEintraege,
   istDetailseite,
   type EbenenLesemodell,
   type EbenenSeiten,
@@ -69,7 +68,6 @@ import {
   anlageRoute,
   berichtRoute,
   hashForRoute,
-  isPortfolioPage,
   kennzahlRoute,
   messstelleRoute,
   pageRoute,
@@ -219,6 +217,13 @@ const messenArt = params.get('messen') === 'bestand' ? 'bestand' : 'eingerichtet
  */
 const MESSEN_ENTWURF = params.get('messen') === 'entwurf';
 const ZUORDNUNG_OFFEN = params.get('zuordnung') === 'offen';
+/**
+ * firstmate K2 (09.10.2026): `&messenWerk=` überschreibt NUR Werk Ahrenbergs Messen-Zustand (Lindach bleibt bei
+ * `messenArt`) — für einen Unternehmens-Kunden, bei dem EIN Standort schon misst (die Unternehmensebene ist also
+ * die Landung, startEbene braucht nur „mindestens einen"), ein ANDERER aber noch nicht (seine eigene Karte
+ * „Funktionen“ zeigt weiterhin „Noch nicht eingerichtet"). Ohne diesen Parameter bleibt die Bühne zeichengleich.
+ */
+const messenWerkArt = params.get('messenWerk') === 'bestand' ? 'bestand' : params.get('messenWerk') === 'eingerichtet' ? 'eingerichtet' : messenArt;
 /**
  * AP-13 IP-9: `&ansicht=kostenstellen` / `&ansicht=prozesse` öffnen „Unternehmen › Messstellen“ im Reiter (die Adresse
  * trägt `?reiter=`, dazu `&periode=&am=` aus der Bühnen-Adresse); die Kostenstellen tragen dort ihre echte Gültigkeit
@@ -1350,7 +1355,7 @@ async function nichtGestellt(): Promise<never> {
 /** `GET /funktionen` der Szene: beide Funktionen je sichtbarem Standort — dieselbe Antwort für Schale und Seite. */
 function funktionenDerSzene() {
   const basis = ahrenbergFunktionen({
-    standorte: [funktionWerkAhrenberg(messenArt), funktionWerkLindach(messenArt)]
+    standorte: [funktionWerkAhrenberg(messenWerkArt), funktionWerkLindach(messenArt)]
       .filter((f) => szene.liste.standorte.some((s) => s.id === f.id))
       .map(ohneAnlage),
   });
@@ -1359,6 +1364,12 @@ function funktionenDerSzene() {
       ...s,
       messen: { zustand: 'entwurf' as const, seit: null, text: 'Messen & Auswerten — Entwurf', fehlt: [], datenlage: null },
     }));
+  } else if (params.get('messenWerk') === 'entwurf') {
+    // Wie MESSEN_ENTWURF, aber nur für Werk Ahrenberg (Lindach bleibt bei `messenArt`, siehe oben).
+    basis.standorte = basis.standorte.map((s) => s.id !== FIXTURE_IDS.st1 ? s : {
+      ...s,
+      messen: { zustand: 'entwurf' as const, seit: null, text: 'Messen & Auswerten — Entwurf', fehlt: [], datenlage: null },
+    });
   }
   if (vorschauArt === 'steuerkunde' || !vorschauArt) return basis;
   return {
@@ -1435,7 +1446,9 @@ function Vorschau() {
   const [, setRevision] = useState(0);
   const rahmen = { isAdmin: false, loaded: true, tenantReady: true, betriebsart: 'endkunde' as const };
   const orte = orteAus(szene.liste, szene.unternehmen);
-  const ebene = startEbene({ ...rahmen, siteIds, orte, eingeschraenkt: !rollenMoment.unternehmensweit });
+  // firstmate K2: dieselbe `GET /funktionen`-Antwort wie das Lesemodell unten (`funktionenDerSzene`) —
+  // `?messen=bestand`/`?messen=entwurf` lässt die Bühne gezielt einen nicht messenden Standort stellen.
+  const ebene = startEbene({ ...rahmen, siteIds, orte, eingeschraenkt: !rollenMoment.unternehmensweit, funktionen: funktionenDerSzene() });
   // D6 wie `App.tsx`: mit mehreren Standorten heißt die Flotten-Ebene wie das Unternehmen.
   const FLOTTE = flottenName(rahmen.betriebsart, ebene);
   const shell: ShellInput = { ...rahmen, siteCount: siteIds.length, ebene };
@@ -1561,14 +1574,14 @@ function Vorschau() {
   const standortBereich = standortBereichFuer(route, lesemodell);
   const ort = site ? null : ebenenOrt(route, ebene);
   const seiten = KUENFTIG ? ALLE_SEITEN_KUENFTIG : undefined;
-  // N3 wie `App.tsx`: die Flotte ohne Standorte hat dieselben Einträge wie jede Ebene.
-  const flotteHier = !site && !ort && ebene.art === 'heute' && flotte && isPortfolioPage(route.page);
+  // firstmate K2, wie `App.tsx`: solange kein Standort misst, bleibt die Navigation zeichengleich
+  // zu main — kein N3-Eintrag „Standorte" für die Flotte ohne Ebene mehr.
   const kacheln = (
-    ort ? ebenenLeiste(ort, lesemodell, seiten, route.page) : flotteHier ? flottenEintraege({ standorte: true, geldWelt: false, offen: route.page }) : []
+    ort ? ebenenLeiste(ort, lesemodell, seiten, route.page) : []
   ).filter(k => ansicht !== 'bezugsgroessen-b' || k.key !== 'bezugsgroessen');
   const aktivHier = ansicht === 'bezugsgroessen-b' ? 'messstellen' as const : ebenenAktiv(route.page, standortBereich);
   const ebenenNav =
-    (ort || flotteHier) && kacheln.length > 0
+    ort && kacheln.length > 0
       ? {
           titel: ort ? ebenenTitel(ort, lesemodell, szene.unternehmen.name ?? '') : `Bereiche von ${FLOTTE}`,
           kacheln,
@@ -1602,6 +1615,8 @@ function Vorschau() {
     <PortfolioTabs
       page={page}
       showErloese={false}
+      // firstmate K2, wie `App.tsx`: kein Reiter „Standorte", solange kein Standort misst.
+      showStandorte={ebene.art !== 'heute'}
       showMessstellen={bereiche.includes('messstellen')}
       showBezugsgroessen={ansicht !== 'bezugsgroessen-b' && ebenenBereiche({ art: 'unternehmen' }, lesemodell).some(b => b.key === 'bezugsgroessen')}
       showKennzahlen={bereiche.includes('kennzahlen')}

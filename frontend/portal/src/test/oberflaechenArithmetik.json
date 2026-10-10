@@ -13,7 +13,8 @@
     "anlageEnergiebilanz ./uemsBewertung:nenner und :prozent (Konzept Auswerten a1 §6.9, Entscheid 5): das Ganze der Karte (Zufluss − Abfluss) und jeder Anteil kommen aus dem Vertrags-Zwilling der Bewertung (AP-16 KR4) - dieselbe Regel, mit der die Bewertung „x % der Anlage“ nennt; ./dez:dez/dezVon nur zur Übergabe der gelieferten Mengen an den Zwilling, ./dez:dezVergleich nur zur Sortierung der Unterzähler nach gelieferter Menge, ./bewertung:prozentText nur zur Anzeige.",
     "verbrauch ./uemsBewertung:nenner und :prozent, ./uemsBericht:vergleich (Konzept Auswerten a1 §6.3, Review r3 zu #1417): den Hauptzähler je Monat summiert der Zwilling der Bewertung über ALLE Anlagen der Rangliste (fehlt einer die Zeile oder der Wert, ist der Monat ohne Zahl), den Anteil des Rests ohne Messabdeckung ebenso (AP-16 KR4); das Δ gegen das Vorjahr und zwischen zwei Monaten bildet der Zwilling des Vergleichs (DA1). ./dez:dez/dezVergleich nur für Vorzeichen, Schwelle 0,5 % und Reihenfolge gelieferter Beträge, ./uemsErgebnis:zahlMitStellen nur zur Anzeige. Number(menge) nur für toLocaleString und Balken-/Säulengeometrie; mengeImSatz skaliert nur die Anzeige („2,5 Millionen kWh“).",
     "einsatzSeite ./uemsBewertung:menge (Konzept Auswerten a1 §6.8, Review r3 zu #1417): die Monatslinie eines Bereichs summiert der Zwilling über seine Zähler (dieselbe B3-Regel wie die Menge der Rangliste; ein fehlender oder unvollständiger Zähler macht den Monat zur Lücke); ./dez:dez/dezVergleich nur zum Abgleich dieser Summe mit der gelieferten Menge des Bereichs, ./uemsErgebnis:zahl nur zur Anzeige der vereinbarten Schwellen, ./verbrauch nur Wörter, Kalender und der Vorjahresvergleich über den Zwilling. Number(menge) nur zur Anzeige und Liniengeometrie.",
-    "bewertungErgebnis ./uemsBewertung:menge und :prozent (Konzept Auswerten a1 §6.7, Review r3 zu #1415): die Menge der wesentlichen Bereiche summiert der Zwilling der Bewertung (B3, nie eine Summe gerundeter Anteile), ihren Anteil und den Anteil des Rests am Hauptzähler bildet uemsBewertung.prozent (KR4); wie viel zugeordnet ist, kommt als abdeckung_prozent von der Route, ein negativer Rest steht als eigener Satz. ./dez:dez/dezVergleich nur für Reihenfolge und den Vergleich gelieferter Schwellen, ./uemsErgebnis:zahl/zahlMitStellen nur zur Anzeige. Number(menge) nur für toLocaleString und die Balkenbreite, Number(kennzeichen) nur zur Reihenfolge."
+    "bewertungErgebnis ./uemsBewertung:menge und :prozent (Konzept Auswerten a1 §6.7, Review r3 zu #1415): die Menge der wesentlichen Bereiche summiert der Zwilling der Bewertung (B3, nie eine Summe gerundeter Anteile), ihren Anteil und den Anteil des Rests am Hauptzähler bildet uemsBewertung.prozent (KR4); wie viel zugeordnet ist, kommt als abdeckung_prozent von der Route, ein negativer Rest steht als eigener Satz. ./dez:dez/dezVergleich nur für Reihenfolge und den Vergleich gelieferter Schwellen, ./uemsErgebnis:zahl/zahlMitStellen nur zur Anzeige. Number(menge) nur für toLocaleString und die Balkenbreite, Number(kennzeichen) nur zur Reihenfolge.",
+    "uemsSprung, energiebilanzReiter, messstellenReiter (Bündel-Wächter test/bundle-smoke.sh, 09.10.2026): wörtlich aus uemsOberflaechen, anlageEnergiebilanz und kostenstellenUebersicht herausgezogen, damit das Einstiegs-Bündel nur Adressen und den Reiter-Fakt trägt; die drei Module reichen sie weiter (export … from). Keine Menge, keine neue Operation - die neuen Dateien stehen selbst unter Q5."
   ],
   "dateien": {
     "uemsOberflaechen.ts": {
@@ -22,12 +23,9 @@
         "./ebenenNav:EBENEN_SEITEN",
         "./ebenenNav:ebenenBereiche",
         "./glossar:UEMS_HAUPTZAEHLER",
-        "./glossar:UEMS_MESSSTELLE",
-        "./nav:berichtRoute",
-        "./nav:hashForRoute",
-        "./nav:kennzahlRoute",
-        "./nav:messstelleRoute",
-        "./uemsEreignis:zahlText"
+        "./uemsEreignis:zahlText",
+        "./uemsSprung:sprungziel",
+        "export:export { COCKPIT_WEG_TITEL, cockpitWeg, sprungziel, type CockpitWeg, type Sprung, type SprungObjekt } from './uemsSprung';"
       ],
       "operationen": [
         "treffer: von + m[0].length",
@@ -291,7 +289,8 @@
         "./uemsOberflaechen:herkunftsZeile",
         "./uemsOberflaechen:kennzeichenSprung",
         "./uemsOberflaechen:periodeSchluessel",
-        "./uemsOberflaechen:sprungziel"
+        "./uemsOberflaechen:sprungziel",
+        "export:export { hatHauptzaehler, mitEnergiebilanz } from './energiebilanzReiter';"
       ],
       "operationen": [
         "hauptzaehlerBild: h.abschnitte.length - 1",
@@ -320,7 +319,8 @@
         "./uemsOberflaechen:periodeSchluessel",
         "./uemsOberflaechen:sprungziel",
         "./uemsVerteilung:ERBE_ANTEIL_WECHSELT",
-        "./uemsVerteilung:GRUND_ANTEIL_WECHSELT"
+        "./uemsVerteilung:GRUND_ANTEIL_WECHSELT",
+        "export:export { REITER_LABEL, REITER_WORT, hervorAus, reiterAus, reiterDa, reiterHash, type MessstellenReiter } from './messstellenReiter';"
       ],
       "operationen": [
         "spanne: mit.length - 1"
@@ -1203,6 +1203,27 @@
         "nr: Number(kennzeichen.replace(/^MB-/, ''))"
       ],
       "grund": "Messen PR4 (Review r4 S5): Sortierung nach der Nummer des Kennzeichens (MB-n) und Listenindex für den Ortssatz, keine Menge; die Frist ist ein Datumsvergleich der Antwort."
+    },
+    "uemsSprung.ts": {
+      "importe": [
+        "./glossarEinstieg:UEMS_MESSSTELLE",
+        "./nav:berichtRoute",
+        "./nav:hashForRoute",
+        "./nav:kennzahlRoute",
+        "./nav:messstelleRoute"
+      ],
+      "operationen": []
+    },
+    "energiebilanzReiter.ts": {
+      "importe": [],
+      "operationen": []
+    },
+    "messstellenReiter.ts": {
+      "importe": [
+        "./nav:hashForRoute",
+        "./nav:pageRoute"
+      ],
+      "operationen": []
     }
   }
 }

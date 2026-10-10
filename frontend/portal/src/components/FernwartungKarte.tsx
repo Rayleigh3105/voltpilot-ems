@@ -14,6 +14,7 @@ import { ApiError } from '../api';
 import { adminApi } from '../admin/adminApi';
 import {
   abrufLage,
+  boxAnmeldung,
   fensterTeile,
   fensterTon,
   oeffnenSperre,
@@ -24,6 +25,7 @@ import {
 } from '../adminFernwartung';
 import { fernwartungHash } from '../nav';
 import { FensterDialog, LageZeile, SchluesselDialog } from './FernwartungDialoge';
+import { BoxAnmeldungBlock } from './FernwartungSsh';
 import '../pages/admin/Fernwartung.css';
 
 export function FernwartungKarte({ edgeRef }: { edgeRef: string }) {
@@ -71,6 +73,7 @@ export function FernwartungKarte({ edgeRef }: { edgeRef: string }) {
   }
 
   const sperre = box ? oeffnenSperre(box, techniker) : null;
+  const anmeldung = box ? boxAnmeldung(box, techniker) : null;
 
   return (
     <section className="vp-fw-karte" data-testid="fw-karte" aria-labelledby="fw-karte-titel">
@@ -117,6 +120,7 @@ export function FernwartungKarte({ edgeRef }: { edgeRef: string }) {
               ))}
             </ul>
           )}
+          {anmeldung && <BoxAnmeldungBlock anmeldung={anmeldung} boxRef={box.edgeRef} />}
           <div className="vp-fw-aktionen" style={{ justifyContent: 'flex-start' }}>
             <Button
               variant="primary"

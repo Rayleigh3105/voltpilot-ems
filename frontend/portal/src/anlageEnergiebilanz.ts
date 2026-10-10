@@ -16,7 +16,6 @@ import { dez, dezVergleich, dezVon, type Dez } from './dez';
 import { UEMS_HAUPTZAEHLER, uemsGeteiltSatz } from './glossar';
 import { anlageRoute, hashForRoute } from './nav';
 import { datumZeit } from './rechte';
-import type { AnlageSurface } from './surface';
 import { beginn, laeuftNoch, letzterGebildeter, zeitraumText, type BilanzPeriode } from './uebersichtBausteine';
 import { nenner, prozent } from './uemsBewertung';
 import { BERECHNET_DIFFERENZ, BERECHNET_SUMME, NICHT_ZUGEORDNET, VOLLSTAENDIG } from './uemsBilanz';
@@ -184,12 +183,8 @@ const einmal = (xs: string[]): string[] => [...new Set(xs)];
 
 // ------------------------------------------------------------------------------------ Reiter und Adresse
 
-/** Der Reiter erscheint nur mit Hauptzähler in der Stellung (AP-13 §5.5) - sonst bleibt der Verlauf zeichengleich. */
-export const hatHauptzaehler = (b: Bilanz | null | undefined): boolean => (b?.hauptzaehler.length ?? 0) > 0;
-
-/** Die Projektion mit dem Reiter - derselbe Fakt in `useAnlageSurface` und auf der Bühne. */
-export const mitEnergiebilanz = (surface: AnlageSurface, bilanz: Bilanz | null): AnlageSurface =>
-  hatHauptzaehler(bilanz) ? { ...surface, energiebilanz: true } : surface;
+/** Der Fakt „Hauptzähler in der Stellung“ und die Projektion mit dem Reiter wohnen in `energiebilanzReiter.ts` (Einstiegs-Bündel). */
+export { hatHauptzaehler, mitEnergiebilanz } from './energiebilanzReiter';
 
 const PERIODEN: readonly BilanzPeriode[] = ['tag', 'monat', 'jahr'];
 

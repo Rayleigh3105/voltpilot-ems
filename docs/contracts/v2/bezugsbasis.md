@@ -231,7 +231,9 @@ anderer Kundenbereich 404 über RLS). Ablehnungen `{code, message, …Fakten}`.
 
 **Register-Eintrag (B3):** `GET /api/v1/kennzahlen` und `GET /api/v1/kennzahlen/{id}` tragen je Kennzahl `bezugsbasis`:
 `null` ohne laufende Basis, sonst `{kennzeichen, fassung, freigabe_status, vorlaeufig}` — `fassung` ist die laufende
-freigegebene Fassung, sonst die jüngste (`null` ohne Fassung). Das Wort „Energieleistungskennzahl“ leitet der Leser aus
+freigegebene Fassung, sonst die jüngste; beide (`fassung` UND `freigabe_status`) sind `null`, solange die Basis noch
+keine erste Fassung trägt (`POST …/bezugsbasen` ohne eine folgende `POST …/fassungen`) — kein Fehler, ein erreichbarer
+Zustand. Das Wort „Energieleistungskennzahl“ leitet der Leser aus
 `freigabe_status = freigegeben` ab; es steht an der Kennzahl, nicht in ihr (keine Spalte an `kennzahl`).
 
 Beenden, „geprüft, bleibt“ und die Übersicht stehen bei IP-17, der Vergleich bei IP-19.

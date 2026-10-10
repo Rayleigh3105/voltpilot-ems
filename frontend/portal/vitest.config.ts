@@ -20,6 +20,9 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
+    // Das Portal zeigt bewusst die Ortszeit des Browsers; die Tests setzen dabei die Berliner Wanduhr voraus
+    // („seit 14:10“, Bestandsschutz-Schnappschüsse). Ohne diese Zeile hängen sie an der Zeitzone des Rechners.
+    env: { TZ: 'Europe/Berlin' },
     poolOptions: { forks: { execArgv: ohneNodeWebStorage } },
   },
 });

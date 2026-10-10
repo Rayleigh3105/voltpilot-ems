@@ -83,11 +83,8 @@ const ZUSTAND_MESSSTELLE: Record<string, string> = {
 
 type Rechte = Pick<Selbstauskunft, 'standorte' | 'unternehmen_rechte'>;
 
-/** Sieht die Person Energieeinsätze (an irgendeinem Standort oder am Unternehmen)? Unbekannt ist nein. */
-export function darfAnsehen(s: Rechte | null | undefined): boolean {
-  if (!s) return false;
-  return s.unternehmen_rechte.includes('energieeinsatz.ansehen') || s.standorte.some((st) => st.rechte.includes('energieeinsatz.ansehen'));
-}
+/** Sieht die Person Energieeinsätze? Wohnt in `bereichSicht.ts` (Einstiegs-Bündel). */
+export { darfEnergieeinsaetzeSehen as darfAnsehen } from './bereichSicht';
 
 /** Darf die Person anlegen, ändern, beenden und den Umfang festlegen? Nur am Unternehmen (KA U · EM U). */
 export function darfVerwalten(s: Rechte | null | undefined): boolean {

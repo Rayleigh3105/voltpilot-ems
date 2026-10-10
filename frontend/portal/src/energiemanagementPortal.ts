@@ -18,23 +18,12 @@ import {
   type Selbstauskunft,
 } from './api';
 import { LEITUNGS_PFLICHT, SAETZE, satz, VOKABULARE, WOERTER, STARTWERTE } from './energiemanagement';
-import {
-  UEMS_DOKUMENTE,
-  UEMS_MANAGEMENTBEWERTUNG,
-  UEMS_WIEDERVORLAGE,
-} from './glossar';
-import type { EnergiemanagementReiter } from './nav';
 import { lokalerTag } from './uemsOrtsbaum';
 
 // ------------------------------------------------------------------ Rechte (aus `/me`, entschieden wird an der Route)
 
-type Rechte = Pick<Selbstauskunft, 'standorte' | 'unternehmen_rechte'>;
-
-const hat = (s: Rechte | null | undefined, recht: string) =>
-  !!s && (s.unternehmen_rechte.includes(recht) || s.standorte.some((st) => st.rechte.includes(recht)));
-
-/** `energiemanagement.ansehen` am Unternehmen oder an einem Standort — sonst gibt es den Bereich nicht. */
-export const darfAnsehen = (s: Rechte | null | undefined) => hat(s, 'energiemanagement.ansehen');
+/** `energiemanagement.ansehen`, der Überblick und die Reiter des Bereichs wohnen in `bereichSicht.ts` (Einstiegs-Bündel). */
+export { darfEnergiemanagementSehen as darfAnsehen, ENERGIEMANAGEMENT_REITER as REITER, UEBERBLICK } from './bereichSicht';
 
 export const RECHT_VERWALTEN = 'energiemanagement.verwalten';
 export const RECHT_FREIGEBEN = 'energiemanagement.freigeben';
@@ -47,26 +36,6 @@ export const mitEinsicht = (s: Pick<Selbstauskunft, 'rollen' | 'standorte'> | nu
   !!s && (s.rollen.includes('einsicht') || s.standorte.some((st) => st.rollen.includes('einsicht')));
 
 // ------------------------------------------------------------------ Wörter
-
-/** Der erste Reiter von Nachweisen (Konzept n1, Entscheid 2). */
-export const UEBERBLICK = 'Überblick';
-
-/**
- * Die Reiter in der Ordnung des Konzepts Nachweisen n1 (§6.2, Entscheid 2): der Überblick zuerst, das Verzeichnis eine
- * Ebene darunter (kein Reiter), dann Dokumente, Audits, Feststellungen, Managementbewertung und Aufgaben; die Berichte
- * reiht die Gruppe „Nachweisen“ gleich hinter den Überblick (`PortfolioTabs`). Die Wiedervorlage steht in der Übersicht.
- */
-export const REITER: readonly { key: Exclude<EnergiemanagementReiter, 'zuschnitt' | 'verantwortung' | 'verzeichnis'>; label: string }[] = [
-  { key: 'ueberblick', label: UEBERBLICK },
-  { key: 'wiedervorlage', label: UEMS_WIEDERVORLAGE },
-  { key: 'dokumente', label: UEMS_DOKUMENTE },
-  // §6.3 nennt den Reiter „Audits“ (das Auditprogramm, IA4); darin heißt jedes „internes Audit“.
-  // Konzept Nachweisen n1, Entscheid 17: die Feststellungen stehen im Reiter „Audits“; `…/feststellungen` öffnet ihn dort.
-  { key: 'audits', label: 'Audits' },
-  { key: 'managementbewertung', label: UEMS_MANAGEMENTBEWERTUNG },
-  // §6.3 nennt den Reiter „Aufgaben“; die Überschrift darin ist das Glossar-Wort „Aufgaben im Energiemanagement“.
-  { key: 'aufgaben', label: 'Aufgaben' },
-];
 
 export const KNOPF_ANLEGEN = 'Dokument anlegen';
 export const KNOPF_FASSUNG = 'Neue Fassung';

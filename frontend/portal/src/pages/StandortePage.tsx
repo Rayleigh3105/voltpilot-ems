@@ -2,6 +2,7 @@ import { Recht } from '../components/Recht';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
+import { merkeAusloeser } from '../../designsystem/components/shell/ueberlagerung';
 import { api, type OrtAktionen, type StandortAmStichtag, type StandorteAmStichtag, type StandortAusfall, type Unternehmen } from '../api';
 import { ArchivierenDialog, type ArchivAktion } from '../components/ArchivierenDialog';
 import { OrtAenderungen } from '../components/OrtAenderungen';
@@ -51,9 +52,6 @@ export function StandortePage() {
   const [dialog, setDialog] = useState<{ standort: StandortAmStichtag | null; schluessel: number } | null>(
     null,
   );
-  // iOS/Safari fokussiert einen angeklickten Knopf nicht zwingend — der Auslöser
-  // wird ausdrücklich gemerkt (frontend/portal/AGENTS.md, Mobil und Overlays).
-  const ausloeser = useRef<HTMLElement | null>(null);
   // AP-02 IP-15: je Standort, was man heute mit ihm tun kann — sein Ortsbaum liest es mit.
   const [aktionen, setAktionen] = useState<Record<string, OrtAktionen | null>>({});
   const [archiv, setArchiv] = useState<{ art: ArchivAktion; standort: StandortAmStichtag; schluessel: number } | null>(
@@ -100,42 +98,31 @@ export function StandortePage() {
   }, [laden]);
 
   function oeffne(standort: StandortAmStichtag | null, von: HTMLElement | null) {
-    if (von) ausloeser.current = von;
+    // Der Auslöser kommt mit (ein Menüeintrag verschwindet, sein Knopf bleibt): der Stapel gibt den Fokus dorthin zurück.
+    if (von) merkeAusloeser(von);
     setDialog((d) => ({ standort, schluessel: (d?.schluessel ?? 0) + 1 }));
   }
 
   function schliesse() {
     setDialog(null);
-    const ziel = ausloeser.current;
-    requestAnimationFrame(() => {
-      if (ziel?.isConnected) ziel.focus();
-    });
   }
 
   function oeffneArchiv(art: ArchivAktion, standort: StandortAmStichtag, von: HTMLElement) {
-    ausloeser.current = von;
+    merkeAusloeser(von);
     setArchiv((d) => ({ art, standort, schluessel: (d?.schluessel ?? 0) + 1 }));
   }
 
   function oeffneProtokoll(standort: StandortAmStichtag, von: HTMLElement) {
-    ausloeser.current = von;
+    merkeAusloeser(von);
     setProtokoll(standort);
   }
 
   function schliesseProtokoll() {
     setProtokoll(null);
-    const ziel = ausloeser.current;
-    requestAnimationFrame(() => {
-      if (ziel?.isConnected) ziel.focus();
-    });
   }
 
   function schliesseArchiv() {
     setArchiv(null);
-    const ziel = ausloeser.current;
-    requestAnimationFrame(() => {
-      if (ziel?.isConnected) ziel.focus();
-    });
   }
 
   // Die Liste gilt für den Tag, nach dem gefragt wurde — bis die Antwort da ist, steht keine vom vorigen Tag.

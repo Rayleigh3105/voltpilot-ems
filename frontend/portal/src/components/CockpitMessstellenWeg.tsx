@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api } from '../api';
-import { cockpitWeg, type CockpitWeg } from '../uemsOberflaechen';
+import { cockpitWeg, type CockpitWeg } from '../uemsSprung';
 import './CockpitMessstellenWeg.css';
 
 /**

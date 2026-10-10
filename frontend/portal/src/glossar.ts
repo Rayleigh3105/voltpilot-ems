@@ -29,6 +29,7 @@
  * `tariffInput.TARIF_PARAM_FIELDS`.
  * ─────────────────────────────────────────────────────────────────────────────
  */
+import { UEMS_KENNZAHLEN } from './glossarEinstieg';
 import type { SettingsGroupId } from './settingsNav';
 
 // ---------------------------------------------------------------------------
@@ -72,10 +73,10 @@ export const VERAEUSSERUNGSFORM_TIP =
  */
 
 /** Die Wurzel des Ortsbaums — das, worüber der Kunde berichtet. */
-export const UEMS_UNTERNEHMEN = 'Unternehmen';
+export { UEMS_UNTERNEHMEN } from './glossarEinstieg';
 
 /** Ein räumlich abgegrenzter Ort des Unternehmens mit Adresse. */
-export const UEMS_STANDORT = 'Standort';
+export { UEMS_STANDORT } from './glossarEinstieg';
 
 /** Die Koordinaten-Zeile der Anlage, wenn neben ihr das Objekt „Standort“ steht (AP-02 W4). */
 export const UEMS_STANDORT_AUF_DER_KARTE = 'Standort auf der Karte';
@@ -93,7 +94,7 @@ export const UEMS_NETZANSCHLUSS = 'Netzanschluss';
 export const UEMS_ELEKTRISCHES_SYSTEM = 'elektrisches System';
 
 /** Die fachliche Identität einer Messung — sie überlebt Gerät, Kanal und Box. */
-export const UEMS_MESSSTELLE = 'Messstelle';
+export { UEMS_MESSSTELLE } from './glossarEinstieg';
 
 /**
  * WOHER eine Messstelle ihre Werte hat: Gerät und Messwert, zeitgültig (AP-04
@@ -184,13 +185,7 @@ export const UEMS_FUEHRENDE_BOX = 'führende Box';
  * Band, Film und Panel je anders. Die Rollen ohne eigenes Listenwort
  * (Verkaufen, Lastspitze kappen, Reserve halten) sagt `fahrplanWhy.roleLabel`.
  */
-export const FAHRPLAN_TAETIGKEIT = {
-  sonneSpeichern: 'Sonne speichern',
-  guenstigLaden: 'Günstig aus dem Netz laden',
-  verbrauchDecken: 'Verbrauch decken',
-  warten: 'Warten',
-  einspeisungPausieren: 'Einspeisung pausieren',
-} as const;
+export { FAHRPLAN_TAETIGKEIT } from './glossarEinstieg';
 
 /**
  * Die LADEQUELLEN unter „Womit laden?“ (Steuerung, Reiter Laden). „Sonne +
@@ -313,7 +308,7 @@ export const GESAMTWERT = SUMMENWERT;
  * Kennzahl-Fläche nie Durchschnitt oder Mittel (`copy.test.ts`).
  */
 export const UEMS_KENNZAHL = 'Kennzahl';
-export const UEMS_KENNZAHLEN = 'Kennzahlen';
+export { UEMS_KENNZAHLEN } from './glossarEinstieg';
 export const UEMS_BERECHNUNG = 'Berechnung';
 export const UEMS_FASSUNG = 'Fassung';
 export const UEMS_VERSION = 'Version';
@@ -451,7 +446,7 @@ export const UEMS_VERGLEICH_ENTFERNEN = '{messstelle} aus dem Bild nehmen';
 export const UEMS_VERGLEICH_NICHT_ABRUFBAR = 'Der Vergleich ist gerade nicht abrufbar.';
 
 /** Nur mit Präfix: „Bilanz“ allein ist auf Kundenflächen verboten, „Erlösbilanz“ ist etwas anderes (AP-10 E14). */
-export const UEMS_ENERGIEBILANZ = 'Energiebilanz';
+export { UEMS_ENERGIEBILANZ } from './glossarEinstieg';
 
 /** „15 von 16 Messstellen liefern Daten“ — EINE Zählung je Ebene aus dem Register (AP-13 E13), nie der Online-Status der Box. */
 export const UEMS_DATENLAGE = 'Datenlage';
@@ -671,17 +666,17 @@ export const UEMS_KOORDINATEN_FEHLEN_SATZ = (standort: string) =>
  * (Konzept Verbessern v1, Entscheid 14). „Energieziel“, nie „Ziel“ allein — „Ziel: 2,2 kW“ gehört der
  * Steuerung (W6); „Verbesserung“ nur im Wirkungs-Satz mit Bedingung, nie als Beschriftung (W5).
  */
-export const UEMS_ZIELE_UND_MASSNAHMEN = 'Ziele und Maßnahmen';
+export { UEMS_ZIELE_UND_MASSNAHMEN } from './glossarEinstieg';
 export const UEMS_ENERGIEZIEL = 'Energieziel';
-export const UEMS_ENERGIEZIELE = 'Energieziele';
+export { UEMS_ENERGIEZIELE } from './glossarEinstieg';
 export const UEMS_ZIELWERT = 'Zielwert';
 export const UEMS_ZIELPERIODE = 'Zielperiode';
 export const UEMS_MASSNAHME = 'Maßnahme';
-export const UEMS_MASSNAHMEN = 'Maßnahmen';
+export { UEMS_MASSNAHMEN } from './glossarEinstieg';
 export const UEMS_TERMIN = 'Termin';
 export const UEMS_UMGESETZT_AM = 'umgesetzt am';
 export const UEMS_ABWEICHUNG = 'Abweichung';
-export const UEMS_ABWEICHUNGEN = 'Abweichungen';
+export { UEMS_ABWEICHUNGEN } from './glossarEinstieg';
 export const UEMS_AUFFAELLIGKEIT = 'Auffälligkeit';
 export const UEMS_MESSGRUNDLAGE = 'Messgrundlage';
 export const UEMS_AUSGANGSLAGE = 'Ausgangslage';
@@ -787,9 +782,9 @@ export const UEMS_VERBESSERUNG_SAETZE = {
  * Energiemanagement“, nicht die „zuständige Box“; „Managementbewertung“, nie „Bewertung“ allein. „Fassung“ ist
  * `UEMS_FASSUNG`, „Überprüfung fällig“ ist `UEMS_UEBERPRUEFUNG_FAELLIG` — dieselben Wörter, keine zweite Konstante.
  */
-export const UEMS_ENERGIEMANAGEMENT = 'Energiemanagement';
+export { UEMS_ENERGIEMANAGEMENT } from './glossarEinstieg';
 export const UEMS_VERZEICHNIS = 'Verzeichnis';
-export const UEMS_WIEDERVORLAGE = 'Wiedervorlage';
+export { UEMS_WIEDERVORLAGE } from './glossarEinstieg';
 /**
  * Konzept Wiedervorlage w1 (Captain-Freigabe 05.10.2026): der Name bleibt, ein Satz darunter sagt, was er meint. Die
  * Liste ordnet nach Dringlichkeit; „Überfällig“ heißt abgelaufen („fällig“ allein hieße umgangssprachlich „jetzt dran“).
@@ -842,7 +837,7 @@ export const UEMS_JAHRESPLAN = 'Jahresplan';
  */
 export const UEMS_LAUT_AUFGABE = 'laut Aufgabe';
 export const UEMS_DOKUMENT = 'Dokument';
-export const UEMS_DOKUMENTE = 'Dokumente';
+export { UEMS_DOKUMENTE } from './glossarEinstieg';
 export const UEMS_WORTLAUT = 'Wortlaut';
 export const UEMS_VERWEIS = 'Verweis';
 export const UEMS_GEFUEHRT_IN_IHREM_SYSTEM = 'Geführt in Ihrem System';
@@ -866,7 +861,7 @@ export const UEMS_SOFORTIGE_BEHEBUNG = 'sofortige Behebung';
 export const UEMS_AEHNLICHE_FAELLE = 'ähnliche Fälle';
 /** Ein Stand Nr. n einer Person an der Feststellung — nicht die Wirkung einer Maßnahme (AP-18). */
 export const UEMS_WIRKSAMKEIT = 'Wirksamkeit';
-export const UEMS_MANAGEMENTBEWERTUNG = 'Managementbewertung';
+export { UEMS_MANAGEMENTBEWERTUNG } from './glossarEinstieg';
 /** Konzept „Energiemanagement ohne Fachsprache“ K4: wozu die Managementbewertung da ist — vor ihrem Leer-Satz. */
 export const UEMS_MANAGEMENTBEWERTUNG_WOZU =
   'Die Managementbewertung ist der Rückblick der Leitung: Sie sieht sich die Ergebnisse an und hält fest, was sie beschließt.';
@@ -895,9 +890,8 @@ export const UEMS_VERANTWORTUNG =
  * die kurze Totzeit nach einer Wolkenkante ist kein Fehler und wird so gesagt;
  * ein bewusstes Netz-Laden des Fahrplans nennt seinen Grund.
  */
-export const LADEN_BEI_BEZUG_WOLKE =
-  'Eine Wolke hat die Sonne gerade verdeckt – der Speicher regelt in den nächsten Sekunden nach.';
-export const LADEN_BEI_BEZUG_FAHRPLAN = 'Der Fahrplan lädt jetzt für die teuren Stunden.';
+export { LADEN_BEI_BEZUG_WOLKE } from './glossarEinstieg';
+export { LADEN_BEI_BEZUG_FAHRPLAN } from './glossarEinstieg';
 
 // ---------------------------------------------------------------------------
 // 3 · Die Suchwörter der Einstellungen

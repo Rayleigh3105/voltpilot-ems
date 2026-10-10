@@ -50,7 +50,7 @@ import {
   type Route,
 } from './nav';
 import type { AnlageSurface, DeepViewId } from './surface';
-import { UEMS_ENERGIEBILANZ, UEMS_ENERGIEMANAGEMENT, UEMS_ZIELE_UND_MASSNAHMEN } from './glossar';
+import { UEMS_ENERGIEBILANZ, UEMS_ENERGIEMANAGEMENT, UEMS_ZIELE_UND_MASSNAHMEN } from './glossarEinstieg';
 import type { FunktionZustand } from './uemsFunktion';
 
 /**

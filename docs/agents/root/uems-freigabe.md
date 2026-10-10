@@ -28,8 +28,11 @@ Rollout-Tags steht in [`docs/rollout/uems-erste-freigabe.md`](../../rollout/uems
 die Generalprobe in [uems-generalprobe.md](uems-generalprobe.md), NW-3 in
 [uems-nw3-box-image.md](uems-nw3-box-image.md).
 
-**Entschieden am 27.09.2026** (Bereitschaftsbericht B1–B10, alle auf der Empfehlung; Fenster in
-der Woche vom 28.09. bis 04.10.2026): IP-18 (Dauerläufer) steht nicht mehr in G1, sondern nach
+**Entschieden am 09.10.2026:** `uems` geht allein nach `main`; der Rollout-Satz ist der Stand von
+`uems`. Die Woche vom 28.09. bis 04.10.2026 ist verstrichen, den Termin setzt der Captain neu. Die
+Tage um das Fenster stehen im [Drehbuch §6.1](../../rollout/uems-erste-freigabe.md).
+
+**Entschieden am 27.09.2026** (Bereitschaftsbericht B1–B10, alle auf der Empfehlung): IP-18 (Dauerläufer) steht nicht mehr in G1, sondern nach
 Schritt 10 bzw. in M-6 (B4, `pruefe-tor.sh M6`). Das Box-Release geht direkt nach dem api-Deploy
 hinaus (B10, [Drehbuch §2.8](../../rollout/uems-erste-freigabe.md)).
 
@@ -64,7 +67,7 @@ Wer sie als Tor behandelt, baut eine Sperre, die es mit E1 = B nicht gibt.
   Start-Wächter auf `main` ist **offen** — das Drehbuch ist mit und ohne ihn fahrbar
   ([Drehbuch §9.1](../../rollout/uems-erste-freigabe.md)).
 - **Z08 ist der Schadensmelder dazu.** Ein Generalprobe-Lauf mit
-  `geloescht_markiert > 0` oder `fehlgeschlagen > 0` ist kein bestandener Lauf, auch nicht
+  `geloescht_offen > 0` oder `fehlgeschlagen > 0` ist kein bestandener Lauf, auch nicht
   mit sonst grünen Zahlen. Exit 26 hat Vorrang vor allem anderen.
 - **gitops PR 37 gehört mindestens einen Tag VOR das Fenster**, nie hinein: die ConfigMap
   bekommt einen neuen Hash und startet die api neu — harmlos auf dem **alten** Schema, im
@@ -73,7 +76,8 @@ Wer sie als Tor behandelt, baut eine Sperre, die es mit E1 = B nicht gibt.
 - **Alle 27 Schalter stehen ausdrücklich in gitops**, auch die, deren Vorgabe `true` ist:
   W10 verlangt es vor G1, und NW-6 legt jeden einmal um. Die drei aus AP-17/AP-18
   (`BEZUGSBASIS`, `VERBESSERUNG`, `WETTER_ARCHIV`) kommen mit einem Nachtrag in PR 37. Der
-  Läufer-Katalog (`UemsLaeuferMelder.KATALOG`) hat 20 Einträge, zuletzt `WetterArchivLaeufer`
+  Läufer-Katalog (`UemsLaeuferMelder.KATALOG`) hat 20 Einträge, zuletzt `WetterArchivLaeufer`;
+  beide Zahlen am 09.10.2026 am Stand `7f875011f` nachgezählt, unverändert
   ([Drehbuch §12](../../rollout/uems-erste-freigabe.md)).
 - **`${UEMS_SHA}` ist nach dem Merge der Merge-Commit auf `main`**: gleicher Baum wie der
   G0-Stand auf `uems`, aber ein anderer SHA. Aus ihm werden die Images gebaut; die
@@ -84,15 +88,23 @@ Wer sie als Tor behandelt, baut eine Sperre, die es mit E1 = B nicht gibt.
   Bereitschaftsberichts vom 26.09.2026): G0 früh einfrieren, Merge spät (Vortag oder Tag des
   Fensters), Deploy-Stopp vom Merge bis Schritt 2, Bau ohne `GITOPS_PUSH_TOKEN`, das Secret kommt
   nach Schritt 10 zurück. PR 1258 und PR 1268 fahren mit `uems` mit und werden nach dem Merge
-  geschlossen (B7). Gitops PR 42 (DB-Passwort für den ingest) geht mit PR 37 am Vortag hinaus (B9)
+  geschlossen (B7). Am Vortag gehen die gitops-PRs 37 → 38 → 39, PR 42 (DB-Passwort für den
+  ingest, B9) und PR 41 (Sicherungsalarm) hinaus, alle durch den Captain
   ([Drehbuch §2.2, §2.9, §2.10](../../rollout/uems-erste-freigabe.md)).
-  `main-migrations.txt` bleibt bis nach dem Rollout der Produktionsstand.
+  `main-migrations.txt` wird nach dem Merge bis nach dem Rollout nicht fortgeschrieben.
+- **Der Tag-Bump läuft nur von `main`** (`if: github.ref == 'refs/heads/main'` in beiden
+  Workflow-Dateien): ein Bau auf `uems` stellt die Produktion nicht um. Den Bau-Lauf auf `main`
+  nach dem Merge schützt das nicht, dort bleibt der Token-Entzug. Welcher Workflow die Images baut
+  (mit oder ohne Test-Matrix), ist beim Captain offen (R4, Drehbuch §2.10).
 - **Der Live-Realm wird nach Schritt 10 von Hand gehärtet**: `--import-realm` ändert keinen
   bestehenden Realm. Erst Portal/API mit 12 Zeichen, dann die Keycloak-Vorgabe
   ([Drehbuch, nach Schritt 10](../../rollout/uems-erste-freigabe.md),
   [`live-realm-import.md`](../../../infra/prod/keycloak/live-realm-import.md)).
-- **Der nächste Box-Release-Tag heißt nicht `edge-2026.09.5`**: den hat `main` am 24.09.2026
-  vergeben ([Drehbuch §2.8](../../rollout/uems-erste-freigabe.md)).
+- **Der nächste Box-Release-Tag heißt `edge-2026.10.x`**: `edge-2026.09.5` (24.09.2026) und
+  `edge-2026.09.6` (29.09.2026) hat `main` schon vergeben. Vor dem Tag läuft NW-3 gegen ein
+  Box-Bild vom Merge-Stand; `paare.json` führt `09.6` seit dem 09.10.2026, am `uems`-Kopf
+  `7f875011f` ist NW-3neu gefahren ([Drehbuch §2.8](../../rollout/uems-erste-freigabe.md),
+  [NW-3](uems-nw3-box-image.md)).
 - **Ein Platzhalter in PR 37 steht noch auf `CHANGE-ME`**: der Tenant des Dauerläufers
   (IP-18, Einrichtung Drehbuch §14, [Wegweiser](uems-dauerlaeufer.md)). Ihn gibt es erst
   nach Schritt 10; darum ist IP-18 seit dem Entscheid B4 vom 27.09.2026 kein G1-Punkt mehr,

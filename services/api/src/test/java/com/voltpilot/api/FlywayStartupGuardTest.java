@@ -39,6 +39,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.postgresql.ds.PGSimpleDataSource;
 import org.slf4j.LoggerFactory;
@@ -154,9 +155,8 @@ class FlywayStartupGuardTest {
                 version.equals("1") ? "MISSING_FAILED" : "FUTURE_FAILED");
     }
 
-    @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void deletedCoreRefusesEvenAfterItWasReapplied(boolean reapplied) throws Exception {
+    @Test
+    void deletedCoreRefusesWhileItIsNotReapplied() throws Exception {
         script("V1__core.sql");
         synthetic().load().migrate();
         Files.delete(scripts.resolve("V1__core.sql"));
@@ -165,10 +165,114 @@ class FlywayStartupGuardTest {
         assertThat(db.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE type='DELETE'", Long.class))
                 .isEqualTo(1);
         script("V1__core.sql");
-        if (reapplied) {
-            synthetic().load().migrate();
+        assertRefusedUnchanged(spy(synthetic().load()), "1 (DELETE)");
+    }
+
+    /** Befund B1: the real production history must start; refusing it blocked the UEMS rollout. */
+    @Test
+    void healedDeleteMarkersOfTheProductionHistoryStartAndNewVersionsStillMigrate() throws Exception {
+        productionDeleteHistory();
+        List<String> before = historyRows();
+        script("V4__next_release.sql");
+        Flyway next = spy(synthetic().load());
+        assertThatCode(() -> strategy.migrate(next)).doesNotThrowAnyException();
+        verify(next, never()).repair();
+        assertThat(next.info().pending()).isEmpty();
+        List<String> after = historyRows();
+        assertThat(after.subList(0, before.size())).as("no existing row rewritten").isEqualTo(before);
+        assertThat(after).hasSize(before.size() + 1);
+        assertThat(after.get(before.size())).contains("\"4\"", "\"SQL\"");
+        // A second start on the same history is a plain no-op.
+        String settled = historyFingerprint();
+        Flyway again = spy(synthetic().load());
+        assertThatCode(() -> strategy.migrate(again)).doesNotThrowAnyException();
+        verify(again, never()).repair();
+        assertThat(historyFingerprint()).isEqualTo(settled);
+    }
+
+    enum NotHealed { LATEST_ROW_IS_DELETE, REAPPLIED_WITH_OTHER_CHECKSUM, REAPPLICATION_FAILED,
+        CORE_VERSION_UNKNOWN_TO_BUILD, DATABASE_NEWER_THAN_BUILD }
+
+    /** The production pattern is accepted only as it is; every deviation keeps the guard closed. */
+    @ParameterizedTest
+    @EnumSource(NotHealed.class)
+    void deviationsFromAnIdenticalReapplicationStillRefuse(NotHealed deviation) throws Exception {
+        productionDeleteHistory();
+        String refusal = switch (deviation) {
+            case LATEST_ROW_IS_DELETE -> {
+                Files.delete(scripts.resolve("V3__device_curtailment_status.sql"));
+                synthetic().ignoreMigrationPatterns(new String[0]).load().repair();
+                script("V3__device_curtailment_status.sql");
+                yield "3 (DELETE)";
+            }
+            case REAPPLIED_WITH_OTHER_CHECKSUM -> {
+                Files.delete(scripts.resolve("V3__device_curtailment_status.sql"));
+                synthetic().ignoreMigrationPatterns(new String[0]).load().repair();
+                Files.writeString(scripts.resolve("V3__device_curtailment_status.sql"), "SELECT 3;\n");
+                synthetic().load().migrate();
+                yield "3 (DELETE)";
+            }
+            case REAPPLICATION_FAILED -> {
+                // A third marker, then an identical re-application that failed.
+                for (Object[] row : List.of(new Object[] {"DELETE", true}, new Object[] {"SQL", false})) {
+                    db.update("""
+                            INSERT INTO flyway_schema_history
+                            SELECT (SELECT max(installed_rank)+1 FROM flyway_schema_history), version, description,
+                                   ?, script, checksum, installed_by, installed_on, 0, ?
+                            FROM flyway_schema_history WHERE version = '3' AND type = 'SQL' LIMIT 1
+                            """, row);
+                }
+                yield "3 (DELETE)";
+            }
+            case CORE_VERSION_UNKNOWN_TO_BUILD -> {
+                Files.delete(scripts.resolve("V1__device_control_execution.sql"));
+                yield "1 (MISSING_SUCCESS)";
+            }
+            case DATABASE_NEWER_THAN_BUILD -> {
+                db.update("""
+                        INSERT INTO flyway_schema_history
+                        SELECT max(installed_rank)+1, '9', 'newer core', 'SQL', 'V9__newer_core.sql', 1,
+                               current_user, now(), 0, true FROM flyway_schema_history
+                        """);
+                yield "9 (FUTURE_SUCCESS)";
+            }
+        };
+        assertRefusedUnchanged(spy(synthetic().load()), refusal);
+    }
+
+    /**
+     * The production history of 02.08.2026 (ranks 60-92): unguarded builds alternately marked
+     * two versions DELETE (repair of an older image) and re-applied them identically (next start
+     * of a newer image) seven times, a third version once. Built with Flyway's own repair/migrate.
+     */
+    private void productionDeleteHistory() throws Exception {
+        script("V1__device_control_execution.sql");
+        script("V2__schedule_duty_flags.sql");
+        synthetic().load().migrate();
+        for (int round = 0; round < 7; round++) {
+            deleteAndReapply("V1__device_control_execution.sql", "V2__schedule_duty_flags.sql");
         }
-        assertRefusedUnchanged(spy(synthetic().load()), "DELETE");
+        script("V3__device_curtailment_status.sql");
+        synthetic().load().migrate();
+        deleteAndReapply("V3__device_curtailment_status.sql");
+        assertThat(db.queryForList("""
+                SELECT version || '|' || count(*) FILTER (WHERE type = 'SQL') || '|'
+                       || count(*) FILTER (WHERE type = 'DELETE') || '|'
+                       || count(DISTINCT checksum) || '|' || (array_agg(type ORDER BY installed_rank DESC))[1]
+                FROM flyway_schema_history GROUP BY version ORDER BY version
+                """, String.class)).as("same shape as production").containsExactly(
+                "1|8|7|1|SQL", "2|8|7|1|SQL", "3|2|1|1|SQL");
+    }
+
+    private void deleteAndReapply(String... names) throws Exception {
+        for (String name : names) {
+            Files.delete(scripts.resolve(name));
+        }
+        synthetic().ignoreMigrationPatterns(new String[0]).load().repair();
+        for (String name : names) {
+            script(name);
+        }
+        synthetic().load().migrate();
     }
 
     @Test
@@ -463,12 +567,15 @@ class FlywayStartupGuardTest {
     }
 
     private String historyFingerprint() throws Exception {
-        List<String> rows = db.queryForList("""
+        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                .digest(String.join("\n", historyRows()).getBytes(StandardCharsets.UTF_8)));
+    }
+
+    private List<String> historyRows() {
+        return db.queryForList("""
                 SELECT jsonb_build_array(installed_rank, version, type, checksum, success, description, script)::text
                 FROM flyway_schema_history ORDER BY installed_rank
                 """, String.class);
-        return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                .digest(String.join("\n", rows).getBytes(StandardCharsets.UTF_8)));
     }
 
     private void script(String name) throws Exception {

@@ -152,14 +152,25 @@ public final class VerbrauchRegeln {
             Integer abdeckungProzent,
             List<String> kennzeichen) {
 
-        /** Z9 — die Abdeckung des VERLAUFS ergänzen; sie sagt nicht, ob die Menge stimmt. */
+        /**
+         * Z9 — die Abdeckung des VERLAUFS ergänzen; sie sagt nicht, ob die Menge stimmt.
+         *
+         * <p>Gekappt bei 100 ({@code Math.min}, dasselbe Muster wie {@code TagVerdichter},
+         * {@code PeriodeVerdichter}, {@code ZeitraumMenge}, {@code KaskadeStufen}): {@code erwartet}
+         * ist die Erwartung aus der DEKLARIERTEN Kadenz, nicht die tatsächliche Zustellrate — eine
+         * Reihe mit zusätzlichen ereignisgetriebenen Werten (z. B. ein Zustandskanal, der bei jedem
+         * Wechsel sendet) liefert in echten Daten mehr gute Werte als erwartet. Ungekappt würde
+         * {@code abdeckung_prozent} über 100 steigen und die Datenbankgrenze
+         * ({@code messreihe_viertelstunde_abdeckung_chk}, nur 0–100) abweisen. Mehr als erwartet ist
+         * weiterhin voll abgedeckt, nie „übererfüllt".
+         */
         Ergebnis mitAbdeckung(int erwarteteWerte) {
             Integer prozent = erwarteteWerte == 0
                     ? null
-                    : BigDecimal.valueOf(erhalten)
+                    : Math.min(100, BigDecimal.valueOf(erhalten)
                             .multiply(BigDecimal.valueOf(100))
                             .divide(BigDecimal.valueOf(erwarteteWerte), RECHNUNG)
-                            .intValue();
+                            .intValue());
             return new Ergebnis(
                     menge, mittel, min, max, energieKwh, zustand, erhalten, erwarteteWerte, prozent, kennzeichen);
         }

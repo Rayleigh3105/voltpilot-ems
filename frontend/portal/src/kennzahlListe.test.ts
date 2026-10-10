@@ -109,6 +109,12 @@ describe('Konzept Auswerten a1 §6.4 · die Liste „Kennzahlen“', () => {
     expect(r.linie.strecken).toHaveLength(1);
   });
 
+  it('Fix vp-kennzahl-undefined: eine angelegte Bezugsbasis ohne erste Fassung (B1, freigabe_status null) spricht „ohne Fassung“, nie undefined', () => {
+    const kz21 = referenzListe().find((x) => x.kennzeichen === 'KZ-0021') as Kennzahl;
+    const ohneFassung = reiheOhneBasis({ ...kz21, bezugsbasis: { kennzeichen: 'BB-0006', fassung: null, freigabe_status: null, vorlaeufig: false } });
+    expect(ohneFassung.bezugsbasis).toBe('BB-0006 ohne Fassung');
+  });
+
   it('der Wert in zwei Teilen, mit „mindestens“/„höchstens“ bei einer Grenze (Q3)', () => {
     expect(zahlUndEinheit('0.2564102564', 'kWh/kg')).toEqual({ zahl: '0,26', einheit: 'kWh je kg', vor: null });
     expect(zahlUndEinheit('30.8333', 'kWh/Person', 'untergrenze').vor).toBe('mindestens');

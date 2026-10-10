@@ -18,7 +18,8 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
- * Die Tabellen der Fernwartung (Migration V20261007163700) an der dedizierten
+ * Die Tabellen der Fernwartung (Migrationen V20261007163700,
+ * V20261008213500 und V20261009074500) an der dedizierten
  * BYPASSRLS-Rolle {@code voltpilot_admin} - dasselbe Muster wie
  * {@code EdgeReleaseRepository}. Erreichbar nur aus platform-admin-Routen und
  * der Leseroute des Tunnel-Dienstes.
@@ -40,7 +41,8 @@ public class FernwartungRepository {
 
     private static final String ZUGANG_SPALTEN =
             "z.id, z.art, z.edge_ref, z.name, z.public_key, host(z.tunnel_adresse) AS adresse, z.status, "
-                    + "z.notiz, z.angelegt_am, z.angelegt_von, z.geaendert_am, z.geaendert_von ";
+                    + "z.notiz, z.angelegt_am, z.angelegt_von, z.geaendert_am, z.geaendert_von, "
+                    + "z.ssh_public_key ";
 
     /** Wo eine Box gekoppelt ist - für Admins, damit „edge-…" einen Kunden bekommt. */
     private static final String ZUGANG_SELECT = "SELECT " + ZUGANG_SPALTEN
@@ -59,14 +61,27 @@ public class FernwartungRepository {
             + "JOIN fernwartung_zugang b ON b.id = f.box_id "
             + "JOIN fernwartung_zugang t ON t.id = f.techniker_id ";
 
-    /** Ein WireGuard-Peer des Wartungsservers. */
+    /**
+     * Ein WireGuard-Peer des Wartungsservers. {@code sshPublicKey} trägt nur
+     * ein Techniker-Zugang, und nur, wenn der Techniker einen hinterlegt hat.
+     */
     public record Zugang(UUID id, String art, String edgeRef, String name, String publicKey,
             String adresse, String status, String notiz, Instant angelegtAm, String angelegtVon,
             Instant geaendertAm, String geaendertVon, UUID siteId, String siteName, UUID tenantId,
-            String tenantName) {
+            String tenantName, String sshPublicKey) {
 
         public boolean aktiv() {
             return "aktiv".equals(status);
+        }
+
+        /** Gelöscht: für das Portal weg; Adresse und Schlüssel bleiben vergeben. */
+        public boolean geloescht() {
+            return "geloescht".equals(status);
+        }
+
+        /** Der hinterlegte SSH-Schlüssel, geprüft - so zeigen ihn Portal und Soll-Stand. */
+        public Optional<SshSchluessel.Geprueft> ssh() {
+            return SshSchluessel.gespeichert(sshPublicKey);
         }
     }
 
@@ -125,8 +140,10 @@ public class FernwartungRepository {
 
     // ── Zugänge ───────────────────────────────────────────────────────────
 
+    /** Die Zugänge einer Art, wie das Portal sie zeigt: ohne gelöschte. */
     public List<Zugang> zugaenge(String art) {
-        return jdbc.query(ZUGANG_SELECT + "WHERE z.art = ? ORDER BY z.tunnel_adresse",
+        return jdbc.query(ZUGANG_SELECT + "WHERE z.art = ? AND z.status <> 'geloescht' "
+                        + "ORDER BY z.tunnel_adresse",
                 FernwartungRepository::zugang, art);
     }
 
@@ -140,11 +157,13 @@ public class FernwartungRepository {
                 FernwartungRepository::zugang, edgeRef).stream().findFirst();
     }
 
+    /** Auch ein gelöschter Zugang: die Regeln müssen ihn erkennen können. */
     public Optional<Zugang> zugang(UUID id) {
         return jdbc.query(ZUGANG_SELECT + "WHERE z.id = ?", FernwartungRepository::zugang, id)
                 .stream().findFirst();
     }
 
+    /** Auch ein gelöschter Zugang: sein Schlüssel bleibt vergeben. */
     public Optional<Zugang> zugangMitSchluessel(String publicKey) {
         return jdbc.query(ZUGANG_SELECT + "WHERE z.public_key = ?", FernwartungRepository::zugang, publicKey)
                 .stream().findFirst();
@@ -161,7 +180,7 @@ public class FernwartungRepository {
                 Boolean.class, externalRef, externalRef));
     }
 
-    /** Alle belegten Adressen in {@code netz}, auch gesperrter Zugänge (keine Wiedervergabe). */
+    /** Alle belegten Adressen in {@code netz}, auch gesperrter und gelöschter Zugänge (keine Wiedervergabe). */
     public Set<Integer> belegteAdressen(Ipv4Netz netz) {
         List<String> adressen = jdbc.query(
                 "SELECT host(tunnel_adresse) FROM fernwartung_zugang WHERE tunnel_adresse <<= ?::inet",
@@ -173,17 +192,26 @@ public class FernwartungRepository {
         return belegt;
     }
 
+    /** {@code sshPublicKey}: nur für einen Techniker-Zugang, sonst null. */
     public UUID zugangAnlegen(String art, String edgeRef, String name, String publicKey, String adresse,
-            String notiz, String akteur) {
+            String notiz, String sshPublicKey, String akteur) {
         return jdbc.queryForObject(
                 "INSERT INTO fernwartung_zugang (art, edge_ref, name, public_key, tunnel_adresse, notiz, "
-                        + "angelegt_von, geaendert_von) VALUES (?, ?, ?, ?, ?::inet, ?, ?, ?) RETURNING id",
-                UUID.class, art, edgeRef, name, publicKey, adresse + "/32", notiz, akteur, akteur);
+                        + "ssh_public_key, angelegt_von, geaendert_von) "
+                        + "VALUES (?, ?, ?, ?, ?::inet, ?, ?, ?, ?) RETURNING id",
+                UUID.class, art, edgeRef, name, publicKey, adresse + "/32", notiz, sshPublicKey, akteur,
+                akteur);
     }
 
     public void schluesselSetzen(UUID id, String publicKey, String notiz, String akteur) {
         jdbc.update("UPDATE fernwartung_zugang SET public_key = ?, notiz = coalesce(?, notiz), "
                 + "geaendert_am = now(), geaendert_von = ? WHERE id = ?", publicKey, notiz, akteur, id);
+    }
+
+    /** Setzt den SSH-Schlüssel eines Zugangs; {@code null} entfernt ihn. */
+    public void sshSchluesselSetzen(UUID id, String sshPublicKey, String akteur) {
+        jdbc.update("UPDATE fernwartung_zugang SET ssh_public_key = ?, geaendert_am = now(), "
+                + "geaendert_von = ? WHERE id = ?", sshPublicKey, akteur, id);
     }
 
     public void statusSetzen(UUID id, String status, String akteur) {
@@ -306,7 +334,8 @@ public class FernwartungRepository {
                 rs.getObject("site_id", UUID.class),
                 rs.getString("site_name"),
                 rs.getObject("tenant_id", UUID.class),
-                rs.getString("tenant_name"));
+                rs.getString("tenant_name"),
+                rs.getString("ssh_public_key"));
     }
 
     private static Fenster fenster(ResultSet rs, int n) throws SQLException {

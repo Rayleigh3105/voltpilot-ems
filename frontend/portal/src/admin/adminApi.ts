@@ -549,10 +549,31 @@ export const adminApi = {
 
   fernwartungTechniker: () => request<FernwartungTechniker[]>('/api/v1/admin/fernwartung/techniker'),
 
-  fernwartungTechnikerAnlegen: (input: { name: string; publicKey: string; notiz?: string | null }) =>
+  /** `sshPublicKey` ist freiwillig: ohne ihn öffnet ein Fenster für den Zugang nur den Netzweg. */
+  fernwartungTechnikerAnlegen: (input: {
+    name: string;
+    publicKey: string;
+    notiz?: string | null;
+    sshPublicKey?: string | null;
+  }) =>
     request<FernwartungTechnikerAntwort>('/api/v1/admin/fernwartung/techniker', {
       method: 'POST',
       body: JSON.stringify(input),
+    }),
+
+  /**
+   * Den öffentlichen SSH-Schlüssel eines Zugangs setzen oder ersetzen. 400 mit
+   * Grund, wenn die API ihn nicht annimmt (nur RSA, 2048 bis 4096 Bit).
+   */
+  fernwartungTechnikerSshSetzen: (id: string, sshPublicKey: string) =>
+    request<FernwartungTechniker>(`/api/v1/admin/fernwartung/techniker/${id}/ssh-schluessel`, {
+      method: 'PUT',
+      body: JSON.stringify({ sshPublicKey }),
+    }),
+
+  fernwartungTechnikerSshEntfernen: (id: string) =>
+    request<FernwartungTechniker>(`/api/v1/admin/fernwartung/techniker/${id}/ssh-schluessel`, {
+      method: 'DELETE',
     }),
 
   fernwartungTechnikerSperren: (id: string, grund?: string | null) =>
@@ -565,6 +586,13 @@ export const adminApi = {
     request<FernwartungTechniker>(`/api/v1/admin/fernwartung/techniker/${id}/entsperren`, {
       method: 'POST',
     }),
+
+  /**
+   * Endgültig, nur aus dem Zustand gesperrt (409 sonst). Der Zugang fehlt
+   * danach in jeder Liste; Adresse und Schlüssel bleiben vergeben.
+   */
+  fernwartungTechnikerLoeschen: (id: string) =>
+    request<void>(`/api/v1/admin/fernwartung/techniker/${id}`, { method: 'DELETE' }),
 
   fernwartungFensterOeffnen: (input: {
     edgeRef: string;

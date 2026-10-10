@@ -9,10 +9,10 @@ Mandantenfähiges EMS für PV, Speicher und Verbraucher. Einstieg: [Dokumentatio
 | `services/api` | Spring Boot, Portal-API, RLS, Flyway; [API-Regeln](docs/api.md) |
 | `services/ingest`, `services/timescale-writer` | MQTT → Redpanda → TimescaleDB |
 | `services/forecast`, `services/market-data` | Prognosen und externe Daten |
-| `services/tunnel-dienst` | Fernwartung: Go-Dienst auf der Wartungs-VM setzt den Soll-Stand des Portals auf WireGuard/nftables um; [README](services/tunnel-dienst/README.md), [Fernwartung](docs/fernwartung.md) |
+| `services/tunnel-dienst` | Fernwartung: Go-Dienst auf der Wartungs-VM setzt den Soll-Stand des Portals auf WireGuard/nftables um und gibt Boxen im offenen Fenster die SSH-Schlüssel der Techniker aus; jede Änderung an der Firewall-Basis schließt offene Fenster einmal; [README](services/tunnel-dienst/README.md), [Fernwartung](docs/fernwartung.md) |
 | `services/optimization` | Planung; [README](services/optimization/README.md) |
 | `edge-app` | Kunden-Box; [lokale Regeln](edge-app/AGENTS.md) |
-| `edge-light` | Box als ein Programm ohne Docker/Node-RED (OpenWrt/MIPS); Go-Code in `edge-app/core`; [README](edge-light/README.md), [Paritätsliste](edge-light/docs/paritaet.md) |
+| `edge-light` | Box als ein Programm ohne Docker/Node-RED (OpenWrt/MIPS); Go-Code in `edge-app/core`; [README](edge-light/README.md), [Paritätsliste](edge-light/docs/paritaet.md). `openwrt/service-tunnel.sh` richtet den Wartungstunnel ein: Fenster-Schlüssel nur im RAM mit Frist in Laufzeit der Box, SSH 2222 nur aus dem Tunnel; Prüfregel des Abholers und [Vertrag](docs/contracts/fernwartung-schluessel-v1.md) gemeinsam ändern, Anmeldung mit `test/wartung-anmeldung-probe.sh` belegen; [Mango](edge-light/docs/mango.md) |
 | `frontend/portal` | React-Portal; [lokale Regeln](frontend/portal/AGENTS.md) |
 | `catalog/measurement-points` | Geprüfte Herstellerquellen und generierte Messpunkte |
 | `catalog/control-profiles` | Steuerprofile je Wechselrichter-Familie: Wissen mit Quellen, keine Freigabe; Adapter-Folgen per Test an den Code gebunden; [README](catalog/control-profiles/README.md) |
@@ -68,6 +68,7 @@ Nur Regeln behalten, die künftige Arbeit beeinflussen. Bestehende Einträge üb
 - Neue Feature-Flags und ihre tatsächliche Produktionskonfiguration gemeinsam prüfen. `deploy-fast.yaml` hat kein Test-Gate.
 - UEMS-Begriffe und Umsetzungsbelege stehen im [Fachmodell](docs/fachmodell/README.md); Verträge, Vektoren und tatsächliche Aufrufer zusammen prüfen. Tagesgenaue Zuordnungen schließen den letzten Tag ein; minutengenaue Intervalle sind halboffen.
 - Größenbudgets erhalten: Root höchstens 60 KB, Portal/Edge je 45 KB. Prüfen mit `bash tools/agents-md-budget.sh`; Budgets nicht erhöhen.
+- Videos für außen entstehen nach [docs/videos.md](docs/videos.md): HyperFrames, Design-Tokens des Portals, Motion Design mit vollem Einsatz; keine Aussage zu Normkonformität, Preisen oder Förderquoten.
 
 ## Themen-Index (der ausgelagerte Bestand)
 

@@ -77,6 +77,7 @@ import { anlagenOptionen } from './anlagenWahl';
 import { anlageRoute, hashForRoute, parseRoute, pageRoute, standortRoute, type Route } from './nav';
 import { AppShell } from './shell/AppShell';
 import { ahrenbergUnternehmen, bestandEineAnlage, FIXTURE_IDS, halle1Entwurf } from './test/standorteFixtures';
+import { ahrenbergFunktionen } from './test/funktionenFixtures';
 
 // Die Schale braucht für den Byte-Vergleich (UEMS AP-01 IP-5) nur einen Namen
 // am Avatar; alles andere aus `auth` bleibt echt (`rollen` liest `isPlatformAdmin`).
@@ -1416,9 +1417,11 @@ describe('UEMS AP-01 IP-5 — die Startansicht-Weiche lässt den Einzel-Anlagen-
       ),
     ],
   ];
+  // firstmate K2: Werk Ahrenberg misst bereits (ahrenbergFunktionen Vorgabe) — die härteste
+  // Anforderung gilt für einen Bestandskunden, der längst misst, nicht für einen Entwurf.
   const mitEbene = (orte: Orte | null): ShellInput => ({
     ...heute,
-    ebene: startEbene({ isAdmin: false, betriebsart: 'endkunde', siteIds: ids, orte }),
+    ebene: startEbene({ isAdmin: false, betriebsart: 'endkunde', siteIds: ids, orte, funktionen: ahrenbergFunktionen() }),
   });
   const routen: Route[] = [
     pageRoute('uebersicht'),
@@ -1733,17 +1736,33 @@ describe('AP-01 IP-13 · Ladegrenze bleibt eine additive Bestandsfläche', () =>
   });
 });
 
-// AP-02 IP-10: die neue Bestandsübernahme ergänzt das Portfolio nur bei einer
+// AP-02 IP-10: die Unternehmens-Ebene zeigt die Vorschlagskarte weiterhin nur bei einer
 // tatsächlich offenen Vorschlagsmenge. Ohne sie bleibt der O18-Bestand zeichengleich.
-describe('AP-02 IP-10 · Vorschau-Zuordnung bleibt additiv', () => {
-  it('lädt und rendert die Fläche nur mit Unternehmensrecht und offenen Anlagen', () => {
-    // Seit dem Nachzug von main d1d67b97e (eine Übersicht für jede Betriebsart) trägt die Flotte die Karte über
-    // `StandortVorschlagHinweis`, die Unternehmens-Ebene über `EbenenCockpit` — beide mit derselben Regel.
-    for (const datei of ['components/StandortVorschlagHinweis.tsx', 'components/EbenenCockpit.tsx']) {
-      const quelle = ohneKommentare(readFileSync(join(SRC, datei), 'utf8'));
-      expect(quelle, datei).toContain("rollen.darf('standort.verwalten', null)");
-      expect(quelle, datei).toContain('v.anlagenZahl > 0 ? v : null');
-      expect(quelle, datei).toContain('{standortVorschlag &&');
+describe('AP-02 IP-10 · Vorschau-Zuordnung auf der Unternehmens-Ebene bleibt additiv', () => {
+  it('lädt und rendert die Karte nur mit Unternehmensrecht und offenen Anlagen', () => {
+    const quelle = ohneKommentare(readFileSync(join(SRC, 'components/EbenenCockpit.tsx'), 'utf8'));
+    expect(quelle).toContain("rollen.darf('standort.verwalten', null)");
+    expect(quelle).toContain('v.anlagenZahl > 0 ? v : null');
+    expect(quelle).toContain('{standortVorschlag &&');
+  });
+});
+
+// firstmate K2 (09.10.2026): die grosse Vorschlagskarte verschwindet aus der Kunden-Übersicht
+// (`EBENE_HEUTE`) — Ersatz ist der leise Einstieg im ⋯-Menü, nur sichtbar mit `standort.verwalten`
+// (von `RowMenu` selbst gefiltert) und ohne Hintergrund-Abruf vor dem Klick.
+describe('firstmate K2 · der leise Einstieg ersetzt die Vorschlagskarte auf der gewohnten Übersicht', () => {
+  it('trägt das Recht am Menü-Eintrag, lädt erst beim Klick und zeigt keine Karte von sich aus', () => {
+    const quelle = ohneKommentare(readFileSync(join(SRC, 'components/MessenEinrichtenEintrag.tsx'), 'utf8'));
+    expect(quelle).toContain("recht: 'standort.verwalten'");
+    expect(quelle).not.toContain('NochNichtZugeordnetKarte');
+    expect(quelle).not.toMatch(/useEffect/);
+    // `PortfolioCockpit` selbst bleibt blind für die Betriebsart (siehe oben) — der Hook läuft
+    // in den Aufrufern, die das fertige Paar nur noch als Prop einhängen.
+    for (const datei of ['pages/UebersichtPage.tsx', 'pages/PortfolioPage.tsx']) {
+      expect(ohneKommentare(readFileSync(join(SRC, datei), 'utf8')), datei).toContain('useMessenEinrichtenEintrag');
     }
+    const cockpit = ohneKommentare(readFileSync(join(SRC, 'components/PortfolioCockpit.tsx'), 'utf8'));
+    expect(cockpit).toContain('messenEinrichtenEintrag');
+    expect(cockpit).not.toMatch(/\bbetriebsart\b/i);
   });
 });

@@ -403,8 +403,10 @@ class HilfeArtikel(unittest.TestCase):
         self.assertEqual(self.rot(), [])
         code, out = still(pb.main, ['--check'])
         self.assertEqual(code, 0, out)
+        # 13 Sätze seit PR #1453 (Nachweisen PR7, Befund A20): der Hinweis-Satz über den Begründungs-Satz einer
+        # Maßnahme stand im Artikel doppelt und steht jetzt nur noch unter „Was bei Ihnen bleibt“.
         self.assertIn('Hilfe-Artikel hält: frontend/portal/src/help/content/energiemanagement.ts gegen BWB-2026-01 '
-                      '(entwurf), 14 Sätze, davon 1 an einer Funktion; zurückgehalten: an Z-004 gebunden, Z-004 ist '
+                      '(entwurf), 13 Sätze, davon 1 an einer Funktion; zurückgehalten: an Z-004 gebunden, Z-004 ist '
                       'offen · an L-004 gebunden, L-004 ist kein angenommener Restpunkt', out)
 
     def test_er_liest_jeden_text_und_nur_texte(self):

@@ -101,7 +101,52 @@ describe('FernwartungKarte (Box-Seite, nur Plattform-Schicht)', () => {
     expect(screen.getByText(/keinen aktiven Techniker-Zugang/)).toBeInTheDocument();
     expect(screen.getByTestId('fw-karte-dienst')).toHaveTextContent('noch nie abgeholt');
 
+    // Der Zugang steht nicht in der (leeren) Liste: die Karte behauptet nicht, er habe keinen Schlüssel.
+    expect(screen.getByTestId('fw-anmeldung-unbekannt')).toHaveTextContent(/nicht bekannt/);
+    expect(screen.getByText('ssh -i ~/.ssh/id_rsa_voltpilot -p 2222 root@10.10.16.2')).toBeInTheDocument();
+
     fireEvent.click(screen.getByRole('button', { name: 'Schließen' }));
     await waitFor(() => expect(fernwartungFensterSchliessen).toHaveBeenCalledWith('f1'));
+  });
+
+  it('zeigt am offenen Fenster die fertigen Befehle und den Fingerabdruck des Zugangs', async () => {
+    fernwartungTechniker.mockResolvedValue([
+      {
+        id: 't1',
+        name: 'Max (Laptop)',
+        publicKey: 'FY4LLXFaOvh8LPZu/gA4AeS2WJjXkuOUPB4hlxBI8/Y=',
+        publicKeyKurz: 'FY4LLXFa…BI8/Y=',
+        adresse: '10.10.32.2',
+        status: 'aktiv',
+        notiz: null,
+        angelegtAm: '2026-10-07T10:00:00Z',
+        geaendertAm: '2026-10-07T10:00:00Z',
+        sshPublicKey: 'ssh-rsa AAAAB3NzaC1yc2EA',
+        sshFingerabdruck: 'SHA256:TDOx3bpPNtPLIdd+juZoGcDMz3ZRCklaP5G6aBrp9Zc',
+        sshBits: 3072,
+      },
+    ]);
+    fernwartungBox.mockResolvedValue({
+      id: 'b1',
+      edgeRef: 'edge-zay5sdd',
+      publicKey: 'jUg9DePFPkIQ+KNIAXqSEuVTw2UNHwbUH/HPFK5HiEM=',
+      publicKeyKurz: 'jUg9DePF…5HiEM=',
+      adresse: '10.10.16.2',
+      status: 'aktiv',
+      notiz: null,
+      angelegtAm: '2026-10-07T10:00:00Z',
+      geaendertAm: '2026-10-07T10:00:00Z',
+      siteId: null,
+      siteName: null,
+      tenantId: null,
+      tenantName: null,
+      laufendeFenster: [offenesFenster],
+    });
+    render(<FernwartungKarte edgeRef="edge-zay5sdd" />);
+    const anmeldung = await screen.findByTestId('fw-anmeldung');
+    expect(anmeldung).toHaveTextContent('ssh -i ~/.ssh/id_rsa_voltpilot -p 2222 -L 8484:127.0.0.1:8484 root@10.10.16.2');
+    expect(screen.getByTestId('fw-anmeldung-vorhanden')).toHaveTextContent(
+      '„Max (Laptop)“: Anmeldung mit dem SSH-Schlüssel SHA256:TDOx3bpPNtPLIdd+juZoGcDMz3ZRCklaP5G6aBrp9Zc',
+    );
   });
 });

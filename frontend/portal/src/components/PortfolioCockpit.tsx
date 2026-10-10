@@ -32,7 +32,7 @@ import { KundenUebersicht } from './portfolio/KundenUebersicht';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { AnlageAnlegenDrawer } from './AnlageAnlegenDrawer';
 import { AnpassenLeiste, AnpassenListe } from './CockpitAnpassen';
-import { RowMenu } from './RowMenu';
+import { RowMenu, type RowMenuItem } from './RowMenu';
 import { ErrorState, Skeleton } from './States';
 import './PortfolioCockpit.css';
 // LIVE: „Jetzt" und die Statuszeile zeigen gemessene Ist-Werte.
@@ -61,9 +61,13 @@ const KURVEN_BIS_ANLAGEN = 12;
  *
  * UEMS: Die Unternehmens- und Standort-Übersicht (mit Ebene) ist
  * `EbenenCockpit`; die Aufrufer wählen nach der UEMS-Ebene, nie nach der
- * Betriebsart. Hier bleiben nur die Rechte-Hebel (`<Recht>` bzw. `recht` im
- * ⋯-Menü, AP-03 IP-12) und der Platz für einen Hinweis des Wirts (die
- * Vorschlagskarte „Noch nicht zugeordnet“, AP-02 IP-10).
+ * Betriebsart — diese Fläche selbst bleibt dafür blind (Entscheid 25.09.2026,
+ * `migration.test.ts` bewacht das). Hier bleiben nur die Rechte-Hebel
+ * (`<Recht>` bzw. `recht` im ⋯-Menü, AP-03 IP-12) und der Platz für den
+ * leisen Einstieg „Messen & Auswerten einrichten" im selben Menü (firstmate
+ * K2, Ersatz für die frühere Vorschlagskarte „Noch nicht zugeordnet", AP-02
+ * IP-10) — fertig gebaut vom Aufrufer (`useMessenEinrichtenEintrag`), der
+ * die Betriebsart dafür kennen darf.
  *
  * **Render-only.** Jede Zahl, jedes Wort und jede Auslassung entsteht in den
  * reinen Modulen `kundenUebersicht.ts` / `portfolioCockpit.ts`, die Anordnung
@@ -91,13 +95,11 @@ export interface PortfolioCockpitProps {
   /** Der Kundenname für das Admin-Band des Anpassen-Modus. */
   kunde?: string | null;
   /**
-   * UEMS AP-02 IP-10/O18: ein Hinweis des Wirts unter der Statuszeile —
-   * heute die Vorschlagskarte `StandortVorschlagHinweis` (nur für ein Recht
-   * `standort.verwalten` und nur mit Vorschlägen). Er bekommt die Anwendungen
-   * der Flotte und ein Neu-Laden der Fläche. Ohne ihn bleibt die Fläche
-   * zeichengleich.
+   * UEMS firstmate K2: der leise Einstieg „Messen & Auswerten einrichten" im
+   * ⋯-Menü — vom Aufrufer über {@link useMessenEinrichtenEintrag} gebaut
+   * (der kennt Betriebsart/Anwendungen), hier nur eingehängt.
    */
-  hinweis?: (flotte: { anwendungen: readonly string[]; neuLaden: () => void }) => ReactNode;
+  messenEinrichtenEintrag?: { aktion: RowMenuItem; modal: ReactNode } | null;
 }
 
 export function PortfolioCockpit({
@@ -107,7 +109,7 @@ export function PortfolioCockpit({
   titel,
   titelBereitsGenannt = false,
   kunde = null,
-  hinweis,
+  messenEinrichtenEintrag = null,
 }: PortfolioCockpitProps) {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [earnings, setEarnings] = useState<Earnings | null>(null);
@@ -350,10 +352,10 @@ export function PortfolioCockpit({
         titel={titel}
         titelVersteckt={titelBereitsGenannt}
         status={statusZeile(overview.sites, now)}
-        hinweis={hinweis?.({ anwendungen, neuLaden: () => setReloadKey((k) => k + 1) })}
         aktionen={[
           { label: 'Anpassen', icon: 'sliders', recht: 'cockpit.anpassen', onClick: layout.start },
           ...aktionen,
+          ...(messenEinrichtenEintrag ? [messenEinrichtenEintrag.aktion] : []),
         ]}
         bloecke={bloecke}
         heute={heute}
@@ -390,6 +392,7 @@ export function PortfolioCockpit({
           ) : null
         }
       />
+      {messenEinrichtenEintrag?.modal}
       {drawers}
     </>
   );

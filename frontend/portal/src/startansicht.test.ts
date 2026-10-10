@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Site } from './api';
+import type { Funktionen, Site } from './api';
 import { anlagenOptionen } from './anlagenWahl';
 import {
   canonicalShellRoute,
@@ -13,6 +13,7 @@ import {
   type ShellInput,
 } from './betriebsart';
 import { anlageRoute, hashForRoute, pageRoute, parseRoute, standortRoute, type Route } from './nav';
+import { ahrenbergFunktionen, funktionWerkAhrenberg, funktionWerkLindach } from './test/funktionenFixtures';
 import {
   ahrenbergHeute,
   ahrenbergUnternehmen,
@@ -37,13 +38,25 @@ const MEINE_ANLAGEN = 'Meine Anlagen';
 
 type Rahmen = Pick<ShellInput, 'isAdmin' | 'loaded' | 'tenantReady' | 'betriebsart'>;
 
-/** Die Schale, wie `App.tsx` sie baut: Anlagen + Standorte → Ebene. */
-function schale(siteIds: string[], orte: Orte | null, over: Partial<Rahmen> = {}): ShellInput {
+/**
+ * Die Schale, wie `App.tsx` sie baut: Anlagen + Standorte → Ebene.
+ *
+ * firstmate K2: jeder Fall dieser Datei außer dem eigenen K2-Block handelt von der
+ * Sprungregeln-Tabelle, nicht vom Messen — die Vorgabe (`ahrenbergFunktionen()`, Werk Ahrenberg
+ * UND Werk Lindach `eingerichtet`) lässt sie unverändert. Die K2-Fälle übergeben ihre eigenen
+ * Funktionen.
+ */
+function schale(
+  siteIds: string[],
+  orte: Orte | null,
+  over: Partial<Rahmen> = {},
+  funktionen: Funktionen | null = ahrenbergFunktionen(),
+): ShellInput {
   const rahmen: Rahmen = { isAdmin: false, loaded: true, tenantReady: true, betriebsart: 'endkunde', ...over };
   return {
     ...rahmen,
     siteCount: siteIds.length,
-    ebene: startEbene({ isAdmin: rahmen.isAdmin, betriebsart: rahmen.betriebsart, siteIds, orte }),
+    ebene: startEbene({ isAdmin: rahmen.isAdmin, betriebsart: rahmen.betriebsart, siteIds, orte, funktionen }),
   };
 }
 
@@ -197,8 +210,8 @@ describe('UEMS AP-01 IP-5 · Randfälle der Weiche und des Pfades', () => {
 
   it('Standorte nicht geladen, Schale nicht fertig oder Admin: keine neue Entscheidung', () => {
     const ids = [an1, an2, an3];
-    expect(startEbene({ isAdmin: true, betriebsart: 'endkunde', siteIds: ids, orte: zweiStandorte() })).toEqual(EBENE_HEUTE);
-    expect(startEbene({ isAdmin: false, betriebsart: 'endkunde', siteIds: ids, orte: null })).toEqual(EBENE_HEUTE);
+    expect(startEbene({ isAdmin: true, betriebsart: 'endkunde', siteIds: ids, orte: zweiStandorte(), funktionen: ahrenbergFunktionen() })).toEqual(EBENE_HEUTE);
+    expect(startEbene({ isAdmin: false, betriebsart: 'endkunde', siteIds: ids, orte: null, funktionen: null })).toEqual(EBENE_HEUTE);
     expect(
       canonicalShellRoute({ shell: { ...schale(ids, zweiStandorte()), loaded: false }, route: pageRoute('uebersicht'), siteIds: ids }),
     ).toBeNull();
@@ -244,5 +257,65 @@ describe('UEMS AP-01 IP-5 · Randfälle der Weiche und des Pfades', () => {
     expect(parseRoute(`#/standort/${st1}`)).toEqual(standortRoute(st1));
     expect(parseRoute('#/standort')).toEqual({ page: 'standort', siteId: null, sub: null });
     expect(parseRoute('#/standorte')).toEqual({ page: 'anlagen', siteId: null, sub: 'technik' });
+  });
+});
+
+/**
+ * firstmate K2 (09.10.2026, Captain's Intent „Wolfgang Asbeck"): Standorte allein lösen die
+ * neue Unternehmens-/Standort-Übersicht nicht mehr aus — erst wenn mindestens ein lebender
+ * Standort MISST (dieselbe Prüfung wie `ebenenNav.ts misst()`). Wer nur Standorte angelegt,
+ * aber „Messen & Auswerten" nirgends eingerichtet hat, bleibt auf der gewohnten Übersicht —
+ * zeichengleich zum Kunden ohne Standorte. Unbekannte/nicht geladene Funktionen sind nie „ja".
+ */
+describe('firstmate K2 · Standort-/Unternehmensebene erst, wenn ein Standort misst', () => {
+  it('Standorte, aber kein Standort misst → gewohnte Übersicht, zeichengleich zu „keine Standorte"', () => {
+    const ids = [an1, an2, an3];
+    const keinMessen = ahrenbergFunktionen({ messen: 'bestand' });
+    const shell = schale(ids, zweiStandorte(), {}, keinMessen);
+    const ohneStandorte = schale(ids, null);
+    expect(shell.ebene).toEqual(EBENE_HEUTE);
+    expect(landung(shell, ids)).toEqual(landung(ohneStandorte, ids));
+    expect(showPortfolioNav(shell)).toBe(showPortfolioNav(ohneStandorte));
+    expect(pfad(shell, anlageRoute(an1))).toEqual(pfad(ohneStandorte, anlageRoute(an1)));
+  });
+
+  it('ein einzelner Standort misst von mehreren → wie bisher die Unternehmens-Übersicht', () => {
+    const ids = [an1, an2, an3];
+    // Nur Werk Ahrenberg (st1) misst, Werk Lindach (st2) noch nicht — „mindestens ein" reicht.
+    const nurAhrenbergMisst = ahrenbergFunktionen({
+      standorte: [funktionWerkAhrenberg('eingerichtet'), funktionWerkLindach('bestand')],
+    });
+    const shell = schale(ids, zweiStandorte(), {}, nurAhrenbergMisst);
+    expect(shell.ebene).toMatchObject({ art: 'unternehmen', name: 'Ahrenberg' });
+    expect(landung(shell, ids)).toEqual(pageRoute('portfolio'));
+  });
+
+  it('Funktionen unbekannt oder nicht geladen → gewohnte Übersicht (unbekannt ist nie „ja")', () => {
+    const ids = [an1, an2, an3];
+    const shell = schale(ids, zweiStandorte(), {}, null);
+    expect(shell.ebene).toEqual(EBENE_HEUTE);
+    expect(landung(shell, ids)).toEqual(pageRoute('portfolio'));
+  });
+
+  it('Teilansicht (AP-03) unterliegt derselben Regel: Werk Lindach ohne Messen bleibt die gewohnte Übersicht', () => {
+    const ids = [an3];
+    const keinMessen = ahrenbergFunktionen({ messen: 'bestand' });
+    // Wie der Bestandsfall „Zugriff nur auf einen Standort" (`orte.standorteGesamt > 1`),
+    // nur ohne Messen — Peter sieht weiterhin NUR seine erlaubte Anlage (an3), keine fremde.
+    const shell = schale(ids, nurLindach(), {}, keinMessen);
+    expect(shell.ebene).toEqual(EBENE_HEUTE);
+    expect(landung(shell, ids)).toEqual(anlageRoute(an3));
+    // Explizit über `eingeschraenkt: true` (AP-03-Flag) dieselbe Antwort.
+    const explizit = startEbene({
+      isAdmin: false, betriebsart: 'endkunde', siteIds: ids, orte: nurLindach(), eingeschraenkt: true, funktionen: keinMessen,
+    });
+    expect(explizit).toEqual(EBENE_HEUTE);
+  });
+
+  it('Betreiber-Rahmen und Admin entscheiden weiter vor der Messen-Prüfung', () => {
+    const ids = [an1, an2, an3];
+    const keinMessen = ahrenbergFunktionen({ messen: 'bestand' });
+    expect(schale(ids, zweiStandorte(), { betriebsart: 'betreiber' }, keinMessen).ebene).toEqual(EBENE_HEUTE);
+    expect(schale(ids, zweiStandorte(), { isAdmin: true }, keinMessen).ebene).toEqual(EBENE_HEUTE);
   });
 });

@@ -9,8 +9,8 @@ import { expect, test, type Page } from '@playwright/test';
  * prüft die Route selbst in `EnergiemanagementMappeApiTest`).
  *
  * Fälle: Kundenadministrator stellt Unterlagen zusammen (am Telefon zwei Schritte, am Rechner ein Dialog mit dem Kasten
- * „Die Mappe · Grenze“), die Seite der Mappe mit Öffnen, Speichern, CSV und Teilen (am Telefon das Teilen-Menü, am
- * Rechner „Link kopiert“), Einsicht geben mit Frist ab dem Tag der Route · „Einsicht“ sieht nur „Mappen“, liest und lädt,
+ * „Die Mappe · Grenze“), die Seite der Mappe mit Öffnen, Speichern, CSV und Teilen (wo der Browser
+ * teilen kann das Teilen-Menü, sonst „Link kopiert“ - entschieden nach `navigator.share`, nicht nach der Breite), Einsicht geben mit Frist ab dem Tag der Route · „Einsicht“ sieht nur „Mappen“, liest und lädt,
  * gibt keine Einsicht weiter · nach 30 Tagen „Nicht mehr abrufbar“.
  *
  * GEMESSEN: Querlauf des Dokuments und überstehende Elemente je Schritt. Mit `ENERGIEMANAGEMENT_BILDER=<Ordner>` legt der
@@ -63,17 +63,18 @@ for (const breite of [375, 1440]) {
   const telefon = breite < 720;
   test.describe(`Nachweisen › Prüfung von außen bei ${breite} px`, () => {
     test('Kundenadministrator: Unterlagen zusammenstellen, Mappe abrufen und teilen, Einsicht geben', async ({ page, context }) => {
-      if (telefon) {
-        // Das Teilen-Menü des Telefons (Web Share API): die Bühne merkt sich, was geteilt wurde.
-        await page.addInitScript(() => {
-          const w = window as unknown as { __geteilt: unknown[] };
-          w.__geteilt = [];
-          Object.defineProperty(navigator, 'share', { value: async (d: unknown) => void w.__geteilt.push(d), configurable: true });
-        });
-      } else {
-        await context.grantPermissions(['clipboard-read', 'clipboard-write']);
-      }
+      // Das Portal entscheidet nach der Fähigkeit `navigator.share` (`teilen.ts`), nicht nach der Breite: am Telefon
+      // stellt die Bühne das Teilen-Menü (Web Share API), am Rechner bleibt, was der Browser mitbringt - Safari teilt
+      // auch dort. Wo geteilt wird, merkt sich die Bühne, was geteilt wurde; sonst gilt die Zwischenablage.
+      await page.addInitScript((stellen) => {
+        const w = window as unknown as { __geteilt: unknown[]; __teilt: boolean };
+        w.__geteilt = [];
+        w.__teilt = stellen || typeof navigator.share === 'function';
+        if (w.__teilt) Object.defineProperty(navigator, 'share', { value: async (d: unknown) => void w.__geteilt.push(d), configurable: true });
+      }, telefon);
       await oeffne(page, 'person=JW&lage=ahrenberg&mb=r13&mp=leer', breite);
+      const teilt = await page.evaluate(() => (window as unknown as { __teilt: boolean }).__teilt);
+      if (!teilt) await context.grantPermissions(['clipboard-read', 'clipboard-write']);
       const aussen = page.getByTestId('ueberblick-aussen');
       await aussen.scrollIntoViewIfNeeded();
       await expect(aussen.getByRole('heading', { level: 2 })).toHaveText('Prüfung von außen');
@@ -143,10 +144,11 @@ for (const breite of [375, 1440]) {
 
       // Teilen: ein Link in den Kundenbereich, nie die Datei.
       await page.getByTestId('weitergeben-teilen').click();
-      if (telefon) {
+      if (teilt) {
         await expect.poll(() => page.evaluate(() => (window as unknown as { __geteilt: { title: string; url: string }[] }).__geteilt)).toEqual([
           { title: 'Unterlagen für das Audit', url: expect.stringMatching(/#\/portfolio\/energiemanagement\/mappen\/6a990000-0000-4000-8000-000000000100$/) },
         ]);
+        await expect(page.getByTestId('mappe-weitergeben')).not.toContainText('Link kopiert');
       } else {
         await expect(page.getByTestId('mappe-weitergeben')).toContainText('Link kopiert');
         expect(await page.evaluate(() => navigator.clipboard.readText())).toMatch(/#\/portfolio\/energiemanagement\/mappen\/6a990000-0000-4000-8000-000000000100$/);

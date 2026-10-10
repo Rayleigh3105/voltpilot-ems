@@ -279,6 +279,46 @@ class UemsViertelstundeMengeTest {
                 .hasMessageContaining("abdeckung_chk");
     }
 
+    /**
+     * H2 (unabhängige Produktionssicherheits-Prüfung vp-prod-safety §4.6, echte Prod-Daten): ein
+     * ereignisgetriebener Kanal (Vorbild Deye „work-mode", Mess-Selektion 300 s) sendet bei jedem
+     * Zustandswechsel ZUSÄTZLICH zur periodischen Kadenz — an der echten Produktionskopie kamen so
+     * in 26 Viertelstunden-Fenstern 4–5 gute Werte statt der erwarteten 3 an ({@code erhalten >
+     * erwartet}). Ungeklemmt lieferte {@code Ergebnis.mitAbdeckung} dafür
+     * {@code abdeckung_prozent > 100}, und die Zeile verletzte
+     * {@code messreihe_viertelstunde_abdeckung_chk} — derselbe Stapel kommt alle 5 Minuten wieder
+     * (der Lauf nimmt das ÄLTESTE Intervall zuerst), der Verdichtungs-Lauf stand in Produktion
+     * dauerhaft. Ohne den {@code Math.min(100, …)}-Klemmwert in {@code Ergebnis#mitAbdeckung} ist
+     * dieser Test rot (SQL-Fehler {@code abdeckung_chk}); die „keine Regel"-Zustandsreihen
+     * (state/bitfield/text, Zeile oben) laufen durch GENAU dieselbe Methode wie Momentanwerte.
+     */
+    @Test
+    void h2EreignisgetriebeneBurstkadenzUeberschreitetDieErwartungNieDieAbdeckung() {
+        String kanal = "deye.hybrid_3p.work-mode.work-mode";
+        UUID entity = reihe("H2 Burstkadenz Zustandskanal (Deye work-mode)", kanal, 300);
+        try {
+            // Periodisch 10:00/10:05/10:10 (erwartet = 900 s / 300 s = 3) plus zwei
+            // Zustandswechsel mitten im Fenster (10:02:30, 10:07:45) -> erhalten = 5, genau das
+            // reale Muster der betroffenen Kanäle.
+            einzeln(kanal, entity, "2026-12-10T10:00:00Z", new BigDecimal("1"), "state");
+            einzeln(kanal, entity, "2026-12-10T10:02:30Z", new BigDecimal("2"), "state");
+            einzeln(kanal, entity, "2026-12-10T10:05:00Z", new BigDecimal("2"), "state");
+            einzeln(kanal, entity, "2026-12-10T10:07:45Z", new BigDecimal("1"), "state");
+            einzeln(kanal, entity, "2026-12-10T10:10:00Z", new BigDecimal("1"), "state");
+            arbeitFuellen();
+            verdichtenBisLeer();
+            Map<String, Object> z = eineZeile(entity, kanal, "2026-12-10T10:00:00Z");
+            assertThat(z.get("erhalten")).isEqualTo(5);
+            assertThat(z.get("erwartet")).isEqualTo(3);
+            assertThat(z.get("abdeckung_prozent")).as("mehr Werte als erwartet bleiben voll abgedeckt, "
+                    + "nie über 100").isEqualTo(100);
+        } finally {
+            // Isolation von Testreihenfolge und -wiederholung: kein Eintrag dieses Kanals bleibt
+            // in der Arbeitsliste stehen, egal ob der Lauf oben erfolgreich war.
+            root.update("DELETE FROM messreihe_viertelstunde_arbeit WHERE entity_id = ?", entity);
+        }
+    }
+
     // ==================================================================== Die Vektoren
 
     /** IP-17: historical roles remain unknown; leading source bindings govern consumption. */

@@ -239,6 +239,9 @@ class BerichtApiTest {
                 .get("feld").asText()).isEqualTo("gilt_ab");
         abgelehnt(ruf(w.ines(), HttpMethod.GET, PFAD + "/betroffen?objekt=" + w.st1()
                 + "&anlass=umbenennung&gilt_ab=2026-10-01", null), 400, "anfrage_ungueltig");
+        // H3 (Produktionssicherheits-Prüfung §4.2): ohne `anlass` 400 statt 500 (NPE auf `List.of(...).contains(null)`).
+        assertThat(abgelehnt(ruf(w.ines(), HttpMethod.GET, PFAD + "/betroffen?objekt=" + w.st1()
+                + "&gilt_ab=2026-10-01", null), 400, "anfrage_ungueltig").body().get("feld").asText()).isEqualTo("anlass");
 
         assertThat(zaehle("bericht_stand", w)).isEqualTo(staende);
         assertThat(zaehle("bericht_revision_anstoss", w)).isEqualTo(anstoesse);

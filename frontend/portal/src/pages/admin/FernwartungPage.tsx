@@ -10,7 +10,7 @@
  * Nur Plattform-Admins (O3: der Kunde sieht die Fenster nicht). Alle
  * Ableitungen stehen im reinen `adminFernwartung.ts`.
  */
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Badge } from '../../../designsystem/components/core/Badge';
 import { Button } from '../../../designsystem/components/core/Button';
 import { Card } from '../../../designsystem/components/core/Card';
@@ -21,11 +21,15 @@ import {
   abrufLage,
   aktionLabel,
   boxOrt,
+  boxAnmeldung,
   fensterTeile,
   fensterTon,
+  loeschbar,
+  loeschenRueckfrage,
   oeffnenSperre,
   protokollDetail,
   serverLage,
+  SSH_STAND_SATZ,
   UNBEKANNT_SATZ,
   ZUSTIMMUNG_SATZ,
   zeitpunkt,
@@ -43,6 +47,7 @@ import {
   TechnikerDialog,
   TechnikerKonfigAnzeige,
 } from '../../components/FernwartungDialoge';
+import { BoxAnmeldungBlock, SshSchluesselDialog } from '../../components/FernwartungSsh';
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import { Modal } from '../../../designsystem/components/shell/Modal';
 import { fernwartungHash, parseFernwartungBox } from '../../nav';
@@ -69,7 +74,9 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
   const [schluesselOffen, setSchluesselOffen] = useState(false);
   const [technikerOffen, setTechnikerOffen] = useState(false);
   const [konfigFuer, setKonfigFuer] = useState<FernwartungTechniker | null>(null);
+  const [sshFuer, setSshFuer] = useState<FernwartungTechniker | null>(null);
   const [sperrziel, setSperrziel] = useState<Sperrziel | null>(null);
+  const [loeschziel, setLoeschziel] = useState<FernwartungTechniker | null>(null);
   const [schliessen, setSchliessen] = useState<FernwartungFenster | null>(null);
   const [jetzt, setJetzt] = useState(() => new Date());
 
@@ -198,8 +205,11 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                     <tbody>
                       {sortierteBoxen.map((b) => {
                         const sperre = oeffnenSperre(b, techniker);
+                        const anmeldung = boxAnmeldung(b, techniker);
+                        const gewaehlt = b.edgeRef === boxFilter ? ' vp-fw-gewaehlt' : '';
                         return (
-                          <tr key={b.id} className={b.edgeRef === boxFilter ? 'vp-fw-gewaehlt' : undefined}>
+                          <Fragment key={b.id}>
+                          <tr className={`${anmeldung ? 'vp-fw-hat-unterzeile' : ''}${gewaehlt}` || undefined}>
                             <td data-label="Box">
                               <span className="vp-cell-main">
                                 <span>
@@ -278,6 +288,15 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                               </div>
                             </td>
                           </tr>
+                          {anmeldung && (
+                            // Gehört zur Box-Zeile darüber: die Befehle brauchen die ganze Breite.
+                            <tr className={`vp-fw-unterzeile${gewaehlt}`}>
+                              <td colSpan={4}>
+                                <BoxAnmeldungBlock anmeldung={anmeldung} boxRef={b.edgeRef} />
+                              </td>
+                            </tr>
+                          )}
+                          </Fragment>
                         );
                       })}
                     </tbody>
@@ -300,6 +319,9 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                 Zugang anlegen
               </Button>
             </div>
+            <p className="vp-note" style={{ margin: 0 }} data-testid="fw-ssh-stand">
+              {SSH_STAND_SATZ}
+            </p>
             {techniker.length === 0 ? (
               <Card padding="lg" radius="lg">
                 <EmptyState
@@ -316,6 +338,7 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                       <tr>
                         <th>Zugang</th>
                         <th>Tunnel</th>
+                        <th>SSH-Schlüssel</th>
                         <th>Status</th>
                         <th aria-label="Aktionen" />
                       </tr>
@@ -339,6 +362,19 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                                 </span>
                               </span>
                             </td>
+                            <td data-label="SSH-Schlüssel" className="vp-fw-zelle-ssh">
+                              {t.sshFingerabdruck ? (
+                                <span className="vp-cell-main">
+                                  <span className="vp-fw-fingerabdruck">{t.sshFingerabdruck}</span>
+                                  {t.sshBits && <span className="vp-cell-sub">RSA {t.sshBits}</span>}
+                                </span>
+                              ) : (
+                                <span className="vp-cell-main">
+                                  <span className="vp-muted">keiner</span>
+                                  <span className="vp-cell-sub">Fenster öffnen nur den Netzweg</span>
+                                </span>
+                              )}
+                            </td>
                             <td data-label="Status">
                               <Badge variant={t.status === 'aktiv' ? 'ok' : 'off'} dot>
                                 {t.status}
@@ -348,6 +384,9 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                               <div className="vp-fw-aktionen">
                                 <Button variant="ghost" size="sm" onClick={() => setKonfigFuer(t)}>
                                   Konfiguration
+                                </Button>
+                                <Button variant="ghost" size="sm" onClick={() => setSshFuer(t)}>
+                                  SSH-Schlüssel
                                 </Button>
                                 <Button
                                   variant="ghost"
@@ -364,6 +403,16 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                                 >
                                   {t.status === 'gesperrt' ? 'Entsperren' : 'Sperren'}
                                 </Button>
+                                {loeschbar(t) && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={busy}
+                                    onClick={() => setLoeschziel(t)}
+                                  >
+                                    Löschen
+                                  </Button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -417,6 +466,11 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
           <TechnikerKonfigAnzeige techniker={konfigFuer} server={uebersicht.server} />
         </Modal>
       )}
+      <SshSchluesselDialog
+        techniker={sshFuer}
+        onClose={() => setSshFuer(null)}
+        onFertig={() => void laden()}
+      />
       <ConfirmDialog
         open={sperrziel != null}
         title={
@@ -447,6 +501,22 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                 : adminApi.fernwartungTechnikerSperren(ziel.techniker.id),
             'Sperren fehlgeschlagen.',
           );
+        }}
+      />
+      <ConfirmDialog
+        open={loeschziel != null}
+        title={loeschziel ? loeschenRueckfrage(loeschziel).titel : ''}
+        intro={loeschziel ? loeschenRueckfrage(loeschziel).satz : ''}
+        consequences={loeschziel ? loeschenRueckfrage(loeschziel).folgen : []}
+        confirmLabel="Endgültig löschen"
+        tone="danger"
+        busy={busy}
+        onCancel={() => setLoeschziel(null)}
+        onConfirm={() => {
+          const ziel = loeschziel;
+          setLoeschziel(null);
+          if (!ziel) return;
+          void aktion(() => adminApi.fernwartungTechnikerLoeschen(ziel.id), 'Löschen fehlgeschlagen.');
         }}
       />
       <ConfirmDialog

@@ -121,12 +121,16 @@ func TestTheHeartbeatWordAndTheReleasePathReadTheSameGate(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			a, _ := releaseCoverAgent(t)
-			a.Cfg.ControlEnabled = c.killSwitch
-			selectDeyeFamily(t, a, "sun-12k-sg04lp3")
-			if c.certify {
-				a.Cfg.ControlCertifiedFamilies = append(a.Cfg.ControlCertifiedFamilies, a.currentFamily())
-			}
+			// Cfg is fixed at start-up: the OCPP loop reads it without a lock
+			// (ocppControlAllowed), so the kill-switch and the allowlist are set
+			// before startOcpp - never on the running agent.
+			a, _ := releaseCoverAgent(t, func(a *Agent) {
+				a.Cfg.ControlEnabled = c.killSwitch
+				selectDeyeFamily(t, a, "sun-12k-sg04lp3")
+				if c.certify {
+					a.Cfg.ControlCertifiedFamilies = append(a.Cfg.ControlCertifiedFamilies, a.currentFamily())
+				}
+			})
 			now := time.Now().UTC()
 			floor := 30.0
 			a.mu.Lock()

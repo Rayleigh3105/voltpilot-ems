@@ -1,6 +1,7 @@
 import { parseDecimal } from './zahl';
 import type { MastrApplyInput, MastrPreview, SaveBatteryInput } from './api';
 import { fmtNum } from './format';
+import { FLOW_STEPS } from './anlageFlowSchritte';
 
 /**
  * Pure logic of the REGISTER-FIRST "Anlage anlegen" flow (captain
@@ -17,19 +18,8 @@ import { fmtNum } from './format';
  * from this module so it stays unit-testable without a DOM.
  */
 
-/**
- * The step rail of the flow, in order (register-first). AE5 (spec §3) moved the
- * device claim ("Gerät") ahead of the adaptive last step: the entity bootstrap +
- * usage-profile + auto-start seeding need the Anlage's master data AND its
- * gateway device in place, so it is the last, adaptive step.
- *
- * Its LABEL is **„Betrieb"** since Steuerung Stufe 0 „Entwirrung"
- * (Captain 25.08.2026: „Anwendung" ist kein Kundenwort mehr; der Schritt fragt
- * nach dem BETRIEB der Anlage — Profil, EIN Betriebsmodell, Speicherschonung).
- * Es war davor „Anwendungen" und davor „Nutzung"; die Komponenten-Id und jede
- * Route bleiben.
- */
-export const FLOW_STEPS = ['Anlage', 'Register', 'Gerät', 'Betrieb'] as const;
+/** Die Schrittleiste wohnt in `anlageFlowSchritte.ts` (Einstiegs-Bündel). */
+export { FLOW_STEPS };
 
 export type FlowStep = 1 | 2 | 3 | 4;
 

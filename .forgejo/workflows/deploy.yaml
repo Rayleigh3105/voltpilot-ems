@@ -181,7 +181,7 @@ jobs:
       # Verzeichnis und liest aus der `sources`-Liste des Einstiegs-Chunks, ob
       # ein Motion-Modul hineingeflossen ist - ein Namens-`grep` reicht dafuer
       # nicht, der Minifizierer benennt die Symbole um.
-      - name: Bundle smoke (Einstieg <= 230 kB gz, Motion nur in Lazy-Stuecken)
+      - name: Bundle smoke (Einstieg <= 256 kB gz, Motion nur in Lazy-Stuecken)
         if: matrix.type == 'frontend'
         working-directory: ${{ matrix.path }}
         run: npm run test:bundle

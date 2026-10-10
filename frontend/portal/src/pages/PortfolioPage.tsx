@@ -2,8 +2,8 @@ import type { Betriebsart, Site } from '../api';
 import type { EbenenLeistenKachel } from '../ebenenNav';
 import type { Route } from '../nav';
 import { EbenenCockpit } from '../components/EbenenCockpit';
+import { useMessenEinrichtenEintrag } from '../components/MessenEinrichtenEintrag';
 import { PortfolioCockpit } from '../components/PortfolioCockpit';
-import { StandortVorschlagHinweis } from '../components/StandortVorschlagHinweis';
 import type { UebersichtEbene } from '../uebersicht';
 
 interface PortfolioProps {
@@ -44,8 +44,8 @@ interface PortfolioProps {
  *
  * UEMS AP-01 IP-6: mit bestätigten Standorten ist diese Landung die
  * Unternehmens-Übersicht ({@link EbenenCockpit}) — die Weiche ist die UEMS-Ebene,
- * nie die Betriebsart. Ohne Ebene trägt die Flotte die Vorschlagskarte der
- * Standorte als Hinweis (AP-02 IP-10/O18).
+ * nie die Betriebsart. Ohne Ebene trägt {@link PortfolioCockpit} den leisen
+ * Einstieg „Messen & Auswerten einrichten" im ⋯-Menü selbst (firstmate K2).
  */
 export function PortfolioPage({
   sites,
@@ -59,6 +59,11 @@ export function PortfolioPage({
   // Ein Admin sieht das Portfolio des GEWÄHLTEN Mandanten; ohne gewählten
   // Mandanten kommt er hier gar nicht an (die Schale leitet ihn weiter).
   const rahmen = betriebsart ?? 'betreiber';
+  // firstmate K2: der Hook läuft unbedingt (React-Regel) — gebraucht wird sein Ergebnis nur
+  // ohne Ebene; `EbenenCockpit` hat seinen eigenen „Standorte einrichten"-Weg.
+  const messenEinrichtenEintrag = useMessenEinrichtenEintrag({
+    sites, isAdmin, betriebsart: rahmen, onBestaetigt: () => onReload(),
+  });
   if (ebene) {
     return (
       <EbenenCockpit
@@ -81,18 +86,7 @@ export function PortfolioPage({
       isAdmin={isAdmin}
       titel="Portfolio"
       titelBereitsGenannt
-      hinweis={({ anwendungen, neuLaden }) => (
-        <StandortVorschlagHinweis
-          sites={sites}
-          isAdmin={isAdmin}
-          betriebsart={rahmen}
-          anwendungen={anwendungen}
-          onBestaetigt={() => {
-            neuLaden();
-            onReload();
-          }}
-        />
-      )}
+      messenEinrichtenEintrag={messenEinrichtenEintrag}
     />
   );
 }

@@ -58,7 +58,8 @@ async function mockBoot(
     failSites?: number;
     // Plattform-Konto mit gewähltem Mandanten (UEMS-Selbstauskunft `konto: plattform`).
     admin?: boolean;
-    // UEMS-Ortsstruktur des Referenzunternehmens (zwei Standorte): die Landung ist die Unternehmens-Übersicht.
+    // UEMS-Ortsstruktur des Referenzunternehmens (zwei Standorte), Werk Ahrenberg misst: die Landung ist die
+    // Unternehmens-Übersicht. Seit K2 (PR #1482) ist sie das nur, wenn mindestens ein Standort misst.
     orte?: boolean;
   },
 ) {
@@ -95,15 +96,27 @@ async function mockBoot(
       }),
     );
   }
-  // Die Funktionen (AP-01): niemand misst oder steuert schon - die Anlege-Wege bleiben wie bisher.
+  // Die Funktionen (AP-01): niemand misst oder steuert schon - die Anlege-Wege bleiben wie bisher. Mit `orte`
+  // misst Werk Ahrenberg: erst dann ist die Unternehmensebene die Landung (K2, `ebenenNav.ts misst()`).
   await page.route('**/api/v1/funktionen', (route) =>
     route.fulfill({
       json: {
         unternehmen: {
-          messen: { laeuft_an: 0, standorte: 0, text: null },
-          steuern: { laeuft_an: 0, standorte: 0, text: null },
+          messen: { laeuft_an: opts.orte ? 1 : 0, standorte: opts.orte ? 2 : 0, text: null },
+          steuern: { laeuft_an: 0, standorte: opts.orte ? 2 : 0, text: null },
         },
-        standorte: [],
+        standorte: opts.orte
+          ? [
+              {
+                id: FIXTURE_IDS.st1,
+                kurzzeichen: 'ST-1',
+                name: 'Werk Ahrenberg',
+                zeitzone: 'Europe/Berlin',
+                messen: { zustand: 'aktiv', seit: '2026-10-01T00:00:00+02:00', text: 'Eingerichtet am 01.10.2026', fehlt: [], datenlage: null },
+                steuern: { zustand: 'kein_objekt', seit: null, text: 'Steuern & Optimieren — noch nicht eingerichtet', fehlt: [], aktionen: ['einrichten'], anlagen: [] },
+              },
+            ]
+          : [],
       },
     }),
   );

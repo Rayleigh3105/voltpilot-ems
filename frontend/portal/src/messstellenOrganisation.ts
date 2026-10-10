@@ -1,6 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { api, type Kostenstelle, type Prozess } from './api';
-import { reiterDa, type MessstellenReiter } from './kostenstellenUebersicht';
+import { reiterDa, type MessstellenReiter } from './messstellenReiter';
 
 /**
  * Die Kataloge hinter den Reitern der Welt Messstellen (AP-13 IP-9): Kostenstellen und Prozesse. Seit N5 (Konzept

@@ -177,7 +177,7 @@ def main():
             assert report['pruefen_Z03'] == 1
             assert report['C']['Z08']['geloescht_markiert'] == 0
             history = report['W1']['Z08']
-            assert run.returncode == (26 if history['geloescht_markiert'] or history['fehlgeschlagen'] else 21)
+            assert run.returncode == (26 if history['geloescht_offen'] or history['fehlgeschlagen'] else 21)
             assert report['C']['Z05']['kundenbereiche'] == 1 and report['pruefen_Z05'] == 1
             assert report['B']['bestand_standort']['erledigt'] == 1
             assert report['B']['bestand_funktion']['erledigt'] == 1

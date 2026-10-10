@@ -1,5 +1,6 @@
-import type { Betriebsart, StandorteAmStichtag, Unternehmen } from './api';
-import { UEMS_STANDORT, UEMS_UNTERNEHMEN } from './glossar';
+import type { Betriebsart, Funktionen, StandorteAmStichtag, Unternehmen } from './api';
+import { misst } from './ebenenNav';
+import { UEMS_STANDORT, UEMS_UNTERNEHMEN } from './glossarEinstieg';
 import { anlageRoute, hashForRoute, isPortfolioPage, pageRoute, standortRoute, type Route } from './nav';
 
 /**
@@ -169,6 +170,15 @@ export function redirectToPortfolio(i: ShellInput): boolean {
    1 Standort/n Anlagen → Standort-Übersicht · n Standorte → Unternehmens-
    Übersicht; die Betriebsart-Regel bleibt. Ohne Standorte gilt ALLES wie heute
    — das ist die härteste Anforderung des Pakets, `migration.test.ts` beweist sie.
+
+   firstmate K2 (09.10.2026): die Standort-/Unternehmensebene ist erst die
+   Landung, wenn mindestens ein lebender Standort MISST (`ebenenNav.ts misst()`
+   — „Messen & Auswerten" eingerichtet, angehalten oder aktiv; ein Entwurf
+   misst noch nicht). Wer nur Standorte angelegt, aber noch nichts eingerichtet
+   hat, bleibt auf der gewohnten Übersicht — viele Kunden wollen genau das.
+   Unbekannte/nicht geladene Funktionen sind nie „ja". Der Betreiber-Rahmen und
+   Admins entscheiden weiter VOR dieser Prüfung (unverändert); eine Teilansicht
+   (AP-03) unterliegt ihr genauso wie der volle Zugriff.
    ───────────────────────────────────────────────────────────────────────────── */
 
 /** Ein Standort, wie die Weiche ihn braucht: Kennung, Name und die Anlagen, die ihm HEUTE zugeordnet sind. */
@@ -234,6 +244,13 @@ export function startEbene(i: {
   siteIds: string[];
   orte: Orte | null | undefined;
   eingeschraenkt?: boolean;
+  /**
+   * `GET /api/v1/funktionen`; `null` = unbekannt oder (noch) nicht geladen —
+   * unbekannt ist nie „ja". Mindestens ein lebender Standort aus `orte` muss
+   * nach derselben Prüfung wie `ebenenNav.ts misst()` messen, sonst bleibt
+   * die Landung die gewohnte Übersicht (firstmate K2).
+   */
+  funktionen: Funktionen | null;
 }): Ebene {
   const { orte } = i;
   // Ohne Standorte, als Admin (behält seine Übersicht) und als Betreiber
@@ -242,6 +259,10 @@ export function startEbene(i: {
   if (!i.eingeschraenkt && isBetreiberShell(i.betriebsart)) return EBENE_HEUTE;
   // 0 Anlagen: der Leerzustand der Übersicht ist die Landung — wie heute.
   if (!i.eingeschraenkt && i.siteIds.length === 0) return EBENE_HEUTE;
+  // K2: ohne einen messenden Standort bleibt JEDE Standort-/Unternehmensebene
+  // aus — auch eingeschränkt (Teilansicht), ein Betreiber/Admin ist oben schon entschieden.
+  const gemessen = orte.standorte.some((s) => misst({ standorte: null, funktionen: i.funktionen, kennzahlen: null }, s.id));
+  if (!gemessen) return EBENE_HEUTE;
   if (orte.standorte.length >= 2) {
     return { art: 'unternehmen', name: orte.unternehmen, standorte: orte.standorte };
   }

@@ -40,12 +40,21 @@ type Soll struct {
 }
 
 // Peer ist ein WireGuard-Peer: eine Box oder ein Techniker-Zugang.
+//
+// SSHPublicKey ist der öffentliche SSH-Schlüssel eines Technikers, mit dem er
+// sich im offenen Fenster an der Box anmeldet ("ssh-rsa <Base64>", ohne
+// Kommentar). Die API liefert das Feld nur an einem Techniker-Peer mit
+// hinterlegtem Schlüssel. Für WireGuard und die Firewall spielt es keine
+// Rolle. Pruefe reicht es nur weiter, wenn es die eigene Prüfung besteht
+// (PruefeSSHSchluessel) - auch wenn die API das schon geprüft hat: die Zeile
+// geht über die Schlüsselausgabe unverändert in die Schlüsseldatei einer Box.
 type Peer struct {
-	Art       string `json:"art"`
-	ID        string `json:"id"`
-	Kennung   string `json:"kennung"`
-	PublicKey string `json:"publicKey"`
-	Adresse   string `json:"adresse"`
+	Art          string `json:"art"`
+	ID           string `json:"id"`
+	Kennung      string `json:"kennung"`
+	PublicKey    string `json:"publicKey"`
+	Adresse      string `json:"adresse"`
+	SSHPublicKey string `json:"sshPublicKey,omitempty"`
 }
 
 // Fenster ist ein offenes Fernwartungsfenster; es verweist über die IDs auf
@@ -93,6 +102,9 @@ type PeerSoll struct {
 	Kennung   string
 	PublicKey string
 	Adresse   netip.Addr
+	// SSH ist der geprüfte SSH-Schlüssel eines Technikers; leer (Zeile ""),
+	// wenn keiner hinterlegt ist oder der gelieferte die Prüfung nicht besteht.
+	SSH SSHSchluessel
 }
 
 // FensterSoll ist ein geprüftes Fenster mit aufgelösten Adressen.
@@ -144,6 +156,12 @@ func broadcast(netz netip.Prefix) netip.Addr {
 	return netip.AddrFrom4([4]byte{byte(wert >> 24), byte(wert >> 16), byte(wert >> 8), byte(wert)})
 }
 
+// IstHost sagt, ob eine Adresse einem Peer gehören kann: im Netz, aber weder
+// die Netz-, die Server- noch die Broadcast-Adresse.
+func IstHost(netz netip.Prefix, a netip.Addr) bool {
+	return a.Is4() && netz.Contains(a) && a != netz.Masked().Addr() && a != ServerAdresse(netz) && a != broadcast(netz)
+}
+
 // Pruefe prüft das Dokument gegen die lokalen Netze. Ein Fehler betrifft
 // das ganze Dokument; Befunde betreffen einzelne, übersprungene Einträge.
 func Pruefe(s Soll, netze Netze) (Gueltig, []Befund, error) {
@@ -189,8 +207,7 @@ func Pruefe(s Soll, netze Netze) (Gueltig, []Befund, error) {
 			befunde = append(befunde, Befund{was, "keine IPv4-Adresse: " + p.Adresse})
 			continue
 		}
-		if !netz.Contains(addr) || addr == netz.Masked().Addr() || addr == ServerAdresse(netz) ||
-			addr == broadcast(netz) {
+		if !IstHost(netz, addr) {
 			befunde = append(befunde, Befund{was, fmt.Sprintf("Adresse %s liegt nicht im %s-Netz %s oder ist reserviert",
 				addr, p.Art, netz)})
 			continue
@@ -221,6 +238,19 @@ func Pruefe(s Soll, netze Netze) (Gueltig, []Befund, error) {
 			continue
 		}
 		ps := PeerSoll{Art: k.p.Art, ID: k.p.ID, Kennung: k.p.Kennung, PublicKey: k.p.PublicKey, Adresse: k.addr}
+		// Der SSH-Schlüssel ist ein Zusatz: ein unbrauchbarer nimmt dem Peer
+		// nicht den Netzweg, er wird nur an keine Box ausgegeben.
+		if k.p.SSHPublicKey != "" {
+			ssh, err := PruefeSSHSchluessel(k.p.SSHPublicKey)
+			switch {
+			case k.p.Art != ArtTechniker:
+				befunde = append(befunde, Befund{"SSH-Schlüssel an " + was, "nur ein Techniker-Zugang trägt einen; er wird nicht ausgegeben"})
+			case err != nil:
+				befunde = append(befunde, Befund{"SSH-Schlüssel an " + was, err.Error() + "; er wird nicht ausgegeben"})
+			default:
+				ps.SSH = ssh
+			}
+		}
 		g.Peers[ps.PublicKey] = ps
 		nachID[ps.ID] = ps
 	}

@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Modal } from '../../designsystem/components/shell/Modal';
+import { merkeAusloeser } from '../../designsystem/components/shell/ueberlagerung';
 
 /**
  * **Das zentrierte Modal des Design-Systems** (Captain-Entscheid 04.09.2026:
@@ -105,6 +106,77 @@ describe('Modal', () => {
     rerender(<Modal open={false} onClose={() => {}} title="T">x</Modal>);
     expect(document.activeElement).toBe(ausloeser);
     ausloeser.remove();
+  });
+
+  // Safari fokussiert einen angetippten Knopf nicht (jsdom ebenso wenig): der Stapel merkt sich das Ziel des Zeigers.
+  it('gibt den Fokus an den angetippten Knopf zurück, auch wenn der Browser ihn nicht fokussiert hat', () => {
+    const ausloeser = document.createElement('button');
+    document.body.appendChild(ausloeser);
+    fireEvent.pointerDown(ausloeser);
+    fireEvent.click(ausloeser);
+    expect(document.activeElement).toBe(document.body);
+
+    const { rerender } = render(<Modal open onClose={() => {}} title="T">x</Modal>);
+    rerender(<Modal open={false} onClose={() => {}} title="T">x</Modal>);
+    expect(document.activeElement).toBe(ausloeser);
+    ausloeser.remove();
+  });
+
+  it('ein Knopf IN der Fläche darunter ist der Auslöser, nicht die Fläche, die den Fokus trägt', () => {
+    const { rerender } = render(
+      <Modal open onClose={() => {}} title="Unten"><button type="button">Erklären</button></Modal>,
+    );
+    const knopf = screen.getByRole('button', { name: 'Erklären' });
+    fireEvent.pointerDown(knopf);
+    fireEvent.click(knopf);
+    expect(document.activeElement).toBe(document.body.querySelector('.vp-modal'));
+
+    const oben = (open: boolean) => (
+      <>
+        <Modal open onClose={() => {}} title="Unten"><button type="button">Erklären</button></Modal>
+        <Modal open={open} onClose={() => {}} title="Oben">y</Modal>
+      </>
+    );
+    rerender(oben(true));
+    rerender(oben(false));
+    expect(document.activeElement).toBe(knopf);
+  });
+
+  it('eine Taste seit dem Antippen: der Zeiger war nicht der Auslöser', () => {
+    const angetippt = document.createElement('button');
+    document.body.appendChild(angetippt);
+    fireEvent.pointerDown(angetippt);
+    fireEvent.click(angetippt);
+    fireEvent.keyDown(document.body, { key: '?' });
+
+    const { rerender } = render(<Modal open onClose={() => {}} title="T">x</Modal>);
+    rerender(<Modal open={false} onClose={() => {}} title="T">x</Modal>);
+    expect(document.activeElement).not.toBe(angetippt);
+    angetippt.remove();
+  });
+
+  it('ein ausdrücklich genannter Auslöser gewinnt: der Menüeintrag verschwindet, sein Knopf bleibt', () => {
+    const knopf = document.createElement('button');
+    const eintrag = document.createElement('button');
+    document.body.append(knopf, eintrag);
+    fireEvent.pointerDown(eintrag);
+    fireEvent.click(eintrag);
+    merkeAusloeser(knopf);
+    eintrag.remove();
+
+    const { rerender } = render(<Modal open onClose={() => {}} title="T">x</Modal>);
+    rerender(<Modal open={false} onClose={() => {}} title="T">x</Modal>);
+    expect(document.activeElement).toBe(knopf);
+
+    // Genannt für genau EINE Fläche: die nächste liest wieder den Fokus.
+    const anderer = document.createElement('button');
+    document.body.appendChild(anderer);
+    anderer.focus();
+    rerender(<Modal open onClose={() => {}} title="T">x</Modal>);
+    rerender(<Modal open={false} onClose={() => {}} title="T">x</Modal>);
+    expect(document.activeElement).toBe(anderer);
+    knopf.remove();
+    anderer.remove();
   });
 
   it('hält Tab und Shift-Tab in der Fläche', () => {

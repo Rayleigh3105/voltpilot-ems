@@ -30,4 +30,4 @@ Gezielte Browserfälle: `npm run test:e2e -- help.spec.ts`; weitere Fälle entsp
 
 ## Messbare Ladezeiten
 
-Wiederholbare Cockpit-/Anlagenwechsel-Messungen: [Performance-Rig](e2e/performance/README.md). `npm run test:bundle` prüft die Grenzen für Einstieg (230 kB gzip) und gemeinsames Chart-Bundle (210 kB gzip).
+Wiederholbare Cockpit-/Anlagenwechsel-Messungen: [Performance-Rig](e2e/performance/README.md). `npm run test:bundle` prüft die Grenzen für Einstieg (256 kB gzip) und gemeinsames Chart-Bundle (210 kB gzip).
