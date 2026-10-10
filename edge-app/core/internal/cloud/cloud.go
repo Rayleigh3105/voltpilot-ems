@@ -1340,6 +1340,15 @@ type ExecutionSummary struct {
 	//	             its own watts. Reported ONLY once the device has CONFIRMED
 	//	             the mode on its readback - "we stopped writing" and "we
 	//	             died" must never look the same to the cloud.
+	//	"grid_target" - GRID-SIDE THROTTLING SLOT: in a slot the plan curtails,
+	//	             the hybrid inverter regulates the grid connection point
+	//	             itself (target 0 W) and throttles its OWN PV for it. Like
+	//	             the autonomous_* words it is reported ONLY once the device
+	//	             confirmed the grid side on its readback, planned_kw is the
+	//	             reference the box would write if it took the battery back,
+	//	             and commanded_kw/confirmed_kw are null (no battery value is
+	//	             written). The commanded target and the measured effect ride
+	//	             in curtailment.per_unit (mode/target_kw/match).
 	//	"fallback" - no fresh plan: the built-in self-consumption rule
 	//
 	// A cloud that does not know a mode DROPS it (the strict filter in the api's
@@ -1489,7 +1498,23 @@ type CurtailmentUnit struct {
 	// Match is the unit's readback verdict. Absent (nil) for an observed-only
 	// readback where nothing was commanded - "nothing applied" must not read as
 	// "the readback disagreed".
+	//
+	// For a `mode: grid_target` entry it is the MEASURED EFFECT instead: the
+	// grid connection point is inside the band around target_kw. Registers that
+	// hold prove nothing about what the meter does. Absent while the device has
+	// not confirmed the grid side yet ("not judged", never "disagreed").
 	Match *bool `json:"match,omitempty"`
+	// Mode (additive, netzseitiger Drossel-Slot P3) says HOW this unit curtails.
+	// "grid_target" = the PRIMARY hybrid inverter: it does not cap its own
+	// output, it regulates the grid connection point and throttles its own PV
+	// for it - so AppliedCapKw stays absent on such an entry. The word is
+	// STANDING (present whenever the device carries the released lever), not a
+	// claim that it regulates right now. Absent = the ordinary cap unit.
+	Mode string `json:"mode,omitempty"`
+	// TargetKw is the commanded grid target of a grid_target entry
+	// (+ import / - feed-in; 0 = no feed-in), present only while the intent
+	// stands. Absent = no target active - never a fabricated 0.
+	TargetKw *float64 `json:"target_kw,omitempty"`
 }
 
 // CurtailTrackSummary is the heartbeat half of the live curtailment tracker.

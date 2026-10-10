@@ -60,6 +60,10 @@ const unplannedNative = require('./unplanned-load-native');
 // K5: the Deye charge side (two hand-over candidates) - one pure module that the
 // flow embeds verbatim, so there is no second copy to keep in sync.
 const deyeChargeSide = require('./deye-charge-side');
+// P3 (Konzept vp-deye-netzseitig-drossel-k2): der Produktivpfad des netzseitigen
+// Drossel-Slots - Registerfolge und Modell-Freigabe in EINEM reinen Modul, das
+// der Flow woertlich einbettet (dieselbe Bauform wie deye-charge-side.js).
+const deyeGridTarget = require('./deye-grid-target');
 // The firmware CONDITION the Deye pilot certificate is keyed on - imported, never
 // re-spelled here, so adapter and certificate can never disagree about the key.
 const DEYE_REMOTE_PR978_FIRMWARE = unplannedNative.DEYE_REMOTE_PR978_FIRMWARE;
@@ -383,7 +387,7 @@ function controlRoute(selection, setpoint, opts = {}) {
     const cap = deyeEffectiveCap(rawCap, sticky);
     const remoteOff = conn.remote_mode === 'off' || conn.remote_mode === false;
     if (!remoteOff && deyeControlPath(cap) === DEYE_PATH_REMOTE) {
-      return deyeRemoteControl({ conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw, setpoint, opts, cap });
+      return deyeRemoteControl({ selection, conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw, setpoint, opts, cap });
     }
     return deyeControl({ selection, conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw, setpoint, opts, cap, sticky });
   }
@@ -1140,10 +1144,17 @@ function nativeCapabilityReport(selection, opts = {}) {
   if (!built || built.unsupported) return null;
   const certified = CERTIFIED_CONTROL_FAMILIES.has(family) || opts.deviceCertified === true;
   const catalog = Array.isArray(opts.catalog) ? opts.catalog : unplannedNative.CERTIFIED_NATIVE_CAPABILITIES;
+  // P3: der netzseitige Drossel-Slot ist ein eigener, freigegebener Hebel des
+  // Deye-Fernsteuerpfads (deye-grid-target.js) - gemeldet nur fuer ein
+  // zertifiziertes Geraet auf der erkannten PR-978-Lage. Er haengt NICHT am
+  // Netzlade-Beleg der Eigenkonfiguration: sein Ziel geht nie ueber +50 W, also
+  // laedt er konstruktionsbedingt nicht aus dem Netz.
+  const gridLever = certified && built.firmwareEvidence === DEYE_REMOTE_PR978_FIRMWARE
+    && !!deyeGridTarget.gridTargetRelease(selection, DEYE_REMOTE_LAYOUT_PR978);
   if (!certified || (opts.solarOnlyCharge === true && !built.gridChargeProof)) {
-    return { intents: [], window: false, persistent: false };
+    return deyeGridTarget.withGridTargetLever({ intents: [], window: false, persistent: false }, gridLever);
   }
-  return unplannedNative.nativeLevers(nativeSelectionKey(selection, built), catalog, (intent, entry) => {
+  const levers = unplannedNative.nativeLevers(nativeSelectionKey(selection, built), catalog, (intent, entry) => {
     // K5: a Deye charge-side entry attests ITS candidate's bytes.
     if (built.chargeSide && intent !== 'cover_load') {
       const c = entry && typeof entry.candidate === 'string' &&
@@ -1153,6 +1164,7 @@ function nativeCapabilityReport(selection, opts = {}) {
     }
     return { planned: built.planned, readbacks: built.readbacks };
   });
+  return deyeGridTarget.withGridTargetLever(levers, gridLever);
 }
 
 /**
@@ -2046,6 +2058,18 @@ const DEYE_CHARGE_SIDE_FACTS = Object.freeze({
   solarSellOn: DEYE_SOLAR_SELL.ON,
 });
 
+// P3: die Register-Tatsachen, mit denen deye-grid-target.js plant - von HIER
+// in den Flow ge-JSON-t (build-flows.js), nie abgetippt.
+const DEYE_GRID_TARGET_FACTS = Object.freeze({
+  reg: DEYE_REMOTE_REG,
+  gridSide: DEYE_POWER_CONTROL_MODE.GRID_SIDE,
+  modeOn: DEYE_REMOTE_MODE.ON,
+  reassertS: DEYE_REMOTE_CFG_REASSERT_S,
+  unitsPerRated: DEYE_REMOTE_SETPOINT_UNITS_PER_RATED,
+  limit: DEYE_REMOTE_SETPOINT_LIMIT,
+  layout: DEYE_REMOTE_LAYOUT_PR978,
+});
+
 // The two Deye control PATHS. `remote` = the Tier-2 register block above;
 // `tou` = the legacy Time-of-Use synthesis (the fallback when the firmware has no
 // remote block). Surfaced on the plan + the readback so the operator always sees
@@ -2528,7 +2552,7 @@ function deyeProgram1Displaced(programTimes, nowMinutes) {
  * command is therefore reported as unsupported (pvLimitSupported:false), never
  * silently dropped and never silently written.
  */
-function deyeRemoteControl({ conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw, setpoint, opts, cap }) {
+function deyeRemoteControl({ selection, conn, ip, family, certified, controlEnabled, calibration, kw, pvLimitKw, setpoint, opts, cap }) {
   const port = Number(conn.port) > 0 ? Number(conn.port) : 8899;
   const serial = conn.serial;
   const slaveId = Number(conn.mb_slave_id) > 0 ? Number(conn.mb_slave_id) : 1;
@@ -2719,6 +2743,47 @@ function deyeRemoteControl({ conn, ip, family, certified, controlEnabled, calibr
     return gOut;
   }
 
+  // NETZSEITIGER DROSSEL-SLOT (Konzept `vp-deye-netzseitig-drossel-k2` P3): der
+  // Kern hat fuer diesen Fahrplan-Slot `battery_mode: "grid_target"` veroeffentlicht
+  // (guards/gridtarget.go - Eintrittsregel und Aufsicht liegen DORT). Hier
+  // entscheidet sich nur, ob DIESES Modell den Hebel freigegeben traegt, und die
+  // Registerfolge - beides in deye-grid-target.js, das der Flow woertlich
+  // einbettet.
+  //
+  // ⚠ Ohne Freigabe-Eintrag faellt der Plan auf den gewoehnlichen
+  // batterieseitigen Sollwert darunter (`battery_setpoint_kw` ist die Referenz,
+  // die der Kern im naechsten Takt ohnehin schriebe) und SAGT es. Der Kern sieht
+  // dann keinen Beleg und nimmt die Absicht nach seiner Frist zurueck.
+  // ⚠ Kein Tor wird umgangen: Not-Aus und Zertifikat sind dieselbe Konjunktion
+  // wie beim gewoehnlichen Plan. Die Kalibrierung oeffnet diesen Zweig nicht.
+  const gridTarget = deyeGridTarget.parseGridTarget(setpoint);
+  let gridTargetNote = null;
+  if (gridTarget) {
+    if (deyeGridTarget.gridTargetRelease(selection, cap && cap.layout)) {
+      const gt = deyeGridTarget.deyeGridTargetPlan(gridTarget,
+        Object.assign({ writeFc, watchdogS, ratedKw }, DEYE_GRID_TARGET_FACTS));
+      const gtAllowed = controlEnabled && certified;
+      const gtOut = Object.assign({}, base, {
+        writes: gtAllowed ? gt.planned.map((w) => { const c = { ...w }; delete c.bench_pending; return c; }) : [],
+        readbacks: gtAllowed ? gt.readbacks : [],
+        planned: gt.planned,
+        observations: [{ role: 'remote_status', fc: 3, addr: DEYE_REMOTE_REG.status }],
+        setpointUnits: gt.units,
+        setpointClamped: gt.clamped,
+        gridTarget: {
+          target_kw: gridTarget.targetKw, neutralize: gridTarget.neutralize,
+          pv_cap_permille: deyeGridTarget.GRID_TARGET_PV_MAX_PERMILLE,
+        },
+      });
+      gtOut.reason = gtAllowed
+        ? 'Netzseitiger Drossel-Slot: der Wechselrichter regelt den Netzanschluss selbst'
+        : (certified ? 'Steuerung deaktiviert (Not-Aus)'
+          : 'Netzseitige Regelung: Steuerung für dieses Modell noch nicht freigegeben');
+      return gtOut;
+    }
+    gridTargetNote = 'Netzseitige Regelung für dieses Wechselrichter-Modell nicht freigegeben - '
+      + 'es bleibt beim batterieseitigen Sollwert';
+  }
 
   const planned = [];
   // 1) FAILSAFE FIRST.
@@ -2786,6 +2851,8 @@ function deyeRemoteControl({ conn, ip, family, certified, controlEnabled, calibr
     out.pvLimitNote = 'Fernsteuerung: PV-Begrenzung wird auf diesem Pfad nicht geschrieben '
       + '(sie wäre eine Installateur-Einstellung im EEPROM).';
   }
+  // P3: eine netzseitige Absicht, die dieses Modell nicht freigegeben traegt.
+  if (gridTargetNote) out.gridTargetNote = gridTargetNote;
   if (!writeAllowed) {
     out.reason = certified ? 'Steuerung deaktiviert (Not-Aus)'
       : 'Fernsteuerung erkannt, Steuerung für dieses Modell noch nicht freigegeben';
@@ -3181,6 +3248,7 @@ module.exports = {
   NATIVE_WINDOW_FULL_TOLERANCE_KW,
   deyeNativePrecondition,
   DEYE_CHARGE_SIDE_FACTS,
+  DEYE_GRID_TARGET_FACTS,
   setpointStale,
   dualControllerSignal,
 };

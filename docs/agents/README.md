@@ -272,6 +272,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Der EINE Wechselrichter-Socket hat seit dem 20.08.2026 eine WARTESCHLANGE](edge/der-eine-wechselrichter-socket-hat-seit.md)
 - [Der Katalog hat DREI Dimensionen: Geraetetyp · Marke · Modell (und der WEG gehoert dem Modell)](edge/der-katalog-hat-drei-dimensionen-geraete.md)
 - [Der NETZ-SOLLWERT-TEST: derselbe Sollwert-Pfad, eine andere Regelseite](edge/der-netz-sollwert-test-derselbe-sollwert.md)
+- [Der NETZSEITIGE DROSSEL-SLOT: der Plan gibt den Netzpunkt an den Wechselrichter](edge/der-netzseitige-drossel-slot-der-plan-gibt.md)
 - [Der SCHALT-Test und der Schalt-Executor (Einheitsmodell Stufe 4)](edge/der-schalt-test-und-der-schalt-executor.md)
 - [Der ZWEITE Trigger auf denselben Einmal-Schreib-Kern: der Portal-Downlink](edge/der-zweite-trigger-auf-denselben-einmal.md)
 - [Deye control WRITE: bidirectional single-socket lock + First-Light evidence gate](edge/deye-control-write-bidirectional-single.md)

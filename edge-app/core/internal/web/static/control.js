@@ -381,6 +381,54 @@
   }
 
   /* ------------------------------------------------------------------
+     deriveGridTarget - „Netzseitiger Drossel-Slot".
+
+     In a slot the plan CURTAILS, the hybrid inverter regulates the grid
+     connection point itself (target: no feed-in), stores the surplus first and
+     throttles its OWN PV for the rest. VoltPilot writes no battery setpoint
+     while it stands - the same outermost fact as the native mode, so it leads
+     the reason chain the same way, and it keeps „angefordert" and „hält"
+     apart for the same reason. The measured grid point rides along because
+     registers that hold prove nothing about the effect. Every sentence is the
+     CORE's (guards.GridTargetMode writes it once); this card invents nothing.
+     ------------------------------------------------------------------ */
+  function deriveGridTarget(s) {
+    var g = s && s.grid_target;
+    if (!g || !g.active) return null;
+    var ref = (typeof g.reference_kw === "number" && isFinite(g.reference_kw))
+      ? " (Vergleichswert für den Speicher: " + nf1.format(g.reference_kw) + " kW)" : "";
+    var target = (typeof g.target_kw === "number" && isFinite(g.target_kw))
+      ? nf1.format(Math.abs(g.target_kw)) + " kW " + (g.target_kw > 0 ? "Bezug" : "Einspeisung")
+      : "keine Einspeisung";
+    var head = g.proven
+      ? "Netzseitige Regelung (hält): der Wechselrichter regelt den Netzanschluss selbst auf " +
+        target + ", VoltPilot schreibt keinen Speicher-Sollwert" + ref + "."
+      : "Netzseitige Regelung angefordert (Ziel " + target + "): bis der Wechselrichter sie " +
+        "bestätigt, gilt sie nicht als übernommen" + ref + ".";
+    var measured = "";
+    if (g.proven && typeof g.grid_kw === "number" && isFinite(g.grid_kw)) {
+      measured = " Gemessen am Netzanschluss: " + nf1.format(Math.abs(g.grid_kw)) + " kW " +
+        (g.grid_kw > 0 ? "Bezug" : "Einspeisung") +
+        (g.following === false ? " – das Ziel ist noch nicht erreicht." : ".");
+    }
+    return {
+      text: head + (g.text ? " " + g.text : "") + measured + (g.hint_text ? " " + g.hint_text : "") +
+        " Das ist eine bewusste Übergabe, kein Fehler des Wechselrichters."
+    };
+  }
+
+  /* deriveGridTargetEnded - the slot's grid-side regulation was TAKEN BACK. The
+     reason is the core's sentence; it speaks LAST in the chain, because after a
+     take-back the in-slot corrections act again and their line explains the
+     value that is being written now. A slot that merely does not qualify
+     (ended !== true) says nothing here. */
+  function deriveGridTargetEnded(s) {
+    var w = s && s.grid_target_withheld;
+    if (!w || w.ended !== true || !w.text) return null;
+    return { text: "Netzseitige Regelung in dieser Viertelstunde beendet: " + w.text };
+  }
+
+  /* ------------------------------------------------------------------
      deriveCarsFirst - „Auto vor Speicher" (OCPP-Lastmanagement Stufe 4).
 
      The customer decided their VEHICLES get the PV surplus before the battery
@@ -881,7 +929,8 @@
       // the in-slot corrections below is being written, so any of their lines
       // would explain a value that never left the box.
       var reason = d.showNow
-        ? (deriveNative(s) || deriveCarsFirst(s) || deriveAbsorb(s) || deriveTrim(s) || deriveFollow(s))
+        ? (deriveGridTarget(s) || deriveNative(s) || deriveCarsFirst(s) || deriveAbsorb(s) || deriveTrim(s) ||
+           deriveFollow(s) || deriveGridTargetEnded(s))
         : null;
       show(reasonEl, !!reason);
       if (reason) reasonEl.textContent = reason.text;
@@ -906,6 +955,8 @@
     deriveFollow: deriveFollow,
     deriveAbsorb: deriveAbsorb,
     deriveNative: deriveNative,
+    deriveGridTarget: deriveGridTarget,
+    deriveGridTargetEnded: deriveGridTargetEnded,
     deriveCarsFirst: deriveCarsFirst,
     deriveCurtail: deriveCurtail,
     deriveExportGuard: deriveExportGuard,

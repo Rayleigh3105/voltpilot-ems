@@ -87,20 +87,36 @@ public class ControlStatusListener extends Rueckmeldeweg {
      * {@code planned_kw} is then the reference the box would write if it took
      * the battery back on the next tick. The cloud learns the two new words
      * before any box sends them (API first, then the box release).
+     *
+     * <p>{@code grid_target} (netzseitiger Drossel-Slot, 08.10.2026) is the
+     * fourth word of that kind: in a slot the plan CURTAILS, the hybrid
+     * inverter regulates the grid connection point itself (target 0 W) and
+     * throttles its OWN PV for it - the share the curtailment of the
+     * AC-coupled units cannot reach. Reported only once the device confirmed
+     * the grid side on its readback; {@code planned_kw} is again the
+     * reference of the take-back, and no battery value is commanded. What it
+     * regulates is neither the house deficit nor the PV surplus, so it has no
+     * one-sided target (see {@link #NO_TARGET_MODES}); the commanded grid
+     * target and its measured effect ride in the {@code curtailment} block's
+     * per-unit entry of the primary inverter.
      */
     private static final Set<String> EXECUTION_MODES = Set.of(
             "plan", "follow", "trim", "absorb", "fallback", "idle_follow",
             "deficit_cover", "high_soc_follow", "high_soc_charge", "surplus_store",
             "autonomous_discharge", "autonomous_charge", "autonomous_selfconsumption",
-            "limit");
+            "limit", "grid_target");
     /** The modes whose measured target is the PV SURPLUS (all others: the house deficit). */
     private static final Set<String> SURPLUS_TARGET_MODES = Set.of(
             "trim", "absorb", "high_soc_charge", "surplus_store", "autonomous_charge");
     /**
-     * The modes that regulate in BOTH directions - neither one-sided measurement
-     * describes them, so their target stays null rather than half the truth.
+     * The modes neither one-sided measurement describes, so their target stays
+     * null rather than half the truth: {@code autonomous_selfconsumption}
+     * regulates in BOTH directions, and {@code grid_target} regulates the grid
+     * connection point - a third quantity that is neither the house deficit
+     * nor the PV surplus.
      */
-    private static final Set<String> TWO_WAY_MODES = Set.of("autonomous_selfconsumption");
+    private static final Set<String> NO_TARGET_MODES = Set.of(
+            "autonomous_selfconsumption", "grid_target");
     /** The two follow directions - only meaningful for mode {@code follow}. */
     private static final Set<String> FOLLOW_DIRECTIONS = Set.of("deepen", "reduce");
     /**
@@ -364,8 +380,9 @@ public class ControlStatusListener extends Rueckmeldeweg {
         }
         // WHICH measurement the target is only follows from the mode, so a
         // dropped/absent mode leaves it out too - an uninterpretable number is
-        // worse than none. A two-way mode has no single measurement either.
-        Double target = mode == null || TWO_WAY_MODES.contains(mode)
+        // worse than none. A two-way mode has no single measurement either,
+        // and the grid-side slot regulates a quantity that is neither of them.
+        Double target = mode == null || NO_TARGET_MODES.contains(mode)
                 ? null
                 : SURPLUS_TARGET_MODES.contains(mode)
                         ? optDouble(ex, "surplus_kw") : optDouble(ex, "deficit_kw");

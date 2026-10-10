@@ -3058,6 +3058,14 @@ function k5Setpoint(intent, extra = {}) {
   });
 }
 const k5Pilot = (candidate, intent) => ({ native_pilot: { candidate, intent, run: 'k5-test' } });
+// P3: der Sollwert, wie ihn der Kern im netzseitigen Drossel-Slot veroeffentlicht
+// (agent.applySetpoint): die Absicht, das Ziel 0, die Referenz als Batterie-
+// Sollwert und die Plankappe der Fronius daneben.
+function gridTargetSetpoint(extra = {}) {
+  return nativeSetpoint('grid_target', {
+    battery_setpoint_kw: 5, grid_target_kw: 0, pv_limit_kw: 12, grid_charge_allowed: false, ...extra,
+  });
+}
 // What the CORE receives: the executor's payload through vp-control-readback
 // shape() and over the wire (JSON). Asserting the raw payload alone hid the
 // Herzogau F11 defect (29.09.2026): shape() dropped every native proof field.
@@ -3073,9 +3081,11 @@ test('K5: ohne Zertifikat bleibt die Ladeseite gedämpft - nur E↓ wird gemelde
     assert.notStrictEqual(r.plan.mode, 'native', 'no certificate, no hand-over');
     assert.strictEqual(store[REG_REMOTE.mode], 1, 'remote mode stays armed (the box regulates)');
     assert.ok(!writes.some((w) => w.reg === REG_REMOTE.powerControlMode && w.value === 2), 'never the grid side');
-    // K4b point 4: the Deye executor reports its levers - today exactly E↓.
+    // K4b point 4: the Deye executor reports its levers - E↓ from the native
+    // catalog and, since P3, the released grid-side lever of this model. The
+    // charge side (surplus_charge / self_consumption) stays unreported.
     assert.deepStrictEqual(JSON.parse(JSON.stringify(r.out.payload.native_capabilities)),
-      { intents: ['cover_load'], window: false, persistent: false });
+      { intents: ['cover_load', 'grid_target'], window: false, persistent: false });
     assert.match(r.out.payload.native_refusal, /Prüfstand/, 'and says why nothing moved');
   } finally {
     server.close();
@@ -3113,7 +3123,7 @@ test('K5 Pilot Kandidat 1 (netzseitig Ziel 0): Totmann zuerst, 1109 <- 0 vor 110
     assert.deepStrictEqual(natCore.native, {
       grid_charge_blocked: true, intent: 'self_consumption', curtails_own_pv: true, candidate: 'grid_zero',
     });
-    assert.deepStrictEqual(natCore.native_capabilities, { intents: ['cover_load'], window: false, persistent: false });
+    assert.deepStrictEqual(natCore.native_capabilities, { intents: ['cover_load', 'grid_target'], window: false, persistent: false });
     // Next tick: the watchdog kick keeps remote mode alive (RAM ops re-asserted),
     // the two configuration ops are NOT rewritten while they hold.
     const hb0 = writes.length;
@@ -3275,6 +3285,30 @@ test('Rückmeldeweg: jeder Beleg des Executors kommt über shape() beim Kern an 
     }
   }
 
+  // E. Der NETZSEITIGE DROSSEL-SLOT (P3): der Kern erkennt die Uebernahme an den
+  //    REGISTERN der Rueckmeldung (power_control_mode liest 2, grid_power steht),
+  //    nicht an einem Wort - `mode` bleibt "normal". Dazu der gemeldete Hebel.
+  {
+    const { server, port } = await startSolarmanServer(nativeStore());
+    try {
+      const rig = makeNativeRig(port);
+      await rig.tick(nativeSetpoint('setpoint'));
+      const t1 = await rig.tick(gridTargetSetpoint({ grid_target_neutralize: true }));
+      const g1 = record('netzseitig_takt1_eintritt',
+        'Netzseitiger Drossel-Slot: Eintritt mit Neutralschritt - die Register belegen die Netzseite (1104 = 2) und das Ziel.',
+        '2026-10-08T12:00:10.000Z', t1.out.payload);
+      assert.strictEqual(g1.mode, 'normal');
+      assert.ok(g1.native_capabilities.intents.includes('grid_target'), 'der Hebel ist gemeldet');
+      assert.deepStrictEqual(g1.registers.map((r) => r.role),
+        ['remote_watchdog', 'pv_max_permille', 'power_control_mode', 'grid_power', 'remote_mode']);
+      const t2 = await rig.tick(gridTargetSetpoint());
+      record('netzseitig_takt2_herzschlag', 'Folgetakt: nur der Herzschlag wird geschrieben, der Beleg bleibt.',
+        '2026-10-08T12:00:20.000Z', t2.out.payload);
+    } finally {
+      server.close();
+    }
+  }
+
   // D. Every field shape() can forward, plus fields it drops on purpose (the
   //    list stays fixed: an unknown field never reaches the core).
   const alle = {
@@ -3398,7 +3432,7 @@ test('K5: mit Zertifikat-Eintrag (nur Test-Katalog) wählt die Box den Kandidate
     const tick = rig.tick;
     const first = await tick(nativeSetpoint('setpoint'));
     assert.deepStrictEqual(JSON.parse(JSON.stringify(first.out.payload.native_capabilities)),
-      { intents: ['cover_load', 'self_consumption'], window: false, persistent: false });
+      { intents: ['cover_load', 'self_consumption', 'grid_target'], window: false, persistent: false });
     await tick(k5Setpoint('self_consumption'));
     const w0 = writes.length;
     const r = await tick(k5Setpoint('self_consumption'));
@@ -3537,6 +3571,192 @@ test('ToU-Schreibbudget: ein engeres Profil-Budget (persistent_write_budget) gil
     // A looser statement is ignored: 40 is still 20.
     const B = require('./deye-tou-budget');
     assert.strictEqual(B.touBudgetLimit(40), 20);
+  } finally {
+    server.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// NETZSEITIGER DROSSEL-SLOT (Konzept vp-deye-netzseitig-drossel-k2, Paket P3):
+// der ausgelieferte Plan-Knoten + Executor gegen den echten Solarman-Logger.
+// Die Regel (wann eingetreten, wann zurueckgenommen wird) ist Sache des Kerns
+// und dort bewiesen (guards/gridtarget_test.go, agent/gridtarget_test.go); hier
+// steht, was NUR der Draht zeigen kann: die Reihenfolge der Schreibvorgaenge,
+// der Herzschlag, die Rueckkehr und dass ohne Freigabe kein Byte faellt.
+// ---------------------------------------------------------------------------
+const R1100 = 0x044c; const R1101 = 0x044d; const R1104 = 0x0450; const R1109 = 0x0455; const R1115 = 0x045b;
+
+test('Drossel-Slot e2e: Eintritt mit Neutralschritt, 1115 VOR dem Umschalten, dann nur der Herzschlag, Rueckkehr = gewoehnlicher Plan', async () => {
+  const { server, port, writes, store } = await startSolarmanServer(nativeStore());
+  try {
+    const rig = makeNativeRig(port);
+    // Die Anlage faehrt batterieseitig und ENTLAEDT (ein stehender +236 auf 1109).
+    await rig.tick(nativeSetpoint('setpoint'));
+    const before = await rig.tick(nativeSetpoint('setpoint'));
+    assert.strictEqual(store[R1104], 1, 'Ausgangslage: batterieseitig');
+    assert.strictEqual(store[R1109], 236, 'Ausgangslage: Entlade-Sollwert steht (-7,087 kW -> +236)');
+    assert.ok(before.out.payload.native_capabilities.intents.includes('grid_target'),
+      'der Hebel wird schon im gewoehnlichen Takt gemeldet - sonst fragte der Kern nie');
+
+    // 1. EINTRITT: die Absicht des Kerns, mit Neutralschritt.
+    let w0 = writes.length;
+    const t1 = await rig.tick(gridTargetSetpoint({ grid_target_neutralize: true }));
+    assert.ok(t1.plan.gridTarget, 'der Plan traegt den netzseitigen Zweig');
+    assert.deepStrictEqual(writes.slice(w0).map((w) => [w.reg, w.value]),
+      [[R1101, 60], [R1109, 0], [R1115, 999], [R1104, 2], [R1109, 0], [R1100, 1]],
+      'Totmann, Neutral (1109 <- 0), PV-Kappe 999 VOR dem Umschalten, Netzseite, Ziel, Enable');
+    assert.ok(writes.slice(w0).every((w) => w.fc === 0x10), 'FC16');
+    // ⚠ Der Kern des Neutralschritts: in dem Moment, in dem 1104 die Bedeutung
+    // wechselt, steht auf 1109 die 0 - nie der alte Entlade-Sollwert, der
+    // netzseitig ein BEZUGS-Ziel waere.
+    const sw = writes.slice(w0).findIndex((w) => w.reg === R1104);
+    assert.strictEqual(writes.slice(w0, w0 + sw).filter((w) => w.reg === R1109).pop().value, 0);
+    assert.strictEqual(store[R1104], 2);
+    assert.strictEqual(store[R1115], 999);
+    assert.strictEqual(store[R1100], 1, 'die Fernsteuerung bleibt an (kein 1100-Zyklus)');
+
+    // Der BELEG, wie ihn der Kern liest: Rollen und Werte, kein Wort.
+    const rb = coreView(t1.out.payload);
+    assert.strictEqual(rb.mode, 'normal');
+    assert.strictEqual(rb.all_match, true, JSON.stringify(rb.registers));
+    const side = rb.registers.find((r) => r.role === 'power_control_mode');
+    const target = rb.registers.find((r) => r.role === 'grid_power');
+    assert.strictEqual(side.actual_raw, 2, 'die Regelseite wurde zurueckGELESEN');
+    assert.strictEqual(target.match, true);
+    assert.strictEqual(target.commanded_kw, 0, 'das Ziel dekodiert als Netz-kW (nicht negiert)');
+    assert.ok(!rb.registers.some((r) => r.role === 'grid_neutral' || r.role === 'battery_power'),
+      'der Neutralschritt wird nicht zurueckgelesen, und es gibt keinen Batterie-Sollwert');
+    assert.strictEqual(rb.control_path, 'remote');
+
+    // 2. HERZSCHLAG: belegt -> kein Neutralschritt, und die zwei Konfigurations-
+    //    Register (1104, 1115) werden NICHT in jedem Takt neu geschrieben.
+    w0 = writes.length;
+    const t2 = await rig.tick(gridTargetSetpoint());
+    assert.deepStrictEqual(writes.slice(w0).map((w) => [w.reg, w.value]),
+      [[R1101, 60], [R1109, 0], [R1100, 1]], 'nur Totmann, Ziel, Enable');
+    assert.strictEqual(coreView(t2.out.payload).all_match, true);
+    assert.strictEqual(store[R1104], 2);
+
+    // 3. Der Totmann wird in JEDEM Takt neu gespannt (60 s im Geraet).
+    store[R1101] = 37; // der Zaehler ist heruntergelaufen
+    await rig.tick(gridTargetSetpoint());
+    assert.strictEqual(store[R1101], 60);
+
+    // 4. RUECKKEHR = der gewoehnliche Fernsteuer-Plan, keine zweite Folge. Auf
+    //    1109 steht beim Zurueckschalten die 0 des Netz-Ziels - batterieseitig
+    //    wieder neutral -, danach der Batterie-Sollwert.
+    w0 = writes.length;
+    const back = await rig.tick(nativeSetpoint('setpoint', { battery_setpoint_kw: 5 }));
+    assert.strictEqual(back.plan.gridTarget, undefined);
+    const seq = writes.slice(w0).map((w) => [w.reg, w.value]);
+    const iSide = seq.findIndex((x) => x[0] === R1104);
+    const iPow = seq.findIndex((x) => x[0] === R1109);
+    assert.deepStrictEqual(seq[iSide], [R1104, 1], 'zurueck auf die Batterieseite, sofort (geaenderter Wert)');
+    assert.ok(iSide < iPow, '1104 vor dem neuen Sollwert - und der alte Wert auf 1109 war 0');
+    assert.strictEqual(store[R1109], (-167) & 0xffff, '+5 kW laden -> -167 (negiert, batterieseitig)');
+    assert.strictEqual(store[R1104], 1);
+    assert.ok(coreView(back.out.payload).registers.some((r) => r.role === 'battery_power'));
+
+    // Kein Installateur-/EEPROM-Register wurde je geschrieben.
+    const inst = controlRouting.DEYE_CONTROL_REG.hybrid_3p;
+    const touched = new Set(writes.map((w) => w.reg));
+    for (const a of [inst.energyPattern, inst.workMode, inst.solarSell, inst.maxSellPower, inst.touEnable, inst.exportLimit]) {
+      assert.ok(!touched.has(a), 'Installateur-Register 0x' + a.toString(16) + ' unberuehrt');
+    }
+  } finally {
+    server.close();
+  }
+});
+
+test('Drossel-Slot e2e: der Neutralschritt bleibt, solange der Kern ihn verlangt - und schadet nicht', async () => {
+  const { server, port, writes, store } = await startSolarmanServer(nativeStore());
+  try {
+    const rig = makeNativeRig(port);
+    await rig.tick(nativeSetpoint('setpoint'));
+    await rig.tick(gridTargetSetpoint({ grid_target_neutralize: true }));
+    const w0 = writes.length;
+    // Der Kern hat den Beleg noch nicht gesehen: derselbe Sollwert noch einmal.
+    await rig.tick(gridTargetSetpoint({ grid_target_neutralize: true }));
+    assert.deepStrictEqual(writes.slice(w0).map((w) => [w.reg, w.value]),
+      [[R1101, 60], [R1109, 0], [R1109, 0], [R1100, 1]],
+      'Neutral + Ziel auf 1109, die Konfiguration steht schon');
+    assert.strictEqual(store[R1104], 2);
+  } finally {
+    server.close();
+  }
+});
+
+test('Drossel-Slot e2e: ein Ziel ueber +50 W erreicht den Wechselrichter nie (EEG durch Konstruktion)', async () => {
+  const { server, port, store } = await startSolarmanServer(nativeStore());
+  try {
+    const rig = makeNativeRig(port);
+    await rig.tick(nativeSetpoint('setpoint'));
+    for (const kw of [0.05, 0.5, 30, 1e6]) {
+      const t = await rig.tick(gridTargetSetpoint({ grid_target_kw: kw, grid_target_neutralize: true }));
+      assert.ok(t.plan.gridTarget.target_kw <= 0.05, 'geklemmt: ' + t.plan.gridTarget.target_kw);
+      // 30 kW Nennleistung: 1 Einheit = 30 W. +50 W duerfen nicht auf 2 Einheiten (60 W) runden.
+      assert.strictEqual(store[R1109], 1, 'hoechstens +30 W auf dem Register bei Ziel ' + kw);
+    }
+    // Ein Einspeise-Ziel ist erlaubt und wird NICHT negiert.
+    await rig.tick(gridTargetSetpoint({ grid_target_kw: -3 }));
+    assert.strictEqual(store[R1109], (-100) & 0xffff);
+  } finally {
+    server.close();
+  }
+});
+
+test('Drossel-Slot e2e: OHNE Freigabe-Eintrag des Modells bleibt es beim Batterie-Sollwert - nie die Netzseite', async () => {
+  const { server, port, writes, store } = await startSolarmanServer(nativeStore());
+  try {
+    // Dieselbe Familie, dieselbe Registerlage, ein ANDERES Modell.
+    const sel = Object.assign(nativeSel(port), { model: 'sun-50k-sg01hp3' });
+    const rig = makeNativeRig(port, sel);
+    await rig.tick(nativeSetpoint('setpoint'));
+    const t = await rig.tick(gridTargetSetpoint({ grid_target_neutralize: true }));
+    assert.strictEqual(t.plan.gridTarget, undefined);
+    assert.match(t.plan.gridTargetNote, /nicht freigegeben/);
+    assert.ok(!writes.some((w) => w.reg === R1104 && w.value === 2), 'nie die Netzseite');
+    assert.ok(!writes.some((w) => w.reg === R1115), 'und nie 1115');
+    assert.strictEqual(store[R1104], 1);
+    assert.strictEqual(store[R1109], (-167) & 0xffff, 'der Batterie-Sollwert (die Referenz) wird geschrieben');
+    assert.ok(!t.out.payload.native_capabilities.intents.includes('grid_target'),
+      'und der Hebel wird nicht gemeldet - der Kern fragt gar nicht erst');
+  } finally {
+    server.close();
+  }
+});
+
+test('Drossel-Slot e2e: ohne Zertifikat oder mit Not-Aus erreicht KEIN Byte den Wechselrichter', async () => {
+  for (const [name, over] of [
+    ['kein Zertifikat', { device_certified: false, device_certified_path: undefined }],
+    ['Not-Aus', { control_enabled: false }],
+  ]) {
+    const { server, port, writes } = await startSolarmanServer(nativeStore());
+    try {
+      const rig = makeNativeRig(port);
+      await rig.tick(gridTargetSetpoint({ grid_target_neutralize: true, ...over }));
+      await rig.tick(gridTargetSetpoint({ grid_target_neutralize: true, ...over }));
+      assert.strictEqual(writes.length, 0, name + ': kein Schreibvorgang');
+    } finally {
+      server.close();
+    }
+  }
+});
+
+test('Drossel-Slot e2e: Not-Aus MITTEN im Slot gibt die Fernsteuerung zurueck (1100 <- 0)', async () => {
+  const { server, port, writes, store } = await startSolarmanServer(nativeStore());
+  try {
+    const rig = makeNativeRig(port);
+    await rig.tick(nativeSetpoint('setpoint'));
+    await rig.tick(gridTargetSetpoint({ grid_target_neutralize: true }));
+    assert.strictEqual(store[R1104], 2);
+    const w0 = writes.length;
+    // Der Kern veroeffentlicht nach dem Not-Aus den gewoehnlichen Sollwert mit
+    // control_enabled=false - der Plan-Knoten faehrt seine EINE Rueckgabe.
+    await rig.tick(nativeSetpoint('setpoint', { battery_setpoint_kw: 5, control_enabled: false }));
+    assert.deepStrictEqual(writes.slice(w0).map((w) => [w.reg, w.value]), [[R1100, 0]],
+      'die Rueckgabe ist 1100 <- 0 - der Deye faehrt danach seine eigene Konfiguration');
+    assert.strictEqual(store[R1100], 0);
   } finally {
     server.close();
   }

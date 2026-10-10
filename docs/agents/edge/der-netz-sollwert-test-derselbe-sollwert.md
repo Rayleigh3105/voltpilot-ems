@@ -10,12 +10,16 @@ Fronius-Abregelweg strukturell nicht erreicht. Konzept: Scout
 „Fernsteuerung: drei Regelseiten"; Live-Protokoll `nodered/CONTROL-BENCH.md` →
 „Netz-Sollwert-Test". Was HIER gelten muss:
 
-- **⚠ ES GIBT KEINEN PRODUKTIVPFAD.** Kein automatischer Eintritt aus dem
+- **⚠ DIESER PFAD HAT KEINEN AUTOMATISCHEN EINTRITT.** Kein Eintritt aus dem
   Fahrplan, keine Cloud-Änderung, kein Vertragsfeld. Der Lauf ist manuell
   armiert, TTL-begrenzt (120 s netzseitig, 60 s AC) und betreiber-gesperrt
   (`calGuard`, dasselbe Kennwort wie die Kalibrierung). Ohne armierten Lauf ist
   der Sollwert-Pfad byte-identisch zu vorher — gepinnt von
-  `agent.TestWithoutAnArmedGridTestTheSetpointIsByteForByteUnchanged`.
+  `agent.TestWithoutAnArmedGridTestTheSetpointIsByteForByteUnchanged`. Der
+  Eintritt aus dem Fahrplan ist seit dem 08.10.2026 ein EIGENER Pfad mit eigener
+  Regel, Aufsicht und Modell-Freigabe
+  ([netzseitiger Drossel-Slot](der-netzseitige-drossel-slot-der-plan-gibt.md));
+  läuft ein armierter Test, hat er Vorrang.
 - **⚠ Er umgeht GAR KEIN Tor — der eine Unterschied zur First-Light-Kalibrierung.**
   Die umgeht bewusst die ZERTIFIZIERUNG (sie verdient sie ja erst); dieser Test
   verlangt Not-Aus AN, Zertifikat vorhanden und Fernsteuerpfad, und das

@@ -532,6 +532,77 @@ function nativeFor(state) {
   return load(["control.js"]).VPControl.deriveNative(state);
 }
 
+// --- „Netzseitiger Drossel-Slot" (Konzept vp-deye-netzseitig-drossel-k2, P3) --
+//
+// In a curtailing slot the inverter regulates the GRID POINT itself. The card
+// must keep „angefordert" and „hält" apart (a requested mode is not an adopted
+// one), show the measured grid point (registers that hold prove nothing about
+// the effect), never mix up Bezug and Einspeisung, and name a take-back with
+// the core's own sentence.
+test("control: a CONFIRMED grid-side slot names target, measurement and the hand-over", () => {
+  const C = load(["control.js"]).VPControl;
+  const d = C.deriveGridTarget({
+    grid_target: {
+      active: true, proven: true, target_kw: 0, reference_kw: 5, following: true, grid_kw: -0.2,
+      reason: "netzseitig_geregelt", text: "Der Wechselrichter regelt den Netzanschluss gerade selbst.",
+    },
+  });
+  assert.ok(d);
+  assert.match(d.text, /Netzseitige Regelung \(h\u00e4lt\)/, d.text);
+  assert.match(d.text, /auf 0,0 kW Einspeisung/, "the target with its direction as a word: " + d.text);
+  assert.match(d.text, /keinen Speicher-Sollwert/, d.text);
+  assert.match(d.text, /Vergleichswert f\u00fcr den Speicher: 5,0 kW/, d.text);
+  assert.match(d.text, /Gemessen am Netzanschluss: 0,2 kW Einspeisung\./, d.text);
+  assert.match(d.text, /regelt den Netzanschluss gerade selbst/, "the core's sentence rides along");
+  assert.match(d.text, /kein Fehler des Wechselrichters\.$/, d.text);
+});
+
+test("control: a grid-side slot off its target says so, and Bezug is never called Einspeisung", () => {
+  const C = load(["control.js"]).VPControl;
+  const d = C.deriveGridTarget({
+    grid_target: {
+      active: true, proven: true, target_kw: 0, reference_kw: 0, following: false, grid_kw: 3.2,
+      reason: "netzseitig_geregelt", text: "",
+      hint: "eigener_anteil_ausgeschoepft", hint_text: "Die verbleibende Einspeisung stammt von den anderen Erzeugern.",
+    },
+  });
+  assert.match(d.text, /Gemessen am Netzanschluss: 3,2 kW Bezug \u2013 das Ziel ist noch nicht erreicht\./, d.text);
+  assert.match(d.text, /stammt von den anderen Erzeugern/, "the hint is shown: " + d.text);
+});
+
+test("control: an UNCONFIRMED grid-side slot never claims the device regulates", () => {
+  const C = load(["control.js"]).VPControl;
+  const d = C.deriveGridTarget({
+    grid_target: {
+      active: true, proven: false, target_kw: 0, reference_kw: 5, reason: "nachweis_ausstehend",
+      text: "Der Wechselrichter soll den Netzanschluss selbst regeln - die R\u00fcckmeldung des Ger\u00e4ts steht noch aus.",
+    },
+  });
+  assert.ok(d);
+  assert.ok(!/h\u00e4lt/.test(d.text), "a pending mode must not claim it holds: " + d.text);
+  assert.match(d.text, /angefordert \(Ziel 0,0 kW Einspeisung\)/, d.text);
+  assert.ok(!/Gemessen am Netzanschluss/.test(d.text), "no effect is stated before the proof: " + d.text);
+  assert.strictEqual(C.deriveGridTarget({}), null);
+  assert.strictEqual(C.deriveGridTarget({ grid_target: { active: false } }), null);
+  assert.strictEqual(C.deriveGridTarget(null), null);
+});
+
+test("control: a TAKE-BACK of the grid-side slot is named with the core's sentence, a mere refusal is not", () => {
+  const C = load(["control.js"]).VPControl;
+  const d = C.deriveGridTargetEnded({
+    grid_target_withheld: {
+      reason: "reserve_boden", ended: true,
+      text: "Der Ladestand hat die Reserve erreicht - VoltPilot \u00fcbernimmt den Speicher wieder.",
+    },
+  });
+  assert.match(d.text, /^Netzseitige Regelung in dieser Viertelstunde beendet: Der Ladestand hat die Reserve erreicht/, d.text);
+  // A slot that simply does not qualify (the plan discharges) is not a take-back.
+  assert.strictEqual(C.deriveGridTargetEnded({
+    grid_target_withheld: { reason: "plan_entlaedt", text: "Der Fahrplan entl\u00e4dt den Speicher." },
+  }), null);
+  assert.strictEqual(C.deriveGridTargetEnded({}), null);
+});
+
 test("control: a CONFIRMED native mode reads 'Wechselrichter-Automatik (hält)'", () => {
   const d = nativeFor({
     native: {

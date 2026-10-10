@@ -69,7 +69,7 @@
           {"role": "battery_power", "fc": 3, "addr": 1109, "commanded_raw": 0, "actual_raw": 0, "match": true, "verdict": "held", "commanded_kw": 0, "actual_kw": 0},
           {"role": "remote_mode", "fc": 3, "addr": 1100, "commanded_raw": 1, "actual_raw": 1, "match": true, "verdict": "held"}
         ],
-        "native_capabilities": {"intents": ["cover_load"], "window": false, "persistent": false}
+        "native_capabilities": {"intents": ["cover_load", "grid_target"], "window": false, "persistent": false}
       },
       "geformt": {
         "ts": "2026-09-29T10:01:19.000Z",
@@ -96,7 +96,7 @@
         "reason": "",
         "dual_controller": {"only_controller_required": true, "possible_conflict": false, "detector": "readback_mismatch", "reason": ""},
         "wrote": true,
-        "native_capabilities": {"intents": ["cover_load"], "window": false, "persistent": false}
+        "native_capabilities": {"intents": ["cover_load", "grid_target"], "window": false, "persistent": false}
       }
     },
     {
@@ -126,7 +126,7 @@
           {"role": "remote_mode", "fc": 3, "addr": 1100, "commanded_raw": 1, "actual_raw": 1, "match": true, "verdict": "held"}
         ],
         "native_precondition": {"grid_charge_blocked": true},
-        "native_capabilities": {"intents": ["cover_load"], "window": false, "persistent": false},
+        "native_capabilities": {"intents": ["cover_load", "grid_target"], "window": false, "persistent": false},
         "native_refusal": "Die eigene Konfiguration des Wechselrichters ist nicht bekannt - es wird nicht umgeschaltet"
       },
       "geformt": {
@@ -156,7 +156,7 @@
         "wrote": true,
         "native_precondition": {"grid_charge_blocked": true},
         "native_refusal": "Die eigene Konfiguration des Wechselrichters ist nicht bekannt - es wird nicht umgeschaltet",
-        "native_capabilities": {"intents": ["cover_load"], "window": false, "persistent": false}
+        "native_capabilities": {"intents": ["cover_load", "grid_target"], "window": false, "persistent": false}
       }
     },
     {
@@ -186,7 +186,7 @@
           {"role": "remote_mode", "fc": 3, "addr": 1100, "commanded_raw": 1, "actual_raw": 1, "match": true, "verdict": "held"}
         ],
         "native": {"grid_charge_blocked": true, "intent": "surplus_charge", "curtails_own_pv": true, "candidate": "grid_zero"},
-        "native_capabilities": {"intents": ["cover_load"], "window": false, "persistent": false}
+        "native_capabilities": {"intents": ["cover_load", "grid_target"], "window": false, "persistent": false}
       },
       "geformt": {
         "ts": "2026-09-29T10:01:40.000Z",
@@ -214,7 +214,7 @@
         "dual_controller": {"only_controller_required": true, "possible_conflict": false, "detector": "readback_mismatch", "reason": ""},
         "wrote": true,
         "native": {"grid_charge_blocked": true, "intent": "surplus_charge", "curtails_own_pv": true, "candidate": "grid_zero"},
-        "native_capabilities": {"intents": ["cover_load"], "window": false, "persistent": false}
+        "native_capabilities": {"intents": ["cover_load", "grid_target"], "window": false, "persistent": false}
       }
     },
     {
@@ -244,7 +244,7 @@
           {"role": "remote_mode", "fc": 3, "addr": 1100, "commanded_raw": 1, "actual_raw": 1, "match": true, "verdict": "held"}
         ],
         "native": {"grid_charge_blocked": true, "intent": "surplus_charge", "curtails_own_pv": true, "candidate": "grid_zero"},
-        "native_capabilities": {"intents": ["cover_load"], "window": false, "persistent": false}
+        "native_capabilities": {"intents": ["cover_load", "grid_target"], "window": false, "persistent": false}
       },
       "geformt": {
         "ts": "2026-09-29T10:01:50.000Z",
@@ -272,7 +272,7 @@
         "dual_controller": {"only_controller_required": true, "possible_conflict": false, "detector": "readback_mismatch", "reason": ""},
         "wrote": true,
         "native": {"grid_charge_blocked": true, "intent": "surplus_charge", "curtails_own_pv": true, "candidate": "grid_zero"},
-        "native_capabilities": {"intents": ["cover_load"], "window": false, "persistent": false}
+        "native_capabilities": {"intents": ["cover_load", "grid_target"], "window": false, "persistent": false}
       }
     },
     {
@@ -302,7 +302,7 @@
           {"role": "remote_mode", "fc": 3, "addr": 1100, "commanded_raw": 1, "actual_raw": 1, "match": true, "verdict": "held"}
         ],
         "native_precondition": {"grid_charge_blocked": true},
-        "native_capabilities": {"intents": ["cover_load"], "window": false, "persistent": false},
+        "native_capabilities": {"intents": ["cover_load", "grid_target"], "window": false, "persistent": false},
         "native_refusal": "Die eigene Konfiguration des Wechselrichters ist nicht bekannt - es wird nicht umgeschaltet"
       },
       "geformt": {
@@ -332,7 +332,7 @@
         "wrote": true,
         "native_precondition": {"grid_charge_blocked": true},
         "native_refusal": "Die eigene Konfiguration des Wechselrichters ist nicht bekannt - es wird nicht umgeschaltet",
-        "native_capabilities": {"intents": ["cover_load"], "window": false, "persistent": false}
+        "native_capabilities": {"intents": ["cover_load", "grid_target"], "window": false, "persistent": false}
       }
     },
     {
@@ -358,7 +358,7 @@
           {"role": "remote_mode", "fc": 3, "addr": 1100, "commanded_raw": 0, "actual_raw": 0, "match": true, "verdict": "held"}
         ],
         "native": {"grid_charge_blocked": true, "intent": "cover_load"},
-        "native_capabilities": {"intents": ["cover_load"], "window": false, "persistent": false}
+        "native_capabilities": {"intents": ["cover_load", "grid_target"], "window": false, "persistent": false}
       },
       "geformt": {
         "ts": "2026-09-29T11:00:20.000Z",
@@ -382,7 +382,7 @@
         "dual_controller": {"only_controller_required": true, "possible_conflict": false, "detector": "readback_mismatch", "reason": ""},
         "wrote": true,
         "native": {"grid_charge_blocked": true, "intent": "cover_load"},
-        "native_capabilities": {"intents": ["cover_load"], "window": false, "persistent": false}
+        "native_capabilities": {"intents": ["cover_load", "grid_target"], "window": false, "persistent": false}
       }
     },
     {
@@ -408,7 +408,7 @@
           {"role": "remote_mode", "fc": 3, "addr": 1100, "commanded_raw": 0, "actual_raw": 0, "match": true, "verdict": "held"}
         ],
         "native": {"grid_charge_blocked": true, "intent": "cover_load"},
-        "native_capabilities": {"intents": ["cover_load"], "window": false, "persistent": false}
+        "native_capabilities": {"intents": ["cover_load", "grid_target"], "window": false, "persistent": false}
       },
       "geformt": {
         "ts": "2026-09-29T11:00:30.000Z",
@@ -432,7 +432,7 @@
         "dual_controller": {"only_controller_required": true, "possible_conflict": false, "detector": "readback_mismatch", "reason": ""},
         "wrote": false,
         "native": {"grid_charge_blocked": true, "intent": "cover_load"},
-        "native_capabilities": {"intents": ["cover_load"], "window": false, "persistent": false}
+        "native_capabilities": {"intents": ["cover_load", "grid_target"], "window": false, "persistent": false}
       }
     },
     {
@@ -462,7 +462,7 @@
           {"role": "remote_mode", "fc": 3, "addr": 1100, "commanded_raw": 1, "actual_raw": 1, "match": true, "verdict": "held"}
         ],
         "native_precondition": {"grid_charge_blocked": true},
-        "native_capabilities": {"intents": ["cover_load"], "window": false, "persistent": false},
+        "native_capabilities": {"intents": ["cover_load", "grid_target"], "window": false, "persistent": false},
         "native_refusal": "Arbeitsmodus „Selling First“ mit aktivem Zeitfenster-Programm: der Wechselrichter darf laut Handbuch auch Speicherenergie ins Netz verkaufen - „nur Verbrauch decken“ wäre so nicht gewahrt"
       },
       "geformt": {
@@ -492,7 +492,119 @@
         "wrote": true,
         "native_precondition": {"grid_charge_blocked": true},
         "native_refusal": "Arbeitsmodus „Selling First“ mit aktivem Zeitfenster-Programm: der Wechselrichter darf laut Handbuch auch Speicherenergie ins Netz verkaufen - „nur Verbrauch decken“ wäre so nicht gewahrt",
-        "native_capabilities": {"intents": ["cover_load"], "window": false, "persistent": false}
+        "native_capabilities": {"intents": ["cover_load", "grid_target"], "window": false, "persistent": false}
+      }
+    },
+    {
+      "name": "netzseitig_takt1_eintritt",
+      "why": "Netzseitiger Drossel-Slot: Eintritt mit Neutralschritt - die Register belegen die Netzseite (1104 = 2) und das Ziel.",
+      "roh": {
+        "ts": "2026-10-08T12:00:10.000Z",
+        "family": "hybrid_3p",
+        "source": "schedule",
+        "control_enabled": true,
+        "certified": true,
+        "mode": "normal",
+        "wrote": true,
+        "skipped_dwell": 0,
+        "snapshot_captured": false,
+        "active_slot_conflict": false,
+        "power_scale_confirmed": true,
+        "control_path": "remote",
+        "remote_status_raw": 0,
+        "verify": "held",
+        "verify_reason": "",
+        "registers": [
+          {"role": "remote_watchdog", "fc": 3, "addr": 1101, "commanded_raw": 60, "actual_raw": 60, "match": true, "verdict": "held"},
+          {"role": "pv_max_permille", "fc": 3, "addr": 1115, "commanded_raw": 999, "actual_raw": 999, "match": true, "verdict": "held"},
+          {"role": "power_control_mode", "fc": 3, "addr": 1104, "commanded_raw": 2, "actual_raw": 2, "match": true, "verdict": "held"},
+          {"role": "grid_power", "fc": 3, "addr": 1109, "commanded_raw": 0, "actual_raw": 0, "match": true, "verdict": "held", "commanded_kw": 0, "actual_kw": 0},
+          {"role": "remote_mode", "fc": 3, "addr": 1100, "commanded_raw": 1, "actual_raw": 1, "match": true, "verdict": "held"}
+        ],
+        "native_capabilities": {"intents": ["cover_load", "grid_target"], "window": false, "persistent": false}
+      },
+      "geformt": {
+        "ts": "2026-10-08T12:00:10.000Z",
+        "family": "hybrid_3p",
+        "source": "schedule",
+        "control_enabled": true,
+        "certified": true,
+        "mode": "normal",
+        "control_path": "remote",
+        "remote_status_raw": 0,
+        "registers": [
+          {"role": "remote_watchdog", "fc": 3, "addr": 1101, "commanded_raw": 60, "actual_raw": 60, "match": true, "verdict": "held"},
+          {"role": "pv_max_permille", "fc": 3, "addr": 1115, "commanded_raw": 999, "actual_raw": 999, "match": true, "verdict": "held"},
+          {"role": "power_control_mode", "fc": 3, "addr": 1104, "commanded_raw": 2, "actual_raw": 2, "match": true, "verdict": "held"},
+          {"role": "grid_power", "fc": 3, "addr": 1109, "commanded_raw": 0, "actual_raw": 0, "match": true, "verdict": "held", "commanded_kw": 0, "actual_kw": 0},
+          {"role": "remote_mode", "fc": 3, "addr": 1100, "commanded_raw": 1, "actual_raw": 1, "match": true, "verdict": "held"}
+        ],
+        "all_match": true,
+        "verify": "held",
+        "mismatch_roles": [],
+        "unread_roles": [],
+        "verify_reason": "",
+        "blocked": false,
+        "reason": "",
+        "dual_controller": {"only_controller_required": true, "possible_conflict": false, "detector": "readback_mismatch", "reason": ""},
+        "wrote": true,
+        "native_capabilities": {"intents": ["cover_load", "grid_target"], "window": false, "persistent": false}
+      }
+    },
+    {
+      "name": "netzseitig_takt2_herzschlag",
+      "why": "Folgetakt: nur der Herzschlag wird geschrieben, der Beleg bleibt.",
+      "roh": {
+        "ts": "2026-10-08T12:00:20.000Z",
+        "family": "hybrid_3p",
+        "source": "schedule",
+        "control_enabled": true,
+        "certified": true,
+        "mode": "normal",
+        "wrote": true,
+        "skipped_dwell": 2,
+        "snapshot_captured": false,
+        "active_slot_conflict": false,
+        "power_scale_confirmed": true,
+        "control_path": "remote",
+        "remote_status_raw": 0,
+        "verify": "held",
+        "verify_reason": "",
+        "registers": [
+          {"role": "remote_watchdog", "fc": 3, "addr": 1101, "commanded_raw": 60, "actual_raw": 60, "match": true, "verdict": "held"},
+          {"role": "pv_max_permille", "fc": 3, "addr": 1115, "commanded_raw": 999, "actual_raw": 999, "match": true, "verdict": "held"},
+          {"role": "power_control_mode", "fc": 3, "addr": 1104, "commanded_raw": 2, "actual_raw": 2, "match": true, "verdict": "held"},
+          {"role": "grid_power", "fc": 3, "addr": 1109, "commanded_raw": 0, "actual_raw": 0, "match": true, "verdict": "held", "commanded_kw": 0, "actual_kw": 0},
+          {"role": "remote_mode", "fc": 3, "addr": 1100, "commanded_raw": 1, "actual_raw": 1, "match": true, "verdict": "held"}
+        ],
+        "native_capabilities": {"intents": ["cover_load", "grid_target"], "window": false, "persistent": false}
+      },
+      "geformt": {
+        "ts": "2026-10-08T12:00:20.000Z",
+        "family": "hybrid_3p",
+        "source": "schedule",
+        "control_enabled": true,
+        "certified": true,
+        "mode": "normal",
+        "control_path": "remote",
+        "remote_status_raw": 0,
+        "registers": [
+          {"role": "remote_watchdog", "fc": 3, "addr": 1101, "commanded_raw": 60, "actual_raw": 60, "match": true, "verdict": "held"},
+          {"role": "pv_max_permille", "fc": 3, "addr": 1115, "commanded_raw": 999, "actual_raw": 999, "match": true, "verdict": "held"},
+          {"role": "power_control_mode", "fc": 3, "addr": 1104, "commanded_raw": 2, "actual_raw": 2, "match": true, "verdict": "held"},
+          {"role": "grid_power", "fc": 3, "addr": 1109, "commanded_raw": 0, "actual_raw": 0, "match": true, "verdict": "held", "commanded_kw": 0, "actual_kw": 0},
+          {"role": "remote_mode", "fc": 3, "addr": 1100, "commanded_raw": 1, "actual_raw": 1, "match": true, "verdict": "held"}
+        ],
+        "all_match": true,
+        "verify": "held",
+        "mismatch_roles": [],
+        "unread_roles": [],
+        "verify_reason": "",
+        "blocked": false,
+        "reason": "",
+        "dual_controller": {"only_controller_required": true, "possible_conflict": false, "detector": "readback_mismatch", "reason": ""},
+        "wrote": true,
+        "native_capabilities": {"intents": ["cover_load", "grid_target"], "window": false, "persistent": false}
       }
     },
     {
