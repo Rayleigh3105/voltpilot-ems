@@ -2,7 +2,9 @@
 // um: Peers auf der WireGuard-Schnittstelle, offene Fenster als
 // nft-Elemente mit Ablaufzeit. Ist VP_TUNNEL_SCHLUESSEL_PORT gesetzt, gibt er
 // außerdem den Boxen im offenen Fenster die SSH-Schlüssel der Techniker aus
-// (internal/ausgabe). Installation: services/tunnel-dienst/README.md.
+// (internal/ausgabe). Nach jedem Lauf meldet er dem Portal, welche Box
+// verbunden ist und welches Fenster seinen Schlüssel abgeholt hat
+// (internal/meldung). Installation: services/tunnel-dienst/README.md.
 //
 //	vp-tunnel-dienst [lauf]   alle VP_TUNNEL_INTERVALL abgleichen (systemd)
 //	vp-tunnel-dienst einmal   ein Abgleich, Rückgabe 0/1
@@ -29,6 +31,7 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/tunnel-dienst/internal/ausgabe"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/tunnel-dienst/internal/dienst"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/tunnel-dienst/internal/konfig"
+	"git.tecmaxx.de/mamotec/voltpilot-ems/services/tunnel-dienst/internal/meldung"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/tunnel-dienst/internal/quelle"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/tunnel-dienst/internal/soll"
 	"git.tecmaxx.de/mamotec/voltpilot-ems/services/tunnel-dienst/internal/system"
@@ -122,7 +125,15 @@ func basisZeile(stimmt bool, err error) string {
 
 func startMeldung(log *slog.Logger, k konfig.Konfig, v string) {
 	log.Info("Tunnel-Dienst läuft", "version", v, "api", k.APIURL, "schnittstelle", k.Schnittstelle, "intervall", k.Intervall,
-		"boxNetz", k.BoxNetz, "technikerNetz", k.TechnikerNetz, "schluesselausgabe", schluesselZeile(k))
+		"boxNetz", k.BoxNetz, "technikerNetz", k.TechnikerNetz, "schluesselausgabe", schluesselZeile(k),
+		"rueckmeldung", anAus(k.Rueckmeldung))
+}
+
+func anAus(an bool) string {
+	if an {
+		return "an"
+	}
+	return "aus"
 }
 
 // schluesselAdresse ist die Adresse der Schlüsselausgabe; an ist false,
@@ -147,7 +158,27 @@ func regeln(k konfig.Konfig) system.Regeln {
 		VerbindungenProtokollieren: k.VerbindungenProtokollieren, SchluesselPort: k.SchluesselPort}
 }
 
+// umlauf ist ein Durchgang des Dauerlaufs: abgleichen, den Stand der
+// Schlüsselausgabe ablegen, die Rückmeldung ans Portal anstoßen. Die
+// Rückmeldung läuft daneben her: Dieser Durchgang wartet nicht auf sie, und
+// ihr Ergebnis ändert seines nicht.
+func umlauf(ctx context.Context, d *dienst.Dienst, stelle *ausgabe.Stelle, melder *meldung.Melder,
+	intervall time.Duration) dienst.Ergebnis {
+	laufCtx, abbruch := context.WithTimeout(ctx, intervall)
+	e := d.Lauf(laufCtx)
+	abbruch()
+	if stelle != nil {
+		stelle.Sichere()
+	}
+	if melder != nil {
+		lage, bekannt := d.Lage()
+		melder.Anstossen(ctx, lage, bekannt)
+	}
+	return e
+}
+
 func lauf(log *slog.Logger, einmal bool) int {
+	gestartet := time.Now()
 	k, err := konfig.Lies(os.Getenv, false)
 	if err != nil {
 		log.Error("Start abgebrochen", "fehler", err)
@@ -192,15 +223,19 @@ func lauf(log *slog.Logger, einmal bool) int {
 		stelle.Sichere()
 		go stelle.Betreibe(ctx, programm, adresse)
 	}
+	var melder *meldung.Melder
+	if k.Rueckmeldung {
+		melder = &meldung.Melder{Senden: api.Melder(meldung.FristVorgabe).Melde,
+			Handshakes: system.WireGuard{R: r, Schnittstelle: k.Schnittstelle}.Handshakes,
+			Log:        log, Jetzt: time.Now, GestartetUm: gestartet, Intervall: k.Intervall}
+		if stelle != nil {
+			melder.Auskunft = stelle.Auskunft
+		}
+	}
 	takt := dienst.Takt{Intervall: k.Intervall}
 	for {
 		beginn := time.Now()
-		laufCtx, abbruch := context.WithTimeout(ctx, k.Intervall)
-		e := d.Lauf(laufCtx)
-		abbruch()
-		if stelle != nil {
-			stelle.Sichere()
-		}
+		e := umlauf(ctx, d, stelle, melder, k.Intervall)
 		select {
 		case <-ctx.Done():
 			// Beim Beenden wird bewusst NICHTS abgebaut: Peers bleiben,

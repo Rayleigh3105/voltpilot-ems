@@ -353,9 +353,11 @@ tags:
     description: >
       Fernwartung über das Portal (Entscheid E5): Tunnel-Schlüssel je Box,
       Techniker-Zugänge, Fernwartungsfenster und Protokoll unter
-      /api/v1/admin/fernwartung (nur `platform-admin`), dazu die nur lesende
-      Route des Tunnel-Dienstes (/api/v1/fernwartung/soll, nur die Rolle
-      `tunnel-dienst`). Der Kunde sieht nichts davon (O3). Siehe
+      /api/v1/admin/fernwartung (nur `platform-admin`), dazu die beiden Routen
+      des Tunnel-Dienstes (nur die Rolle `tunnel-dienst`): der Soll-Stand zum
+      Abholen (/api/v1/fernwartung/soll) und die Rückmeldung seines Zustands
+      (/api/v1/fernwartung/rueckmeldung). Die Rückmeldung ist Anzeige und
+      fließt nie in den Soll-Stand. Der Kunde sieht nichts davon (O3). Siehe
       docs/fernwartung.md.
   - name: admin
     description: >
@@ -6454,11 +6456,15 @@ paths:
   /api/v1/admin/fernwartung:
     get:
       tags: [fernwartung]
-      summary: Übersicht - Server-Seite, Zähler und wann der Tunnel-Dienst zuletzt abgeholt hat.
+      summary: Übersicht - Server-Seite, Zähler, letzter Abruf und letzte Rückmeldung des Tunnel-Dienstes.
       description: >
         `abrufe` sagt, DASS ein Tunnel-Dienst den Soll-Stand abgeholt hat, nicht
-        ob er wirkt (der Dienst meldet nichts zurück). `server.eingerichtet` ist
-        false, solange der Server-Schlüssel nicht konfiguriert ist.
+        ob er wirkt. `rueckmeldungen` nennt je Dienstkonto, wann der Dienst
+        zuletzt seinen Zustand gemeldet hat; die Liste ist leer, solange noch
+        nie eine Meldung kam (ein Dienst ohne Rückmeldung). Was er zu einer Box
+        und einem Fenster gemeldet hat, steht dort im Feld `rueckmeldung`.
+        `server.eingerichtet` ist false, solange der Server-Schlüssel nicht
+        konfiguriert ist.
       responses:
         "200":
           description: Übersicht.
@@ -6834,6 +6840,42 @@ paths:
               schema: { $ref: "#/components/schemas/FernwartungSoll" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "403": { $ref: "#/components/responses/Forbidden" }
+  /api/v1/fernwartung/rueckmeldung:
+    put:
+      tags: [fernwartung]
+      summary: Rückmeldung des Tunnel-Dienstes (nur Rolle `tunnel-dienst`) - Zustand, nur zur Anzeige.
+      description: >
+        Der Tunnel-Dienst meldet nach jedem Lauf, was er auf dem Wartungsserver
+        sieht: je Box „verbunden seit“ und „zuletzt gefragt um“, je Fenster
+        „Schlüssel abgeholt um“. Sonst nichts - kein Schlüssel, kein
+        Fingerabdruck, keine Adresse. Vertrag mit Vektor:
+        docs/contracts/fernwartung-rueckmeldung-v1.md. Die Meldung ist Anzeige:
+        Sie ändert keinen Zugang, kein Fenster und kein Protokoll, und der
+        Soll-Stand liest sie nicht. Gespeichert wird je Box, Fenster und
+        Dienstkonto nur der letzte Stand, mit der Uhr der API beim Annehmen.
+        Der Rumpf wird streng gelesen (höchstens 2 MiB, keine unbekannten
+        Felder, je Liste höchstens 10 000 Einträge). Kein Admin- und kein
+        Kunden-Token (403).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FernwartungRueckmeldungMeldung" }
+      responses:
+        "204": { description: Angenommen und gespeichert. }
+        "400":
+          description: >
+            Nicht die vereinbarte Form: kein JSON, unbekanntes Feld, andere
+            Version, eine id ist keine UUID oder steht doppelt, zu viele
+            Einträge, eine Zeitangabe liegt nach `gemeldetUm`, oder
+            `gemeldetUm` weicht um mehr als 5 Minuten von der Uhr der API ab.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "413": { description: Die Meldung ist größer als 2 MiB. }
+        "422":
+          description: >
+            Die Meldung nennt eine Box oder ein Fenster, das die API nicht
+            kennt. Nichts aus dieser Meldung wird gespeichert.
   /api/v1/admin/sites/{siteId}/v2-entities:
     get:
       tags: [admin]
@@ -26314,6 +26356,23 @@ components:
               zuletztAm: { type: string, format: date-time }
               peers: { type: integer }
               fenster: { type: integer }
+        rueckmeldungen:
+          type: array
+          description: >
+            Die letzte Rückmeldung je Dienstkonto, neueste zuerst; leer,
+            solange noch nie eine kam.
+          items:
+            type: object
+            properties:
+              dienst: { type: string, example: voltpilot-tunnel-dienst }
+              zuletztAm: { type: string, format: date-time, description: Uhr der API beim Annehmen der Meldung. }
+              gestartetUm:
+                type: string
+                format: date-time
+                description: Start des Dienstes. Was er meldet, weiß er erst seit dann.
+              schluesselausgabe: { type: boolean, description: Der Dienst gibt Boxen Schlüssel aus. }
+              boxen: { type: integer }
+              fenster: { type: integer }
         boxenAktiv: { type: integer }
         boxenGesperrt: { type: integer }
         technikerAktiv: { type: integer }
@@ -26337,6 +26396,21 @@ components:
         geoeffnetVon: { type: string }
         geschlossenAm: { type: string, format: date-time, nullable: true }
         geschlossenVon: { type: string, nullable: true }
+        rueckmeldung:
+          type: object
+          nullable: true
+          description: >
+            Was der Tunnel-Dienst zuletzt zu diesem Fenster gemeldet hat; null,
+            solange keine Meldung es genannt hat (unbekannt). Nur Anzeige.
+          properties:
+            gemeldetAm: { type: string, format: date-time, description: Uhr der API beim Annehmen der Meldung. }
+            schluesselAbgeholtUm:
+              type: string
+              format: date-time
+              nullable: true
+              description: >
+                Wann die Box den SSH-Schlüssel dieses Fensters abgeholt hat;
+                null = seit dem Start des Dienstes nicht.
     FernwartungBox:
       type: object
       properties:
@@ -26356,6 +26430,62 @@ components:
         laufendeFenster:
           type: array
           items: { $ref: "#/components/schemas/FernwartungFenster" }
+        rueckmeldung:
+          type: object
+          nullable: true
+          description: >
+            Was der Tunnel-Dienst zuletzt zu dieser Box gemeldet hat; null,
+            solange keine Meldung sie genannt hat. Null heißt unbekannt, nicht
+            „nicht verbunden“. Nur Anzeige.
+          properties:
+            gemeldetAm: { type: string, format: date-time, description: Uhr der API beim Annehmen der Meldung. }
+            verbundenSeit:
+              type: string
+              format: date-time
+              nullable: true
+              description: >
+                Seit wann der Dienst die Box verbunden sieht; null = gemeldet
+                als nicht verbunden. Gleich `gestartetUm` der Rückmeldung heißt:
+                mindestens seit dem Start des Dienstes.
+            zuletztGefragtUm:
+              type: string
+              format: date-time
+              nullable: true
+              description: Letzte Anfrage der Box nach Schlüsseln; null = seit dem Start des Dienstes keine.
+    FernwartungRueckmeldungMeldung:
+      type: object
+      additionalProperties: false
+      required: [version, gemeldetUm, gestartetUm, schluesselausgabe, boxen, fenster]
+      description: >
+        Die Rückmeldung des Tunnel-Dienstes, Version 1. Vertragsvektor:
+        docs/contracts/fernwartung-rueckmeldung-v1.example.json. Zeitangaben in
+        UTC; keine liegt nach `gemeldetUm`.
+      properties:
+        version: { type: integer, enum: [1] }
+        gemeldetUm: { type: string, format: date-time, description: "Uhr des Wartungsservers, als die Meldung entstand." }
+        gestartetUm: { type: string, format: date-time, description: Start dieses Laufs des Dienstes. }
+        schluesselausgabe: { type: boolean, description: Die Schlüsselausgabe ist eingeschaltet und lauscht. }
+        boxen:
+          type: array
+          maxItems: 10000
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, verbundenSeit, zuletztGefragtUm]
+            properties:
+              id: { type: string, format: uuid, description: Die id des Box-Peers aus dem Soll-Stand. }
+              verbundenSeit: { type: string, format: date-time, nullable: true }
+              zuletztGefragtUm: { type: string, format: date-time, nullable: true }
+        fenster:
+          type: array
+          maxItems: 10000
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, schluesselAbgeholtUm]
+            properties:
+              id: { type: string, format: uuid, description: Die id des Fensters aus dem Soll-Stand. }
+              schluesselAbgeholtUm: { type: string, format: date-time, nullable: true }
     FernwartungSchluesselAntwort:
       type: object
       properties:

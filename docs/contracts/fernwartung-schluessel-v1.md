@@ -47,6 +47,8 @@ vp-wartung-schluessel 1 99ba3c5f3272c926
 ende 0
 ```
 
+**Mit `stand` bestätigt die Box, was sie hat.** Sie nennt den Prüfwert einer Antwort erst, nachdem sie diese geprüft und in ihre Schlüsseldatei geschrieben hat. Der Dienst hält deshalb fest, wann eine Box zum ersten Mal den Prüfwert der Liste nennt, die gerade für sie gilt, und meldet das dem Portal als „Schlüssel abgeholt“ ([Rückmeldung](fernwartung-rueckmeldung-v1.md)). Nennt die Box einen anderen oder keinen Prüfwert, gilt nichts als abgeholt. Für die Antwort an die Box spielt das keine Rolle.
+
 Der **Prüfwert** hängt nur an der Liste (welcher Zugang, welcher Schlüssel), nicht an der Restlaufzeit. Nennt die Box ihn in `stand`, bleibt die Anfrage offen, bis die Liste eine andere ist, ein Fenster abläuft oder `warte` um ist; danach kommt die dann gültige Liste mit neuer Restlaufzeit. Setzt der Dienst das Ende eines Fensters neu (verlängert oder gekürzt, um mehr als 5 s), während die Anfrage offen ist, kommt die Antwort ebenfalls sofort: mit demselben Prüfwert und der neuen Restlaufzeit.
 
 ## Andere Ergebnisse

@@ -18,8 +18,8 @@
 | `/tmp` (tmpfs, RAM) | 60 MB |
 | Flash-Overlay gesamt / frei | 9,9 MB / **9,4 MB**, Dateisystem JFFS2 (komprimierend, verteilt den Verschleiß) |
 | Werkzeuge des Loaders | `uclient-fetch`, `sha256sum`, `gunzip` vorhanden; HTTPS-Download funktioniert (TLS + Zertifikatsbündel im Image) |
-| Root-Passwort | **keines gesetzt** – vor jedem Feldeinsatz `passwd` + SSH-Schlüssel |
-| BusyBox | 1.37.0; **kein `nohup`**, kein `timeout`, und **`nc` kennt kein `-w`** (gibt dann nur die Hilfe aus und sendet nichts). Dafür `setsid` und `start-stop-daemon`; Proben wie [unten](#proben-von-der-box-busybox-unter-2512) |
+| Root-Passwort | **keines gesetzt**. Vor dem Verlassen der Werkstatt setzen: [Werkstatt-Regel](#bevor-eine-box-die-werkstatt-verlässt) |
+| BusyBox | 1.37.0; **kein `nohup`**, kein `timeout`, kein `diff` (Vergleiche mit `cmp -s` oder `sha256sum -c`), und **`nc` kennt kein `-w`** (gibt dann nur die Hilfe aus und sendet nichts). Dafür `setsid` und `start-stop-daemon`; Proben wie [unten](#proben-von-der-box-busybox-unter-2512) |
 | SSH (Dropbear) | **nur RSA** (`server-sig-algs=rsa-sha2-256`): ein Ed25519-Schlüssel wird abgewiesen. Ohne Root-Passwort lässt Dropbear jede Anmeldung zu – ein Schlüsseltest ist dann nicht aussagekräftig |
 
 ## Labortest am Gerät (`mango-labtest.sh`, 03.10.2026, ohne Deye, ohne Portal)
@@ -109,11 +109,58 @@ Für eine neue Box:
 2. Im Portal unter **Geräte › Fernwartung › Tunnel-Schlüssel hinterlegen** eintragen. Das Portal teilt die Adresse zu und zeigt die fertige Befehlszeile.
 3. Die Befehlszeile ausführen, mit der Box als Ziel. Sie richtet den Tunnel, SSH auf 2222 mit Fenster-Schlüsseln und die Web-App auf 8484 ein. Ein weiterer Aufruf je Techniker ist nicht nötig, und kein Techniker-Schlüssel muss auf die Box. Die letzten Zeilen sagen, wer sich anmelden darf und ob der Wartungsserver schon Schlüssel ausgibt.
 4. Prüfen: `service-tunnel.sh <ziel> status` zeigt den Handshake, `Web-App 8484 im Tunnel: Techniker-Netz 10.10.32.0/24`, `SSH 2222 ausserhalb der Tunnel: abgewiesen` und `Fenster-Schluessel: Abholer laeuft` mit der letzten gültigen Antwort des Servers. Von der Box aus antwortet `ping 10.10.32.1`.
-5. Im Portal ein Fenster öffnen, für einen Zugang mit SSH-Schlüssel. Solange es offen ist, erreicht der Techniker `ssh -i ~/.ssh/id_rsa_voltpilot -p 2222 root@<adresse>` und `http://<adresse>:8484`.
+5. Im Portal ein Fenster öffnen, für einen Zugang mit SSH-Schlüssel. Solange es offen ist, erreicht der Techniker `ssh -i ~/.ssh/id_rsa_voltpilot -p 2222 root@<adresse>` und `http://<adresse>:8484`. Das Portal zeigt an der Box „Box verbunden“ und am Fenster „Alles bereit“, sobald die Box den Schlüssel abgeholt hat ([Rückmeldung](../../docs/fernwartung.md#rückmeldung-des-tunnel-dienstes)).
+6. Die [Werkstatt-Regel](#bevor-eine-box-die-werkstatt-verlässt) abarbeiten, bevor die Box verpackt wird.
 
 Das Skript meldet sich mit `ssh` an der Box an. `VP_SSH_KEY=~/.ssh/<schlüssel>` vor dem Aufruf nennt die Schlüsseldatei; ohne die Variable entscheidet `~/.ssh/config`.
 
 Beide Tunnel können nebeneinander laufen: Die Zone `service` umfasst alle Tunnel-Schnittstellen, und jede bekommt ihre eigene Dropbear-Instanz und ihren eigenen Wächter. `service-tunnel.sh <ziel> abbauen <schnittstelle>` entfernt einen Tunnel vollständig und verweigert das, solange die SSH-Sitzung über genau diesen Tunnel läuft. `service-tunnel.sh <ziel> status` zeigt beide.
+
+#### Bevor eine Box die Werkstatt verlässt
+
+**Werkstatt-Regel:** Keine Box verlässt die Werkstatt ohne Root-Passwort und ohne Anmeldeprobe über Portal und Tunnel. Eine Box, bei der die Anmeldung erst beim Kunden scheitert, ist nur noch mit einer Fahrt dorthin erreichbar.
+
+| # | Schritt | Woran man es sieht |
+|---|---|---|
+| 1 | **Root-Passwort setzen:** an der Box `passwd`. Das Passwort gehört in die Passwortablage, nicht in dieses Repository | danach verlangt `ssh root@192.168.1.1` (Port 22, LAN) ein Passwort oder einen Schlüssel. Ohne Passwort lässt die Mango im LAN jeden ohne beides hinein |
+| 2 | **Dauerhafter Schlüssel:** genau einer, der [Notfall-Schlüssel](#dauerhafte-schlüssel-ein-notfall-schlüssel) | `wc -l < /etc/dropbear/authorized_keys` nennt `1` |
+| 3 | **Tunnel einrichten** (Schritte 1 bis 4 oben) | `service-tunnel.sh <ziel> status`: Handshake, `SSH 2222 ausserhalb der Tunnel: abgewiesen`, `Fenster-Schluessel: Abholer laeuft` mit einer gültigen Antwort |
+| 4 | **Anmeldeprobe über Portal und Tunnel:** im Portal ein Fenster für den eigenen Zugang öffnen (15 Minuten, Grund „Werkstatt-Probe“) und sich von einem Techniker-Gerät anmelden, das **keinen** dauerhaften Schlüssel auf der Box hat: `ssh -i ~/.ssh/id_rsa_voltpilot -o IdentitiesOnly=yes -p 2222 root@<adresse>` | im Portal am Fenster „Alles bereit“; die Anmeldung gelingt; auf der Box nennt `logread -e dropbear \| grep 'Pubkey auth' \| tail -1` den Fingerabdruck aus dem Portal |
+| 5 | **Host-Schlüssel notieren:** den Fingerabdruck, den `ssh` bei der ersten Anmeldung zeigt, zur Box-Referenz ins Übergabeprotokoll | beim Kunden bestätigt der Techniker ihn nicht mehr blind |
+| 6 | **Fenster schließen** und den Versuch wiederholen | die Sitzung endet, der neue Versuch endet mit `Connection timed out`; im Portal steht kein offenes Fenster mehr |
+
+Scheitert Schritt 4, sagt das Portal am Fenster, woran: „Box nicht verbunden“ (Tunnel, Schritt 3), „Schlüssel noch nicht abgeholt“ (Abholer oder Schlüsselausgabe des Servers), „Kein SSH-Schlüssel am Zugang“ (im Portal hinterlegen) oder „Stand unbekannt“ (der Tunnel-Dienst meldet nicht). Die Box bleibt in der Werkstatt, bis die Probe gelingt.
+
+#### Dauerhafte Schlüssel: ein Notfall-Schlüssel
+
+Entscheid des Kapitäns (K2 a, 08.10.2026), für die Pilotphase: Auf jeder Box liegt **genau ein** dauerhafter Schlüssel, ein Notfall-Schlüssel des Kapitäns. Jeder Techniker meldet sich sonst mit seinem Fenster-Schlüssel an. Nach einigen Monaten Betrieb wird neu entschieden, ob auch dieser eine entfällt.
+
+**Warum einer bleibt:** Ein Fehler im neuen Weg (Portal, Wartungsserver, Abholer) sperrte sonst alle aus Boxen aus, die beim Kunden stehen. **Warum nur einer:** Ein dauerhafter Schlüssel umgeht die Schranke „kein Fenster, kein Schlüssel“. Öffnet ein Fehler der Server-Firewall den Port, kommt damit hinein, wer so einen Schlüssel hat; in der Probe ist das belegt (`wartung-anmeldung-probe.sh`, Schritt 3). Der Netzweg bleibt auch für ihn ans Fenster gebunden.
+
+**Zielzustand je Box:**
+
+- `/etc/dropbear/authorized_keys` hat genau eine Zeile: den öffentlichen Teil des Notfall-Schlüssels, RSA mit 3072 oder 4096 Bit (die Mango nimmt nur RSA an).
+- Der private Teil ist mit einem Kennwort geschützt und liegt **getrennt**: nicht auf dem Laptop, mit dem der Kapitän täglich arbeitet, nicht auf der Arbeitsmaschine, nicht auf dem Wartungsserver und nicht in diesem Repository. Gedacht ist ein Datenträger im Tresor, dazu eine zweite Kopie an einem anderen Ort.
+- Ein Schlüssel für alle Boxen. Sein Fingerabdruck (`ssh-keygen -lf`) steht in der Passwortablage, damit sich an jeder Box prüfen lässt, dass genau er dort liegt.
+- Er wird nur benutzt, wenn der Weg über das Portal nicht geht, und jede Benutzung wird notiert.
+
+**Der Weg dorthin, je Box, als Schritte für den Kapitän.** Nichts davon ist ausgeführt; an keinem Gerät wurde dafür etwas geändert.
+
+1. **Einmal, vor der ersten Box:** den Notfall-Schlüssel auf einem Rechner erzeugen, der danach nicht der Aufbewahrungsort ist: `ssh-keygen -t rsa -b 4096 -C voltpilot-notfall -f voltpilot-notfall` mit Kennwort. Die Datei `voltpilot-notfall` (privat) auf die beiden Datenträger legen und vom Rechner löschen; `voltpilot-notfall.pub` und den Fingerabdruck behalten.
+2. **An der Box anmelden,** über einen Weg, der heute geht, und die Sitzung offen lassen, bis Schritt 5 gelungen ist.
+3. **Den Notfall-Schlüssel dazulegen,** noch nichts entfernen: die Zeile aus `voltpilot-notfall.pub` ans Ende von `/etc/dropbear/authorized_keys`. Im Tunnel gilt sie nach spätestens einer Minute.
+4. **Mit dem Notfall-Schlüssel anmelden,** in einem offenen Fenster, in einer zweiten Sitzung: `ssh -i <datenträger>/voltpilot-notfall -o IdentitiesOnly=yes -p 2222 root@<adresse>`. Gelingt das nicht, bei Schritt 3 bleiben.
+5. **Erst dann die übrigen Zeilen entfernen:** in der Sitzung aus Schritt 4 `/etc/dropbear/authorized_keys` auf die eine Zeile kürzen. Prüfen: `wc -l < /etc/dropbear/authorized_keys` nennt `1`, und der Fingerabdruck, den das Log der Box zur Anmeldung aus Schritt 4 nennt (`logread -e dropbear | grep 'Pubkey auth' | tail -1`), ist der des Notfall-Schlüssels (am eigenen Rechner: `ssh-keygen -lf voltpilot-notfall.pub`).
+6. **Gegenprobe:** Mit einem der entfernten Schlüssel endet die Anmeldung im offenen Fenster mit `Permission denied (publickey)`; mit dem Fenster-Schlüssel aus dem Portal gelingt sie.
+7. **Notieren:** Box, Datum, welche Schlüssel entfernt wurden.
+
+| Box | Dauerhafte Schlüssel heute | Was der Wechsel braucht |
+|---|---|---|
+| Labor-Mango `edge-5t2dcy6` | einer: der der Arbeitsmaschine (`voltpilot-edge`, am Gerät gelesen am 09.10.2026) | Notfall-Schlüssel und das Wort des Kapitäns. Danach erreicht die Arbeitsmaschine die Box über Port 22 nicht mehr mit ihrem Schlüssel; Proben an der Labor-Box laufen dann über ein Fenster oder das Root-Passwort |
+| Pilot `edge-zay5sdd` | zwei, am Gerät gelesen am 05.10.2026: Laptop des Kapitäns und CodeServer ([Übergabe](uebergabe.md#zugang-zum-pilot-mango)) | zusammen mit dem [beaufsichtigten Wechsel](#wechsel-des-piloten-auf-den-wartungsserver-beaufsichtigt-noch-nicht-ausgeführt), nach dessen Schritt 6. Vor dem Kürzen muss die Anmeldung mit dem Notfall-Schlüssel über den neuen Tunnel gelungen sein |
+| jede neue Box | keiner | in der Werkstatt nur den Notfall-Schlüssel eintragen ([Werkstatt-Regel](#bevor-eine-box-die-werkstatt-verlässt)) |
+
+Port 22 im LAN nimmt dieselbe Datei: Auch vor Ort gilt danach nur der Notfall-Schlüssel oder das Root-Passwort.
 
 #### Was die Box im Tunnel selbst prüft
 
@@ -145,8 +192,10 @@ Entscheid des Kapitäns vom 09.10.2026, Schritt 3 von [Fernwartung, Anmeldung an
 | `/etc/nftables.d/20-vp-wartung.nft` | zwei eigene Firewall-Ketten: SSH 2222 nur aus den Tunneln, die Anfrage nach Schlüsseln nur durch den Tunnel |
 
 - **Die UCI-Instanz `dropbear.vp_wartung` entfällt.** Das Startskript von OpenWrt kennt `-D` nicht, deshalb startet ein eigenes Startskript die Instanz. Sie läuft nur, solange der Tunnel eine Adresse hat.
-- **Was dauerhaft in `/etc/dropbear/authorized_keys` steht, gilt im Tunnel weiter.** Der Abholer liest die Datei nur und schreibt ihre Zeilen vor die Fenster-Schlüssel. Eine neue Zeile dort gilt im Tunnel nach spätestens einer Minute. Port 22 im LAN ist unberührt.
-- **Nur RAM.** Ein Neustart der Box löscht jeden Fenster-Schlüssel; die Box holt ihn von selbst wieder, solange das Fenster offen ist. Ohne das tmpfs schreibt der Abholer nichts, und in der Liste von `sysupgrade -l` steht die Schlüsseldatei nicht.
+- **Was dauerhaft in `/etc/dropbear/authorized_keys` steht, gilt im Tunnel weiter.** Der Abholer liest die Datei nur und schreibt ihre Zeilen vor die Fenster-Schlüssel. Eine neue Zeile dort gilt im Tunnel nach spätestens einer Minute. Port 22 im LAN ist unberührt. Was dort stehen soll: [ein Notfall-Schlüssel](#dauerhafte-schlüssel-ein-notfall-schlüssel).
+- **Nur RAM.** Ein Neustart der Box löscht jeden Fenster-Schlüssel; die Box holt ihn von selbst wieder, solange das Fenster offen ist. Ohne das tmpfs schreibt der Abholer nichts.
+- **Was ein Update der Box übersteht:** `sysupgrade -l | grep -E 'vp-wartung|service-tunnel-watch'` nennt sieben Zeilen (an der Labor-Mango so gelesen): `/etc/config/vp-wartung`, `/etc/init.d/vp-wartung`, `/etc/nftables.d/20-vp-wartung.nft`, `/etc/rc.d/S60vp-wartung`, `/etc/wireguard/vp-wartung.key`, `/usr/libexec/vp-edge-light/service-tunnel-watch.sh` und `/usr/libexec/vp-wartung/schluessel-holen.sh`. Die Schlüsseldatei der Fenster unter `/etc/vp-wartung/keys` steht nicht darin, auch nicht bei offenem Fenster: Sie liegt im tmpfs, und ein Fenster-Schlüssel kommt so nie mit in ein Update.
+- **Eine Sitzung endet mit dem Fenster,** weil der Wartungsserver den Weg trennt, nicht weil die Box sie beendet: Die Box streicht nur den Schlüssel. Der Anmeldeprozess auf der Box bleibt danach noch bis zu 15 Minuten stehen (Dropbear `-K 300`: nach drei unbeantworteten Lebenszeichen `Exit … Keepalive timeout` im Log); benutzbar ist er in dieser Zeit nicht. Die Fälle im Einzelnen: [Fernwartung](../../docs/fernwartung.md#was-mit-einer-laufenden-anmeldung-geschieht).
 - **Frist in Laufzeit der Box** (`/proc/uptime`), nicht in Uhrzeit. Die Box nimmt höchstens 24 h und höchstens acht Schlüssel an. Ein cron-Lauf je Minute streicht Verfallenes auch dann, wenn der Abholer hängt.
 - **Die Antwort des Servers ist die ganze Liste.** Ein geschlossenes Fenster und ein im Portal ersetzter oder entfernter Schlüssel sind auf der Box gestrichen, sobald der Server es meldet; in der Probe nach 0,2 bis 1 s. Jede Antwort, die nicht genau die [vereinbarte Form](../../docs/contracts/fernwartung-schluessel-v1.md) hat, ändert nichts.
 - **Nur durch den Tunnel.** Der Abholer fragt nicht, wenn die Route zum Server nicht über `wg_wartung` führt, und die Firewall der Box weist die Anfrage auf jedem anderen Weg ab. Im Netz des Kunden kann sich so niemand als Wartungsserver ausgeben.
@@ -186,9 +235,18 @@ Am Mango gemessen (25.12.5, 09.10.2026):
 
 - **Im Container** mit `edge-light/test/service-tunnel-probe.sh` gegen OpenWrt 24.10 (procd, netifd, fw4, Dropbear, cron, Kernel-WireGuard): Altbestand, neuer Tunnel daneben, Wiederholbarkeit ohne Neustart der Schnittstelle, geänderte Gegenstelle, Reihenfolge von Schnittstelle und Dropbear, Schutz beim Abbauen, alten Tunnel abbauen, Web-App für das Techniker-Netz und je Adresse, `VP_SSH_KEY`.
 - **Am Mango unter 25.12.5 gegen den echten Wartungsserver** (Labor-Box `edge-5t2dcy6`, 08./09.10.2026): Handshake; im offenen Fenster kommen SSH auf 2222 und die Web-App an der Box an; das Fenster läuft ab. Mit dem Skript vom 09.10.: Einrichten wie bei einer neuen Box und erneuter Lauf ohne Dropbear-Meldung und ohne Unterbrechung von WAN und LAN; die Web-App nimmt eine Adresse des Techniker-Netzes an, die auf der Box nie eingetragen wurde (`10.10.32.1`), und weist 8887 von derselben Adresse ab.
-- **Im Container unter OpenWrt 25.12.5** (Dropbear 2025.89, WAN und LAN getrennt) mit `edge-light/test/wartung-anmeldung-probe.sh`, gegen den Tunnel-Dienst aus dem Repo, mit echter SSH-Anmeldung durch einen echten Tunnel: die Fenster-Schlüssel von der Einrichtung über einen heutigen Zugang bis zum Abbauen, die Störfälle (Lücke in der Server-Firewall, Server und Abholer weg, Neustart der Box, falscher Server, Laufzeit statt Uhr) und SSH 2222 außerhalb des Tunnels bei Tunnel oben und unten.
-- **Noch nicht belegt:** die Web-App vom Gerät eines Technikers aus, seit die Regel je Adresse entfallen ist. Dafür braucht es ein offenes Fenster.
-- **Noch nicht an einer Mango belegt:** die Fenster-Schlüssel und die Regel für 2222. Belegt sind sie unter demselben OpenWrt und demselben Dropbear für x86-64. Es fehlen das Einhängen des tmpfs am Gerät, die Dauer einer RSA-Anmeldung auf dem MIPS-Prozessor, der Weg über einen echten Anschluss und ein `sysupgrade`. Nach einem `sysupgrade` fehlen ohnehin `kmod-wireguard` und `wireguard-tools`, bis sie neu installiert sind; die Dateien der Fenster-Schlüssel stehen in `sysupgrade -l`.
+- **Im Container unter OpenWrt 25.12.5** (Dropbear 2025.89, WAN und LAN getrennt) mit `edge-light/test/wartung-anmeldung-probe.sh`, gegen den Tunnel-Dienst aus dem Repo, mit echter SSH-Anmeldung durch einen echten Tunnel: die Fenster-Schlüssel von der Einrichtung über einen heutigen Zugang bis zum Abbauen, die Störfälle (Lücke in der Server-Firewall, Server und Abholer weg, Neustart der Box, falscher Server, Laufzeit statt Uhr) und SSH 2222 außerhalb des Tunnels bei Tunnel oben und unten. Dazu, was mit einer laufenden Anmeldung geschieht, wenn das Fenster endet (Schritte 4 und 5), und dass der Tunnel-Dienst den Schlüssel als abgeholt meldet, sobald das Box-Skript ihn übernommen hat (Schritt 1).
+- **An der Labor-Mango belegt** (`edge-5t2dcy6`, OpenWrt 25.12.5, gegen den echten Wartungsserver und das echte Portal):
+  - Einrichten am 09.10.2026: Das Startskript hängt das tmpfs selbst ein (`vp-wartung /etc/vp-wartung/keys tmpfs … size=128k,mode=700`), darunter liegt im Flash nichts; beide Firewall-Ketten stehen vor denen von fw4; Abholer, Startskript und cron-Zeile laufen; Dropbear nimmt die Schlüsseldatei im tmpfs an; eine RSA-Anmeldung mit 4096 Bit dauert 1,2 bis 2,0 s; die Liste von `sysupgrade -l` (sieben Zeilen, siehe oben); WAN und LAN ohne Unterbrechung.
+  - Abnahme durch den Kapitän am 10.10.2026 („hat alles funktioniert“), nach den fünf Punkten des Abnahmeplans: Anmeldung im offenen Fenster, ohne dass der Schlüssel des Technikers dauerhaft auf der Box liegt; nach dem Schließen ist der Fenster-Schlüssel von der Box gestrichen; nach einem Neustart der Box im Fenster ist er weg und kommt von selbst wieder; bei angehaltenem Tunnel-Dienst verfällt er zur Frist; die Dateien stehen in der Liste von `sysupgrade -l`.
+  - Dabei beobachtet (10.10.2026, UTC): Anmeldung im Fenster 17:13:48, Dienst auf der VM angehalten 17:15:59, Fenster-Schlüssel von der Box gestrichen 17:40:38, der Anmeldeprozess auf der Box endete 17:55:37 mit „Keepalive timeout“. Das sind genau 15 Minuten nach dem Ende des Fensters: Der Server hatte den Weg getrennt, der Prozess wartete nur noch auf sein Lebenszeichen.
+- **Einschränkung der Labor-Mango:** Die Arbeitsmaschine erreicht sie über ihren WAN-Anschluss (`192.168.0.46`, Port 22 nur wegen der Regel `Allow-SSH-WAN`); ihr LAN ist `10.213.0.0/24`, am LAN-Anschluss hängt kein Gerät. Port 2222 war von der WAN-Seite schon vorher abgewiesen. Dass die neue Kette abweist, zeigt dort nur ihr Zähler.
+- **Noch nicht belegt:**
+  - Port 2222 aus dem LAN einer Mango und bei Tunnel unten (`ifdown wg_wartung`); im Container ist beides belegt;
+  - ein echtes `sysupgrade`. Danach fehlen ohnehin `kmod-wireguard` und `wireguard-tools`, bis sie neu installiert sind;
+  - die Fenster-Schlüssel über einen fremden Anschluss, über Mobilfunk und über Tage;
+  - die Web-App vom Gerät eines Technikers aus, seit die Regel je Adresse entfallen ist (im Fenster: `curl -m 5 http://<adresse>:8484/health`);
+  - die [Rückmeldung](../../docs/fernwartung.md#rückmeldung-des-tunnel-dienstes) für eine Mango im Portal: Sie braucht das Ausrollen von Portal und Tunnel-Dienst.
 
 #### Proben von der Box (BusyBox unter 25.12)
 
@@ -209,7 +267,7 @@ Der Pilot (`edge-zay5sdd`, heute `10.10.1.25` im alten VPN) wechselt erst, wenn 
 
 - Die VM steht, die API kennt den Server-Schlüssel, und im Portal steht „Tunnel-Dienst holt ab".
 - Für den Rechner des Technikers gibt es einen Zugang im Portal, und er ist als zweites WireGuard-Profil neben dem alten VPN eingerichtet.
-- In `~/.ssh/config` zwei Namen für dieselbe Box: `mango-alt` (`HostName 10.10.1.25`, `Port 2222`, `User root`) und `mango-neu` (die neue Adresse, `Port 2222`, `User root`), beide mit dem `IdentityFile`, den die Box schon kennt. Das ist ein RSA-Schlüssel; mit einem anderen endet Schritt 5 mit `Permission denied (publickey)`, und Schritt 6 darf dann nicht folgen. Dieser dauerhafte Schlüssel gilt im neuen Tunnel weiter, auch mit Fenster-Schlüsseln.
+- In `~/.ssh/config` zwei Namen für dieselbe Box: `mango-alt` (`HostName 10.10.1.25`, `Port 2222`, `User root`) und `mango-neu` (die neue Adresse, `Port 2222`, `User root`), beide mit dem `IdentityFile`, den die Box schon kennt. Das ist ein RSA-Schlüssel; mit einem anderen endet Schritt 5 mit `Permission denied (publickey)`, und Schritt 6 darf dann nicht folgen. Dieser dauerhafte Schlüssel gilt im neuen Tunnel weiter, auch mit Fenster-Schlüsseln. Auf den einen [Notfall-Schlüssel](#dauerhafte-schlüssel-ein-notfall-schlüssel) wird erst nach dem Wechsel gekürzt.
 - Für Fenster-Schlüssel braucht der Pilot Dropbear ab 2025.89 (OpenWrt 25.12); `ssh mango-alt 'dropbear -V'` nennt den Stand. Auf einem älteren richtet das Skript die frühere Instanz ein und sagt das in den letzten Zeilen; der Wechsel selbst geht genauso.
 
 **Schritte:**

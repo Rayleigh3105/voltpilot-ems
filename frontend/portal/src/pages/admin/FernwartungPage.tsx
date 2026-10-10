@@ -4,8 +4,10 @@
  * Der Wartungstunnel der Boxen: welche Box welchen Tunnel hat, welche
  * Techniker-Zugänge es gibt, welche Fenster offen sind - und das Protokoll.
  * Das Portal führt den Soll-Zustand; der Tunnel-Dienst auf der Wartungs-VM
- * setzt ihn um und meldet nichts zurück. Die Seite sagt deshalb getrennt, was
- * im Portal steht, wann der Dienst zuletzt abgeholt hat und was niemand weiß.
+ * setzt ihn um und meldet, welche Box verbunden ist und welches Fenster seinen
+ * Schlüssel abgeholt hat. Die Seite sagt getrennt, was im Portal steht, wann
+ * der Dienst zuletzt abgeholt hat, was er zuletzt gemeldet hat (mit dem Alter
+ * der Angabe) und was niemand weiß.
  *
  * Nur Plattform-Admins (O3: der Kunde sieht die Fenster nicht). Alle
  * Ableitungen stehen im reinen `adminFernwartung.ts`.
@@ -22,15 +24,17 @@ import {
   aktionLabel,
   boxOrt,
   boxAnmeldung,
+  boxVerbindung,
   fensterTeile,
   fensterTon,
   loeschbar,
   loeschenRueckfrage,
   oeffnenSperre,
   protokollDetail,
+  RUECKMELDUNG_TAKT_MS,
+  rueckmeldungLage,
   serverLage,
   SSH_STAND_SATZ,
-  UNBEKANNT_SATZ,
   ZUSTIMMUNG_SATZ,
   zeitpunkt,
   type FernwartungBox,
@@ -51,6 +55,7 @@ import { BoxAnmeldungBlock, SshSchluesselDialog } from '../../components/Fernwar
 import { EmptyState, ErrorState, TableSkeleton } from '../../components/States';
 import { Modal } from '../../../designsystem/components/shell/Modal';
 import { fernwartungHash, parseFernwartungBox } from '../../nav';
+import { useFreshnessPoll } from '../../useFreshnessPoll';
 import { replaceCurrentNavigation } from '../../navigationBlocker';
 import { AdminPageHead } from './AdminPageHead';
 import './Fernwartung.css';
@@ -115,6 +120,10 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Was der Tunnel-Dienst meldet, ändert sich ohne Zutun im Portal: still nachladen,
+  // damit Verbindung, abgeholter Schlüssel und das Alter der Angabe stimmen.
+  useFreshnessPoll(() => void laden(), RUECKMELDUNG_TAKT_MS);
+
   function filtern(ref: string | null) {
     setBoxFilter(ref);
     replaceCurrentNavigation(fernwartungHash(ref));
@@ -162,9 +171,7 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
           <Card padding="md" radius="lg" className="vp-fw-lagen" data-testid="fw-lagen">
             <LageZeile lage={serverLage(uebersicht.server)} testId="fw-server" />
             <LageZeile lage={abrufLage(uebersicht, jetzt)} testId="fw-dienst" />
-            <p className="vp-note" style={{ margin: 0 }}>
-              {UNBEKANNT_SATZ}
-            </p>
+            <LageZeile lage={rueckmeldungLage(uebersicht, jetzt)} testId="fw-rueckmeldung" />
           </Card>
           {ladeFehler && <p className="vp-alert vp-alert-warn">{ladeFehler}</p>}
           {aktionsFehler && <p className="vp-alert vp-alert-err">{aktionsFehler}</p>}
@@ -198,6 +205,7 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                       <tr>
                         <th>Box</th>
                         <th>Tunnel</th>
+                        <th>Verbindung</th>
                         <th>Fernwartung</th>
                         <th aria-label="Aktionen" />
                       </tr>
@@ -205,7 +213,8 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                     <tbody>
                       {sortierteBoxen.map((b) => {
                         const sperre = oeffnenSperre(b, techniker);
-                        const anmeldung = boxAnmeldung(b, techniker);
+                        const anmeldung = boxAnmeldung(b, techniker, uebersicht, jetzt);
+                        const verbindung = boxVerbindung(b, uebersicht, jetzt);
                         const gewaehlt = b.edgeRef === boxFilter ? ' vp-fw-gewaehlt' : '';
                         return (
                           <Fragment key={b.id}>
@@ -225,6 +234,21 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                                 <span className="vp-cell-sub" title={b.publicKey}>
                                   {b.publicKeyKurz}
                                 </span>
+                              </span>
+                            </td>
+                            <td
+                              data-label="Verbindung"
+                              className="vp-fw-zelle-verbindung"
+                              data-testid="fw-verbindung"
+                              data-fall={verbindung.fall}
+                            >
+                              <span className="vp-cell-main">
+                                <span>
+                                  <Badge variant={verbindung.ton} dot>
+                                    {verbindung.titel}
+                                  </Badge>
+                                </span>
+                                <span className="vp-cell-sub vp-fw-umbruch">{verbindung.text}</span>
                               </span>
                             </td>
                             <td data-label="Fernwartung">
@@ -291,7 +315,7 @@ export function FernwartungPage({ tabs }: { tabs?: ReactNode } = {}) {
                           {anmeldung && (
                             // Gehört zur Box-Zeile darüber: die Befehle brauchen die ganze Breite.
                             <tr className={`vp-fw-unterzeile${gewaehlt}`}>
-                              <td colSpan={4}>
+                              <td colSpan={5}>
                                 <BoxAnmeldungBlock anmeldung={anmeldung} boxRef={b.edgeRef} />
                               </td>
                             </tr>

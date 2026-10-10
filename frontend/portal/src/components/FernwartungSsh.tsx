@@ -5,6 +5,7 @@
  * Jede Ableitung steht in `adminFernwartung.ts`; hier wird gerendert.
  */
 import { useEffect, useRef, useState, type RefObject } from 'react';
+import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
@@ -181,8 +182,9 @@ export function SshFingerabdruck({ techniker }: { techniker: FernwartungTechnike
 
 /**
  * Zu den offenen Fenstern einer Box: die fertigen Befehle (sie hängen nur an
- * der Box) und je Fenster der Satz, ob der Zugang einen SSH-Schlüssel trägt
- * oder das Fenster nur den Netzweg öffnet.
+ * der Box) und je Fenster, warum die Anmeldung gelingt oder nicht - Box nicht
+ * verbunden, Schlüssel noch nicht abgeholt, kein SSH-Schlüssel am Zugang,
+ * alles bereit, oder unbekannt, wenn der Tunnel-Dienst nichts (mehr) meldet.
  */
 export function BoxAnmeldungBlock({ anmeldung, boxRef }: { anmeldung: BoxAnmeldung; boxRef: string }) {
   return (
@@ -205,10 +207,14 @@ export function BoxAnmeldungBlock({ anmeldung, boxRef }: { anmeldung: BoxAnmeldu
         {anmeldung.fenster.map((f) => (
           <li
             key={f.fensterId}
-            className={`vp-fw-umbruch${f.ton === 'warn' ? ' vp-alert vp-alert-warn' : ' vp-note'}`}
+            className={`vp-fw-umbruch vp-fw-fall vp-fw-fall-${f.ton}`}
             data-testid={`fw-anmeldung-${f.schluessel}`}
+            data-fall={f.fall}
           >
-            {f.satz}
+            <Badge variant={f.ton} dot className="vp-fw-fall-abzeichen">
+              {f.titel}
+            </Badge>
+            <span className="vp-fw-fall-satz">{f.satz}</span>
           </li>
         ))}
       </ul>

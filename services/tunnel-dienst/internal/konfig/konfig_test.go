@@ -81,3 +81,19 @@ func TestFehlerWerdenGesammeltGemeldet(t *testing.T) {
 		t.Error("Netz mit Host-Bits erwartet abgelehnt")
 	}
 }
+
+// Die Rückmeldung ans Portal ist an, bis jemand sie abschaltet.
+func TestRueckmeldung(t *testing.T) {
+	for wert, an := range map[string]bool{"": true, "an": true, " an ": true, "aus": false} {
+		k, err := Lies(umgebung(map[string]string{"VP_TUNNEL_RUECKMELDUNG": wert}), true)
+		if err != nil || k.Rueckmeldung != an {
+			t.Errorf("%q: %v %v", wert, k.Rueckmeldung, err)
+		}
+	}
+	for _, schlecht := range []string{"ja", "nein", "0", "AUS"} {
+		if _, err := Lies(umgebung(map[string]string{"VP_TUNNEL_RUECKMELDUNG": schlecht}), true); err == nil ||
+			!strings.Contains(err.Error(), "VP_TUNNEL_RUECKMELDUNG") {
+			t.Errorf("%q: %v", schlecht, err)
+		}
+	}
+}

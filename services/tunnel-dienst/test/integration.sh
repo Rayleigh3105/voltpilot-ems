@@ -61,6 +61,7 @@ tcp() { x "$1" timeout 5 socat -u "TCP:$2:$3,connect-timeout=2" STDOUT 2>/dev/nu
 erreicht() { # erreicht <von> <ip> <port> <erwarteter Text> <Beschreibung>
   if [ "$(tcp "$1" "$2" "$3")" = "$4" ]; then ok "$5"; else falsch "$5"; fi
 }
+erreicht_still() { [ "$(tcp "$1" "$2" "$3")" = "$4" ]; } # wie erreicht, ohne Zeile
 gesperrt() { # gesperrt <von> <ip> <port> <Beschreibung>
   if [ -z "$(tcp "$1" "$2" "$3")" ]; then ok "$4"; else falsch "$4"; fi
 }
@@ -219,10 +220,22 @@ schritt "4. Fenster schließt im Kernel, auch wenn API und Dienst ausfallen"
 soll "$(fenster f2 b1 12)"
 einmal
 erreicht tech 10.10.16.2 2222 box1 "Fenster offen"
+# Eine Sitzung, die im Fenster begonnen hat. Der Dienst läuft hier nicht (nur
+# einzelne Läufe): was nach dem Ablauf mit ihr geschieht, entscheidet allein der Kernel.
+docker exec -d "$P-tech" sh -c 'socat -u TCP:10.10.16.2:8484 STDOUT > /tmp/strom4 2>&1'
+sleep 3
+a="$(x tech sh -c 'wc -l < /tmp/strom4')"
+[ "$a" -gt 0 ] && ok "Dauerstrom im Fenster läuft ($a Zeilen)" || falsch "Dauerstrom im Fenster läuft"
 api_aus
-sleep 14
+sleep 2
+b="$(x tech sh -c 'wc -l < /tmp/strom4')"
+[ "$b" -gt "$a" ] && ok "ohne Dienst und API läuft die Sitzung weiter, solange das Fenster im Kernel steht ($a -> $b Zeilen)" || falsch "ohne Dienst und API läuft die Sitzung bis zum Ablauf weiter ($a -> $b)"
+sleep 10
 gesperrt tech 10.10.16.2 2222 "nach Ablauf ohne Dienst und API verworfen"
 [ "$(elemente)" = 0 ] && ok "Menge leer" || falsch "Menge leer"
+a="$(x tech sh -c 'wc -l < /tmp/strom4')"; sleep 4; b="$(x tech sh -c 'wc -l < /tmp/strom4')"
+[ "$a" = "$b" ] && ok "bestehende Sitzung mit dem Ablauf abgerissen, ohne Dienst und API ($a = $b Zeilen)" || falsch "bestehende Sitzung mit dem Ablauf abgerissen ($a -> $b)"
+x tech sh -c 'pkill -f "socat -u TC[P]"; true'
 
 schritt "5. API unerreichbar: letzter Stand bleibt, nichts Neues geht auf"
 soll "$(fenster f3 b2 300)"
@@ -625,6 +638,48 @@ x server sh -c "sed '/tcp dport $SPORT/d' /opt/deploy/vm-firewall.nft.beispiel |
 [ -z "$(frage box2 0 "")" ] && ok "Gegenprobe: ohne die Freigabe im Muster bekommt die Box keine Antwort" || falsch "Gegenprobe: ohne die Freigabe keine Antwort"
 x server nft -f /opt/deploy/vm-firewall.nft.beispiel
 [ "$(anzahl "$(frage box2 0 "")")" = 2 ] && ok "mit der Freigabe wieder" || falsch "mit der Freigabe wieder"
+dienst_aus
+
+schritt "21. Rückmeldung ans Portal: erst eine API ohne die Route, dann eine mit"
+# Bis hierher lief der Dauerlauf gegen eine API ohne die Route (404) - wie ein
+# neuer Dienst an einer alten API. Die Schritte 12 bis 20 sind der Beleg, dass
+# dabei alles andere lief.
+[ "$(im_log 'level=INFO.*die API kennt die Route nicht')" -gt 0 ] &&
+  ok "API ohne die Route: steht im Journal als Hinweis, nicht als Warnung" || falsch "API ohne die Route: im Journal als Hinweis"
+api_aus
+docker exec -d "$P-server" sh -c 'echo $$ > /srv/api.pid; exec /opt/vptd/attrappe -soll /srv/soll.json -rueckmeldung /srv/rueckmeldung.json'
+sleep 1
+soll2 "$SSH1" "$(fenster2 f9 b1 t1 120)"
+n0="$(log_zeilen)"
+dienst_an
+warte_log "Rückmeldung ans Portal angenommen" 20 "$((n0 + 1))" && ok "API mit der Route: die Meldung wird angenommen (Journal)" || falsch "die Meldung wird angenommen (Journal)"
+x server sh -c "tail -n +$((n0 + 1)) /srv/log | grep 'Tunnel-Dienst läuft' | grep -q 'rueckmeldung=an'" && ok "Startzeile nennt die Rückmeldung" || falsch "Startzeile nennt die Rückmeldung"
+meldung() { x server cat /srv/rueckmeldung.json 2>/dev/null || true; }
+# warte_meldung <muster> <sekunden>: bis die letzte Meldung das Muster trägt
+warte_meldung() {
+  i=0
+  while [ "$i" -lt "$2" ]; do
+    meldung | grep -q -- "$1" && return 0
+    sleep 1; i=$((i + 1))
+  done
+  return 1
+}
+warte_meldung '"id":"b1","verbundenSeit":"20' 15 && ok "box1 steht als verbunden in der Meldung (echter Handshake)" || falsch "box1 verbunden in der Meldung ($(meldung))"
+meldung | grep -q '"fenster":\[{"id":"f9","schluesselAbgeholtUm":null}\]' && ok "das Fenster steht darin, der Schlüssel ist noch nicht abgeholt" || falsch "Fenster ohne abgeholten Schlüssel ($(meldung))"
+a1="$(frage box1 0 "")"
+[ "$(anzahl "$a1")" = 1 ] && ok "box1 bekommt den Schlüssel" || falsch "box1 bekommt den Schlüssel"
+sleep 6
+meldung | grep -q '"schluesselAbgeholtUm":null' && meldung | grep -q '"id":"b1","verbundenSeit":"20[^"]*","zuletztGefragtUm":"20' &&
+  ok "ausgegeben ist nicht abgeholt: die Box hat gefragt, den Prüfwert aber noch nicht genannt" || falsch "ausgegeben ist nicht abgeholt ($(meldung))"
+frage box1 0 "$(pruefwert "$a1")" >/dev/null
+warte_meldung '"id":"f9","schluesselAbgeholtUm":"20' 15 && ok "die Box nennt den Prüfwert der Liste: der Schlüssel gilt als abgeholt" || falsch "Schlüssel abgeholt ($(meldung))"
+meldung | grep -q -e 'ssh-rsa' -e '10\.10\.' -e 'SHA256' -e "$PUB_BOX1" -e 'edge-' && falsch "die Meldung nennt weder Schlüssel noch Adresse noch Kennung ($(meldung))" || ok "die Meldung nennt weder Schlüssel noch Adresse noch Kennung"
+# Die API nimmt nichts mehr an: Fenster und Schlüsselausgabe bleiben, wie sie sind.
+api_aus
+docker exec -d "$P-server" sh -c 'echo $$ > /srv/api.pid; exec /opt/vptd/attrappe -soll /srv/soll.json'
+sleep 7
+[ "$(elemente)" = 1 ] && [ "$(anzahl "$(frage box1 0 "")")" = 1 ] && erreicht_still tech 10.10.16.2 2222 box1 &&
+  ok "die Route ist wieder weg: Fenster, Schlüsselausgabe und Weg unverändert" || falsch "ohne die Route: Fenster, Schlüsselausgabe und Weg unverändert"
 dienst_aus
 
 schritt "Ergebnis"

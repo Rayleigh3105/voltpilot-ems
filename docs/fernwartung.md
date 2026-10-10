@@ -1,6 +1,6 @@
 # Fernwartung: Wartungstunnel über das Portal
 
-Der Wartungstunnel der VoltPilot-Boxen wird im Portal verwaltet. Das Portal führt den **Soll-Zustand**; ein kleiner **Tunnel-Dienst** auf einer eigenen VM holt ihn regelmäßig ab und setzt ihn auf WireGuard und nftables um. Die Plattform schreibt nie selbst auf den Server.
+Der Wartungstunnel der VoltPilot-Boxen wird im Portal verwaltet. Das Portal führt den **Soll-Zustand**; ein kleiner **Tunnel-Dienst** auf einer eigenen VM holt ihn regelmäßig ab und setzt ihn auf WireGuard und nftables um. Die Plattform schreibt nie selbst auf den Server. Der Dienst meldet dem Portal zurück, welche Box verbunden ist und welches Fenster seinen Schlüssel abgeholt hat; das ist Anzeige und ändert am Soll-Zustand nichts ([Rückmeldung](#rückmeldung-des-tunnel-dienstes)).
 
 Grundlage sind die Entscheide des Kapitäns vom 07.10.2026:
 
@@ -20,7 +20,7 @@ flowchart LR
         dienst --> wg
         dienst --> nft
     end
-    dienst -- "HTTPS, Rolle tunnel-dienst<br/>nur lesen, nur ausgehend" --> api
+    dienst -- "HTTPS, Rolle tunnel-dienst<br/>Soll lesen, Zustand melden,<br/>nur ausgehend" --> api
     box["Box (wg_wartung)"] -- "WireGuard ausgehend" --> wg
     tech["Techniker-Gerät"] -- "WireGuard" --> wg
 ```
@@ -42,7 +42,7 @@ Beide Netze überschneiden sich nicht mit dem alten Service-VPN `10.10.1.0/24`; 
 
 ## Datenmodell
 
-Migrationen `V20261007163700__fernwartung.sql`, `V20261008213500__fernwartung_zugang_loeschen.sql` und `V20261009074500__fernwartung_ssh_schluessel.sql`; plattformweite Betriebsdaten ohne `tenant_id`.
+Migrationen `V20261007163700__fernwartung.sql`, `V20261008213500__fernwartung_zugang_loeschen.sql`, `V20261009074500__fernwartung_ssh_schluessel.sql` und `V20261010203000__fernwartung_rueckmeldung.sql`; plattformweite Betriebsdaten ohne `tenant_id`.
 
 | Tabelle | Inhalt |
 |---|---|
@@ -50,8 +50,10 @@ Migrationen `V20261007163700__fernwartung.sql`, `V20261008213500__fernwartung_zu
 | `fernwartung_fenster` | Box, Techniker, Grund, Beginn, Ende, wer geöffnet und wer geschlossen hat; zusammengesetzte Fremdschlüssel erzwingen „Box“ und „Techniker“ |
 | `fernwartung_protokoll` | jede Änderung, append-only per Trigger und ohne `UPDATE`/`DELETE`-Recht |
 | `fernwartung_dienst_abruf` | wann welcher Tunnel-Dienst den Soll-Stand zuletzt abgeholt hat |
+| `fernwartung_rueckmeldung_dienst`, `…_box`, `…_fenster` | was der Tunnel-Dienst zuletzt gemeldet hat: je Dienstkonto, je Box (verbunden seit, zuletzt gefragt), je Fenster (Schlüssel abgeholt), jeweils mit der Zeit, zu der die API es angenommen hat. Nur der letzte Stand, kein Verlauf |
 
 - **O3 an der Datenbankgrenze:** Die App-Rolle hat auf keine dieser Tabellen ein Recht; RLS ohne Policy ist der zweite Riegel. Geschrieben und gelesen wird nur über `voltpilot_admin`.
+- **Die Tabellen der Rückmeldung stehen für sich.** Sie verweisen auf Box und Fenster, aber weder der Soll-Stand noch eine Regel der Fernwartung liest sie ([Rückmeldung](#rückmeldung-des-tunnel-dienstes)).
 - **Keine Zeile wird entfernt, keine Adresse neu vergeben.** Eine Adresse und ein Schlüssel bleiben ihrem Zugang, gesperrt wie gelöscht. Eine wiedervergebene Adresse ließe einen Techniker bei einem fremden Gerät landen. Die Admin-Rolle hat auf keiner Tabelle ein `DELETE`-Recht.
 - **„Löschen“ ist ein Zustand, kein `DELETE`.** Ein gelöschter Techniker-Zugang trägt `status = 'geloescht'`; seine Zeile hält Adresse und Schlüssel über die `UNIQUE`-Constraints fest, und Fenster wie Protokoll verweisen weiter auf sie. Ein Trigger macht den Zustand endgültig: gelöscht wird nur aus `gesperrt`, und eine gelöschte Zeile ändert sich nie wieder. Eine Box kann den Zustand nicht annehmen (`CHECK`).
 
@@ -60,9 +62,10 @@ Migrationen `V20261007163700__fernwartung.sql`, `V20261008213500__fernwartung_zu
 | Route | Rolle | Zweck |
 |---|---|---|
 | `/api/v1/admin/fernwartung/**` | `platform-admin` | Boxen, Techniker-Zugänge, Fenster, Protokoll, Übersicht |
-| `GET /api/v1/fernwartung/soll` | `tunnel-dienst` | Soll-Stand für den Tunnel-Dienst, sonst nichts |
+| `GET /api/v1/fernwartung/soll` | `tunnel-dienst` | Soll-Stand für den Tunnel-Dienst |
+| `PUT /api/v1/fernwartung/rueckmeldung` | `tunnel-dienst` | der Dienst meldet seinen Zustand: nur Anzeige ([Rückmeldung](#rückmeldung-des-tunnel-dienstes)) |
 
-Das Dienstkonto ist der Keycloak-Client `voltpilot-tunnel-dienst` (nur `client_credentials`) im Muster von `voltpilot-release-publisher`. Seine Route liegt bewusst **nicht** unter `/api/v1/admin/**`: Die Rückfallregel des Admin-Baums lässt nur `platform-admin` und `edge-release-publisher` durch, und das soll so bleiben. Kunden-, Publisher- und Admin-Token bekommen auf der Leseroute 403. Vertrag: [OpenAPI](contracts/openapi.yaml), Tag `fernwartung`.
+Das Dienstkonto ist der Keycloak-Client `voltpilot-tunnel-dienst` (nur `client_credentials`) im Muster von `voltpilot-release-publisher`. Seine Routen liegen bewusst **nicht** unter `/api/v1/admin/**`: Die Rückfallregel des Admin-Baums lässt nur `platform-admin` und `edge-release-publisher` durch, und das soll so bleiben. Kunden-, Publisher- und Admin-Token bekommen auf beiden Routen 403. Die Rolle hat damit genau ein Schreibrecht, und es umfasst genau diese Meldung. Vertrag: [OpenAPI](contracts/openapi.yaml), Tag `fernwartung`.
 
 ## Regeln
 
@@ -93,9 +96,12 @@ Ein offenes Fenster öffnet den **Netzweg** zur Box. Die **Anmeldung** an der Bo
 | 1 | Portal und API: der SSH-Schlüssel steht am Techniker-Zugang und geht im Soll-Stand mit | umgesetzt |
 | 2 | Tunnel-Dienst: gibt einer Box die Schlüssel der Techniker aus, für die gerade ein Fenster zu ihr offen ist | umgesetzt; auf der Wartungs-VM seit dem 09.10.2026 eingeschaltet (`10.10.32.1:8022`) |
 | 3 | Box (`service-tunnel.sh`): holt die Schlüssel ab, hält sie nur im Arbeitsspeicher und führt die Frist selbst | umgesetzt für OpenWrt mit Dropbear ab 2025.89 (Mango, 25.12); eine Box holt erst ab, wenn ihr Tunnel mit diesem Skript eingerichtet ist |
-| 4 | Rückmeldung des Tunnel-Dienstes ans Portal: Box verbunden, zuletzt gefragt, Schlüssel abgeholt | entschieden, offen |
+| 4 | Rückmeldung des Tunnel-Dienstes ans Portal: Box verbunden, zuletzt gefragt, Schlüssel abgeholt | umgesetzt ([Rückmeldung](#rückmeldung-des-tunnel-dienstes)); wirkt, sobald Portal und Tunnel-Dienst beide auf diesem Stand laufen |
+| 5 | Regeln: Werkstatt-Regel (Root-Passwort, Anmeldeprobe über Portal und Tunnel), ein Notfall-Schlüssel als einziger dauerhafter Schlüssel | beschrieben in [mango.md](../edge-light/docs/mango.md#bevor-eine-box-die-werkstatt-verlässt); je Box vom Kapitän umzusetzen, an keinem Gerät ausgeführt |
 
-**Eine Box holt nur ab, wenn zwei Dinge stimmen:** Ihr Tunnel ist mit dem `service-tunnel.sh` ab Schritt 3 eingerichtet, und die Schlüsselausgabe läuft am Wartungsserver. Fehlt eines davon, gelingt die Anmeldung wie vorher nur mit einem Schlüssel, der schon auf der Box liegt. Das Portal weiß von beidem nichts und sagt deshalb auf der Seite, für welche Boxen das Abholen gilt, statt die Anmeldung zu versprechen. An einer Box zeigt `service-tunnel.sh <ziel> status`, ob sie eingerichtet ist und wann der Server zuletzt geantwortet hat.
+Die Schritte 1 bis 3 sind ausgerollt und am 10.10.2026 vom Kapitän an der Labor-Mango abgenommen ([Belege](../edge-light/docs/mango.md#belegt)).
+
+**Eine Box holt nur ab, wenn zwei Dinge stimmen:** Ihr Tunnel ist mit dem `service-tunnel.sh` ab Schritt 3 eingerichtet, und die Schlüsselausgabe läuft am Wartungsserver. Fehlt eines davon, gelingt die Anmeldung wie vorher nur mit einem Schlüssel, der schon auf der Box liegt. Das Portal verspricht die Anmeldung deshalb nicht pauschal. Seit der Rückmeldung zeigt es am offenen Fenster, ob die Box den Schlüssel abgeholt hat, und nennt sonst den Grund, den die Meldung hergibt: Die Box fragt gar nicht nach Schlüsseln, oder die Schlüsselausgabe ist aus. An einer Box zeigt `service-tunnel.sh <ziel> status`, ob sie eingerichtet ist und wann der Server zuletzt geantwortet hat.
 
 **Die Schlüsselausgabe des Tunnel-Dienstes** (Schritt 2): Eine Box fragt im Tunnel die Server-Adresse im Techniker-Netz (`10.10.32.1`, eigener Port) und bekommt die Schlüssel der Paare, die gerade in der Kernel-Menge `fenster` stehen, mit deren Restlaufzeit. Der Dienst prüft jeden Schlüssel noch einmal selbst, antwortet nur Box-Adressen und gibt ohne frisch abgeholten Soll-Stand keine Liste aus. Einzelheiten, Grenzen und das Einschalten auf der VM: [Tunnel-Dienst](../services/tunnel-dienst/README.md#schlüsselausgabe); Anfrage und Antwort für das Box-Skript: [Vertrag](contracts/fernwartung-schluessel-v1.md).
 
@@ -105,7 +111,7 @@ Ein offenes Fenster öffnet den **Netzweg** zur Box. Die **Anmeldung** an der Bo
 - **Die Schlüsseldatei liegt nur im Arbeitsspeicher**, in einem eigenen tmpfs, das allein die SSH-Instanz im Tunnel liest (`dropbear -D`). Ein Neustart der Box löscht jeden Fenster-Schlüssel.
 - **Die Frist läuft in Laufzeit der Box, nicht in Uhrzeit.** Ohne gültige Antwort kommt nichts dazu, und was da ist, verfällt zur Frist: auch ohne Server und auch, wenn der Abholer hängt (ein cron-Lauf je Minute streicht unabhängig von ihm).
 - **Die Antwort ist die ganze Liste.** Ein Schlüssel, den sie nicht mehr nennt, ist sofort gestrichen: bei vorzeitig geschlossenem Fenster und bei einem im offenen Fenster ersetzten oder entfernten Schlüssel.
-- **Übergang:** Was dauerhaft in `/etc/dropbear/authorized_keys` der Box steht, gilt im Tunnel weiter; das Skript liest die Datei nur. Solche Schlüssel umgehen die Schranke „kein Fenster, kein Schlüssel“: Öffnet ein Fehler der Server-Firewall den Port, kommt damit hinein, wer so einen Schlüssel hat. Ob dauerhaft einer bleibt, etwa ein Notfall-Schlüssel, ist noch nicht entschieden.
+- **Dauerhafte Schlüssel:** Was in `/etc/dropbear/authorized_keys` der Box steht, gilt im Tunnel weiter; das Skript liest die Datei nur. Solche Schlüssel umgehen die Schranke „kein Fenster, kein Schlüssel“: Öffnet ein Fehler der Server-Firewall den Port, kommt damit hinein, wer so einen Schlüssel hat. Entschieden (K2 a, 08.10.2026): In der Pilotphase bleibt auf jeder Box genau einer, ein Notfall-Schlüssel des Kapitäns, getrennt aufbewahrt; nach einigen Monaten Betrieb wird neu entschieden. Zielzustand und der Weg dorthin je Box: [mango.md](../edge-light/docs/mango.md#dauerhafte-schlüssel-ein-notfall-schlüssel).
 - **SSH 2222 kommt nur aus dem Tunnel an** (Entscheid vom 09.10.2026). Die Box weist den Port auf jedem anderen Weg ab, ob der Tunnel oben ist oder unten. Port 22 im LAN ändert sich nicht.
 
 - **Der Schlüssel am Zugang** (`sshPublicKey` beim Anlegen, `PUT`/`DELETE …/techniker/{id}/ssh-schluessel`) ist freiwillig. Ohne ihn öffnet ein Fenster für diesen Zugang nur den Netzweg; das Portal nennt das in der Zugangsliste, beim Öffnen eines Fensters und unter der Box, solange das Fenster offen ist.
@@ -117,6 +123,20 @@ Ein offenes Fenster öffnet den **Netzweg** zur Box. Die **Anmeldung** an der Bo
 - **Protokoll:** `techniker_ssh_schluessel_gesetzt` (mit neuem und vorherigem Fingerabdruck) und `techniker_ssh_schluessel_entfernt`; beim Anlegen steht der Fingerabdruck im Eintrag `techniker_angelegt`. Derselbe Schlüssel noch einmal ändert nichts und steht nicht im Protokoll.
 - **Sperren und Löschen** ändern den Schlüssel nicht. Ein gesperrter oder gelöschter Zugang steht nicht im Soll-Stand, sein SSH-Schlüssel also auch nicht.
 - **Befehle im Portal.** Der Dialog am Zugang nennt die Befehle zum Erzeugen für Windows (PowerShell) und Linux/macOS, mit dem Dateinamen `id_rsa_voltpilot`, damit kein vorhandener Schlüssel überschrieben wird. Unter einer Box mit offenem Fenster stehen die fertigen Befehle, je Fenster mit dem Satz, ob der Zugang einen SSH-Schlüssel trägt: `ssh -i ~/.ssh/id_rsa_voltpilot -p 2222 root@<Box-Adresse>` und für die Web-App der Box dieselbe Anmeldung mit `-L 8484:127.0.0.1:8484`, danach `http://127.0.0.1:8484` im eigenen Browser.
+
+### Was mit einer laufenden Anmeldung geschieht
+
+Eine Anmeldung, die im offenen Fenster begonnen hat, endet mit dem Fenster, weil der Wartungsserver den Weg trennt. Seine Firewall prüft **jedes** Paket gegen die Kernel-Menge `fenster`, in beiden Richtungen; steht das Paar nicht mehr darin, kommt nichts mehr durch.
+
+| Fall | Was den Weg trennt | Wann | Belegt |
+|---|---|---|---|
+| Fenster im Portal geschlossen | der Tunnel-Dienst nimmt das Paar beim nächsten Abruf aus der Menge | spätestens ein Abrufintervall (30 s) nach dem Schließen | `integration.sh`, Schritt 3; `wartung-anmeldung-probe.sh`, Schritt 4 (echte SSH-Sitzung) |
+| Fenster abgelaufen | der Kernel lässt das Element ablaufen, auch ohne Dienst und API | zum Ende des Fensters | `integration.sh`, Schritt 4 |
+| Dienst auf der VM angehalten | zunächst nichts: Der Dienst baut beim Beenden nichts ab, das Fenster bleibt bis zu seinem geplanten Ende offen, und die Sitzung läuft so lange weiter. Dann trennt der Kernel | zum geplanten Ende des Fensters | `wartung-anmeldung-probe.sh`, Schritt 5 |
+
+- **Solange der Dienst steht, wirkt ein Schließen im Portal nicht.** Es wirkt erst, wenn er wieder abholt, spätestens aber zum geplanten Ende des Fensters. Das Portal sagt es in der Zeile „Tunnel-Dienst holt nicht mehr ab“.
+- **Getrennt heißt: nicht mehr benutzbar, aber noch nicht beendet.** Der Client des Technikers merkt es an seinem eigenen Lebenszeichen (`ssh -o ServerAliveInterval=5 -o ServerAliveCountMax=2` endet nach rund 10 s), sonst hängt er. Auf der Box bleibt der Anmeldeprozess stehen, bis Dropbear nach drei unbeantworteten Lebenszeichen aufgibt (`-K 300`: 15 Minuten nach dem letzten Paket, im Log `Keepalive timeout`). So war es bei der Abnahme am 10.10.2026: Fenster-Schlüssel gestrichen 17:40:38, Prozess beendet 17:55:37 (UTC).
+- **Die Box beendet keine Sitzung.** Sie streicht den Fenster-Schlüssel, und das verhindert jede neue Anmeldung. Eine Sitzung, die vorher begann, hängt allein an der Firewall des Wartungsservers. Fehlt dessen Tabelle nach dem Ende des Fensters (`nft flush ruleset`; mit laufendem Dienst bis zu ein Abrufintervall, bei angehaltenem Dienst dauerhaft, siehe [Betrieb](../services/tunnel-dienst/README.md#nftables-neu-laden-oder-stoppen)), kommt eine solche Sitzung wieder durch. In der Probe ist das als Befund festgehalten (Schritt 5: Die Sitzung läuft in der Lücke weiter, eine neue Anmeldung wird abgewiesen). Ob die Box beim Streichen eines Fenster-Schlüssels auch die Sitzungen dieses Schlüssels beenden soll, liegt dem Kapitän zur Entscheidung vor; gebaut ist es nicht.
 
 **Wer das Portal verwaltet, verwaltet damit die Anmeldung.** Sobald die Boxen Fenster-Schlüssel abholen, genügt ein Konto mit der Rolle `platform-admin`, um als root auf eine verbundene Box zu kommen: Zugang mit eigenem Schlüssel anlegen, Fenster öffnen. Vorgesehen sind deshalb ein zweiter Faktor für Portal-Administratoren vor der ersten Kundenbox auf diesem Weg und, vorgemerkt, vom Portal signierte Freigaben. Beides ist nicht umgesetzt.
 
@@ -162,10 +182,59 @@ Den Vektor lesen beide Seiten: `FernwartungRegelnTest` (Java) prüft die Felder 
 
 **Der Soll-Stand wächst nur additiv, die Version bleibt 1.** Im Betrieb überliest der Dienst Felder, die er nicht kennt; sein Test liest den Vektor dagegen streng. Ein neues Feld braucht deshalb Vektor, Java-Test und Go-Struktur in derselben Änderung. Vor dem Ausliefern des Portals belegt `services/tunnel-dienst/test/vertraeglichkeit.sh <commit>`, dass der Stand, der gerade auf der VM läuft (`vp-tunnel-dienst version`), den heutigen Vektor genauso umsetzt wie ohne die neuen Felder. Für `sshPublicKey` ist das mit dem Stand `db32a784ce55` belegt: Das Portal darf vor dem Tunnel-Dienst ausgeliefert werden.
 
+## Rückmeldung des Tunnel-Dienstes
+
+Entscheid des Kapitäns (K3 a, 08.10.2026): Der Tunnel-Dienst darf dem Portal Rückmeldung geben, nur Zustandsangaben, über eine eigene Route. Damit sieht der Techniker im Portal, **warum** er nicht hineinkommt. Vertrag mit Vektor: [`fernwartung-rueckmeldung-v1.md`](contracts/fernwartung-rueckmeldung-v1.md); Seite des Dienstes: [Tunnel-Dienst](../services/tunnel-dienst/README.md#rückmeldung-ans-portal).
+
+**Was der Dienst meldet, und sonst nichts:** je Box „verbunden seit“ und „zuletzt gefragt um“, je Fenster „Schlüssel abgeholt um“; dazu, seit wann er läuft und ob er Schlüssel ausgibt. Kein Schlüssel, kein Fingerabdruck, keine Adresse: Box und Fenster sind nur über die `id` benannt, die das Portal selbst vergeben hat.
+
+| Angabe | Woran der Dienst sie festmacht |
+|---|---|
+| verbunden | der letzte WireGuard-Handshake der Box ist höchstens 3 Minuten alt |
+| zuletzt gefragt | die Box hat die Schlüsselausgabe aufgerufen. Das tut nur eine Box mit dem `service-tunnel.sh` ab Schritt 3 |
+| Schlüssel abgeholt | die Box hat in einer späteren Anfrage den Prüfwert der Liste genannt, die den Schlüssel enthält. Das tut sie erst, nachdem sie die Liste geprüft und in ihre Schlüsseldatei geschrieben hat |
+
+**Was das Portal daraus zeigt,** an jeder Box (Spalte „Verbindung“, auf der Box-Seite in der Karte „Fernwartung“) und an jedem offenen Fenster, immer mit dem Alter der Angabe („Stand: vor 20 s“):
+
+| Am offenen Fenster | Wann |
+|---|---|
+| Alles bereit | die Box ist verbunden und hat den Schlüssel abgeholt |
+| Schlüssel noch nicht abgeholt | die Box ist verbunden, der Schlüssel fehlt ihr noch. Der Satz nennt den Grund: Sie fragt und bekommt ihn gleich; sie hat nie gefragt (Tunnel mit einem älteren Skript eingerichtet); die Schlüsselausgabe am Wartungsserver ist aus |
+| Box nicht verbunden | der Dienst meldet die Box ohne Handshake in den letzten 3 Minuten. Das Fenster ist offen, aber niemand erreicht die Box |
+| Kein SSH-Schlüssel am Zugang | am Techniker-Zugang steht keiner. Das weiß das Portal selbst, mit und ohne Meldung |
+| Stand unbekannt | keine Meldung, eine veraltete, oder die letzte nennt Box oder Fenster nicht |
+
+- **Unbekannt ist kein „nicht verbunden“.** Kam nie eine Meldung (auf dem Wartungsserver läuft ein Dienst ohne Rückmeldung), ist die letzte älter als 3 Minuten (VM oder Dienst nicht erreichbar) oder nennt sie die Box nicht, sagt das Portal genau das. Bei einer veralteten Meldung nennt es, was damals galt, als Vergangenes. Die Regeln: `adminFernwartung.ts` (`rueckmeldungLage`, `boxVerbindung`, `boxAnmeldung`).
+- **Die Seite holt den Stand alle 20 s neu,** solange sie sichtbar ist. Nach dem Öffnen eines Fensters steht dort bis zur nächsten Meldung „Stand unbekannt“, danach folgt die Zeile ohne Zutun.
+- **Das Alter misst die API.** Sie hält je Box und Fenster fest, wann sie die Meldung angenommen hat. Eine Meldung, deren Uhr um mehr als 5 Minuten von der der API abweicht, weist sie ab.
+- **„Verbunden seit“ gleich dem Start des Dienstes** heißt: mindestens seit dann. Das Portal schreibt es so.
+
+**Die Meldung ist Anzeige.** Sie fließt nie in den Soll-Stand zurück, aus dem der Dienst Peers, Fenster und Schlüsselausgabe ableitet:
+
+- Die API hält sie in eigenen Tabellen; `FernwartungService` und `FernwartungRepository`, die den Soll-Stand bilden, kennen weder diese Tabellen noch die Klassen der Rückmeldung (`FernwartungRueckmeldungRegelnTest`).
+- Gegen die laufende API belegt: Eine Meldung „nicht verbunden, nicht abgeholt“ lässt Soll-Stand, Zugänge, Fenster und Protokoll Byte für Byte unverändert (`FernwartungApiTest.dieRueckmeldungIstAnzeigeUndAendertDenSollStandNie`).
+- Eine falsche Meldung kann im Portal etwas Falsches anzeigen. Einen Weg öffnen oder einen Schlüssel ausgeben lassen kann sie nicht.
+
+**Die API prüft und begrenzt:** höchstens 2 MiB, streng gelesen (kein unbekanntes Feld), je Liste höchstens 10 000 Einträge, jede `id` eine UUID und nur einmal. Nennt die Meldung eine Box oder ein Fenster, das die API nicht kennt, wird sie als Ganzes abgewiesen (422) und nichts gespeichert.
+
+**Die Rückmeldung stört die Arbeit des Dienstes nicht:** eigener Aufruf neben dem Abgleich, 5 s Frist, kein eigenes Token, keine Wiederholung. Scheitert er, laufen Soll-Stand, Firewall und Schlüsselausgabe unverändert weiter ([Tunnel-Dienst](../services/tunnel-dienst/README.md#rückmeldung-ans-portal)).
+
+**VM und Cloud werden getrennt ausgerollt; jede Reihenfolge ist ohne Schaden:**
+
+| Stand | Was geschieht |
+|---|---|
+| neue API, alter Dienst | es kommt keine Meldung. Das Portal zeigt „Tunnel-Dienst meldet keinen Zustand“ und an Box und Fenster „unbekannt“. Alles andere wie bisher |
+| neuer Dienst, alte API | die Route gibt es nicht (404). Der Dienst schreibt es einmal als Hinweis ins Journal und fragt alle 10 Minuten wieder nach; Peers, Fenster und Schlüsselausgabe laufen wie bisher |
+| beide neu | spätestens 10 Minuten nach dem zweiten Ausrollen (oder sofort nach einem Neustart des Dienstes) stehen die Angaben im Portal |
+
+Empfohlene Reihenfolge: erst die Cloud (Migration, API, Portal), dann der Dienst auf der VM. Dann meldet der Dienst vom ersten Lauf an.
+
 ## Was das Portal weiß und was nicht
 
 - **Weiß:** den Soll-Zustand und wann der Tunnel-Dienst ihn zuletzt abgeholt hat.
-- **Weiß nicht:** ob ein Fenster auf dem Server wirkt, ob die Box gerade verbunden ist, ob sie für Fenster-Schlüssel eingerichtet ist und ob sie den SSH-Schlüssel eines Fensters abgeholt hat. Der Dienst hat nur Leserecht und meldet nichts zurück. Diese Lücke benennt die Oberfläche, statt sie zu überspielen. Eine Rückmeldung des Dienstes ans Portal ist entschieden (09.10.2026), aber noch nicht gebaut. Auf der VM selbst zeigt `vp-tunnel-dienst status`, wann eine Box zuletzt nach Schlüsseln gefragt hat, und das Journal, welcher Schlüssel ihr ausgegeben wurde.
+- **Weiß vom Tunnel-Dienst, mit Alter:** ob eine Box verbunden ist, wann sie zuletzt nach Schlüsseln gefragt hat und ob sie den SSH-Schlüssel eines Fensters abgeholt hat ([Rückmeldung](#rückmeldung-des-tunnel-dienstes)). Ein Fenster, das die Meldung nennt, steht in der Kernel-Menge des Servers.
+- **Weiß nicht:** ob eine Anmeldung an der Box gelungen ist, und was ein Techniker dort tut. Das steht nur im Log der Box (`logread -e dropbear`), und das liegt im Arbeitsspeicher. Ebenso nicht, ob die Firewall des Servers gerade filtert: Auf der VM sagt es `vp-tunnel-dienst status` („Firewall-Basis stimmt“).
+- **Fehlt die Meldung oder ist sie alt,** weiß das Portal über Boxen und Fenster nur den Soll-Zustand. Die Oberfläche benennt das, statt es zu überspielen. Auf der VM selbst zeigt `vp-tunnel-dienst status`, wann eine Box zuletzt nach Schlüsseln gefragt hat, und das Journal, welcher Schlüssel ihr ausgegeben wurde.
 
 ## Bausteine
 

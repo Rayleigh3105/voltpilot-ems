@@ -38,9 +38,12 @@ import org.springframework.web.server.ResponseStatusException;
  * und wer es geöffnet bzw. geschlossen hat.
  *
  * <p><b>Was dieser Dienst bewusst nicht behauptet:</b> dass ein Fenster auf dem
- * Server wirkt. Das Portal kennt nur den Soll-Stand und den Zeitpunkt, zu dem
- * der Tunnel-Dienst ihn zuletzt abgeholt hat ({@link #uebersicht}); eine
- * Rückmeldung des Dienstes gibt es nicht (nur Leserecht).
+ * Server wirkt. Er kennt nur den Soll-Stand und den Zeitpunkt, zu dem der
+ * Tunnel-Dienst ihn zuletzt abgeholt hat ({@link #uebersicht}). Was der
+ * Tunnel-Dienst über Boxen und Fenster zurückmeldet, liegt bei
+ * {@code FernwartungRueckmeldungService} und ist Anzeige: Diese Klasse und
+ * ihr Repository lesen es nie, auch nicht für den Soll-Stand
+ * ({@code FernwartungRueckmeldungRegelnTest}).
  */
 @Service
 public class FernwartungService {

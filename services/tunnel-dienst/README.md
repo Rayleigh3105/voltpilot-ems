@@ -5,6 +5,7 @@
 - **Peers** auf der WireGuard-Schnittstelle `wg-wartung`: Boxen und Techniker-Zugänge, je genau eine `/32`.
 - **Fenster** in der nftables-Menge `fenster` der eigenen Tabelle `voltpilot_wartung`: Techniker → Box nur, solange das Fenster offen ist. Jedes Element hat eine **Ablaufzeit**; das Fenster schließt im Kernel, auch wenn API oder Dienst ausfallen.
 - **Schlüsselausgabe** (wenn eingestellt): Eine Box fragt im Tunnel, wessen SSH-Schlüssel sich gerade bei ihr anmelden darf, und bekommt die Schlüssel der Techniker, für die ein Fenster zu ihr offen ist. Siehe [Schlüsselausgabe](#schlüsselausgabe).
+- **Rückmeldung ans Portal:** Nach jedem Lauf meldet der Dienst, welche Box verbunden ist, wann sie zuletzt nach Schlüsseln gefragt hat und welches Fenster seinen Schlüssel abgeholt hat. Das ist Anzeige im Portal und ändert an den drei Punkten davor nichts. Siehe [Rückmeldung ans Portal](#rückmeldung-ans-portal).
 
 Fachliche Grundlage, Rollen und Datenmodell: [Fernwartung](../../docs/fernwartung.md). `vpn.voltpilot.de` mit WireGuard UI ist davon nicht berührt.
 
@@ -15,6 +16,7 @@ flowchart LR
     dienst -->|"nft add/delete element"| nft["inet voltpilot_wartung<br/>Menge fenster (Ablaufzeit)"]
     box["Boxen 10.10.16.0/20"] --> wg
     box -.->|"im Tunnel: wessen SSH-Schlüssel<br/>darf sich bei mir anmelden?"| dienst
+    dienst -.->|"PUT …/rueckmeldung<br/>nur Zustand, eigene Frist"| api
     tech["Techniker 10.10.32.0/24"] --> wg
 ```
 
@@ -24,7 +26,7 @@ Die Tabelle regelt nur Verkehr, der `wg-wartung` berührt, und verwirft davon al
 
 | Weg | Regel |
 |---|---|
-| Techniker → Box | nur wenn das Paar in `fenster` steht; TCP `VP_TUNNEL_PORTS` (2222, 8484) und Ping. Geprüft wird **jedes** Paket: läuft ein Fenster ab oder wird es geschlossen, reißt auch eine laufende Sitzung ab |
+| Techniker → Box | nur wenn das Paar in `fenster` steht; TCP `VP_TUNNEL_PORTS` (2222, 8484) und Ping. Geprüft wird **jedes** Paket: läuft ein Fenster ab oder wird es geschlossen, reißt auch eine laufende Sitzung ab ([die Fälle](../../docs/fernwartung.md#was-mit-einer-laufenden-anmeldung-geschieht)) |
 | Box → Techniker | nur Antworten auf erlaubte Verbindungen, ebenfalls nur bei offenem Fenster |
 | Box ↔ Box, Techniker ↔ Techniker | verworfen |
 | Tunnel → Internet, altes VPN, andere Netze der VM | verworfen |
@@ -50,9 +52,11 @@ Die Grundregel: im Zweifel nichts öffnen.
 | Neustart der VM, Netz noch ohne Adresse | Unter Debian 13 mit dhcpcd ist `network-online.target` erreicht, bevor DHCP geantwortet hat; der erste Abruf scheitert dann (`lookup … connection refused`). Solange seit dem Start kein Abruf gelungen ist, wiederholt der Dienst ihn bis zu fünfmal im Abstand von 5 s statt erst nach einem ganzen Intervall. Die Fehlläufe zählen mit; fehlt die API beim Start länger, kommt der `ALARM` entsprechend früher |
 | ein Fenster läuft im Kernel ab | der Kernel schließt es, nicht der Dienst. Der nächste Lauf schreibt `INFO msg="Fenster abgelaufen" techniker=… box=… kennung=… ablauf=…`, auch wenn die API gerade fehlt. `Fenster geschlossen` steht nur da, wo der Dienst es wegen des Soll-Stands entfernt hat |
 | ein Fenster fehlt in der Menge, obwohl es weder abgelaufen ist noch vom Dienst geschlossen wurde (von Hand entfernt) | `WARN msg="Fenster fehlt vor seiner Ablaufzeit …"`; verlangt der Soll-Stand es weiter, öffnet derselbe Lauf es wieder |
-| Dienst wird beendet | nichts wird abgebaut; Fenster laufen von selbst ab. Die Schlüsselausgabe endet mit ihm: Keine Box bekommt eine Antwort, und was sie hat, verfällt bei ihr zur Frist |
+| Dienst wird beendet | nichts wird abgebaut; Fenster laufen von selbst ab, und eine laufende Sitzung bleibt bis zum geplanten Ende ihres Fensters benutzbar. **Ein Schließen im Portal wirkt nicht, solange der Dienst steht.** Die Schlüsselausgabe endet mit ihm: Keine Box bekommt eine Antwort, und was sie hat, verfällt bei ihr zur Frist |
 | Dienst neu gestartet, API noch nicht erreicht | die Schlüsselausgabe antwortet mit 503, auch wenn noch Fenster im Kernel stehen: Ohne frischen Soll-Stand gibt es keine Liste, auch keine leere |
 | der Prozess der Schlüsselausgabe endet oder startet nicht | `ERROR msg="Schlüsselausgabe: Schalter beendet, neuer Start folgt"`, neuer Start nach 5 s, bei wiederholtem Scheitern in wachsendem Abstand bis 5 min. Peers und Fenster gleicht der Dienst unverändert weiter ab |
+| die Rückmeldung ans Portal scheitert (API antwortet nicht, antwortet mit einem Fehler oder weist die Meldung ab) | Peers, Fenster und Schlüsselausgabe laufen unverändert weiter. Einmal `WARN msg="Rückmeldung ans Portal gescheitert; …"`, der nächste Versuch in wachsendem Abstand bis 10 min. Im Portal steht nach 3 min „Meldung des Tunnel-Dienstes veraltet“ |
+| die API kennt die Route der Rückmeldung nicht (älterer Stand der API, HTTP 404) | einmal `INFO msg="Rückmeldung: die API kennt die Route nicht …"`, danach alle 10 min ein Versuch. Sonst ändert sich nichts |
 
 Peers allein öffnen keinen Weg; erst ein Element in `fenster` tut das.
 
@@ -120,7 +124,7 @@ Geprüft: Debian 13 auf einer echten VM unter systemd (Kernel 6.12, nftables 1.1
    (umask 077; printf '%s\n' '<secret>' > /etc/vp-tunnel-dienst/client-secret)
    ```
 
-   Die Datei [`tunnel-dienst.env.beispiel`](deploy/tunnel-dienst.env.beispiel) beschreibt jede Einstellung. Die Netze müssen zur API passen. `VP_TUNNEL_SCHLUESSEL_PORT` schaltet die [Schlüsselausgabe](#schlüsselausgabe) ein; das Beispiel setzt ihn auf 8022.
+   Die Datei [`tunnel-dienst.env.beispiel`](deploy/tunnel-dienst.env.beispiel) beschreibt jede Einstellung. Die Netze müssen zur API passen. `VP_TUNNEL_SCHLUESSEL_PORT` schaltet die [Schlüsselausgabe](#schlüsselausgabe) ein; das Beispiel setzt ihn auf 8022. Die [Rückmeldung ans Portal](#rückmeldung-ans-portal) ist an, solange `VP_TUNNEL_RUECKMELDUNG` nicht auf `aus` steht.
 
 5. **Firewall-Basis ab dem Systemstart** (empfohlen): Dann ist der Weg schon zu, bevor der Dienst läuft.
 
@@ -154,7 +158,8 @@ Geprüft: Debian 13 auf einer echten VM unter systemd (Kernel 6.12, nftables 1.1
 
    | Journal | Bedeutung |
    |---|---|
-   | `msg="Tunnel-Dienst läuft" version=… api=… schluesselausgabe=…`, danach keine Warnung | läuft; im Portal steht unter **Geräte › Fernwartung** „Tunnel-Dienst holt ab“. `schluesselausgabe=aus` oder die Adresse, auf der sie lauscht |
+   | `msg="Tunnel-Dienst läuft" version=… api=… schluesselausgabe=… rueckmeldung=…`, danach keine Warnung | läuft; im Portal steht unter **Geräte › Fernwartung** „Tunnel-Dienst holt ab“. `schluesselausgabe=aus` oder die Adresse, auf der sie lauscht; `rueckmeldung=an` oder `aus` |
+   | `msg="Rückmeldung ans Portal angenommen" boxen=… fenster=…` | die API hat die erste Meldung angenommen; im Portal steht „Tunnel-Dienst meldet seinen Zustand“. Die Zeile steht einmal da, nicht nach jedem Lauf |
    | `msg="Schlüsselausgabe lauscht" adresse=10.10.32.1:8022 … rechte=keine dateizugriff=gesperrt` | der Prozess der Schlüsselausgabe läuft, ohne Capabilities und ohne Zugriff auf das Dateisystem |
    | `Failed to set up credentials: Protocol error`, `status=243/CREDENTIALS`, Neustart alle 10 s | die Datei `/etc/vp-tunnel-dienst/client-secret` fehlt (Schritt 4). `systemctl start` meldet trotzdem Erfolg; nur das Journal und `systemctl is-active` zeigen es |
    | `ERROR … Anmeldung abgelehnt: Client oder Secret prüfen (Token-Endpunkt: HTTP 401)` | Secret oder Client-ID stimmen nicht mit Keycloak überein |
@@ -246,7 +251,7 @@ Im Journal steht, welcher Box wann welcher Schlüssel ausgegeben wurde, mit dem 
 | `msg="Schlüssel nicht mehr ausgegeben" box=… … fingerabdruck=SHA256:…` | eine Antwort an diese Box nennt ihn nicht mehr: Fenster geschlossen oder abgelaufen, Schlüssel ersetzt oder entfernt |
 | `msg="Schlüsselausgabe: Anfrage abgewiesen, keine Box-Adresse" absender=… anzahl=…` | höchstens eine Zeile je zehn Sekunden |
 
-Eine unveränderte Antwort steht nicht noch einmal im Journal. Ob die Antwort bei der Box angekommen ist und ob die Box den Schlüssel übernommen hat, weiß der Dienst nicht.
+Eine unveränderte Antwort steht nicht noch einmal im Journal. „Ausgegeben“ heißt: Die Antwort ging hinaus. Ob die Box sie übernommen hat, erfährt der Dienst erst mit ihrer nächsten Anfrage: Nennt sie darin den Prüfwert dieser Liste, hat sie den Schlüssel geprüft und in ihre Schlüsseldatei geschrieben. Das steht nicht in `status` und nicht im Journal; der Dienst meldet es dem Portal als „Schlüssel abgeholt“ ([Rückmeldung ans Portal](#rückmeldung-ans-portal)).
 
 ### Auf einer laufenden VM einschalten
 
@@ -269,6 +274,66 @@ Danach:
 
 Zurück: die Zeile `VP_TUNNEL_SCHLUESSEL_PORT` auskommentieren, Schritt 4 und 5 wiederholen. Der Dienst lädt die bisherige Basis, offene Fenster schließen dabei wieder einmal. Die Zeile in der Firewall der VM kann stehen bleiben; ohne Lauscher ist sie ohne Wirkung. Das alte Programm zurückzulegen ist nicht nötig, geht aber wie bisher.
 
+## Rückmeldung ans Portal
+
+Der Techniker soll im Portal sehen, **warum** er nicht hineinkommt: Box nicht verbunden, Schlüssel noch nicht abgeholt, kein SSH-Schlüssel am Zugang. Dafür meldet der Dienst nach jedem Lauf seinen Zustand (Entscheid K3 a des Kapitäns, 08.10.2026). Was das Portal daraus macht: [Fernwartung](../../docs/fernwartung.md#rückmeldung-des-tunnel-dienstes); die Meldung selbst: [`fernwartung-rueckmeldung-v1.md`](../../docs/contracts/fernwartung-rueckmeldung-v1.md).
+
+### Was gemeldet wird, und sonst nichts
+
+| Angabe | Woher |
+|---|---|
+| je Box „verbunden seit“ | `wg show wg-wartung latest-handshakes`: verbunden ist eine Box, deren letzter Handshake höchstens 3 Minuten alt ist. Seit wann, führt der Dienst selbst mit |
+| je Box „zuletzt gefragt um“ | die Schlüsselausgabe: Beginn der letzten Anfrage dieser Box |
+| je Fenster „Schlüssel abgeholt um“ | die Schlüsselausgabe: Die Box hat den Prüfwert der Liste genannt, die den Schlüssel dieses Fensters enthält |
+| seit wann der Dienst läuft, ob er Schlüssel ausgibt | der Dienst selbst |
+
+- **Kein Schlüssel, kein Fingerabdruck, keine Adresse, kein Name.** Box und Fenster sind nur über die `id` aus dem Soll-Stand benannt.
+- **Genannt werden** die Boxen des letzten frisch abgeholten Soll-Stands und dessen Fenster, soweit sie nach dem Lauf in der Kernel-Menge `fenster` stehen. Ohne frischen Soll-Stand seit dem Start geht keine Meldung hinaus.
+- **„Verbunden seit“** ist beim ersten Blick nach dem Start der Start des Dienstes (im Portal: „mindestens seit“), danach der Handshake, mit dem die Box wieder verbunden war. Eine Unterbrechung unter 3 Minuten sieht der Dienst nicht.
+- **Kann der Dienst die Handshakes nicht lesen,** entfällt die Meldung: Im Portal steht dann „unbekannt“ und nicht „nicht verbunden“.
+- **Alles beginnt mit dem Start des Dienstes neu.** Nach einem Neustart gilt ein Schlüssel wieder als abgeholt, sobald die Box das nächste Mal fragt (sie nennt dabei den Prüfwert, den sie schon hat).
+
+### Sie stört die eigentliche Arbeit nicht
+
+| Eigenschaft | Wie |
+|---|---|
+| eigener Aufruf | läuft neben dem Abgleich her. Der Durchgang wartet nicht auf ihn; läuft der vorige noch, entfällt der neue |
+| Frist | 5 s für Handshakes lesen und senden, danach bricht der Aufruf ab |
+| eigener Weg zur API | eigener HTTP-Client, eigene Verbindungen, keine Umleitung |
+| kein eigenes Token | die Rückmeldung nimmt das Token, das der Abruf des Soll-Stands bereithält. Liegt keines bereit, entfällt sie; zum Keycloak geht sie nie |
+| nur lesend am System | Stand des letzten Laufs, `wg show … latest-handshakes`, Speicher der Schlüsselausgabe. Sie setzt keinen Peer und kein Fenster |
+| Fehler bleiben drin | ein Absturz in der Rückmeldung beendet den Dienst nicht |
+| Abstand nach einem Fehler | 30 s, dann 1, 2, 4, 8 und höchstens 10 Minuten; nach dem ersten Erfolg wieder nach jedem Lauf |
+| API ohne die Route (404, 405) | ein Hinweis im Journal, dann alle 10 Minuten ein Versuch. Sobald die API die Route kennt, läuft die Meldung von selbst an |
+
+Belegt ist das in `cmd/vp-tunnel-dienst/umlauf_test.go`: Gegen eine API, die die Meldung annimmt, nicht kennt, mit 500 beantwortet, mit 422 abweist oder nie beantwortet, tut der Dienst an WireGuard und Firewall Schritt für Schritt dasselbe wie ohne Rückmeldung, die Schlüsselausgabe antwortet gleich, und kein Durchgang dauert länger.
+
+### Was man sieht
+
+| Journal | Bedeutung |
+|---|---|
+| `msg="Rückmeldung ans Portal angenommen" boxen=… fenster=…` | die API nimmt die Meldung an. Einmal, bis sich die Lage ändert |
+| `msg="Rückmeldung: die API kennt die Route nicht (älterer Stand der API); …" antwort=404 naechsterVersuchIn=10m0s` | auf der Cloud-Seite läuft noch ein Stand ohne Rückmeldung. Kein Fehler |
+| `WARN msg="Rückmeldung ans Portal gescheitert; …" fehler=… naechsterVersuchIn=…` | die API antwortet nicht (`keine Verbindung zur API`, `Frist überschritten`) oder mit einem Fehler (`Rückmeldung: HTTP 400: …` mit dem Grund der API, etwa einer abweichenden Uhr) |
+| `WARN msg="Rückmeldung ans Portal entfällt: Handshakes nicht lesbar"` | `wg show` scheitert |
+
+Im Portal unter **Geräte › Fernwartung**: „Tunnel-Dienst meldet seinen Zustand“ mit dem Alter der letzten Meldung.
+
+### Abschalten
+
+`VP_TUNNEL_RUECKMELDUNG=aus` in `/etc/vp-tunnel-dienst/tunnel-dienst.env`, dann `systemctl restart vp-tunnel-dienst`. Die Startzeile nennt `rueckmeldung=aus`; im Portal steht nach 3 Minuten „Meldung des Tunnel-Dienstes veraltet“ und an Box und Fenster „unbekannt“. Die Firewall-Basis hängt nicht an dieser Einstellung: Kein Fenster schließt dadurch.
+
+### Auf einer laufenden VM einspielen
+
+Das neue Programm ablegen (Schritt 3 der Installation) und `systemctl restart vp-tunnel-dienst`. Mehr ist nicht nötig: keine neue Einstellung, keine Änderung an der Firewall-Basis (ihr Prüfwert bleibt gleich, `vp-tunnel-dienst status` sagt weiter `Firewall-Basis stimmt: ja`), keine Zeile in der Firewall der VM. Offene Fenster bleiben im Kernel stehen; die Schlüsselausgabe antwortet nach dem Neustart mit 503, bis der erste Soll-Stand abgeholt ist (wenige Sekunden).
+
+| Probe | Erwartung |
+|---|---|
+| Journal | `Tunnel-Dienst läuft … rueckmeldung=an`, kein `Firewall-Basis geladen`, dann `Rückmeldung ans Portal angenommen boxen=… fenster=…` (API auf diesem Stand) oder `die API kennt die Route nicht` (API älter) |
+| Portal, **Geräte › Fernwartung** | „Tunnel-Dienst meldet seinen Zustand“, an der Labor-Box „Box verbunden“ |
+
+Zurück: das vorige Programm ablegen und neu starten, oder die Rückmeldung [abschalten](#abschalten).
+
 ## Von Hand, solange der Dienst noch nicht läuft (E1)
 
 Die zweite Testanlage soll nicht auf den Dienst warten. Auf der VM (Schritte 1, 2 und 5 der Installation erledigt) geht derselbe Zustand von Hand, ohne dass später etwas umzuziehen ist:
@@ -288,7 +353,7 @@ Startet der Dienst später, findet er dieselben Peers vor und ändert an ihnen n
 | `vp-tunnel-dienst einmal` | ein Abgleich von Hand, Rückgabe 0/1 |
 | `vp-tunnel-dienst basis` | der nft-Regelsatz, wie der Dienst ihn erzwingt |
 | `vp-tunnel-dienst pruefen <datei>` | einen Soll-Stand offline prüfen |
-| `journalctl -u vp-tunnel-dienst` | Peers angelegt/entfernt, Fenster geöffnet/geschlossen/abgelaufen, Schlüssel ausgegeben, `API wieder erreichbar`, `ALARM` |
+| `journalctl -u vp-tunnel-dienst` | Peers angelegt/entfernt, Fenster geöffnet/geschlossen/abgelaufen, Schlüssel ausgegeben, `API wieder erreichbar`, Rückmeldung ans Portal angenommen oder gescheitert, `ALARM` |
 | `/var/lib/vp-tunnel-dienst/status.json` | letzter Lauf, letzter Erfolg, Fehlläufe in Folge - für eine Überwachung |
 | `/var/lib/vp-tunnel-dienst/schluessel.json` | Schlüsselausgabe: je Box die letzte Anfrage und die zuletzt genannten Schlüssel (Fingerabdruck) |
 
@@ -312,7 +377,7 @@ Unter Debian beginnt `/etc/nftables.conf` mit `flush ruleset`, und `nftables.ser
 
 Deshalb: `nftables` auf dieser VM nicht stoppen, solange `wg-wartung` oben ist. Änderungen an der eigenen Firewall der VM einzeln laden (`nft -f /etc/nftables.d/vm-firewall.nft`), nie über `systemctl reload nftables`. Eine eigene Firewall mit `policy drop` in der Weiterleitung ist die zweite Schranke gegen Fehler in der Tabelle des Dienstes ([Muster](#eigene-firewall-der-vm)); gegen `flush ruleset` hilft auch sie nicht, weil der Befehl beide entfernt.
 
-**Auch eine Aktualisierung des Pakets `nftables` lädt neu.** Sein Installationsskript führt `try-restart nftables.service` aus (`/var/lib/dpkg/info/nftables.postinst`): alle offenen Fenster sind zu, bis der Dienst sie beim nächsten Abruf wieder öffnet, und für einen Augenblick ist keine Regel geladen. Mit automatischen Sicherheitsupdates (`unattended-upgrades`) kann das unbeaufsichtigt geschehen. Wer das nicht will, nimmt das Paket davon aus und spielt es von Hand ein, in `/etc/apt/apt.conf.d/`: `Unattended-Upgrade::Package-Blacklist { "nftables"; };`. Ob die Wartungs-VM das so hält, ist nicht entschieden.
+**Auch eine Aktualisierung des Pakets `nftables` lädt neu.** Sein Installationsskript führt `try-restart nftables.service` aus (`/var/lib/dpkg/info/nftables.postinst`): alle offenen Fenster sind zu, bis der Dienst sie beim nächsten Abruf wieder öffnet, und für einen Augenblick ist keine Regel geladen. Mit automatischen Sicherheitsupdates (`unattended-upgrades`) kann das unbeaufsichtigt geschehen. Wer das nicht will, nimmt das Paket davon aus und spielt es von Hand ein, in `/etc/apt/apt.conf.d/`: `Unattended-Upgrade::Package-Blacklist { "nftables"; };`. Auf der Wartungs-VM ist das seit dem 09.10.2026 so eingerichtet ([Entscheide zum Betrieb](../../docs/fernwartung.md#entscheide-zum-betrieb-09102026)).
 
 ## Prüfen
 
@@ -362,12 +427,19 @@ diff /tmp/basis.soll.txt /tmp/basis.ist.txt && echo identisch
   - ersetzter und entfernter Schlüssel, offene Anfrage (Änderung, Ablauf, Ablösung, Abbruch), Grenzen des Schalters, die Zeilenform des Kanals;
   - Firewall-Basis ohne Port bytegleich mit der Datei auf der VM (Prüfsumme), mit Port genau eine Regel mehr;
   - Journal-Zeilen für das Ende eines API-Ausfalls und eines Fensters, der schnellere Abruf nach dem Start.
+  Zur Rückmeldung:
+  - der [Vektor der Meldung](../../docs/contracts/fernwartung-rueckmeldung-v1.example.json) Byte für Byte, genau die vereinbarten Felder, kein Schlüssel und keine Adresse darin;
+  - „verbunden seit“: beim Start schon verbunden, Grenze von 3 Minuten, Unterbrechung, Lücke in der Beobachtung; ohne lesbare Handshakes keine Meldung;
+  - „abgeholt“ erst mit dem Prüfwert der Box, nie für einen ersetzten Schlüssel, weg nach einer Anfrage ohne Prüfwert;
+  - der Absender: nur das bereitliegende Token, keine Umleitung, eigene Frist; ein hängender Aufruf hält den Abruf des Soll-Stands nicht auf;
+  - Abstand nach Fehlern, API ohne die Route, eine Zeile im Journal je Lage, ein Absturz bleibt in der Rückmeldung;
+  - der ganze Durchgang gegen fünf Arten von API (`umlauf_test.go`): WireGuard, Firewall und Schlüsselausgabe wie ohne Rückmeldung.
 - **Integrationsprobe** (`test/integration.sh`): echtes Kernel-WireGuard und echtes nftables in vier Docker-Containern mit `NET_ADMIN` (Server, zwei Boxen, ein Techniker) und eine API-Attrappe. Belegt:
   - kein Weg ohne Fenster;
   - im Fenster nur die Dienste-Ports;
   - Box ↔ Box und Box → Techniker verworfen;
   - Schließen reißt eine laufende Sitzung ab;
-  - Ablauf ohne Dienst und API;
+  - Ablauf ohne Dienst und API: Eine laufende Sitzung läuft bis zum Ablauf weiter und reißt mit ihm ab;
   - keine Öffnung bei ausgefallener API;
   - Wiederanlauf ohne Fenster;
   - Lauf als Nicht-root nur mit `CAP_NET_ADMIN`;
@@ -380,7 +452,8 @@ diff /tmp/basis.soll.txt /tmp/basis.ist.txt && echo identisch
   - Techniker-Adresse und der Server selbst werden abgewiesen, andere Ports und die andere Server-Adresse bleiben vom Tunnel aus zu;
   - Schlüssel im offenen Fenster ersetzt und entfernt, eine offene Anfrage je Box, nach Ablauf eine leere Liste;
   - API aus: kein neuer Schlüssel; Neustart ohne API: 503 statt einer Liste; die Journal-Zeilen `API wieder erreichbar` und `Fenster abgelaufen`;
-  - das Muster für die eigene Firewall der VM, mit Gegenprobe ohne die Freigabe.
+  - das Muster für die eigene Firewall der VM, mit Gegenprobe ohne die Freigabe;
+  - Rückmeldung (Schritt 21): Die Schritte 12 bis 20 laufen gegen eine API ohne die Route; danach nimmt die Attrappe die Meldung an. Die Box steht mit echtem Handshake als verbunden darin, „ausgegeben“ ist noch nicht „abgeholt“, mit dem Prüfwert der Box wird es das; die Meldung nennt weder Schlüssel noch Adresse; fällt die Route wieder weg, bleiben Fenster, Schlüsselausgabe und Weg.
 - **Dateisperre-Probe** (`test/dateisperre.sh`): Der Schalter auf dem Kernel von Debian 13 in einer kleinen VM (QEMU ohne KVM, nur dieser Prozess, kein WireGuard). Belegt: Landlock ist dort eingeschaltet; die Startzeile meldet `rechte=keine dateizugriff=gesperrt` (der Schalter hat danach versucht, `/` zu öffnen, und es ging nicht); alle vier Capability-Mengen leer; er beantwortet die Anfrage einer Box vor und nach der Sperre und endet mit dem Dienst. Die Probe gibt es, weil der Kernel der Arbeitsmaschine Landlock nicht eingeschaltet hat: In der Integrationsprobe meldet der Schalter dort `dateizugriff="nicht gesperrt (operation not supported)"`.
 - **Unit statisch geprüft:** `systemd-analyze verify` ohne Befund; `systemd-analyze security` 3.7 unter Debian 12 (systemd 252) und 3.5 unter Debian 13 (systemd 257), beides „OK“.
 - **Auf der echten VM belegt** (Debian 13, 08.10.2026; die Unit unverändert unter systemd, als Gegenstelle die API-Attrappe aus `test/attrappe` auf der VM):
@@ -401,12 +474,12 @@ diff /tmp/basis.soll.txt /tmp/basis.ist.txt && echo identisch
   - `Firewall-Basis geladen` genau einmal, danach `Firewall-Basis stimmt: ja` und `Schlüsselausgabe: 10.10.32.1:8022, lauscht`;
   - die Labor-Mango (OpenWrt 25.12.5) bekommt mit `uclient-fetch` ohne offenes Fenster die leere, gültige Liste; vor dem Einspielen endete derselbe Abruf nach 5 s mit `Failed to send request: Operation not permitted`, Rückgabewert 4;
   - andere Ports vom Tunnel zur VM bleiben verworfen (22 und 8023, Zähler der `drop`-Regel).
-- **Das Abholen durch das Box-Skript** (`edge-light/openwrt/service-tunnel.sh`) ist in `edge-light/test/wartung-anmeldung-probe.sh` belegt: OpenWrt 25.12 im Container holt mit `uclient-fetch` gegen diesen Dienst ab, hält die Anfrage offen und meldet sich mit dem abgeholten Schlüssel durch den Tunnel an.
+- **Das Abholen durch das Box-Skript** (`edge-light/openwrt/service-tunnel.sh`) ist in `edge-light/test/wartung-anmeldung-probe.sh` belegt: OpenWrt 25.12 im Container holt mit `uclient-fetch` gegen diesen Dienst ab, hält die Anfrage offen und meldet sich mit dem abgeholten Schlüssel durch den Tunnel an. Dieselbe Probe belegt, dass der Dienst den Schlüssel danach als abgeholt meldet: Das echte Box-Skript nennt mit seiner nächsten Anfrage den Prüfwert.
+- **Fenster-Schlüssel auf der echten VM abgenommen** (10.10.2026, Kapitän, Labor-Mango mit OpenWrt 25.12.5 und dem Box-Skript aus `edge-light/openwrt/service-tunnel.sh`, echtes Portal): Die Box holt im offenen Fenster den Schlüssel ab, die Anmeldung gelingt; nach dem Schließen im Portal ist der Schlüssel von der Box gestrichen; nach einem Neustart der Box kommt er von selbst wieder; bei angehaltenem Dienst (`systemctl stop vp-tunnel-dienst`) läuft das Fenster im Kernel ab, und die Box streicht den Schlüssel zu ihrer Frist. Der Anmeldeprozess auf der Box endete genau 15 Minuten nach dem Ende des Fensters mit `Keepalive timeout`: So lange wartet Dropbear auf einer Verbindung, über die nichts mehr kommt ([die Fälle](../../docs/fernwartung.md#was-mit-einer-laufenden-anmeldung-geschieht)).
 - **Nicht belegt:**
-  - **auf der VM eine Liste mit einem Schlüssel:** Am 09.10. war kein Fenster offen, und kein Zugang im Portal trug einen SSH-Schlüssel. Ebenso dort nicht belegt: eine wartende Anfrage (`warte` größer 0), die Antworten 429 und 503 und die Ablehnung einer Techniker-Adresse (braucht ein Techniker-Gerät);
-  - **das Box-Skript an einer Mango gegen die VM;** es steht mit der Abnahme von Schritt 3 an;
+  - **die Rückmeldung auf der VM gegen die echte API:** Sie braucht das Ausrollen von Portal und Dienst. Belegt ist sie in den Unit-Tests, in der Integrationsprobe (echtes WireGuard, API-Attrappe) und auf der Seite der API gegen echtes Keycloak und TimescaleDB;
+  - auf der VM nicht eigens belegt: die Antworten 429 und 503 und die Ablehnung einer Techniker-Adresse (braucht ein Techniker-Gerät mit erweitertem `AllowedIPs`);
   - dass der Schalter auf der VM wirklich keine Datei öffnen kann: Dort ist es an seiner Startzeile und den leeren Capability-Mengen abgelesen, nicht mit einem eigenen Versuch. `test/dateisperre.sh` belegt die Sperre auf dem Kernel der VM (6.12.111+deb13-amd64), dort als root und ohne systemd;
   - ein Neustart der VM mit eingeschalteter Schlüsselausgabe;
   - der schnellere Abruf nach dem Start (fünfmal im Abstand von 5 s) auf der VM; geprüft ist die Regel im Unit-Test;
-  - die Schlüsselausgabe unter Last: viele Boxen mit offener Anfrage sind nicht gemessen;
-  - das Schließen eines Fensters im echten Portal und der Abriss einer laufenden Sitzung dabei. Im Gesamttest lief das Fenster ab; das Schließen ist mit der Attrappe belegt.
+  - die Schlüsselausgabe unter Last: viele Boxen mit offener Anfrage sind nicht gemessen.
