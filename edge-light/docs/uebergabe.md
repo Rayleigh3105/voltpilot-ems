@@ -2,6 +2,17 @@
 
 Diese Datei ist der Einstieg für die nächste Arbeitssitzung – für Menschen und für einen KI-Assistenten. Sie fasst zusammen, was seit dem 03.10.2026 entschieden, gebaut und gemessen wurde. Alles Weitere steht in den verlinkten Dokumenten.
 
+## Werkstatt-Regel (10.10.2026)
+
+**Keine Box verlässt die Werkstatt ohne Root-Passwort und ohne Anmeldeprobe über Portal und Tunnel.**
+
+1. **Root-Passwort setzen** (`passwd` an der Box). Das Original-Abbild hat keines; die SSH-Instanz im LAN lässt dann jeden ohne Schlüssel und ohne Passwort hinein.
+2. **Als dauerhaften Schlüssel nur den Notfall-Schlüssel eintragen** (Entscheid K2 a). Techniker-Schlüssel kommen nicht mehr auf die Box: Sie stehen im Portal am Zugang, und die Box holt sie im offenen Fenster.
+3. **Anmeldeprobe:** Tunnel einrichten, im Portal ein Fenster öffnen und sich über den Wartungstunnel anmelden, von einem Gerät ohne dauerhaften Schlüssel auf der Box. Im Portal steht am Fenster „Alles bereit“. Den Fingerabdruck des Host-Schlüssels zur Box-Referenz notieren.
+4. **Erst dann verpacken.** Scheitert die Probe, bleibt die Box in der Werkstatt; das Portal nennt am Fenster den Grund.
+
+Schritt für Schritt, mit dem, woran man jeden Punkt sieht: [mango.md, Bevor eine Box die Werkstatt verlässt](mango.md#bevor-eine-box-die-werkstatt-verlässt). Der Notfall-Schlüssel, sein Aufbewahrungsort und der Weg dorthin je Box: [mango.md, Dauerhafte Schlüssel](mango.md#dauerhafte-schlüssel-ein-notfall-schlüssel).
+
 ## Stand 07.10.2026: Edge Light ist auf `main`
 
 - **Edge Light ist nach `main` gemergt** (ein Merge-Commit, keine Umschreibung). Edge-Light-Arbeit entsteht ab jetzt auf `main`; `feature/edge-light` bleibt stehen, bis er gelöscht wird. Beide Box-Arten bestehen dauerhaft nebeneinander (Entscheid 07.10.2026).
@@ -45,13 +56,13 @@ Diese Datei ist der Einstieg für die nächste Arbeitssitzung – für Menschen 
 | Web-App im Tunnel | `http://10.10.1.25:8484` | nur freigegebene Techniker-Adressen, bisher `10.10.1.5` |
 | Vor Ort | WLAN `VoltPilot.de-zay5sdd`, `root@192.168.1.1` Port 22 | Host-Schlüssel prüfen (s. u.) |
 
-Eingetragene Schlüssel (05.10.2026, am Gerät gelesen): `voltpilot-mango@desktop` (Max' Laptop, `10.10.1.5`) und `claude@CodeServer voltpilot-edge` (CodeServer, `10.10.1.26`, WireGuard im Userspace über `wireproxy`). Einen Zugang entzieht man mit dem Peer in wireguard-ui und der Zeile in `/etc/dropbear/authorized_keys`.
+Eingetragene Schlüssel (05.10.2026, am Gerät gelesen): `voltpilot-mango@desktop` (Max' Laptop, `10.10.1.5`) und `claude@CodeServer voltpilot-edge` (CodeServer, `10.10.1.26`, WireGuard im Userspace über `wireproxy`). Einen Zugang entzieht man mit dem Peer in wireguard-ui und der Zeile in `/etc/dropbear/authorized_keys`. Zielzustand ist ein einziger dauerhafter Schlüssel, der Notfall-Schlüssel; für den Piloten folgt das mit dem Wechsel auf den Wartungsserver ([mango.md](mango.md#dauerhafte-schlüssel-ein-notfall-schlüssel)).
 
 Der Wechsel auf den Wartungsserver aus dem Portal ist beschrieben, aber noch nicht ausgeführt: [mango.md, Wechsel des Piloten](mango.md#wechsel-des-piloten-auf-den-wartungsserver-beaufsichtigt-noch-nicht-ausgeführt).
 
 Ohne Freigabe in der Liste erreicht ein Rechner mit SSH-Zugang die Web-App über einen SSH-Tunnel: `ssh -p 2222 -L 8484:127.0.0.1:8484 root@10.10.1.25`, dann `http://localhost:8484`.
 
-**Ein weiterer Rechner** braucht drei Dinge:
+**Ein weiterer Rechner** braucht im alten Service-VPN drei Dinge. Am Wartungsserver aus dem Portal entfällt das: Dort genügen ein Techniker-Zugang mit SSH-Schlüssel und ein offenes Fenster ([Fernwartung](../../docs/fernwartung.md)).
 1. Einen eigenen Peer in wireguard-ui.
 2. Seinen öffentlichen RSA-Schlüssel in `/etc/dropbear/authorized_keys` des Mango, eingetragen von einem Rechner, der schon Zugang hat, oder vor Ort.
 3. Seine VPN-Adresse für die Web-App: `edge-light/openwrt/service-tunnel.sh root@10.10.1.25 web 10.10.1.5 <neue-ip>` (die Liste wird ersetzt; das Skript nutzt SSH, also mit `-p 2222` über einen Wrapper oder vor Ort mit `root@192.168.1.1`).
@@ -113,8 +124,9 @@ RAM 120 MB / ca. 65 MB verfügbar · `/tmp` 60 MB · Flash frei 9,4 MB (JFFS2) �
 
 ```sh
 passwd                                  # root-Passwort setzen
-# besser: SSH-Schlüssel nach /etc/dropbear/authorized_keys und Passwort-Login abschalten
 ```
+
+Das ist Schritt 1 der [Werkstatt-Regel](#werkstatt-regel-10102026). Als dauerhafter Schlüssel gehört nur der Notfall-Schlüssel nach `/etc/dropbear/authorized_keys`; Techniker melden sich über ein Fenster aus dem Portal an.
 
 ### 2. Labortest auf dem Mango (ca. 5 Minuten, kein Portal-Kontakt)
 
@@ -135,7 +147,7 @@ edge-light/test/mango-labtest.sh stop <mango-ip>
 
 ### 3. Pilot mit Loader und Portal
 
-1. Root-Passwort setzen und einen **RSA**-Schlüssel hinterlegen (Dropbear kennt kein Ed25519).
+1. Root-Passwort setzen und den Notfall-Schlüssel hinterlegen, einen **RSA**-Schlüssel (Dropbear kennt kein Ed25519): [Werkstatt-Regel](#werkstatt-regel-10102026).
 2. `edge-light/scripts/build.sh mipsle`, dann `edge-light/openwrt/install.sh root@<mango-ip>` – legt die gepackte Kopie in den Flash; ein Download-Server ist nicht nötig (optional als zweites Argument `<base_url>`).
 3. `/etc/init.d/vp-edge-light restart`, `logread -f -e vp-edge-light`. Am Mango geprüft: Start, Absturz, Neustart, kein Schreiben in den Flash ([mango.md](mango.md#lokale-kopie-im-flash-gebaut-am-gerät-geprüft-03102026)).
 4. Auf `:8484` den Deye einrichten, die Box im Portal koppeln.

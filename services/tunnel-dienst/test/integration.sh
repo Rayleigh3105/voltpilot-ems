@@ -220,10 +220,22 @@ schritt "4. Fenster schließt im Kernel, auch wenn API und Dienst ausfallen"
 soll "$(fenster f2 b1 12)"
 einmal
 erreicht tech 10.10.16.2 2222 box1 "Fenster offen"
+# Eine Sitzung, die im Fenster begonnen hat. Der Dienst läuft hier nicht (nur
+# einzelne Läufe): was nach dem Ablauf mit ihr geschieht, entscheidet allein der Kernel.
+docker exec -d "$P-tech" sh -c 'socat -u TCP:10.10.16.2:8484 STDOUT > /tmp/strom4 2>&1'
+sleep 3
+a="$(x tech sh -c 'wc -l < /tmp/strom4')"
+[ "$a" -gt 0 ] && ok "Dauerstrom im Fenster läuft ($a Zeilen)" || falsch "Dauerstrom im Fenster läuft"
 api_aus
-sleep 14
+sleep 2
+b="$(x tech sh -c 'wc -l < /tmp/strom4')"
+[ "$b" -gt "$a" ] && ok "ohne Dienst und API läuft die Sitzung weiter, solange das Fenster im Kernel steht ($a -> $b Zeilen)" || falsch "ohne Dienst und API läuft die Sitzung bis zum Ablauf weiter ($a -> $b)"
+sleep 10
 gesperrt tech 10.10.16.2 2222 "nach Ablauf ohne Dienst und API verworfen"
 [ "$(elemente)" = 0 ] && ok "Menge leer" || falsch "Menge leer"
+a="$(x tech sh -c 'wc -l < /tmp/strom4')"; sleep 4; b="$(x tech sh -c 'wc -l < /tmp/strom4')"
+[ "$a" = "$b" ] && ok "bestehende Sitzung mit dem Ablauf abgerissen, ohne Dienst und API ($a = $b Zeilen)" || falsch "bestehende Sitzung mit dem Ablauf abgerissen ($a -> $b)"
+x tech sh -c 'pkill -f "socat -u TC[P]"; true'
 
 schritt "5. API unerreichbar: letzter Stand bleibt, nichts Neues geht auf"
 soll "$(fenster f3 b2 300)"

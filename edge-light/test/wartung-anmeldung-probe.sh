@@ -506,17 +506,39 @@ x werkstatt sh -c 'ssh-keygen -q -t rsa -b 2048 -N "" -C dauerhaft2 -f /tmp/daue
 soll "$SSH_T1" "$(fenster f5 "$ID_T1" 75)"
 warte 15 box_hat "$ID_T1" || falsch "Fenster offen, Schluessel auf der Box"
 T0="$(ms)"
+# Eine Anmeldung, die im Fenster begonnen hat (Abnahme an der Labor-Mango,
+# 10.10.2026): was wird aus ihr, wenn der Dienst steht und das Fenster endet?
+docker exec -d "$P-tech1" sh -c "ssh $SSH_OPT -i /root/.ssh/id_rsa -p 2222 root@10.10.16.2 'while :; do echo zeile5; sleep 1; done' > /tmp/sitzung5 2>&1"
+sitzung5() { x tech1 sh -c 'wc -l < /tmp/sitzung5'; }
+sitzung5_waechst() { s5_a="$(sitzung5)"; sleep 2; [ "$(sitzung5)" -gt "$s5_a" ]; }
 abholer_anhalten && ok "Abholer angehalten (SIGSTOP)" || falsch "Abholer angehalten"
 dienst_aus
 lauscht_server && falsch "Schluesselausgabe beendet" || ok "Schluesselausgabe beendet"
 sleep 28
 box_hat "$ID_T1" && ok "nach $(sek $(($(ms) - T0))) s: Schluessel noch da" || falsch "nach 30 s: Schluessel noch da"
 erwarte tech1 /root/.ssh/id_rsa ANGEMELDET "… und die Anmeldung gelingt (das Fenster steht noch im Kernel)"
+sitzung5_waechst && ok "Dienst angehalten, Fenster noch im Kernel: die laufende Sitzung von tech1 laeuft weiter ($(sitzung5) Zeilen)" || falsch "laufende Sitzung laeuft bis zum Ende des Fensters weiter"
 warte 140 box_hat_nicht "$ID_T1" && ok "nach $(sek $(($(ms) - T0))) s: Schluessel weg (Frist rund 70 s, der cron-Lauf kommt jede volle Minute)" || falsch "Schluessel verfaellt ohne Server und ohne Abholer"
 [ $(($(ms) - T0)) -ge 60000 ] && ok "… nicht vor der Frist" || falsch "… nicht vor der Frist"
 bx "grep -q ' dauerhaft2\$' $KEYS" && ok "der neu eingetragene dauerhafte Schluessel steht in der Schluesseldatei (vom cron-Lauf uebernommen)" || falsch "neuer dauerhafter Schluessel uebernommen"
+# Der Weg durch den Server endet mit dem Fenster, auch ohne Dienst: der Kernel
+# laesst das Element ablaufen und verwirft danach jedes Paket der Sitzung.
+warte 15 nicht_im_kernel 10.10.32.3 && ok "das Fenster ist im Kernel des Servers abgelaufen (ohne Dienst)" || falsch "Fenster im Kernel abgelaufen"
+A="$(sitzung5)"; sleep 5; B="$(sitzung5)"
+[ "$A" = "$B" ] && ok "laufende Sitzung mit dem Ende des Fensters abgerissen, Dienst angehalten ($A = $B Zeilen)" || falsch "laufende Sitzung mit dem Ende des Fensters abgerissen ($A -> $B Zeilen)"
+bx 'pgrep -f "echo zeile[5]" >/dev/null' && ok "… der Anmeldeprozess auf der Box steht noch: er endet erst mit dem Lebenszeichen von Dropbear (-K 300, nach 15 min)" || falsch "der Anmeldeprozess auf der Box steht nach dem Abriss noch"
 luecke_auf 2>/dev/null || true
 erwarte tech1 /root/.ssh/id_rsa ABGEWIESEN "Gegenprobe (Luecke): tech1 meldet sich an"
+# Befund, keine Zusicherung: Die Box streicht den Schluessel, beendet aber keine
+# Sitzung. Faellt nach dem Ende des Fensters auch die Firewall des Servers aus,
+# kommt die stehende Sitzung wieder durch (TCP wiederholt in wachsendem Abstand).
+if warte 75 sitzung5_waechst; then
+  hinweis "BEFUND in der Luecke der Server-Firewall: die vor dem Ende des Fensters begonnene Sitzung laeuft WIEDER ($B -> $(sitzung5) Zeilen), obwohl der Fenster-Schluessel gestrichen ist"
+else
+  hinweis "in der Luecke der Server-Firewall bleibt die alte Sitzung stehen ($B = $(sitzung5) Zeilen in 75 s)"
+fi
+x tech1 sh -c 'pkill -f "zeile[5]"; true'
+bx 'for p in $(pgrep -f "echo zeile[5]"); do kill "$p" 2>/dev/null; done; true'
 abholer_weiter
 bx "sed -i '/ dauerhaft2\$/d' /etc/dropbear/authorized_keys"
 soll "$SSH_T1" ""

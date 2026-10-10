@@ -26,7 +26,7 @@ Die Tabelle regelt nur Verkehr, der `wg-wartung` berührt, und verwirft davon al
 
 | Weg | Regel |
 |---|---|
-| Techniker → Box | nur wenn das Paar in `fenster` steht; TCP `VP_TUNNEL_PORTS` (2222, 8484) und Ping. Geprüft wird **jedes** Paket: läuft ein Fenster ab oder wird es geschlossen, reißt auch eine laufende Sitzung ab |
+| Techniker → Box | nur wenn das Paar in `fenster` steht; TCP `VP_TUNNEL_PORTS` (2222, 8484) und Ping. Geprüft wird **jedes** Paket: läuft ein Fenster ab oder wird es geschlossen, reißt auch eine laufende Sitzung ab ([die Fälle](../../docs/fernwartung.md#was-mit-einer-laufenden-anmeldung-geschieht)) |
 | Box → Techniker | nur Antworten auf erlaubte Verbindungen, ebenfalls nur bei offenem Fenster |
 | Box ↔ Box, Techniker ↔ Techniker | verworfen |
 | Tunnel → Internet, altes VPN, andere Netze der VM | verworfen |
@@ -52,7 +52,7 @@ Die Grundregel: im Zweifel nichts öffnen.
 | Neustart der VM, Netz noch ohne Adresse | Unter Debian 13 mit dhcpcd ist `network-online.target` erreicht, bevor DHCP geantwortet hat; der erste Abruf scheitert dann (`lookup … connection refused`). Solange seit dem Start kein Abruf gelungen ist, wiederholt der Dienst ihn bis zu fünfmal im Abstand von 5 s statt erst nach einem ganzen Intervall. Die Fehlläufe zählen mit; fehlt die API beim Start länger, kommt der `ALARM` entsprechend früher |
 | ein Fenster läuft im Kernel ab | der Kernel schließt es, nicht der Dienst. Der nächste Lauf schreibt `INFO msg="Fenster abgelaufen" techniker=… box=… kennung=… ablauf=…`, auch wenn die API gerade fehlt. `Fenster geschlossen` steht nur da, wo der Dienst es wegen des Soll-Stands entfernt hat |
 | ein Fenster fehlt in der Menge, obwohl es weder abgelaufen ist noch vom Dienst geschlossen wurde (von Hand entfernt) | `WARN msg="Fenster fehlt vor seiner Ablaufzeit …"`; verlangt der Soll-Stand es weiter, öffnet derselbe Lauf es wieder |
-| Dienst wird beendet | nichts wird abgebaut; Fenster laufen von selbst ab. Die Schlüsselausgabe endet mit ihm: Keine Box bekommt eine Antwort, und was sie hat, verfällt bei ihr zur Frist |
+| Dienst wird beendet | nichts wird abgebaut; Fenster laufen von selbst ab, und eine laufende Sitzung bleibt bis zum geplanten Ende ihres Fensters benutzbar. **Ein Schließen im Portal wirkt nicht, solange der Dienst steht.** Die Schlüsselausgabe endet mit ihm: Keine Box bekommt eine Antwort, und was sie hat, verfällt bei ihr zur Frist |
 | Dienst neu gestartet, API noch nicht erreicht | die Schlüsselausgabe antwortet mit 503, auch wenn noch Fenster im Kernel stehen: Ohne frischen Soll-Stand gibt es keine Liste, auch keine leere |
 | der Prozess der Schlüsselausgabe endet oder startet nicht | `ERROR msg="Schlüsselausgabe: Schalter beendet, neuer Start folgt"`, neuer Start nach 5 s, bei wiederholtem Scheitern in wachsendem Abstand bis 5 min. Peers und Fenster gleicht der Dienst unverändert weiter ab |
 | die Rückmeldung ans Portal scheitert (API antwortet nicht, antwortet mit einem Fehler oder weist die Meldung ab) | Peers, Fenster und Schlüsselausgabe laufen unverändert weiter. Einmal `WARN msg="Rückmeldung ans Portal gescheitert; …"`, der nächste Versuch in wachsendem Abstand bis 10 min. Im Portal steht nach 3 min „Meldung des Tunnel-Dienstes veraltet“ |
@@ -377,7 +377,7 @@ Unter Debian beginnt `/etc/nftables.conf` mit `flush ruleset`, und `nftables.ser
 
 Deshalb: `nftables` auf dieser VM nicht stoppen, solange `wg-wartung` oben ist. Änderungen an der eigenen Firewall der VM einzeln laden (`nft -f /etc/nftables.d/vm-firewall.nft`), nie über `systemctl reload nftables`. Eine eigene Firewall mit `policy drop` in der Weiterleitung ist die zweite Schranke gegen Fehler in der Tabelle des Dienstes ([Muster](#eigene-firewall-der-vm)); gegen `flush ruleset` hilft auch sie nicht, weil der Befehl beide entfernt.
 
-**Auch eine Aktualisierung des Pakets `nftables` lädt neu.** Sein Installationsskript führt `try-restart nftables.service` aus (`/var/lib/dpkg/info/nftables.postinst`): alle offenen Fenster sind zu, bis der Dienst sie beim nächsten Abruf wieder öffnet, und für einen Augenblick ist keine Regel geladen. Mit automatischen Sicherheitsupdates (`unattended-upgrades`) kann das unbeaufsichtigt geschehen. Wer das nicht will, nimmt das Paket davon aus und spielt es von Hand ein, in `/etc/apt/apt.conf.d/`: `Unattended-Upgrade::Package-Blacklist { "nftables"; };`. Ob die Wartungs-VM das so hält, ist nicht entschieden.
+**Auch eine Aktualisierung des Pakets `nftables` lädt neu.** Sein Installationsskript führt `try-restart nftables.service` aus (`/var/lib/dpkg/info/nftables.postinst`): alle offenen Fenster sind zu, bis der Dienst sie beim nächsten Abruf wieder öffnet, und für einen Augenblick ist keine Regel geladen. Mit automatischen Sicherheitsupdates (`unattended-upgrades`) kann das unbeaufsichtigt geschehen. Wer das nicht will, nimmt das Paket davon aus und spielt es von Hand ein, in `/etc/apt/apt.conf.d/`: `Unattended-Upgrade::Package-Blacklist { "nftables"; };`. Auf der Wartungs-VM ist das seit dem 09.10.2026 so eingerichtet ([Entscheide zum Betrieb](../../docs/fernwartung.md#entscheide-zum-betrieb-09102026)).
 
 ## Prüfen
 
@@ -439,7 +439,7 @@ diff /tmp/basis.soll.txt /tmp/basis.ist.txt && echo identisch
   - im Fenster nur die Dienste-Ports;
   - Box ↔ Box und Box → Techniker verworfen;
   - Schließen reißt eine laufende Sitzung ab;
-  - Ablauf ohne Dienst und API;
+  - Ablauf ohne Dienst und API: Eine laufende Sitzung läuft bis zum Ablauf weiter und reißt mit ihm ab;
   - keine Öffnung bei ausgefallener API;
   - Wiederanlauf ohne Fenster;
   - Lauf als Nicht-root nur mit `CAP_NET_ADMIN`;
@@ -475,11 +475,11 @@ diff /tmp/basis.soll.txt /tmp/basis.ist.txt && echo identisch
   - die Labor-Mango (OpenWrt 25.12.5) bekommt mit `uclient-fetch` ohne offenes Fenster die leere, gültige Liste; vor dem Einspielen endete derselbe Abruf nach 5 s mit `Failed to send request: Operation not permitted`, Rückgabewert 4;
   - andere Ports vom Tunnel zur VM bleiben verworfen (22 und 8023, Zähler der `drop`-Regel).
 - **Das Abholen durch das Box-Skript** (`edge-light/openwrt/service-tunnel.sh`) ist in `edge-light/test/wartung-anmeldung-probe.sh` belegt: OpenWrt 25.12 im Container holt mit `uclient-fetch` gegen diesen Dienst ab, hält die Anfrage offen und meldet sich mit dem abgeholten Schlüssel durch den Tunnel an. Dieselbe Probe belegt, dass der Dienst den Schlüssel danach als abgeholt meldet: Das echte Box-Skript nennt mit seiner nächsten Anfrage den Prüfwert.
+- **Fenster-Schlüssel auf der echten VM abgenommen** (10.10.2026, Kapitän, Labor-Mango mit OpenWrt 25.12.5 und dem Box-Skript aus `edge-light/openwrt/service-tunnel.sh`, echtes Portal): Die Box holt im offenen Fenster den Schlüssel ab, die Anmeldung gelingt; nach dem Schließen im Portal ist der Schlüssel von der Box gestrichen; nach einem Neustart der Box kommt er von selbst wieder; bei angehaltenem Dienst (`systemctl stop vp-tunnel-dienst`) läuft das Fenster im Kernel ab, und die Box streicht den Schlüssel zu ihrer Frist. Der Anmeldeprozess auf der Box endete genau 15 Minuten nach dem Ende des Fensters mit `Keepalive timeout`: So lange wartet Dropbear auf einer Verbindung, über die nichts mehr kommt ([die Fälle](../../docs/fernwartung.md#was-mit-einer-laufenden-anmeldung-geschieht)).
 - **Nicht belegt:**
-  - **auf der VM eine Liste mit einem Schlüssel:** Am 09.10. war kein Fenster offen, und kein Zugang im Portal trug einen SSH-Schlüssel. Ebenso dort nicht belegt: eine wartende Anfrage (`warte` größer 0), die Antworten 429 und 503 und die Ablehnung einer Techniker-Adresse (braucht ein Techniker-Gerät);
-  - **das Box-Skript an einer Mango gegen die VM;** es steht mit der Abnahme von Schritt 3 an;
+  - **die Rückmeldung auf der VM gegen die echte API:** Sie braucht das Ausrollen von Portal und Dienst. Belegt ist sie in den Unit-Tests, in der Integrationsprobe (echtes WireGuard, API-Attrappe) und auf der Seite der API gegen echtes Keycloak und TimescaleDB;
+  - auf der VM nicht eigens belegt: die Antworten 429 und 503 und die Ablehnung einer Techniker-Adresse (braucht ein Techniker-Gerät mit erweitertem `AllowedIPs`);
   - dass der Schalter auf der VM wirklich keine Datei öffnen kann: Dort ist es an seiner Startzeile und den leeren Capability-Mengen abgelesen, nicht mit einem eigenen Versuch. `test/dateisperre.sh` belegt die Sperre auf dem Kernel der VM (6.12.111+deb13-amd64), dort als root und ohne systemd;
   - ein Neustart der VM mit eingeschalteter Schlüsselausgabe;
   - der schnellere Abruf nach dem Start (fünfmal im Abstand von 5 s) auf der VM; geprüft ist die Regel im Unit-Test;
-  - die Schlüsselausgabe unter Last: viele Boxen mit offener Anfrage sind nicht gemessen;
-  - das Schließen eines Fensters im echten Portal und der Abriss einer laufenden Sitzung dabei. Im Gesamttest lief das Fenster ab; das Schließen ist mit der Attrappe belegt.
+  - die Schlüsselausgabe unter Last: viele Boxen mit offener Anfrage sind nicht gemessen.
