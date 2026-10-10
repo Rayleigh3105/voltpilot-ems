@@ -1,0 +1,42 @@
+-- =============================================================================
+-- V20261010100000 - device_curtailment_unit: WIE eine Einheit abregelt.
+-- ADDITIVE (two nullable columns on an existing table; no backfill).
+-- -----------------------------------------------------------------------------
+-- Bis hierher kannte die Einheiten-Liste genau EINEN Hebel: die Kappe auf der
+-- Einheit selbst (applied_cap_kw, Fronius WMaxLimPct). Seit dem netzseitigen
+-- Drossel-Slot (Konzept vp-deye-netzseitig-drossel-k2, Paket P3) meldet die
+-- Box den PRIMAEREN Hybrid-Wechselrichter als weitere Einheit - und der
+-- deckelt nicht seine Leistung, er regelt den NETZANSCHLUSS auf ein Ziel und
+-- drosselt dafuer seine eigene PV. Ohne diese zwei Spalten fiele genau das an
+-- der api weg, und das Portal muesste den Deye wie eine gedeckelte Einheit
+-- lesen ("nimmt Begrenzungen an - gerade keine aktiv").
+--
+--   mode       NULL = die bisherige Kappe auf der Einheit (jede Zeile vor
+--              dieser Migration, jede Fronius-Einheit danach).
+--              'grid_target' = die Einheit regelt den Netzanschluss. Das Wort
+--              steht DAUERHAFT an der Einheit (wie sie abregelt), nicht nur,
+--              waehrend sie es tut. Geschlossenes Vokabular: der Listener
+--              verwirft ein unbekanntes Wort (dann NULL), nie die Zeile.
+--   target_kw  nur bei 'grid_target': das Ziel am Netzanschluss im Vorzeichen
+--              des Netzpunkts (+ Bezug / - Einspeisung, 0 = keine Einspeisung).
+--              NULL = gerade kein Ziel aktiv - nie eine erfundene 0.
+--
+-- `match` bekommt KEINE neue Spalte, aber bei 'grid_target' eine genauere
+-- Bedeutung: es urteilt dort ueber die MESSUNG (der Netzpunkt liegt im Band um
+-- das Ziel), nicht ueber ein gehaltenes Register - "Register gehalten" beweist
+-- im Netzmodus nichts ueber die Wirkung. NULL bleibt "nicht geurteilt".
+--
+-- Kein CHECK auf `mode`: die Strenge sitzt im Listener (wie bei
+-- device_control_status.execution_mode), und ein weiteres Wort soll keine
+-- Migration brauchen, die mit der Ankunftsreihenfolge kaempft.
+--
+-- Rechte/RLS: unveraendert. Der GRANT aus V20260833000000 ist tabellenweit und
+-- deckt neue Spalten; die Policy haengt an tenant_id.
+--
+-- Reihenfolge-unabhaengig (out-of-order): beide Anweisungen sind idempotent und
+-- setzen nur die Tabelle voraus, die V20260833000000 auf jedem Stand angelegt
+-- hat.
+-- =============================================================================
+
+ALTER TABLE device_curtailment_unit ADD COLUMN IF NOT EXISTS mode TEXT;
+ALTER TABLE device_curtailment_unit ADD COLUMN IF NOT EXISTS target_kw DOUBLE PRECISION;

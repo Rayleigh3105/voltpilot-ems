@@ -255,6 +255,7 @@ export const EXECUTION_MODE_LABEL: Record<ExecutionMode, string> = {
   autonomous_discharge: 'Wechselrichter-Automatik',
   autonomous_charge: 'Wechselrichter-Automatik · Überschuss laden',
   autonomous_selfconsumption: 'Wechselrichter-Automatik · Eigenverbrauch',
+  grid_target: 'Wechselrichter regelt den Netzanschluss',
 };
 
 /**
@@ -265,8 +266,11 @@ export const EXECUTION_MODE_LABEL: Record<ExecutionMode, string> = {
  * kein „pausiert".
  */
 export function isWrAutomatik(mode: ExecutionMode | string | null | undefined): boolean {
+  // Der netzseitige Drossel-Slot gehört dazu: dort regelt der Wechselrichter
+  // den Netzanschluss und führt den Speicher selbst - auch er ohne Sollwert
+  // der Box.
   return mode === 'autonomous_discharge' || mode === 'autonomous_charge' ||
-    mode === 'autonomous_selfconsumption';
+    mode === 'autonomous_selfconsumption' || mode === 'grid_target';
 }
 
 /** Der gesunde Satz der Wechselrichter-Automatik - ohne erfundene kW-Zahl. */
@@ -336,6 +340,16 @@ export function executionNote(status: ControlStatus | null): string | null {
   // „unerwartet": die Deckung aus dem Speicher ist der Plan.
   if (mode === 'autonomous_discharge') {
     return 'Ihr Wechselrichter deckt Ihren Verbrauch gerade selbst aus dem Speicher.';
+  }
+  // Netzseitiger Drossel-Slot: der Wechselrichter regelt den Netzanschluss.
+  // Keine Zahl - das Ziel und seine Messung trägt der Abregel-Beleg
+  // (`curtailment.curtailExecutionNote`), nicht dieser Satz; zwei Stellen mit
+  // derselben Zahl wären zwei Wahrheiten.
+  if (mode === 'grid_target') {
+    return (
+      'Ihr Wechselrichter regelt gerade selbst den Netzanschluss: Solar-Überschuss geht ' +
+      'zuerst in den Speicher, erst danach wird die Solarleistung gedrosselt.'
+    );
   }
   if (mode === 'idle_follow') {
     return `${plannedPart}Unerwarteter Verbrauch wird live mit der 10-Sekunden-Nachführung${measured} gedeckt.`;

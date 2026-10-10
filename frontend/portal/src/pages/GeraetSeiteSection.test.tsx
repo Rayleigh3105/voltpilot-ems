@@ -1097,6 +1097,56 @@ describe('GeraetSeiteSection', () => {
     expect(setzen).not.toHaveBeenCalled();
   });
 
+  /**
+   * Der netzseitige Regler (Konzept `vp-deye-netzseitig-drossel-k2` P4): am
+   * Gerät, das den Netzanschluss regelt, stehen ZIEL und MESSUNG im selben
+   * Baustein wie sein Schalter - die Messung ist die, die es selbst liefert.
+   */
+  const hybridGesteuert = () => {
+    vi.spyOn(api, 'controlStatus').mockResolvedValue({
+      deviceId: 'gw', commandedKw: null, confirmedKw: null, allMatch: true,
+      controlEnabled: true, certified: true, mismatchRoles: null, slotStart: null,
+      checkedAt: FRISCH, executionMode: 'grid_target',
+    } as never);
+    vi.spyOn(api, 'curtailmentStatus').mockResolvedValue({
+      deviceId: 'gw', checkedAt: FRISCH, units: 3, certifiedUnits: 3, controlEnabled: true,
+      active: true, allMatch: true, possibleOverride: false, appliedCapKw: null,
+      perUnit: [{
+        sourceId: 'inverter', certified: true, appliedCapKw: null, match: false,
+        mode: 'grid_target', targetKw: 0,
+      }],
+    } as never);
+  };
+
+  it('zeigt am Netzregler Ziel und eigene Messung im Steuerungs-Baustein', async () => {
+    stub({ commands: commands({ deviceIsBox: false, deviceRef: 'inverter' }) });
+    hybridGesteuert();
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
+
+    const karte = await screen.findByTestId('baustein-steuerung');
+    await within(karte).findByText('Am Netzanschluss');
+    expect(karte).toHaveTextContent(
+      /Regelt den Netzanschluss gerade auf 0,0\skW Einspeisung · die Messung folgt dem Ziel nicht \(Messung 30,0\skW Einspeisung\)\./,
+    );
+    // Der Schalter bleibt, und das Wort des Herzschlags erreicht keinen Kunden.
+    expect(within(karte).getByTestId('geraet-steuerung')).toBeInTheDocument();
+    expect(karte).not.toHaveTextContent(/grid_target/);
+  });
+
+  it('⚠ eine VERALTETE eigene Messung steht nie neben „gerade"', async () => {
+    stub({
+      commands: commands({ deviceIsBox: false, deviceRef: 'inverter' }),
+      sources: sources.map((q) => (q.sourceId === 'inverter' ? { ...q, health: 'stale' } : q)),
+    });
+    hybridGesteuert();
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="inverter" devices={[box]} />);
+
+    const karte = await screen.findByTestId('baustein-steuerung');
+    await within(karte).findByText('Am Netzanschluss');
+    expect(karte).toHaveTextContent(/Regelt den Netzanschluss gerade auf 0,0\skW Einspeisung/);
+    expect(karte).not.toHaveTextContent(/\(Messung/);
+  });
+
   it('bietet an einem PV-Melder nur den Register-Weg', async () => {
     stub({ commands: commands({ deviceIsBox: false, deviceRef: 'src-7c1e9a2b' }) });
     render(

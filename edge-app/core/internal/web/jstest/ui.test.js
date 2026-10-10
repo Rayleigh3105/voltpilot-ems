@@ -532,6 +532,77 @@ function nativeFor(state) {
   return load(["control.js"]).VPControl.deriveNative(state);
 }
 
+// --- „Netzseitiger Drossel-Slot" (Konzept vp-deye-netzseitig-drossel-k2, P3) --
+//
+// In a curtailing slot the inverter regulates the GRID POINT itself. The card
+// must keep „angefordert" and „hält" apart (a requested mode is not an adopted
+// one), show the measured grid point (registers that hold prove nothing about
+// the effect), never mix up Bezug and Einspeisung, and name a take-back with
+// the core's own sentence.
+test("control: a CONFIRMED grid-side slot names target, measurement and the hand-over", () => {
+  const C = load(["control.js"]).VPControl;
+  const d = C.deriveGridTarget({
+    grid_target: {
+      active: true, proven: true, target_kw: 0, reference_kw: 5, following: true, grid_kw: -0.2,
+      reason: "netzseitig_geregelt", text: "Der Wechselrichter regelt den Netzanschluss gerade selbst.",
+    },
+  });
+  assert.ok(d);
+  assert.match(d.text, /Netzseitige Regelung \(h\u00e4lt\)/, d.text);
+  assert.match(d.text, /auf 0,0 kW Einspeisung/, "the target with its direction as a word: " + d.text);
+  assert.match(d.text, /keinen Speicher-Sollwert/, d.text);
+  assert.match(d.text, /Vergleichswert f\u00fcr den Speicher: 5,0 kW/, d.text);
+  assert.match(d.text, /Gemessen am Netzanschluss: 0,2 kW Einspeisung\./, d.text);
+  assert.match(d.text, /regelt den Netzanschluss gerade selbst/, "the core's sentence rides along");
+  assert.match(d.text, /kein Fehler des Wechselrichters\.$/, d.text);
+});
+
+test("control: a grid-side slot off its target says so, and Bezug is never called Einspeisung", () => {
+  const C = load(["control.js"]).VPControl;
+  const d = C.deriveGridTarget({
+    grid_target: {
+      active: true, proven: true, target_kw: 0, reference_kw: 0, following: false, grid_kw: 3.2,
+      reason: "netzseitig_geregelt", text: "",
+      hint: "eigener_anteil_ausgeschoepft", hint_text: "Die verbleibende Einspeisung stammt von den anderen Erzeugern.",
+    },
+  });
+  assert.match(d.text, /Gemessen am Netzanschluss: 3,2 kW Bezug \u2013 das Ziel ist noch nicht erreicht\./, d.text);
+  assert.match(d.text, /stammt von den anderen Erzeugern/, "the hint is shown: " + d.text);
+});
+
+test("control: an UNCONFIRMED grid-side slot never claims the device regulates", () => {
+  const C = load(["control.js"]).VPControl;
+  const d = C.deriveGridTarget({
+    grid_target: {
+      active: true, proven: false, target_kw: 0, reference_kw: 5, reason: "nachweis_ausstehend",
+      text: "Der Wechselrichter soll den Netzanschluss selbst regeln - die R\u00fcckmeldung des Ger\u00e4ts steht noch aus.",
+    },
+  });
+  assert.ok(d);
+  assert.ok(!/h\u00e4lt/.test(d.text), "a pending mode must not claim it holds: " + d.text);
+  assert.match(d.text, /angefordert \(Ziel 0,0 kW Einspeisung\)/, d.text);
+  assert.ok(!/Gemessen am Netzanschluss/.test(d.text), "no effect is stated before the proof: " + d.text);
+  assert.strictEqual(C.deriveGridTarget({}), null);
+  assert.strictEqual(C.deriveGridTarget({ grid_target: { active: false } }), null);
+  assert.strictEqual(C.deriveGridTarget(null), null);
+});
+
+test("control: a TAKE-BACK of the grid-side slot is named with the core's sentence, a mere refusal is not", () => {
+  const C = load(["control.js"]).VPControl;
+  const d = C.deriveGridTargetEnded({
+    grid_target_withheld: {
+      reason: "reserve_boden", ended: true,
+      text: "Der Ladestand hat die Reserve erreicht - VoltPilot \u00fcbernimmt den Speicher wieder.",
+    },
+  });
+  assert.match(d.text, /^Netzseitige Regelung in dieser Viertelstunde beendet: Der Ladestand hat die Reserve erreicht/, d.text);
+  // A slot that simply does not qualify (the plan discharges) is not a take-back.
+  assert.strictEqual(C.deriveGridTargetEnded({
+    grid_target_withheld: { reason: "plan_entlaedt", text: "Der Fahrplan entl\u00e4dt den Speicher." },
+  }), null);
+  assert.strictEqual(C.deriveGridTargetEnded({}), null);
+});
+
 test("control: a CONFIRMED native mode reads 'Wechselrichter-Automatik (hält)'", () => {
   const d = nativeFor({
     native: {
@@ -1060,6 +1131,65 @@ test("groups: legacy deep-link anchors map into their owning group", () => {
   assert.strictEqual(G.groupForAnchor("datenfreigabe"), "datenfreigabe");
   assert.strictEqual(G.groupForAnchor("messwerte"), "erweitert");
   assert.strictEqual(G.groupForAnchor("portal"), null, "the pairing block is not inside the accordion");
+});
+
+/* ====== control.js: netzseitiger Drossel-Slot - Regelseite und Netz-Sollwert ====== */
+
+test("control: the control-side register names its side, not a bare number", () => {
+  const C = load(["control.js"]).VPControl;
+  const side = (raw) => C.fmtCell({ role: "power_control_mode", commanded_raw: raw, actual_raw: raw }, "commanded_kw");
+  assert.strictEqual(side(2), "netzseitig (2)");
+  assert.strictEqual(side(1), "batterieseitig (1)");
+  assert.strictEqual(side(0), "AC-seitig (0)");
+  assert.strictEqual(C.ROLE_LABEL.power_control_mode, "Regelseite");
+  assert.strictEqual(C.ROLE_LABEL.grid_power, "Netz-Sollwert");
+  // The readback column speaks the same words - a deviation must be legible.
+  assert.strictEqual(
+    C.fmtCell({ role: "power_control_mode", commanded_raw: 2, actual_raw: 1 }, "actual_kw"),
+    "batterieseitig (1)");
+});
+
+test("control: an unknown or unanswered enum value is never given a guessed word", () => {
+  const C = load(["control.js"]).VPControl;
+  assert.strictEqual(
+    C.fmtCell({ role: "power_control_mode", commanded_raw: 65535, actual_raw: 65535 }, "commanded_kw"),
+    "65535", "the 0xFFFF incident value stays a number");
+  assert.strictEqual(
+    C.fmtCell({ role: "power_control_mode", commanded_raw: 2, actual_raw: null }, "actual_kw"),
+    "–", "no answer is not a side");
+  // A flag register without words is untouched; a power register keeps its kW.
+  assert.strictEqual(C.fmtCell({ role: "remote_mode", commanded_raw: 1 }, "commanded_kw"), "1");
+  assert.strictEqual(
+    C.fmtCell({ role: "grid_power", commanded_kw: 0, commanded_raw: 0 }, "commanded_kw"),
+    "0,0 kW (0)");
+});
+
+test("control: in a grid-side slot the now tile shows the Netz-Sollwert under its name", () => {
+  const C = load(["control.js"]).VPControl;
+  const grid = { registers: [
+    { role: "remote_mode", commanded_raw: 1 },
+    { role: "power_control_mode", commanded_raw: 2 },
+    { role: "grid_power", commanded_kw: -30, commanded_raw: 64536 },
+  ] };
+  const g = C.nowSetpoint(grid, false);
+  assert.strictEqual(g.label, "Netz-Sollwert");
+  assert.strictEqual(g.kw, -30);
+  // Zero export is a real setpoint, not "nothing commanded".
+  const zero = C.nowSetpoint({ registers: [{ role: "grid_power", commanded_kw: 0, commanded_raw: 0 }] }, false);
+  assert.strictEqual(zero.kw, 0);
+  assert.strictEqual(zero.label, "Netz-Sollwert");
+});
+
+test("control: the battery-side now tile is unchanged", () => {
+  const C = load(["control.js"]).VPControl;
+  const batt = { registers: [{ role: "battery_power", commanded_kw: -4, commanded_raw: 4000 }] };
+  assert.strictEqual(C.nowSetpoint(batt, false).label, "Fahrplan-Sollwert");
+  assert.strictEqual(C.nowSetpoint(batt, false).kw, -4);
+  assert.strictEqual(C.nowSetpoint(batt, true).label, "Kalibrier-Sollwert");
+  // No setpoint register at all: the label stays, the value is absent (never 0).
+  const none = C.nowSetpoint({ registers: [{ role: "remote_mode", commanded_raw: 1 }] }, false);
+  assert.strictEqual(none.label, "Fahrplan-Sollwert");
+  assert.strictEqual(none.kw, null);
 });
 
 /* ============ control.js: PV curtailment (Fronius) state layer ============ */

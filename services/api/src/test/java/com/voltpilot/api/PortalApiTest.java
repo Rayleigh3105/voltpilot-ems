@@ -6735,6 +6735,44 @@ class PortalApiTest {
         assertThat(nach.get(0).get("sourceId")).isEqualTo("src-fronius-2");
         assertThat(ersetzt.getBody().get("units")).isEqualTo(2);
 
+        // 3b. Der NETZSEITIGE REGLER (Drossel-Slot, 08.10.2026): der Primäre
+        //     deckelt nicht, er regelt den Netzanschluss - mode/targetKw/match
+        //     überleben Tabelle und DTO Feld für Feld. Das Ziel 0 ist eine echte
+        //     Zahl („keine Einspeisung"), die Fronius-Einheit daneben trägt
+        //     weder Wort noch Ziel.
+        listener.handle(topic, (head + "\"curtailment\":{\"units\":2,\"certified_units\":2,"
+                + "\"control_enabled\":true,\"active\":true,\"applied_cap_kw\":0,"
+                + "\"all_match\":true,\"checked_at\":\"2026-08-21T10:15:00Z\","
+                + "\"per_unit\":[{\"source_id\":\"src-fronius-2\",\"certified\":true,"
+                + "\"applied_cap_kw\":0,\"match\":true},"
+                + "{\"source_id\":\"inverter\",\"certified\":true,\"mode\":\"grid_target\","
+                + "\"target_kw\":0,\"match\":true}]}}")
+                .getBytes(StandardCharsets.UTF_8));
+        ResponseEntity<Map> netz = rest.exchange(curtailUrl, HttpMethod.GET, demo, Map.class);
+        List<Map<String, Object>> mitNetz = (List<Map<String, Object>>) netz.getBody().get("perUnit");
+        assertThat(mitNetz).hasSize(2);
+        // Sortiert nach dem Join-Schlüssel: "inverter" < "src-fronius-2".
+        assertThat(mitNetz.get(0).get("sourceId")).isEqualTo("inverter");
+        assertThat(mitNetz.get(0).get("mode")).isEqualTo("grid_target");
+        assertThat(((Number) mitNetz.get(0).get("targetKw")).doubleValue()).isEqualTo(0.0);
+        assertThat(mitNetz.get(0).get("match")).isEqualTo(true);
+        assertThat(mitNetz.get(0).get("appliedCapKw")).isNull();
+        assertThat(mitNetz.get(1).get("sourceId")).isEqualTo("src-fronius-2");
+        assertThat(mitNetz.get(1).get("mode")).isNull();
+        assertThat(mitNetz.get(1).get("targetKw")).isNull();
+        // Außerhalb des Slots: das Wort bleibt (WIE die Einheit abregelt), das
+        // Ziel wird wieder NULL - nie eine stehengebliebene 0.
+        listener.handle(topic, (head + "\"curtailment\":{\"units\":2,\"certified_units\":2,"
+                + "\"control_enabled\":true,\"active\":false,\"checked_at\":\"2026-08-21T10:20:00Z\","
+                + "\"per_unit\":[{\"source_id\":\"src-fronius-2\",\"certified\":true},"
+                + "{\"source_id\":\"inverter\",\"certified\":true,\"mode\":\"grid_target\"}]}}")
+                .getBytes(StandardCharsets.UTF_8));
+        List<Map<String, Object>> ohneZiel = (List<Map<String, Object>>) rest
+                .exchange(curtailUrl, HttpMethod.GET, demo, Map.class).getBody().get("perUnit");
+        assertThat(ohneZiel.get(0).get("mode")).isEqualTo("grid_target");
+        assertThat(ohneZiel.get(0).get("targetKw")).isNull();
+        assertThat(ohneZiel.get(0).get("match")).isNull();
+
         // 4. Der Mandanten-Zaun gilt unverändert.
         assertThat(rest.exchange(curtailUrl, HttpMethod.GET,
                 new HttpEntity<>(bearer(token("demo2", "demo2"))), String.class).getStatusCode())

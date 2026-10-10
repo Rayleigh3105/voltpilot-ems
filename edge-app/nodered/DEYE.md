@@ -438,7 +438,7 @@ ihre **Belegstufe**, denn sie sind verschieden gut belegt:
 
 | Stufe | Bedeutung |
 |---|---|
-| **bewiesen** | am Gerät des Kapitäns gelesen (Sonde 27.07.2026 / Live-Rücklesungen) oder in Deyes eigenem Protokolldokument |
+| **bewiesen** | am Gerät des Kapitäns gelesen (Sonde 27.07.2026 / Live-Rücklesungen), dort im Netz-Sollwert-Test gemessen (Herzogau 08.10.2026) oder in Deyes eigenem Protokolldokument |
 | **dokumentiert** | PR-#978-Wiki bzw. Deye *MODBUS RTU* V105.1 |
 | **Feldbericht** | Akkudoktor #38182 (SUN-12K-SG04LP3-EU, **LV**), openEMS #2541, photovoltaikforum #247695 |
 | **Vermutung** | von uns gefolgert, nirgends belegt |
@@ -446,7 +446,7 @@ ihre **Belegstufe**, denn sie sind verschieden gut belegt:
 | `1104` | `1109` bedeutet | Vorzeichen | Einheit | Belegstufe |
 |---|---|---|---|---|
 | **1 batterieseitig** (Betrieb) | Batterie-Leistung | **− laden / + entladen** (unser Kontrakt ist umgekehrt → **negieren**) | 0,1 % Nennleistung | **bewiesen** (der Pilot fährt so) |
-| **2 netzseitig** | Leistung **am Netzzähler** (Sollwert statt Nullexport-Ziel) | **− Einspeisung / + Bezug** — wie unser Kontrakt, also **NICHT negieren** | 0,1 % Nennleistung (*Vermutung*: dieselbe Skala) | **Feldbericht** (LV 12K) |
+| **2 netzseitig** | Leistung **am Netzzähler** (Sollwert statt Nullexport-Ziel) | **− Einspeisung / + Bezug** — wie unser Kontrakt, also **NICHT negieren** | 0,1 % Nennleistung (dieselbe Skala) | **HV-30K Herzogau 08.10.2026 bestätigt: Netzpunkt folgt dem Ziel, 1115 = 1000 drosselt am HV nicht auf 0, Ziel 0 nur bis zum eigenen Anteil** (davor nur Feldbericht LV 12K) |
 | **0 AC-seitig** | AC-Ausgangsleistung des Deye (PV + Batterie) | vermutlich + Erzeugung | 0,1 % Nennleistung | **Feldbericht / unklar** (`1109` vs. `1111` offen) |
 
 **⚠ ZWEI Konventionen auf EINER Adresse.** `deyeRemoteSetpointUnits()` negiert
@@ -459,7 +459,11 @@ Für den 30-kW-Piloten: `1109 = −1000` ⇒ 30 kW Einspeisung als Ziel · `1109
 
 **⚠ Ein positiver Netz-Sollwert lädt die Batterie aus dem NETZ** (Vermutung 4 des
 Reports). Deshalb kommandiert der Testpfad **nie ein Ziel über 0** — die Klemme
-sitzt in `targetFor()`, ist also eine Eigenschaft des Codes und keine Zusage.
+sitzt in `targetFor()`, ist also eine Eigenschaft des Codes und keine Zusage. Der
+Produktivpfad kommandiert nie ein Ziel über **+50 W** (die HV-Werksvorgabe der
+geräteeigenen Nullexport-Regelung): `guards.ClampGridTarget` im Kern und noch
+einmal `parseGridTarget`/`gridTargetUnits` in `deye-grid-target.js` — bei 30 kW
+ist eine Register-Einheit 30 W, also höchstens **eine** Einheit.
 
 **⚠ Register `1115` (`0x045B`) — der Schalter, den man kennen muss.** Es ist die
 **maximale eigene PV-Leistung** in 0,1 % der Nennleistung und wirkt
@@ -471,10 +475,13 @@ Wechselrichter es). Der Feldbericht ist eindeutig:
 > **1000 = 100 % sollte man auch nicht eingeben, da er dann — und auch bei allen
 > größeren Werten — auf 0 regelt.**"
 
-Also: **1000 und darüber heißt „PV auf 0"**, nicht „keine Grenze". **Der Pilot
-steht auf 1000** (Sonde 27.07.). Ob die HV-Firmware sich genauso verhält, klärt
-erst der Live-Test (These T8) — deshalb schreibt der Testpfad `1115 ← 999` als
-**eigenen, beobachteten Schritt** (Captain-Entscheid E5) und niemals einen Wert
+Also laut Feldbericht (LV): **1000 und darüber heißt „PV auf 0"**, nicht „keine
+Grenze". **Der Pilot steht auf 1000** (Sonde 27.07.). **Am HV-30K Herzogau zog
+`1115 = 1000` die Deye-PV im Netzmodus NICHT auf null** (Netz-Sollwert-Test
+08.10.2026, These T8: die Deye-PV blieb bei 12,5 kW). Das ist eine Aussage über
+**dieses Gerät**, nicht über die Familie — geschrieben wird deshalb weiter
+`1115 ← 999` (Captain-Entscheid E5): im Testpfad als eigener, beobachteter
+Schritt, im Produktivpfad **vor** dem Umschalten, und niemals ein Wert
 außerhalb von 1..999. Die Halte-Prüfung kennt dafür die Skalenfamilie
 (`readback-verify.js` `VALUE_RANGE.pv_max_permille = [0, 1200]`), sodass ein
 `0xFFFF` des Loggers „keine Antwort" bleibt statt eine Abweichung zu werden.
@@ -484,13 +491,25 @@ Blindleistung/Volt-VAR; empirisch ist `1110` das Ziel-SoC der Strategie 5 und
 `1115` die PV-Kappe). Jedes Register dieses Blocks wird am Gerät verifiziert,
 nie aus dem Wiki abgeschrieben.
 
-**Was nur der Live-Test klären kann** (Report §1.8): ob `1104` sich bei
-**laufender** Fernsteuerung (`1100 = 1`) von 1 auf 2 umschalten lässt (T1) · das
-Vorzeichen auf HV (T2) · die Skala netzseitig (T3) · die Reihenfolge
-„erst Akku laden, dann eigene MPPTs drosseln, Fronius unberührt" (T4) ·
-Einschwingzeit (T5) · Rückkehrzeit (T6) · was `1121` netzseitig anzeigt (T7) ·
-das Verhalten von `1115 = 1000` auf HV (T8). Der Ablauf dafür steht in
-[`CONTROL-BENCH.md`](CONTROL-BENCH.md) → „Netz-Sollwert-Test".
+**Was der Live-Test geklärt hat** (Netz-Sollwert-Test Herzogau, 08.10.2026
+11:00:35–11:02:36, Box `edge-2026.09.6`, SUN-30K-SG01HP3-EU; Thesen aus Report
+§1.8, Ablauf in [`CONTROL-BENCH.md`](CONTROL-BENCH.md) → „Netz-Sollwert-Test"):
+
+| These | Befund |
+|---|---|
+| T1 Umschalten bei **laufender** Fernsteuerung (`1100 = 1`) | **bestätigt** — `1104` von 1 auf 2 ohne `1100`-Zyklus |
+| T2 Vorzeichen auf HV | **richtig** — kein Bezug während des ganzen Laufs |
+| T3/T5 Skala und Einschwingen | der Netzpunkt folgte dem 2-kW-Schritt: Ziel −28,0 kW, gemessen 28,4 kW binnen ~7 s, Plateau 3/3 |
+| T4 Fronius | **unberührt** (31–32 kW über den ganzen Lauf) |
+| T6 Rückkehr | Rücknahme nach 120 s, batterieseitig wie zuvor |
+| T8 `1115 = 1000` auf HV | zog die Deye-PV **nicht** auf null (sie blieb 12,5 kW) |
+| Export-Hülle | nie über 33 kW |
+
+**⚠ Die Grenze, die der Test gezeigt hat:** im Schritt „Ziel 0" blieb die
+Einspeisung bei 26–28 kW. Der Deye stellt **nur seinen eigenen Anteil** (eigene
+PV plus Speicherladung), **nicht** die Fronius-Einspeisung. Null-Export braucht
+deshalb die **Kaskade mit den Fronius-Kappen** — genau so fährt es der
+Produktivpfad (unten). Offen bleibt, was `1121` netzseitig anzeigt (T7).
 
 **⚠ Der Moduswechsel braucht einen Neutralschritt.** `1104` wechselt die
 BEDEUTUNG eines bereits stehenden Wertes auf `1109`: stünde dort noch der
@@ -499,11 +518,92 @@ ist deshalb immer `1109 ← 0` → `1104 ← neu` → `1109 ← Ziel`, drei Tran
 in EINEM Takt (Captain-Entscheid E2). Der Neutralschritt wird bewusst **nicht**
 zurückgelesen — derselbe Takt überschreibt ihn.
 
-**Es gibt bis heute KEINEN Produktivpfad in den Netzmodus.** Der Fahrplan
-schreibt ausschließlich batterieseitig; netzseitig gibt es nur den manuell
-armierten, TTL-begrenzten Testpfad auf `:8484` („Netz-Sollwert-Test",
-Betreiber-Kennwort). Ein automatischer Eintritt aus dem Plan heraus ist bewusst
-nicht gebaut.
+### Der netzseitige Drossel-Slot (Produktivpfad, seit 08.10.2026)
+
+Bis zum bestandenen Live-Test schrieb der Fahrplan ausschließlich
+batterieseitig; netzseitig gab es nur den von Hand armierten Testpfad auf
+`:8484`. Der Testpfad ist unverändert. **Daneben** gibt es jetzt einen Eintritt
+aus dem Fahrplan — für genau eine Slot-Art:
+
+> **netzseitig nur, wenn der Slot eine Abregelung trägt (`pv_limit_kw`) UND der
+> Plan die Batterie nicht entlädt UND der Ladestand im Fenster ist.**
+
+Das ist der Negativpreis-/Null-Export-Slot. Der Deye bekommt das Ziel **0 W am
+Netzpunkt**, lädt den Überschuss **zuerst** in den Speicher und drosselt für den
+Rest seine **eigene** PV — den Anteil, den die Fronius-Kappen nicht erreichen
+und der vorher zwangsläufig ins Netz ging. Die **30-kW-Einspeisegrenze** halten
+weiter die Fronius; der Einspeisewächter bleibt Fronius-only (E3).
+
+| Wer | Was |
+|---|---|
+| **Kern** `guards/gridtarget.go` (rein) + `agent/gridtarget.go` | Eintrittsregel, Aufsicht, jede Rücknahme mit Grund; veröffentlicht die **Absicht** `battery_mode: "grid_target"` + `grid_target_kw` auf `edge/setpoint` |
+| **Layer 1** `deye-grid-target.js` (im Flow wörtlich eingebettet) | die **Freigabe des genauen Modells** (`GRID_TARGET_RELEASES`, mit Prüfnachweis) und die Registerfolge; meldet den Hebel als `grid_target` in `native_capabilities.intents` |
+| **Beleg** | die Rückmeldung: Rolle `power_control_mode` **liest 2**, Rolle `grid_power` hält das Ziel — kein eigenes Wort |
+
+**Registerfolge je Takt** (alles RAM, FC16, eine Transaktion je Register):
+
+| # | Schreiben | Warum an dieser Stelle |
+|---|---|---|
+| 1 | `1101 ← 60` | Totmann zuerst — jeden Takt neu getreten |
+| 2 | `1109 ← 0` | **Neutralschritt** (E2), solange der Kern die Übernahme nicht belegt sieht (`grid_target_neutralize`): in der alten, batterieseitigen Bedeutung ist 0 neutral — ein stehender Entlade-Sollwert würde sonst für einen Moment als **Bezugs-Ziel** gelesen |
+| 3 | `1115 ← 999` | **vor** dem Umschalten (E5) |
+| 4 | `1104 ← 2` | das eigentliche Umschalten |
+| 5 | `1109 ← Ziel` | nicht negiert; Ziel 0, nie über +50 W |
+| 6 | `1100 ← 1` | zuletzt |
+
+`1104` und `1115` sind Konfiguration (`reassert_s` 300, sofort bei Änderung oder
+Abweichung); der Herzschlag danach ist `1101`/`1109`/`1100` — so viele
+Schreibvorgänge wie der gewöhnliche Plan. Die **Rückkehr** ist der gewöhnliche
+Fernsteuer-Plan: das Netz-Ziel 0 ist batterieseitig wieder neutral, `1104 ← 1`
+kann also keinen alten Wert falsch lesen. Verstummt die Box, verlässt der Deye
+die Fernsteuerung nach 60 s von selbst (derselbe Ausfallzustand wie immer).
+
+**Im Slot führt der Deye die Batterie** (Captain-Entscheid E4) — und hält laut
+Feldbericht im Fernsteuermodus seine eigenen SoC-Grenzen **nicht** ein. Die
+Aufsicht des Kerns nimmt deshalb zurück (gerastet bis zum Slot-Ende, im Zustand
+als `grid_target_withheld` mit Grund und Satz):
+
+| Grund | Wann |
+|---|---|
+| `reserve_boden` | Ladestand ≤ Reserve-Untergrenze + 3 Prozentpunkte |
+| `messung_nicht_frisch` | Netzpunkt/Ladestand nicht frisch |
+| `keine_rueckmeldung` | Rücklesen verloren oder hält nicht |
+| `nachweis_fehlt` | die Netzseite wird binnen 60 s nicht belegt |
+| `netz_folgt_nicht` | der Netzpunkt bleibt länger als 60 s mehr als 0,5 kW vom Ziel — **soweit der Deye es beantworten könnte** (siehe unten) |
+| `slot_ende`, `fremder_halter`, `nicht_freigegeben`, `abgeschaltet` | das gewöhnliche Ende, Pause/Halter, Not-Aus/Zertifikat, der Schalter `VP_NATIVE_SELF_REGULATION_ENABLED` |
+| `gemeinsame_steuerung` | die Box hält ein Anteile-Dokument (mehrere Boxen an einem Netzanschluss): der Modus wird gar nicht erst betreten |
+
+**Nach oben gibt es bewusst keine Rücknahme.** Laden bis 100 % ist im Slot
+akzeptiert (E4, `guards.GridTargetChargeCeilingPct`): ein voller Speicher ist
+genau der Zustand, in dem der Modus seine Arbeit tut (der Deye drosselt seine
+PV), und eine Rücknahme gäbe die Deye-PV wieder frei — bei negativem Preis.
+
+**„Netz folgt nicht" kennt die Grenze aus dem Live-Test.** Einspeisung, die von
+den Fronius stammt, während der Deye selbst nichts mehr einspeist (eigene PV
+minus Speicherladung ≤ 0,5 kW), ist **keine** Rücknahme — sie gäbe nur seine PV
+obendrauf frei. Der Zustand sagt dann `eigener_anteil_ausgeschoepft`, und die
+Fronius-Kappen ziehen über die Kaskade nach. Ist der eigene Anteil nicht
+bekannt, zählt die Einspeisung als die des Deye.
+
+**Fronius zuerst, der Deye regelt den Rest** (E6): der belegte Slot ist der
+**Innenkreis** der Einspeise-Kaskade (`guards/exportcascade.go`, K6). Der
+Null-Einspeise-Wächter der Fronius lässt dem Speicher den Vortritt, zielt nie
+unter das Ziel des Deye und kann sich deshalb nicht mit ihm herunterschaukeln
+(keine Doppeldrosselung); der Batterie-Term der Abregelung ist dabei die
+**Messung**, nicht ein Sollwert, dem das Gerät netzseitig nicht folgt. Trim,
+Lastfolge und Überschuss-Aufnahme sind im Slot freigegeben — es gibt keinen
+Batterie-Sollwert, auf dem sie arbeiten könnten.
+
+**Sichtbar:** `execution.mode: grid_target` im Herzschlag (nur belegt), und der
+Deye als Einheit in `curtailment.per_unit` (`source_id: inverter`, `mode:
+grid_target`, `target_kw`, `match` = der Netzpunkt liegt im Band um das Ziel).
+Vertrag und Vektoren: [`plan-execution-ownership.md`](../../docs/contracts/v2/plan-execution-ownership.md#netzseitiger-drossel-slot-08102026),
+[`grid-target-vectors.json`](../../docs/contracts/v2/grid-target-vectors.json).
+
+**Ein weiteres Modell freigeben** heißt: Netz-Sollwert-Test an genau diesem
+Modell fahren, dann **einen** Eintrag in `GRID_TARGET_RELEASES` mit dem
+Prüfnachweis ergänzen. Ohne Eintrag plant Layer 1 den batterieseitigen Sollwert
+und meldet den Hebel nicht — der Kern fragt dann gar nicht erst.
 
 ### Die Rückmeldung: was ein Register-Ist-Wert BEDEUTET (Live-Vorfall 2026-07-30)
 

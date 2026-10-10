@@ -59,6 +59,15 @@
     pv_max_permille: "PV-Kappe im Gerät",
   };
 
+  // The WORD behind an enum register's raw value. Without it the table shows a
+  // bare "2" for the control side, and whether the inverter is being steered at
+  // the battery or at the grid point is exactly what the operator must be able
+  // to read (Konzept `vp-deye-netzseitig-drossel-k2` §2.11). An unknown raw
+  // value keeps its number - never a guessed word.
+  var ENUM_LABEL = {
+    power_control_mode: { 0: "AC-seitig", 1: "batterieseitig", 2: "netzseitig" }
+  };
+
   // The control PATH this inverter is being steered through. Plain German, because
   // the operator must be able to see WHICH surface is driving the battery.
   var PATH_LABEL = {
@@ -381,6 +390,54 @@
   }
 
   /* ------------------------------------------------------------------
+     deriveGridTarget - „Netzseitiger Drossel-Slot".
+
+     In a slot the plan CURTAILS, the hybrid inverter regulates the grid
+     connection point itself (target: no feed-in), stores the surplus first and
+     throttles its OWN PV for the rest. VoltPilot writes no battery setpoint
+     while it stands - the same outermost fact as the native mode, so it leads
+     the reason chain the same way, and it keeps „angefordert" and „hält"
+     apart for the same reason. The measured grid point rides along because
+     registers that hold prove nothing about the effect. Every sentence is the
+     CORE's (guards.GridTargetMode writes it once); this card invents nothing.
+     ------------------------------------------------------------------ */
+  function deriveGridTarget(s) {
+    var g = s && s.grid_target;
+    if (!g || !g.active) return null;
+    var ref = (typeof g.reference_kw === "number" && isFinite(g.reference_kw))
+      ? " (Vergleichswert für den Speicher: " + nf1.format(g.reference_kw) + " kW)" : "";
+    var target = (typeof g.target_kw === "number" && isFinite(g.target_kw))
+      ? nf1.format(Math.abs(g.target_kw)) + " kW " + (g.target_kw > 0 ? "Bezug" : "Einspeisung")
+      : "keine Einspeisung";
+    var head = g.proven
+      ? "Netzseitige Regelung (hält): der Wechselrichter regelt den Netzanschluss selbst auf " +
+        target + ", VoltPilot schreibt keinen Speicher-Sollwert" + ref + "."
+      : "Netzseitige Regelung angefordert (Ziel " + target + "): bis der Wechselrichter sie " +
+        "bestätigt, gilt sie nicht als übernommen" + ref + ".";
+    var measured = "";
+    if (g.proven && typeof g.grid_kw === "number" && isFinite(g.grid_kw)) {
+      measured = " Gemessen am Netzanschluss: " + nf1.format(Math.abs(g.grid_kw)) + " kW " +
+        (g.grid_kw > 0 ? "Bezug" : "Einspeisung") +
+        (g.following === false ? " – das Ziel ist noch nicht erreicht." : ".");
+    }
+    return {
+      text: head + (g.text ? " " + g.text : "") + measured + (g.hint_text ? " " + g.hint_text : "") +
+        " Das ist eine bewusste Übergabe, kein Fehler des Wechselrichters."
+    };
+  }
+
+  /* deriveGridTargetEnded - the slot's grid-side regulation was TAKEN BACK. The
+     reason is the core's sentence; it speaks LAST in the chain, because after a
+     take-back the in-slot corrections act again and their line explains the
+     value that is being written now. A slot that merely does not qualify
+     (ended !== true) says nothing here. */
+  function deriveGridTargetEnded(s) {
+    var w = s && s.grid_target_withheld;
+    if (!w || w.ended !== true || !w.text) return null;
+    return { text: "Netzseitige Regelung in dieser Viertelstunde beendet: " + w.text };
+  }
+
+  /* ------------------------------------------------------------------
      deriveCarsFirst - „Auto vor Speicher" (OCPP-Lastmanagement Stufe 4).
 
      The customer decided their VEHICLES get the PV surplus before the battery
@@ -446,7 +503,30 @@
     var raw = kwField === "commanded_kw" ? reg.commanded_raw : reg.actual_raw;
     if (raw == null && kw == null) return "–";
     if (kw != null) return fmtKw(kw) + " (" + raw + ")";
+    var words = ENUM_LABEL[reg.role];
+    if (words && words[raw] != null) return words[raw] + " (" + raw + ")";
     return "" + raw;
+  }
+
+  // The ONE setpoint the "now" tile shows. In a grid-side slot the box writes no
+  // battery setpoint at all - the inverter leads the battery itself - so the
+  // tile must show the grid setpoint under ITS name. Showing "–" there (or the
+  // number under "Fahrplan-Sollwert") would read as "nothing is commanded".
+  // The battery role wins when both are present: that is the pre-existing tile.
+  function nowSetpoint(c, calibrating) {
+    var batt = null, grid = null;
+    var regs = (c && c.registers) || [];
+    for (var i = 0; i < regs.length; i++) {
+      if (!batt && regs[i].role === "battery_power") batt = regs[i];
+      if (!grid && regs[i].role === "grid_power") grid = regs[i];
+    }
+    if (!batt && grid) {
+      return { label: ROLE_LABEL.grid_power, kw: grid.commanded_kw == null ? null : grid.commanded_kw };
+    }
+    return {
+      label: calibrating ? "Kalibrier-Sollwert" : "Fahrplan-Sollwert",
+      kw: batt && batt.commanded_kw != null ? batt.commanded_kw : null
+    };
   }
 
   // Per-register verdict: 'unread' is neither a hold nor a deviation (the inverter
@@ -504,13 +584,10 @@
   function renderNow(s, c, calibrating) {
     var val = $("ctrlCmdVal");
     if (!val) return;
-    var batt = null;
-    for (var i = 0; i < c.registers.length; i++) {
-      if (c.registers[i].role === "battery_power") { batt = c.registers[i]; break; }
-    }
-    val.textContent = batt && batt.commanded_kw != null ? nf1.format(batt.commanded_kw) : "–";
+    var now = nowSetpoint(c, calibrating);
+    val.textContent = now.kw != null ? nf1.format(now.kw) : "–";
     var lbl = $("ctrlCmdLabel");
-    if (lbl) lbl.textContent = calibrating ? "Kalibrier-Sollwert" : "Fahrplan-Sollwert";
+    if (lbl) lbl.textContent = now.label;
     var badge = $("ctrlModeBadge");
     if (badge) {
       badge.textContent = SRC_LABEL[c.source] || "–";
@@ -881,7 +958,8 @@
       // the in-slot corrections below is being written, so any of their lines
       // would explain a value that never left the box.
       var reason = d.showNow
-        ? (deriveNative(s) || deriveCarsFirst(s) || deriveAbsorb(s) || deriveTrim(s) || deriveFollow(s))
+        ? (deriveGridTarget(s) || deriveNative(s) || deriveCarsFirst(s) || deriveAbsorb(s) || deriveTrim(s) ||
+           deriveFollow(s) || deriveGridTargetEnded(s))
         : null;
       show(reasonEl, !!reason);
       if (reason) reasonEl.textContent = reason.text;
@@ -906,6 +984,8 @@
     deriveFollow: deriveFollow,
     deriveAbsorb: deriveAbsorb,
     deriveNative: deriveNative,
+    deriveGridTarget: deriveGridTarget,
+    deriveGridTargetEnded: deriveGridTargetEnded,
     deriveCarsFirst: deriveCarsFirst,
     deriveCurtail: deriveCurtail,
     deriveExportGuard: deriveExportGuard,
@@ -913,6 +993,9 @@
     deriveDeviceExportLimit: deriveDeviceExportLimit,
     trackStateSince: trackStateSince,
     ROLE_LABEL: ROLE_LABEL,
+    ENUM_LABEL: ENUM_LABEL,
+    fmtCell: fmtCell,
+    nowSetpoint: nowSetpoint,
     PATH_LABEL: PATH_LABEL
   };
 })(window);

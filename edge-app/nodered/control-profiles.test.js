@@ -202,6 +202,44 @@ test('Deye Ladeseite (K5): Profilfolgen = Kandidaten des Planers, vorbereitete Z
   }
 });
 
+// P3 (netzseitiger Drossel-Slot): die Abregel-Zelle G des Fernsteuer-Profils
+// beschreibt genau die Folge, die deye-grid-target.js fuer den EINTRITT plant -
+// und jedes freigegebene Modell ist eines, an das dieses Profil gebunden ist.
+test('Deye netzseitiger Drossel-Slot (P3): Profilfolge abregeln_netzziel = Plan von deye-grid-target.js', () => {
+  const p = profile('deye_hp3_remote');
+  const f = p.adapter.folgen.abregeln_netzziel;
+  const G = require('./deye-grid-target.js');
+  const sel = { ...DEYE_REMOTE_SEL, rated_kw: 30 };
+  const sp = { ...setpoint(5), battery_mode: G.GRID_TARGET_MODE, grid_target_kw: 0, grid_target_neutralize: true };
+  const r = C.controlRoute(sel, sp, { ratedKw: 30, deye: REMOTE_CAP });
+  assert.ok(r.gridTarget, 'das Pilot-Modell faehrt den netzseitigen Zweig');
+  assertWrites('abregeln_netzziel', f, r.planned);
+  // Der Neutralschritt wird nicht zurueckgelesen - der Beleg nennt ihn nicht.
+  assertReadbacks('abregeln_netzziel', f, r.readbacks);
+  assert.equal(f.beleg.length, f.schreibfolge.length - 1);
+  assert.ok(f.schreibfolge.every((s) => s.speicher === 'ram'), 'nur RAM - kein Installateur-Register');
+  assert.ok(r.planned.every((o) => o.dwell_s === p.adapter.schreibabstand_s));
+  // Die Zelle traegt genau diese Folge, als Netz-Sollwert-Hebel mit Rueckfall Box.
+  const g = p.absichten.G;
+  assert.equal(g.adapter_folge, 'abregeln_netzziel');
+  assert.deepEqual(g.schreibfolge, f.schreibfolge);
+  assert.deepEqual(g.beleg, f.beleg);
+  assert.equal(g.hebel, 'netzziel');
+  assert.equal(g.rueckfall, 'box');
+  assert.equal(g.sicherheit, 'B', 'am eigenen Geraet gemessen (Netz-Sollwert-Test 08.10.2026)');
+  // Wissen, keine Freigabe: freigegeben wird je Modell in deye-grid-target.js -
+  // und nur Modelle, an die dieses Profil gebunden ist, auf der gelesenen Lage.
+  assert.equal(p.freigabe, 'keine');
+  for (const e of G.GRID_TARGET_RELEASES) {
+    assert.equal(e.layout, C.DEYE_REMOTE_LAYOUT_PR978);
+    // `modelle: null` bindet die ganze Registerfamilie - die Freigabe ist enger.
+    assert.ok(p.bindung.some((b) => b.marke === e.brand && (b.modelle === null || b.modelle.includes(e.model))),
+      `Freigabe ${e.brand}/${e.model}: kein gebundenes Modell dieses Profils`);
+  }
+  // Der Totmann der Folge ist der des Profils.
+  assert.equal(f.schreibfolge[0].wert, p.totmann.sekunden);
+});
+
 test('Deye ToU: Profil deye_tou = heutiger Plan von deyeControl, jeder Schritt Dauerspeicher', () => {
   const p = profile('deye_tou');
   const f = p.adapter.folgen;

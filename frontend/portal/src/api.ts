@@ -6596,6 +6596,10 @@ export interface EdgeVersion {
  *              gesetzt hat: nur Verbrauch decken (E↓), nur Solar-Überschuss
  *              laden (E↑) bzw. beides (E/E~); gemeldet erst nach bestätigtem
  *              Rücklesen
+ *   grid_target - netzseitiger Drossel-Slot: der Wechselrichter regelt den
+ *              NETZANSCHLUSS auf ein Ziel und führt den Speicher dabei selbst
+ *              (Überschuss zuerst in den Speicher, erst danach drosselt er die
+ *              Solarleistung). Die Box schreibt keinen Batterie-Sollwert.
  */
 export type ExecutionMode =
   | 'plan'
@@ -6611,7 +6615,8 @@ export type ExecutionMode =
   | 'surplus_store'
   | 'autonomous_discharge'
   | 'autonomous_charge'
-  | 'autonomous_selfconsumption';
+  | 'autonomous_selfconsumption'
+  | 'grid_target';
 
 /** `deepen` = Entladung angehoben, `reduce` = Entladung begrenzt. */
 export type ExecutionDirection = 'deepen' | 'reduce';
@@ -6787,9 +6792,29 @@ export interface CurtailmentUnit {
   /**
    * Ihr Rücklese-Urteil; `null` = nichts befohlen (nur beobachtet). Nur `true`
    * ist eine Bestätigung — `null` darf nie als Widerspruch gelesen werden.
+   *
+   * Bei `mode: 'grid_target'` urteilt es über die MESSUNG am Netzanschluss
+   * (sie folgt dem Ziel), nicht über ein gehaltenes Register — „Register
+   * gehalten" beweist dort nichts über die Wirkung.
    */
   match: boolean | null;
+  /**
+   * WIE diese Einheit abregelt. Fehlend/`null` = die bisherige Kappe auf der
+   * Einheit selbst (`appliedCapKw`). `grid_target` = sie regelt den
+   * NETZANSCHLUSS auf `targetKw`, statt ihre eigene Leistung zu deckeln. Ein
+   * unbekanntes Wort einer neueren Box wird wie die Kappe gelesen, nie geraten.
+   */
+  mode?: CurtailmentUnitMode | null;
+  /**
+   * Nur bei `grid_target`: das Ziel am Netzanschluss in kW, im Vorzeichen des
+   * Netzpunkts (`+` Bezug, `−` Einspeisung; 0 = keine Einspeisung). `null` =
+   * gerade kein Ziel aktiv (nie eine erfundene 0).
+   */
+  targetKw?: number | null;
 }
+
+/** Siehe `CurtailmentUnit.mode`. */
+export type CurtailmentUnitMode = 'grid_target';
 
 /**
  * Der live laufende Einspeisewächter, wie die Box ihn in JEDEM Herzschlag

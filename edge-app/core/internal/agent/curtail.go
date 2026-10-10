@@ -777,12 +777,24 @@ func (a *Agent) persistCurtailCert() error {
 // readbacks in the Snapshot.
 func (a *Agent) curtailmentSummary() *cloud.CurtailmentSummary {
 	list := a.curtailSources()
-	if len(list) == 0 {
+	// The PRIMARY hybrid counts as a curtailment unit once Layer 1 reported its
+	// released grid-side lever (netzseitiger Drossel-Slot, agent/gridtarget.go):
+	// it is then a device that can hold back generation - by another lever than
+	// a cap, which its per_unit entry says. Without the lever nothing changes.
+	snap := a.State.Get()
+	primary := gridTargetUnit(snap)
+	if len(list) == 0 && primary == nil {
 		return nil
 	}
 	sum := &cloud.CurtailmentSummary{
 		Units:          len(list),
 		ControlEnabled: a.Cfg.ControlEnabled,
+	}
+	if primary != nil {
+		sum.Units++
+		if primary.Certified {
+			sum.CertifiedUnits++
+		}
 	}
 	// ⚠ The First-Light release is a CORE fact, never the readback's own
 	// `certified` stamp (the split this block learned the hard way: a readback
@@ -847,6 +859,23 @@ func (a *Agent) curtailmentSummary() *cloud.CurtailmentSummary {
 		}
 		sum.PerUnit = append(sum.PerUnit, entry)
 	}
+	// The primary's entry LAST (the curtailable units keep their order), and its
+	// proven grid-side slot folds into the aggregates the same way a cap does:
+	// the plant IS curtailing, and "confirmed" must include the device whose
+	// proof is the MEASURED grid point - otherwise all_match would speak for the
+	// cap units alone.
+	if primary != nil {
+		if gridTargetRegulating(snap) {
+			sum.Active = true
+			if primary.Match != nil {
+				haveApplied = true
+				if !*primary.Match {
+					allMatch = false
+				}
+			}
+		}
+		sum.PerUnit = append(sum.PerUnit, *primary)
+	}
 	if haveApplied {
 		v := allMatch
 		sum.AllMatch = &v
@@ -869,7 +898,6 @@ func (a *Agent) curtailmentSummary() *cloud.CurtailmentSummary {
 	// a feed-in limit but no curtailable inverter therefore states that case
 	// locally - on :8484 and in the log - where the commissioning operator is
 	// standing, and not in the fleet view.
-	snap := a.State.Get()
 	// The DEVICE'S OWN feed-in limit („Grenzen & Wächter" Stufe 0) rides along
 	// the same way: straight from the Snapshot the raw-register path wrote, with
 	// its OWN read timestamp. Absent = not read (older poll, a family whose

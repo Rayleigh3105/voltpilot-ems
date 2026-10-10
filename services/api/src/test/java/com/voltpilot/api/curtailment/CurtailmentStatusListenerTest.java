@@ -396,6 +396,120 @@ class CurtailmentStatusListenerTest {
         assertThat(units.get(1)).isEqualTo(new CurtailmentUnitDto("src-b", false, null, null));
     }
 
+    // ── Der netzseitige Regler (Drossel-Slot, 08.10.2026) ────────────────────
+
+    /**
+     * Der Primäre regelt den NETZANSCHLUSS statt seine Leistung zu deckeln:
+     * {@code mode}, {@code target_kw} und {@code match} reisen Feld für Feld,
+     * und die Fronius-Einheiten daneben bleiben, was sie waren (mode null).
+     * Vorzeichen des Ziels: {@code +} Bezug, {@code -} Einspeisung - es wird
+     * NICHT auf nichtnegativ gefiltert wie eine Kappe.
+     */
+    @Test
+    void theGridTargetUnitKeepsItsModeTargetAndMeasuredVerdict() {
+        List<CurtailmentUnitDto> units = ingestUnits("{\"units\":3,\"certified_units\":3,"
+                + "\"control_enabled\":true,\"active\":true,\"checked_at\":\"2026-10-08T11:00:00Z\","
+                + "\"per_unit\":["
+                + "{\"source_id\":\"src-a\",\"certified\":true,\"applied_cap_kw\":0,\"match\":true},"
+                + "{\"source_id\":\"inverter\",\"certified\":true,\"mode\":\"grid_target\","
+                + "\"target_kw\":0,\"match\":true},"
+                + "{\"source_id\":\"src-x\",\"certified\":true,\"mode\":\"grid_target\","
+                + "\"target_kw\":-2.5,\"match\":false}]}");
+
+        assertThat(units).hasSize(3);
+        assertThat(units.get(0)).isEqualTo(new CurtailmentUnitDto("src-a", true, 0.0, true));
+        assertThat(units.get(0).mode()).isNull();
+        assertThat(units.get(0).targetKw()).isNull();
+        // 0 ist ein ECHTES Ziel („keine Einspeisung"), keine fehlende Zahl.
+        assertThat(units.get(1)).isEqualTo(
+                new CurtailmentUnitDto("inverter", true, null, true, "grid_target", 0.0));
+        assertThat(units.get(2)).isEqualTo(
+                new CurtailmentUnitDto("src-x", true, null, false, "grid_target", -2.5));
+    }
+
+    /**
+     * {@code mode} steht DAUERHAFT an der Einheit (wie sie abregelt). Ohne
+     * aktives Ziel fehlt {@code target_kw} - und bleibt null, nie eine
+     * erfundene 0; ohne Beleg fehlt {@code match} und bleibt „nicht geurteilt".
+     */
+    @Test
+    void aGridTargetUnitWithoutAnActiveTargetStaysWithoutANumber() {
+        List<CurtailmentUnitDto> units = ingestUnits("{\"units\":1,\"certified_units\":1,"
+                + "\"control_enabled\":true,\"active\":false,\"checked_at\":\"2026-10-08T11:00:00Z\","
+                + "\"per_unit\":[{\"source_id\":\"inverter\",\"certified\":true,\"mode\":\"grid_target\"}]}");
+
+        assertThat(units).containsExactly(
+                new CurtailmentUnitDto("inverter", true, null, null, "grid_target", null));
+    }
+
+    /**
+     * Streng wie jedes Wort hier: ein unbekannter Modus einer neueren Box wird
+     * VERWORFEN (die Einheit bleibt, als die gedeckelte, die sie sonst ist), und
+     * ein Ziel ohne sein Wort ist keines - eine Zahl, deren Bedeutung niemand
+     * genannt hat, wird nicht zum Netz-Ziel. Ein Ziel, das kein Netzanschluss
+     * tragen kann, fällt allein weg.
+     */
+    @Test
+    void anUnknownUnitModeAndATargetWithoutItsWordAreDropped() {
+        List<CurtailmentUnitDto> units = ingestUnits("{\"units\":4,\"certified_units\":4,"
+                + "\"control_enabled\":true,\"active\":true,\"checked_at\":\"2026-10-08T11:00:00Z\","
+                + "\"per_unit\":["
+                + "{\"source_id\":\"a\",\"certified\":true,\"mode\":\"etwas_neues\",\"target_kw\":0},"
+                + "{\"source_id\":\"b\",\"certified\":true,\"target_kw\":0,\"applied_cap_kw\":4.0},"
+                + "{\"source_id\":\"c\",\"certified\":true,\"mode\":\"grid_target\",\"target_kw\":1e9},"
+                + "{\"source_id\":\"d\",\"certified\":true,\"mode\":7,\"target_kw\":\"0\"}]}");
+
+        assertThat(units).containsExactly(
+                new CurtailmentUnitDto("a", true, null, null, null, null),
+                new CurtailmentUnitDto("b", true, 4.0, null, null, null),
+                new CurtailmentUnitDto("c", true, null, null, "grid_target", null),
+                new CurtailmentUnitDto("d", true, null, null, null, null));
+    }
+
+    /**
+     * Die GEMEINSAMEN Vertragsvektoren ({@code docs/contracts/v2/
+     * grid-target-vectors.json}, Abschnitt {@code herzschlag}): was die Box (Go)
+     * als Eintrag des Primären sendet, liefert die api dem Portal Feld für Feld
+     * als {@code api} aus. Dieselbe Datei lesen Box und Layer 1 - ein Wort, das
+     * auf einer Seite kippt, macht diesen Test rot.
+     */
+    @Test
+    void theGridTargetVectorsArriveAsTheContractSays() throws Exception {
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        com.fasterxml.jackson.databind.JsonNode faelle = mapper.readTree(java.nio.file.Files.readString(
+                java.nio.file.Path.of("..", "..", "docs", "contracts", "v2", "grid-target-vectors.json")))
+                .path("herzschlag").path("faelle");
+        assertThat(faelle.size()).isGreaterThanOrEqualTo(4);
+        for (com.fasterxml.jackson.databind.JsonNode fall : faelle) {
+            setUp();
+            List<CurtailmentUnitDto> units = ingestUnits("{\"units\":1,\"certified_units\":1,"
+                    + "\"control_enabled\":true,\"active\":false,\"checked_at\":\"2026-10-08T11:00:00Z\","
+                    + "\"per_unit\":[" + fall.get("per_unit") + "]}");
+            assertThat(units).as(fall.path("name").asText()).hasSize(1);
+            // Der Vergleich läuft über JSON: genau die camelCase-Felder, die das
+            // Portal liest (CurtailmentUnit), null eingeschlossen.
+            com.fasterxml.jackson.databind.JsonNode geliefert = mapper.valueToTree(units.get(0));
+            com.fasterxml.jackson.databind.JsonNode erwartet = fall.get("api");
+            String name = fall.path("name").asText();
+            List<String> istFelder = new java.util.ArrayList<>();
+            geliefert.fieldNames().forEachRemaining(istFelder::add);
+            List<String> sollFelder = new java.util.ArrayList<>();
+            erwartet.fieldNames().forEachRemaining(sollFelder::add);
+            assertThat(istFelder).as(name + ": genau diese Felder")
+                    .containsExactlyInAnyOrderElementsOf(sollFelder);
+            erwartet.fields().forEachRemaining(f -> {
+                com.fasterxml.jackson.databind.JsonNode ist = geliefert.get(f.getKey());
+                if (f.getValue().isNumber()) {
+                    // 0 und 0.0 sind dieselbe Zahl auf dem Draht.
+                    assertThat(ist.isNumber()).as(name + "." + f.getKey()).isTrue();
+                    assertThat(ist.asDouble()).as(name + "." + f.getKey()).isEqualTo(f.getValue().asDouble());
+                } else {
+                    assertThat(ist).as(name + "." + f.getKey()).isEqualTo(f.getValue());
+                }
+            });
+        }
+    }
+
     /**
      * ⚠ Eine Einheit OHNE source_id ist nicht zuordenbar - sie wird VERWORFEN,
      * nicht mit einem leeren Schlüssel gespeichert. Genau das ist die erfundene

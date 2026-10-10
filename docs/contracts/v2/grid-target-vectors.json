@@ -1,0 +1,252 @@
+{
+  "$comment": [
+    "Netzseitiger Drossel-Slot (plan-execution-ownership.md, Abschnitt gleichen Namens): die Wörter,",
+    "Grenzen, Gründe und Beispiele, an die sich Box-Kern (Go), Layer 1 (Node-RED), api (Java) und Portal binden.",
+    "Von Hand gepflegt. Gelesen von:",
+    "  edge-app/core/internal/guards/gridtarget_vectors_test.go  (woerter, grenzen, gruende, regel)",
+    "  edge-app/core/internal/agent/gridtarget_vectors_test.go   (woerter, herzschlag)",
+    "  edge-app/nodered/deye-grid-target.test.js                 (woerter, grenzen, sollwert)",
+    "  services/api/.../control/ControlStatusListenerTest.java   (herzschlag)",
+    "Ein Wort hier zu ändern heißt, es in allen vier Sprachen zu ändern - die Tests werden sonst rot."
+  ],
+  "woerter": {
+    "battery_mode": "grid_target",
+    "setpoint_ziel": "grid_target_kw",
+    "setpoint_neutralschritt": "grid_target_neutralize",
+    "hebel": "grid_target",
+    "execution_mode": "grid_target",
+    "per_unit_mode": "grid_target",
+    "per_unit_ziel": "target_kw",
+    "per_unit_wirkung": "match",
+    "per_unit_quelle_des_primaeren": "inverter",
+    "rueckmeldung_rolle_regelseite": "power_control_mode",
+    "rueckmeldung_rolle_ziel": "grid_power"
+  },
+  "grenzen": {
+    "ziel_kw": 0,
+    "ziel_max_kw": 0.05,
+    "folge_band_kw": 0.5,
+    "folge_frist_s": 60,
+    "nachweis_frist_s": 60,
+    "reserve_abstand_pct": 3,
+    "lade_obergrenze_pct": 100,
+    "pv_max_permille": 999,
+    "regelseite_netz": 2
+  },
+  "gruende": {
+    "netzseitig_geregelt": "Der Wechselrichter regelt den Netzanschluss gerade selbst auf „keine Einspeisung“ und drosselt dafür seine eigene PV.",
+    "nachweis_ausstehend": "Der Wechselrichter soll den Netzanschluss selbst regeln - die Rückmeldung des Geräts steht noch aus.",
+    "abgeschaltet": "Die Wechselrichter-Automatik ist abgeschaltet.",
+    "keine_abregelung": "In diesem Zeitabschnitt sieht der Fahrplan keine Abregelung vor.",
+    "plan_veraltet": "Es liegt kein aktueller Fahrplan vor.",
+    "plan_entlaedt": "Der Fahrplan entlädt den Speicher in diesem Zeitabschnitt - VoltPilot gibt den Sollwert vor.",
+    "kein_hebel": "Für dieses Wechselrichter-Modell ist die netzseitige Regelung nicht freigegeben.",
+    "anderer_modus": "Der Wechselrichter regelt in diesem Zeitabschnitt bereits selbst.",
+    "gemeinsame_steuerung": "Mehrere Boxen steuern diesen Netzanschluss gemeinsam - VoltPilot gibt den Sollwert vor.",
+    "fremder_halter": "Eine Regel, ein Handeingriff oder die Anlagen-Pause hat gerade Vorrang.",
+    "nicht_freigegeben": "Die Steuerung dieses Wechselrichters ist nicht freigegeben.",
+    "kein_reserve_boden": "Die Reserve-Untergrenze der Anlage ist nicht bekannt - netzseitig achtet der Wechselrichter nicht auf seine eigenen Ladegrenzen.",
+    "ladestand_ausserhalb": "Der Ladestand ist unbekannt oder zu nah an der Reserve - VoltPilot gibt den Sollwert vor.",
+    "reserve_boden": "Der Ladestand hat die Reserve erreicht - VoltPilot übernimmt den Speicher wieder.",
+    "messung_nicht_frisch": "Es fehlen aktuelle Messwerte, um den Wechselrichter dabei zu beaufsichtigen - VoltPilot übernimmt wieder.",
+    "keine_rueckmeldung": "Der Wechselrichter meldet gerade nichts zurück - VoltPilot übernimmt wieder.",
+    "nachweis_fehlt": "Der Wechselrichter hat die netzseitige Regelung nicht bestätigt - VoltPilot übernimmt wieder.",
+    "netz_folgt_nicht": "Der Netzanschluss ist dem Ziel über eine Minute nicht gefolgt - VoltPilot übernimmt wieder.",
+    "slot_ende": "Der Zeitabschnitt mit Abregelung ist zu Ende - VoltPilot gibt den Sollwert wieder vor.",
+    "eigener_anteil_ausgeschoepft": "Der Wechselrichter speist selbst nichts mehr ein - die verbleibende Einspeisung stammt von den anderen Erzeugern."
+  },
+  "regel": {
+    "$comment": [
+      "Jeder Fall: `schritte` nacheinander durch dieselbe Aufsicht. `nach_s` = Sekunden seit Slot-Beginn,",
+      "`slot` = welcher Slot (0, 1, ...), `aendern` überschreibt Felder der gesunden Ausgangslage `gesund`,",
+      "`erwartet` ist das Urteil DIESES Schrittes. Unbekannt = null (NaN)."
+    ],
+    "gesund": {
+      "enabled": true, "plan_fresh": true, "curtailment_wanted": true, "planned_kw": 8,
+      "lever": true, "other_mode_active": false, "shared_control": false, "holder_exempt": true, "authorized": true,
+      "measurements_fresh": true, "readback_healthy": true, "soc_pct": 60, "floor_pct": 20, "soc_min_pct": 10,
+      "proven": true, "grid_kw": -0.1, "battery_kw": 8, "own_pv_kw": 12, "leader_refusal": ""
+    },
+    "faelle": [
+      {
+        "name": "negativpreis_slot_belegt",
+        "schritte": [{"nach_s": 1, "aendern": {}, "erwartet": {"engage": true, "proven": true, "reason": "netzseitig_geregelt", "target_kw": 0, "following": true, "ended": ""}}]
+      },
+      {
+        "name": "ohne_abregelung_kein_eintritt",
+        "schritte": [{"nach_s": 1, "aendern": {"curtailment_wanted": false}, "erwartet": {"engage": false, "proven": false, "reason": "keine_abregelung", "ended": ""}}]
+      },
+      {
+        "name": "plan_entlaedt_kein_eintritt",
+        "schritte": [{"nach_s": 1, "aendern": {"planned_kw": -3}, "erwartet": {"engage": false, "proven": false, "reason": "plan_entlaedt", "ended": ""}}]
+      },
+      {
+        "name": "ohne_hebel_kein_eintritt",
+        "schritte": [{"nach_s": 1, "aendern": {"lever": false}, "erwartet": {"engage": false, "proven": false, "reason": "kein_hebel", "ended": ""}}]
+      },
+      {
+        "name": "not_aus_kein_eintritt",
+        "schritte": [{"nach_s": 1, "aendern": {"authorized": false}, "erwartet": {"engage": false, "proven": false, "reason": "nicht_freigegeben", "ended": ""}}]
+      },
+      {
+        "name": "ladestand_an_der_reserve_kein_eintritt",
+        "schritte": [{"nach_s": 1, "aendern": {"soc_pct": 23}, "erwartet": {"engage": false, "proven": false, "reason": "ladestand_ausserhalb", "ended": ""}}]
+      },
+      {
+        "name": "voller_speicher_bleibt_netzseitig",
+        "schritte": [{"nach_s": 1, "aendern": {"soc_pct": 100, "battery_kw": 0, "own_pv_kw": 0}, "erwartet": {"engage": true, "proven": true, "reason": "netzseitig_geregelt", "target_kw": 0, "following": true, "ended": ""}}]
+      },
+      {
+        "name": "nachweis_ausstehend_dann_zurueckgenommen",
+        "schritte": [
+          {"nach_s": 0, "aendern": {"proven": false}, "erwartet": {"engage": true, "proven": false, "reason": "nachweis_ausstehend", "target_kw": 0, "ended": ""}},
+          {"nach_s": 60, "aendern": {"proven": false}, "erwartet": {"engage": true, "proven": false, "reason": "nachweis_ausstehend", "target_kw": 0, "ended": ""}},
+          {"nach_s": 61, "aendern": {"proven": false}, "erwartet": {"engage": false, "proven": false, "reason": "nachweis_fehlt", "ended": "nachweis_fehlt"}},
+          {"nach_s": 120, "aendern": {}, "erwartet": {"engage": false, "proven": false, "reason": "nachweis_fehlt", "ended": ""}}
+        ]
+      },
+      {
+        "name": "reserve_boden_ruecknahme_gerastet_bis_slotende",
+        "schritte": [
+          {"nach_s": 0, "aendern": {}, "erwartet": {"engage": true, "proven": true, "reason": "netzseitig_geregelt", "target_kw": 0, "following": true, "ended": ""}},
+          {"nach_s": 10, "aendern": {"soc_pct": 23}, "erwartet": {"engage": false, "proven": false, "reason": "reserve_boden", "ended": "reserve_boden"}},
+          {"nach_s": 20, "aendern": {}, "erwartet": {"engage": false, "proven": false, "reason": "reserve_boden", "ended": ""}},
+          {"nach_s": 0, "slot": 1, "aendern": {}, "erwartet": {"engage": true, "proven": true, "reason": "netzseitig_geregelt", "target_kw": 0, "following": true, "ended": ""}}
+        ]
+      },
+      {
+        "name": "bezug_nicht_gedeckt_ueber_eine_minute",
+        "schritte": [
+          {"nach_s": 0, "aendern": {"grid_kw": 2.5}, "erwartet": {"engage": true, "proven": true, "reason": "netzseitig_geregelt", "target_kw": 0, "following": false, "ended": ""}},
+          {"nach_s": 60, "aendern": {"grid_kw": 2.5}, "erwartet": {"engage": true, "proven": true, "reason": "netzseitig_geregelt", "target_kw": 0, "following": false, "ended": ""}},
+          {"nach_s": 61, "aendern": {"grid_kw": 2.5}, "erwartet": {"engage": false, "proven": false, "reason": "netz_folgt_nicht", "ended": "netz_folgt_nicht"}}
+        ]
+      },
+      {
+        "name": "einspeisung_aus_eigenem_anteil_ueber_eine_minute",
+        "schritte": [
+          {"nach_s": 0, "aendern": {"grid_kw": -6, "own_pv_kw": 12, "battery_kw": 4}, "erwartet": {"engage": true, "proven": true, "reason": "netzseitig_geregelt", "target_kw": 0, "following": false, "ended": ""}},
+          {"nach_s": 61, "aendern": {"grid_kw": -6, "own_pv_kw": 12, "battery_kw": 4}, "erwartet": {"engage": false, "proven": false, "reason": "netz_folgt_nicht", "ended": "netz_folgt_nicht"}}
+        ]
+      },
+      {
+        "name": "einspeisung_der_fronius_bei_ausgereiztem_deye_ist_keine_ruecknahme",
+        "$herkunft": "Netz-Sollwert-Test Herzogau 08.10.2026, Schritt „Ziel 0“: der Deye stellt nur seinen eigenen Anteil.",
+        "schritte": [
+          {"nach_s": 0, "aendern": {"grid_kw": -26, "own_pv_kw": 12.5, "battery_kw": 12.5}, "erwartet": {"engage": true, "proven": true, "reason": "netzseitig_geregelt", "target_kw": 0, "following": false, "hint": "eigener_anteil_ausgeschoepft", "ended": ""}},
+          {"nach_s": 600, "aendern": {"grid_kw": -26, "own_pv_kw": 12.5, "battery_kw": 12.5}, "erwartet": {"engage": true, "proven": true, "reason": "netzseitig_geregelt", "target_kw": 0, "following": false, "hint": "eigener_anteil_ausgeschoepft", "ended": ""}}
+        ]
+      },
+      {
+        "name": "einspeisung_ohne_bekannten_eigenanteil_zaehlt_als_eigene",
+        "schritte": [
+          {"nach_s": 0, "aendern": {"grid_kw": -10, "own_pv_kw": null}, "erwartet": {"engage": true, "proven": true, "reason": "netzseitig_geregelt", "target_kw": 0, "following": false, "ended": ""}},
+          {"nach_s": 61, "aendern": {"grid_kw": -10, "own_pv_kw": null}, "erwartet": {"engage": false, "proven": false, "reason": "netz_folgt_nicht", "ended": "netz_folgt_nicht"}}
+        ]
+      },
+      {
+        "name": "folgeslot_mit_abregelung_schaltet_nicht_um",
+        "schritte": [
+          {"nach_s": 0, "aendern": {}, "erwartet": {"engage": true, "proven": true, "reason": "netzseitig_geregelt", "target_kw": 0, "following": true, "ended": ""}},
+          {"nach_s": 0, "slot": 1, "aendern": {}, "erwartet": {"engage": true, "proven": true, "reason": "netzseitig_geregelt", "target_kw": 0, "following": true, "ended": ""}},
+          {"nach_s": 0, "slot": 2, "aendern": {"curtailment_wanted": false}, "erwartet": {"engage": false, "proven": false, "reason": "keine_abregelung", "ended": "slot_ende"}}
+        ]
+      },
+      {
+        "name": "pause_beendet_mit_eigenem_grund_ohne_rasten",
+        "schritte": [
+          {"nach_s": 0, "aendern": {}, "erwartet": {"engage": true, "proven": true, "reason": "netzseitig_geregelt", "target_kw": 0, "following": true, "ended": ""}},
+          {"nach_s": 10, "aendern": {"holder_exempt": false}, "erwartet": {"engage": false, "proven": false, "reason": "fremder_halter", "ended": "fremder_halter"}},
+          {"nach_s": 20, "aendern": {}, "erwartet": {"engage": true, "proven": true, "reason": "netzseitig_geregelt", "target_kw": 0, "following": true, "ended": ""}}
+        ]
+      },
+      {
+        "name": "zaehler_nicht_am_netzpunkt_kein_eintritt",
+        "schritte": [{"nach_s": 1, "aendern": {"leader_refusal": "zaehler_nicht_am_netzpunkt"}, "erwartet": {"engage": false, "proven": false, "reason": "zaehler_nicht_am_netzpunkt", "ended": ""}}]
+      },
+      {
+        "name": "gemeinsame_steuerung_kein_eintritt",
+        "schritte": [{"nach_s": 1, "aendern": {"shared_control": true}, "erwartet": {"engage": false, "proven": false, "reason": "gemeinsame_steuerung", "ended": ""}}]
+      },
+      {
+        "name": "anteile_dokument_im_slot_ruecknahme_gerastet",
+        "schritte": [
+          {"nach_s": 0, "aendern": {}, "erwartet": {"engage": true, "proven": true, "reason": "netzseitig_geregelt", "target_kw": 0, "following": true, "ended": ""}},
+          {"nach_s": 10, "aendern": {"shared_control": true}, "erwartet": {"engage": false, "proven": false, "reason": "gemeinsame_steuerung", "ended": "gemeinsame_steuerung"}},
+          {"nach_s": 20, "aendern": {"shared_control": true}, "erwartet": {"engage": false, "proven": false, "reason": "gemeinsame_steuerung", "ended": ""}}
+        ]
+      }
+    ]
+  },
+  "sollwert": {
+    "$comment": [
+      "Was der Kern auf edge/setpoint veröffentlicht (nur die Felder dieses Pfads) und welche Register Layer 1",
+      "daraus für das freigegebene Modell (deye / sun-30k-sg01hp3, 30 kW, PR-978-Lage, Totmann 60 s) in",
+      "DIESER Reihenfolge plant: [Register dezimal, Wert]. 1109 ist nicht negiert (- = Einspeisung)."
+    ],
+    "auswahl": {"brand": "deye", "model": "sun-30k-sg01hp3", "family": "hybrid_3p", "rated_kw": 30},
+    "faelle": [
+      {
+        "name": "eintritt_mit_neutralschritt",
+        "setpoint": {"battery_mode": "grid_target", "grid_target_kw": 0, "grid_target_neutralize": true},
+        "folge": [[1101, 60], [1109, 0], [1115, 999], [1104, 2], [1109, 0], [1100, 1]],
+        "rueckmeldung": ["remote_watchdog", "pv_max_permille", "power_control_mode", "grid_power", "remote_mode"]
+      },
+      {
+        "name": "belegt_herzschlag",
+        "setpoint": {"battery_mode": "grid_target", "grid_target_kw": 0},
+        "folge": [[1101, 60], [1115, 999], [1104, 2], [1109, 0], [1100, 1]],
+        "rueckmeldung": ["remote_watchdog", "pv_max_permille", "power_control_mode", "grid_power", "remote_mode"]
+      },
+      {
+        "name": "bezugsziel_wird_auf_hoechstens_50_w_geklemmt",
+        "setpoint": {"battery_mode": "grid_target", "grid_target_kw": 4},
+        "folge": [[1101, 60], [1115, 999], [1104, 2], [1109, 1], [1100, 1]],
+        "rueckmeldung": ["remote_watchdog", "pv_max_permille", "power_control_mode", "grid_power", "remote_mode"]
+      }
+    ]
+  },
+  "herzschlag": {
+    "$comment": [
+      "Die zwei Stellen des Status-Herzschlags, an denen der Pfad sichtbar wird: control.execution und der",
+      "Eintrag des PRIMÄREN Wechselrichters in curtailment.per_unit.",
+      "  mode       steht DAUERHAFT am Eintrag (wie diese Einheit abregelt), sobald Layer 1 den Hebel meldet;",
+      "             ohne gemeldeten Hebel gibt es den Eintrag nicht.",
+      "  target_kw  nur, solange die Absicht steht (+ Bezug / - Einspeisung, 0 = keine Einspeisung);",
+      "             fehlt = kein Ziel aktiv, nie eine erfundene 0.",
+      "  match      die GEMESSENE Wirkung (Netzpunkt im Band um das Ziel), kein Register-Echo; fehlt, solange",
+      "             das Gerät die Netzseite nicht belegt hat (= noch nicht geurteilt, nie widersprochen).",
+      "`api` ist, was die api daraus speichert und dem Portal als CurtailmentUnit (camelCase) ausliefert."
+    ],
+    "faelle": [
+      {
+        "name": "belegt_auf_dem_ziel",
+        "execution": {"mode": "grid_target", "planned_kw": 5, "effective_floor_soc_pct": 20, "measurements_fresh": true},
+        "per_unit": {"source_id": "inverter", "certified": true, "match": true, "mode": "grid_target", "target_kw": 0},
+        "api_execution_mode": "grid_target",
+        "api": {"sourceId": "inverter", "certified": true, "appliedCapKw": null, "match": true, "mode": "grid_target", "targetKw": 0}
+      },
+      {
+        "name": "belegt_netz_nicht_auf_dem_ziel",
+        "execution": {"mode": "grid_target", "planned_kw": 5, "effective_floor_soc_pct": 20, "measurements_fresh": true},
+        "per_unit": {"source_id": "inverter", "certified": true, "match": false, "mode": "grid_target", "target_kw": 0},
+        "api_execution_mode": "grid_target",
+        "api": {"sourceId": "inverter", "certified": true, "appliedCapKw": null, "match": false, "mode": "grid_target", "targetKw": 0}
+      },
+      {
+        "name": "absicht_noch_nicht_belegt",
+        "execution": {"mode": "plan"},
+        "per_unit": {"source_id": "inverter", "certified": true, "mode": "grid_target", "target_kw": 0},
+        "api_execution_mode": "plan",
+        "api": {"sourceId": "inverter", "certified": true, "appliedCapKw": null, "match": null, "mode": "grid_target", "targetKw": 0}
+      },
+      {
+        "name": "ausserhalb_des_slots",
+        "execution": {"mode": "plan"},
+        "per_unit": {"source_id": "inverter", "certified": true, "mode": "grid_target"},
+        "api_execution_mode": "plan",
+        "api": {"sourceId": "inverter", "certified": true, "appliedCapKw": null, "match": null, "mode": "grid_target", "targetKw": null}
+      }
+    ]
+  }
+}

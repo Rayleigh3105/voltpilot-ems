@@ -371,17 +371,99 @@
       "wie": "Heute bester belegter Weg: Box gedämpft über 1109 (Batterieseite). Netz-Sollwert 0 würde bei Defizit entladen → nur mit Aufsicht (Rücknahme bei Entladung > 0,5 kW länger als 60 s)."
     },
     "G": {
-      "beleg": null,
-      "hebel": "abregeln",
+      "beleg": [
+        {
+          "erwartet": 60,
+          "ziel": {
+            "register": 1101
+          }
+        },
+        {
+          "erwartet": 999,
+          "ziel": {
+            "register": 1115
+          }
+        },
+        {
+          "erwartet": 2,
+          "ziel": {
+            "register": 1104
+          }
+        },
+        {
+          "erwartet": 0,
+          "ziel": {
+            "register": 1109
+          }
+        },
+        {
+          "erwartet": 1,
+          "ziel": {
+            "register": 1100
+          }
+        }
+      ],
+      "hebel": "netzziel",
       "quellen": [
         "k2",
-        "live",
+        "netzsollwert_p2",
+        "repo_deye",
         "m6"
       ],
-      "rueckfall": "keiner",
-      "schreibfolge": null,
-      "sicherheit": "C",
-      "wie": "Eigene Deye-PV: netzseitig 1104 = 2 + 1115 (nur 1..999) – Testpfad gebaut, Live-Lauf nicht belegt; 0x00E7 ist EEPROM (Installateur). Fronius separat."
+      "rueckfall": "box",
+      "schreibfolge": [
+        {
+          "hinweis": "Totmann zuerst (DEYE_REMOTE_WATCHDOG_DEFAULT_S)",
+          "speicher": "ram",
+          "wert": 60,
+          "ziel": {
+            "register": 1101
+          }
+        },
+        {
+          "hinweis": "Neutralschritt VOR dem Seitenwechsel (E2): batterieseitig ist 0 neutral - nur solange der Kern die Übernahme nicht belegt sieht (grid_target_neutralize); nicht zurückgelesen",
+          "speicher": "ram",
+          "wert": 0,
+          "ziel": {
+            "register": 1109
+          }
+        },
+        {
+          "hinweis": "eigene PV-Kappe 999 VOR dem Umschalten (E5); am HV-30K zog 1000 die PV nicht auf 0, geschrieben wird trotzdem 999",
+          "speicher": "ram",
+          "wert": 999,
+          "ziel": {
+            "register": 1115
+          }
+        },
+        {
+          "hinweis": "Netzseite",
+          "speicher": "ram",
+          "wert": 2,
+          "ziel": {
+            "register": 1104
+          }
+        },
+        {
+          "hinweis": "Netz-Sollwert 0 (nicht negiert, − = Einspeisung); nie über +50 W",
+          "speicher": "ram",
+          "wert": 0,
+          "ziel": {
+            "register": 1109
+          }
+        },
+        {
+          "hinweis": "Fernsteuerung an - zuletzt; danach Herzschlag 1101/1109/1100 je Takt",
+          "speicher": "ram",
+          "wert": 1,
+          "ziel": {
+            "register": 1100
+          }
+        }
+      ],
+      "sicherheit": "B",
+      "wie": "Eigene Deye-PV im Abregel-Slot (Negativpreis/Null-Export): netzseitig 1104 = 2 mit Netz-Sollwert 0 – der Deye lädt den Überschuss zuerst in den Speicher und drosselt danach seine eigene PV. Am HV-30K Herzogau bestätigt (Netz-Sollwert-Test 08.10.2026, B): der Netzpunkt folgt dem Ziel (2-kW-Schritt binnen ~7 s), 1115 = 1000 drosselt am HV nicht auf 0, Ziel 0 reicht nur bis zum eigenen Anteil (eigene PV plus Speicherladung) – die Fronius-Einspeisung halten deren eigene Kappen (Kaskade, Fronius separat). Nur in einem Slot mit Abregelung, in dem der Plan nicht entlädt; die Box beaufsichtigt und nimmt zurück (Reserve + 3 %, Messung, Rücklesen, Netz folgt dem Ziel nicht binnen 60 s), Laden bis 100 % ist im Slot akzeptiert. Freigabe je Modell in edge-app/nodered/deye-grid-target.js. 0x00E7 ist EEPROM (Installateur) und bleibt unberührt.",
+      "adapter_folge": "abregeln_netzziel"
     },
     "H": {
       "adapter_folge": "halten",
@@ -558,6 +640,90 @@
     "ausfuehrbar": true,
     "datei": "edge-app/nodered/inverter-control-routing.js",
     "folgen": {
+      "abregeln_netzziel": {
+        "beleg": [
+          {
+            "erwartet": 60,
+            "ziel": {
+              "register": 1101
+            }
+          },
+          {
+            "erwartet": 999,
+            "ziel": {
+              "register": 1115
+            }
+          },
+          {
+            "erwartet": 2,
+            "ziel": {
+              "register": 1104
+            }
+          },
+          {
+            "erwartet": 0,
+            "ziel": {
+              "register": 1109
+            }
+          },
+          {
+            "erwartet": 1,
+            "ziel": {
+              "register": 1100
+            }
+          }
+        ],
+        "schreibfolge": [
+          {
+            "hinweis": "Totmann zuerst (DEYE_REMOTE_WATCHDOG_DEFAULT_S)",
+            "speicher": "ram",
+            "wert": 60,
+            "ziel": {
+              "register": 1101
+            }
+          },
+          {
+            "hinweis": "Neutralschritt VOR dem Seitenwechsel (E2): batterieseitig ist 0 neutral - nur solange der Kern die Übernahme nicht belegt sieht (grid_target_neutralize); nicht zurückgelesen",
+            "speicher": "ram",
+            "wert": 0,
+            "ziel": {
+              "register": 1109
+            }
+          },
+          {
+            "hinweis": "eigene PV-Kappe 999 VOR dem Umschalten (E5); am HV-30K zog 1000 die PV nicht auf 0, geschrieben wird trotzdem 999",
+            "speicher": "ram",
+            "wert": 999,
+            "ziel": {
+              "register": 1115
+            }
+          },
+          {
+            "hinweis": "Netzseite",
+            "speicher": "ram",
+            "wert": 2,
+            "ziel": {
+              "register": 1104
+            }
+          },
+          {
+            "hinweis": "Netz-Sollwert 0 (nicht negiert, − = Einspeisung); nie über +50 W",
+            "speicher": "ram",
+            "wert": 0,
+            "ziel": {
+              "register": 1109
+            }
+          },
+          {
+            "hinweis": "Fernsteuerung an - zuletzt; danach Herzschlag 1101/1109/1100 je Takt",
+            "speicher": "ram",
+            "wert": 1,
+            "ziel": {
+              "register": 1100
+            }
+          }
+        ]
+      },
       "halten": {
         "beleg": [
           {
@@ -878,8 +1044,9 @@
     "1109 = 0 ist Freigabe an die Eigenlogik, kein Halten (B, g3).",
     "Firmware-Update kann den Fernsteuer-Block entfernen (C, pvf247695) – die Freigabe hängt deshalb an der vom Gerät gelesenen Registerlage.",
     "Geräteeigene SoC-Grenzen gelten im Fernsteuermodus evtl. nicht (C, openems2541) – guards.Clamp bleibt SoC-Autorität.",
-    "1115 = 1000 regelt die eigene PV im Netz-/AC-Modus auf 0 (C) – der Pilot liest 1000.",
-    "Herzogau steht auf Work Mode 0 („Selling First“), Energy Pattern „Load First“, Solar Sell an, ToU aktiv (B, m6) – ob diese Grundeinstellung im Eigenmodus Fronius-Überschuss aufnimmt, ist offen (D)."
+    "1115 = 1000 regelt die eigene PV im Netz-/AC-Modus laut Feldbericht (LV) auf 0 (C); am HV-30K Herzogau tat es das NICHT (B, Netz-Sollwert-Test 08.10.2026) – geschrieben wird trotzdem 999, der Pilot liest 1000.",
+    "Herzogau steht auf Work Mode 0 („Selling First“), Energy Pattern „Load First“, Solar Sell an, ToU aktiv (B, m6) – ob diese Grundeinstellung im Eigenmodus Fronius-Überschuss aufnimmt, ist offen (D).",
+    "Netzseitig „Ziel 0“ stellt nur den EIGENEN Anteil des Deye (eigene PV plus Speicherladung), nicht die Einspeisung AC-gekoppelter Wechselrichter (B, Netz-Sollwert-Test 08.10.2026: Export blieb bei 26–28 kW) – Null-Export braucht deren Kappen daneben."
   ],
   "familie": "SUN-*-SG01HP3 / SG04LP3 / SG02HP3 (hybrid_3p) mit Fernsteuer-Block 1100–1121 (PR-978-Lage)",
   "firmware_bedingung": {
@@ -896,7 +1063,7 @@
   "freigabe": "keine",
   "hersteller": "Deye",
   "id": "deye_hp3_remote",
-  "im_repo": "angebunden, Pilot Herzogau (SUN-30K-SG01HP3-EU) fährt den Fahrplan über 1109; Selbstregel-Zertifikat nur für Decken (26.08.2026)",
+  "im_repo": "angebunden, Pilot Herzogau (SUN-30K-SG01HP3-EU) fährt den Fahrplan über 1109; Selbstregel-Zertifikat nur für Decken (26.08.2026); netzseitiger Drossel-Slot für Abregel-Slots freigegeben (08.10.2026)",
   "modelle": [
     "SUN-*-SG01HP3",
     "SUN-*-SG04LP3",
@@ -916,7 +1083,8 @@
     "akku38182",
     "openems2541",
     "pvf247695",
-    "live"
+    "live",
+    "netzsollwert_p2"
   ],
   "schema_version": "1.0",
   "schreibbudget": {
@@ -925,7 +1093,7 @@
     "speicher": "gemischt",
     "text": "Fernsteuer-Register RAM (unkritisch). Installateur-Register (0x006C/0x006D Ströme, 0x00E7, Work Mode, ToU) sind EEPROM – nie je Slot schreiben (A/C)."
   },
-  "stand": "2026-09-24",
+  "stand": "2026-10-08",
   "stufe": 1,
   "totmann": {
     "sekunden": 60,

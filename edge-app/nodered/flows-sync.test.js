@@ -2159,14 +2159,15 @@ test('K5: inline and module agree on the Deye charge side - pilot bytes, reads, 
   r = both({ battery_native_intent: 'surplus_charge', battery_window_min_kw: 0 });
   assert.match(r.module_.reason, /Prüfstand/);
   assert.notStrictEqual(r.inline.mode, 'native');
-  // 4. The report: E-down only, on both sides.
+  // 4. The report, on both sides: E-down from the native catalog, plus the
+  //    released grid-side lever of this exact model (P3, deye-grid-target.js).
   const inlineCaps = runFunctionNode(byId['auto-control-plan'].func, {
     msg: { setpoint: deyeNativeSetpoint({ battery_mode: 'setpoint' }) },
     flow: { inverter_config: DEYE_NATIVE_SEL, ['deye_path:10.0.0.8:8899']: deyeNativeSticky() },
   }).msg.nativeCapabilities;
   const moduleCaps = nativeCapabilityReport(DEYE_NATIVE_SEL, { deviceCertified: true, solarOnlyCharge: false, deyeSticky: deyeNativeSticky() });
   assert.deepStrictEqual(JSON.parse(JSON.stringify(inlineCaps)), moduleCaps);
-  assert.deepStrictEqual(moduleCaps, { intents: ['cover_load'], window: false, persistent: false });
+  assert.deepStrictEqual(moduleCaps, { intents: ['cover_load', 'grid_target'], window: false, persistent: false });
 });
 
 test('the inline native planner refuses every tier it does not cover', () => {
@@ -2258,6 +2259,63 @@ test('flow control planner matches deyeRemoteControl() for EVERY grid-test step'
       assert.strictEqual(msg.control.writes[1].role, 'grid_neutral',
         'der Neutralschritt steht VOR der Regelseite');
     }
+  }
+});
+
+// --- Netzseitiger Drossel-Slot (P3): die INLINE-Kopie == das Modul -----------
+//
+// Registerfolge und Modell-Freigabe kommen aus dem woertlich eingebetteten
+// deye-grid-target.js - von Hand gepflegt ist nur noch die Aufrufstelle im
+// kopierten `controlRoute`. Genau die wird hier fuer jede Lage verglichen, die
+// der Kern veroeffentlichen kann.
+test('flow control planner matches deyeRemoteControl() for the grid-side throttling slot', () => {
+  const cap = ownerCap();
+  const capKey = controlRouting.deyeCapabilityKey('192.168.254.210', 8899);
+  const fresh = new Date().toISOString();
+  const PILOT = Object.assign({}, REMOTE_DEYE_SEL, { model: 'sun-30k-sg01hp3' });
+  const lagen = [
+    ['Eintritt mit Neutralschritt', PILOT, { grid_target_kw: 0, grid_target_neutralize: true }],
+    ['belegt (Herzschlag)', PILOT, { grid_target_kw: 0 }],
+    ['Ziel ueber +50 W wird geklemmt', PILOT, { grid_target_kw: 4 }],
+    ['Einspeise-Ziel', PILOT, { grid_target_kw: -2.5, grid_target_neutralize: true }],
+    ['Not-Aus', PILOT, { grid_target_kw: 0, control_enabled: false }],
+    ['kein Zertifikat', PILOT, { grid_target_kw: 0, device_certified: false }],
+    ['unbrauchbares Ziel -> Batterie-Plan', PILOT, { grid_target_kw: null }],
+    ['Modell ohne Freigabe -> Batterie-Plan mit Hinweis', Object.assign({}, REMOTE_DEYE_SEL, { model: 'sun-50k-sg01hp3' }), { grid_target_kw: 0 }],
+    ['Auswahl ohne Modell -> Batterie-Plan mit Hinweis', REMOTE_DEYE_SEL, { grid_target_kw: 0 }],
+  ];
+  for (const [name, sel, over] of lagen) {
+    const sp = Object.assign({
+      battery_setpoint_kw: 5, source: 'schedule', ts: fresh, control_enabled: true, device_certified: true,
+      grid_charge_allowed: false, soc_min_pct: 20, soc_max_pct: 95, pv_limit_kw: 12, battery_mode: 'grid_target',
+    }, over);
+    const { msg } = runFunctionNode(byId['auto-control-plan'].func, {
+      msg: { setpoint: sp }, flow: { inverter_config: sel, [capKey]: cap }, context: {},
+    });
+    const want = JSON.parse(JSON.stringify(controlRouting.controlRoute(sel, sp, { ratedKw: 30, deye: cap })));
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(msg.control)), want, 'inline == module: ' + name);
+    // Und die Meldung der Hebel stimmt zwischen Knoten und Modul ueberein.
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(msg.nativeCapabilities)),
+      JSON.parse(JSON.stringify(controlRouting.nativeCapabilityReport(sel,
+        { deye: cap, deviceCertified: sp.device_certified === true, solarOnlyCharge: true }))),
+      'Hebel-Meldung inline == module: ' + name);
+  }
+  // Die tragende Reihenfolge ueberlebt das Einbetten.
+  const sp = { battery_setpoint_kw: 5, source: 'schedule', ts: fresh, control_enabled: true, device_certified: true,
+    battery_mode: 'grid_target', grid_target_kw: 0, grid_target_neutralize: true };
+  const { msg } = runFunctionNode(byId['auto-control-plan'].func, {
+    msg: { setpoint: sp }, flow: { inverter_config: PILOT, [capKey]: cap }, context: {},
+  });
+  assert.deepStrictEqual(msg.control.writes.map((w) => w.role),
+    ['remote_watchdog', 'grid_neutral', 'pv_max_permille', 'power_control_mode', 'grid_power', 'remote_mode']);
+  assert.ok(msg.nativeCapabilities.intents.includes('grid_target'));
+});
+
+// Der eingebettete Modultext IST die Datei - keine zweite Kopie, die driften kann.
+test('der Plan-Knoten bettet deye-grid-target.js woertlich ein', () => {
+  const src = fs.readFileSync(path.join(__dirname, 'deye-grid-target.js'), 'utf8');
+  for (const id of ['auto-control-plan', 'sim-control-plan']) {
+    assert.ok(byId[id].func.includes(src), id + ' traegt den Modultext unveraendert');
   }
 });
 

@@ -17,7 +17,8 @@ package agent
 // Wolken-Anweisung kann hier hineinfuehren; der einzige Weg ist
 // POST /api/curtail/grid-test hinter demselben Betreiber-Kennwort wie jede
 // andere physische Steuer-Mutation. Der Produktivpfad („netzseitiger
-// Drossel-Slot") ist Paket 3 und wird erst nach dem Live-Test gebaut.
+// Drossel-Slot", Paket 3, nach dem Live-Test vom 08.10.2026) ist ein EIGENER
+// Pfad mit eigener Regel und Aufsicht: guards/gridtarget.go, agent/gridtarget.go.
 //
 // ⚠ DIE FRONIUS-KAPPEN BLEIBEN, WIE SIE SIND (§3.1). Der Testsollwert traegt
 // deshalb `pv_limit_kw` des LAUFENDEN Plans unveraendert weiter: ohne dieses
