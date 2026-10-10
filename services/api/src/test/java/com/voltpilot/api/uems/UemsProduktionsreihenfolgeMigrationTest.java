@@ -40,13 +40,8 @@ class UemsProduktionsreihenfolgeMigrationTest {
 
     @Test
     void mainDannUemsBewahrtRollenereignisseUndErreichtDenFrischenStand() throws IOException {
-        List<String> main = mainSatz();
-        for (String name : main) {
-            try (var input = getClass().getResourceAsStream("/db/migration/" + name)) {
-                assertThat(input).as("main migration %s must still be packaged", name).isNotNull();
-                Files.copy(input, mainMigrations.resolve(name));
-            }
-        }
+        List<String> main = satz("/migration/vor-uems-migrations.txt");
+        kopieren(main);
 
         JdbcTemplate frisch = db("voltpilot");
         Instant beginn = Instant.now();
@@ -86,6 +81,59 @@ class UemsProduktionsreihenfolgeMigrationTest {
                 .containsExactly("rolle_gesetzt", "rolle_entzogen");
     }
 
+    /**
+     * Seit dem Rollout vom 10.10.2026 trägt die Produktion den Satz aus {@code main-migrations.txt}. Was danach
+     * auf {@code main} dazukommt, erreicht sie später und nicht in Versionsreihenfolge: Produktionssatz, dann der
+     * Rest out-of-order, muss denselben Stand ergeben wie die frische Installation. Steht nichts aus, ist der
+     * Vergleich die Probe, dass der Satz allein der frische Stand ist.
+     */
+    @Test
+    void produktionssatzDannSpaetereMigrationenErreichenDenFrischenStand() throws IOException {
+        List<String> produktionssatz = satz("/migration/main-migrations.txt");
+        kopieren(produktionssatz);
+        JdbcTemplate verwaltung = db("voltpilot");
+        verwaltung.execute("CREATE DATABASE frisch_heute");
+        verwaltung.execute("CREATE DATABASE produktion_heute");
+        JdbcTemplate frisch = db("frisch_heute");
+        JdbcTemplate produktion = db("produktion_heute");
+        Instant beginn = Instant.now();
+        Flyway alle = flyway("frisch_heute").load();
+        alle.migrate();
+
+        Flyway bestand = flyway("produktion_heute")
+                .locations("filesystem:" + mainMigrations.toAbsolutePath()).load();
+        bestand.migrate();
+        assertThat(Arrays.stream(bestand.info().applied()).map(MigrationInfo::getScript).toList())
+                .as("exactly the committed production set, not a version ceiling")
+                .containsExactlyInAnyOrderElementsOf(produktionssatz);
+
+        Flyway nachzug = flyway("produktion_heute").outOfOrder(true).load();
+        nachzug.migrate();
+        assertThat(nachzug.info().pending()).isEmpty();
+        assertThat(Arrays.stream(nachzug.info().applied()).map(MigrationInfo::getScript).toList())
+                .containsExactlyInAnyOrderElementsOf(
+                        Arrays.stream(alle.info().applied()).map(MigrationInfo::getScript).toList());
+
+        assertThat(schema(produktion)).as("tables, columns, defaults, nullability and all constraints")
+                .isEqualTo(schema(frisch));
+        assertThat(inhalte(produktion, beginn)).as("all public table contents").isEqualTo(inhalte(frisch, beginn));
+    }
+
+    /** Kopiert den Satz samt Flyway-Skriptkonfiguration ({@code V….sql.conf}), die nicht in der Liste steht. */
+    private void kopieren(List<String> satz) throws IOException {
+        for (String name : satz) {
+            try (var input = getClass().getResourceAsStream("/db/migration/" + name)) {
+                assertThat(input).as("main migration %s must still be packaged", name).isNotNull();
+                Files.copy(input, mainMigrations.resolve(name));
+            }
+            try (var konfiguration = getClass().getResourceAsStream("/db/migration/" + name + ".conf")) {
+                if (konfiguration != null) {
+                    Files.copy(konfiguration, mainMigrations.resolve(name + ".conf"));
+                }
+            }
+        }
+    }
+
     private static Map<String, Object> inhalte(JdbcTemplate db, Instant beginn) {
         Map<String, Object> finger = new LinkedHashMap<>(Bestandsschutz.fingerabdruck(db, List.of()));
         // These four seed timestamps use DEFAULT now(): independent installations cannot match
@@ -103,8 +151,8 @@ class UemsProduktionsreihenfolgeMigrationTest {
         return finger;
     }
 
-    private List<String> mainSatz() throws IOException {
-        try (var input = getClass().getResourceAsStream("/migration/main-migrations.txt")) {
+    private List<String> satz(String liste) throws IOException {
+        try (var input = getClass().getResourceAsStream(liste)) {
             assertThat(input).isNotNull();
             List<String> main = new String(input.readAllBytes(), StandardCharsets.UTF_8).lines()
                     .filter(line -> !line.isBlank() && !line.startsWith("#")).toList();

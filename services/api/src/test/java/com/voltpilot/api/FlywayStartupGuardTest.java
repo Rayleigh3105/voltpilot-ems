@@ -81,7 +81,7 @@ class FlywayStartupGuardTest {
     @Test
     void mainThenFullThenOldRefusesWithoutAnyWriteAndFullStillStarts() throws Exception {
         List<String> main;
-        try (var input = getClass().getResourceAsStream("/migration/main-migrations.txt")) {
+        try (var input = getClass().getResourceAsStream("/migration/vor-uems-migrations.txt")) {
             assertThat(input).isNotNull();
             main = new String(input.readAllBytes(), StandardCharsets.UTF_8).lines()
                     .filter(s -> !s.isBlank() && !s.startsWith("#")).toList();

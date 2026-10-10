@@ -1,5 +1,21 @@
 # Rollout-Drehbuch: die erste UEMS-Produktfreigabe
 
+> **Stand: ausgerollt am 10.10.2026.** Das api-Fenster hat der Captain gefahren. Belegt ist es
+> durch die gitops-PRs 43 bis 48 (`mamotec/gitops`, alle am 10.10.2026 gemergt): PR 43 Auto-Sync
+> aus (F1, 09:29 UTC), PR 44 C1 mit Portal-Sperre (10:04), PR 45 C2 (10:18), PR 46 C3 (10:27),
+> PR 47 Portal-Sperre aufgehoben, Schritt 10 (10:43), PR 48 Auto-Sync wieder an (F2, 10:45).
+> `${UEMS_SHA}` war der Merge-Commit `1fc3b93be` (PR #1470), `ALT_SHA` war `749b81df6` (gitops
+> `e6c6667a5` vom 09.10.2026). Die neun Images für `1fc3b93be` baute „Build & Deploy (fast, no
+> tests)“ auf dem Zweig `bau/uems-1fc3b93be` (09:36 bis 09:59 UTC, Tag-Bump `skipped`).
+> Danach hat derselbe Workflow `main` `99944c896` gebaut (14:43 bis 14:56 UTC) und mit gitops
+> `0e6b8c607` ausgerollt. Das Box-Release `edge-2026.10.0` (Tag auf `99944c896`) ist am selben Tag
+> veröffentlicht; NW-3 für das Paar: 13 grün (PR 1487).
+>
+> Der Text darunter ist das Drehbuch, wie es vor dem Fenster stand. Er bleibt als Vorlage für
+> eine spätere Freigabe mit Fenster stehen. Was das Rollout beantwortet hat, ist an der Stelle
+> vermerkt (§2.1, §2.8, §2.9, §2.10). Welche der Befehle unten wörtlich gelaufen sind und welche
+> Zahlen die Belege zeigten, steht hier nicht; §9 ist nicht nachgeführt.
+
 **Wer das hier fährt:** der Betreiber, allein, an seinem Cluster. Kein Werkzeug dieses
 Repositorys führt einen dieser Befehle aus, keine Crew hat Produktionszugang. Die Befehle
 unten sind **geschrieben und gegengelesen**, nicht gelaufen — was sich auf einer
@@ -64,7 +80,7 @@ Historie umschreiben" — nicht „die alte api muss beim Start brechen".
 | **PR 37 (gitops, IP-10) gemergt und ausgerollt — mindestens einen Tag vorher**, in der Kette 37 → 38 → 39, dazu PR 42 und PR 41 | ein Sync, ein api-Neustart auf dem **alten** Schema, beobachtet; alle 27 Schalter ausdrücklich gesetzt (§12) | siehe 2.2 |
 | Die zwei Platzhalter aus PR 37 gesetzt | siehe 2.3 (der Dauerläufer-Tenant erst nach Schritt 10, §14) | |
 | Seit dem Merge nach `main` kein Dispatch auf `main`, außer dem einen Bau-Lauf ohne Tag-Bump | kein weiterer Actions-Lauf auf `main` nach dem Merge-Commit | §2.9, §2.10 |
-| Images für `${UEMS_SHA}` gebaut, **ohne** Tag-Bump (Bau-Lauf nach R4, offen beim Captain) | neun Images in der Registry; gitops ohne neuen `ci(images)`-Commit | §2.10 |
+| Images für `${UEMS_SHA}` gebaut, **ohne** Tag-Bump (Bau-Lauf nach R4; am 10.10.2026 Variante A, §2.10) | neun Images in der Registry; gitops ohne neuen `ci(images)`-Commit | §2.10 |
 | Kundennachricht 48 h vorher raus | §10 | Schritt 1 |
 | Support-Weg einmal gegangen (F6) | §11 | Schritt 1 |
 | Box-Release zurückgehalten bis nach Schritt 10; NW-3 gegen ein Box-Bild vom Merge-Stand gefahren | kein Box-Update mit dem neuen Laufzeitstand vor dem api-Deploy; NW-3-Protokoll des Merge-Stands | §2.8, PR 1143 |
@@ -408,8 +424,8 @@ hat `main` schon vergeben, signiert und veröffentlicht: `edge-2026.09.5` am 24.
 `2026.09.11.1`) und `edge-2026.09.6` am 29.09.2026 (`becfa44e4`, #1307). Die Ziffer hinter
 `2026.10.` am Tag mit `git tag -l 'edge-*'` bestimmen. Beim Taggen nachziehen:
 
-- `KATALOGSTAND` in `tools/edge-simulator/uems_szenarien.py` (Z. 45, heute `2026.08.26.3`) auf
-  den Stand des neuen Release;
+- `KATALOGSTAND` in `tools/edge-simulator/uems_szenarien.py` (Z. 45) auf den Stand des neuen
+  Release (für `edge-2026.10.0` nachgezogen: `2026.09.23.3`, samt der zwei Abnahme-Vorlagen);
 - `tools/nw3-box-image/paare.json` um das neue Paar (NW-3 gegen das neue Image, Tor GA).
 
 **`paare.json` führt `edge-2026.09.6` seit dem 09.10.2026.** Die Datei nennt `edge-2026.09.4`,
@@ -449,14 +465,22 @@ unten und für den einen Bau-Lauf der Token-Entzug (§2.10).
 - **Entschieden am 09.10.2026:** `uems` geht allein nach `main`. Der Rollout-Satz dieses
   Drehbuchs ist genau der Stand von `uems`.
 
-**`main-migrations.txt` nach dem Merge nicht fortschreiben.** Die Datei
-(`services/api/src/test/resources/migration/main-migrations.txt`) beschreibt den Stand von `main`
-vor dem Merge: 174 Migrationen am Stand `db32a784c` (Nachzug PR 1468). Das ist eine mehr, als das
-Produktions-Image `8667d673d` trägt (173, ohne `V20261008213500`, §2.6). Bis zum Merge zieht jeder
-Nachzug `main` → `uems` die Datei mit. `update-main-migrations.py` liest `origin/main`; nach dem
-Merge hielte es alle Migrationen des Zweigs für „main“, und der Produktionssatz der Wächter
-(`UemsProduktionsreihenfolgeMigrationTest`) wäre falsch. Fortgeschrieben wird erst nach dem
-Rollout, auf den ausgerollten Stand.
+**Zwei Listen, zwei Bedeutungen (seit dem Rollout vom 10.10.2026).** Bis zum Rollout beschrieb
+`main-migrations.txt` zugleich die Produktion und den Stand vor UEMS; darum durfte sie zwischen
+Merge und Rollout nicht fortgeschrieben werden. Beide liegen unter
+`services/api/src/test/resources/migration/`:
+
+- **`vor-uems-migrations.txt`** ist eingefroren: die 175 Migrationen von `main` `690806300`,
+  derselbe Satz wie das zuletzt vor dem Fenster ausgerollte Image `749b81df6`. Sie wird nicht mehr
+  fortgeschrieben. Aus ihr lesen die Übergangs-Wächter (`UemsProduktionsreihenfolgeMigrationTest`
+  im Fall vor UEMS → UEMS, `FlywayStartupGuardTest`, `UemsBestandSteuerungAusEinemStueckTest`,
+  `BetriebsabfragenBlaetterTest`) und die Werkzeuge `tools/generalprobe/fixture.py` und
+  `tools/buehne-vorher-nachher/run.sh`.
+- **`main-migrations.txt`** ist der Produktionssatz von heute: 316 Migrationen am ausgerollten
+  Stand `99944c896`. `update-main-migrations.py` schreibt sie aus `origin/main` fort, und zwar
+  erst nach einem Rollout auf den ausgerollten Stand. `UemsProduktionsreihenfolgeMigrationTest`
+  fährt sie im zweiten Fall: Produktionssatz, dann der Rest out-of-order, gleich der frischen
+  Installation.
 
 ### 2.10 Images bauen ohne Tag-Bump
 
@@ -472,8 +496,10 @@ nicht: der Bau-Lauf für `${UEMS_SHA}` läuft auf `main`.
   Secret `GITOPS_PUSH_TOKEN` entziehen oder umbenennen (Forgejo › voltpilot-ems › Settings ›
   Actions › Secrets). Alle neun Images grün abwarten. C1–C3 laufen danach von Hand wie in §4. Das
   Secret kommt **nach Schritt 10** zurück.
-- **Offen beim Captain (R4, Bereitschaftsbericht vom 05.10.2026): welcher Bau-Lauf.** Bis zum
-  Entscheid gilt keine der beiden Varianten als gewählt.
+- **R4 (Bereitschaftsbericht vom 05.10.2026), welcher Bau-Lauf: am 10.10.2026 Variante A.** Die
+  Images für `1fc3b93be` baute „Build & Deploy (fast, no tests)“, allerdings nicht auf `main`,
+  sondern auf dem Zweig `bau/uems-1fc3b93be`; dort überspringt der Tag-Bump ohnehin (§2.9). Ob
+  das Secret zusätzlich entzogen war, ist hier nicht belegt. Die Tabelle bleibt als Vorlage stehen.
 
 | | Variante A | Variante B |
 |---|---|---|

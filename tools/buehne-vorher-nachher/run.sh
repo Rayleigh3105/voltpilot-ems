@@ -72,7 +72,7 @@ mkdir -p "$MAIN_WORKTREE/frontend/portal/e2e"
 cp "$ROOT/services/api/src/test/java/com/voltpilot/api/uems/UemsBestandSteuerungAusEinemStueckTest.java" \
   "$MAIN_WORKTREE/services/api/src/test/java/com/voltpilot/api/uems/"
 cp "$ROOT/services/api/src/test/resources/uems/nw2/"* "$MAIN_WORKTREE/services/api/src/test/resources/uems/nw2/"
-cp "$ROOT/services/api/src/test/resources/migration/main-migrations.txt" \
+cp "$ROOT/services/api/src/test/resources/migration/vor-uems-migrations.txt" \
   "$MAIN_WORKTREE/services/api/src/test/resources/migration/"
 cp "$ROOT/frontend/portal/e2e/buehne-vorher-nachher.html" \
   "$ROOT/frontend/portal/e2e/buehne-vorher-nachher.tsx" \

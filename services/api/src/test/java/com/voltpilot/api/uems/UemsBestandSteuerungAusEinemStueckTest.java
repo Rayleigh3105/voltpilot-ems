@@ -117,7 +117,7 @@ class UemsBestandSteuerungAusEinemStueckTest {
         var migrations = Files.createTempDirectory("nw2-main-migrations-");
         if (!CAPTURE) {
             List<String> main = new String(UemsBestandSteuerungAusEinemStueckTest.class
-                    .getResourceAsStream("/migration/main-migrations.txt").readAllBytes(), StandardCharsets.UTF_8)
+                    .getResourceAsStream("/migration/vor-uems-migrations.txt").readAllBytes(), StandardCharsets.UTF_8)
                     .lines().filter(s -> !s.isBlank() && !s.startsWith("#")).toList();
             for (String name : main) {
                 try (var in = UemsBestandSteuerungAusEinemStueckTest.class.getResourceAsStream("/db/migration/" + name)) {
@@ -127,7 +127,7 @@ class UemsBestandSteuerungAusEinemStueckTest {
             var initial = flyway().locations("filesystem:" + migrations).load();
             initial.migrate();
             assertThat(Arrays.stream(initial.info().applied()).map(MigrationInfo::getScript).toList())
-                    .as("Referenz main-migrations.txt @ %s: exakt der Satz, keine Versionsobergrenze", MAIN)
+                    .as("Referenz vor-uems-migrations.txt @ %s: exakt der Satz, keine Versionsobergrenze", MAIN)
                     .containsExactlyInAnyOrderElementsOf(main);
         } else {
             Process git = new ProcessBuilder("git", "rev-parse", "HEAD").start();

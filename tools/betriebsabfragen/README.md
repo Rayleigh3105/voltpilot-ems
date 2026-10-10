@@ -159,9 +159,9 @@ statt geraten zu werden; die Metriken dazu baut **AP-14 IP-9** in einem eigenen 
 `BetriebsabfragenBlaetterTest` (Testcontainers, ohne Docker übersprungen) baut in EINEM Container
 zwei Wegwerf-Datenbanken:
 
-- `bestand_main` mit **genau** dem Migrationssatz von `main`
-  ([`services/api/src/test/resources/migration/main-migrations.txt`](../../services/api/src/test/resources/migration/main-migrations.txt),
-  dieselbe Liste, die `UemsProduktionsreihenfolgeMigrationTest` fährt) — darauf läuft das
+- `bestand_main` mit **genau** dem Migrationssatz von `main` vor UEMS
+  ([`services/api/src/test/resources/migration/vor-uems-migrations.txt`](../../services/api/src/test/resources/migration/vor-uems-migrations.txt),
+  dieselbe Liste, die `UemsProduktionsreihenfolgeMigrationTest` im Fall vor UEMS → UEMS fährt) — darauf läuft das
   Vorher-Blatt;
 - `uems` mit dem vollen Satz — darauf laufen Nachher- und Pilot-Blatt.
 
