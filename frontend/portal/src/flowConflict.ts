@@ -96,7 +96,7 @@ export const FEED_IN_FULL_MARGIN_KW = 1;
 const FOLLOWING_MODES: ReadonlySet<string> = new Set([
   'follow', 'limit', 'trim', 'absorb', 'idle_follow', 'deficit_cover', 'high_soc_follow',
   'high_soc_charge', 'surplus_store', 'autonomous_discharge', 'autonomous_charge',
-  'autonomous_selfconsumption',
+  'autonomous_selfconsumption', 'grid_target',
 ]);
 
 /** Der Trailing-Satz jeder Konflikt-Aussage: ein Hinweis, kein Alarm. */

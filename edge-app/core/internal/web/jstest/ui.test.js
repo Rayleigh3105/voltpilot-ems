@@ -1133,6 +1133,65 @@ test("groups: legacy deep-link anchors map into their owning group", () => {
   assert.strictEqual(G.groupForAnchor("portal"), null, "the pairing block is not inside the accordion");
 });
 
+/* ====== control.js: netzseitiger Drossel-Slot - Regelseite und Netz-Sollwert ====== */
+
+test("control: the control-side register names its side, not a bare number", () => {
+  const C = load(["control.js"]).VPControl;
+  const side = (raw) => C.fmtCell({ role: "power_control_mode", commanded_raw: raw, actual_raw: raw }, "commanded_kw");
+  assert.strictEqual(side(2), "netzseitig (2)");
+  assert.strictEqual(side(1), "batterieseitig (1)");
+  assert.strictEqual(side(0), "AC-seitig (0)");
+  assert.strictEqual(C.ROLE_LABEL.power_control_mode, "Regelseite");
+  assert.strictEqual(C.ROLE_LABEL.grid_power, "Netz-Sollwert");
+  // The readback column speaks the same words - a deviation must be legible.
+  assert.strictEqual(
+    C.fmtCell({ role: "power_control_mode", commanded_raw: 2, actual_raw: 1 }, "actual_kw"),
+    "batterieseitig (1)");
+});
+
+test("control: an unknown or unanswered enum value is never given a guessed word", () => {
+  const C = load(["control.js"]).VPControl;
+  assert.strictEqual(
+    C.fmtCell({ role: "power_control_mode", commanded_raw: 65535, actual_raw: 65535 }, "commanded_kw"),
+    "65535", "the 0xFFFF incident value stays a number");
+  assert.strictEqual(
+    C.fmtCell({ role: "power_control_mode", commanded_raw: 2, actual_raw: null }, "actual_kw"),
+    "–", "no answer is not a side");
+  // A flag register without words is untouched; a power register keeps its kW.
+  assert.strictEqual(C.fmtCell({ role: "remote_mode", commanded_raw: 1 }, "commanded_kw"), "1");
+  assert.strictEqual(
+    C.fmtCell({ role: "grid_power", commanded_kw: 0, commanded_raw: 0 }, "commanded_kw"),
+    "0,0 kW (0)");
+});
+
+test("control: in a grid-side slot the now tile shows the Netz-Sollwert under its name", () => {
+  const C = load(["control.js"]).VPControl;
+  const grid = { registers: [
+    { role: "remote_mode", commanded_raw: 1 },
+    { role: "power_control_mode", commanded_raw: 2 },
+    { role: "grid_power", commanded_kw: -30, commanded_raw: 64536 },
+  ] };
+  const g = C.nowSetpoint(grid, false);
+  assert.strictEqual(g.label, "Netz-Sollwert");
+  assert.strictEqual(g.kw, -30);
+  // Zero export is a real setpoint, not "nothing commanded".
+  const zero = C.nowSetpoint({ registers: [{ role: "grid_power", commanded_kw: 0, commanded_raw: 0 }] }, false);
+  assert.strictEqual(zero.kw, 0);
+  assert.strictEqual(zero.label, "Netz-Sollwert");
+});
+
+test("control: the battery-side now tile is unchanged", () => {
+  const C = load(["control.js"]).VPControl;
+  const batt = { registers: [{ role: "battery_power", commanded_kw: -4, commanded_raw: 4000 }] };
+  assert.strictEqual(C.nowSetpoint(batt, false).label, "Fahrplan-Sollwert");
+  assert.strictEqual(C.nowSetpoint(batt, false).kw, -4);
+  assert.strictEqual(C.nowSetpoint(batt, true).label, "Kalibrier-Sollwert");
+  // No setpoint register at all: the label stays, the value is absent (never 0).
+  const none = C.nowSetpoint({ registers: [{ role: "remote_mode", commanded_raw: 1 }] }, false);
+  assert.strictEqual(none.label, "Fahrplan-Sollwert");
+  assert.strictEqual(none.kw, null);
+});
+
 /* ============ control.js: PV curtailment (Fronius) state layer ============ */
 
 function curtailFor(state) {

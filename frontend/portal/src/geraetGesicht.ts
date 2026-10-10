@@ -47,6 +47,7 @@ import { ladestandVon } from './ladestandVon';
 import { channelLabel } from './channels';
 import { NACHWEIS_FREIGABE, type NachweisArt } from './consumers/questions';
 import { controlStrip } from './control';
+import { netzKwText, regeltNetzanschluss } from './curtailment';
 import { fmtNum } from './format';
 import type { GeraetArt, GeraetTon } from './geraetSeite';
 import type { PlantComponent } from './komponenten';
@@ -618,11 +619,20 @@ function speicherTeil(input: GesichtInput): SpeicherTeil {
  * Zähler (`units`/`certifiedUnits`) sind eine Aussage über die ANLAGE, und sie
  * einem von mehreren Wechselrichtern anzulasten wäre genau die erfundene
  * Zuordnung, die `ANLAGENWEITE_BEFEHLE` vermeidet.
+ *
+ * Eine Einheit, die den NETZANSCHLUSS regelt (Konzept
+ * `vp-deye-netzseitig-drossel-k2` §2.11), bekommt ihren eigenen Satz: „Kappe"
+ * passt für sie nicht - sie deckelt nicht ihre Leistung, sie hält ein Ziel am
+ * Netzpunkt. Ihr Beleg ist die MESSUNG; `messungNetzKw` ist der Netzwert, den
+ * DIESES Gerät selbst misst (`+` Bezug, `−` Einspeisung), und fehlt er, fällt
+ * sein Halbsatz weg statt eine 0 zu erfinden. `netz` sagt dem Aufrufer, dass
+ * es dieser Satz ist.
  */
 export function abregelungDiesesGeraets(
   status: CurtailmentStatus | null | undefined,
   geraetId: string,
-): { satz: string; ton: GeraetTon } | null {
+  messungNetzKw?: number | null,
+): { satz: string; ton: GeraetTon; netz?: true } | null {
   if (!status) return null;
   const unit = (status.perUnit ?? []).find((u) => u.sourceId === geraetId);
   if (!unit) {
@@ -639,6 +649,29 @@ export function abregelungDiesesGeraets(
       satz: 'Dieses Gerät ist für die Einspeise-Begrenzung noch nicht freigegeben — VoltPilot '
         + 'prüft das Modell zuerst am Prüfstand.',
       ton: 'off',
+    };
+  }
+  if (regeltNetzanschluss(unit)) {
+    const ziel = num(unit.targetKw);
+    if (ziel == null) {
+      return {
+        satz: 'Dieses Gerät regelt für VoltPilot den Netzanschluss, wenn die Einspeisung '
+          + 'pausieren soll — gerade ist kein Ziel aktiv.',
+        ton: 'ok',
+        netz: true,
+      };
+    }
+    const messung = num(messungNetzKw);
+    const gemessen = messung == null ? '' : ` (Messung ${netzKwText(messung)})`;
+    const urteil = unit.match === true
+      ? ' · bestätigt'
+      : unit.match === false
+        ? ' · die Messung folgt dem Ziel nicht'
+        : ' · noch nicht bestätigt';
+    return {
+      satz: `Regelt den Netzanschluss gerade auf ${netzKwText(ziel)}${urteil}${gemessen}.`,
+      ton: unit.match === false ? 'warn' : 'ok',
+      netz: true,
     };
   }
   const cap = num(unit.appliedCapKw);
