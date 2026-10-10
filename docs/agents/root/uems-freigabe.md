@@ -100,11 +100,11 @@ Wer sie als Tor behandelt, baut eine Sperre, die es mit E1 = B nicht gibt.
   bestehenden Realm. Erst Portal/API mit 12 Zeichen, dann die Keycloak-Vorgabe
   ([Drehbuch, nach Schritt 10](../../rollout/uems-erste-freigabe.md),
   [`live-realm-import.md`](../../../infra/prod/keycloak/live-realm-import.md)).
-- **Der nächste Box-Release-Tag heißt `edge-2026.10.x`**: `edge-2026.09.5` (24.09.2026) und
-  `edge-2026.09.6` (29.09.2026) hat `main` schon vergeben. Vor dem Tag läuft NW-3 gegen ein
-  Box-Bild vom Merge-Stand; `paare.json` führt `09.6` seit dem 09.10.2026, am `uems`-Kopf
-  `7f875011f` ist NW-3neu gefahren ([Drehbuch §2.8](../../rollout/uems-erste-freigabe.md),
-  [NW-3](uems-nw3-box-image.md)).
+- **Das Box-Release nach dem Merge heißt `edge-2026.10.0`** (10.10.2026, Tag auf `main`
+  `99944c896`); der nächste Tag ist `edge-2026.10.1`. NW-3 für das Paar ist am 10.10.2026
+  gefahren (13 grün), `paare.json` führt es als viertes; am `uems`-Kopf `7f875011f` war am
+  09.10. NW-3neu gefahren ([Drehbuch §2.8](../../rollout/uems-erste-freigabe.md),
+  [NW-3](uems-nw3-box-image.md)). Der Rollout auf die Boxen folgt nach dem API-Deploy.
 - **Ein Platzhalter in PR 37 steht noch auf `CHANGE-ME`**: der Tenant des Dauerläufers
   (IP-18, Einrichtung Drehbuch §14, [Wegweiser](uems-dauerlaeufer.md)). Ihn gibt es erst
   nach Schritt 10; darum ist IP-18 seit dem Entscheid B4 vom 27.09.2026 kein G1-Punkt mehr,

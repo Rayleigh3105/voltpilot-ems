@@ -97,7 +97,7 @@ Protokoll des Laufs vom 19.09.2026 gegen `origin/uems` `2edc6e1d`, mit
 [`docs/rollout/nw3-protokoll-edge-2026.09.4.json`](../../rollout/nw3-protokoll-edge-2026.09.4.json)
 — **12 grün, 0 rot, 1 Befund, 0 nicht gefahren**. Jeder Punkt trägt seinen Beleg
 (die Nachricht, die die Box wirklich gesendet hat). Die Naht zur api-Antwort für
-Punkt 7 fährt `Nw3AusgeliefertesBoxImageTest` (seit dem 09.10.2026 5 Fälle, drei Stände).
+Punkt 7 fährt `Nw3AusgeliefertesBoxImageTest` (seit dem 10.10.2026 7 Fälle, vier Stände).
 
 Protokoll des Laufs vom 26.09.2026 gegen `origin/uems` `f694b525` (PR 1287), mit
 `--strecke`:
@@ -148,6 +148,23 @@ Die Grenzen des Prüfstands gelten weiter: Punkt 7 liest `supports[]` nicht, „
 ist fester Wortlaut, und das Feld `herkunft` im Protokoll sagt auch für ein Commit-Paar „aus dem
 Release-Tag gebaut“. Der Lauf prüft eine frische Box am Simulator; nicht den Update-Pfad (NW-3u),
 keine Hardware, und kein Bild vom späteren Merge-Commit auf `main` oder vom `mispel`-Stand.
+
+Protokoll des Laufs vom 10.10.2026 für das Release-Paar `edge-2026.10.0` (Tag auf `main`
+`99944c896`, Box und Cloud aus demselben Commit), mit `--strecke`:
+[`docs/rollout/nw3-protokoll-edge-2026.10.0.json`](../../rollout/nw3-protokoll-edge-2026.10.0.json)
+— **13 grün, 0 rot, 0 Befund, 0 nicht gefahren**, dasselbe Bild wie am `uems`-Kopf. Es ist das
+erste getaggte Paar mit dem UEMS-Stand: Palette/Katalog `2026.09.23.3`, darum sind 3/4a/4b grün
+(`rejected` leer, 8 Umschläge gesendet = 8 Rohzeilen) und 6c ist kein Befund mehr (die Box ruht
+nach der Rückkehr weiter). Der Herzschlag trägt `supports[]` mit acht Namen (darunter
+`data_sources`), `battery_control` und `data_sources`. `paare.json` führt das Paar als viertes;
+`Nw3AusgeliefertesBoxImageTest` hat 7 Fälle, vier Stände. Zwei Dinge sagt der Lauf nicht: Punkt 7
+ist grün mit „Update nötig für: Rückmeldung je Datenquelle“, weil das Werkzeug nur die Tabelle
+liest (`ab_release: null`) — die Fläche liest `supports[]` und zeigt den Satz für diese Box nicht
+(Testfall `dasReleaseMitDemUemsStandMeldetSupportsUndBrauchtDarumKeinUpdate`). Und die
+Neuerungen des Release kommen am SunSpec-Simulator nicht vor: netzseitiger Drossel-Slot und
+`grid_target` (Deye P3/P4), Netzregler-Anzeige auf :8484, Fernwartung/Tunnel, Techniker-Zugang.
+`KATALOGSTAND` in `tools/edge-simulator/uems_szenarien.py` steht weiter auf `2026.08.26.3`
+(Drehbuch §2.8 „beim Taggen nachziehen“).
 
 ## X2 ist kein Fehlerbild
 

@@ -420,6 +420,12 @@ weiter Q07; NW-3 unter G1 verlangt je Paar ein Protokoll. NW-3 gegen ein Box-Bil
 `7f875011f` ist am selben Tag gefahren (`nw3-protokoll-edge-uems-7f875011fc46.json`, 13 grün); es
 ist kein Bild vom Merge-Commit auf `main`.
 
+**Das Release ist getaggt: `edge-2026.10.0` am 10.10.2026 auf `main` `99944c896`.** NW-3 für
+dieses Paar ist am selben Tag mit `--strecke` gefahren, Box und Cloud aus demselben Commit
+(`nw3-protokoll-edge-2026.10.0.json`): 13 grün, 0 rot, 0 Befund. `paare.json` führt es als viertes
+Paar. Von den zwei Nachzügen oben ist damit `paare.json` erledigt; `KATALOGSTAND` steht weiter auf
+`2026.08.26.3`, das Release trägt `2026.09.23.3`. Der nächste Tag heißt `edge-2026.10.1`.
+
 ### 2.9 Zwischen Merge und Fenster
 
 Nach dem Merge `uems` → `main` ist `main` das Release. `deploy.yaml` und `deploy-fast.yaml` laufen

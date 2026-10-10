@@ -63,6 +63,14 @@ class Nw3AusgeliefertesBoxImageTest {
 
     private static final String RELEASE_096 = "edge-2026.09.6";
 
+    /**
+     * Der Stand, den die Box im NW-3-Lauf des Tags vom 10.10.2026 meldete
+     * ({@code docs/rollout/nw3-protokoll-edge-2026.10.0.json}).
+     */
+    private static final String GEMELDETER_STAND_100 = "edge-2026.10.0-99944c8960ad";
+
+    private static final String RELEASE_100 = "edge-2026.10.0";
+
     @Test
     void dieAusgelieferteBoxOhneReleaseImRegisterBrauchtDasUpdateJeDatenquelle() throws Exception {
         // Ein Stand, der zu keinem Release des Registers gehört, beweist keine Fähigkeit
@@ -129,6 +137,40 @@ class Nw3AusgeliefertesBoxImageTest {
         assertThat(mit.text()).isEqualTo("Software " + RELEASE_096
                 + " · Update nötig für: Rückmeldung je Datenquelle");
         assertThat(mit.faehigkeiten()).extracting(FaehigkeitStatus::vorhanden).containsOnly(false);
+    }
+
+    @Test
+    void auchDasErsteReleaseMitDemUemsStandTraegtDieFaehigkeitNichtUeberDieTabelle() throws Exception {
+        // edge-2026.10.0 (10.10.2026, erster Tag nach dem Schritt uems -> main, mit den
+        // Deye-Paketen P3/P4) ist die neueste ausgelieferte Box. Die Tabelle trägt weiter
+        // ab_release = null: ohne supports[] sagt die Fläche denselben Satz wie für 09.4 bis 09.6.
+        FaehigkeitenErgebnis ohne = DatenquelleRegeln.faehigkeiten(
+                new Stand(GEMELDETER_STAND_100, null, null), tabelle(), List.of());
+        FaehigkeitenErgebnis mit = DatenquelleRegeln.faehigkeiten(
+                new Stand(GEMELDETER_STAND_100, RELEASE_100, null), tabelle(), List.of(RELEASE_100));
+
+        assertThat(ohne.text()).isEqualTo("Software " + GEMELDETER_STAND_100
+                + " · Update nötig für: Rückmeldung je Datenquelle");
+        assertThat(mit.text()).isEqualTo("Software " + RELEASE_100
+                + " · Update nötig für: Rückmeldung je Datenquelle");
+        assertThat(mit.faehigkeiten()).extracting(FaehigkeitStatus::vorhanden).containsOnly(false);
+    }
+
+    @Test
+    void dasReleaseMitDemUemsStandMeldetSupportsUndBrauchtDarumKeinUpdate() throws Exception {
+        // Anders als 09.4 bis 09.6 trägt der Herzschlag von edge-2026.10.0 den Block
+        // `supports[]` (Beleg: Punkt 1a des Protokolls, acht Namen, darunter `data_sources`).
+        // Punkt 7 des Werkzeugs liest diesen Block nicht; die Fläche liest ihn, und mit der
+        // gemeldeten Liste fehlt der Box nichts - der Satz „Update nötig“ fällt weg.
+        List<String> gemeldet = List.of("data_sources", "measurement_sample_provenance", "events",
+                "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil",
+                "sprungprobe", "measurement_config_per_component");
+        FaehigkeitenErgebnis e = DatenquelleRegeln.faehigkeiten(
+                new Stand(GEMELDETER_STAND_100, null, gemeldet), tabelle(), List.of());
+
+        assertThat(e.faehigkeiten()).extracting(FaehigkeitStatus::vorhanden).containsOnly(true);
+        assertThat(e.text()).startsWith("Software " + GEMELDETER_STAND_100 + " · ")
+                .doesNotContain("Update nötig");
     }
 
     private static List<TabellenEintrag> tabelle() throws Exception {
