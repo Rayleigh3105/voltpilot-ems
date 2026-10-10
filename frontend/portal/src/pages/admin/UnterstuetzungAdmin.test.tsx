@@ -40,3 +40,34 @@ it('Kundenkonten erhalten keine Plattformaktionen', () => {
   vi.mocked(isPlatformAdmin).mockReturnValue(false); render(<UnterstuetzungAdmin tenantId="kunde" name="Ahrenberg" />);
   expect(screen.queryByRole('button')).toBeNull(); expect(fleetApi.fleet).not.toHaveBeenCalled();
 });
+it('Mandant ohne Standort: der Kasten sagt vor jedem Formular, dass und warum die Mandanten-Ansicht nicht aufgeht', async () => {
+  render(<UnterstuetzungAdmin tenantId="ohne-standort" name="Sonnenhof Beispiel" />);
+  const hinweis = await screen.findByRole('note');
+  expect(hinweis).toHaveTextContent('Dieser Mandant hat noch keinen Standort.');
+  expect(hinweis).toHaveTextContent('gelten immer für Standorte, nie für das ganze Unternehmen');
+  expect(hinweis).toHaveTextContent('kann die Mandanten-Ansicht deshalb zurzeit nicht öffnen');
+  // Die Regel bleibt, wie sie ist: beide Wege stehen weiter da, nichts wird versteckt oder gesperrt.
+  expect(screen.getByRole('button', { name: 'Unterstützung anfragen' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Notfall-Zugriff', exact: true })).toBeEnabled();
+});
+it('Kein Hinweis, wenn der Mandant einen Standort hat', async () => {
+  render(<UnterstuetzungAdmin tenantId="kunde" name="Kunststoffwerk Ahrenberg GmbH" />);
+  await waitFor(() => expect(fleetApi.fleet).toHaveBeenCalled());
+  await Promise.resolve();
+  expect(screen.queryByRole('note')).toBeNull();
+});
+it('Fehlend ist keine Null: nennt die Flotte die Standorte nicht oder scheitert der Abruf, behauptet der Kasten nichts', async () => {
+  vi.mocked(fleetApi.fleet).mockResolvedValue({ sites: [], releases: [] });
+  const { unmount } = render(<UnterstuetzungAdmin tenantId="kunde" name="Kunststoffwerk Ahrenberg GmbH" />);
+  await waitFor(() => expect(fleetApi.fleet).toHaveBeenCalledTimes(1));
+  await Promise.resolve();
+  expect(screen.queryByRole('note')).toBeNull();
+  unmount();
+  vi.mocked(fleetApi.fleet).mockRejectedValue(new Error('nicht erreichbar'));
+  render(<UnterstuetzungAdmin tenantId="kunde" name="Kunststoffwerk Ahrenberg GmbH" />);
+  await waitFor(() => expect(fleetApi.fleet).toHaveBeenCalledTimes(2));
+  await Promise.resolve();
+  expect(screen.queryByRole('note')).toBeNull();
+  // Ohne offenes Formular auch keine Fehlermeldung - sie gehört zum Formular.
+  expect(screen.queryByRole('alert')).toBeNull();
+});

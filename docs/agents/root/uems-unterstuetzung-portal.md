@@ -37,6 +37,18 @@ Die beiden Ortsstruktur-Bestandstests ohne dieses Profil wählen die Kompatibili
 Deployment-Override kann die Vorgabe übersteuern; bei der UEMS-Auslieferung darf es nicht auf true stehen.
 Keine Migration, keine Änderung der Rechte-Matrix oder der Rechte-Architekturwächter.
 
+## Plattform ohne wirksame Unterstützung
+
+Wählt oder springt die Plattform in einen Mandanten, den die API nicht annimmt (`/me.kundenbereich` ist `null`,
+obwohl ein Mandant gewählt ist), zeigt `App` die Karte „Kein Zugriff auf diesen Kundenbereich“ mit Grund und Weg -
+nicht den Kundenzweig „Kein Standort zugewiesen“. Der Sprung-Knopf bleibt ohne Bedingung; kein Text des Portals
+verspricht die Mandanten-Ansicht ohne Unterstützung oder Notfall-Zugriff. `UnterstuetzungAdmin` lädt die
+Standorte der Flotte schon mit dem Mandanten-Dialog und sagt bei einem Mandanten ohne Standort, dass die
+Plattform ihn zurzeit nicht betreten kann (Anfrage und Notfall enden dort mit `standort_fehlt`). Fehlt das Feld
+oder scheitert der Abruf, ist das unbekannt und kein „kein Standort“. Nachweise:
+`mandantenSprungOhneUnterstuetzung.test.tsx`, `UnterstuetzungAdmin.test.tsx` und `e2e/mandantensprung.spec.ts`
+(ganzer `App`, gefälschter `fetch` im Wirt `e2e/mandantensprung.tsx`).
+
 ## Nachweise
 
 `UnterstuetzungApiTest` (Gewährung, Ablauf, Entzug, Selbst-Liste, Flotte, Kundenstandorte, Fremdzugriff),

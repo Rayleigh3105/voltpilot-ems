@@ -1500,6 +1500,9 @@ function UnifiedPortal() {
   // Ein Plattform-Konto hat keinen Standort (/me: konto „plattform“, standorte leer) - die Plattform-Seiten
   // brauchen keinen und bleiben erreichbar, wie schon im Lade-Zweig unten.
   const leer = ohneStandort(selbst) && !(isAdmin && PLATFORM_PAGES.some((p) => p.id === page));
+  // Die Plattform hat einen Mandanten gewählt, aber /me nimmt ihn nicht an (`kundenbereich` null): es gibt dort
+  // keine wirksame Unterstützung. Das ist kein fehlender Standort - die Karte nennt den Grund und den Weg.
+  const ohneUnterstuetzung = leer && isAdmin && tenantId != null && selbst?.kundenbereich == null;
   const rechteStandort = route.standortId ?? orte?.standorte.find((s) => s.anlagen.includes(shellSite?.id ?? ''))?.id ?? null;
   // Avatar-Menü „Funktionen“ (AP-01 E5 = A): nur, wo die Landung eine Ebene mit der Karte ist. Die Anlage- und die
   // Bestands-Landung haben keine Karte - dort bleibt das Menü, wie es war. Die Unternehmens-Übersicht trägt die
@@ -1592,6 +1595,11 @@ function UnifiedPortal() {
         <LoadErrorNotice onRetry={() => void reload()} />
       ) : tenantReady && !selbst && !PLATFORM_PAGES.some((p) => p.id === page) ? (
         <Card padding="lg" radius="lg"><p>Wird geladen …</p></Card>
+      ) : ohneUnterstuetzung ? (
+        <OhneUnterstuetzungNotice
+          mandant={tenants.find((t) => t.id === tenantId)?.name ?? null}
+          onMandanten={() => { changeTenant(null); navigate('mandanten'); }}
+        />
       ) : leer ? (
         <Card padding="lg" radius="lg"><h1>Kein Standort zugewiesen</h1><p>{selbst?.text}</p>
           {selbst?.kuenftig.map((z) => <p key={`${z.standort}-${z.ab}`}>{z.text}</p>)}
@@ -2036,6 +2044,29 @@ function LoadErrorNotice({ onRetry }: { onRetry: () => void }) {
   );
 }
 
+/**
+ * Die Plattform ist in einen Mandanten gesprungen, für den sie keine wirksame Unterstützung hat: die API nimmt den
+ * Kundenbereich nicht an (404 auf jeder Kundenroute, /me ohne Kundenbereich). Die Karte öffnet nichts - sie sagt
+ * nur, warum die Ansicht leer ist und wo der Zugriff entsteht.
+ */
+function OhneUnterstuetzungNotice({ mandant, onMandanten }: { mandant: string | null; onMandanten: () => void }) {
+  return (
+    <Card padding="lg" radius="lg">
+      <h1>Kein Zugriff auf diesen Kundenbereich</h1>
+      <p>
+        Für {mandant ? <b>{mandant}</b> : 'diesen Mandanten'} besteht keine wirksame Unterstützung. VoltPilot sieht
+        die Ansicht eines Mandanten nur mit einer Unterstützung, die der Kundenadministrator bestätigt hat, oder
+        mit einem Notfall-Zugriff.
+      </p>
+      <p>
+        Beides beginnt unter Plattform › Mandanten im Dialog des Mandanten: „Unterstützung anfragen“ oder
+        „Notfall-Zugriff“ (24 Stunden, Grund Pflicht, die Kundenadministratoren erhalten einen Hinweis).
+      </p>
+      <Button variant="primary" onClick={onMandanten}>Zu den Mandanten</Button>
+    </Card>
+  );
+}
+
 /** Admin on a customer page without a tenant context: never a dead-end. */
 function PickTenantNotice({
   tenants,
@@ -2050,7 +2081,9 @@ function PickTenantNotice({
         <h3>Mandanten wählen</h3>
         <p>
           Diese Seite zeigt Kundendaten. Wählen Sie oben im Mandanten-Umschalter einen
-          Mandanten (oder hier direkt), um dessen Ansicht zu sehen.
+          Mandanten (oder hier direkt). Seine Ansicht öffnet sich nur, wenn Sie dort eine
+          bestätigte Unterstützung oder einen Notfall-Zugriff haben; beides beginnt unter
+          Plattform › Mandanten im Dialog des Mandanten.
         </p>
         <div style={{ display: 'flex', gap: 'var(--vp-space-3)', justifyContent: 'center', flexWrap: 'wrap' }}>
           {tenants.slice(0, 6).map((t) => (
