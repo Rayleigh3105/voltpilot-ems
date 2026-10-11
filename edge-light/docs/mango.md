@@ -127,7 +127,7 @@ Beide Tunnel können nebeneinander laufen: Die Zone `service` umfasst alle Tunne
 | 3 | **Tunnel einrichten** (Schritte 1 bis 4 oben) | `service-tunnel.sh <ziel> status`: Handshake, `SSH 2222 ausserhalb der Tunnel: abgewiesen`, `Fenster-Schluessel: Abholer laeuft` mit einer gültigen Antwort |
 | 4 | **Anmeldeprobe über Portal und Tunnel:** im Portal ein Fenster für den eigenen Zugang öffnen (15 Minuten, Grund „Werkstatt-Probe“) und sich von einem Techniker-Gerät anmelden, das **keinen** dauerhaften Schlüssel auf der Box hat: `ssh -i ~/.ssh/id_rsa_voltpilot -o IdentitiesOnly=yes -p 2222 root@<adresse>` | im Portal am Fenster „Alles bereit“; die Anmeldung gelingt; auf der Box nennt `logread -e dropbear \| grep 'Pubkey auth' \| tail -1` den Fingerabdruck aus dem Portal |
 | 5 | **Host-Schlüssel notieren:** den Fingerabdruck, den `ssh` bei der ersten Anmeldung zeigt, zur Box-Referenz ins Übergabeprotokoll | beim Kunden bestätigt der Techniker ihn nicht mehr blind |
-| 6 | **Fenster schließen** und den Versuch wiederholen | die Sitzung endet, der neue Versuch endet mit `Connection timed out`; im Portal steht kein offenes Fenster mehr |
+| 6 | **Fenster schließen** und den Versuch wiederholen | die Sitzung endet, der neue Versuch endet mit `Connection timed out`; im Portal steht kein offenes Fenster mehr; auf der Box nennt `logread -e vp-wartung \| grep 'Sitzung beendet'` die Sitzung von eben |
 
 Scheitert Schritt 4, sagt das Portal am Fenster, woran: „Box nicht verbunden“ (Tunnel, Schritt 3), „Schlüssel noch nicht abgeholt“ (Abholer oder Schlüsselausgabe des Servers), „Kein SSH-Schlüssel am Zugang“ (im Portal hinterlegen) oder „Stand unbekannt“ (der Tunnel-Dienst meldet nicht). Die Box bleibt in der Werkstatt, bis die Probe gelingt.
 
@@ -187,15 +187,17 @@ Entscheid des Kapitäns vom 09.10.2026, Schritt 3 von [Fernwartung, Anmeldung an
 | `/usr/libexec/vp-wartung/schluessel-holen.sh` | der Abholer: `lauf` (Dauerdienst), `frist` (cron, jede Minute), `einmal` (Abfrage von Hand), `status` |
 | `/etc/init.d/vp-wartung` | startet Dropbear an der Tunnel-Adresse mit eigener Schlüsseldatei (`dropbear -D`) und den Abholer; hängt den RAM-Bereich ein |
 | `/etc/vp-wartung/keys` | eigenes tmpfs (128 KiB, nur root) mit der Schlüsseldatei. Nicht unter `/tmp`: Dropbear lehnt eine Schlüsseldatei unter einem Verzeichnis ab, das alle beschreiben dürfen |
-| `/tmp/vp-wartung` | Arbeitsstand des Abholers: je Schlüssel die Frist in Laufzeit der Box |
+| `/tmp/vp-wartung` | Arbeitsstand des Abholers: je Schlüssel die Frist in Laufzeit der Box; die Datei `beenden`, solange nach einem gestrichenen Schlüssel noch Sitzungen zu beenden sind |
 | `/etc/config/vp-wartung` | Server (`10.10.32.1`), Port (`8022`), Schnittstelle; wahlweise `warte` |
 | `/etc/nftables.d/20-vp-wartung.nft` | zwei eigene Firewall-Ketten: SSH 2222 nur aus den Tunneln, die Anfrage nach Schlüsseln nur durch den Tunnel |
 
 - **Die UCI-Instanz `dropbear.vp_wartung` entfällt.** Das Startskript von OpenWrt kennt `-D` nicht, deshalb startet ein eigenes Startskript die Instanz. Sie läuft nur, solange der Tunnel eine Adresse hat.
 - **Was dauerhaft in `/etc/dropbear/authorized_keys` steht, gilt im Tunnel weiter.** Der Abholer liest die Datei nur und schreibt ihre Zeilen vor die Fenster-Schlüssel. Eine neue Zeile dort gilt im Tunnel nach spätestens einer Minute. Port 22 im LAN ist unberührt. Was dort stehen soll: [ein Notfall-Schlüssel](#dauerhafte-schlüssel-ein-notfall-schlüssel).
 - **Nur RAM.** Ein Neustart der Box löscht jeden Fenster-Schlüssel; die Box holt ihn von selbst wieder, solange das Fenster offen ist. Ohne das tmpfs schreibt der Abholer nichts.
-- **Was ein Update der Box übersteht:** `sysupgrade -l | grep -E 'vp-wartung|service-tunnel-watch'` nennt sieben Zeilen (an der Labor-Mango so gelesen): `/etc/config/vp-wartung`, `/etc/init.d/vp-wartung`, `/etc/nftables.d/20-vp-wartung.nft`, `/etc/rc.d/S60vp-wartung`, `/etc/wireguard/vp-wartung.key`, `/usr/libexec/vp-edge-light/service-tunnel-watch.sh` und `/usr/libexec/vp-wartung/schluessel-holen.sh`. Die Schlüsseldatei der Fenster unter `/etc/vp-wartung/keys` steht nicht darin, auch nicht bei offenem Fenster: Sie liegt im tmpfs, und ein Fenster-Schlüssel kommt so nie mit in ein Update.
-- **Eine Sitzung endet mit dem Fenster,** weil der Wartungsserver den Weg trennt, nicht weil die Box sie beendet: Die Box streicht nur den Schlüssel. Der Anmeldeprozess auf der Box bleibt danach noch bis zu 15 Minuten stehen (Dropbear `-K 300`: nach drei unbeantworteten Lebenszeichen `Exit … Keepalive timeout` im Log); benutzbar ist er in dieser Zeit nicht. Die Fälle im Einzelnen: [Fernwartung](../../docs/fernwartung.md#was-mit-einer-laufenden-anmeldung-geschieht).
+- **Was ein Update der Box übersteht:** `sysupgrade -l | grep -E 'vp-wartung|service-tunnel-watch'` nennt sieben Zeilen (an der Labor-Mango so gelesen; mit dem Beenden der Sitzungen kam keine Datei dazu): `/etc/config/vp-wartung`, `/etc/init.d/vp-wartung`, `/etc/nftables.d/20-vp-wartung.nft`, `/etc/rc.d/S60vp-wartung`, `/etc/wireguard/vp-wartung.key`, `/usr/libexec/vp-edge-light/service-tunnel-watch.sh` und `/usr/libexec/vp-wartung/schluessel-holen.sh`. Die Schlüsseldatei der Fenster unter `/etc/vp-wartung/keys` steht nicht darin, auch nicht bei offenem Fenster: Sie liegt im tmpfs, und ein Fenster-Schlüssel kommt so nie mit in ein Update.
+- **Eine Sitzung endet mit dem Fenster, an zwei Schranken** (Entscheid vom 10.10.2026): Der Wartungsserver trennt den Weg, und die Box beendet die Sitzungen, die mit dem gestrichenen Fenster-Schlüssel begonnen wurden. Sitzungen mit einem dauerhaften oder einem anderen, noch gültigen Fenster-Schlüssel bleiben; eine, die sich keinem gültigen Schlüssel zuordnen lässt, endet dabei ebenfalls. Die Fälle, die Zuordnung und was „beenden“ heißt: [Fernwartung](../../docs/fernwartung.md#was-mit-einer-laufenden-anmeldung-geschieht).
+- **Die Marke in der Schlüsseldatei.** Der Abholer schreibt hinter jeden Schlüssel `vpf-<Kennzahl>` (Fenster) oder `vpd-<Kennzahl>` (dauerhaft), bei einer dauerhaften Zeile vor deren Kommentar; `/etc/dropbear/authorized_keys` selbst bleibt unberührt. Dropbear gibt nur das **erste** Wort hinter dem Schlüssel als `SSH_PUBKEYINFO` an die Prozesse der Sitzung weiter, und nur wenn es aus Buchstaben, Ziffern und `.,_-+@` besteht. Wer die Zeile anders aufbaut, nimmt dem Abholer die Zuordnung: Dann endet jede Sitzung beim nächsten Streichen, auch die mit dauerhaftem Schlüssel.
+- **Eine Box mit älterem Skript** streicht nur den Schlüssel; der Anmeldeprozess bleibt bis zu 15 Minuten stehen (Dropbear `-K 300`: nach drei unbeantworteten Lebenszeichen `Exit … Keepalive timeout` im Log). Der Wechsel: [Ausrollen](#sitzungen-beenden-ausrollen-je-box).
 - **Frist in Laufzeit der Box** (`/proc/uptime`), nicht in Uhrzeit. Die Box nimmt höchstens 24 h und höchstens acht Schlüssel an. Ein cron-Lauf je Minute streicht Verfallenes auch dann, wenn der Abholer hängt.
 - **Die Antwort des Servers ist die ganze Liste.** Ein geschlossenes Fenster und ein im Portal ersetzter oder entfernter Schlüssel sind auf der Box gestrichen, sobald der Server es meldet; in der Probe nach 0,2 bis 1 s. Jede Antwort, die nicht genau die [vereinbarte Form](../../docs/contracts/fernwartung-schluessel-v1.md) hat, ändert nichts.
 - **Nur durch den Tunnel.** Der Abholer fragt nicht, wenn die Route zum Server nicht über `wg_wartung` führt, und die Firewall der Box weist die Anfrage auf jedem anderen Weg ab. Im Netz des Kunden kann sich so niemand als Wartungsserver ausgeben.
@@ -207,11 +209,45 @@ Nachsehen auf der Box:
 
 ```sh
 /usr/libexec/vp-wartung/schluessel-holen.sh status   # Abholer, letzte Antwort, Zugang und Restlaufzeit je Fenster; nie ein Schlüssel
-logread -e vp-wartung                                # wann welcher Fenster-Schlüssel kam und ging
+logread -e vp-wartung                                # wann welcher Fenster-Schlüssel kam und ging, welche Sitzung die Box beendet hat
 logread -e dropbear | grep 'Pubkey auth'             # jede Anmeldung mit Fingerabdruck und Absender
+logread -e dropbear | grep 'Terminated by signal'    # jede von der Box beendete Sitzung mit Absender
+awk '{ print $1, $3, $4 }' /etc/vp-wartung/keys/authorized_keys   # Art, Marke und Kommentar je Zeile; nie der Schlüssel
 ```
 
+`status` nennt auch die Sitzungen im Tunnel, gezählt nach der Art ihres Schlüssels: `Sitzungen im Tunnel: 2 - dauerhafter Schluessel 1, Fenster-Schluessel 1, gestrichener Fenster-Schluessel 0, nicht zuzuordnen 0`.
+
 Meldet `status` „seit dem Start keine“ gültige Antwort, obwohl `ping 10.10.32.1` geht, gibt der Wartungsserver keine Schlüssel aus: Dort ist `VP_TUNNEL_SCHLUESSEL_PORT` nicht gesetzt, oder der Dienst hat keinen frischen Soll-Stand ([Tunnel-Dienst](../../services/tunnel-dienst/README.md#schlüsselausgabe)).
+
+#### Sitzungen beenden: ausrollen je Box
+
+Die zweite Schranke kommt mit einem erneuten Lauf von `service-tunnel.sh` auf die Box, mit der Befehlszeile aus dem Portal (dieselbe wie beim Einrichten). Portal, API und Tunnel-Dienst ändern sich nicht. **An keinem Gerät ausgeführt;** Labor-Mango und Pilot mit dem Wort des Kapitäns.
+
+| | Vorher | Nachher |
+|---|---|---|
+| `service-tunnel.sh <ziel> status` | keine Zeile zu Sitzungen | `Sitzungen im Tunnel: …` |
+| `awk '{ print $1, $3, $4 }' /etc/vp-wartung/keys/authorized_keys` | `ssh-rsa <kommentar>` | `ssh-rsa vpd-<32 Zeichen> <kommentar>`, im offenen Fenster dazu `ssh-rsa vpf-<32 Zeichen> vp-fenster:<zugang>` |
+| letzte Zeilen des Skripts | – | `zum Ende: mit dem Schluessel beendet die Box die Sitzungen, die mit ihm begonnen wurden` |
+| Fenster schließen, während eine Anmeldung offen ist | der Anmeldeprozess steht bis zu 15 Minuten (`logread -e dropbear`: `Keepalive timeout`) | er endet nach wenigen Sekunden (`logread -e vp-wartung`: `Sitzung beendet …`; `logread -e dropbear`: `Terminated by signal`) |
+
+**Schritte, je Box:**
+
+1. Kein Techniker arbeitet gerade an der Box; `status` ansehen und die Zeilen „vorher“ notieren.
+2. Die Befehlszeile aus dem Portal ausführen: `VP_SERVICE_PUBKEY='<server>' edge-light/openwrt/service-tunnel.sh <ziel> <adresse>`. Der Lauf fasst den Tunnel nicht an (`Tunnel unveraendert`), WAN und LAN bleiben oben; er tauscht Abholer und Startskript und startet Lauscher und Abholer neu.
+3. `status`: die Zeile `Sitzungen im Tunnel:` steht da, `Fenster-Schluessel: Abholer laeuft` mit einer gültigen Antwort.
+4. Probe: im Portal ein Fenster für den eigenen Zugang öffnen (15 Minuten), anmelden, das Fenster schließen. Auf der Box nennt `logread -e vp-wartung | grep 'Sitzung beendet'` die Sitzung; `status` zählt sie nicht mehr.
+
+**Was mit einer offenen Sitzung geschieht, wenn das Skript läuft:**
+
+- Eine Sitzung an Port 22 (LAN, an der Labor-Mango der WAN-Anschluss) bleibt unberührt, auch die, über die das Skript läuft.
+- Eine Sitzung im Tunnel übersteht den Lauf: Nur der Lauscher startet neu. Sie trägt aber keine Marke, weil sie vor dem neuen Skript begann, und ist damit nicht zuzuordnen. **Beim ersten Fenster-Schlüssel, der danach gestrichen wird, endet sie,** auch wenn sie mit einem dauerhaften Schlüssel begonnen wurde. Wer sich danach neu anmeldet, trägt die Marke und bleibt. In der Probe belegt (Schritt 11b).
+
+| Box | Stand | Ausrollen |
+|---|---|---|
+| Labor-Mango `edge-5t2dcy6` | am Wartungsserver, Fenster-Schlüssel eingerichtet (09.10.2026), Dropbear 2025.89 | die Schritte oben, über `root@192.168.0.46` (Port 22) |
+| Pilot `edge-zay5sdd` | laut dieser Datei noch im alten Service-VPN (`wg_service`, nur dauerhafte Schlüssel); dort gibt es keinen Fenster-Schlüssel und nichts auszurollen | die Schranke kommt mit dem [beaufsichtigten Wechsel](#wechsel-des-piloten-auf-den-wartungsserver-beaufsichtigt-noch-nicht-ausgeführt), Schritt 3: Er richtet den neuen Tunnel mit diesem Skript ein. Ist der Pilot inzwischen gewechselt: die Schritte oben, über `mango-neu` |
+
+**Rückweg:** dieselbe Befehlszeile mit `service-tunnel.sh` aus dem Stand davor (`git show a9e9872e9:edge-light/openwrt/…` oder ein Checkout dieses Stands). Die Box streicht dann wieder nur den Schlüssel. In der Probe läuft der Wechsel in beide Richtungen (Schritt 11b).
 
 #### Einrichten ohne Unterbrechung, Dropbear an der Adresse
 
@@ -235,13 +271,20 @@ Am Mango gemessen (25.12.5, 09.10.2026):
 
 - **Im Container** mit `edge-light/test/service-tunnel-probe.sh` gegen OpenWrt 24.10 (procd, netifd, fw4, Dropbear, cron, Kernel-WireGuard): Altbestand, neuer Tunnel daneben, Wiederholbarkeit ohne Neustart der Schnittstelle, geänderte Gegenstelle, Reihenfolge von Schnittstelle und Dropbear, Schutz beim Abbauen, alten Tunnel abbauen, Web-App für das Techniker-Netz und je Adresse, `VP_SSH_KEY`.
 - **Am Mango unter 25.12.5 gegen den echten Wartungsserver** (Labor-Box `edge-5t2dcy6`, 08./09.10.2026): Handshake; im offenen Fenster kommen SSH auf 2222 und die Web-App an der Box an; das Fenster läuft ab. Mit dem Skript vom 09.10.: Einrichten wie bei einer neuen Box und erneuter Lauf ohne Dropbear-Meldung und ohne Unterbrechung von WAN und LAN; die Web-App nimmt eine Adresse des Techniker-Netzes an, die auf der Box nie eingetragen wurde (`10.10.32.1`), und weist 8887 von derselben Adresse ab.
-- **Im Container unter OpenWrt 25.12.5** (Dropbear 2025.89, WAN und LAN getrennt) mit `edge-light/test/wartung-anmeldung-probe.sh`, gegen den Tunnel-Dienst aus dem Repo, mit echter SSH-Anmeldung durch einen echten Tunnel: die Fenster-Schlüssel von der Einrichtung über einen heutigen Zugang bis zum Abbauen, die Störfälle (Lücke in der Server-Firewall, Server und Abholer weg, Neustart der Box, falscher Server, Laufzeit statt Uhr) und SSH 2222 außerhalb des Tunnels bei Tunnel oben und unten. Dazu, was mit einer laufenden Anmeldung geschieht, wenn das Fenster endet (Schritte 4 und 5), und dass der Tunnel-Dienst den Schlüssel als abgeholt meldet, sobald das Box-Skript ihn übernommen hat (Schritt 1).
+- **Im Container unter OpenWrt 25.12.5** (Dropbear 2025.89, WAN und LAN getrennt) mit `edge-light/test/wartung-anmeldung-probe.sh`, gegen den Tunnel-Dienst aus dem Repo, mit echter SSH-Anmeldung durch einen echten Tunnel: die Fenster-Schlüssel von der Einrichtung über einen heutigen Zugang bis zum Abbauen, die Störfälle (Lücke in der Server-Firewall, Server und Abholer weg, Neustart der Box, falscher Server, Laufzeit statt Uhr) und SSH 2222 außerhalb des Tunnels bei Tunnel oben und unten. Dazu, dass der Tunnel-Dienst den Schlüssel als abgeholt meldet, sobald das Box-Skript ihn übernommen hat (Schritt 1).
+- **Im selben Container: die Box beendet die Sitzungen eines gestrichenen Fenster-Schlüssels** (10.10.2026). Je Fall steht eine stille Sitzung offen; nach dem Streichen ist ihr Anmeldeprozess auf der Box weg, und in einer Lücke der Server-Firewall antwortet sie nicht mehr:
+  - Fenster im Portal geschlossen (Schritt 4), Schlüssel im offenen Fenster ersetzt und entfernt (4b), Fenster abgelaufen (4c), Dienst angehalten und Frist über den cron-Lauf (5);
+  - zwei Techniker mit je einem Fenster: Eines endet, die Sitzung des anderen und die mit dem dauerhaften Schlüssel bleiben; eine Weiterleitung ohne Prozess endet und steht sofort wieder; derselbe Schlüssel zugleich dauerhaft und im Fenster bleibt (4d);
+  - Neustart der Box mitten im Fenster, danach Neustart von Lauscher und Abholer (6); Abräumen der Instanz (10, 12);
+  - Ausrollen über das Skript von vorher mit offenen Sitzungen, samt Gegenprobe: Mit dem Skript von vorher bleibt der Anmeldeprozess stehen, und in der Lücke läuft die Sitzung wieder (11b).
 - **An der Labor-Mango belegt** (`edge-5t2dcy6`, OpenWrt 25.12.5, gegen den echten Wartungsserver und das echte Portal):
   - Einrichten am 09.10.2026: Das Startskript hängt das tmpfs selbst ein (`vp-wartung /etc/vp-wartung/keys tmpfs … size=128k,mode=700`), darunter liegt im Flash nichts; beide Firewall-Ketten stehen vor denen von fw4; Abholer, Startskript und cron-Zeile laufen; Dropbear nimmt die Schlüsseldatei im tmpfs an; eine RSA-Anmeldung mit 4096 Bit dauert 1,2 bis 2,0 s; die Liste von `sysupgrade -l` (sieben Zeilen, siehe oben); WAN und LAN ohne Unterbrechung.
   - Abnahme durch den Kapitän am 10.10.2026 („hat alles funktioniert“), nach den fünf Punkten des Abnahmeplans: Anmeldung im offenen Fenster, ohne dass der Schlüssel des Technikers dauerhaft auf der Box liegt; nach dem Schließen ist der Fenster-Schlüssel von der Box gestrichen; nach einem Neustart der Box im Fenster ist er weg und kommt von selbst wieder; bei angehaltenem Tunnel-Dienst verfällt er zur Frist; die Dateien stehen in der Liste von `sysupgrade -l`.
   - Dabei beobachtet (10.10.2026, UTC): Anmeldung im Fenster 17:13:48, Dienst auf der VM angehalten 17:15:59, Fenster-Schlüssel von der Box gestrichen 17:40:38, der Anmeldeprozess auf der Box endete 17:55:37 mit „Keepalive timeout“. Das sind genau 15 Minuten nach dem Ende des Fensters: Der Server hatte den Weg getrennt, der Prozess wartete nur noch auf sein Lebenszeichen.
 - **Einschränkung der Labor-Mango:** Die Arbeitsmaschine erreicht sie über ihren WAN-Anschluss (`192.168.0.46`, Port 22 nur wegen der Regel `Allow-SSH-WAN`); ihr LAN ist `10.213.0.0/24`, am LAN-Anschluss hängt kein Gerät. Port 2222 war von der WAN-Seite schon vorher abgewiesen. Dass die neue Kette abweist, zeigt dort nur ihr Zähler.
+- **An der Labor-Mango nur gelesen** (10.10.2026, nichts geändert), für die Zuordnung von Sitzung und Schlüssel: `dropbear -V` nennt 2025.89; die eigene Anmeldung an Port 22 trägt `SSH_PUBKEYINFO` mit dem ersten Wort des Kommentars ihres Schlüssels; `/proc/<pid>/environ` ist lesbar; `pgrep -P`, `sha256sum`, `flock`, `ubus` und `jsonfilter` sind da; procd und die PID-Datei nennen denselben Lauscher.
 - **Noch nicht belegt:**
+  - das Beenden der Sitzungen auf einer echten Mango: Das Skript ist an keinem Gerät ausgerollt. Offen sind damit die Laufzeit des cron-Laufs auf dem MIPS-Prozessor und das Verhalten über Tage;
   - Port 2222 aus dem LAN einer Mango und bei Tunnel unten (`ifdown wg_wartung`); im Container ist beides belegt;
   - ein echtes `sysupgrade`. Danach fehlen ohnehin `kmod-wireguard` und `wireguard-tools`, bis sie neu installiert sind;
   - die Fenster-Schlüssel über einen fremden Anschluss, über Mobilfunk und über Tage;

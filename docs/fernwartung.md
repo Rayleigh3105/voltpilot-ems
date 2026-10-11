@@ -98,6 +98,7 @@ Ein offenes Fenster öffnet den **Netzweg** zur Box. Die **Anmeldung** an der Bo
 | 3 | Box (`service-tunnel.sh`): holt die Schlüssel ab, hält sie nur im Arbeitsspeicher und führt die Frist selbst | umgesetzt für OpenWrt mit Dropbear ab 2025.89 (Mango, 25.12); eine Box holt erst ab, wenn ihr Tunnel mit diesem Skript eingerichtet ist |
 | 4 | Rückmeldung des Tunnel-Dienstes ans Portal: Box verbunden, zuletzt gefragt, Schlüssel abgeholt | umgesetzt ([Rückmeldung](#rückmeldung-des-tunnel-dienstes)); wirkt, sobald Portal und Tunnel-Dienst beide auf diesem Stand laufen |
 | 5 | Regeln: Werkstatt-Regel (Root-Passwort, Anmeldeprobe über Portal und Tunnel), ein Notfall-Schlüssel als einziger dauerhafter Schlüssel | beschrieben in [mango.md](../edge-light/docs/mango.md#bevor-eine-box-die-werkstatt-verlässt); je Box vom Kapitän umzusetzen, an keinem Gerät ausgeführt |
+| 6 | Box: Mit einem Fenster-Schlüssel enden die Sitzungen, die mit ihm begonnen wurden ([unten](#was-mit-einer-laufenden-anmeldung-geschieht)) | umgesetzt im Box-Skript, belegt im Container; gilt für eine Box erst nach einem erneuten Lauf von `service-tunnel.sh` ([Ausrollen](../edge-light/docs/mango.md#sitzungen-beenden-ausrollen-je-box)), an keinem Gerät ausgeführt |
 
 Die Schritte 1 bis 3 sind ausgerollt und am 10.10.2026 vom Kapitän an der Labor-Mango abgenommen ([Belege](../edge-light/docs/mango.md#belegt)).
 
@@ -111,6 +112,7 @@ Die Schritte 1 bis 3 sind ausgerollt und am 10.10.2026 vom Kapitän an der Labor
 - **Die Schlüsseldatei liegt nur im Arbeitsspeicher**, in einem eigenen tmpfs, das allein die SSH-Instanz im Tunnel liest (`dropbear -D`). Ein Neustart der Box löscht jeden Fenster-Schlüssel.
 - **Die Frist läuft in Laufzeit der Box, nicht in Uhrzeit.** Ohne gültige Antwort kommt nichts dazu, und was da ist, verfällt zur Frist: auch ohne Server und auch, wenn der Abholer hängt (ein cron-Lauf je Minute streicht unabhängig von ihm).
 - **Die Antwort ist die ganze Liste.** Ein Schlüssel, den sie nicht mehr nennt, ist sofort gestrichen: bei vorzeitig geschlossenem Fenster und bei einem im offenen Fenster ersetzten oder entfernten Schlüssel.
+- **Mit dem Schlüssel enden seine Sitzungen.** Auf jedem Weg, auf dem ein Fenster-Schlüssel von der Box verschwindet, beendet sie die Sitzungen, die mit genau ihm begonnen wurden ([Einzelheiten](#was-mit-einer-laufenden-anmeldung-geschieht)).
 - **Dauerhafte Schlüssel:** Was in `/etc/dropbear/authorized_keys` der Box steht, gilt im Tunnel weiter; das Skript liest die Datei nur. Solche Schlüssel umgehen die Schranke „kein Fenster, kein Schlüssel“: Öffnet ein Fehler der Server-Firewall den Port, kommt damit hinein, wer so einen Schlüssel hat. Entschieden (K2 a, 08.10.2026): In der Pilotphase bleibt auf jeder Box genau einer, ein Notfall-Schlüssel des Kapitäns, getrennt aufbewahrt; nach einigen Monaten Betrieb wird neu entschieden. Zielzustand und der Weg dorthin je Box: [mango.md](../edge-light/docs/mango.md#dauerhafte-schlüssel-ein-notfall-schlüssel).
 - **SSH 2222 kommt nur aus dem Tunnel an** (Entscheid vom 09.10.2026). Die Box weist den Port auf jedem anderen Weg ab, ob der Tunnel oben ist oder unten. Port 22 im LAN ändert sich nicht.
 
@@ -126,17 +128,57 @@ Die Schritte 1 bis 3 sind ausgerollt und am 10.10.2026 vom Kapitän an der Labor
 
 ### Was mit einer laufenden Anmeldung geschieht
 
-Eine Anmeldung, die im offenen Fenster begonnen hat, endet mit dem Fenster, weil der Wartungsserver den Weg trennt. Seine Firewall prüft **jedes** Paket gegen die Kernel-Menge `fenster`, in beiden Richtungen; steht das Paar nicht mehr darin, kommt nichts mehr durch.
+Nach dem Ende eines Fensters gelten **zwei Schranken**, jede für sich (Entscheid des Kapitäns vom 10.10.2026):
 
-| Fall | Was den Weg trennt | Wann | Belegt |
+1. **Der Wartungsserver trennt den Weg.** Seine Firewall prüft **jedes** Paket gegen die Kernel-Menge `fenster`, in beiden Richtungen; steht das Paar nicht mehr darin, kommt nichts mehr durch.
+2. **Die Box beendet die Sitzungen des Fensters.** Streicht sie einen Fenster-Schlüssel, beendet sie die Sitzungen, die mit genau diesem Schlüssel begonnen wurden. Das gilt für eine Box, deren Tunnel mit dem `service-tunnel.sh` ab dieser Änderung eingerichtet ist ([Box mit älterem Skript](#eine-box-mit-älterem-skript)).
+
+Die zweite Schranke schließt den Befund vom 10.10.2026: Bis dahin strich die Box nur den Schlüssel. Fehlte nach dem Ende eines Fensters auch die Tabelle des Wartungsservers (`nft flush ruleset`; mit laufendem Dienst bis zu ein Abrufintervall, bei angehaltenem Dienst dauerhaft, siehe [Betrieb](../services/tunnel-dienst/README.md#nftables-neu-laden-oder-stoppen)), lief eine vorher begonnene Sitzung wieder. Jetzt gibt es sie nicht mehr.
+
+| Fall | Schranke 1: der Server trennt den Weg | Schranke 2: die Box beendet die Sitzung | Belegt |
 |---|---|---|---|
-| Fenster im Portal geschlossen | der Tunnel-Dienst nimmt das Paar beim nächsten Abruf aus der Menge | spätestens ein Abrufintervall (30 s) nach dem Schließen | `integration.sh`, Schritt 3; `wartung-anmeldung-probe.sh`, Schritt 4 (echte SSH-Sitzung) |
-| Fenster abgelaufen | der Kernel lässt das Element ablaufen, auch ohne Dienst und API | zum Ende des Fensters | `integration.sh`, Schritt 4 |
-| Dienst auf der VM angehalten | zunächst nichts: Der Dienst baut beim Beenden nichts ab, das Fenster bleibt bis zu seinem geplanten Ende offen, und die Sitzung läuft so lange weiter. Dann trennt der Kernel | zum geplanten Ende des Fensters | `wartung-anmeldung-probe.sh`, Schritt 5 |
+| Fenster im Portal geschlossen | der Tunnel-Dienst nimmt das Paar beim nächsten Abruf aus der Menge, spätestens ein Abrufintervall (30 s) nach dem Schließen | sobald der Server der Box die Liste ohne den Schlüssel nennt, im selben Lauf, der den Schlüssel streicht | `integration.sh`, Schritt 3; `wartung-anmeldung-probe.sh`, Schritt 4 |
+| Fenster abgelaufen | der Kernel lässt das Element ablaufen, auch ohne Dienst und API, zum Ende des Fensters | zur Frist, die die Box selbst führt | `integration.sh`, Schritt 4; Probe, Schritt 4c |
+| Dienst auf der VM angehalten | zunächst nichts: Der Dienst baut beim Beenden nichts ab, das Fenster bleibt bis zu seinem geplanten Ende offen, und die Sitzung läuft so lange weiter. Dann trennt der Kernel | zur Frist der Box. Hängt auch der Abholer, streicht der cron-Lauf, höchstens eine Minute später | Probe, Schritt 5 |
+| Schlüssel im offenen Fenster ersetzt oder entfernt | nichts: Das Fenster bleibt offen | sobald der Server die neue Liste nennt. Die Sitzung des bisherigen Schlüssels endet, obwohl der Weg offen ist | Probe, Schritt 4b |
 
-- **Solange der Dienst steht, wirkt ein Schließen im Portal nicht.** Es wirkt erst, wenn er wieder abholt, spätestens aber zum geplanten Ende des Fensters. Das Portal sagt es in der Zeile „Tunnel-Dienst holt nicht mehr ab“.
-- **Getrennt heißt: nicht mehr benutzbar, aber noch nicht beendet.** Der Client des Technikers merkt es an seinem eigenen Lebenszeichen (`ssh -o ServerAliveInterval=5 -o ServerAliveCountMax=2` endet nach rund 10 s), sonst hängt er. Auf der Box bleibt der Anmeldeprozess stehen, bis Dropbear nach drei unbeantworteten Lebenszeichen aufgibt (`-K 300`: 15 Minuten nach dem letzten Paket, im Log `Keepalive timeout`). So war es bei der Abnahme am 10.10.2026: Fenster-Schlüssel gestrichen 17:40:38, Prozess beendet 17:55:37 (UTC).
-- **Die Box beendet keine Sitzung.** Sie streicht den Fenster-Schlüssel, und das verhindert jede neue Anmeldung. Eine Sitzung, die vorher begann, hängt allein an der Firewall des Wartungsservers. Fehlt dessen Tabelle nach dem Ende des Fensters (`nft flush ruleset`; mit laufendem Dienst bis zu ein Abrufintervall, bei angehaltenem Dienst dauerhaft, siehe [Betrieb](../services/tunnel-dienst/README.md#nftables-neu-laden-oder-stoppen)), kommt eine solche Sitzung wieder durch. In der Probe ist das als Befund festgehalten (Schritt 5: Die Sitzung läuft in der Lücke weiter, eine neue Anmeldung wird abgewiesen). Ob die Box beim Streichen eines Fenster-Schlüssels auch die Sitzungen dieses Schlüssels beenden soll, liegt dem Kapitän zur Entscheidung vor; gebaut ist es nicht.
+- **Solange der Dienst steht, wirkt ein Schließen im Portal nicht.** Es wirkt erst, wenn er wieder abholt, spätestens aber zum geplanten Ende des Fensters: Dann trennt der Kernel, und die Box streicht zu ihrer Frist. Das Portal sagt es in der Zeile „Tunnel-Dienst holt nicht mehr ab“.
+- **Was der Techniker sieht.** Ist der Weg noch offen (Schlüssel ersetzt), endet sein `ssh` sofort. Hat der Server den Weg schon getrennt, kommt das Ende bei ihm nicht mehr an: Sein Client merkt es an seinem eigenen Lebenszeichen (`ssh -o ServerAliveInterval=5 -o ServerAliveCountMax=2` endet nach rund 10 s), sonst hängt er.
+- **Auf der Box** steht im Log, was geschah: `logread -e vp-wartung` nennt `Sitzung beendet (Dropbear-Prozess …): ihr Fenster-Schluessel ist gestrichen`, `logread -e dropbear` zum selben Prozess `Exit (root) from <Absender>: Terminated by signal`.
+
+**Welche Sitzungen enden, welche bleiben.** Gemeint sind nur Sitzungen der SSH-Instanz im Tunnel (Port 2222).
+
+| Sitzung | Wenn ein Fenster-Schlüssel gestrichen wird |
+|---|---|
+| begonnen mit dem gestrichenen Fenster-Schlüssel | endet |
+| begonnen mit einem anderen, noch gültigen Fenster-Schlüssel (zweiter Techniker) | bleibt |
+| begonnen mit einem dauerhaften Schlüssel aus `/etc/dropbear/authorized_keys` | bleibt. Auch dann, wenn derselbe Schlüssel zugleich Fenster-Schlüssel war: Dropbear nimmt die erste passende Zeile, und das ist die dauerhafte |
+| nicht zuzuordnen | **endet** (im Zweifel endet die Sitzung) |
+| alles an Port 22 im LAN | unberührt |
+
+- **Wie die Box zuordnet.** Jede Zeile der Schlüsseldatei im RAM trägt hinter dem Schlüssel eine Marke: `vpf-<Kennzahl>` für einen Fenster-Schlüssel, `vpd-<Kennzahl>` für einen dauerhaften; die Kennzahl ist aus dem Schlüssel berechnet. Dropbear gibt den Prozessen einer Sitzung das erste Wort hinter dem Schlüssel als `SSH_PUBKEYINFO` mit. Der Abholer liest es aus `/proc` und vergleicht es mit dem, was jetzt in der Schlüsseldatei steht.
+- **Kein Protokoll, kein gemerkter Zustand.** Die Zuordnung hängt weder am Log der Box (es liegt im RAM und läuft über) noch an einem Arbeitsstand. Sie übersteht einen Neustart von Abholer und Lauscher; ein Neustart der Box beendet ohnehin jede Sitzung. Am Dropbear der Labor-Mango nur gelesen und bestätigt (2025.89 setzt `SSH_PUBKEYINFO`), sonst im Container belegt.
+- **Nicht zuzuordnen** ist eine Sitzung, an der kein Prozess mit gültiger Marke hängt:
+  - nur eine Weiterleitung (`ssh -N -L …`), ohne Befehl oder Shell auf der Box;
+  - begonnen, bevor dieses Skript auf der Box lief;
+  - begonnen mit einer dauerhaften Zeile, vor deren Schlüssel Optionen stehen (`no-pty ssh-rsa …`). Solche Zeilen gelten weiter, bekommen aber keine Marke;
+  - mitten im Anmelden.
+
+  Sie endet beim nächsten Streichen irgendeines Fenster-Schlüssels. Begründung des Entscheids: Eine zu Unrecht beendete Sitzung meldet sich mit ihrem gültigen Schlüssel sofort wieder an; eine zu Unrecht gelassene höbe die Schranke auf. Ohne ein Streichen bleibt sie.
+- **Beenden heißt: wie ein Verbindungsabbruch, nur sofort.** Der Anmeldeprozess von Dropbear bekommt `SIGTERM` (nach 3 s `SIGKILL`). Eine Shell am Terminal endet mit `SIGHUP`; ein Befehl ohne Terminal scheitert an seiner nächsten Ausgabe oder läuft zu Ende. Ein Skript, das der Techniker gestartet hat, wird also nicht mittendrin abgeschossen. Was jemand als root bewusst abgekoppelt gestartet hat, bleibt: Dagegen ist diese Schranke nicht gebaut.
+- **Bei jedem Lauf, nicht nur im Augenblick des Streichens.** Der Abholer prüft bei jeder Antwort des Servers, der cron-Lauf jede Minute; bricht ein Lauf zwischen Streichen und Beenden ab, holt es der nächste nach. `service-tunnel.sh <ziel> status` zählt die Sitzungen im Tunnel nach der Art ihres Schlüssels.
+- **Die Instanz der Fenster-Schlüssel abräumen** (`abbauen wg_wartung`, `VP_SERVICE_SCHLUESSEL=aus`, Rückfall beim Einrichten) beendet alle ihre Sitzungen, auch die mit dauerhaftem Schlüssel: Danach ist niemand mehr da, der sie zum Ende eines Fensters beendet. Ausgenommen ist nur die Sitzung, über die das Skript selbst läuft.
+- **Was bleibt, wie es war:** Das Lebenszeichen von Dropbear (`-K 300`) und die Firewall des Servers sind unverändert. Ein dauerhafter Schlüssel meldet sich in einer Lücke der Server-Firewall weiterhin **neu** an ([oben](#anmeldung-an-der-box-fenster-schlüssel)).
+
+#### Eine Box mit älterem Skript
+
+Eine Box, deren Tunnel vor dieser Änderung eingerichtet wurde, hat nur die erste Schranke:
+
+- Sie streicht den Fenster-Schlüssel und beendet **keine** Sitzung. Jede neue Anmeldung mit dem Schlüssel wird abgewiesen.
+- Der Anmeldeprozess einer getrennten Sitzung bleibt stehen, bis Dropbear nach drei unbeantworteten Lebenszeichen aufgibt (`-K 300`: 15 Minuten nach dem letzten Paket, im Log `Keepalive timeout`). So war es bei der Abnahme am 10.10.2026: Fenster-Schlüssel gestrichen 17:40:38, Prozess beendet 17:55:37 (UTC).
+- Fehlt in dieser Zeit die Tabelle des Wartungsservers, läuft die Sitzung wieder. Die Probe hält das als Gegenprobe fest (Schritt 11b, mit dem Skript von vorher).
+- **Woran man den Stand erkennt:** `service-tunnel.sh <ziel> status` nennt die Zeile `Sitzungen im Tunnel: …` nur mit dem neuen Skript.
+- **Der Wechsel** ist ein erneuter Lauf der Befehlszeile aus dem Portal, je Box: [Ausrollen](../edge-light/docs/mango.md#sitzungen-beenden-ausrollen-je-box). Portal, API und Tunnel-Dienst ändern sich nicht.
 
 **Wer das Portal verwaltet, verwaltet damit die Anmeldung.** Sobald die Boxen Fenster-Schlüssel abholen, genügt ein Konto mit der Rolle `platform-admin`, um als root auf eine verbundene Box zu kommen: Zugang mit eigenem Schlüssel anlegen, Fenster öffnen. Vorgesehen sind deshalb ein zweiter Faktor für Portal-Administratoren vor der ersten Kundenbox auf diesem Weg und, vorgemerkt, vom Portal signierte Freigaben. Beides ist nicht umgesetzt.
 

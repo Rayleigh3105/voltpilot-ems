@@ -23,16 +23,24 @@
 #      erneutes Einrichten durch den Tunnel mit dem Fenster-Schluessel
 #   2  Techniker mit Zugang und Schluessel, aber ohne Fenster
 #   3  Luecke in der Server-Firewall: ohne Fenster kein Fenster-Schluessel
-#   4  Fenster vorzeitig geschlossen; 4b Schluessel im Fenster ersetzt, entfernt
+#   4  Fenster vorzeitig geschlossen; 4b Schluessel im Fenster ersetzt, entfernt;
+#      4c Fenster laeuft ab; 4d zwei Techniker und der dauerhafte Schluessel
 #   5  Frist ohne Server und ohne Abholer (nur cron)
-#   6  Neustart der Box mitten im Fenster
+#   6  Neustart der Box mitten im Fenster, danach Neustart von Lauscher und Abholer
 #   7  Antworten eines falschen Servers
 #   8  Frist in Laufzeit der Box, nicht in Uhrzeit
 #   9  der Abholer fragt nur durch den Tunnel
 #   10 SSH 2222 ausserhalb des Tunnels abgewiesen - Tunnel oben und Tunnel unten,
 #      mit der neuen Instanz und mit der UCI-Instanz (VP_SERVICE_SCHLUESSEL=aus)
 #   11 Rueckfall, wenn die neue Instanz nicht startet; Waechter-ifup
+#   11b Ausrollen: Box mit dem Skript vor dieser Aenderung, offene Sitzungen
 #   12 status, sysupgrade -l, abbauen
+#
+# Sitzungen (Entscheid vom 10.10.2026): Wird ein Fenster-Schluessel gestrichen,
+# beendet die Box die Sitzungen genau dieses Schluessels. In jedem der Schritte
+# 4 bis 6, 10 und 11b steht dazu eine stille Sitzung offen (sitzung_auf); nach
+# dem Streichen muss ihr Anmeldeprozess auf der Box weg sein (endet), und in
+# einer Luecke der Server-Firewall darf sie nicht mehr antworten (stumm).
 #
 #   edge-light/test/wartung-anmeldung-probe.sh
 #   VPTD_DOCKER_DNS=1.1.1.1 ...   ohne DNS im Container (nur beim ersten Lauf noetig:
@@ -42,6 +50,9 @@
 #                                 sonst haengt ihn das Startskript der Box selbst ein
 #                                 (braucht SYS_ADMIN im Container)
 #   VPWA_BEHALTEN=1 ...           Container am Ende stehen lassen (Fehlersuche)
+#   VPWA_SKRIPT=<verzeichnis> ... Gegenprobe: ein anderer Stand von edge-light/openwrt
+#                                 als Box-Skript. Mit dem Stand vor dem 10.10.2026
+#                                 muessen die Pruefungen der Sitzungen rot sein
 # Voraussetzung: Docker, git (fuer Schritt 0), der Host-Kernel kann WireGuard.
 # shellcheck disable=SC2015 # ok()/falsch() schlagen nie fehl: A && ok || falsch ist hier if-then-else
 # shellcheck disable=SC2016 # die Pruefausdruecke werten im Container aus
@@ -59,6 +70,8 @@ BOX_BASIS="openwrt/rootfs:x86-64-25.12.5"
 BOX_BILD="vpwa-probe:openwrt-25.12.5"
 TECH_BILD="vpwa-probe:trixie"
 ALT_STAND=20b548df2641d4abbbeecda59039b8d8567a979a # main vor den Fenster-Schluesseln der Box
+VOR_STAND=a9e9872e99c71efb704910d766b6bc4f767cb8cb # main mit Fenster-Schluesseln, vor dem Beenden der Sitzungen
+SKRIPT_DIR="${VPWA_SKRIPT:-$REPO/edge-light/openwrt}"
 DNS="${VPTD_DOCKER_DNS:+--dns $VPTD_DOCKER_DNS}"
 SPORT=8022
 ARBEIT="$(mktemp -d)"
@@ -217,6 +230,53 @@ erwarte() {
   e_ist="$(anmelden "$1" "$2")"
   if [ "$e_ist" = "$3" ]; then ok "$4: $e_ist"; else falsch "$4 (erwartet $3, ist: $e_ist)"; fi
 }
+# sitzung_auf <von> <schluesseldatei> <name>: eine Anmeldung, die offen bleibt
+# und schweigt, bis sie gefragt wird. Sie schweigt, damit weder Box noch
+# Techniker auf eine Bestaetigung warten: gibt es sie noch, antwortet sie auch
+# in einer Luecke der Server-Firewall sofort, ohne dass TCP erst wieder
+# anlaufen muss. Die erste Zeile nennt ihren Anmeldeprozess auf der Box.
+sitzung_auf() {
+  docker exec -d "$P-$1" sh -c "rm -f /tmp/$3.ein /tmp/$3.aus /tmp/$3.pid; mkfifo /tmp/$3.ein; exec 3<>/tmp/$3.ein
+    ssh $SSH_OPT -i $2 -p 2222 root@10.10.16.2 'echo bereit \$PPID; while read -r w; do echo antwort-\$w; done' <&3 >/tmp/$3.aus 2>&1 &
+    echo \$! >/tmp/$3.pid; wait; echo zu >>/tmp/$3.aus"
+  warte 10 x "$1" grep -q '^bereit [0-9]' "/tmp/$3.aus"
+}
+sitzung_pid() { x "$1" sed -n 's/^bereit //p' "/tmp/$2.aus" 2>/dev/null || true; }
+sitzung_zu() { x "$1" grep -q '^zu$' "/tmp/$2.aus"; }
+sitzung_schliessen() { x "$1" sh -c "kill \$(cat /tmp/$2.pid 2>/dev/null) 2>/dev/null; true"; }
+# sitzung_fragt <von> <name> <sekunden>: ein neues Wort hin; 0, wenn die Antwort
+# kommt. Hoert auf zu warten, sobald die Anmeldung des Technikers beendet ist.
+sitzung_fragt() {
+  sf_w="w$(ms)"
+  sitzung_zu "$1" "$2" && return 1
+  x "$1" timeout 2 sh -c "echo $sf_w > /tmp/$2.ein" 2>/dev/null || true
+  warte "$3" x "$1" grep -q -e "^antwort-$sf_w\$" -e '^zu$' "/tmp/$2.aus" || return 1
+  x "$1" grep -q "^antwort-$sf_w\$" "/tmp/$2.aus"
+}
+box_prozess() { bx "[ -d /proc/$1 ]"; }
+box_prozess_weg() { ! box_prozess "$1"; }
+# endet <von> <name> <beschreibung>: der Anmeldeprozess der Sitzung ist auf der Box weg
+endet() {
+  en_p="$(sitzung_pid "$1" "$2")"
+  en_t="$(ms)"
+  if [ -n "$en_p" ] && warte 10 box_prozess_weg "$en_p"; then ok "$3 (Dropbear-Prozess $en_p, $(sek $(($(ms) - en_t))) s)"; else falsch "$3 (Dropbear-Prozess ${en_p:-?} steht noch)"; fi
+}
+# bleibt <von> <name> <beschreibung>: der Anmeldeprozess steht noch
+bleibt() {
+  bl_p="$(sitzung_pid "$1" "$2")"
+  [ -n "$bl_p" ] && box_prozess "$bl_p" && ok "$3" || falsch "$3"
+}
+# antwortet/stumm <von> <name> <beschreibung>: nur fragen, wenn der Weg offen
+# ist (Fenster oder Luecke) - eine Frage ins Leere liesse TCP in immer
+# groesserem Abstand wiederholen, und die naechste Antwort kaeme verspaetet.
+antwortet() { sitzung_fragt "$1" "$2" 5 && ok "$3" || falsch "$3"; }
+stumm() {
+  if sitzung_fragt "$1" "$2" 6; then
+    falsch "$3 (sie antwortet)"
+  else
+    ok "$3 ($(sitzung_zu "$1" "$2" && echo "die Anmeldung des Technikers ist beendet" || echo "keine Antwort in 6 s"))"
+  fi
+}
 # banner <von> <ip> <port>: die ersten Zeichen der Gegenseite, leer ohne Verbindung
 banner() { docker exec "$P-$1" sh -c "timeout 4 socat -u TCP:$2:$3,connect-timeout=2 STDOUT 2>/dev/null | head -c 12" 2>/dev/null || true; }
 offen() { [ "$(banner "$1" "$2" "$3")" = "SSH-2.0-drop" ] && ok "$4" || falsch "$4"; }
@@ -233,7 +293,7 @@ tunnel() { docker exec "$P-werkstatt" /skript/service-tunnel.sh "root@$LAN.11" "
 
 # ── Bauen ────────────────────────────────────────────────────────────────────
 schritt "Bauen: Tunnel-Dienst aus diesem Repo, Abbilder"
-mkdir -p "$ARBEIT/bin" "$ARBEIT/alt/files/usr/libexec/vp-edge-light"
+mkdir -p "$ARBEIT/bin" "$ARBEIT/alt/files/usr/libexec/vp-edge-light" "$ARBEIT/vor"
 chmod 755 "$ARBEIT/bin"
 docker run --rm --user "$(id -u):$(id -g)" -e HOME=/tmp -e GOCACHE=/tmp/gocache -e CGO_ENABLED=0 -e GOFLAGS=-buildvcs=false \
   -v "$DIENST":/src:ro -v "$ARBEIT/bin":/out -w /src golang:1.24 \
@@ -259,7 +319,15 @@ if git -C "$REPO" cat-file -e "$ALT_STAND:edge-light/openwrt/service-tunnel.sh" 
   chmod 755 "$ARBEIT/alt/service-tunnel.sh"
   ALT=ja
 fi
-echo "  Abbilder $BOX_BILD und $TECH_BILD, Skript von main ($ALT_STAND): $ALT"
+# Das Skript von main mit Fenster-Schluesseln, vor dem Beenden der Sitzungen:
+# die Box, auf die diese Aenderung ausgerollt wird (Schritt 11b).
+VOR=nein
+if git -C "$REPO" cat-file -e "$VOR_STAND:edge-light/openwrt/files/usr/libexec/vp-wartung/schluessel-holen.sh" 2>/dev/null; then
+  git -C "$REPO" archive "$VOR_STAND" edge-light/openwrt | tar -x -C "$ARBEIT/vor" --strip-components=2
+  VOR=ja
+fi
+echo "  Abbilder $BOX_BILD und $TECH_BILD, Skript von main ($ALT_STAND): $ALT, Skript vor dieser Aenderung ($VOR_STAND): $VOR"
+[ "$SKRIPT_DIR" = "$REPO/edge-light/openwrt" ] || echo "  GEGENPROBE: Box-Skript aus $SKRIPT_DIR, nicht aus diesem Repo"
 
 # ── Aufbau ───────────────────────────────────────────────────────────────────
 schritt "Aufbau: Server, Box (WAN + LAN), zwei Techniker, Werkstatt-Rechner im LAN"
@@ -270,7 +338,7 @@ docker network create --subnet "$LAN.0/24" "$P-b-lan" >/dev/null
 starte() { # starte <name> <netz> <ip> [docker-optionen]
   n="$1"; netz="$2"; ip="$3"; shift 3
   docker run -d --name "$P-$n" --hostname "$n" --network "$P-$netz" --ip "$ip" --cap-add NET_ADMIN "$@" \
-    -v "$REPO/edge-light/openwrt:/skript:ro" -v "$ARBEIT/alt:/alt:ro" "$TECH_BILD" sleep infinity >/dev/null
+    -v "$SKRIPT_DIR:/skript:ro" -v "$ARBEIT/alt:/alt:ro" -v "$ARBEIT/vor:/vor:ro" "$TECH_BILD" sleep infinity >/dev/null
   x "$n" sh -c 'umask 077; wg genkey > /k; wg pubkey < /k > /p; mkdir -p /root/.ssh
     printf "Host *\n  BatchMode yes\n  StrictHostKeyChecking no\n  UserKnownHostsFile /dev/null\n  LogLevel ERROR\n  ConnectTimeout 5\nHost box-tunnel\n  HostName 10.10.16.2\n  Port 2222\n  User root\n  IdentitiesOnly yes\n" > /root/.ssh/config'
 }
@@ -401,7 +469,7 @@ warte 20 meldung_hat "\"id\":\"f1\",\"schluesselAbgeholtUm\":\"20" &&
   ok "Rueckmeldung: der Schluessel des Fensters gilt als abgeholt ($(sek $(($(ms) - T2))) s nach dem Schreiben auf der Box)" || falsch "Rueckmeldung: Schluessel abgeholt ($(meldung))"
 meldung | grep -q -e 'ssh-rsa' -e '10\.10\.' -e 'SHA256' -e "$REF" && falsch "die Rueckmeldung nennt weder Schluessel noch Adresse noch Kennung" || ok "die Rueckmeldung nennt weder Schluessel noch Adresse noch Kennung"
 echo "  Schluesseldatei der Wartungs-Instanz (RAM):"
-bx "awk '/^ssh-/ { print \"    \" \$1, substr(\$2, 1, 16) \"…\", \$3 }' $KEYS"
+bx "awk '/^ssh-/ { print \"    \" \$1, substr(\$2, 1, 16) \"…\", \$3, \$4 }' $KEYS"
 erwarte tech1 /root/.ssh/id_rsa ANGEMELDET "tech1 -> Box mit dem Schluessel aus dem Portal"
 docker exec -d "$P-tech1" ssh $SSH_OPT -i /root/.ssh/id_rsa -p 2222 -N -L 127.0.0.1:18022:127.0.0.1:22 root@10.10.16.2
 sleep 2
@@ -458,6 +526,7 @@ docker exec -d "$P-tech1" sh -c "ssh $SSH_OPT -i /root/.ssh/id_rsa -p 2222 root@
 sleep 4
 A="$(x tech1 sh -c 'wc -l < /tmp/sitzung')"
 [ "$A" -ge 2 ] && ok "laufende Sitzung von tech1: $A Zeilen" || falsch "laufende Sitzung von tech1 ($A Zeilen)"
+sitzung_auf tech1 /root/.ssh/id_rsa s4 && sitzung_fragt tech1 s4 5 && ok "dazu eine stille Sitzung von tech1, die auf Fragen antwortet" || falsch "stille Sitzung von tech1"
 T0="$(ms)"
 soll "$SSH_T1" ""
 warte 15 nicht_im_kernel 10.10.32.3 || falsch "Element im Kernel weg"
@@ -468,6 +537,12 @@ echo "  Soll-Stand ohne Fenster -> Element im Kernel weg: $(sek $((T1 - T0))) s;
 [ $((T2 - T1)) -le 3000 ] && ok "… ohne auf die Frist zu warten (Frist waere in rund 9 min)" || falsch "… ohne auf die Frist zu warten ($(sek $((T2 - T1))) s)"
 A="$(x tech1 sh -c 'wc -l < /tmp/sitzung')"; sleep 4; B="$(x tech1 sh -c 'wc -l < /tmp/sitzung')"
 [ "$A" = "$B" ] && ok "laufende Sitzung abgerissen ($A = $B Zeilen)" || falsch "laufende Sitzung abgerissen ($A -> $B Zeilen)"
+# Zweite Schranke: die Box beendet die Sitzungen des gestrichenen Schluessels.
+P4="$(sitzung_pid tech1 s4)"
+endet tech1 s4 "die Box beendet die Sitzung des gestrichenen Schluessels"
+warte 5 bx '! pgrep -f "echo zeil[e]" >/dev/null' && ok "… auch die mit laufender Ausgabe: ihr Befehl laeuft auf der Box nicht mehr" || falsch "die Sitzung mit laufender Ausgabe ist auf der Box beendet"
+bx "logread -e vp-wartung | grep -q 'Sitzung beendet (Dropbear-Prozess $P4): ihr Fenster-Schluessel ist gestrichen'" && ok "Box-Log: welche Sitzung die Box beendet hat, und warum" || falsch "Box-Log nennt die beendete Sitzung"
+bx "logread -e dropbear | grep -q 'dropbear\\[$P4\\]: Exit (root) from <10.10.32.3:[0-9]*>: Terminated by signal'" && ok "Box-Log von Dropbear: Ende der Sitzung mit Absender" || falsch "Box-Log von Dropbear nennt das Ende der Sitzung"
 x tech1 sh -c 'pkill -f "zeil[e]"; true'
 erwarte tech1 /root/.ssh/id_rsa KEINE-VERBINDUNG "tech1 neu"
 # Gegenprobe, ob der Schluessel wirklich weg ist: Luecke wie in Schritt 3.
@@ -475,6 +550,7 @@ dienst_aus
 luecke_auf
 offen tech1 10.10.16.2 2222 "Gegenprobe (Luecke): tech1 erreicht den Port"
 erwarte tech1 /root/.ssh/id_rsa ABGEWIESEN "Gegenprobe (Luecke): tech1 meldet sich an"
+stumm tech1 s4 "Luecke der Server-Firewall: die vor dem Schliessen begonnene Sitzung laeuft NICHT wieder"
 dienst_an 5s
 
 schritt "4b. SSH-Schluessel im offenen Fenster ersetzt, dann entfernt"
@@ -485,18 +561,101 @@ ALT_TEXT="$(printf '%s' "${SSH_T1#ssh-rsa }" | cut -c 60-120)"
 NEU_TEXT="$(printf '%s' "${SSH_T1N#ssh-rsa }" | cut -c 60-120)"
 box_hat_text "$ALT_TEXT" || falsch "der bisherige Schluessel liegt auf der Box"
 erwarte tech1 /root/.ssh/id_rsa ANGEMELDET "tech1 mit dem bisherigen Schluessel"
+sitzung_auf tech1 /root/.ssh/id_rsa s4b || falsch "stille Sitzung mit dem bisherigen Schluessel"
 T0="$(ms)"
 soll "$SSH_T1N" "$G1"
 warte 15 box_hat_text "$NEU_TEXT" && ok "der neue Schluessel liegt auf der Box" || falsch "der neue Schluessel liegt auf der Box"
 T1="$(ms)"
 box_hat_text "$ALT_TEXT" && falsch "der ersetzte Schluessel ist gestrichen" || ok "der ersetzte Schluessel ist gestrichen, $(sek $((T1 - T0))) s nach der Aenderung im Soll-Stand (Frist waere in rund 10 min)"
+endet tech1 s4b "Schluessel ersetzt: die Box beendet die Sitzung des ersetzten Schluessels"
+stumm tech1 s4b "… sie antwortet nicht mehr, obwohl das Fenster offen ist"
 erwarte tech1 /root/.ssh/id_rsa ABGEWIESEN "tech1 mit dem ersetzten Schluessel"
 erwarte tech1 /root/.ssh/id_rsa_neu ANGEMELDET "tech1 mit dem neuen Schluessel"
+sitzung_auf tech1 /root/.ssh/id_rsa_neu s4n && sitzung_fragt tech1 s4n 5 || falsch "stille Sitzung mit dem neuen Schluessel"
 soll "" "$G1"
 warte 15 box_hat_keinen && ok "Schluessel am Zugang entfernt: von der Box gestrichen" || falsch "Schluessel am Zugang entfernt: von der Box gestrichen"
+endet tech1 s4n "Schluessel entfernt: die Box beendet die Sitzung dieses Schluessels"
 offen tech1 10.10.16.2 2222 "das Fenster selbst bleibt offen (Netzweg)"
+stumm tech1 s4n "… die Sitzung antwortet trotzdem nicht mehr"
 erwarte tech1 /root/.ssh/id_rsa_neu ABGEWIESEN "tech1 mit dem entfernten Schluessel"
 soll "$SSH_T1" ""
+warte 15 nicht_im_kernel 10.10.32.3 || falsch "Fenster geschlossen"
+
+schritt "4c. Fenster laeuft ab - Dienst und Abholer laufen"
+soll "$SSH_T1" "$(fenster f4c "$ID_T1" 30)"
+warte 15 box_hat "$ID_T1" || falsch "Fenster offen, Schluessel auf der Box"
+T0="$(ms)"
+sitzung_auf tech1 /root/.ssh/id_rsa s4c && sitzung_fragt tech1 s4c 5 && ok "stille Sitzung von tech1 im Fenster (30 s)" || falsch "stille Sitzung von tech1 im Fenster"
+warte 45 box_hat_keinen && ok "Fenster abgelaufen: Schluessel nach $(sek $(($(ms) - T0))) s gestrichen (ohne Zutun im Portal)" || falsch "Fenster abgelaufen: Schluessel gestrichen"
+endet tech1 s4c "abgelaufenes Fenster: die Box beendet die Sitzung"
+warte 15 nicht_im_kernel 10.10.32.3 || falsch "Fenster im Kernel des Servers abgelaufen"
+soll "$SSH_T1" ""
+dienst_aus
+luecke_auf
+offen tech1 10.10.16.2 2222 "Luecke: tech1 erreicht den Port"
+stumm tech1 s4c "Luecke der Server-Firewall: die vor dem Ablauf begonnene Sitzung laeuft NICHT wieder"
+dienst_an 5s
+
+schritt "4d. Zwei Techniker mit je einem Fenster, dazu der dauerhafte Schluessel: eines endet, der Rest bleibt"
+FA="$(fenster f4a "$ID_T1" 600)"
+FB="$(fenster f4b "$ID_T2" 600)"
+soll "$SSH_T1" "$FA,$FB"
+warte 20 box_hat "$ID_T1" && warte 20 box_hat "$ID_T2" && ok "zwei Fenster offen, beide Schluessel auf der Box" || falsch "zwei Fenster offen, beide Schluessel auf der Box"
+sitzung_auf tech1 /root/.ssh/id_rsa e1 || falsch "Sitzung von tech1"
+sitzung_auf tech2 /root/.ssh/id_rsa e2 || falsch "Sitzung von tech2"
+sitzung_auf tech2 /root/.ssh/id_rsa_werkstatt ed || falsch "Sitzung mit dem dauerhaften Schluessel"
+# Nur eine Weiterleitung, kein Prozess auf der Box: sie laesst sich keinem Schluessel zuordnen.
+docker exec -d "$P-tech2" ssh $SSH_OPT -i /root/.ssh/id_rsa -p 2222 -N -L 127.0.0.1:18023:127.0.0.1:22 root@10.10.16.2
+sleep 2
+[ "$(banner tech2 127.0.0.1 18023)" = "SSH-2.0-drop" ] && ok "tech2 haelt ausserdem eine Weiterleitung ohne Prozess auf der Box (-N -L)" || falsch "Weiterleitung von tech2 (-N -L)"
+ST="$(bx "$HOLEN status")"
+case "$ST" in
+  *"Sitzungen im Tunnel: 4 - dauerhafter Schluessel 1, Fenster-Schluessel 2, gestrichener Fenster-Schluessel 0, nicht zuzuordnen 1"*) ok "status der Box zaehlt die Sitzungen nach der Art ihres Schluessels" ;;
+  *) falsch "status der Box zaehlt die Sitzungen ($(printf '%s\n' "$ST" | grep 'Sitzungen im Tunnel'))" ;;
+esac
+soll "$SSH_T1" "$FB"
+warte 15 box_hat_nicht "$ID_T1" && box_hat "$ID_T2" || falsch "Fenster von tech1 geschlossen, das von tech2 offen"
+endet tech1 e1 "Fenster von tech1 geschlossen: die Box beendet seine Sitzung"
+bleibt tech2 e2 "die Sitzung von tech2 bleibt (sein Fenster ist offen)"
+antwortet tech2 e2 "… und antwortet"
+bleibt tech2 ed "die Sitzung mit dem dauerhaften Schluessel bleibt"
+antwortet tech2 ed "… und antwortet"
+[ -z "$(banner tech2 127.0.0.1 18023)" ] && ok "im Zweifel endet die Sitzung: die Weiterleitung ohne Prozess ist beendet (nicht zuzuordnen)" || falsch "die nicht zuzuordnende Weiterleitung ist beendet"
+x tech2 sh -c 'pkill -f "1802[3]"; true'
+docker exec -d "$P-tech2" ssh $SSH_OPT -i /root/.ssh/id_rsa -p 2222 -N -L 127.0.0.1:18024:127.0.0.1:22 root@10.10.16.2
+sleep 2
+[ "$(banner tech2 127.0.0.1 18024)" = "SSH-2.0-drop" ] && ok "… und steht mit dem gueltigen Schluessel sofort wieder" || falsch "die Weiterleitung laesst sich sofort wieder aufbauen"
+x tech2 sh -c 'pkill -f "1802[4]"; true'
+dienst_aus
+luecke_auf
+stumm tech1 e1 "Luecke der Server-Firewall: die Sitzung von tech1 laeuft NICHT wieder"
+antwortet tech2 e2 "… die von tech2 laeuft"
+dienst_an 5s
+warte 20 im_kernel 10.10.32.4 || falsch "Fenster von tech2 nach der Luecke wieder im Kernel"
+soll "$SSH_T1" ""
+warte 15 box_hat_keinen || falsch "Fenster von tech2 geschlossen, Schluessel gestrichen"
+endet tech2 e2 "Fenster von tech2 geschlossen: die Box beendet seine Sitzung"
+bleibt tech2 ed "die Sitzung mit dem dauerhaften Schluessel bleibt auch jetzt"
+warte 15 nicht_im_kernel 10.10.32.4 || falsch "Fenster von tech2 im Kernel weg"
+dienst_aus
+luecke_auf
+stumm tech2 e2 "Luecke der Server-Firewall: die Sitzung von tech2 laeuft NICHT wieder"
+antwortet tech2 ed "… die mit dem dauerhaften Schluessel laeuft (sie haengt an keinem Fenster)"
+sitzung_schliessen tech2 ed
+dienst_an 5s
+# Derselbe Schluessel zugleich dauerhaft und Fenster-Schluessel: Dropbear nimmt
+# die erste Zeile der Schluesseldatei, und das ist die dauerhafte.
+x tech1 cat /root/.ssh/id_rsa.pub | xi werkstatt ssh "root@$LAN.11" 'cat >> /etc/dropbear/authorized_keys'
+soll "$SSH_T1" "$(fenster f4e "$ID_T1" 600)"
+warte 20 box_hat "$ID_T1" || falsch "Fenster offen, Schluessel auf der Box"
+bx "$HOLEN frist"
+sitzung_auf tech1 /root/.ssh/id_rsa eb || falsch "Sitzung mit dem Schluessel, der dauerhaft und im Fenster gilt"
+soll "$SSH_T1" ""
+warte 15 box_hat_keinen || falsch "Fenster geschlossen, Fenster-Schluessel gestrichen"
+sleep 3
+bleibt tech1 eb "derselbe Schluessel zugleich dauerhaft und im Fenster: die Sitzung bleibt, wenn das Fenster endet"
+sitzung_schliessen tech1 eb
+bx "sed -i '/ tech1\$/d' /etc/dropbear/authorized_keys && $HOLEN frist"
 warte 15 nicht_im_kernel 10.10.32.3 || falsch "Fenster geschlossen"
 
 # ── 5 ────────────────────────────────────────────────────────────────────────
@@ -511,6 +670,7 @@ T0="$(ms)"
 docker exec -d "$P-tech1" sh -c "ssh $SSH_OPT -i /root/.ssh/id_rsa -p 2222 root@10.10.16.2 'while :; do echo zeile5; sleep 1; done' > /tmp/sitzung5 2>&1"
 sitzung5() { x tech1 sh -c 'wc -l < /tmp/sitzung5'; }
 sitzung5_waechst() { s5_a="$(sitzung5)"; sleep 2; [ "$(sitzung5)" -gt "$s5_a" ]; }
+sitzung_auf tech1 /root/.ssh/id_rsa s5 || falsch "stille Sitzung von tech1"
 abholer_anhalten && ok "Abholer angehalten (SIGSTOP)" || falsch "Abholer angehalten"
 dienst_aus
 lauscht_server && falsch "Schluesselausgabe beendet" || ok "Schluesselausgabe beendet"
@@ -520,23 +680,21 @@ erwarte tech1 /root/.ssh/id_rsa ANGEMELDET "… und die Anmeldung gelingt (das F
 sitzung5_waechst && ok "Dienst angehalten, Fenster noch im Kernel: die laufende Sitzung von tech1 laeuft weiter ($(sitzung5) Zeilen)" || falsch "laufende Sitzung laeuft bis zum Ende des Fensters weiter"
 warte 140 box_hat_nicht "$ID_T1" && ok "nach $(sek $(($(ms) - T0))) s: Schluessel weg (Frist rund 70 s, der cron-Lauf kommt jede volle Minute)" || falsch "Schluessel verfaellt ohne Server und ohne Abholer"
 [ $(($(ms) - T0)) -ge 60000 ] && ok "… nicht vor der Frist" || falsch "… nicht vor der Frist"
+endet tech1 s5 "der cron-Lauf beendet auch die Sitzung des verfallenen Schluessels (Abholer und Dienst stehen)"
 bx "grep -q ' dauerhaft2\$' $KEYS" && ok "der neu eingetragene dauerhafte Schluessel steht in der Schluesseldatei (vom cron-Lauf uebernommen)" || falsch "neuer dauerhafter Schluessel uebernommen"
 # Der Weg durch den Server endet mit dem Fenster, auch ohne Dienst: der Kernel
 # laesst das Element ablaufen und verwirft danach jedes Paket der Sitzung.
 warte 15 nicht_im_kernel 10.10.32.3 && ok "das Fenster ist im Kernel des Servers abgelaufen (ohne Dienst)" || falsch "Fenster im Kernel abgelaufen"
 A="$(sitzung5)"; sleep 5; B="$(sitzung5)"
 [ "$A" = "$B" ] && ok "laufende Sitzung mit dem Ende des Fensters abgerissen, Dienst angehalten ($A = $B Zeilen)" || falsch "laufende Sitzung mit dem Ende des Fensters abgerissen ($A -> $B Zeilen)"
-bx 'pgrep -f "echo zeile[5]" >/dev/null' && ok "… der Anmeldeprozess auf der Box steht noch: er endet erst mit dem Lebenszeichen von Dropbear (-K 300, nach 15 min)" || falsch "der Anmeldeprozess auf der Box steht nach dem Abriss noch"
+warte 5 bx '! pgrep -f "echo zeile[5]" >/dev/null' && ok "… und die mit laufender Ausgabe: ihr Befehl laeuft auf der Box nicht mehr (ohne diese Schranke stand er bis zu 15 min, -K 300)" || falsch "die Sitzung mit laufender Ausgabe ist auf der Box beendet"
 luecke_auf 2>/dev/null || true
 erwarte tech1 /root/.ssh/id_rsa ABGEWIESEN "Gegenprobe (Luecke): tech1 meldet sich an"
-# Befund, keine Zusicherung: Die Box streicht den Schluessel, beendet aber keine
-# Sitzung. Faellt nach dem Ende des Fensters auch die Firewall des Servers aus,
-# kommt die stehende Sitzung wieder durch (TCP wiederholt in wachsendem Abstand).
-if warte 75 sitzung5_waechst; then
-  hinweis "BEFUND in der Luecke der Server-Firewall: die vor dem Ende des Fensters begonnene Sitzung laeuft WIEDER ($B -> $(sitzung5) Zeilen), obwohl der Fenster-Schluessel gestrichen ist"
-else
-  hinweis "in der Luecke der Server-Firewall bleibt die alte Sitzung stehen ($B = $(sitzung5) Zeilen in 75 s)"
-fi
+# Befund vom 10.10.2026, seit dem Entscheid vom selben Tag eine Zusicherung:
+# Faellt nach dem Ende des Fensters auch die Firewall des Servers aus, kommt
+# eine vorher begonnene Sitzung NICHT wieder durch - die Box hat sie beendet.
+stumm tech1 s5 "Luecke der Server-Firewall: die vor dem Ende des Fensters begonnene Sitzung laeuft NICHT wieder"
+[ "$(sitzung5)" = "$B" ] && ok "… auch die mit laufender Ausgabe nicht ($B = $(sitzung5) Zeilen)" || falsch "die Sitzung mit laufender Ausgabe laeuft in der Luecke wieder ($B -> $(sitzung5) Zeilen)"
 x tech1 sh -c 'pkill -f "zeile[5]"; true'
 bx 'for p in $(pgrep -f "echo zeile[5]"); do kill "$p" 2>/dev/null; done; true'
 abholer_weiter
@@ -548,6 +706,7 @@ dienst_an 5s
 schritt "6. Neustart der Box mitten im Fenster, Schluesselausgabe solange angehalten"
 soll "$SSH_T1" "$(fenster f6 "$ID_T1" 600)"
 warte 20 box_hat "$ID_T1" && ok "Fenster offen, Schluessel auf der Box" || falsch "Fenster offen, Schluessel auf der Box"
+sitzung_auf tech1 /root/.ssh/id_rsa s6a || falsch "stille Sitzung von tech1 vor dem Neustart"
 dienst_aus
 T0="$(ms)"
 docker restart -t 3 "$P-box" >/dev/null
@@ -570,8 +729,27 @@ T0="$(ms)"
 dienst_an 5s
 warte 30 box_hat "$ID_T1" && ok "Schluesselausgabe wieder an: Schluessel nach $(sek $(($(ms) - T0))) s zurueck" || falsch "Schluessel kommt von selbst wieder"
 erwarte tech1 /root/.ssh/id_rsa ANGEMELDET "tech1 -> Box"
+stumm tech1 s6a "die Sitzung von vor dem Neustart gibt es nicht mehr (Fenster offen, Schluessel wieder da)"
+# Die Zuordnung haengt an nichts, was der Neustart geloescht hat: neue Sitzung,
+# dann starten auch Lauscher und Abholer neu - die Sitzung haengt danach an
+# keinem Lauscher mehr - und erst dann endet das Fenster.
+sitzung_auf tech1 /root/.ssh/id_rsa s6 || falsch "stille Sitzung von tech1 nach dem Neustart"
+P6="$(sitzung_pid tech1 s6)"
+bx '/etc/init.d/vp-wartung restart' || true
+warte 20 lauscht 10.10.16.2:2222 && warte 20 abholer_laeuft || falsch "Lauscher und Abholer nach restart wieder da"
+warte 20 box_hat "$ID_T1" || falsch "Schluessel nach restart auf der Box"
+[ "$(bx "awk '/^PPid:/ { print \$2 }' /proc/$P6/status")" = 1 ] && [ "$(bx 'cat /var/run/dropbear.vp_wartung.pid')" != "$P6" ] &&
+  ok "Lauscher und Abholer neu gestartet: die Sitzung steht weiter, jetzt ohne ihren Lauscher (Elternprozess 1)" || falsch "die Sitzung uebersteht den Neustart von Lauscher und Abholer"
+antwortet tech1 s6 "… und antwortet (ihr Schluessel gilt)"
 soll "$SSH_T1" ""
 warte 15 box_hat_keinen || falsch "Fenster geschlossen, Schluessel gestrichen"
+endet tech1 s6 "Fenster geschlossen: die Box beendet die Sitzung auch nach beiden Neustarts"
+warte 15 nicht_im_kernel 10.10.32.3 || falsch "Fenster im Kernel weg"
+dienst_aus
+luecke_auf
+offen tech1 10.10.16.2 2222 "Luecke: tech1 erreicht den Port"
+stumm tech1 s6 "Luecke der Server-Firewall: die Sitzung laeuft NICHT wieder"
+dienst_an 5s
 
 # ── 7 ────────────────────────────────────────────────────────────────────────
 schritt "7. Antworten eines falschen Servers (an der Adresse der Schluesselausgabe)"
@@ -726,7 +904,11 @@ zu tech2 "$WAN.11" 2222 "WAN -> Box, 2222: keine Verbindung"
 bx 'ifup wg_wartung'
 warte 30 tunnel_oben && warte 20 lauscht 10.10.16.2:2222 && ok "Tunnel wieder oben: die Instanz lauscht wieder auf der Tunnel-Adresse" || falsch "Tunnel wieder oben: die Instanz lauscht wieder"
 echo "  -- UCI-Instanz (VP_SERVICE_SCHLUESSEL=aus: Box mit aelterem Dropbear, altes Service-VPN)"
+warte 30 box_hat "$ID_T1" || falsch "Fenster-Schluessel nach ifup auf der Box"
+sitzung_auf tech1 /root/.ssh/id_rsa s10 || falsch "stille Sitzung von tech1 vor dem Abraeumen"
 einrichten werkstatt "root@$LAN.11" VP_SERVICE_SCHLUESSEL=aus >"$ARBEIT/einrichten.10" 2>&1 && ok "eingerichtet ohne Fenster-Schluessel" || falsch "eingerichtet ohne Fenster-Schluessel"
+endet tech1 s10 "mit der Instanz der Fenster-Schluessel enden ihre Sitzungen (danach beendete sie niemand mehr)"
+stumm tech1 s10 "… die Sitzung antwortet nicht mehr, obwohl das Fenster offen ist"
 bx '[ "$(uci -q get dropbear.vp_wartung.Interface)" = wg_wartung ] && [ ! -e /etc/init.d/vp-wartung ] && [ ! -e /usr/libexec/vp-wartung ] && [ ! -e /etc/vp-wartung ] && ! grep -q vp-wartung /proc/mounts /etc/crontabs/root /etc/sysupgrade.conf' &&
   ok "UCI-Instanz wieder da; Abholer, Startskript, RAM-Bereich und cron-Zeile abgeraeumt" || falsch "UCI-Instanz wieder da, Abholer abgeraeumt"
 bx '! nft list chain inet fw4 vp_wartung_ausgang >/dev/null 2>&1 && nft list chain inet fw4 vp_wartung_eingang | grep -q "dport 2222"' && ok "die Regel fuer die Anfrage des Abholers ist mit ihm weg, die fuer 2222 bleibt" || falsch "Regel des Abholers weg, Regel fuer 2222 bleibt"
@@ -773,13 +955,63 @@ warte 30 tunnel_oben && warte 20 lauscht 10.10.16.2:2222 || falsch "nach ifup: T
 warte 20 box_hat "$ID_T1" || true
 erwarte tech1 /root/.ssh/id_rsa ANGEMELDET "… und die Anmeldung im Tunnel geht danach weiter"
 
+# ── 11b ──────────────────────────────────────────────────────────────────────
+schritt "11b. Ausrollen: Box mit dem Skript vor dieser Aenderung, offene Sitzungen"
+soll "$SSH_T1" ""
+warte 15 box_hat_keinen || falsch "Fenster geschlossen"
+if [ "$VOR" = ja ]; then
+  SKRIPT=/vor/service-tunnel.sh
+  einrichten werkstatt "root@$LAN.11" >"$ARBEIT/einrichten.11v" 2>&1 && ok "Box auf dem Stand vor dieser Aenderung eingerichtet (Fenster-Schluessel, Abholer von vorher)" || falsch "Box auf dem Stand vor dieser Aenderung eingerichtet"
+  SKRIPT=/skript/service-tunnel.sh
+  soll "$SSH_T1" "$(fenster f11v "$ID_T1" 600)"
+  warte 30 box_hat "$ID_T1" || falsch "Fenster offen, Schluessel auf der Box"
+  bx "! grep -q ' vp[df]-[0-9a-f]' $KEYS" && bx "! $HOLEN status | grep -q 'Sitzungen im Tunnel'" && ok "vorher: die Schluesseldatei traegt keine Marke, status nennt keine Sitzungen" || falsch "vorher: keine Marke, status ohne Sitzungen"
+  sitzung_auf tech1 /root/.ssh/id_rsa sv || falsch "stille Sitzung von tech1"
+  soll "$SSH_T1" ""
+  warte 15 box_hat_keinen && warte 15 nicht_im_kernel 10.10.32.3 || falsch "Fenster geschlossen, Schluessel gestrichen"
+  sleep 3
+  bleibt tech1 sv "Skript von vorher: die Box streicht nur den Schluessel, der Anmeldeprozess bleibt stehen"
+  dienst_aus
+  luecke_auf
+  antwortet tech1 sv "… und in der Luecke der Server-Firewall laeuft die Sitzung wieder (der Befund vom 10.10.2026)"
+  dienst_an 5s
+  # Jetzt das Skript dieser Aenderung, waehrend Sitzungen offen stehen.
+  soll "$SSH_T1" "$(fenster f11w "$ID_T1" 600)"
+  warte 30 box_hat "$ID_T1" || falsch "Fenster offen, Schluessel auf der Box"
+  sitzung_auf tech1 /root/.ssh/id_rsa_werkstatt svd || falsch "stille Sitzung mit dem dauerhaften Schluessel"
+  IFINDEX="$(bx 'cat /sys/class/net/wg_wartung/ifindex')"
+  einrichten werkstatt "root@$LAN.11" >"$ARBEIT/einrichten.11w" 2>&1 && ok "service-tunnel.sh dieser Aenderung laeuft ueber das Skript von vorher" || falsch "service-tunnel.sh dieser Aenderung laeuft ueber das Skript von vorher"
+  grep -q 'Tunnel unveraendert' "$ARBEIT/einrichten.11w" && [ "$(bx 'cat /sys/class/net/wg_wartung/ifindex')" = "$IFINDEX" ] && ok "der Tunnel wird dabei nicht angefasst" || falsch "der Tunnel wird dabei nicht angefasst"
+  warte 20 box_hat "$ID_T1" || falsch "Schluessel nach dem Lauf auf der Box"
+  [ "$(bx "grep -c '^ssh-rsa [^ ]* vp[df]-[0-9a-f]\\{32\\} ' $KEYS")" = 2 ] && ok "nachher: beide Zeilen der Schluesseldatei tragen eine Marke" || falsch "nachher: die Schluesseldatei traegt Marken"
+  bleibt tech1 sv "die offene Sitzung mit dem Fenster-Schluessel uebersteht den Lauf"
+  bleibt tech1 svd "die offene Sitzung mit dem dauerhaften Schluessel uebersteht den Lauf"
+  antwortet tech1 sv "… und laeuft weiter"
+  bx "$HOLEN status" | grep -q "Sitzungen im Tunnel: 2 - dauerhafter Schluessel 0, Fenster-Schluessel 0, gestrichener Fenster-Schluessel 0, nicht zuzuordnen 2" &&
+    ok "status: beide Sitzungen von vorher sind nicht zuzuordnen (sie tragen keine Marke)" || falsch "status: Sitzungen von vorher nicht zuzuordnen ($(bx "$HOLEN status" | grep 'Sitzungen im Tunnel'))"
+  sitzung_auf tech1 /root/.ssh/id_rsa sn || falsch "neue Sitzung mit dem Fenster-Schluessel"
+  sitzung_auf tech1 /root/.ssh/id_rsa_werkstatt snd || falsch "neue Sitzung mit dem dauerhaften Schluessel"
+  soll "$SSH_T1" ""
+  warte 15 box_hat_keinen || falsch "Fenster geschlossen, Schluessel gestrichen"
+  endet tech1 sn "erstes Streichen nach dem Ausrollen: die neue Sitzung des Fenster-Schluessels endet"
+  endet tech1 sv "… die Sitzung von vorher mit dem Fenster-Schluessel endet"
+  endet tech1 svd "… die von vorher mit dem dauerhaften Schluessel auch (nicht zuzuordnen, im Zweifel endet sie)"
+  bleibt tech1 snd "… die nach dem Lauf begonnene Sitzung mit dem dauerhaften Schluessel bleibt"
+else
+  hinweis "Skript vor dieser Aenderung nicht im git-Verlauf: Schritt 11b ausgelassen"
+fi
+soll "$SSH_T1" "$(fenster f12 "$ID_T1" 600)"
+warte 30 box_hat "$ID_T1" || falsch "Fenster offen, Schluessel auf der Box"
+[ "$VOR" = ja ] || sitzung_auf tech1 /root/.ssh/id_rsa_werkstatt snd || falsch "Sitzung mit dem dauerhaften Schluessel"
+
 # ── 12 ───────────────────────────────────────────────────────────────────────
 schritt "12. status, sysupgrade, abbauen"
 ST="$(tunnel status 2>&1)"
 printf '%s\n' "$ST" | sed -n '/^--- /,$p' | sed 's/^/    | /'
 for z in "SSH 2222 lauscht auf: 10.10.16.2:2222" "SSH 2222 ausserhalb der Tunnel: abgewiesen (nur aus { \"lo\", \"wg_wartung\" }" \
   "Fenster-Schluessel: Abholer laeuft, Server 10.10.32.1:$SPORT ueber wg_wartung" "letzte gueltige Antwort des Wartungsservers: vor " \
-  "Schluesseldatei im RAM (tmpfs /etc/vp-wartung/keys): ja" "dauerhaft aus /etc/dropbear/authorized_keys: 1 Schluessel" "im Fenster: Zugang $ID_T1, noch "; do
+  "Schluesseldatei im RAM (tmpfs /etc/vp-wartung/keys): ja" "dauerhaft aus /etc/dropbear/authorized_keys: 1 Schluessel" "im Fenster: Zugang $ID_T1, noch " \
+  "Sitzungen im Tunnel: 1 - dauerhafter Schluessel 1, Fenster-Schluessel 0, gestrichener Fenster-Schluessel 0, nicht zuzuordnen 0"; do
   case "$ST" in *"$z"*) ok "status: $z…" ;; *) falsch "status: $z…" ;; esac
 done
 case "$ST" in *AAAAB3NzaC1yc2E*) falsch "status zeigt keinen Schluessel" ;; *) ok "status zeigt keinen Schluessel" ;; esac
@@ -789,8 +1021,11 @@ for f in /usr/libexec/vp-wartung/schluessel-holen.sh /etc/init.d/vp-wartung /etc
   printf '%s\n' "$SU" | grep -qx "$f" && ok "sysupgrade -l nennt $f" || falsch "sysupgrade -l nennt $f"
 done
 printf '%s\n' "$SU" | grep -q '^/etc/vp-wartung' && falsch "die Schluesseldatei im RAM steht nicht in der Sicherung" || ok "die Schluesseldatei im RAM steht nicht in der Sicherung"
+[ "$(printf '%s\n' "$SU" | grep -c 'vp-wartung')" = 6 ] && ok "mit dem Beenden der Sitzungen kommt keine Datei dazu (sechs Zeilen mit vp-wartung, wie bisher)" || falsch "sysupgrade -l nennt genau sechs Zeilen mit vp-wartung (ist: $(printf '%s\n' "$SU" | grep -c 'vp-wartung'))"
+P12="$(sitzung_pid tech1 snd)"
 soll "$SSH_T1" ""
 tunnel abbauen wg_wartung >"$ARBEIT/abbauen" 2>&1 && ok "abbauen wg_wartung laeuft durch" || falsch "abbauen wg_wartung laeuft durch"
+[ -n "$P12" ] && warte 5 box_prozess_weg "$P12" && ok "mit dem Tunnel endet auch die Sitzung, die noch offen stand (Dropbear-Prozess $P12)" || falsch "abbauen beendet die offene Sitzung im Tunnel"
 bx '[ ! -e /etc/init.d/vp-wartung ] && [ ! -e /etc/rc.d/S60vp-wartung ] && [ ! -e /usr/libexec/vp-wartung ] && [ ! -e /etc/vp-wartung ] && [ ! -e /etc/config/vp-wartung ] && [ ! -e /tmp/vp-wartung ]' &&
   ok "Abholer, Startskript, Einstellung und Arbeitsstand weg" || falsch "Abholer, Startskript, Einstellung und Arbeitsstand weg"
 bx '! grep -q vp-wartung /proc/mounts /etc/crontabs/root /etc/sysupgrade.conf' && ok "RAM-Bereich ausgehaengt, cron-Zeile und sysupgrade-Eintraege weg" || falsch "RAM-Bereich, cron-Zeile, sysupgrade-Eintraege weg"
