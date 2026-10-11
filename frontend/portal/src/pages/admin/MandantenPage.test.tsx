@@ -166,6 +166,18 @@ describe('MandantenPage - die gefaltete Benutzer-Verwaltung', () => {
     expect(document.body.textContent).not.toContain('Kundensicht');
     expect(document.body.textContent).not.toContain('Kontext-Umschalter');
   });
+
+  it('verspricht keinen freien Sprung mehr: Seite und Dialog nennen Unterstützung oder Notfall-Zugriff als Bedingung', async () => {
+    openDetail();
+    const drawer = await screen.findByRole('dialog', { name: TENANT.name });
+    // Seit der Umschalter geschlossen ist (AP-03 IP-15), führt weder er noch der Knopf ohne Unterstützung hinein.
+    expect(document.body.textContent).not.toContain('über den Mandanten-Umschalter');
+    expect(document.body.textContent).not.toContain('Über den Mandanten-Umschalter');
+    expect(screen.getByText(/öffnet sich nur mit bestätigter Unterstützung oder Notfall-Zugriff/)).toBeInTheDocument();
+    expect(within(drawer).getByText(/öffnet sich nur mit einer Unterstützung, die ein Kundenadministrator bestätigt\s+hat, oder mit einem Notfall-Zugriff/)).toBeInTheDocument();
+    // Der Knopf selbst bleibt, wie er war - die Karte nach dem Sprung fängt den Fall ohne Unterstützung auf.
+    expect(within(drawer).getByRole('button', { name: /In Mandanten-Ansicht springen/ })).toBeEnabled();
+  });
 });
 
 /**

@@ -72,7 +72,7 @@ export function MandantenPage({
         icon="building"
         category="industry"
         title="Mandanten"
-        description="Mandanten plattformweit verwalten. Zeile öffnen für Benutzer und Anlagen - oder oben über den Mandanten-Umschalter in die Ansicht eines Mandanten springen."
+        description="Mandanten plattformweit verwalten. Zeile öffnen für Benutzer, Anlagen und Unterstützung. Die Ansicht eines Mandanten öffnet sich nur mit bestätigter Unterstützung oder Notfall-Zugriff."
         actions={addButton}
       />
 
@@ -613,9 +613,10 @@ function TenantDetailDrawer({
         )}
 
         <div className="vp-alert vp-alert-info" style={{ marginTop: 'var(--vp-space-5)' }}>
-          Über den Mandanten-Umschalter oben (oder den Knopf unten) sehen Sie Anlagen,
-          Geräte und Übersicht dieses Mandanten - dieselben Seiten wie der Kunde, nur
-          mit gewähltem Mandanten.
+          Die Mandanten-Ansicht zeigt Anlagen, Geräte und Übersicht dieses Mandanten -
+          dieselben Seiten wie der Kunde, beschränkt auf die Standorte Ihrer Unterstützung.
+          Sie öffnet sich nur mit einer Unterstützung, die ein Kundenadministrator bestätigt
+          hat, oder mit einem Notfall-Zugriff (oben unter „Unterstützung“).
         </div>
 
         <DangerZone
