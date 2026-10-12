@@ -326,7 +326,7 @@ Die Schritte 1 bis 5 sind ausgeführt, Schritt 6 nicht. Zeiten in UTC.
 
 #### Sitzungen beenden: ausrollen je Box
 
-Die zweite Schranke kommt mit einem erneuten Lauf von `service-tunnel.sh` auf die Box, mit der Befehlszeile aus dem Portal (dieselbe wie beim Einrichten). Portal, API und Tunnel-Dienst ändern sich nicht. **An keinem Gerät ausgeführt;** Labor-Mango und Pilot mit dem Wort des Kapitäns.
+Die zweite Schranke kommt mit einem erneuten Lauf von `service-tunnel.sh` auf die Box, mit der Befehlszeile aus dem Portal (dieselbe wie beim Einrichten). Portal, API und Tunnel-Dienst ändern sich nicht. **Ausgeführt an einem Gerät, der Labor-Mango (11.10.2026, [Stand](#stand-an-der-labor-mango-sitzungen-beenden)); an keiner anderen Box.** Jede Box nur mit dem Wort des Kapitäns.
 
 | | Vorher | Nachher |
 |---|---|---|
@@ -349,10 +349,19 @@ Die zweite Schranke kommt mit einem erneuten Lauf von `service-tunnel.sh` auf di
 
 | Box | Stand | Ausrollen |
 |---|---|---|
-| Labor-Mango `edge-5t2dcy6` | am Wartungsserver, Fenster-Schlüssel eingerichtet (09.10.2026), Dropbear 2025.89 | die Schritte oben, über `root@192.168.0.46` (Port 22) |
-| Pilot `edge-zay5sdd` | laut dieser Datei noch im alten Service-VPN (`wg_service`, nur dauerhafte Schlüssel); dort gibt es keinen Fenster-Schlüssel und nichts auszurollen | die Schranke kommt mit dem [beaufsichtigten Wechsel](#wechsel-des-piloten-auf-den-wartungsserver-beaufsichtigt-noch-nicht-ausgeführt), Schritt 3: Er richtet den neuen Tunnel mit diesem Skript ein. Ist der Pilot inzwischen gewechselt: die Schritte oben, über `mango-neu` |
+| Labor-Mango `edge-5t2dcy6` | am Wartungsserver, Fenster-Schlüssel eingerichtet (09.10.2026), Dropbear 2025.89; eingespielt am 11.10.2026 um 05:36 UTC (Stand `6c9eb2861`), erprobt am 12.10.2026 | ausgeführt, Schritte 1 bis 4 ([Stand](#stand-an-der-labor-mango-sitzungen-beenden)) |
+| Pilot `edge-zay5sdd` | laut dieser Datei noch im alten Service-VPN (`wg_service`, nur dauerhafte Schlüssel); dort gibt es keinen Fenster-Schlüssel und nichts auszurollen; nicht eingespielt | die Schranke kommt mit dem [beaufsichtigten Wechsel](#wechsel-des-piloten-auf-den-wartungsserver-beaufsichtigt-noch-nicht-ausgeführt), Schritt 3: Er richtet den neuen Tunnel mit diesem Skript ein. Ist der Pilot inzwischen gewechselt: die Schritte oben, über `mango-neu` |
 
 **Rückweg:** dieselbe Befehlszeile mit `service-tunnel.sh` aus dem Stand davor (`git show a9e9872e9:edge-light/openwrt/…` oder ein Checkout dieses Stands). Die Box streicht dann wieder nur den Schlüssel. In der Probe läuft der Wechsel in beide Richtungen (Schritt 11b).
+
+##### Stand an der Labor-Mango: Sitzungen beenden
+
+Die Schritte 1 bis 4 sind ausgeführt. Zeiten in UTC.
+
+- **Eingespielt am 11.10.2026 um 05:36:** ein Lauf von `service-tunnel.sh` aus dem Stand `6c9eb2861`, 15 s, Rückgabe 0, `Tunnel unveraendert`. Kein Fenster war offen, niemand im Tunnel angemeldet. Vorher und nachher passten zur Tabelle oben: `status` nennt die Zeile `Sitzungen im Tunnel: 0 …`, der dauerhafte Schlüssel trägt in der Schlüsseldatei die Marke `vpd-…`, das Skript endet mit `zum Ende: …`. Auf der Box geändert hat sich nur der Abholer; `sysupgrade -l` nannte vorher und nachher dieselben sieben Zeilen.
+- **Probe des Kapitäns mit einem echten Fenster, 12.10.2026, 07:06 bis 07:07:** Fenster-Schlüssel gekommen 07:06:48, Anmeldung durch den Tunnel 07:06:53. Um 07:07:48 schloss das Fenster, und in derselben Sekunde stehen auf der Box `Fenster-Schluessel jetzt: keine`, `Exit (root) …: Terminated by signal` und `Sitzung beendet (Dropbear-Prozess …): ihr Fenster-Schluessel ist gestrichen`. Am Gerät des Kapitäns brach die Sitzung ab (`Connection reset`); danach nannte `status` 0 Sitzungen im Tunnel. Vor dem Einspielen blieb der Anmeldeprozess 15 Minuten stehen ([10.10.2026](#belegt)).
+- **Dasselbe noch einmal am 12.10.2026, 13:42 bis 13:43,** nach dem Einspielen der Ereignisliste: gestrichen und beendet in derselben Sekunde (13:43:57, [Stand dort](#stand-an-der-labor-mango-12102026)).
+- **Nicht ausgeführt:** der Rückweg; ein Lauf des Skripts bei offener Sitzung im Tunnel (an der Box nur im Container belegt, Schritt 11b). Was offen bleibt, steht unter [Noch nicht belegt](#belegt).
 
 #### Einrichten ohne Unterbrechung, Dropbear an der Adresse
 
@@ -396,6 +405,7 @@ Am Mango gemessen (25.12.5, 09.10.2026):
 - **Einschränkung der Labor-Mango:** Die Arbeitsmaschine erreicht sie über ihren WAN-Anschluss (`192.168.0.46`, Port 22 nur wegen der Regel `Allow-SSH-WAN`); ihr LAN ist `10.213.0.0/24`, am LAN-Anschluss hängt kein Gerät. Port 2222 war von der WAN-Seite schon vorher abgewiesen. Dass die neue Kette abweist, zeigt dort nur ihr Zähler.
 - **An der Labor-Mango nur gelesen** (10.10.2026, nichts geändert), für die Zuordnung von Sitzung und Schlüssel: `dropbear -V` nennt 2025.89; die eigene Anmeldung an Port 22 trägt `SSH_PUBKEYINFO` mit dem ersten Wort des Kommentars ihres Schlüssels; `/proc/<pid>/environ` ist lesbar; `pgrep -P`, `sha256sum`, `flock`, `ubus` und `jsonfilter` sind da; procd und die PID-Datei nennen denselben Lauscher.
 - **An der Labor-Mango nur gelesen** (12.10.2026, nichts geändert), für das Protokoll der Box: Größe und Alter des Protokollspeichers und was ihn füllt ([oben](#protokoll-der-box-wer-wann-auf-einer-box-war)); `crond -f -c /etc/crontabs -l 7`, `cronloglevel` nicht gesetzt; die drei Zeilen der crontab; `logread` und das Auswerten aller 805 Zeilen brauchen dort zusammen 0,5 s (der Abholer liest nur 200); `flock`, `tail`, `wc` sind da, `base64` und `timeout` nicht; freies Overlay 4,5 MB. Dort läuft der Abholer vom 11.10.2026, und das Protokoll nennt am 12.10. um 07:07:48 UTC eine Sitzung, die die Box mit ihrem Fenster-Schlüssel beendet hat (`Sitzung beendet … gestrichen`, dazu `Terminated by signal`).
+- **An der Labor-Mango eingespielt und erprobt** (eingespielt am 11.10.2026 um 05:36 UTC, mit dem Wort des Kapitäns), das Beenden der Sitzungen: ein Lauf, Rückgabe 0, Tunnel unverändert; in der Probe des Kapitäns am 12.10.2026 (Fenster von 07:06 bis 07:07 UTC) hat die Box die Sitzung in derselben Sekunde beendet, in der sie den Fenster-Schlüssel strich (07:07:48), statt sie 15 Minuten stehen zu lassen; die Probe von 13:42 bis 13:43 UTC zeigt dasselbe noch einmal. Einzelheiten: [Stand](#stand-an-der-labor-mango-sitzungen-beenden).
 - **An der Labor-Mango eingespielt und erprobt** (12.10.2026, mit dem Wort des Kapitäns), Protokoll der Box und Ereignisliste: ein Lauf um 13:13 UTC, Rückgabe 0, Tunnel unverändert (Schnittstelle, Port und Adresse wie vorher, Zähler laufen weiter, neuer Handshake); die dauerhaften Schlüssel unverändert; cron schrieb in den 14 Minuten danach keine Startzeile mehr (vorher 2 bis 3 je Minute); die Liste entstand mit dem ersten Ereignis und zeigte nach der Probe des Kapitäns (Fenster von 13:42 bis 13:43 UTC) genau die fünf erwarteten Einträge, angelegt vom Minutenlauf binnen einer Minute, Rechte nur für root, kein Schlüssel darin. `sysupgrade -l` nannte nach dem Lauf acht Zeilen (neu: `/etc/rc.d/K20vp-wartung`); die neunte, die Liste selbst, steht in `/etc/sysupgrade.conf` und wurde nach der Probe nicht noch einmal gelesen. Einzelheiten: [Stand](#stand-an-der-labor-mango-12102026).
 - **Noch nicht belegt:**
   - Protokoll und Ereignisliste auf einer echten Mango, über das hinaus, was an der Labor-Mango belegt ist (oben). Offen sind:
@@ -404,7 +414,7 @@ Am Mango gemessen (25.12.5, 09.10.2026):
     - ob der Protokolldienst der Mango bei zwei gleichzeitigen Lesern genauso neu startet wie im Container: bewusst nicht ausprobiert, es löschte ihr Protokoll;
     - die Rechenzeit des Lesens je Minute und das Schreiben auf dem JFFS2 der Mango über mehr als diese eine Datei mit fünf Zeilen;
     - jede andere Box als die Labor-Mango: An keiner ist das Skript eingespielt;
-  - das Beenden der Sitzungen über Tage und die Laufzeit des cron-Laufs auf dem MIPS-Prozessor;
+  - das Beenden der Sitzungen über Tage, mit mehr als einer Sitzung zugleich und an jeder anderen Box als der Labor-Mango (an keiner eingespielt); die Laufzeit des cron-Laufs auf dem MIPS-Prozessor;
   - Port 2222 aus dem LAN einer Mango und bei Tunnel unten (`ifdown wg_wartung`); im Container ist beides belegt;
   - ein echtes `sysupgrade`. Danach fehlen ohnehin `kmod-wireguard` und `wireguard-tools`, bis sie neu installiert sind;
   - die Fenster-Schlüssel über einen fremden Anschluss, über Mobilfunk und über Tage;
