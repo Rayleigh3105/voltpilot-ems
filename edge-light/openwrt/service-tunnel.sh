@@ -60,6 +60,15 @@
 #     unten (/etc/nftables.d/20-vp-wartung.nft). Port 22 im LAN bleibt.
 #   - Waechter (cron): wireguard_watchdog jede Minute, Neustart der
 #     Schnittstelle ohne Handshake seit 10 min
+#   - cron protokolliert die Starts seiner Zeitauftraege nicht mehr
+#     (system.cronloglevel=9, nur wenn die Einstellung noch nicht gesetzt ist):
+#     mit den Waechtern oben waren es 132 Zeilen je Stunde, die den
+#     Protokollspeicher der Box (logread, 128 KiB im RAM) in wenigen Stunden
+#     fuellten. Das gilt fuer ALLE Zeitauftraege der Box. Fehler von cron selbst
+#     (unlesbare Zeile, Start gescheitert) stehen weiter im Protokoll; dass ein
+#     Auftrag gestartet wurde oder noch vom vorigen Mal laeuft, steht dort
+#     nicht mehr. Bleibt der cron-Lauf der Fenster-Schluessel aus, meldet es
+#     der Abholer ("FEHLER: der cron-Lauf (frist) ist ... ausgeblieben").
 #
 # Fenster-Schluessel (nur Wartungsserver, Vorgabe; docs/fernwartung.md):
 #   Die Box holt im offenen Fenster den SSH-Schluessel ab, der im Portal am
@@ -68,9 +77,12 @@
 #     /usr/libexec/vp-wartung/schluessel-holen.sh   der Abholer
 #     /etc/init.d/vp-wartung                        Dropbear im Tunnel mit
 #                                                   eigener Schluesseldatei
-#                                                   (dropbear -D) + Abholer
+#                                                   (dropbear -D) + Abholer;
+#                                                   beim Herunterfahren der Box
+#                                                   letzte Ereignisse sichern
 #     /etc/vp-wartung/keys                          tmpfs fuer die Schluesseldatei
 #     /etc/config/vp-wartung                        Server, Port, Schnittstelle
+#     /etc/vp-wartung/ereignisse                    Ereignisliste (Flash, s. u.)
 #     cron: jede Minute Verfallenes streichen
 #   Mit dem Schluessel enden die Sitzungen, die mit ihm begonnen wurden: der
 #   Abholer beendet ihren Anmeldeprozess, sobald er den Schluessel streicht
@@ -85,6 +97,16 @@
 #   VP_SERVICE_SCHLUESSEL=aus richtet den Tunnel wie frueher ein (UCI-Instanz,
 #   nur dauerhafte Schluessel) und raeumt den Abholer ab. Ein Dropbear ohne -D
 #   (vor 2025.89, OpenWrt 24.10) bekommt von selbst die fruehere Instanz.
+#
+# Wer wann auf der Box war (nur mit Fenster-Schluesseln):
+#   Der Abholer fuehrt eine Ereignisliste im Flash: wann welcher
+#   Fenster-Schluessel kam und ging (Zugang), jede Anmeldung durch einen
+#   Wartungstunnel (Fingerabdruck des Schluessels, Absender, Zeit), jedes Ende
+#   einer solchen Sitzung mit Grund. Nie ein Schluessel. Hoechstens 250 Zeilen;
+#   geschrieben wird nur, wenn ein Ereignis dazukam. Sie uebersteht Neustart
+#   und sysupgrade; "abbauen wg_wartung" und VP_SERVICE_SCHLUESSEL=aus loeschen
+#   sie. "status" zeigt die letzten zehn, alle zeigt auf der Box
+#   /usr/libexec/vp-wartung/schluessel-holen.sh ereignisse.
 #
 # Web-App im Tunnel (:8484, ohne eigene Anmeldung):
 #   wartung  frei fuer das ganze Techniker-Netz (VP_SERVICE_NET), Regel
@@ -257,8 +279,9 @@ vp_uci_instanz() {
   uci set "dropbear.$1.RootPasswordAuth=off"
 }
 
-# vp_fenster_weg: Abholer, Startskript, RAM-Bereich und cron-Zeile der
-# Fenster-Schluessel abraeumen. Nichts davon liegt danach noch auf der Box.
+# vp_fenster_weg: Abholer, Startskript, RAM-Bereich, Ereignisliste und
+# cron-Zeile der Fenster-Schluessel abraeumen. Nichts davon liegt danach noch
+# auf der Box.
 vp_fenster_weg() {
   if [ -x /etc/init.d/vp-wartung ]; then
     /etc/init.d/vp-wartung stop >/dev/null 2>&1 || true
@@ -285,7 +308,7 @@ vp_fenster_weg() {
       logger -t vp-wartung "Sitzung beendet (Dropbear-Prozess $vfw_p): die Anmeldung mit Fenster-Schluesseln wird abgeraeumt"
     fi
   done
-  rm -f /etc/init.d/vp-wartung /etc/init.d/vp-wartung.neu /etc/rc.d/S60vp-wartung /etc/config/vp-wartung
+  rm -f /etc/init.d/vp-wartung /etc/init.d/vp-wartung.neu /etc/rc.d/S60vp-wartung /etc/rc.d/K20vp-wartung /etc/config/vp-wartung
   rm -rf /usr/libexec/vp-wartung /tmp/vp-wartung
   if grep -q ' /etc/vp-wartung/keys tmpfs ' /proc/mounts; then umount /etc/vp-wartung/keys || true; fi
   rm -rf /etc/vp-wartung || true
@@ -295,7 +318,7 @@ vp_fenster_weg() {
     rm -f /tmp/crontab.vpw
   fi
   if [ -f /etc/sysupgrade.conf ]; then
-    grep -v -x -e '/usr/libexec/vp-wartung/' -e '/etc/init.d/vp-wartung' -e '/etc/rc.d/S60vp-wartung' /etc/sysupgrade.conf > /tmp/sysupgrade.vpw || true
+    grep -v -x -e '/usr/libexec/vp-wartung/' -e '/etc/init.d/vp-wartung' -e '/etc/rc.d/S60vp-wartung' -e '/etc/rc.d/K20vp-wartung' -e '/etc/vp-wartung/ereignisse' /etc/sysupgrade.conf > /tmp/sysupgrade.vpw || true
     cat /tmp/sysupgrade.vpw > /etc/sysupgrade.conf
     rm -f /tmp/sysupgrade.vpw
   fi
@@ -338,6 +361,12 @@ if nft list chain inet fw4 vp_wartung_eingang 2>/dev/null | grep -q 'dport 2222'
   echo "--- SSH 2222 ausserhalb der Tunnel: abgewiesen ($(nft list chain inet fw4 vp_wartung_eingang | sed -n 's/.*iifname != \(.*\) counter packets \([0-9]*\).*/nur aus \1, bisher \2 Pakete abgewiesen/p'))"
 else
   echo "--- SSH 2222 ausserhalb der Tunnel: NICHT gesperrt (service-tunnel.sh erneut ausfuehren)"
+fi
+CRON_STUFE="$(uci -q get 'system.@system[0].cronloglevel' || true)"
+if [ "${CRON_STUFE:-0}" -ge 9 ] 2>/dev/null; then
+  echo "--- cron protokolliert die Starts der Zeitauftraege: nein (cronloglevel $CRON_STUFE, nur Fehler von cron)"
+else
+  echo "--- cron protokolliert die Starts der Zeitauftraege: JA (cronloglevel ${CRON_STUFE:-nicht gesetzt}) - sie fuellen den Protokollspeicher (nicht gesetzt: service-tunnel.sh erneut ausfuehren; sonst von Hand auf 9)"
 fi
 if [ -x /usr/libexec/vp-wartung/schluessel-holen.sh ]; then
   echo "--- $(/usr/libexec/vp-wartung/schluessel-holen.sh status)"
@@ -437,6 +466,12 @@ fi
 if ! uci -q get network.wg_service >/dev/null && ! uci -q get network.wg_wartung >/dev/null; then
   grep -v 'wireguard_watchdog # vp-service-tunnel' /tmp/crontab.vp > /tmp/crontab.vp2 || true
   mv /tmp/crontab.vp2 /tmp/crontab.vp
+  # Mit dem letzten Tunnel gehen die Zeitauftraege dieser Einrichtung: cron
+  # protokolliert wieder wie vom System vorgegeben.
+  if [ "$(uci -q get 'system.@system[0].cronloglevel' || true)" = 9 ]; then
+    uci -q delete 'system.@system[0].cronloglevel' || true
+    uci commit system
+  fi
 fi
 cat /tmp/crontab.vp > /etc/crontabs/root && rm -f /tmp/crontab.vp
 /etc/init.d/cron restart
@@ -625,7 +660,19 @@ vp_sperre || MANGEL=1
 for p in /usr/libexec/vp-edge-light/service-tunnel-watch.sh; do grep -qxF "$p" /etc/sysupgrade.conf 2>/dev/null || echo "$p" >> /etc/sysupgrade.conf; done
 if [ "$FENSTER" = an ]; then
   # Nicht /etc/vp-wartung/: dort liegt nur der RAM-Bereich mit den Fenster-Schluesseln.
-  for p in /usr/libexec/vp-wartung/ /etc/init.d/vp-wartung /etc/rc.d/S60vp-wartung; do grep -qxF "$p" /etc/sysupgrade.conf || echo "$p" >> /etc/sysupgrade.conf; done
+  # Von dort nur die Ereignisliste: sie nennt nie einen Schluessel.
+  for p in /usr/libexec/vp-wartung/ /etc/init.d/vp-wartung /etc/rc.d/S60vp-wartung /etc/rc.d/K20vp-wartung /etc/vp-wartung/ereignisse; do grep -qxF "$p" /etc/sysupgrade.conf || echo "$p" >> /etc/sysupgrade.conf; done
+fi
+
+# cron protokolliert sonst jeden Start eines Zeitauftrags ("USER root pid ...
+# cmd ..."): mit den Waechtern unten 132 Zeilen je Stunde. Stufe 9 laesst nur
+# die Fehler von cron selbst stehen - fuer alle Zeitauftraege der Box. Eine
+# Einstellung, die schon jemand gesetzt hat, bleibt.
+CRON_STUFE="$(uci -q get 'system.@system[0].cronloglevel' || true)"
+if [ -z "$CRON_STUFE" ]; then
+  uci set 'system.@system[0].cronloglevel=9'
+  uci commit system
+  CRON_STUFE=9
 fi
 
 # Waechter: ersetzt nur die eigenen Zeilen dieser Schnittstelle in der crontab
@@ -651,6 +698,11 @@ fi
 /etc/init.d/firewall reload >/dev/null 2>&1
 if [ -n "$WEB_NETZ" ]; then WEB_TEXT=", Web-App 8484 fuer $WEB_NETZ"; else WEB_TEXT=""; fi
 echo "eingerichtet: $IFACE $ADDR, Firewall-Zone service (SSH 2222, Ping$WEB_TEXT), Dropbear 2222 nur Schluessel, Waechter"
+if [ "$CRON_STUFE" -ge 9 ] 2>/dev/null; then
+  echo "Protokoll der Box: cron protokolliert die Starts der Zeitauftraege nicht mehr (cronloglevel $CRON_STUFE), nur noch eigene Fehler"
+else
+  echo "HINWEIS: cronloglevel steht auf $CRON_STUFE und bleibt - cron protokolliert weiter jeden Start, das fuellt den Protokollspeicher (aendern: uci set system.@system[0].cronloglevel=9; uci commit system; /etc/init.d/cron restart)"
+fi
 # lauscht <adresse>: 0, wenn auf <adresse>:2222 jemand lauscht
 lauscht() { netstat -ltn 2>/dev/null | awk -v a="$1:2222" '$4 == a { f = 1 } END { exit !f }'; }
 # instanz_laeuft: 0, wenn procd die neue Anmelde-Instanz als laufend fuehrt
@@ -738,6 +790,8 @@ if [ "$FENSTER" = an ]; then
   echo "                      Wartungsserver ($S_SERVER:$S_PORT, nur durch den Tunnel), haelt ihn nur im RAM und streicht ihn"
   echo "                      zum Ende des Fensters. Vom Techniker-Geraet: ssh -i ~/.ssh/id_rsa_voltpilot -p 2222 root@$ADDR"
   echo "  zum Ende:           mit dem Schluessel beendet die Box die Sitzungen, die mit ihm begonnen wurden"
+  echo "  nachlesen:          wer wann angemeldet war, steht auf der Box in /etc/vp-wartung/ereignisse (hoechstens 250 Zeilen,"
+  echo "                      uebersteht einen Neustart, nie ein Schluessel); die letzten zeigt: service-tunnel.sh <ziel> status"
   echo "  dauerhaft:          ${DAUERHAFT:-0} Schluessel aus /etc/dropbear/authorized_keys gelten im Tunnel weiter"
   i=0
   until [ -s /tmp/vp-wartung/zuletzt ] || [ "$i" -ge 8 ]; do i=$((i + 1)); sleep 1; done
