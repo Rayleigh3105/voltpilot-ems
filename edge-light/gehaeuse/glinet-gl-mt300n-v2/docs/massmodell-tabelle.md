@@ -1,3 +1,10 @@
+# Maßmodell: alle Zahlen mit Herkunft
+
+Erzeugt aus `gehaeuse/massmodell.py`; nicht von Hand ändern, sondern dort, und dann
+`.venv/bin/python -m gehaeuse.abgleich uebernehmen`. Was die Spalten bedeuten und woher die
+Zahlen stammen: [Maßmodell](massmodell.md). Alle Werte in Millimetern, Koordinaten ab der
+linken unteren Platinenecke.
+
 | Größe | Wert (mm) | Herkunft | Messung Nr. | vorher geschätzt | Bemerkung |
 |---|---|---|---|---|---|
 | `PLATINE_X` | 50,75 | am Probedruck bestätigt, Betreiber 09.10.2026 | 1 | 50,4 | Breite entlang der LED-Kante; gemessen, Schablone passt |

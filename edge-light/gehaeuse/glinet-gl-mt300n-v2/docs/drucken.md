@@ -65,6 +65,7 @@ sieben Stunden statt 6 Wechsel und 34 Minuten).
 ## Zeit, Farbwechsel, Abfall
 
 Quelle für die ganze Tabelle: **Probeslicen** (ASA weiß und schwarz, Zeichen in ABS), kein Druck.
+Zwei Läufe derselben Datei weichen in der Zeit um bis zu 0,1 Minuten voneinander ab.
 
 | Datei | Druckzeit | Filamentwechsel | Material im Teil | Abfall (Spülen und Turm) |
 |---|---|---|---|---|

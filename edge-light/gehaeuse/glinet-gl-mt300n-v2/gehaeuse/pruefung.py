@@ -764,7 +764,7 @@ def pruefe(p=STANDARD, name=None):
 
     md = [f"# Prüfbericht {name}", "",
           f"Material: {p.stoff.name}, Schwundausgleich {zahl(p.stoff.schwund * 100)} %. "
-          "Gerechnet, nicht gedruckt.", "",
+          "Dieser Bericht ist gerechnet. Was gedruckt und bestätigt ist, steht in `druck/README.md`.", "",
           "## Ergebnis", ""]
     md += [f"- **Fehler:** {f}" for f in fehler] or ["- Keine Durchdringung, keine verletzte Regel, "
                                                     "kein Steg unter einer Bahnbreite."]

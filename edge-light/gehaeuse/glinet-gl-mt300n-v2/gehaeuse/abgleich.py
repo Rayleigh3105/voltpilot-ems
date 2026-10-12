@@ -32,6 +32,11 @@ from .bau import NAME
 DRUCK = AUS.parent / "druck"
 TABELLE = AUS.parent / "docs" / "massmodell-tabelle.md"
 SUMMEN = DRUCK / "SHA256SUMS"
+TABELLE_KOPF = ("# Maßmodell: alle Zahlen mit Herkunft\n\n"
+                "Erzeugt aus `gehaeuse/massmodell.py`; nicht von Hand ändern, sondern dort, und dann\n"
+                "`.venv/bin/python -m gehaeuse.abgleich uebernehmen`. Was die Spalten bedeuten und woher die\n"
+                "Zahlen stammen: [Maßmodell](massmodell.md). Alle Werte in Millimetern, Koordinaten ab der\n"
+                "linken unteren Platinenecke.\n\n")
 KENNUNG = re.compile(rb'p:UUID="[0-9a-fA-F-]{36}"')
 
 
@@ -73,7 +78,7 @@ def summen_gleich():
 
 
 def tabelle_soll():
-    return massmodell.tabelle_md() + "\n"
+    return TABELLE_KOPF + massmodell.tabelle_md() + "\n"
 
 
 def tabelle_gleich():
