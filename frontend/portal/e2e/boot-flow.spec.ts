@@ -1,4 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test';
+import type { Overview, PortfolioKpi } from '../src/api';
 import { ahrenbergHeute, ahrenbergUnternehmen, FIXTURE_IDS } from '../src/test/standorteFixtures';
 
 /**
@@ -59,16 +60,25 @@ async function mockBoot(
     // Plattform-Konto mit gewähltem Mandanten (UEMS-Selbstauskunft `konto: plattform`).
     admin?: boolean;
     // UEMS-Ortsstruktur des Referenzunternehmens (zwei Standorte), Werk Ahrenberg misst: die Landung ist die
-    // Unternehmens-Übersicht. Seit K2 (PR #1482) ist sie das nur, wenn mindestens ein Standort misst.
+    // Unternehmens-Übersicht. Seit K2 (PR #1482) ist sie das nur, wenn mindestens ein Standort misst. Die
+    // Übersicht bekommt gültige Antworten, und was der Mock nicht kennt, gibt es nicht (404): eine Absage fängt
+    // die Seite ab, an einem leeren `{}` wirft sie - der Fall prüfte dann den Satz der Fehlergrenze.
     orte?: boolean;
+    // Die Anlagenliste (`/tenant-context`, `/sites`, `/devices`) kommt erst, wenn der Fall dieses Tor öffnet -
+    // statt nach `delayMs`. So liegt ein Schritt des Falls sicher VOR der Anlagenliste.
+    tor?: Promise<void>;
   },
 ) {
-  const wait = () => new Promise((r) => setTimeout(r, opts.delayMs));
+  const wait = () => opts.tor ?? new Promise<void>((r) => setTimeout(r, opts.delayMs));
   // ⚠ In Playwright gewinnt der ZULETZT registrierte Handler. Die Auffang-Route
   // (alle übrigen Anlagen-/Flotten-Reads fail-soft leer, damit der Test am
   // Boot-Fenster misst und nicht an den Innereien einer Seite) steht deshalb
   // ZUERST; die konkreten, verzögerten Routen kommen danach.
   await page.route('**/api/v1/**', async (route) => {
+    if (opts.orte) {
+      await route.fulfill({ status: 404, json: { message: 'nicht da' } });
+      return;
+    }
     const url = route.request().url();
     const body = /\/(sites|devices|components|entities|candidates|tenants|runs|releases)(\b|\/|\?|$)/.test(url)
       ? '[]'
@@ -86,15 +96,8 @@ async function mockBoot(
   if (opts.orte) {
     await page.route('**/api/v1/standorte', (route) => route.fulfill({ json: ahrenbergHeute() }));
     await page.route('**/api/v1/unternehmen', (route) => route.fulfill({ json: ahrenbergUnternehmen() }));
-    await page.route('**/api/v1/overview', (route) =>
-      route.fulfill({
-        json: {
-          sites: [],
-          totals: { sites: opts.sites.length, devices: 0, online: 0, plannedSavingsTodayEur: null, liveSitesCovered: 0 },
-          dailySavings: [],
-        },
-      }),
-    );
+    await page.route('**/api/v1/portfolio/kpis', (route) => route.fulfill({ json: kpisOhneGrundlage() }));
+    await page.route('**/api/v1/overview', (route) => route.fulfill({ json: uebersicht(opts.sites as { id: string; name: string }[]) }));
   }
   // Die Funktionen (AP-01): niemand misst oder steuert schon - die Anlege-Wege bleiben wie bisher. Mit `orte`
   // misst Werk Ahrenberg: erst dann ist die Unternehmensebene die Landung (K2, `ebenenNav.ts misst()`).
@@ -160,6 +163,68 @@ function selbstauskunft(admin: boolean, orte = false) {
     unternehmensweit: true, standorte, unternehmen_rechte: ['anlage.verwalten'], kuenftig: [], text: null,
     teilansicht: null, unterstuetzungen: { eigene: [], gewaehrte: [] }, kundenadministratoren: [],
   };
+}
+
+/** Das Kachelraster der Unternehmens-Übersicht für den letzten vollen Monat, noch ohne Messwerte und Tarif. */
+function kpisOhneGrundlage(): PortfolioKpi {
+  const heute = new Date();
+  const bis = new Date(Date.UTC(heute.getUTCFullYear(), heute.getUTCMonth(), 1) - 86_400_000);
+  const von = new Date(Date.UTC(bis.getUTCFullYear(), bis.getUTCMonth(), 1));
+  return {
+    periode: { von: von.toISOString().slice(0, 10), bis: bis.toISOString().slice(0, 10), jahr: bis.getUTCFullYear(), monat: bis.getUTCMonth() + 1 },
+    verbrauch: { kwh: null, kwh_vorjahr: null, vollstaendig: true },
+    kosten: { eur: null, eur_vorjahr: null, tarif_hinterlegt: false },
+    lastspitze: { kw: null, vereinbart_kw: null, anteil_prozent: null, anlage: null, zeitpunkt: null, zeitraum: null },
+    datenlage: null,
+    leit: null,
+  };
+}
+
+/** `GET /overview`: je Anlage eine Zeile, Gerät verbunden, noch ohne Momentaufnahme. */
+function uebersicht(anlagen: { id: string; name: string }[]): Overview {
+  return {
+    sites: anlagen.map((a) => ({
+      id: a.id, name: a.name, plantKind: 'eigenverbrauch', netzladenErlaubt: false, batteryWithoutDevice: false,
+      deviceCount: 1, onlineCount: 1, waitingCount: 0, worstStatus: 'online', lastSeenAt: new Date().toISOString(),
+      live: null, plannedSavingsTodayEur: null,
+    })),
+    totals: { sites: anlagen.length, devices: anlagen.length, online: anlagen.length, plannedSavingsTodayEur: null, liveSitesCovered: 0 },
+    dailySavings: [],
+  };
+}
+
+/** Öffnet der Fall selbst: `mockBoot({ tor })` hält die Anlagenliste zurück, bis `auf()` gerufen ist. */
+function tor(): { zu: Promise<void>; auf: () => void } {
+  let auf = () => {};
+  const zu = new Promise<void>((r) => { auf = r; });
+  return { zu, auf };
+}
+
+/**
+ * Hält die Uhr der Seite an und lässt erst DANACH die Anlagenliste durch. Die 3-s-Grenze der Lade-Bühne ist ein
+ * Zeitgeber der Seite, der mit der Anlagenliste startet: bei stehender Uhr löst er nie aus. Beginnt die Bühne
+ * trotzdem zu gehen, hat jemand das erste Bild gemeldet - gleich, wie lange der Dev-Server für die Module der Seite
+ * braucht. Vorher `page.clock.install()` rufen (vor `goto`).
+ *
+ * ⚠ Die Reihenfolge trägt den Fall: `pauseAt` springt vor und löst dabei fällige Zeitgeber EINMAL aus. Liefe die
+ * 3-s-Grenze schon, ginge die Bühne durch diesen Sprung - darum kommt die Anlagenliste erst nach dem Anhalten.
+ */
+async function uhrAnhaltenDannAnlagenliste(page: Page, anlagenliste: { auf: () => void }) {
+  // Die Bühne steht schon: der Start des Portals lief mit laufender Uhr.
+  await expect(page.locator('.vp-loader-screen')).toBeVisible();
+  await page.clock.pauseAt(new Date(Date.now() + 60_000));
+  anlagenliste.auf();
+}
+
+/**
+ * Die Bühne beginnt zu gehen (`is-leaving`). Bei stehender Uhr bleibt dieser Zustand stehen, bis der Fall die Uhr
+ * um die Ausblendung weiterdreht - dann ist die Bühne fort. Die Frist ist Geduld mit dem Dev-Server (er liefert die
+ * Module der Landeseite einzeln aus), keine Messgrenze: ohne Meldung käme der Zustand nie.
+ */
+async function buehneGehtDurchMeldung(page: Page) {
+  await expect(page.locator('.vp-loader-screen.is-leaving')).toBeVisible({ timeout: 20_000 });
+  await page.clock.runFor(500);
+  await expect(page.locator('.vp-loader-screen')).toHaveCount(0);
 }
 
 /** Der Marken-Lade-Moment ist als EIN Statusbereich ausgewiesen. */
@@ -288,20 +353,55 @@ test.describe('Boot-Cover · Ränder', () => {
     // Die Landung eines Kunden mit zwei Standorten ist die Unternehmens-Übersicht (`EbenenCockpit`). Sie muss ihr
     // erstes Bild melden wie das Portfolio-Cockpit - sonst hängt der Cover bei JEDER Anmeldung bis zur 3-s-Grenze und
     // zeigt ab 2,2 s „Das dauert gerade etwas länger als sonst …“ über fertigem Inhalt.
+    // Ohne Stoppuhr: am Dev-Server holt der Browser nach der Anlagenliste erst die Module der Übersicht, eine
+    // Zeitgrenze mäße ihn und nicht die Bühne. Stattdessen steht die Uhr der Seite - die 3-s-Grenze kann nicht greifen.
     const anlagen = [FIXTURE_IDS.an1, FIXTURE_IDS.an2, FIXTURE_IDS.an3].map((id, i) => ({ ...site, id, name: `Anlage ${i + 1}` }));
     const geraete = anlagen.map((a, i) => ({ ...device, id: `20000000-0000-0000-0000-00000000000${i + 1}`, siteId: a.id }));
-    await mockBoot(page, { sites: anlagen, devices: geraete, delayMs: 400, orte: true });
+    const anlagenliste = tor();
+    const fehler: string[] = [];
+    page.on('pageerror', (e) => fehler.push(String(e)));
+    await page.clock.install();
+    await mockBoot(page, { sites: anlagen, devices: geraete, delayMs: 0, orte: true, tor: anlagenliste.zu });
+    // Das Kachelraster der Unternehmens-Übersicht fragt seine Kennzahlen an: die Landung IST das EbenenCockpit.
     const kpis = page.waitForRequest('**/api/v1/portfolio/kpis');
     await page.goto('/e2e/boot-flow.html');
-    const t0 = Date.now();
-    await expect(page.locator('.vp-loader-screen')).toBeVisible();
-    // Das Kachelraster der Unternehmens-Übersicht fragt seine Kennzahlen an: die Landung IST das EbenenCockpit.
+    await uhrAnhaltenDannAnlagenliste(page, anlagenliste);
+    await buehneGehtDurchMeldung(page);
     await kpis;
-    await expect(page.locator('.vp-loader-screen')).toHaveCount(0, { timeout: 2500 });
     await expect(page).toHaveURL(/#\/portfolio$/);
-    await expect(page.getByText(/dauert gerade etwas länger/)).toHaveCount(0);
-    const dt = Date.now() - t0;
-    expect(dt, `der Cover hing ${dt} ms - Verdacht auf die 3-s-Grenze`).toBeLessThan(2500);
+    // Unter der Bühne steht die Seite, nicht der Satz der Fehlergrenze.
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await expect(page.getByTestId('fehlergrenze')).toHaveCount(0);
+    expect(fehler).toEqual([]);
+  });
+
+  test('Landeseite scheitert beim Zeichnen: der Cover hebt mit dem Satz der Fehlergrenze ab, nicht an der 3-s-Grenze', async ({
+    page,
+  }) => {
+    // Wirft die Landeseite, bevor sie ihr erstes Bild gemeldet hat, meldet sie nie mehr - an ihrer Stelle steht der
+    // Satz der Fehlergrenze. Die Grenze meldet ihn der Bühne als erstes Bild; sonst stünde die Bühne volle drei
+    // Sekunden über dem Satz. Auch hier steht die Uhr der Seite: nur eine Meldung lässt die Bühne gehen.
+    const anlagen = [FIXTURE_IDS.an1, FIXTURE_IDS.an2, FIXTURE_IDS.an3].map((id, i) => ({ ...site, id, name: `Anlage ${i + 1}` }));
+    const geraete = anlagen.map((a, i) => ({ ...device, id: `20000000-0000-0000-0000-00000000000${i + 1}`, siteId: a.id }));
+    const anlagenliste = tor();
+    const overview = tor();
+    await page.clock.install();
+    await mockBoot(page, { sites: anlagen, devices: geraete, delayMs: 0, orte: true, tor: anlagenliste.zu });
+    // Die Kennzahlen kommen ohne die zugesagten Felder: daran wirft das Kachelraster. `/overview` (mit ihm meldete
+    // die Übersicht ihr erstes Bild) steht bis zum Ende des Falls aus - der Fehler kommt sicher VOR jeder Meldung.
+    await page.route('**/api/v1/portfolio/kpis', (route) => route.fulfill({ json: {} }));
+    await page.route('**/api/v1/overview', async (route) => {
+      await overview.zu;
+      await route.fulfill({ json: uebersicht(anlagen) });
+    });
+    await page.goto('/e2e/boot-flow.html');
+    await uhrAnhaltenDannAnlagenliste(page, anlagenliste);
+    await buehneGehtDurchMeldung(page);
+    // Unter der Bühne steht der Satz an der Stelle der Seite; Kopf und Navigation bleiben.
+    await expect(page.getByTestId('fehlergrenze')).toBeVisible();
+    await expect(page.getByRole('navigation').first()).toBeVisible();
+    await expect(page).toHaveURL(/#\/portfolio$/);
+    overview.auf();
   });
 
   test('Deep-Link auf einen Reiter der Anlage: der Cover hebt bei `loaded` ab, nicht erst an der 3-s-Grenze', async ({

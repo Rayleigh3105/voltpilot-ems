@@ -6,6 +6,7 @@ React/Vite/TypeScript. [Bedienmodell](../../docs/portal.md), [Hilfe bearbeiten](
 
 - `npm run typecheck`, passende Vitest-Fälle und `npm run build` ausführen. Für Interaktion/Layout passende Playwright-Fälle verwenden.
 - Eine e2e-Spec, die beim LADEN wirft oder eine Umgebungsvariable braucht, gehört nicht in den Standardsatz: ein Sammelfehler in einer Datei setzt `npx playwright test` auf `0 tests in 0 files` und Exit 1 — der komplette Lauf findet dann nichts mehr. Solche Specs über `testIgnore` in `playwright.config.ts` ausnehmen und nur ihr Werkzeug sie einschalten lassen.
+- Browser-Proben messen am Dev-Server keine Dauer: er liefert jede Quelldatei einzeln aus, eine Zeitgrenze mäße ihn und die Last der Maschine. Soll ein Zeitgeber der Seite nicht der Grund sein, die Uhr der Seite anhalten (`page.clock`; Muster `uhrAnhaltenDannAnlagenliste` in `e2e/boot-flow.spec.ts`). Dauern gehören an den Build (`e2e/performance/audit.mjs`).
 - Bestehende Komponenten und Tokens in `designsystem/` nutzen. `Input` reicht seinen Ref zum nativen Feld durch; Picker und Input teilen den Feldrand.
 - `ebenenNav.ts` bestimmt Bereiche und Reiter aus `surface.ts`; `nav.ts` hält stabile Hash-Routen und Legacy-Umleitungen. Keine neuen Seiten ohne Navigationszuordnung.
 - Getrennte Portfolioreiter und Anlagenansichten erhalten; CSS für Portfolio-KPIs/Tabellen auf den Portfolio-Kontext begrenzen.
