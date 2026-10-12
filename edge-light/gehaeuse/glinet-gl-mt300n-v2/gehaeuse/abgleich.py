@@ -113,7 +113,7 @@ def pruefe():
     gut = tabelle and summen and all(z["gleich"] for z in zeilen)
     if not gut:
         print("  FEHLER: Eingechecktes gehört nicht zu diesem Stand des Programms. Ist die Änderung gewollt: "
-              "python -m gehaeuse.abgleich uebernehmen, dann druck/README.md nachführen.")
+              ".venv/bin/python -m gehaeuse.abgleich uebernehmen, dann druck/README.md nachführen.")
     return gut
 
 
