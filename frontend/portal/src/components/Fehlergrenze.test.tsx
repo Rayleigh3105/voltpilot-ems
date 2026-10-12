@@ -1,5 +1,6 @@
 import { act, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { ReportFirstPaint } from '../bootReady';
 import { FEHLER_IM_BEREICH, Fehlergrenze } from './Fehlergrenze';
 import { LazyBoundary } from './Lazy';
 
@@ -62,5 +63,28 @@ describe('Fehlergrenze', () => {
     );
     expect(screen.getByText('Kopf')).toBeTruthy();
     expect(screen.getByTestId('fehlergrenze').textContent).toBe(FEHLER_IM_BEREICH);
+  });
+
+  it('meldet der Lade-Bühne das erste Bild: scheitert die Landeseite, steht die Bühne nicht bis zur 3-s-Grenze über dem Satz', () => {
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const erstesBild = vi.fn();
+    const { rerender } = render(
+      <ReportFirstPaint.Provider value={erstesBild}>
+        <LazyBoundary>
+          <Wirft an={false} />
+        </LazyBoundary>
+      </ReportFirstPaint.Provider>,
+    );
+    // Eine Seite, die zeichnet, meldet selbst (`useReportFirstPaint`) - die Grenze nicht für sie.
+    expect(erstesBild).not.toHaveBeenCalled();
+    rerender(
+      <ReportFirstPaint.Provider value={erstesBild}>
+        <LazyBoundary>
+          <Wirft an />
+        </LazyBoundary>
+      </ReportFirstPaint.Provider>,
+    );
+    expect(screen.getByTestId('fehlergrenze').textContent).toBe(FEHLER_IM_BEREICH);
+    expect(erstesBild).toHaveBeenCalledTimes(1);
   });
 });
