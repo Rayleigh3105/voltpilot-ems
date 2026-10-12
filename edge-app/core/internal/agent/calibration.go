@@ -245,6 +245,7 @@ func (a *Agent) calibrationOverride(now time.Time, r guards.Reading, limits guar
 		// stale "limited"/"following" claim on the card.
 		s.Trim = nil
 		s.Follow = nil
+		s.DeficitHold = nil
 		// Nor can the native self-regulation: a bounded First-Light write OWNS
 		// the inverter for its TTL, so "the device regulates itself" would be a
 		// claim about the exact opposite of what is happening.
@@ -252,6 +253,7 @@ func (a *Agent) calibrationOverride(now time.Time, r guards.Reading, limits guar
 	})
 	a.trim.Release()
 	a.follow.Release()
+	a.deficitHold.Release()
 	return true
 }
 

@@ -1,7 +1,7 @@
 {
   "$comment": "Die Vertragsvektoren von 'Absicht + Fenster' (Konzept vp-wechselrichter-eigenregelung-k1 §3/§6.1, Paket K4b, 24.09.2026). Der Go-Test edge-app/core/internal/guards/intent_test.go liest diese Datei PER PFAD und faehrt jeden Fall durch die ECHTEN Funktionen guards.IntentFor (Flaggen -> Absicht + Plan-Fenster) und guards.ClipWindow (dieselbe Guard-Kette wie ein Sollwert, auf beide Grenzen). Die Flaggen sind die eingefrorenen des mqtt-schedule-Vertrags; kein Vertragsfeld der Wolke aendert sich. Wer die Abbildung aendert, aendert die Funktion UND diese Datei zusammen.",
 
-  "$regel": "Beide Lade-Flaggen -> Ladeseite [0 ; max]; nur charge_from_surplus_only -> [0 ; Planwert]; nur charge_surplus_to_battery -> [Planwert ; max]; cover_load_from_battery, unplanned_load_discharge und die Box-Regel deficit_cover oeffnen die Entladeseite ganz; limit_discharge_to_load nur bis zum Planwert; ohne Flagge ist das Fenster der Planwert selbst (Punkt). Die Lade-Flaggen wirken nur auf einen nicht-negativen Befehl (wie Trim und Aufnahme heute). Ein Fenster schmaler als 0,1 kW ist ein Punkt = fester Sollwert.",
+  "$regel": "Beide Lade-Flaggen -> Ladeseite [0 ; max]; nur charge_from_surplus_only -> [0 ; Planwert]; nur charge_surplus_to_battery -> [Planwert ; max]; cover_load_from_battery, unplanned_load_discharge und die Box-Regel deficit_cover oeffnen die Entladeseite ganz - die Box-Regel in einer Lade-Viertelstunde (Planwert > 0,05 kW) erst, nachdem das Haus-Defizit 60 s ununterbrochen gemessen wurde (guards.DeficitCoverChargeHold, Entscheid E2 A vom 10.10.2026); bis dahin ist sie keine Flagge, und das Fenster bleibt das der Wolken-Flaggen; limit_discharge_to_load nur bis zum Planwert; ohne Flagge ist das Fenster der Planwert selbst (Punkt). Die Lade-Flaggen wirken nur auf einen nicht-negativen Befehl (wie Trim und Aufnahme heute). Ein Fenster schmaler als 0,1 kW ist ein Punkt = fester Sollwert.",
 
   "$guards": "ClipWindow: ein Punkt und jede Grenze, die einen Fluss ERZWINGT (min > 0, max < 0), laufen durch die volle Kette guards.Clamp (Nennband, SoC-Fenster, BMS, EEG 'Laden <= gemessene PV', §14a). Eine offene Grenze (Ladedeckel >= 0, Entladedeckel <= 0) laeuft durch die geraeteseitigen Stufen (Nennband, SoC-Fenster, BMS): das Geraet erreicht sie nur aus dem Ueberschuss selbst, die beiden netzseitigen Stufen koennen durch sie nicht verletzt werden; die EEG-Regel eines offenen Fensters traegt der BELEGTE Netzlade-Riegel des Geraets plus die Aufsicht 'Laden bei Bezug'. Am Plattform-Boden (effective_floor_soc_pct) schliesst die Entladeseite.",
 
@@ -59,6 +59,16 @@
       "planned_kw": 0.0, "flags": ["deficit_cover"],
       "kind": "E_down", "word": "cover_load", "needs_window": false, "plan_min_kw": -30.0, "plan_max_kw": 0.0,
       "reading": { "soc_pct": 60.0, "pv_kw": 0.0, "load_kw": 3.0 }, "window_min_kw": -30.0, "window_max_kw": 0.0 },
+
+    { "name": "E-up-lade-viertelstunde-waehrend-der-haltezeit", "why": "Herzogau 10.10.2026 17:03:15: Lade-Viertelstunde +1,303 kW, ein Verbraucher schaltet zu (PV 4,69 / Haus 6,83). Waehrend der Haltezeit ist die Box-Regel KEINE Flagge - das Fenster bleibt 'nur laden', der Speicher ruht",
+      "planned_kw": 1.303, "flags": ["charge_from_surplus_only", "charge_surplus_to_battery"], "solar_only_charge": true, "effective_floor_soc_pct": 5.0,
+      "kind": "E_up", "word": "surplus_charge", "needs_window": false, "plan_min_kw": 0.0, "plan_max_kw": 30.0,
+      "reading": { "soc_pct": 37.0, "pv_kw": 4.69, "load_kw": 6.83 }, "window_min_kw": 0.0, "window_max_kw": 30.0 },
+
+    { "name": "E-lade-viertelstunde-nach-der-haltezeit", "why": "dieselbe Viertelstunde, das Defizit steht seit 60 s: jetzt oeffnet die Box-Regel die Entladeseite, aus 'nur laden' wird Eigenverbrauch",
+      "planned_kw": 1.303, "flags": ["charge_from_surplus_only", "charge_surplus_to_battery", "deficit_cover"], "solar_only_charge": true, "effective_floor_soc_pct": 5.0,
+      "kind": "E", "word": "self_consumption", "needs_window": false, "plan_min_kw": -30.0, "plan_max_kw": 30.0,
+      "reading": { "soc_pct": 37.0, "pv_kw": 4.69, "load_kw": 6.83 }, "window_min_kw": -30.0, "window_max_kw": 30.0 },
 
     { "name": "E-down-nur-begrenzen", "why": "limit_discharge_to_load oeffnet nur bis zum Planwert: [Planwert ; 0]",
       "planned_kw": -6.0, "flags": ["limit_discharge_to_load"],

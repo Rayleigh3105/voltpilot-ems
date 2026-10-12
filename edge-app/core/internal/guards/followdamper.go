@@ -40,6 +40,26 @@
 //     grid half errs the other way and waits.) A cloud edge the first pair
 //     caught half way is then followed down without waiting a settle time in the
 //     import - a raise always waits.
+//     A SECOND exception, likewise retreat-only, for the opposite case - a
+//     write that RAISED the command (Captain decision E2 A, 2026-10-10, report
+//     vp-wr-ueberschuss-entladung-k3 §1.5 step 6): the box deepens a discharge
+//     for a consumer, the consumer ends five seconds later, and until a pair
+//     measured after the settle time arrives - 15 s plus up to a Messtakt - the
+//     discharge runs into the grid beside the PV surplus. The unsettled PAIR is
+//     still not to be trusted there (a new grid beside an old battery makes the
+//     deficit look smaller by the battery's own ramp - the echo). But the GRID
+//     HALF alone is: it is measured at the connection point, not derived, and
+//     while the battery is still climbing toward the command, export at the
+//     meter means the house needs less than the battery already delivers. So a
+//     grid half refreshed after such a write that shows the side the correction
+//     is bounded against - export while discharging, import while charging -
+//     takes the command back with the next tick: to what the battery, as last
+//     measured, delivers, minus the measured excess, minus the reserve. The
+//     control reading does not move (no echo enters the corrections); the next
+//     settled pair corrects the level in the damped way. Nothing here can swing:
+//     a steady deficit approached from below with the reserve never shows
+//     export, so the exception cannot fire on the loop's own echo, only on a
+//     load that really fell.
 //  2. THE EXPENSIVE DIRECTION AT ONCE, THE CHEAP ONE DAMPED. Every measured
 //     correction is bounded against exactly one side of the grid-zero point: a
 //     charge never beyond the surplus (it would be bought), a discharge never
@@ -188,6 +208,14 @@ type FollowDamper struct {
 	wroteValid   bool
 	wroteRetreat bool
 
+	// The expensive side at the meter (DampPairCostly): the grid refresh that
+	// already took the command back once, and the level this tick's verdict
+	// allows on the side of the last write (magnitude, before the correction's
+	// own bounds).
+	costlyGridAt time.Time
+	costlySigma  float64
+	costlyLevel  float64
+
 	// The control reading: the last settled pair's pv/load and its time.
 	usedAt         time.Time
 	ctlPv, ctlLoad float64
@@ -258,6 +286,11 @@ const (
 	DampPairRetreat
 	// DampPairSettled: a new pair measured after the last write settled.
 	DampPairSettled
+	// DampPairCostly: no new usable pair, but after a write that RAISED the
+	// command a refreshed grid half shows the side the correction is bounded
+	// against (export while discharging, import while charging). Good for a
+	// retreat only, and the control reading stays where it was.
+	DampPairCostly
 )
 
 // Gate returns the reading the measured corrections may act on at now, and
@@ -308,7 +341,68 @@ func (d *FollowDamper) Gate(now time.Time, p DampProfile, r Reading, readingAt t
 		return c, DampPairNone
 	}
 	c.PvKw, c.LoadKw = d.ctlPv, d.ctlLoad
+	if pair == DampPairNone && d.costlyAtMeter(p) {
+		pair = DampPairCostly
+	}
 	return c, pair
+}
+
+// costlyAtMeter is the second retreat-only exception (see the package comment):
+// after a write that raised the command, a grid half refreshed since - and not
+// yet used for this - shows the expensive side. It records the level the
+// verdict allows and consumes the grid refresh; the control reading is not
+// touched.
+//
+// Every condition is a refusal when it fails:
+//   - the last write must have RAISED the command (or crossed zero). After a
+//     retreat the battery comes DOWN toward the command, so export at the meter
+//     may be nothing but the old, deeper level still running out - the first
+//     exception handles that case with a full pair;
+//   - the battery, as last measured, must not be beyond the command. Climbing
+//     toward it, it never is; a value beyond says an earlier, deeper command is
+//     still running out, and the inference "export means too deep" no longer
+//     holds;
+//   - the excess must clear the deadband - meter noise takes nothing back.
+//
+// The level is what the battery delivers, as last measured, minus the excess
+// at the meter, minus the reserve. With a battery half as new as the grid half
+// that is exactly what a settled pair would command. With an older battery
+// half (a lower value while it climbs) it retreats further than needed by the
+// battery's own progress in between - the cheap side, corrected in ramps by
+// the next settled pair. It never retreats too little by more than the
+// distance between the battery and its command.
+//
+// The halves are the device's own values as Observe saw them, before the
+// despiker: a single glitch in the grid half can therefore take a command back
+// once without cause. That is the cheap side too - the next settled pair
+// restores the level in ramps - and it cannot repeat on the same value.
+func (d *FollowDamper) costlyAtMeter(p DampProfile) bool {
+	d.costlySigma, d.costlyLevel = 0, 0
+	if !d.wroteValid || d.wroteRetreat || !d.gridSeen || !d.battSeen {
+		return false
+	}
+	if !d.gridAt.After(d.wroteAt) || !d.gridAt.After(d.costlyGridAt) {
+		return false
+	}
+	commanded := math.Abs(d.wroteKw)
+	if commanded <= dampWriteResolutionKw {
+		return false
+	}
+	sigma := 1.0
+	if d.wroteKw < 0 {
+		sigma = -1
+	}
+	// Grid is + import / - export, the battery + charge / - discharge: on the
+	// discharge side the excess is the export, on the charge side the import.
+	excess := sigma * d.grid
+	delivered := sigma * d.batt
+	if excess <= p.DeadbandKw || delivered > commanded+p.DeadbandKw {
+		return false
+	}
+	d.costlyGridAt = d.gridAt
+	d.costlySigma = sigma
+	d.costlyLevel = math.Min(commanded, math.Max(delivered, 0)) - excess - p.ReserveKw
+	return true
 }
 
 // Shape damps the result of the measured corrections.
@@ -353,15 +447,25 @@ func (d *FollowDamper) Shape(p DampProfile, commandedKw, targetKw float64, engag
 	// A new target only on a new pair - or on the first engagement, whose
 	// control reading is by construction the last consumed one. A pair that is
 	// only good for a retreat never raises.
-	if (pair != DampPairNone || started) && known(ctl.PvKw) && known(ctl.LoadKw) {
+	newReading := pair == DampPairSettled || pair == DampPairRetreat
+	if (newReading || started) && known(ctl.PvKw) && known(ctl.LoadKw) {
 		room := sigma * (ctl.PvKw - ctl.LoadKw) // surplus (charge) / deficit (discharge)
 		goal := math.Min(t, room-p.ReserveKw)
 		goal = math.Max(lo, math.Min(hi, goal))
 		switch {
 		case goal < d.held-p.DeadbandKw:
 			d.held = goal // retreat from the expensive side at once
-		case goal > d.held+p.DeadbandKw && pair != DampPairRetreat:
+		case goal > d.held+p.DeadbandKw && pair != DampPairRetreat && pair != DampPairCostly:
 			d.held = math.Min(goal, d.held+p.RampKw) // approach it in ramps
+		}
+	}
+	// The expensive side at the meter: the command of the last write runs past
+	// what the grid half shows the house can take. Back to the level Gate
+	// derived from it - inside the correction's own bounds, so it never trims
+	// below a command a raising correction raises and never crosses zero.
+	if pair == DampPairCostly && d.costlySigma == sigma {
+		if goal := math.Max(lo, math.Min(hi, d.costlyLevel)); goal < d.held-p.DeadbandKw {
+			d.held = goal
 		}
 	}
 	d.held = math.Max(lo, math.Min(hi, d.held))
@@ -384,6 +488,18 @@ func (d *FollowDamper) Commit(now time.Time, kw float64) {
 	}
 }
 
+// ControlReadingAt is the time the control reading in force was MEASURED: the
+// pair time Gate consumed it at (the older of its two halves). Zero while there
+// is none - the damper is off, or blind until its next settled pair.
+func (d *FollowDamper) ControlReadingAt() time.Time {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if !d.ctlValid {
+		return time.Time{}
+	}
+	return d.usedAt
+}
+
 // Engaged reports whether the damper currently shapes a correction.
 func (d *FollowDamper) Engaged() bool {
 	d.mu.Lock()
@@ -398,5 +514,6 @@ func (d *FollowDamper) Engaged() bool {
 func (d *FollowDamper) Release() {
 	d.mu.Lock()
 	d.engaged, d.ctlValid, d.usedAt, d.wroteValid = false, false, time.Time{}, false
+	d.costlySigma, d.costlyLevel = 0, 0
 	d.mu.Unlock()
 }

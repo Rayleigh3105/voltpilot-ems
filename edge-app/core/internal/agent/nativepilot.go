@@ -190,11 +190,13 @@ func (a *Agent) nativePilotOverride(now time.Time, p *plan.Plan) bool {
 		s.PeakQuarterMeanKw = nil
 		s.Trim = nil
 		s.Follow = nil
+		s.DeficitHold = nil
 		s.Absorb = nil
 		s.Native = nil
 	})
 	a.trim.Release()
 	a.follow.Release()
+	a.deficitHold.Release()
 	a.absorb.Release()
 	a.native.Release()
 	return true
