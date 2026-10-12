@@ -20,7 +20,8 @@
 // a slot that trades is not a slot this rule can enter:
 //
 //   - a planned CHARGE is never reinterpreted (a direction flip, never a
-//     correction);
+//     correction) - and since 2026-10-10 that holds for the slot's PLANNED
+//     charge, not only for the command as it stands (see "THE HOLD" below);
 //   - a planned SALE deeper than the measured deficit leaves no residual import
 //     at all, so the entry deadband refuses it - the sale runs unchanged;
 //   - the correction is capped at the measured deficit and can therefore only
@@ -33,7 +34,33 @@
 // gates. The peak guard needs no refusal of its own: its reserve is already
 // inside EffectiveFloorPct, and it runs AFTER this correction and only ever
 // lowers the setpoint further, so a deepen can never undo a peak defense.
+//
+// THE HOLD (Captain decision E2 A, 2026-10-10, report
+// vp-wr-ueberschuss-entladung-k3 §1.5/§4): in a slot that PLANS a charge the
+// price-aware trim takes the charge back to the measured surplus at once - down
+// to zero the moment a consumer switches on. The rule used to see only that
+// zero and deepened it into a discharge on the very same tick. Measured at
+// Herzogau on 2026-10-10: a ~2 kW consumer ran 10-15 s, the battery followed
+// the discharge command ~12 s later - when the consumer was off again - and
+// 1,5 kW of stored energy left through the grid connection point beside the PV
+// surplus (twelve such episodes in 79 minutes, every one of them preceded by a
+// short import). A device that needs longer to follow a command than the
+// consumer runs cannot cover that consumer at all; it can only miss it.
+//
+// So in a slot whose plan charges, the rule now waits: taking the charge back
+// stays immediate (the trim's job, unchanged), but the DISCHARGE starts only
+// once the house deficit has been MEASURED without a break for
+// DeficitCoverChargeHold. A consumer shorter than that costs a few seconds of
+// import instead of 15-35 s of discharging into the grid; a real deficit (a
+// cloud, the evening) is still covered - the decision of 2026-08-28 stands.
+// Everything else about the rule is unchanged, and so is every slot that does
+// not plan a charge: there it acts on the first measured deficit as before.
 package guards
+
+import (
+	"sync"
+	"time"
+)
 
 const (
 	// DeficitCoverImportDeadbandKw is the noise floor under which the plan's
@@ -48,6 +75,26 @@ const (
 	// as a real CHARGE and is never reinterpreted. Same tolerance the schedule
 	// duties use for planned charge/discharge intent.
 	DeficitCoverChargeDeadbandKw = 0.05
+	// DeficitCoverChargeHold is how long the house deficit must have been
+	// measured without a break before the rule may turn a slot that PLANS a
+	// charge into a discharge (Captain decision E2 A, 2026-10-10: "erst
+	// entladen, wenn das Defizit eine Minute anhaelt").
+	//
+	// Why a minute: it is longer than measurement and inverter need together.
+	// The slowest device measured so far (Deye at Herzogau) refreshes its
+	// registers every 5-25 s and follows a write after 4,6-34,5 s (~12 s
+	// typical), so a discharge commanded on the first sight of a deficit
+	// arrives 15-35 s later; the consumers that triggered the case ran 5-20 s.
+	// The cost of waiting is bounded and small - 1 kW for 60 s is 0,017 kWh -
+	// while every discharge that arrives after its consumer has gone is sold
+	// at the feed-in price and bought back later.
+	//
+	// The span is measured between the tick that FIRST judged the deficit and
+	// the time of the newest MEASUREMENT that still shows it (DeficitHold), so
+	// it always rests on at least two distinct measurements, and a deficit
+	// that physically ended within the hold can never release the rule - no
+	// matter how late the device reports its end.
+	DeficitCoverChargeHold = 60 * time.Second
 )
 
 // DeficitCoverInput is every fact the rule needs. A missing or non-finite fact
@@ -63,6 +110,15 @@ type DeficitCoverInput struct {
 	// CommandKw is the setpoint as it stands after the compliance clamps, the
 	// holder override and the price-aware trim (+ = charge).
 	CommandKw float64
+	// PlannedKw is the charge the SLOT asks for (+ = charge): the plan's own
+	// value before the trim took any of it back. Above the charge deadband the
+	// slot plans a charge, and the rule then needs DeficitSustained. The zero
+	// value is "no planned charge" - the rule as it was before the hold.
+	PlannedKw float64
+	// DeficitSustained reports that the house deficit has been measured
+	// without a break for DeficitCoverChargeHold (DeficitHold.Observe). Only
+	// read in a slot that plans a charge.
+	DeficitSustained bool
 	// SocPct / EffectiveFloorPct are the measured state of charge and the FULL
 	// cloud-computed reserve stack (technical floor, backup reserve, peak
 	// reserve). The rule never spends anything below that floor.
@@ -77,13 +133,19 @@ type DeficitCoverInput struct {
 type DeficitCoverDecision struct {
 	Active   bool
 	FloorPct *float64
+	// Held: every condition of the rule is met, but the slot plans a charge
+	// and the deficit has not yet stood for DeficitCoverChargeHold - the box
+	// rests and buys the deficit for now. Never set together with Active.
+	Held bool
 }
 
 // CoverDeficit answers one tick. It is stateless on purpose: the hysteresis
 // that matters is the follower's own symmetric engage/release dwell on the
 // deficit, and the SoC boundary needs none - at the floor the rule simply
 // refuses, the battery stops discharging and the SoC cannot fall further, so
-// there is nothing to oscillate.
+// there is nothing to oscillate. The one thing that does need a memory - how
+// long the deficit has stood - is a measured fact the caller hands in
+// (DeficitSustained, from DeficitHold).
 func CoverDeficit(in DeficitCoverInput) DeficitCoverDecision {
 	if !in.Eligible || !in.MeasurementsFresh ||
 		!finite(in.CommandKw) || !finite(in.SocPct) ||
@@ -95,6 +157,10 @@ func CoverDeficit(in DeficitCoverInput) DeficitCoverDecision {
 	if in.CommandKw > DeficitCoverChargeDeadbandKw {
 		return DeficitCoverDecision{}
 	}
+	// The slot's own intent is a fact like every other: unknown is a refusal.
+	if !finite(in.PlannedKw) {
+		return DeficitCoverDecision{}
+	}
 	// Nothing left of the reserve stack to spend.
 	if in.SocPct <= *in.EffectiveFloorPct {
 		return DeficitCoverDecision{}
@@ -104,6 +170,83 @@ func CoverDeficit(in DeficitCoverInput) DeficitCoverDecision {
 	if in.LoadKw+in.CommandKw-in.PvKw <= DeficitCoverImportDeadbandKw {
 		return DeficitCoverDecision{}
 	}
+	// THE HOLD: the slot plans a charge and only the trim brought the command
+	// to rest. Discharging now would turn the slot around on the strength of
+	// one measurement - wait until the deficit has stood for the hold time.
+	if in.PlannedKw > DeficitCoverChargeDeadbandKw && !in.DeficitSustained {
+		return DeficitCoverDecision{Held: true}
+	}
 	floor := *in.EffectiveFloorPct
 	return DeficitCoverDecision{Active: true, FloorPct: &floor}
+}
+
+// DeficitHold is the one clock of the rule: for how long the HOUSE deficit
+// (load above PV, the battery-independent quantity the follower covers) has
+// been measured without a break. It is a fact about the house, not about the
+// rule - it keeps running through every slot kind and through every hold
+// reason of the caller (a paused plant, a lost readback), so a deficit that has
+// stood for minutes is not made to wait again when a slot boundary or a
+// recovered readback hands the decision back to the rule.
+//
+// Concurrency-safe like the other in-slot state holders (the setpoint path is
+// reachable from the tick loop, the schedule handler and the web API).
+type DeficitHold struct {
+	mu sync.Mutex
+	// since is the time of the tick that first judged the unbroken deficit.
+	since time.Time
+	// lastAt is the time of the newest measurement that still showed it.
+	lastAt time.Time
+}
+
+// NewDeficitHold returns a clock without a standing deficit.
+func NewDeficitHold() *DeficitHold { return &DeficitHold{} }
+
+// Observe judges one tick and reports whether the deficit has stood for
+// DeficitCoverChargeHold.
+//
+// measuredAt is the time the judged values were MEASURED - with the damped
+// follower the time of its control reading's device pair, without it the
+// reading's own sample time. The span that counts runs from the tick that
+// first saw the deficit (never earlier than the deficit itself) to the newest
+// measurement still showing it (never later than the deficit itself): both
+// ends err toward waiting, so a deficit that lasted no longer than the hold
+// can never be reported as sustained, however stale or irregular the device's
+// measurements are. A tick that re-reads a measurement it already judged
+// proves nothing new and moves nothing.
+//
+// Anything short of a measured deficit ends the count: a measurement without
+// a deficit, an unknown value, a stale reading. A gap in the evidence is not
+// a deficit that lasted.
+func (h *DeficitHold) Observe(now, measuredAt time.Time, measurementsFresh bool, pvKw, loadKw float64) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if !measurementsFresh || measuredAt.IsZero() || !finite(pvKw) || !finite(loadKw) ||
+		loadKw-pvKw <= DeficitCoverImportDeadbandKw {
+		h.since, h.lastAt = time.Time{}, time.Time{}
+		return false
+	}
+	if h.since.IsZero() {
+		h.since = now
+	}
+	if measuredAt.After(h.lastAt) {
+		h.lastAt = measuredAt
+	}
+	return !h.lastAt.Before(h.since.Add(DeficitCoverChargeHold))
+}
+
+// Since returns the tick time the standing deficit was first judged, and
+// whether one stands at all.
+func (h *DeficitHold) Since() (time.Time, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.since, !h.since.IsZero()
+}
+
+// Release forgets the standing deficit (used by the setpoint path's early
+// exits: without a reading, or while a bounded test write owns the inverter,
+// nothing is judged and no evidence may be carried across).
+func (h *DeficitHold) Release() {
+	h.mu.Lock()
+	h.since, h.lastAt = time.Time{}, time.Time{}
+	h.mu.Unlock()
 }

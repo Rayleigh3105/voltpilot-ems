@@ -230,35 +230,70 @@ func TestTheLocalDeficitRuleNeverCutsBackAPlannedSale(t *testing.T) {
 
 // A planned CHARGE is a different intent, never a deficit to cover: reversing it
 // would be a direction flip, which no economic or trust guard may perform.
+//
+// Both ways a charging slot can meet a deficit are pinned here. Untrimmed, the
+// plan buys for the battery on purpose and the charge runs as planned. With
+// charge_from_surplus_only (the "Kuerzungs-Flagge") the trim takes the charge
+// back to 0 - and that 0 is still a slot that PLANS a charge: until 2026-10-10
+// the rule saw only the trimmed command and discharged on the same tick
+// (Herzogau 17:04, report vp-wr-ueberschuss-entladung-k3 §1.5). It now waits
+// for guards.DeficitCoverChargeHold and names the wait.
 func TestTheLocalDeficitRuleNeverReinterpretsAPlannedCharge(t *testing.T) {
-	a, addr := followAgentAddr(t)
-	sub := subscribeSetpoint(t, addr)
-	now := time.Date(2026, 8, 28, 11, 0, 0, 0, time.UTC)
-	yes, floor := true, 35.0
-	a.mu.Lock()
-	a.currentPlan = &plan.Plan{
-		SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now,
-		GridChargeAllowed: &yes, EffectiveFloorSocPct: &floor,
-		Slots: []plan.Slot{{Start: now, BatterySetpointKw: 5}},
+	cases := []struct {
+		name        string
+		surplusOnly bool
+		wantKw      float64
+		wantHeld    bool
+	}{
+		{name: "untrimmed charge runs as planned", wantKw: 5},
+		{name: "charge the trim took back is not turned around", surplusOnly: true, wantKw: 0, wantHeld: true},
 	}
-	// The plan buys for the battery on purpose: house 2.7, PV 1.3, charge 5.
-	a.lastReading = guards.Reading{
-		SocPct: 60, PvKw: 1.3, LoadKw: 2.7, GridLimitKw: guards.Unknown(),
-	}
-	a.lastReadingAt = now
-	a.mu.Unlock()
-	a.State.Update(func(s *state.Snapshot) {
-		s.Control = &state.ControlInfo{AllMatch: true, Confirm: "held", CheckedAt: now}
-	})
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			a, addr := followAgentAddr(t)
+			sub := subscribeSetpoint(t, addr)
+			now := time.Date(2026, 8, 28, 11, 0, 0, 0, time.UTC)
+			yes, floor := true, 35.0
+			a.mu.Lock()
+			a.currentPlan = &plan.Plan{
+				SlotMinutes: 15, ReceivedAt: now, GeneratedAt: now,
+				GridChargeAllowed: &yes, EffectiveFloorSocPct: &floor,
+				Slots: []plan.Slot{{Start: now, BatterySetpointKw: 5, ChargeFromSurplusOnly: c.surplusOnly}},
+			}
+			// House 2.7, PV 1.3, charge 5: a measured deficit of 1.4 kW.
+			a.lastReading = guards.Reading{
+				SocPct: 60, PvKw: 1.3, LoadKw: 2.7, GridLimitKw: guards.Unknown(),
+			}
+			a.lastReadingAt = now
+			a.mu.Unlock()
+			a.State.Update(func(s *state.Snapshot) {
+				s.Control = &state.ControlInfo{AllMatch: true, Confirm: "held", CheckedAt: now}
+			})
 
-	a.applySetpoint(now)
-	waitFor(t, 5*time.Second, "the untouched charge", func() bool {
-		m, ok := sub.latest()
-		return ok && m["battery_setpoint_kw"] == 5.0
-	})
-	if snap := a.State.Get(); snap.Follow != nil || snap.SetpointKw != 5 {
-		t.Fatalf("a planned charge must run unchanged: setpoint=%v follow=%+v",
-			snap.SetpointKw, snap.Follow)
+			a.applySetpoint(now)
+			waitFor(t, 5*time.Second, "the charge that is never reversed", func() bool {
+				m, ok := sub.latest()
+				return ok && m["battery_setpoint_kw"] == c.wantKw
+			})
+			snap := a.State.Get()
+			if snap.Follow != nil || snap.SetpointKw != c.wantKw {
+				t.Fatalf("a planned charge must never become a discharge: setpoint=%v follow=%+v",
+					snap.SetpointKw, snap.Follow)
+			}
+			if held := snap.DeficitHold != nil; held != c.wantHeld {
+				t.Fatalf("deficit hold block = %+v, want held=%v", snap.DeficitHold, c.wantHeld)
+			}
+			if c.wantHeld {
+				if snap.Trim == nil || snap.Trim.PlannedKw != 5 {
+					t.Fatalf("the trim took the planned 5 kW back and says so: %+v", snap.Trim)
+				}
+				h := snap.DeficitHold
+				if !h.Active || h.Since == nil || !h.Since.Equal(now) ||
+					h.HoldS != guards.DeficitCoverChargeHold.Seconds() {
+					t.Fatalf("the wait names its start and its length: %+v", h)
+				}
+			}
+		})
 	}
 }
 

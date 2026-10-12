@@ -136,6 +136,12 @@ type Agent struct {
 	// covered from the grid (guards.LoadFollower - the discharge-side mirror of
 	// trim; the edge enforces, the cloud priced).
 	follow *guards.LoadFollower
+	// deficitHold is the one clock of the local deficit-cover rule: for how long
+	// the house deficit has been MEASURED without a break. In a slot that plans a
+	// charge the rule may only start a discharge once that reaches
+	// guards.DeficitCoverChargeHold (E2 A, 2026-10-10: a consumer shorter than
+	// the device's own follow time must not turn a charging slot around).
+	deficitHold *guards.DeficitHold
 	// absorb holds the hysteresis of the in-slot surplus absorption: in a slot the
 	// cloud marked charge_surplus_to_battery the commanded CHARGE is RAISED to the
 	// MEASURED PV surplus, so a surplus the 15-min forecast never saw is stored
@@ -153,6 +159,10 @@ type Agent struct {
 	// dampProfileFor overrides guards.DampProfileFor (nil = that); a field only
 	// so a replay test can run the same box with and without the damper.
 	dampProfileFor func(dev controlprofile.Device) guards.DampProfile
+	// selfRun says whether the setpoint in force is a discharge or a charge the
+	// box started itself (selfstarted.go): what is already running rides out a
+	// failed readback, what would begin does not.
+	selfRun selfStarted
 	// native carries the per-slot supervision of the NATIVE SELF-REGULATION: in
 	// a covering slot the setpoint itself is handed back to the inverter, which
 	// then decides its own watts - and this type is what takes it back at the
@@ -435,6 +445,7 @@ type Agent struct {
 	peak2       *float64            // v2 site peak target (survives staleness)
 	reserve2    map[string]*float64 // v2 per-entity reserves (survive staleness)
 	planHeld    map[string]string   // entity -> "v1"|"v2" currently plan-commanded
+	planV1      v1Injection         // what the v1 executor last injected for the battery
 	entReadback map[string]*bool    // per-entity latest readback all_match
 	arbWake     chan struct{}
 
@@ -727,6 +738,7 @@ func New(cfg config.Config) (*Agent, error) {
 		peak:         guards.NewPeakTracker(),
 		trim:         guards.NewPriceTrimmer(),
 		follow:       guards.NewLoadFollower(),
+		deficitHold:  guards.NewDeficitHold(),
 		absorb:       guards.NewSurplusCharger(),
 		damp:         guards.NewFollowDamper(),
 		export:       guards.NewExportLimiter(),
@@ -2338,6 +2350,10 @@ func controlCycleVerdict(verify string, allMatch *bool) string {
 //	unconfirmed -> NO evidence: the last known verdict is KEPT (the project's
 //	               hold-last discipline) and the mismatch run is left untouched,
 //	               so silence can neither raise nor clear an alarm.
+//
+// Beside the card's state it carries when a cycle last HELD and how many
+// cycles of either kind failed since (HeldAt / FailedCycles) - the two facts
+// runningReadbackHealthy bounds its grace with.
 func applyControlConfirm(info *state.ControlInfo, prev *state.ControlInfo, cycle string) {
 	// A blocked readback (empty plan, e.g. an unknown nameplate) is not a cycle.
 	if info.Blocked {
@@ -2347,16 +2363,20 @@ func applyControlConfirm(info *state.ControlInfo, prev *state.ControlInfo, cycle
 	}
 	held := false
 	mismatchRun, unconfirmedRun := 0, 0
+	heldAt, failedRun := time.Time{}, 0
 	if prev != nil && !prev.Blocked {
 		held = prev.AllMatch
 		mismatchRun = prev.MismatchCycles
 		unconfirmedRun = prev.UnconfirmedCycles
+		heldAt, failedRun = prev.HeldAt, prev.FailedCycles
 	}
 	switch cycle {
 	case controlCycleHeld:
 		held, mismatchRun, unconfirmedRun = true, 0, 0
+		heldAt, failedRun = info.CheckedAt, 0
 	case controlCycleMismatch:
 		mismatchRun, unconfirmedRun = mismatchRun+1, 0
+		failedRun++
 		// The REPORTED verdict only flips once the deviation is confirmed: below the
 		// threshold the last known verdict stands, which is what keeps the card AND
 		// the cloud calm through a flicker.
@@ -2365,10 +2385,12 @@ func applyControlConfirm(info *state.ControlInfo, prev *state.ControlInfo, cycle
 		}
 	default: // unconfirmed
 		unconfirmedRun++
+		failedRun++
 	}
 	info.AllMatch = held
 	info.MismatchCycles = mismatchRun
 	info.UnconfirmedCycles = unconfirmedRun
+	info.HeldAt, info.FailedCycles = heldAt, failedRun
 	switch {
 	case mismatchRun >= controlMismatchAlarmCycles:
 		info.Confirm = "not_held"
@@ -2753,6 +2775,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 		a.native.Release()
 		a.damp.Release()
 		a.releaseGridTarget()
+		a.selfRun.note(false, false)
 		return
 	}
 
@@ -2771,12 +2794,14 @@ func (a *Agent) applySetpoint(now time.Time) {
 		// Ein armierter Test BESITZT den Wechselrichter - der Produktivpfad des
 		// netzseitigen Drossel-Slots darf daneben keinen scharfen Zustand tragen.
 		a.releaseGridTarget()
+		a.selfRun.note(false, false)
 		return
 	}
 	// K5 Pilotfenster der Deye-Ladeseite: derselbe Gedanke - von Hand armiert,
 	// begrenzt, und es umgeht nur das Zertifikat des Kandidaten.
 	if a.nativePilotOverride(now, p) {
 		a.releaseGridTarget()
+		a.selfRun.note(false, false)
 		return
 	}
 
@@ -2863,6 +2888,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 			// stale.
 			s.Trim = nil
 			s.Follow = nil
+			s.DeficitHold = nil
 			s.Absorb = nil
 			// Without a reading the native supervision cannot supervise at all,
 			// so a previous claim is cleared rather than left standing - the
@@ -2881,10 +2907,12 @@ func (a *Agent) applySetpoint(now time.Time) {
 		})
 		a.trim.Release()
 		a.follow.Release()
+		a.deficitHold.Release()
 		a.absorb.Release()
 		a.native.Release()
 		a.gridTarget.Release()
 		a.damp.Release()
+		a.selfRun.note(false, false)
 		return
 	}
 
@@ -2907,6 +2935,22 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// The registry FAILSAFE (no holder) deliberately stays with the v1
 	// fallback computation above.
 	if battID := a.batteryEntityID(); battID != "" {
+		// ONE PLAN PER TICK. The plan executors re-inject the active slot on the
+		// arbitration loop's own second, so right after a new schedule and right
+		// after a slot boundary the holder still carries the command of the plan
+		// or slot BEFORE - while every in-slot duty below is read from the plan
+		// and slot of this tick. Herzogau 2026-10-10 17:45:07 (scout report
+		// vp-wr-ueberschuss-entladung-k3 §1.7 N5): the replaced plan's -1,866 kW
+		// went out under the new plan's flags, which leave a discharge alone,
+		// against 5 kW of measured surplus; a second later the executors had
+		// caught up and +4,92 kW followed. The battery swung by 5,8 kW.
+		// Bringing the executors in line HERE covers every caller alike - the
+		// schedule handler, the tick and the arbitration nudge - and keeps the
+		// registry guard band on the value, which skipping the holder for one
+		// tick would not. No-op while the v1 executor commands nothing.
+		if a.planExecutorOutdated(p, start, planActive) {
+			a.runPlanExecutors(now)
+		}
 		if granted, kind, ok := a.arb.HolderCommand(battID); ok {
 			nonPlanHolder = kind != desired.SourcePlanExecutor
 			if granted.SetpointKw != nil {
@@ -3049,6 +3093,10 @@ func (a *Agent) applySetpoint(now time.Time) {
 	limitToLoad := inSlotCorrections && p.ActiveLimitDischargeToLoad(now)
 	economicUnplannedRequested := inSlotCorrections && p.ActiveUnplannedLoadDischarge(now)
 	portableReady := false
+	// dischargeReady / chargeReady: portableReady, or - for a discharge / a
+	// charge the box started itself and that is ALREADY RUNNING - the bounded
+	// grace of runningReadbackHealthy. Starting stays with portableReady.
+	dischargeReady, chargeReady := false, false
 	// commanded: VoltPilot drives this battery at all (the control_enabled
 	// edge/setpoint carries). Only „Sonne + Speicher" reads it on its own.
 	commanded := false
@@ -3060,8 +3108,11 @@ func (a *Agent) applySetpoint(now time.Time) {
 		// The new authority starts a discharge, so unlike the established
 		// magnitude-only follower it also requires a recent independently held
 		// Layer-1 readback. Lost/mismatching/unconfirmed inverter communication
-		// drops back to the plan's 0 kW on this very tick.
-		readbackHealthy := idleReadbackHealthy(a.State.Get().Control, now, freshWindow)
+		// refuses the START on this very tick; a direction that is already
+		// running drops back to the plan's value after three failed readbacks
+		// or 30 s without a held one (runningReadbackHealthy).
+		control := a.State.Get().Control
+		readbackHealthy := idleReadbackHealthy(control, now, freshWindow)
 		a.invMu.Lock()
 		familyForIdle := ""
 		if a.inv != nil {
@@ -3070,8 +3121,12 @@ func (a *Agent) applySetpoint(now time.Time) {
 		a.invMu.Unlock()
 		commanded = a.Cfg.ControlEnabled && a.controlCertified(familyForIdle)
 		portableReady = commanded && readbackHealthy
+		ranDischarge, ranCharge := a.selfRun.running()
+		riding := commanded && runningReadbackHealthy(control, now, freshWindow)
+		dischargeReady = portableReady || (ranDischarge && riding)
+		chargeReady = portableReady || (ranCharge && riding)
 	}
-	economicUnplanned := economicUnplannedRequested && portableReady
+	economicUnplanned := economicUnplannedRequested && dischargeReady
 
 	// „SONNE + SPEICHER" (ocpp_release.go): tell the charge-point executor
 	// whether THIS path covers a vehicle's draw right now. Every hold reason
@@ -3127,15 +3182,34 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// (marketCorrectionsAllowed), the Fahrplan mode itself (the
 	// self-consumption fallback already follows pv - load, so the rule must not
 	// second-guess it), a fresh plan, "a cloud duty is already in charge", and
-	// the two write gates plus the held readback (portableReady) that every
-	// locally STARTED discharge demands. Charge slot, SoC floor, stale
-	// measurement and the sale protection live in the decision.
+	// the two write gates plus the held readback that every locally STARTED
+	// discharge demands (dischargeReady: a running one rides out a flicker).
+	// Charge slot, SoC floor, stale measurement and the sale protection live in
+	// the decision.
+	//
+	// THE HOLD (E2 A, 2026-10-10 - Herzogau 17:04, report
+	// vp-wr-ueberschuss-entladung-k3 §1.5): the rule is handed the charge the
+	// SLOT plans next to the command as it stands. The trim above takes a
+	// planned charge back to zero the moment a consumer switches on, and on that
+	// zero alone the rule used to command a discharge on the same tick - which
+	// the device executed after the consumer had gone, into the grid. In a slot
+	// that plans a charge the discharge now starts only once the deficit has
+	// been measured without a break for guards.DeficitCoverChargeHold; taking
+	// the charge back stays immediate. The clock judges the same control
+	// reading the rule does and is fed on every tick that gets here, whatever
+	// the slot and whoever holds the battery: how long the house has been short
+	// is a fact, and a slot boundary or a recovered readback must not make a
+	// standing deficit wait again.
+	deficitSustained := a.deficitHold.Observe(now, a.controlReadingAt(readingAt),
+		measurementFresh, rc.PvKw, rc.LoadKw)
 	deficitCover := guards.CoverDeficit(guards.DeficitCoverInput{
 		Eligible: inSlotCorrections && mode == state.ModeSchedule &&
 			p.Fresh(now) && !coverLoad && !economicUnplannedRequested &&
-			portableReady,
+			dischargeReady,
 		MeasurementsFresh: measurementFresh,
 		CommandKw:         kw,
+		PlannedKw:         plannedChargeKw(planActive, plannedKw, preCorrectionKw),
+		DeficitSustained:  deficitSustained,
 		SocPct:            r.SocPct,
 		EffectiveFloorPct: floor,
 		PvKw:              rc.PvKw,
@@ -3204,7 +3278,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	surplusStore := guards.StoreSurplus(guards.SurplusStoreInput{
 		Eligible: inSlotCorrections && mode == state.ModeSchedule &&
 			p.Fresh(now) && !absorbAuthorized,
-		IdleAuthorized:    coverLoad && portableReady,
+		IdleAuthorized:    coverLoad && chargeReady,
 		MeasurementsFresh: measurementFresh,
 		CommandKw:         kw,
 		SocPct:            r.SocPct,
@@ -3671,6 +3745,18 @@ func (a *Agent) applySetpoint(now time.Time) {
 	if !gridDec.Engage {
 		a.damp.Commit(now, kw)
 	}
+	// What the setpoint now in force is: a discharge the box started itself
+	// (deficit cover, unplanned-load discharge), a charge it started itself
+	// (the surplus store's idle entry), or neither. Judged on the value Layer 1
+	// writes - a correction that is engaged but still commands 0 kW has not
+	// begun anything, so a failed readback before its first write is a refused
+	// start, not a flicker to ride out. On the grid side and in the device's
+	// own mode the box commands no battery value at all.
+	boxWrites := !gridDec.Engage && !nativeDec.Native
+	a.selfRun.note(
+		boxWrites && kw < 0 && followed.Active && followed.Direction == guards.FollowDeepen &&
+			(followed.Path == execModeDeficitCover || followed.Path == execModeIdleFollow),
+		boxWrites && kw > 0 && surplusStored && surplusStore.Idle)
 	if gridInfo != nil {
 		gridInfo.ReferenceKw = kw
 	}
@@ -3680,6 +3766,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// retired; without a pushed registry neither path publishes anything.
 	trimInfo := trimSnapshot(trimmed)
 	followInfo := followSnapshot(followed)
+	deficitHoldInfo := a.deficitHoldSnapshot(deficitCover)
 	absorbInfo := absorbSnapshot(absorbed)
 	a.State.Update(func(s *state.Snapshot) {
 		s.Mode = mode
@@ -3695,6 +3782,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 		s.PeakQuarterMeanKw = quarterMean
 		s.Trim = trimInfo
 		s.Follow = followInfo
+		s.DeficitHold = deficitHoldInfo
 		s.Absorb = absorbInfo
 		s.CarsFirstCapKw = carsFirstCap
 		s.ReleaseCoverKw = releaseCoverKw
@@ -3708,10 +3796,98 @@ func (a *Agent) applySetpoint(now time.Time) {
 	})
 }
 
+// idleReadbackHealthy is the START condition of every direction the box
+// begins on its own authority: the newest known verdict held, and Layer 1 was
+// heard from inside the window. One deviating cycle ("checking") refuses it -
+// fail-closed at the beginning.
 func idleReadbackHealthy(control *state.ControlInfo, now time.Time, window time.Duration) bool {
 	return control != nil && control.AllMatch && control.Confirm == "held" &&
 		!control.CheckedAt.IsZero() && !now.Before(control.CheckedAt) &&
 		now.Sub(control.CheckedAt) <= window
+}
+
+const (
+	// runningReadbackFailCycles failed readback cycles in a row - mismatching
+	// or unanswered - end a regulation the box started itself. Deliberately the
+	// number that turns the card to "not_held" (controlMismatchAlarmCycles):
+	// what is a flicker for the operator is a flicker for the running
+	// regulation, and what is named a refusal ends it on the same cycle.
+	runningReadbackFailCycles = 3
+	// runningReadbackGrace is the longest a running regulation goes on without
+	// a cycle that HELD, however few cycles arrived in between: three cycles of
+	// the ~10 s setpoint cadence, and the same 30 s after which a silent
+	// Layer 1 refuses the start.
+	runningReadbackGrace = 30 * time.Second
+)
+
+// runningReadbackHealthy is what a regulation the box started itself and that
+// is ALREADY RUNNING needs to go on: the start condition, or - while the
+// debounce still reads "checking" - fewer than runningReadbackFailCycles
+// failed cycles since the last one that held, and that one no older than
+// runningReadbackGrace.
+//
+// Herzogau 2026-10-10 (scout report vp-wr-ueberschuss-entladung-k3 §1.7 N3):
+// three times in seven minutes the remote block answered one readback with
+// 65535, Layer 1 called it a mismatch on the dead-man register, and the
+// deficit cover - which the same debounce had not even named a deviation yet -
+// dropped to the plan's 0 kW on that tick and took 8-22 s to come back while
+// the house bought up to 2.8 kW. A start still demands idleReadbackHealthy; a
+// confirmed refusal ("not_held"), named silence ("no_answer") and a blocked
+// readback end the regulation at once, as before.
+func runningReadbackHealthy(control *state.ControlInfo, now time.Time, window time.Duration) bool {
+	if idleReadbackHealthy(control, now, window) {
+		return true
+	}
+	return control != nil && !control.Blocked && control.AllMatch && control.Confirm == "checking" &&
+		control.FailedCycles < runningReadbackFailCycles &&
+		!control.HeldAt.IsZero() && !now.Before(control.HeldAt) &&
+		now.Sub(control.HeldAt) <= runningReadbackGrace
+}
+
+// plannedChargeKw is the charge the running slot asks for, as the deficit-cover
+// hold reads it (guards.DeficitCoverInput.PlannedKw): the plan's own value, or
+// the command as it stood before the measured corrections where it is the
+// larger charge (a holder's plan executor may supply the value instead of the
+// v1 plan). The plan value is deliberately taken BEFORE the compliance clamps:
+// a charge the EEG solar-only clamp or a full battery took back for a moment is
+// still what the slot intends, and it is the intent that decides whether a
+// discharge would turn the slot around.
+//
+// A command that already IS a discharge settles the question the other way:
+// whoever commands the battery turned the slot around with more authority than
+// this rule has (the arbiter's plan executor), deepening it reverses nothing,
+// and the plan value must not invent a wait there.
+func plannedChargeKw(planActive bool, plannedKw, preCorrectionKw float64) float64 {
+	kw := preCorrectionKw
+	if planActive && preCorrectionKw >= 0 &&
+		!math.IsNaN(plannedKw) && !math.IsInf(plannedKw, 0) && plannedKw > kw {
+		kw = plannedKw
+	}
+	return kw
+}
+
+// controlReadingAt is the time the control reading of this tick was MEASURED:
+// the damped follower's device pair where it gates the reading, the live
+// reading's own sample time otherwise (damper off, or no device clock yet).
+func (a *Agent) controlReadingAt(readingAt time.Time) time.Time {
+	if at := a.damp.ControlReadingAt(); !at.IsZero() {
+		return at
+	}
+	return readingAt
+}
+
+// deficitHoldSnapshot is the box-local block for a deficit the rule is making
+// wait (guards.DeficitCoverDecision.Held), or nil. Without it a snapshot of
+// that minute shows a resting battery beside a measured import and no reason.
+func (a *Agent) deficitHoldSnapshot(dec guards.DeficitCoverDecision) *state.DeficitHoldInfo {
+	if !dec.Held {
+		return nil
+	}
+	info := &state.DeficitHoldInfo{Active: true, HoldS: guards.DeficitCoverChargeHold.Seconds()}
+	if since, ok := a.deficitHold.Since(); ok {
+		info.Since = &since
+	}
+	return info
 }
 
 // exportSafeStaticCap is the BLIND fallback cap of the feed-in watchdog: the

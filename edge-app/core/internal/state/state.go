@@ -76,6 +76,12 @@ type Snapshot struct {
 	// construction - one acts on charge, the other on discharge.
 	Follow *FollowInfo `json:"follow,omitempty"`
 
+	// DeficitHold (2026-10-10, additive, box-local) is non-nil ONLY while the
+	// local deficit-cover rule is making a measured deficit WAIT: the slot plans
+	// a charge, the trim has taken it back, and the discharge starts only once
+	// the deficit has stood for the hold time - see DeficitHoldInfo.
+	DeficitHold *DeficitHoldInfo `json:"deficit_hold,omitempty"`
+
 	// Absorb is the in-slot surplus absorption (2026-08-02), non-nil ONLY while
 	// it is actually RAISING the commanded charge to the measured PV surplus.
 	// Same reason as Trim and Follow: without it the customer would see a
@@ -309,6 +315,21 @@ type FollowInfo struct {
 	// FloorSocPct is the floor this correction actually applied. It differs
 	// from the run-level reserve only for the full-battery top-band rule.
 	FloorSocPct *float64 `json:"floor_soc_pct,omitempty"`
+}
+
+// DeficitHoldInfo is the box-local state of the deficit-cover hold
+// (guards.DeficitCoverChargeHold): in a slot that plans a charge a measured
+// house deficit is bought for up to the hold time before the battery covers
+// it, because a consumer shorter than the inverter's own follow time would
+// otherwise turn the slot around and send the discharge into the grid. Read-only
+// display of a decision already taken, like its siblings.
+type DeficitHoldInfo struct {
+	// Active is always true when the block exists (it is omitted otherwise).
+	Active bool `json:"active"`
+	// Since is the time the standing deficit was first judged.
+	Since *time.Time `json:"since,omitempty"`
+	// HoldS is the hold time in seconds the deficit must stand.
+	HoldS float64 `json:"hold_s"`
 }
 
 // AbsorbInfo is the UI-facing state of the in-slot surplus absorption: the
@@ -619,6 +640,14 @@ type ControlInfo struct {
 	// Confirm (0 after a held cycle). Shown as the technician's detail.
 	MismatchCycles    int `json:"mismatch_cycles,omitempty"`
 	UnconfirmedCycles int `json:"unconfirmed_cycles,omitempty"`
+	// HeldAt is the CheckedAt of the newest cycle that HELD (zero = none yet),
+	// FailedCycles the number of cycles since - mismatching and unanswered ones
+	// alike, which the two counters above keep apart. Together they bound how
+	// long a regulation the box started itself may ride out a failed readback
+	// (agent.runningReadbackHealthy). Internal to the core: no surface reads
+	// them, so they stay out of the JSON.
+	HeldAt       time.Time `json:"-"`
+	FailedCycles int       `json:"-"`
 	// Mode is WHICH kind of plan Layer 1 executed for this cycle: "normal" (the
 	// ordinary setpoint write), "release" (the neutral hand-back) or "native"
 	// (the native self-regulation primitive: the device was handed its own

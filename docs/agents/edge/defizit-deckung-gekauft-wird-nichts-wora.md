@@ -7,10 +7,22 @@ Cloud-Seite, Kontrakt und die Begründung: root `AGENTS.md` „Defizit-Deckung i
 Fahrplan-Modus". Was HIER gelten muss:
 
 - **`core/internal/guards/deficitcover.go` ist eine reine Entscheidung je Tick**
-  (zustandslos - die einzige Hysterese, auf die es ankommt, ist das symmetrische
-  Engage/Release-Dwell des `LoadFollower` auf dem Defizit). Sie läuft am
-  GLEICHEN Ort wie die beiden Wolken-Pflichten: nach jeder Compliance-Klemme,
-  nach der Holder-Übersteuerung, VOR dem Peak-Guard.
+  (`CoverDeficit` bleibt zustandslos - die einzige Hysterese, auf die es ankommt,
+  ist das symmetrische Engage/Release-Dwell des `LoadFollower` auf dem Defizit).
+  Sie läuft am GLEICHEN Ort wie die beiden Wolken-Pflichten: nach jeder
+  Compliance-Klemme, nach der Holder-Übersteuerung, VOR dem Peak-Guard.
+- **⚠ In der Lade-Viertelstunde wartet die Regel (E2 A, 10.10.2026).** Die
+  Entscheidung bekommt neben dem gekürzten Befehl den GEPLANTEN
+  (`PlannedKw`, `plannedChargeKw` im Agent: Planwert vor den Klemmen). Plant
+  der Slot ein Laden, deckt sie erst, wenn `guards.DeficitHold` das Haus-Defizit
+  60 s ununterbrochen gemessen hat (`DeficitCoverChargeHold`); bis dahin meldet
+  sie `Held` und der Zustand trägt `deficit_hold`. Die Uhr zählt vom ersten
+  TAKT bis zur MESSZEIT des jüngsten Defizit-Messwerts (unter dem gedämpften
+  Folger die Paarzeit der Regelmessung) - Takte ohne neue Messung zählen nicht.
+  Sie wird in JEDEM Takt gefüttert, auch wenn die Regel gerade nicht darf
+  (Pause, verlorene Rücklesung, anderer Slot): ein stehendes Defizit wartet an
+  der Slot-Grenze nicht erneut. Wer die Uhr an `Eligible` hängt, macht aus jedem
+  Rücklese-Aussetzer eine neue Minute Netzbezug.
 - **⚠ DEEPEN-ONLY.** Der Follower kennt seither drei Autorisierungen:
   `coverLoad` (Wolke, beidseitig), `unplannedLoad` (Wolke, nur aus echter Ruhe)
   und `deficitCover` (lokal, aus JEDEM nicht-ladenden Befehl, aber nur
@@ -23,8 +35,17 @@ Fahrplan-Modus". Was HIER gelten muss:
   Deepen-Zweig liefert weiterhin Nennband, Boden und Nie-anheben.
 - **Die Freigabe verlangt dieselben Tore wie jede lokal GESTARTETE Richtung:**
   `VP_CONTROL_ENABLED`, die Zertifizierung der Familie UND ein frisch gehaltenes
-  Rücklesen (`idleReadbackHealthy`). Ohne sie fällt der Tick auf den 0-kW-Wert
-  des Plans zurück.
+  Rücklesen (`idleReadbackHealthy`). Ohne sie BEGINNT nichts.
+- **Eine LAUFENDE Deckung übersteht einen Lesefehler** (`runningReadbackHealthy`,
+  `selfstarted.go`): erst drei erfolglose Rücklesungen in Folge (abweichend oder
+  unbeantwortet) oder 30 s ohne gehaltene Rücklesung nehmen sie auf den Planwert
+  zurück; `not_held`, `no_answer` und ein blockiertes Rücklesen sofort. „Läuft"
+  heisst: der zuletzt veröffentlichte Sollwert WAR die selbst begonnene Entladung
+  - eine Korrektur, die noch 0 kW befiehlt, hat nichts begonnen. Herzogau
+  10.10.2026: ein einzelner 65535-Zyklus liess die Deckung dreimal in sieben
+  Minuten für 8-22 s auf 0 fallen. Entlade- und Ladeseite (`surplus_store` aus
+  der Ruhe) führen getrennte Merker; die OCPP-Freigabe „Sonne + Speicher" bleibt
+  beim strengen Tor.
 - **⚠ Die enge Vollakku-Entlastung ist ENTFALLEN** (`HighSocRelief` samt
   `high_soc_follow`): ihr Eintritt ab `soc_max − 1` und ihr Fünf-Punkte-Boden
   sind in der allgemeinen Regel enthalten, deren Boden der volle Reserve-Stapel

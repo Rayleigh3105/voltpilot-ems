@@ -103,7 +103,7 @@ Entscheid vom 18.09.2026; weitere Unterschiede benötigen einen eigenen Befund.
 
 ## Ablauf und Grenze
 
-Auf UEMS: `migration/main-migrations.txt` in ein temporäres Flyway-Verzeichnis
+Auf UEMS: `migration/vor-uems-migrations.txt` in ein temporäres Flyway-Verzeichnis
 kopieren → SQL-Saat → Bestandsschutz-Fingerabdruck → übrige Migrationen mit
 `outOfOrder(true)` → vollständigen Spring-Kontext starten → alle drei
 Bestandsläufer und zehn weiteren Läufer synchron aufrufen. Ihre Menge wird

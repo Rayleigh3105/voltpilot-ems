@@ -115,7 +115,12 @@ func nativeLevers(control *state.ControlInfo) *guards.NativeLevers {
 // The box rule deficit_cover is deliberately NOT handed to the device in K4b:
 // it is armed by a MEASUREMENT, so it would switch the device inside a slot,
 // while §6.6 switches only at slot boundaries where the intent changes. It
-// stays the box's (damped) rule; the flags alone are slot-stable.
+// stays the box's (damped) rule; the flags alone are slot-stable. Since
+// 2026-10-10 the box rule respects the reported window for as long as it can
+// be respected: in a slot that plans a charge it only starts a discharge once
+// the deficit has stood for guards.DeficitCoverChargeHold, so "charge side
+// only" is what happens for every consumer shorter than that (the two vector
+// cases "…-waehrend-der-haltezeit" / "…-nach-der-haltezeit" pin the pair).
 func nativePlanIntent(p *plan.Plan, now time.Time, l guards.Limits) guards.Intent {
 	planned, _, active := p.ActiveSetpoint(now)
 	if !active {

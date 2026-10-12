@@ -12,7 +12,7 @@
 -- V20260911140000, V20260911290000, V20260912093000, V20260912170000 …). Es wird KEINE Tabelle
 -- berührt, die erst `uems` anlegt.
 -- Geprüft von `BetriebsabfragenBlaetterTest` gegen eine Wegwerf-Datenbank mit GENAU dem
--- Migrationssatz von `main` (`services/api/src/test/resources/migration/main-migrations.txt`):
+-- Migrationssatz von `main` (`services/api/src/test/resources/migration/vor-uems-migrations.txt`):
 -- jede Abfrage läuft, keine schreibt, und die Ergebnisform (Spaltenname und -typ) ist je
 -- Abfrage festgehalten. Wie man das Blatt fährt: `tools/betriebsabfragen/README.md`.
 --

@@ -72,6 +72,27 @@ Dazu `go test ./internal/controlprofile/ ./internal/guards/` in `edge-app/core` 
 Profile, Bindungen gegen den Wechselrichter-Katalog, Dämpfer und Budget) und
 `node --test edge-app/nodered/control-profiles.test.js` (Profil gegen Adapter und Zertifikat).
 
+## Freigabe-Bedingung je Hersteller: „Überschuss mit kurzen Verbrauchern“
+
+Seit dem 10.10.2026 (Entscheid E7 A) gehört zu jeder Freigabe eines Speicher-Wechselrichters ein bestandener Lauf
+„Überschuss mit kurzen Verbrauchern“ – am Prüfstand **und** am ersten echten Gerät, mit den zwei Zahlen „aus dem
+Speicher eingespeist“ und „Überschuss nicht aufgenommen“. Ablauf und Kriterien stehen in
+[`edge-app/nodered/CONTROL-BENCH.md`](../../edge-app/nodered/CONTROL-BENCH.md#pflichtlauf-überschuss-mit-kurzen-verbrauchern-jeder-speicher-den-die-box-nachregelt).
+
+Das Profil ist die Eingabe dieses Laufs: der Kern-Prüflauf (`TestSurplusWithShortConsumers` in
+`edge-app/core/internal/agent`) simuliert je gepacktem Profil mit `daempfung.box_regelt: true` ein Gerät mit dessen
+Einschwingzeit und Messtakt und fährt die echte Regelkette dagegen. Daraus folgt:
+
+- **Ein neues gebundenes Profil läuft automatisch mit** – nach `package_edge_runtime.py` erscheint seine Zeile im Lauf.
+- **Ohne gemessene Zeiten prüft der Lauf nur die Vorgabe** (15 s / 25 s). Einschwingzeit und Messtakt werden am
+  Prüfstand gemessen und mit Sicherheit A/B eingetragen; erst dann sagt die Zeile etwas über dieses Gerät.
+- Bevorzugt regelt das Gerät den Netzpunkt selbst und die Box setzt nur Grenzen (Entscheid vom 24.09.2026). Wo die Box
+  nachregelt, gilt die Haltezeit der Regel „Defizit decken“ (60 s in der Lade-Viertelstunde) und „Einspeisung schlägt
+  Einschwingzeit“ – beides unabhängig vom Hersteller, im gedämpften Folger und in `guards/deficitcover.go`.
+
+Das Profil bleibt Wissen: ein bestandener Kern-Prüflauf ist keine Freigabe, sondern die Voraussetzung für den Tag am
+Prüfstand.
+
 ## Ändern
 
 1. Profil unter `profiles/` bearbeiten; neue Quellen zuerst in `sources/manifest.json` eintragen.
