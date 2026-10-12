@@ -10,11 +10,14 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.Base64;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.regex.Matcher;
@@ -23,6 +26,7 @@ import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.wait.strategy.Wait;
+import org.testcontainers.images.builder.Transferable;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
@@ -40,6 +44,9 @@ import org.testcontainers.utility.MountableFile;
  * einrichten und bekommt per Passwort-Grant gar kein Token, ein Kundenkonto meldet sich ohne zweiten Faktor an,
  * und das API-Servicekonto bleibt unberührt. Dazu fährt die Klasse das Skript des Blatts
  * ({@code live-realm-anmeldung.sh}) gegen einen Realm ohne Härtung und vergleicht das Ergebnis mit dem Import.
+ * Drei Fälle halten fest, was am Blatt und am Skript falsch war: der Rückweg, wie er im Blatt steht (beide
+ * Teile), ein mittendrin abgebrochener Lauf (der nächste bindet nichts Unvollständiges) und {@code pruefen}
+ * gegen verstellte Rollen-Bedingungen.
  *
  * <p>Der Live-Realm ändert sich dadurch nicht: {@code --import-realm} überschreibt keinen bestehenden Realm.
  * Den Handgriff beschreibt {@code infra/prod/keycloak/live-realm-import.md}.
@@ -49,6 +56,7 @@ class ProduktionsRealmImportTest {
 
     private static final Path REALM = Path.of("..", "..", "infra", "prod", "keycloak", "voltpilot-realm.json");
     private static final Path SKRIPT = Path.of("..", "..", "infra", "prod", "keycloak", "live-realm-anmeldung.sh");
+    private static final Path BLATT = Path.of("..", "..", "infra", "prod", "keycloak", "live-realm-import.md");
     private static final Path THEMA = Path.of("..", "..", "deploy", "keycloak", "themes", "voltpilot");
     private static final String ORIGIN = "http://localhost:5173";
     private static final String API_SECRET = "api-geheimnis-nur-fuer-diesen-test";
@@ -56,6 +64,19 @@ class ProduktionsRealmImportTest {
     private static final String KC_ADMIN = "kcadmin";
     private static final String KC_ADMIN_PASSWORT = "kcadmin-nur-fuer-diesen-test";
     private static final ObjectMapper JSON = new ObjectMapper();
+    /**
+     * Stellt eine gerissene Verbindung nach: reicht jeden Aufruf an {@code kcadm.sh} durch und endet nach
+     * {@code ABBRUCH_NACH} Aufrufen von {@code create} mit einem Fehler. Das Skript nimmt den Pfad über
+     * {@code KCADM}; es bricht dann genau so ab wie bei einem echten Fehler von kcadm ({@code set -e}).
+     */
+    private static final String KCADM_MIT_ABBRUCH = """
+            #!/usr/bin/env bash
+            if [[ "${1:-}" == create ]]; then
+              n=$(( $(cat "$ZAEHLER" 2> /dev/null || echo 0) + 1 )); echo "$n" > "$ZAEHLER"
+              if (( n > ABBRUCH_NACH )); then echo "Probe: Abbruch beim $n. create" >&2; exit 1; fi
+            fi
+            exec /opt/keycloak/bin/kcadm.sh "$@"
+            """;
 
     @Container
     static final GenericContainer<?> KEYCLOAK =
@@ -64,6 +85,7 @@ class ProduktionsRealmImportTest {
                             "/opt/keycloak/data/import/voltpilot-realm.json")
                     .withCopyFileToContainer(MountableFile.forHostPath(THEMA), "/opt/keycloak/themes/voltpilot")
                     .withCopyFileToContainer(MountableFile.forHostPath(SKRIPT, 0755), "/opt/keycloak/live-realm-anmeldung.sh")
+                    .withCopyToContainer(Transferable.of(KCADM_MIT_ABBRUCH, 0755), "/opt/keycloak/kcadm-mit-abbruch.sh")
                     .withEnv("KC_BOOTSTRAP_ADMIN_USERNAME", KC_ADMIN)
                     .withEnv("KC_BOOTSTRAP_ADMIN_PASSWORD", KC_ADMIN_PASSWORT)
                     .withEnv("VP_PUBLIC_ORIGIN", ORIGIN)
@@ -209,6 +231,8 @@ class ProduktionsRealmImportTest {
         assertThat(lauf.getExitCode()).as(lauf.getStdout() + lauf.getStderr()).isZero();
         org.testcontainers.containers.Container.ExecResult nochmal = skript(alt, "angleichen");
         assertThat(nochmal.getExitCode()).as(nochmal.getStdout() + nochmal.getStderr()).isZero();
+        assertThat(nochmal.getStdout()).contains("Ablauf voltpilot-browser ist schon vollstaendig vorhanden.")
+                .contains("Ablauf voltpilot-direct-grant ist schon vollstaendig vorhanden.");
         org.testcontainers.containers.Container.ExecResult danach = skript(alt, "pruefen");
         assertThat(danach.getExitCode()).as(danach.getStdout() + danach.getStderr()).isZero();
 
@@ -235,6 +259,179 @@ class ProduktionsRealmImportTest {
                 "username", "kunde-alt", "password", "kurz-alt")).statusCode()).isEqualTo(200);
         assertThat(post(token, Map.of("grant_type", "password", "client_id", "admin-cli",
                 "username", "betrieb-alt", "password", "kurz-alt")).statusCode()).isBetween(400, 401);
+    }
+
+    @Test
+    void derRueckwegDesBlattsBindetDieEingebautenAblaeufeUndLeertDieVorgabe() throws Exception {
+        // Die zwei Befehle stehen so im Blatt (Abschnitt „Zurück“). Der Test fährt sie wörtlich am importierten,
+        // gehärteten Realm voltpilot - genau der Stand, in dem der Betreiber sie braucht.
+        List<String> rueckweg = rueckwegBefehleDesBlatts();
+        String name = "betrieb-" + kurz();
+        String passwort = "Betrieb-Passwort-" + kurz();
+        assertThat(kontoAnlegen(name, passwort, true)).isEqualTo(201);
+        assertThat(passwortGrant(name, passwort).statusCode()).isBetween(400, 401);
+        String vorgabe = adminGet("").path("passwordPolicy").asText();
+        try {
+            // Teil 1: die eingebauten Abläufe. Die Anmeldung geht wieder wie vor der Härtung.
+            org.testcontainers.containers.Container.ExecResult ablaeufe = angemeldet(rueckweg.get(0));
+            assertThat(ablaeufe.getExitCode()).as(ablaeufe.getStdout() + ablaeufe.getStderr()).isZero();
+            JsonNode realm = adminGet("");
+            assertThat(realm.path("browserFlow").asText()).isEqualTo("browser");
+            assertThat(realm.path("directGrantFlow").asText()).isEqualTo("direct grant");
+            assertThat(realm.path("passwordPolicy").asText()).as("Teil 1 lässt die Vorgabe stehen").isEqualTo(vorgabe);
+            assertThat(realm.path("eventsEnabled").asBoolean()).as("die Ereignisse bleiben an").isTrue();
+            assertThat(passwortGrant(name, passwort).statusCode()).isEqualTo(200);
+            HttpResponse<String> imBrowser = browserAnmeldung(name, passwort);
+            assertThat(imBrowser.statusCode()).as(imBrowser.body()).isEqualTo(302);
+            assertThat(imBrowser.headers().firstValue("Location").orElse("")).startsWith(ORIGIN + "/").contains("code=");
+
+            // Teil 2: die Passwort-Vorgabe. `-s passwordPolicy=` (ohne Wert) ließ sie stehen; es wirkt nur die
+            // Form des Blatts, bei der zwei Anführungszeichen bei kcadm ankommen.
+            org.testcontainers.containers.Container.ExecResult vorgabeWeg = angemeldet(rueckweg.get(1));
+            assertThat(vorgabeWeg.getExitCode()).as(vorgabeWeg.getStdout() + vorgabeWeg.getStderr()).isZero();
+            assertThat(adminGet("").path("passwordPolicy").asText("")).as("Vorgabe geleert").isEmpty();
+            assertThat(kontoAnlegen("kurz-" + kurz(), "Elf-Zeichen", false)).isEqualTo(201);
+
+            // pruefen nennt genau das Zurückgenommene; die Abläufe selbst sind noch vollständig.
+            org.testcontainers.containers.Container.ExecResult pruefen = skript("voltpilot", "pruefen");
+            assertThat(pruefen.getExitCode()).as(pruefen.getStdout() + pruefen.getStderr()).isEqualTo(1);
+            assertThat(pruefen.getStdout())
+                    .contains("ABWEICHUNG passwordPolicy: ist '', soll 'length(12) and notUsername and passwordHistory(3)'")
+                    .contains("ABWEICHUNG browserFlow: ist 'browser', soll 'voltpilot-browser'")
+                    .contains("ABWEICHUNG directGrantFlow: ist 'direct grant', soll 'voltpilot-direct-grant'")
+                    .doesNotContain("ABWEICHUNG voltpilot-");
+
+            // Vorwärts geht es mit angleichen: nichts neu bauen, Vorgabe setzen, wieder binden.
+            org.testcontainers.containers.Container.ExecResult wieder = skript("voltpilot", "angleichen");
+            assertThat(wieder.getExitCode()).as(wieder.getStdout() + wieder.getStderr()).isZero();
+            assertThat(wieder.getStdout()).contains("Ablauf voltpilot-browser ist schon vollstaendig vorhanden.");
+            assertThat(passwortGrant(name, passwort).statusCode()).isBetween(400, 401);
+        } finally {
+            // Der importierte Realm gehört allen Tests dieser Klasse: in jedem Fall zurück auf den Import.
+            assertThat(adminPutIn("voltpilot", "", JSON.writeValueAsString(Map.of("browserFlow", "voltpilot-browser",
+                    "directGrantFlow", "voltpilot-direct-grant", "passwordPolicy", vorgabe)))).isEqualTo(204);
+        }
+        JsonNode danach = adminGet("");
+        assertThat(danach.path("browserFlow").asText()).isEqualTo("voltpilot-browser");
+        assertThat(danach.path("directGrantFlow").asText()).isEqualTo("voltpilot-direct-grant");
+        assertThat(danach.path("passwordPolicy").asText()).isEqualTo(vorgabe);
+    }
+
+    @Test
+    void nachEinemAbgebrochenenLaufBindetAngleichenNichtsUnvollstaendiges() throws Exception {
+        String alt = "abbruch-" + kurz();
+        assertThat(adminPostIn("", "", JSON.writeValueAsString(Map.of("realm", alt, "enabled", true))))
+                .isEqualTo(201);
+        assertThat(adminPostIn(alt, "/roles", "{\"name\":\"platform-admin\"}")).isEqualTo(201);
+        assertThat(kontoAnlegenIn(alt, "betrieb-alt", "kurz-alt", true)).isEqualTo(201);
+        assertThat(kontoAnlegenIn(alt, "kunde-alt", "kurz-alt", false)).isEqualTo(201);
+
+        // 1. Der erste Lauf reißt nach zehn Anlagen ab: der Browser-Ablauf ist halb gebaut (mit Unterabläufen
+        //    und einer Rollen-Bedingung), der Ablauf für den Passwort-Grant ist angelegt, aber leer.
+        org.testcontainers.containers.Container.ExecResult abbruch = skriptMitAbbruch(alt, "angleichen", 10);
+        assertThat(abbruch.getExitCode()).as(abbruch.getStdout() + abbruch.getStderr()).isNotZero();
+        assertThat(abbruch.getStderr()).contains("Probe: Abbruch beim 11. create");
+        assertThat(adminGetIn(alt, "").path("browserFlow").asText()).as("noch nichts umgeschaltet").isEqualTo("browser");
+        assertThat(adminGetIn(alt, "").path("directGrantFlow").asText()).isEqualTo("direct grant");
+
+        // 2. pruefen nennt beim Namen, was fehlt - auch den leeren Ablauf, an dem es früher still endete.
+        org.testcontainers.containers.Container.ExecResult halb = skript(alt, "pruefen");
+        assertThat(halb.getExitCode()).as(halb.getStdout() + halb.getStderr()).isEqualTo(1);
+        assertThat(halb.getStdout())
+                .contains("ABWEICHUNG voltpilot-browser-otp-betrieb: auth-otp-form REQUIRED fehlt")
+                .contains("ABWEICHUNG voltpilot-browser-otp-gewaehlt: conditional-user-role REQUIRED fehlt")
+                .contains("ABWEICHUNG voltpilot-direct-grant: Ablauf ist leer (kein einziger Schritt)");
+
+        // 3. Der zweite Lauf bindet nichts Unvollständiges: Er entfernt die halben Abläufe, baut sie neu, prüft
+        //    sie und bindet erst dann. Das Ergebnis ist derselbe Stand wie nach einem ungestörten Lauf.
+        org.testcontainers.containers.Container.ExecResult zweiter = skript(alt, "angleichen");
+        assertThat(zweiter.getExitCode()).as(zweiter.getStdout() + zweiter.getStderr()).isZero();
+        assertThat(zweiter.getStdout())
+                .contains("Ablauf voltpilot-browser entfernt, wird neu gebaut.")
+                .contains("Ablauf voltpilot-direct-grant entfernt, wird neu gebaut.");
+        org.testcontainers.containers.Container.ExecResult danach = skript(alt, "pruefen");
+        assertThat(danach.getExitCode()).as(danach.getStdout() + danach.getStderr()).isZero();
+        for (String ablauf : new String[] {"voltpilot-browser", "voltpilot-direct-grant"}) {
+            assertThat(ablaufBild(alt, ablauf)).as(ablauf).isEqualTo(ablaufBild("voltpilot", ablauf));
+        }
+        JsonNode export = teilExport(alt);
+        assertThat(mitVorsilbe(export.path("authenticationFlows"), "voltpilot-"))
+                .as("keine Reste des abgebrochenen Laufs: zwei Abläufe und fünf Unterabläufe").hasSize(7);
+        assertThat(mitVorsilbe(export.path("authenticatorConfig"), "voltpilot-rolle-"))
+                .as("keine verwaiste Rollen-Bedingung").hasSize(4);
+        String token = basis() + "/realms/" + alt + "/protocol/openid-connect/token";
+        assertThat(post(token, Map.of("grant_type", "password", "client_id", "admin-cli",
+                "username", "kunde-alt", "password", "kurz-alt")).statusCode()).isEqualTo(200);
+        assertThat(post(token, Map.of("grant_type", "password", "client_id", "admin-cli",
+                "username", "betrieb-alt", "password", "kurz-alt")).statusCode()).isBetween(400, 401);
+
+        // 4. Weicht ein GEBUNDENER Ablauf ab (hier: eine Rollen-Bedingung fehlt; so sah auch der Stand aus, den
+        //    das frühere Skript nach einem Abbruch gebunden hat), nennt pruefen die Stelle, und angleichen
+        //    ändert nichts und sagt, wie es weitergeht.
+        String bedingung = bedingungId(alt, "voltpilot-direct-grant", "voltpilot-direct-grant-otp-gewaehlt");
+        assertThat(adminDeleteIn(alt, "/authentication/config/" + bedingung)).isEqualTo(204);
+        org.testcontainers.containers.Container.ExecResult ohne = skript(alt, "pruefen");
+        assertThat(ohne.getExitCode()).as(ohne.getStdout() + ohne.getStderr()).isEqualTo(1);
+        assertThat(ohne.getStdout()).contains("ABWEICHUNG voltpilot-direct-grant-otp-gewaehlt: conditional-user-role "
+                + "REQUIRED - Bedingung ist 'keine', soll 'platform-admin/negate=true'");
+        org.testcontainers.containers.Container.ExecResult verweigert = skript(alt, "angleichen");
+        assertThat(verweigert.getExitCode()).as(verweigert.getStdout() + verweigert.getStderr()).isEqualTo(3);
+        assertThat(verweigert.getStdout())
+                .contains("VERWEIGERT: Der Ablauf voltpilot-direct-grant weicht vom Import ab, ist aber als "
+                        + "directGrantFlow gebunden. Nichts wurde geaendert.")
+                .contains("kcadm.sh update realms/" + alt + " -s browserFlow=browser -s 'directGrantFlow=direct grant'");
+        assertThat(adminGetIn(alt, "").path("directGrantFlow").asText()).isEqualTo("voltpilot-direct-grant");
+        assertThat(mitVorsilbe(teilExport(alt).path("authenticationFlows"), "voltpilot-")).hasSize(7);
+
+        // 5. Der Rückweg des Blatts (Teil 1) löst die Bindung; danach darf angleichen wieder bauen.
+        org.testcontainers.containers.Container.ExecResult zurueck =
+                angemeldet(rueckwegBefehleDesBlatts().get(0).replace("realms/voltpilot", "realms/" + alt));
+        assertThat(zurueck.getExitCode()).as(zurueck.getStdout() + zurueck.getStderr()).isZero();
+        assertThat(adminGetIn(alt, "").path("browserFlow").asText()).isEqualTo("browser");
+        assertThat(adminGetIn(alt, "").path("directGrantFlow").asText()).isEqualTo("direct grant");
+    }
+
+    @Test
+    void pruefenSchlaegtAnWennEineRollenBedingungFalschHaengt() throws Exception {
+        // Der importierte Realm ist der Maßstab: an ihm endet pruefen mit Exit 0.
+        org.testcontainers.containers.Container.ExecResult gut = skript("voltpilot", "pruefen");
+        assertThat(gut.getExitCode()).as(gut.getStdout() + gut.getStderr()).isZero();
+
+        // Der Import teilt zwei Konfigurationen: „platform-admin“ (Betrieb) und „nicht platform-admin“ (alle
+        // anderen), je für den Browser-Ablauf und den Passwort-Grant. Verstellt wird je eine Eigenschaft.
+        String betrieb = bedingungId("voltpilot", "voltpilot-browser", "voltpilot-browser-otp-betrieb");
+        String gewaehlt = bedingungId("voltpilot", "voltpilot-direct-grant", "voltpilot-direct-grant-otp-gewaehlt");
+        assertThat(betrieb).isNotEqualTo(gewaehlt);
+        JsonNode betriebVorher = adminGet("/authentication/config/" + betrieb);
+        JsonNode gewaehltVorher = adminGet("/authentication/config/" + gewaehlt);
+        try {
+            // „verneint“ am Betriebs-Zweig: Der zweite Faktor träfe alle AUSSER platform-admin.
+            com.fasterxml.jackson.databind.node.ObjectNode verneint = betriebVorher.deepCopy();
+            ((com.fasterxml.jackson.databind.node.ObjectNode) verneint.path("config")).put("negate", "true");
+            assertThat(adminPutIn("voltpilot", "/authentication/config/" + betrieb, verneint.toString())).isEqualTo(204);
+            // Falsche Rolle am anderen Zweig.
+            com.fasterxml.jackson.databind.node.ObjectNode andereRolle = gewaehltVorher.deepCopy();
+            ((com.fasterxml.jackson.databind.node.ObjectNode) andereRolle.path("config")).put("condUserRole", "operator");
+            assertThat(adminPutIn("voltpilot", "/authentication/config/" + gewaehlt, andereRolle.toString())).isEqualTo(204);
+
+            org.testcontainers.containers.Container.ExecResult verstellt = skript("voltpilot", "pruefen");
+            assertThat(verstellt.getExitCode()).as(verstellt.getStdout() + verstellt.getStderr()).isEqualTo(1);
+            assertThat(verstellt.getStdout())
+                    .contains("ABWEICHUNG voltpilot-browser-otp-betrieb: conditional-user-role REQUIRED - Bedingung ist "
+                            + "'platform-admin/negate=true', soll 'platform-admin/negate=false'")
+                    .contains("ABWEICHUNG voltpilot-direct-grant-betrieb: conditional-user-role REQUIRED - Bedingung ist "
+                            + "'platform-admin/negate=true', soll 'platform-admin/negate=false'")
+                    .contains("ABWEICHUNG voltpilot-browser-otp-gewaehlt: conditional-user-role REQUIRED - Bedingung ist "
+                            + "'operator/negate=true', soll 'platform-admin/negate=true'")
+                    .contains("ABWEICHUNG voltpilot-direct-grant-otp-gewaehlt: conditional-user-role REQUIRED - Bedingung ist "
+                            + "'operator/negate=true', soll 'platform-admin/negate=true'")
+                    .doesNotContain("traegt die Anmelde-Haertung");
+        } finally {
+            assertThat(adminPutIn("voltpilot", "/authentication/config/" + betrieb, betriebVorher.toString())).isEqualTo(204);
+            assertThat(adminPutIn("voltpilot", "/authentication/config/" + gewaehlt, gewaehltVorher.toString())).isEqualTo(204);
+        }
+        assertThat(adminGet("/authentication/config/" + betrieb).path("config")).isEqualTo(betriebVorher.path("config"));
+        assertThat(adminGet("/authentication/config/" + gewaehlt).path("config")).isEqualTo(gewaehltVorher.path("config"));
     }
 
     // --- Hilfen -------------------------------------------------------------------------------------------
@@ -370,9 +567,74 @@ class ProduktionsRealmImportTest {
 
     private org.testcontainers.containers.Container.ExecResult skript(String realm, String modus)
             throws Exception {
+        return angemeldet("REALM=" + realm + " /opt/keycloak/live-realm-anmeldung.sh " + modus);
+    }
+
+    /** Wie {@link #skript}, aber kcadm endet nach {@code anlagen} Aufrufen von {@code create} mit einem Fehler. */
+    private org.testcontainers.containers.Container.ExecResult skriptMitAbbruch(String realm, String modus,
+            int anlagen) throws Exception {
+        return angemeldet("REALM=" + realm + " KCADM=/opt/keycloak/kcadm-mit-abbruch.sh ABBRUCH_NACH=" + anlagen
+                + " ZAEHLER=/tmp/abbruch-" + kurz() + ".zahl /opt/keycloak/live-realm-anmeldung.sh " + modus);
+    }
+
+    /** Meldet kcadm im Container an (wie Schritt „Anmelden“ des Blatts) und fährt danach den Befehl. */
+    private org.testcontainers.containers.Container.ExecResult angemeldet(String befehl) throws Exception {
         return KEYCLOAK.execInContainer("bash", "-c", "export HOME=/tmp && /opt/keycloak/bin/kcadm.sh config "
                 + "credentials --server http://localhost:8080 --realm master --user " + KC_ADMIN + " --password "
-                + KC_ADMIN_PASSWORT + " && REALM=" + realm + " /opt/keycloak/live-realm-anmeldung.sh " + modus);
+                + KC_ADMIN_PASSWORT + " && " + befehl);
+    }
+
+    /**
+     * Die zwei Befehle des Rückwegs, so wie sie im Blatt stehen: erst die Abläufe, dann die Passwort-Vorgabe.
+     * Im Blatt umschließt sie {@code kubectl -n <namespace> exec deploy/keycloak -- bash -c "…"}; zurück kommt
+     * der Teil, den diese Bash im Pod ausführt (ein {@code \"} des Blatts ist dort ein {@code "}).
+     */
+    private static List<String> rueckwegBefehleDesBlatts() throws Exception {
+        Pattern form = Pattern.compile(
+                "^\\s*kubectl -n <namespace> exec deploy/keycloak -- bash -c \"(.*kcadm\\.sh update realms/voltpilot .*)\"\\s*$");
+        List<String> befehle = new ArrayList<>();
+        for (String zeile : Files.readAllLines(BLATT, StandardCharsets.UTF_8)) {
+            Matcher m = form.matcher(zeile);
+            if (m.matches()) {
+                befehle.add(m.group(1).replace("\\\"", "\""));
+            }
+        }
+        assertThat(befehle).as("Rückweg im Blatt: zwei Befehle, erst die Abläufe, dann die Vorgabe").hasSize(2);
+        assertThat(befehle.get(0)).contains("-s browserFlow=browser").contains("-s 'directGrantFlow=direct grant'");
+        assertThat(befehle.get(1)).contains("passwordPolicy");
+        return befehle;
+    }
+
+    /** Die Konfiguration der Rollen-Bedingung ({@code conditional-user-role}) in einem Unterablauf. */
+    private String bedingungId(String realm, String ablauf, String unterablauf) throws Exception {
+        boolean drin = false;
+        for (JsonNode e : adminGetIn(realm, "/authentication/flows/" + ablauf + "/executions")) {
+            if (e.path("authenticationFlow").asBoolean(false)) {
+                drin = unterablauf.equals(e.path("displayName").asText());
+            } else if (drin && "conditional-user-role".equals(e.path("providerId").asText())) {
+                return e.path("authenticationConfig").asText();
+            }
+        }
+        throw new AssertionError("keine Rollen-Bedingung in " + unterablauf);
+    }
+
+    /** Teil-Export des Realms: nennt ALLE Abläufe (auch Unterabläufe) und alle Authenticator-Konfigurationen. */
+    private JsonNode teilExport(String realm) throws Exception {
+        HttpResponse<String> r = http.send(adminAnfrage(realm,
+                        "/partial-export?exportClients=false&exportGroupsAndRoles=false")
+                        .POST(HttpRequest.BodyPublishers.noBody()).build(), HttpResponse.BodyHandlers.ofString());
+        assertThat(r.statusCode()).as(r.body()).isEqualTo(200);
+        return JSON.readTree(r.body());
+    }
+
+    private static List<String> mitVorsilbe(JsonNode liste, String vorsilbe) {
+        List<String> namen = new ArrayList<>();
+        for (JsonNode e : liste) {
+            if (e.path("alias").asText().startsWith(vorsilbe)) {
+                namen.add(e.path("alias").asText());
+            }
+        }
+        return namen;
     }
 
     private JsonNode adminGet(String pfad) throws Exception {
@@ -393,8 +655,17 @@ class ProduktionsRealmImportTest {
     }
 
     private int adminPut(String pfad, String body) throws Exception {
-        return http.send(adminAnfrage("voltpilot", pfad).header("Content-Type", "application/json")
+        return adminPutIn("voltpilot", pfad, body);
+    }
+
+    private int adminPutIn(String realm, String pfad, String body) throws Exception {
+        return http.send(adminAnfrage(realm, pfad).header("Content-Type", "application/json")
                 .PUT(HttpRequest.BodyPublishers.ofString(body)).build(),
+                HttpResponse.BodyHandlers.ofString()).statusCode();
+    }
+
+    private int adminDeleteIn(String realm, String pfad) throws Exception {
+        return http.send(adminAnfrage(realm, pfad).DELETE().build(),
                 HttpResponse.BodyHandlers.ofString()).statusCode();
     }
 

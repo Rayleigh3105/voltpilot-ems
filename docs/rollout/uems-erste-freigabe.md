@@ -932,11 +932,14 @@ kubectl -n "$NS" exec -i deploy/keycloak -- bash -c 'export HOME=/tmp; bash -s p
 
 Danach die Sitzungen der Betriebskonten beenden, beide Anmeldungen ansehen und den
 `master`-Administrator auf den zweiten Faktor stellen (Schritte 4–6 dort). Dort stehen auch der
-Rückweg (`browserFlow=browser`, `passwordPolicy=`) und die Bestätigungszeile zu Z-017/L-005.
+Rückweg (Abschnitt „Zurück“: eingebaute Abläufe binden, Passwort-Vorgabe leeren) und die
+Bestätigungszeile zu Z-017/L-005. Schritt 6 kommt zuletzt: Sobald der `master`-Administrator die
+App hat, nimmt `kcadm` sein Passwort nicht mehr an.
 
 **In derselben Sitzung:** SMTP für den Realm und `resetPasswordAllowed` (Paket
 `vp-login-smtp-reset-d6`, beim Rollout-Fenster vorgesehen; das Passwort liegt in der
-sops-Geheimnisdatei im gitops-Repo).
+sops-Geheimnisdatei im gitops-Repo). Was davon über `kcadm` läuft, gehört vor Schritt 6 des
+Blatts; danach bleibt die Administration im Browser.
 
 **Beleg:** Das zweite `pruefen` endet mit Exit 0; die Bestätigungszeile in `live-realm-import.md`
 ist eingetragen. **Abbruch:** Klemmt die Anmeldung, gilt der Rückweg aus `live-realm-import.md`,

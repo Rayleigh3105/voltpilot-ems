@@ -32,7 +32,7 @@ Zugriffstokens leben 900 Sekunden und werden erneuert. Das Remember-Me-Häkchen 
 
 ## Anmeldung härten (UEMS AP-20 IP-20, E12)
 
-Der Import speichert Anmelde- und Admin-Ereignisse 90 Tage lang. Er setzt die Passwort-Vorgabe `length(12) and notUsername and passwordHistory(3)`, die erst beim nächsten Setzen eines Passworts greift. Für `platform-admin` verlangt er den zweiten Faktor (TOTP) im Browser und sperrt den Passwort-Grant; für alle anderen Konten ist der zweite Faktor wählbar. Der Live-Realm bekommt das **nicht** von selbst. Handgriff, Prüfskript und Bestätigung mit Datum stehen im Blatt [Live-Realm = Import](live-realm-import.md). Keycloak prüft die Vorgabe schon beim Import: Ein importiertes Konto mit kürzerem Klartext-Passwort bricht den Start eines neuen Realms ab. `ProduktionsRealmAnmeldungTest` prüft die Datei, `ProduktionsRealmImportTest` lädt sie in Keycloak im Produktionsmodus.
+Der Import speichert Anmelde- und Admin-Ereignisse 90 Tage lang. Er setzt die Passwort-Vorgabe `length(12) and notUsername and passwordHistory(3)`, die erst beim nächsten Setzen eines Passworts greift. Für `platform-admin` verlangt er den zweiten Faktor (TOTP) im Browser und sperrt den Passwort-Grant; für alle anderen Konten ist der zweite Faktor wählbar. Der Live-Realm bekommt das **nicht** von selbst. Handgriff, Prüfskript, Rückweg und Bestätigung mit Datum stehen im Blatt [Live-Realm = Import](live-realm-import.md). Keycloak prüft die Vorgabe schon beim Import: Ein importiertes Konto mit kürzerem Klartext-Passwort bricht den Start eines neuen Realms ab. `ProduktionsRealmAnmeldungTest` prüft die Datei, `ProduktionsRealmImportTest` lädt sie in Keycloak im Produktionsmodus und fährt Skript und Rückweg des Blatts.
 
 ## Rolle `partner` nachziehen (manueller Betriebsschritt, UEMS AP-03 IP-3)
 
@@ -46,6 +46,8 @@ kcadm.sh get roles/partner -r voltpilot
 ```
 
 Oder in der Administration: Realm `voltpilot` › Realm roles › Create role › Name `partner`.
+
+Hat der Administrator des Realms `master` den zweiten Faktor ([Blatt](live-realm-import.md), Schritt 6), nimmt `kcadm.sh config credentials` sein Passwort nicht mehr an. Dann bleibt der Weg über die Administration, oder ein Zugang wie im Blatt unter „Wenn `kcadm` oder der Administrator ausgesperrt ist“.
 
 - **Wann:** spätestens bevor ein Paket ausrollt, das Partner-Konten anlegt (AP-03 IP-8 Unterstützung, IP-14 Startpasswort). Fehlt die Rolle, lehnt das API das Anlegen ab und hinterlässt kein halbes Konto.
 - **Nicht nötig:** kein Mapper, kein Client-Scope. `realm_access.roles` trägt die Rolle ohnehin, und einem Partner-Konto fehlt `tenant_id` einfach. Das Token heutiger Konten bleibt unverändert.
