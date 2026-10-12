@@ -9,6 +9,7 @@
 | Flash | 16 MB NOR |
 | Netz | 1× WAN, 1× LAN (10/100 Mbit), WLAN 2,4 GHz |
 | System | Original-OpenWrt (gemessen: 25.12.5, Paketverwaltung `apk`) |
+| Gehäuse | Für die nackte Platine gibt es ein 3D-gedrucktes Gehäuse mit VoltPilot-Logo (liegend, an der Wand, Clip für die Hutschiene als Zubehör): [Modell, Druckdateien, Druck- und Montageanleitung](../gehaeuse/glinet-gl-mt300n-v2/README.md); dort steht auch das [Maßmodell der Platine](../gehaeuse/glinet-gl-mt300n-v2/docs/massmodell.md) |
 
 ## Gemessen am Gerät (Original-OpenWrt 25.12.5, 03.10.2026)
 
