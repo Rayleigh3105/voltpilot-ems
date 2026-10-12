@@ -300,6 +300,7 @@ func (a *Agent) runPlanExecutors(now time.Time) {
 	a.arbMu.Unlock()
 
 	held := map[string]string{}
+	var v1 v1Injection
 	// The v1 plan commands the battery entity FIRST: while both plan eras
 	// exist (the E13a shadow phase - "v2 publishes, v1 controls"), the v1
 	// plan stays authoritative for the one entity it knows.
@@ -334,6 +335,7 @@ func (a *Agent) runPlanExecutors(now time.Time) {
 					SolarOnly: p.SolarOnlyCharge(),
 				})
 				held[batt.ID] = "v1"
+				v1 = v1Injection{plan: p, slot: slotStart}
 			}
 		}
 	}
@@ -392,7 +394,30 @@ func (a *Agent) runPlanExecutors(now time.Time) {
 	}
 	a.arbMu.Lock()
 	a.planHeld = held
+	a.planV1 = v1
 	a.arbMu.Unlock()
+}
+
+// v1Injection names what the v1 plan executor last injected for the battery
+// entity: which plan, and which of its slots. The zero value = it commands
+// nothing (no active slot, a plan about to go stale, an owner claim, the
+// pause).
+type v1Injection struct {
+	plan *plan.Plan
+	slot time.Time
+}
+
+// planExecutorOutdated reports whether the v1 executor's standing injection
+// was made for another plan or slot than the one the setpoint path reads on
+// this tick: p, whether it has a slot for now (active) and that slot's start.
+// The executors run on the arbitration loop's own second, so for up to that
+// second after a new schedule or a slot boundary the answer is yes - and
+// applySetpoint then runs them itself before it asks for the holder's command.
+func (a *Agent) planExecutorOutdated(p *plan.Plan, slot time.Time, active bool) bool {
+	a.arbMu.Lock()
+	inj := a.planV1
+	a.arbMu.Unlock()
+	return inj.plan != nil && (inj.plan != p || !active || !inj.slot.Equal(slot))
 }
 
 // automationPaused reports the operator's „Automatik pausieren" (Steuerung
@@ -420,6 +445,7 @@ func (a *Agent) pausedWithdrawSet() map[string]string {
 	a.arbMu.Lock()
 	prev := a.planHeld
 	a.planHeld = map[string]string{}
+	a.planV1 = v1Injection{}
 	a.arbMu.Unlock()
 	return prev
 }

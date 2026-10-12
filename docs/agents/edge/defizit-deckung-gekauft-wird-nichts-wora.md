@@ -23,8 +23,17 @@ Fahrplan-Modus". Was HIER gelten muss:
   Deepen-Zweig liefert weiterhin Nennband, Boden und Nie-anheben.
 - **Die Freigabe verlangt dieselben Tore wie jede lokal GESTARTETE Richtung:**
   `VP_CONTROL_ENABLED`, die Zertifizierung der Familie UND ein frisch gehaltenes
-  Rücklesen (`idleReadbackHealthy`). Ohne sie fällt der Tick auf den 0-kW-Wert
-  des Plans zurück.
+  Rücklesen (`idleReadbackHealthy`). Ohne sie BEGINNT nichts.
+- **Eine LAUFENDE Deckung übersteht einen Lesefehler** (`runningReadbackHealthy`,
+  `selfstarted.go`): erst drei erfolglose Rücklesungen in Folge (abweichend oder
+  unbeantwortet) oder 30 s ohne gehaltene Rücklesung nehmen sie auf den Planwert
+  zurück; `not_held`, `no_answer` und ein blockiertes Rücklesen sofort. „Läuft"
+  heisst: der zuletzt veröffentlichte Sollwert WAR die selbst begonnene Entladung
+  - eine Korrektur, die noch 0 kW befiehlt, hat nichts begonnen. Herzogau
+  10.10.2026: ein einzelner 65535-Zyklus liess die Deckung dreimal in sieben
+  Minuten für 8-22 s auf 0 fallen. Entlade- und Ladeseite (`surplus_store` aus
+  der Ruhe) führen getrennte Merker; die OCPP-Freigabe „Sonne + Speicher" bleibt
+  beim strengen Tor.
 - **⚠ Die enge Vollakku-Entlastung ist ENTFALLEN** (`HighSocRelief` samt
   `high_soc_follow`): ihr Eintritt ab `soc_max − 1` und ihr Fünf-Punkte-Boden
   sind in der allgemeinen Regel enthalten, deren Boden der volle Reserve-Stapel
