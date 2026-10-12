@@ -61,6 +61,8 @@ edge-light/
 │   ├── paritaet.md            was schon in Go läuft, was fehlt, Reihenfolge
 │   ├── boot-und-updates.md    RAM-Start, signierte Kette (Stufe 2), Updates, Rückfall
 │   └── mango.md               GL.iNet Mango: Speicher, Flash, Ports, WireGuard, Pilotplan
+├── gehaeuse/                  3D-gedruckte Gehäuse, je Gerät ein Ordner: Modell, Druckdateien, Druck- und Montageanleitung
+│   └── glinet-gl-mt300n-v2/   Gehäuse für den GL.iNet Mango
 ├── openwrt/
 │   ├── install.sh             Einrichtung über SSH (auch durch den WireGuard-Tunnel)
 │   ├── service-tunnel.sh      Wartungstunnel zum Wartungsserver aus dem Portal (WireGuard, SSH mit Fenster-Schlüsseln, Web-App im Fenster)
@@ -84,3 +86,7 @@ edge-light/
 | `edge-app/core/internal/deyedecode` | Deye-Registerkarten und Dekodierung (Zwilling von `nodered/deye/deye-decode.js`) |
 | `edge-app/core/internal/goeapi` | go-e HTTP-API v2 lesen (Zwilling von `nodered/goe/goe-api.js`) |
 | `edge-app/core/cmd/vp-solarman-sim` | simulierter Deye-Logger für Tests (nie beim Kunden) |
+
+## Gehäuse
+
+Edge Light kann auf mehreren Geräten laufen; ein 3D-gedrucktes Gehäuse mit VoltPilot-Logo gehört zu genau einem. Die Gehäuse liegen deshalb nach Gerät geordnet unter [`gehaeuse/`](gehaeuse/README.md). Bisher: [GL.iNet Mango](gehaeuse/glinet-gl-mt300n-v2/README.md) mit fertigen Druckdateien, Druck- und Montageanleitung.
