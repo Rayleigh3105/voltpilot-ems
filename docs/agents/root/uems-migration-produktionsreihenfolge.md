@@ -2,8 +2,9 @@
 
 ## Produktionssatz fortschreiben
 
-Bei **jedem Nachzieh-Merge `main` → `uems`** die Liste
-`services/api/src/test/resources/migration/main-migrations.txt` fortschreiben und mitcommitten:
+**Nach jedem Rollout** die Liste
+`services/api/src/test/resources/migration/main-migrations.txt` auf den ausgerollten Stand
+fortschreiben und mitcommitten (zuletzt 316 Migrationen am Stand `99944c896`, Rollout vom 10.10.2026):
 
 ```sh
 git fetch origin
@@ -19,11 +20,14 @@ gegen einen bestimmten Stand. Der Kommentar der Liste enthält dessen Commit. Da
 dass alle Dateien dieses Satzes im Arbeitsbaum vorhanden und bytegleich sind. Eine Liste enthält
 Dateinamen und damit Versionen, keinen Versionshöchstwert: `main` hat Lücken, die erst UEMS füllt.
 `V…__….sql.conf` (Flyway-Konfiguration zu einer Migration) überspringt es mit Hinweis auf stderr.
-`--stdout` gibt die Liste nur aus, ohne zu schreiben — Trockenlauf etwa mit `--ref HEAD`. Nach der Zusammenführung
-`uems` → `main` hebt erst der Rollout die Liste (Drehbuch `docs/rollout/uems-erste-freigabe.md` §2.9).
+`--stdout` gibt die Liste nur aus, ohne zu schreiben — Trockenlauf etwa mit `--ref HEAD`.
+
+Daneben liegt `vor-uems-migrations.txt`: der eingefrorene Satz vor dem UEMS-Rollout (175 Migrationen,
+`main` `690806300`). Kein Werkzeug schreibt sie fort. Der Test fährt beide Listen in je einem Fall: vor UEMS → UEMS
+und Produktionssatz von heute → Rest (Drehbuch `docs/rollout/uems-erste-freigabe.md` §2.9).
 
 Der Test selbst benötigt weder Git noch Netzwerkzugriff auf das Repository. Er kopiert die
-aufgelisteten Klassenpfad-Ressourcen in eine temporäre Flyway-Location, prüft den exakt angewandten
+aufgelisteten Klassenpfad-Ressourcen samt ihrer `.sql.conf` in eine temporäre Flyway-Location, prüft den exakt angewandten
 Satz und migriert dann aus der vollständigen Location mit `outOfOrder(true)` bis zum Ende.
 Zwei Datenbanken im selben Testcontainer vergleichen den Nachzug mit der frischen Installation.
 Es gibt keinen Zugriff auf bestehende Datenbanken. Timescale-Hintergrundarbeiter sind abgeschaltet.
@@ -64,7 +68,7 @@ sieht ein alter Build alle UEMS-Migrationen als `MISSING_*`, nicht als `FUTURE_*
 
 ## Start eines älteren Builds
 
-`FlywayStartupGuardTest` nutzt denselben `main-migrations.txt`-Satz: main → vollständiger Nachzug
+`FlywayStartupGuardTest` nutzt den Satz aus `vor-uems-migrations.txt`: main vor UEMS → vollständiger Nachzug
 → alter Start mit `SelfHealingFlywayMigrationStrategy` verweigert → neuer Start erfolgreich.
 Der SHA-256-Fingerabdruck aller Historienzeilen aus
 `installed_rank, version, type, checksum, success, description, script` bleibt beim alten

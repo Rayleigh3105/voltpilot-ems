@@ -88,7 +88,7 @@ def main():
             images.append(db_image)
             migrations = tmp / 'main'
             migrations.mkdir()
-            names = [n for n in (g.ROOT / 'services/api/src/test/resources/migration/main-migrations.txt').read_text().splitlines() if n and not n.startswith('#')]
+            names = [n for n in (g.ROOT / 'services/api/src/test/resources/migration/vor-uems-migrations.txt').read_text().splitlines() if n and not n.startswith('#')]
             for name in names:
                 shutil.copyfile(g.ROOT / 'services/api/src/main/resources/db/migration' / name, migrations / name)
             libs = tmp / 'libs'

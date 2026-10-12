@@ -232,7 +232,7 @@ bauen. Der macOS-Nachweis wartet selbst auf **0 laufende Container und mindesten
 35 % freien Speicher**, bevor er höchstens zwei Container gleichzeitig nutzt.
 Er bildet die physische Mechanik von `tools/backup/test-backup-restore.sh` nach,
 verwendet dieselben echten Backup-/Restore-Skripte und den **exakten** Satz aus
-`services/api/src/test/resources/migration/main-migrations.txt` (keine
+`services/api/src/test/resources/migration/vor-uems-migrations.txt` (keine
 Versionsobergrenze), wie `UemsProduktionsreihenfolgeMigrationTest`. Jede
 Ressource hat ein eigenes Präfix; nur die Fixture entfernt am Schluss auch ihre
 eigenen Volumes/Images. Ein zufälliger Loopback-Port wird nur für die initiale
