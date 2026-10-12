@@ -12,7 +12,14 @@
 # Die Schluesseldatei liegt in einem eigenen tmpfs: ein Neustart loescht jeden
 # Fenster-Schluessel. Nicht unter /tmp - Dropbear prueft jedes Elternverzeichnis
 # (root, nicht fuer andere schreibbar), und /tmp ist fuer alle schreibbar.
+#
+# Beim Herunterfahren der Box (STOP, vor dem Protokolldienst K89) uebernimmt
+# der Abholer noch einmal, was seit dem letzten cron-Lauf zur Fernwartung im
+# Protokollspeicher steht, in die Ereignisliste im Flash: sonst fehlte nach
+# "anmelden, reboot" genau diese Anmeldung. Nur dort, nicht bei jedem stop: das
+# Abraeumen (service-tunnel.sh) darf nicht laenger dauern als bisher.
 START=60
+STOP=20
 USE_PROCD=1
 
 KEYS=/etc/vp-wartung/keys
@@ -54,6 +61,11 @@ start_service() {
 		-D "$KEYS" -P /var/run/dropbear.vp_wartung.pid -p "$adresse:2222"
 	procd_set_param respawn
 	procd_close_instance
+}
+
+shutdown() {
+	[ ! -x "$HOLEN" ] || "$HOLEN" ereignisse >/dev/null 2>&1 || true
+	stop
 }
 
 service_triggers() {

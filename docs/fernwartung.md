@@ -99,6 +99,7 @@ Ein offenes Fenster öffnet den **Netzweg** zur Box. Die **Anmeldung** an der Bo
 | 4 | Rückmeldung des Tunnel-Dienstes ans Portal: Box verbunden, zuletzt gefragt, Schlüssel abgeholt | umgesetzt ([Rückmeldung](#rückmeldung-des-tunnel-dienstes)); wirkt, sobald Portal und Tunnel-Dienst beide auf diesem Stand laufen |
 | 5 | Regeln: Werkstatt-Regel (Root-Passwort, Anmeldeprobe über Portal und Tunnel), ein Notfall-Schlüssel als einziger dauerhafter Schlüssel | beschrieben in [mango.md](../edge-light/docs/mango.md#bevor-eine-box-die-werkstatt-verlässt); je Box vom Kapitän umzusetzen, an keinem Gerät ausgeführt |
 | 6 | Box: Mit einem Fenster-Schlüssel enden die Sitzungen, die mit ihm begonnen wurden ([unten](#was-mit-einer-laufenden-anmeldung-geschieht)) | umgesetzt im Box-Skript, belegt im Container; gilt für eine Box erst nach einem erneuten Lauf von `service-tunnel.sh` ([Ausrollen](../edge-light/docs/mango.md#sitzungen-beenden-ausrollen-je-box)), an keinem Gerät ausgeführt |
+| 7 | Box: Die Ereignisse der Fernwartung bleiben in einer eigenen, begrenzten Liste nachlesbar; cron füllt das Protokoll der Box nicht mehr ([unten](#wer-wann-auf-einer-box-war)) | umgesetzt im Box-Skript, belegt im Container; gilt für eine Box erst nach einem erneuten Lauf von `service-tunnel.sh` ([Ausrollen](../edge-light/docs/mango.md#protokoll-und-ereignisliste-ausrollen-je-box)), an keinem Gerät ausgeführt |
 
 Die Schritte 1 bis 3 sind ausgerollt und am 10.10.2026 vom Kapitän an der Labor-Mango abgenommen ([Belege](../edge-light/docs/mango.md#belegt)).
 
@@ -144,7 +145,7 @@ Die zweite Schranke schließt den Befund vom 10.10.2026: Bis dahin strich die Bo
 
 - **Solange der Dienst steht, wirkt ein Schließen im Portal nicht.** Es wirkt erst, wenn er wieder abholt, spätestens aber zum geplanten Ende des Fensters: Dann trennt der Kernel, und die Box streicht zu ihrer Frist. Das Portal sagt es in der Zeile „Tunnel-Dienst holt nicht mehr ab“.
 - **Was der Techniker sieht.** Ist der Weg noch offen (Schlüssel ersetzt), endet sein `ssh` sofort. Hat der Server den Weg schon getrennt, kommt das Ende bei ihm nicht mehr an: Sein Client merkt es an seinem eigenen Lebenszeichen (`ssh -o ServerAliveInterval=5 -o ServerAliveCountMax=2` endet nach rund 10 s), sonst hängt er.
-- **Auf der Box** steht im Log, was geschah: `logread -e vp-wartung` nennt `Sitzung beendet (Dropbear-Prozess …): ihr Fenster-Schluessel ist gestrichen`, `logread -e dropbear` zum selben Prozess `Exit (root) from <Absender>: Terminated by signal`.
+- **Auf der Box** steht im Log, was geschah: `logread -e vp-wartung` nennt `Sitzung beendet (Dropbear-Prozess …): ihr Fenster-Schluessel ist gestrichen`, `logread -e dropbear` zum selben Prozess `Exit (root) from <Absender>: Terminated by signal`. Beide Zeilen stehen auch in der [Ereignisliste](#wer-wann-auf-einer-box-war) und bleiben dort, wenn das Log längst überschrieben ist.
 
 **Welche Sitzungen enden, welche bleiben.** Gemeint sind nur Sitzungen der SSH-Instanz im Tunnel (Port 2222).
 
@@ -179,6 +180,28 @@ Eine Box, deren Tunnel vor dieser Änderung eingerichtet wurde, hat nur die erst
 - Fehlt in dieser Zeit die Tabelle des Wartungsservers, läuft die Sitzung wieder. Die Probe hält das als Gegenprobe fest (Schritt 11b, mit dem Skript von vorher).
 - **Woran man den Stand erkennt:** `service-tunnel.sh <ziel> status` nennt die Zeile `Sitzungen im Tunnel: …` nur mit dem neuen Skript.
 - **Der Wechsel** ist ein erneuter Lauf der Befehlszeile aus dem Portal, je Box: [Ausrollen](../edge-light/docs/mango.md#sitzungen-beenden-ausrollen-je-box). Portal, API und Tunnel-Dienst ändern sich nicht.
+
+### Wer wann auf einer Box war
+
+Entscheid des Kapitäns vom 12.10.2026. Befund vom 11.10.: Das Log der Box (`logread`) liegt im Arbeitsspeicher, fasst 128 KiB und reichte an der Labor-Mango vier Stunden zurück. Gefüllt wurde es von Zeilen, die jede Minute kamen, vor allem von cron, das jeden Start eines Zeitauftrags protokolliert. Eine Anmeldung war neun Stunden später an der Box nicht mehr belegbar.
+
+**Wo man nachliest:**
+
+| Wo | Was | Wie lange |
+|---|---|---|
+| Box: `service-tunnel.sh <ziel> status` (die letzten zehn) oder auf der Box `/usr/libexec/vp-wartung/schluessel-holen.sh ereignisse` (alle) | die Ereignisliste: wann welcher Fenster-Schlüssel kam und ging (Zugang), jede Anmeldung durch einen Wartungstunnel (Fingerabdruck des Schlüssels, Absender, Zeit), jedes Ende einer Sitzung mit Grund, welche Sitzung die Box beendet hat | die letzten 200 bis 250 Zeilen, also mindestens die letzten rund 35 bis 50 Sitzungen, ohne Frist. Übersteht Neustart und `sysupgrade`; `abbauen wg_wartung` und `VP_SERVICE_SCHLUESSEL=aus` löschen sie |
+| Box: `logread` | alles Übrige, auch Anmeldungen an Port 22 im LAN, abgewiesene Versuche und Meldungen des Abholers | Stunden; leer nach einem Neustart |
+| Wartungs-VM: Journal des Tunnel-Dienstes | Fenster geöffnet und geschlossen, Schlüssel an eine Box ausgegeben (mit Zugang und Fingerabdruck) | dauerhaft |
+| Portal: Protokoll der Fernwartung | wer wann für welchen Zugang ein Fenster geöffnet oder geschlossen hat, mit Grund | dauerhaft |
+
+- **Die Anmeldung selbst steht nur auf der Box.** Portal und VM wissen, dass ein Fenster offen war und der Schlüssel abgeholt wurde; ob sich jemand angemeldet hat, von wo und wann die Sitzung endete, sagt nur die Liste der Box. Weitergemeldet wird davon nichts.
+- **Kein Schlüssel in der Liste,** nur der Zugang (in der Zeile des Fenster-Schlüssels) und der Fingerabdruck (in der Zeile der Anmeldung). Das Portal zeigt denselben Fingerabdruck am Zugang.
+- **Die Zeit ist die Uhr der Box.** Direkt nach einem Neustart ohne Zeitabgleich kann sie falsch gehen; die Reihenfolge der Zeilen stimmt trotzdem.
+- **cron protokolliert die Starts seiner Zeitaufträge nicht mehr** (`cronloglevel 9`, für alle Zeitaufträge der Box). Fehler von cron selbst stehen weiter im Log. Bleibt der cron-Lauf aus, der verfallene Fenster-Schlüssel streicht, meldet es der Abholer im Log, und `status` zeigt es.
+- **Was der Liste fehlen kann:** was in der letzten Minute vor einem Stromausfall geschah, und ein Ereignis aus einer Minute, in der die Box mehr als 200 Zeilen protokolliert hat (der Abholer liest nur das Ende des Logs, [Begründung](../edge-light/docs/mango.md#proben-von-der-box-busybox-unter-2512)).
+- **Die Liste ist kein Beweis gegen jemanden mit root auf der Box:** Wer dort root ist, kann sie ändern oder löschen.
+
+Aufbau, Obergrenze, die Abwägung gegen einen größeren Protokollspeicher und gegen eine Liste im RAM: [mango.md](../edge-light/docs/mango.md#protokoll-der-box-wer-wann-auf-einer-box-war).
 
 **Wer das Portal verwaltet, verwaltet damit die Anmeldung.** Sobald die Boxen Fenster-Schlüssel abholen, genügt ein Konto mit der Rolle `platform-admin`, um als root auf eine verbundene Box zu kommen: Zugang mit eigenem Schlüssel anlegen, Fenster öffnen. Vorgesehen sind deshalb ein zweiter Faktor für Portal-Administratoren vor der ersten Kundenbox auf diesem Weg und, vorgemerkt, vom Portal signierte Freigaben. Beides ist nicht umgesetzt.
 
@@ -275,7 +298,7 @@ Empfohlene Reihenfolge: erst die Cloud (Migration, API, Portal), dann der Dienst
 
 - **Weiß:** den Soll-Zustand und wann der Tunnel-Dienst ihn zuletzt abgeholt hat.
 - **Weiß vom Tunnel-Dienst, mit Alter:** ob eine Box verbunden ist, wann sie zuletzt nach Schlüsseln gefragt hat und ob sie den SSH-Schlüssel eines Fensters abgeholt hat ([Rückmeldung](#rückmeldung-des-tunnel-dienstes)). Ein Fenster, das die Meldung nennt, steht in der Kernel-Menge des Servers.
-- **Weiß nicht:** ob eine Anmeldung an der Box gelungen ist, und was ein Techniker dort tut. Das steht nur im Log der Box (`logread -e dropbear`), und das liegt im Arbeitsspeicher. Ebenso nicht, ob die Firewall des Servers gerade filtert: Auf der VM sagt es `vp-tunnel-dienst status` („Firewall-Basis stimmt“).
+- **Weiß nicht:** ob eine Anmeldung an der Box gelungen ist, und was ein Techniker dort tut. Die Anmeldung steht nur auf der Box, in ihrer [Ereignisliste](#wer-wann-auf-einer-box-war) (`service-tunnel.sh <ziel> status`); was jemand dort tut, steht nirgends. Ebenso nicht, ob die Firewall des Servers gerade filtert: Auf der VM sagt es `vp-tunnel-dienst status` („Firewall-Basis stimmt“).
 - **Fehlt die Meldung oder ist sie alt,** weiß das Portal über Boxen und Fenster nur den Soll-Zustand. Die Oberfläche benennt das, statt es zu überspielen. Auf der VM selbst zeigt `vp-tunnel-dienst status`, wann eine Box zuletzt nach Schlüsseln gefragt hat, und das Journal, welcher Schlüssel ihr ausgegeben wurde.
 
 ## Bausteine

@@ -15,7 +15,8 @@
 #   schluessel-holen.sh einmal  eine Abfrage von Hand (loest die offene Anfrage
 #                               des Dauerlaufs ab; der fragt danach neu)
 #   schluessel-holen.sh status  Stand zeigen - nie einen Schluessel, nur Zugang
-#                               und Restlaufzeit
+#                               und Restlaufzeit; dazu die letzten Ereignisse
+#   schluessel-holen.sh ereignisse  die ganze Ereignisliste
 #
 # Regeln:
 #   - Gefragt wird nur ueber den Wartungstunnel: die Route zum Server muss ueber
@@ -25,7 +26,9 @@
 #   - Alles liegt im RAM: der Arbeitsstand unter /tmp, die Schluesseldatei in
 #     einem eigenen tmpfs. Ein Neustart loescht jeden Fenster-Schluessel. (Nicht
 #     unter /tmp: Dropbear prueft jedes Elternverzeichnis, und /tmp ist fuer
-#     alle schreibbar.) Ohne das tmpfs schreibt das Skript nichts.
+#     alle schreibbar.) Ohne das tmpfs schreibt das Skript nichts. Einzige
+#     Ausnahme ist die Ereignisliste (unten): sie liegt im Flash und nennt nie
+#     einen Schluessel.
 #   - Jeder Schluessel hat eine Frist in LAUFZEIT der Box (/proc/uptime), nicht
 #     in Uhrzeit: eine falsche oder springende Uhr verlaengert nichts.
 #   - Nur eine vollstaendige, formgerechte Antwort gilt, und sie ist die ganze
@@ -48,6 +51,28 @@
 #     begonnen vor diesem Skript, dauerhafte Zeile mit Optionen davor), endet
 #     sie beim naechsten Streichen ebenfalls. Mit einem gueltigen Schluessel
 #     meldet sie sich sofort wieder an.
+#   - Ereignisliste (/etc/vp-wartung/ereignisse): was an dieser Box ueber die
+#     Fernwartung geschah, laenger nachlesbar als im Protokollspeicher der Box
+#     (logread: 128 KiB im RAM, laeuft ueber und ist nach einem Neustart leer).
+#     Der cron-Lauf uebernimmt jede Minute aus den letzten 200 Zeilen des
+#     Protokollspeichers, was neu ist, und nur das: wann welcher
+#     Fenster-Schluessel kam und ging (Zugang),
+#     jede Anmeldung durch einen Wartungstunnel (Fingerabdruck des Schluessels,
+#     Absender, Zeit), jedes Ende einer solchen Sitzung mit Grund, und welche
+#     Sitzung die Box beendet hat. Nie ein Schluessel. Geschrieben wird nur,
+#     wenn ein Ereignis dazukam - ohne Fernwartung schreibt die Box nichts in
+#     den Flash. Hoechstens 250 Zeilen zu hoechstens 400 Zeichen; darueber
+#     bleiben die neuesten 200. Die Liste uebersteht Neustart und sysupgrade;
+#     das Abraeumen der Fenster-Schluessel loescht sie.
+#   - Gelesen wird nie der ganze Protokollspeicher, immer nur sein Ende: zwei
+#     Leser, die ihn zugleich ganz lesen, lassen den Protokolldienst der Box
+#     neu starten, und dann ist alles weg (OpenWrt 25.12.5 im Container: 98 von
+#     100 Versuchen; mit einem Leser von hoechstens 300 Zeilen daneben keiner).
+#     Schreibt die Box in einer Minute mehr als 200 Zeilen, kann der Liste
+#     deshalb ein Ereignis fehlen.
+#   - cron protokolliert die Starts seiner Zeitauftraege nicht mehr
+#     (service-tunnel.sh stellt cronloglevel auf 9). Dafuer legt jeder Lauf
+#     "frist" ein Lebenszeichen ab, und der Dauerlauf meldet, wenn es ausbleibt.
 set -u
 
 ART="${1:-lauf}"
@@ -77,6 +102,16 @@ STAND="$DIR/stand" # Zeilen: <frist in Laufzeit> <zugang> <schluessel-base64>
 # sind: bricht ein Lauf dazwischen ab, fuehrt der naechste den Auftrag aus.
 BEENDEN="$DIR/beenden"
 PIDDATEI="${VP_WARTUNG_PIDDATEI:-/var/run/dropbear.vp_wartung.pid}"
+# Die Ereignisliste liegt als Einziges im Flash: neben dem Einhaengepunkt der
+# Schluesseldatei, nicht darin.
+EREIGNISSE="${VP_WARTUNG_EREIGNISSE:-/etc/vp-wartung/ereignisse}"
+EREIGNISSE_MAX=250     # mehr Zeilen hat die Liste nie
+EREIGNISSE_BLEIBEN=200 # so viele bleiben, wenn sie gekuerzt wird
+EREIGNIS_BREITE=400    # laengere Zeilen werden abgeschnitten
+EREIGNISSE_FENSTER=200 # so viele Zeilen vom Ende des Protokollspeichers liest ein Lauf
+# Lebenszeichen des cron-Laufs (Laufzeit der Box beim letzten Lauf "frist").
+FRIST_ZULETZT="$DIR/frist"
+CRON_AUS=180           # so viele Sekunden ohne Lauf, dann meldet es der Dauerlauf
 MARKEN=""      # Kennzahlen der Schluessel, die jetzt in der Schluesseldatei stehen
 streichen=nein # ja: dieser Lauf hat einen Fenster-Schluessel gestrichen
 NL='
@@ -459,6 +494,154 @@ wartezeit() {
     END { print m }'
 }
 
+# tunnel_netze: aus welchen Netzen eine Anmeldung durch einen Wartungstunnel
+# kommt - die erlaubten Absender (allowed_ips) aller Tunnel der Zone service.
+# WireGuard nimmt einen Absender aus diesen Netzen nur durch den Tunnel an; an
+# derselben Eigenschaft haengt die Freigabe der Web-App (service-tunnel.sh).
+tunnel_netze() {
+  if [ -n "${VP_WARTUNG_NETZE:-}" ]; then
+    echo "$VP_WARTUNG_NETZE"
+    return 0
+  fi
+  tn_alle="$(uci -q get firewall.vp_service.network 2>/dev/null)"
+  for tn_t in ${tn_alle:-$IFACE}; do
+    uci -q get "network.${tn_t}_peer.allowed_ips" 2>/dev/null
+  done | tr '\n' ' '
+}
+
+# ereignisse_neu: aus dem Ende des Protokollspeichers der Box (stdin: logread)
+# die Zeilen der Fernwartung, die noch nicht in der Liste stehen - alles nach
+# ihrer letzten Zeile ($LETZTE). Steht die nicht mehr darin (seither kamen
+# mehr Zeilen, als gelesen werden, oder die Box wurde neu gestartet), ist alles
+# Gelesene neu. Genommen wird nur, was hier steht; eine Zeile mit einem
+# Schluessel nie.
+ereignisse_neu() {
+  awk -v netze="$(tunnel_netze)" -v breite="$EREIGNIS_BREITE" '
+    function zahl(s,    a, i, z) {
+      if (split(s, a, ".") != 4) return -1
+      z = 0
+      for (i = 1; i <= 4; i++) {
+        if (a[i] !~ /^[0-9]+$/ || a[i] + 0 > 255) return -1
+        z = z * 256 + a[i]
+      }
+      return z
+    }
+    # im_tunnel <adresse:port>: kommt der Absender aus einem Tunnel-Netz?
+    function im_tunnel(h,    z, i) {
+      sub(/:[0-9]+$/, "", h)
+      z = zahl(h)
+      if (z < 0) return 0
+      for (i = 1; i <= nn; i++) if (int(z / gr[i]) == int(ba[i] / gr[i])) return 1
+      return 0
+    }
+    BEGIN {
+      letzte = ENVIRON["LETZTE"]
+      m = split(netze, t, /[ ,]+/)
+      for (i = 1; i <= m; i++) {
+        if (split(t[i], p, "/") != 2 || p[2] !~ /^[0-9]+$/ || p[2] + 0 > 32) continue
+        b = zahl(p[1])
+        if (b < 0) continue
+        nn++
+        ba[nn] = b
+        gr[nn] = 2 ^ (32 - p[2])
+      }
+    }
+    { nimm = 0 }
+    # Der Abholer: Fenster-Schluessel kam oder ging, Sitzung beendet.
+    $7 == "vp-wartung:" && (($8 == "Fenster-Schluessel" && $9 == "jetzt:") || $8 == "Sitzung") { nimm = 1 }
+    # Dropbear: Anmeldung und Ende einer Sitzung, nur aus einem Tunnel-Netz.
+    $7 ~ /^dropbear\[[0-9]+\]:$/ {
+      if ($8 == "Pubkey" && $9 == "auth" && $10 == "succeeded") {
+        nimm = im_tunnel($NF)
+      } else if ($8 == "Exit" && $9 ~ /^\(/) {
+        for (i = 10; i < NF; i++) {
+          if ($i != "from") continue
+          h = $(i + 1)
+          if (h ~ /^<.*>:$/) nimm = im_tunnel(substr(h, 2, length(h) - 3))
+          break
+        }
+      }
+    }
+    nimm {
+      z = substr($0, 1, breite)
+      if (z ~ /AAAA(B3NzaC1|C3NzaC1|E2VjZHNh)/) next
+      n++
+      zeile[n] = z
+      if (z == letzte) ab = n
+    }
+    END { for (i = ab + 1; i <= n; i++) print zeile[i] }
+  '
+}
+
+# ereignisse_lesen: die Liste um das Neue ergaenzen. Schreibt nur, wenn etwas
+# dazukam, und haelt die Obergrenze VOR dem Schreiben ein: passt das Neue nicht
+# mehr, ersetzt eine gekuerzte Fassung die Liste in einem Zug - oder es bleibt
+# beim Alten (Flash voll), und der naechste Lauf versucht es wieder. Immer nur
+# einer; laeuft schon einer, tut dieser nichts. logread bekommt 5 s: es wartet
+# ohne Ende, solange der Protokolldienst der Box fehlt, und daran darf weder
+# eine Anzeige noch der naechste Lauf haengen.
+ereignisse_lesen() {
+  [ -d "${EREIGNISSE%/*}" ] || return 0
+  command -v logread >/dev/null 2>&1 || return 0
+  (
+    flock -n 7 || exit 0
+    umask 077
+    el_roh="$DIR/ereignisse.roh"
+    logread -l "$EREIGNISSE_FENSTER" >"$el_roh" 2>/dev/null 7>&- &
+    el_p=$!
+    (
+      sleep 5
+      kill "$el_p" 2>/dev/null
+    ) </dev/null >/dev/null 2>&1 7>&- &
+    el_w=$!
+    wait "$el_p"
+    el_rc=$?
+    kill "$el_w" 2>/dev/null
+    el_neu=""
+    [ "$el_rc" -ne 0 ] || el_neu="$(LETZTE="$(tail -n 1 "$EREIGNISSE" 2>/dev/null)" ereignisse_neu <"$el_roh")"
+    rm -f "$el_roh"
+    [ -n "$el_neu" ] || exit 0
+    el_alt="$({ wc -l <"$EREIGNISSE"; } 2>/dev/null)"
+    ganzzahl "$el_alt" || el_alt=0
+    el_dazu="$(printf '%s\n' "$el_neu" | wc -l)"
+    if [ "$((el_alt + el_dazu))" -le "$EREIGNISSE_MAX" ]; then
+      printf '%s\n' "$el_neu" >>"$EREIGNISSE" 2>/dev/null
+    elif { cat "$EREIGNISSE" 2>/dev/null; printf '%s\n' "$el_neu"; } | tail -n "$EREIGNISSE_BLEIBEN" >"$EREIGNISSE.neu" 2>/dev/null; then
+      mv -f "$EREIGNISSE.neu" "$EREIGNISSE" 2>/dev/null
+    fi
+    rm -f "$EREIGNISSE.neu"
+    exit 0
+  ) 7>"$DIR/ereignisse.sperre" 8>&- 2>/dev/null
+}
+
+# ereignisse_zeigen [anzahl]: die Liste, ohne die Spalte der Protokollstufe;
+# mit einer Anzahl nur die letzten Zeilen.
+ereignisse_zeigen() {
+  [ -s "$EREIGNISSE" ] || return 0
+  if [ -n "${1:-}" ]; then tail -n "$1" "$EREIGNISSE"; else cat "$EREIGNISSE"; fi |
+    sed 's/^\(.\{24\}\) [a-z0-9]*\.[a-z]* /\1 /'
+}
+
+# cron_pruefen: kommt der cron-Lauf noch? cron selbst sagt es nicht mehr (es
+# protokolliert weder den Start eines Zeitauftrags noch, dass der vorige noch
+# laeuft). Gemeldet wird der Wechsel, nicht jeder Durchgang.
+cron_stand=ok
+cron_seit=""
+cron_pruefen() {
+  cp_jetzt="$(laufzeit)"
+  ganzzahl "$cp_jetzt" || return 0
+  cp_z="$(cat "$FRIST_ZULETZT" 2>/dev/null)"
+  ganzzahl "$cp_z" || cp_z="$cron_seit"
+  ganzzahl "$cp_z" || return 0
+  if [ "$((cp_jetzt - cp_z))" -gt "$CRON_AUS" ]; then
+    [ "$cron_stand" = aus ] || melde "FEHLER: der cron-Lauf (frist) ist seit $((cp_jetzt - cp_z)) s ausgeblieben - Verfallenes streicht nur noch der Abholer (pruefen: /etc/crontabs/root, /etc/init.d/cron)"
+    cron_stand=aus
+  else
+    [ "$cron_stand" != aus ] || melde "der cron-Lauf (frist) kommt wieder"
+    cron_stand=ok
+  fi
+}
+
 # schlafe <s>: unterbrechbar (procd beendet den Dauerlauf mit SIGTERM).
 schlafe() {
   sleep "$1" 8>&- &
@@ -475,6 +658,10 @@ case "$ART" in
     mit_sperre schreibe
     rc=$?
     [ "$rc" -ne 75 ] || schreibe
+    # Lebenszeichen fuer den Dauerlauf, dann im Hintergrund die Ereignisliste:
+    # an ihr haengt weder dieser Lauf noch der Start der Anmelde-Instanz.
+    laufzeit >"$FRIST_ZULETZT" 2>/dev/null
+    ereignisse_lesen </dev/null >/dev/null 2>&1 &
     ;;
   einmal | lauf)
     case "$SERVER" in *[!0-9.]* | "") echo "FEHLER: Server \"$SERVER\" ist keine IPv4-Adresse" >&2; exit 2 ;; esac
@@ -501,8 +688,10 @@ case "$ART" in
     exec 8>"$DIR/lauf.sperre"
     flock -n 8 || { melde "Dauerlauf laeuft schon - dieser endet"; exit 1; }
     zustand="start"
+    cron_seit="$(laufzeit)"
     while :; do
       mit_sperre schreibe
+      cron_pruefen
       w="$(wartezeit)"
       if frage "$w" "$((w + 15))"; then
         [ "$zustand" = ok ] || melde "Wartungsserver antwortet ($SERVER:$PORT ueber $IFACE)"
@@ -553,9 +742,32 @@ case "$ART" in
     done
     echo "  Sitzungen im Tunnel: $((st_d + st_f + st_g + st_u)) - dauerhafter Schluessel $st_d, Fenster-Schluessel $st_f, gestrichener Fenster-Schluessel $st_g, nicht zuzuordnen $st_u"
     echo "    (gestrichen: endet beim naechsten Lauf; nicht zuzuordnen: endet, sobald ein Fenster-Schluessel gestrichen wird)"
+    st_c="$(cat "$FRIST_ZULETZT" 2>/dev/null)"
+    if ! ganzzahl "$st_c" || ! ganzzahl "$jetzt"; then
+      echo "  cron-Lauf (streicht Verfallenes, jede Minute): seit dem Start keiner"
+    elif [ "$((jetzt - st_c))" -gt "$CRON_AUS" ]; then
+      echo "  cron-Lauf (streicht Verfallenes, jede Minute): AUSGEBLIEBEN seit $((jetzt - st_c)) s - /etc/crontabs/root und /etc/init.d/cron pruefen"
+    else
+      echo "  cron-Lauf (streicht Verfallenes, jede Minute): zuletzt vor $((jetzt - st_c)) s"
+    fi
+    # Was zuletzt geschah - auch dann, wenn es im Protokollspeicher der Box
+    # (logread) laengst ueberschrieben ist.
+    ereignisse_lesen
+    st_e="$({ wc -l <"$EREIGNISSE"; } 2>/dev/null)"
+    if ganzzahl "$st_e" && [ "$st_e" -gt 0 ]; then
+      echo "  Ereignisse der Fernwartung: $st_e in $EREIGNISSE (Flash, hoechstens $EREIGNISSE_MAX, nie ein Schluessel) - die letzten:"
+      ereignisse_zeigen 10 | sed 's/^/    /'
+      echo "    (alle: $0 ereignisse)"
+    else
+      echo "  Ereignisse der Fernwartung: noch keine in $EREIGNISSE"
+    fi
+    ;;
+  ereignisse)
+    ereignisse_lesen
+    ereignisse_zeigen
     ;;
   *)
-    echo "lauf | frist | einmal | status" >&2
+    echo "lauf | frist | einmal | status | ereignisse" >&2
     exit 2
     ;;
 esac

@@ -26,7 +26,12 @@
 #   4  Fenster vorzeitig geschlossen; 4b Schluessel im Fenster ersetzt, entfernt;
 #      4c Fenster laeuft ab; 4d zwei Techniker und der dauerhafte Schluessel
 #   5  Frist ohne Server und ohne Abholer (nur cron)
+#   5b Protokoll der Box: cron protokolliert seine Starts nicht mehr; die
+#      Ereignisse einer frueheren Sitzung bleiben nachlesbar, wenn der
+#      Protokollspeicher laengst uebergelaufen ist
 #   6  Neustart der Box mitten im Fenster, danach Neustart von Lauscher und Abholer
+#   6b die Obergrenze der Ereignisliste haelt; ein Zeitauftrag, der ausbleibt,
+#      faellt weiter auf
 #   7  Antworten eines falschen Servers
 #   8  Frist in Laufzeit der Box, nicht in Uhrzeit
 #   9  der Abholer fragt nur durch den Tunnel
@@ -52,7 +57,15 @@
 #   VPWA_BEHALTEN=1 ...           Container am Ende stehen lassen (Fehlersuche)
 #   VPWA_SKRIPT=<verzeichnis> ... Gegenprobe: ein anderer Stand von edge-light/openwrt
 #                                 als Box-Skript. Mit dem Stand vor dem 10.10.2026
-#                                 muessen die Pruefungen der Sitzungen rot sein
+#                                 muessen die Pruefungen der Sitzungen rot sein, mit
+#                                 dem vor dem 12.10.2026 die zum Protokoll der Box
+#                                 (Schritte 1, 5b, 6, 6b, 12)
+#
+# Protokoll der Box (Entscheid vom 12.10.2026): cron protokollierte jeden Start
+# eines Zeitauftrags, 132 Zeilen je Stunde; nach rund vier Stunden waren die
+# Anmeldungen der Fernwartung aus dem Protokollspeicher (logread) verdraengt.
+# Die Box stellt diese Zeilen ab und fuehrt die Ereignisse der Fernwartung in
+# einer eigenen, begrenzten Liste im Flash (EREIGNISSE).
 # Voraussetzung: Docker, git (fuer Schritt 0), der Host-Kernel kann WireGuard.
 # shellcheck disable=SC2015 # ok()/falsch() schlagen nie fehl: A && ok || falsch ist hier if-then-else
 # shellcheck disable=SC2016 # die Pruefausdruecke werten im Container aus
@@ -169,6 +182,19 @@ luecke_auf() { x server nft delete table inet voltpilot_wartung; }
 # ── Box ──────────────────────────────────────────────────────────────────────
 KEYS=/etc/vp-wartung/keys/authorized_keys
 HOLEN=/usr/libexec/vp-wartung/schluessel-holen.sh
+EREIGNISSE=/etc/vp-wartung/ereignisse
+# ereignisse: die Liste, wie sie der Abholer zeigt (uebernimmt vorher, was neu
+# ist). Leer mit einem Skript, das sie nicht kennt.
+ereignisse() { bx "$HOLEN ereignisse 2>/dev/null" || true; }
+ereignis() { ereignisse | grep -q -- "$1"; }
+ereignis_zeilen() { bx "wc -l < $EREIGNISSE 2>/dev/null" || echo 0; }
+# marke <name>: eine Zeile im Protokoll der Box; cron_zeilen <name> zaehlt, wie
+# oft cron seither den Start eines Zeitauftrags protokolliert hat.
+marke() { bx "logger -t vpwa-marke '$1'"; }
+marke_da() { bx "logread | grep -q 'vpwa-marke: $1\$'"; }
+cron_zeilen() { bx "logread | sed -n '/vpwa-marke: $1\$/,\$p' | grep -c 'crond\[[0-9]*\]: USER ' || true"; }
+frist_alter() { bx 'echo $(( $(cut -d. -f1 /proc/uptime) - $(cat /tmp/vp-wartung/frist 2>/dev/null || echo 0) ))'; }
+frist_frisch() { [ "$(frist_alter)" -lt 100 ]; }
 fenster_schluessel() { bx "grep -c 'vp-fenster:' $KEYS 2>/dev/null || true"; }
 box_hat() { bx "grep -q 'vp-fenster:$1\$' $KEYS 2>/dev/null"; }
 box_hat_nicht() { ! box_hat "$1"; }
@@ -418,6 +444,11 @@ if [ "$ALT" = ja ]; then
 fi
 soll "$SSH_T1" ""
 warte 15 nicht_im_kernel 10.10.32.3 || falsch "Fenster wieder geschlossen"
+# Befund vom 11.10.2026: so fuellt sich der Protokollspeicher der Box.
+if [ "$ALT" = ja ]; then
+  warte 70 bx 'logread | grep -q "crond\[[0-9]*\]: USER root pid .* cmd /usr/bin/wireguard_watchdog"' &&
+    ok "heutiger Stand: cron protokolliert jeden Start eines Zeitauftrags (\"USER root pid … cmd /usr/bin/wireguard_watchdog\")" || falsch "heutiger Stand: cron protokolliert jeden Start"
+fi
 
 # ── 1 ────────────────────────────────────────────────────────────────────────
 schritt "1. Neues Skript ueber einen Zugang, der heute geht; Fenster oeffnen, anmelden"
@@ -426,6 +457,12 @@ x werkstatt cat /root/.ssh/id_rsa_werkstatt.pub | xi werkstatt ssh "root@$LAN.11
 SUMME_DAUER="$(bx 'md5sum < /etc/dropbear/authorized_keys')"
 IFINDEX="$(bx 'cat /sys/class/net/wg_wartung/ifindex')"
 einrichten werkstatt "root@$LAN.11" >"$ARBEIT/einrichten.1" 2>&1 && ok "service-tunnel.sh von heute laeuft durch" || falsch "service-tunnel.sh von heute laeuft durch"
+# Ab hier zaehlt Schritt 5b die Startzeilen von cron.
+marke eingerichtet
+T_MARKE="$(ms)"
+bx '[ "$(uci -q get system.@system[0].cronloglevel)" = 9 ] && tr "\0" " " < /proc/$(pgrep crond | head -n 1)/cmdline | grep -q -- "-l 9"' &&
+  grep -q 'cron protokolliert die Starts der Zeitauftraege nicht mehr' "$ARBEIT/einrichten.1" &&
+  ok "cron protokolliert die Starts der Zeitauftraege nicht mehr (cronloglevel 9, crond laeuft damit); das Skript sagt es" || falsch "cronloglevel 9, crond laeuft damit, das Skript sagt es"
 grep -q 'Tunnel unveraendert' "$ARBEIT/einrichten.1" && [ "$(bx 'cat /sys/class/net/wg_wartung/ifindex')" = "$IFINDEX" ] &&
   ok "der Tunnel selbst wird dabei nicht angefasst" || falsch "der Tunnel selbst wird dabei nicht angefasst"
 bx '! uci -q get dropbear.vp_wartung' && ok "UCI-Instanz dropbear.vp_wartung abgeloest" || falsch "UCI-Instanz dropbear.vp_wartung abgeloest"
@@ -702,6 +739,54 @@ bx "sed -i '/ dauerhaft2\$/d' /etc/dropbear/authorized_keys"
 soll "$SSH_T1" ""
 dienst_an 5s
 
+# ── 5b ───────────────────────────────────────────────────────────────────────
+schritt "5b. Protokoll der Box: keine Minutenzeilen mehr, die Ereignisse einer frueheren Sitzung bleiben nachlesbar"
+# Seit Schritt 1 lief cron ueber mehrere volle Minuten; in Schritt 5 hat sein
+# Lauf den verfallenen Schluessel gestrichen.
+MIN="$(( ($(ms) - T_MARKE) / 60000 ))"
+marke_da eingerichtet || falsch "die Marke aus Schritt 1 steht noch im Protokollspeicher (sonst zaehlt die naechste Pruefung nichts)"
+[ "$MIN" -ge 2 ] && warte 70 frist_frisch && ok "cron laeuft seit $MIN Minuten mit dem Skript dieser Probe; sein letzter Lauf ist $(frist_alter) s her (Lebenszeichen des Laufs)" || falsch "cron laeuft, der Lauf legt ein Lebenszeichen ab (seit $MIN Minuten, Alter: $(frist_alter) s)"
+N="$(cron_zeilen eingerichtet)"
+[ "$N" = 0 ] && ok "in dieser Zeit steht keine Startzeile von cron im Protokoll der Box" || falsch "keine Startzeile von cron im Protokoll (ist: $N Zeilen in $MIN Minuten)"
+# Die Sitzung aus Schritt 4 (Anmeldeprozess $P4): Fenster-Schluessel gekommen,
+# Anmeldung, von der Box beendet, Schluessel gestrichen.
+ER="$(ereignisse)"
+SITZUNG4="Sitzung beendet (Dropbear-Prozess $P4): ihr Fenster-Schluessel ist gestrichen"
+pruefe_sitzung4() { # <woher>
+  printf '%s\n' "$ER" | grep -q "vp-wartung: Fenster-Schluessel jetzt: $ID_T1 *\$" &&
+    printf '%s\n' "$ER" | grep -q "dropbear\[$P4\]: Pubkey auth succeeded for 'root' with ssh-rsa key SHA256:[A-Za-z0-9+/]* from 10.10.32.3:[0-9]*\$" &&
+    printf '%s\n' "$ER" | grep -q "vp-wartung: $SITZUNG4\$" &&
+    printf '%s\n' "$ER" | grep -q "dropbear\[$P4\]: Exit (root) from <10.10.32.3:[0-9]*>: Terminated by signal\$" &&
+    ok "$1: Schluessel des Fensters gekommen (Zugang), Anmeldung (Fingerabdruck, Absender, Zeit), von der Box beendet und warum, Ende der Sitzung" ||
+    falsch "$1: die Ereignisse der Sitzung aus Schritt 4 stehen in der Liste"
+}
+pruefe_sitzung4 "Ereignisliste"
+printf '%s\n' "$ER" | grep -q "Fenster-Schluessel jetzt: keine *\$" && ok "… und wann der Schluessel gestrichen wurde" || falsch "die Liste nennt das Streichen des Schluessels"
+# Jetzt so viele Zeilen, wie die Zeitauftraege frueher in Stunden schrieben -
+# dazwischen der Lauf, den cron jede Minute startet. Der Protokolldienst muss
+# dabei durchlaufen: startet er neu, ist sein Speicher leer statt uebergelaufen.
+LOGD="$(bx 'pgrep -f /sbin/logd | head -n 1')"
+N_FLUT="$(bx "i=0; while [ \$i -lt 6000 ] && logread | grep -q 'Dropbear-Prozess $P4)'; do j=0
+  while [ \$j -lt 200 ]; do logger -t 'minutenzeile[1]' -p cron.err \"USER root pid \$i cmd $HOLEN frist\"; j=\$((j + 1)); i=\$((i + 1)); done
+  $HOLEN frist; done; echo \$i")"
+bx "! logread | grep -q 'Dropbear-Prozess $P4)'" && [ -n "$LOGD" ] && [ "$(bx 'pgrep -f /sbin/logd | head -n 1')" = "$LOGD" ] && [ "$(bx 'logread | grep -c minutenzeile')" -ge 500 ] && ok "Protokollspeicher uebergelaufen: nach $N_FLUT Zeilen (so viele schrieb cron frueher in $((N_FLUT / 132)) Stunden) nennt logread die Sitzung aus Schritt 4 nicht mehr" || falsch "Protokollspeicher uebergelaufen, der Protokolldienst lief durch ($N_FLUT Zeilen)"
+ER="$(ereignisse)"
+pruefe_sitzung4 "danach, nach $((N_FLUT / 200)) weiteren Minutenlaeufen"
+[ "$(printf '%s\n' "$ER" | grep -c "$SITZUNG4")" = 1 ] && ok "… jedes Ereignis genau einmal (die Laeufe uebernehmen nur, was neu ist)" || falsch "jedes Ereignis genau einmal (ist: $(printf '%s\n' "$ER" | grep -c "$SITZUNG4"))"
+ST="$(bx "$HOLEN status" 2>&1 || true)"
+case "$ST" in
+  *"Ereignisse der Fernwartung: "*" in $EREIGNISSE"*"die letzten:"*) ok "status zeigt die letzten Ereignisse" ;;
+  *) falsch "status zeigt die letzten Ereignisse" ;;
+esac
+printf '%s\n' "$ST" | sed -n '/Ereignisse der Fernwartung/,$p' | sed 's/^/    | /'
+bx "[ -s $EREIGNISSE ] && ! grep -q -e 'AAAA[BCE][0-9A-Za-z]' -e '$ALT_TEXT' -e '$NEU_TEXT' $EREIGNISSE" && ok "kein Schluessel in der Liste (nur Zugang und Fingerabdruck)" || falsch "kein Schluessel in der Liste"
+bx "[ -s $EREIGNISSE ] && ! grep -q -e 'from <\{0,1\}$LAN\.' -e 'Exit before auth' -e 'minutenzeile' $EREIGNISSE" && ok "nur Anmeldungen durch den Tunnel: die der Werkstatt an Port 22 im LAN stehen nicht darin, auch sonst nichts" || falsch "nur Anmeldungen durch den Tunnel in der Liste"
+bx "[ \"\$(ls -l $EREIGNISSE 2>/dev/null | cut -c 1-10)\" = -rw------- ] && [ \"\$(df -P $EREIGNISSE | awk 'NR == 2 { print \$1 }')\" != tmpfs ] && [ \"\$(df -P $EREIGNISSE | awk 'NR == 2 { print \$1 }')\" != vp-wartung ]" &&
+  ok "die Liste liegt im Flash, nicht im RAM, lesbar nur fuer root ($(ereignis_zeilen) Zeilen, $(bx "wc -c < $EREIGNISSE" || true) Bytes)" || falsch "die Liste liegt im Flash, nur fuer root"
+SUMME_E="$(bx "md5sum < $EREIGNISSE" || true)"
+bx "$HOLEN frist; sleep 2; $HOLEN frist; sleep 2"
+[ -n "$SUMME_E" ] && [ "$(bx "md5sum < $EREIGNISSE" || true)" = "$SUMME_E" ] && ok "ohne neues Ereignis schreibt ein Lauf nichts in den Flash (Datei unveraendert)" || falsch "ohne neues Ereignis bleibt die Datei unveraendert"
+
 # ── 6 ────────────────────────────────────────────────────────────────────────
 schritt "6. Neustart der Box mitten im Fenster, Schluesselausgabe solange angehalten"
 soll "$SSH_T1" "$(fenster f6 "$ID_T1" 600)"
@@ -723,6 +808,8 @@ bx 'pgrep crond >/dev/null' && ok "cron laeuft wieder" || falsch "cron laeuft wi
 [ "${VPWA_TMPFS:-}" = docker ] || { bx 'grep -q "^vp-wartung /etc/vp-wartung/keys tmpfs " /proc/mounts' && ok "RAM-Bereich nach dem Neustart wieder eingehaengt" || falsch "RAM-Bereich nach dem Neustart wieder eingehaengt"; }
 box_hat_keinen && bx "grep -c 'ssh-rsa' $KEYS" | grep -qx 1 && ok "in der Schluesseldatei steht nur der dauerhafte Schluessel" || falsch "in der Schluesseldatei steht nur der dauerhafte Schluessel"
 bx '[ ! -s /tmp/vp-wartung/stand ]' && ok "der Arbeitsstand ist leer (lag im RAM)" || falsch "der Arbeitsstand ist leer"
+bx "! logread | grep -q -e 'Dropbear-Prozess $P4)' -e 'minutenzeile'" && ereignis "vp-wartung: $SITZUNG4\$" &&
+  ok "der Protokollspeicher ist nach dem Neustart leer, die Ereignisliste nennt die Sitzung aus Schritt 4 weiter" || falsch "die Ereignisliste uebersteht den Neustart"
 im_kernel 10.10.32.3 && ok "das Fenster steht weiter im Kernel des Servers" || falsch "das Fenster steht weiter im Kernel des Servers"
 erwarte tech1 /root/.ssh/id_rsa ABGEWIESEN "tech1 -> Box nach dem Neustart, ohne Schluesselausgabe"
 T0="$(ms)"
@@ -735,7 +822,12 @@ stumm tech1 s6a "die Sitzung von vor dem Neustart gibt es nicht mehr (Fenster of
 # keinem Lauscher mehr - und erst dann endet das Fenster.
 sitzung_auf tech1 /root/.ssh/id_rsa s6 || falsch "stille Sitzung von tech1 nach dem Neustart"
 P6="$(sitzung_pid tech1 s6)"
-bx '/etc/init.d/vp-wartung restart' || true
+# Angehalten wird hier mit dem Schritt, den die Box beim Herunterfahren
+# ausfuehrt (K20): er uebernimmt, was seit dem letzten cron-Lauf geschah - die
+# Anmeldung von eben steht in der Liste, ohne dass ein Lauf dazwischen kam.
+bx '/etc/rc.d/K20vp-wartung shutdown; /etc/init.d/vp-wartung start' || true
+bx "grep -q 'dropbear\[$P6\]: Pubkey auth succeeded .* from 10.10.32.3:' $EREIGNISSE 2>/dev/null" && bx '[ -L /etc/rc.d/K20vp-wartung ]' &&
+  ok "Herunterfahren (K20, vor dem Protokolldienst): die Anmeldung von eben kommt noch in die Liste" || falsch "beim Herunterfahren uebernimmt der Abholer die letzten Ereignisse (K20)"
 warte 20 lauscht 10.10.16.2:2222 && warte 20 abholer_laeuft || falsch "Lauscher und Abholer nach restart wieder da"
 warte 20 box_hat "$ID_T1" || falsch "Schluessel nach restart auf der Box"
 [ "$(bx "awk '/^PPid:/ { print \$2 }' /proc/$P6/status")" = 1 ] && [ "$(bx 'cat /var/run/dropbear.vp_wartung.pid')" != "$P6" ] &&
@@ -750,6 +842,37 @@ luecke_auf
 offen tech1 10.10.16.2 2222 "Luecke: tech1 erreicht den Port"
 stumm tech1 s6 "Luecke der Server-Firewall: die Sitzung laeuft NICHT wieder"
 dienst_an 5s
+
+# ── 6b ───────────────────────────────────────────────────────────────────────
+schritt "6b. Die Obergrenze der Ereignisliste haelt; ein Zeitauftrag, der ausbleibt, faellt weiter auf"
+# 320 Ereignisse, in Schueben von 40 uebernommen: die Liste hat nie mehr als 250 Zeilen.
+E_MAX="$(bx "m=0; i=0; while [ \$i -lt 320 ]; do logger -t vp-wartung \"Fenster-Schluessel jetzt: probe-\$i\"; i=\$((i + 1))
+  [ \$((i % 40)) -eq 0 ] || continue; $HOLEN ereignisse >/dev/null 2>&1; n=\$(wc -l < $EREIGNISSE 2>/dev/null); [ \"\${n:-0}\" -le \"\$m\" ] || m=\$n; done; echo \$m" || true)"
+E_JETZT="$(ereignis_zeilen)"
+[ "${E_MAX:-0}" -ge 200 ] && [ "$E_MAX" -le 250 ] && [ "$E_JETZT" -le 250 ] && ok "320 Ereignisse dazu: die Liste hatte nie mehr als $E_MAX Zeilen (Obergrenze 250), jetzt $E_JETZT" || falsch "die Obergrenze von 250 Zeilen haelt (hoechster Stand: ${E_MAX:-keiner}, jetzt: $E_JETZT)"
+bx "grep -q 'jetzt: probe-319 *\$' $EREIGNISSE && ! grep -q -e 'jetzt: probe-0 *\$' -e 'Dropbear-Prozess $P4)' $EREIGNISSE" && ok "es bleiben die neuesten: das letzte Ereignis steht darin, das aelteste und die Sitzung aus Schritt 4 nicht mehr" || falsch "es bleiben die neuesten Ereignisse"
+bx "logger -t vp-wartung \"Fenster-Schluessel jetzt: \$(head -c 900 /dev/zero | tr '\\0' z)\"; $HOLEN ereignisse >/dev/null 2>&1; true"
+bx "grep -q 'jetzt: zzzzzzzz' $EREIGNISSE && ! awk 'length(\$0) > 400 { f = 1 } END { exit !f }' $EREIGNISSE && [ \"\$(wc -c < $EREIGNISSE)\" -le 100250 ]" &&
+  ok "eine ueberlange Zeile wird bei 400 Zeichen abgeschnitten; die Datei bleibt unter 100 KB ($(bx "wc -c < $EREIGNISSE" || true) Bytes)" || falsch "Zeilen hoechstens 400 Zeichen, Datei unter 100 KB"
+# Ein Zeitauftrag faellt aus. cron selbst meldet weiter, was es nicht lesen kann;
+# dass der Lauf der Fenster-Schluessel ausbleibt, meldet der Abholer.
+marke zeitauftrag
+bx "cp /etc/crontabs/root /tmp/crontab.gut; grep -v 'vp-wartung-frist\$' /tmp/crontab.gut > /etc/crontabs/root
+  echo '61 * * * * true # vpwa-unlesbar' >> /etc/crontabs/root; /etc/init.d/cron restart"
+warte 15 bx 'logread | grep -q "crond\[[0-9]*\]: user root: parse error at 61"' && ok "Fehler von cron selbst stehen weiter im Protokoll: eine unlesbare Zeile der crontab (\"user root: parse error at 61\")" || falsch "cron meldet eine unlesbare Zeile der crontab weiter"
+# Die Zeile des Laufs fehlt: als waere sein letzter Lauf zehn Minuten her.
+bx 'echo $(( $(cut -d. -f1 /proc/uptime) - 600 )) > /tmp/vp-wartung/frist'
+bx "$HOLEN status" 2>&1 | grep -q 'cron-Lauf (streicht Verfallenes, jede Minute): AUSGEBLIEBEN seit [0-9]* s' && ok "status: der cron-Lauf ist ausgeblieben" || falsch "status nennt den ausgebliebenen cron-Lauf"
+soll "$SSH_T1" "$(fenster f6b "$ID_T1" 600)" # der Abholer bekommt eine Antwort und dreht eine Runde
+warte 20 box_hat "$ID_T1" || falsch "Fenster offen, Schluessel auf der Box"
+warte 70 bx "logread -e vp-wartung | grep -q 'FEHLER: der cron-Lauf (frist) ist seit [0-9]* s ausgeblieben'" && ok "Protokoll der Box: der Abholer meldet, dass der Zeitauftrag ausbleibt (cron selbst sagte dazu nie etwas)" || falsch "der Abholer meldet den ausgebliebenen Zeitauftrag"
+bx 'cat /tmp/crontab.gut > /etc/crontabs/root; rm -f /tmp/crontab.gut; /etc/init.d/cron restart'
+warte 75 frist_frisch && ok "crontab wieder ganz: der Lauf kommt wieder (Lebenszeichen $(frist_alter) s alt)" || falsch "der cron-Lauf kommt wieder"
+soll "$SSH_T1" ""
+warte 15 box_hat_keinen || falsch "Fenster geschlossen, Schluessel gestrichen"
+warte 70 bx "logread -e vp-wartung | grep -q 'der cron-Lauf (frist) kommt wieder'" && ok "… und der Abholer meldet auch das" || falsch "der Abholer meldet, dass der cron-Lauf wieder kommt"
+marke_da zeitauftrag && [ "$(cron_zeilen zeitauftrag)" = 0 ] && ok "auch nach dem Neustart von cron keine Startzeile im Protokoll" || falsch "nach dem Neustart von cron keine Startzeile im Protokoll"
+warte 15 nicht_im_kernel 10.10.32.3 || falsch "Fenster im Kernel weg"
 
 # ── 7 ────────────────────────────────────────────────────────────────────────
 schritt "7. Antworten eines falschen Servers (an der Adresse der Schluesselausgabe)"
@@ -911,6 +1034,8 @@ endet tech1 s10 "mit der Instanz der Fenster-Schluessel enden ihre Sitzungen (da
 stumm tech1 s10 "… die Sitzung antwortet nicht mehr, obwohl das Fenster offen ist"
 bx '[ "$(uci -q get dropbear.vp_wartung.Interface)" = wg_wartung ] && [ ! -e /etc/init.d/vp-wartung ] && [ ! -e /usr/libexec/vp-wartung ] && [ ! -e /etc/vp-wartung ] && ! grep -q vp-wartung /proc/mounts /etc/crontabs/root /etc/sysupgrade.conf' &&
   ok "UCI-Instanz wieder da; Abholer, Startskript, RAM-Bereich und cron-Zeile abgeraeumt" || falsch "UCI-Instanz wieder da, Abholer abgeraeumt"
+bx '[ ! -e /etc/rc.d/K20vp-wartung ] && [ ! -e /etc/rc.d/S60vp-wartung ] && [ "$(uci -q get system.@system[0].cronloglevel)" = 9 ]' &&
+  ok "mit dem Abholer ist auch die Ereignisliste weg; der Tunnel steht, cron protokolliert weiter keine Starts" || falsch "Ereignisliste und Startverweise weg, cronloglevel bleibt 9"
 bx '! nft list chain inet fw4 vp_wartung_ausgang >/dev/null 2>&1 && nft list chain inet fw4 vp_wartung_eingang | grep -q "dport 2222"' && ok "die Regel fuer die Anfrage des Abholers ist mit ihm weg, die fuer 2222 bleibt" || falsch "Regel des Abholers weg, Regel fuer 2222 bleibt"
 grep -q "Fenster-Schluessel sind NICHT eingerichtet" "$ARBEIT/einrichten.10" && ok "Abschluss sagt, dass nur dauerhafte Schluessel gelten" || falsch "Abschluss sagt, dass nur dauerhafte Schluessel gelten"
 warte 15 lauscht 10.10.16.2:2222 || falsch "UCI-Instanz lauscht im Tunnel"
@@ -1011,23 +1136,28 @@ printf '%s\n' "$ST" | sed -n '/^--- /,$p' | sed 's/^/    | /'
 for z in "SSH 2222 lauscht auf: 10.10.16.2:2222" "SSH 2222 ausserhalb der Tunnel: abgewiesen (nur aus { \"lo\", \"wg_wartung\" }" \
   "Fenster-Schluessel: Abholer laeuft, Server 10.10.32.1:$SPORT ueber wg_wartung" "letzte gueltige Antwort des Wartungsservers: vor " \
   "Schluesseldatei im RAM (tmpfs /etc/vp-wartung/keys): ja" "dauerhaft aus /etc/dropbear/authorized_keys: 1 Schluessel" "im Fenster: Zugang $ID_T1, noch " \
-  "Sitzungen im Tunnel: 1 - dauerhafter Schluessel 1, Fenster-Schluessel 0, gestrichener Fenster-Schluessel 0, nicht zuzuordnen 0"; do
+  "Sitzungen im Tunnel: 1 - dauerhafter Schluessel 1, Fenster-Schluessel 0, gestrichener Fenster-Schluessel 0, nicht zuzuordnen 0" \
+  "cron protokolliert die Starts der Zeitauftraege: nein (cronloglevel 9" "cron-Lauf (streicht Verfallenes, jede Minute): zuletzt vor " \
+  "Ereignisse der Fernwartung: "; do
   case "$ST" in *"$z"*) ok "status: $z…" ;; *) falsch "status: $z…" ;; esac
 done
 case "$ST" in *AAAAB3NzaC1yc2E*) falsch "status zeigt keinen Schluessel" ;; *) ok "status zeigt keinen Schluessel" ;; esac
 SU="$(bx 'sysupgrade -l 2>/dev/null')"
 for f in /usr/libexec/vp-wartung/schluessel-holen.sh /etc/init.d/vp-wartung /etc/rc.d/S60vp-wartung /etc/config/vp-wartung /etc/nftables.d/20-vp-wartung.nft \
-  /usr/libexec/vp-edge-light/service-tunnel-watch.sh /etc/wireguard/vp-wartung.key /etc/crontabs/root; do
+  /usr/libexec/vp-edge-light/service-tunnel-watch.sh /etc/wireguard/vp-wartung.key /etc/crontabs/root \
+  /etc/vp-wartung/ereignisse /etc/rc.d/K20vp-wartung /etc/config/system; do
   printf '%s\n' "$SU" | grep -qx "$f" && ok "sysupgrade -l nennt $f" || falsch "sysupgrade -l nennt $f"
 done
-printf '%s\n' "$SU" | grep -q '^/etc/vp-wartung' && falsch "die Schluesseldatei im RAM steht nicht in der Sicherung" || ok "die Schluesseldatei im RAM steht nicht in der Sicherung"
-[ "$(printf '%s\n' "$SU" | grep -c 'vp-wartung')" = 6 ] && ok "mit dem Beenden der Sitzungen kommt keine Datei dazu (sechs Zeilen mit vp-wartung, wie bisher)" || falsch "sysupgrade -l nennt genau sechs Zeilen mit vp-wartung (ist: $(printf '%s\n' "$SU" | grep -c 'vp-wartung'))"
+printf '%s\n' "$SU" | grep '^/etc/vp-wartung' | grep -q -v -x "$EREIGNISSE" && falsch "die Schluesseldatei im RAM steht nicht in der Sicherung" || ok "die Schluesseldatei im RAM steht nicht in der Sicherung (aus /etc/vp-wartung nur die Ereignisliste)"
+[ "$(printf '%s\n' "$SU" | grep -c 'vp-wartung')" = 8 ] && ok "acht Zeilen mit vp-wartung: die sechs von bisher, dazu die Ereignisliste und der Verweis fuer das Herunterfahren" || falsch "sysupgrade -l nennt genau acht Zeilen mit vp-wartung (ist: $(printf '%s\n' "$SU" | grep -c 'vp-wartung'))"
 P12="$(sitzung_pid tech1 snd)"
 soll "$SSH_T1" ""
 tunnel abbauen wg_wartung >"$ARBEIT/abbauen" 2>&1 && ok "abbauen wg_wartung laeuft durch" || falsch "abbauen wg_wartung laeuft durch"
 [ -n "$P12" ] && warte 5 box_prozess_weg "$P12" && ok "mit dem Tunnel endet auch die Sitzung, die noch offen stand (Dropbear-Prozess $P12)" || falsch "abbauen beendet die offene Sitzung im Tunnel"
-bx '[ ! -e /etc/init.d/vp-wartung ] && [ ! -e /etc/rc.d/S60vp-wartung ] && [ ! -e /usr/libexec/vp-wartung ] && [ ! -e /etc/vp-wartung ] && [ ! -e /etc/config/vp-wartung ] && [ ! -e /tmp/vp-wartung ]' &&
-  ok "Abholer, Startskript, Einstellung und Arbeitsstand weg" || falsch "Abholer, Startskript, Einstellung und Arbeitsstand weg"
+bx '[ ! -e /etc/init.d/vp-wartung ] && [ ! -e /etc/rc.d/S60vp-wartung ] && [ ! -e /etc/rc.d/K20vp-wartung ] && [ ! -e /usr/libexec/vp-wartung ] && [ ! -e /etc/vp-wartung ] && [ ! -e /etc/config/vp-wartung ] && [ ! -e /tmp/vp-wartung ]' &&
+  ok "Abholer, Startskript, Einstellung, Arbeitsstand und Ereignisliste weg" || falsch "Abholer, Startskript, Einstellung, Arbeitsstand und Ereignisliste weg"
+bx '[ -z "$(uci -q get system.@system[0].cronloglevel)" ] && pgrep crond >/dev/null && ! tr "\0" " " < /proc/$(pgrep crond | head -n 1)/cmdline | grep -q -- "-l 9"' &&
+  ok "mit dem letzten Tunnel protokolliert cron wieder wie vom System vorgegeben (cronloglevel nicht mehr gesetzt)" || falsch "cronloglevel nach dem Abbauen nicht mehr gesetzt"
 bx '! grep -q vp-wartung /proc/mounts /etc/crontabs/root /etc/sysupgrade.conf' && ok "RAM-Bereich ausgehaengt, cron-Zeile und sysupgrade-Eintraege weg" || falsch "RAM-Bereich, cron-Zeile, sysupgrade-Eintraege weg"
 bx '[ ! -e /etc/nftables.d/20-vp-wartung.nft ] && ! nft list chain inet fw4 vp_wartung_eingang >/dev/null 2>&1 && ! nft list chain inet fw4 vp_wartung_ausgang >/dev/null 2>&1 && ! uci -q get firewall.vp_service' && ok "Firewall-Regeln und Zone weg" || falsch "Firewall-Regeln und Zone weg"
 warte 10 lauscht_nirgends && bx '! pgrep -f "schluessel-hole[n]|dropbea[r].*2222" >/dev/null' && ok "auf 2222 lauscht niemand, kein Abholer" || falsch "auf 2222 lauscht niemand, kein Abholer"

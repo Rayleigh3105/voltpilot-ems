@@ -186,16 +186,17 @@ Entscheid des Kapitäns vom 09.10.2026, Schritt 3 von [Fernwartung, Anmeldung an
 | Auf der Box | Aufgabe |
 |---|---|
 | `/usr/libexec/vp-wartung/schluessel-holen.sh` | der Abholer: `lauf` (Dauerdienst), `frist` (cron, jede Minute), `einmal` (Abfrage von Hand), `status` |
-| `/etc/init.d/vp-wartung` | startet Dropbear an der Tunnel-Adresse mit eigener Schlüsseldatei (`dropbear -D`) und den Abholer; hängt den RAM-Bereich ein |
+| `/etc/init.d/vp-wartung` | startet Dropbear an der Tunnel-Adresse mit eigener Schlüsseldatei (`dropbear -D`) und den Abholer; hängt den RAM-Bereich ein; sichert beim Herunterfahren der Box die letzten Ereignisse (`/etc/rc.d/K20vp-wartung`) |
 | `/etc/vp-wartung/keys` | eigenes tmpfs (128 KiB, nur root) mit der Schlüsseldatei. Nicht unter `/tmp`: Dropbear lehnt eine Schlüsseldatei unter einem Verzeichnis ab, das alle beschreiben dürfen |
-| `/tmp/vp-wartung` | Arbeitsstand des Abholers: je Schlüssel die Frist in Laufzeit der Box; die Datei `beenden`, solange nach einem gestrichenen Schlüssel noch Sitzungen zu beenden sind |
+| `/tmp/vp-wartung` | Arbeitsstand des Abholers: je Schlüssel die Frist in Laufzeit der Box; die Datei `beenden`, solange nach einem gestrichenen Schlüssel noch Sitzungen zu beenden sind; `frist`, das Lebenszeichen des cron-Laufs |
+| `/etc/vp-wartung/ereignisse` | die [Ereignisliste](#protokoll-der-box-wer-wann-auf-einer-box-war) im Flash: wann welcher Fenster-Schlüssel kam und ging, jede Anmeldung durch den Tunnel, jedes Ende einer Sitzung. Höchstens 250 Zeilen, nie ein Schlüssel |
 | `/etc/config/vp-wartung` | Server (`10.10.32.1`), Port (`8022`), Schnittstelle; wahlweise `warte` |
 | `/etc/nftables.d/20-vp-wartung.nft` | zwei eigene Firewall-Ketten: SSH 2222 nur aus den Tunneln, die Anfrage nach Schlüsseln nur durch den Tunnel |
 
 - **Die UCI-Instanz `dropbear.vp_wartung` entfällt.** Das Startskript von OpenWrt kennt `-D` nicht, deshalb startet ein eigenes Startskript die Instanz. Sie läuft nur, solange der Tunnel eine Adresse hat.
 - **Was dauerhaft in `/etc/dropbear/authorized_keys` steht, gilt im Tunnel weiter.** Der Abholer liest die Datei nur und schreibt ihre Zeilen vor die Fenster-Schlüssel. Eine neue Zeile dort gilt im Tunnel nach spätestens einer Minute. Port 22 im LAN ist unberührt. Was dort stehen soll: [ein Notfall-Schlüssel](#dauerhafte-schlüssel-ein-notfall-schlüssel).
 - **Nur RAM.** Ein Neustart der Box löscht jeden Fenster-Schlüssel; die Box holt ihn von selbst wieder, solange das Fenster offen ist. Ohne das tmpfs schreibt der Abholer nichts.
-- **Was ein Update der Box übersteht:** `sysupgrade -l | grep -E 'vp-wartung|service-tunnel-watch'` nennt sieben Zeilen (an der Labor-Mango so gelesen; mit dem Beenden der Sitzungen kam keine Datei dazu): `/etc/config/vp-wartung`, `/etc/init.d/vp-wartung`, `/etc/nftables.d/20-vp-wartung.nft`, `/etc/rc.d/S60vp-wartung`, `/etc/wireguard/vp-wartung.key`, `/usr/libexec/vp-edge-light/service-tunnel-watch.sh` und `/usr/libexec/vp-wartung/schluessel-holen.sh`. Die Schlüsseldatei der Fenster unter `/etc/vp-wartung/keys` steht nicht darin, auch nicht bei offenem Fenster: Sie liegt im tmpfs, und ein Fenster-Schlüssel kommt so nie mit in ein Update.
+- **Was ein Update der Box übersteht:** `sysupgrade -l | grep -E 'vp-wartung|service-tunnel-watch'` nennt neun Zeilen: `/etc/config/vp-wartung`, `/etc/init.d/vp-wartung`, `/etc/nftables.d/20-vp-wartung.nft`, `/etc/rc.d/S60vp-wartung`, `/etc/wireguard/vp-wartung.key`, `/usr/libexec/vp-edge-light/service-tunnel-watch.sh` und `/usr/libexec/vp-wartung/schluessel-holen.sh` (diese sieben an der Labor-Mango so gelesen), seit dem 12.10.2026 dazu `/etc/rc.d/K20vp-wartung` und die Ereignisliste `/etc/vp-wartung/ereignisse` (beide im Container belegt, die Liste erst, sobald es ein Ereignis gab). Die Einstellung `cronloglevel` steht in `/etc/config/system` und bleibt ebenfalls. Die Schlüsseldatei der Fenster unter `/etc/vp-wartung/keys` steht nicht darin, auch nicht bei offenem Fenster: Sie liegt im tmpfs, und ein Fenster-Schlüssel kommt so nie mit in ein Update.
 - **Eine Sitzung endet mit dem Fenster, an zwei Schranken** (Entscheid vom 10.10.2026): Der Wartungsserver trennt den Weg, und die Box beendet die Sitzungen, die mit dem gestrichenen Fenster-Schlüssel begonnen wurden. Sitzungen mit einem dauerhaften oder einem anderen, noch gültigen Fenster-Schlüssel bleiben; eine, die sich keinem gültigen Schlüssel zuordnen lässt, endet dabei ebenfalls. Die Fälle, die Zuordnung und was „beenden“ heißt: [Fernwartung](../../docs/fernwartung.md#was-mit-einer-laufenden-anmeldung-geschieht).
 - **Die Marke in der Schlüsseldatei.** Der Abholer schreibt hinter jeden Schlüssel `vpf-<Kennzahl>` (Fenster) oder `vpd-<Kennzahl>` (dauerhaft), bei einer dauerhaften Zeile vor deren Kommentar; `/etc/dropbear/authorized_keys` selbst bleibt unberührt. Dropbear gibt nur das **erste** Wort hinter dem Schlüssel als `SSH_PUBKEYINFO` an die Prozesse der Sitzung weiter, und nur wenn es aus Buchstaben, Ziffern und `.,_-+@` besteht. Wer die Zeile anders aufbaut, nimmt dem Abholer die Zuordnung: Dann endet jede Sitzung beim nächsten Streichen, auch die mit dauerhaftem Schlüssel.
 - **Eine Box mit älterem Skript** streicht nur den Schlüssel; der Anmeldeprozess bleibt bis zu 15 Minuten stehen (Dropbear `-K 300`: nach drei unbeantworteten Lebenszeichen `Exit … Keepalive timeout` im Log). Der Wechsel: [Ausrollen](#sitzungen-beenden-ausrollen-je-box).
@@ -209,16 +210,108 @@ Entscheid des Kapitäns vom 09.10.2026, Schritt 3 von [Fernwartung, Anmeldung an
 Nachsehen auf der Box:
 
 ```sh
-/usr/libexec/vp-wartung/schluessel-holen.sh status   # Abholer, letzte Antwort, Zugang und Restlaufzeit je Fenster; nie ein Schlüssel
-logread -e vp-wartung                                # wann welcher Fenster-Schlüssel kam und ging, welche Sitzung die Box beendet hat
-logread -e dropbear | grep 'Pubkey auth'             # jede Anmeldung mit Fingerabdruck und Absender
-logread -e dropbear | grep 'Terminated by signal'    # jede von der Box beendete Sitzung mit Absender
+/usr/libexec/vp-wartung/schluessel-holen.sh status   # Abholer, letzte Antwort, Zugang und Restlaufzeit je Fenster, der cron-Lauf, die letzten zehn Ereignisse; nie ein Schlüssel
+/usr/libexec/vp-wartung/schluessel-holen.sh ereignisse   # die ganze Ereignisliste: wer wann auf der Box war (übersteht einen Neustart)
+logread -e vp-wartung                                # die letzten Stunden: wann welcher Fenster-Schlüssel kam und ging, welche Sitzung die Box beendet hat, Meldungen des Abholers
+logread -e dropbear | grep 'Pubkey auth'             # die letzten Stunden: jede Anmeldung mit Fingerabdruck und Absender, auch die an Port 22 im LAN
+logread -e dropbear | grep 'Terminated by signal'    # die letzten Stunden: jede von der Box beendete Sitzung mit Absender
 awk '{ print $1, $3, $4 }' /etc/vp-wartung/keys/authorized_keys   # Art, Marke und Kommentar je Zeile; nie der Schlüssel
 ```
 
-`status` nennt auch die Sitzungen im Tunnel, gezählt nach der Art ihres Schlüssels: `Sitzungen im Tunnel: 2 - dauerhafter Schluessel 1, Fenster-Schluessel 1, gestrichener Fenster-Schluessel 0, nicht zuzuordnen 0`.
+`status` nennt auch die Sitzungen im Tunnel, gezählt nach der Art ihres Schlüssels: `Sitzungen im Tunnel: 2 - dauerhafter Schluessel 1, Fenster-Schluessel 1, gestrichener Fenster-Schluessel 0, nicht zuzuordnen 0`. Darunter stehen der cron-Lauf (`zuletzt vor … s` oder `AUSGEBLIEBEN seit … s`) und die letzten zehn Zeilen der Ereignisliste.
 
 Meldet `status` „seit dem Start keine“ gültige Antwort, obwohl `ping 10.10.32.1` geht, gibt der Wartungsserver keine Schlüssel aus: Dort ist `VP_TUNNEL_SCHLUESSEL_PORT` nicht gesetzt, oder der Dienst hat keinen frischen Soll-Stand ([Tunnel-Dienst](../../services/tunnel-dienst/README.md#schlüsselausgabe)).
+
+#### Protokoll der Box: wer wann auf einer Box war
+
+Entscheid des Kapitäns vom 12.10.2026, nach dem Befund vom 11.10.: Eine Probe an der Labor-Mango war neun Stunden später an der Box nicht mehr belegbar. Der Protokollspeicher der Box (`logread`) liegt im RAM, fasst 128 KiB (`system.log_size`) und überschreibt das Älteste.
+
+**Was ihn gefüllt hat**, gemessen an der Labor-Mango am 12.10.2026 (nur gelesen): 805 Zeilen, die älteste 3 h 31 min alt.
+
+| Quelle | Zeilen | Anteil am Speicher | Kommt an jeder Box? |
+|---|---|---|---|
+| cron: eine Zeile je Start eines Zeitauftrags (`crond[…]: USER root pid … cmd …`) | 467 | 39 % | ja, an jeder Box mit Wartungstunnel: `schluessel-holen.sh frist` und `wireguard_watchdog` jede Minute, `service-tunnel-watch.sh` alle fünf Minuten, zusammen 132 Zeilen je Stunde |
+| Edge-Light-Programm: `enrollment: cannot reach the portal for CSR upload; retrying` | 211 | 47 % | nein. Die Warnung kommt nur, solange eine Box **noch kein Zertifikat hat und das Portal nicht erreicht**, dann nach kurzem Anlauf jede Minute (`internal/enroll`, Abstand 10 bis 60 s). Die Labor-Mango ist nicht gekoppelt, und ihre Portal-Adresse zeigt absichtlich ins Leere (`http://127.0.0.1:9`). Eine gekoppelte Box fragt gar nicht mehr; eine neue Box, die das Portal erreicht, wartet still auf die Kopplung |
+| Dropbear: Anmeldungen | 124 | 12 % | nein: 40 der 41 Anmeldungen kamen von der Arbeitsmaschine an Port 22 (Proben), eine durch den Tunnel |
+| `vp-wartung` | 3 | unter 1 % | ja, nur bei einem Ereignis |
+
+**Was seit dem 12.10. gilt**, für eine Box, auf der `service-tunnel.sh` ab diesem Stand gelaufen ist:
+
+- **cron protokolliert die Starts seiner Zeitaufträge nicht mehr.** Das Skript setzt `system.cronloglevel` auf `9`, wenn die Einstellung noch nicht gesetzt ist. Eine Einstellung, die schon jemand gewählt hat, bleibt; das Skript sagt es dann. Mit dem letzten Tunnel (`abbauen`) nimmt das Skript die `9` wieder weg.
+- **Das trifft alle Zeitaufträge der Box,** nicht nur die der Fernwartung: cron kennt die Stufe nur für sich als Ganzes. Heute stehen in der crontab einer Box nur die drei Zeilen dieses Skripts.
+
+| Im Protokoll der Box | vorher | jetzt |
+|---|---|---|
+| Start eines Zeitauftrags (`USER root pid … cmd …`) | jede Minute | nicht mehr |
+| ein Auftrag läuft noch vom vorigen Mal (`process already running`) | ja | nicht mehr |
+| Fehler von cron selbst: unlesbare Zeile der crontab (`parse error at …`), Start gescheitert (`can't execute`, `vfork`), Zeitsprung | ja | ja |
+| ein Auftrag endet mit Fehler oder sein Programm fehlt | nein, cron hat das nie protokolliert | nein |
+| der cron-Lauf der Fenster-Schlüssel bleibt aus (crontab-Zeile weg, cron steht, Lauf hängt oder scheitert) | nein | **ja:** `vp-wartung: FEHLER: der cron-Lauf (frist) ist seit … s ausgeblieben`, und wenn er wiederkommt |
+
+- **Ein Zeitauftrag meldet sein Ausbleiben selbst.** Jeder Lauf `frist` legt ein Lebenszeichen ab (`/tmp/vp-wartung/frist`, Laufzeit der Box). Ist es älter als 180 s, meldet es der Abholer einmal im Protokoll, und `status` zeigt `AUSGEBLIEBEN`. Die beiden Wächter des Tunnels melden wie bisher, wenn sie eingreifen. **Wer einen weiteren Zeitauftrag auf die Box legt,** lässt ihn seine Fehler selbst mit `logger` melden: cron tut es nicht.
+- **Die Warnung des Programms zur Anmeldung am Portal bleibt, wie sie ist.** Sie steht im gemeinsamen Go-Code von Edge Light und Docker-Box und trifft nur eine ungekoppelte Box ohne Portal. An der Labor-Mango reicht `logread` damit auch künftig nur rund sechs Stunden zurück. Wie viel eine gekoppelte Box im Betrieb protokolliert, ist nicht gemessen.
+
+**Die Ereignisliste** (`/etc/vp-wartung/ereignisse`) hängt deshalb nicht daran, wie lange der Protokollspeicher reicht. Der cron-Lauf des Abholers übernimmt jede Minute, was an dessen Ende zur Fernwartung neu steht, im Wortlaut und mit der Zeit des Protokolls:
+
+| Ereignis | Zeile (gekürzt) |
+|---|---|
+| Schlüssel eines Fensters angekommen, gestrichen | `vp-wartung: Fenster-Schluessel jetzt: <Zugang> …` und `… jetzt: keine` |
+| Anmeldung durch einen Wartungstunnel | `dropbear[<Prozess>]: Pubkey auth succeeded for 'root' with ssh-rsa key SHA256:<Fingerabdruck> from <Absender>:<Port>` |
+| Sitzung von der Box beendet, und warum | `vp-wartung: Sitzung beendet (Dropbear-Prozess <Prozess>): ihr Fenster-Schluessel ist gestrichen` |
+| Ende einer Sitzung, und warum | `dropbear[<Prozess>]: Exit (root) from <<Absender>:<Port>>: Terminated by signal` (oder `Disconnect received`, `Keepalive timeout` …) |
+
+- **Wer es war:** Der Zugang steht in der Zeile des Fenster-Schlüssels, der Fingerabdruck in der Zeile der Anmeldung. Das Portal zeigt denselben Fingerabdruck am Zugang ([Fernwartung](../../docs/fernwartung.md#anmeldung-an-der-box-fenster-schlüssel)). Zusammen gehören die Zeilen mit derselben Prozessnummer.
+- **Nie ein Schlüssel.** Übernommen werden nur diese vier Arten von Zeilen; eine Zeile, in der ein Schlüssel steht, nie.
+- **Nur durch einen Tunnel:** Eine Anmeldung zählt, wenn ihr Absender aus den erlaubten Netzen eines Wartungstunnels kommt (`allowed_ips`, am Wartungsserver `10.10.32.0/24`). Anmeldungen an Port 22 im LAN stehen nicht darin, abgewiesene Versuche auch nicht; beides bleibt für Stunden in `logread`.
+- **Feste Obergrenze:** höchstens 250 Zeilen zu höchstens 400 Zeichen, also unter 100 KB. Käme die 251. dazu, bleiben die neuesten 200.
+- **Wie weit sie zurückreicht:** nach Ereignissen, nicht nach Zeit. Eine Sitzung im Fenster schreibt vier bis sechs Zeilen (Schlüssel gekommen, Anmeldung, von der Box beendet, Ende, Schlüssel gestrichen). Das sind mindestens die letzten rund 35 bis 50 Sitzungen, an einer Kundenbox mit wenigen Wartungen im Monat also Jahre. Wer in einem offenen Fenster in einer Schleife anmeldet, verdrängt die Geschichte: Jede Anmeldung kostet zwei Zeilen.
+- **Im Flash, geschrieben nur bei einem Ereignis.** Ohne Fernwartung schreibt die Box nichts; ein Lauf ohne neues Ereignis lässt die Datei unberührt. Beim Herunterfahren der Box (`reboot`) sichert das Startskript, was seit dem letzten cron-Lauf geschah.
+- **Gelesen werden nur die letzten 200 Zeilen des Protokollspeichers,** mit 5 s Zeitgrenze, nie der ganze Speicher: Zwei Leser, die ihn zugleich ganz lesen, lassen den Protokolldienst der Box neu starten ([unten](#proben-von-der-box-busybox-unter-2512)). Schreibt die Box in einer Minute mehr als 200 Zeilen, kann der Liste deshalb ein Ereignis fehlen. Beim ersten Lauf nach dem Ausrollen kommt in die Liste, was in diesen 200 Zeilen steht.
+
+| Die Liste … | |
+|---|---|
+| übersteht | einen Neustart der Box, einen Stromausfall (bis auf die letzte Minute davor), ein `sysupgrade` (steht in `/etc/sysupgrade.conf`), ein Update des Edge-Light-Programms (das berührt sie nie), einen erneuten Lauf von `service-tunnel.sh` |
+| übersteht nicht | `service-tunnel.sh <ziel> abbauen wg_wartung`, `VP_SERVICE_SCHLUESSEL=aus` und den Rückfall, wenn die Anmelde-Instanz nicht startet: Dann räumt das Skript die Fenster-Schlüssel samt Liste ab. Ebenso nicht ein Zurücksetzen der Box auf Werkseinstellungen. Wer root auf der Box ist, kann sie ändern |
+| reicht nicht über die Box hinaus | Portal und Wartungs-VM erfahren von einer Anmeldung nichts. Die VM behält dauerhaft nur ihre Seite (Journal: Fenster geöffnet und geschlossen, Schlüssel ausgegeben), das Portal sein Protokoll der Fenster |
+
+**Abgewogen:**
+
+| Weg | Warum (nicht) |
+|---|---|
+| größerer Protokollspeicher (`log_size`) | hilft nur, solange nichts anderes viel schreibt, und reicht nie fest zurück: An der Labor-Mango brauchte eine Woche rund 4 MB RAM. Weg nach jedem Neustart. Nicht gebaut |
+| eigene Liste im RAM | feste Reichweite, kein Schreiben in den Flash. Aber weg nach einem Neustart, und eine Wartung endet oft mit einem. Nicht gebaut |
+| **eigene Liste im Flash** | feste Reichweite, übersteht den Neustart. Abnutzung: wenige hundert Byte je Wartung. Schlimmster Fall, überschlagen und nicht gemessen: Meldet sich jemand im offenen Fenster in einer Schleife an, schreibt die Box die Liste jede Minute neu, rund 40 MB am Tag; verteilt auf den freien Platz wären das Jahre bis zur Grenze des Flash. Platz: unter 100 KB von 4,5 MB freiem Overlay. **Gebaut** |
+
+#### Protokoll und Ereignisliste: ausrollen je Box
+
+Wie beim [Beenden der Sitzungen](#sitzungen-beenden-ausrollen-je-box): ein erneuter Lauf von `service-tunnel.sh` mit der Befehlszeile aus dem Portal, je Box. Portal, API und Tunnel-Dienst ändern sich nicht. **An keinem Gerät ausgeführt;** jede Box nur mit dem Wort des Kapitäns.
+
+| | Vorher | Nachher |
+|---|---|---|
+| `uci -q get system.@system[0].cronloglevel` | leer | `9` |
+| `logread \| grep -c 'crond.*USER root'`, einige Minuten nach dem Lauf | wächst um 132 je Stunde | wächst nicht mehr |
+| `service-tunnel.sh <ziel> status` | keine Zeile zu cron und zu Ereignissen | `cron protokolliert die Starts der Zeitauftraege: nein (cronloglevel 9 …)`, `cron-Lauf (streicht Verfallenes, jede Minute): zuletzt vor … s`, `Ereignisse der Fernwartung: …` mit den letzten zehn Zeilen |
+| `ls -l /etc/vp-wartung/ereignisse /etc/rc.d/K20vp-wartung` | beide fehlen | der Verweis steht; die Liste entsteht mit dem ersten Ereignis |
+| letzte Zeilen des Skripts | – | `Protokoll der Box: cron protokolliert die Starts … nicht mehr` und `nachlesen: wer wann angemeldet war …` |
+| eine Anmeldung von vor zwei Tagen | nicht mehr zu finden | steht in `status` oder `schluessel-holen.sh ereignisse` |
+
+**Schritte für die Labor-Mango** (`edge-5t2dcy6`, über `root@192.168.0.46`, Port 22):
+
+1. Vorher festhalten: `service-tunnel.sh root@192.168.0.46 status`, dazu auf der Box `uci -q get system.@system[0].cronloglevel` (leer) und `logread | grep -c 'crond.*USER root'`.
+2. Die Befehlszeile aus dem Portal ausführen: `VP_SERVICE_PUBKEY='<server>' edge-light/openwrt/service-tunnel.sh root@192.168.0.46 <adresse>`. Der Lauf fasst den Tunnel nicht an (`Tunnel unveraendert`); er tauscht Abholer und Startskript, startet Lauscher, Abholer und cron neu. Eine offene Sitzung im Tunnel übersteht ihn.
+3. `status`: die drei neuen Zeilen stehen da. Was zur Fernwartung noch im Protokollspeicher steht, hat der erste Lauf in die Liste übernommen.
+4. Nach fünf Minuten: Die Zahl aus Schritt 1 ist nicht gewachsen.
+5. Probe: im Portal ein Fenster für den eigenen Zugang öffnen, anmelden, schließen. `status` zeigt die vier bis sechs Zeilen dazu.
+6. Am nächsten Tag und nach einem `reboot` der Box: `status` zeigt dieselben Zeilen noch.
+
+**Eine Box mit älterem Skript** behält ihr Verhalten: cron protokolliert jeden Start, es gibt keine Liste, und `status` nennt die drei Zeilen nicht. Daran erkennt man den Stand. Fenster-Schlüssel und das Beenden der Sitzungen sind davon unberührt.
+
+**Rückweg:** auf der Box `uci delete system.@system[0].cronloglevel; uci commit system; /etc/init.d/cron restart`; dann protokolliert cron wieder jeden Start. Die Liste stört nicht, wenn sie bleibt. Ganz zurück geht es mit `service-tunnel.sh` aus dem Stand davor (`git show 6c9eb2861:edge-light/openwrt/…`); dessen Lauf lässt `cronloglevel`, die Liste und `/etc/rc.d/K20vp-wartung` stehen, sie sind von Hand zu entfernen.
+
+| Box | Stand | Ausrollen |
+|---|---|---|
+| Labor-Mango `edge-5t2dcy6` | am Wartungsserver, Abholer vom 11.10.2026 (beendet Sitzungen), `cronloglevel` nicht gesetzt (gelesen am 12.10.2026) | die Schritte oben |
+| Pilot `edge-zay5sdd` | laut dieser Datei noch im alten Service-VPN, ohne Fenster-Schlüssel | mit dem [beaufsichtigten Wechsel](#wechsel-des-piloten-auf-den-wartungsserver-beaufsichtigt-noch-nicht-ausgeführt). Ein Lauf mit `VP_SERVICE_ZIEL=alt` stellte dort nur die Zeilen von cron ab; eine Liste gibt es ohne Fenster-Schlüssel nicht |
 
 #### Sitzungen beenden: ausrollen je Box
 
@@ -278,14 +371,23 @@ Am Mango gemessen (25.12.5, 09.10.2026):
   - zwei Techniker mit je einem Fenster: Eines endet, die Sitzung des anderen und die mit dem dauerhaften Schlüssel bleiben; eine Weiterleitung ohne Prozess endet und steht sofort wieder; derselbe Schlüssel zugleich dauerhaft und im Fenster bleibt (4d);
   - Neustart der Box mitten im Fenster, danach Neustart von Lauscher und Abholer (6); Abräumen der Instanz (10, 12);
   - Ausrollen über das Skript von vorher mit offenen Sitzungen, samt Gegenprobe: Mit dem Skript von vorher bleibt der Anmeldeprozess stehen, und in der Lücke läuft die Sitzung wieder (11b).
+- **Im selben Container: Protokoll der Box und Ereignisliste** (12.10.2026, Schritte 0, 1, 5b, 6, 6b, 10 und 12). Mit dem Skript von vorher sind diese Prüfungen rot:
+  - vorher protokolliert cron jeden Start; nach dem Lauf des Skripts über mehrere Minuten keinen mehr, auch nicht nach einem Neustart von cron;
+  - die Ereignisse einer früheren Sitzung stehen in der Liste und in `status`, nachdem der Protokollspeicher mit so vielen Zeilen überschrieben wurde, wie cron früher in Stunden schrieb (der Protokolldienst lief dabei durch); jedes genau einmal; kein Schlüssel, keine Anmeldung an Port 22; ein Lauf ohne neues Ereignis ändert die Datei nicht;
+  - die Liste übersteht den Neustart der Box; der Schritt, den die Box beim Herunterfahren ausführt, bringt die Anmeldung von eben noch hinein;
+  - 320 Ereignisse dazu: nie mehr als 250 Zeilen, die neuesten bleiben, eine überlange Zeile wird gekürzt;
+  - eine unlesbare Zeile der crontab meldet cron weiter; fehlt die Zeile des Laufs, meldet der Abholer das Ausbleiben und die Rückkehr;
+  - Abräumen und Abbauen entfernen Liste und Verweis, mit dem letzten Tunnel ist `cronloglevel` wieder ungesetzt.
 - **An der Labor-Mango belegt** (`edge-5t2dcy6`, OpenWrt 25.12.5, gegen den echten Wartungsserver und das echte Portal):
   - Einrichten am 09.10.2026: Das Startskript hängt das tmpfs selbst ein (`vp-wartung /etc/vp-wartung/keys tmpfs … size=128k,mode=700`), darunter liegt im Flash nichts; beide Firewall-Ketten stehen vor denen von fw4; Abholer, Startskript und cron-Zeile laufen; Dropbear nimmt die Schlüsseldatei im tmpfs an; eine RSA-Anmeldung mit 4096 Bit dauert 1,2 bis 2,0 s; die Liste von `sysupgrade -l` (sieben Zeilen, siehe oben); WAN und LAN ohne Unterbrechung.
   - Abnahme durch den Kapitän am 10.10.2026 („hat alles funktioniert“), nach den fünf Punkten des Abnahmeplans: Anmeldung im offenen Fenster, ohne dass der Schlüssel des Technikers dauerhaft auf der Box liegt; nach dem Schließen ist der Fenster-Schlüssel von der Box gestrichen; nach einem Neustart der Box im Fenster ist er weg und kommt von selbst wieder; bei angehaltenem Tunnel-Dienst verfällt er zur Frist; die Dateien stehen in der Liste von `sysupgrade -l`.
   - Dabei beobachtet (10.10.2026, UTC): Anmeldung im Fenster 17:13:48, Dienst auf der VM angehalten 17:15:59, Fenster-Schlüssel von der Box gestrichen 17:40:38, der Anmeldeprozess auf der Box endete 17:55:37 mit „Keepalive timeout“. Das sind genau 15 Minuten nach dem Ende des Fensters: Der Server hatte den Weg getrennt, der Prozess wartete nur noch auf sein Lebenszeichen.
 - **Einschränkung der Labor-Mango:** Die Arbeitsmaschine erreicht sie über ihren WAN-Anschluss (`192.168.0.46`, Port 22 nur wegen der Regel `Allow-SSH-WAN`); ihr LAN ist `10.213.0.0/24`, am LAN-Anschluss hängt kein Gerät. Port 2222 war von der WAN-Seite schon vorher abgewiesen. Dass die neue Kette abweist, zeigt dort nur ihr Zähler.
 - **An der Labor-Mango nur gelesen** (10.10.2026, nichts geändert), für die Zuordnung von Sitzung und Schlüssel: `dropbear -V` nennt 2025.89; die eigene Anmeldung an Port 22 trägt `SSH_PUBKEYINFO` mit dem ersten Wort des Kommentars ihres Schlüssels; `/proc/<pid>/environ` ist lesbar; `pgrep -P`, `sha256sum`, `flock`, `ubus` und `jsonfilter` sind da; procd und die PID-Datei nennen denselben Lauscher.
+- **An der Labor-Mango nur gelesen** (12.10.2026, nichts geändert), für das Protokoll der Box: Größe und Alter des Protokollspeichers und was ihn füllt ([oben](#protokoll-der-box-wer-wann-auf-einer-box-war)); `crond -f -c /etc/crontabs -l 7`, `cronloglevel` nicht gesetzt; die drei Zeilen der crontab; `logread` und das Auswerten aller 805 Zeilen brauchen dort zusammen 0,5 s (der Abholer liest nur 200); `flock`, `tail`, `wc` sind da, `base64` und `timeout` nicht; freies Overlay 4,5 MB. Dort läuft der Abholer vom 11.10.2026, und das Protokoll nennt am 12.10. um 07:07:48 UTC eine Sitzung, die die Box mit ihrem Fenster-Schlüssel beendet hat (`Sitzung beendet … gestrichen`, dazu `Terminated by signal`).
 - **Noch nicht belegt:**
-  - das Beenden der Sitzungen auf einer echten Mango: Das Skript ist an keinem Gerät ausgerollt. Offen sind damit die Laufzeit des cron-Laufs auf dem MIPS-Prozessor und das Verhalten über Tage;
+  - Protokoll und Ereignisliste auf einer echten Mango: Das Skript ist an keinem Gerät ausgerollt. Offen sind: wie weit `logread` ohne die Zeilen von cron zurückreicht; die Liste über Tage und über einen echten `reboot` (im Container ist der Neustart ein hartes Ende); die Rechenzeit des Lesens je Minute; das Schreiben auf dem JFFS2 der Mango; ob der Protokolldienst der Mango bei zwei gleichzeitigen Lesern genauso neu startet wie im Container (nicht ausprobiert: Es löschte ihr Protokoll);
+  - das Beenden der Sitzungen über Tage und die Laufzeit des cron-Laufs auf dem MIPS-Prozessor;
   - Port 2222 aus dem LAN einer Mango und bei Tunnel unten (`ifdown wg_wartung`); im Container ist beides belegt;
   - ein echtes `sysupgrade`. Danach fehlen ohnehin `kmod-wireguard` und `wireguard-tools`, bis sie neu installiert sind;
   - die Fenster-Schlüssel über einen fremden Anschluss, über Mobilfunk und über Tage;
@@ -300,6 +402,8 @@ Am Mango gemessen (25.12.5, 09.10.2026):
 ( nc <adresse> <port> </dev/null >/tmp/probe.out 2>&1 & p=$!; sleep 3; kill $p 2>/dev/null )
 head -c 40 /tmp/probe.out; rm -f /tmp/probe.out
 ```
+
+**Nie zwei `logread` zugleich.** Lesen zwei Aufrufe den vollen Protokollspeicher gleichzeitig, startet der Protokolldienst (`logd`) neu, und das ganze Protokoll ist weg. Im Container unter 25.12.5 gemessen (12.10.2026): 98 von 100 Versuchen mit zwei vollen Lesern, auch mit `-e`; kein Neustart, wenn einer der beiden höchstens die letzten 300 Zeilen liest (`logread -l 300`), mit 400 Zeilen wieder fast immer. An einer Mango nicht ausprobiert. Wer nachsieht, während ein anderer oder ein Skript liest, nimmt `logread -l 200`; für die Fernwartung reicht `status`, das die Ereignisliste zeigt und selbst nur 200 Zeilen liest.
 
 Den Tunnel prüft von der Box aus `ping 10.10.32.1`. TCP von der Box zum Server oder zu einem Techniker verwirft der Wartungsserver immer; das ist kein Fehler des Tunnels.
 
@@ -378,7 +482,7 @@ NOR-Flash verträgt Dauerschreiben schlecht. Deshalb liegen im RAM (`boot.sh`, `
 - `ocpp-journal` – OCPP-Ereignisse vor dem Hochladen,
 - `ota` – der Core schreibt `ota/core-signal.json` **alle 2 s**; Stufe 1 hält dort nichts Dauerhaftes (Stufe 2 muss Trust-Set und `current.json` in den Flash legen).
 
-Im Flash bleiben Identität, Zertifikat, Auswahl, Freigaben, Fahrplan-Cache (alle 15 min) und das OCPP-Befehlsbuch (Sicherheit: höchstens einmal ausführen, auch über einen Neustart).
+Im Flash bleiben Identität, Zertifikat, Auswahl, Freigaben, Fahrplan-Cache (alle 15 min) und das OCPP-Befehlsbuch (Sicherheit: höchstens einmal ausführen, auch über einen Neustart). Außerhalb des Programms schreibt die Fernwartung ihre [Ereignisliste](#protokoll-der-box-wer-wann-auf-einer-box-war) in den Flash: nur, wenn ein Ereignis dazukam, höchstens 250 Zeilen.
 
 **Folge:** Ein Stromausfall verliert Messwerte, die noch nicht in der Cloud sind, und noch nicht hochgeladene OCPP-Ereignisse. Bei einem Cloud-Ausfall puffert die Box weiter, solange sie läuft. Die Lücke wird heute nicht als solche gemeldet – das gehört in Stufe 2 (Lückenmeldung beim Start, wenn der Puffer leer statt erwartet gefüllt ist).
 
