@@ -440,7 +440,16 @@ ist kein Bild vom Merge-Commit auf `main`.
 dieses Paar ist am selben Tag mit `--strecke` gefahren, Box und Cloud aus demselben Commit
 (`nw3-protokoll-edge-2026.10.0.json`): 13 grün, 0 rot, 0 Befund. `paare.json` führt es als viertes
 Paar. Von den zwei Nachzügen oben ist damit `paare.json` erledigt; `KATALOGSTAND` wird mit der
-Nachpflege (PR 1488) auf `2026.09.23.3` gesetzt. Der nächste Tag heißt `edge-2026.10.1`.
+Nachpflege (PR 1488) auf `2026.09.23.3` gesetzt.
+
+**Das Folge-Release `edge-2026.10.1` ist am 12.10.2026 auf `main` `c5b32cba7` getaggt**
+(Speicher-Korrekturen UE-1 bis UE-4 im Go-Core). NW-3 für dieses Paar ist am selben Tag mit
+`--strecke` gefahren (`nw3-protokoll-edge-2026.10.1.json`): 13 grün, 0 rot, 0 Befund; `paare.json`
+führt es als fünftes Paar, `KATALOGSTAND` bleibt `2026.09.23.3`. Weil die dreizehn Punkte das
+Speicher-Verhalten nicht berühren, lief dazu der Zusatzlauf „kurzer Verbraucher“
+(`tools/nw3-box-image/kurzer-verbraucher.sh`, Ergebnisse `nw3-zusatz-kurzer-verbraucher-*.json`):
+die Lade-Viertelstunde ist an 10.1 grün und in der Gegenprobe an 10.0 rot. Der nächste Tag heißt
+`edge-2026.10.2`.
 
 ### 2.9 Zwischen Merge und Fenster
 

@@ -97,7 +97,7 @@ Protokoll des Laufs vom 19.09.2026 gegen `origin/uems` `2edc6e1d`, mit
 [`docs/rollout/nw3-protokoll-edge-2026.09.4.json`](../../rollout/nw3-protokoll-edge-2026.09.4.json)
 — **12 grün, 0 rot, 1 Befund, 0 nicht gefahren**. Jeder Punkt trägt seinen Beleg
 (die Nachricht, die die Box wirklich gesendet hat). Die Naht zur api-Antwort für
-Punkt 7 fährt `Nw3AusgeliefertesBoxImageTest` (seit dem 10.10.2026 7 Fälle, vier Stände).
+Punkt 7 fährt `Nw3AusgeliefertesBoxImageTest` (seit dem 12.10.2026 8 Fälle, fünf Stände).
 
 Protokoll des Laufs vom 26.09.2026 gegen `origin/uems` `f694b525` (PR 1287), mit
 `--strecke`:
@@ -165,6 +165,32 @@ Neuerungen des Release kommen am SunSpec-Simulator nicht vor: netzseitiger Dross
 `grid_target` (Deye P3/P4), Netzregler-Anzeige auf :8484, Fernwartung/Tunnel, Techniker-Zugang.
 `KATALOGSTAND` in `tools/edge-simulator/uems_szenarien.py` wird mit der Nachpflege (PR 1488) auf
 `2026.09.23.3` gesetzt (Drehbuch §2.8 „beim Taggen nachziehen“).
+
+Protokoll des Laufs vom 12.10.2026 für das Release-Paar `edge-2026.10.1` (Tag auf `main`
+`c5b32cba7`, Box und Cloud aus demselben Commit), mit `--strecke`:
+[`docs/rollout/nw3-protokoll-edge-2026.10.1.json`](../../rollout/nw3-protokoll-edge-2026.10.1.json)
+— **13 grün, 0 rot, 0 Befund, 0 nicht gefahren**, dasselbe Bild wie 10.0 (Katalog
+`2026.09.23.3`, 7 Umschläge gesendet = 7 Rohzeilen, `supports[]` mit denselben acht Namen).
+`paare.json` führt das Paar als fünftes; `Nw3AusgeliefertesBoxImageTest` hat 8 Fälle, fünf Stände.
+Gegenüber 10.0 ändert sich an den Quellen des Image-Paars allein der Go-Core
+(Speicher-Korrekturen UE-1 bis UE-4, PR 1489/1490; unter `edge-app/nodered` nur die Anleitung
+`CONTROL-BENCH.md`). Die Fernwartungs-Ereignisliste (PR 1496) liegt unter `edge-light/openwrt`
+und gehört nicht zu diesem Paar.
+
+Die dreizehn Punkte berühren das Speicher-Verhalten nicht. Dafür lief am selben Tag der
+[Zusatzlauf „kurzer Verbraucher“](../../../tools/nw3-box-image/README.md#zusatzlauf-kurzer-verbraucher)
+je gegen 10.1 und als Gegenprobe gegen 10.0 (`docs/rollout/nw3-zusatz-kurzer-verbraucher-*.json`):
+
+| Fall | `edge-2026.10.0` | `edge-2026.10.1` |
+|---|---|---|
+| Lade-Viertelstunde, 9 Verbraucher | **rot**: Entlade-Sollwert in 25 Takten (bis −1,62 kW), 74,8 Wh aus dem Speicher eingespeist in 182 s | **grün**: kein Entlade-Sollwert, 0 Wh |
+| Ruhe-Viertelstunde, 6 Verbraucher (gemessen, kein Urteil) | 45,5 Wh in 120 s, längste Strecke 41 s | 22,3 Wh in 59 s, längste Strecke 20 s |
+
+Das ist ein Simulatorbeleg an einem Gerät mit reiner Totzeit (12 s), kein Prüflauf je
+Steuerprofil und kein Hardware-Prüfstand. In einer Viertelstunde **ohne** geplantes Laden speist
+der Speicher auch mit 10.1 nach einem kurzen Verbraucher noch ein: die Haltezeit von 60 s gilt
+nur in der Lade-Viertelstunde. In der Ruhe-Viertelstunde stand der Entlade-Befehl nach dem Ende
+des Verbrauchers noch 5 bis 12 s statt 13 bis 46 s - das passt zur schnelleren Rücknahme (UE-2).
 
 ## X2 ist kein Fehlerbild
 

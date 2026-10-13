@@ -71,6 +71,14 @@ class Nw3AusgeliefertesBoxImageTest {
 
     private static final String RELEASE_100 = "edge-2026.10.0";
 
+    /**
+     * Der Stand, den die Box im NW-3-Lauf des Tags vom 12.10.2026 meldete
+     * ({@code docs/rollout/nw3-protokoll-edge-2026.10.1.json}).
+     */
+    private static final String GEMELDETER_STAND_101 = "edge-2026.10.1-c5b32cba7be5";
+
+    private static final String RELEASE_101 = "edge-2026.10.1";
+
     @Test
     void dieAusgelieferteBoxOhneReleaseImRegisterBrauchtDasUpdateJeDatenquelle() throws Exception {
         // Ein Stand, der zu keinem Release des Registers gehört, beweist keine Fähigkeit
@@ -170,6 +178,32 @@ class Nw3AusgeliefertesBoxImageTest {
 
         assertThat(e.faehigkeiten()).extracting(FaehigkeitStatus::vorhanden).containsOnly(true);
         assertThat(e.text()).startsWith("Software " + GEMELDETER_STAND_100 + " · ")
+                .doesNotContain("Update nötig");
+    }
+
+    @Test
+    void dasReleaseMitDenSpeicherKorrekturenAendertAnDerFaehigkeitsaussageNichts() throws Exception {
+        // edge-2026.10.1 (12.10.2026, Speicher-Korrekturen UE-1 bis UE-4 im Go-Core) ist die neueste
+        // ausgelieferte Box. An der Fähigkeitsaussage ändert das Release nichts: über die Tabelle
+        // (ab_release = null) derselbe Satz wie für 10.0, und mit dem gemeldeten `supports[]`
+        // (Punkt 1a des Protokolls, dieselben acht Namen wie 10.0) fehlt der Box nichts.
+        FaehigkeitenErgebnis ohne = DatenquelleRegeln.faehigkeiten(
+                new Stand(GEMELDETER_STAND_101, null, null), tabelle(), List.of());
+        FaehigkeitenErgebnis mit = DatenquelleRegeln.faehigkeiten(
+                new Stand(GEMELDETER_STAND_101, RELEASE_101, null), tabelle(), List.of(RELEASE_101));
+        List<String> gemeldet = List.of("data_sources", "measurement_sample_provenance", "events",
+                "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil",
+                "sprungprobe", "measurement_config_per_component");
+        FaehigkeitenErgebnis gemeldetes = DatenquelleRegeln.faehigkeiten(
+                new Stand(GEMELDETER_STAND_101, null, gemeldet), tabelle(), List.of());
+
+        assertThat(ohne.text()).isEqualTo("Software " + GEMELDETER_STAND_101
+                + " · Update nötig für: Rückmeldung je Datenquelle");
+        assertThat(mit.text()).isEqualTo("Software " + RELEASE_101
+                + " · Update nötig für: Rückmeldung je Datenquelle");
+        assertThat(mit.faehigkeiten()).extracting(FaehigkeitStatus::vorhanden).containsOnly(false);
+        assertThat(gemeldetes.faehigkeiten()).extracting(FaehigkeitStatus::vorhanden).containsOnly(true);
+        assertThat(gemeldetes.text()).startsWith("Software " + GEMELDETER_STAND_101 + " · ")
                 .doesNotContain("Update nötig");
     }
 

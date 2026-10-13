@@ -30,7 +30,7 @@ Welche `(core, palette)`-Paare im Feld laufen, sagt **Q07** des Bestandsblatts
 (`tools/betriebsabfragen/bestand-vor-uems.sql`) — und diese Abfrage fährt allein
 der Betreiber gegen Produktion. `paare.json` trägt darum heute genau die Paare,
 die ohne Q07 belegbar sind: die Release-Tags `edge-2026.09.4`, `edge-2026.09.5`,
-`edge-2026.09.6` und `edge-2026.10.0`. Der
+`edge-2026.09.6`, `edge-2026.10.0` und `edge-2026.10.1`. Der
 Betreiber trägt die Paare seiner Q07-Ausgabe nach oder gibt eine eigene Datei
 mit `--paare`; das Werkzeug fährt sie der Reihe nach und schreibt ein Protokoll
 über alle.
@@ -179,6 +179,74 @@ api-Prozess kommt auch hier nicht vor. Die zwei Stammdatenzeilen, ohne die der
 Writer einen Wert gar nicht annehmen *kann*, stehen in `strecke-seed.sql` mit
 der Codezeile, die sie verlangt.
 
+## Zusatzlauf: kurzer Verbraucher
+
+Die sieben Punkte oben fragen, ob die Box die Nutzlasten der Cloud **erträgt**. Über
+das Regelverhalten des Speichers sagt keiner von ihnen etwas — Punkt 2 belegt nur,
+dass ein Sollwert geschrieben und zurückgelesen wird. Für ein Release, das genau
+dieses Verhalten ändert, gibt es darum einen eigenen Lauf:
+
+```bash
+tools/nw3-box-image/nw3.sh --paare <datei>                 # baut die Bilder des Paars
+tools/nw3-box-image/kurzer-verbraucher.sh --ref edge-2026.10.1 --aus /pfad/laden-neu.json
+tools/nw3-box-image/kurzer-verbraucher.sh --ref edge-2026.10.0 --aus /pfad/laden-alt.json
+tools/nw3-box-image/kurzer-verbraucher.sh --ref edge-2026.10.1 --fall ruhe --aus /pfad/ruhe.json
+```
+
+Er fährt den Fall vom 10.10.2026 in Herzogau, wie ihn der Prüflauf des Tags beschreibt
+(`edge-app/core/internal/agent/surplus_short_consumer_scenario_test.go`): 5 kW PV, ein
+kleiner Überschuss, ein Verbraucher von 2,62 kW für 10 bis 15 s alle ein bis zwei
+Minuten. Die Regel dahinter steht in [`docs/edge-runtime.md`](../../docs/edge-runtime.md)
+(„Kurzer Verbraucher in der Lade-Viertelstunde“).
+
+| Fall | Fahrplan | Urteil |
+|---|---|---|
+| `laden` (Vorgabe) | jede Viertelstunde lädt den Überschuss: +1,3 kW, `charge_from_surplus_only` und `charge_surplus_to_battery` | **grün**, wenn im Fenster kein Entlade-Befehl steht, nichts aus dem Speicher eingespeist wurde, die Box wirklich geladen hat und in jedem Überschuss-Abschnitt mindestens zwei Verbraucher liefen |
+| `ruhe` | jede Viertelstunde plant 0 kW, keine Pflicht | **kein** grün oder rot: hier darf die Box das Defizit decken. Gemessen wird, wie viel der Speicher nach dem Ende des Verbrauchers einspeist und wie lange der Entlade-Befehl noch steht |
+
+Im Fall `laden` kommt der Überschuss in zwei Abschnitten: erst 0,76 kW — die Box lädt
+sichtbar, mit ihrer Reserve von 0,5 kW also 0,26 kW —, dann 0,5 kW. Im zweiten
+Abschnitt steht der Sollwert schon vor dem Verbraucher auf 0, **obwohl** die
+Viertelstunde ein Laden plant. Das ist der Fall, den die Korrektur ausdrücklich nennt:
+maßgeblich ist das geplante Laden, nicht der Befehl, wie er gerade steht.
+
+**Ein Lauf allein beweist die Korrektur nicht.** Er zeigt nur, dass dieser Stand im
+Fall nicht entlädt — das täte auch ein Lauf, in dem die Regel gar nicht scharf ist.
+Die Aussage entsteht aus der **Gegenprobe**: derselbe Lauf gegen den Stand davor muss
+rot sein. Zwei Dinge gehören darum fest zum Lauf:
+
+* Der Fahrplan trägt `effective_floor_soc_pct`. Ohne die Reserve-Angabe der Cloud
+  verweigert die Box die Defizitdeckung in **jedem** Stand
+  (`guards.CoverDeficit`), und der Lauf ist an jeder Box grün — so geschehen beim
+  ersten Versuch am 12.10.2026.
+* Das Fenster trägt mehrere Verbraucher je Abschnitt. Ob der Stand vor der Korrektur
+  bei **einem** Verbraucher entlädt, hängt von der Phasenlage zwischen Verbraucher,
+  Messtakt und Takt der Box ab (am 12.10.2026 bei zwei von vier Verbrauchern des
+  ersten Abschnitts); ein einzelner Verbraucher wäre kein Urteil.
+
+| Glied | im Lauf | Bemerkung |
+|---|---|---|
+| Go-Core, Node-RED-Palette, Broker | **echte Prozesse** | die Bilder, die `nw3.sh` für das Paar gebaut hat |
+| Fahrplan | **festgenagelte Bytes** plus Fall | `docs/contracts/examples/mqtt-schedule.valid.surplus-only-charge.json`; `nutzlast.py fahrplan` setzt Zeiten, Planwert, Pflichten und die Reserve |
+| Gerät | **das Modell des Tags** mit eigener Kurve | `edge/sim/sim-model.js` unverändert; nur der Server ist ersetzt, weil `sunspec-sim.js` PV und Last als Zwei-Minuten-Sinus fest verdrahtet |
+
+Das Gerät folgt einem Sollwert nach 12 s (reine Totzeit, `SIM_FOLLOW_DELAY_S`) und
+meldet alle 5 s (`SIM_MEASURE_INTERVAL_S`) — innerhalb dessen, was die Box für ein Gerät
+ohne Steuerprofil annimmt (15 s / 25 s). Geurteilt wird über die **physikalische
+Wahrheit** des Modells, Sekunde für Sekunde, nicht über die verzögerten Register. Das
+Fenster beginnt 60 s, nachdem der Herzschlag der Box einen Slot des zugestellten
+Fahrplans nennt, und endet zu einer festen Simulatorzeit. Das Ergebnis führt daneben,
+was die Box je Herzschlag über sich sagt (`herzschlag_modi_im_fenster`:
+`deficit_cover` heißt, die Defizitdeckung hat gegriffen).
+
+**Was der Zusatzlauf nicht ist.** Er ist ein Simulatorbeleg an einem Gerät und einem
+Fall. Er ersetzt weder den Pflichtlauf „Überschuss mit kurzen Verbrauchern“ je
+Steuerprofil ([`CONTROL-BENCH.md`](../../edge-app/nodered/CONTROL-BENCH.md)) noch einen
+Hardware-Prüfstand, und er führt kein Urteil in das NW-3-Protokoll ein: die Punkte von
+`nw3.sh` und ihr Zählwerk bleiben, was sie sind. Geprüft ist der Weg, auf dem die Box
+gedämpft selbst regelt; ob sie im Lauf je an das Gerät übergeben hat („Gerät regelt“),
+steht im Ergebnis unter `ems_freigabe_entzogen`.
+
 ## Hausregeln, an die sich der Lauf hält
 
 * **Nie der lokale Stack des Betreibers.** Eigene Compose-Projekte `nw3-<pid>`
@@ -196,7 +264,7 @@ der Codezeile, die sie verlangt.
 | Datei | Aufgabe |
 |---|---|
 | `nw3.sh` | der Lauf: bauen, Stack hoch, die sieben Punkte, Protokoll |
-| `paare.json` | die Paar-Liste (Parameter; heute die vier Tag-Paare 09.4 bis 10.0) |
+| `paare.json` | die Paar-Liste (Parameter; heute die fünf Tag-Paare 09.4 bis 10.1) |
 | `nw3-overlay.yml` | Compose-Überlagerung: lokale Bilder statt Registry-Pull |
 | `nutzlast.py` | die Cloud-Nutzlasten aus den festgenagelten Beispielen |
 | `faehigkeiten.py` | X2: der Satz „Update nötig für: …" zum gemeldeten Stand |
@@ -204,6 +272,9 @@ der Codezeile, die sie verlangt.
 | `nw3-strecke.yml` | die zweite Gruppe: Datenannahme, Redpanda, Writer, TimescaleDB |
 | `strecke-seed.sql` | die zwei Stammdatenzeilen, ohne die der Writer nicht annehmen kann |
 | `strecke_pruefen.py` | gesendet am Draht gegen geschrieben in der Datenbank |
+| `kurzer-verbraucher.sh` | der Zusatzlauf: kurzer Verbraucher in einer Lade- oder Ruhe-Viertelstunde, eigenes Ergebnis |
+| `kurzer-verbraucher-sim.js` | der Szenario-Simulator: das Modell des Tags mit eigener Last- und PV-Kurve |
+| `kurzer_verbraucher_pruefen.py` | das Urteil des Zusatzlaufs aus dem Protokoll des Simulators |
 
 Der Nachweis selbst liegt unter
 [`docs/agents/root/uems-nw3-box-image.md`](../../docs/agents/root/uems-nw3-box-image.md).

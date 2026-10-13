@@ -6,9 +6,10 @@
     "ein PARAMETER des Werkzeugs, kein eingebauter Wert: der Betreiber traegt die",
     "Paare aus seiner Q07-Ausgabe hier ein (oder gibt eine eigene Datei mit --paare).",
     "",
-    "Heute stehen hier die Paare, die ohne Q07 belegbar sind: die letzten vier",
-    "Release-Tags edge-2026.09.4, edge-2026.09.5, edge-2026.09.6 und edge-2026.10.0 (alle",
-    "aus main, je mit eigenem Protokoll unter docs/rollout/nw3-protokoll-<name>.json). Core und",
+    "Heute stehen hier die Paare, die ohne Q07 belegbar sind: die letzten fuenf",
+    "Release-Tags edge-2026.09.4, edge-2026.09.5, edge-2026.09.6, edge-2026.10.0 und",
+    "edge-2026.10.1 (alle aus main, je mit eigenem Protokoll unter",
+    "docs/rollout/nw3-protokoll-<name>.json). Core und",
     "Palette werden GEMEINSAM ausgeliefert (X6), darum tragen beide dasselbe Tag - ein",
     "Paar mit zwei verschiedenen Staenden waere moeglich und das Werkzeug wuerde es",
     "fahren, aber es entstuende nie aus einem regulaeren Release."
@@ -36,7 +37,13 @@
       "name": "edge-2026.10.0",
       "core_ref": "edge-2026.10.0",
       "palette_ref": "edge-2026.10.0",
-      "herkunft": "letztes Release-Tag auf main (10.10., 99944c896, erster Tag mit dem UEMS-Stand und den Deye-Paketen P3/P4); veroeffentlicht, noch auf keiner Box ausgerollt; Q07 nicht gefahren"
+      "herkunft": "Release-Tag auf main (10.10., 99944c896, erster Tag mit dem UEMS-Stand und den Deye-Paketen P3/P4); beim NW-3-Lauf am 10.10. noch auf keiner Box ausgerollt; Q07 nicht gefahren"
+    },
+    {
+      "name": "edge-2026.10.1",
+      "core_ref": "edge-2026.10.1",
+      "palette_ref": "edge-2026.10.1",
+      "herkunft": "letztes Release-Tag auf main (12.10., c5b32cba7, Speicher-Korrekturen UE-1 bis UE-4 im Go-Core); veroeffentlicht, beim NW-3-Lauf am 12.10. noch auf keiner Box ausgerollt; Q07 nicht gefahren"
     }
   ]
 }

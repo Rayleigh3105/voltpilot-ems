@@ -103,11 +103,14 @@ Wer sie als Tor behandelt, baut eine Sperre, die es mit E1 = B nicht gibt.
   bestehenden Realm. Erst Portal/API mit 12 Zeichen, dann die Keycloak-Vorgabe
   ([Drehbuch, nach Schritt 10](../../rollout/uems-erste-freigabe.md),
   [`live-realm-import.md`](../../../infra/prod/keycloak/live-realm-import.md)).
-- **Das Box-Release nach dem Merge heißt `edge-2026.10.0`** (10.10.2026, Tag auf `main`
-  `99944c896`); der nächste Tag ist `edge-2026.10.1`. NW-3 für das Paar ist am 10.10.2026
-  gefahren (13 grün), `paare.json` führt es als viertes; am `uems`-Kopf `7f875011f` war am
-  09.10. NW-3neu gefahren ([Drehbuch §2.8](../../rollout/uems-erste-freigabe.md),
-  [NW-3](uems-nw3-box-image.md)). Der Rollout auf die Boxen folgt nach dem API-Deploy.
+- **Das letzte Box-Release heißt `edge-2026.10.1`** (12.10.2026, Tag auf `main` `c5b32cba7`,
+  Speicher-Korrekturen UE-1 bis UE-4); davor `edge-2026.10.0` (10.10.2026, `99944c896`, das erste
+  nach dem Merge). Der nächste Tag ist `edge-2026.10.2`. NW-3 ist für beide Paare gefahren (je
+  13 grün), `paare.json` führt sie als viertes und fünftes; für 10.1 lief dazu der Zusatzlauf
+  „kurzer Verbraucher“ mit Gegenprobe gegen 10.0. Am `uems`-Kopf `7f875011f` war am 09.10.
+  NW-3neu gefahren ([Drehbuch §2.8](../../rollout/uems-erste-freigabe.md),
+  [NW-3](uems-nw3-box-image.md)). Ein Release veröffentlicht nur; den Rollout auf die Boxen
+  startet der Betreiber im Portal (Plattform → Edge-Updates).
 - **Ein Platzhalter in PR 37 steht noch auf `CHANGE-ME`**: der Tenant des Dauerläufers
   (IP-18, Einrichtung Drehbuch §14, [Wegweiser](uems-dauerlaeufer.md)). Ihn gibt es erst
   nach Schritt 10; darum ist IP-18 seit dem Entscheid B4 vom 27.09.2026 kein G1-Punkt mehr,
