@@ -97,13 +97,13 @@ public class TelemetryV2IngestHandler {
         }
         try {
             String json = mapper.writeValueAsString(event);
-            kafka.send(topic, event.kafkaKey(), json).whenComplete((result, error) -> {
+            kafka.send(topic, event.kafkaKey(), json).whenComplete(NachrichtenVorgang.fortsetzen((result, error) -> {
                 if (error != null) {
                     log.error("producing v2 event {} to {} failed", event.event_id(), topic, error);
                 } else {
                     metriken.schreibzugBestaetigt(IngestMetriken.TELEMETRY_V2, clock.instant());
                 }
-            });
+            }));
             metriken.weitergereicht(IngestMetriken.TELEMETRY_V2);
         } catch (Exception e) {
             metriken.verworfen(IngestMetriken.TELEMETRY_V2, IngestMetriken.SERIALISIERUNG);
@@ -114,11 +114,11 @@ public class TelemetryV2IngestHandler {
     /** The Kern leg stays fire-and-forget (auto-acked QoS1): a failed event send is logged. */
     private void melde(List<EventsRawEvent> events, String mqttTopic) {
         try {
-            ereignisse.sende(events).forEach(f -> f.whenComplete((result, error) -> {
+            ereignisse.sende(events).forEach(f -> f.whenComplete(NachrichtenVorgang.fortsetzen((result, error) -> {
                 if (error != null) {
                     log.error("producing events.raw for {} failed", mqttTopic, error);
                 }
-            }));
+            })));
         } catch (Exception e) {
             log.error("cannot serialize/produce events.raw for {}", mqttTopic, e);
         }

@@ -93,7 +93,7 @@ public class KeycloakAdminClient {
         String userId = create(body);
         try {
             KeycloakUser user = getUser(userId);
-            log.info("Provisioned customer user '{}' ({}) in tenant {}", username, userId, tenantId);
+            log.info("Provisioned customer user {} in tenant {}", userId, tenantId);
             return user;
         } catch (RuntimeException ex) {
             // All-or-nothing: a created user the caller never hears about would strand
@@ -119,7 +119,7 @@ public class KeycloakAdminClient {
         try {
             assignRealmRole(userId, KeycloakRealmRoleConverter.PARTNER_ROLE);
             KeycloakUser user = getUser(userId);
-            log.info("Provisioned partner user '{}' ({})", username, userId);
+            log.info("Provisioned partner user {}", userId);
             return user;
         } catch (RuntimeException ex) {
             // All-or-nothing: without its role the login would be an account of no kind.

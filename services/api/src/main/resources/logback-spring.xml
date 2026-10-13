@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Logformat per Schalter (docs/k8s-readiness.md, Abschnitt "Logs"). Dieselbe Datei liegt in
+  services/api, services/ingest und services/timescale-writer; LogformatTest je Dienst prüft sie.
+
+  voltpilot.logging.format (Umgebung: VOLTPILOT_LOGGING_FORMAT)
+    text  VORGABE: der Konsolen-Appender von Spring Boot, unverändert eingebunden - Muster,
+          Zeichensatz und Schwelle kommen weiter aus logging.pattern.console & Co.
+    json  eine JSON-Zeile je Ereignis auf stdout, Stapelspur im Feld stack_trace.
+  Jeder andere Wert fällt auf text zurück: ein Tippfehler im Manifest darf einen Dienst nie am
+  Start hindern oder stumm machen. Der JSON-Appender wird nur angelegt, wenn er gewählt ist.
+
+  Die Feldnamen sind der Vertrag für die Log-Verarbeitung im Cluster. Wer hier ein Feld
+  ändert, ändert die Tabelle in docs/k8s-readiness.md und LogformatTest in allen drei Diensten.
+
+  packagingData: Spring Boot schaltet die Herkunft je Frame ("~[spring-web-6.1.14.jar:6.1.14]")
+  nur in seiner eingebauten Vorgabe ein, nicht für eine eigene Datei. Ohne das Attribut verlöre
+  die Textzeile diese Angabe - sie soll aber dieselbe bleiben wie ohne diese Datei.
+-->
+<configuration packagingData="true">
+    <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+    <include resource="org/springframework/boot/logging/logback/console-appender.xml"/>
+
+    <springProperty name="VOLTPILOT_LOG_FORMAT" source="voltpilot.logging.format" defaultValue="text"/>
+    <property name="VOLTPILOT_LOG_APPENDER_json" value="CONSOLE_JSON"/>
+
+    <appender name="CONSOLE_JSON" class="ch.qos.logback.core.ConsoleAppender">
+        <filter class="ch.qos.logback.classic.filter.ThresholdFilter">
+            <level>${CONSOLE_LOG_THRESHOLD}</level>
+        </filter>
+        <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+            <timeZone>UTC</timeZone>
+            <timestampPattern>yyyy-MM-dd'T'HH:mm:ss.SSSXXX</timestampPattern>
+            <fieldNames>
+                <logger>logger</logger>
+                <thread>thread</thread>
+                <version>[ignore]</version>
+                <levelValue>[ignore]</levelValue>
+            </fieldNames>
+            <!-- Nur diese zwei MDC-Schlüssel erreichen die Zeile. Die Liste ist eine Sperre:
+                 ein später gesetzter Schlüssel (etwa ein Benutzername) landet nicht von selbst
+                 im Log, sondern erst, wenn er hier und im Vertrag steht. -->
+            <includeMdcKeyName>request_id</includeMdcKeyName>
+            <includeMdcKeyName>tenant_id</includeMdcKeyName>
+            <!-- Übliche Reihenfolge und volle Tiefe wie in der Textzeile; nur die Länge ist
+                 gedeckelt, damit eine entgleiste Spur (StackOverflowError) nicht als Zeile über
+                 der Zeilengrenze des Log-Speichers verworfen wird. -->
+            <throwableConverter class="net.logstash.logback.stacktrace.ShortenedThrowableConverter">
+                <maxLength>65536</maxLength>
+            </throwableConverter>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="${VOLTPILOT_LOG_APPENDER_${VOLTPILOT_LOG_FORMAT}:-CONSOLE}"/>
+    </root>
+</configuration>

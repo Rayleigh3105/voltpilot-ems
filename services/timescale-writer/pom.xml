@@ -23,6 +23,7 @@
         <!-- Docker 25+ enforces Engine API >= 1.40; pin the version the
              Testcontainers docker-java client negotiates (see services/api). -->
         <docker.api.version>1.44</docker.api.version>
+        <logstash-logback-encoder.version>8.1</logstash-logback-encoder.version>
     </properties>
 
     <dependencies>
@@ -57,6 +58,17 @@
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- JSON-Logzeilen per Schalter (logback-spring.xml, docs/k8s-readiness.md Abschnitt
+             "Logs"): der Encoder wird nur geladen, wenn voltpilot.logging.format=json steht -
+             die Vorgabe bleibt die Textzeile von Spring Boot. 8.1 ist die letzte Linie fuer
+             Jackson 2 (9.0 verlangt Jackson 3, das Spring Boot 3.3 nicht mitbringt). Apache-2.0. -->
+        <dependency>
+            <groupId>net.logstash.logback</groupId>
+            <artifactId>logstash-logback-encoder</artifactId>
+            <version>${logstash-logback-encoder.version}</version>
             <scope>runtime</scope>
         </dependency>
 

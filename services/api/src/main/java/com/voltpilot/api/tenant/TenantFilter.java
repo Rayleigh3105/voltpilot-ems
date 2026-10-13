@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.oauth2.jwt.Jwt;
@@ -49,11 +50,20 @@ public class TenantFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
             FilterChain filterChain) throws ServletException, IOException {
+        boolean gescheitert = true;
         try {
             resolveTenant(request).ifPresent(TenantContext::set);
             filterChain.doFilter(request, response);
+            gescheitert = false;
         } finally {
+            UUID tenant = TenantContext.get();
             TenantContext.clear();
+            if (gescheitert && tenant != null) {
+                // Die Zeile zu einer unbehandelten Ausnahme schreibt Tomcat erst, wenn jeder Filter
+                // zurückgekehrt ist. Sie soll den Mandanten trotzdem nennen: nur die Log-Kennung
+                // bleibt stehen (nie der TenantContext), bis VorgangsKennung die Anfrage abschließt.
+                MDC.put(TenantContext.LOG_KENNUNG, tenant.toString());
+            }
         }
     }
 

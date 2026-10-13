@@ -116,8 +116,7 @@ public class RegistrationController {
         // legacy stock: the listener also sets its Stichtag (Befund E12, V20260916060000), and from its
         // first minute a further account gets rights only through an explicit Zuweisung.
         ereignisse.publishEvent(new KundenbenutzerAngelegt(tenant.id(), user, true));
-        log.info("Self-registered tenant '{}' ({}) with user '{}'", tenant.name(), tenant.id(),
-                user.username());
+        log.info("Self-registered tenant '{}' ({}) with user {}", tenant.name(), tenant.id(), user.id());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(new RegistrationResponse(tenant.id(), tenant.name(), user.username()));
     }

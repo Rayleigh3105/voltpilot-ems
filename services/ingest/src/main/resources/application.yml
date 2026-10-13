@@ -29,6 +29,11 @@ server:
 
 # MQTT ingress (EMQX) + Redpanda egress.
 voltpilot:
+  # Logformat auf stdout (logback-spring.xml, docs/k8s-readiness.md "Logs"):
+  # text = die Zeile von Spring Boot (Vorgabe), json = eine JSON-Zeile je Ereignis
+  # mit request_id und tenant_id. Jeder andere Wert bleibt bei text.
+  logging:
+    format: ${VOLTPILOT_LOGGING_FORMAT:text}
   mqtt:
     broker-url: ${MQTT_BROKER_URL:tcp://localhost:1883}
     client-id: ${MQTT_CLIENT_ID:voltpilot-ingest}

@@ -124,6 +124,11 @@ server:
 # offline unit tests and broker-less dev setups opt out explicitly with
 # VOLTPILOT_SECURITY_OIDC_ENABLED=false.
 voltpilot:
+  # Logformat auf stdout (logback-spring.xml, docs/k8s-readiness.md "Logs"):
+  # text = die Zeile von Spring Boot (Vorgabe), json = eine JSON-Zeile je Ereignis
+  # mit request_id und tenant_id. Jeder andere Wert bleibt bei text.
+  logging:
+    format: ${VOLTPILOT_LOGGING_FORMAT:text}
   flyway:
     # The switch alone never relaxes startup without the explicit local profile.
     startwaechter: ${VOLTPILOT_FLYWAY_STARTWAECHTER:streng}

@@ -113,6 +113,44 @@ Der gebaute Kapazitätswächter ist davon getrennt; Details stehen unter
 [UEMS-Speicher-Wächter](agents/root/uems-speicher-waechter.md), die UEMS-Betriebsüberwachung
 vollständig unter [UEMS-Betriebsüberwachung](agents/root/uems-betriebsueberwachung.md).
 
+## Logs
+
+Alle Dienste schreiben auf stdout. `api`, `ingest` und `timescale-writer` können je Ereignis eine JSON-Zeile schreiben; die Felder unten sind der Vertrag für die Log-Verarbeitung im Cluster. Das Format ist in allen drei Diensten dieselbe `logback-spring.xml`.
+
+| Umgebungsvariable | Wert | Wirkung |
+|---|---|---|
+| `VOLTPILOT_LOGGING_FORMAT` | `text` (**Vorgabe**) | Die Textzeile von Spring Boot, unverändert; Stapelspuren mehrzeilig |
+| | `json` | Eine JSON-Zeile je Ereignis |
+
+Jeder andere Wert bleibt bei `text` (auch `JSON` groß geschrieben): ein Tippfehler im Manifest hindert keinen Dienst am Start. `LOGGING_LEVEL_*` gilt in beiden Formaten. Das Umschalten ist eine Zeile je Deployment im GitOps-Repository und kein Teil dieses Repositorys.
+
+| Feld | Inhalt |
+|---|---|
+| `@timestamp` | Zeitpunkt des Ereignisses in UTC mit Millisekunden, `2026-10-13T20:09:33.732Z` |
+| `level` | `TRACE` \| `DEBUG` \| `INFO` \| `WARN` \| `ERROR` |
+| `logger` | Name des Loggers |
+| `thread` | Name des Fadens |
+| `message` | Die Meldung; ein Zeilenumbruch steht als `\n` in der Zeichenkette |
+| `stack_trace` | **Nur mit Ausnahme.** Die ganze Stapelspur samt `Caused by` in üblicher Reihenfolge als eine Zeichenkette, höchstens 65 536 Zeichen |
+| `request_id` | Vorgangs-Kennung. **Fehlt, wenn die Zeile zu keinem Vorgang gehört** |
+| `tenant_id` | Interne Mandanten-Kennung (UUID). **Fehlt, wenn unbekannt** |
+
+Weitere Felder gibt es nicht: nur diese zwei MDC-Schlüssel erreichen die Zeile. Unbekannt ist kein leerer Wert, das Feld fehlt dann. Log-Zeilen nennen interne Kennungen (Mandant, Anlage, Gerät, Konto), keinen Benutzernamen und keine E-Mail-Adresse. `request_id` und `tenant_id` sind Felder zum Filtern, keine Etiketten des Log-Speichers.
+
+| Dienst | Ein Vorgang ist | `request_id` | `tenant_id` |
+|---|---|---|---|
+| `api` | eine HTTP-Anfrage | `X-Request-ID` des Ingress, sonst erzeugt (32 Hex-Zeichen); steht als `X-Request-ID` in jeder Antwort | der Mandant, unter dem die Datenbank gerade gelesen wird (Token, Mandanten-Wahl des Portal-Admins, Unterstützung) |
+| `ingest` | eine MQTT-Nachricht | die Kennung, die die Nachricht beim Eingang erhält (UUID) | das Mandanten-Segment des Topics `ems/{tenant}/…`; fehlt bei `provision/…` |
+| `timescale-writer` | ein Kafka-Datensatz | `topic-partition@offset`, etwa `telemetry.raw-0@42`; eine erneute Zustellung trägt dieselbe | das erste Segment des Schlüssels `{tenant_id}:{site_id}` |
+
+- Eine mitgeschickte `X-Request-ID` gilt nur mit höchstens 64 Zeichen aus `A–Z a–z 0–9 . _ -`; alles andere wird ersetzt, nie abgewiesen. Der Frontend-nginx reicht den Kopf in beide Richtungen unverändert durch.
+- In der `api` trägt auch Tomcats eigene Zeile zu einer unbehandelten Ausnahme (Status 500 samt Stapelspur) beide Kennungen.
+- Läufer und MQTT-Listener der `api` gehören zu keiner Anfrage: ohne `request_id`, aber mit `tenant_id`, solange sie für einen Mandanten arbeiten.
+- Zwei Zeilen entstehen erst nach dem Vorgang und tragen die Felder nicht, nennen dieselbe Kennung aber im Text: Spring Kafka nach einem gescheiterten Datensatz (`… exhausted for telemetry.raw-0@42`) und der MQTT-Adapter des `ingest` nach einem Wurf des Handlers (`Unhandled exception for GenericMessage [… id=…]`).
+- Jede JSON-Zeile beginnt mit `{` und ist für sich vollständig. Ein Sammler, der mehrzeilige Text-Stapelspuren am Zeilenanfang mit Datum zusammensetzt, muss JSON-Zeilen davon ausnehmen, sonst hängt er sie an das vorige Ereignis.
+
+Belege: `LogformatTest` in den drei Diensten (JSON-Felder; Textzeile gleich der eingebauten Vorgabe von Spring Boot), `VorgangsKennungTest`, `TenantContextLogKennungTest`, `KeycloakAdminClientLogTest`, `NachrichtenVorgangTest`, `DatensatzVorgangTest`, `WriterPipeTest`.
+
 ## Migrationen und Rollouts
 
 Expand-Contract: Während eines Rollouts kann alter Code bereits das neue Schema sehen. Der rollende Wechsel der api (`maxSurge 1 / maxUnavailable 0`, `replicas: 1`) bedeutet ausdrücklich, dass der neue Pod bereit sein muss, **bevor** der alte geht — für Sekunden laufen zwei. Neue Felder zunächst kompatibel ergänzen, Leser/Schreiber umstellen und erst später entfernen. Flyway-Dateien nicht nachträglich ändern oder umnummerieren.

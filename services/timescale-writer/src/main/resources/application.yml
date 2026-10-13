@@ -44,6 +44,11 @@ server:
   shutdown: graceful
 
 voltpilot:
+  # Logformat auf stdout (logback-spring.xml, docs/k8s-readiness.md "Logs"):
+  # text = die Zeile von Spring Boot (Vorgabe), json = eine JSON-Zeile je Ereignis
+  # mit request_id und tenant_id. Jeder andere Wert bleibt bei text.
+  logging:
+    format: ${VOLTPILOT_LOGGING_FORMAT:text}
   redpanda:
     telemetry-topic: ${REDPANDA_TELEMETRY_TOPIC:telemetry.raw}
     # v2 entity telemetry (dual-consume next to v1; docs/contracts/v2).
