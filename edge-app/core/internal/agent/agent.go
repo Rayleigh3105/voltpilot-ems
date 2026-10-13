@@ -136,11 +136,13 @@ type Agent struct {
 	// covered from the grid (guards.LoadFollower - the discharge-side mirror of
 	// trim; the edge enforces, the cloud priced).
 	follow *guards.LoadFollower
-	// deficitHold is the one clock of the local deficit-cover rule: for how long
-	// the house deficit has been MEASURED without a break. In a slot that plans a
-	// charge the rule may only start a discharge once that reaches
-	// guards.DeficitCoverChargeHold (E2 A, 2026-10-10: a consumer shorter than
-	// the device's own follow time must not turn a charging slot around).
+	// deficitHold is the one clock of THE HOLD: for how long the house deficit
+	// has been MEASURED without a break. Until that reaches
+	// guards.DeficitCoverHold no measurement raises a discharge - in every slot
+	// kind and for every authority the load follower knows (Captain decision A,
+	// 2026-10-13; E2 A of 2026-10-10 had it for the slot that plans a charge
+	// only: a consumer shorter than the device's own follow time is missed, not
+	// covered).
 	deficitHold *guards.DeficitHold
 	// absorb holds the hysteresis of the in-slot surplus absorption: in a slot the
 	// cloud marked charge_surplus_to_battery the commanded CHARGE is RAISED to the
@@ -3187,19 +3189,22 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// Charge slot, SoC floor, stale measurement and the sale protection live in
 	// the decision.
 	//
-	// THE HOLD (E2 A, 2026-10-10 - Herzogau 17:04, report
-	// vp-wr-ueberschuss-entladung-k3 §1.5): the rule is handed the charge the
-	// SLOT plans next to the command as it stands. The trim above takes a
-	// planned charge back to zero the moment a consumer switches on, and on that
-	// zero alone the rule used to command a discharge on the same tick - which
-	// the device executed after the consumer had gone, into the grid. In a slot
-	// that plans a charge the discharge now starts only once the deficit has
-	// been measured without a break for guards.DeficitCoverChargeHold; taking
-	// the charge back stays immediate. The clock judges the same control
-	// reading the rule does and is fed on every tick that gets here, whatever
-	// the slot and whoever holds the battery: how long the house has been short
-	// is a fact, and a slot boundary or a recovered readback must not make a
-	// standing deficit wait again.
+	// THE HOLD (Captain decision A, 2026-10-13, guards/loadfollow.go): WHEN a
+	// cover may begin is not this decision's. Every authority that turns a
+	// measured deficit into a discharge - this rule, the cloud's
+	// cover_load_from_battery and unplanned_load_discharge - goes through the
+	// follower below, and the follower raises a discharge only once the house
+	// deficit has been measured without a break for guards.DeficitCoverHold.
+	// Until then it keeps what it already covers and no more: a consumer of
+	// 10-15 s costs a few seconds of import instead of a discharge the device
+	// executes after the consumer has gone, into the grid (Herzogau 2026-10-10
+	// 17:04 in a slot that charges, the Zusatzlauf of edge-2026.10.1 in a slot
+	// that rests). Taking a charge back and lowering a discharge stay immediate.
+	//
+	// The clock judges the same control reading the follower does and is fed on
+	// every tick that gets here, whatever the slot and whoever holds the
+	// battery: how long the house has been short is a fact, and a slot boundary
+	// or a recovered readback must not make a standing deficit wait again.
 	deficitSustained := a.deficitHold.Observe(now, a.controlReadingAt(readingAt),
 		measurementFresh, rc.PvKw, rc.LoadKw)
 	deficitCover := guards.CoverDeficit(guards.DeficitCoverInput{
@@ -3208,8 +3213,6 @@ func (a *Agent) applySetpoint(now time.Time) {
 			dischargeReady,
 		MeasurementsFresh: measurementFresh,
 		CommandKw:         kw,
-		PlannedKw:         plannedChargeKw(planActive, plannedKw, preCorrectionKw),
-		DeficitSustained:  deficitSustained,
 		SocPct:            r.SocPct,
 		EffectiveFloorPct: floor,
 		PvKw:              rc.PvKw,
@@ -3218,7 +3221,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	preFollowKw := kw
 	followed := a.follow.ApplyAuthorized(now, kw,
 		coverLoad,
-		unplanned, deficitCover.Active, limitToLoad, floor, measurementFresh, limits, rc)
+		unplanned, deficitCover.Active, limitToLoad, deficitSustained, floor, measurementFresh, limits, rc)
 	kw = followed.Kw
 
 	// In-slot SURPLUS ABSORPTION (2026-08-02, the charge-side counterpart that
@@ -3766,7 +3769,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// retired; without a pushed registry neither path publishes anything.
 	trimInfo := trimSnapshot(trimmed)
 	followInfo := followSnapshot(followed)
-	deficitHoldInfo := a.deficitHoldSnapshot(deficitCover)
+	deficitHoldInfo := a.deficitHoldSnapshot(followed)
 	absorbInfo := absorbSnapshot(absorbed)
 	a.State.Update(func(s *state.Snapshot) {
 		s.Mode = mode
@@ -3844,28 +3847,6 @@ func runningReadbackHealthy(control *state.ControlInfo, now time.Time, window ti
 		now.Sub(control.HeldAt) <= runningReadbackGrace
 }
 
-// plannedChargeKw is the charge the running slot asks for, as the deficit-cover
-// hold reads it (guards.DeficitCoverInput.PlannedKw): the plan's own value, or
-// the command as it stood before the measured corrections where it is the
-// larger charge (a holder's plan executor may supply the value instead of the
-// v1 plan). The plan value is deliberately taken BEFORE the compliance clamps:
-// a charge the EEG solar-only clamp or a full battery took back for a moment is
-// still what the slot intends, and it is the intent that decides whether a
-// discharge would turn the slot around.
-//
-// A command that already IS a discharge settles the question the other way:
-// whoever commands the battery turned the slot around with more authority than
-// this rule has (the arbiter's plan executor), deepening it reverses nothing,
-// and the plan value must not invent a wait there.
-func plannedChargeKw(planActive bool, plannedKw, preCorrectionKw float64) float64 {
-	kw := preCorrectionKw
-	if planActive && preCorrectionKw >= 0 &&
-		!math.IsNaN(plannedKw) && !math.IsInf(plannedKw, 0) && plannedKw > kw {
-		kw = plannedKw
-	}
-	return kw
-}
-
 // controlReadingAt is the time the control reading of this tick was MEASURED:
 // the damped follower's device pair where it gates the reading, the live
 // reading's own sample time otherwise (damper off, or no device clock yet).
@@ -3876,14 +3857,14 @@ func (a *Agent) controlReadingAt(readingAt time.Time) time.Time {
 	return readingAt
 }
 
-// deficitHoldSnapshot is the box-local block for a deficit the rule is making
-// wait (guards.DeficitCoverDecision.Held), or nil. Without it a snapshot of
-// that minute shows a resting battery beside a measured import and no reason.
-func (a *Agent) deficitHoldSnapshot(dec guards.DeficitCoverDecision) *state.DeficitHoldInfo {
-	if !dec.Held {
+// deficitHoldSnapshot is the box-local block for a deficit the follower is
+// making wait (guards.FollowResult.Held), or nil. Without it a snapshot of that
+// minute shows a resting battery beside a measured import and no reason.
+func (a *Agent) deficitHoldSnapshot(f guards.FollowResult) *state.DeficitHoldInfo {
+	if !f.Held {
 		return nil
 	}
-	info := &state.DeficitHoldInfo{Active: true, HoldS: guards.DeficitCoverChargeHold.Seconds()}
+	info := &state.DeficitHoldInfo{Active: true, HoldS: guards.DeficitCoverHold.Seconds()}
 	if since, ok := a.deficitHold.Since(); ok {
 		info.Since = &since
 	}

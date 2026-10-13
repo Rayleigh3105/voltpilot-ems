@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Zusatzlauf „Lade-Viertelstunde mit kurzem Verbraucher": wann das Urteil gruen ist.
+"""Zusatzlauf „kurzer Verbraucher" (Lade- und Ruhe-Viertelstunde): wann das Urteil gruen ist.
 
 Gruen verlangt drei Dinge zugleich - kein Entlade-Befehl, nichts aus dem Speicher
 eingespeist, und einen Lauf, der ueberhaupt etwas beweist (geladen, genug
@@ -91,15 +91,34 @@ class Urteil(unittest.TestCase):
                          schreiben=[(5, -1.0), (65, 0.26)])
         self.assertEqual(pruefen.urteile(text, 60, 300)["urteil"], "gruen")
 
-    def test_ohne_geplantes_laden_wird_gemessen_nicht_geurteilt(self):
-        # Fall ruhe: die Box DARF das Defizit decken - Zahlen, kein gruen oder rot.
+    def test_ohne_geplantes_laden_ist_eine_entladung_nach_dem_verbraucher_rot(self):
+        # Fall ruhe, Stand bis edge-2026.10.1: die Box deckte sofort, der Speicher
+        # speiste nach dem Ende des Verbrauchers ein. Seit dem Entscheid A vom
+        # 13.10.2026 gilt die Haltezeit auch hier - das ist rot, mit den Zahlen.
         def batt(t, an):
             return -1.36 if any(ab + 6 <= t < ab + 40 for ab in (20, 80, 140, 200)) else 0.0
         text = protokoll(260, batt, schreiben=[(26, -1.36), (60, 0.0)])
         r = pruefen.urteile(text, 0, 260, fall="ruhe")
-        self.assertEqual(r["urteil"], "gemessen", r["satz"])
+        self.assertEqual(r["urteil"], "rot", r["satz"])
         self.assertEqual(r["laengste_einspeisung_aus_dem_speicher_s"], 28)
         self.assertEqual(r["entlade_befehl_stand_nach_verbraucher_ende_s"], [28.0])
+
+    def test_ohne_geplantes_laden_ruht_der_speicher_durch_kurze_verbraucher_ist_gruen(self):
+        # Fall ruhe mit Haltezeit: kein Entlade-Befehl, der Speicher ruht. Dass
+        # nie geladen wurde, ist hier kein Mangel - die Viertelstunde plant keins.
+        text = protokoll(260, lambda t, an: 0.0, schreiben=[(5, 0.0)])
+        r = pruefen.urteile(text, 0, 260, fall="ruhe")
+        self.assertEqual(r["urteil"], "gruen", r["satz"])
+        self.assertEqual(r["entlade_befehle"], 0)
+        self.assertEqual(r["geladen_kwh"], 0.0)
+
+    def test_ohne_geplantes_laden_ist_ein_entlade_befehl_allein_schon_rot(self):
+        text = protokoll(260, lambda t, an: 0.0, schreiben=[(26, -1.36), (40, 0.0)])
+        self.assertEqual(pruefen.urteile(text, 0, 260, fall="ruhe")["urteil"], "rot")
+
+    def test_ohne_geplantes_laden_beweisen_zu_wenige_verbraucher_auch_nichts(self):
+        text = protokoll(260, lambda t, an: 0.0, verbraucher_ab=(20, 80))
+        self.assertEqual(pruefen.urteile(text, 0, 260, fall="ruhe")["urteil"], "nicht_gefahren")
 
 
 if __name__ == "__main__":

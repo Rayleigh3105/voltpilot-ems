@@ -29,9 +29,16 @@ package agent
 // the damped follower explains; it becomes "nahe null" with the gliding
 // reserve (E3, package UE-7), which this run then tightens.
 //
+// Since the Captain decision A of 2026-10-13 the same condition holds in every
+// kind of quarter hour, not only in the one that charges: the run below
+// (TestShortConsumersInEverySlotKind) repeats it for a slot that rests, a slot
+// the cloud marked for covering the house and a slot with the unplanned-load
+// duty - the kinds in which, up to edge-2026.10.1, the first measured deficit
+// was covered at once and the storage fed the grid behind every short consumer.
+//
 // Run it alone (the bench checklist in edge-app/nodered/CONTROL-BENCH.md):
 //
-//	go test ./internal/agent -run 'TestSurplusWithShortConsumers' -v
+//	go test ./internal/agent -run 'TestSurplusWithShortConsumers|TestShortConsumersInEverySlotKind' -v
 
 import (
 	"encoding/json"
@@ -130,10 +137,15 @@ type benchSegment struct {
 }
 
 type benchScenario struct {
-	start     time.Time
-	pvKw      float64
-	planKw    float64
-	surplus   bool // the slot carries charge_from_surplus_only + charge_surplus_to_battery
+	start   time.Time
+	pvKw    float64
+	planKw  float64
+	surplus bool // the slot carries charge_from_surplus_only + charge_surplus_to_battery
+	// cover / unplanned: the slot carries the cloud duty cover_load_from_battery
+	// (a "Deck-Viertelstunde") / unplanned_load_discharge. Without any flag and
+	// with planKw 0 the slot rests ("Ruhe-Viertelstunde").
+	cover     bool
+	unplanned bool
 	socPct    float64
 	segments  []benchSegment
 	traceName string
@@ -240,6 +252,7 @@ func runBench(t *testing.T, dev benchDevice, sc benchScenario) benchResult {
 			Slots: []plan.Slot{{
 				Start: slot, BatterySetpointKw: sc.planKw,
 				ChargeFromSurplusOnly: sc.surplus, ChargeSurplusToBattery: sc.surplus,
+				CoverLoadFromBattery: sc.cover, UnplannedLoadDischarge: sc.unplanned,
 			}},
 		}
 		a.mu.Unlock()
@@ -418,87 +431,228 @@ func TestSurplusWithShortConsumers(t *testing.T) {
 	}
 }
 
+// benchSlotKind is one kind of quarter hour the run covers besides the one that
+// charges: what the plan says, and what the scenario gets from it.
+type benchSlotKind struct {
+	name      string
+	planKw    float64
+	cover     bool
+	unplanned bool
+}
+
+// benchSlotKinds are the three kinds in which a measured deficit becomes a
+// discharge WITHOUT a planned charge in front of it. The covering slot carries
+// the plan's own forecast discharge (-1 kW), as the cloud emits it.
+func benchSlotKinds() []benchSlotKind {
+	return []benchSlotKind{
+		{name: "Ruhe-Viertelstunde"},
+		{name: "Deck-Viertelstunde", planKw: -1.0, cover: true},
+		{name: "ungeplante Lastdeckung", unplanned: true},
+	}
+}
+
+func (k benchSlotKind) apply(sc benchScenario) benchScenario {
+	sc.planKw, sc.surplus, sc.cover, sc.unplanned = k.planKw, false, k.cover, k.unplanned
+	return sc
+}
+
+// shortConsumerScenario is the day of the Zusatzlauf of edge-2026.10.1 for a
+// slot without a planned charge: 33 minutes on a small PV surplus, the consumer
+// of Herzogau 17:03:15 (2,62 kW for 10-15 s) and a 1 kW consumer for 5-20 s,
+// every one to two minutes. Every consumer here turns the house balance into a
+// deficit - and none of them lasts as long as the hold.
+func shortConsumerScenario() benchScenario {
+	gaps := []float64{60, 90, 120, 75, 105}
+	return benchScenario{
+		start:  time.Date(2026, 10, 13, 15, 0, 0, 0, time.UTC),
+		pvKw:   5.0,
+		socPct: 37,
+		segments: []benchSegment{
+			{seconds: 660, surplusKw: 0.76, pulseKw: 2.62, pulseS: []float64{15, 10, 12}, gapS: gaps},
+			{seconds: 660, surplusKw: 0.5, pulseKw: 1, pulseS: []float64{5, 10, 15, 20, 12, 8}, gapS: gaps},
+			{seconds: 660, surplusKw: 0.2, pulseKw: 2.62, pulseS: []float64{12, 15, 10}, gapS: gaps},
+		},
+	}
+}
+
+// THE RUN FOR EVERY OTHER KIND OF SLOT (Captain decision A, 2026-10-13). One
+// line per slot kind and device; a device passes when its storage never fed the
+// grid and no discharge was ever commanded for a consumer of 5-20 s.
+func TestShortConsumersInEverySlotKind(t *testing.T) {
+	for _, kind := range benchSlotKinds() {
+		sc := kind.apply(shortConsumerScenario())
+		for _, dev := range benchDevices(t) {
+			t.Run(kind.name+"/"+dev.name, func(t *testing.T) {
+				res := runBench(t, dev, sc)
+				t.Logf("%s, %s (folgt nach %.0f s + %.0f s, Messtakt %.0f-%.0f s): %s", kind.name, dev.name,
+					dev.deadS, dev.tauS, dev.gapsS[0], dev.damp.MaxCadence.Seconds(), res)
+				if res.consumers < 20 {
+					t.Fatalf("the run carried only %d consumers - it would prove nothing", res.consumers)
+				}
+				if res.storageExportedKwh > 1e-6 || res.storageExportS > 0 {
+					t.Errorf("aus dem Speicher eingespeist: %.4f kWh in %.0f s - a short consumer must never discharge the storage into the grid, whatever the slot plans",
+						res.storageExportedKwh, res.storageExportS)
+				}
+				if res.dischargeWrites > 0 || res.minSetpointKw < 0 {
+					t.Errorf("%d discharge commands, lowest setpoint %.3f kW - want none: no consumer here outlasts the hold",
+						res.dischargeWrites, res.minSetpointKw)
+				}
+			})
+		}
+	}
+}
+
+// WHAT THE HOLD DOES NOT REACH - measured, not judged (the open point of the
+// decision of 2026-10-13, see the package's PR): a short consumer ON TOP of a
+// deficit that already stands. The clock judges whether the house is short at
+// all; at night it has been for hours, so the cover follows every step at once
+// and a consumer of 10-15 s is still answered by a discharge that arrives after
+// it. The run reports what that costs on each device, so the figure is on the
+// table when the level-hold ("auch ein ANSTIEG wartet 60 s") is decided.
+func TestShortConsumersOnTopOfAStandingDeficitAreStillFollowed(t *testing.T) {
+	gaps := []float64{60, 90, 120, 75, 105}
+	const baseKw = 1.5
+	sc := benchScenario{
+		start:  time.Date(2026, 10, 13, 21, 0, 0, 0, time.UTC),
+		pvKw:   0,
+		planKw: -1.6, cover: true,
+		socPct: 60,
+		segments: []benchSegment{
+			// Night: the house draws 1,5 kW throughout; on top the 2,62 kW consumer.
+			{seconds: 1500, surplusKw: -baseKw, pulseKw: 2.62, pulseS: []float64{15, 10, 12}, gapS: gaps},
+		},
+	}
+	for _, dev := range benchDevices(t) {
+		t.Run(dev.name, func(t *testing.T) {
+			res := runBench(t, dev, sc)
+			t.Logf("Deck-Viertelstunde bei Nacht, %s: %s", dev.name, res)
+			if res.consumers < 15 {
+				t.Fatalf("only %d consumers", res.consumers)
+			}
+			// The standing deficit itself is covered - that part must not regress:
+			// after the first hold the storage delivers the base load less the
+			// follower's reserve, give or take the retreats behind each consumer.
+			standing := (baseKw - dev.damp.ReserveKw) * (res.seconds - 180) / 3600
+			if res.dischargedKwh < 0.7*standing {
+				t.Errorf("discharged %.3f kWh, want about the %.3f kWh the standing deficit asks for", res.dischargedKwh, standing)
+			}
+		})
+	}
+}
+
 // EXPORT BEATS THE SETTLE TIME (UE-2): "the consumer ends 5 s after the
-// discharge command". In a slot that RESTS the decision of 2026-08-28 covers a
-// measured deficit at once - so a consumer may end right after the box deepened
-// the discharge for it. The discharge then has to be taken back by the FIRST
-// tick that can know: the one after the device's next grid value, not the one
-// after the settle time plus the next complete pair.
+// discharge command". The hold keeps every consumer shorter than itself away
+// from the storage - but a consumer that outlasts it is covered, in a slot that
+// rests as in a slot the cloud marked for covering, and it may end right after
+// the box deepened the discharge for it. The discharge then has to be taken
+// back by the FIRST tick that can know: the one after the device's next grid
+// value, not the one after the settle time plus the next complete pair. That
+// take-back needs no clock - lowering is immediate.
+//
+// In a covering slot "taken back" has two steps, and the first is the one this
+// rule owns: the grid value alone takes the command back to what the PLAN
+// itself commands (-1 kW here - the damper never undercuts a command a raising
+// correction raises), and the next pair lets the follower limit that forecast
+// value to the house, i.e. to zero. The second step is the ordinary retreat on
+// a pair and is bounded by one settle time plus one Messtakt.
 //
 // The consumer starts at twelve different phases against the device's
 // refreshes, the poll and the tick - the instant the box can know differs with
 // each, and every one of them must be met exactly.
 func TestDischargeIsTakenBackWithTheNextGridValueWhenTheConsumerEnds(t *testing.T) {
-	for _, dev := range benchDevices(t) {
-		t.Run(dev.name, func(t *testing.T) {
-			settle, cadence := dev.damp.Settle.Seconds(), dev.damp.MaxCadence.Seconds()
-			var sumDelay, maxDelay, sumExportS, maxExportWh float64
-			phases := 0
-			for lead := 30; lead < 150; lead += 10 {
-				// A resting slot with 0,8 kW PV surplus. lead seconds of quiet, then
-				// a 2,8 kW consumer: first found with a long one, then cut 5 s
-				// after the box's discharge command.
-				scenario := func(consumerS float64) benchScenario {
-					return benchScenario{
-						start: time.Date(2026, 10, 10, 15, 0, 0, 0, time.UTC),
-						pvKw:  5.0, planKw: 0, socPct: 37,
-						segments: []benchSegment{
-							{seconds: lead - 43, surplusKw: 0.8},
-							{seconds: 400, surplusKw: 0.8, pulseKw: 2.8,
-								pulseS: []float64{consumerS}, gapS: []float64{1000}},
-						},
+	kinds := benchSlotKinds()[:2] // the slot that rests and the covering slot
+	for _, kind := range kinds {
+		for _, dev := range benchDevices(t) {
+			t.Run(kind.name+"/"+dev.name, func(t *testing.T) {
+				settle, cadence := dev.damp.Settle.Seconds(), dev.damp.MaxCadence.Seconds()
+				var sumDelay, maxDelay, sumExportS, maxExportWh, sumWait, maxRest float64
+				phases := 0
+				for lead := 30; lead < 150; lead += 10 {
+					// 0,8 kW PV surplus. lead seconds of quiet, then a 2,8 kW
+					// consumer: first found with a long one, then cut 5 s after the
+					// box's discharge command.
+					scenario := func(consumerS float64) benchScenario {
+						return kind.apply(benchScenario{
+							start: time.Date(2026, 10, 10, 15, 0, 0, 0, time.UTC),
+							pvKw:  5.0, socPct: 37,
+							segments: []benchSegment{
+								{seconds: lead - 43, surplusKw: 0.8},
+								{seconds: 400, surplusKw: 0.8, pulseKw: 2.8,
+									pulseS: []float64{consumerS}, gapS: []float64{1000}},
+							},
+						})
 					}
-				}
-				firstDischarge := func(r benchResult) float64 {
-					for _, w := range r.setpoints {
-						if w.kw < -0.005 {
-							return w.at
+					firstDischarge := func(r benchResult) float64 {
+						for _, w := range r.setpoints {
+							if w.kw < -0.005 {
+								return w.at
+							}
+						}
+						return -1
+					}
+					cmdAt := firstDischarge(runBench(t, dev, scenario(300)))
+					if cmdAt < 0 {
+						t.Fatalf("lead %d s: a standing 2 kW deficit must be covered", lead)
+					}
+					// Never before the deficit stood for the hold.
+					if wait := cmdAt - float64(lead); wait < guards.DeficitCoverHold.Seconds() {
+						t.Fatalf("lead %d s: discharge %.0f s after the consumer started - before the hold", lead, wait)
+					}
+					sumWait += cmdAt - float64(lead)
+					offAt := cmdAt + 5
+					res := runBench(t, dev, scenario(offAt-float64(lead)))
+					if got := firstDischarge(res); got != cmdAt {
+						t.Fatalf("lead %d s: the discharge command moved from %.0f to %.0f s", lead, cmdAt, got)
+					}
+					// Taken back: to the plan's own value (0 in a slot that rests) ...
+					backAt, restAt := -1.0, -1.0
+					for _, w := range res.setpoints {
+						if w.at > cmdAt && backAt < 0 && w.kw >= kind.planKw-0.005 {
+							backAt = w.at
+						}
+						// ... and then to rest.
+						if w.at > cmdAt && w.kw >= -0.005 {
+							restAt = w.at
+							break
 						}
 					}
-					return -1
-				}
-				cmdAt := firstDischarge(runBench(t, dev, scenario(300)))
-				if cmdAt < 0 {
-					t.Fatalf("lead %d s: a resting slot must cover a standing 2 kW deficit", lead)
-				}
-				offAt := cmdAt + 5
-				res := runBench(t, dev, scenario(offAt-float64(lead)))
-				if got := firstDischarge(res); got != cmdAt {
-					t.Fatalf("lead %d s: the discharge command moved from %.0f to %.0f s", lead, cmdAt, got)
-				}
-				backAt := -1.0
-				for _, w := range res.setpoints {
-					if w.at > cmdAt && w.kw >= -0.005 {
-						backAt = w.at
-						break
+					// The first tick that can know: the device's next grid refresh
+					// after the consumer ended, the poll that reads it, the tick after.
+					refreshAt := -1.0
+					for _, at := range res.gridRefreshes {
+						if at >= offAt {
+							refreshAt = at
+							break
+						}
 					}
-				}
-				// The first tick that can know: the device's next grid refresh
-				// after the consumer ended, the poll that reads it, the tick after.
-				refreshAt := -1.0
-				for _, at := range res.gridRefreshes {
-					if at >= offAt {
-						refreshAt = at
-						break
+					pollAt := math.Ceil(refreshAt/benchPollEvery) * benchPollEvery
+					tickAt := math.Ceil((pollAt-benchTickOffset)/benchTickEvery)*benchTickEvery + benchTickOffset
+					if backAt != tickAt {
+						t.Errorf("lead %d s: command at %.0f s, consumer off at %.0f s, next grid value at %.0f s - "+
+							"taken back at %.0f s, want the first tick after it (%.0f s)",
+							lead, cmdAt, offAt, refreshAt, backAt, tickAt)
 					}
+					// The covering slot's second step: the forecast value itself is
+					// limited to the house with the next pair.
+					if restAt < 0 || restAt-offAt > settle+cadence+benchPollEvery+benchTickEvery {
+						t.Errorf("lead %d s: consumer off at %.0f s, discharge fully gone at %.0f s - "+
+							"want within a settle time plus a Messtakt, a poll and a tick", lead, offAt, restAt)
+					}
+					maxRest = math.Max(maxRest, restAt-offAt)
+					delay := backAt - cmdAt
+					sumDelay += delay
+					maxDelay = math.Max(maxDelay, delay)
+					sumExportS += res.storageExportS
+					maxExportWh = math.Max(maxExportWh, res.storageExportedKwh*1000)
+					phases++
 				}
-				pollAt := math.Ceil(refreshAt/benchPollEvery) * benchPollEvery
-				tickAt := math.Ceil((pollAt-benchTickOffset)/benchTickEvery)*benchTickEvery + benchTickOffset
-				if backAt != tickAt {
-					t.Errorf("lead %d s: command at %.0f s, consumer off at %.0f s, next grid value at %.0f s - "+
-						"taken back at %.0f s, want the first tick after it (%.0f s)",
-						lead, cmdAt, offAt, refreshAt, backAt, tickAt)
-				}
-				delay := backAt - cmdAt
-				sumDelay += delay
-				maxDelay = math.Max(maxDelay, delay)
-				sumExportS += res.storageExportS
-				maxExportWh = math.Max(maxExportWh, res.storageExportedKwh*1000)
-				phases++
-			}
-			t.Logf("%s: Verbraucher endet 5 s nach dem Entlade-Befehl, %d Phasenlagen - Rücknahme im Mittel nach %.0f s, "+
-				"höchstens %.0f s (Einschwingzeit + Messtakt: %.0f s); Speicher speist im Mittel %.0f s ein, höchstens %.1f Wh je Fall",
-				dev.name, phases, sumDelay/float64(phases), maxDelay, settle+cadence, sumExportS/float64(phases), maxExportWh)
-		})
+				t.Logf("%s, %s: Entladung im Mittel %.0f s nach Beginn des Verbrauchers; Verbraucher endet 5 s nach dem Entlade-Befehl, "+
+					"%d Phasenlagen - Rücknahme auf den Planwert im Mittel nach %.0f s, höchstens %.0f s (Einschwingzeit + Messtakt: %.0f s), "+
+					"Entladung ganz weg spätestens %.0f s nach dem Ende des Verbrauchers; "+
+					"Speicher speist im Mittel %.0f s ein, höchstens %.1f Wh je Fall",
+					kind.name, dev.name, sumWait/float64(phases), phases, sumDelay/float64(phases), maxDelay,
+					settle+cadence, maxRest, sumExportS/float64(phases), maxExportWh)
+			})
+		}
 	}
 }

@@ -115,12 +115,26 @@ func nativeLevers(control *state.ControlInfo) *guards.NativeLevers {
 // The box rule deficit_cover is deliberately NOT handed to the device in K4b:
 // it is armed by a MEASUREMENT, so it would switch the device inside a slot,
 // while §6.6 switches only at slot boundaries where the intent changes. It
-// stays the box's (damped) rule; the flags alone are slot-stable. Since
-// 2026-10-10 the box rule respects the reported window for as long as it can
-// be respected: in a slot that plans a charge it only starts a discharge once
-// the deficit has stood for guards.DeficitCoverChargeHold, so "charge side
-// only" is what happens for every consumer shorter than that (the two vector
-// cases "…-waehrend-der-haltezeit" / "…-nach-der-haltezeit" pin the pair).
+// stays the box's (damped) rule; the flags alone are slot-stable. The box
+// rule respects the reported window for as long as it can be respected: it
+// only starts a discharge once the deficit has stood for
+// guards.DeficitCoverHold, so "charge side only" is what happens for every
+// consumer shorter than that (the two vector cases
+// "…-waehrend-der-haltezeit" / "…-nach-der-haltezeit" pin the pair).
+//
+// THE HOLD IS THE BOX'S, NOT THE DEVICE'S (decided with the Captain decision
+// A of 2026-10-13, which made it the rule of every slot the box regulates):
+// a device in its own mode is not made to wait. The hold exists because a
+// COMMAND reaches a slow device after a short consumer has gone; a device
+// that regulates the connection point itself has no such command - its own
+// loop meets the consumer and leaves with it. Delaying the hand-over until
+// a deficit has stood would turn a consumer the device covers correctly
+// into bought energy, and it would arm a mode change inside a slot on a
+// MEASUREMENT - which §6.6 rules out (the device is switched only where the
+// intent changes) and a persistent lever pays for from its day budget. The
+// effect the hold guards against is supervised there by its own watch:
+// speicher_einspeisung takes the lever back (guards/nativemode.go step 13a).
+// After any take-back the follower carries the slot, and with it the hold.
 func nativePlanIntent(p *plan.Plan, now time.Time, l guards.Limits) guards.Intent {
 	planned, _, active := p.ActiveSetpoint(now)
 	if !active {

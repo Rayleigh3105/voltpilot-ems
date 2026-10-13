@@ -77,9 +77,9 @@ type Snapshot struct {
 	Follow *FollowInfo `json:"follow,omitempty"`
 
 	// DeficitHold (2026-10-10, additive, box-local) is non-nil ONLY while the
-	// local deficit-cover rule is making a measured deficit WAIT: the slot plans
-	// a charge, the trim has taken it back, and the discharge starts only once
-	// the deficit has stood for the hold time - see DeficitHoldInfo.
+	// box is making a measured deficit WAIT: an authority to cover it stands,
+	// but the discharge is raised only once the deficit has stood for the hold
+	// time - in every slot kind since 2026-10-13. See DeficitHoldInfo.
 	DeficitHold *DeficitHoldInfo `json:"deficit_hold,omitempty"`
 
 	// Absorb is the in-slot surplus absorption (2026-08-02), non-nil ONLY while
@@ -317,12 +317,13 @@ type FollowInfo struct {
 	FloorSocPct *float64 `json:"floor_soc_pct,omitempty"`
 }
 
-// DeficitHoldInfo is the box-local state of the deficit-cover hold
-// (guards.DeficitCoverChargeHold): in a slot that plans a charge a measured
-// house deficit is bought for up to the hold time before the battery covers
-// it, because a consumer shorter than the inverter's own follow time would
-// otherwise turn the slot around and send the discharge into the grid. Read-only
-// display of a decision already taken, like its siblings.
+// DeficitHoldInfo is the box-local state of the hold
+// (guards.DeficitCoverHold): a measured house deficit is bought for up to the
+// hold time before the battery covers it - or covers more of it than it
+// already does -, because a consumer shorter than the inverter's own follow
+// time would otherwise be answered by a discharge that arrives after it and
+// goes into the grid. Read-only display of a decision already taken, like its
+// siblings.
 type DeficitHoldInfo struct {
 	// Active is always true when the block exists (it is omitted otherwise).
 	Active bool `json:"active"`

@@ -369,6 +369,35 @@ test("control: the limiting direction says so, and names the giveaway as the cau
     "a correction must never read as a failed write: " + d.text);
 });
 
+test("control: while the hold makes a deficit wait, the follow line says so instead of naming a consumption it does not follow", () => {
+  // Covering slot on a PV surplus, a consumer switches on (2026-10-13): the
+  // forecast discharge stays limited to 0 until the deficit has stood 60 s.
+  const d = followFor({
+    follow: { active: true, direction: "reduce", planned_kw: -1.0, deficit_kw: 2.14 },
+    deficit_hold: { active: true, since: "2026-10-13T15:03:00Z", hold_s: 60 },
+  });
+  assert.ok(d, "the correction still produces a reason line");
+  assert.match(d.text, /60 Sekunden/, "it names the wait: " + d.text);
+  assert.match(d.text, /2,1 kW/, "and what the house draws: " + d.text);
+  assert.match(d.text, /erst angehoben/, "and that the discharge is not raised yet: " + d.text);
+  assert.ok(!/Folgt dem gemessenen Hausverbrauch|Entladung begrenzt|Entladung angehoben/.test(d.text),
+    "it must not claim to follow or to have raised: " + d.text);
+  assert.match(d.text, /bewusste Nachführung/, "and that it is deliberate: " + d.text);
+  // The same while a running cover keeps its level through an unproven step.
+  const kept = followFor({
+    follow: { active: true, direction: "deepen", planned_kw: -1.5, deficit_kw: 3.0 },
+    deficit_hold: { active: true, hold_s: 60 },
+  });
+  assert.match(kept.text, /erst angehoben/, kept.text);
+  assert.ok(!/Entladung angehoben/.test(kept.text), "nothing was raised: " + kept.text);
+  // Without the hold block the two established lines are untouched.
+  const plain = followFor({
+    follow: { active: true, direction: "reduce", planned_kw: -6.7, deficit_kw: 5.1 },
+    deficit_hold: null,
+  });
+  assert.match(plain.text, /Entladung begrenzt/, plain.text);
+});
+
 test("control: an unknown direction claims none", () => {
   const d = followFor({ follow: { active: true, planned_kw: -4.332, deficit_kw: 7.087 } });
   assert.ok(d);

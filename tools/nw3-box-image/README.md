@@ -197,12 +197,29 @@ Er fährt den Fall vom 10.10.2026 in Herzogau, wie ihn der Prüflauf des Tags be
 (`edge-app/core/internal/agent/surplus_short_consumer_scenario_test.go`): 5 kW PV, ein
 kleiner Überschuss, ein Verbraucher von 2,62 kW für 10 bis 15 s alle ein bis zwei
 Minuten. Die Regel dahinter steht in [`docs/edge-runtime.md`](../../docs/edge-runtime.md)
-(„Kurzer Verbraucher in der Lade-Viertelstunde“).
+(„Kurzer Verbraucher – Haltezeit vor dem Entladen“): ein gemessenes Defizit hebt die
+Entladung erst an, wenn es 60 s ununterbrochen gemessen wurde – bis `edge-2026.10.1` nur
+in der Lade-Viertelstunde (Entscheid E2 A vom 10.10.2026), ab dem Release danach in
+jeder (Entscheid A vom 13.10.2026).
 
 | Fall | Fahrplan | Urteil |
 |---|---|---|
 | `laden` (Vorgabe) | jede Viertelstunde lädt den Überschuss: +1,3 kW, `charge_from_surplus_only` und `charge_surplus_to_battery` | **grün**, wenn im Fenster kein Entlade-Befehl steht, nichts aus dem Speicher eingespeist wurde, die Box wirklich geladen hat und in jedem Überschuss-Abschnitt mindestens zwei Verbraucher liefen |
-| `ruhe` | jede Viertelstunde plant 0 kW, keine Pflicht | **kein** grün oder rot: hier darf die Box das Defizit decken. Gemessen wird, wie viel der Speicher nach dem Ende des Verbrauchers einspeist und wie lange der Entlade-Befehl noch steht |
+| `ruhe` | jede Viertelstunde plant 0 kW, keine Pflicht | **grün**, wenn im Fenster kein Entlade-Befehl steht und nichts aus dem Speicher eingespeist wurde (das Laden entfällt als Zeuge – die Viertelstunde plant keins). Daneben stehen weiter die Messzahlen: wie viel der Speicher nach dem Ende des Verbrauchers einspeist und wie lange der Entlade-Befehl noch steht |
+
+**Erwartung je Stand im Fall `ruhe`:**
+
+| Stand | Erwartung | Grund |
+|---|---|---|
+| `edge-2026.10.0` | **rot** | deckt das erste gemessene Defizit sofort (Entscheid 28.08.2026); am 12.10.2026 gemessen: 45,5 Wh aus dem Speicher eingespeist |
+| `edge-2026.10.1` | **rot** | die Haltezeit gilt dort nur in der Lade-Viertelstunde; gemessen: 22,3 Wh, längste Strecke 20 s (die schnellere Rücknahme aus UE-2) |
+| das Release danach (`edge-2026.10.2`) | **grün** | die Haltezeit gilt in jeder Viertelstunde – kein Verbraucher des Falls läuft 60 s |
+
+Die Ergebnisse vom 12.10.2026 unter `docs/rollout/nw3-zusatz-kurzer-verbraucher-ruhe-*.json`
+führen noch `gemessen` statt `rot`: damals hatte der Fall kein Urteil. Ihre Zahlen sind
+dieselben, die das Urteil heute rot machen würden. Für `edge-2026.10.2` ist der Lauf noch
+**nicht gefahren** – er braucht die gebauten Bilder des Paars und gehört zum NW-3-Lauf des
+Releases; `edge-2026.10.1` ist dann die Gegenprobe.
 
 Im Fall `laden` kommt der Überschuss in zwei Abschnitten: erst 0,76 kW — die Box lädt
 sichtbar, mit ihrer Reserve von 0,5 kW also 0,26 kW —, dann 0,5 kW. Im zweiten
@@ -213,7 +230,8 @@ maßgeblich ist das geplante Laden, nicht der Befehl, wie er gerade steht.
 **Ein Lauf allein beweist die Korrektur nicht.** Er zeigt nur, dass dieser Stand im
 Fall nicht entlädt — das täte auch ein Lauf, in dem die Regel gar nicht scharf ist.
 Die Aussage entsteht aus der **Gegenprobe**: derselbe Lauf gegen den Stand davor muss
-rot sein. Zwei Dinge gehören darum fest zum Lauf:
+rot sein. Im Fall `ruhe` gilt das doppelt, weil dort kein Laden bezeugt, dass die Box
+überhaupt regelt. Zwei Dinge gehören darum fest zum Lauf:
 
 * Der Fahrplan trägt `effective_floor_soc_pct`. Ohne die Reserve-Angabe der Cloud
   verweigert die Box die Defizitdeckung in **jedem** Stand

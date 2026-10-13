@@ -58,80 +58,36 @@ func TestCoverDeficitRefusesEveryAmbiguousOrTradingCase(t *testing.T) {
 		"unknown load":                func(i *DeficitCoverInput) { i.LoadKw = nan },
 		"unknown command":             func(i *DeficitCoverInput) { i.CommandKw = nan },
 		"unknown floor":               func(i *DeficitCoverInput) { f := nan; i.EffectiveFloorPct = &f },
-		"unknown slot intent":         func(i *DeficitCoverInput) { i.PlannedKw = nan },
 	}
 	for name, mutate := range cases {
 		in := deficitGood()
 		mutate(&in)
-		if d := CoverDeficit(in); d.Active || d.FloorPct != nil || d.Held {
+		if d := CoverDeficit(in); d.Active || d.FloorPct != nil {
 			t.Fatalf("%s must refuse: %+v", name, d)
 		}
 	}
 }
 
-// deficitChargeSlot is Herzogau 2026-10-10 17:03:15 (report
-// vp-wr-ueberschuss-entladung-k3 §1.5): the slot plans +1,303 kW, a consumer
-// switched on (PV 4,69 kW, house 6,83 kW) and the trim has taken the charge
-// back to 0.
-func deficitChargeSlot() DeficitCoverInput {
+// The decision knows nothing about time (Captain decision A, 2026-10-13): the
+// hold is the follower's, for every authority alike. A deficit seen for the
+// first time arms the rule exactly like one that has stood for an hour - WHEN
+// the cover may begin is decided where the discharge is made
+// (TestTheHold... in loadfollow_hold_test.go).
+func TestCoverDeficitIsAPlainDecisionWithoutAClock(t *testing.T) {
+	// Herzogau 2026-10-10 17:03:15: the trim has taken the planned charge back
+	// to 0, PV 4,69 kW, house 6,83 kW.
 	floor := 5.0
-	return DeficitCoverInput{
-		Eligible: true, MeasurementsFresh: true, CommandKw: 0, PlannedKw: 1.303,
+	in := DeficitCoverInput{
+		Eligible: true, MeasurementsFresh: true, CommandKw: 0,
 		SocPct: 37, EffectiveFloorPct: &floor, PvKw: 4.69, LoadKw: 6.83,
 	}
-}
-
-// THE HOLD: in a slot that plans a charge, a deficit seen once is not yet a
-// reason to discharge - the rule waits and says so. Once the deficit has stood
-// for the hold time it covers exactly as in every other slot.
-func TestCoverDeficitWaitsInASlotThatPlansACharge(t *testing.T) {
-	d := CoverDeficit(deficitChargeSlot())
-	if d.Active || d.FloorPct != nil || !d.Held {
-		t.Fatalf("a deficit just seen in a charging slot must wait: %+v", d)
+	if d := CoverDeficit(in); !d.Active || d.FloorPct == nil || *d.FloorPct != 5 {
+		t.Fatalf("the rule is armed on the measured deficit, down to the reserve: %+v", d)
 	}
-	in := deficitChargeSlot()
-	in.DeficitSustained = true
-	d = CoverDeficit(in)
-	if !d.Active || d.Held || d.FloorPct == nil || *d.FloorPct != 5 {
-		t.Fatalf("a deficit that stood for the hold time is covered down to the reserve: %+v", d)
-	}
-}
-
-// The hold belongs to the charging slot alone. Where the plan asks for nothing
-// (or for a partial discharge) the decision of 2026-08-28 is untouched: the
-// first measured deficit is covered, sustained or not.
-func TestCoverDeficitActsAtOnceWhereThePlanDoesNotCharge(t *testing.T) {
-	for _, planned := range []float64{0, DeficitCoverChargeDeadbandKw, -1.0} {
-		in := deficitGood()
-		in.PlannedKw = planned
-		if planned < 0 {
-			in.CommandKw = planned
-		}
-		if d := CoverDeficit(in); !d.Active || d.Held {
-			t.Fatalf("planned %.2f kW is no charge - cover at once: %+v", planned, d)
-		}
-	}
-}
-
-// Held is the sentence "would cover, but waits" and nothing else: every other
-// refusal of the rule stays a plain refusal in a charging slot too.
-func TestCoverDeficitHoldNeverMasksAnotherRefusal(t *testing.T) {
-	cases := map[string]func(*DeficitCoverInput){
-		"caller found a hold reason": func(i *DeficitCoverInput) { i.Eligible = false },
-		"measurements are stale":     func(i *DeficitCoverInput) { i.MeasurementsFresh = false },
-		"the charge still stands":    func(i *DeficitCoverInput) { i.CommandKw = 0.7 },
-		"at the reserve":             func(i *DeficitCoverInput) { i.SocPct = 5 },
-		"no deficit":                 func(i *DeficitCoverInput) { i.LoadKw = 4.2 },
-	}
-	for name, mutate := range cases {
-		for _, sustained := range []bool{false, true} {
-			in := deficitChargeSlot()
-			in.DeficitSustained = sustained
-			mutate(&in)
-			if d := CoverDeficit(in); d.Active || d.Held {
-				t.Fatalf("%s (sustained=%v) must refuse plainly: %+v", name, sustained, d)
-			}
-		}
+	// A charge that still stands is a different intent - with or without a clock.
+	in.CommandKw = 0.7
+	if d := CoverDeficit(in); d.Active {
+		t.Fatalf("a standing charge is never reinterpreted: %+v", d)
 	}
 }
 
@@ -144,7 +100,7 @@ func holdAt(s float64) time.Time { return holdT0.Add(time.Duration(s * float64(t
 // sustained, the full hold is.
 func TestDeficitHoldCountsFromTheFirstJudgementToTheNewestMeasurement(t *testing.T) {
 	h := NewDeficitHold()
-	hold := DeficitCoverChargeHold.Seconds()
+	hold := DeficitCoverHold.Seconds()
 	for s := 0.0; s < hold; s += 5 {
 		if h.Observe(holdAt(s), holdAt(s), true, 4.69, 6.83) {
 			t.Fatalf("%.0f s of deficit is not yet the hold time", s)
@@ -287,7 +243,7 @@ func TestASmallDeficitArmsTheRuleButNeverMovesTheSetpoint(t *testing.T) {
 		t.Fatal("a real 0.15 kW purchase arms the rule")
 	}
 	got := NewLoadFollower().ApplyAuthorized(
-		followBase(), 0, false, false, true, false, &floor, true, followLimits(), r)
+		followBase(), 0, false, false, true, false, true, &floor, true, followLimits(), r)
 	if got.Active || got.Kw != 0 {
 		t.Fatalf("below the follower engage margin nothing is written: %+v", got)
 	}

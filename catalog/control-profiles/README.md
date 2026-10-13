@@ -79,7 +79,8 @@ Seit dem 10.10.2026 (Entscheid E7 A) gehört zu jeder Freigabe eines Speicher-We
 Speicher eingespeist“ und „Überschuss nicht aufgenommen“. Ablauf und Kriterien stehen in
 [`edge-app/nodered/CONTROL-BENCH.md`](../../edge-app/nodered/CONTROL-BENCH.md#pflichtlauf-überschuss-mit-kurzen-verbrauchern-jeder-speicher-den-die-box-nachregelt).
 
-Das Profil ist die Eingabe dieses Laufs: der Kern-Prüflauf (`TestSurplusWithShortConsumers` in
+Das Profil ist die Eingabe dieses Laufs: der Kern-Prüflauf (`TestSurplusWithShortConsumers` für die
+Lade-Viertelstunde, `TestShortConsumersInEverySlotKind` für Ruhe, Deck und ungeplante Lastdeckung, beide in
 `edge-app/core/internal/agent`) simuliert je gepacktem Profil mit `daempfung.box_regelt: true` ein Gerät mit dessen
 Einschwingzeit und Messtakt und fährt die echte Regelkette dagegen. Daraus folgt:
 
@@ -87,8 +88,9 @@ Einschwingzeit und Messtakt und fährt die echte Regelkette dagegen. Daraus folg
 - **Ohne gemessene Zeiten prüft der Lauf nur die Vorgabe** (15 s / 25 s). Einschwingzeit und Messtakt werden am
   Prüfstand gemessen und mit Sicherheit A/B eingetragen; erst dann sagt die Zeile etwas über dieses Gerät.
 - Bevorzugt regelt das Gerät den Netzpunkt selbst und die Box setzt nur Grenzen (Entscheid vom 24.09.2026). Wo die Box
-  nachregelt, gilt die Haltezeit der Regel „Defizit decken“ (60 s in der Lade-Viertelstunde) und „Einspeisung schlägt
-  Einschwingzeit“ – beides unabhängig vom Hersteller, im gedämpften Folger und in `guards/deficitcover.go`.
+  nachregelt, gilt die Haltezeit vor dem Entladen (60 s in jeder Viertelstunden-Art, Entscheid A vom 13.10.2026) und
+  „Einspeisung schlägt Einschwingzeit“ – beides unabhängig vom Hersteller, im Folger (`guards/loadfollow.go`), im
+  gedämpften Folger und mit der Uhr aus `guards/deficitcover.go`.
 
 Das Profil bleibt Wissen: ein bestandener Kern-Prüflauf ist keine Freigabe, sondern die Voraussetzung für den Tag am
 Prüfstand.

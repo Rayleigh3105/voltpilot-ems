@@ -16,10 +16,14 @@ Fall `laden` (die Viertelstunde plant ein Laden): gruen heisst beides null, UND
 die Box hat im Fenster wirklich geladen, UND in jedem Ueberschuss-Abschnitt
 liefen Verbraucher - sonst haette der Lauf nichts bewiesen.
 
-Fall `ruhe` (die Viertelstunde plant nichts): die Box DARF das Defizit decken;
-hier gibt es kein gruen oder rot, nur die gemessenen Zahlen - wie lange der
-Speicher nach dem Ende des Verbrauchers noch einspeist und wann der
-Entlade-Befehl zurueckgenommen wird.
+Fall `ruhe` (die Viertelstunde plant nichts): seit dem Entscheid A vom
+13.10.2026 gilt die Haltezeit von 60 s auch hier - ein Verbraucher von 10-15 s
+darf keinen Entlade-Befehl ausloesen. Gruen heisst wie im Fall `laden`: kein
+Entlade-Befehl, nichts aus dem Speicher eingespeist. Das Laden entfaellt als
+Zeuge (die Viertelstunde plant keins). Daneben stehen weiter die gemessenen
+Zahlen - wie lange der Speicher nach dem Ende des Verbrauchers noch einspeist
+und wann der Entlade-Befehl zurueckgenommen wird. Bis edge-2026.10.1 deckte die
+Box in dieser Viertelstunde sofort; solche Staende sind hier rot.
 """
 import argparse, json, re
 
@@ -119,13 +123,19 @@ def urteile(text, von_s, bis_s, fall="laden"):
         r["urteil"], r["satz"] = "nicht_gefahren", (
             f"nur {r['verbraucher']} Verbraucher im Fenster "
             f"(je Ueberschuss {r['verbraucher_je_ueberschuss_kw']}) - der Lauf wuerde nichts beweisen")
-    elif fall == "ruhe":
-        r["urteil"], r["satz"] = "gemessen", (
+    elif fall == "ruhe" and (r["aus_dem_speicher_eingespeist_kwh"] > 1e-6
+                             or r["aus_dem_speicher_eingespeist_s"] > 0 or r["entlade_befehle"] > 0):
+        r["urteil"], r["satz"] = "rot", (
             f"{r['verbraucher']} kurze Verbraucher in einer Viertelstunde ohne geplantes Laden: "
-            f"{r['entlade_befehle']} Entlade-Befehle, aus dem Speicher eingespeist "
+            f"{r['entlade_befehle']} Entlade-Befehle (kleinster Sollwert "
+            f"{r['kleinster_sollwert_kw']} kW), aus dem Speicher eingespeist "
             f"{r['aus_dem_speicher_eingespeist_kwh'] * 1000:.1f} Wh in "
             f"{r['aus_dem_speicher_eingespeist_s']} s (laengste Strecke "
             f"{r['laengste_einspeisung_aus_dem_speicher_s']} s)")
+    elif fall == "ruhe":
+        r["urteil"], r["satz"] = "gruen", (
+            f"{r['verbraucher']} kurze Verbraucher in einer Viertelstunde ohne geplantes Laden: "
+            "kein Entlade-Befehl, aus dem Speicher eingespeist 0 Wh")
     elif r["geladen_kwh"] <= 0 or not r["sollwerte_geschrieben"]:
         r["urteil"], r["satz"] = "nicht_gefahren", (
             "die Box hat im Fenster nie geladen - die Lade-Viertelstunde lief nicht")

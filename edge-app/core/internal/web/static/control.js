@@ -299,7 +299,19 @@
       ? " – der Fahrplan hatte " + nf1.format(Math.abs(f.planned_kw)) + " kW vorgesehen"
       : "";
     var head;
-    if (f.direction === "reduce") {
+    var hold = s.deficit_hold;
+    if (hold && hold.active) {
+      // THE HOLD (2026-10-13): the house draws more than the discharge covers,
+      // and the box does not raise it yet - a demand has to stand for the hold
+      // time first. Without this line the card would name a house consumption
+      // the discharge visibly does not follow.
+      var secs = hold.hold_s != null ? Math.round(hold.hold_s) + " Sekunden" : "eine Minute";
+      head =
+        "Das Haus braucht gerade mehr Strom" + covered + ", als der Speicher deckt – " +
+        "die Entladung wird erst angehoben, wenn der Bedarf " + secs + " anhält: " +
+        "ein Verbraucher, der nur wenige Sekunden läuft, ist schon wieder aus, " +
+        "bis der Wechselrichter dem Befehl folgt, und der Speicher würde ins Netz einspeisen";
+    } else if (f.direction === "reduce") {
       // The 23:12 half: the plan discharged past the house, so the difference
       // was leaving the site. The honest cause is the giveaway, not the import.
       head =

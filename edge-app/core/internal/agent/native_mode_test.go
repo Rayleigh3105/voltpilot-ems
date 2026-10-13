@@ -87,6 +87,9 @@ func nativeTick(a *Agent, at time.Time, confirmedNative bool, gridChargeBlocked 
 	a.lastReading = guards.Reading{SocPct: 77, PvKw: 0.03, LoadKw: 7.117, GridLimitKw: guards.Unknown()}
 	a.lastReadingAt = at
 	a.mu.Unlock()
+	// The Pilsting night: the house has been short for hours, not for one tick -
+	// the hold (guards.DeficitCoverHold) is long over.
+	standDeficit(a, at)
 	mode := "normal"
 	if confirmedNative {
 		mode = batteryModeNative

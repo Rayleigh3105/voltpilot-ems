@@ -140,15 +140,27 @@ type ue3Event struct {
 
 // ue3Replay returns the setpoint of every recomputation and the index of the
 // one that was the recorded dropout.
+//
+// The replay's subject is the readback grace of a cover that RUNS, not when a
+// cover may begin: on the day the box covered the first measured deficit of
+// this slot at once. Since 2026-10-13 it waits for guards.DeficitCoverHold in
+// every slot (deficit_hold_slots_test.go), so the replay declares the house
+// short for a full hold before its first measurement - the recorded setpoints
+// then line up with the recorded readbacks again.
 func ue3Replay(t *testing.T, a *Agent, events []ue3Event) ([]float64, int) {
 	t.Helper()
 	var out []float64
 	dropout := -1
+	stood := false
 	for _, e := range events {
 		at := ue3At(e.at)
 		switch e.kind {
 		case 'm':
 			ue3Measure(a, at, e.pv, e.load)
+			if !stood {
+				standDeficit(a, at)
+				stood = true
+			}
 		case 'r':
 			ue3Readback(t, a, at, a.State.Get().SetpointKw, e.shape)
 		case 't':
@@ -290,7 +302,8 @@ func TestARunningDeficitCoverSurvivesTheRecordedReadbackDropouts(t *testing.T) {
 }
 
 // ue3Running brings the box into a self-started discharge on an idle slot:
-// held readback, 1.2 kW measured deficit, one recomputation.
+// held readback, a 1.2 kW deficit that has stood for the hold, one
+// recomputation.
 func ue3Running(t *testing.T) (*Agent, time.Time) {
 	t.Helper()
 	a := followAgent(t)
@@ -299,6 +312,7 @@ func ue3Running(t *testing.T) (*Agent, time.Time) {
 	a.currentPlan = ue3RestPlan(ue3At("15:15:00.000"))
 	a.mu.Unlock()
 	ue3Measure(a, t0, 1.0, 2.2)
+	standDeficit(a, t0) // the house has been short for the hold already
 	ue3Readback(t, a, t0, 0, ue3Held)
 	a.applySetpoint(t0)
 	if sp := a.State.Get().SetpointKw; math.Abs(sp+1.2) > 0.001 {
@@ -372,6 +386,9 @@ func TestAFailedReadbackStillRefusesToStartADischarge(t *testing.T) {
 	a.mu.Unlock()
 	ue3Readback(t, a, t0.Add(-5*time.Second), 0, ue3Held)
 	ue3Readback(t, a, t0, 0, ue3Fill)
+	// The deficit has stood: the hold is not what refuses this start.
+	ue3Measure(a, t0, 1.0, 2.2)
+	standDeficit(a, t0)
 	if sp := ue3Tick(a, t0); sp != 0 {
 		t.Fatalf("a discharge started on a failed readback: %+.3f kW", sp)
 	}
@@ -441,6 +458,7 @@ func TestARunningSurplusStoreChargeSurvivesOneFailedReadback(t *testing.T) {
 	t2 := t1.Add(10 * time.Second)
 	ue3Readback(t, a, t2.Add(-time.Second), 5.0, ue3Held)
 	ue3Measure(a, t2, 1.0, 3.0)
+	standDeficit(a, t2) // ... and it has been for the hold
 	a.applySetpoint(t2)
 	if sp := a.State.Get().SetpointKw; sp >= 0 {
 		t.Fatalf("setup: the follower must cover the deficit, got %+.3f", sp)

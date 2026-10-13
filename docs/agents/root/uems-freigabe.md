@@ -105,7 +105,9 @@ Wer sie als Tor behandelt, baut eine Sperre, die es mit E1 = B nicht gibt.
   [`live-realm-import.md`](../../../infra/prod/keycloak/live-realm-import.md)).
 - **Das letzte Box-Release heißt `edge-2026.10.1`** (12.10.2026, Tag auf `main` `c5b32cba7`,
   Speicher-Korrekturen UE-1 bis UE-4); davor `edge-2026.10.0` (10.10.2026, `99944c896`, das erste
-  nach dem Merge). Der nächste Tag ist `edge-2026.10.2`. NW-3 ist für beide Paare gefahren (je
+  nach dem Merge). Der nächste Tag ist `edge-2026.10.2`; er trägt die Haltezeit vor dem Entladen in
+  jeder Viertelstunde ([Entwurf der Notiz](../../rollout/release-notiz-edge-2026.10.2.md), noch nicht
+  getaggt, Zusatzlauf Fall `ruhe` dann grün erwartet). NW-3 ist für beide Paare gefahren (je
   13 grün), `paare.json` führt sie als viertes und fünftes; für 10.1 lief dazu der Zusatzlauf
   „kurzer Verbraucher“ mit Gegenprobe gegen 10.0. Am `uems`-Kopf `7f875011f` war am 09.10.
   NW-3neu gefahren ([Drehbuch §2.8](../../rollout/uems-erste-freigabe.md),

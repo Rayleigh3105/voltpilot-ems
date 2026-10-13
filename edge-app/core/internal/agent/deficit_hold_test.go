@@ -1,7 +1,7 @@
 package agent
 
-// The deficit-cover hold (guards.DeficitCoverChargeHold), end to end through
-// applySetpoint - the regression of Herzogau 2026-10-10 17:04 (report
+// The hold (guards.DeficitCoverHold) in a slot that PLANS A CHARGE, end to end
+// through applySetpoint - the regression of Herzogau 2026-10-10 17:04 (report
 // vp-wr-ueberschuss-entladung-k3 §1.5, reproduced there as
 // belege/nachstellung-k3_scratch_test.go).
 //
@@ -14,6 +14,9 @@ package agent
 //
 // What must hold now: a consumer no longer than the hold never takes the
 // setpoint below 0, and a deficit that outlasts it is covered as before.
+//
+// Since the Captain decision A of 2026-10-13 the same holds in every other kind
+// of quarter hour too - deficit_hold_slots_test.go pins those.
 
 import (
 	"math"
@@ -65,7 +68,7 @@ const (
 // 17:03:15; 60 s is the longest one the rule still rides out (measured every
 // 5 s, its last deficit is read 55 s after the first).
 func TestAConsumerNoLongerThanTheHoldNeverTurnsAChargingSlotAround(t *testing.T) {
-	for _, pulse := range []time.Duration{15 * time.Second, 30 * time.Second, guards.DeficitCoverChargeHold} {
+	for _, pulse := range []time.Duration{15 * time.Second, 30 * time.Second, guards.DeficitCoverHold} {
 		t.Run(pulse.String(), func(t *testing.T) {
 			a, addr := followAgentAddr(t)
 			sub := subscribeSetpoint(t, addr)
@@ -135,13 +138,13 @@ func TestADeficitThatOutlastsTheHoldIsCoveredInAChargingSlot(t *testing.T) {
 	herzogauTick(t, a, now, herzogauQuietPv, herzogauQuietLoad)
 
 	on := now.Add(5 * time.Second)
-	for at := on; at.Before(on.Add(guards.DeficitCoverChargeHold)); at = at.Add(5 * time.Second) {
+	for at := on; at.Before(on.Add(guards.DeficitCoverHold)); at = at.Add(5 * time.Second) {
 		if snap := herzogauTick(t, a, at, herzogauPulsePv, herzogauPulseLoad); snap.SetpointKw != 0 || snap.Follow != nil {
 			t.Fatalf("%s into the deficit: setpoint=%.3f follow=%+v - the hold is not over",
 				at.Sub(on), snap.SetpointKw, snap.Follow)
 		}
 	}
-	covered := on.Add(guards.DeficitCoverChargeHold)
+	covered := on.Add(guards.DeficitCoverHold)
 	snap := herzogauTick(t, a, covered, herzogauPulsePv, herzogauPulseLoad)
 	want := -(herzogauPulseLoad - herzogauPulsePv)
 	if math.Abs(snap.SetpointKw-want) > 0.001 {
@@ -178,9 +181,10 @@ func TestADeficitThatOutlastsTheHoldIsCoveredInAChargingSlot(t *testing.T) {
 }
 
 // The hold measures the HOUSE, not the slot and not the rule's permission: a
-// deficit already covered in a resting slot is not made to wait when the next
-// slot plans a charge, and a readback that drops out for one tick (the rule is
-// refused for that tick, as before) does not start the minute again.
+// deficit that stood - and is covered - in a resting slot is not made to wait
+// when the next slot plans a charge, and a readback that drops out for one tick
+// (the rule is refused for that tick, as before) does not start the minute
+// again.
 func TestAStandingDeficitDoesNotWaitAgainAtASlotBoundaryOrAfterALostReadback(t *testing.T) {
 	a, _ := followAgentAddr(t)
 	rest := time.Date(2026, 10, 10, 14, 45, 0, 0, time.UTC)
@@ -197,13 +201,19 @@ func TestAStandingDeficitDoesNotWaitAgainAtASlotBoundaryOrAfterALostReadback(t *
 	}
 	a.mu.Unlock()
 
-	// Resting slot: the first measured deficit is covered (2026-08-28), no wait.
+	// Resting slot: the deficit waits for the hold like everywhere (decision A,
+	// 2026-10-13) and is covered once it has stood - 30 s before the boundary.
 	first := charge.Add(-90 * time.Second)
-	if snap := herzogauTick(t, a, first, herzogauPulsePv, herzogauPulseLoad); snap.SetpointKw >= 0 || snap.DeficitHold != nil {
-		t.Fatalf("a resting slot covers at once: setpoint=%.3f hold=%+v", snap.SetpointKw, snap.DeficitHold)
+	for at := first; at.Before(first.Add(guards.DeficitCoverHold)); at = at.Add(5 * time.Second) {
+		if snap := herzogauTick(t, a, at, herzogauPulsePv, herzogauPulseLoad); snap.SetpointKw != 0 || snap.DeficitHold == nil {
+			t.Fatalf("%s into the deficit of a resting slot: setpoint=%.3f hold=%+v, want a named wait",
+				at.Sub(first), snap.SetpointKw, snap.DeficitHold)
+		}
 	}
-	for at := first.Add(5 * time.Second); at.Before(charge); at = at.Add(5 * time.Second) {
-		herzogauTick(t, a, at, herzogauPulsePv, herzogauPulseLoad)
+	for at := first.Add(guards.DeficitCoverHold); at.Before(charge); at = at.Add(5 * time.Second) {
+		if snap := herzogauTick(t, a, at, herzogauPulsePv, herzogauPulseLoad); snap.SetpointKw >= 0 || snap.DeficitHold != nil {
+			t.Fatalf("a deficit that stood is covered in a resting slot: setpoint=%.3f hold=%+v", snap.SetpointKw, snap.DeficitHold)
+		}
 	}
 	// The charging slot begins with the house still short: the cover continues.
 	snap := herzogauTick(t, a, charge, herzogauPulsePv, herzogauPulseLoad)
@@ -264,100 +274,86 @@ func TestAChargingSlotStaysOneWhileAComplianceClampHoldsItsChargeAtZero(t *testi
 	}
 }
 
-func TestPlannedChargeKw(t *testing.T) {
-	cases := []struct {
-		name       string
-		planActive bool
-		planned    float64
-		pre        float64
-		want       float64
-	}{
-		{"the plan's charge", true, 1.303, 1.303, 1.303},
-		{"a clamp took the command back, the intent stays", true, 1.303, 0, 1.303},
-		{"a holder's plan executor supplies the larger charge", true, 0, 2.5, 2.5},
-		{"a resting slot", true, 0, 0, 0},
-		{"a planned discharge", true, -4.3, -4.3, -4.3},
-		{"a command that already discharges is no charge to turn around", true, 1.303, -2, -2},
-		{"no active slot: only the command counts", false, 9, 0, 0},
-		{"an unusable plan value never invents a charge", true, math.NaN(), 0, 0},
-		{"an infinite plan value never invents a charge", true, math.Inf(1), 0, 0},
-	}
-	for _, c := range cases {
-		if got := plannedChargeKw(c.planActive, c.planned, c.pre); got != c.want {
-			t.Errorf("%s: plannedChargeKw(%v, %v, %v) = %v, want %v", c.name, c.planActive, c.planned, c.pre, got, c.want)
-		}
-	}
-}
-
 // The same promise in the closed loop with dead time (the device models of the
-// Prüflauf, surplus_short_consumer_scenario_test.go): a slot that charges the
-// surplus, then a cloud - the house is 1,5 kW short for five minutes - then the
-// sun again. On every device the discharge starts no earlier than the hold
-// after the deficit began, the deficit is then covered, and when the sun
-// returns the storage is back on the charging side after one reaction.
+// Prüflauf, surplus_short_consumer_scenario_test.go), in every kind of quarter
+// hour: a PV surplus, then a cloud - the house is 1,5 kW short for five minutes
+// - then the sun again. On every device the discharge starts no earlier than
+// the hold after the deficit began, the deficit is then covered, and when the
+// sun returns the discharge is gone after one reaction.
 func TestARealDeficitIsCoveredAfterTheHoldOnEveryDevice(t *testing.T) {
 	const cloudAt, cloudS = 120.0, 300.0
-	hold := guards.DeficitCoverChargeHold.Seconds()
-	for _, dev := range benchDevices(t) {
-		t.Run(dev.name, func(t *testing.T) {
-			sc := benchScenario{
-				start: time.Date(2026, 10, 10, 15, 0, 0, 0, time.UTC),
-				pvKw:  5.0, planKw: 1.303, surplus: true, socPct: 37,
-				segments: []benchSegment{
-					{seconds: int(cloudAt), surplusKw: 0.8},
-					{seconds: int(cloudS), surplusKw: -1.5},
-					{seconds: 240, surplusKw: 0.8},
-				},
-			}
-			res := runBench(t, dev, sc)
-			coverAt, backAt := -1.0, -1.0
-			for _, w := range res.setpoints {
-				if coverAt < 0 && w.kw < -0.005 {
-					coverAt = w.at
+	hold := guards.DeficitCoverHold.Seconds()
+	charging := benchSlotKind{name: "Lade-Viertelstunde"}
+	for _, kind := range append([]benchSlotKind{charging}, benchSlotKinds()...) {
+		for _, dev := range benchDevices(t) {
+			t.Run(kind.name+"/"+dev.name, func(t *testing.T) {
+				sc := benchScenario{
+					start: time.Date(2026, 10, 10, 15, 0, 0, 0, time.UTC),
+					pvKw:  5.0, planKw: 1.303, surplus: true, socPct: 37,
+					segments: []benchSegment{
+						{seconds: int(cloudAt), surplusKw: 0.8},
+						{seconds: int(cloudS), surplusKw: -1.5},
+						{seconds: 240, surplusKw: 0.8},
+					},
 				}
-				if coverAt >= 0 && backAt < 0 && w.at > cloudAt+cloudS && w.kw >= -0.005 {
-					backAt = w.at
+				if kind.name != charging.name {
+					sc = kind.apply(sc)
 				}
-			}
-			cadence := dev.damp.MaxCadence.Seconds()
-			t.Logf("%s: Defizit 1,5 kW ab t=%.0f s für %.0f s - Entladung ab t=%.0f s (%.0f s nach Beginn), "+
-				"zurück auf der Ladeseite %.0f s nach dem Ende; %s",
-				dev.name, cloudAt, cloudS, coverAt, coverAt-cloudAt, backAt-(cloudAt+cloudS), res)
-			if coverAt < 0 {
-				t.Fatalf("a five-minute deficit was never covered: %s", res)
-			}
-			// Never before the deficit stood for the hold ...
-			if coverAt-cloudAt < hold {
-				t.Errorf("discharge %.0f s after the deficit began - before the hold of %.0f s", coverAt-cloudAt, hold)
-			}
-			// ... and no later than the device lets the box prove it: one Messtakt
-			// until the deficit shows, one more until a pair a full hold later is
-			// complete, and a poll plus a tick each time.
-			if latest := hold + 2*(cadence+benchPollEvery+benchTickEvery); coverAt-cloudAt > latest {
-				t.Errorf("discharge %.0f s after the deficit began, want <= %.0f s (hold + two Messtakte)", coverAt-cloudAt, latest)
-			}
-			// Covered: of the deficit that remained after the cover began, the
-			// storage delivers all but the reserve the follower keeps.
-			remaining := 1.5 * (cloudAt + cloudS - coverAt) / 3600
-			if res.dischargedKwh < 0.5*remaining {
-				t.Errorf("discharged %.3f kWh of the %.3f kWh the house was short after the cover began", res.dischargedKwh, remaining)
-			}
-			// The sun is back: the discharge is gone after one reaction, and the
-			// storage fed the grid no longer than that.
-			if backAt < 0 {
-				t.Fatalf("the discharge was never taken back after the cloud: %s", res)
-			}
-			reaction := cadence + benchPollEvery + benchTickEvery
-			if backAt-(cloudAt+cloudS) > reaction {
-				t.Errorf("discharge taken back %.0f s after the cloud, want one reaction (<= %.0f s)", backAt-(cloudAt+cloudS), reaction)
-			}
-			if limit := reaction + dev.deadS + 3*dev.tauS; res.storageExportS > limit {
-				t.Errorf("the storage fed the grid for %.0f s after the cloud, want <= %.0f s", res.storageExportS, limit)
-			}
-			if last := res.setpoints[len(res.setpoints)-1]; last.kw <= 0 {
-				t.Errorf("after the cloud the box charges the surplus again, last setpoint %.3f kW", last.kw)
-			}
-		})
+				res := runBench(t, dev, sc)
+				coverAt, backAt := -1.0, -1.0
+				for _, w := range res.setpoints {
+					if coverAt < 0 && w.kw < -0.005 {
+						coverAt = w.at
+					}
+					if coverAt >= 0 && backAt < 0 && w.at > cloudAt+cloudS && w.kw >= -0.005 {
+						backAt = w.at
+					}
+				}
+				cadence := dev.damp.MaxCadence.Seconds()
+				t.Logf("%s, %s: Defizit 1,5 kW ab t=%.0f s für %.0f s - Entladung ab t=%.0f s (%.0f s nach Beginn), "+
+					"Entladung zurückgenommen %.0f s nach dem Ende; %s",
+					kind.name, dev.name, cloudAt, cloudS, coverAt, coverAt-cloudAt, backAt-(cloudAt+cloudS), res)
+				if coverAt < 0 {
+					t.Fatalf("a five-minute deficit was never covered: %s", res)
+				}
+				// Never before the deficit stood for the hold ...
+				if coverAt-cloudAt < hold {
+					t.Errorf("discharge %.0f s after the deficit began - before the hold of %.0f s", coverAt-cloudAt, hold)
+				}
+				// ... and no later than the device lets the box prove it: one Messtakt
+				// until the deficit shows, one more until a pair a full hold later is
+				// complete, and a poll plus a tick each time.
+				if latest := hold + 2*(cadence+benchPollEvery+benchTickEvery); coverAt-cloudAt > latest {
+					t.Errorf("discharge %.0f s after the deficit began, want <= %.0f s (hold + two Messtakte)", coverAt-cloudAt, latest)
+				}
+				// Covered: of the deficit that remained after the cover began, the
+				// storage delivers all but the reserve the follower keeps.
+				remaining := 1.5 * (cloudAt + cloudS - coverAt) / 3600
+				if res.dischargedKwh < 0.5*remaining {
+					t.Errorf("discharged %.3f kWh of the %.3f kWh the house was short after the cover began", res.dischargedKwh, remaining)
+				}
+				// The sun is back: the discharge is gone after one reaction, and the
+				// storage fed the grid no longer than that.
+				if backAt < 0 {
+					t.Fatalf("the discharge was never taken back after the cloud: %s", res)
+				}
+				reaction := cadence + benchPollEvery + benchTickEvery
+				if backAt-(cloudAt+cloudS) > reaction {
+					t.Errorf("discharge taken back %.0f s after the cloud, want one reaction (<= %.0f s)", backAt-(cloudAt+cloudS), reaction)
+				}
+				if limit := reaction + dev.deadS + 3*dev.tauS; res.storageExportS > limit {
+					t.Errorf("the storage fed the grid for %.0f s after the cloud, want <= %.0f s", res.storageExportS, limit)
+				}
+				last := res.setpoints[len(res.setpoints)-1]
+				if last.kw < -0.005 {
+					t.Errorf("after the cloud no discharge may stand, last setpoint %.3f kW", last.kw)
+				}
+				// A slot that charges the surplus is back on the charging side.
+				if kind.name == charging.name && last.kw <= 0 {
+					t.Errorf("after the cloud the box charges the surplus again, last setpoint %.3f kW", last.kw)
+				}
+			})
+		}
 	}
 }
 
@@ -368,7 +364,7 @@ func TestARealDeficitIsCoveredAfterTheHoldOnEveryDevice(t *testing.T) {
 // on the reading it had would discharge for a 45 s consumer whose end the
 // device reports 20 s late - and send that discharge into the grid.
 func TestAConsumerOfUpToAHoldNeverDischargesOnAnyDevice(t *testing.T) {
-	hold := guards.DeficitCoverChargeHold.Seconds()
+	hold := guards.DeficitCoverHold.Seconds()
 	for _, dev := range benchDevices(t) {
 		t.Run(dev.name, func(t *testing.T) {
 			sc := benchScenario{

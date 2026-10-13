@@ -192,6 +192,12 @@ der Speicher auch mit 10.1 nach einem kurzen Verbraucher noch ein: die Haltezeit
 nur in der Lade-Viertelstunde. In der Ruhe-Viertelstunde stand der Entlade-Befehl nach dem Ende
 des Verbrauchers noch 5 bis 12 s statt 13 bis 46 s - das passt zur schnelleren Rücknahme (UE-2).
 
+Daraus wurde der Entscheid A vom 13.10.2026: die Haltezeit gilt ab dem nächsten Box-Release
+(`edge-2026.10.2`) in **jeder** Viertelstunden-Art. Der Fall `ruhe` des Zusatzlaufs hat seitdem ein
+Urteil und wird mit jenem Release **grün** erwartet; 10.0 und 10.1 sind dann rot und die Gegenprobe
+([Erwartung je Stand](../../../tools/nw3-box-image/README.md#zusatzlauf-kurzer-verbraucher)). Gefahren
+ist das noch nicht - der Lauf braucht die gebauten Bilder des Paars.
+
 ## X2 ist kein Fehlerbild
 
 Die Fähigkeit der Tabelle `docs/contracts/v2/edge-capabilities.json` trägt

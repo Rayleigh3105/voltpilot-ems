@@ -11,18 +11,26 @@ Fahrplan-Modus". Was HIER gelten muss:
   ist das symmetrische Engage/Release-Dwell des `LoadFollower` auf dem Defizit).
   Sie läuft am GLEICHEN Ort wie die beiden Wolken-Pflichten: nach jeder
   Compliance-Klemme, nach der Holder-Übersteuerung, VOR dem Peak-Guard.
-- **⚠ In der Lade-Viertelstunde wartet die Regel (E2 A, 10.10.2026).** Die
-  Entscheidung bekommt neben dem gekürzten Befehl den GEPLANTEN
-  (`PlannedKw`, `plannedChargeKw` im Agent: Planwert vor den Klemmen). Plant
-  der Slot ein Laden, deckt sie erst, wenn `guards.DeficitHold` das Haus-Defizit
-  60 s ununterbrochen gemessen hat (`DeficitCoverChargeHold`); bis dahin meldet
-  sie `Held` und der Zustand trägt `deficit_hold`. Die Uhr zählt vom ersten
-  TAKT bis zur MESSZEIT des jüngsten Defizit-Messwerts (unter dem gedämpften
-  Folger die Paarzeit der Regelmessung) - Takte ohne neue Messung zählen nicht.
-  Sie wird in JEDEM Takt gefüttert, auch wenn die Regel gerade nicht darf
-  (Pause, verlorene Rücklesung, anderer Slot): ein stehendes Defizit wartet an
+- **⚠ Die Haltezeit gehört dem Folger, nicht der Regel (Entscheid A, 13.10.2026;
+  E2 A vom 10.10. kannte sie nur in der Lade-Viertelstunde).** `CoverDeficit`
+  kennt keine Zeit mehr (kein `PlannedKw`, kein `Held`). `LoadFollower.ApplyAuthorized`
+  bekommt das Urteil der einen Uhr (`deficitSustained` aus `guards.DeficitHold`,
+  60 s = `DeficitCoverHold`) und hebt ohne es KEINE Entladung an - für
+  `deficit_cover`, `follow` und `idle_follow` gleich. Bis dahin deckt er höchstens
+  den Stand des Takts davor (`levelKw`): eine laufende Deckung überlebt eine
+  Messlücke, wächst aber nicht; in der Deck-Viertelstunde wird der Prognose-Planwert
+  auf diesen Stand begrenzt, sonst brächte ein kurzer Verbraucher ihn zurück.
+  Absenken ist immer sofort. `FollowResult.Held` -> Zustand `deficit_hold`.
+  Die Uhr zählt vom ersten TAKT bis zur MESSZEIT des jüngsten Defizit-Messwerts
+  (unter dem gedämpften Folger die Paarzeit der Regelmessung) - Takte ohne neue
+  Messung zählen nicht. Sie wird in JEDEM Takt gefüttert, auch wenn gerade niemand
+  darf (Pause, verlorene Rücklesung, anderer Slot): ein stehendes Defizit wartet an
   der Slot-Grenze nicht erneut. Wer die Uhr an `Eligible` hängt, macht aus jedem
-  Rücklese-Aussetzer eine neue Minute Netzbezug.
+  Rücklese-Aussetzer eine neue Minute Netzbezug. In Tests, die eine Deckung im
+  ersten Takt erwarten: `standDeficit(a, now, pv, load)` (das Defizit steht schon).
+  Nicht erfasst: ein kurzer Verbraucher AUF einem stehenden Defizit (die Uhr misst
+  ob, nicht wie viel) - `TestShortConsumersOnTopOfAStandingDeficitAreStillFollowed`
+  misst es. Der Eigenmodus des Geräts wartet nicht (`agent/native.go`).
 - **⚠ DEEPEN-ONLY.** Der Follower kennt seither drei Autorisierungen:
   `coverLoad` (Wolke, beidseitig), `unplannedLoad` (Wolke, nur aus echter Ruhe)
   und `deficitCover` (lokal, aus JEDEM nicht-ladenden Befehl, aber nur

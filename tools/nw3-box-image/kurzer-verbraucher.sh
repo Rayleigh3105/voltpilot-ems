@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Zusatzlauf zu NW-3 — „kurzer Verbraucher" am GEBAUTEN Box-Image
-# (Speicher-Korrekturen UE-1/UE-2, Entscheid E2 A vom 10.10.2026).
+# (Speicher-Korrekturen UE-1/UE-2, Entscheid E2 A vom 10.10.2026; Haltezeit in
+# jeder Viertelstunde, Entscheid A vom 13.10.2026).
 #
 # Was dieser Lauf beweist und was nicht
 # -------------------------------------
@@ -12,14 +13,17 @@
 #
 #   --fall laden (Vorgabe)  Die Viertelstunde plant ein Laden. Regel: das Laden
 #       wird sofort zurueckgenommen, ENTLADEN wird erst nach 60 s ununterbrochen
-#       gemessenem Defizit (docs/edge-runtime.md „Kurzer Verbraucher in der
-#       Lade-Viertelstunde"). Gruen heisst: kein Entlade-Befehl und nichts aus dem
+#       gemessenem Defizit (docs/edge-runtime.md „Kurzer Verbraucher – Haltezeit
+#       vor dem Entladen"). Gruen heisst: kein Entlade-Befehl und nichts aus dem
 #       Speicher eingespeist. Der Ueberschuss kommt in zwei Abschnitten - erst
 #       0,76 kW (die Box laedt sichtbar), dann 0,5 kW (so gross wie die Reserve
 #       des Folgers: der Sollwert steht auf 0, obwohl ein Laden geplant ist).
-#   --fall ruhe             Die Viertelstunde plant nichts. Die Box DARF das
-#       Defizit decken; gemessen wird, wie lange der Speicher nach dem Ende des
-#       Verbrauchers einspeist. Kein gruen oder rot, nur Zahlen.
+#   --fall ruhe             Die Viertelstunde plant nichts. Dieselbe Regel seit
+#       dem Entscheid A vom 13.10.2026: ENTLADEN erst nach 60 s gemessenem
+#       Defizit. Gruen heisst auch hier: kein Entlade-Befehl und nichts aus dem
+#       Speicher eingespeist - ab dem Box-Release NACH edge-2026.10.1. An
+#       edge-2026.10.1 und davor deckte die Box in dieser Viertelstunde sofort;
+#       diese Staende sind rot (und sind die Gegenprobe).
 #
 # Ein Lauf allein beweist die Korrektur NICHT - er zeigt nur, dass dieser Stand
 # im Fall nicht entlaedt. Die Aussage entsteht erst aus der GEGENPROBE: derselbe
@@ -59,7 +63,7 @@ while [ $# -gt 0 ]; do
     --fall)     FALL="$2"; shift 2 ;;
     --aus)      AUS="$2"; shift 2 ;;
     --behalten) BEHALTEN=1; shift ;;
-    -h|--help)  sed -n '2,45p' "$0"; exit 0 ;;
+    -h|--help)  sed -n '2,46p' "$0"; exit 0 ;;
     *) echo "unbekanntes Argument: $1" >&2; exit 2 ;;
   esac
 done

@@ -1,9 +1,9 @@
 {
   "$comment": "Die GETEILTEN Vektoren des Netz-null-Reduzierens (P1 des Nachtreserve-Berichts vp-nachtreserve-konzept-k2, 08.09.2026). ZWEI Zwillinge lesen diese Datei PER PFAD: Go edge-app/core/internal/guards/loadfollow_test.go faehrt den Block 'ausfuehrung' durch den ECHTEN Waechter guards.LoadFollower, Python services/optimization/tests/test_load_follow.py faehrt den Block 'emission' durch die ECHTE Regel voltpilot_optimization.slot_trim. Zusammen beweisen sie, dass die Cloud genau die Slots markiert, auf denen die Box das Recht dann auch braucht - das Muster von stur-speicher-vectors.json / topology-vectors.json / lan-host-vectors.json. Wer eine der beiden Seiten aendert, aendert BEIDE Seiten UND diese Datei zusammen.",
 
-  "$regel": "Der Waechter autorisiert die beiden HAELFTEN der Nachfuehrung GETRENNT: deepenAllowed = coverLoad || unplannedLoad || deficitCover, reduceAllowed = coverLoad || unplannedLoad || limitToLoad. VERTIEFEN gibt gespeicherte Energie aus und bleibt deshalb an ein wirtschaftliches Urteil (die Cloud) oder an die lokale Vertrauensregel gebunden; BEGRENZEN haelt nur Energie, die der Plan in einem Netz~0-Slot selbst hoeher bewertet als den Export (sonst haette er dort verkauft) - es ist nie unwirtschaftlich und braucht deshalb keinen Preis. Ziel des Begrenzens ist das GEMESSENE Defizit max(load - pv, 0), Untergrenze 0 kW, nie ein Laden, nie eine Richtungsumkehr.",
+  "$regel": "Der Waechter autorisiert die beiden HAELFTEN der Nachfuehrung GETRENNT: deepenAllowed = coverLoad || unplannedLoad || deficitCover, reduceAllowed = coverLoad || unplannedLoad || limitToLoad. VERTIEFEN gibt gespeicherte Energie aus und bleibt deshalb an ein wirtschaftliches Urteil (die Cloud) oder an die lokale Vertrauensregel gebunden; BEGRENZEN haelt nur Energie, die der Plan in einem Netz~0-Slot selbst hoeher bewertet als den Export (sonst haette er dort verkauft) - es ist nie unwirtschaftlich und braucht deshalb keinen Preis. Ziel des Begrenzens ist das GEMESSENE Defizit max(load - pv, 0), Untergrenze 0 kW, nie ein Laden, nie eine Richtungsumkehr. HALTEZEIT (Entscheid A vom 13.10.2026, nur die Box-Seite 'ausfuehrung'; die Cloud markiert dieselben Slots wie zuvor): ein Defizit, das noch nicht 60 s ununterbrochen gemessen wurde (deficit_sustained = false, guards.DeficitCoverHold), HEBT keine Entladung an - gedeckt wird hoechstens, was der Waechter im Takt davor in Kraft hatte (in diesen Vektoren: nichts, jeder Fall faehrt einen frischen Waechter). Fuer beide Haelften: Vertiefen wartet, und das Begrenzen haelt den Planwert auf diesem Stand statt auf dem gemessenen Defizit. Ein Planwert OHNE Reduzieren-Recht (geplanter Verkauf) laeuft unveraendert.",
 
-  "$einheiten": "kw ist der bereits guard-begrenzte Sollwert des Slots (negativ = Entladung, positiv = Ladung), load_kw/pv_kw sind die gemessenen Leistungen am Netzverknuepfungspunkt, soc_pct der Ladestand, floor_soc_pct der volle Reserve-Boden aus dem Plan. erwartet_kw ist der Sollwert NACH dem Waechter; erwartet_richtung ist 'deepen', 'reduce' oder null (keine Korrektur), erwartet_pfad benennt die Autoritaet, die TATSAECHLICH gehandelt hat.",
+  "$einheiten": "kw ist der bereits guard-begrenzte Sollwert des Slots (negativ = Entladung, positiv = Ladung), load_kw/pv_kw sind die gemessenen Leistungen am Netzverknuepfungspunkt, soc_pct der Ladestand, floor_soc_pct der volle Reserve-Boden aus dem Plan. erwartet_kw ist der Sollwert NACH dem Waechter; erwartet_richtung ist 'deepen', 'reduce' oder null (keine Korrektur), erwartet_pfad benennt die Autoritaet, die TATSAECHLICH gehandelt hat. deficit_sustained (wahlfrei, Vorgabe true) sagt, ob das Haus-Defizit die Haltezeit schon gestanden hat; erwartet_wartet (wahlfrei, Vorgabe false) verlangt, dass der Waechter das Warten benennt (FollowResult.Held).",
 
   "$herkunft": "Zahlen aus der Nacht 04./05.09.2026, Anlage Pilsting/Herzogau (Bezug 25 ct fest, Exportwert Spot). Box-Regel: 'Sollwert negativ = Entladung'.",
 
@@ -63,6 +63,46 @@
       "measurements_fresh": false,
       "cover_load": false, "limit_to_load": true, "deficit_cover": true,
       "erwartet_kw": -6.06, "erwartet_richtung": null, "erwartet_pfad": ""
+    },
+    {
+      "name": "haltezeit-ruhe-kurzer-verbraucher",
+      "why": "Herzogau 10.10.2026 17:03:15 in einer Viertelstunde, die NICHTS plant: ein Verbraucher schaltet zu (PV 4,69 / Haus 6,83), das Defizit ist eben erst gemessen. Die lokale Vertrauensregel ist scharf, aber der Waechter hebt die Entladung nicht an - der Speicher ruht und benennt das Warten.",
+      "kw": 0.0, "load_kw": 6.83, "pv_kw": 4.69, "soc_pct": 37.0, "floor_soc_pct": 5.0,
+      "measurements_fresh": true, "deficit_sustained": false,
+      "cover_load": false, "limit_to_load": false, "deficit_cover": true,
+      "erwartet_kw": 0.0, "erwartet_richtung": null, "erwartet_pfad": "", "erwartet_wartet": true
+    },
+    {
+      "name": "haltezeit-vorbei-ruhe",
+      "why": "Dieselbe Viertelstunde, das Defizit steht seit 60 s: jetzt wird es gedeckt, unter dem Namen der Regel.",
+      "kw": 0.0, "load_kw": 6.83, "pv_kw": 4.69, "soc_pct": 37.0, "floor_soc_pct": 5.0,
+      "measurements_fresh": true, "deficit_sustained": true,
+      "cover_load": false, "limit_to_load": false, "deficit_cover": true,
+      "erwartet_kw": -2.14, "erwartet_richtung": "deepen", "erwartet_pfad": "deficit_cover"
+    },
+    {
+      "name": "haltezeit-deck-prognosewert-kommt-nicht-zurueck",
+      "why": "Deck-Viertelstunde (cover_load_from_battery) mit dem Prognosewert -1 kW. Bei PV-Ueberschuss hatte der Waechter ihn auf 0 begrenzt; jetzt schaltet derselbe Verbraucher zu. Ohne Haltezeit kaeme der Planwert sofort zurueck und wuerde vertieft. Mit ihr bleibt die Begrenzung auf 0 stehen, bis das Defizit steht.",
+      "kw": -1.0, "load_kw": 6.83, "pv_kw": 4.69, "soc_pct": 37.0, "floor_soc_pct": 5.0,
+      "measurements_fresh": true, "deficit_sustained": false,
+      "cover_load": true, "limit_to_load": false, "deficit_cover": false,
+      "erwartet_kw": 0.0, "erwartet_richtung": "reduce", "erwartet_pfad": "follow", "erwartet_wartet": true
+    },
+    {
+      "name": "haltezeit-nur-das-reduzieren-recht",
+      "why": "Der Geldfall von 23:15 mit einem Defizit, das noch nicht gestanden hat: das Reduzieren-Recht haelt den Planwert auf dem Stand, den das Haus GEZEIGT hat (hier: nichts), statt auf dem eben gemessenen Defizit.",
+      "kw": -6.06, "load_kw": 4.35, "pv_kw": 0.0, "soc_pct": 41.0, "floor_soc_pct": 5.0,
+      "measurements_fresh": true, "deficit_sustained": false,
+      "cover_load": false, "limit_to_load": true, "deficit_cover": false,
+      "erwartet_kw": 0.0, "erwartet_richtung": "reduce", "erwartet_pfad": "limit", "erwartet_wartet": true
+    },
+    {
+      "name": "haltezeit-laesst-den-geplanten-verkauf",
+      "why": "Der geplante Verkauf von 19:45 ist keine Defizitdeckung: ohne Reduzieren-Recht laeuft der Planwert unveraendert, ob das Defizit gestanden hat oder nicht, und nichts wartet.",
+      "kw": -30.0, "load_kw": 7.1, "pv_kw": 0.14, "soc_pct": 78.0, "floor_soc_pct": 5.0,
+      "measurements_fresh": true, "deficit_sustained": false,
+      "cover_load": false, "limit_to_load": false, "deficit_cover": true,
+      "erwartet_kw": -30.0, "erwartet_richtung": null, "erwartet_pfad": ""
     }
   ],
 

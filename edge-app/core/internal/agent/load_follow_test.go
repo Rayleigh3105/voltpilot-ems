@@ -84,6 +84,7 @@ func TestAuthorizedIdleSlotCoversScreenshotAThenReportsScreenshotBNeutral(t *tes
 		s.Control = &state.ControlInfo{AllMatch: true, Confirm: "held", CheckedAt: now}
 	})
 
+	standDeficit(a, now) // the house has been short for the hold already
 	a.applySetpoint(now)
 	waitFor(t, 5*time.Second, "screenshot A idle correction", func() bool {
 		m, ok := sub.latest()
@@ -153,6 +154,7 @@ func TestIdleFahrplanSlotCoversTheMeasuredDeficitAtAnySocAboveTheReserve(t *test
 		s.Control = &state.ControlInfo{AllMatch: true, Confirm: "held", CheckedAt: now}
 	})
 
+	standDeficit(a, now) // the house has been short for the hold already
 	a.applySetpoint(now)
 	waitFor(t, 5*time.Second, "the reported 1.4 kW purchase", func() bool {
 		m, ok := sub.latest()
@@ -237,7 +239,7 @@ func TestTheLocalDeficitRuleNeverCutsBackAPlannedSale(t *testing.T) {
 // back to 0 - and that 0 is still a slot that PLANS a charge: until 2026-10-10
 // the rule saw only the trimmed command and discharged on the same tick
 // (Herzogau 17:04, report vp-wr-ueberschuss-entladung-k3 §1.5). It now waits
-// for guards.DeficitCoverChargeHold and names the wait.
+// for guards.DeficitCoverHold and names the wait.
 func TestTheLocalDeficitRuleNeverReinterpretsAPlannedCharge(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -289,7 +291,7 @@ func TestTheLocalDeficitRuleNeverReinterpretsAPlannedCharge(t *testing.T) {
 				}
 				h := snap.DeficitHold
 				if !h.Active || h.Since == nil || !h.Since.Equal(now) ||
-					h.HoldS != guards.DeficitCoverChargeHold.Seconds() {
+					h.HoldS != guards.DeficitCoverHold.Seconds() {
 					t.Fatalf("the wait names its start and its length: %+v", h)
 				}
 			}
@@ -409,6 +411,7 @@ func TestMarkedSlotCoversTheMeasuredHouseAndSaysWhy(t *testing.T) {
 	a.lastReading = pilstingNightReading()
 	a.mu.Unlock()
 
+	standDeficit(a, now) // the house has been short for the hold already
 	a.applySetpoint(now)
 
 	snap := a.State.Get()
@@ -450,6 +453,7 @@ func TestMarkedSlotLimitsADischargeThatOvershootsTheHouse(t *testing.T) {
 	a.lastReading = guards.Reading{SocPct: 77, PvKw: 0, LoadKw: 5.1, GridLimitKw: guards.Unknown()}
 	a.mu.Unlock()
 
+	standDeficit(a, now) // the house has been short for the hold already
 	a.applySetpoint(now)
 
 	snap := a.State.Get()
@@ -518,6 +522,7 @@ func TestTheCommittedContractFixtureIsLimitedToTheMeasuredHouse(t *testing.T) {
 	a.lastReading = guards.Reading{SocPct: 77, PvKw: 0, LoadKw: 2.0, GridLimitKw: guards.Unknown()}
 	a.mu.Unlock()
 
+	standDeficit(a, time.Date(2026, 7, 30, 19, 20, 0, 0, time.UTC)) // the house has been short for the hold already
 	a.applySetpoint(time.Date(2026, 7, 30, 19, 20, 0, 0, time.UTC))
 
 	snap := a.State.Get()
@@ -640,6 +645,7 @@ func TestTheFollowedValueIsWhatGetsPublishedSoNoMismatchIsPossible(t *testing.T)
 	a.currentPlan = pilstingNightPlan(now, true)
 	a.lastReading = pilstingNightReading()
 	a.mu.Unlock()
+	standDeficit(a, now) // the house has been short for the hold already
 	a.applySetpoint(now)
 
 	waitFor(t, 5*time.Second, "the followed setpoint on the local bus", func() bool {
@@ -717,6 +723,7 @@ func TestThePeakReserveBoundsTheLoadFollowing(t *testing.T) {
 	a.lastReading = r
 	a.mu.Unlock()
 
+	standDeficit(a, now) // the house has been short for the hold already
 	a.applySetpoint(now)
 
 	snap := a.State.Get()
@@ -758,6 +765,7 @@ func TestTheCommittedLimitFixtureStopsTheNightLeak(t *testing.T) {
 	a.lastReadingAt = time.Date(2026, 9, 4, 21, 20, 0, 0, time.UTC)
 	a.mu.Unlock()
 
+	standDeficit(a, time.Date(2026, 9, 4, 21, 20, 0, 0, time.UTC)) // the house has been short for the hold already
 	a.applySetpoint(time.Date(2026, 9, 4, 21, 20, 0, 0, time.UTC))
 
 	snap := a.State.Get()
@@ -810,6 +818,7 @@ func TestTheLimitRightNeverSpendsStoredEnergy(t *testing.T) {
 	a.lastReadingAt = now
 	a.mu.Unlock()
 
+	standDeficit(a, now) // the house has been short for the hold already
 	a.applySetpoint(now)
 
 	snap := a.State.Get()

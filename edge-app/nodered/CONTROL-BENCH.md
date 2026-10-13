@@ -444,29 +444,31 @@ Nach bestandener Curtailment- **und** Storage-Freigabe: siehe „Freigabe" unten
 
 **Bedingung jeder Freigabe eines Speicher-Wechselrichters zum Steuern** (Entscheid E7 A vom 10.10.2026). Anlass: Herzogau, 10.10.2026 17:04 – in einer Lade-Viertelstunde schaltete ein Verbraucher für 10–15 s zu, die Box befahl sofort die Entladung, der Deye folgte nach rund 12 s, und 1,5 kW gingen aus dem Speicher ins Netz (zwölfmal in 79 Minuten). Jede Einzelregel war richtig; den Fehler zeigt nur ein Lauf mit kurzen Verbrauchern am Gerät mit seiner echten Folgezeit.
 
+Seit dem Entscheid A vom 13.10.2026 gilt die Haltezeit vor dem Entladen in **jeder** Viertelstunden-Art, nicht nur in der Lade-Viertelstunde: der Zusatzlauf zu `edge-2026.10.1` zeigte in einer Viertelstunde ohne geplantes Laden noch 22,3 Wh aus dem Speicher hinter sechs kurzen Verbrauchern. Der Pflichtlauf fährt darum **drei Slot-Arten**: Laden, Ruhe und Deck.
+
 Der Lauf gilt für jede Absicht, bei der die Box der Messung nachregelt (kein zertifizierter Eigenmodus, `native_withheld`). Regelt das Gerät den Netzpunkt für alle Absichten selbst, gilt dieselbe Messung mit denselben zwei Zahlen – dann prüft sie das Gerät statt der Box.
 
 **Stufe 1 – Prüflauf im Kern (ohne Gerät, vor dem Prüfstandstag).** Gemessene Einschwingzeit und Messtakt stehen im Steuerprofil (`daempfung`, [Steuerprofile](../../catalog/control-profiles/README.md)); der Lauf simuliert daraus das Gerät im Regelkreis mit Totzeit und nimmt jedes gepackte Profil mit `box_regelt: true` von selbst auf:
 
 ```bash
 cd edge-app/core
-go test ./internal/agent -v -run 'TestSurplusWithShortConsumers|TestDischargeIsTakenBackWithTheNextGridValueWhenTheConsumerEnds|TestARealDeficitIsCoveredAfterTheHoldOnEveryDevice|TestAConsumerOfUpToAHoldNeverDischargesOnAnyDevice'
+go test ./internal/agent -v -run 'TestSurplusWithShortConsumers|TestShortConsumersInEverySlotKind|TestDischargeIsTakenBackWithTheNextGridValueWhenTheConsumerEnds|TestARealDeficitIsCoveredAfterTheHoldOnEveryDevice|TestAConsumerOfUpToAHoldNeverDischargesOnAnyDevice'
 ```
 
-Bestanden, wenn die Zeile des Profils `aus dem Speicher eingespeist 0.0000 kWh` und `0 Entlade-Befehle` zeigt. Ein Profil ohne gemessene Zeiten läuft mit der Vorgabe (15 s / 25 s) – das ist dann eine Aussage über die Vorgabe, nicht über das Gerät.
+`TestSurplusWithShortConsumers` ist die Lade-Viertelstunde; `TestShortConsumersInEverySlotKind` fährt dieselben Geräte durch die Ruhe-Viertelstunde (Planwert 0, keine Pflicht), die Deck-Viertelstunde (`cover_load_from_battery`, Planwert −1 kW) und die ungeplante Lastdeckung (`unplanned_load_discharge`). Bestanden, wenn die Zeile des Profils in **jeder** Slot-Art `aus dem Speicher eingespeist 0.0000 kWh` und `0 Entlade-Befehle` zeigt. `TestShortConsumersOnTopOfAStandingDeficitAreStillFollowed` gehört nicht zum Urteil: der Lauf misst den Fall, den die Haltezeit nicht erfasst (kurzer Verbraucher auf einem stehenden Defizit). Ein Profil ohne gemessene Zeiten läuft mit der Vorgabe (15 s / 25 s) – das ist dann eine Aussage über die Vorgabe, nicht über das Gerät.
 
 **Stufe 2 – am Prüfstand und am ersten echten Gerät** (rund ein halber Tag; Simulatornachweise ersetzen keinen Prüfstand):
 
-1. Lade-Viertelstunden mit „Überschuss einlagern“ (Planwert > 0, `charge_from_surplus_only`), Ladestand zwischen Boden und Obergrenze, PV-Überschuss in den Stufen 0,5 / 1 / 2 / 5 kW.
-2. Einen Verbraucher von rund 1 kW für 5–20 s alle 1–2 Minuten schalten, je Stufe mindestens zehn Minuten (zusammen mindestens 30 Verbraucher). Mitschnitt von `:8484` (`/api/state`, `/api/history`) im 5-s-Takt.
+1. Lade-Viertelstunden mit „Überschuss einlagern“ (Planwert > 0, `charge_from_surplus_only`), Ladestand zwischen Boden und Obergrenze, PV-Überschuss in den Stufen 0,5 / 1 / 2 / 5 kW. Danach, je mindestens zehn Minuten bei rund 0,5 kW PV-Überschuss: **Ruhe-Viertelstunden** (Planwert 0, keine Pflicht) und **Deck-Viertelstunden** (`cover_load_from_battery`, Planwert < 0 – bei Überschuss begrenzt die Box ihn auf 0).
+2. Einen Verbraucher von rund 1 kW für 5–20 s alle 1–2 Minuten schalten, je Stufe und je Slot-Art mindestens zehn Minuten (in den Lade-Viertelstunden zusammen mindestens 30 Verbraucher, in Ruhe und Deck je mindestens sechs). In Ruhe und Deck muss der Verbraucher größer sein als der Überschuss, sonst entsteht kein Defizit. Mitschnitt von `:8484` (`/api/state`, `/api/history`) im 5-s-Takt.
 3. Dabei **Folgezeit** (Befehl → gemessene Wirkung) und **Messtakt** (Abstand zweier Register-Auffrischungen, Netz- und Batteriehälfte getrennt) messen und im Steuerprofil nachtragen.
-4. Gegenprobe: ein Defizit von mindestens drei Minuten (Verbraucher an lassen oder PV wegnehmen) – die Box deckt es nach der Haltezeit von 60 s (`deficit_hold` im Zustand, danach `follow.path = deficit_cover`).
+4. Gegenprobe in jeder der drei Slot-Arten: ein Defizit von mindestens drei Minuten (Verbraucher an lassen oder PV wegnehmen) – die Box deckt es nach der Haltezeit von 60 s, je nach Messtakt des Geräts also rund 70 bis 100 s nach seinem Beginn, nie früher als 60 s (`deficit_hold` im Zustand, danach `follow.path` = `deficit_cover` in Lade- und Ruhe-Viertelstunde, `follow` in der Deck-Viertelstunde).
 
 **Die zwei Zahlen** (aus dem Mitschnitt, je Probe mit Speicherleistung `b` und Netzleistung `g`, + = Laden bzw. Bezug):
 
 | Zahl | Rechnung | Bestanden |
 |---|---|---|
-| **aus dem Speicher eingespeist** | Summe von `min(max(−b, 0), max(−g, 0))` × Zeit, ohne geplante Verkaufs-Viertelstunden | 0 über dem Band 0,3 kW / 30 s; kein Entlade-Sollwert bei einem Verbraucher bis 60 s |
+| **aus dem Speicher eingespeist** | Summe von `min(max(−b, 0), max(−g, 0))` × Zeit, ohne geplante Verkaufs-Viertelstunden | 0 über dem Band 0,3 kW / 30 s; kein Entlade-Sollwert bei einem Verbraucher bis 60 s – in Lade-, Ruhe- und Deck-Viertelstunde |
 | **Überschuss nicht aufgenommen** | übrige Einspeisung `max(−g, 0)` minus der Zeile darüber, solange der Ladestand unter der Obergrenze liegt | notieren; mit dem festen Abstand von 0,5 kW bleibt bei kleinem Überschuss ein Rest – „nahe null“ wird die Zahl erst mit dem gleitenden Abstand (E3) |
 
 Nicht bestanden heißt: keine Freigabe für dieses Gerät, Befund mit Mitschnitt zurück an die Entwicklung. Die Regeln dahinter: [Defizit decken – Haltezeit](../../docs/contracts/v2/plan-execution-ownership.md#gemessenes-defizit-decken) und der gedämpfte Folger in [Edge-Laufzeit](../../docs/edge-runtime.md).
