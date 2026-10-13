@@ -58,9 +58,10 @@ Vorschlags-Routen aus AP-04 IP-16 (`uems-messstellen-vorschlagsliste-bestand.md`
    `useMessenEinstieg()` (`src/messenEinstieg.ts`, ohne Laufzeit-Import aus `messenAssistent.ts` — Einstiegsbündel).
    Einstiege: Karte „Funktionen" (`messenEinstiegeDerKarte`: Text aus `messenEinstieg`, nur mit Anlage), Leerzustände
    der Messstellen-Liste (`bereich_fehlt`, `keine_messstelle`), Satz „Daten kommen an" der Werte-Karte (`schritt: 2`;
-   `startSchritt({ wunsch })` gilt nur mit bestehender Funktion). Avatar-Menü „Funktionen" führt zur KARTE (Unternehmens-
-   bzw. Standort-Übersicht), nicht direkt in den Assistenten — so tragen beide Funktionen denselben Weg; ohne Ebene mit
-   Karte (Anlage-/Bestands-Landung) gibt es den Eintrag nicht. Jeder Knopf nur mit Recht (`Recht`), sonst Grund und Weg.
+   `startSchritt({ wunsch })` gilt nur mit bestehender Funktion). Avatar-Menü „Funktionen" führt zur KARTE
+   (Standort-Übersicht), nicht direkt in den Assistenten — so tragen beide Funktionen denselben Weg; ohne Ebene mit
+   Karte (Unternehmens-Übersicht seit Konzept §5.1, Anlage-/Bestands-Landung) gibt es den Eintrag nicht
+   (`funktionenZiel` in `App.tsx`, #1407 P1). Jeder Knopf nur mit Recht (`Recht`), sonst Grund und Weg.
    Ohne Wirt (Bühnen) bleibt der Hinweis. Beweis auf der echten Schale: `e2e/messen-assistent-einstieg.spec.ts`
    (`startansicht.html?rechte=1&messen=entwurf|bestand&zuordnung=offen`).
 

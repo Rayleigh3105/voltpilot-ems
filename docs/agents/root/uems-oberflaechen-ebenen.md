@@ -39,9 +39,10 @@ beschriebenen vier/drei Kacheln sind der historische Stand von IP-2. O18 bleibt 
 4. **EIN Datumsfeld je Seite:** die Gebäude-Seite liest `GET /standorte?stichtag=` selbst („gab es noch nicht“,
    archiviert) und reicht den Stichtag an den Baum; mit Stichtag kein Schreibweg. Nach dem Speichern lädt
    `App.reload()` die Orte neu — das erste Gebäude lässt den Bereich „Gebäude“ erst entstehen.
-5. **Die Anlagen-Tabelle steht auf der Standort-Übersicht.** Seit „Standort › Anlagen“ im Aufbau aufgegangen ist,
-   trägt die Übersicht den Weg „Energiebilanz“ je Zeile selbst — nur wenn der Standort misst und die Anlage einen
-   Hauptzähler in der Stellung hat (`EbenenCockpit.mitBilanzWeg`, `uems-bilanz-flaeche.md`). `nurAnlagen` und
+5. **Die Anlagen stehen als Karten auf der Standort-Übersicht** (`AnlagenEnergie`). Seit „Standort › Anlagen“ im
+   Aufbau aufgegangen ist, trägt die Karte ihre Wege selbst — nur wenn der Standort misst
+   (`EbenenCockpit.mitBilanzWeg`): „Energiebilanz“ bei einem Hauptzähler in der Stellung (`uems-bilanz-flaeche.md`)
+   und „Zuordnung korrigieren“ mit dem Recht `anlage.zuordnen` (U7a, #1407 P2). `nurAnlagen` und
    `pages/StandortAnlagenPage.tsx` sind nicht mehr eingehängt.
 6. **Z4:** ohne Gebäude kein Bereich „Gebäude“; der Aufbau zeigt auch eine einzelne Anlage — die Adressen gelten
    trotzdem (eine Zeile bzw. L1 aus AP-02). Ein unbekannter Bereich (`#/standort/{id}/xyz`) landet auf der Übersicht.
