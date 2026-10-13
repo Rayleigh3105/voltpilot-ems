@@ -140,7 +140,46 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "grafana",
+      "name": "Grafana (Betrieb)",
+      "description": "Anmeldung an Grafana, nur platform-admin (Claim grafana_roles im ID-Token). Scope roles und Full Scope bleiben AUS: das Zugriffstoken darf keine Rolle tragen (infra/prod/keycloak/live-realm-grafana.md).",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "fullScopeAllowed": false,
+      "redirectUris": ["https://grafana.voltpilot.de/login/generic_oauth"],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "https://grafana.voltpilot.de/login/generic_oauth"
+      },
+      "defaultClientScopes": ["basic", "profile", "email"],
+      "optionalClientScopes": [],
+      "protocolMappers": [
+        {
+          "name": "grafana_roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {
+            "claim.name": "grafana_roles",
+            "jsonType.label": "String",
+            "multivalued": "true",
+            "id.token.claim": "true",
+            "access.token.claim": "false",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
     }
+  ],
+  "scopeMappings": [
+    { "client": "grafana", "roles": ["platform-admin"] }
   ],
   "users": [
     {

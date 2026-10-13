@@ -16,6 +16,8 @@ Keycloak ersetzt `${VAR}` / `${VAR:default}` aus der Containerumgebung. `${env.V
 
 Die ersten Secret-Platzhalter haben keinen eingebauten Standardwert. Fehlende Werte außerhalb der Compose-Prüfungen können als Literal stehen bleiben; das ist kein gültiges Secret-Setup.
 
+Der Client `grafana` hat deshalb keinen Platzhalter und keine Variable: Sein Geheimnis erzeugt Keycloak beim Import.
+
 ## Authentifizierung
 
 - `sslRequired=external`; TLS und korrekte Proxy-Header am öffentlichen Einstieg konfigurieren.
@@ -33,6 +35,12 @@ Zugriffstokens leben 900 Sekunden und werden erneuert. Das Remember-Me-Häkchen 
 ## Anmeldung härten (UEMS AP-20 IP-20, E12)
 
 Der Import speichert Anmelde- und Admin-Ereignisse 90 Tage lang. Er setzt die Passwort-Vorgabe `length(12) and notUsername and passwordHistory(3)`, die erst beim nächsten Setzen eines Passworts greift. Für `platform-admin` verlangt er den zweiten Faktor (TOTP) im Browser und sperrt den Passwort-Grant; für alle anderen Konten ist der zweite Faktor wählbar. Der Live-Realm bekommt das **nicht** von selbst. Handgriff, Prüfskript, Rückweg und Bestätigung mit Datum stehen im Blatt [Live-Realm = Import](live-realm-import.md). Keycloak prüft die Vorgabe schon beim Import: Ein importiertes Konto mit kürzerem Klartext-Passwort bricht den Start eines neuen Realms ab. `ProduktionsRealmAnmeldungTest` prüft die Datei, `ProduktionsRealmImportTest` lädt sie in Keycloak im Produktionsmodus und fährt Skript und Rückweg des Blatts.
+
+## Client `grafana` (RL-P2a)
+
+Der Import enthält den vertraulichen Client `grafana` für die Anmeldung an Grafana über Keycloak: nur Standard Flow mit PKCE, genau eine Rückruf-Adresse, und nur Konten mit `platform-admin` bekommen die Rolle ins ID-Token (Claim `grafana_roles`). Sein Zugriffstoken trägt mit Absicht **keine** Rolle: Der Scope `roles` hängt nicht am Client, und Full Scope ist aus. Das API macht aus jedem Token des Realms mit `platform-admin` unter `realm_access.roles` das Plattform-Konto, und Grafana bewahrt die Token seiner Benutzer auf. Diese Einstellungen in der Administration nicht „reparieren“.
+
+Der Live-Realm bekommt den Client **nicht** von selbst. Handgriff, Prüfskript, Rückweg und Bestätigung stehen im Blatt [Live-Realm = Import: Client für Grafana](live-realm-grafana.md). `ProduktionsRealmGrafanaDateiTest` hält den Eintrag im Import und im Skript gleich; `ProduktionsRealmGrafanaClientTest` prüft beide Wege in Keycloak an echten Token.
 
 ## Rolle `partner` nachziehen (manueller Betriebsschritt, UEMS AP-03 IP-3)
 

@@ -81,7 +81,7 @@ Auf einer reinen Daten-VM ausschließlich die benötigten Datendienste verwalten
 
 [Kubernetes-Betriebsvertrag](k8s-readiness.md): Probes, Singleton-Grenzen, Shutdown und Metriken. [MQTT-Sicherheit](security-mqtt.md): Zertifikate, ACL-Mounts und Reload.
 
-Keycloak übernimmt Realm-Änderungen nur in einen neuen Realm (`--import-realm`); den laufenden Realm `voltpilot` stellt der Betreiber von Hand um. Die Anmelde-Härtung (Ereignisse, Passwort-Vorgabe, zweiter Faktor für `platform-admin`; UEMS AP-20 E12) hat dafür ein Prüfskript und eine Bestätigung mit Datum: [Live-Realm = Import](../infra/prod/keycloak/live-realm-import.md).
+Keycloak übernimmt Realm-Änderungen nur in einen neuen Realm (`--import-realm`); den laufenden Realm `voltpilot` stellt der Betreiber von Hand um. Die Anmelde-Härtung (Ereignisse, Passwort-Vorgabe, zweiter Faktor für `platform-admin`; UEMS AP-20 E12) hat dafür ein Prüfskript und eine Bestätigung mit Datum: [Live-Realm = Import](../infra/prod/keycloak/live-realm-import.md). Dasselbe gilt für den Client `grafana` (Anmeldung an Grafana über Keycloak, nur `platform-admin`; sein Zugriffstoken trägt mit Absicht keine Rolle): [Client für Grafana](../infra/prod/keycloak/live-realm-grafana.md).
 
 ```bash
 bash tools/deploy/test-gitops-image-bump.sh
