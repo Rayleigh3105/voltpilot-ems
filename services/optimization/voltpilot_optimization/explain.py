@@ -109,6 +109,12 @@ KNOWN_CONSTRAINTS: frozenset[str] = frozenset(
         # lambda to (import + hurdle + wear)/eta, and the lambda-based texts
         # and duties read it from there; next_best_alternative prices it.
         "grid_charge_hurdle",
+        # Vorsichtige Lade-Last (P1, HZ-1 A, EEG mode only): caps a future
+        # surplus slot's charge at pv minus the cautious load. It carries no
+        # flag of its own (the flag words are a contract vocabulary): where it
+        # binds, lambda settles on the earlier slots that charge instead, and
+        # the lambda-based texts and duties read it from there.
+        "vorsichtige_ladelast",
     }
 )
 

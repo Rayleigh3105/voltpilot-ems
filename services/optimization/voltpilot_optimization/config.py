@@ -511,6 +511,52 @@ def night_reserve_enabled(env=None) -> bool:
     raise ValueError(f"{NIGHT_RESERVE_ENABLED_ENV} must be a boolean, got {raw!r}")
 
 
+#: Vorsichtige Lade-Last (Paket P1, Captain-Entscheid HZ-1 A vom 14.10.2026,
+#: :mod:`voltpilot_optimization.vorsichtige_ladelast`): eine Überschuss-
+#: Viertelstunde lädt im Plan höchstens Sonne minus dem höchsten Verbrauch
+#: derselben Tageszeit der letzten 7 Tage. Vorgabe AN (Hausregel), im
+#: gitops-Repo als ``OPTIMIZER_VORSICHTIGE_LADELAST`` nachzuziehen. AUS =
+#: die Nebenbedingung wird nicht gebaut, die Pläne sind byte-identisch.
+VORSICHTIGE_LADELAST_ENV = "OPTIMIZER_VORSICHTIGE_LADELAST"
+
+#: Die Ausnahmen je Anlage: kommagetrennte Anlagen-UUIDs, an denen die
+#: vorsichtige Lade-Last AUS ist, während sie sonst gilt (das Muster von
+#: ``VOLTPILOT_V2_PLAN_SITES``: ein Env-Wechsel, keine Spalte). Leer = keine.
+VORSICHTIGE_LADELAST_AUS_ENV = "OPTIMIZER_VORSICHTIGE_LADELAST_AUS"
+
+
+def vorsichtige_ladelast_enabled(site_id, env=None) -> bool:
+    """Ob der Plan dieser Anlage die vorsichtige Lade-Last rechnet: der globale
+    Schalter (Vorgabe AN) und die Anlage nicht in der Ausnahmeliste. Ein
+    ungültiger Wert in einer der beiden Variablen bricht laut ab - ein
+    Tippfehler darf eine Anlage nie still ein- oder ausschalten."""
+    from uuid import UUID
+
+    env = os.environ if env is None else env
+    raw = env.get(VORSICHTIGE_LADELAST_ENV)
+    if raw is not None and raw.strip() != "":
+        v = raw.strip().lower()
+        if v in ("false", "0", "no", "off"):
+            return False
+        if v not in ("true", "1", "yes", "on"):
+            raise ValueError(
+                f"{VORSICHTIGE_LADELAST_ENV} must be a boolean, got {raw!r}"
+            )
+    ausnahmen = set()
+    for part in (env.get(VORSICHTIGE_LADELAST_AUS_ENV) or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            ausnahmen.add(UUID(part))
+        except ValueError as exc:
+            raise ValueError(
+                f"{VORSICHTIGE_LADELAST_AUS_ENV} must be comma-separated site "
+                f"UUIDs, got {part!r}"
+            ) from exc
+    return UUID(str(site_id)) not in ausnahmen
+
+
 #: Instant off-switch for „Sonne + Speicher" (06.10.2026,
 #: :mod:`voltpilot_optimization.storage_release`): the per-slot battery floor a
 #: charge point on that source may discharge down to. Default ON, and inert on

@@ -632,6 +632,21 @@ class OptimizationInput:
     #: Messlatte liest ihn (:func:`voltpilot_optimization.stur.stur_battery`);
     #: der Plan faehrt unveraendert sein eigenes Band. ``None`` = kein Messwert.
     stur_betriebsbereich_pct: tuple[float | None, float | None] | None = None
+    #: Vorsichtige Lade-Last (Paket P1, Captain-Entscheid HZ-1 A vom
+    #: 14.10.2026, :mod:`voltpilot_optimization.vorsichtige_ladelast`): je Slot
+    #: der Verbrauch, mit dem eine Überschuss-Viertelstunde ihr LADEN rechnet -
+    #: im laufenden Sonnenfenster ``max(load_kw, höchste gemessene Last
+    #: derselben Tageszeit der letzten 7 Tage)``, sonst ``load_kw``; Slot 0
+    #: bleibt ``load_kw[0]``. Der Solver lässt eine Viertelstunde
+    #: mit ``pv > load_kw`` höchstens ``max(pv - charge_load_kw, 0)`` laden
+    #: (Nebenbedingung ``vorsichtige_ladelast``, nur ohne Netzladen); Netzabgleich,
+    #: Kosten und Fahrplan rechnen weiter mit ``load_kw``.
+    #:
+    #: ``None`` (die Vorgabe) = keine Nebenbedingung und ein byte-identischer
+    #: Plan - jeder Aufrufer, der seine Eingaben selbst baut (What-if mit eigenen
+    #: Eingaben, Ersparnis-Simulation, Golden-Suite), und jede Anlage ohne
+    #: Messwerte oder mit abgeschaltetem Schalter.
+    charge_load_kw: list[float] | None = None
 
     def __post_init__(self) -> None:
         n = len(self.slot_starts)
@@ -645,7 +660,7 @@ class OptimizationInput:
                 raise ValueError(f"verbund pv_kw must have one entry per slot ({n})")
             if box.einspeisung_kw < 0 or box.bezug_kw < 0:
                 raise ValueError("verbund shares must be >= 0")
-        for name in ("import_price_eur_mwh", "export_value_eur_mwh"):
+        for name in ("import_price_eur_mwh", "export_value_eur_mwh", "charge_load_kw"):
             series = getattr(self, name)
             if series is not None and len(series) != n:
                 raise ValueError(f"{name} must have one entry per slot ({n})")

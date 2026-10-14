@@ -71,6 +71,10 @@ Die Prognosen liefern keine Quantile. Die [Speicheruntergrenze](verbrauchssteuer
 
 Beide Zahlen wirken nur in die vorsichtige Richtung. Unter sieben auswertbaren Nächten/Tagen gelten dokumentierte Vorgaben (+25 % / −30 %). Gemessen wird die gespeicherte Modellprognose, nicht die Planzeitkorrektur des Nowcasts. Reicht der Fahrplan nicht bis zur nächsten Erzeugung, liest die Untergrenze die frischen gespeicherten Läufe darüber hinaus; sind sie älter als `OPTIMIZER_STORAGE_RELEASE_FORECAST_MAX_AGE_MINUTES` (120), gibt es keine Freigabe.
 
+## Vorsichtige Lade-Last
+
+Für die Überschuss-Viertelstunden des laufenden Sonnenfensters rechnet der Optimierer beim Laden mit einem vorsichtigen Verbrauch: dem höchsten gemessenen Viertelstunden-Mittel derselben Tageszeit (±1 Slot) der letzten 7 Tage aus `telemetry_rollup_15m`, mindestens aber der Prognose (Captain-Entscheid HZ-1 A, [vorsichtige_ladelast.py](../services/optimization/voltpilot_optimization/vorsichtige_ladelast.py)). Das ist eine Nebenbedingung der Planung, keine Prognose: sie wird nicht als Modellprognose gespeichert, und `forecast_accuracy` misst weiter die gespeicherte Prognose.
+
 ## Betrieb
 
 [Forecast-Service](../services/forecast/README.md) nennt Start- und Testbefehle. Tabellen und Rechte werden über die API-Migrationen gepflegt. Modellwahl und Kundenauswertung sind mandantengebunden; Backend-Collector haben eigene Schreibzugänge.

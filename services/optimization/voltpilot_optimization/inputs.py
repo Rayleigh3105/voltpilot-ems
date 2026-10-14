@@ -59,6 +59,7 @@ from voltpilot_optimization.config import (
     require_measured_soc,
     soc_max_age,
     terminal_value_override_eur_per_kwh,
+    vorsichtige_ladelast_enabled,
 )
 from voltpilot_optimization import grenze_aufloesung, verbund
 from voltpilot_optimization.domain import (
@@ -77,6 +78,7 @@ from voltpilot_optimization.domain import (
 from voltpilot_optimization.fallback import night_floor_pv, persistence_forecast
 from voltpilot_optimization.night_reserve import (
     NightErrorQuantiles,
+    _measured_load_slots,
     night_error_quantiles,
 )
 from voltpilot_optimization.nowcast import AnchorEvidence, NO_EVIDENCE, anchor_evidence, apply_anchor
@@ -86,6 +88,13 @@ from voltpilot_optimization.load_nowcast import (
     ewma_residual,
 )
 from voltpilot_optimization.pv_nowcast import apply_pv_nowcast, window_mean
+from voltpilot_optimization.vorsichtige_ladelast import (
+    TAGE as VORSICHTIG_TAGE,
+    TOLERANZ_SLOTS as VORSICHTIG_TOLERANZ_SLOTS,
+    hoechste_last_der_tageszeit,
+    laufendes_sonnenfenster,
+    vorsichtige_ladelast,
+)
 from voltpilot_optimization.pricing import (
     SiteTariff,
     SupplyPriceComponents,
@@ -1021,6 +1030,12 @@ def gather_inputs(
     # byte-identisch (siehe voltpilot_optimization.night_reserve).
     night_errors = _night_error_quantiles(dsn, site, now, site_choices)
 
+    # P1 (Captain-Entscheid HZ-1 A, 14.10.2026): der vorsichtige Verbrauch der
+    # Lade-Viertelstunden - der hoechste gemessene derselben Tageszeit der
+    # letzten 7 Tage. EIN Lesen je Takt und Anlage; ohne Messwerte oder mit
+    # abgeschaltetem Schalter ``None`` und damit der Plan von vorher.
+    charge_load = _charge_load_input(dsn, site, slot_starts, load_kw, pv_kw, now)
+
     return OptimizationInput(
         tenant_id=site.tenant_id,
         site_id=site.site_id,
@@ -1063,6 +1078,9 @@ def gather_inputs(
         grid_charge_hurdle_ct_kwh=grid_charge_hurdle_ct_kwh(site.tariff),
         # M1: nur die Messlatte liest ihn, der Plan bleibt byte-identisch.
         stur_betriebsbereich_pct=_betriebsbereich_pct(dsn, site.site_id, now),
+        # P1 / HZ-1 A: begrenzt nur das Laden der Ueberschuss-Viertelstunden;
+        # load_kw bleibt die Last des Plans.
+        charge_load_kw=charge_load,
     )
 
 
@@ -1147,6 +1165,81 @@ def _night_error_quantiles(
             exc_info=True,
         )
         return None
+
+
+def _charge_load_input(
+    dsn: str,
+    site: BatterySite,
+    slot_starts: list[datetime],
+    load_kw: list[float],
+    pv_kw: list[float],
+    now: datetime,
+) -> list[float] | None:
+    """Die vorsichtige Lade-Last dieser Anlage (P1, HZ-1 A), oder ``None``.
+
+    Nur im LAUFENDEN Sonnenfenster (``pv_kw``): abends und nachts plant der
+    Lauf wie vorher, also auch Abendverkauf und Nachtdeckung (HZ-2 C, rein
+    oekonomisch) - am Morgen, sobald die Sonne scheint, gilt sie fuer den Tag.
+
+    Gelesen wird dieselbe Messung wie fuer die Nacht-Fehlerverteilung: das
+    Viertelstunden-Mittel von ``telemetry.load_kw`` aus ``telemetry_rollup_15m``
+    (in einer Anlage mit mehreren Boxen bildet das Rollup schon die Last der
+    ANLAGE). Mit Netzladen baut der Solver keinen Term, also wird dort auch
+    nichts gelesen.
+
+    FAIL-SOFT wie die Nacht-Fehlerverteilung: eine Statistik, die sich nicht
+    lesen laesst, ist die normale Prognose, nie ein fehlender Plan. Fehlen die
+    Messwerte, gilt ebenso die normale Prognose - mit einem Logeintrag.
+    """
+    if site.netzladen_erlaubt or not vorsichtige_ladelast_enabled(site.site_id):
+        return None
+    # Abends und nachts (kein laufendes Sonnenfenster nach Slot 0) gibt es
+    # nichts zu heben - dann wird auch nichts gelesen.
+    if laufendes_sonnenfenster(pv_kw) < 2:
+        return None
+    import psycopg  # lazy: optional [db] extra
+
+    context = {"site_id": str(site.site_id), "tage": VORSICHTIG_TAGE}
+    try:
+        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+            gemessen = _measured_load_slots(
+                cur, site.site_id, now - timedelta(days=VORSICHTIG_TAGE), now
+            )
+    except Exception:
+        logger.warning(
+            "vorsichtige_ladelast.unavailable - Plan rechnet mit der normalen Prognose",
+            extra={"context": context},
+            exc_info=True,
+        )
+        return None
+    hoechste = hoechste_last_der_tageszeit(
+        gemessen,
+        slot_starts,
+        now,
+        tage=VORSICHTIG_TAGE,
+        toleranz_slots=VORSICHTIG_TOLERANZ_SLOTS,
+        slot_minutes=_slot_minutes(slot_starts),
+    )
+    if all(h is None for h in hoechste):
+        logger.info(
+            "vorsichtige_ladelast.keine_messwerte - Plan rechnet mit der normalen Prognose",
+            extra={"context": context},
+        )
+        return None
+    charge_load = vorsichtige_ladelast(load_kw, hoechste, pv_kw)
+    if charge_load is not None:
+        hub = [v - base for v, base in zip(charge_load, load_kw)]
+        logger.info(
+            "vorsichtige_ladelast.gehoben",
+            extra={
+                "context": {
+                    **context,
+                    "slots": sum(1 for h in hub if h > 0.0),
+                    "max_hub_kw": round(max(hub), 2),
+                }
+            },
+        )
+    return charge_load
 
 
 def billing_period_start(now: datetime, abrechnung_leistung: str) -> datetime:

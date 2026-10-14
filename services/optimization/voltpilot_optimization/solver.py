@@ -29,6 +29,10 @@ Formulation (per slot t, dt = 0.25 h):
     and, ONLY when netzladen_erlaubt is False (EEG mode, see below):
                charge_t <= max(pv_t, 0) - curtail_t                (charge from produced PV only,
                                                                     PV-bus Bilanzierung - FK3)
+               charge_t <= max(pv_t - charge_load_t, 0)            (vorsichtige Lade-Last, P1 /
+                   where pv_t > load_t and charge_load_t > load_t   HZ-1 A: only when
+                                                                    charge_load_kw is set, see
+                                                                    vorsichtige_ladelast.py)
     and, ONLY when leistungspreis_eur_kw is set (peak shaving, PS-1, see below):
                peak >= grid_import_t,  peak >= peak_so_far         (epigraph over the billing
                peak_below >= grid_import_t                          period's import peak)
@@ -597,6 +601,27 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
             rule=lambda model, t: model.charge[t]
             <= max(inp.pv_kw[t], 0.0) - model.curtail[t],
         )
+        # Vorsichtige Lade-Last (P1, Captain-Entscheid HZ-1 A vom 14.10.2026,
+        # voltpilot_optimization.vorsichtige_ladelast): eine Überschuss-
+        # Viertelstunde lädt höchstens, was nach dem vorsichtigen Verbrauch
+        # übrig bleibt. Reicht das in den billigen Stunden nicht für einen
+        # vollen Speicher, lädt der Plan von selbst früher. Nicht gebaut für
+        # Slots mit Ladezwang (Stufe 7 hat Vorrang), für einen ruhenden oder
+        # nicht gesteuerten Speicher und dort, wo nichts gehoben ist - ohne
+        # ``charge_load_kw`` ist das Modell byte-identisch.
+        vorsichtig = (
+            frozenset()
+            if battery_ruht or eigen is not None
+            else _vorsichtige_slots(inp, forced_n)
+        )
+        if vorsichtig:
+            m.vorsichtige_ladelast = Constraint(
+                m.T,
+                rule=lambda model, t: model.charge[t]
+                <= max(inp.pv_kw[t] - inp.charge_load_kw[t], 0.0)
+                if t in vorsichtig
+                else Constraint.Skip,
+            )
     # Ehrliche Marge (Captain-Entscheid E6 A, K0 vp-wr-k0-plandaten): at a
     # fixed-tariff site the grid-sourced part of a charge must earn the hurdle
     # AFTER the full round trip. grid_charge_kw is that part - the charge
@@ -714,6 +739,21 @@ def build_model(inp: OptimizationInput, enforce_grid_limit: bool = True) -> Conc
         m.total_cost.expr = m.total_cost.expr + verbund_cost
     _add_night_reserve(m, inp, soc_floor)
     return m
+
+
+def _vorsichtige_slots(inp: OptimizationInput, forced_n: int) -> frozenset[int]:
+    """Die Slots, deren Laden die vorsichtige Lade-Last begrenzt: Überschuss
+    nach der Prognose (``pv > load``), vorsichtiger Verbrauch darüber, kein
+    Ladezwang. Defizit-Slots bleiben frei - dort lädt der Plan nicht aus
+    Überschuss, und die PV-Bus-Ladung (FK3) bleibt, wie sie ist."""
+    if inp.charge_load_kw is None:
+        return frozenset()
+    return frozenset(
+        t
+        for t in range(forced_n, inp.slots)
+        if inp.pv_kw[t] > inp.load_kw[t]
+        and inp.charge_load_kw[t] > inp.load_kw[t]
+    )
 
 
 def _add_verbund(m: ConcreteModel, inp: OptimizationInput, enforce_grid_limit: bool):

@@ -733,6 +733,12 @@ services:
       # value, the reserve stack or the in-slot duties. Off = the term is not
       # built and plans are byte-identical.
       OPTIMIZER_NIGHT_RESERVE_ENABLED: ${OPTIMIZER_NIGHT_RESERVE_ENABLED:-true}
+      # Vorsichtige Lade-Last (P1, HZ-1 A, 14.10.2026): a future surplus slot
+      # charges at most pv minus the highest load of that time of day in the
+      # last 7 days. Off = the constraint is not built, plans byte-identical.
+      # The _AUS list switches it off per site (comma-separated site UUIDs).
+      OPTIMIZER_VORSICHTIGE_LADELAST: ${OPTIMIZER_VORSICHTIGE_LADELAST:-true}
+      OPTIMIZER_VORSICHTIGE_LADELAST_AUS: ${OPTIMIZER_VORSICHTIGE_LADELAST_AUS:-}
       # MIG v1->v2 migration switch (see docs/migration-v1-to-v2.md): comma-
       # separated site UUIDs to ALSO publish a v2 shadow plan for. Empty (the
       # default) = nothing flagged = byte-identical v1.
