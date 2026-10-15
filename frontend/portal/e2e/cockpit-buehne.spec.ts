@@ -94,3 +94,45 @@ for (const width of [390, 1440]) {
     expect(fehler).toEqual([]);
   });
 }
+
+// „Gilt für" (Alerting Scheibe 4, Konzept §6.4 "Gilt für"): toddler-simple im BESTEHENDEN Blatt -
+// zwei Chips, "Diese Anlage" (Vorgabe) oder "Alle Anlagen"; eine Auswahl ersetzt beim Anlegen den
+// konkreten Bezug durch {"alle":"anlage"} (geprüft am tatsächlich gesendeten Anfragekörper, nicht
+// nur an der Oberfläche - die Fixture nimmt jeden Körper an).
+for (const width of [390, 1440]) {
+  test(`„Gilt für: Alle Anlagen" sendet die Auswahl statt des Bezugs bei ${width} px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1100 });
+    const fehler: string[] = [];
+    page.on('pageerror', (e) => fehler.push(e.message));
+    page.on('console', (m) => { if (m.type() === 'error') fehler.push(m.text()); });
+    await page.goto('/e2e/cockpit-buehne.html?betrieb=eigenverbrauch');
+    await expect(page.getByRole('group', { name: 'Energiefluss Ihrer Anlage' })).toBeVisible();
+
+    const netzKnoten = page.locator('.vp-eb-mk.is-grid');
+    await netzKnoten.getByRole('button', { name: 'Werkzeuge: Netz' }).click();
+    await page.getByRole('menuitem', { name: 'Überwachen' }).click();
+
+    const blatt = page.getByRole('dialog');
+    await expect(blatt).toBeVisible();
+    const giltFuer = blatt.getByRole('group', { name: 'Gilt für' });
+    await expect(giltFuer).toBeVisible();
+    await expect(giltFuer.getByRole('button', { name: 'Diese Anlage' })).toHaveAttribute('aria-pressed', 'true');
+
+    await giltFuer.getByRole('button', { name: 'Alle Anlagen' }).click();
+    await expect(giltFuer.getByRole('button', { name: 'Alle Anlagen' })).toHaveAttribute('aria-pressed', 'true');
+    // Eine Auswahl hat serverseitig keinen EINEN Probelauf - die Vorschau bleibt aus, nie ein Blocker.
+    await expect(blatt.locator('.vp-ueberwachen-probelauf')).toHaveCount(0);
+
+    await blatt.getByRole('button', { name: 'Überwachung starten' }).click();
+    await expect(blatt).toHaveCount(0);
+
+    const gesendeteKoerper = await page.evaluate(
+      () => (window as unknown as { __ueberwachungAnfragen: unknown[] }).__ueberwachungAnfragen,
+    );
+    expect(gesendeteKoerper).toHaveLength(1);
+    expect(gesendeteKoerper[0]).toMatchObject({ bezug: { alle: 'anlage' } });
+
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+    expect(fehler).toEqual([]);
+  });
+}
