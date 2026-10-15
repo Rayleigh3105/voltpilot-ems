@@ -2,22 +2,32 @@ package com.voltpilot.api.web;
 
 import com.voltpilot.api.versand.ZustellwegRepository;
 import com.voltpilot.api.versand.ZustellwegService;
+import java.time.LocalTime;
+import java.util.List;
+import java.util.UUID;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
- * „So erreichen wir Sie“ (Alerting Scheibe 0, §6.6): der eigene E-Mail-Zustellweg, erst wirksam nach
- * Bestätigung über einen Link. Recht {@code konto.eigenes} — jede Person liest/ändert nur sich selbst,
- * wie {@link MeController}; der Bestätigungs-Endpunkt hat ausdrücklich KEINE Anmeldung (die Person hat
- * zu diesem Zeitpunkt noch keinen bestätigten Weg und damit keinen Grund, sich extra anzumelden - der
- * Token selbst ist der Nachweis).
+ * „So erreichen wir Sie“ (Alerting Scheibe 0/3, §6.6, §6.8 Entwurf 4): der eigene E-Mail-Zustellweg
+ * (erst wirksam nach Bestätigung über einen Link) und die eigenen Web-Push-Geräte-Abos
+ * ("Abo je Gerät", §7 Scheibe 3). Recht {@code konto.eigenes} — jede Person liest/ändert nur sich
+ * selbst, wie {@link MeController}; der E-Mail-Bestätigungs-Endpunkt hat ausdrücklich KEINE
+ * Anmeldung (die Person hat zu diesem Zeitpunkt noch keinen bestätigten Weg und damit keinen Grund,
+ * sich extra anzumelden - der Token selbst ist der Nachweis). Push braucht keinen solchen Link: die
+ * Browser-Erlaubnis selbst ist die Bestätigung (§5 [K1]).
  */
 @RestController
 @RequestMapping("/api/v1/zustellwege")
@@ -27,11 +37,29 @@ public class ZustellwegController {
     public record Anfrage(String ziel) {}
 
     /** Der eigene Zustand, wie „So erreichen wir Sie“ ihn zeigt. */
-    public record Zustand(String ziel, boolean bestaetigt, boolean aktiv) {
+    public record Zustand(String ziel, boolean bestaetigt, boolean aktiv, String abSchwere,
+            boolean zusammenfassungAktiv, LocalTime zusammenfassungUhrzeit) {
         static Zustand aus(ZustellwegRepository.Zustellweg z) {
-            return new Zustand(z.ziel(), z.bestaetigt(), z.aktiv());
+            return new Zustand(z.ziel(), z.bestaetigt(), z.aktiv(), z.abSchwere(), z.zusammenfassungAktiv(),
+                    z.zusammenfassungUhrzeit());
         }
     }
+
+    /** Zustell-Vorgabe und Tages-Zusammenfassung ändern (§6.4, §6.4 Nr. 6). */
+    public record EmailEinstellungen(String abSchwere, boolean zusammenfassungAktiv, LocalTime zusammenfassungUhrzeit) {}
+
+    /** Ein neues Geräte-Abo - die Form von {@code PushSubscription.toJSON()} des Browsers. */
+    public record PushAnfrage(String endpoint, String p256dh, String auth, String geraet, String userAgent) {}
+
+    /** Ein Geräte-Abo, wie die Einstellungsfläche es zeigt. */
+    public record PushAboDto(String id, String geraet, boolean aktiv, String abSchwere,
+            java.time.Instant erstelltAm) {
+        static PushAboDto aus(ZustellwegRepository.PushAbo a) {
+            return new PushAboDto(a.id().toString(), a.geraet(), a.aktiv(), a.abSchwere(), a.erstelltAm());
+        }
+    }
+
+    public record PushEinstellungen(boolean aktiv, String abSchwere) {}
 
     private final ZustellwegService zustellwege;
 
@@ -51,10 +79,59 @@ public class ZustellwegController {
         return ResponseEntity.accepted().build();
     }
 
+    @PutMapping("/email/einstellungen")
+    public ResponseEntity<Void> emailEinstellungen(@RequestBody EmailEinstellungen einstellungen,
+            Authentication auth) {
+        boolean geaendert = zustellwege.emailEinstellungenSetzen(sub(auth), einstellungen.abSchwere(),
+                einstellungen.zusammenfassungAktiv(), einstellungen.zusammenfassungUhrzeit());
+        if (!geaendert) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "kein E-Mail-Zustellweg angelegt");
+        }
+        return ResponseEntity.noContent().build();
+    }
+
     /** Öffentlich, ohne Anmeldung - der Link aus der Bestätigungs-Mail. */
     @GetMapping("/bestaetigen")
     public ResponseEntity<Void> bestaetigen(@RequestParam String token) {
         return zustellwege.bestaetigen(token) ? ResponseEntity.ok().build() : ResponseEntity.status(410).build();
+    }
+
+    // --------------------------------------------------------------------- Web-Push (Alerting Scheibe 3, §7)
+
+    @GetMapping("/push")
+    public List<PushAboDto> pushAbos(Authentication auth) {
+        return zustellwege.pushAboEigene(sub(auth)).stream().map(PushAboDto::aus).toList();
+    }
+
+    @PostMapping("/push")
+    public ResponseEntity<PushAboDto> pushAbonnieren(@RequestBody PushAnfrage anfrage, Authentication auth) {
+        String sub = sub(auth);
+        UUID id = zustellwege.pushAbonnieren(sub, anfrage.endpoint(), anfrage.p256dh(), anfrage.auth(),
+                anfrage.geraet(), anfrage.userAgent());
+        PushAboDto dto = zustellwege.pushAboEigene(sub).stream().filter(a -> a.id().equals(id))
+                .findFirst().map(PushAboDto::aus)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR));
+        return ResponseEntity.status(HttpStatus.CREATED).body(dto);
+    }
+
+    @PutMapping("/push/{id}")
+    public ResponseEntity<Void> pushEinstellungen(@PathVariable UUID id, @RequestBody PushEinstellungen einstellungen,
+            Authentication auth) {
+        boolean geaendert = zustellwege.pushAboEinstellungenSetzen(id, sub(auth), einstellungen.aktiv(),
+                einstellungen.abSchwere());
+        if (!geaendert) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/push/{id}")
+    public ResponseEntity<Void> pushEntfernen(@PathVariable UUID id, Authentication auth) {
+        boolean geaendert = zustellwege.pushAboEntfernen(id, sub(auth));
+        if (!geaendert) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        return ResponseEntity.noContent().build();
     }
 
     private static String sub(Authentication auth) {

@@ -61,7 +61,7 @@ class UeberwachungsServiceTest {
         return new UeberwachungZeile(REGEL, null, 1, "Box meldet sich nicht",
                 "box.erreichbar", json("{\"anlage\":\"" + ANLAGE + "\"}"),
                 json("{\"art\":\"zustand\",\"ziel\":[\"nicht_erreichbar\"],\"dauer_s\":900,\"erholen_s\":300}"),
-                schwere, json("[{\"person\":\"sub-jonas\"}]"), "ab_werk", "system", null);
+                schwere, json("[{\"person\":\"sub-jonas\"}]"), "ab_werk", "system", null, null);
     }
 
     private void nichtsGesaet() {

@@ -29,6 +29,18 @@ import { registerServiceWorker } from './serviceWorker';
 initInstallApp(window);
 registerServiceWorker();
 
+// Alerting Scheibe 3 (§6.8): ein Klick auf eine Push-Benachrichtigung in einem
+// bereits offenen Tab schickt ihre Ziel-Adresse hierher (public/sw.js
+// `notificationclick`) - der Tab navigiert dann selbst, statt einen zweiten zu öffnen.
+if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    const daten = event.data as { type?: string; url?: string } | undefined;
+    if (daten?.type === 'vp-push-click' && daten.url) {
+      window.location.hash = daten.url;
+    }
+  });
+}
+
 // Keep the access token fresh in the background.
 keycloak.onTokenExpired = () => {
   void keycloak.updateToken(30);

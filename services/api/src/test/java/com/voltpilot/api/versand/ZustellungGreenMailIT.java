@@ -6,7 +6,9 @@ import com.icegreen.greenmail.util.GreenMail;
 import com.icegreen.greenmail.util.ServerSetupTest;
 import com.voltpilot.api.tenant.TenantAwareDataSource;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.versand.webpush.WebPushAdapter;
 import java.time.Instant;
+import java.util.Base64;
 import java.util.Map;
 import java.util.UUID;
 import javax.sql.DataSource;
@@ -78,7 +80,15 @@ class ZustellungGreenMailIT {
         mailSender.setHost("localhost");
         mailSender.setPort(ServerSetupTest.SMTP.getPort());
         EmailVersandAdapter adapter = new EmailVersandAdapter(mailSender, ABSENDER);
-        zusteller = new Zusteller(ausgang, zustellwege, adapter, appJdbc);
+        // Diese Probe prüft nur den E-Mail-Weg - der Push-Adapter bekommt nie etwas zu tun, seine
+        // Schlüssel müssen darum nicht gültig sein, nur syntaktisch dekodierbar.
+        // BouncyCastle verlangt fuer den privaten Schluessel einen Skalar in [1, n-1] - lauter
+        // Nullen waeren ungueltig; diese Probe prueft ohnehin nur den E-Mail-Weg.
+        byte[] privatPlatzhalter = new byte[32];
+        privatPlatzhalter[31] = 1;
+        WebPushAdapter push = new WebPushAdapter(Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[65]),
+                Base64.getUrlEncoder().withoutPadding().encodeToString(privatPlatzhalter), "mailto:test@voltpilot.de");
+        zusteller = new Zusteller(ausgang, zustellwege, adapter, push, appJdbc);
 
         tenant = root.queryForObject("INSERT INTO tenant (name) VALUES ('GreenMail-Test') RETURNING id", UUID.class);
     }

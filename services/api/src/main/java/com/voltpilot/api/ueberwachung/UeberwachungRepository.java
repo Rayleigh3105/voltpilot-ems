@@ -28,7 +28,7 @@ public class UeberwachungRepository {
 
     public record UeberwachungZeile(UUID id, UUID standortId, int fassung, String name, String wertart,
             JsonNode bezug, JsonNode bedingung, String schwere, JsonNode empfaenger, String herkunft,
-            String angelegtVon, Instant probelaufBis) {
+            String angelegtVon, Instant probelaufBis, JsonNode ruhezeit) {
 
         /** Im Probelauf (§6.4, §6.8 Entwurf 1): ausgewertet, aber ohne Versand - noch nicht scharf. */
         public boolean imProbelauf(Instant jetzt) {
@@ -43,7 +43,8 @@ public class UeberwachungRepository {
 
     public record AlarmZeile(UUID id, String kennzeichen, UUID ueberwachungId, UUID standortId,
             String bezugKennung, String wertart, String schwere, Instant ausgeloestAm, String zustand,
-            Instant wiederNormalAm, String gesehenVon, Instant gesehenAm, Instant erledigtAm, boolean probelauf) {}
+            Instant wiederNormalAm, String gesehenVon, Instant gesehenAm, Instant erledigtAm, boolean probelauf,
+            int erinnerungenGesendet, Instant letzteErinnerungAm) {}
 
     private final JdbcTemplate jdbc;
 
@@ -157,7 +158,7 @@ public class UeberwachungRepository {
         return jdbc.query("""
                 SELECT id, standort_id, fassung, name, wertart, bezug::text AS bezug_json,
                        bedingung::text AS bedingung_json, schwere, empfaenger::text AS empfaenger_json,
-                       herkunft, angelegt_von, probelauf_bis
+                       herkunft, angelegt_von, probelauf_bis, ruhezeit::text AS ruhezeit_json
                   FROM ueberwachung WHERE id = ?
                 """, UeberwachungRepository::zeile, id).stream().findFirst();
     }
@@ -183,7 +184,7 @@ public class UeberwachungRepository {
         return jdbc.query("""
                 SELECT id, standort_id, fassung, name, wertart, bezug::text AS bezug_json,
                        bedingung::text AS bedingung_json, schwere, empfaenger::text AS empfaenger_json,
-                       herkunft, angelegt_von, probelauf_bis
+                       herkunft, angelegt_von, probelauf_bis, ruhezeit::text AS ruhezeit_json
                   FROM ueberwachung WHERE aktiv = true ORDER BY angelegt_am
                 """, UeberwachungRepository::zeile);
     }
@@ -193,7 +194,7 @@ public class UeberwachungRepository {
                 rs.getInt("fassung"), rs.getString("name"), rs.getString("wertart"),
                 json(rs.getString("bezug_json")), json(rs.getString("bedingung_json")), rs.getString("schwere"),
                 json(rs.getString("empfaenger_json")), rs.getString("herkunft"), rs.getString("angelegt_von"),
-                instant(rs.getTimestamp("probelauf_bis")));
+                instant(rs.getTimestamp("probelauf_bis")), json(rs.getString("ruhezeit_json")));
     }
 
     private static JsonNode json(String text) {
@@ -209,6 +210,36 @@ public class UeberwachungRepository {
         List<String> rows = jdbc.query("SELECT kurzzeichen FROM standort WHERE id = ? AND tenant_id = ?",
                 (rs, n) -> rs.getString(1), standortId, TenantContext.get());
         return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /** Die Zeitzone eines Standorts (Alerting Scheibe 3, §6.4: "in der Zeitzone des Standorts"). */
+    public String standortZeitzone(UUID standortId) {
+        if (standortId == null) {
+            return null;
+        }
+        List<String> rows = jdbc.query("SELECT zeitzone FROM standort WHERE id = ? AND tenant_id = ?",
+                (rs, n) -> rs.getString(1), standortId, TenantContext.get());
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /**
+     * Die Anlage, auf die ein Alarm-Bezug zeigt - parst {@code "anlage:<id>"} direkt, löst
+     * {@code "komponente:<id>;kanal=..."} über die Komponente auf (Alerting Scheibe 3, §6.4:
+     * Stummschaltung einer ganzen Anlage muss auch komponentenbezogene Alarme treffen).
+     */
+    public UUID anlageDesAlarmBezugs(String bezugKennung) {
+        String[] teile = bezugKennung.split(":", 2);
+        if (teile.length != 2) {
+            return null;
+        }
+        String id = teile[1].split(";", 2)[0];
+        UUID uuid;
+        try {
+            uuid = UUID.fromString(id);
+        } catch (IllegalArgumentException e) {
+            return null;
+        }
+        return "komponente".equals(teile[0]) ? anlageDerKomponente(uuid) : uuid;
     }
 
     /** Der Anzeigename der Anlage - für die Texte nach außen (§6.8). */
@@ -326,22 +357,19 @@ public class UeberwachungRepository {
                 """, wer, ts(jetzt), alarmId) > 0;
     }
 
+    private static final String ALARM_SPALTEN = "id, kennzeichen, ueberwachung_id, standort_id, bezug_kennung, "
+            + "wertart, schwere, ausgeloest_am, zustand, wieder_normal_am, gesehen_von, gesehen_am, erledigt_am, "
+            + "probelauf, erinnerungen_gesendet, letzte_erinnerung_am";
+
     public Optional<AlarmZeile> alarm(UUID id) {
-        return jdbc.query("""
-                SELECT id, kennzeichen, ueberwachung_id, standort_id, bezug_kennung, wertart, schwere,
-                       ausgeloest_am, zustand, wieder_normal_am, gesehen_von, gesehen_am, erledigt_am, probelauf
-                  FROM alarm WHERE id = ?
-                """, UeberwachungRepository::alarmZeile, id).stream().findFirst();
+        return jdbc.query("SELECT " + ALARM_SPALTEN + " FROM alarm WHERE id = ?",
+                UeberwachungRepository::alarmZeile, id).stream().findFirst();
     }
 
     /** Jetzt = nicht erledigt; Verlauf = erledigt - höchstens {@code limit}, jüngste zuerst. */
     public List<AlarmZeile> liste(boolean erledigt, int limit) {
-        return jdbc.query("""
-                SELECT id, kennzeichen, ueberwachung_id, standort_id, bezug_kennung, wertart, schwere,
-                       ausgeloest_am, zustand, wieder_normal_am, gesehen_von, gesehen_am, erledigt_am, probelauf
-                  FROM alarm WHERE (zustand = 'erledigt') = ?
-                 ORDER BY ausgeloest_am DESC LIMIT ?
-                """, UeberwachungRepository::alarmZeile, erledigt, limit);
+        return jdbc.query("SELECT " + ALARM_SPALTEN + " FROM alarm WHERE (zustand = 'erledigt') = ? "
+                + "ORDER BY ausgeloest_am DESC LIMIT ?", UeberwachungRepository::alarmZeile, erledigt, limit);
     }
 
     public long ungeseheneZahl() {
@@ -357,6 +385,33 @@ public class UeberwachungRepository {
         return Boolean.TRUE.equals(b);
     }
 
+    /**
+     * Dringende, nicht gesehene Alarme mit noch offenen Erinnerungen (Alerting Scheibe 3, §6.5):
+     * nach 1 Stunde, danach alle 4 Stunden, höchstens dreimal; endet bei "Gesehen" ODER "Erledigt"
+     * (Entscheid 3B - {@code zustand = 'aktiv'} schließt beides aus).
+     */
+    public List<AlarmZeile> dringendOhneGesehenFuerErinnerung() {
+        return jdbc.query("SELECT " + ALARM_SPALTEN + " FROM alarm WHERE zustand = 'aktiv' "
+                + "AND schwere = 'dringend' AND gesehen_von IS NULL AND erinnerungen_gesendet < 3",
+                UeberwachungRepository::alarmZeile);
+    }
+
+    public void erinnerungVermerken(UUID alarmId, Instant jetzt) {
+        jdbc.update("UPDATE alarm SET erinnerungen_gesendet = erinnerungen_gesendet + 1, letzte_erinnerung_am = ? "
+                + "WHERE id = ?", ts(jetzt), alarmId);
+    }
+
+    /**
+     * Für die Tages-Zusammenfassung (§6.4 Nr. 6): aktive Meldungen jeder Stufe PLUS Hinweise, die
+     * heute ausgelöst wurden (ein Hinweis erledigt sich meist sofort selbst und wäre sonst nie
+     * zu sehen) - "mit aktiven Meldungen und Hinweisen des Tages".
+     */
+    public List<AlarmZeile> fuerZusammenfassung(Instant tagBeginn) {
+        return jdbc.query("SELECT " + ALARM_SPALTEN + " FROM alarm "
+                + "WHERE zustand <> 'erledigt' OR (schwere = 'hinweis' AND ausgeloest_am >= ?) "
+                + "ORDER BY ausgeloest_am DESC", UeberwachungRepository::alarmZeile, ts(tagBeginn));
+    }
+
     private static AlarmZeile alarmZeile(ResultSet rs, int n) throws SQLException {
         return new AlarmZeile(rs.getObject("id", UUID.class), rs.getString("kennzeichen"),
                 rs.getObject("ueberwachung_id", UUID.class), rs.getObject("standort_id", UUID.class),
@@ -364,7 +419,8 @@ public class UeberwachungRepository {
                 instant(rs.getTimestamp("ausgeloest_am")), rs.getString("zustand"),
                 instant(rs.getTimestamp("wieder_normal_am")), rs.getString("gesehen_von"),
                 instant(rs.getTimestamp("gesehen_am")), instant(rs.getTimestamp("erledigt_am")),
-                rs.getBoolean("probelauf"));
+                rs.getBoolean("probelauf"), rs.getInt("erinnerungen_gesendet"),
+                instant(rs.getTimestamp("letzte_erinnerung_am")));
     }
 
     private static Timestamp ts(Instant i) {

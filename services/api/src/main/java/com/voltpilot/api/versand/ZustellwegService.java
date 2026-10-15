@@ -3,6 +3,8 @@ package com.voltpilot.api.versand;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Value;
@@ -60,5 +62,36 @@ public class ZustellwegService {
     /** {@code true}, wenn der Token gültig war und die Adresse jetzt bestätigt ist. */
     public boolean bestaetigen(String token) {
         return zustellwege.bestaetigen(token, uhr.instant());
+    }
+
+    /** Zustell-Vorgabe und Tages-Zusammenfassung ändern (§6.4, §6.4 Nr. 6). */
+    public boolean emailEinstellungenSetzen(String benutzerSub, String abSchwere, boolean zusammenfassungAktiv,
+            LocalTime zusammenfassungUhrzeit) {
+        return zustellwege.emailEinstellungenSetzen(benutzerSub, abSchwere, zusammenfassungAktiv,
+                zusammenfassungUhrzeit);
+    }
+
+    // --------------------------------------------------------------------- Web-Push (Alerting Scheibe 3, §6.7)
+
+    public List<ZustellwegRepository.PushAbo> pushAboEigene(String benutzerSub) {
+        return zustellwege.pushAboEigene(benutzerSub);
+    }
+
+    /**
+     * Ein neues Geräte-Abo (Alerting Scheibe 3, §7 Punkt 1): die Browser-Erlaubnis selbst ist die
+     * Bestätigung (ein Tippen vor der Nachfrage des Browsers, §5 [K1]) - kein Bestätigungslink wie
+     * bei E-Mail nötig.
+     */
+    public UUID pushAbonnieren(String benutzerSub, String endpoint, String p256dh, String auth, String geraet,
+            String userAgent) {
+        return zustellwege.pushAboAnlegen(benutzerSub, endpoint, p256dh, auth, geraet, userAgent);
+    }
+
+    public boolean pushAboEinstellungenSetzen(UUID id, String benutzerSub, boolean aktiv, String abSchwere) {
+        return zustellwege.pushAboEinstellungenSetzen(id, benutzerSub, aktiv, abSchwere);
+    }
+
+    public boolean pushAboEntfernen(UUID id, String benutzerSub) {
+        return zustellwege.pushAboEntfernen(id, benutzerSub);
     }
 }

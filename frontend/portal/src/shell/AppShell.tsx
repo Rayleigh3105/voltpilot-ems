@@ -49,6 +49,8 @@ import type { HelpArticleId } from '../help/model';
 
 // Das App-Blatt lädt erst beim ersten Öffnen - das Menü selbst bleibt leicht.
 const KontoAppDialog = lazy(() => import('../components/KontoAppDialog'));
+// Alerting Scheibe 3 (§6.8 Entwurf 4): "So erreichen wir Sie" neben "Als App auf dem Handy".
+const BenachrichtigungenDialog = lazy(() => import('../components/BenachrichtigungenDialog'));
 
 /**
  * Die Anlagen-Navigation der Schale — seit der Navigations-Runde „zwei Ebenen"
@@ -234,6 +236,9 @@ export function AppShell({
   const installState = useSyncExternalStore(subscribeInstallApp, installSnapshot);
   const [appOffen, setAppOffen] = useState(false);
   const [appGeladen, setAppGeladen] = useState(false);
+  // "Meine Benachrichtigungen" (Alerting Scheibe 3) - dasselbe Lade-Offen-Muster wie oben.
+  const [benachrichtigungenOffen, setBenachrichtigungenOffen] = useState(false);
+  const [benachrichtigungenGeladen, setBenachrichtigungenGeladen] = useState(false);
   /**
    * S8 · „Plattform ▸" ist EINGEKLAPPT, solange ein Mandant gewählt ist — der
    * Admin ist dann in der Rolle des Kunden unterwegs. Ohne Mandant bleibt sie
@@ -789,6 +794,19 @@ export function AppShell({
                     {APP_GROUP_LABEL}
                   </button>
                 )}
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="vp-avatarmenu-item"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setBenachrichtigungenGeladen(true);
+                    setBenachrichtigungenOffen(true);
+                  }}
+                >
+                  <Icon name="bell" size={18} />
+                  Meine Benachrichtigungen
+                </button>
                 {isAdmin && (
                   // Nur am Telefon eingeblendet (CSS): am Rechner steht die
                   // Plattform-Gruppe in der Seitenleiste, ein zweiter Ort für
@@ -879,6 +897,20 @@ export function AppShell({
               setAppOffen(false);
               // Der Auslöser (der Menüeintrag) ist mit dem Menü verschwunden:
               // der Fokus kehrt zum Avatar zurück, der das Menü geöffnet hat.
+              window.setTimeout(
+                () => menuRef.current?.querySelector<HTMLElement>('.vp-avatar-btn')?.focus(),
+                0,
+              );
+            }}
+          />
+        </Suspense>
+      )}
+      {benachrichtigungenGeladen && (
+        <Suspense fallback={null}>
+          <BenachrichtigungenDialog
+            open={benachrichtigungenOffen}
+            onClose={() => {
+              setBenachrichtigungenOffen(false);
               window.setTimeout(
                 () => menuRef.current?.querySelector<HTMLElement>('.vp-avatar-btn')?.focus(),
                 0,
