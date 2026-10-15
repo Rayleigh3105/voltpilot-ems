@@ -69,7 +69,7 @@ public class EreignisWerteLeser implements WerteLeser {
             return Lesung.unbekannt();
         }
         Object[] zeile = treffer.get(0);
-        return new Lesung(true, (String) zeile[0], (Instant) zeile[1]);
+        return Lesung.zustand((String) zeile[0], (Instant) zeile[1]);
     }
 
     private static String platzhalter(int anzahl) {

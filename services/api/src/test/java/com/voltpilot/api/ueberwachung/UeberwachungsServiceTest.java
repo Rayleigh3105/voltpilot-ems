@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.repo.PriceRepository;
 import com.voltpilot.api.ueberwachung.UeberwachungRepository.InstanzZeile;
 import com.voltpilot.api.ueberwachung.UeberwachungRepository.UeberwachungZeile;
 import com.voltpilot.api.versand.BenachrichtigungAusgang;
@@ -33,10 +34,15 @@ class UeberwachungsServiceTest {
 
     private final UeberwachungRepository repo = mock(UeberwachungRepository.class);
     private final ZustandWerteLeser leser = mock(ZustandWerteLeser.class);
+    private final EreignisWerteLeser ereignisLeser = mock(EreignisWerteLeser.class);
+    private final AnlagenflussWerteLeser anlagenflussLeser = mock(AnlagenflussWerteLeser.class);
+    private final MessreiheWerteLeser messreiheLeser = mock(MessreiheWerteLeser.class);
     private final ZugriffRepository zugriffe = mock(ZugriffRepository.class);
+    private final PriceRepository preise = mock(PriceRepository.class);
     private final WerteKatalog katalog = new WerteKatalog();
     private final BenachrichtigungAusgang ausgang = mock(BenachrichtigungAusgang.class);
-    private final UeberwachungsService dienst = new UeberwachungsService(repo, katalog, leser, zugriffe);
+    private final UeberwachungsService dienst = new UeberwachungsService(repo, katalog, leser, ereignisLeser,
+            anlagenflussLeser, messreiheLeser, zugriffe, preise);
 
     UeberwachungsServiceTest() {
         dienst.setAusgang(ausgang);
@@ -86,7 +92,7 @@ class UeberwachungsServiceTest {
         when(repo.aktive()).thenReturn(List.of(regel("warnung")));
         Instant seit = Instant.now().minusSeconds(100); // unter den 900 s Dauer
         when(repo.instanz(REGEL, BEZUG)).thenReturn(new InstanzZeile("ausstehend", seit, null, null, null));
-        lese(new WerteLeser.Lesung(true, "erreichbar", Instant.now())); // nicht mehr erfüllt
+        lese(WerteLeser.Lesung.zustand("erreichbar", Instant.now())); // nicht mehr erfüllt
 
         dienst.lauf(Instant.now());
 
@@ -101,7 +107,7 @@ class UeberwachungsServiceTest {
         Instant jetzt = Instant.now();
         Instant seit = jetzt.minusSeconds(901); // über die 900 s Dauer
         when(repo.instanz(REGEL, BEZUG)).thenReturn(new InstanzZeile("ausstehend", seit, null, null, null));
-        lese(new WerteLeser.Lesung(true, "nicht_erreichbar", jetzt));
+        lese(WerteLeser.Lesung.zustand("nicht_erreichbar", jetzt));
         UUID alarmId = UUID.randomUUID();
         when(repo.alarmErzeugen(any(), any(), any(), any(), any())).thenReturn(alarmId);
         when(repo.alarm(alarmId)).thenReturn(java.util.Optional.empty());
@@ -120,7 +126,7 @@ class UeberwachungsServiceTest {
         Instant jetzt = Instant.now();
         when(repo.instanz(REGEL, BEZUG)).thenReturn(new InstanzZeile("ausstehend", jetzt.minusSeconds(901), null,
                 null, null));
-        lese(new WerteLeser.Lesung(true, "nicht_erreichbar", jetzt));
+        lese(WerteLeser.Lesung.zustand("nicht_erreichbar", jetzt));
         when(repo.alarmErzeugen(any(), any(), any(), any(), any())).thenReturn(UUID.randomUUID());
 
         dienst.lauf(jetzt);
@@ -137,7 +143,7 @@ class UeberwachungsServiceTest {
         UUID offenerAlarm = UUID.randomUUID();
         when(repo.instanz(REGEL, BEZUG)).thenReturn(new InstanzZeile("erholend", erholendSeit, null, null,
                 offenerAlarm));
-        lese(new WerteLeser.Lesung(true, "nicht_erreichbar", jetzt)); // wieder erfüllt - Rückfall
+        lese(WerteLeser.Lesung.zustand("nicht_erreichbar", jetzt)); // wieder erfüllt - Rückfall
 
         dienst.lauf(jetzt);
 
@@ -155,7 +161,7 @@ class UeberwachungsServiceTest {
         UUID offenerAlarm = UUID.randomUUID();
         when(repo.instanz(REGEL, BEZUG)).thenReturn(new InstanzZeile("erholend", erholendSeit, null, null,
                 offenerAlarm));
-        lese(new WerteLeser.Lesung(true, "erreichbar", jetzt)); // nicht mehr erfüllt
+        lese(WerteLeser.Lesung.zustand("erreichbar", jetzt)); // nicht mehr erfüllt
 
         dienst.lauf(jetzt);
 

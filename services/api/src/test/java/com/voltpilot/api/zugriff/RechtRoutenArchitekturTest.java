@@ -114,6 +114,9 @@ class RechtRoutenArchitekturTest {
         m.put("KorrekturFreigabeController#freigeben", korrektur);
         m.put("KorrekturFreigabeController#zuruecknehmen", korrektur);
         m.put("DeviceController#claim", "DeviceController.claim — RechtPruefung.pruefen an der Anlage aus siteId");
+        m.put("MeldungenController#anlegen", "UeberwachungAnlegenService.anlegen — ueberwachung.eigene (nur der "
+                + "anlegende Aufrufer selbst als Empfänger) bzw. ueberwachung.verwalten (andere Personen oder "
+                + "Rollen), RechteAbleitung.darf am Standort der Anlage aus dem Bezug im Körper (Alerting Scheibe 2)");
         m.put("AblesungController#eingeben", "AblesungController.recht — Kennzeichen zu UUID, RechtPruefung an der Messstelle");
         m.put("AblesungController#berichtigen", "AblesungController.recht — Kennzeichen zu UUID, RechtPruefung an der Messstelle");
         m.put("BezugsgroesseController#anlegen", "BezugsgroesseController.geltungPruefen — Geltung aus dem Körper");

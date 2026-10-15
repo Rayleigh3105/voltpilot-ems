@@ -1,17 +1,23 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.ueberwachung.UeberwachungAnlegenService;
 import com.voltpilot.api.ueberwachung.UeberwachungRepository;
 import com.voltpilot.api.ueberwachung.UeberwachungRepository.AlarmZeile;
 import com.voltpilot.api.ueberwachung.UeberwachungsService;
 import com.voltpilot.api.web.dto.MeldungDto;
 import com.voltpilot.api.web.dto.UeberwachungDto;
+import com.voltpilot.api.zugriff.Recht;
 import com.voltpilot.api.zugriff.RechtPruefung;
+import com.voltpilot.api.zugriff.RechtZiel;
+import java.net.URI;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -34,10 +40,13 @@ public class MeldungenController {
 
     private final UeberwachungRepository repo;
     private final UeberwachungsService dienst;
+    private final UeberwachungAnlegenService anlegen;
 
-    public MeldungenController(UeberwachungRepository repo, UeberwachungsService dienst) {
+    public MeldungenController(UeberwachungRepository repo, UeberwachungsService dienst,
+            UeberwachungAnlegenService anlegen) {
         this.repo = repo;
         this.dienst = dienst;
+        this.anlegen = anlegen;
     }
 
     @GetMapping
@@ -57,10 +66,7 @@ public class MeldungenController {
         return new MeldungDto.Zahl(repo.ungeseheneZahl(), repo.hatUngeseheneDringende());
     }
 
-    /**
-     * Reiter "Überwachungen" (§6.8): nur lesend - ein eigenes Regelwerk am Wert anlegen oder
-     * ändern ist Scheibe 2 ("Ausdrücklich NICHT" in dieser Scheibe, §7).
-     */
+    /** Reiter "Überwachungen" (§6.8): alle aktiven Regeln, ab Werk und eigene gemeinsam. */
     @GetMapping("/regeln")
     public UeberwachungDto.Liste regeln() {
         List<UeberwachungDto> liste = repo.aktive().stream()
@@ -68,6 +74,21 @@ public class MeldungenController {
                         true))
                 .toList();
         return new UeberwachungDto.Liste(liste);
+    }
+
+    /**
+     * "Vom Wert zur fertigen Regel: drei Taps" (Alerting Scheibe 2, §6.8): eine eigene Überwachung
+     * anlegen. Recht: {@code ueberwachung.eigene} (nur sich selbst benachrichtigen) oder
+     * {@code ueberwachung.verwalten} (andere Personen oder Rollen) an der Geltung der Anlage - die
+     * genaue Prüfung steht in {@link UeberwachungAnlegenService} ({@code RechtRoutenArchitekturTest.DIENST}).
+     */
+    @PostMapping("/regeln")
+    @Recht(value = {"ueberwachung.eigene", "ueberwachung.verwalten"}, ziel = RechtZiel.DIENST)
+    public ResponseEntity<UeberwachungDto> anlegen(@RequestBody UeberwachungDto.Anlegen anfrage) {
+        var aufrufer = RechtPruefung.aufrufer()
+                .orElseThrow(() -> new ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN));
+        UeberwachungDto neu = anlegen.anlegen(anfrage, aufrufer, Instant.now());
+        return ResponseEntity.created(URI.create("/api/v1/meldungen/regeln/" + neu.id())).body(neu);
     }
 
     /** "Gesehen" (Entscheid 3B): freiwillig, speist nur den Verlauf - keine Quittierungspflicht. */

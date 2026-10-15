@@ -20,15 +20,15 @@ import org.springframework.stereotype.Component;
  * eingetragen sein ({@link #LESERARTEN}), sonst startet die API nicht (dasselbe Muster wie der
  * Flow-Katalog, der jede {@code leser.art} beim Start prüft).
  *
- * <p>Scheibe 1 kennt nur die Leserarten {@code zustand} und {@code ereignis}; die übrigen sechs
- * (anlagenfluss, messreihe, menge, kennzahl, geld, zaehlung, §6.3) kommen mit ihrer eigenen
- * Scheibe und erweitern {@link #LESERARTEN} additiv.
+ * <p>Scheibe 1 kannte nur die Leserarten {@code zustand} und {@code ereignis}; Scheibe 2 fügt
+ * {@code anlagenfluss} und {@code messreihe} hinzu. Die übrigen vier (menge, kennzahl, geld,
+ * zaehlung, §6.3) kommen mit ihrer eigenen Scheibe und erweitern {@link #LESERARTEN} additiv.
  */
 @Component
 public class WerteKatalog {
 
-    /** Die Leserarten, die der Code heute kennt (Scheibe 1: zustand, ereignis). */
-    static final List<String> LESERARTEN = List.of("zustand", "ereignis");
+    /** Die Leserarten, die der Code heute kennt (Scheibe 1: zustand, ereignis; Scheibe 2: anlagenfluss, messreihe). */
+    static final List<String> LESERARTEN = List.of("zustand", "ereignis", "anlagenfluss", "messreihe");
 
     /** Wie ein Eintrag seinen Wert liest (§6.3): Scheibe 1 nutzt {@code feld} ODER {@code arten}+{@code bezugsfeld}. */
     public record LeserVerweis(String art, String feld, List<String> arten, String bezugsfeld) {}
