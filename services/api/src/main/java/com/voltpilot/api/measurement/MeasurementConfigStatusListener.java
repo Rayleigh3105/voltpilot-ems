@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
+import com.voltpilot.api.provisioning.BrokerVerbindung;
 import com.voltpilot.api.tenant.TenantContext;
 import jakarta.annotation.PreDestroy;
 import java.time.Instant;
@@ -13,12 +14,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
-import org.eclipse.paho.client.mqttv3.IMqttMessageListener;
-import org.eclipse.paho.client.mqttv3.MqttCallbackExtended;
-import org.eclipse.paho.client.mqttv3.MqttClient;
-import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
-import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -54,18 +50,25 @@ public class MeasurementConfigStatusListener extends Rueckmeldeweg {
             "budget_duty_cycle", "driver_unavailable", "ocpp_configuration_incompatible",
             "binding_unavailable");
 
-    private final String brokerUrl, username, password;
     private final MeasurementSelectionRepository repository;
     private final ObjectMapper mapper;
-    private MqttClient client;
+    /**
+     * One client, built once and never discarded; a unique ID with a clean session. The status is
+     * retained and the box re-sends it after each of its own reconnects, so a persistent session
+     * adds nothing - but a fixed ID let two clients of the same api (or of two pods in a rollout)
+     * take the session from each other forever.
+     */
+    private final BrokerVerbindung verbindung;
 
     public MeasurementConfigStatusListener(
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
             @Value("${voltpilot.provisioning.username:}") String username,
             @Value("${voltpilot.provisioning.password:}") String password,
             MeasurementSelectionRepository repository, ObjectMapper mapper) {
-        this.brokerUrl = brokerUrl; this.username = username; this.password = password;
         this.repository = repository; this.mapper = mapper;
+        this.verbindung = new BrokerVerbindung(log, "measurement status", brokerUrl,
+                "voltpilot-api-measurement-status-" + UUID.randomUUID(), true, username, password,
+                (client, quittung) -> client.subscribe(FILTER, 1, null, quittung), this::empfangen);
     }
 
     @EventListener(ContextRefreshedEvent.class)
@@ -73,55 +76,18 @@ public class MeasurementConfigStatusListener extends Rueckmeldeweg {
         ensureConnected();
     }
 
-    /** Initial broker outages are retried; a failed half-created client never wedges startup. */
+    /** Starts the initial connect until the first one succeeds; from then on only Paho reconnects. */
     @Scheduled(fixedDelayString = "${voltpilot.measurements.status-reconnect-ms:5000}",
             initialDelayString = "${voltpilot.measurements.status-reconnect-ms:5000}")
-    public synchronized void ensureConnected() {
-        if (client != null && client.isConnected()) return;
-        try {
-            connect();
-        } catch (Exception e) {
-            log.warn("measurement status listener awaits broker: {}", e.getMessage());
-            discardClient();
-        }
+    public void ensureConnected() {
+        verbindung.sicherstellen();
     }
 
-    private void connect() throws Exception {
-        discardClient();
-        client = new MqttClient(brokerUrl, "voltpilot-api-measurement-status",
-                new MemoryPersistence());
-        client.setCallback(new MqttCallbackExtended() {
-            @Override public void connectComplete(boolean reconnect, String uri) {
-                try { client.subscribe(FILTER, 1, listener()); }
-                catch (Exception e) { log.warn("measurement status subscribe failed: {}", e.getMessage()); }
-            }
-            @Override public void connectionLost(Throwable cause) { }
-            @Override public void messageArrived(String topic, MqttMessage message) { }
-            @Override public void deliveryComplete(org.eclipse.paho.client.mqttv3.IMqttDeliveryToken t) { }
-        });
-        MqttConnectOptions options = new MqttConnectOptions();
-        options.setCleanSession(false); options.setAutomaticReconnect(true); options.setConnectionTimeout(5);
-        if (username != null && !username.isBlank()) {
-            options.setUserName(username); options.setPassword(password == null ? new char[0] : password.toCharArray());
-        }
-        client.connect(options);
-        client.subscribe(FILTER, 1, listener());
-    }
+    boolean connectedForTest() { return verbindung.verbunden(); }
 
-    private void discardClient() {
-        if (client == null) return;
-        try { if (client.isConnected()) client.disconnect(); client.close(); }
-        catch (Exception ignored) { }
-        client = null;
-    }
-
-    boolean connectedForTest() { return client != null && client.isConnected(); }
-
-    private IMqttMessageListener listener() {
-        return (topic, message) -> {
-            try { handle(topic, message.getPayload()); }
-            catch (Exception e) { log.warn("measurement status on {} rejected: {}", topic, e.getMessage()); }
-        };
+    private void empfangen(String topic, MqttMessage message) {
+        try { handle(topic, message.getPayload()); }
+        catch (Exception e) { log.warn("measurement status on {} rejected: {}", topic, e.getMessage()); }
     }
 
     /** Test-visible strict validator and monotone state transition. */
@@ -203,5 +169,5 @@ public class MeasurementConfigStatusListener extends Rueckmeldeweg {
         return true;
     }
 
-    @PreDestroy synchronized void close() { discardClient(); }
+    @PreDestroy void close() { verbindung.schliessen(); }
 }

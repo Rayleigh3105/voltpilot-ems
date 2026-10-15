@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.measurement.MeasurementSelectionRepository.DeviceScope;
 import com.voltpilot.api.measurement.MeasurementSelectionService.State;
+import com.voltpilot.api.provisioning.BrokerVerbindung;
 import com.voltpilot.api.uems.BoxFaehigkeiten;
 import com.voltpilot.api.uems.ErwarteteKadenz;
 import com.voltpilot.api.uems.ErwarteteKadenz.Messkanal;
@@ -16,15 +17,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import org.eclipse.paho.client.mqttv3.MqttClient;
-import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
-import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.event.ContextRefreshedEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
 /** Publishes the complete additional-measurement desired state retained/QoS1. */
@@ -37,25 +37,36 @@ public class MeasurementConfigPublisher {
      * {@code docs/contracts/v2/edge-supports.md}).
      */
     public static final String FAEHIGKEIT_JE_KOMPONENTE = "measurement_config_per_component";
-    private final String brokerUrl;
-    private final String username;
-    private final String password;
     private final ObjectMapper mapper;
     private final ErwarteteKadenz kadenzen;
     private BoxFaehigkeiten faehigkeiten;
     private WagoRegisterbilder registerbilder;
-    private MqttClient client;
+    /**
+     * Ein Client, einmal gebaut, nie verworfen; eindeutige ID mit sauberer Sitzung - ein Sender hat
+     * keine Sitzung zu bewahren, und die feste ID ließ im Rollout zwei Pods einander trennen.
+     */
+    private final BrokerVerbindung verbindung;
 
     public MeasurementConfigPublisher(
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
             @Value("${voltpilot.provisioning.username:}") String username,
             @Value("${voltpilot.provisioning.password:}") String password,
             ObjectMapper mapper, ErwarteteKadenz kadenzen) {
-        this.brokerUrl = brokerUrl;
-        this.username = username;
-        this.password = password;
         this.mapper = mapper;
         this.kadenzen = kadenzen;
+        this.verbindung = new BrokerVerbindung(log, "measurement config", brokerUrl,
+                "voltpilot-api-measurements-" + UUID.randomUUID(), true, username, password, null, null);
+    }
+
+    /**
+     * Verbindet beim Start und wartet darauf höchstens {@link BrokerVerbindung#ZEITGRENZE_MS}: der
+     * Abgleich gleich danach ({@code ApplicationReadyEvent}) soll senden können. Später wartet ein
+     * Senden nie auf die Verbindung; fehlt sie, holt der Abgleich nach, und Paho verbindet selbst neu.
+     */
+    @EventListener(ContextRefreshedEvent.class)
+    public void start() {
+        verbindung.sicherstellen();
+        verbindung.erstaufbauAbwarten();
     }
 
     /**
@@ -85,7 +96,8 @@ public class MeasurementConfigPublisher {
             MqttMessage message = new MqttMessage(payload(scope, state));
             message.setQos(1);
             message.setRetained(true);
-            connected().publish(topic(scope.tenantId(), scope.siteId(), scope.deviceId()), message);
+            verbindung.verbundenerClient().publish(topic(scope.tenantId(), scope.siteId(), scope.deviceId()),
+                    message).waitForCompletion(BrokerVerbindung.ZEITGRENZE_MS);
             return true;
         } catch (Exception e) {
             log.warn("measurement desired state revision {} for device {} could not be published: {}",
@@ -97,7 +109,8 @@ public class MeasurementConfigPublisher {
     /** Clear the retired box's desired plan through the same retained transport. */
     public synchronized boolean clear(UUID tenantId, UUID siteId, UUID deviceId) {
         try {
-            connected().publish(topic(tenantId, siteId, deviceId), new byte[0], 1, true);
+            verbindung.verbundenerClient().publish(topic(tenantId, siteId, deviceId), new byte[0], 1, true)
+                    .waitForCompletion(BrokerVerbindung.ZEITGRENZE_MS);
             return true;
         } catch (Exception e) {
             log.warn("Could not clear measurement config for {}: {}", deviceId, e.getMessage());
@@ -201,33 +214,8 @@ public class MeasurementConfigPublisher {
         return out;
     }
 
-    private MqttClient connected() throws Exception {
-        if (client == null) {
-            client = new MqttClient(brokerUrl, "voltpilot-api-measurements",
-                    new MemoryPersistence());
-        }
-        if (!client.isConnected()) {
-            MqttConnectOptions options = new MqttConnectOptions();
-            options.setCleanSession(false);
-            options.setConnectionTimeout(5);
-            options.setAutomaticReconnect(true);
-            if (username != null && !username.isBlank()) {
-                options.setUserName(username);
-                options.setPassword(password == null ? new char[0] : password.toCharArray());
-            }
-            client.connect(options);
-        }
-        return client;
-    }
-
     @PreDestroy
     void close() {
-        if (client == null) return;
-        try {
-            if (client.isConnected()) client.disconnect();
-            client.close();
-        } catch (Exception e) {
-            log.debug("closing measurement publisher: {}", e.getMessage());
-        }
+        verbindung.schliessen();
     }
 }

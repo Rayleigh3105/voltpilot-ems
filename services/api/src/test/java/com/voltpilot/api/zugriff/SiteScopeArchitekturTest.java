@@ -202,7 +202,7 @@ class SiteScopeArchitekturTest {
             new Erlaubt("uems/SprungprobeRepository.java", "telemetry", 1, Grund.PLATTFORM,
                     "web/AdminGemeinsameSteuerungController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
             new Erlaubt("uems/SprungprobeRepository.java", "telemetry", 1, Grund.OHNE_ANFRAGE,
-                    "uems/SprungprobeBerichtListener.java", "IMqttMessageListener"),
+                    "uems/SprungprobeBerichtListener.java", " extends Rueckmeldeweg "),
             new Erlaubt("repo/AdminFleetRepository.java", "telemetry_rollup_15m", 2, Grund.PLATTFORM,
                     "web/AdminFleetController.java", "@PreAuthorize(\"hasRole('platform-admin')\")"),
             new Erlaubt("repo/TenantRepository.java", "telemetry", 1, Grund.PLATTFORM, "web/AdminController.java",

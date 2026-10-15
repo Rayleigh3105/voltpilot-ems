@@ -2,16 +2,12 @@ package com.voltpilot.api.uems;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.kundenbereich.Rueckmeldeweg;
+import com.voltpilot.api.provisioning.BrokerVerbindung;
 import com.voltpilot.api.tenant.TenantContext;
 import jakarta.annotation.PreDestroy;
 import java.time.Instant;
 import java.util.UUID;
-import org.eclipse.paho.client.mqttv3.IMqttMessageListener;
-import org.eclipse.paho.client.mqttv3.MqttCallbackExtended;
-import org.eclipse.paho.client.mqttv3.MqttClient;
-import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
-import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -34,18 +30,25 @@ public class SprungprobeBerichtListener extends Rueckmeldeweg {
     private static final Logger log = LoggerFactory.getLogger(SprungprobeBerichtListener.class);
     private static final String FILTER = "ems/+/+/+/v2/" + SprungprobeBericht.ERGEBNIS;
 
-    private final String brokerUrl, username, password;
     private final SprungprobeDienst dienst;
     private final ObjectMapper mapper;
-    private MqttClient client;
+    /**
+     * Ein Client, einmal gebaut, nie verworfen – aber mit fester ID und dauerhafter Sitzung: der Bericht ist NICHT
+     * retained, und was die Box sendet, während die api neu startet, hält nur die Sitzung beim Broker. Ein zweiter
+     * Client mit derselben ID entsteht hier nie mehr; im Rollout verdrängen sich alter und neuer Pod, bis der alte
+     * schließt (wie der OCPP-Eingang). Die gestauten Berichte kommen vor dem SUBACK und gehen trotzdem an den Eingang.
+     */
+    private final BrokerVerbindung verbindung;
 
     public SprungprobeBerichtListener(
             @Value("${voltpilot.provisioning.broker-url:tcp://localhost:1883}") String brokerUrl,
             @Value("${voltpilot.provisioning.username:}") String username,
             @Value("${voltpilot.provisioning.password:}") String password,
             SprungprobeDienst dienst, ObjectMapper mapper) {
-        this.brokerUrl = brokerUrl; this.username = username; this.password = password;
         this.dienst = dienst; this.mapper = mapper;
+        this.verbindung = new BrokerVerbindung(log, "sprungprobe result", brokerUrl,
+                "voltpilot-api-sprungprobe-result", false, username, password,
+                (client, quittung) -> client.subscribe(FILTER, 1, null, quittung), this::empfangen);
     }
 
     @EventListener(ContextRefreshedEvent.class)
@@ -53,57 +56,21 @@ public class SprungprobeBerichtListener extends Rueckmeldeweg {
         ensureConnected();
     }
 
-    /** Wiederverbindung wie {@link PlanResultListener}: ein Broker-Ausfall beim Start hält nichts auf. */
+    /** Wie {@link PlanResultListener}: Erstaufbau im Takt, danach verbindet nur Paho neu. */
     @Scheduled(fixedDelayString = "${voltpilot.measurements.status-reconnect-ms:5000}",
             initialDelayString = "${voltpilot.measurements.status-reconnect-ms:5000}")
-    public synchronized void ensureConnected() {
-        if (client != null && client.isConnected()) return;
-        try {
-            connect();
-        } catch (Exception e) {
-            log.warn("sprungprobe result listener awaits broker: {}", e.getMessage());
-            discardClient();
-        }
-    }
-
-    private void connect() throws Exception {
-        discardClient();
-        client = new MqttClient(brokerUrl, "voltpilot-api-sprungprobe-result", new MemoryPersistence());
-        client.setCallback(new MqttCallbackExtended() {
-            @Override public void connectComplete(boolean reconnect, String uri) {
-                try { client.subscribe(FILTER, 1, listener()); }
-                catch (Exception e) { log.warn("sprungprobe result subscribe failed: {}", e.getMessage()); }
-            }
-            @Override public void connectionLost(Throwable cause) { }
-            @Override public void messageArrived(String topic, MqttMessage message) { }
-            @Override public void deliveryComplete(org.eclipse.paho.client.mqttv3.IMqttDeliveryToken t) { }
-        });
-        MqttConnectOptions options = new MqttConnectOptions();
-        options.setCleanSession(false); options.setAutomaticReconnect(true); options.setConnectionTimeout(5);
-        if (username != null && !username.isBlank()) {
-            options.setUserName(username); options.setPassword(password == null ? new char[0] : password.toCharArray());
-        }
-        client.connect(options);
-        client.subscribe(FILTER, 1, listener());
+    public void ensureConnected() {
+        verbindung.sicherstellen();
     }
 
     @PreDestroy
     void stop() {
-        discardClient();
+        verbindung.schliessen();
     }
 
-    private void discardClient() {
-        if (client == null) return;
-        try { if (client.isConnected()) client.disconnect(); client.close(); }
-        catch (Exception ignored) { }
-        client = null;
-    }
-
-    private IMqttMessageListener listener() {
-        return (topic, message) -> {
-            try { handle(topic, message.getPayload(), Instant.now()); }
-            catch (Exception e) { log.warn("sprungprobe result on {} rejected: {}", topic, e.getMessage()); }
-        };
+    private void empfangen(String topic, MqttMessage message) {
+        try { handle(topic, message.getPayload(), Instant.now()); }
+        catch (Exception e) { log.warn("sprungprobe result on {} rejected: {}", topic, e.getMessage()); }
     }
 
     /** Prüft und übergibt; false = verworfen (ungültig oder keine laufende Probe dieser Box). */
