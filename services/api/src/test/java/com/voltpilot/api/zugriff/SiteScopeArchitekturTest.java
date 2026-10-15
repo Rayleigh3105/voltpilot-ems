@@ -115,6 +115,13 @@ class SiteScopeArchitekturTest {
                     "web/EntityController.java", "geltungsbereich.requireSite"),
             new Erlaubt("repo/EntityHistoryRepository.java", "telemetry_v2_rollup_1h", 1, Grund.ANLAGE_GEPRUEFT,
                     "web/EntityController.java", "geltungsbereich.requireSite"),
+            // Alerting Scheibe 2 (§6.4, §6.8 Entwurf 1): der 30-Tage-Probelauf. Bezug `anlage` prüft
+            // ProbelaufService vorher selbst (telemetry_v2_rollup_15m trägt nur den Mandanten-Zaun);
+            // Bezug `komponente` kommt nur über die site_scope-gezäunte measurement_point-Auflösung.
+            new Erlaubt("ueberwachung/ProbelaufRepository.java", "telemetry_v2_rollup_15m", 1, Grund.ANLAGE_GEPRUEFT,
+                    "ueberwachung/ProbelaufService.java", "geltungsbereich.requireSite(bezug.id())"),
+            new Erlaubt("ueberwachung/ProbelaufRepository.java", "telemetry_v2_rollup_15m", 1, Grund.UEBER_MESSKOMPONENTE,
+                    "ueberwachung/ProbelaufService.java", "repo.anlageDerKomponente(bezug.id())"),
             new Erlaubt("repo/EntityHistoryRepository.java", "telemetry_v2_rollup_1d", 1, Grund.ANLAGE_GEPRUEFT,
                     "web/EntityController.java", "geltungsbereich.requireSite"),
             // Erlöse je Anlage (Speicher-Bank, Start-SoC).

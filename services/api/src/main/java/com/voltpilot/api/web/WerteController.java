@@ -7,6 +7,7 @@ import com.voltpilot.api.ueberwachung.AnlagenflussWerteLeser;
 import com.voltpilot.api.ueberwachung.WerteKatalog;
 import com.voltpilot.api.ueberwachung.WerteLeser;
 import com.voltpilot.api.web.dto.WertverweisDto;
+import com.voltpilot.api.zugriff.Geltungsbereich;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -37,11 +38,14 @@ public class WerteController {
     private final WerteKatalog katalog;
     private final AnlagenflussWerteLeser anlagenfluss;
     private final TopologyService topologie;
+    private final Geltungsbereich geltungsbereich;
 
-    public WerteController(WerteKatalog katalog, AnlagenflussWerteLeser anlagenfluss, TopologyService topologie) {
+    public WerteController(WerteKatalog katalog, AnlagenflussWerteLeser anlagenfluss, TopologyService topologie,
+            Geltungsbereich geltungsbereich) {
         this.katalog = katalog;
         this.anlagenfluss = anlagenfluss;
         this.topologie = topologie;
+        this.geltungsbereich = geltungsbereich;
     }
 
     @GetMapping
@@ -57,6 +61,10 @@ public class WerteController {
         } catch (IllegalArgumentException e) {
             throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "ungültige Anlage");
         }
+        // Standort-Zaun: einige Felder (z.B. Preis über die Gebotszone) sind nicht über die
+        // site_scope-gezäunte Topologie-Auflösung geschützt (AGENTS.md "die Messdaten selbst tragen
+        // nur den Mandanten-Zaun") - diese Stelle prüft darum selbst, bevor sie überhaupt liest.
+        geltungsbereich.requireSite(anlageId);
         List<WertverweisDto> werte = new ArrayList<>(anlagenflussWerte(anlageId));
         werte.addAll(messreiheWerte(anlageId));
         return new WertverweisDto.Liste(werte);

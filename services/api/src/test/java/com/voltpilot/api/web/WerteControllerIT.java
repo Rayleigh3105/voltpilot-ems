@@ -78,7 +78,8 @@ class WerteControllerIT {
                 new ObjectMapper(), ladepunkte, mock(EntityRegistryService.class), mock(RollenZuordnungService.class));
         AnlagenflussWerteLeser leser = new AnlagenflussWerteLeser(topologyService, ladepunkte,
                 new PriceRepository(app), app);
-        controller = new WerteController(new WerteKatalog(), leser, topologyService);
+        controller = new WerteController(new WerteKatalog(), leser, topologyService,
+                new com.voltpilot.api.zugriff.Geltungsbereich(app));
     }
 
     @AfterEach
