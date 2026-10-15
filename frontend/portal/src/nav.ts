@@ -19,6 +19,7 @@ import type { IconName } from '../designsystem/components/core/Icon';
 
 export type PageId =
   | 'kunden-benutzer'
+  | 'meldungen'
   | 'hilfe'
   | 'portfolio'
   | 'portfolio-standorte'
@@ -497,6 +498,9 @@ export function anlagenLabel(siteCount: number | null): string {
 export const ALL_PAGES: PageDef[] = [
   { id: 'hilfe', label: 'Hilfe & Kontakt', icon: 'help-circle' },
   { id: 'kunden-benutzer', label: 'Benutzer', icon: 'users' },
+  // Alerting Scheibe 1 (Entscheid 4A): kein Eintrag in der Leiste - nur ein Label/Icon für die
+  // Kopfzeile und das Lesezeichen; die Glocke führt hin, nie ein Menüpunkt.
+  { id: 'meldungen', label: 'Meldungen', icon: 'bell' },
   PORTFOLIO_PAGE,
   ...PORTFOLIO_WELT_PAGES,
   STANDORT_PAGE,
@@ -651,6 +655,9 @@ export function parseRoute(hash: string): Route {
   const segments = raw.split('/').filter((s) => s.length > 0);
   const head = segments[0] ?? '';
 
+  // Meldungs-Center (Alerting Scheibe 1, Entscheid 4A): `#/meldungen`, kein Eintrag in der Leiste
+  // (die Glocke im Kopf führt hin); `?anlage=`/`?status=` liest die Seite selbst aus der Rohadresse.
+  if (head === 'meldungen') return pageRoute('meldungen');
   if (head === 'hilfe') {
     // Invalid slugs stay in help and receive a useful not-found page.
     let article = segments.slice(1).join('/');

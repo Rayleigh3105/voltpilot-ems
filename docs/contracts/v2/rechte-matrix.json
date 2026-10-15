@@ -1698,6 +1698,42 @@
         "einsicht": "-"
       },
       "anmerkung": "AP-09 IP-8: Erstwert und Berichtigung an der Messstelle; U U S - - - -, nie Unterstützer."
+    },
+    {
+      "kennung": "ueberwachung.eigene",
+      "gruppe": "messdaten",
+      "kundenwort": "Eine Überwachung für sich selbst anlegen, ändern, löschen",
+      "herkunft": "Alerting v1 §6.6, Entscheid 5A (15.10.2026)",
+      "nachtrag": "Alerting v1 §6.6",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "S",
+        "leser": "S",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-",
+        "einsicht": "U"
+      },
+      "anmerkung": "Wie messwerte.ansehen zugeschnitten (§6.6 Tabelle): wer einen Wert sehen darf, darf sich selbst dazu benachrichtigen lassen. Unterstützer nicht - eine befristete Unterstützung bekommt Meldungen nur, wenn sie ausdrücklich genannt ist (Entscheid 12A, spätere Scheibe)."
+    },
+    {
+      "kennung": "ueberwachung.verwalten",
+      "gruppe": "messdaten",
+      "kundenwort": "Überwachungen für andere Personen oder für Rollen anlegen, ändern, löschen",
+      "herkunft": "Alerting v1 §6.6, Entscheid 5A (15.10.2026)",
+      "nachtrag": "Alerting v1 §6.6",
+      "zellen": {
+        "kundenadministrator": "U",
+        "energiemanager": "U",
+        "bearbeiter": "S",
+        "bedienberechtigt": "-",
+        "leser": "-",
+        "unterstuetzer": "-",
+        "voltpilot_betrieb": "-",
+        "einsicht": "-"
+      },
+      "anmerkung": "Eine Stummschaltung für alle braucht ebenfalls dieses Recht (§6.6 Tabelle „Anlegen, quittieren, ändern“)."
     }
   ],
   "nachtraege": [
@@ -2422,6 +2458,43 @@
         {
           "wortlaut": "Ausnahme von „Verantwortung verleiht kein Recht“ (AP-18 RE3), eng gefasst: wer für eine Maßnahme verantwortlich ist und `verbesserung.eigene_massnahme` hat, meldet SIE als umgesetzt und kommentiert SIE; ändern, verwerfen, bewerten und jede fremde Maßnahme bleiben bei `verbesserung.verwalten` bzw. `verbesserung.abschliessen`.",
           "wo": "RechteAbleitung.eigeneMassnahme und rechte.ts eigeneMassnahme (Familie verantwortung); MassnahmeService umgesetzt und eintrag"
+        }
+      ]
+    },
+    {
+      "abschnitt": "Alerting v1 §6.6",
+      "titel": "Rechte der Überwachung (Alerting Scheibe 1)",
+      "konzept": "Alerting-Konzept vp-alerting-konzept-m1 — report.md §6.6, Entscheid 5A vom 15.10.2026",
+      "handlungen": [
+        {
+          "handlung": "Eine Überwachung für sich selbst anlegen, ändern, löschen",
+          "wer": "Kundenadministrator, Energiemanager und Einsicht unternehmensweit, Bearbeiter, Bedienberechtigt und Leser je Standort",
+          "recht": "`@Recht(\"ueberwachung.eigene\")`",
+          "kennungen": [
+            "ueberwachung.eigene"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": "Wie messwerte.ansehen zugeschnitten; Unterstützer nicht."
+        },
+        {
+          "handlung": "Überwachungen für andere Personen oder für Rollen anlegen, ändern, löschen",
+          "wer": "Kundenadministrator und Energiemanager unternehmensweit, Bearbeiter je Standort",
+          "recht": "`@Recht(\"ueberwachung.verwalten\")`",
+          "kennungen": [
+            "ueberwachung.verwalten"
+          ],
+          "zuordnung": "neu",
+          "anmerkung": null
+        }
+      ],
+      "regeln": [
+        {
+          "wortlaut": "Sicht je Empfänger beim Versand: RechteAbleitung.darf(matrix, benutzer, kundenbereich, recht, ziel, jetzt)",
+          "wo": "services/api/src/main/java/com/voltpilot/api/ueberwachung/UeberwachungSichtPruefungImpl.java"
+        },
+        {
+          "wortlaut": "Eine Meldung erbt die Sicht ihres Werts (meist messwerte.ansehen), zweifach gesichert: Datenbank-Zaun (site_scope auf alarm/ueberwachung) und das Recht des Werts",
+          "wo": "db/migration/V20261015130000__ueberwachung_kern.sql"
         }
       ]
     }

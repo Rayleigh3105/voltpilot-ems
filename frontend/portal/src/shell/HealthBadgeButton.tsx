@@ -25,10 +25,16 @@ import type { HealthBadge } from '../health';
 export function HealthBadgeButton({
   health,
   onOpenDetail,
+  meldungenLink,
 }: {
   health: HealthBadge;
   /** Opens the plant's health surface (its cockpit); null = no drill target. */
   onOpenDetail?: (() => void) | null;
+  /**
+   * Alerting Scheibe 1 (Entscheid 4A): "N Meldungen dieser Anlage ›", wenn es welche gibt - die
+   * Zustands-Anzeige bleibt und verlinkt zum Meldungs-Center dieser Anlage (§6.2).
+   */
+  meldungenLink?: { anzahl: number; onOpen: () => void } | null;
 }) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
@@ -134,6 +140,19 @@ export function HealthBadgeButton({
                   </li>
                 ))}
               </ul>
+            )}
+            {meldungenLink && meldungenLink.anzahl > 0 && (
+              <button
+                type="button"
+                className="vp-healthpop-link"
+                onClick={() => {
+                  setOpen(false);
+                  meldungenLink.onOpen();
+                }}
+              >
+                {meldungenLink.anzahl} {meldungenLink.anzahl === 1 ? 'Meldung' : 'Meldungen'} dieser Anlage
+                <Icon name="chevron-right" size={14} />
+              </button>
             )}
             {onOpenDetail && (
               <button

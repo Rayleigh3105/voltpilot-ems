@@ -59,7 +59,8 @@ export type IconName =
   | 'smartphone'
   | 'code'
   | 'upload'
-  | 'archive';
+  | 'archive'
+  | 'bell';
 
 export interface IconProps extends React.SVGAttributes<SVGSVGElement> {
   name: IconName;

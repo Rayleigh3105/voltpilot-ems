@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "_hinweis": "Alerting Scheibe 1 (Konzept vp-alerting-konzept-m1 §6.3). Jeder Eintrag ist eine Adresse (Wertart + Bezug); 'leser.art' ist eine der festen Leserarten, die der Code einmal baut (ZustandWerteLeser, EreignisWerteLeser). Neue Werte derselben Leserart sind ein weiterer Eintrag hier, kein neuer Code (§6.3 Nr. 2).",
+  "eintraege": [
+    {
+      "wertart": "box.erreichbar",
+      "name": "Box erreichbar",
+      "satzname": "die Box",
+      "bezug": "anlage",
+      "form": "zustand",
+      "leser": { "art": "zustand", "feld": "box_erreichbar" },
+      "recht": "messwerte.ansehen",
+      "zustaende": ["erreichbar", "nicht_erreichbar"],
+      "bedingungen": ["zustand"],
+      "vorschlag": { "dauer_s": 900, "erholen_s": 300, "schwere": "warnung", "ziel": ["nicht_erreichbar"] }
+    },
+    {
+      "wertart": "datenquelle.liefert_daten",
+      "name": "Datenquelle liefert Daten",
+      "satzname": "die Datenquelle",
+      "bezug": "anlage",
+      "form": "zustand",
+      "leser": { "art": "zustand", "feld": "datenquelle_status" },
+      "recht": "messwerte.ansehen",
+      "zustaende": ["ok", "stale", "never"],
+      "bedingungen": ["zustand"],
+      "vorschlag": { "dauer_s": 3600, "erholen_s": 300, "schwere": "warnung", "ziel": ["stale", "never"] }
+    },
+    {
+      "wertart": "box.luecke",
+      "name": "Datenlücke der Box",
+      "satzname": "die Box",
+      "bezug": "anlage",
+      "form": "ereignis",
+      "leser": { "art": "ereignis", "arten": ["data_gap"], "bezugsfeld": "box" },
+      "recht": "messwerte.ansehen",
+      "bedingungen": ["ereignis"]
+    },
+    {
+      "wertart": "box.neustarts",
+      "name": "Neustarts der Box",
+      "satzname": "die Box",
+      "bezug": "anlage",
+      "form": "ereignis",
+      "leser": { "art": "ereignis", "arten": ["box_restart"], "bezugsfeld": "box" },
+      "recht": "messwerte.ansehen",
+      "bedingungen": ["ereignis"]
+    }
+  ]
+}

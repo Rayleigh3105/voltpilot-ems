@@ -1333,8 +1333,38 @@ window.fetch = async (input, init) => {
   if (/^\/api\/v1\/sites\/[^/]+\/flows$/.test(url.pathname)) return Response.json([]);
   if (url.pathname.endsWith('/flow-node-status')) return Response.json({ acks: [], nodes: [] });
   if (url.pathname.endsWith('/flow-node-governance')) return Response.json({ gatedNodes: [] });
+  // Alerting Scheibe 1 (Meldungs-Center, Glocke): die Bühne stellt eine Meldung auf Werk Ahrenberg.
+  if (url.pathname === '/api/v1/meldungen/zahl') {
+    return Response.json({ ungesehen: MELDUNGEN_BUEHNE.filter((m) => m.zustand !== 'erledigt' && !m.gesehenVon).length, dringend: false });
+  }
+  if (url.pathname === '/api/v1/meldungen/regeln') return Response.json({ ueberwachungen: [] });
+  if (url.pathname === '/api/v1/meldungen') {
+    const status = url.searchParams.get('status');
+    const anlage = url.searchParams.get('anlage');
+    const erledigt = status === 'verlauf';
+    const liste = MELDUNGEN_BUEHNE.filter((m) => (m.zustand === 'erledigt') === erledigt)
+      .filter((m) => !anlage || m.anlageId === anlage);
+    return Response.json({ meldungen: liste });
+  }
+  if (/^\/api\/v1\/meldungen\/[^/]+\/gesehen$/.test(url.pathname)) {
+    const id = url.pathname.split('/')[4];
+    const m = MELDUNGEN_BUEHNE.find((x) => x.id === id);
+    if (m) { m.gesehenVon = 'Jonas Weber'; m.gesehenAm = new Date().toISOString(); }
+    return Response.json(m ?? {});
+  }
   return echtesFetch(input, init);
 };
+
+const MELDUNGEN_BUEHNE: Array<{
+  id: string; kennzeichen: string; wertart: string; schwere: string; anlageId: string | null;
+  anlageName: string | null; standortId: string | null; ausgeloestAm: string; zustand: string;
+  wiederNormalAm: string | null; gesehenVon: string | null; gesehenAm: string | null; erledigtAm: string | null;
+}> = [
+  { id: 'al-1', kennzeichen: 'AL-2026-000123', wertart: 'box.erreichbar', schwere: 'warnung',
+    anlageId: FIXTURE_IDS.an1, anlageName: 'Halle 1', standortId: FIXTURE_IDS.st1,
+    ausgeloestAm: '2026-11-03T13:15:00Z', zustand: 'aktiv', wiederNormalAm: null,
+    gesehenVon: null, gesehenAm: null, erledigtAm: null },
+];
 
 async function nichtGestellt(): Promise<never> {
   throw new Error('In der Bühne nicht gestellt.');

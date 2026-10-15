@@ -420,6 +420,12 @@
                              (application.yml, matchIfMissing). Wer ihn prueft,
                              ruft Zusteller.lauf() bzw. VersandRepository selbst. -->
                         <voltpilot.versand.enabled>false</voltpilot.versand.enabled>
+                        <!-- Alerting Scheibe 1 (vp-alerting-konzept-m1 §7): der
+                             UeberwachungsLaeufer-Takt (com.voltpilot.api.ueberwachung.UeberwachungsLaeufer) -
+                             dieselbe @Scheduled-Falle, im Testlauf aus, in PRODUKTION an
+                             (application.yml, matchIfMissing). Wer ihn prueft, ruft
+                             UeberwachungsLaeufer.lauf() bzw. UeberwachungsService.lauf() selbst. -->
+                        <voltpilot.ueberwachung.enabled>false</voltpilot.ueberwachung.enabled>
                         <!-- The AP-06 per-data-source status listener is ON in production.
                              Unit tests drive handle() without opening a broker connection. -->
                         <voltpilot.uems.data-source-status.mqtt-listener-enabled>false</voltpilot.uems.data-source-status.mqtt-listener-enabled>

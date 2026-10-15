@@ -202,6 +202,10 @@ const BenutzerPage = lazy(() =>
 const MessstellenPage = lazy(() =>
   PAGE_CHUNK['portfolio-messstellen']().then((m) => ({ default: m.MessstellenPage })),
 );
+// Meldungs-Center (Alerting Scheibe 1, Entscheid 4A): öffnet nur über die Glocke oder einen Link.
+const MeldungenPage = lazy(() =>
+  PAGE_CHUNK['meldungen']().then((m) => ({ default: m.MeldungenPage })),
+);
 const BezugsgroessenPage = lazy(() =>
   PAGE_CHUNK['portfolio-bezugsgroessen']().then((m) => ({ default: m.BezugsgroessenPage })),
 );
@@ -1923,6 +1927,7 @@ function UnifiedPortal() {
             />
           )}
           {page === 'kunden-benutzer' && <BenutzerPage />}
+          {page === 'meldungen' && <MeldungenPage />}
           {page === 'portfolio-messwerte' && <PortfolioMesswerte sites={sites} />}
           {page === 'portfolio-erloese' && <PortfolioErloese sites={geldSites} />}
           {page === 'uebersicht' && (

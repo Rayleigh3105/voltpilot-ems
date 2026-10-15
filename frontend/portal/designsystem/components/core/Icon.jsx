@@ -415,6 +415,13 @@ const PATHS = {
       <path d="M10 12h4" />
     </>
   ),
+  // Alerting Scheibe 1: die Glocke im Kopf (Lucide "bell").
+  bell: (
+    <>
+      <path d="M10.268 21a2 2 0 0 0 3.464 0" />
+      <path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" />
+    </>
+  ),
 };
 
 export function Icon({ name, size = 20, strokeWidth = 2, style = {}, ...props }) {

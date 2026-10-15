@@ -84,6 +84,19 @@ public class DeviceDataSourceStatusRepository {
         return rows.isEmpty() ? null : rows.get(0);
     }
 
+    /** Alle aktuellen Meldungen der Datenquellen einer Anlage (Alerting Scheibe 1, zustand-Leser). */
+    public List<Status> findForSite(UUID siteId) {
+        return jdbc.query(
+                "SELECT health, error_class, since_at, read_at, requests_per_min, samples_per_min, "
+                        + "reported_at FROM device_data_source_status WHERE site_id = ?",
+                (rs, n) -> new Status(rs.getString("health"), rs.getString("error_class"),
+                        instant(rs.getTimestamp("since_at")), instant(rs.getTimestamp("read_at")),
+                        (Double) rs.getObject("requests_per_min"),
+                        (Double) rs.getObject("samples_per_min"),
+                        rs.getTimestamp("reported_at").toInstant()),
+                siteId);
+    }
+
     public static Ableitung ableiten(Status status) {
         if (status == null) {
             return new Ableitung(Lieferzustand.MELDET_NOCH_NICHT_JE_QUELLE, null, null,
