@@ -50,4 +50,46 @@ class WerteKatalogTest {
         assertThat(quelle.vorschlag().dauerS()).isEqualTo(3600);
         assertThat(quelle.vorschlag().schwere()).isEqualTo("warnung");
     }
+
+    // ----------------------------------------------------------- Scheibe 2 (§6.3, §7 Scheibe 2)
+
+    @Test
+    void kenntDieAnlagenflussWertartenMitIhrenLesefeldern() {
+        record Erwartet(String wertart, String feld) {}
+        for (Erwartet e : java.util.List.of(
+                new Erwartet("anlage.netz.leistung", "netz"),
+                new Erwartet("anlage.pv.leistung", "pv"),
+                new Erwartet("anlage.speicher.leistung", "speicher_leistung"),
+                new Erwartet("anlage.speicher.ladestand", "speicher_ladestand"),
+                new Erwartet("anlage.verbrauch.leistung", "verbrauch"),
+                new Erwartet("anlage.ladepunkte.leistung", "ladepunkte"),
+                new Erwartet("anlage.preis.jetzt", "preis"))) {
+            WerteKatalog.Eintrag eintrag = katalog.eintrag(e.wertart());
+            assertThat(eintrag).as(e.wertart()).isNotNull();
+            assertThat(eintrag.leser().art()).as(e.wertart()).isEqualTo("anlagenfluss");
+            assertThat(eintrag.leser().feld()).as(e.wertart()).isEqualTo(e.feld());
+            assertThat(eintrag.bezug()).as(e.wertart()).isEqualTo("anlage");
+            assertThat(eintrag.form()).as(e.wertart()).isEqualTo("zahl");
+            assertThat(eintrag.bedingungen()).as(e.wertart()).contains("ueber", "unter");
+        }
+    }
+
+    @Test
+    void dieMessreiheFamilieDecktJedenGemessenenKanalOhneSondercodeAb() {
+        WerteKatalog.Eintrag eintrag = katalog.eintrag("geraet.messwert");
+        assertThat(eintrag.leser().art()).isEqualTo("messreihe");
+        assertThat(eintrag.bezug()).isEqualTo("komponente");
+        assertThat(eintrag.bedingungen()).contains("ueber", "unter", "ausserhalb", "keine_daten");
+        // Kein Vorschlag ab Werk für die Familie - der Preis-Hinweis sät sich separat (15C).
+        assertThat(eintrag.vorschlag()).isNull();
+    }
+
+    @Test
+    void derPreisEintragHatKeinenGenerischenVorschlagDieAussaatLaeuftSeparat() {
+        // 15C: der Preis-Hinweis wird ab Werk gesät, aber NICHT über WerteKatalog.mitVorschlagAbWerk()
+        // (dessen Vorgaben-Modell kennt nur Ziel-Zustände, keine Zahl) - siehe UeberwachungsService.
+        assertThat(katalog.eintrag("anlage.preis.jetzt").vorschlag()).isNull();
+        assertThat(katalog.mitVorschlagAbWerk()).extracting(WerteKatalog.Eintrag::wertart)
+                .doesNotContain("anlage.preis.jetzt");
+    }
 }
