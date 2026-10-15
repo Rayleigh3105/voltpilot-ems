@@ -97,6 +97,23 @@ spring:
           # against issuer-uri while keys come from a reachable jwk-set-uri.
           jwk-set-uri: ${OIDC_JWK_SET_URI:http://localhost:8081/realms/voltpilot/protocol/openid-connect/certs}
 
+  # Alerting Scheibe 0 (com.voltpilot.api.versand.VersandConfig): der eine SMTP-
+  # Adapter des zentralen Versands. Werte bleiben LEER - niemals ein echtes
+  # Passwort hier committen. Beim Deploy kommt SMTP_PASSWORD aus der sops-
+  # Geheimnisdatei des GitOps-Repos (docs/rollout/uems-erste-freigabe.md,
+  # Zeile ~980), derselbe Weg wie das Keycloak-Realm-SMTP-Passwort.
+  mail:
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: ${SMTP_AUTH:true}
+          starttls:
+            enable: ${SMTP_STARTTLS:true}
+
 server:
   port: ${API_PORT:8090}
   # Response compression (audit vp-portal-perf-a4, finding B3). The portal's
@@ -215,6 +232,20 @@ voltpilot:
       enabled: ${VOLTPILOT_SECURITY_OIDC_ENABLED:true}
     cors:
       allowed-origins: ${VOLTPILOT_CORS_ALLOWED_ORIGINS:http://localhost:5173}
+  # Alerting Scheibe 0 (Konzept vp-alerting-konzept-m1 §7, Entscheid 1A): der
+  # zentrale Versand - EIN Ausgang (benachrichtigung), EIN Zusteller, EIN
+  # Kanal-Adapter (E-Mail). `enabled` ist der Not-Aus des Takts - Vorgabe AN,
+  # im Testlauf AUS (surefire). `absender` ist die VON-Adresse, nie die SMTP-
+  # Anmeldung; `bestaetigung-basis-url` baut den Link in der Bestätigungs-Mail
+  # (die Portal-URL, nie die API selbst - der Klick landet im Portal).
+  versand:
+    enabled: ${VOLTPILOT_VERSAND_ENABLED:true}
+    absender: ${VOLTPILOT_VERSAND_ABSENDER:meldungen@voltpilot.de}
+    bestaetigung-basis-url: ${VOLTPILOT_VERSAND_BESTAETIGUNG_BASIS_URL:http://localhost:5173}
+    interval-ms: ${VOLTPILOT_VERSAND_INTERVAL_MS:15000}
+    initial-delay-ms: ${VOLTPILOT_VERSAND_INITIAL_DELAY_MS:20000}
+    loeschlauf-interval-ms: ${VOLTPILOT_VERSAND_LOESCHLAUF_INTERVAL_MS:86400000}
+    loeschlauf-initial-delay-ms: ${VOLTPILOT_VERSAND_LOESCHLAUF_INITIAL_DELAY_MS:60000}
   # Complete OCPP 1.6 station-originated journal. The edge removes credentials
   # before durable spooling; this boundary applies the same policy again before
   # Postgres. Compose enables the MQTT consumer, while broker-less tests keep it

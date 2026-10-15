@@ -982,6 +982,15 @@ App hat, nimmt `kcadm` sein Passwort nicht mehr an.
 sops-Geheimnisdatei im gitops-Repo). Was davon über `kcadm` läuft, gehört vor Schritt 6 des
 Blatts; danach bleibt die Administration im Browser.
 
+**Eigener Handgriff, getrennt vom Realm-SMTP:** der zentrale Versand der API (Alerting Scheibe 0,
+`com.voltpilot.api.versand`) braucht ein EIGENES SMTP-Zugangspaar - `SMTP_HOST`, `SMTP_PORT`,
+`SMTP_USERNAME`, `SMTP_PASSWORD` plus `VOLTPILOT_VERSAND_ABSENDER` (die VON-Adresse, z.B.
+`meldungen@voltpilot.de`) und `VOLTPILOT_VERSAND_BESTAETIGUNG_BASIS_URL` (die Portal-URL für den
+Bestätigungslink). In `application.yml` stehen alle Werte leer; das Passwort kommt wie das
+Realm-SMTP-Passwort aus der sops-Geheimnisdatei im gitops-Repo, nie aus einem Commit hier. Ohne
+diese Werte läuft die API weiter, aber jeder Versand bleibt im Ausgang `benachrichtigung` bei
+`fehlgeschlagen` stehen - kein Absturz, nur Stille nach außen.
+
 **Beleg:** Das zweite `pruefen` endet mit Exit 0; die Bestätigungszeile in `live-realm-import.md`
 ist eingetragen. **Abbruch:** Klemmt die Anmeldung, gilt der Rückweg aus `live-realm-import.md`,
 nicht R: das Portal bleibt offen.

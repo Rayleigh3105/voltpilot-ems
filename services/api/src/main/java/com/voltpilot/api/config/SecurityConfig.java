@@ -116,6 +116,11 @@ public class SecurityConfig {
                 // schlicht schreibt, was er laedt.
                 .requestMatchers(HttpMethod.GET, "/api/v1/edge/trust-set/trust-set.json",
                         "/api/v1/edge/trust-set/trust-set.json.sig").permitAll()
+                // Alerting Scheibe 0 (§6.6): der Bestätigungslink aus der E-Mail
+                // hat keine Anmeldung - die Person hat zu diesem Zeitpunkt noch
+                // keinen bestätigten Zustellweg; der einmalige, ablaufende Token
+                // selbst ist der Nachweis (ZustellwegController).
+                .requestMatchers(HttpMethod.GET, "/api/v1/zustellwege/bestaetigen").permitAll()
                 // Gürtel UND Hosenträger für den Admin-Baum: die eigentliche
                 // Autorisierung ist weiterhin @PreAuthorize je Controller, aber
                 // seit es eine ZWEITE, eng geschnittene Admin-Rolle gibt
