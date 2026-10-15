@@ -43,7 +43,8 @@ import {
   tabellenZeilen,
   type AufbauFilter,
 } from '../aufbauTabelle';
-import { AufbauSymbol, AufbauTabelle } from '../components/AufbauTabelle';
+import { AufbauTabelle } from '../components/AufbauTabelle';
+import { AufbauSymbol } from '../components/AufbauSymbol';
 import type { SiteCharging } from '../ladepunkte';
 import { ZuordnenDialog } from '../components/ZuordnenDialog';
 import { SchaltFreigabeDrawer } from '../components/SchaltFreigabeDrawer';

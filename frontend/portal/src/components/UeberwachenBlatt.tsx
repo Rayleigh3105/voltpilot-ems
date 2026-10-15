@@ -1,15 +1,19 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Input } from '../../designsystem/components/forms/Input';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import type { UeberwachungsRegel } from '../meldungenApi';
 import { WORT_ERHOLDAUER, WORT_RUECKKEHRSCHWELLE, WORT_UEBERWACHEN, SCHWERE_WORT } from '../meldungen';
 import type { Schwere } from '../meldungenApi';
-import { ueberwachungApi } from '../ueberwachungApi';
+import { ueberwachungApi, type ProbelaufVorschau } from '../ueberwachungApi';
 import { ueberwachungSatz, vorgabenFuerBedingung } from '../ueberwachungSatz';
 import { katalogEintrag } from '../werteKatalog';
 import { BottomSheet } from './BottomSheet';
 import './UeberwachenBlatt.css';
+
+/** Der Bezug einer Überwachung (§6.3): Anlage (die vier Cockpit-Live-Kreise) ODER Komponente+Kanal
+ * (Aufbau-Zeilen, Geräteseite - Familie `geraet.messwert`), nie beide. */
+export type UeberwachenBezug = { anlage: string } | { komponente: string; kanal: string };
 
 /**
  * Das Blatt „Überwachen" (Alerting Scheibe 2, Konzept §6.8): „Vom Wert zur fertigen Regel: drei
@@ -17,28 +21,35 @@ import './UeberwachenBlatt.css';
  * ist vorbelegt (Schwelle aus dem aktuellen Live-Wert, Dauer/Rückkehrschwelle aus §9) und jedes
  * Feld bleibt änderbar (§6.1 Leitsatz 9) - kein Pflichtfeld ohne Vorbelegung.
  *
- * Bewusst nur die Bedingung „über" (§6.4): die vier Cockpit-Werte, an denen diese Scheibe
- * „Überwachen" anbietet (Netz, PV, Speicher, Verbrauch), brauchen für den Normalfall „zu viel" kein
- * eigenes Bedingungs-Auswahlfeld - einfache Zahlenfelder reichen (Aufgabenbeschreibung Teil 4b).
- * Kein Probelauf (§6.8 Entwurf 1) in dieser Runde - ein bekannter, akzeptierter Rückstand.
+ * Bewusst nur die Bedingung „über" (§6.4): weder die vier Cockpit-Werte noch ein Komponenten-Kanal
+ * brauchen für den Normalfall „zu viel" ein eigenes Bedingungs-Auswahlfeld - einfache Zahlenfelder
+ * reichen (Aufgabenbeschreibung Teil 4b).
+ *
+ * Seit der Nachbesserung 3/3 zeigt das Blatt die Probelauf-Vorschau (§6.8 Entwurf 1, „was diese
+ * Regel in den letzten 30 Tagen gemeldet hätte"): ein einfacher Debounce (~400 ms), damit nicht
+ * jeder Tastenanschlag einen Abruf auslöst; ein Fehlschlag zeigt nichts - die Vorschau ist eine
+ * Hilfe, nie ein Blocker für „Überwachung starten".
  */
 export function UeberwachenBlatt({
   offen,
   isPhone,
   onClose,
   wertart,
-  siteId,
+  bezug,
   aktuellerWert,
   einheit = 'kW',
+  titelZusatz,
   onUeberwacht,
 }: {
   offen: boolean;
   isPhone: boolean;
   onClose: () => void;
   wertart: string;
-  siteId: string;
+  bezug: UeberwachenBezug;
   aktuellerWert: number | null;
   einheit?: string;
+  /** Zusatz zum Blatt-Titel - z. B. "Netz · Leistung" an einem Aufbau-/Geräte-Wert; ohne Zusatz nur „Überwachen" (Cockpit). */
+  titelZusatz?: string;
   onUeberwacht: (regel: UeberwachungsRegel) => void;
 }) {
   const eintrag = katalogEintrag(wertart);
@@ -51,12 +62,52 @@ export function UeberwachenBlatt({
   const [schwere, setSchwere] = useState<Schwere>('warnung');
   const [busy, setBusy] = useState(false);
   const [fehler, setFehler] = useState('');
+  const [probelauf, setProbelauf] = useState<ProbelaufVorschau | null>(null);
   const feldId = useId();
+
+  const gueltig = Number.isFinite(schwelle) && dauerMinuten > 0 && erholdauerMinuten > 0;
+  const bezugKey = 'anlage' in bezug ? `anlage:${bezug.anlage}` : `komponente:${bezug.komponente}:${bezug.kanal}`;
+
+  // Die Probelauf-Vorschau (§6.8 Entwurf 1) - gedämpft, damit nicht jede Änderung an Schwelle,
+  // Dauer oder Rückkehrschwelle sofort einen eigenen Abruf auslöst.
+  useEffect(() => {
+    if (!offen || !gueltig) {
+      setProbelauf(null);
+      return undefined;
+    }
+    let aktiv = true;
+    const zeitnehmer = window.setTimeout(() => {
+      ueberwachungApi
+        .probelauf({
+          wertart,
+          bezug,
+          bedingung: {
+            art: 'ueber',
+            schwelle,
+            rueckkehr,
+            dauer_s: Math.round(dauerMinuten * 60),
+            erholen_s: Math.round(erholdauerMinuten * 60),
+          },
+          schwere,
+        })
+        .then(
+          (v) => { if (aktiv) setProbelauf(v); },
+          () => { if (aktiv) setProbelauf(null); },
+        );
+    }, 400);
+    return () => { aktiv = false; window.clearTimeout(zeitnehmer); };
+    // `bezugKey` fasst den Bezug stabil zusammen - `bezug` selbst ist bei jedem Render ein neues Objekt.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offen, gueltig, wertart, bezugKey, schwelle, rueckkehr, dauerMinuten, erholdauerMinuten, schwere]);
 
   if (!eintrag) return null;
 
-  const gueltig = Number.isFinite(schwelle) && dauerMinuten > 0 && erholdauerMinuten > 0;
   const satz = ueberwachungSatz(eintrag, { art: 'ueber', schwelle, rueckkehr, dauer_s: dauerMinuten * 60 }, schwere, einheit);
+  const probelaufText = probelauf == null
+    ? null
+    : probelauf.ausgeloest === 0
+      ? `In den letzten ${probelauf.fensterTage} Tagen hätte das nicht ausgelöst.`
+      : `In den letzten ${probelauf.fensterTage} Tagen hätte das ${probelauf.ausgeloest} Mal ausgelöst.`;
 
   async function starten() {
     if (busy || !gueltig) return;
@@ -65,7 +116,7 @@ export function UeberwachenBlatt({
     try {
       const regel = await ueberwachungApi.anlegen({
         wertart,
-        bezug: { anlage: siteId },
+        bezug,
         bedingung: {
           art: 'ueber',
           schwelle,
@@ -89,6 +140,11 @@ export function UeberwachenBlatt({
       <p className="vp-ueberwachen-satz" aria-live="polite">
         {satz}
       </p>
+      {probelaufText && (
+        <p className="vp-ueberwachen-probelauf" aria-live="polite">
+          {probelaufText}
+        </p>
+      )}
       <div className="vp-ueberwachen-felder">
         <Input
           id={`${feldId}-schwelle`}
@@ -142,12 +198,13 @@ export function UeberwachenBlatt({
     </div>
   );
 
+  const titel = titelZusatz ? `${WORT_UEBERWACHEN}: ${titelZusatz}` : WORT_UEBERWACHEN;
   return isPhone ? (
-    <BottomSheet open={offen} title={WORT_UEBERWACHEN} onClose={onClose}>
+    <BottomSheet open={offen} title={titel} onClose={onClose}>
       {inhalt}
     </BottomSheet>
   ) : (
-    <Modal open={offen} onClose={onClose} title={WORT_UEBERWACHEN}>
+    <Modal open={offen} onClose={onClose} title={titel}>
       {inhalt}
     </Modal>
   );

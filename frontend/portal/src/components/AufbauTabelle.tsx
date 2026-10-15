@@ -1,9 +1,24 @@
 import { Recht } from './Recht';
-import { useId, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
-import { Icon, type IconName } from '../../designsystem/components/core/Icon';
+import { lazy, Suspense, useEffect, useId, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
+import { Icon } from '../../designsystem/components/core/Icon';
+import { AufbauSymbol } from './AufbauSymbol';
 import { VpPicker } from './VpPicker';
 import { RowMenu } from './RowMenu';
 import { hervorheben, suchBegriffe } from '../picker/suche';
+import { meldungenApi } from '../meldungenApi';
+import { geraetMesswertKarte, geraetMesswertSchluessel, ueberwachbarZiel } from '../ueberwachungApi';
+import { useIsPhone } from '../useIsPhone';
+import { WertZeile } from './WertZeile';
+
+/**
+ * Eigener, winziger Chunk statt eines statischen Imports: das Blatt „Überwachen" (mit seinen
+ * Designsystem-Feldern, `ueberwachungSatz.ts`, `werteKatalog.ts`) öffnet höchstens EINMAL je
+ * Besuch dieser Tabelle - ein statischer Import zöge es (und seine Kette) in jeden Chunk, der
+ * diese Datei erreicht, auch den Einstieg (`test/bundle-smoke.sh`, 256 kB gz, schon ohne Luft).
+ */
+const UeberwachenBlatt = lazy(() =>
+  import('./UeberwachenBlatt').then((m) => ({ default: m.UeberwachenBlatt })),
+);
 import {
   FILTER_LABEL,
   LEERER_FILTER,
@@ -22,7 +37,6 @@ import {
   type AufbauAnlage,
   type AufbauBox,
   type AufbauGeraet,
-  type AufbauKategorie,
   type AufbauWurzel,
 } from '../aufbauBaum';
 import type { ComponentHealth, ComponentRole, PlantComponent } from '../komponenten';
@@ -87,15 +101,6 @@ function Treffer({ text, begriffe }: { text: string; begriffe: string[] }) {
   );
 }
 
-/** Das einfarbige Symbol einer Zeile - die Kategorie färbt nur das Zeichen. */
-export function AufbauSymbol({ kategorie, icon }: { kategorie: AufbauKategorie | 'anlage'; icon: IconName }) {
-  return (
-    <span className={`vp-auf-sym is-${kategorie}`} aria-hidden="true">
-      <Icon name={icon} size={15} />
-    </span>
-  );
-}
-
 function Auf({ offen, label, onClick }: { offen: boolean; label: string; onClick: () => void }) {
   return (
     <button type="button" className="vp-auf-t-auf" aria-expanded={offen} aria-label={label} onClick={onClick}>
@@ -137,6 +142,26 @@ export interface AufbauTabelleProps {
   technik?: ReactNode;
 }
 
+/** Der Bezug eines Aufbau-Werts, der ein Blatt "Überwachen" öffnen kann (Alerting Scheibe 2, §6.3). */
+interface UeberwachenZiel {
+  komponente: string;
+  kanal: string;
+  label: string;
+  einheit: string;
+  wert: number | null;
+}
+
+/**
+ * Reicht "schon überwacht" und "Blatt öffnen" an jede Wert-Zeile weiter, ohne dass `AufbauTabelleProps`
+ * (von außen hereingereicht) davon wissen muss - dasselbe Muster wie `EnergieBuehne`s eigener,
+ * lazy gehaltener Überwachungs-Zustand.
+ */
+interface UeberwachungKontext {
+  /** `undefined` = nicht überwacht; `null` = überwacht, kein Probelauf; ISO-Zeitpunkt = Probelauf bis. */
+  info: (komponente: string, kanal: string) => string | null | undefined;
+  oeffnen: (ziel: UeberwachenZiel) => void;
+}
+
 export function AufbauTabelle(p: AufbauTabelleProps) {
   const staffel = useStaffel('aufbau-tabelle');
   const begriffe = suchBegriffe(p.filter.q);
@@ -147,6 +172,30 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
   // sie immer da; der Knopf ist dort ausgeblendet (`Aufbau.css`).
   const [filterOffen, setFilterOffen] = useState(false);
   const filterId = useId();
+  const isPhone = useIsPhone();
+
+  // "Überwachen" an einem Aufbau-Wert (§6.3, §6.8 Nachbesserung 3/3): die Familie `geraet.messwert`
+  // mit Bezug Komponente+Kanal - derselbe Lesepfad wie im Cockpit, hier einmal für die ganze Tabelle.
+  const [geladenUeberwacht, setGeladenUeberwacht] = useState<ReadonlyMap<string, string | null> | null>(null);
+  const [frischUeberwacht, setFrischUeberwacht] = useState<ReadonlyMap<string, string | null>>(new Map());
+  const [ueberwachenZiel, setUeberwachenZiel] = useState<UeberwachenZiel | null>(null);
+  useEffect(() => {
+    let aktiv = true;
+    meldungenApi.regeln().then(
+      (regeln) => { if (aktiv) setGeladenUeberwacht(geraetMesswertKarte(regeln)); },
+      () => { if (aktiv) setGeladenUeberwacht(null); },
+    );
+    return () => { aktiv = false; };
+  }, []);
+  const uk: UeberwachungKontext = {
+    info: (komponente, kanal) => {
+      const schluessel = geraetMesswertSchluessel(komponente, kanal);
+      if (frischUeberwacht.has(schluessel)) return frischUeberwacht.get(schluessel) ?? null;
+      return geladenUeberwacht?.get(schluessel);
+    },
+    oeffnen: setUeberwachenZiel,
+  };
+
   return (
     <>
       <Ort wurzel={p.wurzel} anlagenZahl={p.anlagenZahl} boxZahl={p.boxZahl} />
@@ -305,7 +354,7 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
         </div>
         <div className={mitStaffel('vp-auf-t-rumpf', staffel)} role="rowgroup">
           {p.zeilen.map((z) => (
-            <Zeile key={`${z.typ}:${z.key}`} z={z} begriffe={begriffe} p={p} />
+            <Zeile key={`${z.typ}:${z.key}`} z={z} begriffe={begriffe} p={p} uk={uk} />
           ))}
           {p.zeilen.length === 0 && (
             <div className="vp-auf-t-nichts" role="row">
@@ -322,6 +371,25 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
           )}
         </div>
       </div>
+
+      {ueberwachenZiel && (
+        <Suspense fallback={null}>
+          <UeberwachenBlatt
+            offen
+            isPhone={isPhone}
+            onClose={() => setUeberwachenZiel(null)}
+            wertart="geraet.messwert"
+            bezug={{ komponente: ueberwachenZiel.komponente, kanal: ueberwachenZiel.kanal }}
+            aktuellerWert={ueberwachenZiel.wert}
+            einheit={ueberwachenZiel.einheit}
+            titelZusatz={ueberwachenZiel.label}
+            onUeberwacht={(regel) => {
+              const schluessel = geraetMesswertSchluessel(ueberwachenZiel.komponente, ueberwachenZiel.kanal);
+              setFrischUeberwacht((m) => new Map(m).set(schluessel, regel.probelaufBis));
+            }}
+          />
+        </Suspense>
+      )}
     </>
   );
 }
@@ -349,16 +417,18 @@ function Ort({ wurzel, anlagenZahl, boxZahl }: { wurzel: AufbauWurzel | null; an
   );
 }
 
-function Zeile({ z, begriffe, p }: { z: TabellenZeile; begriffe: string[]; p: AufbauTabelleProps }) {
+function Zeile({
+  z, begriffe, p, uk,
+}: { z: TabellenZeile; begriffe: string[]; p: AufbauTabelleProps; uk: UeberwachungKontext }) {
   switch (z.typ) {
     case 'anlage':
       return <AnlageZeile z={z} p={p} />;
     case 'box':
       return <BoxZeile z={z} begriffe={begriffe} p={p} />;
     case 'geraet':
-      return <GeraetZeile z={z} begriffe={begriffe} p={p} />;
+      return <GeraetZeile z={z} begriffe={begriffe} p={p} uk={uk} />;
     case 'teil':
-      return <TeilZeile z={z} begriffe={begriffe} />;
+      return <TeilZeile z={z} begriffe={begriffe} uk={uk} />;
     case 'quelle':
       return <QuelleZeile z={z} begriffe={begriffe} />;
     case 'fund':
@@ -530,15 +600,25 @@ function GeraetZeile({
   z,
   begriffe,
   p,
+  uk,
 }: {
   z: Extract<TabellenZeile, { typ: 'geraet' }>;
   begriffe: string[];
   p: AufbauTabelleProps;
+  uk: UeberwachungKontext;
 }) {
   const g = z.geraet;
   const nurLesend = !z.anlage.aktuell;
   const hinweis = nurLesend ? null : p.hinweisFor(g);
   const wert = g.werte[0] ?? null;
+  // "Überwachen" (§6.3) nur, wo "Wert" EINDEUTIG EINE Komponente zeigt: ein Gerät mit mehreren
+  // Komponenten klappt sie als eigene Zeilen auf (`teilbar`) - dort trägt jede Unterzeile ihren
+  // eigenen Bezug (`TeilZeile`); hier zweimal denselben Wert anzubieten wäre irreführend.
+  // Keine Handlungen an einer fremden Anlage von hier aus (bestehende Regel, siehe `nurLesend`
+  // oben) - "Überwachen" ist zwar keine Änderung AN der Anlage, bleibt aber ein Werkzeug wie jedes
+  // andere in dieser Spalte, und diese Fläche zeigt an einer fremden Anlage keine Werkzeuge.
+  const einzelkomponente = !nurLesend && !z.teilbar && g.karte.komponenten.length === 1 ? g.karte.komponenten[0] : null;
+  const ueberwachbar = einzelkomponente ? ueberwachbarZiel(einzelkomponente, g.titel) : null;
   // Die ganze Zeile ist ein Ziel für die Maus; Tastatur und Vorlesesoftware
   // nehmen den Namen-Knopf - eine Zeile, die selbst ein Knopf wäre, dürfte
   // keinen Aufklapp-Knopf enthalten.
@@ -612,6 +692,13 @@ function GeraetZeile({
             –
           </span>
         )}
+        {ueberwachbar && (
+          <WertZeile
+            label={g.titel}
+            ueberwacht={uk.info(ueberwachbar.komponente, ueberwachbar.kanal)}
+            onUeberwachen={() => uk.oeffnen(ueberwachbar)}
+          />
+        )}
       </span>
       <span role="cell" className="vp-auf-t-pfeil" aria-hidden="true">
         {!nurLesend && <Icon name="chevron-right" size={16} />}
@@ -620,10 +707,14 @@ function GeraetZeile({
   );
 }
 
-function TeilZeile({ z, begriffe }: { z: Extract<TabellenZeile, { typ: 'teil' }>; begriffe: string[] }) {
+function TeilZeile({
+  z, begriffe, uk,
+}: { z: Extract<TabellenZeile, { typ: 'teil' }>; begriffe: string[]; uk: UeberwachungKontext }) {
   const c: PlantComponent = z.komponente;
   const text = komponentenText(c);
   const wort = HEALTH_WORT[c.health];
+  // Keine Handlungen an einer fremden Anlage von hier aus (dieselbe Regel wie `GeraetZeile`).
+  const ueberwachbar = z.anlage.aktuell ? ueberwachbarZiel(c, c.label) : null;
   return (
     <div className={`vp-auf-t-zeile is-teil${ebeneKlasse(z.ebene)}`} role="row" style={ebene(z.ebene)} data-komponente-zeile={c.id}>
       <span role="cell" className="vp-auf-t-name">
@@ -654,7 +745,15 @@ function TeilZeile({ z, begriffe }: { z: Extract<TabellenZeile, { typ: 'teil' }>
           </span>
         )}
       </span>
-      <span role="cell" />
+      <span role="cell" className="vp-auf-t-pfeil">
+        {ueberwachbar && (
+          <WertZeile
+            label={c.label}
+            ueberwacht={uk.info(ueberwachbar.komponente, ueberwachbar.kanal)}
+            onUeberwachen={() => uk.oeffnen(ueberwachbar)}
+          />
+        )}
+      </span>
     </div>
   );
 }

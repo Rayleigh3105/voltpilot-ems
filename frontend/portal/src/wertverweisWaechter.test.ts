@@ -8,15 +8,22 @@ import { describe, expect, it } from 'vitest';
  * rot, wenn eine Fläche einen dieser Bausteine ohne `wert` nutzt und nicht mit Grund in seiner
  * Liste steht; die Liste schrumpft Scheibe für Scheibe.").
  *
- * Diese Scheibe migriert GENAU eine Fläche: die vier Live-Kreise von „Dieser Moment" im
- * Cockpit (`EnergieBuehne.tsx`, Baustein `MomentWert`) - jeder trägt jetzt `onUeberwachen`
- * (öffnet das Blatt „Überwachen" für seine Wertart) und `ueberwacht` (die Marke). Jede andere
- * Fläche, die den gemeinsamen Kachel-Baustein (`components/kacheln/Kachel.tsx` /
- * `CockpitKacheln.tsx`) nutzt, bleibt unmigriert und MUSS deshalb unten einzeln und begründet in
- * `AUSNAHMEN` stehen - eine neue, nicht eingetragene Fläche mit demselben Baustein macht den
- * ersten Fall rot.
+ * Scheibe 2 migrierte zunächst GENAU eine Fläche: die vier Live-Kreise von „Dieser Moment" im
+ * Cockpit (`EnergieBuehne.tsx`, Baustein `MomentWert`) - jeder trägt `onUeberwachen` (öffnet das
+ * Blatt „Überwachen" für seine Wertart) und `ueberwacht` (die Marke). Jede andere Fläche, die den
+ * gemeinsamen Kachel-Baustein (`components/kacheln/Kachel.tsx` / `CockpitKacheln.tsx`) nutzt,
+ * bleibt unmigriert und MUSS deshalb unten einzeln und begründet in `AUSNAHMEN` stehen - eine
+ * neue, nicht eingetragene Fläche mit demselben Baustein macht den ersten Fall rot.
  *
- * ⚠ ER LIEST DEN ROHEN TEXT (Muster `keineSeitenleisten.test.ts`): eine Datei, die den Baustein
+ * Die Nachbesserung 3/3 fügt den ZWEITEN Baustein aus §6.3 hinzu, `WertZeile`
+ * (`components/WertZeile.tsx`): das Menü „Überwachen" + die Marke „überwacht" an einem Wert
+ * AUSSERHALB der Kachel. Er deckt die Aufbau-Tabelle (`AufbauTabelle.tsx`, Spalte „Wert" der
+ * Geräte- und Komponenten-Zeilen) und die Geräteseiten-Bühne (`GeraetBuehne.tsx`, große Zahl und
+ * Chips der SELBST definierten Eigenbau-Kanäle). Anders als `Kachel` hat `WertZeile` keinen
+ * Zweck außer dieser Verdrahtung - es gibt also keine `AUSNAHMEN`-Liste dafür, nur die Pflicht,
+ * dass ein Import ihn auch benutzt (sonst wird der Fall unten rot).
+ *
+ * ⚠ ER LIEST DEN ROHEN TEXT (Muster `keineSeitenleisten.test.ts`): eine Datei, die einen Baustein
  * importiert, trägt ihre Begründung hier, nicht einen Kommentar im eigenen Kopf, den niemand prüft.
  */
 const ROOT = process.cwd() + '/';
@@ -45,8 +52,22 @@ const ALLE = dateien(SRC).filter((f) => !f.endsWith('wertverweisWaechter.test.ts
  * fertigen Kachel-Arten des Cockpits (`CockpitKacheln.tsx`), die ihn einwickeln. */
 const KACHEL_IMPORT = /from ['"][^'"]*\/kacheln\/(Kachel|CockpitKacheln)['"]/;
 
-/** Die Definitions-Dateien des Bausteins selbst - sie "nutzen" ihn nicht, sie SIND er. */
-const BAUSTEIN_DEFINITIONEN = new Set(['src/components/kacheln/Kachel.tsx', 'src/components/kacheln/CockpitKacheln.tsx']);
+/**
+ * Der zweite Baustein aus §6.3 ("Kachel, Wert-Zeile, Statuszeile, Diagrammkopf"): `WertZeile`
+ * (`components/WertZeile.tsx`) - das Menü ⋯ „Überwachen" und die Marke „überwacht" an einem Wert
+ * AUSSERHALB der Kachel. Nachbesserung 3/3 der Scheibe 2 führt ihn ein, weil der Kachel-Wächter
+ * die Aufbau-Tabelle und die Geräteseite gar nicht sah: beide zeigen „Wert" mit eigenem Markup,
+ * nicht mit `Kachel`/`CockpitKacheln` (§6.3 „Ehrlich: Werte, die eine Fläche mit eigenem Markup
+ * zeigt, erreicht der Wächter nicht").
+ */
+const WERT_ZEILE_IMPORT = /from ['"][^'"]*\/WertZeile['"]/;
+
+/** Die Definitions-Dateien der Bausteine selbst - sie "nutzen" sie nicht, sie SIND sie. */
+const BAUSTEIN_DEFINITIONEN = new Set([
+  'src/components/kacheln/Kachel.tsx',
+  'src/components/kacheln/CockpitKacheln.tsx',
+  'src/components/WertZeile.tsx',
+]);
 
 /**
  * Jede Fläche mit dem Kachel-Baustein, die diese Scheibe NICHT migriert - einzeln begründet
@@ -102,5 +123,34 @@ describe('Wertverweis-Wächter (Alerting Scheibe 2, Konzept §6.3)', () => {
     const marke = quelle.match(/ueberwacht=\{istUeberwacht\(/g) ?? [];
     expect(menu.length).toBe(4);
     expect(marke.length).toBe(4);
+  });
+
+  /**
+   * Anders als `Kachel` (ein generisches Rahmen-Primitiv, das viele fachfremde Flächen nutzen)
+   * hat `WertZeile` keinen Zweck außer „Überwachen" + Marke - es gibt deshalb KEINEN legitimen
+   * Import ohne Verdrahtung und damit auch keine `AUSNAHMEN_WERT_ZEILE`-Liste: jede Datei, die
+   * den Baustein importiert, muss ihn auch mit `onUeberwachen` aufrufen (sonst wäre der Import
+   * totes Gewicht - ein Fund für diesen Wächter, kein Freifahrtschein).
+   */
+  it('jede Datei, die den Wert-Zeile-Baustein importiert, verdrahtet auch „Überwachen" (kein Import ohne Verdrahtung)', () => {
+    const ohneVerdrahtung = ALLE
+      .filter((f) => !BAUSTEIN_DEFINITIONEN.has(kurz(f)))
+      .map((f) => [kurz(f), readFileSync(f, 'utf8')] as const)
+      .filter(([, quelle]) => WERT_ZEILE_IMPORT.test(quelle))
+      .filter(([, quelle]) => !/onUeberwachen=\{/.test(quelle))
+      .map(([pfad]) => pfad);
+    expect(ohneVerdrahtung).toEqual([]);
+  });
+
+  it('die Aufbau-Tabelle verdrahtet „Überwachen" an ihrer Wert-Zeile (Geräte- und Komponenten-Zeilen)', () => {
+    const quelle = readFileSync(join(SRC, 'components/AufbauTabelle.tsx'), 'utf8');
+    expect(quelle.match(/<WertZeile\b/g) ?? []).toHaveLength(2);
+    expect(quelle.match(/onUeberwachen=\{\(\) => uk\.oeffnen/g) ?? []).toHaveLength(2);
+  });
+
+  it('die Geräteseiten-Bühne verdrahtet „Überwachen" an ihrer Wert-Zeile (große Zahl und Chips der Eigenbau-Kanäle)', () => {
+    const quelle = readFileSync(join(SRC, 'components/GeraetBuehne.tsx'), 'utf8');
+    expect(quelle.match(/<WertZeile\b/g) ?? []).toHaveLength(2);
+    expect(quelle.match(/onUeberwachen=\{\(\) => setUeberwachenZiel/g) ?? []).toHaveLength(2);
   });
 });

@@ -13,9 +13,18 @@ import {
   WORT_GESEHEN,
 } from '../meldungen';
 import { datumZeit } from '../rechteTexte';
+import { ueberwachungApi } from '../ueberwachungApi';
 import './MeldungenPage.css';
 
 type Reiter = 'jetzt' | 'verlauf' | 'regeln';
+
+/**
+ * Die Herkunft einer Regel (§6.4/§6.8) - `ab_werk` (System, z. B. der Preis-Hinweis-Vorschlag,
+ * Entscheid 15C) und `eigen` (§6.8 Scheibe 2, „Vom Wert zur fertigen Regel") sind heute die
+ * beiden tatsächlich geschriebenen Werte; `vorschlag` bleibt der Fallback-Text für den noch
+ * ungenutzten dritten Katalog-Wert (`ueberwachung_herkunft_chk`).
+ */
+const HERKUNFT_WORT: Record<string, string> = { ab_werk: 'ab Werk', eigen: 'eigene Regel' };
 
 /**
  * Das Meldungs-Center (Alerting Scheibe 1, Konzept §6.8, Entscheid 4A): `#/meldungen` mit den
@@ -65,6 +74,20 @@ export function MeldungenPage() {
     }
   }
 
+  /** „Jetzt scharf schalten" (§6.8 Entwurf 1) - beendet den Probelauf einer eigenen Regel vorzeitig. */
+  async function scharfSchalten(id: string) {
+    if (busy) return;
+    setBusy(id);
+    try {
+      const aktualisiert = await ueberwachungApi.scharfSchalten(id);
+      setRegeln((liste) => liste?.map((r) => (r.id === id ? aktualisiert : r)) ?? liste);
+    } catch {
+      setFehler('Das Scharfschalten ist fehlgeschlagen. Bitte versuchen Sie es erneut.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <div className="vp-meldungen" data-testid="meldungen-seite">
       <h1>Meldungen</h1>
@@ -93,7 +116,11 @@ export function MeldungenPage() {
       {fehler && <p role="alert">{fehler}</p>}
 
       {reiter === 'regeln' ? (
-        <RegelListe regeln={regeln} />
+        <RegelListe
+          regeln={regeln}
+          busy={busy}
+          onScharfSchalten={scharfSchalten}
+        />
       ) : (
         <MeldungListe
           meldungen={meldungen === null ? null : liste}
@@ -163,7 +190,15 @@ function MeldungListe({
   );
 }
 
-function RegelListe({ regeln }: { regeln: UeberwachungsRegel[] | null }) {
+function RegelListe({
+  regeln,
+  busy,
+  onScharfSchalten,
+}: {
+  regeln: UeberwachungsRegel[] | null;
+  busy: string | null;
+  onScharfSchalten: (id: string) => void;
+}) {
   if (regeln === null) return <p>Wird geladen …</p>;
   if (regeln.length === 0) return <p className="vp-meldungen-leer">Noch keine Überwachung eingeschaltet.</p>;
   return (
@@ -174,9 +209,20 @@ function RegelListe({ regeln }: { regeln: UeberwachungsRegel[] | null }) {
           <div className="vp-meldung-inhalt">
             <p className="vp-meldung-satz">{r.name ?? wertartSatzname(r.wertart)}</p>
             <p className="vp-meldung-kennzeichen">
-              {SCHWERE_WORT[r.schwere]} · {r.herkunft === 'ab_werk' ? 'ab Werk' : 'Vorschlag'}
+              {SCHWERE_WORT[r.schwere]} · {HERKUNFT_WORT[r.herkunft] ?? 'Vorschlag'}
+              {r.probelaufBis && ` · im Probelauf bis ${datumZeit(r.probelaufBis).split(' ')[0]}`}
             </p>
           </div>
+          {r.probelaufBis && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy === r.id}
+              onClick={() => onScharfSchalten(r.id)}
+            >
+              Jetzt scharf schalten
+            </Button>
+          )}
         </li>
       ))}
     </ul>

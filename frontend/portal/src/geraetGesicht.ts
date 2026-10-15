@@ -101,6 +101,16 @@ export interface HeldKachel {
   ton?: GeraetTon | null;
   /** Die FÜHRENDE Kachel einer Gattung wird größer gesetzt. */
   gross?: boolean;
+  /**
+   * Der Wertverweis dieser Kachel (Alerting Scheibe 2, §6.3: `geraet.messwert` mit Bezug
+   * Komponente+Kanal) - nur gesetzt, wo die Kachel WIRKLICH genau EINEN Komponenten-Kanal zeigt.
+   * Die rollenbasierten Gattungen (Speicher/PV/Netz/Haus/Verbraucher) bilden ihre Kachel aus einer
+   * abgeleiteten Rollengröße, nicht aus einem einzelnen Kanal, und tragen deshalb bewusst keinen
+   * (Nachbesserung 3/3 der Scheibe 2 - ein echter Rückstand, keine Lücke im Code); nur die
+   * SELBST definierten Kanäle eines Eigenbau-Geräts (`eigenbauKacheln`) sind so gebaut, dass jede
+   * Kachel WÖRTLICH einem Kanal entspricht.
+   */
+  wertverweis?: { komponente: string; kanal: string; zahlenwert: number | null; einheit: string | null } | null;
 }
 
 /** Der Held: das Erste, was die Seite zeigt. */
@@ -1028,6 +1038,9 @@ function eigenbauKacheln(input: GesichtInput): HeldKachel[] {
         wert: v.unit ? fmtNum(v.wert, v.unit) : String(v.wert),
         wort: null,
         gross: out.length === 0,
+        // Jede Eigenbau-Kachel IST wörtlich ein Komponenten-Kanal (§6.3) - anders als die
+        // rollenbasierten Gattungen trägt sie deshalb einen Wertverweis.
+        wertverweis: { komponente: c.entityId, kanal: m.raw, zahlenwert: v.wert, einheit: v.unit },
       });
     }
   }

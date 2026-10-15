@@ -37,6 +37,7 @@ import { Tagesleiste } from './Tagesleiste';
 import { UeberwachenBlatt } from './UeberwachenBlatt';
 import { meldungenApi } from '../meldungenApi';
 import { WORT_UEBERWACHEN, WORT_UEBERWACHT } from '../meldungen';
+import { datumZeit } from '../rechteTexte';
 import './EnergieBuehne.css';
 
 /**
@@ -50,7 +51,8 @@ const MOMENT_WERTART: Partial<Record<Rolle, string>> = {
   batt: 'anlage.speicher.leistung',
   grid: 'anlage.netz.leistung',
 };
-const LEER_SET: ReadonlySet<string> = new Set();
+/** Wertart -> `probelaufBis` (`null` = überwacht, kein Probelauf) der aktiven `anlagenfluss`-Regeln. */
+const LEERE_MAP: ReadonlyMap<string, string | null> = new Map();
 
 const ROLLEN = new Set<string>(KNOWN_ROLES);
 
@@ -120,13 +122,16 @@ export function EnergieBuehne({
   // im Einstieg gebündelt, aber der AUFRUF bleibt hier, damit keine entry-gebündelte Fläche je
   // davon weiß); „frisch überwacht" ist die optimistische Sofort-Marke bis zur nächsten Auffrischung.
   const [ueberwachenBlatt, setUeberwachenBlatt] = useState<Rolle | null>(null);
-  const [geladenUeberwacht, setGeladenUeberwacht] = useState<ReadonlySet<string> | null>(null);
-  const [frischUeberwacht, setFrischUeberwacht] = useState<ReadonlySet<string>>(LEER_SET);
+  const [geladenUeberwacht, setGeladenUeberwacht] = useState<ReadonlyMap<string, string | null> | null>(null);
+  const [frischUeberwacht, setFrischUeberwacht] = useState<ReadonlyMap<string, string | null>>(LEERE_MAP);
   useEffect(() => {
     if (siteId == null) return undefined;
     let aktiv = true;
     meldungenApi.regeln().then(
-      (regeln) => { if (aktiv) setGeladenUeberwacht(new Set(regeln.filter((r) => r.aktiv).map((r) => r.wertart))); },
+      (regeln) => {
+        if (!aktiv) return;
+        setGeladenUeberwacht(new Map(regeln.filter((r) => r.aktiv).map((r) => [r.wertart, r.probelaufBis])));
+      },
       () => { if (aktiv) setGeladenUeberwacht(null); },
     );
     return () => { aktiv = false; };
@@ -252,10 +257,15 @@ export function EnergieBuehne({
   // „Überwachen" am Wert (§6.8) - nur für die vier Live-Kreise und nur, solange „Jetzt" wirklich
   // den Live-Moment zeigt (nie für eine vergangene oder geplante Viertelstunde der Tagesleiste).
   const ueberwachtenKannAnbieten = siteId != null && zeit === 'live';
-  const ueberwachteWertartenGesamt = new Set([...(geladenUeberwacht ?? LEER_SET), ...frischUeberwacht]);
+  const ueberwachteWertartenGesamt = new Map([...(geladenUeberwacht ?? LEERE_MAP), ...frischUeberwacht]);
   const istUeberwacht = (art: Rolle): boolean => {
     const w = MOMENT_WERTART[art];
     return w != null && ueberwachteWertartenGesamt.has(w);
+  };
+  /** `undefined` = nicht überwacht; sonst `probelaufBis` (`null` = kein Probelauf mehr). */
+  const probelaufBisFuer = (art: Rolle): string | null | undefined => {
+    const w = MOMENT_WERTART[art];
+    return w == null ? undefined : ueberwachteWertartenGesamt.get(w);
   };
   const ueberwachenWertart = ueberwachenBlatt ? MOMENT_WERTART[ueberwachenBlatt] : null;
   const ueberwachenWert = ueberwachenBlatt ? (werte[ueberwachenBlatt] ?? null) : null;
@@ -362,6 +372,7 @@ export function EnergieBuehne({
                 icon="sun"
                 text={texte.pv}
                 ueberwacht={istUeberwacht('pv')}
+                probelaufBis={probelaufBisFuer('pv')}
                 onUeberwachen={ueberwachtenKannAnbieten ? () => setUeberwachenBlatt('pv') : undefined}
               />
               <MomentWert
@@ -369,6 +380,7 @@ export function EnergieBuehne({
                 icon="home"
                 text={texte.load}
                 ueberwacht={istUeberwacht('load')}
+                probelaufBis={probelaufBisFuer('load')}
                 onUeberwachen={ueberwachtenKannAnbieten ? () => setUeberwachenBlatt('load') : undefined}
               />
               {jetzt.hat.batt && (
@@ -377,6 +389,7 @@ export function EnergieBuehne({
                   icon="battery"
                   text={texte.batt}
                   ueberwacht={istUeberwacht('batt')}
+                  probelaufBis={probelaufBisFuer('batt')}
                   onUeberwachen={ueberwachtenKannAnbieten ? () => setUeberwachenBlatt('batt') : undefined}
                 />
               )}
@@ -385,6 +398,7 @@ export function EnergieBuehne({
                 icon="pole"
                 text={texte.grid}
                 ueberwacht={istUeberwacht('grid')}
+                probelaufBis={probelaufBisFuer('grid')}
                 onUeberwachen={ueberwachtenKannAnbieten ? () => setUeberwachenBlatt('grid') : undefined}
               />
             </div>
@@ -402,9 +416,9 @@ export function EnergieBuehne({
           isPhone={isPhone}
           onClose={() => setUeberwachenBlatt(null)}
           wertart={ueberwachenWertart}
-          siteId={siteId}
+          bezug={{ anlage: siteId }}
           aktuellerWert={ueberwachenWert}
-          onUeberwacht={(regel) => setFrischUeberwacht((s) => new Set([...s, regel.wertart]))}
+          onUeberwacht={(regel) => setFrischUeberwacht((m) => new Map(m).set(regel.wertart, regel.probelaufBis))}
         />
       )}
 
@@ -453,12 +467,15 @@ function MomentWert({
   icon,
   text,
   ueberwacht = false,
+  probelaufBis,
   onUeberwachen,
 }: {
   ton: Rolle;
   icon: 'sun' | 'home' | 'battery' | 'pole';
   text: { wert: string; zeilen: string[] };
   ueberwacht?: boolean;
+  /** `null`/`undefined` = kein Probelauf (mehr); ein ISO-Zeitpunkt zeigt „im Probelauf bis …" an der Marke. */
+  probelaufBis?: string | null;
   onUeberwachen?: () => void;
 }) {
   return (
@@ -474,6 +491,7 @@ function MomentWert({
             <a className="vp-eb-mk-marke" href="#/meldungen">
               <Icon name="bell" size={12} />
               {WORT_UEBERWACHT}
+              {probelaufBis && <> · im Probelauf bis {datumZeit(probelaufBis).split(' ')[0]}</>}
             </a>
           )}
         </span>

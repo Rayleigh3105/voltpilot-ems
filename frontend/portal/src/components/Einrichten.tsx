@@ -3,7 +3,7 @@ import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import { Button } from '../../designsystem/components/core/Button';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import type { AufbauKategorie } from '../aufbauBaum';
-import { AufbauSymbol } from './AufbauTabelle';
+import { AufbauSymbol } from './AufbauSymbol';
 import { Recht } from './Recht';
 import './Einrichten.css';
 

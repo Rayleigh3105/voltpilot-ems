@@ -16,7 +16,7 @@ import {
 } from '../geraeteKatalog';
 import { hervorheben, suchBegriffe } from '../picker/suche';
 import { useIsPhone } from '../useIsPhone';
-import { AufbauSymbol } from './AufbauTabelle';
+import { AufbauSymbol } from './AufbauSymbol';
 import { EigeneVorlagenPanel } from './EigeneVorlagenPanel';
 import { ErrorState, TextSkeleton } from './States';
 import type { AufbauKategorie } from '../aufbauBaum';

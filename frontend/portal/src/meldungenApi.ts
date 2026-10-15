@@ -35,7 +35,16 @@ export interface Meldung {
   erledigtAm: string | null;
 }
 
-/** Eine Regel im Reiter "Überwachungen" (§6.8) - auch die Antwort von `ueberwachungAnlegen` (§6.8 Scheibe 2). */
+/**
+ * Eine Regel im Reiter "Überwachungen" (§6.8) - auch die Antwort von `ueberwachungAnlegen` und
+ * `scharfSchalten` (§6.8 Scheibe 2, Nachbesserung 3/3).
+ *
+ * `probelaufBis` ist `null`, sobald die Regel scharf ist (eine ab-Werk-Regel kennt nie einen
+ * Probelauf, eine eigene endet damit nach 30 Tagen oder per Tipper auf "jetzt scharf schalten").
+ * `bezugJson` ist derselbe rohe Bezug wie im Anfragekörper (§6.3) - eine Fläche braucht ihn, um
+ * "schon überwacht" an einem KONKRETEN Wertverweis zu erkennen: bei der Familie `geraet.messwert`
+ * identifiziert die Wertart allein keinen Wert, erst Wertart+Bezug (Komponente+Kanal).
+ */
 export interface UeberwachungsRegel {
   id: string;
   name: string | null;
@@ -43,8 +52,17 @@ export interface UeberwachungsRegel {
   schwere: Schwere;
   herkunft: string;
   aktiv: boolean;
+  probelaufBis: string | null;
+  bezugJson: string | null;
 }
 
+/**
+ * `regeln()` bleibt bewusst hier (Scheibe 1, entry-gebündelt): die Glocke prüft nichts darüber,
+ * aber die Liste braucht derselbe `request`-Zugang. "Jetzt scharf schalten" ist dagegen NEU
+ * (Scheibe 2, Nachbesserung 3/3) und steht deshalb bewusst NICHT hier, sondern in
+ * `ueberwachungApi.ts` (dieselbe Begründung wie `werte`/`anlegen`/`probelauf` dort: jedes neue
+ * Byte hier kostet jeden Besuch mit, auch ohne "Überwachungen" je zu öffnen).
+ */
 export const meldungenApi = {
   jetzt: () => request<{ meldungen: Meldung[] }>('/api/v1/meldungen?status=jetzt').then((r) => r.meldungen),
   verlauf: () => request<{ meldungen: Meldung[] }>('/api/v1/meldungen?status=verlauf').then((r) => r.meldungen),

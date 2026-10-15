@@ -10,6 +10,11 @@
   font: 600 1rem/1.4 var(--vp-font-body);
   color: var(--vp-text-dark, #1e293b);
 }
+.vp-ueberwachen-probelauf {
+  margin: 0;
+  font: 400 0.8125rem/1.4 var(--vp-font-body);
+  color: var(--vp-text-gray, #475569);
+}
 .vp-ueberwachen-felder {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
