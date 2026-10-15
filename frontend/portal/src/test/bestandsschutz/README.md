@@ -71,6 +71,16 @@ lud die Energie-Bühne als eigenes Stück nach, und der Fall fotografierte ihren
 identisch); der Merge-Baum rendert sie **bytegleich** (21 496 Bytes) — Geld-Regel und `CockpitMessstellenWeg` ändern
 für eine Anlage ohne Messfunktion kein Byte.
 
+**Alerting Scheibe 2 (15.10.2026, Konzept `vp-alerting-konzept-m1` §6.3/§6.8, „Überwachen" am Wert):**
+`cockpit.html` bekommt an den vier Live-Kreisen von „Dieser Moment" (PV, Verbrauch, Speicher, Netz) je ein Menü ⋯
+(`RowMenu`, Eintrag „Überwachen") - dieselbe Fläche, über die diese Scheibe den vollen Weg „Vom Wert zur fertigen
+Regel: drei Taps" baut (`UeberwachenBlatt.tsx`, `EnergieBuehne.tsx`). Die Aufnahme ist mit `vitest -u` gegen den
+aktuellen Produktstand neu geschrieben (keine Reko aus einem historischen Archiv, anders als die main-Nachzüge
+oben) - das ist die bewusste, im Konzept beschriebene Änderung dieser Fläche, keine gefundene Abweichung: `git diff
+--stat` zeigt nur `cockpit.html` mit genau den neuen Menü-Knöpfen (die Fixture ist eine Zeile; kein anderes Byte
+änderte sich). Die Marke „überwacht" selbst erscheint in dieser Aufnahme nicht (die Fixture-Anlage hat noch keine
+aktive Überwachung) - ein Folgefall dafür ist nicht Teil dieser Bestandsschutz-Aufnahme.
+
 `uemsBestandsschutz.test.tsx` ergänzt neun Snapshots: vier O18-Fälle, sechs Verlauf-Reiter in einem Snapshot,
 drei Portfolio-Reiter und die `startEbene`-Matrix (64 Eingaben). Die fünf in den Bestands-Tests gestubbten
 Canvas-/Diagrammkomponenten schützt zusätzlich `diagramme.json` mit SHA-256 des Bezugsstands.

@@ -655,10 +655,29 @@ a.vp-eb-zeile {
 }
 .vp-eb-mk {
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
+  grid-template-columns: 30px minmax(0, 1fr) auto;
   gap: 8px;
   align-items: center;
   min-width: 0;
+}
+/* „Dieser Moment“ steht am Telefon (ohne Bühnen-Rail) inline unter dem Fluss statt im Portal. */
+.vp-eb-moment-inline {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+.vp-eb-mk-marke {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
+  font-weight: 600;
+  color: var(--vp-c-muted-fg, #475569);
+  text-decoration: none;
+}
+.vp-eb-mk-marke:hover,
+.vp-eb-mk-marke:focus-visible {
+  text-decoration: underline;
 }
 .vp-eb-mk-ico {
   display: grid;

@@ -50,3 +50,47 @@ for (const width of [375, 1440]) {
     });
   }
 }
+
+// „Überwachen" am Wert (Alerting Scheibe 2, Konzept vp-alerting-konzept-m1 §6.3/§6.8): „Vom Wert
+// zur fertigen Regel: drei Taps" an einem der vier Live-Kreise von „Dieser Moment" - Menü ⋯ öffnen
+// (zählt nicht), „Überwachen" antippen (1), Blatt mit vorbelegtem Satz, Schwelle ändern,
+// „Überwachung starten" (2) - danach die Marke „überwacht". `cockpit-buehne.tsx` stellt eine
+// Selbstauskunft mit `ueberwachung.eigene` und bildet `/api/v1/meldungen/regeln` über `fetch` nach
+// (kein Backend nötig); am Telefon (`isPhone`, kein `momentZiel`) steht der Block ohnehin inline.
+for (const width of [390, 1440]) {
+  test(`Überwachen am Netzbezug: Blatt vorbelegt, Schwelle ändern, Marke „überwacht" bei ${width} px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 1100 });
+    const fehler: string[] = [];
+    page.on('pageerror', (e) => fehler.push(e.message));
+    page.on('console', (m) => { if (m.type() === 'error') fehler.push(m.text()); });
+    await page.goto('/e2e/cockpit-buehne.html?betrieb=eigenverbrauch');
+    await expect(page.getByRole('group', { name: 'Energiefluss Ihrer Anlage' })).toBeVisible();
+
+    const netzKnoten = page.locator('.vp-eb-mk.is-grid');
+    await expect(netzKnoten).toBeVisible();
+    await expect(netzKnoten.locator('.vp-eb-mk-marke')).toHaveCount(0);
+
+    // (1) Menü ⋯ öffnen zählt nicht als Tap - „Überwachen" antippen öffnet das Blatt.
+    await netzKnoten.getByRole('button', { name: 'Werkzeuge: Netz' }).click();
+    await page.getByRole('menuitem', { name: 'Überwachen' }).click();
+
+    const blatt = page.getByRole('dialog');
+    await expect(blatt).toBeVisible();
+    await expect(blatt.locator('.vp-ueberwachen-satz')).toContainText('Sag mir Bescheid, wenn der Netzbezug');
+    await expect(blatt.locator('.vp-ueberwachen-satz')).toContainText('über');
+
+    // Vorbelegt UND änderbar (§6.1 Leitsatz 9): die Schwelle ändern.
+    const schwelle = blatt.getByLabel('Schwelle (kW)', { exact: true });
+    await schwelle.fill('150');
+    await expect(blatt.locator('.vp-ueberwachen-satz')).toContainText('150');
+
+    // (2) „Überwachung starten" - mehr Taps bis zur fertigen Regel sind nicht erlaubt.
+    await blatt.getByRole('button', { name: 'Überwachung starten' }).click();
+    await expect(blatt).toHaveCount(0);
+
+    await expect(netzKnoten.locator('.vp-eb-mk-marke')).toHaveText(/überwacht/);
+
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+    expect(fehler).toEqual([]);
+  });
+}

@@ -69,6 +69,7 @@ export function CockpitHero({
   verbrauchRollen = null,
   netzRollen = null,
   buehne = null,
+  siteId = null,
 }: {
   /** Nicht-null = migrierte Anlage → das adaptive Diagramm. */
   topology: SiteTopology | null;
@@ -152,6 +153,8 @@ export function CockpitHero({
   pvRollen?: RollenKanonischerWert | null;
   verbrauchRollen?: RollenKanonischerWert | null;
   netzRollen?: RollenKanonischerWert | null;
+  /** Durchgereicht an `EnergieBuehne` für „Überwachen" am Wert (Alerting Scheibe 2, §6.3/§6.8). */
+  siteId?: string | null;
 }) {
   const rollenTopologie = cockpitRollenTopologie(topology, [pvRollen, verbrauchRollen, netzRollen]);
   const hasFlow = flowHasValues(rollenTopologie, snapshot);
@@ -197,6 +200,7 @@ export function CockpitHero({
             onBlatt={buehne?.onBlatt}
             onOpenSub={onOpenSub}
             momentZiel={hasRail ? momentZiel : null}
+            siteId={siteId}
           />
           </Suspense>
         ) : (
