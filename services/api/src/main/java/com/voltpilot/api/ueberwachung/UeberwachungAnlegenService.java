@@ -1,6 +1,8 @@
 package com.voltpilot.api.ueberwachung;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.voltpilot.api.uems.RechteAbleitung;
 import com.voltpilot.api.uems.RechteAbleitung.Benutzer;
@@ -110,6 +112,9 @@ public class UeberwachungAnlegenService {
             return WerteLeser.Bezug.anlage(uuid(b.anlage()));
         }
         if ("komponente".equals(eintrag.bezug()) && b.komponente() != null) {
+            if (b.kanal() == null || b.kanal().isBlank()) {
+                throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "kanal fehlt");
+            }
             return WerteLeser.Bezug.komponente(uuid(b.komponente()), b.kanal());
         }
         throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
@@ -142,25 +147,37 @@ public class UeberwachungAnlegenService {
         return bedingung;
     }
 
+    // Jackson statt Zeichenketten-Verkettung: eine Kundeneingabe (Kanalname, Rollenwort, Person)
+    // mit einem Anführungszeichen darf nie als JSON-Struktur ausbrechen können.
+    private static final ObjectMapper JSON = new ObjectMapper();
+
     private static String bezugJson(WerteLeser.Bezug bezug) {
-        return switch (bezug.art()) {
-            case "anlage" -> "{\"anlage\":\"" + bezug.id() + "\"}";
-            case "komponente" -> "{\"komponente\":\"" + bezug.id() + "\",\"kanal\":\""
-                    + bezug.parameter().replace("\"", "") + "\"}";
+        ObjectNode n = JSON.createObjectNode();
+        switch (bezug.art()) {
+            case "anlage" -> n.put("anlage", bezug.id().toString());
+            case "komponente" -> {
+                n.put("komponente", bezug.id().toString());
+                n.put("kanal", bezug.parameter());
+            }
             default -> throw new IllegalStateException("unbekannter Bezug " + bezug.art());
-        };
+        }
+        return n.toString();
     }
 
     private static String empfaengerJson(List<UeberwachungDto.EmpfaengerEintrag> empfaenger) {
-        List<String> teile = new ArrayList<>();
+        ArrayNode arr = JSON.createArrayNode();
         for (UeberwachungDto.EmpfaengerEintrag e : empfaenger) {
+            ObjectNode n = JSON.createObjectNode();
             if (e.person() != null) {
-                teile.add("{\"person\":\"" + e.person() + "\"}");
+                n.put("person", e.person());
             } else if (e.rolle() != null) {
-                teile.add("{\"rolle\":\"" + e.rolle() + "\"}");
+                n.put("rolle", e.rolle());
+            } else {
+                continue;
             }
+            arr.add(n);
         }
-        return "[" + String.join(",", teile) + "]";
+        return arr.toString();
     }
 
     private static Ziel zielFuerStandort(String kurzzeichen) {
