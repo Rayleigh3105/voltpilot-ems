@@ -1150,14 +1150,6 @@ describe('B1 · Welle 3 faltet in Welle 2', () => {
     expect(container.querySelector('.vp-cockpit-stack')).toBeNull();
   });
 
-  it('startet /telemetry mit, wenn zuletzt das Peak-Band führte', async () => {
-    rememberFace('s-1', { stack: true, peak: true });
-    mockAdaptive(true, TOPO);
-    mockSurfaceLoading();
-    renderSeite();
-    await waitFor(() => expect(api.telemetry).toHaveBeenCalled());
-  });
-
   it('spekuliert NICHT ohne Erinnerung — byte-gleich zu vor B1', async () => {
     mockAdaptive(true, TOPO);
     mockSurfaceLoading();
@@ -1165,16 +1157,6 @@ describe('B1 · Welle 3 faltet in Welle 2', () => {
     // Der Zwischenzustand steht; die Welle-3-Abrufe warten wie bisher.
     await waitFor(() => expect(api.overview).toHaveBeenCalled());
     expect(api.history).not.toHaveBeenCalled();
-    expect(api.telemetry).not.toHaveBeenCalled();
-  });
-
-  it('spekuliert NICHT auf /telemetry, wenn zuletzt kein Peak-Band führte', async () => {
-    rememberFace('s-1', { stack: true, peak: false });
-    mockAdaptive(true, TOPO);
-    mockSurfaceLoading();
-    renderSeite();
-    await waitFor(() => expect(api.history).toHaveBeenCalled());
-    expect(api.telemetry).not.toHaveBeenCalled();
   });
 
   it('merkt sich das Gesicht, sobald ENTSCHIEDEN ist', async () => {

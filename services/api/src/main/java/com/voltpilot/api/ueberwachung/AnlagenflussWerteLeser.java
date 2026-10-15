@@ -92,16 +92,28 @@ public class AnlagenflussWerteLeser implements WerteLeser {
      * ein gelesenes {@code avg()} über ≤ 15 Minuten einer Anlage, nie über die Flotte.
      */
     private Lesung netzLastspitzeLaufend(UUID anlageId, Instant jetzt) {
+        Double kw = netzLastspitzeLaufendKw(anlageId, jetzt);
+        return kw == null ? Lesung.unbekannt() : Lesung.zahl(kw, "kW", jetzt);
+    }
+
+    /**
+     * Wie oben, als einfacher Wert statt {@link Lesung} - für Aufrufer außerhalb der Überwachung,
+     * die DIESELBE Zahl brauchen (Alerting Scheibe 4, §6.10 Punkt 3: der Cockpit-Peak-Band liest sie
+     * über {@code SiteEarningsController}/{@code PeakShavingDto.currentQuarterMeanKw} statt selbst
+     * im Browser zu rechnen - EINE Wahrheit statt zwei).
+     */
+    public Double netzLastspitzeLaufendKw(UUID anlageId, Instant jetzt) {
         long quartalStartS = jetzt.getEpochSecond() - (jetzt.getEpochSecond() % VIERTELSTUNDE_S);
         Instant quartalStart = Instant.ofEpochSecond(quartalStartS);
+        // JOIN site (Standort-Zaun-Architekturtest, AGENTS.md "Datenbank und Mandanten"): telemetry
+        // trägt nur den Mandanten-Zaun; der Join über site macht diese Abfrage für JEDEN Aufrufer
+        // dicht, ob Läufer (ohne Zugriffs-Kontext, unternehmensweit) oder menschliche Anfrage.
         List<Double> rows = jdbc.query(
-                "SELECT avg(GREATEST(power_kw, 0)) FROM telemetry WHERE site_id = ? AND time >= ? AND time <= ?",
+                "SELECT avg(GREATEST(t.power_kw, 0)) FROM telemetry t JOIN site s ON s.id = t.site_id "
+                        + "WHERE t.site_id = ? AND t.time >= ? AND t.time <= ?",
                 (rs, n) -> rs.getObject(1, Double.class), anlageId, java.sql.Timestamp.from(quartalStart),
                 java.sql.Timestamp.from(jetzt));
-        if (rows.isEmpty() || rows.get(0) == null) {
-            return Lesung.unbekannt();
-        }
-        return Lesung.zahl(rows.get(0), "kW", jetzt);
+        return rows.isEmpty() ? null : rows.get(0);
     }
 
     private FlowNode knoten(UUID anlageId, String rolle) {

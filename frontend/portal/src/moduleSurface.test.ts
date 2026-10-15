@@ -87,6 +87,7 @@ describe('PS-4 proof (real numbers on the active card + the money-hero line)', (
     avoidedKw: 12,
     avoidedEur: 1440,
     history: [],
+    currentQuarterMeanKw: null,
   };
 
   it('lastspitzenProof renders the three German rows with de-DE numbers', () => {
@@ -284,6 +285,7 @@ describe('P1 · die blätterbaren Abrechnungsperioden (V3)', () => {
       { periodStart: '2025-01-01', peakKw: 11, baselinePeakKw: 12, avoidedKw: 1, avoidedEur: 120 },
       { periodStart: '2026-01-01', peakKw: 8.5, baselinePeakKw: 9.4, avoidedKw: 0.9, avoidedEur: 108 },
     ],
+    currentQuarterMeanKw: null,
     ...over,
   });
 

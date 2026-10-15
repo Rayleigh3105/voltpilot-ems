@@ -1,74 +1,25 @@
 import { describe, expect, it } from 'vitest';
-import { peakBand, quarterHourMeanImportKw, type PowerSample } from './peakBand';
+import { peakBand, serverQuarterHourMean } from './peakBand';
 import type { PeakShaving } from './api';
 
-/** now anchored inside a quarter: 10:07:00 → quarter start 10:00:00. */
-const NOW = new Date('2026-07-20T10:07:00Z');
-
-function sample(ts: string, powerKw: number | null): PowerSample {
-  return { ts, powerKw };
-}
-
-describe('quarterHourMeanImportKw - the live ¼-h mean (import-only)', () => {
-  it('averages import power over the running wall-clock quarter', () => {
-    const m = quarterHourMeanImportKw(
-      [
-        sample('2026-07-20T10:01:00Z', 100),
-        sample('2026-07-20T10:03:00Z', 200),
-        sample('2026-07-20T10:06:00Z', 300),
-      ],
-      NOW,
-    );
-    expect(m.kw).toBe(200); // (100+200+300)/3
-    expect(m.count).toBe(3);
-    expect(m.fresh).toBe(true); // newest 10:06 is within 5 min of 10:07
-  });
-
-  it('counts import only - export (negative power) never offsets the peak', () => {
-    const m = quarterHourMeanImportKw(
-      [sample('2026-07-20T10:02:00Z', 120), sample('2026-07-20T10:05:00Z', -40)],
-      NOW,
-    );
-    // max(120,0)=120, max(-40,0)=0 → mean 60 over 2 samples
-    expect(m.kw).toBe(60);
-  });
-
-  it('ignores samples outside the running quarter (previous quarter / future)', () => {
-    const m = quarterHourMeanImportKw(
-      [
-        sample('2026-07-20T09:59:00Z', 999), // previous quarter
-        sample('2026-07-20T10:04:00Z', 50), // in quarter
-        sample('2026-07-20T10:30:00Z', 999), // future
-      ],
-      NOW,
-    );
-    expect(m.kw).toBe(50);
+describe('serverQuarterHourMean - wraps the server-computed running mean', () => {
+  it('a present value is fresh and counts as one sample', () => {
+    const m = serverQuarterHourMean(142);
+    expect(m.kw).toBe(142);
+    expect(m.fresh).toBe(true);
     expect(m.count).toBe(1);
   });
 
-  it('skips null / non-finite power', () => {
-    const m = quarterHourMeanImportKw(
-      [sample('2026-07-20T10:02:00Z', null), sample('2026-07-20T10:05:00Z', 80)],
-      NOW,
-    );
-    expect(m.kw).toBe(80);
-    expect(m.count).toBe(1);
+  it('null (no usable sample yet) stays null - never a fabricated 0', () => {
+    const m = serverQuarterHourMean(null);
+    expect(m.kw).toBeNull();
+    expect(m.fresh).toBe(false);
+    expect(m.count).toBe(0);
   });
 
-  it('no usable sample → null (never a fabricated 0)', () => {
-    const empty = quarterHourMeanImportKw([], NOW);
-    expect(empty.kw).toBeNull();
-    expect(empty.count).toBe(0);
-    expect(empty.fresh).toBe(false);
-    // only stale/out-of-quarter samples → still null
-    const stale = quarterHourMeanImportKw([sample('2026-07-20T09:50:00Z', 100)], NOW);
-    expect(stale.kw).toBeNull();
-  });
-
-  it('marks the mean stale when the newest sample is older than 5 minutes', () => {
-    // A quarter that started long ago: newest sample 10:01, now 10:07 → 6 min old.
-    const m = quarterHourMeanImportKw([sample('2026-07-20T10:01:00Z', 100)], NOW);
-    expect(m.kw).toBe(100);
+  it('undefined (field not yet loaded) behaves like null', () => {
+    const m = serverQuarterHourMean(undefined);
+    expect(m.kw).toBeNull();
     expect(m.fresh).toBe(false);
   });
 });
@@ -82,6 +33,7 @@ const PEAK: PeakShaving = {
   avoidedKw: 38,
   avoidedEur: 4560,
   history: [],
+  currentQuarterMeanKw: 142,
 };
 
 describe('peakBand - the render-ready view', () => {

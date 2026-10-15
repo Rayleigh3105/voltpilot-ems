@@ -255,7 +255,21 @@ public record EarningsDto(
             BigDecimal baselinePeakKw,
             BigDecimal avoidedKw,
             BigDecimal avoidedEur,
-            List<PeakPeriodDto> history) {
+            List<PeakPeriodDto> history,
+            /** Das laufende Viertelstunden-Mittel des Netzbezugs AUF DEM SERVER (Alerting Scheibe 4,
+             * Konzept vp-alerting-konzept-m1 §6.10 Punkt 3: {@code AnlagenflussWerteLeser.
+             * netzLastspitzeLaufendKw} - dieselbe Zahl wie die "Lastspitze droht"-Überwachung).
+             * Nur die EINE Anlage (§6.7, kein Live-Wert je Flotte) füllt es; die Flotten-Erlöse
+             * lassen es weg. */
+            BigDecimal currentQuarterMeanKw) {
+
+        /** Flotten-Erlöse (viele Anlagen je Anfrage) kennen keinen Live-Wert - {@code null}. */
+        public PeakShavingDto(BigDecimal leistungspreisEurKw, String abrechnung, LocalDate periodStart,
+                BigDecimal peakKw, BigDecimal baselinePeakKw, BigDecimal avoidedKw, BigDecimal avoidedEur,
+                List<PeakPeriodDto> history) {
+            this(leistungspreisEurKw, abrechnung, periodStart, peakKw, baselinePeakKw, avoidedKw, avoidedEur,
+                    history, null);
+        }
     }
 
     /** One closed-or-running billing period of the peak-shaving history. */

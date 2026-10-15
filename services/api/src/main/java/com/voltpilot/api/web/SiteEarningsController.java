@@ -7,6 +7,8 @@ import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.repo.SpeicherBank;
 import com.voltpilot.api.repo.SteuerungGrund;
 import com.voltpilot.api.repo.SteuerungMitBestand;
+import com.voltpilot.api.ueberwachung.AnlagenflussWerteLeser;
+import com.voltpilot.api.web.dto.EarningsDto.PeakShavingDto;
 import com.voltpilot.api.web.dto.SiteDto;
 import com.voltpilot.api.web.dto.SiteEarningsDto;
 import com.voltpilot.api.web.dto.SiteEarningsDto.SiteEarningsBucketDto;
@@ -64,15 +66,17 @@ public class SiteEarningsController {
     private final SiteRepository sites;
     private final EarningsRepository earnings;
     private final PeakShavingRepository peaks;
+    private final AnlagenflussWerteLeser anlagenfluss;
     private final String activePvModel;
 
     public SiteEarningsController(SiteRepository sites, EarningsRepository earnings,
-            PeakShavingRepository peaks,
+            PeakShavingRepository peaks, AnlagenflussWerteLeser anlagenfluss,
             @org.springframework.beans.factory.annotation.Value(
                     "${voltpilot.forecast.active-pv-model}") String activePvModel) {
         this.sites = sites;
         this.earnings = earnings;
         this.peaks = peaks;
+        this.anlagenfluss = anlagenfluss;
         this.activePvModel = activePvModel;
     }
 
@@ -285,9 +289,27 @@ public class SiteEarningsController {
                 geplant,
                 SteuerungGrund.fuer(savedSteuerung, einordnung, geplant),
                 series,
-                EarningsController.peakShaving(site, today, peakRows),
+                mitLaufendemViertelstundenMittel(EarningsController.peakShaving(site, today, peakRows), siteId),
                 savedSteuerungMitBestand,
                 steuerungZeitraum(zeitraum));
+    }
+
+    /**
+     * Hängt das laufende Viertelstunden-Mittel des Netzbezugs an (Alerting Scheibe 4, Konzept
+     * vp-alerting-konzept-m1 §6.10 Punkt 3): dieselbe Zahl wie die "Lastspitze droht"-Überwachung
+     * ({@link AnlagenflussWerteLeser#netzLastspitzeLaufendKw}) - EIN Live-Wert je Anfrage dieser
+     * EINEN Anlage, anders als die Flotten-Erlöse (§6.7, kein Live-Wert über viele Anlagen).
+     * {@code null}, wenn das Modul gar nicht aktiv ist (kein Leistungspreis - {@code basis == null}).
+     */
+    private PeakShavingDto mitLaufendemViertelstundenMittel(PeakShavingDto basis, UUID siteId) {
+        if (basis == null) {
+            return null;
+        }
+        Double liveKw = anlagenfluss.netzLastspitzeLaufendKw(siteId, Instant.now());
+        BigDecimal liveKwDezimal = liveKw == null ? null : BigDecimal.valueOf(liveKw);
+        return new PeakShavingDto(basis.leistungspreisEurKw(), basis.abrechnung(), basis.periodStart(),
+                basis.peakKw(), basis.baselinePeakKw(), basis.avoidedKw(), basis.avoidedEur(), basis.history(),
+                liveKwDezimal);
     }
 
     /** Der Zeitraum mit Bestand als Antwort-Block; null ohne Zeitraum. */

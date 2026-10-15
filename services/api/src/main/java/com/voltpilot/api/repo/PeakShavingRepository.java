@@ -129,9 +129,12 @@ public class PeakShavingRepository {
         boolean jahr = "jahr".equals(abrechnung.get(0));
         LocalDate periodStart = jahr ? today.withDayOfYear(1) : today.withDayOfMonth(1);
         Instant von = periodStart.atStartOfDay(ZONE).toInstant();
+        // JOIN site (Standort-Zaun-Architekturtest): telemetry_rollup_15m trägt nur den
+        // Mandanten-Zaun, wie peaksByPeriod() oben - derselbe Join macht auch diese Abfrage dicht.
         List<BigDecimal> rows = jdbc.query(
-                "SELECT max(GREATEST(grid_import_kwh, 0)) * 4.0 FROM telemetry_rollup_15m "
-                        + "WHERE site_id = ? AND bucket >= ? AND grid_import_kwh IS NOT NULL",
+                "SELECT max(GREATEST(r.grid_import_kwh, 0)) * 4.0 FROM telemetry_rollup_15m r "
+                        + "JOIN site s ON s.id = r.site_id "
+                        + "WHERE r.site_id = ? AND r.bucket >= ? AND r.grid_import_kwh IS NOT NULL",
                 (rs, n) -> rs.getBigDecimal(1), siteId, Timestamp.from(von));
         return rows.isEmpty() ? null : rows.get(0);
     }
