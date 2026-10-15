@@ -427,7 +427,14 @@ class RechtMatrixApiTest {
             Map.entry("energiemanagement.ansehen", "lesend — EnergiemanagementPersonenApiTest (IP-6: Personen nur "
                     + "Mandanten-Zaun, Aufgaben nur unternehmensweit), EnergiemanagementDokumentApiTest (IP-7: Zaun "
                     + "über den Standort des Bezugs), EnergiemanagementVerzeichnisApiTest (IP-8: Zaun je Quelle, "
-                    + "Einsicht liest und ruft die CSV ab)"));
+                    + "Einsicht liest und ruft die CSV ab)"),
+            Map.entry("ueberwachung.eigene", "DIENST (Alerting v1 §6.6, Entscheid 5A) — RechteAbleitung.darf in "
+                    + "UeberwachungAnlegenService entscheidet eigene/verwalten erst anhand der Empfänger im Körper, "
+                    + "keine feste Ziel-Rolle je Route; geprüft in UeberwachungAnlegenServiceIT"),
+            Map.entry("ueberwachung.verwalten", "DIENST (Alerting v1 §6.6, Entscheid 5A) — dieselbe körperabhängige "
+                    + "Prüfung wie ueberwachung.eigene; der Ablehnungsfall (Empfänger ≠ Aufrufer ohne verwalten) ist "
+                    + "in UeberwachungAnlegenServiceIT abgedeckt. StummschaltungController#anlegen ruft dieselbe "
+                    + "Kennung über StummschaltungService, dafür noch ohne eigenen Test."));
 
     @Test
     void jeMatrixZeileDerGruppenEinsBisDreiUrteilenDieAchtPersonen() throws Exception {
@@ -679,9 +686,11 @@ class RechtMatrixApiTest {
         assertThat(durch).as("Schreibrouten, an denen Einsicht durchkommt").isEmpty();
         assertThat(geprueft).isGreaterThanOrEqualTo(160);
         // Nur das eigene Konto (E) und lesende Zeilen an Routen, die rechnen statt zu schreiben (Vorschau, Simulation
-        // mit messwerte.ansehen) — keine Freigabe, kein Eintrag, kein Export.
+        // mit messwerte.ansehen) — keine Freigabe, kein Eintrag, kein Export. ueberwachung.eigene trägt an Einsicht
+        // bewusst ein U (Alerting v1 §6.6, Entscheid 5A): wer einen Wert sehen darf, darf sich selbst dazu
+        // benachrichtigen lassen.
         assertThat(nichtMinus).as("Routen mit @Recht, die Einsicht erreicht").containsExactlyInAnyOrder("konto.eigenes",
-                "messwerte.ansehen");
+                "messwerte.ansehen", "ueberwachung.eigene");
         assertThat(aktionen.get("konto.eigenes").path("zellen").path("einsicht").asText()).isEqualTo("E");
     }
 
