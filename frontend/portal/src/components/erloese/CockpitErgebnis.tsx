@@ -81,8 +81,13 @@ export function CockpitErgebnis({
           „Unterm Strich" bleibt rot, wenn es Kosten sind. */}
       {money.winterSatz && <p className="vp-c-note vp-c-ck-winter">{money.winterSatz}</p>}
 
-      {speicher?.hatAussage && (
-        <SpeicherKarte aussage={speicher} nachtragHref={nachtragHref} variant="sektion">
+      {(speicher?.hatAussage || money.zeitraumKarte) && (
+        <SpeicherKarte
+          aussage={speicher}
+          nachtragHref={nachtragHref}
+          variant="sektion"
+          zeitraum={money.zeitraumKarte ?? null}
+        >
           {/* Dieselbe Rechnung wie auf der Erlöse-Seite und am Rechner — der
               Chip erklärt sich überall gleich (Captain 01.09.2026). */}
           {money.formel && <SteuerungFormel input={money.formel} />}

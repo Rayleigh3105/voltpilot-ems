@@ -160,6 +160,14 @@ public record EarningsDto(
      * {@code steuerungGruende}. Ohne λ je Anlage trägt die Flottenzeile
      * bewusst keinen {@code speicherVorsprungEur}. Für jedes andere
      * {@code range} und ohne Dreiteilung sind alle null.
+     *
+     * <p><b>Mit Bestand (Bedienkonzept vp-herzogau-p3-kachel-konzept, Captain
+     * 14.10.2026 P3-4 A).</b> {@code savedSteuerungMitBestandEur} ist die
+     * Steuerung des gewählten Zeitraums mit Bestand bewertet (wie auf
+     * {@code SiteEarningsDto}); {@code steuerungMonatMitBestandEur} nur bei
+     * {@code range=day}: Monatserster bis zu diesem Tag mit Bestand. Beide
+     * kommen aus dem Walk, den die Route ohnehin rechnet; null bei einer
+     * Lücke oder ohne Dreiteilung.
      */
     public record EarningsSiteDto(
             UUID id,
@@ -204,7 +212,9 @@ public record EarningsDto(
             BigDecimal steuerungVortagEur,
             BigDecimal steuerungMonatBisherEur,
             BigDecimal steuerungPlannedEur,
-            List<String> steuerungGruende) {
+            List<String> steuerungGruende,
+            BigDecimal savedSteuerungMitBestandEur,
+            BigDecimal steuerungMonatMitBestandEur) {
     }
 
     /**
@@ -304,9 +314,15 @@ public record EarningsDto(
      * gepflegten Batterie-Stammdaten hat (der Grund steht als
      * {@code steuerungSplitReason} an der Anlage) - dann zeigt die
      * Kundenflaeche KEINE Zahl, nie die Gesamtzahl als Ersatz.
+     *
+     * <p>{@code mitBestandEur} ist derselbe Tag „mit Bestand bewertet“
+     * (Bedienkonzept vp-herzogau-p3-kachel-konzept §4.3), aus demselben Walk;
+     * aus diesen Tagen bildet die Übersicht die letzten 7 Tage. Null ohne
+     * Dreiteilung oder bei einer Lücke (kein gemessener Ladestand am Tagesrand).
      */
     public record EarningsDailyDto(
-            LocalDate day, BigDecimal savedEur, BigDecimal savedSteuerungEur) {
+            LocalDate day, BigDecimal savedEur, BigDecimal savedSteuerungEur,
+            BigDecimal mitBestandEur) {
     }
 
     /**

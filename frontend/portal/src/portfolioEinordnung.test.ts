@@ -140,11 +140,9 @@ describe('Portfolio · Tabelle', () => {
   const herzogau = zeilen.find((z) => z.id === 'herzogau')!;
   const mienbach = zeilen.find((z) => z.id === 'mienbach')!;
 
-  it('die Heute-Zelle trägt das Kurzwort des Grundes', () => {
-    expect(herzogau.heuteEur).toBeCloseTo(-9.804, 6);
-    expect(herzogau.heuteGrund).toBe('gestern verkauft');
-    expect(mienbach.heuteEur).toBeNull();
-    expect(mienbach.heuteGrund).toBeNull();
+  it('ohne Monat mit Bestand (älteres Backend) bleibt die Monats-Spalte leer — nie die Tageszahl unter „Monat“', () => {
+    expect(herzogau.monatEur).toBeNull();
+    expect(mienbach.monatEur).toBeNull();
   });
 
   it('ein Ladestand vom 12.08. ist datiert, der von vor zwei Minuten nicht', () => {

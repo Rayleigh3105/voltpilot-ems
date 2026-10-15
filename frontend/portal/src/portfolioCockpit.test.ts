@@ -685,12 +685,16 @@ describe('leistenZellen — die Zellen folgen der ANORDNUNG', () => {
     expect(vorteilLabel('direktvermarktung')).toBe('Mehrerlös heute');
     expect(vorteilLabel('eigenverbrauch')).toBe('Vorteil heute');
     expect(vorteilLabel('gemischt')).toBe('Vorteil heute');
+    // Mit Bestand (Bedienkonzept P3, P3-4 A): vorn der Monat.
+    expect(vorteilLabel('direktvermarktung', true)).toBe('Mehrerlös diesen Monat');
+    expect(vorteilLabel('eigenverbrauch', true)).toBe('Vorteil diesen Monat');
   });
 
-  it('eine echte Null trägt kein Vorzeichen', () => {
+  it('eine echte Null trägt kein Vorzeichen; ein Minus ist U+2212 wie auf der Erlöse-Seite', () => {
     expect(signiertesGeld(0)).toBe('0,00');
     expect(signiertesGeld(-0.001)).toBe('0,00');
-    expect(signiertesGeld(-0.8)).toBe('-0,80');
+    expect(signiertesGeld(-0.8)).toBe('\u22120,80');
+    expect(signiertesGeld(-8)).not.toContain('-');
   });
 });
 

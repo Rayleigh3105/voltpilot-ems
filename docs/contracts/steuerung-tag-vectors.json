@@ -1,5 +1,5 @@
 {
-  "$comment": "Die EINE Tageszahl der Steuerung und ihre Einordnung (Captain 24.09.2026: Definition A aus vp-erloes-zahlen-widerspruch-z1 §6, Darstellung E1-E7 = A aus vp-erloese-minus-winter-k1). Java services/api liest diese Datei PER PFAD: SteuerungGrundTest (Block grund, rein) und SteuerungTageszahlTest (Blöcke abends_geleert und band_und_plan, Testcontainers). Seit 29.09.2026 (Captain 'mach alle drei'): der Vergleichsspeicher fährt den gemessenen Betriebsbereich (M1, stur-speicher-vectors.json Block betriebsbereich), der Planwert rechnet gegen denselben durchlaufenden Vergleichsspeicher (M2, PlanMesslatte.java) und jedes Minus trägt einen Grund (A1, Rückfall anders_geladen). Das Portal liest die Grund-Kennungen als geschlossenes Vokabular; die Worte dazu wählt es selbst. Wer eine Schwelle, die Rangfolge oder die Definition ändert, ändert Datei, SteuerungGrund.java bzw. EarningsRepository.speicherWalk und die Leser im Portal zusammen.",
+  "$comment": "Die EINE Tageszahl der Steuerung und ihre Einordnung (Captain 24.09.2026: Definition A aus vp-erloes-zahlen-widerspruch-z1 §6, Darstellung E1-E7 = A aus vp-erloese-minus-winter-k1). Java services/api liest diese Datei PER PFAD: SteuerungGrundTest (Block grund, rein) und SteuerungTageszahlTest (Blöcke abends_geleert und band_und_plan, Testcontainers). Seit 29.09.2026 (Captain 'mach alle drei'): der Vergleichsspeicher fährt den gemessenen Betriebsbereich (M1, stur-speicher-vectors.json Block betriebsbereich), der Planwert rechnet gegen denselben durchlaufenden Vergleichsspeicher (M2, PlanMesslatte.java) und jedes Minus trägt einen Grund (A1, Rückfall anders_geladen). Das Portal liest die Grund-Kennungen als geschlossenes Vokabular; die Worte dazu wählt es selbst. Wer eine Schwelle, die Rangfolge oder die Definition ändert, ändert Datei, SteuerungGrund.java bzw. EarningsRepository.speicherWalk und die Leser im Portal zusammen. Seit 14.10.2026 (Captain HZ-3 A, P3-1 bis P3-4 A): Block mit_bestand - Tag, 7 Tage und Monat mit Bestand bewertet (SteuerungMitBestand.java; Leser SteuerungMitBestandTest, SteuerungTageszahlTest und src/steuerungZeitraum.test.ts im Portal).",
   "$regel_tageszahl": "Der Steuerungsbeitrag eines Zeitraums ist die Summe der Tageszuwächse EINES durchlaufenden sturen Vergleichsspeichers je Anlage (Physik: stur-speicher-vectors.json). Er behält seinen EIGENEN Ladestand über Mitternacht, wird am gemessenen Ladestand zum Monatsbeginn (1., 00:00 Europe/Berlin; letzter soc_last_pct-Eimer davor, 7 Tage Rückschau, sonst Boden) verankert und an jeder Berliner Monatsgrenze neu. Damit gilt je Anlage: Tagesfenster(D) = dailySaved[D], Summe der Tage = Monat, Summe der Monate = Jahr. Ein Tagesfenster, das am gemessenen Stand der gesteuerten Anlage um Mitternacht neu beginnt, ist ausdrücklich FALSCH: es schenkt der Steuerung jeden Übertrag über Mitternacht (Live-Anlage September 2026: Summe dieser Tagesfenster 184,19 EUR gegen Monat 116,94 EUR).",
   "grund": {
     "$regel": "Nur für einen Tag mit steuerungEur < 0, sonst leer. Jede Regel braucht ihre Eingaben; fehlt eine, greift genau diese Regel nicht (nie geraten). In der Rangfolge geprüft, höchstens 'hoechstens' Kennungen, die ersten. gestern_verkauft: vergleichSocStartKwh - echtSocStartKwh >= gestern_verkauft_ab_kwh. haelt_energie_fuer_morgen: speicherVorsprungKwh >= haelt_energie_ab_kwh. so_geplant: steuerungGeplantEur < so_geplant_unter_eur. wenig_sonne: loadKwh > 0 und pvKwh < wenig_sonne_unter_anteil * loadKwh. anders_als_geplant: steuerungGeplantEur >= anders_als_geplant_plan_ab_eur und steuerungEur < anders_als_geplant_unter_eur. anders_geladen (Rückfall, A1 - Captain 29.09.2026 'mach alle drei'): greift keine der fünf Regeln, steht diese Kennung allein; ein Tag mit steuerungEur < 0 hat damit NIE eine leere Liste. Sie verdrängt nie eine spezifische Kennung.",
@@ -913,6 +913,858 @@
           "gruende": ["gestern_verkauft"]
         }
       }
+    }
+  },
+  "mit_bestand": {
+    "$regel": "Die Steuerung MIT BESTAND (Bedienkonzept vp-herzogau-p3-kachel-konzept §4.3; Captain 14.10.2026: HZ-3 A, P3-1 bis P3-4 je A). 1) Tag mit Bestand = Steuerung des Tages (Kassenrechnung, savedSteuerungEur) + (Vorsprung 24:00 - Vorsprung 00:00) × Bewertung / 100; Vorsprung = gemessener Ladestand - Vergleichsspeicher in kWh, ein Rückstand ist negativ. Gerundet wird je Tag: steuerung_eur und bestand_eur je auf den Cent (HALF_UP), mit_bestand_eur ist ihre Summe. 2) Tagesbeginn = Stand nach dem Monatsanker: am ersten Tag nach einer Monatsverankerung ist der gemessene Stand der Anker selbst (Vorsprung = Anker - verankerter Vergleichsspeicher, ohne Klemmung 0), sonst der Stand am Ende des zuletzt gelaufenen Eimers; nie der Endstand des Vormonats. 3) Monat = Summe der Tage vom Ersten bis zum angefragten Tag; 7 Tage = Summe der 7 abgeschlossenen Berliner Kalendertage (läuft der angefragte Tag noch: die 7 davor, sonst die 7 bis einschließlich) - jeder Tag mit dem Wert seines Monats. 4) Bewertung (ct/kWh) = Bezugspreis auf 0,01 ct × √0,92, auf 0,01 ct; Bezugspreis = Mittel der Bezugspreise der covered Slots des Tages (fest 25 ct -> 23,98 ct). Nicht λ. 5) Lücke: fehlt ein gemessener Ladestand an einem Tagesrand, ist mit_bestand_eur null, und jede Summe, die den Tag enthält, ist null. Ein Tag ohne covered Slot fehlt und zählt nicht; ein Fenster ohne gemessenen Tag ist null. 6) Gruende: gestern_verkauft, wenn -vorsprung_start_kwh >= grund.gestern_verkauft_ab_kwh (immer, nicht nur bei Minus); bei mit_bestand_eur < 0 zusätzlich wenig_sonne (load > 0 und pv < Anteil × load), sonst anders_geladen; höchstens 2. haelt_energie_fuer_morgen und die Planregeln gelten hier nicht.",
+    "$leser": "Java: SteuerungMitBestandTest (rein: grund, bewertung, oktober und die tage aller Fälle) und SteuerungTageszahlTest (Testcontainers: monatsgrenze, sommerzeit, luecke über den echten Walk). Portal: src/steuerungZeitraum.test.ts liest oktober.",
+    "$einheiten": "EUR, kWh, ct/kWh. tage[].erwartet gilt für den Tag, zeitpunkte[].erwartet für die Antwort range=day&at=angefragt (heute, monat, sieben; tage = die gemessenen Tage des Fensters, neuester zuerst). Die Eingaben eines Tages sind die Felder, die die API aus ihrem Walk bildet.",
+    "grund": {
+      "gestern_verkauft_ab_kwh": 10,
+      "wenig_sonne_unter_anteil": 0.6,
+      "hoechstens": 2
+    },
+    "bewertung": [
+      {
+        "bezug_ct_kwh": 25,
+        "bewertung_ct_kwh": 23.98
+      },
+      {
+        "bezug_ct_kwh": 30,
+        "bewertung_ct_kwh": 28.77
+      },
+      {
+        "bezug_ct_kwh": 31.37,
+        "bewertung_ct_kwh": 30.09
+      },
+      {
+        "bezug_ct_kwh": 18.255,
+        "bewertung_ct_kwh": 17.51
+      },
+      {
+        "bezug_ct_kwh": 0,
+        "bewertung_ct_kwh": 0.0
+      }
+    ],
+    "oktober": {
+      "$herkunft": "Herzogau (Pilsting), Oktober 2026: Nachrechnung k4 wie Bedienkonzept Abschnitt 5 (Kalendertag, mit Bestand, Vorsprung 24:00, PV, Verbrauch). Die Vorsprung-Stände sind auf Wh so gewählt, dass jeder Tag centgenau die Zahl aus Abschnitt 5 ergibt (die Tabelle zeigt sie auf 0,1 kWh); Tagesbeginn am 1. = 0 nach dem Anker. Die Zahl um 08:15 rechnet den Eimer 08:00-08:15 (Rückstand aufgeholt).",
+      "tage": [
+        {
+          "tag": "2026-10-01",
+          "steuerung_eur": 12.92,
+          "vorsprung_start_kwh": 0.0,
+          "vorsprung_ende_kwh": -29.8,
+          "bezug_ct_kwh": 25,
+          "pv_kwh": 290.9,
+          "load_kwh": 146.4,
+          "erwartet": {
+            "bewertung_ct_kwh": 23.98,
+            "bestand_eur": -7.15,
+            "mit_bestand_eur": 5.77,
+            "gruende": []
+          }
+        },
+        {
+          "tag": "2026-10-02",
+          "steuerung_eur": -2.36,
+          "vorsprung_start_kwh": -29.8,
+          "vorsprung_ende_kwh": -11.388,
+          "bezug_ct_kwh": 25,
+          "pv_kwh": 89.8,
+          "load_kwh": 109.3,
+          "erwartet": {
+            "bewertung_ct_kwh": 23.98,
+            "bestand_eur": 4.42,
+            "mit_bestand_eur": 2.06,
+            "gruende": ["gestern_verkauft"]
+          }
+        },
+        {
+          "tag": "2026-10-03",
+          "steuerung_eur": 0.84,
+          "vorsprung_start_kwh": -11.388,
+          "vorsprung_ende_kwh": -6.405,
+          "bezug_ct_kwh": 25,
+          "pv_kwh": 258.8,
+          "load_kwh": 143.9,
+          "erwartet": {
+            "bewertung_ct_kwh": 23.98,
+            "bestand_eur": 1.19,
+            "mit_bestand_eur": 2.03,
+            "gruende": ["gestern_verkauft"]
+          }
+        },
+        {
+          "tag": "2026-10-04",
+          "steuerung_eur": 4.41,
+          "vorsprung_start_kwh": -6.405,
+          "vorsprung_ende_kwh": -2.297,
+          "bezug_ct_kwh": 25,
+          "pv_kwh": 287.8,
+          "load_kwh": 77.8,
+          "erwartet": {
+            "bewertung_ct_kwh": 23.98,
+            "bestand_eur": 0.99,
+            "mit_bestand_eur": 5.4,
+            "gruende": []
+          }
+        },
+        {
+          "tag": "2026-10-05",
+          "steuerung_eur": 2.2,
+          "vorsprung_start_kwh": -2.297,
+          "vorsprung_ende_kwh": -6.7,
+          "bezug_ct_kwh": 25,
+          "pv_kwh": 40.1,
+          "load_kwh": 44.4,
+          "erwartet": {
+            "bewertung_ct_kwh": 23.98,
+            "bestand_eur": -1.06,
+            "mit_bestand_eur": 1.14,
+            "gruende": []
+          }
+        },
+        {
+          "tag": "2026-10-06",
+          "steuerung_eur": 12.62,
+          "vorsprung_start_kwh": -6.7,
+          "vorsprung_ende_kwh": -28.4,
+          "bezug_ct_kwh": 25,
+          "pv_kwh": 301.8,
+          "load_kwh": 193.7,
+          "erwartet": {
+            "bewertung_ct_kwh": 23.98,
+            "bestand_eur": -5.2,
+            "mit_bestand_eur": 7.42,
+            "gruende": []
+          }
+        },
+        {
+          "tag": "2026-10-07",
+          "steuerung_eur": -0.25,
+          "vorsprung_start_kwh": -28.4,
+          "vorsprung_ende_kwh": -23.626,
+          "bezug_ct_kwh": 25,
+          "pv_kwh": 237.3,
+          "load_kwh": 151.6,
+          "erwartet": {
+            "bewertung_ct_kwh": 23.98,
+            "bestand_eur": 1.14,
+            "mit_bestand_eur": 0.89,
+            "gruende": ["gestern_verkauft"]
+          }
+        },
+        {
+          "tag": "2026-10-08",
+          "steuerung_eur": -4.75,
+          "vorsprung_start_kwh": -23.626,
+          "vorsprung_ende_kwh": -5.3,
+          "bezug_ct_kwh": 25,
+          "pv_kwh": 155.7,
+          "load_kwh": 136.5,
+          "erwartet": {
+            "bewertung_ct_kwh": 23.98,
+            "bestand_eur": 4.39,
+            "mit_bestand_eur": -0.36,
+            "gruende": ["gestern_verkauft", "anders_geladen"]
+          }
+        },
+        {
+          "tag": "2026-10-09",
+          "steuerung_eur": 0.76,
+          "vorsprung_start_kwh": -5.3,
+          "vorsprung_ende_kwh": 4.062,
+          "bezug_ct_kwh": 25,
+          "pv_kwh": 266.3,
+          "load_kwh": 118.3,
+          "erwartet": {
+            "bewertung_ct_kwh": 23.98,
+            "bestand_eur": 2.25,
+            "mit_bestand_eur": 3.01,
+            "gruende": []
+          }
+        },
+        {
+          "tag": "2026-10-10",
+          "steuerung_eur": -1.99,
+          "vorsprung_start_kwh": 4.062,
+          "vorsprung_ende_kwh": 6.17,
+          "bezug_ct_kwh": 25,
+          "pv_kwh": 55.8,
+          "load_kwh": 87.2,
+          "erwartet": {
+            "bewertung_ct_kwh": 23.98,
+            "bestand_eur": 0.51,
+            "mit_bestand_eur": -1.48,
+            "gruende": ["anders_geladen"]
+          }
+        },
+        {
+          "tag": "2026-10-11",
+          "steuerung_eur": -2.65,
+          "vorsprung_start_kwh": 6.17,
+          "vorsprung_ende_kwh": 10.0,
+          "bezug_ct_kwh": 25,
+          "pv_kwh": 144.3,
+          "load_kwh": 124.1,
+          "erwartet": {
+            "bewertung_ct_kwh": 23.98,
+            "bestand_eur": 0.92,
+            "mit_bestand_eur": -1.73,
+            "gruende": ["anders_geladen"]
+          }
+        },
+        {
+          "tag": "2026-10-12",
+          "steuerung_eur": 12.1,
+          "vorsprung_start_kwh": 10.0,
+          "vorsprung_ende_kwh": -33.385,
+          "bezug_ct_kwh": 25,
+          "pv_kwh": 296.3,
+          "load_kwh": 234.5,
+          "erwartet": {
+            "bewertung_ct_kwh": 23.98,
+            "bestand_eur": -10.4,
+            "mit_bestand_eur": 1.7,
+            "gruende": []
+          }
+        },
+        {
+          "tag": "2026-10-13",
+          "steuerung_eur": -4.48,
+          "vorsprung_start_kwh": -33.385,
+          "vorsprung_ende_kwh": -24.385,
+          "bezug_ct_kwh": 25,
+          "pv_kwh": 255.1,
+          "load_kwh": 217.2,
+          "erwartet": {
+            "bewertung_ct_kwh": 23.98,
+            "bestand_eur": 2.16,
+            "mit_bestand_eur": -2.32,
+            "gruende": ["gestern_verkauft", "anders_geladen"]
+          }
+        }
+      ],
+      "zeitpunkte": [
+        {
+          "name": "Di 13.10., 08:15 - laufender Tag nach dem Abendverkauf",
+          "angefragt": "2026-10-13",
+          "laeuft": true,
+          "heute": {
+            "tag": "2026-10-13",
+            "steuerung_eur": -8.0,
+            "vorsprung_start_kwh": -33.385,
+            "vorsprung_ende_kwh": 0.0,
+            "bezug_ct_kwh": 25,
+            "pv_kwh": 0.0,
+            "load_kwh": 34.2
+          },
+          "erwartet": {
+            "heute": {
+              "tag": "2026-10-13",
+              "mit_bestand_eur": 0.01,
+              "gruende": ["gestern_verkauft"]
+            },
+            "monat": {
+              "von": "2026-10-01",
+              "bis": "2026-10-13",
+              "mit_bestand_eur": 25.86
+            },
+            "sieben": {
+              "von": "2026-10-06",
+              "bis": "2026-10-12",
+              "mit_bestand_eur": 9.45
+            },
+            "tage": ["2026-10-12", "2026-10-11", "2026-10-10", "2026-10-09", "2026-10-08", "2026-10-07", "2026-10-06"]
+          }
+        },
+        {
+          "name": "Mi 14.10., 00:10 - vor dem ersten Eimer des Tages",
+          "angefragt": "2026-10-14",
+          "laeuft": true,
+          "erwartet": {
+            "heute": null,
+            "monat": {
+              "von": "2026-10-01",
+              "bis": "2026-10-14",
+              "mit_bestand_eur": 23.53
+            },
+            "sieben": {
+              "von": "2026-10-07",
+              "bis": "2026-10-13",
+              "mit_bestand_eur": -0.29
+            },
+            "tage": ["2026-10-13", "2026-10-12", "2026-10-11", "2026-10-10", "2026-10-09", "2026-10-08", "2026-10-07"]
+          }
+        },
+        {
+          "name": "Rückblick Di 13.10.",
+          "angefragt": "2026-10-13",
+          "laeuft": false,
+          "erwartet": {
+            "heute": {
+              "tag": "2026-10-13",
+              "mit_bestand_eur": -2.32,
+              "gruende": ["gestern_verkauft", "anders_geladen"]
+            },
+            "monat": {
+              "von": "2026-10-01",
+              "bis": "2026-10-13",
+              "mit_bestand_eur": 23.53
+            },
+            "sieben": {
+              "von": "2026-10-07",
+              "bis": "2026-10-13",
+              "mit_bestand_eur": -0.29
+            },
+            "tage": ["2026-10-13", "2026-10-12", "2026-10-11", "2026-10-10", "2026-10-09", "2026-10-08", "2026-10-07"]
+          }
+        },
+        {
+          "name": "Rückblick Mo 12.10.",
+          "angefragt": "2026-10-12",
+          "laeuft": false,
+          "erwartet": {
+            "heute": {
+              "tag": "2026-10-12",
+              "mit_bestand_eur": 1.7,
+              "gruende": []
+            },
+            "monat": {
+              "von": "2026-10-01",
+              "bis": "2026-10-12",
+              "mit_bestand_eur": 25.85
+            },
+            "sieben": {
+              "von": "2026-10-06",
+              "bis": "2026-10-12",
+              "mit_bestand_eur": 9.45
+            },
+            "tage": ["2026-10-12", "2026-10-11", "2026-10-10", "2026-10-09", "2026-10-08", "2026-10-07", "2026-10-06"]
+          }
+        }
+      ],
+      "minus_tage": {
+        "kalendertag": 6,
+        "mit_bestand": 4
+      }
+    },
+    "monatsgrenze": {
+      "$warum": "Regel 2 und 3 über die Berliner Monatsgrenze 30.09. -> 01.10.: Ende September liegt der Speicher 2,5 kWh hinter dem Vergleichsspeicher; der 01.10. beginnt trotzdem bei Vorsprung 0 (Anker 30.09. 23:45 = 50 %), nicht bei -2,5 (das gäbe + 0,59 EUR statt - 0,01 EUR). Das Fenster 26.09.-02.10. trägt September- und Oktobertage je mit dem Wert ihres Monats.",
+      "anlage": {
+        "kapazitaet_kwh": 10,
+        "laden_kw": 5,
+        "entladen_kw": 5,
+        "wirkungsgrad_pct": 100,
+        "soc_band": "Vorgabe 5-95 %",
+        "tarif": "fest",
+        "bezug_ct_kwh": 25,
+        "zone": "CH",
+        "spot_eur_mwh": 120.0,
+        "messung": "Netz = Baseline (der echte Speicher steht, sein Ladestand bleibt 50 %), damit jede Zahl von Hand nachrechenbar ist"
+      },
+      "$eimer": ["bucket (UTC)", "pv_kwh", "load_kwh", "grid_import_kwh", "grid_export_kwh", "soc_last_pct"],
+      "eimer": [
+        ["2026-08-31T21:45:00Z", null, null, null, null, 50],
+        ["2026-09-29T10:00:00Z", 4, 0, 0, 4, 50],
+        ["2026-09-30T10:00:00Z", 4, 0, 0, 4, 50],
+        ["2026-09-30T21:45:00Z", null, null, null, null, 50],
+        ["2026-10-01T10:00:00Z", 0, 2, 2, 0, 50],
+        ["2026-10-02T10:00:00Z", 0, 1, 1, 0, 50]
+      ],
+      "tage": [
+        {
+          "tag": "2026-09-29",
+          "steuerung_eur": 0.15,
+          "vorsprung_start_kwh": 0.0,
+          "vorsprung_ende_kwh": -1.25,
+          "bezug_ct_kwh": 25,
+          "pv_kwh": 4.0,
+          "load_kwh": 0.0,
+          "erwartet": {
+            "bewertung_ct_kwh": 23.98,
+            "bestand_eur": -0.3,
+            "mit_bestand_eur": -0.15,
+            "gruende": ["anders_geladen"]
+          }
+        },
+        {
+          "tag": "2026-09-30",
+          "steuerung_eur": 0.15,
+          "vorsprung_start_kwh": -1.25,
+          "vorsprung_ende_kwh": -2.5,
+          "bezug_ct_kwh": 25,
+          "pv_kwh": 4.0,
+          "load_kwh": 0.0,
+          "erwartet": {
+            "bewertung_ct_kwh": 23.98,
+            "bestand_eur": -0.3,
+            "mit_bestand_eur": -0.15,
+            "gruende": ["anders_geladen"]
+          }
+        },
+        {
+          "tag": "2026-10-01",
+          "steuerung_eur": -0.3125,
+          "vorsprung_start_kwh": 0.0,
+          "vorsprung_ende_kwh": 1.25,
+          "bezug_ct_kwh": 25,
+          "pv_kwh": 0.0,
+          "load_kwh": 2.0,
+          "erwartet": {
+            "bewertung_ct_kwh": 23.98,
+            "bestand_eur": 0.3,
+            "mit_bestand_eur": -0.01,
+            "gruende": ["wenig_sonne"]
+          }
+        },
+        {
+          "tag": "2026-10-02",
+          "steuerung_eur": -0.25,
+          "vorsprung_start_kwh": 1.25,
+          "vorsprung_ende_kwh": 2.25,
+          "bezug_ct_kwh": 25,
+          "pv_kwh": 0.0,
+          "load_kwh": 1.0,
+          "erwartet": {
+            "bewertung_ct_kwh": 23.98,
+            "bestand_eur": 0.24,
+            "mit_bestand_eur": -0.01,
+            "gruende": ["wenig_sonne"]
+          }
+        }
+      ],
+      "zeitpunkte": [
+        {
+          "name": "Fr 03.10., laufend vor dem ersten Eimer - Fenster über die Monatsgrenze",
+          "angefragt": "2026-10-03",
+          "laeuft": true,
+          "erwartet": {
+            "heute": null,
+            "monat": {
+              "von": "2026-10-01",
+              "bis": "2026-10-03",
+              "mit_bestand_eur": -0.02
+            },
+            "sieben": {
+              "von": "2026-09-26",
+              "bis": "2026-10-02",
+              "mit_bestand_eur": -0.32
+            },
+            "tage": ["2026-10-02", "2026-10-01", "2026-09-30", "2026-09-29"]
+          }
+        },
+        {
+          "name": "Rückblick Do 01.10.",
+          "angefragt": "2026-10-01",
+          "laeuft": false,
+          "erwartet": {
+            "heute": {
+              "tag": "2026-10-01",
+              "mit_bestand_eur": -0.01,
+              "gruende": ["wenig_sonne"]
+            },
+            "monat": {
+              "von": "2026-10-01",
+              "bis": "2026-10-01",
+              "mit_bestand_eur": -0.01
+            },
+            "sieben": {
+              "von": "2026-09-25",
+              "bis": "2026-10-01",
+              "mit_bestand_eur": -0.31
+            },
+            "tage": ["2026-10-01", "2026-09-30", "2026-09-29"]
+          }
+        },
+        {
+          "name": "Rückblick Mi 30.09.",
+          "angefragt": "2026-09-30",
+          "laeuft": false,
+          "erwartet": {
+            "heute": {
+              "tag": "2026-09-30",
+              "mit_bestand_eur": -0.15,
+              "gruende": ["anders_geladen"]
+            },
+            "monat": {
+              "von": "2026-09-01",
+              "bis": "2026-09-30",
+              "mit_bestand_eur": -0.3
+            },
+            "sieben": {
+              "von": "2026-09-24",
+              "bis": "2026-09-30",
+              "mit_bestand_eur": -0.3
+            },
+            "tage": ["2026-09-30", "2026-09-29"]
+          }
+        }
+      ]
+    },
+    "sommerzeit": {
+      "$warum": "Der 25.10.2026 hat 25 Stunden = 100 Viertelstunden (24.10. 22:00Z bis 25.10. 23:00Z). Alle 100 Eimer gehören zum Berliner Kalendertag 25.10. (Verbrauch 100 × 0,01 = 1,0 kWh), das Fenster zählt Kalendertage, nie 7 × 24 h.",
+      "anlage": {
+        "kapazitaet_kwh": 10,
+        "laden_kw": 5,
+        "entladen_kw": 5,
+        "wirkungsgrad_pct": 100,
+        "soc_band": "Vorgabe 5-95 %",
+        "tarif": "fest",
+        "bezug_ct_kwh": 25,
+        "zone": "CH",
+        "spot_eur_mwh": 120.0,
+        "messung": "Netz = Baseline (der echte Speicher steht, sein Ladestand bleibt 50 %), damit jede Zahl von Hand nachrechenbar ist"
+      },
+      "$eimer": ["bucket (UTC)", "pv_kwh", "load_kwh", "grid_import_kwh", "grid_export_kwh", "soc_last_pct"],
+      "eimer": [
+        ["2026-09-30T21:45:00Z", null, null, null, null, 50],
+        ["2026-10-24T10:00:00Z", 0, 0, 0, 0, 50],
+        ["2026-10-24T22:00:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-24T22:15:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-24T22:30:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-24T22:45:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-24T23:00:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-24T23:15:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-24T23:30:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-24T23:45:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T00:00:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T00:15:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T00:30:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T00:45:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T01:00:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T01:15:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T01:30:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T01:45:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T02:00:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T02:15:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T02:30:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T02:45:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T03:00:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T03:15:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T03:30:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T03:45:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T04:00:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T04:15:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T04:30:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T04:45:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T05:00:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T05:15:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T05:30:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T05:45:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T06:00:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T06:15:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T06:30:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T06:45:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T07:00:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T07:15:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T07:30:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T07:45:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T08:00:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T08:15:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T08:30:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T08:45:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T09:00:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T09:15:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T09:30:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T09:45:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T10:00:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T10:15:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T10:30:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T10:45:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T11:00:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T11:15:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T11:30:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T11:45:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T12:00:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T12:15:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T12:30:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T12:45:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T13:00:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T13:15:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T13:30:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T13:45:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T14:00:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T14:15:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T14:30:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T14:45:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T15:00:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T15:15:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T15:30:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T15:45:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T16:00:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T16:15:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T16:30:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T16:45:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T17:00:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T17:15:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T17:30:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T17:45:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T18:00:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T18:15:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T18:30:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T18:45:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T19:00:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T19:15:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T19:30:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T19:45:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T20:00:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T20:15:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T20:30:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T20:45:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T21:00:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T21:15:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T21:30:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T21:45:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T22:00:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T22:15:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T22:30:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-25T22:45:00Z", 0, 0.01, 0.01, 0, 50],
+        ["2026-10-26T11:00:00Z", 0, 0, 0, 0, 50]
+      ],
+      "tage": [
+        {
+          "tag": "2026-10-24",
+          "steuerung_eur": 0.0,
+          "vorsprung_start_kwh": 0.0,
+          "vorsprung_ende_kwh": 0.0,
+          "bezug_ct_kwh": 25,
+          "pv_kwh": 0.0,
+          "load_kwh": 0.0,
+          "erwartet": {
+            "bewertung_ct_kwh": 23.98,
+            "bestand_eur": 0.0,
+            "mit_bestand_eur": 0.0,
+            "gruende": []
+          }
+        },
+        {
+          "tag": "2026-10-25",
+          "steuerung_eur": -0.25,
+          "vorsprung_start_kwh": 0.0,
+          "vorsprung_ende_kwh": 1.0,
+          "bezug_ct_kwh": 25,
+          "pv_kwh": 0.0,
+          "load_kwh": 1.0,
+          "erwartet": {
+            "bewertung_ct_kwh": 23.98,
+            "bestand_eur": 0.24,
+            "mit_bestand_eur": -0.01,
+            "gruende": ["wenig_sonne"]
+          }
+        },
+        {
+          "tag": "2026-10-26",
+          "steuerung_eur": 0.0,
+          "vorsprung_start_kwh": 1.0,
+          "vorsprung_ende_kwh": 1.0,
+          "bezug_ct_kwh": 25,
+          "pv_kwh": 0.0,
+          "load_kwh": 0.0,
+          "erwartet": {
+            "bewertung_ct_kwh": 23.98,
+            "bestand_eur": 0.0,
+            "mit_bestand_eur": 0.0,
+            "gruende": []
+          }
+        }
+      ],
+      "zeitpunkte": [
+        {
+          "name": "Rückblick Sa 31.10.",
+          "angefragt": "2026-10-31",
+          "laeuft": false,
+          "erwartet": {
+            "heute": null,
+            "monat": {
+              "von": "2026-10-01",
+              "bis": "2026-10-31",
+              "mit_bestand_eur": -0.01
+            },
+            "sieben": {
+              "von": "2026-10-25",
+              "bis": "2026-10-31",
+              "mit_bestand_eur": -0.01
+            },
+            "tage": ["2026-10-26", "2026-10-25"]
+          }
+        },
+        {
+          "name": "Mo 26.10., laufend",
+          "angefragt": "2026-10-26",
+          "laeuft": true,
+          "erwartet": {
+            "heute": {
+              "tag": "2026-10-26",
+              "mit_bestand_eur": 0.0,
+              "gruende": []
+            },
+            "monat": {
+              "von": "2026-10-01",
+              "bis": "2026-10-26",
+              "mit_bestand_eur": -0.01
+            },
+            "sieben": {
+              "von": "2026-10-19",
+              "bis": "2026-10-25",
+              "mit_bestand_eur": -0.01
+            },
+            "tage": ["2026-10-25", "2026-10-24"]
+          }
+        }
+      ]
+    },
+    "luecke": {
+      "$warum": "Regel 5: Der letzte Eimer des 06.10. trägt keinen Ladestand. Damit fehlen der Vorsprung am Ende des 06.10. und am Beginn des 07.10. (derselbe Moment) - beide Tage ohne Zahl, Monat und 7 Tage leer. Der 08.10. beginnt am gemessenen Ende des 07.10. und hat wieder eine Zahl.",
+      "anlage": {
+        "kapazitaet_kwh": 10,
+        "laden_kw": 5,
+        "entladen_kw": 5,
+        "wirkungsgrad_pct": 100,
+        "soc_band": "Vorgabe 5-95 %",
+        "tarif": "fest",
+        "bezug_ct_kwh": 25,
+        "zone": "CH",
+        "spot_eur_mwh": 120.0,
+        "messung": "Netz = Baseline (der echte Speicher steht, sein Ladestand bleibt 50 %), damit jede Zahl von Hand nachrechenbar ist"
+      },
+      "$eimer": ["bucket (UTC)", "pv_kwh", "load_kwh", "grid_import_kwh", "grid_export_kwh", "soc_last_pct"],
+      "eimer": [
+        ["2026-09-30T21:45:00Z", null, null, null, null, 50],
+        ["2026-10-05T10:00:00Z", 0, 1, 1, 0, 50],
+        ["2026-10-06T10:00:00Z", 0, 1, 1, 0, null],
+        ["2026-10-07T10:00:00Z", 0, 1, 1, 0, 50],
+        ["2026-10-08T10:00:00Z", 0, 1, 1, 0, 50]
+      ],
+      "tage": [
+        {
+          "tag": "2026-10-05",
+          "steuerung_eur": -0.25,
+          "vorsprung_start_kwh": 0.0,
+          "vorsprung_ende_kwh": 1.0,
+          "bezug_ct_kwh": 25,
+          "pv_kwh": 0.0,
+          "load_kwh": 1.0,
+          "erwartet": {
+            "bewertung_ct_kwh": 23.98,
+            "bestand_eur": 0.24,
+            "mit_bestand_eur": -0.01,
+            "gruende": ["wenig_sonne"]
+          }
+        },
+        {
+          "tag": "2026-10-06",
+          "steuerung_eur": -0.25,
+          "vorsprung_start_kwh": 1.0,
+          "vorsprung_ende_kwh": null,
+          "bezug_ct_kwh": 25,
+          "pv_kwh": 0.0,
+          "load_kwh": 1.0,
+          "erwartet": {
+            "bewertung_ct_kwh": 23.98,
+            "bestand_eur": null,
+            "mit_bestand_eur": null,
+            "gruende": []
+          }
+        },
+        {
+          "tag": "2026-10-07",
+          "steuerung_eur": -0.25,
+          "vorsprung_start_kwh": null,
+          "vorsprung_ende_kwh": 3.0,
+          "bezug_ct_kwh": 25,
+          "pv_kwh": 0.0,
+          "load_kwh": 1.0,
+          "erwartet": {
+            "bewertung_ct_kwh": 23.98,
+            "bestand_eur": null,
+            "mit_bestand_eur": null,
+            "gruende": []
+          }
+        },
+        {
+          "tag": "2026-10-08",
+          "steuerung_eur": -0.25,
+          "vorsprung_start_kwh": 3.0,
+          "vorsprung_ende_kwh": 4.0,
+          "bezug_ct_kwh": 25,
+          "pv_kwh": 0.0,
+          "load_kwh": 1.0,
+          "erwartet": {
+            "bewertung_ct_kwh": 23.98,
+            "bestand_eur": 0.24,
+            "mit_bestand_eur": -0.01,
+            "gruende": ["wenig_sonne"]
+          }
+        }
+      ],
+      "zeitpunkte": [
+        {
+          "name": "Rückblick Do 08.10. - Lücke am 06.10. leert Monat und 7 Tage",
+          "angefragt": "2026-10-08",
+          "laeuft": false,
+          "erwartet": {
+            "heute": {
+              "tag": "2026-10-08",
+              "mit_bestand_eur": -0.01,
+              "gruende": ["wenig_sonne"]
+            },
+            "monat": {
+              "von": "2026-10-01",
+              "bis": "2026-10-08",
+              "mit_bestand_eur": null
+            },
+            "sieben": {
+              "von": "2026-10-02",
+              "bis": "2026-10-08",
+              "mit_bestand_eur": null
+            },
+            "tage": ["2026-10-08", "2026-10-07", "2026-10-06", "2026-10-05"]
+          }
+        },
+        {
+          "name": "Rückblick Mo 05.10. - vor der Lücke",
+          "angefragt": "2026-10-05",
+          "laeuft": false,
+          "erwartet": {
+            "heute": {
+              "tag": "2026-10-05",
+              "mit_bestand_eur": -0.01,
+              "gruende": ["wenig_sonne"]
+            },
+            "monat": {
+              "von": "2026-10-01",
+              "bis": "2026-10-05",
+              "mit_bestand_eur": -0.01
+            },
+            "sieben": {
+              "von": "2026-09-29",
+              "bis": "2026-10-05",
+              "mit_bestand_eur": -0.01
+            },
+            "tage": ["2026-10-05"]
+          }
+        },
+        {
+          "name": "Fr 09.10., laufend vor dem ersten Eimer",
+          "angefragt": "2026-10-09",
+          "laeuft": true,
+          "erwartet": {
+            "heute": null,
+            "monat": {
+              "von": "2026-10-01",
+              "bis": "2026-10-09",
+              "mit_bestand_eur": null
+            },
+            "sieben": {
+              "von": "2026-10-02",
+              "bis": "2026-10-08",
+              "mit_bestand_eur": null
+            },
+            "tage": ["2026-10-08", "2026-10-07", "2026-10-06", "2026-10-05"]
+          }
+        }
+      ]
     }
   }
 }

@@ -96,6 +96,7 @@ export function GeldKachel({
           {money.attribution}
         </p>
       )}
+      {money?.attributionZweit && <p className="vp-k-sub">{money.attributionZweit}</p>}
       {money?.winterSatz && <p className="vp-k-sub">{money.winterSatz}</p>}
       {money?.attributionInterim && <Marke>Zwischenstand</Marke>}
     </Kachel>

@@ -7901,6 +7901,130 @@ class PortalApiTest {
         }
     }
 
+    /**
+     * Die Steuerung MIT BESTAND auf beiden Routen (Bedienkonzept
+     * vp-herzogau-p3-kachel-konzept, Captain 14.10.2026 P3-1 bis P3-4 A):
+     * derselbe Tag wie oben, aber mit gemessenem Ladestand und einem
+     * Monatsanker (50 % am Monatsende davor), damit der Bestand rechenbar ist -
+     *
+     * <pre>
+     *   Anker 5,0 kWh = Vergleichsspeicher 00:00 → Vorsprung 00:00 = 0
+     *   Slot A  pv 3,0 load 1,0  stur laedt 1,25 → 6,25   gemessen 60 %
+     *   Slot B  pv 0,0 load 2,0  stur entlaedt 1,25 → 5,0 gemessen 40 % = 4,0 kWh
+     *   Kasse  savedSteuerung = 0,200 − 0,125 = 0,075 → 0,08 €
+     *   Bestand (4,0 − 5,0 − 0) × 30 ct × √0,92 = −1,0 × 28,77 ct = −0,29 €
+     *   mit Bestand 0,08 − 0,29 = −0,21 €, Grund anders_geladen
+     * </pre>
+     *
+     * <p>Die Anlagen-Route trägt den Block {@code steuerungZeitraum} (Monat,
+     * 7 Tage, Tag, Tage des Fensters), die Mandanten-Route die Tageswerte und
+     * den Monat, beide die Zahl des gewählten Zeitraums mit Bestand.
+     */
+    @Test
+    void steuerungMitBestandAufBeidenRouten() {
+        String demo = token("demo", "demo");
+        String tenantA = "00000000-0000-0000-0000-000000000001";
+        String site = createSiteWithTarif(demo, "Mit Bestand Tagesreihe", "CH",
+                "eigenverbrauch", "fest", "30");
+        try {
+            exec("INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw, "
+                    + "max_discharge_kw, roundtrip_efficiency_pct) VALUES ('" + tenantA + "', '"
+                    + site + "', 'battery', 10, 5, 5, 100)");
+            String noon = "(date_trunc('day', now() AT TIME ZONE 'Europe/Berlin')"
+                    + " + interval '12 hours') AT TIME ZONE 'Europe/Berlin'";
+            for (String offset : new String[] {"0", "15"}) {
+                exec("INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh,"
+                        + " currency, source) SELECT " + noon + " + interval '" + offset
+                        + " minutes', 'CH', 'PT15M', 200.0, 'EUR', 'test'"
+                        + " ON CONFLICT (bidding_zone, resolution, ts)"
+                        + " DO UPDATE SET price_eur_mwh = EXCLUDED.price_eur_mwh");
+            }
+            // Der Monatsanker: 50 % im letzten Eimer vor dem Monatsersten (ohne Energie).
+            exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, soc_last_pct,"
+                    + " n_samples) SELECT (date_trunc('month', now() AT TIME ZONE 'Europe/Berlin')"
+                    + " AT TIME ZONE 'Europe/Berlin') - interval '15 minutes', '" + tenantA
+                    + "', '" + site + "', 50, 90 ON CONFLICT DO NOTHING");
+            exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh,"
+                    + " grid_import_kwh, grid_export_kwh, battery_charge_kwh,"
+                    + " battery_discharge_kwh, soc_last_pct, n_samples) SELECT " + noon + ", '"
+                    + tenantA + "', '" + site + "', 3.0, 1.0, 0.0, 0.0, 2.0, 0.0, 60, 90"
+                    + " ON CONFLICT DO NOTHING");
+            exec("INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh,"
+                    + " grid_import_kwh, grid_export_kwh, battery_charge_kwh,"
+                    + " battery_discharge_kwh, soc_last_pct, n_samples) SELECT " + noon
+                    + " + interval '15 minutes', '" + tenantA + "', '" + site
+                    + "', 0.0, 2.0, 0.0, 0.0, 0.0, 2.0, 40, 90 ON CONFLICT DO NOTHING");
+            org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-9);
+            java.time.LocalDate heute = java.time.LocalDate.now(
+                    com.voltpilot.api.history.HistoryRange.ZONE);
+            String today = heute.toString();
+
+            Map<String, Object> anlage = siteEarningsDay(demo, site, today);
+            assertThat(num(anlage, "savedSteuerungEur")).isCloseTo(0.075, eps);
+            assertThat(num(anlage, "savedSteuerungMitBestandEur")).isCloseTo(-0.21, eps);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> zeitraum = (Map<String, Object>) anlage.get("steuerungZeitraum");
+            assertThat(zeitraum).isNotNull();
+            assertThat(num(zeitraum, "bezugCtKwh")).isCloseTo(30.0, eps);
+            assertThat(num(zeitraum, "bewertungCtKwh")).isCloseTo(28.77, eps);
+            @SuppressWarnings("unchecked")
+            Map<String, Object> tag = (Map<String, Object>) zeitraum.get("heute");
+            assertThat(tag).containsEntry("tag", today)
+                    .containsEntry("gruende", List.of("anders_geladen"));
+            assertThat(num(tag, "steuerungEur")).isCloseTo(0.08, eps);
+            assertThat(num(tag, "vorsprungStartKwh")).isCloseTo(0.0, eps);
+            assertThat(num(tag, "vorsprungEndeKwh")).isCloseTo(-1.0, eps);
+            assertThat(num(tag, "bestandEur")).isCloseTo(-0.29, eps);
+            assertThat(num(tag, "mitBestandEur")).isCloseTo(-0.21, eps);
+            // „Heute bis 12:30“: das Ende des letzten gemessenen Eimers.
+            assertThat(java.time.Instant.parse((String) tag.get("messungBis"))).isEqualTo(
+                    heute.atTime(12, 30).atZone(com.voltpilot.api.history.HistoryRange.ZONE)
+                            .toInstant());
+            @SuppressWarnings("unchecked")
+            Map<String, Object> monat = (Map<String, Object>) zeitraum.get("monat");
+            assertThat(monat).containsEntry("von", heute.withDayOfMonth(1).toString())
+                    .containsEntry("bis", today);
+            assertThat(num(monat, "mitBestandEur")).isCloseTo(-0.21, eps);
+            // Der Tag läuft noch: die 7 Tage davor - ohne gemessenen Tag leer, nie 0.
+            @SuppressWarnings("unchecked")
+            Map<String, Object> sieben = (Map<String, Object>) zeitraum.get("sieben");
+            assertThat(sieben).containsEntry("von", heute.minusDays(7).toString())
+                    .containsEntry("bis", heute.minusDays(1).toString())
+                    .containsEntry("mitBestandEur", null);
+            assertThat(zeitraum).containsEntry("tage", List.of());
+
+            Map<String, Object> body = rest.exchange(
+                    url("/api/v1/earnings?range=day"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(demo)),
+                    new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
+            Map<String, Object> row = siteRow(body, site);
+            assertThat(num(row, "savedSteuerungMitBestandEur")).isCloseTo(-0.21, eps);
+            assertThat(num(row, "steuerungMonatMitBestandEur")).isCloseTo(-0.21, eps);
+            assertThat(row).doesNotContainKey("steuerungZeitraum");
+            Map<String, Object> entry = list(row, "dailySaved").stream()
+                    .filter(x -> today.equals(x.get("day"))).findFirst().orElseThrow();
+            assertThat(num(entry, "mitBestandEur")).isCloseTo(-0.21, eps);
+
+            // Jeder andere Zeitraum: dieselbe Zählweise, kein Tagesblock.
+            Map<String, Object> monatAnlage = rest.exchange(
+                    url("/api/v1/sites/" + site + "/earnings?range=month"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(demo)),
+                    new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
+            assertThat(num(monatAnlage, "savedSteuerungMitBestandEur")).isCloseTo(-0.21, eps);
+            assertThat(monatAnlage).containsEntry("steuerungZeitraum", null);
+            Map<String, Object> monatFlotte = siteRow(rest.exchange(
+                    url("/api/v1/earnings?range=month"), HttpMethod.GET,
+                    new HttpEntity<>(bearer(demo)),
+                    new ParameterizedTypeReference<Map<String, Object>>() {}).getBody(), site);
+            assertThat(num(monatFlotte, "savedSteuerungMitBestandEur")).isCloseTo(-0.21, eps);
+            assertThat(monatFlotte).containsEntry("steuerungMonatMitBestandEur", null);
+        } finally {
+            exec("DELETE FROM telemetry_rollup_15m WHERE site_id = '" + site + "'");
+            exec("DELETE FROM asset WHERE site_id = '" + site + "'");
+            exec("DELETE FROM site WHERE id = '" + site + "'");
+        }
+    }
+
     private Map<String, Object> siteEarningsDay(String token, String siteId, String at) {
         ResponseEntity<Map<String, Object>> res = rest.exchange(
                 url("/api/v1/sites/" + siteId + "/earnings?range=day&at=" + at), HttpMethod.GET,

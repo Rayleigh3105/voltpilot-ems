@@ -408,13 +408,23 @@ export function tarifArtLabel(tarifArt: TarifArt, tarifParamCtKwh: number | null
  * es fehlen die Batterie-Stammdaten) — die Karte schweigt dann über Geld,
  * statt eine 0 oder eine Zahl auf der falschen Messlatte zu zeigen.
  */
-export function siteEarnText(kind: PlantKind, steuerungTodayEur: number | null): string | null {
-  if (steuerungTodayEur == null) return null;
-  // A value that ROUNDS to zero must render "+0,00 €", never "-0,00 €".
-  const value = Math.abs(steuerungTodayEur) < 0.005 ? 0 : steuerungTodayEur;
-  const signed = `${value >= 0 ? '+' : ''}${eurAmount(value)}`;
+export function siteEarnText(
+  kind: PlantKind,
+  steuerungEur: number | null,
+  /**
+   * `monat` = der laufende Monat mit Bestand (Bedienkonzept P3, HZ-3 A und
+   * P3-4 A: vorn steht der Monat, nie die Tageszahl); `heute` nur noch für
+   * ein älteres Backend ohne `steuerungMonatMitBestandEur`.
+   */
+  wann: 'heute' | 'monat' = 'heute',
+): string | null {
+  if (steuerungEur == null) return null;
+  // A value that ROUNDS to zero must render "+0,00 €", never "−0,00 €"; the
+  // minus is U+2212 like the Erlöse page (Bedienkonzept P3, Nebenbefund 2).
+  const value = Math.abs(steuerungEur) < 0.005 ? 0 : steuerungEur;
+  const signed = value >= 0 ? `+${eurAmount(value)}` : `−${eurAmount(Math.abs(value))}`;
   const verb = kind === 'direktvermarktung' ? 'mehr verdient' : 'gespart';
-  return `Heute ${signed} ${verb} durch die Steuerung`;
+  return `${wann === 'monat' ? 'Diesen Monat' : 'Heute'} ${signed} ${verb} durch die Steuerung`;
 }
 
 /**

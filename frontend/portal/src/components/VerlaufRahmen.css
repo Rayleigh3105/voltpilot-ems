@@ -168,6 +168,28 @@
   color: var(--vp-text-dark);
   font-weight: var(--vp-c-fw-600);
 }
+/* Die zweite Zahl einer Kachel (Erlöse: „letzte 7 Tage + 9,45 €“ unter dem
+   Monat, Bedienkonzept P3-1 A): immer Tinte, die Farbe trägt nur die große
+   Zahl; das Vorzeichen allein sagt die Richtung. */
+.vp-vr-kpi-z {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 2px var(--vp-c-space-2);
+  min-width: 0;
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-text-dark);
+  font-variant-numeric: tabular-nums;
+}
+.vp-vr-kpi-z > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vp-vr-kpi-z b {
+  font-weight: var(--vp-c-fw-600);
+  white-space: nowrap;
+}
 
 /* --- Zeilen und Karten ---------------------------------------------------- */
 .vp-vr-row {
@@ -612,6 +634,12 @@
   .vp-vr-kpi:not(.haupt) > .vp-vr-kpi-s {
     grid-column: 1;
     grid-row: 2;
+  }
+  /* Die zweite Zahl steht als eigene Zeile über die ganze Breite unter der
+     Listenzeile — sonst läge sie auf der Unterzeile. */
+  .vp-vr-kpi:not(.haupt) > .vp-vr-kpi-z {
+    grid-column: 1 / -1;
+    grid-row: 3;
   }
   .vp-vr-kpi.haupt .vp-vr-kpi-v {
     font-size: var(--vp-c-fs-hero-phone);

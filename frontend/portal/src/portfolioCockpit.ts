@@ -37,6 +37,7 @@ import { berlinDay, savedOnDay, siteLiveFresh, type FleetKind, type FleetSentenc
 import { eur, fmtNum, seitDauer } from './format';
 import type { KennzahlZelle } from './kennzahl';
 import { geldWort, speicherAussage, type SpeicherAussage } from './speicherAussage';
+import { flotteMitBestand } from './steuerungZeitraum';
 import { batteryState, deriveBatteryKw, gridState } from './live';
 import { activeModes } from './surface';
 import { portfolioSurfaceInput, siteSoc, siteStatus } from './portfolio';
@@ -297,6 +298,18 @@ export interface PortfolioKennzahlen {
    * Monatszeile „September + 116,94 €". null = nichts einzuordnen.
    */
   erloesHeuteEinordnung: string | null;
+  /**
+   * Die Zählweise MIT BESTAND (Bedienkonzept vp-herzogau-p3-kachel-konzept,
+   * Captain 14.10.2026 HZ-3 A und P3-4 A): vorn der laufende Monat, daneben
+   * die letzten 7 Tage und heute. `false` = älteres Backend, dann gilt die
+   * Tageszahl oben.
+   */
+  geldMitBestand: boolean;
+  /** Σ Monat mit Bestand über die beitragenden Anlagen; null ohne eine. */
+  erloesMonatEur: number | null;
+  erloesMonatAnlagen: number;
+  /** „letzte 7 Tage + 9,45 € · heute + 0,01 €“; null ohne beides. */
+  erloesMonatEinordnung: string | null;
   /** Σ vermiedene Spitze (EUR) über die Anlagen mit Lastspitzenkappung. */
   vermiedeneSpitzeEur: number | null;
   /** Σ vermiedene Spitze (kW). */
@@ -411,6 +424,7 @@ export function portfolioKennzahlen(
     (s: EarningsSite) => savedOnDay(s.dailySaved, heute) != null,
   );
   const erloesHeute = summe(beitragend.map((s) => savedOnDay(s.dailySaved, heute)));
+  const flotte = flotteMitBestand(geldSites, heute);
 
   const peakSites = geldSites.filter((s) => s.peakShaving?.avoidedEur != null);
 
@@ -430,6 +444,16 @@ export function portfolioKennzahlen(
     erloesHeuteEur: erloesHeute,
     erloesHeuteAnlagen: beitragend.length,
     erloesHeuteEinordnung: kachelEinordnung(beitragend, earnings?.to ?? null, now),
+    geldMitBestand: flotte.mitBestand,
+    erloesMonatEur: flotte.monatEur,
+    erloesMonatAnlagen: flotte.monatAnlagen,
+    erloesMonatEinordnung:
+      [
+        flotte.siebenEur == null ? null : `letzte 7 Tage ${geldWort(flotte.siebenEur)}`,
+        flotte.heuteEur == null ? null : `heute ${geldWort(flotte.heuteEur)}`,
+      ]
+        .filter((t): t is string => !!t)
+        .join(' · ') || null,
     vermiedeneSpitzeEur: summe(peakSites.map((s) => s.peakShaving?.avoidedEur ?? null)),
     vermiedeneSpitzeKw: summe(peakSites.map((s) => s.peakShaving?.avoidedKw ?? null)),
     vermiedeneSpitzeAnlagen: peakSites.length,
@@ -655,17 +679,25 @@ function namenListe(namen: readonly string[]): string {
  * eine zweite Regel daneben wäre genau die Doppeldeutigkeit, gegen die diese
  * Runde gebaut ist.
  */
-export function vorteilLabel(kind: FleetKind): string {
-  return kind === 'direktvermarktung' ? 'Mehrerlös heute' : 'Vorteil heute';
+export function vorteilLabel(kind: FleetKind, monat = false): string {
+  const wann = monat ? 'diesen Monat' : 'heute';
+  return kind === 'direktvermarktung' ? `Mehrerlös ${wann}` : `Vorteil ${wann}`;
 }
 
 /** Die Unterzeile des Vorteils — sie sagt den BEZUG, in beiden Flächen gleich. */
 export const VORTEIL_BEZUG = 'gegenüber Speicher ohne Steuerung';
 
-/** „+33,13" / „-0,80" / „0,00" — eine echte Null trägt kein Vorzeichen. */
+/** Derselbe Bezug mit Bestand (Bedienkonzept P3): der Bestand am Tagesende zählt mit. */
+export const VORTEIL_BEZUG_BESTAND = `${VORTEIL_BEZUG} · Bestand mitgezählt`;
+
+/**
+ * „+33,13" / „−0,80" / „0,00" — eine echte Null trägt kein Vorzeichen. Das
+ * Minus ist U+2212 wie auf der Erlöse-Seite (Bedienkonzept P3, Nebenbefund 2:
+ * die Übersicht schrieb einen Bindestrich).
+ */
 export function signiertesGeld(v: number): string {
   const wert = Math.abs(v) < 0.005 ? 0 : v;
-  return wert > 0 ? `+${eur(wert)}` : eur(wert);
+  return wert > 0 ? `+${eur(wert)}` : wert < 0 ? `−${eur(Math.abs(wert))}` : eur(0);
 }
 
 /**
@@ -679,16 +711,17 @@ export function vorteilUnterzeile(
   beitragend: number,
   anlagen: number,
   geldNamen: readonly string[] | null = null,
+  bezug: string = VORTEIL_BEZUG,
 ): string {
   if (geldNamen != null) {
     const deckung = anlagenText(beitragend, anlagen);
     if (geldNamen.length > 0 && geldNamen.length < anlagen && geldNamen.length <= 2) {
-      return `${VORTEIL_BEZUG} · ${deckung} · nur ${namenListe(geldNamen)}`;
+      return `${bezug} · ${deckung} · nur ${namenListe(geldNamen)}`;
     }
-    return `${VORTEIL_BEZUG} · ${deckung}`;
+    return `${bezug} · ${deckung}`;
   }
-  if (beitragend < anlagen && anlagen > 1) return `${VORTEIL_BEZUG} · ${beitragend} von ${anlagen} Anlagen`;
-  return anlagen > 1 ? `${VORTEIL_BEZUG} · ${anlagen} Anlagen` : VORTEIL_BEZUG;
+  if (beitragend < anlagen && anlagen > 1) return `${bezug} · ${beitragend} von ${anlagen} Anlagen`;
+  return anlagen > 1 ? `${bezug} · ${anlagen} Anlagen` : bezug;
 }
 
 /** Die Fussnote des Netzbezugs — die Summe nennt, über wie viele Anlagen sie geht. */
@@ -735,6 +768,20 @@ export function leistenZellen(input: {
     if (!bausteinOrt(id).leiste) continue;
     switch (id) {
       case 'erloese':
+        // Mit Bestand (P3-4 A): vorn der Monat, eingeordnet durch 7 Tage und heute.
+        if (k.geldMitBestand) {
+          if (k.erloesMonatEur == null) break;
+          out.push({
+            id,
+            label: vorteilLabel(input.tonalitaet, true),
+            wert: signiertesGeld(k.erloesMonatEur),
+            einheit: '€',
+            einordnung: k.erloesMonatEinordnung,
+            unterzeile: vorteilUnterzeile(k.erloesMonatAnlagen, anlagen, k.geldNamen, VORTEIL_BEZUG_BESTAND),
+            lead: true,
+          });
+          break;
+        }
         if (k.erloesHeuteEur == null) break;
         out.push({
           id,
@@ -870,7 +917,8 @@ export const SPALTEN_KOPF: Record<SpaltenId, { titel: string; einheit: string | 
   // ⚠ Die Zelle der Leiste zeigt die ENERGIE des Tages, die Zeile die
   // LEISTUNG jetzt — dieselbe Grösse „Netz", zwei Zeitbezüge, ein Baustein.
   'netz-heute': { titel: 'Netz jetzt', einheit: 'kW' },
-  erloese: { titel: 'Heute', einheit: '€' },
+  // Mit Bestand (P3-4 A): die Spalte zeigt den laufenden Monat, nie den Tag.
+  erloese: { titel: 'Monat', einheit: '€' },
 };
 
 /**
@@ -896,7 +944,7 @@ export function tabellenSpalten(zeilen: readonly AnlagenZeile[], sichtbar: reado
     'verbrauch-heute': (z) => z.verbrauchKwh != null,
     speicher: (z) => z.ladestandPct != null,
     'netz-heute': (z) => z.netz != null,
-    erloese: (z) => z.heuteEur != null,
+    erloese: (z) => z.monatEur != null,
   };
   return SPALTEN_ORDNUNG.filter((s) => an.has(s) && zeilen.some(gefuellt[s]));
 }
@@ -931,9 +979,12 @@ export interface AnlagenZeile {
   ladestandStand: string | null;
   /** Netz JETZT: Richtung + Betrag; null = kein frischer Messwert. */
   netz: { richtung: 'bezug' | 'einspeisung' | 'ausgeglichen'; kw: number } | null;
-  heuteEur: number | null;
-  /** Das Kurzwort des Grundes unter einem Minus-Tag („gestern verkauft"); null = keiner. */
-  heuteGrund: string | null;
+  /**
+   * Die Steuerung des laufenden Monats MIT BESTAND (Bedienkonzept P3, P3-4 A:
+   * die Spalte „Monat“ statt „Heute“); null ohne Dreiteilung, bei einer Lücke
+   * oder bei einem älteren Backend.
+   */
+  monatEur: number | null;
   zustand: ZeilenZustand;
 }
 
@@ -1035,10 +1086,7 @@ function zeileVon(
       netzWort === 'unbekannt' || live?.gridKw == null
         ? null
         : { richtung: netzWort, kw: Math.abs(live.gridKw) },
-    heuteEur: ctx.earnings ? savedOnDay(ctx.earnings.dailySaved, ctx.heute) : null,
-    heuteGrund: ctx.earnings
-      ? (flottenTagesAussage(ctx.earnings, ctx.to, ctx.now)?.grundKurz ?? null)
-      : null,
+    monatEur: ctx.earnings?.steuerungMonatMitBestandEur ?? null,
     zustand: {
       wort: status.label,
       alter: status.tone === 'ok' ? null : seitDauer(site.lastSeenAt, ctx.now),

@@ -135,11 +135,17 @@ export function Kennzahl({
   ton,
   info,
   hervor,
+  zweit,
 }: {
   label: string;
   /** Der formatierte Wert samt Einheit; „—", wenn es keinen gibt. */
   wert: ReactNode;
   unter?: ReactNode;
+  /**
+   * Eine zweite Zahl unter der Unterzeile, in Tinte (Erlöse: „letzte 7 Tage
+   * + 9,45 €“ unter dem Monat). Am Telefon steht sie über die ganze Breite.
+   */
+  zweit?: ReactNode;
   /** Die Rollenfarbe der Reihe, zu der die Zahl gehört (Kennung, nie Textfarbe). */
   farbe?: string | null;
   /** Kennung als Linie statt Fläche (Zahlen, die im Diagramm Linie oder Punkt sind). */
@@ -167,6 +173,7 @@ export function Kennzahl({
       </div>
       <div className={`vp-vr-kpi-v${ton ? ` ${ton}` : ''}`}>{wert}</div>
       {unter != null && unter !== '' && <div className="vp-vr-kpi-s">{unter}</div>}
+      {zweit != null && zweit !== '' && <div className="vp-vr-kpi-z">{zweit}</div>}
     </div>
   );
 }

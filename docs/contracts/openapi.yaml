@@ -25426,6 +25426,18 @@ components:
               day: { type: string, format: date }
               savedEur: { type: number }
               savedSteuerungEur: { type: number, nullable: true }
+              mitBestandEur:
+                type: number
+                nullable: true
+                description: >
+                  Derselbe Tag "mit Bestand bewertet" (Bedienkonzept
+                  vp-herzogau-p3-kachel-konzept, Captain 14.10.2026 P3-4 A):
+                  savedSteuerungEur + Aenderung des Vorsprungs auf den
+                  Vergleichsspeicher x Bezugspreis x Wurzel(0,92), auf den
+                  Cent; aus diesen Tagen bildet die Uebersicht die letzten 7
+                  Tage. Null ohne Dreiteilung oder bei einer Luecke (kein
+                  gemessener Ladestand am Tagesrand). Regeln:
+                  docs/contracts/steuerung-tag-vectors.json, Block mit_bestand.
         tarifArt:
           type: string
           enum: [dynamisch, fest, ohne]
@@ -25610,6 +25622,28 @@ components:
             anders_geladen allein - ein Minus hat nie eine leere Liste. [] bei
             einem Tag ab Null; null, wenn nicht berechnet (anderes range,
             keine Dreiteilung).
+        savedSteuerungMitBestandEur:
+          type: number
+          nullable: true
+          description: >
+            Die Steuerung des gewaehlten Zeitraums "mit Bestand bewertet"
+            (Bedienkonzept vp-herzogau-p3-kachel-konzept, Captain 14.10.2026
+            P3-2 A und P3-4 A - eine Zaehlweise fuer Tag, 7 Tage, Monat und
+            jeden Zeitraum): Summe seiner Berliner Tage, je Tag
+            savedSteuerungEur + (Vorsprung 24:00 - Vorsprung 00:00) x
+            Bezugspreis x Wurzel(0,92), Kasse und Bestand je auf den Cent.
+            Null ohne Dreiteilung oder wenn einem Tag ein gemessener
+            Ladestand am Rand fehlt. Regeln:
+            docs/contracts/steuerung-tag-vectors.json, Block mit_bestand.
+        steuerungMonatMitBestandEur:
+          type: number
+          nullable: true
+          description: >
+            Nur range=day: Monatserster bis einschliesslich dieses Tages mit
+            Bestand - dieselbe Zahl wie steuerungZeitraum.monat der
+            Anlagen-Route. Aus dem Tages-Walk der Route, kein zweiter Walk.
+            Null bei einer Luecke, ohne Dreiteilung oder fuer jedes andere
+            range.
     SiteEarnings:
       type: object
       description: >
@@ -25859,6 +25893,27 @@ components:
             anders_geladen allein - ein Minus hat nie eine leere Liste. [] bei
             einem Tag ab Null; null, wenn nicht berechnet (anderes range,
             keine Dreiteilung).
+        savedSteuerungMitBestandEur:
+          type: number
+          nullable: true
+          description: >
+            Die Steuerung des gewaehlten Zeitraums "mit Bestand bewertet"
+            (Bedienkonzept vp-herzogau-p3-kachel-konzept, Captain 14.10.2026
+            P3-2 A und P3-4 A - eine Zaehlweise fuer Tag, 7 Tage, Monat und
+            jeden Zeitraum): Summe seiner Berliner Tage, je Tag
+            savedSteuerungEur + (Vorsprung 24:00 - Vorsprung 00:00) x
+            Bezugspreis x Wurzel(0,92), Kasse und Bestand je auf den Cent.
+            Null ohne Dreiteilung oder wenn einem Tag ein gemessener
+            Ladestand am Rand fehlt. Regeln:
+            docs/contracts/steuerung-tag-vectors.json, Block mit_bestand.
+        steuerungZeitraum:
+          allOf: [{ $ref: "#/components/schemas/SteuerungZeitraum" }]
+          nullable: true
+          description: >
+            Nur range=day: Monat, letzte 7 Tage und der Tag selbst mit
+            Bestand samt der Tage des 7-Tage-Fensters - aus demselben Walk wie
+            die Tageszahl, auch vor dem ersten Eimer des Tages. Null fuer
+            jedes andere range oder ohne Batterie-Stammdaten.
         series:
           type: array
           description: >
@@ -25879,6 +25934,109 @@ components:
             The running billing period's peak-shaving proof; null unless the
             module is active. Range-INDEPENDENT, so the surface must label its
             own period and never add it into the period result.
+    SteuerungZeitraum:
+      type: object
+      description: >
+        Die Steuerung mit Bestand rund um den angefragten Tag (Bedienkonzept
+        vp-herzogau-p3-kachel-konzept §4.2, Captain 14.10.2026 HZ-3 A und P3-1
+        bis P3-4 A): vorn stehen der laufende Monat und die letzten 7 Tage,
+        der Tag steht in der Detailansicht. Alle Zahlen in EINER Zaehlweise -
+        je Tag Kasse (savedSteuerungEur) + (Vorsprung 24:00 - Vorsprung
+        00:00) x Bewertung, Kasse und Bestand je auf den Cent; Monat und 7
+        Tage sind die Summen ihrer Tage. Am Monatsersten beginnt der Tag beim
+        Vorsprung nach dem Monatsanker. Fehlt ein gemessener Ladestand an
+        einem Tagesrand, hat der Tag keine Zahl und jede Summe, die ihn
+        braucht, ist null; ein Tag ohne Messung fehlt und zaehlt nicht.
+        Regeln und Faelle: docs/contracts/steuerung-tag-vectors.json, Block
+        mit_bestand.
+      properties:
+        bezugCtKwh:
+          type: number
+          nullable: true
+          description: >
+            Mittlerer Bezugspreis des Tages (ct/kWh, auf 0,01 ct); vor seinem
+            ersten Eimer der des juengsten gemessenen Tages davor.
+        bewertungCtKwh:
+          type: number
+          nullable: true
+          description: >
+            bezugCtKwh x Wurzel(0,92) (Entlade-Wirkungsgrad 95,9 %) auf 0,01 ct
+            - so viel ist eine gespeicherte kWh wert (fest 25 ct -> 23,98 ct).
+            Nicht lambda.
+        monat: { $ref: "#/components/schemas/SteuerungFenster" }
+        sieben:
+          allOf: [{ $ref: "#/components/schemas/SteuerungFenster" }]
+          description: >
+            Die 7 abgeschlossenen Berliner Kalendertage: laeuft der angefragte
+            Tag noch, die 7 davor; sonst die 7 bis einschliesslich des Tages.
+            Kalendertage, nie 7 x 24 h.
+        heute:
+          allOf: [{ $ref: "#/components/schemas/SteuerungTag" }]
+          nullable: true
+          description: >
+            Der angefragte Tag (beim Zurueckblaettern der Tag D); null vor
+            seinem ersten Eimer.
+        tage:
+          type: array
+          description: >
+            Die gemessenen Tage des 7-Tage-Fensters, neuester zuerst; ihre
+            Summe ist sieben.mitBestandEur.
+          items: { $ref: "#/components/schemas/SteuerungTag" }
+    SteuerungFenster:
+      type: object
+      properties:
+        von: { type: string, format: date }
+        bis: { type: string, format: date }
+        mitBestandEur:
+          type: number
+          nullable: true
+          description: Summe der Tage mit Bestand; null bei einer Luecke oder ohne gemessenen Tag.
+    SteuerungTag:
+      type: object
+      properties:
+        tag: { type: string, format: date }
+        steuerungEur:
+          type: number
+          nullable: true
+          description: Die Kassenrechnung des Tages (savedSteuerungEur), auf den Cent.
+        vorsprungStartKwh:
+          type: number
+          nullable: true
+          description: >
+            Gemessener Ladestand minus Vergleichsspeicher um 00:00 (ein
+            Rueckstand ist negativ); am ersten Tag nach dem Monatsanker der
+            Stand nach dem Anker. Null ohne gemessenen Ladestand.
+        vorsprungEndeKwh:
+          type: number
+          nullable: true
+          description: Derselbe Vorsprung nach dem letzten gemessenen Eimer des Tages.
+        bezugCtKwh: { type: number, nullable: true }
+        bewertungCtKwh: { type: number, nullable: true }
+        bestandEur:
+          type: number
+          nullable: true
+          description: (vorsprungEndeKwh - vorsprungStartKwh) x bewertungCtKwh / 100, auf den Cent.
+        mitBestandEur:
+          type: number
+          nullable: true
+          description: steuerungEur + bestandEur; null bei einer Luecke.
+        gruende:
+          type: array
+          items:
+            type: string
+            enum: [gestern_verkauft, wenig_sonne, anders_geladen]
+          description: >
+            gestern_verkauft, wenn der Vergleichsspeicher den Tag mindestens
+            10 kWh voller beginnt (immer, nicht nur bei Minus); bei einem
+            Minus mit Bestand dazu wenig_sonne, sonst anders_geladen.
+            Hoechstens zwei.
+        messungBis:
+          type: string
+          format: date-time
+          nullable: true
+          description: >
+            Ende des letzten gemessenen Eimers des Tages - der Moment von
+            vorsprungEndeKwh ("Heute bis 08:15").
     PeakShaving:
       type: object
       description: >

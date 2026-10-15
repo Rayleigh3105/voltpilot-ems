@@ -414,9 +414,18 @@ describe('siteEarnText (per-site wording, measured)', () => {
     expect(siteEarnText('eigenverbrauch', null)).toBeNull();
   });
 
-  it('keeps a negative measured value honest (losses debit VoltPilot)', () => {
+  it('keeps a negative measured value honest (losses debit VoltPilot), with a real minus (U+2212)', () => {
     expect(siteEarnText('direktvermarktung', -0.2)).toBe(
-      'Heute -0,20\u00a0\u20ac mehr verdient durch die Steuerung',
+      'Heute \u22120,20\u00a0\u20ac mehr verdient durch die Steuerung',
+    );
+  });
+
+  it('mit Bestand steht der laufende Monat vorn, nie die Tageszahl (Bedienkonzept P3, HZ-3 A)', () => {
+    expect(siteEarnText('eigenverbrauch', 25.86, 'monat')).toBe(
+      'Diesen Monat +25,86\u00a0\u20ac gespart durch die Steuerung',
+    );
+    expect(siteEarnText('direktvermarktung', -0.29, 'monat')).toBe(
+      'Diesen Monat \u22120,29\u00a0\u20ac mehr verdient durch die Steuerung',
     );
   });
 

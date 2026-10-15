@@ -534,6 +534,82 @@
   overflow-wrap: anywhere;
 }
 
+/*
+ * „Tag für Tag“ (Bedienkonzept P3, P3-3 A): die 7 Tage des Fensters, neuester
+ * zuerst, je Zahl mit Bestand und Grund-Wort, dann die Summe. Alles in Tinte —
+ * die Zeilen ordnen ein, sie warnen nicht.
+ */
+.vp-c-sp-liste {
+  margin: 8px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  min-width: 0;
+}
+
+.vp-c-sp-liste-kopf {
+  margin: 0 0 4px;
+  font-size: var(--vp-erl-fs-14, 14px);
+  font-weight: var(--vp-erl-fw-600, 600);
+  line-height: var(--vp-erl-lh-text, 1.5);
+  color: var(--vp-c-fg, #1e293b);
+}
+
+.vp-c-sp-liste ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.vp-c-sp-liste li,
+.vp-c-sp-summe {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  column-gap: 12px;
+  font-size: var(--vp-erl-fs-14, 14px);
+  line-height: var(--vp-erl-lh-text, 1.5);
+  min-width: 0;
+}
+
+.vp-c-sp-tag {
+  color: var(--vp-c-muted-fg, #475569);
+  font-variant-numeric: tabular-nums;
+  min-width: 0;
+}
+
+.vp-c-sp-tag-wert {
+  justify-self: end;
+  color: var(--vp-c-fg, #1e293b);
+  font-weight: var(--vp-erl-fw-600, 600);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.vp-c-sp-tag-grund {
+  grid-column: 1 / -1;
+  color: var(--vp-c-muted-fg, #475569);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-c-sp-summe {
+  margin: 6px 0 0;
+  padding-top: 6px;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  color: var(--vp-c-fg, #1e293b);
+  font-weight: var(--vp-erl-fw-600, 600);
+}
+
+.vp-c-sp-fuss {
+  margin: 6px 0 0;
+  font-size: var(--vp-erl-fs-14, 14px);
+  line-height: var(--vp-erl-lh-text, 1.5);
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
+
 /* ===========================================================================
  * 4 · PREISE & VERGÜTUNG — flache Karte, EIN Aufklapper
  * ========================================================================= */

@@ -28,6 +28,8 @@ import {
 import { speicherAussage } from '../speicherAussage';
 import { usePortfolioHistorie } from '../usePortfolioHistorie';
 import { berlinDay } from '../fleet';
+import { flotteMitBestand } from '../steuerungZeitraum';
+import { portfolioSteuerungMonat } from '../portfolioSeite';
 import { KundenUebersicht } from './portfolio/KundenUebersicht';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { AnlageAnlegenDrawer } from './AnlageAnlegenDrawer';
@@ -329,7 +331,7 @@ export function PortfolioCockpit({
   }
 
   const bloecke = uebersichtBloecke(layout.resolved.order, verfuegbar, CANONICAL_PORTFOLIO);
-  const heute = heuteKarte({
+  const heuteBasis = heuteKarte({
     earnings,
     sites: liste,
     overview,
@@ -345,6 +347,24 @@ export function PortfolioCockpit({
         { now, laeuft: true },
       ),
   });
+  // Mit Bestand (Bedienkonzept P3, HZ-3 A): vorn Monat und 7 Tage, nie die Tageszahl.
+  const ids = new Set(liste.map((s) => s.id));
+  const flotte = earnings
+    ? flotteMitBestand(
+        earnings.sites.filter((s) => ids.has(s.id)),
+        berlinDay(now),
+      )
+    : null;
+  const heute =
+    flotte?.mitBestand && heuteBasis.aggregat
+      ? {
+          ...heuteBasis,
+          steuerung: portfolioSteuerungMonat(
+            flotte,
+            heuteBasis.aggregat.zeilen.filter((z) => z.zustand === 'daten').length,
+          ),
+        }
+      : heuteBasis;
   const historien = tagesHistorie.daten;
   return (
     <>

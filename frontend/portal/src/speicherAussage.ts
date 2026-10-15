@@ -33,7 +33,7 @@
  * Backend, das die Felder gar nicht kennt, bekommt gar keine Aussage
  * (`null`) — ein fehlendes FELD ist kein fehlendes STAMMDATUM.
  */
-import type { PlantKind } from './api';
+import type { PlantKind, SteuerungZeitraum } from './api';
 import { BESTAND_BADGE, bestandZeile, type BestandEingabe } from './erloesKomposition';
 import { eurAmount, fmtNum, NBSP } from './format';
 
@@ -115,6 +115,33 @@ export type SteuerungGrund = (typeof STEUERUNG_GRUENDE)[number];
 /** Höchstens so viele Gründe stehen in einer Zeile (Konzept k1 E3 = A). */
 export const GRUENDE_HOECHSTENS = 2;
 
+/**
+ * Die Worte zu den Grund-Kennungen MIT BESTAND (Bedienkonzept
+ * vp-herzogau-p3-kachel-konzept §3; Regeln in
+ * `docs/contracts/steuerung-tag-vectors.json`, Block `mit_bestand`):
+ * „gestern verkauft, heute nachgekauft“ steht immer, wenn die Regel greift -
+ * es erklärt den Nachtbezug, nicht mehr ein Minus. Eine fremde Kennung bleibt
+ * stumm.
+ */
+export const BESTAND_GRUND_WORT: Readonly<Record<string, string>> = {
+  gestern_verkauft: 'gestern verkauft, heute nachgekauft',
+  wenig_sonne: 'wenig Sonne',
+  anders_geladen: 'anders geladen und entladen',
+};
+
+/** Die Grund-Wörter eines Tages mit Bestand, höchstens zwei; leer ohne bekannten Grund. */
+export function bestandGrundWorte(gruende: readonly string[] | null | undefined): string[] {
+  if (!Array.isArray(gruende)) return [];
+  return gruende
+    .map((k) => BESTAND_GRUND_WORT[k])
+    .filter((w): w is string => !!w)
+    .slice(0, GRUENDE_HOECHSTENS);
+}
+
+/** Der Satz, wenn einem Tag ein gemessener Ladestand am Rand fehlt (Regel 5). */
+export const LADESTAND_FEHLT_SATZ =
+  'Für diesen Zeitraum fehlt an einem Tagesrand der gemessene Ladestand — ohne ihn gibt es keine Zahl mit Bestand.';
+
 /** Ein Anker des größeren Zeitraums: „September bisher + 116,94 €". */
 export interface SpeicherAnker {
   label: string;
@@ -191,6 +218,8 @@ export interface SpeicherAussage {
   hinweis: string | null;
   /** true = der Hinweis führt auf die Technik-Seite (Stammdaten nachtragen). */
   nachtragLink: boolean;
+  /** true = die Zahl ist mit Bestand bewertet (Bedienkonzept P3, P3-2 A). */
+  mitBestand: boolean;
 
   /* --- Kurzform für Cockpit + Steuerungs-Bereich --- */
   /** „Steuerung + 3,10 €" — EINE Zeile. */
@@ -228,6 +257,19 @@ export interface SpeicherEingabe extends BestandEingabe {
   steuerungMonatBisherEur?: number | null;
   steuerungPlannedEur?: number | null;
   steuerungGruende?: readonly string[] | null;
+  /**
+   * Die Zählweise MIT BESTAND (Bedienkonzept vp-herzogau-p3-kachel-konzept,
+   * P3-2 A „eine Zählweise“): steht das Feld in der Antwort (auch als `null`),
+   * IST es die Zahl der Fläche - die Kassenrechnung `savedSteuerungEur` bleibt
+   * dann nur Prüfsumme und Rechenschritt. `null` = nicht rechenbar (Lücke im
+   * Ladestand), nie eine 0. Fehlt das Feld (älteres Backend), gilt die
+   * Kassenrechnung wie bisher.
+   */
+  savedSteuerungMitBestandEur?: number | null;
+  /** Nur Anlagen-Route, `range=day`: Monat, 7 Tage und Tag mit Bestand. */
+  steuerungZeitraum?: SteuerungZeitraum | null;
+  /** Nur Mandanten-Route, `range=day`: der Monat bis zu diesem Tag mit Bestand. */
+  steuerungMonatMitBestandEur?: number | null;
 }
 
 export interface SpeicherKontext {
@@ -282,7 +324,8 @@ export function geldWort(v: number): string {
   return fest(tonWort(v).wort);
 }
 
-function anzeigeTonVon(eur: number, laeuft: boolean): SpeicherTon {
+/** Der Anzeige-Ton einer Steuerungszahl ({@link SpeicherTon}) — auch für die Zahlen mit Bestand. */
+export function anzeigeTonVon(eur: number, laeuft: boolean): SpeicherTon {
   if (laeuft) return 'neutral';
   if (Math.abs(eur) < SPEICHER_TOTBAND) return 'neutral';
   return eur > 0 ? 'ok' : 'warn';
@@ -455,7 +498,13 @@ export function speicherAussage(
   }
   const widerspruch = steuerungEur != null && !split;
 
-  const steuerung = split ? tonWort(steuerungEur) : null;
+  // Mit Bestand (P3-2 A): steht das Feld da, ist es DIE Zahl; die Kasse
+  // bleibt Prüfsumme. Ein `null` darin ist eine Lücke im Ladestand - dann
+  // „—“ mit Grund, nie die Kasse als Ersatz (zwei Zählweisen auf einer Fläche).
+  const mitBestand = split && money.savedSteuerungMitBestandEur !== undefined;
+  const bestandZahl = num(money.savedSteuerungMitBestandEur ?? null);
+  const luecke = mitBestand && bestandZahl == null;
+  const steuerung = !split ? null : mitBestand ? (luecke ? null : tonWort(bestandZahl)) : tonWort(steuerungEur);
 
   // Der GRUND wird nur genannt, wenn der Server ihn nennt. Ein fehlendes Feld
   // (älteres Backend) ist kein fehlendes Stammdatum — dann gibt es schlicht
@@ -463,7 +512,7 @@ export function speicherAussage(
   const grund: SteuerungSplitReason | null =
     split || widerspruch ? null : (money.steuerungSplitReason ?? null);
 
-  if (steuerung == null && grund == null) return null;
+  if (steuerung == null && grund == null && !luecke) return null;
 
   const wann = laeuft
     ? tag
@@ -476,16 +525,35 @@ export function speicherAussage(
   // Die EINORDNUNG (Konzept k1 §7, E1/E3 = A): der Grund kommt vom Server und
   // wird nur in Worte gesetzt — nie geraten, nie gecacht (der Grund eines
   // laufenden Tages kann am Abend kippen, z2 „Über die Paketgrenze" 1).
-  const gruende = tag && steuerung ? grundKennungen(money.steuerungGruende) : null;
-  const texte =
-    steuerung && steuerung.ton === 'minus' && gruende && gruende.length > 0
-      ? gruende.map((k) => grundText(k, money, steuerung.eur, laeuft))
-      : [];
+  //
+  // Mit Bestand gelten die Gründe des Tages aus `steuerungZeitraum` mit ihren
+  // eigenen Worten (auch über null: „gestern verkauft, heute nachgekauft“
+  // erklärt den Nachtbezug); die Regeln der Kassenrechnung treten zurück.
+  const gruende = mitBestand
+    ? null
+    : tag && steuerung
+      ? grundKennungen(money.steuerungGruende)
+      : null;
+  const bestandWorte =
+    mitBestand && tag && steuerung ? bestandGrundWorte(money.steuerungZeitraum?.heute?.gruende) : [];
+  const texte: GrundText[] =
+    bestandWorte.length > 0
+      ? bestandWorte.map((w) => ({ kurz: w, mitZahl: w, mitPaar: w }))
+      : steuerung && steuerung.ton === 'minus' && gruende && gruende.length > 0
+        ? gruende.map((k) => grundText(k, money, steuerung.eur, laeuft))
+        : [];
   const grundZeile = texte.length > 0 ? fest(texte.map((t) => t.mitPaar).join(' · ')) : null;
+  const bewertet = mitBestand ? ' (mit Bestand bewertet)' : '';
 
   const satz =
     steuerung == null
-      ? null
+      ? luecke
+        ? LADESTAND_FEHLT_SATZ
+        : null
+      : mitBestand
+        ? steuerung.ton === 'null'
+          ? `Die Steuerung und ${MESSLATTE} liegen ${wann} gleichauf${bewertet}.`
+          : `Die Steuerung hat ${wann} ${steuerung.wort} gebracht${bewertet} — ${steuerung.ton === 'plus' ? 'gegenüber' : 'weniger als'} ${MESSLATTE_DATIV}${grundZeile ? `; ${grundZeile}` : ''}.`
       : steuerung.ton === 'plus'
         ? `Die Steuerung hat ${wann} ${steuerung.wort} gebracht — gegenüber ${MESSLATTE_DATIV}`
         : steuerung.ton === 'minus'
@@ -501,13 +569,24 @@ export function speicherAussage(
 
   const anker = steuerung
     ? tag
-      ? monatsAnker(money, ctx.now, laeuft)
+      ? monatsAnker(
+          mitBestand
+            ? {
+                ...money,
+                steuerungMonatBisherEur:
+                  money.steuerungZeitraum?.monat.mitBestandEur ?? money.steuerungMonatMitBestandEur ?? null,
+              }
+            : money,
+          ctx.now,
+          laeuft,
+        )
       : money.range === 'month'
         ? jahresAnker(ctx)
         : null
     : null;
 
-  const bestand = bestandZeile(money, ctx.now);
+  // Mit Bestand entfällt die Bestandszeile („Kein Abzug“): der Bestand zählt mit.
+  const bestand = mitBestand ? null : bestandZeile(money, ctx.now);
   const geplantEur = num(ctx.steuerungGeplantEur ?? null);
 
   const label = laeuft
@@ -553,12 +632,13 @@ export function speicherAussage(
           : null
       : null,
     wert: steuerung ? steuerung.wort : '—',
-    hinweis: grund === 'no_battery_data' ? 'Speicher-Daten fehlen ›' : null,
+    hinweis: grund === 'no_battery_data' ? 'Speicher-Daten fehlen ›' : luecke ? 'Ladestand fehlt' : null,
     nachtragLink: grund === 'no_battery_data',
+    mitBestand,
 
     kurz,
     kurzTitel: satz ?? (grund === 'no_battery_data' ? OHNE_VERGLEICH_SATZ : kurz),
-    hatAussage: steuerung != null || grund != null,
+    hatAussage: steuerung != null || grund != null || luecke,
   };
 }
 

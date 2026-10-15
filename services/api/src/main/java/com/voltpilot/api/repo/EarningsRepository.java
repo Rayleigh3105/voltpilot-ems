@@ -452,8 +452,17 @@ public class EarningsRepository {
      *
      * <p>Null when the site has no maintained battery master data - never a
      * fabricated zero, and never the whole-storage number as a stand-in.
+     *
+     * <p>{@code mitBestandEur} is the same day „mit Bestand bewertet“
+     * ({@link SteuerungMitBestand}, Bedienkonzept vp-herzogau-p3-kachel-konzept
+     * §4.3) out of the SAME walk - null without a battery or at a gap.
      */
-    public record DailySaved(LocalDate day, BigDecimal savedEur, BigDecimal savedSteuerungEur) {
+    public record DailySaved(LocalDate day, BigDecimal savedEur, BigDecimal savedSteuerungEur,
+            BigDecimal mitBestandEur) {
+
+        public DailySaved(LocalDate day, BigDecimal savedEur, BigDecimal savedSteuerungEur) {
+            this(day, savedEur, savedSteuerungEur, null);
+        }
     }
 
     /**
@@ -921,8 +930,8 @@ public class EarningsRepository {
      * §3.3, die Abweichung am 11.09.). Eine zweite Referenz je Fenster gibt es
      * nicht mehr.
      */
-    private Map<UUID, Map<LocalDate, BigDecimal>> savedSpeicherPerDay(Instant from, Instant to) {
-        return speicherWalk(from, to, null).perDay();
+    private SpeicherWalk savedSpeicherPerDay(Instant from, Instant to) {
+        return speicherWalk(from, to, null);
     }
 
     /**
@@ -939,6 +948,16 @@ public class EarningsRepository {
      *     Stände beschreiben so denselben Moment
      * @param pvKwh Erzeugung über die covered Slots des Tages
      * @param loadKwh Verbrauch über dieselben Slots
+     * @param echtSocStartKwh GEMESSENER Ladestand im selben Moment wie
+     *     {@code vergleichSocStartKwh} (Bedienkonzept vp-herzogau-p3-kachel-konzept
+     *     §4.3 Regel 2): am ersten Tag nach einer Monatsverankerung der Anker
+     *     selbst, sonst der Ladestand am Ende des zuletzt gelaufenen Eimers;
+     *     null, wenn dieser keinen trägt oder es keinen Anker gibt
+     * @param bezugMittelEurKwh Mittel der Bezugspreise über die covered Slots
+     *     des Tages - dieselbe Spalte, mit der der Walk den Speicher bewertet
+     * @param messungBis Ende des letzten gelaufenen Eimers des Tages - der
+     *     Moment, den {@code vergleichSocEndKwh} und {@code echtSocEndKwh}
+     *     beschreiben („Heute bis 08:15“)
      */
     public record VergleichTag(
             LocalDate day,
@@ -947,7 +966,10 @@ public class EarningsRepository {
             double vergleichSocEndKwh,
             Double echtSocEndKwh,
             double pvKwh,
-            double loadKwh) {
+            double loadKwh,
+            Double echtSocStartKwh,
+            double bezugMittelEurKwh,
+            Instant messungBis) {
     }
 
     /**
@@ -1021,6 +1043,47 @@ public class EarningsRepository {
         return speicherWalk(from, to, site).total();
     }
 
+    /**
+     * Der Speicher-Anteil eines Zeitraums und daneben die Steuerung „mit
+     * Bestand“ desselben Zeitraums (Bedienkonzept vp-herzogau-p3-kachel-konzept
+     * §4.3, P3-2 A: eine Zählweise für Tag, 7 Tage, Monat und jeden wählbaren
+     * Zeitraum) - Σ seiner Tage mit Bestand, null bei einer Lücke.
+     *
+     * @param speicherEur bitgleich mit {@link #savedSpeicher} (derselbe Walk)
+     */
+    public record Fensterwert(BigDecimal speicherEur, BigDecimal steuerungMitBestandEur) {
+    }
+
+    /**
+     * Der {@link Fensterwert} je Anlage über {@code [from, to)} - aus DEM Walk,
+     * den {@link #savedSpeicher} ohnehin rechnet, plus dem Tagesscan der
+     * Kassenrechnung; kein zweiter Walk.
+     */
+    public Map<UUID, Fensterwert> fensterwerte(Instant from, Instant to) {
+        return fensterwerte(from, to, null);
+    }
+
+    /** Der {@link Fensterwert} EINER Anlage - null ohne gepflegte Batterie-Stammdaten. */
+    public Fensterwert fensterwertForSite(UUID site, Instant from, Instant to) {
+        return fensterwerte(from, to, site).get(site);
+    }
+
+    private Map<UUID, Fensterwert> fensterwerte(Instant from, Instant to, UUID site) {
+        SpeicherWalk walk = speicherWalk(from, to, site);
+        Map<UUID, List<DailySaved>> reihen = dailySaved(from, to, site, walk.perDay());
+        LocalDate von = from.atZone(ZONE).toLocalDate();
+        LocalDate bis = to.minusNanos(1).atZone(ZONE).toLocalDate();
+        Map<UUID, Fensterwert> result = new HashMap<>();
+        walk.total().forEach((siteId, speicher) -> {
+            Map<LocalDate, SteuerungMitBestand.Bewertet> bewertet = mitBestand(
+                    reihen.getOrDefault(siteId, List.of()),
+                    walk.tage().getOrDefault(siteId, Map.of()));
+            result.put(siteId, new Fensterwert(speicher,
+                    SteuerungMitBestand.fenster(bewertet.values(), von, bis).mitBestandEur()));
+        });
+        return result;
+    }
+
     /** Der Berliner Monatsbeginn (1., 00:00) des Monats, in dem {@code instant} liegt. */
     static Instant monthStart(Instant instant) {
         return instant.atZone(ZONE).toLocalDate().withDayOfMonth(1).atStartOfDay(ZONE).toInstant();
@@ -1068,6 +1131,17 @@ public class EarningsRepository {
             double dayPvKwh;
             double dayLoadKwh;
             BigDecimal dayEchtSocPct;
+            // Regel 2 des Bedienkonzepts P3: der gemessene Stand im Moment des
+            // Tagesbeginns - nach einer Monatsverankerung der Anker, sonst der
+            // Stand am Ende des zuletzt gelaufenen Eimers (auch eines, der vor
+            // `from` liegt und nur den Vergleichsspeicher auf Stand bringt).
+            Double ankerEchtKwh;
+            boolean frischVerankert;
+            Double letzterEchtKwh;
+            Double dayEchtSocStartKwh;
+            double dayBezugSumme;
+            int dayBezugEimer;
+            Instant dayLetzterEimer;
 
             void closeDay() {
                 if (day != null) {
@@ -1081,7 +1155,9 @@ public class EarningsRepository {
                                     walk.socKwh(),
                                     dayEchtSocPct == null ? null
                                             : dayEchtSocPct.doubleValue() / 100.0 * capacity,
-                                    dayPvKwh, dayLoadKwh));
+                                    dayPvKwh, dayLoadKwh, dayEchtSocStartKwh,
+                                    dayBezugEimer == 0 ? 0 : dayBezugSumme / dayBezugEimer,
+                                    dayLetzterEimer == null ? null : dayLetzterEimer.plus(SLOT)));
                 }
                 day = null;
             }
@@ -1133,6 +1209,7 @@ public class EarningsRepository {
                         // welcher Bereich gilt, entscheidet jeder Monat neu.
                         state.batterie = state.stammdaten.batterie(null);
                         state.walk = null;
+                        state.letzterEchtKwh = null;
                         state.month = null;
                         state.counted = false;
                         state.totalEur = 0;
@@ -1164,6 +1241,9 @@ public class EarningsRepository {
                         state.walk = new StandardSpeicher.Walk(state.batterie, socPct == null
                                 ? null
                                 : socPct.doubleValue() / 100.0 * state.batterie.capacityKwh());
+                        state.ankerEchtKwh = socPct == null ? null
+                                : socPct.doubleValue() / 100.0 * state.batterie.capacityKwh();
+                        state.frischVerankert = true;
                         if (state.staende != null) {
                             Instant beginn = month.atDay(1).atStartOfDay(ZONE).toInstant();
                             state.staende.put(beginn, state.walk.socKwh());
@@ -1179,13 +1259,21 @@ public class EarningsRepository {
                         state.dayPvKwh = 0;
                         state.dayLoadKwh = 0;
                         state.dayEchtSocPct = null;
+                        state.dayEchtSocStartKwh = state.frischVerankert
+                                ? state.ankerEchtKwh : state.letzterEchtKwh;
+                        state.dayBezugSumme = 0;
+                        state.dayBezugEimer = 0;
                         state.counted = true;
                     }
                     double pv = rs.getDouble("pv_kwh");
                     double load = rs.getDouble("load_kwh");
-                    state.walk.slot(pv, load,
-                            rs.getDouble("import_price_eur_kwh"),
+                    double importPrice = rs.getDouble("import_price_eur_kwh");
+                    state.walk.slot(pv, load, importPrice,
                             rs.getDouble("export_value_eur_kwh"));
+                    BigDecimal socLastPct = rs.getBigDecimal("soc_last_pct");
+                    state.letzterEchtKwh = socLastPct == null ? null
+                            : socLastPct.doubleValue() / 100.0 * state.batterie.capacityKwh();
+                    state.frischVerankert = false;
                     if (state.staende != null) {
                         // Der Stand gilt ab dem Ende des Eimers.
                         state.staende.put(rs.getTimestamp("bucket").toInstant()
@@ -1194,7 +1282,10 @@ public class EarningsRepository {
                     if (zaehlt) {
                         state.dayPvKwh += pv;
                         state.dayLoadKwh += load;
-                        state.dayEchtSocPct = rs.getBigDecimal("soc_last_pct");
+                        state.dayEchtSocPct = socLastPct;
+                        state.dayBezugSumme += importPrice;
+                        state.dayBezugEimer++;
+                        state.dayLetzterEimer = rs.getTimestamp("bucket").toInstant();
                     }
                 },
                 args(walkFrom, to, site));
@@ -1324,10 +1415,57 @@ public class EarningsRepository {
     /**
      * Realized savings per site and Europe/Berlin day over {@code [from, to)}
      * (the hero's spark bars + the "Heute" teasers). Only covered slots count;
-     * days without one are absent - never a fake zero.
+     * days without one are absent - never a fake zero. Each day also carries
+     * its value „mit Bestand“ out of the same walk (no second walk).
      */
     public Map<UUID, List<DailySaved>> dailySavedPerSite(Instant from, Instant to) {
-        return dailySaved(from, to, null, savedSpeicherPerDay(from, to));
+        SpeicherWalk walk = savedSpeicherPerDay(from, to);
+        Map<UUID, List<DailySaved>> result = new HashMap<>();
+        dailySaved(from, to, null, walk.perDay()).forEach((siteId, reihe) -> {
+            Map<LocalDate, SteuerungMitBestand.Bewertet> bewertet =
+                    mitBestand(reihe, walk.tage().getOrDefault(siteId, Map.of()));
+            result.put(siteId, reihe.stream().map(d -> {
+                SteuerungMitBestand.Bewertet b = bewertet.get(d.day());
+                return b == null ? d
+                        : new DailySaved(d.day(), d.savedEur(), d.savedSteuerungEur(),
+                                b.mitBestandEur());
+            }).toList());
+        });
+        return result;
+    }
+
+    /**
+     * Die Tage einer Reihe „mit Bestand bewertet“ (Bedienkonzept
+     * vp-herzogau-p3-kachel-konzept §4.3): die Kassenrechnung je Tag aus der
+     * Reihe, die Stände aus DEMSELBEN Walk. Ein Tag, den der Walk nicht
+     * gesehen hat (keine Batterie-Stammdaten), fehlt.
+     */
+    private static Map<LocalDate, SteuerungMitBestand.Bewertet> mitBestand(
+            List<DailySaved> reihe, Map<LocalDate, VergleichTag> staende) {
+        Map<LocalDate, SteuerungMitBestand.Bewertet> result = new HashMap<>();
+        for (DailySaved d : reihe) {
+            VergleichTag v = staende.get(d.day());
+            if (v != null) {
+                result.put(d.day(), SteuerungMitBestand.bewerte(tagMitBestand(d, v)));
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Die Eingaben eines Tages mit Bestand: Vorsprung = gemessener Stand −
+     * Vergleichsspeicher, je auf Wh gerundet wie {@code speicherVorsprungKwh},
+     * an beiden Tagesrändern im selben Moment; der Bezugspreis als
+     * Tagesmittel der Spalte, mit der der Walk bewertet.
+     */
+    private static SteuerungMitBestand.Tag tagMitBestand(DailySaved d, VergleichTag v) {
+        return new SteuerungMitBestand.Tag(d.day(), d.savedSteuerungEur(),
+                v.echtSocStartKwh() == null ? null
+                        : kwh(v.echtSocStartKwh()).subtract(kwh(v.vergleichSocStartKwh())),
+                v.echtSocEndKwh() == null ? null
+                        : kwh(v.echtSocEndKwh()).subtract(kwh(v.vergleichSocEndKwh())),
+                BigDecimal.valueOf(v.bezugMittelEurKwh() * 100.0),
+                kwh(v.pvKwh()), kwh(v.loadKwh()), v.messungBis());
     }
 
     private Map<UUID, List<DailySaved>> dailySaved(Instant from, Instant to, UUID site,
@@ -1416,36 +1554,90 @@ public class EarningsRepository {
     }
 
     /**
+     * Die Einordnung eines Berliner Tages und sein Zeitraum „mit Bestand“
+     * (Bedienkonzept vp-herzogau-p3-kachel-konzept §4.2) - beides aus
+     * DEMSELBEN Walk, also ohne zweite Wahrheit und ohne zweiten Walk.
+     *
+     * @param einordnung null, wenn der Tag selbst keinen Speicher-Anteil hat
+     *     (z. B. vor seinem ersten Eimer)
+     * @param zeitraum Monat bis zum Tag, Tag und - nur auf der Anlagen-Route -
+     *     die 7 Tage mit Bestand; null ohne einen vom Walk gesehenen Tag
+     */
+    public record Tagesbild(Tageseinordnung einordnung, SteuerungMitBestand.Zeitraum zeitraum) {
+    }
+
+    /**
      * Die {@link Tageseinordnung} je Anlage für den Berliner Tag
      * {@code [from, to)} - flottenweit. Anlagen ohne Speicher-Anteil an diesem
      * Tag (keine Batterie-Stammdaten oder kein covered Slot) fehlen.
      */
     public Map<UUID, Tageseinordnung> tageseinordnung(Instant from, Instant to) {
-        return tageseinordnung(from, to, null);
+        Map<UUID, Tageseinordnung> result = new HashMap<>();
+        tagesbilder(from, to, null, false, false).forEach((id, b) -> {
+            if (b.einordnung() != null) {
+                result.put(id, b.einordnung());
+            }
+        });
+        return result;
     }
 
     /** Die {@link Tageseinordnung} EINER Anlage, oder null. */
     public Tageseinordnung tageseinordnungForSite(UUID site, Instant from, Instant to) {
-        return tageseinordnung(from, to, site).get(site);
+        Tagesbild b = tagesbilder(from, to, site, false, false).get(site);
+        return b == null ? null : b.einordnung();
     }
 
-    private Map<UUID, Tageseinordnung> tageseinordnung(Instant from, Instant to, UUID site) {
+    /**
+     * Das {@link Tagesbild} je Anlage für den Berliner Tag {@code [from, to)} -
+     * flottenweit, über DENSELBEN Walk wie heute die Einordnung (kein Vorlauf
+     * für die 7 Tage: die rechnet die Mandanten-Route aus ihrer 14-Tage-Reihe).
+     * Der Zeitraum trägt deshalb Monat und Tag, aber keine 7 Tage.
+     */
+    public Map<UUID, Tagesbild> tagesbilder(Instant from, Instant to, boolean laeuft) {
+        return tagesbilder(from, to, null, false, laeuft);
+    }
+
+    /**
+     * Das {@link Tagesbild} EINER Anlage mit den 7 Tagen: der Walk beginnt
+     * dafür am Monatsbeginn des ersten Fenster-Tags (in den ersten Tagen eines
+     * Monats am Vormonatsersten, wie am 1. schon für den Vortag).
+     *
+     * @param laeuft der Tag ist noch nicht vorbei - dann sind die 7 Tage die
+     *     davor, sonst die 7 bis einschließlich dieses Tages
+     */
+    public Tagesbild tagesbildForSite(UUID site, Instant from, Instant to, boolean laeuft) {
+        return tagesbilder(from, to, site, true, laeuft).get(site);
+    }
+
+    private Map<UUID, Tagesbild> tagesbilder(Instant from, Instant to, UUID site,
+            boolean mitSieben, boolean laeuft) {
         LocalDate tag = from.atZone(ZONE).toLocalDate();
         LocalDate vortag = tag.minusDays(1);
         LocalDate monatsbeginn = tag.withDayOfMonth(1);
         // EIN Walk und EIN Tagesscan über [min(Vortag, Monatsbeginn), to): der
         // Walk verankert am Monatsbeginn des Vortags und neu am Monatsersten,
         // also ist jeder Tag darin dieselbe Zahl wie in jedem anderen Fenster.
-        // Derselbe Walk trägt den Verlauf, gegen den der Planwert rechnet (M2).
-        Instant scanFrom = (vortag.isBefore(monatsbeginn) ? vortag : monatsbeginn)
-                .atStartOfDay(ZONE).toInstant();
+        // Derselbe Walk trägt den Verlauf, gegen den der Planwert rechnet (M2),
+        // und auf Wunsch das 7-Tage-Fenster davor.
+        LocalDate erster = vortag.isBefore(monatsbeginn) ? vortag : monatsbeginn;
+        if (mitSieben) {
+            LocalDate siebenVon = SteuerungMitBestand.siebenTage(tag, laeuft).von();
+            if (siebenVon.isBefore(erster)) {
+                erster = siebenVon;
+            }
+        }
+        Instant scanFrom = erster.atStartOfDay(ZONE).toInstant();
         SpeicherWalk walk = speicherWalk(scanFrom, to, site, true);
         Map<UUID, BigDecimal> geplant = steuerungGeplant(walk, from, to, site);
         Map<UUID, List<DailySaved>> tage = dailySaved(scanFrom, to, site, walk.perDay());
         Map<UUID, BigDecimal> echtStartPct = startSocPct(from, site);
-        Map<UUID, Tageseinordnung> result = new HashMap<>();
+        Map<UUID, Tagesbild> result = new HashMap<>();
         tage.forEach((siteId, reihe) -> {
-            VergleichTag stand = walk.tage().getOrDefault(siteId, Map.of()).get(tag);
+            Map<LocalDate, VergleichTag> staende = walk.tage().getOrDefault(siteId, Map.of());
+            Map<LocalDate, SteuerungMitBestand.Bewertet> bewertet = mitBestand(reihe, staende);
+            SteuerungMitBestand.Zeitraum zeitraum = bewertet.isEmpty() ? null
+                    : SteuerungMitBestand.zeitraum(bewertet, tag, laeuft, mitSieben);
+            VergleichTag stand = staende.get(tag);
             DailySaved heute = null;
             DailySaved gestern = null;
             BigDecimal monat = BigDecimal.ZERO;
@@ -1459,27 +1651,31 @@ public class EarningsRepository {
                     monat = d.savedSteuerungEur() == null ? null : monat.add(d.savedSteuerungEur());
                 }
             }
-            if (heute == null || heute.savedSteuerungEur() == null || stand == null) {
-                return;
+            Tageseinordnung einordnung = null;
+            if (heute != null && heute.savedSteuerungEur() != null && stand != null) {
+                BigDecimal startPct = echtStartPct.get(siteId);
+                BigDecimal echtStart = startPct == null ? null
+                        : kwh(startPct.doubleValue() / 100.0 * stand.capacityKwh());
+                BigDecimal echtEnd = stand.echtSocEndKwh() == null ? null
+                        : kwh(stand.echtSocEndKwh());
+                BigDecimal vergleichEnd = kwh(stand.vergleichSocEndKwh());
+                einordnung = new Tageseinordnung(
+                        walk.perDay().get(siteId).get(tag),
+                        heute.savedSteuerungEur(),
+                        gestern == null ? null : gestern.savedSteuerungEur(),
+                        monat,
+                        kwh(stand.vergleichSocStartKwh()),
+                        vergleichEnd,
+                        echtStart,
+                        echtEnd,
+                        echtEnd == null ? null : echtEnd.subtract(vergleichEnd),
+                        kwh(stand.pvKwh()),
+                        kwh(stand.loadKwh()),
+                        geplant.get(siteId));
             }
-            BigDecimal startPct = echtStartPct.get(siteId);
-            BigDecimal echtStart = startPct == null ? null
-                    : kwh(startPct.doubleValue() / 100.0 * stand.capacityKwh());
-            BigDecimal echtEnd = stand.echtSocEndKwh() == null ? null : kwh(stand.echtSocEndKwh());
-            BigDecimal vergleichEnd = kwh(stand.vergleichSocEndKwh());
-            result.put(siteId, new Tageseinordnung(
-                    walk.perDay().get(siteId).get(tag),
-                    heute.savedSteuerungEur(),
-                    gestern == null ? null : gestern.savedSteuerungEur(),
-                    monat,
-                    kwh(stand.vergleichSocStartKwh()),
-                    vergleichEnd,
-                    echtStart,
-                    echtEnd,
-                    echtEnd == null ? null : echtEnd.subtract(vergleichEnd),
-                    kwh(stand.pvKwh()),
-                    kwh(stand.loadKwh()),
-                    geplant.get(siteId)));
+            if (einordnung != null || zeitraum != null) {
+                result.put(siteId, new Tagesbild(einordnung, zeitraum));
+            }
         });
         return result;
     }

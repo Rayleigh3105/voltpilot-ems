@@ -5,6 +5,7 @@ import { ErloeseSection } from './ErloeseSection';
 import { clearHistoryCache } from '../historyCache';
 import { clearEarningsCache } from '../useSiteEarnings';
 import { api, type History, type Site, type SiteEarnings, type SiteEarningsBucket } from '../api';
+import SPEICHER_VEKTOREN from '../speicherAussage.vektoren.json';
 
 /**
  * **Verlauf › Erlöse** — die neue Seite (Konzept „Verlauf-Rework", Paket P2,
@@ -482,3 +483,73 @@ describe('Zustände', () => {
     expect(document.querySelector('.vp-vr-body.alt')).toBeTruthy();
   });
 });
+
+/**
+ * Die Tagesansicht MIT BESTAND (Bedienkonzept vp-herzogau-p3-kachel-konzept,
+ * Captain 14.10.2026 HZ-3 A, P3-1 bis P3-3 A) mit den Oktober-Zahlen der
+ * Anlage Herzogau aus `speicherAussage.vektoren.json` (erzeugt aus dem Vertrag
+ * `mit_bestand`): am 13.10. um 08:15 stand in der Kachel − 8,00 €.
+ */
+describe('Tagesansicht mit Bestand · Oktober Herzogau', () => {
+  const fall = (praefix: string) =>
+    (SPEICHER_VEKTOREN as unknown as { faelle: { name: string; money: Partial<SiteEarnings> }[] }).faelle.find((f) =>
+      f.name.startsWith(`Oktober Herzogau mit Bestand · ${praefix}`),
+    )!.money;
+
+  /** Der sichtbare Text ohne die zugeklappten Aufklapper (der Rechenweg). */
+  function sichtbar(el: Element): string {
+    const kopie = el.cloneNode(true) as Element;
+    kopie.querySelectorAll('details').forEach((d) => d.remove());
+    return nb(kopie.textContent);
+  }
+
+  it('13.10., 08:15: vorn Monat und letzte 7 Tage, in der Karte der Tag mit Bestand — kein „− 8,00 €“ mehr', async () => {
+    vi.setSystemTime(new Date('2026-10-13T08:20:00+02:00'));
+    stub(fall('Di 13.10., 08:15'));
+    render(<ErloeseSection site={site()} />);
+    const kpis = await geladen();
+
+    const kachel = steuerKachel();
+    expect(nb(kachel.querySelector('.vp-vr-kpi-v')?.textContent)).toBe('+ 25,86 €');
+    expect(nb(kachel.querySelector('.vp-vr-kpi-s')?.textContent)).toBe('diesen Monat · mehr als ohne smarte Steuerung');
+    expect(nb(kachel.querySelector('.vp-vr-kpi-z')?.textContent)).toBe('letzte 7 Tage + 9,45 €');
+    expect(sichtbar(kpis)).not.toContain('− 8,00 €');
+
+    const karte = document.querySelector('.vp-c-speicher') as HTMLElement;
+    const text = sichtbar(karte);
+    expect(text).toContain('Heute bis 08:15');
+    expect(text).toContain('+ 0,01 €');
+    expect(text).toContain('gestern verkauft, heute nachgekauft');
+    expect(text).toContain('Letzte 7 Tage · 6.–12. Oktober');
+    expect(text).toContain('Oktober bisher+ 25,86 €');
+    expect(text).toContain('Tag für Tag');
+    expect(text).toContain('Mo 12.10.+ 1,70 €');
+    expect(text).toContain('Summe 6.–12. Oktober+ 9,45 €');
+    expect(text).not.toContain('− 8,00 €');
+    expect(text).not.toContain('Kein Abzug');
+    // Die alte Tageszahl steht nur im Rechenweg, als Kassenrechnung.
+    const rechenweg = within(karte).getByText('Wie wird das berechnet?').closest('details') as HTMLElement;
+    expect(nb(rechenweg.textContent)).toContain('Schritt 1 · Kassenrechnung heute bis 08:15− 8,00 €');
+  });
+
+  it('Rückblick 13.10.: Daten statt „diesen Monat“ und „letzte 7 Tage“, der Tag − 2,32 € unter Null', async () => {
+    vi.setSystemTime(new Date('2026-10-14T00:10:00+02:00'));
+    window.location.hash = '#/anlage/s-1/erloese?z=tag&at=2026-10-13';
+    stub(fall('Rückblick Di 13.10.'));
+    render(<ErloeseSection site={site()} />);
+    await geladen();
+
+    const kachel = steuerKachel();
+    expect(nb(kachel.querySelector('.vp-vr-kpi-v')?.textContent)).toBe('+ 23,53 €');
+    expect(nb(kachel.querySelector('.vp-vr-kpi-s')?.textContent)).toBe('1.–13. Oktober · mehr als ohne smarte Steuerung');
+    expect(nb(kachel.querySelector('.vp-vr-kpi-z')?.textContent)).toBe('7.–13. Oktober − 0,29 €');
+
+    const karte = document.querySelector('.vp-c-speicher') as HTMLElement;
+    const text = sichtbar(karte);
+    expect(text).toContain('unter Null');
+    expect(text).toContain('Steuerung an diesem Tag− 2,32 €');
+    expect(text).toContain('gestern verkauft, heute nachgekauft · anders geladen und entladen');
+    expect(text).not.toContain('− 4,48 €');
+  });
+});
+

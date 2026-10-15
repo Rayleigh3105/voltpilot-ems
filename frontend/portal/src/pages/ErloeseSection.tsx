@@ -26,6 +26,7 @@ import { replaceCurrentNavigation } from '../navigationBlocker';
 import { einstellungenHash } from '../settingsNav';
 import { standTime } from '../datenAlter';
 import { speicherAussage } from '../speicherAussage';
+import { steuerungKarte } from '../steuerungZeitraum';
 import { winterSatz } from '../winterSatz';
 import type { SekundaerZiel } from '../erloesZeilen';
 import {
@@ -33,6 +34,7 @@ import {
   csvDateiname,
   erloesKennzahlen,
   mehrwertBand,
+  mehrwertBandMitBestand,
   mitPreisFeld,
   GELD_SPALTEN,
   geldCsv,
@@ -234,7 +236,11 @@ export function ErloeseSection({
     jahrAnker:
       range === 'month' && jahr.money && !jahr.stale
         ? {
-            eur: jahr.money.savedSteuerungEur ?? null,
+            // Eine Zählweise (P3-2 A): das Jahr mit Bestand, wo der Server es kennt.
+            eur:
+              jahr.money.savedSteuerungMitBestandEur !== undefined
+                ? jahr.money.savedSteuerungMitBestandEur
+                : (jahr.money.savedSteuerungEur ?? null),
             jahr: anchor.getFullYear(),
             laeuft: isCurrentPeriod(anchor, 'year', now),
           }
@@ -254,7 +260,11 @@ export function ErloeseSection({
           })
         : null,
   });
-  const band = mehrwertBand(speicher, range);
+  // Die Tagesansicht mit Bestand (Bedienkonzept P3, HZ-3 A): vorn Monat und
+  // 7 Tage, in der Karte der Tag - auch vor dem ersten Eimer des Tages.
+  const zeitraum = range === 'day' ? (money?.steuerungZeitraum ?? null) : null;
+  const band = zeitraum ? mehrwertBandMitBestand(zeitraum, laeuft) : mehrwertBand(speicher, range);
+  const zeitraumKarte = zeitraum ? steuerungKarte(zeitraum, laeuft) : null;
 
   const diagramm = useMemo(
     () =>
@@ -410,13 +420,20 @@ export function ErloeseSection({
                   wert={band.wert}
                   ton={band.ton === 'leer' ? 'leer' : null}
                   farbe="var(--vp-c-primary)"
+                  zweit={
+                    band.zweit ? (
+                      <>
+                        <span>{band.zweit.label}</span> <b>{band.zweit.wert}</b>
+                      </>
+                    ) : null
+                  }
                   info={{
                     titel: band.titel,
                     text: (
                       <MehrwertErklaerung
                         band={band}
                         rechnung={
-                          hatSchritte && schritteInput ? (
+                          zeitraum ? null : hatSchritte && schritteInput ? (
                             <RechenZeilen zeilen={speicherSchritte(schritteInput)} kopf="So wird gerechnet" />
                           ) : formel ? (
                             <SteuerungFormel input={formel} />
@@ -442,15 +459,38 @@ export function ErloeseSection({
             </Kennzahlen>
 
             {!hatErgebnis && diagramm.leer ? (
-              <VrKarte titel={TITEL[range]}>
-                <VerlaufLeer
-                  label="Noch kein Ergebnis für diesen Zeitraum"
-                  satz={
-                    kennzahlen[0].unter ??
-                    'Sobald Messwerte und Preise vorliegen, steht hier, was Ihre Anlage eingebracht hat.'
-                  }
-                />
-              </VrKarte>
+              zeitraumKarte ? (
+                // Vor dem ersten Eimer des Tages: das Ergebnis fehlt noch, Monat und
+                // die letzten 7 Tage mit Bestand stehen schon (Bedienkonzept P3).
+                <div className="vp-vr-row">
+                  <VrKarte titel={TITEL[range]}>
+                    <VerlaufLeer
+                      label="Noch kein Ergebnis für diesen Zeitraum"
+                      satz={
+                        kennzahlen[0].unter ??
+                        'Sobald Messwerte und Preise vorliegen, steht hier, was Ihre Anlage eingebracht hat.'
+                      }
+                    />
+                  </VrKarte>
+                  <div className="vp-vr-col">
+                    <SpeicherKarte
+                      aussage={speicher}
+                      nachtragHref={einstellungenHash(site.id, 'speicher')}
+                      zeitraum={zeitraumKarte}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <VrKarte titel={TITEL[range]}>
+                  <VerlaufLeer
+                    label="Noch kein Ergebnis für diesen Zeitraum"
+                    satz={
+                      kennzahlen[0].unter ??
+                      'Sobald Messwerte und Preise vorliegen, steht hier, was Ihre Anlage eingebracht hat.'
+                    }
+                  />
+                </VrKarte>
+              )
             ) : (
               <>
                 <div className="vp-vr-row">
@@ -513,10 +553,11 @@ export function ErloeseSection({
                         Karte wie im Cockpit — Zahl, Grund, Anker, Vorsprung —
                         in der rechten Spalte des Ledgers, unter der Abrechnung,
                         weil sie kein Posten des Ergebnisses ist. */}
-                    {speicher?.hatAussage && (
+                    {(speicher?.hatAussage || zeitraumKarte) && (
                       <SpeicherKarte
                         aussage={speicher}
                         nachtragHref={einstellungenHash(site.id, 'speicher')}
+                        zeitraum={zeitraumKarte}
                       >
                         {hatSchritte && schritteInput ? (
                           <SpeicherSchritte input={schritteInput} />

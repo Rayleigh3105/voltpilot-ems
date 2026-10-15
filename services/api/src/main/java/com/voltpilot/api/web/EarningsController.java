@@ -133,15 +133,38 @@ public class EarningsController {
         // §10 P0: Vortag, Monat bisher, Vergleichsspeicher-Stände, Gründe)
         // carries each site's speicher share out of the SAME month-anchored
         // walk - bit-identical to savedSpeicher, so the day runs one walk.
+        //
+        // Mit Bestand (Bedienkonzept vp-herzogau-p3-kachel-konzept, P3-4 A):
+        // der Tag und sein Monat kommen aus demselben Tages-Walk, jeder andere
+        // Zeitraum aus dem Walk, den savedSpeicher ohnehin rechnet - kein
+        // zusätzlicher Walk auf dieser teuren, oft abgefragten Route.
         boolean tag = !all && parsed == HistoryRange.DAY;
-        Map<UUID, EarningsRepository.Tageseinordnung> einordnungen = tag
-                ? earnings.tageseinordnung(from, to)
+        Map<UUID, EarningsRepository.Tagesbild> tagesbilder = tag
+                ? earnings.tagesbilder(from, to, to.isAfter(Instant.now()))
                 : Map.of();
+        Map<UUID, EarningsRepository.Tageseinordnung> einordnungen = new HashMap<>();
+        tagesbilder.forEach((id, b) -> {
+            if (b.einordnung() != null) {
+                einordnungen.put(id, b.einordnung());
+            }
+        });
         Map<UUID, BigDecimal> speicherSplits = new HashMap<>();
+        Map<UUID, BigDecimal> mitBestand = new HashMap<>();
         if (tag) {
             einordnungen.forEach((id, e) -> speicherSplits.put(id, e.speicherEur()));
+            tagesbilder.forEach((id, b) -> {
+                if (b.zeitraum() != null && b.zeitraum().heute() != null
+                        && b.zeitraum().heute().mitBestandEur() != null) {
+                    mitBestand.put(id, b.zeitraum().heute().mitBestandEur());
+                }
+            });
         } else {
-            speicherSplits.putAll(earnings.savedSpeicher(from, to));
+            earnings.fensterwerte(from, to).forEach((id, f) -> {
+                speicherSplits.put(id, f.speicherEur());
+                if (f.steuerungMitBestandEur() != null) {
+                    mitBestand.put(id, f.steuerungMitBestandEur());
+                }
+            });
         }
         // Der Planwert (M2) kommt aus demselben Walk wie die Einordnung.
         Map<UUID, BigDecimal> geplant = new HashMap<>();
@@ -245,6 +268,10 @@ public class EarningsController {
             EarningsRepository.Tageseinordnung einordnung = savedSteuerung != null
                     ? einordnungen.get(site.id())
                     : null;
+            EarningsRepository.Tagesbild bild = tagesbilder.get(site.id());
+            BigDecimal monatMitBestand = bild == null || bild.zeitraum() == null
+                    || bild.zeitraum().monat() == null ? null
+                    : bild.zeitraum().monat().mitBestandEur();
             BigDecimal siteGeplant = einordnung != null ? geplant.get(site.id()) : null;
             // Forward expected Marktwert Solar (range-independent); absent when
             // the site has no forward PV forecast or price coverage.
@@ -265,7 +292,7 @@ public class EarningsController {
             List<EarningsDailyDto> dailySaved = daily
                     .getOrDefault(site.id(), List.of()).stream()
                     .map(d -> new EarningsDailyDto(
-                            d.day(), d.savedEur(), d.savedSteuerungEur()))
+                            d.day(), d.savedEur(), d.savedSteuerungEur(), d.mitBestandEur()))
                     .toList();
 
             // The money-centric Gesamtertrag = Einspeise-Erlös + the
@@ -334,7 +361,9 @@ public class EarningsController {
                     einordnung == null ? null : einordnung.steuerungVortagEur(),
                     einordnung == null ? null : einordnung.steuerungMonatBisherEur(),
                     siteGeplant,
-                    SteuerungGrund.fuer(savedSteuerung, einordnung, siteGeplant)));
+                    SteuerungGrund.fuer(savedSteuerung, einordnung, siteGeplant),
+                    savedSteuerung == null ? null : mitBestand.get(site.id()),
+                    monatMitBestand));
         }
 
         // "Gesamt" honestly starts at the first covered slot, not at the epoch.

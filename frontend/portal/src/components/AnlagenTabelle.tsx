@@ -119,12 +119,11 @@ function SpeicherZelle({ z }: { z: AnlagenZeile }) {
   );
 }
 
-function GeldZelle({ wert, grund }: { wert: number | null; grund?: string | null }) {
+function GeldZelle({ wert }: { wert: number | null }) {
   if (wert == null) return <Strich />;
   return (
     <>
       {signiertesGeld(wert)} <span className="u">€</span>
-      {grund && <span className="vp-at-grund">{grund}</span>}
     </>
   );
 }
@@ -142,7 +141,7 @@ function zelleFuer(s: SpaltenId, z: AnlagenZeile) {
     case 'netz-heute':
       return <NetzZelle z={z} />;
     case 'erloese':
-      return <GeldZelle wert={z.heuteEur} grund={z.heuteGrund} />;
+      return <GeldZelle wert={z.monatEur} />;
     default:
       return <Strich />;
   }
@@ -426,11 +425,10 @@ function Karten({ zeilen, spalten, offen, onToggle, onOeffnen, vorschau, gruppen
           </div>
         )}
         <div className="vp-at-karte-fuss">
-          {zeigt.has('erloese') && z.heuteEur != null ? (
+          {zeigt.has('erloese') && z.monatEur != null ? (
             <span className="vp-at-karte-heute">
-              {SPALTEN_KOPF.erloese.titel} {signiertesGeld(z.heuteEur)}{' '}
+              {SPALTEN_KOPF.erloese.titel} {signiertesGeld(z.monatEur)}{' '}
               <span className="u">€</span>
-              {z.heuteGrund && <span className="vp-at-grund">{z.heuteGrund}</span>}
             </span>
           ) : (
             <span />

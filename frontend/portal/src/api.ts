@@ -7240,6 +7240,15 @@ export interface EarningsDaily {
    * NOTHING for that day - never the total as a substitute, never a fake zero.
    */
   savedSteuerungEur?: number | null;
+  /**
+   * Derselbe Tag „mit Bestand bewertet“ (Bedienkonzept
+   * vp-herzogau-p3-kachel-konzept, Captain 14.10.2026 P3-4 A): Kasse +
+   * Änderung des Vorsprungs auf den Vergleichsspeicher × Bezugspreis × √0,92,
+   * auf den Cent. Aus diesen Tagen bildet die Übersicht die letzten 7 Tage.
+   * `null` ohne Dreiteilung oder bei einer Lücke; absent bei einem älteren
+   * Backend.
+   */
+  mitBestandEur?: number | null;
 }
 
 /** One Ertrag-chart bucket: its Berlin start (ISO) + the Gesamtertrag. */
@@ -7342,6 +7351,14 @@ export interface CockpitMoney {
   steuerungPlannedEur?: number | null;
   steuerungGruende?: string[] | null;
   /**
+   * Die Steuerung des gewählten Zeitraums MIT BESTAND (Bedienkonzept
+   * vp-herzogau-p3-kachel-konzept, Captain 14.10.2026 P3-2 A und P3-4 A: eine
+   * Zählweise für Tag, 7 Tage, Monat und jeden Zeitraum) — Σ seiner Tage,
+   * je Tag Kasse + Bestandsänderung × Bezugspreis × √0,92. `null` ohne
+   * Dreiteilung oder bei einer Lücke; absent bei einem älteren Backend.
+   */
+  savedSteuerungMitBestandEur?: number | null;
+  /**
    * Die EINE grosse Zahl aller Flaechen: das Ergebnis „unterm Strich"
    * (Erloese-Konzept E9, Paket P9). Beide Endpunkte tragen genau EINEN der
    * zwei Wege dorthin, und `erloesNetto.nettoEur()` ist die EINE Ableitung,
@@ -7391,6 +7408,12 @@ export interface EarningsSite extends CockpitMoney {
   firstCoveredDate: string | null;
   reason: EarningsReason | null;
   dailySaved: EarningsDaily[];
+  /**
+   * Nur `range=day`: Monatserster bis zu diesem Tag mit Bestand — dieselbe
+   * Zahl wie `steuerungZeitraum.monat` der Anlagen-Route. `null` bei einer
+   * Lücke, ohne Dreiteilung oder für jedes andere `range`.
+   */
+  steuerungMonatMitBestandEur?: number | null;
   /**
    * Money-centric "Meine Anlage" view (v2). Gesamtertrag =
    * einspeiseErloesEur (metered feed-in valued at spot + Marktprämie) +
@@ -7656,6 +7679,63 @@ export interface SiteEarnings extends CockpitMoney {
   speicherWertBasis?: 'plan' | 'terminal' | null;
   series: SiteEarningsBucket[];
   peakShaving?: PeakShaving | null;
+  /**
+   * Nur `range=day`: Monat, letzte 7 Tage und der Tag mit Bestand
+   * ({@link SteuerungZeitraum}); `null` sonst, absent bei einem älteren
+   * Backend. Gelesen nur in `steuerungZeitraum.ts`.
+   */
+  steuerungZeitraum?: SteuerungZeitraum | null;
+}
+
+/**
+ * Die Steuerung MIT BESTAND rund um den angefragten Tag (Bedienkonzept
+ * vp-herzogau-p3-kachel-konzept §4.2; Regeln und Fälle:
+ * `docs/contracts/steuerung-tag-vectors.json`, Block `mit_bestand`). Je Tag
+ * Kasse (`steuerungEur`) + (Vorsprung 24:00 − Vorsprung 00:00) × Bewertung,
+ * beides auf den Cent; Monat und 7 Tage sind die Summen ihrer Tage. `null`
+ * heißt: nicht rechenbar (Lücke im Ladestand oder kein gemessener Tag) — nie 0.
+ */
+export interface SteuerungZeitraum {
+  /** Mittlerer Bezugspreis des Tages (ct/kWh). */
+  bezugCtKwh: number | null;
+  /** `bezugCtKwh × √0,92` auf 0,01 ct (fest 25 ct → 23,98 ct). */
+  bewertungCtKwh: number | null;
+  /** Monatserster bis zum angefragten Tag. */
+  monat: SteuerungFenster;
+  /** Die 7 abgeschlossenen Berliner Kalendertage (läuft der Tag: die 7 davor). */
+  sieben: SteuerungFenster | null;
+  /** Der angefragte Tag; `null` vor seinem ersten Eimer. */
+  heute: SteuerungTag | null;
+  /** Die gemessenen Tage des 7-Tage-Fensters, neuester zuerst. */
+  tage: SteuerungTag[];
+}
+
+export interface SteuerungFenster {
+  /** ISO-Datum (Berlin). */
+  von: string;
+  bis: string;
+  mitBestandEur: number | null;
+}
+
+export interface SteuerungTag {
+  /** ISO-Datum (Berlin). */
+  tag: string;
+  /** Die Kassenrechnung des Tages (`savedSteuerungEur`), auf den Cent. */
+  steuerungEur: number | null;
+  /** Gemessener Ladestand − Vergleichsspeicher um 00:00 (Rückstand negativ). */
+  vorsprungStartKwh: number | null;
+  /** Derselbe Vorsprung nach dem letzten gemessenen Eimer des Tages. */
+  vorsprungEndeKwh: number | null;
+  bezugCtKwh: number | null;
+  bewertungCtKwh: number | null;
+  /** `(vorsprungEndeKwh − vorsprungStartKwh) × bewertungCtKwh / 100`, auf den Cent. */
+  bestandEur: number | null;
+  /** `steuerungEur + bestandEur`; `null` bei einer Lücke. */
+  mitBestandEur: number | null;
+  /** `gestern_verkauft` | `wenig_sonne` | `anders_geladen`, höchstens zwei. */
+  gruende: string[];
+  /** Ende des letzten gemessenen Eimers (ISO) — „Heute bis 08:15“. */
+  messungBis?: string | null;
 }
 
 export class ApiError extends Error {

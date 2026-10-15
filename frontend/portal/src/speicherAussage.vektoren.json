@@ -605,6 +605,526 @@
         "bestand": null,
         "bestandBadge": null
       }
+    },
+    {
+      "name": "Oktober Herzogau mit Bestand · Di 13.10., 08:15 laufend - statt − 8,00 € steht + 0,01 € (Konzept §6)",
+      "vertrag": null,
+      "now": "2026-10-13T08:20:00+02:00",
+      "money": {
+        "range": "day",
+        "from": "2026-10-12T22:00:00Z",
+        "to": "2026-10-13T22:00:00Z",
+        "savedEur": -0.22,
+        "savedSpeicherEur": 7.78,
+        "savedSteuerungEur": -8.0,
+        "steuerungVortagEur": 12.1,
+        "steuerungMonatBisherEur": 25.85,
+        "speicherVorsprungKwh": 0.0,
+        "steuerungGruende": [
+          "gestern_verkauft",
+          "anders_geladen"
+        ],
+        "savedSteuerungMitBestandEur": 0.01,
+        "steuerungZeitraum": {
+          "bezugCtKwh": 25.0,
+          "bewertungCtKwh": 23.98,
+          "monat": {
+            "von": "2026-10-01",
+            "bis": "2026-10-13",
+            "mitBestandEur": 25.86
+          },
+          "sieben": {
+            "von": "2026-10-06",
+            "bis": "2026-10-12",
+            "mitBestandEur": 9.45
+          },
+          "heute": {
+            "tag": "2026-10-13",
+            "steuerungEur": -8.0,
+            "vorsprungStartKwh": -33.385,
+            "vorsprungEndeKwh": 0.0,
+            "bezugCtKwh": 25.0,
+            "bewertungCtKwh": 23.98,
+            "bestandEur": 8.01,
+            "mitBestandEur": 0.01,
+            "gruende": [
+              "gestern_verkauft"
+            ],
+            "messungBis": "2026-10-13T06:15:00Z"
+          },
+          "tage": [
+            {
+              "tag": "2026-10-12",
+              "steuerungEur": 12.1,
+              "vorsprungStartKwh": 10.0,
+              "vorsprungEndeKwh": -33.385,
+              "bezugCtKwh": 25.0,
+              "bewertungCtKwh": 23.98,
+              "bestandEur": -10.4,
+              "mitBestandEur": 1.7,
+              "gruende": [],
+              "messungBis": "2026-10-12T22:00:00Z"
+            },
+            {
+              "tag": "2026-10-11",
+              "steuerungEur": -2.65,
+              "vorsprungStartKwh": 6.17,
+              "vorsprungEndeKwh": 10.0,
+              "bezugCtKwh": 25.0,
+              "bewertungCtKwh": 23.98,
+              "bestandEur": 0.92,
+              "mitBestandEur": -1.73,
+              "gruende": [
+                "anders_geladen"
+              ],
+              "messungBis": "2026-10-11T22:00:00Z"
+            },
+            {
+              "tag": "2026-10-10",
+              "steuerungEur": -1.99,
+              "vorsprungStartKwh": 4.062,
+              "vorsprungEndeKwh": 6.17,
+              "bezugCtKwh": 25.0,
+              "bewertungCtKwh": 23.98,
+              "bestandEur": 0.51,
+              "mitBestandEur": -1.48,
+              "gruende": [
+                "anders_geladen"
+              ],
+              "messungBis": "2026-10-10T22:00:00Z"
+            },
+            {
+              "tag": "2026-10-09",
+              "steuerungEur": 0.76,
+              "vorsprungStartKwh": -5.3,
+              "vorsprungEndeKwh": 4.062,
+              "bezugCtKwh": 25.0,
+              "bewertungCtKwh": 23.98,
+              "bestandEur": 2.25,
+              "mitBestandEur": 3.01,
+              "gruende": [],
+              "messungBis": "2026-10-09T22:00:00Z"
+            },
+            {
+              "tag": "2026-10-08",
+              "steuerungEur": -4.75,
+              "vorsprungStartKwh": -23.626,
+              "vorsprungEndeKwh": -5.3,
+              "bezugCtKwh": 25.0,
+              "bewertungCtKwh": 23.98,
+              "bestandEur": 4.39,
+              "mitBestandEur": -0.36,
+              "gruende": [
+                "gestern_verkauft",
+                "anders_geladen"
+              ],
+              "messungBis": "2026-10-08T22:00:00Z"
+            },
+            {
+              "tag": "2026-10-07",
+              "steuerungEur": -0.25,
+              "vorsprungStartKwh": -28.4,
+              "vorsprungEndeKwh": -23.626,
+              "bezugCtKwh": 25.0,
+              "bewertungCtKwh": 23.98,
+              "bestandEur": 1.14,
+              "mitBestandEur": 0.89,
+              "gruende": [
+                "gestern_verkauft"
+              ],
+              "messungBis": "2026-10-07T22:00:00Z"
+            },
+            {
+              "tag": "2026-10-06",
+              "steuerungEur": 12.62,
+              "vorsprungStartKwh": -6.7,
+              "vorsprungEndeKwh": -28.4,
+              "bezugCtKwh": 25.0,
+              "bewertungCtKwh": 23.98,
+              "bestandEur": -5.2,
+              "mitBestandEur": 7.42,
+              "gruende": [],
+              "messungBis": "2026-10-06T22:00:00Z"
+            }
+          ]
+        }
+      },
+      "erwartet": {
+        "wert": "+ 0,01 €",
+        "chip": "Zwischenstand",
+        "grundZeile": "gestern verkauft, heute nachgekauft",
+        "grundErster": "gestern verkauft, heute nachgekauft",
+        "grundKurz": "gestern verkauft, heute nachgekauft",
+        "anker": {
+          "label": "Oktober bisher",
+          "wert": "+ 25,86 €"
+        },
+        "bestand": null,
+        "bestandBadge": null,
+        "satzMit": "mit Bestand bewertet"
+      }
+    },
+    {
+      "name": "Oktober Herzogau mit Bestand · Rückblick Di 13.10. - Nachkauf nach dem Abendverkauf, − 2,32 € statt − 4,48 €",
+      "vertrag": null,
+      "now": "2026-10-14T00:10:00+02:00",
+      "money": {
+        "range": "day",
+        "from": "2026-10-12T22:00:00Z",
+        "to": "2026-10-13T22:00:00Z",
+        "savedEur": 4.52,
+        "savedSpeicherEur": 9.0,
+        "savedSteuerungEur": -4.48,
+        "steuerungVortagEur": 12.1,
+        "steuerungMonatBisherEur": 29.37,
+        "speicherVorsprungKwh": -24.385,
+        "steuerungGruende": [
+          "gestern_verkauft",
+          "anders_geladen"
+        ],
+        "savedSteuerungMitBestandEur": -2.32,
+        "steuerungZeitraum": {
+          "bezugCtKwh": 25.0,
+          "bewertungCtKwh": 23.98,
+          "monat": {
+            "von": "2026-10-01",
+            "bis": "2026-10-13",
+            "mitBestandEur": 23.53
+          },
+          "sieben": {
+            "von": "2026-10-07",
+            "bis": "2026-10-13",
+            "mitBestandEur": -0.29
+          },
+          "heute": {
+            "tag": "2026-10-13",
+            "steuerungEur": -4.48,
+            "vorsprungStartKwh": -33.385,
+            "vorsprungEndeKwh": -24.385,
+            "bezugCtKwh": 25.0,
+            "bewertungCtKwh": 23.98,
+            "bestandEur": 2.16,
+            "mitBestandEur": -2.32,
+            "gruende": [
+              "gestern_verkauft",
+              "anders_geladen"
+            ],
+            "messungBis": "2026-10-13T22:00:00Z"
+          },
+          "tage": [
+            {
+              "tag": "2026-10-13",
+              "steuerungEur": -4.48,
+              "vorsprungStartKwh": -33.385,
+              "vorsprungEndeKwh": -24.385,
+              "bezugCtKwh": 25.0,
+              "bewertungCtKwh": 23.98,
+              "bestandEur": 2.16,
+              "mitBestandEur": -2.32,
+              "gruende": [
+                "gestern_verkauft",
+                "anders_geladen"
+              ],
+              "messungBis": "2026-10-13T22:00:00Z"
+            },
+            {
+              "tag": "2026-10-12",
+              "steuerungEur": 12.1,
+              "vorsprungStartKwh": 10.0,
+              "vorsprungEndeKwh": -33.385,
+              "bezugCtKwh": 25.0,
+              "bewertungCtKwh": 23.98,
+              "bestandEur": -10.4,
+              "mitBestandEur": 1.7,
+              "gruende": [],
+              "messungBis": "2026-10-12T22:00:00Z"
+            },
+            {
+              "tag": "2026-10-11",
+              "steuerungEur": -2.65,
+              "vorsprungStartKwh": 6.17,
+              "vorsprungEndeKwh": 10.0,
+              "bezugCtKwh": 25.0,
+              "bewertungCtKwh": 23.98,
+              "bestandEur": 0.92,
+              "mitBestandEur": -1.73,
+              "gruende": [
+                "anders_geladen"
+              ],
+              "messungBis": "2026-10-11T22:00:00Z"
+            },
+            {
+              "tag": "2026-10-10",
+              "steuerungEur": -1.99,
+              "vorsprungStartKwh": 4.062,
+              "vorsprungEndeKwh": 6.17,
+              "bezugCtKwh": 25.0,
+              "bewertungCtKwh": 23.98,
+              "bestandEur": 0.51,
+              "mitBestandEur": -1.48,
+              "gruende": [
+                "anders_geladen"
+              ],
+              "messungBis": "2026-10-10T22:00:00Z"
+            },
+            {
+              "tag": "2026-10-09",
+              "steuerungEur": 0.76,
+              "vorsprungStartKwh": -5.3,
+              "vorsprungEndeKwh": 4.062,
+              "bezugCtKwh": 25.0,
+              "bewertungCtKwh": 23.98,
+              "bestandEur": 2.25,
+              "mitBestandEur": 3.01,
+              "gruende": [],
+              "messungBis": "2026-10-09T22:00:00Z"
+            },
+            {
+              "tag": "2026-10-08",
+              "steuerungEur": -4.75,
+              "vorsprungStartKwh": -23.626,
+              "vorsprungEndeKwh": -5.3,
+              "bezugCtKwh": 25.0,
+              "bewertungCtKwh": 23.98,
+              "bestandEur": 4.39,
+              "mitBestandEur": -0.36,
+              "gruende": [
+                "gestern_verkauft",
+                "anders_geladen"
+              ],
+              "messungBis": "2026-10-08T22:00:00Z"
+            },
+            {
+              "tag": "2026-10-07",
+              "steuerungEur": -0.25,
+              "vorsprungStartKwh": -28.4,
+              "vorsprungEndeKwh": -23.626,
+              "bezugCtKwh": 25.0,
+              "bewertungCtKwh": 23.98,
+              "bestandEur": 1.14,
+              "mitBestandEur": 0.89,
+              "gruende": [
+                "gestern_verkauft"
+              ],
+              "messungBis": "2026-10-07T22:00:00Z"
+            }
+          ]
+        }
+      },
+      "erwartet": {
+        "wert": "− 2,32 €",
+        "chip": "unter Null",
+        "grundZeile": "gestern verkauft, heute nachgekauft · anders geladen und entladen",
+        "grundErster": "gestern verkauft, heute nachgekauft",
+        "grundKurz": "gestern verkauft, heute nachgekauft",
+        "anker": {
+          "label": "1.–13. Oktober",
+          "wert": "+ 23,53 €"
+        },
+        "bestand": null,
+        "bestandBadge": null
+      }
+    },
+    {
+      "name": "Oktober Herzogau mit Bestand · Rückblick Mo 12.10. - der Verkaufstag, + 1,70 € statt + 12,10 €",
+      "vertrag": null,
+      "now": "2026-10-14T00:10:00+02:00",
+      "money": {
+        "range": "day",
+        "from": "2026-10-11T22:00:00Z",
+        "to": "2026-10-12T22:00:00Z",
+        "savedEur": 10.7,
+        "savedSpeicherEur": -1.4,
+        "savedSteuerungEur": 12.1,
+        "steuerungVortagEur": -2.65,
+        "steuerungMonatBisherEur": 33.85,
+        "speicherVorsprungKwh": -33.385,
+        "steuerungGruende": [],
+        "savedSteuerungMitBestandEur": 1.7,
+        "steuerungZeitraum": {
+          "bezugCtKwh": 25.0,
+          "bewertungCtKwh": 23.98,
+          "monat": {
+            "von": "2026-10-01",
+            "bis": "2026-10-12",
+            "mitBestandEur": 25.85
+          },
+          "sieben": {
+            "von": "2026-10-06",
+            "bis": "2026-10-12",
+            "mitBestandEur": 9.45
+          },
+          "heute": {
+            "tag": "2026-10-12",
+            "steuerungEur": 12.1,
+            "vorsprungStartKwh": 10.0,
+            "vorsprungEndeKwh": -33.385,
+            "bezugCtKwh": 25.0,
+            "bewertungCtKwh": 23.98,
+            "bestandEur": -10.4,
+            "mitBestandEur": 1.7,
+            "gruende": [],
+            "messungBis": "2026-10-12T22:00:00Z"
+          },
+          "tage": [
+            {
+              "tag": "2026-10-12",
+              "steuerungEur": 12.1,
+              "vorsprungStartKwh": 10.0,
+              "vorsprungEndeKwh": -33.385,
+              "bezugCtKwh": 25.0,
+              "bewertungCtKwh": 23.98,
+              "bestandEur": -10.4,
+              "mitBestandEur": 1.7,
+              "gruende": [],
+              "messungBis": "2026-10-12T22:00:00Z"
+            },
+            {
+              "tag": "2026-10-11",
+              "steuerungEur": -2.65,
+              "vorsprungStartKwh": 6.17,
+              "vorsprungEndeKwh": 10.0,
+              "bezugCtKwh": 25.0,
+              "bewertungCtKwh": 23.98,
+              "bestandEur": 0.92,
+              "mitBestandEur": -1.73,
+              "gruende": [
+                "anders_geladen"
+              ],
+              "messungBis": "2026-10-11T22:00:00Z"
+            },
+            {
+              "tag": "2026-10-10",
+              "steuerungEur": -1.99,
+              "vorsprungStartKwh": 4.062,
+              "vorsprungEndeKwh": 6.17,
+              "bezugCtKwh": 25.0,
+              "bewertungCtKwh": 23.98,
+              "bestandEur": 0.51,
+              "mitBestandEur": -1.48,
+              "gruende": [
+                "anders_geladen"
+              ],
+              "messungBis": "2026-10-10T22:00:00Z"
+            },
+            {
+              "tag": "2026-10-09",
+              "steuerungEur": 0.76,
+              "vorsprungStartKwh": -5.3,
+              "vorsprungEndeKwh": 4.062,
+              "bezugCtKwh": 25.0,
+              "bewertungCtKwh": 23.98,
+              "bestandEur": 2.25,
+              "mitBestandEur": 3.01,
+              "gruende": [],
+              "messungBis": "2026-10-09T22:00:00Z"
+            },
+            {
+              "tag": "2026-10-08",
+              "steuerungEur": -4.75,
+              "vorsprungStartKwh": -23.626,
+              "vorsprungEndeKwh": -5.3,
+              "bezugCtKwh": 25.0,
+              "bewertungCtKwh": 23.98,
+              "bestandEur": 4.39,
+              "mitBestandEur": -0.36,
+              "gruende": [
+                "gestern_verkauft",
+                "anders_geladen"
+              ],
+              "messungBis": "2026-10-08T22:00:00Z"
+            },
+            {
+              "tag": "2026-10-07",
+              "steuerungEur": -0.25,
+              "vorsprungStartKwh": -28.4,
+              "vorsprungEndeKwh": -23.626,
+              "bezugCtKwh": 25.0,
+              "bewertungCtKwh": 23.98,
+              "bestandEur": 1.14,
+              "mitBestandEur": 0.89,
+              "gruende": [
+                "gestern_verkauft"
+              ],
+              "messungBis": "2026-10-07T22:00:00Z"
+            },
+            {
+              "tag": "2026-10-06",
+              "steuerungEur": 12.62,
+              "vorsprungStartKwh": -6.7,
+              "vorsprungEndeKwh": -28.4,
+              "bezugCtKwh": 25.0,
+              "bewertungCtKwh": 23.98,
+              "bestandEur": -5.2,
+              "mitBestandEur": 7.42,
+              "gruende": [],
+              "messungBis": "2026-10-06T22:00:00Z"
+            }
+          ]
+        }
+      },
+      "erwartet": {
+        "wert": "+ 1,70 €",
+        "chip": null,
+        "grundZeile": null,
+        "grundErster": null,
+        "grundKurz": null,
+        "anker": {
+          "label": "1.–12. Oktober",
+          "wert": "+ 25,85 €"
+        },
+        "bestand": null,
+        "bestandBadge": null
+      }
+    },
+    {
+      "name": "Oktober Herzogau mit Bestand · Monat Oktober laufend - Summe der Tage mit Bestand, + 23,53 € statt + 29,37 €",
+      "vertrag": null,
+      "now": "2026-10-14T00:10:00+02:00",
+      "money": {
+        "range": "month",
+        "from": "2026-09-30T22:00:00Z",
+        "to": "2026-10-31T23:00:00Z",
+        "savedEur": 120.0,
+        "savedSpeicherEur": 90.63,
+        "savedSteuerungEur": 29.37,
+        "savedSteuerungMitBestandEur": 23.53
+      },
+      "erwartet": {
+        "wert": "+ 23,53 €",
+        "chip": "Zwischenstand",
+        "grundZeile": null,
+        "grundErster": null,
+        "grundKurz": null,
+        "anker": null,
+        "bestand": null,
+        "bestandBadge": null
+      }
+    },
+    {
+      "name": "Oktober Herzogau mit Bestand · Lücke - ohne Ladestand am Tagesrand keine Zahl, nie die Kasse als Ersatz",
+      "vertrag": null,
+      "now": "2026-10-14T00:10:00+02:00",
+      "money": {
+        "range": "month",
+        "from": "2026-09-30T22:00:00Z",
+        "to": "2026-10-31T23:00:00Z",
+        "savedEur": 120.0,
+        "savedSpeicherEur": 90.63,
+        "savedSteuerungEur": 29.37,
+        "savedSteuerungMitBestandEur": null
+      },
+      "erwartet": {
+        "wert": "—",
+        "chip": null,
+        "grundZeile": null,
+        "grundErster": null,
+        "grundKurz": null,
+        "anker": null,
+        "bestand": null,
+        "bestandBadge": null,
+        "satzMit": "Ladestand"
+      }
     }
   ]
 }

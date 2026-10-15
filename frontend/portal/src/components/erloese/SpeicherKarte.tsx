@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react';
+import { FORMEL_AUSLOESER_SCHRITTE } from '../../erloesEbenen';
 import type { SpeicherAussage } from '../../speicherAussage';
+import type { SteuerungKarte } from '../../steuerungZeitraum';
+import { RechenZeilen } from '../SteuerungFormel';
 
 /**
  * **Die Steuerungs-Karte** — Bauteil 3 der Variante C (Konzept
@@ -37,7 +40,8 @@ import type { SpeicherAussage } from '../../speicherAussage';
  *   als Chip am Label, damit die Aussage ohne Farbe ankommt (§3.9).
  */
 export interface SpeicherKarteProps {
-  aussage: SpeicherAussage;
+  /** Die Aussage; null nur, wo `zeitraum` die Karte allein trägt (vor dem ersten Eimer des Tages). */
+  aussage: SpeicherAussage | null;
   /**
    * Wohin „Speicher-Daten fehlen ›" führt (die Technik-Seite mit den
    * Batterie-Stammdaten). Ohne Ziel bleibt der Hinweis ruhiger Text — nie ein
@@ -55,6 +59,14 @@ export interface SpeicherKarteProps {
   variant?: 'karte' | 'sektion';
   /** Der Aufklapper „Wie wird das berechnet?" — er wohnt UNTER den Zeilen. */
   children?: ReactNode;
+  /**
+   * Die Tagesansicht MIT BESTAND (Bedienkonzept vp-herzogau-p3-kachel-konzept
+   * §3, P3-3 A): „Heute bis 08:15“ bzw. „Steuerung an diesem Tag“ mit Bestand
+   * und Grund-Wort, die Anker „Letzte 7 Tage“ und „Oktober bisher“, die Liste
+   * „Tag für Tag“ und der Rechenweg in vier Schritten. Gesetzt ersetzt sie die
+   * Zeilen aus `aussage` und den Aufklapper `children`.
+   */
+  zeitraum?: SteuerungKarte | null;
 }
 
 export function SpeicherKarte({
@@ -63,7 +75,12 @@ export function SpeicherKarte({
   label = 'VoltPilots Steuerung',
   variant = 'karte',
   children,
+  zeitraum,
 }: SpeicherKarteProps) {
+  if (zeitraum) {
+    return <SpeicherKarteMitBestand karte={zeitraum} label={label} variant={variant} />;
+  }
+  if (!aussage) return null;
   const nachtrag = aussage.nachtragLink && nachtragHref;
   return (
     <section
@@ -122,6 +139,75 @@ export function SpeicherKarte({
       )}
 
       {children}
+    </section>
+  );
+}
+
+/**
+ * Die Karte MIT BESTAND: der Tag, die Anker, „Tag für Tag“ und der Rechenweg —
+ * jede Zeile und jede Zahl aus `steuerungKarte()`, hier wird nur gezeichnet.
+ */
+function SpeicherKarteMitBestand({
+  karte,
+  label,
+  variant,
+}: {
+  karte: SteuerungKarte;
+  label: string;
+  variant: 'karte' | 'sektion';
+}) {
+  return (
+    <section
+      className={
+        variant === 'sektion' ? 'vp-c-speicher is-sektion' : 'vp-c-card vp-c-speicher'
+      }
+    >
+      <h3 className="vp-c-label">
+        <span className="vp-c-label-text">{label}</span>
+        {karte.chip && <span className="vp-chip">{karte.chip}</span>}
+      </h3>
+
+      <p className="vp-c-sp-zeile">
+        <span className="vp-c-sp-label">{karte.tag.label}</span>
+        <span className="vp-c-sp-wert">{karte.tag.wert}</span>
+        {karte.tag.grund && <span className="vp-c-sp-sek vp-c-sp-grund">{karte.tag.grund}</span>}
+      </p>
+
+      {karte.anker.map((a) => (
+        <p key={a.label} className="vp-c-sp-anker">
+          <span className="vp-c-sp-anker-label">{a.label}</span>
+          <span className="vp-c-sp-anker-wert">{a.wert}</span>
+        </p>
+      ))}
+
+      {karte.liste && (
+        <div className="vp-c-sp-liste">
+          <h4 className="vp-c-sp-liste-kopf">Tag für Tag</h4>
+          <ul>
+            {karte.liste.zeilen.map((z) => (
+              <li key={z.label}>
+                <span className="vp-c-sp-tag">{z.label}</span>
+                <span className="vp-c-sp-tag-wert">{z.wert}</span>
+                {z.grund && <span className="vp-c-sp-tag-grund">{z.grund}</span>}
+              </li>
+            ))}
+          </ul>
+          <p className="vp-c-sp-summe">
+            <span>{karte.liste.summe.label}</span>
+            <span className="vp-c-sp-tag-wert">{karte.liste.summe.wert}</span>
+          </p>
+          <p className="vp-c-sp-fuss">{karte.liste.fuss}</p>
+        </div>
+      )}
+
+      {karte.rechenweg.length > 0 && (
+        <details className="vp-formel">
+          <summary>{FORMEL_AUSLOESER_SCHRITTE}</summary>
+          <div className="vp-formel-body">
+            <RechenZeilen zeilen={karte.rechenweg} />
+          </div>
+        </details>
+      )}
     </section>
   );
 }

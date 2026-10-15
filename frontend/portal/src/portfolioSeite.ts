@@ -23,7 +23,15 @@ import { betrag, geldTon, mengeText, vergleichUnter, type GeldErklaerung } from 
 import { erloesBegriff } from './erloesEbenen';
 import { LEER_TEXT_FALLBACK } from './erloesKomposition';
 import type { ErloeseAggregat, PortfolioHistoryInput } from './portfolioHistorie';
-import { MESSLATTE_DATIV, MESSLATTE_KURZ, type SpeicherAussage } from './speicherAussage';
+import {
+  anzeigeTonVon,
+  geldWort,
+  MESSLATTE_DATIV,
+  MESSLATTE_KURZ,
+  SPEICHER_TOTBAND,
+  type SpeicherAussage,
+} from './speicherAussage';
+import type { FlotteMitBestand } from './steuerungZeitraum';
 import type { TabellenZeile } from './components/VerlaufRahmen';
 import type { ErloesVergleich } from './vergleichLaufend';
 
@@ -330,6 +338,50 @@ export function portfolioSteuerung(
       `Verglichen wird je Anlage mit ${MESSLATTE_DATIV}: Er lädt jeden Überschuss sofort und entlädt sofort — ohne Blick auf Preise. Nicht im Ergebnis enthalten.`,
       aggregat.steuerungAnlagen < mit
         ? `Die Summe umfasst die ${aggregat.steuerungAnlagen} ${anlagenWort(aggregat.steuerungAnlagen)} mit gepflegten Speicherdaten; für die übrigen ist kein Vergleich möglich.`
+        : '',
+      'Den Betrag je Anlage zeigt die Tabelle.',
+    ].filter(Boolean),
+  };
+}
+
+/**
+ * Die Kachel „VoltPilot-Steuerung“ der Übersicht MIT BESTAND (Bedienkonzept
+ * vp-herzogau-p3-kachel-konzept, Captain 14.10.2026 HZ-3 A und P3-4 A): vorn
+ * der laufende Monat, darunter die letzten 7 abgeschlossenen Tage — nie die
+ * Tageszahl vorn. null ohne Monat (älteres Backend oder keine Anlage mit Zahl).
+ */
+export function portfolioSteuerungMonat(
+  f: FlotteMitBestand,
+  anlagenMitDaten: number,
+): PortfolioSteuerung | null {
+  if (!f.mitBestand || f.monatEur == null) return null;
+  const richtung =
+    Math.abs(f.monatEur) < SPEICHER_TOTBAND
+      ? `wie ${MESSLATTE_KURZ}`
+      : f.monatEur > 0
+        ? `mehr als ${MESSLATTE_KURZ}`
+        : `weniger als ${MESSLATTE_KURZ}`;
+  const teil =
+    f.monatAnlagen < anlagenMitDaten
+      ? ` · ${f.monatAnlagen} von ${anlagenMitDaten} ${anlagenWort(anlagenMitDaten)}`
+      : '';
+  return {
+    label: 'VoltPilot-Steuerung',
+    titel: 'Mehrwert durch VoltPilot',
+    wert: geldWort(f.monatEur),
+    ton: anzeigeTonVon(f.monatEur, true),
+    unter: [
+      `diesen Monat · ${richtung}`,
+      f.siebenEur == null ? null : `letzte 7 Tage ${geldWort(f.siebenEur)}`,
+    ]
+      .filter(Boolean)
+      .join(' · ')
+      .concat(teil),
+    info: [
+      'Vorn steht der laufende Monat, daneben die letzten 7 abgeschlossenen Tage — jeder Tag mit Bestand bewertet: Was am Tagesende mehr oder weniger im Speicher liegt als im Vergleichsspeicher, zählt zum Bezugspreis.',
+      `Verglichen wird je Anlage mit ${MESSLATTE_DATIV}: Er lädt jeden Überschuss sofort und entlädt sofort — ohne Blick auf Preise. Nicht im Ergebnis enthalten.`,
+      f.monatAnlagen < anlagenMitDaten
+        ? `Die Summe umfasst die ${f.monatAnlagen} ${anlagenWort(f.monatAnlagen)} mit gepflegten Speicherdaten und lückenlosem Ladestand.`
         : '',
       'Den Betrag je Anlage zeigt die Tabelle.',
     ].filter(Boolean),

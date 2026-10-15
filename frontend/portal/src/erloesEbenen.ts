@@ -693,6 +693,18 @@ export function speicherSchritte(input: SpeicherSchritteInput): RechenZeile[] {
     });
   }
 
+  // Mit Bestand (Bedienkonzept P3, P3-2 A): auf Woche, Monat und Jahr ist die
+  // Zahl vorn die Summe der Tage mit Bestand — der Schritt sagt, wie sie aus
+  // der Kassenrechnung oben wird. Den Tag erklärt die Karte selbst.
+  const mitBestand = num(money.savedSteuerungMitBestandEur ?? null);
+  if (steuerung != null && money.range !== 'day' && mitBestand != null) {
+    out.push({
+      formel: `Schritt 4 · mit Bestand bewertet: ${vorzeichen(rundeKaufmaennisch(mitBestand, 2))}`,
+      herkunft:
+        'die Summe der Tage: je Tag die Kassenrechnung plus die Änderung des Vorsprungs auf den Vergleichsspeicher × Bezugspreis × 95,9 % — so stehen Verkauf und Nachkauf am selben Tag',
+    });
+  }
+
   out.push(...warumWeniger(input, steuerung));
 
   // Der Planwert folgt der Bestandszeile (`bestandZeile`, Konzept k1 E2 = A):

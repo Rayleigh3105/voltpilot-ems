@@ -6,6 +6,7 @@ import com.voltpilot.api.repo.PeakShavingRepository;
 import com.voltpilot.api.repo.SiteRepository;
 import com.voltpilot.api.repo.SpeicherBank;
 import com.voltpilot.api.repo.SteuerungGrund;
+import com.voltpilot.api.repo.SteuerungMitBestand;
 import com.voltpilot.api.web.dto.SiteDto;
 import com.voltpilot.api.web.dto.SiteEarningsDto;
 import com.voltpilot.api.web.dto.SiteEarningsDto.SiteEarningsBucketDto;
@@ -126,16 +127,33 @@ public class SiteEarningsController {
         // walk savedSpeicherForSite would run - bit-identical, so the day pays
         // for one walk, not two. Monat und Jahr tragen weder Vorsprung noch
         // Grund (§6, §7.1).
+        //
+        // Das TAGESBILD (Bedienkonzept vp-herzogau-p3-kachel-konzept §4.2)
+        // trägt aus demselben Walk auch Monat, 7 Tage und Tag mit Bestand -
+        // auch vor dem ersten Eimer des Tages, denn Monat und 7 Tage hängen
+        // nicht an ihm. Jeder andere Zeitraum bekommt seine Zahl mit Bestand
+        // aus dem Walk, den savedSpeicher ohnehin rechnet.
         boolean tag = !all && parsed == HistoryRange.DAY;
-        EarningsRepository.Tageseinordnung einordnung = tag && saved != null
-                ? earnings.tageseinordnungForSite(siteId, from, to)
+        EarningsRepository.Tagesbild bild = tag
+                ? earnings.tagesbildForSite(siteId, from, to, to.isAfter(Instant.now()))
+                : null;
+        EarningsRepository.Tageseinordnung einordnung = bild != null && saved != null
+                ? bild.einordnung()
+                : null;
+        EarningsRepository.Fensterwert fenster = !tag && saved != null
+                ? earnings.fensterwertForSite(siteId, from, to)
                 : null;
         BigDecimal savedSpeicher = saved == null ? null
                 : tag ? (einordnung == null ? null : einordnung.speicherEur())
-                : earnings.savedSpeicherForSite(siteId, from, to);
+                : (fenster == null ? null : fenster.speicherEur());
         BigDecimal savedSteuerung = savedSpeicher != null
                 ? saved.subtract(savedSpeicher)
                 : null;
+        SteuerungMitBestand.Zeitraum zeitraum = bild == null ? null : bild.zeitraum();
+        BigDecimal savedSteuerungMitBestand = savedSteuerung == null ? null
+                : tag ? (zeitraum == null || zeitraum.heute() == null ? null
+                        : zeitraum.heute().mitBestandEur())
+                : fenster.steuerungMitBestandEur();
         String steuerungSplitReason = saved != null && savedSpeicher == null
                 ? "no_battery_data"
                 : null;
@@ -267,7 +285,36 @@ public class SiteEarningsController {
                 geplant,
                 SteuerungGrund.fuer(savedSteuerung, einordnung, geplant),
                 series,
-                EarningsController.peakShaving(site, today, peakRows));
+                EarningsController.peakShaving(site, today, peakRows),
+                savedSteuerungMitBestand,
+                steuerungZeitraum(zeitraum));
+    }
+
+    /** Der Zeitraum mit Bestand als Antwort-Block; null ohne Zeitraum. */
+    static SiteEarningsDto.SteuerungZeitraumDto steuerungZeitraum(SteuerungMitBestand.Zeitraum z) {
+        if (z == null) {
+            return null;
+        }
+        return new SiteEarningsDto.SteuerungZeitraumDto(
+                z.bezugCtKwh(),
+                z.bewertungCtKwh(),
+                fenster(z.monat()),
+                fenster(z.sieben()),
+                tag(z.heute()),
+                z.tage().stream().map(SiteEarningsController::tag).toList());
+    }
+
+    private static SiteEarningsDto.SteuerungFensterDto fenster(SteuerungMitBestand.Fenster f) {
+        return f == null ? null
+                : new SiteEarningsDto.SteuerungFensterDto(f.von(), f.bis(), f.mitBestandEur());
+    }
+
+    private static SiteEarningsDto.SteuerungTagDto tag(SteuerungMitBestand.Bewertet t) {
+        return t == null ? null
+                : new SiteEarningsDto.SteuerungTagDto(t.tag(), t.steuerungEur(),
+                        t.vorsprungStartKwh(), t.vorsprungEndeKwh(), t.bezugCtKwh(),
+                        t.bewertungCtKwh(), t.bestandEur(), t.mitBestandEur(), t.gruende(),
+                        t.messungBis());
     }
 
     /**
