@@ -8,6 +8,11 @@
  *  - Dauer 5 Minuten (Momentanwerte), Erholdauer 5 Minuten - gegen Flattern [G1].
  *  - Rückkehrschwelle 5 % der Schwelle, mindestens die Auflösung der Größe; bei „unter“ liegt die
  *    Rückkehr HÖHER als die Schwelle (zurück über sie), bei „ueber“ NIEDRIGER (zurück unter sie).
+ *
+ * Scheibe 4 (§6.3, §6.4) fügt die Wörter der Perioden-Form hinzu (`PERIODE_WORT`: Tag, Woche,
+ * Monat, Abrechnungszeitraum) und „Gilt für“/„Alle Anlagen“ (nur im Blatt, `UeberwachenBlatt.tsx`).
+ * Dieselbe Begründung wie bei den Scheibe-1/2-Wörtern (`meldungen.ts`): Teil der noch nicht
+ * fachmodell-reifen Überwachungs-Mechanik, der volle Glossar-Eintrag bleibt zurückgestellt.
  */
 import type { Bedingungsart, Periode, Schwere, WerteKatalogEintrag } from './werteKatalog';
 

@@ -33,8 +33,12 @@ import org.springframework.stereotype.Service;
  * <p>Scheibe 1 kannte nur den Bezug {@code anlage} und die Bedingungsart {@code zustand}; Scheibe 2
  * fügt den Bezug {@code komponente} (Familie {@code geraet.messwert}, §6.3 Nr. 1) und die
  * Bedingungsarten {@code ueber}/{@code unter}/{@code ausserhalb}/{@code keine_daten} additiv hinzu
- * ({@link BedingungsPruefung}) - eine Regel mit anderem Bezug (Auswahl "alle Anlagen") bleibt
- * übersprungen (Scheibe 4, §7 "Ausdrücklich NICHT"). <b>Quittierungspflicht (Entscheid 3B): keine.</b>
+ * ({@link BedingungsPruefung}). Scheibe 4 fügt die AUSWAHL hinzu (§6.4 "Gilt für": {@code alle}
+ * = {@code anlage}/{@code box}, wahlweise auf einen {@code standort} eingeschränkt) - {@link #lauf}
+ * löst sie JEDEN Takt frisch in ihre aktuellen Mitglieder auf ({@link #bezuegeAus}), damit ein neu
+ * hinzugekommener Bezug sofort mit überwacht ist, und die Bedingungsarten {@code periode}/
+ * {@code aenderung} für die periodischen Leserarten {@code menge}/{@code geld} - nie im
+ * Minutentakt ({@link #PERIODISCH_MINDESTABSTAND}). <b>Quittierungspflicht (Entscheid 3B): keine.</b>
  * "Gesehen" ist eine freiwillige Aktion, die nur den Verlauf speist (siehe {@link #gesehen}) - sie
  * hält den Zustandsübergang nicht auf: ein Alarm wird erledigt, sobald sein Wert zurückkehrt,
  * unabhängig davon, ob jemand ihn gesehen hat.
