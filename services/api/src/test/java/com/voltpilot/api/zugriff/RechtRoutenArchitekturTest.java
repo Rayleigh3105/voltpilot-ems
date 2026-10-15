@@ -46,6 +46,10 @@ class RechtRoutenArchitekturTest {
         String offen = "öffentlich (SecurityConfig permitAll) — kein Kundenkonto, kein Kundenbereich";
         m.put("RegistrationController#register", offen);
         m.put("EnrollmentController#submitCsr", offen);
+        m.put("MeldungenController#gesehen",
+                "Alerting Scheibe 1 (vp-alerting-konzept-m1 §6.6): \"Gesehen\" darf, wer die Meldung sieht - "
+                        + "die Sicht kommt allein aus dem site_scope-Zaun auf alarm, kein zusätzliches "
+                        + "Matrix-Recht (Entscheid 3B: freiwillig, keine Quittierungspflicht).");
         return m;
     }
 

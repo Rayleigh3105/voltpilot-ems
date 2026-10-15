@@ -6,21 +6,23 @@ import java.time.Instant;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mail.MailException;
 import org.springframework.stereotype.Service;
 
 /**
- * Der zentrale Versand (Alerting Scheibe 0, Konzept §6.2/§6.7): nimmt fällige Zeilen aus dem Ausgang
- * {@code benachrichtigung}, löst die Adresse über den bestätigten {@link ZustellwegRepository} auf -
- * außer bei der Bestätigungs-Mail selbst, die ihr Ziel direkt trägt - und sendet über den einen
- * SMTP-Adapter dieser Scheibe.
+ * Der zentrale Versand (Alerting Scheibe 0/1, Konzept §6.2/§6.6/§6.7): nimmt fällige Zeilen aus dem
+ * Ausgang {@code benachrichtigung}, löst die Adresse über den bestätigten
+ * {@link ZustellwegRepository} auf - außer bei der Bestätigungs-Mail selbst, die ihr Ziel direkt
+ * trägt - und sendet über den einen SMTP-Adapter dieser Scheibe.
  *
  * <p>Läuft je Kundenbereich unter {@link TenantContext} (der Läufer selbst hat keinen
- * Zugriffs-Kontext, §2.5) - der eigentliche Versand braucht hier keine Rechteprüfung über
- * {@code RechteAbleitung.darf}, weil in dieser Scheibe nur die bestehenden Kundenadministratoren
- * (Unterstützungs-Hinweise) adressiert werden; die Sicht-Prüfung je Wert kommt mit der Überwachung
- * (Scheibe 1).
+ * Zugriffs-Kontext, §2.5). Für {@code quelle = "alarm"} (Scheibe 1) prüft {@link #sicht} VOR dem
+ * Senden die Sicht je Empfänger ({@code RechteAbleitung.darf}, §6.6): fehlt sie, wird die Zeile
+ * {@code unterdrueckt} mit Grund {@code keine_sicht}, statt gesendet zu werden. Für
+ * {@code quelle = "unterstuetzung_hinweis"} (Scheibe 0) bleibt es dabei, dass nur bestehende
+ * Kundenadministratoren adressiert werden - keine Sicht-Prüfung nötig.
  */
 @Service
 public class Zusteller {
@@ -36,6 +38,14 @@ public class Zusteller {
     private final ZustellwegRepository zustellwege;
     private final EmailVersandAdapter email;
     private final JdbcTemplate jdbc;
+
+    /** Alerting Scheibe 1: die Sicht-Prüfung je Empfänger (§6.6); ohne Spring greift {@link UeberwachungSichtPruefung#IMMER_SICHTBAR}. */
+    private UeberwachungSichtPruefung sicht = UeberwachungSichtPruefung.IMMER_SICHTBAR;
+
+    @Autowired(required = false)
+    void setSicht(UeberwachungSichtPruefung sicht) {
+        this.sicht = sicht == null ? UeberwachungSichtPruefung.IMMER_SICHTBAR : sicht;
+    }
 
     public Zusteller(VersandRepository ausgang, ZustellwegRepository zustellwege, EmailVersandAdapter email,
             JdbcTemplate jdbc) {
@@ -63,6 +73,10 @@ public class Zusteller {
     }
 
     private boolean sende(VersandRepository.Zeile zeile, Instant jetzt) {
+        if ("alarm".equals(zeile.quelle()) && !sicht.sichtbar(zeile.quelleId(), zeile.empfaengerSub(), jetzt)) {
+            ausgang.unterdrueckt(zeile.id(), "keine_sicht");
+            return false;
+        }
         String ziel = zeile.ziel() != null ? zeile.ziel()
                 : zustellwege.bestaetigtesZiel(zeile.tenantId(), zeile.empfaengerSub()).orElse(null);
         if (ziel == null) {

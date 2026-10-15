@@ -17228,6 +17228,138 @@
         "umfang_noetig": null,
         "text": "Diese Seite gibt es für Sie nicht."
       }
+    },
+    {
+      "name": "m1-peter-ueberwacht-werk-lindach",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": "A1",
+      "why": "Alerting Scheibe 1 (vp-alerting-konzept-m1 §6.6, Entscheid 5A): Peter Hollerbach ist Bearbeiter nur für Werk Lindach (ST-2) - eine eigene Überwachung seines Standorts legt er über die Zelle S der Zeile ueberwachung.eigene an.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "PH",
+          "name": "Peter Hollerbach",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bearbeiter",
+              "standorte": [
+                "ST-2"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-15T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "ueberwachung.eigene",
+        "ziel": {
+          "standort": "ST-2",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-10-20T10:15:00+02:00"
+      },
+      "expected": {
+        "darf": true,
+        "sichtbar": true,
+        "http": 200,
+        "grund": "erlaubt",
+        "standort": "ST-2",
+        "rolle": "bearbeiter",
+        "rolle_noetig": null,
+        "umfang_noetig": null,
+        "text": null
+      }
+    },
+    {
+      "name": "m1-murat-ueberwachung-verwalten-403-bearbeiter",
+      "familie": "darf",
+      "ableitung": "darf",
+      "abnahme": "A1",
+      "why": "Alerting Scheibe 1 (vp-alerting-konzept-m1 §6.6, Entscheid 5A): Murat Demirci (Bedienberechtigt) will eine Überwachung für andere anlegen -> 403 recht_fehlt, rolle_noetig Bearbeiter. Achsentrennung: das Bedienrecht pflegt nicht.",
+      "annahme": null,
+      "input": {
+        "benutzer": {
+          "kennung": "MD",
+          "name": "Murat Demirci",
+          "konto": "benutzer",
+          "zustand": "aktiv",
+          "zuweisungen": [
+            {
+              "rolle": "bedienberechtigt",
+              "standorte": [
+                "ST-1"
+              ],
+              "umfang": null,
+              "art": null,
+              "gueltig_ab": "2026-10-01T00:00:00+02:00",
+              "gueltig_bis": null,
+              "beendet_am": null
+            }
+          ]
+        },
+        "kundenbereich": {
+          "name": "Kunststoffwerk Ahrenberg GmbH",
+          "standorte": [
+            {
+              "kennzeichen": "ST-1",
+              "name": "Werk Ahrenberg"
+            },
+            {
+              "kennzeichen": "ST-2",
+              "name": "Werk Lindach"
+            }
+          ],
+          "kundenadministratoren": [
+            {
+              "kennung": "JW",
+              "name": "Jonas Wendlinger"
+            }
+          ]
+        },
+        "aktion": "ueberwachung.verwalten",
+        "ziel": {
+          "standort": "ST-1",
+          "anlage": null,
+          "stichtag": null
+        },
+        "jetzt": "2026-11-05T12:00:00+01:00"
+      },
+      "expected": {
+        "darf": false,
+        "sichtbar": true,
+        "http": 403,
+        "grund": "recht_fehlt",
+        "standort": "ST-1",
+        "rolle": null,
+        "rolle_noetig": "bearbeiter",
+        "umfang_noetig": null,
+        "text": "Dafür fehlt Ihnen das Recht. Ihr Kundenadministrator: Jonas Wendlinger."
+      }
     }
   ]
 }

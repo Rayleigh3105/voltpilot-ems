@@ -1,0 +1,281 @@
+package com.voltpilot.api.ueberwachung;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.tenant.TenantContext;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
+
+/**
+ * Lesen und Schreiben der Überwachung (Alerting Scheibe 1): {@code ueberwachung},
+ * {@code ueberwachung_instanz}, {@code alarm}, {@code alarm_verlauf}, {@code alarm_kennzeichen_lauf}
+ * (Migration V20261015130000). Läuft immer unter {@link TenantContext} über die Laufzeitrolle
+ * (RLS) - nie über die BYPASSRLS-Admin-Rolle (§6.6: der Läufer selbst hat keinen Zugriffs-Kontext,
+ * sieht aber ohne {@code app.zugriff}/{@code app.standort_ids} automatisch das ganze Unternehmen).
+ */
+@Repository
+public class UeberwachungRepository {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
+
+    public record UeberwachungZeile(UUID id, UUID standortId, int fassung, String name, String wertart,
+            JsonNode bezug, JsonNode bedingung, String schwere, JsonNode empfaenger, String herkunft) {}
+
+    public record InstanzZeile(String zustand, Instant seit, JsonNode letzterWert, Instant letzteMesszeit,
+            UUID offenerAlarm) {
+        static final InstanzZeile NEU = new InstanzZeile("normal", null, null, null, null);
+    }
+
+    public record AlarmZeile(UUID id, String kennzeichen, UUID ueberwachungId, UUID standortId,
+            String bezugKennung, String wertart, String schwere, Instant ausgeloestAm, String zustand,
+            Instant wiederNormalAm, String gesehenVon, Instant gesehenAm, Instant erledigtAm) {}
+
+    private final JdbcTemplate jdbc;
+
+    public UeberwachungRepository(JdbcTemplate jdbc) {
+        this.jdbc = jdbc;
+    }
+
+    // --------------------------------------------------------------- Aussaat (§7 Scheibe 1, Nr. 7)
+
+    /** Alle Anlagen mit mindestens einer angenommenen Box - die Grundlage von "box.erreichbar". */
+    public List<UUID> anlagenMitAngenommenerBox() {
+        return jdbc.queryForList(
+                "SELECT DISTINCT site_id FROM device WHERE status = 'claimed' AND site_id IS NOT NULL",
+                UUID.class);
+    }
+
+    /** Alle Anlagen mit mindestens einer gemeldeten Datenquelle - Grundlage von "datenquelle.liefert_daten". */
+    public List<UUID> anlagenMitDatenquelle() {
+        return jdbc.queryForList("SELECT DISTINCT site_id FROM device_data_source_status", UUID.class);
+    }
+
+    /**
+     * Sät die Zeile ab Werk (Entscheid 2A), idempotent (Teil-Index {@code uq_ueberwachung_ab_werk}).
+     * Empfänger: Kundenadministrator und Energiemanager als Rollen, erst beim Versand aufgelöst
+     * (§6.4 "Mehrere Empfänger") - so bekommt eine neue Kollegin die Meldungen ohne Regeländerung.
+     */
+    public void seedAbWerk(UUID anlageId, UUID standortId, WerteKatalog.Eintrag eintrag) {
+        WerteKatalog.Vorschlag v = eintrag.vorschlag();
+        String bedingung = """
+                {"art":"zustand","ziel":%s,"dauer_s":%d,"erholen_s":%d}
+                """.formatted(toJsonArray(v.ziel()), v.dauerS(), v.erholenS());
+        String bezug = "{\"anlage\":\"" + anlageId + "\"}";
+        String empfaenger = "[{\"rolle\":\"kundenadministrator\"},{\"rolle\":\"energiemanager\"}]";
+        jdbc.update("""
+                INSERT INTO ueberwachung (tenant_id, standort_id, name, wertart, bezug, bedingung, schwere,
+                       empfaenger, herkunft, aktiv, angelegt_von)
+                VALUES (?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?::jsonb, 'ab_werk', true, 'system')
+                ON CONFLICT DO NOTHING
+                """,
+                TenantContext.get(), standortId, eintrag.name(), eintrag.wertart(), bezug, bedingung,
+                v.schwere(), empfaenger);
+    }
+
+    private static String toJsonArray(List<String> werte) {
+        if (werte == null || werte.isEmpty()) {
+            return "[]";
+        }
+        StringBuilder b = new StringBuilder("[");
+        for (int i = 0; i < werte.size(); i++) {
+            if (i > 0) {
+                b.append(',');
+            }
+            b.append('"').append(werte.get(i)).append('"');
+        }
+        return b.append(']').toString();
+    }
+
+    // --------------------------------------------------------------------- Regeln lesen
+
+    /** Alle aktiven Regeln des Kundenbereichs, älteste zuerst. */
+    public List<UeberwachungZeile> aktive() {
+        return jdbc.query("""
+                SELECT id, standort_id, fassung, name, wertart, bezug::text AS bezug_json,
+                       bedingung::text AS bedingung_json, schwere, empfaenger::text AS empfaenger_json,
+                       herkunft
+                  FROM ueberwachung WHERE aktiv = true ORDER BY angelegt_am
+                """, UeberwachungRepository::zeile);
+    }
+
+    private static UeberwachungZeile zeile(ResultSet rs, int n) throws SQLException {
+        return new UeberwachungZeile(rs.getObject("id", UUID.class), rs.getObject("standort_id", UUID.class),
+                rs.getInt("fassung"), rs.getString("name"), rs.getString("wertart"),
+                json(rs.getString("bezug_json")), json(rs.getString("bedingung_json")), rs.getString("schwere"),
+                json(rs.getString("empfaenger_json")), rs.getString("herkunft"));
+    }
+
+    private static JsonNode json(String text) {
+        try {
+            return text == null ? null : JSON.readTree(text);
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("Überwachung: ungültiges JSON '" + text + "'", e);
+        }
+    }
+
+    /** Das Kurzzeichen eines Standorts (für {@code RechteAbleitung.Ziel.standort(kennzeichen)}, §6.6). */
+    public String standortKurzzeichen(UUID standortId) {
+        List<String> rows = jdbc.query("SELECT kurzzeichen FROM standort WHERE id = ? AND tenant_id = ?",
+                (rs, n) -> rs.getString(1), standortId, TenantContext.get());
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /** Der Anzeigename der Anlage - für die Texte nach außen (§6.8). */
+    public String anlageName(UUID anlageId) {
+        List<String> rows = jdbc.query("SELECT name FROM site WHERE id = ?",
+                (rs, n) -> rs.getString(1), anlageId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    // --------------------------------------------------------------------- Standort einer Anlage
+
+    /**
+     * Der Standort, an dem die Anlage HEUTE hängt (Zeitzone des Kundenbereichs, wie
+     * {@code uems_zugriff_anlage_sichtbar}) - {@code null}, wenn sie keinem gültig zugeordnet ist.
+     */
+    public UUID standortHeute(UUID anlageId) {
+        List<UUID> rows = jdbc.query("""
+                SELECT a.standort_id FROM anlage_standort a
+                 WHERE a.tenant_id = ? AND a.site_id = ? AND a.aufgehoben_am IS NULL
+                   AND daterange(a.gueltig_ab, a.gueltig_bis, '[]') @> uems_zugriff_heute(a.tenant_id)
+                 ORDER BY a.gueltig_ab DESC LIMIT 1
+                """, (rs, n) -> rs.getObject(1, UUID.class), TenantContext.get(), anlageId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    // --------------------------------------------------------------------- Instanz (§6.5)
+
+    public InstanzZeile instanz(UUID ueberwachungId, String bezugKennung) {
+        List<InstanzZeile> rows = jdbc.query("""
+                SELECT zustand, seit, letzter_wert::text AS letzter_wert_json, letzte_messzeit, offener_alarm
+                  FROM ueberwachung_instanz WHERE ueberwachung_id = ? AND bezug_kennung = ?
+                """, (rs, n) -> new InstanzZeile(rs.getString("zustand"), instant(rs.getTimestamp("seit")),
+                        json(rs.getString("letzter_wert_json")), instant(rs.getTimestamp("letzte_messzeit")),
+                        rs.getObject("offener_alarm", UUID.class)),
+                ueberwachungId, bezugKennung);
+        return rows.isEmpty() ? InstanzZeile.NEU : rows.get(0);
+    }
+
+    public void instanzSpeichern(UUID ueberwachungId, String bezugKennung, String zustand, Instant seit,
+            String letzterWertJson, Instant letzteMesszeit, UUID offenerAlarm, Instant jetzt) {
+        jdbc.update("""
+                INSERT INTO ueberwachung_instanz (tenant_id, ueberwachung_id, bezug_kennung, zustand, seit,
+                       letzter_wert, letzte_messzeit, ausgewertet_am, offener_alarm)
+                VALUES (?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?)
+                ON CONFLICT (tenant_id, ueberwachung_id, bezug_kennung) DO UPDATE SET
+                       zustand = EXCLUDED.zustand, seit = EXCLUDED.seit, letzter_wert = EXCLUDED.letzter_wert,
+                       letzte_messzeit = EXCLUDED.letzte_messzeit, ausgewertet_am = EXCLUDED.ausgewertet_am,
+                       offener_alarm = EXCLUDED.offener_alarm
+                """, TenantContext.get(), ueberwachungId, bezugKennung, zustand, ts(seit), letzterWertJson,
+                ts(letzteMesszeit), ts(jetzt), offenerAlarm);
+    }
+
+    // --------------------------------------------------------------------- Kennzeichen (§9)
+
+    /** AL-JJJJ-nnnnnn, nie wiederverwendet - der Zähler je Kundenbereich und Jahr, atomar erhöht. */
+    public String naechstesKennzeichen(Instant jetzt) {
+        int jahr = jetzt.atZone(ZoneOffset.UTC).getYear();
+        Integer nr = jdbc.queryForObject("""
+                INSERT INTO alarm_kennzeichen_lauf (tenant_id, jahr, naechste_nr) VALUES (?, ?, 2)
+                ON CONFLICT (tenant_id, jahr) DO UPDATE SET naechste_nr = alarm_kennzeichen_lauf.naechste_nr + 1
+                RETURNING naechste_nr - 1
+                """, Integer.class, TenantContext.get(), jahr);
+        return "AL-%d-%06d".formatted(jahr, nr);
+    }
+
+    // --------------------------------------------------------------------- Alarm (§6.5, §9)
+
+    public UUID alarmErzeugen(UeberwachungZeile regel, String bezugKennung, UUID standortId, Instant jetzt,
+            String wertJson) {
+        UUID id = UUID.randomUUID();
+        String kennzeichen = naechstesKennzeichen(jetzt);
+        jdbc.update("""
+                INSERT INTO alarm (id, tenant_id, standort_id, kennzeichen, ueberwachung_id, fassung,
+                       bezug_kennung, wertart, schwere, ausgeloest_am, wert_beim_ausloesen, zustand)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, 'aktiv')
+                """, id, TenantContext.get(), standortId, kennzeichen, regel.id(), regel.fassung(),
+                bezugKennung, regel.wertart(), regel.schwere(), ts(jetzt), wertJson);
+        return id;
+    }
+
+    public void alarmVerlauf(UUID alarmId, String art, String wer, String text, String wertJson) {
+        jdbc.update("""
+                INSERT INTO alarm_verlauf (tenant_id, alarm_id, art, wer, wert, text)
+                VALUES (?, ?, ?, ?, ?::jsonb, ?)
+                """, TenantContext.get(), alarmId, art, wer, wertJson, text);
+    }
+
+    public void alarmWiederNormal(UUID alarmId, Instant jetzt, boolean erledigen) {
+        if (erledigen) {
+            jdbc.update("""
+                    UPDATE alarm SET wieder_normal_am = ?, zustand = 'erledigt', erledigt_am = ?,
+                           erledigt_durch = 'wert' WHERE id = ?
+                    """, ts(jetzt), ts(jetzt), alarmId);
+        } else {
+            jdbc.update("UPDATE alarm SET wieder_normal_am = ? WHERE id = ?", ts(jetzt), alarmId);
+        }
+    }
+
+    /** "Gesehen" (3B: freiwillig, speist nur den Verlauf - keine Quittierungspflicht). */
+    public boolean gesehen(UUID alarmId, String wer, Instant jetzt) {
+        return jdbc.update("""
+                UPDATE alarm SET gesehen_von = ?, gesehen_am = ? WHERE id = ? AND gesehen_von IS NULL
+                """, wer, ts(jetzt), alarmId) > 0;
+    }
+
+    public Optional<AlarmZeile> alarm(UUID id) {
+        return jdbc.query("""
+                SELECT id, kennzeichen, ueberwachung_id, standort_id, bezug_kennung, wertart, schwere,
+                       ausgeloest_am, zustand, wieder_normal_am, gesehen_von, gesehen_am, erledigt_am
+                  FROM alarm WHERE id = ?
+                """, UeberwachungRepository::alarmZeile, id).stream().findFirst();
+    }
+
+    /** Jetzt = nicht erledigt; Verlauf = erledigt - höchstens {@code limit}, jüngste zuerst. */
+    public List<AlarmZeile> liste(boolean erledigt, int limit) {
+        return jdbc.query("""
+                SELECT id, kennzeichen, ueberwachung_id, standort_id, bezug_kennung, wertart, schwere,
+                       ausgeloest_am, zustand, wieder_normal_am, gesehen_von, gesehen_am, erledigt_am
+                  FROM alarm WHERE (zustand = 'erledigt') = ?
+                 ORDER BY ausgeloest_am DESC LIMIT ?
+                """, UeberwachungRepository::alarmZeile, erledigt, limit);
+    }
+
+    public long ungeseheneZahl() {
+        Long n = jdbc.queryForObject(
+                "SELECT count(*) FROM alarm WHERE zustand <> 'erledigt' AND gesehen_von IS NULL", Long.class);
+        return n == null ? 0 : n;
+    }
+
+    /** Für die Farbe der Glocke (§6.8: "Mit einer dringenden Meldung trägt die Zahl die Farbe für Dringend"). */
+    public boolean hatUngeseheneDringende() {
+        Boolean b = jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM alarm "
+                + "WHERE zustand <> 'erledigt' AND gesehen_von IS NULL AND schwere = 'dringend')", Boolean.class);
+        return Boolean.TRUE.equals(b);
+    }
+
+    private static AlarmZeile alarmZeile(ResultSet rs, int n) throws SQLException {
+        return new AlarmZeile(rs.getObject("id", UUID.class), rs.getString("kennzeichen"),
+                rs.getObject("ueberwachung_id", UUID.class), rs.getObject("standort_id", UUID.class),
+                rs.getString("bezug_kennung"), rs.getString("wertart"), rs.getString("schwere"),
+                instant(rs.getTimestamp("ausgeloest_am")), rs.getString("zustand"),
+                instant(rs.getTimestamp("wieder_normal_am")), rs.getString("gesehen_von"),
+                instant(rs.getTimestamp("gesehen_am")), instant(rs.getTimestamp("erledigt_am")));
+    }
+
+    private static Timestamp ts(Instant i) {
+        return i == null ? null : Timestamp.from(i);
+    }
+
+    private static Instant instant(Timestamp t) {
+        return t == null ? null : t.toInstant();
+    }
+}

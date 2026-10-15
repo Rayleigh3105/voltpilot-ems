@@ -1,0 +1,86 @@
+/* Meldungs-Center (Alerting Scheibe 1, Konzept §6.8). */
+
+.vp-meldungen {
+  padding: var(--vp-c-space-5);
+  max-width: 820px;
+  margin: 0 auto;
+}
+
+.vp-meldungen h1 {
+  font-size: var(--vp-c-fs-24);
+  font-weight: var(--vp-c-fw-700);
+  margin: 0 0 var(--vp-c-space-4);
+}
+
+.vp-meldungen-leer {
+  color: var(--vp-c-muted-fg);
+  padding: var(--vp-c-space-5) 0;
+}
+
+.vp-meldungen-liste {
+  list-style: none;
+  margin: var(--vp-c-space-4) 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-3);
+}
+
+.vp-meldung,
+.vp-regel {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-c-space-3);
+  background: var(--vp-c-card);
+  border: 1px solid var(--vp-c-border);
+  border-radius: var(--vp-c-radius-sm);
+  padding: var(--vp-c-space-4);
+}
+
+.vp-meldung-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-top: 6px;
+  flex: 0 0 auto;
+  background: var(--vp-c-muted-fg);
+}
+
+.vp-meldung.schwere-warnung .vp-meldung-dot {
+  background: var(--vp-c-warn-fg);
+}
+
+.vp-meldung.schwere-dringend .vp-meldung-dot {
+  background: var(--vp-c-destructive);
+}
+
+.vp-meldung-inhalt {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.vp-meldung-kopf {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--vp-c-space-2);
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+}
+
+.vp-meldung-schwere {
+  font-weight: var(--vp-c-fw-600);
+}
+
+.vp-meldung-satz {
+  margin: var(--vp-c-space-1) 0 0;
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-600);
+  overflow-wrap: anywhere;
+}
+
+.vp-meldung-kennzeichen,
+.vp-meldung-gesehen {
+  margin: var(--vp-c-space-1) 0 0;
+  font-size: var(--vp-c-fs-12);
+  color: var(--vp-c-muted-fg);
+}

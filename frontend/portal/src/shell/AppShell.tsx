@@ -40,6 +40,8 @@ import { VpPicker } from '../components/VpPicker';
 import type { VpOption } from '../picker/optionen';
 import type { AnlagenSub, Route } from '../nav';
 import { HealthBadgeButton } from './HealthBadgeButton';
+import { GlockeButton } from './GlockeButton';
+import { meldungenApi } from '../meldungenApi';
 import './Shell.css';
 import { HelpProvider, HelpLink } from '../help/HelpProvider';
 import { APP_GROUP_LABEL, installSnapshot, subscribeInstallApp } from '../installApp';
@@ -242,6 +244,29 @@ export function AppShell({
   useEffect(() => {
     setPlatformOpen(!tenantOverride);
   }, [tenantOverride]);
+
+  // Alerting Scheibe 1 (Entscheid 4A): "N Meldungen dieser Anlage" im Popover der
+  // Zustands-Anzeige - die Anzahl ihrer nicht erledigten Meldungen (§6.2).
+  const [anlageMeldungen, setAnlageMeldungen] = useState(0);
+  const anlageSiteId = anlage?.siteId ?? null;
+  useEffect(() => {
+    if (!anlageSiteId) {
+      setAnlageMeldungen(0);
+      return;
+    }
+    let aktiv = true;
+    meldungenApi
+      .jetzt()
+      .then((liste) => {
+        if (aktiv) setAnlageMeldungen(liste.filter((m) => m.anlageId === anlageSiteId).length);
+      })
+      .catch(() => {
+        /* die Zustands-Anzeige zeigt ohne Link weiter, nie einen Fehler */
+      });
+    return () => {
+      aktiv = false;
+    };
+  }, [anlageSiteId]);
 
   const menuRef = useRef<HTMLDivElement | null>(null);
   const topbarRef = useRef<HTMLElement | null>(null);
@@ -630,6 +655,12 @@ export function AppShell({
               <HealthBadgeButton
                 health={anlage.health}
                 onOpenDetail={() => anlage.onOpenSub(null)}
+                meldungenLink={{
+                  anzahl: anlageMeldungen,
+                  onOpen: () => {
+                    window.location.hash = `#/meldungen?anlage=${encodeURIComponent(anlage.siteId)}`;
+                  },
+                }}
               />
             )}
           </div>
@@ -673,6 +704,12 @@ export function AppShell({
               />
             </span>
           )}
+
+          {/* Alerting Scheibe 1 (Entscheid 4A): die Glocke im Kopf, auf JEDER Ebene (dieser
+              Kopf ist der eine gemeinsame) - rechts vor Hilfe und Konto, kein Eintrag in der
+              Leiste. Die Zustands-Anzeige oben bleibt und verlinkt die Meldungen ihrer Anlage
+              (siehe HealthBadgeButton `meldungenLink`). */}
+          <GlockeButton />
 
           {/* V-03: am Telefon wohnt die Kontexthilfe als „?" hier oben statt
               als eigene Zeile über jeder Seite (CSS blendet sie nur dort ein

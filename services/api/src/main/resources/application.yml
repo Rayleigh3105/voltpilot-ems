@@ -251,6 +251,16 @@ voltpilot:
   # Postgres. Compose enables the MQTT consumer, while broker-less tests keep it
   # disabled. The pepper is secret in production and must remain stable so an
   # idTag maps to the same opaque reference without becoming reversible.
+  # Alerting Scheibe 1 (Konzept vp-alerting-konzept-m1 §6.7, §7 Scheibe 1): der
+  # UeberwachungsLaeufer - je Kundenbereich unter TenantContext mit der
+  # Laufzeitrolle, sät die Vorschläge ab Werk (Entscheid 2A) und wertet jede
+  # aktive Regel aus. `enabled` ist der Not-Aus des ganzen Takts - Vorgabe AN
+  # (Hausregel), im Testlauf AUS (surefire); wer ihn prüft, ruft
+  # UeberwachungsLaeufer.lauf()/UeberwachungsService.lauf() selbst.
+  ueberwachung:
+    enabled: ${VOLTPILOT_UEBERWACHUNG_ENABLED:true}
+    interval-ms: ${VOLTPILOT_UEBERWACHUNG_INTERVAL_MS:15000}
+    initial-delay-ms: ${VOLTPILOT_UEBERWACHUNG_INITIAL_DELAY_MS:20000}
   ocpp:
     mqtt-listener-enabled: ${VOLTPILOT_OCPP_MQTT_LISTENER_ENABLED:false}
     # Stable per API deployment: clean-session=false lets EMQX queue QoS1
