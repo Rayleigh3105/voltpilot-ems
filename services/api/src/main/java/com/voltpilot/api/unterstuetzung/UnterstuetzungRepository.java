@@ -136,14 +136,18 @@ public class UnterstuetzungRepository {
             UUID anfrageId, String text, Instant gelesenAm, Instant emailVersandtAm, Instant erzeugtAm) {}
 
     /**
-     * Legt EINEN Hinweis an; {@code false}, wenn es ihn schon gibt (Teil-Index je Anlass, Empfänger und
-     * Bezug). Damit darf der Ablauf-Läufer seinen Takt zweimal fahren, ohne zweimal zu melden.
+     * Legt EINEN Hinweis an; leer, wenn es ihn schon gibt (Teil-Index je Anlass, Empfänger und Bezug).
+     * Damit darf der Ablauf-Läufer seinen Takt zweimal fahren, ohne zweimal zu melden. Die zurückgegebene
+     * ID ist die {@code quelle_id} des zentralen Ausgangs (AP-03 Scheibe 0, {@code V20261015120000}) -
+     * nur ein NEUER Hinweis bekommt auch eine neue E-Mail angestoßen.
      */
-    public boolean hinweisen(Anlass anlass, String empfaengerSub, String empfaengerEmail, UUID zugriffId,
+    public Optional<UUID> hinweisen(Anlass anlass, String empfaengerSub, String empfaengerEmail, UUID zugriffId,
             UUID anfrageId, String text) {
-        return jdbc.update("INSERT INTO unterstuetzung_hinweis (tenant_id, anlass, empfaenger_sub, empfaenger_email, "
-                + "zugriff_id, anfrage_id, text) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
-                kundenbereich(), anlass.code(), empfaengerSub, empfaengerEmail, zugriffId, anfrageId, text) == 1;
+        return jdbc.query("INSERT INTO unterstuetzung_hinweis (tenant_id, anlass, empfaenger_sub, empfaenger_email, "
+                + "zugriff_id, anfrage_id, text) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING RETURNING id",
+                (rs, n) -> rs.getObject("id", UUID.class),
+                kundenbereich(), anlass.code(), empfaengerSub, empfaengerEmail, zugriffId, anfrageId, text)
+                .stream().findFirst();
     }
 
     /** Das Postfach eines Kontos, jüngster zuerst; {@code nurOffene} lässt gelesene aus. */

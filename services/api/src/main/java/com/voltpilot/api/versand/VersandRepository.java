@@ -1,0 +1,105 @@
+package com.voltpilot.api.versand;
+
+import com.voltpilot.api.tenant.TenantContext;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
+
+/**
+ * Der Ausgang {@code benachrichtigung} (Alerting Scheibe 0, {@code V20261015120000}): einreihen über
+ * die RLS-Verbindung des einreihenden Dienstes, abarbeiten und löschen über die BYPASSRLS-Admin-Rolle
+ * (derselbe Zuschnitt wie {@code ComponentActivationOutboxService}: der Zusteller-Läufer hat keinen
+ * Zugriffs-Kontext und muss über alle Kundenbereiche hinweg fällige Zeilen finden, aber JEDE einzelne
+ * Zustellung bleibt eine Zeile ihres Mandanten).
+ */
+@Repository
+public class VersandRepository implements BenachrichtigungAusgang {
+
+    /** Eine zur Sendezeit fällige Ausgangszeile. */
+    public record Zeile(UUID id, UUID tenantId, String quelle, UUID quelleId, String empfaengerSub, String weg,
+            String anlass, int nr, String ziel, String betreff, String inhalt, int versuche) {}
+
+    private final JdbcTemplate jdbc;
+    private final JdbcTemplate admin;
+
+    public VersandRepository(JdbcTemplate jdbc, @Qualifier("adminJdbcTemplate") JdbcTemplate admin) {
+        this.jdbc = jdbc;
+        this.admin = admin;
+    }
+
+    /** Reiht ein; ein bereits vorhandener Schlüssel (Doppelversand-Schutz, §9) bleibt unverändert. */
+    @Override
+    public void email(String quelle, UUID quelleId, String empfaengerSub, String anlass, String betreff,
+            String inhalt) {
+        jdbc.update("INSERT INTO benachrichtigung (tenant_id, quelle, quelle_id, empfaenger_sub, weg, anlass, nr, "
+                        + "betreff, inhalt) VALUES (?, ?, ?, ?, 'email', ?, 0, ?, ?) ON CONFLICT DO NOTHING",
+                TenantContext.get(), quelle, quelleId, empfaengerSub, anlass, betreff, inhalt);
+    }
+
+    /** Wie {@link #email}, aber mit einem direkt vorgegebenen Ziel - nur für die Bestätigungs-Mail selbst. */
+    public void emailMitZiel(String quelle, UUID quelleId, String empfaengerSub, String anlass, String betreff,
+            String inhalt, String ziel) {
+        jdbc.update("INSERT INTO benachrichtigung (tenant_id, quelle, quelle_id, empfaenger_sub, weg, anlass, nr, "
+                        + "betreff, inhalt, ziel) VALUES (?, ?, ?, ?, 'email', ?, 0, ?, ?, ?) ON CONFLICT DO NOTHING",
+                TenantContext.get(), quelle, quelleId, empfaengerSub, anlass, betreff, inhalt, ziel);
+    }
+
+    /** Eine Sende-Pause, bevor ein geclaimter, aber nie beantworteter Versand erneut versucht wird. */
+    private static final Duration PACHT = Duration.ofMinutes(2);
+
+    /**
+     * Fällige Zeilen quer über alle Kundenbereiche claimen - EIN atomares Statement
+     * (UPDATE … FOR UPDATE SKIP LOCKED … RETURNING, wie die Entnahme in
+     * {@code ViertelstundeVerdichter}): zwei gleichzeitige Läufer bekommen disjunkte Stapel, keiner
+     * wartet auf den anderen. Der Claim ist eine befristete Pacht ({@code naechster_versuch} nach
+     * vorn verschoben) statt eines eigenen Zustands - stirbt der Prozess mitten im Versand, greift
+     * ein späterer Lauf die Zeile nach Ablauf der Pacht erneut.
+     */
+    public List<Zeile> faellig(Instant jetzt, int limit) {
+        return admin.query("""
+                UPDATE benachrichtigung b SET naechster_versuch = ?
+                FROM (SELECT id FROM benachrichtigung WHERE zustand = 'wartet' AND naechster_versuch <= ?
+                      ORDER BY erstellt_am LIMIT ? FOR UPDATE SKIP LOCKED) c
+                WHERE b.id = c.id
+                RETURNING b.id, b.tenant_id, b.quelle, b.quelle_id, b.empfaenger_sub, b.weg, b.anlass, b.nr,
+                          b.ziel, b.betreff, b.inhalt, b.versuche
+                """, VersandRepository::zeile, Timestamp.from(jetzt.plus(PACHT)), Timestamp.from(jetzt), limit);
+    }
+
+    public void gesendet(UUID id, Instant jetzt) {
+        admin.update("UPDATE benachrichtigung SET zustand = 'gesendet', gesendet_am = ?, versuche = versuche + 1 "
+                + "WHERE id = ?", Timestamp.from(jetzt), id);
+    }
+
+    /** Fehlgeschlagen: bleibt {@code wartet} bis zur Obergrenze, dann endgültig {@code fehlgeschlagen}. */
+    public void fehlgeschlagen(UUID id, String fehler, Instant naechsterVersuch, int hoechstversuche) {
+        admin.update("UPDATE benachrichtigung SET versuche = versuche + 1, fehler = ?, "
+                        + "naechster_versuch = ?, zustand = CASE WHEN versuche + 1 >= ? THEN 'fehlgeschlagen' "
+                        + "ELSE 'wartet' END WHERE id = ?",
+                fehler, Timestamp.from(naechsterVersuch), hoechstversuche, id);
+    }
+
+    public void unterdrueckt(UUID id, String grund) {
+        admin.update("UPDATE benachrichtigung SET zustand = 'unterdrueckt', grund = ?, versuche = versuche + 1 "
+                + "WHERE id = ?", grund, id);
+    }
+
+    /** Der Löschlauf (Entscheid 13A, 90 Tage) - unabhängig vom Zustand, wie {@code AblaufLaeufer}'s Takt. */
+    public int loeschenAelterAls(Instant grenze) {
+        return admin.update("DELETE FROM benachrichtigung WHERE erstellt_am < ?", Timestamp.from(grenze));
+    }
+
+    private static Zeile zeile(ResultSet rs, int n) throws SQLException {
+        return new Zeile(rs.getObject("id", UUID.class), rs.getObject("tenant_id", UUID.class),
+                rs.getString("quelle"), rs.getObject("quelle_id", UUID.class), rs.getString("empfaenger_sub"),
+                rs.getString("weg"), rs.getString("anlass"), rs.getInt("nr"), rs.getString("ziel"),
+                rs.getString("betreff"), rs.getString("inhalt"), rs.getInt("versuche"));
+    }
+}
