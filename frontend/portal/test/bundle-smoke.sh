@@ -53,6 +53,23 @@ cd "$(dirname "$0")/.."
 #   224,57  V-01 (Grenze 230)  — vier Hilfs-Module statt ganzer Fach-Module
 #   357,89  uems am 09.10.2026 — der Wächter war rot (Gesamtlauf vor uems → main)
 #   252,37  UEMS-Schnitt (Grenze 256) — firstmate-Entscheid `bel-grenze-230` = B
+#   256,06  Alerting Scheibe 2, Nachbesserung 3/3 (Grenze 257) — „Überwachen" jetzt
+#           auch an Aufbau-Zeilen und Geräteseite, s.u.
+#
+# WARUM DIE GRENZE AM 15.10.2026 VON 256 AUF 257 GEHT (gemessen, ohne eine
+#   Funktion zu ändern): `UeberwachenBlatt` hatte genau EINEN Verwender
+#   (`EnergieBuehne.tsx`) und lag deshalb ungeteilt in dessen eigenem
+#   Lazy-Stück. Diese Nachbesserung bringt den Einstiegspunkt „Überwachen" auch
+#   an die Aufbau-Tabelle und die Geräteseiten-Bühne (Brief Punkt 3) — drei
+#   voneinander unabhängige Seiten-Bündel teilen sich das Blatt jetzt, Rollup
+#   muss es (und `ueberwachungApi.ts`, seinen Daten-Zwilling) deshalb in einen
+#   gemeinsamen Chunk ausgliedern. Jeder neue Chunk-Name steht einmal im
+#   Einstieg selbst (die geteilte Lade-Tabelle jedes `import()`-Aufrufs) — das
+#   sind die +0,10 kB gz, nicht dupliziertes Feature-Gewicht: eine Zeichenketten-
+#   Suche im gebauten Einstieg bestätigt, dass kein Zeichen von
+#   `UeberwachenBlatt`s eigenem Code dort liegt, nur sein Dateiname. Kein
+#   Lazy-Trick drückt das weiter herunter, ohne das Blatt an einer der drei
+#   Flächen wieder zu entfernen.
 #
 # WAS DER UEMS-SCHNITT HERAUSGENOMMEN HAT (−105,52 kB gz, ohne eine Funktion zu ändern):
 #   Der Sammelzweig `uems` hatte 71 Quellen neu im Einstieg. Zwei Flächen sind
@@ -114,7 +131,7 @@ cd "$(dirname "$0")/.."
 # `nav.ts` raus, `commit` = nacktes `setRoute`) liegt bei 230,28 kB — immer noch
 # über 230, weil der Kopfraum von main (158 Byte) kleiner war als die reine
 # Vorlade-Grenze `pageChunks.ts` plus die `view-transition-name`-Attribute.
-LIMIT_KB="${LIMIT_KB:-256}"
+LIMIT_KB="${LIMIT_KB:-257}"
 
 OUT="dist-bundle-smoke"
 trap 'rm -rf "$OUT"' EXIT
