@@ -7,6 +7,7 @@ import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -22,9 +23,9 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class VersandRepository implements BenachrichtigungAusgang {
 
-    /** Eine zur Sendezeit fällige Ausgangszeile. */
+    /** Eine zur Sendezeit fällige Ausgangszeile. {@code schwere} ist nur für {@code quelle = "alarm"} gesetzt. */
     public record Zeile(UUID id, UUID tenantId, String quelle, UUID quelleId, String empfaengerSub, String weg,
-            String anlass, int nr, String ziel, String betreff, String inhalt, int versuche) {}
+            String anlass, int nr, String ziel, String betreff, String inhalt, int versuche, String schwere) {}
 
     private final JdbcTemplate jdbc;
     private final JdbcTemplate admin;
@@ -36,11 +37,24 @@ public class VersandRepository implements BenachrichtigungAusgang {
 
     /** Reiht ein; ein bereits vorhandener Schlüssel (Doppelversand-Schutz, §9) bleibt unverändert. */
     @Override
-    public void email(String quelle, UUID quelleId, String empfaengerSub, String anlass, String betreff,
-            String inhalt) {
+    public void email(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr, String betreff,
+            String inhalt, Instant naechsterVersuch) {
         jdbc.update("INSERT INTO benachrichtigung (tenant_id, quelle, quelle_id, empfaenger_sub, weg, anlass, nr, "
-                        + "betreff, inhalt) VALUES (?, ?, ?, ?, 'email', ?, 0, ?, ?) ON CONFLICT DO NOTHING",
-                TenantContext.get(), quelle, quelleId, empfaengerSub, anlass, betreff, inhalt);
+                        + "betreff, inhalt, naechster_versuch) VALUES (?, ?, ?, ?, 'email', ?, ?, ?, ?, ?) "
+                        + "ON CONFLICT DO NOTHING",
+                TenantContext.get(), quelle, quelleId, empfaengerSub, anlass, nr, betreff, inhalt,
+                Timestamp.from(naechsterVersuch));
+    }
+
+    /** Wie {@link #email}, aber über Web-Push (Alerting Scheibe 3) - Geräte-Abos fächert der Zusteller auf. */
+    @Override
+    public void webpush(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr, String betreff,
+            String inhalt, Instant naechsterVersuch, String schwere) {
+        jdbc.update("INSERT INTO benachrichtigung (tenant_id, quelle, quelle_id, empfaenger_sub, weg, anlass, nr, "
+                        + "betreff, inhalt, naechster_versuch, schwere) "
+                        + "VALUES (?, ?, ?, ?, 'webpush', ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+                TenantContext.get(), quelle, quelleId, empfaengerSub, anlass, nr, betreff, inhalt,
+                Timestamp.from(naechsterVersuch), schwere);
     }
 
     /** Wie {@link #email}, aber mit einem direkt vorgegebenen Ziel - nur für die Bestätigungs-Mail selbst. */
@@ -69,7 +83,7 @@ public class VersandRepository implements BenachrichtigungAusgang {
                       ORDER BY erstellt_am LIMIT ? FOR UPDATE SKIP LOCKED) c
                 WHERE b.id = c.id
                 RETURNING b.id, b.tenant_id, b.quelle, b.quelle_id, b.empfaenger_sub, b.weg, b.anlass, b.nr,
-                          b.ziel, b.betreff, b.inhalt, b.versuche
+                          b.ziel, b.betreff, b.inhalt, b.versuche, b.schwere
                 """, VersandRepository::zeile, Timestamp.from(jetzt.plus(PACHT)), Timestamp.from(jetzt), limit);
     }
 
@@ -91,15 +105,40 @@ public class VersandRepository implements BenachrichtigungAusgang {
                 + "WHERE id = ?", grund, id);
     }
 
+    /**
+     * Verschiebt eine Zustellung auf einen späteren Zeitpunkt, OHNE sie als Fehlschlag zu zählen
+     * (Alerting Scheibe 3, §6.4: Ruhezeit - "Warnung kommt am Ende der Ruhezeit nach, falls noch
+     * aktiv"). Bleibt {@code wartet}; der Zusteller prüft beim nächsten Fälligwerden erneut, ob der
+     * Alarm noch aktiv ist.
+     */
+    public void verschieben(UUID id, Instant naechsterVersuch) {
+        admin.update("UPDATE benachrichtigung SET naechster_versuch = ? WHERE id = ?",
+                Timestamp.from(naechsterVersuch), id);
+    }
+
     /** Der Löschlauf (Entscheid 13A, 90 Tage) - unabhängig vom Zustand, wie {@code AblaufLaeufer}'s Takt. */
     public int loeschenAelterAls(Instant grenze) {
         return admin.update("DELETE FROM benachrichtigung WHERE erstellt_am < ?", Timestamp.from(grenze));
+    }
+
+    /**
+     * Die Dedup-Zeile der Tages-Zusammenfassung (§6.4 Nr. 6, {@code taeglicher_rueckblick}):
+     * {@code Optional.empty()}, wenn diese Person für diesen Tag schon eine Zeile hat - ihre ID
+     * dient als {@code quelle_id} der E-Mail (derselbe Kniff wie {@code zustellweg_bestaetigung}).
+     */
+    public Optional<UUID> rueckblickNeuAnlegen(String benutzerSub, java.time.LocalDate tag) {
+        List<UUID> rows = jdbc.query("""
+                INSERT INTO taeglicher_rueckblick (tenant_id, benutzer_sub, tag) VALUES (?, ?, ?)
+                ON CONFLICT DO NOTHING RETURNING id
+                """, (rs, n) -> rs.getObject("id", UUID.class), TenantContext.get(), benutzerSub,
+                java.sql.Date.valueOf(tag));
+        return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
     }
 
     private static Zeile zeile(ResultSet rs, int n) throws SQLException {
         return new Zeile(rs.getObject("id", UUID.class), rs.getObject("tenant_id", UUID.class),
                 rs.getString("quelle"), rs.getObject("quelle_id", UUID.class), rs.getString("empfaenger_sub"),
                 rs.getString("weg"), rs.getString("anlass"), rs.getInt("nr"), rs.getString("ziel"),
-                rs.getString("betreff"), rs.getString("inhalt"), rs.getInt("versuche"));
+                rs.getString("betreff"), rs.getString("inhalt"), rs.getInt("versuche"), rs.getString("schwere"));
     }
 }

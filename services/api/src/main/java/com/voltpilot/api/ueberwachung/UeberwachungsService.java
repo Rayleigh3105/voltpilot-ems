@@ -375,6 +375,16 @@ public class UeberwachungsService {
      */
     private void versenden(UeberwachungZeile regel, UUID alarmId, String anlageName, String anlass,
             String betreff, String inhalt) {
+        for (String sub : empfaengerAufloesen(regel)) {
+            ausgang.email("alarm", alarmId, sub, anlass, betreff, inhalt);
+            ausgang.webpush("alarm", alarmId, sub, anlass, betreff, inhalt, regel.schwere());
+        }
+    }
+
+    /** Rollen werden HIER aufgelöst (§6.6 "Inseln, die in der Mechanik aufgehen") - die Sicht je Empfänger
+     * prüft trotzdem erst der Zusteller zur Sendezeit. Package-sichtbar: {@link ErinnerungsService} teilt
+     * dieselbe Auflösung. */
+    Set<String> empfaengerAufloesen(UeberwachungZeile regel) {
         Set<String> empfaenger = new LinkedHashSet<>();
         for (JsonNode e : regel.empfaenger()) {
             if (e.has("person")) {
@@ -388,9 +398,7 @@ public class UeberwachungsService {
                 }
             }
         }
-        for (String sub : empfaenger) {
-            ausgang.email("alarm", alarmId, sub, anlass, betreff, inhalt);
-        }
+        return empfaenger;
     }
 
     /** "Gesehen" (Entscheid 3B, freiwillig - speist nur den Verlauf, hält nichts auf). */

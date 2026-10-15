@@ -54,6 +54,15 @@ class RechtRoutenArchitekturTest {
                 "Alerting Scheibe 2 (§6.4, §6.8 Entwurf 1): die Vorschau schreibt nichts (kein Anlegen) - "
                         + "wie jede andere reine Leseroute dieser Ebene kein Matrix-Recht; "
                         + "ProbelaufService.vorschau prüft den Standort-Zaun selbst (Geltungsbereich.requireSite).");
+        String eigeneBenachrichtigung = "Alerting Scheibe 3 (§6.6, §6.8 Entwurf 4): jede Person verwaltet nur IHRE "
+                + "eigenen Zustellwege/ihre eigene Ruhezeit - kein Matrix-Recht, wie MeController; die Person kommt "
+                + "aus dem Token (Authentication), nie aus dem Anfragekörper.";
+        m.put("ZustellwegController#emailEinstellungen", eigeneBenachrichtigung);
+        m.put("ZustellwegController#pushAbonnieren", eigeneBenachrichtigung);
+        m.put("ZustellwegController#pushEinstellungen", eigeneBenachrichtigung);
+        m.put("ZustellwegController#pushEntfernen", eigeneBenachrichtigung);
+        m.put("RuhezeitController#setzen", eigeneBenachrichtigung);
+        m.put("RuhezeitController#probe", eigeneBenachrichtigung);
         return m;
     }
 
@@ -161,6 +170,8 @@ class RechtRoutenArchitekturTest {
             m.put("FeststellungController#" + r, "FeststellungService.schreibbar — energiemanagement.verwalten am "
                     + "Standort des Bezugs bzw. am Unternehmen");
         }
+        m.put("StummschaltungController#anlegen", "StummschaltungService.anlegen — ueberwachung.verwalten an der "
+                + "Geltung des Standorts der Auswahl (Regel/Anlage/Standort, Alerting Scheibe 3, §6.4)");
         return m;
     }
 

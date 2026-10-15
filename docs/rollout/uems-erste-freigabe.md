@@ -991,6 +991,16 @@ Realm-SMTP-Passwort aus der sops-Geheimnisdatei im gitops-Repo, nie aus einem Co
 diese Werte läuft die API weiter, aber jeder Versand bleibt im Ausgang `benachrichtigung` bei
 `fehlgeschlagen` stehen - kein Absturz, nur Stille nach außen.
 
+**Eigener Handgriff, Web-Push (Alerting Scheibe 3,
+`com.voltpilot.api.versand.webpush`):** ein EIGENES VAPID-Schlüsselpaar (RFC 8292) -
+`VOLTPILOT_PUSH_VAPID_PUBLIC_KEY` und `VOLTPILOT_PUSH_VAPID_PRIVATE_KEY` (beide URL-sicheres
+Base64 ohne Füllzeichen, P-256) plus `VOLTPILOT_PUSH_VAPID_SUBJECT` (eine `mailto:`-Adresse, an die
+ein Push-Dienst sich bei Missbrauch wendet). Das PRIVATE Schlüsselpaar kommt wie das SMTP-Passwort
+aus der sops-Geheimnisdatei im gitops-Repo, nie aus einem Commit hier; der ÖFFENTLICHE Schlüssel ist
+kein Geheimnis und geht über `GET /api/v1/push/oeffentlicher-schluessel` an den Browser. Ohne diese
+Werte läuft die API weiter, aber jeder Push-Versand bleibt im Ausgang `benachrichtigung` bei
+`fehlgeschlagen` stehen - derselbe Ausfallweg wie beim SMTP-Zugangspaar.
+
 **Beleg:** Das zweite `pruefen` endet mit Exit 0; die Bestätigungszeile in `live-realm-import.md`
 ist eingetragen. **Abbruch:** Klemmt die Anmeldung, gilt der Rückweg aus `live-realm-import.md`,
 nicht R: das Portal bleibt offen.

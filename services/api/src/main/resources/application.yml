@@ -261,6 +261,17 @@ voltpilot:
     enabled: ${VOLTPILOT_UEBERWACHUNG_ENABLED:true}
     interval-ms: ${VOLTPILOT_UEBERWACHUNG_INTERVAL_MS:15000}
     initial-delay-ms: ${VOLTPILOT_UEBERWACHUNG_INITIAL_DELAY_MS:20000}
+  # Alerting Scheibe 3 (Konzept vp-alerting-konzept-m1 §7, Entscheid 1A): Web-Push als dritter
+  # Zustellweg. Werte bleiben LEER - niemals einen echten Schlüssel hier committen. Das PRIVATE
+  # Schlüsselpaar kommt wie das SMTP-Passwort aus der sops-Geheimnisdatei des GitOps-Repos
+  # (docs/rollout/uems-erste-freigabe.md); lokal/im Testlauf aus Umgebungsvariablen. Der
+  # ÖFFENTLICHE Schlüssel ist kein Geheimnis (RFC 8292) - er geht über
+  # `GET /api/v1/push/oeffentlicher-schluessel` an den Browser. `vapid-subject` ist die
+  # Kontakt-Adresse, die der Push-Dienst bei Missbrauch anschreibt (RFC 8292 "sub"-Anspruch).
+  push:
+    vapid-public-key: ${VOLTPILOT_PUSH_VAPID_PUBLIC_KEY:}
+    vapid-private-key: ${VOLTPILOT_PUSH_VAPID_PRIVATE_KEY:}
+    vapid-subject: ${VOLTPILOT_PUSH_VAPID_SUBJECT:mailto:meldungen@voltpilot.de}
   ocpp:
     mqtt-listener-enabled: ${VOLTPILOT_OCPP_MQTT_LISTENER_ENABLED:false}
     # Stable per API deployment: clean-session=false lets EMQX queue QoS1

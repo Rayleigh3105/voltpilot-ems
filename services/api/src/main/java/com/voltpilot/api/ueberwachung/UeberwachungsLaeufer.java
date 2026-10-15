@@ -39,6 +39,8 @@ public class UeberwachungsLaeufer {
 
     private final JdbcTemplate adminJdbc;
     private final UeberwachungsService dienst;
+    private final ErinnerungsService erinnerung;
+    private final TagesZusammenfassungService zusammenfassung;
 
     /** Beendete Kundenbereiche lässt der Läufer aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
     private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
@@ -60,9 +62,11 @@ public class UeberwachungsLaeufer {
     private final AtomicLong letzterLaufEpoch = new AtomicLong(0);
 
     public UeberwachungsLaeufer(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
-            UeberwachungsService dienst) {
+            UeberwachungsService dienst, ErinnerungsService erinnerung, TagesZusammenfassungService zusammenfassung) {
         this.adminJdbc = adminJdbc;
         this.dienst = dienst;
+        this.erinnerung = erinnerung;
+        this.zusammenfassung = zusammenfassung;
     }
 
     /** Registriert das Rückstands-Gauge, sobald eine Anwendungs-{@code MeterRegistry} da ist (nicht im Testlauf). */
@@ -105,6 +109,8 @@ public class UeberwachungsLaeufer {
                 gesaet += l.gesaet();
                 ausgeloest += l.ausgeloest();
                 erledigt += l.erledigt();
+                erinnerung.lauf(jetzt);
+                zusammenfassung.lauf(jetzt);
             } catch (RuntimeException e) {
                 log.error("Überwachung: Takt für Kundenbereich {} gescheitert, nichts eingetragen: {}", tenant,
                         e.toString(), e);

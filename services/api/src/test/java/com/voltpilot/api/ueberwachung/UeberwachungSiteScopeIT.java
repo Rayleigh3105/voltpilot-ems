@@ -218,8 +218,14 @@ class UeberwachungSiteScopeIT {
         final List<String> empfaenger = new ArrayList<>();
 
         @Override
-        public void email(String quelle, UUID quelleId, String empfaengerSub, String anlass, String betreff,
-                String inhalt) {
+        public void email(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr, String betreff,
+                String inhalt, java.time.Instant naechsterVersuch) {
+            empfaenger.add(empfaengerSub + ":" + anlass);
+        }
+
+        @Override
+        public void webpush(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr,
+                String betreff, String inhalt, java.time.Instant naechsterVersuch, String schwere) {
             empfaenger.add(empfaengerSub + ":" + anlass);
         }
     }

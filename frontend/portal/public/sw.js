@@ -29,8 +29,15 @@
  * sich die BYTES DIESER DATEI aendern - wer `offline.html` oder ein Icon
  * aendert, muss sie deshalb hochzaehlen, sonst behaelt ein Geraet die alte
  * Fassung.
+ *
+ * `push`/`notificationclick` (Alerting Scheibe 3, Konzept vp-alerting-konzept-m1
+ * §6.7/§6.8): die Nutzlast ist ein knappes JSON `{titel, text, url}` (siehe
+ * `com.voltpilot.api.versand.Zusteller#pushPayload`) - KEIN HTML, kein Tracking,
+ * dieselbe Zurueckhaltung wie beim E-Mail-Adapter. Ein Klick auf die
+ * Benachrichtigung oeffnet das Meldungs-Center in einem vorhandenen Tab,
+ * sonst einen neuen.
  */
-const SW_VERSION = 'v2';
+const SW_VERSION = 'v3';
 const CACHE = `vp-shell-${SW_VERSION}`;
 const OFFLINE_URL = '/offline.html';
 
@@ -66,6 +73,40 @@ self.addEventListener('activate', (event) => {
       const names = await caches.keys();
       await Promise.all(names.filter((n) => n !== CACHE).map((n) => caches.delete(n)));
       await self.clients.claim();
+    })(),
+  );
+});
+
+self.addEventListener('push', (event) => {
+  let daten = { titel: 'VoltPilot', text: 'Neue Meldung', url: '#/meldungen' };
+  try {
+    if (event.data) daten = { ...daten, ...event.data.json() };
+  } catch {
+    // Keine gueltige JSON-Nutzlast - die Vorgabe oben bleibt stehen, statt gar nichts zu zeigen.
+  }
+  event.waitUntil(
+    self.registration.showNotification(daten.titel, {
+      body: daten.text,
+      icon: '/icons/icon-192.png',
+      badge: '/icons/icon-192.png',
+      data: { url: daten.url },
+    }),
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const ziel = event.notification.data && event.notification.data.url ? event.notification.data.url : '#/meldungen';
+  event.waitUntil(
+    (async () => {
+      const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      for (const client of clientsList) {
+        if ('focus' in client) {
+          client.postMessage({ type: 'vp-push-click', url: ziel });
+          return client.focus();
+        }
+      }
+      return self.clients.openWindow(ziel);
     })(),
   );
 });
