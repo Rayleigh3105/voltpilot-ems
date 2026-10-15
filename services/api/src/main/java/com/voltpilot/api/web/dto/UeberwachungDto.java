@@ -10,9 +10,12 @@ import java.util.List;
  * Scheibe 2 fügt {@link Anlegen} hinzu - "Vom Wert zur fertigen Regel: drei Taps" (§6.8) - und den
  * 30-Tage-Probelauf: {@code probelaufBis} ist {@code null}, sobald die Regel scharf ist (ab Werk
  * gesäte Regeln kennen keinen Probelauf; eine eigene endet damit nach 30 Tagen oder per Tipper).
+ * {@code bezugJson} ist derselbe rohe Bezug wie im Anfragekörper (§6.3, {@link BezugEintrag}) - die
+ * Fläche braucht ihn, um "schon überwacht" an einem konkreten Wertverweis zu erkennen: bei der
+ * Familie {@code geraet.messwert} identifiziert die Wertart allein keinen Wert, erst Wertart+Bezug.
  */
 public record UeberwachungDto(String id, String name, String wertart, String schwere, String herkunft,
-        boolean aktiv, Instant probelaufBis) {
+        boolean aktiv, Instant probelaufBis, String bezugJson) {
 
     public record Liste(List<UeberwachungDto> ueberwachungen) {}
 

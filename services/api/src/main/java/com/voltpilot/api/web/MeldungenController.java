@@ -74,7 +74,7 @@ public class MeldungenController {
     public UeberwachungDto.Liste regeln() {
         List<UeberwachungDto> liste = repo.aktive().stream()
                 .map(r -> new UeberwachungDto(r.id().toString(), r.name(), r.wertart(), r.schwere(), r.herkunft(),
-                        true, r.probelaufBis()))
+                        true, r.probelaufBis(), r.bezug().toString()))
                 .toList();
         return new UeberwachungDto.Liste(liste);
     }

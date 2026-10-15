@@ -106,7 +106,7 @@ public class UeberwachungAnlegenService {
         UUID id = repo.erstelleEigen(standortId, anfrage.name(), anfrage.wertart(), bezugJson,
                 bedingung.toString(), anfrage.schwere(), empfaengerJson, aufrufer.kennung(), probelaufBis);
         return new UeberwachungDto(id.toString(), anfrage.name(), anfrage.wertart(), anfrage.schwere(), "eigen",
-                true, probelaufBis);
+                true, probelaufBis, bezugJson);
     }
 
     /**
@@ -131,7 +131,7 @@ public class UeberwachungAnlegenService {
 
         repo.scharfSchalten(id);
         return new UeberwachungDto(id.toString(), regel.name(), regel.wertart(), regel.schwere(), regel.herkunft(),
-                true, null);
+                true, null, regel.bezug().toString());
     }
 
     private static boolean istNurIchSelbst(com.fasterxml.jackson.databind.JsonNode empfaenger, String eigeneKennung) {
