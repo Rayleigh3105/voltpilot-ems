@@ -27,7 +27,14 @@ public class UeberwachungRepository {
     private static final ObjectMapper JSON = new ObjectMapper();
 
     public record UeberwachungZeile(UUID id, UUID standortId, int fassung, String name, String wertart,
-            JsonNode bezug, JsonNode bedingung, String schwere, JsonNode empfaenger, String herkunft) {}
+            JsonNode bezug, JsonNode bedingung, String schwere, JsonNode empfaenger, String herkunft,
+            String angelegtVon, Instant probelaufBis) {
+
+        /** Im Probelauf (§6.4, §6.8 Entwurf 1): ausgewertet, aber ohne Versand - noch nicht scharf. */
+        public boolean imProbelauf(Instant jetzt) {
+            return probelaufBis != null && jetzt.isBefore(probelaufBis);
+        }
+    }
 
     public record InstanzZeile(String zustand, Instant seit, JsonNode letzterWert, Instant letzteMesszeit,
             UUID offenerAlarm) {
@@ -36,7 +43,7 @@ public class UeberwachungRepository {
 
     public record AlarmZeile(UUID id, String kennzeichen, UUID ueberwachungId, UUID standortId,
             String bezugKennung, String wertart, String schwere, Instant ausgeloestAm, String zustand,
-            Instant wiederNormalAm, String gesehenVon, Instant gesehenAm, Instant erledigtAm) {}
+            Instant wiederNormalAm, String gesehenVon, Instant gesehenAm, Instant erledigtAm, boolean probelauf) {}
 
     private final JdbcTemplate jdbc;
 
@@ -127,16 +134,32 @@ public class UeberwachungRepository {
      * (ueberwachung.eigene/verwalten) steht in {@link UeberwachungAnlegenService}, nicht hier.
      */
     public UUID erstelleEigen(UUID standortId, String name, String wertart, String bezugJson,
-            String bedingungJson, String schwere, String empfaengerJson, String angelegtVon) {
+            String bedingungJson, String schwere, String empfaengerJson, String angelegtVon, Instant probelaufBis) {
         UUID id = UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO ueberwachung (id, tenant_id, standort_id, name, wertart, bezug, bedingung, schwere,
-                       empfaenger, herkunft, aktiv, angelegt_von)
-                VALUES (?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?::jsonb, 'eigen', true, ?)
+                       empfaenger, herkunft, aktiv, angelegt_von, probelauf_bis)
+                VALUES (?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?::jsonb, 'eigen', true, ?, ?)
                 """,
                 id, TenantContext.get(), standortId, name, wertart, bezugJson, bedingungJson, schwere,
-                empfaengerJson, angelegtVon);
+                empfaengerJson, angelegtVon, ts(probelaufBis));
         return id;
+    }
+
+    /** "Jetzt scharf schalten" (§6.8 Entwurf 1, per Tipper statt nach 30 Tagen): beendet den Probelauf sofort. */
+    public boolean scharfSchalten(UUID id) {
+        return jdbc.update("UPDATE ueberwachung SET probelauf_bis = NULL, geaendert_am = now() "
+                + "WHERE id = ? AND probelauf_bis IS NOT NULL", id) > 0;
+    }
+
+    /** Eine einzelne Regel - für die Rechte-Prüfung beim "scharf schalten" (angelegt_von, Empfänger). */
+    public Optional<UeberwachungZeile> einzelneRegel(UUID id) {
+        return jdbc.query("""
+                SELECT id, standort_id, fassung, name, wertart, bezug::text AS bezug_json,
+                       bedingung::text AS bedingung_json, schwere, empfaenger::text AS empfaenger_json,
+                       herkunft, angelegt_von, probelauf_bis
+                  FROM ueberwachung WHERE id = ?
+                """, UeberwachungRepository::zeile, id).stream().findFirst();
     }
 
     private static String toJsonArray(List<String> werte) {
@@ -160,7 +183,7 @@ public class UeberwachungRepository {
         return jdbc.query("""
                 SELECT id, standort_id, fassung, name, wertart, bezug::text AS bezug_json,
                        bedingung::text AS bedingung_json, schwere, empfaenger::text AS empfaenger_json,
-                       herkunft
+                       herkunft, angelegt_von, probelauf_bis
                   FROM ueberwachung WHERE aktiv = true ORDER BY angelegt_am
                 """, UeberwachungRepository::zeile);
     }
@@ -169,7 +192,8 @@ public class UeberwachungRepository {
         return new UeberwachungZeile(rs.getObject("id", UUID.class), rs.getObject("standort_id", UUID.class),
                 rs.getInt("fassung"), rs.getString("name"), rs.getString("wertart"),
                 json(rs.getString("bezug_json")), json(rs.getString("bedingung_json")), rs.getString("schwere"),
-                json(rs.getString("empfaenger_json")), rs.getString("herkunft"));
+                json(rs.getString("empfaenger_json")), rs.getString("herkunft"), rs.getString("angelegt_von"),
+                instant(rs.getTimestamp("probelauf_bis")));
     }
 
     private static JsonNode json(String text) {
@@ -265,15 +289,15 @@ public class UeberwachungRepository {
     // --------------------------------------------------------------------- Alarm (§6.5, §9)
 
     public UUID alarmErzeugen(UeberwachungZeile regel, String bezugKennung, UUID standortId, Instant jetzt,
-            String wertJson) {
+            String wertJson, boolean probelauf) {
         UUID id = UUID.randomUUID();
         String kennzeichen = naechstesKennzeichen(jetzt);
         jdbc.update("""
                 INSERT INTO alarm (id, tenant_id, standort_id, kennzeichen, ueberwachung_id, fassung,
-                       bezug_kennung, wertart, schwere, ausgeloest_am, wert_beim_ausloesen, zustand)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, 'aktiv')
+                       bezug_kennung, wertart, schwere, ausgeloest_am, wert_beim_ausloesen, zustand, probelauf)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, 'aktiv', ?)
                 """, id, TenantContext.get(), standortId, kennzeichen, regel.id(), regel.fassung(),
-                bezugKennung, regel.wertart(), regel.schwere(), ts(jetzt), wertJson);
+                bezugKennung, regel.wertart(), regel.schwere(), ts(jetzt), wertJson, probelauf);
         return id;
     }
 
@@ -305,7 +329,7 @@ public class UeberwachungRepository {
     public Optional<AlarmZeile> alarm(UUID id) {
         return jdbc.query("""
                 SELECT id, kennzeichen, ueberwachung_id, standort_id, bezug_kennung, wertart, schwere,
-                       ausgeloest_am, zustand, wieder_normal_am, gesehen_von, gesehen_am, erledigt_am
+                       ausgeloest_am, zustand, wieder_normal_am, gesehen_von, gesehen_am, erledigt_am, probelauf
                   FROM alarm WHERE id = ?
                 """, UeberwachungRepository::alarmZeile, id).stream().findFirst();
     }
@@ -314,7 +338,7 @@ public class UeberwachungRepository {
     public List<AlarmZeile> liste(boolean erledigt, int limit) {
         return jdbc.query("""
                 SELECT id, kennzeichen, ueberwachung_id, standort_id, bezug_kennung, wertart, schwere,
-                       ausgeloest_am, zustand, wieder_normal_am, gesehen_von, gesehen_am, erledigt_am
+                       ausgeloest_am, zustand, wieder_normal_am, gesehen_von, gesehen_am, erledigt_am, probelauf
                   FROM alarm WHERE (zustand = 'erledigt') = ?
                  ORDER BY ausgeloest_am DESC LIMIT ?
                 """, UeberwachungRepository::alarmZeile, erledigt, limit);
@@ -339,7 +363,8 @@ public class UeberwachungRepository {
                 rs.getString("bezug_kennung"), rs.getString("wertart"), rs.getString("schwere"),
                 instant(rs.getTimestamp("ausgeloest_am")), rs.getString("zustand"),
                 instant(rs.getTimestamp("wieder_normal_am")), rs.getString("gesehen_von"),
-                instant(rs.getTimestamp("gesehen_am")), instant(rs.getTimestamp("erledigt_am")));
+                instant(rs.getTimestamp("gesehen_am")), instant(rs.getTimestamp("erledigt_am")),
+                rs.getBoolean("probelauf"));
     }
 
     private static Timestamp ts(Instant i) {

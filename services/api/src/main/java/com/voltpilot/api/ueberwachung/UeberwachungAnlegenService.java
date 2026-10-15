@@ -11,12 +11,13 @@ import com.voltpilot.api.uems.RechteAbleitung.Person;
 import com.voltpilot.api.uems.RechteAbleitung.Rolle;
 import com.voltpilot.api.uems.RechteAbleitung.Standort;
 import com.voltpilot.api.uems.RechteAbleitung.Ziel;
+import com.voltpilot.api.ueberwachung.UeberwachungRepository.UeberwachungZeile;
 import com.voltpilot.api.web.dto.UeberwachungDto;
 import com.voltpilot.api.zugriff.RechtFehlt;
 import com.voltpilot.api.zugriff.RechteMatrixDatei;
 import com.voltpilot.api.zugriff.ZugriffRepository;
+import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -42,6 +43,9 @@ public class UeberwachungAnlegenService {
     private static final long VORGABE_DAUER_S = 300;
     private static final long VORGABE_ERHOLEN_S = 300;
     private static final double VORGABE_RUECKKEHR_PROZENT = 0.05;
+
+    /** 30-Tage-Probelauf (§6.4, §6.8 Entwurf 1): jede EIGENE Überwachung startet damit, nie ab Werk. */
+    static final long PROBELAUF_TAGE = ProbelaufService.FENSTER_TAGE;
 
     private final UeberwachungRepository repo;
     private final WerteKatalog katalog;
@@ -98,13 +102,49 @@ public class UeberwachungAnlegenService {
         ObjectNode bedingung = vorgabenAnwenden((ObjectNode) anfrage.bedingung());
         String bezugJson = bezugJson(bezug);
         String empfaengerJson = empfaengerJson(empfaenger);
+        Instant probelaufBis = jetzt.plus(Duration.ofDays(PROBELAUF_TAGE));
         UUID id = repo.erstelleEigen(standortId, anfrage.name(), anfrage.wertart(), bezugJson,
-                bedingung.toString(), anfrage.schwere(), empfaengerJson, aufrufer.kennung());
+                bedingung.toString(), anfrage.schwere(), empfaengerJson, aufrufer.kennung(), probelaufBis);
         return new UeberwachungDto(id.toString(), anfrage.name(), anfrage.wertart(), anfrage.schwere(), "eigen",
-                true);
+                true, probelaufBis);
     }
 
-    private static WerteLeser.Bezug bezugAus(WerteKatalog.Eintrag eintrag, UeberwachungDto.BezugEintrag b) {
+    /**
+     * "Jetzt scharf schalten" (§6.8 Entwurf 1): beendet den Probelauf einer eigenen Regel vor
+     * Ablauf der 30 Tage. Dasselbe Rechte-Muster wie {@link #anlegen} - {@code ueberwachung.eigene},
+     * wenn die Regel nur die anlegende Person selbst benachrichtigt, sonst {@code ueberwachung.verwalten}.
+     */
+    public UeberwachungDto scharfSchalten(UUID id, Benutzer aufrufer, Instant jetzt) {
+        UeberwachungZeile regel = repo.einzelneRegel(id)
+                .orElseThrow(() -> new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND));
+        boolean nurIchSelbst = istNurIchSelbst(regel.empfaenger(), aufrufer.kennung());
+        String benoetigtesRecht = nurIchSelbst ? "ueberwachung.eigene" : "ueberwachung.verwalten";
+
+        Kundenbereich kundenbereich = kundenbereich(jetzt);
+        Ziel ziel = regel.standortId() == null ? Ziel.unternehmen()
+                : zielFuerStandort(repo.standortKurzzeichen(regel.standortId()));
+        RechteAbleitung.DarfErgebnis darf = RechteAbleitung.darf(RechteMatrixDatei.matrix(), aufrufer, kundenbereich,
+                benoetigtesRecht, ziel, jetzt);
+        if (!darf.darf()) {
+            throw new RechtFehlt(benoetigtesRecht, darf);
+        }
+
+        repo.scharfSchalten(id);
+        return new UeberwachungDto(id.toString(), regel.name(), regel.wertart(), regel.schwere(), regel.herkunft(),
+                true, null);
+    }
+
+    private static boolean istNurIchSelbst(com.fasterxml.jackson.databind.JsonNode empfaenger, String eigeneKennung) {
+        if (empfaenger == null || !empfaenger.isArray() || empfaenger.size() != 1) {
+            return false;
+        }
+        com.fasterxml.jackson.databind.JsonNode einziger = empfaenger.get(0);
+        return einziger.has("person") && eigeneKennung.equals(einziger.path("person").asText())
+                && !einziger.has("rolle");
+    }
+
+    /** Package-sichtbar: {@link ProbelaufService} braucht dieselbe Bezug-Auflösung für die Vorschau. */
+    static WerteLeser.Bezug bezugAus(WerteKatalog.Eintrag eintrag, UeberwachungDto.BezugEintrag b) {
         if (b == null) {
             throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, "Bezug fehlt");
         }
@@ -129,8 +169,12 @@ public class UeberwachungAnlegenService {
         }
     }
 
-    /** Vorgaben nach §9: Dauer 5 Min, Rückkehr 5 % der Schwelle, Erholdauer 5 Min - im Satz nennbar, änderbar. */
-    private static ObjectNode vorgabenAnwenden(ObjectNode bedingung) {
+    /**
+     * Vorgaben nach §9: Dauer 5 Min, Rückkehr 5 % der Schwelle, Erholdauer 5 Min - im Satz nennbar,
+     * änderbar. Package-sichtbar: {@link ProbelaufService} wendet dieselben Vorgaben auf die
+     * Vorschau an.
+     */
+    static ObjectNode vorgabenAnwenden(ObjectNode bedingung) {
         if (!bedingung.has("dauer_s")) {
             bedingung.put("dauer_s", VORGABE_DAUER_S);
         }

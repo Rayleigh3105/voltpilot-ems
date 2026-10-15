@@ -50,6 +50,10 @@ class RechtRoutenArchitekturTest {
                 "Alerting Scheibe 1 (vp-alerting-konzept-m1 §6.6): \"Gesehen\" darf, wer die Meldung sieht - "
                         + "die Sicht kommt allein aus dem site_scope-Zaun auf alarm, kein zusätzliches "
                         + "Matrix-Recht (Entscheid 3B: freiwillig, keine Quittierungspflicht).");
+        m.put("MeldungenController#probelauf",
+                "Alerting Scheibe 2 (§6.4, §6.8 Entwurf 1): die Vorschau schreibt nichts (kein Anlegen) - "
+                        + "wie jede andere reine Leseroute dieser Ebene kein Matrix-Recht; "
+                        + "ProbelaufService.vorschau prüft den Standort-Zaun selbst (Geltungsbereich.requireSite).");
         return m;
     }
 
@@ -117,6 +121,9 @@ class RechtRoutenArchitekturTest {
         m.put("MeldungenController#anlegen", "UeberwachungAnlegenService.anlegen — ueberwachung.eigene (nur der "
                 + "anlegende Aufrufer selbst als Empfänger) bzw. ueberwachung.verwalten (andere Personen oder "
                 + "Rollen), RechteAbleitung.darf am Standort der Anlage aus dem Bezug im Körper (Alerting Scheibe 2)");
+        m.put("MeldungenController#scharfSchalten", "UeberwachungAnlegenService.scharfSchalten — dasselbe Muster "
+                + "wie beim Anlegen, ueberwachung.eigene/verwalten anhand der GESPEICHERTEN Empfänger der Regel, "
+                + "RechteAbleitung.darf an ihrem Standort (Alerting Scheibe 2, §6.8 Entwurf 1)");
         m.put("AblesungController#eingeben", "AblesungController.recht — Kennzeichen zu UUID, RechtPruefung an der Messstelle");
         m.put("AblesungController#berichtigen", "AblesungController.recht — Kennzeichen zu UUID, RechtPruefung an der Messstelle");
         m.put("BezugsgroesseController#anlegen", "BezugsgroesseController.geltungPruefen — Geltung aus dem Körper");

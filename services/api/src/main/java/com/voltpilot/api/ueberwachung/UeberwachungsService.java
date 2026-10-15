@@ -306,17 +306,22 @@ public class UeberwachungsService {
             WerteLeser.Lesung lesung) {
         String anlageName = anlageNameOder(anlageId);
         String wertJson = wertJson(lesung);
+        boolean probelauf = regel.imProbelauf(jetzt);
         UUID alarmId = repo.alarmErzeugen(regel, bezug.kennung(), regel.standortId() != null
-                ? regel.standortId() : repo.standortHeute(anlageId), jetzt, wertJson);
-        repo.alarmVerlauf(alarmId, "ausgeloest", null, satzname(regel) + " der Anlage " + anlageName, wertJson);
-        if (!"hinweis".equals(regel.schwere())) {
+                ? regel.standortId() : repo.standortHeute(anlageId), jetzt, wertJson, probelauf);
+        repo.alarmVerlauf(alarmId, "ausgeloest", null, satzname(regel) + " der Anlage " + anlageName
+                + (probelauf ? " (Probelauf - hätte gemeldet)" : ""), wertJson);
+        // Probelauf (§6.4, §6.8 Entwurf 1): ausgewertet und im Verlauf nachweisbar, aber OHNE
+        // Versand - "was sie gemeldet hätte", nicht was sie wirklich gemeldet hat.
+        if (!probelauf && !"hinweis".equals(regel.schwere())) {
             versenden(regel, alarmId, anlageName, "ausgeloest",
                     schwereWort(regel.schwere()) + ": " + regel.name(),
                     satzname(regel) + " der Anlage " + anlageName + " meldet: " + wertText(lesung)
                             + ". Kennzeichen " + repo.alarm(alarmId).map(AlarmZeile::kennzeichen).orElse("?")
                             + ".");
         }
-        repo.alarmVerlauf(alarmId, "versand", null, "Versand eingereiht", null);
+        repo.alarmVerlauf(alarmId, "versand", null, probelauf ? "Probelauf - kein Versand" : "Versand eingereiht",
+                null);
         return alarmId;
     }
 
@@ -329,7 +334,11 @@ public class UeberwachungsService {
         repo.alarmWiederNormal(alarmId, jetzt, true);
         repo.alarmVerlauf(alarmId, "wieder_normal", null, "wieder normal", null);
         repo.alarmVerlauf(alarmId, "erledigt", null, "erledigt (Wert zurück)", null);
-        if (!"hinweis".equals(regel.schwere())) {
+        // Derselbe Alarm, dieselbe Probelauf-Marke wie beim Auslösen (§6.4, §6.8 Entwurf 1) - nicht
+        // regel.imProbelauf(jetzt) neu befragen: die Regel könnte in der Zwischenzeit scharf geschaltet
+        // worden sein, ihr erster Alarm bleibt trotzdem ohne Versand "wieder normal".
+        boolean probelauf = repo.alarm(alarmId).map(AlarmZeile::probelauf).orElse(false);
+        if (!probelauf && !"hinweis".equals(regel.schwere())) {
             String anlageName = anlageNameOder(anlageId);
             versenden(regel, alarmId, anlageName, "wieder_normal",
                     "Wieder normal: " + regel.name(),

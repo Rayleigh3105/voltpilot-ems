@@ -1,5 +1,6 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.ueberwachung.ProbelaufService;
 import com.voltpilot.api.ueberwachung.UeberwachungAnlegenService;
 import com.voltpilot.api.ueberwachung.UeberwachungRepository;
 import com.voltpilot.api.ueberwachung.UeberwachungRepository.AlarmZeile;
@@ -41,12 +42,14 @@ public class MeldungenController {
     private final UeberwachungRepository repo;
     private final UeberwachungsService dienst;
     private final UeberwachungAnlegenService anlegen;
+    private final ProbelaufService probelauf;
 
     public MeldungenController(UeberwachungRepository repo, UeberwachungsService dienst,
-            UeberwachungAnlegenService anlegen) {
+            UeberwachungAnlegenService anlegen, ProbelaufService probelauf) {
         this.repo = repo;
         this.dienst = dienst;
         this.anlegen = anlegen;
+        this.probelauf = probelauf;
     }
 
     @GetMapping
@@ -71,9 +74,33 @@ public class MeldungenController {
     public UeberwachungDto.Liste regeln() {
         List<UeberwachungDto> liste = repo.aktive().stream()
                 .map(r -> new UeberwachungDto(r.id().toString(), r.name(), r.wertart(), r.schwere(), r.herkunft(),
-                        true))
+                        true, r.probelaufBis()))
                 .toList();
         return new UeberwachungDto.Liste(liste);
+    }
+
+    /**
+     * "Jetzt scharf schalten" (§6.8 Entwurf 1, per Tipper statt nach 30 Tagen) - beendet den
+     * Probelauf einer eigenen Regel. Recht wie beim Anlegen: {@code ueberwachung.eigene}, wenn die
+     * Regel nur die anlegende Person selbst benachrichtigt, sonst {@code ueberwachung.verwalten}.
+     */
+    @PostMapping("/regeln/{id}/scharf")
+    @Recht(value = {"ueberwachung.eigene", "ueberwachung.verwalten"}, ziel = RechtZiel.DIENST)
+    public UeberwachungDto scharfSchalten(@PathVariable UUID id) {
+        var aufrufer = RechtPruefung.aufrufer()
+                .orElseThrow(() -> new ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN));
+        return anlegen.scharfSchalten(id, aufrufer, Instant.now());
+    }
+
+    /**
+     * "Was diese Regel in den letzten 30 Tagen gemeldet hätte" (§6.4, §6.8 Entwurf 1) - die
+     * Vorschau im Blatt, BEVOR eine Person "Überwachung starten" tippt. Keine eigene Rechte-Prüfung
+     * über die Matrix (wie jede andere reine Leseroute dieser Ebene) - {@link ProbelaufService}
+     * prüft den Standort-Zaun selbst (Geltungsbereich.requireSite), bevor sie überhaupt liest.
+     */
+    @PostMapping("/regeln/probelauf")
+    public com.voltpilot.api.web.dto.ProbelaufDto probelauf(@RequestBody UeberwachungDto.Anlegen entwurf) {
+        return probelauf.vorschau(entwurf, Instant.now());
     }
 
     /**

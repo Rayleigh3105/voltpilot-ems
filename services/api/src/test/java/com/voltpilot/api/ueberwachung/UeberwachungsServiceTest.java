@@ -2,6 +2,7 @@ package com.voltpilot.api.ueberwachung;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -60,7 +61,7 @@ class UeberwachungsServiceTest {
         return new UeberwachungZeile(REGEL, null, 1, "Box meldet sich nicht",
                 "box.erreichbar", json("{\"anlage\":\"" + ANLAGE + "\"}"),
                 json("{\"art\":\"zustand\",\"ziel\":[\"nicht_erreichbar\"],\"dauer_s\":900,\"erholen_s\":300}"),
-                schwere, json("[{\"person\":\"sub-jonas\"}]"), "ab_werk");
+                schwere, json("[{\"person\":\"sub-jonas\"}]"), "ab_werk", "system", null);
     }
 
     private void nichtsGesaet() {
@@ -81,7 +82,7 @@ class UeberwachungsServiceTest {
 
         dienst.lauf(Instant.now());
 
-        verify(repo, never()).alarmErzeugen(any(), any(), any(), any(), any());
+        verify(repo, never()).alarmErzeugen(any(), any(), any(), any(), any(), anyBoolean());
         // Schon "normal" und weiterhin unerfüllt (unbekannt zählt nie als erfüllt): kein Schreiben nötig.
         verify(repo, never()).instanzSpeichern(any(), any(), any(), any(), any(), any(), any(), any());
     }
@@ -96,7 +97,7 @@ class UeberwachungsServiceTest {
 
         dienst.lauf(Instant.now());
 
-        verify(repo, never()).alarmErzeugen(any(), any(), any(), any(), any());
+        verify(repo, never()).alarmErzeugen(any(), any(), any(), any(), any(), anyBoolean());
         verify(repo).instanzSpeichern(eq(REGEL), eq(BEZUG), eq("normal"), eq(null), any(), any(), any(), any());
     }
 
@@ -109,12 +110,12 @@ class UeberwachungsServiceTest {
         when(repo.instanz(REGEL, BEZUG)).thenReturn(new InstanzZeile("ausstehend", seit, null, null, null));
         lese(WerteLeser.Lesung.zustand("nicht_erreichbar", jetzt));
         UUID alarmId = UUID.randomUUID();
-        when(repo.alarmErzeugen(any(), any(), any(), any(), any())).thenReturn(alarmId);
+        when(repo.alarmErzeugen(any(), any(), any(), any(), any(), anyBoolean())).thenReturn(alarmId);
         when(repo.alarm(alarmId)).thenReturn(java.util.Optional.empty());
 
         dienst.lauf(jetzt);
 
-        verify(repo).alarmErzeugen(any(), eq(BEZUG), any(), any(), any());
+        verify(repo).alarmErzeugen(any(), eq(BEZUG), any(), any(), any(), anyBoolean());
         verify(ausgang).email(eq("alarm"), eq(alarmId), eq("sub-jonas"), eq("ausgeloest"), anyString(), anyString());
         verify(repo).instanzSpeichern(eq(REGEL), eq(BEZUG), eq("aktiv"), eq(jetzt), any(), any(), eq(alarmId), any());
     }
@@ -127,7 +128,7 @@ class UeberwachungsServiceTest {
         when(repo.instanz(REGEL, BEZUG)).thenReturn(new InstanzZeile("ausstehend", jetzt.minusSeconds(901), null,
                 null, null));
         lese(WerteLeser.Lesung.zustand("nicht_erreichbar", jetzt));
-        when(repo.alarmErzeugen(any(), any(), any(), any(), any())).thenReturn(UUID.randomUUID());
+        when(repo.alarmErzeugen(any(), any(), any(), any(), any(), anyBoolean())).thenReturn(UUID.randomUUID());
 
         dienst.lauf(jetzt);
 
@@ -147,7 +148,7 @@ class UeberwachungsServiceTest {
 
         dienst.lauf(jetzt);
 
-        verify(repo, never()).alarmErzeugen(any(), any(), any(), any(), any());
+        verify(repo, never()).alarmErzeugen(any(), any(), any(), any(), any(), anyBoolean());
         verify(repo).instanzSpeichern(eq(REGEL), eq(BEZUG), eq("aktiv"), eq(erholendSeit), any(), any(),
                 eq(offenerAlarm), any());
     }

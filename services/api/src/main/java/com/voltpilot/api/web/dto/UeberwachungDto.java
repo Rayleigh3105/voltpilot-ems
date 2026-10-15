@@ -1,15 +1,18 @@
 package com.voltpilot.api.web.dto;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import java.time.Instant;
 import java.util.List;
 
 /**
  * Eine Regel im Reiter "Überwachungen" (Alerting Scheibe 1+2, Konzept §6.8 "Überwachungen ist eine
  * Liste von Sätzen mit Zustand, Empfängern und letzter Meldung"). Scheibe 1 zeigte sie nur lesend;
- * Scheibe 2 fügt {@link Anlegen} hinzu - "Vom Wert zur fertigen Regel: drei Taps" (§6.8).
+ * Scheibe 2 fügt {@link Anlegen} hinzu - "Vom Wert zur fertigen Regel: drei Taps" (§6.8) - und den
+ * 30-Tage-Probelauf: {@code probelaufBis} ist {@code null}, sobald die Regel scharf ist (ab Werk
+ * gesäte Regeln kennen keinen Probelauf; eine eigene endet damit nach 30 Tagen oder per Tipper).
  */
 public record UeberwachungDto(String id, String name, String wertart, String schwere, String herkunft,
-        boolean aktiv) {
+        boolean aktiv, Instant probelaufBis) {
 
     public record Liste(List<UeberwachungDto> ueberwachungen) {}
 
