@@ -18,6 +18,14 @@ import java.util.List;
  * ausgelöste Regel {@code aktiv} bleibt bzw. während der Erholdauer wieder zurückfällt. Ohne
  * eigene Rückkehrschwelle (Bedingungsart {@code zustand}, {@code keine_daten}) sind beide
  * Stufen identisch - keine Änderung des Verhaltens von Scheibe 1.
+ *
+ * <p><b>Scheibe 4</b> fügt {@code periode} (eine Schwelle wie {@code ueber}/{@code unter}, aber auf
+ * einem Periodenwert - {@code richtung} ersetzt die Methodenwahl, §6.4) und {@code aenderung}
+ * ("Änderung gegenüber Vorperiode um X %", {@link #aenderung}) hinzu. {@code aenderung} braucht
+ * ZWEI Lesungen (aktuell + Vorperiode) und wird deshalb NICHT über {@link #pruefen} geroutet -
+ * {@code UeberwachungsService} ruft {@link #aenderung} gezielt auf, wenn es vorher die Vorperiode
+ * gelesen hat (§6.4: "nur dieselben Tarif-/Vergütungsgrundlagen wie die Fläche" - kein Leser liest
+ * seine Vorperiode ungefragt).
  */
 final class BedingungsPruefung {
 
@@ -40,8 +48,32 @@ final class BedingungsPruefung {
             case "ueber" -> schwelle(bedingung, lesung, true);
             case "unter" -> schwelle(bedingung, lesung, false);
             case "ausserhalb" -> ausserhalb(bedingung, lesung);
+            case "periode" -> schwelle(bedingung, lesung, "ueber".equals(bedingung.path("richtung").asText("ueber")));
             default -> Erfuellung.NICHTS; // unbekannte Bedingungsart (spätere Scheibe) - überspringen
         };
+    }
+
+    /**
+     * "Änderung gegenüber Vorperiode um X %" (Alerting Scheibe 4, §6.4): {@code richtung} ist
+     * {@code hoeher}, {@code niedriger} oder {@code beide}; UNBEKANNT, solange eine der beiden
+     * Lesungen fehlt oder die Vorperiode 0 war (keine Prozent-Änderung von 0 aus berechenbar) -
+     * UNBEKANNT IST KEINE NULL gilt auch für die Vorperiode selbst. Keine eigene Rückkehrschwelle:
+     * {@code ausgeloest} und {@code nochAktiv} sind identisch, wie bei {@code zustand}/{@code keine_daten}.
+     */
+    static Erfuellung aenderung(JsonNode bedingung, WerteLeser.Lesung aktuell, WerteLeser.Lesung vorperiode) {
+        if (!aktuell.bekannt() || aktuell.zahlenwert() == null
+                || !vorperiode.bekannt() || vorperiode.zahlenwert() == null || vorperiode.zahlenwert() == 0) {
+            return Erfuellung.NICHTS;
+        }
+        double prozent = (aktuell.zahlenwert() - vorperiode.zahlenwert()) / Math.abs(vorperiode.zahlenwert()) * 100.0;
+        double schwelleProzent = bedingung.path("schwelle_prozent").asDouble();
+        String richtung = bedingung.path("richtung").asText("hoeher");
+        boolean erfuellt = switch (richtung) {
+            case "niedriger" -> prozent <= -schwelleProzent;
+            case "beide" -> Math.abs(prozent) >= schwelleProzent;
+            default -> prozent >= schwelleProzent; // "hoeher"
+        };
+        return Erfuellung.beide(erfuellt);
     }
 
     private static Erfuellung zustand(JsonNode bedingung, WerteLeser.Lesung lesung) {

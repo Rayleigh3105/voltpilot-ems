@@ -40,6 +40,26 @@ public interface BenachrichtigungAusgang {
     void webpush(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr, String betreff,
             String inhalt, Instant naechsterVersuch, String schwere);
 
+    /**
+     * Wie {@link #email}, aber mit einem Bündel-Schlüssel (Alerting Scheibe 4, Konzept §6.4 Nr. 6,
+     * §6.6: "eine gebündelte Nachricht baut der Zusteller je Empfänger nur aus den Meldungen, die
+     * dieser sieht"): Zeilen mit demselben {@code buendelSchluessel} (+ {@code empfaengerSub} +
+     * {@code weg}), die zur selben Zeit fällig werden, fasst der Zusteller zu EINER Nachricht
+     * zusammen. Die Vorgabe (kein Schlüssel) sendet wie bisher einzeln - nur Mehrfach-Regeln
+     * (Auswahl, §6.4 "Gilt für") setzen einen Schlüssel, damit Scheibe 1-3 unverändert bleiben.
+     */
+    default void email(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr, String betreff,
+            String inhalt, Instant naechsterVersuch, String buendelSchluessel) {
+        email(quelle, quelleId, empfaengerSub, anlass, nr, betreff, inhalt, naechsterVersuch);
+    }
+
+    /** Wie {@link #webpush}, aber mit einem Bündel-Schlüssel - siehe {@link #email(String, UUID, String, String,
+     * int, String, String, Instant, String)}. */
+    default void webpush(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr, String betreff,
+            String inhalt, Instant naechsterVersuch, String schwere, String buendelSchluessel) {
+        webpush(quelle, quelleId, empfaengerSub, anlass, nr, betreff, inhalt, naechsterVersuch, schwere);
+    }
+
     /** Einmaliger, sofort fälliger Versand ({@code nr = 0}) - die Form, die Scheibe 0/1 schon kannten. */
     default void email(String quelle, UUID quelleId, String empfaengerSub, String anlass, String betreff,
             String inhalt) {

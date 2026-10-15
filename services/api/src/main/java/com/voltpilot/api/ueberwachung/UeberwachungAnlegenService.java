@@ -64,7 +64,6 @@ public class UeberwachungAnlegenService {
             throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
                     "unbekannte Wertart '" + anfrage.wertart() + "'");
         }
-        WerteLeser.Bezug bezug = bezugAus(eintrag, anfrage.bezug());
         String bedingungsart = anfrage.bedingung() == null ? null : anfrage.bedingung().path("art").asText(null);
         if (bedingungsart == null || !eintrag.bedingungen().contains(bedingungsart)) {
             throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
@@ -74,21 +73,44 @@ public class UeberwachungAnlegenService {
             throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
                     "unbekannte Schwere '" + anfrage.schwere() + "'");
         }
-        UUID anlageId = switch (bezug.art()) {
-            case "anlage" -> bezug.id();
-            case "komponente" -> repo.anlageDerKomponente(bezug.id());
-            default -> null;
-        };
-        if (anlageId == null) {
-            throw new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND);
+
+        boolean auswahl = anfrage.bezug() != null && anfrage.bezug().alle() != null;
+        UUID anlageId = null; // nur für einen EINZELNEN Bezug gesetzt - eine Auswahl hat keine EINE Anlage
+        UUID standortId;
+        String bezugJson;
+        if (auswahl) {
+            if (!"anlage".equals(eintrag.bezug())) {
+                throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                        "Auswahl passt nicht zur Wertart '" + eintrag.wertart() + "'");
+            }
+            if (!"anlage".equals(anfrage.bezug().alle()) && !"box".equals(anfrage.bezug().alle())) {
+                throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                        "unbekannte Auswahl '" + anfrage.bezug().alle() + "'");
+            }
+            standortId = anfrage.bezug().standort() == null ? null : uuid(anfrage.bezug().standort());
+            bezugJson = auswahlBezugJson(anfrage.bezug());
+        } else {
+            WerteLeser.Bezug bezug = bezugAus(eintrag, anfrage.bezug());
+            anlageId = switch (bezug.art()) {
+                case "anlage" -> bezug.id();
+                case "komponente" -> repo.anlageDerKomponente(bezug.id());
+                default -> null;
+            };
+            if (anlageId == null) {
+                throw new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND);
+            }
+            standortId = repo.standortHeute(anlageId);
+            bezugJson = bezugJson(bezug);
         }
-        UUID standortId = repo.standortHeute(anlageId);
 
         List<UeberwachungDto.EmpfaengerEintrag> empfaenger = anfrage.empfaenger() == null || anfrage.empfaenger().isEmpty()
                 ? List.of(new UeberwachungDto.EmpfaengerEintrag(aufrufer.kennung(), null))
                 : anfrage.empfaenger();
-        boolean nurIchSelbst = empfaenger.size() == 1 && aufrufer.kennung().equals(empfaenger.get(0).person())
+        boolean nurIchSelbst = !auswahl && empfaenger.size() == 1 && aufrufer.kennung().equals(empfaenger.get(0).person())
                 && empfaenger.get(0).rolle() == null;
+        // Eine Auswahl ("alle Anlagen des Standorts X"/"alle Boxen") betrifft immer mehr als den
+        // eigenen Bezug und braucht darum IMMER ueberwachung.verwalten (§6.4 "Gilt für", §6.6
+        // Entscheid 5A) - "nur ich selbst" gibt es bei einer Auswahl nicht.
         String benoetigtesRecht = nurIchSelbst ? "ueberwachung.eigene" : "ueberwachung.verwalten";
 
         Kundenbereich kundenbereich = kundenbereich(jetzt);
@@ -100,13 +122,22 @@ public class UeberwachungAnlegenService {
         }
 
         ObjectNode bedingung = vorgabenAnwenden((ObjectNode) anfrage.bedingung());
-        String bezugJson = bezugJson(bezug);
         String empfaengerJson = empfaengerJson(empfaenger);
         Instant probelaufBis = jetzt.plus(Duration.ofDays(PROBELAUF_TAGE));
         UUID id = repo.erstelleEigen(standortId, anfrage.name(), anfrage.wertart(), bezugJson,
                 bedingung.toString(), anfrage.schwere(), empfaengerJson, aufrufer.kennung(), probelaufBis);
         return new UeberwachungDto(id.toString(), anfrage.name(), anfrage.wertart(), anfrage.schwere(), "eigen",
                 true, probelaufBis, bezugJson);
+    }
+
+    /** {@code {"standort":"<id>","alle":"anlage"}} oder {@code {"alle":"box"}} (§6.4 "Gilt für", §6.7 Skizze). */
+    private static String auswahlBezugJson(UeberwachungDto.BezugEintrag b) {
+        ObjectNode n = JSON.createObjectNode();
+        if (b.standort() != null) {
+            n.put("standort", uuid(b.standort()).toString());
+        }
+        n.put("alle", b.alle());
+        return n.toString();
     }
 
     /**

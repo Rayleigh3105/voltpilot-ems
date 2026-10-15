@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.mail.MailSendException;
 
@@ -44,7 +46,16 @@ class ZustellerTest {
     private static VersandRepository.Zeile zeile(String quelle, UUID quelleId, String weg, String ziel,
             String schwere) {
         return new VersandRepository.Zeile(UUID.randomUUID(), TENANT, quelle, quelleId, "sub-jonas", weg,
-                "ausgeloest", 0, ziel, "Betreff", "Inhalt", 0, schwere);
+                "ausgeloest", 0, ziel, "Betreff", "Inhalt", 0, schwere, null);
+    }
+
+    /** Trägt ihr eigenes {@code ziel} (wie jede Alarm-Zeile mit Stufe "warnung") - braucht darum
+     * einen aktiven Zustellweg dieser Stufe ({@code zustellwege.hatAktivenEmailWeg}, siehe
+     * {@link #gebuendelteZeile}-Tests, die das pauschal auf {@code true} stellen). */
+    private static VersandRepository.Zeile gebuendelteZeile(UUID quelleId, String buendelSchluessel, String inhalt) {
+        return new VersandRepository.Zeile(UUID.randomUUID(), TENANT, "alarm", quelleId, "sub-jonas", "email",
+                "ausgeloest", 0, "warnung@example.test", "Betreff " + inhalt, inhalt, 0, "warnung",
+                buendelSchluessel);
     }
 
     @Test
@@ -193,5 +204,79 @@ class ZustellerTest {
 
     private static int anyInt() {
         return org.mockito.ArgumentMatchers.anyInt();
+    }
+
+    // =================================================================== Scheibe 4: Bündeln (§6.4 Nr. 6)
+
+    @Test
+    void zweiZeilenMitDemselbenBuendelSchluesselWerdenZuEinerNachrichtZusammengefasst() {
+        VersandRepository.Zeile z1 = gebuendelteZeile(UUID.randomUUID(), "regel-x:ausgeloest:100", "Halle 1 über 120 kW");
+        VersandRepository.Zeile z2 = gebuendelteZeile(UUID.randomUUID(), "regel-x:ausgeloest:100", "Halle 2 über 120 kW");
+        when(zustellwege.hatAktivenEmailWeg(any(), any(), any())).thenReturn(true);
+        when(ausgang.faellig(any(), anyInt())).thenReturn(List.of(z1, z2));
+
+        int gesendet = zusteller.lauf(Instant.now());
+
+        assertThat(gesendet).isEqualTo(2); // beide Zeilen bekommen ihr eigenes Versandergebnis (§6.1 Nr. 10)
+        ArgumentCaptor<String> inhalt = ArgumentCaptor.forClass(String.class);
+        verify(email, times(1)).senden(eq("warnung@example.test"), anyString(), inhalt.capture());
+        assertThat(inhalt.getValue()).contains("Halle 1 über 120 kW").contains("Halle 2 über 120 kW");
+        verify(ausgang).gesendet(eq(z1.id()), any());
+        verify(ausgang).gesendet(eq(z2.id()), any());
+    }
+
+    @Test
+    void nurDieSichtbarenZeilenGehenInDieGebuendelteNachricht() {
+        UeberwachungSichtPruefung sicht = mock(UeberwachungSichtPruefung.class);
+        zusteller.setSicht(sicht);
+        UUID unsichtbareId = UUID.randomUUID();
+        VersandRepository.Zeile z1 = gebuendelteZeile(UUID.randomUUID(), "regel-x:ausgeloest:100", "Halle 1 über 120 kW");
+        VersandRepository.Zeile z2 = gebuendelteZeile(unsichtbareId, "regel-x:ausgeloest:100", "Halle 2 über 120 kW");
+        VersandRepository.Zeile z3 = gebuendelteZeile(UUID.randomUUID(), "regel-x:ausgeloest:100", "Halle 3 über 120 kW");
+        when(zustellwege.hatAktivenEmailWeg(any(), any(), any())).thenReturn(true);
+        when(ausgang.faellig(any(), anyInt())).thenReturn(List.of(z1, z2, z3));
+        when(sicht.sichtbar(any(), eq("sub-jonas"), any())).thenReturn(true);
+        when(sicht.sichtbar(eq(unsichtbareId), eq("sub-jonas"), any())).thenReturn(false);
+
+        int gesendet = zusteller.lauf(Instant.now());
+
+        assertThat(gesendet).isEqualTo(2); // nur z1 und z3 - z2 sieht dieser Empfänger nicht (§6.6)
+        ArgumentCaptor<String> inhalt = ArgumentCaptor.forClass(String.class);
+        verify(email, times(1)).senden(eq("warnung@example.test"), anyString(), inhalt.capture());
+        assertThat(inhalt.getValue()).contains("Halle 1 über 120 kW").contains("Halle 3 über 120 kW")
+                .doesNotContain("Halle 2 über 120 kW");
+        verify(ausgang).unterdrueckt(z2.id(), "keine_sicht");
+    }
+
+    @Test
+    void bleibtNachDerSichtPruefungNurEineZeileUebrigSendetSieEinzeln() {
+        UeberwachungSichtPruefung sicht = mock(UeberwachungSichtPruefung.class);
+        zusteller.setSicht(sicht);
+        UUID unsichtbareId = UUID.randomUUID();
+        VersandRepository.Zeile z1 = gebuendelteZeile(UUID.randomUUID(), "regel-x:ausgeloest:100", "Halle 1 über 120 kW");
+        VersandRepository.Zeile z2 = gebuendelteZeile(unsichtbareId, "regel-x:ausgeloest:100", "Halle 2 über 120 kW");
+        when(zustellwege.hatAktivenEmailWeg(any(), any(), any())).thenReturn(true);
+        when(ausgang.faellig(any(), anyInt())).thenReturn(List.of(z1, z2));
+        when(sicht.sichtbar(eq(z1.quelleId()), eq("sub-jonas"), any())).thenReturn(true);
+        when(sicht.sichtbar(eq(unsichtbareId), eq("sub-jonas"), any())).thenReturn(false);
+
+        int gesendet = zusteller.lauf(Instant.now());
+
+        assertThat(gesendet).isEqualTo(1);
+        // Keine Bündel-Vorsilbe ("N Meldungen: ...") bei nur einer übrig gebliebenen Zeile.
+        verify(email).senden(eq("warnung@example.test"), eq(z1.betreff()), eq(z1.inhalt()));
+    }
+
+    @Test
+    void verschiedeneBuendelSchluesselWerdenNichtVermischt() {
+        VersandRepository.Zeile z1 = gebuendelteZeile(UUID.randomUUID(), "regel-x:ausgeloest:100", "Halle 1 über 120 kW");
+        VersandRepository.Zeile z2 = gebuendelteZeile(UUID.randomUUID(), "regel-y:ausgeloest:100", "Halle 2 über 50 kW");
+        when(zustellwege.hatAktivenEmailWeg(any(), any(), any())).thenReturn(true);
+        when(ausgang.faellig(any(), anyInt())).thenReturn(List.of(z1, z2));
+
+        int gesendet = zusteller.lauf(Instant.now());
+
+        assertThat(gesendet).isEqualTo(2);
+        verify(email, times(2)).senden(eq("warnung@example.test"), anyString(), anyString());
     }
 }

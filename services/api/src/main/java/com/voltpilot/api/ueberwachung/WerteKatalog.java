@@ -21,14 +21,17 @@ import org.springframework.stereotype.Component;
  * Flow-Katalog, der jede {@code leser.art} beim Start prüft).
  *
  * <p>Scheibe 1 kannte nur die Leserarten {@code zustand} und {@code ereignis}; Scheibe 2 fügt
- * {@code anlagenfluss} und {@code messreihe} hinzu. Die übrigen vier (menge, kennzahl, geld,
- * zaehlung, §6.3) kommen mit ihrer eigenen Scheibe und erweitern {@link #LESERARTEN} additiv.
+ * {@code anlagenfluss} und {@code messreihe} hinzu; Scheibe 4 fügt {@code menge} und {@code geld}
+ * hinzu (periodisch ausgewertet, §6.3/§6.7 - nie im Minutentakt). {@code kennzahl} und
+ * {@code zaehlung} kommen mit Scheibe 5 und erweitern {@link #LESERARTEN} additiv.
  */
 @Component
 public class WerteKatalog {
 
-    /** Die Leserarten, die der Code heute kennt (Scheibe 1: zustand, ereignis; Scheibe 2: anlagenfluss, messreihe). */
-    static final List<String> LESERARTEN = List.of("zustand", "ereignis", "anlagenfluss", "messreihe");
+    /** Die Leserarten, die der Code heute kennt (Scheibe 1: zustand, ereignis; Scheibe 2: anlagenfluss,
+     * messreihe; Scheibe 4: menge, geld). */
+    static final List<String> LESERARTEN =
+            List.of("zustand", "ereignis", "anlagenfluss", "messreihe", "menge", "geld");
 
     /** Wie ein Eintrag seinen Wert liest (§6.3): Scheibe 1 nutzt {@code feld} ODER {@code arten}+{@code bezugsfeld}. */
     public record LeserVerweis(String art, String feld, List<String> arten, String bezugsfeld) {}

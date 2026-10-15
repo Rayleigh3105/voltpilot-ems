@@ -53,4 +53,27 @@ public interface WerteLeser {
 
     /** Liest den aktuellen Zustand eines Bezugs für diesen Katalog-Eintrag. */
     Lesung lese(WerteKatalog.Eintrag eintrag, Bezug bezug, Instant jetzt);
+
+    /**
+     * Periode-bewusstes Lesen (Alerting Scheibe 4, Konzept §6.3/§6.4: Bedingungsart {@code periode}) -
+     * NUR von den periodischen Lesern ({@code menge}, {@code geld}) überschrieben; alle anderen
+     * ignorieren {@code periode}/{@code nurEndgueltig} und liefern denselben Momentanwert wie
+     * {@link #lese}. {@code periode} ist eine aus {@code viertelstunde|tag|woche|monat|abrechnungszeitraum};
+     * {@code nurEndgueltig = true} liefert {@link Lesung#unbekannt()}, solange die Periode noch läuft
+     * (§6.3 "vorläufig oder erst endgültig") - kein Code braucht die Bedingung im {@code lese}-Signatur
+     * zu kennen (Scheibe 1-3 bleiben unverändert).
+     */
+    default Lesung lesePeriode(WerteKatalog.Eintrag eintrag, Bezug bezug, String periode, boolean nurEndgueltig,
+            Instant jetzt) {
+        return lese(eintrag, bezug, jetzt);
+    }
+
+    /**
+     * Der Wert der VORPERIODE (§6.4 Bedingungsart {@code aenderung}, "Änderung gegenüber Vorperiode
+     * um X %") - NUR von den periodischen Lesern überschrieben; andere liefern UNBEKANNT (keine
+     * Vorperiode definiert).
+     */
+    default Lesung leseVorperiode(WerteKatalog.Eintrag eintrag, Bezug bezug, String periode, Instant jetzt) {
+        return Lesung.unbekannt();
+    }
 }

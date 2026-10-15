@@ -246,8 +246,10 @@ class UeberwachungSiteScopeIT {
         // Dieser Lauf übt nur den zustand-Leser (box.erreichbar) aus - die Scheibe-2-Leser bleiben Mocks.
         UeberwachungsService dienst = new UeberwachungsService(repo, katalog, zustandLeser,
                 org.mockito.Mockito.mock(EreignisWerteLeser.class), org.mockito.Mockito.mock(AnlagenflussWerteLeser.class),
-                org.mockito.Mockito.mock(MessreiheWerteLeser.class), zugriffe,
-                org.mockito.Mockito.mock(com.voltpilot.api.repo.PriceRepository.class));
+                org.mockito.Mockito.mock(MessreiheWerteLeser.class), org.mockito.Mockito.mock(MengeWerteLeser.class),
+                org.mockito.Mockito.mock(GeldWerteLeser.class), zugriffe,
+                org.mockito.Mockito.mock(com.voltpilot.api.repo.PriceRepository.class),
+                org.mockito.Mockito.mock(com.voltpilot.api.repo.PeakShavingRepository.class));
         Einreihung einreihung = new Einreihung();
         dienst.setAusgang(einreihung);
 
@@ -346,7 +348,9 @@ class UeberwachungSiteScopeIT {
             UeberwachungsService dienst = new UeberwachungsService(repo, new WerteKatalog(), zustandMock,
                     ereignisMock, anlagenflussMock,
                     new MessreiheWerteLeser(new com.voltpilot.api.topology.TopologyRepository(app), repo),
-                    new ZugriffRepository(app), org.mockito.Mockito.mock(com.voltpilot.api.repo.PriceRepository.class));
+                    org.mockito.Mockito.mock(MengeWerteLeser.class), org.mockito.Mockito.mock(GeldWerteLeser.class),
+                    new ZugriffRepository(app), org.mockito.Mockito.mock(com.voltpilot.api.repo.PriceRepository.class),
+                    org.mockito.Mockito.mock(com.voltpilot.api.repo.PeakShavingRepository.class));
             Einreihung einreihung = new Einreihung();
             dienst.setAusgang(einreihung);
 
@@ -406,7 +410,9 @@ class UeberwachungSiteScopeIT {
             UeberwachungsService dienst = new UeberwachungsService(repo, new WerteKatalog(), zustandMock,
                     ereignisMock, anlagenflussMock,
                     new MessreiheWerteLeser(new com.voltpilot.api.topology.TopologyRepository(app), repo),
-                    new ZugriffRepository(app), org.mockito.Mockito.mock(com.voltpilot.api.repo.PriceRepository.class));
+                    org.mockito.Mockito.mock(MengeWerteLeser.class), org.mockito.Mockito.mock(GeldWerteLeser.class),
+                    new ZugriffRepository(app), org.mockito.Mockito.mock(com.voltpilot.api.repo.PriceRepository.class),
+                    org.mockito.Mockito.mock(com.voltpilot.api.repo.PeakShavingRepository.class));
             Einreihung einreihung = new Einreihung();
             dienst.setAusgang(einreihung);
 

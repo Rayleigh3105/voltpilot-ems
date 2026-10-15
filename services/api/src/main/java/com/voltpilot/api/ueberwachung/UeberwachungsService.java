@@ -1,6 +1,8 @@
 package com.voltpilot.api.ueberwachung;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.voltpilot.api.history.HistoryRange;
+import com.voltpilot.api.repo.PeakShavingRepository;
 import com.voltpilot.api.repo.PriceRepository;
 import com.voltpilot.api.uems.RechteAbleitung.Rolle;
 import com.voltpilot.api.ueberwachung.UeberwachungRepository.AlarmZeile;
@@ -9,9 +11,12 @@ import com.voltpilot.api.ueberwachung.UeberwachungRepository.UeberwachungZeile;
 import com.voltpilot.api.versand.BenachrichtigungAusgang;
 import com.voltpilot.api.web.dto.PriceRangeSummaryDto;
 import com.voltpilot.api.zugriff.ZugriffRepository;
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -41,28 +46,48 @@ public class UeberwachungsService {
 
     public record Lauf(int gesaet, int ausgeloest, int erledigt) {}
 
+    /** Periodische Leser (menge, geld) werden höchstens in diesem Abstand neu gelesen - NIE im
+     * Minutentakt (§6.7: "wenn ihr Läufer neue Werte geschrieben hat, sonst einmal täglich"; diese
+     * Scheibe wählt einen festen, einfachen Mindestabstand statt die Verdichter-Läufe zu beobachten). */
+    static final java.time.Duration PERIODISCH_MINDESTABSTAND = java.time.Duration.ofMinutes(5);
+
+    /** Bündelfenster (§6.4 Nr. 6, §9): Auslöser derselben Regel innerhalb dieser Zeit gehen in EINE
+     * Nachricht - ein fester, UTC-ausgerichteter Tumbling-Bucket (keine echte Sliding-Window-Bündelung:
+     * zwei Auslöser kurz vor/nach einer Bucket-Grenze bündeln nicht zusammen - bewusste Vereinfachung). */
+    static final long BUENDELFENSTER_S = 30;
+
+    /** Wertarten, deren aktiver Alarm abhängige Meldungen DERSELBEN Anlage unterdrückt (§6.4 Nr. 7). */
+    private static final List<String> GATENDE_WERTARTEN = List.of("box.erreichbar", "datenquelle.liefert_daten");
+
     private final UeberwachungRepository repo;
     private final WerteKatalog katalog;
     private final ZustandWerteLeser zustandLeser;
     private final EreignisWerteLeser ereignisLeser;
     private final AnlagenflussWerteLeser anlagenflussLeser;
     private final MessreiheWerteLeser messreiheLeser;
+    private final MengeWerteLeser mengeLeser;
+    private final GeldWerteLeser geldLeser;
     private final ZugriffRepository zugriffe;
     private final PriceRepository preise;
+    private final PeakShavingRepository peakShaving;
     private BenachrichtigungAusgang ausgang = BenachrichtigungAusgang.STUMM;
 
     public UeberwachungsService(UeberwachungRepository repo, WerteKatalog katalog,
             ZustandWerteLeser zustandLeser, EreignisWerteLeser ereignisLeser,
             AnlagenflussWerteLeser anlagenflussLeser, MessreiheWerteLeser messreiheLeser,
-            ZugriffRepository zugriffe, PriceRepository preise) {
+            MengeWerteLeser mengeLeser, GeldWerteLeser geldLeser,
+            ZugriffRepository zugriffe, PriceRepository preise, PeakShavingRepository peakShaving) {
         this.repo = repo;
         this.katalog = katalog;
         this.zustandLeser = zustandLeser;
         this.ereignisLeser = ereignisLeser;
         this.anlagenflussLeser = anlagenflussLeser;
         this.messreiheLeser = messreiheLeser;
+        this.mengeLeser = mengeLeser;
+        this.geldLeser = geldLeser;
         this.zugriffe = zugriffe;
         this.preise = preise;
+        this.peakShaving = peakShaving;
     }
 
     /** Die EINE Stelle, die {@code leser.art} auf ihre Implementierung abbildet (§6.3 Nr. 3). */
@@ -72,8 +97,15 @@ public class UeberwachungsService {
             case "ereignis" -> ereignisLeser;
             case "anlagenfluss" -> anlagenflussLeser;
             case "messreihe" -> messreiheLeser;
+            case "menge" -> mengeLeser;
+            case "geld" -> geldLeser;
             default -> null;
         };
+    }
+
+    /** Ob eine Leserart periodisch ist (§6.7: nie im Minutentakt) - entscheidet die Drossel in {@link #werte}. */
+    private static boolean periodisch(String leserArt) {
+        return "menge".equals(leserArt) || "geld".equals(leserArt);
     }
 
     /** Nachgereicht wie {@code VersandRepository}: Scheibe-0-Ausgang, in Tests austauschbar. */
@@ -87,22 +119,21 @@ public class UeberwachungsService {
         int ausgeloest = 0;
         int erledigt = 0;
         for (UeberwachungZeile regel : repo.aktive()) {
-            WerteLeser.Bezug bezug = bezugAus(regel.bezug());
-            if (bezug == null) {
-                continue; // "alle X" (Scheibe 4+) - hier übersprungen
-            }
             WerteKatalog.Eintrag eintrag = katalog.eintrag(regel.wertart());
             WerteLeser leser = eintrag == null ? null : leserFuer(eintrag.leser().art());
             if (leser == null) {
                 continue; // unbekannte/entfernte Wertart oder Leserart
             }
-            UUID anlageId = anlageFuerBezug(bezug);
-            if (anlageId == null) {
-                continue; // Bezug zeigt auf nichts (mehr) Sichtbares - Instanz bleibt unverändert liegen
+            boolean auswahl = regel.bezug().has("alle");
+            for (WerteLeser.Bezug bezug : bezuegeAus(regel.bezug())) {
+                UUID anlageId = anlageFuerBezug(bezug);
+                if (anlageId == null) {
+                    continue; // Bezug zeigt auf nichts (mehr) Sichtbares - Instanz bleibt unverändert liegen
+                }
+                Ergebnis e = werte(regel, eintrag, leser, bezug, anlageId, auswahl, jetzt);
+                ausgeloest += e.ausgeloest ? 1 : 0;
+                erledigt += e.erledigt ? 1 : 0;
             }
-            Ergebnis e = werte(regel, eintrag, leser, bezug, anlageId, jetzt);
-            ausgeloest += e.ausgeloest ? 1 : 0;
-            erledigt += e.erledigt ? 1 : 0;
         }
         if (gesaet + ausgeloest + erledigt > 0) {
             log.info("Überwachung: {} gesät, {} ausgelöst, {} erledigt", gesaet, ausgeloest, erledigt);
@@ -111,21 +142,40 @@ public class UeberwachungsService {
     }
 
     /**
-     * Der Bezug einer Regel als {@link WerteLeser.Bezug} (§6.3 Wertverweis-Syntax): {@code anlage}
-     * (Scheibe 1) oder {@code komponente} mit Messkanal (Scheibe 2, Familie {@code geraet.messwert}).
+     * Die Bezüge EINER Regel als {@link WerteLeser.Bezug} (§6.3 Wertverweis-Syntax): {@code anlage}
+     * (Scheibe 1), {@code komponente} mit Messkanal (Scheibe 2, Familie {@code geraet.messwert})
+     * oder eine AUSWAHL (Scheibe 4, §6.4 "Gilt für": {@code alle = "anlage"} oder {@code "box"},
+     * wahlweise auf einen {@code standort} eingeschränkt) - "eine Auswahl ergibt je Bezug eine
+     * eigene Instanz mit eigener Meldung", die Mitgliederliste wird JEDEN Lauf frisch gelesen, damit
+     * ein neu hinzugekommener Bezug sofort mit überwacht ist.
      */
-    private static WerteLeser.Bezug bezugAus(JsonNode bezug) {
+    private List<WerteLeser.Bezug> bezuegeAus(JsonNode bezug) {
         JsonNode anlage = bezug.path("anlage");
         if (anlage.isTextual()) {
             UUID id = alsUuid(anlage.asText());
-            return id == null ? null : WerteLeser.Bezug.anlage(id);
+            return id == null ? List.of() : List.of(WerteLeser.Bezug.anlage(id));
         }
         JsonNode komponente = bezug.path("komponente");
         if (komponente.isTextual()) {
             UUID id = alsUuid(komponente.asText());
-            return id == null ? null : WerteLeser.Bezug.komponente(id, bezug.path("kanal").asText(null));
+            return id == null ? List.of() : List.of(WerteLeser.Bezug.komponente(id, bezug.path("kanal").asText(null)));
         }
-        return null;
+        JsonNode alle = bezug.path("alle");
+        if (alle.isTextual()) {
+            return auswahlAnlagen(bezug, alle.asText()).stream().map(WerteLeser.Bezug::anlage).toList();
+        }
+        return List.of();
+    }
+
+    private List<UUID> auswahlAnlagen(JsonNode bezug, String alle) {
+        JsonNode standort = bezug.path("standort");
+        UUID standortId = standort.isTextual() ? alsUuid(standort.asText()) : null;
+        return switch (alle) {
+            case "anlage" -> standortId != null ? repo.anlagenDesStandorts(standortId) : repo.alleAnlagen();
+            case "box" -> standortId != null ? repo.anlagenDesStandortsMitBox(standortId)
+                    : repo.anlagenMitAngenommenerBox();
+            default -> List.of();
+        };
     }
 
     private static UUID alsUuid(String text) {
@@ -166,6 +216,44 @@ public class UeberwachungsService {
             }
         }
         n += aussaatPreisHinweisPrivatkunde();
+        n += aussaatLastspitzeDrohtGewerbe();
+        return n;
+    }
+
+    private static final String WERTART_LASTSPITZE_LAUFEND = "anlage.netz.lastspitze_laufend";
+
+    /** Die Schwelle ist 95 % der Grenze (§6.10 Punkt 3); die Rückkehrschwelle ist dieselbe
+     * §9-Vorgabe (5 % unter der Schwelle) wie jede andere freie Schwelle - KEIN Sonderfall. */
+    private static final double LASTSPITZE_SCHWELLE_ANTEIL = 0.95;
+    private static final double LASTSPITZE_RUECKKEHR_ANTEIL = 0.95;
+
+    /**
+     * "Lastspitze droht" ab Werk EINGESCHALTET (Entscheid 2A, Dringend - der EINZIGE
+     * Dringend-Vorschlag ab Werk, §6.10 Punkt 3), nur wo ein Leistungspreis gilt
+     * ({@code site.leistungspreis_eur_kw IS NOT NULL}). "Die Grenze" ist die bisher höchste
+     * gemessene Spitze der laufenden Abrechnungsperiode ({@link PeakShavingRepository}) - das
+     * Datenmodell kennt keine separate "vereinbarte Leistung" (§6.10 Punkt 3 nennt beides als
+     * Alternativen); ohne eine einzige gemessene Spitze gibt es noch keine Schwelle (§6.1 Nr. 9
+     * "Vorgaben, die meistens passen" - keine erfundene Zahl ohne eigene Daten).
+     */
+    private int aussaatLastspitzeDrohtGewerbe() {
+        WerteKatalog.Eintrag eintrag = katalog.eintrag(WERTART_LASTSPITZE_LAUFEND);
+        if (eintrag == null) {
+            return 0;
+        }
+        Instant jetzt = Instant.now();
+        LocalDate heute = jetzt.atZone(HistoryRange.ZONE).toLocalDate();
+        int n = 0;
+        for (UUID anlageId : repo.anlagenMitLeistungspreis()) {
+            BigDecimal grenze = peakShaving.laufendePeriodenSpitzeKw(anlageId, heute);
+            if (grenze == null || grenze.doubleValue() <= 0) {
+                continue;
+            }
+            double schwelle = grenze.doubleValue() * LASTSPITZE_SCHWELLE_ANTEIL;
+            double rueckkehr = schwelle * LASTSPITZE_RUECKKEHR_ANTEIL;
+            repo.seedAbWerkLastspitze(anlageId, repo.standortHeute(anlageId), eintrag, schwelle, rueckkehr);
+            n++;
+        }
         return n;
     }
 
@@ -215,20 +303,46 @@ public class UeberwachungsService {
      * gegenüber Scheibe 1.
      */
     private Ergebnis werte(UeberwachungZeile regel, WerteKatalog.Eintrag eintrag, WerteLeser leser,
-            WerteLeser.Bezug bezug, UUID anlageId, Instant jetzt) {
-        WerteLeser.Lesung lesung = leser.lese(eintrag, bezug, jetzt);
+            WerteLeser.Bezug bezug, UUID anlageId, boolean auswahl, Instant jetzt) {
+        InstanzZeile instanz = repo.instanz(regel.id(), bezug.kennung());
+        String leserArt = eintrag.leser().art();
+        if (periodisch(leserArt) && instanz.ausgewertetAm() != null
+                && jetzt.isBefore(instanz.ausgewertetAm().plus(PERIODISCH_MINDESTABSTAND))) {
+            return Ergebnis.NICHTS; // §6.7: menge/geld NIE im Minutentakt lesen
+        }
         JsonNode bedingung = regel.bedingung();
+        String bedingungsart = bedingung.path("art").asText("");
+        WerteLeser.Lesung lesung;
+        BedingungsPruefung.Erfuellung erfuellung;
+        if ("aenderung".equals(bedingungsart)) {
+            String periode = bedingung.path("periode").asText("tag");
+            lesung = leser.lesePeriode(eintrag, bezug, periode, false, jetzt);
+            WerteLeser.Lesung vorperiode = leser.leseVorperiode(eintrag, bezug, periode, jetzt);
+            erfuellung = BedingungsPruefung.aenderung(bedingung, lesung, vorperiode);
+        } else if ("periode".equals(bedingungsart)) {
+            String periode = bedingung.path("periode").asText("tag");
+            boolean nurEndgueltig = bedingung.path("endgueltig").asBoolean(false);
+            lesung = leser.lesePeriode(eintrag, bezug, periode, nurEndgueltig, jetzt);
+            erfuellung = BedingungsPruefung.pruefen(bedingung, lesung);
+        } else {
+            lesung = leser.lese(eintrag, bezug, jetzt);
+            erfuellung = BedingungsPruefung.pruefen(bedingung, lesung);
+        }
         long dauerS = bedingung.path("dauer_s").asLong(0);
         long erholenS = bedingung.path("erholen_s").asLong(300);
-        BedingungsPruefung.Erfuellung erfuellung = BedingungsPruefung.pruefen(bedingung, lesung);
 
-        InstanzZeile instanz = repo.instanz(regel.id(), bezug.kennung());
         String letzterWertJson = wertJson(lesung);
 
         switch (instanz.zustand()) {
             case "normal" -> {
                 if (erfuellung.ausgeloest()) {
                     repo.instanzSpeichern(regel.id(), bezug.kennung(), "ausstehend", jetzt, letzterWertJson,
+                            lesung.messzeit(), null, jetzt);
+                } else if (periodisch(leserArt)) {
+                    // Drossel-Zeitstempel fortschreiben (§6.7): sonst bliebe ausgewertet_am stehen und
+                    // die Drossel am Anfang dieser Methode würde nach dem ERSTEN Mindestabstand
+                    // wirkungslos (immer "längst überfällig").
+                    repo.instanzSpeichern(regel.id(), bezug.kennung(), "normal", null, letzterWertJson,
                             lesung.messzeit(), null, jetzt);
                 }
                 return Ergebnis.NICHTS;
@@ -240,7 +354,7 @@ public class UeberwachungsService {
                     return Ergebnis.NICHTS;
                 }
                 if (jetzt.getEpochSecond() - instanz.seit().getEpochSecond() >= dauerS) {
-                    UUID alarmId = ausloesen(regel, bezug, anlageId, jetzt, lesung);
+                    UUID alarmId = ausloesen(regel, bezug, anlageId, auswahl, jetzt, lesung);
                     repo.instanzSpeichern(regel.id(), bezug.kennung(), "aktiv", jetzt, letzterWertJson,
                             lesung.messzeit(), alarmId, jetzt);
                     return new Ergebnis(true, false);
@@ -263,7 +377,7 @@ public class UeberwachungsService {
                     return Ergebnis.NICHTS;
                 }
                 if (jetzt.getEpochSecond() - instanz.seit().getEpochSecond() >= erholenS) {
-                    wiederNormal(regel, instanz.offenerAlarm(), anlageId, jetzt, lesung);
+                    wiederNormal(regel, instanz.offenerAlarm(), anlageId, auswahl, jetzt, lesung);
                     repo.instanzSpeichern(regel.id(), bezug.kennung(), "normal", null, letzterWertJson,
                             lesung.messzeit(), null, jetzt);
                     return new Ergebnis(false, true);
@@ -302,30 +416,41 @@ public class UeberwachungsService {
 
     // --------------------------------------------------------------------- Ausgelöst / wieder normal (§6.8)
 
-    private UUID ausloesen(UeberwachungZeile regel, WerteLeser.Bezug bezug, UUID anlageId, Instant jetzt,
-            WerteLeser.Lesung lesung) {
+    private UUID ausloesen(UeberwachungZeile regel, WerteLeser.Bezug bezug, UUID anlageId, boolean auswahl,
+            Instant jetzt, WerteLeser.Lesung lesung) {
         String anlageName = anlageNameOder(anlageId);
         String wertJson = wertJson(lesung);
         boolean probelauf = regel.imProbelauf(jetzt);
+        // Abhängige Meldungen schweigen (§6.4 Nr. 7): meldet sich die Box/Datenquelle dieser Anlage
+        // nicht, geht diese Meldung nicht einzeln hinaus, sondern steht unter deren Alarm - außer sie
+        // IST selbst die gatende Meldung (keine Selbst-Unterdrückung).
+        UUID unterdrueckDurch = GATENDE_WERTARTEN.contains(regel.wertart()) ? null
+                : repo.aktiverAlarmAufAnlage(anlageId, GATENDE_WERTARTEN).orElse(null);
         UUID alarmId = repo.alarmErzeugen(regel, bezug.kennung(), regel.standortId() != null
-                ? regel.standortId() : repo.standortHeute(anlageId), jetzt, wertJson, probelauf);
+                ? regel.standortId() : repo.standortHeute(anlageId), jetzt, wertJson, probelauf, unterdrueckDurch);
         repo.alarmVerlauf(alarmId, "ausgeloest", null, satzname(regel) + " der Anlage " + anlageName
                 + (probelauf ? " (Probelauf - hätte gemeldet)" : ""), wertJson);
+        if (unterdrueckDurch != null) {
+            String kennzeichenEltern = repo.alarm(unterdrueckDurch).map(AlarmZeile::kennzeichen).orElse("?");
+            repo.alarmVerlauf(alarmId, "versand", null,
+                    "unterdrückt (abhängig von " + kennzeichenEltern + ")", null);
+            return alarmId;
+        }
         // Probelauf (§6.4, §6.8 Entwurf 1): ausgewertet und im Verlauf nachweisbar, aber OHNE
         // Versand - "was sie gemeldet hätte", nicht was sie wirklich gemeldet hat.
         if (!probelauf && !"hinweis".equals(regel.schwere())) {
-            versenden(regel, alarmId, anlageName, "ausgeloest",
+            versenden(regel, alarmId, "ausgeloest",
                     schwereWort(regel.schwere()) + ": " + regel.name(),
                     satzname(regel) + " der Anlage " + anlageName + " meldet: " + wertText(lesung)
                             + ". Kennzeichen " + repo.alarm(alarmId).map(AlarmZeile::kennzeichen).orElse("?")
-                            + ".");
+                            + ".", auswahl, jetzt);
         }
         repo.alarmVerlauf(alarmId, "versand", null, probelauf ? "Probelauf - kein Versand" : "Versand eingereiht",
                 null);
         return alarmId;
     }
 
-    private void wiederNormal(UeberwachungZeile regel, UUID alarmId, UUID anlageId, Instant jetzt,
+    private void wiederNormal(UeberwachungZeile regel, UUID alarmId, UUID anlageId, boolean auswahl, Instant jetzt,
             WerteLeser.Lesung lesung) {
         if (alarmId == null) {
             return;
@@ -334,15 +459,18 @@ public class UeberwachungsService {
         repo.alarmWiederNormal(alarmId, jetzt, true);
         repo.alarmVerlauf(alarmId, "wieder_normal", null, "wieder normal", null);
         repo.alarmVerlauf(alarmId, "erledigt", null, "erledigt (Wert zurück)", null);
-        // Derselbe Alarm, dieselbe Probelauf-Marke wie beim Auslösen (§6.4, §6.8 Entwurf 1) - nicht
-        // regel.imProbelauf(jetzt) neu befragen: die Regel könnte in der Zwischenzeit scharf geschaltet
-        // worden sein, ihr erster Alarm bleibt trotzdem ohne Versand "wieder normal".
-        boolean probelauf = repo.alarm(alarmId).map(AlarmZeile::probelauf).orElse(false);
-        if (!probelauf && !"hinweis".equals(regel.schwere())) {
+        // Derselbe Alarm, dieselbe Probelauf-/Unterdrückungs-Marke wie beim Auslösen (§6.4, §6.8
+        // Entwurf 1) - nicht regel.imProbelauf(jetzt) neu befragen: die Regel könnte in der
+        // Zwischenzeit scharf geschaltet worden sein, ihr erster Alarm bleibt trotzdem ohne Versand.
+        Optional<AlarmZeile> zeile = repo.alarm(alarmId);
+        boolean probelauf = zeile.map(AlarmZeile::probelauf).orElse(false);
+        boolean unterdrueckt = zeile.map(AlarmZeile::unterdrueckDurch).isPresent();
+        if (!probelauf && !unterdrueckt && !"hinweis".equals(regel.schwere())) {
             String anlageName = anlageNameOder(anlageId);
-            versenden(regel, alarmId, anlageName, "wieder_normal",
+            versenden(regel, alarmId, "wieder_normal",
                     "Wieder normal: " + regel.name(),
-                    satzname(regel) + " der Anlage " + anlageName + " ist seit " + jetzt + " wieder normal.");
+                    satzname(regel) + " der Anlage " + anlageName + " ist seit " + jetzt + " wieder normal.",
+                    auswahl, jetzt);
         }
     }
 
@@ -373,12 +501,31 @@ public class UeberwachungsService {
      * Mechanik aufgehen"); die SICHT je Empfänger prüft trotzdem erst der Zusteller zur
      * Sendezeit (§6.6) - ein Rollenwechsel zwischen Einreihen und Versand bleibt also sicher.
      */
-    private void versenden(UeberwachungZeile regel, UUID alarmId, String anlageName, String anlass,
-            String betreff, String inhalt) {
+    /**
+     * Reiht EINE Zustellung je aufgelöstem Empfänger ein. {@code auswahl} (§6.4 Nr. 6, §9): eine
+     * Mehrfach-Regel bekommt einen Bündel-Schlüssel und einen auf das 30-Sekunden-Fenster
+     * verzögerten Versand, damit mehrere binnen dieser Zeit ausgelöste Bezüge derselben Regel beim
+     * {@code Zusteller} zu EINER Nachricht zusammenfinden; eine einfache Regel (Scheibe 1-3) sendet
+     * unverändert sofort ohne Schlüssel.
+     */
+    private void versenden(UeberwachungZeile regel, UUID alarmId, String anlass, String betreff, String inhalt,
+            boolean auswahl, Instant jetzt) {
+        String buendelSchluessel = auswahl ? buendelSchluessel(regel.id(), anlass, jetzt) : null;
+        Instant naechsterVersuch = auswahl ? buendelFensterEnde(jetzt) : jetzt;
         for (String sub : empfaengerAufloesen(regel)) {
-            ausgang.email("alarm", alarmId, sub, anlass, betreff, inhalt);
-            ausgang.webpush("alarm", alarmId, sub, anlass, betreff, inhalt, regel.schwere());
+            ausgang.email("alarm", alarmId, sub, anlass, 0, betreff, inhalt, naechsterVersuch, buendelSchluessel);
+            ausgang.webpush("alarm", alarmId, sub, anlass, 0, betreff, inhalt, naechsterVersuch, regel.schwere(),
+                    buendelSchluessel);
         }
+    }
+
+    private static String buendelSchluessel(UUID regelId, String anlass, Instant jetzt) {
+        return regelId + ":" + anlass + ":" + (jetzt.getEpochSecond() / BUENDELFENSTER_S);
+    }
+
+    private static Instant buendelFensterEnde(Instant jetzt) {
+        long bucket = jetzt.getEpochSecond() / BUENDELFENSTER_S;
+        return Instant.ofEpochSecond((bucket + 1) * BUENDELFENSTER_S);
     }
 
     /** Rollen werden HIER aufgelöst (§6.6 "Inseln, die in der Mechanik aufgehen") - die Sicht je Empfänger
