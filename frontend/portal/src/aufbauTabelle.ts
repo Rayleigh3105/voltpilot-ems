@@ -130,7 +130,7 @@ export type TabellenZeile =
       teilbar: boolean;
       offen: boolean;
     }
-  | { typ: 'teil'; key: string; ebene: number; geraet: AufbauGeraet; komponente: PlantComponent }
+  | { typ: 'teil'; key: string; ebene: number; anlage: AufbauAnlage; geraet: AufbauGeraet; komponente: PlantComponent }
   /** Eine Datenquelle, die die Box liest (UEMS AP-06) — kein Gerät, darum fällt sie aus Art-, Zustand- und Herstellerfilter. */
   | { typ: 'quelle'; key: string; ebene: number; anlage: AufbauAnlage; box: AufbauBox; quelle: AufbauQuelle }
   | {
@@ -176,7 +176,7 @@ function geraeteZeilen(
     out.push({ typ: 'geraet', key: g.id, ebene, anlage, box, geraet: g, teilbar, offen });
     if (!offen) continue;
     for (const c of g.karte.komponenten) {
-      out.push({ typ: 'teil', key: `${g.id}::${c.id}`, ebene: ebene + 1, geraet: g, komponente: c });
+      out.push({ typ: 'teil', key: `${g.id}::${c.id}`, ebene: ebene + 1, anlage, geraet: g, komponente: c });
     }
   }
 }

@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "_hinweis": "Alerting Scheibe 1 (Konzept vp-alerting-konzept-m1 §6.3). Jeder Eintrag ist eine Adresse (Wertart + Bezug); 'leser.art' ist eine der festen Leserarten, die der Code einmal baut (ZustandWerteLeser, EreignisWerteLeser). Neue Werte derselben Leserart sind ein weiterer Eintrag hier, kein neuer Code (§6.3 Nr. 2).",
+  "_hinweis": "Alerting Scheibe 1+2 (Konzept vp-alerting-konzept-m1 §6.3). Jeder Eintrag ist eine Adresse (Wertart + Bezug); 'leser.art' ist eine der festen Leserarten, die der Code einmal baut (ZustandWerteLeser, EreignisWerteLeser, AnlagenflussWerteLeser, MessreiheWerteLeser). Neue Werte derselben Leserart sind ein weiterer Eintrag hier, kein neuer Code (§6.3 Nr. 2); 'geraet.messwert' ist eine FAMILIE (Bezug 'komponente' + Parameter 'kanal') - sie deckt jeden gemessenen Kanal jeder Komponente ohne eigenen Eintrag je Kanal ab (§6.3 Nr. 1).",
   "eintraege": [
     {
       "wertart": "box.erreichbar",
@@ -45,6 +45,86 @@
       "leser": { "art": "ereignis", "arten": ["box_restart"], "bezugsfeld": "box" },
       "recht": "messwerte.ansehen",
       "bedingungen": ["ereignis"]
+    },
+    {
+      "wertart": "anlage.netz.leistung",
+      "name": "Netzbezug",
+      "satzname": "der Netzbezug",
+      "bezug": "anlage",
+      "form": "zahl",
+      "leser": { "art": "anlagenfluss", "feld": "netz" },
+      "recht": "messwerte.ansehen",
+      "bedingungen": ["ueber", "unter", "ausserhalb", "keine_daten"]
+    },
+    {
+      "wertart": "anlage.pv.leistung",
+      "name": "PV-Leistung",
+      "satzname": "die PV-Leistung",
+      "bezug": "anlage",
+      "form": "zahl",
+      "leser": { "art": "anlagenfluss", "feld": "pv" },
+      "recht": "messwerte.ansehen",
+      "bedingungen": ["ueber", "unter", "keine_daten"]
+    },
+    {
+      "wertart": "anlage.speicher.leistung",
+      "name": "Speicher-Leistung",
+      "satzname": "die Speicher-Leistung",
+      "bezug": "anlage",
+      "form": "zahl",
+      "leser": { "art": "anlagenfluss", "feld": "speicher_leistung" },
+      "recht": "messwerte.ansehen",
+      "bedingungen": ["ueber", "unter", "ausserhalb", "keine_daten"]
+    },
+    {
+      "wertart": "anlage.speicher.ladestand",
+      "name": "Speicher-Ladestand",
+      "satzname": "der Speicher-Ladestand",
+      "bezug": "anlage",
+      "form": "zahl",
+      "leser": { "art": "anlagenfluss", "feld": "speicher_ladestand" },
+      "recht": "messwerte.ansehen",
+      "bedingungen": ["ueber", "unter", "ausserhalb", "keine_daten"]
+    },
+    {
+      "wertart": "anlage.verbrauch.leistung",
+      "name": "Verbrauch",
+      "satzname": "der Verbrauch",
+      "bezug": "anlage",
+      "form": "zahl",
+      "leser": { "art": "anlagenfluss", "feld": "verbrauch" },
+      "recht": "messwerte.ansehen",
+      "bedingungen": ["ueber", "unter", "keine_daten"]
+    },
+    {
+      "wertart": "anlage.ladepunkte.leistung",
+      "name": "Ladepunkte-Leistung",
+      "satzname": "die Ladepunkte-Leistung",
+      "bezug": "anlage",
+      "form": "zahl",
+      "leser": { "art": "anlagenfluss", "feld": "ladepunkte" },
+      "recht": "messwerte.ansehen",
+      "bedingungen": ["ueber", "unter", "keine_daten"]
+    },
+    {
+      "wertart": "anlage.preis.jetzt",
+      "name": "Börsenpreis",
+      "satzname": "der Börsenpreis",
+      "bezug": "anlage",
+      "form": "zahl",
+      "leser": { "art": "anlagenfluss", "feld": "preis" },
+      "recht": "messwerte.ansehen",
+      "bedingungen": ["ueber", "unter", "keine_daten"]
+    },
+    {
+      "wertart": "geraet.messwert",
+      "name": "Messwert der Komponente",
+      "satzname": "der Messwert",
+      "bezug": "komponente",
+      "form": "zahl",
+      "leser": { "art": "messreihe" },
+      "recht": "messwerte.ansehen",
+      "bedingungen": ["ueber", "unter", "ausserhalb", "keine_daten"]
     }
   ]
 }

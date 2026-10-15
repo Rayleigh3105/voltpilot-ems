@@ -237,7 +237,11 @@ class UeberwachungSiteScopeIT {
         ZustandWerteLeser zustandLeser = new ZustandWerteLeser(new DeviceRepository(app),
                 new DeviceDataSourceStatusRepository(app));
         ZugriffRepository zugriffe = new ZugriffRepository(app);
-        UeberwachungsService dienst = new UeberwachungsService(repo, katalog, zustandLeser, zugriffe);
+        // Dieser Lauf übt nur den zustand-Leser (box.erreichbar) aus - die Scheibe-2-Leser bleiben Mocks.
+        UeberwachungsService dienst = new UeberwachungsService(repo, katalog, zustandLeser,
+                org.mockito.Mockito.mock(EreignisWerteLeser.class), org.mockito.Mockito.mock(AnlagenflussWerteLeser.class),
+                org.mockito.Mockito.mock(MessreiheWerteLeser.class), zugriffe,
+                org.mockito.Mockito.mock(com.voltpilot.api.repo.PriceRepository.class));
         Einreihung einreihung = new Einreihung();
         dienst.setAusgang(einreihung);
 
@@ -290,6 +294,142 @@ class UeberwachungSiteScopeIT {
                     + "VALUES (?, ?, 'benutzer', ?, 'aktiv')", tenant, sub, sub);
             app.update("INSERT INTO zugriff (tenant_id, benutzer_sub, rolle, standort_id, gueltig_ab, zeitzone) "
                     + "VALUES (?, ?, ?, ?, now() - interval '1 day', 'Europe/Berlin')", tenant, sub, rolle, standort);
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    // =========================================================== Scheibe 2: komponente-Bezug, freie Schwelle (§6.4)
+
+    @Test
+    void einUeberBedingungAufEinerKomponenteLoestUeberDenVollenLaufAus() {
+        Welt w = welt("Scheibe-2-Komponente GmbH");
+        UUID komponente = UUID.randomUUID();
+        Instant jetzt = Instant.now();
+        adminJdbc.update("INSERT INTO measurement_point (id, tenant_id, site_id, role, label) "
+                + "VALUES (?, ?, ?, 'pv-generation', 'Vorlauf')", komponente, w.tenant(), w.anlage1());
+        TenantContext.set(w.tenant());
+        try {
+            app.update("INSERT INTO telemetry_v2 (time, received_at, tenant_id, site_id, device_id, entity_id, "
+                    + "channel, value) VALUES (?, ?, ?, ?, ?, ?, 'vorlauf_c', 61.0)",
+                    Timestamp.from(jetzt), Timestamp.from(jetzt), w.tenant(), w.anlage1(), w.box1(),
+                    komponente.toString());
+            UUID regel = UUID.randomUUID();
+            app.update("INSERT INTO ueberwachung (id, tenant_id, standort_id, wertart, bezug, bedingung, schwere, "
+                    + "empfaenger, herkunft, angelegt_von) VALUES (?, ?, ?, 'geraet.messwert', "
+                    + "jsonb_build_object('komponente', ?::text, 'kanal', 'vorlauf_c'), "
+                    + "'{\"art\":\"ueber\",\"schwelle\":55,\"rueckkehr\":50,\"dauer_s\":0,\"erholen_s\":0}'::jsonb, "
+                    + "'warnung', '[{\"person\":\"sub-dora\"}]'::jsonb, 'eigen', 'sub-dora')",
+                    regel, w.tenant(), w.st1(), komponente);
+
+            UeberwachungRepository repo = new UeberwachungRepository(app);
+            // Die ab-Werk-Aussaat (box.erreichbar, datenquelle.liefert_daten) läuft in JEDEM Takt mit -
+            // ihre Leser müssen "unbekannt" statt null liefern, sonst NPE in der Auswertung dieser Regeln.
+            ZustandWerteLeser zustandMock = org.mockito.Mockito.mock(ZustandWerteLeser.class);
+            EreignisWerteLeser ereignisMock = org.mockito.Mockito.mock(EreignisWerteLeser.class);
+            AnlagenflussWerteLeser anlagenflussMock = org.mockito.Mockito.mock(AnlagenflussWerteLeser.class);
+            org.mockito.Mockito.when(zustandMock.lese(org.mockito.ArgumentMatchers.any(),
+                    org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                    .thenReturn(WerteLeser.Lesung.unbekannt());
+            org.mockito.Mockito.when(ereignisMock.lese(org.mockito.ArgumentMatchers.any(),
+                    org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                    .thenReturn(WerteLeser.Lesung.unbekannt());
+            org.mockito.Mockito.when(anlagenflussMock.lese(org.mockito.ArgumentMatchers.any(),
+                    org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                    .thenReturn(WerteLeser.Lesung.unbekannt());
+            UeberwachungsService dienst = new UeberwachungsService(repo, new WerteKatalog(), zustandMock,
+                    ereignisMock, anlagenflussMock,
+                    new MessreiheWerteLeser(new com.voltpilot.api.topology.TopologyRepository(app), repo),
+                    new ZugriffRepository(app), org.mockito.Mockito.mock(com.voltpilot.api.repo.PriceRepository.class));
+            Einreihung einreihung = new Einreihung();
+            dienst.setAusgang(einreihung);
+
+            dienst.lauf(jetzt); // normal -> ausstehend (61 > 55)
+            dienst.lauf(jetzt); // dauer_s = 0: sofort ausgelöst
+
+            List<Map<String, Object>> alarme = app.queryForList(
+                    "SELECT standort_id, wertart FROM alarm WHERE ueberwachung_id = ?", regel);
+            assertThat(alarme).hasSize(1);
+            assertThat(alarme.get(0).get("standort_id")).isEqualTo(w.st1());
+            assertThat(einreihung.empfaenger).anyMatch(e -> e.startsWith("sub-dora:ausgeloest"));
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    /**
+     * Der 30-Tage-Probelauf über den vollen Lauf (§6.4, §6.8 Entwurf 1): während
+     * {@code probelauf_bis} in der Zukunft liegt, wertet der Läufer ganz normal aus (Alarm-Zeile,
+     * Verlauf) - aber versendet nichts; "jetzt scharf schalten" beendet den Probelauf, und derselbe
+     * Zustandsübergang versendet danach wie jede andere Regel.
+     */
+    @Test
+    void eineRegelImProbelaufWertetAberVersendetNichtBisZumScharfSchalten() {
+        Welt w = welt("Probelauf GmbH");
+        UUID komponente = UUID.randomUUID();
+        Instant jetzt = Instant.now();
+        adminJdbc.update("INSERT INTO measurement_point (id, tenant_id, site_id, role, label) "
+                + "VALUES (?, ?, ?, 'pv-generation', 'Vorlauf')", komponente, w.tenant(), w.anlage1());
+        TenantContext.set(w.tenant());
+        try {
+            app.update("INSERT INTO telemetry_v2 (time, received_at, tenant_id, site_id, device_id, entity_id, "
+                    + "channel, value) VALUES (?, ?, ?, ?, ?, ?, 'vorlauf_c', 61.0)",
+                    Timestamp.from(jetzt), Timestamp.from(jetzt), w.tenant(), w.anlage1(), w.box1(),
+                    komponente.toString());
+            UUID regel = UUID.randomUUID();
+            app.update("INSERT INTO ueberwachung (id, tenant_id, standort_id, wertart, bezug, bedingung, schwere, "
+                    + "empfaenger, herkunft, angelegt_von, probelauf_bis) VALUES (?, ?, ?, 'geraet.messwert', "
+                    + "jsonb_build_object('komponente', ?::text, 'kanal', 'vorlauf_c'), "
+                    + "'{\"art\":\"ueber\",\"schwelle\":55,\"rueckkehr\":50,\"dauer_s\":0,\"erholen_s\":0}'::jsonb, "
+                    + "'warnung', '[{\"person\":\"sub-dora\"}]'::jsonb, 'eigen', 'sub-dora', ?)",
+                    regel, w.tenant(), w.st1(), komponente, Timestamp.from(jetzt.plusSeconds(10 * 24 * 3600)));
+
+            UeberwachungRepository repo = new UeberwachungRepository(app);
+            ZustandWerteLeser zustandMock = org.mockito.Mockito.mock(ZustandWerteLeser.class);
+            EreignisWerteLeser ereignisMock = org.mockito.Mockito.mock(EreignisWerteLeser.class);
+            AnlagenflussWerteLeser anlagenflussMock = org.mockito.Mockito.mock(AnlagenflussWerteLeser.class);
+            org.mockito.Mockito.when(zustandMock.lese(org.mockito.ArgumentMatchers.any(),
+                    org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                    .thenReturn(WerteLeser.Lesung.unbekannt());
+            org.mockito.Mockito.when(ereignisMock.lese(org.mockito.ArgumentMatchers.any(),
+                    org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                    .thenReturn(WerteLeser.Lesung.unbekannt());
+            org.mockito.Mockito.when(anlagenflussMock.lese(org.mockito.ArgumentMatchers.any(),
+                    org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                    .thenReturn(WerteLeser.Lesung.unbekannt());
+            UeberwachungsService dienst = new UeberwachungsService(repo, new WerteKatalog(), zustandMock,
+                    ereignisMock, anlagenflussMock,
+                    new MessreiheWerteLeser(new com.voltpilot.api.topology.TopologyRepository(app), repo),
+                    new ZugriffRepository(app), org.mockito.Mockito.mock(com.voltpilot.api.repo.PriceRepository.class));
+            Einreihung einreihung = new Einreihung();
+            dienst.setAusgang(einreihung);
+
+            dienst.lauf(jetzt); // normal -> ausstehend (61 > 55)
+            dienst.lauf(jetzt); // dauer_s = 0: sofort ausgelöst, aber im Probelauf
+
+            Map<String, Object> alarmZeile = app.queryForMap(
+                    "SELECT probelauf FROM alarm WHERE ueberwachung_id = ?", regel);
+            assertThat(alarmZeile.get("probelauf")).isEqualTo(true);
+            assertThat(einreihung.empfaenger).as("kein Versand während des Probelaufs").isEmpty();
+
+            // "Jetzt scharf schalten" (per Tipper statt nach 30 Tagen).
+            assertThat(repo.scharfSchalten(regel)).isTrue();
+            assertThat(repo.scharfSchalten(regel)).as("kein zweites Mal - der Probelauf ist schon vorbei")
+                    .isFalse();
+
+            // Ein neuer Zyklus derselben Regel: den ersten (Probelauf-)Alarm schließen (sonst verletzt
+            // ein zweiter offener Alarm derselben Regel/Bezug uq_alarm_offen), zurück auf normal, dann
+            // erneut ausgelöst - jetzt scharf.
+            app.update("UPDATE alarm SET zustand = 'erledigt', erledigt_am = now(), erledigt_durch = 'wert' "
+                    + "WHERE ueberwachung_id = ?", regel);
+            app.update("UPDATE ueberwachung_instanz SET zustand = 'normal', offener_alarm = NULL "
+                    + "WHERE ueberwachung_id = ?", regel);
+            Instant t2 = jetzt.plusSeconds(60);
+            dienst.lauf(t2);
+            dienst.lauf(t2);
+
+            assertThat(einreihung.empfaenger).as("nach dem Scharfschalten versendet derselbe Übergang")
+                    .anyMatch(e -> e.startsWith("sub-dora:ausgeloest"));
         } finally {
             TenantContext.clear();
         }

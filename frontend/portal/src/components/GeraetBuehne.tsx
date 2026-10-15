@@ -1,12 +1,17 @@
-import { useId, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Icon, type IconName } from '../../designsystem/components/core/Icon';
 import { fmtNum } from '../format';
 import type { BuehneWerte, Held, HeldKachel } from '../geraetGesicht';
 import type { GeraetTon } from '../geraetSeite';
+import { meldungenApi } from '../meldungenApi';
+import { geraetMesswertKarte, geraetMesswertSchluessel } from '../ueberwachungApi';
 import { NO_DATA } from '../nodata';
 import { DirectionArrow, type FlowPoint } from './FlowArrow';
 import { SwapNumber, SwapText } from './SwapNumber';
+import { UeberwachenBlatt } from './UeberwachenBlatt';
 import { useFlowTempo } from './useFlowTempo';
+import { useIsPhone } from '../useIsPhone';
+import { WertZeile } from './WertZeile';
 import './GeraetBuehne.css';
 
 /**
@@ -38,6 +43,14 @@ export interface BuehneZahl {
   wort: string | null;
   ton: GeraetTon | null;
   key: string;
+  /**
+   * Der Name der führenden Kachel (`HeldKachel.label`) - für „Werkzeuge: …" am Wertverweis.
+   * Optional, weil ältere Konstruktions-Stellen (`BoxSeiteSection.tsx` u. a.) `BuehneZahl` noch
+   * ohne ihn bauen; ohne `wertverweis` wird er nie gebraucht.
+   */
+  label?: string;
+  /** Der Wertverweis der führenden Kachel (§6.3) - siehe `HeldKachel.wertverweis`. */
+  wertverweis?: HeldKachel['wertverweis'];
 }
 
 /**
@@ -55,6 +68,8 @@ export function grosseZahl(held: Pick<Held, 'kacheln'>): BuehneZahl | null {
     wort: k.wort,
     ton: k.ton ?? null,
     key: k.key,
+    label: k.label,
+    wertverweis: k.wertverweis,
   };
 }
 
@@ -138,6 +153,32 @@ export function GeraetBuehne({
   // ⚠ Markiert wird GENAU die angesprungene Kachel - die große Zahl oder ein
   // Chip, nie die ganze Bühne (sonst trüge die Zahl den Rahmen eines Chips).
   const zahlMarkiert = Boolean(markiert && zahl?.key === markiert);
+
+  // "Überwachen" an einer Eigenbau-Kachel (Alerting Scheibe 2, §6.3, §6.8 Nachbesserung 3/3): nur
+  // die SELBST definierten Kanäle tragen einen Wertverweis (`HeldKachel.wertverweis`) - die
+  // rollenbasierten Gattungen (Speicher/PV/Netz/Haus/Verbraucher) bleiben dieser Runde bewusst
+  // zurückgestellt (Modulkopf `geraetGesicht.ts`). Derselbe Lesepfad wie in Cockpit und Aufbau.
+  type UeberwachenZiel = NonNullable<HeldKachel['wertverweis']> & { label: string };
+  const [geladenUeberwacht, setGeladenUeberwacht] = useState<ReadonlyMap<string, string | null> | null>(null);
+  const [frischUeberwacht, setFrischUeberwacht] = useState<ReadonlyMap<string, string | null>>(new Map());
+  const [ueberwachenZiel, setUeberwachenZiel] = useState<UeberwachenZiel | null>(null);
+  const isPhone = useIsPhone();
+  const hatWertverweis = Boolean(zahl?.wertverweis) || chips.some((k) => k.wertverweis);
+  useEffect(() => {
+    if (!hatWertverweis) return undefined;
+    let aktiv = true;
+    meldungenApi.regeln().then(
+      (regeln) => { if (aktiv) setGeladenUeberwacht(geraetMesswertKarte(regeln)); },
+      () => { if (aktiv) setGeladenUeberwacht(null); },
+    );
+    return () => { aktiv = false; };
+  }, [hatWertverweis]);
+  const ueberwachtInfo = (v: NonNullable<HeldKachel['wertverweis']>): string | null | undefined => {
+    const schluessel = geraetMesswertSchluessel(v.komponente, v.kanal);
+    if (frischUeberwacht.has(schluessel)) return frischUeberwacht.get(schluessel) ?? null;
+    return geladenUeberwacht?.get(schluessel);
+  };
+
   return (
     <div
       className={`vp-buehne${grafik ? ` is-${grafik.art}` : ''}${inhalt ? ' is-inhalt' : ''}`}
@@ -153,6 +194,13 @@ export function GeraetBuehne({
               </span>
               {zahl.wort && (
                 <span className={`vp-buehne-wort${zahl.ton ? ` is-${zahl.ton}` : ''}`}>{zahl.wort}</span>
+              )}
+              {zahl.wertverweis && (
+                <WertZeile
+                  label={zahl.label ?? zahl.wort ?? zahl.zahl}
+                  ueberwacht={ueberwachtInfo(zahl.wertverweis)}
+                  onUeberwachen={() => setUeberwachenZiel({ ...zahl.wertverweis!, label: zahl.label ?? zahl.wort ?? zahl.zahl })}
+                />
               )}
             </div>
           )}
@@ -180,6 +228,13 @@ export function GeraetBuehne({
                 >
                   {k.label} <b>{k.wert}</b>
                   {k.wort && <span className="w"> {k.wort}</span>}
+                  {k.wertverweis && (
+                    <WertZeile
+                      label={k.label}
+                      ueberwacht={ueberwachtInfo(k.wertverweis)}
+                      onUeberwachen={() => setUeberwachenZiel({ ...k.wertverweis!, label: k.label })}
+                    />
+                  )}
                 </li>
               ))}
             </ul>
@@ -192,6 +247,23 @@ export function GeraetBuehne({
           {hinweis && <p className="vp-buehne-hinweis">{hinweis}</p>}
           {aktion && <div className="vp-buehne-aktion">{aktion}</div>}
         </div>
+      )}
+
+      {ueberwachenZiel && (
+        <UeberwachenBlatt
+          offen
+          isPhone={isPhone}
+          onClose={() => setUeberwachenZiel(null)}
+          wertart="geraet.messwert"
+          bezug={{ komponente: ueberwachenZiel.komponente, kanal: ueberwachenZiel.kanal }}
+          aktuellerWert={ueberwachenZiel.zahlenwert}
+          einheit={ueberwachenZiel.einheit ?? 'kW'}
+          titelZusatz={ueberwachenZiel.label}
+          onUeberwacht={(regel) => {
+            const schluessel = geraetMesswertSchluessel(ueberwachenZiel.komponente, ueberwachenZiel.kanal);
+            setFrischUeberwacht((m) => new Map(m).set(schluessel, regel.probelaufBis));
+          }}
+        />
       )}
     </div>
   );

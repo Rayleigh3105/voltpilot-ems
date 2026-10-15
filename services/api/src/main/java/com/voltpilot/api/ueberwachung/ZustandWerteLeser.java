@@ -81,7 +81,7 @@ public class ZustandWerteLeser implements WerteLeser {
         }
         boolean erreichbar = jetzt.getEpochSecond() - schlechtester.getEpochSecond()
                 <= ZustandAbleitung.TOLERANZ_MINDESTENS_S;
-        return new Lesung(true, erreichbar ? ERREICHBAR : NICHT_ERREICHBAR, schlechtester);
+        return Lesung.zustand(erreichbar ? ERREICHBAR : NICHT_ERREICHBAR, schlechtester);
     }
 
     private Lesung datenquelleStatus(java.util.UUID anlageId) {
@@ -90,14 +90,14 @@ public class ZustandWerteLeser implements WerteLeser {
             return Lesung.unbekannt();
         }
         if (status.stream().anyMatch(s -> "never".equals(s.health()))) {
-            return new Lesung(true, "never", fruehestesSeit(status, "never"));
+            return Lesung.zustand("never", fruehestesSeit(status, "never"));
         }
         if (status.stream().anyMatch(s -> "stale".equals(s.health()))) {
-            return new Lesung(true, "stale", fruehestesSeit(status, "stale"));
+            return Lesung.zustand("stale", fruehestesSeit(status, "stale"));
         }
         Instant juengstesLesen = status.stream().map(Status::readAt).filter(java.util.Objects::nonNull)
                 .max(Instant::compareTo).orElse(null);
-        return new Lesung(true, "ok", juengstesLesen);
+        return Lesung.zustand("ok", juengstesLesen);
     }
 
     private static Instant fruehestesSeit(List<Status> status, String health) {

@@ -2,9 +2,11 @@ package com.voltpilot.api.ueberwachung;
 
 import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.tenant.TenantContext;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -46,10 +48,33 @@ public class UeberwachungsLaeufer {
         this.beendete = beendete;
     }
 
+    /**
+     * Rückstand des Läufers (Scheibe 2, §6.7 Risiko "Last": "die Auswertung wächst mit der Zahl
+     * überwachter Reihen ... den Rückstand des Läufers als Betriebsmetrik führen"): Sekunden seit
+     * dem letzten erfolgreichen Takt. Ein eigenes, kleines Gauge statt des UEMS-{@code UemsLaeuferMelder}
+     * - dessen Katalog/Alarm-Vertrag ist bewusst auf die UEMS-Pakete begrenzt
+     * ({@code UemsMetrikenWiringTest.PAKETE}), nicht auf die Überwachung.
+     */
+    private static final String METRIK_RUECKSTAND = "voltpilot_ueberwachung_rueckstand_s";
+
+    private final AtomicLong letzterLaufEpoch = new AtomicLong(0);
+
     public UeberwachungsLaeufer(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
             UeberwachungsService dienst) {
         this.adminJdbc = adminJdbc;
         this.dienst = dienst;
+    }
+
+    /** Registriert das Rückstands-Gauge, sobald eine Anwendungs-{@code MeterRegistry} da ist (nicht im Testlauf). */
+    @Autowired(required = false)
+    void setMeterRegistry(MeterRegistry registry) {
+        if (registry == null) {
+            return;
+        }
+        registry.gauge(METRIK_RUECKSTAND, letzterLaufEpoch, epoch -> {
+            long letzter = epoch.get();
+            return letzter == 0 ? -1 : Instant.now().getEpochSecond() - letzter;
+        });
     }
 
     @Scheduled(fixedDelayString = "${voltpilot.ueberwachung.interval-ms:15000}",
@@ -57,6 +82,7 @@ public class UeberwachungsLaeufer {
     public void takt() {
         try {
             lauf(Instant.now());
+            letzterLaufEpoch.set(Instant.now().getEpochSecond());
         } catch (RuntimeException e) {
             log.warn("Überwachung: Takt übersprungen: {}", e.toString());
         }
