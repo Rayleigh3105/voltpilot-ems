@@ -5,9 +5,14 @@ import { Modal } from '../../designsystem/components/shell/Modal';
 import type { UeberwachungsRegel } from '../meldungenApi';
 import { WORT_ERHOLDAUER, WORT_RUECKKEHRSCHWELLE, WORT_UEBERWACHEN, SCHWERE_WORT } from '../meldungen';
 import type { Schwere } from '../meldungenApi';
-import { ueberwachungApi, type ProbelaufVorschau } from '../ueberwachungApi';
-import { ueberwachungSatz, vorgabenFuerBedingung } from '../ueberwachungSatz';
-import { katalogEintrag } from '../werteKatalog';
+import {
+  ueberwachungApi,
+  type ProbelaufVorschau,
+  type UeberwachungBedingungEingabe,
+  type UeberwachungBezugEingabe,
+} from '../ueberwachungApi';
+import { PERIODE_WORT, ueberwachungSatz, vorgabenFuerBedingung, type BedingungEingabe } from '../ueberwachungSatz';
+import { katalogEintrag, type Periode } from '../werteKatalog';
 import { BottomSheet } from './BottomSheet';
 import './UeberwachenBlatt.css';
 
@@ -15,15 +20,23 @@ import './UeberwachenBlatt.css';
  * (Aufbau-Zeilen, Geräteseite - Familie `geraet.messwert`), nie beide. */
 export type UeberwachenBezug = { anlage: string } | { komponente: string; kanal: string };
 
+const PERIODEN: readonly Periode[] = ['tag', 'woche', 'monat', 'abrechnungszeitraum'];
+
 /**
  * Das Blatt „Überwachen" (Alerting Scheibe 2, Konzept §6.8): „Vom Wert zur fertigen Regel: drei
  * Taps" - (1) Menü ⋯, (2) „Überwachen" (öffnet dieses Blatt), (3) „Überwachung starten". Der Satz
  * ist vorbelegt (Schwelle aus dem aktuellen Live-Wert, Dauer/Rückkehrschwelle aus §9) und jedes
  * Feld bleibt änderbar (§6.1 Leitsatz 9) - kein Pflichtfeld ohne Vorbelegung.
  *
- * Bewusst nur die Bedingung „über" (§6.4): weder die vier Cockpit-Werte noch ein Komponenten-Kanal
- * brauchen für den Normalfall „zu viel" ein eigenes Bedingungs-Auswahlfeld - einfache Zahlenfelder
- * reichen (Aufgabenbeschreibung Teil 4b).
+ * Zwei Bedingungsformen, toddler-simple nach Leserart (Alerting Scheibe 4, §6.4):
+ *  - Momentanwerte (`anlagenfluss`/`messreihe`): nur „über" mit Schwelle/Dauer/Erholdauer (Aufgabe 4b) -
+ *    unverändert seit Scheibe 2.
+ *  - Perioden-Werte (`menge`/`geld`, §6.3): „mehr als X im Zeitraum" (Periode-Chips, keine Dauer -
+ *    §6.4 Nr. 2) ODER „Änderung gegenüber der Vorperiode um X %" - ein Schalter wählt die Form.
+ *
+ * „Gilt für" (§6.4 "Gilt für", nur am Anlagen-Bezug - eine Auswahl ergibt serverseitig je Anlage
+ * eine eigene Meldung, §6.4 Nr. 6/7): „Diese Anlage" (Vorgabe) oder „Alle Anlagen" - toddler-simple
+ * zwei Chips, kein eigener Standort-Schritt in dieser Scheibe.
  *
  * Seit der Nachbesserung 3/3 zeigt das Blatt die Probelauf-Vorschau (§6.8 Entwurf 1, „was diese
  * Regel in den letzten 30 Tagen gemeldet hätte"): ein einfacher Debounce (~400 ms), damit nicht
@@ -53,6 +66,9 @@ export function UeberwachenBlatt({
   onUeberwacht: (regel: UeberwachungsRegel) => void;
 }) {
   const eintrag = katalogEintrag(wertart);
+  const istPeriodisch = eintrag?.leser.art === 'menge' || eintrag?.leser.art === 'geld';
+  const kannAuswahl = 'anlage' in bezug;
+
   const vorschlag = vorschlagSchwelle(aktuellerWert);
   const [schwelle, setSchwelle] = useState(vorschlag);
   const vorgaben = vorgabenFuerBedingung('ueber', vorschlag);
@@ -65,31 +81,65 @@ export function UeberwachenBlatt({
   const [probelauf, setProbelauf] = useState<ProbelaufVorschau | null>(null);
   const feldId = useId();
 
-  const gueltig = Number.isFinite(schwelle) && dauerMinuten > 0 && erholdauerMinuten > 0;
+  // Perioden-Form (§6.3/§6.4, nur `menge`/`geld`): Schwelle ODER Änderung, nie Dauer.
+  const [periodenform, setPeriodenform] = useState<'periode' | 'aenderung'>('periode');
+  const [periode, setPeriode] = useState<Periode>('monat');
+  const [richtungPeriode, setRichtungPeriode] = useState<'ueber' | 'unter'>('ueber');
+  const [richtungAenderung, setRichtungAenderung] = useState<'hoeher' | 'niedriger' | 'beide'>('hoeher');
+  const [schwelleProzent, setSchwelleProzent] = useState(20);
+
+  // „Gilt für" (§6.4): nur am Anlagen-Bezug wählbar - eine Auswahl ersetzt den konkreten Bezug.
+  const [giltFuer, setGiltFuer] = useState<'diese' | 'alle'>('diese');
+
+  const gueltig = istPeriodisch
+    ? periodenform === 'periode'
+      ? Number.isFinite(schwelle)
+      : Number.isFinite(schwelleProzent) && schwelleProzent > 0
+    : Number.isFinite(schwelle) && dauerMinuten > 0 && erholdauerMinuten > 0;
   const bezugKey = 'anlage' in bezug ? `anlage:${bezug.anlage}` : `komponente:${bezug.komponente}:${bezug.kanal}`;
 
+  function bedingungFuerAnfrage(): UeberwachungBedingungEingabe {
+    if (!istPeriodisch) {
+      return {
+        art: 'ueber',
+        schwelle,
+        rueckkehr,
+        dauer_s: Math.round(dauerMinuten * 60),
+        erholen_s: Math.round(erholdauerMinuten * 60),
+      };
+    }
+    if (periodenform === 'aenderung') {
+      return { art: 'aenderung', richtung: richtungAenderung, schwelle_prozent: schwelleProzent, periode };
+    }
+    const periodenVorgaben = vorgabenFuerBedingung(richtungPeriode, schwelle);
+    return {
+      art: 'periode',
+      richtung: richtungPeriode,
+      schwelle,
+      rueckkehr: periodenVorgaben.rueckkehr,
+      periode,
+      dauer_s: 0,
+      erholen_s: 0,
+    };
+  }
+
+  function bezugFuerAnfrage(): UeberwachungBezugEingabe {
+    if (giltFuer === 'alle') return { alle: 'anlage' };
+    return 'anlage' in bezug ? { anlage: bezug.anlage } : { komponente: bezug.komponente, kanal: bezug.kanal };
+  }
+
   // Die Probelauf-Vorschau (§6.8 Entwurf 1) - gedämpft, damit nicht jede Änderung an Schwelle,
-  // Dauer oder Rückkehrschwelle sofort einen eigenen Abruf auslöst.
+  // Dauer oder Rückkehrschwelle sofort einen eigenen Abruf auslöst. Eine Auswahl ("alle Anlagen")
+  // hat keine eigene Vorschau (der Probelauf braucht EINEN konkreten Bezug) - sie bleibt aus.
   useEffect(() => {
-    if (!offen || !gueltig) {
+    if (!offen || !gueltig || giltFuer === 'alle') {
       setProbelauf(null);
       return undefined;
     }
     let aktiv = true;
     const zeitnehmer = window.setTimeout(() => {
       ueberwachungApi
-        .probelauf({
-          wertart,
-          bezug,
-          bedingung: {
-            art: 'ueber',
-            schwelle,
-            rueckkehr,
-            dauer_s: Math.round(dauerMinuten * 60),
-            erholen_s: Math.round(erholdauerMinuten * 60),
-          },
-          schwere,
-        })
+        .probelauf({ wertart, bezug, bedingung: bedingungFuerAnfrage(), schwere })
         .then(
           (v) => { if (aktiv) setProbelauf(v); },
           () => { if (aktiv) setProbelauf(null); },
@@ -98,11 +148,19 @@ export function UeberwachenBlatt({
     return () => { aktiv = false; window.clearTimeout(zeitnehmer); };
     // `bezugKey` fasst den Bezug stabil zusammen - `bezug` selbst ist bei jedem Render ein neues Objekt.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [offen, gueltig, wertart, bezugKey, schwelle, rueckkehr, dauerMinuten, erholdauerMinuten, schwere]);
+  }, [
+    offen, gueltig, wertart, bezugKey, giltFuer, schwelle, rueckkehr, dauerMinuten, erholdauerMinuten, schwere,
+    periodenform, periode, richtungPeriode, richtungAenderung, schwelleProzent,
+  ]);
 
   if (!eintrag) return null;
 
-  const satz = ueberwachungSatz(eintrag, { art: 'ueber', schwelle, rueckkehr, dauer_s: dauerMinuten * 60 }, schwere, einheit);
+  const satzBedingung: BedingungEingabe = istPeriodisch
+    ? periodenform === 'aenderung'
+      ? { art: 'aenderung', richtung: richtungAenderung, schwelleProzent, periode }
+      : { art: 'periode', richtung: richtungPeriode, schwelle, periode }
+    : { art: 'ueber', schwelle, rueckkehr, dauer_s: dauerMinuten * 60 };
+  const satz = ueberwachungSatz(eintrag, satzBedingung, schwere, istPeriodisch && periodenform === 'aenderung' ? '' : einheit);
   const probelaufText = probelauf == null
     ? null
     : probelauf.ausgeloest === 0
@@ -116,14 +174,8 @@ export function UeberwachenBlatt({
     try {
       const regel = await ueberwachungApi.anlegen({
         wertart,
-        bezug,
-        bedingung: {
-          art: 'ueber',
-          schwelle,
-          rueckkehr,
-          dauer_s: Math.round(dauerMinuten * 60),
-          erholen_s: Math.round(erholdauerMinuten * 60),
-        },
+        bezug: bezugFuerAnfrage(),
+        bedingung: bedingungFuerAnfrage(),
         schwere,
       });
       onUeberwacht(regel);
@@ -145,42 +197,149 @@ export function UeberwachenBlatt({
           {probelaufText}
         </p>
       )}
-      <div className="vp-ueberwachen-felder">
-        <Input
-          id={`${feldId}-schwelle`}
-          label={`Schwelle (${einheit})`}
-          type="number"
-          step="0.1"
-          value={schwelle}
-          onChange={(e) => setSchwelle(Number(e.target.value))}
-        />
-        <Input
-          id={`${feldId}-rueckkehr`}
-          label={`${WORT_RUECKKEHRSCHWELLE} (${einheit})`}
-          type="number"
-          step="0.1"
-          value={rueckkehr}
-          onChange={(e) => setRueckkehr(Number(e.target.value))}
-        />
-        <Input
-          id={`${feldId}-dauer`}
-          label="Länger als (Minuten)"
-          type="number"
-          step="1"
-          min="1"
-          value={dauerMinuten}
-          onChange={(e) => setDauerMinuten(Number(e.target.value))}
-        />
-        <Input
-          id={`${feldId}-erholdauer`}
-          label={`${WORT_ERHOLDAUER} (Minuten)`}
-          type="number"
-          step="1"
-          min="1"
-          value={erholdauerMinuten}
-          onChange={(e) => setErholdauerMinuten(Number(e.target.value))}
-        />
-      </div>
+      {kannAuswahl && (
+        <div className="vp-ueberwachen-schwere" role="group" aria-label="Gilt für">
+          <span className="vp-ueberwachen-schwere-label">Gilt für</span>
+          <div className="vp-seg vp-seg-compact">
+            {(['diese', 'alle'] as const).map((g) => (
+              <button
+                key={g}
+                type="button"
+                aria-pressed={giltFuer === g}
+                className={giltFuer === g ? 'active' : ''}
+                onClick={() => setGiltFuer(g)}
+              >
+                {g === 'diese' ? 'Diese Anlage' : 'Alle Anlagen'}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {istPeriodisch && (
+        <div className="vp-ueberwachen-schwere" role="group" aria-label="Zeitraum">
+          <span className="vp-ueberwachen-schwere-label">Zeitraum</span>
+          <div className="vp-seg vp-seg-compact">
+            {PERIODEN.map((p) => (
+              <button
+                key={p}
+                type="button"
+                aria-pressed={periode === p}
+                className={periode === p ? 'active' : ''}
+                onClick={() => setPeriode(p)}
+              >
+                {PERIODE_WORT[p]}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {istPeriodisch && (
+        <div className="vp-ueberwachen-schwere" role="group" aria-label="Wie prüfen?">
+          <span className="vp-ueberwachen-schwere-label">Wie prüfen?</span>
+          <div className="vp-seg vp-seg-compact">
+            {(['periode', 'aenderung'] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                aria-pressed={periodenform === f}
+                className={periodenform === f ? 'active' : ''}
+                onClick={() => setPeriodenform(f)}
+              >
+                {f === 'periode' ? 'Mehr als …' : 'Änderung …'}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {istPeriodisch && periodenform === 'periode' && (
+        <div className="vp-ueberwachen-felder">
+          <div className="vp-seg vp-seg-compact">
+            {(['ueber', 'unter'] as const).map((r) => (
+              <button
+                key={r}
+                type="button"
+                aria-pressed={richtungPeriode === r}
+                className={richtungPeriode === r ? 'active' : ''}
+                onClick={() => setRichtungPeriode(r)}
+              >
+                {r === 'ueber' ? 'über' : 'unter'}
+              </button>
+            ))}
+          </div>
+          <Input
+            id={`${feldId}-schwelle-periode`}
+            label={`Schwelle (${einheit})`}
+            type="number"
+            step="0.1"
+            value={schwelle}
+            onChange={(e) => setSchwelle(Number(e.target.value))}
+          />
+        </div>
+      )}
+      {istPeriodisch && periodenform === 'aenderung' && (
+        <div className="vp-ueberwachen-felder">
+          <div className="vp-seg vp-seg-compact">
+            {(['hoeher', 'niedriger', 'beide'] as const).map((r) => (
+              <button
+                key={r}
+                type="button"
+                aria-pressed={richtungAenderung === r}
+                className={richtungAenderung === r ? 'active' : ''}
+                onClick={() => setRichtungAenderung(r)}
+              >
+                {r === 'hoeher' ? 'steigt' : r === 'niedriger' ? 'fällt' : 'ändert sich'}
+              </button>
+            ))}
+          </div>
+          <Input
+            id={`${feldId}-schwelle-prozent`}
+            label="Um mehr als (%)"
+            type="number"
+            step="1"
+            min="1"
+            value={schwelleProzent}
+            onChange={(e) => setSchwelleProzent(Number(e.target.value))}
+          />
+        </div>
+      )}
+      {!istPeriodisch && (
+        <div className="vp-ueberwachen-felder">
+          <Input
+            id={`${feldId}-schwelle`}
+            label={`Schwelle (${einheit})`}
+            type="number"
+            step="0.1"
+            value={schwelle}
+            onChange={(e) => setSchwelle(Number(e.target.value))}
+          />
+          <Input
+            id={`${feldId}-rueckkehr`}
+            label={`${WORT_RUECKKEHRSCHWELLE} (${einheit})`}
+            type="number"
+            step="0.1"
+            value={rueckkehr}
+            onChange={(e) => setRueckkehr(Number(e.target.value))}
+          />
+          <Input
+            id={`${feldId}-dauer`}
+            label="Länger als (Minuten)"
+            type="number"
+            step="1"
+            min="1"
+            value={dauerMinuten}
+            onChange={(e) => setDauerMinuten(Number(e.target.value))}
+          />
+          <Input
+            id={`${feldId}-erholdauer`}
+            label={`${WORT_ERHOLDAUER} (Minuten)`}
+            type="number"
+            step="1"
+            min="1"
+            value={erholdauerMinuten}
+            onChange={(e) => setErholdauerMinuten(Number(e.target.value))}
+          />
+        </div>
+      )}
       <div className="vp-ueberwachen-schwere" role="group" aria-label="Wie wichtig?">
         <span className="vp-ueberwachen-schwere-label">Wie wichtig?</span>
         <div className="vp-seg vp-seg-compact">

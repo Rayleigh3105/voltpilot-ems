@@ -139,7 +139,7 @@
     {
       "wertart": "anlage.lastspitze.periode",
       "name": "Lastspitze im Abrechnungszeitraum",
-      "satzname": "die Lastspitze im Abrechnungszeitraum",
+      "satzname": "die Lastspitze",
       "bezug": "anlage",
       "form": "zahl",
       "leser": { "art": "menge", "feld": "lastspitze_periode" },
