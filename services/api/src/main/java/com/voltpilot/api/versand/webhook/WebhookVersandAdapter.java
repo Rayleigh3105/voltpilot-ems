@@ -27,9 +27,28 @@ public class WebhookVersandAdapter {
     private static final Duration VERBINDUNGS_ZEITGRENZE = Duration.ofSeconds(5);
     private static final Duration GESAMT_ZEITGRENZE = Duration.ofSeconds(8);
 
+    /** Austauschbar NUR für den Drahtebene-Test dieser Klasse - siehe den package-sichtbaren Konstruktor. */
+    interface ZielValidator {
+        URI pruefenUndAufloesen(String url);
+    }
+
+    private final ZielValidator validator;
     private final HttpClient http;
 
     public WebhookVersandAdapter() {
+        this(WebhookZielPruefung::pruefenUndAufloesen);
+    }
+
+    /**
+     * Package-sichtbar: NUR für den Drahtebene-Test (Signatur, Zeitgrenzen, Statuscode-Zuordnung)
+     * gegen einen lokalen HTTP-Fänger, den die SSRF-Prüfung als Loopback-Ziel sonst zu Recht
+     * sperren würde - {@link WebhookZielPruefung} selbst ist vollständig unabhängig davon
+     * unit-getestet ({@code WebhookZielPruefungTest}). {@link VersandConfig} (ein anderes Paket)
+     * erreicht ausschließlich den öffentlichen Konstruktor oben - die echte SSRF-Prüfung ist damit
+     * für den Produktionscode nicht abwählbar.
+     */
+    WebhookVersandAdapter(ZielValidator validator) {
+        this.validator = validator;
         this.http = HttpClient.newBuilder()
                 .connectTimeout(VERBINDUNGS_ZEITGRENZE)
                 .followRedirects(HttpClient.Redirect.NEVER)
@@ -40,7 +59,7 @@ public class WebhookVersandAdapter {
     public void senden(String url, String geheimnis, String payloadJson) {
         URI ziel;
         try {
-            ziel = WebhookZielPruefung.pruefenUndAufloesen(url);
+            ziel = validator.pruefenUndAufloesen(url);
         } catch (WebhookZielPruefung.UnsicheresZielException e) {
             throw new WebhookException(WebhookException.ZIEL_UNSICHER, e.getMessage());
         }
