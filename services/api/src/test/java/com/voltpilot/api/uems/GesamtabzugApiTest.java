@@ -215,8 +215,21 @@ public class GesamtabzugApiTest {
         assertThat(String.join("\n", dateien.keySet().stream().map(k -> new String(dateien.get(k),
                 StandardCharsets.UTF_8)).toList())).doesNotContain(fremd.toString());
 
-        // Heute trägt keine Tabelle eines Kundenbereichs Zugangsdaten — kein Eintrag nennt eine ausgelassene Spalte.
-        manifest.path("dateien").forEach(d -> assertThat(d.has("ausgelassen")).as(d.path("pfad").asText()).isFalse());
+        // Seit Alerting Scheibe 3 trägt genau EINE Tabelle echte Zugangsdaten: zustellweg.bestaetigung_token, der
+        // unauthentifizierte Bestätigungs-Endpunkt findet seine Zeile einzig über ihn (SecureRandom, 256 Bit) — ein
+        // Bearer-Geheimnis wie jedes andere, das {@link Gesamtabzug#ZUGANGSDATEN} greift. Jede andere Tabelle bleibt
+        // ohne ausgelassene Spalte.
+        manifest.path("dateien").forEach(d -> {
+            String pfad = d.path("pfad").asText();
+            if ("bestand/zustellweg.csv".equals(pfad)) {
+                assertThat(d.path("ausgelassen")).as(pfad).hasSize(1);
+                assertThat(d.path("ausgelassen").get(0).path("spalte").asText()).as(pfad)
+                        .isEqualTo("bestaetigung_token");
+                assertThat(d.path("ausgelassen").get(0).path("grund").asText()).as(pfad).isEqualTo("Zugangsdaten");
+            } else {
+                assertThat(d.has("ausgelassen")).as(pfad).isFalse();
+            }
+        });
 
         assertThat(manifest.path("zustand").asText()).isEqualTo("aktiv");
         assertThat(manifest.path("kundenbereich").path("id").asText()).isEqualTo(tenant.toString());
