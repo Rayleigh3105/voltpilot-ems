@@ -261,6 +261,14 @@ voltpilot:
     enabled: ${VOLTPILOT_UEBERWACHUNG_ENABLED:true}
     interval-ms: ${VOLTPILOT_UEBERWACHUNG_INTERVAL_MS:15000}
     initial-delay-ms: ${VOLTPILOT_UEBERWACHUNG_INITIAL_DELAY_MS:20000}
+  # Vorsprung-Budget (NS-2 A, com.voltpilot.api.optimizer.SteuerungVorsprungLaeufer): je Anlage
+  # Monat und 7 Tage mit Bestand nach steuerung_vorsprung, wo der Optimierer sie liest. Vorgabe AN
+  # (Hausregel), im Testlauf AUS (surefire); ob ein Plan sie nutzt, entscheidet allein
+  # OPTIMIZER_VORSPRUNG_BUDGET_ANLAGEN am Optimierer.
+  steuerung-vorsprung:
+    enabled: ${VOLTPILOT_STEUERUNG_VORSPRUNG_ENABLED:true}
+    interval-ms: ${VOLTPILOT_STEUERUNG_VORSPRUNG_INTERVAL_MS:300000}
+    initial-delay-ms: ${VOLTPILOT_STEUERUNG_VORSPRUNG_INITIAL_DELAY_MS:90000}
   # Alerting Scheibe 3 (Konzept vp-alerting-konzept-m1 §7, Entscheid 1A): Web-Push als dritter
   # Zustellweg. Werte bleiben LEER - niemals einen echten Schlüssel hier committen. Das PRIVATE
   # Schlüsselpaar kommt wie das SMTP-Passwort aus der sops-Geheimnisdatei des GitOps-Repos

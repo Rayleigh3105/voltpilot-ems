@@ -426,6 +426,11 @@
                              (application.yml, matchIfMissing). Wer ihn prueft, ruft
                              UeberwachungsLaeufer.lauf() bzw. UeberwachungsService.lauf() selbst. -->
                         <voltpilot.ueberwachung.enabled>false</voltpilot.ueberwachung.enabled>
+                        <!-- NS-2 A: der SteuerungVorsprungLaeufer-Takt
+                             (com.voltpilot.api.optimizer.SteuerungVorsprungLaeufer) - dieselbe
+                             @Scheduled-Falle, im Testlauf aus, in PRODUKTION an (application.yml,
+                             matchIfMissing). Wer ihn prueft, ruft SteuerungVorsprungLaeufer.lauf() selbst. -->
+                        <voltpilot.steuerung-vorsprung.enabled>false</voltpilot.steuerung-vorsprung.enabled>
                         <!-- The AP-06 per-data-source status listener is ON in production.
                              Unit tests drive handle() without opening a broker connection. -->
                         <voltpilot.uems.data-source-status.mqtt-listener-enabled>false</voltpilot.uems.data-source-status.mqtt-listener-enabled>

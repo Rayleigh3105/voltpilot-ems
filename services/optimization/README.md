@@ -39,6 +39,7 @@ flowchart TD
 | Planzeitkorrektur | `nowcast.py` |
 | „Sonne + Speicher“: Speicheruntergrenze | `storage_release.py` |
 | Speicher vor dem Überschuss-Verbraucher (NS-3 B) | `ueberschuss_verbraucher.py` |
+| Messlatte (sturer Speicher), Vorsprung-Budget | `stur.py`, `vorsprung.py` |
 | Speicherung / MQTT | `persistence.py`, `publisher.py`, `engine.py` |
 | Laufzeit / CLI | `cli.py`, `runtime.py` |
 
@@ -92,3 +93,46 @@ Captain-Entscheid vom 15.10.2026, Bauplan NS-P3b. An Anlagen in `OPTIMIZER_UEBER
 - **Ohne Schalter** wird nichts gelesen, und der Plan ist byte-identisch. Ein Lesefehler kostet den Lauf die Regel, nie den Plan. Ohne Trim-Pflicht (`OPTIMIZER_SLOT_TRIM_ENABLED=false`, unbekannter Ladestand, nicht gesteuerter oder von einer Kundenregel gehaltener Speicher) gibt es kein Haltefeld.
 - **Replay** der Oktober-Läufe 1.–13.10. (gleich großer Vergleich, mit Bestand): +39,01 € statt +32,90 € heute (Variante g: +39,20 €). 13.10. +1,57 € statt −2,00 € (Portal-Messlatte), Ladestand Ende 13.10. 49 statt 5 %, schlechtester Tag −0,37 €. Kein Tag liegt mehr als 0,01 € unter heute. Zusammen mit NS-5 B: 3,63 € weniger.
 - **Nachweis:** `tests/test_ueberschuss_verbraucher.py`, `tests/test_contract.py`; Box: `guards/chargehold_test.go`, `agent/surplus_short_consumer_scenario_test.go` (`TestSurplusConsumer*`).
+
+## Garantie: Vorsprung-Budget (NS-2 A)
+
+**Monat und letzte 7 Tage mit Bestand nie tiefer als das Budget unter dem sturen Speicher** (Captain-Entscheid 15.10.2026,
+Untersuchung `vp-herzogau-nie-schlechter-k5` §7). Das sind die zwei Zahlen der Kachel „VoltPilot-Steuerung“ (HZ-3 A, faire
+Messlatte seit NS-1 A); der Tag selbst ist nicht garantiert – ohne Bestand landet ein Abendverkauf als Gewinn am Verkaufstag
+und der Nachkauf als Minus am Folgetag. An Anlagen in `OPTIMIZER_VORSPRUNG_BUDGET_ANLAGEN` (kommagetrennt `<UUID>` = Budget
+0 EUR oder `<UUID>=<EUR>`; leer = keine, ein ungültiger Eintrag bricht laut ab) prüft `vorsprung.mit_budget` den FERTIGEN
+Plan – nach dem Lösen und nach jeder Regel, die Freigaben stempelt –, Regel aus ist byte-identisch zu vorher.
+
+- **Was geprüft wird:** je Slot, was die Box an den Prognosewerten tatsächlich tut (Sollwert, Vollmachten des Slots,
+  Defizit-Deckung der Box), daneben der sture Vergleichsspeicher (`greedy_dispatch`, dieselbe Physik wie die Messlatte).
+  Fiele der Vorsprung mit Bestand nach dem Slot unter `-Budget` und fährt der Plan dort anders als stur (> 0,3 kW), fährt
+  der Slot stur – sofort laden, sofort decken –, sofern das den Vorsprung besser hält. Ab dem ersten Eingriff führt jeder
+  Slot die Ladestands-Bahn seines Sollwerts nach. Egal, welche Regel den Slot gestempelt hat: ein NS-5-B-Ruhe-Slot mit
+  Überschuss-Freigabe lädt schon wie stur und bleibt unberührt; ein NS-3-B-Slot rechnet mit der Grundlast, und stur gestellt
+  behält er den Grund `ueberschuss_verbraucher` und `charge_hold_base_load_kw` (die Box hält die Ladung gegen den Verbraucher).
+- **Erklärung:** ein stur gestellter Slot trägt in `slot_flags` zuerst `vorsprung_aufgebraucht` („fährt stur, Vorsprung
+  aufgebraucht“; die Bindungen des gelösten Plans entfallen, nur `ueberschuss_verbraucher` bleibt daneben), Rolle `pv_speichern`/`eigenverbrauch`/`warten` und die Vollmachten, mit denen die Box der GEMESSENEN Sonne
+  und Last folgt (`charge_surplus_to_battery` + `charge_from_surplus_only` beim Laden, `cover_load_from_battery` +
+  `limit_discharge_to_load` beim Decken), jede nur bei eingeschaltetem Schalter. Je Lauf eine Log-Zeile `vorsprung.budget`.
+- **Bewertung des Bestands:** Rückstand mit Bezugspreis × √0,92 (die Bewertung der api, 25 ct → 23,98 ct), Vorsprung mit
+  dem Einspeisewert des nächsten 12-Uhr-Slots im Horizont (höchstens der Bewertung, nie unter null) – der geprüfte
+  Vorsprung ist nie größer als die Zahl der Kachel.
+- **Fenster:** Monat und 7 Tage D−6 … D (das Fenster, das die Kachel morgen zeigt). An jeder Mitternacht des Horizonts fällt
+  der älteste Tag heraus, am Monatsersten beginnt der Monat bei 0 und der Vergleich springt auf den echten Stand.
+- **Woher die Zahlen kommen:** die api schreibt sie je Anlage alle 5 min in `steuerung_vorsprung`
+  (`SteuerungVorsprungLaeufer`, dieselben Zahlen wie die Kachel); `inputs._vorsprung_stand` liest sie nur an eingeschalteten
+  Anlagen. [Vertrag](../../docs/contracts/steuerung-vorsprung-v1.md).
+- **Kein Budget, kein Eingriff:** keine Zeile, Stand älter als 60 min (`HOECHSTALTER`), Lücke im Fenster (die Kachel hat dort
+  keine Zahl), unbekannter Ladestand, nicht gesteuerter oder von einer Kundenregel gehaltener Speicher, Gemeinsame Steuerung.
+  Ein Fehler kostet den Lauf die Regel, nie den Plan.
+- **Was die Regel nicht abfängt:** Fehler innerhalb einer Viertelstunde (sie entscheidet mit der Prognose), Messlücken und was
+  die Box auch stur anders macht als der ideale Vergleich (Abstand beim Decken, Haltezeiten).
+- **Replay der Oktober-Läufe 1.–13.10. (Herzogau, gleich großer Vergleich, mit Bestand):** heute +32,90 €, mit Budget 0
+  +30,94 € (kostet 1,96 € in 13 Tagen, 15 Eingriffe, schlechtester Tag −1,44 €, Monat und 7 Tage nie tiefer als −0,01 €).
+  Das idealisierte `m0+w0` des Berichts (+31,57 €) prüft mit den GEMESSENEN Werten des laufenden Slots; die Regel entscheidet
+  vorher mit der Prognose (−0,61 € am 01./03.10.) und bewertet einen Vorsprung vorsichtiger (−0,02 €). Zusammen mit NS-5 B
+  +31,58 €, schlechtester Tag −0,37 €. Zusammen mit NS-3 B +36,66 € statt +39,01 € (Bericht `g+m0+w0`: 1,67 € unter `g`),
+  schlechtester Tag −0,37 €, 13.10. +2,12 €; den Großteil kostet der 01.10., an dem der Monat ohne Vorsprung beginnt.
+  Schalter aus: in allen 1248 Viertelstunden gleich wie heute bzw. wie NS-3 B allein.
+- Nachweis: `tests/test_vorsprung_budget.py`, `tests/test_vorsprung_budget_db.py`; api `SteuerungVorsprungTest`,
+  `SteuerungTageszahlTest`.

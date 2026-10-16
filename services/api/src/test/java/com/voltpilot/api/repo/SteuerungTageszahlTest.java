@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.optimizer.OptimizerProperties;
+import com.voltpilot.api.optimizer.SteuerungVorsprungLaeufer;
+import com.voltpilot.api.optimizer.SteuerungVorsprungRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.file.Files;
@@ -104,6 +106,8 @@ class SteuerungTageszahlTest {
     private static JsonNode band;
     private static JsonNode mitBestand;
     private static EarningsRepository earnings;
+    private static JdbcTemplate appJdbc;
+    private static JdbcTemplate rootJdbc;
 
     @BeforeAll
     static void migrateAndSeed() throws Exception {
@@ -144,7 +148,9 @@ class SteuerungTageszahlTest {
             ps.execute();
         }
         OptimizerProperties props = new OptimizerProperties(4.0, 0.3, null, null, false);
-        earnings = new EarningsRepository(new JdbcTemplate(app), props);
+        appJdbc = new JdbcTemplate(app);
+        rootJdbc = new JdbcTemplate(superuser);
+        earnings = new EarningsRepository(appJdbc, props);
     }
 
     // ---------------------------------------------------------------- abends geleert
@@ -616,6 +622,129 @@ class SteuerungTageszahlTest {
                     .isEqualByComparingTo(d.savedSteuerungEur());
             assertThat(steuerung(site, d.day()).doubleValue()).as("Tagesfenster %s", d.day())
                     .isCloseTo(d.savedSteuerungEur().doubleValue(), Offset.offset(1e-9));
+        }
+    }
+
+    // ---------------------------------------------------------------- Vorsprung-Budget (NS-2 A)
+
+    /**
+     * Der Stand für den Optimierer trägt die Zahlen der Kachel - derselbe Walk
+     * wie {@code tagesbildForSite} mit abgeschlossenem Fenster (D-6..D) - und
+     * über den Monatswechsel behält jeder Tag den Wert seines Monats.
+     */
+    @Test
+    void derVorsprungFuerDenOptimiererSindDieZahlenDerKachel() {
+        UUID site = MIT_BESTAND.get("monatsgrenze");
+        LocalDate okt2 = LocalDate.parse("2026-10-02");
+        SteuerungVorsprung.Stand s = earnings.vorsprungStaende(okt2).get(site);
+        SteuerungMitBestand.Zeitraum kachel =
+                earnings.tagesbildForSite(site, from(okt2), to(okt2), false).zeitraum();
+        assertThat(s.monatMitBestandEur()).isEqualByComparingTo(kachel.monat().mitBestandEur())
+                .isEqualByComparingTo("-0.02");
+        assertThat(s.siebenTageMitBestandEur()).isEqualByComparingTo(kachel.sieben().mitBestandEur())
+                .isEqualByComparingTo("-0.32");
+        assertThat(s.tageMitBestandEur()).usingElementComparator(BigDecimal::compareTo)
+                .containsExactly(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        new BigDecimal("-0.15"), new BigDecimal("-0.15"), new BigDecimal("-0.01"));
+        assertThat(s.vorsprungKwh()).isEqualByComparingTo("2.250");
+        assertThat(s.kapazitaetKwh()).isEqualByComparingTo("10.000");
+        assertThat(s.bewertungCtKwh()).isEqualByComparingTo("23.98");
+        assertThat(s.messungBis()).isEqualTo(Instant.parse("2026-10-02T10:15:00Z"));
+
+        // Monatswechsel: am 01.10. beginnt der Monat beim Anker, die 7 Tage tragen den September.
+        SteuerungVorsprung.Stand o1 = earnings.vorsprungStaende(LocalDate.parse("2026-10-01")).get(site);
+        assertThat(o1.monatMitBestandEur()).isEqualByComparingTo("-0.01");
+        assertThat(o1.siebenTageMitBestandEur()).isEqualByComparingTo("-0.31");
+        assertThat(o1.vorsprungKwh()).isEqualByComparingTo("1.250");
+        assertThat(o1.tageMitBestandEur()).usingElementComparator(BigDecimal::compareTo)
+                .containsExactly(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        new BigDecimal("-0.15"), new BigDecimal("-0.15"));
+        // Ohne Eimer an D kein Stand (der Läufer fragt dann den Vortag).
+        assertThat(earnings.vorsprungStaende(LocalDate.parse("2026-10-03"))).doesNotContainKey(site);
+    }
+
+    /** Fehlende Daten heißen kein Budget: die Lücke am 06./07.10. leert Monat und 7 Tage. */
+    @Test
+    void eineLueckeLeertMonatUndSiebenTageDesStands() {
+        UUID site = MIT_BESTAND.get("luecke");
+        SteuerungVorsprung.Stand s = earnings.vorsprungStaende(LocalDate.parse("2026-10-08")).get(site);
+        assertThat(s.monatMitBestandEur()).isNull();
+        assertThat(s.siebenTageMitBestandEur()).isNull();
+        assertThat(s.tageMitBestandEur()).usingElementComparator(
+                        (a, b) -> a == null || b == null ? (a == b ? 0 : 1) : a.compareTo(b))
+                .containsExactly(BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        new BigDecimal("-0.01"), null, null);
+        assertThat(s.vorsprungKwh()).isEqualByComparingTo("4.000");
+    }
+
+    /**
+     * Der Läufer legt je Anlage mit Stand EINE Zeile ab, überschreibt sie im
+     * nächsten Takt, räumt die Zeile einer Anlage ohne Stand weg und gilt in
+     * der ersten Stunde nach Mitternacht für den Vortag. RLS zäunt die Zeilen.
+     */
+    @Test
+    void derLaeuferSchreibtJeAnlageEineZeileUndRaeumtAuf() {
+        SteuerungVorsprungLaeufer laeufer = new SteuerungVorsprungLaeufer(rootJdbc, earnings,
+                new SteuerungVorsprungRepository(appJdbc));
+        UUID grenze = MIT_BESTAND.get("monatsgrenze");
+        UUID luecke = MIT_BESTAND.get("luecke");
+        try {
+            int n = laeufer.lauf(Instant.parse("2026-10-02T12:00:00Z"));
+            assertThat(n).isEqualTo(earnings.vorsprungStaende(LocalDate.parse("2026-10-02")).size());
+            Map<String, Object> zeile = rootJdbc.queryForMap(
+                    "SELECT tenant_id, tag, messung_bis, bewertung_ct_kwh, vorsprung_kwh, kapazitaet_kwh,"
+                            + " monat_mit_bestand_eur, sieben_tage_mit_bestand_eur,"
+                            + " array_to_string(tage_mit_bestand_eur, ',', 'NULL') AS tage"
+                            + " FROM steuerung_vorsprung WHERE site_id = ?", grenze);
+            assertThat(zeile.get("tenant_id")).isEqualTo(TENANT);
+            assertThat(zeile.get("tag").toString()).isEqualTo("2026-10-02");
+            assertThat(((Timestamp) zeile.get("messung_bis")).toInstant())
+                    .isEqualTo(Instant.parse("2026-10-02T10:15:00Z"));
+            assertThat((BigDecimal) zeile.get("bewertung_ct_kwh")).isEqualByComparingTo("23.98");
+            assertThat((BigDecimal) zeile.get("vorsprung_kwh")).isEqualByComparingTo("2.250");
+            assertThat((BigDecimal) zeile.get("kapazitaet_kwh")).isEqualByComparingTo("10");
+            assertThat((BigDecimal) zeile.get("monat_mit_bestand_eur")).isEqualByComparingTo("-0.02");
+            assertThat((BigDecimal) zeile.get("sieben_tage_mit_bestand_eur")).isEqualByComparingTo("-0.32");
+            assertThat(zeile.get("tage")).isEqualTo("0.00,0.00,0.00,-0.15,-0.15,-0.01");
+
+            // Ein anderer Kundenbereich und ein Zugriff ohne Kundenbereich sehen nichts.
+            assertThat(alsKundenbereich(UUID.randomUUID().toString())).isZero();
+            assertThat(alsKundenbereich("")).isZero();
+            assertThat(alsKundenbereich(TENANT.toString())).isEqualTo(n);
+
+            // 05.10.: die Monatsgrenze-Anlage hat keinen Eimer mehr - ihre Zeile geht, die Lücke-Anlage kommt.
+            laeufer.lauf(Instant.parse("2026-10-05T12:00:00Z"));
+            assertThat(zeilen(grenze)).isZero();
+            assertThat(zeilen(luecke)).isOne();
+            // 06.10. 00:30 Berlin: heute noch kein Eimer - der Vortag gilt (Tag 05.10.).
+            laeufer.lauf(Instant.parse("2026-10-05T22:30:00Z"));
+            assertThat(rootJdbc.queryForObject(
+                    "SELECT tag::text FROM steuerung_vorsprung WHERE site_id = ?", String.class, luecke))
+                    .isEqualTo("2026-10-05");
+        } finally {
+            rootJdbc.update("DELETE FROM steuerung_vorsprung");
+        }
+    }
+
+    private static int zeilen(UUID site) {
+        return rootJdbc.queryForObject(
+                "SELECT count(*) FROM steuerung_vorsprung WHERE site_id = ?", Integer.class, site);
+    }
+
+    /** Zeilen, die die Laufzeitrolle mit diesem {@code app.tenant_id} sieht. */
+    private static int alsKundenbereich(String tenant) {
+        try (Connection c = java.sql.DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), "voltpilot_app", "pw_app");
+                PreparedStatement setze = c.prepareStatement("SELECT set_config('app.tenant_id', ?, false)");
+                PreparedStatement zaehle = c.prepareStatement("SELECT count(*) FROM steuerung_vorsprung")) {
+            setze.setString(1, tenant);
+            setze.execute();
+            try (java.sql.ResultSet rs = zaehle.executeQuery()) {
+                rs.next();
+                return rs.getInt(1);
+            }
+        } catch (java.sql.SQLException e) {
+            throw new IllegalStateException(e);
         }
     }
 

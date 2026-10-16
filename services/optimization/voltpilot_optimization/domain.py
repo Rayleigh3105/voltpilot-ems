@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 
 from voltpilot_optimization.config import (
@@ -473,6 +473,39 @@ def derive_terminal_value(
 
 
 @dataclass(frozen=True)
+class VorsprungStand:
+    """Was die api je Anlage über den Vorsprung MIT BESTAND gegen den sturen
+    Speicher meldet (NS-2 A; Vertrag ``docs/contracts/steuerung-vorsprung-v1.md``,
+    Tabelle ``steuerung_vorsprung``). Alle Beträge in EUR, gegen die faire
+    Messlatte aus NS-1 A, mit Bestand symmetrisch bewertet - genau die Zahlen
+    der Kachel (HZ-3 A). Der Optimierer zerlegt sie in Kasse und Bestand und
+    bewertet den Bestand selbst vorsichtiger
+    (:mod:`voltpilot_optimization.vorsprung`).
+
+    ``monat_eur`` / ``sieben_tage_eur`` sind ``None`` bei einer Lücke - dann
+    hat die Kachel dort keine Zahl, und für dieses Fenster gibt es kein Budget.
+    """
+
+    #: Ende des letzten gemessenen Eimers - der Moment von ``vorsprung_kwh``.
+    messung_bis: datetime
+    #: Der Berliner Tag D, zu dem die Fenster gehören (Monat bis D, 7 Tage D-6..D).
+    tag: date
+    #: Bewertung einer gespeicherten kWh: Bezugspreis × √0,92 (25 ct → 23,98 ct).
+    bewertung_ct_kwh: float
+    #: Gemessener Ladestand minus Vergleichsspeicher (kWh der api), Rückstand negativ.
+    vorsprung_kwh: float
+    #: kWh je 100 % des Vergleichsspeichers (NS-1 A: aus der Messung).
+    kapazitaet_kwh: float
+    #: Monat mit Bestand: Σ der Tage vom Monatsersten bis einschließlich D.
+    monat_eur: float | None
+    #: 7 Tage mit Bestand: D-6..D, der laufende Tag D bis ``messung_bis``.
+    sieben_tage_eur: float | None
+    #: Die 6 abgeschlossenen Tage D-6..D-1 mit Bestand, ältester zuerst - sie
+    #: fallen an den Mitternächten des Horizonts aus dem 7-Tage-Fenster.
+    tage_eur: tuple = ()
+
+
+@dataclass(frozen=True)
 class OptimizationInput:
     """Everything one solver run needs, slot-aligned over the horizon.
 
@@ -657,6 +690,18 @@ class OptimizationInput:
     #: Verbraucher. Leer = keine Erkennung, byte-identisch zu vorher, auch für
     #: jeden Aufrufer, der seine Eingaben selbst baut.
     ueberschuss_verbraucher: tuple[bool, ...] = ()
+    #: NS-2 A (Captain-Entscheid 15.10.2026): das Vorsprung-Budget dieser
+    #: Anlage in EUR - Monat und letzte 7 Tage mit Bestand nie tiefer als
+    #: ``-vorsprung_budget_eur`` unter dem sturen Speicher. Geprüft NACH dem
+    #: Lösen am fertigen Plan (:func:`voltpilot_optimization.vorsprung.mit_budget`):
+    #: wo der Plan es täte, fährt der Slot stur. ``None`` = Regel aus,
+    #: byte-identisch zu vorher, auch für jeden Aufrufer, der seine Eingaben
+    #: selbst baut.
+    vorsprung_budget_eur: float | None = None
+    #: Der gelesene Vorsprung (api, Tabelle ``steuerung_vorsprung``); ``None``
+    #: = nicht lesbar, zu alt oder Regel aus - dann gibt es kein Budget und der
+    #: Plan bleibt, wie er ist.
+    vorsprung: VorsprungStand | None = None
 
     def __post_init__(self) -> None:
         n = len(self.slot_starts)

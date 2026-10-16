@@ -542,6 +542,54 @@ def _anlage_in_env(name: str, site_id, env=None) -> bool:
     return UUID(str(site_id)) in anlagen
 
 
+#: Vorsprung-Budget (NS-2 A, Captain-Entscheid 15.10.2026,
+#: :mod:`voltpilot_optimization.vorsprung`): an diesen Anlagen darf der Plan
+#: den Monat und die letzten 7 Tage MIT BESTAND nie tiefer als das Budget unter
+#: den sturen Speicher drücken - wo er es täte, fährt er den Slot stur.
+#: Kommagetrennte Einträge ``<Anlagen-UUID>`` (Budget 0 EUR, "nie unter der
+#: Messlatte") oder ``<Anlagen-UUID>=<EUR>`` (ein Budget >= 0 je Anlage); leer
+#: oder nicht gesetzt = keine Anlage, die Pläne sind byte-identisch zu vorher
+#: und die Tabelle ``steuerung_vorsprung`` wird nicht gelesen.
+VORSPRUNG_BUDGET_ANLAGEN_ENV = "OPTIMIZER_VORSPRUNG_BUDGET_ANLAGEN"
+
+
+def vorsprung_budget_eur(site_id, env=None) -> float | None:
+    """Das Vorsprung-Budget dieser Anlage in EUR, oder ``None`` (Regel aus).
+
+    Vorgabe AUS; ein ungültiger Eintrag (keine UUID, kein Betrag, ein
+    negatives Budget, eine Anlage doppelt) bricht laut ab - ein Tippfehler darf
+    eine Anlage nie still ein- oder ausschalten oder ihr ein anderes Budget
+    geben."""
+    from uuid import UUID
+
+    env = os.environ if env is None else env
+    budgets: dict = {}
+    for part in (env.get(VORSPRUNG_BUDGET_ANLAGEN_ENV) or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        anlage, _, betrag = part.partition("=")
+        try:
+            uuid = UUID(anlage.strip())
+            eur = float(betrag) if betrag.strip() else 0.0
+        except ValueError as exc:
+            raise ValueError(
+                f"{VORSPRUNG_BUDGET_ANLAGEN_ENV} must be comma-separated site "
+                f"UUIDs with an optional '=<EUR>' budget, got {part!r}"
+            ) from exc
+        if not math.isfinite(eur) or eur < 0.0:
+            raise ValueError(
+                f"{VORSPRUNG_BUDGET_ANLAGEN_ENV}: the budget must be a finite "
+                f"amount >= 0 EUR, got {part!r}"
+            )
+        if uuid in budgets:
+            raise ValueError(
+                f"{VORSPRUNG_BUDGET_ANLAGEN_ENV}: site {uuid} is listed twice"
+            )
+        budgets[uuid] = eur
+    return budgets.get(UUID(str(site_id)))
+
+
 #: Instant off-switch for the NACHT-WERTFUNKTION (P3 of the Nachtreserve
 #: analysis vp-nachtreserve-konzept-k2): the piecewise-linear value the
 #: objective puts on the charge left at SUNRISE, priced from the site's OWN

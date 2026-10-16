@@ -61,6 +61,7 @@ from voltpilot_optimization.config import (
     soc_max_age,
     terminal_value_override_eur_per_kwh,
     ueberschuss_verbraucher_enabled,
+    vorsprung_budget_eur,
 )
 from voltpilot_optimization import grenze_aufloesung, verbund
 from voltpilot_optimization.domain import (
@@ -72,6 +73,7 @@ from voltpilot_optimization.domain import (
     SLOTS_24H,
     SOC_SOURCE_GEMESSEN,
     SOC_SOURCE_UNBEKANNT,
+    VorsprungStand,
     ensure_utc,
     floor_to_slot,
     horizon_slot_starts,
@@ -1043,6 +1045,10 @@ def gather_inputs(
         morgen_ueberschuss = gelesen is not None
         heute_geladen = bool(gelesen)
 
+    # NS-2 A (Vorsprung-Budget je Anlage): nur an einer eingeschalteten Anlage
+    # wird der Vorsprung der api gelesen.
+    vorsprung_budget, vorsprung = _vorsprung_eingabe(dsn, site.site_id)
+
     return OptimizationInput(
         tenant_id=site.tenant_id,
         site_id=site.site_id,
@@ -1090,6 +1096,70 @@ def gather_inputs(
         morgen_ueberschuss_heute_geladen=heute_geladen,
         # NS-3 B: wo der Plan den Überschuss-Verbraucher herausgerechnet hat.
         ueberschuss_verbraucher=ueberschuss_verbraucher,
+        # NS-2 A: Vorsprung-Budget, nur an eingeschalteten Anlagen.
+        vorsprung_budget_eur=vorsprung_budget,
+        vorsprung=vorsprung,
+    )
+
+
+def _vorsprung_eingabe(
+    dsn: str, site_id: UUID, env=None
+) -> tuple[float | None, VorsprungStand | None]:
+    """Budget und gelesener Stand dieser Anlage (NS-2 A): ``(None, None)`` an
+    jeder nicht eingeschalteten Anlage - dort wird nichts gelesen, der Plan
+    ist byte-identisch zu vorher. Ohne lesbaren Stand gibt es für diesen Lauf
+    kein Budget, nie keinen Plan."""
+    budget = vorsprung_budget_eur(site_id, env)
+    if budget is None:
+        return None, None
+    return budget, _vorsprung_stand(dsn, site_id)
+
+
+def _vorsprung_stand(dsn: str, site_id: UUID) -> VorsprungStand | None:
+    """Der Vorsprung mit Bestand, den die api für diese Anlage zuletzt
+    geschrieben hat (Tabelle ``steuerung_vorsprung``, Vertrag
+    ``docs/contracts/steuerung-vorsprung-v1.md``), oder ``None``.
+
+    FAIL-SOFT wie die Messlatte: ``None`` heißt "kein Budget in diesem Lauf"
+    (keine Zeile, nicht lesbar). Ob der Stand frisch genug ist, entscheidet
+    :mod:`voltpilot_optimization.vorsprung` am Laufbeginn.
+    """
+    import psycopg  # lazy: optional [db] extra
+
+    try:
+        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT messung_bis, tag, bewertung_ct_kwh, vorsprung_kwh,
+                       kapazitaet_kwh, monat_mit_bestand_eur,
+                       sieben_tage_mit_bestand_eur, tage_mit_bestand_eur
+                FROM steuerung_vorsprung WHERE site_id = %s
+                """,
+                (site_id,),
+            )
+            row = cur.fetchone()
+    except Exception:
+        logger.warning(
+            "vorsprung.unavailable - Lauf ohne Vorsprung-Budget (NS-2 A)",
+            extra={"context": {"site_id": str(site_id)}},
+            exc_info=True,
+        )
+        return None
+    if row is None:
+        return None
+
+    def zahl(wert):
+        return None if wert is None else float(wert)
+
+    return VorsprungStand(
+        messung_bis=ensure_utc(row[0]),
+        tag=row[1],
+        bewertung_ct_kwh=float(row[2]),
+        vorsprung_kwh=float(row[3]),
+        kapazitaet_kwh=float(row[4]),
+        monat_eur=zahl(row[5]),
+        sieben_tage_eur=zahl(row[6]),
+        tage_eur=tuple(zahl(x) for x in (row[7] or ())),
     )
 
 

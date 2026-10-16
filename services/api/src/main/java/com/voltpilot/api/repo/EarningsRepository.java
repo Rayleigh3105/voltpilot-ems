@@ -1625,8 +1625,36 @@ public class EarningsRepository {
      *     (z. B. vor seinem ersten Eimer)
      * @param zeitraum Monat bis zum Tag, Tag und - nur auf der Anlagen-Route -
      *     die 7 Tage mit Bestand; null ohne einen vom Walk gesehenen Tag
+     * @param vergleichKapazitaetKwh kWh je 100 % des Vergleichsspeichers am
+     *     jüngsten vom Walk gesehenen Tag bis zum angefragten (NS-1 A: aus der
+     *     Messung); null ohne einen solchen Tag. Nur das Vorsprung-Budget liest
+     *     sie ({@link #vorsprungStaende}).
      */
-    public record Tagesbild(Tageseinordnung einordnung, SteuerungMitBestand.Zeitraum zeitraum) {
+    public record Tagesbild(Tageseinordnung einordnung, SteuerungMitBestand.Zeitraum zeitraum,
+            Double vergleichKapazitaetKwh) {
+    }
+
+    /**
+     * Der VORSPRUNG MIT BESTAND je Anlage für das Vorsprung-Budget des
+     * Optimierers (NS-2 A, {@link SteuerungVorsprung}): Monat bis {@code tag},
+     * die 7 Tage {@code tag}-6 bis {@code tag} und der Vorsprung am Ende des
+     * letzten gemessenen Eimers - flottenweit aus DEMSELBEN Walk wie die
+     * Kachel ({@link #tagesbildForSite} mit abgeschlossenem Fenster), also
+     * dieselben Zahlen. Anlagen ohne gemessenen Eimer an {@code tag} fehlen;
+     * der Aufrufer fragt für sie den Vortag.
+     */
+    public Map<UUID, SteuerungVorsprung.Stand> vorsprungStaende(LocalDate tag) {
+        Instant from = tag.atStartOfDay(ZONE).toInstant();
+        Instant to = tag.plusDays(1).atStartOfDay(ZONE).toInstant();
+        Map<UUID, SteuerungVorsprung.Stand> result = new HashMap<>();
+        tagesbilder(from, to, null, true, false).forEach((siteId, b) -> {
+            SteuerungVorsprung.Stand stand =
+                    SteuerungVorsprung.stand(b.zeitraum(), tag, b.vergleichKapazitaetKwh());
+            if (stand != null) {
+                result.put(siteId, stand);
+            }
+        });
+        return result;
     }
 
     /**
@@ -1737,7 +1765,12 @@ public class EarningsRepository {
                         geplant.get(siteId));
             }
             if (einordnung != null || zeitraum != null) {
-                result.put(siteId, new Tagesbild(einordnung, zeitraum));
+                Double kapazitaet = staende.entrySet().stream()
+                        .filter(e -> !e.getKey().isAfter(tag))
+                        .max(Map.Entry.comparingByKey())
+                        .map(e -> e.getValue().capacityKwh())
+                        .orElse(null);
+                result.put(siteId, new Tagesbild(einordnung, zeitraum, kapazitaet));
             }
         });
         return result;

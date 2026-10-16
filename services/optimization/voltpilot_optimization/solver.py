@@ -916,13 +916,17 @@ def optimize(
     ``explain_plan`` gates the post-hoc Fahrplan-Warum extraction (see
     :func:`_with_explanation`); high-volume callers that discard the plan's
     presentation fields (the Ersparnis-Simulation's year chains) pass False.
+
+    Last comes the Vorsprung-Budget (NS-2 A, :func:`_vorsprung_budget`): it
+    checks the FINISHED plan - after every rule that stamped it - and is a
+    no-op (the same object) unless the site is switched on.
     """
     model = build_model(inp)
     _solve(model)
     plan = _extract_plan(model, inp, plan_id, generated_at)
-    if not explain_plan:
-        return plan
-    return _with_explanation(plan, model, inp, fallback_14a=False)
+    if explain_plan:
+        plan = _with_explanation(plan, model, inp, fallback_14a=False)
+    return _vorsprung_budget(plan, inp)
 
 
 def optimize_ignoring_grid_limit(
@@ -935,9 +939,21 @@ def optimize_ignoring_grid_limit(
     model = build_model(inp, enforce_grid_limit=False)
     _solve(model)
     plan = _extract_plan(model, inp, plan_id, generated_at)
-    if not explain_plan:
-        return plan
-    return _with_explanation(plan, model, inp, fallback_14a=True)
+    if explain_plan:
+        plan = _with_explanation(plan, model, inp, fallback_14a=True)
+    return _vorsprung_budget(plan, inp)
+
+
+def _vorsprung_budget(plan: SchedulePlan, inp: OptimizationInput) -> SchedulePlan:
+    """NS-2 A (Captain-Entscheid 15.10.2026): Monat und letzte 7 Tage mit
+    Bestand nie tiefer als das Budget unter dem sturen Speicher - wo der Plan
+    es täte, fährt der Slot stur, Grund ``vorsprung_aufgebraucht``. Geprüft
+    wird das ERGEBNIS, egal welche Regel den Slot gestempelt hat
+    (:mod:`voltpilot_optimization.vorsprung`). Regel aus = dasselbe Objekt;
+    ein Fehler kostet den Lauf die Regel, nie den Plan."""
+    from voltpilot_optimization.vorsprung import mit_budget
+
+    return mit_budget(plan, inp)[0]
 
 
 def _with_explanation(
