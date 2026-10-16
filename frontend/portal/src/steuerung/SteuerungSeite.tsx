@@ -740,6 +740,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
             bezug={{ komponente: umwandelnKarte.notifyUmwandlung.entityId, kanal: umwandelnKarte.notifyUmwandlung.channel }}
             aktuellerWert={null}
             titelZusatz={umwandelnKarte.name}
+            herkunft="steuerung"
             onUeberwacht={() => {
               const { flowId, name } = umwandelnKarte;
               setUmwandelnKarte(null);
