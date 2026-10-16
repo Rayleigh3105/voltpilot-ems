@@ -46,6 +46,7 @@ from voltpilot_optimization.config import (
     battery_control_max_age,
     default_wear_cost_ct_per_kwh,
     grid_limit_max_age,
+    morgen_ueberschuss_enabled,
     pv_anchor_decay_slots,
     pv_anchor_enabled,
     pv_anchor_lookback,
@@ -1021,6 +1022,16 @@ def gather_inputs(
     # byte-identisch (siehe voltpilot_optimization.night_reserve).
     night_errors = _night_error_quantiles(dsn, site, now, site_choices)
 
+    # NS-5 B (Zwischenlösung je Anlage): nur an einer eingeschalteten Anlage
+    # wird gelesen, ob heute schon ein geplanter Lade-Slot lief. Ein Lesefehler
+    # kostet diesen Lauf die Morgenregel, nie den Plan.
+    morgen_ueberschuss = morgen_ueberschuss_enabled(site.site_id)
+    heute_geladen = False
+    if morgen_ueberschuss:
+        gelesen = _heute_geplant_geladen(dsn, site.site_id, slot_starts[0])
+        morgen_ueberschuss = gelesen is not None
+        heute_geladen = bool(gelesen)
+
     return OptimizationInput(
         tenant_id=site.tenant_id,
         site_id=site.site_id,
@@ -1063,7 +1074,67 @@ def gather_inputs(
         grid_charge_hurdle_ct_kwh=grid_charge_hurdle_ct_kwh(site.tariff),
         # M1: nur die Messlatte liest ihn, der Plan bleibt byte-identisch.
         stur_betriebsbereich_pct=_betriebsbereich_pct(dsn, site.site_id, now),
+        # NS-5 B: Morgenüberschuss in Ruhe-Slots, nur an eingeschalteten Anlagen.
+        morgen_ueberschuss=morgen_ueberschuss,
+        morgen_ueberschuss_heute_geladen=heute_geladen,
     )
+
+
+def _heute_geplant_geladen(
+    dsn: str, site_id: UUID, horizont_start: datetime
+) -> bool | None:
+    """Ob am Berliner Tag von ``horizont_start`` vor dem Horizont schon ein
+    Slot lief, in dem der Plan laden wollte (NS-5 B), oder ``None``.
+
+    Gezählt wird je vergangenem Slot der Plan, der ihn AUSGEFÜHRT hat: die
+    Zeile eines Laufs, der in diesem Slot entstand (``generated_at`` in
+    ``[time, time + Slotlänge)``, denn der erste Slot eines Laufs ist der
+    laufende). Ein späterer Lauf, der denselben Slot noch als Zukunft sah,
+    zählt nicht - geladen hätte die Box nach dem Plan des Slots selbst.
+
+    FAIL-SOFT wie die Messlatte: ``None`` heißt „nicht lesbar“, der Aufrufer
+    lässt die Morgenregel für diesen Lauf weg (der Plan von heute), statt
+    einen Nachmittag für einen Morgen zu halten.
+    """
+    import psycopg  # lazy: optional [db] extra
+
+    from voltpilot_optimization.slot_trim import PLANNED_IDLE_DEADBAND_KW
+
+    horizont_start = ensure_utc(horizont_start)
+    tagesanfang = (
+        horizont_start.astimezone(BERLIN)
+        .replace(hour=0, minute=0, second=0, microsecond=0)
+        .astimezone(timezone.utc)
+    )
+    if tagesanfang >= horizont_start:
+        return False
+    try:
+        with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT EXISTS (
+                  SELECT 1 FROM schedule
+                  WHERE site_id = %s AND time >= %s AND time < %s
+                    AND generated_at >= time AND generated_at < time + %s
+                    AND battery_kw > %s)
+                """,
+                (
+                    site_id,
+                    tagesanfang,
+                    horizont_start,
+                    timedelta(minutes=SLOT_MINUTES),
+                    PLANNED_IDLE_DEADBAND_KW,
+                ),
+            )
+            row = cur.fetchone()
+        return bool(row[0]) if row is not None else False
+    except Exception:
+        logger.warning(
+            "morgen_ueberschuss.unavailable - Lauf ohne Morgenregel (NS-5 B)",
+            extra={"context": {"site_id": str(site_id)}},
+            exc_info=True,
+        )
+        return None
 
 
 def _betriebsbereich_pct(

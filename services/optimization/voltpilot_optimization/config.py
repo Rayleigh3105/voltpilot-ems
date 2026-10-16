@@ -480,6 +480,41 @@ def surplus_charge_enabled(env=None) -> bool:
     raise ValueError(f"{SURPLUS_CHARGE_ENABLED_ENV} must be a boolean, got {raw!r}")
 
 
+#: Morgenüberschuss in Ruhe-Slots (NS-5 B, Captain-Entscheid 15.10.2026,
+#: :func:`voltpilot_optimization.slot_trim.morgen_ueberschuss_slots`): an
+#: diesen Anlagen bekommt jeder Ruhe-Slot vom Tagesanfang bis zum ersten
+#: Lade-Slot des Tages die Freigabe ``charge_surplus_to_battery``. Eine
+#: ZWISCHENLÖSUNG bis NS-3 B (Vorrang des Speichers vor dem Überschuss-
+#: Verbraucher), danach je Anlage wieder abschalten. Kommagetrennte
+#: Anlagen-UUIDs (das Muster von ``VOLTPILOT_V2_PLAN_SITES``: ein Env-Wechsel,
+#: keine Spalte); leer oder nicht gesetzt = keine Anlage, die Pläne sind
+#: byte-identisch zu vorher. ``OPTIMIZER_SURPLUS_CHARGE_ENABLED=false`` schaltet
+#: die Regel mit ab - sie setzt dieselbe Freigabe.
+MORGEN_UEBERSCHUSS_ANLAGEN_ENV = "OPTIMIZER_MORGEN_UEBERSCHUSS_ANLAGEN"
+
+
+def morgen_ueberschuss_enabled(site_id, env=None) -> bool:
+    """Ob diese Anlage den Morgenüberschuss in Ruhe-Slots lädt (NS-5 B).
+    Vorgabe AUS; ein ungültiger Eintrag bricht laut ab - ein Tippfehler darf
+    eine Anlage nie still ein- oder ausschalten."""
+    from uuid import UUID
+
+    env = os.environ if env is None else env
+    anlagen = set()
+    for part in (env.get(MORGEN_UEBERSCHUSS_ANLAGEN_ENV) or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        try:
+            anlagen.add(UUID(part))
+        except ValueError as exc:
+            raise ValueError(
+                f"{MORGEN_UEBERSCHUSS_ANLAGEN_ENV} must be comma-separated site "
+                f"UUIDs, got {part!r}"
+            ) from exc
+    return UUID(str(site_id)) in anlagen
+
+
 #: Instant off-switch for the NACHT-WERTFUNKTION (P3 of the Nachtreserve
 #: analysis vp-nachtreserve-konzept-k2): the piecewise-linear value the
 #: objective puts on the charge left at SUNRISE, priced from the site's OWN

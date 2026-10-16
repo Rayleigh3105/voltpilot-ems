@@ -632,6 +632,21 @@ class OptimizationInput:
     #: Messlatte liest ihn (:func:`voltpilot_optimization.stur.stur_battery`);
     #: der Plan faehrt unveraendert sein eigenes Band. ``None`` = kein Messwert.
     stur_betriebsbereich_pct: tuple[float | None, float | None] | None = None
+    #: NS-5 B (Captain-Entscheid 15.10.2026, Zwischenlösung bis NS-3 B): an
+    #: dieser Anlage bekommt jeder Ruhe-Slot vom Tagesanfang bis zum ersten
+    #: Lade-Slot des Tages die Freigabe ``charge_surplus_to_battery``, der
+    #: Morgenüberschuss geht also in den Speicher statt ins Netz
+    #: (:func:`voltpilot_optimization.slot_trim.morgen_ueberschuss_slots`). Wie
+    #: die Freigabe selbst wird es NACH dem Lösen gestempelt: die Sollwerte des
+    #: Plans bleiben unberührt. Vorgabe False = byte-identisch zu vorher, auch
+    #: für jeden Aufrufer, der seine Eingaben selbst baut.
+    morgen_ueberschuss: bool = False
+    #: Ob am Berliner Tag des ersten Slots VOR dem Horizont schon ein Slot lief,
+    #: in dem der Plan laden wollte (gelesen aus den gespeicherten Läufen, siehe
+    #: :func:`voltpilot_optimization.inputs._heute_geplant_geladen`). Dann ist
+    #: der erste Lade-Slot dieses Tages vorbei, und die Regel gilt erst wieder
+    #: ab dem nächsten Tag. Nur mit ``morgen_ueberschuss`` von Bedeutung.
+    morgen_ueberschuss_heute_geladen: bool = False
 
     def __post_init__(self) -> None:
         n = len(self.slot_starts)

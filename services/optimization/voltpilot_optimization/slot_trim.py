@@ -138,13 +138,31 @@ displaces) it is not satisfied and nothing is marked. Published as the additive
 per-slot ``charge_surplus_to_battery``, FAIL-OPEN on absence like its two
 siblings, with its own kill switch (``OPTIMIZER_SURPLUS_CHARGE_ENABLED``)
 because it is the only one of the three that RAISES a charge.
+
+DER MORGENÜBERSCHUSS IN RUHE-SLOTS (NS-5 B, Herzogau/Pilsting, 15.10.2026)
+--------------------------------------------------------------------------
+Eine ZWISCHENLÖSUNG je Anlage, bis NS-3 B (Vorrang des Speichers vor dem
+Überschuss-Verbraucher in Plan und Box) gebaut ist. Am 13.10. ließ der Plan in
+den Ruhe-Viertelstunden des Vormittags 70,6 kWh Überschuss bewusst ins Netz, um
+mittags billiger zu laden - dann nahm ein Großverbraucher des Kunden (12-kW-
+Stufen bis 37 kW, regelt selbst auf null Einspeisung) die Mittagssonne, und der
+Speicher stand um 15 Uhr bei 25 statt 87 %. An einer eingeschalteten Anlage
+bekommt deshalb jeder Ruhe-Slot vom Tagesanfang bis zum ersten Lade-Slot des
+Tages dieselbe Freigabe ``charge_surplus_to_battery``, OHNE die ökonomische
+Prüfung oben: genau diese Prüfung (und die Sperre für einen geplanten Export)
+hält den Überschuss heute im Netz. Danach gilt wieder nur die Regel oben, der
+Abendverkauf bleibt unberührt. Siehe :func:`morgen_ueberschuss_slots`.
 """
 
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
+from datetime import datetime
 
 from voltpilot_optimization.config import SLOT_TRIM_MARGIN_CT_PER_KWH
+from voltpilot_optimization.domain import ensure_utc
+from voltpilot_optimization.night_reserve import BERLIN
 
 #: Below this a planned grid-sourced charge is rounding noise, not an intent
 #: (kW). Same order as the solver's other slot deadbands.
@@ -695,3 +713,117 @@ def charge_surplus_to_battery(
         wear_ct_per_kwh_each_way=wear_ct_per_kwh_each_way,
         margin_ct_per_kwh=margin_ct_per_kwh,
     )
+
+
+# ---- NS-5 B: der Morgenüberschuss in Ruhe-Slots ------------------------------
+
+#: Der Grund im Plan-Erklärtext (``slot_flags``) eines Slots, dem erst
+#: :func:`morgen_ueberschuss_slots` die Freigabe ``charge_surplus_to_battery``
+#: gibt: „Morgenüberschuss in den Speicher (Zwischenlösung NS-5 B)“. Er steht
+#: nur dort, wo die ökonomische Regel allein geschwiegen hätte - sonst wäre die
+#: Freigabe ohnehin gesetzt, und der Grund erklärte nichts.
+SLOT_FLAG_MORGEN_UEBERSCHUSS = "morgen_ueberschuss"
+
+#: Ab dieser PV-Prognose (kW) ist ein Slot ein Sonnenslot. Zählt nur an einem
+#: Tag ohne Lade-Slot, dessen Fenster am letzten Sonnenslot endet.
+SONNE_DEADBAND_KW = 0.05
+
+
+def morgen_ueberschuss_slots(
+    *,
+    slot_starts: Sequence[datetime],
+    battery_kw: Sequence[float],
+    pv_kw: Sequence[float],
+    soc_kwh: Sequence[float],
+    soc_max_kwh: float,
+    heute_geladen: bool,
+) -> list[bool]:
+    """Je Slot: bekommt er die Freigabe ``charge_surplus_to_battery`` aus der
+    Morgenregel NS-5 B? Nur an Anlagen mit eingeschaltetem Schalter
+    (``OPTIMIZER_MORGEN_UEBERSCHUSS_ANLAGEN``); der Solver ODER-verknüpft das
+    Ergebnis mit :func:`charge_surplus_to_battery`.
+
+    **Das Fenster** je Berliner Tag beginnt um 0 Uhr und endet VOR dem ersten
+    Slot, in dem der Plan laden will (``battery_kw`` über der Ruhe-Totzone).
+    Darin bekommt jeder RUHE-Slot die Freigabe; ein Entlade-Slot bleibt, wie er
+    ist, und beendet das Fenster nicht. Ab dem ersten Lade-Slot gilt für den
+    Rest des Tages - Mittag, Nachmittag, Halten für den Abendverkauf, Abend -
+    wieder nur die ökonomische Regel. Am ersten Tag des Horizonts endet das
+    Fenster auch dann, wenn der Plan VOR dem Horizont schon laden wollte
+    (``heute_geladen``, aus den gespeicherten Läufen): sonst begänne jeder Lauf
+    nach dem Mittagsladen ein neues Morgenfenster, und eine Ruhe zwischen
+    Laden und Verkauf würde den Überschuss laden.
+
+    **Tag ohne Lade-Slot:** das Fenster endet nach dem letzten Sonnenslot des
+    Tages (PV-Prognose über :data:`SONNE_DEADBAND_KW`). Bis dahin gibt es keinen
+    späteren, billigeren Ladezeitpunkt, auf den das Warten setzen könnte; was
+    der Speicher an Überschuss aufnimmt, ginge sonst ins Netz. Nach Sonnenuntergang
+    gibt es keinen Überschuss, den die Box laden könnte, und eine Freigabe mit
+    dem Grund „Morgenüberschuss“ am Abend erklärte nichts - also endet sie dort.
+    Ein Tag ganz ohne Sonnenslot bekommt keine.
+
+    **Warum ohne die ökonomische Prüfung:** In genau diesen Slots plant der
+    Solver den Überschuss bewusst als Export (``grid_kw < 0``), weil er mittags
+    billiger laden will - das ist die Sperre „kein geplanter Verkauf“ und die
+    Prüfung „Speichern schlägt Verkaufen“ von :func:`charge_surplus_to_battery`,
+    die die Freigabe heute verhindern. Die Regel ersetzt dieses Warten am
+    Vormittag durch Laden, weil der Mittag an Herzogau nicht verlässlich ist
+    (Großverbraucher). Im Replay der Oktober-Läufe 1.-13.10. (gleich großer
+    Vergleich, mit Bestand): +0,26 EUR gegen heute, 13.10. +0,74 statt -2,00 EUR,
+    schlechtester Tag -0,37 EUR; „jede Ruhe“ statt „bis zum ersten Lade-Slot“
+    kostet -0,98 EUR und nimmt dem Abendverkauf die Energie.
+
+    **Was bleibt:** nur Ruhe-Slots (``|battery_kw|`` in der Totzone, wie
+    :func:`unplanned_load_discharge`), und nur mit Platz in der eigenen
+    SoC-Bahn des Plans (Slot-ENDE unter ``soc_max_kwh`` minus
+    :data:`SOC_HEADROOM_DEADBAND_KWH`, wie Bedingung 3 oben). Die Box hebt den
+    Sollwert 0 dann auf den GEMESSENEN Überschuss; ein Defizit deckt sie in Ruhe
+    weiter selbst. Ein nicht endlicher Sollwert beendet das Fenster des Tages
+    (unbekannt, ob dort geladen wird), ein nicht endlicher Ladestand gibt
+    diesem Slot keine Freigabe.
+
+    Zwischenlösung bis NS-3 B: beides zusammen ist im Replay 3,66 EUR
+    schlechter als NS-3 B allein, also danach je Anlage abschalten.
+    """
+    n = len(slot_starts)
+    frei = [False] * n
+    if n == 0 or not _endlich(soc_max_kwh):
+        return frei
+    tage: dict = {}
+    for t, start in enumerate(slot_starts):
+        tage.setdefault(ensure_utc(start).astimezone(BERLIN).date(), []).append(t)
+    heute = ensure_utc(slot_starts[0]).astimezone(BERLIN).date()
+    for tag, slots in tage.items():
+        if tag == heute and heute_geladen:
+            continue
+        ende = next(
+            (
+                t
+                for t in slots
+                if not _endlich(battery_kw[t])
+                or battery_kw[t] > PLANNED_IDLE_DEADBAND_KW
+            ),
+            None,
+        )
+        if ende is None:
+            sonne = [
+                t
+                for t in slots
+                if _endlich(pv_kw[t]) and pv_kw[t] > SONNE_DEADBAND_KW
+            ]
+            if not sonne:
+                continue
+            ende = sonne[-1] + 1
+        for t in slots:
+            if t >= ende:
+                break
+            frei[t] = (
+                abs(battery_kw[t]) <= PLANNED_IDLE_DEADBAND_KW
+                and _endlich(soc_kwh[t])
+                and soc_kwh[t] < soc_max_kwh - SOC_HEADROOM_DEADBAND_KWH
+            )
+    return frei
+
+
+def _endlich(value) -> bool:
+    return isinstance(value, (int, float)) and math.isfinite(value)

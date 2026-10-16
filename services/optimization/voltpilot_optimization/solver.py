@@ -994,11 +994,21 @@ def _with_explanation(
         # gesteuert, faehrt sie diesen Eigenverbrauchs-Plan starr.
         if inp.battery_observed:
             trim = follow = absorb = unforeseen = limiting = False
+        # NS-5 B (Zwischenlösung je Anlage): welche Ruhe-Slots bis zum ersten
+        # Lade-Slot des Tages die Überschuss-Freigabe bekommen. Sie IST die
+        # Freigabe charge_surplus_to_battery, also gilt deren Schalter und
+        # jede Sperre oben auch für sie. Hält eine Kundenregel den Speicher,
+        # ruht der Plan nur, weil er ihn nicht führt - kein Morgenfenster.
+        morgen = (
+            _morgen_ueberschuss(inp, plan.slots)
+            if absorb and inp.morgen_ueberschuss and not inp.battery_held
+            else [False] * len(plan.slots)
+        )
         slots = [
             replace(
                 slot,
                 slot_role=why.slot_role,
-                slot_flags=why.slot_flags,
+                slot_flags=why.slot_flags + _morgen_grund(inp, t, slot, why, morgen[t]),
                 stored_value_ct_kwh=why.stored_value_ct_kwh,
                 grid_value_ct_kwh=why.grid_value_ct_kwh,
                 peak_pressure_eur_kw=why.peak_pressure_eur_kw,
@@ -1018,7 +1028,7 @@ def _with_explanation(
                     _cover_load_from_battery(inp, t, slot, why) if follow else None
                 ),
                 unplanned_load_discharge=(
-                    _unplanned_load_discharge(inp, t, slot, why)
+                    _unplanned_load_discharge(inp, t, slot, why, morgen[t])
                     if unforeseen
                     else None
                 ),
@@ -1036,9 +1046,13 @@ def _with_explanation(
                 # one more kWh beats selling it here, so the edge may charge the
                 # MEASURED surplus the 15-min PV forecast never saw. Same lambda
                 # again; its own kill-switch because it is the only one of the
-                # three duties that raises a charge.
+                # three duties that raises a charge. NS-5 B adds the morning
+                # window of a switched-on site on top
+                # (slot_trim.morgen_ueberschuss_slots).
                 charge_surplus_to_battery=(
-                    _charge_surplus_to_battery(inp, t, slot, why) if absorb else None
+                    (morgen[t] or _charge_surplus_to_battery(inp, t, slot, why))
+                    if absorb
+                    else None
                 ),
                 # Erklaerbarkeit Stufe 1 (§4.2 C): what a RESTING slot rejected
                 # and by how much - pure presentation, never an input to a
@@ -1192,7 +1206,9 @@ def _limit_discharge_to_load(inp: OptimizationInput, t: int, slot, why) -> bool:
     )
 
 
-def _unplanned_load_discharge(inp: OptimizationInput, t: int, slot, why) -> bool:
+def _unplanned_load_discharge(
+    inp: OptimizationInput, t: int, slot, why, morgen: bool = False
+) -> bool:
     """The distinct idle-slot duty; never widens cover_load_from_battery."""
     from voltpilot_optimization.slot_trim import unplanned_load_discharge
 
@@ -1202,13 +1218,46 @@ def _unplanned_load_discharge(inp: OptimizationInput, t: int, slot, why) -> bool
         grid_kw=slot.grid_kw,
         # The opposite-direction duty is evaluated from the same slot/why
         # facts.  Never emit both grants even though the JSON schema remains
-        # additive/permissive for forward compatibility.
-        charge_surplus_to_battery=_charge_surplus_to_battery(inp, t, slot, why),
+        # additive/permissive for forward compatibility. A slot the NS-5 B
+        # morning window grants the surplus duty counts as granted here too;
+        # the box still covers a deficit there on its own (deficit_cover).
+        charge_surplus_to_battery=(
+            morgen or _charge_surplus_to_battery(inp, t, slot, why)
+        ),
         import_price_ct_kwh=inp.import_prices[t] / 10.0,
         stored_value_ct_kwh=why.stored_value_ct_kwh,
         wear_ct_per_kwh_each_way=p.wear_cost_ct_per_kwh / 2.0,
         one_way_efficiency=p.one_way_efficiency,
     )
+
+
+def _morgen_ueberschuss(inp: OptimizationInput, slots) -> list[bool]:
+    """NS-5 B: je Slot, ob die Morgenregel ihm die Überschuss-Freigabe gibt -
+    aus den EXTRAHIERTEN Slots des Plans (Sollwert, PV-Prognose, SoC-Bahn) und
+    dem gelesenen Tageszustand, siehe
+    :func:`voltpilot_optimization.slot_trim.morgen_ueberschuss_slots`."""
+    from voltpilot_optimization.slot_trim import morgen_ueberschuss_slots
+
+    return morgen_ueberschuss_slots(
+        slot_starts=[s.start for s in slots],
+        battery_kw=[s.battery_kw for s in slots],
+        pv_kw=[s.pv_kw for s in slots],
+        soc_kwh=[s.soc_kwh for s in slots],
+        soc_max_kwh=inp.battery.soc_max_kwh,
+        heute_geladen=inp.morgen_ueberschuss_heute_geladen,
+    )
+
+
+def _morgen_grund(
+    inp: OptimizationInput, t: int, slot, why, morgen: bool
+) -> tuple[str, ...]:
+    """Der Grund „Morgenüberschuss in den Speicher (Zwischenlösung NS-5 B)“ für
+    den Plan-Erklärtext - nur, wo erst die Morgenregel die Freigabe gibt."""
+    from voltpilot_optimization.slot_trim import SLOT_FLAG_MORGEN_UEBERSCHUSS
+
+    if not morgen or _charge_surplus_to_battery(inp, t, slot, why):
+        return ()
+    return (SLOT_FLAG_MORGEN_UEBERSCHUSS,)
 
 
 def _charge_surplus_to_battery(inp: OptimizationInput, t: int, slot, why) -> bool:
