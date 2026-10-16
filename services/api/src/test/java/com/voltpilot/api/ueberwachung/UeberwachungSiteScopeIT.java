@@ -228,6 +228,18 @@ class UeberwachungSiteScopeIT {
                 String betreff, String inhalt, java.time.Instant naechsterVersuch, String schwere) {
             empfaenger.add(empfaengerSub + ":" + anlass);
         }
+
+        @Override
+        public void webhook(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr,
+                String betreff, String inhalt, java.time.Instant naechsterVersuch, String schwere) {
+            empfaenger.add(empfaengerSub + ":" + anlass);
+        }
+
+        @Override
+        public void telegram(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr,
+                String betreff, String inhalt, java.time.Instant naechsterVersuch, String schwere) {
+            empfaenger.add(empfaengerSub + ":" + anlass);
+        }
     }
 
     @Test

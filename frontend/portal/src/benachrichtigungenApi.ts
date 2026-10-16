@@ -26,6 +26,31 @@ export interface PushAbo {
   erstelltAm: string | null;
 }
 
+/** Ein Webhook-Ziel (Alerting Scheibe 6, §7 Scheibe 6) - ein Teams-Workflow oder Slack-Incoming-Webhook. */
+export interface WebhookZiel {
+  id: string;
+  url: string;
+  name: string;
+  aktiv: boolean;
+  abSchwere: Schwere;
+  erstelltAm: string | null;
+}
+
+/** Das Geheimnis wird NUR in dieser Antwort gezeigt - danach nie wieder lesbar. */
+export interface NeuesWebhookZiel {
+  id: string;
+  geheimnis: string;
+}
+
+/** Eine Telegram-Verbindung (Alerting Scheibe 6, §7 Scheibe 6) - offen (nur Token) oder bestätigt. */
+export interface TelegramZiel {
+  id: string;
+  bestaetigt: boolean;
+  aktiv: boolean;
+  abSchwere: Schwere;
+  erstelltAm: string | null;
+}
+
 /** Die eigene Ruhezeit (§6.4) - `regeln` ist das rohe JSON-Fenster (siehe `ruhezeit.ts`). */
 export interface RuhezeitZustand {
   regeln: string;
@@ -69,6 +94,30 @@ export const benachrichtigungenApi = {
     }),
   pushEntfernen: (id: string) =>
     request<void>(`/api/v1/zustellwege/push/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  // ----------------------------------------------------------------- Webhook (Scheibe 6, §7 Scheibe 6)
+  webhookZiele: () => request<WebhookZiel[]>('/api/v1/zustellwege/webhook'),
+  webhookZielAnlegen: (url: string, name: string) =>
+    request<NeuesWebhookZiel>('/api/v1/zustellwege/webhook', { method: 'POST', body: JSON.stringify({ url, name }) }),
+  webhookZielEinstellungenSetzen: (id: string, aktiv: boolean, abSchwere: Schwere) =>
+    request<void>(`/api/v1/zustellwege/webhook/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ aktiv, abSchwere }),
+    }),
+  webhookZielEntfernen: (id: string) =>
+    request<void>(`/api/v1/zustellwege/webhook/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  // ----------------------------------------------------------------- Telegram (Scheibe 6, §7 Scheibe 6)
+  telegramZiele: () => request<TelegramZiel[]>('/api/v1/zustellwege/telegram'),
+  telegramVerbinden: () =>
+    request<{ link: string }>('/api/v1/zustellwege/telegram/verbinden', { method: 'POST' }).then((r) => r.link),
+  telegramZielEinstellungenSetzen: (id: string, aktiv: boolean, abSchwere: Schwere) =>
+    request<void>(`/api/v1/zustellwege/telegram/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ aktiv, abSchwere }),
+    }),
+  telegramZielEntfernen: (id: string) =>
+    request<void>(`/api/v1/zustellwege/telegram/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   // ----------------------------------------------------------------- Ruhezeit (Scheibe 3, §6.4)
   ruhezeit: () => request<RuhezeitZustand>('/api/v1/ruhezeit'),

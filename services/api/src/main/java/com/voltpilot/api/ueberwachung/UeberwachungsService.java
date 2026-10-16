@@ -75,6 +75,9 @@ public class UeberwachungsService {
     private final PriceRepository preise;
     private final PeakShavingRepository peakShaving;
     private BenachrichtigungAusgang ausgang = BenachrichtigungAusgang.STUMM;
+    /** Alerting Scheibe 6, Entscheid 11B: ohne Spring (reine Tests) bleibt es {@code null} - keine externen
+     * Empfänger werden benachrichtigt. */
+    private ExterneEmpfaengerService externeEmpfaenger;
 
     public UeberwachungsService(UeberwachungRepository repo, WerteKatalog katalog,
             ZustandWerteLeser zustandLeser, EreignisWerteLeser ereignisLeser,
@@ -116,6 +119,11 @@ public class UeberwachungsService {
     @Autowired(required = false)
     public void setAusgang(BenachrichtigungAusgang ausgang) {
         this.ausgang = ausgang == null ? BenachrichtigungAusgang.STUMM : ausgang;
+    }
+
+    @Autowired(required = false)
+    public void setExterneEmpfaenger(ExterneEmpfaengerService externeEmpfaenger) {
+        this.externeEmpfaenger = externeEmpfaenger;
     }
 
     public Lauf lauf(Instant jetzt) {
@@ -520,6 +528,13 @@ public class UeberwachungsService {
             ausgang.email("alarm", alarmId, sub, anlass, 0, betreff, inhalt, naechsterVersuch, buendelSchluessel);
             ausgang.webpush("alarm", alarmId, sub, anlass, 0, betreff, inhalt, naechsterVersuch, regel.schwere(),
                     buendelSchluessel);
+            ausgang.webhook("alarm", alarmId, sub, anlass, 0, betreff, inhalt, naechsterVersuch, regel.schwere(),
+                    buendelSchluessel);
+            ausgang.telegram("alarm", alarmId, sub, anlass, 0, betreff, inhalt, naechsterVersuch, regel.schwere(),
+                    buendelSchluessel);
+        }
+        if (externeEmpfaenger != null) {
+            externeEmpfaenger.benachrichtigen(regel.id(), alarmId, regel.name(), regel.schwere(), jetzt);
         }
     }
 

@@ -6,6 +6,8 @@ import com.icegreen.greenmail.util.GreenMail;
 import com.icegreen.greenmail.util.ServerSetupTest;
 import com.voltpilot.api.tenant.TenantAwareDataSource;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.versand.telegram.TelegramAdapter;
+import com.voltpilot.api.versand.webhook.WebhookVersandAdapter;
 import com.voltpilot.api.versand.webpush.WebPushAdapter;
 import java.time.Instant;
 import java.util.Base64;
@@ -88,7 +90,10 @@ class ZustellungGreenMailIT {
         privatPlatzhalter[31] = 1;
         WebPushAdapter push = new WebPushAdapter(Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[65]),
                 Base64.getUrlEncoder().withoutPadding().encodeToString(privatPlatzhalter), "mailto:test@voltpilot.de");
-        zusteller = new Zusteller(ausgang, zustellwege, adapter, push, appJdbc);
+        // Diese Probe prüft nur den E-Mail-Weg - Webhook und Telegram bekommen nie etwas zu tun.
+        WebhookVersandAdapter webhook = new WebhookVersandAdapter();
+        TelegramAdapter telegram = (chatId, text) -> { };
+        zusteller = new Zusteller(ausgang, zustellwege, adapter, push, webhook, telegram, appJdbc);
 
         tenant = root.queryForObject("INSERT INTO tenant (name) VALUES ('GreenMail-Test') RETURNING id", UUID.class);
     }

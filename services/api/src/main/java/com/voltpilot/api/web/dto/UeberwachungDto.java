@@ -37,7 +37,17 @@ public record UeberwachungDto(String id, String name, String wertart, String sch
     /**
      * Eine eigene Überwachung anlegen (§6.8). {@code bedingung} bleibt roh (ihre Form hängt von der
      * Bedingungsart ab, §6.4); ohne {@code empfaenger} gilt "nur ich selbst" (die anlegende Person).
+     * {@code herkunft} ist optional und bleibt {@code null}/"eigen" für die normale Fläche "Vom Wert
+     * zur fertigen Regel"; "steuerung" (Alerting Scheibe 6, Entscheid 10A: "In Überwachung
+     * umwandeln") ist der einzige weitere Wert, den diese Route vom Client annimmt - "ab_werk" und
+     * "vorschlag" bleiben serverseitige Vorgaben, nie über diese Route setzbar
+     * ({@code UeberwachungAnlegenService#anlegen}).
      */
     public record Anlegen(String wertart, BezugEintrag bezug, JsonNode bedingung, String schwere,
-            List<EmpfaengerEintrag> empfaenger, String name) {}
+            List<EmpfaengerEintrag> empfaenger, String name, String herkunft) {
+        public Anlegen(String wertart, BezugEintrag bezug, JsonNode bedingung, String schwere,
+                List<EmpfaengerEintrag> empfaenger, String name) {
+            this(wertart, bezug, bedingung, schwere, empfaenger, name, null);
+        }
+    }
 }

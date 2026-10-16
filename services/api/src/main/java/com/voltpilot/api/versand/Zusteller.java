@@ -1,6 +1,10 @@
 package com.voltpilot.api.versand;
 
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.versand.telegram.TelegramAdapter;
+import com.voltpilot.api.versand.telegram.TelegramException;
+import com.voltpilot.api.versand.webhook.WebhookException;
+import com.voltpilot.api.versand.webhook.WebhookVersandAdapter;
 import com.voltpilot.api.versand.webpush.WebPushAdapter;
 import com.voltpilot.api.versand.webpush.WebPushException;
 import java.time.Duration;
@@ -46,6 +50,8 @@ public class Zusteller {
     private final ZustellwegRepository zustellwege;
     private final EmailVersandAdapter email;
     private final WebPushAdapter push;
+    private final WebhookVersandAdapter webhook;
+    private final TelegramAdapter telegram;
     private final JdbcTemplate jdbc;
 
     /** Alerting Scheibe 1: die Sicht-Prüfung je Empfänger (§6.6); ohne Spring greift {@link UeberwachungSichtPruefung#IMMER_SICHTBAR}. */
@@ -64,11 +70,13 @@ public class Zusteller {
     }
 
     public Zusteller(VersandRepository ausgang, ZustellwegRepository zustellwege, EmailVersandAdapter email,
-            WebPushAdapter push, JdbcTemplate jdbc) {
+            WebPushAdapter push, WebhookVersandAdapter webhook, TelegramAdapter telegram, JdbcTemplate jdbc) {
         this.ausgang = ausgang;
         this.zustellwege = zustellwege;
         this.email = email;
         this.push = push;
+        this.webhook = webhook;
+        this.telegram = telegram;
         this.jdbc = jdbc;
     }
 
@@ -128,7 +136,18 @@ public class Zusteller {
         if (vorpruefung(zeile, jetzt) != Vorpruefung.SENDEN) {
             return false;
         }
-        return "webpush".equals(zeile.weg()) ? sendePush(zeile, jetzt) : sendeEmail(zeile, jetzt);
+        return sendeUeberWeg(zeile, jetzt);
+    }
+
+    /** Dispatch über den Weg (Alerting Scheibe 0/3/6) - jeder Weg prüft seine Sicht/Ruhezeit vorher,
+     * siehe {@link #vorpruefung}. */
+    private boolean sendeUeberWeg(VersandRepository.Zeile zeile, Instant jetzt) {
+        return switch (zeile.weg()) {
+            case "webpush" -> sendePush(zeile, jetzt);
+            case "webhook" -> sendeWebhook(zeile, jetzt);
+            case "telegram" -> sendeTelegram(zeile, jetzt);
+            default -> sendeEmail(zeile, jetzt);
+        };
     }
 
     /**
@@ -150,8 +169,7 @@ public class Zusteller {
             return 0;
         }
         if (sendbar.size() == 1) {
-            VersandRepository.Zeile einzige = sendbar.get(0);
-            boolean ok = "webpush".equals(einzige.weg()) ? sendePush(einzige, jetzt) : sendeEmail(einzige, jetzt);
+            boolean ok = sendeUeberWeg(sendbar.get(0), jetzt);
             return ok ? 1 : 0;
         }
         VersandRepository.Zeile erste = sendbar.get(0);
@@ -163,7 +181,7 @@ public class Zusteller {
                 erste.quelle(), erste.quelleId(), erste.empfaengerSub(), erste.weg(), erste.anlass(), erste.nr(),
                 erste.ziel(), sendbar.size() + " Meldungen: " + erste.betreff(), inhalt.toString(), erste.versuche(),
                 erste.schwere(), erste.buendelSchluessel());
-        boolean ok = "webpush".equals(gebuendelt.weg()) ? sendePush(gebuendelt, jetzt) : sendeEmail(gebuendelt, jetzt);
+        boolean ok = sendeUeberWeg(gebuendelt, jetzt);
         if (!ok) {
             return 0;
         }
@@ -243,6 +261,92 @@ public class Zusteller {
     private static String pushPayload(VersandRepository.Zeile zeile) {
         return "{\"titel\":" + jsonText(zeile.betreff()) + ",\"text\":" + jsonText(zeile.inhalt())
                 + ",\"url\":\"#/meldungen\"}";
+    }
+
+    /**
+     * Webhook (Alerting Scheibe 6, §7 Scheibe 6): EINE Zeile fächert sich auf ALLE aktiven Ziele der
+     * Person auf, deren eigene Zustell-Vorgabe diese Stufe zulässt - derselbe Aufbau wie
+     * {@link #sendePush}. Ein unsicheres oder dauerhaft totes Ziel ({@link WebhookException#abgelaufen()})
+     * räumt nur dieses Ziel auf und hält den Gesamt-Erfolg der Zeile nicht auf.
+     */
+    private boolean sendeWebhook(VersandRepository.Zeile zeile, Instant jetzt) {
+        List<ZustellwegRepository.WebhookZiel> ziele = zustellwege.webhookZieleFuerVersand(zeile.tenantId(),
+                zeile.empfaengerSub(), zeile.schwere() == null ? "dringend" : zeile.schwere());
+        if (ziele.isEmpty()) {
+            ausgang.unterdrueckt(zeile.id(), "kein_weg");
+            return false;
+        }
+        String payload = webhookPayload(zeile);
+        boolean mindestensEinErfolg = false;
+        String letzterFehler = null;
+        for (ZustellwegRepository.WebhookZiel ziel : ziele) {
+            try {
+                webhook.senden(ziel.url(), ziel.geheimnis(), payload);
+                zustellwege.webhookZielErfolgVermerken(ziel.id(), jetzt);
+                mindestensEinErfolg = true;
+            } catch (WebhookException e) {
+                if (e.abgelaufen()) {
+                    zustellwege.webhookZielAlsAbgelaufenMarkieren(ziel.id(), jetzt);
+                } else {
+                    log.warn("Versand: Webhook an Meldung {} fehlgeschlagen ({}): {}", zeile.id(), e.status(),
+                            e.getMessage());
+                }
+                letzterFehler = e.getMessage();
+            }
+        }
+        if (!mindestensEinErfolg) {
+            ausgang.fehlgeschlagen(zeile.id(), letzterFehler == null ? "keine Ziele erreichbar" : letzterFehler,
+                    jetzt.plus(WARTEZEIT_NACH_FEHLER), HOECHSTVERSUCHE);
+            return false;
+        }
+        ausgang.gesendet(zeile.id(), jetzt);
+        return true;
+    }
+
+    /** Generisch, Slack-kompatibel (liest {@code text} direkt) und für einen Teams-Workflow lesbar. */
+    private static String webhookPayload(VersandRepository.Zeile zeile) {
+        return "{\"text\":" + jsonText(zeile.betreff() + "\n" + zeile.inhalt()) + ",\"titel\":"
+                + jsonText(zeile.betreff()) + ",\"inhalt\":" + jsonText(zeile.inhalt()) + "}";
+    }
+
+    /**
+     * Telegram (Alerting Scheibe 6, §7 Scheibe 6): EINE Zeile fächert sich auf ALLE aktiven,
+     * bestätigten Verbindungen der Person auf - derselbe Aufbau wie {@link #sendePush}. Blockiert die
+     * Person den Bot oder existiert der Chat nicht mehr ({@link TelegramException#abgelaufen()}),
+     * räumt das nur diese Verbindung auf.
+     */
+    private boolean sendeTelegram(VersandRepository.Zeile zeile, Instant jetzt) {
+        List<ZustellwegRepository.TelegramZiel> ziele = zustellwege.telegramZieleFuerVersand(zeile.tenantId(),
+                zeile.empfaengerSub(), zeile.schwere() == null ? "dringend" : zeile.schwere());
+        if (ziele.isEmpty()) {
+            ausgang.unterdrueckt(zeile.id(), "kein_weg");
+            return false;
+        }
+        String text = zeile.betreff() + "\n\n" + zeile.inhalt();
+        boolean mindestensEinErfolg = false;
+        String letzterFehler = null;
+        for (ZustellwegRepository.TelegramZiel ziel : ziele) {
+            try {
+                telegram.senden(ziel.chatId(), text);
+                zustellwege.telegramZielErfolgVermerken(ziel.id(), jetzt);
+                mindestensEinErfolg = true;
+            } catch (TelegramException e) {
+                if (e.abgelaufen()) {
+                    zustellwege.telegramZielAlsAbgelaufenMarkieren(ziel.id(), jetzt);
+                } else {
+                    log.warn("Versand: Telegram an Meldung {} fehlgeschlagen ({}): {}", zeile.id(), e.status(),
+                            e.getMessage());
+                }
+                letzterFehler = e.getMessage();
+            }
+        }
+        if (!mindestensEinErfolg) {
+            ausgang.fehlgeschlagen(zeile.id(), letzterFehler == null ? "keine Verbindung erreichbar" : letzterFehler,
+                    jetzt.plus(WARTEZEIT_NACH_FEHLER), HOECHSTVERSUCHE);
+            return false;
+        }
+        ausgang.gesendet(zeile.id(), jetzt);
+        return true;
     }
 
     private static String jsonText(String text) {

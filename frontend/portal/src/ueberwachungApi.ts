@@ -76,6 +76,8 @@ export interface UeberwachungAnlegenEingabe {
   schwere: Schwere;
   empfaenger?: UeberwachungEmpfaengerEingabe[];
   name?: string;
+  /** Vorgabe `'eigen'`; `'steuerung'` nur für "In Überwachung umwandeln" (Alerting Scheibe 6, Entscheid 10A). */
+  herkunft?: 'eigen' | 'steuerung';
 }
 
 /** Derselbe Entwurf wie `UeberwachungAnlegenEingabe`, aber ohne `empfaenger`/`name` (§6.8 Probelauf). */

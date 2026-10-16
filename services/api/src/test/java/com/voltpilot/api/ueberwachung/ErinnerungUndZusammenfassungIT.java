@@ -127,6 +127,18 @@ class ErinnerungUndZusammenfassungIT {
                 String betreff, String inhalt, Instant naechsterVersuch, String schwere) {
             anlaesse.add(empfaengerSub + ":" + anlass + ":" + nr + ":push");
         }
+
+        @Override
+        public void webhook(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr,
+                String betreff, String inhalt, Instant naechsterVersuch, String schwere) {
+            anlaesse.add(empfaengerSub + ":" + anlass + ":" + nr + ":webhook");
+        }
+
+        @Override
+        public void telegram(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr,
+                String betreff, String inhalt, Instant naechsterVersuch, String schwere) {
+            anlaesse.add(empfaengerSub + ":" + anlass + ":" + nr + ":telegram");
+        }
     }
 
     // =========================================================== Erinnern (§6.5)

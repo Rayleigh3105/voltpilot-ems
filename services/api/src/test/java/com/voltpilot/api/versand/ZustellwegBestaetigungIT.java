@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.voltpilot.api.tenant.TenantAwareDataSource;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.versand.telegram.TelegramAdapter;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
@@ -134,7 +135,8 @@ class ZustellwegBestaetigungIT {
     @Test
     void derZustellwegServiceReihtDieBestaetigungsMailMitDemAngeforderenZielEin() {
         TenantContext.set(tenant);
-        ZustellwegService dienst = new ZustellwegService(zustellwege, ausgang, "http://localhost:5173");
+        TelegramAdapter telegram = (chatId, text) -> { };
+        ZustellwegService dienst = new ZustellwegService(zustellwege, ausgang, telegram, "http://localhost:5173", "");
         dienst.uhrStellen(Clock.fixed(Instant.parse("2026-10-15T12:00:00Z"), ZoneOffset.UTC));
 
         dienst.anfordern("sub-moritz", "moritz@example.test");

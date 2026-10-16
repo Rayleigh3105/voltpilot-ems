@@ -1,5 +1,7 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.ueberwachung.ExterneEmpfaengerRepository;
+import com.voltpilot.api.ueberwachung.ExterneEmpfaengerService;
 import com.voltpilot.api.ueberwachung.ProbelaufService;
 import com.voltpilot.api.ueberwachung.UeberwachungAnlegenService;
 import com.voltpilot.api.ueberwachung.UeberwachungRepository;
@@ -14,7 +16,9 @@ import java.net.URI;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -43,13 +47,16 @@ public class MeldungenController {
     private final UeberwachungsService dienst;
     private final UeberwachungAnlegenService anlegen;
     private final ProbelaufService probelauf;
+    private final ExterneEmpfaengerService externeEmpfaenger;
 
     public MeldungenController(UeberwachungRepository repo, UeberwachungsService dienst,
-            UeberwachungAnlegenService anlegen, ProbelaufService probelauf) {
+            UeberwachungAnlegenService anlegen, ProbelaufService probelauf,
+            ExterneEmpfaengerService externeEmpfaenger) {
         this.repo = repo;
         this.dienst = dienst;
         this.anlegen = anlegen;
         this.probelauf = probelauf;
+        this.externeEmpfaenger = externeEmpfaenger;
     }
 
     @GetMapping
@@ -116,6 +123,70 @@ public class MeldungenController {
                 .orElseThrow(() -> new ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN));
         UeberwachungDto neu = anlegen.anlegen(anfrage, aufrufer, Instant.now());
         return ResponseEntity.created(URI.create("/api/v1/meldungen/regeln/" + neu.id())).body(neu);
+    }
+
+    // --------------------------------------------------------------------- Externe Empfänger (Alerting Scheibe 6, Entscheid 11B)
+
+    public record ExterneEmpfaengerAnfrage(String email) {}
+
+    public record ExterneEmpfaengerDto(String id, String email, boolean bestaetigt, boolean aktiv,
+            java.time.Instant erstelltAm) {
+        static ExterneEmpfaengerDto aus(ExterneEmpfaengerRepository.ExternerEmpfaenger e) {
+            return new ExterneEmpfaengerDto(e.id().toString(), e.email(), e.bestaetigt(), e.aktiv(), e.erstelltAm());
+        }
+    }
+
+    @GetMapping("/regeln/{id}/externe-empfaenger")
+    public List<ExterneEmpfaengerDto> externeEmpfaenger(@PathVariable UUID id) {
+        var aufrufer = aufruferOderVerboten();
+        return externeEmpfaenger.eigene(id, aufrufer, Instant.now()).stream().map(ExterneEmpfaengerDto::aus).toList();
+    }
+
+    /**
+     * Entscheid 11B: freie externe E-Mail-Empfänger NUR mit Bestätigung - der Aufruf reiht nur die
+     * Anfrage ein. Recht: IMMER {@code ueberwachung.verwalten} (ein externer Empfänger ist nie "nur
+     * ich selbst") - die genaue Prüfung steht in {@link ExterneEmpfaengerService}
+     * ({@code RechtRoutenArchitekturTest.DIENST}).
+     */
+    @PostMapping("/regeln/{id}/externe-empfaenger")
+    @Recht(value = "ueberwachung.verwalten", ziel = RechtZiel.DIENST)
+    public ResponseEntity<ExterneEmpfaengerDto> externenEmpfaengerHinzufuegen(@PathVariable UUID id,
+            @RequestBody ExterneEmpfaengerAnfrage anfrage) {
+        if (anfrage.email() == null || anfrage.email().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "email ist ein Pflichtfeld.");
+        }
+        var aufrufer = aufruferOderVerboten();
+        var neu = externeEmpfaenger.hinzufuegen(id, anfrage.email(), aufrufer, Instant.now());
+        return ResponseEntity.status(HttpStatus.CREATED).body(ExterneEmpfaengerDto.aus(neu));
+    }
+
+    @DeleteMapping("/regeln/{id}/externe-empfaenger/{empfaengerId}")
+    @Recht(value = "ueberwachung.verwalten", ziel = RechtZiel.DIENST)
+    public ResponseEntity<Void> externenEmpfaengerEntfernen(@PathVariable UUID id, @PathVariable UUID empfaengerId) {
+        var aufrufer = aufruferOderVerboten();
+        boolean geaendert = externeEmpfaenger.entfernen(id, empfaengerId, aufrufer, Instant.now());
+        if (!geaendert) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Öffentlich, ohne Anmeldung - der Link aus der Bestätigungs-Mail (derselbe Vertrag wie {@code ZustellwegController#bestaetigen}). */
+    @GetMapping("/externe-empfaenger/bestaetigen")
+    public ResponseEntity<Void> externenEmpfaengerBestaetigen(@RequestParam String token) {
+        return externeEmpfaenger.bestaetigen(token) ? ResponseEntity.ok().build() : ResponseEntity.status(410).build();
+    }
+
+    /** Öffentlich, ohne Anmeldung - der Abbestellen-Link in jeder externen Mail (Entscheid 11B), immer idempotent. */
+    @GetMapping("/externe-empfaenger/abbestellen")
+    public ResponseEntity<Void> externenEmpfaengerAbbestellen(@RequestParam String token) {
+        externeEmpfaenger.abbestellen(token);
+        return ResponseEntity.ok().build();
+    }
+
+    private static com.voltpilot.api.uems.RechteAbleitung.Benutzer aufruferOderVerboten() {
+        return RechtPruefung.aufrufer()
+                .orElseThrow(() -> new ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN));
     }
 
     /** "Gesehen" (Entscheid 3B): freiwillig, speist nur den Verlauf - keine Quittierungspflicht. */

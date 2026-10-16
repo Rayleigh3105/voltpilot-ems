@@ -20,7 +20,7 @@
  * Anlage ohne Teilnahme hat keine Plakette (SZ-1 A, Messen-Ansicht).
  */
 import { liste } from './liste';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError, type Site, type SzeneKey } from '../api';
 import { Recht } from '../components/Recht';
 import { SteuernAssistent } from '../components/SteuernAssistent';
@@ -34,9 +34,19 @@ import { customerFlowApi } from '../flows/flowsApi';
 import { buildGuidedFlow } from '../flows/guidedBuilder';
 import { replaceCurrentNavigation } from '../navigationBlocker';
 import { LIST_POLL_MS } from '../pollCadence';
+import { useIsPhone } from '../useIsPhone';
 import { useRollen } from '../rollen';
 import type { SteuerartWunsch } from '../steuerartDialog';
 import { Blatt } from './Blatt';
+
+/**
+ * Eigener Chunk statt eines statischen Imports (dasselbe Argument wie bei `AufbauTabelle.tsx`):
+ * das Blatt „Überwachen" öffnet höchstens einmal, beim „In Überwachung umwandeln" einer
+ * Benachrichtigungs-Regel (Alerting Scheibe 6, Entscheid 10A).
+ */
+const UeberwachenBlatt = lazy(() =>
+  import('../components/UeberwachenBlatt').then((m) => ({ default: m.UeberwachenBlatt })),
+);
 import {
   AnbindenBlatt,
   GeraetBlatt,
@@ -89,8 +99,10 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
   useEffect(() => setNow(new Date()), [daten.live, daten.status]);
   const bild = useMemo(() => seitenBild(daten, now, site.id), [daten, now, site.id]);
   const funktion = bild.funktion;
+  const isPhone = useIsPhone();
   const [einrichten, setEinrichten] = useState(false);
   const [blatt, setBlatt] = useState<BlattZustand | null>(null);
+  const [umwandelnKarte, setUmwandelnKarte] = useState<RegelKarte | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<{ text: string; warn?: boolean } | null>(null);
   const [reoStart, setReoStart] = useState<string | null>(null);
@@ -546,6 +558,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
         onSchalter={regelSchalter}
         onBefehle={() => onOpenSub('befehle')}
         onSzeneBeenden={() => void szeneAus()}
+        onUmwandeln={setUmwandelnKarte}
       />
     );
   } else {
@@ -716,6 +729,27 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
           <Ic n={toast.warn ? 'info' : 'check'} s={18} />
           <span>{toast.text}</span>
         </div>
+      )}
+      {umwandelnKarte?.notifyUmwandlung && (
+        <Suspense fallback={null}>
+          <UeberwachenBlatt
+            offen
+            isPhone={isPhone}
+            onClose={() => setUmwandelnKarte(null)}
+            wertart="geraet.messwert"
+            bezug={{ komponente: umwandelnKarte.notifyUmwandlung.entityId, kanal: umwandelnKarte.notifyUmwandlung.channel }}
+            aktuellerWert={null}
+            titelZusatz={umwandelnKarte.name}
+            herkunft="steuerung"
+            onUeberwacht={() => {
+              const { flowId, name } = umwandelnKarte;
+              setUmwandelnKarte(null);
+              void regelLoeschen(flowId).then((ok) => {
+                if (ok) meldung(`„${name}“ ist jetzt eine Überwachung.`);
+              });
+            }}
+          />
+        </Suspense>
       )}
     </div>
   );

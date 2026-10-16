@@ -280,6 +280,17 @@ voltpilot:
     vapid-public-key: ${VOLTPILOT_PUSH_VAPID_PUBLIC_KEY:}
     vapid-private-key: ${VOLTPILOT_PUSH_VAPID_PRIVATE_KEY:}
     vapid-subject: ${VOLTPILOT_PUSH_VAPID_SUBJECT:mailto:meldungen@voltpilot.de}
+  # Alerting Scheibe 6 (Konzept vp-alerting-konzept-m1 §7 Scheibe 6): Telegram als fünfter
+  # Zustellweg. `bot-token` bleibt LEER - niemals einen echten Token hier committen; er kommt wie
+  # das SMTP-Passwort aus der sops-Geheimnisdatei des GitOps-Repos, lokal/im Testlauf aus
+  # Umgebungsvariablen. `bot-username` baut den Start-Link (`t.me/<bot-username>?start=<token>`).
+  # `webhook-secret` ist Telegrams eigener `secret_token` für den Update-Webhook (ebenfalls ein
+  # Geheimnis, nie ins Repo); leer lässt lokal/im Testlauf jeden Aufruf durch (die eigentliche
+  # Sicherung bleibt der 256-Bit-Verbindungs-Token selbst).
+  telegram:
+    bot-token: ${VOLTPILOT_TELEGRAM_BOT_TOKEN:}
+    bot-username: ${VOLTPILOT_TELEGRAM_BOT_USERNAME:}
+    webhook-secret: ${VOLTPILOT_TELEGRAM_WEBHOOK_SECRET:}
   ocpp:
     mqtt-listener-enabled: ${VOLTPILOT_OCPP_MQTT_LISTENER_ENABLED:false}
     # Stable per API deployment: clean-session=false lets EMQX queue QoS1

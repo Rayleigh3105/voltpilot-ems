@@ -138,6 +138,103 @@ public class ZustellwegController {
         return ResponseEntity.noContent().build();
     }
 
+    // --------------------------------------------------------------------- Webhook (Alerting Scheibe 6, §7)
+
+    public record WebhookAnfrage(String url, String name) {}
+
+    public record WebhookZielDto(String id, String url, String name, boolean aktiv, String abSchwere,
+            java.time.Instant erstelltAm) {
+        static WebhookZielDto aus(ZustellwegRepository.WebhookZielEigen z) {
+            return new WebhookZielDto(z.id().toString(), z.url(), z.name(), z.aktiv(), z.abSchwere(), z.erstelltAm());
+        }
+    }
+
+    /** Wie {@link WebhookZielDto}, aber einmalig MIT Geheimnis - nur die Antwort auf das Anlegen. */
+    public record NeuesWebhookZielDto(String id, String geheimnis) {}
+
+    public record ZielEinstellungen(boolean aktiv, String abSchwere) {}
+
+    @GetMapping("/webhook")
+    public List<WebhookZielDto> webhookZiele(Authentication auth) {
+        return zustellwege.webhookZieleEigene(sub(auth)).stream().map(WebhookZielDto::aus).toList();
+    }
+
+    @PostMapping("/webhook")
+    public ResponseEntity<NeuesWebhookZielDto> webhookZielAnlegen(@RequestBody WebhookAnfrage anfrage,
+            Authentication auth) {
+        if (istLeer(anfrage.url())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "url ist ein Pflichtfeld.");
+        }
+        var neu = zustellwege.webhookZielAnlegen(sub(auth), anfrage.url(), anfrage.name());
+        return ResponseEntity.status(HttpStatus.CREATED).body(new NeuesWebhookZielDto(neu.id().toString(), neu.geheimnis()));
+    }
+
+    @PutMapping("/webhook/{id}")
+    public ResponseEntity<Void> webhookZielEinstellungen(@PathVariable UUID id,
+            @RequestBody ZielEinstellungen einstellungen, Authentication auth) {
+        pruefeZielEinstellungen(einstellungen);
+        boolean geaendert = zustellwege.webhookZielEinstellungenSetzen(id, sub(auth), einstellungen.aktiv(),
+                einstellungen.abSchwere());
+        if (!geaendert) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        return ResponseEntity.noContent().build();
+    }
+
+    @DeleteMapping("/webhook/{id}")
+    public ResponseEntity<Void> webhookZielEntfernen(@PathVariable UUID id, Authentication auth) {
+        boolean geaendert = zustellwege.webhookZielEntfernen(id, sub(auth));
+        if (!geaendert) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        return ResponseEntity.noContent().build();
+    }
+
+    // --------------------------------------------------------------------- Telegram (Alerting Scheibe 6, §7)
+
+    public record TelegramZielDto(String id, boolean bestaetigt, boolean aktiv, String abSchwere,
+            java.time.Instant erstelltAm) {
+        static TelegramZielDto aus(ZustellwegRepository.TelegramZielEigen z) {
+            return new TelegramZielDto(z.id().toString(), z.bestaetigt(), z.aktiv(), z.abSchwere(), z.erstelltAm());
+        }
+    }
+
+    public record TelegramVerbindungsLinkDto(String link) {}
+
+    @GetMapping("/telegram")
+    public List<TelegramZielDto> telegramZiele(Authentication auth) {
+        return zustellwege.telegramZieleEigene(sub(auth)).stream().map(TelegramZielDto::aus).toList();
+    }
+
+    /** "Telegram verbinden": erzeugt den Start-Link, den die Person in Telegram öffnet. */
+    @PostMapping("/telegram/verbinden")
+    public TelegramVerbindungsLinkDto telegramVerbinden(Authentication auth) {
+        var link = zustellwege.telegramVerbindungAnfordern(sub(auth));
+        return new TelegramVerbindungsLinkDto(link.link());
+    }
+
+    @PutMapping("/telegram/{id}")
+    public ResponseEntity<Void> telegramZielEinstellungen(@PathVariable UUID id,
+            @RequestBody ZielEinstellungen einstellungen, Authentication auth) {
+        pruefeZielEinstellungen(einstellungen);
+        boolean geaendert = zustellwege.telegramZielEinstellungenSetzen(id, sub(auth), einstellungen.aktiv(),
+                einstellungen.abSchwere());
+        if (!geaendert) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        return ResponseEntity.noContent().build();
+    }
+
+    /** "Trennen" (§7 Scheibe 6 Punkt 2). */
+    @DeleteMapping("/telegram/{id}")
+    public ResponseEntity<Void> telegramZielEntfernen(@PathVariable UUID id, Authentication auth) {
+        boolean geaendert = zustellwege.telegramZielEntfernen(id, sub(auth));
+        if (!geaendert) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        return ResponseEntity.noContent().build();
+    }
+
     private static String sub(Authentication auth) {
         return auth != null && auth.getPrincipal() instanceof Jwt jwt ? jwt.getSubject() : auth.getName();
     }
@@ -148,6 +245,13 @@ public class ZustellwegController {
                 || istLeer(anfrage.geraet())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "endpoint, p256dh, auth und geraet sind Pflichtfelder.");
+        }
+    }
+
+    /** Die Zustell-Vorgabe einer Webhook-/Telegram-Einstellung (Alerting Scheibe 6, §7 Scheibe 6) - wie {@link #pruefePushAnfrage}. */
+    private static void pruefeZielEinstellungen(ZielEinstellungen einstellungen) {
+        if (istLeer(einstellungen.abSchwere())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "abSchwere ist ein Pflichtfeld.");
         }
     }
 

@@ -184,20 +184,24 @@ public class UeberwachungRepository {
     }
 
     /**
-     * Legt eine EIGENE Überwachung an (Alerting Scheibe 2, §6.8 "Vom Wert zur fertigen Regel: drei
-     * Taps"): {@code herkunft = 'eigen'}, additiv seit {@code V20261015140000}. Die Rechte-Prüfung
-     * (ueberwachung.eigene/verwalten) steht in {@link UeberwachungAnlegenService}, nicht hier.
+     * Legt eine selbst angelegte Überwachung an (Alerting Scheibe 2, §6.8 "Vom Wert zur fertigen
+     * Regel: drei Taps"): {@code herkunft} ist {@code 'eigen'} (additiv seit {@code V20261015140000})
+     * oder, seit Scheibe 6 ({@code V20261017050000}, Entscheid 10A), {@code 'steuerung'} ("In
+     * Überwachung umwandeln" einer alten {@code vp.notify.push}-Regelkarte) - die Rechte-Prüfung
+     * (ueberwachung.eigene/verwalten) UND die Zulässigkeit des Herkunfts-Worts stehen in
+     * {@link UeberwachungAnlegenService}, nicht hier.
      */
-    public UUID erstelleEigen(UUID standortId, String name, String wertart, String bezugJson,
-            String bedingungJson, String schwere, String empfaengerJson, String angelegtVon, Instant probelaufBis) {
+    public UUID erstelleSelbstAngelegt(UUID standortId, String name, String wertart, String bezugJson,
+            String bedingungJson, String schwere, String empfaengerJson, String herkunft, String angelegtVon,
+            Instant probelaufBis) {
         UUID id = UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO ueberwachung (id, tenant_id, standort_id, name, wertart, bezug, bedingung, schwere,
                        empfaenger, herkunft, aktiv, angelegt_von, probelauf_bis)
-                VALUES (?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?::jsonb, 'eigen', true, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?, ?::jsonb, ?, true, ?, ?)
                 """,
                 id, TenantContext.get(), standortId, name, wertart, bezugJson, bedingungJson, schwere,
-                empfaengerJson, angelegtVon, ts(probelaufBis));
+                empfaengerJson, herkunft, angelegtVon, ts(probelaufBis));
         return id;
     }
 

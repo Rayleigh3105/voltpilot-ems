@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.sun.net.httpserver.HttpServer;
 import com.voltpilot.api.tenant.TenantAwareDataSource;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.versand.telegram.TelegramAdapter;
+import com.voltpilot.api.versand.webhook.WebhookVersandAdapter;
 import com.voltpilot.api.versand.webpush.WebPushAdapter;
 import java.net.InetSocketAddress;
 import java.sql.Timestamp;
@@ -191,7 +193,9 @@ class PushUndStufenRoutingIT {
                     "mailto:test@voltpilot.de");
             EmailVersandAdapter email = new EmailVersandAdapter(
                     new org.springframework.mail.javamail.JavaMailSenderImpl(), "meldungen@voltpilot.de");
-            Zusteller zusteller = new Zusteller(ausgang, zustellwege, email, push, app);
+            WebhookVersandAdapter webhook = new WebhookVersandAdapter();
+            TelegramAdapter telegram = (chatId, text) -> { };
+            Zusteller zusteller = new Zusteller(ausgang, zustellwege, email, push, webhook, telegram, app);
             int gesendet = zusteller.lauf(Instant.now());
 
             assertThat(gesendet).isEqualTo(1);

@@ -148,6 +148,45 @@ class UeberwachungAnlegenServiceIT {
     }
 
     @Test
+    void inUeberwachungUmwandelnLegtEineRegelMitHerkunftSteuerungAn() {
+        Welt w = welt("Umwandeln GmbH");
+        Benutzer leser = benutzerMitRolle(w.tenant(), "sub-leser-umwandeln", "leser", w.st1());
+        TenantContext.set(w.tenant());
+        try {
+            UeberwachungDto.Anlegen anfrage = new UeberwachungDto.Anlegen("box.erreichbar",
+                    new UeberwachungDto.BezugEintrag(w.anlage1().toString(), null, null),
+                    json("{\"art\":\"zustand\",\"ziel\":[\"nicht_erreichbar\"]}"), "warnung", null,
+                    "Umgewandelte Regel", "steuerung");
+
+            UeberwachungDto neu = dienst().anlegen(anfrage, leser, Instant.now());
+
+            assertThat(neu.herkunft()).isEqualTo("steuerung");
+            String herkunft = app.queryForObject("SELECT herkunft FROM ueberwachung WHERE id = ?::uuid",
+                    String.class, neu.id());
+            assertThat(herkunft).isEqualTo("steuerung");
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    @Test
+    void abWerkOderVorschlagAlsHerkunftWirdVomClientAbgelehnt() {
+        Welt w = welt("Umwandeln-Ablehnung GmbH");
+        Benutzer leser = benutzerMitRolle(w.tenant(), "sub-leser-umwandeln2", "leser", w.st1());
+        TenantContext.set(w.tenant());
+        try {
+            UeberwachungDto.Anlegen anfrage = new UeberwachungDto.Anlegen("box.erreichbar",
+                    new UeberwachungDto.BezugEintrag(w.anlage1().toString(), null, null),
+                    json("{\"art\":\"zustand\",\"ziel\":[\"nicht_erreichbar\"]}"), "warnung", null, null, "ab_werk");
+
+            assertThatThrownBy(() -> dienst().anlegen(anfrage, leser, Instant.now()))
+                    .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    @Test
     void einLeserOhneVerwaltenDarfNiemandAnderenAlsEmpfaengerEintragen() {
         Welt w = welt("Anlegen-Ablehnung GmbH");
         Benutzer leser = benutzerMitRolle(w.tenant(), "sub-leser2", "leser", w.st1());

@@ -69,6 +69,16 @@ class RechtRoutenArchitekturTest {
         m.put("ZustellwegController#pushEntfernen", eigeneBenachrichtigung);
         m.put("RuhezeitController#setzen", eigeneBenachrichtigung);
         m.put("RuhezeitController#probe", eigeneBenachrichtigung);
+        m.put("ZustellwegController#webhookZielAnlegen", eigeneBenachrichtigung);
+        m.put("ZustellwegController#webhookZielEinstellungen", eigeneBenachrichtigung);
+        m.put("ZustellwegController#webhookZielEntfernen", eigeneBenachrichtigung);
+        m.put("ZustellwegController#telegramVerbinden", eigeneBenachrichtigung);
+        m.put("ZustellwegController#telegramZielEinstellungen", eigeneBenachrichtigung);
+        m.put("ZustellwegController#telegramZielEntfernen", eigeneBenachrichtigung);
+        m.put("TelegramWebhookController#webhook",
+                "Alerting Scheibe 6 (§7 Scheibe 6): Telegram selbst ruft den Update-Webhook auf - kein "
+                        + "Kundenkonto, kein Kundenbereich; geschützt über Telegrams eigenen secret_token-Header "
+                        + "und den unerratbaren 256-Bit-Verbindungs-Token selbst, nicht über die Rechte-Matrix.");
         return m;
     }
 
@@ -178,6 +188,11 @@ class RechtRoutenArchitekturTest {
         }
         m.put("StummschaltungController#anlegen", "StummschaltungService.anlegen — ueberwachung.verwalten an der "
                 + "Geltung des Standorts der Auswahl (Regel/Anlage/Standort, Alerting Scheibe 3, §6.4)");
+        String externerEmpfaenger = "ExterneEmpfaengerService.pruefeVerwalten — IMMER ueberwachung.verwalten "
+                + "(ein externer Empfänger ist nie \"nur ich selbst\"), RechteAbleitung.darf am Standort der "
+                + "Regel (Alerting Scheibe 6, Entscheid 11B)";
+        m.put("MeldungenController#externenEmpfaengerHinzufuegen", externerEmpfaenger);
+        m.put("MeldungenController#externenEmpfaengerEntfernen", externerEmpfaenger);
         return m;
     }
 

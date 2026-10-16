@@ -1,5 +1,8 @@
 package com.voltpilot.api.versand;
 
+import com.voltpilot.api.versand.telegram.TelegramAdapter;
+import com.voltpilot.api.versand.telegram.TelegramException;
+import com.voltpilot.api.versand.webhook.WebhookZielPruefung;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -7,8 +10,11 @@ import java.time.LocalTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * „So erreichen wir Sie“ (§6.6): jede Person legt ihren Zustellweg E-Mail einmal selbst an und
@@ -19,19 +25,29 @@ import org.springframework.stereotype.Service;
 @Service
 public class ZustellwegService {
 
+    private static final Logger log = LoggerFactory.getLogger(ZustellwegService.class);
+
     /** Token-Gültigkeit: lang genug für ein E-Mail-Postfach, kurz genug gegen einen verlorenen Link. */
     static final Duration TOKEN_GUELTIGKEIT = Duration.ofDays(2);
 
+    /** Verbindungs-Token für Telegram (§7 Scheibe 6): kurzlebig, der Tipp auf den Link ist unmittelbar. */
+    static final Duration TELEGRAM_TOKEN_GUELTIGKEIT = Duration.ofMinutes(15);
+
     private final ZustellwegRepository zustellwege;
     private final VersandRepository ausgang;
+    private final TelegramAdapter telegram;
     private final String basisUrl;
+    private final String telegramBotUsername;
     private volatile Clock uhr = Clock.systemUTC();
 
-    public ZustellwegService(ZustellwegRepository zustellwege, VersandRepository ausgang,
-            @Value("${voltpilot.versand.bestaetigung-basis-url:http://localhost:5173}") String basisUrl) {
+    public ZustellwegService(ZustellwegRepository zustellwege, VersandRepository ausgang, TelegramAdapter telegram,
+            @Value("${voltpilot.versand.bestaetigung-basis-url:http://localhost:5173}") String basisUrl,
+            @Value("${voltpilot.telegram.bot-username:}") String telegramBotUsername) {
         this.zustellwege = zustellwege;
         this.ausgang = ausgang;
+        this.telegram = telegram;
         this.basisUrl = basisUrl;
+        this.telegramBotUsername = telegramBotUsername;
     }
 
     /** Nur für Tests: die Uhr, nach der der Token abläuft. */
@@ -93,5 +109,80 @@ public class ZustellwegService {
 
     public boolean pushAboEntfernen(UUID id, String benutzerSub) {
         return zustellwege.pushAboEntfernen(id, benutzerSub);
+    }
+
+    // --------------------------------------------------------------------- Webhook (Alerting Scheibe 6, §7)
+
+    public List<ZustellwegRepository.WebhookZielEigen> webhookZieleEigene(String benutzerSub) {
+        return zustellwege.webhookZieleEigene(benutzerSub);
+    }
+
+    /**
+     * Legt ein neues Webhook-Ziel an. Die SSRF-Prüfung ({@link WebhookZielPruefung}) läuft HIER
+     * schon beim Anlegen (ehrliche Rückmeldung statt eines Ziels, das nie zustellen wird) UND noch
+     * einmal bei jedem Versand ({@code WebhookVersandAdapter}, §9 "DNS-Rebinding").
+     *
+     * @return das Geheimnis - wird NUR in dieser Antwort gezeigt, danach nie wieder gelesen.
+     */
+    public record NeuesWebhookZiel(UUID id, String geheimnis) {}
+
+    public NeuesWebhookZiel webhookZielAnlegen(String benutzerSub, String url, String name) {
+        try {
+            WebhookZielPruefung.pruefenUndAufloesen(url);
+        } catch (WebhookZielPruefung.UnsicheresZielException e) {
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+        String geheimnis = BestaetigungsToken.erzeugen();
+        UUID id = zustellwege.webhookZielAnlegen(benutzerSub, url, geheimnis, name);
+        return new NeuesWebhookZiel(id, geheimnis);
+    }
+
+    public boolean webhookZielEinstellungenSetzen(UUID id, String benutzerSub, boolean aktiv, String abSchwere) {
+        return zustellwege.webhookZielEinstellungenSetzen(id, benutzerSub, aktiv, abSchwere);
+    }
+
+    public boolean webhookZielEntfernen(UUID id, String benutzerSub) {
+        return zustellwege.webhookZielEntfernen(id, benutzerSub);
+    }
+
+    // --------------------------------------------------------------------- Telegram (Alerting Scheibe 6, §7)
+
+    public List<ZustellwegRepository.TelegramZielEigen> telegramZieleEigene(String benutzerSub) {
+        return zustellwege.telegramZieleEigene(benutzerSub);
+    }
+
+    /** "Telegram verbinden" (§7 Scheibe 6 Punkt 2): der Link öffnet den Bot mit dem Token als Startparameter. */
+    public record TelegramVerbindungsLink(String link) {}
+
+    public TelegramVerbindungsLink telegramVerbindungAnfordern(String benutzerSub) {
+        String token = BestaetigungsToken.erzeugen();
+        zustellwege.telegramVerbindungAnfordern(benutzerSub, token, uhr.instant().plus(TELEGRAM_TOKEN_GUELTIGKEIT));
+        return new TelegramVerbindungsLink("https://t.me/" + telegramBotUsername + "?start=" + token);
+    }
+
+    /**
+     * Die Bot-Antwort auf {@code /start <token>} (vom Telegram-Update-Webhook aufgerufen, keine
+     * Anmeldung, kein Mandanten-Kontext - wie die E-Mail-Bestätigung per Link). Schickt bei Erfolg
+     * sofort die Verbindungs-Bestätigung in den Chat; ein unbekannter/abgelaufener Token bekommt
+     * keine Antwort (kein Hinweis, ob der Token je existiert hat).
+     */
+    public boolean telegramVerbindungBestaetigen(String token, String chatId) {
+        boolean bestaetigt = zustellwege.telegramVerbindungBestaetigen(token, chatId, uhr.instant()).isPresent();
+        if (bestaetigt) {
+            try {
+                telegram.verbindungBestaetigen(chatId);
+            } catch (TelegramException e) {
+                log.warn("Telegram: Verbindungs-Bestätigung an Chat {} nicht zustellbar: {}", chatId, e.getMessage());
+            }
+        }
+        return bestaetigt;
+    }
+
+    public boolean telegramZielEinstellungenSetzen(UUID id, String benutzerSub, boolean aktiv, String abSchwere) {
+        return zustellwege.telegramZielEinstellungenSetzen(id, benutzerSub, aktiv, abSchwere);
+    }
+
+    public boolean telegramZielEntfernen(UUID id, String benutzerSub) {
+        return zustellwege.telegramZielEntfernen(id, benutzerSub);
     }
 }

@@ -52,6 +52,7 @@ export function UeberwachenBlatt({
   aktuellerWert,
   einheit = 'kW',
   titelZusatz,
+  herkunft,
   onUeberwacht,
 }: {
   offen: boolean;
@@ -63,6 +64,8 @@ export function UeberwachenBlatt({
   einheit?: string;
   /** Zusatz zum Blatt-Titel - z. B. "Netz · Leistung" an einem Aufbau-/Geräte-Wert; ohne Zusatz nur „Überwachen" (Cockpit). */
   titelZusatz?: string;
+  /** Vorgabe `'eigen'`; `'steuerung'` nur für "In Überwachung umwandeln" (Alerting Scheibe 6, Entscheid 10A). */
+  herkunft?: 'eigen' | 'steuerung';
   onUeberwacht: (regel: UeberwachungsRegel) => void;
 }) {
   const eintrag = katalogEintrag(wertart);
@@ -177,6 +180,7 @@ export function UeberwachenBlatt({
         bezug: bezugFuerAnfrage(),
         bedingung: bedingungFuerAnfrage(),
         schwere,
+        ...(herkunft ? { herkunft } : {}),
       });
       onUeberwacht(regel);
       onClose();
