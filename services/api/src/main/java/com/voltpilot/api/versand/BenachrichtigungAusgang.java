@@ -41,6 +41,20 @@ public interface BenachrichtigungAusgang {
             String inhalt, Instant naechsterVersuch, String schwere);
 
     /**
+     * Wie {@link #webpush}, aber über Webhook (Alerting Scheibe 6, §7 Scheibe 6): alle aktiven
+     * Webhook-Ziele der Person fächert der Zusteller auf, mit ihrer eigenen Signatur.
+     */
+    void webhook(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr, String betreff,
+            String inhalt, Instant naechsterVersuch, String schwere);
+
+    /**
+     * Wie {@link #webpush}, aber über Telegram (Alerting Scheibe 6, §7 Scheibe 6): alle aktiven,
+     * bestätigten Telegram-Verbindungen der Person fächert der Zusteller auf.
+     */
+    void telegram(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr, String betreff,
+            String inhalt, Instant naechsterVersuch, String schwere);
+
+    /**
      * Wie {@link #email}, aber mit einem Bündel-Schlüssel (Alerting Scheibe 4, Konzept §6.4 Nr. 6,
      * §6.6: "eine gebündelte Nachricht baut der Zusteller je Empfänger nur aus den Meldungen, die
      * dieser sieht"): Zeilen mit demselben {@code buendelSchluessel} (+ {@code empfaengerSub} +
@@ -58,6 +72,20 @@ public interface BenachrichtigungAusgang {
     default void webpush(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr, String betreff,
             String inhalt, Instant naechsterVersuch, String schwere, String buendelSchluessel) {
         webpush(quelle, quelleId, empfaengerSub, anlass, nr, betreff, inhalt, naechsterVersuch, schwere);
+    }
+
+    /** Wie {@link #webhook}, aber mit einem Bündel-Schlüssel - siehe {@link #email(String, UUID, String, String,
+     * int, String, String, Instant, String)}. */
+    default void webhook(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr, String betreff,
+            String inhalt, Instant naechsterVersuch, String schwere, String buendelSchluessel) {
+        webhook(quelle, quelleId, empfaengerSub, anlass, nr, betreff, inhalt, naechsterVersuch, schwere);
+    }
+
+    /** Wie {@link #telegram}, aber mit einem Bündel-Schlüssel - siehe {@link #email(String, UUID, String, String,
+     * int, String, String, Instant, String)}. */
+    default void telegram(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr, String betreff,
+            String inhalt, Instant naechsterVersuch, String schwere, String buendelSchluessel) {
+        telegram(quelle, quelleId, empfaengerSub, anlass, nr, betreff, inhalt, naechsterVersuch, schwere);
     }
 
     /** Einmaliger, sofort fälliger Versand ({@code nr = 0}) - die Form, die Scheibe 0/1 schon kannten. */
@@ -78,6 +106,18 @@ public interface BenachrichtigungAusgang {
         webpush(quelle, quelleId, empfaengerSub, anlass, 0, betreff, inhalt, Instant.now(), schwere);
     }
 
+    /** Einmaliger, sofort fälliger Webhook-Versand MIT Stufe (die übliche Form für {@code quelle = "alarm"}). */
+    default void webhook(String quelle, UUID quelleId, String empfaengerSub, String anlass, String betreff,
+            String inhalt, String schwere) {
+        webhook(quelle, quelleId, empfaengerSub, anlass, 0, betreff, inhalt, Instant.now(), schwere);
+    }
+
+    /** Einmaliger, sofort fälliger Telegram-Versand MIT Stufe (die übliche Form für {@code quelle = "alarm"}). */
+    default void telegram(String quelle, UUID quelleId, String empfaengerSub, String anlass, String betreff,
+            String inhalt, String schwere) {
+        telegram(quelle, quelleId, empfaengerSub, anlass, 0, betreff, inhalt, Instant.now(), schwere);
+    }
+
     BenachrichtigungAusgang STUMM = new BenachrichtigungAusgang() {
         @Override
         public void email(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr, String betreff,
@@ -87,6 +127,18 @@ public interface BenachrichtigungAusgang {
 
         @Override
         public void webpush(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr,
+                String betreff, String inhalt, Instant naechsterVersuch, String schwere) {
+            // kein Versand - siehe Klassenkommentar
+        }
+
+        @Override
+        public void webhook(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr,
+                String betreff, String inhalt, Instant naechsterVersuch, String schwere) {
+            // kein Versand - siehe Klassenkommentar
+        }
+
+        @Override
+        public void telegram(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr,
                 String betreff, String inhalt, Instant naechsterVersuch, String schwere) {
             // kein Versand - siehe Klassenkommentar
         }

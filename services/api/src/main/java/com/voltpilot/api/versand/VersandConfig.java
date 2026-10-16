@@ -1,5 +1,8 @@
 package com.voltpilot.api.versand;
 
+import com.voltpilot.api.versand.telegram.TelegramAdapter;
+import com.voltpilot.api.versand.telegram.TelegramBotAdapter;
+import com.voltpilot.api.versand.webhook.WebhookVersandAdapter;
 import com.voltpilot.api.versand.webpush.WebPushAdapter;
 import java.util.Base64;
 import java.util.Properties;
@@ -63,6 +66,23 @@ public class VersandConfig {
         String oeffentlich = vapidPublicKey.isBlank() ? PLATZHALTER_SCHLUESSEL_65 : vapidPublicKey;
         String privat = vapidPrivateKey.isBlank() ? PLATZHALTER_SCHLUESSEL_32 : vapidPrivateKey;
         return new WebPushAdapter(oeffentlich, privat, vapidSubject);
+    }
+
+    /** Alerting Scheibe 6: keine Geheimnisse - jedes Webhook-Ziel trägt sein eigenes HMAC-Geheimnis. */
+    @Bean
+    WebhookVersandAdapter webhookVersandAdapter() {
+        return new WebhookVersandAdapter();
+    }
+
+    /**
+     * Alerting Scheibe 6 (§9): der Bot-Token kommt - wie das SMTP-Passwort und der VAPID-Schlüssel -
+     * aus der sops-Geheimnisdatei des GitOps-Repos, lokal/im Testlauf aus Umgebungsvariablen. Ein
+     * leerer Token führt NICHT zu einem fehlenden Bean, sondern zu einem ehrlichen Fehler beim
+     * ersten tatsächlichen Versand (derselbe Grundsatz wie bei den anderen Adaptern).
+     */
+    @Bean
+    TelegramAdapter telegramAdapter(@Value("${voltpilot.telegram.bot-token:}") String botToken) {
+        return new TelegramBotAdapter(botToken);
     }
 
     private static final String PLATZHALTER_SCHLUESSEL_65 =

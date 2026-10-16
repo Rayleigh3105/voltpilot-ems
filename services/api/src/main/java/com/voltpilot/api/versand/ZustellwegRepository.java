@@ -39,6 +39,24 @@ public class ZustellwegRepository {
     public record PushAbo(UUID id, String geraet, boolean aktiv, String abSchwere, Instant erstelltAm) {
     }
 
+    /** Ein Webhook-Ziel (Alerting Scheibe 6, §7 Scheibe 6) - wie es die Einstellungsfläche zeigt (ohne Geheimnis). */
+    public record WebhookZielEigen(UUID id, String url, String name, boolean aktiv, String abSchwere,
+            Instant erstelltAm) {
+    }
+
+    /** Dasselbe Ziel, wie der Zusteller es zur Sendezeit braucht (MIT Geheimnis, über die Admin-Rolle). */
+    public record WebhookZiel(UUID id, String url, String geheimnis) {
+    }
+
+    /** Eine Telegram-Verbindung (Alerting Scheibe 6, §7 Scheibe 6) - wie es die Einstellungsfläche zeigt. */
+    public record TelegramZielEigen(UUID id, boolean bestaetigt, boolean aktiv, String abSchwere,
+            Instant erstelltAm) {
+    }
+
+    /** Dieselbe Verbindung, wie der Zusteller sie zur Sendezeit braucht (MIT chat_id). */
+    public record TelegramZiel(UUID id, String chatId) {
+    }
+
     private final JdbcTemplate jdbc;
     private final JdbcTemplate admin;
 
@@ -138,6 +156,132 @@ public class ZustellwegRepository {
         Timestamp erstelltAm = rs.getTimestamp("erstellt_am");
         return new PushAbo(rs.getObject("id", UUID.class), rs.getString("geraet"), rs.getBoolean("aktiv"),
                 rs.getString("ab_schwere"), erstelltAm == null ? null : erstelltAm.toInstant());
+    }
+
+    // --------------------------------------------------------------------- Webhook (Alerting Scheibe 6, §7)
+
+    /** Alle eigenen Webhook-Ziele (für "Meine Benachrichtigungen"), OHNE das Geheimnis. */
+    public List<WebhookZielEigen> webhookZieleEigene(String benutzerSub) {
+        return jdbc.query("""
+                SELECT id, url, name, aktiv, ab_schwere, erstellt_am FROM webhook_ziel
+                 WHERE tenant_id = ? AND benutzer_sub = ? ORDER BY erstellt_am
+                """, ZustellwegRepository::webhookZielEigen, TenantContext.get(), benutzerSub);
+    }
+
+    /** Legt ein neues Webhook-Ziel an; das Geheimnis wird NUR in dieser Antwort gezeigt. */
+    public UUID webhookZielAnlegen(String benutzerSub, String url, String geheimnis, String name) {
+        return jdbc.queryForObject("""
+                INSERT INTO webhook_ziel (tenant_id, benutzer_sub, url, geheimnis, name)
+                VALUES (?, ?, ?, ?, ?) RETURNING id
+                """, UUID.class, TenantContext.get(), benutzerSub, url, geheimnis, name == null ? "" : name);
+    }
+
+    public boolean webhookZielEinstellungenSetzen(UUID id, String benutzerSub, boolean aktiv, String abSchwere) {
+        return jdbc.update("""
+                UPDATE webhook_ziel SET aktiv = ?, ab_schwere = ? WHERE id = ? AND tenant_id = ? AND benutzer_sub = ?
+                """, aktiv, abSchwere, id, TenantContext.get(), benutzerSub) > 0;
+    }
+
+    public boolean webhookZielEntfernen(UUID id, String benutzerSub) {
+        return jdbc.update("DELETE FROM webhook_ziel WHERE id = ? AND tenant_id = ? AND benutzer_sub = ?",
+                id, TenantContext.get(), benutzerSub) > 0;
+    }
+
+    /** Alle aktiven Webhook-Ziele einer Person für den Versand (der Zusteller fächert auf). */
+    public List<WebhookZiel> webhookZieleFuerVersand(UUID tenantId, String benutzerSub, String schwere) {
+        return admin.query("""
+                SELECT id, url, geheimnis FROM webhook_ziel
+                 WHERE tenant_id = ? AND benutzer_sub = ? AND aktiv
+                   AND schwere_rang(?) >= schwere_rang(ab_schwere)
+                """, (rs, n) -> new WebhookZiel(rs.getObject("id", UUID.class), rs.getString("url"),
+                        rs.getString("geheimnis")), tenantId, benutzerSub, schwere);
+    }
+
+    /** HTTP 404/410 oder ein unsicheres Ziel (§7 Scheibe 6: "dauerhaft tote Ziele aufräumen"). */
+    public void webhookZielAlsAbgelaufenMarkieren(UUID id, Instant jetzt) {
+        admin.update("UPDATE webhook_ziel SET aktiv = false, abgelaufen_am = ? WHERE id = ?",
+                Timestamp.from(jetzt), id);
+    }
+
+    public void webhookZielErfolgVermerken(UUID id, Instant jetzt) {
+        admin.update("UPDATE webhook_ziel SET letzter_erfolg_am = ? WHERE id = ?", Timestamp.from(jetzt), id);
+    }
+
+    private static WebhookZielEigen webhookZielEigen(ResultSet rs, int n) throws SQLException {
+        Timestamp erstelltAm = rs.getTimestamp("erstellt_am");
+        return new WebhookZielEigen(rs.getObject("id", UUID.class), rs.getString("url"), rs.getString("name"),
+                rs.getBoolean("aktiv"), rs.getString("ab_schwere"), erstelltAm == null ? null : erstelltAm.toInstant());
+    }
+
+    // --------------------------------------------------------------------- Telegram (Alerting Scheibe 6, §7)
+
+    /** Alle eigenen Telegram-Verbindungen (für "Meine Benachrichtigungen") - offene UND bestätigte. */
+    public List<TelegramZielEigen> telegramZieleEigene(String benutzerSub) {
+        return jdbc.query("""
+                SELECT id, chat_id, aktiv, ab_schwere, erstellt_am FROM telegram_ziel
+                 WHERE tenant_id = ? AND benutzer_sub = ? ORDER BY erstellt_am
+                """, ZustellwegRepository::telegramZielEigen, TenantContext.get(), benutzerSub);
+    }
+
+    /** "Telegram verbinden": legt den OFFENEN Verbindungs-Versuch an und gibt den Token zurück. */
+    public UUID telegramVerbindungAnfordern(String benutzerSub, String token, Instant ablauf) {
+        return jdbc.queryForObject("""
+                INSERT INTO telegram_ziel (tenant_id, benutzer_sub, verbindungs_token, verbindungs_ablauf)
+                VALUES (?, ?, ?, ?) RETURNING id
+                """, UUID.class, TenantContext.get(), benutzerSub, token, Timestamp.from(ablauf));
+    }
+
+    /**
+     * Die Bot-Antwort auf {@code /start <token>}: setzt die chat_id, wenn der Token noch gültig und
+     * unverbraucht war - {@code Optional.empty()} sonst. Läuft über die Admin-Rolle (der Bot hat
+     * keinen Mandanten-Kontext), wie die E-Mail-Bestätigung per Token.
+     */
+    public Optional<UUID> telegramVerbindungBestaetigen(String token, String chatId, Instant jetzt) {
+        List<UUID> rows = admin.query("""
+                UPDATE telegram_ziel SET chat_id = ?, bestaetigt_am = ?, verbindungs_token = NULL
+                WHERE verbindungs_token = ? AND verbindungs_ablauf >= ? AND chat_id IS NULL
+                RETURNING id
+                """, (rs, n) -> rs.getObject("id", UUID.class), chatId, Timestamp.from(jetzt), token,
+                Timestamp.from(jetzt));
+        return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
+    }
+
+    public boolean telegramZielEinstellungenSetzen(UUID id, String benutzerSub, boolean aktiv, String abSchwere) {
+        return jdbc.update("""
+                UPDATE telegram_ziel SET aktiv = ?, ab_schwere = ? WHERE id = ? AND tenant_id = ? AND benutzer_sub = ?
+                """, aktiv, abSchwere, id, TenantContext.get(), benutzerSub) > 0;
+    }
+
+    /** "Trennen" (§7 Scheibe 6 Punkt 2) - löscht die Verbindung, wie ein Geräte-Abo entfernt wird. */
+    public boolean telegramZielEntfernen(UUID id, String benutzerSub) {
+        return jdbc.update("DELETE FROM telegram_ziel WHERE id = ? AND tenant_id = ? AND benutzer_sub = ?",
+                id, TenantContext.get(), benutzerSub) > 0;
+    }
+
+    /** Alle aktiven, BESTÄTIGTEN Telegram-Verbindungen einer Person für den Versand. */
+    public List<TelegramZiel> telegramZieleFuerVersand(UUID tenantId, String benutzerSub, String schwere) {
+        return admin.query("""
+                SELECT id, chat_id FROM telegram_ziel
+                 WHERE tenant_id = ? AND benutzer_sub = ? AND aktiv AND chat_id IS NOT NULL
+                   AND schwere_rang(?) >= schwere_rang(ab_schwere)
+                """, (rs, n) -> new TelegramZiel(rs.getObject("id", UUID.class), rs.getString("chat_id")),
+                tenantId, benutzerSub, schwere);
+    }
+
+    /** Die Person hat den Bot blockiert, oder der Chat existiert nicht mehr (§7 Scheibe 6). */
+    public void telegramZielAlsAbgelaufenMarkieren(UUID id, Instant jetzt) {
+        admin.update("UPDATE telegram_ziel SET aktiv = false, abgelaufen_am = ? WHERE id = ?",
+                Timestamp.from(jetzt), id);
+    }
+
+    public void telegramZielErfolgVermerken(UUID id, Instant jetzt) {
+        admin.update("UPDATE telegram_ziel SET letzter_erfolg_am = ? WHERE id = ?", Timestamp.from(jetzt), id);
+    }
+
+    private static TelegramZielEigen telegramZielEigen(ResultSet rs, int n) throws SQLException {
+        Timestamp erstelltAm = rs.getTimestamp("erstellt_am");
+        return new TelegramZielEigen(rs.getObject("id", UUID.class), rs.getString("chat_id") != null,
+                rs.getBoolean("aktiv"), rs.getString("ab_schwere"), erstelltAm == null ? null : erstelltAm.toInstant());
     }
 
     /**

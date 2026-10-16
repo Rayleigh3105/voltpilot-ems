@@ -73,6 +73,40 @@ public class VersandRepository implements BenachrichtigungAusgang {
                 Timestamp.from(naechsterVersuch), schwere, buendelSchluessel);
     }
 
+    /** Wie {@link #webpush}, aber über Webhook (Alerting Scheibe 6) - siehe {@link BenachrichtigungAusgang}. */
+    @Override
+    public void webhook(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr, String betreff,
+            String inhalt, Instant naechsterVersuch, String schwere) {
+        webhook(quelle, quelleId, empfaengerSub, anlass, nr, betreff, inhalt, naechsterVersuch, schwere, null);
+    }
+
+    @Override
+    public void webhook(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr, String betreff,
+            String inhalt, Instant naechsterVersuch, String schwere, String buendelSchluessel) {
+        jdbc.update("INSERT INTO benachrichtigung (tenant_id, quelle, quelle_id, empfaenger_sub, weg, anlass, nr, "
+                        + "betreff, inhalt, naechster_versuch, schwere, buendel_schluessel) "
+                        + "VALUES (?, ?, ?, ?, 'webhook', ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+                TenantContext.get(), quelle, quelleId, empfaengerSub, anlass, nr, betreff, inhalt,
+                Timestamp.from(naechsterVersuch), schwere, buendelSchluessel);
+    }
+
+    /** Wie {@link #webpush}, aber über Telegram (Alerting Scheibe 6) - siehe {@link BenachrichtigungAusgang}. */
+    @Override
+    public void telegram(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr, String betreff,
+            String inhalt, Instant naechsterVersuch, String schwere) {
+        telegram(quelle, quelleId, empfaengerSub, anlass, nr, betreff, inhalt, naechsterVersuch, schwere, null);
+    }
+
+    @Override
+    public void telegram(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr, String betreff,
+            String inhalt, Instant naechsterVersuch, String schwere, String buendelSchluessel) {
+        jdbc.update("INSERT INTO benachrichtigung (tenant_id, quelle, quelle_id, empfaenger_sub, weg, anlass, nr, "
+                        + "betreff, inhalt, naechster_versuch, schwere, buendel_schluessel) "
+                        + "VALUES (?, ?, ?, ?, 'telegram', ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+                TenantContext.get(), quelle, quelleId, empfaengerSub, anlass, nr, betreff, inhalt,
+                Timestamp.from(naechsterVersuch), schwere, buendelSchluessel);
+    }
+
     /** Wie {@link #email}, aber mit einem direkt vorgegebenen Ziel - nur für die Bestätigungs-Mail selbst. */
     public void emailMitZiel(String quelle, UUID quelleId, String empfaengerSub, String anlass, String betreff,
             String inhalt, String ziel) {
