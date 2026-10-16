@@ -252,6 +252,7 @@ func (a *Agent) calibrationOverride(now time.Time, r guards.Reading, limits guar
 		s.Native = nil
 	})
 	a.trim.Release()
+	a.hold.Release()
 	a.follow.Release()
 	a.deficitHold.Release()
 	return true

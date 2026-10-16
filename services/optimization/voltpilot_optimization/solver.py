@@ -278,6 +278,7 @@ extra so the package imports (and non-solver tests run) without the wheel.
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import replace
 from datetime import datetime
 from uuid import UUID
@@ -1008,7 +1009,11 @@ def _with_explanation(
             replace(
                 slot,
                 slot_role=why.slot_role,
-                slot_flags=why.slot_flags + _morgen_grund(inp, t, slot, why, morgen[t]),
+                slot_flags=(
+                    why.slot_flags
+                    + _morgen_grund(inp, t, slot, why, morgen[t])
+                    + _ueberschuss_verbraucher_grund(inp, t)
+                ),
                 stored_value_ct_kwh=why.stored_value_ct_kwh,
                 grid_value_ct_kwh=why.grid_value_ct_kwh,
                 peak_pressure_eur_kw=why.peak_pressure_eur_kw,
@@ -1053,6 +1058,13 @@ def _with_explanation(
                     (morgen[t] or _charge_surplus_to_battery(inp, t, slot, why))
                     if absorb
                     else None
+                ),
+                # NS-3 B: where the run took the surplus consumer out of the
+                # load, the edge holds this slot's planned charge against it -
+                # a change of the trim above, so it rides on the trim's own
+                # kill-switch and on every gate that silences it.
+                charge_hold_base_load_kw=(
+                    _charge_hold_base_load_kw(inp, t, slot, why) if trim else None
                 ),
                 # Erklaerbarkeit Stufe 1 (§4.2 C): what a RESTING slot rejected
                 # and by how much - pure presentation, never an input to a
@@ -1258,6 +1270,41 @@ def _morgen_grund(
     if not morgen or _charge_surplus_to_battery(inp, t, slot, why):
         return ()
     return (SLOT_FLAG_MORGEN_UEBERSCHUSS,)
+
+
+def _ueberschuss_verbraucher_grund(inp: OptimizationInput, t: int) -> tuple[str, ...]:
+    """Der Grund „Speicher vor Überschuss-Verbraucher (NS-3 B): Plan rechnet mit
+    der Grundlast“ für den Plan-Erklärtext - wo der Lauf den gemessenen
+    Verbraucher aus der Last genommen hat (die Grundlast ist ``load_kw``)."""
+    from voltpilot_optimization.ueberschuss_verbraucher import (
+        SLOT_FLAG_UEBERSCHUSS_VERBRAUCHER,
+    )
+
+    if not inp.ueberschuss_verbraucher or not inp.ueberschuss_verbraucher[t]:
+        return ()
+    return (SLOT_FLAG_UEBERSCHUSS_VERBRAUCHER,)
+
+
+def _charge_hold_base_load_kw(
+    inp: OptimizationInput, t: int, slot, why
+) -> float | None:
+    """NS-3 B: the load the edge holds this slot's planned charge against
+    (``charge_hold_base_load_kw``), or None.
+
+    Only where the run took the surplus consumer out of the load AND the slot
+    carries the trim duty - the hold is a change of exactly that duty (the
+    trim bound becomes ``pv - min(load, base)``), so without it there is
+    nothing to hold: an untrimmed charge already stands. A battery a customer
+    rule holds is the rule's, not the plan's. The value is the slot's own
+    planned load, i.e. the base load the solver computed the charge against.
+    """
+    if not inp.ueberschuss_verbraucher or not inp.ueberschuss_verbraucher[t]:
+        return None
+    if inp.battery_held or not _charge_from_surplus_only(inp, t, slot, why):
+        return None
+    if not math.isfinite(slot.load_kw) or slot.load_kw < 0.0:
+        return None
+    return round(slot.load_kw, 3)
 
 
 def _charge_surplus_to_battery(inp: OptimizationInput, t: int, slot, why) -> bool:

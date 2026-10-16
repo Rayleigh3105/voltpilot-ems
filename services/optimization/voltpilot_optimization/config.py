@@ -497,11 +497,39 @@ def morgen_ueberschuss_enabled(site_id, env=None) -> bool:
     """Ob diese Anlage den Morgenüberschuss in Ruhe-Slots lädt (NS-5 B).
     Vorgabe AUS; ein ungültiger Eintrag bricht laut ab - ein Tippfehler darf
     eine Anlage nie still ein- oder ausschalten."""
+    return _anlage_in_env(MORGEN_UEBERSCHUSS_ANLAGEN_ENV, site_id, env)
+
+
+#: Speicher vor dem Überschuss-Verbraucher (NS-3 B, Captain-Entscheid
+#: 15.10.2026, :mod:`voltpilot_optimization.ueberschuss_verbraucher`): an diesen
+#: Anlagen erkennt der Plan einen Verbraucher, der selbst auf null Einspeisung
+#: regelt und jeden Überschuss nimmt, rechnet im Sonnenfenster mit der
+#: Grundlast statt mit der gemessenen Last samt Verbraucher und gibt der Box
+#: die Grundlast als ``charge_hold_base_load_kw`` mit, damit sie die geplante
+#: Ladung gegen ihn hält. Kommagetrennte Anlagen-UUIDs (das Muster von
+#: ``OPTIMIZER_MORGEN_UEBERSCHUSS_ANLAGEN``); leer oder nicht gesetzt = keine
+#: Anlage, nichts wird gelesen und die Pläne sind byte-identisch zu vorher.
+#: Wird eine Anlage eingeschaltet, gehört sie aus
+#: ``OPTIMIZER_MORGEN_UEBERSCHUSS_ANLAGEN`` genommen (beides zusammen ist im
+#: Replay der Oktober-Läufe schlechter als NS-3 B allein).
+UEBERSCHUSS_VERBRAUCHER_ANLAGEN_ENV = "OPTIMIZER_UEBERSCHUSS_VERBRAUCHER_ANLAGEN"
+
+
+def ueberschuss_verbraucher_enabled(site_id, env=None) -> bool:
+    """Ob der Plan an dieser Anlage den Überschuss-Verbraucher herausrechnet
+    (NS-3 B). Vorgabe AUS; ein ungültiger Eintrag bricht laut ab."""
+    return _anlage_in_env(UEBERSCHUSS_VERBRAUCHER_ANLAGEN_ENV, site_id, env)
+
+
+def _anlage_in_env(name: str, site_id, env=None) -> bool:
+    """Ob ``site_id`` in der kommagetrennten Anlagenliste ``name`` steht - ein
+    ungültiger Eintrag bricht laut ab, denn ein Tippfehler darf eine Anlage nie
+    still ein- oder ausschalten."""
     from uuid import UUID
 
     env = os.environ if env is None else env
     anlagen = set()
-    for part in (env.get(MORGEN_UEBERSCHUSS_ANLAGEN_ENV) or "").split(","):
+    for part in (env.get(name) or "").split(","):
         part = part.strip()
         if not part:
             continue
@@ -509,8 +537,7 @@ def morgen_ueberschuss_enabled(site_id, env=None) -> bool:
             anlagen.add(UUID(part))
         except ValueError as exc:
             raise ValueError(
-                f"{MORGEN_UEBERSCHUSS_ANLAGEN_ENV} must be comma-separated site "
-                f"UUIDs, got {part!r}"
+                f"{name} must be comma-separated site UUIDs, got {part!r}"
             ) from exc
     return UUID(str(site_id)) in anlagen
 

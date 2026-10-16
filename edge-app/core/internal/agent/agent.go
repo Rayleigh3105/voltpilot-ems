@@ -130,6 +130,12 @@ type Agent struct {
 	// MEASURED surplus, so a forecast shortfall is no longer covered from the
 	// grid (guards.PriceTrimmer - the edge enforces, the cloud priced).
 	trim *guards.PriceTrimmer
+	// hold is the NS-3 B charge hold: in a slot the cloud marked with
+	// charge_hold_base_load_kw the trim bounds the charge by that base load, not
+	// by the measured house load, so a surplus consumer that regulates to zero
+	// export steps down instead of taking the planned charge
+	// (guards.ChargeHolder - its import guard catches a load that does not).
+	hold *guards.ChargeHolder
 	// follow holds the hysteresis of the in-slot load following: in a slot the
 	// cloud marked cover_load_from_battery the commanded DISCHARGE is raised to
 	// the MEASURED house deficit, so an under-forecast quarter hour is no longer
@@ -739,6 +745,7 @@ func New(cfg config.Config) (*Agent, error) {
 		envelope:     guards.NewEnvelope(),
 		peak:         guards.NewPeakTracker(),
 		trim:         guards.NewPriceTrimmer(),
+		hold:         guards.NewChargeHolder(),
 		follow:       guards.NewLoadFollower(),
 		deficitHold:  guards.NewDeficitHold(),
 		absorb:       guards.NewSurplusCharger(),
@@ -2889,6 +2896,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 			// (never blind), so any previous claim is cleared rather than left
 			// stale.
 			s.Trim = nil
+			s.ChargeHold = nil
 			s.Follow = nil
 			s.DeficitHold = nil
 			s.Absorb = nil
@@ -2908,6 +2916,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 			s.CurtailTrack = nil
 		})
 		a.trim.Release()
+		a.hold.Release()
 		a.follow.Release()
 		a.deficitHold.Release()
 		a.absorb.Release()
@@ -3029,6 +3038,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	inSlotCorrections := marketCorrectionsAllowed && !gridDec.Engage
 	if gridDec.Engage {
 		a.trim.Release()
+		a.hold.Release()
 		a.follow.Release()
 		a.absorb.Release()
 		a.damp.Release()
@@ -3044,10 +3054,32 @@ func (a *Agent) applySetpoint(now time.Time) {
 		profileFor = a.dampProfileFor
 	}
 	dampProfile := profileFor(a.controlProfileDevice())
+	// SPEICHER VOR DEM ÜBERSCHUSS-VERBRAUCHER (NS-3 B, guards/chargehold.go):
+	// in a charging slot the cloud marked with charge_hold_base_load_kw (it took
+	// a surplus consumer out of the load the charge was planned against) the
+	// trim and the damper bound the charge by that base load instead of the
+	// measured house load - the consumer, which regulates to zero export by
+	// itself, steps down and gets what remains. It changes the trim's bound
+	// only, so it follows exactly the trim's authority (the plan holder, a fresh
+	// plan, the trim duty itself); an import beyond the base-load coverage that
+	// stands for guards.HoldYieldDwell raises the base by it (no grid charging).
+	// The damper hears of it before Gate: an import right after a raise is then
+	// the consumer's to answer, not its retreat-only exception's.
+	trimDuty := inSlotCorrections && p.ActiveChargeFromSurplusOnly(now)
+	holdBaseKw, holdSlot := p.ActiveChargeHold(now)
+	holdWanted := trimDuty && holdSlot && kw > 0
+	a.damp.HoldCharge(holdWanted)
 	rc, dampPair := a.damp.Gate(now, dampProfile, r, readingAt)
+	a.mu.Lock()
+	liveGridKw := math.NaN()
+	if a.lastGridKw != nil {
+		liveGridKw = *a.lastGridKw
+	}
+	a.mu.Unlock()
+	_, holdSlotStart, _ := p.ActiveSetpoint(now)
+	held := a.hold.Apply(now, holdSlotStart, kw, holdBaseKw, holdWanted, r, rc, liveGridKw, measurementFresh)
 	preCorrectionKw := kw
-	trimmed := a.trim.Apply(now, kw,
-		inSlotCorrections && p.ActiveChargeFromSurplusOnly(now), rc)
+	trimmed := a.trim.Apply(now, kw, trimDuty, held.Reading)
 	kw = trimmed.Kw
 
 	// In-slot LOAD FOLLOWING (2026-07-30, the discharge-side mirror of the trim
@@ -3319,7 +3351,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	correctionEngaged := trimmed.Active || followed.Active || absorbed.Active ||
 		a.trim.Engaged() || a.follow.Engaged() || a.absorb.Engaged()
 	if damped, shaped := a.damp.Shape(dampProfile, preCorrectionKw, kw,
-		correctionEngaged, dampPair, rc); shaped {
+		correctionEngaged, dampPair, held.Reading); shaped {
 		kw = guards.Clamp(damped, limits, r)
 	}
 
@@ -3586,7 +3618,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 		a.native.Release()
 	} else {
 		nativeDec, nativeInfo, nativeWithheldInfo = a.nativeDecide(now, p, r, kw,
-			marketCorrectionsAllowed && !surplusStored, controlEnabled, measurementFresh, freshWindow,
+			marketCorrectionsAllowed && !surplusStored && !held.Active, controlEnabled, measurementFresh, freshWindow,
 			effectiveFloor, peakTarget, solarOnly, limits, leader.Reason)
 	}
 	a.noteLeaderSymptom(now, nativeDec)
@@ -3768,6 +3800,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// arbiter's registry fallback) - the E1a applySetpoint-side mirror is
 	// retired; without a pushed registry neither path publishes anything.
 	trimInfo := trimSnapshot(trimmed)
+	holdInfo := chargeHoldSnapshot(held)
 	followInfo := followSnapshot(followed)
 	deficitHoldInfo := a.deficitHoldSnapshot(followed)
 	absorbInfo := absorbSnapshot(absorbed)
@@ -3784,6 +3817,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 		s.PeakGuardActive = peakActive
 		s.PeakQuarterMeanKw = quarterMean
 		s.Trim = trimInfo
+		s.ChargeHold = holdInfo
 		s.Follow = followInfo
 		s.DeficitHold = deficitHoldInfo
 		s.Absorb = absorbInfo
@@ -3915,6 +3949,20 @@ func trimSnapshot(t guards.TrimResult) *state.TrimInfo {
 		info.SurplusKw = &v
 	}
 	return info
+}
+
+// chargeHoldSnapshot turns one evaluation of the NS-3 B hold into the UI-facing
+// block, or nil while the slot holds nothing (the card renders as before).
+func chargeHoldSnapshot(h guards.ChargeHoldResult) *state.ChargeHoldInfo {
+	if !h.Active {
+		return nil
+	}
+	return &state.ChargeHoldInfo{
+		Active:         true,
+		PlanBaseLoadKw: math.Round(h.PlanBaseLoadKw*1000) / 1000,
+		BaseLoadKw:     h.BaseLoadKw,
+		ConsumerKw:     h.ConsumerKw,
+	}
 }
 
 // followSnapshot turns one load-following evaluation into the UI-facing block,

@@ -161,6 +161,13 @@ def _slot_payload(slot, release_floor_pct: float | None = None) -> dict:
     # and absence is fail-OPEN on the edge for the same reason.
     if slot.charge_surplus_to_battery:
         payload["charge_surplus_to_battery"] = True
+    # OPTIONAL per the contract (NS-3 B, 16.10.2026): the load the planned
+    # charge was computed against, present only where the run took a surplus
+    # consumer out of the load and the slot carries the trim duty - the edge
+    # then holds the charge against the consumer. Absent = the trim of before,
+    # so every other payload stays byte-identical and an old edge ignores it.
+    if slot.charge_hold_base_load_kw is not None:
+        payload["charge_hold_base_load_kw"] = round(slot.charge_hold_base_load_kw, 3)
     # OPTIONAL per the contract („Sonne + Speicher", 06.10.2026): the battery
     # floor of this slot. Absent = no release in this slot (the plan trades
     # here, or the site does not run the source) - fail-CLOSED on the edge.

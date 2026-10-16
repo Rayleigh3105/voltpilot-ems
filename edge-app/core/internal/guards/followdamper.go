@@ -225,10 +225,28 @@ type FollowDamper struct {
 	engaged bool
 	sigma   float64
 	held    float64
+
+	// holdCharge: the slot's charge is held against a surplus consumer
+	// (chargehold.go) - an import while charging is then the consumer's to
+	// answer first, and the hold's own import guard owns the take-back.
+	holdCharge bool
 }
 
 // NewFollowDamper returns an empty damper.
 func NewFollowDamper() *FollowDamper { return &FollowDamper{} }
+
+// HoldCharge tells the damper, before Gate, whether this tick's charge is held
+// against a surplus consumer (NS-3 B, chargehold.go). While it is, the second
+// retreat-only exception does not fire on the charge side: an import at the
+// meter right after a raise is then the consumer that has not stepped down
+// yet, not a charge the house cannot take - taking it back at once would hand
+// the consumer the very kilowatts the hold keeps for the battery. The hold's
+// import guard takes the charge back instead when the import stands.
+func (d *FollowDamper) HoldCharge(on bool) {
+	d.mu.Lock()
+	d.holdCharge = on
+	d.mu.Unlock()
+}
 
 // Observe records one kept device sample: its time and the two halves of the
 // surplus pair as the device reported them (NaN = not in this sample). A half
@@ -392,6 +410,9 @@ func (d *FollowDamper) costlyAtMeter(p DampProfile) bool {
 	if d.wroteKw < 0 {
 		sigma = -1
 	}
+	if sigma > 0 && d.holdCharge {
+		return false // the held charge: the consumer answers the import first
+	}
 	// Grid is + import / - export, the battery + charge / - discharge: on the
 	// discharge side the excess is the export, on the charge side the import.
 	excess := sigma * d.grid
@@ -515,5 +536,6 @@ func (d *FollowDamper) Release() {
 	d.mu.Lock()
 	d.engaged, d.ctlValid, d.usedAt, d.wroteValid = false, false, time.Time{}, false
 	d.costlySigma, d.costlyLevel = 0, 0
+	d.holdCharge = false
 	d.mu.Unlock()
 }

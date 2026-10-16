@@ -102,6 +102,18 @@ type Slot struct {
 	// byte-for-byte pre-feature behavior. Inferring the duty would be the
 	// price-blind "just charge the surplus" logic the price-aware plan replaced.
 	ChargeSurplusToBattery bool `json:"charge_surplus_to_battery,omitempty"`
+	// ChargeHoldBaseLoadKw is the OPTIONAL NS-3 B hold of the slot (2026-10-16,
+	// kW >= 0): the house load the cloud computed this slot's planned CHARGE
+	// against, after it detected a surplus consumer - a load that regulates the
+	// connection point to zero export itself and takes every surplus the battery
+	// does not hold - and took it out of the load. Present only on a charging
+	// slot that also carries ChargeFromSurplusOnly. The executor then bounds the
+	// trim by pv - min(load, this value) instead of pv - load, so the consumer
+	// yields to the planned charge instead of taking it; a load above the value
+	// that does NOT yield is caught by the hold's own import guard
+	// (guards.ChargeHolder). nil = absent = the trim of before - FAIL-OPEN like
+	// its siblings, and a garbage value is no hold.
+	ChargeHoldBaseLoadKw *float64 `json:"charge_hold_base_load_kw,omitempty"`
 	// ReleaseFloorSocPct is the OPTIONAL „Sonne + Speicher" battery floor of
 	// the slot (2026-10-06, percent 0..100): a charge point on that source may
 	// receive battery energy only while the MEASURED SoC lies above it. nil =
@@ -252,6 +264,7 @@ type wire struct {
 		UnplannedLoadDischarge *bool    `json:"unplanned_load_discharge"`
 		LimitDischargeToLoad   *bool    `json:"limit_discharge_to_load"`
 		ChargeSurplusToBattery *bool    `json:"charge_surplus_to_battery"`
+		ChargeHoldBaseLoadKw   *float64 `json:"charge_hold_base_load_kw"`
 		ReleaseFloorSocPct     *float64 `json:"ev_release_floor_soc_pct"`
 	} `json:"slots"`
 }
@@ -364,6 +377,12 @@ func Parse(payload []byte, receivedAt time.Time) (*Plan, error) {
 		// true carries the surplus-absorption duty.
 		if s.ChargeSurplusToBattery != nil && *s.ChargeSurplusToBattery {
 			slot.ChargeSurplusToBattery = true
+		}
+		// The NS-3 B hold: a finite, non-negative base load only; anything else
+		// holds nothing (the trim of before).
+		if b := s.ChargeHoldBaseLoadKw; b != nil && !math.IsNaN(*b) && !math.IsInf(*b, 0) && *b >= 0 {
+			v := *b
+			slot.ChargeHoldBaseLoadKw = &v
 		}
 		// Keep a valid, non-negative feed-in cap only; the contract guarantees
 		// >= 0, and a bad value must never be shown as a real curtailment.
@@ -527,6 +546,27 @@ func (p *Plan) ActiveChargeSurplusToBattery(now time.Time) bool {
 		}
 	}
 	return false
+}
+
+// ActiveChargeHold returns the NS-3 B base load of the slot active at now (see
+// Slot.ChargeHoldBaseLoadKw). ok=false when the plan is nil, STALE, no slot is
+// active, or the slot carries no hold - like its siblings never a staleness
+// survivor: it is a fact about the consumer the cloud measured for THIS
+// quarter hour, and the stale-plan fallback follows pv - load anyway.
+func (p *Plan) ActiveChargeHold(now time.Time) (baseLoadKw float64, ok bool) {
+	if !p.Fresh(now) {
+		return 0, false
+	}
+	width := time.Duration(p.SlotMinutes) * time.Minute
+	for _, s := range p.Slots {
+		if !now.Before(s.Start) && now.Before(s.Start.Add(width)) {
+			if s.ChargeHoldBaseLoadKw == nil {
+				return 0, false
+			}
+			return *s.ChargeHoldBaseLoadKw, true
+		}
+	}
+	return 0, false
 }
 
 // ActiveReleaseFloor returns the „Sonne + Speicher" floor of the slot active

@@ -234,6 +234,7 @@ def test_committed_fixtures_match_the_schema_both_ways():
         "mqtt-schedule.valid.limit-discharge.json",
         "mqtt-schedule.valid.ev-release.json",
         "mqtt-schedule.valid.ev-release-none.json",
+        "mqtt-schedule.valid.charge-hold.json",
     ):
         payload = json.loads((EXAMPLES / name).read_text())
         errors = list(validator.iter_errors(payload))
@@ -254,6 +255,10 @@ def test_committed_fixtures_match_the_schema_both_ways():
         (
             "mqtt-schedule.invalid.ev-release-floor-out-of-range.json",
             "ev_release_floor_soc_pct",
+        ),
+        (
+            "mqtt-schedule.invalid.charge-hold-negative.json",
+            "charge_hold_base_load_kw",
         ),
     ):
         bad = json.loads((EXAMPLES / name).read_text())
@@ -591,3 +596,47 @@ def test_a_run_without_release_says_why():
 
 def errors_of(payload):
     return [e.message for e in load_validator().iter_errors(payload)]
+
+
+def test_the_charge_hold_fixture_is_what_the_publisher_actually_emits():
+    """NS-3 B fixture-vs-producer: the committed hold fixture is not
+    hand-fiction - the publisher builds the same slot shape from a charging,
+    trimmed plan slot that carries the base load (rounded to watts)."""
+    import dataclasses
+
+    fixture = json.loads((EXAMPLES / "mqtt-schedule.valid.charge-hold.json").read_text())
+    plan = make_plan(slots=1)
+    slot = dataclasses.replace(
+        plan.slots[0],
+        battery_kw=30.0,
+        charge_from_surplus_only=True,
+        charge_hold_base_load_kw=4.72500004,
+        curtail_kw=0.0,
+    )
+    emitted = build_schedule_payload(dataclasses.replace(plan, slots=[slot]))["slots"][0]
+    assert set(emitted) == set(fixture["slots"][0])
+    assert emitted["charge_hold_base_load_kw"] == fixture["slots"][0]["charge_hold_base_load_kw"]
+    assert emitted["charge_from_surplus_only"] is True
+
+
+def test_the_charge_hold_field_is_omitted_unless_set_and_validates():
+    """Absent = the trim of before, so a slot without the base load stays
+    byte-identical; 0.0 is a value (a base load of zero), not an absence."""
+    import dataclasses
+
+    validator = load_validator()
+    plan = make_plan(slots=3)
+    held = dataclasses.replace(
+        plan.slots[0], charge_from_surplus_only=True, charge_hold_base_load_kw=5.25
+    )
+    zero = dataclasses.replace(
+        plan.slots[1], battery_kw=2.0, charge_from_surplus_only=True, charge_hold_base_load_kw=0.0
+    )
+    payload = build_schedule_payload(dataclasses.replace(plan, slots=[held, zero, plan.slots[2]]))
+    assert list(validator.iter_errors(payload)) == []
+    first, second, third = payload["slots"]
+    assert first["charge_hold_base_load_kw"] == 5.25
+    assert second["charge_hold_base_load_kw"] == 0.0
+    assert "charge_hold_base_load_kw" not in third
+    plain = build_schedule_payload(make_plan(slots=3))
+    assert all("charge_hold_base_load_kw" not in s for s in plain["slots"])

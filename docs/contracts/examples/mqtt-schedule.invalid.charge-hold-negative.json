@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "plan_id": "7f1a2b3c-4d5e-4f60-8a71-92b3c4d5e6f7",
+  "generated_at": "2026-10-13T11:00:00Z",
+  "horizon_slots": 1,
+  "slot_minutes": 15,
+  "slots": [
+    {
+      "start": "2026-10-13T11:00:00Z",
+      "battery_setpoint_kw": 30.0,
+      "charge_from_surplus_only": true,
+      "charge_hold_base_load_kw": -4.7
+    }
+  ]
+}

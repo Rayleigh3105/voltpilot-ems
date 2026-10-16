@@ -69,6 +69,12 @@ type Snapshot struct {
 	// setpoint far below the Fahrplan and no reason for it.
 	Trim *TrimInfo `json:"trim,omitempty"`
 
+	// ChargeHold is the NS-3 B hold (2026-10-16), non-nil ONLY while the slot's
+	// planned charge is held against a surplus consumer (guards.ChargeHolder).
+	// It names why the charge stands although the measured house load would
+	// leave no surplus for it - the consumer is the one that steps down.
+	ChargeHold *ChargeHoldInfo `json:"charge_hold,omitempty"`
+
 	// Follow is the in-slot load following (2026-07-30), non-nil ONLY while it is
 	// actually deepening the commanded discharge. Same reason as Trim: without it
 	// the customer would see a confirmed setpoint far BELOW the Fahrplan value
@@ -282,6 +288,24 @@ type TrimInfo struct {
 	// SurplusKw is the measured surplus the charge is held at; nil when unknown
 	// (then the trim would be inactive anyway - never regulate blind).
 	SurplusKw *float64 `json:"surplus_kw,omitempty"`
+}
+
+// ChargeHoldInfo is the UI-facing state of the NS-3 B hold: the cloud took a
+// surplus consumer out of the load this slot's charge was planned against, so
+// the box bounds the charge by the base load, not by the measured house load.
+// Read-only display of a decision already taken - the hold itself lives in
+// guards.ChargeHolder.
+type ChargeHoldInfo struct {
+	// Active is always true when the block exists (it is omitted otherwise).
+	Active bool `json:"active"`
+	// PlanBaseLoadKw is the base load the plan sent (charge_hold_base_load_kw).
+	PlanBaseLoadKw float64 `json:"plan_base_load_kw"`
+	// BaseLoadKw is the base load in force: higher than the plan's once a load
+	// above it did not yield within guards.HoldYieldDwell.
+	BaseLoadKw float64 `json:"base_load_kw"`
+	// ConsumerKw is the measured load above the base load - the consumer's share
+	// that no longer bounds the charge.
+	ConsumerKw float64 `json:"consumer_kw"`
 }
 
 // FollowInfo is the UI-facing state of the in-slot load following: the cloud

@@ -912,3 +912,81 @@ func TestTheReleaseReasonsAreTheSharedVocabulary(t *testing.T) {
 		t.Fatal("an unknown reason must be dropped")
 	}
 }
+
+// NS-3 B: the committed hold fixture is read verbatim - the base load rides
+// only the slots that carry it, the accessor follows the active slot and the
+// plan's freshness, and a negative, non-finite or absent value holds nothing.
+func TestTheChargeHoldFixtureIsReadVerbatim(t *testing.T) {
+	dir := filepath.Join("..", "..", "..", "..", "docs", "contracts", "examples")
+	raw, err := os.ReadFile(filepath.Join(dir, "mqtt-schedule.valid.charge-hold.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	rx := time.Date(2026, 10, 13, 11, 1, 0, 0, time.UTC)
+	p, err := Parse(raw, rx)
+	if err != nil {
+		t.Fatalf("charge-hold fixture: %v", err)
+	}
+	if base, ok := p.ActiveChargeHold(rx); !ok || base != 4.725 {
+		t.Fatalf("active slot: base %v ok=%v, want 4.725", base, ok)
+	}
+	if !p.ActiveChargeFromSurplusOnly(rx) {
+		t.Fatal("the hold rides a trimmed slot")
+	}
+	if base, ok := p.ActiveChargeHold(rx.Add(15 * time.Minute)); !ok || base != 9.4 {
+		t.Fatalf("second slot: base %v ok=%v, want 9.4", base, ok)
+	}
+	if _, ok := p.ActiveChargeHold(rx.Add(30 * time.Minute)); ok {
+		t.Fatal("the third slot carries no hold")
+	}
+	if _, ok := p.ActiveChargeHold(rx.Add(StaleAfter + time.Minute)); ok {
+		t.Fatal("a stale plan holds nothing")
+	}
+	var nilPlan *Plan
+	if _, ok := nilPlan.ActiveChargeHold(rx); ok {
+		t.Fatal("no plan holds nothing")
+	}
+	for _, bad := range []string{`-4.7`, `"4.7"`} {
+		payload := `{"schema_version":"1.0","slot_minutes":15,"slots":[{"start":"2026-10-13T11:00:00Z",` +
+			`"battery_setpoint_kw":30,"charge_from_surplus_only":true,"charge_hold_base_load_kw":` + bad + `}]}`
+		bp, err := Parse([]byte(payload), rx)
+		if bad == `"4.7"` {
+			if err == nil {
+				t.Fatal("a string base load must be rejected like any mistyped field")
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("%s: %v", bad, err)
+		}
+		if _, ok := bp.ActiveChargeHold(rx); ok {
+			t.Fatalf("base load %s must hold nothing", bad)
+		}
+	}
+	// The plain fixture carries no hold - the field is additive.
+	plain, err := os.ReadFile(filepath.Join(dir, "mqtt-schedule.valid.plain.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pp, err := Parse(plain, rx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range pp.Slots {
+		if pp.Slots[i].ChargeHoldBaseLoadKw != nil {
+			t.Fatalf("plain fixture slot %d carries a hold", i)
+		}
+	}
+	// Round trip through the on-disk plan cache keeps it.
+	cached, err := json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back Plan
+	if err := json.Unmarshal(cached, &back); err != nil {
+		t.Fatal(err)
+	}
+	if back.Slots[0].ChargeHoldBaseLoadKw == nil || *back.Slots[0].ChargeHoldBaseLoadKw != 4.725 {
+		t.Fatalf("plan cache round trip lost the hold: %+v", back.Slots[0])
+	}
+}

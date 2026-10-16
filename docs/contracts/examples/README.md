@@ -10,7 +10,7 @@ Ausführbare JSON-Fixtures für Schema- und Laufzeitprüfungen. Dateinamen und I
 | `mqtt-ota-target.*.json` | 2 | 1 |
 | `mqtt-probe.*.json` | 12 | 3 |
 | `mqtt-register-write.*.json` | 6 | 1 |
-| `mqtt-schedule.*.json` | 5 | 4 |
+| `mqtt-schedule.*.json` | 9 | 7 |
 | `ota-release-manifest.*.json` | 3 | 2 |
 
 `valid` muss die jeweils geprüfte Regel erfüllen; `invalid` benennt den gezielten Verstoß. Negative Beispiele nicht mit beliebigen Zusatzfeldern ungültig machen. Datumswerte sind eingefrorene Testdaten, keine aktuellen Fahrpläne.
@@ -28,6 +28,7 @@ Konsumenten: Optimierung `tests/test_contract.py`; Go-Core `internal/plan`, `ota
 ## Ergänzende Fälle
 
 - `mqtt-schedule.invalid.limit-discharge-not-boolean.json`: `limit_discharge_to_load` ist eine boolesche Erlaubnis, kein zweiter kW-Sollwert.
+- `mqtt-schedule.valid.charge-hold.json`: `charge_hold_base_load_kw` (NS-3 B) ist die Last, gegen die der Plan die Ladung gerechnet hat, nur an ladenden Slots mit `charge_from_surplus_only`; der dritte Slot ohne das Feld trimmt wie bisher. `mqtt-schedule.invalid.charge-hold-negative.json`: eine negative Grundlast ist ungültig.
 - `mqtt-probe.valid.test-connection-battery*.json`: MQTT-/HTTP-Vorschau mit `samples`; kein Empfang bedeutet `count: 0` ohne erfundenen Wert. HTTP-Geheimnisse gehören nur in Probe/Registry.
 - `mqtt-charging-config.valid.steuerart-je-saeule.json`: fehlende Säulenwahl übernimmt den Anlagenstandard; fehlende Rahmenfelder erhalten den Boxwert.
 - `mqtt-charging-config.valid.fahrzeug-profile*.json`: vollständige Profil-Liste je Box-`tag_ref`; eine leere Liste entfernt alle Profile. Der Cloud-Journalbezug ist keine gültige Kartenkennung.

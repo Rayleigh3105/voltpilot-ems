@@ -647,6 +647,16 @@ class OptimizationInput:
     #: der erste Lade-Slot dieses Tages vorbei, und die Regel gilt erst wieder
     #: ab dem nächsten Tag. Nur mit ``morgen_ueberschuss`` von Bedeutung.
     morgen_ueberschuss_heute_geladen: bool = False
+    #: NS-3 B (Captain-Entscheid 15.10.2026): je Slot, ob der Plan hier den
+    #: gemessenen Überschuss-Verbraucher aus der Last genommen hat und mit der
+    #: Grundlast rechnet
+    #: (:func:`voltpilot_optimization.ueberschuss_verbraucher.ohne_verbraucher`;
+    #: ``load_kw`` trägt die Grundlast schon). In einem solchen Slot, der lädt
+    #: und ``charge_from_surplus_only`` trägt, bekommt die Box die Last des
+    #: Plans als ``charge_hold_base_load_kw`` und hält die Ladung gegen den
+    #: Verbraucher. Leer = keine Erkennung, byte-identisch zu vorher, auch für
+    #: jeden Aufrufer, der seine Eingaben selbst baut.
+    ueberschuss_verbraucher: tuple[bool, ...] = ()
 
     def __post_init__(self) -> None:
         n = len(self.slot_starts)
@@ -664,6 +674,10 @@ class OptimizationInput:
             series = getattr(self, name)
             if series is not None and len(series) != n:
                 raise ValueError(f"{name} must have one entry per slot ({n})")
+        if self.ueberschuss_verbraucher and len(self.ueberschuss_verbraucher) != n:
+            raise ValueError(
+                f"ueberschuss_verbraucher must be empty or have one entry per slot ({n})"
+            )
         if self.slot_minutes <= 0:
             raise ValueError("slot_minutes must be positive")
         if self.grid_limit_kw is not None and self.grid_limit_kw <= 0:
@@ -926,6 +940,19 @@ class PlanSlot:
     # ``charge_surplus_to_battery``): an executor duty, not presentation.
     # None/False = pre-feature behavior.
     charge_surplus_to_battery: bool | None = None
+    # ---- NS-3 B: Ladung gegen den Überschuss-Verbraucher halten (2026-10-16) --
+    # The load (kW) this slot's planned CHARGE was computed against, present
+    # only where the run detected a surplus-following consumer and took it out
+    # of the load (OptimizationInput.ueberschuss_verbraucher), the slot charges
+    # and carries charge_from_surplus_only. The edge then bounds its trim by
+    # pv - min(load, this value) instead of pv - load, so a consumer that
+    # regulates to zero export no longer takes the planned charge; a load above
+    # it that does not yield is caught by the edge's own import guard
+    # (edge-app/core/internal/guards/chargehold.go). Reaches the MQTT payload
+    # as the optional per-slot ``charge_hold_base_load_kw``; None = absent =
+    # the trim of before. NOT persisted: the slot's persisted load_kw IS this
+    # value, and slot_flags carries the reason ``ueberschuss_verbraucher``.
+    charge_hold_base_load_kw: float | None = None
 
     @property
     def pv_limit_kw(self) -> float | None:

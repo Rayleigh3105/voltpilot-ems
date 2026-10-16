@@ -60,6 +60,7 @@ from voltpilot_optimization.config import (
     require_measured_soc,
     soc_max_age,
     terminal_value_override_eur_per_kwh,
+    ueberschuss_verbraucher_enabled,
 )
 from voltpilot_optimization import grenze_aufloesung, verbund
 from voltpilot_optimization.domain import (
@@ -909,10 +910,6 @@ def gather_inputs(
     )
     residual = ewma_residual(recent_load, load_kw[0]) if load_kw else None
     load_kw = apply_load_nowcast(load_kw, residual)
-    # No fresh evidence means no robust-band claim and preserves the active
-    # model's series byte-for-byte. With evidence, the band is bounded + fades.
-    if residual is not None:
-        load_kw = apply_uncertainty_reserve(load_kw)
     pv_kw, pv_used_fallback = _forecast_or_fallback(
         dsn, site, "pv", "pv_power_kw", slot_starts, now, stored_pv
     )
@@ -929,6 +926,20 @@ def gather_inputs(
     # earlier ones, and BEFORE the night floor, which stays the last gate.
     pv_kw = _nowcast_pv_input(dsn, site, slot_starts, pv_kw, now)
     pv_kw = _night_floor_pv_input(site, slot_starts, pv_kw, pv_used_fallback)
+    # NS-3 B (Schalter je Anlage, Vorgabe aus): läuft der Überschuss-Verbraucher
+    # im Messfenster, rechnet der Plan im Sonnenfenster der nahen Stunden mit der
+    # Grundlast - nach dem Nowcast, weil der den gemessenen Verbraucher in diese
+    # Stunden trägt, und vor dem Sicherheitsaufschlag, der der Grundlast gilt.
+    # Nur mit frischer Messung (residual), dieselbe Bedingung wie der Aufschlag.
+    ueberschuss_verbraucher: tuple[bool, ...] = ()
+    if residual is not None and ueberschuss_verbraucher_enabled(site.site_id):
+        load_kw, ueberschuss_verbraucher = _ohne_ueberschuss_verbraucher(
+            dsn, site, slot_starts, load_kw, pv_kw, recent_load, now
+        )
+    # No fresh evidence means no robust-band claim and preserves the active
+    # model's series byte-for-byte. With evidence, the band is bounded + fades.
+    if residual is not None:
+        load_kw = apply_uncertainty_reserve(load_kw)
 
     # Both live readings sit behind a freshness window (F4/P4): a stale
     # section-14a reading must NOT become a standing envelope over every future
@@ -1077,7 +1088,101 @@ def gather_inputs(
         # NS-5 B: Morgenüberschuss in Ruhe-Slots, nur an eingeschalteten Anlagen.
         morgen_ueberschuss=morgen_ueberschuss,
         morgen_ueberschuss_heute_geladen=heute_geladen,
+        # NS-3 B: wo der Plan den Überschuss-Verbraucher herausgerechnet hat.
+        ueberschuss_verbraucher=ueberschuss_verbraucher,
     )
+
+
+def _ohne_ueberschuss_verbraucher(
+    dsn: str,
+    site: BatterySite,
+    slot_starts: list[datetime],
+    load_kw: list[float],
+    pv_kw: list[float],
+    recent_load: list[float],
+    now: datetime,
+) -> tuple[list[float], tuple[bool, ...]]:
+    """NS-3 B: die Lastreihe ohne den gemessenen Überschuss-Verbraucher, und je
+    Slot, ob er herausgerechnet wurde (leer = nichts erkannt).
+
+    Liest die Grundlast aus den 15-min-Rollups der letzten Tage und die Sonne
+    aus DEMSELBEN Messfenster wie die Last des Nowcasts (2 Minuten, höchstens
+    30 s alt - beide Hälften eines Überschusses müssen denselben Moment
+    messen). Die Regel steht in :mod:`voltpilot_optimization.ueberschuss_verbraucher`.
+
+    FAIL-SOFT: ein Lesefehler kostet den Lauf die Regel (die Reihe von vorher),
+    nie den Plan.
+    """
+    from voltpilot_optimization import ueberschuss_verbraucher as uv
+
+    try:
+        profil = uv.grundlast_profil(_grundlast_viertelstunden(dsn, site.site_id, now))
+        pv_jetzt = _recent_pv_samples(
+            dsn, site.tenant_id, site.site_id, now,
+            lookback=timedelta(minutes=2), max_age=timedelta(seconds=30),
+            device_id=site.device_id,
+        )
+    except Exception:
+        logger.warning(
+            "ueberschuss_verbraucher.unavailable - Lauf ohne Erkennung (NS-3 B)",
+            extra={"context": {"site_id": str(site.site_id)}},
+            exc_info=True,
+        )
+        return load_kw, ()
+    erkennung = uv.erkenne(profil, slot_starts[0], recent_load, pv_jetzt)
+    if erkennung is None or profil is None:
+        return load_kw, ()
+    neu, markiert = uv.ohne_verbraucher(load_kw, pv_kw, slot_starts, profil, erkennung)
+    if not any(markiert):
+        return load_kw, ()
+    logger.info(
+        "ueberschuss_verbraucher.erkannt",
+        extra={
+            "context": {
+                "site_id": str(site.site_id),
+                "grundlast_kw": round(erkennung.grundlast_kw, 2),
+                "gemessen_kw": round(erkennung.gemessen_kw, 2),
+                "sonne_kw": round(erkennung.sonne_kw, 2),
+                "verbraucher_kw": round(erkennung.verbraucher_kw, 2),
+                "belege": erkennung.belege,
+                "slots": sum(markiert),
+            }
+        },
+    )
+    return neu, markiert
+
+
+def _grundlast_viertelstunden(dsn: str, site_id: UUID, now: datetime) -> list:
+    """Die abgeschlossenen Viertelstunden-Mittel von Last und Sonne der letzten
+    :data:`~voltpilot_optimization.ueberschuss_verbraucher.TAGE` Tage aus
+    ``telemetry_rollup_15m`` (``*_kwh * 4.0`` IST das Mittel, dasselbe Muster
+    wie :func:`voltpilot_optimization.night_reserve._measured_load_slots`) -
+    die Grundlast braucht keine laufende Viertelstunde, und die Rollups
+    überleben die Retention des rohen ``telemetry``."""
+    import psycopg  # lazy: optional [db] extra
+
+    from voltpilot_optimization.ueberschuss_verbraucher import TAGE, Viertelstunde
+
+    now = ensure_utc(now)
+    with psycopg.connect(dsn) as conn, conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT bucket, load_kwh * 4.0, pv_kwh * 4.0 FROM telemetry_rollup_15m
+            WHERE site_id = %s AND load_kwh IS NOT NULL AND pv_kwh IS NOT NULL
+              AND bucket >= %s AND bucket < %s
+            """,
+            (
+                site_id,
+                now - timedelta(days=TAGE),
+                now - timedelta(minutes=SLOT_MINUTES),
+            ),
+        )
+        rows = cur.fetchall()
+    return [
+        Viertelstunde(start=ensure_utc(ts), last_kw=float(last), pv_kw=float(pv))
+        for ts, last, pv in rows
+        if last is not None and pv is not None
+    ]
 
 
 def _heute_geplant_geladen(

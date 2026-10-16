@@ -362,6 +362,7 @@ func (a *Agent) gridTestOverride(now time.Time, p *plan.Plan) bool {
 		s.Native = nil
 	})
 	a.trim.Release()
+	a.hold.Release()
 	a.follow.Release()
 	a.deficitHold.Release()
 	a.absorb.Release()

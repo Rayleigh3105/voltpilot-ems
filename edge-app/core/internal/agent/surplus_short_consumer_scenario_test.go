@@ -149,14 +149,125 @@ type benchScenario struct {
 	socPct    float64
 	segments  []benchSegment
 	traceName string
+	// NS-3 B (Nulleinspeise-Verbraucher): with zeroExport set the house is
+	// baseKw plus that consumer, which regulates the connection point to zero
+	// export by itself (benchZeroExport), plus fixedKw of a load that never
+	// yields; the segments are not used. pvAt, when set, replaces the constant
+	// pvKw. holdBaseKw is the slot's charge_hold_base_load_kw (nil = absent,
+	// the box of before).
+	zeroExport *benchZeroExport
+	baseKw     float64
+	fixedKw    float64
+	pvAt       func(t float64) float64
+	holdBaseKw *float64
+	durationS  int // the run's length when there are no segments
+}
+
+// pv returns the PV production at t seconds.
+func (s benchScenario) pv(t float64) float64 {
+	if s.pvAt != nil {
+		return s.pvAt(t)
+	}
+	return s.pvKw
 }
 
 func (s benchScenario) seconds() int {
+	if s.durationS > 0 {
+		return s.durationS
+	}
 	n := 0
 	for _, seg := range s.segments {
 		n += seg.seconds
 	}
 	return n
+}
+
+// benchZeroExport is the surplus consumer of Herzogau (NS-3 B, report
+// vp-herzogau-minus-erloes-k4 §5, vp-herzogau-nie-schlechter-k5 §3): a
+// controller that regulates the connection point to zero export by itself, in
+// stages of stageKw (measured ~15/25/37 kW over a base of 3-5 kW). The TOP stage
+// modulates continuously toward grid 0 with the lag tauS - the scout of 10.10.
+// saw the grid held at ±0,01 kW for 70 s ("Heizstab-Regler"), and the
+// 14.10. ring 13-30 kW of load at -0,4 to +0,6 kW of grid. A further stage
+// switches on only after onDelayS (Einschaltverzug) with the top stage full and
+// export left - the first one only once the export reaches onFirstKw - and the
+// top stage switches off after offDelayS (Ausschaltverzug) with nothing left
+// to modulate down and import at the meter. From offS on (0 = never) it is
+// switched off. Its meter is the connection point, read every second.
+type benchZeroExport struct {
+	stageKw, tauS, onDelayS, offDelayS, onFirstKw float64
+	stages                                        int
+	startKw                                       float64 // power at t=0
+	offS                                          float64
+
+	n                 int
+	mod               float64
+	onSince, offSince float64
+}
+
+func (c *benchZeroExport) reset() {
+	c.n, c.mod, c.onSince, c.offSince = 0, 0, -1, -1
+	if c.startKw > 0 {
+		p := math.Min(c.startKw, float64(c.stages)*c.stageKw)
+		c.n = int(math.Ceil(p / c.stageKw))
+		c.mod = p - float64(c.n-1)*c.stageKw
+	}
+}
+
+func (c *benchZeroExport) power() float64 {
+	if c.n == 0 {
+		return 0
+	}
+	return float64(c.n-1)*c.stageKw + c.mod
+}
+
+// step advances the controller by dt seconds on the grid it measured (+ import
+// / - export, the consumer included).
+func (c *benchZeroExport) step(t, dt, gridKw float64) {
+	if c.offS > 0 && t >= c.offS {
+		c.n, c.mod = 0, 0
+		return
+	}
+	const margin = 0.1
+	if c.n > 0 {
+		// integral action on the meter: import lowers, export raises the top stage
+		c.mod -= gridKw * (1 - math.Exp(-dt/c.tauS))
+		c.mod = math.Max(0, math.Min(c.stageKw, c.mod))
+	}
+	export := -gridKw
+	wantsOn := (c.n == 0 && export >= c.onFirstKw) ||
+		(c.n > 0 && c.n < c.stages && c.mod >= c.stageKw-1e-6 && export > margin)
+	if wantsOn {
+		if c.onSince < 0 {
+			c.onSince = t
+		}
+		if t-c.onSince >= c.onDelayS {
+			c.n, c.mod, c.onSince = c.n+1, 0, -1
+		}
+	} else {
+		c.onSince = -1
+	}
+	if c.n > 0 && c.mod <= 1e-6 && gridKw > margin {
+		if c.offSince < 0 {
+			c.offSince = t
+		}
+		if t-c.offSince >= c.offDelayS {
+			c.n, c.mod, c.offSince = c.n-1, c.stageKw, -1
+			if c.n == 0 {
+				c.mod = 0
+			}
+		}
+	} else {
+		c.offSince = -1
+	}
+}
+
+// herzogauConsumer is the consumer of the two scenarios: three stages of
+// 12,5 kW (up to 37,5 kW), 4 s of modulation lag, 30 s Einschaltverzug, 10 s
+// Ausschaltverzug, the first stage at 12 kW of export.
+func herzogauConsumer(startKw, offS float64) *benchZeroExport {
+	return &benchZeroExport{stageKw: 12.5, stages: 3, tauS: 4, onDelayS: 30, offDelayS: 10,
+		onFirstKw: 12, startKw: startKw, offS: offS}
 }
 
 // load returns the house load at t seconds and whether a consumer runs.
@@ -212,6 +323,25 @@ type benchResult struct {
 	setpoints          []benchWrite
 	// gridRefreshes are the instants the device refreshed its grid register.
 	gridRefreshes []float64
+	// NS-3 B: what the zero-export consumer took, and the run second by second.
+	consumerKwh float64
+	trace       []benchSecond
+}
+
+// benchSecond is one second of a run with the zero-export consumer.
+type benchSecond struct{ batt, grid, consumer, pv float64 }
+
+// meanCharge is the mean battery charge (kW) over [fromS, toS).
+func (r benchResult) meanCharge(fromS, toS int) float64 {
+	sum, n := 0.0, 0
+	for i := fromS; i < toS && i < len(r.trace); i++ {
+		sum += math.Max(r.trace[i].batt, 0)
+		n++
+	}
+	if n == 0 {
+		return math.NaN()
+	}
+	return sum / float64(n)
 }
 
 type benchWrite struct{ at, kw float64 }
@@ -253,6 +383,7 @@ func runBench(t *testing.T, dev benchDevice, sc benchScenario) benchResult {
 				Start: slot, BatterySetpointKw: sc.planKw,
 				ChargeFromSurplusOnly: sc.surplus, ChargeSurplusToBattery: sc.surplus,
 				CoverLoadFromBattery: sc.cover, UnplannedLoadDischarge: sc.unplanned,
+				ChargeHoldBaseLoadKw: sc.holdBaseKw,
 			}},
 		}
 		a.mu.Unlock()
@@ -260,8 +391,17 @@ func runBench(t *testing.T, dev benchDevice, sc benchScenario) benchResult {
 
 	writes := []benchWrite{{0, 0}}
 	batt := 0.0
-	load0, _ := sc.load(0)
-	regGrid, regBatt, regPv := load0-sc.pvKw, 0.0, sc.pvKw
+	houseAt := func(t float64) (float64, bool) {
+		if sc.zeroExport != nil {
+			return sc.baseKw + sc.fixedKw + sc.zeroExport.power(), false
+		}
+		return sc.load(t)
+	}
+	if sc.zeroExport != nil {
+		sc.zeroExport.reset()
+	}
+	load0, _ := houseAt(0)
+	regGrid, regBatt, regPv := load0-sc.pv(0), 0.0, sc.pv(0)
 	nextGrid, nextBatt, refreshes := 0.0, math.Inf(1), 0
 	lastSetpoint := 0.0
 	res := benchResult{seconds: float64(sc.seconds())}
@@ -284,19 +424,26 @@ func runBench(t *testing.T, dev benchDevice, sc benchScenario) benchResult {
 			}
 		}
 		batt += (cmd - batt) * (1 - math.Exp(-dt/dev.tauS))
-		load, consumer := sc.load(tNow)
+		pv := sc.pv(tNow)
+		load, consumer := houseAt(tNow)
 		if consumer && !consumerOn {
 			res.consumers++
 		}
 		consumerOn = consumer
-		grid := load + batt - sc.pvKw // + import / - export
+		grid := load + batt - pv // + import / - export
+		if sc.zeroExport != nil {
+			// the consumer answers its own meter, for the next second
+			sc.zeroExport.step(tNow, dt, grid)
+			res.consumerKwh += sc.zeroExport.power() * dt / 3600
+			res.trace = append(res.trace, benchSecond{batt: batt, grid: grid, consumer: sc.zeroExport.power(), pv: pv})
+		}
 		charge, discharge := math.Max(batt, 0), math.Max(-batt, 0)
 		imp, exp := math.Max(grid, 0), math.Max(-grid, 0)
 		fromStorage := math.Min(discharge, exp)
 		res.storageExportedKwh += fromStorage * dt / 3600
 		res.surplusLostKwh += (exp - fromStorage) * dt / 3600
-		res.surplusKwh += math.Max(sc.pvKw-load, 0) * dt / 3600
-		res.deficitKwh += math.Max(load-sc.pvKw, 0) * dt / 3600
+		res.surplusKwh += math.Max(pv-load, 0) * dt / 3600
+		res.deficitKwh += math.Max(load-pv, 0) * dt / 3600
 		res.chargedKwh += charge * dt / 3600
 		res.dischargedKwh += discharge * dt / 3600
 		res.importKwh += imp * dt / 3600
@@ -313,7 +460,7 @@ func runBench(t *testing.T, dev benchDevice, sc benchScenario) benchResult {
 		// Device registers: the grid half (with the PV) and, sometimes later, the
 		// battery half.
 		if tNow >= nextGrid {
-			regGrid, regPv = grid, sc.pvKw
+			regGrid, regPv = grid, pv
 			res.gridRefreshes = append(res.gridRefreshes, tNow)
 			if refreshes%2 == 1 {
 				nextBatt = tNow + dev.battLagS
@@ -654,5 +801,211 @@ func TestDischargeIsTakenBackWithTheNextGridValueWhenTheConsumerEnds(t *testing.
 					settle+cadence, maxRest, sumExportS/float64(phases), maxExportWh)
 			})
 		}
+	}
+}
+
+// ---- NS-3 B: der Speicher hat Vorrang vor dem Überschuss-Verbraucher --------
+//
+// Captain decision 2026-10-15 (report vp-herzogau-nie-schlechter-k5 §3, §7.2
+// candidate g, Bauplan NS-P3b): the two days on which the planned charge
+// collapsed against the consumer, replayed against the zero-export consumer
+// model (benchZeroExport). Without the cloud's charge_hold_base_load_kw the box
+// behaves as up to edge-2026.10.x - the charge collapses, which these runs
+// keep as the regression guard of today's behavior; with it the charge holds
+// and the consumer gets what remains. A third run is the safety half: a load
+// above the base that does NOT yield must not be charged against for longer
+// than the hold's import guard allows.
+//
+//	go test ./internal/agent -run 'TestSurplusConsumer' -v
+
+// herzogau1210Scenario: 12.10. 14-15 Uhr. The plan charges 25 kW with both
+// surplus flags, the consumer runs on its first stage (~6 kW) and the sun
+// falls from 44 to 34 kW with a five-minute wiggle and one cloud of 8 kW.
+// Measured: the charge broke down from ~25 to ~1 kW while the consumer went to
+// 30-34 kW.
+func herzogau1210Scenario(hold bool) benchScenario {
+	sc := benchScenario{
+		start:  time.Date(2026, 10, 12, 12, 0, 0, 0, time.UTC),
+		planKw: 25, surplus: true, socPct: 70,
+		baseKw: 5, zeroExport: herzogauConsumer(6, 0), durationS: 3600,
+		pvAt: func(t float64) float64 {
+			pv := 44 - 10*t/3600 + 2*math.Sin(2*math.Pi*t/300)
+			if t >= 1500 && t < 1650 {
+				pv -= 8
+			}
+			return pv
+		},
+	}
+	if hold {
+		base := 5.25 // the plan's load: 5 kW base plus its 5 % reserve
+		sc.holdBaseKw = &base
+	}
+	return sc
+}
+
+// herzogau1410Scenario: 14.10. 15:00-16:40. The consumer already takes the
+// whole surplus (the battery charges ~1 kW), the sun falls from 42 to 20 kW,
+// the plan charges 20 kW, and at 16:30 the consumer switches off. Measured:
+// ~1 kW of charge until 16:30, then 22 kW within two minutes.
+func herzogau1410Scenario(hold bool) benchScenario {
+	pvAt := func(t float64) float64 { return 42 - 22*t/6000 + 3*math.Sin(2*math.Pi*t/300) }
+	sc := benchScenario{
+		start:  time.Date(2026, 10, 14, 13, 0, 0, 0, time.UTC),
+		planKw: 20, surplus: true, socPct: 25,
+		baseKw: 4.5, zeroExport: herzogauConsumer(pvAt(0)-4.5-1, 5400), durationS: 6000,
+		pvAt: pvAt,
+	}
+	if hold {
+		base := 4.725
+		sc.holdBaseKw = &base
+	}
+	return sc
+}
+
+// holdTarget is the charge the hold can deliver at second t: the plan's value,
+// bounded by the sun above the base load.
+func holdTarget(sc benchScenario, t int) float64 {
+	return math.Max(0, math.Min(sc.planKw, sc.pv(float64(t))-sc.baseKw))
+}
+
+func meanHoldTarget(sc benchScenario, fromS, toS int) float64 {
+	sum := 0.0
+	for t := fromS; t < toS; t++ {
+		sum += holdTarget(sc, t)
+	}
+	return sum / float64(toS-fromS)
+}
+
+// chargeAtImportS counts the seconds of "Laden bei Bezug" (charge > 0,1 kW,
+// import > minImportKw) in [fromS, toS) and returns the total and the longest
+// unbroken stretch.
+func chargeAtImportS(r benchResult, fromS, toS int, minImportKw float64) (total, longest float64) {
+	run := 0.0
+	for i := fromS; i < toS && i < len(r.trace); i++ {
+		if r.trace[i].batt > 0.1 && r.trace[i].grid > minImportKw {
+			total++
+			run++
+			longest = math.Max(longest, run)
+		} else {
+			run = 0
+		}
+	}
+	return total, longest
+}
+
+func TestSurplusConsumerWithoutHoldTheChargeCollapses(t *testing.T) {
+	for _, dev := range benchDevices(t) {
+		t.Run(dev.name, func(t *testing.T) {
+			sc := herzogau1210Scenario(false)
+			res := runBench(t, dev, sc)
+			late := res.meanCharge(2400, 3600)
+			t.Logf("12.10. 14-15 Uhr ohne Halten, %s: Laden %.1f kW in der ersten, %.1f kW in der letzten Viertelstunde, "+
+				"Verbraucher %.1f kWh | %s", dev.name, res.meanCharge(60, 900), res.meanCharge(2700, 3600), res.consumerKwh, res)
+			if late > 0.4*meanHoldTarget(sc, 2400, 3600) {
+				t.Errorf("12.10. ohne Halten: %.1f kW in den letzten 20 min - the regression guard expects today's collapse "+
+					"(the consumer takes the charge); if this changed, the hold may have leaked into the default path", late)
+			}
+
+			sc = herzogau1410Scenario(false)
+			res = runBench(t, dev, sc)
+			during, after := res.meanCharge(120, 5400), res.meanCharge(5520, 6000)
+			t.Logf("14.10. 15:00-16:40 ohne Halten, %s: Laden %.1f kW solange der Verbraucher läuft, %.1f kW ab 2 min nach dem Abschalten | %s",
+				dev.name, during, after, res)
+			if during > 3 {
+				t.Errorf("14.10. ohne Halten: %.1f kW while the consumer runs, want today's ~1 kW", during)
+			}
+			if want := 0.8 * meanHoldTarget(sc, 5520, 6000); after < want {
+				t.Errorf("14.10. ohne Halten: %.1f kW after the consumer is off, want >= %.1f (22 kW within 2 min measured)", after, want)
+			}
+		})
+	}
+}
+
+func TestSurplusConsumerWithHoldTheChargeStands(t *testing.T) {
+	for _, dev := range benchDevices(t) {
+		t.Run(dev.name, func(t *testing.T) {
+			reaction := dev.damp.MaxCadence.Seconds() + benchPollEvery + benchTickEvery + dev.deadS + 3*dev.tauS
+			for _, c := range []struct {
+				name     string
+				sc       benchScenario
+				from, to int
+			}{
+				{"12.10. 14-15 Uhr", herzogau1210Scenario(true), 300, 3600},
+				{"14.10. 15:00-16:30", herzogau1410Scenario(true), 300, 5400},
+			} {
+				res := runBench(t, dev, c.sc)
+				got, want := res.meanCharge(c.from, c.to), meanHoldTarget(c.sc, c.from, c.to)
+				// The consumer regulates the meter to zero itself, so a few hundred
+				// watts either side are its own control error; what counts is an
+				// import the hold stands against.
+				total, longest := chargeAtImportS(res, 0, c.sc.seconds(), 2*guards.HoldImportMarginKw)
+				t.Logf("%s mit Halten, %s: Laden %.1f kW (erreichbar %.1f), Verbraucher %.1f kWh, "+
+					"Laden bei mehr als %.1f kW Bezug %.0f s, längstens %.0f s | %s",
+					c.name, dev.name, got, want, res.consumerKwh, 2*guards.HoldImportMarginKw, total, longest, res)
+				if got < 0.85*want {
+					t.Errorf("%s: the held charge averages %.1f kW, want >= 85 %% of the %.1f kW the sun above the base allows", c.name, got, want)
+				}
+				if res.storageExportedKwh > 1e-6 || res.minSetpointKw < 0 {
+					t.Errorf("%s: storage fed the grid (%.4f kWh) or a discharge was commanded (%.2f kW)", c.name, res.storageExportedKwh, res.minSetpointKw)
+				}
+				// The consumer yields within its own switching steps; the box never
+				// charges at a real import longer than the guard's dwell plus one
+				// reaction, and what went into the battery from the grid stays a
+				// rounding share of the charge.
+				if limit := guards.HoldYieldDwell.Seconds() + reaction; longest > limit {
+					t.Errorf("%s: Laden bei Bezug for %.0f s in one stretch, want <= %.0f s (dwell + reaction)", c.name, longest, limit)
+				}
+				if res.boughtToBattKwh > 0.02*res.chargedKwh {
+					t.Errorf("%s: %.3f kWh of the %.3f kWh charged came from the grid, want <= 2 %%", c.name, res.boughtToBattKwh, res.chargedKwh)
+				}
+				// The consumer gets what remains - it must still have run.
+				if res.consumerKwh <= 0 {
+					t.Errorf("%s: the consumer got nothing - the hold must only take the planned charge", c.name)
+				}
+			}
+			// After the consumer is off on 14.10. the hold is the plain trim.
+			sc := herzogau1410Scenario(true)
+			res := runBench(t, dev, sc)
+			if got, want := res.meanCharge(5520, 6000), 0.8*meanHoldTarget(sc, 5520, 6000); got < want {
+				t.Errorf("14.10. after the consumer is off: %.1f kW, want >= %.1f", got, want)
+			}
+		})
+	}
+}
+
+// THE SAFETY HALF: a load above the base that does NOT yield (a machine of
+// 20 kW on 40 kW of sun) - the hold would buy the charge from the grid. The
+// import guard gives it HoldYieldDwell, then the trim bounds the charge by the
+// measured surplus again, for the rest of the slot.
+func TestSurplusConsumerHoldNeverChargesFromTheGridForLong(t *testing.T) {
+	for _, dev := range benchDevices(t) {
+		t.Run(dev.name, func(t *testing.T) {
+			base := 5.25
+			sc := benchScenario{
+				start:  time.Date(2026, 10, 13, 10, 0, 0, 0, time.UTC),
+				planKw: 25, surplus: true, socPct: 50,
+				baseKw: 5, fixedKw: 20, durationS: 899, holdBaseKw: &base,
+				// a consumer that never switches on: only the fixed load is there
+				zeroExport: &benchZeroExport{stageKw: 12.5, stages: 3, tauS: 4, onDelayS: 30, offDelayS: 10, onFirstKw: 1e9},
+				pvAt:       func(float64) float64 { return 40 },
+			}
+			res := runBench(t, dev, sc)
+			reaction := dev.damp.MaxCadence.Seconds() + benchPollEvery + benchTickEvery + dev.deadS + 3*dev.tauS
+			total, longest := chargeAtImportS(res, 0, sc.seconds(), 0.1)
+			late := res.meanCharge(300, 899)
+			t.Logf("Last, die nicht ausweicht, %s: Laden bei Bezug %.0f s (längstens %.0f s), davon in den Speicher %.3f kWh, Laden danach %.1f kW | %s",
+				dev.name, total, longest, res.boughtToBattKwh, late, res)
+			if limit := guards.HoldYieldDwell.Seconds() + reaction; total > limit+benchTickEvery {
+				t.Errorf("Laden bei Bezug %.0f s in the slot, want at most one dwell plus one reaction (%.0f s)", total, limit)
+			}
+			// 10 kW of import for at most the dwell plus a reaction.
+			if limit := 10 * (guards.HoldYieldDwell.Seconds() + reaction) / 3600; res.boughtToBattKwh > limit {
+				t.Errorf("bought into the battery %.3f kWh, want <= %.3f", res.boughtToBattKwh, limit)
+			}
+			// Afterwards the trim of before: the charge on the measured surplus of 15 kW.
+			if late > 15.2 || late < 12 {
+				t.Errorf("after the guard: %.1f kW of charge, want the measured surplus (15 kW less the reserve)", late)
+			}
+		})
 	}
 }
