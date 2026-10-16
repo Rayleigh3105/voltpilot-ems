@@ -7,8 +7,10 @@ import {
   bezugAus,
   greift,
   neuerEntwurf,
+  notifyUmwandlung,
   probelauf,
   regelSatz,
+  regelSatzAusFlow,
   vars,
   vorlagenFuer,
   zuGuided,
@@ -86,6 +88,37 @@ describe('Satzbaukasten', () => {
   it('bietet Vorlagen nur mit Gerät und ausführbaren Bausteinen an', () => {
     expect(vorlagenFuer(bezug, []).length).toBe(0);
     expect(vorlagenFuer({ netzId: null, speicherId: null }, [geraet()]).map((v) => v.id)).toEqual(['negativ', 'guenstig', 'nacht']);
+  });
+
+  it('verspricht bei einer Benachrichtigungs-Regel nie eine ankommende Nachricht (Entscheid 10A)', () => {
+    const regel = {
+      conditions: [{ kind: 'entity' as const, entityId: 'bat', channel: 'soc_pct', direction: 'below' as const, threshold: 20 }],
+      combinator: 'and' as const,
+      action: { kind: 'notify' as const, message: 'Ladestand niedrig' },
+    };
+    expect(regelSatzAusFlow(regel, {})).toBe('Wenn der Speicher unter 20 % hat: Benachrichtigung (kommt noch nicht an).');
+  });
+
+  it('bietet „In Überwachung umwandeln" nur bei einer einzelnen Messwert-Bedingung an', () => {
+    const einzelMesswert = {
+      conditions: [{ kind: 'entity' as const, entityId: 'bat', channel: 'soc_pct', direction: 'below' as const, threshold: 20 }],
+      combinator: 'and' as const,
+      action: { kind: 'notify' as const, message: 'x' },
+    };
+    expect(notifyUmwandlung(einzelMesswert)).toEqual({ entityId: 'bat', channel: 'soc_pct' });
+
+    const keineBenachrichtigung = { ...einzelMesswert, action: { kind: 'onoff' as const, entityId: 'hs', ttlS: 300 } };
+    expect(notifyUmwandlung(keineBenachrichtigung)).toBeNull();
+
+    const preisBedingung = {
+      conditions: [{ kind: 'price' as const, direction: 'below' as const, threshold: 10 }],
+      combinator: 'and' as const,
+      action: { kind: 'notify' as const, message: 'x' },
+    };
+    expect(notifyUmwandlung(preisBedingung)).toBeNull();
+
+    const zweiBedingungen = { ...einzelMesswert, conditions: [...einzelMesswert.conditions, ...einzelMesswert.conditions] };
+    expect(notifyUmwandlung(zweiBedingungen)).toBeNull();
   });
 });
 
