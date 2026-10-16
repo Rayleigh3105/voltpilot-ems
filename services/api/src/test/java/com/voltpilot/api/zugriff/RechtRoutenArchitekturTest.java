@@ -46,6 +46,11 @@ class RechtRoutenArchitekturTest {
         String offen = "öffentlich (SecurityConfig permitAll) — kein Kundenkonto, kein Kundenbereich";
         m.put("RegistrationController#register", offen);
         m.put("EnrollmentController#submitCsr", offen);
+        m.put("FernwartungRueckmeldungController#melden",
+                "SecurityConfig bindet /api/v1/fernwartung/** an hasRole('tunnel-dienst') - kein Kundenkonto, "
+                        + "kein Kundenbereich; Kunden-, Publisher- und Admin-Token bekommen 403. Die Rückmeldung ist "
+                        + "nur Anzeige und fließt nie in den Soll-Stand (Entscheid K3 a des Kapitäns, 08.10.2026; "
+                        + "docs/contracts/fernwartung-rueckmeldung-v1.md).");
         m.put("MeldungenController#gesehen",
                 "Alerting Scheibe 1 (vp-alerting-konzept-m1 §6.6): \"Gesehen\" darf, wer die Meldung sieht - "
                         + "die Sicht kommt allein aus dem site_scope-Zaun auf alarm, kein zusätzliches "
@@ -57,6 +62,7 @@ class RechtRoutenArchitekturTest {
         String eigeneBenachrichtigung = "Alerting Scheibe 3 (§6.6, §6.8 Entwurf 4): jede Person verwaltet nur IHRE "
                 + "eigenen Zustellwege/ihre eigene Ruhezeit - kein Matrix-Recht, wie MeController; die Person kommt "
                 + "aus dem Token (Authentication), nie aus dem Anfragekörper.";
+        m.put("ZustellwegController#anfordern", eigeneBenachrichtigung);
         m.put("ZustellwegController#emailEinstellungen", eigeneBenachrichtigung);
         m.put("ZustellwegController#pushAbonnieren", eigeneBenachrichtigung);
         m.put("ZustellwegController#pushEinstellungen", eigeneBenachrichtigung);
