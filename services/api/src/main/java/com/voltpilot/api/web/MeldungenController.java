@@ -76,6 +76,31 @@ public class MeldungenController {
         return new MeldungDto.Zahl(repo.ungeseheneZahl(), repo.hatUngeseheneDringende());
     }
 
+    /**
+     * Verlauf je Periode als CSV (Entscheid 14A, §6.4 Nr. 8): {@code von}/{@code bis} als ISO-Zeitpunkt
+     * (halboffenes Fenster {@code [von, bis)}, dieselbe Form wie {@link com.voltpilot.api.ueberwachung.PeriodenFenster}).
+     * Keine eigene Rechte-Prüfung über die Matrix - wie jede andere reine Leseroute dieser Ebene liest
+     * sie nur, was der Standort-Zaun ({@code site_scope}) ohnehin zulässt (§6.6 "zweifach gesichert").
+     * MX4: dieser Export behauptet nirgends, eine Norm zu erfüllen.
+     */
+    @GetMapping(value = "/verlauf.csv", produces = "text/csv")
+    public ResponseEntity<byte[]> verlaufCsv(@RequestParam String von, @RequestParam String bis) {
+        Instant vonZeit;
+        Instant bisZeit;
+        try {
+            vonZeit = Instant.parse(von);
+            bisZeit = Instant.parse(bis);
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "von/bis brauchen einen ISO-Zeitpunkt");
+        }
+        byte[] datei = com.voltpilot.api.ueberwachung.MeldungenCsv.datei(repo.verlaufJePeriode(vonZeit, bisZeit));
+        return ResponseEntity.ok()
+                .header("Content-Disposition", "attachment; filename=\"meldungen-verlauf.csv\"")
+                .contentType(org.springframework.http.MediaType.parseMediaType("text/csv;charset=UTF-8"))
+                .body(datei);
+    }
+
     /** Reiter "Überwachungen" (§6.8): alle aktiven Regeln, ab Werk und eigene gemeinsam. */
     @GetMapping("/regeln")
     public UeberwachungDto.Liste regeln() {

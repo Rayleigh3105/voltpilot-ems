@@ -46,6 +46,15 @@ public class UeberwachungRepository {
             Instant wiederNormalAm, String gesehenVon, Instant gesehenAm, Instant erledigtAm, boolean probelauf,
             int erinnerungenGesendet, Instant letzteErinnerungAm, UUID unterdrueckDurch) {}
 
+    /**
+     * Eine Zeile des Verlaufs-CSV (Entscheid 14A, §6.4 Nr. 8): dieselben Spalten wie das Meldungs-Center,
+     * dazu Name und Herkunft der Regel (die Marke "eigene Überwachung") - ein JOIN auf {@code ueberwachung},
+     * damit die CSV nie eine zweite Wahrheit über eine Regel führt.
+     */
+    public record VerlaufZeile(String kennzeichen, String wertart, String regelName, String herkunft,
+            String bezugKennung, UUID standortId, String schwere, String zustand, Instant ausgeloestAm,
+            Instant wiederNormalAm, String gesehenVon, Instant gesehenAm, Instant erledigtAm) {}
+
     private final JdbcTemplate jdbc;
 
     public UeberwachungRepository(JdbcTemplate jdbc) {
@@ -245,6 +254,30 @@ public class UeberwachungRepository {
                        herkunft, angelegt_von, probelauf_bis, ruhezeit::text AS ruhezeit_json
                   FROM ueberwachung WHERE aktiv = true ORDER BY angelegt_am
                 """, UeberwachungRepository::zeile);
+    }
+
+    /**
+     * Der Verlauf je Periode für den CSV-Export (Entscheid 14A): jeder Alarm, der in {@code [von, bis)}
+     * ausgelöst wurde, älteste zuerst - unabhängig vom heutigen Zustand (auch ein noch aktiver Alarm
+     * aus der Periode gehört zu ihrem Verlauf).
+     */
+    public List<VerlaufZeile> verlaufJePeriode(Instant von, Instant bis) {
+        return jdbc.query("""
+                SELECT a.kennzeichen, a.wertart, u.name AS regel_name, u.herkunft, a.bezug_kennung,
+                       a.standort_id, a.schwere, a.zustand, a.ausgeloest_am, a.wieder_normal_am,
+                       a.gesehen_von, a.gesehen_am, a.erledigt_am
+                  FROM alarm a JOIN ueberwachung u ON u.id = a.ueberwachung_id
+                 WHERE a.ausgeloest_am >= ? AND a.ausgeloest_am < ?
+                 ORDER BY a.ausgeloest_am
+                """, UeberwachungRepository::verlaufZeile, ts(von), ts(bis));
+    }
+
+    private static VerlaufZeile verlaufZeile(ResultSet rs, int n) throws SQLException {
+        return new VerlaufZeile(rs.getString("kennzeichen"), rs.getString("wertart"), rs.getString("regel_name"),
+                rs.getString("herkunft"), rs.getString("bezug_kennung"), rs.getObject("standort_id", UUID.class),
+                rs.getString("schwere"), rs.getString("zustand"), instant(rs.getTimestamp("ausgeloest_am")),
+                instant(rs.getTimestamp("wieder_normal_am")), rs.getString("gesehen_von"),
+                instant(rs.getTimestamp("gesehen_am")), instant(rs.getTimestamp("erledigt_am")));
     }
 
     private static UeberwachungZeile zeile(ResultSet rs, int n) throws SQLException {
