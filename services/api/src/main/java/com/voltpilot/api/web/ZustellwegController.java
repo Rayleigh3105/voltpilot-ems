@@ -75,6 +75,9 @@ public class ZustellwegController {
 
     @PostMapping("/email")
     public ResponseEntity<Void> anfordern(@RequestBody Anfrage anfrage, Authentication auth) {
+        if (istLeer(anfrage.ziel())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "ziel ist ein Pflichtfeld.");
+        }
         zustellwege.anfordern(sub(auth), anfrage.ziel());
         return ResponseEntity.accepted().build();
     }
@@ -105,6 +108,7 @@ public class ZustellwegController {
 
     @PostMapping("/push")
     public ResponseEntity<PushAboDto> pushAbonnieren(@RequestBody PushAnfrage anfrage, Authentication auth) {
+        pruefePushAnfrage(anfrage);
         String sub = sub(auth);
         UUID id = zustellwege.pushAbonnieren(sub, anfrage.endpoint(), anfrage.p256dh(), anfrage.auth(),
                 anfrage.geraet(), anfrage.userAgent());
@@ -136,5 +140,18 @@ public class ZustellwegController {
 
     private static String sub(Authentication auth) {
         return auth != null && auth.getPrincipal() instanceof Jwt jwt ? jwt.getSubject() : auth.getName();
+    }
+
+    /** Die Pflichtfelder der Browser-{@code PushSubscription} (RFC 8291) und des Geräte-Namens - wie {@code push_abo}. */
+    private static void pruefePushAnfrage(PushAnfrage anfrage) {
+        if (istLeer(anfrage.endpoint()) || istLeer(anfrage.p256dh()) || istLeer(anfrage.auth())
+                || istLeer(anfrage.geraet())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "endpoint, p256dh, auth und geraet sind Pflichtfelder.");
+        }
+    }
+
+    private static boolean istLeer(String s) {
+        return s == null || s.isBlank();
     }
 }

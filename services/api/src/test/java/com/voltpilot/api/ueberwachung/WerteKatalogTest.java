@@ -33,6 +33,14 @@ class WerteKatalogTest {
     }
 
     @Test
+    void eineFehlendeWertartLiefertNullStattEinerAusnahme() {
+        // Ein unvollständiger Anfragekörper (z. B. "{}") liefert hier null statt
+        // NullPointerException - UeberwachungAnlegenService.anlegen macht daraus den sauberen
+        // 400 "unbekannte Wertart" wie für jeden anderen unbekannten Schlüssel.
+        assertThat(katalog.eintrag(null)).isNull();
+    }
+
+    @Test
     void nurDieBeidenAbWerkEintraegeHabenEinenVorschlag() {
         assertThat(katalog.mitVorschlagAbWerk())
                 .extracting(WerteKatalog.Eintrag::wertart)
