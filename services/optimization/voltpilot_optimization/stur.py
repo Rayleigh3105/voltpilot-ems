@@ -87,9 +87,12 @@ def referenz_band(
     Das Band der Batterie ist das PLANUNGSband des Optimierers
     (``asset.soc_min_pct``/``soc_max_pct``, zugleich die Waechter-Grenzen der
     Box), nicht der Bereich, den derselbe Speicher ohne smarte Steuerung
-    faehrt: Pilsting plant 5-95 %, der Deye faehrt gemessen 2-100 %. Der
-    gemessene Betriebsbereich WEITET das Band deshalb - er verengt es nie:
-    was die Steuerung planen darf, darf der Vergleichsspeicher auch.
+    faehrt: Pilsting plant 5-95 %, der Deye fuhr im September gemessen
+    2-100 %. Der gemessene Betriebsbereich DESSELBEN Monats WEITET das Band
+    deshalb - er verengt es nie: was die Steuerung planen darf, darf der
+    Vergleichsspeicher auch. Seit NS-1 A (Captain 15.10.2026) traegt der
+    Vormonat nichts mehr: haelt der Waechter der Box das Band (Pilsting im
+    Oktober), fahren Plan und Messlatte dasselbe.
     Java-Zwilling: ``StandardSpeicher.batterie``.
     """
     tief = soc_min_fraction

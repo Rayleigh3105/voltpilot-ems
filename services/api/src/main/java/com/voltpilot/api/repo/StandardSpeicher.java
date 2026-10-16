@@ -27,6 +27,16 @@ import java.math.BigDecimal;
  * der Slots übernimmt der Aufrufer mit denselben Preis-Kompositionen wie
  * {@code savedEur} ({@code importPriceCtSql}/{@code exportValueCtSql}).
  *
+ * <p><b>Derselbe Speicher (NS-1 A, Captain 15.10.2026, Untersuchung
+ * vp-herzogau-nie-schlechter-k5 §2, §7):</b> die Messlatte rechnet mit der
+ * GEMESSENEN Kapazität des echten Speichers ({@link #kapazitaetKwh}), dem Band,
+ * das er im selben Monat wirklich fuhr, und trägt das Hin-und-Her einer
+ * Viertelstunde, das derselbe Speicher stur auch gehabt hätte
+ * ({@link #hinUndHerEur}). Beides misst nur die gemessene Seite; der
+ * Python-Zwilling plant mit dem Nennwert, seine Lauf-Messlatte
+ * ({@code stur_cost_eur}) ist aber nur Log und Beleg - den Planwert im Portal
+ * rechnet {@link PlanMesslatte} gegen diesen Walk.
+ *
  * <p><b>Die per-Slot-Wertformel</b> (Herleitung, einmal ausgeschrieben): die
  * speicherlose Baseline eines Slots ist
  * {@code max(load−pv,0)·ip − max(pv−load,0)·ev}. Der Standard-Speicher
@@ -79,7 +89,140 @@ public final class StandardSpeicher {
      */
     public static final int BETRIEBSBEREICH_EIMER = 4;
 
+    /**
+     * Ab dieser Energie je Viertelstunde ARBEITET der echte Speicher
+     * ({@code |battery_charge_kwh − battery_discharge_kwh|}, 2 kW im Mittel) -
+     * die eine Schwelle hinter der Kapazität aus der Messung und dem
+     * Hin-und-Her, das die Messlatte mitträgt (NS-1 A, Captain 15.10.2026).
+     * Darunter liegt, was die Box in einer Ruhe-Viertelstunde tut: 0,5 kW
+     * Abstand beim Decken (0,125 kWh) und kleine Defizite, die sie nachregelt.
+     * Am Ring der Referenzanlage (14./15.10.2026) ist die Einteilung ab 0,5 kWh
+     * stabil, darunter kippen Ruhe-Viertelstunden in „arbeitet“; die Kapazität
+     * schwankt zwischen 0,1 und 1,0 kWh Schwelle nur um 59,2-59,7 kWh.
+     * Regel und Fälle: {@code stur-speicher-vectors.json}, Blöcke
+     * {@code kapazitaet} und {@code bewertung}.
+     */
+    public static final double ARBEITET_AB_KWH = 0.5;
+
+    /**
+     * So viele arbeitende Viertelstunden braucht die Kapazität aus der Messung,
+     * sonst gilt der Nennwert. Der Ladestand kommt in ganzen Prozent: jede
+     * Ablesung ist bis ±0,5 Punkte ungenau, die Änderung einer Viertelstunde
+     * also mit σ ≈ 0,41 Punkten. Eine arbeitende Viertelstunde bewegt den
+     * Speicher typisch um 5-10 Punkte; bei 96 Viertelstunden (einen Tag lang
+     * Bewegung) bleibt der Rundungsfehler der Summe unter 1 % (0,41 · √96 /
+     * (5 · 96)) - deutlich unter dem Unterschied zum Nennwert, um den es geht
+     * (Referenzanlage: 59,7 statt 65 kWh, −8 %).
+     */
+    public static final int KAPAZITAET_MIN_VIERTELSTUNDEN = 96;
+
+    /**
+     * Der plausible Rahmen der gemessenen Kapazität als Anteil am Nennwert.
+     * Unter 50 % liegt kein gealterter Speicher mehr (Lebensende ist 70-80 %),
+     * sondern ein Messfehler; über 120 % rechnet die Messung mehr als diesen
+     * Speicher (eine Mehr-Box-Anlage summiert die Speicher-Energien, der
+     * Ladestand kommt nur vom primären). Außerhalb gilt der Nennwert.
+     */
+    static final double KAPAZITAET_MIN_ANTEIL = 0.5;
+    static final double KAPAZITAET_MAX_ANTEIL = 1.2;
+
     private StandardSpeicher() {
+    }
+
+    /**
+     * Was die Messung über die Größe des echten Speichers sagt: gerichtete
+     * Summen über die arbeitenden Viertelstunden (Lade-Viertelstunden zählen
+     * positiv, Entlade-Viertelstunden negativ - so heben sich Laden und
+     * Entladen nicht auf). Eine Viertelstunde zählt, wenn ihr Vorgänger genau
+     * 15 Minuten davor liegt und beide einen Ladestand tragen.
+     *
+     * @param ladenKwh Σ ± {@code battery_charge_kwh} (AC)
+     * @param entladenKwh Σ ± {@code battery_discharge_kwh} (AC)
+     * @param prozentpunkte Σ ± Änderung des {@code soc_last_pct} gegen den Vorgänger
+     */
+    public record Ladestandsmessung(
+            long viertelstunden, double ladenKwh, double entladenKwh, double prozentpunkte) {
+
+        /** Zwei Monate zusammen (Monat und Vormonat); null zählt nicht. */
+        static Ladestandsmessung zusammen(Ladestandsmessung a, Ladestandsmessung b) {
+            if (a == null) {
+                return b;
+            }
+            if (b == null) {
+                return a;
+            }
+            return new Ladestandsmessung(a.viertelstunden() + b.viertelstunden(),
+                    a.ladenKwh() + b.ladenKwh(), a.entladenKwh() + b.entladenKwh(),
+                    a.prozentpunkte() + b.prozentpunkte());
+        }
+    }
+
+    /**
+     * Die Kapazität der Messlatte (NS-1 A, Captain 15.10.2026: „Kapazität aus
+     * der Messung“): so viele kWh fasst der echte Speicher je 100 Punkte
+     * SEINES Ladestands. Gespeichert wird {@code η · laden − entladen / η},
+     * dieselbe Physik wie {@link #schritt}; geteilt durch die Punkte, um die
+     * sich der Ladestand dabei bewegt hat:
+     *
+     * <pre>
+     *   kapazitaet = 100 · (η · Σ±laden − Σ±entladen / η) / Σ±prozentpunkte
+     * </pre>
+     *
+     * Der Nennwert gilt, wenn die Messung keinen belastbaren Wert liefert:
+     * weniger als {@link #KAPAZITAET_MIN_VIERTELSTUNDEN} arbeitende
+     * Viertelstunden, keine Bewegung, oder ein Wert außerhalb
+     * {@link #KAPAZITAET_MIN_ANTEIL}-{@link #KAPAZITAET_MAX_ANTEIL} des
+     * Nennwerts. Referenzanlage September 2026: 59,7 kWh statt 65 kWh.
+     */
+    public static double kapazitaetKwh(double nennKwh, double etaOneWay, Ladestandsmessung m) {
+        if (m == null || m.viertelstunden() < KAPAZITAET_MIN_VIERTELSTUNDEN
+                || !(m.prozentpunkte() > 0)) {
+            return nennKwh;
+        }
+        double gemessen = 100.0 * (etaOneWay * m.ladenKwh() - m.entladenKwh() / etaOneWay)
+                / m.prozentpunkte();
+        if (!(gemessen >= KAPAZITAET_MIN_ANTEIL * nennKwh
+                && gemessen <= KAPAZITAET_MAX_ANTEIL * nennKwh)) {
+            return nennKwh;
+        }
+        return gemessen;
+    }
+
+    /**
+     * Die echte Seite einer Viertelstunde, wie der Rollup sie misst: Bezug und
+     * Einspeisung brutto je Probe, Laden und Entladen des echten Speichers.
+     */
+    public record EchteViertelstunde(
+            double bezugKwh, double einspeisungKwh, double ladenKwh, double entladenKwh) {
+    }
+
+    /**
+     * Was die Messlatte vom Hin-und-Her einer Viertelstunde mitträgt (EUR) -
+     * „gleich bewertet“ (NS-1 A), ohne die Kachel zu schönen.
+     *
+     * <p>Die echte Seite ist brutto je Probe bewertet (Bezug und Einspeisung
+     * getrennt, Migration {@code V20260922170000}); bezieht und speist eine
+     * Anlage in derselben Viertelstunde, kostet sie das
+     * {@code min(bezug, einspeisung) · (Bezugspreis − Einspeisewert)} mehr als
+     * netto. Der sture Speicher rechnet netto je Viertelstunde. Dieser Betrag
+     * geht deshalb in den Speicher-Anteil, wenn derselbe Speicher ihn auch
+     * stur gehabt hätte: in einer Viertelstunde, in der der echte Speicher
+     * ARBEITET ({@link #ARBEITET_AB_KWH}), ist es Regelverzug beim Folgen
+     * (die Box regelt mit 15-25 s Totzeit nach). Wartet der echte Speicher
+     * oder ist er leer, hätte ein sturer Speicher das Hin und Her geschluckt -
+     * dann bleibt es bei der Steuerung, wie bisher. Referenzanlage 14.10.
+     * 15:00 bis 15.10. 13:30: 0,18 € trägt die Messlatte, 0,24 € bleiben bei
+     * der Steuerung. {@code savedEur} bleibt brutto, wie die Rechnung des
+     * Kunden; die Dreiteilung bleibt exakt.
+     */
+    public static double hinUndHerEur(EchteViertelstunde echt,
+            double importPriceEurKwh, double exportValueEurKwh) {
+        if (echt == null
+                || !(Math.abs(echt.ladenKwh() - echt.entladenKwh()) >= ARBEITET_AB_KWH)) {
+            return 0;
+        }
+        return Math.max(Math.min(echt.bezugKwh(), echt.einspeisungKwh()), 0)
+                * (importPriceEurKwh - exportValueEurKwh);
     }
 
     /**
@@ -115,6 +258,23 @@ public final class StandardSpeicher {
                 socMinPct, socMaxPct, backupReserveSocPct, peakReserveSocPct, null, null);
     }
 
+    /** Die Stammdaten-Auflösung mit gemessenem Betriebsbereich, Kapazität = Nennwert. */
+    public static Batterie batterie(
+            BigDecimal capacityKwh,
+            BigDecimal maxChargeKw,
+            BigDecimal maxDischargeKw,
+            BigDecimal roundtripEfficiencyPct,
+            BigDecimal socMinPct,
+            BigDecimal socMaxPct,
+            BigDecimal backupReserveSocPct,
+            BigDecimal peakReserveSocPct,
+            BigDecimal gemessenTiefPct,
+            BigDecimal gemessenHochPct) {
+        return batterie(capacityKwh, maxChargeKw, maxDischargeKw, roundtripEfficiencyPct,
+                socMinPct, socMaxPct, backupReserveSocPct, peakReserveSocPct,
+                gemessenTiefPct, gemessenHochPct, null);
+    }
+
     /**
      * Löst die Spalten, die auch der Optimierer liest, in die Referenz-Physik
      * auf - die Regeln von {@code inputs.load_battery_sites} +
@@ -124,22 +284,29 @@ public final class StandardSpeicher {
      * <ul>
      * <li>Kapazität/Leistungen sind PFLICHT - fehlt eine (oder ist sie nicht
      *     positiv), gibt es {@code null} statt einer geratenen Batterie.</li>
+     * <li><b>Kapazität aus der Messung (NS-1 A, Captain 15.10.2026):</b> der
+     *     Nennwert {@code capacity_kwh} ist nur der Rückfall; mit einer
+     *     belastbaren {@code messung} rechnet der Vergleichsspeicher mit den kWh
+     *     je 100 Ladestandspunkte, die der echte Speicher gemessen fasst
+     *     ({@link #kapazitaetKwh}). Band, Reserven, Start-Ladestand und der
+     *     echte Stand in kWh gelten dann auf dieser Kapazität - Prozent sind
+     *     Punkte desselben Ladestands, den die Box misst.</li>
      * <li>NULL-Effizienz = Plattform-Default 92 %; η = sqrt davon.</li>
      * <li>NULL-Bandgrenzen = 5-95 %; ein inkonsistentes Band (min ≥ max)
      *     fällt wie beim Optimierer auf die Defaults zurück statt zu
      *     scheitern.</li>
-     * <li><b>Betriebsbereich (Korrektur M1, Captain 29.09.2026 „mach alle
-     *     drei“, Minus-Untersuchung vp-erloes-minus-heute-u1 §9):</b> das Band
-     *     ist das PLANUNGSband des Optimierers ({@code asset.soc_min_pct}/
-     *     {@code soc_max_pct} sind zugleich die Wächter-Grenzen der Box), nicht
-     *     der Bereich, den derselbe Speicher ohne smarte Steuerung fährt. Der
-     *     Deye in Pilsting plant 5-95 %, fährt aber gemessen 2-100 %; ein
-     *     Vergleichsspeicher mit 5-95 % war kleiner als der echte, und der
-     *     Unterschied erschien als „Vorsprung“ der Steuerung. Deshalb weitet
-     *     der gemessene Bereich ({@code gemessenTiefPct}/{@code gemessenHochPct},
-     *     {@link #BETRIEBSBEREICH_EIMER}-Regel, je Monat aus diesem und dem
-     *     Vormonat) das Band - er verengt es NIE: was die Steuerung planen
-     *     darf, darf der Vergleichsspeicher auch.</li>
+     * <li><b>Betriebsbereich (M1, Captain 29.09.2026; seit NS-1 A nur noch der
+     *     eigene Monat):</b> das Band ist das PLANUNGSband des Optimierers
+     *     ({@code asset.soc_min_pct}/{@code soc_max_pct}); die Box hält es als
+     *     harte Wächter-Grenze ({@code guards.Clamp}, Stufe 2: kein Laden ab
+     *     {@code VP_SOC_MAX_PCT}, kein Entladen bis {@code VP_SOC_MIN_PCT}).
+     *     Bricht der echte Speicher trotzdem aus - Pilsting fuhr im September
+     *     2-100 % -, weitet der gemessene Bereich DESSELBEN Monats
+     *     ({@code gemessenTiefPct}/{@code gemessenHochPct},
+     *     {@link #BETRIEBSBEREICH_EIMER}-Regel) das Band. Er verengt es NIE und
+     *     wird nicht mehr aus dem Vormonat geerbt: hält der Wächter (Pilsting
+     *     im Oktober, 792 Minuten am Boden von 5 %), fahren Steuerung und
+     *     Vergleichsspeicher dasselbe Band.</li>
      * <li>Backup-/Peak-Reserve heben den Boden danach absolut an ({@code max},
      *     nie additiv), gedeckelt an der Obergrenze - der Reservations-STACK
      *     von {@code soc_floor_kwh}.</li>
@@ -155,14 +322,15 @@ public final class StandardSpeicher {
             BigDecimal backupReserveSocPct,
             BigDecimal peakReserveSocPct,
             BigDecimal gemessenTiefPct,
-            BigDecimal gemessenHochPct) {
+            BigDecimal gemessenHochPct,
+            Ladestandsmessung messung) {
         if (capacityKwh == null || maxChargeKw == null || maxDischargeKw == null) {
             return null;
         }
-        double capacity = capacityKwh.doubleValue();
+        double nennKapazitaet = capacityKwh.doubleValue();
         double charge = maxChargeKw.doubleValue();
         double discharge = maxDischargeKw.doubleValue();
-        if (capacity <= 0 || charge <= 0 || discharge <= 0) {
+        if (nennKapazitaet <= 0 || charge <= 0 || discharge <= 0) {
             return null;
         }
         double roundtrip = roundtripEfficiencyPct == null
@@ -171,6 +339,7 @@ public final class StandardSpeicher {
         if (!(roundtrip > 0 && roundtrip <= 1.0)) {
             return null;
         }
+        double capacity = kapazitaetKwh(nennKapazitaet, Math.sqrt(roundtrip), messung);
         double socMin = socMinPct == null
                 ? DEFAULT_SOC_MIN_FRACTION : socMinPct.doubleValue() / 100.0;
         double socMax = socMaxPct == null
@@ -282,7 +451,21 @@ public final class StandardSpeicher {
                     - s.chargeKwh() * exportValueEurKwh;
         }
 
-        /** Σ (discharge × importPrice − charge × exportValue) so far. */
+        /**
+         * Derselbe Slot, gleich bewertet wie die echte Seite: der sture
+         * Speicher trägt zusätzlich das Hin-und-Her, das derselbe Speicher in
+         * dieser Viertelstunde auch gehabt hätte ({@link #hinUndHerEur}).
+         */
+        public void slot(double pvKwh, double loadKwh,
+                double importPriceEurKwh, double exportValueEurKwh, EchteViertelstunde echt) {
+            slot(pvKwh, loadKwh, importPriceEurKwh, exportValueEurKwh);
+            speicherEur -= hinUndHerEur(echt, importPriceEurKwh, exportValueEurKwh);
+        }
+
+        /**
+         * Σ (discharge × importPrice − charge × exportValue) so far, minus the
+         * Hin-und-Her the Messlatte carries (only via the five-argument slot).
+         */
         public double speicherEur() {
             return speicherEur;
         }

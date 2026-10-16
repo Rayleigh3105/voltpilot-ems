@@ -27,7 +27,8 @@ import java.util.NavigableMap;
  * <ul>
  *   <li>Der sture Speicher startet am JÜNGSTEN bekannten Stand des
  *       Vergleichsspeichers - aus demselben Walk, mit derselben Batterie (Band
- *       und Betriebsbereich, M1) und demselben Monatsanker. Ist der Eimer vor
+ *       und Betriebsbereich, M1, gemessene Kapazität, NS-1 A) und demselben
+ *       Monatsanker. Ist der Eimer vor
  *       {@code t} gemessen, ist das der gemessene Stand; genau so startet der
  *       Plan selbst, denn der jüngste Lauf plant {@code t} ab dem echten
  *       Ladestand kurz davor. Beide Seiten treten also aus ihrem tatsächlichen
@@ -73,8 +74,8 @@ public final class PlanMesslatte {
      * @param staende Ladestand (kWh), gültig AB dem Zeitpunkt: je Monat der
      *     Start (Anker oder Boden) am Monatsbeginn, danach der Stand nach jedem
      *     covered Eimer an dessen Ende; über Lücken bleibt er stehen
-     * @param batterien die Batterie je Monatsbeginn (Band und Betriebsbereich
-     *     gelten je Monat)
+     * @param batterien die Batterie je Monatsbeginn (Band, Betriebsbereich und
+     *     gemessene Kapazität gelten je Monat)
      */
     public record Vergleich(
             NavigableMap<Instant, Double> staende,

@@ -31,6 +31,7 @@ import {
   geldWort,
   MESSLATTE_DATIV,
   MESSLATTE_KURZ,
+  MESSLATTE_REGEL,
   SPEICHER_TOTBAND,
   type SpeicherTon,
 } from './speicherAussage';
@@ -146,7 +147,7 @@ export function steuerungKachel(z: SteuerungZeitraum, laeuft: boolean): Steuerun
     'Vorn steht der Monat, darunter die letzten 7 abgeschlossenen Tage — jeder Tag mit Bestand bewertet: ' +
       'Was am Tagesende mehr oder weniger im Speicher liegt als im Vergleichsspeicher, zählt zum Bezugspreis. ' +
       'So stehen ein Verkauf am Abend und der Nachkauf in der Nacht am selben Tag.',
-    `Verglichen wird mit ${MESSLATTE_DATIV}: Er lädt jeden Überschuss sofort und entlädt sofort — ohne Blick auf Preise. Nicht im Ergebnis enthalten.`,
+    `Verglichen wird mit ${MESSLATTE_DATIV} — ${MESSLATTE_REGEL}. Nicht im Ergebnis enthalten.`,
     'Die Zahl für den einzelnen Tag und wie sie entsteht steht in der Karte „VoltPilots Steuerung“.',
   ];
   return {

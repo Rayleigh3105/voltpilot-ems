@@ -28,6 +28,7 @@ import {
   geldWort,
   MESSLATTE_DATIV,
   MESSLATTE_KURZ,
+  MESSLATTE_REGEL,
   SPEICHER_TOTBAND,
   type SpeicherAussage,
 } from './speicherAussage';
@@ -335,7 +336,7 @@ export function portfolioSteuerung(
     ton: speicher.anzeigeTon,
     unter: `${speicher.zwischenstand ? 'bisher ' : ''}${richtung}${teil}`,
     info: [
-      `Verglichen wird je Anlage mit ${MESSLATTE_DATIV}: Er lädt jeden Überschuss sofort und entlädt sofort — ohne Blick auf Preise. Nicht im Ergebnis enthalten.`,
+      `Verglichen wird je Anlage mit ${MESSLATTE_DATIV} — ${MESSLATTE_REGEL}. Nicht im Ergebnis enthalten.`,
       aggregat.steuerungAnlagen < mit
         ? `Die Summe umfasst die ${aggregat.steuerungAnlagen} ${anlagenWort(aggregat.steuerungAnlagen)} mit gepflegten Speicherdaten; für die übrigen ist kein Vergleich möglich.`
         : '',
@@ -379,7 +380,7 @@ export function portfolioSteuerungMonat(
       .concat(teil),
     info: [
       'Vorn steht der laufende Monat, daneben die letzten 7 abgeschlossenen Tage — jeder Tag mit Bestand bewertet: Was am Tagesende mehr oder weniger im Speicher liegt als im Vergleichsspeicher, zählt zum Bezugspreis.',
-      `Verglichen wird je Anlage mit ${MESSLATTE_DATIV}: Er lädt jeden Überschuss sofort und entlädt sofort — ohne Blick auf Preise. Nicht im Ergebnis enthalten.`,
+      `Verglichen wird je Anlage mit ${MESSLATTE_DATIV} — ${MESSLATTE_REGEL}. Nicht im Ergebnis enthalten.`,
       f.monatAnlagen < anlagenMitDaten
         ? `Die Summe umfasst die ${f.monatAnlagen} ${anlagenWort(f.monatAnlagen)} mit gepflegten Speicherdaten und lückenlosem Ladestand.`
         : '',

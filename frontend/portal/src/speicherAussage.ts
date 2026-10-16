@@ -71,6 +71,14 @@ export const MESSLATTE_KURZ = 'ohne smarte Steuerung';
  */
 export const MESSLATTE_DATIV_UNBESTIMMT = 'einem Speicher ohne smarte Steuerung';
 
+/**
+ * Wie die Messlatte fährt, in EINEM Satz (NS-1 A, Captain 15.10.2026): derselbe
+ * Speicher, so groß wie gemessen, stur gefahren. Steht im ⓘ jeder Kachel
+ * „VoltPilot-Steuerung“ hinter „Verglichen wird mit {@link MESSLATTE_DATIV}“.
+ */
+export const MESSLATTE_REGEL =
+  'gleich groß wie gemessen, stur gefahren: Er lädt jeden Überschuss sofort und deckt jeden Bedarf sofort, ohne Blick auf Preise';
+
 /** Das VORZEICHEN einer Zahl als Wort — nie Farbe allein (§3.9). */
 export type SpeicherVorzeichen = 'plus' | 'minus' | 'null';
 

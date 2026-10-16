@@ -860,7 +860,10 @@ public class EarningsRepository {
      * {@link #arbitrageSplit}-Muster: die Slots kommen zeitlich sortiert, der
      * SoC des Referenz-Speichers wird im Speicher geführt, und jeder Slot
      * trägt {@code discharge × importPrice − charge × exportValue} bei
-     * (Herleitung in {@link StandardSpeicher}) - mit EXAKT den Preis-Spalten,
+     * (Herleitung in {@link StandardSpeicher}), abzüglich des Hin-und-Hers, das
+     * derselbe Speicher in dieser Viertelstunde auch gehabt hätte
+     * ({@link StandardSpeicher#hinUndHerEur}: gleich bewertet wie die brutto
+     * gemessene echte Seite, NS-1 A) - mit EXAKT den Preis-Spalten,
      * die auch {@code savedEur} bewerten ({@link #importPriceEurKwh}/
      * {@link #exportValueEurKwh} als SELECT-Ausdrücke, also per Konstruktion
      * dieselbe Komposition inkl. Preisblatt, feste EEG-Vergütung und
@@ -940,7 +943,9 @@ public class EarningsRepository {
      * vp-erloese-minus-winter-k1 §6, §7.2). Alle Energien in kWh über die
      * covered Slots des Tages.
      *
-     * @param capacityKwh Nennkapazität des Referenz-Speichers (= des primären)
+     * @param capacityKwh Kapazität des Vergleichsspeichers in diesem Monat: aus
+     *     der Messung (NS-1 A, {@link StandardSpeicher#kapazitaetKwh}) oder der
+     *     Nennwert des primären Speichers
      * @param vergleichSocStartKwh Vergleichsspeicher vor dem ersten Slot des Tages
      * @param vergleichSocEndKwh Vergleichsspeicher nach dem letzten Slot des Tages
      * @param echtSocEndKwh GEMESSENER Ladestand am Ende DESSELBEN letzten Eimers
@@ -987,7 +992,7 @@ public class EarningsRepository {
     /**
      * Die Batterie-Spalten einer Anlage, wie der Walk sie liest; die Batterie
      * selbst wird je Monat aufgelöst, weil der gemessene Betriebsbereich
-     * (M1) je Monat gilt.
+     * (M1) und die gemessene Kapazität (NS-1 A) je Monat gelten.
      */
     private record Stammdaten(
             BigDecimal capacityKwh,
@@ -999,12 +1004,14 @@ public class EarningsRepository {
             BigDecimal backupReserveSocPct,
             BigDecimal peakReserveSocPct) {
 
-        StandardSpeicher.Batterie batterie(Betriebsbereich bereich) {
+        StandardSpeicher.Batterie batterie(Betriebsbereich bereich,
+                StandardSpeicher.Ladestandsmessung messung) {
             return StandardSpeicher.batterie(capacityKwh, maxChargeKw, maxDischargeKw,
                     roundtripEfficiencyPct, socMinPct, socMaxPct, backupReserveSocPct,
                     peakReserveSocPct,
                     bereich == null ? null : bereich.tiefPct(),
-                    bereich == null ? null : bereich.hochPct());
+                    bereich == null ? null : bereich.hochPct(),
+                    messung);
         }
     }
 
@@ -1015,28 +1022,6 @@ public class EarningsRepository {
      * 15-Minuten-Eimer; null, wo der Monat weniger Eimer mit Ladestand hat.
      */
     record Betriebsbereich(BigDecimal tiefPct, BigDecimal hochPct) {
-
-        /** Der weitere von zwei Bereichen (je Seite das Extrem, null zählt nicht). */
-        static Betriebsbereich vereint(Betriebsbereich a, Betriebsbereich b) {
-            if (a == null) {
-                return b;
-            }
-            if (b == null) {
-                return a;
-            }
-            return new Betriebsbereich(extrem(a.tiefPct(), b.tiefPct(), -1),
-                    extrem(a.hochPct(), b.hochPct(), 1));
-        }
-
-        private static BigDecimal extrem(BigDecimal x, BigDecimal y, int richtung) {
-            if (x == null) {
-                return y;
-            }
-            if (y == null) {
-                return x;
-            }
-            return x.compareTo(y) * richtung >= 0 ? x : y;
-        }
     }
 
     private Map<UUID, BigDecimal> savedSpeicher(Instant from, Instant to, UUID site) {
@@ -1100,6 +1085,8 @@ public class EarningsRepository {
         Map<UUID, Map<LocalDate, BigDecimal>> anchors = monthAnchorSocPct(walkFrom, to, site);
         Map<UUID, Map<LocalDate, Betriebsbereich>> bereiche =
                 monthBetriebsbereich(walkFrom, to, site);
+        Map<UUID, Map<LocalDate, StandardSpeicher.Ladestandsmessung>> messungen =
+                monthLadestandsmessung(walkFrom, to, site);
         Map<UUID, BigDecimal> result = new HashMap<>();
         Map<UUID, Map<LocalDate, BigDecimal>> perDay = new HashMap<>();
         Map<UUID, Map<LocalDate, VergleichTag>> tage = new HashMap<>();
@@ -1175,6 +1162,8 @@ public class EarningsRepository {
         jdbc.query(
                 "WITH " + PRICE_SLOT_CTE
                         + "SELECT r.site_id, r.bucket, r.pv_kwh, r.load_kwh, r.soc_last_pct,"
+                        + " r.grid_import_kwh, r.grid_export_kwh,"
+                        + " r.battery_charge_kwh, r.battery_discharge_kwh,"
                         + " time_bucket('1 day', r.bucket, 'Europe/Berlin') AS day,"
                         + " " + importPriceEurKwh + " AS import_price_eur_kwh,"
                         + " " + exportValueEurKwh + " AS export_value_eur_kwh,"
@@ -1207,7 +1196,7 @@ public class EarningsRepository {
                                 rs.getBigDecimal("peak_reserve_soc_pct"));
                         // Ob es eine Batterie gibt, hängt nicht am Bereich;
                         // welcher Bereich gilt, entscheidet jeder Monat neu.
-                        state.batterie = state.stammdaten.batterie(null);
+                        state.batterie = state.stammdaten.batterie(null, null);
                         state.walk = null;
                         state.letzterEchtKwh = null;
                         state.month = null;
@@ -1228,14 +1217,18 @@ public class EarningsRepository {
                         // Vergleichsspeicher am gemessenen Stand des 1.
                         state.closeDay();
                         state.month = month;
-                        // M1: der Vergleichsspeicher dieses Monats fährt den
-                        // Bereich, den der echte Speicher in diesem oder im
-                        // Vormonat gemessen erreicht hat (nie enger als das Band).
-                        Map<LocalDate, Betriebsbereich> bereich =
-                                bereiche.getOrDefault(siteId, Map.of());
-                        state.batterie = state.stammdaten.batterie(Betriebsbereich.vereint(
-                                bereich.get(month.atDay(1)),
-                                bereich.get(month.minusMonths(1).atDay(1))));
+                        // NS-1 A: der Vergleichsspeicher dieses Monats ist
+                        // derselbe Speicher - das Band, das der echte in DIESEM
+                        // Monat gemessen fuhr (M1, nie enger als das Band), und
+                        // die Kapazität, die er in diesem und im Vormonat
+                        // gemessen fasst (sonst der Nennwert).
+                        Map<LocalDate, StandardSpeicher.Ladestandsmessung> messung =
+                                messungen.getOrDefault(siteId, Map.of());
+                        state.batterie = state.stammdaten.batterie(
+                                bereiche.getOrDefault(siteId, Map.of()).get(month.atDay(1)),
+                                StandardSpeicher.Ladestandsmessung.zusammen(
+                                        messung.get(month.atDay(1)),
+                                        messung.get(month.minusMonths(1).atDay(1))));
                         BigDecimal socPct = anchors.getOrDefault(siteId, Map.of())
                                 .get(month.atDay(1));
                         state.walk = new StandardSpeicher.Walk(state.batterie, socPct == null
@@ -1268,8 +1261,16 @@ public class EarningsRepository {
                     double pv = rs.getDouble("pv_kwh");
                     double load = rs.getDouble("load_kwh");
                     double importPrice = rs.getDouble("import_price_eur_kwh");
+                    // Gleich bewertet (NS-1 A): die echte Seite der Viertelstunde,
+                    // deren Hin-und-Her der sture Speicher mitträgt, wo derselbe
+                    // Speicher es auch gehabt hätte. getDouble: NULL = 0.
                     state.walk.slot(pv, load, importPrice,
-                            rs.getDouble("export_value_eur_kwh"));
+                            rs.getDouble("export_value_eur_kwh"),
+                            new StandardSpeicher.EchteViertelstunde(
+                                    rs.getDouble("grid_import_kwh"),
+                                    rs.getDouble("grid_export_kwh"),
+                                    rs.getDouble("battery_charge_kwh"),
+                                    rs.getDouble("battery_discharge_kwh")));
                     BigDecimal socLastPct = rs.getBigDecimal("soc_last_pct");
                     state.letzterEchtKwh = socLastPct == null ? null
                             : socLastPct.doubleValue() / 100.0 * state.batterie.capacityKwh();
@@ -1295,20 +1296,22 @@ public class EarningsRepository {
 
     /**
      * Der gemessene Betriebsbereich (M1) je (Anlage, Berliner Monat) für jeden
-     * Monat, den der Walk über {@code [walkFrom, to)} braucht, und dessen
-     * Vormonat: der {@link StandardSpeicher#BETRIEBSBEREICH_EIMER}-t
-     * niedrigste {@code soc_min_pct} und -t höchste {@code soc_max_pct} der
-     * Eimer des Monats. Ein Monat zählt ganz, unabhängig vom Fenster - sonst
-     * sähe ein Tagesfenster einen anderen Vergleichsspeicher als der Monat,
-     * und die Tage ergäben den Monat nicht mehr. Hat ein Monat weniger als
+     * Monat, den der Walk über {@code [walkFrom, to)} braucht: der
+     * {@link StandardSpeicher#BETRIEBSBEREICH_EIMER}-t niedrigste
+     * {@code soc_min_pct} und -t höchste {@code soc_max_pct} der Eimer des
+     * Monats. Ein Monat zählt ganz, unabhängig vom Fenster - sonst sähe ein
+     * Tagesfenster einen anderen Vergleichsspeicher als der Monat, und die Tage
+     * ergäben den Monat nicht mehr. Hat ein Monat weniger als
      * {@link StandardSpeicher#BETRIEBSBEREICH_EIMER} Eimer mit Ladestand, ist
-     * seine Seite null (Array jenseits der Länge = NULL).
+     * seine Seite null (Array jenseits der Länge = NULL). Der Vormonat zählt
+     * seit NS-1 A nicht mehr: der September-Ausbruch auf 2-100 % (alte Box)
+     * gab dem Oktober-Vergleichsspeicher Energie, die der echte Speicher hinter
+     * dem Wächter nicht mehr nutzen kann.
      */
     Map<UUID, Map<LocalDate, Betriebsbereich>> monthBetriebsbereich(
             Instant walkFrom, Instant to, UUID site) {
         Map<UUID, Map<LocalDate, Betriebsbereich>> result = new HashMap<>();
-        LocalDate ersterMonat = walkFrom.atZone(ZONE).toLocalDate().withDayOfMonth(1)
-                .minusMonths(1);
+        LocalDate ersterMonat = walkFrom.atZone(ZONE).toLocalDate().withDayOfMonth(1);
         LocalDate nachLetztemMonat = to.minusNanos(1).atZone(ZONE).toLocalDate()
                 .withDayOfMonth(1).plusMonths(1);
         Instant von = ersterMonat.atStartOfDay(ZONE).toInstant();
@@ -1339,6 +1342,66 @@ public class EarningsRepository {
                 site == null
                         ? new Object[] {Timestamp.from(von), Timestamp.from(bis)}
                         : new Object[] {Timestamp.from(von), Timestamp.from(bis), site});
+        return result;
+    }
+
+    /**
+     * Die {@link StandardSpeicher.Ladestandsmessung} je (Anlage, Berliner
+     * Monat) für jeden Monat, den der Walk über {@code [walkFrom, to)} braucht,
+     * und dessen Vormonat (NS-1 A: die Kapazität eines Monats kommt aus ihm und
+     * dem Vormonat). Gezählt wird jede Viertelstunde, in der der echte Speicher
+     * ARBEITET ({@link StandardSpeicher#ARBEITET_AB_KWH}) und deren Vorgänger
+     * genau 15 Minuten davor einen Ladestand trägt - die Änderung des
+     * {@code soc_last_pct} gegen ihn gehört zu den Energien dieser
+     * Viertelstunde. Lade-Viertelstunden (laden > entladen) zählen positiv,
+     * Entlade-Viertelstunden negativ. Ein Monat zählt ganz, unabhängig vom
+     * Fenster (die {@link #monthBetriebsbereich}-Regel); der Eimer vor dem
+     * ersten Monat dient nur als Vorgänger.
+     */
+    Map<UUID, Map<LocalDate, StandardSpeicher.Ladestandsmessung>> monthLadestandsmessung(
+            Instant walkFrom, Instant to, UUID site) {
+        Map<UUID, Map<LocalDate, StandardSpeicher.Ladestandsmessung>> result = new HashMap<>();
+        Instant von = walkFrom.atZone(ZONE).toLocalDate().withDayOfMonth(1).minusMonths(1)
+                .atStartOfDay(ZONE).toInstant();
+        Instant bis = to.minusNanos(1).atZone(ZONE).toLocalDate().withDayOfMonth(1)
+                .plusMonths(1).atStartOfDay(ZONE).toInstant();
+        jdbc.query(
+                "SELECT q.site_id,"
+                        + " date_trunc('month', q.bucket AT TIME ZONE 'Europe/Berlin')"
+                        + "   AT TIME ZONE 'Europe/Berlin' AS month_start,"
+                        + " count(*) AS viertelstunden,"
+                        + " sum(q.richtung * q.laden) AS laden_kwh,"
+                        + " sum(q.richtung * q.entladen) AS entladen_kwh,"
+                        + " sum(q.richtung * q.prozent) AS prozentpunkte "
+                        + "FROM (SELECT r.site_id, r.bucket,"
+                        + "   r.battery_charge_kwh AS laden, r.battery_discharge_kwh AS entladen,"
+                        + "   sign(r.battery_charge_kwh - r.battery_discharge_kwh) AS richtung,"
+                        + "   r.soc_last_pct - lag(r.soc_last_pct) OVER w AS prozent,"
+                        + "   r.bucket - lag(r.bucket) OVER w AS abstand"
+                        + "   FROM telemetry_rollup_15m r"
+                        + "   JOIN site s ON s.id = r.site_id"
+                        + "   WHERE r.bucket >= ? AND r.bucket < ?" + siteFilter(site)
+                        + "   WINDOW w AS (PARTITION BY r.site_id ORDER BY r.bucket)) q "
+                        + "WHERE q.bucket >= ? AND q.abstand = interval '15 minutes'"
+                        + " AND q.prozent IS NOT NULL"
+                        + " AND abs(q.laden - q.entladen) >= " + StandardSpeicher.ARBEITET_AB_KWH
+                        + " GROUP BY 1, 2",
+                rs -> {
+                    result.computeIfAbsent(rs.getObject("site_id", UUID.class),
+                                    x -> new HashMap<>())
+                            .put(rs.getTimestamp("month_start").toInstant()
+                                    .atZone(ZONE).toLocalDate(),
+                                    new StandardSpeicher.Ladestandsmessung(
+                                            rs.getLong("viertelstunden"),
+                                            rs.getDouble("laden_kwh"),
+                                            rs.getDouble("entladen_kwh"),
+                                            rs.getDouble("prozentpunkte")));
+                },
+                site == null
+                        ? new Object[] {Timestamp.from(von.minus(SLOT)), Timestamp.from(bis),
+                                Timestamp.from(von)}
+                        : new Object[] {Timestamp.from(von.minus(SLOT)), Timestamp.from(bis), site,
+                                Timestamp.from(von)});
         return result;
     }
 

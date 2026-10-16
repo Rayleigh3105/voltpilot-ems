@@ -317,8 +317,8 @@ class StandardSpeicherTest {
      * M1: der gemessene Betriebsbereich WEITET das Band des sturen Speichers
      * und verengt es nie - gegen den Block {@code betriebsbereich} derselben
      * Vektordatei, den {@code test_stur.py} für {@code stur.referenz_band}
-     * liest. Die Vereinigung von Monat und Vormonat ist
-     * {@link EarningsRepository.Betriebsbereich#vereint}.
+     * liest. Seit NS-1 A zählt nur der eigene Monat; der Vormonat steht in
+     * den Fällen, damit sichtbar bleibt, dass er nichts mehr trägt.
      */
     @Test
     void theMeasuredOperatingRangeWidensTheBandLikeThePythonTwin() throws Exception {
@@ -331,8 +331,7 @@ class StandardSpeicherTest {
         for (JsonNode fall : block.path("faelle")) {
             String name = fall.path("name").asText();
             JsonNode gemessen = fall.path("gemessen_pct");
-            EarningsRepository.Betriebsbereich bereich = EarningsRepository.Betriebsbereich
-                    .vereint(bereich(gemessen.path("monat")), bereich(gemessen.path("vormonat")));
+            EarningsRepository.Betriebsbereich bereich = bereich(gemessen.path("monat"));
             StandardSpeicher.Batterie b = StandardSpeicher.batterie(
                     zahl(fall.path("capacity_kwh")), BigDecimal.ONE, BigDecimal.ONE, null,
                     zahl(fall.path("band_pct").path("min")),
@@ -346,6 +345,101 @@ class StandardSpeicherTest {
             assertThat(b.socMaxKwh()).as("%s: Decke", name)
                     .isCloseTo(fall.path("soc_max_kwh").asDouble(), EPS);
         }
+    }
+
+    /**
+     * NS-1 A: die Kapazität der Messlatte aus der Messung, mit Rückfall auf
+     * den Nennwert - gegen den Block {@code kapazitaet} der Vektordatei (der
+     * September der Referenzanlage aus echten Eimern, die Grenzen der Regel).
+     * Band und Boden gelten auf der gemessenen Kapazität.
+     */
+    @Test
+    void theMeasuredCapacityFollowsTheSharedVectors() throws Exception {
+        JsonNode block = MAPPER.readTree(Files.readString(
+                Path.of("..", "..", "docs", "contracts", "stur-speicher-vectors.json")))
+                .path("kapazitaet");
+        assertThat(block.path("arbeitet_ab_kwh").asDouble())
+                .isEqualTo(StandardSpeicher.ARBEITET_AB_KWH);
+        assertThat(block.path("min_viertelstunden").asInt())
+                .isEqualTo(StandardSpeicher.KAPAZITAET_MIN_VIERTELSTUNDEN);
+        assertThat(block.path("rahmen_anteil").path("min").asDouble())
+                .isEqualTo(StandardSpeicher.KAPAZITAET_MIN_ANTEIL);
+        assertThat(block.path("rahmen_anteil").path("max").asDouble())
+                .isEqualTo(StandardSpeicher.KAPAZITAET_MAX_ANTEIL);
+        assertThat(block.path("faelle")).isNotEmpty();
+        for (JsonNode fall : block.path("faelle")) {
+            String name = fall.path("name").asText();
+            StandardSpeicher.Ladestandsmessung messung = StandardSpeicher.Ladestandsmessung
+                    .zusammen(messung(fall.path("monat")), messung(fall.path("vormonat")));
+            StandardSpeicher.Batterie b = StandardSpeicher.batterie(
+                    zahl(fall.path("capacity_kwh")), BigDecimal.ONE, BigDecimal.ONE,
+                    BigDecimal.valueOf(fall.path("roundtrip_efficiency").asDouble() * 100.0),
+                    null, null, null, null, null, null, messung);
+            assertThat(b.capacityKwh()).as("%s: Kapazität", name)
+                    .isCloseTo(fall.path("kapazitaet_kwh").asDouble(), EPS);
+            assertThat(b.socFloorKwh()).as("%s: Boden", name)
+                    .isCloseTo(fall.path("soc_floor_kwh").asDouble(), EPS);
+            assertThat(b.socMaxKwh()).as("%s: Decke", name)
+                    .isCloseTo(fall.path("soc_max_kwh").asDouble(), EPS);
+        }
+    }
+
+    /** Ohne Messung bleibt alles beim Nennwert - die alte Batterie, bitgleich. */
+    @Test
+    void withoutAMeasurementTheNameplateStays() {
+        StandardSpeicher.Batterie ohne = batterie(65, 30, 30, null);
+        StandardSpeicher.Batterie mitNull = StandardSpeicher.batterie(
+                BigDecimal.valueOf(65), BigDecimal.valueOf(30), BigDecimal.valueOf(30), null,
+                null, null, null, null, null, null, null);
+        assertThat(mitNull).isEqualTo(ohne);
+        assertThat(ohne.capacityKwh()).isEqualTo(65.0);
+    }
+
+    /**
+     * NS-1 A, gleich bewertet: das Hin-und-Her, das die Messlatte mitträgt -
+     * gegen den Block {@code bewertung} der Vektordatei.
+     */
+    @Test
+    void theHinUndHerFollowsTheSharedVectors() throws Exception {
+        JsonNode block = MAPPER.readTree(Files.readString(
+                Path.of("..", "..", "docs", "contracts", "stur-speicher-vectors.json")))
+                .path("bewertung");
+        assertThat(block.path("faelle")).isNotEmpty();
+        for (JsonNode fall : block.path("faelle")) {
+            StandardSpeicher.EchteViertelstunde echt = new StandardSpeicher.EchteViertelstunde(
+                    fall.path("bezug_kwh").asDouble(), fall.path("einspeisung_kwh").asDouble(),
+                    fall.path("laden_kwh").asDouble(), fall.path("entladen_kwh").asDouble());
+            assertThat(StandardSpeicher.hinUndHerEur(echt,
+                    fall.path("import_price_eur_kwh").asDouble(),
+                    fall.path("export_value_eur_kwh").asDouble()))
+                    .as("%s (%s)", fall.path("name").asText(), fall.path("why").asText())
+                    .isCloseTo(fall.path("hin_und_her_eur").asDouble(), EPS);
+        }
+        assertThat(StandardSpeicher.hinUndHerEur(null, 0.25, 0.10)).isZero();
+    }
+
+    /**
+     * Der Walk trägt das Hin-und-Her nur über den Slot mit der echten Seite;
+     * Ladestand und Physik bleiben dieselben (die geteilten Vektoren rechnen
+     * weiter mit dem Slot ohne sie).
+     */
+    @Test
+    void theWalkCarriesTheHinUndHerOnlyWithTheRealSide() {
+        StandardSpeicher.Batterie b = batterie(10, 5, 5, 64.0);
+        StandardSpeicher.Walk ohne = new StandardSpeicher.Walk(b, 5.0);
+        StandardSpeicher.Walk mit = new StandardSpeicher.Walk(b, 5.0);
+        ohne.slot(2.0, 0.5, 0.30, 0.08);
+        mit.slot(2.0, 0.5, 0.30, 0.08,
+                new StandardSpeicher.EchteViertelstunde(0.2, 0.7, 1.0, 0.0));
+        assertThat(mit.socKwh()).isEqualTo(ohne.socKwh());
+        assertThat(mit.speicherEur()).isCloseTo(ohne.speicherEur() - 0.2 * (0.30 - 0.08), EPS);
+    }
+
+    private static StandardSpeicher.Ladestandsmessung messung(JsonNode n) {
+        return n.isNull() || n.isMissingNode() ? null
+                : new StandardSpeicher.Ladestandsmessung(n.path("viertelstunden").asLong(),
+                        n.path("laden_kwh").asDouble(), n.path("entladen_kwh").asDouble(),
+                        n.path("prozentpunkte").asDouble());
     }
 
     private static EarningsRepository.Betriebsbereich bereich(JsonNode n) {

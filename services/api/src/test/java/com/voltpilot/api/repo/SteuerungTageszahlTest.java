@@ -56,6 +56,10 @@ import org.testcontainers.utility.DockerImageName;
  *       {@code mit_bestand}): Monatsgrenze, Sommerzeit-Tag mit 100
  *       Viertelstunden und Lücke laufen durch den echten Walk und ergeben je
  *       Tag und Zeitpunkt die Zahlen der Datei.</li>
+ *   <li><b>Derselbe Speicher</b> (NS-1 A, {@code stur-speicher-vectors.json},
+ *       Blöcke {@code kapazitaet.auswahl} und {@code bewertung.gleicher_speicher}):
+ *       die Kapazität der Messlatte aus der Messung und das Hin-und-Her, das sie
+ *       mitträgt, an der Rechenstelle selbst.</li>
  * </ul>
  *
  * <p>Auto-skips where Docker is unavailable ({@code disabledWithoutDocker}).
@@ -76,6 +80,10 @@ class SteuerungTageszahlTest {
     private static final UUID BAND = UUID.fromString("5e000000-0000-0000-0000-0000000000c1");
     /** Die Auswahl des Betriebsbereichs aus {@code stur-speicher-vectors.json}. */
     private static final UUID AUSWAHL = UUID.fromString("5e000000-0000-0000-0000-0000000000d1");
+    /** Die Auswahl der Ladestandsmessung ({@code kapazitaet.auswahl}). */
+    private static final UUID KAPAZITAET = UUID.fromString("5e000000-0000-0000-0000-0000000000d2");
+    /** Ende zu Ende: derselbe Speicher ({@code bewertung.gleicher_speicher}). */
+    private static final UUID GLEICH = UUID.fromString("5e000000-0000-0000-0000-0000000000f1");
     private static final Path STUR_VECTORS =
             Path.of("..", "..", "docs", "contracts", "stur-speicher-vectors.json");
     /** Die Eimer-Fälle des Blocks {@code mit_bestand} und ihre Anlagen. */
@@ -121,6 +129,8 @@ class SteuerungTageszahlTest {
             seedMonatsgrenze(c);
             seedBandUndPlan(c);
             seedAuswahl(c);
+            seedKapazitaetAuswahl(c);
+            seedGleicherSpeicher(c);
             for (Map.Entry<String, UUID> fall : MIT_BESTAND.entrySet()) {
                 seedMitBestand(c, fall.getValue(), fall.getKey());
             }
@@ -487,7 +497,7 @@ class SteuerungTageszahlTest {
         JsonNode auswahl = MAPPER.readTree(Files.readString(STUR_VECTORS))
                 .path("betriebsbereich").path("auswahl");
         Map<LocalDate, EarningsRepository.Betriebsbereich> monate = earnings.monthBetriebsbereich(
-                LocalDate.of(2026, 7, 1).atStartOfDay(BERLIN).toInstant(),
+                LocalDate.of(2026, 6, 10).atStartOfDay(BERLIN).toInstant(),
                 LocalDate.of(2026, 7, 2).atStartOfDay(BERLIN).toInstant(), AUSWAHL).get(AUSWAHL);
         EarningsRepository.Betriebsbereich juni = monate.get(LocalDate.of(2026, 6, 1));
         assertThat(juni.tiefPct()).isEqualByComparingTo(auswahl.path("tief").decimalValue());
@@ -502,6 +512,85 @@ class SteuerungTageszahlTest {
                 .get(BAND).get(LocalDate.of(2026, 9, 1));
         assertThat(september.tiefPct()).isEqualByComparingTo(bereich.path("tief").decimalValue());
         assertThat(september.hochPct()).isEqualByComparingTo(bereich.path("hoch").decimalValue());
+        // NS-1 A: ein Juli-Fenster fragt den Juni nicht mehr ab - der Vormonat trägt nichts.
+        assertThat(earnings.monthBetriebsbereich(
+                LocalDate.of(2026, 7, 1).atStartOfDay(BERLIN).toInstant(),
+                LocalDate.of(2026, 7, 2).atStartOfDay(BERLIN).toInstant(), AUSWAHL))
+                .doesNotContainKey(AUSWAHL);
+    }
+
+    // ---------------------------------------------------------------- derselbe Speicher (NS-1 A)
+
+    /**
+     * Die Auswahl der Ladestandsmessung je Monat an der Rechenstelle selbst
+     * ({@code kapazitaet.auswahl}): nur arbeitende Viertelstunden mit einem
+     * Vorgänger genau 15 Minuten davor, gerichtet summiert; ein Juli-Fenster
+     * bringt den Juni als Vormonat mit, der Eimer vor dem Monat dient nur als
+     * Vorgänger.
+     */
+    @Test
+    void kapazitaetZaehltNurArbeitendeViertelstunden() throws Exception {
+        JsonNode auswahl = MAPPER.readTree(Files.readString(STUR_VECTORS))
+                .path("kapazitaet").path("auswahl");
+        Map<LocalDate, StandardSpeicher.Ladestandsmessung> monate =
+                earnings.monthLadestandsmessung(
+                        LocalDate.of(2026, 7, 1).atStartOfDay(BERLIN).toInstant(),
+                        LocalDate.of(2026, 7, 2).atStartOfDay(BERLIN).toInstant(), KAPAZITAET)
+                        .get(KAPAZITAET);
+        assertThat(monate).hasSize(auswahl.path("monate").size());
+        auswahl.path("monate").fields().forEachRemaining(e -> {
+            StandardSpeicher.Ladestandsmessung m = monate.get(LocalDate.parse(e.getKey()));
+            JsonNode w = e.getValue();
+            assertThat(m.viertelstunden()).as("%s Viertelstunden", e.getKey())
+                    .isEqualTo(w.path("viertelstunden").asLong());
+            assertThat(m.ladenKwh()).as("%s laden", e.getKey())
+                    .isCloseTo(w.path("laden_kwh").asDouble(), Offset.offset(1e-9));
+            assertThat(m.entladenKwh()).as("%s entladen", e.getKey())
+                    .isCloseTo(w.path("entladen_kwh").asDouble(), Offset.offset(1e-9));
+            assertThat(m.prozentpunkte()).as("%s Punkte", e.getKey())
+                    .isCloseTo(w.path("prozentpunkte").asDouble(), Offset.offset(1e-9));
+        });
+    }
+
+    /**
+     * Ende zu Ende ({@code bewertung.gleicher_speicher}): der Vergleichsspeicher
+     * rechnet mit den 60 kWh, die der echte Speicher gemessen fasst (der echte
+     * Stand in kWh ebenso), und trägt das Hin-und-Her der arbeitenden
+     * Viertelstunden - die Steuerung steht bei −4,32 € statt −6,48 € je Tag,
+     * {@code savedEur} bleibt brutto, die Dreiteilung exakt.
+     */
+    @Test
+    void derselbeSpeicherGemesseneKapazitaetUndGleichBewertet() throws Exception {
+        JsonNode fall = MAPPER.readTree(Files.readString(STUR_VECTORS))
+                .path("bewertung").path("gleicher_speicher");
+        JsonNode tag = fall.path("erwartet").path("je_tag");
+        Offset<Double> eur = Offset.offset(1e-6);
+        Offset<Double> kwh = Offset.offset(1e-6);
+        StandardSpeicher.Ladestandsmessung november = earnings.monthLadestandsmessung(
+                from(LocalDate.of(2026, 11, 2)), to(LocalDate.of(2026, 11, 3)), GLEICH)
+                .get(GLEICH).get(LocalDate.of(2026, 11, 1));
+        assertThat(StandardSpeicher.kapazitaetKwh(65, 1.0, november))
+                .isCloseTo(fall.path("erwartet").path("kapazitaet_kwh").asDouble(), kwh);
+        for (LocalDate d : List.of(LocalDate.of(2026, 11, 2), LocalDate.of(2026, 11, 3))) {
+            EarningsRepository.Tageseinordnung t = earnings.tageseinordnungForSite(GLEICH, from(d), to(d));
+            assertThat(saved(GLEICH, d).doubleValue()).as("saved %s", d)
+                    .isCloseTo(tag.path("saved_eur").asDouble(), eur);
+            assertThat(t.speicherEur().doubleValue()).as("speicher %s", d)
+                    .isCloseTo(tag.path("speicher_eur").asDouble(), eur);
+            assertThat(t.steuerungEur().doubleValue()).as("steuerung %s", d)
+                    .isCloseTo(tag.path("steuerung_eur").asDouble(), eur);
+            assertThat(t.speicherEur().add(t.steuerungEur()).doubleValue()).as("Dreiteilung %s", d)
+                    .isCloseTo(saved(GLEICH, d).doubleValue(), Offset.offset(1e-9));
+            assertThat(t.echtSocEndKwh().doubleValue()).as("echt Ende %s", d)
+                    .isCloseTo(tag.path("echt_soc_ende_kwh").asDouble(), kwh);
+            assertThat(t.vergleichSocEndKwh().doubleValue()).as("Vergleich Ende %s", d)
+                    .isCloseTo(tag.path("vergleich_soc_ende_kwh").asDouble(), kwh);
+            assertThat(tag.path("stur_eur").asDouble() - tag.path("hin_und_her_eur").asDouble())
+                    .isCloseTo(tag.path("speicher_eur").asDouble(), eur);
+            assertThat(tag.path("steuerung_bisher_eur").asDouble() + tag.path("hin_und_her_eur").asDouble())
+                    .isCloseTo(tag.path("steuerung_eur").asDouble(), eur);
+        }
+        assertEinWalk(GLEICH, LocalDate.of(2026, 11, 2), LocalDate.of(2026, 11, 3));
     }
 
     // ---------------------------------------------------------------- helpers
@@ -643,6 +732,55 @@ class SteuerungTageszahlTest {
                 BigDecimal.ONE, BigDecimal.valueOf(99), null);
     }
 
+    /** Die Eimer der Auswahl {@code kapazitaet.auswahl} (laden, entladen, Ladestand). */
+    private static void seedKapazitaetAuswahl(Connection c) throws Exception {
+        exec(c, "INSERT INTO site (id, tenant_id, name, bidding_zone, tarif_art, tarif_param_ct_kwh)"
+                + " VALUES ('" + KAPAZITAET + "', '" + TENANT + "', 'Kapazitaet', 'DE-LU', 'fest', 25)");
+        JsonNode auswahl = MAPPER.readTree(Files.readString(STUR_VECTORS))
+                .path("kapazitaet").path("auswahl");
+        for (JsonNode e : auswahl.path("eimer")) {
+            rollupSpeicher(c, KAPAZITAET, Instant.parse(e.get(0).asText()), null, null, null, null,
+                    dec(e.get(1)), dec(e.get(2)), dec(e.get(3)));
+        }
+    }
+
+    /** Zwei Novembertage nach {@code bewertung.gleicher_speicher}: je acht Lade- und Entlade-Viertelstunden im Wechsel. */
+    private static void seedGleicherSpeicher(Connection c) throws Exception {
+        JsonNode fall = MAPPER.readTree(Files.readString(STUR_VECTORS))
+                .path("bewertung").path("gleicher_speicher");
+        JsonNode a = fall.path("anlage");
+        exec(c, "INSERT INTO site (id, tenant_id, name, bidding_zone, tarif_art, tarif_param_ct_kwh)"
+                + " VALUES ('" + GLEICH + "', '" + TENANT + "', 'Derselbe Speicher', 'DE-LU', 'fest', "
+                + a.path("bezug_ct_kwh").asText() + ")");
+        exec(c, "INSERT INTO asset (tenant_id, site_id, type, capacity_kwh, max_charge_kw,"
+                + " max_discharge_kw, roundtrip_efficiency_pct) VALUES ('" + TENANT + "', '" + GLEICH
+                + "', 'battery', " + a.path("capacity_kwh").asText() + ", "
+                + a.path("max_charge_kw").asText() + ", " + a.path("max_discharge_kw").asText() + ", "
+                + a.path("roundtrip_efficiency_pct").asText() + ")");
+        JsonNode anker = fall.path("monatsanker");
+        rollup(c, GLEICH, Instant.parse(anker.path("bucket").asText()), null, null, null, null,
+                anker.path("soc_last_pct").decimalValue());
+        Instant t = Instant.parse(fall.path("von").asText());
+        BigDecimal soc = anker.path("soc_last_pct").decimalValue();
+        int block = fall.path("block").asInt();
+        for (int i = 0; i < fall.path("viertelstunden").asInt(); i++, t = t.plus(Duration.ofMinutes(15))) {
+            JsonNode v = fall.path((i / block) % 2 == 0 ? "laden_viertelstunde" : "entlade_viertelstunde");
+            soc = soc.add(v.path("soc_delta_pct").decimalValue());
+            try (PreparedStatement ps = c.prepareStatement(
+                    "INSERT INTO day_ahead_prices (ts, bidding_zone, resolution, price_eur_mwh,"
+                            + " currency, source) VALUES (?, 'DE-LU', 'PT15M', ?, 'EUR', 'test')"
+                            + " ON CONFLICT DO NOTHING")) {
+                ps.setTimestamp(1, Timestamp.from(t));
+                ps.setBigDecimal(2, a.path("spot_eur_mwh").decimalValue());
+                ps.execute();
+            }
+            rollupSpeicher(c, GLEICH, t, v.path("pv_kwh").decimalValue(), v.path("load_kwh").decimalValue(),
+                    v.path("grid_import_kwh").decimalValue(), v.path("grid_export_kwh").decimalValue(),
+                    v.path("battery_charge_kwh").decimalValue(),
+                    v.path("battery_discharge_kwh").decimalValue(), soc);
+        }
+    }
+
     /**
      * Ein Fahrplan-Slot des jüngsten Laufs, der genau so eintritt wie
      * gemessen: Leistungen = Energie × 4 auf 4 Stellen, Baseline und Kosten
@@ -764,6 +902,29 @@ class SteuerungTageszahlTest {
             ps.setBigDecimal(7, exp);
             ps.setBigDecimal(8, socMinPct);
             ps.setBigDecimal(9, socMaxPct);
+            ps.setBigDecimal(10, socLastPct);
+            ps.execute();
+        }
+    }
+
+    /** Ein Eimer mit den Speicher-Energien des echten Speichers (NS-1 A). */
+    private static void rollupSpeicher(Connection c, UUID site, Instant bucket, BigDecimal pv,
+            BigDecimal load, BigDecimal imp, BigDecimal exp, BigDecimal laden, BigDecimal entladen,
+            BigDecimal socLastPct) throws Exception {
+        try (PreparedStatement ps = c.prepareStatement(
+                "INSERT INTO telemetry_rollup_15m (bucket, tenant_id, site_id, pv_kwh, load_kwh,"
+                        + " grid_import_kwh, grid_export_kwh, battery_charge_kwh,"
+                        + " battery_discharge_kwh, soc_last_pct, n_samples)"
+                        + " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 90)")) {
+            ps.setTimestamp(1, Timestamp.from(bucket));
+            ps.setObject(2, TENANT);
+            ps.setObject(3, site);
+            ps.setBigDecimal(4, pv);
+            ps.setBigDecimal(5, load);
+            ps.setBigDecimal(6, imp);
+            ps.setBigDecimal(7, exp);
+            ps.setBigDecimal(8, laden);
+            ps.setBigDecimal(9, entladen);
             ps.setBigDecimal(10, socLastPct);
             ps.execute();
         }

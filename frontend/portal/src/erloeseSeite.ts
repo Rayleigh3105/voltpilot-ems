@@ -30,7 +30,7 @@ import { rundeKaufmaennisch, sekundaerFuer, type SekundaerZiel } from './erloesZ
 import { billingPeriodLabel, LEER_TEXT, LEER_TEXT_FALLBACK } from './erloesKomposition';
 import { peakCounterfactualTip } from './moduleSurface';
 import type { ErloesVergleich } from './vergleichLaufend';
-import { MESSLATTE_DATIV, MESSLATTE_KURZ, type SpeicherAussage } from './speicherAussage';
+import { MESSLATTE_DATIV, MESSLATTE_KURZ, MESSLATTE_REGEL, type SpeicherAussage } from './speicherAussage';
 import { steuerungKachel } from './steuerungZeitraum';
 import {
   geldZellen,
@@ -431,7 +431,7 @@ export function mehrwertBand(speicher: SpeicherAussage | null, range: HistoryRan
       // Der Satz zur Zahl nur, wo er mehr sagt als Betrag + Unterzeile
       // (unter Null: warum ein Zwischenstand sinken kann).
       s.ton === 'plus' ? '' : (speicher.satz ?? ''),
-      `Verglichen wird mit ${MESSLATTE_DATIV}: Er lädt jeden Überschuss sofort und entlädt sofort — ohne Blick auf Preise. Nicht im Ergebnis enthalten.`,
+      `Verglichen wird mit ${MESSLATTE_DATIV} — ${MESSLATTE_REGEL}. Nicht im Ergebnis enthalten.`,
       speicher.mitBestand
         ? 'Jeder Tag mit Bestand bewertet: Was am Tagesende mehr oder weniger im Speicher liegt als im Vergleichsspeicher, zählt zum Bezugspreis.'
         : range === 'day'

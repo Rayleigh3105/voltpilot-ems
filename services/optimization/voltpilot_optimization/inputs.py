@@ -1143,10 +1143,13 @@ def _betriebsbereich_pct(
     """Der gemessene Betriebsbereich des echten Speichers (M1) fuer den
     sturen Speicher der Messlatte, oder ``None``.
 
-    Je Berliner Monat der :data:`~voltpilot_optimization.stur.BETRIEBSBEREICH_EIMER`-t
-    niedrigste ``soc_min_pct`` und -t hoechste ``soc_max_pct`` der 15-min-Eimer,
-    vereint ueber den laufenden Monat und den Vormonat - dieselbe Regel und
-    dieselbe Abfrage wie ``EarningsRepository.monthBetriebsbereich`` (Java).
+    Der :data:`~voltpilot_optimization.stur.BETRIEBSBEREICH_EIMER`-t niedrigste
+    ``soc_min_pct`` und -t hoechste ``soc_max_pct`` der 15-min-Eimer des
+    laufenden Berliner Monats - dieselbe Regel wie
+    ``EarningsRepository.monthBetriebsbereich`` (Java). Seit NS-1 A (Captain
+    15.10.2026) zaehlt der Vormonat nicht mehr: haelt der Waechter der Box das
+    Planungsband, faehrt die Messlatte dasselbe Band wie der Plan; nur ein
+    Ausbruch DESSELBEN Monats weitet es.
 
     FAIL-SOFT wie die Messlatte selbst: ein fehlender Bereich ist das
     unveraenderte Planungsband, nie ein fehlender Plan.
@@ -1159,7 +1162,6 @@ def _betriebsbereich_pct(
     monat = now.astimezone(BERLIN).replace(
         day=1, hour=0, minute=0, second=0, microsecond=0
     )
-    vormonat = (monat - timedelta(days=1)).replace(day=1)
     try:
         with psycopg.connect(dsn) as conn, conn.cursor() as cur:
             cur.execute(
@@ -1174,7 +1176,7 @@ def _betriebsbereich_pct(
                   WHERE site_id = %s AND bucket >= %s AND bucket < %s
                   GROUP BY 1) m
                 """,
-                (site_id, vormonat, now),
+                (site_id, monat, now),
             )
             row = cur.fetchone()
         if row is None or (row[0] is None and row[1] is None):
