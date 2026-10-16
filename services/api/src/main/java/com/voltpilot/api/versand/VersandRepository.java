@@ -107,6 +107,13 @@ public class VersandRepository implements BenachrichtigungAusgang {
                 Timestamp.from(naechsterVersuch), schwere, buendelSchluessel);
     }
 
+    /** Alerting Scheibe 6 (Entscheid 11B) - siehe {@link BenachrichtigungAusgang#emailExtern}. */
+    @Override
+    public void emailExtern(UUID quelleId, String empfaengerKennung, String anlass, String betreff, String inhalt,
+            String ziel) {
+        emailMitZiel("alarm_extern", quelleId, empfaengerKennung, anlass, betreff, inhalt, ziel);
+    }
+
     /** Wie {@link #email}, aber mit einem direkt vorgegebenen Ziel - nur für die Bestätigungs-Mail selbst. */
     public void emailMitZiel(String quelle, UUID quelleId, String empfaengerSub, String anlass, String betreff,
             String inhalt, String ziel) {

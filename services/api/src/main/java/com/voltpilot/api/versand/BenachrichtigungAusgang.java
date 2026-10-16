@@ -118,6 +118,20 @@ public interface BenachrichtigungAusgang {
         telegram(quelle, quelleId, empfaengerSub, anlass, 0, betreff, inhalt, Instant.now(), schwere);
     }
 
+    /**
+     * Direkter Ziel-Versand an einen NICHT-Plattform-Empfänger (Alerting Scheibe 6, Entscheid 11B:
+     * freie externe E-Mail-Empfänger je Überwachung). Quelle {@code "alarm_extern"} - bewusst NICHT
+     * {@code "alarm"} - durchläuft darum nie die Sicht-/Ruhezeit-Prüfung des Zustellers (es gibt
+     * keine Person mit Rechten oder Ruhezeit dahinter, siehe {@code Zusteller#vorpruefung}); ob
+     * überhaupt eingereiht wird, entscheidet allein die Bestätigt/Aktiv-Prüfung VOR dem Aufruf
+     * dieser Methode. {@code empfaengerKennung} ist keine echte Person - nur der eindeutige Teil des
+     * Versand-Schlüssels (z. B. {@code "extern:" + zeile.id()}).
+     */
+    default void emailExtern(UUID quelleId, String empfaengerKennung, String anlass, String betreff, String inhalt,
+            String ziel) {
+        // Vorgabe: kein Versand - siehe STUMM; VersandRepository überschreibt dies mit einem echten Einreihen.
+    }
+
     BenachrichtigungAusgang STUMM = new BenachrichtigungAusgang() {
         @Override
         public void email(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr, String betreff,
