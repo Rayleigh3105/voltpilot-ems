@@ -25,9 +25,10 @@ export interface Wertverweis {
 
 /**
  * Der Bezug im Anfragekörper von `ueberwachungAnlegen` - `anlage` ODER `komponente`+`kanal` (§6.3)
- * ODER eine AUSWAHL (Alerting Scheibe 4, §6.4 "Gilt für"): `alle` ist `"anlage"` oder `"box"`,
- * wahlweise auf einen `standort` eingeschränkt (sonst der ganze Kundenbereich). Genau EINE der drei
- * Formen ist gesetzt.
+ * ODER `messstelle` ODER `kennzahl` ODER `energieziel` (Alerting Scheibe 5, §6.3 "Bezug": Messstelle,
+ * Kennzahl, Energieziel haben keine Anlage) ODER eine AUSWAHL (Alerting Scheibe 4, §6.4 "Gilt für"):
+ * `alle` ist `"anlage"` oder `"box"`, wahlweise auf einen `standort` eingeschränkt (sonst der ganze
+ * Kundenbereich). Genau EINE der Formen ist gesetzt.
  */
 export interface UeberwachungBezugEingabe {
   anlage?: string;
@@ -35,6 +36,9 @@ export interface UeberwachungBezugEingabe {
   kanal?: string;
   standort?: string;
   alle?: 'anlage' | 'box';
+  messstelle?: string;
+  kennzahl?: string;
+  energieziel?: string;
 }
 
 /** `person` ODER `rolle` (§6.4 "Mehrere Empfänger") - nie beide. */

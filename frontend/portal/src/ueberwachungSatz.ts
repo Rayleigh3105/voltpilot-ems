@@ -135,7 +135,26 @@ const ZUSTANDSWORT: Record<string, string> = {
   stale: 'veraltet',
   never: 'noch nie geliefert',
   ok: 'in Ordnung',
+  // Scheibe 5 (§6.3): Energieziel-Kurs (`energieziel.kurs`).
+  noch_keine_aussage: 'noch ohne Aussage',
+  auf_kurs: 'auf Kurs',
+  knapp_dahinter: 'knapp hinter dem Kurs',
+  nicht_auf_kurs: 'nicht auf Kurs',
+  // Scheibe 5 (§6.3): Beobachtung der Messstelle (`messstelle.beobachtung`).
+  liefert: 'liefert Daten',
+  liefert_nicht_seit: 'liefert keine Daten mehr',
+  wartet_auf_erste_daten: 'wartet auf die ersten Daten',
+  keine_datenquelle: 'ohne Datenquelle',
+  // Scheibe 5 (§6.3): Monat unvollständig (`messstelle.monat_unvollstaendig`).
+  vollstaendig: 'vollständig',
+  unvollstaendig: 'unvollständig',
 };
+
+/** Das Kundenwort EINES Zustands (für die Chips des Blatts, `UeberwachenBlatt.tsx`) - dieselbe
+ * Wahrheit wie der Satz selbst, nie eine zweite Übersetzung. */
+export function zustandswortAnzeige(zustand: string): string {
+  return zustandswort(zustand);
+}
 
 function zustandswort(zustand: string): string {
   return ZUSTANDSWORT[zustand] ?? zustand.replace(/_/g, ' ');
