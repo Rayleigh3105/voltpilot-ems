@@ -147,6 +147,9 @@ class PortalApiTest {
     @Autowired
     com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
+    @Autowired
+    com.voltpilot.api.repo.EarningsRepository earningsRepo;
+
     // ---- token validation ---------------------------------------------------
 
     @Test
@@ -8025,6 +8028,39 @@ class PortalApiTest {
         }
     }
 
+    /**
+     * Diagnose fuer {@link #siteEarningsCarryTheStorageBankOfTheMeasuredDay} (ungeklaerter Last-Flake
+     * des vollen Modullaufs, Triage bdeg (g)): ruft {@link EarningsRepository#storageBank} ein ZWEITES
+     * Mal direkt mit einem frischen {@code now} auf, zeigt dessen Fenster und das Antwort-JSON. Weicht
+     * ein kuenftiger Fehlschlag zwischen der Server-Antwort und diesem direkten Zweitaufruf ab, ist das
+     * der Fingerabdruck eines Zeitfensters, das zwischen beiden Aufrufen eine Grenze (15-Min-Eimer,
+     * Mitternacht, Lambda-Lookback) uebersprungen hat - sonst war es die Server-Antwort selbst.
+     */
+    private String speicherKontext(String phase, String siteId, java.time.Instant von, java.time.Instant bis,
+            java.time.Instant jetztImTestaufbau, Map<String, Object> body) {
+        java.time.Instant frischesJetzt = java.time.Instant.now();
+        // storageBank liest RLS-geschuetzte Tabellen (asset, telemetry, telemetry_rollup_15m,
+        // schedule): ohne TenantContext saehe dieser direkte Zweitaufruf vom Testthread aus nichts.
+        com.voltpilot.api.tenant.TenantContext.set(UUID.fromString("00000000-0000-0000-0000-000000000001"));
+        com.voltpilot.api.repo.SpeicherBank.Bestand direkt;
+        try {
+            direkt = earningsRepo.storageBank(UUID.fromString(siteId), von, bis, frischesJetzt);
+        } finally {
+            com.voltpilot.api.tenant.TenantContext.clear();
+        }
+        String bodyJson;
+        try {
+            bodyJson = objectMapper.writeValueAsString(body);
+        } catch (Exception e) {
+            bodyJson = String.valueOf(body);
+        }
+        return phase + " | Fenster [" + von + ", " + bis + ") | jetzt(Testaufbau)=" + jetztImTestaufbau
+                + " jetzt(frisch bei dieser Pruefung)=" + frischesJetzt
+                + " | storageBank() direkt mit frischem jetzt: deltaKwh=" + direkt.deltaKwh()
+                + " wertCtKwh=" + direkt.wertCtKwh() + " wertEur=" + direkt.wertEur()
+                + " basis=" + direkt.basis() + " | Antwort der HTTP-Route: " + bodyJson;
+    }
+
     private Map<String, Object> siteEarningsDay(String token, String siteId, String at) {
         ResponseEntity<Map<String, Object>> res = rest.exchange(
                 url("/api/v1/sites/" + siteId + "/earnings?range=day&at=" + at), HttpMethod.GET,
@@ -8113,18 +8149,22 @@ class PortalApiTest {
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
         Map<String, Object> body = res.getBody();
         org.assertj.core.data.Offset<Double> eps = org.assertj.core.data.Offset.offset(1e-6);
+        java.time.Instant tagVon = tag.atStartOfDay(berlin).toInstant();
+        java.time.Instant tagBis = tag.plusDays(1).atStartOfDay(berlin).toInstant();
+        String kontextTag = speicherKontext("tag", site, tagVon, tagBis, tagBis.minusMillis(1), body);
 
-        assertThat(num(body, "speicherDeltaKwh")).isCloseTo(44.2, eps);
-        assertThat(num(body, "speicherWertCtKwh")).isCloseTo(18.9, eps);
-        assertThat(num(body, "speicherWertEur")).isCloseTo(8.3538, org.assertj.core.data.Offset.offset(5e-4));
-        assertThat(body).containsEntry("speicherWertBasis", "plan");
+        assertThat(num(body, "speicherDeltaKwh")).as(kontextTag).isCloseTo(44.2, eps);
+        assertThat(num(body, "speicherWertCtKwh")).as(kontextTag).isCloseTo(18.9, eps);
+        assertThat(num(body, "speicherWertEur")).as(kontextTag)
+                .isCloseTo(8.3538, org.assertj.core.data.Offset.offset(5e-4));
+        assertThat(body).as(kontextTag).containsEntry("speicherWertBasis", "plan");
         // Der Posten steht NEBEN der Kasse, nie darin - und genau deshalb braucht
         // die Fläche die zweite Zeile: die gemessene Zahlungsbilanz dieses Tages
         // ist NEGATIV (−0,295 €, die Mittagsladung als entgangener Einspeise-
         // Erlös), während 44,2 kWh im Speicher liegen. Erst beide zusammen
         // ergeben die ehrliche Tageszahl.
-        assertThat(num(body, "savedEur")).isCloseTo(-0.295, org.assertj.core.data.Offset.offset(1e-9));
-        assertThat(num(body, "savedEur") + num(body, "speicherWertEur"))
+        assertThat(num(body, "savedEur")).as(kontextTag).isCloseTo(-0.295, org.assertj.core.data.Offset.offset(1e-9));
+        assertThat(num(body, "savedEur") + num(body, "speicherWertEur")).as(kontextTag)
                 .isCloseTo(8.06, org.assertj.core.data.Offset.offset(0.01));
 
         // FK2-Rückfall + negatives Vorzeichen: der Vortag verbraucht die Bank
@@ -8137,10 +8177,15 @@ class PortalApiTest {
                 url("/api/v1/sites/" + site + "/earnings?range=day&at=" + vortag),
                 HttpMethod.GET, new HttpEntity<>(bearer(demo)),
                 new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
-        assertThat(num(gestern, "speicherDeltaKwh")).isCloseTo(-16.9, eps);
-        assertThat(num(gestern, "speicherWertCtKwh")).isCloseTo(15.5, eps);
-        assertThat(num(gestern, "speicherWertEur")).isCloseTo(-2.6195, org.assertj.core.data.Offset.offset(5e-4));
-        assertThat(gestern).containsEntry("speicherWertBasis", "terminal");
+        java.time.Instant vortagVon = vortag.atStartOfDay(berlin).toInstant();
+        java.time.Instant vortagBis = tagVon;
+        String kontextGestern = speicherKontext("gestern", site, vortagVon, vortagBis,
+                vortagBis.minusMillis(1), gestern);
+        assertThat(num(gestern, "speicherDeltaKwh")).as(kontextGestern).isCloseTo(-16.9, eps);
+        assertThat(num(gestern, "speicherWertCtKwh")).as(kontextGestern).isCloseTo(15.5, eps);
+        assertThat(num(gestern, "speicherWertEur")).as(kontextGestern)
+                .isCloseTo(-2.6195, org.assertj.core.data.Offset.offset(5e-4));
+        assertThat(gestern).as(kontextGestern).containsEntry("speicherWertBasis", "terminal");
 
         // Am LAUFENDEN Tag gewinnt das rohe Sample über den Rollup-Stand - sonst
         // hinkte die Bestandszeile dem kWh-Satz daneben 15 Minuten hinterher.
@@ -8174,9 +8219,11 @@ class PortalApiTest {
                 url("/api/v1/sites/" + site + "/earnings?range=day"),
                 HttpMethod.GET, new HttpEntity<>(bearer(demo)),
                 new ParameterizedTypeReference<Map<String, Object>>() {}).getBody();
+        String kontextHeute = speicherKontext("heute (laufender Tag)", site, laufenderTagStart,
+                laufenderTagStart.plus(java.time.Duration.ofDays(1)), jetzt, heute);
         // 40 % (roh) gegen 92 % zu Mitternacht - NICHT die 20 % des Rollups.
-        assertThat(num(heute, "speicherDeltaKwh")).isCloseTo(-33.8, eps);
-        assertThat(num(heute, "speicherWertCtKwh")).isCloseTo(20.0, eps);
+        assertThat(num(heute, "speicherDeltaKwh")).as(kontextHeute).isCloseTo(-33.8, eps);
+        assertThat(num(heute, "speicherWertCtKwh")).as(kontextHeute).isCloseTo(20.0, eps);
 
         // Ohne primären Speicher wird NICHTS behauptet - vier ehrliche Nullen.
         Map<String, Object> ohne = rest.exchange(
