@@ -2,7 +2,7 @@
 
 # Glossar des Unternehmens-Energiemanagements
 
-Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 58 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
+Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 62 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
 
 Belege sind `datei:zeile` am Stand `origin/main` 36f3e7e8 (10.09.2026); `MIG` = `services/api/src/main/resources/db/migration`, `PORTAL` = `frontend/portal/src`, `DATA` = die Konzept-Ablage des Programms (nicht in diesem Repo). `tools/check_belege.sh` prüft die Pfade.
 
@@ -91,6 +91,10 @@ Ein Kasten **Verfeinert durch** nennt, was ein späteres Konzeptpaket geschärft
 - [Tätigkeit des Speichers](#tätigkeit-des-speichers) — Sicht Betrieb · Nachtrag Fahrplan „Tagesuhr und Bildfahrplan“ E8 (24.09.2026)
 - [Szene](#szene) — Sicht Betrieb · Nachtrag Steuerung neu E6 (29.09.2026)
 - [Sonne + Speicher](#sonne--speicher) — Sicht Betrieb · Nachtrag Ladequelle (06.10.2026)
+- [Überwachung](#überwachung) — Sicht Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Entscheid 6A/9A/10A (15.10.2026)
+- [Meldung](#meldung) — Sicht Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Entscheid 6A (15.10.2026)
+- [Zustellweg](#zustellweg) — Sicht Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Scheibe 3/6 (15.10.2026)
+- [Ruhezeit](#ruhezeit) — Sicht Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Scheibe 3, Entscheid 8A (15.10.2026)
 
 ## Kundenbereich
 
@@ -1526,3 +1530,59 @@ Wie tief der Speicher dafür entladen werden darf (seine Untergrenze), rechnet d
 **Heute im Code.** Steuerart `ueberschussModus=speicher` mit der Karte `ueberschuss_speicher` (services/api/src/main/java/com/voltpilot/api/verbraucher/SteuerartSatz.java:132), Untergrenze im Optimierer (services/optimization/voltpilot_optimization/storage_release.py:390), Steuerstand der Box im Herzschlag (`docs/contracts/speicher-steuerstand.md`, MIG/V20261007120000__device_battery_control.sql:33), Freigabe auf der Box (`edge-app/core/internal/lastmgmt/release.go`), Reserve je Anlage (MIG/V20261006120000__sonne_speicher.sql:40), Wort als `LADEQUELLE` (PORTAL/glossar.ts:157).
 
 **Abgrenzung.** Nicht „Smart“ (die Moduswahl), nicht der Vorrang „Speicher vor Auto“ (der ordnet den Überschuss), nicht die Notstrom- und Schutzreserve des Speichers (die bleibt immer unberührt).
+
+## Überwachung
+
+*Sicht: Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Entscheid 6A/9A/10A (15.10.2026)*
+
+**Eine vom Kunden angelegte Wenn-Dann-Beobachtung eines Werts (Schwelle, Richtung, optionale Dauer), die bei Erreichen eine Meldung erzeugt — erst im Probelauf, dann scharf.**
+
+Eine Überwachung entsteht im Blatt „Überwachen“ (Menü-Verb am Wert) und trägt eine Schwere (Hinweis · Warnung · Dringend, Entscheid 6A — bewusst nicht „Severity“ oder „Priorität“), eine Rückkehrschwelle und eine Erholdauer gegen Flattern um die Schwelle (VoltPilot setzt beide vor, änderbar im Blatt). „Überwachung starten“ öffnet sie im Probelauf mit fester Frist; „Jetzt scharf schalten“ beendet ihn vorzeitig. Jede Meldung einer der Scheibe-5-Wertarten trägt strukturell die Marke „eigene Überwachung“ (Entscheid 9A: kein Läufer legt eine ab Werk an). Eine ältere Steuerungs-Regel mit dem Baustein „Benachrichtigung“ bleibt ein separater, nie zustellender Hinweis; ihre Karte bietet stattdessen „In Überwachung umwandeln“ an (Entscheid 10A), sofern ihre einzige Bedingung einen gemessenen Kanal referenziert.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Eigene Überwachung an AN-1: Netzbezug über 300 kW, Rückkehrschwelle 5 %, Erholdauer 5 Minuten — seit 20.10.2026 scharf, nach einem Probelauf bis 19.10.2026.
+
+**Heute im Code.** Kundenwörter `WORT_UEBERWACHUNG`/`WORT_UEBERWACHEN`/`WORT_UEBERWACHT`/`WORT_EIGENE_UEBERWACHUNG` (PORTAL/meldungen.ts:30,34,36,81); Satz- und Vorgaben-Ableitung inkl. Rückkehrschwelle/Erholdauer und der Perioden-Wörter Tag/Woche/Monat/Abrechnungszeitraum (PORTAL/ueberwachungSatz.ts:1-20,97-101); API `UeberwachenBlatt.tsx`/`ueberwachungApi.ts`; „… im Probelauf bis …“ und „Jetzt scharf schalten“ (PORTAL/pages/MeldungenPage.tsx:295,305); Umwandlung einer alten Regel: `notifyUmwandlung` und „Benachrichtigung (kommt noch nicht an).“ (PORTAL/steuerung/regeln.ts:210,215,228), Knopf „In Überwachung umwandeln“ (PORTAL/steuerung/RegelnReiter.tsx:222). Fachmodell-Eintrag nachgezogen, nachdem alle Scheiben 0–6 gemergt waren (vorher bewusst zurückgestellt, PORTAL/meldungen.ts:4-15).
+
+**Abgrenzung.** Nicht die Regel der Steuerung (die schaltet ein Gerät; ihr Baustein „Benachrichtigung“ ist ein reiner Diagnose-Hinweis ohne Zustellweg); nicht die Meldung selbst (das Ergebnis, siehe „Meldung“).
+
+## Meldung
+
+*Sicht: Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Entscheid 6A (15.10.2026)*
+
+**Das Ergebnis einer ausgelösten Überwachung: ein Eintrag im Meldungs-Center mit Schwere, Zeitpunkt und Bezug zum beobachteten Wert — bis sie quittiert ist („Gesehen“) oder die Bedingung endet.**
+
+Der Jetzt-Reiter sortiert Dringend vor Warnung vor Hinweis, darin das älteste zuerst; der Verlauf-Reiter zeigt die jüngste zuerst (dieselbe Wortwahl „Verlauf“ wie bei der Messstelle, AP-13, bewusst wiederverwendet). Eine Meldung verweist je nach Wertart auf die Kennzahl, das Energieziel oder die Messstelle — nie auf eine Auffälligkeit (AP-18): die Scheibe-5-Wertarten haben heute kein eigenes Auffälligkeiten-Ziel, der Verweis bleibt ehrlich beim nächsten vorhandenen Objekt. Eine tägliche Tages-Zusammenfassung ist eine persönliche Zustellungs-Einstellung, keine eigene Meldungsart.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Jetzt-Reiter von AN-1: „Netzbezug über 300 kW seit 14:12 · Dringend“ — noch nicht gesehen; im Verlauf steht sie ab dem Moment, in dem der Wert wieder unter die Rückkehrschwelle fällt.
+
+**Heute im Code.** Kundenwörter `WORT_MELDUNG`/`WORT_MELDUNGEN`/`WORT_GESEHEN` und `SCHWERE_WORT` (Hinweis · Warnung · Dringend) (PORTAL/meldungen.ts:28-31,43-47); Sortierung `sortiereJetzt`/`sortiereVerlauf` (PORTAL/meldungen.ts:63-74); Verweis-Ziele „Zur Kennzahl“/„Zum Energieziel“/„Zur Messstelle“ (PORTAL/meldungen.ts:115-121); Seite `#/meldungen` mit Reitern Jetzt/Verlauf/Überwachungen (PORTAL/pages/MeldungenPage.tsx:142,147-148); Tages-Zusammenfassung-Schalter (PORTAL/components/BenachrichtigungenDialog.tsx:236).
+
+**Abgrenzung.** Nicht die Überwachung (die Regel, die sie erzeugt); nicht die Auffälligkeit des Verbessern-Bereichs (AP-18) — beide Fundstellen bleiben unabhängig.
+
+## Zustellweg
+
+*Sicht: Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Scheibe 3/6 (15.10.2026)*
+
+**Der Weg, auf dem eine Person von einer Meldung erfährt — eine persönliche Einstellung am Kundenkonto, nicht Teil der Überwachungs-Regel selbst.**
+
+Vier Wege, jeder mit eigener Schwere-Schwelle und einzeln abschaltbar: E-Mail (mit optionaler Tages-Zusammenfassung zu fester Uhrzeit), Push auf diesem Gerät (Web-Push; die Browser-Erlaubnis fragt erst nach einem Tipp, nie beim Laden; auf iOS nur aus der installierten Web-App), Webhook (eine URL für einen Teams- oder Slack-Incoming-Webhook) und Telegram (verbunden über „Telegram verbinden“). Ruhezeit und Stummschaltung wirken auf die Zustellung, nie auf die Überwachung selbst — eine stummgeschaltete Regel überwacht unverändert weiter, nur ihre Meldungen bleiben zu.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Ines Kaltenbach: E-Mail ab Warnung mit Tages-Zusammenfassung um 07:00 Uhr, Push auf ihrem Telefon ab Dringend, kein Webhook, kein Telegram verbunden.
+
+**Heute im Code.** `EmailZustellweg`/`PushAbo`/`WebhookZiel` (PORTAL/benachrichtigungenApi.ts:5-7,10-18,20-27,29); `pushUnterstuetzt` (PORTAL/push.ts:4-16); Überschriften „Push auf diesem Gerät“ (PORTAL/components/BenachrichtigungenDialog.tsx:264), „Webhook“/„Webhook-URL“ (:298,321), „Telegram“/„Telegram verbinden“ (:330,332).
+
+**Abgrenzung.** Nicht die Schwere (die Bedingung, AB der überhaupt zugestellt wird); nicht die Ruhezeit (WANN trotz Schwere nicht sofort zugestellt wird).
+
+## Ruhezeit
+
+*Sicht: Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Scheibe 3, Entscheid 8A (15.10.2026)*
+
+**Ein wiederkehrendes Zeitfenster je Person, in dem Meldungen nicht sofort zugestellt werden — außer die Person erlaubt „Dringendes trotzdem melden“.**
+
+Werktags und Wochenende getrennt einstellbar, das Wochenende auch als „ganz“; ein Fenster darf über Mitternacht reichen (von > bis). Die Portal-Vorschau im Blatt ist nur ein Zwilling der Rechnung — die tatsächliche Zustellung entscheidet ausschließlich der Server. „Dringendes trotzdem melden“ ist ein eigener Schalter: ohne ihn bleibt auch eine dringende Meldung bis zum Ende der Ruhezeit zurückgehalten.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Ruhezeit werktags 22:00–07:00 Uhr, Wochenende ganz, mit „Dringendes trotzdem melden“ aktiv — eine Dringend-Meldung kommt trotzdem sofort an, eine Warnung erst nach Ende der Ruhezeit.
+
+**Heute im Code.** `RuhezeitTeilfenster`/`RuhezeitRegeln` (PORTAL/ruhezeit.ts:1-24); Überschrift „Ruhezeit“ und Option „keine Ruhezeit“ (PORTAL/components/BenachrichtigungenDialog.tsx:354,394); Schalter „Dringendes trotzdem melden“ (:415).
+
+**Abgrenzung.** Nicht die Stummschaltung (unterdrückt eine einzelne Regel/Anlage befristet, unabhängig von der Uhrzeit — heute nur als API, noch ohne eigene Kundenformulierung im Markup).
