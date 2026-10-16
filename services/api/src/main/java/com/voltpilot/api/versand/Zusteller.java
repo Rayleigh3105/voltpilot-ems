@@ -5,7 +5,10 @@ import com.voltpilot.api.versand.webpush.WebPushAdapter;
 import com.voltpilot.api.versand.webpush.WebPushException;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -69,16 +72,27 @@ public class Zusteller {
         this.jdbc = jdbc;
     }
 
-    /** Ein Takt: fällige Zeilen quer über alle Kundenbereiche, jede unter ihrem eigenen Mandanten. */
+    /**
+     * Ein Takt: fällige Zeilen quer über alle Kundenbereiche, jede unter ihrem eigenen Mandanten.
+     * Gruppiert zuerst je Mandant + Bündel-Schlüssel + Empfänger + Weg (Alerting Scheibe 4, §6.4
+     * Nr. 6, §6.6): Zeilen OHNE Schlüssel (Scheibe 0-3, unverändert) bleiben Einzelgängerinnen;
+     * Zeilen MIT demselben Schlüssel - eine Mehrfach-Regel, die binnen 30 s mehrfach auslöst - gehen
+     * in {@link #sendeBuendel} und werden dort je Empfänger zu EINER Nachricht.
+     */
     public int lauf(Instant jetzt) {
-        int gesendet = 0;
+        Map<String, List<VersandRepository.Zeile>> gruppen = new LinkedHashMap<>();
         for (VersandRepository.Zeile zeile : ausgang.faellig(jetzt, STAPEL)) {
+            String schluessel = zeile.buendelSchluessel() == null ? "einzel:" + zeile.id()
+                    : zeile.tenantId() + "|" + zeile.buendelSchluessel() + "|" + zeile.empfaengerSub() + "|"
+                            + zeile.weg();
+            gruppen.computeIfAbsent(schluessel, k -> new ArrayList<>()).add(zeile);
+        }
+        int gesendet = 0;
+        for (List<VersandRepository.Zeile> gruppe : gruppen.values()) {
             UUID vorher = TenantContext.get();
-            TenantContext.set(zeile.tenantId());
+            TenantContext.set(gruppe.get(0).tenantId());
             try {
-                if (sende(zeile, jetzt)) {
-                    gesendet++;
-                }
+                gesendet += gruppe.size() == 1 ? (sende(gruppe.get(0), jetzt) ? 1 : 0) : sendeBuendel(gruppe, jetzt);
             } finally {
                 if (vorher == null) TenantContext.clear(); else TenantContext.set(vorher);
             }
@@ -86,24 +100,77 @@ public class Zusteller {
         return gesendet;
     }
 
+    private enum Vorpruefung { SENDEN, UNTERDRUECKT, VERSCHOBEN }
+
+    /** Sicht + Ruhezeit (§6.6/§6.4), OHNE zu senden - gemeinsam für {@link #sende} und {@link #sendeBuendel}. */
+    private Vorpruefung vorpruefung(VersandRepository.Zeile zeile, Instant jetzt) {
+        if (!"alarm".equals(zeile.quelle())) {
+            return Vorpruefung.SENDEN;
+        }
+        if (!sicht.sichtbar(zeile.quelleId(), zeile.empfaengerSub(), jetzt)) {
+            ausgang.unterdrueckt(zeile.id(), "keine_sicht");
+            return Vorpruefung.UNTERDRUECKT;
+        }
+        Instant wann = ruhezeit.wannSenden(zeile.quelleId(), zeile.empfaengerSub(), zeile.weg(), zeile.anlass(),
+                jetzt);
+        if (wann.isAfter(jetzt)) {
+            if (Instant.MAX.equals(wann)) {
+                ausgang.unterdrueckt(zeile.id(), "stumm");
+            } else {
+                ausgang.verschieben(zeile.id(), wann);
+            }
+            return Vorpruefung.VERSCHOBEN;
+        }
+        return Vorpruefung.SENDEN;
+    }
+
     private boolean sende(VersandRepository.Zeile zeile, Instant jetzt) {
-        if ("alarm".equals(zeile.quelle())) {
-            if (!sicht.sichtbar(zeile.quelleId(), zeile.empfaengerSub(), jetzt)) {
-                ausgang.unterdrueckt(zeile.id(), "keine_sicht");
-                return false;
-            }
-            Instant wann = ruhezeit.wannSenden(zeile.quelleId(), zeile.empfaengerSub(), zeile.weg(), zeile.anlass(),
-                    jetzt);
-            if (wann.isAfter(jetzt)) {
-                if (Instant.MAX.equals(wann)) {
-                    ausgang.unterdrueckt(zeile.id(), "stumm");
-                } else {
-                    ausgang.verschieben(zeile.id(), wann);
-                }
-                return false;
-            }
+        if (vorpruefung(zeile, jetzt) != Vorpruefung.SENDEN) {
+            return false;
         }
         return "webpush".equals(zeile.weg()) ? sendePush(zeile, jetzt) : sendeEmail(zeile, jetzt);
+    }
+
+    /**
+     * EIN Empfänger, EIN Weg, mehrere gleichzeitig ausgelöste Meldungen derselben Regel (§6.4 Nr. 6):
+     * jede Zeile prüft ihre EIGENE Sicht/Ruhezeit zuerst (§6.6 "nur aus den Meldungen, die dieser
+     * sieht") - nur die sichtbaren, nicht-stummen gehen in die gebündelte Nachricht. Bleibt nach
+     * dieser Prüfung nur EINE übrig, wird sie wie gewohnt einzeln verschickt (keine Nachricht
+     * "1 Anlage über ..."). Jede Zeile bekommt trotzdem ihr eigenes Versandergebnis im Verlauf
+     * (§6.1 Nr. 10) - auch wenn die gebündelte Nachricht technisch nur EINMAL verschickt wird.
+     */
+    private int sendeBuendel(List<VersandRepository.Zeile> gruppe, Instant jetzt) {
+        List<VersandRepository.Zeile> sendbar = new ArrayList<>();
+        for (VersandRepository.Zeile zeile : gruppe) {
+            if (vorpruefung(zeile, jetzt) == Vorpruefung.SENDEN) {
+                sendbar.add(zeile);
+            }
+        }
+        if (sendbar.isEmpty()) {
+            return 0;
+        }
+        if (sendbar.size() == 1) {
+            VersandRepository.Zeile einzige = sendbar.get(0);
+            boolean ok = "webpush".equals(einzige.weg()) ? sendePush(einzige, jetzt) : sendeEmail(einzige, jetzt);
+            return ok ? 1 : 0;
+        }
+        VersandRepository.Zeile erste = sendbar.get(0);
+        StringBuilder inhalt = new StringBuilder(sendbar.size() + " Meldungen:\n");
+        for (VersandRepository.Zeile zeile : sendbar) {
+            inhalt.append("- ").append(zeile.inhalt()).append('\n');
+        }
+        VersandRepository.Zeile gebuendelt = new VersandRepository.Zeile(erste.id(), erste.tenantId(),
+                erste.quelle(), erste.quelleId(), erste.empfaengerSub(), erste.weg(), erste.anlass(), erste.nr(),
+                erste.ziel(), sendbar.size() + " Meldungen: " + erste.betreff(), inhalt.toString(), erste.versuche(),
+                erste.schwere(), erste.buendelSchluessel());
+        boolean ok = "webpush".equals(gebuendelt.weg()) ? sendePush(gebuendelt, jetzt) : sendeEmail(gebuendelt, jetzt);
+        if (!ok) {
+            return 0;
+        }
+        for (int i = 1; i < sendbar.size(); i++) {
+            ausgang.gesendet(sendbar.get(i).id(), jetzt);
+        }
+        return sendbar.size();
     }
 
     private boolean sendeEmail(VersandRepository.Zeile zeile, Instant jetzt) {

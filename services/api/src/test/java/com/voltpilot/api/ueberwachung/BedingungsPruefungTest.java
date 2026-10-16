@@ -105,8 +105,46 @@ class BedingungsPruefungTest {
 
     @Test
     void eineUnbekannteBedingungsartLoestNieEtwasAus() {
-        JsonNode bedingung = b("{\"art\":\"periode\"}"); // spätere Scheibe, hier noch nicht gebaut
+        // "periode" und "aenderung" sind seit Scheibe 4 gebaut (siehe unten) - dieser Platzhalter
+        // bleibt absichtlich erfunden, damit der Test eine WIRKLICH unbekannte Bedingungsart prüft.
+        JsonNode bedingung = b("{\"art\":\"spaetere_scheibe\"}");
 
         assertThat(BedingungsPruefung.pruefen(bedingung, zahl(999)).ausgeloest()).isFalse();
+    }
+
+    @Test
+    void periodeIstEineSchwelleWieUeberOderUnter() {
+        JsonNode ueber = b("{\"art\":\"periode\",\"richtung\":\"ueber\",\"schwelle\":180,\"rueckkehr\":171}");
+        assertThat(BedingungsPruefung.pruefen(ueber, zahl(190)).ausgeloest()).isTrue();
+        assertThat(BedingungsPruefung.pruefen(ueber, zahl(170)).ausgeloest()).isFalse();
+        assertThat(BedingungsPruefung.pruefen(ueber, zahl(175)).nochAktiv()).isTrue(); // über der Rückkehrschwelle
+
+        JsonNode unter = b("{\"art\":\"periode\",\"richtung\":\"unter\",\"schwelle\":180}");
+        assertThat(BedingungsPruefung.pruefen(unter, zahl(170)).ausgeloest()).isTrue();
+        assertThat(BedingungsPruefung.pruefen(unter, zahl(190)).ausgeloest()).isFalse();
+    }
+
+    @Test
+    void aenderungVergleichtMitDerVorperiode() {
+        JsonNode hoeher = b("{\"art\":\"aenderung\",\"richtung\":\"hoeher\",\"schwelle_prozent\":20}");
+        assertThat(BedingungsPruefung.aenderung(hoeher, zahl(130), zahl(100)).ausgeloest()).isTrue(); // +30 %
+        assertThat(BedingungsPruefung.aenderung(hoeher, zahl(110), zahl(100)).ausgeloest()).isFalse(); // +10 %
+
+        JsonNode niedriger = b("{\"art\":\"aenderung\",\"richtung\":\"niedriger\",\"schwelle_prozent\":20}");
+        assertThat(BedingungsPruefung.aenderung(niedriger, zahl(70), zahl(100)).ausgeloest()).isTrue(); // -30 %
+        assertThat(BedingungsPruefung.aenderung(niedriger, zahl(90), zahl(100)).ausgeloest()).isFalse(); // -10 %
+
+        JsonNode beide = b("{\"art\":\"aenderung\",\"richtung\":\"beide\",\"schwelle_prozent\":20}");
+        assertThat(BedingungsPruefung.aenderung(beide, zahl(130), zahl(100)).ausgeloest()).isTrue();
+        assertThat(BedingungsPruefung.aenderung(beide, zahl(70), zahl(100)).ausgeloest()).isTrue();
+        assertThat(BedingungsPruefung.aenderung(beide, zahl(110), zahl(100)).ausgeloest()).isFalse();
+
+        // Unbekannt ist keine Null (§6.1 Nr. 4): keine Vorperiode -> nie ausgelöst.
+        assertThat(BedingungsPruefung.aenderung(hoeher, zahl(130), WerteLeser.Lesung.unbekannt()).ausgeloest())
+                .isFalse();
+        assertThat(BedingungsPruefung.aenderung(hoeher, WerteLeser.Lesung.unbekannt(), zahl(100)).ausgeloest())
+                .isFalse();
+        // Keine Division durch 0: eine Vorperiode von 0 ist nie eine berechenbare Prozent-Änderung.
+        assertThat(BedingungsPruefung.aenderung(hoeher, zahl(10), zahl(0)).ausgeloest()).isFalse();
     }
 }

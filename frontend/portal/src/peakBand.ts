@@ -5,10 +5,14 @@
 // Leistungskosten. All derivation is pure + unit-tested; the component renders.
 //
 // Data sources (all customer-reachable, no new endpoint):
-//   - current ¼-h mean → derived HERE from the live telemetry window
-//     (`quarterHourMeanImportKw`): import-only `power_kw` over the running
-//     wall-clock quarter. The edge PS-3 tracker is edge-only; deriving from the
-//     samples the portal already fetches is honest and cheap.
+//   - current ¼-h mean → the SERVER (Alerting Scheibe 4, Konzept
+//     vp-alerting-konzept-m1 §6.10 Punkt 3: `AnlagenflussWerteLeser.
+//     netzLastspitzeLaufend`, the same number the "Lastspitze droht"
+//     Überwachung reads), on `siteEarnings.peakShaving.currentQuarterMeanKw`
+//     (`serverQuarterHourMean`). Until Scheibe 4 this was derived HERE from a
+//     dedicated 30 s telemetry poll (`quarterHourMeanImportKw`, kept below as
+//     a pure, still-tested derivation - just no longer the portal's own
+//     source of truth, so the browser and the Überwachung can't disagree).
 //   - Ziel → `schedule.peakTargetKw` (PS-1, the run's planned grid-import peak).
 //   - avoided peak + saved Leistungskosten → the `earnings.peakShaving` block
 //     (PS-4, already built).
@@ -19,59 +23,32 @@
 import type { PeakShaving } from './api';
 import { eurAmount, fmtNum, NBSP } from './format';
 
-/** A 15-min billing quarter in ms; freshness window mirrors ONLINE_WINDOW_MS. */
-const QUARTER_MS = 15 * 60 * 1000;
-const FRESH_MS = 5 * 60 * 1000;
-
 /** Headroom above the larger of {current, Ziel} so both sit inside the bar. */
 const BAR_HEADROOM = 1.2;
 
 /** Below this the avoided peak reads as noise (the shared 0.05 kW deadband). */
 const AVOIDED_NOISE_KW = 0.05;
 
-/** One live telemetry sample (the subset the mean needs). */
-export interface PowerSample {
-  ts: string;
-  powerKw: number | null;
-}
-
-/** The derived live ¼-hour mean import. */
+/** The live ¼-hour mean import, as the band needs it. */
 export interface QuarterHourMean {
   /** Mean grid IMPORT (kW) over the running wall-clock quarter; null = no usable sample. */
   kw: number | null;
-  /** The newest usable sample is within the freshness window. */
+  /** Whether the value is live right now (false only when it is unavailable). */
   fresh: boolean;
-  /** How many samples the mean averaged (0 = none). */
+  /** How many samples the server's mean averaged; always 0 or 1 for a single server value. */
   count: number;
 }
 
 /**
- * The current ¼-hour mean grid IMPORT, derived from the live telemetry window.
- * The billing peak is a 15-min mean of grid import, so this averages
- * `max(power_kw, 0)` over the RUNNING wall-clock quarter (:00/:15/:30/:45 →
- * now) - export never offsets an import peak. Quarter boundaries align across
- * whole-hour timezone offsets, so epoch-ms flooring matches Europe/Berlin.
- * Null (never 0) when the quarter has no usable sample yet.
+ * Wraps the server-computed running ¼-hour mean (`PeakShaving.currentQuarterMeanKw`,
+ * Alerting Scheibe 4) into the shape {@link peakBand} needs. `fresh` is simply
+ * "a value is present": the server only computes it from samples inside the
+ * running quarter in the first place, so there is no separate staleness check
+ * to repeat here - a stale server value is null, never a number to second-guess.
  */
-export function quarterHourMeanImportKw(
-  samples: PowerSample[],
-  now: Date,
-): QuarterHourMean {
-  const nowMs = now.getTime();
-  const quarterStart = Math.floor(nowMs / QUARTER_MS) * QUARTER_MS;
-  let sum = 0;
-  let count = 0;
-  let newest = -Infinity;
-  for (const s of samples) {
-    if (s.powerKw == null || !Number.isFinite(s.powerKw)) continue;
-    const t = new Date(s.ts).getTime();
-    if (!Number.isFinite(t) || t < quarterStart || t > nowMs) continue;
-    sum += Math.max(s.powerKw, 0);
-    count += 1;
-    if (t > newest) newest = t;
-  }
-  if (count === 0) return { kw: null, fresh: false, count: 0 };
-  return { kw: sum / count, fresh: nowMs - newest <= FRESH_MS, count };
+export function serverQuarterHourMean(kw: number | null | undefined): QuarterHourMean {
+  const value = kw ?? null;
+  return { kw: value, fresh: value != null, count: value != null ? 1 : 0 };
 }
 
 /** "pro Jahr" / "pro Monat" for the configured billing-period kind. */

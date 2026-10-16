@@ -125,6 +125,56 @@
       "leser": { "art": "messreihe" },
       "recht": "messwerte.ansehen",
       "bedingungen": ["ueber", "unter", "ausserhalb", "keine_daten"]
+    },
+    {
+      "wertart": "anlage.netz.lastspitze_laufend",
+      "name": "Laufendes Viertelstunden-Mittel",
+      "satzname": "das laufende Viertelstunden-Mittel des Netzbezugs",
+      "bezug": "anlage",
+      "form": "zahl",
+      "leser": { "art": "anlagenfluss", "feld": "netz_lastspitze_laufend" },
+      "recht": "messwerte.ansehen",
+      "bedingungen": ["ueber", "keine_daten"]
+    },
+    {
+      "wertart": "anlage.lastspitze.periode",
+      "name": "Lastspitze im Abrechnungszeitraum",
+      "satzname": "die Lastspitze",
+      "bezug": "anlage",
+      "form": "zahl",
+      "leser": { "art": "menge", "feld": "lastspitze_periode" },
+      "recht": "messwerte.ansehen",
+      "bedingungen": ["periode"]
+    },
+    {
+      "wertart": "anlage.verbrauch.menge",
+      "name": "Verbrauch im Zeitraum",
+      "satzname": "der Verbrauch im Zeitraum",
+      "bezug": "anlage",
+      "form": "zahl",
+      "leser": { "art": "menge", "feld": "verbrauch_kwh" },
+      "recht": "messwerte.ansehen",
+      "bedingungen": ["periode", "aenderung"]
+    },
+    {
+      "wertart": "anlage.geld.erloes",
+      "name": "Erlös im Zeitraum",
+      "satzname": "der Erlös im Zeitraum",
+      "bezug": "anlage",
+      "form": "zahl",
+      "leser": { "art": "geld", "feld": "erloes" },
+      "recht": "messwerte.ansehen",
+      "bedingungen": ["periode", "aenderung"]
+    },
+    {
+      "wertart": "anlage.geld.kosten",
+      "name": "Netzkosten im Zeitraum",
+      "satzname": "die Netzkosten im Zeitraum",
+      "bezug": "anlage",
+      "form": "zahl",
+      "leser": { "art": "geld", "feld": "kosten" },
+      "recht": "messwerte.ansehen",
+      "bedingungen": ["periode", "aenderung"]
     }
   ]
 }

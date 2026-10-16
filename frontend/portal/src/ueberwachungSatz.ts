@@ -8,8 +8,13 @@
  *  - Dauer 5 Minuten (Momentanwerte), Erholdauer 5 Minuten - gegen Flattern [G1].
  *  - Rückkehrschwelle 5 % der Schwelle, mindestens die Auflösung der Größe; bei „unter“ liegt die
  *    Rückkehr HÖHER als die Schwelle (zurück über sie), bei „ueber“ NIEDRIGER (zurück unter sie).
+ *
+ * Scheibe 4 (§6.3, §6.4) fügt die Wörter der Perioden-Form hinzu (`PERIODE_WORT`: Tag, Woche,
+ * Monat, Abrechnungszeitraum) und „Gilt für“/„Alle Anlagen“ (nur im Blatt, `UeberwachenBlatt.tsx`).
+ * Dieselbe Begründung wie bei den Scheibe-1/2-Wörtern (`meldungen.ts`): Teil der noch nicht
+ * fachmodell-reifen Überwachungs-Mechanik, der volle Glossar-Eintrag bleibt zurückgestellt.
  */
-import type { Bedingungsart, Schwere, WerteKatalogEintrag } from './werteKatalog';
+import type { Bedingungsart, Periode, Schwere, WerteKatalogEintrag } from './werteKatalog';
 
 const NBSP = ' ';
 
@@ -76,13 +81,29 @@ export function vorgabenFuerBedingung(
   return { dauer_s, erholen_s };
 }
 
-/** Eine rohe Bedingung, wie sie das Blatt baut und `POST /api/v1/meldungen/regeln` erwartet. */
+/** Eine rohe Bedingung, wie sie das Blatt baut und `POST /api/v1/meldungen/regeln` erwartet.
+ * `periode` und `aenderung` (Alerting Scheibe 4, §6.4) gelten nur für die periodischen Leserarten
+ * `menge`/`geld` - NIE im Minutentakt ausgewertet. */
 export type BedingungEingabe =
   | { art: 'ueber' | 'unter'; schwelle: number; rueckkehr?: number; dauer_s?: number }
   | { art: 'ausserhalb'; schwelleUnten: number; schwelleOben: number; rueckkehrUnten?: number; rueckkehrOben?: number; dauer_s?: number }
   | { art: 'zustand'; ziel: string[]; dauer_s?: number }
   | { art: 'keine_daten'; dauer_s?: number }
-  | { art: 'ereignis'; arten?: string[]; dauer_s?: number };
+  | { art: 'ereignis'; arten?: string[]; dauer_s?: number }
+  | { art: 'periode'; richtung: 'ueber' | 'unter'; schwelle: number; periode: Periode; endgueltig?: boolean }
+  | { art: 'aenderung'; richtung: 'hoeher' | 'niedriger' | 'beide'; schwelleProzent: number; periode: Periode };
+
+/** Die Wörter der Perioden (§6.3/§6.4) - "im ‹Periode›", für den Satz und die Chips des Blatts. */
+export const PERIODE_WORT: Record<Periode, string> = {
+  tag: 'Tag',
+  woche: 'Woche',
+  monat: 'Monat',
+  abrechnungszeitraum: 'Abrechnungszeitraum',
+};
+
+function imPeriodeText(periode: Periode): string {
+  return periode === 'woche' ? 'in der Woche' : `im ${PERIODE_WORT[periode]}`;
+}
 
 function dauerText(sekunden: number): string {
   if (sekunden <= 0) return '0 Sekunden';
@@ -139,7 +160,8 @@ export function ueberwachungSatz(
   einheit = '',
   nachkommastellen = 1,
 ): string {
-  const dauer = dauerText(bedingung.dauer_s ?? 300);
+  // `dauer_s` gilt nur für Momentanwerte - `periode`/`aenderung` (§6.4 Nr. 2) kennen keine Dauer.
+  const dauer = dauerText('dauer_s' in bedingung ? bedingung.dauer_s ?? 300 : 300);
   let kern: string;
   switch (bedingung.art) {
     case 'ueber':
@@ -160,6 +182,23 @@ export function ueberwachungSatz(
     case 'keine_daten':
       kern = `${eintrag.satzname} seit ${dauer} ohne neuen Wert ist`;
       break;
+    case 'periode':
+      kern = `${eintrag.satzname} ${imPeriodeText(bedingung.periode)} ${bedingung.richtung === 'ueber' ? 'über' : 'unter'} ${wertMitEinheit(bedingung.schwelle, einheit, nachkommastellen)} liegt`;
+      break;
+    case 'aenderung':
+      kern = `${eintrag.satzname} sich gegenüber der vorigen Periode (${PERIODE_WORT[bedingung.periode]}) um mehr als ${zahlText(bedingung.schwelleProzent, 0)}${NBSP}% ${richtungswortAenderung(bedingung.richtung)}`;
+      break;
   }
   return `Sag mir Bescheid, wenn ${kern}. · ${SCHWERE_WORT[schwere]}`;
+}
+
+function richtungswortAenderung(richtung: 'hoeher' | 'niedriger' | 'beide'): string {
+  switch (richtung) {
+    case 'hoeher':
+      return 'steigt';
+    case 'niedriger':
+      return 'fällt';
+    default:
+      return 'ändert';
+  }
 }

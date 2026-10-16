@@ -25,7 +25,6 @@ import {
   type StandortAusfall,
   type SiteEarnings,
   type SiteSource,
-  type TelemetryPoint,
 } from '../api';
 import { BATTERY_NO_DEVICE_WARNING, composeSiteSentence, siteLiveFresh, siteSnapshot } from '../fleet';
 import { plantKindLabel } from '../format';
@@ -133,7 +132,7 @@ import { ZustandCard } from '../components/ZustandCard';
 import { gateStrompreis } from '../strompreis';
 import { AnlageSetup } from '../components/AnlageSetup';
 import { SETUP_STATUS_LINE, setupPathActive } from '../setupPath';
-import { peakBand, quarterHourMeanImportKw } from '../peakBand';
+import { peakBand, serverQuarterHourMean } from '../peakBand';
 import { FleetSiteCard } from '../components/FleetOverview';
 import { PeriodTabs } from '../components/MoneyView';
 import { NetzladenBadge } from '../components/NetzladenBadge';
@@ -861,9 +860,6 @@ export function AnlageSeite({
   const [plan, setPlan] = useState<SchedulePlan | null>(null);
   const [planLoading, setPlanLoading] = useState(true);
   const [planFailed, setPlanFailed] = useState(false);
-  // U4: recent telemetry for the peak face's live ¼-h mean (fetched only when
-  // the cockpit leads with the Peak-Band - see the gated effect below).
-  const [peakSamples, setPeakSamples] = useState<TelemetryPoint[]>([]);
   // M3: today's Historie totals feed the Eigenverbrauchs-Block (Autarkie /
   // PV-Nutzung); since v3 M2 they ALSO feed the cockpit hero's rings and the
   // Haus/Netz widgets, so the projection path fetches them once for all of it.
@@ -1230,33 +1226,6 @@ export function AnlageSeite({
   }, [site.id, decided, showStack, isPeakLead]);
   /** Das Gate der Historie-Abrufe: echte Entscheidung, sonst die Erinnerung. */
   const fetchStack = fetchGate(showStack, decided, guess.face?.stack);
-  /** Dasselbe fuer das Telefon-Fenster des Peak-Bands. */
-  const fetchPeak = fetchGate(isPeakLead, decided, guess.face?.peak);
-
-  // Recent telemetry for the Peak-Band's live ¼-h mean - fetched ONLY when the
-  // cockpit leads with the Peak-Band, so non-peak faces never pay for it. A
-  // 20-min window always covers the running quarter; polled on the 30 s cadence.
-  // Späte Antworten einer zuvor gewählten Anlage verwirft `siteIdRef` (oben).
-  const peakLoadRef = useRef<() => void>(() => {});
-  peakLoadRef.current = () => {
-    if (!fetchPeak) return;
-    const from = new Date(Date.now() - 20 * 60 * 1000).toISOString();
-    const id = site.id;
-    api.telemetry(id, from).then(
-      (pts) => id === siteIdRef.current && setPeakSamples(pts),
-      () => {},
-    );
-  };
-  useEffect(() => {
-    if (!fetchPeak) {
-      setPeakSamples([]);
-      return;
-    }
-    peakLoadRef.current();
-  }, [site.id, fetchPeak, reloadKey, wake]);
-  // LIVE: das Viertelstunden-Band liest gemessene Telemetrie.
-  useFreshnessPoll(() => peakLoadRef.current(), LIVE_POLL_MS, fetchPeak);
-
   // M3: the Eigenverbrauchs-Block's Autarkie / PV-Nutzung come from the EXISTING
   // Historie totals of today (server-computed) - fetched ONLY while the stack
   // truly renders, so neither the setup nor the "nicht zugeordnet" end state
@@ -1333,11 +1302,15 @@ export function AnlageSeite({
     fetchStack && historyRangeForCockpit(range) != null,
   );
 
-  // The Peak-Band view: live ¼-h mean (import-only, from the window above) vs.
-  // the plan's Ziel + the PS-4 numbers. Null when not the peak lead.
+  // The Peak-Band view: live ¼-h mean vs. the plan's Ziel + the PS-4 numbers.
+  // Alerting Scheibe 4: the running ¼-h import mean is now computed on the
+  // SERVER (AnlagenflussWerteLeser.netzLastspitzeLaufend, the same value the
+  // "Lastspitze droht" Überwachung reads) and arrives on `peakShaving` - the
+  // portal no longer derives it from its own telemetry poll (one truth, not two).
+  // Null when not the peak lead.
   const peakView = isPeakLead
     ? peakBand({
-        current: quarterHourMeanImportKw(peakSamples, now),
+        current: serverQuarterHourMean(siteEarnings?.peakShaving?.currentQuarterMeanKw),
         targetKw: plan?.peakTargetKw ?? null,
         peak: siteEarnings?.peakShaving ?? null,
       })

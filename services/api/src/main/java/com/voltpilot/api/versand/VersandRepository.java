@@ -23,9 +23,11 @@ import org.springframework.stereotype.Repository;
 @Repository
 public class VersandRepository implements BenachrichtigungAusgang {
 
-    /** Eine zur Sendezeit fällige Ausgangszeile. {@code schwere} ist nur für {@code quelle = "alarm"} gesetzt. */
+    /** Eine zur Sendezeit fällige Ausgangszeile. {@code schwere} ist nur für {@code quelle = "alarm"} gesetzt;
+     * {@code buendelSchluessel} nur für Mehrfach-Regeln (Alerting Scheibe 4, §6.4 Nr. 6). */
     public record Zeile(UUID id, UUID tenantId, String quelle, UUID quelleId, String empfaengerSub, String weg,
-            String anlass, int nr, String ziel, String betreff, String inhalt, int versuche, String schwere) {}
+            String anlass, int nr, String ziel, String betreff, String inhalt, int versuche, String schwere,
+            String buendelSchluessel) {}
 
     private final JdbcTemplate jdbc;
     private final JdbcTemplate admin;
@@ -39,22 +41,36 @@ public class VersandRepository implements BenachrichtigungAusgang {
     @Override
     public void email(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr, String betreff,
             String inhalt, Instant naechsterVersuch) {
+        email(quelle, quelleId, empfaengerSub, anlass, nr, betreff, inhalt, naechsterVersuch, null);
+    }
+
+    /** Wie oben, mit Bündel-Schlüssel (Alerting Scheibe 4, §6.4 Nr. 6) - siehe {@link BenachrichtigungAusgang}. */
+    @Override
+    public void email(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr, String betreff,
+            String inhalt, Instant naechsterVersuch, String buendelSchluessel) {
         jdbc.update("INSERT INTO benachrichtigung (tenant_id, quelle, quelle_id, empfaenger_sub, weg, anlass, nr, "
-                        + "betreff, inhalt, naechster_versuch) VALUES (?, ?, ?, ?, 'email', ?, ?, ?, ?, ?) "
-                        + "ON CONFLICT DO NOTHING",
+                        + "betreff, inhalt, naechster_versuch, buendel_schluessel) "
+                        + "VALUES (?, ?, ?, ?, 'email', ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
                 TenantContext.get(), quelle, quelleId, empfaengerSub, anlass, nr, betreff, inhalt,
-                Timestamp.from(naechsterVersuch));
+                Timestamp.from(naechsterVersuch), buendelSchluessel);
     }
 
     /** Wie {@link #email}, aber über Web-Push (Alerting Scheibe 3) - Geräte-Abos fächert der Zusteller auf. */
     @Override
     public void webpush(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr, String betreff,
             String inhalt, Instant naechsterVersuch, String schwere) {
+        webpush(quelle, quelleId, empfaengerSub, anlass, nr, betreff, inhalt, naechsterVersuch, schwere, null);
+    }
+
+    /** Wie oben, mit Bündel-Schlüssel (Alerting Scheibe 4, §6.4 Nr. 6). */
+    @Override
+    public void webpush(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr, String betreff,
+            String inhalt, Instant naechsterVersuch, String schwere, String buendelSchluessel) {
         jdbc.update("INSERT INTO benachrichtigung (tenant_id, quelle, quelle_id, empfaenger_sub, weg, anlass, nr, "
-                        + "betreff, inhalt, naechster_versuch, schwere) "
-                        + "VALUES (?, ?, ?, ?, 'webpush', ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+                        + "betreff, inhalt, naechster_versuch, schwere, buendel_schluessel) "
+                        + "VALUES (?, ?, ?, ?, 'webpush', ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
                 TenantContext.get(), quelle, quelleId, empfaengerSub, anlass, nr, betreff, inhalt,
-                Timestamp.from(naechsterVersuch), schwere);
+                Timestamp.from(naechsterVersuch), schwere, buendelSchluessel);
     }
 
     /** Wie {@link #email}, aber mit einem direkt vorgegebenen Ziel - nur für die Bestätigungs-Mail selbst. */
@@ -83,7 +99,7 @@ public class VersandRepository implements BenachrichtigungAusgang {
                       ORDER BY erstellt_am LIMIT ? FOR UPDATE SKIP LOCKED) c
                 WHERE b.id = c.id
                 RETURNING b.id, b.tenant_id, b.quelle, b.quelle_id, b.empfaenger_sub, b.weg, b.anlass, b.nr,
-                          b.ziel, b.betreff, b.inhalt, b.versuche, b.schwere
+                          b.ziel, b.betreff, b.inhalt, b.versuche, b.schwere, b.buendel_schluessel
                 """, VersandRepository::zeile, Timestamp.from(jetzt.plus(PACHT)), Timestamp.from(jetzt), limit);
     }
 
@@ -139,6 +155,7 @@ public class VersandRepository implements BenachrichtigungAusgang {
         return new Zeile(rs.getObject("id", UUID.class), rs.getObject("tenant_id", UUID.class),
                 rs.getString("quelle"), rs.getObject("quelle_id", UUID.class), rs.getString("empfaenger_sub"),
                 rs.getString("weg"), rs.getString("anlass"), rs.getInt("nr"), rs.getString("ziel"),
-                rs.getString("betreff"), rs.getString("inhalt"), rs.getInt("versuche"), rs.getString("schwere"));
+                rs.getString("betreff"), rs.getString("inhalt"), rs.getInt("versuche"), rs.getString("schwere"),
+                rs.getString("buendel_schluessel"));
     }
 }

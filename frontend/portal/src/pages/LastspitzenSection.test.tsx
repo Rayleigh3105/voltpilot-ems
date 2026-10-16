@@ -66,6 +66,7 @@ function peakShaving(over: Partial<PeakShaving> = {}): PeakShaving {
         avoidedEur: 444,
       },
     ],
+    currentQuarterMeanKw: null,
     ...over,
   } as PeakShaving;
 }

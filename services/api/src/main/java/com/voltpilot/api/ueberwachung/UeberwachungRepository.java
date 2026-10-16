@@ -37,14 +37,14 @@ public class UeberwachungRepository {
     }
 
     public record InstanzZeile(String zustand, Instant seit, JsonNode letzterWert, Instant letzteMesszeit,
-            UUID offenerAlarm) {
-        static final InstanzZeile NEU = new InstanzZeile("normal", null, null, null, null);
+            UUID offenerAlarm, Instant ausgewertetAm) {
+        static final InstanzZeile NEU = new InstanzZeile("normal", null, null, null, null, null);
     }
 
     public record AlarmZeile(UUID id, String kennzeichen, UUID ueberwachungId, UUID standortId,
             String bezugKennung, String wertart, String schwere, Instant ausgeloestAm, String zustand,
             Instant wiederNormalAm, String gesehenVon, Instant gesehenAm, Instant erledigtAm, boolean probelauf,
-            int erinnerungenGesendet, Instant letzteErinnerungAm) {}
+            int erinnerungenGesendet, Instant letzteErinnerungAm, UUID unterdrueckDurch) {}
 
     private final JdbcTemplate jdbc;
 
@@ -100,6 +100,32 @@ public class UeberwachungRepository {
         return jdbc.queryForList("SELECT id FROM site", UUID.class);
     }
 
+    // --------------------------------------------------------------------- Auswahl (§6.4 "Gilt für", Scheibe 4)
+
+    /**
+     * Die Anlagen EINES Standorts HEUTE (Alerting Scheibe 4, §6.4 "alle Anlagen des Standorts X") -
+     * wird bei JEDEM Lauf neu gelesen, damit eine neu zugeordnete Anlage sofort mitüberwacht ist
+     * ("neu hinzukommende Bezüge sind sofort mit überwacht").
+     */
+    public List<UUID> anlagenDesStandorts(UUID standortId) {
+        return jdbc.query("""
+                SELECT a.site_id FROM anlage_standort a
+                 WHERE a.tenant_id = ? AND a.standort_id = ? AND a.aufgehoben_am IS NULL
+                   AND daterange(a.gueltig_ab, a.gueltig_bis, '[]') @> uems_zugriff_heute(a.tenant_id)
+                """, (rs, n) -> rs.getObject(1, UUID.class), TenantContext.get(), standortId);
+    }
+
+    /** Wie {@link #anlagenMitAngenommenerBox()}, aber auf einen Standort eingeschränkt ("alle Boxen des Standorts"). */
+    public List<UUID> anlagenDesStandortsMitBox(UUID standortId) {
+        return jdbc.query("""
+                SELECT DISTINCT d.site_id FROM device d
+                 JOIN anlage_standort a ON a.site_id = d.site_id AND a.tenant_id = ?
+                WHERE d.status = 'claimed' AND d.site_id IS NOT NULL AND a.standort_id = ?
+                  AND a.aufgehoben_am IS NULL
+                  AND daterange(a.gueltig_ab, a.gueltig_bis, '[]') @> uems_zugriff_heute(a.tenant_id)
+                """, (rs, n) -> rs.getObject(1, UUID.class), TenantContext.get(), standortId);
+    }
+
     /** Die Gebotszone einer Anlage, oder {@code null} ohne eine (ältere Anlage ohne Preisreihe). */
     public String biddingZone(UUID anlageId) {
         List<String> rows = jdbc.query("SELECT bidding_zone FROM site WHERE id = ?",
@@ -124,6 +150,34 @@ public class UeberwachungRepository {
                 INSERT INTO ueberwachung (tenant_id, standort_id, name, wertart, bezug, bedingung, schwere,
                        empfaenger, herkunft, aktiv, angelegt_von)
                 VALUES (?, ?, ?, ?, ?::jsonb, ?::jsonb, 'hinweis', ?::jsonb, 'ab_werk', true, 'system')
+                ON CONFLICT DO NOTHING
+                """,
+                TenantContext.get(), standortId, eintrag.name(), eintrag.wertart(), bezug, bedingung, empfaenger);
+    }
+
+    /** Alle Anlagen mit einem hinterlegten Leistungspreis (Alerting Scheibe 4, §6.10 Punkt 3) -
+     * Grundlage der Aussaat "Lastspitze droht" (Entscheid 2A, nur Dringend-Vorschlag ab Werk). */
+    public List<UUID> anlagenMitLeistungspreis() {
+        return jdbc.queryForList("SELECT id FROM site WHERE leistungspreis_eur_kw IS NOT NULL", UUID.class);
+    }
+
+    /**
+     * Sät "Lastspitze droht" ab Werk EINGESCHALTET (Entscheid 2A, Dringend - der einzige
+     * Dringend-Vorschlag ab Werk, §6.10 Punkt 3): wie {@link #seedAbWerkPreis} ein eigener Säe-Weg,
+     * weil die Schwelle aus der laufenden Abrechnungsperiode der Anlage kommt, nicht aus dem
+     * generischen {@code vorschlag}-Block des Katalogs.
+     */
+    public void seedAbWerkLastspitze(UUID anlageId, UUID standortId, WerteKatalog.Eintrag eintrag, double schwelle,
+            double rueckkehr) {
+        String bedingung = """
+                {"art":"ueber","schwelle":%s,"rueckkehr":%s,"dauer_s":60,"erholen_s":300}
+                """.formatted(schwelle, rueckkehr);
+        String bezug = "{\"anlage\":\"" + anlageId + "\"}";
+        String empfaenger = "[{\"rolle\":\"kundenadministrator\"},{\"rolle\":\"energiemanager\"}]";
+        jdbc.update("""
+                INSERT INTO ueberwachung (tenant_id, standort_id, name, wertart, bezug, bedingung, schwere,
+                       empfaenger, herkunft, aktiv, angelegt_von)
+                VALUES (?, ?, ?, ?, ?::jsonb, ?::jsonb, 'dringend', ?::jsonb, 'ab_werk', true, 'system')
                 ON CONFLICT DO NOTHING
                 """,
                 TenantContext.get(), standortId, eintrag.name(), eintrag.wertart(), bezug, bedingung, empfaenger);
@@ -281,11 +335,12 @@ public class UeberwachungRepository {
 
     public InstanzZeile instanz(UUID ueberwachungId, String bezugKennung) {
         List<InstanzZeile> rows = jdbc.query("""
-                SELECT zustand, seit, letzter_wert::text AS letzter_wert_json, letzte_messzeit, offener_alarm
+                SELECT zustand, seit, letzter_wert::text AS letzter_wert_json, letzte_messzeit, offener_alarm,
+                       ausgewertet_am
                   FROM ueberwachung_instanz WHERE ueberwachung_id = ? AND bezug_kennung = ?
                 """, (rs, n) -> new InstanzZeile(rs.getString("zustand"), instant(rs.getTimestamp("seit")),
                         json(rs.getString("letzter_wert_json")), instant(rs.getTimestamp("letzte_messzeit")),
-                        rs.getObject("offener_alarm", UUID.class)),
+                        rs.getObject("offener_alarm", UUID.class), instant(rs.getTimestamp("ausgewertet_am"))),
                 ueberwachungId, bezugKennung);
         return rows.isEmpty() ? InstanzZeile.NEU : rows.get(0);
     }
@@ -321,15 +376,42 @@ public class UeberwachungRepository {
 
     public UUID alarmErzeugen(UeberwachungZeile regel, String bezugKennung, UUID standortId, Instant jetzt,
             String wertJson, boolean probelauf) {
+        return alarmErzeugen(regel, bezugKennung, standortId, jetzt, wertJson, probelauf, null);
+    }
+
+    /**
+     * Wie oben, aber mit {@code unterdrueckDurch} (Alerting Scheibe 4, §6.4 Nr. 7 "Abhängige
+     * Meldungen schweigen"): der Alarm EINER Box-/Datenquelle-Meldung derselben Anlage, unter der
+     * dieser Alarm im Center steht - ausgewertet und nachweisbar (§6.5), aber ohne eigenen Versand
+     * (siehe {@link UeberwachungsService#ausloesen}).
+     */
+    public UUID alarmErzeugen(UeberwachungZeile regel, String bezugKennung, UUID standortId, Instant jetzt,
+            String wertJson, boolean probelauf, UUID unterdrueckDurch) {
         UUID id = UUID.randomUUID();
         String kennzeichen = naechstesKennzeichen(jetzt);
         jdbc.update("""
                 INSERT INTO alarm (id, tenant_id, standort_id, kennzeichen, ueberwachung_id, fassung,
-                       bezug_kennung, wertart, schwere, ausgeloest_am, wert_beim_ausloesen, zustand, probelauf)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, 'aktiv', ?)
+                       bezug_kennung, wertart, schwere, ausgeloest_am, wert_beim_ausloesen, zustand, probelauf,
+                       unterdrueckt_durch)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, 'aktiv', ?, ?)
                 """, id, TenantContext.get(), standortId, kennzeichen, regel.id(), regel.fassung(),
-                bezugKennung, regel.wertart(), regel.schwere(), ts(jetzt), wertJson, probelauf);
+                bezugKennung, regel.wertart(), regel.schwere(), ts(jetzt), wertJson, probelauf, unterdrueckDurch);
         return id;
+    }
+
+    /**
+     * Ein aktiver (nicht erledigter) Alarm einer der gegebenen Wertarten AUF DERSELBEN ANLAGE - für
+     * die Unterdrückung abhängiger Meldungen (§6.4 Nr. 7): "meldet sich eine Box nicht, gehen
+     * 'keine Daten' ihrer Geräte und Werte nicht einzeln hinaus". Nur Anlagen-Bezüge (die
+     * gatenden Wertarten {@code box.erreichbar}/{@code datenquelle.liefert_daten} haben immer
+     * {@code bezug = anlage}, §6.3).
+     */
+    public Optional<UUID> aktiverAlarmAufAnlage(UUID anlageId, List<String> wertarten) {
+        List<UUID> rows = jdbc.query("""
+                SELECT id FROM alarm WHERE bezug_kennung = ? AND wertart = ANY (?) AND zustand <> 'erledigt'
+                 ORDER BY ausgeloest_am LIMIT 1
+                """, (rs, n) -> rs.getObject(1, UUID.class), "anlage:" + anlageId, wertarten.toArray(String[]::new));
+        return rows.isEmpty() ? Optional.empty() : Optional.of(rows.get(0));
     }
 
     public void alarmVerlauf(UUID alarmId, String art, String wer, String text, String wertJson) {
@@ -359,7 +441,7 @@ public class UeberwachungRepository {
 
     private static final String ALARM_SPALTEN = "id, kennzeichen, ueberwachung_id, standort_id, bezug_kennung, "
             + "wertart, schwere, ausgeloest_am, zustand, wieder_normal_am, gesehen_von, gesehen_am, erledigt_am, "
-            + "probelauf, erinnerungen_gesendet, letzte_erinnerung_am";
+            + "probelauf, erinnerungen_gesendet, letzte_erinnerung_am, unterdrueckt_durch";
 
     public Optional<AlarmZeile> alarm(UUID id) {
         return jdbc.query("SELECT " + ALARM_SPALTEN + " FROM alarm WHERE id = ?",
@@ -420,7 +502,7 @@ public class UeberwachungRepository {
                 instant(rs.getTimestamp("wieder_normal_am")), rs.getString("gesehen_von"),
                 instant(rs.getTimestamp("gesehen_am")), instant(rs.getTimestamp("erledigt_am")),
                 rs.getBoolean("probelauf"), rs.getInt("erinnerungen_gesendet"),
-                instant(rs.getTimestamp("letzte_erinnerung_am")));
+                instant(rs.getTimestamp("letzte_erinnerung_am")), rs.getObject("unterdrueckt_durch", UUID.class));
     }
 
     private static Timestamp ts(Instant i) {

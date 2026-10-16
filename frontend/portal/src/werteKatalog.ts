@@ -7,10 +7,11 @@
  * `werteKatalog.sync.test.ts`. Muster: `ConsumerSignalCatalog.java` + `consumers/signals.ts`
  * ("the ONE truth" mit TS-Zwilling) und der Flow-Katalog (`flows/catalog.sync.test.ts`).
  *
- * `leser.art` ist eine der festen Leserarten aus §6.3 (acht insgesamt, hier nur die vier, die der
- * Katalog bisher nutzt: `zustand`, `ereignis`, `anlagenfluss`, `messreihe`). Ein neuer Eintrag
- * derselben Leserart ist ein weiterer Katalog-Eintrag, kein neuer Code (§6.3 Nr. 2); `geraet.messwert`
- * ist eine FAMILIE (Bezug `komponente` + Parameter `kanal`), kein Eintrag je Kanal.
+ * `leser.art` ist eine der festen Leserarten aus §6.3 (acht insgesamt; Scheibe 1/2 bauten `zustand`,
+ * `ereignis`, `anlagenfluss`, `messreihe`, Scheibe 4 fügt `menge` und `geld` additiv hinzu - periodisch
+ * ausgewertet, NIE im Minutentakt). Ein neuer Eintrag derselben Leserart ist ein weiterer Katalog-
+ * Eintrag, kein neuer Code (§6.3 Nr. 2); `geraet.messwert` ist eine FAMILIE (Bezug `komponente` +
+ * Parameter `kanal`), kein Eintrag je Kanal.
  */
 
 export type LeserArt =
@@ -23,8 +24,20 @@ export type LeserArt =
   | 'ereignis'
   | 'zaehlung';
 
-/** Geschlossenes Vokabular der Bedingungsarten (§6.4). */
-export type Bedingungsart = 'zustand' | 'ereignis' | 'ueber' | 'unter' | 'ausserhalb' | 'keine_daten';
+/** Geschlossenes Vokabular der Bedingungsarten (§6.4). `periode` und `aenderung` (Scheibe 4) gelten
+ * nur für die periodischen Leserarten `menge`/`geld`. */
+export type Bedingungsart =
+  | 'zustand'
+  | 'ereignis'
+  | 'ueber'
+  | 'unter'
+  | 'ausserhalb'
+  | 'keine_daten'
+  | 'periode'
+  | 'aenderung';
+
+/** Geschlossenes Vokabular der Perioden (§6.3/§6.4) - nie "im Minutentakt". */
+export type Periode = 'tag' | 'woche' | 'monat' | 'abrechnungszeitraum';
 
 export type Schwere = 'hinweis' | 'warnung' | 'dringend';
 
@@ -184,6 +197,56 @@ export const WERTE_KATALOG: WerteKatalogEintrag[] = [
     leser: { art: 'messreihe' },
     recht: 'messwerte.ansehen',
     bedingungen: ['ueber', 'unter', 'ausserhalb', 'keine_daten'],
+  },
+  {
+    wertart: 'anlage.netz.lastspitze_laufend',
+    name: 'Laufendes Viertelstunden-Mittel',
+    satzname: 'das laufende Viertelstunden-Mittel des Netzbezugs',
+    bezug: 'anlage',
+    form: 'zahl',
+    leser: { art: 'anlagenfluss', feld: 'netz_lastspitze_laufend' },
+    recht: 'messwerte.ansehen',
+    bedingungen: ['ueber', 'keine_daten'],
+  },
+  {
+    wertart: 'anlage.lastspitze.periode',
+    name: 'Lastspitze im Abrechnungszeitraum',
+    satzname: 'die Lastspitze',
+    bezug: 'anlage',
+    form: 'zahl',
+    leser: { art: 'menge', feld: 'lastspitze_periode' },
+    recht: 'messwerte.ansehen',
+    bedingungen: ['periode'],
+  },
+  {
+    wertart: 'anlage.verbrauch.menge',
+    name: 'Verbrauch im Zeitraum',
+    satzname: 'der Verbrauch im Zeitraum',
+    bezug: 'anlage',
+    form: 'zahl',
+    leser: { art: 'menge', feld: 'verbrauch_kwh' },
+    recht: 'messwerte.ansehen',
+    bedingungen: ['periode', 'aenderung'],
+  },
+  {
+    wertart: 'anlage.geld.erloes',
+    name: 'Erlös im Zeitraum',
+    satzname: 'der Erlös im Zeitraum',
+    bezug: 'anlage',
+    form: 'zahl',
+    leser: { art: 'geld', feld: 'erloes' },
+    recht: 'messwerte.ansehen',
+    bedingungen: ['periode', 'aenderung'],
+  },
+  {
+    wertart: 'anlage.geld.kosten',
+    name: 'Netzkosten im Zeitraum',
+    satzname: 'die Netzkosten im Zeitraum',
+    bezug: 'anlage',
+    form: 'zahl',
+    leser: { art: 'geld', feld: 'kosten' },
+    recht: 'messwerte.ansehen',
+    bedingungen: ['periode', 'aenderung'],
   },
 ];
 

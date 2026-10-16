@@ -112,6 +112,33 @@ public class PeakShavingRepository {
         return result;
     }
 
+    /**
+     * Die bisher höchste gemessene Spitze (kW, 15-min-Mittel) der LAUFENDEN Abrechnungsperiode
+     * EINER Anlage (Alerting Scheibe 4, Konzept §6.3/§6.4 "periode"-Bedingung, Beispiel "Lastspitze
+     * im Abrechnungsmonat über 180 kW" und §6.10 Punkt 3 "Lastspitze droht"). {@code null} ohne ein
+     * einziges gemessenes Import-Bucket in der laufenden Periode - nie eine erfundene Spitze von 0.
+     * Liest {@code site.abrechnung_leistung} selbst, weil der Aufrufer (anders als {@link #peaksByPeriod})
+     * nur EINE Anlage kennt, nicht den ganzen Kundenbereich.
+     */
+    public BigDecimal laufendePeriodenSpitzeKw(UUID siteId, LocalDate today) {
+        List<String> abrechnung = jdbc.query("SELECT abrechnung_leistung FROM site WHERE id = ?",
+                (rs, n) -> rs.getString(1), siteId);
+        if (abrechnung.isEmpty()) {
+            return null;
+        }
+        boolean jahr = "jahr".equals(abrechnung.get(0));
+        LocalDate periodStart = jahr ? today.withDayOfYear(1) : today.withDayOfMonth(1);
+        Instant von = periodStart.atStartOfDay(ZONE).toInstant();
+        // JOIN site (Standort-Zaun-Architekturtest): telemetry_rollup_15m trägt nur den
+        // Mandanten-Zaun, wie peaksByPeriod() oben - derselbe Join macht auch diese Abfrage dicht.
+        List<BigDecimal> rows = jdbc.query(
+                "SELECT max(GREATEST(r.grid_import_kwh, 0)) * 4.0 FROM telemetry_rollup_15m r "
+                        + "JOIN site s ON s.id = r.site_id "
+                        + "WHERE r.site_id = ? AND r.bucket >= ? AND r.grid_import_kwh IS NOT NULL",
+                (rs, n) -> rs.getBigDecimal(1), siteId, Timestamp.from(von));
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
     private void collect(Map<UUID, List<PeriodPeak>> result, String abrechnung,
             String truncUnit, LocalDate from) {
         Instant fromInstant = from.atStartOfDay(ZONE).toInstant();

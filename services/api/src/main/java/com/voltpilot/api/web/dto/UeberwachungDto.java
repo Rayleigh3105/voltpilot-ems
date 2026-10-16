@@ -19,8 +19,17 @@ public record UeberwachungDto(String id, String name, String wertart, String sch
 
     public record Liste(List<UeberwachungDto> ueberwachungen) {}
 
-    /** Der Bezug im Anfragekörper - {@code anlage} ODER {@code komponente}+{@code kanal} (§6.3). */
-    public record BezugEintrag(String anlage, String komponente, String kanal) {}
+    /**
+     * Der Bezug im Anfragekörper - {@code anlage} ODER {@code komponente}+{@code kanal} (§6.3) ODER
+     * eine AUSWAHL (Alerting Scheibe 4, §6.4 "Gilt für"): {@code alle} ist {@code "anlage"} oder
+     * {@code "box"}, wahlweise auf einen {@code standort} eingeschränkt (sonst der ganze
+     * Kundenbereich). Genau EINE der drei Formen ist gesetzt.
+     */
+    public record BezugEintrag(String anlage, String komponente, String kanal, String standort, String alle) {
+        public BezugEintrag(String anlage, String komponente, String kanal) {
+            this(anlage, komponente, kanal, null, null);
+        }
+    }
 
     /** {@code person} ODER {@code rolle} (§6.4 "Mehrere Empfänger") - nie beide. */
     public record EmpfaengerEintrag(String person, String rolle) {}

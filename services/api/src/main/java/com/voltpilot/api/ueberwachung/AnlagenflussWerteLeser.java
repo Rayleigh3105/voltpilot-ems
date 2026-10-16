@@ -39,6 +39,11 @@ public class AnlagenflussWerteLeser implements WerteLeser {
     static final String FELD_VERBRAUCH = "verbrauch";
     static final String FELD_LADEPUNKTE = "ladepunkte";
     static final String FELD_PREIS = "preis";
+    static final String FELD_NETZ_LASTSPITZE_LAUFEND = "netz_lastspitze_laufend";
+
+    /** UTC-ausgerichtetes Viertelstunden-Raster, wie {@code time_bucket('15 minutes', time)} der
+     * Rollup-Läufer (V20260701030000) - dieselbe Grenze, die {@code grid_import_kwh} je Bucket zieht. */
+    private static final long VIERTELSTUNDE_S = 900;
 
     /** Unterhalb dieser Schwelle gilt ein Stecker als nicht wirklich ladend (Zwilling von {@code ladepunkte.ts}). */
     private static final double LADE_SCHWELLE_KW = 0.05;
@@ -71,8 +76,44 @@ public class AnlagenflussWerteLeser implements WerteLeser {
             case FELD_VERBRAUCH -> betragKnoten(anlageId, TopologyDeriver.ROLE_CONSUMER, jetzt);
             case FELD_LADEPUNKTE -> ladepunkteSumme(anlageId, jetzt);
             case FELD_PREIS -> preisJetzt(anlageId, jetzt);
+            case FELD_NETZ_LASTSPITZE_LAUFEND -> netzLastspitzeLaufend(anlageId, jetzt);
             default -> throw new IllegalArgumentException("AnlagenflussWerteLeser: unbekanntes Feld '" + feld + "'");
         };
+    }
+
+    /**
+     * Das laufende Viertelstunden-Mittel des Netzbezugs AUF DEM SERVER (Alerting Scheibe 4, Konzept
+     * §6.10 Punkt 3): dieselbe Rechnung wie bisher nur im Browser ({@code peakBand.ts:quarterHourMeanImportKw}
+     * - Import-Proben seit Beginn der laufenden, UTC-ausgerichteten Viertelstunde, Einspeisung zählt
+     * nie als Abzug (nur der Betrag, {@code greatest(power_kw, 0)}, dieselbe Formel wie der
+     * Rollup-Läufer V20260701030000). Rohe {@code telemetry}, nicht die 15-Minuten-Rollups - die
+     * sind bis zu 15 Minuten alt (§9.7, {@code PeakShavingRepository}), die laufende Viertelstunde
+     * braucht frische Proben. Kein Trigger, kein zusätzliches Schreiben (§6.7 Hotpath-Regel) - nur
+     * ein gelesenes {@code avg()} über ≤ 15 Minuten einer Anlage, nie über die Flotte.
+     */
+    private Lesung netzLastspitzeLaufend(UUID anlageId, Instant jetzt) {
+        Double kw = netzLastspitzeLaufendKw(anlageId, jetzt);
+        return kw == null ? Lesung.unbekannt() : Lesung.zahl(kw, "kW", jetzt);
+    }
+
+    /**
+     * Wie oben, als einfacher Wert statt {@link Lesung} - für Aufrufer außerhalb der Überwachung,
+     * die DIESELBE Zahl brauchen (Alerting Scheibe 4, §6.10 Punkt 3: der Cockpit-Peak-Band liest sie
+     * über {@code SiteEarningsController}/{@code PeakShavingDto.currentQuarterMeanKw} statt selbst
+     * im Browser zu rechnen - EINE Wahrheit statt zwei).
+     */
+    public Double netzLastspitzeLaufendKw(UUID anlageId, Instant jetzt) {
+        long quartalStartS = jetzt.getEpochSecond() - (jetzt.getEpochSecond() % VIERTELSTUNDE_S);
+        Instant quartalStart = Instant.ofEpochSecond(quartalStartS);
+        // JOIN site (Standort-Zaun-Architekturtest, AGENTS.md "Datenbank und Mandanten"): telemetry
+        // trägt nur den Mandanten-Zaun; der Join über site macht diese Abfrage für JEDEN Aufrufer
+        // dicht, ob Läufer (ohne Zugriffs-Kontext, unternehmensweit) oder menschliche Anfrage.
+        List<Double> rows = jdbc.query(
+                "SELECT avg(GREATEST(t.power_kw, 0)) FROM telemetry t JOIN site s ON s.id = t.site_id "
+                        + "WHERE t.site_id = ? AND t.time >= ? AND t.time <= ?",
+                (rs, n) -> rs.getObject(1, Double.class), anlageId, java.sql.Timestamp.from(quartalStart),
+                java.sql.Timestamp.from(jetzt));
+        return rows.isEmpty() ? null : rows.get(0);
     }
 
     private FlowNode knoten(UUID anlageId, String rolle) {

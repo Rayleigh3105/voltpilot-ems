@@ -6,6 +6,8 @@ const netz = katalogEintrag('anlage.netz.leistung')!;
 const speicher = katalogEintrag('anlage.speicher.leistung')!;
 const box = katalogEintrag('box.erreichbar')!;
 const datenquelle = katalogEintrag('datenquelle.liefert_daten')!;
+const lastspitzePeriode = katalogEintrag('anlage.lastspitze.periode')!;
+const verbrauchMenge = katalogEintrag('anlage.verbrauch.menge')!;
 
 describe('ueberwachungSatz', () => {
   it('ueber: Netzbezug länger als 15 Minuten über 120 kW', () => {
@@ -48,6 +50,56 @@ describe('ueberwachungSatz', () => {
   it('keine_daten: seit einer Dauer ohne neuen Wert', () => {
     const satz = ueberwachungSatz(netz, { art: 'keine_daten', dauer_s: 900 }, 'hinweis');
     expect(satz).toBe('Sag mir Bescheid, wenn der Netzbezug seit 15 Minuten ohne neuen Wert ist. · Hinweis');
+  });
+
+  it('periode: Lastspitze im Abrechnungszeitraum über einer Schwelle (Scheibe 4, §6.4)', () => {
+    const satz = ueberwachungSatz(
+      lastspitzePeriode,
+      { art: 'periode', richtung: 'ueber', schwelle: 180, periode: 'abrechnungszeitraum' },
+      'dringend',
+      'kW',
+    );
+    expect(satz).toBe(
+      'Sag mir Bescheid, wenn die Lastspitze im Abrechnungszeitraum über 180,0 kW liegt. · Dringend',
+    );
+  });
+
+  it('periode mit "unter": der Verbrauch im Monat unter einer Schwelle', () => {
+    const satz = ueberwachungSatz(
+      verbrauchMenge,
+      { art: 'periode', richtung: 'unter', schwelle: 500, periode: 'monat' },
+      'hinweis',
+      'kWh',
+    );
+    expect(satz).toBe(
+      'Sag mir Bescheid, wenn der Verbrauch im Zeitraum im Monat unter 500,0 kWh liegt. · Hinweis',
+    );
+  });
+
+  it('aenderung: der Verbrauch steigt gegenüber der Vorperiode um mehr als X % (Scheibe 4, §6.4)', () => {
+    const satz = ueberwachungSatz(
+      verbrauchMenge,
+      { art: 'aenderung', richtung: 'hoeher', schwelleProzent: 30, periode: 'woche' },
+      'hinweis',
+    );
+    expect(satz).toBe(
+      'Sag mir Bescheid, wenn der Verbrauch im Zeitraum sich gegenüber der vorigen Periode (Woche) um mehr als 30 % steigt. · Hinweis',
+    );
+  });
+
+  it('aenderung "niedriger" und "beide" wählen ihr eigenes Wort', () => {
+    const faellt = ueberwachungSatz(
+      verbrauchMenge,
+      { art: 'aenderung', richtung: 'niedriger', schwelleProzent: 20, periode: 'tag' },
+      'hinweis',
+    );
+    expect(faellt).toContain('fällt');
+    const aendert = ueberwachungSatz(
+      verbrauchMenge,
+      { art: 'aenderung', richtung: 'beide', schwelleProzent: 20, periode: 'tag' },
+      'hinweis',
+    );
+    expect(aendert).toContain('ändert');
   });
 });
 

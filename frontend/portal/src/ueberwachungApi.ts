@@ -1,7 +1,7 @@
 import { request } from './api';
 import type { ComponentRole, Messwert } from './komponenten';
 import type { Schwere, UeberwachungsRegel } from './meldungenApi';
-import type { Bedingungsart } from './werteKatalog';
+import type { Bedingungsart, Periode } from './werteKatalog';
 
 /**
  * Die beiden API-Aufrufe für „Überwachen" am Wert (Alerting Scheibe 2, Konzept §6.3/§6.8) - bewusst
@@ -23,11 +23,18 @@ export interface Wertverweis {
   einheit: string | null;
 }
 
-/** Der Bezug im Anfragekörper von `ueberwachungAnlegen` - `anlage` ODER `komponente`+`kanal` (§6.3), nie beide. */
+/**
+ * Der Bezug im Anfragekörper von `ueberwachungAnlegen` - `anlage` ODER `komponente`+`kanal` (§6.3)
+ * ODER eine AUSWAHL (Alerting Scheibe 4, §6.4 "Gilt für"): `alle` ist `"anlage"` oder `"box"`,
+ * wahlweise auf einen `standort` eingeschränkt (sonst der ganze Kundenbereich). Genau EINE der drei
+ * Formen ist gesetzt.
+ */
 export interface UeberwachungBezugEingabe {
   anlage?: string;
   komponente?: string;
   kanal?: string;
+  standort?: string;
+  alle?: 'anlage' | 'box';
 }
 
 /** `person` ODER `rolle` (§6.4 "Mehrere Empfänger") - nie beide. */
@@ -36,7 +43,14 @@ export interface UeberwachungEmpfaengerEingabe {
   rolle?: string;
 }
 
-/** Die rohe Bedingung im Anfragekörper - Form je Bedingungsart (§6.4); der Server ergänzt `dauer_s`/`erholen_s`/`rueckkehr`, falls sie fehlen (§9). */
+/**
+ * Die rohe Bedingung im Anfragekörper - Form je Bedingungsart (§6.4); der Server ergänzt
+ * `dauer_s`/`erholen_s`/`rueckkehr`, falls sie fehlen (§9). Scheibe 4 fügt `periode` (Tag/Woche/
+ * Monat/Abrechnungszeitraum, `richtung` ersetzt die Methodenwahl "über"/"unter", `endgueltig`
+ * verlangt eine abgeschlossene Periode) und `aenderung` (Vergleich mit der Vorperiode in %,
+ * `schwelle_prozent` + `richtung`) additiv hinzu - beide nur für die periodischen Leserarten
+ * `menge`/`geld`.
+ */
 export interface UeberwachungBedingungEingabe {
   art: Bedingungsart;
   schwelle?: number;
@@ -48,6 +62,10 @@ export interface UeberwachungBedingungEingabe {
   ziel?: string[];
   dauer_s?: number;
   erholen_s?: number;
+  periode?: Periode;
+  endgueltig?: boolean;
+  richtung?: 'ueber' | 'unter' | 'hoeher' | 'niedriger' | 'beide';
+  schwelle_prozent?: number;
 }
 
 /** "Vom Wert zur fertigen Regel: drei Taps" (§6.8) - der Anfragekörper von `POST /api/v1/meldungen/regeln`. */

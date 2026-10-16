@@ -7502,6 +7502,13 @@ export interface PeakShaving {
   avoidedEur: number | null;
   /** Last 12 billing periods with measured data, ascending (incl. running). */
   history: PeakShavingPeriod[];
+  /**
+   * The running ¼-hour mean grid import (kW), computed on the SERVER
+   * (Alerting Scheibe 4: `AnlagenflussWerteLeser.netzLastspitzeLaufend` - the
+   * same number the "Lastspitze droht" Überwachung reads). Null when the
+   * running quarter has no usable sample yet - never a fabricated 0.
+   */
+  currentQuarterMeanKw: number | null;
 }
 
 /** One billing period of the peak-shaving history. */
