@@ -162,6 +162,9 @@ public class ZustellwegController {
     @PostMapping("/webhook")
     public ResponseEntity<NeuesWebhookZielDto> webhookZielAnlegen(@RequestBody WebhookAnfrage anfrage,
             Authentication auth) {
+        if (istLeer(anfrage.url())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "url ist ein Pflichtfeld.");
+        }
         var neu = zustellwege.webhookZielAnlegen(sub(auth), anfrage.url(), anfrage.name());
         return ResponseEntity.status(HttpStatus.CREATED).body(new NeuesWebhookZielDto(neu.id().toString(), neu.geheimnis()));
     }
@@ -169,6 +172,7 @@ public class ZustellwegController {
     @PutMapping("/webhook/{id}")
     public ResponseEntity<Void> webhookZielEinstellungen(@PathVariable UUID id,
             @RequestBody ZielEinstellungen einstellungen, Authentication auth) {
+        pruefeZielEinstellungen(einstellungen);
         boolean geaendert = zustellwege.webhookZielEinstellungenSetzen(id, sub(auth), einstellungen.aktiv(),
                 einstellungen.abSchwere());
         if (!geaendert) {
@@ -212,6 +216,7 @@ public class ZustellwegController {
     @PutMapping("/telegram/{id}")
     public ResponseEntity<Void> telegramZielEinstellungen(@PathVariable UUID id,
             @RequestBody ZielEinstellungen einstellungen, Authentication auth) {
+        pruefeZielEinstellungen(einstellungen);
         boolean geaendert = zustellwege.telegramZielEinstellungenSetzen(id, sub(auth), einstellungen.aktiv(),
                 einstellungen.abSchwere());
         if (!geaendert) {
@@ -240,6 +245,13 @@ public class ZustellwegController {
                 || istLeer(anfrage.geraet())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "endpoint, p256dh, auth und geraet sind Pflichtfelder.");
+        }
+    }
+
+    /** Die Zustell-Vorgabe einer Webhook-/Telegram-Einstellung (Alerting Scheibe 6, §7 Scheibe 6) - wie {@link #pruefePushAnfrage}. */
+    private static void pruefeZielEinstellungen(ZielEinstellungen einstellungen) {
+        if (istLeer(einstellungen.abSchwere())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "abSchwere ist ein Pflichtfeld.");
         }
     }
 

@@ -7,6 +7,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.voltpilot.api.versand.ZustellwegRepository;
@@ -98,5 +99,50 @@ class ZustellwegControllerTest {
                 .andExpect(status().isAccepted());
 
         verify(zustellwege).anfordern("sub-test", "jonas@example.test");
+    }
+
+    // =================================================================== Webhook (Alerting Scheibe 6, §7)
+
+    @Test
+    void einLeererKoerperAnDerWebhookRouteBekommtEinenSauberenBadRequest() throws Exception {
+        mvc.perform(post("/api/v1/zustellwege/webhook").principal(auth)
+                .contentType(MediaType.APPLICATION_JSON).content("{}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(post("/api/v1/zustellwege/webhook").principal(auth)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"url\":\" \"}"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(zustellwege);
+    }
+
+    @Test
+    void eineUrlAnDerWebhookRouteWirdAngenommen() throws Exception {
+        UUID id = UUID.randomUUID();
+        when(zustellwege.webhookZielAnlegen(eq("sub-test"), eq("https://hooks.example/x"), any()))
+                .thenReturn(new ZustellwegService.NeuesWebhookZiel(id, "geheimnis"));
+
+        mvc.perform(post("/api/v1/zustellwege/webhook").principal(auth).contentType(MediaType.APPLICATION_JSON)
+                .content("{\"url\":\"https://hooks.example/x\"}"))
+                .andExpect(status().isCreated());
+    }
+
+    @Test
+    void eineLeereAbSchwereAnDerWebhookEinstellungsRouteBekommtEinenSauberenBadRequest() throws Exception {
+        mvc.perform(put("/api/v1/zustellwege/webhook/" + UUID.randomUUID()).principal(auth)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"aktiv\":true,\"abSchwere\":\"\"}"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(zustellwege);
+    }
+
+    // =================================================================== Telegram (Alerting Scheibe 6, §7)
+
+    @Test
+    void eineLeereAbSchwereAnDerTelegramEinstellungsRouteBekommtEinenSauberenBadRequest() throws Exception {
+        mvc.perform(put("/api/v1/zustellwege/telegram/" + UUID.randomUUID()).principal(auth)
+                .contentType(MediaType.APPLICATION_JSON).content("{\"aktiv\":true,\"abSchwere\":\"\"}"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(zustellwege);
     }
 }
