@@ -76,6 +76,31 @@ public class MeldungenController {
         return new MeldungDto.Zahl(repo.ungeseheneZahl(), repo.hatUngeseheneDringende());
     }
 
+    /**
+     * Verlauf je Periode als CSV (Entscheid 14A, §6.4 Nr. 8): {@code von}/{@code bis} als ISO-Zeitpunkt
+     * (halboffenes Fenster {@code [von, bis)}, dieselbe Form wie {@link com.voltpilot.api.ueberwachung.PeriodenFenster}).
+     * Keine eigene Rechte-Prüfung über die Matrix - wie jede andere reine Leseroute dieser Ebene liest
+     * sie nur, was der Standort-Zaun ({@code site_scope}) ohnehin zulässt (§6.6 "zweifach gesichert").
+     * MX4: dieser Export behauptet nirgends, eine Norm zu erfüllen.
+     */
+    @GetMapping(value = "/verlauf.csv", produces = "text/csv")
+    public ResponseEntity<byte[]> verlaufCsv(@RequestParam String von, @RequestParam String bis) {
+        Instant vonZeit;
+        Instant bisZeit;
+        try {
+            vonZeit = Instant.parse(von);
+            bisZeit = Instant.parse(bis);
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "von/bis brauchen einen ISO-Zeitpunkt");
+        }
+        byte[] datei = com.voltpilot.api.ueberwachung.MeldungenCsv.datei(repo.verlaufJePeriode(vonZeit, bisZeit));
+        return ResponseEntity.ok()
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=meldungen-verlauf.csv")
+                .contentType(org.springframework.http.MediaType.parseMediaType("text/csv;charset=UTF-8"))
+                .body(datei);
+    }
+
     /** Reiter "Überwachungen" (§6.8): alle aktiven Regeln, ab Werk und eigene gemeinsam. */
     @GetMapping("/regeln")
     public UeberwachungDto.Liste regeln() {
@@ -203,7 +228,7 @@ public class MeldungenController {
         String anlageName = anlageId == null ? null : repo.anlageName(UUID.fromString(anlageId));
         return new MeldungDto(a.id().toString(), a.kennzeichen(), a.wertart(), a.schwere(), anlageId, anlageName,
                 a.standortId() == null ? null : a.standortId().toString(), a.ausgeloestAm(), a.zustand(),
-                a.wiederNormalAm(), a.gesehenVon(), a.gesehenAm(), a.erledigtAm());
+                a.wiederNormalAm(), a.gesehenVon(), a.gesehenAm(), a.erledigtAm(), a.bezugKennung());
     }
 
     private static String anlageId(AlarmZeile a) {

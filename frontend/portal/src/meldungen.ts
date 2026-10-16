@@ -19,6 +19,7 @@
  */
 import { meldungenApi } from './meldungenApi';
 import type { Meldung, Schwere } from './meldungenApi';
+import { energiezielRoute, hashForRoute, kennzahlRoute, messstelleRoute } from './nav';
 import { katalogEintrag } from './werteKatalog';
 
 export { meldungenApi };
@@ -72,9 +73,72 @@ export function sortiereVerlauf(meldungen: readonly Meldung[]): Meldung[] {
   return [...meldungen].sort((a, b) => b.ausgeloestAm.localeCompare(a.ausgeloestAm));
 }
 
+/**
+ * Die Marke „eigene Überwachung“ (Alerting Scheibe 5, §6.4 Nr. 7) - jede Meldung einer der fünf
+ * Scheibe-5-Wertarten ist strukturell IMMER aus einer selbst angelegten Überwachung (Entscheid 9A:
+ * kein Läufer sät eine davon ab Werk) - die Marke braucht dafür keine eigene Herkunfts-Abfrage.
+ */
+export const WORT_EIGENE_UEBERWACHUNG = 'eigene Überwachung';
+
+/** Die fünf Wertarten dieser Scheibe (§6.3) - bezug `messstelle`/`kennzahl`/`energieziel`. */
+const SCHEIBE_5_WERTARTEN = new Set([
+  'kennzahl.bezugsbasis',
+  'energieziel.kurs',
+  'messstelle.menge',
+  'messstelle.beobachtung',
+  'messstelle.monat_unvollstaendig',
+]);
+
+/** Ob eine Meldung aus einer der fünf Scheibe-5-Wertarten stammt (§6.4 Nr. 7). */
+export function istEigeneUeberwachung(wertart: string): boolean {
+  return SCHEIBE_5_WERTARTEN.has(wertart);
+}
+
+/** Die Kennung aus einem rohen Bezug (`"kennzahl:<uuid>"` → `"<uuid>"`) - wie der Server ihn baut. */
+function bezugId(bezugKennung: string | null): string | null {
+  if (!bezugKennung) return null;
+  const teile = bezugKennung.split(':');
+  return teile.length === 2 ? teile[1] : null;
+}
+
+/**
+ * „Zur Auffälligkeit zur Quelle“ (§6.4 Nr. 7): wohin eine Scheibe-5-Meldung führt - `null` für jede
+ * andere Wertart (sie hat schon `anlageName`). Es gibt heute keine eigene Ebene „Auffälligkeiten“ an
+ * der Kennzahl-Seite (nur `ebene: 'bezugsbasis'`, `nav.ts`) - „Zur Kennzahl“ führt auf die Kennzahl
+ * selbst, auf der eine Auffälligkeit sichtbar wird, statt eine nicht vorhandene Adresse zu erfinden.
+ */
+export function meldungQuelleLink(m: Meldung): { label: string; hash: string } | null {
+  const id = bezugId(m.bezugKennung);
+  if (!id) return null;
+  switch (m.wertart) {
+    case 'kennzahl.bezugsbasis':
+      return { label: 'Zur Kennzahl', hash: hashForRoute(kennzahlRoute(id)) };
+    case 'energieziel.kurs':
+      return { label: 'Zum Energieziel', hash: hashForRoute(energiezielRoute(id)) };
+    case 'messstelle.menge':
+    case 'messstelle.beobachtung':
+    case 'messstelle.monat_unvollstaendig':
+      return { label: 'Zur Messstelle', hash: hashForRoute(messstelleRoute(id)) };
+    default:
+      return null;
+  }
+}
+
 /** `?anlage=<id>` aus der rohen Adresse - die Seite liest ihre Filter selbst (kein Routen-Feld, §6.2). */
 export function anlageAusHash(hash: string): string | null {
   const frage = hash.indexOf('?');
   if (frage < 0) return null;
   return new URLSearchParams(hash.slice(frage + 1)).get('anlage');
+}
+
+/**
+ * `?reiter=verlauf` aus der rohen Adresse (Alerting Scheibe 5, Entscheid 14A): das Energiemanagement-
+ * Verzeichnis zeigt EINE Zeile, die direkt auf den Verlauf des Meldungs-Centers zeigt
+ * (`#/meldungen?reiter=verlauf`) - derselbe Filter-Weg wie `anlageAusHash`, kein Routen-Feld.
+ */
+export function reiterAusHash(hash: string): 'jetzt' | 'verlauf' | 'regeln' | null {
+  const frage = hash.indexOf('?');
+  if (frage < 0) return null;
+  const wert = new URLSearchParams(hash.slice(frage + 1)).get('reiter');
+  return wert === 'jetzt' || wert === 'verlauf' || wert === 'regeln' ? wert : null;
 }

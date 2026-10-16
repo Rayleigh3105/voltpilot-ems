@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { meldungenApi } from '../meldungenApi';
+import { einzelBezugKarte } from '../ueberwachungApi';
+/** Wie `AufbauTabelle.tsx`: das Blatt „Überwachen" (Alerting Scheibe 5, §6.3) öffnet höchstens einmal je
+ * Besuch - kein statischer Import, der es in jeden Chunk zöge. */
+const UeberwachenBlatt = lazy(() =>
+  import('../components/UeberwachenBlatt').then((m) => ({ default: m.UeberwachenBlatt })),
+);
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -29,6 +36,7 @@ import { GeteiltesRegisterHinweis } from '../components/GeteiltesRegisterHinweis
 import { GrenzHinweis, GrenzSatzBereich } from '../components/GrenzSatz';
 import { HerkunftsZeile } from '../components/HerkunftsZeile';
 import { Marke } from '../components/kacheln/Kachel';
+import { WertZeile } from '../components/WertZeile';
 import { ZeitSegment } from '../components/HistorieWelt';
 import type { KopieVon } from '../components/KennzahlAnlegenDialog';
 import { KennzahlStammdatenDialog } from '../components/KennzahlStammdatenDialog';
@@ -120,6 +128,21 @@ export function KennzahlSeite({
   const [archiv, setArchiv] = useState<{ laeuft: boolean; fehler: string | null }>({ laeuft: false, fehler: null });
   const [loeschen, setLoeschen] = useState<{ laeuft: boolean; fehler: string | null }>({ laeuft: false, fehler: null });
   const [gesetzt, setGesetzt] = useState<Energieziel | null>(null);
+
+  // „Überwachen" an der Kennzahl gegen ihre Bezugsbasis (Alerting Scheibe 5, §6.3: `kennzahl.bezugsbasis`) -
+  // dasselbe Muster wie `AufbauTabelle.tsx`/`GeraetBuehne.tsx`, hier für EINE Kennzahl.
+  const [geladenUeberwacht, setGeladenUeberwacht] = useState<ReadonlyMap<string, string | null> | null>(null);
+  const [frischUeberwacht, setFrischUeberwacht] = useState<ReadonlyMap<string, string | null>>(new Map());
+  const [ueberwachenOffen, setUeberwachenOffen] = useState(false);
+  useEffect(() => {
+    let aktiv = true;
+    meldungenApi.regeln().then(
+      (regeln) => aktiv && setGeladenUeberwacht(einzelBezugKarte(regeln, 'kennzahl.bezugsbasis', 'kennzahl')),
+      () => aktiv && setGeladenUeberwacht(null),
+    );
+    return () => { aktiv = false; };
+  }, []);
+  const kennzahlUeberwacht = frischUeberwacht.has(id) ? (frischUeberwacht.get(id) ?? null) : geladenUeberwacht?.get(id);
 
   useEffect(() => {
     let aktiv = true;
@@ -264,6 +287,11 @@ export function KennzahlSeite({
               <span>{kp.unter}</span>
               {kp.archiviert && <Badge variant="tint">{kp.archiviert}</Badge>}
             </p>
+            {/* Alerting Scheibe 5, §6.3: „Ueberwachung auf eine Kennzahl relativ zu ihrer Bezugsbasis" -
+                nur, wenn eine Bezugsbasis überhaupt ein Urteil liefert (§6.1 Nr. 4: unbekannt ist keine Null). */}
+            {basisDa && (
+              <WertZeile label={kp.name} ueberwacht={kennzahlUeberwacht} onUeberwachen={() => setUeberwachenOffen(true)} />
+            )}
           </div>
           {menue.length > 0 && <RowMenu items={menue} label="Weitere Aktionen" />}
         </header>
@@ -389,6 +417,22 @@ export function KennzahlSeite({
               />
             </div>
           </Modal>
+        )}
+        {ueberwachenOffen && (
+          <Suspense fallback={null}>
+            <UeberwachenBlatt
+              offen
+              isPhone={telefon}
+              onClose={() => setUeberwachenOffen(false)}
+              wertart="kennzahl.bezugsbasis"
+              bezug={{ kennzahl: id }}
+              aktuellerWert={null}
+              titelZusatz={kp.name}
+              onUeberwacht={(regel) => {
+                setFrischUeberwacht((alt) => new Map(alt).set(id, regel.probelaufBis));
+              }}
+            />
+          </Suspense>
         )}
       </div>
     </GrenzSatzBereich>

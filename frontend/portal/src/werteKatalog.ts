@@ -9,9 +9,11 @@
  *
  * `leser.art` ist eine der festen Leserarten aus §6.3 (acht insgesamt; Scheibe 1/2 bauten `zustand`,
  * `ereignis`, `anlagenfluss`, `messreihe`, Scheibe 4 fügt `menge` und `geld` additiv hinzu - periodisch
- * ausgewertet, NIE im Minutentakt). Ein neuer Eintrag derselben Leserart ist ein weiterer Katalog-
- * Eintrag, kein neuer Code (§6.3 Nr. 2); `geraet.messwert` ist eine FAMILIE (Bezug `komponente` +
- * Parameter `kanal`), kein Eintrag je Kanal.
+ * ausgewertet, NIE im Minutentakt; Scheibe 5 fügt `kennzahl` (Kennzahl gegen Bezugsbasis,
+ * Energieziel-Kurs) und `zaehlung` (Messstelle: Menge je Monat, Beobachtung, Monat unvollständig)
+ * hinzu - keiner ihrer Einträge trägt einen Vorschlag ab Werk, Entscheid 9A). Ein neuer Eintrag
+ * derselben Leserart ist ein weiterer Katalog-Eintrag, kein neuer Code (§6.3 Nr. 2); `geraet.messwert`
+ * ist eine FAMILIE (Bezug `komponente` + Parameter `kanal`), kein Eintrag je Kanal.
  */
 
 export type LeserArt =
@@ -25,7 +27,8 @@ export type LeserArt =
   | 'zaehlung';
 
 /** Geschlossenes Vokabular der Bedingungsarten (§6.4). `periode` und `aenderung` (Scheibe 4) gelten
- * nur für die periodischen Leserarten `menge`/`geld`. */
+ * nur für periodische Einträge (an ihren `bedingungen`, nicht an der Leserart zu erkennen - Scheibe 5
+ * fügt `messstelle.menge` hinzu, Leserart `zaehlung`). */
 export type Bedingungsart =
   | 'zustand'
   | 'ereignis'
@@ -247,6 +250,59 @@ export const WERTE_KATALOG: WerteKatalogEintrag[] = [
     leser: { art: 'geld', feld: 'kosten' },
     recht: 'messwerte.ansehen',
     bedingungen: ['periode', 'aenderung'],
+  },
+  {
+    wertart: 'kennzahl.bezugsbasis',
+    name: 'Kennzahl gegen Bezugsbasis',
+    satzname: 'die Abweichung von der Bezugsbasis',
+    bezug: 'kennzahl',
+    form: 'zahl',
+    leser: { art: 'kennzahl', feld: 'bezugsbasis_abweichung_prozent' },
+    recht: 'messwerte.ansehen',
+    bedingungen: ['ueber', 'unter', 'ausserhalb', 'keine_daten'],
+  },
+  {
+    wertart: 'energieziel.kurs',
+    name: 'Energieziel-Kurs',
+    satzname: 'der Kurs zum Energieziel',
+    bezug: 'energieziel',
+    form: 'zustand',
+    leser: { art: 'kennzahl', feld: 'kurs_lage' },
+    recht: 'messwerte.ansehen',
+    zustaende: ['noch_keine_aussage', 'auf_kurs', 'knapp_dahinter', 'nicht_auf_kurs'],
+    bedingungen: ['zustand'],
+  },
+  {
+    wertart: 'messstelle.menge',
+    name: 'Menge je Monat',
+    satzname: 'die Menge im Monat',
+    bezug: 'messstelle',
+    form: 'zahl',
+    leser: { art: 'zaehlung', feld: 'menge_monat' },
+    recht: 'messwerte.ansehen',
+    bedingungen: ['periode', 'aenderung'],
+  },
+  {
+    wertart: 'messstelle.beobachtung',
+    name: 'Beobachtung der Messstelle',
+    satzname: 'die Beobachtung der Messstelle',
+    bezug: 'messstelle',
+    form: 'zustand',
+    leser: { art: 'zaehlung', feld: 'beobachtung' },
+    recht: 'messwerte.ansehen',
+    zustaende: ['liefert', 'liefert_nicht_seit', 'wartet_auf_erste_daten', 'keine_datenquelle'],
+    bedingungen: ['zustand'],
+  },
+  {
+    wertart: 'messstelle.monat_unvollstaendig',
+    name: 'Monat unvollständig',
+    satzname: 'die Vollständigkeit des Monats',
+    bezug: 'messstelle',
+    form: 'zustand',
+    leser: { art: 'zaehlung', feld: 'monat_vollstaendigkeit' },
+    recht: 'messwerte.ansehen',
+    zustaende: ['vollstaendig', 'unvollstaendig'],
+    bedingungen: ['zustand'],
   },
 ];
 

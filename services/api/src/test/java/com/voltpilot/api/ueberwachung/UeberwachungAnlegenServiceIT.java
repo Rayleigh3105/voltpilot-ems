@@ -106,8 +106,12 @@ class UeberwachungAnlegenServiceIT {
     }
 
     private static UeberwachungAnlegenService dienst() {
+        // Diese Fälle legen nur anlage-Bezüge an - Kennzahl/Energieziel (Scheibe 5) bleiben Mocks,
+        // ihr eigener Standort-Pfad hat eine eigene IT (siehe KennzahlZaehlungWerteLeserIT).
         return new UeberwachungAnlegenService(new UeberwachungRepository(app), new WerteKatalog(),
-                new ZugriffRepository(app));
+                new ZugriffRepository(app), new com.voltpilot.api.uems.KennzahlRepository(app),
+                org.mockito.Mockito.mock(com.voltpilot.api.uems.KennzahlService.class),
+                org.mockito.Mockito.mock(com.voltpilot.api.uems.EnergiezielService.class));
     }
 
     private static JsonNode json(String text) {
@@ -216,6 +220,40 @@ class UeberwachungAnlegenServiceIT {
 
             assertThatThrownBy(() -> dienst().anlegen(anfrage, leser, Instant.now()))
                     .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    /**
+     * Alerting Scheibe 5 (§6.3): eine Messstelle hat keine Anlage - der Standort kommt über
+     * {@code messstelle_ort} direkt, nicht über {@code anlage_standort}. Dieselbe Rechte-Prüfung
+     * ({@code ueberwachung.eigene}) wie bei einem Anlage-Bezug, nur ein anderer Standort-Pfad.
+     */
+    @Test
+    void einLeserLegtEineEigeneUeberwachungAufEineMessstelleAnMitDemStandortDerMessstelle() {
+        Welt w = welt("Messstelle-Anlegen GmbH");
+        UUID messstelle = adminJdbc.queryForObject(
+                "INSERT INTO messstelle (tenant_id, kennzeichen, name, art, medium, groesse, richtung, "
+                        + "einheit, wertart) VALUES (?, 'MS-0001', 'Halle 1 Verbrauch', 'gemessen', 'Strom', "
+                        + "'Wirkenergie', 'Bezug', 'kWh', 'Intervallmenge') RETURNING id", UUID.class, w.tenant());
+        adminJdbc.update("INSERT INTO messstelle_ort (tenant_id, messstelle_id, ort_id, standort_id, gueltig_ab) "
+                + "VALUES (?, ?, NULL, ?, '2020-01-01')", w.tenant(), messstelle, w.st1());
+        Benutzer leser = benutzerMitRolle(w.tenant(), "sub-leser-ms", "leser", w.st1());
+        TenantContext.set(w.tenant());
+        try {
+            UeberwachungDto.Anlegen anfrage = new UeberwachungDto.Anlegen("messstelle.beobachtung",
+                    UeberwachungDto.BezugEintrag.messstelle(messstelle.toString()),
+                    json("{\"art\":\"zustand\",\"ziel\":[\"liefert_nicht_seit\"]}"), "warnung", null,
+                    "Meine Messstellen-Überwachung");
+
+            UeberwachungDto neu = dienst().anlegen(anfrage, leser, Instant.now());
+
+            assertThat(neu.herkunft()).isEqualTo("eigen");
+            Map<String, Object> zeile = app.queryForMap(
+                    "SELECT standort_id, bezug::text AS bezug FROM ueberwachung WHERE id = ?::uuid", neu.id());
+            assertThat(zeile.get("standort_id")).isEqualTo(w.st1());
+            assertThat((String) zeile.get("bezug")).contains(messstelle.toString());
         } finally {
             TenantContext.clear();
         }

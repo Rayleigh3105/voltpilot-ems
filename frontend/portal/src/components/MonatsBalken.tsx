@@ -1,6 +1,13 @@
 import type { KachelTon } from './kacheln/Kachel';
 import type { Balken } from '../messstelleSeite';
+import { WertZeile } from './WertZeile';
 import './MonatsBalken.css';
+
+/** „Überwachen" am zuletzt abgeschlossenen Monat (Alerting Scheibe 5, §6.3: `messstelle.monat_unvollstaendig`). */
+export interface MonatsBalkenUeberwachung {
+  ueberwacht?: string | null;
+  onUeberwachen: () => void;
+}
 
 /**
  * Die Monate einer Messstelle als Balken auf EINER Skala (Konzept Messen m1, §6.4 Punkt 5): je Monat ein Balken in der
@@ -12,12 +19,15 @@ export function MonatsBalken({
   ton,
   onWahl,
   label,
+  ueberwachung,
 }: {
   balken: readonly Balken[];
   ton: KachelTon;
   /** Ohne Wahl (das Jahr) sind die Balken nur Bild und Beschriftung. */
   onWahl?: (monat: string) => void;
   label: string;
+  /** „Überwachen" an der Vollständigkeit des zuletzt abgeschlossenen Monats (Alerting Scheibe 5, §6.3). */
+  ueberwachung?: MonatsBalkenUeberwachung;
 }) {
   return (
     <div className={`vp-mb ton-${ton}`} role="group" aria-label={label} data-testid="monatsbalken">
@@ -56,6 +66,14 @@ export function MonatsBalken({
           </span>
         ))}
       </div>
+      {ueberwachung && (
+        <WertZeile
+          className="vp-mb-ueberwachen"
+          label="Monat unvollständig"
+          ueberwacht={ueberwachung.ueberwacht}
+          onUeberwachen={ueberwachung.onUeberwachen}
+        />
+      )}
     </div>
   );
 }

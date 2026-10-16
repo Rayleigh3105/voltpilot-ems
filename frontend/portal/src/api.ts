@@ -7973,6 +7973,33 @@ export async function ladeGesamtabzug(): Promise<void> {
   setTimeout(() => URL.revokeObjectURL(href), 0);
 }
 
+/**
+ * Alerting Scheibe 5, Entscheid 14A: der Verlauf des Meldungs-Centers als CSV-Datei für einen
+ * Zeitraum `[von, bis)` (ISO-Zeitpunkte) - derselbe Download-Weg wie {@link ladeGesamtabzug}
+ * (authentifizierter Abruf, Dateiname aus `Content-Disposition`).
+ */
+export async function ladeMeldungenVerlaufCsv(von: string, bis: string): Promise<void> {
+  const token = await freshToken();
+  const path = `/api/v1/meldungen/verlauf.csv?von=${encodeURIComponent(von)}&bis=${encodeURIComponent(bis)}`;
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...bereichKopf(path),
+    },
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => undefined);
+    throw new ApiError(res.status, (body as { message?: string } | undefined)?.message ?? 'Der Verlauf konnte nicht geladen werden.', body);
+  }
+  const name = /filename=([^;]+)/.exec(res.headers.get('Content-Disposition') ?? '')?.[1]?.trim() ?? 'meldungen-verlauf.csv';
+  const href = URL.createObjectURL(await res.blob());
+  const link = document.createElement('a');
+  link.href = href;
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(href), 0);
+}
+
 export interface RegisterInput {
   name: string;
   email: string;

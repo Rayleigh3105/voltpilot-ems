@@ -79,7 +79,8 @@ import { ErrorState, Skeleton } from './States';
 import { VpDatePicker } from './VpDatePicker';
 import { VersionenDialog, VersionenEinstieg } from './WertVersionen';
 import { WerteKarte, WerteListe, WerteZusammenfassung } from './WerteKarte';
-import { MonatsBalken } from './MonatsBalken';
+import { MonatsBalken, type MonatsBalkenUeberwachung } from './MonatsBalken';
+import { WertZeile } from './WertZeile';
 import type { KachelTon } from './kacheln/Kachel';
 import { ABLESUNG_EINTRAGEN, ablesungFehltSatz, balken, monatPlus, monatsTage } from '../messstelleSeite';
 import { ZUORDNUNG_ETIKETT, ZUORDNUNG_SATZ, zuordnungDerWerte } from '../werteOhneReihe';
@@ -159,9 +160,19 @@ export function WerteSektion({
   onZeitraum,
   rahmen = (inhalt) => inhalt,
   seite,
+  ueberwachung,
 }: {
   /** Nur auf der Seite einer Messstelle (Konzept Messen m1): Zeiträume, Überschrift und Balken der Monate. */
   seite?: WerteSeite;
+  /**
+   * „Überwachen" an der Menge der Karte und der Vollständigkeit des Monats (Alerting Scheibe 5, §6.3:
+   * `messstelle.menge`/`messstelle.monat_unvollstaendig`) - nur auf der Seite einer Messstelle (`seite`
+   * gesetzt); im `WerteDialog` (Gesamtwert-Karten) bleibt die Sektion unverändert ohne „Überwachen".
+   */
+  ueberwachung?: {
+    menge: { ueberwacht?: string | null; onUeberwachen: () => void };
+    monat: MonatsBalkenUeberwachung;
+  } | null;
   /**
    * Das Register von heute — die Hauptgrößen der anderen Messstellen. Nur damit kann der Picker „Weitere Messstelle“
    * sagen, WELCHE passt und warum die anderen nicht (AP-13 IP-5, O12); ohne Register gibt es keinen Vergleich.
@@ -489,17 +500,27 @@ export function WerteSektion({
                 fehler={art === 'monat' ? reiheFehler : null}
                 onErneut={() => setNeu((n) => n + 1)}
                 onWahl={(monat) => waehle('monat', monat, true)}
+                ueberwachungMonat={seite && ueberwachung ? ueberwachung.monat : undefined}
               />
             )}
             {k &&
               (seite ? (
-                <WerteZusammenfassung
-                  karte={k}
-                  grund={k.grund}
-                  versionen={
-                    e && <VersionenEinstieg einstieg={e} onOeffnen={() => setVersionen({ einstieg: e, periode: k.titel })} />
-                  }
-                />
+                <>
+                  <WerteZusammenfassung
+                    karte={k}
+                    grund={k.grund}
+                    versionen={
+                      e && <VersionenEinstieg einstieg={e} onOeffnen={() => setVersionen({ einstieg: e, periode: k.titel })} />
+                    }
+                  />
+                  {ueberwachung && (
+                    <WertZeile
+                      label={k.titel}
+                      ueberwacht={ueberwachung.menge.ueberwacht}
+                      onUeberwachen={ueberwachung.menge.onUeberwachen}
+                    />
+                  )}
+                </>
               ) : (
                 <WerteKarte
                   karte={k}
@@ -625,6 +646,7 @@ function SeitenBalken({
   fehler,
   onErneut,
   onWahl,
+  ueberwachungMonat,
 }: {
   art: Zeitraum;
   wert: string;
@@ -633,6 +655,7 @@ function SeitenBalken({
   fehler: Auskunft | null;
   onErneut: () => void;
   onWahl: (monat: string) => void;
+  ueberwachungMonat?: MonatsBalkenUeberwachung;
 }) {
   if (fehler) return <WerteAuskunft auskunft={fehler} stoerung={VERLAUF_NICHT_ABRUFBAR} onRetry={onErneut} />;
   if (!reihe) {
@@ -648,6 +671,8 @@ function SeitenBalken({
       ton={ton}
       label={art === 'monat' ? 'Die letzten zwölf Monate' : `Die Monate ${wert}`}
       onWahl={onWahl}
+      // Monat unvollständig (Alerting Scheibe 5, §6.3) gilt nur für die zwölf Monate, nicht die Jahresansicht.
+      ueberwachung={art === 'monat' ? ueberwachungMonat : undefined}
     />
   );
 }

@@ -25,6 +25,22 @@ public interface WerteLeser {
             return new Bezug("komponente", id, kanal);
         }
 
+        /** Eine Messstelle (Alerting Scheibe 5, §6.3 "Bezug": Unternehmen, Standort, Anlage, Box, Komponente,
+         * Messstelle, Kennzahl, Energieziel, Netzanschluss, Ladepunkt). */
+        public static Bezug messstelle(UUID id) {
+            return new Bezug("messstelle", id, null);
+        }
+
+        /** Eine Kennzahl (Alerting Scheibe 5, §6.3): Wert gegen ihre Bezugsbasis. */
+        public static Bezug kennzahl(UUID id) {
+            return new Bezug("kennzahl", id, null);
+        }
+
+        /** Ein Energieziel (Alerting Scheibe 5, §6.3): Kurs zum Ziel. */
+        public static Bezug energieziel(UUID id) {
+            return new Bezug("energieziel", id, null);
+        }
+
         /** Die Einheiten-Kennung für {@code ueberwachung_instanz.bezug_kennung} (§6.7 Skizze, §6.3 Wertverweis-Syntax). */
         public String kennung() {
             return parameter == null ? art + ":" + id : art + ":" + id + ";kanal=" + parameter;

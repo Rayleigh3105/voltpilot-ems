@@ -23,6 +23,15 @@ import { describe, expect, it } from 'vitest';
  * Zweck außer dieser Verdrahtung - es gibt also keine `AUSNAHMEN`-Liste dafür, nur die Pflicht,
  * dass ein Import ihn auch benutzt (sonst wird der Fall unten rot).
  *
+ * Alerting Scheibe 5 (§6.3, §7 Scheibe 5 Punkt 2) schrumpft `AUSNAHMEN` um genau die drei Flächen,
+ * die ihr Bau-Inhalt nennt: `MessstelleKacheln.tsx`, `MonatsBalken.tsx`, `WerteSektion.tsx` - jede
+ * verdrahtet jetzt selbst einen Wertverweis über `WertZeile` (die Leitkachel bzw. die Karte für
+ * `messstelle.menge`, die Monatsbalken für `messstelle.monat_unvollstaendig`). Eine Fläche, die so
+ * migriert, braucht in `AUSNAHMEN` keinen Platzhalter mehr: der erste Fall unten lässt jede Fläche
+ * durch, die (zusätzlich zum Kachel-Import) auch `WertZeile` importiert - der zweite Fall erzwingt
+ * ohnehin schon, dass dieser Import mit `onUeberwachen` verdrahtet ist, also ist das kein
+ * Freifahrtschein, nur die Anerkennung einer bereits geprüften Verdrahtung.
+ *
  * ⚠ ER LIEST DEN ROHEN TEXT (Muster `keineSeitenleisten.test.ts`): eine Datei, die einen Baustein
  * importiert, trägt ihre Begründung hier, nicht einen Kommentar im eigenen Kopf, den niemand prüft.
  */
@@ -90,25 +99,23 @@ const AUSNAHMEN = [
   'src/components/KennzahlenAuswertung.tsx',
   // Fahrplan/Ladevorgänge: die Ladepunkt-Kachel mit ihren Zeilen je Sitzung.
   'src/components/LadenKachel.tsx',
-  // Messen: die Messstellen-Liste (Leit-, Ablese- und Stand-Kacheln).
-  'src/components/MessstelleKacheln.tsx',
-  // Messstellen-Seite: die Monatsbalken (eine Skala, kein Momentanwert).
-  'src/components/MonatsBalken.tsx',
   // Unternehmen/Standort-Übersicht: das Portfolio-Kachelraster (Leitkennzahl, Datenlage, Trend).
   'src/components/PortfolioKacheln.tsx',
   // Fahrplan: der Strompreis-Streifen.
   'src/components/StrompreisStrip.tsx',
-  // Messstellen-Seite: die „Werte"-Sektion (Karte, Liste, Verlauf, Vergleich - eigener Glossar-Eintrag `werte`).
-  'src/components/WerteSektion.tsx',
 ];
 
 describe('Wertverweis-Wächter (Alerting Scheibe 2, Konzept §6.3)', () => {
-  it('jede Fläche mit dem Kachel-Baustein ist migriert oder begründet in AUSNAHMEN eingetragen', () => {
+  it('jede Fläche mit dem Kachel-Baustein ist migriert, begründet in AUSNAHMEN eingetragen, oder verdrahtet selbst einen Wertverweis über WertZeile', () => {
     const treffer = ALLE
       .filter((f) => !BAUSTEIN_DEFINITIONEN.has(kurz(f)))
-      .filter((f) => KACHEL_IMPORT.test(readFileSync(f, 'utf8')))
-      .map(kurz)
-      .filter((f) => !AUSNAHMEN.includes(f));
+      .map((f) => [kurz(f), readFileSync(f, 'utf8')] as const)
+      .filter(([, quelle]) => KACHEL_IMPORT.test(quelle))
+      .filter(([pfad]) => !AUSNAHMEN.includes(pfad))
+      // Scheibe 5 (§6.3): ein Kachel-Nutzer mit eigenem Wertverweis braucht keinen AUSNAHMEN-Platz
+      // mehr - der zweite Fall unten erzwingt ohnehin, dass dieser Import verdrahtet ist.
+      .filter(([, quelle]) => !WERT_ZEILE_IMPORT.test(quelle))
+      .map(([pfad]) => pfad);
     expect(treffer).toEqual([]);
   });
 
@@ -152,5 +159,24 @@ describe('Wertverweis-Wächter (Alerting Scheibe 2, Konzept §6.3)', () => {
     const quelle = readFileSync(join(SRC, 'components/GeraetBuehne.tsx'), 'utf8');
     expect(quelle.match(/<WertZeile\b/g) ?? []).toHaveLength(2);
     expect(quelle.match(/onUeberwachen=\{\(\) => setUeberwachenZiel/g) ?? []).toHaveLength(2);
+  });
+
+  it('die Messstellen-Kacheln verdrahten „Überwachen" an ihrer Leitkachel (Alerting Scheibe 5: messstelle.menge, messstelle.beobachtung)', () => {
+    const quelle = readFileSync(join(SRC, 'components/MessstelleKacheln.tsx'), 'utf8');
+    expect(quelle.match(/<WertZeile\b/g) ?? []).toHaveLength(2);
+    expect(quelle).toMatch(/onUeberwachen=\{ueberwachung\.onUeberwachen\}/);
+    expect(quelle).toMatch(/onUeberwachen=\{ueberwachungBeobachtung\.onUeberwachen\}/);
+  });
+
+  it('die Monatsbalken verdrahten „Überwachen" an der Vollständigkeit des Monats (Alerting Scheibe 5: messstelle.monat_unvollstaendig)', () => {
+    const quelle = readFileSync(join(SRC, 'components/MonatsBalken.tsx'), 'utf8');
+    expect(quelle.match(/<WertZeile\b/g) ?? []).toHaveLength(1);
+    expect(quelle).toMatch(/onUeberwachen=\{ueberwachung\.onUeberwachen\}/);
+  });
+
+  it('die Werte-Sektion verdrahtet „Überwachen" an ihrer Karte (Alerting Scheibe 5: messstelle.menge, über die Monatsbalken auch messstelle.monat_unvollstaendig)', () => {
+    const quelle = readFileSync(join(SRC, 'components/WerteSektion.tsx'), 'utf8');
+    expect(quelle.match(/<WertZeile\b/g) ?? []).toHaveLength(1);
+    expect(quelle).toMatch(/onUeberwachen=\{ueberwachung\.menge\.onUeberwachen\}/);
   });
 });

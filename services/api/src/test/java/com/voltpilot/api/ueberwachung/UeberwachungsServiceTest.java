@@ -42,14 +42,22 @@ class UeberwachungsServiceTest {
     private final MessreiheWerteLeser messreiheLeser = mock(MessreiheWerteLeser.class);
     private final MengeWerteLeser mengeLeser = mock(MengeWerteLeser.class);
     private final GeldWerteLeser geldLeser = mock(GeldWerteLeser.class);
+    private final KennzahlWerteLeser kennzahlLeser = mock(KennzahlWerteLeser.class);
+    private final ZaehlungWerteLeser zaehlungLeser = mock(ZaehlungWerteLeser.class);
     private final ZugriffRepository zugriffe = mock(ZugriffRepository.class);
     private final PriceRepository preise = mock(PriceRepository.class);
     private final com.voltpilot.api.repo.PeakShavingRepository peakShaving =
             mock(com.voltpilot.api.repo.PeakShavingRepository.class);
+    private final com.voltpilot.api.uems.MessstelleRepository messstellen =
+            mock(com.voltpilot.api.uems.MessstelleRepository.class);
+    private final com.voltpilot.api.uems.KennzahlService kennzahlen = mock(com.voltpilot.api.uems.KennzahlService.class);
+    private final com.voltpilot.api.uems.EnergiezielService energieziele =
+            mock(com.voltpilot.api.uems.EnergiezielService.class);
     private final WerteKatalog katalog = new WerteKatalog();
     private final BenachrichtigungAusgang ausgang = mock(BenachrichtigungAusgang.class);
     private final UeberwachungsService dienst = new UeberwachungsService(repo, katalog, leser, ereignisLeser,
-            anlagenflussLeser, messreiheLeser, mengeLeser, geldLeser, zugriffe, preise, peakShaving);
+            anlagenflussLeser, messreiheLeser, mengeLeser, geldLeser, kennzahlLeser, zaehlungLeser, zugriffe, preise,
+            peakShaving, messstellen, kennzahlen, energieziele);
 
     UeberwachungsServiceTest() {
         dienst.setAusgang(ausgang);

@@ -17,6 +17,14 @@
   padding: var(--vp-c-space-5) 0;
 }
 
+.vp-meldungen-csv {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-3);
+  margin: var(--vp-c-space-3) 0;
+}
+
 .vp-meldungen-liste {
   list-style: none;
   margin: var(--vp-c-space-4) 0 0;

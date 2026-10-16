@@ -2,6 +2,7 @@ package com.voltpilot.api.ueberwachung;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -99,5 +100,54 @@ class WerteKatalogTest {
         assertThat(katalog.eintrag("anlage.preis.jetzt").vorschlag()).isNull();
         assertThat(katalog.mitVorschlagAbWerk()).extracting(WerteKatalog.Eintrag::wertart)
                 .doesNotContain("anlage.preis.jetzt");
+    }
+
+    // ----------------------------------------------------------- Scheibe 5 (§6.3, §7 Scheibe 5)
+
+    @Test
+    void kenntDenKennzahlLeser() {
+        WerteKatalog.Eintrag bezugsbasis = katalog.eintrag("kennzahl.bezugsbasis");
+        assertThat(bezugsbasis.leser().art()).isEqualTo("kennzahl");
+        assertThat(bezugsbasis.bezug()).isEqualTo("kennzahl");
+        assertThat(bezugsbasis.form()).isEqualTo("zahl");
+        assertThat(bezugsbasis.bedingungen()).contains("ueber", "unter", "ausserhalb", "keine_daten");
+
+        WerteKatalog.Eintrag kurs = katalog.eintrag("energieziel.kurs");
+        assertThat(kurs.leser().art()).isEqualTo("kennzahl");
+        assertThat(kurs.bezug()).isEqualTo("energieziel");
+        assertThat(kurs.form()).isEqualTo("zustand");
+        assertThat(kurs.zustaende()).containsExactly("noch_keine_aussage", "auf_kurs", "knapp_dahinter",
+                "nicht_auf_kurs");
+        assertThat(kurs.bedingungen()).containsExactly("zustand");
+    }
+
+    @Test
+    void kenntDenZaehlungLeser() {
+        WerteKatalog.Eintrag menge = katalog.eintrag("messstelle.menge");
+        assertThat(menge.leser().art()).isEqualTo("zaehlung");
+        assertThat(menge.bezug()).isEqualTo("messstelle");
+        assertThat(menge.bedingungen()).contains("periode", "aenderung");
+
+        WerteKatalog.Eintrag beobachtung = katalog.eintrag("messstelle.beobachtung");
+        assertThat(beobachtung.leser().art()).isEqualTo("zaehlung");
+        assertThat(beobachtung.zustaende()).containsExactly("liefert", "liefert_nicht_seit",
+                "wartet_auf_erste_daten", "keine_datenquelle");
+
+        WerteKatalog.Eintrag monat = katalog.eintrag("messstelle.monat_unvollstaendig");
+        assertThat(monat.leser().art()).isEqualTo("zaehlung");
+        assertThat(monat.zustaende()).containsExactly("vollstaendig", "unvollstaendig");
+    }
+
+    @Test
+    void entscheid9aKeinScheibe5EintragHatEinenVorschlagAbWerk() {
+        // 9A: kein Läufer legt ab Werk eine Überwachung auf Energiemanagement-Zahlen an - nur
+        // eine selbst angelegte. mitVorschlagAbWerk() bleibt darum unverändert bei den zwei
+        // Scheibe-1-Einträgen (siehe nurDieBeidenAbWerkEintraegeHabenEinenVorschlag oben).
+        for (String wertart : List.of("kennzahl.bezugsbasis", "energieziel.kurs", "messstelle.menge",
+                "messstelle.beobachtung", "messstelle.monat_unvollstaendig")) {
+            assertThat(katalog.eintrag(wertart).vorschlag()).as(wertart).isNull();
+        }
+        assertThat(katalog.mitVorschlagAbWerk()).extracting(WerteKatalog.Eintrag::wertart)
+                .containsExactlyInAnyOrder("box.erreichbar", "datenquelle.liefert_daten");
     }
 }

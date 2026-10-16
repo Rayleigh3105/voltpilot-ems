@@ -33,6 +33,8 @@ export interface Meldung {
   gesehenVon: string | null;
   gesehenAm: string | null;
   erledigtAm: string | null;
+  /** Derselbe rohe Bezug wie am Alarm (Alerting Scheibe 5, §6.4 Nr. 7), z. B. `"kennzahl:<uuid>"`. */
+  bezugKennung: string | null;
 }
 
 /**
