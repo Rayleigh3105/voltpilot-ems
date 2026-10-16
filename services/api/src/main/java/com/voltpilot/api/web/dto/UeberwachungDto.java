@@ -21,13 +21,28 @@ public record UeberwachungDto(String id, String name, String wertart, String sch
 
     /**
      * Der Bezug im Anfragekörper - {@code anlage} ODER {@code komponente}+{@code kanal} (§6.3) ODER
-     * eine AUSWAHL (Alerting Scheibe 4, §6.4 "Gilt für"): {@code alle} ist {@code "anlage"} oder
-     * {@code "box"}, wahlweise auf einen {@code standort} eingeschränkt (sonst der ganze
-     * Kundenbereich). Genau EINE der drei Formen ist gesetzt.
+     * {@code messstelle} ODER {@code kennzahl} ODER {@code energieziel} (Alerting Scheibe 5, §6.3
+     * "Bezug": Messstelle, Kennzahl, Energieziel haben keine Anlage) ODER eine AUSWAHL (Alerting
+     * Scheibe 4, §6.4 "Gilt für"): {@code alle} ist {@code "anlage"} oder {@code "box"}, wahlweise
+     * auf einen {@code standort} eingeschränkt (sonst der ganze Kundenbereich). Genau EINE der
+     * Formen ist gesetzt.
      */
-    public record BezugEintrag(String anlage, String komponente, String kanal, String standort, String alle) {
+    public record BezugEintrag(String anlage, String komponente, String kanal, String standort, String alle,
+            String messstelle, String kennzahl, String energieziel) {
         public BezugEintrag(String anlage, String komponente, String kanal) {
-            this(anlage, komponente, kanal, null, null);
+            this(anlage, komponente, kanal, null, null, null, null, null);
+        }
+
+        public static BezugEintrag messstelle(String id) {
+            return new BezugEintrag(null, null, null, null, null, id, null, null);
+        }
+
+        public static BezugEintrag kennzahl(String id) {
+            return new BezugEintrag(null, null, null, null, null, null, id, null);
+        }
+
+        public static BezugEintrag energieziel(String id) {
+            return new BezugEintrag(null, null, null, null, null, null, null, id);
         }
     }
 

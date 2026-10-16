@@ -140,8 +140,11 @@ class UeberwachungAuswahlIT {
         ZugriffRepository zugriffe = new ZugriffRepository(app);
         UeberwachungsService dienst = new UeberwachungsService(repo, katalog, zustandLeser,
                 Mockito.mock(EreignisWerteLeser.class), Mockito.mock(AnlagenflussWerteLeser.class), messreiheLeser,
-                new MengeWerteLeser(earnings, peaks, app), new GeldWerteLeser(earnings, app), zugriffe,
-                Mockito.mock(PriceRepository.class), peaks);
+                new MengeWerteLeser(earnings, peaks, app), new GeldWerteLeser(earnings, app),
+                Mockito.mock(KennzahlWerteLeser.class), Mockito.mock(ZaehlungWerteLeser.class), zugriffe,
+                Mockito.mock(PriceRepository.class), peaks, Mockito.mock(com.voltpilot.api.uems.MessstelleRepository.class),
+                Mockito.mock(com.voltpilot.api.uems.KennzahlService.class),
+                Mockito.mock(com.voltpilot.api.uems.EnergiezielService.class));
         VersandRepository versand = new VersandRepository(app, adminJdbc);
         dienst.setAusgang(versand);
         return dienst;

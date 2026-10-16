@@ -4,6 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.ueberwachung.UeberwachungRepository.UeberwachungZeile;
+import com.voltpilot.api.uems.EnergiezielService;
+import com.voltpilot.api.uems.KennzahlAbgelehnt;
+import com.voltpilot.api.uems.KennzahlRepository;
+import com.voltpilot.api.uems.KennzahlService;
 import com.voltpilot.api.uems.RechteAbleitung;
 import com.voltpilot.api.uems.RechteAbleitung.Benutzer;
 import com.voltpilot.api.uems.RechteAbleitung.Kundenbereich;
@@ -11,13 +16,14 @@ import com.voltpilot.api.uems.RechteAbleitung.Person;
 import com.voltpilot.api.uems.RechteAbleitung.Rolle;
 import com.voltpilot.api.uems.RechteAbleitung.Standort;
 import com.voltpilot.api.uems.RechteAbleitung.Ziel;
-import com.voltpilot.api.ueberwachung.UeberwachungRepository.UeberwachungZeile;
+import com.voltpilot.api.uems.VerbesserungAbgelehnt;
 import com.voltpilot.api.web.dto.UeberwachungDto;
 import com.voltpilot.api.zugriff.RechtFehlt;
 import com.voltpilot.api.zugriff.RechteMatrixDatei;
 import com.voltpilot.api.zugriff.ZugriffRepository;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -53,12 +59,19 @@ public class UeberwachungAnlegenService {
     private final UeberwachungRepository repo;
     private final WerteKatalog katalog;
     private final ZugriffRepository zugriffe;
+    private final KennzahlRepository messstellenOrte;
+    private final KennzahlService kennzahlen;
+    private final EnergiezielService energieziele;
 
     public UeberwachungAnlegenService(UeberwachungRepository repo, WerteKatalog katalog,
-            ZugriffRepository zugriffe) {
+            ZugriffRepository zugriffe, KennzahlRepository messstellenOrte, KennzahlService kennzahlen,
+            EnergiezielService energieziele) {
         this.repo = repo;
         this.katalog = katalog;
         this.zugriffe = zugriffe;
+        this.messstellenOrte = messstellenOrte;
+        this.kennzahlen = kennzahlen;
+        this.energieziele = energieziele;
     }
 
     public UeberwachungDto anlegen(UeberwachungDto.Anlegen anfrage, Benutzer aufrufer, Instant jetzt) {
@@ -83,7 +96,6 @@ public class UeberwachungAnlegenService {
         }
 
         boolean auswahl = anfrage.bezug() != null && anfrage.bezug().alle() != null;
-        UUID anlageId = null; // nur für einen EINZELNEN Bezug gesetzt - eine Auswahl hat keine EINE Anlage
         UUID standortId;
         String bezugJson;
         if (auswahl) {
@@ -99,15 +111,7 @@ public class UeberwachungAnlegenService {
             bezugJson = auswahlBezugJson(anfrage.bezug());
         } else {
             WerteLeser.Bezug bezug = bezugAus(eintrag, anfrage.bezug());
-            anlageId = switch (bezug.art()) {
-                case "anlage" -> bezug.id();
-                case "komponente" -> repo.anlageDerKomponente(bezug.id());
-                default -> null;
-            };
-            if (anlageId == null) {
-                throw new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND);
-            }
-            standortId = repo.standortHeute(anlageId);
+            standortId = standortDesBezugs(bezug, jetzt);
             bezugJson = bezugJson(bezug);
         }
 
@@ -196,8 +200,61 @@ public class UeberwachungAnlegenService {
             }
             return WerteLeser.Bezug.komponente(uuid(b.komponente()), b.kanal());
         }
+        if ("messstelle".equals(eintrag.bezug()) && b.messstelle() != null) {
+            return WerteLeser.Bezug.messstelle(uuid(b.messstelle()));
+        }
+        if ("kennzahl".equals(eintrag.bezug()) && b.kennzahl() != null) {
+            return WerteLeser.Bezug.kennzahl(uuid(b.kennzahl()));
+        }
+        if ("energieziel".equals(eintrag.bezug()) && b.energieziel() != null) {
+            return WerteLeser.Bezug.energieziel(uuid(b.energieziel()));
+        }
         throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
                 "Bezug passt nicht zur Wertart '" + eintrag.wertart() + "'");
+    }
+
+    /**
+     * Der Standort EINES Bezugs (nicht einer Auswahl) für die Rechte-Prüfung (Entscheid 5A, §6.6):
+     * Anlage/Komponente wie bisher über ihre Anlage; Messstelle/Kennzahl/Energieziel (Scheibe 5)
+     * haben kein Anlage-Zwischenglied - ihr eigener, schon vorhandener Standort-Resolver gilt
+     * (derselbe wie {@code kennzahl.standort_definieren}/{@code kennzahl.unternehmen_definieren},
+     * §6.6 Entscheid 5A: eine Kennzahl ohne Standort ist Unternehmen-weit, kein 404).
+     */
+    private UUID standortDesBezugs(WerteLeser.Bezug bezug, Instant jetzt) {
+        return switch (bezug.art()) {
+            case "anlage" -> repo.standortHeute(bezug.id());
+            case "komponente" -> {
+                UUID anlageId = repo.anlageDerKomponente(bezug.id());
+                if (anlageId == null) {
+                    throw new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND);
+                }
+                yield repo.standortHeute(anlageId);
+            }
+            case "messstelle" -> messstellenOrte.standortVonMessstelle(bezug.id(), heute(jetzt)).orElse(null);
+            case "kennzahl" -> kennzahlStandortOderAbgelehnt(bezug.id());
+            case "energieziel" -> energielzielStandortOderAbgelehnt(bezug.id());
+            default -> throw new IllegalStateException("unbekannter Bezug " + bezug.art());
+        };
+    }
+
+    private UUID kennzahlStandortOderAbgelehnt(UUID id) {
+        try {
+            return kennzahlen.eine(id).standortId();
+        } catch (KennzahlAbgelehnt e) {
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.valueOf(e.status()), e.getMessage());
+        }
+    }
+
+    private UUID energielzielStandortOderAbgelehnt(UUID id) {
+        try {
+            return energieziele.eines(id).standortId();
+        } catch (VerbesserungAbgelehnt e) {
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.valueOf(e.status()), e.getMessage());
+        }
+    }
+
+    private static LocalDate heute(Instant jetzt) {
+        return jetzt.atZone(com.voltpilot.api.history.HistoryRange.ZONE).toLocalDate();
     }
 
     private static UUID uuid(String text) {
@@ -242,6 +299,9 @@ public class UeberwachungAnlegenService {
                 n.put("komponente", bezug.id().toString());
                 n.put("kanal", bezug.parameter());
             }
+            case "messstelle" -> n.put("messstelle", bezug.id().toString());
+            case "kennzahl" -> n.put("kennzahl", bezug.id().toString());
+            case "energieziel" -> n.put("energieziel", bezug.id().toString());
             default -> throw new IllegalStateException("unbekannter Bezug " + bezug.art());
         }
         return n.toString();

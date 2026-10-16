@@ -259,9 +259,13 @@ class UeberwachungSiteScopeIT {
         UeberwachungsService dienst = new UeberwachungsService(repo, katalog, zustandLeser,
                 org.mockito.Mockito.mock(EreignisWerteLeser.class), org.mockito.Mockito.mock(AnlagenflussWerteLeser.class),
                 org.mockito.Mockito.mock(MessreiheWerteLeser.class), org.mockito.Mockito.mock(MengeWerteLeser.class),
-                org.mockito.Mockito.mock(GeldWerteLeser.class), zugriffe,
+                org.mockito.Mockito.mock(GeldWerteLeser.class), org.mockito.Mockito.mock(KennzahlWerteLeser.class),
+                org.mockito.Mockito.mock(ZaehlungWerteLeser.class), zugriffe,
                 org.mockito.Mockito.mock(com.voltpilot.api.repo.PriceRepository.class),
-                org.mockito.Mockito.mock(com.voltpilot.api.repo.PeakShavingRepository.class));
+                org.mockito.Mockito.mock(com.voltpilot.api.repo.PeakShavingRepository.class),
+                org.mockito.Mockito.mock(com.voltpilot.api.uems.MessstelleRepository.class),
+                org.mockito.Mockito.mock(com.voltpilot.api.uems.KennzahlService.class),
+                org.mockito.Mockito.mock(com.voltpilot.api.uems.EnergiezielService.class));
         Einreihung einreihung = new Einreihung();
         dienst.setAusgang(einreihung);
 
@@ -361,8 +365,12 @@ class UeberwachungSiteScopeIT {
                     ereignisMock, anlagenflussMock,
                     new MessreiheWerteLeser(new com.voltpilot.api.topology.TopologyRepository(app), repo),
                     org.mockito.Mockito.mock(MengeWerteLeser.class), org.mockito.Mockito.mock(GeldWerteLeser.class),
+                    org.mockito.Mockito.mock(KennzahlWerteLeser.class), org.mockito.Mockito.mock(ZaehlungWerteLeser.class),
                     new ZugriffRepository(app), org.mockito.Mockito.mock(com.voltpilot.api.repo.PriceRepository.class),
-                    org.mockito.Mockito.mock(com.voltpilot.api.repo.PeakShavingRepository.class));
+                    org.mockito.Mockito.mock(com.voltpilot.api.repo.PeakShavingRepository.class),
+                    org.mockito.Mockito.mock(com.voltpilot.api.uems.MessstelleRepository.class),
+                    org.mockito.Mockito.mock(com.voltpilot.api.uems.KennzahlService.class),
+                    org.mockito.Mockito.mock(com.voltpilot.api.uems.EnergiezielService.class));
             Einreihung einreihung = new Einreihung();
             dienst.setAusgang(einreihung);
 
@@ -423,8 +431,12 @@ class UeberwachungSiteScopeIT {
                     ereignisMock, anlagenflussMock,
                     new MessreiheWerteLeser(new com.voltpilot.api.topology.TopologyRepository(app), repo),
                     org.mockito.Mockito.mock(MengeWerteLeser.class), org.mockito.Mockito.mock(GeldWerteLeser.class),
+                    org.mockito.Mockito.mock(KennzahlWerteLeser.class), org.mockito.Mockito.mock(ZaehlungWerteLeser.class),
                     new ZugriffRepository(app), org.mockito.Mockito.mock(com.voltpilot.api.repo.PriceRepository.class),
-                    org.mockito.Mockito.mock(com.voltpilot.api.repo.PeakShavingRepository.class));
+                    org.mockito.Mockito.mock(com.voltpilot.api.repo.PeakShavingRepository.class),
+                    org.mockito.Mockito.mock(com.voltpilot.api.uems.MessstelleRepository.class),
+                    org.mockito.Mockito.mock(com.voltpilot.api.uems.KennzahlService.class),
+                    org.mockito.Mockito.mock(com.voltpilot.api.uems.EnergiezielService.class));
             Einreihung einreihung = new Einreihung();
             dienst.setAusgang(einreihung);
 

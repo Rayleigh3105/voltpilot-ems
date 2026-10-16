@@ -106,8 +106,12 @@ class UeberwachungAnlegenServiceIT {
     }
 
     private static UeberwachungAnlegenService dienst() {
+        // Diese Fälle legen nur anlage-Bezüge an - Kennzahl/Energieziel (Scheibe 5) bleiben Mocks,
+        // ihr eigener Standort-Pfad hat eine eigene IT (siehe KennzahlZaehlungWerteLeserIT).
         return new UeberwachungAnlegenService(new UeberwachungRepository(app), new WerteKatalog(),
-                new ZugriffRepository(app));
+                new ZugriffRepository(app), new com.voltpilot.api.uems.KennzahlRepository(app),
+                org.mockito.Mockito.mock(com.voltpilot.api.uems.KennzahlService.class),
+                org.mockito.Mockito.mock(com.voltpilot.api.uems.EnergiezielService.class));
     }
 
     private static JsonNode json(String text) {

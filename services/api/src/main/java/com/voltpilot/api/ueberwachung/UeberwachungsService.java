@@ -4,11 +4,18 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.voltpilot.api.history.HistoryRange;
 import com.voltpilot.api.repo.PeakShavingRepository;
 import com.voltpilot.api.repo.PriceRepository;
-import com.voltpilot.api.uems.RechteAbleitung.Rolle;
 import com.voltpilot.api.ueberwachung.UeberwachungRepository.AlarmZeile;
 import com.voltpilot.api.ueberwachung.UeberwachungRepository.InstanzZeile;
 import com.voltpilot.api.ueberwachung.UeberwachungRepository.UeberwachungZeile;
+import com.voltpilot.api.uems.EnergiezielService;
+import com.voltpilot.api.uems.KennzahlAbgelehnt;
+import com.voltpilot.api.uems.KennzahlService;
+import com.voltpilot.api.uems.MessstelleRepository;
+import com.voltpilot.api.uems.RechteAbleitung.Rolle;
+import com.voltpilot.api.uems.VerbesserungAbgelehnt;
 import com.voltpilot.api.versand.BenachrichtigungAusgang;
+import com.voltpilot.api.web.dto.EnergiezielDto;
+import com.voltpilot.api.web.dto.KennzahlDto;
 import com.voltpilot.api.web.dto.PriceRangeSummaryDto;
 import com.voltpilot.api.zugriff.ZugriffRepository;
 import java.math.BigDecimal;
@@ -71,9 +78,14 @@ public class UeberwachungsService {
     private final MessreiheWerteLeser messreiheLeser;
     private final MengeWerteLeser mengeLeser;
     private final GeldWerteLeser geldLeser;
+    private final KennzahlWerteLeser kennzahlLeser;
+    private final ZaehlungWerteLeser zaehlungLeser;
     private final ZugriffRepository zugriffe;
     private final PriceRepository preise;
     private final PeakShavingRepository peakShaving;
+    private final MessstelleRepository messstellen;
+    private final KennzahlService kennzahlen;
+    private final EnergiezielService energieziele;
     private BenachrichtigungAusgang ausgang = BenachrichtigungAusgang.STUMM;
     /** Alerting Scheibe 6, Entscheid 11B: ohne Spring (reine Tests) bleibt es {@code null} - keine externen
      * Empfänger werden benachrichtigt. */
@@ -83,7 +95,9 @@ public class UeberwachungsService {
             ZustandWerteLeser zustandLeser, EreignisWerteLeser ereignisLeser,
             AnlagenflussWerteLeser anlagenflussLeser, MessreiheWerteLeser messreiheLeser,
             MengeWerteLeser mengeLeser, GeldWerteLeser geldLeser,
-            ZugriffRepository zugriffe, PriceRepository preise, PeakShavingRepository peakShaving) {
+            KennzahlWerteLeser kennzahlLeser, ZaehlungWerteLeser zaehlungLeser,
+            ZugriffRepository zugriffe, PriceRepository preise, PeakShavingRepository peakShaving,
+            MessstelleRepository messstellen, KennzahlService kennzahlen, EnergiezielService energieziele) {
         this.repo = repo;
         this.katalog = katalog;
         this.zustandLeser = zustandLeser;
@@ -92,9 +106,14 @@ public class UeberwachungsService {
         this.messreiheLeser = messreiheLeser;
         this.mengeLeser = mengeLeser;
         this.geldLeser = geldLeser;
+        this.kennzahlLeser = kennzahlLeser;
+        this.zaehlungLeser = zaehlungLeser;
         this.zugriffe = zugriffe;
         this.preise = preise;
         this.peakShaving = peakShaving;
+        this.messstellen = messstellen;
+        this.kennzahlen = kennzahlen;
+        this.energieziele = energieziele;
     }
 
     /** Die EINE Stelle, die {@code leser.art} auf ihre Implementierung abbildet (§6.3 Nr. 3). */
@@ -106,13 +125,18 @@ public class UeberwachungsService {
             case "messreihe" -> messreiheLeser;
             case "menge" -> mengeLeser;
             case "geld" -> geldLeser;
+            case "kennzahl" -> kennzahlLeser;
+            case "zaehlung" -> zaehlungLeser;
             default -> null;
         };
     }
 
-    /** Ob eine Leserart periodisch ist (§6.7: nie im Minutentakt) - entscheidet die Drossel in {@link #werte}. */
+    /** Ob eine Leserart periodisch ist (§6.7: nie im Minutentakt) - entscheidet die Drossel in {@link #werte}.
+     * Scheibe 5: {@code kennzahl} (eigene, seltener aktualisierte Läufe) und {@code zaehlung} (Messstellen-Werte,
+     * nur monatlich) sind ebenso periodisch. */
     private static boolean periodisch(String leserArt) {
-        return "menge".equals(leserArt) || "geld".equals(leserArt);
+        return "menge".equals(leserArt) || "geld".equals(leserArt) || "kennzahl".equals(leserArt)
+                || "zaehlung".equals(leserArt);
     }
 
     /** Nachgereicht wie {@code VersandRepository}: Scheibe-0-Ausgang, in Tests austauschbar. */
@@ -139,7 +163,7 @@ public class UeberwachungsService {
             boolean auswahl = regel.bezug().has("alle");
             for (WerteLeser.Bezug bezug : bezuegeAus(regel.bezug())) {
                 UUID anlageId = anlageFuerBezug(bezug);
-                if (anlageId == null) {
+                if (anlageId == null && brauchtAnlage(bezug.art())) {
                     continue; // Bezug zeigt auf nichts (mehr) Sichtbares - Instanz bleibt unverändert liegen
                 }
                 Ergebnis e = werte(regel, eintrag, leser, bezug, anlageId, auswahl, jetzt);
@@ -172,6 +196,21 @@ public class UeberwachungsService {
             UUID id = alsUuid(komponente.asText());
             return id == null ? List.of() : List.of(WerteLeser.Bezug.komponente(id, bezug.path("kanal").asText(null)));
         }
+        JsonNode messstelle = bezug.path("messstelle");
+        if (messstelle.isTextual()) {
+            UUID id = alsUuid(messstelle.asText());
+            return id == null ? List.of() : List.of(WerteLeser.Bezug.messstelle(id));
+        }
+        JsonNode kennzahl = bezug.path("kennzahl");
+        if (kennzahl.isTextual()) {
+            UUID id = alsUuid(kennzahl.asText());
+            return id == null ? List.of() : List.of(WerteLeser.Bezug.kennzahl(id));
+        }
+        JsonNode energieziel = bezug.path("energieziel");
+        if (energieziel.isTextual()) {
+            UUID id = alsUuid(energieziel.asText());
+            return id == null ? List.of() : List.of(WerteLeser.Bezug.energieziel(id));
+        }
         JsonNode alle = bezug.path("alle");
         if (alle.isTextual()) {
             return auswahlAnlagen(bezug, alle.asText()).stream().map(WerteLeser.Bezug::anlage).toList();
@@ -198,13 +237,21 @@ public class UeberwachungsService {
         }
     }
 
-    /** Die Anlage, an der ein Bezug tatsächlich hängt - für Standort, Name und die Lesung selbst. */
+    /** Die Anlage, an der ein Bezug tatsächlich hängt - für Standort, Name und die Lesung selbst.
+     * Scheibe 5: Messstelle/Kennzahl/Energieziel hängen an keiner Anlage - {@code null} ist hier
+     * normal, kein fehlender Bezug (siehe {@link #brauchtAnlage}). */
     private UUID anlageFuerBezug(WerteLeser.Bezug bezug) {
         return switch (bezug.art()) {
             case "anlage" -> bezug.id();
             case "komponente" -> repo.anlageDerKomponente(bezug.id());
             default -> null;
         };
+    }
+
+    /** Ob ein Bezug OHNE Anlage ein fehlendes Ziel ist (dann überspringt {@link #lauf} ihn) oder normal
+     * (Scheibe 5: Messstelle, Kennzahl, Energieziel haben nie eine Anlage). */
+    private static boolean brauchtAnlage(String bezugArt) {
+        return "anlage".equals(bezugArt) || "komponente".equals(bezugArt);
     }
 
     // --------------------------------------------------------------------- Aussaat (§7 Nr. 7, Entscheid 2A)
@@ -389,7 +436,7 @@ public class UeberwachungsService {
                     return Ergebnis.NICHTS;
                 }
                 if (jetzt.getEpochSecond() - instanz.seit().getEpochSecond() >= erholenS) {
-                    wiederNormal(regel, instanz.offenerAlarm(), anlageId, auswahl, jetzt, lesung);
+                    wiederNormal(regel, instanz.offenerAlarm(), bezug, anlageId, auswahl, jetzt, lesung);
                     repo.instanzSpeichern(regel.id(), bezug.kennung(), "normal", null, letzterWertJson,
                             lesung.messzeit(), null, jetzt);
                     return new Ergebnis(false, true);
@@ -430,18 +477,19 @@ public class UeberwachungsService {
 
     private UUID ausloesen(UeberwachungZeile regel, WerteLeser.Bezug bezug, UUID anlageId, boolean auswahl,
             Instant jetzt, WerteLeser.Lesung lesung) {
-        String anlageName = anlageNameOder(anlageId);
+        BezugAnzeige anzeige = anzeige(bezug, anlageId);
         String wertJson = wertJson(lesung);
         boolean probelauf = regel.imProbelauf(jetzt);
         // Abhängige Meldungen schweigen (§6.4 Nr. 7): meldet sich die Box/Datenquelle dieser Anlage
         // nicht, geht diese Meldung nicht einzeln hinaus, sondern steht unter deren Alarm - außer sie
-        // IST selbst die gatende Meldung (keine Selbst-Unterdrückung).
-        UUID unterdrueckDurch = GATENDE_WERTARTEN.contains(regel.wertart()) ? null
+        // IST selbst die gatende Meldung (keine Selbst-Unterdrückung). Ohne Anlage (Scheibe 5: Messstelle,
+        // Kennzahl, Energieziel) gibt es diese Abhängigkeit nicht.
+        UUID unterdrueckDurch = anlageId == null || GATENDE_WERTARTEN.contains(regel.wertart()) ? null
                 : repo.aktiverAlarmAufAnlage(anlageId, GATENDE_WERTARTEN).orElse(null);
         UUID alarmId = repo.alarmErzeugen(regel, bezug.kennung(), regel.standortId() != null
                 ? regel.standortId() : repo.standortHeute(anlageId), jetzt, wertJson, probelauf, unterdrueckDurch);
-        repo.alarmVerlauf(alarmId, "ausgeloest", null, satzname(regel) + " der Anlage " + anlageName
-                + (probelauf ? " (Probelauf - hätte gemeldet)" : ""), wertJson);
+        repo.alarmVerlauf(alarmId, "ausgeloest", null, satzname(regel) + " " + anzeige.praeposition() + " "
+                + anzeige.name() + (probelauf ? " (Probelauf - hätte gemeldet)" : ""), wertJson);
         if (unterdrueckDurch != null) {
             String kennzeichenEltern = repo.alarm(unterdrueckDurch).map(AlarmZeile::kennzeichen).orElse("?");
             repo.alarmVerlauf(alarmId, "versand", null,
@@ -453,17 +501,17 @@ public class UeberwachungsService {
         if (!probelauf && !"hinweis".equals(regel.schwere())) {
             versenden(regel, alarmId, "ausgeloest",
                     schwereWort(regel.schwere()) + ": " + regel.name(),
-                    satzname(regel) + " der Anlage " + anlageName + " meldet: " + wertText(lesung)
-                            + ". Kennzeichen " + repo.alarm(alarmId).map(AlarmZeile::kennzeichen).orElse("?")
-                            + ".", auswahl, jetzt);
+                    satzname(regel) + " " + anzeige.praeposition() + " " + anzeige.name() + " meldet: "
+                            + wertText(lesung) + ". Kennzeichen "
+                            + repo.alarm(alarmId).map(AlarmZeile::kennzeichen).orElse("?") + ".", auswahl, jetzt);
         }
         repo.alarmVerlauf(alarmId, "versand", null, probelauf ? "Probelauf - kein Versand" : "Versand eingereiht",
                 null);
         return alarmId;
     }
 
-    private void wiederNormal(UeberwachungZeile regel, UUID alarmId, UUID anlageId, boolean auswahl, Instant jetzt,
-            WerteLeser.Lesung lesung) {
+    private void wiederNormal(UeberwachungZeile regel, UUID alarmId, WerteLeser.Bezug bezug, UUID anlageId,
+            boolean auswahl, Instant jetzt, WerteLeser.Lesung lesung) {
         if (alarmId == null) {
             return;
         }
@@ -478,10 +526,11 @@ public class UeberwachungsService {
         boolean probelauf = zeile.map(AlarmZeile::probelauf).orElse(false);
         boolean unterdrueckt = zeile.map(AlarmZeile::unterdrueckDurch).isPresent();
         if (!probelauf && !unterdrueckt && !"hinweis".equals(regel.schwere())) {
-            String anlageName = anlageNameOder(anlageId);
+            BezugAnzeige anzeige = anzeige(bezug, anlageId);
             versenden(regel, alarmId, "wieder_normal",
                     "Wieder normal: " + regel.name(),
-                    satzname(regel) + " der Anlage " + anlageName + " ist seit " + jetzt + " wieder normal.",
+                    satzname(regel) + " " + anzeige.praeposition() + " " + anzeige.name() + " ist seit " + jetzt
+                            + " wieder normal.",
                     auswahl, jetzt);
         }
     }
@@ -489,6 +538,41 @@ public class UeberwachungsService {
     private String anlageNameOder(UUID anlageId) {
         String name = repo.anlageName(anlageId);
         return name != null ? name : anlageId.toString();
+    }
+
+    /** Wie eine Meldung einen Bezug benennt - "der Anlage X" (Scheibe 1-4) oder "der Messstelle X"/
+     * "der Kennzahl X"/"des Energieziels X" (Scheibe 5, §6.8 - derselbe Satzbau, nur das Wort wechselt). */
+    private record BezugAnzeige(String praeposition, String name) {}
+
+    private BezugAnzeige anzeige(WerteLeser.Bezug bezug, UUID anlageId) {
+        return switch (bezug.art()) {
+            case "messstelle" -> new BezugAnzeige("der Messstelle", messstelleNameOder(bezug.id()));
+            case "kennzahl" -> new BezugAnzeige("der Kennzahl", kennzahlNameOder(bezug.id()));
+            case "energieziel" -> new BezugAnzeige("des Energieziels", energiezielNameOder(bezug.id()));
+            default -> new BezugAnzeige("der Anlage", anlageNameOder(anlageId));
+        };
+    }
+
+    private String messstelleNameOder(UUID id) {
+        return messstellen.finde(id).map(MessstelleRepository.Messstelle::name).orElse(id.toString());
+    }
+
+    private String kennzahlNameOder(UUID id) {
+        try {
+            KennzahlDto.Kennzahl k = kennzahlen.eine(id);
+            return k.name() != null ? k.name() : k.kennzeichen();
+        } catch (KennzahlAbgelehnt e) {
+            return id.toString();
+        }
+    }
+
+    private String energiezielNameOder(UUID id) {
+        try {
+            EnergiezielDto.Energieziel z = energieziele.eines(id);
+            return z.wortlaut() != null ? z.wortlaut() : z.kennzeichen();
+        } catch (VerbesserungAbgelehnt e) {
+            return id.toString();
+        }
     }
 
     private static String satzname(UeberwachungZeile regel) {
