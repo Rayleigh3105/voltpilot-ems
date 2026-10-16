@@ -405,11 +405,18 @@ class BrokerVerbindungBrokerTest {
         }
     }
 
-    /** Sendet je Weg eine Marke (alle 0,5 s neu), bis jeder Weg sie verarbeitet hat. */
+    /**
+     * Sendet je Weg eine Marke (alle 0,5 s neu), bis jeder Weg sie verarbeitet hat - mit derselben
+     * letzten, frischen Prüfung an der Frist wie {@link #warten} (keine Last-Flake der 500-ms-Taktung).
+     */
     private static void markenBisAngekommen(Box box, Wege w, String marke) throws Exception {
         long bis = System.nanoTime() + Duration.ofSeconds(BrokerVerbindung.ZEITGRENZE_MS / 1000 + 30).toNanos();
         while (!ARTEN.stream().allMatch(a -> w.zaehler(a).hat(marke + "-" + a))) {
-            assertThat(System.nanoTime()).as("die Marke %s erreicht jeden Weg", marke).isLessThan(bis);
+            if (System.nanoTime() >= bis) {
+                assertThat(ARTEN.stream().allMatch(a -> w.zaehler(a).hat(marke + "-" + a)))
+                        .as("die Marke %s erreicht jeden Weg", marke).isTrue();
+                return;
+            }
             for (String art : ARTEN) senden(box, topic(DEVICE, art), marke + "-" + art, false);
             Thread.sleep(500);
         }
@@ -485,10 +492,19 @@ class BrokerVerbindungBrokerTest {
         return zeilen.stream().filter(z -> z.contains(text)).count();
     }
 
+    /**
+     * Pollt alle 200 ms, bis die Bedingung erfüllt ist oder die Frist verstreicht - mit einer letzten,
+     * frischen Prüfung GENAU an der Frist, bevor der Fehlschlag feststeht: ohne sie entschiede der
+     * Zufall der 200-ms-Taktung, ob eine Erfüllung Millisekunden vor der Frist noch gesehen wird oder
+     * knapp als Fristüberschreitung durchfällt - eine Last-Flake, keine echte Verzögerung.
+     */
     private static void warten(Duration hoechstens, Bedingung bedingung, String was) throws Exception {
         long bis = System.nanoTime() + hoechstens.toNanos();
         while (!bedingung.erfuellt()) {
-            assertThat(System.nanoTime()).as("binnen %s: %s", hoechstens, was).isLessThan(bis);
+            if (System.nanoTime() >= bis) {
+                assertThat(bedingung.erfuellt()).as("binnen %s: %s", hoechstens, was).isTrue();
+                return;
+            }
             Thread.sleep(200);
         }
     }

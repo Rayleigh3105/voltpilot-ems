@@ -371,6 +371,11 @@ class UemsBestandSteuerungAusEinemStueckTest {
 
     @Test @Order(1)
     void migrationenUndAlleLaeuferSchaltenNichtsUndBewahrenDenBestand() throws Exception {
+        // MeasurementConfigPublisher zaehlt hier 1 (seit #1508, "ein MQTT-Client je Rueckmeldeweg"): sein
+        // Broker-Client verbindet seitdem eigens am ContextRefreshedEvent (start(), wie der gemeinsame
+        // BrokerVerbindung-Zuschnitt es vorsieht), vorher verband der Konstruktor - fuer den Mock unsichtbar.
+        // Das VERBINDET nur; es schaltet kein Geraet und veroeffentlicht keinen Plan (anders als die echte
+        // Zertifizierungs-Veroeffentlichung von ControlCertificationPublisher, die hier ebenfalls mit 1 steht).
         if (CAPTURE) {
             same("startup publisher counts; main ApplicationReadyEvent (including control certification)", startup);
             return;

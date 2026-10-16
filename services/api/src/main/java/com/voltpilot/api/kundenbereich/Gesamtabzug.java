@@ -67,7 +67,11 @@ import org.springframework.transaction.support.TransactionTemplate;
 @Service
 public class Gesamtabzug {
 
-    /** Namen von Zugangsdaten ({@link #zugangsdaten}): heute trägt keine Tabelle eines Kundenbereichs eine solche Spalte. */
+    /**
+     * Namen von Zugangsdaten ({@link #zugangsdaten}): seit Alerting Scheibe 3 trifft das genau
+     * {@code zustellweg.bestaetigung_token}, das Bearer-Geheimnis des unauthentifizierten
+     * Bestätigungs-Endpunkts.
+     */
     static final Pattern ZUGANGSDATEN = Pattern.compile("(?i).*(passw|secret|token|credential|private|psk).*");
     /** Zeilen je Abruf des Cursors: so viel liegt höchstens gleichzeitig im Speicher. */
     static final int ZEILEN_JE_ABRUF = 1_000;

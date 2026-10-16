@@ -38,7 +38,8 @@ class LaeuferBeendetArchitekturTest {
             entry("StrukturAenderungLaeufer", List.of("StrukturAenderungLaeufer", "BezugsbasisAnstoss")),
             entry("ViertelstundeLaeufer", List.of("ViertelstundeVerdichter")),
             entry("WetterArchivLaeufer", List.of("WetterArchivAbruf")),
-            entry("RolloutWatcher", List.of("RolloutService")));
+            entry("RolloutWatcher", List.of("RolloutService")),
+            entry("ZustellLaeufer", List.of("VersandRepository")));
 
     /** Läufer ohne Sperre — mit dem Grund, warum sie auch für einen beendeten Kundenbereich laufen dürfen. */
     static final Map<String, String> OHNE_SPERRE = Map.ofEntries(

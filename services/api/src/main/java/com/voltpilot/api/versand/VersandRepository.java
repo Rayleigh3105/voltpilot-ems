@@ -1,5 +1,6 @@
 package com.voltpilot.api.versand;
 
+import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.tenant.TenantContext;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -9,6 +10,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -31,6 +33,14 @@ public class VersandRepository implements BenachrichtigungAusgang {
 
     private final JdbcTemplate jdbc;
     private final JdbcTemplate admin;
+
+    /** Beendete Kundenbereiche lässt {@link #faellig} aus (AP-20, E10 = A); ohne Spring gilt KEINE. */
+    private BeendeteKundenbereiche beendete = BeendeteKundenbereiche.KEINE;
+
+    @Autowired(required = false)
+    void setBeendeteKundenbereiche(BeendeteKundenbereiche beendete) {
+        this.beendete = beendete;
+    }
 
     public VersandRepository(JdbcTemplate jdbc, @Qualifier("adminJdbcTemplate") JdbcTemplate admin) {
         this.jdbc = jdbc;
@@ -96,11 +106,13 @@ public class VersandRepository implements BenachrichtigungAusgang {
         return admin.query("""
                 UPDATE benachrichtigung b SET naechster_versuch = ?
                 FROM (SELECT id FROM benachrichtigung WHERE zustand = 'wartet' AND naechster_versuch <= ?
+                      AND NOT (tenant_id = ANY (?::uuid[]))
                       ORDER BY erstellt_am LIMIT ? FOR UPDATE SKIP LOCKED) c
                 WHERE b.id = c.id
                 RETURNING b.id, b.tenant_id, b.quelle, b.quelle_id, b.empfaenger_sub, b.weg, b.anlass, b.nr,
                           b.ziel, b.betreff, b.inhalt, b.versuche, b.schwere, b.buendel_schluessel
-                """, VersandRepository::zeile, Timestamp.from(jetzt.plus(PACHT)), Timestamp.from(jetzt), limit);
+                """, VersandRepository::zeile, Timestamp.from(jetzt.plus(PACHT)), Timestamp.from(jetzt),
+                (Object) beendete.sqlFeld(), limit); // Kundenbereich beendet: bleibt liegen
     }
 
     public void gesendet(UUID id, Instant jetzt) {
