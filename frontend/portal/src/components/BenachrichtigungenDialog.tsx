@@ -5,7 +5,13 @@ import { Input } from '../../designsystem/components/forms/Input';
 import { Switch } from '../../designsystem/components/forms/Switch';
 import { VpPicker } from './VpPicker';
 import { VpTimePicker } from './VpTimePicker';
-import { benachrichtigungenApi, type EmailZustellweg, type PushAbo } from '../benachrichtigungenApi';
+import {
+  benachrichtigungenApi,
+  type EmailZustellweg,
+  type PushAbo,
+  type TelegramZiel,
+  type WebhookZiel,
+} from '../benachrichtigungenApi';
 import type { Schwere } from '../meldungenApi';
 import { geraeteVorschlag, istIosOhneInstallierteApp, pushEinschalten, pushUnterstuetzt } from '../push';
 import type { RuhezeitRegeln, RuhezeitTeilfenster } from '../ruhezeit';
@@ -48,6 +54,17 @@ export default function BenachrichtigungenDialog({ open, onClose }: { open: bool
   const [pushBusy, setPushBusy] = useState(false);
   const [pushFehler, setPushFehler] = useState<string | null>(null);
 
+  const [webhookZiele, setWebhookZiele] = useState<WebhookZiel[]>([]);
+  const [webhookUrl, setWebhookUrl] = useState('');
+  const [webhookName, setWebhookName] = useState('');
+  const [webhookBusy, setWebhookBusy] = useState(false);
+  const [webhookFehler, setWebhookFehler] = useState<string | null>(null);
+  const [neuesWebhookGeheimnis, setNeuesWebhookGeheimnis] = useState<string | null>(null);
+
+  const [telegramZiele, setTelegramZiele] = useState<TelegramZiel[]>([]);
+  const [telegramBusy, setTelegramBusy] = useState(false);
+  const [telegramFehler, setTelegramFehler] = useState<string | null>(null);
+
   const [regeln, setRegeln] = useState<RuhezeitRegeln>({});
   const [zeitzone, setZeitzone] = useState('Europe/Berlin');
   const [dringendDurch, setDringendDurch] = useState(true);
@@ -58,11 +75,19 @@ export default function BenachrichtigungenDialog({ open, onClose }: { open: bool
     let aktiv = true;
     setLaden(true);
     setFehler(null);
-    Promise.all([benachrichtigungenApi.emailZustand(), benachrichtigungenApi.pushAbos(), benachrichtigungenApi.ruhezeit()])
-      .then(([e, p, r]) => {
+    Promise.all([
+      benachrichtigungenApi.emailZustand(),
+      benachrichtigungenApi.pushAbos(),
+      benachrichtigungenApi.webhookZiele(),
+      benachrichtigungenApi.telegramZiele(),
+      benachrichtigungenApi.ruhezeit(),
+    ])
+      .then(([e, p, w, t, r]) => {
         if (!aktiv) return;
         setEmail(e ?? null);
         setPushAbos(p);
+        setWebhookZiele(w);
+        setTelegramZiele(t);
         setRegeln(JSON.parse(r.regeln) as RuhezeitRegeln);
         setZeitzone(r.zeitzone);
         setDringendDurch(r.dringendDurch);
@@ -117,6 +142,59 @@ export default function BenachrichtigungenDialog({ open, onClose }: { open: bool
   function pushAboEntfernen(id: string) {
     setPushAbos((liste) => liste.filter((a) => a.id !== id));
     void benachrichtigungenApi.pushEntfernen(id);
+  }
+
+  async function webhookZielAnlegen() {
+    if (!webhookUrl.trim()) return;
+    setWebhookBusy(true);
+    setWebhookFehler(null);
+    try {
+      const neu = await benachrichtigungenApi.webhookZielAnlegen(webhookUrl.trim(), webhookName.trim());
+      const ziele = await benachrichtigungenApi.webhookZiele();
+      setWebhookZiele(ziele);
+      setNeuesWebhookGeheimnis(neu.geheimnis);
+      setWebhookUrl('');
+      setWebhookName('');
+    } catch (e) {
+      setWebhookFehler(e instanceof Error ? e.message : 'Das hat nicht geklappt.');
+    } finally {
+      setWebhookBusy(false);
+    }
+  }
+
+  function webhookZielAendern(id: string, aktiv: boolean, abSchwere: Schwere) {
+    setWebhookZiele((liste) => liste.map((z) => (z.id === id ? { ...z, aktiv, abSchwere } : z)));
+    void benachrichtigungenApi.webhookZielEinstellungenSetzen(id, aktiv, abSchwere);
+  }
+
+  function webhookZielEntfernen(id: string) {
+    setWebhookZiele((liste) => liste.filter((z) => z.id !== id));
+    void benachrichtigungenApi.webhookZielEntfernen(id);
+  }
+
+  async function telegramVerbinden() {
+    setTelegramBusy(true);
+    setTelegramFehler(null);
+    try {
+      const link = await benachrichtigungenApi.telegramVerbinden();
+      window.open(link, '_blank', 'noopener,noreferrer');
+      const ziele = await benachrichtigungenApi.telegramZiele();
+      setTelegramZiele(ziele);
+    } catch (e) {
+      setTelegramFehler(e instanceof Error ? e.message : 'Das hat nicht geklappt.');
+    } finally {
+      setTelegramBusy(false);
+    }
+  }
+
+  function telegramZielAendern(id: string, aktiv: boolean, abSchwere: Schwere) {
+    setTelegramZiele((liste) => liste.map((z) => (z.id === id ? { ...z, aktiv, abSchwere } : z)));
+    void benachrichtigungenApi.telegramZielEinstellungenSetzen(id, aktiv, abSchwere);
+  }
+
+  function telegramZielEntfernen(id: string) {
+    setTelegramZiele((liste) => liste.filter((z) => z.id !== id));
+    void benachrichtigungenApi.telegramZielEntfernen(id);
   }
 
   function ruhezeitSpeichern(naechsteRegeln: RuhezeitRegeln, naechsteZeitzone: string, naechsterDringendDurch: boolean) {
@@ -211,6 +289,62 @@ export default function BenachrichtigungenDialog({ open, onClose }: { open: bool
                 <Switch checked={abo.aktiv} onChange={(e) => pushAboAendern(abo.id, e.target.checked, abo.abSchwere)} />
                 <Button type="button" size="sm" variant="ghost" onClick={() => pushAboEntfernen(abo.id)}>
                   Entfernen
+                </Button>
+              </div>
+            ))}
+          </section>
+
+          <section>
+            <h3>Webhook</h3>
+            <p className="vp-note">Für Microsoft Teams (Workflows) oder Slack (Incoming Webhook).</p>
+            {webhookZiele.map((ziel) => (
+              <div key={ziel.id} className="vp-benachrichtigungen-geraet">
+                <span>{ziel.name || ziel.url}</span>
+                <VpPicker
+                  id={`webhook-ab-schwere-${ziel.id}`}
+                  label="ab"
+                  value={ziel.abSchwere}
+                  onChange={(v) => webhookZielAendern(ziel.id, ziel.aktiv, (v ?? 'warnung') as Schwere)}
+                  options={SCHWERE_OPTIONEN}
+                />
+                <Switch checked={ziel.aktiv} onChange={(e) => webhookZielAendern(ziel.id, e.target.checked, ziel.abSchwere)} />
+                <Button type="button" size="sm" variant="ghost" onClick={() => webhookZielEntfernen(ziel.id)}>
+                  Entfernen
+                </Button>
+              </div>
+            ))}
+            {neuesWebhookGeheimnis && (
+              <p className="vp-note" role="status">
+                Geheimnis (nur jetzt sichtbar, zum Prüfen der Signatur): <code>{neuesWebhookGeheimnis}</code>
+              </p>
+            )}
+            <Input label="Webhook-URL" type="url" value={webhookUrl} onChange={(e) => setWebhookUrl(e.target.value)} placeholder="https://…" />
+            <Input label="Name (optional)" value={webhookName} onChange={(e) => setWebhookName(e.target.value)} placeholder="Teams-Kanal" />
+            <Button type="button" size="md" disabled={webhookBusy || !webhookUrl.trim()} onClick={() => void webhookZielAnlegen()}>
+              Hinzufügen
+            </Button>
+            {webhookFehler && <p className="vp-alert" role="alert">{webhookFehler}</p>}
+          </section>
+
+          <section>
+            <h3>Telegram</h3>
+            <Button type="button" size="md" disabled={telegramBusy} onClick={() => void telegramVerbinden()}>
+              Telegram verbinden
+            </Button>
+            {telegramFehler && <p className="vp-alert" role="alert">{telegramFehler}</p>}
+            {telegramZiele.map((ziel) => (
+              <div key={ziel.id} className="vp-benachrichtigungen-geraet">
+                <span>{ziel.bestaetigt ? 'Verbunden' : 'Noch nicht verbunden'}</span>
+                <VpPicker
+                  id={`telegram-ab-schwere-${ziel.id}`}
+                  label="ab"
+                  value={ziel.abSchwere}
+                  onChange={(v) => telegramZielAendern(ziel.id, ziel.aktiv, (v ?? 'warnung') as Schwere)}
+                  options={SCHWERE_OPTIONEN}
+                />
+                <Switch checked={ziel.aktiv} onChange={(e) => telegramZielAendern(ziel.id, e.target.checked, ziel.abSchwere)} />
+                <Button type="button" size="sm" variant="ghost" onClick={() => telegramZielEntfernen(ziel.id)}>
+                  Trennen
                 </Button>
               </div>
             ))}
