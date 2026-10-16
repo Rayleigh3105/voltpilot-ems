@@ -1769,7 +1769,7 @@ describe('UEMS AP-11 IP-13 · die Welt „Kennzahlen“ spricht Kennzahl · Bere
   it('„Kennzahl“ steht nur auf Kennzahl-Flächen und in der Navigation', () => {
     // Die Wörter-Quellen (Glossar, Vertrags-Zwilling) und die Navigation dürfen es; jede ANDERE Kundenfläche nicht.
     // `glossarEinstieg.ts` ist das Glossar des ersten Bilds (dieselben Wörter, von `glossar.ts` weitergereicht).
-    const erlaubt = new Set([...FLAECHEN, 'nav.ts', 'ebenenNav.ts', 'glossar.ts', 'glossarEinstieg.ts', 'uemsKennzahl.ts', 'werteKatalog.ts', 'test/kennzahlWerteFixtures.ts', 'test/kennzahlAendernFixtures.ts', 'test/korrekturFixtures.ts']);
+    const erlaubt = new Set([...FLAECHEN, 'nav.ts', 'ebenenNav.ts', 'glossar.ts', 'glossarEinstieg.ts', 'uemsKennzahl.ts', 'werteKatalog.ts', 'meldungen.ts', 'test/kennzahlWerteFixtures.ts', 'test/kennzahlAendernFixtures.ts', 'test/korrekturFixtures.ts']);
     const treffer = new Set<string>();
     for (const file of customerFiles()) {
       const rel = file.slice(SRC.length + 1).replace(/\\/g, '/');

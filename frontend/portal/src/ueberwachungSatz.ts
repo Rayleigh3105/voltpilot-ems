@@ -161,6 +161,10 @@ function zustandswort(zustand: string): string {
 }
 
 function zieleText(ziel: readonly string[]): string {
+  // Scheibe 5: die Zustands-Form startet ohne Auswahl (das Blatt sperrt "Überwachung starten",
+  // bis mindestens ein Zustand gewählt ist) - der Satz braucht trotzdem einen Platzhalter statt
+  // "oder undefined".
+  if (ziel.length === 0) return 'einem gewählten Zustand';
   const woerter = ziel.map(zustandswort);
   if (woerter.length === 1) return woerter[0];
   return `${woerter.slice(0, -1).join(', ')} oder ${woerter[woerter.length - 1]}`;

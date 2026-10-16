@@ -96,7 +96,7 @@ public class MeldungenController {
         }
         byte[] datei = com.voltpilot.api.ueberwachung.MeldungenCsv.datei(repo.verlaufJePeriode(vonZeit, bisZeit));
         return ResponseEntity.ok()
-                .header("Content-Disposition", "attachment; filename=\"meldungen-verlauf.csv\"")
+                .header(org.springframework.http.HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=meldungen-verlauf.csv")
                 .contentType(org.springframework.http.MediaType.parseMediaType("text/csv;charset=UTF-8"))
                 .body(datei);
     }
@@ -228,7 +228,7 @@ public class MeldungenController {
         String anlageName = anlageId == null ? null : repo.anlageName(UUID.fromString(anlageId));
         return new MeldungDto(a.id().toString(), a.kennzeichen(), a.wertart(), a.schwere(), anlageId, anlageName,
                 a.standortId() == null ? null : a.standortId().toString(), a.ausgeloestAm(), a.zustand(),
-                a.wiederNormalAm(), a.gesehenVon(), a.gesehenAm(), a.erledigtAm());
+                a.wiederNormalAm(), a.gesehenVon(), a.gesehenAm(), a.erledigtAm(), a.bezugKennung());
     }
 
     private static String anlageId(AlarmZeile a) {

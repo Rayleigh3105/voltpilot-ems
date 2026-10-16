@@ -1,15 +1,21 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
+import { ladeMeldungenVerlaufCsv } from '../api';
+import { VpPicker } from '../components/VpPicker';
 import {
   anlageAusHash,
+  istEigeneUeberwachung,
   meldungenApi,
+  meldungQuelleLink,
+  reiterAusHash,
   type Meldung,
   type UeberwachungsRegel,
   SCHWERE_WORT,
   sortiereJetzt,
   sortiereVerlauf,
   wertartSatzname,
+  WORT_EIGENE_UEBERWACHUNG,
   WORT_GESEHEN,
 } from '../meldungen';
 import { datumZeit } from '../rechteTexte';
@@ -26,17 +32,44 @@ type Reiter = 'jetzt' | 'verlauf' | 'regeln';
  */
 const HERKUNFT_WORT: Record<string, string> = { ab_werk: 'ab Werk', eigen: 'eigene Regel' };
 
+/** Die vier Zeiträume des CSV-Exports (Entscheid 14A) - eine Export-Bequemlichkeit, keine
+ * abrechnungsgenaue Angabe, darum feste UTC-Fenster statt der Standort-Zeitzone. */
+const CSV_PERIODEN = [
+  { value: 'monat', label: 'Dieser Monat' },
+  { value: 'letzter_monat', label: 'Letzter Monat' },
+  { value: 'jahr', label: 'Dieses Jahr' },
+  { value: 'letztes_jahr', label: 'Letztes Jahr' },
+];
+
+function csvZeitraum(periode: string, jetzt: Date): { von: string; bis: string } {
+  const jahr = jetzt.getUTCFullYear();
+  const monat = jetzt.getUTCMonth();
+  switch (periode) {
+    case 'letzter_monat':
+      return { von: new Date(Date.UTC(jahr, monat - 1, 1)).toISOString(), bis: new Date(Date.UTC(jahr, monat, 1)).toISOString() };
+    case 'jahr':
+      return { von: new Date(Date.UTC(jahr, 0, 1)).toISOString(), bis: new Date(Date.UTC(jahr + 1, 0, 1)).toISOString() };
+    case 'letztes_jahr':
+      return { von: new Date(Date.UTC(jahr - 1, 0, 1)).toISOString(), bis: new Date(Date.UTC(jahr, 0, 1)).toISOString() };
+    default:
+      return { von: new Date(Date.UTC(jahr, monat, 1)).toISOString(), bis: new Date(Date.UTC(jahr, monat + 1, 1)).toISOString() };
+  }
+}
+
 /**
  * Das Meldungs-Center (Alerting Scheibe 1, Konzept §6.8, Entscheid 4A): `#/meldungen` mit den
  * Reitern Jetzt · Verlauf · Überwachungen. Öffnet nur über die Glocke im Kopf oder einen Link
  * (`#/meldungen?anlage=<id>` aus der Zustands-Anzeige einer Anlage) - kein Eintrag in der Leiste.
  */
 export function MeldungenPage() {
-  const [reiter, setReiter] = useState<Reiter>('jetzt');
+  const [reiter, setReiter] = useState<Reiter>(() => reiterAusHash(window.location.hash) ?? 'jetzt');
   const [meldungen, setMeldungen] = useState<Meldung[] | null>(null);
   const [regeln, setRegeln] = useState<UeberwachungsRegel[] | null>(null);
   const [fehler, setFehler] = useState('');
   const [busy, setBusy] = useState<string | null>(null);
+  const [csvPeriode, setCsvPeriode] = useState('monat');
+  const [csvLaedt, setCsvLaedt] = useState(false);
+  const [csvFehler, setCsvFehler] = useState('');
   const anlageFilter = anlageAusHash(window.location.hash);
 
   useEffect(() => {
@@ -71,6 +104,22 @@ export function MeldungenPage() {
       setFehler('"Gesehen" konnte nicht gespeichert werden. Bitte versuchen Sie es erneut.');
     } finally {
       setBusy(null);
+    }
+  }
+
+  /** Entscheid 14A: der Verlauf je Periode als CSV - ein Nachweis für die eigene Dokumentation,
+   * kein Anspruch auf Normerfüllung (MX4). */
+  async function verlaufCsv() {
+    if (csvLaedt) return;
+    setCsvLaedt(true);
+    setCsvFehler('');
+    try {
+      const { von, bis } = csvZeitraum(csvPeriode, new Date());
+      await ladeMeldungenVerlaufCsv(von, bis);
+    } catch {
+      setCsvFehler('Die Datei konnte nicht geladen werden. Bitte versuchen Sie es erneut.');
+    } finally {
+      setCsvLaedt(false);
     }
   }
 
@@ -115,6 +164,21 @@ export function MeldungenPage() {
 
       {fehler && <p role="alert">{fehler}</p>}
 
+      {reiter === 'verlauf' && (
+        <div className="vp-meldungen-csv" data-testid="verlauf-csv">
+          <VpPicker
+            ariaLabel="Zeitraum des Exports"
+            options={CSV_PERIODEN}
+            value={csvPeriode}
+            onChange={setCsvPeriode}
+          />
+          <Button variant="outline" size="sm" disabled={csvLaedt} onClick={() => void verlaufCsv()}>
+            Verlauf als CSV
+          </Button>
+          {csvFehler && <p role="alert">{csvFehler}</p>}
+        </div>
+      )}
+
       {reiter === 'regeln' ? (
         <RegelListe
           regeln={regeln}
@@ -154,7 +218,9 @@ function MeldungListe({
   }
   return (
     <ul className="vp-meldungen-liste">
-      {meldungen.map((m) => (
+      {meldungen.map((m) => {
+        const quelle = meldungQuelleLink(m);
+        return (
         <li key={m.id} className={`vp-meldung schwere-${m.schwere}`}>
           <span className="vp-meldung-dot" aria-hidden="true" />
           <div className="vp-meldung-inhalt">
@@ -166,7 +232,22 @@ function MeldungListe({
               {wertartSatzname(m.wertart)}
               {m.anlageName ? ` der Anlage ${m.anlageName}` : ''}
             </p>
-            <p className="vp-meldung-kennzeichen">{m.kennzeichen}</p>
+            <p className="vp-meldung-kennzeichen">
+              {m.kennzeichen}
+              {istEigeneUeberwachung(m.wertart) && (
+                <span className="vp-wz-marke" data-testid="meldung-eigene-ueberwachung">
+                  {' '}· {WORT_EIGENE_UEBERWACHUNG}
+                </span>
+              )}
+              {quelle && (
+                <>
+                  {' '}·{' '}
+                  <a href={quelle.hash} data-testid="meldung-quelle-link">
+                    {quelle.label}
+                  </a>
+                </>
+              )}
+            </p>
             {m.gesehenVon && (
               <p className="vp-meldung-gesehen">
                 Gesehen von {m.gesehenVon}
@@ -185,7 +266,8 @@ function MeldungListe({
             </Button>
           )}
         </li>
-      ))}
+        );
+      })}
     </ul>
   );
 }

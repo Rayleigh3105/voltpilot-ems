@@ -231,6 +231,13 @@ export function VerzeichnisMonate({
         ))
       )}
       <GrenzSatz className="vp-ez-grenze" verantwortung />
+      <p className="vp-nw-leise">
+        Meldungen aus der Überwachung stehen im Meldungs-Center -{' '}
+        <a className="vp-nw-link" href="#/meldungen?reiter=verlauf" data-testid="verzeichnis-ueberwachung-link">
+          Verlauf der Überwachung ansehen
+        </a>
+        , dort auch als CSV je Zeitraum.
+      </p>
       {eintrag && (
         <NwBlatt
           open={eintragOffen}
