@@ -40,6 +40,9 @@ import org.springframework.web.server.ResponseStatusException;
 public class UeberwachungAnlegenService {
 
     private static final List<String> SCHWEREN = List.of("hinweis", "warnung", "dringend");
+    /** "ab_werk"/"vorschlag" bleiben serverseitige Vorgaben - nie über diese Route setzbar (Alerting
+     * Scheibe 6, Entscheid 10A: "steuerung" ist der einzige WEITERE Wert, den der Client wählen darf). */
+    private static final List<String> CLIENT_HERKUNFT = List.of("eigen", "steuerung");
     private static final long VORGABE_DAUER_S = 300;
     private static final long VORGABE_ERHOLEN_S = 300;
     private static final double VORGABE_RUECKKEHR_PROZENT = 0.05;
@@ -72,6 +75,11 @@ public class UeberwachungAnlegenService {
         if (!SCHWEREN.contains(anfrage.schwere())) {
             throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
                     "unbekannte Schwere '" + anfrage.schwere() + "'");
+        }
+        String herkunft = anfrage.herkunft() == null || anfrage.herkunft().isBlank() ? "eigen" : anfrage.herkunft();
+        if (!CLIENT_HERKUNFT.contains(herkunft)) {
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "unbekannte Herkunft '" + herkunft + "'");
         }
 
         boolean auswahl = anfrage.bezug() != null && anfrage.bezug().alle() != null;
@@ -124,9 +132,9 @@ public class UeberwachungAnlegenService {
         ObjectNode bedingung = vorgabenAnwenden((ObjectNode) anfrage.bedingung());
         String empfaengerJson = empfaengerJson(empfaenger);
         Instant probelaufBis = jetzt.plus(Duration.ofDays(PROBELAUF_TAGE));
-        UUID id = repo.erstelleEigen(standortId, anfrage.name(), anfrage.wertart(), bezugJson,
-                bedingung.toString(), anfrage.schwere(), empfaengerJson, aufrufer.kennung(), probelaufBis);
-        return new UeberwachungDto(id.toString(), anfrage.name(), anfrage.wertart(), anfrage.schwere(), "eigen",
+        UUID id = repo.erstelleSelbstAngelegt(standortId, anfrage.name(), anfrage.wertart(), bezugJson,
+                bedingung.toString(), anfrage.schwere(), empfaengerJson, herkunft, aufrufer.kennung(), probelaufBis);
+        return new UeberwachungDto(id.toString(), anfrage.name(), anfrage.wertart(), anfrage.schwere(), herkunft,
                 true, probelaufBis, bezugJson);
     }
 
