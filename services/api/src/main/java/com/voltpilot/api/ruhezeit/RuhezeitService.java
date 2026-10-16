@@ -45,7 +45,7 @@ public class RuhezeitService {
      */
     public void setzen(String benutzerSub, String regelnJson, String zeitzone, boolean dringendDurch) {
         JsonNode regeln = validiereRegeln(regelnJson);
-        if (!ZEITZONEN.contains(zeitzone)) {
+        if (zeitzone == null || !ZEITZONEN.contains(zeitzone)) {
             throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
                     "unbekannte Zeitzone '" + zeitzone + "'");
         }
@@ -55,8 +55,11 @@ public class RuhezeitService {
     /** Nur zur Validierung UND für eine Live-Vorschau im Blatt ("Ruhezeit ist jetzt aktiv bis …"). */
     public Optional<Instant> probeAktivBis(String regelnJson, String zeitzone, Instant jetzt) {
         JsonNode regeln = validiereRegeln(regelnJson);
-        ZoneId zone = ZEITZONEN.contains(zeitzone) ? ZoneId.of(zeitzone) : ZoneId.of("Europe/Berlin");
-        return RuhezeitFenster.endeFallsAktiv(regeln, zone, jetzt);
+        if (zeitzone == null || !ZEITZONEN.contains(zeitzone)) {
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "unbekannte Zeitzone '" + zeitzone + "'");
+        }
+        return RuhezeitFenster.endeFallsAktiv(regeln, ZoneId.of(zeitzone), jetzt);
     }
 
     private static JsonNode validiereRegeln(String regelnJson) {

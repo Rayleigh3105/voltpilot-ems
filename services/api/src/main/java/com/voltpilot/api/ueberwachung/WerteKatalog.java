@@ -104,9 +104,9 @@ public class WerteKatalog {
         return List.copyOf(out);
     }
 
-    /** Der Eintrag einer Wertart, oder {@code null}, wenn der Katalog sie nicht kennt. */
+    /** Der Eintrag einer Wertart, oder {@code null}, wenn der Katalog sie nicht kennt oder sie fehlt. */
     public Eintrag eintrag(String wertart) {
-        return eintraege.get(wertart);
+        return wertart == null ? null : eintraege.get(wertart);
     }
 
     /** Alle Einträge, in der Reihenfolge des Katalogs. */

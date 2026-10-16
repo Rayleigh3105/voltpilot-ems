@@ -41,9 +41,11 @@ class RolleEinsichtBestandTest {
      * SHA-256 der Zeilen {@code kennung;KA;EM;BE;BD;LE;US;VB\n} aller Aktionen in der Folge der Datei, gemessen an
      * {@code origin/uems} vor IP-12, mit den drei {@code energiemanagement.*} von IP-5 (81 Aktionen, 25.09.2026) und
      * der Zeile {@code verbesserung.eigene_massnahme;U;U;S;S;S;-;-} aus Verbessern v1 §10.8 (82 Aktionen, 06.10.2026;
-     * alle 81 Zeilen davor unverändert).
+     * alle 81 Zeilen davor unverändert) sowie den zwei Zeilen {@code ueberwachung.eigene} und
+     * {@code ueberwachung.verwalten} aus Alerting Scheibe 1 (84 Aktionen, 15.10.2026; alle 82 Zeilen davor
+     * unverändert).
      */
-    private static final String BESTAND_SHA256 = "b211bc0dc08c8fd8443e33948e6e8a95516b55f941cfb866bcf90221baf823b8";
+    private static final String BESTAND_SHA256 = "01a1c5675c86a1b0743b006954f1bf30be11b5dc1e079e45acb17c276346774e";
 
     /** R6 „lesen“ — die Zeilen, an denen Einsicht U trägt (energiemanagement.ansehen seit IP-5). */
     private static final Set<String> LESEND = Set.of("aenderungsprotokoll.lesen", "messwerte.ansehen",
@@ -71,16 +73,19 @@ class RolleEinsichtBestandTest {
             String kennung = a.path("kennung").asText();
             String zelle = a.path("zellen").path("einsicht").asText();
             boolean eigenesKonto = BESTAND.stream().allMatch(r -> "E".equals(a.path("zellen").path(r).asText()));
+            // ueberwachung.eigene trägt an Einsicht bewusst ein U (Alerting v1 §6.6, Entscheid 5A, seit
+            // Alerting Scheibe 1): wer einen Wert sehen darf, darf sich selbst dazu benachrichtigen lassen -
+            // derselbe Nachzug wie an RechtMatrixApiTest#einsichtKommtAnKeinerSchreibrouteDurch.
             if (eigenesKonto) {
                 assertThat(zelle).as(kennung).isEqualTo("E");
-            } else if (LESEND.contains(kennung)) {
+            } else if (LESEND.contains(kennung) || "ueberwachung.eigene".equals(kennung)) {
                 assertThat(zelle).as(kennung).isEqualTo("U");
                 u.add(kennung);
             } else {
                 assertThat(zelle).as(kennung).isEqualTo("-");
             }
         }
-        assertThat(u).as("die zwölf lesenden Zeilen der R6-Liste").hasSize(12)
+        assertThat(u).as("die zwölf lesenden Zeilen der R6-Liste und ueberwachung.eigene").hasSize(13)
                 .doesNotContain("export.standort", "export.unternehmen", "zugriffsprotokoll.lesen",
                         "bericht.unternehmen", "bewertung.abrufen");
     }

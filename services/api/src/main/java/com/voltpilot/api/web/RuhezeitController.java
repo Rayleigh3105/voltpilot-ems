@@ -2,16 +2,16 @@ package com.voltpilot.api.web;
 
 import com.voltpilot.api.ruhezeit.RuhezeitRepository;
 import com.voltpilot.api.ruhezeit.RuhezeitService;
-import com.voltpilot.api.zugriff.RechtPruefung;
 import java.time.Instant;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 /**
  * "Ruhezeit" in der Einstellungsfläche "So erreichen wir Sie" (Alerting Scheibe 3, Konzept §6.4,
@@ -44,14 +44,14 @@ public class RuhezeitController {
     }
 
     @GetMapping
-    public Zustand eigene() {
-        String sub = eigenerSub();
+    public Zustand eigene(Authentication auth) {
+        String sub = sub(auth);
         return ruhezeit.eigene(sub).map(Zustand::aus).orElseGet(Zustand::vorgabe);
     }
 
     @PutMapping
-    public ResponseEntity<Void> setzen(@RequestBody Anfrage anfrage) {
-        ruhezeit.setzen(eigenerSub(), anfrage.regeln(), anfrage.zeitzone(), anfrage.dringendDurch());
+    public ResponseEntity<Void> setzen(@RequestBody Anfrage anfrage, Authentication auth) {
+        ruhezeit.setzen(sub(auth), anfrage.regeln(), anfrage.zeitzone(), anfrage.dringendDurch());
         return ResponseEntity.noContent().build();
     }
 
@@ -62,8 +62,7 @@ public class RuhezeitController {
                 .orElse(null));
     }
 
-    private static String eigenerSub() {
-        return RechtPruefung.aufrufer().map(b -> b.kennung())
-                .orElseThrow(() -> new ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN));
+    private static String sub(Authentication auth) {
+        return auth != null && auth.getPrincipal() instanceof Jwt jwt ? jwt.getSubject() : auth.getName();
     }
 }
