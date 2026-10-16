@@ -11,18 +11,18 @@ import org.springframework.mail.javamail.JavaMailSender;
  *
  * <p>Nur Text (§6.6 "Kurze Texte nach außen") - kein HTML, kein Tracking-Pixel.
  */
-class EmailVersandAdapter {
+public class EmailVersandAdapter {
 
     private final JavaMailSender mailSender;
     private final String absender;
 
-    EmailVersandAdapter(JavaMailSender mailSender, String absender) {
+    public EmailVersandAdapter(JavaMailSender mailSender, String absender) {
         this.mailSender = mailSender;
         this.absender = absender;
     }
 
     /** @throws MailException wenn der SMTP-Versand fehlschlägt - der Aufrufer trägt das als Fehlschlag ein. */
-    void senden(String ziel, String betreff, String inhalt) {
+    public void senden(String ziel, String betreff, String inhalt) {
         SimpleMailMessage nachricht = new SimpleMailMessage();
         nachricht.setFrom(absender);
         nachricht.setTo(ziel);
