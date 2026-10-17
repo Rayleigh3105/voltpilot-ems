@@ -38,16 +38,19 @@ public class ZustellwegService {
     private final TelegramAdapter telegram;
     private final String basisUrl;
     private final String telegramBotUsername;
+    private final String telegramBotToken;
     private volatile Clock uhr = Clock.systemUTC();
 
     public ZustellwegService(ZustellwegRepository zustellwege, VersandRepository ausgang, TelegramAdapter telegram,
             @Value("${voltpilot.versand.bestaetigung-basis-url:http://localhost:5173}") String basisUrl,
-            @Value("${voltpilot.telegram.bot-username:}") String telegramBotUsername) {
+            @Value("${voltpilot.telegram.bot-username:}") String telegramBotUsername,
+            @Value("${voltpilot.telegram.bot-token:}") String telegramBotToken) {
         this.zustellwege = zustellwege;
         this.ausgang = ausgang;
         this.telegram = telegram;
         this.basisUrl = basisUrl;
         this.telegramBotUsername = telegramBotUsername;
+        this.telegramBotToken = telegramBotToken;
     }
 
     /** Nur für Tests: die Uhr, nach der der Token abläuft. */
@@ -151,10 +154,23 @@ public class ZustellwegService {
         return zustellwege.telegramZieleEigene(benutzerSub);
     }
 
+    /**
+     * {@code true}, wenn diese Installation einen Telegram-Bot eingerichtet hat (Bot-Username UND
+     * -Token aus der Umgebung) - erst dann lässt sich ein funktionierender {@code t.me}-Start-Link
+     * bauen. Das Portal fragt dies ab, statt aus einem leeren Link zu raten.
+     */
+    public boolean telegramVerfuegbar() {
+        return !telegramBotUsername.isBlank() && !telegramBotToken.isBlank();
+    }
+
     /** "Telegram verbinden" (§7 Scheibe 6 Punkt 2): der Link öffnet den Bot mit dem Token als Startparameter. */
     public record TelegramVerbindungsLink(String link) {}
 
     public TelegramVerbindungsLink telegramVerbindungAnfordern(String benutzerSub) {
+        if (!telegramVerfuegbar()) {
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,
+                    "Telegram ist auf dieser Installation nicht eingerichtet.");
+        }
         String token = BestaetigungsToken.erzeugen();
         zustellwege.telegramVerbindungAnfordern(benutzerSub, token, uhr.instant().plus(TELEGRAM_TOKEN_GUELTIGKEIT));
         return new TelegramVerbindungsLink("https://t.me/" + telegramBotUsername + "?start=" + token);

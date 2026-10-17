@@ -121,6 +121,13 @@ public class SecurityConfig {
                 // keinen bestätigten Zustellweg; der einmalige, ablaufende Token
                 // selbst ist der Nachweis (ZustellwegController).
                 .requestMatchers(HttpMethod.GET, "/api/v1/zustellwege/bestaetigen").permitAll()
+                // Alerting Scheibe 6: Telegram selbst ruft den Update-Webhook auf,
+                // ohne jedes Benutzer-Token - die Absicherung ist Telegrams eigener
+                // secret_token-Header, den TelegramWebhookController zeitkonstant
+                // gegen das aus der Umgebung gelesene Geheimnis prüft (403 bei
+                // Fehlen/Abweichung). Ohne diese Freigabe bekäme Telegrams Server
+                // 401 und könnte die Box nie verbinden.
+                .requestMatchers(HttpMethod.POST, "/api/v1/zustellwege/telegram/webhook").permitAll()
                 // Gürtel UND Hosenträger für den Admin-Baum: die eigentliche
                 // Autorisierung ist weiterhin @PreAuthorize je Controller, aber
                 // seit es eine ZWEITE, eng geschnittene Admin-Rolle gibt

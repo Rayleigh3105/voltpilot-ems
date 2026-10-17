@@ -201,9 +201,18 @@ public class ZustellwegController {
 
     public record TelegramVerbindungsLinkDto(String link) {}
 
+    /**
+     * {@code verfuegbar}: ob diese Installation einen Telegram-Bot eingerichtet hat - das Portal
+     * fragt dies ab, statt selbst zu raten und aus einem leeren Bot-Username einen kaputten
+     * {@code t.me}-Link zu bauen (Go-Live-Prüfung).
+     */
+    public record TelegramStatusDto(boolean verfuegbar, List<TelegramZielDto> ziele) {}
+
     @GetMapping("/telegram")
-    public List<TelegramZielDto> telegramZiele(Authentication auth) {
-        return zustellwege.telegramZieleEigene(sub(auth)).stream().map(TelegramZielDto::aus).toList();
+    public TelegramStatusDto telegramStatus(Authentication auth) {
+        List<TelegramZielDto> ziele = zustellwege.telegramZieleEigene(sub(auth)).stream()
+                .map(TelegramZielDto::aus).toList();
+        return new TelegramStatusDto(zustellwege.telegramVerfuegbar(), ziele);
     }
 
     /** "Telegram verbinden": erzeugt den Start-Link, den die Person in Telegram öffnet. */

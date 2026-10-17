@@ -45,7 +45,10 @@ async function mocken(page: Page) {
   await page.route('**/api/v1/zustellwege/telegram', (route) => {
     if (route.request().method() !== 'GET') return route.fallback();
     return route.fulfill({
-      json: [{ id: 't1', bestaetigt: true, aktiv: true, abSchwere: 'warnung', erstelltAm: '2026-10-01T10:00:00Z' }],
+      json: {
+        verfuegbar: true,
+        ziele: [{ id: 't1', bestaetigt: true, aktiv: true, abSchwere: 'warnung', erstelltAm: '2026-10-01T10:00:00Z' }],
+      },
     });
   });
   await page.route('**/api/v1/zustellwege/telegram/t1', (route) => route.fallback());
@@ -61,13 +64,17 @@ async function mocken(page: Page) {
   });
 }
 
-async function oeffne(page: Page, breite: number) {
+async function oeffne(page: Page, breite: number, zusatzMocken?: (page: Page) => Promise<void>) {
   const fehler: string[] = [];
   page.on('console', (msg) => {
     if (msg.type() === 'error') fehler.push(msg.text());
   });
   page.on('pageerror', (e) => fehler.push(String(e)));
   await mocken(page);
+  // Registriert NACH `mocken()` - Playwright ruft den zuletzt registrierten Treffer zuerst auf,
+  // so kann eine einzelne Route dessen Grundantwort (hier den Telegram-Status) überdecken, bevor
+  // die Fläche beim Öffnen des Dialogs den ersten Abruf macht.
+  if (zusatzMocken) await zusatzMocken(page);
   await page.setViewportSize({ width: breite, height: breite < 720 ? 844 : 900 });
   await page.goto('/e2e/startansicht.html?bild=unternehmen&ansicht=messstellen');
   await expect(page.locator('.vp-topbar').first()).toBeVisible();
@@ -188,6 +195,24 @@ test('"Telegram verbinden" öffnet den Start-Link in einem neuen Tab', async ({ 
   ]);
   await expect.poll(() => neuerTab.url()).toBe('https://t.me/VoltPilotBot?start=ein-token');
 });
+
+for (const breite of [390, 1440] as const) {
+  test(`ohne eingerichteten Bot bietet die Fläche "Telegram verbinden" nicht an bei ${breite}px`, async ({ page }) => {
+    const fehler = await oeffne(page, breite, (p) =>
+      p.route('**/api/v1/zustellwege/telegram', (route) => {
+        if (route.request().method() !== 'GET') return route.fallback();
+        return route.fulfill({ json: { verfuegbar: false, ziele: [] } });
+      }),
+    );
+    const dialog = page.getByRole('dialog', { name: 'Meine Benachrichtigungen' });
+
+    await expect(dialog.getByRole('button', { name: 'Telegram verbinden' })).toHaveCount(0);
+    await expect(dialog.getByText('Telegram ist auf dieser Installation nicht eingerichtet.')).toBeVisible();
+
+    expect(await querlauf(page)).toBe(0);
+    expect(fehler).toEqual([]);
+  });
+}
 
 test('eine Telegram-Verbindung lässt sich trennen', async ({ page }) => {
   let getrennt = false;

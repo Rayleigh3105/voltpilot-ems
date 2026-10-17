@@ -2,6 +2,8 @@ package com.voltpilot.api.web;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.voltpilot.api.versand.ZustellwegService;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -42,7 +44,7 @@ public class TelegramWebhookController {
     @PostMapping("/webhook")
     public ResponseEntity<Void> webhook(@RequestBody JsonNode update,
             @RequestHeader(value = "X-Telegram-Bot-Api-Secret-Token", required = false) String secretHeader) {
-        if (!webhookSecret.isBlank() && !webhookSecret.equals(secretHeader)) {
+        if (!webhookSecret.isBlank() && !zeitkonstantGleich(webhookSecret, secretHeader)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).build();
         }
         String text = update.path("message").path("text").asText("");
@@ -54,5 +56,18 @@ public class TelegramWebhookController {
             }
         }
         return ResponseEntity.ok().build();
+    }
+
+    /**
+     * Zeitkonstanter Vergleich gegen den konfigurierten secret_token: ein naiver
+     * {@code String.equals} gäbe über die Antwortzeit ein Zeichen pro Rateversuch
+     * preis. {@code secretHeader} darf fehlen (403, kein NPE).
+     */
+    private static boolean zeitkonstantGleich(String erwartet, String secretHeader) {
+        if (secretHeader == null) {
+            return false;
+        }
+        return MessageDigest.isEqual(erwartet.getBytes(StandardCharsets.UTF_8),
+                secretHeader.getBytes(StandardCharsets.UTF_8));
     }
 }

@@ -51,6 +51,15 @@ export interface TelegramZiel {
   erstelltAm: string | null;
 }
 
+/**
+ * `verfuegbar`: ob diese Installation einen Telegram-Bot eingerichtet hat - nur dann baut die api
+ * einen funktionierenden `t.me`-Link; das Portal rät das nicht selbst (Go-Live-Prüfung).
+ */
+export interface TelegramStatus {
+  verfuegbar: boolean;
+  ziele: TelegramZiel[];
+}
+
 /** Die eigene Ruhezeit (§6.4) - `regeln` ist das rohe JSON-Fenster (siehe `ruhezeit.ts`). */
 export interface RuhezeitZustand {
   regeln: string;
@@ -108,7 +117,7 @@ export const benachrichtigungenApi = {
     request<void>(`/api/v1/zustellwege/webhook/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 
   // ----------------------------------------------------------------- Telegram (Scheibe 6, §7 Scheibe 6)
-  telegramZiele: () => request<TelegramZiel[]>('/api/v1/zustellwege/telegram'),
+  telegramStatus: () => request<TelegramStatus>('/api/v1/zustellwege/telegram'),
   telegramVerbinden: () =>
     request<{ link: string }>('/api/v1/zustellwege/telegram/verbinden', { method: 'POST' }).then((r) => r.link),
   telegramZielEinstellungenSetzen: (id: string, aktiv: boolean, abSchwere: Schwere) =>
