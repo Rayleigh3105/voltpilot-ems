@@ -62,6 +62,7 @@ export default function BenachrichtigungenDialog({ open, onClose }: { open: bool
   const [neuesWebhookGeheimnis, setNeuesWebhookGeheimnis] = useState<string | null>(null);
 
   const [telegramZiele, setTelegramZiele] = useState<TelegramZiel[]>([]);
+  const [telegramVerfuegbar, setTelegramVerfuegbar] = useState(false);
   const [telegramBusy, setTelegramBusy] = useState(false);
   const [telegramFehler, setTelegramFehler] = useState<string | null>(null);
 
@@ -79,7 +80,7 @@ export default function BenachrichtigungenDialog({ open, onClose }: { open: bool
       benachrichtigungenApi.emailZustand(),
       benachrichtigungenApi.pushAbos(),
       benachrichtigungenApi.webhookZiele(),
-      benachrichtigungenApi.telegramZiele(),
+      benachrichtigungenApi.telegramStatus(),
       benachrichtigungenApi.ruhezeit(),
     ])
       .then(([e, p, w, t, r]) => {
@@ -87,7 +88,8 @@ export default function BenachrichtigungenDialog({ open, onClose }: { open: bool
         setEmail(e ?? null);
         setPushAbos(p);
         setWebhookZiele(w);
-        setTelegramZiele(t);
+        setTelegramZiele(t.ziele);
+        setTelegramVerfuegbar(t.verfuegbar);
         setRegeln(JSON.parse(r.regeln) as RuhezeitRegeln);
         setZeitzone(r.zeitzone);
         setDringendDurch(r.dringendDurch);
@@ -178,8 +180,9 @@ export default function BenachrichtigungenDialog({ open, onClose }: { open: bool
     try {
       const link = await benachrichtigungenApi.telegramVerbinden();
       window.open(link, '_blank', 'noopener,noreferrer');
-      const ziele = await benachrichtigungenApi.telegramZiele();
-      setTelegramZiele(ziele);
+      const status = await benachrichtigungenApi.telegramStatus();
+      setTelegramZiele(status.ziele);
+      setTelegramVerfuegbar(status.verfuegbar);
     } catch (e) {
       setTelegramFehler(e instanceof Error ? e.message : 'Das hat nicht geklappt.');
     } finally {
@@ -328,9 +331,13 @@ export default function BenachrichtigungenDialog({ open, onClose }: { open: bool
 
           <section>
             <h3>Telegram</h3>
-            <Button type="button" size="md" disabled={telegramBusy} onClick={() => void telegramVerbinden()}>
-              Telegram verbinden
-            </Button>
+            {telegramVerfuegbar ? (
+              <Button type="button" size="md" disabled={telegramBusy} onClick={() => void telegramVerbinden()}>
+                Telegram verbinden
+              </Button>
+            ) : (
+              <p className="vp-note">Telegram ist auf dieser Installation nicht eingerichtet.</p>
+            )}
             {telegramFehler && <p className="vp-alert" role="alert">{telegramFehler}</p>}
             {telegramZiele.map((ziel) => (
               <div key={ziel.id} className="vp-benachrichtigungen-geraet">

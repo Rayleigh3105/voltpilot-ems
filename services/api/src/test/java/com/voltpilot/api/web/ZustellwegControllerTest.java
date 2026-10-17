@@ -6,8 +6,10 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.voltpilot.api.versand.ZustellwegRepository;
@@ -144,5 +146,26 @@ class ZustellwegControllerTest {
                 .andExpect(status().isBadRequest());
 
         verifyNoInteractions(zustellwege);
+    }
+
+    @Test
+    void derStatusMeldetVerfuegbarWennEinBotEingerichtetIst() throws Exception {
+        when(zustellwege.telegramVerfuegbar()).thenReturn(true);
+        when(zustellwege.telegramZieleEigene("sub-test")).thenReturn(List.of());
+
+        mvc.perform(get("/api/v1/zustellwege/telegram").principal(auth))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.verfuegbar").value(true))
+                .andExpect(jsonPath("$.ziele").isArray());
+    }
+
+    @Test
+    void derStatusMeldetNichtVerfuegbarOhneEingerichtetenBot() throws Exception {
+        when(zustellwege.telegramVerfuegbar()).thenReturn(false);
+        when(zustellwege.telegramZieleEigene("sub-test")).thenReturn(List.of());
+
+        mvc.perform(get("/api/v1/zustellwege/telegram").principal(auth))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.verfuegbar").value(false));
     }
 }
