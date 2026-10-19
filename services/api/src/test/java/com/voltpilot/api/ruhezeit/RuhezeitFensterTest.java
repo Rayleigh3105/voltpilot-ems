@@ -58,10 +58,29 @@ class RuhezeitFensterTest {
         JsonNode f = fenster("{\"werktags\":{\"von\":\"22:00\",\"bis\":\"07:00\"},\"wochenende\":\"ganz\"}");
         // Samstag 10 Uhr.
         Instant samstag = berlin(2026, 10, 24, 10, 0);
-        assertThat(RuhezeitFenster.endeFallsAktiv(f, BERLIN, samstag)).contains(berlin(2026, 10, 26, 0, 0));
+        // B6: "ganz" reicht bis zum Ende der werktäglichen Morgen-Ruhe am Montag (hier 07:00),
+        // nicht nur bis Montag 00:00 - sonst klafft eine Lücke Montag 0 bis 7 Uhr.
+        assertThat(RuhezeitFenster.endeFallsAktiv(f, BERLIN, samstag)).contains(berlin(2026, 10, 26, 7, 0));
         // Sonntag 23 Uhr - immer noch dasselbe (am Samstag begonnene) Fenster.
         Instant sonntag = berlin(2026, 10, 25, 23, 0);
-        assertThat(RuhezeitFenster.endeFallsAktiv(f, BERLIN, sonntag)).contains(berlin(2026, 10, 26, 0, 0));
+        assertThat(RuhezeitFenster.endeFallsAktiv(f, BERLIN, sonntag)).contains(berlin(2026, 10, 26, 7, 0));
+    }
+
+    @Test
+    void wochenendeOhneWerktagsAngabeEndetMontagMitternacht() {
+        // Ohne eine werktägliche Morgen-Ruhe gibt es nichts, bis zu dem "ganz" verlängern könnte.
+        JsonNode f = fenster("{\"wochenende\":\"ganz\"}");
+        Instant samstag = berlin(2026, 10, 24, 10, 0);
+        assertThat(RuhezeitFenster.endeFallsAktiv(f, BERLIN, samstag)).contains(berlin(2026, 10, 26, 0, 0));
+    }
+
+    @Test
+    void montagFruehMorgensIstDankVerlaengerungNichtMehrLueckenhaft() {
+        // B6-Regression: Montag 03:00 lag früher in keinem Fenster (Lücke zwischen dem bis
+        // Montag 00:00 reichenden Wochenend-Fenster und der erst um 22:00 beginnenden Nachtruhe).
+        JsonNode f = fenster("{\"werktags\":{\"von\":\"22:00\",\"bis\":\"07:00\"},\"wochenende\":\"ganz\"}");
+        Instant montagFrueh = berlin(2026, 10, 26, 3, 0);
+        assertThat(RuhezeitFenster.endeFallsAktiv(f, BERLIN, montagFrueh)).contains(berlin(2026, 10, 26, 7, 0));
     }
 
     @Test
@@ -71,7 +90,7 @@ class RuhezeitFensterTest {
         Instant freitagNacht = berlin(2026, 10, 23, 23, 0); // Freitag
         assertThat(RuhezeitFenster.endeFallsAktiv(f, BERLIN, freitagNacht)).contains(berlin(2026, 10, 24, 7, 0));
         Instant samstagFrueh = berlin(2026, 10, 24, 7, 30);
-        assertThat(RuhezeitFenster.endeFallsAktiv(f, BERLIN, samstagFrueh)).contains(berlin(2026, 10, 26, 0, 0));
+        assertThat(RuhezeitFenster.endeFallsAktiv(f, BERLIN, samstagFrueh)).contains(berlin(2026, 10, 26, 7, 0));
     }
 
     @Test

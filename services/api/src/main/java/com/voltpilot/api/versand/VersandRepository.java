@@ -203,6 +203,21 @@ public class VersandRepository implements BenachrichtigungAusgang {
                 Timestamp.from(naechsterVersuch), id);
     }
 
+    /**
+     * B7 (Einstellungen-Konzept Entscheid 5A): ob die Auslösung ({@code anlass = "ausgeloest"})
+     * desselben Alarms für genau diesen Empfänger/Weg endgültig unterdrückt wurde (keine Sicht
+     * oder Stummschaltung) - niemals angekommen und wird es auch nicht mehr. Fehlt die Zeile ganz
+     * (noch nicht geclaimt) oder steht sie noch auf {@code wartet}/{@code gesendet}, ist sie NICHT
+     * unterdrückt: eine "Wieder normal" dazu hält dann wie die Auslösung selbst, statt zu entfallen.
+     */
+    public boolean ausloesungWurdeUnterdrueckt(UUID alarmId, String empfaengerSub, String weg) {
+        List<String> zustaende = admin.query(
+                "SELECT zustand FROM benachrichtigung WHERE quelle = 'alarm' AND quelle_id = ? "
+                        + "AND anlass = 'ausgeloest' AND empfaenger_sub = ? AND weg = ?",
+                (rs, n) -> rs.getString("zustand"), alarmId, empfaengerSub, weg);
+        return !zustaende.isEmpty() && zustaende.stream().allMatch("unterdrueckt"::equals);
+    }
+
     /** Der Löschlauf (Entscheid 13A, 90 Tage) - unabhängig vom Zustand, wie {@code AblaufLaeufer}'s Takt. */
     public int loeschenAelterAls(Instant grenze) {
         return admin.update("DELETE FROM benachrichtigung WHERE erstellt_am < ?", Timestamp.from(grenze));
