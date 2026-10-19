@@ -28,6 +28,7 @@ flowchart LR
 | MiSpeL-Zählerrolle Z1/Z2/Z3 am Messstellen-Register: Zählpunkt, Messstellenbetreiber, Eichstatus, Wertequelle, Trennung hinter Z2/Z3 (MiSpeL MP-6) | [Regeln und Schnittstelle](v2/mispel-zaehlerrolle.md) |
 | MiSpeL bidirektionaler Ladepunkt: Fähigkeit V2H/V2G als Fassungen, Einordnung nach Anlage 1, Z2 am Ladepunkt mit Eichstatus aus den Zählerrollen, Fahrzeugfenster (MiSpeL MP-31) | [Regeln und Schnittstelle](v2/mispel-ladepunkt-bidirektional.md) |
 | MiSpeL-Förderweg je Einspeisestelle: fünf Werte nach EEG und Festlegung, Formelsatz mit Bindung bis Jahresende, Wechsel zum Monatsersten, Bestand aus `netzladen_erlaubt`/`plant_kind` (MiSpeL MP-5); AW-Differenzierung je Fassung für die AW>0-Liste (1.1, MP-12b) | [Regeln und Schnittstelle](v2/mispel-foerderweg.md) |
+| MiSpeL „Der Weg zu MiSpeL“ je Anlage: Stationen der drei Stationsfolgen mit Zustand, Satz und Tür, nur lesend (MiSpeL MP-55) | [Regeln und Schnittstelle](v2/mispel-weg.md), [Vektoren](v2/mispel-weg-vectors.json) |
 | OCPP-Ereignisse und Befehle | [Ereignis](mqtt-ocpp-events.schema.json), [Command](mqtt-ocpp-command.schema.json) |
 | OTA | [Manifest](ota-release-manifest.schema.json) mit [Vektoren je Box-Art](ota-release-manifest-vectors.json), [Signatur](ota-signature.schema.json), [Ziel](mqtt-ota-target.schema.json) |
 | Ladepark | [Konfiguration](mqtt-charging-config.schema.json), [Boost](mqtt-charging-boost.schema.json) |
