@@ -66,13 +66,20 @@ public class ZustellwegService {
      * Legt den eigenen Zustellweg an/ändert ihn und reiht sofort die Bestätigungs-Mail ein - mit dem
      * Ziel direkt in der Ausgangszeile (die Adresse ist ja noch unbestätigt, der Zusteller kann sie
      * nicht aus einem bestätigten Zustellweg lesen, weil es noch keinen gibt).
+     *
+     * <p>{@code nr} trägt den Versandzeitpunkt (B2): {@code anlegenOderErneuern} gibt bei einer
+     * ERNEUTEN Anforderung derselben Person/Adresse dieselbe {@code zustellweg}-Zeile zurück, also
+     * dieselbe {@code quelle_id} - ein fest {@code nr = 0} hätte die zweite Mail am
+     * Doppelversand-Schutz (§9) verschluckt, weil der eindeutige Schlüssel dann identisch wäre.
      */
     public void anfordern(String benutzerSub, String ziel) {
         Instant jetzt = uhr.instant();
         String token = BestaetigungsToken.erzeugen();
         UUID id = zustellwege.anlegenOderErneuern(benutzerSub, ziel, token, jetzt.plus(TOKEN_GUELTIGKEIT));
         String link = basisUrl + "/#/zustellweg/bestaetigen?token=" + token;
-        ausgang.emailMitZiel("zustellweg_bestaetigung", id, benutzerSub, "bestaetigung", "VoltPilot: Adresse bestätigen",
+        int nr = (int) (jetzt.getEpochSecond() % Integer.MAX_VALUE);
+        ausgang.emailMitZiel("zustellweg_bestaetigung", id, benutzerSub, "bestaetigung", nr,
+                "VoltPilot: Adresse bestätigen",
                 "Bitte bestätigen Sie diese E-Mail-Adresse für Meldungen von VoltPilot:\n\n" + link
                         + "\n\nDer Link ist zwei Tage gültig. Haben Sie das nicht angefordert, ignorieren Sie diese Mail.",
                 ziel);
@@ -112,6 +119,10 @@ public class ZustellwegService {
 
     public boolean pushAboEntfernen(UUID id, String benutzerSub) {
         return zustellwege.pushAboEntfernen(id, benutzerSub);
+    }
+
+    public boolean pushAboEntfernenNachEndpoint(String benutzerSub, String endpoint) {
+        return zustellwege.pushAboEntfernenNachEndpoint(benutzerSub, endpoint);
     }
 
     // --------------------------------------------------------------------- Webhook (Alerting Scheibe 6, §7)

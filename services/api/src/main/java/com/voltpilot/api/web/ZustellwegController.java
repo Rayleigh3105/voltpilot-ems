@@ -138,6 +138,17 @@ public class ZustellwegController {
         return ResponseEntity.noContent().build();
     }
 
+    /**
+     * Beim Abmelden (B8, Entscheid 9A): DIESES Geräts Abo beenden, erkannt über seinen Endpunkt (die
+     * Person kennt die Zeilen-ID an dieser Stelle nie). Bestmöglich - ein bereits fehlendes oder
+     * fremdes Abo bleibt ohne Fehler, damit das eigentliche Abmelden nie daran scheitert.
+     */
+    @DeleteMapping("/push")
+    public ResponseEntity<Void> pushAbmelden(@RequestParam String endpoint, Authentication auth) {
+        zustellwege.pushAboEntfernenNachEndpoint(sub(auth), endpoint);
+        return ResponseEntity.noContent().build();
+    }
+
     // --------------------------------------------------------------------- Webhook (Alerting Scheibe 6, §7)
 
     public record WebhookAnfrage(String url, String name) {}

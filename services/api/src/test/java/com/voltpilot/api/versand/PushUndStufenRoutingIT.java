@@ -136,6 +136,50 @@ class PushUndStufenRoutingIT {
         }
     }
 
+    // =========================================================== B8: geteiltes Gerät (Entscheid 9A)
+
+    @Test
+    void einNeuesAboAmSelbenEndpunktGehtAufDieAngemeldetePersonUeber() {
+        // B8: der Endpunkt gehört dem GERÄT (Browser), nicht der Person. Meldet sich am selben Gerät
+        // eine ANDERE Person an und abonniert erneut, muss die Zeile auf sie übergehen - sonst bleibt
+        // sie der ERSTEN Person zugeordnet und die zweite findet ihr eigenes Abo nie (vormals 500 am
+        // Controller, weil `pushAboEigene` die fremd gebliebene Zeile nicht fand).
+        UUID t = tenant("Geteiltes Geraet");
+        TenantContext.set(t);
+        try {
+            String geteilterEndpunkt = "https://push.example/leitstand-rechner";
+            zustellwege.pushAboAnlegen("sub-erste-person", geteilterEndpunkt, "p1", "a1", "Leitstand", "UA");
+
+            UUID uebernommen = zustellwege.pushAboAnlegen("sub-zweite-person", geteilterEndpunkt, "p2", "a2",
+                    "Leitstand", "UA");
+
+            assertThat(zustellwege.pushAboEigene("sub-erste-person")).isEmpty();
+            assertThat(zustellwege.pushAboEigene("sub-zweite-person")).extracting(
+                    ZustellwegRepository.PushAbo::id).containsExactly(uebernommen);
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    @Test
+    void pushAboEntfernenNachEndpunktBeendetNurDasEigeneAboBeimAbmelden() {
+        UUID t = tenant("Abmelden beendet Push");
+        TenantContext.set(t);
+        try {
+            String endpunkt = "https://push.example/geraet-beim-abmelden";
+            zustellwege.pushAboAnlegen("sub-rundgang", endpunkt, "p", "a", "Handy", "UA");
+
+            boolean beendet = zustellwege.pushAboEntfernenNachEndpoint("sub-rundgang", endpunkt);
+
+            assertThat(beendet).isTrue();
+            assertThat(zustellwege.pushAboEigene("sub-rundgang")).isEmpty();
+            // bestmöglich: ein Abmelden ohne (oder mit schon entferntem) Push-Abo ist kein Fehler.
+            assertThat(zustellwege.pushAboEntfernenNachEndpoint("sub-rundgang", endpunkt)).isFalse();
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
     // =========================================================== Zustell-Vorgabe je Stufe (§6.4)
 
     @Test

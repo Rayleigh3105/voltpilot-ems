@@ -97,15 +97,22 @@ public class ZustellwegRepository {
                 """, ZustellwegRepository::pushAbo, TenantContext.get(), benutzerSub);
     }
 
-    /** Neues Abo oder (gleicher Endpunkt - derselbe Browser hat sich erneut registriert) Erneuerung. */
+    /**
+     * Neues Abo oder (gleicher Endpunkt - derselbe Browser hat sich erneut registriert) Erneuerung.
+     * Der Endpunkt gehört dem GERÄT, nicht der Person (B8, Entscheid 9A): meldet sich am selben
+     * Browser eine ANDERE Person an und abonniert erneut, geht die Zeile auf sie über
+     * ({@code benutzer_sub = excluded.benutzer_sub}) - sonst bliebe sie der ersten Person zugeordnet,
+     * die zweite bekäme nie ihr eigenes Abo zurück ({@code pushAboEigene} fände die Zeile nicht), und
+     * ein geteiltes Gerät lieferte Meldungen an die falsche Person weiter.
+     */
     public UUID pushAboAnlegen(String benutzerSub, String endpoint, String p256dh, String auth, String geraet,
             String userAgent) {
         return jdbc.queryForObject("""
                 INSERT INTO push_abo (tenant_id, benutzer_sub, endpoint, p256dh, auth, geraet, user_agent)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (tenant_id, endpoint) DO UPDATE SET
-                    p256dh = excluded.p256dh, auth = excluded.auth, geraet = excluded.geraet,
-                    user_agent = excluded.user_agent, aktiv = true, abgelaufen_am = NULL
+                    benutzer_sub = excluded.benutzer_sub, p256dh = excluded.p256dh, auth = excluded.auth,
+                    geraet = excluded.geraet, user_agent = excluded.user_agent, aktiv = true, abgelaufen_am = NULL
                 RETURNING id
                 """, UUID.class, TenantContext.get(), benutzerSub, endpoint, p256dh, auth, geraet, userAgent);
     }
@@ -121,6 +128,16 @@ public class ZustellwegRepository {
     public boolean pushAboEntfernen(UUID id, String benutzerSub) {
         return jdbc.update("DELETE FROM push_abo WHERE id = ? AND tenant_id = ? AND benutzer_sub = ?",
                 id, TenantContext.get(), benutzerSub) > 0;
+    }
+
+    /**
+     * Beim Abmelden (B8, Entscheid 9A): DIESES Geräts Abo beenden, erkannt über seinen Endpunkt - die
+     * Person kennt zu diesem Zeitpunkt nie die Zeilen-ID, nur das Browser-{@code PushSubscription}.
+     * Trifft nur die EIGENE Zeile (über {@code benutzer_sub}); ein fehlendes Abo ist kein Fehler.
+     */
+    public boolean pushAboEntfernenNachEndpoint(String benutzerSub, String endpoint) {
+        return jdbc.update("DELETE FROM push_abo WHERE tenant_id = ? AND benutzer_sub = ? AND endpoint = ?",
+                TenantContext.get(), benutzerSub, endpoint) > 0;
     }
 
     /** Alle aktiven Geräte-Abos einer Person für den Versand (§6.7: "Abo je Gerät" - der Zusteller fächert auf). */

@@ -174,6 +174,27 @@ class ZustellwegBestaetigungIT {
         assertThat(inhalt).contains("https://portal.voltpilot.de/#/zustellweg/bestaetigen?token=" + token);
     }
 
+    @Test
+    void erneutesAnfordernVerschicktEineZweiteMail() {
+        // B2: eine zweite Anforderung derselben Adresse schrieb bisher denselben Doppelversand-
+        // Schluessel (quelle_id blieb die unveraenderte zustellweg-Zeile, nr war fest 0) - die zweite
+        // Mail wurde am Schutz von §9 verschluckt, statt zuzustellen.
+        TenantContext.set(tenant);
+        TelegramAdapter telegram = (chatId, text) -> { };
+        ZustellwegService dienst = new ZustellwegService(zustellwege, ausgang, telegram, "http://localhost:5173", "", "");
+        dienst.uhrStellen(Clock.fixed(Instant.parse("2026-10-19T08:00:00Z"), ZoneOffset.UTC));
+
+        dienst.anfordern("sub-zweitmail", "zweitmail@example.test");
+
+        dienst.uhrStellen(Clock.fixed(Instant.parse("2026-10-19T08:05:00Z"), ZoneOffset.UTC));
+        dienst.anfordern("sub-zweitmail", "zweitmail@example.test");
+
+        int anzahl = adminJdbc.queryForObject(
+                "SELECT count(*) FROM benachrichtigung WHERE tenant_id = ? AND empfaenger_sub = 'sub-zweitmail'",
+                Integer.class, tenant);
+        assertThat(anzahl).as("beide Anforderungen reihen je eine eigene Mail ein").isEqualTo(2);
+    }
+
     private static DataSource ds(String user, String password) {
         PGSimpleDataSource ds = new PGSimpleDataSource();
         ds.setUrl(POSTGRES.getJdbcUrl());

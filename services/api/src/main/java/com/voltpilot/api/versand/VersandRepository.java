@@ -65,6 +65,18 @@ public class VersandRepository implements BenachrichtigungAusgang {
                 Timestamp.from(naechsterVersuch), buendelSchluessel);
     }
 
+    /** Wie oben, MIT Stufe (B3) - siehe {@link BenachrichtigungAusgang#email(String, UUID, String, String, int,
+     * String, String, Instant, String, String)}. */
+    @Override
+    public void email(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr, String betreff,
+            String inhalt, Instant naechsterVersuch, String schwere, String buendelSchluessel) {
+        jdbc.update("INSERT INTO benachrichtigung (tenant_id, quelle, quelle_id, empfaenger_sub, weg, anlass, nr, "
+                        + "betreff, inhalt, naechster_versuch, schwere, buendel_schluessel) "
+                        + "VALUES (?, ?, ?, ?, 'email', ?, ?, ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+                TenantContext.get(), quelle, quelleId, empfaengerSub, anlass, nr, betreff, inhalt,
+                Timestamp.from(naechsterVersuch), schwere, buendelSchluessel);
+    }
+
     /** Wie {@link #email}, aber über Web-Push (Alerting Scheibe 3) - Geräte-Abos fächert der Zusteller auf. */
     @Override
     public void webpush(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr, String betreff,
@@ -121,15 +133,21 @@ public class VersandRepository implements BenachrichtigungAusgang {
     @Override
     public void emailExtern(UUID quelleId, String empfaengerKennung, String anlass, String betreff, String inhalt,
             String ziel) {
-        emailMitZiel("alarm_extern", quelleId, empfaengerKennung, anlass, betreff, inhalt, ziel);
+        emailMitZiel("alarm_extern", quelleId, empfaengerKennung, anlass, 0, betreff, inhalt, ziel);
     }
 
-    /** Wie {@link #email}, aber mit einem direkt vorgegebenen Ziel - nur für die Bestätigungs-Mail selbst. */
-    public void emailMitZiel(String quelle, UUID quelleId, String empfaengerSub, String anlass, String betreff,
-            String inhalt, String ziel) {
+    /**
+     * Wie {@link #email}, aber mit einem direkt vorgegebenen Ziel - nur für die Bestätigungs-Mail
+     * selbst. {@code nr} unterscheidet wiederholte Anforderungen derselben Adresse (B2): ein fest
+     * {@code nr = 0} ließ den Doppelversand-Schutz jede ERNEUTE Anforderung verschlucken, weil
+     * {@code quelle_id} (der unveränderte {@code zustellweg}-Datensatz) über alle Versuche hinweg
+     * gleich bleibt - siehe {@link ZustellwegService#anfordern}.
+     */
+    public void emailMitZiel(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr,
+            String betreff, String inhalt, String ziel) {
         jdbc.update("INSERT INTO benachrichtigung (tenant_id, quelle, quelle_id, empfaenger_sub, weg, anlass, nr, "
-                        + "betreff, inhalt, ziel) VALUES (?, ?, ?, ?, 'email', ?, 0, ?, ?, ?) ON CONFLICT DO NOTHING",
-                TenantContext.get(), quelle, quelleId, empfaengerSub, anlass, betreff, inhalt, ziel);
+                        + "betreff, inhalt, ziel) VALUES (?, ?, ?, ?, 'email', ?, ?, ?, ?, ?) ON CONFLICT DO NOTHING",
+                TenantContext.get(), quelle, quelleId, empfaengerSub, anlass, nr, betreff, inhalt, ziel);
     }
 
     /** Eine Sende-Pause, bevor ein geclaimter, aber nie beantworteter Versand erneut versucht wird. */

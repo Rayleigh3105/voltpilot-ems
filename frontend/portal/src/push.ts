@@ -75,3 +75,24 @@ export async function pushEinschalten(geraet: string): Promise<void> {
   await benachrichtigungenApi.pushAbonnieren(json.endpoint, json.keys.p256dh, json.keys.auth, geraet,
     navigator.userAgent);
 }
+
+/**
+ * Beim Abmelden (Alerting Einstellungen Scheibe 0, B8): ein geteiltes Gerät darf das Push-Abo der
+ * abgemeldeten Person nicht behalten - sonst bekäme die nächste angemeldete Person ihre Meldungen.
+ * Beendet das Browser-Abo DIESES Geräts und meldet es beim Server ab, bevor überhaupt ein neuer
+ * Benutzer sich anmelden kann; rein bestmöglich - ein fehlendes oder schon totes Abo ist kein Fehler
+ * und darf das eigentliche Abmelden nie aufhalten.
+ */
+export async function pushBeiAbmeldenAufraeumen(): Promise<void> {
+  if (!pushUnterstuetzt()) return;
+  try {
+    const registrierung = await navigator.serviceWorker.getRegistration();
+    const abo = await registrierung?.pushManager.getSubscription();
+    if (!abo) return;
+    const endpoint = abo.endpoint;
+    await abo.unsubscribe();
+    await benachrichtigungenApi.pushAbmelden(endpoint);
+  } catch {
+    // bestmöglich - siehe Klassenkommentar
+  }
+}

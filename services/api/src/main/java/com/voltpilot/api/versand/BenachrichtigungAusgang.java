@@ -67,6 +67,18 @@ public interface BenachrichtigungAusgang {
         email(quelle, quelleId, empfaengerSub, anlass, nr, betreff, inhalt, naechsterVersuch);
     }
 
+    /**
+     * Wie {@link #email}, aber MIT Stufe (B3, §6.4 "Zustell-Vorgabe je Stufe"): ohne sie prüft
+     * {@code Zusteller#sendeEmail} die Stufe nie und jede Zeile geht hinaus, unabhängig von der
+     * gewählten Zustell-Vorgabe - genau die Schieflage, die {@link #webpush}/{@link #webhook}/
+     * {@link #telegram} schon immer vermeiden. {@code schwere} ist nur für {@code quelle = "alarm"}
+     * gesetzt (sonst {@code null}).
+     */
+    default void email(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr, String betreff,
+            String inhalt, Instant naechsterVersuch, String schwere, String buendelSchluessel) {
+        email(quelle, quelleId, empfaengerSub, anlass, nr, betreff, inhalt, naechsterVersuch, buendelSchluessel);
+    }
+
     /** Wie {@link #webpush}, aber mit einem Bündel-Schlüssel - siehe {@link #email(String, UUID, String, String,
      * int, String, String, Instant, String)}. */
     default void webpush(String quelle, UUID quelleId, String empfaengerSub, String anlass, int nr, String betreff,
