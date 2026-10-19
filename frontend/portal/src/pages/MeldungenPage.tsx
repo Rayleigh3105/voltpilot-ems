@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { ladeMeldungenVerlaufCsv } from '../api';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { VpPicker } from '../components/VpPicker';
 import {
   anlageAusHash,
@@ -26,11 +27,23 @@ type Reiter = 'jetzt' | 'verlauf' | 'regeln';
 
 /**
  * Die Herkunft einer Regel (§6.4/§6.8) - `ab_werk` (System, z. B. der Preis-Hinweis-Vorschlag,
- * Entscheid 15C) und `eigen` (§6.8 Scheibe 2, „Vom Wert zur fertigen Regel") sind heute die
- * beiden tatsächlich geschriebenen Werte; `vorschlag` bleibt der Fallback-Text für den noch
- * ungenutzten dritten Katalog-Wert (`ueberwachung_herkunft_chk`).
+ * Entscheid 15C), `eigen` (§6.8 Scheibe 2, „Vom Wert zur fertigen Regel") und `steuerung`
+ * (Alerting Scheibe 6, Entscheid 10A, „In Überwachung umwandeln") sind die tatsächlich
+ * geschriebenen Werte; `vorschlag` bleibt der Fallback-Text für den noch ungenutzten vierten
+ * Katalog-Wert (`ueberwachung_herkunft_chk`).
  */
-const HERKUNFT_WORT: Record<string, string> = { ab_werk: 'ab Werk', eigen: 'eigene Regel' };
+const HERKUNFT_WORT: Record<string, string> = {
+  ab_werk: 'ab Werk',
+  eigen: 'eigene Regel',
+  steuerung: 'aus Steuerung übernommen',
+};
+
+/** Löschbar über diese Fläche (Abnahme-Befund) ist nur eine selbst angelegte Regel - dieselbe
+ * Einschränkung wie serverseitig (`UeberwachungAnlegenService.loeschen`, `CLIENT_HERKUNFT`): eine
+ * ab-Werk-Regel bliebe sonst dauerhaft weg (ihre Aussaat sät jede Wertart/Anlage nur einmal). */
+function loeschbar(regel: UeberwachungsRegel): boolean {
+  return regel.herkunft === 'eigen' || regel.herkunft === 'steuerung';
+}
 
 /** Die vier Zeiträume des CSV-Exports (Entscheid 14A) - eine Export-Bequemlichkeit, keine
  * abrechnungsgenaue Angabe, darum feste UTC-Fenster statt der Standort-Zeitzone. */
@@ -70,6 +83,7 @@ export function MeldungenPage() {
   const [csvPeriode, setCsvPeriode] = useState('monat');
   const [csvLaedt, setCsvLaedt] = useState(false);
   const [csvFehler, setCsvFehler] = useState('');
+  const [loeschenZiel, setLoeschenZiel] = useState<UeberwachungsRegel | null>(null);
   const anlageFilter = anlageAusHash(window.location.hash);
 
   useEffect(() => {
@@ -137,6 +151,25 @@ export function MeldungenPage() {
     }
   }
 
+  /**
+   * Löschen (Abnahme-Befund aus Produktion: "wie kann ich diese denn wieder löschen?") - eine
+   * eigene Regel verschwindet aus der Verwaltung, der Verlauf bleibt (Entscheid 3B, ConfirmDialog
+   * nennt das ausdrücklich, damit die Rückfrage ehrlich bleibt).
+   */
+  async function loeschen(id: string) {
+    if (busy) return;
+    setBusy(id);
+    try {
+      await ueberwachungApi.loeschen(id);
+      setRegeln((liste) => liste?.filter((r) => r.id !== id) ?? liste);
+      setLoeschenZiel(null);
+    } catch {
+      setFehler('Das Löschen ist fehlgeschlagen. Bitte versuchen Sie es erneut.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <div className="vp-meldungen" data-testid="meldungen-seite">
       <h1>Meldungen</h1>
@@ -184,6 +217,7 @@ export function MeldungenPage() {
           regeln={regeln}
           busy={busy}
           onScharfSchalten={scharfSchalten}
+          onLoeschenAnfragen={setLoeschenZiel}
         />
       ) : (
         <MeldungListe
@@ -193,6 +227,21 @@ export function MeldungenPage() {
           onGesehen={gesehen}
         />
       )}
+
+      <ConfirmDialog
+        open={loeschenZiel != null}
+        title="Überwachung löschen?"
+        intro={`„${loeschenZiel?.name ?? (loeschenZiel ? wertartSatzname(loeschenZiel.wertart) : '')}" meldet sich danach nicht mehr.`}
+        consequences={[
+          'Der bisherige Verlauf dieser Überwachung bleibt erhalten.',
+          'Noch offene Meldungen dieser Regel werden geschlossen.',
+        ]}
+        confirmLabel="Löschen"
+        tone="danger"
+        busy={loeschenZiel != null && busy === loeschenZiel.id}
+        onCancel={() => setLoeschenZiel(null)}
+        onConfirm={() => { if (loeschenZiel) void loeschen(loeschenZiel.id); }}
+      />
     </div>
   );
 }
@@ -276,10 +325,12 @@ function RegelListe({
   regeln,
   busy,
   onScharfSchalten,
+  onLoeschenAnfragen,
 }: {
   regeln: UeberwachungsRegel[] | null;
   busy: string | null;
   onScharfSchalten: (id: string) => void;
+  onLoeschenAnfragen: (regel: UeberwachungsRegel) => void;
 }) {
   if (regeln === null) return <p>Wird geladen …</p>;
   if (regeln.length === 0) return <p className="vp-meldungen-leer">Noch keine Überwachung eingeschaltet.</p>;
@@ -295,16 +346,30 @@ function RegelListe({
               {r.probelaufBis && ` · im Probelauf bis ${datumZeit(r.probelaufBis).split(' ')[0]}`}
             </p>
           </div>
-          {r.probelaufBis && (
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={busy === r.id}
-              onClick={() => onScharfSchalten(r.id)}
-            >
-              Jetzt scharf schalten
-            </Button>
-          )}
+          <div className="vp-regel-aktionen">
+            {r.probelaufBis && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={busy === r.id}
+                onClick={() => onScharfSchalten(r.id)}
+              >
+                Jetzt scharf schalten
+              </Button>
+            )}
+            {loeschbar(r) && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="vp-btn-danger"
+                disabled={busy === r.id}
+                aria-label={`${r.name ?? wertartSatzname(r.wertart)} löschen`}
+                onClick={() => onLoeschenAnfragen(r)}
+              >
+                <Icon name="trash" size={14} /> Löschen
+              </Button>
+            )}
+          </div>
         </li>
       ))}
     </ul>

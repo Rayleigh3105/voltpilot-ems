@@ -92,3 +92,12 @@
   font-size: var(--vp-c-fs-12);
   color: var(--vp-c-muted-fg);
 }
+
+.vp-regel-aktionen {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: var(--vp-c-space-2);
+  flex: 0 0 auto;
+}

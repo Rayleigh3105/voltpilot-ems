@@ -177,6 +177,43 @@ public class UeberwachungAnlegenService {
                 true, null, regel.bezug().toString());
     }
 
+    /**
+     * Löschen (Abnahme-Befund aus Produktion: "wie kann ich diese denn wieder löschen?") - Soft-Delete,
+     * der Verlauf bleibt erhalten (Entscheid 3B). Dasselbe Rechte-Muster wie {@link #anlegen}/
+     * {@link #scharfSchalten} - {@code ueberwachung.eigene}, wenn die Regel nur die anlegende Person
+     * selbst benachrichtigt, sonst {@code ueberwachung.verwalten}. Nur eine selbst angelegte/aus der
+     * Steuerung umgewandelte Regel ({@link #CLIENT_HERKUNFT}) ist über diese Route löschbar - eine
+     * ab-Werk-Regel bliebe sonst dauerhaft weg: {@code seedAbWerk} sät sie nur EINMAL je Wertart und
+     * Anlage ({@code uq_ueberwachung_ab_werk} prüft nicht auf gelöscht).
+     */
+    public void loeschen(UUID id, Benutzer aufrufer, Instant jetzt) {
+        UeberwachungZeile regel = repo.einzelneRegel(id)
+                .orElseThrow(() -> new ResponseStatusException(org.springframework.http.HttpStatus.NOT_FOUND));
+        if (!CLIENT_HERKUNFT.contains(regel.herkunft())) {
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "eine ab-Werk-Überwachung lässt sich über diese Route nicht löschen");
+        }
+        boolean nurIchSelbst = istNurIchSelbst(regel.empfaenger(), aufrufer.kennung());
+        String benoetigtesRecht = nurIchSelbst ? "ueberwachung.eigene" : "ueberwachung.verwalten";
+
+        Kundenbereich kundenbereich = kundenbereich(jetzt);
+        Ziel ziel = regel.standortId() == null ? Ziel.unternehmen()
+                : zielFuerStandort(repo.standortKurzzeichen(regel.standortId()));
+        RechteAbleitung.DarfErgebnis darf = RechteAbleitung.darf(RechteMatrixDatei.matrix(), aufrufer, kundenbereich,
+                benoetigtesRecht, ziel, jetzt);
+        if (!darf.darf()) {
+            throw new RechtFehlt(benoetigtesRecht, darf);
+        }
+
+        for (UeberwachungRepository.AlarmZeile alarm : repo.offeneAlarmeDerRegel(id)) {
+            repo.alarmSchliessenRegelGeloescht(alarm.id(), jetzt);
+            repo.alarmVerlauf(alarm.id(), "geloescht", aufrufer.kennung(),
+                    "Überwachung gelöscht von " + aufrufer.kennung(), null);
+            repo.alarmVerlauf(alarm.id(), "erledigt", null, "erledigt (Überwachung gelöscht)", null);
+        }
+        repo.loeschen(id, aufrufer.kennung(), jetzt);
+    }
+
     private static boolean istNurIchSelbst(com.fasterxml.jackson.databind.JsonNode empfaenger, String eigeneKennung) {
         if (empfaenger == null || !empfaenger.isArray() || empfaenger.size() != 1) {
             return false;

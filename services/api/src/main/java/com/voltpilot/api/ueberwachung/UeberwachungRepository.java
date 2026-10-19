@@ -220,14 +220,32 @@ public class UeberwachungRepository {
                 + "WHERE id = ? AND probelauf_bis IS NOT NULL", id) > 0;
     }
 
-    /** Eine einzelne Regel - für die Rechte-Prüfung beim "scharf schalten" (angelegt_von, Empfänger). */
+    /**
+     * Eine einzelne Regel - für die Rechte-Prüfung beim "scharf schalten"/Löschen (angelegt_von,
+     * Empfänger). {@code geloescht_am IS NULL}: eine gelöschte Regel ist für jede Aktion an ihrer
+     * Kennung (scharf schalten, Stummschalten, externe Empfänger) ebenso verschwunden wie aus der
+     * "Überwachungen"-Liste - ihr Verlauf bleibt trotzdem über {@code alarm}/{@code alarm_verlauf}
+     * erreichbar (Entscheid 3B).
+     */
     public Optional<UeberwachungZeile> einzelneRegel(UUID id) {
         return jdbc.query("""
                 SELECT id, standort_id, fassung, name, wertart, bezug::text AS bezug_json,
                        bedingung::text AS bedingung_json, schwere, empfaenger::text AS empfaenger_json,
                        herkunft, angelegt_von, probelauf_bis, ruhezeit::text AS ruhezeit_json
-                  FROM ueberwachung WHERE id = ?
+                  FROM ueberwachung WHERE id = ? AND geloescht_am IS NULL
                 """, UeberwachungRepository::zeile, id).stream().findFirst();
+    }
+
+    /**
+     * Löscht eine Regel (Soft-Delete, Abnahme-Befund, Entscheid 3B: Verlauf bleibt erhalten) -
+     * {@code false}, wenn sie schon gelöscht ist oder nicht existiert (idempotent für den Dienst).
+     * Physisch geht nicht: jeder jemals ausgelöste Alarm verweist per Fremdschlüssel auf diese Zeile.
+     */
+    public boolean loeschen(UUID id, String von, Instant jetzt) {
+        return jdbc.update("""
+                UPDATE ueberwachung SET geloescht_am = ?, geloescht_von = ?, geaendert_am = ?
+                 WHERE id = ? AND geloescht_am IS NULL
+                """, ts(jetzt), von, ts(jetzt), id) > 0;
     }
 
     private static String toJsonArray(List<String> werte) {
@@ -246,13 +264,13 @@ public class UeberwachungRepository {
 
     // --------------------------------------------------------------------- Regeln lesen
 
-    /** Alle aktiven Regeln des Kundenbereichs, älteste zuerst. */
+    /** Alle aktiven Regeln des Kundenbereichs, älteste zuerst - ohne eine gelöschte (Entscheid 3B). */
     public List<UeberwachungZeile> aktive() {
         return jdbc.query("""
                 SELECT id, standort_id, fassung, name, wertart, bezug::text AS bezug_json,
                        bedingung::text AS bedingung_json, schwere, empfaenger::text AS empfaenger_json,
                        herkunft, angelegt_von, probelauf_bis, ruhezeit::text AS ruhezeit_json
-                  FROM ueberwachung WHERE aktiv = true ORDER BY angelegt_am
+                  FROM ueberwachung WHERE aktiv = true AND geloescht_am IS NULL ORDER BY angelegt_am
                 """, UeberwachungRepository::zeile);
     }
 
@@ -456,6 +474,25 @@ public class UeberwachungRepository {
                 INSERT INTO alarm_verlauf (tenant_id, alarm_id, art, wer, wert, text)
                 VALUES (?, ?, ?, ?, ?::jsonb, ?)
                 """, TenantContext.get(), alarmId, art, wer, wertJson, text);
+    }
+
+    /** Jeder noch offene (nicht erledigte) Alarm EINER Regel - zum Schließen beim Löschen der Regel. */
+    public List<AlarmZeile> offeneAlarmeDerRegel(UUID ueberwachungId) {
+        return jdbc.query("SELECT " + ALARM_SPALTEN + " FROM alarm WHERE ueberwachung_id = ? AND zustand <> 'erledigt'",
+                UeberwachungRepository::alarmZeile, ueberwachungId);
+    }
+
+    /**
+     * Schließt einen Alarm, weil seine Regel gelöscht wurde (Abnahme-Befund, Entscheid 3B: der
+     * Alarm selbst und sein Verlauf bleiben - nur sein Zustand wechselt, wie {@link #alarmWiederNormal}).
+     * Anders als dort kein {@code wieder_normal_am}: der Wert ist nicht zurückgekehrt, die Regel
+     * wurde entfernt.
+     */
+    public void alarmSchliessenRegelGeloescht(UUID alarmId, Instant jetzt) {
+        jdbc.update("""
+                UPDATE alarm SET zustand = 'erledigt', erledigt_am = ?, erledigt_durch = 'regel_geloescht'
+                 WHERE id = ?
+                """, ts(jetzt), alarmId);
     }
 
     public void alarmWiederNormal(UUID alarmId, Instant jetzt, boolean erledigen) {
