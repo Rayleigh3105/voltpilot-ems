@@ -8039,6 +8039,23 @@ export async function register(input: RegisterInput): Promise<RegistrationResult
   return (await res.json()) as RegistrationResult;
 }
 
+/** Ergebnis des Links aus der Bestätigungs-Mail - der Server unterscheidet abgelaufen/ungültig/schon verwendet bewusst nicht (§6.6: kein Hinweis, ob ein Token je existiert hat). */
+export type ZustellwegBestaetigungsErgebnis = 'bestaetigt' | 'abgelaufen';
+
+/**
+ * Bestätigt den eigenen E-Mail-Zustellweg über den Link aus der Mail
+ * (ZustellwegController#bestaetigen, §6.6). Deliberately NOT via request():
+ * der Klick kommt oft OHNE angemeldete Sitzung (anderes Gerät/Browser), und
+ * der Endpunkt selbst verlangt keine Anmeldung - ein Token-Refresh/Login-Zwang
+ * hier würde genau das kaputt machen, was der Link leisten soll.
+ */
+export async function zustellwegBestaetigen(token: string): Promise<ZustellwegBestaetigungsErgebnis> {
+  const res = await fetch(`${API_BASE}/api/v1/zustellwege/bestaetigen?token=${encodeURIComponent(token)}`);
+  if (res.status === 410) return 'abgelaufen';
+  if (!res.ok) throw new ApiError(res.status, 'Die Bestätigung ist zurzeit nicht möglich.');
+  return 'bestaetigt';
+}
+
 export type { ProfileState, SiteProfile, SiteProfiles } from './profiles';
 export type {
   CockpitLayoutDocument,

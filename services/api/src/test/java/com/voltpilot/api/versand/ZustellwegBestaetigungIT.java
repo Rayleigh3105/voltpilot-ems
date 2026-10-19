@@ -149,6 +149,31 @@ class ZustellwegBestaetigungIT {
                 .extracting(ZustellwegRepository.Zustellweg::bestaetigt).isEqualTo(false);
     }
 
+    /**
+     * Die exakte Link-URL der Mail (Abnahme-Befund: die Portal-Route dahinter gab es nicht) -
+     * {@code basisUrl + "/#/zustellweg/bestaetigen?token=…"}, wie {@code ZustellwegController#bestaetigen}
+     * sie öffentlich (ohne Anmeldung) entgegennimmt.
+     */
+    @Test
+    void dieBestaetigungsMailTraegtDenLinkZurPortalRouteMitDemEchtenToken() {
+        TenantContext.set(tenant);
+        TelegramAdapter telegram = (chatId, text) -> { };
+        ZustellwegService dienst = new ZustellwegService(zustellwege, ausgang, telegram,
+                "https://portal.voltpilot.de", "", "");
+        dienst.uhrStellen(Clock.fixed(Instant.parse("2026-10-15T12:00:00Z"), ZoneOffset.UTC));
+
+        dienst.anfordern("sub-lena", "lena@example.test");
+
+        String inhalt = adminJdbc.queryForObject(
+                "SELECT inhalt FROM benachrichtigung WHERE tenant_id = ? AND empfaenger_sub = 'sub-lena'",
+                String.class, tenant);
+        String token = adminJdbc.queryForObject(
+                "SELECT bestaetigung_token FROM zustellweg WHERE tenant_id = ? AND benutzer_sub = 'sub-lena'",
+                String.class, tenant);
+        assertThat(token).isNotBlank();
+        assertThat(inhalt).contains("https://portal.voltpilot.de/#/zustellweg/bestaetigen?token=" + token);
+    }
+
     private static DataSource ds(String user, String password) {
         PGSimpleDataSource ds = new PGSimpleDataSource();
         ds.setUrl(POSTGRES.getJdbcUrl());

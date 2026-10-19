@@ -637,6 +637,20 @@ export function isRegisterRoute(): boolean {
 }
 
 /**
+ * Der Link aus der Bestätigungs-Mail (`#/zustellweg/bestaetigen?token=...`,
+ * `ZustellwegService#anfordern`): ihr Endpunkt verlangt bewusst keine
+ * Anmeldung (§6.6, der Klick kommt oft ohne angemeldete Sitzung) - die Route
+ * muss deshalb wie `#register` VOR/OHNE den Auth-Bootstrap rendern. Gibt den
+ * Token zurück, oder `null`, wenn der Hash diese Route nicht nennt oder der
+ * Token fehlt.
+ */
+export function zustellwegBestaetigenToken(): string | null {
+  const [pfad, ...rest] = window.location.hash.replace(/^#\/?/, '').split('?');
+  if (pfad !== 'zustellweg/bestaetigen') return null;
+  return new URLSearchParams(rest.join('?')).get('token')?.trim() || null;
+}
+
+/**
  * Nennt dieser Hash ein ZIEL, oder ist es der nackte Boot-Hash?
  *
  * `parseRoute` beantwortet die Frage nicht: es bildet den leeren Hash UND

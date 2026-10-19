@@ -60,6 +60,11 @@ export type BootOutcome =
  * long-standing main.tsx branching, plus: a rate-limited/locked-out boot never
  * auto-redirects (the redirect could not succeed and would hide the German
  * "zu viele Versuche" explanation behind a Keycloak page).
+ *
+ * NOTE: the confirmation-mail link (`#/zustellweg/bestaetigen?token=...`) is
+ * NOT a case here - main.tsx short-circuits to its own screen BEFORE calling
+ * initAuth() at all, so that an unreachable/slow Keycloak can never block a
+ * link whose own API endpoint takes no login in the first place.
  */
 export function bootOutcome(input: {
   authenticated: boolean;
