@@ -16,7 +16,6 @@ import { NavItem } from '../../designsystem/components/shell/NavItem';
 // (und die Anmeldeseite benutzt sie seit dem 23.08. schon).
 import logoUrl from '../../designsystem/assets/voltpilot-wordmark.png';
 import { currentUser, logout } from '../auth';
-import { pushBeiAbmeldenAufraeumen } from '../push';
 import type { Tenant } from '../admin/adminApi';
 import {
   MAIN_PAGES,
@@ -349,7 +348,12 @@ export function AppShell({
         if (target.action === 'add-anlage') onAddAnlage();
         // B8 (Push auf geteilten Geräten): erst dieses Geräts Push-Abo beenden - sauber beim Server
         // abmelden und lokal aufräumen - dann die Keycloak-Abmeldung; bestmöglich, hält sie nie auf.
-        else void pushBeiAbmeldenAufraeumen().finally(logout);
+        // `../push` wird nur HIER gebraucht (nie beim Laden) - ein dynamischer Import hält es aus dem
+        // Einstiegs-Chunk (test/bundle-smoke.sh). Die Kette hält die Reihenfolge exakt: `logout` läuft
+        // erst, wenn das Nachladen UND das Aufräumen fertig sind - bei langsamem Netz wartet das
+        // Abmelden länger, das Abo-Ende geht nie verloren; ein Nachlade-Fehler darf das Abmelden nie
+        // aufhalten (bestmöglich, wie im Modul selbst).
+        else void import('../push').then((m) => m.pushBeiAbmeldenAufraeumen()).catch(() => {}).finally(logout);
     }
   };
 
