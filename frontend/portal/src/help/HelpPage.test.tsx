@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import HelpPage from './HelpPage';
 import { HelpProvider, HelpLink } from './HelpProvider';
 import { useState } from 'react';
@@ -40,5 +40,23 @@ describe('help experience', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(input).toHaveValue('Mein noch ungespeicherter Name');
     expect(link).toHaveFocus();
+  });
+  it('zeigt die Gruppe 07 „MiSpeL“ und die Themenseite mit Kennzeile, Stand, Karten und Bildern (MP-50)', () => {
+    render(<HelpPage />);
+    const gruppe = screen.getByRole('heading', { name: 'MiSpeL', level: 2 }).closest('section')!;
+    expect(gruppe).toHaveTextContent('07');
+    expect(within(gruppe).getByRole('link', { name: /MiSpeL verstehen/ })).toHaveAttribute('href', '#/hilfe/mispel-verstehen');
+    cleanup();
+    render(<HelpPage articleId="mispel-verstehen" />);
+    expect(screen.getByRole('heading', { name: 'Sonne und Netz in einem Speicher', level: 1 })).toBeVisible();
+    expect(screen.getByText('MiSpeL · Speicher und Ladepunkte im Mischbetrieb')).toBeVisible();
+    expect(screen.getByText(/^Stand Oktober 2026: /)).toBeVisible();
+    for (const karte of ['Abgrenzungsoption', 'Pauschaloption']) expect(screen.getByRole('heading', { name: karte, level: 3 })).toBeVisible();
+    for (const kette of ['Solaranlage → Stromnetz', 'Solaranlage → Speicher → Stromnetz', 'Stromnetz → Speicher → Stromnetz', 'Stromnetz → Haus oder Betrieb']) {
+      expect(screen.getByRole('img', { name: kette })).toBeInTheDocument();
+    }
+    expect(screen.getByRole('img', { name: /^Schema eines Tages: 0 Uhr bis 5 Uhr: lädt günstigen Netzstrom; .*17 Uhr bis 21:30 Uhr: gibt ab: Haus und Netz$/ })).toBeInTheDocument();
+    expect(screen.getAllByRole('img', { name: 'nein' })).toHaveLength(1);
+    expect(screen.getByRole('link', { name: /Begriffe einfach erklärt/ })).toHaveAttribute('href', '#/hilfe/glossar');
   });
 });

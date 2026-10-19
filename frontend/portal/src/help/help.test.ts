@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { HELP_ARTICLES, findArticle } from './articles';
 import { HELP_CATEGORIES, helpHref } from './model';
 import { HELP_FOR_SUB, helpForRoute, helpForSetupStep } from './context';
@@ -11,7 +12,7 @@ import { canonicalShellRoute } from '../betriebsart';
 
 describe('help handbook integrity', () => {
   it('ships the full handbook with unique slugs, sections and valid related articles', () => {
-    expect(HELP_ARTICLES).toHaveLength(29);
+    expect(HELP_ARTICLES).toHaveLength(30);
     expect(new Set(HELP_ARTICLES.map((a) => a.id)).size).toBe(HELP_ARTICLES.length);
     for (const article of HELP_ARTICLES) {
       expect(HELP_CATEGORIES.some((c) => c.id === article.category)).toBe(true);
@@ -104,5 +105,102 @@ describe('global help routing', () => {
         route: parseRoute(helpHref('fahrplan')), siteIds: Array.from({ length: siteCount }, (_, i) => String(i)),
       })).toBeNull();
     }
+  });
+});
+
+/**
+ * MiSpeL MP-50 (BK-50 = A): die Gruppe 07 „MiSpeL“ mit der Themenseite „MiSpeL verstehen“ nach der Attrappe des
+ * Bedienkonzepts (Abschnitt 3.1). Die Sätze mit Rechtsaussage tragen im Quelltext `// MP-61: Rechtsprüfung`.
+ */
+describe('MiSpeL MP-50 · Themenseite „MiSpeL verstehen“', () => {
+  const artikel = findArticle('mispel-verstehen')!;
+  // Pfade über das Arbeitsverzeichnis: Vite schreibt `new URL('…', import.meta.url)` mit festem Pfad zu einer Asset-URL um.
+  const lies = (pfad: string) => readFileSync(join(process.cwd(), 'src', pfad), 'utf8');
+  const quelle = lies('help/content/mispel.ts');
+  const texte = [
+    artikel.summary, artikel.prerequisite ?? '', artikel.asOf ?? '',
+    ...artikel.sections.flatMap((s) => [
+      ...s.paragraphs, s.note ?? '', ...(s.cards ?? []).flatMap((c) => [c.subtitle, ...c.items, c.status.text]),
+      ...(s.points ?? []).flatMap((p) => [p.title ?? '', ...p.text]),
+    ]),
+  ];
+
+  it('steht als einziger Artikel in der siebten Gruppe „MiSpeL“', () => {
+    expect(HELP_CATEGORIES[6]).toMatchObject({ id: 'mispel', title: 'MiSpeL', description: 'Sonne und Netz in einem Speicher.' });
+    expect(HELP_ARTICLES.filter((a) => a.category === 'mispel').map((a) => a.id)).toEqual(['mispel-verstehen']);
+    expect(artikel).toMatchObject({
+      title: 'MiSpeL verstehen', headline: 'Sonne und Netz in einem Speicher', eyebrow: 'MiSpeL · Speicher und Ladepunkte im Mischbetrieb',
+    });
+    expect(artikel.prerequisite).toMatch(/^Anlagen mit Speicher oder rückspeisefähigem Ladepunkt/);
+    expect(artikel.asOf).toMatch(/^Stand Oktober 2026: /);
+  });
+
+  it('hat die Abschnitte der Attrappe in ihrer Reihenfolge, die Bilder als eigene Zeichnungen', () => {
+    expect(artikel.sections.map((s) => s.title)).toEqual([
+      'Vorher und nachher', 'Drei Farben für vier Wege', 'Ein Tag im Mischbetrieb', 'Zwei Wege – welcher passt?', 'Was sich für Sie ändert',
+      'Lohnt es sich für mich?', 'Und das Auto?',
+    ]);
+    expect(artikel.sections.flatMap((s) => s.diagram ? [s.diagram] : [])).toEqual(['mispel-vorher-nachher', 'mispel-wege', 'mispel-tag']);
+    expect(artikel.sections.some((s) => s.figure)).toBe(false);
+  });
+
+  it('ist über die Suche nach „MiSpeL“ und „Netzladen“ erreichbar', () => {
+    expect(searchHelp(HELP_ARTICLES, 'MiSpeL')[0].id).toBe('mispel-verstehen');
+    expect(searchHelp(HELP_ARTICLES, 'Netzladen').map((a) => a.id)).toContain('mispel-verstehen');
+    // Nur in einer Karte, nicht in Titel, Suchwörtern oder Absatz: die Suche liest Karten und Punkte mit.
+    expect(searchHelp(HELP_ARTICLES, 'Daumenregel').map((a) => a.id)).toContain('mispel-verstehen');
+  });
+
+  it('„Lohnt es sich für mich?“ verweist nur auf den Rechner, ohne Betrag', () => {
+    const lohnt = artikel.sections.find((s) => s.id === 'lohnt-es-sich')!;
+    const text = [...lohnt.paragraphs, lohnt.note ?? ''].join(' ');
+    expect(text).toContain('Vorteilsrechner „Was bringt MiSpeL meiner Anlage?“');
+    expect(text).not.toMatch(/€|\d/);
+  });
+
+  it('behauptet nicht, was nicht gilt: keine geltenden Regeln seit dem 01.10., Pauschaloption gesperrt, Zurückspeisen aus', () => {
+    const alles = texte.join(' ');
+    expect(alles).not.toMatch(/seit (dem )?0?1\.10\.|gilt seit|gelten seit|in Kraft/);
+    expect(artikel.asOf).toContain('wirksam werden sie zwei Wochen nach der Veröffentlichung im Amtsblatt');
+    const pauschal = artikel.sections.flatMap((s) => s.cards ?? []).find((c) => c.title === 'Pauschaloption')!;
+    expect(pauschal.status).toEqual({ tone: 'warn', text: 'noch nicht anwendbar · wartet auf die Genehmigung der EU-Kommission' });
+    expect(alles).toContain('Eingeschaltet ist es noch nicht');
+  });
+
+  it('markiert die 15 Sätze mit Rechtsaussage der Attrappe für die Rechtsprüfung (MP-61)', () => {
+    const zeilen = quelle.split('\n');
+    const markiert = (satz: string) => {
+      const i = zeilen.findIndex((z) => z.includes(satz));
+      return i > 0 && zeilen[i - 1].trim() === '// MP-61: Rechtsprüfung';
+    };
+    for (const satz of [
+      'Die Bundesnetzagentur hat die Regeln am 01.10.2026 beschlossen; wirksam werden sie zwei Wochen nach der Veröffentlichung im Amtsblatt.',
+      'Netzstrom laden kostet die Förderung für den Strom aus dem Speicher – für das ganze Kalenderjahr',
+      'Netzstrom laden ist erlaubt – die Förderung des Sonnenstroms bleibt',
+      'Marktprämie wie bisher',
+      'Marktprämie bleibt',
+      'Umlagen entfallen auf diese Menge',
+      'Auf die rote Menge entfällt nach heutiger Rechtslage auch das Netzentgelt; das kann sich mit der Reform der Netzentgelte ändern.',
+      'Zwei geeichte Zähler: am Netzanschluss und am Speicher – in einfachen Fällen genügt einer',
+      'möglich · bis 30.09.2027 nur mit Einverständnis von Netz- und Messstellenbetreiber',
+      'Für Solaranlagen bis 30 kWp – typisch Haushalte',
+      'Bis 500 kWh je kWp und Jahr Marktprämie; darüber ein Zwischenbereich, danach entfallen Umlagen',
+      'noch nicht anwendbar · wartet auf die Genehmigung der EU-Kommission',
+      'Beide Wege setzen die Direktvermarktung voraus.',
+      'Ein Ladepunkt, der zurückspeisen kann, zählt wie ein Speicher. Der Strom, mit dem Sie fahren, bleibt voll belastet.',
+      'Mit fester Einspeisevergütung geht es nicht.',
+    ]) expect(markiert(satz), satz).toBe(true);
+    // Keine Markierung ohne Satz darunter.
+    zeilen.forEach((z, i) => { if (z.trim() === '// MP-61: Rechtsprüfung') expect(zeilen[i + 1], `Zeile ${i + 2}`).toMatch(/'/); });
+  });
+
+  it('malt in den Farben der MiSpeL-Karte: gleiche Namen, gleiche Werte', () => {
+    const variablen = (datei: string) => Object.fromEntries(
+      [...lies(datei).matchAll(/(--mi-[a-z-]+):\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]),
+    );
+    const karte = variablen('components/erloese/MispelKarte.css');
+    const hilfe = variablen('help/HelpMispel.css');
+    expect(Object.keys(karte).length).toBeGreaterThanOrEqual(8);
+    for (const [name, wert] of Object.entries(karte)) expect(hilfe[name], name).toBe(wert);
   });
 });

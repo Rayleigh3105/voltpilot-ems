@@ -236,6 +236,57 @@ export const MISPEL_LADESTAND_ZULETZT = 'Ladestand zuletzt';
 export const MISPEL_LAEDT_IMMER_SOFORT = 'Lädt immer sofort';
 
 /**
+ * MiSpeL MP-50 (Bedienkonzept BK-50 = A, Captain 13.10.2026; `docs/fachmodell/glossar.md` › Förderweg,
+ * Abgrenzungsoption, Pauschaloption, Direktvermarktung, grün, gelb, rot): die Wörter der Themenseite „MiSpeL
+ * verstehen“ (`help/content/mispel.ts`). Jede Definition steht im Glossar wörtlich als erster Satz des Eintrags
+ * (`copy.test.ts`); der Artikel „Begriffe einfach erklärt“ zeigt sie unter „MiSpeL“. Alle sieben sagen etwas über
+ * Förderung oder Abgaben und gehen vor der Veröffentlichung in die Rechtsprüfung (MP-61).
+ */
+export const MISPEL_FOERDERWEG = 'Förderweg';
+export const MISPEL_ABGRENZUNGSOPTION = 'Abgrenzungsoption';
+export const MISPEL_PAUSCHALOPTION = 'Pauschaloption';
+export const MISPEL_DIREKTVERMARKTUNG = 'Direktvermarktung';
+export const MISPEL_FARBEN = { gruen: 'grün', gelb: 'gelb', rot: 'rot' } as const;
+
+export const MISPEL_BEGRIFFE: readonly { wort: string; definition: string }[] = [
+  {
+    wort: MISPEL_FOERDERWEG,
+    // MP-61: Rechtsprüfung
+    definition: 'Wie der Strom einer Einspeisestelle vergütet wird: feste Einspeisevergütung, Marktprämie in der Direktvermarktung – mit Ausschließlichkeits-, Abgrenzungs- oder Pauschaloption – oder Direktvermarktung ohne Förderung. Je Einspeisestelle gilt genau einer.',
+  },
+  {
+    wort: MISPEL_ABGRENZUNGSOPTION,
+    // MP-61: Rechtsprüfung
+    definition: 'Der MiSpeL-Weg, auf dem jede Kilowattstunde genau erfasst wird: gerechnet je Viertelstunde, bestimmt je Monat, welcher Strom grün, gelb oder rot zählt. Er braucht meistens einen zweiten geeichten Zähler am Speicher.',
+  },
+  {
+    wort: MISPEL_PAUSCHALOPTION,
+    // MP-61: Rechtsprüfung
+    definition: 'Der MiSpeL-Weg mit einer Daumenregel für Solaranlagen bis 30 kWp: bis 500 kWh je kWp und Jahr gibt es die Marktprämie, darüber einen Zwischenbereich, danach entfallen Umlagen. Sie ist noch nicht anwendbar und wartet auf die Genehmigung der EU-Kommission.',
+  },
+  {
+    wort: MISPEL_DIREKTVERMARKTUNG,
+    // MP-61: Rechtsprüfung
+    definition: 'Ein Direktvermarkter verkauft Ihren Strom; Sie erhalten den Marktwert und dazu die Marktprämie statt einer festen Vergütung. Beide MiSpeL-Wege setzen die Direktvermarktung voraus.',
+  },
+  {
+    wort: MISPEL_FARBEN.gruen,
+    // MP-61: Rechtsprüfung
+    definition: 'Sonnenstrom, der direkt ins Netz geht – er bekommt die Marktprämie wie bisher.',
+  },
+  {
+    wort: MISPEL_FARBEN.gelb,
+    // MP-61: Rechtsprüfung
+    definition: 'Sonnenstrom, der erst in den Speicher und später ins Netz geht – die Marktprämie bleibt.',
+  },
+  {
+    wort: MISPEL_FARBEN.rot,
+    // MP-61: Rechtsprüfung
+    definition: 'Netzstrom, der im Speicher nur zwischengespeichert und wieder eingespeist wird – auf diese Menge entfallen die Umlagen. Rot heißt nicht „schlecht“.',
+  },
+];
+
+/**
  * Die zwei Zustandsfamilien (AP-01 E8, `docs/fachmodell/zustaende.md`): der
  * LEBENSZYKLUS, den der Kunde setzt, und die BEOBACHTUNG, die nie jemand von
  * Hand setzt. Die Wörter bedeuten bei JEDEM Objekt dasselbe.

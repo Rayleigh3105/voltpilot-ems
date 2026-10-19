@@ -217,6 +217,10 @@ Wo das Produkt bewusst nur einen Teil umsetzt oder vorsichtiger rechnet — jede
 - **Oberflächen** — jede beginnt erst nach einem mit dem Captain abgestimmten Bedienkonzept (BK-…): Einrichtung des Förderwegs mit Formelsatz-Vorschlag und Gebot der Bestnutzung (MP-17;
   ersetzt auch den Portaltext zum Netzladen, W2, und bringt den Hinweis auf die Abgrenzungsoption an einer EEG-Anlage
   im Händler-Modus, W6), Kundenansicht Mengen und Ertrag mit Nachweis-Abruf (MP-18, W5).
+- **Flächen für Interessenten** (BK-50 bis BK-53): die Themenseite „MiSpeL verstehen“ in der Hilfe-Gruppe 07 steht
+  (MP-50, `frontend/portal/src/help/content/mispel.ts`); ihre Sätze mit Rechtsaussage tragen `// MP-61: Rechtsprüfung`
+  und gehen vor der Veröffentlichung in Produktion zur Kanzlei (MP-61). Es fehlen die Türen an Übersicht, Einstellungen
+  und MiSpeL-Karte (MP-51), der Vorteilsrechner (MP-52/53), die Musteranlagen (MP-54) und die Strecke (MP-55/56).
 - **Partner:** Einverständnis-Paket für die Übergangszeit (MP-19), Direktvermarkter-Schnittstelle (MP-20).
 - **Bidirektionale Ladepunkte** (Stufe B): ein bidirektionaler Ladepunkt wird wie ein Speicher behandelt
   (A1 Abschn. 3.2.5, S. 26–27). Das Datenmodell steht (MP-31); es fehlen Rechenwerk A2–A4 mit Fremdtankstrom (MP-32),

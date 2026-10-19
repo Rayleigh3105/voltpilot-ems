@@ -1,0 +1,86 @@
+/*
+ * MiSpeL MP-50 · die Bilder der Themenseite „MiSpeL verstehen“ (Attrappe BK-50, Abschnitt 3.1).
+ * Grün, Gelb, Rot und Grau sind die Farben der MiSpeL-Karte (components/erloese/MispelKarte.css, Festlegung A1 S. 18):
+ * gleiche Namen, gleiche Werte - help.test.ts vergleicht sie. Neu sind Rot als Fläche und Schrift (die Karte zeigt Rot
+ * nur als Balken) und das Grau „ohne Farbe“ für Netzstrom, der verbraucht wird.
+ */
+.vp-help-mispel {
+  --mi-gruen: #16a34a;
+  --mi-gelb: #eab308;
+  --mi-rot: #dc2626;
+  --mi-grau: #cbd5e1;
+  --mi-ok-bg: #dcfce7;
+  --mi-ok-fg: #166534;
+  --mi-gelb-bg: #fef9c3;
+  --mi-gelb-fg: #854d0e;
+  --mi-rot-bg: #fee2e2;
+  --mi-rot-fg: #991b1b;
+  --mi-ohne: #94a3b8;
+  container-type: inline-size;
+}
+.vp-help-diagram.vp-help-mispel { background: transparent; border: 0; padding: 0; }
+.vp-help-diagram.vp-help-mispel figcaption { margin-top: 10px; }
+
+/* Wege des Stroms: Farbe · Kette · Folge */
+.vp-help-mispel-wege { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.vp-help-mispel-wege li {
+  --f: var(--mi-ohne); --fb: var(--vp-neutral-soft); --ff: #475569;
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: center; min-width: 0;
+  background: var(--vp-surface); border: 1px solid var(--vp-border); border-left: 6px solid var(--f); border-radius: 16px; padding: 12px 14px;
+}
+.vp-help-mispel .f-gruen { --f: var(--mi-gruen); --fb: var(--mi-ok-bg); --ff: var(--mi-ok-fg); }
+.vp-help-mispel .f-gelb { --f: var(--mi-gelb); --fb: var(--mi-gelb-bg); --ff: var(--mi-gelb-fg); }
+.vp-help-mispel .f-rot { --f: var(--mi-rot); --fb: var(--mi-rot-bg); --ff: var(--mi-rot-fg); }
+.vp-help-mispel-wege .name { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 800; }
+.vp-help-mispel-wege .name i { width: 14px; height: 14px; border-radius: 4px; background: var(--f); flex-shrink: 0; }
+.vp-help-mispel-wege .folge strong { display: inline-block; font-size: 15px; font-weight: 800; line-height: 1.4; color: var(--ff); background: var(--fb); border-radius: 10px; padding: 5px 11px; }
+.vp-help-mispel-wege .folge small { display: block; font-size: 12px; line-height: 1.5; color: var(--vp-text-muted); margin-top: 4px; }
+.vp-help-mispel-kette { display: block; width: 100%; max-width: 300px; height: auto; overflow: visible; }
+.vp-help-mispel-kette .knoten { color: #334155; }
+.vp-help-mispel-kette .knoten rect { fill: var(--vp-neutral-soft); }
+.vp-help-mispel-kette .knoten text { font-size: 12px; fill: var(--vp-text-muted); text-anchor: middle; }
+.vp-help-mispel-kette .pfeil line { stroke: var(--f); stroke-width: 6; stroke-linecap: round; }
+.vp-help-mispel-kette .pfeil path { fill: var(--f); }
+@container (min-width: 700px) {
+  .vp-help-mispel-wege li { grid-template-columns: 132px minmax(0, 1fr) minmax(0, 240px); gap: 6px 18px; padding: 12px 16px; }
+}
+
+/* Vorher und nachher */
+.vp-help-mispel-paar { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
+.vp-help-mispel-paar > div { min-width: 0; padding: 14px 16px; background: var(--vp-surface); border: 1px solid var(--vp-border); border-radius: 16px; }
+.vp-help-mispel-paar > div.neu { border: 2px solid var(--vp-action); background: linear-gradient(var(--vp-tint), var(--vp-tint)), var(--vp-surface); }
+.vp-help-mispel-paar > div > strong { display: block; margin-bottom: 8px; font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--vp-text-muted); }
+.vp-help-mispel-paar > div.neu > strong { color: var(--vp-action); }
+.vp-help-mispel-paar ul { list-style: none; margin: 0; padding: 0; }
+.vp-help-mispel-paar li { display: grid; grid-template-columns: 84px 22px minmax(0, 1fr); gap: 8px; align-items: center; padding: 6px 0; font-size: 14px; line-height: 1.5; }
+.vp-help-prose .vp-help-mispel-paar p { margin: 8px 0 0; font-size: 14px; line-height: 1.6; color: var(--vp-text-muted); }
+.vp-help-mispel-klein { display: block; width: 84px; height: 32px; color: #334155; }
+.vp-help-mispel-klein rect { fill: var(--vp-neutral-soft); }
+.vp-help-mispel-paar .neu .vp-help-mispel-klein rect { fill: var(--vp-surface); }
+.vp-help-mispel-klein .zwischen { fill: none; stroke: var(--mi-ohne); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.vp-help-mispel-zeichen { display: block; width: 22px; height: 22px; }
+.vp-help-mispel-zeichen.ja circle { fill: var(--mi-gruen); }
+.vp-help-mispel-zeichen.nein circle { fill: var(--mi-rot); }
+.vp-help-mispel-zeichen path { fill: none; stroke: #fff; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+@container (min-width: 600px) { .vp-help-mispel-paar { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+/* Ein Tag als Band */
+.vp-help-diagram.vp-help-mispel-tag { background: var(--vp-surface); border: 1px solid var(--vp-border); padding: 14px 14px 12px; }
+.vp-help-mispel-tag .kopf { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 12px; font-size: 13px; }
+.vp-help-mispel-tag .kopf span { color: var(--vp-text-muted); }
+.vp-help-mispel-tag .band { border-radius: 10px; overflow: hidden; background: var(--vp-neutral-soft); }
+.vp-help-mispel-tag .band svg, .vp-help-mispel-tag .achse { display: block; }
+.vp-help-mispel-tag rect { stroke: var(--vp-surface); stroke-width: 2; }
+.vp-help-mispel-tag rect.ruhe { fill: var(--vp-neutral-soft); }
+.vp-help-mispel-tag rect.netz, .vp-help-mispel-tag .legende i.netz { fill: var(--mi-rot-bg); background: var(--mi-rot-bg); --rand: var(--mi-rot-fg); }
+.vp-help-mispel-tag rect.sonne, .vp-help-mispel-tag .legende i.sonne { fill: var(--mi-gelb-bg); background: var(--mi-gelb-bg); --rand: var(--mi-gelb-fg); }
+.vp-help-mispel-tag rect.abgabe, .vp-help-mispel-tag .legende i.abgabe { fill: #dbeafe; background: #dbeafe; --rand: #1e40af; }
+.vp-help-mispel-tag .text { font-size: 11.5px; font-weight: 700; text-anchor: middle; dominant-baseline: central; }
+.vp-help-mispel-tag .text.netz { fill: var(--mi-rot-fg); }
+.vp-help-mispel-tag .text.sonne { fill: var(--mi-gelb-fg); }
+.vp-help-mispel-tag .text.abgabe { fill: #1e40af; }
+.vp-help-mispel-tag .achse text { font-size: 11px; fill: var(--vp-text-muted); }
+.vp-help-mispel-tag .legende { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 4px 0 0; padding: 0; font-size: 12.5px; line-height: 1.6; color: var(--vp-text-muted); }
+.vp-help-mispel-tag .legende i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 3px; box-shadow: inset 0 0 0 1px var(--rand); vertical-align: -1px; }
+/* Unter 560 px passen die Wörter nicht mehr in die Abschnitte; Achse und Legende tragen das Band dann allein. */
+@container (max-width: 559px) { .vp-help-mispel-tag .text { display: none; } }

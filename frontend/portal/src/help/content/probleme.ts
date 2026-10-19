@@ -1,5 +1,5 @@
 import { HELP_TEXT } from '../../ebenenNav';
-import { GLOSSAR } from '../../glossar';
+import { GLOSSAR, MISPEL_BEGRIFFE } from '../../glossar';
 import type { HelpArticle } from '../model';
 
 export const problemArticles: HelpArticle[] = [
@@ -43,7 +43,9 @@ export const problemArticles: HelpArticle[] = [
         'Standort: der Ort mit Adresse; er kann mehrere Anlagen haben. Anlage: ein Netzanschluss mit seinen Geräten, die VoltPilot beobachtet und steuert. Box: das VoltPilot-Gerät zur Anbindung vor Ort. Komponente: ein im Aufbau zugeordneter Teil mit bestimmten Mess- oder Steuerfähigkeiten. Messwert: eine konkrete gemessene Größe.',
         'Synchronisation: Übertragung und Abgleich einer Konfiguration. Befehl: eine an ein Gerät gerichtete Aktion. Bestätigung: eine Rückmeldung zu dieser Aktion; sie ist von der später gemessenen Wirkung zu unterscheiden. OCPP: ein Kommunikationsverfahren zur Anbindung von Ladepunkten.',
       ] },
-    ], related: ['energiefluesse', 'fahrplan', 'einstellungen'],
+      // MiSpeL MP-50: dieselben Wörter und Definitionen wie im Fachmodell-Glossar (`glossar.ts` › MISPEL_BEGRIFFE).
+      { id: 'mispel', title: 'MiSpeL', paragraphs: MISPEL_BEGRIFFE.map(({ wort, definition }) => `${wort}: ${definition}`) },
+    ], related: ['energiefluesse', 'fahrplan', 'einstellungen', 'mispel-verstehen'],
   },
   {
     id: 'kontakt', category: 'probleme', title: 'Kontakt und Unterstützung',

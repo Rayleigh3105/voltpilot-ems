@@ -2,7 +2,7 @@
 
 # Glossar des Unternehmens-Energiemanagements
 
-Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 65 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
+Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 72 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
 
 Belege sind `datei:zeile` am Stand `origin/main` 36f3e7e8 (10.09.2026); `MIG` = `services/api/src/main/resources/db/migration`, `PORTAL` = `frontend/portal/src`, `DATA` = die Konzept-Ablage des Programms (nicht in diesem Repo). `tools/check_belege.sh` prüft die Pfade.
 
@@ -98,6 +98,13 @@ Ein Kasten **Verfeinert durch** nennt, was ein späteres Konzeptpaket geschärft
 - [Ladestand zuletzt](#ladestand-zuletzt) — Sicht Betrieb · Nachtrag MiSpeL BK-41c A (05.10.2026)
 - [Lädt immer sofort](#lädt-immer-sofort) — Sicht Betrieb · Nachtrag MiSpeL BK-41c A (05.10.2026)
 - [Sonne + Speicher](#sonne--speicher) — Sicht Betrieb · Nachtrag Ladequelle (06.10.2026)
+- [Förderweg](#förderweg) — Sicht Betrieb · Nachtrag MiSpeL BK-50 A (13.10.2026)
+- [Abgrenzungsoption](#abgrenzungsoption) — Sicht Betrieb · Nachtrag MiSpeL BK-50 A (13.10.2026)
+- [Pauschaloption](#pauschaloption) — Sicht Betrieb · Nachtrag MiSpeL BK-50 A (13.10.2026)
+- [Direktvermarktung](#direktvermarktung) — Sicht Betrieb · Nachtrag MiSpeL BK-50 A (13.10.2026)
+- [grün](#grün) — Sicht Betrieb · Nachtrag MiSpeL BK-50 A (13.10.2026)
+- [gelb](#gelb) — Sicht Betrieb · Nachtrag MiSpeL BK-50 A (13.10.2026)
+- [rot](#rot) — Sicht Betrieb · Nachtrag MiSpeL BK-50 A (13.10.2026)
 
 ## Kundenbereich
 
@@ -1631,3 +1638,101 @@ Wie tief der Speicher dafür entladen werden darf (seine Untergrenze), rechnet d
 **Heute im Code.** Steuerart `ueberschussModus=speicher` mit der Karte `ueberschuss_speicher` (services/api/src/main/java/com/voltpilot/api/verbraucher/SteuerartSatz.java:132), Untergrenze im Optimierer (services/optimization/voltpilot_optimization/storage_release.py:390), Steuerstand der Box im Herzschlag (`docs/contracts/speicher-steuerstand.md`, MIG/V20261007120000__device_battery_control.sql:33), Freigabe auf der Box (`edge-app/core/internal/lastmgmt/release.go`), Reserve je Anlage (MIG/V20261006120000__sonne_speicher.sql:40), Wort als `LADEQUELLE` (PORTAL/glossar.ts:157).
 
 **Abgrenzung.** Nicht „Smart“ (die Moduswahl), nicht der Vorrang „Speicher vor Auto“ (der ordnet den Überschuss), nicht die Notstrom- und Schutzreserve des Speichers (die bleibt immer unberührt).
+
+## Förderweg
+
+*Sicht: Betrieb · Nachtrag MiSpeL BK-50 A (13.10.2026)*
+
+**Wie der Strom einer Einspeisestelle vergütet wird: feste Einspeisevergütung, Marktprämie in der Direktvermarktung – mit Ausschließlichkeits-, Abgrenzungs- oder Pauschaloption – oder Direktvermarktung ohne Förderung. Je Einspeisestelle gilt genau einer.**
+
+„Förderweg“ ist das Produktwort für Veräußerungsform und Option zusammen (Vertrag `mispel-foerderweg.md` § 1). Ein anderer Förderweg gilt ab einem Monatsersten; nur die erstmalige Zuordnung einer neuen Anlage gilt im laufenden Monat. Zwei Wege lassen den Speicher Sonnen- und Netzstrom mischen: die Abgrenzungsoption und die Pauschaloption. In der Einspeisevergütung und in der Ausschließlichkeitsoption bleibt Netzladen gesperrt. Im Portal steht er unter Anlage › Einstellungen › Förderweg; der Dialog „Förderweg ändern“ prüft die Voraussetzungen Schritt für Schritt.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Ahrenberg hat heute keine Anlage in einem MiSpeL-Förderweg; das Beispiel ist die erfundene Anlage „Kühlhaus Seebach“ des Bedienkonzepts BK-W5: Förderweg „Marktprämie mit Abgrenzungsoption“, Formelsatz A1.
+
+**Heute im Code.** Die fünf Wege `FOERDERWEGE` (PORTAL/mispelFoerderweg.ts:51), Vertrag docs/contracts/v2/mispel-foerderweg.md (Werte § 1, Regeln § 3), der Dialog PORTAL/components/FoerderwegDialog.tsx, das Wort `MISPEL_FOERDERWEG` (PORTAL/glossar.ts), die Themenseite PORTAL/help/content/mispel.ts.
+
+**Abgrenzung.** Nicht der Stromtarif (der gilt für den Netzbezug), nicht die Abrechnung in Farben (die rechnet je Monat nach dem gewählten Weg), nicht der Schalter „Netzladen“ (den lässt der Förderweg zu oder sperrt ihn).
+
+## Abgrenzungsoption
+
+*Sicht: Betrieb · Nachtrag MiSpeL BK-50 A (13.10.2026)*
+
+**Der MiSpeL-Weg, auf dem jede Kilowattstunde genau erfasst wird: gerechnet je Viertelstunde, bestimmt je Monat, welcher Strom grün, gelb oder rot zählt. Er braucht meistens einen zweiten geeichten Zähler am Speicher.**
+
+Die Mengen rechnet Anlage 1 der Festlegung aus den Viertelstunden der geeichten Zähler am Netzanschluss und am Speicher oder Ladepunkt; ein Speicher ohne Solaranlage am selben Anschluss kommt mit dem Zähler am Netzanschluss aus. Der Weg passt für Gewerbe, größere Anlagen, Speicher ohne Solaranlage und Ladepunkte. Bis 30.09.2027 ist er nur mit dem Einverständnis von Netz- und Messstellenbetreiber möglich. Er setzt die Direktvermarktung voraus.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Ahrenberg hat heute keine Anlage in einem MiSpeL-Förderweg; das Beispiel ist der Beispieltag des Bedienkonzepts BK-W5 (erfundene Anlage „Kühlhaus Seebach“, Formelsatz A1): November 2027: umlagereduzierende Strommenge (20) 1.926,667 kWh.
+
+**Heute im Code.** Der Wert `marktpraemie_abgrenzung` (PORTAL/mispelFoerderweg.ts:71), die Rechnung nach Vertrag docs/contracts/v2/mispel-abgrenzung.md, das Wort `MISPEL_ABGRENZUNGSOPTION` (PORTAL/glossar.ts), die Karte „Zwei Wege“ der Themenseite PORTAL/help/content/mispel.ts.
+
+**Abgrenzung.** Nicht die Pauschaloption (die rechnet mit einer Daumenregel statt mit gemessenen Mengen), nicht die Ausschließlichkeitsoption (dort lädt der Speicher nur Sonnenstrom).
+
+## Pauschaloption
+
+*Sicht: Betrieb · Nachtrag MiSpeL BK-50 A (13.10.2026)*
+
+**Der MiSpeL-Weg mit einer Daumenregel für Solaranlagen bis 30 kWp: bis 500 kWh je kWp und Jahr gibt es die Marktprämie, darüber einen Zwischenbereich, danach entfallen Umlagen. Sie ist noch nicht anwendbar und wartet auf die Genehmigung der EU-Kommission.**
+
+Gedacht für Haushalte: Solaranlage, Speicher und Anschluss gehören derselben Person, ein Zähler am Netzanschluss genügt. Anwendbar wird sie erst ab dem Monatsersten nach der Genehmigung der EU-Kommission (Tenor Ziff. 9b); bis dahin lässt sich der Wechsel im Portal nur mit offenem Termin vormerken. Sie setzt die Direktvermarktung voraus.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Ahrenberg hat heute keine Anlage in einem MiSpeL-Förderweg; das Beispiel ist der Haushalt des Bedienkonzepts BK-51: Solaranlage 10 kWp, Speicher 10 kWh, heute feste Vergütung.
+
+**Heute im Code.** Der Wert `marktpraemie_pauschal` (PORTAL/mispelFoerderweg.ts:91) mit der Sperre `PAUSCHAL_GESPERRT` (PORTAL/mispelFoerderweg.ts:36), Vertrag docs/contracts/v2/mispel-pauschal.md, das Wort `MISPEL_PAUSCHALOPTION` (PORTAL/glossar.ts).
+
+**Abgrenzung.** Nicht die Abgrenzungsoption (die misst jede Kilowattstunde), nicht die feste Einspeisevergütung (mit ihr geht MiSpeL nicht).
+
+## Direktvermarktung
+
+*Sicht: Betrieb · Nachtrag MiSpeL BK-50 A (13.10.2026)*
+
+**Ein Direktvermarkter verkauft Ihren Strom; Sie erhalten den Marktwert und dazu die Marktprämie statt einer festen Vergütung. Beide MiSpeL-Wege setzen die Direktvermarktung voraus.**
+
+Der Kunde schließt dafür einen Vertrag mit einem Direktvermarkter. In der Abgrenzungsoption führt der Direktvermarkter die ganze Einspeisung in einem gesonderten Bilanzkreis; der Monatsnachweis geht an ihn, an den Lieferanten und an den Netzbetreiber. Ohne Marktprämie heißt der Weg „ungeförderte Direktvermarktung“.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Ahrenberg hat heute keine Anlage in einem MiSpeL-Förderweg; das Beispiel ist die erfundene Anlage „Kühlhaus Seebach“ des Bedienkonzepts BK-W5 in der Marktprämie mit Abgrenzungsoption.
+
+**Heute im Code.** Die Werte `marktpraemie_*` und `ungefoerdert` (PORTAL/mispelFoerderweg.ts:51), das Wort `MISPEL_DIREKTVERMARKTUNG` (PORTAL/glossar.ts); die Anfrage an Direktvermarkter docs/mispel/direktvermarkter-anfrage.md.
+
+**Abgrenzung.** Nicht die Veräußerungsform „Eigenverbrauch“ (ohne Verkauf), nicht der Lieferant (der verkauft den Strom für den Netzbezug).
+
+## grün
+
+*Sicht: Betrieb · Nachtrag MiSpeL BK-50 A (13.10.2026)*
+
+**Sonnenstrom, der direkt ins Netz geht – er bekommt die Marktprämie wie bisher.**
+
+Die erste der drei Farben der Festlegung (Anlage 1 S. 18): förderfähige Einspeisung direkt aus der Solaranlage. Portal, Nachweis und Themenseite benutzen dieselbe Farbe; sie steht nie allein, sondern mit Wort und Menge.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Ahrenberg hat heute keine Anlage in einem MiSpeL-Förderweg; das Beispiel ist die MiSpeL-Karte der erfundenen Anlage „Kühlhaus Seebach“ (BK-18): Monatsbalken der Einspeisung mit Grün, Gelb, Rot und Grau.
+
+**Heute im Code.** Die Farbe `--mi-gruen` (PORTAL/components/erloese/MispelKarte.css:7) und das Wort `FARBE.gruen` (PORTAL/mispelMengen.ts:112), das Wort `MISPEL_FARBEN.gruen` (PORTAL/glossar.ts), das Bild „Drei Farben für vier Wege“ (PORTAL/help/MispelBild.tsx).
+
+**Abgrenzung.** Nicht gelb (der Sonnenstrom ging vorher durch den Speicher), nicht „ohne Farbe“ (Netzstrom, der verbraucht wird).
+
+## gelb
+
+*Sicht: Betrieb · Nachtrag MiSpeL BK-50 A (13.10.2026)*
+
+**Sonnenstrom, der erst in den Speicher und später ins Netz geht – die Marktprämie bleibt.**
+
+Die zweite Farbe der Festlegung (Anlage 1 S. 18): Sonnenstrom im Speicher oder Ladepunkt und seine förderfähige Einspeisung daraus. Welcher Strom aus dem Speicher gelb und welcher rot zählt, bestimmt erst die Monatsrechnung.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Ahrenberg hat heute keine Anlage in einem MiSpeL-Förderweg; das Beispiel ist die MiSpeL-Karte der erfundenen Anlage „Kühlhaus Seebach“ (BK-18).
+
+**Heute im Code.** Die Farbe `--mi-gelb` (PORTAL/components/erloese/MispelKarte.css:8) und das Wort `FARBE.gelb` (PORTAL/mispelMengen.ts:112), das Wort `MISPEL_FARBEN.gelb` (PORTAL/glossar.ts).
+
+**Abgrenzung.** Nicht grün (direkt aus der Solaranlage), nicht rot (Netzstrom aus dem Speicher).
+
+## rot
+
+*Sicht: Betrieb · Nachtrag MiSpeL BK-50 A (13.10.2026)*
+
+**Netzstrom, der im Speicher nur zwischengespeichert und wieder eingespeist wird – auf diese Menge entfallen die Umlagen. Rot heißt nicht „schlecht“.**
+
+Die dritte Farbe der Festlegung (Anlage 1 S. 18): Netzbezug im Speicher oder Ladepunkt und die umlagereduzierende Einspeisung daraus. Auf die rote Menge entfällt nach heutiger Rechtslage auch das Netzentgelt; das kann sich mit der Reform der Netzentgelte ändern. Die Gutschrift dafür bestimmt die Monatsrechnung („Gutschrift nach Anlage 1“).
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Ahrenberg hat heute keine Anlage in einem MiSpeL-Förderweg; das Beispiel ist der Beispieltag des Bedienkonzepts BK-W5 (erfundene Anlage „Kühlhaus Seebach“): November 2027: (20) 1.926,667 kWh → Gutschrift + 253,71 €.
+
+**Heute im Code.** Die Farbe `--mi-rot` (PORTAL/components/erloese/MispelKarte.css:9) und das Wort `FARBE.rot` (PORTAL/mispelMengen.ts:112), das Wort `MISPEL_FARBEN.rot` (PORTAL/glossar.ts).
+
+**Abgrenzung.** Nicht Netzstrom, den Haus oder Betrieb verbrauchen (der bleibt ohne Farbe und voll belastet), nicht der Strom, mit dem ein Auto fährt.

@@ -39,9 +39,10 @@ import { describe, expect, it } from 'vitest';
 import { GRUENDE, KENNZEICHEN, TAGESDAUER, VORGESEHEN, ZUSTAENDE } from './uemsErgebnis';
 import { UEMS_FUEHREND, UEMS_LEBENSZYKLUS, UEMS_MESSSTELLE, UEMS_QUELLE, UEMS_VERGLEICH } from './glossar';
 import {
-  MISPEL_GUTSCHRIFT, MISPEL_LADESTAND_ZULETZT, MISPEL_LAEDT_IMMER_SOFORT, MISPEL_NETZLADEN, MISPEL_PLAN_VON, MISPEL_STROMRECHNUNG,
-  MISPEL_ZURUECKSPEISEN_RUHT,
+  MISPEL_BEGRIFFE, MISPEL_GUTSCHRIFT, MISPEL_LADESTAND_ZULETZT, MISPEL_LAEDT_IMMER_SOFORT, MISPEL_NETZLADEN, MISPEL_PLAN_VON,
+  MISPEL_STROMRECHNUNG, MISPEL_ZURUECKSPEISEN_RUHT,
 } from './glossar';
+import { mispelArticles } from './help/content/mispel';
 import {
   UEMS_ABWEICHUNG,
   UEMS_ABWEICHUNG_ERGEBNISSE,
@@ -4741,4 +4742,28 @@ describe('MiSpeL MP-41c · Kundenwörter der Wallbox-Karte kommen aus dem Glossa
       expect(stripComments(laden)).not.toContain(`'${wort}`);
     });
   }
+});
+
+/**
+ * MiSpeL MP-50 (BK-50 = A): die sieben Wörter der Themenseite „MiSpeL verstehen“ stehen ZUERST im Fachmodell-Glossar
+ * (erzeugt aus `docs/fachmodell/tools/fachmodell.py`), dann in `glossar.ts` - dasselbe Wort als Überschrift und dieselbe
+ * Definition als erster, fetter Satz des Eintrags. „Begriffe einfach erklärt“ und die Karten der Themenseite lesen
+ * dieselben Konstanten.
+ */
+describe('MiSpeL MP-50 · Wörter und Definitionen der Themenseite kommen aus dem Glossar', () => {
+  const glossar = readFileSync(join(process.cwd(), '../../docs/fachmodell/glossar.md'), 'utf8');
+  for (const { wort, definition } of MISPEL_BEGRIFFE) {
+    it(`„${wort}“ ist ein Eintrag des Glossars mit derselben Definition`, () => {
+      const eintrag = glossar.split(`\n## ${wort}\n`)[1];
+      expect(eintrag, `kein Eintrag „${wort}“ in glossar.md`).toBeDefined();
+      const ersterSatz = eintrag.split('\n').find((zeile) => zeile.startsWith('**'));
+      expect(ersterSatz).toBe(`**${definition}**`);
+    });
+  }
+  it('die Themenseite nennt die beiden Wege und die Direktvermarktung über die Konstanten', () => {
+    const quelle = stripComments(readFileSync(join(SRC, 'help/content/mispel.ts'), 'utf8'));
+    for (const wort of ['Abgrenzungsoption', 'Pauschaloption']) expect(quelle).not.toContain(`title: '${wort}'`);
+    const karten = mispelArticles[0].sections.flatMap((s) => s.cards ?? []).map((c) => c.title);
+    expect(karten).toEqual(MISPEL_BEGRIFFE.filter((b) => b.wort.endsWith('option')).map((b) => b.wort));
+  });
 });

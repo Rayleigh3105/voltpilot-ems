@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { Icon } from '../../designsystem/components/core/Icon';
 import { ARTICLE_BY_ID } from './articles';
 import { HELP_CATEGORIES, helpHref, type HelpArticle, type HelpArticleId } from './model';
 import { HelpScreenshot } from './HelpFigure';
@@ -34,10 +35,11 @@ export function HelpArticleView({ article, onArticle, section }: { article: Help
   };
   return <div className={`vp-help-article ${onArticle ? 'vp-help-article-panel' : ''}`} ref={root}>
     <header className="vp-help-article-head">
-      <span className="vp-help-eyebrow">{category.title}</span>
-      <h1 ref={heading} tabIndex={-1}>{article.title}</h1>
+      <span className="vp-help-eyebrow">{article.eyebrow ?? category.title}</span>
+      <h1 ref={heading} tabIndex={-1}>{article.headline ?? article.title}</h1>
       <p className="vp-help-lead">{article.summary}</p>
       {article.prerequisite && <p className="vp-help-prerequisite"><strong>Gilt für:</strong> {article.prerequisite}</p>}
+      {article.asOf && <p className="vp-help-asof"><Icon name="info" size={18} />{article.asOf}</p>}
     </header>
     <div className="vp-help-reading-layout">
       <nav aria-label="In diesem Artikel" className="vp-help-toc"><strong>In diesem Artikel</strong>
@@ -50,6 +52,16 @@ export function HelpArticleView({ article, onArticle, section }: { article: Help
           <h2 data-section={s.id} tabIndex={-1}>{s.title}</h2>
           {s.paragraphs.map((p) => <p key={p}>{p}</p>)}
           {s.steps && <ol className="vp-help-steps">{s.steps.map((step) => <li key={step}>{step}</li>)}</ol>}
+          {s.cards && <div className="vp-help-cards">{s.cards.map((card) => <div key={card.title} className="vp-help-card">
+            <span className="vp-help-symbol"><Icon name={card.icon} size={20} /></span>
+            <h3>{card.title}</h3><p className="vp-help-card-sub">{card.subtitle}</p>
+            <ul>{card.items.map((item) => <li key={item}>{item}</li>)}</ul>
+            <p className={`vp-help-badge ${card.status.tone}`}>{card.status.text}</p>
+          </div>)}</div>}
+          {s.points && <div className="vp-help-points">{s.points.map((point) => <div key={point.title ?? point.text[0]} className="vp-help-point">
+            <span className="vp-help-symbol"><Icon name={point.icon} size={20} /></span>
+            <div>{point.title && <strong>{point.title}</strong>}{point.text.map((t) => <p key={t}>{t}</p>)}</div>
+          </div>)}</div>}
           {s.note && <aside className="vp-help-note">{s.note}</aside>}
           {s.diagram && <HelpDiagram kind={s.diagram} />}
           {s.figure && <HelpScreenshot id={s.figure} />}

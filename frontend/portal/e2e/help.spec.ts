@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { join } from 'node:path';
 
 test.beforeEach(async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-09-10T10:00:00Z'));
@@ -138,4 +139,47 @@ test('help fits phone, tablet and desktop and the menu reaches the center: an ar
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto('/e2e/help.html#/hilfe/energiefluesse');
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+});
+
+// MiSpeL MP-50 (BK-50 = A): die Themenseite „MiSpeL verstehen“ in der Gruppe 07 - erreichbar über die Gruppe und über
+// die Suche, auch ohne Anlage. Ein Fall je Laden der Bühne (gm-e2e-mehrfachaufruf = A); dazwischen nur Hash-Wechsel.
+test('MiSpeL MP-50: die Themenseite über die Gruppe „MiSpeL“ und über die Suche, auch ohne Anlage', async ({ page }, testInfo) => {
+  const ueberschrift = page.getByRole('heading', { name: 'Sonne und Netz in einem Speicher', level: 1 });
+  await page.goto('/e2e/help.html?state=empty#/hilfe');
+  const gruppe = page.locator('section').filter({ has: page.getByRole('heading', { name: 'MiSpeL', exact: true }) });
+  await expect(gruppe).toContainText('07');
+  const ordner = process.env.HILFE_MISPEL_BILDER;
+  if (ordner) await page.screenshot({ path: join(ordner, `hilfe-start-${testInfo.project.name}.png`), fullPage: true });
+  await gruppe.getByRole('link', { name: /MiSpeL verstehen/ }).click();
+  await expect(ueberschrift).toBeVisible();
+  await expect(page.getByText('MiSpeL · Speicher und Ladepunkte im Mischbetrieb')).toBeVisible();
+  for (const suche of ['MiSpeL', 'Netzladen']) {
+    await page.goto('/e2e/help.html?state=empty#/hilfe');
+    await page.getByRole('searchbox').fill(suche);
+    await page.getByRole('region', { name: 'Suchergebnisse' }).getByRole('link', { name: /MiSpeL verstehen/ }).click();
+    await expect(ueberschrift).toBeVisible();
+  }
+});
+
+test('MiSpeL MP-50: die Themenseite passt auf 375 und 1440 px', async ({ page }, testInfo) => {
+  await page.goto('/e2e/help.html#/hilfe/mispel-verstehen');
+  await expect(page.getByRole('heading', { name: 'Sonne und Netz in einem Speicher', level: 1 })).toBeVisible();
+  for (const width of [375, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const bild of ['Solaranlage → Speicher → Stromnetz', 'Stromnetz → Haus oder Betrieb']) {
+      await expect(page.getByRole('img', { name: bild })).toBeVisible();
+    }
+    await expect(page.getByRole('heading', { name: 'Pauschaloption', level: 3 })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
+    // Kein Kasten ragt über den Lesebereich hinaus (ein Überlauf mit overflow:hidden fiele oben nicht auf).
+    const ueberstand = await page.evaluate(() => {
+      const prosa = document.querySelector('.vp-help-prose')!.getBoundingClientRect();
+      return [...document.querySelectorAll('.vp-help-prose figure, .vp-help-prose li, .vp-help-card, .vp-help-point, .vp-help-prose svg')]
+        .filter((el) => el.getBoundingClientRect().right > prosa.right + 1).length;
+    });
+    expect(ueberstand).toBe(0);
+    // Belegbilder für den PR: HILFE_MISPEL_BILDER=<absoluter Ordner>.
+    const ordner = process.env.HILFE_MISPEL_BILDER;
+    if (ordner) await page.screenshot({ path: join(ordner, `mispel-verstehen-${testInfo.project.name}-${width}.png`), fullPage: true });
+  }
 });

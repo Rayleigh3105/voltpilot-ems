@@ -1,6 +1,6 @@
 # Portal-Hilfe pflegen
 
-29 deutsche Artikel unter `#/hilfe` und im kontextbezogenen Dialog. Artikelquelle: `content/`; Darstellung: `HelpArticleView`. Die Hilfe ist ohne aktuelle Messdaten erreichbar.
+30 deutsche Artikel in sieben Gruppen unter `#/hilfe` und im kontextbezogenen Dialog. Artikelquelle: `content/`; Darstellung: `HelpArticleView`. Die Hilfe ist ohne aktuelle Messdaten erreichbar.
 
 ## Redaktion
 
@@ -9,6 +9,8 @@
 - Plan, Geräteantwort und Messwirkung unterscheiden. Keine fehlenden Werte als Null erklären.
 - SVG-Illustrationen in `assets/` erklären Zusammenhänge; `HelpDiagram` verbindet Bild, Alternativtext und Bildunterschrift. Dieselben SVGs werden in der Projektdoku verwendet.
 - Neue IDs in `model.ts`, kontextbezogene Einstiege in `context.ts`, Formularverweise mit `HelpLink` ergänzen.
+- Eine Themenseite darf Kennzeile (`eyebrow`), eigene Überschrift (`headline`) und Stand-Hinweis (`asOf`) tragen, ein Abschnitt Karten (`cards`) und Punkte (`points`); die Suche liest Karten und Punkte mit.
+- Gruppe 07 „MiSpeL“ (`content/mispel.ts`): die Bilder zeichnet `MispelBild.tsx` als SVG in den Farben der MiSpeL-Karte. Ein Satz mit Rechtsaussage trägt in der Zeile darüber `// MP-61: Rechtsprüfung`; vor der Veröffentlichung in Produktion prüft eine Kanzlei diese Sätze.
 
 ## Screenshots erneuern
 

@@ -3,6 +3,7 @@ import energy from './assets/energy-system.svg';
 import system from './assets/portal-cloud-box.svg';
 import proof from './assets/plan-and-effect.svg';
 import storage from './assets/storage-reserves.svg';
+import { MispelBild } from './MispelBild';
 
 const illustrations = {
   energy: { src: energy, alt: 'PV versorgt die Anlage. Speicher und Netz liefern oder nehmen Energie auf; Verbraucher nutzen sie.', caption: 'Mögliche Wege, keine Live-Messung. Die tatsächliche Richtung sehen Sie im Cockpit.' },
@@ -12,6 +13,7 @@ const illustrations = {
 };
 
 export function HelpDiagram({ kind }: { kind: NonNullable<HelpSection['diagram']> }) {
+  if (kind === 'mispel-vorher-nachher' || kind === 'mispel-wege' || kind === 'mispel-tag') return <MispelBild art={kind} />;
   if (kind !== 'loop' && kind !== 'day') {
     const illustration = illustrations[kind];
     return <figure className="vp-help-diagram">

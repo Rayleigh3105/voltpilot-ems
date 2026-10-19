@@ -42,6 +42,8 @@
 .vp-help-article-head { padding-bottom: 24px; border-bottom: 1px solid var(--vp-border); }
 .vp-help-lead { color: var(--vp-text-muted); font-size: 17px; max-width: 64ch; margin: 0; }
 .vp-help-prerequisite { padding: 13px 16px; background: var(--vp-tint); border-radius: var(--vp-radius-md); font-size: 13px; margin: 20px 0 0; }
+.vp-help-asof { display: flex; gap: 10px; align-items: flex-start; padding: 12px 16px; margin: 12px 0 0; background: #fff7ed; border: 1px solid #fed7aa; border-radius: var(--vp-radius-md); color: #9a3412; font-size: 13px; }
+.vp-help-asof svg { margin-top: 2px; }
 .vp-help-reading-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; margin-top: 24px; }
 .vp-help-toc { display: flex; flex-direction: column; align-self: start; border-left: 2px solid var(--vp-border); padding-left: 16px; }
 .vp-help-toc > strong { font-size: 12px; color: var(--vp-text-muted); margin-bottom: 7px; }
@@ -55,6 +57,21 @@
 .vp-help-steps li { padding-left: 8px; margin: 12px 0; font-size: 15px; }
 .vp-help-steps li::marker { color: var(--vp-action); font-weight: 700; }
 .vp-help-note { border-left: 3px solid var(--vp-action); padding: 16px 18px; background: var(--vp-tint); font-size: 14px; }
+.vp-help-symbol { width: 34px; height: 34px; display: grid; place-items: center; flex-shrink: 0; border-radius: 9px; background: var(--vp-tint); color: var(--vp-action); }
+.vp-help-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 14px; margin: 0 0 16px; }
+.vp-help-card { display: flex; flex-direction: column; min-width: 0; padding: 16px; background: var(--vp-surface); border: 1px solid var(--vp-border); border-radius: var(--vp-radius-md); }
+.vp-help-card h3 { margin: 12px 0 0; font-size: 17px; line-height: 1.35; color: var(--vp-navy-2); }
+.vp-help-prose .vp-help-card-sub { margin: 2px 0 0; font-size: 14px; line-height: 1.5; color: var(--vp-text-muted); }
+.vp-help-card ul { margin: 10px 0 14px; padding-left: 18px; font-size: 14px; line-height: 1.55; }
+.vp-help-card li { margin: 5px 0; }
+.vp-help-prose .vp-help-badge { align-self: flex-start; margin: auto 0 0; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 700; line-height: 1.45; }
+.vp-help-badge.info { background: #dbeafe; color: #1e40af; }
+.vp-help-badge.warn { background: #fef9c3; color: #854d0e; }
+.vp-help-points { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 12px; margin: 0 0 16px; }
+.vp-help-point { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px; min-width: 0; padding: 14px 16px; background: var(--vp-surface); border: 1px solid var(--vp-border); border-radius: var(--vp-radius-md); }
+.vp-help-point strong { display: block; margin-bottom: 2px; font-size: 15px; line-height: 1.45; }
+.vp-help-prose .vp-help-point p { margin: 0; font-size: 14px; line-height: 1.6; }
+.vp-help-prose .vp-help-point p + p { margin-top: 8px; }
 .vp-help-related { border-top: 1px solid var(--vp-border); padding-top: 24px; }
 .vp-help-related a { min-height: 48px; display: flex; justify-content: space-between; gap: 16px; align-items: center; border-bottom: 1px solid var(--vp-border); text-decoration: none; font-size: 14px; }
 .vp-help-article-panel h1 { font-size: 27px; }
