@@ -1,7 +1,7 @@
 import { KundenbereichEndeHinweis } from '../components/KundenbereichEndeHinweis';
 import { UnterstuetzungBanner } from '../components/UnterstuetzungBanner';
 import { useRollen } from '../rollen';
-import { Fragment, lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -45,13 +45,22 @@ import { GlockeButton } from './GlockeButton';
 import { meldungenApi } from '../meldungenApi';
 import './Shell.css';
 import { HelpProvider, HelpLink } from '../help/HelpProvider';
-import { APP_GROUP_LABEL, installSnapshot, subscribeInstallApp } from '../installApp';
 import type { HelpArticleId } from '../help/model';
 
-// Das App-Blatt lädt erst beim ersten Öffnen - das Menü selbst bleibt leicht.
-const KontoAppDialog = lazy(() => import('../components/KontoAppDialog'));
-// Alerting Scheibe 3 (§6.8 Entwurf 4): "So erreichen wir Sie" neben "Als App auf dem Handy".
-const BenachrichtigungenDialog = lazy(() => import('../components/BenachrichtigungenDialog'));
+// Das Rollen-Wort zum Kopf des Avatar-Menüs (behebt M8) - ABSICHTLICH ein kleiner, lokaler Auszug
+// aus `rechte.ts` (`ROLLE_KUNDENWORT`/`ROLLE_NOETIG_REIHENFOLGE`) statt eines Imports: die Schale
+// liegt im Einstiegs-Bündel (Bewegungs-Programm P0, `test/bundle-smoke.sh`), `rechte.ts` zieht mit
+// seiner Rechte-Ableitung mehrere tausend Zeilen nach - für ein einzelnes Anzeige-Wort zu teuer.
+// Niedrigste zuerst, dieselbe Liste wie `ROLLE_NOETIG_REIHENFOLGE` (rechte.ts) - die größte
+// vorhandene Rolle gewinnt. „Einsicht" steht dort absichtlich nicht drin (siehe dessen Kommentar).
+const AVATARMENU_ROLLEN: readonly [string, string][] = [
+  ['leser', 'Leser'],
+  ['bearbeiter', 'Bearbeiter'],
+  ['bedienberechtigt', 'Bedienberechtigt'],
+  ['energiemanager', 'Energiemanager'],
+  ['kundenadministrator', 'Kundenadministrator'],
+  ['voltpilot_betrieb', 'VoltPilot-Betrieb'],
+];
 
 /**
  * Die Anlagen-Navigation der Schale — seit der Navigations-Runde „zwei Ebenen"
@@ -232,14 +241,6 @@ export function AppShell({
   const user = currentUser();
   const { benutzerLesen, selbst } = useRollen();
   const [menuOpen, setMenuOpen] = useState(false);
-  // „Als App auf dem Handy" (E5): gilt dem Gerät, darum im Konto-Menü. Die
-  // installierte App braucht den Eintrag nicht mehr.
-  const installState = useSyncExternalStore(subscribeInstallApp, installSnapshot);
-  const [appOffen, setAppOffen] = useState(false);
-  const [appGeladen, setAppGeladen] = useState(false);
-  // "Meine Benachrichtigungen" (Alerting Scheibe 3) - dasselbe Lade-Offen-Muster wie oben.
-  const [benachrichtigungenOffen, setBenachrichtigungenOffen] = useState(false);
-  const [benachrichtigungenGeladen, setBenachrichtigungenGeladen] = useState(false);
   /**
    * S8 · „Plattform ▸" ist EINGEKLAPPT, solange ein Mandant gewählt ist — der
    * Admin ist dann in der Rolle des Kunden unterwegs. Ohne Mandant bleibt sie
@@ -319,6 +320,10 @@ export function AppShell({
     .slice(0, 2)
     .join('')
     .toUpperCase();
+
+  // Einstellungen Scheibe 1 (behebt M8): der Kopf des Avatar-Menüs nennt die Rolle, auf jeder
+  // Breite - die GRÖSSTE Rolle der Person, derselben Reihenfolge wie `rolleNoetig` (rechte.ts).
+  const rolle = [...AVATARMENU_ROLLEN].reverse().find(([k]) => selbst?.rollen.includes(k))?.[1];
 
   /**
    * ONE place that turns a nav target into navigation — sidebar, bottom bar and
@@ -755,6 +760,27 @@ export function AppShell({
             </button>
             {menuOpen && (
               <div className="vp-avatarmenu" role="menu" aria-label="Konto-Menü">
+                {/* Einstellungen Scheibe 1 (Entscheid 1A, behebt M8): Name, Anmelde-E-Mail und Rolle -
+                    auf jeder Breite, nicht erst ab 1280 px wie die Kopfzeile. */}
+                <div className="vp-avatarmenu-person">
+                  <span className="vp-avatar" aria-hidden="true">{initials}</span>
+                  <span className="vp-avatarmenu-person-txt">
+                    <span className="vp-avatarmenu-person-n">{user.name}</span>
+                    {user.email && user.email !== user.name && (
+                      <span className="vp-avatarmenu-person-e">{user.email}</span>
+                    )}
+                    {rolle && <span className="vp-avatarmenu-person-r">{rolle}</span>}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="vp-avatarmenu-item"
+                  onClick={() => openTarget({ kind: 'page', page: 'einstellungen' })}
+                >
+                  <Icon name="settings" size={18} />
+                  Einstellungen
+                </button>
                 {benutzerLesen && <button type="button" role="menuitem" className="vp-avatarmenu-item"
                   onClick={() => openTarget({ kind: 'page', page: 'kunden-benutzer' })}>
                   <Icon name="users" size={18} />Benutzer
@@ -781,34 +807,6 @@ export function AppShell({
                 >
                   <Icon name="help-circle" size={18} />
                   Hilfe &amp; Kontakt
-                </button>
-                {installState !== 'installiert' && (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    className="vp-avatarmenu-item"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      setAppGeladen(true);
-                      setAppOffen(true);
-                    }}
-                  >
-                    <Icon name="smartphone" size={18} />
-                    {APP_GROUP_LABEL}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  role="menuitem"
-                  className="vp-avatarmenu-item"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    setBenachrichtigungenGeladen(true);
-                    setBenachrichtigungenOffen(true);
-                  }}
-                >
-                  <Icon name="bell" size={18} />
-                  Meine Benachrichtigungen
                 </button>
                 {isAdmin && (
                   // Nur am Telefon eingeblendet (CSS): am Rechner steht die
@@ -890,38 +888,6 @@ export function AppShell({
         </nav>
       )}
 
-      {/* Einmal geladen, bleibt das Blatt stehen - so blendet es beim
-          Schließen aus, statt abrupt zu verschwinden. */}
-      {appGeladen && (
-        <Suspense fallback={null}>
-          <KontoAppDialog
-            open={appOffen}
-            onClose={() => {
-              setAppOffen(false);
-              // Der Auslöser (der Menüeintrag) ist mit dem Menü verschwunden:
-              // der Fokus kehrt zum Avatar zurück, der das Menü geöffnet hat.
-              window.setTimeout(
-                () => menuRef.current?.querySelector<HTMLElement>('.vp-avatar-btn')?.focus(),
-                0,
-              );
-            }}
-          />
-        </Suspense>
-      )}
-      {benachrichtigungenGeladen && (
-        <Suspense fallback={null}>
-          <BenachrichtigungenDialog
-            open={benachrichtigungenOffen}
-            onClose={() => {
-              setBenachrichtigungenOffen(false);
-              window.setTimeout(
-                () => menuRef.current?.querySelector<HTMLElement>('.vp-avatar-btn')?.focus(),
-                0,
-              );
-            }}
-          />
-        </Suspense>
-      )}
     </div></HelpProvider>
   );
 }

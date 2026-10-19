@@ -11,7 +11,6 @@ import { anlageSurface } from '../surface';
 import { ahrenbergFunktionen } from '../test/funktionenFixtures';
 import { ahrenbergKennzahlen } from '../test/kennzahlenFixtures';
 import { werkAhrenberg, werkLindach } from '../test/standorteFixtures';
-import { initInstallApp, resetInstallApp } from '../installApp';
 import { logout } from '../auth';
 
 // Avoid pulling in keycloak-js: the shell only needs a name for the avatar.
@@ -425,13 +424,14 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
    * „Mehr"-Blatt gibt es nicht mehr, und einen Hamburger gab es schon vorher
    * nicht. Ohne dieses Menü käme ein Admin am Telefon nirgends hin.
    */
-  it('trägt Hilfe und Abmelden im Avatar-Menü', () => {
+  it('trägt Hilfe, Einstellungen und Abmelden im Avatar-Menü', () => {
     renderShell();
     // Zu ist zu: kein Menü im DOM, bevor jemand es öffnet.
     expect(screen.queryByRole('menu', { name: 'Konto-Menü' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
     const menu = screen.getByRole('menu', { name: 'Konto-Menü' });
     expect(menu.textContent).toContain('Hilfe & Kontakt');
+    expect(menu.textContent).toContain('Einstellungen');
     expect(menu.textContent).toContain('Abmelden');
   });
 
@@ -443,6 +443,39 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     fireEvent.click(screen.getByRole('menuitem', { name: 'Abmelden' }));
 
     await waitFor(() => expect(logout).toHaveBeenCalled());
+  });
+
+  /**
+   * Einstellungen Scheibe 1 (Entscheid 1A): „Einstellungen" ersetzt „Meine
+   * Benachrichtigungen" und „Als App auf dem Handy" - EIN Eintrag, der auf die
+   * Seite navigiert statt ein Blatt zu öffnen.
+   */
+  it('„Einstellungen" navigiert auf die Seite - kein eigenes Blatt mehr', () => {
+    renderShell();
+    fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Einstellungen' }));
+    expect(screen.queryByRole('menu', { name: 'Konto-Menü' })).toBeNull();
+    // Innerhalb einer Anlage reist die Navigation über ihren eigenen Weg (wie „Benutzer" auch).
+    expect(anlage.onOpenPage).toHaveBeenCalledWith('einstellungen');
+  });
+
+  it('lässt weder „Meine Benachrichtigungen" noch „Als App auf dem Handy" im Menü', () => {
+    renderShell();
+    fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
+    expect(screen.queryByRole('menuitem', { name: 'Meine Benachrichtigungen' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: 'Als App auf dem Handy' })).toBeNull();
+  });
+
+  /** Behebt M8: der Kopf des Avatar-Menüs nennt Name, Anmelde-E-Mail und Rolle auf JEDER Breite. */
+  it('nennt Name, Anmelde-E-Mail und Rolle im Kopf des Avatar-Menüs (behebt M8)', () => {
+    setSelbstauskunft(rechteSeed('JW').me);
+    renderShell();
+    fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
+    const menu = screen.getByRole('menu', { name: 'Konto-Menü' });
+    expect(within(menu).getByText('Erika Kaiser')).toBeInTheDocument();
+    expect(within(menu).getByText('erika@example.com')).toBeInTheDocument();
+    expect(within(menu).getByText('Kundenadministrator')).toBeInTheDocument();
+    setSelbstauskunft(null);
   });
 
   it('führt die Plattform-Punkte im Avatar-Menü mit (der Telefon-Weg des Admins)', () => {
@@ -469,43 +502,6 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     renderShell();
     fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
     expect(screen.getByRole('menu', { name: 'Konto-Menü' }).textContent).not.toContain('Plattform');
-  });
-
-  it('trägt „Als App auf dem Handy" - die Einrichtung gilt dem Gerät, nicht der Anlage (E5)', async () => {
-    resetInstallApp();
-    initInstallApp({
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      matchMedia: () => ({ matches: false }),
-      navigator: { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5) Safari' },
-    });
-    renderShell();
-    fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Als App auf dem Handy' }));
-    // Das Menü schließt, das Blatt öffnet (lazy geladen).
-    expect(screen.queryByRole('menu', { name: 'Konto-Menü' })).toBeNull();
-    // Lazy geladen: der erste Aufruf darf länger dauern als eine Sekunde.
-    expect(
-      await screen.findByRole('dialog', { name: 'Als App auf dem Handy' }, { timeout: 5000 }),
-    ).toBeInTheDocument();
-    // Schließen gibt den Fokus an den Avatar zurück - der Menüeintrag ist fort.
-    fireEvent.keyDown(document, { key: 'Escape' });
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Als App auf dem Handy' })).toBeNull());
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: /Konto-Menü/ })));
-  });
-
-  it('lässt den Eintrag in der installierten App weg', () => {
-    resetInstallApp();
-    initInstallApp({
-      addEventListener: () => {},
-      removeEventListener: () => {},
-      matchMedia: () => ({ matches: true }),
-      navigator: { userAgent: 'Mozilla/5.0 (Linux; Android 14) Chrome/151' },
-    });
-    renderShell();
-    fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
-    expect(screen.queryByRole('menuitem', { name: 'Als App auf dem Handy' })).toBeNull();
-    resetInstallApp();
   });
 
   it('das Avatar-Menü schließt mit Escape', () => {

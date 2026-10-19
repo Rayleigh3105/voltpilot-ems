@@ -870,6 +870,32 @@
   font-weight: 700;
   color: var(--vp-text-muted);
 }
+/* Einstellungen Scheibe 1 (behebt M8): Name, Anmelde-E-Mail und Rolle stehen im Kopf des
+   Avatar-Menüs - auf JEDER Breite, anders als die ab 1280 px sichtbare `.meta` der Kopfzeile. */
+.vp-avatarmenu-person {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-3);
+  padding: var(--vp-space-2) var(--vp-space-3) var(--vp-space-3);
+  margin-bottom: var(--vp-space-2);
+  border-bottom: 1px solid var(--vp-border);
+}
+.vp-avatarmenu-person-txt {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+.vp-avatarmenu-person-n {
+  font-weight: 700;
+  color: var(--vp-text-dark);
+  overflow-wrap: anywhere;
+}
+.vp-avatarmenu-person-e,
+.vp-avatarmenu-person-r {
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-muted);
+  overflow-wrap: anywhere;
+}
 /* Am Rechner steht die Plattform-Gruppe in der Seitenleiste - ein zweiter Ort
    für dieselben Punkte wäre eine Doppelung. */
 .vp-avatarmenu-phone {

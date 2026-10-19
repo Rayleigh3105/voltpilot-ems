@@ -37,6 +37,50 @@ export function isPlatformAdmin(): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Konto-Aktionen (Einstellungen Scheibe 1, Entscheid 6A): „Passwort ändern" und
+// „Zwei-Schritt-Anmeldung" laufen als Keycloak-Schritt aus der Seite heraus
+// (`login({action})` setzt `kc_action`), die Rückkehr landet wieder auf der
+// Konto-Gruppe der Einstellungs-Seite. `onActionUpdate` muss VOR `keycloak.init()`
+// hängen, um die Rückkehr noch zu sehen - darum hier am Modul-Rand, nicht erst
+// in `initAuth()`.
+
+export type KontoAktion = 'UPDATE_PASSWORD' | 'CONFIGURE_TOTP';
+export type KontoAktionStatus = 'success' | 'cancelled' | 'error';
+export interface KontoAktionErgebnis {
+  status: KontoAktionStatus;
+  action: KontoAktion | null;
+}
+
+let kontoAktionErgebnis: KontoAktionErgebnis | null = null;
+const kontoAktionListeners = new Set<() => void>();
+keycloak.onActionUpdate = (status, action) => {
+  kontoAktionErgebnis = { status, action: action === 'UPDATE_PASSWORD' || action === 'CONFIGURE_TOTP' ? action : null };
+  kontoAktionListeners.forEach((f) => f());
+};
+
+export function subscribeKontoAktion(cb: () => void): () => void {
+  kontoAktionListeners.add(cb);
+  return () => kontoAktionListeners.delete(cb);
+}
+
+export function kontoAktionSnapshot(): KontoAktionErgebnis | null {
+  return kontoAktionErgebnis;
+}
+
+/** Nur fürs Blatt: der gesehene Status zählt nur einmal. */
+export function kontoAktionZuruecksetzen(): void {
+  kontoAktionErgebnis = null;
+}
+
+/** Löst den Keycloak-Schritt aus - Rückkehr auf dieselbe Gruppe der Einstellungs-Seite. */
+export function kontoAktionAusfuehren(action: KontoAktion): void {
+  void keycloak.login({
+    action,
+    redirectUri: `${window.location.origin}${window.location.pathname}#/einstellungen?abschnitt=konto`,
+  });
+}
+
+// ---------------------------------------------------------------------------
 // The TAB TOKEN STORE - one mechanism, two feeders.
 //
 // (1) Seamless post-registration login (Direct Access Grant). A fresh customer

@@ -20,6 +20,7 @@ import type { IconName } from '../designsystem/components/core/Icon';
 export type PageId =
   | 'kunden-benutzer'
   | 'meldungen'
+  | 'einstellungen'
   | 'hilfe'
   | 'portfolio'
   | 'portfolio-standorte'
@@ -501,6 +502,9 @@ export const ALL_PAGES: PageDef[] = [
   // Alerting Scheibe 1 (Entscheid 4A): kein Eintrag in der Leiste - nur ein Label/Icon für die
   // Kopfzeile und das Lesezeichen; die Glocke führt hin, nie ein Menüpunkt.
   { id: 'meldungen', label: 'Meldungen', icon: 'bell' },
+  // Einstellungen Scheibe 1 (Entscheid 1A/7A): wie `meldungen` eine Seite ohne Leisten-Eintrag -
+  // der Einstieg ist allein das Avatar-Menü (`AppShell.tsx`).
+  { id: 'einstellungen', label: 'Einstellungen', icon: 'settings' },
   PORTFOLIO_PAGE,
   ...PORTFOLIO_WELT_PAGES,
   STANDORT_PAGE,
