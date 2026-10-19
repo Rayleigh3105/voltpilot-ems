@@ -259,6 +259,135 @@ class UeberwachungAnlegenServiceIT {
         }
     }
 
+    // --------------------------------------------------------------------- Löschen (Abnahme-Befund)
+
+    /** ueberwachung/alarm/alarm_verlauf sind nur über die Laufzeitrolle schreibbar (RLS). */
+    private static UUID offenenAlarmEinfuegen(UUID tenant, UUID standort, UUID ueberwachungId, UUID anlage) {
+        TenantContext.set(tenant);
+        try {
+            UUID alarm = UUID.randomUUID();
+            app.update("INSERT INTO alarm (id, tenant_id, standort_id, kennzeichen, ueberwachung_id, fassung, "
+                    + "bezug_kennung, wertart, schwere, ausgeloest_am) VALUES (?, ?, ?, ?, ?, 1, ?, 'box.erreichbar', "
+                    + "'warnung', now())", alarm, tenant, standort, "AL-TEST-" + alarm, ueberwachungId,
+                    "anlage:" + anlage);
+            return alarm;
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    @Test
+    void loeschenSchliesstOffeneAlarmeUndBehaeltDenVerlauf() {
+        Welt w = welt("Löschen GmbH");
+        Benutzer leser = benutzerMitRolle(w.tenant(), "sub-loeschen", "leser", w.st1());
+        TenantContext.set(w.tenant());
+        UUID regelId;
+        UUID alarm;
+        try {
+            UeberwachungDto.Anlegen anfrage = new UeberwachungDto.Anlegen("box.erreichbar",
+                    new UeberwachungDto.BezugEintrag(w.anlage1().toString(), null, null),
+                    json("{\"art\":\"zustand\",\"ziel\":[\"nicht_erreichbar\"]}"), "warnung", null,
+                    "Meine Box-Überwachung");
+            regelId = UUID.fromString(dienst().anlegen(anfrage, leser, Instant.now()).id());
+        } finally {
+            TenantContext.clear();
+        }
+        alarm = offenenAlarmEinfuegen(w.tenant(), w.st1(), regelId, w.anlage1());
+
+        TenantContext.set(w.tenant());
+        try {
+            dienst().loeschen(regelId, leser, Instant.now());
+
+            Map<String, Object> regel = app.queryForMap(
+                    "SELECT geloescht_am, geloescht_von FROM ueberwachung WHERE id = ?::uuid", regelId);
+            assertThat(regel.get("geloescht_am")).isNotNull();
+            assertThat(regel.get("geloescht_von")).isEqualTo("sub-loeschen");
+
+            Map<String, Object> alarmZeile = app.queryForMap(
+                    "SELECT zustand, erledigt_am, erledigt_durch FROM alarm WHERE id = ?::uuid", alarm);
+            assertThat(alarmZeile.get("zustand")).isEqualTo("erledigt");
+            assertThat(alarmZeile.get("erledigt_am")).isNotNull();
+            assertThat(alarmZeile.get("erledigt_durch")).isEqualTo("regel_geloescht");
+
+            List<String> verlaufArten = app.queryForList(
+                    "SELECT art FROM alarm_verlauf WHERE alarm_id = ?::uuid ORDER BY zeitpunkt", String.class, alarm);
+            assertThat(verlaufArten).containsExactly("geloescht", "erledigt");
+
+            UeberwachungRepository repo = new UeberwachungRepository(app);
+            assertThat(repo.einzelneRegel(regelId)).isEmpty();
+            assertThat(repo.aktive().stream().map(UeberwachungRepository.UeberwachungZeile::id)).doesNotContain(regelId);
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    @Test
+    void abWerkRegelLaesstSichUeberDieseRouteNichtLoeschen() {
+        Welt w = welt("Ab-Werk-Löschung GmbH");
+        Benutzer leser = benutzerMitRolle(w.tenant(), "sub-abwerk", "leser", w.st1());
+        TenantContext.set(w.tenant());
+        try {
+            UUID regel = UUID.randomUUID();
+            app.update("INSERT INTO ueberwachung (id, tenant_id, standort_id, wertart, bezug, bedingung, "
+                    + "schwere, empfaenger, herkunft, angelegt_von) VALUES (?, ?, ?, 'box.erreichbar', "
+                    + "jsonb_build_object('anlage', ?::text), '{\"art\":\"zustand\"}'::jsonb, 'warnung', '[]'::jsonb, "
+                    + "'ab_werk', 'system')", regel, w.tenant(), w.st1(), w.anlage1());
+
+            assertThatThrownBy(() -> dienst().loeschen(regel, leser, Instant.now()))
+                    .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    @Test
+    void einLeserOhneVerwaltenDarfEineFremdeRegelNichtLoeschen() {
+        Welt w = welt("Löschen-Ablehnung GmbH");
+        Benutzer anlegende = benutzerMitRolle(w.tenant(), "sub-loeschen-anleger", "leser", w.st1());
+        Benutzer fremder = benutzerMitRolle(w.tenant(), "sub-loeschen-fremd", "leser", w.st1());
+        TenantContext.set(w.tenant());
+        try {
+            UeberwachungDto.Anlegen anfrage = new UeberwachungDto.Anlegen("box.erreichbar",
+                    new UeberwachungDto.BezugEintrag(w.anlage1().toString(), null, null),
+                    json("{\"art\":\"zustand\",\"ziel\":[\"nicht_erreichbar\"]}"), "warnung", null,
+                    "Fremde Überwachung");
+            UUID regel = UUID.fromString(dienst().anlegen(anfrage, anlegende, Instant.now()).id());
+
+            assertThatThrownBy(() -> dienst().loeschen(regel, fremder, Instant.now()))
+                    .isInstanceOf(RechtFehlt.class);
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    /** Mandanten-Zaun (RLS): eine Regel aus einem anderen Kundenbereich bleibt unsichtbar, auch beim Löschen. */
+    @Test
+    void eineRegelEinesAnderenMandantenIstBeimLoeschenNichtSichtbar() {
+        Welt a = welt("Löschen Mandant A GmbH");
+        Welt b = welt("Löschen Mandant B GmbH");
+        Benutzer leserA = benutzerMitRolle(a.tenant(), "sub-loeschen-a", "leser", a.st1());
+        Benutzer leserB = benutzerMitRolle(b.tenant(), "sub-loeschen-b", "leser", b.st1());
+        TenantContext.set(a.tenant());
+        UUID regel;
+        try {
+            UeberwachungDto.Anlegen anfrage = new UeberwachungDto.Anlegen("box.erreichbar",
+                    new UeberwachungDto.BezugEintrag(a.anlage1().toString(), null, null),
+                    json("{\"art\":\"zustand\",\"ziel\":[\"nicht_erreichbar\"]}"), "warnung", null,
+                    "Mandant-A-Überwachung");
+            regel = UUID.fromString(dienst().anlegen(anfrage, leserA, Instant.now()).id());
+        } finally {
+            TenantContext.clear();
+        }
+
+        TenantContext.set(b.tenant());
+        try {
+            assertThatThrownBy(() -> dienst().loeschen(regel, leserB, Instant.now()))
+                    .isInstanceOf(org.springframework.web.server.ResponseStatusException.class);
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
     private static DataSource ds(String user, String password) {
         PGSimpleDataSource ds = new PGSimpleDataSource();
         ds.setUrl(POSTGRES.getJdbcUrl());

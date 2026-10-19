@@ -150,6 +150,22 @@ public class MeldungenController {
         return ResponseEntity.created(URI.create("/api/v1/meldungen/regeln/" + neu.id())).body(neu);
     }
 
+    /**
+     * Löschen (Abnahme-Befund aus Produktion: "wie kann ich diese denn wieder löschen?") - Soft-Delete
+     * einer eigenen Regel, der Verlauf bleibt erhalten (Entscheid 3B). Offene Alarme/Meldungen der
+     * Regel werden dabei geschlossen. Dasselbe Rechte-Muster wie beim Anlegen/Scharfschalten -
+     * {@code ueberwachung.eigene}/{@code ueberwachung.verwalten} anhand der GESPEICHERTEN Empfänger
+     * der Regel, die genaue Prüfung steht in {@link UeberwachungAnlegenService#loeschen}
+     * ({@code RechtRoutenArchitekturTest.DIENST}).
+     */
+    @DeleteMapping("/regeln/{id}")
+    @Recht(value = {"ueberwachung.eigene", "ueberwachung.verwalten"}, ziel = RechtZiel.DIENST)
+    public ResponseEntity<Void> loeschen(@PathVariable UUID id) {
+        var aufrufer = aufruferOderVerboten();
+        anlegen.loeschen(id, aufrufer, Instant.now());
+        return ResponseEntity.noContent().build();
+    }
+
     // --------------------------------------------------------------------- Externe Empfänger (Alerting Scheibe 6, Entscheid 11B)
 
     public record ExterneEmpfaengerAnfrage(String email) {}

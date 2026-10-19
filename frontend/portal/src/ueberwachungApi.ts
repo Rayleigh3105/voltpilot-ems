@@ -111,6 +111,12 @@ export const ueberwachungApi = {
   /** "Jetzt scharf schalten" (§6.8 Entwurf 1, Nachbesserung 3/3) - beendet den Probelauf einer eigenen Regel vorzeitig. */
   scharfSchalten: (id: string) =>
     request<UeberwachungsRegel>(`/api/v1/meldungen/regeln/${encodeURIComponent(id)}/scharf`, { method: 'POST' }),
+  /**
+   * Löschen (Abnahme-Befund aus Produktion: "wie kann ich diese denn wieder löschen?") - der
+   * Verlauf bleibt erhalten (Entscheid 3B), nur die Regel verschwindet aus der Verwaltung.
+   */
+  loeschen: (id: string) =>
+    request<void>(`/api/v1/meldungen/regeln/${encodeURIComponent(id)}`, { method: 'DELETE' }),
 };
 
 /**

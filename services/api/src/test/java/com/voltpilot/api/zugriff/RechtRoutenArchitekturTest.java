@@ -166,6 +166,9 @@ class RechtRoutenArchitekturTest {
         m.put("MeldungenController#scharfSchalten", "UeberwachungAnlegenService.scharfSchalten — dasselbe Muster "
                 + "wie beim Anlegen, ueberwachung.eigene/verwalten anhand der GESPEICHERTEN Empfänger der Regel, "
                 + "RechteAbleitung.darf an ihrem Standort (Alerting Scheibe 2, §6.8 Entwurf 1)");
+        m.put("MeldungenController#loeschen", "UeberwachungAnlegenService.loeschen — dasselbe Muster wie beim "
+                + "Anlegen/Scharfschalten, ueberwachung.eigene/verwalten anhand der GESPEICHERTEN Empfänger der "
+                + "Regel, RechteAbleitung.darf an ihrem Standort (Abnahme-Befund: eigene Überwachung löschen)");
         m.put("AblesungController#eingeben", "AblesungController.recht — Kennzeichen zu UUID, RechtPruefung an der Messstelle");
         m.put("AblesungController#berichtigen", "AblesungController.recht — Kennzeichen zu UUID, RechtPruefung an der Messstelle");
         m.put("BezugsgroesseController#anlegen", "BezugsgroesseController.geltungPruefen — Geltung aus dem Körper");
