@@ -12,6 +12,7 @@ import { ahrenbergFunktionen } from '../test/funktionenFixtures';
 import { ahrenbergKennzahlen } from '../test/kennzahlenFixtures';
 import { werkAhrenberg, werkLindach } from '../test/standorteFixtures';
 import { initInstallApp, resetInstallApp } from '../installApp';
+import { logout } from '../auth';
 
 // Avoid pulling in keycloak-js: the shell only needs a name for the avatar.
 vi.mock('../auth', () => ({
@@ -432,6 +433,16 @@ describe('AppShell Anlage nav (v3 M1: grouped sidebar + health badge + bottom ba
     const menu = screen.getByRole('menu', { name: 'Konto-Menü' });
     expect(menu.textContent).toContain('Hilfe & Kontakt');
     expect(menu.textContent).toContain('Abmelden');
+  });
+
+  // B8: ein Klick auf „Abmelden" räumt erst das Push-Abo dieses Geräts auf, bevor er abmeldet -
+  // beides muss am Ende wirklich passieren, auch ohne Push-Unterstützung in jsdom.
+  it('meldet nach einem Klick auf Abmelden tatsächlich ab', async () => {
+    renderShell();
+    fireEvent.click(screen.getByRole('button', { name: /Konto-Menü/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Abmelden' }));
+
+    await waitFor(() => expect(logout).toHaveBeenCalled());
   });
 
   it('führt die Plattform-Punkte im Avatar-Menü mit (der Telefon-Weg des Admins)', () => {

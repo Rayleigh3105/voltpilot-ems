@@ -103,6 +103,9 @@ export const benachrichtigungenApi = {
     }),
   pushEntfernen: (id: string) =>
     request<void>(`/api/v1/zustellwege/push/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  /** Beim Abmelden (B8): DIESES Geräts Abo beenden, erkannt über seinen Endpunkt (die eigene ID ist hier nie bekannt). */
+  pushAbmelden: (endpoint: string) =>
+    request<void>(`/api/v1/zustellwege/push?endpoint=${encodeURIComponent(endpoint)}`, { method: 'DELETE' }),
 
   // ----------------------------------------------------------------- Webhook (Scheibe 6, §7 Scheibe 6)
   webhookZiele: () => request<WebhookZiel[]>('/api/v1/zustellwege/webhook'),

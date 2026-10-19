@@ -120,11 +120,15 @@ class ZustellungGreenMailIT {
         TenantContext.set(tenant);
         UUID zustellwegId = zustellwege.anlegenOderErneuern("sub-jonas", "jonas@example.test",
                 "token-1", Instant.now().plusSeconds(3600));
-        ausgang.emailMitZiel("zustellweg_bestaetigung", zustellwegId, "sub-jonas", "bestaetigung",
+        ausgang.emailMitZiel("zustellweg_bestaetigung", zustellwegId, "sub-jonas", "bestaetigung", 0,
                 "VoltPilot: Adresse bestätigen", "Bitte bestätigen Sie …", "jonas@example.test");
         TenantContext.clear();
 
-        int gesendet = zusteller.lauf(Instant.now());
+        // `emailMitZiel` lässt `naechster_versuch` auf dem Spalten-Vorgabewert `now()` DER DATENBANK -
+        // anders als jede andere Zeile hier, die ihn vom JVM-Takt mitbringt. Ein kleiner Vorlauf
+        // toleriert die paar Millisekunden Uhrdrift zwischen Testcontainer und JVM (sonst flackert
+        // dieser Test: `faellig()` ließe die Zeile liegen, bis der nächste echte Takt sie holt).
+        int gesendet = zusteller.lauf(Instant.now().plusSeconds(2));
 
         assertThat(gesendet).isEqualTo(1);
         var nachrichten = greenMail.getReceivedMessages();
@@ -151,6 +155,43 @@ class ZustellungGreenMailIT {
         assertThat(nachrichten).hasSize(1);
         assertThat(nachrichten[0].getAllRecipients()[0].toString()).isEqualTo("ines@example.test");
         assertThat((String) nachrichten[0].getContent()).contains("Installateur hat Zugriff");
+    }
+
+    @Test
+    void alarmUnterDerGewaehltenStufeWirdNichtPerEmailVersandt() {
+        // B3: "ab Dringend" muss jede Warnung zurückhalten - vorher reihte die Überwachung E-Mail
+        // IMMER ohne Stufe ein, der Zusteller prüfte die Zustell-Vorgabe darum nie.
+        TenantContext.set(tenant);
+        String token = "token-b3";
+        zustellwege.anlegenOderErneuern("sub-b3", "b3@example.test", token, Instant.now().plusSeconds(3600));
+        zustellwege.bestaetigen(token, Instant.now());
+        zustellwege.emailEinstellungenSetzen("sub-b3", "dringend", false, java.time.LocalTime.of(7, 0));
+        ausgang.email("alarm", UUID.randomUUID(), "sub-b3", "ausgeloest", 0, "Betreff", "Inhalt", Instant.now(),
+                "warnung", null);
+        TenantContext.clear();
+
+        int gesendet = zusteller.lauf(Instant.now());
+
+        assertThat(gesendet).isEqualTo(0);
+        assertThat(greenMail.getReceivedMessages()).isEmpty();
+    }
+
+    @Test
+    void alarmAufDerGewaehltenStufeWirdWeiterhinVersandt() {
+        TenantContext.set(tenant);
+        String token = "token-b3-dringend";
+        zustellwege.anlegenOderErneuern("sub-b3-d", "b3-dringend@example.test", token,
+                Instant.now().plusSeconds(3600));
+        zustellwege.bestaetigen(token, Instant.now());
+        zustellwege.emailEinstellungenSetzen("sub-b3-d", "dringend", false, java.time.LocalTime.of(7, 0));
+        ausgang.email("alarm", UUID.randomUUID(), "sub-b3-d", "ausgeloest", 0, "Betreff", "Inhalt", Instant.now(),
+                "dringend", null);
+        TenantContext.clear();
+
+        int gesendet = zusteller.lauf(Instant.now());
+
+        assertThat(gesendet).isEqualTo(1);
+        assertThat(greenMail.getReceivedMessages()).hasSize(1);
     }
 
     @Test

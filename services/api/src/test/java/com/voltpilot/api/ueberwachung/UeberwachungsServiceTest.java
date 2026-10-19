@@ -3,13 +3,13 @@ package com.voltpilot.api.ueberwachung;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -130,8 +130,9 @@ class UeberwachungsServiceTest {
         dienst.lauf(jetzt);
 
         verify(repo).alarmErzeugen(any(), eq(BEZUG), any(), any(), any(), anyBoolean(), any());
+        // B3: die Stufe muss mit der E-Mail-Zeile eingereiht werden, sonst greift die Zustell-Vorgabe nie.
         verify(ausgang).email(eq("alarm"), eq(alarmId), eq("sub-jonas"), eq("ausgeloest"), eq(0), anyString(),
-                anyString(), any(), any());
+                anyString(), any(), eq("warnung"), any());
         verify(repo).instanzSpeichern(eq(REGEL), eq(BEZUG), eq("aktiv"), eq(jetzt), any(), any(), eq(alarmId), any());
     }
 
@@ -147,7 +148,7 @@ class UeberwachungsServiceTest {
 
         dienst.lauf(jetzt);
 
-        verify(ausgang, never()).email(any(), any(), any(), any(), any(), any());
+        verifyNoInteractions(ausgang);
     }
 
     @Test
@@ -279,8 +280,7 @@ class UeberwachungsServiceTest {
         dienst.lauf(jetzt);
 
         verify(repo).alarmErzeugen(any(), eq(BEZUG), any(), any(), any(), anyBoolean(), eq(boxAlarm));
-        verify(ausgang, never()).email(any(), any(), any(), any(), anyInt(), any(), any(), any(), any());
-        verify(ausgang, never()).webpush(any(), any(), any(), any(), anyInt(), any(), any(), any(), any(), any());
+        verifyNoInteractions(ausgang);
     }
 
     @Test
@@ -298,7 +298,7 @@ class UeberwachungsServiceTest {
         dienst.lauf(jetzt);
 
         verify(ausgang).email(eq("alarm"), eq(alarmId), eq("sub-jonas"), eq("ausgeloest"), eq(0), anyString(),
-                anyString(), any(), any());
+                anyString(), any(), eq("warnung"), any());
     }
 
     // =================================================================== Scheibe 4: Drossel (§6.7, nie im Minutentakt)

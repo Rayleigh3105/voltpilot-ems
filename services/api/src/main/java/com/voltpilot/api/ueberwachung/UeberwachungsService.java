@@ -609,7 +609,8 @@ public class UeberwachungsService {
         String buendelSchluessel = auswahl ? buendelSchluessel(regel.id(), anlass, jetzt) : null;
         Instant naechsterVersuch = auswahl ? buendelFensterEnde(jetzt) : jetzt;
         for (String sub : empfaengerAufloesen(regel)) {
-            ausgang.email("alarm", alarmId, sub, anlass, 0, betreff, inhalt, naechsterVersuch, buendelSchluessel);
+            ausgang.email("alarm", alarmId, sub, anlass, 0, betreff, inhalt, naechsterVersuch, regel.schwere(),
+                    buendelSchluessel);
             ausgang.webpush("alarm", alarmId, sub, anlass, 0, betreff, inhalt, naechsterVersuch, regel.schwere(),
                     buendelSchluessel);
             ausgang.webhook("alarm", alarmId, sub, anlass, 0, betreff, inhalt, naechsterVersuch, regel.schwere(),

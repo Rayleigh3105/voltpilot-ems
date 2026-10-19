@@ -135,16 +135,39 @@ class RuhezeitScheibe3IT {
     }
 
     @Test
-    void ohneRuhezeitWirdSofortGesendet() {
+    void ohneRuhezeitWirdAmTagSofortGesendet() {
         Welt w = welt("Keine Ruhezeit");
         TenantContext.set(w.tenant());
         try {
             UUID regel = regelAnlegen(w, "warnung", null);
-            Instant jetzt = Instant.now();
+            // Dienstag 14 Uhr Europe/Berlin: außerhalb der Vorgabe (B4, werktags 22-7) UND des
+            // Wochenendes - ein fester Zeitpunkt statt Instant.now(), sonst wäre dieser Test seit B4
+            // nachts/am Wochenende flaky.
+            Instant jetzt = Instant.parse("2026-10-20T12:00:00Z");
             UUID alarm = alarmAnlegen(w, regel, "warnung", "aktiv", null, jetzt);
 
             Instant wann = pruefung.wannSenden(alarm, "sub-jonas", "email", "ausgeloest", jetzt);
             assertThat(wann).isEqualTo(jetzt);
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    @Test
+    void ohneEigeneRuhezeitGiltTrotzdemDieNaechtlicheVorgabe() {
+        // B4: ohne eine je gespeicherte Zeile in `ruhezeit_person` galt beim Versand bisher GAR
+        // keine Ruhezeit der Person - obwohl die Fläche längst die Vorgabe "werktags 22 bis 7 Uhr, am
+        // Wochenende ganz" zeigt. Was angezeigt wird, muss auch gelten.
+        Welt w = welt("Vorgabe ohne eigene Zeile");
+        TenantContext.set(w.tenant());
+        try {
+            UUID regel = regelAnlegen(w, "warnung", null);
+            // Dienstag 23 Uhr Europe/Berlin: innerhalb der Vorgabe (werktags 22-7).
+            Instant jetzt = Instant.parse("2026-10-20T21:00:00Z");
+            UUID alarm = alarmAnlegen(w, regel, "warnung", "aktiv", null, jetzt);
+
+            Instant wann = pruefung.wannSenden(alarm, "sub-jonas", "email", "ausgeloest", jetzt);
+            assertThat(wann).isAfter(jetzt);
         } finally {
             TenantContext.clear();
         }

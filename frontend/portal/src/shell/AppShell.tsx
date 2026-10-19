@@ -16,6 +16,7 @@ import { NavItem } from '../../designsystem/components/shell/NavItem';
 // (und die Anmeldeseite benutzt sie seit dem 23.08. schon).
 import logoUrl from '../../designsystem/assets/voltpilot-wordmark.png';
 import { currentUser, logout } from '../auth';
+import { pushBeiAbmeldenAufraeumen } from '../push';
 import type { Tenant } from '../admin/adminApi';
 import {
   MAIN_PAGES,
@@ -341,7 +342,9 @@ export function AppShell({
       case 'action':
       default:
         if (target.action === 'add-anlage') onAddAnlage();
-        else logout();
+        // B8 (Push auf geteilten Geräten): erst dieses Geräts Push-Abo beenden - sauber beim Server
+        // abmelden und lokal aufräumen - dann die Keycloak-Abmeldung; bestmöglich, hält sie nie auf.
+        else void pushBeiAbmeldenAufraeumen().finally(logout);
     }
   };
 

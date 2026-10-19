@@ -6,6 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -101,6 +102,17 @@ class ZustellwegControllerTest {
                 .andExpect(status().isAccepted());
 
         verify(zustellwege).anfordern("sub-test", "jonas@example.test");
+    }
+
+    // =================================================================== B8: Push beim Abmelden
+
+    @Test
+    void pushAbmeldenRuftDieEntfernungUeberDenEndpunktAufUndAntwortetOhneInhalt() throws Exception {
+        mvc.perform(delete("/api/v1/zustellwege/push").principal(auth)
+                .param("endpoint", "https://push.example/geteiltes-geraet"))
+                .andExpect(status().isNoContent());
+
+        verify(zustellwege).pushAboEntfernenNachEndpoint("sub-test", "https://push.example/geteiltes-geraet");
     }
 
     // =================================================================== Webhook (Alerting Scheibe 6, §7)
