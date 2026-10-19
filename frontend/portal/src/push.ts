@@ -1,4 +1,4 @@
-import { benachrichtigungenApi } from './benachrichtigungenApi';
+import { benachrichtigungenApi, type PushAbo } from './benachrichtigungenApi';
 
 /**
  * Web-Push einschalten (Alerting Scheibe 3, Konzept §5 [K1], §6.8 Entwurf 4): der Einschalt-Knopf
@@ -49,9 +49,11 @@ export function geraeteVorschlag(): string {
 
 /**
  * Fragt die Erlaubnis, abonniert und meldet das Abo der API. Wirft mit einem Kundensatz, den das
- * Blatt direkt zeigen kann - nie eine rohe `DOMException`.
+ * Blatt direkt zeigen kann - nie eine rohe `DOMException`. Liefert das angelegte Abo zurück, damit
+ * die Einstellungs-Seite seine Kennung als „dieses Gerät" merken kann (`push.ts` kennt dafür keinen
+ * Speicher - das ist Sache der Seite, siehe `EinstellungenPage.tsx`).
  */
-export async function pushEinschalten(geraet: string): Promise<void> {
+export async function pushEinschalten(geraet: string): Promise<PushAbo> {
   if (!pushUnterstuetzt()) {
     throw new Error('Push wird von diesem Browser nicht unterstützt.');
   }
@@ -72,7 +74,7 @@ export async function pushEinschalten(geraet: string): Promise<void> {
   if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) {
     throw new Error('Der Browser hat kein brauchbares Abo geliefert.');
   }
-  await benachrichtigungenApi.pushAbonnieren(json.endpoint, json.keys.p256dh, json.keys.auth, geraet,
+  return benachrichtigungenApi.pushAbonnieren(json.endpoint, json.keys.p256dh, json.keys.auth, geraet,
     navigator.userAgent);
 }
 

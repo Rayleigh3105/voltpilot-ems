@@ -2,9 +2,10 @@ import { request } from './api';
 import type { Schwere } from './meldungenApi';
 
 /**
- * "Meine Benachrichtigungen" (Alerting Scheibe 3, Konzept §6.8 Entwurf 4) - Zustellwege (E-Mail,
- * Web-Push), Ruhezeit und Stummschaltung. Eigenes, lazy Modul: nur die Konto-Menü-Fläche
- * (`BenachrichtigungenDialog.tsx`) importiert es, genau wie `ueberwachungApi.ts` für "Überwachen".
+ * „So erreichen wir Sie" (Einstellungen Scheibe 1, Konzept `vp-einstellungen-konzept-e1`) -
+ * Zustellwege (E-Mail, Web-Push, Team-Kanal, Telegram), Ruhezeit und Stummschaltung. Eigenes, lazy
+ * Modul: nur die Einstellungs-Seite (`pages/EinstellungenPage.tsx`) importiert es, genau wie
+ * `ueberwachungApi.ts` für "Überwachen".
  */
 
 /** Der eigene E-Mail-Zustellweg - `undefined`, solange keiner angelegt wurde (die API antwortet 204). */

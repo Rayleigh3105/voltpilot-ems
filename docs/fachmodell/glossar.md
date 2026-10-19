@@ -1569,7 +1569,7 @@ Vier Wege, jeder mit eigener Schwere-Schwelle und einzeln abschaltbar: E-Mail (m
 
 **Beispiel (Referenzunternehmen Ahrenberg).** Ines Kaltenbach: E-Mail ab Warnung mit Tages-Zusammenfassung um 07:00 Uhr, Push auf ihrem Telefon ab Dringend, kein Webhook, kein Telegram verbunden.
 
-**Heute im Code.** `EmailZustellweg`/`PushAbo`/`WebhookZiel` (PORTAL/benachrichtigungenApi.ts:5-7,10-18,20-27,29); `pushUnterstuetzt` (PORTAL/push.ts:4-16); Überschriften „Push auf diesem Gerät“ (PORTAL/components/BenachrichtigungenDialog.tsx:264), „Webhook“/„Webhook-URL“ (:298,321), „Telegram“/„Telegram verbinden“ (:330,332).
+**Heute im Code.** `EmailZustellweg`/`PushAbo`/`WebhookZiel` (PORTAL/benachrichtigungenApi.ts:5-7,10-18,20-27,29); `pushUnterstuetzt` (PORTAL/push.ts:4-16); Zeilen „Push auf diesem Gerät“/„Team-Kanal“/„Telegram“/„Weiteren Weg verbinden“ und Knopf „Telegram verbinden“ der Einstellungs-Seite (Scheibe 1, PORTAL/pages/EinstellungenPage.tsx:559,587,597,871,1064).
 
 **Abgrenzung.** Nicht die Schwere (die Bedingung, AB der überhaupt zugestellt wird); nicht die Ruhezeit (WANN trotz Schwere nicht sofort zugestellt wird).
 
@@ -1583,6 +1583,6 @@ Werktags und Wochenende getrennt einstellbar, das Wochenende auch als „ganz“
 
 **Beispiel (Referenzunternehmen Ahrenberg).** Ruhezeit werktags 22:00–07:00 Uhr, Wochenende ganz, mit „Dringendes trotzdem melden“ aktiv — eine Dringend-Meldung kommt trotzdem sofort an, eine Warnung erst nach Ende der Ruhezeit.
 
-**Heute im Code.** `RuhezeitTeilfenster`/`RuhezeitRegeln` (PORTAL/ruhezeit.ts:1-24); Überschrift „Ruhezeit“ und Option „keine Ruhezeit“ (PORTAL/components/BenachrichtigungenDialog.tsx:354,394); Schalter „Dringendes trotzdem melden“ (:415).
+**Heute im Code.** `RuhezeitTeilfenster`/`RuhezeitRegeln` (PORTAL/ruhezeit.ts:1-24); Zeile „Ruhezeit“ und Option „keine Ruhezeit“ der Einstellungs-Seite (Scheibe 1, PORTAL/pages/EinstellungenPage.tsx:609,1175); Schalter „Dringendes trotzdem melden“ (:616).
 
 **Abgrenzung.** Nicht die Stummschaltung (unterdrückt eine einzelne Regel/Anlage befristet, unabhängig von der Uhrzeit — heute nur als API, noch ohne eigene Kundenformulierung im Markup).

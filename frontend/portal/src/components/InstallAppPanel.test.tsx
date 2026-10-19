@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { initInstallApp, resetInstallApp, type InstallEnv } from '../installApp';
-import KontoAppDialog from './KontoAppDialog';
+import { InstallAppPanel } from './InstallAppPanel';
 
 /*
-  „Als App auf dem Handy" wohnt seit E5 im Konto-Menü (sie gilt dem Gerät,
-  nicht der Anlage). Die Regeln sind dieselben wie vorher in den
-  Einstellungen - hier auf ihrem neuen Blatt geprüft.
+  „Als App auf diesem Gerät" wohnt seit Einstellungen Scheibe 1 in der Gruppe „Dieses Gerät" der
+  Einstellungs-Seite (vorher im eigenen Konto-Menü-Blatt `KontoAppDialog`, das E1A ablöst) - die
+  Regeln dieser reinen Fläche sind unverändert, hier direkt auf ihr geprüft.
 */
 
 /** Ein `window`-Stellvertreter für den Einrichten-Zustand dieses Geräts. */
@@ -30,26 +30,21 @@ function installEnv(opts: { standalone?: boolean; ua?: string } = {}) {
   return env;
 }
 
-function oeffne() {
-  render(<KontoAppDialog open onClose={() => {}} />);
-  return screen.getByRole('dialog', { name: 'Als App auf dem Handy' });
-}
-
-describe('Konto-Menü · Als App auf dem Handy', () => {
+describe('InstallAppPanel', () => {
   it('nennt ohne Angebot des Browsers den GRUND statt eines toten Knopfes', () => {
     resetInstallApp();
     initInstallApp(installEnv());
-    const blatt = oeffne();
-    expect(within(blatt).getByText(/bietet das Einrichten hier nicht an/)).toBeInTheDocument();
-    expect(within(blatt).queryByRole('button', { name: 'App installieren' })).toBeNull();
+    render(<InstallAppPanel />);
+    expect(screen.getByText(/bietet das Einrichten hier nicht an/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'App installieren' })).toBeNull();
   });
 
-  it('zeigt den Knopf, sobald der Browser sein Angebot macht - auch NACH dem Öffnen', async () => {
+  it('zeigt den Knopf, sobald der Browser sein Angebot macht - auch NACH dem Rendern', async () => {
     resetInstallApp();
     const env = installEnv();
     initInstallApp(env);
-    const blatt = oeffne();
-    expect(within(blatt).queryByRole('button', { name: 'App installieren' })).toBeNull();
+    render(<InstallAppPanel />);
+    expect(screen.queryByRole('button', { name: 'App installieren' })).toBeNull();
 
     const prompt = vi.fn(() => Promise.resolve());
     act(() => {
@@ -59,23 +54,23 @@ describe('Konto-Menü · Als App auf dem Handy', () => {
         userChoice: Promise.resolve({ outcome: 'accepted' }),
       } as never);
     });
-    fireEvent.click(within(blatt).getByRole('button', { name: 'App installieren' }));
+    fireEvent.click(screen.getByRole('button', { name: 'App installieren' }));
     await waitFor(() => expect(prompt).toHaveBeenCalled());
   });
 
   it('sagt der installierten App nur einen ruhigen Satz', () => {
     resetInstallApp();
     initInstallApp(installEnv({ standalone: true }));
-    const blatt = oeffne();
-    expect(within(blatt).getByText('Sie nutzen VoltPilot bereits als App.')).toBeInTheDocument();
-    expect(within(blatt).queryByRole('button', { name: 'App installieren' })).toBeNull();
+    render(<InstallAppPanel />);
+    expect(screen.getByText('Sie nutzen VoltPilot bereits als App.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'App installieren' })).toBeNull();
   });
 
   it('führt auf dem iPhone in zwei Schritten statt einen Dialog zu versprechen', () => {
     resetInstallApp();
     initInstallApp(installEnv({ ua: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5) Safari' }));
-    const blatt = oeffne();
-    const steps = within(blatt).getAllByRole('listitem');
+    render(<InstallAppPanel />);
+    const steps = screen.getAllByRole('listitem');
     expect(steps).toHaveLength(2);
     expect(steps[0]).toHaveTextContent(/Teilen/);
     expect(steps[1]).toHaveTextContent(/Home-Bildschirm/);

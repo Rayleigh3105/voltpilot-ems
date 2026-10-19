@@ -206,6 +206,10 @@ const MessstellenPage = lazy(() =>
 const MeldungenPage = lazy(() =>
   PAGE_CHUNK['meldungen']().then((m) => ({ default: m.MeldungenPage })),
 );
+// Einstellungen (Konzept vp-einstellungen-konzept-e1, Scheibe 1): öffnet nur über das Avatar-Menü.
+const EinstellungenPage = lazy(() =>
+  PAGE_CHUNK['einstellungen']().then((m) => ({ default: m.EinstellungenPage })),
+);
 const BezugsgroessenPage = lazy(() =>
   PAGE_CHUNK['portfolio-bezugsgroessen']().then((m) => ({ default: m.BezugsgroessenPage })),
 );
@@ -1928,6 +1932,7 @@ function UnifiedPortal() {
           )}
           {page === 'kunden-benutzer' && <BenutzerPage />}
           {page === 'meldungen' && <MeldungenPage />}
+          {page === 'einstellungen' && <EinstellungenPage />}
           {page === 'portfolio-messwerte' && <PortfolioMesswerte sites={sites} />}
           {page === 'portfolio-erloese' && <PortfolioErloese sites={geldSites} />}
           {page === 'uebersicht' && (

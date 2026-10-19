@@ -45,6 +45,7 @@ export const PAGE_CHUNK = {
   'portfolio-erloese': () => import('./pages/PortfolioErloese'),
   'kunden-benutzer': () => import('./pages/BenutzerPage'),
   meldungen: () => import('./pages/MeldungenPage'),
+  einstellungen: () => import('./pages/EinstellungenPage'),
   standort: () => import('./pages/StandortUebersichtPage'),
   mandanten: () => import('./pages/admin/MandantenPage'),
   'plattform-uebersicht': () => import('./pages/admin/PlattformUebersichtPage'),
