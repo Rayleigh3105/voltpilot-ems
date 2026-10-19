@@ -28,9 +28,10 @@ Fahrplan-Modus". Was HIER gelten muss:
   der Slot-Grenze nicht erneut. Wer die Uhr an `Eligible` hängt, macht aus jedem
   Rücklese-Aussetzer eine neue Minute Netzbezug. In Tests, die eine Deckung im
   ersten Takt erwarten: `standDeficit(a, now, pv, load)` (das Defizit steht schon).
-  Nicht erfasst: ein kurzer Verbraucher AUF einem stehenden Defizit (die Uhr misst
-  ob, nicht wie viel) - `TestShortConsumersOnTopOfAStandingDeficitAreStillFollowed`
-  misst es. Der Eigenmodus des Geräts wartet nicht (`agent/native.go`).
+  Seit der Stufen-Haltezeit (19.10.2026) gibt die Uhr die Höhe zurück, die
+  gestanden hat (`Observe` → kW, kleinstes Defizit der Haltezeit): auch ein
+  Anstieg wartet (`TestShortConsumersOnTopOfAStandingDeficitWait`), und die
+  Dämpfer-Reserve wird am deckbaren Defizit gemessen (`FollowResult.CoverKw`). Der Eigenmodus des Geräts wartet nicht (`agent/native.go`).
 - **⚠ DEEPEN-ONLY.** Der Follower kennt seither drei Autorisierungen:
   `coverLoad` (Wolke, beidseitig), `unplannedLoad` (Wolke, nur aus echter Ruhe)
   und `deficitCover` (lokal, aus JEDEM nicht-ladenden Befehl, aber nur

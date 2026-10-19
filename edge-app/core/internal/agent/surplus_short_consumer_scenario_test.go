@@ -649,41 +649,187 @@ func TestShortConsumersInEverySlotKind(t *testing.T) {
 	}
 }
 
-// WHAT THE HOLD DOES NOT REACH - measured, not judged (the open point of the
-// decision of 2026-10-13, see the package's PR): a short consumer ON TOP of a
-// deficit that already stands. The clock judges whether the house is short at
-// all; at night it has been for hours, so the cover follows every step at once
-// and a consumer of 10-15 s is still answered by a discharge that arrives after
-// it. The run reports what that costs on each device, so the figure is on the
-// table when the level-hold ("auch ein ANSTIEG wartet 60 s") is decided.
-func TestShortConsumersOnTopOfAStandingDeficitAreStillFollowed(t *testing.T) {
-	gaps := []float64{60, 90, 120, 75, 105}
-	const baseKw = 1.5
-	sc := benchScenario{
-		start:  time.Date(2026, 10, 13, 21, 0, 0, 0, time.UTC),
-		pvKw:   0,
-		planKw: -1.6, cover: true,
-		socPct: 60,
-		segments: []benchSegment{
-			// Night: the house draws 1,5 kW throughout; on top the 2,62 kW consumer.
-			{seconds: 1500, surplusKw: -baseKw, pulseKw: 2.62, pulseS: []float64{15, 10, 12}, gapS: gaps},
-		},
+// THE NIGHT (Stufen-Haltezeit, Captain decision A, 2026-10-19): the house has
+// been short for hours, 1,5 kW of base load. Before the decision the clock
+// judged only WHETHER the house was short, so the cover followed every step at
+// once, and a consumer of 10-15 s on top was answered by a discharge that
+// arrived after it (PR 1502: 0,13 kWh into the grid in 25 minutes on the Deye
+// profile). The covering slot carries the forecast of that run, -1,6 kW - just
+// above the base load and inside the follower's engage margin, so it runs as
+// planned once the base load is covered.
+const nightBaseKw = 1.5
+
+func nightSlotKinds() []benchSlotKind {
+	return []benchSlotKind{
+		{name: "Ruhe-Viertelstunde"},
+		{name: "Deck-Viertelstunde", planKw: -1.6, cover: true},
+		{name: "ungeplante Lastdeckung", unplanned: true},
 	}
-	for _, dev := range benchDevices(t) {
-		t.Run(dev.name, func(t *testing.T) {
-			res := runBench(t, dev, sc)
-			t.Logf("Deck-Viertelstunde bei Nacht, %s: %s", dev.name, res)
-			if res.consumers < 15 {
-				t.Fatalf("only %d consumers", res.consumers)
-			}
-			// The standing deficit itself is covered - that part must not regress:
-			// after the first hold the storage delivers the base load less the
-			// follower's reserve, give or take the retreats behind each consumer.
-			standing := (baseKw - dev.damp.ReserveKw) * (res.seconds - 180) / 3600
-			if res.dischargedKwh < 0.7*standing {
-				t.Errorf("discharged %.3f kWh, want about the %.3f kWh the standing deficit asks for", res.dischargedKwh, standing)
-			}
-		})
+}
+
+func nightScenario(segments ...benchSegment) benchScenario {
+	return benchScenario{
+		start:    time.Date(2026, 10, 13, 21, 0, 0, 0, time.UTC),
+		pvKw:     0,
+		socPct:   60,
+		segments: segments,
+	}
+}
+
+// standingDeficitNight is the run of PR 1502: 25 minutes of base load, and on
+// top the 2,62 kW consumer of Herzogau for 10-15 s every one to two minutes -
+// or, without consumers, the same night as the yardstick of what the PLAN
+// itself feeds into the grid.
+func standingDeficitNight(consumers bool) benchScenario {
+	seg := benchSegment{seconds: 1500, surplusKw: -nightBaseKw}
+	if consumers {
+		seg.pulseKw, seg.pulseS, seg.gapS = 2.62, []float64{15, 10, 12}, []float64{60, 90, 120, 75, 105}
+	}
+	return nightScenario(seg)
+}
+
+// A rise waits like a deficit out of rest: no consumer here raises the
+// discharge on any device in any kind of slot, the storage feeds the grid no
+// more than on the same night without consumers, and the base load stays
+// covered.
+func TestShortConsumersOnTopOfAStandingDeficitWait(t *testing.T) {
+	for _, kind := range nightSlotKinds() {
+		quietSc, sc := kind.apply(standingDeficitNight(false)), kind.apply(standingDeficitNight(true))
+		for _, dev := range benchDevices(t) {
+			t.Run(kind.name+"/"+dev.name, func(t *testing.T) {
+				quiet, res := runBench(t, dev, quietSc), runBench(t, dev, sc)
+				t.Logf("%s bei Nacht, %s: %s || ohne Verbraucher: aus dem Speicher eingespeist %.4f kWh (%.0f s), Bezug %.3f kWh, "+
+					"%d Entlade-Befehle, tiefster Sollwert %+.2f kW",
+					kind.name, dev.name, res, quiet.storageExportedKwh, quiet.storageExportS, quiet.importKwh,
+					quiet.dischargeWrites, quiet.minSetpointKw)
+				if res.consumers < 15 {
+					t.Fatalf("only %d consumers", res.consumers)
+				}
+				if res.dischargeWrites > quiet.dischargeWrites || res.minSetpointKw < quiet.minSetpointKw-0.005 {
+					t.Errorf("%d discharge commands (without consumers %d), lowest setpoint %.3f kW (without consumers %.3f kW) - "+
+						"a consumer of 10-15 s must not raise the discharge", res.dischargeWrites, quiet.dischargeWrites,
+						res.minSetpointKw, quiet.minSetpointKw)
+				}
+				if extra := res.storageExportedKwh - quiet.storageExportedKwh; extra > 1e-4 {
+					t.Errorf("the consumers sent %.4f kWh of stored energy into the grid - a rise must wait like a deficit out of rest", extra)
+				}
+				// The standing deficit itself is covered - that part must not regress:
+				// after the first hold the storage delivers the base load less the
+				// follower's reserve.
+				standing := (nightBaseKw - dev.damp.ReserveKw) * (res.seconds - 180) / 3600
+				if res.dischargedKwh < 0.7*standing {
+					t.Errorf("discharged %.3f kWh, want about the %.3f kWh the standing deficit asks for", res.dischargedKwh, standing)
+				}
+			})
+		}
+	}
+}
+
+// THE PRICE, chosen with the decision: a real load step at night - 2 kW on top
+// of the base load for five minutes (an oven, a heat pump) - is covered one
+// hold later, like a deficit out of rest, counted on measurements (no earlier
+// than the hold, no later than the hold plus two Messtakte). Its end is
+// followed at once.
+func TestALoadStepAtNightIsCoveredOneHoldLater(t *testing.T) {
+	const stepAt, stepS, stepKw = 600.0, 300.0, 2.0
+	hold := guards.DeficitCoverHold.Seconds()
+	for _, kind := range nightSlotKinds() {
+		sc := kind.apply(nightScenario(
+			benchSegment{seconds: int(stepAt), surplusKw: -nightBaseKw},
+			benchSegment{seconds: int(stepS), surplusKw: -nightBaseKw - stepKw},
+			benchSegment{seconds: 300, surplusKw: -nightBaseKw},
+		))
+		for _, dev := range benchDevices(t) {
+			t.Run(kind.name+"/"+dev.name, func(t *testing.T) {
+				res := runBench(t, dev, sc)
+				before := 0.0
+				for _, w := range res.setpoints {
+					if w.at < stepAt {
+						before = w.kw
+					}
+				}
+				coverAt, backAt := -1.0, -1.0
+				for _, w := range res.setpoints {
+					if coverAt < 0 && w.at > stepAt && w.kw <= before-stepKw/2 {
+						coverAt = w.at
+					}
+					if coverAt >= 0 && backAt < 0 && w.at > stepAt+stepS && w.kw >= before-0.05 {
+						backAt = w.at
+					}
+				}
+				cadence := dev.damp.MaxCadence.Seconds()
+				t.Logf("%s, %s: Lastsprung %.0f kW auf %.1f kW Grundlast ab t=%.0f s für %.0f s (Sollwert davor %+.2f kW) - "+
+					"gedeckt ab t=%.0f s (%.0f s nach Beginn), zurückgenommen %.0f s nach dem Ende; %s",
+					kind.name, dev.name, stepKw, nightBaseKw, stepAt, stepS, before, coverAt, coverAt-stepAt,
+					backAt-(stepAt+stepS), res)
+				if before > -(nightBaseKw-dev.damp.ReserveKw)+0.05 {
+					t.Fatalf("the base load was not covered before the step: setpoint %.3f kW", before)
+				}
+				if coverAt < 0 {
+					t.Fatalf("a five-minute step was never covered: %s", res)
+				}
+				if coverAt-stepAt < hold {
+					t.Errorf("step covered %.0f s after it began - before the hold of %.0f s", coverAt-stepAt, hold)
+				}
+				if latest := hold + 2*(cadence+benchPollEvery+benchTickEvery); coverAt-stepAt > latest {
+					t.Errorf("step covered %.0f s after it began, want <= %.0f s (hold + two Messtakte)", coverAt-stepAt, latest)
+				}
+				if backAt < 0 {
+					t.Fatalf("the step's cover was never taken back: %s", res)
+				}
+				if reaction := cadence + benchPollEvery + benchTickEvery; backAt-(stepAt+stepS) > reaction {
+					t.Errorf("step's cover taken back %.0f s after its end, want one reaction (<= %.0f s)", backAt-(stepAt+stepS), reaction)
+				}
+			})
+		}
+	}
+}
+
+// ... and a load that swings faster than the hold - a hob in its cycle, 2 kW
+// for 30 s and off for 30 s, ten minutes long - is covered up to its lower
+// edge: the discharge stays at the base load, the swing is bought from the
+// grid, and none of it is fed back.
+func TestASwingingLoadAtNightIsCoveredUpToItsLowerEdge(t *testing.T) {
+	const swingAt, swingS = 600.0, 600.0
+	for _, kind := range nightSlotKinds() {
+		night := func(swingKw float64) benchScenario {
+			return kind.apply(nightScenario(
+				benchSegment{seconds: int(swingAt), surplusKw: -nightBaseKw},
+				benchSegment{seconds: int(swingS), surplusKw: -nightBaseKw, pulseKw: swingKw,
+					pulseS: []float64{30}, gapS: []float64{60}},
+				benchSegment{seconds: 300, surplusKw: -nightBaseKw},
+			))
+		}
+		quietSc, sc := night(0), night(2)
+		for _, dev := range benchDevices(t) {
+			t.Run(kind.name+"/"+dev.name, func(t *testing.T) {
+				quiet, res := runBench(t, dev, quietSc), runBench(t, dev, sc)
+				before, lowest := 0.0, math.Inf(1)
+				for _, w := range res.setpoints {
+					if w.at < swingAt {
+						before = w.kw
+					} else if w.at < swingAt+swingS {
+						lowest = math.Min(lowest, w.kw)
+					}
+				}
+				lowest = math.Min(lowest, before)
+				t.Logf("%s, %s: Kochfeld 2 kW im Takt 30 s an / 30 s aus auf %.1f kW Grundlast, %.0f s lang - "+
+					"Sollwert davor %+.2f kW, tiefster im Takten %+.2f kW, Bezug %.3f kWh (ohne Kochfeld %.3f kWh), "+
+					"aus dem Speicher eingespeist %.4f kWh (ohne Kochfeld %.4f kWh); %s",
+					kind.name, dev.name, nightBaseKw, swingS, before, lowest, res.importKwh, quiet.importKwh,
+					res.storageExportedKwh, quiet.storageExportedKwh, res)
+				if res.consumers < 9 {
+					t.Fatalf("only %d hob cycles", res.consumers)
+				}
+				if lowest < quiet.minSetpointKw-0.005 {
+					t.Errorf("lowest setpoint while the hob swings %.3f kW, below the base load's %.3f kW - "+
+						"a swing faster than the hold is covered up to its lower edge", lowest, quiet.minSetpointKw)
+				}
+				if extra := res.storageExportedKwh - quiet.storageExportedKwh; extra > 1e-4 {
+					t.Errorf("the swing sent %.4f kWh of stored energy into the grid", extra)
+				}
+			})
+		}
 	}
 }
 

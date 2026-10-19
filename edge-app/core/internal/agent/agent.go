@@ -3232,12 +3232,16 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// executes after the consumer has gone, into the grid (Herzogau 2026-10-10
 	// 17:04 in a slot that charges, the Zusatzlauf of edge-2026.10.1 in a slot
 	// that rests). Taking a charge back and lowering a discharge stay immediate.
+	// The same holds for every RISE of a deficit that already stands (Captain
+	// decision A, 2026-10-19): the clock returns the smallest deficit measured
+	// over the hold, and the follower covers no more than that or what it
+	// already covers - a consumer on top of the night's base load waits too.
 	//
 	// The clock judges the same control reading the follower does and is fed on
 	// every tick that gets here, whatever the slot and whoever holds the
 	// battery: how long the house has been short is a fact, and a slot boundary
 	// or a recovered readback must not make a standing deficit wait again.
-	deficitSustained := a.deficitHold.Observe(now, a.controlReadingAt(readingAt),
+	stoodKw := a.deficitHold.Observe(now, a.controlReadingAt(readingAt),
 		measurementFresh, rc.PvKw, rc.LoadKw)
 	deficitCover := guards.CoverDeficit(guards.DeficitCoverInput{
 		Eligible: inSlotCorrections && mode == state.ModeSchedule &&
@@ -3253,7 +3257,7 @@ func (a *Agent) applySetpoint(now time.Time) {
 	preFollowKw := kw
 	followed := a.follow.ApplyAuthorized(now, kw,
 		coverLoad,
-		unplanned, deficitCover.Active, limitToLoad, deficitSustained, floor, measurementFresh, limits, rc)
+		unplanned, deficitCover.Active, limitToLoad, stoodKw, floor, measurementFresh, limits, rc)
 	kw = followed.Kw
 
 	// In-slot SURPLUS ABSORPTION (2026-08-02, the charge-side counterpart that
@@ -3350,8 +3354,17 @@ func (a *Agent) applySetpoint(now time.Time) {
 	// and on a persistent-lever surface (Deye ToU).
 	correctionEngaged := trimmed.Active || followed.Active || absorbed.Active ||
 		a.trim.Engaged() || a.follow.Engaged() || a.absorb.Engaged()
+	// THE HOLD reaches the damper's reserve too: it is kept from the house the
+	// follower may cover, not from a rise that has not stood. Measured from the
+	// whole house, every short consumer on a standing deficit would release
+	// the reserve - a raise the device executes after the consumer has gone.
+	dampReading := held.Reading
+	if followed.Held && !math.IsNaN(followed.CoverKw) &&
+		!math.IsNaN(dampReading.PvKw) && !math.IsNaN(dampReading.LoadKw) {
+		dampReading.LoadKw = math.Min(dampReading.LoadKw, dampReading.PvKw+followed.CoverKw)
+	}
 	if damped, shaped := a.damp.Shape(dampProfile, preCorrectionKw, kw,
-		correctionEngaged, dampPair, held.Reading); shaped {
+		correctionEngaged, dampPair, dampReading); shaped {
 		kw = guards.Clamp(damped, limits, r)
 	}
 

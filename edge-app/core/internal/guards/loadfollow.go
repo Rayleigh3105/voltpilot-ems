@@ -133,6 +133,16 @@
 //	never RAISES the discharge - it is covered only up to what this follower
 //	already had in force on the previous tick. Lowering stays immediate.
 //
+// THE STUFEN-HALTEZEIT (Captain decision A, 2026-10-19) applies the same to
+// every RISE of a deficit that already stands: the house is covered up to the
+// larger of what was in force and what the clock has seen STAND for the hold -
+// the smallest deficit measured over it (DeficitHold.Observe). At night the
+// house is short for hours; a consumer of 10-15 s on top was still followed at
+// once, and the discharge reached the device after it had gone (0,13 kWh of
+// stored energy into the grid in 25 minutes on the Deye profile). The price,
+// chosen with the decision: a real load step is covered one hold later, and a
+// load that swings faster than the hold is covered up to its lower edge.
+//
 // "Already in force" is what makes the rule a wait and not an outage: a cover
 // that runs is not dropped because the evidence had a gap (a stale reading
 // restarts the clock, guards.DeficitHold), it merely cannot grow until the
@@ -201,6 +211,10 @@ type FollowResult struct {
 	// follows; NaN when unknown (then the correction is inactive - never
 	// regulate blind).
 	DeficitKw float64
+	// CoverKw is the deficit the correction acted on: the measured one, or -
+	// while THE HOLD withholds part of it - what may be covered so far. NaN
+	// when unknown, like DeficitKw.
+	CoverKw float64
 	// Path distinguishes adjustment of an already-planned discharge ("follow")
 	// from the additive 0-kW idle fallback ("idle_follow"), the local
 	// customer-trust deficit coverage ("deficit_cover") and the cloud's
@@ -214,9 +228,9 @@ type FollowResult struct {
 	// reserve stack, which neither of them ever spends.
 	FloorSocPct *float64
 	// Held reports THE HOLD at work: the measured deficit would move the
-	// discharge deeper than the follower lets it, because the deficit has not
-	// yet stood for DeficitCoverHold. The box rests (or stays at the level it
-	// already covers) and buys the difference for now.
+	// discharge deeper than the follower lets it, because the deficit - or its
+	// rise - has not yet stood for DeficitCoverHold. The box rests (or stays at
+	// the level it already covers) and buys the difference for now.
 	Held bool
 }
 
@@ -229,7 +243,8 @@ type LoadFollower struct {
 	fitsSince time.Time
 	// levelKw is the discharge (magnitude) this stage had in force after the
 	// previous tick - corrected or not. THE HOLD covers a deficit that has not
-	// stood yet only up to here: it may keep what runs, never raise it.
+	// stood yet only up to here (or up to what has stood, if more): it may keep
+	// what runs, never raise it.
 	levelKw float64
 }
 
@@ -253,9 +268,9 @@ func NewLoadFollower() *LoadFollower { return &LoadFollower{} }
 // allowance the peak guard can compute (>= 0) - so neither can undo the other's
 // bound in either order.
 //
-// It is the follow duty on a deficit that HAS stood for DeficitCoverHold - the
-// steady state of a covering slot. The setpoint path never calls it: it hands
-// the clock's verdict to ApplyAuthorized.
+// It is the follow duty on a deficit that HAS stood for DeficitCoverHold, at
+// every height - the steady state of a covering slot. The setpoint path never
+// calls it: it hands the clock's verdict to ApplyAuthorized.
 func (f *LoadFollower) Apply(
 	now time.Time,
 	kw float64,
@@ -264,7 +279,7 @@ func (f *LoadFollower) Apply(
 	reserveSocPct *float64,
 	r Reading,
 ) FollowResult {
-	return f.ApplyAuthorized(now, kw, coverLoad, false, false, false, true, reserveSocPct, true, l, r)
+	return f.ApplyAuthorized(now, kw, coverLoad, false, false, false, math.Inf(1), reserveSocPct, true, l, r)
 }
 
 // ApplyAuthorized composes the established follow duty with the three additive
@@ -303,10 +318,10 @@ func (f *LoadFollower) Apply(
 // wrapper above: where the economic duty is granted it keeps BOTH halves and
 // the "follow" name.
 //
-// deficitSustained is the verdict of the one clock (DeficitHold.Observe): the
-// house deficit has been measured without a break for DeficitCoverHold. While
-// it is false no authority raises the discharge - see "THE HOLD" in the package
-// comment.
+// stoodKw is the verdict of the one clock (DeficitHold.Observe): the house
+// deficit that has been measured without a break for DeficitCoverHold, in kW
+// (0 = none has). No authority raises the discharge above the larger of it and
+// what this stage already had in force - see "THE HOLD" in the package comment.
 func (f *LoadFollower) ApplyAuthorized(
 	now time.Time,
 	kw float64,
@@ -314,14 +329,14 @@ func (f *LoadFollower) ApplyAuthorized(
 	unplannedLoad bool,
 	deficitCover bool,
 	limitToLoad bool,
-	deficitSustained bool,
+	stoodKw float64,
 	effectiveFloorSocPct *float64,
 	measurementsFresh bool,
 	l Limits,
 	r Reading,
 ) FollowResult {
 	res := f.track(now, kw, coverLoad, unplannedLoad, deficitCover, limitToLoad,
-		deficitSustained, effectiveFloorSocPct, measurementsFresh, l, r)
+		stoodKw, effectiveFloorSocPct, measurementsFresh, l, r)
 	// What is in force after this tick is what the next one may keep while its
 	// deficit has not stood yet - whatever the reason this tick returned it
 	// (corrected, untouched, refused).
@@ -343,13 +358,13 @@ func (f *LoadFollower) track(
 	unplannedLoad bool,
 	deficitCover bool,
 	limitToLoad bool,
-	deficitSustained bool,
+	stoodKw float64,
 	effectiveFloorSocPct *float64,
 	measurementsFresh bool,
 	l Limits,
 	r Reading,
 ) FollowResult {
-	res := FollowResult{Kw: kw, CommandedKw: kw, DeficitKw: math.NaN()}
+	res := FollowResult{Kw: kw, CommandedKw: kw, DeficitKw: math.NaN(), CoverKw: math.NaN()}
 
 	// Nothing to enforce: not worth covering / no duty / no plan.
 	if !coverLoad && !unplannedLoad && !deficitCover && !limitToLoad {
@@ -436,15 +451,18 @@ func (f *LoadFollower) track(
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
-	// THE HOLD: a deficit that has not stood for DeficitCoverHold is covered
-	// only up to the discharge this stage already had in force. From here on
+	// THE HOLD: a deficit is covered only up to the larger of the discharge
+	// this stage already had in force and the deficit that has stood for
+	// DeficitCoverHold (a verdict that is not a number is none). From here on
 	// the correction acts on that COVERABLE deficit - one substitution, so the
 	// hysteresis, both halves and every bound below are the ones they always
 	// were, on a house that is short by no more than it has been shown to be.
-	cover := deficit
-	if !deficitSustained && cover > f.levelKw {
-		cover = f.levelKw
+	keep := f.levelKw
+	if stoodKw > keep {
+		keep = stoodKw
 	}
+	cover := math.Min(deficit, keep)
+	res.CoverKw = cover
 	rc := r
 	if cover < deficit {
 		rc.LoadKw = r.PvKw + cover

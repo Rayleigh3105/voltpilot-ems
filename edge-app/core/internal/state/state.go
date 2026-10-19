@@ -351,7 +351,9 @@ type FollowInfo struct {
 type DeficitHoldInfo struct {
 	// Active is always true when the block exists (it is omitted otherwise).
 	Active bool `json:"active"`
-	// Since is the time the standing deficit was first judged.
+	// Since is the time the box first saw the deficit it waits for, at its
+	// present height: a rise of a standing deficit is dated by the rise
+	// (guards.DeficitHold.Since).
 	Since *time.Time `json:"since,omitempty"`
 	// HoldS is the hold time in seconds the deficit must stand.
 	HoldS float64 `json:"hold_s"`

@@ -175,19 +175,31 @@ func TestADeficitThatOutlastsTheHoldIsCoveredInEverySlotKind(t *testing.T) {
 				return ok && m["battery_setpoint_kw"] == snap.SetpointKw
 			})
 
-			// While it stands, the cover follows the deficit tick by tick without a
-			// second wait ...
-			deeper := herzogauTick(t, a, covered.Add(5*time.Second), 4.60, 7.20)
-			if math.Abs(deeper.SetpointKw-(-2.6)) > 0.001 || deeper.DeficitHold != nil {
-				t.Fatalf("a standing cover follows the deficit: setpoint=%.3f hold=%+v", deeper.SetpointKw, deeper.DeficitHold)
+			// While it stands, a RISE waits like the deficit did (Stufen-Haltezeit,
+			// Captain decision A, 2026-10-19): the cover keeps its level, names the
+			// wait from the tick that saw the rise ...
+			rise := covered.Add(5 * time.Second)
+			for at := rise; at.Before(rise.Add(guards.DeficitCoverHold)); at = at.Add(5 * time.Second) {
+				deeper := herzogauTick(t, a, at, 4.60, 7.20)
+				if math.Abs(deeper.SetpointKw-want) > 0.001 || deeper.DeficitHold == nil ||
+					deeper.DeficitHold.Since == nil || !deeper.DeficitHold.Since.Equal(rise) {
+					t.Fatalf("%s into a rise of the standing deficit: setpoint=%.3f hold=%+v, want %.3f and a wait since %s",
+						at.Sub(rise), deeper.SetpointKw, deeper.DeficitHold, want, rise.Format("15:04:05"))
+				}
 			}
-			// ... and the moment the house is no longer short the discharge is gone.
-			back := herzogauTick(t, a, covered.Add(10*time.Second), 4.68, 4.17)
+			// ... and covers it in full one hold after it first saw it.
+			risen := rise.Add(guards.DeficitCoverHold)
+			if deeper := herzogauTick(t, a, risen, 4.60, 7.20); math.Abs(deeper.SetpointKw-(-2.6)) > 0.001 ||
+				deeper.DeficitHold != nil || deeper.Follow == nil || deeper.Follow.Path != kind.path {
+				t.Fatalf("a rise that stood is covered: setpoint=%.3f follow=%+v hold=%+v", deeper.SetpointKw, deeper.Follow, deeper.DeficitHold)
+			}
+			// The moment the house is no longer short the discharge is gone.
+			back := herzogauTick(t, a, risen.Add(5*time.Second), 4.68, 4.17)
 			if !noDischarge(back) || back.DeficitHold != nil {
 				t.Fatalf("with the surplus back the discharge is gone at once: setpoint=%.3f follow=%+v", back.SetpointKw, back.Follow)
 			}
 			// A consumer after that is a new consumer: it waits again.
-			again := herzogauTick(t, a, covered.Add(15*time.Second), herzogauPulsePv, herzogauPulseLoad)
+			again := herzogauTick(t, a, risen.Add(10*time.Second), herzogauPulsePv, herzogauPulseLoad)
 			if again.SetpointKw != 0 || again.DeficitHold == nil {
 				t.Fatalf("a new deficit starts a new wait: setpoint=%.3f hold=%+v", again.SetpointKw, again.DeficitHold)
 			}

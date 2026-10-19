@@ -420,8 +420,13 @@ func TestNativeWindowF3LoadStep(t *testing.T) {
 			}
 			// §8 wants <= 10 s for the box; with a 15-20 s follow time of the
 			// device alone that is physically out of reach (see F1) - regression
-			// bound, reported as a gap of the fallback.
-			if path.name == "gedaempft" && peak > 60 {
+			// bound, reported as a gap of the fallback. Since the Stufen-Haltezeit
+			// (Captain decision A, 2026-10-19) the box raises the cover for a step
+			// on a standing deficit only once the step has stood for the hold,
+			// counted on measurements (up to two Messtakte and a tick more):
+			// 50 s before, 140 s with it - the price the decision names. The
+			// device path is not delayed.
+			if path.name == "gedaempft" && peak > 60+guards.DeficitCoverHold.Seconds()+2*10+nwTickSeconds {
 				t.Fatalf("F3 fallback: grid peak > 3 kW for %.0f s", peak)
 			}
 		})
