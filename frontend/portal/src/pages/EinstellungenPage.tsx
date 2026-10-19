@@ -37,6 +37,7 @@ import type { Schwere } from '../meldungenApi';
 import {
   geraeteVorschlag,
   istIosOhneInstallierteApp,
+  pushBeiAbmeldenAufraeumen,
   pushEinschalten,
   pushUnterstuetzt,
 } from '../push';
@@ -646,7 +647,13 @@ export function EinstellungenPage() {
           <Zeile icon="lock" kat="navy" label="Passwort ändern" onClick={() => oeffne({ art: 'passwort' })} />
           <Zeile icon="shield" kat="battery" label="Zwei-Schritt-Anmeldung" onClick={() => oeffne({ art: 'zwei-schritt' })} />
           <li>
-            <button type="button" className="vp-einst-zeile is-gefahr" onClick={() => logout()}>
+            {/* B8 (Scheibe 0): erst dieses Geräts Push-Abo aufräumen, dann abmelden - wie der
+                Abmelden-Weg im Avatar-Menü (AppShell.tsx), bestmöglich, hält nie auf. */}
+            <button
+              type="button"
+              className="vp-einst-zeile is-gefahr"
+              onClick={() => void pushBeiAbmeldenAufraeumen().finally(logout)}
+            >
               <Kachel icon="log-out" kat="gefahr" />
               <span className="vp-einst-lab">
                 <b>Abmelden</b>
