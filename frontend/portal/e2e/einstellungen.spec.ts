@@ -105,3 +105,82 @@ test('in der Ruhezeit nennt das Kurzbild "wartet" statt der Wege', async ({ page
   const kurzbild = page.locator('.vp-meinst-kurzbild');
   await expect(kurzbild.getByText(/wartet bis/)).toBeVisible();
 });
+
+// --------------------------------------------------------------------- Scheibe 2 (§4.12, Entscheid 10A)
+
+test('E-Mail: Probe senden meldet Erfolg, abschalten und entfernen wirken sofort', async ({ page }) => {
+  await oeffne(page, 1440);
+  await page.getByRole('button', { name: /^E-Mail/ }).click();
+  const blatt = page.getByRole('dialog', { name: 'E-Mail' });
+
+  await blatt.getByRole('button', { name: 'Probe-Mail senden' }).click();
+  await expect(blatt.getByText('Testnachricht gesendet.')).toBeVisible();
+
+  // Der native Schalter ist visuell versteckt (die gestaltete Pille daneben trägt das Bild) -
+  // deshalb klickt der Test den sichtbaren Text im selben `<label>`, nicht die Checkbox selbst.
+  const schalter = blatt.getByRole('checkbox', { name: 'Eingeschaltet' });
+  await expect(schalter).toBeChecked();
+  await blatt.getByText('Eingeschaltet', { exact: true }).click();
+  await expect(schalter).not.toBeChecked();
+
+  await blatt.getByRole('button', { name: 'E-Mail-Weg entfernen' }).click();
+  await expect(blatt).toHaveCount(0);
+  await expect(page.getByRole('button', { name: /^E-Mail/ })).toHaveText(/Nicht eingerichtet/);
+});
+
+for (const breite of [390, 1440] as const) {
+  test(`Push-Gerät: umbenennen und Probe senden bei ${breite}px`, async ({ page }) => {
+    // "iPhone von Ines" ist in dieser Bühne (keine echte Browser-Subscription) eines der ANDEREN
+    // Geräte, nicht "dieses Gerät" - wie schon vor Scheibe 2 (die Erkennung bleibt serverlos).
+    const fehler = await oeffne(page, breite);
+    await page.getByRole('button', { name: /^iPhone von Ines/ }).click();
+    const blatt = page.getByRole('dialog', { name: 'iPhone von Ines' });
+
+    await blatt.getByLabel('Name').fill('Ines’ Diensthandy');
+    await blatt.getByRole('button', { name: 'Umbenennen' }).click();
+    await blatt.getByRole('button', { name: 'Probe-Mitteilung senden' }).click();
+    await expect(blatt.getByText('Testnachricht gesendet.')).toBeVisible();
+
+    expect(await querlauf(page)).toBe(0);
+    expect(fehler).toEqual([]);
+  });
+}
+
+test('Team-Kanal: bearbeiten ändert Adresse/Name, Probe senden meldet Erfolg', async ({ page }) => {
+  await oeffne(page, 1440);
+  await page.getByRole('button', { name: /^Team-Kanal/ }).click();
+  const blatt = page.getByRole('dialog', { name: 'Team-Kanal' });
+
+  await blatt.getByRole('button', { name: 'Bearbeiten' }).click();
+  await blatt.getByLabel('Name').fill('Energieteam Nord');
+  await blatt.getByRole('button', { name: 'Speichern' }).click();
+  await expect(blatt.getByText(/Energieteam Nord/)).toBeVisible();
+
+  await blatt.getByRole('button', { name: 'Probe senden' }).click();
+  await expect(blatt.getByText('Testnachricht gesendet.')).toBeVisible();
+});
+
+test('Telegram: Probe senden zeigt sich nur für eine bestätigte Verbindung', async ({ page }) => {
+  await oeffne(page, 1440);
+  await page.getByRole('button', { name: /^Telegram/ }).click();
+  const blatt = page.getByRole('dialog', { name: 'Telegram' });
+  await expect(blatt.getByText('Verbunden')).toBeVisible();
+
+  await blatt.getByRole('button', { name: 'Probe senden' }).click();
+  await expect(blatt.getByText('Testnachricht gesendet.')).toBeVisible();
+});
+
+test('"Weiteren Weg verbinden": Probe senden prüft das Ziel, bevor verbunden wird', async ({ page }) => {
+  await oeffne(page, 1440, 'fall=leer');
+  await page.getByRole('button', { name: 'Weiteren Weg verbinden' }).click();
+  const blatt = page.getByRole('dialog', { name: 'Weiteren Weg verbinden' });
+  await blatt.getByRole('button', { name: 'Team-Kanal verbinden' }).click();
+
+  await blatt.getByLabel('Adresse').fill('http://unsicher.example/hook');
+  await blatt.getByRole('button', { name: 'Probe senden' }).click();
+  await expect(blatt.getByText('Nur https-Adressen sind sicher.')).toBeVisible();
+
+  await blatt.getByLabel('Adresse').fill('https://hooks.example/eigener-dienst');
+  await blatt.getByRole('button', { name: 'Probe senden' }).click();
+  await expect(blatt.getByText('Testnachricht gesendet.')).toBeVisible();
+});

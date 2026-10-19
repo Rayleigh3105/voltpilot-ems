@@ -18,13 +18,24 @@ export interface EmailZustellweg {
   zusammenfassungUhrzeit: string;
 }
 
-/** Ein Geräte-Abo für Web-Push ("Abo je Gerät", §7 Scheibe 3 Punkt 1). */
+/**
+ * Ein Geräte-Abo für Web-Push ("Abo je Gerät", §7 Scheibe 3 Punkt 1). `endpoint` (Scheibe 2, Befund
+ * M4) lässt das Portal "dieses Gerät" selbst erkennen - der Vergleich mit der eigenen
+ * `PushSubscription` des Browsers (`push.ts`), nie der Server.
+ */
 export interface PushAbo {
   id: string;
   geraet: string;
   aktiv: boolean;
   abSchwere: Schwere;
   erstelltAm: string | null;
+  endpoint: string | null;
+}
+
+/** Das Ergebnis von "Probe senden" (Entscheid 10A) - kein Fehlschlag wirft, die Fläche zeigt ihn an. */
+export interface ProbeErgebnis {
+  erfolgreich: boolean;
+  fehler: string | null;
 }
 
 /** Ein Webhook-Ziel (Alerting Scheibe 6, §7 Scheibe 6) - ein Teams-Workflow oder Slack-Incoming-Webhook. */
@@ -87,6 +98,13 @@ export const benachrichtigungenApi = {
       method: 'PUT',
       body: JSON.stringify({ abSchwere, zusammenfassungAktiv, zusammenfassungUhrzeit }),
     }),
+  /** "E-Mail-Weg abschalten"/wieder einschalten (Scheibe 2, B12) - die Adresse bleibt erhalten. */
+  emailAktivSetzen: (aktiv: boolean) =>
+    request<void>('/api/v1/zustellwege/email/aktiv', { method: 'PUT', body: JSON.stringify({ aktiv }) }),
+  /** "E-Mail-Weg entfernen" (Scheibe 2, B12). */
+  emailEntfernen: () => request<void>('/api/v1/zustellwege/email', { method: 'DELETE' }),
+  /** "Probe-Mail senden" (Entscheid 10A) - die Ruhezeit gilt dafür nicht. */
+  emailProbe: () => request<ProbeErgebnis>('/api/v1/zustellwege/email/probe', { method: 'POST' }),
 
   // ----------------------------------------------------------------- Web-Push (Scheibe 3, §6.7, §7)
   pushOeffentlicherSchluessel: () =>
@@ -107,6 +125,15 @@ export const benachrichtigungenApi = {
   /** Beim Abmelden (B8): DIESES Geräts Abo beenden, erkannt über seinen Endpunkt (die eigene ID ist hier nie bekannt). */
   pushAbmelden: (endpoint: string) =>
     request<void>(`/api/v1/zustellwege/push?endpoint=${encodeURIComponent(endpoint)}`, { method: 'DELETE' }),
+  /** "Gerät umbenennen" (Scheibe 2, §4.12). */
+  pushNameSetzen: (id: string, geraet: string) =>
+    request<void>(`/api/v1/zustellwege/push/${encodeURIComponent(id)}/name`, {
+      method: 'PUT',
+      body: JSON.stringify({ geraet }),
+    }),
+  /** "Probe-Mitteilung senden" (Entscheid 10A). */
+  pushProbe: (id: string) =>
+    request<ProbeErgebnis>(`/api/v1/zustellwege/push/${encodeURIComponent(id)}/probe`, { method: 'POST' }),
 
   // ----------------------------------------------------------------- Webhook (Scheibe 6, §7 Scheibe 6)
   webhookZiele: () => request<WebhookZiel[]>('/api/v1/zustellwege/webhook'),
@@ -119,6 +146,18 @@ export const benachrichtigungenApi = {
     }),
   webhookZielEntfernen: (id: string) =>
     request<void>(`/api/v1/zustellwege/webhook/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  /** "Team-Kanal bearbeiten" (Scheibe 2, §4.12) - Adresse/Name ändern, dieselbe SSRF-Prüfung wie beim Anlegen. */
+  webhookZielBearbeiten: (id: string, url: string, name: string) =>
+    request<void>(`/api/v1/zustellwege/webhook/${encodeURIComponent(id)}/adresse`, {
+      method: 'PUT',
+      body: JSON.stringify({ url, name }),
+    }),
+  /** "Probe senden" VOR dem Anlegen (Entscheid 10A) - nichts wird gespeichert. */
+  webhookProbeVorAnlegen: (url: string) =>
+    request<ProbeErgebnis>('/api/v1/zustellwege/webhook/probe', { method: 'POST', body: JSON.stringify({ url }) }),
+  /** "Probe senden" für ein bereits verbundenes Ziel (Entscheid 10A). */
+  webhookProbe: (id: string) =>
+    request<ProbeErgebnis>(`/api/v1/zustellwege/webhook/${encodeURIComponent(id)}/probe`, { method: 'POST' }),
 
   // ----------------------------------------------------------------- Telegram (Scheibe 6, §7 Scheibe 6)
   telegramStatus: () => request<TelegramStatus>('/api/v1/zustellwege/telegram'),
@@ -131,6 +170,9 @@ export const benachrichtigungenApi = {
     }),
   telegramZielEntfernen: (id: string) =>
     request<void>(`/api/v1/zustellwege/telegram/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  /** "Probe senden" (Entscheid 10A) - nur für eine bereits bestätigte Verbindung. */
+  telegramProbe: (id: string) =>
+    request<ProbeErgebnis>(`/api/v1/zustellwege/telegram/${encodeURIComponent(id)}/probe`, { method: 'POST' }),
 
   // ----------------------------------------------------------------- Ruhezeit (Scheibe 3, §6.4)
   ruhezeit: () => request<RuhezeitZustand>('/api/v1/ruhezeit'),

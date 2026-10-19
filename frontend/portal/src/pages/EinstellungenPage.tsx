@@ -15,6 +15,7 @@ import {
 import {
   benachrichtigungenApi,
   type EmailZustellweg,
+  type ProbeErgebnis,
   type PushAbo,
   type TelegramZiel,
   type WebhookZiel,
@@ -35,6 +36,7 @@ import {
 } from '../einstellungenAbleitung';
 import type { Schwere } from '../meldungenApi';
 import {
+  aktuellerPushEndpoint,
   geraeteVorschlag,
   istIosOhneInstallierteApp,
   pushBeiAbmeldenAufraeumen,
@@ -109,6 +111,13 @@ type BlattArt =
 type FolgeEintrag = { key: string; text: string; istFehler: boolean };
 
 const SCHALT_FEHLER = 'Das hat nicht geklappt. Bitte versuchen Sie es erneut.';
+
+/** "Probe senden" (Entscheid 10A) - ein Fehlschlag wirft nie, nur der Text unterscheidet sich. */
+function probeFolge(key: string, ergebnis: ProbeErgebnis): FolgeEintrag {
+  return ergebnis.erfolgreich
+    ? { key, text: 'Testnachricht gesendet.', istFehler: false }
+    : { key, text: ergebnis.fehler ?? SCHALT_FEHLER, istFehler: true };
+}
 
 function Kachel({ icon, kat }: { icon: IconName; kat: string }) {
   return (
@@ -265,6 +274,10 @@ export function EinstellungenPage() {
   const [zeitzone, setZeitzone] = useState('Europe/Berlin');
   const [dringendDurch, setDringendDurch] = useState(true);
   const [ruhezeitBis, setRuhezeitBis] = useState<Date | null>(null);
+  // M4 (Scheibe 2): der echte Browser-Endpunkt erkennt "dieses Gerät" zuverlässig, auch in einem
+  // Tab/Profil, das es nie selbst angelegt hat - der lokal gemerkte Schlüssel (Scheibe 1) bleibt
+  // nur der Rückfall, falls der Browser den Endpunkt (noch) nicht liefert.
+  const [dieserEndpoint, setDieserEndpoint] = useState<string | null>(null);
 
   const [blatt, setBlatt] = useState<BlattArt | null>(null);
   const letztesBlatt = useRef<BlattArt | null>(null);
@@ -319,6 +332,17 @@ export function EinstellungenPage() {
     if (!ziel) return;
     document.getElementById(`einst-${ziel}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
+
+  // M4: der Browser-Endpunkt dieses Geräts, unabhängig vom Haupt-Ladevorgang (nie blockierend).
+  useEffect(() => {
+    let aktiv = true;
+    void aktuellerPushEndpoint().then((e) => {
+      if (aktiv) setDieserEndpoint(e);
+    });
+    return () => {
+      aktiv = false;
+    };
+  }, [ladeVersion]);
 
   // Rückkehr von einem Keycloak-Konto-Schritt (Entscheid 6A): einmalig den Status zeigen.
   const kontoAktion = useSyncExternalStore(subscribeKontoAktion, kontoAktionSnapshot);
@@ -388,6 +412,49 @@ export function EinstellungenPage() {
     }
   }
 
+  /** "E-Mail-Weg abschalten"/wieder einschalten (Scheibe 2, B12) - die Adresse bleibt erhalten. */
+  async function emailAktivSetzen(aktiv: boolean) {
+    if (!email) return;
+    setEmail({ ...email, aktiv });
+    setBusy('email');
+    try {
+      await benachrichtigungenApi.emailAktivSetzen(aktiv);
+      setFolge({ key: 'email', text: aktiv ? 'Wieder eingeschaltet.' : 'Abgeschaltet.', istFehler: false });
+    } catch {
+      setEmail({ ...email, aktiv: !aktiv });
+      setFolge({ key: 'email', text: SCHALT_FEHLER, istFehler: true });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** "E-Mail-Weg entfernen" (Scheibe 2, B12). */
+  async function emailEntfernen() {
+    setBusy('email');
+    try {
+      await benachrichtigungenApi.emailEntfernen();
+      setEmail(null);
+      schliesse();
+    } catch {
+      setFolge({ key: 'email', text: SCHALT_FEHLER, istFehler: true });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** "Probe-Mail senden" (Entscheid 10A). */
+  async function emailProbeSenden() {
+    setBusy('email-probe');
+    try {
+      const ergebnis = await benachrichtigungenApi.emailProbe();
+      setFolge(probeFolge('email', ergebnis));
+    } catch {
+      setFolge({ key: 'email', text: SCHALT_FEHLER, istFehler: true });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function pushGeraetEinschalten() {
     setBusy('push-geraet');
     try {
@@ -435,6 +502,25 @@ export function EinstellungenPage() {
     schliesse();
   }
 
+  /** "Gerät umbenennen" (Scheibe 2, §4.12). */
+  function pushNameSetzen(id: string, geraet: string) {
+    setPushAbos((liste) => liste.map((a) => (a.id === id ? { ...a, geraet } : a)));
+    void benachrichtigungenApi.pushNameSetzen(id, geraet);
+  }
+
+  /** "Probe-Mitteilung senden" (Entscheid 10A). */
+  async function pushProbeSenden(id: string) {
+    setBusy('push-probe');
+    try {
+      const ergebnis = await benachrichtigungenApi.pushProbe(id);
+      setFolge(probeFolge(id, ergebnis));
+    } catch {
+      setFolge({ key: id, text: SCHALT_FEHLER, istFehler: true });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   function kanalAendern(id: string, aktiv: boolean, abSchwere: Schwere) {
     setWebhookZiele((liste) => liste.map((z) => (z.id === id ? { ...z, aktiv, abSchwere } : z)));
     void benachrichtigungenApi.webhookZielEinstellungenSetzen(id, aktiv, abSchwere);
@@ -446,6 +532,39 @@ export function EinstellungenPage() {
     schliesse();
   }
 
+  /** "Team-Kanal bearbeiten" (Scheibe 2, §4.12). */
+  async function kanalBearbeiten(id: string, url: string, name: string) {
+    setBusy('kanal-bearbeiten');
+    try {
+      await benachrichtigungenApi.webhookZielBearbeiten(id, url, name);
+      setWebhookZiele((liste) => liste.map((z) => (z.id === id ? { ...z, url, name } : z)));
+      setFolge({ key: 'kanal-bearbeiten', text: 'Gespeichert.', istFehler: false });
+      return true;
+    } catch (e) {
+      setFolge({
+        key: 'kanal-bearbeiten',
+        text: e instanceof Error ? e.message : SCHALT_FEHLER,
+        istFehler: true,
+      });
+      return false;
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /** "Probe senden" (Entscheid 10A). */
+  async function kanalProbeSenden(id: string) {
+    setBusy('kanal-probe');
+    try {
+      const ergebnis = await benachrichtigungenApi.webhookProbe(id);
+      setFolge(probeFolge(id, ergebnis));
+    } catch {
+      setFolge({ key: id, text: SCHALT_FEHLER, istFehler: true });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   function telegramAendern(id: string, aktiv: boolean, abSchwere: Schwere) {
     setTelegramZiele((liste) => liste.map((z) => (z.id === id ? { ...z, aktiv, abSchwere } : z)));
     void benachrichtigungenApi.telegramZielEinstellungenSetzen(id, aktiv, abSchwere);
@@ -455,6 +574,19 @@ export function EinstellungenPage() {
     setTelegramZiele((liste) => liste.filter((z) => z.id !== id));
     void benachrichtigungenApi.telegramZielEntfernen(id);
     schliesse();
+  }
+
+  /** "Probe senden" (Entscheid 10A) - nur für eine bereits bestätigte Verbindung. */
+  async function telegramProbeSenden(id: string) {
+    setBusy('telegram-probe');
+    try {
+      const ergebnis = await benachrichtigungenApi.telegramProbe(id);
+      setFolge(probeFolge(id, ergebnis));
+    } catch {
+      setFolge({ key: id, text: SCHALT_FEHLER, istFehler: true });
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function telegramVerbinden() {
@@ -472,8 +604,10 @@ export function EinstellungenPage() {
     }
   }
 
-  const geraetAbo = pushAbos.find((a) => a.id === geraetAboId());
-  const andereAbos = pushAbos.filter((a) => a.id !== geraetAboId());
+  const geraetAbo = dieserEndpoint
+    ? pushAbos.find((a) => a.endpoint === dieserEndpoint)
+    : pushAbos.find((a) => a.id === geraetAboId());
+  const andereAbos = pushAbos.filter((a) => a.id !== geraetAbo?.id);
 
   const kurzbildWege: KurzbildWeg[] = [
     ...(email ? [{ label: 'E-Mail', schwere: email.abSchwere, aktiv: email.bestaetigt && email.aktiv }] : []),
@@ -487,6 +621,19 @@ export function EinstellungenPage() {
   const preset = ruhezeitPresetVon(regeln);
   const rolle = [...ROLLE_NOETIG_REIHENFOLGE].reverse().find((r) => selbst?.rollen.includes(r));
   const rolleUndZugangSichtbar = !!selbst && (!selbst.unternehmensweit || (selbst.kundenadministratoren?.length ?? 0) > 0);
+
+  // Das Blatt merkt sich bei seinem Öffnen nur die ID; Stufe/Schalter/Name zeigen den LEBENDIGEN
+  // Datensatz, damit ein Bearbeiten (Scheibe 2) oder ein Umschalten sofort in diesem Blatt sichtbar
+  // wird, statt erst nach dem erneuten Öffnen.
+  const lebendigerPushAbo = blattInhalt?.art === 'push-abo'
+    ? (pushAbos.find((a) => a.id === blattInhalt.abo.id) ?? blattInhalt.abo)
+    : null;
+  const lebendigerKanal = blattInhalt?.art === 'kanal'
+    ? (webhookZiele.find((z) => z.id === blattInhalt.ziel.id) ?? blattInhalt.ziel)
+    : null;
+  const lebendigeTelegramVerbindung = blattInhalt?.art === 'telegram'
+    ? (telegramZiele.find((z) => z.id === blattInhalt.ziel.id) ?? blattInhalt.ziel)
+    : null;
 
   if (laden) {
     return (
@@ -697,6 +844,9 @@ export function EinstellungenPage() {
             busy={busy != null}
             onAnfordern={emailAnfordern}
             onStufe={emailStufeSetzen}
+            onAktivSetzen={(a) => void emailAktivSetzen(a)}
+            onEntfernen={() => void emailEntfernen()}
+            onProbe={() => void emailProbeSenden()}
             folge={folge?.key === 'email' || folge?.key === 'email-anfordern' ? folge : null}
           />
         )}
@@ -704,68 +854,70 @@ export function EinstellungenPage() {
         {blattInhalt?.art === 'push-geraet' && (
           <PushGeraetBlatt
             abo={geraetAbo ?? null}
-            busy={busy === 'push-geraet'}
+            busy={busy === 'push-geraet' || busy === 'push-probe'}
             onEinschalten={() => void pushGeraetEinschalten()}
             onStufe={(s) => geraetAbo && pushAboAendern(geraetAbo.id, geraetAbo.aktiv, schwereAusStufe(s))}
             onBeenden={() => geraetAbo && void pushGeraetBeenden(geraetAbo.id)}
-            folge={folge?.key === 'push-geraet' ? folge : null}
+            onNameSetzen={(name) => geraetAbo && pushNameSetzen(geraetAbo.id, name)}
+            onProbe={() => geraetAbo && void pushProbeSenden(geraetAbo.id)}
+            folge={folge?.key === 'push-geraet' || folge?.key === geraetAbo?.id ? folge : null}
           />
         )}
 
-        {blattInhalt?.art === 'push-abo' && (
-          <div className="vp-einst-blatt">
-            <p className="vp-note">{blattInhalt.abo.geraet}</p>
-            <StufenSchalter
-              id={blattInhalt.abo.geraet}
-              wert={stufeAusSchwere(blattInhalt.abo.abSchwere)}
-              onChange={(s) => pushAboAendern(blattInhalt.abo.id, blattInhalt.abo.aktiv, schwereAusStufe(s))}
-            />
-            <Switch
-              checked={blattInhalt.abo.aktiv}
-              onChange={(e) => pushAboAendern(blattInhalt.abo.id, e.target.checked, blattInhalt.abo.abSchwere)}
-              label="Eingeschaltet"
-            />
-            <Button type="button" variant="ghost" size="md" onClick={() => pushAboEntfernen(blattInhalt.abo.id)}>
-              Entfernen
-            </Button>
-          </div>
+        {blattInhalt?.art === 'push-abo' && lebendigerPushAbo && (
+          <PushAboBlatt
+            abo={lebendigerPushAbo}
+            busy={busy === 'push-probe'}
+            onStufe={(s) => pushAboAendern(lebendigerPushAbo.id, lebendigerPushAbo.aktiv, schwereAusStufe(s))}
+            onAktivSetzen={(a) => pushAboAendern(lebendigerPushAbo.id, a, lebendigerPushAbo.abSchwere)}
+            onNameSetzen={(name) => pushNameSetzen(lebendigerPushAbo.id, name)}
+            onProbe={() => void pushProbeSenden(lebendigerPushAbo.id)}
+            onEntfernen={() => pushAboEntfernen(lebendigerPushAbo.id)}
+            folge={folge?.key === lebendigerPushAbo.id ? folge : null}
+          />
         )}
 
-        {blattInhalt?.art === 'kanal' && (
-          <div className="vp-einst-blatt">
-            <p className="vp-note">{blattInhalt.ziel.name || blattInhalt.ziel.url} · {kanalZielSatz(blattInhalt.ziel.url)}</p>
-            <StufenSchalter
-              id={blattInhalt.ziel.id}
-              wert={stufeAusSchwere(blattInhalt.ziel.abSchwere)}
-              onChange={(s) => kanalAendern(blattInhalt.ziel.id, blattInhalt.ziel.aktiv, schwereAusStufe(s))}
-            />
-            <Switch
-              checked={blattInhalt.ziel.aktiv}
-              onChange={(e) => kanalAendern(blattInhalt.ziel.id, e.target.checked, blattInhalt.ziel.abSchwere)}
-              label="Eingeschaltet"
-            />
-            <Button type="button" variant="ghost" size="md" onClick={() => kanalEntfernen(blattInhalt.ziel.id)}>
-              Entfernen
-            </Button>
-          </div>
+        {blattInhalt?.art === 'kanal' && lebendigerKanal && (
+          <KanalBlatt
+            ziel={lebendigerKanal}
+            busy={busy === 'kanal-bearbeiten' || busy === 'kanal-probe'}
+            onStufe={(s) => kanalAendern(lebendigerKanal.id, lebendigerKanal.aktiv, schwereAusStufe(s))}
+            onAktivSetzen={(a) => kanalAendern(lebendigerKanal.id, a, lebendigerKanal.abSchwere)}
+            onBearbeiten={(url, name) => kanalBearbeiten(lebendigerKanal.id, url, name)}
+            onProbe={() => void kanalProbeSenden(lebendigerKanal.id)}
+            onEntfernen={() => kanalEntfernen(lebendigerKanal.id)}
+            folge={folge?.key === 'kanal-bearbeiten' || folge?.key === lebendigerKanal.id ? folge : null}
+          />
         )}
 
-        {blattInhalt?.art === 'telegram' && (
+        {blattInhalt?.art === 'telegram' && lebendigeTelegramVerbindung && (
           <div className="vp-einst-blatt">
-            <p className="vp-note">{blattInhalt.ziel.bestaetigt ? 'Verbunden' : 'Wartet auf „Starten" in Telegram'}</p>
+            <p className="vp-note">{lebendigeTelegramVerbindung.bestaetigt ? 'Verbunden' : 'Wartet auf „Starten" in Telegram'}</p>
             <StufenSchalter
-              id={blattInhalt.ziel.id}
-              wert={stufeAusSchwere(blattInhalt.ziel.abSchwere)}
-              onChange={(s) => telegramAendern(blattInhalt.ziel.id, blattInhalt.ziel.aktiv, schwereAusStufe(s))}
+              id={lebendigeTelegramVerbindung.id}
+              wert={stufeAusSchwere(lebendigeTelegramVerbindung.abSchwere)}
+              onChange={(s) => telegramAendern(lebendigeTelegramVerbindung.id, lebendigeTelegramVerbindung.aktiv, schwereAusStufe(s))}
             />
             <Switch
-              checked={blattInhalt.ziel.aktiv}
-              onChange={(e) => telegramAendern(blattInhalt.ziel.id, e.target.checked, blattInhalt.ziel.abSchwere)}
+              checked={lebendigeTelegramVerbindung.aktiv}
+              onChange={(e) => telegramAendern(lebendigeTelegramVerbindung.id, e.target.checked, lebendigeTelegramVerbindung.abSchwere)}
               label="Eingeschaltet"
             />
-            <Button type="button" variant="ghost" size="md" onClick={() => telegramTrennen(blattInhalt.ziel.id)}>
+            {lebendigeTelegramVerbindung.bestaetigt && (
+              <Button
+                type="button"
+                variant="outline"
+                size="md"
+                disabled={busy === 'telegram-probe'}
+                onClick={() => void telegramProbeSenden(lebendigeTelegramVerbindung.id)}
+              >
+                Probe senden
+              </Button>
+            )}
+            <Button type="button" variant="ghost" size="md" onClick={() => telegramTrennen(lebendigeTelegramVerbindung.id)}>
               Trennen
             </Button>
+            <Folge eintrag={folge?.key === lebendigeTelegramVerbindung.id ? folge : null} />
           </div>
         )}
 
@@ -904,12 +1056,18 @@ function EmailBlatt({
   busy,
   onAnfordern,
   onStufe,
+  onAktivSetzen,
+  onEntfernen,
+  onProbe,
   folge,
 }: {
   email: EmailZustellweg | null;
   busy: boolean;
   onAnfordern: (adresse: string) => void;
   onStufe: (stufe: ZweiStufen) => void;
+  onAktivSetzen: (aktiv: boolean) => void;
+  onEntfernen: () => void;
+  onProbe: () => void;
   folge: FolgeEintrag | null;
 }) {
   const [adresse, setAdresse] = useState(email?.ziel ?? '');
@@ -953,7 +1111,11 @@ function EmailBlatt({
   return (
     <div className="vp-einst-blatt">
       <p className="vp-note">{email.ziel} · Bestätigt</p>
-      <StufenSchalter id="email" wert={stufeAusSchwere(email.abSchwere)} disabled={busy} onChange={onStufe} />
+      <Switch checked={email.aktiv} disabled={busy} onChange={(e) => onAktivSetzen(e.target.checked)} label="Eingeschaltet" />
+      <StufenSchalter id="email" wert={stufeAusSchwere(email.abSchwere)} disabled={busy || !email.aktiv} onChange={onStufe} />
+      <Button type="button" variant="outline" size="md" disabled={busy} onClick={onProbe}>
+        Probe-Mail senden
+      </Button>
       {!andereAnzeigen ? (
         <button type="button" className="vp-linklike" onClick={() => setAndereAnzeigen(true)}>
           Andere Adresse
@@ -966,6 +1128,9 @@ function EmailBlatt({
           </Button>
         </>
       )}
+      <Button type="button" variant="ghost" size="md" disabled={busy} onClick={onEntfernen}>
+        E-Mail-Weg entfernen
+      </Button>
       <Folge eintrag={folge} />
     </div>
   );
@@ -977,6 +1142,8 @@ function PushGeraetBlatt({
   onEinschalten,
   onStufe,
   onBeenden,
+  onNameSetzen,
+  onProbe,
   folge,
 }: {
   abo: PushAbo | null;
@@ -984,13 +1151,19 @@ function PushGeraetBlatt({
   onEinschalten: () => void;
   onStufe: (s: ZweiStufen) => void;
   onBeenden: () => void;
+  onNameSetzen: (name: string) => void;
+  onProbe: () => void;
   folge: FolgeEintrag | null;
 }) {
   if (abo) {
     return (
       <div className="vp-einst-blatt">
         <p className="vp-note">Push an auf diesem Gerät.</p>
+        <GeraetNameFeld geraet={abo.geraet} busy={busy} onNameSetzen={onNameSetzen} />
         <StufenSchalter id="push-geraet" wert={stufeAusSchwere(abo.abSchwere)} disabled={busy} onChange={onStufe} />
+        <Button type="button" variant="outline" size="md" disabled={busy} onClick={onProbe}>
+          Probe-Mitteilung senden
+        </Button>
         <Button type="button" variant="ghost" size="md" disabled={busy} onClick={onBeenden}>
           Push auf diesem Gerät beenden
         </Button>
@@ -1030,6 +1203,128 @@ function PushGeraetBlatt({
   );
 }
 
+/** "Gerät umbenennen" (Scheibe 2, §4.12) - ein Feld, Speichern nur bei einem wirklich geänderten Namen. */
+function GeraetNameFeld({
+  geraet,
+  busy,
+  onNameSetzen,
+}: {
+  geraet: string;
+  busy: boolean;
+  onNameSetzen: (name: string) => void;
+}) {
+  const [wert, setWert] = useState(geraet);
+  const geaendert = wert.trim() !== '' && wert.trim() !== geraet;
+  return (
+    <div className="vp-meinst-geraet-name">
+      <Input label="Name" value={wert} onChange={(e) => setWert(e.target.value)} />
+      {geaendert && (
+        <Button type="button" size="md" variant="outline" disabled={busy} onClick={() => onNameSetzen(wert.trim())}>
+          Umbenennen
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/** Ein WEITERES Geräte-Abo (nicht dieses Gerät) - Stufe, Schalter, umbenennen, Probe, entfernen. */
+function PushAboBlatt({
+  abo,
+  busy,
+  onStufe,
+  onAktivSetzen,
+  onNameSetzen,
+  onProbe,
+  onEntfernen,
+  folge,
+}: {
+  abo: PushAbo;
+  busy: boolean;
+  onStufe: (s: ZweiStufen) => void;
+  onAktivSetzen: (aktiv: boolean) => void;
+  onNameSetzen: (name: string) => void;
+  onProbe: () => void;
+  onEntfernen: () => void;
+  folge: FolgeEintrag | null;
+}) {
+  return (
+    <div className="vp-einst-blatt">
+      <GeraetNameFeld geraet={abo.geraet} busy={busy} onNameSetzen={onNameSetzen} />
+      <StufenSchalter id={abo.id} wert={stufeAusSchwere(abo.abSchwere)} disabled={busy} onChange={onStufe} />
+      <Switch checked={abo.aktiv} disabled={busy} onChange={(e) => onAktivSetzen(e.target.checked)} label="Eingeschaltet" />
+      <Button type="button" variant="outline" size="md" disabled={busy} onClick={onProbe}>
+        Probe-Mitteilung senden
+      </Button>
+      <Button type="button" variant="ghost" size="md" disabled={busy} onClick={onEntfernen}>
+        Entfernen
+      </Button>
+      <Folge eintrag={folge} />
+    </div>
+  );
+}
+
+/** Team-Kanal: Stufe, Schalter, "Bearbeiten" (Adresse/Name), Probe, Entfernen (Scheibe 2, §4.12). */
+function KanalBlatt({
+  ziel,
+  busy,
+  onStufe,
+  onAktivSetzen,
+  onBearbeiten,
+  onProbe,
+  onEntfernen,
+  folge,
+}: {
+  ziel: WebhookZiel;
+  busy: boolean;
+  onStufe: (s: ZweiStufen) => void;
+  onAktivSetzen: (aktiv: boolean) => void;
+  onBearbeiten: (url: string, name: string) => Promise<boolean>;
+  onProbe: () => void;
+  onEntfernen: () => void;
+  folge: FolgeEintrag | null;
+}) {
+  const [bearbeitenOffen, setBearbeitenOffen] = useState(false);
+  const [url, setUrl] = useState(ziel.url);
+  const [name, setName] = useState(ziel.name);
+
+  return (
+    <div className="vp-einst-blatt">
+      {!bearbeitenOffen ? (
+        <>
+          <p className="vp-note">
+            {ziel.name || ziel.url} · {kanalZielSatz(ziel.url)}
+          </p>
+          <button type="button" className="vp-linklike" onClick={() => setBearbeitenOffen(true)}>
+            Bearbeiten
+          </button>
+        </>
+      ) : (
+        <>
+          <Input label="Adresse" type="url" value={url} onChange={(e) => setUrl(e.target.value)} />
+          <Input label="Name" value={name} onChange={(e) => setName(e.target.value)} />
+          <Button
+            type="button"
+            size="md"
+            disabled={busy || !url.trim()}
+            onClick={() => void onBearbeiten(url.trim(), name.trim()).then((ok) => ok && setBearbeitenOffen(false))}
+          >
+            Speichern
+          </Button>
+        </>
+      )}
+      <StufenSchalter id={ziel.id} wert={stufeAusSchwere(ziel.abSchwere)} disabled={busy} onChange={onStufe} />
+      <Switch checked={ziel.aktiv} disabled={busy} onChange={(e) => onAktivSetzen(e.target.checked)} label="Eingeschaltet" />
+      <Button type="button" variant="outline" size="md" disabled={busy} onClick={onProbe}>
+        Probe senden
+      </Button>
+      <Button type="button" variant="ghost" size="md" disabled={busy} onClick={onEntfernen}>
+        Entfernen
+      </Button>
+      <Folge eintrag={folge} />
+    </div>
+  );
+}
+
 function WeitererWegBlatt({
   telegramVerfuegbar,
   busy,
@@ -1048,6 +1343,8 @@ function WeitererWegBlatt({
   const [name, setName] = useState('');
   const [fehler, setFehler] = useState<string | null>(null);
   const [geheimnis, setGeheimnis] = useState<string | null>(null);
+  const [probeLaeuft, setProbeLaeuft] = useState(false);
+  const [probeErgebnis, setProbeErgebnis] = useState<ProbeErgebnis | null>(null);
 
   async function anlegen() {
     if (!url.trim()) return;
@@ -1058,8 +1355,22 @@ function WeitererWegBlatt({
       setGeheimnis(kanalZielSatz(url.trim()) === 'Eigener Dienst' ? neu.geheimnis : null);
       setUrl('');
       setName('');
+    } catch (e) {
+      setFehler(e instanceof Error ? e.message : SCHALT_FEHLER);
+    }
+  }
+
+  /** "Probe senden" VOR dem Anlegen (Entscheid 10A) - nichts wird gespeichert. */
+  async function probeVorAnlegen() {
+    if (!url.trim()) return;
+    setProbeLaeuft(true);
+    setProbeErgebnis(null);
+    try {
+      setProbeErgebnis(await benachrichtigungenApi.webhookProbeVorAnlegen(url.trim()));
     } catch {
-      setFehler(SCHALT_FEHLER);
+      setProbeErgebnis({ erfolgreich: false, fehler: SCHALT_FEHLER });
+    } finally {
+      setProbeLaeuft(false);
     }
   }
 
@@ -1093,9 +1404,19 @@ function WeitererWegBlatt({
             <p className="vp-note">Für Microsoft Teams, Slack oder einen eigenen Dienst.</p>
             <Input label="Adresse" type="url" value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://…" />
             <Input label="Name (optional)" value={name} onChange={(e) => setName(e.target.value)} placeholder="Energieteam" />
-            <Button type="button" size="md" disabled={!url.trim()} onClick={() => void anlegen()}>
-              Verbinden
-            </Button>
+            <div className="vp-meinst-weiterer-aktionen">
+              <Button type="button" size="md" variant="outline" disabled={!url.trim() || probeLaeuft} onClick={() => void probeVorAnlegen()}>
+                Probe senden
+              </Button>
+              <Button type="button" size="md" disabled={!url.trim()} onClick={() => void anlegen()}>
+                Verbinden
+              </Button>
+            </div>
+            {probeErgebnis && (
+              <p className={probeErgebnis.erfolgreich ? 'vp-note' : 'vp-alert'} role={probeErgebnis.erfolgreich ? 'status' : 'alert'}>
+                {probeErgebnis.erfolgreich ? 'Testnachricht gesendet.' : (probeErgebnis.fehler ?? SCHALT_FEHLER)}
+              </p>
+            )}
             {fehler && (
               <p className="vp-alert" role="alert">
                 {fehler}
