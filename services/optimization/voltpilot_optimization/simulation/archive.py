@@ -5,7 +5,8 @@ irradiance of that year at the site's location - PV yield and prices are
 correlated (sunny hours are cheap hours), and clear-sky PV against real
 prices would put the midday export into the wrong price hours (design report
 section 4). The Open-Meteo archive API (``archive-api.open-meteo.com``) serves a
-full year of hourly GHI/DNI/DHI in one keyless call.
+full year of hourly GHI/DNI/DHI in one keyless call; the running year only up
+to yesterday (the archive refuses future end dates).
 
 ``ArchiveWeatherProvider`` adapts the fetched year into the physical PV
 model's :class:`~voltpilot_forecast.weather.WeatherProvider` (the
@@ -22,8 +23,8 @@ import json
 import logging
 import threading
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
-from typing import Sequence
+from datetime import date, datetime, timedelta, timezone
+from typing import Callable, Sequence
 
 from voltpilot_forecast.domain import GeoLocation, ensure_utc
 from voltpilot_forecast.http import HttpClient, RequestsHttpClient
@@ -96,33 +97,43 @@ class ArchiveWeatherSource:
         base_url: str = DEFAULT_BASE_URL,
         http_client: HttpClient | None = None,
         timeout_seconds: float = 60.0,
+        heute: Callable[[], date] | None = None,
     ) -> None:
         self._base_url = base_url
         self._http = http_client or RequestsHttpClient()
         self._timeout = timeout_seconds
-        self._cache: dict[tuple, dict[datetime, IrradianceSample]] = {}
+        self._heute = heute or (lambda: datetime.now(timezone.utc).date())
+        self._cache: dict[tuple, tuple[date, dict[datetime, IrradianceSample]]] = {}
         self._lock = threading.Lock()
 
     def hourly_irradiance(
         self, latitude: float, longitude: float, year: int
     ) -> dict[datetime, IrradianceSample]:
+        # The archive rejects an end date after today (UTC, HTTP 400 "end_date
+        # is out of allowed range"); the running year is fetched up to
+        # yesterday, a future year not at all. The end date is part of the
+        # cache entry so a long-running service picks up the newer days.
         key = cache_key(latitude, longitude, year)
+        end = min(date(year, 12, 31), self._heute() - timedelta(days=1))
+        if end < date(year, 1, 1):
+            return {}
         with self._lock:
             cached = self._cache.get(key)
-        if cached is not None:
-            return cached
+        if cached is not None and cached[0] == end:
+            return cached[1]
         params = {
             "latitude": f"{key[0]:.1f}",
             "longitude": f"{key[1]:.1f}",
             "start_date": date(year, 1, 1).isoformat(),
-            "end_date": date(year, 12, 31).isoformat(),
+            "end_date": end.isoformat(),
             "hourly": ",".join(_HOURLY_VARIABLES),
             "timezone": "UTC",
         }
         url = f"{self._base_url.rstrip('/')}/v1/archive"
         logger.info(
             "archive.fetch.start",
-            extra={"context": {"lat": params["latitude"], "lon": params["longitude"], "year": year}},
+            extra={"context": {"lat": params["latitude"], "lon": params["longitude"],
+                               "year": year, "end_date": params["end_date"]}},
         )
         try:
             resp = self._http.get(url, params, self._timeout)
@@ -136,7 +147,7 @@ class ArchiveWeatherSource:
             )
         index = parse_archive_response(resp.text)
         with self._lock:
-            self._cache[key] = index
+            self._cache[key] = (end, index)
         logger.info(
             "archive.fetch.ok", extra={"context": {"hours": len(index), "year": year}}
         )

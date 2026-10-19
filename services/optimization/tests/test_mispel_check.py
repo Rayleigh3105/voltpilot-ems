@@ -172,6 +172,41 @@ class _SonnigesWetter:
         return index
 
 
+@pytest.mark.parametrize("heute", [date(2026, 10, 19), date(2026, 11, 1), date(2027, 1, 1)])
+def test_pv_wetter_fragt_kein_datum_nach_gestern_an(heute):
+    """MP-58: das Fenster des nächtlichen Laufs endet im Vormonat und liegt
+    damit im laufenden Jahr; das Archiv lehnt ein Enddatum in der Zukunft ab."""
+    from voltpilot_forecast.http import HttpResponse
+
+    from voltpilot_optimization.simulation.archive import ArchiveWeatherSource
+    from voltpilot_optimization.simulation.mispel_check_lauf import fenster
+
+    class _Archiv:
+        def __init__(self):
+            self.params = []
+
+        def get(self, url, params, timeout):
+            self.params.append(dict(params))
+            stunden = [f"{params['end_date']}T{h:02d}:00" for h in range(24)]
+            return HttpResponse(200, json.dumps({"hourly": {
+                "time": stunden, "shortwave_radiation": [400.0] * 24,
+                "direct_radiation": [300.0] * 24, "diffuse_radiation": [100.0] * 24,
+            }}))
+
+    archiv = _Archiv()
+    f = fenster(heute)
+    slots = window_slot_starts(*f.beginn, f.monate)
+    deps = mc.CheckDeps(load_prices=lambda zone, s: [], weather=ArchiveWeatherSource(
+        http_client=archiv, heute=lambda: heute))
+    pv = mc._pv_reihe(mc.KUNDENTYPEN["a"], deps, slots)
+    gestern = heute - timedelta(days=1)
+    assert archiv.params
+    assert all(date.fromisoformat(p["end_date"]) <= gestern for p in archiv.params)
+    # Der letzte Tag des Fensters ist mit abgefragt, nicht abgeschnitten.
+    assert max(date.fromisoformat(p["end_date"]) for p in archiv.params) >= f.bis
+    assert len(pv) == len(slots)
+
+
 @pytest.fixture
 def mai_fenster(monkeypatch):
     """Drei Tage Ende Mai bis 1. Juni: eine Monatsgrenze im Fenster."""

@@ -57,6 +57,19 @@ describe('MispelCheckKarte (MP-48, BK-48 Variante A)', () => {
     expect(rechnung.textContent).toContain('Angenommen, weil noch nicht gemessen: Jahresverbrauch');
   });
 
+  it('„fertig“ zeigt den Hinweis des nächtlichen Laufs unter dem Urteil (MP-58)', () => {
+    const satz =
+      'An 2 Tagen (03.11.2025, 14.02.2026) hat der Solver die Planung mit MiSpeL nicht bis zum Optimum gelöst; dort ' +
+      'rechnet der Check ohne Gutschrift – der Vorteil ist eher zu niedrig geschätzt. Jeder Lauf mit derselben Eingabe rechnet dasselbe.';
+    render(<MispelCheckKarte check={{ ...a4, hinweis: satz }} anlageName="Werk Ahrenberg" />);
+    expect(screen.getByTestId('mispel-check').getAttribute('data-stand')).toBe('fertig');
+    expect(screen.getByTestId('mispel-check-betrag')).toBeTruthy();
+    expect(screen.getByTestId('mispel-check-hinweis').textContent).toBe(satz);
+    cleanup();
+    render(<MispelCheckKarte check={{ ...a4, hinweis: '  ' }} anlageName="Werk Ahrenberg" />);
+    expect(screen.queryByTestId('mispel-check-hinweis')).toBeNull();
+  });
+
   it('ohne Ergebnis steht „wird gerechnet“ und kein Euro-Betrag', () => {
     render(<MispelCheckKarte check={null} anlageName="Werk Ahrenberg" />);
     const karte = screen.getByTestId('mispel-check');
