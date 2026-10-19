@@ -113,6 +113,13 @@
      "quelle": "Standard der Simulation, kein Standort hinterlegt"
     },
     {
+     "angabe": "Strombezug",
+     "wert": "börsenindiziert",
+     "einheit": null,
+     "herkunft": "angenommen",
+     "quelle": "keine Tarifart hinterlegt: Gewerbe börsenindiziert (Konzept § 3 a2, b)"
+    },
+    {
      "angabe": "Netzentgelt-Arbeitspreis",
      "wert": 4.0,
      "einheit": "ct/kWh",
@@ -244,6 +251,13 @@
      "einheit": null,
      "herkunft": "angenommen",
      "quelle": "Gewerbeprofil der Simulation (Konzept § 3)"
+    },
+    {
+     "angabe": "Strombezug",
+     "wert": "börsenindiziert",
+     "einheit": null,
+     "herkunft": "angenommen",
+     "quelle": "keine Tarifart hinterlegt: Gewerbe börsenindiziert (Konzept § 3 a2, b)"
     },
     {
      "angabe": "Netzentgelt-Arbeitspreis",

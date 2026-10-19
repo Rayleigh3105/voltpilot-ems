@@ -30,6 +30,10 @@ fester Einspeisevergütung gegen die Pauschaloption. Anwendbar ist sie erst ab d
 Monatsersten nach der EU-Genehmigung (``VOLTPILOT_MISPEL_PAUSCHALOPTION_AB``, wie
 ``voltpilot.mispel.pauschaloption-ab`` der API); gerechnet wird trotzdem schon, als
 Information vor dem Wechsel - dann mit einem Satz in ``hinweis``.
+
+**Strombezug (MP-59):** die Tarifart der Anlage wie der Optimierer sie liest
+(``site.tarif_art``/``tarif_param_ct_kwh``): ``fest`` rechnet mit dem All-in-Arbeitspreis (ohne
+Preis ``nicht_unterstuetzt``), ``dynamisch`` und ``ohne`` börsenindiziert mit Preisblatt wie bisher.
 """
 
 from __future__ import annotations
@@ -44,7 +48,13 @@ from typing import Callable
 from uuid import UUID
 
 from voltpilot_optimization.marktwertbasis import FOERDERWEG_PAUSCHAL
-from voltpilot_optimization.pricing import DEFAULT_SUPPLY_COMPONENTS, FOERDERWEG_EINSPEISEVERGUETUNG
+from voltpilot_optimization.pricing import (
+    DEFAULT_SUPPLY_COMPONENTS,
+    FOERDERWEG_EINSPEISEVERGUETUNG,
+    TARIF_DYNAMISCH,
+    TARIF_FEST,
+    TARIF_OHNE,
+)
 from voltpilot_optimization.simulation import mispel_check as mc
 from voltpilot_optimization.simulation.data import BERLIN
 
@@ -97,6 +107,9 @@ POSTEN_ART = {
 }
 
 FEHLGESCHLAGEN_SATZ = "Der Check konnte für diese Anlage nicht gerechnet werden"
+#: MP-59: fester Strompreis ohne Arbeitspreis - kein Betrag statt eines geschätzten.
+FEST_OHNE_PREIS_SATZ = ("Der Check rechnet den festen Strompreis mit dem Arbeitspreis der Anlage; "
+                        "für diese Anlage ist keiner hinterlegt.")
 
 
 # ---------------------------------------------------------------------------
@@ -153,6 +166,9 @@ class Stammdaten:
     umlagen_ct: float | None = None
     konzessionsabgabe_ct: float | None = None
     ust_pct: float | None = None
+    #: MP-59: ``site.tarif_art`` und ``tarif_param_ct_kwh`` (bei ``fest`` der All-in-Preis).
+    tarif_art: str = TARIF_OHNE
+    tarif_param_ct: float | None = None
     #: Verlauf im Fenster: Tage mit Wert und Summe (kWh), je Größe.
     verbrauch_tage: int = 0
     verbrauch_kwh: float = 0.0
@@ -244,6 +260,24 @@ def pauschaloption_ab(env: dict | None = None) -> date | None:
     return date.fromisoformat(wert) if wert else None
 
 
+def _strombezug(st: Stammdaten, db: list[dict], quelle_ohne: str) -> dict | None:
+    """Tarifart und Arbeitspreis des Checks (MP-59) aus den Stammdaten der Anlage, mit
+    ihren Angaben in der Datenbasis. ``None`` = fester Strompreis ohne Preis, nicht zu rechnen."""
+    if st.tarif_art == TARIF_FEST:
+        db.append(_angabe("Strombezug", "fest", None, "stammdaten", "Tarifart der Anlage"))
+        if st.tarif_param_ct is None:
+            return None
+        preis = float(st.tarif_param_ct)
+        db.append(_angabe("Arbeitspreis", round(preis, 3), "ct/kWh", "stammdaten",
+                          "fester Strompreis der Anlage, all-in"))
+        return {"tarif_art": TARIF_FEST, "arbeitspreis_ct": preis}
+    if st.tarif_art == TARIF_DYNAMISCH:
+        db.append(_angabe("Strombezug", "börsenindiziert", None, "stammdaten", "Tarifart der Anlage"))
+    else:
+        db.append(_angabe("Strombezug", "börsenindiziert", None, "angenommen", quelle_ohne))
+    return {"tarif_art": TARIF_DYNAMISCH, "arbeitspreis_ct": None}
+
+
 def eingang(st: Stammdaten, f: Fenster) -> Eingang:
     """Die Eingabe des Checks für eine Anlage und ihre Datenbasis (Vertrag § 4)."""
     basis = mc.CheckAnlage(formelsatz="A1", speicher_kwh=0.0, speicher_kw=0.0)
@@ -323,21 +357,29 @@ def eingang(st: Stammdaten, f: Fenster) -> Eingang:
             db.append(_angabe("Standort", f"{st.latitude:.2f}° N, {st.longitude:.2f}° O", None,
                               "stammdaten", None))
 
+    bezug = _strombezug(st, db, "keine Tarifart hinterlegt: Gewerbe börsenindiziert (Konzept § 3 a2, b)")
+    if bezug is None:
+        return Eingang(formelsatz, db, stand=STAND_NICHT_UNTERSTUETZT, hinweis=FEST_OHNE_PREIS_SATZ)
     preise = (
         ("Netzentgelt-Arbeitspreis", "netzentgelt_arbeitspreis_ct", "ct/kWh", "Konzept § 3 (Gewerbe)"),
         ("Umlagen", "umlagen_ct", "ct/kWh", "R3 § 2.2"),
         ("Konzessionsabgabe", "konzessionsabgabe_ct", "ct/kWh", "KAV Sondervertrag"),
         ("Umsatzsteuer", "ust_pct", "%", "Gewerbe mit Vorsteuerabzug"),
     )
+    # Beim festen Strompreis steckt das Preisblatt im Preis: es geht in keinen Betrag ein
+    # (nur in die Annahme der Entlastung) und steht darum nicht in der Datenbasis.
+    fest = bezug["tarif_art"] == TARIF_FEST
     werte = {}
     for angabe, feld, einheit, quelle in preise:
         wert = getattr(st, feld)
         if wert is None:
             werte[feld] = getattr(basis, feld)
-            db.append(_angabe(angabe, werte[feld], einheit, "angenommen", quelle))
+            if not fest:
+                db.append(_angabe(angabe, werte[feld], einheit, "angenommen", quelle))
         else:
             werte[feld] = float(wert)
-            db.append(_angabe(angabe, werte[feld], einheit, "stammdaten", "Preisblatt der Anlage"))
+            if not fest:
+                db.append(_angabe(angabe, werte[feld], einheit, "stammdaten", "Preisblatt der Anlage"))
 
     anlage = replace(
         basis,
@@ -352,6 +394,7 @@ def eingang(st: Stammdaten, f: Fenster) -> Eingang:
         pv_jahreserzeugung_kwh=float(erzeugung) if erzeugung is not None else None,
         zone=st.zone,
         **werte,
+        **bezug,
     )
     return Eingang(formelsatz, db, anlage=anlage)
 
@@ -412,22 +455,28 @@ def _eingang_pauschal(st: Stammdaten, f: Fenster, formelsatz: str, db: list[dict
                       "Haushaltsprofil der Ersparnis-Simulation (vp-sim-design-t6)"))
     basis = mc.KUNDENTYPEN["c1"]
     erzeugung = _pv_datenbasis(st, f, db, basis)
+    bezug = _strombezug(st, db, "keine Tarifart hinterlegt: Haushalt börsenindiziert (Konzept § 3 c1)")
+    if bezug is None:
+        return Eingang(formelsatz, db, stand=STAND_NICHT_UNTERSTUETZT, hinweis=FEST_OHNE_PREIS_SATZ)
     preise = (
         ("Netzentgelt-Arbeitspreis", "netzentgelt_arbeitspreis_ct", "ct/kWh"),
         ("Umlagen", "umlagen_ct", "ct/kWh"),
         ("Konzessionsabgabe", "konzessionsabgabe_ct", "ct/kWh"),
         ("Umsatzsteuer", "ust_pct", "%"),
     )
+    fest = bezug["tarif_art"] == TARIF_FEST  # das Preisblatt steckt im Preis, wie oben
     werte = {}
     for angabe, feld, einheit in preise:
         wert = getattr(st, feld)
         if wert is None:
             werte[feld] = getattr(DEFAULT_SUPPLY_COMPONENTS, feld)
-            db.append(_angabe(angabe, werte[feld], einheit, "angenommen",
-                              "Haushalt: Recherche vp-nacht-bezug-e7 (Vorgabe des Optimierers)"))
+            if not fest:
+                db.append(_angabe(angabe, werte[feld], einheit, "angenommen",
+                                  "Haushalt: Recherche vp-nacht-bezug-e7 (Vorgabe des Optimierers)"))
         else:
             werte[feld] = float(wert)
-            db.append(_angabe(angabe, werte[feld], einheit, "stammdaten", "Preisblatt der Anlage"))
+            if not fest:
+                db.append(_angabe(angabe, werte[feld], einheit, "stammdaten", "Preisblatt der Anlage"))
     anlage = replace(
         basis,
         formelsatz=formelsatz,
@@ -442,6 +491,7 @@ def _eingang_pauschal(st: Stammdaten, f: Fenster, formelsatz: str, db: list[dict
         pv_jahreserzeugung_kwh=float(erzeugung) if erzeugung is not None else None,
         zone=st.zone,
         **werte,
+        **bezug,
     )
     return Eingang(formelsatz, db, anlage=anlage)
 
@@ -587,6 +637,8 @@ def lade_stammdaten(dsn: str, f: Fenster, heute: date, site_id: UUID | None = No
                 umlagen_ct=sp.umlagen_ct if sp else None,
                 konzessionsabgabe_ct=sp.konzessionsabgabe_ct if sp else None,
                 ust_pct=sp.ust_pct if sp else None,
+                tarif_art=s.tariff.tarif_art,
+                tarif_param_ct=s.tariff.tarif_param_ct_kwh,
                 verbrauch_tage=tv, verbrauch_kwh=sv, erzeugung_tage=te, erzeugung_kwh=se,
             ))
     return out

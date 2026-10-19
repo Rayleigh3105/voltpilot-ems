@@ -19,6 +19,8 @@ import pytest
 from voltpilot_forecast.weather import IrradianceSample
 
 from voltpilot_optimization import mispel_abgrenzung
+from voltpilot_optimization.domain import BatteryParams
+from voltpilot_optimization.pricing import grid_charge_hurdle_ct_kwh, import_prices
 from voltpilot_optimization.simulation import mispel_check as mc
 from voltpilot_optimization.simulation.data import (
     BERLIN,
@@ -27,7 +29,13 @@ from voltpilot_optimization.simulation.data import (
     window_slot_starts,
 )
 from voltpilot_optimization.simulation.profiles import business_series_kw
-from voltpilot_optimization.simulation.runner import _JahresBuchung, _MonatsBuchung
+from voltpilot_optimization.simulation.runner import (
+    YearData,
+    _JahresBuchung,
+    _MonatsBuchung,
+    chunk_payloads,
+    run_milp_year,
+)
 
 FIXTURE = Path(__file__).parent / "fixtures" / "day-ahead-de-lu-2025-10-bis-2026-09.json"
 
@@ -419,3 +427,149 @@ def test_haushalt_pauschaloption_p1_jahreszustand_und_rechenwerk(mai_fenster):
     assert r["anlage"]["einspeiseverguetungCt"] == pytest.approx(7.78)
     namen_annahmen = {a["name"] for a in r["annahmen"]}
     assert {"Pauschalgrenzen", "Bezugszeitraum", "Anwendbar", "Direktvermarktungsentgelt €/a"} <= namen_annahmen
+
+
+# --------------------------------------------------------------------------- Fester Strompreis (MP-59)
+
+#: Kundentyp a mit festem Strompreis wie Pilsting (25,0 ct all-in, Konzept § 3 a1).
+FEST = {"tarif_art": "fest", "arbeitspreis_ct": 25.0}
+
+
+def test_fester_strompreis_ist_der_all_in_preis_der_preisschicht():
+    """``_tarif`` baut bei ``fest`` den TARIF_FEST der Preisschicht: in jeder Viertelstunde
+    der Arbeitspreis, kein Preisblatt, keine Gutschrift, die ehrliche Marge der Live-Planung;
+    börsenindiziert bleibt alles, wie es war."""
+    fall = mc.STANDARD_FAELLE["mittel"]
+    fest = replace(mc.KUNDENTYPEN["a"], **FEST)
+    tarif = mc._tarif(fest, fall)
+    assert (tarif.tarif_art, tarif.tarif_param_ct_kwh, tarif.supply_price) == ("fest", 25.0, None)
+    assert (tarif.plant_kind, tarif.anzulegender_wert_ct_kwh) == ("direktvermarktung", 6.90)
+    assert import_prices(tarif, [-15.0, 95.0, 260.0]) == [250.0] * 3
+    assert mc._saldiert(fest, tarif) == 0.0
+    assert grid_charge_hurdle_ct_kwh(tarif) == 2.0
+    # Was beim Lieferanten ankommt: Umlagen + Netzentgelt-AP, wie die saldierten Bestandteile.
+    assert mc.entlastung_fest_ct(fest) == pytest.approx(4.0 + 2.946)
+    assert mc.entlastung_fest_ct(mc.KUNDENTYPEN["c1"]) == pytest.approx((7.6 + 2.946) * 1.19)
+    dyn = mc._tarif(mc.KUNDENTYPEN["a"], fall)
+    assert (dyn.tarif_art, dyn.tarif_param_ct_kwh) == ("dynamisch", None)
+    assert (dyn.supply_price.netzentgelt_arbeitspreis_ct, dyn.supply_price.stromsteuer_ct) == (4.0, 2.05)
+    assert mc._saldiert(mc.KUNDENTYPEN["a"], dyn) == pytest.approx((4.0 + 2.946) * 10)
+    assert grid_charge_hurdle_ct_kwh(dyn) == 0.0
+
+
+def test_fester_strompreis_braucht_seinen_arbeitspreis():
+    with pytest.raises(ValueError, match="Arbeitspreis"):
+        mc.mispel_check(replace(mc.KUNDENTYPEN["a"], tarif_art="fest"), _deps())
+    with pytest.raises(ValueError, match="Tarifart 'ohne'"):
+        mc.mispel_check(replace(mc.KUNDENTYPEN["a"], tarif_art="ohne"), _deps())
+    # Die Eingabe des Schreibers (``--anlage``) trägt beide Angaben.
+    anlage = mc.anlage_aus_json({"formelsatz": "A10", "speicher_kwh": 100.0, "speicher_kw": 50.0, **FEST})
+    assert (anlage.tarif_art, anlage.arbeitspreis_ct) == ("fest", 25.0)
+
+
+@solver
+def test_die_ehrliche_marge_erreicht_jede_planung_nur_beim_festen_strompreis(monkeypatch):
+    import voltpilot_optimization.solver as solver_mod
+
+    gesehen = []
+    echt = solver_mod.optimize_mit_rueckfall
+
+    def spy(inp, *args):
+        gesehen.append(inp.grid_charge_hurdle_ct_kwh)
+        return echt(inp, *args)
+
+    monkeypatch.setattr(solver_mod, "optimize_mit_rueckfall", spy)
+    start = datetime(2026, 5, 30, tzinfo=BERLIN).astimezone(timezone.utc)
+    slots = [start + timedelta(minutes=15 * i) for i in range(2 * 96)]
+    n = len(slots)
+    data = YearData(request=None, slot_starts=slots, spot=_synthetische_preise(slots), load_kw=[2.0] * n,
+                    pv_kw=[0.0] * n, import_eur_mwh=[250.0] * n, export_eur_mwh=_synthetische_preise(slots))
+    battery = BatteryParams(capacity_kwh=10.0, max_charge_kw=5.0, max_discharge_kw=5.0)
+    run_milp_year(data, battery, netzladen=True, hurdle_ct_kwh=2.0)
+    assert gesehen and set(gesehen) == {2.0}
+    gesehen.clear()
+    run_milp_year(data, battery, netzladen=True)
+    assert gesehen and set(gesehen) == {0.0}
+    # Ohne Marge bleibt die Nutzlast byte-gleich (kein Schlüssel).
+    assert "hurdle" not in chunk_payloads(data, battery, True)[0]
+
+
+def _laedt_aus_dem_netz(data, dispatch) -> bool:
+    """Lädt der Speicher in einer Viertelstunde mehr als den PV-Überschuss?"""
+    return any(b > max(pv - last, 0.0) + 1e-3
+               for b, pv, last in zip(dispatch.battery_kw, data.pv_kw, data.load_kw))
+
+
+@solver
+def test_gewerbe_a1_mit_festem_strompreis_rechnet_ohne_gutschrift(mai_fenster, monkeypatch):
+    """Kundentyp a mit 25 ct fest: derselbe Check, der Bezug in jeder Viertelstunde 25 ct, die
+    Planung mit der ehrlichen Marge und ohne Gutschrift. Der Spot liegt nie über 25 ct / 0,9 +
+    Verschleiß + Marge - der Plan lädt nie aus dem Netz, börsenindiziert dagegen schon."""
+    gesehen = {}
+    original = mc.run_milp_year
+
+    def spy(data, battery, netzladen, **kw):
+        dispatch = original(data, battery, netzladen, **kw)
+        gesehen[("mit" if kw.get("mischbetrieb") else "heute", set(data.import_eur_mwh) == {250.0})] = (
+            data, dispatch, kw)
+        return dispatch
+
+    monkeypatch.setattr(mc, "run_milp_year", spy)
+    anlage = replace(mc.KUNDENTYPEN["a"], jahresverbrauch_kwh=4000.0, speicher_kwh=40.0, speicher_kw=20.0)
+    mittel = {"mittel": mc.STANDARD_FAELLE["mittel"]}
+    r = mc.mispel_check(replace(anlage, **FEST), _deps(), faelle=mittel)
+    for variante in ("heute", "mit"):
+        assert gesehen[(variante, True)][2]["hurdle_ct_kwh"] == 2.0
+    data, mit, kw = gesehen[("mit", True)]
+    assert kw["mischbetrieb"]["saldiert"] == 0.0 and not _laedt_aus_dem_netz(data, mit)
+
+    f = r["faelle"]["mittel"]
+    assert f["mitMispel"]["gutschriftSaldierungEur"] == 0.0
+    posten = {p["posten"]: p["eur"] for p in f["posten"]}
+    assert list(posten) == ["Netzladen-Handel mit Saldierung", "Jahresmarktwert statt Monatsmarktwert",
+                            "Zweiter Zähler Z2", "Gesonderter Bilanzkreis"]
+    # Was im Handel bleibt, ist der Rand des geschrumpften Fensters: bei festem Preis ist gleich,
+    # wann der Speicher entlädt, die Fahrweisen enden mit verschiedenem Stand (≈ 5 kWh × 25 ct).
+    assert posten["Netzladen-Handel mit Saldierung"] == pytest.approx(0.0, abs=1.5)
+    assert f["differenzEur"] == pytest.approx(sum(posten.values()), abs=0.02)
+    assert r["anlage"]["tarifArt"] == "fest" and r["anlage"]["arbeitspreisCt"] == 25.0
+    annahmen = {a["name"]: a for a in r["annahmen"]}
+    assert annahmen["Strombezug"]["wert"].startswith("fest: 25 ct/kWh all-in")
+    entlastung = annahmen["Entlastung beim festen Strompreis ct/kWh"]
+    assert entlastung["wert"] == pytest.approx(6.946) and entlastung["art"] == "Annahme"
+    assert entlastung["quelle"].startswith("nicht eingerechnet")
+    assert "Verhandlungssache (Konzept § 2.5)" in entlastung["quelle"]
+    assert annahmen["Ehrliche Marge Netzladen ct/kWh"]["wert"] == 2.0
+
+    # Gegenprobe börsenindiziert: Netzladen mit Gutschrift, keine Marge, keine Festpreis-Annahmen.
+    r_dyn = mc.mispel_check(anlage, _deps(), faelle=mittel)
+    data, mit, kw = gesehen[("mit", False)]
+    assert kw["hurdle_ct_kwh"] == 0.0 and kw["mischbetrieb"]["saldiert"] > 0 and _laedt_aus_dem_netz(data, mit)
+    assert r_dyn["anlage"]["tarifArt"] == "dynamisch" and r_dyn["anlage"]["arbeitspreisCt"] is None
+    namen_dyn = {a["name"] for a in r_dyn["annahmen"]}
+    assert "Entlastung beim festen Strompreis ct/kWh" not in namen_dyn and "Strombezug" in namen_dyn
+
+
+@solver
+def test_netzspeicher_a10_mit_festem_strompreis_bringt_ohne_gutschrift_nichts(mai_fenster):
+    """A10 heute als Händler, mit MiSpeL dieselbe Fahrweise: ohne weitergegebene Entlastung
+    ist der Unterschied genau 0 - kein Betrag, der nicht sicher ist."""
+    r = mc.mispel_check(replace(mc.KUNDENTYPEN["b"], **FEST), _deps(), faelle={"mittel": mc.STANDARD_FAELLE["mittel"]})
+    f = r["faelle"]["mittel"]
+    assert f["differenzEur"] == 0.0 and f["mitMispel"]["gutschriftSaldierungEur"] == 0.0
+    assert {p["eur"] for p in f["posten"]} == {0.0}
+
+
+@solver
+def test_haushalt_p1_mit_festem_strompreis_saldiert_nichts(mai_fenster):
+    anlage = replace(mc.KUNDENTYPEN["c1"], pv_kwp=1.0, pv_jahreserzeugung_kwh=1500.0, jahresverbrauch_kwh=120.0,
+                     tarif_art="fest", arbeitspreis_ct=35.0)
+    r = mc.mispel_check(anlage, _deps(), faelle={"mittel": mc.STANDARD_FAELLE["mittel"]})
+    f = r["faelle"]["mittel"]
+    posten = {p["posten"]: p["eur"] for p in f["posten"]}
+    # (P10) gibt es, aber ohne weitergegebene Entlastung keinen Betrag dafür.
+    assert f["mitMispel"]["rechenwerk"]["jahr"]["(P10)"] > 0
+    assert posten["Saldierung oberhalb der Pauschalgrenze"] == 0.0
+    assert f["differenzEur"] == pytest.approx(sum(posten.values()), abs=0.02)
+    annahmen = {a["name"]: a["wert"] for a in r["annahmen"]}
+    assert annahmen["Entlastung beim festen Strompreis ct/kWh"] == pytest.approx((7.6 + 2.946) * 1.19, abs=1e-3)

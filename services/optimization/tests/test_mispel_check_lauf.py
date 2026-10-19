@@ -229,3 +229,54 @@ def test_pauschaloption_vor_der_eu_genehmigung_ist_eine_information():
     assert lauf.pauschal_hinweis(date(2026, 10, 1), heute) is None
     assert lauf.pauschaloption_ab({}) is None
     assert lauf.pauschaloption_ab({lauf.ENV_PAUSCHALOPTION_AB: " 2027-01-01 "}) == date(2027, 1, 1)
+
+
+# --------------------------------------------------------------------------- Strombezug (MP-59)
+
+
+def test_fester_strompreis_der_anlage_geht_in_den_check():
+    """Die Tarifart der Anlage, wie der Optimierer sie liest (``site.tarif_art``/
+    ``tarif_param_ct_kwh``): fest mit dem All-in-Preis. Das Preisblatt steckt darin, geht in
+    keinen Betrag ein und steht nicht in der Datenbasis - es reist nur für die Annahme der
+    Entlastung mit."""
+    e = lauf.eingang(replace(SIMULATOR, tarif_art="fest", tarif_param_ct=25.0), F)
+    assert e.stand is None and (e.anlage.tarif_art, e.anlage.arbeitspreis_ct) == ("fest", 25.0)
+    assert _angabe(e, "Strombezug") == {"angabe": "Strombezug", "wert": "fest", "einheit": None,
+                                       "herkunft": "stammdaten", "quelle": "Tarifart der Anlage"}
+    assert _angabe(e, "Arbeitspreis") == {"angabe": "Arbeitspreis", "wert": 25.0, "einheit": "ct/kWh",
+                                         "herkunft": "stammdaten", "quelle": "fester Strompreis der Anlage, all-in"}
+    namen = [a["angabe"] for a in e.datenbasis]
+    assert not {"Netzentgelt-Arbeitspreis", "Umlagen", "Konzessionsabgabe", "Umsatzsteuer"} & set(namen)
+    assert e.anlage.netzentgelt_arbeitspreis_ct == 4.0
+    # Der Haushalt der Pauschaloption ebenso, mit seinem Preisblatt für die Annahme.
+    h = lauf.eingang(replace(HAUSHALT, tarif_art="fest", tarif_param_ct=35.0), F)
+    assert h.formelsatz == "P1" and (h.anlage.tarif_art, h.anlage.arbeitspreis_ct) == ("fest", 35.0)
+    assert _angabe(h, "Arbeitspreis")["wert"] == 35.0 and h.anlage.netzentgelt_arbeitspreis_ct == 7.6
+    # Ein anderer Preis ist eine andere Datenbasis: die Anlage wird neu gerechnet.
+    fertig = lauf.Zeile("fertig", JETZT, "A1", F.bis, e.datenbasis)
+    teurer = lauf.eingang(replace(SIMULATOR, tarif_art="fest", tarif_param_ct=27.5), F)
+    assert lauf.grund(fertig, e, F, JETZT) is None
+    assert lauf.grund(fertig, teurer, F, JETZT) == "Datenbasis geändert"
+
+
+def test_fester_strompreis_ohne_preis_rechnet_nicht():
+    for st in (replace(SIMULATOR, tarif_art="fest"), replace(HAUSHALT, tarif_art="fest")):
+        e = lauf.eingang(st, F)
+        assert (e.stand, e.anlage) == ("nicht_unterstuetzt", None)
+        assert e.hinweis == lauf.FEST_OHNE_PREIS_SATZ
+        assert _angabe(e, "Strombezug")["wert"] == "fest"
+
+
+def test_boersenindiziert_wie_bisher_mit_der_tarifart_in_der_datenbasis():
+    dyn = lauf.eingang(replace(SIMULATOR, tarif_art="dynamisch", tarif_param_ct=1.5), F)
+    assert (dyn.anlage.tarif_art, dyn.anlage.arbeitspreis_ct) == ("dynamisch", None)
+    assert (_angabe(dyn, "Strombezug")["wert"], _angabe(dyn, "Strombezug")["herkunft"]) == ("börsenindiziert", "stammdaten")
+    assert _angabe(dyn, "Netzentgelt-Arbeitspreis")["herkunft"] == "angenommen"
+    ohne = lauf.eingang(SIMULATOR, F)  # site.tarif_art = 'ohne': keine Tarifart hinterlegt
+    assert ohne.anlage.tarif_art == "dynamisch"
+    assert _angabe(ohne, "Strombezug") == {
+        "angabe": "Strombezug", "wert": "börsenindiziert", "einheit": None, "herkunft": "angenommen",
+        "quelle": "keine Tarifart hinterlegt: Gewerbe börsenindiziert (Konzept § 3 a2, b)"}
+    assert _angabe(lauf.eingang(HAUSHALT, F), "Strombezug")["quelle"].endswith("Haushalt börsenindiziert (Konzept § 3 c1)")
+    # Bis auf die Tarifart dieselbe Eingabe wie vor MP-59.
+    assert replace(dyn.anlage, tarif_art=mc.CheckAnlage.tarif_art) == ohne.anlage
