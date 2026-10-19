@@ -102,14 +102,14 @@ func TestDeficitHoldCountsFromTheFirstJudgementToTheNewestMeasurement(t *testing
 	h := NewDeficitHold()
 	hold := DeficitCoverHold.Seconds()
 	for s := 0.0; s < hold; s += 5 {
-		if h.Observe(holdAt(s), holdAt(s), true, 4.69, 6.83) {
+		if h.Observe(holdAt(s), holdAt(s), true, 4.69, 6.83) > 0 {
 			t.Fatalf("%.0f s of deficit is not yet the hold time", s)
 		}
 	}
 	if since, ok := h.Since(); !ok || !since.Equal(holdT0) {
 		t.Fatalf("the count started with the first judgement: %v %v", since, ok)
 	}
-	if !h.Observe(holdAt(hold), holdAt(hold), true, 4.69, 6.83) {
+	if h.Observe(holdAt(hold), holdAt(hold), true, 4.69, 6.83) == 0 {
 		t.Fatal("a measurement a full hold time after the first judgement proves a sustained deficit")
 	}
 }
@@ -122,25 +122,25 @@ func TestDeficitHoldRestartsOnEveryMeasurementWithoutADeficit(t *testing.T) {
 	for s := 0.0; s <= 55; s += 5 {
 		h.Observe(holdAt(s), holdAt(s), true, 4.69, 6.83)
 	}
-	if h.Observe(holdAt(60), holdAt(60), true, 4.68, 4.17) {
+	if h.Observe(holdAt(60), holdAt(60), true, 4.68, 4.17) > 0 {
 		t.Fatal("the consumer is off: nothing is sustained")
 	}
 	if _, ok := h.Since(); ok {
 		t.Fatal("a measurement without a deficit ends the count")
 	}
 	// A deficit inside meter noise is none.
-	if h.Observe(holdAt(65), holdAt(65), true, 4.68, 4.72) {
+	if h.Observe(holdAt(65), holdAt(65), true, 4.68, 4.72) > 0 {
 		t.Fatal("meter noise is not a deficit")
 	}
 	if _, ok := h.Since(); ok {
 		t.Fatal("meter noise must not start the count")
 	}
 	for s := 70.0; s < 130; s += 5 {
-		if h.Observe(holdAt(s), holdAt(s), true, 4.69, 6.83) {
+		if h.Observe(holdAt(s), holdAt(s), true, 4.69, 6.83) > 0 {
 			t.Fatalf("the second consumer started at 70 s; %.0f s is not sustained", s)
 		}
 	}
-	if !h.Observe(holdAt(130), holdAt(130), true, 4.69, 6.83) {
+	if h.Observe(holdAt(130), holdAt(130), true, 4.69, 6.83) == 0 {
 		t.Fatal("60 s after its own start the second deficit is sustained")
 	}
 }
@@ -153,15 +153,15 @@ func TestDeficitHoldNeedsANewerMeasurementNotMoreTicks(t *testing.T) {
 	h := NewDeficitHold()
 	measured := holdAt(0)
 	for s := 0.0; s <= 300; s += 10 {
-		if h.Observe(holdAt(s), measured, true, 4.69, 6.83) {
+		if h.Observe(holdAt(s), measured, true, 4.69, 6.83) > 0 {
 			t.Fatalf("tick %.0f s re-read the measurement of 0 s - one measurement is never sustained", s)
 		}
 	}
 	// A second measurement, but taken only 40 s after the first judgement.
-	if h.Observe(holdAt(310), holdAt(40), true, 4.69, 6.83) {
+	if h.Observe(holdAt(310), holdAt(40), true, 4.69, 6.83) > 0 {
 		t.Fatal("the newest measurement is 40 s after the first judgement - not the hold time")
 	}
-	if !h.Observe(holdAt(320), holdAt(60), true, 4.69, 6.83) {
+	if h.Observe(holdAt(320), holdAt(60), true, 4.69, 6.83) == 0 {
 		t.Fatal("a second measurement a full hold time after the first judgement is the proof")
 	}
 }
@@ -174,10 +174,10 @@ func TestDeficitHoldNeverStartsBeforeTheBoxSawTheDeficit(t *testing.T) {
 	// First judged at 0 s on a pair timed 25 s earlier (an unchanged half
 	// counts as re-measured one Messtakt ago).
 	h.Observe(holdAt(0), holdAt(-25), true, 4.69, 6.83)
-	if h.Observe(holdAt(40), holdAt(40), true, 4.69, 6.83) {
+	if h.Observe(holdAt(40), holdAt(40), true, 4.69, 6.83) > 0 {
 		t.Fatal("65 s between the two pair times, but the box has watched for 40 s only")
 	}
-	if !h.Observe(holdAt(60), holdAt(60), true, 4.69, 6.83) {
+	if h.Observe(holdAt(60), holdAt(60), true, 4.69, 6.83) == 0 {
 		t.Fatal("60 s after the first judgement the deficit is sustained")
 	}
 }
@@ -188,10 +188,10 @@ func TestDeficitHoldNeverStartsBeforeTheBoxSawTheDeficit(t *testing.T) {
 func TestDeficitHoldEndsTheCountOnEveryGapInTheEvidence(t *testing.T) {
 	nan := math.NaN()
 	gaps := map[string]func(h *DeficitHold) bool{
-		"stale reading":       func(h *DeficitHold) bool { return h.Observe(holdAt(60), holdAt(60), false, 4.69, 6.83) },
-		"unknown PV":          func(h *DeficitHold) bool { return h.Observe(holdAt(60), holdAt(60), true, nan, 6.83) },
-		"unknown load":        func(h *DeficitHold) bool { return h.Observe(holdAt(60), holdAt(60), true, 4.69, nan) },
-		"no measurement time": func(h *DeficitHold) bool { return h.Observe(holdAt(60), time.Time{}, true, 4.69, 6.83) },
+		"stale reading":       func(h *DeficitHold) bool { return h.Observe(holdAt(60), holdAt(60), false, 4.69, 6.83) > 0 },
+		"unknown PV":          func(h *DeficitHold) bool { return h.Observe(holdAt(60), holdAt(60), true, nan, 6.83) > 0 },
+		"unknown load":        func(h *DeficitHold) bool { return h.Observe(holdAt(60), holdAt(60), true, 4.69, nan) > 0 },
+		"no measurement time": func(h *DeficitHold) bool { return h.Observe(holdAt(60), time.Time{}, true, 4.69, 6.83) > 0 },
 	}
 	for name, gap := range gaps {
 		h := NewDeficitHold()
@@ -204,7 +204,7 @@ func TestDeficitHoldEndsTheCountOnEveryGapInTheEvidence(t *testing.T) {
 		if _, ok := h.Since(); ok {
 			t.Fatalf("%s must end the count", name)
 		}
-		if h.Observe(holdAt(65), holdAt(65), true, 4.69, 6.83) {
+		if h.Observe(holdAt(65), holdAt(65), true, 4.69, 6.83) > 0 {
 			t.Fatalf("%s: the count starts again from nothing", name)
 		}
 	}
@@ -243,7 +243,7 @@ func TestASmallDeficitArmsTheRuleButNeverMovesTheSetpoint(t *testing.T) {
 		t.Fatal("a real 0.15 kW purchase arms the rule")
 	}
 	got := NewLoadFollower().ApplyAuthorized(
-		followBase(), 0, false, false, true, false, true, &floor, true, followLimits(), r)
+		followBase(), 0, false, false, true, false, allStood, &floor, true, followLimits(), r)
 	if got.Active || got.Kw != 0 {
 		t.Fatalf("below the follower engage margin nothing is written: %+v", got)
 	}

@@ -22,6 +22,18 @@ const (
 	holdConsumerLoad = 6.82 // the 2,62 kW consumer of Herzogau on top: 1,82 kW short
 )
 
+// allStood is the clock's verdict on a deficit that has stood at every height -
+// what the follower's own Apply passes.
+var allStood = math.Inf(1)
+
+// stood is the verdict for a test that asks only WHETHER the deficit has stood.
+func stood(sustained bool) float64 {
+	if sustained {
+		return allStood
+	}
+	return 0
+}
+
 // holdAuthority is one of the three ways a measured deficit may become a
 // discharge from a command at rest.
 type holdAuthority struct {
@@ -41,7 +53,7 @@ func holdAuthorities() []holdAuthority {
 func (h holdAuthority) apply(f *LoadFollower, at time.Time, kw float64, sustained bool, r Reading) FollowResult {
 	floor := 5.0
 	return f.ApplyAuthorized(at, kw, h.coverLoad, h.unplanned, h.deficitCover, false,
-		sustained, &floor, true, followLimits(), r)
+		stood(sustained), &floor, true, followLimits(), r)
 }
 
 // From rest, no authority discharges for a deficit that has not stood - and
@@ -117,7 +129,7 @@ func TestTheHoldKeepsACoveringSlotsForecastDischargeLimitedThroughAShortConsumer
 			at := followBase()
 			step := func(n int, sustained bool, load float64) FollowResult {
 				return f.ApplyAuthorized(at.Add(time.Duration(n)*10*time.Second), tc.planKw,
-					tc.coverLoad, false, false, tc.limit, sustained, &floor, true, followLimits(), holdRead(load))
+					tc.coverLoad, false, false, tc.limit, stood(sustained), &floor, true, followLimits(), holdRead(load))
 			}
 			// PV covers the house: the forecast discharge is limited to zero.
 			if got := step(0, false, holdQuietLoad); got.Kw != 0 || got.Direction != FollowReduce || got.Path != tc.path || got.Held {
@@ -162,7 +174,7 @@ func TestTheHoldKeepsARunningCoverAndOnlyRefusesToRaiseIt(t *testing.T) {
 	}
 	step := func(n int, sustained bool, load float64) FollowResult {
 		return f.ApplyAuthorized(at.Add(time.Duration(n)*10*time.Second), -1.5,
-			true, false, false, false, sustained, &floor, true, followLimits(), night(load))
+			true, false, false, false, stood(sustained), &floor, true, followLimits(), night(load))
 	}
 	// A covering slot at night: plan -1,5 kW, the house draws 0,5 kW.
 	if got := step(0, true, 0.5); got.Kw != -0.5 || got.Direction != FollowReduce {
@@ -200,7 +212,7 @@ func TestTheHoldNeverTouchesAPlannedDischargeItMayNotLimit(t *testing.T) {
 	at := followBase()
 	step := func(n int, sustained bool) FollowResult {
 		return f.ApplyAuthorized(at.Add(time.Duration(n)*10*time.Second), -4.3,
-			false, false, true, false, sustained, &floor, true, followLimits(), pilstingNight())
+			false, false, true, false, stood(sustained), &floor, true, followLimits(), pilstingNight())
 	}
 	for n := 0; n < 3; n++ {
 		got := step(n, false)
@@ -216,7 +228,7 @@ func TestTheHoldNeverTouchesAPlannedDischargeItMayNotLimit(t *testing.T) {
 		t.Fatalf("the deficit stood: deepened to the house: %+v", got)
 	}
 	// A planned sale deeper than the house: untouched, and nothing waits.
-	sale := NewLoadFollower().ApplyAuthorized(at, -27, false, false, true, false, false,
+	sale := NewLoadFollower().ApplyAuthorized(at, -27, false, false, true, false, 0,
 		&floor, true, followLimits(), holdRead(holdConsumerLoad))
 	if sale.Kw != -27 || sale.Active || sale.Held {
 		t.Fatalf("a planned sale is no deficit cover: %+v", sale)
@@ -231,7 +243,7 @@ func TestTheHoldFindsNothingToKeepAfterRelease(t *testing.T) {
 	at := followBase()
 	step := func(n int, sustained bool) FollowResult {
 		return f.ApplyAuthorized(at.Add(time.Duration(n)*10*time.Second), 0,
-			false, false, true, false, sustained, &floor, true, followLimits(), holdRead(holdConsumerLoad))
+			false, false, true, false, stood(sustained), &floor, true, followLimits(), holdRead(holdConsumerLoad))
 	}
 	if got := step(0, true); got.Kw != -1.82 {
 		t.Fatalf("covered: %+v", got)
@@ -252,25 +264,25 @@ func TestTheHoldClaimsNoWaitWhereNothingWouldHaveMoved(t *testing.T) {
 	floor := 5.0
 	at := followBase()
 	// 0,15 kW short: below the engage margin the follower would not have acted.
-	small := NewLoadFollower().ApplyAuthorized(at, 0, false, false, true, false, false,
+	small := NewLoadFollower().ApplyAuthorized(at, 0, false, false, true, false, 0,
 		&floor, true, followLimits(), holdRead(5.15))
 	if small.Held || small.Kw != 0 {
 		t.Fatalf("below the engage margin nothing waits: %+v", small)
 	}
 	// No authority at all.
-	none := NewLoadFollower().ApplyAuthorized(at, 0, false, false, false, false, false,
+	none := NewLoadFollower().ApplyAuthorized(at, 0, false, false, false, false, 0,
 		&floor, true, followLimits(), holdRead(holdConsumerLoad))
 	if none.Held || none.Kw != 0 {
 		t.Fatalf("without an authority nothing waits: %+v", none)
 	}
 	// The reduce right alone on a command at rest: it could never have raised.
-	limit := NewLoadFollower().ApplyAuthorized(at, 0, false, false, false, true, false,
+	limit := NewLoadFollower().ApplyAuthorized(at, 0, false, false, false, true, 0,
 		&floor, true, followLimits(), holdRead(holdConsumerLoad))
 	if limit.Held || limit.Kw != 0 {
 		t.Fatalf("the reduce right raises nothing, so nothing waits: %+v", limit)
 	}
 	// A commanded charge is left alone.
-	charge := NewLoadFollower().ApplyAuthorized(at, 2, true, false, false, false, false,
+	charge := NewLoadFollower().ApplyAuthorized(at, 2, true, false, false, false, 0,
 		&floor, true, followLimits(), holdRead(holdConsumerLoad))
 	if charge.Held || charge.Kw != 2 {
 		t.Fatalf("a charge is not this guard's: %+v", charge)
@@ -285,7 +297,7 @@ func TestTheHoldChangesNoBound(t *testing.T) {
 	// At the reserve nothing is covered, stood or not, and nothing "waits".
 	floor := 60.0
 	for _, sustained := range []bool{false, true} {
-		got := NewLoadFollower().ApplyAuthorized(at, 0, false, false, true, false, sustained,
+		got := NewLoadFollower().ApplyAuthorized(at, 0, false, false, true, false, stood(sustained),
 			&floor, true, followLimits(), holdRead(holdConsumerLoad))
 		if got.Kw != 0 || got.Active || got.Held {
 			t.Fatalf("at the reserve (sustained=%v): %+v", sustained, got)
@@ -295,7 +307,7 @@ func TestTheHoldChangesNoBound(t *testing.T) {
 	low := 5.0
 	l := followLimits()
 	l.MaxDischargeKw = 1
-	got := NewLoadFollower().ApplyAuthorized(at, 0, false, false, true, false, true,
+	got := NewLoadFollower().ApplyAuthorized(at, 0, false, false, true, false, allStood,
 		&low, true, l, holdRead(holdConsumerLoad))
 	if got.Kw != -1 {
 		t.Fatalf("rated band: %+v, want -1 kW", got)

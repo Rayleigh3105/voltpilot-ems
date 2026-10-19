@@ -161,11 +161,15 @@ func TestADeficitThatOutlastsTheHoldIsCoveredInAChargingSlot(t *testing.T) {
 		return ok && m["battery_setpoint_kw"] == snap.SetpointKw
 	})
 
-	// While it stands, the cover follows the deficit tick by tick without a
-	// second wait ...
-	deeper := herzogauTick(t, a, covered.Add(5*time.Second), 4.60, 7.20)
-	if math.Abs(deeper.SetpointKw-(-2.6)) > 0.001 || deeper.DeficitHold != nil {
-		t.Fatalf("a standing cover follows the deficit: setpoint=%.3f hold=%+v", deeper.SetpointKw, deeper.DeficitHold)
+	// While it stands, a RISE waits like the deficit did (Stufen-Haltezeit,
+	// Captain decision A, 2026-10-19): the cover keeps its level and names the
+	// wait from the tick that saw the rise ...
+	rise := covered.Add(5 * time.Second)
+	deeper := herzogauTick(t, a, rise, 4.60, 7.20)
+	if math.Abs(deeper.SetpointKw-want) > 0.001 || deeper.DeficitHold == nil ||
+		deeper.DeficitHold.Since == nil || !deeper.DeficitHold.Since.Equal(rise) {
+		t.Fatalf("a rise of a standing deficit waits: setpoint=%.3f hold=%+v, want %.3f and a wait since %s",
+			deeper.SetpointKw, deeper.DeficitHold, want, rise.Format("15:04:05"))
 	}
 	// ... and the moment the house is no longer short the discharge is gone: the
 	// very tick that measures the surplus charges it.

@@ -36,9 +36,13 @@ geplant), die Reserve (`effective_floor_soc_pct`), der Zyklenschutz, der Rückfa
 der Eigenmodus des Wechselrichters („Gerät regelt“) – ein Gerät, das den Netzpunkt selbst regelt,
 wartet nicht.
 
-**Nicht erfasst:** ein kurzer Verbraucher **auf** einem schon stehenden Defizit (typisch nachts,
-wenn der Speicher die Grundlast deckt). Die Haltezeit misst, ob das Haus im Defizit ist, nicht um
-wie viel; dieser Fall wird wie bisher sofort nachgeführt.
+**Stufen-Haltezeit** (Entscheid A vom 19.10.2026): dasselbe gilt für jeden **Anstieg** eines schon
+stehenden Defizits (typisch nachts, wenn der Speicher die Grundlast deckt) – gedeckt wird höchstens
+das kleinste in den letzten 60 s gemessene Defizit. Ein Verbraucher von 10–15 s auf der Grundlast
+hebt die Entladung nicht mehr an (Prüflauf, 25 Minuten Ruhe-Viertelstunde am Deye-Profil: 0 statt
+0,153 kWh aus dem Speicher ins Netz). Der Preis: ein Lastsprung nachts wird erst nach der
+Haltezeit gedeckt (72 / 92 / 112 s am schnellen Gerät / Deye-Profil / trägen Gerät statt 2 s), eine
+schneller schwankende Last nur bis zu ihrer Unterkante.
 
 Betroffen ist allein der Go-Core der Box (`vp-edge-core`; Edge Light nutzt denselben Kern). Cloud,
 Optimierer und Portal ändern sich nicht; kein neuer Schalter, kein neues Feld im Heartbeat. Der
@@ -60,5 +64,6 @@ box-lokale Zustand zeigt die Wartezeit wie bisher als `deficit_hold`.
 > Der Speicher deckt einen neu auftretenden Strombedarf jetzt erst, wenn dieser eine Minute lang
 > ununterbrochen gemessen wurde. Ein Verbraucher, der nur wenige Sekunden läuft, wird in dieser
 > Zeit aus dem Netz versorgt; dafür speist der Speicher nicht mehr ins Netz ein, wenn der
-> Verbraucher schon wieder aus ist. Ein Bedarf, der anhält, wird wie bisher aus dem Speicher
+> Verbraucher schon wieder aus ist. Das gilt auch für zusätzlichen Bedarf, wenn der Speicher das
+> Haus schon versorgt, etwa nachts. Ein Bedarf, der anhält, wird wie bisher aus dem Speicher
 > gedeckt – etwa anderthalb Minuten nach seinem Beginn.

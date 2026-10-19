@@ -143,24 +143,22 @@ type ue3Event struct {
 //
 // The replay's subject is the readback grace of a cover that RUNS, not when a
 // cover may begin: on the day the box covered the first measured deficit of
-// this slot at once. Since 2026-10-13 it waits for guards.DeficitCoverHold in
-// every slot (deficit_hold_slots_test.go), so the replay declares the house
-// short for a full hold before its first measurement - the recorded setpoints
-// then line up with the recorded readbacks again.
+// this slot at once, and every rise of it too. Since 2026-10-13 it waits for
+// guards.DeficitCoverHold in every slot (deficit_hold_slots_test.go), since
+// 2026-10-19 for every rise as well (the Stufen-Haltezeit), so the replay
+// declares the house short at each measured height for a full hold - the
+// recorded setpoints then line up with the recorded readbacks again.
 func ue3Replay(t *testing.T, a *Agent, events []ue3Event) ([]float64, int) {
 	t.Helper()
 	var out []float64
 	dropout := -1
-	stood := false
 	for _, e := range events {
 		at := ue3At(e.at)
 		switch e.kind {
 		case 'm':
 			ue3Measure(a, at, e.pv, e.load)
-			if !stood {
-				standDeficit(a, at)
-				stood = true
-			}
+			a.deficitHold.Release()
+			standDeficit(a, at)
 		case 'r':
 			ue3Readback(t, a, at, a.State.Get().SetpointKw, e.shape)
 		case 't':
