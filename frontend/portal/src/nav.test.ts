@@ -42,6 +42,7 @@ import {
   boxSeiteHash,
   fernwartungHash,
   parseFernwartungBox,
+  zustellwegBestaetigenToken,
 } from './nav';
 import { anlageSidebar } from './ebenenNav';
 import { sprungziel } from './uemsOberflaechen';
@@ -788,5 +789,30 @@ describe('parseMessstelleWerte — Periode, Version und Vergleich der Werte eine
     expect(s?.hash).toBe('#/portfolio/messstellen/MS-12?periode=2026-11&v=vorjahr');
     // „aus“ ist die Vorgabe: ohne Wahl steht nichts in der Adresse.
     expect(sprungziel({ art: 'messstelle', id: 'MS-12', periode: '2026-11' })?.hash).toBe('#/portfolio/messstellen/MS-12?periode=2026-11');
+  });
+});
+
+// Der Link aus der Bestätigungs-Mail (ZustellwegService#anfordern, §6.6) - sein Endpunkt
+// verlangt keine Anmeldung, die Route muss den Token also schon VOR dem Auth-Bootstrap lesen.
+describe('zustellwegBestaetigenToken', () => {
+  it('liest den Token aus der echten Link-Adresse', () => {
+    window.location.hash = '#/zustellweg/bestaetigen?token=abc123';
+    expect(zustellwegBestaetigenToken()).toBe('abc123');
+  });
+
+  it('ist null auf jeder anderen Route', () => {
+    window.location.hash = '#/uebersicht';
+    expect(zustellwegBestaetigenToken()).toBeNull();
+    window.location.hash = '#register';
+    expect(zustellwegBestaetigenToken()).toBeNull();
+  });
+
+  it('ist null ohne Token oder mit einem leeren Token', () => {
+    window.location.hash = '#/zustellweg/bestaetigen';
+    expect(zustellwegBestaetigenToken()).toBeNull();
+    window.location.hash = '#/zustellweg/bestaetigen?token=';
+    expect(zustellwegBestaetigenToken()).toBeNull();
+    window.location.hash = '#/zustellweg/bestaetigen?token=%20';
+    expect(zustellwegBestaetigenToken()).toBeNull();
   });
 });
