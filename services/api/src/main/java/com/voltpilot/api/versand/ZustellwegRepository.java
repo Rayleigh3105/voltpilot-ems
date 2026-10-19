@@ -35,8 +35,14 @@ public class ZustellwegRepository {
         }
     }
 
-    /** Ein Geräte-Abo für Web-Push (Alerting Scheibe 3, §6.7) - "Abo je Gerät". */
-    public record PushAbo(UUID id, String geraet, boolean aktiv, String abSchwere, Instant erstelltAm) {
+    /**
+     * Ein Geräte-Abo für Web-Push (Alerting Scheibe 3, §6.7) - "Abo je Gerät". {@code endpoint} ist
+     * seit Scheibe 2 (§4.12, Befund M4) Teil der Anzeige: ohne ihn konnte die Fläche "dieses Gerät"
+     * nie erkennen (der Browser kennt seinen eigenen {@code PushSubscription.endpoint} und vergleicht
+     * ihn selbst) und zeigte "Einschalten" auch dann, wenn dieses Gerät schon ein Abo hatte.
+     */
+    public record PushAbo(UUID id, String geraet, boolean aktiv, String abSchwere, Instant erstelltAm,
+            String endpoint) {
     }
 
     /** Ein Webhook-Ziel (Alerting Scheibe 6, §7 Scheibe 6) - wie es die Einstellungsfläche zeigt (ohne Geheimnis). */
@@ -87,12 +93,26 @@ public class ZustellwegRepository {
                 benutzerSub) > 0;
     }
 
+    /** "E-Mail-Weg abschalten" (Scheibe 2, B12) - die Zeile bleibt (Adresse, Bestätigung), nur stumm. */
+    public boolean emailAktivSetzen(String benutzerSub, boolean aktiv) {
+        return jdbc.update("""
+                UPDATE zustellweg SET aktiv = ?, geaendert_am = now()
+                 WHERE tenant_id = ? AND benutzer_sub = ? AND weg = 'email'
+                """, aktiv, TenantContext.get(), benutzerSub) > 0;
+    }
+
+    /** "E-Mail-Weg entfernen" (Scheibe 2, B12) - anders als "abschalten" löscht dies auch die Adresse. */
+    public boolean emailEntfernen(String benutzerSub) {
+        return jdbc.update("DELETE FROM zustellweg WHERE tenant_id = ? AND benutzer_sub = ? AND weg = 'email'",
+                TenantContext.get(), benutzerSub) > 0;
+    }
+
     // --------------------------------------------------------------------- Web-Push (Alerting Scheibe 3, §6.7)
 
     /** Alle eigenen Geräte-Abos (für die Einstellungsfläche "So erreichen wir Sie"). */
     public List<PushAbo> pushAboEigene(String benutzerSub) {
         return jdbc.query("""
-                SELECT id, geraet, aktiv, ab_schwere, erstellt_am FROM push_abo
+                SELECT id, geraet, aktiv, ab_schwere, erstellt_am, endpoint FROM push_abo
                  WHERE tenant_id = ? AND benutzer_sub = ? ORDER BY erstellt_am
                 """, ZustellwegRepository::pushAbo, TenantContext.get(), benutzerSub);
     }
@@ -128,6 +148,20 @@ public class ZustellwegRepository {
     public boolean pushAboEntfernen(UUID id, String benutzerSub) {
         return jdbc.update("DELETE FROM push_abo WHERE id = ? AND tenant_id = ? AND benutzer_sub = ?",
                 id, TenantContext.get(), benutzerSub) > 0;
+    }
+
+    /** "Gerät umbenennen" (Scheibe 2, §4.12) - der Name, den die Person beim Einschalten selbst vergab. */
+    public boolean pushAboNameSetzen(UUID id, String benutzerSub, String geraet) {
+        return jdbc.update("UPDATE push_abo SET geraet = ? WHERE id = ? AND tenant_id = ? AND benutzer_sub = ?",
+                geraet, id, TenantContext.get(), benutzerSub) > 0;
+    }
+
+    /** Für "Probe-Mitteilung senden" (Entscheid 10A): dieselbe Abo-Form wie der Zusteller, EIN Gerät, geprüft. */
+    public Optional<WebPushAdapter.Abo> pushAboFuerProbe(UUID id, String benutzerSub) {
+        return jdbc.query("""
+                SELECT endpoint, p256dh, auth FROM push_abo WHERE id = ? AND tenant_id = ? AND benutzer_sub = ?
+                """, (rs, n) -> new WebPushAdapter.Abo(rs.getString("endpoint"), rs.getString("p256dh"),
+                        rs.getString("auth")), id, TenantContext.get(), benutzerSub).stream().findFirst();
     }
 
     /**
@@ -172,7 +206,8 @@ public class ZustellwegRepository {
     private static PushAbo pushAbo(ResultSet rs, int n) throws SQLException {
         Timestamp erstelltAm = rs.getTimestamp("erstellt_am");
         return new PushAbo(rs.getObject("id", UUID.class), rs.getString("geraet"), rs.getBoolean("aktiv"),
-                rs.getString("ab_schwere"), erstelltAm == null ? null : erstelltAm.toInstant());
+                rs.getString("ab_schwere"), erstelltAm == null ? null : erstelltAm.toInstant(),
+                rs.getString("endpoint"));
     }
 
     // --------------------------------------------------------------------- Webhook (Alerting Scheibe 6, §7)
@@ -202,6 +237,21 @@ public class ZustellwegRepository {
     public boolean webhookZielEntfernen(UUID id, String benutzerSub) {
         return jdbc.update("DELETE FROM webhook_ziel WHERE id = ? AND tenant_id = ? AND benutzer_sub = ?",
                 id, TenantContext.get(), benutzerSub) > 0;
+    }
+
+    /** "Team-Kanal bearbeiten" (Scheibe 2, §4.12): Adresse/Name ändern - das Geheimnis bleibt unberührt. */
+    public boolean webhookZielBearbeiten(UUID id, String benutzerSub, String url, String name) {
+        return jdbc.update("""
+                UPDATE webhook_ziel SET url = ?, name = ? WHERE id = ? AND tenant_id = ? AND benutzer_sub = ?
+                """, url, name == null ? "" : name, id, TenantContext.get(), benutzerSub) > 0;
+    }
+
+    /** Für "Probe senden" (Entscheid 10A): das EIGENE Ziel MIT Geheimnis, geprüft über Besitz. */
+    public Optional<WebhookZiel> webhookZielMitGeheimnisEigen(UUID id, String benutzerSub) {
+        return jdbc.query("""
+                SELECT id, url, geheimnis FROM webhook_ziel WHERE id = ? AND tenant_id = ? AND benutzer_sub = ?
+                """, (rs, n) -> new WebhookZiel(rs.getObject("id", UUID.class), rs.getString("url"),
+                        rs.getString("geheimnis")), id, TenantContext.get(), benutzerSub).stream().findFirst();
     }
 
     /** Alle aktiven Webhook-Ziele einer Person für den Versand (der Zusteller fächert auf). */
@@ -249,6 +299,25 @@ public class ZustellwegRepository {
     }
 
     /**
+     * B10 (Scheibe 2, §4.12): der eigene noch OFFENE Versuch (noch keine {@code chat_id}), falls
+     * einer besteht - jeder weitere Tipp auf "Telegram verbinden" soll ihn ERNEUERN statt eine
+     * weitere offene Zeile anzulegen (vorher: ein Tipp zu viel sammelte verwaiste Zeilen an).
+     */
+    public Optional<UUID> telegramOffenerVersuch(String benutzerSub) {
+        return jdbc.query("""
+                SELECT id FROM telegram_ziel WHERE tenant_id = ? AND benutzer_sub = ? AND chat_id IS NULL
+                 ORDER BY erstellt_am DESC LIMIT 1
+                """, (rs, n) -> rs.getObject("id", UUID.class), TenantContext.get(), benutzerSub).stream()
+                .findFirst();
+    }
+
+    /** Erneuert den offenen Versuch (B10) mit einem frischen Token/Ablauf statt einer neuen Zeile. */
+    public void telegramVersuchErneuern(UUID id, String token, Instant ablauf) {
+        jdbc.update("UPDATE telegram_ziel SET verbindungs_token = ?, verbindungs_ablauf = ? WHERE id = ?",
+                token, Timestamp.from(ablauf), id);
+    }
+
+    /**
      * Die Bot-Antwort auf {@code /start <token>}: setzt die chat_id, wenn der Token noch gültig und
      * unverbraucht war - {@code Optional.empty()} sonst. Läuft über die Admin-Rolle (der Bot hat
      * keinen Mandanten-Kontext), wie die E-Mail-Bestätigung per Token.
@@ -273,6 +342,15 @@ public class ZustellwegRepository {
     public boolean telegramZielEntfernen(UUID id, String benutzerSub) {
         return jdbc.update("DELETE FROM telegram_ziel WHERE id = ? AND tenant_id = ? AND benutzer_sub = ?",
                 id, TenantContext.get(), benutzerSub) > 0;
+    }
+
+    /** Für "Probe senden" (Entscheid 10A): die EIGENE, bestätigte Verbindung MIT chat_id, geprüft über Besitz. */
+    public Optional<TelegramZiel> telegramZielMitChatEigen(UUID id, String benutzerSub) {
+        return jdbc.query("""
+                SELECT id, chat_id FROM telegram_ziel
+                 WHERE id = ? AND tenant_id = ? AND benutzer_sub = ? AND chat_id IS NOT NULL
+                """, (rs, n) -> new TelegramZiel(rs.getObject("id", UUID.class), rs.getString("chat_id")), id,
+                TenantContext.get(), benutzerSub).stream().findFirst();
     }
 
     /** Alle aktiven, BESTÄTIGTEN Telegram-Verbindungen einer Person für den Versand. */
@@ -371,6 +449,21 @@ public class ZustellwegRepository {
 
     public Optional<String> emailZielFuerZusammenfassung(String benutzerSub) {
         return bestaetigtesZiel(TenantContext.get(), benutzerSub);
+    }
+
+    /**
+     * B13 (§2.5, Datenschutz): wenn ein Konto entfernt wird, löscht dies auch ALLE ihre Wege -
+     * Adresse, Webhook-Geheimnis, Chat-ID, Push-Endpunkte - statt sie bis zum Ende des ganzen
+     * Kundenbereichs liegen zu lassen (die Sichtprüfung allein stoppt nur Zustellungen, nicht die
+     * gespeicherten Daten). Läuft im {@code TenantContext} des aufrufenden Vorgangs, über die
+     * tenant-gebundene Verbindung wie jeder andere Schreibzugriff dieser Klasse.
+     */
+    public void wegeEinerPersonLoeschen(String benutzerSub) {
+        UUID tenantId = TenantContext.get();
+        jdbc.update("DELETE FROM zustellweg WHERE tenant_id = ? AND benutzer_sub = ?", tenantId, benutzerSub);
+        jdbc.update("DELETE FROM push_abo WHERE tenant_id = ? AND benutzer_sub = ?", tenantId, benutzerSub);
+        jdbc.update("DELETE FROM webhook_ziel WHERE tenant_id = ? AND benutzer_sub = ?", tenantId, benutzerSub);
+        jdbc.update("DELETE FROM telegram_ziel WHERE tenant_id = ? AND benutzer_sub = ?", tenantId, benutzerSub);
     }
 
     private static Zustellweg zustellweg(ResultSet rs, int n) throws SQLException {

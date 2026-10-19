@@ -48,18 +48,36 @@ public class ZustellwegController {
     /** Zustell-Vorgabe und Tages-Zusammenfassung ändern (§6.4, §6.4 Nr. 6). */
     public record EmailEinstellungen(String abSchwere, boolean zusammenfassungAktiv, LocalTime zusammenfassungUhrzeit) {}
 
+    /** "E-Mail-Weg abschalten" (Scheibe 2, B12). */
+    public record EmailAktivAnfrage(boolean aktiv) {}
+
+    /** Das Ergebnis von "Probe senden" (Entscheid 10A) - kein Fehlschlag wirft, die Fläche zeigt ihn an. */
+    public record ProbeAntwort(boolean erfolgreich, String fehler) {
+        static ProbeAntwort aus(com.voltpilot.api.versand.ZustellwegService.ProbeErgebnis p) {
+            return new ProbeAntwort(p.erfolgreich(), p.fehler());
+        }
+    }
+
     /** Ein neues Geräte-Abo - die Form von {@code PushSubscription.toJSON()} des Browsers. */
     public record PushAnfrage(String endpoint, String p256dh, String auth, String geraet, String userAgent) {}
 
-    /** Ein Geräte-Abo, wie die Einstellungsfläche es zeigt. */
+    /**
+     * Ein Geräte-Abo, wie die Einstellungsfläche es zeigt. {@code endpoint} (Scheibe 2, Befund M4)
+     * lässt das Portal "dieses Gerät" selbst erkennen (Vergleich mit der eigenen
+     * {@code PushSubscription} des Browsers) - der Server weiß nie, welches Gerät gerade fragt.
+     */
     public record PushAboDto(String id, String geraet, boolean aktiv, String abSchwere,
-            java.time.Instant erstelltAm) {
+            java.time.Instant erstelltAm, String endpoint) {
         static PushAboDto aus(ZustellwegRepository.PushAbo a) {
-            return new PushAboDto(a.id().toString(), a.geraet(), a.aktiv(), a.abSchwere(), a.erstelltAm());
+            return new PushAboDto(a.id().toString(), a.geraet(), a.aktiv(), a.abSchwere(), a.erstelltAm(),
+                    a.endpoint());
         }
     }
 
     public record PushEinstellungen(boolean aktiv, String abSchwere) {}
+
+    /** "Gerät umbenennen" (Scheibe 2, §4.12). */
+    public record PushNameAnfrage(String geraet) {}
 
     private final ZustellwegService zustellwege;
 
@@ -91,6 +109,32 @@ public class ZustellwegController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "kein E-Mail-Zustellweg angelegt");
         }
         return ResponseEntity.noContent().build();
+    }
+
+    /** "E-Mail-Weg abschalten"/wieder einschalten (Scheibe 2, B12) - die Adresse bleibt erhalten. */
+    @PutMapping("/email/aktiv")
+    public ResponseEntity<Void> emailAktiv(@RequestBody EmailAktivAnfrage anfrage, Authentication auth) {
+        boolean geaendert = zustellwege.emailAktivSetzen(sub(auth), anfrage.aktiv());
+        if (!geaendert) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "kein E-Mail-Zustellweg angelegt");
+        }
+        return ResponseEntity.noContent().build();
+    }
+
+    /** "E-Mail-Weg entfernen" (Scheibe 2, B12). */
+    @DeleteMapping("/email")
+    public ResponseEntity<Void> emailEntfernen(Authentication auth) {
+        boolean geaendert = zustellwege.emailEntfernen(sub(auth));
+        if (!geaendert) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "kein E-Mail-Zustellweg angelegt");
+        }
+        return ResponseEntity.noContent().build();
+    }
+
+    /** "Probe-Mail senden" (Entscheid 10A) - die Ruhezeit gilt dafür nicht, sie geht sofort. */
+    @PostMapping("/email/probe")
+    public ProbeAntwort emailProbe(Authentication auth) {
+        return ProbeAntwort.aus(zustellwege.emailProbeSenden(sub(auth)));
     }
 
     /** Öffentlich, ohne Anmeldung - der Link aus der Bestätigungs-Mail. */
@@ -136,6 +180,26 @@ public class ZustellwegController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
         return ResponseEntity.noContent().build();
+    }
+
+    /** "Gerät umbenennen" (Scheibe 2, §4.12). */
+    @PutMapping("/push/{id}/name")
+    public ResponseEntity<Void> pushName(@PathVariable UUID id, @RequestBody PushNameAnfrage anfrage,
+            Authentication auth) {
+        if (istLeer(anfrage.geraet())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "geraet ist ein Pflichtfeld.");
+        }
+        boolean geaendert = zustellwege.pushAboNameSetzen(id, sub(auth), anfrage.geraet());
+        if (!geaendert) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        return ResponseEntity.noContent().build();
+    }
+
+    /** "Probe-Mitteilung senden" (Entscheid 10A). */
+    @PostMapping("/push/{id}/probe")
+    public ProbeAntwort pushProbe(@PathVariable UUID id, Authentication auth) {
+        return ProbeAntwort.aus(zustellwege.pushProbeSenden(id, sub(auth)));
     }
 
     /**
@@ -201,6 +265,35 @@ public class ZustellwegController {
         return ResponseEntity.noContent().build();
     }
 
+    /** "Team-Kanal bearbeiten" (Scheibe 2, §4.12) - Adresse/Name ändern, dieselbe SSRF-Prüfung wie beim Anlegen. */
+    @PutMapping("/webhook/{id}/adresse")
+    public ResponseEntity<Void> webhookZielBearbeiten(@PathVariable UUID id, @RequestBody WebhookAnfrage anfrage,
+            Authentication auth) {
+        if (istLeer(anfrage.url())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "url ist ein Pflichtfeld.");
+        }
+        boolean geaendert = zustellwege.webhookZielBearbeiten(id, sub(auth), anfrage.url(), anfrage.name());
+        if (!geaendert) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND);
+        }
+        return ResponseEntity.noContent().build();
+    }
+
+    /** "Probe senden" VOR dem Anlegen (Entscheid 10A, §4.12) - nichts wird gespeichert. */
+    @PostMapping("/webhook/probe")
+    public ProbeAntwort webhookProbeVorAnlegen(@RequestBody WebhookAnfrage anfrage) {
+        if (istLeer(anfrage.url())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "url ist ein Pflichtfeld.");
+        }
+        return ProbeAntwort.aus(zustellwege.webhookProbeVorAnlegen(anfrage.url()));
+    }
+
+    /** "Probe senden" für ein bereits verbundenes Ziel (Entscheid 10A). */
+    @PostMapping("/webhook/{id}/probe")
+    public ProbeAntwort webhookProbe(@PathVariable UUID id, Authentication auth) {
+        return ProbeAntwort.aus(zustellwege.webhookProbeSenden(id, sub(auth)));
+    }
+
     // --------------------------------------------------------------------- Telegram (Alerting Scheibe 6, §7)
 
     public record TelegramZielDto(String id, boolean bestaetigt, boolean aktiv, String abSchwere,
@@ -253,6 +346,12 @@ public class ZustellwegController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
         return ResponseEntity.noContent().build();
+    }
+
+    /** "Probe senden" (Entscheid 10A) - nur für eine bereits bestätigte Verbindung. */
+    @PostMapping("/telegram/{id}/probe")
+    public ProbeAntwort telegramProbe(@PathVariable UUID id, Authentication auth) {
+        return ProbeAntwort.aus(zustellwege.telegramProbeSenden(id, sub(auth)));
     }
 
     private static String sub(Authentication auth) {

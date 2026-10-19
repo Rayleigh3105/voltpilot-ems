@@ -75,11 +75,14 @@ public class ZugriffAenderung {
     private final ZugriffRepository zugriffe;
     private final OrtProtokoll ortProtokoll;
     private final JdbcTemplate jdbc;
+    private final com.voltpilot.api.versand.ZustellwegRepository zustellwege;
 
-    public ZugriffAenderung(ZugriffRepository zugriffe, OrtProtokoll ortProtokoll, JdbcTemplate jdbc) {
+    public ZugriffAenderung(ZugriffRepository zugriffe, OrtProtokoll ortProtokoll, JdbcTemplate jdbc,
+            com.voltpilot.api.versand.ZustellwegRepository zustellwege) {
         this.zugriffe = zugriffe;
         this.ortProtokoll = ortProtokoll;
         this.jdbc = jdbc;
+        this.zustellwege = zustellwege;
     }
 
     /**
@@ -208,6 +211,12 @@ public class ZugriffAenderung {
         if (zeilen.isEmpty()) {
             zugriffe.kontoProtokoll(art.code(), sub, konto.anzeigename(), akteur);
             protokollieren(ART_ENTZOGEN, sub, null, null, null, null, jetzt, akteur);
+        }
+        if (art == AenderungsArt.ENTFERNEN) {
+            // B13 (Einstellungen-Konzept Scheibe 2, §2.5): die Wege einer entfernten Person (Adresse,
+            // Webhook-Geheimnis, Chat-ID, Push-Endpunkte) bleiben sonst gespeichert, bis der ganze
+            // Kundenbereich endet - Zustellungen stoppt bis dahin nur die Sichtprüfung, nicht die Daten.
+            zustellwege.wegeEinerPersonLoeschen(sub);
         }
         zugriffe.kontoZustandSetzen(sub, zustand);
     }

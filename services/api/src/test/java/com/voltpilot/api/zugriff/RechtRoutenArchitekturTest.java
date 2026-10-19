@@ -64,17 +64,34 @@ class RechtRoutenArchitekturTest {
                 + "aus dem Token (Authentication), nie aus dem Anfragekörper.";
         m.put("ZustellwegController#anfordern", eigeneBenachrichtigung);
         m.put("ZustellwegController#emailEinstellungen", eigeneBenachrichtigung);
+        m.put("ZustellwegController#emailAktiv", eigeneBenachrichtigung);
+        m.put("ZustellwegController#emailEntfernen", eigeneBenachrichtigung);
         m.put("ZustellwegController#pushAbonnieren", eigeneBenachrichtigung);
         m.put("ZustellwegController#pushEinstellungen", eigeneBenachrichtigung);
         m.put("ZustellwegController#pushEntfernen", eigeneBenachrichtigung);
+        m.put("ZustellwegController#pushName", eigeneBenachrichtigung);
+        m.put("ZustellwegController#pushAbmelden",
+                "Alerting Scheibe 3 (§6.6, §6.8 Entwurf 4, B8): beim Abmelden beendet das Portal DIESES "
+                        + "Geräts Abo über seinen Endpunkt - derselbe Eigen-Grund wie die übrigen Zustellweg-"
+                        + "Routen, kein Matrix-Recht; bestmöglich, ein fremdes/fehlendes Abo bleibt ohne Fehler.");
         m.put("RuhezeitController#setzen", eigeneBenachrichtigung);
         m.put("RuhezeitController#probe", eigeneBenachrichtigung);
         m.put("ZustellwegController#webhookZielAnlegen", eigeneBenachrichtigung);
         m.put("ZustellwegController#webhookZielEinstellungen", eigeneBenachrichtigung);
         m.put("ZustellwegController#webhookZielEntfernen", eigeneBenachrichtigung);
+        m.put("ZustellwegController#webhookZielBearbeiten", eigeneBenachrichtigung);
         m.put("ZustellwegController#telegramVerbinden", eigeneBenachrichtigung);
         m.put("ZustellwegController#telegramZielEinstellungen", eigeneBenachrichtigung);
         m.put("ZustellwegController#telegramZielEntfernen", eigeneBenachrichtigung);
+        String probeSenden = "Einstellungen Scheibe 2 (Konzept-Entscheid 10A, §4.12): \"Probe senden\" schreibt "
+                + "keinen fremden Zustand - entweder nichts (eine Testnachricht an den eigenen, schon "
+                + "eingerichteten Weg) oder einen ephemeren, nie gespeicherten Testversand VOR dem Anlegen; "
+                + "kein Matrix-Recht, derselbe Eigen-Grund wie die übrigen Zustellweg-Routen.";
+        m.put("ZustellwegController#emailProbe", probeSenden);
+        m.put("ZustellwegController#pushProbe", probeSenden);
+        m.put("ZustellwegController#webhookProbe", probeSenden);
+        m.put("ZustellwegController#webhookProbeVorAnlegen", probeSenden);
+        m.put("ZustellwegController#telegramProbe", probeSenden);
         m.put("TelegramWebhookController#webhook",
                 "Alerting Scheibe 6 (§7 Scheibe 6): Telegram selbst ruft den Update-Webhook auf - kein "
                         + "Kundenkonto, kein Kundenbereich; geschützt über Telegrams eigenen secret_token-Header "
