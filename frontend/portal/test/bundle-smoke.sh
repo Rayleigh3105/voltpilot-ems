@@ -55,6 +55,30 @@ cd "$(dirname "$0")/.."
 #   252,37  UEMS-Schnitt (Grenze 256) — firstmate-Entscheid `bel-grenze-230` = B
 #   256,06  Alerting Scheibe 2, Nachbesserung 3/3 (Grenze 257) — „Überwachen" jetzt
 #           auch an Aufbau-Zeilen und Geräteseite, s.u.
+#   258,25  main 19.10.2026, PR 1524 (Grenze 257, rot) — B8 (Push-Abmelden auf geteilten
+#           Geräten) importierte `push.ts` statisch in `AppShell.tsx`.
+#   257,04  B8-Nachlade-Fix (Grenze 258) — `push.ts` nur noch per `import()` beim Klick auf
+#           „Abmelden“ geladen, s.u.
+#
+# WARUM DIE GRENZE AM 19.10.2026 VON 257 AUF 258 GEHT (vp-bundle-b8-nachladung, Belege im
+#   PR-Text): B8s EIGENES Gewicht ist vollständig draußen — `push.ts` und sein Daten-Zwilling
+#   `benachrichtigungenApi.ts` stehen nicht mehr in der Sourcemap des Einstiegs (geprüft per
+#   `node`-Skript über `sources`, wie Prüfung 3 es für Motion tut). Der `import('../push')` beim
+#   Klick auf „Abmelden“ ersetzt den alten statischen Import 1:1 — Reihenfolge und Verhalten
+#   bleiben exakt (die B8-Regressionstests aus PR 1524 sind unverändert grün, ebenso der
+#   Abmelde-Fluss bei langsamem Netz: `logout` hängt an DERSELBEN Kette, die jetzt erst das
+#   Nachladen UND das Aufräumen abwartet, ein Nachlade-Fehler hält das Abmelden so wenig auf wie
+#   ein Abo-Fehler vorher). Was BLEIBT, ist nicht B8, sondern zwei Dinge, die sich hier nur
+#   treffen: die unvermeidbare Lade-Tabelle JEDES neuen `import()`-Aufrufs (gemessen auf dem
+#   Stand VOR PR 1526: 258,25 → 256,91, also 0,85 kB über der alten Basis von 256,06 — dieselbe
+#   Art Kosten wie die +0,10 kB der Grenze von 15.10.2026, hier nur größer, weil es ein
+#   brandneuer Chunk ist, kein bereits bestehender) UND die zeitgleich auf `main` gelandete
+#   Einstellungen Scheibe 1 (PR 1526: Avatar-Menü nennt jetzt Name/E-Mail/Rolle und trägt den
+#   Eintrag „Einstellungen“; die Rollen-Liste und der neue Konto-Hook in `auth.ts` sind bewusst
+#   NICHT lazy, siehe deren eigene Kommentare dort). Zusammen tragen beide den Einstieg auf
+#   257,04 kB — 0,04 kB über der ALTEN Grenze von 257, keines der beiden Features lässt sich
+#   ohne Funktionsverlust weiter drücken. Zwei legitime Features im Einstieg, kein drittes
+#   Nachlade-Loch.
 #
 # WARUM DIE GRENZE AM 15.10.2026 VON 256 AUF 257 GEHT (gemessen, ohne eine
 #   Funktion zu ändern): `UeberwachenBlatt` hatte genau EINEN Verwender
@@ -131,7 +155,7 @@ cd "$(dirname "$0")/.."
 # `nav.ts` raus, `commit` = nacktes `setRoute`) liegt bei 230,28 kB — immer noch
 # über 230, weil der Kopfraum von main (158 Byte) kleiner war als die reine
 # Vorlade-Grenze `pageChunks.ts` plus die `view-transition-name`-Attribute.
-LIMIT_KB="${LIMIT_KB:-257}"
+LIMIT_KB="${LIMIT_KB:-258}"
 
 OUT="dist-bundle-smoke"
 trap 'rm -rf "$OUT"' EXIT
