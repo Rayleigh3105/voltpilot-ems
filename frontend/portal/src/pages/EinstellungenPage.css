@@ -114,3 +114,21 @@
   padding-top: var(--vp-space-3);
   border-top: 1px solid var(--vp-border);
 }
+
+/* "Probe senden" und "Verbinden" nebeneinander (Scheibe 2, Entscheid 10A). */
+.vp-meinst-weiterer-aktionen {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-space-2);
+}
+
+/* "Gerät umbenennen" (Scheibe 2, §4.12) - Namensfeld und Speichern-Knopf auf einer Zeile. */
+.vp-meinst-geraet-name {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--vp-space-2);
+}
+
+.vp-meinst-geraet-name > :first-child {
+  flex: 1 1 auto;
+}

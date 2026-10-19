@@ -2,7 +2,11 @@ package com.voltpilot.api.versand;
 
 import com.voltpilot.api.versand.telegram.TelegramAdapter;
 import com.voltpilot.api.versand.telegram.TelegramException;
+import com.voltpilot.api.versand.webhook.WebhookException;
+import com.voltpilot.api.versand.webhook.WebhookVersandAdapter;
 import com.voltpilot.api.versand.webhook.WebhookZielPruefung;
+import com.voltpilot.api.versand.webpush.WebPushAdapter;
+import com.voltpilot.api.versand.webpush.WebPushException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -13,6 +17,9 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.http.HttpStatus;
+import org.springframework.mail.MailException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -33,24 +40,50 @@ public class ZustellwegService {
     /** Verbindungs-Token für Telegram (§7 Scheibe 6): kurzlebig, der Tipp auf den Link ist unmittelbar. */
     static final Duration TELEGRAM_TOKEN_GUELTIGKEIT = Duration.ofMinutes(15);
 
+    /** Die Testnachricht von "Probe senden" (Entscheid 10A) - die Ruhezeit gilt dafür nicht, sie geht sofort. */
+    private static final String PROBE_BETREFF = "VoltPilot: Testnachricht";
+    private static final String PROBE_TEXT = "Das ist eine Testnachricht von VoltPilot - dieser Weg funktioniert.";
+    private static final String PROBE_PUSH_PAYLOAD =
+            "{\"titel\":\"VoltPilot\",\"text\":\"Testnachricht - dieser Weg funktioniert.\",\"url\":\"#/einstellungen\"}";
+    private static final String PROBE_WEBHOOK_PAYLOAD = "{\"text\":\"" + PROBE_BETREFF + "\\n" + PROBE_TEXT
+            + "\",\"titel\":\"" + PROBE_BETREFF + "\",\"inhalt\":\"" + PROBE_TEXT + "\"}";
+
     private final ZustellwegRepository zustellwege;
     private final VersandRepository ausgang;
     private final TelegramAdapter telegram;
+    private final EmailVersandAdapter email;
+    private final WebPushAdapter push;
+    private final WebhookVersandAdapter webhook;
     private final String basisUrl;
     private final String telegramBotUsername;
     private final String telegramBotToken;
     private volatile Clock uhr = Clock.systemUTC();
 
     public ZustellwegService(ZustellwegRepository zustellwege, VersandRepository ausgang, TelegramAdapter telegram,
+            EmailVersandAdapter email, WebPushAdapter push, WebhookVersandAdapter webhook,
             @Value("${voltpilot.versand.bestaetigung-basis-url:http://localhost:5173}") String basisUrl,
             @Value("${voltpilot.telegram.bot-username:}") String telegramBotUsername,
             @Value("${voltpilot.telegram.bot-token:}") String telegramBotToken) {
         this.zustellwege = zustellwege;
         this.ausgang = ausgang;
         this.telegram = telegram;
+        this.email = email;
+        this.push = push;
+        this.webhook = webhook;
         this.basisUrl = basisUrl;
         this.telegramBotUsername = telegramBotUsername;
         this.telegramBotToken = telegramBotToken;
+    }
+
+    /** Ergebnis von "Probe senden" (Entscheid 10A) - kein Fehlschlag wirft, die Fläche zeigt ihn an. */
+    public record ProbeErgebnis(boolean erfolgreich, String fehler) {
+        static ProbeErgebnis ok() {
+            return new ProbeErgebnis(true, null);
+        }
+
+        static ProbeErgebnis fehlgeschlagen(String fehler) {
+            return new ProbeErgebnis(false, fehler == null ? "Unbekannter Fehler" : fehler);
+        }
     }
 
     /** Nur für Tests: die Uhr, nach der der Token abläuft. */
@@ -97,6 +130,30 @@ public class ZustellwegService {
                 zusammenfassungUhrzeit);
     }
 
+    /** "E-Mail-Weg abschalten" (Scheibe 2, B12) - die Adresse und ihre Bestätigung bleiben erhalten. */
+    public boolean emailAktivSetzen(String benutzerSub, boolean aktiv) {
+        return zustellwege.emailAktivSetzen(benutzerSub, aktiv);
+    }
+
+    /** "E-Mail-Weg entfernen" (Scheibe 2, B12). */
+    public boolean emailEntfernen(String benutzerSub) {
+        return zustellwege.emailEntfernen(benutzerSub);
+    }
+
+    /** "Probe-Mail senden" (Entscheid 10A) - braucht eine bestätigte Adresse, die Ruhezeit gilt dafür nicht. */
+    public ProbeErgebnis emailProbeSenden(String benutzerSub) {
+        ZustellwegRepository.Zustellweg weg = zustellwege.eigener(benutzerSub)
+                .filter(ZustellwegRepository.Zustellweg::bestaetigt)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Braucht eine bestätigte E-Mail-Adresse."));
+        try {
+            email.senden(weg.ziel(), PROBE_BETREFF, PROBE_TEXT);
+        } catch (MailException e) {
+            return ProbeErgebnis.fehlgeschlagen(e.getMessage());
+        }
+        return ProbeErgebnis.ok();
+    }
+
     // --------------------------------------------------------------------- Web-Push (Alerting Scheibe 3, §6.7)
 
     public List<ZustellwegRepository.PushAbo> pushAboEigene(String benutzerSub) {
@@ -125,6 +182,23 @@ public class ZustellwegService {
         return zustellwege.pushAboEntfernenNachEndpoint(benutzerSub, endpoint);
     }
 
+    /** "Gerät umbenennen" (Scheibe 2, §4.12, Befund M4/M5). */
+    public boolean pushAboNameSetzen(UUID id, String benutzerSub, String geraet) {
+        return zustellwege.pushAboNameSetzen(id, benutzerSub, geraet);
+    }
+
+    /** "Probe-Mitteilung senden" (Entscheid 10A). */
+    public ProbeErgebnis pushProbeSenden(UUID id, String benutzerSub) {
+        WebPushAdapter.Abo abo = zustellwege.pushAboFuerProbe(id, benutzerSub)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        try {
+            push.senden(abo, PROBE_PUSH_PAYLOAD);
+        } catch (WebPushException e) {
+            return ProbeErgebnis.fehlgeschlagen(e.getMessage());
+        }
+        return ProbeErgebnis.ok();
+    }
+
     // --------------------------------------------------------------------- Webhook (Alerting Scheibe 6, §7)
 
     public List<ZustellwegRepository.WebhookZielEigen> webhookZieleEigene(String benutzerSub) {
@@ -141,14 +215,14 @@ public class ZustellwegService {
     public record NeuesWebhookZiel(UUID id, String geheimnis) {}
 
     public NeuesWebhookZiel webhookZielAnlegen(String benutzerSub, String url, String name) {
-        try {
-            WebhookZielPruefung.pruefenUndAufloesen(url);
-        } catch (WebhookZielPruefung.UnsicheresZielException e) {
-            throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST, e.getMessage());
-        }
+        pruefenUndWerfen(url);
         String geheimnis = BestaetigungsToken.erzeugen();
-        UUID id = zustellwege.webhookZielAnlegen(benutzerSub, url, geheimnis, name);
-        return new NeuesWebhookZiel(id, geheimnis);
+        try {
+            UUID id = zustellwege.webhookZielAnlegen(benutzerSub, url, geheimnis, name);
+            return new NeuesWebhookZiel(id, geheimnis);
+        } catch (DuplicateKeyException e) {
+            throw doppelteAdresse();
+        }
     }
 
     public boolean webhookZielEinstellungenSetzen(UUID id, String benutzerSub, boolean aktiv, String abSchwere) {
@@ -157,6 +231,59 @@ public class ZustellwegService {
 
     public boolean webhookZielEntfernen(UUID id, String benutzerSub) {
         return zustellwege.webhookZielEntfernen(id, benutzerSub);
+    }
+
+    /** "Team-Kanal bearbeiten" (Scheibe 2, §4.12) - dieselbe SSRF-Prüfung wie beim Anlegen. */
+    public boolean webhookZielBearbeiten(UUID id, String benutzerSub, String url, String name) {
+        pruefenUndWerfen(url);
+        try {
+            return zustellwege.webhookZielBearbeiten(id, benutzerSub, url, name);
+        } catch (DuplicateKeyException e) {
+            throw doppelteAdresse();
+        }
+    }
+
+    /**
+     * "Probe senden" VOR dem Anlegen (Entscheid 10A, §4.12): dieselbe SSRF-Prüfung und ein echter
+     * Test-Versand, aber nichts wird gespeichert - das Geheimnis ist nur für diesen einen Ruf gültig.
+     */
+    public ProbeErgebnis webhookProbeVorAnlegen(String url) {
+        try {
+            WebhookZielPruefung.pruefenUndAufloesen(url);
+        } catch (WebhookZielPruefung.UnsicheresZielException e) {
+            return ProbeErgebnis.fehlgeschlagen(e.getMessage());
+        }
+        try {
+            webhook.senden(url, BestaetigungsToken.erzeugen(), PROBE_WEBHOOK_PAYLOAD);
+        } catch (WebhookException e) {
+            return ProbeErgebnis.fehlgeschlagen(e.getMessage());
+        }
+        return ProbeErgebnis.ok();
+    }
+
+    /** "Probe senden" für ein BEREITS verbundenes Ziel (Entscheid 10A). */
+    public ProbeErgebnis webhookProbeSenden(UUID id, String benutzerSub) {
+        ZustellwegRepository.WebhookZiel ziel = zustellwege.webhookZielMitGeheimnisEigen(id, benutzerSub)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        try {
+            webhook.senden(ziel.url(), ziel.geheimnis(), PROBE_WEBHOOK_PAYLOAD);
+        } catch (WebhookException e) {
+            return ProbeErgebnis.fehlgeschlagen(e.getMessage());
+        }
+        return ProbeErgebnis.ok();
+    }
+
+    private static void pruefenUndWerfen(String url) {
+        try {
+            WebhookZielPruefung.pruefenUndAufloesen(url);
+        } catch (WebhookZielPruefung.UnsicheresZielException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
+    }
+
+    /** B11: dieselbe Adresse ein zweites Mal ergab bisher ein rohes 500 (Unique-Constraint). */
+    private static ResponseStatusException doppelteAdresse() {
+        return new ResponseStatusException(HttpStatus.CONFLICT, "Diese Adresse ist schon verbunden.");
     }
 
     // --------------------------------------------------------------------- Telegram (Alerting Scheibe 6, §7)
@@ -179,11 +306,20 @@ public class ZustellwegService {
 
     public TelegramVerbindungsLink telegramVerbindungAnfordern(String benutzerSub) {
         if (!telegramVerfuegbar()) {
-            throw new ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "Telegram ist auf dieser Installation nicht eingerichtet.");
         }
         String token = BestaetigungsToken.erzeugen();
-        zustellwege.telegramVerbindungAnfordern(benutzerSub, token, uhr.instant().plus(TELEGRAM_TOKEN_GUELTIGKEIT));
+        Instant ablauf = uhr.instant().plus(TELEGRAM_TOKEN_GUELTIGKEIT);
+        // B10: ein weiterer Tipp auf "verbinden" erneuert den eigenen offenen Versuch (falls einer
+        // besteht) statt eine weitere offene Zeile anzulegen - sonst sammeln sich verwaiste
+        // Verbindungs-Versuche an, deren Token nie eingelöst wurde.
+        Optional<UUID> offen = zustellwege.telegramOffenerVersuch(benutzerSub);
+        if (offen.isPresent()) {
+            zustellwege.telegramVersuchErneuern(offen.get(), token, ablauf);
+        } else {
+            zustellwege.telegramVerbindungAnfordern(benutzerSub, token, ablauf);
+        }
         return new TelegramVerbindungsLink("https://t.me/" + telegramBotUsername + "?start=" + token);
     }
 
@@ -194,7 +330,17 @@ public class ZustellwegService {
      * keine Antwort (kein Hinweis, ob der Token je existiert hat).
      */
     public boolean telegramVerbindungBestaetigen(String token, String chatId) {
-        boolean bestaetigt = zustellwege.telegramVerbindungBestaetigen(token, chatId, uhr.instant()).isPresent();
+        boolean bestaetigt;
+        try {
+            bestaetigt = zustellwege.telegramVerbindungBestaetigen(token, chatId, uhr.instant()).isPresent();
+        } catch (DuplicateKeyException e) {
+            // B10 (Doppel-Chat): derselbe Chat ist in diesem Kundenbereich schon mit einer ANDEREN
+            // Person verbunden - der Telegram-Webhook antwortet trotzdem immer 200 (Telegram
+            // wiederholt einen nicht-2xx-Update sonst endlos), nur ohne Erfolg.
+            log.warn("Telegram: Chat {} ist bereits einer anderen Person in diesem Kundenbereich verbunden, "
+                    + "Verbindung abgelehnt.", chatId);
+            return false;
+        }
         if (bestaetigt) {
             try {
                 telegram.verbindungBestaetigen(chatId);
@@ -211,5 +357,17 @@ public class ZustellwegService {
 
     public boolean telegramZielEntfernen(UUID id, String benutzerSub) {
         return zustellwege.telegramZielEntfernen(id, benutzerSub);
+    }
+
+    /** "Probe senden" (Entscheid 10A) - nur für eine bereits bestätigte Verbindung. */
+    public ProbeErgebnis telegramProbeSenden(UUID id, String benutzerSub) {
+        ZustellwegRepository.TelegramZiel ziel = zustellwege.telegramZielMitChatEigen(id, benutzerSub)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+        try {
+            telegram.senden(ziel.chatId(), PROBE_TEXT);
+        } catch (TelegramException e) {
+            return ProbeErgebnis.fehlgeschlagen(e.getMessage());
+        }
+        return ProbeErgebnis.ok();
     }
 }

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.voltpilot.api.tenant.TenantAwareDataSource;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.ueberwachung.UeberwachungRepository;
+import com.voltpilot.api.versand.VersandRepository;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Map;
@@ -44,6 +45,7 @@ class RuhezeitScheibe3IT {
     private static JdbcTemplate adminJdbc;
     private static RuhezeitRepository ruhezeitRepo;
     private static UeberwachungRepository ueberwachungRepo;
+    private static VersandRepository versandRepo;
     private static RuhezeitPruefungImpl pruefung;
 
     @BeforeAll
@@ -61,7 +63,8 @@ class RuhezeitScheibe3IT {
         adminJdbc = new JdbcTemplate(ds(ADMIN, PW));
         ruhezeitRepo = new RuhezeitRepository(app, adminJdbc);
         ueberwachungRepo = new UeberwachungRepository(app);
-        pruefung = new RuhezeitPruefungImpl(ueberwachungRepo, ruhezeitRepo);
+        versandRepo = new VersandRepository(app, adminJdbc);
+        pruefung = new RuhezeitPruefungImpl(ueberwachungRepo, ruhezeitRepo, versandRepo);
     }
 
     @AfterEach
@@ -189,10 +192,10 @@ class RuhezeitScheibe3IT {
         }
     }
 
-    // =========================================================== Entscheid 8A: Dringend durchbricht per Push
+    // =========================================================== Entscheid 4A: Dringend durchbricht auf JEDEM Weg
 
     @Test
-    void dringendDurchbrichtRuhezeitUeberPushWennSchalterAn() {
+    void dringendDurchbrichtRuhezeitAufJedemWegWennSchalterAn() {
         Welt w = welt("Dringend durchbricht");
         TenantContext.set(w.tenant());
         try {
@@ -202,16 +205,18 @@ class RuhezeitScheibe3IT {
             Instant jetzt = Instant.now();
             UUID alarm = alarmAnlegen(w, regel, "dringend", "aktiv", null, jetzt);
 
+            // Entscheid 4A: der Schalter gilt gleich fuer JEDEN Weg, nicht nur Push.
             assertThat(pruefung.wannSenden(alarm, "sub-jonas", "webpush", "ausgeloest", jetzt)).isEqualTo(jetzt);
-            // E-Mail haelt die Ruhezeit fuer Dringend ohnehin nicht an (§6.4: "durchbricht sie").
             assertThat(pruefung.wannSenden(alarm, "sub-jonas", "email", "ausgeloest", jetzt)).isEqualTo(jetzt);
+            assertThat(pruefung.wannSenden(alarm, "sub-jonas", "webhook", "ausgeloest", jetzt)).isEqualTo(jetzt);
+            assertThat(pruefung.wannSenden(alarm, "sub-jonas", "telegram", "ausgeloest", jetzt)).isEqualTo(jetzt);
         } finally {
             TenantContext.clear();
         }
     }
 
     @Test
-    void dringendWirdUeberPushGehaltenWennSchalterAus() {
+    void dringendWirdAufJedemWegGehaltenWennSchalterAus() {
         Welt w = welt("Dringend Schalter aus");
         TenantContext.set(w.tenant());
         try {
@@ -221,8 +226,12 @@ class RuhezeitScheibe3IT {
             Instant jetzt = Instant.now();
             UUID alarm = alarmAnlegen(w, regel, "dringend", "aktiv", null, jetzt);
 
-            Instant wann = pruefung.wannSenden(alarm, "sub-jonas", "webpush", "ausgeloest", jetzt);
-            assertThat(wann).isAfter(jetzt);
+            // B5-Regression: vor der Behebung durchbrachen E-Mail/Webhook/Telegram die Ruhezeit
+            // IMMER, unabhaengig vom Schalter - nur Push hielt sich daran.
+            assertThat(pruefung.wannSenden(alarm, "sub-jonas", "webpush", "ausgeloest", jetzt)).isAfter(jetzt);
+            assertThat(pruefung.wannSenden(alarm, "sub-jonas", "email", "ausgeloest", jetzt)).isAfter(jetzt);
+            assertThat(pruefung.wannSenden(alarm, "sub-jonas", "webhook", "ausgeloest", jetzt)).isAfter(jetzt);
+            assertThat(pruefung.wannSenden(alarm, "sub-jonas", "telegram", "ausgeloest", jetzt)).isAfter(jetzt);
         } finally {
             TenantContext.clear();
         }
@@ -262,8 +271,30 @@ class RuhezeitScheibe3IT {
     }
 
     @Test
-    void wiederNormalUndZusammenfassungWerdenNieDurchRuhezeitGehalten() {
-        Welt w = welt("Wieder normal nie gehalten");
+    void zusammenfassungWirdNieDurchRuhezeitGehalten() {
+        Welt w = welt("Zusammenfassung nie gehalten");
+        TenantContext.set(w.tenant());
+        try {
+            ruhezeitRepo.setzen("sub-jonas", "{\"werktags\":{\"von\":\"00:00\",\"bis\":\"23:59\"}}", "Europe/Berlin",
+                    true);
+            Instant jetzt = Instant.now();
+            assertThat(pruefung.wannSenden(UUID.randomUUID(), "sub-jonas", "email", "zusammenfassung", jetzt))
+                    .isEqualTo(jetzt);
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    // =========================================================== B7: "Wieder normal" haelt wie die Ausloesung
+
+    @Test
+    void wiederNormalHaeltWieDieAusloesungSelbst() {
+        // B7: vor der Behebung kam "Wieder normal" um 4 Uhr fuer eine Warnung, die die Ruhezeit
+        // noch bis 7 Uhr zurueckhielt - eine Entwarnung fuer etwas, das nie ankam. Ohne eine
+        // unterdrueckte Ausloesungs-Zeile (hier: noch keine Zeile ueberhaupt, der haeufige Fall -
+        // der Zusteller reiht die Ausloesung erst beim naechsten Alarm-Ereignis ein) haelt die
+        // Entwarnung genauso wie die Ausloesung selbst gehalten haette.
+        Welt w = welt("Wieder normal haelt");
         TenantContext.set(w.tenant());
         try {
             ruhezeitRepo.setzen("sub-jonas", "{\"werktags\":{\"von\":\"00:00\",\"bis\":\"23:59\"}}", "Europe/Berlin",
@@ -272,9 +303,52 @@ class RuhezeitScheibe3IT {
             Instant jetzt = Instant.now();
             UUID alarm = alarmAnlegen(w, regel, "warnung", "erledigt", null, jetzt);
 
+            Instant wann = pruefung.wannSenden(alarm, "sub-jonas", "email", "wieder_normal", jetzt);
+            assertThat(wann).isAfter(jetzt);
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    @Test
+    void wiederNormalEntfaelltWennDieAusloesungEndgueltigUnterdrueicktWurde() {
+        // B7: entfaellt genau dann, wenn die Ausloesung fuer diesen Empfaenger/Weg selbst nie
+        // ankommt (keine Sicht oder Stummschaltung) - keine Entwarnung fuer einen Alarm, den die
+        // Person nie als aktiv sah.
+        Welt w = welt("Wieder normal entfaellt");
+        TenantContext.set(w.tenant());
+        try {
+            UUID regel = regelAnlegen(w, "warnung", null);
+            Instant jetzt = Instant.now();
+            UUID alarm = alarmAnlegen(w, regel, "warnung", "erledigt", null, jetzt);
+            app.update("INSERT INTO benachrichtigung (tenant_id, quelle, quelle_id, empfaenger_sub, weg, anlass, "
+                            + "nr, betreff, inhalt, naechster_versuch, zustand) "
+                            + "VALUES (?, 'alarm', ?, 'sub-jonas', 'email', 'ausgeloest', 0, 'x', 'x', ?, "
+                            + "'unterdrueckt')",
+                    w.tenant(), alarm, Timestamp.from(jetzt));
+
+            assertThat(pruefung.wannSenden(alarm, "sub-jonas", "email", "wieder_normal", jetzt))
+                    .isEqualTo(Instant.MAX);
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    @Test
+    void wiederNormalGehtSofortWennDieAusloesungAnkam() {
+        Welt w = welt("Wieder normal sofort");
+        TenantContext.set(w.tenant());
+        try {
+            UUID regel = regelAnlegen(w, "warnung", null);
+            // Dienstag 14 Uhr Europe/Berlin: ausserhalb jeder Ruhezeit (siehe ohneRuhezeitWirdAmTagSofortGesendet).
+            Instant jetzt = Instant.parse("2026-10-20T12:00:00Z");
+            UUID alarm = alarmAnlegen(w, regel, "warnung", "erledigt", null, jetzt);
+            app.update("INSERT INTO benachrichtigung (tenant_id, quelle, quelle_id, empfaenger_sub, weg, anlass, "
+                            + "nr, betreff, inhalt, naechster_versuch, zustand) "
+                            + "VALUES (?, 'alarm', ?, 'sub-jonas', 'email', 'ausgeloest', 0, 'x', 'x', ?, 'gesendet')",
+                    w.tenant(), alarm, Timestamp.from(jetzt));
+
             assertThat(pruefung.wannSenden(alarm, "sub-jonas", "email", "wieder_normal", jetzt)).isEqualTo(jetzt);
-            assertThat(pruefung.wannSenden(UUID.randomUUID(), "sub-jonas", "email", "zusammenfassung", jetzt))
-                    .isEqualTo(jetzt);
         } finally {
             TenantContext.clear();
         }

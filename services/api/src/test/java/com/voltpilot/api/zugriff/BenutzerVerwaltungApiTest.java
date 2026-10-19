@@ -187,13 +187,26 @@ class BenutzerVerwaltungApiTest {
         String sub = "konto-zu-sperren"; spiegel(sub); amStandort(sub, "leser", standortA);
         var alt = konto(sub, DEMO);
         assertThat(ruf(get("/api/v1/sites"), alt).status()).isEqualTo(200);
+        // B13 (Einstellungen-Konzept Scheibe 2, §2.5): die Wege dieser Person bleiben sonst
+        // gespeichert, bis der ganze Kundenbereich endet - das Entfernen loescht sie mit.
+        root.update("INSERT INTO zustellweg (tenant_id, benutzer_sub, weg, ziel) VALUES (?, ?, 'email', ?)",
+                DEMO, sub, sub + "@example.test");
+        root.update("INSERT INTO push_abo (tenant_id, benutzer_sub, endpoint, p256dh, auth, geraet) "
+                + "VALUES (?, ?, 'https://push.example/b13-test', 'p', 'a', 'Test-Geraet')", DEMO, sub);
         assertThat(ruf(post("/api/v1/benutzer/" + sub + "/sperren", "{}"), konto(JONAS, DEMO)).status()).isEqualTo(204);
         Antwort danach = ruf(get("/api/v1/sites"), alt);
         assertThat(danach.status()).isEqualTo(404); assertThat(danach.body()).contains("zugriff_beendet");
         assertThat(zuweisungen(sub)).hasSize(1); // Sperren hält an; Entfernen beendet die Zuweisung.
         assertThat(root.queryForObject("SELECT zustand FROM benutzer WHERE tenant_id = ? AND sub = ?", String.class, DEMO, sub)).isEqualTo("gesperrt");
+        // Sperren allein löscht die Wege noch nicht - erst das Entfernen (B13).
+        assertThat(root.queryForObject("SELECT count(*) FROM zustellweg WHERE tenant_id = ? AND benutzer_sub = ?",
+                Integer.class, DEMO, sub)).isEqualTo(1);
         assertThat(ruf(MockMvcRequestBuilders.delete(uri("/api/v1/benutzer/" + sub)), konto(JONAS, DEMO)).status()).isEqualTo(204);
         assertThat(zuweisungen(sub)).isEmpty();
+        assertThat(root.queryForObject("SELECT count(*) FROM zustellweg WHERE tenant_id = ? AND benutzer_sub = ?",
+                Integer.class, DEMO, sub)).isEqualTo(0);
+        assertThat(root.queryForObject("SELECT count(*) FROM push_abo WHERE tenant_id = ? AND benutzer_sub = ?",
+                Integer.class, DEMO, sub)).isEqualTo(0);
         assertThat(ruf(get("/api/v1/benutzer"), konto(JONAS, DEMO)).body()).doesNotContain(sub);
         String p = "/api/v1/benutzer/protokoll?von=" + Instant.now().minusSeconds(3600) + "&bis=" + Instant.now().plusSeconds(3600);
         Antwort protokoll = ruf(get(p), konto(JONAS, DEMO));

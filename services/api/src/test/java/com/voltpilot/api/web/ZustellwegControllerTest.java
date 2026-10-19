@@ -75,8 +75,8 @@ class ZustellwegControllerTest {
         UUID id = UUID.randomUUID();
         when(zustellwege.pushAbonnieren(eq("sub-test"), eq("https://push.example/x"), eq("p"), eq("a"), eq("g"),
                 any())).thenReturn(id);
-        when(zustellwege.pushAboEigene("sub-test"))
-                .thenReturn(List.of(new ZustellwegRepository.PushAbo(id, "g", true, "warnung", Instant.now())));
+        when(zustellwege.pushAboEigene("sub-test")).thenReturn(List.of(
+                new ZustellwegRepository.PushAbo(id, "g", true, "warnung", Instant.now(), "https://push.example/x")));
 
         mvc.perform(post("/api/v1/zustellwege/push").principal(auth).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"endpoint\":\"https://push.example/x\",\"p256dh\":\"p\",\"auth\":\"a\",\"geraet\":\"g\"}"))

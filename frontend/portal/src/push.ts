@@ -79,6 +79,23 @@ export async function pushEinschalten(geraet: string): Promise<PushAbo> {
 }
 
 /**
+ * Der Endpunkt des Browser-Abos DIESES Geräts, falls eines besteht - `null` ohne Abo oder ohne
+ * Unterstützung. Die Einstellungs-Seite (Scheibe 2, Befund M4) vergleicht ihn mit dem `endpoint`
+ * jedes `PushAbo`, um "dieses Gerät" zu erkennen - zuverlässiger als der frühere, rein lokal
+ * gemerkte Schlüssel (Scheibe 1), der ein Abo aus einem anderen Tab/Profil nie erkannte.
+ */
+export async function aktuellerPushEndpoint(): Promise<string | null> {
+  if (!pushUnterstuetzt()) return null;
+  try {
+    const registrierung = await navigator.serviceWorker.getRegistration();
+    const abo = await registrierung?.pushManager.getSubscription();
+    return abo?.endpoint ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Beim Abmelden (Alerting Einstellungen Scheibe 0, B8): ein geteiltes Gerät darf das Push-Abo der
  * abgemeldeten Person nicht behalten - sonst bekäme die nächste angemeldete Person ihre Meldungen.
  * Beendet das Browser-Abo DIESES Geräts und meldet es beim Server ab, bevor überhaupt ein neuer
