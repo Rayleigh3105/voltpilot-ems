@@ -12,14 +12,19 @@
         "text": "Der Anlagenname zeigt, welchen Standort Sie gerade betrachten."
       },
       {
-        "x": 30.77,
-        "y": 25.96,
+        "x": 32.21,
+        "y": 29.25,
         "text": "Die Energieanzeige beschreibt die aktuelle Erzeugung und die weiteren Flüsse."
       },
       {
+        "x": 7.8,
+        "y": 60.17,
+        "text": "Ein Tipp auf die Tagesleiste zeigt eine andere Viertelstunde, ‹ › gehen je 15 Minuten weiter."
+      },
+      {
         "x": 64.74,
-        "y": 18.1,
-        "text": "Das Ergebnis bezieht sich auf den hier gewählten Zeitraum."
+        "y": 47.23,
+        "text": "Die Steuerzeile nennt Auftrag, Bestätigung und Wirkung; „Warum?“ öffnet die Gründe."
       }
     ]
   },
@@ -66,7 +71,7 @@
       },
       {
         "x": 41.79,
-        "y": 10.72,
+        "y": 26.07,
         "text": "Hilfe & Kontakt öffnet das vollständige Hilfe-Center."
       },
       {

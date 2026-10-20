@@ -280,6 +280,9 @@ describe('exportGuardView · der Einspeisewächter („Grenzen & Wächter" Stufe
     expect(v!.line).toContain('an KEIN Gerät geschrieben');
     expect(v!.line).toContain('(0 von 2)');
     expect(v!.tone).toBe('warn');
+    // Die Steuerzeile des Cockpits (Konzept b1) nennt nur den Kopf - der Satz steht im Blatt.
+    expect(v!.kurz).toBe(`Einspeisegrenze 70,0${NBSP}kW`);
+    expect(v!.line.startsWith(v!.kurz)).toBe(true);
     expect(v!.agoNote).toBe('');
   });
 

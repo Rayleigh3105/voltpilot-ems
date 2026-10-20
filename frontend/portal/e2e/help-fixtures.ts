@@ -167,6 +167,10 @@ export function installHelpFixtures() {
   const admin = params.get('state') === 'admin';
   // Die Eigenverbrauchs-Fassung des Cockpits (ohne Marktoptimierung) für Browserprüfungen.
   const eigen = params.get('betrieb') === 'eigen';
+  // Die Steuerzeile mit Abweichung (Konzept b1, `cockpit-steuerzeile.spec.ts`): der Speicher gibt laut
+  // Auftrag 0,3 kW ab (Folge-Modus, nach Solar verbleibender Verbrauch 0,8 kW), die Einspeisegrenze ist
+  // 75 kW, im Wechselrichter stehen 70 kW - dieselbe Lage wie im Screenshot des Captains vom 20.10.2026.
+  const abweichung = params.get('steuerung') === 'abweichung';
   Object.assign(keycloak, { token: 'help-fixture-token', authenticated: true, updateToken: async () => false,
     tokenParsed: { name: 'Alex Beispiel', email: 'alex@example.test', tenant_id: 'help-tenant', realm_access: { roles: [admin ? 'platform-admin' : 'operator'] } } });
   // All API methods are isolated, including mutation buttons in captured screens.
@@ -222,7 +226,14 @@ export function installHelpFixtures() {
     siteComponents: result({ componentAuthority: 'portal', sollRevision: '1', appliedRevision: '1', appliedAt: NOW, components: [{ id: 'help-battery', role: 'battery-hybrid', entityType: 'battery-hybrid', label: 'Speicher Scheune', brand: 'deye', model: 'sun-12k', family: 'deye-sg04lp3',
       communication: 'solarman_v5', connection: { ip: '192.0.2.10', port: 8899, serial: '1234567890' }, sourceKind: 'builtin', templateRef: 'builtin:deye:sun-12k', templateVersion: 1, definitionVersion: 1, syncStatus: 'in_sync' }] }),
     siteSources: result([]), edgeVersions: result(sichtbareListe([])), registerWriteHistory: result([]), registerKnowledge: result([]), registerWriteTargets: result([]),
-    controlStatus: result({ deviceId: 'help-box', commandedKw: 2.2, confirmedKw: 2.2, allMatch: true, controlEnabled: true, certified: true, mismatchRoles: null, slotStart: NOW, checkedAt: NOW, controlSource: 'schedule', executionMode: 'plan', executionPlannedKw: 2.2 }), curtailmentStatus: result(null), eigeneAuswertung: result(null), autoStart: result(null),
+    controlStatus: result(abweichung
+      ? { deviceId: 'help-box', commandedKw: -0.3, confirmedKw: -0.3, allMatch: true, controlEnabled: true, certified: true, mismatchRoles: null, slotStart: NOW, checkedAt: NOW, controlSource: 'schedule', executionMode: 'deficit_cover', executionPlannedKw: 0, executionTargetKw: 0.8 }
+      : { deviceId: 'help-box', commandedKw: 2.2, confirmedKw: 2.2, allMatch: true, controlEnabled: true, certified: true, mismatchRoles: null, slotStart: NOW, checkedAt: NOW, controlSource: 'schedule', executionMode: 'plan', executionPlannedKw: 2.2 }),
+    curtailmentStatus: result(abweichung
+      ? { deviceId: 'help-box', units: 1, certifiedUnits: 1, controlEnabled: true, active: false, appliedCapKw: null, allMatch: null, possibleOverride: false, checkedAt: NOW,
+        exportGuard: { limitKw: 75, state: 'ueberwacht', reason: 'Die Einspeisung liegt bei 0,0 kW von 75,0 kW.', capKw: null, limiting: false, blind: false, effective: true, reach: null },
+        deviceExportLimit: { limitKw: 70, register: '0x00e7', readAt: NOW } }
+      : null), eigeneAuswertung: result(null), autoStart: result(null),
     siteChargers: result(charging), chargingConfig: result({ siteId: site.id, gridLimitKw: 22, marginPct: 10, surplusPolicy: 'sonne_zuerst', storagePriority: 'speicher_vor_auto', priorityChargePointIds: ['CP-CARPORT'], chargePoints: [] }),
     siteVerbraucher: result({
       verbraucher: charging.chargers.map((c) => ({ entityId: c.chargePointId, name: c.label, typ: 'ev-charger', typLabel: 'Ladepunkt',

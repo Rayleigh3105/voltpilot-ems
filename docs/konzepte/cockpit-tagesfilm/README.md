@@ -120,6 +120,7 @@ Jede Kachel ist gleich aufgebaut. Oben steht der Kopf mit Symbol, Name und Ziel.
 | Zustand | leise, wenn alles läuft; sonst Befund mit Weg | Gesundheitsprüfung | immer (Pflicht) |
 
 Die Steuerzeile am Fuß der Bühne trennt Auftrag, Geräteantwort und gemessene Wirkung (`/control-status`).
+Seit Konzept b1 (20.10.2026) ist sie eine Zeile mit „Warum?“-Blatt; am Rechner steht sie rechts unter der Leitkachel.
 
 ## Anpassen und Vorschläge
 

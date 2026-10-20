@@ -624,12 +624,18 @@ a.vp-eb-zeile {
   margin: 0;
 }
 
-/* Am Rechner: die beiden Listen nebeneinander, Uhr und Satz etwas größer. */
+/* Am Rechner: „Verbrauch im Detail“ über die volle Breite, die Zeilen in zwei
+   Spalten - unter dem Fluss steht nur noch diese eine Liste (die Erzeugung je
+   Gerät steht im Blatt der Sonne); das frühere Raster für zwei Listen ließ die
+   rechte Hälfte leer. Uhr und Satz etwas größer. */
 @media (min-width: 1024px) {
-  .vp-eb-listen {
+  .vp-eb-listen > .vp-eb-liste > ul {
+    display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 32px;
-    align-items: start;
+    column-gap: 32px;
+  }
+  .vp-eb-listen > .vp-eb-liste li:nth-child(2) .vp-eb-zeile {
+    border-top: 0;
   }
   .vp-eb-uhr {
     font-size: 1.4rem;

@@ -424,62 +424,243 @@
   padding-top: var(--vp-space-3, 12px);
 }
 
-.vp-control-foot {
+/* Die Steuerzeile (Konzept b1, 20.10.2026): EINE Zeile Auftrag › Gerät ›
+   Wirkung, die ganze Zeile öffnet „Warum?“. Rechts unter der Leitkachel trennt
+   sie eine Linie; am Bühnenfuß trägt `.vp-stage-foot` die Linie. */
+.vp-hero-steuer {
+  border-top: 1px solid var(--vp-border, #e2e8f0);
+  padding-top: 12px;
+}
+.vp-steuer {
+  min-width: 0;
+}
+.vp-steuer-knopf {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  margin: -6px -8px;
+  padding: 6px 8px;
+  box-sizing: content-box;
+  border: 0;
+  border-radius: 10px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.vp-steuer-knopf:hover {
+  background: var(--vp-c-muted, #e9eff8);
+}
+.vp-steuer-knopf:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
+}
+.vp-steuer-kopf {
   display: flex;
   align-items: center;
-  gap: var(--vp-space-2, 8px) var(--vp-space-3, 12px);
-  flex-wrap: wrap;
+  gap: 6px;
   min-width: 0;
-}
-.vp-control-foot .vp-control-foot-lbl {
-  flex: 0 0 auto;
-}
-.vp-control-foot .vp-control-reason {
-  flex: 1 1 100%;
-  margin: 2px 0 0;
-}
-.vp-control-foot .vp-outlook {
-  flex: 1 1 100%;
-  margin: 2px 0 0;
-}
-/* Auftrag · Gerät · Wirkung (Konzept „Cockpit als Tagesfilm“): drei Spalten
-   mit ruhigem Strich, am Telefon und am Rechner gleich. */
-.vp-control-spalten {
-  flex: 1 1 100%;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
-  min-width: 0;
-  max-width: 720px;
-}
-.vp-control-spalten > div {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-  padding-left: 10px;
-  border-left: 2px solid var(--vp-border, #e2e8f0);
-}
-.vp-control-spalten i {
-  font-style: normal;
-  font-size: 0.75rem;
+  font: 700 0.6875rem/1.2 var(--vp-c-font, var(--vp-font-body));
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
   color: var(--vp-c-muted-fg, #475569);
 }
-.vp-control-spalten b {
-  font-size: 0.8125rem;
-  font-weight: 700;
-  line-height: 1.3;
-  overflow-wrap: anywhere;
+.vp-steuer-kopf > svg:first-child {
+  color: var(--vp-navy, #1e3a5f);
 }
-.vp-control-spalten .tone-ok b {
+.vp-steuer-hinweis {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: var(--vp-radius-pill, 999px);
+  background: var(--vp-c-warn-bg, #fff7ed);
+  color: var(--vp-c-warn-fg, #9a3412);
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+.vp-steuer-hinweis::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.vp-steuer-warum {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  margin-left: auto;
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--vp-c-primary, #2563eb);
+  white-space: nowrap;
+}
+.vp-steuer-kette {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  min-width: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.vp-steuer-teil {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.vp-steuer-pfeil {
+  color: var(--vp-c-muted-fg, #475569);
+  font-weight: 400;
+}
+.vp-steuer-glied {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+.vp-steuer-glied.tone-ok {
   color: var(--vp-flow-batt-ink, #166534);
 }
-.vp-control-spalten .tone-warn b {
+.vp-steuer-glied.tone-warn {
   color: var(--vp-c-warn-fg, #9a3412);
 }
-@media (min-width: 1024px) {
-  .vp-control-spalten {
-    flex: 1 1 0;
+.vp-steuer-punkt {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: 0 0 auto;
+}
+.vp-steuer-alter {
+  font-weight: 400;
+  font-size: 0.8125rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* Das Blatt „Steuerung jetzt“: dieselben Sätze wie vorher, je Herkunft gegliedert. */
+.vp-steuer-blatt {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+.vp-steuer-schritte {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.vp-steuer-schritte li {
+  display: grid;
+  grid-template-columns: 8px 72px minmax(0, 1fr);
+  gap: 10px;
+  align-items: baseline;
+  padding: 10px 12px;
+}
+.vp-steuer-schritte li + li {
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+.vp-steuer-schritte i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  align-self: center;
+  background: var(--vp-c-muted-fg, #94a3b8);
+}
+.vp-steuer-schritte .tone-ok i { background: var(--vp-flow-batt, #16a34a); }
+.vp-steuer-schritte .tone-warn i { background: var(--vp-c-warn-fg, #9a3412); }
+.vp-steuer-schritte .tone-ok b { color: var(--vp-flow-batt-ink, #166534); }
+.vp-steuer-schritte .tone-warn b { color: var(--vp-c-warn-fg, #9a3412); }
+.vp-steuer-schritte span {
+  font-size: 0.8125rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-steuer-schritte b {
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: break-word;
+}
+.vp-steuer-schritte small,
+.vp-steuer-grenze small {
+  display: block;
+  font-weight: 400;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-steuer-abschnitt {
+  margin: 6px 0 0;
+  font: 700 0.6875rem/1.2 var(--vp-c-font, var(--vp-font-body));
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-steuer-gruende {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+.vp-steuer-gruende > div {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  gap: 10px;
+}
+.vp-steuer-gruende dt {
+  font-size: 0.8125rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-steuer-gruende dd {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  min-width: 0;
+}
+.vp-steuer-grenze {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.vp-steuer-befund {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--vp-c-warn-bg, #fff7ed);
+  color: var(--vp-c-warn-fg, #9a3412);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+.vp-steuer-pruefen {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 4px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.vp-steuer-weiter {
+  margin: 4px 0 0;
+}
+@media (max-width: 520px) {
+  .vp-steuer-gruende > div {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
   }
 }
 
