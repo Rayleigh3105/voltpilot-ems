@@ -246,6 +246,7 @@ Projekt-Chronik; einzelne Dateien sind gross.
 - [Verbrauchsmanagement v1 / P3a: „Jetzt voll laden" steht, wo eingegriffen wird](portal/verbrauchsmanagement-v1-p3a-jetzt-voll-l.md)
 - [Verbrauchsmanagement v1 · P5: die Ladepark-KAPSEL ist entfallen, der RAHMEN steht](portal/verbrauchsmanagement-v1-p5-die-ladepark.md)
 - [Verbrauchsmanagement v1 · P7: die FAHRZEUGE (je Ladekarte eine Steuerart)](portal/verbrauchsmanagement-v1-p7-die-fahrzeuge.md)
+- [Preise und Wetter (Fassung 3): Antwort zuerst, feste Jetzt-Linie](portal/preise-und-wetter-fassung-3.md) — aktueller Stand
 - [Verlauf-Sprache P1: EIN Chrome für alle sechs Reiter des Verlaufs](portal/verlauf-sprache-p1-ein-chrome-fuer-alle.md)
 - [Verlauf-Sprache P2b: EIN Aufklapper, und Zustände, die ihren Platz reservieren](portal/verlauf-sprache-p2b-ein-aufklapper-und-z.md)
 - [Verlauf-Sprache P8: die Portfolio-Zwillinge, und die Tabelle als LISTE](portal/verlauf-sprache-p8-die-portfolio-zwillin.md)

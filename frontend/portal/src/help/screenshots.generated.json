@@ -236,50 +236,50 @@
     ]
   },
   "marktpreise": {
-    "title": "Börsenpreise im Tagesverlauf",
+    "title": "Börsenpreis jetzt und in den nächsten Stunden",
     "file": "marktpreise.png",
     "width": 1192,
-    "height": 1500,
-    "alt": "Börsenpreise im Tagesverlauf. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "height": 932,
+    "alt": "Börsenpreis jetzt und in den nächsten Stunden. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
-        "x": 2.64,
-        "y": 12.5,
-        "text": "Marktpreise beschreiben die Börse, nicht automatisch Ihren vollständigen Tarif."
+        "x": 4.36,
+        "y": 22.1,
+        "text": "Oben steht der Börsenpreis jetzt und wie er im Vergleich zu den kommenden Stunden liegt."
+      },
+      {
+        "x": 42.45,
+        "y": 22.1,
+        "text": "Die zwei Kacheln schauen nur nach vorn: die günstigsten und die teuersten zwei Stunden."
       },
       {
         "x": 6.46,
-        "y": 83.45,
-        "text": "Die Kennzahl gehört zum ausgewählten Zeitraum und ihrer angegebenen Einheit."
-      },
-      {
-        "x": 6.46,
-        "y": 38.05,
-        "text": "Die Zeitachse zeigt die günstigen und teuren Abschnitte des Tages."
+        "y": 46.24,
+        "text": "Die dunkle Linie markiert jetzt. Ein Tipp auf einen Balken zeigt seine Viertelstunde oben."
       }
     ]
   },
   "wetter": {
-    "title": "Wetter und erwartete PV-Leistung",
+    "title": "Wetter und Sonnenstrom",
     "file": "wetter.png",
     "width": 1192,
-    "height": 1200,
-    "alt": "Wetter und erwartete PV-Leistung. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "height": 1181,
+    "alt": "Wetter und Sonnenstrom. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
-        "x": 2.64,
-        "y": 15.63,
-        "text": "Die Vorhersage bezieht sich auf den Standort der geöffneten Anlage."
+        "x": 4.36,
+        "y": 17.44,
+        "text": "Oben steht das Wetter jetzt; darunter, was die Anlage gerade und heute erzeugt."
+      },
+      {
+        "x": 49.09,
+        "y": 17.44,
+        "text": "Die Karten zeigen die nächsten Tage. Ein Tipp wählt den Tag für das Bild."
       },
       {
         "x": 6.46,
-        "y": 28.32,
-        "text": "Diese Leistung ist vorhergesagt, nicht bereits gemessen."
-      },
-      {
-        "x": 6.46,
-        "y": 35.15,
-        "text": "Der Verlauf macht die erwarteten Änderungen über den Tag sichtbar."
+        "y": 44.64,
+        "text": "Gemessen ist gefüllt, erwartet schraffiert; die dunkle Linie markiert jetzt."
       }
     ]
   },

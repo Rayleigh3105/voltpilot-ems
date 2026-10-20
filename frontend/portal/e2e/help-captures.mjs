@@ -59,15 +59,16 @@ export const captures = [
     point('[aria-label^="Erlöse ·"]', 'Das Ergebnis steht vorn; daneben die Posten, aus denen es entsteht.'),
     point('section[aria-label="Abrechnung"]', 'Die Abrechnung zeigt je Posten Menge, Durchschnittspreis und Betrag.'),
   ] },
-  { id: 'marktpreise', title: 'Börsenpreise im Tagesverlauf', hash: plant('marktpreise'), root: 'main', maxHeight: 1500, points: [
-    point('main h1', 'Marktpreise beschreiben die Börse, nicht automatisch Ihren vollständigen Tarif.'),
-    point('text=Ø im Zeitraum', 'Die Kennzahl gehört zum ausgewählten Zeitraum und ihrer angegebenen Einheit.'),
-    point('main canvas', 'Die Zeitachse zeigt die günstigen und teuren Abschnitte des Tages.'),
+  // Um 5 Uhr früh liegt in der Beispielreihe noch der ganze Tag vor jetzt - mit genug Spanne für drei Stufen.
+  { id: 'marktpreise', title: 'Börsenpreis jetzt und in den nächsten Stunden', uhr: '2026-09-10T03:00:00Z', hash: plant('marktpreise'), root: 'main', maxHeight: 1500, points: [
+    point('.vp-pz-antwort', 'Oben steht der Börsenpreis jetzt und wie er im Vergleich zu den kommenden Stunden liegt.'),
+    point('.vp-pz-kachel', 'Die zwei Kacheln schauen nur nach vorn: die günstigsten und die teuersten zwei Stunden.'),
+    point('.vp-pz-bild', 'Die dunkle Linie markiert jetzt. Ein Tipp auf einen Balken zeigt seine Viertelstunde oben.'),
   ] },
-  { id: 'wetter', title: 'Wetter und erwartete PV-Leistung', hash: plant('wetter'), root: 'main', points: [
-    point('main h1', 'Die Vorhersage bezieht sich auf den Standort der geöffneten Anlage.'),
-    point('text=erwartete Spitze heute', 'Diese Leistung ist vorhergesagt, nicht bereits gemessen.'),
-    point('main canvas', 'Der Verlauf macht die erwarteten Änderungen über den Tag sichtbar.'),
+  { id: 'wetter', title: 'Wetter und Sonnenstrom', hash: plant('wetter'), root: 'main', points: [
+    point('.vp-pz-antwort', 'Oben steht das Wetter jetzt; darunter, was die Anlage gerade und heute erzeugt.'),
+    point('.vp-wt-tage', 'Die Karten zeigen die nächsten Tage. Ein Tipp wählt den Tag für das Bild.'),
+    point('.vp-pz-bild', 'Gemessen ist gefüllt, erwartet schraffiert; die dunkle Linie markiert jetzt.'),
   ] },
   { id: 'prognose', title: 'Wie gut die Vorhersage zuletzt traf', hash: plant('fahrplan'), root: '[aria-label="Worauf Ihr Plan achtet"]', points: [
     point('h3:has-text("Worauf Ihr Plan achtet")', 'Hier stehen die Angaben, mit denen der Fahrplan rechnet - auch die Vorhersage.'),

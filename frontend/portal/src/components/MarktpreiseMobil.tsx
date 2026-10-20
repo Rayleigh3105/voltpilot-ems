@@ -1,43 +1,13 @@
-import type { ReactNode } from 'react';
-import type { JetztPreis, PreisZeile, TagFokus, TagWahl } from '../marktpreise';
-import { ctLabel } from '../marktpreise';
+import type { PreisZeile, TagFokus, TagWahl } from '../marktpreise';
 import { useIsPhone } from '../useIsPhone';
 import './Marktpreise.css';
 
 /**
- * Die Render-Teile des Reiters „Marktpreise" in der Sprache der Variante C
- * (Konzept `data/vp-verlauf-sprache-konzept-v5` §4.3, Paket P4). Sie rechnen
- * NICHTS — jede Zahl und jedes Wort kommt aus `src/marktpreise.ts`.
+ * Geteilte Render-Teile aus dem Reiter „Marktpreise" (Variante C, Paket P4):
+ * das Tag-Segment (heute im Fahrplan), die Kennzahl-Zeilen und das
+ * Profi-Detail (heute im Rückblick und im Erklär-Blatt der Preis-Seite). Sie
+ * rechnen NICHTS — jede Zahl und jedes Wort kommt aus `src/marktpreise.ts`.
  */
-
-/**
- * **E8 · das Statement** (Captain-Entscheid 03.09.2026, wörtlich: „a) Statement
- * auf Marktpreise, Lastspitzen, Wetter"): die EINE Zahl des Reiters steht auf
- * der FLÄCHE, nicht in einer Karte — Label 12/700, Zahl 36/800, Satz 16.
- *
- * ⚠ **Die Zahl steht in TINTE** (`--vp-c-fg`), auch bei einem Negativpreis
- *   (§4.3 Sonderzustand). Bis P4 trug sie den Ton als Farbe und der
- *   Negativpreis-Fall stand in Grün — eine Farbe, die dem Kunden „gut" sagte,
- *   wo die Fläche „Einspeisen kostet gerade Geld" meinte. Der Ton lebt jetzt
- *   ausschliesslich im WORT (`.vp-chip`, EINE Chip-Optik ohne Farbton).
- */
-export function MarktStatement({ preis, bezug }: { preis: JetztPreis; bezug: string | null }) {
-  return (
-    <div className="vp-c-stm vp-mp-stm">
-      <h2 className="vp-c-label vp-mp-stm-label">
-        <span>Börsenpreis jetzt{preis.zeit ? ` · ${preis.zeit}` : ''}</span>
-      </h2>
-      <p className="vp-c-stm-zahl">{ctLabel(preis.ct)}</p>
-      <p className="vp-c-stm-ein">
-        <span className="vp-chip">{preis.wort}</span>
-        <span>
-          {preis.bedeutung}
-          {bezug ? ` · ${bezug}` : ''}
-        </span>
-      </p>
-    </div>
-  );
-}
 
 /** Ein Eintrag des Tag-Segments; `datum` ist eine ruhige zweite Zeile („Mi 24.09."). */
 export interface TagSegmentEintrag<T extends string> {
@@ -150,18 +120,5 @@ export function ProfiZahlen({ zeilen }: { zeilen: readonly PreisZeile[] }) {
         ))}
       </tbody>
     </table>
-  );
-}
-
-/**
- * Der Weg zum Fahrplan als 48-px-Zeile (§4.3) statt als Satzfragment in einer
- * `vp-note`. Er BLEIBT sichtbar — er erklärt, warum es diesen Reiter gibt.
- */
-export function WegZeile({ href, children }: { href: string; children: ReactNode }) {
-  return (
-    <a className="vp-mp-weg" href={href}>
-      <span>{children}</span>
-      <span aria-hidden="true">›</span>
-    </a>
   );
 }

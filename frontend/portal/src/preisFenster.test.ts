@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  FLACH_GRUND,
-  KEIN_SATZ_GRUND,
   ctReihe,
   fensterWort,
   preisFenster,
-  preisKern,
   preisMarken,
   spanneWort,
   fensterFuerSlot,
@@ -128,37 +125,6 @@ describe('preisMarken · höchstens zwei, jede mit Wort UND Zahl', () => {
   it('markiert nichts, wenn Tief und Hoch derselbe Slot sind', () => {
     expect(preisMarken([7, null, null])).toEqual([]);
     expect(preisMarken([null, null])).toEqual([]);
-  });
-});
-
-describe('preisKern · der Satz ist abgeleitet, sonst steht dort der Grund', () => {
-  it('nennt Zeitraum und Aussage und hängt das Hoch als Anker an', () => {
-    const cts = tagesReihe();
-    const k = preisKern(cts, zeiten(), preisFenster(cts, 15));
-    expect(k.satz).toMatch(/^Am günstigsten ist Strom zwischen 12:00 und 14:15 Uhr/);
-    expect(k.satz).toMatch(/dann kostet er nichts\.$/);
-    expect(k.anker).toMatch(/^Am teuersten um 18:00 Uhr mit 21,0 ct\.$/);
-    expect(k.grund).toBeNull();
-  });
-
-  it('nennt ohne Negativpreise den mittleren Preis des günstigen Fensters', () => {
-    const cts = tagesReihe().map((v) => (v < 0 ? 2 : v));
-    const k = preisKern(cts, zeiten(), preisFenster(cts, 15));
-    expect(k.satz).toMatch(/im Schnitt 2,0 ct\/kWh\.$/);
-  });
-
-  it('sagt bei flacher Kurve den GRUND statt eines erfundenen Satzes', () => {
-    const flach = Array.from({ length: 96 }, () => 12);
-    const k = preisKern(flach, zeiten(), preisFenster(flach, 15));
-    expect(k.satz).toBeNull();
-    expect(k.grund).toBe(FLACH_GRUND);
-  });
-
-  it('sagt ohne Preise den anderen Grund', () => {
-    const leer = new Array(96).fill(null);
-    const k = preisKern(leer, zeiten(), []);
-    expect(k.satz).toBeNull();
-    expect(k.grund).toBe(KEIN_SATZ_GRUND);
   });
 });
 

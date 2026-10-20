@@ -101,6 +101,17 @@ Produktstand neu geschrieben - die beschlossene Änderung dieser Fläche; ein Ze
 vier eingefügten Tag-Stücke. `HistoryChart.tsx` bleibt bytegleich (`diagramme.json`); sein Feld `info.farbe` trägt
 seither den Bereich der Art.
 
+**Preise und Wetter, Fassung 3 (20.10.2026, Konzept `vp-preise-wetter-konzept-f3`, Entscheide E1–E8 = A):**
+`verlauf-marktpreise.html` zeigt die neu gebaute Preis-Seite: die Antwort zuerst (Börsenpreis jetzt mit einer
+Nachkommastelle, Stufe im Vergleich der kommenden Stunden, „noch bis"), das Bild mit Jetzt-Linie (in jsdom ohne
+Breite, also ohne SVG) und die Zeilen Rückblick, Fahrplan und Börsenpreis. Weg sind die Zeitleiste über der
+Antwort (E3: Woche, Monat, Jahr wohnen im Rückblick-Blatt), das Statement „Günstig · gute Zeit zum Laden" nach
+festen Schwellen, die fünf Kennzahl-Zeilen, das Profi-Detail auf der Fläche (jetzt im Erklär-Blatt) und der
+Fuß-Aufklapper (sein Lead-Satz steht wörtlich im Erklär-Blatt). Die Aufnahme ist mit `vitest -u` gegen den
+aktuellen Produktstand neu geschrieben - die bewusste, im Konzept beschlossene Änderung dieser Fläche, keine
+gefundene Abweichung; `git diff --stat` zeigt unter den Aufnahmen nur `verlauf-marktpreise.html`.
+`PriceHistoryChart.tsx` (in `diagramme.json`) ist unverändert: er zeichnet weiter die Kurve des Rückblicks.
+
 `uemsBestandsschutz.test.tsx` ergänzt neun Snapshots: vier O18-Fälle, sechs Verlauf-Reiter in einem Snapshot,
 drei Portfolio-Reiter und die `startEbene`-Matrix (64 Eingaben). Die fünf in den Bestands-Tests gestubbten
 Canvas-/Diagrammkomponenten schützt zusätzlich `diagramme.json` mit SHA-256 des Bezugsstands.

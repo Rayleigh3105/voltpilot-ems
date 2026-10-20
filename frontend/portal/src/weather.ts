@@ -80,8 +80,8 @@ const DAY_START_HOUR = 6;
 const DAY_END_HOUR = 21;
 /**
  * Below this cloud cover an hour counts as sunny, above CLOUDY as overcast.
- * EXPORTED weil die benannten Himmelsblöcke (`wetterLeistung.himmelBloecke`)
- * dieselbe Frage beantworten - zwei Schwellensätze wären zwei Wahrheiten.
+ * EXPORTED weil der Himmel der Wetter-Seite (`wetterTag.ts`: sonnig, wechselnd,
+ * bewölkt) dieselbe Frage beantwortet - zwei Schwellensätze wären zwei Wahrheiten.
  */
 export const SUNNY_MAX_CLOUD = 40;
 export const CLOUDY_MIN_CLOUD = 65;
@@ -156,7 +156,7 @@ export const TOMORROW_MIN_HOURS = 4;
  * „Lage"-Zeile kommen woanders her - nämlich aus den PV-/Last-Eingaben, mit
  * denen der Fahrplan wirklich gerechnet hat (`fahrplanLage.ts`). Aus
  * Bewölkung und kWp eine zweite Erzeugungsprognose zu rechnen ist im Haus
- * ausdrücklich verboten (`wetterLeistung.ts`), und diese Trennung ist der
+ * ausdrücklich verboten (`wetterTag.ts`), und diese Trennung ist der
  * Grund, warum hier ein WORT und keine Leistung zurückkommt.
  *
  * Die Schwellen sind {@link SUNNY_MAX_CLOUD}/{@link CLOUDY_MIN_CLOUD} - kein

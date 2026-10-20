@@ -1,7 +1,7 @@
 /**
  * One shared chart palette + type token set for every ECharts surface in the
- * portal (TelemetryChart, ScheduleChart, HistoryChart, WeatherChart,
- * PriceHistoryChart, ForecastQualityChart). ECharts renders to canvas and can't
+ * portal (TelemetryChart, ScheduleChart, HistoryChart, PriceHistoryChart,
+ * ForecastQualityChart) and the SVG pictures of the Preis- and Wetter-Seite. ECharts renders to canvas and can't
  * resolve CSS var() at paint time, so we read the design-system `--vp-chart-*`
  * tokens (tokens/colors.css) from :root once, memoise them, and fall back to the
  * token defaults when running headless. Charts import THIS instead of scattering
@@ -82,6 +82,21 @@ export interface ChartTheme {
    * bestehende Kosten-Rot {@link discharge}.
    */
   guenstig: string;
+  /**
+   * Die vier PREIS-STUFEN der Preis-Seite (Konzept „Preise und Wetter"
+   * Fassung 3, E2 = A vom 20.10.2026) und der Ton der Vergangenheit. Eigene
+   * Einträge statt {@link guenstig}/{@link discharge}: jenes Paar misst nur
+   * ΔE 6,0 und bleibt dem Cockpit-Streifen; diese vier sind mit `--pairs all`
+   * gemessen (schlechtestes CVD-Paar 11,0). Die Begründung steht an den
+   * Tokens in `colors.css`.
+   */
+  preisGuenstig: string;
+  preisMittel: string;
+  preisTeuer: string;
+  preisNegativ: string;
+  preisVorbei: string;
+  /** Die Jetzt-Linie und ihre Marke (Preise und Wetter). */
+  jetzt: string;
   /**
    * The GRID role hue (teal) - the same `--vp-flow-grid` the energy-flow diagram
    * uses, so a "Netz" series reads as the grid everywhere. Deliberately NOT
@@ -174,6 +189,12 @@ export function chartTheme(): ChartTheme {
     idle: read('--vp-chart-idle', '#EDEFF2'),
     neutral: read('--vp-chart-neutral', '#607D8B'),
     guenstig: read('--vp-chart-guenstig', '#15803D'),
+    preisGuenstig: read('--vp-chart-preis-guenstig', '#16A34A'),
+    preisMittel: read('--vp-chart-preis-mittel', '#8492A6'),
+    preisTeuer: read('--vp-chart-preis-teuer', '#B91C1C'),
+    preisNegativ: read('--vp-chart-preis-negativ', '#0F766E'),
+    preisVorbei: read('--vp-chart-preis-vorbei', '#DBE2EA'),
+    jetzt: read('--vp-chart-jetzt', '#0F172A'),
     flowGrid: read('--vp-flow-grid', '#0ea5a3'),
     flowGridLine: read('--vp-chart-grid-line', '#036672'),
     consumer: read('--vp-flow-load', '#8b5cf6'),

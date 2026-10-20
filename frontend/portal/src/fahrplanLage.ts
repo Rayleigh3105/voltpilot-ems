@@ -21,7 +21,7 @@
  *    Es sind dieselben Reihen, die das Fahrplan-Diagramm als Prognose-Linien
  *    zeichnet - Zeile und Diagramm können sich damit nicht widersprechen. Aus
  *    Bewölkung und kWp eine ZWEITE Erzeugungsprognose zu rechnen ist im Haus
- *    ausdrücklich verboten (`wetterLeistung.ts`); das Wetter liefert deshalb
+ *    ausdrücklich verboten (`wetterTag.ts`); das Wetter liefert deshalb
  *    hier nur ein WORT ({@link weatherWhyTomorrow}), nie eine Zahl.
  * 2. **Reicht der Horizont nicht bis morgen** (vormittags, bevor die
  *    Börsenpreise für morgen vorliegen), sagt die Zeile GENAU DAS -

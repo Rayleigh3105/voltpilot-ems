@@ -988,7 +988,9 @@ const CHART_FILES = [
   'ScheduleChart.tsx',
   'HistoryChart.tsx',
   'TelemetryChart.tsx',
-  'WeatherChart.tsx',
+  // Preis- und Wetter-Bild der Fassung 3 (Preise und Wetter, 20.10.2026).
+  'components/PreisZeitstrahl.tsx',
+  'components/WetterTag.tsx',
   'PriceHistoryChart.tsx',
   'ForecastQualityChart.tsx',
   'components/VerlaufChart.tsx',
@@ -2085,7 +2087,6 @@ const KENNZAHL_BESTAND: string[] = [
   'massnahmenBild.ts', // neu: „So läuft eine Maßnahme“ - ohne Kennzahl ein Satz zum Abschluss (Verbessern v1 PR 2)
   'ortArchiv.ts', // neu: ein Ort mit Kennzahlen wird nicht gelöscht
   'pages/AbweichungSeite.tsx', // neu: „Über diese Abweichung“ nennt ihre Kennzahl (Verbessern-Konzept v1, PR3)
-  'pages/DataPages.tsx', // alt
   'pages/EnergiezielSeite.tsx', // neu: die Seite eines Energieziels führt zu seiner Kennzahl (Konzept Verbessern §6.4)
   'pages/MassnahmeSeite.tsx', // neu: „Wofür und woran gemessen“ nennt die Kennzahl der Messgrundlage (Verbessern v1 PR 2, §6.6)
   'portfolioCockpit.ts', // alt

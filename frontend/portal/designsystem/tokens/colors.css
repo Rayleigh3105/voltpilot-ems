@@ -142,6 +142,25 @@
      (`--vp-chart-discharge`): ein teures Fenster IST eine Kosten-Aussage. */
   --vp-chart-guenstig:  #15803D;  /* 5,0:1 - guenstiges/negatives Preisfenster */
 
+  /* --- Preis-STUFEN der Preis-Seite (Konzept „Preise und Wetter", Fassung 3,
+     Entscheid E2 = A vom 20.10.2026) -----------------------------------------
+     Die Balken je Viertelstunde tragen drei Stufen im Vergleich der KOMMENDEN
+     Stunden (je ein Drittel), dazu „unter null". Gemessen mit dem
+     dataviz-Validator, `--pairs all` ueber alle vier Toene:
+       guenstig #16A34A x teuer #B91C1C -> CVD 11,0 (deutan), Normalsicht 33,8;
+       schlechtestes Paar ueberhaupt #16A34A x #0F766E -> Normalsicht 16,3.
+     Mittel ist der NEUTRALE Mittelpunkt (kein Farbton, Diverging-Regel) und
+     steht mit 3,1:1 ueber Weiss. Jede Stufe steht zusaetzlich als WORT neben
+     der Zahl und in der Legende - Farbe ist nie allein.
+     Das alte Fenster-Paar darueber bleibt fuer den Cockpit-Streifen; es misst
+     nur 6,0 und ist deshalb hier nicht verwendet. */
+  --vp-chart-preis-guenstig: #16A34A;  /* 3,3:1 - unteres Drittel */
+  --vp-chart-preis-mittel:   #8492A6;  /* 3,1:1 - mittleres Drittel, neutral */
+  --vp-chart-preis-teuer:    #B91C1C;  /* 6,5:1 - oberes Drittel */
+  --vp-chart-preis-negativ:  #0F766E;  /* 5,5:1 - unter null */
+  --vp-chart-preis-vorbei:   #DBE2EA;  /* vergangene Viertelstunden, ohne Stufe */
+  --vp-chart-jetzt:          #0F172A;  /* die Jetzt-Linie und ihre Marke */
+
   /* --- Zustands-Ink (Flaechen ausserhalb der Diagramme) ---
      Zwei Toene, die im Portal an vielen Stellen als Literal standen. Sie sind
      bewusst NICHT `--vp-flow-batt-ink` (#166534) bzw. `--vp-flow-pv`: jene

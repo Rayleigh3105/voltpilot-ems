@@ -1,5 +1,7 @@
 # Stufe 4 · Die Wetter-Fläche antwortet in kW, und die kW kommen aus dem FAHRPLAN (src/wetterLeistung.ts).
 
+> ⚠ Abgelöst durch [Preise und Wetter, Fassung 3](../preise-und-wetter-fassung-3.md): Wetter zuerst, `wetterLeistung.ts` gelöscht, Regeln in `wetterTag.ts`. Die Ehrlichkeitsregel (keine Leistung aus W/m² × kWp) gilt weiter.
+
 Ausgelagert aus `frontend/portal/AGENTS.md` am 05.09.2026 (Abschnitt Nr. 2, Punkt 018).
 
 - **Stufe 4 · Die Wetter-Fläche antwortet in kW, und die kW kommen aus dem FAHRPLAN (`src/wetterLeistung.ts`).** „412 W/m²" sagt einem Anlagenbetreiber nichts; Leitgröße ist die **erwartete Leistung seiner Anlage**. **⚠ Es gibt keinen Portal-Endpunkt für die rohe PV-Prognose-Reihe** — die eine Stelle, an der die Prognose des aktiven PV-Modells das Portal erreicht, ist `ScheduleSlot.pvKw` (`schedule.pv_kw`), und genau die mittelt `erwarteteLeistung` auf das Stundenraster der Vorhersage. Daraus zwei Ehrlichkeitsregeln: **es wird NICHTS aus W/m² × kWp umgerechnet** (das wäre eine zweite Prognose neben der, mit der wirklich geplant wird), und **wo der Plan-Horizont endet, endet die Linie** — ohne jeden Plan-Wert führt die Fläche wieder die Sonnenstärke und der Kopf sagt den GRUND. `WetterSection` holt den Fahrplan dafür FAIL-SOFT.

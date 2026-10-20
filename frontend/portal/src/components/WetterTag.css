@@ -1,0 +1,381 @@
+/*
+ * Die Wetter-Seite (Konzept „Preise und Wetter", Fassung 3, E5 = A „Wetter
+ * zuerst", 20.10.2026). Sie teilt Label, ⓘ, ‹ › / „Jetzt", das Bild und die
+ * Zeilen mit der Preis-Seite (`PreisZeitstrahl.css`); hier steht nur, was es
+ * dort nicht gibt: Symbol, Temperatur, die zwei Zahlen, die Tageskarten und
+ * die Stundentabelle. Von Anfang an streng in `verlaufSkala.test.ts` und
+ * `verlaufMobil.test.ts`.
+ */
+
+/* --- Das Wettersymbol --------------------------------------------------- */
+
+.vp-ws {
+  display: block;
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
+.vp-ws-sonne {
+  fill: var(--vp-flow-pv, #f59e0b);
+}
+
+.vp-ws-strahl {
+  stroke: var(--vp-flow-pv, #f59e0b);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.vp-ws-wolke {
+  fill: var(--vp-c-border, #e2e8f0);
+  stroke: var(--vp-c-muted-fg, #475569);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+
+.vp-ws-wolke.is-hell {
+  fill: var(--vp-c-card, #ffffff);
+}
+
+.vp-ws-mond {
+  fill: #cbd5e1;
+  stroke: var(--vp-c-muted-fg, #475569);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+/* --- Die Antwort oben --------------------------------------------------- */
+
+.vp-wt-kopf {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 2px var(--vp-c-space-4, 16px);
+}
+
+.vp-wt-symbol {
+  display: grid;
+  place-items: center;
+  grid-row: span 2;
+  width: 64px;
+  height: 64px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--vp-flow-pv, #f59e0b) 14%, #fff);
+}
+
+.vp-wt-symbol.is-nacht,
+.vp-wt-symbol.is-wolke {
+  background: var(--vp-c-muted, #e9eff8);
+}
+
+.vp-wt-temp {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px var(--vp-c-space-3, 12px);
+  min-width: 0;
+}
+
+.vp-wt-temp b {
+  font-size: var(--vp-c-fs-hero-phone, 36px);
+  font-weight: var(--vp-c-fw-800, 800);
+  line-height: var(--vp-c-lh-tight, 1.1);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.vp-wt-temp span {
+  font-size: var(--vp-c-fs-20, 20px);
+  font-weight: var(--vp-c-fw-700, 700);
+}
+
+@media (min-width: 721px) {
+  .vp-wt-temp b {
+    font-size: var(--vp-c-fs-48, 48px);
+  }
+}
+
+.vp-wt-sub {
+  min-width: 0;
+  font-size: var(--vp-c-fs-14, 14px);
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-wt-minis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--vp-c-space-3, 12px);
+}
+
+.vp-wt-mini {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  padding: 10px var(--vp-c-space-3, 12px);
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-c-radius, 16px);
+  background: var(--vp-c-card, #ffffff);
+}
+
+.vp-wt-mini-titel {
+  font-size: var(--vp-c-fs-12, 12px);
+  font-weight: var(--vp-c-fw-700, 700);
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-wt-mini b {
+  font-size: var(--vp-c-fs-20, 20px);
+  font-weight: var(--vp-c-fw-800, 800);
+  line-height: var(--vp-c-lh-title, 1.25);
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-wt-mini b small {
+  margin-left: 4px;
+  font-size: var(--vp-c-fs-14, 14px);
+  font-weight: var(--vp-c-fw-700, 700);
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-wt-mini-zeile {
+  font-size: var(--vp-c-fs-12, 12px);
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* --- Die drei Tage ------------------------------------------------------ */
+
+.vp-wt-tage {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--vp-c-space-2, 8px);
+}
+
+.vp-wt-tag {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 4px 11px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-c-radius, 16px);
+  background: var(--vp-c-card, #ffffff);
+  color: var(--vp-c-fg, #1e293b);
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
+  text-align: center;
+  cursor: pointer;
+}
+
+.vp-wt-tag[aria-selected='true'] {
+  border-color: var(--vp-c-primary, #2563eb);
+  box-shadow: 0 0 0 1px var(--vp-c-primary, #2563eb);
+  background: #f5f8ff;
+}
+
+.vp-wt-tag:focus-visible {
+  outline: 2px solid var(--vp-c-primary, #2563eb);
+  outline-offset: 2px;
+}
+
+.vp-wt-tag-name {
+  font-size: var(--vp-c-fs-14, 14px);
+  font-weight: var(--vp-c-fw-700, 700);
+}
+
+.vp-wt-tag-wort {
+  display: none;
+  font-size: var(--vp-c-fs-14, 14px);
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+@media (min-width: 721px) {
+  .vp-wt-tag-wort {
+    display: block;
+  }
+}
+
+.vp-wt-tag-temp {
+  font-size: var(--vp-c-fs-14, 14px);
+  font-weight: var(--vp-c-fw-700, 700);
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-wt-tag-ertrag {
+  font-size: var(--vp-c-fs-12, 12px);
+  font-weight: var(--vp-c-fw-600, 600);
+  color: var(--vp-c-muted-fg, #475569);
+  white-space: nowrap;
+}
+
+.vp-wt-tag-ertrag b {
+  color: var(--vp-chart-pv-line, #e65100);
+  font-weight: var(--vp-c-fw-800, 800);
+}
+
+.vp-wt-tag-ertrag b.is-neutral {
+  color: var(--vp-c-fg, #1e293b);
+}
+
+/* --- Das Bild ----------------------------------------------------------- */
+
+.vp-wt-bild-temp {
+  font-size: var(--vp-c-fs-12, 12px);
+  font-weight: var(--vp-c-fw-700, 700);
+  fill: var(--vp-c-fg, #1e293b);
+}
+
+.vp-wt-bild-spitze {
+  font-size: var(--vp-c-fs-12, 12px);
+  font-weight: var(--vp-c-fw-800, 800);
+  fill: #9a3412;
+  paint-order: stroke;
+  stroke: #fff;
+  stroke-width: 3px;
+}
+
+.vp-wt-legende-erwartet {
+  border: 1px solid var(--vp-chart-pv-line, #e65100);
+  background: repeating-linear-gradient(
+    135deg,
+    var(--vp-chart-pv, #ff9800) 0 2px,
+    #fff 2px 5px
+  );
+}
+
+.vp-wt-hinweis {
+  margin: 0;
+  padding: var(--vp-c-space-2, 8px) 10px;
+  border-radius: var(--vp-c-radius-sm, 10px);
+  background: var(--vp-c-bg, #f8fafc);
+  font-size: var(--vp-c-fs-14, 14px);
+  line-height: var(--vp-c-lh-text, 1.5);
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-wt-kopfzeile {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--vp-c-space-3, 12px);
+}
+
+.vp-wt-kopfzeile h2 {
+  margin: 0;
+  font-size: var(--vp-c-fs-16, 16px);
+  font-weight: var(--vp-c-fw-700, 700);
+}
+
+.vp-wt-kopfzeile span {
+  font-size: var(--vp-c-fs-14, 14px);
+  font-weight: var(--vp-c-fw-700, 700);
+  color: var(--vp-c-muted-fg, #475569);
+  white-space: nowrap;
+}
+
+/* --- Stunde für Stunde -------------------------------------------------- */
+
+.vp-wt-tabelle {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
+  font-size: var(--vp-c-fs-14, 14px);
+  color: var(--vp-c-fg, #1e293b);
+}
+
+.vp-wt-tabelle th,
+.vp-wt-tabelle td {
+  padding: 7px 6px;
+  border-bottom: 1px solid var(--vp-c-border, #e2e8f0);
+  text-align: left;
+  vertical-align: middle;
+}
+
+.vp-wt-tabelle thead th {
+  font-size: var(--vp-c-fs-12, 12px);
+  font-weight: var(--vp-c-fw-700, 700);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-wt-tabelle tbody th {
+  font-weight: var(--vp-c-fw-600, 600);
+  white-space: nowrap;
+}
+
+.vp-wt-tabelle .is-zahl {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.vp-wt-tabelle small {
+  font-size: var(--vp-c-fs-12, 12px);
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-wt-tabelle tr.is-vorbei th,
+.vp-wt-tabelle tr.is-vorbei td {
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-wt-tabelle tr.is-jetzt th,
+.vp-wt-tabelle tr.is-jetzt td {
+  background: #f5f8ff;
+  font-weight: var(--vp-c-fw-700, 700);
+}
+
+.vp-wt-tabelle tbody tr:last-child th,
+.vp-wt-tabelle tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.vp-wt-tabelle-himmel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vp-c-space-2, 8px);
+  white-space: nowrap;
+}
+
+/* --- Ab 721 px: Wetter und Tage in einer Reihe, Bild und Stunden daneben --- */
+
+@media (min-width: 721px) {
+  .vp-wt-oben {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    gap: var(--vp-c-space-4, 16px);
+    align-items: stretch;
+  }
+
+  .vp-wt-oben .vp-pz-antwort {
+    padding: var(--vp-c-space-4, 16px) 18px;
+    border: 1px solid var(--vp-c-border, #e2e8f0);
+    border-radius: var(--vp-c-radius, 16px);
+    background: var(--vp-c-card, #ffffff);
+  }
+
+  .vp-wt-oben .vp-wt-tage {
+    gap: var(--vp-c-space-3, 12px);
+  }
+
+  .vp-wt-oben .vp-wt-tag {
+    gap: 6px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .vp-wt-mitte {
+    display: grid;
+    grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr);
+    gap: var(--vp-c-space-4, 16px);
+    align-items: start;
+  }
+}
+
+.vp-wt-oben,
+.vp-wt-mitte {
+  display: grid;
+  gap: var(--vp-c-space-4, 16px);
+  min-width: 0;
+}

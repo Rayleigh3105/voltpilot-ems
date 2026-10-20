@@ -1,16 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { PriceBucket, PriceHistory, PriceRangeSummary } from './api';
+import type { PriceBucket, PriceRangeSummary } from './api';
 import {
-  bezugspreisNote,
   ctFromEurMwh,
   ctLabel,
   fokusFenster,
-  jetztPreis,
   preisZeilen,
   profiZeilen,
   slotTime,
   tagesGrenze,
-  tagWahl,
 } from './marktpreise';
 import { NBSP } from './format';
 
@@ -32,27 +29,6 @@ function reihe(start: string | Date, preise: (number | null)[]): PriceBucket[] {
  */
 function lokal(y: number, m: number, d: number, h: number, min = 0): Date {
   return new Date(y, m - 1, d, h, min, 0, 0);
-}
-
-function history(buckets: PriceBucket[], bucket = 'PT15M'): PriceHistory {
-  return {
-    biddingZone: 'DE-LU',
-    currency: 'EUR',
-    bucket,
-    from: buckets[0]?.ts ?? '2026-08-09T00:00:00Z',
-    to: buckets[buckets.length - 1]?.ts ?? '2026-08-09T00:00:00Z',
-    buckets,
-    summary: {
-      avgEurMwh: null,
-      minEurMwh: null,
-      maxEurMwh: null,
-      cheapestTs: null,
-      mostExpensiveTs: null,
-      count: buckets.length,
-      coverageStart: null,
-      coverageEnd: null,
-    },
-  };
 }
 
 const summary = (p: Partial<PriceRangeSummary>): PriceRangeSummary => ({
@@ -82,65 +58,6 @@ describe('ct-Umrechnung', () => {
   it('schreibt das Vorzeichen aus und schuetzt die Einheit vor dem Umbruch', () => {
     expect(ctLabel(-2.04)).toBe(`-2,04${NBSP}ct/kWh`);
     expect(ctLabel(18.4)).toBe(`18,40${NBSP}ct/kWh`);
-  });
-});
-
-describe('jetztPreis', () => {
-  const buckets = reihe('2026-08-09T12:00:00Z', [76, -20, 150, 40]);
-
-  it('nimmt die Viertelstunde, die JETZT laeuft', () => {
-    const held = jetztPreis(history(buckets), new Date('2026-08-09T12:20:00Z'));
-    expect(held?.ct).toBe(-2);
-    expect(held?.ton).toBe('negativ');
-    expect(held?.wort).toBe('unter Null');
-  });
-
-  it('nimmt den Slot ab seiner Startsekunde und bis eine ms vor dem Ende', () => {
-    expect(jetztPreis(history(buckets), new Date('2026-08-09T12:15:00.000Z'))?.ct).toBe(-2);
-    expect(jetztPreis(history(buckets), new Date('2026-08-09T12:29:59.999Z'))?.ct).toBe(-2);
-    expect(jetztPreis(history(buckets), new Date('2026-08-09T12:30:00.000Z'))?.ct).toBe(15);
-  });
-
-  it('benennt guenstig, normal und teuer an den Schwellen', () => {
-    const at = (eurMwh: number) =>
-      jetztPreis(history(reihe('2026-08-09T12:00:00Z', [eurMwh])), new Date('2026-08-09T12:05:00Z'))
-        ?.ton;
-    expect(at(0)).toBe('guenstig');
-    expect(at(50)).toBe('guenstig');
-    expect(at(51)).toBe('normal');
-    expect(at(149)).toBe('normal');
-    expect(at(150)).toBe('teuer');
-    expect(at(-1)).toBe('negativ');
-  });
-
-  it('erfindet NIE einen Preis, wenn der Zeitraum das Jetzt nicht abdeckt', () => {
-    // Rueckblick auf gestern: der letzte bekannte Preis darf nicht als "jetzt"
-    // durchgehen.
-    expect(jetztPreis(history(buckets), new Date('2026-08-10T09:00:00Z'))).toBeNull();
-    expect(jetztPreis(history(buckets), new Date('2026-08-09T11:00:00Z'))).toBeNull();
-  });
-
-  it('schweigt bei einer Luecke in der Reihe statt zu interpolieren', () => {
-    const mitLuecke = reihe('2026-08-09T12:00:00Z', [76, null, 150]);
-    expect(jetztPreis(history(mitLuecke), new Date('2026-08-09T12:20:00Z'))).toBeNull();
-  });
-
-  it('gilt nur fuer die Viertelstunden-Aufloesung', () => {
-    // Ein Tages-Bucket beantwortet "was kostet Strom JETZT" nicht.
-    expect(jetztPreis(history(buckets, 'P1D'), new Date('2026-08-09T12:20:00Z'))).toBeNull();
-    expect(jetztPreis(null, new Date())).toBeNull();
-  });
-});
-
-describe('bezugspreisNote', () => {
-  it('liest den gelieferten Bezugspreis', () => {
-    expect(bezugspreisNote(32.5)).toBe(`Ihr Bezugspreis 32,50${NBSP}ct/kWh`);
-  });
-
-  it('entfaellt ersatzlos, statt eine Zahl zu erfinden', () => {
-    expect(bezugspreisNote(null)).toBeNull();
-    expect(bezugspreisNote(undefined)).toBeNull();
-    expect(bezugspreisNote(Number.NaN)).toBeNull();
   });
 });
 
@@ -232,30 +149,6 @@ describe('Tagesgrenze und Fokus', () => {
   it('meldet -1, wenn die Reihe im selben Tag bleibt', () => {
     expect(tagesGrenze(reihe(lokal(2026, 8, 9, 10), [1, 2, 3]))).toBe(-1);
     expect(tagesGrenze([])).toBe(-1);
-  });
-
-  it('bietet BEIDE Tage an, sobald die Reihe den Folgetag trägt', () => {
-    expect(tagWahl(ueberNacht, true)).toEqual({
-      optionen: [
-        { id: 'heute', label: 'Heute' },
-        { id: 'morgen', label: 'Morgen' },
-      ],
-      chip: null,
-    });
-    // Auch auf einem vergangenen Tag: die Reihe trägt ihn, also ist er wählbar.
-    expect(tagWahl(ueberNacht, false)?.optionen).toHaveLength(2);
-  });
-
-  it('nennt am HEUTIGEN Tag den Grund, statt die Zeile verschwinden zu lassen', () => {
-    const ohne = reihe(lokal(2026, 8, 9, 10), [1, 2]);
-    expect(tagWahl(ohne, true)).toEqual({
-      optionen: [{ id: 'heute', label: 'Heute' }],
-      chip: 'Morgen ab ca. 13 Uhr',
-    });
-  });
-
-  it('sagt auf einem vergangenen Tag GAR NICHTS — dort gibt es kein „morgen"', () => {
-    expect(tagWahl(reihe(lokal(2026, 8, 9, 10), [1, 2]), false)).toBeNull();
   });
 
   it('schneidet das Fenster genau an der Grenze', () => {

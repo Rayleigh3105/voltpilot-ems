@@ -1,0 +1,564 @@
+/*
+ * Die Preis-Seite (Konzept „Preise und Wetter", Fassung 3, Entscheide E1–E8 = A
+ * vom 20.10.2026). Von Anfang an streng in `verlaufSkala.test.ts` und
+ * `verlaufMobil.test.ts`: nur die Schriftstufen, Gewichte und Abstände der
+ * Variante C, jedes Tippziel mindestens 44 px.
+ *
+ * Was hier NICHT steht, weil es geteilten Bausteinen gehört: die Karte
+ * (`.vp-c-card`), der Chip (`.vp-chip`), das Blatt (`Modal`).
+ */
+
+.vp-pz {
+  display: flex;
+  flex-direction: column;
+  gap: var(--vp-c-space-4, 16px);
+  min-width: 0;
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
+  color: var(--vp-c-fg, #1e293b);
+}
+
+/* ===========================================================================
+ * 1 · DIE ANTWORT OBEN
+ * ========================================================================= */
+
+.vp-pz-oben {
+  display: grid;
+  gap: var(--vp-c-space-4, 16px);
+  min-width: 0;
+}
+
+.vp-pz-antwort {
+  display: grid;
+  gap: var(--vp-c-space-2, 8px);
+  min-width: 0;
+}
+
+.vp-pz-label {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-c-space-2, 8px);
+  min-height: 28px;
+  font-size: var(--vp-c-fs-12, 12px);
+  font-weight: var(--vp-c-fw-700, 700);
+  line-height: var(--vp-c-lh-text, 1.5);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--vp-c-muted-fg, #475569);
+  min-width: 0;
+}
+
+.vp-pz-label > span:first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-pz-label-rechts {
+  margin-left: auto;
+  font-size: var(--vp-c-fs-14, 14px);
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--vp-c-fg, #1e293b);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Das ⓘ: 44 px Trefferfläche, die Zeile bleibt trotzdem 28 px hoch. */
+.vp-pz-info {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  min-width: 44px;
+  min-height: 44px;
+  margin: -8px -10px -8px auto;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--vp-c-muted-fg, #475569);
+  cursor: pointer;
+}
+
+.vp-pz-label-rechts + .vp-pz-info {
+  margin-left: 0;
+}
+
+.vp-pz-zahl {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-2, 8px) var(--vp-c-space-3, 12px);
+  min-width: 0;
+}
+
+.vp-pz-zahl-wert {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.vp-pz-zahl-wert b {
+  font-size: var(--vp-c-fs-hero-phone, 36px);
+  font-weight: var(--vp-c-fw-800, 800);
+  line-height: var(--vp-c-lh-tight, 1.1);
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-pz-zahl-wert small {
+  font-size: var(--vp-c-fs-16, 16px);
+  font-weight: var(--vp-c-fw-700, 700);
+  color: var(--vp-c-muted-fg, #475569);
+  white-space: nowrap;
+}
+
+@media (min-width: 721px) {
+  .vp-pz-zahl-wert b {
+    font-size: var(--vp-c-fs-48, 48px);
+  }
+}
+
+/* Der Chip bleibt EINE Form ohne Farbton (`.vp-chip`); die Stufe trägt nur der Punkt. */
+.vp-pz-stufe {
+  gap: 6px;
+  font-size: var(--vp-c-fs-14, 14px);
+  color: var(--vp-c-fg, #1e293b);
+}
+
+.vp-pz-stufe > i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+}
+
+.vp-pz-noch {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-2, 8px);
+  min-height: 24px;
+  font-size: var(--vp-c-fs-16, 16px);
+  line-height: var(--vp-c-lh-text, 1.5);
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-pz-noch b {
+  color: var(--vp-c-fg, #1e293b);
+  font-weight: var(--vp-c-fw-700, 700);
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-pz-ohne {
+  margin: 0;
+  font-size: var(--vp-c-fs-16, 16px);
+  line-height: var(--vp-c-lh-text, 1.5);
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-pz-schritte {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--vp-c-space-2, 8px);
+}
+
+.vp-pz-schritt {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: 50%;
+  background: var(--vp-c-card, #ffffff);
+  color: var(--vp-c-fg, #1e293b);
+  cursor: pointer;
+}
+
+.vp-pz-jetzt-knopf {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 var(--vp-c-space-4, 16px);
+  border: 0;
+  border-radius: 999px;
+  background: var(--vp-c-muted, #e9eff8);
+  color: var(--vp-c-primary, #2563eb);
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
+  font-size: var(--vp-c-fs-14, 14px);
+  font-weight: var(--vp-c-fw-700, 700);
+  cursor: pointer;
+}
+
+.vp-pz-info:focus-visible,
+.vp-pz-schritt:focus-visible,
+.vp-pz-jetzt-knopf:focus-visible,
+.vp-pz-kachel:focus-visible,
+.vp-pz-zeile:focus-visible,
+.vp-pz-bild:focus-visible {
+  outline: 2px solid var(--vp-c-primary, #2563eb);
+  outline-offset: 2px;
+}
+
+/* --- Die Preisleiter: Tief ●───── Hoch ---------------------------------- */
+
+.vp-pz-leiter {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  margin-top: 2px;
+  font-size: var(--vp-c-fs-12, 12px);
+  font-weight: var(--vp-c-fw-700, 700);
+  color: var(--vp-c-muted-fg, #475569);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.vp-pz-leiter-bahn {
+  position: relative;
+  display: flex;
+  gap: 2px;
+  height: 8px;
+}
+
+.vp-pz-leiter-bahn > span {
+  flex-basis: 0;
+  min-width: 2px;
+}
+
+.vp-pz-leiter-bahn > span:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.vp-pz-leiter-bahn > span:last-of-type {
+  border-radius: 0 4px 4px 0;
+}
+
+.vp-pz-leiter-punkt {
+  position: absolute;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  border: 3px solid var(--vp-c-card, #ffffff);
+  border-radius: 50%;
+  background: var(--vp-chart-jetzt, #0f172a);
+  box-shadow: 0 0 0 1px var(--vp-chart-jetzt, #0f172a);
+  transform: translate(-50%, -50%);
+  transition: left var(--vp-c-motion) ease;
+}
+
+/* ===========================================================================
+ * 2 · DIE ZWEI KACHELN — nur nach vorn
+ * ========================================================================= */
+
+.vp-pz-kacheln {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--vp-c-space-3, 12px);
+}
+
+.vp-pz-kachel {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  min-width: 0;
+  min-height: 44px;
+  padding: var(--vp-c-space-3, 12px) 14px;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-c-radius, 16px);
+  background: var(--vp-c-card, #ffffff);
+  color: var(--vp-c-fg, #1e293b);
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
+  text-align: left;
+  cursor: pointer;
+}
+
+.vp-pz-kachel[aria-pressed='true'] {
+  border-color: var(--vp-c-primary, #2563eb);
+  box-shadow: 0 0 0 1px var(--vp-c-primary, #2563eb);
+}
+
+.vp-pz-kachel-kopf {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-c-space-2, 8px);
+  margin-bottom: var(--vp-c-space-1, 4px);
+  font-size: var(--vp-c-fs-14, 14px);
+  font-weight: var(--vp-c-fw-700, 700);
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-pz-kachel-ico {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+}
+
+.vp-pz-kachel[data-art='guenstigste'] .vp-pz-kachel-ico {
+  background: color-mix(in srgb, var(--vp-chart-preis-guenstig, #16a34a) 14%, #fff);
+  color: var(--vp-chart-preis-guenstig, #16a34a);
+}
+
+.vp-pz-kachel[data-art='teuerste'] .vp-pz-kachel-ico {
+  background: color-mix(in srgb, var(--vp-chart-preis-teuer, #b91c1c) 12%, #fff);
+  color: var(--vp-chart-preis-teuer, #b91c1c);
+}
+
+.vp-pz-kachel-zeit {
+  font-size: var(--vp-c-fs-16, 16px);
+  font-weight: var(--vp-c-fw-800, 800);
+  line-height: var(--vp-c-lh-title, 1.25);
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-pz-kachel-sub {
+  font-size: var(--vp-c-fs-14, 14px);
+  font-weight: var(--vp-c-fw-600, 600);
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-pz-nw {
+  white-space: nowrap;
+}
+
+/* ===========================================================================
+ * 3 · DAS BILD
+ * ========================================================================= */
+
+.vp-pz-karte {
+  display: grid;
+  gap: var(--vp-c-space-3, 12px);
+}
+
+.vp-pz-bild {
+  position: relative;
+  min-width: 0;
+  border-radius: 6px;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  cursor: crosshair;
+}
+
+.vp-pz-bild svg {
+  display: block;
+  overflow: visible;
+}
+
+.vp-pz-bild text {
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
+}
+
+.vp-pz-achse {
+  font-size: var(--vp-c-fs-12, 12px);
+  fill: var(--vp-c-muted-fg, #475569);
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-pz-band {
+  fill: #f1f5f9;
+}
+
+.vp-pz-band.is-zweit {
+  fill: var(--vp-c-muted, #e9eff8);
+}
+
+.vp-pz-band-text {
+  font-size: var(--vp-c-fs-12, 12px);
+  font-weight: var(--vp-c-fw-700, 700);
+  fill: var(--vp-c-fg, #1e293b);
+}
+
+.vp-pz-band-text.is-offen,
+.vp-pz-platz-text.is-leise {
+  fill: var(--vp-c-muted-fg, #475569);
+  font-weight: var(--vp-c-fw-600, 600);
+}
+
+.vp-pz-platz-text {
+  font-size: var(--vp-c-fs-12, 12px);
+  font-weight: var(--vp-c-fw-700, 700);
+  fill: var(--vp-c-fg, #1e293b);
+}
+
+.vp-pz-pille-text {
+  font-size: var(--vp-c-fs-12, 12px);
+  font-weight: var(--vp-c-fw-700, 700);
+  fill: #fff;
+}
+
+.vp-pz-legende {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px var(--vp-c-space-4, 16px);
+  font-size: var(--vp-c-fs-14, 14px);
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-pz-legende span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.vp-pz-legende i {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+}
+
+.vp-pz-legende i.is-abgeben {
+  border: 1px solid var(--vp-chart-plan, #1e3a5f);
+  background: repeating-linear-gradient(
+    135deg,
+    var(--vp-chart-plan, #1e3a5f) 0 1.5px,
+    #fff 1.5px 4px
+  );
+}
+
+.vp-pz-legende-gruppe {
+  flex-wrap: wrap;
+  gap: 6px var(--vp-c-space-3, 12px);
+}
+
+/* ===========================================================================
+ * 4 · DIE ZEILEN UNTEN — Rückblick, Fahrplan, Erklärung
+ * ========================================================================= */
+
+.vp-pz-zeilen {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: var(--vp-c-radius, 16px);
+  background: var(--vp-c-card, #ffffff);
+}
+
+.vp-pz-zeile {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-c-space-3, 12px);
+  width: 100%;
+  min-height: 56px;
+  padding: var(--vp-c-space-2, 8px) var(--vp-c-space-4, 16px);
+  border: 0;
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+  background: transparent;
+  color: var(--vp-c-fg, #1e293b);
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.vp-pz-zeile:first-child {
+  border-top: 0;
+}
+
+.vp-pz-zeile-ico {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  background: var(--vp-c-muted, #e9eff8);
+  color: var(--vp-c-primary, #2563eb);
+}
+
+.vp-pz-zeile-text {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.vp-pz-zeile-text b {
+  font-size: var(--vp-c-fs-16, 16px);
+  font-weight: var(--vp-c-fw-600, 600);
+}
+
+.vp-pz-zeile-text small {
+  font-size: var(--vp-c-fs-14, 14px);
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-pz-zeile-pfeil {
+  display: inline-flex;
+  flex: 0 0 auto;
+  margin-left: auto;
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+/* ===========================================================================
+ * 5 · AB 721 PX — Antwort und Kacheln in einer Reihe, Zeilen nebeneinander
+ * ========================================================================= */
+
+@media (min-width: 721px) {
+  .vp-pz-oben {
+    display: grid;
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 2fr);
+    gap: var(--vp-c-space-4, 16px);
+    align-items: stretch;
+  }
+
+  .vp-pz-oben .vp-pz-antwort {
+    padding: var(--vp-c-space-4, 16px) 18px;
+    border: 1px solid var(--vp-c-border, #e2e8f0);
+    border-radius: var(--vp-c-radius, 16px);
+    background: var(--vp-c-card, #ffffff);
+  }
+
+  .vp-pz-oben .vp-pz-kachel {
+    align-content: center;
+    padding: var(--vp-c-space-4, 16px) 18px;
+  }
+
+  .vp-pz-oben .vp-pz-kachel-zeit {
+    font-size: var(--vp-c-fs-20, 20px);
+  }
+
+  .vp-pz-zeilen {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: var(--vp-c-space-3, 12px);
+    border: 0;
+    background: transparent;
+  }
+
+  .vp-pz-zeilen .vp-pz-zeile {
+    border: 1px solid var(--vp-c-border, #e2e8f0);
+    border-radius: var(--vp-c-radius, 16px);
+    background: var(--vp-c-card, #ffffff);
+  }
+}
+
+/* Der Rückblick im Blatt: die alte Tagesansicht und die Zeiträume. */
+.vp-pz-rueckblick {
+  display: grid;
+  gap: var(--vp-c-space-4, 16px);
+  min-width: 0;
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
+}
+
+.vp-pz-erklaerung {
+  display: grid;
+  gap: var(--vp-c-space-3, 12px);
+  font-family: var(--vp-c-font, 'Plus Jakarta Sans', Inter, system-ui, sans-serif);
+  font-size: var(--vp-c-fs-16, 16px);
+  line-height: var(--vp-c-lh-text, 1.5);
+  color: var(--vp-c-muted-fg, #475569);
+}
+
+.vp-pz-erklaerung p {
+  margin: 0;
+}
+
+.vp-pz-erklaerung b {
+  color: var(--vp-c-fg, #1e293b);
+}

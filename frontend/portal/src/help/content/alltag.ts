@@ -110,7 +110,8 @@ export const everydayArticles: HelpArticle[] = [
     prerequisite: 'Die Marktpreise-Ansicht ist für entsprechend konfigurierte Anlagen verfügbar.',
     sections: [
       { id: 'diagramm', title: 'Preis und Zeit gehören zusammen', paragraphs: [
-        "Die Ansicht zeigt veröffentlichte Preise für Zeitraum und Markt. Prüfen Sie Datum und Einheit. Eine Lücke steht für fehlende Preise; sie ist weder null noch eine Vorhersage.",
+        "Oben steht der Börsenpreis der laufenden Viertelstunde und ein Wort dazu: günstig, mittel oder teuer im Vergleich zu den kommenden Stunden bis zum letzten bekannten Preis. Die zwei Kacheln nennen die günstigsten und die teuersten zwei Stunden ab jetzt.",
+        "Im Bild markiert die dunkle Linie jetzt; Vergangenes ist blass. Ein Tipp auf einen Balken zeigt seine Viertelstunde oben, „Jetzt“ führt zurück. Eine Lücke steht für fehlende Preise; sie ist weder null noch eine Vorhersage. Woche, Monat und Jahr finden Sie unter „Rückblick“.",
       ], figure: 'marktpreise' },
       { id: 'tarif', title: 'Börsenpreis ist nicht Ihr vollständiger Bezugspreis', paragraphs: [
         "Zum Börsenanteil können weitere Tarifbestandteile kommen. Ein negativer Börsenpreis bedeutet deshalb nicht automatisch einen negativen Bezugspreis. Prüfen Sie Einstellungen und Vertragsangaben.",
@@ -126,7 +127,8 @@ export const everydayArticles: HelpArticle[] = [
     keywords: ['Wetter', 'Forecast', 'Vorhersage', 'Prognosequalität', 'Genauigkeit', 'Abweichung', 'Fahrplan'],
     sections: [
       { id: 'wetter', title: 'Wetter beschreibt die erwarteten Bedingungen', paragraphs: [
-        "Die Wetteransicht schätzt Bedingungen am Anlagenstandort; sie misst keine Solarproduktion. Bei unplausiblen Ortsangaben prüfen Sie den Standort. Lokales Wetter kann von der Vorhersage abweichen.",
+        "Oben steht das Wetter am Anlagenstandort: Symbol, Temperatur und ein Wort für den Himmel. Darunter steht, was Ihre Anlage gerade erzeugt (gemessen) und heute voraussichtlich erzeugt. Drei Karten zeigen die nächsten Tage; ein Tipp wählt den Tag für das Bild.",
+        "Im Bild ist gemessener Sonnenstrom gefüllt und erwarteter schraffiert; die dunkle Linie markiert jetzt. Liegt keine Sonnenstrom-Prognose vor, zeigt das Bild die Sonnenstärke laut Wetterdienst und sagt das dazu. Lokales Wetter kann von der Vorhersage abweichen; bei unplausiblen Ortsangaben prüfen Sie den Standort.",
       ], figure: 'wetter' },
       { id: 'modelle', title: 'Prognose und Prognosequalität', paragraphs: [
         "Im Fahrplan steht unter „Worauf Ihr Plan achtet“, wie weit die Vorhersage zuletzt danebenlag: die mittlere Abweichung je Viertelstunde für Verbrauch und PV. Verglichen werden gespeicherte Vorhersagen mit Messungen; wenige ausgewertete Tage oder Datenlücken begrenzen den Vergleich. Welches Vorhersagemodell plant, betreut VoltPilot.",

@@ -8,11 +8,8 @@ import {
   ONLINE_WINDOW_MS,
   type ControlStatus,
   type CurtailmentStatus,
-  type HistoryRange,
-  type PriceHistory,
   type ConsumerSchedule,
   type SchedulePlan,
-  type ScheduleSlot,
   type Site,
   type SiteEarnings,
   type TelemetryPoint,
@@ -22,35 +19,17 @@ import {
 import { mittlereMae } from '../prognose';
 import { showTechnicalLayer } from '../rollen';
 import { eurAmount, fmtNum } from '../format';
-import { isoDate, PERIOD_RANGES, periodLabel, shiftAnchor } from '../periodNav';
+import { isoDate } from '../periodNav';
 import { SitePicker } from '../components/SitePicker';
-import {
-  VerlaufFuss,
-  VerlaufKopf,
-  ZeitBlaetterer,
-  ZeitLeisteRahmen,
-  ZeitSegment,
-} from '../components/HistorieWelt';
-import { historieHash } from '../historieWelten';
-import { parseVerlaufParams } from '../verlauf';
-import { ankerAusWert } from '../historieZeit';
-import { replaceCurrentNavigation } from '../navigationBlocker';
+import { VerlaufKopf } from '../components/HistorieWelt';
 import { InfoTip } from '../components/InfoTip';
-import { ChartHeadline, ChartSubtitle } from '../components/ChartExplain';
+import { ChartSubtitle } from '../components/ChartExplain';
+import { einstellungenHash } from '../settingsNav';
 import {
   ChartCardSkeleton,
   EmptyState,
   ErrorState,
-  VerlaufFehler,
-  VerlaufKarteSkeleton,
-  VerlaufLeer,
 } from '../components/States';
-import { PriceHistoryChart } from '../PriceHistoryChart';
-import { WeatherChart } from '../WeatherChart';
-import { erwarteteLeistung } from '../wetterLeistung';
-import { vorhersageLabel, wetterStatement, wetterZeilen } from '../wetterKarte';
-import { VerlaufLedger, type VerlaufLedgerZeile } from '../components/VerlaufLedger';
-import { einstellungenHash } from '../settingsNav';
 import { ScheduleChart } from '../ScheduleChart';
 import {
   KEIN_LADESTAND_NOTE,
@@ -84,27 +63,9 @@ import { useFreshnessPoll } from '../useFreshnessPoll';
 import { LIVE_POLL_MS } from '../pollCadence';
 import { useIsPhone } from '../useIsPhone';
 import { ProvBadge } from '../components/HistorieWelt';
-import {
-  bezugspreisNote,
-  fokusFenster,
-  jetztPreis,
-  preisZeilen,
-  profiZeilen,
-  tagWahl,
-  type PreisZeile,
-  type TagFokus,
-} from '../marktpreise';
-import { ctReihe, fensterZeilen, preisFenster, preisKern } from '../preisFenster';
-import {
-  MarktStatement,
-  PreisZeilen,
-  ProfiZahlen,
-  TagSegment,
-  WegZeile,
-} from '../components/MarktpreiseMobil';
-import { Aufklapper } from '../components/Aufklapper';
-import { VerlaufKarte } from '../components/VerlaufKarte';
-import { aktuellerPreisSlot } from '../settingsSurface';
+import { TagSegment } from '../components/MarktpreiseMobil';
+import { PreisSeite } from './PreisSeite';
+import { WetterSeite } from './WetterSeite';
 
 /** Shared frame for the site-scoped data pages (picker + load/error states). */
 function useSiteData<T>(
@@ -194,48 +155,11 @@ function PageFrame({
 
 // ---------------------------------------------------------------------------
 
-/** Kurzes Datum für den Abdeckungs-Hinweis und den Leer-Zustand. */
-function shortDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
-}
-
-/** „Ihr Bezugspreis 32,50 ct/kWh" - oder gar nichts. Nie eine erfundene Zahl. */
-function bezugpreisZeile(ct: number | null): string | null {
-  return bezugspreisNote(ct);
-}
-
 /**
- * Der Lead-Satz des früheren Seitenkopfs (`SUB_PAGES.marktpreise` in
- * `AnlagenPage`, bis P1). Er lebt als Fuß-Aufklapper weiter — der Wortlaut ist
- * unverändert Kunden-Sprache.
- */
-const MARKTPREISE_LEAD =
-  'Was Strom an der Börse kostet - heute, morgen und im Rückblick.';
-
-/**
- * **Der Reiter „Marktpreise" in den C-Bausteinen** (Paket P4, Konzept
- * `data/vp-verlauf-sprache-konzept-v5` §4.3).
- *
- * Drei Captain-Entscheide vom 03.09.2026 (Lavish-Review 19:40 Uhr) tragen den
- * Umbau, wörtlich:
- *
- *  - **E8** „a) Statement auf Marktpreise, Lastspitzen, Wetter" — die EINE Zahl
- *    des Reiters (der Börsenpreis JETZT) steht auf der Fläche, nicht in einer
- *    Karte, und **auf jeder Breite**. Bis P4 gab es sie nur am Telefon; der
- *    Rechner trug stattdessen drei `KpiCard` mit den ZEITRAUM-Zahlen — also
- *    genau nicht die Antwort auf „was kostet Strom gerade?".
- *  - **E6** „a) am Telefon immer Liste (V7), ab 700 px Tabelle" — das
- *    Profi-Detail (EUR/MWh) ist unter 721 px eine Ledger-Liste und darüber eine
- *    echte Tabelle, aus denselben Daten.
- *  - **E7** „a) Tooltip + Legenden-Schalter, KEIN Zoom durch Ziehen am Telefon"
- *    — der `dataZoom` der Kurve ist der FOKUS-Ausschnitt (`zoomLock`), keine
- *    Geste; er bleibt es.
- *
- * ⚠ **Die Zahlen und die Aussagen sind unverändert** — sie wechseln nur die
- *   Form: die drei KPI-Karten und die drei Chips wurden Ledger-Zeilen
- *   (`preisZeilen`), das `Stat`-Raster wurde das Profi-Detail (`profiZeilen`),
- *   und die Wortzeile der Preisfenster zog aus dem Chart-Fuß (0,74 rem) in die
- *   Karte (16 px).
+ * **Der Reiter „Marktpreise"** — seit dem Konzept „Preise und Wetter"
+ * (Fassung 3, Entscheide E1–E8 = A vom 20.10.2026) wohnt die Seite in
+ * `PreisSeite.tsx`: Antwort zuerst, Jetzt-Linie im Bild, Rückblick im Blatt.
+ * Hier bleibt nur der Rahmen der eigenständigen Seite (Anlagen-Wähler).
  */
 export function MarktpreisePage(props: {
   sites: Site[];
@@ -245,438 +169,26 @@ export function MarktpreisePage(props: {
   embedded?: boolean;
 }) {
   const site = props.sites.find((s) => s.id === props.selectedSite) ?? null;
-  /**
-   * Der Zeitraum steht in der ADRESSE (P1, V3) — wie auf Messwerten und
-   * Erlösen, mit demselben Vokabular (`z=`/`at=`). Ein Lesezeichen OHNE
-   * Parameter bleibt gültig: `parseVerlaufParams` fällt auf Tag/heute zurück.
-   */
-  const [init] = useState(() => parseVerlaufParams(window.location.hash));
-  const [range, setRange] = useState<HistoryRange>(init.range);
-  const [anchor, setAnchor] = useState<Date>(() => ankerAusWert(init.at ?? '', init.range) ?? new Date());
-  const [history, setHistory] = useState<PriceHistory | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
-
-  const at = isoDate(anchor);
-  /**
-   * Zeitraum + Anker in die Adresse — `replaceState`, wie auf Messwerten: eine
-   * Zeitraum-Wahl ist kein eigener Schritt im Verlauf des Browsers, sondern die
-   * Fortschreibung DERSELBEN Seite. Nur als REITER einer Anlage; als
-   * eigenständige Seite (`/marktpreise` mit Anlagen-Wähler) gehört die Adresse
-   * nicht dieser Anlage.
-   */
-  useEffect(() => {
-    if (!props.embedded || !site) return;
-    replaceCurrentNavigation(historieHash(site.id, 'marktpreise', range, at));
-  }, [props.embedded, site?.id, range, at]);
-  useEffect(() => {
-    if (!site) {
-      setHistory(null);
-      return;
-    }
-    let active = true;
-    setLoading(true);
-    setErr(null);
-    api
-      .priceHistory(site.id, range, at)
-      .then((h) => active && setHistory(h))
-      .catch((e) => active && setErr(e instanceof ApiError ? e.message : 'Fehler'))
-      .finally(() => active && setLoading(false));
-    return () => {
-      active = false;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [site?.id, range, at, reloadKey]);
-
-  const nextDisabled = shiftAnchor(anchor, range, 1) > new Date();
-  const summary = history?.summary ?? null;
-  const buckets = history?.buckets ?? [];
-  const hasData = buckets.length > 0 && (summary?.count ?? 0) > 0;
-  const isDay = range === 'day';
-
-  const isPhone = useIsPhone();
-  const [now, setNow] = useState<Date>(() => new Date());
-  const [fokus, setFokus] = useState<TagFokus>('heute');
-  // Der Bezugspreis wird GELESEN, nie gerechnet: er reist je Viertelstunde im
-  // Fahrplan mit (`importPriceCtKwh`, die eine serverseitige Komposition) -
-  // dieselbe Quelle wie die Vorschau unter dem Stromtarif. Aus den
-  // Tarif-Feldern zu addieren waere die zweite Preiswahrheit.
-  const [bezugCt, setBezugCt] = useState<number | null>(null);
-
-  // Der Held zeigt die laufende Viertelstunde - ohne Takt zeigte er nach dem
-  // ersten Slotwechsel eine vergangene.
-  useFreshnessPoll(() => setNow(new Date()), 60_000);
-
-  useEffect(() => {
-    setBezugCt(null);
-    // E8: das Statement steht auf JEDER Breite, also braucht auch der Rechner
-    // seinen Bezugspreis. Der Abruf hängt weiterhin am Tages-Zeitraum - im
-    // Rückblick gibt es kein „jetzt", das er einordnen könnte.
-    if (!site || !isDay) return;
-    let active = true;
-    api
-      .schedule(site.id)
-      .then((plan) => {
-        if (!active) return;
-        const slot = aktuellerPreisSlot(plan.slots, plan.slotMinutes, new Date());
-        setBezugCt(slot?.importPriceCtKwh ?? null);
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
-  }, [site?.id, isDay]);
-
-  // Ein Zeitraumwechsel setzt den Tages-Fokus zurueck - sonst zeigte der
-  // Rueckblick auf "Morgen".
-  useEffect(() => setFokus('heute'), [range, at]);
-
-  const jetzt = isDay ? jetztPreis(history, now) : null;
-  /**
-   * V3 · Heute/Morgen als Segment. Der Fokus-Ausschnitt bleibt dem TELEFON
-   * vorbehalten (bei 375 px liegen 192 Viertelstunden in ~343 px); am Rechner
-   * zeigt die Kurve beide Tage, und das Segment schaltet dort nur mit, wenn es
-   * überhaupt einen Folgetag gibt.
-   */
-  const zeigtHeute = isDay && isoDate(new Date()) === at;
-  const wahl = isDay ? tagWahl(buckets, zeigtHeute) : null;
-  const zeilen = preisZeilen(summary, range, history?.bucket ?? '');
-  const profi = profiZeilen(summary);
-
-  /**
-   * K1 · Der Kernaussage-Satz über der Tageskurve — ABGELEITET aus denselben
-   * benannten Fenstern, die das Diagramm hinterlegt (`preisFenster`), also kann
-   * er ihm nie widersprechen. Gerechnet wird auf dem GEZEIGTEN Ausschnitt: am
-   * Telefon zeigt die Kurve einen Tag, dann darf der Satz nicht das Tief des
-   * anderen benennen. Ohne belegbare Aussage steht dort der ehrliche Grund.
-   */
-  const kern = useMemo(() => {
-    if (!isDay || !hasData) return null;
-    const zoom = isPhone ? fokusFenster(buckets, fokus) : null;
-    const sicht = zoom ? buckets.slice(zoom.start, zoom.end + 1) : buckets;
-    const cts = ctReihe(sicht.map((b) => b.avgEurMwh));
-    return preisKern(cts, sicht.map((b) => b.ts), preisFenster(cts, 15));
-  }, [isDay, hasData, isPhone, buckets, fokus]);
-
-  /**
-   * V5 · Die benannten Preisfenster als Ledger-Zeilen (16 px) — bis P4 standen
-   * sie als 0,74-rem-Zeile im Fuß des Diagramms. Abgeleitet aus DERSELBEN
-   * `preisFenster.ts`, die die Bänder im Bild hinterlegt.
-   */
-  const fensterRows: PreisZeile[] = useMemo(() => {
-    if (!isDay || !hasData || history?.bucket !== 'PT15M') return [];
-    const cts = ctReihe(buckets.map((b) => b.avgEurMwh));
-    return fensterZeilen(preisFenster(cts, 15), buckets.map((b) => b.ts)).map((f) => ({
-      id: f.art,
-      name: f.wort,
-      wert: f.zeit,
-    }));
-  }, [isDay, hasData, history?.bucket, buckets]);
-
-  // Partial coverage: the collector only fetches today+tomorrow, so week/month/
-  // year fill in over time. Flag when the stored data starts well after the
-  // window opens (older prices were never collected).
-  const partialFrom =
-    !isDay && hasData && summary?.coverageStart && history
-      ? new Date(summary.coverageStart).getTime() - new Date(history.from).getTime() > 36 * 3600 * 1000
-      : false;
-
-  // §4.3 nennt den Chip „15 min" — kurz, weil er NEBEN einem langen Label
-  // steht („DAY-AHEAD HEUTE & MORGEN · DE-LU"); „15-Minuten-Takt" schob ihn
-  // bei 375 px in eine eigene Zeile.
-  const raster =
-    history?.bucket === 'PT15M'
-      ? '15 min'
-      : history?.bucket === 'PT1H'
-        ? 'stündlich'
-        : 'täglich';
-
   return (
     <PageFrame
       title="Marktpreise"
-      // Am Telefon EIN Satz: der lange Untertitel maß gemessene 113 px (fuenf
-      // Zeilen) und schob die Antwort nach unten - die Gebotszone steht ohnehin
-      // in der Kopfzeile der Kurve (Mobil-Umbau Stufe 4, Prinzip P1).
-      subtitle={
-        isPhone
-          ? 'Was Strom an der Börse kostet - heute und morgen.'
-          : `Börsen-Strompreise (Day-Ahead)${site ? ` - Gebotszone ${site.biddingZone}` : ''}: heute & morgen sowie der Rückblick über Tag, Woche, Monat und Jahr.`
-      }
+      subtitle={`Börsen-Strompreise${site ? ` - Gebotszone ${site.biddingZone}` : ''}: was Strom jetzt kostet und wann es billiger wird.`}
       {...props}
     >
-      {/* V1 · Der Seitenkopf ist unsichtbar: was er sagte, sagen die
-          Bereichs-Reiter (Paket P1, Befund B1). Sein Lead-Satz steht am Fuß. */}
-      <VerlaufKopf titel="Marktpreise" />
-      {/* V3 · DIESELBE Zeit-Leiste wie auf Messwerten und Erlösen — vorher stand
-          hier eine zweite `.vp-seg` in einem eigenen `vp-page-head` (Befund B2:
-          drei Zeitraum-Bedienungen im selben Bereich). */}
-      <ZeitLeisteRahmen
-        mobil={isPhone}
-        zeile1={
-          <ZeitSegment label="Zeitraum" optionen={PERIOD_RANGES} wert={range} onWert={setRange} />
-        }
-        zeile2={
-          <ZeitBlaetterer
-            label={periodLabel(anchor, range)}
-            onZurueck={() => setAnchor(shiftAnchor(anchor, range, -1))}
-            onVor={() => setAnchor(shiftAnchor(anchor, range, 1))}
-            vorDisabled={nextDisabled}
-            onJetzt={() => setAnchor(new Date())}
-          />
-        }
-      />
-
-      {/* V10 · Laden — dieselbe Höhe, die das Bild später wirklich einnimmt. */}
-      {loading && (
-        <section className="vp-section">
-          <div className="vp-c-card">
-            <VerlaufKarteSkeleton legende={false} />
-          </div>
-        </section>
-      )}
-
-      {/* V10 · Fehler — IN der Karte, damit die Fläche ihre Überschrift behält. */}
-      {err && (
-        <VerlaufKarte label={isDay ? 'Day-Ahead heute & morgen' : 'Preisverlauf'}>
-          <VerlaufFehler
-            satz={`Die Börsenpreise konnten nicht geladen werden (${err}).`}
-            onRetry={() => setReloadKey((k) => k + 1)}
-          />
-        </VerlaufKarte>
-      )}
-
-      {/* V10 · Leer — EIN Satz, und wo es einen gibt: der Weg. */}
-      {!loading && !err && !hasData && (
-        <VerlaufKarte label={isDay ? 'Day-Ahead heute & morgen' : 'Preisverlauf'}>
-          <VerlaufLeer
-            label="Keine Börsenpreise in diesem Zeitraum"
-            satz={
-              isDay
-                ? 'Die Börsenpreise werden automatisch geladen, sobald die Strombörse sie veröffentlicht (täglich am frühen Nachmittag für den Folgetag).'
-                : summary?.coverageStart
-                  ? `Preise liegen erst ab dem ${shortDate(summary.coverageStart)} vor - der Rückblick füllt sich Tag für Tag.`
-                  : 'Für diesen Zeitraum liegen noch keine gespeicherten Preise vor. Der Rückblick füllt sich Tag für Tag - schauen Sie später wieder vorbei oder wählen Sie einen jüngeren Zeitraum.'
-            }
-            weg={isDay ? undefined : 'Zum heutigen Tag'}
-            onWeg={
-              isDay
-                ? undefined
-                : () => {
-                    setRange('day');
-                    setAnchor(new Date());
-                  }
-            }
-          />
-        </VerlaufKarte>
-      )}
-
-      {!loading && !err && hasData && summary && history && (
-        <>
-          {/* E8 · Das Statement: die EINE Zahl des Reiters, auf der Fläche.
-              Ohne laufende Viertelstunde steht dort GAR NICHTS - nie der
-              zuletzt bekannte Preis als „jetzt". */}
-          {jetzt && (
-            <section className="vp-section">
-              <MarktStatement preis={jetzt} bezug={bezugpreisZeile(bezugCt)} />
-            </section>
-          )}
-
-          <VerlaufKarte
-            label={`${isDay ? 'Day-Ahead heute & morgen' : 'Preisverlauf'}${
-              site ? ` · ${site.biddingZone}` : ''
-            }`}
-            chip={<span className="vp-chip">{raster}</span>}
-          >
-            {/* V6 · die Reihenfolge IST die Aussage: Label → Kernsatz → BILD →
-                Zeilen → Erklärung im Aufklapper. */}
-            <ChartHeadline kern={kern} />
-            <PriceHistoryChart history={history} fokus={isPhone && isDay ? fokus : null} />
-            <TagSegment wahl={wahl} wert={fokus} onWert={setFokus} />
-
-            {/* V5 · Die benannten Fenster - Wort links, Zeitraum rechts. */}
-            <PreisZeilen zeilen={fensterRows} label="Benannte Preisfenster" />
-            {/* V5 · Tief / Hoch / Ø (und im Rückblick die Abdeckung). */}
-            <PreisZeilen
-              zeilen={zeilen}
-              label={isDay ? 'Preis-Kennzahlen des Tages' : 'Preis-Kennzahlen im Zeitraum'}
-            />
-
-            {partialFrom && summary.coverageStart && (
-              <p className="vp-mp-note">
-                Für diesen Zeitraum liegen erst Preise ab dem {shortDate(summary.coverageStart)} vor
-                - ältere Börsenpreise wurden noch nicht erfasst.
-              </p>
-            )}
-
-            {/* V8 · Das Profi-Detail. Der EUR/MWh-Grundsatz der Seite bleibt -
-                die Zahlen sind da, nur eine Ebene tiefer, auf JEDER Breite. */}
-            <Aufklapper titel="Profi-Detail (EUR/MWh · Quelle)">
-              <ProfiZahlen zeilen={profi} />
-              <p className="vp-mp-note">
-                Quelle: energy-charts.info (Fraunhofer ISE).{' '}
-                {isDay ? '' : 'Preise sind marktweit je Gebotszone (nicht pro Anlage).'}
-              </p>
-            </Aufklapper>
-
-            {/* Der Fahrplan-Querverweis BLEIBT sichtbar - er erklaert, warum es
-                diesen Reiter ueberhaupt gibt. */}
-            {isDay && site && (
-              <WegZeile href={`#/anlage/${site.id}/fahrplan`}>
-                Ihr Fahrplan nutzt genau diese Preise
-              </WegZeile>
-            )}
-          </VerlaufKarte>
-        </>
-      )}
-      {/* V1 · Der Lead-Satz des früheren Seitenkopfs — WÖRTLICH, nur an einem
-          anderen Ort. Er ist Nachschlage-Text, kein Scrollweg-Inhalt; ihn beim
-          Entfernen des Kopfes zu verlieren wäre kein Aufräumen. */}
-      <VerlaufFuss text={MARKTPREISE_LEAD} />
+      {site && <PreisSeite key={site.id} site={site} embedded={props.embedded ?? false} />}
     </PageFrame>
   );
 }
 
 // ---------------------------------------------------------------------------
 
-/** The Wetter subpage of one Anlage: the forecast feeding its PV-Prognose. */
-/** Der Lead-Satz des früheren Seitenkopfs (`SUB_PAGES.wetter`, bis P1). */
-const WETTER_LEAD =
-  'Die Vorhersage am Standort Ihrer Anlage - Grundlage der PV-Prognose.';
-
 /**
- * **Paket P5 · der Reiter „Wetter" in den C-Bausteinen** (Konzept
- * `data/vp-verlauf-sprache-konzept-v5` §3.2 V4–V8 und §4.6; Captain-Entscheide
- * **E8 (a)** „Statement auf Marktpreise, Lastspitzen, Wetter" und **E7 (a)**
- * „Tooltip + Legenden-Schalter, KEIN Zoom durch Ziehen am Telefon").
- *
- * Die Karte von oben nach unten — die REIHENFOLGE ist die Aussage:
- *
- *  1. **Statement** — die EINE Zahl des Reiters (36/800, ab 721 px 48) und der
- *     Satz darunter. Der frühere Kernsatz („erwartete Spitze morgen gegen
- *     12:00 Uhr") WIRD die Zahl; die Icon-Kachel 40 px und die `h2` in Inter
- *     Tight sind ersatzlos entfallen.
- *  2. **Himmel-Reihe** als 24-px-Chips (im Bild-Baustein, K10).
- *  3. **Bild** (V6) direkt danach: erwartete Leistung + Sonnenstärke, darunter
- *     die Chip-Legende, deren Einträge die Reihen SCHALTEN (E7 a).
- *  4. **Vier Kennzahlen als Ledger-Zeilen** (V5) statt des 2×2-Rasters mit
- *     seinen 21,6-px-Werten — die EINE Zahl der Fläche ist das Statement.
- *  5. **„Mehr anzeigen" → Aufklapper** (V8) „Temperatur & Sonnenstärke im
- *     Verlauf" mit dem zweiten Bild, danach die Quelle als `.vp-c-note`.
- *
- * ⚠ **Keine Zeit-Leiste** (§4.6): eine Vorhersage beginnt bei JETZT, ein
- *   Zeitraum-Segment wäre ein Schalter ohne Wirkung. Das Datum steht deshalb im
- *   LABEL der Karte („Vorhersage · Do., 03.09., 18:30") — ohne es stünde
- *   nirgends, worauf sich die Zahl bezieht.
- *
- * ⚠ **Es wird keine Zahl neu gerechnet.** Statement, Zeilen und Kurve lesen
- *   dieselbe kW-Reihe (`erwarteteLeistung`); zwei Rechenwege über dieselbe Zahl
- *   auf EINER Karte wären zwei Wahrheiten. Fehlt ein Wert, trägt die Zeile „—",
- *   nie eine 0.
+ * **Der Reiter „Wetter"** — seit dem Konzept „Preise und Wetter" (Fassung 3,
+ * E5 = A „Wetter zuerst", 20.10.2026) wohnt die Seite in `WetterSeite.tsx`:
+ * Wetter jetzt, drei Tage, ein Bild für den gewählten Tag.
  */
 export function WetterSection({ site }: { site: Site }) {
-  const { data: forecast, loading, err, reload } = useSiteData<WeatherForecast>(site, (id) => api.weather(id));
-  /**
-   * Die LEITGRÖSSE der Fläche ist seit Stufe 4 die erwartete Leistung in kW -
-   * und die einzige Stelle, an der die PV-Prognose des aktiven Modells das
-   * Portal erreicht, ist der FAHRPLAN (`schedule.pv_kw`). Der Abruf ist
-   * FAIL-SOFT: ohne Plan (kein Speicher, toter Optimierer) führt das Statement
-   * wieder die Sonnenstärke und sagt im Satz den Grund (§4.6).
-   */
-  const [planSlots, setPlanSlots] = useState<ScheduleSlot[]>([]);
-  useEffect(() => {
-    setPlanSlots([]);
-    let active = true;
-    api
-      .schedule(site.id)
-      .then((plan) => {
-        if (active) setPlanSlots(plan.slots);
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
-  }, [site.id]);
-  /** V8 · Der Aufklapper mit dem ZWEITEN Bild — zu, bis jemand fragt. */
-  const [mehrOpen, setMehrOpen] = useState(false);
-
-  const points = forecast?.points ?? [];
-  const jetzt = new Date();
-  // Die Kopf-Zahl und die Kurve lesen DIESELBE kW-Reihe - sie können sich also
-  // nicht widersprechen.
-  const kwReihe = erwarteteLeistung(points, planSlots);
-  const hatPunkte = points.length > 0;
-  const stmt = hatPunkte ? wetterStatement(points, kwReihe, jetzt) : null;
-  const zeilen: VerlaufLedgerZeile[] = hatPunkte ? wetterZeilen(points, kwReihe, jetzt) : [];
-
-  return (
-    <>
-      {/* V1 · Unsichtbarer Seitenkopf (Paket P1). Wetter hatte gar keine `h1` in
-          der Fläche selbst — der Titel stand im `SUB_PAGES`-Kopf über den
-          Reitern und schob sie von 140 auf 316 px. */}
-      <VerlaufKopf titel="Wetter" />
-      <VerlaufKarte label={vorhersageLabel(jetzt)}>
-        {loading && <VerlaufKarteSkeleton />}
-        {err && (
-          <VerlaufFehler
-            satz={`Die Wettervorhersage konnte nicht geladen werden (${err}).`}
-            onRetry={reload}
-          />
-        )}
-        {!loading && !err && !hatPunkte && (
-          /* §4.6 · Keine Koordinaten → V10 Leer MIT dem Weg. Der Satz nennt den
-             Grund, der Knopf führt dorthin, wo er sich beheben lässt. */
-          <VerlaufLeer
-            label="Vorhersage"
-            satz="Noch keine Vorhersage. Sie wird automatisch geladen - Ihre Anlage braucht dafür einen Standort auf der Karte."
-            weg="Standort in den Einstellungen ergänzen ›"
-            onWeg={() => {
-              window.location.hash = einstellungenHash(site.id);
-            }}
-          />
-        )}
-        {!loading && !err && hatPunkte && stmt && (
-          <>
-            {/* E8 (a) · Das Statement: die EINE Zahl des Reiters, auf der
-                Fläche statt in einer zweiten Karte. Ohne Fahrplan trägt sie die
-                Sonnenstärke, und der Satz sagt WARUM - eine Leistung zu
-                behaupten, die niemand prognostiziert hat, wäre erfunden. */}
-            <div className="vp-c-stm">
-              <p className="vp-c-stm-zahl">{stmt.zahl ?? '—'}</p>
-              <p className="vp-c-stm-ein">
-                <span>{stmt.satz}</span>
-              </p>
-            </div>
-            {/* V6 · Himmel-Reihe → Bild → Chip-Legende, in EINEM Baustein.
-                E7 (a): Tooltip per Tipp, KEIN Zoom durch Ziehen - auf keiner
-                Breite. */}
-            <WeatherChart points={points} planSlots={planSlots} detail />
-            {/* V5 · Die vier Kennzahlen als Zeilen: Name links, Wert rechts in
-                Tabellenziffern, Einheit mit schmalem Leerzeichen. */}
-            <VerlaufLedger label="Kennzahlen der Vorhersage" zeilen={zeilen} />
-            <Aufklapper
-              titel="Temperatur & Sonnenstärke im Verlauf"
-              open={mehrOpen}
-              onToggle={() => setMehrOpen((v) => !v)}
-            >
-              {/* ⚠ Das zweite Bild entsteht ERST beim Aufklappen. Ein `details`
-                  rendert seine Kinder auch zugeklappt, und ein ECharts-Canvas
-                  in einem `display:none`-Kasten misst 0 × 0 - es bliebe leer,
-                  bis irgendwann ein Resize kommt. */}
-              {mehrOpen && <WeatherChart points={points} planSlots={planSlots} modus="kontext" />}
-            </Aufklapper>
-            <p className="vp-c-note">
-              Wetterdaten: Open-Meteo, stündlich aktualisiert. Die erwartete Leistung ist
-              die PV-Prognose, mit der Ihr Fahrplan rechnet - sie reicht so weit wie der
-              Fahrplan.
-            </p>
-          </>
-        )}
-      </VerlaufKarte>
-      {/* V1 · Der Lead-Satz des früheren Seitenkopfs — wörtlich, am Fuß. */}
-      <VerlaufFuss text={WETTER_LEAD} />
-    </>
-  );
+  return <WetterSeite site={site} />;
 }
 
 // ---------------------------------------------------------------------------

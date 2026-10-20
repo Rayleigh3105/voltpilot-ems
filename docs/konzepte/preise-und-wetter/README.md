@@ -1,6 +1,6 @@
 # Preise und Wetter am Telefon (Konzeptentwurf)
 
-**Status: Entwurf vom 29.09.2026, Fassung 2 (interaktiv), noch nicht abgenommen.** Der klickbare Prototyp liegt daneben: [prototyp.html](prototyp.html). Die Datei im Browser öffnen; sie funktioniert ohne Server. Alle Zahlen darin sind erfunden. Die Anlage „Sonnenhof“ stammt aus den fiktiven Test-Fixtures.
+**Status: abgelöst durch Fassung 3 (entschieden und umgesetzt am 20.10.2026, siehe [Arbeitsnotiz](../../agents/portal/preise-und-wetter-fassung-3.md)). Fassung 2 vom 29.09.2026 wurde nie abgenommen.** Der klickbare Prototyp liegt daneben: [prototyp.html](prototyp.html). Die Datei im Browser öffnen; sie funktioniert ohne Server. Alle Zahlen darin sind erfunden. Die Anlage „Sonnenhof“ stammt aus den fiktiven Test-Fixtures.
 
 ## Zweck
 

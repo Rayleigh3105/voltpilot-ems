@@ -118,6 +118,8 @@ const BLAETTER: ReadonlyArray<{
   // umgestellt und `preisFenster.css` ersatzlos aufgelöst — die Ratsche geht
   // damit auf 0 und nie wieder hoch.
   { reiter: 'Marktpreise', datei: 'components/Marktpreise.css', offen: 0, bekannt: [] },
+  // Die Preis-Seite der Fassung 3 — jedes Tippziel 44 px, von Anfang an 0.
+  { reiter: 'Marktpreise', datei: 'components/PreisZeitstrahl.css', offen: 0, bekannt: [] },
   {
     reiter: 'Marktpreise',
     datei: 'components/StrompreisStrip.css',
@@ -125,7 +127,8 @@ const BLAETTER: ReadonlyArray<{
     bekannt: ['.vp-sp-link'],
   },
   { reiter: 'Prognose', datei: 'pages/Prognose.css', offen: 0, bekannt: [] },
-  { reiter: 'Wetter', datei: 'WeatherChart.css', offen: 0, bekannt: [] },
+  // Die Wetter-Seite der Fassung 3 - jedes Tippziel 44 px, von Anfang an 0.
+  { reiter: 'Wetter', datei: 'components/WetterTag.css', offen: 0, bekannt: [] },
   {
     reiter: 'Nachbar',
     datei: 'components/Fahrplan.css',
