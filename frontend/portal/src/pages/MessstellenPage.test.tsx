@@ -446,7 +446,9 @@ describe('Messstellen · „Stand an einem Tag ansehen“', () => {
     await waitFor(() => expect(screen.queryByTestId('stand-am')).toBeNull(), WARTEN);
     expect(window.location.hash).toBe('#/portfolio/messstellen');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Messstelle anlegen' })).toBeInTheDocument(), WARTEN);
-  });
+    // Sieben Schritte mit je bis zu WARTEN: unter der Last des vollen Laufs (4 Arbeiter) dauerte der Fall
+    // 5,7 s und riss die Standard-Grenze von 5 s, allein läuft er in 0,3 s. Die Grenze folgt den Schritten.
+  }, 15_000);
 
   it('am Standort stehen im Menü auch die Korrekturen', async () => {
     telefon(false);
