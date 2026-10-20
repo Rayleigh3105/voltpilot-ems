@@ -19,21 +19,32 @@
   color: var(--vp-c-fg, #1e293b);
 }
 
-/* --- Kopf: Uhrzeit, Marke, Plan, Umschalter ------------------------------ */
+/* --- Kopf: Uhrzeit, Umschalter, Marke ------------------------------------- */
+/* Feste Plätze (Konzept b1): Uhrzeit und Umschalter teilen die erste Zeile, die
+   Marke hat am Telefon eine eigene Zeile darunter. So bleibt der Umschalter in
+   jedem Zustand oben rechts und der Kopf gleich hoch; eine lange Marke
+   („gemessen · Plan: …“) bricht in ihrer Zeile um. */
 .vp-eb-kopf {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "uhr modus" "marke marke";
   align-items: center;
   gap: 6px 8px;
   min-width: 0;
+}
+.vp-eb-kopf .vp-eb-uhr { grid-area: uhr; }
+.vp-eb-kopf .vp-eb-modus { grid-area: modus; }
+.vp-eb-kopf .vp-eb-marke {
+  grid-area: marke;
+  justify-self: start;
+  max-width: 100%;
 }
 .vp-eb-uhr {
   font: 800 1.25rem/1 var(--vp-font-heading);
   letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
 }
-.vp-eb-marke,
-.vp-eb-plan {
+.vp-eb-marke {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -55,8 +66,7 @@
   border-radius: 50%;
   background: currentColor;
 }
-.vp-eb-marke.is-plan,
-.vp-eb-plan {
+.vp-eb-marke.is-plan {
   background: transparent;
   border: 1px dashed var(--vp-chart-plan, #1e3a5f);
   color: var(--vp-chart-plan, #1e3a5f);
@@ -433,8 +443,11 @@ a.vp-eb-zeile {
   height: 88px;
   min-width: 0;
   cursor: ew-resize;
-  touch-action: none;
+  /* Ein senkrechtes Wischen scrollt die Seite; nur ein Tipp wählt (Tagesleiste.tsx). */
+  touch-action: pan-y;
   user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
   border-radius: 8px;
 }
 .vp-tl svg {
@@ -453,6 +466,13 @@ a.vp-eb-zeile {
 .vp-tl-ax {
   font: 600 10px var(--vp-font-body);
   fill: var(--vp-c-muted-fg, #475569);
+}
+/* Die Spur-Beschriftung („Börsenpreis“, „Plan“) liegt über den Balken: ein heller Rand hält sie lesbar. */
+.vp-tl-lbl {
+  paint-order: stroke;
+  stroke: var(--vp-surface, #fff);
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }
 .vp-tl-ax {
   font-weight: 500;
@@ -486,19 +506,33 @@ a.vp-eb-zeile {
   gap: 8px;
   flex-wrap: wrap;
 }
-.vp-eb-spiel {
-  background: var(--vp-c-fg, #1e293b);
-  color: var(--vp-surface, #fff);
+.vp-eb-schritt {
+  display: inline-grid;
+  place-items: center;
+  width: 44px;
+  height: 36px;
+  padding: 0;
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: 10px;
+  background: var(--vp-surface, #fff);
+  color: var(--vp-c-fg, #1e293b);
+  cursor: pointer;
+}
+.vp-eb-schritt:hover:not(:disabled) {
+  background: var(--vp-c-muted, #e9eff8);
+}
+.vp-eb-schritt:disabled {
+  color: var(--vp-c-border, #e2e8f0);
+  cursor: default;
+}
+.vp-eb-schritt:focus-visible {
+  outline: 2px solid var(--vp-focus-ring-color);
+  outline-offset: 2px;
 }
 .vp-eb-jetzt {
   background: var(--vp-surface, #fff);
   border-color: var(--vp-c-border, #e2e8f0);
   color: var(--vp-c-fg, #1e293b);
-}
-.vp-eb-hinweis {
-  margin: 0;
-  font-size: 0.78rem;
-  color: var(--vp-c-muted-fg, #475569);
 }
 
 /* --- Blätter ------------------------------------------------------------- */
@@ -599,6 +633,11 @@ a.vp-eb-zeile {
   }
   .vp-eb-uhr {
     font-size: 1.4rem;
+  }
+  /* Am Rechner reicht die Breite: Uhrzeit, Marke und Umschalter in einer Zeile. */
+  .vp-eb-kopf {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "uhr marke modus";
   }
   .vp-eb-satz {
     font-size: 1rem;

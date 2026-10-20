@@ -57,16 +57,19 @@ const LEERE_MAP: ReadonlyMap<string, string | null> = new Map();
 const ROLLEN = new Set<string>(KNOWN_ROLES);
 
 /**
- * **Die Bühne des Cockpits** (Konzept `docs/konzepte/cockpit-tagesfilm`):
- * Uhrzeit, Umschalter „Jetzt · kW / Heute · kWh“, ein Satz zum Moment, der
- * Energiefluss als Leitungsplan, „Verbrauch/Erzeugung im Detail“ und die
- * Tagesleiste. Jeder Knoten und jede Zeile öffnet am Telefon ein Blatt, am
- * Rechner das zentrierte `Modal`. Die Listen sind der EINE Ort der Geräte im
- * Cockpit (kein Komponenten-Board mehr darunter).
+ * **Die Bühne des Cockpits** (Konzept `docs/konzepte/cockpit-tagesfilm`, Kopf
+ * und Zeitwahl seit Konzept b1 vom 20.10.2026): Uhrzeit, Umschalter „Jetzt · kW
+ * / Heute · kWh“, ein Satz zum Moment, der Energiefluss als Leitungsplan, direkt
+ * darunter die Tagesleiste und danach „Verbrauch im Detail“. Jeder Knoten und
+ * jede Zeile öffnet am Telefon ein Blatt, am Rechner das zentrierte `Modal`. Die
+ * Listen sind der EINE Ort der Geräte im Cockpit (kein Komponenten-Board mehr
+ * darunter).
  *
  * Messung, Plan und Jetzt bleiben getrennt: die Marke oben sagt, was gerade
- * zu sehen ist („Live“, „gemessen“, „Plan und Prognose“, „Energie · gemessen“),
- * und nur „Live“ bewegt sich.
+ * zu sehen ist („Live“, „gemessen“, „Plan · Tätigkeit“, „Energie · gemessen“),
+ * und nur „Live“ bewegt sich. Die Tagesleiste steht direkt unter dem Fluss,
+ * weil die Liste beim Verlassen von „jetzt“ kürzer wird - stünde die Leiste
+ * darunter, spränge sie nach dem ersten Tipp unter dem Finger weg.
  */
 export function EnergieBuehne({
   jetzt,
@@ -136,26 +139,13 @@ export function EnergieBuehne({
     );
     return () => { aktiv = false; };
   }, [siteId]);
-  const [spielt, setSpielt] = useState(false);
   const [blatt, setBlatt] = useState<{ art: Rolle } | null>(null);
   const ausloeser = useRef<HTMLElement | null>(null);
   const jetztQ = tag?.jetzt ?? 0;
-  const q = Math.min(gewaehlt ?? jetztQ, ansicht === 'heute' ? jetztQ : (tag?.viertel.length ?? 1) - 1);
-
-  // „Tag abspielen“: eine Viertelstunde je Schritt, bis zum Ende (bzw. bis jetzt).
-  useEffect(() => {
-    if (!spielt || !tag) return undefined;
-    const ende = ansicht === 'heute' ? tag.jetzt : tag.viertel.length - 1;
-    const reduziert = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const t = window.setInterval(() => {
-      setGewaehlt((g) => {
-        const n = (g ?? 0) + 1;
-        if (n >= ende) { setSpielt(false); return ende; }
-        return n;
-      });
-    }, reduziert ? 220 : 110);
-    return () => window.clearInterval(t);
-  }, [spielt, tag, ansicht]);
+  // Die letzte wählbare Viertelstunde: bei „Heute · kWh“ jetzt, sonst das Tagesende (Plan).
+  const letzteQ = ansicht === 'heute' ? jetztQ : (tag?.viertel.length ?? 1) - 1;
+  const q = Math.min(gewaehlt ?? jetztQ, letzteQ);
+  const waehle = (n: number) => setGewaehlt(Math.max(0, Math.min(letzteQ, n)));
 
   // --- Der Moment -----------------------------------------------------------
   let werte: FlussWerte;
@@ -229,7 +219,17 @@ export function EnergieBuehne({
       preisCt: q === jetztQ ? null : preisCt,
     }) ?? (zeit === 'plan' ? 'Für diese Viertelstunde liegt kein vollständiger Plan vor.' : 'Für diesen Moment fehlen Messwerte; das Cockpit rechnet keine Aufteilung aus.');
   const rolle = v?.rolle && ROLLEN.has(v.rolle) ? roleLabel(v.rolle as SlotRole, planKind) : null;
-  const marke = heute ? 'Energie · gemessen' : zeit === 'plan' ? 'Plan und Prognose' : zeit === 'live' ? 'Live' : 'gemessen';
+  // Die Plan-Tätigkeit steht IN der Marke (keine zweite Plakette, die den Umschalter verdrängt).
+  // Jetzt nennt sie die Fahrplan-Zeile; eine gemessene Viertelstunde sagt „Plan:“, denn die
+  // Tätigkeit ist eine Aussage des Plans, keine Messung.
+  const planWort = rolle && !heute && q !== jetztQ ? rolle : null;
+  const marke = heute
+    ? 'Energie · gemessen'
+    : zeit === 'plan'
+      ? planWort ? `Plan · ${planWort}` : 'Plan und Prognose'
+      : zeit === 'live'
+        ? 'Live'
+        : planWort ? `gemessen · Plan: ${planWort}` : 'gemessen';
 
   // --- Listen „im Detail“ ---------------------------------------------------
   const max = isPhone ? 4 : 6;
@@ -272,16 +272,10 @@ export function EnergieBuehne({
 
   return (
     <div className={`vp-eb${heute ? ' is-heute' : ''}`}>
+      {/* Feste Plätze: Uhrzeit und Umschalter oben, die Marke darunter (am Rechner in einer
+          Zeile). Eine lange Marke bricht in ihrer eigenen Zeile um, nie der Umschalter. */}
       <div className="vp-eb-kopf">
         <span className="vp-eb-uhr">{heute ? `bis ${uhr}` : uhr}</span>
-        <span className={`vp-eb-marke is-${heute ? 'heute' : zeit}`}>
-          {zeit === 'live' && !heute && <i aria-hidden="true" />}
-          {marke}
-        </span>
-        {/* Jetzt sagt die Fahrplan-Zeile, was der Plan tut; nur eine andere
-            Viertelstunde nennt ihre Tätigkeit hier. */}
-        {rolle && !heute && q !== jetztQ && <span className="vp-eb-plan">Plan: {rolle}</span>}
-        <span className="vp-eb-sp" />
         <div className="vp-seg vp-seg-compact vp-eb-modus" role="group" aria-label="Anzeige">
           {(['jetzt', 'heute'] as const).map((a) => (
             <button
@@ -290,7 +284,6 @@ export function EnergieBuehne({
               aria-pressed={ansicht === a}
               className={ansicht === a ? 'active' : ''}
               onClick={() => {
-                setSpielt(false);
                 setAnsicht(a);
                 // „Heute“ zeigt die Energie je Gerät - erst dann werden die Tagessummen geholt.
                 if (a === 'heute') { setGewaehlt(null); onBlatt?.('load'); }
@@ -300,6 +293,10 @@ export function EnergieBuehne({
             </button>
           ))}
         </div>
+        <span className={`vp-eb-marke is-${heute ? 'heute' : zeit}`}>
+          {zeit === 'live' && !heute && <i aria-hidden="true" />}
+          {marke}
+        </span>
       </div>
       <p className="vp-eb-satz" aria-live="polite">{satzText}</p>
 
@@ -318,12 +315,6 @@ export function EnergieBuehne({
         onKnoten={(r, el) => oeffne(r, el)}
       />
 
-      {vListe && (
-        <div className="vp-eb-listen">
-          <ListeBlock liste={vListe} onOpen={(el) => oeffne('load', el)} />
-        </div>
-      )}
-
       {tag && (
         <div className="vp-eb-zeit">
           <Tagesleiste
@@ -332,29 +323,41 @@ export function EnergieBuehne({
             q={q}
             heute={heute}
             zielKw={betrieb === 'spitze' ? zielKw : null}
-            onQ={(n) => { setSpielt(false); setGewaehlt(n); }}
+            onQ={waehle}
           />
+          {/* Ein Tipp trifft am Telefon nur auf etwa ± 45 Minuten genau; ‹ › gehen je eine Viertelstunde. */}
           <div className="vp-eb-zeitknoepfe">
             <button
               type="button"
-              className="vp-btn vp-btn--sm vp-eb-spiel"
-              onClick={() => {
-                if (spielt) { setSpielt(false); return; }
-                if (q >= (heute ? jetztQ : tag.viertel.length - 1) || q === jetztQ) setGewaehlt(0);
-                setSpielt(true);
-              }}
+              className="vp-eb-schritt"
+              aria-label="Eine Viertelstunde früher"
+              disabled={q <= 0}
+              onClick={() => waehle(q - 1)}
             >
-              <Icon name={spielt ? 'x' : 'history'} size={16} />
-              {spielt ? 'Anhalten' : 'Tag abspielen'}
+              <Icon name="chevron-left" size={18} />
+            </button>
+            <button
+              type="button"
+              className="vp-eb-schritt"
+              aria-label="Eine Viertelstunde später"
+              disabled={q >= letzteQ}
+              onClick={() => waehle(q + 1)}
+            >
+              <Icon name="chevron-right" size={18} />
             </button>
             <span className="vp-eb-sp" />
             {q !== jetztQ && (
-              <button type="button" className="vp-btn vp-btn--sm vp-eb-jetzt" onClick={() => { setSpielt(false); setGewaehlt(null); }}>
+              <button type="button" className="vp-btn vp-btn--sm vp-eb-jetzt" onClick={() => setGewaehlt(null)}>
                 Zurück zu Jetzt
               </button>
             )}
           </div>
-          <p className="vp-eb-hinweis">Ziehen Sie über die Tagesleiste. Links von „Jetzt“ sehen Sie Messwerte, rechts den Plan.</p>
+        </div>
+      )}
+
+      {vListe && (
+        <div className="vp-eb-listen">
+          <ListeBlock liste={vListe} onOpen={(el) => oeffne('load', el)} />
         </div>
       )}
 

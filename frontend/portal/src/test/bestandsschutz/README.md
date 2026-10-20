@@ -81,6 +81,12 @@ oben) - das ist die bewusste, im Konzept beschriebene Änderung dieser Fläche, 
 änderte sich). Die Marke „überwacht" selbst erscheint in dieser Aufnahme nicht (die Fixture-Anlage hat noch keine
 aktive Überwachung) - ein Folgefall dafür ist nicht Teil dieser Bestandsschutz-Aufnahme.
 
+**Konzept b1, Teil 1 (20.10.2026, Kopf und Tagesleiste der Bühne):** `cockpit.html` folgt der beschlossenen
+Änderung der Bühne: die Marke steht hinter dem Umschalter (Raster mit festen Plätzen, der Platzhalter
+`vp-eb-sp` entfällt), „Tag abspielen“ und der Hinweissatz unter der Tagesleiste entfallen, an ihrer Stelle stehen
+die Knöpfe ‹ › („Eine Viertelstunde früher/später“). Neu geschrieben mit `vitest -u` am Produktstand wie bei
+Alerting Scheibe 2; der Token-Vergleich zeigt genau diese drei Stellen, kein anderes Byte.
+
 `uemsBestandsschutz.test.tsx` ergänzt neun Snapshots: vier O18-Fälle, sechs Verlauf-Reiter in einem Snapshot,
 drei Portfolio-Reiter und die `startEbene`-Matrix (64 Eingaben). Die fünf in den Bestands-Tests gestubbten
 Canvas-/Diagrammkomponenten schützt zusätzlich `diagramme.json` mit SHA-256 des Bezugsstands.

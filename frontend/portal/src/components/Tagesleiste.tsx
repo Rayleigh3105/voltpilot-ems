@@ -6,7 +6,7 @@ import { uhrzeit, type Tag } from '../tagesleiste';
 
 /**
  * **Die Tagesleiste** unter dem Energiefluss (Konzept
- * `docs/konzepte/cockpit-tagesfilm`): ein Fingerzug durch den heutigen Tag.
+ * `docs/konzepte/cockpit-tagesfilm`): ein ruhiges Bild des heutigen Tages.
  * Links von „Jetzt“ stehen Messwerte, rechts der Plan (grau hinterlegt,
  * gestrichelt). Was die Leiste zeigt, folgt dem Betriebsmodell:
  *
@@ -15,8 +15,14 @@ import { uhrzeit, type Tag } from '../tagesleiste';
  *   laut Plan), darunter Speicher laden und abgeben.
  * - Lastspitzenkappung: Netzbezug, Ziel als Linie.
  *
- * Bedienung: Ziehen oder Tippen, Pfeiltasten (Umschalt = Stunde), Pos1/Ende.
+ * Bedienung (Konzept b1, 20.10.2026): ein Finger wählt nur durch einen Tipp -
+ * wer über die Leiste wischt, scrollt die Seite (`touch-action: pan-y`), statt
+ * versehentlich die Uhrzeit zu verschieben. Die Maus darf ziehen. Dazu
+ * Pfeiltasten (Umschalt = Stunde), Pos1/Ende und die Knöpfe ‹ › der Bühne.
  */
+/** So weit darf sich ein Finger zwischen Aufsetzen und Loslassen bewegen, damit es ein Tipp bleibt. */
+const TIPP_PX = 10;
+
 export function Tagesleiste({
   tag,
   betrieb,
@@ -34,7 +40,9 @@ export function Tagesleiste({
   onQ: (q: number) => void;
 }) {
   const [ref, breite] = useContainerWidth<HTMLDivElement>();
+  // Maus: ziehen wählt laufend. Finger/Stift: nur ein Tipp (Loslassen nahe am Aufsetzpunkt).
   const ziehen = useRef(false);
+  const tipp = useRef<{ x: number; y: number } | null>(null);
   const T = chartTheme();
   const N = tag.viertel.length;
   const w = Math.max(240, Math.round(breite || 320));
@@ -177,13 +185,22 @@ export function Tagesleiste({
       aria-valuetext={text}
       onKeyDown={onKey}
       onPointerDown={(e) => {
+        if (e.pointerType !== 'mouse') {
+          tipp.current = { x: e.clientX, y: e.clientY };
+          return;
+        }
         ziehen.current = true;
         try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* ältere Browser */ }
         onQ(qAus(e));
       }}
       onPointerMove={(e) => { if (ziehen.current) onQ(qAus(e)); }}
-      onPointerUp={() => { ziehen.current = false; }}
-      onPointerCancel={() => { ziehen.current = false; }}
+      onPointerUp={(e) => {
+        ziehen.current = false;
+        const t = tipp.current;
+        tipp.current = null;
+        if (t && Math.abs(e.clientX - t.x) < TIPP_PX && Math.abs(e.clientY - t.y) < TIPP_PX) onQ(qAus(e));
+      }}
+      onPointerCancel={() => { ziehen.current = false; tipp.current = null; }}
     >
       <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
         {!heute && <rect x={jetztX} y={0} width={Math.max(0, w - jetztX)} height={base + 2} rx={6} className="vp-tl-plan" />}
