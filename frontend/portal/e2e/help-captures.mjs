@@ -6,8 +6,9 @@ const STEUERUNG_UHR = '2026-09-29T11:10:00Z';
 export const captures = [
   { id: 'cockpit', title: 'Cockpit: Energie und Zustand', hash: plant(), root: 'main', points: [
     point('main h1', 'Der Anlagenname zeigt, welchen Standort Sie gerade betrachten.'),
-    point('text=PV-Erzeugung', 'Die Energieanzeige beschreibt die aktuelle Erzeugung und die weiteren Flüsse.'),
-    point('h2:has-text("Unterm Strich")', 'Das Ergebnis bezieht sich auf den hier gewählten Zeitraum.'),
+    point('.vp-lp-k-pv', 'Die Energieanzeige beschreibt die aktuelle Erzeugung und die weiteren Flüsse.'),
+    point('.vp-tl', 'Ein Tipp auf die Tagesleiste zeigt eine andere Viertelstunde, ‹ › gehen je 15 Minuten weiter.'),
+    point('.vp-steuer', 'Die Steuerzeile nennt Auftrag, Bestätigung und Wirkung; „Warum?“ öffnet die Gründe.'),
   ] },
   { id: 'orientierung', title: 'Navigation auf dem Rechner', hash: plant(), viewportOnly: true, points: [
     point('.vp-anlagenav', 'Die Bereiche führen zu den täglichen Aufgaben dieser Anlage.'),
