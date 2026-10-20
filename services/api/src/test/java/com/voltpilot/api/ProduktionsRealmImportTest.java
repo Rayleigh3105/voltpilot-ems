@@ -212,6 +212,46 @@ class ProduktionsRealmImportTest {
         assertThat(adminEreignisse.findValuesAsText("resourcePath")).contains("users/" + id);
     }
 
+    /**
+     * Die Anmeldeseite lädt jede Datei, die sie nennt (auch die Schriften aus dem CSS), und jede Datei unseres
+     * Themas trägt die Thema-Version ({@code ?v=}, {@code assetVersion} in theme.properties; ungebaut
+     * {@code dev}, das Image setzt den Inhalts-Hash ein). Beides fiel bisher erst live auf: ein Import aus dem
+     * falschen Keycloak-Pfad ({@code authChecker.js}, 404 seit 23.08.2026) und eine neue Vorlage mit dem
+     * 30 Tage gecachten CSS davor (20.10.2026).
+     */
+    @Test
+    void dieAnmeldeseiteLaedtJedeDateiUndDasThemaTraegtSeineVersion() throws Exception {
+        HttpResponse<String> seite = http.send(HttpRequest.newBuilder(URI.create(anmeldeUrl())).GET().build(),
+                HttpResponse.BodyHandlers.ofString());
+        assertThat(seite.statusCode()).as(seite.body()).isEqualTo(200);
+        List<URI> dateien = new ArrayList<>();
+        Matcher inSeite = Pattern.compile("\"(/resources/[^\"]+)\"").matcher(seite.body());
+        while (inSeite.find()) {
+            dateien.add(URI.create(basis() + inSeite.group(1).replace("&amp;", "&")));
+        }
+        URI css = dateien.stream().filter(d -> d.getPath().endsWith("/login/voltpilot/css/voltpilot.css"))
+                .findFirst().orElseThrow();
+        Matcher inCss = Pattern.compile("url\\('([^']+)'\\)").matcher(
+                http.send(HttpRequest.newBuilder(css).GET().build(), HttpResponse.BodyHandlers.ofString()).body());
+        while (inCss.find()) {
+            dateien.add(css.resolve(inCss.group(1)));
+        }
+
+        List<String> nichtGeladen = new ArrayList<>();
+        for (URI datei : dateien) {
+            int status = http.send(HttpRequest.newBuilder(datei).GET().build(),
+                    HttpResponse.BodyHandlers.discarding()).statusCode();
+            if (status != 200) {
+                nichtGeladen.add(status + " " + datei.getPath());
+            }
+        }
+        assertThat(dateien).as("Dateien der Anmeldeseite").hasSizeGreaterThanOrEqualTo(12);
+        assertThat(nichtGeladen).isEmpty();
+        assertThat(dateien.stream().filter(d -> d.getPath().contains("/login/voltpilot/"))
+                .filter(d -> !"v=dev".equals(d.getQuery())).map(URI::toString).toList())
+                .as("Dateien des Themas ohne Thema-Version").isEmpty();
+    }
+
     @Test
     void dasSkriptDesBlattsMachtEinenBestehendenRealmGleichDemImport() throws Exception {
         // Ein Realm wie der heutige Live-Realm: eingebaute Abläufe, keine Vorgabe, keine Ereignisse, und Konten
@@ -461,14 +501,8 @@ class ProduktionsRealmImportTest {
      * zurück ({@code cookie_not_found}).
      */
     private HttpResponse<String> browserAnmeldung(String name, String passwort) throws Exception {
-        String verifier = UUID.randomUUID() + "-" + UUID.randomUUID();
-        String challenge = Base64.getUrlEncoder().withoutPadding().encodeToString(
-                MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII)));
-        String auth = basis() + "/realms/voltpilot/protocol/openid-connect/auth?" + formular(Map.of(
-                "client_id", "voltpilot-frontend", "redirect_uri", ORIGIN + "/", "response_type", "code",
-                "scope", "openid", "code_challenge", challenge, "code_challenge_method", "S256"));
         Map<String, String> cookies = new LinkedHashMap<>();
-        HttpResponse<String> seite = mitCookies(HttpRequest.newBuilder(URI.create(auth)).GET(), cookies);
+        HttpResponse<String> seite = mitCookies(HttpRequest.newBuilder(URI.create(anmeldeUrl())).GET(), cookies);
         assertThat(seite.statusCode()).as(seite.body()).isEqualTo(200);
         Matcher m = Pattern.compile("id=\"kc-form-login\"[^>]*action=\"([^\"]+)\"").matcher(seite.body());
         assertThat(m.find()).as("Anmeldeformular").isTrue();
@@ -484,6 +518,16 @@ class ProduktionsRealmImportTest {
             antwort = mitCookies(HttpRequest.newBuilder(URI.create(ziel)).GET(), cookies);
         }
         return antwort;
+    }
+
+    /** Die Anmeldeseite des Portals: Authorization Code + PKCE ({@code S256}), wie keycloak-js sie aufruft. */
+    private static String anmeldeUrl() throws Exception {
+        String verifier = UUID.randomUUID() + "-" + UUID.randomUUID();
+        String challenge = Base64.getUrlEncoder().withoutPadding().encodeToString(
+                MessageDigest.getInstance("SHA-256").digest(verifier.getBytes(StandardCharsets.US_ASCII)));
+        return basis() + "/realms/voltpilot/protocol/openid-connect/auth?" + formular(Map.of(
+                "client_id", "voltpilot-frontend", "redirect_uri", ORIGIN + "/", "response_type", "code",
+                "scope", "openid", "code_challenge", challenge, "code_challenge_method", "S256"));
     }
 
     private HttpResponse<String> mitCookies(HttpRequest.Builder anfrage, Map<String, String> cookies)

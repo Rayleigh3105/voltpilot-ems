@@ -21,6 +21,13 @@ Build-Optionen: `KC_DB=postgres`, `KC_HEALTH_ENABLED=true`, `KC_HTTP_RELATIVE_PA
 docker build -f deploy/keycloak/Dockerfile   -t git.tecmaxx.de/mamotec/voltpilot-ems/keycloak:local .
 ```
 
+**Theme-URLs tragen eine Version.**
+Keycloak liefert Theme-Dateien unter `/auth/resources/<Kennung>/login/voltpilot/…` mit 30 Tagen `max-age` aus; die Kennung wechselt erst mit einem Keycloak-Upgrade, nie mit dem Theme.
+Darum trägt jede eigene URL `?v=<assetVersion>` (Vorlage und `url()` im CSS), und das Dockerfile ersetzt den Platzhalter `dev` durch den Inhalts-Hash des Themes.
+Ohne Version hielten Cloudflare und Browser nach einem Deploy bis zu 30 Tage das alte CSS zur neuen Vorlage (20.10.2026: Kacheln-Bühne mit schwarzen Flächen).
+Wächter: `frontend/portal/src/keycloakThemaVersion.test.ts` (Quelltext) und `ProduktionsRealmImportTest` (echter Keycloak lädt jede Datei der Anmeldeseite).
+Ein Bind-Mount des Themes (Compose) liefert den ungebauten Stand mit `?v=dev`.
+
 Unveränderliche Images vermeiden veraltete Theme-Dateien im Containercache. Das [eigenständige Produktions-Compose](../../docs/deploy-compose.md) kann über `KEYCLOAK_IMAGE` einen vollständigen Image-Verweis verwenden; dieser ist unabhängig von `IMAGE_TAG`. Bind-Mounts können eingebettete Realm-/Theme-Dateien überlagern.
 
 **Bestehende Realms werden durch `--import-realm` nicht aktualisiert.** Ein neues Image ändert das Theme, aber keine bereits gespeicherten Realm-Einstellungen. [Import und Pflege](../../infra/prod/keycloak/README.md)

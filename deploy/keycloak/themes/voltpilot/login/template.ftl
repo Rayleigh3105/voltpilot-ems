@@ -10,7 +10,7 @@
   Tokens wie jede Portal-Karte. Am Telefon bleibt davon eine 56-px-Kopfzeile,
   die Karte und darunter EINE ruhige Kachel.
 
-  Sechs Dinge, die man beim Anfassen wissen muss:
+  Sieben Dinge, die man beim Anfassen wissen muss:
 
   1. DIE KACHELN SIND DIE INHALTSANGABE DES PORTALS, keine Anlage. Die Seite
      kennt noch keinen Kunden, also traegt sie KEINE Zahl (kein kW, kein Euro).
@@ -37,6 +37,11 @@
 
   6. `#kc-form-login` (in login.ftl) und `#kc-page-title` bleiben - an der
      ersten haengt js/register-link.js seinen "Konto erstellen"-Link.
+
+  7. JEDE URL unter url.resourcesPath traegt `?v=${properties.assetVersion}`.
+     Der Pfad wechselt erst mit einem Keycloak-Upgrade und wird 30 Tage
+     gecacht; ohne die Version bekaeme eine neue Vorlage das alte CSS
+     (Begruendung in theme.properties).
 
   Das Portal traegt dieselbe Buehne in frontend/portal/src/components/
   AuthScreen.tsx; wer hier Copy, Motiv oder Takt aendert, aendert sie dort mit.
@@ -86,7 +91,7 @@
         </#list>
     </#if>
     <title>${msg("loginTitle",(realm.displayName!''))}</title>
-    <link rel="icon" href="${url.resourcesPath}/img/favicon.ico" />
+    <link rel="icon" href="${url.resourcesPath}/img/favicon.ico?v=${properties.assetVersion}" />
     <#if properties.stylesCommon?has_content>
         <#list properties.stylesCommon?split(' ') as style>
             <link href="${url.resourcesCommonPath}/${style}" rel="stylesheet" />
@@ -94,7 +99,7 @@
     </#if>
     <#if properties.styles?has_content>
         <#list properties.styles?split(' ') as style>
-            <link href="${url.resourcesPath}/${style}" rel="stylesheet" />
+            <link href="${url.resourcesPath}/${style}?v=${properties.assetVersion}" rel="stylesheet" />
         </#list>
     </#if>
     <script type="importmap">
@@ -106,7 +111,7 @@
     </script>
     <#if properties.scripts?has_content>
         <#list properties.scripts?split(' ') as script>
-            <script src="${url.resourcesPath}/${script}" type="text/javascript"></script>
+            <script src="${url.resourcesPath}/${script}?v=${properties.assetVersion}" type="text/javascript"></script>
         </#list>
     </#if>
     <#if scripts??>
@@ -114,9 +119,12 @@
             <script src="${script}" type="text/javascript"></script>
         </#list>
     </#if>
-    <script type="module" src="${url.resourcesPath}/js/passwordVisibility.js"></script>
+    <script type="module" src="${url.resourcesPath}/js/passwordVisibility.js?v=${properties.assetVersion}"></script>
+    <#-- authChecker.js liegt im LOGIN-Thema (keycloak.v2 erbt es von base), nicht
+         unter common: der frueher hier stehende resourcesCommonPath lief auf 404
+         und die Pruefung "in einem anderen Tab angemeldet" fiel still aus. -->
     <script type="module">
-        import { checkCookiesAndSetTimer } from "${url.resourcesCommonPath}/js/authChecker.js";
+        import { checkCookiesAndSetTimer } from "${url.resourcesPath}/js/authChecker.js?v=${properties.assetVersion}";
 
         checkCookiesAndSetTimer(
             "${url.ssoLoginInOtherTabsUrl?no_esc}"
@@ -134,7 +142,7 @@
        Hub-Kachel des Motivs) - genau die Rolle, die er auch im Favicon hat. -->
   <aside class="vpl-brand">
     <div class="vpl-brandhead">
-      <img class="vpl-wordmark" src="${url.resourcesPath}/img/voltpilot-wordmark.png"
+      <img class="vpl-wordmark" src="${url.resourcesPath}/img/voltpilot-wordmark.png?v=${properties.assetVersion}"
            alt="VoltPilot" width="640" height="152">
     </div>
     <div class="vpl-stage">

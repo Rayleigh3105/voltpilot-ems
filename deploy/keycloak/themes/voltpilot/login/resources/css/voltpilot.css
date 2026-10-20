@@ -26,10 +26,13 @@
 
 /* --- Schriften: gebuendelt, kein Aufruf an einen Dritt-Host (siehe
        ../fonts/README.md). Beides VARIABLE Schriften - eine Datei je Familie
-       deckt 400-800 ab. --------------------------------------------------- */
+       deckt 400-800 ab. Jede url() endet auf `?v=` mit dem Platzhalter `dev`:
+       das Keycloak-Image setzt dort den Inhalts-Hash des Themas ein
+       (theme.properties, assetVersion).
+       --------------------------------------------------------------------- */
 @font-face {
   font-family: 'Inter';
-  src: url('../fonts/inter-latin.woff2') format('woff2');
+  src: url('../fonts/inter-latin.woff2?v=dev') format('woff2');
   font-weight: 100 900;
   font-style: normal;
   font-display: swap;
@@ -39,7 +42,7 @@
 }
 @font-face {
   font-family: 'Inter Tight';
-  src: url('../fonts/inter-tight-latin.woff2') format('woff2');
+  src: url('../fonts/inter-tight-latin.woff2?v=dev') format('woff2');
   font-weight: 100 900;
   font-style: normal;
   font-display: swap;
