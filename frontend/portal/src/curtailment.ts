@@ -451,6 +451,8 @@ export const WAECHTER_LABEL = 'Einspeise-Wächter';
 export interface ExportGuardView {
   /** Die ruhige Hauptzeile („Einspeisegrenze 70,0 kW. …"). */
   line: string;
+  /** Nur der Kopf der Hauptzeile („Einspeisegrenze 70,0 kW") - für die Steuerzeile des Cockpits. */
+  kurz: string;
   /** `warn`, sobald die Grenze nicht (voll) wirkt oder blind geregelt wird. */
   tone: 'ok' | 'warn';
   /** „zuletzt gemeldet vor 12 Min." — leer, solange der Block frisch ist. */
@@ -495,6 +497,7 @@ export function exportGuardView(
 
   return {
     line,
+    kurz: head,
     // `blind` ist Warnung, weil dann nicht mehr gegen eine frische Messung am
     // Netzpunkt geregelt wird (Halten / Zusammenziehen / Sicherheitskappe).
     tone: !g.effective || g.reach != null || g.blind ? 'warn' : 'ok',

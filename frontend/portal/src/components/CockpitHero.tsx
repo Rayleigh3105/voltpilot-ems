@@ -42,9 +42,9 @@ import './CockpitBlocks.css';
  * KEINEN Leisten-Block beisteuert, bekommt gar keine Leiste (kein leerer
  * Rahmen, die Bühne wird dann einspaltig).
  *
- * Am Bühnenfuß, über die **volle** Kartenbreite, die schlanke Steuerungs-Zeile
- * (Sollwert → Bestätigung → Grund, `ControlStrip variant="bare"`): kein
- * Karte-in-Karte-Rahmen, keine leere Hälfte daneben.
+ * Die Steuerzeile (`ControlStrip variant="zeile"`, Konzept b1 vom 20.10.2026,
+ * Entscheid E2): am Rechner rechts unter der Leitkachel, am Telefon - und wo
+ * es keine Leitkachel gibt - am Bühnenfuß über die volle Kartenbreite.
  *
  * Render-only: alles Abgeleitete kommt aus `cockpitWidgets.ts` `cockpitHero`.
  *
@@ -62,6 +62,7 @@ export function CockpitHero({
   pins = null,
   onOpenSub,
   footer,
+  steuerung = null,
   ladenHinweis = null,
   showRail = true,
   seite = null,
@@ -91,6 +92,11 @@ export function CockpitHero({
    * Hälfte daneben leer (Befund P4 des Konzepts).
    */
   footer?: ReactNode;
+  /**
+   * Die Steuerzeile (Konzept b1, E2): rechts unter der Leitkachel, wenn es die
+   * rechte Spalte gibt, sonst am Bühnenfuß.
+   */
+  steuerung?: ReactNode;
   /**
    * Der Satz „Laden bei Bezug" (K8/B2, `ladenBeiBezug.ts`) - steht unter dem
    * Fluss, solange der Speicher lädt, während das Netz liefert. null = nichts.
@@ -212,10 +218,16 @@ export function CockpitHero({
       {hasRail && (
         <div className="vp-hero-side">
           {seite && <div className="vp-hero-leit">{seite}</div>}
+          {steuerung && <div className="vp-hero-steuer">{steuerung}</div>}
         </div>
       )}
 
-      {footer && <div className="vp-stage-foot">{footer}</div>}
+      {(footer || (steuerung && !hasRail)) && (
+        <div className="vp-stage-foot">
+          {footer}
+          {!hasRail && steuerung}
+        </div>
+      )}
     </Card>
   );
 }

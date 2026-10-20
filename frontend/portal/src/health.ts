@@ -12,7 +12,7 @@ import { AUFBAU_REITER } from './ebenenNav';
 export type HealthState = 'ok' | 'warn' | 'off';
 
 export interface HealthItem {
-  key: 'device' | 'plan' | 'control' | 'battery';
+  key: 'device' | 'plan' | 'control' | 'battery' | 'grenze';
   label: string;
   state: HealthState;
   detail: string;
@@ -42,6 +42,13 @@ export interface HealthInput {
   batteryWithoutDevice: boolean;
   /** A battery is linked to a controlling device (the plan reaches it). */
   batteryLinked: boolean;
+  /**
+   * Der belegte Satz `deviceLimitLine` (curtailment.ts): die Einspeisegrenze IM Wechselrichter liegt
+   * unter der hinterlegten. Ein Befund mit Weg in die Einstellungen (Konzept b1, 20.10.2026) statt
+   * eines dauernden Absatzes in der Steuerzeile. Absent/null = keine belegte Abweichung - dann gibt
+   * es auch keine Zeile (nie „Einspeisegrenze: in Ordnung", das ist nicht gemessen).
+   */
+  geraeteGrenze?: string | null;
 }
 
 /**
@@ -98,6 +105,11 @@ export function healthChecklist(input: HealthInput): HealthItem[] {
     items.push({ key: 'battery', label: 'Speicher verknüpft', state: 'ok', detail: 'wird gesteuert' });
   }
 
+  // 5 · Einspeisegrenze im Gerät weicht ab (nur mit Beleg, wortgleich mit `deviceLimitLine`).
+  if (input.geraeteGrenze) {
+    items.push({ key: 'grenze', label: 'Einspeisegrenze', state: 'off', detail: input.geraeteGrenze });
+  }
+
   // Warnings first so a problem is visible at the top of the list.
   const rank: Record<HealthState, number> = { warn: 0, off: 1, ok: 2 };
   return items.sort((a, b) => rank[a.state] - rank[b.state]);
@@ -113,6 +125,7 @@ const KEY_WORD: Record<HealthItem['key'], string> = {
   plan: 'Fahrplan',
   control: 'Steuerung',
   battery: 'Speicher',
+  grenze: 'Einspeisegrenze',
 };
 
 /** „a, b und c" — die deutsche Aufzählung. */
@@ -130,6 +143,8 @@ export const ZUSTAND_LEVER: Record<
   plan: { sub: 'fahrplan', label: 'Fahrplan' },
   control: { sub: 'steuerung', label: 'Steuerung' },
   battery: { sub: 'technik', label: 'Einstellungen' },
+  // Die hinterlegte Einspeisegrenze steht in den Einstellungen der Anlage (`AnlageTechnik`).
+  grenze: { sub: 'technik', label: 'Einstellungen' },
 };
 
 /** Kopftitel der lauten Karte — wortgleich mit dem Popover des Abzeichens. */
@@ -255,6 +270,8 @@ export interface HealthBadgeInput {
    * Absent/false = no finding — an un-migrated plant can never produce one.
    */
   entityDrift?: boolean | null;
+  /** Die belegte Abweichung der Einspeisegrenze im Gerät (`deviceLimitLine`); absent = keine. */
+  geraeteGrenze?: string | null;
 }
 
 /**
@@ -265,7 +282,7 @@ export interface HealthBadgeInput {
  */
 export type AnlageHealthFacts = Pick<
   HealthBadgeInput,
-  'plan' | 'controlState' | 'battery' | 'entityDrift'
+  'plan' | 'controlState' | 'battery' | 'entityDrift' | 'geraeteGrenze'
 >;
 
 /**
@@ -283,7 +300,8 @@ export function sameHealthFacts(a: AnlageHealthFacts, b: AnlageHealthFacts): boo
     plan(a) === plan(b) &&
     battery(a) === battery(b) &&
     (a.controlState ?? null) === (b.controlState ?? null) &&
-    (a.entityDrift ?? null) === (b.entityDrift ?? null)
+    (a.entityDrift ?? null) === (b.entityDrift ?? null) &&
+    (a.geraeteGrenze ?? null) === (b.geraeteGrenze ?? null)
   );
 }
 
@@ -316,6 +334,7 @@ export function healthBadge(input?: HealthBadgeInput | null): HealthBadge {
     platformCertVerdict: facts.platformCertVerdict ?? null,
     batteryWithoutDevice: facts.battery?.withoutDevice ?? false,
     batteryLinked: facts.battery?.linked ?? false,
+    geraeteGrenze: facts.geraeteGrenze ?? null,
   }).filter((i) => {
     if (i.key === 'device') return facts.devices != null;
     if (i.key === 'plan') return facts.plan != null;

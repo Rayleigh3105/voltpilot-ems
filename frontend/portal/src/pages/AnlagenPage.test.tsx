@@ -841,7 +841,7 @@ describe('Die Bühne (Konzept vp-cockpit-konzept-f4, Richtung A)', () => {
     expect(p.textContent).toContain('meldet sich nicht');
   });
 
-  it('trägt die Steuerung als Bühnenfuß: Auftrag, Gerät und Wirkung getrennt', async () => {
+  it('trägt die Steuerung als EINE Zeile Auftrag › Gerät › Wirkung - am Rechner rechts unter der Leitkachel (Konzept b1, E2)', async () => {
     vi.restoreAllMocks();
     sessionStorage.clear();
     stubApi();
@@ -859,14 +859,19 @@ describe('Die Bühne (Konzept vp-cockpit-konzept-f4, Richtung A)', () => {
     mockAdaptive(true, TOPO);
     mockSurface(MULTI);
     const { container } = renderSeite();
-    await waitFor(() => expect(container.querySelector('.vp-stage-foot .vp-control-spalten')).toBeTruthy());
-    const foot = container.querySelector('.vp-stage-foot') as HTMLElement;
-    const text = (foot.textContent ?? '').replace(/[\u00a0\u202f]/g, ' ');
-    expect(text).toContain('Auftrag');
+    await waitFor(() => expect(container.querySelector('.vp-cockpit-hero .vp-steuer')).toBeTruthy());
+    const zeile = container.querySelector('.vp-steuer') as HTMLElement;
+    const text = (zeile.textContent ?? '').replace(/[\u00a0\u202f]/g, ' ');
     expect(text).toContain('Speicher laden 2,1 kW');
     expect(text).toContain('bestätigt');
-    expect(text).toContain('Wirkung');
-    expect(container.querySelector('.vp-hero-flow .vp-stage-foot')).toBeNull();
+    expect(text).toContain('Warum?');
+    expect(zeile.querySelectorAll('.vp-steuer-pfeil')).toHaveLength(2);
+    // Rechts unter der Leitkachel, wenn es die rechte Spalte gibt - sonst am Bühnenfuß; nie im Fluss.
+    const ort = container.querySelector('.vp-hero-side') ? '.vp-hero-side .vp-hero-steuer .vp-steuer' : '.vp-stage-foot .vp-steuer';
+    expect(container.querySelector(ort)).toBe(zeile);
+    expect(container.querySelector('.vp-hero-flow .vp-steuer')).toBeNull();
+    // Kein Fließtext unter der Zeile mehr (Konzept b1): die Gründe stehen im Blatt „Warum?“.
+    expect(container.querySelector('.vp-control-reason, .vp-guard-line')).toBeNull();
     // Die Bestätigung steht EINMAL - in der Steuerzeile, nicht noch am Speicher-Knoten.
     await waitFor(() => expect(container.querySelector('.vp-hero-flow .vp-lp-batt')).toBeTruthy());
     expect(container.querySelector('.vp-flow-confirm')).toBeNull();
@@ -882,6 +887,7 @@ describe('Die Bühne (Konzept vp-cockpit-konzept-f4, Richtung A)', () => {
     await waitFor(() => expect(container.querySelector('.vp-cockpit-hero')).toBeTruthy());
     expect(container.querySelector('.vp-flow-confirm')).toBeNull();
     expect(container.querySelector('.vp-stage-foot')).toBeNull();
+    expect(container.querySelector('.vp-steuer')).toBeNull();
   });
 });
 

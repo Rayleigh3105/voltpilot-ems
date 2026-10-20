@@ -52,8 +52,15 @@ Umsetzung des abgenommenen Konzepts [`docs/konzepte/cockpit-tagesfilm`](../../ko
 - **Leitkachel:** am Rechner rechts neben dem Fluss (`CockpitHero seite`), am Telefon erste Kachel:
   Marktoptimierung → Börsenpreis, Lead `peak-band` → Lastspitze, sonst „Unterm Strich“. Sie steht dann
   nicht noch einmal im Raster.
-- **Steuerzeile:** am Fuß der Bühne (Telefon und Rechner) Auftrag · Gerät · Wirkung (`steuerSpalten`); die
-  Wirkung nennt die Leistung nur, wenn sie vom Auftrag abweicht. Keine Bestätigungszeile am
+- **Steuerzeile (Konzept b1, 20.10.2026, Entscheid E2):** EINE Zeile Auftrag › Gerät › Wirkung
+  (`steuerSpalten`, `ControlStrip variant="zeile"`), am Rechner rechts unter der Leitkachel, am Telefon und
+  ohne Leitkachel am Bühnenfuß; die Wirkung nennt die Leistung nur, wenn sie vom Auftrag abweicht. Die
+  Sätze (Plan, Gerät, Einspeisung, Ausblick, Einspeisegrenze) stehen unverändert, aber je Herkunft
+  gegliedert im Blatt „Warum?“ (Telefon `BottomSheet`, Rechner `Modal`) - vorher bis zu drei Absätze unter
+  der Bühne. Die Abweichung der Einspeisegrenze im Wechselrichter (`deviceLimitLine`) zählt die Zeile als
+  „1 Hinweis“; sie ist ein Befund im Zustand und im Kopf-Abzeichen (`health.ts` Schlüssel `grenze`, Hebel
+  Einstellungen). Der Folge-Satz nennt `executionTargetKw` „nach Solar verbleibenden Verbrauch“, nie
+  „Ihr Verbrauch“. Beweis: `e2e/cockpit-steuerzeile.spec.ts` (`help.html?steuerung=abweichung`). Keine Bestätigungszeile am
   Speicher-Knoten, kein Plan-Satz in der Leiste; der Zustand lässt Steuerungs- und Plan-Befunde weg, die in
   Steuerzeile bzw. Fahrplan-Kachel stehen. Börsenpreis im Satz nur abseits von „jetzt“.
 - **Kachelgrößen:** `LayoutDocument.groessen` (Kachel-Id → `klein`|`breit`), Katalog-Liste `kacheln`

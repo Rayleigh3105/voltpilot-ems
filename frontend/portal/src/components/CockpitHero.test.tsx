@@ -50,6 +50,7 @@ function renderStage(
     seite?: React.ReactNode;
     showRail?: boolean;
     footer?: React.ReactNode;
+    steuerung?: React.ReactNode;
     topology?: SiteTopology | null;
   } = {},
 ) {
@@ -61,6 +62,7 @@ function renderStage(
       seite={over.seite ?? null}
       showRail={over.showRail ?? true}
       footer={over.footer ?? null}
+      steuerung={over.steuerung ?? null}
     />,
   );
 }
@@ -89,38 +91,46 @@ describe('Die Leitkachel neben dem Fluss (Konzept „Cockpit als Tagesfilm“)',
   });
 });
 
-describe('Der Bühnenfuß', () => {
-  it('trägt die Steuerung über die volle Breite - nicht mehr in der Fluss-Spalte', () => {
-    const { container } = renderStage({
-      seite: <div className="leit" />,
-      footer: (
-        <ControlStrip
-          variant="bare"
-          view={{
-            state: 'healthy',
-            tone: 'ok',
-            sentence: 'Ihr Gerät regelt gerade auf 2,1 kW → Wechselrichter bestätigt 2,1 kW',
-            agoNote: 'geprüft vor 12 s',
-            reason: 'Mittags-PV wird gespeichert und am Abend verkauft.',
-          }}
-        />
-      ),
-    });
-    const foot = container.querySelector('.vp-stage-foot');
-    expect(foot).not.toBeNull();
-    // Der Fuß ist ein Geschwister der beiden Spalten (grid-column: 1/-1),
-    // NICHT ein Kind der Fluss-Spalte - das war die leere Hälfte (Befund P4).
-    expect(container.querySelector('.vp-hero-flow .vp-stage-foot')).toBeNull();
-    expect(container.querySelector('.vp-hero-side .vp-stage-foot')).toBeNull();
-    // Sollwert → Bestätigung → Grund, ohne eigenen Kartenrahmen (P5).
-    expect(foot?.textContent).toContain('regelt gerade auf');
-    expect(foot?.querySelector('.vp-control-reason')?.textContent).toContain('Abend verkauft');
-    expect(foot?.querySelector('.vp-card')).toBeNull();
+describe('Die Steuerzeile (Konzept b1, Entscheid E2)', () => {
+  const zeile = (
+    <ControlStrip
+      variant="zeile"
+      view={{
+        state: 'healthy',
+        tone: 'ok',
+        sentence: 'Ihr Gerät regelt gerade auf 2,1 kW → Wechselrichter bestätigt 2,1 kW',
+        agoNote: 'geprüft vor 12 s',
+        reason: 'Mittags-PV wird gespeichert und am Abend verkauft.',
+      }}
+    />
+  );
+
+  it('steht am Rechner rechts unter der Leitkachel - kein Bühnenfuß', () => {
+    const { container } = renderStage({ seite: <div className="leit" />, steuerung: zeile });
+    const steuer = container.querySelector('.vp-hero-side .vp-hero-steuer');
+    expect(steuer?.textContent).toContain('regelt gerade auf');
+    expect(container.querySelector('.vp-hero-leit + .vp-hero-steuer')).toBe(steuer);
+    expect(container.querySelector('.vp-stage-foot')).toBeNull();
+    // Der Grund steht nicht als Absatz darunter, erst im Blatt „Warum?“.
+    expect(container.textContent).not.toContain('Abend verkauft');
+  });
+
+  it('steht ohne rechte Spalte (Telefon, oder ohne Leitkachel) am Bühnenfuß über die volle Breite', () => {
+    for (const over of [{ seite: <div className="leit" />, showRail: false }, {}]) {
+      const { container, unmount } = renderStage({ ...over, steuerung: zeile });
+      const foot = container.querySelector('.vp-stage-foot');
+      expect(foot?.querySelector('.vp-steuer')).not.toBeNull();
+      // Ein Geschwister der Spalten (grid-column: 1/-1), nie ein Kind der Fluss-Spalte.
+      expect(container.querySelector('.vp-hero-flow .vp-stage-foot')).toBeNull();
+      expect(container.querySelector('.vp-hero-side')).toBeNull();
+      unmount();
+    }
   });
 
   it('fehlt ganz, wenn es keine Steuerung zu zeigen gibt', () => {
     const { container } = renderStage();
     expect(container.querySelector('.vp-stage-foot')).toBeNull();
+    expect(container.querySelector('.vp-steuer')).toBeNull();
   });
 });
 

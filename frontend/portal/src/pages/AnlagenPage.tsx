@@ -1430,6 +1430,7 @@ export function AnlageSeite({
     controlState: controlView?.state ?? null,
     batteryWithoutDevice: ovSite?.batteryWithoutDevice ?? false,
     batteryLinked,
+    geraeteGrenze: guardView?.deviceLimitLine ?? null,
   });
 
   // Report the facts only this page measures up to the shell badge, so header
@@ -1441,12 +1442,14 @@ export function AnlageSeite({
   const controlState = controlView?.state ?? null;
   const batteryKnown = ovSite != null;
   const batteryWithoutDevice = ovSite?.batteryWithoutDevice ?? false;
+  const geraeteGrenze = guardView?.deviceLimitLine ?? null;
   useEffect(() => {
     if (!onHealthFacts) return;
     onHealthFacts(site.id, {
       plan: planKnown ? { hasPlanToday, hasAnyPlan } : null,
       controlState,
       battery: batteryKnown ? { withoutDevice: batteryWithoutDevice, linked: batteryLinked } : null,
+      geraeteGrenze,
     });
   }, [
     onHealthFacts,
@@ -1458,6 +1461,7 @@ export function AnlageSeite({
     batteryKnown,
     batteryWithoutDevice,
     batteryLinked,
+    geraeteGrenze,
   ]);
 
   // The selected period instance (`at` = a tapped past month; null = current).
@@ -2062,12 +2066,20 @@ export function AnlageSeite({
              sind beide null und das Diagramm zeichengleich zu vorher. */
           charging={ladeKreise.haus}
           chargingOwn={ladeKreise.eigen}
-          /* Die Steuerzeile am Fuß der Bühne - am Telefon und am Rechner
-             (Konzept „Cockpit als Tagesfilm“). Sie ist die einzige Fläche,
-             die einen abweichenden Sollwert meldet. */
-          footer={
+          /* Die Steuerzeile (Konzept b1, E2): am Rechner rechts unter der
+             Leitkachel, am Telefon am Fuß der Bühne. Sie ist die einzige
+             Fläche, die einen abweichenden Sollwert meldet; die Gründe stehen
+             in ihrem Blatt „Warum?“. */
+          steuerung={
             steuerzeileSichtbar ? (
-              <ControlStrip view={controlView} variant="bare" guard={guardView} spalten={steuerSpaltenView} />
+              <ControlStrip
+                view={controlView}
+                variant="zeile"
+                guard={guardView}
+                spalten={steuerSpaltenView}
+                isPhone={isPhone}
+                onOpenSub={onOpenSub}
+              />
             ) : null
           }
         />
