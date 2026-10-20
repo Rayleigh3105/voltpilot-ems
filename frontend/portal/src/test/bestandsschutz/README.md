@@ -92,6 +92,15 @@ den Werteblock „Dieser Moment“ in der rechten Spalte (`vp-hero-moment` mit d
 „Werkzeuge: …“, die Alerting Scheibe 2 oben hinzugefügt hatte). Die Leitkachel bleibt. Neu geschrieben mit
 `vitest -u` am Produktstand; der Token-Vergleich zeigt genau diesen einen entfernten Block, kein anderes Byte.
 
+**Ereignisse am Diagramm (20.10.2026, Konzept `vp-verlauf-ereignisse-k1`, „Spur + Chronik am Diagramm"):**
+`verlauf-messwerte.html` bekommt genau zwei Hüllen und sonst kein Byte: `<div class="vp-vr-col">` um die
+Diagramm-Karte (die Ereignis-Karte steht in derselben linken Spalte direkt darunter) und
+`<div class="vp-vr-spurrahmen">` um das Diagramm (die Ereignis-Spur unter der Achse). Die Fixture dieses Falls trägt
+keine Ereignisse, darum erscheinen weder Spur noch Karte. Die Aufnahme ist mit `vitest -u` gegen den aktuellen
+Produktstand neu geschrieben - die beschlossene Änderung dieser Fläche; ein Zeichenvergleich alt/neu zeigt nur die
+vier eingefügten Tag-Stücke. `HistoryChart.tsx` bleibt bytegleich (`diagramme.json`); sein Feld `info.farbe` trägt
+seither den Bereich der Art.
+
 `uemsBestandsschutz.test.tsx` ergänzt neun Snapshots: vier O18-Fälle, sechs Verlauf-Reiter in einem Snapshot,
 drei Portfolio-Reiter und die `startEbene`-Matrix (64 Eingaben). Die fünf in den Bestands-Tests gestubbten
 Canvas-/Diagrammkomponenten schützt zusätzlich `diagramme.json` mit SHA-256 des Bezugsstands.

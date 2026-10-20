@@ -1,14 +1,13 @@
-import { useState } from 'react';
 import { chartTheme } from '../../chartTheme';
 import type { EnergieRolle, Quote, Spitze } from '../../energieSeite';
-import type { EreignisSpurView } from '../../historieEreignisse';
 import { VrKarte } from '../VerlaufRahmen';
 import './EnergieSeite.css';
 
 /**
  * Die Karten neben dem Energie-Diagramm (Konzept „Verlauf-Rework", Paket P3):
- * wie viel selbst versorgt war, die Spitzen des Zeitraums und das Auffällige.
- * Reine Render-Bausteine über `energieSeite.ts` bzw. `historieEreignisse.ts`.
+ * wie viel selbst versorgt war und die Spitzen des Zeitraums. Reine
+ * Render-Bausteine über `energieSeite.ts`; die Ereignisse stehen in
+ * `EreignisKarte.tsx`.
  */
 
 export function rollenFarbe(rolle: EnergieRolle): string {
@@ -79,59 +78,6 @@ export function SpitzenKarte({ titel, zeilen }: { titel: string; zeilen: readonl
           </div>
         ))}
       </dl>
-    </VrKarte>
-  );
-}
-
-const SICHTBAR = 6;
-
-/**
- * **Ereignisse** — das Auffällige des Zeitraums als Liste (statt des
- * Tagesprotokolls). Ab der Woche öffnet ein Eintrag seinen Tag.
- */
-export function EreignisseKarte({
-  spur,
-  onTag,
-}: {
-  spur: EreignisSpurView;
-  onTag?: (at: string) => void;
-}) {
-  const [alle, setAlle] = useState(false);
-  const chips = alle ? spur.chips : spur.chips.slice(0, SICHTBAR);
-  return (
-    <VrKarte titel="Ereignisse" sub={spur.chips.length > 0 ? String(spur.chips.length) : undefined}>
-      {spur.chips.length === 0 ? (
-        <p className="vp-vr-empty">{spur.leerText ?? 'Nichts Auffälliges in diesem Zeitraum.'}</p>
-      ) : (
-        <ul className="vp-vr-ereignisse">
-          {chips.map((c) => {
-            const inhalt = (
-              <>
-                <span className="vp-vr-ereignis-zeit">{c.zeit}</span>
-                <span className="vp-chip">{c.info.label}</span>
-                <span className="vp-vr-ereignis-text">{c.text}</span>
-              </>
-            );
-            return (
-              <li key={c.key} title={c.info.erklaerung}>
-                {onTag && c.sprungAt ? (
-                  <button type="button" className="vp-vr-ereignis" onClick={() => onTag(c.sprungAt as string)}>
-                    {inhalt}
-                  </button>
-                ) : (
-                  <div className="vp-vr-ereignis">{inhalt}</div>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      {spur.chips.length > SICHTBAR && (
-        <button type="button" className="vp-vr-textbtn" onClick={() => setAlle((a) => !a)}>
-          {alle ? 'Weniger zeigen' : `Alle ${spur.chips.length} zeigen`}
-        </button>
-      )}
-      {spur.hinweis && <p className="vp-vr-foot">{spur.hinweis}</p>}
     </VrKarte>
   );
 }

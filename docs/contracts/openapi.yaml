@@ -28347,10 +28347,15 @@ components:
             The event track of the series (F6) - the NOTABLE things that explain
             an outlier, present in EVERY range (unlike `protocol`, which stays
             the day's ordinary events as a list). Windows are merged runs of
-            quarter-hours; at most 20 windows per type (the longest first), and
-            the coverage block still reports the true gap count. `text` carries
-            the statement WITHOUT a time - the client puts the range-appropriate
-            time in front. `end` is exclusive.
+            quarter-hours. range=day sends every window on its own, at most 20
+            per type (the longest first); the coverage block still reports the
+            true gap count. From range=week on, one event BUNDLES all windows of
+            one type on one day (week, month) or in one month (year) - bounded
+            by the calendar and therefore complete; `start` is the first
+            window's start, `end` the last window's end, `minutes` the sum of
+            the windows. `text` carries the statement WITHOUT a time - the
+            client puts the range-appropriate time in front. `end` is exclusive.
+            netzladen counts from 0.5 kWh per window.
 
             netzgrenze is evaluated for day and week only (grid_limit_kw lives in
             the RAW telemetry, which the rollup cascade does not carry) - a
@@ -28371,6 +28376,27 @@ components:
               start: { type: string, format: date-time }
               end: { type: string, format: date-time, description: Exclusive. }
               text: { type: string, description: Plain-German statement without a time. }
+              value:
+                type: number
+                nullable: true
+                description: >
+                  The one number of the event, unrounded, in `unit`: lowest
+                  exchange price (ct/kWh), planned/charged/sold energy (kWh),
+                  lowest reported grid limit (kW). null for datenluecke and
+                  geraet-still - their number is the duration.
+              unit: { type: string, nullable: true, enum: [ct/kWh, kWh, kW] }
+              planned: { type: boolean, description: true when the event comes from the plan (abregelung, abendverkauf), not from a measurement. }
+              minutes: { type: integer, format: int64, description: Sum of the windows in minutes. }
+              count: { type: integer, description: Number of windows (1 for range=day). }
+              days: { type: integer, description: Number of days with a window (1 for range=day). }
+              facts:
+                type: array
+                description: The facts of an abendverkauf as label/value rows (formatted German); empty otherwise. A missing fact is left out, never estimated.
+                items:
+                  type: object
+                  properties:
+                    label: { type: string, example: Speicher leer }
+                    value: { type: string, example: '02:45' }
     ForecastModelChoice:
       type: object
       description: >

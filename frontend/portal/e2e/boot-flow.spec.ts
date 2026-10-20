@@ -411,12 +411,13 @@ test.describe('Boot-Cover · Ränder', () => {
     const zweite = { ...site, id: '10000000-0000-0000-0000-000000000002', name: 'Waldblick' };
     await mockBoot(page, { sites: [site, zweite], devices: [device], delayMs: 400, admin: true });
     await page.goto(`/e2e/boot-flow.html?admin=1&tenant=t-1#/anlage/${site.id}/messwerte`);
-    const t0 = Date.now();
     await expect(page.locator('.vp-loader-screen')).toBeVisible();
-    await expect(page.locator('.vp-loader-screen')).toHaveCount(0, { timeout: 2500 });
+    // Keine Dauer am Dev-Server messen (er liefert jedes Modul einzeln, unter Last
+    // hing der Fall auch auf main bei 3 s): die Uhr der Seite steht, also KANN die
+    // 3-s-Grenze den Cover nicht heben. Geht er trotzdem, hat ihn `loaded` gehoben.
+    await page.clock.pauseAt(new Date(Date.now() + 60_000));
+    await buehneGehtDurchMeldung(page);
     await expect(page).toHaveURL(new RegExp(`#/anlage/${site.id}/messwerte$`));
-    const dt = Date.now() - t0;
-    expect(dt, `der Cover hing ${dt} ms - Verdacht auf die 3-s-Grenze`).toBeLessThan(2500);
   });
 
   test('Einmal gehoben, kehrt der Cover nicht zurück: nach einem Deep-Link auf eine Unterseite auch nicht auf der Übersicht', async ({

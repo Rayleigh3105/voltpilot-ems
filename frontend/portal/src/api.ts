@@ -855,12 +855,29 @@ export type HistoryEventType =
  * **`text` trägt die Aussage OHNE Zeitangabe** — die Zeit steht in
  * `start`/`end` und wird zeitraumgerecht davor gesetzt (`historieEreignisse.ts`
  * `ereignisSpur`). `end` ist exklusiv.
+ *
+ * **Ab der Woche bündelt der Server** je Art die Fenster eines Tages (Woche,
+ * Monat) bzw. eines Monats (Jahr): `count`/`days` zählen sie, `minutes` ist
+ * ihre Summe. Die Zusatzfelder fehlen bei einem älteren Backend.
  */
 export interface HistoryEvent {
   type: HistoryEventType;
   start: string;
   end: string;
   text: string;
+  /** Die eine Zahl, ungerundet, in `unit` (tiefster Preis, Energie, Netzgrenze); `null` bei Lücken. */
+  value?: number | null;
+  unit?: 'ct/kWh' | 'kWh' | 'kW' | null;
+  /** Aus dem Fahrplan (Abregelung, Abendverkauf), keine Messung. */
+  planned?: boolean;
+  /** Summe der Fenster in Minuten. */
+  minutes?: number;
+  /** Zahl der Fenster im Bündel (1 im Tag). */
+  count?: number;
+  /** Zahl der Tage mit einem Fenster (1 im Tag). */
+  days?: number;
+  /** Die Fakten des Abendverkaufs als Zeilen; sonst leer. */
+  facts?: { label: string; value: string }[];
 }
 
 /**

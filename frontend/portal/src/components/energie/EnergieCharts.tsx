@@ -6,6 +6,7 @@ import { zeigerSchwebt } from '../../chartFokus';
 import { fmtNum } from '../../format';
 import { tagHoehe, type EnergieBilanzView, type EnergieTag } from '../../energieSeite';
 import { useEChart } from '../../useEChart';
+import { bilanzRand, tagRand } from './energieRaster';
 
 /**
  * Die zwei Diagramme der Energie-Seite (Konzept „Verlauf-Rework", Paket P3,
@@ -49,8 +50,8 @@ export function EnergieTagChart({
     (chart, width) => {
       const t = chartTheme();
       const narrow = width < NARROW_PX;
-      const left = narrow ? 40 : 48;
-      const right = 12;
+      // Dieselben Ränder wie die Ereignis-Spur darunter (`energieRaster.ts`).
+      const { left, right } = tagRand(width);
       const total = chart.getHeight();
       const titelH = 20;
       const achseH = 24;
@@ -318,9 +319,10 @@ export function EnergieBilanzChart({
       }
       const t = chartTheme();
       const narrow = width < NARROW_PX;
-      const left = narrow ? 48 : 56;
+      // Dieselben Ränder wie die Ereignis-Spur darunter (`energieRaster.ts`).
+      const { left, right } = bilanzRand(width);
       const n = bilanz.achse.length;
-      const plot = Math.max(100, width - left - 12);
+      const plot = Math.max(100, width - left - right);
       const minPx = bilanz.range === 'week' ? 48 : bilanz.range === 'year' ? 34 : 26;
       const intervall = Math.max(0, Math.ceil(minPx / (plot / Math.max(1, n))) - 1);
       const z = bilanz.zellen;
@@ -371,7 +373,7 @@ export function EnergieBilanzChart({
             { text: '↑ woher · kWh', left: left + 4, top: 0, textStyle: { color: t.axis, fontSize: AXIS.fontSize, fontWeight: 600 } },
             { text: '↓ wohin', left: left + 4, bottom: 26, textStyle: { color: t.axis, fontSize: AXIS.fontSize, fontWeight: 600 } },
           ],
-          grid: { left, right: 12, top: 22, bottom: 28, containLabel: false },
+          grid: { left, right, top: 22, bottom: 28, containLabel: false },
           tooltip: {
             trigger: 'axis',
             confine: true,

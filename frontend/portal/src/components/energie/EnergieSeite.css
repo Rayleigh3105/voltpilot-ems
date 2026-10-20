@@ -67,21 +67,301 @@
   vertical-align: middle;
 }
 
-.vp-vr-ereignisse {
+/* --- Ereignisse (Konzept `data/vp-verlauf-ereignisse-k1`) -------------------
+   Spur am Diagramm + Chronik nach Tagen + „Nach Art". Die Farbe sagt den
+   BEREICH — dieselben Rollenfarben wie im Diagramm —, das Symbol die Art. */
+
+.vp-vr-spur-bahn,
+.vp-vr-ereignis-symbol,
+.vp-vr-ereignis-chip,
+.vp-vr-art {
+  --ev: var(--vp-text-gray);
+  --ev-soft: var(--vp-neutral-soft);
+}
+.vp-vr-spur-bahn.is-markt,
+.vp-vr-ereignis-symbol.is-markt,
+.vp-vr-ereignis-chip.is-markt,
+.vp-vr-art.is-markt {
+  --ev: var(--vp-c-chart-price);
+  --ev-soft: color-mix(in srgb, var(--vp-c-chart-price) 12%, var(--vp-surface));
+}
+.vp-vr-spur-bahn.is-pv,
+.vp-vr-ereignis-symbol.is-pv,
+.vp-vr-ereignis-chip.is-pv,
+.vp-vr-art.is-pv {
+  --ev: var(--vp-c-chart-pv);
+  --ev-soft: var(--vp-flow-pv-soft);
+}
+.vp-vr-spur-bahn.is-netz,
+.vp-vr-ereignis-symbol.is-netz,
+.vp-vr-ereignis-chip.is-netz,
+.vp-vr-art.is-netz {
+  --ev: var(--vp-c-chart-grid);
+  --ev-soft: var(--vp-flow-grid-soft);
+}
+.vp-vr-spur-bahn.is-daten,
+.vp-vr-ereignis-symbol.is-daten,
+.vp-vr-ereignis-chip.is-daten,
+.vp-vr-art.is-daten {
+  --ev: var(--vp-text-gray);
+  --ev-soft: var(--vp-neutral-soft);
+}
+
+/* Die Spur: eine Bahn je Art unter der x-Achse. Lage aus `energieRaster.ts`,
+   der Hinweis misst die Lage seiner Bahn selbst (`EreignisSpurRahmen.tsx`). */
+.vp-vr-spurrahmen {
+  position: relative;
+  min-width: 0;
+}
+.vp-vr-fokusband {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: var(--vp-radius-sm);
+  background: color-mix(in srgb, var(--vp-navy) 7%, transparent);
+  pointer-events: none;
+}
+.vp-vr-spur {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  padding-top: var(--vp-c-space-2);
+  margin-top: var(--vp-c-space-1);
+  border-top: 1px solid var(--vp-border);
+}
+.vp-vr-spur-bahn {
+  position: relative;
+  height: 14px;
+  transition: opacity var(--vp-motion-base);
+}
+.vp-vr-spur-bahn::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--spur-l);
+  right: var(--spur-r);
+  border-radius: 3px;
+  background: var(--vp-bg-light);
+}
+.vp-vr-spur-bahn.is-gedimmt {
+  opacity: 0.2;
+}
+.vp-vr-spur-symbol {
+  position: absolute;
+  top: 0;
+  left: calc(var(--spur-l) - 24px);
+  width: 14px;
+  height: 14px;
+  color: var(--ev);
+}
+.vp-vr-spur-symbol svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+.vp-vr-spur-marke {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: var(--ev);
+}
+.vp-vr-spur-bahn.is-daten .vp-vr-spur-marke {
+  background: repeating-linear-gradient(135deg, var(--vp-neutral-soft) 0 2px, var(--vp-text-gray) 2px 3px);
+  box-shadow: inset 0 0 0 1px var(--vp-gray);
+}
+button.vp-vr-spur-marke {
+  min-height: 0;
+  cursor: pointer;
+}
+/* Die Marke ist schmal; das Overlay macht sie zum 44-px-Ziel (Muster
+   `ErgebnisKarte.css`). Überlappen sich zwei, öffnen beide denselben Tag. */
+button.vp-vr-spur-marke::after {
+  content: '';
+  position: absolute;
+  inset: -15px -1px;
+}
+.vp-vr-spur-marke.is-fokus {
+  box-shadow: 0 0 0 2px var(--vp-surface), 0 0 0 3px var(--vp-navy);
+}
+button.vp-vr-spur-marke:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--vp-surface), 0 0 0 3px var(--vp-navy);
+}
+.vp-vr-spur-tip {
+  position: absolute;
+  z-index: 3;
   display: grid;
   gap: 2px;
+  padding: 6px var(--vp-c-space-2);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-surface);
+  box-shadow: var(--vp-shadow-md);
+  font-size: var(--vp-c-fs-12);
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, calc(-100% - 6px));
+}
+.vp-vr-spur-tip.is-links {
+  transform: translate(0, calc(-100% - 6px));
+}
+.vp-vr-spur-tip.is-rechts {
+  transform: translate(-100%, calc(-100% - 6px));
+}
+.vp-vr-spur-tip b {
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-text-gray);
+}
+.vp-vr-spur-tip span {
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-text-dark);
+}
+
+/* Das Symbol einer Art im Kreis — Chronik, Kacheln, Erklärung. */
+.vp-vr-ereignis-symbol {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--ev-soft);
+  color: var(--ev);
+  flex: 0 0 auto;
+}
+.vp-vr-ereignis-symbol.is-daten {
+  background: repeating-linear-gradient(135deg, var(--vp-neutral-soft) 0 4px, var(--vp-border) 4px 6px);
+}
+.vp-vr-ereignis-symbol svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Die Arten-Chips: zählen und filtern. Der §-14a-Hinweis ist ein ruhiger
+   Chip statt eines Satzes. */
+.vp-vr-ereignis-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--vp-c-space-2);
+  min-width: 0;
+}
+.vp-vr-ereignis-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 var(--vp-c-space-3) 0 var(--vp-c-space-2);
+  border: 1px solid var(--vp-border);
+  border-radius: 999px;
+  background: var(--vp-surface);
+  font: inherit;
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-text-dark);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.vp-vr-ereignis-chip::after {
+  content: '';
+  position: absolute;
+  inset: -6px -2px;
+}
+.vp-vr-ereignis-chip b {
+  font-family: var(--vp-c-font-heading, var(--vp-c-font));
+  font-size: var(--vp-c-fs-14);
+  font-weight: var(--vp-c-fw-700);
+  color: var(--vp-navy);
+  font-variant-numeric: tabular-nums;
+}
+.vp-vr-ereignis-chip:hover {
+  border-color: var(--ev);
+}
+.vp-vr-ereignis-chip[aria-pressed='true'] {
+  border-color: var(--ev);
+  background: var(--ev-soft);
+}
+.vp-vr-ereignis-chip-symbol {
+  width: 14px;
+  height: 14px;
+  color: var(--ev);
+}
+.vp-vr-ereignis-hinweis {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 var(--vp-c-space-3);
+  border: 1px dashed var(--vp-gray);
+  border-radius: 999px;
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-text-gray);
+  white-space: nowrap;
+}
+
+/* Die Chronik: Datumsblock links, je Art eine Zeile — ein Wort, eine Zahl. */
+.vp-vr-chronik,
+.vp-vr-chronik-zeilen {
+  display: grid;
   margin: 0;
   padding: 0;
   list-style: none;
+  min-width: 0;
 }
-.vp-vr-ereignis {
+.vp-vr-chronik-zeilen {
+  gap: 2px;
+}
+.vp-vr-chronik-gruppe {
   display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
-  align-items: baseline;
-  gap: 4px var(--vp-c-space-3);
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 0 var(--vp-c-space-2);
+  padding: var(--vp-c-space-1) 0;
+  border-top: 1px solid var(--vp-border);
+}
+.vp-vr-chronik-gruppe.is-zeit {
+  grid-template-columns: 64px minmax(0, 1fr);
+}
+.vp-vr-chronik-gruppe:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.vp-vr-chronik-datum {
+  display: grid;
+  align-content: start;
+  justify-items: start;
+  padding-top: 10px;
+  line-height: var(--vp-c-lh-tight);
+}
+.vp-vr-chronik-datum b {
+  font-family: var(--vp-c-font-heading, var(--vp-c-font));
+  font-size: var(--vp-c-fs-20);
+  font-weight: var(--vp-c-fw-700);
+  letter-spacing: var(--vp-tracking-tight);
+  color: var(--vp-navy);
+  font-variant-numeric: tabular-nums;
+}
+.vp-vr-chronik-gruppe.is-zeit .vp-vr-chronik-datum b {
+  font-size: var(--vp-c-fs-16);
+}
+.vp-vr-chronik-datum span {
+  margin-top: 3px;
+  white-space: nowrap;
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-text-gray);
+  font-variant-numeric: tabular-nums;
+}
+.vp-vr-zeile {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto 14px;
+  align-items: center;
+  gap: var(--vp-c-space-3);
   width: 100%;
-  min-height: 44px;
-  padding: var(--vp-c-space-2) var(--vp-c-space-2);
+  min-height: 46px;
+  padding: 6px var(--vp-c-space-2);
   border: 0;
   border-radius: var(--vp-radius-sm);
   background: none;
@@ -90,28 +370,280 @@
   color: var(--vp-text-dark);
   text-align: left;
 }
-button.vp-vr-ereignis {
-  min-height: 44px;
+.vp-vr-zeile.ohne-pfeil {
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+}
+button.vp-vr-zeile {
+  min-height: 46px;
   cursor: pointer;
 }
-button.vp-vr-ereignis:hover {
+button.vp-vr-zeile:hover,
+.vp-vr-zeile.is-fokus {
   background: var(--vp-bg-light);
 }
-.vp-vr-ereignis-zeit {
+.vp-vr-zeile-mitte {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px var(--vp-c-space-3);
+  min-width: 0;
+}
+.vp-vr-zeile-titel,
+.vp-vr-art-titel {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px var(--vp-c-space-2);
+  font-weight: var(--vp-c-fw-600);
+  min-width: 0;
+}
+.vp-vr-zeile-meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--vp-c-space-2);
   color: var(--vp-text-gray);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
-.vp-vr-ereignis-text {
-  min-width: 0;
-  overflow-wrap: anywhere;
+.vp-vr-plan {
+  padding: 0 var(--vp-c-space-2);
+  border-radius: 999px;
+  background: var(--vp-neutral-soft);
+  font-size: var(--vp-c-fs-12);
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-text-gray);
+  line-height: var(--vp-c-lh-text);
+}
+.vp-vr-zeile-zahl {
+  font-family: var(--vp-c-font-heading, var(--vp-c-font));
+  font-size: var(--vp-c-fs-16);
+  font-weight: var(--vp-c-fw-700);
+  color: var(--vp-navy);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.vp-vr-zeile-pfeil {
+  width: 14px;
+  height: 14px;
+  color: var(--vp-gray);
+  transition: transform var(--vp-motion-base);
+}
+.vp-vr-zeile[aria-expanded='false'] .vp-vr-zeile-pfeil {
+  transform: rotate(90deg);
+}
+.vp-vr-zeile[aria-expanded='true'] .vp-vr-zeile-pfeil {
+  transform: rotate(-90deg);
+}
+.vp-vr-fakten {
+  display: grid;
+  gap: var(--vp-c-space-1);
+  margin: 2px 0 var(--vp-c-space-1) 50px;
+  padding: var(--vp-c-space-2) var(--vp-c-space-3);
+  border-radius: var(--vp-radius-sm);
+  background: var(--vp-bg-light);
+}
+.vp-vr-fakten > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--vp-c-space-3);
+  align-items: baseline;
+}
+.vp-vr-fakten dt {
+  color: var(--vp-text-gray);
+}
+.vp-vr-fakten dd {
+  margin: 0;
+  font-weight: var(--vp-c-fw-600);
+  color: var(--vp-navy);
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.vp-vr-ereignis-leer {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-c-space-2);
+  margin: 0;
+  color: var(--vp-text-gray);
+}
+.vp-vr-ereignis-ok {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--vp-flow-batt-soft);
+  color: var(--vp-flow-batt-ink);
+}
+.vp-vr-ereignis-ok svg {
+  width: 14px;
+  height: 14px;
+}
+.vp-vr-ereignis-erklaerung {
+  display: grid;
+  gap: var(--vp-c-space-2);
 }
 
+/* „Nach Art": je Art eine Kachel mit Anzahl, Zahl und Streifen. */
+.vp-vr-arten {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-surface);
+  overflow: hidden;
+}
+.vp-vr-art {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  grid-template-areas:
+    'sym titel'
+    'anzahl anzahl'
+    'zahl zahl'
+    'streifen streifen';
+  align-content: start;
+  align-items: center;
+  gap: 6px var(--vp-c-space-2);
+  min-width: 0;
+  min-height: 44px;
+  padding: var(--vp-c-space-3) var(--vp-c-space-4);
+  border: 0;
+  background: var(--vp-surface);
+  /* Die Fugen zwischen den Kacheln — auch neben einer leeren Zelle. */
+  box-shadow: 1px 0 0 var(--vp-border), 0 1px 0 var(--vp-border);
+  font: inherit;
+  font-size: var(--vp-c-fs-14);
+  color: var(--vp-text-dark);
+  text-align: left;
+  cursor: pointer;
+}
+.vp-vr-art:hover {
+  background: var(--vp-bg-light);
+}
+.vp-vr-art > .vp-vr-ereignis-symbol {
+  grid-area: sym;
+}
+.vp-vr-art-titel {
+  grid-area: titel;
+}
+.vp-vr-art-anzahl {
+  grid-area: anzahl;
+  font-family: var(--vp-c-font-heading, var(--vp-c-font));
+  font-size: var(--vp-c-fs-24);
+  font-weight: var(--vp-c-fw-700);
+  letter-spacing: var(--vp-tracking-tight);
+  color: var(--vp-navy);
+  line-height: var(--vp-c-lh-title);
+  white-space: nowrap;
+}
+.vp-vr-art-zahl {
+  grid-area: zahl;
+  color: var(--vp-text-gray);
+  font-variant-numeric: tabular-nums;
+}
+.vp-vr-streifen {
+  grid-area: streifen;
+  display: grid;
+  grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+  gap: 1px;
+  margin-top: var(--vp-c-space-1);
+}
+.vp-vr-streifen > i {
+  height: 10px;
+  border-radius: 2px;
+  background: var(--vp-neutral-soft);
+}
+.vp-vr-streifen > i.an {
+  background: var(--ev);
+}
+.vp-vr-art.is-daten .vp-vr-streifen > i.an {
+  background: var(--vp-text-gray);
+}
+.vp-vr-streifen > i.zk {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--vp-neutral-soft);
+}
+
+/* ⚠ 720, die Telefon-Grenze des Hauses (`useIsPhone`). */
 @media (max-width: 720px) {
-  .vp-vr-ereignis {
-    grid-template-columns: auto minmax(0, 1fr);
+  .vp-vr-spur-bahn {
+    height: 12px;
   }
-  .vp-vr-ereignis-text {
-    grid-column: 1 / -1;
+  .vp-vr-spur-symbol,
+  .vp-vr-spur-symbol svg {
+    width: 12px;
+    height: 12px;
+  }
+  .vp-vr-spur-symbol {
+    left: calc(var(--spur-l) - 20px);
+  }
+  .vp-vr-chronik-gruppe {
+    grid-template-columns: 40px minmax(0, 1fr);
+    gap: 0 6px;
+  }
+  .vp-vr-chronik-gruppe.is-zeit {
+    grid-template-columns: 52px minmax(0, 1fr);
+  }
+  .vp-vr-chronik-gruppe.is-zeit .vp-vr-chronik-datum b {
+    font-size: var(--vp-c-fs-14);
+  }
+  .vp-vr-zeile {
+    grid-template-columns: 28px minmax(0, 1fr) auto 12px;
+    gap: var(--vp-c-space-2);
+    padding: 6px var(--vp-c-space-1);
+  }
+  .vp-vr-zeile.ohne-pfeil {
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+  }
+  .vp-vr-zeile .vp-vr-ereignis-symbol {
+    width: 28px;
+    height: 28px;
+  }
+  .vp-vr-zeile-mitte {
+    display: grid;
+    gap: 1px;
+  }
+  .vp-vr-zeile-meta {
+    font-size: var(--vp-c-fs-12);
+  }
+  .vp-vr-zeile-pfeil {
+    width: 12px;
+    height: 12px;
+  }
+  .vp-vr-fakten {
+    margin-left: 0;
+  }
+  .vp-vr-ereignis-chip {
+    min-height: 36px;
+  }
+  /* „Nach Art" wird eine Liste: Name links, Anzahl rechts, Streifen darunter. */
+  .vp-vr-arten {
+    grid-template-columns: minmax(0, 1fr);
+    border: 0;
+    border-radius: 0;
+    overflow: visible;
+  }
+  .vp-vr-art {
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    grid-template-areas:
+      'sym titel anzahl'
+      'sym zahl anzahl'
+      '. streifen streifen';
+    gap: 2px var(--vp-c-space-2);
+    padding: var(--vp-c-space-2) var(--vp-c-space-1);
+    box-shadow: 0 1px 0 var(--vp-border);
+  }
+  .vp-vr-art:last-child {
+    box-shadow: none;
+  }
+  .vp-vr-art > .vp-vr-ereignis-symbol {
+    width: 28px;
+    height: 28px;
+  }
+  .vp-vr-art-anzahl {
+    font-size: var(--vp-c-fs-16);
+  }
+  .vp-vr-art-zahl {
+    font-size: var(--vp-c-fs-12);
   }
 }

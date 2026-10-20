@@ -8,12 +8,18 @@ import com.voltpilot.api.web.dto.HistoryEventDto;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.YearMonth;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * <b>Die Ereignis-Spur des Verlaufs</b> (Feature F6 des Historie-Konzepts
@@ -52,11 +58,12 @@ public final class Ereignisse {
     static final Duration SLOT = Duration.ofMinutes(15);
 
     /**
-     * Wie viele Fenster je Art höchstens ausgeliefert werden - die LÄNGSTEN
+     * Wie viele Fenster je Art der TAG höchstens ausliefert - die LÄNGSTEN
      * zuerst. Eine unauffällige Anlage bleibt weit darunter; eine sehr flatterige
      * würde die Antwort sonst mit hunderten Ein-Slot-Fenstern fluten. Die Zahl
      * der Fehlstellen sagt unabhängig davon die Datenlage der Zeit-Leiste
      * ({@link HistoryCoverageDto#gaps}), es geht also keine Information verloren.
+     * Ab der Woche wird gebündelt statt gekappt ({@link #buendeln}).
      */
     static final int MAX_PER_TYPE = 20;
 
@@ -84,8 +91,26 @@ public final class Ereignisse {
     }
 
     /**
+     * Ab dieser Energie je Fenster ist Netzladen ein Ereignis (Entscheid im
+     * Konzept {@code data/vp-verlauf-ereignisse-k1}, 20.10.2026) - wie
+     * {@link #ABENDVERKAUF_MIN_KWH}: eine Zehntel-Kilowattstunde erklärt keinen
+     * Balken und ist oft nur der Unterschied zweier Zähler. Die Schwelle je
+     * Viertelstunde (Rauschen) sitzt davor in der Abfrage.
+     */
+    static final BigDecimal NETZLADEN_MIN_LAUF_KWH = new BigDecimal("0.5");
+
+    private static final BigDecimal VIERTELSTUNDE_H = new BigDecimal("0.25");
+
+    /**
      * Die Spur eines Zeitraums, chronologisch.
      *
+     * <p><b>Im Tag ist jedes Fenster ein Ereignis</b>, die {@value #MAX_PER_TYPE}
+     * längsten je Art. <b>Ab der Woche bündelt ein Ereignis die Fenster eines
+     * Tages</b> (Woche, Monat) <b>bzw. eines Monats</b> (Jahr) je Art: das ist von
+     * selbst begrenzt (höchstens 31 bzw. 12 je Art) und darum vollständig - die
+     * Kappung der längsten Fenster ließ im Sommer Tage mit negativen Preisen weg.
+     *
+     * @param range          der Zeitraum - er entscheidet, ob gebündelt wird
      * @param negativePrices Preis-Slots unter null (Wert = EUR/MWh)
      * @param curtailments   geplante Abregelung je Slot (Wert = kW)
      * @param gridLimits     gemeldete Netzgrenze je Slot (Wert = kW); leer, wenn
@@ -98,6 +123,7 @@ public final class Ereignisse {
      *                       Lücken-Marker, nur Markt-/Plan-Ereignisse)
      */
     public static List<HistoryEventDto> build(
+            HistoryRange range,
             List<ValueSlot> negativePrices,
             List<ValueSlot> curtailments,
             List<ValueSlot> gridLimits,
@@ -107,11 +133,13 @@ public final class Ereignisse {
             HistoryCoverageDto coverage) {
 
         List<HistoryEventDto> events = new ArrayList<>();
-        events.addAll(fromRuns(negativePrices, "negativpreis", Ereignisse::negativpreisText));
-        events.addAll(fromRuns(curtailments, "abregelung", Ereignisse::abregelungText));
-        events.addAll(fromRuns(gridLimits, "netzgrenze", Ereignisse::netzgrenzeText));
-        events.addAll(fromRuns(gridCharges, "netzladen", Ereignisse::netzladenText));
-        events.addAll(gapEvents(innerGaps, row, coverage));
+        events.addAll(ereignisse(range, "negativpreis", runs(negativePrices)));
+        events.addAll(ereignisse(range, "abregelung", runs(curtailments)));
+        events.addAll(ereignisse(range, "netzgrenze", runs(gridLimits)));
+        events.addAll(ereignisse(range, "netzladen", runs(gridCharges).stream()
+                .filter(r -> r.sum().compareTo(NETZLADEN_MIN_LAUF_KWH) >= 0)
+                .toList()));
+        events.addAll(gapEvents(range, innerGaps, row, coverage));
         events.sort(Comparator.comparing(HistoryEventDto::start));
         return events;
     }
@@ -170,47 +198,142 @@ public final class Ereignisse {
         return out;
     }
 
-    /** Fenster -> Ereignisse, die {@value #MAX_PER_TYPE} längsten je Art. */
-    private static List<HistoryEventDto> fromRuns(List<ValueSlot> slots, String type,
-            java.util.function.Function<Run, String> text) {
-        List<Run> all = runs(slots);
-        all.sort(Comparator.comparing((Run r) -> r.dauer()).reversed()
-                .thenComparing(Run::from));
-        return all.stream()
-                .limit(MAX_PER_TYPE)
-                .map(r -> new HistoryEventDto(type, r.from(), r.to(), text.apply(r)))
-                .toList();
-    }
+    // ---- Bündel: ein Fenster (Tag) oder alle Fenster eines Tages/Monats ---------
 
-    // ---- die Texte (deutsch, ohne Zeitangabe - die trägt die Oberfläche) -----
+    /**
+     * Was EIN Ereignis zusammenfasst. Im Tag genau ein Fenster; ab der Woche alle
+     * Fenster einer Art an einem Tag (Woche, Monat) bzw. in einem Monat (Jahr).
+     * {@code dauer} ist die Summe der Fenster, nicht der Abstand von {@code from}
+     * bis {@code to}.
+     */
+    record Buendel(Instant from, Instant to, BigDecimal min, BigDecimal sum, Duration dauer,
+            int anzahl, int tage) {
 
-    private static String negativpreisText(Run r) {
-        String dauer = dauer(r.dauer());
-        if (r.min() == null) {
-            return "Negative Börsenpreise: " + dauer;
+        static Buendel von(Run r) {
+            return new Buendel(r.from(), r.to(), r.min(), r.sum(), r.dauer(), 1, 1);
         }
-        return String.format(Locale.GERMANY, "Negative Börsenpreise: %s, bis %.1f ct/kWh",
-                dauer, ctPerKwh(r.min()));
     }
 
-    private static String abregelungText(Run r) {
-        // Aus den gespeicherten Fahrplänen - eine Vorher-Rechnung, keine Messung.
-        BigDecimal kwh = r.sum().multiply(new BigDecimal("0.25"));
-        return String.format(Locale.GERMANY,
-                "PV-Abregelung eingeplant: %s (%.1f kWh)", dauer(r.dauer()), kwh);
+    /** Fenster -> Ereignisse einer Art, zeitraumgerecht gebündelt. */
+    private static List<HistoryEventDto> ereignisse(HistoryRange range, String type,
+            List<Run> runs) {
+        return buendeln(range, runs).stream().map(b -> ereignis(range, type, b)).toList();
     }
 
-    private static String netzgrenzeText(Run r) {
-        if (r.min() == null) {
-            return "Netzgrenze gemeldet (§ 14a): " + dauer(r.dauer());
+    /**
+     * Im Tag die {@value #MAX_PER_TYPE} längsten Fenster je einzeln; ab der Woche
+     * je Tag bzw. Monat (Berliner Zeit, gezählt am Beginn des Fensters) ein
+     * Bündel - ohne Kappung, die Zahl der Bündel ist durch den Kalender begrenzt.
+     */
+    static List<Buendel> buendeln(HistoryRange range, List<Run> runs) {
+        if (range == HistoryRange.DAY) {
+            return runs.stream()
+                    .sorted(Comparator.comparing(Run::dauer).reversed().thenComparing(Run::from))
+                    .limit(MAX_PER_TYPE)
+                    .map(Buendel::von)
+                    .toList();
         }
-        return String.format(Locale.GERMANY,
-                "Netzgrenze gemeldet (§ 14a): %s, höchstens %.1f kW", dauer(r.dauer()), r.min());
+        Map<Object, List<Run>> gruppen = new LinkedHashMap<>();
+        runs.stream().sorted(Comparator.comparing(Run::from)).forEach(r -> gruppen
+                .computeIfAbsent(kalenderSchluessel(range, r.from()), k -> new ArrayList<>())
+                .add(r));
+        List<Buendel> out = new ArrayList<>(gruppen.size());
+        for (List<Run> gruppe : gruppen.values()) {
+            BigDecimal min = null;
+            BigDecimal sum = BigDecimal.ZERO;
+            Duration dauer = Duration.ZERO;
+            Instant bis = gruppe.get(0).to();
+            Set<LocalDate> tage = new HashSet<>();
+            for (Run r : gruppe) {
+                if (r.min() != null) {
+                    min = min == null ? r.min() : min.min(r.min());
+                }
+                if (r.sum() != null) {
+                    sum = sum.add(r.sum());
+                }
+                dauer = dauer.plus(r.dauer());
+                if (r.to().isAfter(bis)) {
+                    bis = r.to();
+                }
+                tage.add(r.from().atZone(HistoryRange.ZONE).toLocalDate());
+            }
+            out.add(new Buendel(gruppe.get(0).from(), bis, min, sum, dauer, gruppe.size(),
+                    tage.size()));
+        }
+        return out;
     }
 
-    private static String netzladenText(Run r) {
-        return String.format(Locale.GERMANY,
-                "Speicher aus dem Netz geladen: %s (ca. %.1f kWh)", dauer(r.dauer()), r.sum());
+    private static Object kalenderSchluessel(HistoryRange range, Instant at) {
+        LocalDate tag = at.atZone(HistoryRange.ZONE).toLocalDate();
+        return range == HistoryRange.YEAR ? YearMonth.from(tag) : tag;
+    }
+
+    // ---- die Ereignisse (deutsch, ohne Zeitangabe - die trägt die Oberfläche) --
+
+    /**
+     * Ein Bündel als Ereignis: der Satz für ältere Oberflächen und die EINE Zahl
+     * als Feld ({@code value}/{@code unit}), aus denselben Werten.
+     */
+    private static HistoryEventDto ereignis(HistoryRange range, String type, Buendel b) {
+        String dauer = dauerText(range, b);
+        BigDecimal value;
+        String unit;
+        boolean planned = false;
+        String text;
+        switch (type) {
+            case "negativpreis" -> {
+                value = b.min() == null ? null : ctPerKwh(b.min());
+                unit = value == null ? null : "ct/kWh";
+                text = value == null
+                        ? "Negative Börsenpreise: " + dauer
+                        : String.format(Locale.GERMANY, "Negative Börsenpreise: %s, bis %.1f ct/kWh",
+                                dauer, value);
+            }
+            case "abregelung" -> {
+                // Aus den gespeicherten Fahrplänen - eine Vorher-Rechnung, keine Messung.
+                value = b.sum().multiply(VIERTELSTUNDE_H);
+                unit = "kWh";
+                planned = true;
+                text = String.format(Locale.GERMANY, "PV-Abregelung eingeplant: %s (%.1f kWh)",
+                        dauer, value);
+            }
+            case "netzgrenze" -> {
+                value = b.min();
+                unit = value == null ? null : "kW";
+                text = value == null
+                        ? "Netzgrenze gemeldet (§ 14a): " + dauer
+                        : String.format(Locale.GERMANY,
+                                "Netzgrenze gemeldet (§ 14a): %s, höchstens %.1f kW", dauer, value);
+            }
+            case "netzladen" -> {
+                value = b.sum();
+                unit = "kWh";
+                text = String.format(Locale.GERMANY,
+                        "Speicher aus dem Netz geladen: %s (ca. %.1f kWh)", dauer, value);
+            }
+            case "datenluecke" -> {
+                value = null;
+                unit = null;
+                text = "Datenlücke: " + dauer + " ohne Messwerte";
+            }
+            default -> throw new IllegalArgumentException("Unbekannte Ereignis-Art: " + type);
+        }
+        return new HistoryEventDto(type, b.from(), b.to(), text, value, unit, planned,
+                b.dauer().toMinutes(), b.anzahl(), b.tage(), List.of());
+    }
+
+    /**
+     * „4 Std" für ein Fenster, „3×, zusammen 4 Std" für einen Tag, „an 9 Tagen,
+     * zusammen 23 Std" für einen Monat mit Fenstern an mehreren Tagen.
+     */
+    static String dauerText(HistoryRange range, Buendel b) {
+        if (b.anzahl() == 1) {
+            return dauer(b.dauer());
+        }
+        if (range == HistoryRange.YEAR && b.tage() > 1) {
+            return "an " + b.tage() + " Tagen, zusammen " + dauer(b.dauer());
+        }
+        return b.anzahl() + "×, zusammen " + dauer(b.dauer());
     }
 
     // ---- Abendverkauf (P2 des Nachtreserve-Konzepts vp-nachtreserve-konzept-k2)
@@ -295,6 +418,10 @@ public final class Ereignisse {
         Instant start = slots.get(0).slot();
         Instant end = slots.get(slots.size() - 1).slot().plus(SLOT);
 
+        // Derselbe Fakt steht zweimal: im Satz (ältere Oberflächen) und als
+        // Zeile der Fakten-Liste. Beide entstehen hier aus denselben Werten, und
+        // ein fehlender Fakt fehlt in beiden.
+        List<HistoryEventDto.Fact> fakten = new ArrayList<>();
         StringBuilder text = new StringBuilder();
         text.append(String.format(Locale.GERMANY, "Abendverkauf %s bis %s · %.1f kWh",
                 uhr(start, zone), uhr(end, zone), kwh));
@@ -302,8 +429,13 @@ public final class Ereignisse {
             text.append(minCt.compareTo(maxCt) == 0
                     ? String.format(Locale.GERMANY, " zu %.1f ct", minCt)
                     : String.format(Locale.GERMANY, " zu %.1f bis %.1f ct", minCt, maxCt));
+            fakten.add(new HistoryEventDto.Fact("Preis", minCt.compareTo(maxCt) == 0
+                    ? String.format(Locale.GERMANY, "%.1f ct/kWh", minCt)
+                    : String.format(Locale.GERMANY, "%.1f bis %.1f ct/kWh", minCt, maxCt)));
             if (erloesEur != null) {
                 text.append(String.format(Locale.GERMANY, " (%.2f €)", erloesEur));
+                fakten.add(new HistoryEventDto.Fact("Erlös",
+                        String.format(Locale.GERMANY, "%.2f €", erloesEur)));
             }
         }
         text.append('.');
@@ -312,32 +444,39 @@ public final class Ereignisse {
             text.append(String.format(Locale.GERMANY,
                     " Prognose für die Nacht %.0f kWh, gemessen %.0f kWh",
                     prognoseKwh, gemessenKwh));
+            fakten.add(new HistoryEventDto.Fact("Nachtlast Prognose",
+                    String.format(Locale.GERMANY, "%.0f kWh", prognoseKwh)));
+            String gemessen = String.format(Locale.GERMANY, "%.0f kWh", gemessenKwh);
             if (prognoseKwh.signum() > 0) {
                 BigDecimal abweichung = gemessenKwh
                         .divide(prognoseKwh, java.math.MathContext.DECIMAL64)
                         .subtract(BigDecimal.ONE)
                         .multiply(BigDecimal.valueOf(100));
                 text.append(String.format(Locale.GERMANY, " (%+.0f %%)", abweichung));
+                gemessen += String.format(Locale.GERMANY, " (%+.0f %%)", abweichung);
             }
+            fakten.add(new HistoryEventDto.Fact("Nachtlast gemessen", gemessen));
             text.append('.');
         }
 
         List<String> nacht = new ArrayList<>();
         if (bodenAt != null) {
             nacht.add("Speicher leer um " + uhr(bodenAt, zone));
+            fakten.add(new HistoryEventDto.Fact("Speicher leer", uhr(bodenAt, zone)));
         }
         if (bezugKwh != null && bezugKwh.compareTo(new BigDecimal("0.05")) > 0) {
-            StringBuilder b = new StringBuilder(String.format(Locale.GERMANY,
-                    "Netzbezug bis %s %.1f kWh", uhr(nachtEnde, zone), bezugKwh));
+            String menge = String.format(Locale.GERMANY, "%.1f kWh", bezugKwh);
             if (bezugEur != null) {
-                b.append(String.format(Locale.GERMANY, " (%.2f €)", bezugEur));
+                menge += String.format(Locale.GERMANY, " (%.2f €)", bezugEur);
             }
-            nacht.add(b.toString());
+            nacht.add("Netzbezug bis " + uhr(nachtEnde, zone) + " " + menge);
+            fakten.add(new HistoryEventDto.Fact("Netzbezug bis " + uhr(nachtEnde, zone), menge));
         }
         if (!nacht.isEmpty()) {
             text.append(' ').append(String.join("; ", nacht)).append('.');
         }
-        return new HistoryEventDto("abendverkauf", start, end, text.toString());
+        return new HistoryEventDto("abendverkauf", start, end, text.toString(), kwh, "kWh", true,
+                Duration.between(start, end).toMinutes(), 1, 1, List.copyOf(fakten));
     }
 
     /** „19:45" in der Zeitzone der Anlage. */
@@ -355,50 +494,59 @@ public final class Ereignisse {
      * Schluss-Rand ist {@code geraet-still}, wenn die Anlage auch NACH diesem
      * Zeitraum nichts mehr gemessen hat - das ist der Unterschied zwischen
      * „damals fehlte etwas" und „es kommt gerade nichts".
+     *
+     * <p>Im Tag werden die Innenlücken wie jede Art auf die
+     * {@value #MAX_PER_TYPE} längsten gekappt (die Ränder stehen immer da); ab
+     * der Woche werden ALLE Lücken je Tag bzw. Monat gebündelt. Das stille Gerät
+     * bleibt ein eigenes Ereignis - es gibt höchstens eines.
      */
-    private static List<HistoryEventDto> gapEvents(List<GapRun> innerGaps,
+    private static List<HistoryEventDto> gapEvents(HistoryRange range, List<GapRun> innerGaps,
             CoverageRow row,
             HistoryCoverageDto coverage) {
         if (coverage == null || row == null) {
             return List.of();
         }
+        List<Run> luecken = new ArrayList<>();
         List<HistoryEventDto> out = new ArrayList<>();
         if (row.firstInWindow() == null) {
             // Kein einziger Messwert im Zeitraum: EINE Lücke, der ganze Zeitraum.
             if (coverage.expectedTo().isAfter(coverage.expectedFrom())) {
-                out.add(luecke(coverage.expectedFrom(), coverage.expectedTo(), row, coverage));
+                luecken.add(luecke(coverage.expectedFrom(), coverage.expectedTo()));
             }
-            return out;
+        } else {
+            if (row.firstInWindow().isAfter(coverage.expectedFrom())) {
+                luecken.add(luecke(coverage.expectedFrom(), row.firstInWindow()));
+            }
+            List<GapRun> inner = new ArrayList<>(innerGaps == null ? List.of() : innerGaps);
+            inner.removeIf(g -> g == null || g.from() == null || g.to() == null
+                    || !g.to().isAfter(g.from()));
+            inner.sort(Comparator.comparing((GapRun g) -> Duration.between(g.from(), g.to()))
+                    .reversed().thenComparing(GapRun::from));
+            inner.stream().limit(range == HistoryRange.DAY ? MAX_PER_TYPE : Long.MAX_VALUE)
+                    .forEach(g -> luecken.add(luecke(g.from(), g.to())));
+            Instant nachLetzter = row.lastInWindow().plus(SLOT);
+            if (nachLetzter.isBefore(coverage.expectedTo())) {
+                boolean stilleAmEnde = row.lastInWindow().equals(row.siteLast());
+                if (stilleAmEnde) {
+                    out.add(new HistoryEventDto("geraet-still", nachLetzter, coverage.expectedTo(),
+                            "Keine Messwerte mehr - das Gerät meldet sich nicht"));
+                } else {
+                    luecken.add(luecke(nachLetzter, coverage.expectedTo()));
+                }
+            }
         }
-        if (row.firstInWindow().isAfter(coverage.expectedFrom())) {
-            out.add(luecke(coverage.expectedFrom(), row.firstInWindow(), row, coverage));
-        }
-        List<GapRun> inner = new ArrayList<>(innerGaps == null ? List.of() : innerGaps);
-        inner.removeIf(g -> g == null || g.from() == null || g.to() == null
-                || !g.to().isAfter(g.from()));
-        inner.sort(Comparator.comparing((GapRun g) -> Duration.between(g.from(), g.to())).reversed()
-                .thenComparing(GapRun::from));
-        inner.stream().limit(MAX_PER_TYPE)
-                .forEach(g -> out.add(luecke(g.from(), g.to(), row, coverage)));
-        Instant nachLetzter = row.lastInWindow().plus(SLOT);
-        if (nachLetzter.isBefore(coverage.expectedTo())) {
-            out.add(luecke(nachLetzter, coverage.expectedTo(), row, coverage));
+        if (range == HistoryRange.DAY) {
+            luecken.forEach(r -> out.add(ereignis(range, "datenluecke", Buendel.von(r))));
+        } else {
+            out.addAll(ereignisse(range, "datenluecke", luecken));
         }
         return out;
     }
 
-    private static HistoryEventDto luecke(Instant from, Instant to,
-            CoverageRow row,
-            HistoryCoverageDto coverage) {
-        boolean stilleAmEnde = to.equals(coverage.expectedTo())
-                && row.lastInWindow() != null
-                && row.lastInWindow().equals(row.siteLast());
-        if (stilleAmEnde) {
-            return new HistoryEventDto("geraet-still", from, to,
-                    "Keine Messwerte mehr - das Gerät meldet sich nicht");
-        }
-        return new HistoryEventDto("datenluecke", from, to,
-                "Datenlücke: " + dauer(Duration.between(from, to)) + " ohne Messwerte");
+    /** Eine Lücke als Fenster ohne Werte. */
+    private static Run luecke(Instant from, Instant to) {
+        return new Run(from, to, null, null, null,
+                (int) (Duration.between(from, to).toMinutes() / SLOT.toMinutes()));
     }
 
     // ---- Helfer ---------------------------------------------------------------

@@ -61,8 +61,8 @@ class EreignisseTest {
     private static List<HistoryEventDto> build(List<ValueSlot> negativePrices,
             List<ValueSlot> curtail, List<ValueSlot> gridLimits, List<ValueSlot> gridCharges,
             List<GapRun> gaps, CoverageRow row, HistoryCoverageDto coverage) {
-        return Ereignisse.build(negativePrices, curtail, gridLimits, gridCharges, gaps, row,
-                coverage);
+        return Ereignisse.build(HistoryRange.DAY, negativePrices, curtail, gridLimits,
+                gridCharges, gaps, row, coverage);
     }
 
     // ---- Fenster ---------------------------------------------------------------
@@ -105,6 +105,14 @@ class EreignisseTest {
             // -53 EUR/MWh = -5,3 ct/kWh, und die Zeit steht NICHT im Text (die
             // trägt die Oberfläche zeitraumgerecht davor).
             assertThat(e.text()).isEqualTo("Negative Börsenpreise: 4 Std, bis -5,3 ct/kWh");
+            // Die eine Zahl steht zusätzlich als Feld - ungerundet, in ct/kWh.
+            assertThat(e.value()).isEqualByComparingTo("-5.3");
+            assertThat(e.unit()).isEqualTo("ct/kWh");
+            assertThat(e.planned()).isFalse();
+            assertThat(e.minutes()).isEqualTo(240);
+            assertThat(e.count()).isEqualTo(1);
+            assertThat(e.days()).isEqualTo(1);
+            assertThat(e.facts()).isEmpty();
         });
     }
 
@@ -117,6 +125,10 @@ class EreignisseTest {
         assertThat(events).singleElement().satisfies(e -> {
             assertThat(e.type()).isEqualTo("abregelung");
             assertThat(e.text()).isEqualTo("PV-Abregelung eingeplant: 2 Std (24,0 kWh)");
+            assertThat(e.value()).isEqualByComparingTo("24");
+            assertThat(e.unit()).isEqualTo("kWh");
+            // Aus dem Fahrplan, nicht gemessen - die Oberfläche sagt „geplant".
+            assertThat(e.planned()).isTrue();
         });
     }
 
@@ -132,6 +144,8 @@ class EreignisseTest {
             assertThat(e.type()).isEqualTo("netzgrenze");
             assertThat(e.text())
                     .isEqualTo("Netzgrenze gemeldet (§ 14a): 45 Min, höchstens 4,2 kW");
+            assertThat(e.value()).isEqualByComparingTo("4.2");
+            assertThat(e.unit()).isEqualTo("kW");
         });
     }
 
@@ -144,6 +158,25 @@ class EreignisseTest {
             assertThat(e.type()).isEqualTo("netzladen");
             assertThat(e.text())
                     .isEqualTo("Speicher aus dem Netz geladen: 1 Std 30 Min (ca. 5,1 kWh)");
+            assertThat(e.value()).isEqualByComparingTo("5.1");
+            assertThat(e.unit()).isEqualTo("kWh");
+            assertThat(e.planned()).isFalse();
+        });
+    }
+
+    @Test
+    void netzladenUnterEinerHalbenKilowattstundeJeFensterIstKeinEreignis() {
+        // 2 x 0,05 kWh = 0,1 kWh: der Fall „02.10. Netzladen 15 Min (ca. 0,1 kWh)"
+        // aus dem Konzept - er erklärt keinen Balken. Genau 0,5 kWh zählt.
+        List<ValueSlot> slots = new ArrayList<>(lauf(t("02:00"), 2, "0.05"));
+        slots.addAll(lauf(t("04:00"), 2, "0.25"));
+
+        List<HistoryEventDto> events =
+                build(List.of(), List.of(), List.of(), slots, List.of(), null, null);
+
+        assertThat(events).singleElement().satisfies(e -> {
+            assertThat(e.start()).isEqualTo(t("04:00"));
+            assertThat(e.value()).isEqualByComparingTo("0.5");
         });
     }
 
@@ -179,6 +212,10 @@ class EreignisseTest {
                         tuple("datenluecke", t("08:00"), t("10:15")),
                         tuple("datenluecke", t("20:15"), t("22:00")));
         assertThat(events.get(1).text()).isEqualTo("Datenlücke: 2 Std 15 Min ohne Messwerte");
+        // Eine Lücke hat keine eigene Zahl - ihre Zahl ist die Dauer.
+        assertThat(events.get(1).value()).isNull();
+        assertThat(events.get(1).unit()).isNull();
+        assertThat(events.get(1).minutes()).isEqualTo(135);
     }
 
     @Test
@@ -290,6 +327,18 @@ class EreignisseTest {
                 "Abendverkauf 19:45 bis 20:45 · 13,7 kWh zu 13,6 bis 13,9 ct (1,88 €)."
                         + " Prognose für die Nacht 52 kWh, gemessen 65 kWh (+25 %)."
                         + " Speicher leer um 02:45; Netzbezug bis 07:00 13,6 kWh (3,40 €).");
+        assertThat(e.value()).isEqualByComparingTo("13.7");
+        assertThat(e.unit()).isEqualTo("kWh");
+        assertThat(e.planned()).isTrue();
+        // Dieselben Fakten als Liste - die Oberfläche zeigt sie statt des Absatzes.
+        assertThat(e.facts()).extracting(HistoryEventDto.Fact::label, HistoryEventDto.Fact::value)
+                .containsExactly(
+                        tuple("Preis", "13,6 bis 13,9 ct/kWh"),
+                        tuple("Erlös", "1,88 €"),
+                        tuple("Nachtlast Prognose", "52 kWh"),
+                        tuple("Nachtlast gemessen", "65 kWh (+25 %)"),
+                        tuple("Speicher leer", "02:45"),
+                        tuple("Netzbezug bis 07:00", "13,6 kWh (3,40 €)"));
     }
 
     @Test
@@ -313,6 +362,9 @@ class EreignisseTest {
                 null, null, null, null, null, n("05T05:00"), BERLIN);
         assertThat(nur.text()).isEqualTo(
                 "Abendverkauf 19:45 bis 20:45 · 13,7 kWh zu 13,6 bis 13,9 ct (1,88 €).");
+        // Ein fehlender Fakt fehlt auch in der Liste.
+        assertThat(nur.facts()).extracting(HistoryEventDto.Fact::label)
+                .containsExactly("Preis", "Erlös");
 
         // Der Speicher wurde NICHT leer -> kein Boden-Satz, der Bezug bleibt.
         HistoryEventDto ohneBoden = Ereignisse.abendverkauf(abendVerkauf(),
@@ -338,5 +390,134 @@ class EreignisseTest {
         assertThat(Ereignisse.abendverkauf(gleich, null, null, null, null, null,
                 n("05T05:00"), BERLIN).text())
                 .startsWith("Abendverkauf 19:45 bis 20:45 · 13,7 kWh zu 13,6 ct (1,86 €).");
+    }
+
+    // ---- Bündel ab der Woche ---------------------------------------------------
+
+    private static List<HistoryEventDto> build(HistoryRange range, List<ValueSlot> negativePrices,
+            List<ValueSlot> curtail, List<ValueSlot> gridCharges, List<GapRun> gaps,
+            CoverageRow row, HistoryCoverageDto coverage) {
+        return Ereignisse.build(range, negativePrices, curtail, List.of(), gridCharges, gaps, row,
+                coverage);
+    }
+
+    /** Ein Zeitpunkt im Juli 2026 (UTC, Berlin = UTC+2). */
+    private static Instant juli(int tag, String uhrzeit) {
+        return Instant.parse(String.format("2026-07-%02dT%s:00Z", tag, uhrzeit));
+    }
+
+    @Test
+    void imMonatWerdenDieFensterEinesTagesJeArtEinEreignis() {
+        // Zwei Netzlade-Fenster am 15.07. (1,2 und 1,0 kWh), eines am 16.07.
+        List<ValueSlot> netzladen = new ArrayList<>(lauf(juli(15, "00:15"), 2, "0.6"));
+        netzladen.addAll(lauf(juli(15, "02:00"), 2, "0.5"));
+        netzladen.addAll(lauf(juli(16, "01:00"), 4, "0.5"));
+
+        List<HistoryEventDto> events = build(HistoryRange.MONTH, List.of(), List.of(), netzladen,
+                List.of(), null, null);
+
+        assertThat(events).hasSize(2);
+        assertThat(events.get(0)).satisfies(e -> {
+            assertThat(e.type()).isEqualTo("netzladen");
+            assertThat(e.start()).isEqualTo(juli(15, "00:15"));
+            assertThat(e.end()).isEqualTo(juli(15, "02:30"));
+            assertThat(e.count()).isEqualTo(2);
+            assertThat(e.days()).isEqualTo(1);
+            // Die Dauer ist die SUMME der Fenster, nicht start bis end.
+            assertThat(e.minutes()).isEqualTo(60);
+            assertThat(e.value()).isEqualByComparingTo("2.2");
+            assertThat(e.text()).isEqualTo("Speicher aus dem Netz geladen: 2×, zusammen 1 Std (ca. 2,2 kWh)");
+        });
+        assertThat(events.get(1).count()).isEqualTo(1);
+        assertThat(events.get(1).text()).isEqualTo("Speicher aus dem Netz geladen: 1 Std (ca. 2,0 kWh)");
+    }
+
+    @Test
+    void derTagEinesBuendelsIstDerBerlinerTag() {
+        // 22:30 UTC am 14.07. ist 00:30 Berlin am 15.07. - gehört zum 15.,
+        // zusammen mit dem Fenster um 10:00 UTC.
+        List<ValueSlot> preise = new ArrayList<>(lauf(juli(14, "22:30"), 2, "-10"));
+        preise.addAll(lauf(juli(15, "10:00"), 2, "-20"));
+
+        List<HistoryEventDto> events = build(HistoryRange.WEEK, preise, List.of(), List.of(),
+                List.of(), null, null);
+
+        assertThat(events).singleElement().satisfies(e -> {
+            assertThat(e.count()).isEqualTo(2);
+            assertThat(e.value()).isEqualByComparingTo("-2");
+            assertThat(e.text()).isEqualTo("Negative Börsenpreise: 2×, zusammen 1 Std, bis -2,0 ct/kWh");
+        });
+    }
+
+    @Test
+    void imMonatWirdNichtGekapptSondernJederTagGezeigt() {
+        // 30 Tage mit negativen Preisen - mehr als MAX_PER_TYPE. Im Tag würde
+        // gekappt, im Monat steht JEDER Tag da (das war der Befund im Sommer).
+        List<ValueSlot> preise = new ArrayList<>();
+        for (int tag = 1; tag <= 30; tag++) {
+            preise.addAll(lauf(juli(tag, "11:00"), 4, "-5"));
+        }
+
+        List<HistoryEventDto> events = build(HistoryRange.MONTH, preise, List.of(), List.of(),
+                List.of(), null, null);
+
+        assertThat(events).hasSize(30).allSatisfy(e -> assertThat(e.count()).isEqualTo(1));
+        assertThat(30).isGreaterThan(Ereignisse.MAX_PER_TYPE);
+    }
+
+    @Test
+    void imJahrZaehltDerServerJeMonatUndArt() {
+        // Juli: drei Tage, am 05.07. zwei Fenster; August: ein Tag.
+        List<ValueSlot> preise = new ArrayList<>(lauf(juli(5, "10:00"), 4, "-24"));
+        preise.addAll(lauf(juli(5, "14:00"), 2, "-3"));
+        preise.addAll(lauf(juli(12, "11:00"), 8, "-121"));
+        preise.addAll(lauf(juli(26, "10:00"), 4, "-87"));
+        preise.addAll(lauf(Instant.parse("2026-08-02T11:00:00Z"), 4, "-12"));
+        // Abregelung im Juli an zwei Tagen (Plan, kW je Viertelstunde).
+        List<ValueSlot> abregelung = new ArrayList<>(lauf(juli(6, "09:00"), 4, "8"));
+        abregelung.addAll(lauf(juli(26, "09:00"), 4, "10"));
+
+        List<HistoryEventDto> events = build(HistoryRange.YEAR, preise, abregelung, List.of(),
+                List.of(), null, null);
+
+        assertThat(events).extracting(HistoryEventDto::type, HistoryEventDto::count,
+                        HistoryEventDto::days)
+                .containsExactly(
+                        tuple("negativpreis", 4, 3),
+                        tuple("abregelung", 2, 2),
+                        tuple("negativpreis", 1, 1));
+        HistoryEventDto juliPreise = events.get(0);
+        assertThat(juliPreise.value()).isEqualByComparingTo("-12.1");
+        assertThat(juliPreise.minutes()).isEqualTo(270);
+        assertThat(juliPreise.text())
+                .isEqualTo("Negative Börsenpreise: an 3 Tagen, zusammen 4 Std 30 Min, bis -12,1 ct/kWh");
+        HistoryEventDto juliAbregelung = events.get(1);
+        assertThat(juliAbregelung.value()).isEqualByComparingTo("18");
+        assertThat(juliAbregelung.planned()).isTrue();
+        assertThat(juliAbregelung.text())
+                .isEqualTo("PV-Abregelung eingeplant: an 2 Tagen, zusammen 2 Std (18,0 kWh)");
+    }
+
+    @Test
+    void imMonatWerdenAuchLueckenJeTagGebuendeltDasStilleGeraetBleibtEinzeln() {
+        HistoryCoverageDto monat = new HistoryCoverageDto(juli(1, "00:00"), juli(20, "10:00"),
+                juli(1, "00:00"), juli(31, "22:00"), 2976, 2900, 3, 15);
+        // Gemessen bis 20.07. 10:00, danach nichts mehr (siteLast == lastInWindow).
+        CoverageRow row = new CoverageRow(juli(1, "00:00"), juli(20, "10:00"), 2900,
+                juli(1, "00:00"), juli(20, "10:00"), 2);
+        List<GapRun> gaps = List.of(
+                new GapRun(juli(9, "06:00"), juli(9, "07:00")),
+                new GapRun(juli(9, "09:00"), juli(9, "10:15")));
+
+        List<HistoryEventDto> events = build(HistoryRange.MONTH, List.of(), List.of(), List.of(),
+                gaps, row, monat);
+
+        assertThat(events).extracting(HistoryEventDto::type, HistoryEventDto::count,
+                        HistoryEventDto::minutes)
+                .containsExactly(
+                        tuple("datenluecke", 2, 135L),
+                        tuple("geraet-still", 1, Duration.between(juli(20, "10:15"),
+                                juli(31, "22:00")).toMinutes()));
+        assertThat(events.get(0).text()).isEqualTo("Datenlücke: 2×, zusammen 2 Std 15 Min ohne Messwerte");
     }
 }

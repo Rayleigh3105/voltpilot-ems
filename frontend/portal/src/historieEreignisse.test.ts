@@ -3,12 +3,21 @@ import type { History, HistoryBucket, HistoryEvent, HistoryRange } from './api';
 import {
   ART_ORDER,
   EREIGNIS_ARTEN,
+  SPUR_HINWEIS_KURZ,
   bandSpanne,
+  centText,
+  dauerText,
   drilldownHinweis,
+  ereignisArten,
+  ereignisChronik,
   ereignisSpur,
+  ereignisZahl,
   ereignisZeit,
   spurHinweis,
+  stundenZellen,
   tagesSprung,
+  zellenSpanne,
+  type EreignisZelle,
 } from './historieEreignisse';
 
 /**
@@ -84,7 +93,8 @@ describe('ereignisSpur — ohne Spur wird keine Ruhe behauptet', () => {
   it('sagt bei einer leeren Spur ausdrücklich, dass nichts Auffälliges war', () => {
     const spur = ereignisSpur(hist([local(2026, 7, 15)], []))!;
     expect(spur.chips).toEqual([]);
-    expect(spur.leerText).toBe('Keine besonderen Ereignisse in diesem Zeitraum.');
+    // Ein Haken und zwei Wörter statt eines Satzes (Konzept k1).
+    expect(spur.leerText).toBe('Nichts Auffälliges');
     expect(spur.arten).toEqual([]);
   });
 
@@ -237,10 +247,9 @@ describe('Abendverkauf — die Erklärung der Nacht ist NEUTRAL', () => {
   it('trägt das Label „Abendverkauf" und einen neutralen Ton — nie grün, nie rot', () => {
     const info = EREIGNIS_ARTEN.abendverkauf;
     expect(info.label).toBe('Abendverkauf');
-    // `cloud` ist das ruhige Blaugrau; die Ertrags-/Kosten-Töne (`pv`,
-    // `discharge`) blieben den Ereignissen vorbehalten, die BEWERTEN.
-    expect(info.farbe).toBe('cloud');
-    expect(['pv', 'discharge']).not.toContain(info.farbe);
+    // Eine Entscheidung am Markt: das Blau der Preislinie. Es gibt keinen
+    // Ertrags- oder Kosten-Bereich — die vier Bereiche bewerten nicht.
+    expect(info.farbe).toBe('markt');
   });
 
   it('wird als Chip gezeigt, mit Zeit davor und dem Servertext unangetastet', () => {
@@ -257,5 +266,212 @@ describe('Abendverkauf — die Erklärung der Nacht ist NEUTRAL', () => {
     expect(ART_ORDER).toContain('abendverkauf');
     expect(ART_ORDER.indexOf('abendverkauf')).toBeGreaterThan(ART_ORDER.indexOf('netzladen'));
     expect(ART_ORDER.indexOf('abendverkauf')).toBeLessThan(ART_ORDER.indexOf('datenluecke'));
+  });
+});
+
+// ===========================================================================
+// Konzept k1: ein Wort, eine Zahl; Bereichsfarben; Chronik und „Nach Art"
+// ===========================================================================
+
+describe('Bereiche — vier Farben statt sieben, das Symbol unterscheidet', () => {
+  it('ordnet jede Art genau einem der vier Bereiche zu', () => {
+    expect(Object.fromEntries(ART_ORDER.map((a) => [a, EREIGNIS_ARTEN[a].farbe]))).toEqual({
+      negativpreis: 'markt',
+      abregelung: 'pv',
+      netzgrenze: 'netz',
+      netzladen: 'netz',
+      abendverkauf: 'markt',
+      datenluecke: 'daten',
+      'geraet-still': 'daten',
+    });
+  });
+});
+
+describe('Chips — die Felder des Servers, und ohne sie ein ehrliches Bild', () => {
+  it('übernimmt Zahl, Einheit, Plan, Dauer, Bündel und Fakten', () => {
+    const spur = ereignisSpur(
+      hist([local(2026, 7, 15)], [
+        ereignis({ value: -5.3, unit: 'ct/kWh', planned: false, minutes: 240, count: 2, days: 1, facts: [] }),
+      ]),
+    )!;
+    const c = spur.chips[0];
+    expect([c.wert, c.einheit, c.geplant, c.minuten, c.anzahl, c.tage]).toEqual([-5.3, 'ct/kWh', false, 240, 2, 1]);
+  });
+
+  it('rechnet bei einem älteren Backend die Dauer aus Beginn und Ende und behauptet keine Zahl', () => {
+    const c = ereignisSpur(hist([local(2026, 7, 15)], [ereignis({ type: 'abregelung' })]))!.chips[0];
+    expect(c.wert).toBeNull();
+    expect(c.minuten).toBe(240);
+    expect(c.anzahl).toBe(1);
+    // Die Art weiß, dass eine Abregelung geplant ist, auch ohne das Feld.
+    expect(c.geplant).toBe(true);
+  });
+});
+
+describe('Die eine Zahl — Format', () => {
+  it('schreibt Preise mit echtem Minus und unter 0,1 ct mit zwei Stellen', () => {
+    expect(centText(-5.3)).toBe('−5,3 ct');
+    // Der Fall aus dem Screenshot: „-0,0 ct/kWh" sagte nichts.
+    expect(centText(-0.04)).toBe('−0,04 ct');
+    expect(centText(-0.001)).toBe('unter 0 ct');
+  });
+
+  it('wählt je Art die Zahl, und wo es keine gibt, die Dauer', () => {
+    const t = new Date(2026, 9, 20, 14, 15);
+    expect(ereignisZahl('negativpreis', -0.04, 15, t, 'month')).toBe('bis −0,04 ct');
+    expect(ereignisZahl('negativpreis', -0.001, 15, t, 'month')).toBe('unter 0 ct');
+    expect(ereignisZahl('netzladen', 2.2, 60, t, 'month')).toBe('2,2 kWh');
+    expect(ereignisZahl('abregelung', 214.6, 600, t, 'year')).toBe('215 kWh');
+    expect(ereignisZahl('netzgrenze', 4.2, 90, t, 'day')).toBe('≤ 4,2 kW');
+    expect(ereignisZahl('datenluecke', null, 135, t, 'month')).toBe('2 Std 15 Min');
+    expect(ereignisZahl('netzladen', null, 45, t, 'month')).toBe('45 Min');
+    expect(ereignisZahl('geraet-still', null, 600, t, 'day')).toBe('seit 14:15');
+    expect(ereignisZahl('geraet-still', null, 600, t, 'year')).toBe('seit 20.10.');
+  });
+
+  it('nennt lange Dauern in Tagen, nie „0 Std"', () => {
+    expect(dauerText(45)).toBe('45 Min');
+    expect(dauerText(120)).toBe('2 Std');
+    expect(dauerText(1440 + 240)).toBe('1 Tag 4 Std');
+    expect(dauerText(3 * 1440)).toBe('3 Tage');
+  });
+
+  it('hat für den §-14a-Hinweis eine Kurzform ohne Zeilenbruch im Paragrafen', () => {
+    expect(SPUR_HINWEIS_KURZ).toBe('§ 14a: nur Tag/Woche');
+  });
+});
+
+describe('ereignisChronik — ein Tag, eine Zeile je Art', () => {
+  it('bündelt im Monat zwei Fenster derselben Art an einem Tag (älteres Backend)', () => {
+    // Der Fall aus dem Screenshot: zweimal „02.10. Netzladen 15 Min".
+    const spur = ereignisSpur(
+      hist([local(2026, 10, 2)], [
+        ereignis({ type: 'netzladen', start: local(2026, 10, 2, 3, 15), end: local(2026, 10, 2, 3, 30), value: 0.6, unit: 'kWh' }),
+        ereignis({ type: 'netzladen', start: local(2026, 10, 2, 4, 45), end: local(2026, 10, 2, 5, 0), value: 0.7, unit: 'kWh' }),
+        ereignis({ type: 'datenluecke', start: local(2026, 10, 7, 10, 15), end: local(2026, 10, 7, 11, 15), value: null }),
+      ]),
+    )!;
+
+    const gruppen = ereignisChronik(spur, 'month');
+
+    expect(gruppen.map((g) => [g.gross, g.klein, g.label])).toEqual([
+      ['02', 'Fr', 'Freitag, 02.10.'],
+      ['07', 'Mi', 'Mittwoch, 07.10.'],
+    ]);
+    expect(gruppen[0].zeilen).toHaveLength(1);
+    expect(gruppen[0].zeilen[0]).toMatchObject({ art: 'netzladen', meta: '2× · 30 Min', zahl: '1,3 kWh' });
+    expect(gruppen[0].sprung).toEqual({ range: 'day', at: '2026-10-02' });
+    // Eine einzelne Lücke nennt ihre Uhrzeit, die Zahl ist die Dauer.
+    expect(gruppen[1].zeilen[0]).toMatchObject({ art: 'datenluecke', meta: '10:15–11:15', zahl: '1 Std' });
+  });
+
+  it('nimmt ein Bündel des Servers wie es ist und nennt seine Anzahl', () => {
+    const spur = ereignisSpur(
+      hist([local(2026, 7, 15)], [
+        ereignis({
+          type: 'netzladen', start: local(2026, 7, 15, 2, 15), end: local(2026, 7, 15, 4, 30),
+          value: 2.2, unit: 'kWh', minutes: 60, count: 2, days: 1,
+        }),
+      ]),
+    )!;
+    expect(ereignisChronik(spur, 'month')[0].zeilen[0]).toMatchObject({ meta: '2× · 1 Std', zahl: '2,2 kWh' });
+  });
+
+  it('stellt zwei Arten am selben Tag unter EINEN Datumsblock, in kanonischer Reihenfolge', () => {
+    const spur = ereignisSpur(
+      hist([local(2026, 7, 6)], [
+        ereignis({ type: 'abregelung', start: local(2026, 7, 6, 11, 30), end: local(2026, 7, 6, 13, 30), value: 4.8, unit: 'kWh', planned: true }),
+        ereignis({ start: local(2026, 7, 6, 10, 30), end: local(2026, 7, 6, 14, 30), value: -5.3, unit: 'ct/kWh' }),
+      ]),
+    )!;
+    const [g] = ereignisChronik(spur, 'month');
+    expect(g.zeilen.map((z) => [z.art, z.zahl, z.geplant])).toEqual([
+      ['negativpreis', 'bis −5,3 ct', false],
+      ['abregelung', '4,8 kWh', true],
+    ]);
+  });
+
+  it('gruppiert im Jahr je Monat, zählt Tage und öffnet den Monat', () => {
+    const spur = ereignisSpur(
+      hist([local(2026, 5, 1)], [
+        ereignis({ start: local(2026, 5, 3, 11), end: local(2026, 5, 28, 15), value: -12.1, unit: 'ct/kWh', minutes: 1380, count: 11, days: 9 }),
+      ], 'year'),
+    )!;
+    const [g] = ereignisChronik(spur, 'year');
+    expect([g.gross, g.klein, g.label]).toEqual(['Mai', '', 'Mai 2026']);
+    expect(g.sprung).toEqual({ range: 'month', at: '2026-05-01' });
+    expect(g.zeilen[0]).toMatchObject({ meta: '9 Tage', zahl: 'bis −12,1 ct' });
+  });
+
+  it('zeigt am Tag jedes Ereignis mit Uhrzeit, ohne Sprung, mit den Fakten des Abendverkaufs', () => {
+    const fakten = [{ label: 'Speicher leer', value: '02:45' }];
+    const spur = ereignisSpur(
+      hist([local(2026, 9, 4, 19, 45)], [
+        ereignis({ type: 'abendverkauf', start: local(2026, 9, 4, 19, 45), end: local(2026, 9, 4, 21), value: 4.2, unit: 'kWh', planned: true, facts: fakten }),
+      ], 'day'),
+    )!;
+    const [g] = ereignisChronik(spur, 'day');
+    expect([g.gross, g.klein, g.sprung]).toEqual(['19:45', 'bis 21:00', null]);
+    expect(g.zeilen[0]).toMatchObject({ meta: '1 Std 15 Min', zahl: '4,2 kWh', geplant: true, fakten });
+  });
+});
+
+describe('zellenSpanne — wo ein Ereignis unter der Achse liegt', () => {
+  const tage: EreignisZelle[] = Array.from({ length: 5 }, (_, i) => ({
+    start: new Date(2026, 6, 1 + i),
+    ende: new Date(2026, 6, 2 + i),
+  }));
+
+  it('trifft genau die berührten Zellen; das exklusive Ende zählt keine zu viel', () => {
+    expect(zellenSpanne(tage, new Date(2026, 6, 2, 10), new Date(2026, 6, 2, 12))).toEqual([1, 1]);
+    expect(zellenSpanne(tage, new Date(2026, 6, 2, 22), new Date(2026, 6, 4))).toEqual([1, 2]);
+  });
+
+  it('liefert außerhalb nichts', () => {
+    expect(zellenSpanne(tage, new Date(2026, 7, 1), new Date(2026, 7, 2))).toBeNull();
+  });
+});
+
+describe('ereignisArten — „Nach Art"', () => {
+  const tage: EreignisZelle[] = Array.from({ length: 31 }, (_, i) => ({
+    start: new Date(2026, 9, 1 + i),
+    ende: new Date(2026, 9, 2 + i),
+    zukunft: i >= 20,
+  }));
+
+  it('zählt Tage, nennt die eine Zahl über den Zeitraum und markiert den Streifen', () => {
+    const spur = ereignisSpur(
+      hist([local(2026, 10, 1)], [
+        ereignis({ start: local(2026, 10, 4, 12), end: local(2026, 10, 4, 13), value: -2.4, unit: 'ct/kWh' }),
+        ereignis({ start: local(2026, 10, 10, 13), end: local(2026, 10, 10, 13, 15), value: -0.04, unit: 'ct/kWh' }),
+        ereignis({ type: 'datenluecke', start: local(2026, 10, 7, 10, 15), end: local(2026, 10, 7, 11, 15), value: null }),
+      ]),
+    )!;
+
+    const arten = ereignisArten(spur, 'month', tage);
+
+    expect(arten.map((a) => [a.art, a.n, a.anzahl, a.zahl])).toEqual([
+      ['negativpreis', 2, '2 Tage', 'bis −2,4 ct'],
+      ['datenluecke', 1, '1 Tag', '1 Std'],
+    ]);
+    const streifen = arten[0].streifen;
+    expect(streifen.filter((z) => z.an).length).toBe(2);
+    expect(streifen[3].an && streifen[9].an).toBe(true);
+    // Die Zukunft ist hohl, nie „kein Ereignis".
+    expect(streifen[25]).toEqual({ an: false, zukunft: true });
+  });
+
+  it('zählt am Tag die Ereignisse und streift die Stunden', () => {
+    const now = new Date(2026, 6, 27, 12);
+    const stunden = stundenZellen(new Date(2026, 6, 26, 12), now);
+    expect(stunden).toHaveLength(24);
+    const spur = ereignisSpur(
+      hist([local(2026, 7, 26)], [
+        ereignis({ start: local(2026, 7, 26, 10, 15), end: local(2026, 7, 26, 15, 45), value: -8.7, unit: 'ct/kWh' }),
+      ], 'day'),
+    )!;
+    const [a] = ereignisArten(spur, 'day', stunden);
+    expect(a.anzahl).toBe('1×');
+    expect(a.streifen.map((z, h) => (z.an ? h : -1)).filter((h) => h >= 0)).toEqual([10, 11, 12, 13, 14, 15]);
   });
 });

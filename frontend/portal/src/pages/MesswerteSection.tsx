@@ -13,7 +13,14 @@ import {
 } from '../historieVergleich';
 import { abdeckungView, ankerAusWert, mitVergleich, parseVergleichModus } from '../historieZeit';
 import { isCurrentPeriod } from '../energieBilanz';
-import { ereignisSpur } from '../historieEreignisse';
+import {
+  ereignisChronik,
+  ereignisSpur,
+  stundenZellen,
+  type ChronikGruppe,
+  type EreignisArt,
+  type EreignisZelle,
+} from '../historieEreignisse';
 import { historieHash, WELTEN, type WeltId } from '../historieWelten';
 import { useHistoryPeriod, useVergleichsPeriode } from '../useHistoryPeriod';
 import type { AnlageSurface } from '../surface';
@@ -49,7 +56,9 @@ import {
 } from '../components/VerlaufRahmen';
 import type { BilanzReihe, TagReihe } from '../components/energie/EnergieCharts';
 import { CHART_CHUNK } from '../pageChunks';
-import { EreignisseKarte, QuotenKarte, rollenFarbe, SpitzenKarte } from '../components/energie/EnergieKarten';
+import { QuotenKarte, rollenFarbe, SpitzenKarte } from '../components/energie/EnergieKarten';
+import { EreignisKarte } from '../components/energie/EreignisKarte';
+import { EreignisSpurRahmen, type EreignisFokus } from '../components/energie/EreignisSpurRahmen';
 
 /**
  * **Verlauf › Energie** (`#/anlage/{id}/messwerte`) — Konzept „Verlauf-Rework",
@@ -61,9 +70,12 @@ import { EreignisseKarte, QuotenKarte, rollenFarbe, SpitzenKarte } from '../comp
  *    Verbrauch, Netz, Ladestand; Börsenpreis zuschaltbar), ab der Woche die
  *    gespiegelte Bilanz: oben woher die Energie kam, unten wohin sie ging.
  *    Umschaltbar auf die Tabelle (mit CSV).
- * 3. **Seitenspalte** — Autarkie und Eigenverbrauch als Balken, die Spitzen
+ * 3. **Ereignisse** (Konzept `data/vp-verlauf-ereignisse-k1`) — eine Spur
+ *    direkt unter der Achse zeigt, WO etwas war; die Karte direkt unter dem
+ *    Diagramm sagt in einem Wort und einer Zahl, WAS (Chronik oder „Nach
+ *    Art"). Am Telefon folgt sie dem Diagramm, nicht erst den Seitenkarten.
+ * 4. **Seitenspalte** — Autarkie und Eigenverbrauch als Balken, die Spitzen
  *    des Zeitraums.
- * 4. **Ereignisse** — das Auffällige als Liste.
  *
  * Die Route heißt aus Gründen der Lesezeichen weiter `messwerte`; die
  * einzelnen Messwerte wohnen im eigenen Reiter „Messwerte" (`einzelwerte`).
@@ -217,6 +229,31 @@ export function MesswerteSection({
   const quoten = useMemo(() => (history ? energieQuoten(history) : []), [history]);
   const spitzen = useMemo(() => (history ? energieSpitzen(history, range) : null), [history, range]);
   const spur = useMemo(() => (history ? ereignisSpur(history) : null), [history]);
+  const chronik = useMemo(() => (spur ? ereignisChronik(spur, range) : []), [spur, range]);
+  // Die Zellen der x-Achse, unter denen die Spur ihre Marken setzt: die
+  // Viertelstunden des Tages bzw. die Tage/Monate der Bilanz.
+  const achsenZellen = useMemo<EreignisZelle[]>(() => {
+    if (tag) {
+      const n = tag.achse.length;
+      const schritt = n > 0 ? 1440 / n : 15;
+      return Array.from({ length: n }, (_, k) => {
+        const start = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate(), 0, k * schritt);
+        return { start, ende: new Date(start.getTime() + schritt * 60_000) };
+      });
+    }
+    return bilanz ? bilanz.zellen.map((z) => ({ start: z.start, ende: z.ende, zukunft: z.zustand === 'zukunft' })) : [];
+  }, [tag, bilanz, anchor]);
+  // Der Streifen von „Nach Art": am Tag die Stunden, sonst dieselben Zellen.
+  const streifenZellen = useMemo(
+    () => (range === 'day' ? stundenZellen(anchor, now) : achsenZellen),
+    [range, anchor, now, achsenZellen],
+  );
+  const [ereignisFilter, setEreignisFilter] = useState<EreignisArt | null>(null);
+  const [ereignisFokus, setEreignisFokus] = useState<EreignisFokus | null>(null);
+  useEffect(() => {
+    setEreignisFilter(null);
+    setEreignisFokus(null);
+  }, [range, at]);
 
   const tagSichtbar = useMemo(
     () => new Set<TagReihe>((['pv', 'load', 'netz', 'soc', 'preis'] as TagReihe[]).filter((r) => !tagAus.has(r))),
@@ -240,6 +277,18 @@ export function MesswerteSection({
       window.scrollTo({ top: 0, behavior: 'smooth' });
     },
     [zeigeZeitraum],
+  );
+  const oeffneEreignis = useCallback(
+    (sprung: NonNullable<ChronikGruppe['sprung']>) => {
+      if (sprung.range === 'day') {
+        oeffneTag(sprung.at);
+        return;
+      }
+      const [y, m] = sprung.at.split('-').map(Number);
+      zeigeZeitraum('month', new Date(y, m - 1, 1, 12));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    [oeffneTag, zeigeZeitraum],
   );
   const oeffneZelle = useCallback(
     (i: number) => {
@@ -370,84 +419,108 @@ export function MesswerteSection({
             </Kennzahlen>
 
             <div className="vp-vr-row">
-              <VrKarte
-                titel={TITEL[range]}
-                info={
-                  range === 'day'
-                    ? null
-                    : {
-                        titel: 'Energiebilanz',
-                        text: 'Oben steht, woher die Energie kam (Erzeugung, Netzbezug, Speicher), unten, wohin sie ging (Verbrauch, Einspeisung, Speicher). Beide Seiten sind gleich groß.',
-                      }
-                }
-                aktionen={<VrUmschalter label="Ansicht" optionen={ANSICHTEN} wert={ansicht} onWert={setAnsicht} />}
-              >
-                {ansicht === 'diagramm' ? (
-                  <>
-                    <VrLegende eintraege={legende} label="Reihen ein- und ausblenden" />
-                    {tag && (
-                      <Suspense fallback={<ChartPlatz klasse={tagHoehe(tag, tagSichtbar.has('preis'))} />}>
-                        <EnergieTagChart
-                          tag={tag}
-                          vergleich={tagVergleich}
-                          sichtbar={tagSichtbar}
-                          label={`${TITEL.day} · ${label}`}
-                        />
-                      </Suspense>
-                    )}
-                    {bilanz && (
-                      <Suspense fallback={<ChartPlatz />}>
-                        <EnergieBilanzChart
-                          bilanz={bilanz}
-                          vergleich={bilanzVergleich}
-                          sichtbar={bilanzSichtbar}
-                          onZelle={oeffneZelle}
-                          label={`${TITEL[range]} · ${label}`}
-                        />
-                      </Suspense>
-                    )}
-                  </>
-                ) : (
-                  tabelle && (
-                    <VrTabelle
-                      titel={`Energie · ${label}`}
-                      spalten={ENERGIE_SPALTEN}
-                      zeilen={tabelle.zeilen}
-                      summe={tabelle.summe}
-                      onZeile={
-                        range === 'day'
-                          ? undefined
-                          : (id) => {
-                              const i = tabellenZellen.findIndex((z) => z.schluessel === id);
-                              const z = tabellenZellen[i];
-                              if (!z) return;
-                              const a = new Date(z.start.getFullYear(), z.start.getMonth(), z.start.getDate(), 12);
-                              zeigeZeitraum(range === 'year' ? 'month' : 'day', a);
+              <div className="vp-vr-col">
+                <VrKarte
+                  titel={TITEL[range]}
+                  info={
+                    range === 'day'
+                      ? null
+                      : {
+                          titel: 'Energiebilanz',
+                          text: 'Oben steht, woher die Energie kam (Erzeugung, Netzbezug, Speicher), unten, wohin sie ging (Verbrauch, Einspeisung, Speicher). Beide Seiten sind gleich groß.',
+                        }
+                  }
+                  aktionen={<VrUmschalter label="Ansicht" optionen={ANSICHTEN} wert={ansicht} onWert={setAnsicht} />}
+                >
+                  {ansicht === 'diagramm' ? (
+                    <>
+                      <VrLegende eintraege={legende} label="Reihen ein- und ausblenden" />
+                      <EreignisSpurRahmen
+                        gruppen={chronik}
+                        zellen={achsenZellen}
+                        art={tag ? 'tag' : 'bilanz'}
+                        filter={ereignisFilter}
+                        fokus={ereignisFokus}
+                        onFokus={setEreignisFokus}
+                        onOeffnen={range === 'day' ? undefined : oeffneEreignis}
+                      >
+                        {tag && (
+                          <Suspense fallback={<ChartPlatz klasse={tagHoehe(tag, tagSichtbar.has('preis'))} />}>
+                            <EnergieTagChart
+                              tag={tag}
+                              vergleich={tagVergleich}
+                              sichtbar={tagSichtbar}
+                              label={`${TITEL.day} · ${label}`}
+                            />
+                          </Suspense>
+                        )}
+                        {bilanz && (
+                          <Suspense fallback={<ChartPlatz />}>
+                            <EnergieBilanzChart
+                              bilanz={bilanz}
+                              vergleich={bilanzVergleich}
+                              sichtbar={bilanzSichtbar}
+                              onZelle={oeffneZelle}
+                              label={`${TITEL[range]} · ${label}`}
+                            />
+                          </Suspense>
+                        )}
+                      </EreignisSpurRahmen>
+                    </>
+                  ) : (
+                    tabelle && (
+                      <VrTabelle
+                        titel={`Energie · ${label}`}
+                        spalten={ENERGIE_SPALTEN}
+                        zeilen={tabelle.zeilen}
+                        summe={tabelle.summe}
+                        onZeile={
+                          range === 'day'
+                            ? undefined
+                            : (id) => {
+                                const i = tabellenZellen.findIndex((z) => z.schluessel === id);
+                                const z = tabellenZellen[i];
+                                if (!z) return;
+                                const a = new Date(z.start.getFullYear(), z.start.getMonth(), z.start.getDate(), 12);
+                                zeigeZeitraum(range === 'year' ? 'month' : 'day', a);
+                              }
+                        }
+                        zeileTitel={range === 'year' ? 'Monat öffnen' : 'Tag öffnen'}
+                        fuss={
+                          <button
+                            type="button"
+                            className="vp-vr-textbtn"
+                            onClick={() =>
+                              ladeCsv(energieCsv(tabellenZellen, history, range), csvDateiname('energie', site.name, range, at))
                             }
-                      }
-                      zeileTitel={range === 'year' ? 'Monat öffnen' : 'Tag öffnen'}
-                      fuss={
-                        <button
-                          type="button"
-                          className="vp-vr-textbtn"
-                          onClick={() =>
-                            ladeCsv(energieCsv(tabellenZellen, history, range), csvDateiname('energie', site.name, range, at))
-                          }
-                        >
-                          Als CSV herunterladen
-                        </button>
-                      }
-                    />
-                  )
+                          >
+                            Als CSV herunterladen
+                          </button>
+                        }
+                      />
+                    )
+                  )}
+                </VrKarte>
+                {spur && (
+                  <EreignisKarte
+                    key={`${range}-${at}`}
+                    spur={spur}
+                    gruppen={chronik}
+                    range={range}
+                    streifenZellen={streifenZellen}
+                    filter={ereignisFilter}
+                    onFilter={setEreignisFilter}
+                    fokus={ereignisFokus}
+                    onFokus={setEreignisFokus}
+                    onOeffnen={range === 'day' ? undefined : oeffneEreignis}
+                  />
                 )}
-              </VrKarte>
+              </div>
               <div className="vp-vr-col">
                 <QuotenKarte quoten={quoten} />
                 {spitzen && <SpitzenKarte titel={spitzen.titel} zeilen={spitzen.zeilen} />}
               </div>
             </div>
-
-            {spur && <EreignisseKarte spur={spur} onTag={range === 'day' ? undefined : oeffneTag} />}
           </>
         )}
       </div>

@@ -116,7 +116,7 @@ public class HistoryService {
     private List<HistoryEventDto> events(UUID siteId, String biddingZone, HistoryRange range,
             HistoryRange.Window window, HistoryRepository.CoverageRow coverageRow,
             HistoryCoverageDto coverage, LocalDate at, Instant cutover) {
-        List<HistoryEventDto> events = new java.util.ArrayList<>(Ereignisse.build(
+        List<HistoryEventDto> events = new java.util.ArrayList<>(Ereignisse.build(range,
                 repo.negativePriceSlots(biddingZone, window.from(), window.to()),
                 repo.curtailSlots(siteId, window.from(), window.to()),
                 Ereignisse.evaluatesGridLimit(range)

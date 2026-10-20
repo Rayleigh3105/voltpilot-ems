@@ -212,6 +212,37 @@ function bucketMinutesFor(range: HistoryRange): number {
   return range === 'day' ? 15 : range === 'week' ? 60 : 1440;
 }
 
+/** „45 Min", „2 Std", „4 Std 15 Min" — wie `Ereignisse.dauer`. */
+function dauer(min: number): string {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (!h) return `${m} Min`;
+  return m ? `${h} Std ${m} Min` : `${h} Std`;
+}
+
+/** Fenster einer Art an einem Tag (im Jahr: Monat) zu EINEM Ereignis — wie `Ereignisse.buendeln`. */
+function buendeln(liste: { e: HistoryEvent; iso: string }[]): HistoryEvent[] {
+  const proArt = new Map<string, { e: HistoryEvent; iso: string }[]>();
+  for (const x of liste) proArt.set(x.e.type, [...(proArt.get(x.e.type) ?? []), x]);
+  return [...proArt.values()].map((g) => {
+    if (g.length === 1) return g[0].e;
+    const es = g.map((x) => x.e);
+    const werte = es.map((e) => e.value).filter((v): v is number => v != null);
+    const typ = es[0].type;
+    const value = werte.length ? (typ === 'negativpreis' || typ === 'netzgrenze' ? Math.min(...werte) : Math.round(werte.reduce((a, v) => a + v, 0) * 10) / 10) : null;
+    const minutes = es.reduce((a, e) => a + (e.minutes ?? 0), 0);
+    const days = new Set(g.map((x) => x.iso)).size;
+    const count = es.reduce((a, e) => a + (e.count ?? 1), 0);
+    const haeufig = days > 1 ? `an ${days} Tagen, zusammen ${dauer(minutes)}` : `${count}×, zusammen ${dauer(minutes)}`;
+    return {
+      ...es[0],
+      end: es.reduce((a, e) => (e.end > a ? e.end : a), es[0].end),
+      text: `${es[0].text.split(':')[0]}: ${haeufig}`,
+      value, minutes, count, days, facts: [],
+    };
+  });
+}
+
 /** Die Antwort von `GET /sites/{id}/history` für einen Zeitraum. */
 export function historyFor(range: HistoryRange, at: string): History {
   const D = days();
@@ -221,6 +252,7 @@ export function historyFor(range: HistoryRange, at: string): History {
   const buckets: HistoryBucket[] = [];
   const total = zero();
   const events: HistoryEvent[] = [];
+  const buendelProTag: Record<string, { e: HistoryEvent; iso: string }[]> = {};
   for (const iso of dates) {
     const d = D.get(iso);
     if (!d) continue;
@@ -236,16 +268,50 @@ export function historyFor(range: HistoryRange, at: string): History {
         priceEurMwh: priceAvg == null ? null : Math.round(priceAvg * 100) / 10, costEur: r3(acc.kosten),
       });
     }
-    // Ereignis-Spur: Lücken, negativer Börsenpreis, Laden aus dem Netz.
+    // Ereignis-Spur wie `Ereignisse.java`: Fenster mit der EINEN Zahl, im Tag
+    // einzeln, ab der Woche je Tag (im Jahr je Monat) und Art gebündelt.
     const runs = (pred: (s: Slot) => boolean) => {
       const out: [number, number][] = []; let a = -1;
       for (let i = 0; i <= 96; i++) { const ok = i < 96 && pred(d.slots[i]); if (ok && a < 0) a = i; if (!ok && a >= 0) { out.push([a, i]); a = -1; } }
       return out;
     };
-    runs((s) => s.state === 'gap').forEach(([a, b]) => events.push({ type: 'datenluecke', start: berlinToUtc(iso, a), end: berlinToUtc(iso, b), text: b - a >= 96 ? 'Keine Messwerte, die Box war nicht verbunden' : 'Keine Messwerte' }));
-    runs((s) => s.price < 0).forEach(([a, b]) => events.push({ type: 'negativpreis', start: berlinToUtc(iso, a), end: berlinToUtc(iso, b), text: 'Börsenpreis negativ' }));
-    runs((s) => s.state === 'ok' && s.netzladen).forEach(([a, b]) => events.push({ type: 'netzladen', start: berlinToUtc(iso, a), end: berlinToUtc(iso, b), text: 'Speicher lädt aus dem Netz' }));
+    const fenster: HistoryEvent[] = [];
+    const ev = (type: HistoryEvent['type'], a: number, b: number, value: number | null, unit: HistoryEvent['unit'], text: string, planned = false): HistoryEvent => ({
+      type, start: berlinToUtc(iso, a), end: berlinToUtc(iso, b), text, value, unit, planned, minutes: (b - a) * 15, count: 1, days: 1, facts: [],
+    });
+    runs((s) => s.state === 'gap').forEach(([a, b]) => fenster.push(ev('datenluecke', a, b, null, null, `Datenlücke: ${dauer((b - a) * 15)} ohne Messwerte`)));
+    runs((s) => s.price < 0).forEach(([a, b]) => {
+      const tief = Math.min(...d.slots.slice(a, b).map((s) => s.price));
+      fenster.push(ev('negativpreis', a, b, Math.round(tief * 100) / 100, 'ct/kWh', `Negative Börsenpreise: ${dauer((b - a) * 15)}, bis ${tief.toFixed(1).replace('.', ',')} ct/kWh`));
+      // Bei langen negativen Preisen plant der Optimierer eine Abregelung mitten hinein.
+      if (b - a >= 12) {
+        const a2 = a + Math.floor((b - a) / 2) - 4;
+        const kwh = Math.round(d.slots.slice(a2, a2 + 8).reduce((x, s) => x + s.pv * 0.25 * 0.3, 0) * 10) / 10;
+        fenster.push(ev('abregelung', a2, a2 + 8, kwh, 'kWh', `PV-Abregelung eingeplant: 2 Std (${kwh.toFixed(1).replace('.', ',')} kWh)`, true));
+      }
+    });
+    runs((s) => s.state === 'ok' && s.netzladen).forEach(([a, b]) => {
+      const kwh = Math.round(d.slots.slice(a, b).reduce((x, s) => x + Math.max(0, Math.min(s.bat - s.pv, s.grid)) * 0.25, 0) * 10) / 10;
+      // Netzladen erst ab 0,5 kWh je Fenster (Entscheid Konzept k1).
+      if (kwh >= 0.5) fenster.push(ev('netzladen', a, b, kwh, 'kWh', `Speicher aus dem Netz geladen: ${dauer((b - a) * 15)} (ca. ${kwh.toFixed(1).replace('.', ',')} kWh)`));
+    });
+    if (range === 'day' && iso.endsWith('-04')) {
+      fenster.push({
+        ...ev('abendverkauf', 79, 84, 4.2, 'kWh', 'Abendverkauf 19:45 bis 21:00 · 4,2 kWh zu 12,3 bis 15,1 ct (0,58 €).', true),
+        facts: [
+          { label: 'Preis', value: '12,3 bis 15,1 ct/kWh' },
+          { label: 'Erlös', value: '0,58 €' },
+          { label: 'Nachtlast Prognose', value: '8 kWh' },
+          { label: 'Nachtlast gemessen', value: '10 kWh (+25 %)' },
+          { label: 'Speicher leer', value: '03:15' },
+        ],
+      });
+    }
+    if (range === 'day') events.push(...fenster);
+    else (buendelProTag[range === 'year' ? iso.slice(0, 7) : iso] ??= []).push(...fenster.map((e) => ({ e, iso })));
   }
+  for (const gruppe of Object.values(buendelProTag)) events.push(...buendeln(gruppe));
+  events.sort((a, b) => a.start.localeCompare(b.start));
   const first = dates[0];
   const last = dates[dates.length - 1];
   const expectedTo = last >= TODAY ? NOW_ISO : berlinToUtc(addDays(last, 1));
@@ -262,7 +328,7 @@ export function historyFor(range: HistoryRange, at: string): History {
     },
     protocol: [], plan: [],
     coverage: { firstDataAt: berlinToUtc(START), lastDataAt: NOW_ISO, expectedFrom: berlinToUtc(first), expectedTo,
-      expectedBuckets: total.expected, measuredBuckets: total.meas, gaps: events.filter((e) => e.type === 'datenluecke').length, resolutionMinutes: 15 },
+      expectedBuckets: total.expected, measuredBuckets: total.meas, gaps: events.filter((e) => e.type === 'datenluecke').reduce((n, e) => n + (e.count ?? 1), 0), resolutionMinutes: 15 },
     events,
   };
 }
