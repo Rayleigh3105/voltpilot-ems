@@ -79,6 +79,10 @@ Der schwächste Abstand unter Farbenblindheit (Protanopie) liegt bei ΔE 7,9, zw
 
 Links von „Jetzt“ stammen die Werte aus `/history?range=day` (Viertelstunden). Rechts davon kommen sie aus `/schedule` (`pvKw`, `loadKw`, `batteryKw`, `gridKw`, `socPct`, `slotRole`, `priceEurMwh`). Bedienung: ziehen, Pfeiltasten (mit Umschalt eine Stunde), Pos1 und Ende, „Tag abspielen“ und „Zurück zu Jetzt“. Die Leiste ist ein `role="slider"` mit Wertetext.
 
+Seit Konzept b1 (20.10.2026) wählt ein Finger nur durch einen Tipp, Wischen scrollt die Seite, die Maus zieht weiter.
+‹ › gehen je eine Viertelstunde, „Tag abspielen“ und der Hinweissatz entfallen, und die Leiste steht direkt unter dem Fluss.
+Einzelheiten: [Die Bühne des Cockpits](../../agents/portal/die-buehne-des-cockpits-leitungsplan-tagesleiste.md).
+
 ## Anpassung je Betrieb
 
 | | Eigenverbrauchs-Fahrplan (privat) | Marktoptimierung | Lastspitzenkappung | Ladepark-Lastmanagement | Anlage beobachten |

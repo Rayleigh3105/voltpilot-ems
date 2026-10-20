@@ -15,6 +15,15 @@ Umsetzung des abgenommenen Konzepts [`docs/konzepte/cockpit-tagesfilm`](../../ko
   im Browser ein erfundenes „lädt 332 kW“); dann gibt es keine Aufteilung und einen Satz dazu. Kanonische
   Rollenwerte (`pvRollen`/`verbrauchRollen`/`netzRollen` mit Zuordnung) haben Vorrang. Zahlen mit einer
   Nachkommastelle wie überall im Portal.
+- **Kopf und Zeitwahl (Konzept b1, 20.10.2026):** Der Kopf ist ein Raster mit festen Plätzen
+  (Telefon `uhr modus` / `marke marke`, Rechner eine Zeile); der Umschalter Jetzt/Heute bricht nie um.
+  Die Plan-Tätigkeit steht in der Marke („Plan · …“, abseits von jetzt gemessen „gemessen · Plan: …“),
+  es gibt keine zweite Plakette. Die Tagesleiste steht direkt unter dem Fluss: „Verbrauch im Detail“
+  schrumpft beim Verlassen von „jetzt“ von vier Zeilen auf eine, darunter sprang die Leiste nach dem
+  ersten Tipp 135 px unter dem Finger weg. Ein Finger wählt nur durch einen Tipp (`touch-action: pan-y`,
+  Loslassen unter 10 px vom Aufsetzpunkt), Wischen scrollt die Seite; die Maus zieht weiter. ‹ › gehen
+  je eine Viertelstunde, „Zurück zu Jetzt“ erscheint nur abseits von jetzt. „Tag abspielen“ und der
+  Hinweissatz entfallen. Beweis: `e2e/cockpit-buehne.spec.ts` (Wisch über CDP, Tipp, Lage der Leiste).
 - **Bewegung heißt live:** Punkte (`.vp-lp-punkte`, benannter Loop `vp-flow`) laufen nur bei `is-live`;
   unter `prefers-reduced-motion` entfallen sie im EINEN Block am Ende von `index.css`.
 - **Ein Gerät, eine Stelle:** Unter dem Fluss steht nur „Verbrauch im Detail“ (auch die Ladepunkte,
