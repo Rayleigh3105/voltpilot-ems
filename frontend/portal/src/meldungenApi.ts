@@ -9,12 +9,11 @@ import { request } from './api';
  * Lazy-Stück `pages/MeldungenPage.tsx` (`meldungen.ts`) - zwei Module, damit der Einstieg nicht
  * das ganze Center mitträgt (`test/bundle-smoke.sh`, Grenze 256 kB gz).
  *
- * Scheibe 2 (§6.3, §6.8) braucht zwei WEITERE Aufrufe für „Überwachen" am Wert (`werte`,
- * `ueberwachungAnlegen`) - die stehen bewusst NICHT hier, sondern in `ueberwachungApi.ts`: dieses
- * Modul hier ist entry-gebündelt (`AnlagenPage.tsx`, `GlockeButton.tsx`), jedes neue Byte hier
- * kostet also jeden Besuch mit, auch ohne „Überwachen" je anzutippen. `ueberwachungApi.ts`
- * importiert nur das Cockpit-Blatt (`UeberwachenBlatt.tsx`, selbst Teil des lazy `EnergieBuehne`-
- * Stücks) - der Bündel-Wächter (`test/bundle-smoke.sh`) hält das fest.
+ * Die Aufrufe zum Anlegen einer Überwachung (`werte`, `anlegen`, `probelauf`, …) stehen bewusst
+ * NICHT hier, sondern in `ueberwachungApi.ts`: dieses Modul hier ist entry-gebündelt
+ * (`AnlagenPage.tsx`, `GlockeButton.tsx`), jedes neue Byte hier kostet also jeden Besuch mit.
+ * `ueberwachungApi.ts` brauchen nur die Lazy-Stücke Meldungs-Center (`+ Überwachung`) und
+ * Steuerung (Umwandeln einer Regel) - der Bündel-Wächter (`test/bundle-smoke.sh`) hält das fest.
  */
 export type Schwere = 'hinweis' | 'warnung' | 'dringend';
 export type MeldungZustand = 'aktiv' | 'gesehen' | 'erledigt';

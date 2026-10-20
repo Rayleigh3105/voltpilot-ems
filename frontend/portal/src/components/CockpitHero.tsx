@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState, type ReactNode } from 'react';
+import { lazy, Suspense, type ReactNode } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { RollenKanonischerWert, SiteEntity, SiteSource, SiteTopology } from '../api';
@@ -69,7 +69,6 @@ export function CockpitHero({
   verbrauchRollen = null,
   netzRollen = null,
   buehne = null,
-  siteId = null,
 }: {
   /** Nicht-null = migrierte Anlage → das adaptive Diagramm. */
   topology: SiteTopology | null;
@@ -153,8 +152,6 @@ export function CockpitHero({
   pvRollen?: RollenKanonischerWert | null;
   verbrauchRollen?: RollenKanonischerWert | null;
   netzRollen?: RollenKanonischerWert | null;
-  /** Durchgereicht an `EnergieBuehne` für „Überwachen" am Wert (Alerting Scheibe 2, §6.3/§6.8). */
-  siteId?: string | null;
 }) {
   const rollenTopologie = cockpitRollenTopologie(topology, [pvRollen, verbrauchRollen, netzRollen]);
   const hasFlow = flowHasValues(rollenTopologie, snapshot);
@@ -167,11 +164,9 @@ export function CockpitHero({
   const composition = topology && !pvRolleAktiv ? pvComposition(rollenTopologie, sources, pins) : null;
   // Rechts neben dem Fluss steht am Rechner die LEITKACHEL (Konzept „Cockpit
   // als Tagesfilm“) - „Unterm Strich“, der Börsenpreis oder die Lastspitze.
-  // Ohne sie wird die Bühne einspaltig.
-  const hasRail = showRail && (hasFlow || seite != null);
-  // Der Platz für „Dieser Moment“ (die vier Werte der gewählten Uhrzeit) - die
-  // Bühne schreibt hinein, damit die Werte dem Zeitschieber folgen.
-  const [momentZiel, setMomentZiel] = useState<HTMLDivElement | null>(null);
+  // Ohne sie wird die Bühne einspaltig. Einen Werteblock „Dieser Moment“ gibt
+  // es dort nicht mehr (Konzept b1, E1): die Werte stehen an den Knoten.
+  const hasRail = showRail && seite != null;
   return (
     <Card
       padding="lg"
@@ -199,8 +194,6 @@ export function CockpitHero({
             now={buehne?.now ?? new Date()}
             onBlatt={buehne?.onBlatt}
             onOpenSub={onOpenSub}
-            momentZiel={hasRail ? momentZiel : null}
-            siteId={siteId}
           />
           </Suspense>
         ) : (
@@ -218,7 +211,6 @@ export function CockpitHero({
 
       {hasRail && (
         <div className="vp-hero-side">
-          {hasFlow && <div ref={setMomentZiel} className="vp-hero-moment" />}
           {seite && <div className="vp-hero-leit">{seite}</div>}
         </div>
       )}

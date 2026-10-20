@@ -20,9 +20,9 @@ const NBSP = ' ';
 
 /**
  * Dieselben drei Wörter wie `meldungen.ts` `SCHWERE_WORT` (Entscheid 6A) - absichtlich noch einmal
- * hier und nicht von dort importiert: `meldungen.ts` ist bewusst das Lazy-Stück NUR der
- * `MeldungenPage`, diese Ableitung dagegen gehört zum Cockpit-Blatt (`UeberwachenBlatt.tsx`,
- * EnergieBuehne-Bündel) - ein Import würde beide Bündel aneinanderketten.
+ * hier und nicht von dort importiert: `meldungen.ts` gehört NUR zur `MeldungenPage`, diese Ableitung
+ * dagegen zum Blatt „Überwachen“ (`UeberwachenBlatt.tsx`), das auch die Steuerung öffnet - ein
+ * Import zöge das Meldungs-Center in deren Bündel.
  */
 const SCHWERE_WORT: Record<Schwere, string> = {
   hinweis: 'Hinweis',

@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { api, ApiError, type Energieziel, type EnergiezielStand, type Massnahme, type VorgangAnstoss } from '../api';
@@ -11,22 +11,12 @@ import { Recht } from '../components/Recht';
 import { RowMenu, type RowMenuItem } from '../components/RowMenu';
 import { StandSkala } from '../components/StandSkala';
 import { VerbesserungAnstoesse } from '../components/VerbesserungAnstoesse';
-import { WertZeile } from '../components/WertZeile';
-import { meldungenApi } from '../meldungenApi';
-import { einzelBezugKarte } from '../ueberwachungApi';
-import { useIsPhone } from '../useIsPhone';
 import * as B from '../energiezielBild';
 import * as Z from '../energieziele';
 import { useRollen } from '../rollen';
 import { merkeAbruf } from '../routenUhr';
 import '../components/kacheln/Kacheln.css';
 import './Energieziele.css';
-
-/** Wie `AufbauTabelle.tsx`: das Blatt „Überwachen" (Alerting Scheibe 5, §6.3) öffnet höchstens einmal
- * je Besuch - kein statischer Import, der es in jeden Chunk zöge. */
-const UeberwachenBlatt = lazy(() =>
-  import('../components/UeberwachenBlatt').then((m) => ({ default: m.UeberwachenBlatt })),
-);
 
 type Daten = {
   ez: Energieziel;
@@ -70,22 +60,6 @@ export function EnergiezielSeite({
   const [verlaufOffen, setVerlaufOffen] = useState(false);
   const rollen = useRollen();
   const sub = rollen.selbst?.kennung ?? null;
-  const isPhone = useIsPhone();
-
-  // „Überwachen" am Kurs zum Energieziel (Alerting Scheibe 5, §6.3: `energieziel.kurs`) - dasselbe
-  // Muster wie `AufbauTabelle.tsx`/`GeraetBuehne.tsx`, hier für EIN Energieziel.
-  const [geladenUeberwacht, setGeladenUeberwacht] = useState<ReadonlyMap<string, string | null> | null>(null);
-  const [frischUeberwacht, setFrischUeberwacht] = useState<ReadonlyMap<string, string | null>>(new Map());
-  const [ueberwachenOffen, setUeberwachenOffen] = useState(false);
-  useEffect(() => {
-    let aktiv = true;
-    meldungenApi.regeln().then(
-      (regeln) => aktiv && setGeladenUeberwacht(einzelBezugKarte(regeln, 'energieziel.kurs', 'energieziel')),
-      () => aktiv && setGeladenUeberwacht(null),
-    );
-    return () => { aktiv = false; };
-  }, []);
-  const kursUeberwacht = frischUeberwacht.has(id) ? (frischUeberwacht.get(id) ?? null) : geladenUeberwacht?.get(id);
 
   useEffect(() => {
     let aktiv = true;
@@ -192,8 +166,6 @@ export function EnergiezielSeite({
         <p className="vp-ezl-meta">
           {ez.kennzahl.name} · verantwortlich {ez.verantwortlich.name}
         </p>
-        {/* Alerting Scheibe 5, §6.3: „Verlauf/Kurs zum Ziel ueberwachbar - Ziel verfehlt sich abzeichnend". */}
-        <WertZeile label={B.energiezielName(ez)} ueberwacht={kursUeberwacht} onUeberwachen={() => setUeberwachenOffen(true)} />
       </div>
       {menue.length > 0 && (
         <span className="vp-ezl-menue" data-testid="energieziel-menue">
@@ -544,22 +516,6 @@ export function EnergiezielSeite({
               else setVersuch((v) => v + 1);
             }}
           />
-        )}
-        {ueberwachenOffen && (
-          <Suspense fallback={null}>
-            <UeberwachenBlatt
-              offen
-              isPhone={isPhone}
-              onClose={() => setUeberwachenOffen(false)}
-              wertart="energieziel.kurs"
-              bezug={{ energieziel: id }}
-              aktuellerWert={null}
-              titelZusatz={B.energiezielName(ez)}
-              onUeberwacht={(regel) => {
-                setFrischUeberwacht((alt) => new Map(alt).set(id, regel.probelaufBis));
-              }}
-            />
-          </Suspense>
         )}
       </div>
     </GrenzSatzBereich>

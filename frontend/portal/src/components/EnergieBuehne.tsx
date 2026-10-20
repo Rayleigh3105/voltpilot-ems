@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useRef, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { KNOWN_ROLES, roleLabel, type SlotRole } from '../fahrplanWhy';
@@ -32,27 +31,8 @@ import { energieBis, hoechsterBezug, tagesSkala, uhrzeit, type Tag } from '../ta
 import type { VerbrauchKomposition } from '../verbrauchKomposition';
 import { BottomSheet } from './BottomSheet';
 import { Leitungsplan } from './Leitungsplan';
-import { RowMenu } from './RowMenu';
 import { Tagesleiste } from './Tagesleiste';
-import { UeberwachenBlatt } from './UeberwachenBlatt';
-import { meldungenApi } from '../meldungenApi';
-import { WORT_UEBERWACHEN, WORT_UEBERWACHT } from '../meldungen';
-import { datumZeit } from '../rechteTexte';
 import './EnergieBuehne.css';
-
-/**
- * Welche Wertart jeder Knoten von „Dieser Moment" überwacht (Alerting Scheibe 2, Konzept §6.3,
- * §6.8 „Überwachen" am Wert). Nur die vier Cockpit-Live-Kreise dieser Scheibe - Ladepunkte und
- * Börsenpreis folgen in einer späteren Runde (`wertverweisWaechter.test.ts` AUSNAHMEN).
- */
-const MOMENT_WERTART: Partial<Record<Rolle, string>> = {
-  pv: 'anlage.pv.leistung',
-  load: 'anlage.verbrauch.leistung',
-  batt: 'anlage.speicher.leistung',
-  grid: 'anlage.netz.leistung',
-};
-/** Wertart -> `probelaufBis` (`null` = überwacht, kein Probelauf) der aktiven `anlagenfluss`-Regeln. */
-const LEERE_MAP: ReadonlyMap<string, string | null> = new Map();
 
 const ROLLEN = new Set<string>(KNOWN_ROLES);
 
@@ -64,6 +44,9 @@ const ROLLEN = new Set<string>(KNOWN_ROLES);
  * jede Zeile öffnet am Telefon ein Blatt, am Rechner das zentrierte `Modal`. Die
  * Listen sind der EINE Ort der Geräte im Cockpit (kein Komponenten-Board mehr
  * darunter).
+ *
+ * Die vier Werte des Moments stehen an den Knoten - es gibt keinen zweiten Werteblock daneben, und
+ * „Überwachen“ wohnt nur unter Meldungen › Überwachungen (Konzept b1, Entscheide E1/E3).
  *
  * Messung, Plan und Jetzt bleiben getrennt: die Marke oben sagt, was gerade
  * zu sehen ist („Live“, „gemessen“, „Plan · Tätigkeit“, „Energie · gemessen“),
@@ -86,8 +69,6 @@ export function EnergieBuehne({
   now = new Date(),
   onBlatt,
   onOpenSub,
-  momentZiel = null,
-  siteId = null,
 }: {
   jetzt: JetztFluss;
   stale?: boolean;
@@ -107,38 +88,9 @@ export function EnergieBuehne({
   onBlatt?: (art: Rolle | null) => void;
   /** Absprung aus dem Blatt (Energie-Verlauf, Ihre Geräte). */
   onOpenSub?: (sub: AnlagenSub) => void;
-  /**
-   * Am Rechner: der Platz rechts neben dem Fluss für „Dieser Moment“ (die vier
-   * Werte der gewählten Uhrzeit, Konzept „Cockpit als Tagesfilm“).
-   */
-  momentZiel?: HTMLElement | null;
-  /**
-   * Die Anlage, an der „Dieser Moment" überwacht wird (Alerting Scheibe 2, §6.3 Bezug `anlage`).
-   * null = die Fläche bietet „Überwachen" nicht an (z. B. ein Vorschau-Rendern ohne Anlage).
-   */
-  siteId?: string | null;
 }) {
   const [ansicht, setAnsicht] = useState<Ansicht>('jetzt');
   const [gewaehlt, setGewaehlt] = useState<number | null>(null);
-  // „Überwachen" am Wert (§6.8): welcher Moment-Knoten gerade das Blatt öffnet; welche Wertarten
-  // schon eine aktive Überwachung haben (eigener, lazy Lesepfad - `meldungenApi` ist zwar bereits
-  // im Einstieg gebündelt, aber der AUFRUF bleibt hier, damit keine entry-gebündelte Fläche je
-  // davon weiß); „frisch überwacht" ist die optimistische Sofort-Marke bis zur nächsten Auffrischung.
-  const [ueberwachenBlatt, setUeberwachenBlatt] = useState<Rolle | null>(null);
-  const [geladenUeberwacht, setGeladenUeberwacht] = useState<ReadonlyMap<string, string | null> | null>(null);
-  const [frischUeberwacht, setFrischUeberwacht] = useState<ReadonlyMap<string, string | null>>(LEERE_MAP);
-  useEffect(() => {
-    if (siteId == null) return undefined;
-    let aktiv = true;
-    meldungenApi.regeln().then(
-      (regeln) => {
-        if (!aktiv) return;
-        setGeladenUeberwacht(new Map(regeln.filter((r) => r.aktiv).map((r) => [r.wertart, r.probelaufBis])));
-      },
-      () => { if (aktiv) setGeladenUeberwacht(null); },
-    );
-    return () => { aktiv = false; };
-  }, [siteId]);
   const [blatt, setBlatt] = useState<{ art: Rolle } | null>(null);
   const ausloeser = useRef<HTMLElement | null>(null);
   const jetztQ = tag?.jetzt ?? 0;
@@ -254,22 +206,6 @@ export function EnergieBuehne({
     if (el && document.contains(el)) el.focus({ preventScroll: true });
   };
 
-  // „Überwachen" am Wert (§6.8) - nur für die vier Live-Kreise und nur, solange „Jetzt" wirklich
-  // den Live-Moment zeigt (nie für eine vergangene oder geplante Viertelstunde der Tagesleiste).
-  const ueberwachtenKannAnbieten = siteId != null && zeit === 'live';
-  const ueberwachteWertartenGesamt = new Map([...(geladenUeberwacht ?? LEERE_MAP), ...frischUeberwacht]);
-  const istUeberwacht = (art: Rolle): boolean => {
-    const w = MOMENT_WERTART[art];
-    return w != null && ueberwachteWertartenGesamt.has(w);
-  };
-  /** `undefined` = nicht überwacht; sonst `probelaufBis` (`null` = kein Probelauf mehr). */
-  const probelaufBisFuer = (art: Rolle): string | null | undefined => {
-    const w = MOMENT_WERTART[art];
-    return w == null ? undefined : ueberwachteWertartenGesamt.get(w);
-  };
-  const ueberwachenWertart = ueberwachenBlatt ? MOMENT_WERTART[ueberwachenBlatt] : null;
-  const ueberwachenWert = ueberwachenBlatt ? (werte[ueberwachenBlatt] ?? null) : null;
-
   return (
     <div className={`vp-eb${heute ? ' is-heute' : ''}`}>
       {/* Feste Plätze: Uhrzeit und Umschalter oben, die Marke darunter (am Rechner in einer
@@ -363,68 +299,6 @@ export function EnergieBuehne({
 
       <ZahlenAlsListe werte={werte} heute={heute} zeit={zeit} uhr={uhr} tag={tag} jetztUhr={uhrText(now)} />
 
-      {(() => {
-        const momentInhalt = (
-          <div className="vp-eb-moment">
-            <p className="vp-eb-moment-h">
-              {heute ? `Heute bis ${uhr}` : zeit === 'plan' ? `Plan ${uhr}` : zeit === 'live' ? `Jetzt ${uhr}` : `Gemessen ${uhr}`}
-            </p>
-            <div className="vp-eb-moment-kpis">
-              <MomentWert
-                ton="pv"
-                icon="sun"
-                text={texte.pv}
-                ueberwacht={istUeberwacht('pv')}
-                probelaufBis={probelaufBisFuer('pv')}
-                onUeberwachen={ueberwachtenKannAnbieten ? () => setUeberwachenBlatt('pv') : undefined}
-              />
-              <MomentWert
-                ton="load"
-                icon="home"
-                text={texte.load}
-                ueberwacht={istUeberwacht('load')}
-                probelaufBis={probelaufBisFuer('load')}
-                onUeberwachen={ueberwachtenKannAnbieten ? () => setUeberwachenBlatt('load') : undefined}
-              />
-              {jetzt.hat.batt && (
-                <MomentWert
-                  ton="batt"
-                  icon="battery"
-                  text={texte.batt}
-                  ueberwacht={istUeberwacht('batt')}
-                  probelaufBis={probelaufBisFuer('batt')}
-                  onUeberwachen={ueberwachtenKannAnbieten ? () => setUeberwachenBlatt('batt') : undefined}
-                />
-              )}
-              <MomentWert
-                ton="grid"
-                icon="pole"
-                text={texte.grid}
-                ueberwacht={istUeberwacht('grid')}
-                probelaufBis={probelaufBisFuer('grid')}
-                onUeberwachen={ueberwachtenKannAnbieten ? () => setUeberwachenBlatt('grid') : undefined}
-              />
-            </div>
-          </div>
-        );
-        // Am Rechner geht der Block in die rechte Spalte der Bühne (Portal nach `momentZiel`); am
-        // Telefon gibt es diese Spalte nicht (`showRail=false`) - dort steht er inline, direkt unter
-        // dem Fluss, denn „Überwachen" muss bei 390 px ebenso erreichbar sein wie bei 1440 px.
-        return momentZiel ? createPortal(momentInhalt, momentZiel) : <div className="vp-eb-moment-inline">{momentInhalt}</div>;
-      })()}
-
-      {ueberwachenBlatt && ueberwachenWertart && siteId && (
-        <UeberwachenBlatt
-          offen
-          isPhone={isPhone}
-          onClose={() => setUeberwachenBlatt(null)}
-          wertart={ueberwachenWertart}
-          bezug={{ anlage: siteId }}
-          aktuellerWert={ueberwachenWert}
-          onUeberwacht={(regel) => setFrischUeberwacht((m) => new Map(m).set(regel.wertart, regel.probelaufBis))}
-        />
-      )}
-
       <Blatt
         offen={blatt != null}
         isPhone={isPhone}
@@ -460,54 +334,6 @@ const BLATT_TITEL: Record<Rolle, string> = {
   batt: 'Speicher',
   grid: 'Netz',
 };
-
-/**
- * Ein Knoten von „Dieser Moment" (§6.8). `onUeberwachen` fehlt für eine vergangene oder geplante
- * Viertelstunde (nur „Jetzt" lässt sich überwachen) - dann bleibt der Wert ohne Menü ⋯, wie zuvor.
- */
-function MomentWert({
-  ton,
-  icon,
-  text,
-  ueberwacht = false,
-  probelaufBis,
-  onUeberwachen,
-}: {
-  ton: Rolle;
-  icon: 'sun' | 'home' | 'battery' | 'pole';
-  text: { wert: string; zeilen: string[] };
-  ueberwacht?: boolean;
-  /** `null`/`undefined` = kein Probelauf (mehr); ein ISO-Zeitpunkt zeigt „im Probelauf bis …" an der Marke. */
-  probelaufBis?: string | null;
-  onUeberwachen?: () => void;
-}) {
-  return (
-    <div className={`vp-eb-mk is-${ton}`}>
-      <span className="vp-eb-mk-ico" aria-hidden="true">
-        <Icon name={icon} size={16} />
-      </span>
-      <div>
-        <b>{text.wert}</b>
-        <span>
-          {text.zeilen[0]}
-          {ueberwacht && (
-            <a className="vp-eb-mk-marke" href="#/meldungen">
-              <Icon name="bell" size={12} />
-              {WORT_UEBERWACHT}
-              {probelaufBis && <> · im Probelauf bis {datumZeit(probelaufBis).split(' ')[0]}</>}
-            </a>
-          )}
-        </span>
-      </div>
-      {onUeberwachen && (
-        <RowMenu
-          label={`Werkzeuge: ${BLATT_TITEL[ton]}`}
-          items={[{ label: WORT_UEBERWACHEN, icon: 'bell', onClick: onUeberwachen, recht: 'ueberwachung.eigene' }]}
-        />
-      )}
-    </div>
-  );
-}
 
 /**
  * „Zahlen als Liste“ (wie im Prototyp): dieselben Werte als Tabelle - für

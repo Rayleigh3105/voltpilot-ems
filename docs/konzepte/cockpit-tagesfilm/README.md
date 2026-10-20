@@ -41,6 +41,9 @@ flowchart TB
 
 **Rechner:** Die Bühne steht zweispaltig. Links sind Energiefluss, die beiden Listen nebeneinander und die Tagesleiste. Rechts steht „Dieser Moment“ mit vier Werten, darunter die Leitkachel. Das Kachelraster hat vier Spalten.
 
+Seit Konzept b1 (20.10.2026) entfällt „Dieser Moment“: die vier Werte stehen an den Knoten, rechts steht die Leitkachel.
+„Überwachen“ wohnt nur noch unter Meldungen › Überwachungen.
+
 ## Energiefluss: Regeln der Bühne
 
 | Thema | Regel |

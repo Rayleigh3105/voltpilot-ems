@@ -4,10 +4,7 @@ import { Ablesungen } from '../components/Ablesungen';
 import { AblesungDialog } from '../components/AblesungDialog';
 import { RechteStandort, useRollen } from '../rollen';
 import { Recht } from '../components/Recht';
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
-import { meldungenApi } from '../meldungenApi';
-import { einzelBezugKarte } from '../ueberwachungApi';
-import { useIsPhone } from '../useIsPhone';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '../../designsystem/components/core/Badge';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
@@ -47,11 +44,6 @@ import { wahlHash } from '../uemsVergleich';
 import { ZuordnungAendernDialog } from '../components/ZuordnungAendernDialog';
 import { KorrekturenDialog } from '../components/KorrekturenDialog';
 import { MessstelleKacheln } from '../components/MessstelleKacheln';
-/** Wie `AufbauTabelle.tsx`: das Blatt „Überwachen" öffnet höchstens einmal je Besuch - kein
- * statischer Import, der es (und `ueberwachungSatz.ts`/`werteKatalog.ts`) in jeden Chunk zöge. */
-const UeberwachenBlatt = lazy(() =>
-  import('../components/UeberwachenBlatt').then((m) => ({ default: m.UeberwachenBlatt })),
-);
 import { BegriffAufklapper } from '../components/BegriffAufklapper';
 import { RowMenu, type RowMenuItem } from '../components/RowMenu';
 import { UEMS_WERTE, UEMS_WOHER_DIE_WERTE } from '../glossar';
@@ -257,36 +249,6 @@ function MessstelleSeiteMitId({
   const [protokollOffen, setProtokollOffen] = useState(false);
   const [korrekturenOffen, setKorrekturenOffen] = useState(false);
   const protokoll = useProtokoll({ art: 'messstelle', id }, { achse: MESSSTELLE_PROTOKOLL_ACHSE, anlegeSatz: true });
-
-  // „Überwachen" an der Leitkachel und den Werten dieser Messstelle (Alerting Scheibe 5, §6.3:
-  // `messstelle.menge`, `messstelle.beobachtung`, `messstelle.monat_unvollstaendig`) - dasselbe
-  // Muster wie `AufbauTabelle.tsx`/`GeraetBuehne.tsx`, hier für EINE Messstelle statt vieler Kanäle.
-  const isPhone = useIsPhone();
-  const [geladenUeberwacht, setGeladenUeberwacht] = useState<ReadonlyMap<string, string | null> | null>(null);
-  const [frischUeberwacht, setFrischUeberwacht] = useState<ReadonlyMap<string, string | null>>(new Map());
-  const [ueberwachenZiel, setUeberwachenZiel] = useState<{ wertart: string; label: string } | null>(null);
-  useEffect(() => {
-    let aktiv = true;
-    meldungenApi.regeln().then(
-      (regeln) => {
-        if (!aktiv) return;
-        const karte = new Map<string, string | null>();
-        for (const wertart of ['messstelle.menge', 'messstelle.beobachtung', 'messstelle.monat_unvollstaendig']) {
-          for (const [messstelleId, probelaufBis] of einzelBezugKarte(regeln, wertart, 'messstelle')) {
-            karte.set(`${wertart}:${messstelleId}`, probelaufBis);
-          }
-        }
-        setGeladenUeberwacht(karte);
-      },
-      () => aktiv && setGeladenUeberwacht(null),
-    );
-    return () => { aktiv = false; };
-  }, []);
-  function ueberwachtInfo(wertart: string): string | null | undefined {
-    const schluessel = `${wertart}:${id}`;
-    if (frischUeberwacht.has(schluessel)) return frischUeberwacht.get(schluessel) ?? null;
-    return geladenUeberwacht?.get(schluessel);
-  }
 
   useEffect(() => {
     let aktiv = true;
@@ -689,14 +651,6 @@ function MessstelleSeiteMitId({
           laedt={mitMenge && !serieGelesen}
           // Wie der Knopf oben: ein Weg erst mit den Ablesungen, die der Dialog zum Vergleich braucht.
           onAblesen={darfAblesen && ablesungen ? () => oeffneAblesung(null, document.activeElement as HTMLElement | null) : undefined}
-          ueberwachung={leit ? {
-            ueberwacht: ueberwachtInfo('messstelle.menge'),
-            onUeberwachen: () => setUeberwachenZiel({ wertart: 'messstelle.menge', label: leit.name }),
-          } : undefined}
-          ueberwachungBeobachtung={leit ? {
-            ueberwacht: ueberwachtInfo('messstelle.beobachtung'),
-            onUeberwachen: () => setUeberwachenZiel({ wertart: 'messstelle.beobachtung', label: 'Beobachtung der Messstelle' }),
-          } : undefined}
         />
 
         <div className="vp-mss-spalten">
@@ -743,16 +697,6 @@ function MessstelleSeiteMitId({
                 onVergleich={(v) => onWerteVergleich?.(wahlHash(v))}
                 onQuelleZuordnen={darfAendern ? () => oeffneBearbeiten(3) : undefined}
                 onZeitraum={onWerteZeitraum}
-                ueberwachung={{
-                  menge: {
-                    ueberwacht: ueberwachtInfo('messstelle.menge'),
-                    onUeberwachen: () => setUeberwachenZiel({ wertart: 'messstelle.menge', label: leit?.name ?? m.name ?? m.kennzeichen }),
-                  },
-                  monat: {
-                    ueberwacht: ueberwachtInfo('messstelle.monat_unvollstaendig'),
-                    onUeberwachen: () => setUeberwachenZiel({ wertart: 'messstelle.monat_unvollstaendig', label: 'Monat unvollständig' }),
-                  },
-                }}
               />
               {/* V8: Nebengrößen haben keine Werte-Route — ihr letzter Wert aus dem Register, und wofür es Werte gibt. */}
               {neben && (
@@ -1003,22 +947,6 @@ function MessstelleSeiteMitId({
           }}
           onGespeichert={() => setBearbeitet(true)}
         />
-        {ueberwachenZiel && (
-          <Suspense fallback={null}>
-            <UeberwachenBlatt
-              offen
-              isPhone={isPhone}
-              onClose={() => setUeberwachenZiel(null)}
-              wertart={ueberwachenZiel.wertart}
-              bezug={{ messstelle: id }}
-              aktuellerWert={null}
-              titelZusatz={ueberwachenZiel.label}
-              onUeberwacht={(regel) => {
-                setFrischUeberwacht((alt) => new Map(alt).set(`${ueberwachenZiel.wertart}:${id}`, regel.probelaufBis));
-              }}
-            />
-          </Suspense>
-        )}
       </div>
     </RechteStandort.Provider>
   );

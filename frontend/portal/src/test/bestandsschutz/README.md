@@ -87,6 +87,11 @@ aktive Überwachung) - ein Folgefall dafür ist nicht Teil dieser Bestandsschutz
 die Knöpfe ‹ › („Eine Viertelstunde früher/später“). Neu geschrieben mit `vitest -u` am Produktstand wie bei
 Alerting Scheibe 2; der Token-Vergleich zeigt genau diese drei Stellen, kein anderes Byte.
 
+**Konzept b1, Teil 2 (20.10.2026, „Überwachen“ nur unter Meldungen, Entscheide E1/E3):** `cockpit.html` verliert
+den Werteblock „Dieser Moment“ in der rechten Spalte (`vp-hero-moment` mit den vier Werten und ihren Menüs ⋯
+„Werkzeuge: …“, die Alerting Scheibe 2 oben hinzugefügt hatte). Die Leitkachel bleibt. Neu geschrieben mit
+`vitest -u` am Produktstand; der Token-Vergleich zeigt genau diesen einen entfernten Block, kein anderes Byte.
+
 `uemsBestandsschutz.test.tsx` ergänzt neun Snapshots: vier O18-Fälle, sechs Verlauf-Reiter in einem Snapshot,
 drei Portfolio-Reiter und die `startEbene`-Matrix (64 Eingaben). Die fünf in den Bestands-Tests gestubbten
 Canvas-/Diagrammkomponenten schützt zusätzlich `diagramme.json` mit SHA-256 des Bezugsstands.

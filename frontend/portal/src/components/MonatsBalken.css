@@ -97,7 +97,3 @@ button.vp-mb-balken.is-gewaehlt:hover .vp-mb-saeule.is-negativ {
   font-weight: 700;
   color: var(--vp-c-fg, #1e293b);
 }
-/* „Überwachen" (Alerting Scheibe 5, §6.3): eine ruhige Zeile unter der Achse, kein eigener Rahmen. */
-.vp-mb-ueberwachen {
-  justify-self: start;
-}

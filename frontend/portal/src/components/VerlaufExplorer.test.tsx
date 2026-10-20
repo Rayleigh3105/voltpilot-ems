@@ -203,14 +203,16 @@ describe('VerlaufExplorer — B1-c multi-select (up to 3)', () => {
   it('lands on a measuring component, never on the silent producer', async () => {
     const eh = mockFull();
     render(<VerlaufExplorer site={site} range="day" anchor={anchor} initialTargets={[]} />);
-    await waitFor(() => expect(eh).toHaveBeenCalledWith('s-1', 'batt', 'day', expect.any(String)));
+    // Der erste Abruf folgt erst auf Topologie und Auswahl - unter Volllast des Gesamtlaufs dauert das länger
+    // als die 1-s-Vorgabe von `waitFor` (einzeln stets grün, im vollen Lauf am 20.10.2026 rot).
+    await waitFor(() => expect(eh).toHaveBeenCalledWith('s-1', 'batt', 'day', expect.any(String)), { timeout: 5000 });
     expect(eh).not.toHaveBeenCalledWith('s-1', 'pv2', 'day', expect.any(String));
   });
 
   it('puts up to 3 measurements on one chart and refuses the 4th', async () => {
     mockFull();
     render(<VerlaufExplorer site={site} range="day" anchor={anchor} initialTargets={[]} />);
-    await screen.findByText('1 von 3 ausgewählt · max. 3');
+    await screen.findByText('1 von 3 ausgewählt · max. 3', undefined, { timeout: 5000 });
 
     // Add two more (a second channel of the same component + another component).
     fireEvent.click(screen.getAllByRole('option', { name: /Batterieleistung/ })[0]);
@@ -234,7 +236,7 @@ describe('VerlaufExplorer — B1-c multi-select (up to 3)', () => {
   it('prefixes measurements with their component when several are compared', async () => {
     mockFull();
     render(<VerlaufExplorer site={site} range="day" anchor={anchor} initialTargets={[]} />);
-    await screen.findByText('1 von 3 ausgewählt · max. 3');
+    await screen.findByText('1 von 3 ausgewählt · max. 3', undefined, { timeout: 5000 });
     fireEvent.click(screen.getAllByRole('option', { name: /^Leistung/ })[0]);
     // Two components -> the legend disambiguates ("Netzanschluss · Leistung").
     await waitFor(() =>
@@ -255,7 +257,7 @@ describe('VerlaufExplorer — B1-c multi-select (up to 3)', () => {
         ]}
       />,
     );
-    await waitFor(() => expect(eh).toHaveBeenCalledWith('s-1', 'batt', 'day', expect.any(String)));
+    await waitFor(() => expect(eh).toHaveBeenCalledWith('s-1', 'batt', 'day', expect.any(String)), { timeout: 5000 });
     expect(eh).toHaveBeenCalledWith('s-1', 'grid', 'day', expect.any(String));
     await screen.findByText('2 von 3 ausgewählt · max. 3');
   });

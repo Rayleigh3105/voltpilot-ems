@@ -2038,8 +2038,6 @@ export function AnlageSeite({
             now,
             onBlatt: (art) => { if (art === 'load') setVerbrauchBlattOffen(true); },
           }}
-          /* „Überwachen" am Wert (Alerting Scheibe 2, §6.3/§6.8): die Anlage, an der der Wert hängt. */
-          siteId={site.id}
           /* Rechts neben dem Fluss: die Leitkachel (am Rechner). */
           showRail={!isPhone}
           seite={
