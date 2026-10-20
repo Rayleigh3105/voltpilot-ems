@@ -43,9 +43,11 @@ Umsetzung des abgenommenen Konzepts [`docs/konzepte/cockpit-tagesfilm`](../../ko
   Netz heute, Steuerspalten). Börsenpreis und Laden tragen die Hülle selbst (`kachel`-Prop). Der
   Börsenpreis zeigt Stundenbalken (`strompreis.boersenKachel`: Mittel je Berliner Stunde, Drittel wie das
   Urteil, Lücke bleibt Lücke) und die zwei Fenster aus `streifenFenster` mit Ø-Preis.
-- **Rechte Spalte der Bühne (Rechner):** oben „Dieser Moment“ - die vier Werte der gewählten Uhrzeit,
-  von der Bühne per Portal in `.vp-hero-moment` geschrieben -, darunter die Leitkachel. Unter der
-  Tagesleiste „Zahlen als Liste“ (Tabelle Moment/Tag). Das Cockpit spricht in `--vp-c-font` (Plus Jakarta
+- **Rechte Spalte der Bühne (Rechner):** die Leitkachel. Den Werteblock „Dieser Moment“ (die vier
+  Werte noch einmal, mit Menü ⋯ „Überwachen“) gibt es seit Konzept b1 nicht mehr (Entscheide E1/E3,
+  20.10.2026): die Werte stehen an den Knoten, und eine Überwachung entsteht nur unter Meldungen ›
+  Überwachungen („+ Überwachung“, `NeueUeberwachung.tsx`; Wächter `ueberwachenNurMeldungen.test.ts`).
+  Ohne Leitkachel ist die Bühne einspaltig. Unter der Liste „Zahlen als Liste“ (Tabelle Moment/Tag). Das Cockpit spricht in `--vp-c-font` (Plus Jakarta
   Sans) wie der Prototyp; der Zustand ist eine schmale Zeile ohne Modus-Fuß (`ZustandCard kompakt`).
 - **Leitkachel:** am Rechner rechts neben dem Fluss (`CockpitHero seite`), am Telefon erste Kachel:
   Marktoptimierung → Börsenpreis, Lead `peak-band` → Lastspitze, sonst „Unterm Strich“. Sie steht dann

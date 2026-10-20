@@ -94,6 +94,9 @@ cd "$(dirname "$0")/.."
 #   `UeberwachenBlatt`s eigenem Code dort liegt, nur sein Dateiname. Kein
 #   Lazy-Trick drückt das weiter herunter, ohne das Blatt an einer der drei
 #   Flächen wieder zu entfernen.
+#   Nachtrag 20.10.2026 (Konzept b1, E3): „Überwachen“ wohnt jetzt nur unter
+#   Meldungen; das Blatt öffnen nur noch Meldungs-Center und Steuerung.
+#   Gemessen: Einstieg 256,96 kB gz (vorher 257,02) - die Grenze bleibt 257.
 #
 # WAS DER UEMS-SCHNITT HERAUSGENOMMEN HAT (−105,52 kB gz, ohne eine Funktion zu ändern):
 #   Der Sammelzweig `uems` hatte 71 Quellen neu im Einstieg. Zwei Flächen sind

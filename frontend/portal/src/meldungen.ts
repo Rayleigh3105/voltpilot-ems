@@ -8,9 +8,10 @@
  * Glossar verlangt belegte Zeilenverweise gegen einen festgehaltenen Repo-Stand, den eine neue
  * Scheibe noch nicht hat; die Wörter selbst sind in der Fläche schon verbindlich.
  *
- * Scheibe 2 (§6.3, §6.4, §6.8) fügt vier Wörter derselben, noch zurückgestellten Familie hinzu:
- * „Überwachen" (das Menü-Verb am Wert), „überwacht" (die Marke an einem überwachten Wert),
- * „Rückkehrschwelle" und „Erholdauer" (die zwei genannten, änderbaren Vorgaben der Bedingung, §9).
+ * Scheibe 2 (§6.3, §6.4, §6.8) fügt Wörter derselben, noch zurückgestellten Familie hinzu:
+ * „Überwachen" (Titel des Blatts), „Rückkehrschwelle" und „Erholdauer" (die zwei genannten,
+ * änderbaren Vorgaben der Bedingung, §9). Seit Konzept b1 (20.10.2026, E3) gibt es kein Menü-Verb
+ * und keine Marke „überwacht“ mehr am Wert: angelegt wird nur unter Meldungen › Überwachungen.
  * Dieselbe Begründung wie oben gilt unverändert: sie sind Teil der noch nicht fachmodell-reifen
  * Überwachungs-Mechanik, nicht eigenständige, von ihr unabhängige Begriffe.
  *
@@ -30,10 +31,8 @@ export const WORT_MELDUNGEN = 'Meldungen';
 export const WORT_UEBERWACHUNG = 'Überwachung';
 export const WORT_GESEHEN = 'Gesehen';
 
-/** Das Menü-Verb am Wert (§6.8 "Überwachen" am Wert) - siehe Kommentar oben zur Zurückstellung. */
+/** Der Titel des Blatts „Überwachen“ (§6.8) - siehe Kommentar oben zur Zurückstellung. */
 export const WORT_UEBERWACHEN = 'Überwachen';
-/** Die Marke an einem bereits überwachten Wert (§6.8 "Marke „überwacht“"). */
-export const WORT_UEBERWACHT = 'überwacht';
 /** Die Rückkehrschwelle einer Bedingung (§6.4, §9) - VoltPilot wählt und nennt sie, änderbar im Blatt. */
 export const WORT_RUECKKEHRSCHWELLE = 'Rückkehrschwelle';
 /** Die Erholdauer einer Bedingung (§6.4, §9) - erst so lange zurück, dann "wieder normal". */

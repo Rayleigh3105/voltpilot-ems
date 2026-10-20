@@ -5,8 +5,6 @@ import type { History, HistoryBucket, SchedulePlan, ScheduleSlot } from '../src/
 import { tagAus } from '../src/tagesleiste';
 import type { Betrieb } from '../src/leitungsplan';
 import type { VerbrauchKomposition } from '../src/verbrauchKomposition';
-import { keycloak } from '../src/auth';
-import './rollen-fixture'; // setzt eine Selbstauskunft mit `ueberwachung.eigene` (JW, Kundenadministrator unternehmensweit)
 import '../designsystem/tokens/fonts.css';
 import '../designsystem/tokens/colors.css';
 import '../designsystem/tokens/typography.css';
@@ -79,43 +77,6 @@ const pv = {
   ],
 } as never;
 
-// „Überwachen" am Wert (Alerting Scheibe 2, Konzept §6.3/§6.8): `EnergieBuehne` liest und schreibt
-// über die normale `fetch`-Anbindung (`meldungenApi`/`ueberwachungApi`) - derselbe Nachbau-Weg wie
-// `startansicht.tsx` (`window.fetch` statt `page.route`, damit die Fixture ohne Backend läuft).
-// `freshToken()` (`src/api.ts`) braucht ein `keycloak.updateToken`, das nicht wirft - ohne das
-// hängt jede Anfrage als „nicht angemeldet" (Muster `startansicht.tsx`).
-Object.assign(keycloak, { token: 'e2e-token', authenticated: true, updateToken: async () => false });
-type UeberwachungZeile = { id: string; name: string | null; wertart: string; schwere: string; herkunft: string; aktiv: boolean };
-let ueberwachungen: UeberwachungZeile[] = [];
-// Alerting Scheibe 4 (§6.4 "Gilt für"): `window.fetch` löst `POST /api/v1/meldungen/regeln`
-// rein clientseitig auf (keine echte Netzwerkanfrage, `page.on('request')` sieht sie darum nie) -
-// die Spec liest den gesendeten Körper stattdessen über dieses Fenster-Feld aus.
-(window as unknown as { __ueberwachungAnfragen: unknown[] }).__ueberwachungAnfragen = [];
-const echtesFetch = window.fetch.bind(window);
-window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
-  const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url, location.origin);
-  if (url.pathname === '/api/v1/meldungen/regeln/probelauf') {
-    // Kein echtes Backend in dieser Fixture (Modulkopf) - ohne diesen Zweig ginge der gedämpfte
-    // Probelauf-Abruf des Blatts auf das echte Netz und schlüge mit einem CORS-Fehler fehl (der
-    // Blatt-Code fängt das zwar ab, aber die Konsolenzeile bliebe - kein stiller Fehlschlag).
-    return Response.json({ fensterTage: 30, ausgeloest: 0, zuletzt: null, gesamtdauerS: 0 });
-  }
-  if (url.pathname === '/api/v1/meldungen/regeln') {
-    if ((init?.method ?? 'GET').toUpperCase() === 'POST') {
-      const anfrage = JSON.parse(String(init?.body ?? '{}'));
-      (window as unknown as { __ueberwachungAnfragen: unknown[] }).__ueberwachungAnfragen.push(anfrage);
-      const neu: UeberwachungZeile = {
-        id: `r-${ueberwachungen.length + 1}`, name: anfrage.name ?? null,
-        wertart: anfrage.wertart, schwere: anfrage.schwere, herkunft: 'eigen', aktiv: true,
-      };
-      ueberwachungen = [...ueberwachungen, neu];
-      return Response.json(neu, { status: 201 });
-    }
-    return Response.json({ ueberwachungen });
-  }
-  return echtesFetch(input, init);
-};
-
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <main style={{ maxWidth: 760, margin: '0 auto', padding: 16 }}>
     <h1>Sonnenhof</h1>
@@ -129,8 +90,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         pv={pv}
         isPhone={phone}
         now={now}
-        bestaetigt
-        siteId="s-sonnenhof"
       />
     </section>
   </main>,

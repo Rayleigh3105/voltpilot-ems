@@ -3,6 +3,8 @@ import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { ladeMeldungenVerlaufCsv } from '../api';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { NeueUeberwachung } from '../components/NeueUeberwachung';
+import { UeberwachenBlatt } from '../components/UeberwachenBlatt';
 import { VpPicker } from '../components/VpPicker';
 import {
   anlageAusHash,
@@ -20,7 +22,10 @@ import {
   WORT_GESEHEN,
 } from '../meldungen';
 import { datumZeit } from '../rechteTexte';
+import { useRollen } from '../rollen';
 import { ueberwachungApi } from '../ueberwachungApi';
+import type { WertWahl } from '../ueberwachungAuswahl';
+import { useIsPhone } from '../useIsPhone';
 import './MeldungenPage.css';
 
 type Reiter = 'jetzt' | 'verlauf' | 'regeln';
@@ -73,6 +78,10 @@ function csvZeitraum(periode: string, jetzt: Date): { von: string; bis: string }
  * Das Meldungs-Center (Alerting Scheibe 1, Konzept §6.8, Entscheid 4A): `#/meldungen` mit den
  * Reitern Jetzt · Verlauf · Überwachungen. Öffnet nur über die Glocke im Kopf oder einen Link
  * (`#/meldungen?anlage=<id>` aus der Zustands-Anzeige einer Anlage) - kein Eintrag in der Leiste.
+ *
+ * Seit Konzept b1 (20.10.2026, Entscheid E3) entsteht eine Überwachung NUR hier: „+ Überwachung“
+ * im Reiter Überwachungen fragt Ort und Wert (`NeueUeberwachung`), dann folgt das vorhandene Blatt
+ * „Überwachen“. Am Wert einer anderen Fläche gibt es kein „Überwachen“ mehr.
  */
 export function MeldungenPage() {
   const [reiter, setReiter] = useState<Reiter>(() => reiterAusHash(window.location.hash) ?? 'jetzt');
@@ -84,7 +93,15 @@ export function MeldungenPage() {
   const [csvLaedt, setCsvLaedt] = useState(false);
   const [csvFehler, setCsvFehler] = useState('');
   const [loeschenZiel, setLoeschenZiel] = useState<UeberwachungsRegel | null>(null);
+  const [neuOffen, setNeuOffen] = useState(false);
+  const [neuWert, setNeuWert] = useState<WertWahl | null>(null);
   const anlageFilter = anlageAusHash(window.location.hash);
+  const isPhone = useIsPhone();
+  const { selbst } = useRollen();
+  // Wer sich an irgendeinem Standort (oder am Unternehmen) selbst benachrichtigen lassen darf, sieht
+  // „+ Überwachung“; ob es am gewählten Ort erlaubt ist, entscheidet der Server beim Anlegen.
+  const darfAnlegen = !!selbst && selbst.zustand === 'aktiv'
+    && (selbst.unternehmen_rechte.includes(RECHT_EIGENE) || selbst.standorte.some((st) => st.rechte.includes(RECHT_EIGENE)));
 
   useEffect(() => {
     let aktiv = true;
@@ -212,6 +229,14 @@ export function MeldungenPage() {
         </div>
       )}
 
+      {reiter === 'regeln' && darfAnlegen && (
+        <div className="vp-meldungen-neu">
+          <Button size="sm" onClick={() => setNeuOffen(true)}>
+            <Icon name="plus" size={16} /> Überwachung
+          </Button>
+        </div>
+      )}
+
       {reiter === 'regeln' ? (
         <RegelListe
           regeln={regeln}
@@ -242,9 +267,33 @@ export function MeldungenPage() {
         onCancel={() => setLoeschenZiel(null)}
         onConfirm={() => { if (loeschenZiel) void loeschen(loeschenZiel.id); }}
       />
+
+      <NeueUeberwachung
+        offen={neuOffen}
+        isPhone={isPhone}
+        onClose={() => setNeuOffen(false)}
+        onWahl={(w) => { setNeuOffen(false); setNeuWert(w); }}
+      />
+      {neuWert && (
+        <UeberwachenBlatt
+          key={neuWert.schluessel}
+          offen
+          isPhone={isPhone}
+          onClose={() => setNeuWert(null)}
+          wertart={neuWert.wertart}
+          bezug={neuWert.bezug}
+          aktuellerWert={neuWert.aktuellerWert}
+          einheit={neuWert.einheit}
+          titelZusatz={neuWert.titelZusatz}
+          onUeberwacht={(regel) => setRegeln((liste) => [regel, ...(liste ?? [])])}
+        />
+      )}
     </div>
   );
 }
+
+/** Das Recht, sich selbst zu einem Wert benachrichtigen zu lassen (Alerting §6.6, Entscheid 5A). */
+const RECHT_EIGENE = 'ueberwachung.eigene';
 
 function MeldungListe({
   meldungen,
@@ -284,7 +333,7 @@ function MeldungListe({
             <p className="vp-meldung-kennzeichen">
               {m.kennzeichen}
               {istEigeneUeberwachung(m.wertart) && (
-                <span className="vp-wz-marke" data-testid="meldung-eigene-ueberwachung">
+                <span className="vp-meldung-eigene" data-testid="meldung-eigene-ueberwachung">
                   {' '}· {WORT_EIGENE_UEBERWACHUNG}
                 </span>
               )}

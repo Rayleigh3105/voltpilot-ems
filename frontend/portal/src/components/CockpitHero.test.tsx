@@ -73,13 +73,14 @@ describe('Die Leitkachel neben dem Fluss (Konzept „Cockpit als Tagesfilm“)',
     expect(container.querySelector('.vp-cockpit-hero.vp-stage-norail')).toBeNull();
   });
 
-  it('am Rechner steht rechts „Dieser Moment“ auch ohne Leitkachel', async () => {
+  it('ohne Leitkachel gehört die Bühne ganz dem Fluss - kein zweiter Werteblock „Dieser Moment“ (Konzept b1, E1)', async () => {
     const { container } = renderStage();
     await waitFor(() => expect(container.querySelector('.vp-hero-flow .vp-lp')).not.toBeNull());
-    // Die Bühne schreibt die vier Werte des Moments in die rechte Spalte.
-    await waitFor(() => expect(container.querySelector('.vp-hero-side .vp-eb-moment')).not.toBeNull());
-    expect(container.querySelector('.vp-hero-side .vp-eb-moment-h')?.textContent).toMatch(/^Jetzt \d{2}:\d{2}$/);
-    expect(container.querySelector('.vp-hero-leit')).toBeNull();
+    // Die vier Werte stehen an den Knoten; eine rechte Spalte nur für sie gibt es nicht mehr.
+    expect(container.querySelector('.vp-hero-side')).toBeNull();
+    expect(container.querySelector('.vp-cockpit-hero.vp-stage-norail')).not.toBeNull();
+    expect(container.querySelector('.vp-eb-moment, .vp-eb-mk')).toBeNull();
+    expect(container.querySelector('[aria-label^="Werkzeuge:"]')).toBeNull();
   });
 
   it('am Telefon (showRail = false) steht sie nicht in der Bühne, sondern im Raster', () => {

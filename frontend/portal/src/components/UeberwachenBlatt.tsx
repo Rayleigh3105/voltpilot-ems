@@ -22,9 +22,9 @@ import { katalogEintrag, type Periode } from '../werteKatalog';
 import { BottomSheet } from './BottomSheet';
 import './UeberwachenBlatt.css';
 
-/** Der Bezug einer Überwachung (§6.3): Anlage (die vier Cockpit-Live-Kreise), Komponente+Kanal
- * (Aufbau-Zeilen, Geräteseite - Familie `geraet.messwert`), oder - Alerting Scheibe 5 - Messstelle,
- * Kennzahl bzw. Energieziel (keine Anlage): nie mehr als eine Form zugleich. */
+/** Der Bezug einer Überwachung (§6.3): Anlage (ihre Live-Werte), Komponente+Kanal (Familie
+ * `geraet.messwert`), oder - Alerting Scheibe 5 - Messstelle, Kennzahl bzw. Energieziel (keine
+ * Anlage): nie mehr als eine Form zugleich. */
 export type UeberwachenBezug =
   | { anlage: string }
   | { komponente: string; kanal: string }
@@ -35,9 +35,10 @@ export type UeberwachenBezug =
 const PERIODEN: readonly Periode[] = ['tag', 'woche', 'monat', 'abrechnungszeitraum'];
 
 /**
- * Das Blatt „Überwachen" (Alerting Scheibe 2, Konzept §6.8): „Vom Wert zur fertigen Regel: drei
- * Taps" - (1) Menü ⋯, (2) „Überwachen" (öffnet dieses Blatt), (3) „Überwachung starten". Der Satz
- * ist vorbelegt (Schwelle aus dem aktuellen Live-Wert, Dauer/Rückkehrschwelle aus §9) und jedes
+ * Das Blatt „Überwachen" (Alerting Scheibe 2, Konzept §6.8). Seit Konzept b1 (20.10.2026, E3) öffnen
+ * es nur „+ Überwachung“ unter Meldungen (nach Ort und Wert, `NeueUeberwachung.tsx`) und „In
+ * Überwachung umwandeln“ in der Steuerung - nie mehr ein Menü am Wert. Der Satz ist vorbelegt
+ * (Schwelle aus dem aktuellen Live-Wert, Dauer/Rückkehrschwelle aus §9) und jedes
  * Feld bleibt änderbar (§6.1 Leitsatz 9) - kein Pflichtfeld ohne Vorbelegung.
  *
  * Zwei Bedingungsformen, toddler-simple nach Leserart (Alerting Scheibe 4, §6.4):
@@ -74,7 +75,7 @@ export function UeberwachenBlatt({
   bezug: UeberwachenBezug;
   aktuellerWert: number | null;
   einheit?: string;
-  /** Zusatz zum Blatt-Titel - z. B. "Netz · Leistung" an einem Aufbau-/Geräte-Wert; ohne Zusatz nur „Überwachen" (Cockpit). */
+  /** Zusatz zum Blatt-Titel - z. B. „Netzbezug“ oder „Monat unvollständig · Hauptzähler“; ohne Zusatz nur „Überwachen“. */
   titelZusatz?: string;
   /** Vorgabe `'eigen'`; `'steuerung'` nur für "In Überwachung umwandeln" (Alerting Scheibe 6, Entscheid 10A). */
   herkunft?: 'eigen' | 'steuerung';

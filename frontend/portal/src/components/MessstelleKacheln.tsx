@@ -7,15 +7,7 @@ import {
   type LeitKachel,
   type StandKachel,
 } from '../messstelleSeite';
-import { WertZeile } from './WertZeile';
 import './MessstelleKacheln.css';
-
-/** Die Überwachung der Leitkachel (Alerting Scheibe 5, §6.3: `messstelle.menge`) - fehlt, solange die
- * Seite ihren Bezug (noch) nicht kennt. */
-export interface MessstelleKachelnUeberwachung {
-  ueberwacht?: string | null;
-  onUeberwachen: () => void;
-}
 
 /**
  * Die Kacheln oben auf der Seite einer Messstelle (Konzept Messen m1, §6.4 Punkt 4): die Leitkachel mit der Menge des
@@ -29,8 +21,6 @@ export function MessstelleKacheln({
   ablesung,
   laedt,
   onAblesen,
-  ueberwachung,
-  ueberwachungBeobachtung,
 }: {
   /** `null` = die Hauptgröße hat keine Menge je Monat (eine Leistung) - dann führt der Zählerstand bzw. nichts. */
   leit: LeitKachel | null;
@@ -39,10 +29,6 @@ export function MessstelleKacheln({
   laedt: boolean;
   /** Der Schritt der Leitkachel, wenn der Monat ohne Ablesung ist. */
   onAblesen?: () => void;
-  /** „Überwachen" an der Leitkachel (Alerting Scheibe 5, §6.3: `messstelle.menge`). */
-  ueberwachung?: MessstelleKachelnUeberwachung;
-  /** „Überwachen" an der Beobachtung der Messstelle (Alerting Scheibe 5, §6.3: `messstelle.beobachtung`). */
-  ueberwachungBeobachtung?: MessstelleKachelnUeberwachung;
 }) {
   if (!leit && !stand && !ablesung) return null;
   const neben = [stand, ablesung].filter(Boolean).length;
@@ -53,14 +39,7 @@ export function MessstelleKacheln({
           <div className="vp-k vp-msk-skelett" aria-busy="true" />
         </div>
       ) : (
-        leit && (
-          <Leit
-            leit={leit}
-            onAblesen={onAblesen}
-            ueberwachung={ueberwachung}
-            ueberwachungBeobachtung={ueberwachungBeobachtung}
-          />
-        )
+        leit && <Leit leit={leit} onAblesen={onAblesen} />
       )}
       {stand && (
         <Kachel id="ms-zaehlerstand" name={ZAEHLERSTAND} icon="trending-up" ton="neutral">
@@ -82,40 +61,9 @@ export function MessstelleKacheln({
   );
 }
 
-function Leit({
-  leit,
-  onAblesen,
-  ueberwachung,
-  ueberwachungBeobachtung,
-}: {
-  leit: LeitKachel;
-  onAblesen?: () => void;
-  ueberwachung?: MessstelleKachelnUeberwachung;
-  ueberwachungBeobachtung?: MessstelleKachelnUeberwachung;
-}) {
+function Leit({ leit, onAblesen }: { leit: LeitKachel; onAblesen?: () => void }) {
   return (
-    <Kachel
-      id="ms-leit"
-      name={leit.name}
-      icon="activity"
-      ton={leit.ton}
-      groesse="breit"
-      className="vp-msk-leit"
-      fuss={(ueberwachung || ueberwachungBeobachtung) && (
-        <>
-          {ueberwachung && (
-            <WertZeile label={leit.name} ueberwacht={ueberwachung.ueberwacht} onUeberwachen={ueberwachung.onUeberwachen} />
-          )}
-          {ueberwachungBeobachtung && (
-            <WertZeile
-              label="Beobachtung der Messstelle"
-              ueberwacht={ueberwachungBeobachtung.ueberwacht}
-              onUeberwachen={ueberwachungBeobachtung.onUeberwachen}
-            />
-          )}
-        </>
-      )}
-    >
+    <Kachel id="ms-leit" name={leit.name} icon="activity" ton={leit.ton} groesse="breit" className="vp-msk-leit">
       <Gross wert={leit.wert} einheit={leit.einheit || undefined} xl />
       {leit.marke && (
         <div className="vp-msk-marken">
