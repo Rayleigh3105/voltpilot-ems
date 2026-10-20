@@ -122,12 +122,15 @@ export function planAnnahmen(e: AnnahmenEingabe): AnnahmeZeile[] {
   }
   if (e.fallback14a === true) zeile('14a', 'alert-triangle', '§ 14a', FALLBACK_14A_NOTE);
 
+  // „Neu geplant" und „Prognosen" sagten zweimal „alle 15 Minuten" - eine
+  // Zeile trägt beides (Überblick 20.10.2026).
   if (e.planVon) {
     zeile(
       'neu',
       'refresh-cw',
       'Neu geplant',
-      `Zuletzt um ${uhr(e.planVon)} Uhr; VoltPilot plant alle ${e.slotMinutes} Minuten neu.`,
+      `Zuletzt um ${uhr(e.planVon)} Uhr, alle ${e.slotMinutes} Minuten neu – mit Ihrer Verbrauchs- und PV-Prognose.`,
+      e.prognoseSeite ? { href: e.prognoseSeite, text: 'Zur Prognosequalität' } : null,
     );
   }
   const v = e.vorhersage;
@@ -140,20 +143,22 @@ export function planAnnahmen(e: AnnahmenEingabe): AnnahmeZeile[] {
   if (v && teile.length > 0 && v.tage > 0) {
     // Das Fenster ist die Abfrage; bewertet sind darin womöglich weniger Tage -
     // das steht dann dabei, statt ein kürzeres Fenster zu behaupten.
-    const fenster = v.fenster === 1 ? 'letzter Tag' : `letzte ${v.fenster} Tage`;
+    const fenster = v.fenster === 1 ? 'am letzten Tag' : `in den letzten ${v.fenster} Tagen`;
     zeile(
       'vorhersage',
       'trending-up',
-      `Vorhersage, ${fenster}${v.tage < v.fenster ? ` (${v.tage} bewertet)` : ''}`,
-      `Ø Abweichung je Viertelstunde: ${teile.join(' · ')}.`,
+      'Treffsicherheit',
+      `Die Vorhersage lag ${fenster}${v.tage < v.fenster ? ` (${v.tage} bewertet)` : ''} im Mittel so weit daneben: ${teile.join(' · ')} je Viertelstunde.`,
     );
   }
-  zeile(
-    'prognosen',
-    'activity',
-    'Prognosen',
-    FORECAST_FOOTNOTE,
-    e.prognoseSeite ? { href: e.prognoseSeite, text: 'Zur Prognosequalität' } : null,
-  );
+  if (!e.planVon) {
+    zeile(
+      'prognosen',
+      'activity',
+      'Prognosen',
+      FORECAST_FOOTNOTE,
+      e.prognoseSeite ? { href: e.prognoseSeite, text: 'Zur Prognosequalität' } : null,
+    );
+  }
   return out;
 }

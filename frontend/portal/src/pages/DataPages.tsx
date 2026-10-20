@@ -49,8 +49,9 @@ import { lageView } from '../fahrplanLage';
 import { JetztKompakt, JetztWarnungen, TagesFilm } from '../components/FahrplanJetzt';
 import { FahrplanLage } from '../components/FahrplanLage';
 import { FahrplanTagesbild, TagOhneBildKarte } from '../components/FahrplanTagesbild';
-import { minuteDesTages, tagModell } from '../fahrplanTag';
+import { tagModell } from '../fahrplanTag';
 import { indexImLauf, tagDatum, tagesSchalter, tagOhneBild, type TagArt } from '../fahrplanTagesbild';
+import { istLadestand, type IstEimer } from '../fahrplanIst';
 import { haptik } from '../haptik';
 import { speicherAussage } from '../speicherAussage';
 import { planAnnahmen } from '../fahrplanAnnahmen';
@@ -714,13 +715,66 @@ function FahrplanInhalt({ site }: { site: Site }) {
       active = false;
     };
   }, [siteId, heuteIso, geldTakt, hasTagesbild]);
+  // Der Planwert des Tages reist in derselben Antwort (`steuerungPlannedEur`,
+  // seit M2 gegen DENSELBEN Vergleichsspeicher wie die Messung): am laufenden
+  // Tag führt er die Antwort „Heute", der Zwischenstand steht leise darunter.
   const speicher = useMemo(
-    () => (tagesGeld ? speicherAussage(tagesGeld, { now }) : null),
+    () => (tagesGeld ? speicherAussage(tagesGeld, { now, steuerungGeplantEur: tagesGeld.steuerungPlannedEur ?? null }) : null),
     [tagesGeld, now],
   );
   const speicherGestern = useMemo(
-    () => (gesternGeld ? speicherAussage(gesternGeld, { now }) : null),
+    () => (gesternGeld ? speicherAussage(gesternGeld, { now, steuerungGeplantEur: gesternGeld.steuerungPlannedEur ?? null }) : null),
     [gesternGeld, now],
+  );
+  // Die IST-SPUR: der gemessene Ladestand je Viertelstunde aus dem Verlauf der
+  // Anlage - heute im Takt der Geldzahl, gestern beim ersten Blick. FAIL-SOFT:
+  // ohne Verlauf spricht wie bisher der Plan.
+  const [verlaufHeute, setVerlaufHeute] = useState<IstEimer[] | null>(null);
+  const [verlaufGestern, setVerlaufGestern] = useState<{ iso: string; eimer: IstEimer[] } | null>(null);
+  useEffect(() => {
+    setVerlaufHeute(null);
+  }, [siteId, heuteIso]);
+  useEffect(() => {
+    if (!hasTagesbild) return;
+    let active = true;
+    try {
+      api
+        .history(siteId, 'day', heuteIso)
+        .then((h) => active && setVerlaufHeute(h?.buckets ?? null))
+        .catch(() => undefined);
+    } catch {
+      // Eine api-Attrappe ohne die Methode reißt die Seite nicht mit.
+    }
+    return () => {
+      active = false;
+    };
+  }, [siteId, heuteIso, geldTakt, hasTagesbild]);
+  useEffect(() => {
+    if (tagArt !== 'gestern' || verlaufGestern?.iso === gesternIso) return;
+    let active = true;
+    try {
+      api
+        .history(siteId, 'day', gesternIso)
+        .then((h) => active && setVerlaufGestern({ iso: gesternIso, eimer: h?.buckets ?? [] }))
+        .catch(() => undefined);
+    } catch {
+      // wie oben
+    }
+    return () => {
+      active = false;
+    };
+  }, [tagArt, siteId, gesternIso, verlaufGestern?.iso]);
+  const istSpur = useMemo(
+    () =>
+      istLadestand(
+        tag,
+        tagArt === 'heute'
+          ? verlaufHeute
+          : tagArt === 'gestern' && verlaufGestern?.iso === gesternIso
+            ? verlaufGestern.eimer
+            : null,
+      ),
+    [tag, tagArt, verlaufHeute, verlaufGestern, gesternIso],
   );
   // „Alle Werte": das bisherige Diagramm als Dialog - zum Nachschlagen, nicht
   // als zweites Bild desselben Tages auf der Seite.
@@ -747,9 +801,6 @@ function FahrplanInhalt({ site }: { site: Site }) {
       }),
     [plan, slotMinutes, site.id, site.plantKind, site.tarifArt, site.tarifParamCtKwh, site.netzladenErlaubt, site.maxFeedInKw, hasWhy, lage, horizonNote, vorhersage],
   );
-  const planVon = plan?.generatedAt
-    ? new Date(plan.generatedAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
-    : null;
   // Das Warum einer Viertelstunde des Tagesbilds liest den JÜNGSTEN Lauf, wenn
   // er sie trägt (dieselben Zahlen wie das Gerät, mit den Lauf-Fakten), sonst
   // den Tages-Splice, der sie damals geplant hat.
@@ -1003,6 +1054,8 @@ function FahrplanInhalt({ site }: { site: Site }) {
               tag={tag}
               plantKind={site.plantKind}
               speicher={tagArt === 'heute' ? speicher : tagArt === 'gestern' ? speicherGestern : null}
+              ist={istSpur}
+              jetztLadestand={tagArt === 'heute' && snapshotFresh ? snapshot.socPct : null}
               siteId={site.id}
               slotFuerWarum={slotFuerWarum}
               warumPanel={warumPanel}
@@ -1023,18 +1076,33 @@ function FahrplanInhalt({ site }: { site: Site }) {
                 />
               )}
               nachtragHref={einstellungenHash(site.id, 'speicher')}
-              // Die Ausführung spricht nur über jetzt; „Plan von …", die
-              // Annahmen und „Alle Werte" beschreiben den jüngsten Lauf - er
-              // trägt heute und morgen, nicht gestern.
+              // Die Ausführung spricht nur über jetzt; „Gut zu wissen" (mit
+              // „Neu geplant" um …) und „Alle Werte" beschreiben den jüngsten
+              // Lauf - er trägt heute und morgen, nicht gestern.
               held={tagArt === 'heute' ? held : null}
-              planVon={tagArt === 'gestern' ? null : planVon}
               annahmen={tagArt === 'gestern' ? KEINE_ANNAHMEN : annahmen}
               berechnung={FAHRPLAN_BERECHNUNG}
               onAlleWerte={tagArt === 'gestern' ? null : () => setAlleWerteOpen(true)}
               morgen={tagArt === 'heute' ? film.tomorrowSummary : null}
               art={tagArt}
-              zeigerStart={tagArt === 'heute' ? null : minuteDesTages(now)}
-              autoEinfuehrung={tagArt === 'heute'}
+              // Heute läuft die Uhr über Mitternacht in den Folgetag (jüngster Lauf).
+              folgetag={tagArt === 'heute' && morgenGeplant ? tagMorgen : null}
+              phasenPanelFolgetag={(phaseIndex, schliessen) => (
+                <FahrplanWhyPanel
+                  phases={tagMorgen.phasenRoh}
+                  slots={tagMorgen.slots}
+                  plantKind={site.plantKind}
+                  slotMinutes={slotMinutes}
+                  selectedPhase={phaseIndex}
+                  selectedSlot={null}
+                  curtail={curtail}
+                  grenzen={grenzen}
+                  siteId={site.id}
+                  currentSlotIndex={-1}
+                  ohneGeld
+                  onClose={schliessen}
+                />
+              )}
             />
           ) : (
             <TagOhneBildKarte

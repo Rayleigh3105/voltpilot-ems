@@ -356,10 +356,16 @@ export function ausblickSatz(
 ): string | null {
   const slotMinutes = opts.slotMinutes ?? 15;
   const teile: string[] = [];
-  const himmel = opts.weather ? weatherWhyTomorrow(opts.weather, now) : null;
-  if (himmel) teile.push(HIMMEL_SATZ[himmel]);
-
   const energie = morgenEnergie(slots, now, slotMinutes);
+  const himmel = opts.weather ? weatherWhyTomorrow(opts.weather, now) : null;
+  // Kein Widerspruch in einem Absatz (Überblick 20.10.2026): das Wetter-Wort
+  // kommt aus einer anderen Vorhersage als die Plan-Zahlen. Erwartet der Plan
+  // mehr Solar-Überschuss als Verbrauch, ist „kaum Sonne" daneben falsch
+  // (Demo 20.10.2026: „kaum Sonne" neben 50 kWh Überschuss bei 24 kWh
+  // Verbrauch) - dann sprechen nur die Zahlen, nach denen der Plan rechnet.
+  const widerspruch = himmel === 'bewoelkt' && energie != null && energie.ueberschussKwh > energie.verbrauchKwh;
+  if (himmel && !widerspruch) teile.push(HIMMEL_SATZ[himmel]);
+
   if (energie != null) {
     teile.push(
       `Der Fahrplan rechnet für morgen mit ${kwh(energie.ueberschussKwh)} Solar-Überschuss ` +

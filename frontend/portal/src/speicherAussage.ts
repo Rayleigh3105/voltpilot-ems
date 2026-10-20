@@ -189,6 +189,8 @@ export interface SpeicherAussage {
    * alte, gegen „ohne Speicher" geplante Zahl erreicht diese Fläche nicht mehr.
    */
   geplant: string | null;
+  /** Derselbe Planwert als Betrag („+ 6,39 €"); null ohne Planwert. */
+  geplantWert: string | null;
 
   /* --- Einordnung eines Tages (Konzept k1 §7, E1/E3/E4 = A) --- */
   /**
@@ -623,6 +625,7 @@ export function speicherAussage(
       geplantEur == null
         ? null
         : `Vorab geplant hatte der Fahrplan ${tonWort(geplantEur).wort} durch die Steuerung`,
+    geplantWert: geplantEur == null ? null : fest(tonWort(geplantEur).wort),
 
     gruende,
     grundZeile,

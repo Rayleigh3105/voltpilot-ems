@@ -328,7 +328,8 @@ export function actionPhrase(
       case 'reserve_halten':
         return 'hält gerade Ladung als Reserve';
       case 'warten':
-        return 'ruht gerade';
+        // Dasselbe Wort wie Uhr, Band und Stationen („Warten"), nie „ruht".
+        return 'wartet gerade';
     }
   }
   if (dir === 'laden') return 'lädt gerade';
@@ -769,6 +770,27 @@ function leadLine(
   // Rollen-Labels würde das Wort ein zweites Mal in dieselbe Zeile setzen.
   return `Geplant ist gerade: ${roleLabel(role, kind, flags, true, curtail)}`;
 }
+
+/**
+ * Der Zustand des Geräts in HÖCHSTENS FÜNF WÖRTERN - für die Jetzt-Zeile der
+ * Fahrplan-Seite, die in fünf Sekunden gelesen sein soll. Der volle Satz
+ * (`JetztHeldView.status`) bleibt der Titel bzw. die Erklärung dahinter; hier
+ * steht dieselbe Aussage nur kürzer, nie eine andere. `nur_plan` schweigt: ohne
+ * Gerät gibt es keinen Gerätezustand.
+ */
+export const ZUSTAND_KURZ: Readonly<Record<JetztState, string | null>> = {
+  planmaessig: 'Gerät folgt dem Plan',
+  angepasst: 'Gerät folgt dem Plan',
+  ruhe: 'Gerät folgt dem Plan',
+  sicherung: 'Gerät regelt ohne Fahrplan',
+  abweichung: 'Gerät meldet anderen Wert',
+  unbestaetigt: 'Keine aktuelle Rückmeldung',
+  veraltet: 'Plan ist nicht mehr aktuell',
+  aus: 'Steuerung ist ausgeschaltet',
+  nicht_freigegeben: 'Gerät noch nicht freigegeben',
+  wird_vorbereitet: 'Wechselrichter bestätigt noch nicht',
+  nur_plan: null,
+};
 
 function statusLine(
   state: JetztState,

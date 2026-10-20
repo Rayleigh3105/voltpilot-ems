@@ -1,201 +1,142 @@
 /**
- * Das TAGESBILD der Fahrplan-Seite (Konzept „Tagesuhr und Bildfahrplan",
- * Entscheide E1–E11 vom 24.09.2026) — im AUFBAU DES PROTOTYPS:
+ * Das TAGESBILD der Fahrplan-Seite (Überblick 20.10.2026, Variante A „echte
+ * Uhr"; Rückmeldung: „mobile immer noch sehr überladen", „die Uhr geht nicht
+ * nach der Uhr im echten Leben").
  *
- *  - Telefon: Kopfsatz und Stand, die Uhr, die Werte am Zeiger, die Zeile zum
- *    Moment, die Antworten (E1, alle im ersten Bildschirm, E9), „Warum?", der
- *    Zustand mit „Eingreifen …", darunter Waage, Stationen und „Worauf Ihr
- *    Plan achtet".
- *  - 640–899 px: Uhr, Werte, Moment und Waage links (mitlaufend), Antworten,
- *    Stationen und Annahmen rechts.
- *  - ab 900 px Inhaltsbreite (E10): Kopfsatz, das Jetzt-Band, der
- *    Bildfahrplan, die Antworten in einer Reihe, darunter Waage | Stationen
- *    und Annahmen.
+ *  - Telefon: die STATUS-ZEILE (wer was tut, darunter höchstens drei
+ *    Stichworte), die UHR wie am Handgelenk (ein Ring: was ab jetzt kommt),
+ *    zwei KACHELN (Heute Abend · Heute geplant) und eingeklappt „Ihr Tag"
+ *    und „Gut zu wissen". Gestern und morgen erzählt ein Satz den Tag, die Uhr
+ *    zeigt Vor- oder Nachmittag.
+ *  - 640–899 px: die Uhr links, Status, Kacheln und Abschnitte rechts.
+ *  - ab 900 px Inhaltsbreite: Status mit drei Kacheln, das TAGESBAND
+ *    (Phasen oben, Ladestand gemessen | geplant, Sonne und Preis), darunter
+ *    „Ihr Tag" | „Gut zu wissen".
  *
- * Das bisherige Diagramm steht nicht mehr daneben (es wäre ein zweites Bild
- * desselben Tages); die Annahmen-Karte führt zu ihm („Alle Werte").
+ * Das Warum (Satz, Waage, alle Gründe) wohnt in EINEM Blatt: hinter der
+ * Status-Zeile, hinter jedem Bogen der Uhr und jedem Block des Tagesbands.
+ * Der Gerätezustand steht nur, wenn das Gerät NICHT dem Plan folgt.
  *
- * Dieses Bauteil hält nur den Zustand der Bedienung (welche Viertelstunde,
- * welche Antwort, Abspielen, Einführung); jede Aussage kommt aus den reinen
- * Modulen `fahrplanTag`, `fahrplanUhr`, `fahrplanBildfahrplan`,
- * `fahrplanAntworten`, `fahrplanWaage` und `fahrplanTagesbild`.
- *
- * Die EINFÜHRUNG (E11) startet beim ersten Besuch einmal von selbst — nur mit
- * der Uhr, und nur, wenn die „gesehen"-Marke sicher gelesen ist (fehlt die
- * Antwort, wird nichts behauptet und nichts gestartet). Gemerkt wird sie im
- * Layout-Dokument der Organisation (`document.seen`, das Muster der
- * Steuerungs-Erklärung), nie über `localStorage`.
+ * Dieses Bauteil hält nur den Zustand der Bedienung; jede Aussage kommt aus
+ * den reinen Modulen `fahrplanTag`, `fahrplanUhr`, `fahrplanTagesband`,
+ * `fahrplanAntworten`, `fahrplanWaage`, `fahrplanIst` und `fahrplanTagesbild`.
  */
 
-import {
-
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent,
-  type ReactNode,
-} from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { api } from '../api';
-import { chartMotion } from '../chartMotion';
+import { Modal } from '../../designsystem/components/shell/Modal';
 import { chartTheme } from '../chartTheme';
-import type { CockpitLayoutDocument } from '../cockpitLayout';
+import { haptik } from '../haptik';
 import type { AnnahmeZeile } from '../fahrplanAnnahmen';
 import { antworten, type Antwort } from '../fahrplanAntworten';
-import { phaseVon, uhrzeit, viertelBei, type TagModell } from '../fahrplanTag';
+import { uhrzeit, type TagModell } from '../fahrplanTag';
 import {
   BILD_AB_PX,
-  EINFUEHRUNG_KEY,
   ROLLEN_SYMBOL,
   ZWEISPALTIG_AB_PX,
-  ebenenSatz,
-  einfuehrungFuer,
+  jetztZeile,
   kopfsatz,
   momentBand,
   stationen,
-  werteAmZeiger,
   type TagArt,
   type TagOhneBild,
-  type TagesbildEbene,
 } from '../fahrplanTagesbild';
-import { uhrModell } from '../fahrplanUhr';
+import { uhrFenster, uhrModell, uhrPhasen, uhrUnterschrift, type UhrHaelfte, type UhrPhase } from '../fahrplanUhr';
 import { waage } from '../fahrplanWaage';
 import type { WhySlot } from '../fahrplanWhy';
-import { haptik } from '../haptik';
 import type { JetztHeldView } from '../fahrplanJetzt';
 import type { PlanWordingKind } from '../schedule';
 import type { SpeicherAussage } from '../speicherAussage';
-import { introGesehen, mitGesehen } from '../steuerungIntro';
 import { InfoTip } from './InfoTip';
 import { FahrplanAntworten, FahrplanWaage } from './FahrplanAntworten';
-import { FahrplanBildfahrplan } from './FahrplanBildfahrplan';
+import { FahrplanTagesband } from './FahrplanTagesband';
 import { JetztMesswerte } from './FahrplanJetzt';
 import { FahrplanUhr } from './FahrplanUhr';
 import { roleColor } from './FahrplanWhy';
 import { ProvBadge } from './HistorieWelt';
 import './FahrplanTagesbild.css';
 
-/** Wo die „gesehen"-Marke der Einführung wohnt. */
-export interface EinfuehrungQuelle {
-  laden: () => Promise<CockpitLayoutDocument | null>;
-  merken: (document: CockpitLayoutDocument) => Promise<unknown>;
-}
-
-const ECHTE_QUELLE: EinfuehrungQuelle = {
-  laden: () => api.tenantCockpitLayout('cockpit').then((r) => r.eigen?.document ?? null),
-  merken: (document) => api.saveTenantCockpitLayout('eigen', document, 'cockpit'),
-};
-
-/**
- * Das Abspielen (▶) ist ein TEMPO, keine Übergangs-Dauer: Viertelstunde für
- * Viertelstunde läuft der Tag in rund sieben Sekunden durch. Ohne Bewegung
- * (`--vp-motion-scale: 0`) springt es stattdessen Phase für Phase, mit Zeit
- * zum Lesen — eine Folge ruhiger Bilder statt eines Flimmerns.
- */
-const TAKT_VIERTEL_MS = 75;
-const TAKT_PHASE_MS = 900;
-
 export interface FahrplanTagesbildProps {
   tag: TagModell;
+  /**
+   * Der Folgetag (jüngster Lauf): heute läuft die Uhr über Mitternacht in ihn
+   * hinein. null = noch kein Plan für morgen, dann endet der Ring um 24 Uhr.
+   */
+  folgetag?: TagModell | null;
   plantKind: PlanWordingKind;
-  /** Die Steuerungs-Aussage des Tages (E6); null = keine Antwort „Was bringt es heute?". */
+  /** Die Steuerungs-Aussage des Tages (E6); null = keine Geld-Kachel. */
   speicher: SpeicherAussage | null;
   siteId: string;
   /** Die Viertelstunde i, wie sie die Waage liest (jüngster Lauf, sonst der Tag). */
   slotFuerWarum: (i: number) => WhySlot | null;
   /** Das volle Erklär-Panel der Viertelstunde i. */
   warumPanel: (i: number, schliessen: () => void) => ReactNode;
-  /** Das Erklär-Panel einer Station (Phase `phaseIndex` von `tag.phasenRoh`); null = keins. */
+  /** Das Erklär-Panel einer Phase von `tag.phasenRoh`; null = keins. */
   phasenPanel?: ((phaseIndex: number, schliessen: () => void) => ReactNode) | null;
+  /** Dasselbe für eine Phase des Folgetags (Bögen nach Mitternacht). */
+  phasenPanelFolgetag?: ((phaseIndex: number, schliessen: () => void) => ReactNode) | null;
   /** Wohin der Nachtrag-Satz der Geld-Antwort führt. */
   nachtragHref?: string;
-  /**
-   * Die Jetzt-Aussage (Ausführung und Messung, `jetztHeld`). Steht der
-   * Zeiger auf „jetzt", spricht sie im Jetzt-Band bzw. in der Zeile unter der
-   * Uhr — der Plan allein sagt nicht, was das Gerät tut. null = nur der Plan.
-   */
+  /** Die Jetzt-Aussage (Ausführung und Messung, `jetztHeld`); null = nur der Plan. */
   held?: JetztHeldView | null;
-  /** „14:00" — wann der jüngste Lauf entstand; null = unbekannt. */
-  planVon?: string | null;
-  /** „Worauf Ihr Plan achtet" (`fahrplanAnnahmen.planAnnahmen`). */
+  /** „Gut zu wissen" (`fahrplanAnnahmen.planAnnahmen`). */
   annahmen?: AnnahmeZeile[];
-  /** Wie der Fahrplan berechnet wird — klein unter den Annahmen. */
+  /** Wie der Fahrplan berechnet wird - klein an „Gut zu wissen". */
   berechnung?: string | null;
   /** Öffnet das bisherige Diagramm mit allen Werten; null = kein Verweis. */
   onAlleWerte?: (() => void) | null;
   /** Der Hinweis auf morgen unter den Stationen („Morgen · 3 weitere Phasen"). */
   morgen?: string | null;
-  /**
-   * Der Tag des Tagesschalters (E2 = A). Er bestimmt die Fragen („Wie ging es
-   * weiter?"), den Kopfsatz („Gestern: …") und die Mitte der Uhr; ohne Angabe
-   * heute.
-   */
+  /** Der Tag des Tagesschalters (E2 = A); ohne Angabe heute. */
   art?: TagArt;
   /**
-   * Wo der Zeiger an einem Tag OHNE Jetzt steht (Minute des Tages) — die
-   * Uhrzeit von jetzt, damit „Gestern" zeigt, was gestern um diese Zeit geplant
-   * war. null = Mitternacht.
+   * Die IST-SPUR: der gemessene Ladestand je Viertelstunde von `tag.slots`
+   * (`fahrplanIst.istLadestand`); leer = keine Messung, dann spricht der Plan.
    */
-  zeigerStart?: number | null;
-  /**
-   * Darf die Einführung beim ersten Besuch von selbst starten? Nur heute:
-   * ein Wechsel auf „Gestern" ist kein erster Besuch der Seite.
-   */
-  autoEinfuehrung?: boolean;
-  /** Nur für Tests: wo die „gesehen"-Marke der Einführung wohnt. */
-  einfuehrung?: EinfuehrungQuelle;
+  ist?: readonly (number | null)[];
+  /** Der gemessene Ladestand JETZT (frische Telemetrie); null = keiner. */
+  jetztLadestand?: number | null;
 }
 
-/** Rollen, deren Farbe hell ist: ihr Symbol steht dunkel (wie an der Uhr). */
+/** Rollen, deren Farbe hell ist: ihr Symbol steht dunkel. */
 const RUHE_ROLLEN = new Set(['warten', 'reserve_halten', 'abregeln']);
+const KEINE_MESSUNG: readonly (number | null)[] = [];
 
 export function FahrplanTagesbild({
   tag,
+  folgetag = null,
   plantKind,
   speicher,
   siteId,
   slotFuerWarum,
   warumPanel,
   phasenPanel = null,
+  phasenPanelFolgetag = null,
   nachtragHref,
   held = null,
-  planVon = null,
   annahmen = [],
   berechnung = null,
   onAlleWerte = null,
   morgen = null,
   art = 'heute',
-  zeigerStart = null,
-  autoEinfuehrung = true,
-  einfuehrung = ECHTE_QUELLE,
+  ist = KEINE_MESSUNG,
+  jetztLadestand = null,
 }: FahrplanTagesbildProps) {
   const t = chartTheme();
   const huelle = useRef<HTMLDivElement | null>(null);
   const [breite, setBreite] = useState(0);
+  // Eine im Tagesband gewählte Viertelstunde; null = jetzt (bzw. keine).
   const [wahl, setWahl] = useState<number | null>(null);
-  const [anim, setAnim] = useState<number | null>(null);
-  const [fokus, setFokus] = useState<TagesbildEbene | null>(null);
   const [antwort, setAntwort] = useState<Antwort | null>(null);
-  const [tour, setTour] = useState<number | null>(null);
-  const [spielt, setSpielt] = useState(false);
   const [warumOffen, setWarumOffen] = useState(false);
-  const [gesehen, setGesehen] = useState<boolean | undefined>(undefined);
-  const raf = useRef<number | null>(null);
-  const spielTimer = useRef<number | null>(null);
-  const autoGestartet = useRef(false);
-  const tourWeiter = useRef<HTMLButtonElement | null>(null);
-  const tourFokussieren = useRef(false);
-  // Die aufgeklappte Station (Index in `tag.phasenRoh`); null = keine.
-  const [station, setStation] = useState<number | null>(null);
-  const waageRef = useRef<HTMLElement | null>(null);
-  const stationenRef = useRef<HTMLElement | null>(null);
-  // Die Einführung erklärt nur Ringe, die es gibt (ohne Preis vier Schritte).
-  const tourSchritte = useMemo(() => einfuehrungFuer(tag), [tag]);
+  const [alleGruende, setAlleGruende] = useState(false);
+  const [zustandOffen, setZustandOffen] = useState(false);
+  const [phasenWahl, setPhasenWahl] = useState<{ quelle: UhrPhase['quelle']; phaseIndex: number } | null>(null);
+  const [tagOffen, setTagOffen] = useState(false);
+  const [wissenOffen, setWissenOffen] = useState(false);
+  const [haelfte, setHaelfte] = useState<UhrHaelfte>('vormittag');
 
-  // ---- Breite: Uhr oder Bildfahrplan (E10) ------------------------------------
+  // ---- Breite: Uhr oder Tagesband ------------------------------------------------
   useLayoutEffect(() => {
     const el = huelle.current;
     if (!el) return;
@@ -209,17 +150,6 @@ export function FahrplanTagesbild({
   const bild = breite >= BILD_AB_PX;
   const zweispaltig = !bild && breite >= ZWEISPALTIG_AB_PX;
 
-  // ---- Auswahl --------------------------------------------------------------------
-  const jetztI = tag.jetztIndex;
-  const n = tag.slots.length;
-  // Ohne Jetzt (gestern, morgen) steht der Zeiger auf derselben Uhrzeit.
-  const startI = zeigerStart != null ? Math.max(0, viertelBei(tag, zeigerStart)) : 0;
-  const auswahl = Math.min(n - 1, wahl ?? (jetztI >= 0 ? jetztI : startI));
-  const istJetzt = wahl == null && jetztI >= 0;
-  const mitte = (i: number) => (tag.viertel[i] ? (tag.viertel[i].von + tag.viertel[i].bis) / 2 : 0);
-  const zielMinute = istJetzt && tag.jetzt != null ? tag.jetzt : mitte(auswahl);
-  const zeiger = anim ?? zielMinute;
-
   // Ein neuer Tag bzw. ein Lauf mit anderem Anfang: die Auswahl gilt nicht mehr.
   const erster = tag.slots[0]?.start ?? null;
   useEffect(() => {
@@ -227,284 +157,46 @@ export function FahrplanTagesbild({
     setAntwort(null);
   }, [erster]);
 
-  // ---- Bewegung des Zeigers ----------------------------------------------------------
-  const animStopp = useCallback(() => {
-    if (raf.current != null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(raf.current);
-    raf.current = null;
-    setAnim(null);
-  }, []);
+  const jetztI = tag.jetztIndex;
+  const n = tag.slots.length;
+  const auswahl = wahl ?? (jetztI >= 0 ? jetztI : -1);
+  const istJetzt = wahl == null && jetztI >= 0;
+  const mitJetzt = istJetzt && tag.jetzt != null;
 
-  /** Dreht den Zeiger von `von` nach `nach` (Minuten); ohne Bewegung springt er. */
-  const drehen = useCallback(
-    (von: number, nach: number, fertig: () => void) => {
-      animStopp();
-      const { update } = chartMotion();
-      const dauer = update * Math.min(2.6, 0.8 + Math.abs(nach - von) / 400);
-      if (!(dauer > 0) || typeof requestAnimationFrame !== 'function') {
-        fertig();
-        return;
-      }
-      const t0 = performance.now();
-      const schritt = (jetztMs: number) => {
-        const k = Math.min(1, (jetztMs - t0) / dauer);
-        const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
-        setAnim(von + (nach - von) * e);
-        if (k < 1) {
-          raf.current = requestAnimationFrame(schritt);
-        } else {
-          raf.current = null;
-          setAnim(null);
-          fertig();
-        }
-      };
-      raf.current = requestAnimationFrame(schritt);
-    },
-    [animStopp],
-  );
-
-  const anhalten = useCallback(() => {
-    if (spielTimer.current != null) window.clearTimeout(spielTimer.current);
-    spielTimer.current = null;
-    setSpielt(false);
-  }, []);
-
-  useEffect(
-    () => () => {
-      if (spielTimer.current != null) window.clearTimeout(spielTimer.current);
-      if (raf.current != null && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(raf.current);
-    },
-    [],
-  );
-
-  const waehlen = useCallback(
-    (i: number) => {
-      setAntwort(null);
-      setWahl(i === jetztI ? null : i);
-    },
-    [jetztI],
-  );
-
-  /**
-   * Der Knopf „Zurück zu jetzt" fühlt sich an wie der Tipp in die Mitte: ein
-   * Doppel-Impuls. (Den Mitte-Tipp spielt die Uhr selbst, darum hier getrennt.)
-   */
-  const zurueckKnopf = () => {
-    haptik('jetzt');
-    zurueckZuJetzt();
-  };
-
-  const zurueckZuJetzt = () => {
-    anhalten();
-    setAntwort(null);
-    if (tag.jetzt == null) {
-      setWahl(null);
-      return;
-    }
-    drehen(zeiger, tag.jetzt, () => setWahl(null));
-  };
-
-  // ---- Einführung (E11) ----------------------------------------------------------------
-  useEffect(() => {
-    let aktiv = true;
-    try {
-      einfuehrung.laden().then(
-        (d) => {
-          if (aktiv) setGesehen(introGesehen(d, EINFUEHRUNG_KEY));
-        },
-        () => {
-          if (aktiv) setGesehen(undefined);
-        },
-      );
-    } catch {
-      // Eine api-Attrappe ohne die Methode: dann wird nichts behauptet.
-    }
-    return () => {
-      aktiv = false;
-    };
-    // Die Marke hängt am Kunden, nicht an der Anlage: einmal je Montierung.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const merkeGesehen = () => {
-    if (gesehen !== false) return;
-    setGesehen(true);
-    // FRISCH laden und ADDITIV merken: was seit dem Öffnen woanders am
-    // Dokument geändert wurde (Cockpit-Anordnung), bleibt erhalten.
-    void einfuehrung
-      .laden()
-      .then((d) => einfuehrung.merken(mitGesehen(d, EINFUEHRUNG_KEY)))
-      .catch(() => undefined);
-  };
-
-  const tourStarten = (fokussieren: boolean) => {
-    anhalten();
-    animStopp();
-    setAntwort(null);
-    setWarumOffen(false);
-    setFokus(null);
-    tourFokussieren.current = fokussieren;
-    setTour(0);
-  };
-  const tourEnde = () => {
-    animStopp();
-    setTour(null);
-    merkeGesehen();
-  };
-
-  // Beim ersten Besuch einmal von selbst — nur mit der Uhr.
-  useEffect(() => {
-    if (!autoEinfuehrung || autoGestartet.current || gesehen !== false || breite === 0 || bild || n === 0) return;
-    autoGestartet.current = true;
-    tourStarten(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gesehen, breite, bild, n, autoEinfuehrung]);
-
-  // Der Schritt „Der Zeiger" zeigt einmal, wie er sich bewegt.
-  const tourSchritt = tour == null ? null : (tourSchritte[tour] ?? null);
-  useEffect(() => {
-    if (tourSchritt?.ebene !== 'zeiger') return;
-    const basis = zielMinute;
-    const vor = Math.min(1439, basis + 90);
-    const zurueck = Math.max(0, basis - 90);
-    drehen(basis, vor, () => drehen(vor, zurueck, () => drehen(zurueck, basis, () => undefined)));
-    return animStopp;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tourSchritt]);
-
-  useEffect(() => {
-    if (tour != null && tourFokussieren.current) tourWeiter.current?.focus({ preventScroll: true });
-  }, [tour]);
-
-  // ---- Abspielen (▶) --------------------------------------------------------------------
-  const spielen = () => {
-    if (spielt) {
-      anhalten();
-      return;
-    }
-    animStopp();
-    setAntwort(null);
-    setTour(null);
-    setWarumOffen(false);
-    if (n === 0) return;
-    const bewegt = chartMotion().scale > 0;
-    const schritte = bewegt
-      ? tag.viertel.map((v) => v.i)
-      : tag.phasen.map((p) => tag.phasenRoh[p.phaseIndex].startIdx);
-    const takt = bewegt ? TAKT_VIERTEL_MS : TAKT_PHASE_MS;
-    let k = 0;
-    // Fühlbar abgespielt: ein Tick, sobald eine neue Phase beginnt, und am
-    // Ende der Doppel-Impuls von „jetzt" (am Telefon; sonst geschieht nichts).
-    let letztePhase = phaseVon(tag, auswahl)?.phaseIndex ?? null;
-    setSpielt(true);
-    const weiter = () => {
-      if (k >= schritte.length) {
-        spielTimer.current = window.setTimeout(() => {
-          spielTimer.current = null;
-          setSpielt(false);
-          setWahl(null);
-          if (jetztI >= 0) haptik('jetzt');
-        }, TAKT_PHASE_MS / 2);
-        return;
-      }
-      const i = schritte[k];
-      const phase = phaseVon(tag, i)?.phaseIndex ?? null;
-      if (phase !== letztePhase) haptik('tick');
-      letztePhase = phase;
-      setWahl(i === jetztI ? null : i);
-      k += 1;
-      spielTimer.current = window.setTimeout(weiter, takt);
-    };
-    weiter();
-  };
-
-  // ---- Antworten ----------------------------------------------------------------------------
   const liste = useMemo(
-    () => antworten({ tag, auswahl, istJetzt, speicher, art }),
+    () => antworten({ tag, auswahl: Math.max(0, auswahl), istJetzt, speicher, art }),
     [tag, auswahl, istJetzt, speicher, art],
   );
-
-  /** Ein Tipp auf eine Antwort: ihre Stelle zeigen (Uhr: Zeiger dorthin) und sie ausführlich nennen. */
-  const antwortWaehlen = (a: Antwort) => {
-    haptik('ziel');
-    if (bild) {
-      setAntwort((cur) => (cur?.key === a.key ? null : a));
-      return;
-    }
-    anhalten();
-    if (tour != null) tourEnde();
-    setWarumOffen(false);
-    setAntwort(a);
-    const ziel = a.ziel;
-    if (!ziel) return;
-    const i = viertelBei(tag, ziel.minute);
-    if (i < 0) return;
-    drehen(zeiger, ziel.minute, () => setWahl(i === jetztI ? null : i));
-  };
-
-  // ---- Was gerade hervorgehoben ist ----------------------------------------------------
-  const wirkFokus: TagesbildEbene | 'zeiger' | null =
-    tourSchritt?.ebene ?? (antwort?.ziel?.ebene === 'ladestand' ? 'ladestand' : null) ?? fokus;
-  const bildFokus: TagesbildEbene | null = wirkFokus === 'zeiger' ? null : wirkFokus;
-
-  const uhr = useMemo(() => uhrModell(tag), [tag]);
-  const werte = werteAmZeiger(tag, auswahl);
-  const warumSlot = slotFuerWarum(auswahl);
-  const w = warumSlot ? waage(warumSlot, plantKind) : null;
-  const band = momentBand(tag, auswahl, istJetzt, held, w?.urteil ?? null);
   const satz = useMemo(() => kopfsatz(tag, art), [tag, art]);
-  const halte = useMemo(() => stationen(tag, plantKind), [tag, plantKind]);
-  const v = tag.viertel[auswahl];
-  const erloeseHref = `#/anlage/${siteId}/erloese`;
-  const phaseAmZeiger = phaseVon(tag, auswahl);
+  const halte = useMemo(() => stationen(tag, plantKind, ist), [tag, plantKind, ist]);
+  const uhrPh = useMemo(() => uhrPhasen(tag, art === 'heute' ? folgetag : null), [tag, folgetag, art]);
+  const fenster = useMemo(() => uhrFenster(tag, uhrPh, haelfte), [tag, uhrPh, haelfte]);
+  const uhr = useMemo(() => uhrModell(uhrPh, fenster), [uhrPh, fenster]);
 
   if (n === 0) return null;
 
-  const beruehrt = () => {
-    anhalten();
-    animStopp();
-    if (tour != null) tourEnde();
+  const warumSlot = auswahl >= 0 ? slotFuerWarum(auswahl) : null;
+  const w = warumSlot ? waage(warumSlot, plantKind) : null;
+  const band = auswahl >= 0 ? momentBand(tag, auswahl, istJetzt, held, w?.urteil ?? null) : null;
+  const jz = auswahl >= 0 ? jetztZeile(tag, auswahl, istJetzt, held, plantKind, jetztLadestand) : null;
+  const erloeseHref = `#/anlage/${siteId}/erloese`;
+
+  const zurueck = () => {
+    haptik('jetzt');
+    setWahl(null);
+    setAntwort(null);
+  };
+  /** Jede Bedienstelle am Telefon spielt eines der drei Muster (`haptik.ts`). */
+  const umschalten = (setzen: (f: (o: boolean) => boolean) => void) => () => {
+    haptik('tick');
+    setzen((o) => !o);
+  };
+  const warumOeffnen = () => {
+    haptik('tick');
+    setWarumOffen(true);
   };
 
-  const hin = (el: HTMLElement | null) =>
-    el?.scrollIntoView({ behavior: chartMotion().scale > 0 ? 'smooth' : 'auto', block: 'start' });
-
-  // ---- Bausteine ------------------------------------------------------------------------------
-
-  /**
-   * Kopfsatz und Stand: was der Speicher heute tut, von wann der Plan ist. Am
-   * Telefon läuft der Stand am Ende des Satzes mit - eine eigene Zeile kostete
-   * dort den ersten Bildschirm der Antworten (E9).
-   */
-  const stand = planVon ? `Plan von ${planVon} Uhr` : null;
-  const kopf = (mitlaufend: boolean) =>
-    satz || stand ? (
-      <div className="vp-tb-kopf">
-        {satz && (
-          <p className="vp-tb-titel">
-            {satz}
-            {mitlaufend && stand && (
-              <>
-                {' '}
-                <span className="vp-tb-stand-mit">{stand}</span>
-              </>
-            )}
-          </p>
-        )}
-        {(!mitlaufend || !satz) && stand && (
-          <p className="vp-tb-stand">
-            <b>{stand}</b>
-          </p>
-        )}
-      </div>
-    ) : null;
-
-  const zurueckKnopfEl =
-    !istJetzt && jetztI >= 0 ? (
-      <button type="button" className="vp-tb-zurueck" onClick={zurueckKnopf}>
-        <Icon name="history" size={14} />
-        Zurück zu jetzt
-      </button>
-    ) : null;
+  // ---- Bausteine ------------------------------------------------------------------
 
   const eingreifen = (
     <a className="vp-tb-knopf" href={`#/anlage/${siteId}/steuerung`}>
@@ -512,280 +204,193 @@ export function FahrplanTagesbild({
     </a>
   );
 
-  /** Der Zustand des Geräts in Worten (F5: „nichts zu tun" steht wörtlich da). */
-  const zustand =
-    istJetzt && held ? (
-      <p className={`vp-kompakt-status is-${held.tone}`} role="status" aria-live="polite">
-        <i aria-hidden="true" />
-        {held.status}
-      </p>
-    ) : null;
+  const hatWarum = Boolean(band?.warum || w);
 
-  const farbe: Record<TagesbildEbene, string> = {
-    sonne: t.pv,
-    preis: t.price,
-    taetigkeit: phaseAmZeiger ? roleColor(phaseAmZeiger.role, t) : t.neutral,
-    ladestand: t.soc,
-  };
-
-  /** Die Werte am Zeiger — die Legende, die zugleich ablesbar ist. */
-  const werteLeiste = (
-    <div className="vp-tb-werte" role="group" aria-label="Werte am Zeiger">
-      {werte.map((x) => {
-        const inhalt = (
-          <>
-            <span className="vp-tb-werte-k">{x.label}</span>
-            <span className="vp-tb-werte-v">
-              <i className="vp-tb-werte-farbe" style={{ background: farbe[x.ebene] }} aria-hidden="true" />
-              {x.wert}
-            </span>
-            {x.herkunft && <span className="vp-tb-werte-h">{x.herkunft}</span>}
-          </>
-        );
-        return bild ? (
-          <span key={x.ebene} className="vp-tb-wert">
-            {inhalt}
-          </span>
-        ) : (
-          <button
-            key={x.ebene}
-            type="button"
-            className="vp-tb-wert"
-            aria-pressed={fokus === x.ebene}
-            aria-label={x.satz}
-            title="Im Bild hervorheben"
-            onClick={() => {
-              haptik('tick');
-              if (tour != null) tourEnde();
-              setAntwort(null);
-              setFokus((cur) => (cur === x.ebene ? null : x.ebene));
-            }}
-          >
-            {inhalt}
-          </button>
-        );
-      })}
-    </div>
-  );
-
-  const ebenenNotiz =
-    !bild && fokus && tour == null && !antwort ? <p className="vp-tb-notiz">{ebenenSatz(tag, fokus)}</p> : null;
-
-  /** Die Zeile zum Moment am Zeiger unter der Uhr (Telefon, Tablet). */
-  const momentText = band ? (
-    <div className="vp-tb-moment" aria-live="polite">
-      {!istJetzt && <span className="vp-tb-moment-kopf">{band.kopf}</span>}
-      {band.was && <span className="vp-tb-moment-was">{band.was}</span>}
-      {band.zahl && <span className="vp-tb-moment-zahl">{band.zahl}</span>}
-      {istJetzt && held?.adjust && <span className="vp-tb-moment-zahl">{held.adjust}</span>}
-    </div>
-  ) : null;
-
-  /** „Warum?" — ein Satz, der Weg zur Waage. */
-  const warumZeile = band?.warum ? (
-    <button type="button" className="vp-tb-warumsatz" onClick={() => hin(waageRef.current)}>
-      <b>Warum?</b> {band.warum} <span className="vp-tb-mehr">Zur Waage ›</span>
-    </button>
-  ) : null;
-
-  // Am Telefon liegt die Einführung als Blatt über dem unteren Rand: die Uhr,
-  // die sie erklärt, bleibt ganz sichtbar, und nichts darunter verrutscht.
-  const tourKarte = tourSchritt ? (
-    <div
-      className={`vp-tb-tour${zweispaltig ? '' : ' is-blatt'}`}
-      role="group"
-      aria-label={`Die Uhr erklärt, Schritt ${tour! + 1} von ${tourSchritte.length}`}
-      onKeyDown={(ev: KeyboardEvent<HTMLDivElement>) => {
-        if (ev.key === 'Escape') {
-          ev.preventDefault();
-          tourEnde();
-        }
-      }}
-    >
-      <span className="vp-tb-tour-k">
-        Die Uhr erklärt · {tour! + 1} von {tourSchritte.length}
+  /** Wer was tut, darunter höchstens drei Stichworte; ein Tipp öffnet das Warum. */
+  const statusInhalt = jz ? (
+    <>
+      <span
+        className="vp-tb-jetzt-ic"
+        style={{
+          background: jz.role ? roleColor(jz.role, t) : t.neutral,
+          color: jz.role && RUHE_ROLLEN.has(jz.role) ? t.ink : '#FFFFFF',
+        }}
+        aria-hidden="true"
+      >
+        {jz.role && <Icon name={ROLLEN_SYMBOL[jz.role]} size={20} strokeWidth={2.1} />}
       </span>
-      <b>{tourSchritt.titel}</b>
-      <p>{ebenenSatz(tag, tourSchritt.ebene)}</p>
-      <div className="vp-tb-tour-reihe">
-        <button type="button" className="vp-tb-link" onClick={tourEnde}>
-          Beenden
-        </button>
-        <span className="vp-tb-tour-punkte" aria-hidden="true">
-          {tourSchritte.map((s, k) => (
-            <i key={s.ebene} className={k === tour ? 'is-an' : ''} />
-          ))}
-        </span>
-        {tour! > 0 && (
-          <button type="button" className="vp-tb-knopf" onClick={() => setTour(tour! - 1)}>
-            Zurück
-          </button>
-        )}
+      <span className="vp-tb-status-t">
+        {!mitJetzt && <span className="vp-tb-status-kopf">{art === 'heute' ? jz.kopf : `${art === 'gestern' ? 'Gestern' : 'Morgen'} · ${jz.kopf}`}</span>}
+        <b className="vp-tb-status-titel">
+          {jz.titel ?? 'Kein Plan'}
+          {/* „Geplant" nur ohne Gerätezeile: die sagt schon, dass nichts bestätigt ist. */}
+          {mitJetzt && jz.geplant && !jz.zustand && <ProvBadge art="geplant" />}
+        </b>
+        {jz.unterzeile && <span className="vp-tb-status-unter">{jz.unterzeile}</span>}
+      </span>
+    </>
+  ) : null;
+
+  const statusZeile = jz ? (
+    hatWarum ? (
+      <button type="button" className="vp-tb-status" onClick={warumOeffnen} aria-label={`${jz.titel ?? ''}. ${jz.unterzeile ?? ''}. Warum?`}>
+        {statusInhalt}
+        <Icon name="help-circle" size={18} className="vp-tb-status-warum" aria-hidden="true" />
+      </button>
+    ) : (
+      <div className="vp-tb-status">{statusInhalt}</div>
+    )
+  ) : null;
+
+  /** Der Gerätezustand - nur, wenn das Gerät nicht dem Plan folgt. */
+  const zustandZeile =
+    mitJetzt && jz?.zustand ? (
+      <div className="vp-tb-zustand-wrap">
         <button
           type="button"
-          ref={tourWeiter}
-          className="vp-tb-knopf is-primaer"
-          onClick={() => (tour! >= tourSchritte.length - 1 ? tourEnde() : setTour(tour! + 1))}
+          className={`vp-tb-zustand is-${jz.zustand.ton}`}
+          aria-expanded={zustandOffen}
+          onClick={umschalten(setZustandOffen)}
+          title={jz.zustand.lang}
         >
-          {tour! >= tourSchritte.length - 1 ? 'Fertig' : 'Weiter'}
+          <i aria-hidden="true" />
+          <span>{jz.zustand.kurz}</span>
+          <Icon name="chevron-down" size={14} />
         </button>
-      </div>
-    </div>
-  ) : null;
-
-  const antwortListe = (
-    <FahrplanAntworten
-      antworten={liste}
-      gewaehlt={antwort?.key ?? null}
-      onWahl={antwortWaehlen}
-      form={bild ? 'reihe' : zweispaltig ? 'liste' : 'reihe-schmal'}
-    />
-  );
-
-  /** Die angetippte Antwort ausführlich — mit ihrem Weg zu den Einzelheiten. */
-  const antwortBanner = antwort ? (
-    <div className="vp-tb-antwort" role="status">
-      <p className="vp-tb-antwort-frage">
-        <Icon name="map-pin" size={15} />
-        {antwort.frage}
-        {antwort.zeit && <span className="vp-tb-antwort-zeit"> · ab {antwort.zeit}</span>}
-      </p>
-      <p className="vp-tb-antwort-text">{antwort.antwort}</p>
-      {antwort.zusatz &&
-        (antwort.nachtrag && nachtragHref ? (
-          <a className="vp-tb-antwort-zusatz" href={nachtragHref}>
-            {antwort.zusatz}
-          </a>
-        ) : (
-          <p className="vp-tb-antwort-zusatz">{antwort.zusatz}</p>
-        ))}
-      {antwort.notiz && <p className="vp-tb-antwort-notiz">{antwort.notiz}</p>}
-      <div className="vp-tb-reihe">
-        {antwort.details === 'erloese' ? (
-          <a className="vp-tb-link" href={erloeseHref}>
-            Zu den Erlösen ›
-          </a>
-        ) : (
-          <button type="button" className="vp-tb-link" onClick={() => hin(stationenRef.current)}>
-            Alle Stationen ›
-          </button>
-        )}
-        {!bild && !istJetzt && jetztI >= 0 ? (
-          <button type="button" className="vp-tb-zurueck" onClick={zurueckKnopf}>
-            <Icon name="history" size={14} />
-            Zurück zu jetzt
-          </button>
-        ) : (
-          <button type="button" className="vp-tb-zurueck" onClick={() => setAntwort(null)}>
-            Schließen
-          </button>
+        {zustandOffen && (
+          <div className="vp-tb-zustand-detail">
+            <p>{jz.zustand.lang}</p>
+            {held && <JetztMesswerte view={held} />}
+            {eingreifen}
+          </div>
         )}
       </div>
-    </div>
-  ) : null;
+    ) : null;
 
-  // EIN Weg zu allen Gründen der Viertelstunde (dem Erklär-Panel): in der Waage.
-  const warumKnopf = (
-    <button
-      type="button"
-      className="vp-tb-warum"
-      aria-expanded={warumOffen}
-      onClick={() => setWarumOffen((o) => !o)}
+  /** Gestern und morgen: der Tag in einem Satz statt des Jetzt. */
+  const tagSatz = satz ? <p className="vp-tb-tagsatz">{satz}</p> : null;
+
+  const kacheln = (form: 'kacheln' | 'spalten') => {
+    const nur = form === 'kacheln' ? liste.filter((a) => a.key !== 'weiter') : liste;
+    return (
+      <FahrplanAntworten
+        antworten={nur}
+        gewaehlt={antwort?.key ?? null}
+        onWahl={(a) => {
+          haptik('ziel');
+          setAntwort((cur) => (cur?.key === a.key ? null : a));
+        }}
+        form={form}
+        nachtragHref={nachtragHref}
+        erloeseHref={erloeseHref}
+      />
+    );
+  };
+
+  /** Das WARUM der Viertelstunde: ein Satz, die Waage, alle Gründe. */
+  const warumBlatt = (
+    <Modal
+      open={warumOffen}
+      onClose={() => {
+        setWarumOffen(false);
+        setAlleGruende(false);
+      }}
+      title={jz?.titel ? `Warum: ${jz.titel}?` : 'Warum?'}
+      blatt
     >
-      Alle Gründe ›
-    </button>
-  );
-  const panel = warumOffen ? warumPanel(auswahl, () => setWarumOffen(false)) : null;
-
-  /** Die Waage der Viertelstunde am Zeiger (E5) — mit dem Weg zu allen Gründen. */
-  const waageKarte = (
-    <section ref={waageRef} className="vp-tb-karte2 vp-tb-waagekarte" aria-label="Die Waage">
-      <div className="vp-tb-karte2-kopf">
-        <span className="vp-tb-kicker">Die Waage · {istJetzt ? 'jetzt' : v ? `${uhrzeit(v.von)} Uhr` : ''}</span>
-        <ProvBadge art="geplant" />
-      </div>
-      {w ? (
-        <FahrplanWaage waage={w} />
-      ) : (
-        <p className="vp-tb-fein">Für diese Viertelstunde ist keine Abwägung aufgezeichnet.</p>
+      {warumOffen && auswahl >= 0 && (
+        <div className="vp-tb-warumblatt vp-tb-blattinhalt">
+          {band?.warum && <p className="vp-tb-warumblatt-satz">{band.warum}</p>}
+          {w && <FahrplanWaage waage={w} />}
+          {/* Was gerade gemessen wird - hier immer erreichbar, auch wenn das Gerät ruhig ist. */}
+          {mitJetzt && held && <JetztMesswerte view={held} />}
+          {!alleGruende ? (
+            <button type="button" className="vp-tb-link" onClick={() => setAlleGruende(true)}>
+              Alle Gründe und Zahlen ›
+            </button>
+          ) : (
+            warumPanel(auswahl, () => setAlleGruende(false))
+          )}
+        </div>
       )}
-      <div className="vp-tb-reihe">{warumKnopf}</div>
-      {panel}
-    </section>
+    </Modal>
   );
 
-  /** Der Tag in Stationen — dieselben Phasen wie das Bild, Tipp für das Warum. */
-  const stationenKarte = (
-    <section ref={stationenRef} className="vp-tb-karte2" aria-label="Der Tag in Stationen">
-      <div className="vp-tb-karte2-kopf">
-        <h3 className="vp-tb-karte2-titel">Der Tag in Stationen</h3>
-        <ProvBadge art="geplant" />
-      </div>
+  /** Das Warum einer Phase (Bogen der Uhr, Block des Tagesbands). */
+  const phasenQuelle = phasenWahl?.quelle === 'folgetag' ? folgetag : tag;
+  const phasenFn = phasenWahl?.quelle === 'folgetag' ? phasenPanelFolgetag : phasenPanel;
+  const gewaehltePhase = phasenWahl ? phasenQuelle?.phasen.find((p) => p.phaseIndex === phasenWahl.phaseIndex) : null;
+  const phasenBlatt = (
+    <Modal
+      open={phasenWahl != null && phasenFn != null}
+      onClose={() => setPhasenWahl(null)}
+      title={gewaehltePhase ? `${gewaehltePhase.label} · ${uhrzeit(gewaehltePhase.von)}–${uhrzeit(gewaehltePhase.bis)}` : 'Phase'}
+      blatt
+    >
+      {phasenWahl != null && phasenFn ? (
+        <div className="vp-tb-blattinhalt">{phasenFn(phasenWahl.phaseIndex, () => setPhasenWahl(null))}</div>
+      ) : null}
+    </Modal>
+  );
+  const phaseOeffnen = (p: { quelle: UhrPhase['quelle']; phaseIndex: number }) => {
+    if ((p.quelle === 'folgetag' ? phasenPanelFolgetag : phasenPanel) == null) return;
+    setPhasenWahl({ quelle: p.quelle, phaseIndex: p.phaseIndex });
+  };
+
+  /** Ihr Tag: eine Zeile je Phase; ein Tipp öffnet ihr Warum im Blatt. */
+  const stationenListe = (
+    <>
       <ol className="vp-st">
-        {halte.map((st) => {
-          const offen = station === st.phaseIndex;
-          return (
-            <li
-              key={st.phaseIndex}
-              className={`vp-st-halt${st.vorbei ? ' is-vorbei' : ''}${st.laeuft ? ' is-jetzt' : ''}${RUHE_ROLLEN.has(st.role) ? ' is-ruhe' : ''}`}
-              style={{ ['--vp-st-farbe' as string]: roleColor(st.role, t) }}
+        {halte.map((st) => (
+          <li
+            key={st.phaseIndex}
+            className={`vp-st-halt${st.vorbei ? ' is-vorbei' : ''}${st.laeuft ? ' is-jetzt' : ''}${RUHE_ROLLEN.has(st.role) ? ' is-ruhe' : ''}`}
+            style={{ ['--vp-st-farbe' as string]: roleColor(st.role, t) }}
+          >
+            <span className="vp-st-punkt" aria-hidden="true">
+              <Icon name={ROLLEN_SYMBOL[st.role]} size={13} strokeWidth={2.2} stroke={RUHE_ROLLEN.has(st.role) ? t.ink : '#FFFFFF'} />
+            </span>
+            <button
+              type="button"
+              className="vp-st-zeile"
+              aria-haspopup="dialog"
+              onClick={() => {
+                haptik('tick');
+                phaseOeffnen({ quelle: 'tag', phaseIndex: st.phaseIndex });
+              }}
             >
-              <span className="vp-st-punkt" aria-hidden="true">
-                <Icon
-                  name={ROLLEN_SYMBOL[st.role]}
-                  size={13}
-                  strokeWidth={2.2}
-                  stroke={RUHE_ROLLEN.has(st.role) ? t.ink : '#FFFFFF'}
-                />
+              <span className="vp-st-zeit">{st.zeit}</span>
+              <span className="vp-st-name">
+                {st.laeuft && <span className="vp-st-jetzt">Jetzt</span>}
+                {st.label}
+                {st.abweichung && <span className="vp-st-abw">{st.abweichung}</span>}
               </span>
-              <button
-                type="button"
-                className="vp-st-zeile"
-                aria-expanded={offen}
-                onClick={() => (phasenPanel ? setStation(offen ? null : st.phaseIndex) : undefined)}
-              >
-                <span className="vp-st-haupt">
-                  <span className="vp-st-zeit">
-                    {st.vorbei && <Icon name="check" size={12} aria-hidden="true" />}
-                    {st.zeit}
-                  </span>
-                  <span className="vp-st-name">
-                    {st.laeuft && <span className="vp-st-jetzt">Jetzt</span>}
-                    {st.label}
-                  </span>
+              {st.ladestand && (
+                <span className={`vp-st-soc${st.gemessen ? ' is-gemessen' : ''}`} title={st.gemessen ? 'gemessen' : st.vorbei ? 'war geplant' : 'geplant'}>
+                  {st.ladestand}
                 </span>
-                {st.ladestand && <span className="vp-st-soc">{st.ladestand}</span>}
-                {st.grund && <span className="vp-st-grund">{st.grund}</span>}
-              </button>
-              {offen && phasenPanel && (
-                <div className="vp-st-detail">{phasenPanel(st.phaseIndex, () => setStation(null))}</div>
               )}
-            </li>
-          );
-        })}
+              <Icon name="chevron-right" size={14} className="vp-st-pfeil" aria-hidden="true" />
+            </button>
+          </li>
+        ))}
       </ol>
       {morgen && <p className="vp-tb-fein">{morgen}</p>}
-      {art === 'morgen' ? (
-        <p className="vp-tb-fein">
-          Alles ist geplant: VoltPilot rechnet den Plan für morgen bis dahin alle 15 Minuten neu.
-        </p>
-      ) : (
-        <p className="vp-tb-fein">
-          Vergangenes ist der Plan, der damals galt. Was wirklich passiert ist, steht unter{' '}
-          <a href={`#/anlage/${siteId}/messwerte`}>Messwerte</a>.
-        </p>
-      )}
-    </section>
+      <p className="vp-tb-fein">
+        {art === 'morgen'
+          ? 'Geplant – VoltPilot rechnet den Plan bis dahin alle 15 Minuten neu.'
+          : ist.some((x) => x != null)
+            ? 'Ladestand: vergangene Phasen gemessen, kommende geplant.'
+            : 'Vergangene Phasen zeigen den Plan, der damals galt.'}{' '}
+        <a href={`#/anlage/${siteId}/messwerte`}>Messwerte ›</a>
+      </p>
+    </>
   );
 
-  /** Worauf der Plan achtet — Eingaben, Grenzen, Hinweise; und der Weg zu allen Werten. */
-  const annahmenKarte =
+  /** Gut zu wissen: Eingaben und Grenzen des Plans, der Weg zu allen Werten. */
+  const annahmenListe =
     annahmen.length > 0 || onAlleWerte ? (
-      <section className="vp-tb-karte2" aria-label="Worauf Ihr Plan achtet">
-        <div className="vp-tb-karte2-kopf">
-          <h3 className="vp-tb-karte2-titel">Worauf Ihr Plan achtet</h3>
-          {berechnung && <InfoTip title="Wie der Fahrplan berechnet wird">{berechnung}</InfoTip>}
-        </div>
+      <>
         <ul className="vp-annahmen">
           {annahmen.map((a) => (
             <li key={a.key}>
@@ -809,176 +414,165 @@ export function FahrplanTagesbild({
             </button>
           </div>
         )}
-      </section>
+      </>
     ) : null;
+
+  const tagTitel = art === 'gestern' ? 'Der Tag gestern' : art === 'morgen' ? 'Der Tag morgen' : 'Ihr Tag';
 
   if (bild) {
-    // Das Jetzt-Band (Prototyp): links was geschieht, in der Mitte warum,
-    // rechts der Zustand und der Weg zum Eingreifen - oder zurück zu jetzt.
-    const bandKarte = band ? (
-      <section className={`vp-tb-band${breite < BAND_DREISPALTIG_AB_PX ? ' is-gestapelt' : ''}`} aria-live="polite">
-        <div className="vp-tb-band-l">
-          {band.role && (
-            <span
-              className="vp-tb-band-ic"
-              style={{ background: roleColor(band.role, t), color: RUHE_ROLLEN.has(band.role) ? t.ink : '#FFFFFF' }}
-              aria-hidden="true"
-            >
-              <Icon name={ROLLEN_SYMBOL[band.role]} size={20} strokeWidth={2.1} />
-            </span>
-          )}
-          <div className="vp-tb-band-t">
-            <span className="vp-tb-moment-kopf">
-              {band.kopf}
-              {istJetzt && held && <ProvBadge art={held.badgeArt} />}
-            </span>
-            {band.was && <span className="vp-tb-band-was">{band.was}</span>}
-            {band.zahl && <span className="vp-tb-moment-zahl">{band.zahl}</span>}
-            {istJetzt && held?.adjust && <span className="vp-tb-moment-zahl">{held.adjust}</span>}
-            {istJetzt && held && <JetztMesswerte view={held} />}
-          </div>
-        </div>
-        {band.warum && (
-          <button type="button" className="vp-tb-warumsatz" onClick={() => hin(waageRef.current)}>
-            <b>Warum?</b> {band.warum} <span className="vp-tb-mehr">Zur Waage ›</span>
-          </button>
-        )}
-        <div className="vp-tb-band-r">
-          {istJetzt ? (
-            <>
-              {zustand}
-              {eingreifen}
-            </>
-          ) : (
-            zurueckKnopfEl
-          )}
-        </div>
-      </section>
-    ) : null;
-
     return (
       <div ref={huelle} className="vp-tb is-bild">
-        {kopf(false)}
-        {bandKarte}
-        <section className="vp-tb-bildkarte" aria-label="Tagesverlauf">
-          <div className="vp-tb-bildleiste">
-            <span className="vp-tb-hinweis" aria-hidden="true">
-              Maus darüber: Einzelheiten
-            </span>
-            {werteLeiste}
+        <section className="vp-tb-jetzt" aria-live="polite">
+          <div className="vp-tb-jetzt-haupt">
+            {mitJetzt || wahl != null ? statusZeile : tagSatz}
+            {zustandZeile}
+            <div className="vp-tb-jetzt-knoepfe">
+              {wahl != null && jetztI >= 0 && (
+                <button type="button" className="vp-tb-zurueck" onClick={zurueck}>
+                  <Icon name="history" size={14} />
+                  Zurück zu jetzt
+                </button>
+              )}
+              {mitJetzt && !jz?.zustand && eingreifen}
+            </div>
           </div>
-          <FahrplanBildfahrplan
+          {kacheln('spalten')}
+        </section>
+        <section className="vp-tb-bandkarte" aria-label="Tagesverlauf">
+          <div className="vp-tb-bandleiste">
+            <p className="vp-tb-bandsatz">{art === 'heute' && satz ? satz : 'Der Tag im Bild'}</p>
+            <span className="vp-tb-legende" aria-hidden="true">
+              <span>
+                <i className="is-ist" /> gemessen
+              </span>
+              <span>
+                <i className="is-plan" /> geplant
+              </span>
+            </span>
+          </div>
+          <FahrplanTagesband
             tag={tag}
-            breite={Math.max(0, breite - 2 * BILDKARTE_RAND)}
-            auswahl={auswahl}
+            ist={ist}
+            breite={Math.max(0, breite - 2 * BANDKARTE_RAND)}
+            auswahl={Math.max(0, auswahl)}
             istJetzt={istJetzt}
+            gewaehlt={wahl != null}
             markierung={antwort?.ziel ?? null}
-            fokus={bildFokus}
-            onWahl={waehlen}
-            onJetzt={zurueckZuJetzt}
+            onWahl={(i) => setWahl(i === jetztI ? null : i)}
+            onJetzt={zurueck}
+            onPhase={(p) => phaseOeffnen({ quelle: 'tag', phaseIndex: p })}
           />
         </section>
-        {antwortListe}
-        {antwortBanner}
-        {/* Ohne Annahmen (gestern: sie beschreiben den Plan von JETZT) stehen
-            Waage und Stationen nebeneinander, statt eine Spalte leer zu lassen. */}
         <div className="vp-tb-unten">
-          {annahmenKarte ? (
-            <>
-              <div className="vp-tb-spalte">
-                {waageKarte}
-                {stationenKarte}
+          <section className="vp-tb-karte2" aria-label={tagTitel}>
+            <h3 className="vp-tb-karte2-titel">{tagTitel}</h3>
+            {stationenListe}
+          </section>
+          {annahmenListe && (
+            <section className="vp-tb-karte2" aria-label="Gut zu wissen">
+              <div className="vp-tb-karte2-kopf">
+                <h3 className="vp-tb-karte2-titel">Gut zu wissen</h3>
+                {berechnung && <InfoTip title="Wie der Fahrplan berechnet wird">{berechnung}</InfoTip>}
               </div>
-              <div className="vp-tb-spalte">{annahmenKarte}</div>
-            </>
-          ) : (
-            <>
-              <div className="vp-tb-spalte">{waageKarte}</div>
-              <div className="vp-tb-spalte">{stationenKarte}</div>
-            </>
+              {annahmenListe}
+            </section>
           )}
         </div>
+        {warumBlatt}
+        {phasenBlatt}
       </div>
     );
   }
 
-  const uhrTeil = (
-    <FahrplanUhr
-      tag={tag}
-      modell={uhr}
-      auswahl={auswahl}
-      istJetzt={istJetzt}
-      zeiger={zeiger}
-      fokus={wirkFokus}
-      markierung={antwort?.ziel ?? null}
-      spielt={spielt}
-      onWahl={waehlen}
-      onJetzt={zurueckZuJetzt}
-      onSpielen={spielen}
-      onErklaeren={() => (tour != null ? tourEnde() : tourStarten(true))}
-      onBeruehrt={beruehrt}
-      tagWort={art === 'gestern' ? 'Gestern' : art === 'morgen' ? 'Morgen' : null}
-    />
+  const uhrKarte = (
+    <section className="vp-tb-uhrkarte" aria-label="Die Uhr">
+      <FahrplanUhr
+        modell={uhr}
+        beschriftung={mitJetzt ? 'Die Uhr: was ab jetzt kommt' : `Die Uhr: ${uhrUnterschrift(fenster)}`}
+        onPhase={phaseOeffnen}
+      />
+      {fenster.zeiger == null ? (
+        <div className="vp-tb-haelfte" role="group" aria-label="Tageshälfte">
+          {(['vormittag', 'nachmittag'] as const).map((h) => (
+            <button
+              key={h}
+              type="button"
+              aria-pressed={haelfte === h}
+              onClick={() => {
+                if (h !== haelfte) haptik('tick');
+                setHaelfte(h);
+              }}
+            >
+              {h === 'vormittag' ? 'Vormittag' : 'Nachmittag'}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <span className="vp-tb-uhr-unter">{uhrUnterschrift(fenster)}</span>
+      )}
+    </section>
   );
 
-  // Unter der Uhr: die angetippte Antwort ersetzt die Zeile zum Moment (Prototyp).
-  const unterDerUhr = (
-    <>
-      {antwortBanner ?? momentText}
-      {!antwortBanner && zurueckKnopfEl && <div className="vp-tb-reihe is-mitte">{zurueckKnopfEl}</div>}
-    </>
-  );
-
-  const zustandZeile = istJetzt ? (
-    <div className="vp-tb-todo">
-      {zustand}
-      {held && <JetztMesswerte view={held} />}
-      {eingreifen}
+  /** Eingeklappte Abschnitte am Telefon: Ihr Tag, Gut zu wissen. */
+  const abschnitte = (
+    <div className="vp-tb-zu">
+      <button type="button" className="vp-tb-zu-kopf" aria-expanded={tagOffen} onClick={umschalten(setTagOffen)}>
+        <span>{tagTitel}</span>
+        <Icon name="chevron-down" size={18} />
+      </button>
+      {tagOffen && <div className="vp-tb-zu-inhalt">{stationenListe}</div>}
+      {annahmenListe && (
+        <>
+          <button type="button" className="vp-tb-zu-kopf" aria-expanded={wissenOffen} onClick={umschalten(setWissenOffen)}>
+            <span>Gut zu wissen</span>
+            <Icon name="chevron-down" size={18} />
+          </button>
+          {wissenOffen && (
+            <div className="vp-tb-zu-inhalt">
+              {annahmenListe}
+              {berechnung && <p className="vp-tb-fein">{berechnung}</p>}
+            </div>
+          )}
+        </>
+      )}
     </div>
-  ) : null;
+  );
+
+  const kopfTeil = mitJetzt ? (
+    <>
+      {statusZeile}
+      {zustandZeile}
+    </>
+  ) : (
+    tagSatz
+  );
 
   if (zweispaltig) {
     return (
       <div ref={huelle} className="vp-tb is-uhr is-zweispaltig">
-        {kopf(false)}
         <div className="vp-tb-spalten">
-          <div className="vp-tb-bildspalte">
-            {uhrTeil}
-            {werteLeiste}
-            {ebenenNotiz}
-            {unterDerUhr}
-            {waageKarte}
-          </div>
+          <div className="vp-tb-bildspalte">{uhrKarte}</div>
           <div className="vp-tb-textspalte">
-            {tourKarte}
-            {antwortListe}
-            {warumZeile}
-            {zustandZeile}
-            {stationenKarte}
-            {annahmenKarte}
+            {kopfTeil}
+            {kacheln('kacheln')}
+            {abschnitte}
           </div>
         </div>
+        {warumBlatt}
+        {phasenBlatt}
       </div>
     );
   }
 
-  // Telefon (E1/E9): Kopfsatz, die Uhr, Werte und Moment, direkt darunter die
-  // Antworten — alle im ersten Bildschirm. Warum, Zustand, Waage, Stationen
-  // und Annahmen folgen darunter.
+  // Telefon: Status, Uhr, zwei Kacheln - dann eingeklappt Ihr Tag und Gut zu wissen.
   return (
     <div ref={huelle} className="vp-tb is-uhr">
-      {kopf(true)}
-      {uhrTeil}
-      {werteLeiste}
-      {ebenenNotiz}
-      {unterDerUhr}
-      {antwortListe}
-      {warumZeile}
-      {zustandZeile}
-      {waageKarte}
-      {stationenKarte}
-      {annahmenKarte}
-      {tourKarte}
+      {kopfTeil}
+      {uhrKarte}
+      {kacheln('kacheln')}
+      {abschnitte}
+      {warumBlatt}
+      {phasenBlatt}
     </div>
   );
 }
@@ -1023,12 +617,5 @@ export function TagOhneBildKarte({
   );
 }
 
-/** Innenrand der Bildkarte (px, 24 px Polster + 1 px Rand) — das Bild zeichnet 1 : 1 auf die Breite darin. */
-const BILDKARTE_RAND = 25;
-
-/**
- * Ab dieser Inhaltsbreite steht „Warum?" im Jetzt-Band ZWISCHEN dem Moment und
- * dem Zustand; schmaler (Laptops bis ~1390 px Fenster) darunter, über die
- * volle Breite - sonst drückten die beiden Seiten den Satz auf neun Zeilen.
- */
-const BAND_DREISPALTIG_AB_PX = 1080;
+/** Innenrand der Bandkarte (px, 24 px Polster + 1 px Rand) - das Band zeichnet 1 : 1 auf die Breite darin. */
+const BANDKARTE_RAND = 25;

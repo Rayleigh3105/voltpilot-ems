@@ -167,22 +167,17 @@
       },
       {
         "x": 4.36,
-        "y": 19.92,
-        "text": "Das Jetzt-Band: was der Speicher gerade tut, warum, und ob Sie etwas tun müssen."
+        "y": 17.47,
+        "text": "Was der Speicher gerade tut, in Stichworten - und daneben, was als Nächstes kommt, ob er bis zum Abend reicht und was es bringen soll."
       },
       {
         "x": 6.46,
-        "y": 32.88,
-        "text": "Von oben nach unten: der Preis, der den Plan treibt, Sonne und Verbrauch, der Ladestand als Linie zwischen leer und voll und die Tätigkeit. Mit der Maus zeigt eine Lupe jede Viertelstunde."
-      },
-      {
-        "x": 4.36,
-        "y": 55.61,
-        "text": "Die Antworten gelten für die gewählte Viertelstunde. Ein Klick markiert ihre Stelle im Bild."
+        "y": 34.16,
+        "text": "Oben die Tätigkeiten mit Uhrzeit, darunter der Ladestand - links gemessen, rechts geplant -, unten Sonne und Preis. Mit der Maus zeigt eine Lupe jede Viertelstunde."
       },
       {
         "x": 52.68,
-        "y": 66.3,
+        "y": 59.56,
         "text": "Tarif, Grenzen und Hinweise, mit denen der Plan rechnet. Hier öffnet sich auch das Diagramm mit allen Werten."
       }
     ]
@@ -287,23 +282,23 @@
     "title": "Wie gut die Vorhersage zuletzt traf",
     "file": "prognose.png",
     "width": 552,
-    "height": 646,
+    "height": 617,
     "alt": "Wie gut die Vorhersage zuletzt traf. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
         "x": 8.15,
-        "y": 5.68,
+        "y": 5.94,
         "text": "Hier stehen die Angaben, mit denen der Fahrplan rechnet - auch die Vorhersage."
       },
       {
         "x": 13.95,
-        "y": 72.54,
+        "y": 79.35,
         "text": "Die Zeile nennt, wie weit Verbrauch und PV zuletzt im Schnitt je Viertelstunde danebenlagen - in kW, nicht in Prozent."
       },
       {
         "x": 13.95,
-        "y": 82.6,
-        "text": "Vorhersagen sind Annahmen; der Fahrplan wird laufend neu gerechnet."
+        "y": 68.82,
+        "text": "Vorhersagen sind Annahmen; der Fahrplan wird alle 15 Minuten neu gerechnet."
       }
     ]
   },
@@ -577,11 +572,11 @@
     ]
   },
   "fahrplan-uhr": {
-    "title": "Fahrplan am Telefon: die Tagesuhr",
+    "title": "Fahrplan am Telefon: die Uhr",
     "file": "fahrplan-uhr.png",
     "width": 390,
     "height": 844,
-    "alt": "Fahrplan am Telefon: die Tagesuhr. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
+    "alt": "Fahrplan am Telefon: die Uhr. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
         "x": 9.23,
@@ -590,18 +585,18 @@
       },
       {
         "x": 9.23,
-        "y": 31.13,
-        "text": "Ein Tag ist ein Kreis: außen Sonne und Strompreis, der breite Ring zeigt, was der Speicher tun soll, innen der Ladestand."
+        "y": 25.47,
+        "text": "Was der Speicher gerade tut. Ein Tipp zeigt, warum."
+      },
+      {
+        "x": 12.05,
+        "y": 33.94,
+        "text": "Die Uhr geht wie jede andere. Der Ring zeigt, was ab jetzt kommt."
       },
       {
         "x": 9.23,
-        "y": 74.49,
-        "text": "Die Werte am Zeiger. Ein Tipp hebt den passenden Ring hervor und erklärt ihn."
-      },
-      {
-        "x": 9.23,
-        "y": 86.94,
-        "text": "Ein Tipp auf eine Antwort dreht den Zeiger an ihre Stelle."
+        "y": 79.62,
+        "text": "Reicht der Speicher bis zum Abend, und was soll es heute bringen?"
       }
     ]
   },

@@ -38,23 +38,23 @@ export const everydayArticles: HelpArticle[] = [
   {
     id: 'fahrplan', category: 'alltag', title: 'Den Fahrplan verstehen',
     summary: 'Wann Ihr Speicher laden oder entladen soll und wie Sie Plan und Ausführung auseinanderhalten.',
-    keywords: ['Zeitplan', 'Schedule', 'Laden', 'Entladen', 'Batterie', 'Akku', 'SoC', 'Warum', 'Tagesuhr', 'Bildfahrplan', 'Gestern', 'Morgen'],
+    keywords: ['Zeitplan', 'Schedule', 'Laden', 'Entladen', 'Batterie', 'Akku', 'SoC', 'Warum', 'Tagesuhr', 'Tagesband', 'Gestern', 'Morgen'],
     prerequisite: 'Ein Speicher beziehungsweise eine Anlage, für die ein Fahrplan angeboten wird.',
     sections: [
       { id: 'lesen', title: 'Der Tag in einem Bild', paragraphs: [
-        "Ganz oben sagt ein Satz, was der Speicher heute tut, und das Jetzt-Band, was er gerade tut, warum, und ob Sie etwas tun müssen. Das Bild darunter zeigt den ganzen Tag: oben der Preis, der den Plan treibt, darunter Sonne und Verbrauch, in der Mitte der Ladestand als Linie zwischen leer und voll, unten die Tätigkeit des Speichers. Wer eine Spalte von oben nach unten liest, sieht Ursache und Wirkung zur selben Uhrzeit. Was schon vorbei ist, zeigt den Plan, der damals galt; gemessen sind Sonne und Verbrauch.",
-        "Welcher Preis oben steht, hängt von Ihrem Tarif ab: Ändert sich Ihr Strompreis über den Tag, etwa bei einem dynamischen Tarif oder mit Hoch- und Niedertarif, steht er dort. Ist er fest und vermarkten Sie Ihren Strom direkt, steht dort der Börsenpreis, zu dem verkauft wird. Bei festem Preis ohne Vermarktung entfällt die Preisspur: Der Plan folgt dann Sonne und Verbrauch.",
-        "Die Tätigkeiten heißen überall gleich: Sonne speichern, Günstig aus dem Netz laden, Verbrauch decken, Warten und Einspeisung pausieren. Unter dem Bild stehen die Antworten auf die häufigsten Fragen zum Tag; ein Klick markiert ihre Stelle im Bild. Darunter folgen die Waage, der Tag in Stationen und „Worauf Ihr Plan achtet“ mit Tarif, Grenzen und Hinweisen. Dort öffnet „Alle Werte im Diagramm“ das bisherige Diagramm mit allen Spuren.",
+        "Ganz oben steht, was der Speicher gerade tut, darunter in Stichworten der Ladestand, ein Grund wie „voll“ und der nächste Wechsel. Folgt Ihr Gerät dem Plan nicht oder führt es bewusst nach, steht eine kurze Gerätezeile darunter; ein Tipp zeigt den ganzen Satz. Ein Tipp auf die oberste Zeile öffnet das Warum: einen Satz, die Waage und alle Gründe.",
+        "Am Rechner zeigt das Tagesband den ganzen Tag: oben die Tätigkeiten des Speichers mit Uhrzeit, darunter der Ladestand – links von jetzt gemessen, rechts geplant –, unten Sonne und der Preis, der den Plan treibt. Ändert sich Ihr Strompreis über den Tag, etwa bei einem dynamischen Tarif oder mit Hoch- und Niedertarif, steht er dort; ist er fest und vermarkten Sie Ihren Strom direkt, der Börsenpreis. Bei festem Preis ohne Vermarktung entfällt die Preisspur. Mit der Maus zeigt eine Lupe jede Viertelstunde, ein Klick auf eine Tätigkeit ihr Warum.",
+        "Die Tätigkeiten heißen überall gleich: Sonne speichern, Günstig aus dem Netz laden, Verbrauch decken, Warten und Einspeisung pausieren. Die Farbe sagt die Richtung des Speichers – grün lädt, beere gibt ab, grau wartet –, das Symbol wofür. Die Kacheln beantworten, was als Nächstes kommt, ob der Speicher bis zum Abend reicht und was die Steuerung heute bringen soll. „Ihr Tag“ listet alle Phasen, vergangene mit gemessenem Ladestand; „Gut zu wissen“ nennt Tarif, Grenzen und Hinweise und öffnet „Alle Werte im Diagramm“.",
       ], figure: 'fahrplan' },
-      { id: 'uhr', title: 'Die Tagesuhr am Telefon', paragraphs: [
-        "Am Telefon ist der Tag ein Kreis: oben Mittag, unten Mitternacht. Außen stehen Sonne und Preis, der breite Ring zeigt die Tätigkeit, innen der Ladestand. Ziehen Sie den Zeiger oder tippen Sie auf eine Uhrzeit; Werte und Antworten gelten dann für diesen Moment. Ein Tipp in die Mitte holt die Gegenwart zurück, das Fragezeichen erklärt die Uhr Schritt für Schritt.",
+      { id: 'uhr', title: 'Die Uhr am Telefon', paragraphs: [
+        "Am Telefon geht die Uhr wie jede andere: 12 Stunden rund, der Zeiger steht auf der Uhrzeit von jetzt. Der Ring zeigt, was ab jetzt kommt, elf Stunden nach vorn und über Mitternacht hinaus; außen am Ring steht die Uhrzeit jedes Wechsels. Ein Tipp auf einen Abschnitt des Rings zeigt, warum der Speicher das dann tut.",
       ], figure: 'fahrplan-uhr' },
       { id: 'tage', title: 'Gestern, heute, morgen', paragraphs: [
-        "Über dem Bild wählen Sie den Tag. Gestern zeigt den Plan, wie er galt: für jede Viertelstunde den Stand, mit dem sie begann, dazu gemessene Sonne und gemessenen Verbrauch und unter „Was hat es gebracht?“, was die Steuerung an diesem Tag gebracht hat. Ob der Speicher wirklich gereicht hat, sagen die Messwerte.",
+        "Über dem Bild wählen Sie den Tag. Gestern zeigt den Plan, wie er galt, und den gemessenen Ladestand dazu; die Kachel nennt, was die Steuerung an diesem Tag gebracht hat. Am Telefon zeigt die Uhr dann den Vor- oder Nachmittag.",
         "Morgen zeigt den jüngsten Plan für den nächsten Tag. Er entsteht, sobald die Börsenpreise für morgen gegen 13 Uhr veröffentlicht sind, und wird bis dahin alle 15 Minuten neu gerechnet; vorher steht dort, wann er kommt. Was der Speicher gerade tut und ob Sie eingreifen müssen, steht nur bei Heute.",
       ] },
       { id: 'gruende', title: 'Warum die Batterie gerade so geplant ist', paragraphs: [
-        "PV, Bedarf, Tarif, Reserven und Grenzen bestimmen den Plan. Ein günstiger Börsenpreis allein erlaubt noch kein Netzladen; ein hoher Preis verlangt keine vollständige Entladung. Die Waage unter den Antworten stellt die zwei Werte je Kilowattstunde nebeneinander, zwischen denen entschieden wurde; „Alle Gründe“ öffnet die ausführliche Erklärung.",
+        "PV, Bedarf, Tarif, Reserven und Grenzen bestimmen den Plan. Ein günstiger Börsenpreis allein erlaubt noch kein Netzladen; ein hoher Preis verlangt keine vollständige Entladung. Die Waage im Warum stellt die zwei Werte je Kilowattstunde nebeneinander, zwischen denen entschieden wurde; „Alle Gründe und Zahlen“ öffnet die ausführliche Erklärung.",
       ] },
       { id: 'kontrolle', title: 'Plan ist nicht gleich Ausführung', paragraphs: [
         "Ein Plan belegt eine Absicht. Geräteantworten und Messwerte zeigen, was daraus wurde. Fehlt der Plan, prüfen Sie Verbindung, Speicherzuordnung und die Hinweise unter Steuerung.",
@@ -131,7 +131,7 @@ export const everydayArticles: HelpArticle[] = [
         "Im Bild ist gemessener Sonnenstrom gefüllt und erwarteter schraffiert; die dunkle Linie markiert jetzt. Liegt keine Sonnenstrom-Prognose vor, zeigt das Bild die Sonnenstärke laut Wetterdienst und sagt das dazu. Lokales Wetter kann von der Vorhersage abweichen; bei unplausiblen Ortsangaben prüfen Sie den Standort.",
       ], figure: 'wetter' },
       { id: 'modelle', title: 'Prognose und Prognosequalität', paragraphs: [
-        "Im Fahrplan steht unter „Worauf Ihr Plan achtet“, wie weit die Vorhersage zuletzt danebenlag: die mittlere Abweichung je Viertelstunde für Verbrauch und PV. Verglichen werden gespeicherte Vorhersagen mit Messungen; wenige ausgewertete Tage oder Datenlücken begrenzen den Vergleich. Welches Vorhersagemodell plant, betreut VoltPilot.",
+        "Im Fahrplan steht unter „Gut zu wissen“, wie weit die Vorhersage zuletzt danebenlag: die mittlere Abweichung je Viertelstunde für Verbrauch und PV. Verglichen werden gespeicherte Vorhersagen mit Messungen; wenige ausgewertete Tage oder Datenlücken begrenzen den Vergleich. Welches Vorhersagemodell plant, betreut VoltPilot.",
       ], figure: 'prognose' },
       { id: 'bewertung', title: 'Abweichungen mit ihrer Einheit lesen', paragraphs: [
         "Lesen Sie Fehlermetrik und Einheit: Eine Abweichung in kW ist keine Prozentgenauigkeit. Vergleichen Sie dieselbe Größe und denselben Zeitraum. Ein historisch besseres Modell garantiert keinen besseren einzelnen Tag.",

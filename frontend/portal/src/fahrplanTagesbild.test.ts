@@ -1,22 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { tagModell, type TagSlot } from './fahrplanTag';
 import {
-  EINFUEHRUNG,
-  einfuehrungFuer,
   ROLLEN_SYMBOL,
-  ebenenSatz,
   indexImLauf,
+  jetztZeile,
   kopfsatz,
   kurzDatum,
-  ladestandText,
   lupe,
   momentBand,
-  momentZeile,
   stationen,
   tagDatum,
   tagesSchalter,
   tagOhneBild,
-  werteAmZeiger,
 } from './fahrplanTagesbild';
 import type { JetztHeldView } from './fahrplanJetzt';
 import { NBSP } from './format';
@@ -64,127 +59,11 @@ function modell(over: (i: number) => Partial<TagSlot> = () => ({})) {
   return tagModell({ slots: tag(LAUF, over), slotMinutes: 15, now: JETZT, plantKind: 'eigenverbrauch' });
 }
 
-describe('momentZeile · die Zeile zur Viertelstunde am Zeiger', () => {
-  const t = modell((i) => ({ batteryKw: i === 56 ? 2.2 : i === 30 ? -1.5 : 0, socPct: 40 + i / 4 }));
-
-  it('nennt jetzt mit Uhrzeit, das Wort der Phase und die geplanten Zahlen', () => {
-    expect(momentZeile(t, 56, true)).toEqual({
-      art: 'jetzt',
-      zeit: 'Jetzt · 14:10',
-      was: 'Günstig aus dem Netz laden',
-      role: 'guenstig_laden',
-      plan: `Geplant: laden mit 2,2${NBSP}kW · Ladestand danach 54${NBSP}%`,
-    });
-  });
-
-  it('sagt bei Vergangenem, dass es der Plan WAR - nie eine Messung', () => {
-    const z = momentZeile(t, 30, false)!;
-    expect(z.art).toBe('vorbei');
-    expect(z.zeit).toBe('07:30–07:45 Uhr');
-    expect(z.plan).toBe(`War geplant: abgeben mit 1,5${NBSP}kW · Ladestand danach 48${NBSP}%`);
-  });
-
-  it('sagt „kein Laden, kein Abgeben" statt einer 0 - und lässt Fehlendes weg', () => {
-    const ohne = modell(() => ({ batteryKw: 0, socPct: null }));
-    expect(momentZeile(ohne, 70, false)!.plan).toBe('Geplant: kein Laden, kein Abgeben');
-    const nichts = modell(() => ({ batteryKw: null, socPct: null }));
-    expect(momentZeile(nichts, 70, false)!.plan).toBeNull();
-    expect(momentZeile(ohne, 200, false)).toBeNull();
-  });
-});
-
-describe('werteAmZeiger · die ablesbare Legende', () => {
-  it('liest Sonne gemessen für Vergangenes, erwartet für Kommendes', () => {
-    const t = modell((i) => ({ pvKw: 3, measuredPvKw: i < 57 ? 2.5 : 9 }));
-    const vorbei = werteAmZeiger(t, 50);
-    expect(vorbei[0]).toEqual({
-      ebene: 'sonne',
-      label: 'Sonne',
-      wert: `2,5${NBSP}kW`,
-      herkunft: 'gemessen',
-      satz: `Sonne: 2,5${NBSP}kW, gemessen`,
-    });
-    // Eine „Messung" in der Zukunft gibt es nicht.
-    expect(werteAmZeiger(t, 70)[0]).toMatchObject({ wert: `3,0${NBSP}kW`, herkunft: 'erwartet' });
-  });
-
-  it('nennt den Börsenpreis beim Namen, wenn der Bezugspreis fehlt', () => {
-    const t = modell((i) => ({ importPriceCtKwh: i === 3 ? null : 30, priceEurMwh: 120 }));
-    expect(werteAmZeiger(t, 70)[1]).toEqual({
-      ebene: 'preis',
-      label: 'Preis',
-      wert: `12,0${NBSP}ct`,
-      herkunft: 'Börse',
-      satz: `Börsenpreis: 12,0${NBSP}ct/kWh`,
-    });
-    expect(werteAmZeiger(modell(), 70)[1].herkunft).toBe('Bezug');
-  });
-
-  it('sagt beim Speicher, was geplant ist - „war geplant" für Vergangenes', () => {
-    const t = modell((i) => ({ batteryKw: i === 30 ? -1.5 : 2 }));
-    expect(werteAmZeiger(t, 30)[2]).toMatchObject({
-      wert: `1,5${NBSP}kW`,
-      herkunft: 'war geplant',
-      satz: `Speicher: gibt ab 1,5${NBSP}kW, war geplant`,
-    });
-    expect(werteAmZeiger(t, 70)[2]).toMatchObject({
-      wert: `2,0${NBSP}kW`,
-      herkunft: 'geplant',
-      satz: `Speicher: lädt 2,0${NBSP}kW, geplant`,
-    });
-    expect(werteAmZeiger(modell(() => ({ batteryKw: 0 })), 70)[2]).toMatchObject({ wert: 'ruht', herkunft: 'geplant' });
-  });
-
-  it('zeigt „–" statt einer erfundenen 0', () => {
-    const t = modell(() => ({ pvKw: null, socPct: null, batteryKw: null }));
-    const w = werteAmZeiger(t, 70);
-    expect(w.map((x) => x.wert)).toEqual(['–', `30,0${NBSP}ct`, '–', '–']);
-    expect(w[0].herkunft).toBeNull();
-  });
-
-  it('hat ohne treibenden Preis (fester Tarif) keine Preiszelle', () => {
-    const fest = tagModell({ slots: tag(LAUF), slotMinutes: 15, now: JETZT, plantKind: 'eigenverbrauch', tarifArt: 'fest' });
-    // Der Bezug ist den ganzen Tag 30 ct: flach, also keine Preiszelle.
-    expect(werteAmZeiger(fest, 70).map((x) => x.ebene)).toEqual(['sonne', 'taetigkeit', 'ladestand']);
-  });
-});
-
-describe('Einführung und Ebenen-Sätze (E11)', () => {
-  it('führt in fünf Schritten Ring für Ring, zuletzt der Zeiger', () => {
-    expect(EINFUEHRUNG.map((s) => s.ebene)).toEqual(['sonne', 'preis', 'taetigkeit', 'ladestand', 'zeiger']);
-  });
-
-  it('nennt günstigste und teuerste Viertelstunde mit Uhrzeit', () => {
-    const t = modell((i) => ({ importPriceCtKwh: i === 57 ? 19.3 : i === 78 ? 50.3 : 30 }));
-    expect(ebenenSatz(t, 'preis')).toBe(
-      `Der blaue Ring ist Ihr Strompreis je Viertelstunde: hell günstig, dunkel teuer. Heute am günstigsten um 14:15 Uhr (19,3${NBSP}ct/kWh), am teuersten um 19:30 Uhr (50,3${NBSP}ct/kWh).`,
-    );
-  });
-
-  it('hat für jede Ebene einen Satz', () => {
-    const t = modell();
-    for (const s of EINFUEHRUNG) expect(ebenenSatz(t, s.ebene).length).toBeGreaterThan(40);
-  });
-
-  it('erklärt nur Ringe, die es gibt: ohne Preis vier Schritte, bei der Börse ihr Name', () => {
-    const mit = (tarifArt: 'fest' | 'dynamisch', plantKind: 'eigenverbrauch' | 'direktvermarktung', bezug?: (i: number) => number) =>
-      tagModell({ slots: tag(LAUF, bezug ? (i) => ({ importPriceCtKwh: bezug(i) }) : undefined), slotMinutes: 15, now: JETZT, plantKind, tarifArt });
-    expect(einfuehrungFuer(mit('fest', 'eigenverbrauch')).map((s) => s.ebene)).toEqual(['sonne', 'taetigkeit', 'ladestand', 'zeiger']);
-    expect(einfuehrungFuer(mit('fest', 'direktvermarktung'))[1]).toEqual({ ebene: 'preis', titel: 'Börsenpreis' });
-    expect(einfuehrungFuer(mit('dynamisch', 'eigenverbrauch', (i) => 20 + i / 10))).toBe(EINFUEHRUNG);
-  });
-});
-
 describe('Helfer', () => {
   it('findet eine Viertelstunde im jüngsten Lauf über ihre Startzeit, nie über den Index', () => {
     const lauf = [{ start: '2026-09-24T12:00:00Z' }, { start: '2026-09-24T12:15:00Z' }];
     expect(indexImLauf('2026-09-24T14:15:00+02:00', lauf)).toBe(1);
     expect(indexImLauf('2026-09-24T11:45:00Z', lauf)).toBe(-1);
-  });
-
-  it('beschreibt den Ladestand für Screenreader', () => {
-    expect(ladestandText(52.4, false)).toBe(`Ladestand 52${NBSP}% geplant`);
-    expect(ladestandText(52.4, true)).toBe(`Ladestand 52${NBSP}% war geplant`);
   });
 
   it('gibt jeder Tätigkeit ein Symbol', () => {
@@ -232,9 +111,27 @@ describe('lupe · eine Viertelstunde im Detail', () => {
   });
 });
 
-describe('kopfsatz · der Tag in einer Zeile (Prototyp)', () => {
-  it('nennt die längsten Tätigkeiten nach Tageszeit, in der Reihenfolge des Tages', () => {
-    expect(kopfsatz(modell())).toBe('Heute: morgens Verbrauch decken, nachmittags Sonne speichern, abends Verbrauch decken.');
+describe('kopfsatz · der Tag in einem Satz', () => {
+  it('nennt die Tätigkeiten, die am meisten Energie bewegen, jede nur einmal und in der Folge des Tages', () => {
+    // Der Demo-Tag vom 20.10.2026: neun Stunden Verbrauch decken mit 0,4 kW
+    // erzählen den Tag weniger als anderthalb Stunden Sonne speichern mit 4 kW.
+    const leistung: Record<string, number> = { eigenverbrauch: -0.4, pv_speichern: 4, verkaufen: -12 };
+    const demo = tagModell({
+      slots: tag(
+        [['eigenverbrauch', 38], ['warten', 4], ['pv_speichern', 6], ['warten', 21], ['eigenverbrauch', 4], ['verkaufen', 8], ['eigenverbrauch', 15]],
+        (i) => ({ batteryKw: i >= 81 ? -2 : undefined }),
+      ).map((x) => ({ ...x, batteryKw: x.batteryKw ?? leistung[x.slotRole as string] ?? 0 })),
+      slotMinutes: 15,
+      now: JETZT,
+      plantKind: 'eigenverbrauch',
+    });
+    expect(kopfsatz(demo)).toBe('Heute: mittags Sonne speichern, abends einspeisen, nachts Verbrauch decken.');
+  });
+
+  it('wählt ohne Leistungswerte die längsten Tätigkeiten', () => {
+    expect(kopfsatz(modell())).toBe(
+      'Heute: nachmittags günstig aus dem Netz laden und Sonne speichern, abends Verbrauch decken.',
+    );
   });
 
   it('fasst eine Tageszeit zusammen und schreibt Listenwörter im Satz klein', () => {
@@ -255,13 +152,68 @@ describe('kopfsatz · der Tag in einer Zeile (Prototyp)', () => {
   });
 
   it('nennt den Tag des Tagesschalters - gestern auch im Warten in der Vergangenheit', () => {
-    expect(kopfsatz(modell(), 'gestern')).toBe(
-      'Gestern: morgens Verbrauch decken, nachmittags Sonne speichern, abends Verbrauch decken.',
-    );
-    expect(kopfsatz(modell(), 'morgen')).toMatch(/^Morgen: morgens Verbrauch decken/);
+    expect(kopfsatz(modell(), 'gestern')).toMatch(/^Gestern: nachmittags günstig aus dem Netz laden/);
+    expect(kopfsatz(modell(), 'morgen')).toMatch(/^Morgen: /);
     const warten = tagModell({ slots: tag([['warten', 96]]), slotMinutes: 15, now: JETZT, plantKind: 'eigenverbrauch' });
     expect(kopfsatz(warten, 'gestern')).toBe('Gestern wartete der Speicher.');
     expect(kopfsatz(warten, 'morgen')).toBe('Morgen wartet der Speicher.');
+  });
+});
+
+describe('jetztZeile · wer was tut, darunter höchstens drei Stichworte', () => {
+  const t = modell((i) => ({ batteryKw: i === 56 ? 2.2 : i === 80 ? -1.5 : 0, socPct: 40 + i / 4, slotFlags: i === 56 ? ['soc_max'] : null }));
+  const bestaetigt = {
+    state: 'planmaessig',
+    tone: 'ok',
+    lead: 'Ihre Batterie speichert gerade Solarstrom',
+    value: `2,2${NBSP}kW`,
+    status: 'Läuft wie vorgesehen - nichts zu tun',
+    valueMissing: null,
+  } as unknown as JetztHeldView;
+  const unbestaetigt = {
+    state: 'wird_vorbereitet',
+    tone: 'off',
+    lead: 'Geplant ist gerade: Günstig aus dem Netz laden',
+    value: null,
+    status: 'Die Steuerung wird vorbereitet.',
+    valueMissing: 'Noch keine aktuelle Rückmeldung Ihres Wechselrichters.',
+  } as unknown as JetztHeldView;
+
+  it('nimmt mit Bestätigung das Verb der Ausführung und den gemessenen Ladestand - ohne Gerätezeile', () => {
+    expect(jetztZeile(t, 56, true, bestaetigt, 'eigenverbrauch', 63.6)).toEqual({
+      kopf: 'Jetzt · 14:10',
+      role: 'guenstig_laden',
+      titel: 'Speicher lädt Solarstrom',
+      geplant: false,
+      unterzeile: `64${NBSP}% · voll · ab 14:30 Sonne speichern`,
+      zustand: null,
+    });
+  });
+
+  it('nennt ohne Bestätigung den Plan, sagt es - und steht dann mit kurzer Gerätezeile da', () => {
+    const z = jetztZeile(t, 56, true, unbestaetigt, 'eigenverbrauch', null)!;
+    expect(z.titel).toBe('Speicher lädt günstig aus dem Netz');
+    expect(z.geplant).toBe(true);
+    expect(z.unterzeile).toBe(`54${NBSP}% geplant · voll · ab 14:30 Sonne speichern`);
+    expect(z.zustand).toEqual({
+      ton: 'off',
+      kurz: 'Wechselrichter bestätigt noch nicht',
+      lang: 'Die Steuerung wird vorbereitet. Noch keine aktuelle Rückmeldung Ihres Wechselrichters.',
+    });
+  });
+
+  it('beschreibt eine gewählte Viertelstunde als Plan, mit Leistung und dem Ende der Phase', () => {
+    expect(jetztZeile(t, 80, false, bestaetigt, 'eigenverbrauch')).toMatchObject({
+      kopf: '20:00–20:15 Uhr · geplant',
+      titel: 'Speicher deckt den Verbrauch',
+      geplant: true,
+      unterzeile: `60${NBSP}% · 1,5${NBSP}kW · bis Mitternacht`,
+      zustand: null,
+    });
+  });
+
+  it('sagt beim Warten „wartet", nie „ruht"', () => {
+    expect(jetztZeile(t, 2, false, null, 'eigenverbrauch')?.titel).toBe('Speicher wartet');
   });
 });
 
@@ -349,7 +301,7 @@ describe('stationen · der Tag in Stationen', () => {
   const t = modell((i) => ({ socPct: 40 + i / 4 }));
   const st = stationen(t, 'eigenverbrauch');
 
-  it('sind dieselben Phasen wie Uhr und Bildfahrplan', () => {
+  it('sind dieselben Phasen wie Uhr und Tagesband', () => {
     expect(st.map((s) => s.label)).toEqual(t.phasen.map((p) => p.label));
     expect(st.map((s) => s.zeit)).toEqual(['00:00–05:45', '05:45–10:00', '10:00–13:30', '13:30–14:30', '14:30–17:30', '17:30–24:00']);
     expect(st.find((s) => s.laeuft)?.label).toBe('Günstig aus dem Netz laden');
@@ -364,5 +316,27 @@ describe('stationen · der Tag in Stationen', () => {
   it('gibt jeder Tätigkeit den Satz ihrer Phasen-Karte - beim Warten keinen', () => {
     expect(st[0].grund).toBeNull();
     expect(st[1].grund).toBe('Der Speicher deckt den Verbrauch und vermeidet teuren Netzbezug.');
+  });
+});
+
+describe('stationen · mit der Ist-Spur', () => {
+  const t = modell((i) => ({ socPct: 40 + i / 4 }));
+  // Gemessen: bis 10:00 wie geplant, dann lud der Speicher, obwohl der Plan wartete.
+  const ist = t.slots.map((_, i) => (i <= 39 ? 30 + i / 8 : i <= 56 ? 35 + (i - 39) * 1.8 : null));
+
+  it('zeigt vergangene und laufende Phasen gemessen - Kommendes bleibt Plan', () => {
+    const st = stationen(t, 'eigenverbrauch', ist);
+    expect(st[1]).toMatchObject({ gemessen: true, ladestand: `33${NBSP}% → 35${NBSP}%`, abweichung: null });
+    expect(st.find((s) => s.laeuft)).toMatchObject({ gemessen: true });
+    expect(st[st.length - 1]).toMatchObject({ gemessen: false });
+  });
+
+  it('sagt „tatsächlich geladen", wenn der Plan wartete und der Speicher gemessen lud', () => {
+    const st = stationen(t, 'eigenverbrauch', ist);
+    expect(st[2]).toMatchObject({ label: 'Warten', gemessen: true, abweichung: 'tatsächlich geladen' });
+  });
+
+  it('bleibt ohne Messung zeichengleich beim Plan', () => {
+    expect(stationen(t, 'eigenverbrauch', t.slots.map(() => null))).toEqual(stationen(t, 'eigenverbrauch'));
   });
 });

@@ -25,18 +25,18 @@ describe('planAnnahmen · worauf der Plan achtet', () => {
     const z = planAnnahmen({ ...BASIS, vorhersage: { verbrauchKw: 0.42, pvKw: 0.6, tage: 7, fenster: 7 } });
     expect(z.map((x) => x.key)).toEqual(['vorhersage', 'prognosen']);
     expect(z[0]).toMatchObject({
-      titel: 'Vorhersage, letzte 7 Tage',
-      text: `Ø Abweichung je Viertelstunde: Verbrauch 0,4${NBSP}kW · PV 0,6${NBSP}kW.`,
+      titel: 'Treffsicherheit',
+      text: `Die Vorhersage lag in den letzten 7 Tagen im Mittel so weit daneben: Verbrauch 0,4${NBSP}kW · PV 0,6${NBSP}kW je Viertelstunde.`,
     });
     // Eine fehlende Art bleibt weg - sie wird nie zur Null.
     const nurPv = planAnnahmen({ ...BASIS, vorhersage: { verbrauchKw: null, pvKw: 0.6, tage: 1, fenster: 1 } });
     expect(nurPv[0]).toMatchObject({
-      titel: 'Vorhersage, letzter Tag',
-      text: `Ø Abweichung je Viertelstunde: PV 0,6${NBSP}kW.`,
+      titel: 'Treffsicherheit',
+      text: `Die Vorhersage lag am letzten Tag im Mittel so weit daneben: PV 0,6${NBSP}kW je Viertelstunde.`,
     });
     // Weniger bewertete Tage als das Fenster: das steht dabei - kein kürzeres Fenster.
     const teils = planAnnahmen({ ...BASIS, vorhersage: { verbrauchKw: 0.4, pvKw: null, tage: 3, fenster: 7 } });
-    expect(teils[0].titel).toBe('Vorhersage, letzte 7 Tage (3 bewertet)');
+    expect(teils[0].text).toContain('in den letzten 7 Tagen (3 bewertet)');
     // Ohne Bewertung keine Zeile.
     for (const vorhersage of [null, { verbrauchKw: null, pvKw: null, tage: 7, fenster: 7 }]) {
       expect(planAnnahmen({ ...BASIS, vorhersage }).some((x) => x.key === 'vorhersage')).toBe(false);
@@ -65,8 +65,7 @@ describe('planAnnahmen · worauf der Plan achtet', () => {
       einspeisegrenze: `Einspeisegrenze: 30,0${NBSP}kW am Netzanschluss.`,
       lastspitze: `Lastspitzen: Ziel: höchstens 8,0${NBSP}kW Netzbezug.`,
       '14a': `§ 14a: ${FALLBACK_14A_NOTE}`,
-      neu: 'Neu geplant: Zuletzt um 14:00 Uhr; VoltPilot plant alle 15 Minuten neu.',
-      prognosen: `Prognosen: ${FORECAST_FOOTNOTE}`,
+      neu: 'Neu geplant: Zuletzt um 14:00 Uhr, alle 15 Minuten neu – mit Ihrer Verbrauchs- und PV-Prognose.',
     });
   });
 

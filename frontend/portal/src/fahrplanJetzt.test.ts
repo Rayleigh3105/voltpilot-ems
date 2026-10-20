@@ -5,6 +5,7 @@ import {
   jetztHeld,
   measurementChips,
   type JetztInput,
+  ZUSTAND_KURZ,
 } from './fahrplanJetzt';
 import type { ControlStatus, CurtailmentStatus } from './api';
 import { curtailTruth } from './curtailment';
@@ -139,7 +140,7 @@ describe('jetztHeld · die drei Wahrheiten im Jetzt', () => {
     );
     expect(v.state).toBe('ruhe');
     expect(v.tone).toBe('ok');
-    expect(v.lead).toBe('Ihre Batterie ruht gerade');
+    expect(v.lead).toBe('Ihre Batterie wartet gerade');
     expect(v.next).toContain('Verbrauch decken');
   });
 
@@ -1124,5 +1125,18 @@ describe('Abregeln · der netzseitige Regler gehört in den Fahrplan-Beleg (P4)'
       `Ihre Anlage speist gerade 18,4${NBSP}kW ein – sie setzt die Drosselung noch nicht um ` +
         '(die Messung am Netzanschluss folgt dem Ziel nicht).',
     );
+  });
+});
+
+describe('ZUSTAND_KURZ · der Gerätezustand in wenigen Wörtern', () => {
+  it('hat für jeden Zustand höchstens fünf Wörter - und ohne Gerät keinen', () => {
+    for (const [state, kurz] of Object.entries(ZUSTAND_KURZ)) {
+      if (state === 'nur_plan') expect(kurz).toBeNull();
+      else expect(kurz!.split(' ').length).toBeLessThanOrEqual(5);
+    }
+  });
+
+  it('sagt beim Warten „wartet", nie „ruht"', () => {
+    expect(actionPhrase('warten', null, 'eigenverbrauch')).toBe('wartet gerade');
   });
 });

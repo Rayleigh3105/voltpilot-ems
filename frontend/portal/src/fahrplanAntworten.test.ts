@@ -53,6 +53,7 @@ describe('antwortWeiter · „Wie geht es weiter?"', () => {
   it('nennt die nächsten zwei Phasen mit Startzeit und dem einen Wortschatz', () => {
     const a = antwortWeiter(modell(), 56, true)!;
     expect(a.antwort).toBe('Ab 14:30 Sonne speichern, ab 17:30 Verbrauch decken.');
+    expect(a.kurz).toEqual({ label: 'Als Nächstes', wert: '14:30 Sonne speichern', meta: 'dann 17:30 Verbrauch decken' });
     expect(a.zeit).toBeNull();
     expect(a.art).toBe('geplant');
     expect(a.ziel).toMatchObject({ von: 14 * 60 + 30, bis: 1440, ebene: 'taetigkeit' });
@@ -94,6 +95,7 @@ describe('antwortReicht · „Reicht der Speicher heute Abend?"', () => {
     const a = antwortReicht(modell(LAUF, (i) => ({ socPct: i === 95 ? 12 : 50 })))!;
     expect(a.antwort).toBe('Ja, bis Mitternacht.');
     expect(a.zusatz).toBe(`Um Mitternacht bleiben 12${NBSP}% im Speicher.`);
+    expect(a.kurz).toEqual({ label: 'Heute Abend', wert: 'Reicht bis 24 Uhr', meta: `12${NBSP}% bleiben` });
     expect(a.ziel).toMatchObject({ von: 17 * 60 + 30, bis: 1440, punkt: 1440, ebene: 'ladestand' });
   });
 
@@ -109,6 +111,7 @@ describe('antwortReicht · „Reicht der Speicher heute Abend?"', () => {
     const a = antwortReicht(modell(lauf, (i) => ({ slotFlags: i === 88 ? ['soc_floor'] : null })))!;
     expect(a.antwort).toBe('Bis 22:00 Uhr.');
     expect(a.zusatz).toBe('Dann ist er leer, und Ihr Haus bezieht den Rest aus dem Netz.');
+    expect(a.kurz).toMatchObject({ wert: 'Leer um 22:00', meta: 'danach Strom aus dem Netz' });
   });
 
   it('sagt ehrlich, wenn am Abend kein Entladen geplant ist', () => {
@@ -138,6 +141,30 @@ describe('antwortBringt · „Was bringt es heute?" (Messlatte E6)', () => {
     expect(a.art).toBe('gemessen');
     expect(a.nachtrag).toBe(false);
     expect(a.notiz).toBeNull();
+  });
+
+  it('führt am laufenden Tag mit dem Plan des Tages - der Zwischenstand steht leise darunter', () => {
+    const aussage = speicherAussage(
+      { ...tagesGeld, savedEur: -0.2, savedSpeicherEur: -0.17, savedSteuerungEur: -0.03, steuerungSplitReason: null },
+      { now: JETZT, steuerungGeplantEur: 6.39 },
+    );
+    const a = antwortBringt(aussage)!;
+    expect(aussage!.geplantWert).toBe(`+${NBSP}6,39${NBSP}€`);
+    expect(a.kurz).toEqual({ label: 'Heute geplant', wert: aussage!.geplantWert, meta: `bisher ${aussage!.wert}` });
+    expect(aussage!.wert).toContain('0,03');
+    expect(a.art).toBe('geplant');
+    expect(a.antwort).toBe(`Geplant für heute: +${NBSP}6,39${NBSP}€ gegenüber demselben Speicher ohne smarte Steuerung.`);
+    // Der Satz der Messung bleibt der Zusatz, unverändert.
+    expect(a.zusatz).toBe(aussage!.satz);
+  });
+
+  it('nennt ohne Planwert und für einen ganzen Tag die gemessene Zahl', () => {
+    const aussage = speicherAussage(
+      { ...tagesGeld, savedEur: 1.25, savedSpeicherEur: 0.85, savedSteuerungEur: 0.4, steuerungSplitReason: null },
+      { now: JETZT },
+    );
+    expect(antwortBringt(aussage)!.kurz).toMatchObject({ label: 'Heute', wert: aussage!.wert });
+    expect(antwortBringt(aussage, 'gestern')!.kurz.label).toBe('Gestern');
   });
 
   it('nennt dazu die Energie, die für später im Speicher liegt (E6)', () => {

@@ -38,16 +38,15 @@ export const captures = [
   ] },
   { id: 'fahrplan', title: 'Fahrplan: der Tag im Bild', hash: plant('fahrplan'), root: 'main', maxHeight: 1500, points: [
     point('.vp-tb-tage', 'Gestern, heute, morgen: der Plan, wie er gestern galt, der von heute und, sobald die Börsenpreise da sind, der für morgen.'),
-    point('.vp-tb-band', 'Das Jetzt-Band: was der Speicher gerade tut, warum, und ob Sie etwas tun müssen.'),
-    point('.vp-bf', 'Von oben nach unten: der Preis, der den Plan treibt, Sonne und Verbrauch, der Ladestand als Linie zwischen leer und voll und die Tätigkeit. Mit der Maus zeigt eine Lupe jede Viertelstunde.'),
-    point('.vp-antw', 'Die Antworten gelten für die gewählte Viertelstunde. Ein Klick markiert ihre Stelle im Bild.'),
-    point('section[aria-label="Worauf Ihr Plan achtet"]', 'Tarif, Grenzen und Hinweise, mit denen der Plan rechnet. Hier öffnet sich auch das Diagramm mit allen Werten.'),
+    point('.vp-tb-jetzt', 'Was der Speicher gerade tut, in Stichworten - und daneben, was als Nächstes kommt, ob er bis zum Abend reicht und was es bringen soll.'),
+    point('.vp-tband', 'Oben die Tätigkeiten mit Uhrzeit, darunter der Ladestand - links gemessen, rechts geplant -, unten Sonne und Preis. Mit der Maus zeigt eine Lupe jede Viertelstunde.'),
+    point('section[aria-label="Gut zu wissen"]', 'Tarif, Grenzen und Hinweise, mit denen der Plan rechnet. Hier öffnet sich auch das Diagramm mit allen Werten.'),
   ] },
-  { id: 'fahrplan-uhr', title: 'Fahrplan am Telefon: die Tagesuhr', hash: plant('fahrplan'), mobile: true, viewportOnly: true, klick: 'Beenden', points: [
+  { id: 'fahrplan-uhr', title: 'Fahrplan am Telefon: die Uhr', hash: plant('fahrplan'), mobile: true, viewportOnly: true, points: [
     point('.vp-tb-tage', 'Hier wechseln Sie zwischen gestern, heute und morgen.'),
-    point('.vp-uhr', 'Ein Tag ist ein Kreis: außen Sonne und Strompreis, der breite Ring zeigt, was der Speicher tun soll, innen der Ladestand.'),
-    point('.vp-tb-werte', 'Die Werte am Zeiger. Ein Tipp hebt den passenden Ring hervor und erklärt ihn.'),
-    point('.vp-antw', 'Ein Tipp auf eine Antwort dreht den Zeiger an ihre Stelle.'),
+    point('.vp-tb-status', 'Was der Speicher gerade tut. Ein Tipp zeigt, warum.'),
+    point('.vp-uhr', 'Die Uhr geht wie jede andere. Der Ring zeigt, was ab jetzt kommt.'),
+    point('.vp-antw', 'Reicht der Speicher bis zum Abend, und was soll es heute bringen?'),
   ] },
   { id: 'messwerte', title: 'Energie: Zeitraum, Mengen und Verlauf', hash: plant('messwerte'), root: 'main', maxHeight: 1750, points: [
     point('button:has-text("Woche")', 'Wählen Sie den Zeitrahmen passend zu Ihrer Frage.'),
@@ -70,10 +69,10 @@ export const captures = [
     point('.vp-wt-tage', 'Die Karten zeigen die nächsten Tage. Ein Tipp wählt den Tag für das Bild.'),
     point('.vp-pz-bild', 'Gemessen ist gefüllt, erwartet schraffiert; die dunkle Linie markiert jetzt.'),
   ] },
-  { id: 'prognose', title: 'Wie gut die Vorhersage zuletzt traf', hash: plant('fahrplan'), root: '[aria-label="Worauf Ihr Plan achtet"]', points: [
-    point('h3:has-text("Worauf Ihr Plan achtet")', 'Hier stehen die Angaben, mit denen der Fahrplan rechnet - auch die Vorhersage.'),
-    point('text=Vorhersage, letzte 7 Tage', 'Die Zeile nennt, wie weit Verbrauch und PV zuletzt im Schnitt je Viertelstunde danebenlagen - in kW, nicht in Prozent.'),
-    point('text=Prognosen:', 'Vorhersagen sind Annahmen; der Fahrplan wird laufend neu gerechnet.'),
+  { id: 'prognose', title: 'Wie gut die Vorhersage zuletzt traf', hash: plant('fahrplan'), root: '[aria-label="Gut zu wissen"]', points: [
+    point('h3:has-text("Gut zu wissen")', 'Hier stehen die Angaben, mit denen der Fahrplan rechnet - auch die Vorhersage.'),
+    point('text=Treffsicherheit:', 'Die Zeile nennt, wie weit Verbrauch und PV zuletzt im Schnitt je Viertelstunde danebenlagen - in kW, nicht in Prozent.'),
+    point('text=Neu geplant:', 'Vorhersagen sind Annahmen; der Fahrplan wird alle 15 Minuten neu gerechnet.'),
   ] },
   { id: 'portfolio', title: 'Anlagen im Portfolio', hash: '#/portfolio', root: 'main', points: [
     point('.vp-ku-status', 'Die Statuszeile sagt, ob alles läuft, und nennt eine Anlage, die Aufmerksamkeit braucht.'),

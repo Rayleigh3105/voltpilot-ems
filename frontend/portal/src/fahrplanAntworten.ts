@@ -31,7 +31,7 @@
 
 import { phaseVon, uhrzeit, TAG_MINUTEN, type TagModell, type TagPhase } from './fahrplanTag';
 import type { TagArt } from './fahrplanTagesbild';
-import type { SpeicherAussage } from './speicherAussage';
+import { MESSLATTE_DATIV, type SpeicherAussage } from './speicherAussage';
 
 export type AntwortKey = 'weiter' | 'reicht' | 'bringt';
 
@@ -61,6 +61,12 @@ export interface Antwort {
    * „dazu die Energie für morgen"); sonst null.
    */
   notiz: string | null;
+  /**
+   * Die KURZFORM als Zeile (Überblick 20.10.2026): ein Etikett statt der
+   * Frage, ein Wert, höchstens eine leise Zeile - dieselbe Aussage wie
+   * `antwort`/`zusatz`, nur in Stichworten („Als Nächstes · 18:15 Einspeisen").
+   */
+  kurz: { label: string; wert: string; meta: string | null };
   /** Das Ehrlichkeits-Abzeichen. */
   art: 'geplant' | 'gemessen';
   ziel: AntwortZiel | null;
@@ -122,6 +128,11 @@ export function antwortWeiter(
         : `${aktuell.label} bis ${uhrzeit(aktuell.bis)} Uhr.`,
       zusatz: bisMitternacht ? null : 'Weiter reicht der Fahrplan noch nicht.',
       notiz: null,
+      kurz: {
+        label: art === 'gestern' ? 'Danach' : 'Als Nächstes',
+        wert: bisMitternacht ? `${aktuell.label} bis Mitternacht` : `${aktuell.label} bis ${uhrzeit(aktuell.bis)}`,
+        meta: bisMitternacht ? null : 'Weiter reicht der Plan noch nicht',
+      },
       art: 'geplant',
       ziel: null,
       details: 'stationen',
@@ -138,6 +149,7 @@ export function antwortWeiter(
     if (voll) zusatz = `Voll ab ${uhrzeit(voll.von)} Uhr.`;
   }
   const letzte = naechste[naechste.length - 1];
+  const dann = naechste[1];
   return {
     key: 'weiter',
     frage,
@@ -145,6 +157,11 @@ export function antwortWeiter(
     antwort,
     zusatz,
     notiz: null,
+    kurz: {
+      label: art === 'gestern' ? 'Danach' : 'Als Nächstes',
+      wert: `${uhrzeit(naechste[0].von)} ${naechste[0].label}`,
+      meta: dann ? `dann ${uhrzeit(dann.von)} ${dann.label}` : (zusatz?.replace(/\.$/, '') ?? null),
+    },
     art: 'geplant',
     ziel: {
       minute: naechste[0].von + 7.5,
@@ -181,6 +198,7 @@ export function antwortReicht(tag: TagModell, art: TagArt = 'heute'): Antwort | 
       antwort: `${art === 'morgen' ? 'Morgen' : 'Heute'} Abend ist kein Entladen geplant.`,
       zusatz: null,
       notiz: null,
+      kurz: { label: art === 'morgen' ? 'Morgen Abend' : 'Heute Abend', wert: 'Kein Entladen geplant', meta: null },
       art: 'geplant',
       ziel: null,
       details: 'stationen',
@@ -199,15 +217,23 @@ export function antwortReicht(tag: TagModell, art: TagArt = 'heute'): Antwort | 
     (naechsterI < tag.slots.length && hatFlag(tag, naechsterI, 'soc_floor'));
   let antwort: string;
   let zusatz: string | null;
+  let kurzWert: string;
+  let kurzMeta: string | null;
   if (bisMitternacht) {
     antwort = 'Ja, bis Mitternacht.';
     zusatz = endeSoc == null ? null : `Um Mitternacht bleiben ${pct(Number(endeSoc))} im Speicher.`;
+    kurzWert = 'Reicht bis 24 Uhr';
+    kurzMeta = endeSoc == null ? null : `${pct(Number(endeSoc))} bleiben`;
   } else if (leer) {
     antwort = `Bis ${uhrzeit(ph.bis)} Uhr.`;
     zusatz = 'Dann ist er leer, und Ihr Haus bezieht den Rest aus dem Netz.';
+    kurzWert = `Leer um ${uhrzeit(ph.bis)}`;
+    kurzMeta = 'danach Strom aus dem Netz';
   } else {
     antwort = `Ja, bis ${uhrzeit(ph.bis)} Uhr.`;
     zusatz = endeSoc == null ? null : `Danach bleiben ${pct(Number(endeSoc))} im Speicher.`;
+    kurzWert = `Reicht bis ${uhrzeit(ph.bis)}`;
+    kurzMeta = endeSoc == null ? null : `${pct(Number(endeSoc))} bleiben`;
   }
   return {
     key: 'reicht',
@@ -216,6 +242,7 @@ export function antwortReicht(tag: TagModell, art: TagArt = 'heute'): Antwort | 
     antwort,
     zusatz,
     notiz: null,
+    kurz: { label: art === 'morgen' ? 'Morgen Abend' : 'Heute Abend', wert: kurzWert, meta: kurzMeta },
     art: 'geplant',
     ziel: {
       minute: letzteViertelMitte(tag, ph),
@@ -236,14 +263,28 @@ export function antwortReicht(tag: TagModell, art: TagArt = 'heute'): Antwort | 
 export function antwortBringt(aussage: SpeicherAussage | null, art: TagArt = 'heute'): Antwort | null {
   // Für morgen gibt es keine gemessene Aussage - und keine zweite Geldzahl (E6).
   if (art === 'morgen' || !aussage || !aussage.hatAussage) return null;
+  // Am laufenden Tag führt der PLAN des ganzen Tages (dieselbe Messlatte, M2):
+  // der Zwischenstand am Mittag ist fast immer klein oder negativ, weil die
+  // Energie für den Abend noch im Speicher liegt - als Hauptzahl las er sich
+  // wie „die Steuerung verliert Geld" (Demo 20.10.2026: − 0,03 € bei + 6,39 €
+  // geplant). Der Zwischenstand bleibt als leise Zeile darunter.
+  const laufend = art === 'heute' && aussage.zwischenstand && aussage.geplantWert != null;
+  const gemessen = aussage.steuerung ? aussage.wert : 'Noch kein Vergleich';
   return {
     key: 'bringt',
     frage: art === 'gestern' ? 'Was hat es gebracht?' : 'Was bringt es heute?',
     zeit: null,
-    antwort: aussage.steuerung ? aussage.wert : 'Noch kein Vergleich',
+    antwort: laufend
+      ? `Geplant für heute: ${aussage.geplantWert} gegenüber ${MESSLATTE_DATIV}.`
+      : aussage.steuerung
+        ? aussage.wert
+        : 'Noch kein Vergleich',
     zusatz: aussage.steuerung ? aussage.satz : aussage.ohneVergleich,
     notiz: aussage.bestand,
-    art: 'gemessen',
+    kurz: laufend
+      ? { label: 'Heute geplant', wert: aussage.geplantWert ?? '', meta: `bisher ${gemessen}` }
+      : { label: art === 'gestern' ? 'Gestern' : 'Heute', wert: gemessen, meta: aussage.chip },
+    art: laufend ? 'geplant' : 'gemessen',
     ziel: null,
     details: 'erloese',
     nachtrag: !aussage.steuerung && aussage.nachtragLink,

@@ -1,13 +1,13 @@
 /**
- * Die WÖRTER UND WERTE des Fahrplan-Tagesbilds (Konzept „Tagesuhr und
- * Bildfahrplan"): was unter der Uhr bzw. dem Bildfahrplan zur Viertelstunde
- * am Zeiger steht — die Moment-Zeile, die Werte am Zeiger, die Lupe und die
- * Einführung in fünf Schritten (E11).
+ * Die WÖRTER UND WERTE des Fahrplan-Tagesbilds: der Kopfsatz des Tages, die
+ * Jetzt-Zeile, die Stationen („Ihr Tag"), die Lupe des Tagesbands und der
+ * Tagesschalter (Überblick 20.10.2026; davor Konzept „Tagesuhr und
+ * Bildfahrplan").
  *
  * Jede Zahl ist ein Feld des Plans oder eine Messung, die die Viertelstunde
  * trägt; es wird nichts neu gerechnet. Drei Ehrlichkeitsregeln:
  *  - Vergangene Viertelstunden zeigen den Plan, der für sie GALT („war
- *    geplant"), nie eine Messung des Speichers — die liest diese Seite nicht.
+ *    geplant") - oder, wo die Ist-Spur sie trägt, den gemessenen Ladestand.
  *  - Sonne und Verbrauch sind gemessen, wo die Viertelstunde eine Messung
  *    trägt, sonst erwartet — und sagen das.
  *  - Fehlt ein Wert, steht „–", nie eine 0.
@@ -17,15 +17,13 @@
 
 import type { IconName } from '../designsystem/components/core/Icon';
 import { VOM_WR_BESTAETIGT } from './control';
-import { energieFluss, type FlussStrom } from './fahrplanBildfahrplan';
-import type { JetztHeldView } from './fahrplanJetzt';
-import { phaseVon, uhrzeit, type TagModell } from './fahrplanTag';
+import { energieFluss, type FlussStrom } from './fahrplanTagesband';
+import { IST_BEWEGUNG_PCT, istVerlauf } from './fahrplanIst';
+import { ZUSTAND_KURZ, actionPhrase, type JetztHeldView, type JetztTone } from './fahrplanJetzt';
+import { TAG_MINUTEN, phaseVon, uhrzeit, type TagModell, type TagPhase } from './fahrplanTag';
 import { phaseWhy, type SlotRole } from './fahrplanWhy';
 import { fmtNum } from './format';
 import type { PlanWordingKind } from './schedule';
-
-/** Die Ebenen des Bildes, die man einzeln hervorheben kann. */
-export type TagesbildEbene = 'sonne' | 'preis' | 'taetigkeit' | 'ladestand';
 
 /**
  * Der Tag des Tagesschalters (E2 = A: Gestern · Heute · Morgen). Nur HEUTE hat
@@ -141,9 +139,9 @@ export function tagOhneBild(
   };
 }
 
-/** E10: ab dieser Inhaltsbreite zeigt die Seite den Bildfahrplan statt der Uhr. */
+/** Ab dieser Inhaltsbreite zeigt die Seite das Tagesband statt der Uhr. */
 export const BILD_AB_PX = 900;
-/** Ab dieser Breite stehen Uhr und Antworten nebeneinander (bis E10). */
+/** Ab dieser Breite stehen Uhr und Antworten nebeneinander. */
 export const ZWEISPALTIG_AB_PX = 640;
 
 /**
@@ -176,24 +174,8 @@ function ct(v: number): string {
   return fmtNum(v, 'ct/kWh', 1);
 }
 
-/** „Ladestand 52 % geplant" — für Screenreader und Titel. */
-export function ladestandText(socPct: number, vorbei: boolean): string {
-  return `Ladestand ${pct(socPct)} ${vorbei ? 'war geplant' : 'geplant'}`;
-}
-
 /** Was die Viertelstunde am Zeiger ist: jetzt, noch geplant oder vorbei. */
 export type MomentArt = 'jetzt' | 'geplant' | 'vorbei';
-
-export interface MomentZeile {
-  art: MomentArt;
-  /** „Jetzt · 14:10" bzw. „14:15–14:30 Uhr". */
-  zeit: string;
-  /** Das Listenwort der Phase (E8); null ohne Phase. */
-  was: string | null;
-  role: SlotRole | null;
-  /** „Geplant: laden mit 2,2 kW · Ladestand danach 52 %". */
-  plan: string | null;
-}
 
 /** Die Leistung des Plans in Worten („laden mit 2,2 kW"). */
 function planLeistung(batteryKw: number | null): string | null {
@@ -201,31 +183,6 @@ function planLeistung(batteryKw: number | null): string | null {
   if (batteryKw > RUHE_KW) return `laden mit ${fmtNum(batteryKw, 'kW')}`;
   if (batteryKw < -RUHE_KW) return `abgeben mit ${fmtNum(-batteryKw, 'kW')}`;
   return 'kein Laden, kein Abgeben';
-}
-
-/** Die Zeile unter dem Bild für die Viertelstunde am Zeiger. */
-export function momentZeile(tag: TagModell, i: number, istJetzt: boolean): MomentZeile | null {
-  const v = tag.viertel[i];
-  const s = tag.slots[i];
-  if (!v || !s) return null;
-  const art: MomentArt = istJetzt ? 'jetzt' : v.vorbei ? 'vorbei' : 'geplant';
-  const ph = phaseVon(tag, i);
-  const leistung = planLeistung(zahl(s.batteryKw));
-  const soc = zahl(s.socPct);
-  const teile = [
-    leistung,
-    soc == null ? null : `Ladestand danach ${pct(soc)}`,
-  ].filter((x): x is string => x != null);
-  return {
-    art,
-    zeit:
-      istJetzt && tag.jetzt != null
-        ? `Jetzt · ${uhrzeit(tag.jetzt)}`
-        : `${uhrzeit(v.von)}–${uhrzeit(v.bis)} Uhr`,
-    was: ph?.label ?? null,
-    role: ph?.role ?? null,
-    plan: teile.length === 0 ? null : `${art === 'vorbei' ? 'War geplant' : 'Geplant'}: ${teile.join(' · ')}`,
-  };
 }
 
 // ---- Kopfsatz, Moment-Band, Stationen (Aufbau des Prototyps) -----------------------
@@ -249,12 +206,35 @@ function imSatz(label: string): string {
 const KOPF_MIN_DAUER = 30;
 
 /**
- * Der KOPFSATZ des Tages (Prototyp: die Zeile über Uhr und Bildfahrplan): was
- * der Speicher heute tut, nach Tageszeiten — aus den Phasen des Plans und mit
- * ihren Wörtern (E8). Ohne Wetter- oder Preisurteil: das stünde nirgends
- * belegt. „Warten" ist keine Tätigkeit; höchstens die drei längsten zählen,
- * in der Reihenfolge des Tages. Ohne Tätigkeit: „Heute wartet der Speicher."
- * Der Tagesschalter nennt seinen Tag: „Gestern: …", „Morgen: …".
+ * Wie viel eine Phase BEWEGT (kWh): die geplante Speicher- und Abregel-Leistung
+ * über ihre Viertelstunden. Sie entscheidet, was den Tag erzählt - nicht die
+ * Dauer: acht Stunden „Verbrauch decken" mit 0,4 kW sind weniger Tag als
+ * anderthalb Stunden „Sonne speichern" mit 4 kW.
+ */
+function phasenEnergie(tag: TagModell, p: TagPhase): number {
+  const roh = tag.phasenRoh[p.phaseIndex];
+  let kwh = 0;
+  for (let i = roh.startIdx; i <= roh.endIdx; i++) {
+    const s = tag.slots[i];
+    const v = tag.viertel[i];
+    if (!s || !v) continue;
+    const kw = Math.abs(zahl(s.batteryKw) ?? 0) + Math.max(0, zahl(s.curtailKw) ?? 0);
+    kwh += (kw * (v.bis - v.von)) / 60;
+  }
+  return kwh;
+}
+
+/**
+ * Der KOPFSATZ des Tages: was der Speicher heute tut, nach Tageszeiten - aus
+ * den Phasen des Plans und mit ihren Wörtern (E8). Ohne Wetter- oder
+ * Preisurteil: das stünde nirgends belegt. „Warten" ist keine Tätigkeit.
+ *
+ * Es zählen die Tätigkeiten, die am meisten Energie bewegen, höchstens drei,
+ * und JEDES WORT NUR EINMAL (sein stärkster Auftritt): der Satz „nachts
+ * Verbrauch decken, abends einspeisen, nachts Verbrauch decken" nannte eine
+ * Tätigkeit zweimal und ließ dafür das Sonne-Speichern des Mittags weg (Demo,
+ * 20.10.2026). Gesprochen wird in der Reihenfolge des Tages. Ohne Tätigkeit:
+ * „Heute wartet der Speicher." Der Tagesschalter nennt seinen Tag.
  */
 export function kopfsatz(tag: TagModell, art: TagArt = 'heute'): string | null {
   if (tag.phasen.length === 0) return null;
@@ -267,9 +247,17 @@ export function kopfsatz(tag: TagModell, art: TagArt = 'heute'): string | null {
         : 'Heute wartet der Speicher.';
   }
   const lang = aktiv.filter((p) => p.bis - p.von >= KOPF_MIN_DAUER);
-  const auswahl = (lang.length > 0 ? lang : aktiv)
-    .slice()
-    .sort((a, b) => b.bis - b.von - (a.bis - a.von) || a.von - b.von)
+  const gewicht = new Map((lang.length > 0 ? lang : aktiv).map((p) => [p, phasenEnergie(tag, p)]));
+  const staerkste = new Map<string, TagPhase>();
+  for (const [p, kwh] of gewicht) {
+    const bisher = staerkste.get(p.label);
+    const vorher = bisher ? (gewicht.get(bisher) ?? 0) : -1;
+    // Gleich viel Energie (ein Plan ohne Leistungswerte): die längere zählt.
+    const besser = kwh > vorher + 1e-9 || (bisher != null && Math.abs(kwh - vorher) <= 1e-9 && p.bis - p.von > bisher.bis - bisher.von);
+    if (!bisher || besser) staerkste.set(p.label, p);
+  }
+  const auswahl = [...staerkste.values()]
+    .sort((a, b) => (gewicht.get(b) ?? 0) - (gewicht.get(a) ?? 0) || b.bis - b.von - (a.bis - a.von) || a.von - b.von)
     .slice(0, 3)
     .sort((a, b) => a.von - b.von);
   // Gleiche Tätigkeit hintereinander: „mittags und nachmittags Sonne speichern";
@@ -354,6 +342,113 @@ export function momentBand(
   };
 }
 
+/**
+ * Die JETZT-ZEILE (Überblick 20.10.2026: „in fünf Sekunden verstehen, was
+ * abgeht"): wer was tut, in einem Satz („Speicher wartet"), darunter höchstens
+ * drei Stichworte („98 % · voll · ab 17:15 Verbrauch decken") - statt drei
+ * Sätzen an drei Stellen.
+ *
+ *  - `titel` nimmt das Verb der AUSFÜHRUNG, wenn das Gerät sie bestätigt
+ *    (`JetztHeldView.lead`, dieselbe Ableitung wie die Cockpit-Karte), sonst
+ *    das des Plans - und `geplant` sagt es. Es gibt keine zweite Formulierung.
+ *  - Die Stichworte kommen nur aus Fakten: dem Ladestand (gemessen, wenn die
+ *    Messung frisch ist), einer bindenden Grenze der Viertelstunde (voll, am
+ *    Minimum, Reserve) bzw. der Leistung, und dem nächsten Wechsel des Plans.
+ *  - `zustand` steht nur, wenn das Gerät NICHT dem Plan folgt
+ *    ({@link ZUSTAND_KURZ}, der volle Satz als `lang`) oder bewusst nachführt
+ *    (dann mit dem Plan-Wert): ein ruhiges Gerät braucht keine Zeile.
+ */
+export interface JetztZeile {
+  /** „Jetzt · 13:57" bzw. „15:00–15:15 Uhr · geplant". */
+  kopf: string;
+  role: SlotRole | null;
+  titel: string | null;
+  geplant: boolean;
+  unterzeile: string | null;
+  zustand: { ton: JetztTone; kurz: string; lang: string } | null;
+}
+
+/** Bindende Grenzen der Viertelstunde als ein Wort hinter dem Ladestand. */
+const BINDUNG_KURZ: Readonly<Record<string, string>> = {
+  soc_max: 'voll',
+  soc_floor: 'am Minimum',
+  reserve_backup: 'Notstrom-Reserve',
+  reserve_peak: 'Reserve für Lastspitzen',
+};
+
+export function jetztZeile(
+  tag: TagModell,
+  i: number,
+  istJetzt: boolean,
+  held: JetztHeldView | null,
+  plantKind: PlanWordingKind,
+  /** Der GEMESSENE Ladestand jetzt (frische Telemetrie); null = keiner. */
+  ladestandJetzt: number | null = null,
+): JetztZeile | null {
+  const v = tag.viertel[i];
+  const s = tag.slots[i];
+  if (!v || !s) return null;
+  const ph = phaseVon(tag, i);
+  const role = ph?.role ?? null;
+  const mitGeraet = istJetzt && held != null && tag.jetzt != null;
+  const ausgefuehrt = mitGeraet && held.value != null && held.lead.startsWith(BATTERIE);
+  const phrase = ausgefuehrt ? held.lead.slice(BATTERIE.length) : role ? actionPhrase(role, null, plantKind) : null;
+  // Abregeln drosselt die Anlage, nicht den Speicher.
+  const subjekt = role === 'abregeln' ? 'Anlage' : 'Speicher';
+
+  const teile: string[] = [];
+  const socPlan = zahl(s.socPct);
+  if (mitGeraet && ladestandJetzt != null) teile.push(pct(ladestandJetzt));
+  else if (socPlan != null) teile.push(mitGeraet ? `${pct(socPlan)} geplant` : pct(socPlan));
+  const bindung = (s.slotFlags ?? []).map((f) => BINDUNG_KURZ[f]).find((x): x is string => x != null);
+  const kw = zahl(s.batteryKw);
+  if (bindung) teile.push(bindung);
+  else if (ausgefuehrt && held.value) teile.push(held.value);
+  else if (kw != null && Math.abs(kw) > RUHE_KW) teile.push(fmtNum(Math.abs(kw), 'kW'));
+  if (ph) {
+    const k = tag.phasen.indexOf(ph);
+    const naechste = tag.phasen[k + 1];
+    teile.push(
+      naechste
+        ? `ab ${uhrzeit(naechste.von)} ${naechste.label}`
+        : ph.bis >= TAG_MINUTEN
+          ? 'bis Mitternacht'
+          : `bis ${uhrzeit(ph.bis)}`,
+    );
+  }
+
+  // Eine bewusste Nachführung ist kein Fehler - aber der Plan-Wert bleibt
+  // sichtbar (Regel aus 047): dann steht die Gerätezeile auch bei „ok".
+  const nachfuehrung = mitGeraet && held.adjust != null && held.tone === 'ok';
+  const kurz = mitGeraet
+    ? nachfuehrung
+      ? `Gerät führt nach${kw != null && Math.abs(kw) > RUHE_KW ? ` · Plan ${fmtNum(Math.abs(kw), 'kW')}` : ''}`
+      : ZUSTAND_KURZ[held.state]
+    : null;
+  return {
+    kopf:
+      istJetzt && tag.jetzt != null
+        ? `Jetzt · ${uhrzeit(tag.jetzt)}`
+        : `${uhrzeit(v.von)}–${uhrzeit(v.bis)} Uhr · ${v.vorbei ? 'war geplant' : 'geplant'}`,
+    role,
+    // „Speicher speichert Solarstrom" sagte dasselbe zweimal: im Titel lädt er.
+    titel: phrase ? `${subjekt} ${phrase.replace(/\s*\bgerade\b/, '').replace(/^speichert Solarstrom/, 'lädt Solarstrom')}` : null,
+    geplant: !ausgefuehrt,
+    unterzeile: teile.length > 0 ? teile.join(' · ') : null,
+    zustand:
+      mitGeraet && kurz && (held.tone !== 'ok' || nachfuehrung)
+        ? {
+            ton: held.tone,
+            kurz,
+            lang: [held.adjust, held.status, held.valueMissing].filter((x): x is string => !!x).join(' '),
+          }
+        : null,
+  };
+}
+
+/** So beginnt `JetztHeldView.lead`, wenn das Gerät die Ausführung bestätigt. */
+const BATTERIE = 'Ihre Batterie ';
+
 /** Eine STATION des Tages (Prototyp „Der Tag in Stationen"): eine Phase als Halt. */
 export interface Station {
   phaseIndex: number;
@@ -363,25 +458,60 @@ export interface Station {
   zeit: string;
   vorbei: boolean;
   laeuft: boolean;
-  /** „21 % → 10 %" bzw. „95 %" (geplant); null ohne Ladestand. */
+  /** „21 % → 10 %" bzw. „95 %"; null ohne Ladestand. */
   ladestand: string | null;
+  /** true = `ladestand` ist GEMESSEN (Ist-Spur), sonst der Plan. */
+  gemessen: boolean;
+  /**
+   * Der Speicher tat GEMESSEN das Gegenteil des Plans („tatsächlich geladen");
+   * null, wo Plan und Messung zusammenpassen oder keine Messung da ist.
+   */
+  abweichung: string | null;
   /** Der Satz der Phase (dieselbe Quelle wie die Phasen-Karte); beim Warten keiner. */
   grund: string | null;
 }
 
+/** Rollen, deren Plan den Speicher ruhen lässt, laden bzw. entladen will. */
+const RUHT = new Set<SlotRole>(['warten', 'reserve_halten', 'abregeln']);
+const LAEDT = new Set<SlotRole>(['pv_speichern', 'guenstig_laden']);
+const ENTLAEDT = new Set<SlotRole>(['eigenverbrauch', 'verkaufen', 'spitze_kappen']);
+
+function ladestandSpanne(anfang: number | null, ende: number | null): string | null {
+  if (ende == null) return null;
+  return anfang == null || Math.abs(anfang - ende) < 1 ? pct(ende) : `${pct(anfang)} → ${pct(ende)}`;
+}
+
 /**
- * Die Stationen des Tages — dieselben Phasen wie Uhr und Bildfahrplan
- * (`tag.phasen`), also nie ein zweiter Schnitt. Der Ladestand ist der PLAN:
- * Anfang = Stand am Ende der Viertelstunde davor, Ende = Stand am Ende der
- * Phase; fehlt der Anfang (Mitternacht), steht nur das Ende.
+ * Die Stationen des Tages - dieselben Phasen wie Uhr und Bild (`tag.phasen`),
+ * also nie ein zweiter Schnitt. Der Ladestand ist der PLAN: Anfang = Stand am
+ * Ende der Viertelstunde davor, Ende = Stand am Ende der Phase; fehlt der
+ * Anfang (Mitternacht), steht nur das Ende.
+ *
+ * Mit der IST-SPUR (`ist`, `fahrplanIst.istLadestand`) zeigt eine VERGANGENE
+ * Phase den gemessenen Ladestand - und sagt es, wenn der Speicher das
+ * Gegenteil des Plans tat (der Plan wartete, gemessen lud er um mehr als
+ * {@link IST_BEWEGUNG_PCT} Punkte). Ohne Messung bleibt es beim Plan.
  */
-export function stationen(tag: TagModell, plantKind: PlanWordingKind): Station[] {
+export function stationen(
+  tag: TagModell,
+  plantKind: PlanWordingKind,
+  ist: readonly (number | null)[] | null = null,
+): Station[] {
   return tag.phasen.map((p) => {
     const roh = tag.phasenRoh[p.phaseIndex];
     const anfang = roh.startIdx > 0 ? zahl(tag.slots[roh.startIdx - 1]?.socPct) : null;
     const ende = zahl(tag.slots[roh.endIdx]?.socPct);
-    const ladestand =
-      ende == null ? null : anfang == null || Math.abs(anfang - ende) < 1 ? pct(ende) : `${pct(anfang)} → ${pct(ende)}`;
+    // Vergangen: die ganze Phase gemessen; laufend: gemessen bis jetzt.
+    const bisIdx = p.laeuft && tag.jetztIndex >= roh.startIdx ? tag.jetztIndex : roh.endIdx;
+    const gemessen = (p.vorbei || p.laeuft) && ist ? istVerlauf(ist, roh.startIdx, bisIdx) : null;
+    let abweichung: string | null = null;
+    if (gemessen) {
+      const d = gemessen.bis - gemessen.von;
+      const geladen = d >= IST_BEWEGUNG_PCT;
+      const entladen = d <= -IST_BEWEGUNG_PCT;
+      if (geladen && (RUHT.has(p.role) || ENTLAEDT.has(p.role))) abweichung = 'tatsächlich geladen';
+      else if (entladen && (RUHT.has(p.role) || LAEDT.has(p.role))) abweichung = 'tatsächlich entladen';
+    }
     return {
       phaseIndex: p.phaseIndex,
       role: p.role,
@@ -389,136 +519,12 @@ export function stationen(tag: TagModell, plantKind: PlanWordingKind): Station[]
       zeit: `${uhrzeit(p.von)}–${uhrzeit(p.bis)}`,
       vorbei: p.vorbei,
       laeuft: p.laeuft,
-      ladestand,
+      ladestand: gemessen ? ladestandSpanne(gemessen.von, gemessen.bis) : ladestandSpanne(anfang, ende),
+      gemessen: gemessen != null,
+      abweichung,
       grund: p.role === 'warten' ? null : phaseWhy(roh, plantKind),
     };
   });
-}
-
-/** Ein Wert am Zeiger — drei kurze Zeilen, damit vier nebeneinander passen. */
-export interface ZeigerWert {
-  ebene: TagesbildEbene;
-  label: string;
-  wert: string;
-  /** „gemessen", „erwartet", „geplant", „Börse" …; null = kein Wert. */
-  herkunft: string | null;
-  /** Der ganze Satz für Screenreader („Speicher: lädt 2,2 kW, geplant"). */
-  satz: string;
-}
-
-/**
- * Die vier Werte am Zeiger: Sonne, Strompreis, Speicher, Ladestand — die
- * Legende, die zugleich ablesbar ist.
- */
-export function werteAmZeiger(tag: TagModell, i: number): ZeigerWert[] {
-  const v = tag.viertel[i];
-  const s = tag.slots[i];
-  if (!v || !s) return [];
-  const gewesen = v.vorbei || v.laeuft;
-  const pvGemessen = gewesen ? zahl(s.measuredPvKw) : null;
-  const pvErwartet = zahl(s.pvKw);
-  const preis = tag.preis?.ct[i] ?? null;
-  const kw = zahl(s.batteryKw);
-  const soc = zahl(s.socPct);
-  const planWort = v.vorbei ? 'war geplant' : 'geplant';
-  const sonneWert = pvGemessen != null ? fmtNum(pvGemessen, 'kW') : pvErwartet != null ? fmtNum(pvErwartet, 'kW') : '–';
-  const sonneHer = pvGemessen != null ? 'gemessen' : pvErwartet != null ? 'erwartet' : null;
-  // Der Preis, mit dem entschieden wurde (Bezug), sonst ausdrücklich die Börse.
-  const preisHer = preis == null ? null : tag.preis?.art === 'boerse' ? 'Börse' : 'Bezug';
-  // Die Richtung des Speichers sagt das Wort der Phase direkt darüber; die
-  // Zelle nennt die Leistung und dass sie geplant ist.
-  const speicherWert = kw == null ? '–' : Math.abs(kw) > RUHE_KW ? fmtNum(Math.abs(kw), 'kW') : 'ruht';
-  const richtung = kw == null ? '' : kw > RUHE_KW ? 'lädt ' : kw < -RUHE_KW ? 'gibt ab ' : '';
-  // Ohne einen Preis, der den Plan treibt (fester Tarif), hat die Uhr keinen
-  // Preisring — und die Leiste keine Preiszelle.
-  const preisZelle: ZeigerWert[] = tag.preis
-    ? [
-        {
-          ebene: 'preis',
-          label: 'Preis',
-          // Kurz in der Leiste („ct" je kWh); voll in Lupe und Erklär-Panel.
-          wert: preis == null ? '–' : fmtNum(preis, 'ct', 1),
-          herkunft: preisHer,
-          satz:
-            preis == null
-              ? 'Preis: kein Wert'
-              : `${tag.preis.art === 'boerse' ? 'Börsenpreis' : 'Strompreis'}: ${ct(preis)}`,
-        },
-      ]
-    : [];
-  return [
-    {
-      ebene: 'sonne',
-      label: 'Sonne',
-      wert: sonneWert,
-      herkunft: sonneHer,
-      satz: `Sonne: ${sonneWert}${sonneHer ? `, ${sonneHer}` : ''}`,
-    },
-    ...preisZelle,
-    {
-      ebene: 'taetigkeit',
-      label: 'Speicher',
-      wert: speicherWert,
-      herkunft: kw == null ? null : planWort,
-      satz: kw == null ? 'Speicher: kein Wert' : `Speicher: ${richtung}${speicherWert}, ${planWort}`,
-    },
-    {
-      ebene: 'ladestand',
-      label: 'Ladestand',
-      wert: soc == null ? '–' : pct(soc),
-      herkunft: soc == null ? null : planWort,
-      satz: soc == null ? 'Ladestand: kein Wert' : `Ladestand: ${pct(soc)}, ${planWort}`,
-    },
-  ];
-}
-
-/** Die Schritte der Einführung (E11): Ring für Ring, zuletzt der Zeiger. */
-export const EINFUEHRUNG: readonly { ebene: TagesbildEbene | 'zeiger'; titel: string }[] = [
-  { ebene: 'sonne', titel: 'Sonne' },
-  { ebene: 'preis', titel: 'Strompreis' },
-  { ebene: 'taetigkeit', titel: 'Was der Speicher tut' },
-  { ebene: 'ladestand', titel: 'Ladestand' },
-  { ebene: 'zeiger', titel: 'Der Zeiger' },
-];
-
-/** Die Einführung dieses Tages: ohne Preisring kein Schritt, der ihn erklärt. */
-export function einfuehrungFuer(tag: TagModell): readonly { ebene: TagesbildEbene | 'zeiger'; titel: string }[] {
-  if (!tag.preis) return EINFUEHRUNG.filter((s) => s.ebene !== 'preis');
-  return tag.preis.art === 'boerse'
-    ? EINFUEHRUNG.map((s) => (s.ebene === 'preis' ? { ...s, titel: 'Börsenpreis' } : s))
-    : EINFUEHRUNG;
-}
-
-/**
- * Der Schlüssel der „gesehen"-Marke der Einführung — im Layout-Dokument der
- * Organisation (`document.seen`, das Muster von `steuerungIntro.ts`): auf
- * jedem Gerät desselben Kunden nur einmal, nie über `localStorage`.
- */
-export const EINFUEHRUNG_KEY = 'fahrplan-uhr-einfuehrung';
-
-/** Der Satz, der eine Ebene der Uhr erklärt (Werte am Zeiger, Einführung). */
-export function ebenenSatz(tag: TagModell, ebene: TagesbildEbene | 'zeiger'): string {
-  switch (ebene) {
-    case 'sonne':
-      return 'Außen die Sonne: ein Strahl je Viertelstunde. Kräftig ist gemessen, hell ist erwartet.';
-    case 'preis': {
-      const pr = tag.preis;
-      const name = pr?.art === 'boerse' ? 'der Börsenpreis' : 'Ihr Strompreis';
-      const satz = `Der blaue Ring ist ${name} je Viertelstunde: hell günstig, dunkel teuer.`;
-      if (!pr) return satz;
-      const tagWort = tag.jetzt != null ? 'Heute' : 'An diesem Tag';
-      return (
-        `${satz} ${tagWort} am günstigsten um ${uhrzeit(tag.viertel[pr.iMin].von)} Uhr (${ct(pr.min)}), ` +
-        `am teuersten um ${uhrzeit(tag.viertel[pr.iMax].von)} Uhr (${ct(pr.max)}).`
-      );
-    }
-    case 'taetigkeit':
-      return 'Der breite Ring zeigt, was der Speicher tun soll, jede längere Phase mit Symbol. Was vorbei ist, ist blasser: so war es geplant.';
-    case 'ladestand':
-      return 'Die lila Fläche ist der geplante Ladestand: je weiter außen, desto voller. Die Mitte zeigt den Wert am Zeiger.';
-    case 'zeiger':
-      return 'Ziehen Sie den Zeiger oder tippen Sie auf eine Uhrzeit: Alle Antworten gelten dann für diesen Moment. Ein Tipp in die Mitte holt die Gegenwart zurück. Tippen Sie auf eine Antwort, zeigt die Uhr, wo sie steht.';
-  }
 }
 
 /**
@@ -532,7 +538,7 @@ export function indexImLauf(start: string, lauf: readonly { start: string }[]): 
   return lauf.findIndex((s) => new Date(s.start).getTime() === t);
 }
 
-/** Die Lupe des Bildfahrplans: eine Viertelstunde im Detail. */
+/** Die Lupe des Tagesbands: eine Viertelstunde im Detail. */
 export interface LupeView {
   zeit: string;
   art: MomentArt;
