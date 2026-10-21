@@ -70,10 +70,22 @@
     var fresh = everDelivered && telAge < FRESH_SECONDS;
     var linkDown = s.inverter_link === "down";
     var isPaired = paired(s.pairing_state);
+    // EZ-5: eine Box neben einer Anlagensteuerung (SPS) hat keinen Wechselrichter;
+    // die Steuerung wird nach der Kopplung im Portal verbunden. Nur die
+    // ausdrückliche Wahl auf dieser Seite macht daraus diesen Weg.
+    var plc = !!s.anlagensteuerung && !configured && !chargePark;
 
     // --- 1 Wechselrichter verbinden (bzw. Ladepunkt, auf einem Ladepark) ---
     var one;
-    if (chargePark) {
+    if (plc) {
+      one = {
+        state: "done",
+        detail: "Diese Box liest eine Anlagensteuerung (SPS).",
+        cause: "",
+        key: "inverter", num: 1, title: "Anlagensteuerung (SPS)",
+        action: { label: "Zur Kopplung", href: "#portal", ghost: true }
+      };
+    } else if (chargePark) {
       var seen = 0;
       for (var ci = 0; ci < chargers.length; ci++) {
         if (chargers[ci].last_seen_ms || chargers[ci].connected) seen++;
@@ -116,7 +128,7 @@
         cause: "Ohne Wechselrichter empfängt dieses Gerät keine Messwerte."
       };
     }
-    if (!chargePark) {
+    if (!chargePark && !plc) {
       one.key = "inverter"; one.num = 1; one.title = "Wechselrichter verbinden";
       // ⚠ Auf einer portal-verwalteten Anlage gibt es hier nichts AUSZUWÄHLEN
       // und nichts zu ÄNDERN - beides ist gesperrt. Was es gibt: ansehen, und

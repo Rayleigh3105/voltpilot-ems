@@ -198,6 +198,11 @@
     var locked = $("pairLocked"), open = $("pairUnlocked");
     if (locked) locked.hidden = unlocked;
     if (open) open.hidden = !unlocked;
+    var plcBox = $("pairPlc");
+    if (plcBox) plcBox.hidden = unlocked;
+    // EZ-5: the choice "Anlagensteuerung" can be taken back until the box is paired.
+    var plcUndo = $("plcUndoBtn");
+    if (plcUndo) plcUndo.hidden = !(s.anlagensteuerung && !isPaired);
 
     var state = $("pairState");
     if (state) {
@@ -371,6 +376,34 @@
         });
     });
   }
+
+  // EZ-5: "Diese Box liest eine Anlagensteuerung" - the one local act that opens
+  // the claim gate without an inverter or charge point. The server answers with
+  // the new state, so the reference appears without waiting for the next poll.
+  function setAnlagensteuerung(aktiv, btn) {
+    var err = $("plcError");
+    if (btn) btn.disabled = true;
+    fetch("/api/onboarding/anlagensteuerung", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ aktiv: aktiv })
+    })
+      .then(function (r) { return r.json().then(function (b) { return { ok: r.ok, body: b }; }); })
+      .then(function (res) {
+        if (!res.ok) throw new Error(res.body && res.body.error);
+        if (err) err.hidden = true;
+        applyState(res.body);
+      })
+      .catch(function (e) {
+        if (!err) return;
+        err.hidden = false;
+        err.textContent = (e && e.message) || "Die Wahl konnte nicht gespeichert werden. Bitte erneut versuchen.";
+      })
+      .then(function () { if (btn) btn.disabled = false; });
+  }
+  var plcBtn = $("plcBtn");
+  if (plcBtn) plcBtn.addEventListener("click", function () { setAnlagensteuerung(true, plcBtn); });
+  var plcUndoBtn = $("plcUndoBtn");
+  if (plcUndoBtn) plcUndoBtn.addEventListener("click", function () { setAnlagensteuerung(false, plcUndoBtn); });
 
   $("purgeOpenBtn").addEventListener("click", function () { purgeConfirmOpen(true); });
   $("purgeCancelBtn").addEventListener("click", function () { purgeConfirmOpen(false); });

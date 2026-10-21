@@ -18,7 +18,8 @@ const katalog = JSON.parse(readFileSync(
   'utf8')) as { points: { family: string }[]; families: { family: string; an_der_box: boolean }[] };
 const alleFamilien = Array.from(new Set(katalog.points.map((p) => p.family))).sort();
 // `an_der_box: false` (Katalog-README „Familien noch nicht an der Box“): der Server bietet diese Familien
-// nicht an, die Kopie führt sie darum nicht. Die WAGO-Karten gingen mit 2026.09.23.3 an die Box (AP-05 IP-6b).
+// nicht an, die Kopie führt sie darum nicht. Die WAGO-Karten gingen mit 2026.09.23.3 an die Box (AP-05 IP-6b),
+// das Erzeuger-Registerbild mit 2026.10.21.1 (EZ-5).
 const nochNichtAnDerBox = katalog.families.filter((f) => !f.an_der_box).map((f) => f.family).sort();
 const echteFamilien = alleFamilien.filter((f) => !nochNichtAnDerBox.includes(f));
 
@@ -35,8 +36,8 @@ describe('KATALOG_FAMILIEN ist eine geprüfte Kopie, keine zweite Wahrheit', () 
   });
 
   it('lässt die Familien weg, die noch an keine Box gehen - sonst stünde dort ein leerer Kasten', () => {
-    // UEMS EZ-6: das Erzeuger-Registerbild steht im Inhaltsstand, den Leser bringt EZ-5 mit einem Edge-Release.
-    expect(nochNichtAnDerBox).toEqual(['voltpilot.erzeuger_registerbild_v1']);
+    // Seit EZ-5 (Laufzeitstand 2026.10.21.1) ist auch das Erzeuger-Registerbild an der Box: heute keine.
+    expect(nochNichtAnDerBox).toEqual([]);
     expect(KATALOG_FAMILIEN.filter((f) => nochNichtAnDerBox.includes(f))).toEqual([]);
   });
 

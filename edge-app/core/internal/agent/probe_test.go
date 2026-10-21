@@ -737,3 +737,79 @@ func TestWagoKopfBusOpStaysAdditive(t *testing.T) {
 		t.Fatalf("der Kopf-Schritt muss sich benennen: %s", neu)
 	}
 }
+
+// EZ-5: the erzeuger_kopf step goes down the bus by name, without data_type,
+// and the core - not the node - judges what came back.
+func TestErzeugerKopfFixtureIsExecutedAndJudgedInTheCore(t *testing.T) {
+	oldWindow := probeWindow
+	probeWindow = 100 * 365 * 24 * time.Hour
+	t.Cleanup(func() { probeWindow = oldWindow })
+
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "..",
+		"docs", "contracts", "examples", "mqtt-probe.valid.erzeuger-kopf.json"))
+	if err != nil {
+		t.Fatalf("read fixture: %v", err)
+	}
+	i := func(v int) *int { return &v }
+	text := func(v string) *string { return &v }
+	box := startProbeBox(t)
+	seen := make(chan probeBusRequest, 1)
+	probeStub(t, box.addr, seen, func(req probeBusRequest) []probeBusResult {
+		return []probeBusResult{{ID: req.Ops[0].ID, OK: true, ErzeugerKopf: &probe.ErzeugerKopf{
+			SignaturOK: true, Erkannt: true, TeAnzahl: i(2), Anlagenart: i(2),
+			Einheiten: []probe.ErzeugerEinheit{{Einheit: 1, Art: i(2), NennKW: i(66), TypName: text("MAN E0836LE")},
+				{Einheit: 2, Art: i(2), NennKW: i(33)}},
+			NetzbetreiberName: text("N-ERGIE Netz GmbH"), DirektvermarkterName: text("")}}}
+	})
+
+	box.a.onProbeRequest(raw)
+
+	req := <-seen
+	if len(req.Ops) != 1 || req.Ops[0].Op != probe.OpErzeugerKopf || req.Ops[0].FC != probeFnReadInput ||
+		req.Ops[0].Address != 0 || req.Ops[0].Port != 503 || req.Ops[0].DataType != "" {
+		t.Fatalf("bus op = %+v", req.Ops)
+	}
+	res := box.answer(t)
+	if res == nil || len(res.Results) != 1 {
+		t.Fatalf("want one result: %+v", res)
+	}
+	got := res.Results[0]
+	if !got.OK || got.ErzeugerKopf == nil || len(got.ErzeugerKopf.Einheiten) != 2 ||
+		got.Finding != nil || got.Raw != nil || got.Value != nil {
+		t.Fatalf("erkannt = %+v", got)
+	}
+}
+
+func TestErzeugerKopfVerdictIsMadeInTheCore(t *testing.T) {
+	op := probe.Op{Op: probe.OpErzeugerKopf, ID: "steuerung", Transport: probe.TransportModbusTCP,
+		Host: "192.168.20.40"}
+	for _, grund := range []string{"signatur_fremd", "version_fremd"} {
+		got := erzeugerKopfResult(op, probeBusResult{ID: "steuerung", OK: true,
+			ErzeugerKopf: &probe.ErzeugerKopf{SignaturOK: grund == "version_fremd", Grund: grund}})
+		if got.OK || got.ErrorCode != probe.ErrInvalidResponse || got.ErzeugerKopf == nil ||
+			got.Finding == nil || got.Finding.Channel != probe.FindingChannelErzeugerKopf ||
+			got.Finding.Rule != probe.FindingRuleRegisterbildUnbekannt {
+			t.Fatalf("%s = %+v", grund, got)
+		}
+		if !strings.Contains(got.Message, "Erzeuger") {
+			t.Fatalf("%s: Satz = %q", grund, got.Message)
+		}
+	}
+	// Ein Erzeuger-Bild IST da, es dekodiert nur nicht: kein Befund ueber das Programm.
+	for _, grund := range []string{"wortfolge_falsch", "te_anzahl_ungueltig", "zu_wenig_woerter"} {
+		got := erzeugerKopfResult(op, probeBusResult{ID: "steuerung", OK: true,
+			ErzeugerKopf: &probe.ErzeugerKopf{SignaturOK: true, Grund: grund}})
+		if got.OK || got.Finding != nil || !strings.Contains(got.Message, grund) {
+			t.Fatalf("%s = %+v", grund, got)
+		}
+	}
+	got := erzeugerKopfResult(op, probeBusResult{ID: "steuerung", OK: false,
+		ErrorCode: probe.ErrUnreachable, Message: "nicht erreichbar"})
+	if got.OK || got.ErrorCode != probe.ErrUnreachable || got.ErzeugerKopf != nil {
+		t.Fatalf("Fehlschlag = %+v", got)
+	}
+	got = erzeugerKopfResult(op, probeBusResult{ID: "steuerung", OK: true})
+	if got.OK || got.ErrorCode != probe.ErrInvalidResponse || got.ErzeugerKopf != nil {
+		t.Fatalf("Antwort ohne Kopf = %+v", got)
+	}
+}

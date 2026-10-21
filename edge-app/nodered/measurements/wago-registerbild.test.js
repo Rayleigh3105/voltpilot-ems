@@ -395,11 +395,12 @@ test('der Instanz-Offset gilt fuer SunSpec-Module UND fuer Karten', () => {
   assert.throws(() => _helpers.evalDynamicOffset('irgendwas', 0), /dynamic instance offset/);
 });
 
-test('die Box-Sicht des Katalogs fuehrt die WAGO-Karten (Laufzeitstand 2026.09.23.3, IP-6b)', () => {
+test('die Box-Sicht des Katalogs fuehrt die WAGO-Karten (seit Laufzeitstand 2026.09.23.3, IP-6b)', () => {
   // Der Eintrag in NOCH_NICHT_AN_DER_BOX ist gefallen: die Palette loest die Karten auf, `range`
   // reist als Box-Feld mit. Die 750-494 bleibt ohne belegten Datentyp nicht lesbar (Befund 4).
   const { catalogDocument } = require('./measurement-driver');
-  assert.strictEqual(catalogDocument.catalog_version, '2026.09.23.3');
+  // Seit 2026.10.21.1 (EZ-5) fuehrt dieselbe Palette auch das Erzeuger-Registerbild.
+  assert.strictEqual(catalogDocument.catalog_version, '2026.10.21.1');
   const karte = resolvePoint('wago.pm495.karte[0].energy_import_total');
   assert.strictEqual(karte.source_kind, 'wago_registerbild');
   assert.strictEqual(karte.readable, true);

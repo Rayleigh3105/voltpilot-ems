@@ -70,6 +70,10 @@ const (
 	// It is what lets the wizard show WHAT answers under that base address
 	// before a single card has been assigned to anything.
 	OpWagoKopf = "wago_kopf"
+	// OpErzeugerKopf reads the head, the per-unit kind and rated power and the
+	// names of a "VoltPilot-Registerbild Erzeuger v1" (EZ-5) - no measurement.
+	// It is what the "Steuerung verbinden" step shows before anything is created.
+	OpErzeugerKopf = "erzeuger_kopf"
 	// OpSwitchSet is the ON/OFF switch of a FREE I/O-module output on the
 	// portal's device page: set_value stays until someone switches again - no
 	// auto-off. That is only acceptable for TransportEbyte: the module's own
@@ -86,6 +90,9 @@ const (
 	// HEAD of the WAGO register image. The controller answered - it just did not
 	// answer with our register image.
 	FindingChannelWagoKopf = "wago_kopf"
+	// FindingChannelErzeugerKopf is the same for the Erzeuger image: the
+	// controller answered, just not with our Erzeuger image.
+	FindingChannelErzeugerKopf = "erzeuger_kopf"
 	// FindingRuleRegisterbildUnbekannt: signature or major version foreign. Not
 	// a single card value is taken from such a reading. In normal operation the
 	// box reports the same finding as the source contract's error class
@@ -284,6 +291,9 @@ type OpResult struct {
 	// no business in Raw/Value. It rides a REFUSAL too - "what stood there?" is
 	// exactly what turns a rejection from a riddle into something actionable.
 	WagoKopf *WagoKopf `json:"wago_kopf,omitempty"`
+	// ErzeugerKopf is what an erzeuger_kopf op read - its OWN block for the same
+	// reason, and it rides a refusal too.
+	ErzeugerKopf *ErzeugerKopf `json:"erzeuger_kopf,omitempty"`
 	// Finding names WHICH channel violated WHICH plausibility rule. Machine
 	// readable next to the German sentence, so no surface parses prose.
 	Finding *Finding `json:"finding,omitempty"`
@@ -318,6 +328,39 @@ type WagoKopf struct {
 	// Typenschild: the nameplate text, DISPLAY ONLY. Absent when not asked for,
 	// not answered or empty - never a fabricated empty string.
 	Typenschild string `json:"typenschild,omitempty"`
+}
+
+// ErzeugerKopf is the decoded head of a "VoltPilot-Registerbild Erzeuger v1"
+// with the units' kind, rated power and names. The gap-not-zero rule as in
+// WagoKopf: every field this reading did not produce is ABSENT - after a foreign
+// signature nothing but SignaturOK, after a foreign major version only the
+// version. A name that was read and is empty is "" ("keiner"); a name that was
+// not read (no names in the image, the read failed) is absent.
+type ErzeugerKopf struct {
+	SignaturOK bool   `json:"signatur_ok"`
+	Erkannt    bool   `json:"erkannt"`
+	Grund      string `json:"grund,omitempty"`
+
+	Hauptversion   *int   `json:"hauptversion,omitempty"`
+	Nebenversion   *int   `json:"nebenversion,omitempty"`
+	TeAnzahl       *int   `json:"te_anzahl,omitempty"`
+	Herzschlag     *int   `json:"herzschlag,omitempty"`
+	Programmstand  *int   `json:"programmstand,omitempty"`
+	SteuerungID    *int64 `json:"steuerung_id,omitempty"`
+	Anlagenart     *int   `json:"anlagenart,omitempty"`
+	BeschreibungAb *int   `json:"beschreibung_ab,omitempty"`
+
+	Einheiten            []ErzeugerEinheit `json:"einheiten,omitempty"`
+	NetzbetreiberName    *string           `json:"netzbetreiber_name,omitempty"`
+	DirektvermarkterName *string           `json:"direktvermarkter_name,omitempty"`
+}
+
+// ErzeugerEinheit is one unit (inverter or engine) of an Erzeuger image.
+type ErzeugerEinheit struct {
+	Einheit int     `json:"einheit"`
+	Art     *int    `json:"art,omitempty"`
+	NennKW  *int    `json:"nenn_kw,omitempty"`
+	TypName *string `json:"typ_name,omitempty"`
 }
 
 // Sample is one named channel of a test_connection read. Count 0 carries no
@@ -479,6 +522,10 @@ func ValidateOp(op Op) (code string, message string) {
 	case OpSwitchTest, OpSwitchCancel:
 		return validateSwitch(op)
 	case OpWagoKopf:
+		return validateWagoKopf(op)
+	case OpErzeugerKopf:
+		// The same admission as a WAGO head read: private target, bounded
+		// port/unit, a stated register kind and a base address, no data_type.
 		return validateWagoKopf(op)
 	case OpSwitchSet:
 		return validateSwitchSet(op)
@@ -658,6 +705,18 @@ func SucceededWagoKopf(id string, kopf *WagoKopf) OpResult {
 func FailedWagoKopf(id, code, message string, kopf *WagoKopf, finding *Finding) OpResult {
 	return OpResult{ID: id, OK: false, ErrorCode: code, Message: message,
 		WagoKopf: kopf, Finding: finding}
+}
+
+// SucceededErzeugerKopf builds an answered erzeuger_kopf line.
+func SucceededErzeugerKopf(id string, kopf *ErzeugerKopf) OpResult {
+	return OpResult{ID: id, OK: true, ErzeugerKopf: kopf}
+}
+
+// FailedErzeugerKopf builds a REFUSED erzeuger_kopf line that still shows what
+// the box read.
+func FailedErzeugerKopf(id, code, message string, kopf *ErzeugerKopf, finding *Finding) OpResult {
+	return OpResult{ID: id, OK: false, ErrorCode: code, Message: message,
+		ErzeugerKopf: kopf, Finding: finding}
 }
 
 // validateSwitch admits the two WRITING ops. It re-applies every rule a read

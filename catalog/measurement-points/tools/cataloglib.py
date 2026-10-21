@@ -36,13 +36,10 @@ RUNTIME_FIELDS = EDGE_FIELDS + ("long_term_cadence_s",)
 # und die api bietet sie nicht zur Auswahl an. So hebt eine neue Quelle den Laufzeitstand NICHT — der
 # Eintrag fällt erst mit dem Edge-Release, das ihre Punkte lesen kann, und dann steigt RUNTIME_VERSION.
 # ⚠ Nie eine Familie eintragen, die schon an einer Box ist (`validate.py` lehnt das ab).
-# `wago.pm494`/`wago.pm495` gingen mit dem Laufzeitstand 2026.09.23.3 an die Box (UEMS AP-05 IP-6b, wirksam
-# mit dem Box-Release, das diese Palette trägt).
-NOCH_NICHT_AN_DER_BOX: dict[str, str] = {
-    "voltpilot.erzeuger_registerbild_v1": (
-        "UEMS EZ-6 (Cloud-Modell): den Leser des Erzeuger-Registerbilds bringt EZ-5 mit einem Edge-Release; "
-        "mit ihm fällt dieser Eintrag und RUNTIME_VERSION steigt"),
-}
+# `wago.pm494`/`wago.pm495` gingen mit dem Laufzeitstand 2026.09.23.3 an die Box (UEMS AP-05 IP-6b),
+# `voltpilot.erzeuger_registerbild_v1` mit dem Laufzeitstand 2026.10.21.1 (EZ-5, der Box-Leser) - beide
+# wirksam mit dem Box-Release, das diese Palette trägt. Heute leer, der Mechanismus bleibt.
+NOCH_NICHT_AN_DER_BOX: dict[str, str] = {}
 
 # Cloud-only fact for UEMS AP-06 IP-21.  Family metadata is deliberately not part of
 # EDGE_FIELDS/runtime_projection: deciding whether two boxes may read the same physical device is

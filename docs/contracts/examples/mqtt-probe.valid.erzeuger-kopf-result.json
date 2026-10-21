@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "type": "probe_result",
+  "tenant_id": "00000000-0000-0000-0000-000000000001",
+  "site_id": "00000000-0000-0000-0000-000000000002",
+  "device_id": "00000000-0000-0000-0000-000000000003",
+  "request_id": "e25a0b9c3e77d301",
+  "answered_at": "2026-10-21T20:05:01Z",
+  "results": [
+    {
+      "id": "steuerung",
+      "ok": true,
+      "erzeuger_kopf": {
+        "signatur_ok": true,
+        "erkannt": true,
+        "hauptversion": 1,
+        "nebenversion": 0,
+        "te_anzahl": 2,
+        "herzschlag": 500,
+        "programmstand": 2611,
+        "steuerung_id": 4712,
+        "anlagenart": 2,
+        "beschreibung_ab": 140,
+        "einheiten": [
+          { "einheit": 1, "art": 2, "nenn_kw": 66, "typ_name": "MAN E0836LE" },
+          { "einheit": 2, "art": 2, "nenn_kw": 33, "typ_name": "KW Energie Smartblock 33" }
+        ],
+        "netzbetreiber_name": "N-ERGIE Netz GmbH",
+        "direktvermarkter_name": "WVV (Stadtwerke Würzburg)"
+      }
+    },
+    {
+      "id": "steuerung-wago",
+      "ok": false,
+      "error_code": "invalid_response",
+      "message": "Unter dieser Adresse steht nicht das VoltPilot-Registerbild Erzeuger v1 (Signatur oder Version fremd) - es wurde kein Wert übernommen.",
+      "erzeuger_kopf": {
+        "signatur_ok": false,
+        "erkannt": false,
+        "grund": "signatur_fremd"
+      },
+      "finding": {
+        "channel": "erzeuger_kopf",
+        "rule": "registerbild_unbekannt"
+      }
+    }
+  ]
+}

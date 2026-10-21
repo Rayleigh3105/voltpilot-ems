@@ -70,6 +70,14 @@ type InverterController interface {
 	PortalManagedComponents() bool
 }
 
+// AnlagensteuerungController is the OPTIONAL setter of the local choice "this
+// box reads a plant controller (SPS), no inverter" (EZ-5). The agent implements
+// it next to InverterController; the handler finds it by type assertion, so the
+// Handler signature and every caller stay as they are.
+type AnlagensteuerungController interface {
+	SetAnlagensteuerung(aktiv bool) error
+}
+
 // SourcesController backs the "Energiequellen" surface: the ADDITIONAL read-only
 // measurement points (Phase 1: Erzeuger/PV) a site has beyond its one
 // battery-hybrid inverter. The agent implements it; adding/removing a source
@@ -324,12 +332,19 @@ func paired(pairingState string) bool {
 // inverter-only rule would have locked it out of commissioning forever. The
 // generalisation is strictly ADDITIVE - the inverter branch is untouched and a
 // plant without either component stays locked, exactly as before.
+//
+// ⚠ The same holds for a box beside a plant controller (EZ-5, Konzept
+// "Erzeuger am WAGO-Modbus-Server" §4.11): it reads nothing until the portal
+// configures the controller AFTER the claim, so no component can ever prove
+// itself first. The operator says so explicitly on :8484 ("Diese Box liest
+// eine Anlagensteuerung"); only that choice opens the gate - a box without
+// inverter, charge point or that choice stays locked as before.
 func deriveOnboarding(snap state.Snapshot) (step string, inverterConnected, chargePointConnected,
 	claimUnlocked bool) {
 	inverterConfigured := snap.Inverter != nil && snap.Inverter.Configured
 	inverterConnected = inverterConfigured && !snap.LastTelemetry.IsZero()
 	chargePointConnected = snap.HasReportedChargePoint()
-	componentConnected := inverterConnected || chargePointConnected
+	componentConnected := inverterConnected || chargePointConnected || snap.Anlagensteuerung
 	switch {
 	case paired(snap.PairingState):
 		return "done", inverterConnected, chargePointConnected, true
@@ -410,6 +425,31 @@ func Handler(st *state.Store, inv InverterController, purge PurgeController,
 	// GET /api/history?minutes=N - recent telemetry samples for the charts on
 	// first load (default 60 min, clamped to a day). server_now_ms lets the
 	// client align its time axis to the device clock.
+	// POST /api/onboarding/anlagensteuerung {"aktiv":true|false} - the local
+	// choice "this box reads a plant controller (SPS)" that opens the claim gate
+	// without an inverter (EZ-5). It changes nothing a device reads or writes.
+	mux.HandleFunc("POST /api/onboarding/anlagensteuerung", func(w http.ResponseWriter, r *http.Request) {
+		setter, ok := inv.(AnlagensteuerungController)
+		if !ok {
+			writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "nicht verfügbar"})
+			return
+		}
+		var body struct {
+			Aktiv *bool `json:"aktiv"`
+		}
+		dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&body); err != nil || body.Aktiv == nil {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "aktiv (true/false) fehlt"})
+			return
+		}
+		if err := setter.SetAnlagensteuerung(*body.Aktiv); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "Die Wahl konnte nicht gespeichert werden."})
+			return
+		}
+		writeJSON(w, http.StatusOK, envelope(st, topo, ac))
+	})
+
 	mux.HandleFunc("GET /api/history", func(w http.ResponseWriter, r *http.Request) {
 		minutes := 60
 		if q := r.URL.Query().Get("minutes"); q != "" {

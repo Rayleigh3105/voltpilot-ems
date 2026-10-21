@@ -10,7 +10,7 @@ Ausführbare JSON-Fixtures für Schema- und Laufzeitprüfungen. Dateinamen und I
 | `flow-artifact.*.json` | 2 | 1 |
 | `flow-graph.*.json` | 14 | 3 |
 | `mqtt-measurement-config-status.*.json` | 1 | 0 |
-| `mqtt-measurement-config.*.json` | 3 | 1 |
+| `mqtt-measurement-config.*.json` | 7 | 1 |
 | `mqtt-measurement-samples.*.json` | 1 | 1 |
 | `mqtt-schedule-2.0.*.json` | 5 | 2 |
 | `mqtt-telemetry-2.0.*.json` | 2 | 1 |

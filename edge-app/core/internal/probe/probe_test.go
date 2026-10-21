@@ -892,3 +892,96 @@ func TestWagoKopfResultIsHonestAboutWhatItRead(t *testing.T) {
 		}
 	}
 }
+
+// EZ-5: the head read of a plant controller with the Erzeuger image. Same
+// admission as wago_kopf; the fixtures are read BY PATH by the real parser.
+func TestErzeugerKopfFixturesParseAndAdmit(t *testing.T) {
+	raw, err := os.ReadFile(contractPath("mqtt-probe.valid.erzeuger-kopf.json"))
+	if err != nil {
+		t.Fatalf("Fixture: %v", err)
+	}
+	req, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if len(req.Ops) != 1 || req.Ops[0].Op != OpErzeugerKopf {
+		t.Fatalf("ops = %+v", req.Ops)
+	}
+	op := req.Ops[0]
+	if v := ValidateOps(req.Ops); !v[0].OK() {
+		t.Fatalf("die Fixture muss zugelassen werden: %+v", v[0])
+	}
+	if op.EffectiveAddress() != 0 || op.RegisterKind != "input" || op.EffectiveWordOrder() != "big" ||
+		op.EffectivePort() != 503 {
+		t.Fatalf("Parameter = %+v", op)
+	}
+	if op.Writes() {
+		t.Fatal("erzeuger_kopf darf niemals als schreibend gelten")
+	}
+	raw, err = os.ReadFile(contractPath("mqtt-probe.invalid.erzeuger-kopf-without-address.json"))
+	if err != nil {
+		t.Fatalf("Negativ-Fixture: %v", err)
+	}
+	bad, err := Parse(raw)
+	if err != nil {
+		t.Fatalf("Parse: %v", err)
+	}
+	if code, msg := ValidateOp(bad.Ops[0]); code != ErrInvalidRequest || !strings.Contains(msg, "Basisadresse") {
+		t.Fatalf("Ablehnung = %q / %q", code, msg)
+	}
+	oeffentlich := op
+	oeffentlich.Host = "203.0.113.9"
+	if code, _ := ValidateOp(oeffentlich); code != ErrInvalidRequest {
+		t.Fatalf("oeffentliches Ziel = %q", code)
+	}
+	ohneArt := op
+	ohneArt.RegisterKind = "coil"
+	if code, _ := ValidateOp(ohneArt); code != ErrInvalidRequest {
+		t.Fatalf("Registerart coil = %q", code)
+	}
+}
+
+func TestErzeugerKopfResultIsHonestAboutWhatItRead(t *testing.T) {
+	raw, err := os.ReadFile(contractPath("mqtt-probe.valid.erzeuger-kopf-result.json"))
+	if err != nil {
+		t.Fatalf("Ergebnis-Fixture: %v", err)
+	}
+	var res Result
+	if err := json.Unmarshal(raw, &res); err != nil {
+		t.Fatalf("Ergebnis unlesbar: %v", err)
+	}
+	gut := res.Results[0]
+	k := gut.ErzeugerKopf
+	if !gut.OK || k == nil || !k.Erkannt || k.TeAnzahl == nil || *k.TeAnzahl != 2 ||
+		k.Anlagenart == nil || *k.Anlagenart != 2 || len(k.Einheiten) != 2 {
+		t.Fatalf("erkannter Kopf = %+v", k)
+	}
+	if *k.Einheiten[0].NennKW != 66 || *k.Einheiten[1].TypName != "KW Energie Smartblock 33" ||
+		*k.NetzbetreiberName != "N-ERGIE Netz GmbH" || *k.DirektvermarkterName != "WVV (Stadtwerke Würzburg)" {
+		t.Fatalf("Einheiten/Namen = %+v / %+v", k.Einheiten, k)
+	}
+	if gut.Raw != nil || gut.Value != nil {
+		t.Fatalf("ein Kopf ist kein Messwert: %+v", gut)
+	}
+	fremd := res.Results[1]
+	if fremd.OK || fremd.Finding == nil || fremd.Finding.Channel != FindingChannelErzeugerKopf ||
+		fremd.Finding.Rule != FindingRuleRegisterbildUnbekannt || fremd.ErzeugerKopf == nil ||
+		fremd.ErzeugerKopf.SignaturOK || fremd.ErzeugerKopf.Grund != "signatur_fremd" {
+		t.Fatalf("fremdes Bild = %+v / %+v", fremd, fremd.ErzeugerKopf)
+	}
+	// Luecke statt Null: nach fremder Signatur ist nichts weiter bekannt.
+	out, _ := json.Marshal(FailedErzeugerKopf("steuerung", ErrInvalidResponse, "x",
+		fremd.ErzeugerKopf, fremd.Finding))
+	for _, feld := range []string{"te_anzahl", "herzschlag", "steuerung_id", "einheiten", "name", "raw", "value"} {
+		if strings.Contains(string(out), feld) {
+			t.Fatalf("%q darf nicht in den Draht: %s", feld, out)
+		}
+	}
+	// Ein gelesener leerer Name bleibt "" (keiner), ein nicht gelesener fehlt.
+	leer := ""
+	out, _ = json.Marshal(SucceededErzeugerKopf("steuerung", &ErzeugerKopf{SignaturOK: true, Erkannt: true,
+		DirektvermarkterName: &leer}))
+	if !strings.Contains(string(out), `"direktvermarkter_name":""`) || strings.Contains(string(out), "netzbetreiber_name") {
+		t.Fatalf("Namen = %s", out)
+	}
+}

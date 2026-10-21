@@ -96,6 +96,9 @@ type probeBusResult struct {
 	// owns the Modbus codec), the core JUDGES - the same split as everywhere on
 	// this channel: policy never leaves the core.
 	WagoKopf *probe.WagoKopf `json:"wago_kopf"`
+	// ErzeugerKopf is what an erzeuger_kopf step read (head, units, names) -
+	// decoded by the node, judged here.
+	ErzeugerKopf *probe.ErzeugerKopf `json:"erzeuger_kopf"`
 }
 
 type probeBusResponse struct {
@@ -219,6 +222,13 @@ func (a *Agent) runProbe(req probe.Request, id probe.Identity) {
 			bus.DataType = ""
 			bus.Nameplate = op.WantsNameplate()
 		}
+		if op.Op == probe.OpErzeugerKopf {
+			// The same for the Erzeuger image: the node reads the head and,
+			// behind a recognised head, the unit blocks and the names - all of
+			// documented length, never a free word count.
+			bus.Op = probe.OpErzeugerKopf
+			bus.DataType = ""
+		}
 		busOps = append(busOps, bus)
 	}
 
@@ -231,6 +241,10 @@ func (a *Agent) runProbe(req probe.Request, id probe.Identity) {
 			op := req.Ops[i]
 			if op.Op == probe.OpWagoKopf {
 				results[i] = wagoKopfResult(op, r)
+				continue
+			}
+			if op.Op == probe.OpErzeugerKopf {
+				results[i] = erzeugerKopfResult(op, r)
 				continue
 			}
 			if r.OK && r.Raw != nil {
@@ -249,7 +263,8 @@ func (a *Agent) runProbe(req probe.Request, id probe.Identity) {
 		// Whatever the exchange did not answer at all is a timeout - stated,
 		// never left as a zero value that would read like a successful 0.
 		for i, op := range req.Ops {
-			if verdicts[i].OK() && (op.Op == probe.OpRead || op.Op == probe.OpWagoKopf) &&
+			if verdicts[i].OK() && (op.Op == probe.OpRead || op.Op == probe.OpWagoKopf ||
+				op.Op == probe.OpErzeugerKopf) &&
 				results[i].ID == "" {
 				results[i] = probe.Failed(op.ID, probe.ErrTimeout,
 					"Die Prüfung hat nicht rechtzeitig geantwortet.")
@@ -296,6 +311,39 @@ func wagoKopfResult(op probe.Op, r probeBusResult) probe.OpResult {
 	}
 	return probe.FailedWagoKopf(op.ID, probe.ErrInvalidResponse,
 		"Der Kopf des Registerbilds ließ sich mit diesen Angaben nicht lesen "+
+			"("+kopf.Grund+") - Basisadresse, Registerart und Wortreihenfolge prüfen.",
+		kopf, nil)
+}
+
+// erzeugerKopfResult turns one answered erzeuger_kopf step into the contract
+// line, with the same policy as wagoKopfResult: recognised -> ok with the block;
+// signature or major version foreign -> a refusal carrying the block and the
+// finding registerbild_unbekannt (channel erzeuger_kopf); any other reason (word
+// order, unit count, length) -> the same refusal without a finding, because an
+// Erzeuger image IS there; a failed read -> the node's own class.
+func erzeugerKopfResult(op probe.Op, r probeBusResult) probe.OpResult {
+	if !r.OK || r.ErzeugerKopf == nil {
+		code, msg := r.ErrorCode, r.Message
+		if code == "" {
+			code, msg = probe.ErrInvalidResponse, "Die Antwort der Steuerung war nicht lesbar."
+		}
+		return probe.Failed(op.ID, code, msg)
+	}
+	kopf := r.ErzeugerKopf
+	if kopf.Erkannt {
+		return probe.SucceededErzeugerKopf(op.ID, kopf)
+	}
+	if kopf.Grund == "signatur_fremd" || kopf.Grund == "version_fremd" {
+		return probe.FailedErzeugerKopf(op.ID, probe.ErrInvalidResponse,
+			"Unter dieser Adresse steht nicht das VoltPilot-Registerbild Erzeuger v1 "+
+				"(Signatur oder Version fremd) - es wurde kein Wert übernommen.",
+			kopf, &probe.Finding{
+				Channel: probe.FindingChannelErzeugerKopf,
+				Rule:    probe.FindingRuleRegisterbildUnbekannt,
+			})
+	}
+	return probe.FailedErzeugerKopf(op.ID, probe.ErrInvalidResponse,
+		"Das Registerbild Erzeuger ließ sich mit diesen Angaben nicht lesen "+
 			"("+kopf.Grund+") - Basisadresse, Registerart und Wortreihenfolge prüfen.",
 		kopf, nil)
 }

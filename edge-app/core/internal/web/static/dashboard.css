@@ -92,6 +92,9 @@ main { max-width: 1200px; margin: 0 auto; padding: 22px 20px 56px; }
 }
 .step-locked-note .lock-ico svg { width: 20px; height: 20px; }
 .step-locked-note p { margin: 0; color: var(--muted); font-size: 13.5px; }
+/* EZ-5: the "Anlagensteuerung (SPS)" way below the locked claim note. */
+.pair-plc { margin-top: 12px; }
+.pair-plc p { margin: 0 0 8px; color: var(--muted); font-size: 13.5px; }
 
 .ref-block { margin-top: 14px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .ref-label { font-size: 12.5px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }

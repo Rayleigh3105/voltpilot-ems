@@ -57,9 +57,9 @@
     },
     {
       "name": "erzeuger_registerbild",
-      "meaning": "Die Box liest das VoltPilot-Registerbild Erzeuger v1 (Katalogfamilie voltpilot.erzeuger_registerbild_v1) mit den Parametern aus mqtt-measurement-config erzeuger_registerbilder (UEMS EZ-6/EZ-5). Erst dann bietet das Portal die Anlagensteuerung an und die Cloud sendet das Feld.",
-      "advertised": false,
-      "evidence": "docs/agents/root/erzeuger-anlagensteuerung.md (Cloud-Seite EZ-6; Box-Leser und Meldung kommen mit EZ-5)"
+      "meaning": "Die Box liest das VoltPilot-Registerbild Erzeuger v1 (Katalogfamilie voltpilot.erzeuger_registerbild_v1) mit den Parametern aus mqtt-measurement-config erzeuger_registerbilder (UEMS EZ-6/EZ-5): alle 5 s eine Anfrage bis 8 Einheiten, Kopf und Soll geprüft, Punkte mit Qualität (stale, uncertain), frozen_source/device_restart, dazu die Probe-Art erzeuger_kopf. Erst dann bietet das Portal die Anlagensteuerung an und die Cloud sendet das Feld.",
+      "advertised": true,
+      "evidence": "edge-app/nodered/measurements/erzeuger-laufzeit.test.js"
     }
   ],
   "cases": [

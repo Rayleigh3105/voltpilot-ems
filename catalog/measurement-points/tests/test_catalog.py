@@ -803,17 +803,18 @@ class WagoQuelleTest(unittest.TestCase):
 
     def test_cards_reach_the_box_with_their_own_runtime_version(self) -> None:
         # UEMS AP-05 IP-6b: der Eintrag in NOCH_NICHT_AN_DER_BOX ist gefallen, der Laufzeitstand stieg
-        # von 2026.09.23.2 auf 2026.09.23.3 — wirksam mit dem Box-Release, das diese Palette trägt.
+        # von 2026.09.23.2 auf 2026.09.23.3 — wirksam mit dem Box-Release, das diese Palette trägt. Seit
+        # EZ-5 (Laufzeitstand 2026.10.21.1) ist auch das Erzeuger-Registerbild an der Box: nichts ist
+        # mehr zurückgehalten.
         families = {f["family"]: f["an_der_box"] for f in self.catalog["families"]}
         self.assertEqual({name: families[name] for name in self.KARTEN}, {"wago.pm494": True, "wago.pm495": True})
-        # Zurückgehalten ist seit UEMS EZ-6 nur das Erzeuger-Registerbild (Leser kommt mit EZ-5).
-        self.assertEqual({name for name, an in families.items() if not an}, {"voltpilot.erzeuger_registerbild_v1"})
-        self.assertEqual(set(cataloglib.NOCH_NICHT_AN_DER_BOX), {"voltpilot.erzeuger_registerbild_v1"})
-        self.assertEqual(self.catalog["runtime_catalog_version"], "2026.09.23.3")
-        karten = [p for p in runtime_projection(self.catalog, "2026.09.23.3") if p["family"].startswith("wago.")]
+        self.assertEqual({name for name, an in families.items() if not an}, set())
+        self.assertEqual(set(cataloglib.NOCH_NICHT_AN_DER_BOX), set())
+        self.assertEqual(self.catalog["runtime_catalog_version"], "2026.10.21.1")
+        karten = [p for p in runtime_projection(self.catalog, "2026.10.21.1") if p["family"].startswith("wago.")]
         self.assertEqual(len(karten), 54)
         palette = json.loads((REPO / "edge-app" / "nodered" / "measurements" / "catalog.json").read_bytes())
-        self.assertEqual(palette["catalog_version"], "2026.09.23.3")
+        self.assertEqual(palette["catalog_version"], "2026.10.21.1")
         im_katalog = {p["point_key"]: p for p in palette["points"] if p["family"] in self.KARTEN}
         self.assertEqual(set(im_katalog), {p["point_key"] for p in karten})
         # `range` reist als Box-Feld mit: der Leser aus IP-6 macht aus dem UNGÜLTIG-Wert keinen Messwert.
@@ -821,9 +822,10 @@ class WagoQuelleTest(unittest.TestCase):
 
         # Die Box-Sicht OHNE die Karten ist die des vorigen Laufzeitstands 2026.09.23.2 — nur der Stand ist neu.
         vorher = json.loads((ROOT / "dist" / "measurement-point-catalog-2026.09.23.2.json").read_text(encoding="utf-8"))
-        ohne_karten = [p for p in runtime_projection(self.catalog, "2026.09.23.2") if p["family"] not in self.KARTEN]
+        spaeter = set(self.KARTEN) | {"voltpilot.erzeuger_registerbild_v1"}
+        ohne_karten = [p for p in runtime_projection(self.catalog, "2026.09.23.2") if p["family"] not in spaeter]
         self.assertEqual(ohne_karten, [p for p in runtime_projection(vorher, "2026.09.23.2")
-                                       if p["family"] not in self.KARTEN])
+                                       if p["family"] not in spaeter])
 
         def nicht_an_der_box(points, document):
             next(f for f in document["families"] if f["family"] == "wago.pm495")["an_der_box"] = False
@@ -998,13 +1000,18 @@ class ErzeugerQuelleTest(unittest.TestCase):
         for point in self.punkte:
             self.assertFalse({"vokabular", "bits", "gueltig_wenn"} & set(point), point["point_key"])
 
-    def test_die_familie_ist_noch_an_keiner_box(self) -> None:
+    def test_die_familie_ist_seit_ez5_an_der_box(self) -> None:
+        # EZ-5 bringt den Box-Leser (`edge-app/nodered/measurements/erzeuger-registerbild.js`) und hebt den
+        # Laufzeitstand auf 2026.10.21.1 — wirksam mit dem Box-Release, das diese Palette trägt.
         (familie,) = [f for f in self.catalog["families"] if f["family"] == self.FAMILIE]
-        self.assertEqual((familie["an_der_box"], familie["point_count"], familie["template_count"]), (False, 33, 7))
+        self.assertEqual((familie["an_der_box"], familie["point_count"], familie["template_count"]), (True, 33, 7))
         box = runtime_projection(self.catalog, self.catalog["runtime_catalog_version"])
-        self.assertFalse([p for p in box if p["family"] == self.FAMILIE])
+        an_der_box = {p["point_key"] for p in box if p["family"] == self.FAMILIE}
+        self.assertEqual(len(an_der_box), 33)
         palette = json.loads((REPO / "edge-app" / "nodered" / "measurements" / "catalog.json").read_bytes())
-        self.assertFalse([p for p in palette["points"] if p["family"] == self.FAMILIE])
+        self.assertEqual({p["point_key"] for p in palette["points"] if p["family"] == self.FAMILIE}, an_der_box)
+        # Die Box liest das Bild alle 5 s; keine Kadenz darunter.
+        self.assertTrue(all(p["min_cadence_s"] == 5 for p in box if p["family"] == self.FAMILIE))
 
     def test_validator_haelt_feste_abschnitte_und_einheiten_bloecke_getrennt(self) -> None:
         def fest_im_block(points):
