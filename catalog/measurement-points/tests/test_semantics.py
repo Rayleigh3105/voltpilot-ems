@@ -96,13 +96,14 @@ class SemanticsTest(unittest.TestCase):
         ohne = sorted(point["point_key"] for point in counters if point.get("unit") not in anzeige)
         self.assertEqual(ohne, sorted(ZAEHLER_OHNE_ANZEIGE_EINHEIT))
         arten = collections.Counter(art for art, _ in ZAEHLER_OHNE_ANZEIGE_EINHEIT.values())
-        self.assertEqual(dict(arten), {"keine_energie": 29, "einheit_im_schluessel": 4, "faktor_zu_erheben": 2})
+        self.assertEqual(dict(arten), {"keine_energie": 31, "einheit_im_schluessel": 4, "faktor_zu_erheben": 2})
         einheiten = collections.Counter(point.get("unit") for point in counters)
         # Befund PR 726: 41 ohne Einheit, 25 in VAh, 4 in „0,1 kWh“, 1 in Wmin — dazu seit UEMS AP-05 IP-4
         # die zwei Zählerstände der 750-494, deren Faktor zu erheben ist (noch an keiner Box). Seit dem
-        # Laufzeitstand 2026.09.23.2 sprechen die 4 KACO-Zähler kWh und die 8 go-e-Zähler Wh.
+        # Laufzeitstand 2026.09.23.2 sprechen die 4 KACO-Zähler kWh und die 8 go-e-Zähler Wh. Seit UEMS EZ-6
+        # das Erzeuger-Registerbild: zwei Vorgaben-Zähler ohne Einheit, ein Zählerstand je Einheit in kWh.
         self.assertEqual((einheiten[None], einheiten["VAh"], einheiten["kWh"], einheiten["Wh"], einheiten["Wmin"]),
-                         (35, 25, 60, 55, 1))
+                         (37, 25, 61, 55, 1))
         self.assertFalse([unit for unit in einheiten if unit and unit[0].isdigit()], "a factor belongs to scale")
         # Scheinarbeit ist nie als Wirkarbeit getarnt; Wmin ist Wirkarbeit.
         self.assertEqual(anzeige["VAh"], "kVAh")

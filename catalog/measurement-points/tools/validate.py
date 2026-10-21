@@ -53,7 +53,7 @@ REQUIRED_POINT_FIELDS = {
 }
 SOURCE_KINDS = {
     "modbus_holding", "modbus_input", "sunspec_model", "http_api_key", "rest_json", "rpc_json",
-    "ocpp_sampled_value", "wago_registerbild",
+    "ocpp_sampled_value", "wago_registerbild", "erzeuger_registerbild",
 }
 MODBUS_SOURCE_KINDS = {"modbus_holding", "modbus_input"}
 AGGREGATIONS = {"gauge", "counter", "state", "event", "bitfield", "text", "none"}
@@ -63,6 +63,10 @@ SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 DYNAMIC_OFFSET_RE = re.compile(r"^[0-9]+\+index\*[1-9][0-9]*\+[0-9]+$")
 # VoltPilot-Registerbild WAGO v1 (docs/contracts/v2/wago-registerbild.md §3/§4): Kopf 12, Karten-Block 42 Wörter.
 REGISTERBILD_KOPF, REGISTERBILD_KARTE = 12, 42
+# VoltPilot-Registerbild Erzeuger v1, schlanke Fassung (Konzept vp-erzeuger-wago-konzept §3.7, UEMS EZ-6):
+# feste Abschnitte in den Wörtern 0 … 37, je Einheit (te_nr 1 … 10) ein Block von 10 Wörtern ab 38.
+ERZEUGER_FEST, ERZEUGER_BLOCK = 38, 10
+ERZEUGER_VORLAGE = f"{ERZEUGER_FEST - ERZEUGER_BLOCK}+index*{ERZEUGER_BLOCK}+"
 # Herkunft je Zahl (UEMS AP-05 IP-4): eine Handbuch-Angabe am Punkt einer WAGO-Karte muss DEREN Artikel nennen.
 WAGO_KARTEN = {"wago.pm494": "750-494", "wago.pm495": "750-495"}
 ANGABE_ARTEN = {"festlegung", "handbuch", "zu erheben"}
@@ -72,6 +76,8 @@ WAGO_PFLICHT_ANGABEN = {"address", "scale", "value_type"}
 GANZZAHL_BEREICH = {
     "uint16": (0, 2**16 - 1), "int16": (-(2**15), 2**15 - 1),
     "uint32": (0, 2**32 - 1), "int32": (-(2**31), 2**31 - 1),
+    # Ein Bitfeld des Erzeuger-Bilds ist ungültig am Typ-Maximum wie jedes U16 (EZ-1 Lesart 5).
+    "bitfield16": (0, 2**16 - 1),
 }
 CATALOG_SCHEMA_PATH = ROOT / "schema" / "catalog.schema.json"
 MANIFEST_SCHEMA_PATH = ROOT / "schema" / "source-manifest.schema.json"
@@ -113,7 +119,7 @@ def validate_manifest(errors: ValidationErrors) -> dict[str, Any]:
         source_id = source.get("id")
         ids.append(source_id)
         errors.check(isinstance(source_id, str) and bool(source_id), f"{prefix} has no id")
-        errors.check(source.get("adapter") in {"deye", "sunspec", "goe", "shelly", "ocpp", "builtin_inverter", "wago", "accuracy"}, f"{prefix} has an unsupported adapter")
+        errors.check(source.get("adapter") in {"deye", "sunspec", "goe", "shelly", "ocpp", "builtin_inverter", "wago", "erzeuger", "accuracy"}, f"{prefix} has an unsupported adapter")
         errors.check(bool(source.get("source_commit") or source.get("source_revision")), f"{prefix} has neither commit nor revision")
         if source.get("adapter") == "sunspec":
             errors.check(len(source.get("models", [])) == 19, "SunSpec manifest must pin 19 models")
@@ -139,7 +145,8 @@ def validate_address(errors: ValidationErrors, point: dict[str, Any], prefix: st
     source_kind = point.get("source_kind")
     if address is None:
         errors.check(source_kind not in {"sunspec_model"}, f"{prefix}: SunSpec address may not be null")
-        errors.check(source_kind != "wago_registerbild", f"{prefix}: Registerbild address may not be null")
+        errors.check(source_kind not in {"wago_registerbild", "erzeuger_registerbild"},
+                     f"{prefix}: Registerbild address may not be null")
         return
     errors.check(isinstance(address, dict), f"{prefix}: address must be an object or null")
     if not isinstance(address, dict):
@@ -190,6 +197,31 @@ def validate_address(errors: ValidationErrors, point: dict[str, Any], prefix: st
         errors.check(point.get("dynamic") is True, f"{prefix}: a Registerbild point is a template per card (karte[*])")
         errors.check(point.get("endian") is None,
                      f"{prefix}: the Registerbild word order is a parameter per installation, not a catalog fact")
+    elif source_kind == "erzeuger_registerbild":
+        offset = address.get("offset_words")
+        width_words = address.get("width_words")
+        errors.check(address.get("kind") == "registerbild_relative", f"{prefix}: wrong Registerbild address kind")
+        errors.check(address.get("base") == "parameter",
+                     f"{prefix}: the Registerbild base address is a parameter per installation")
+        errors.check(isinstance(width_words, int) and width_words > 0, f"{prefix}: invalid Registerbild width")
+        errors.check(point.get("endian") is None,
+                     f"{prefix}: the Registerbild word order is a parameter per installation, not a catalog fact")
+        einheit = ".te[*]." in str(point.get("point_key"))
+        errors.check(point.get("dynamic") is einheit,
+                     f"{prefix}: exactly the unit points (te[*]) are templates; fixed sections are not")
+        if einheit:
+            feld = offset[len(ERZEUGER_VORLAGE):] if isinstance(offset, str) and offset.startswith(ERZEUGER_VORLAGE) else None
+            errors.check(feld is not None and feld.isdigit() and bool(DYNAMIC_OFFSET_RE.fullmatch(offset)),
+                         f"{prefix}: a unit offset must be {ERZEUGER_VORLAGE}<offset in the unit block>")
+            if feld is not None and feld.isdigit() and isinstance(width_words, int):
+                errors.check(int(feld) + width_words <= ERZEUGER_BLOCK, f"{prefix}: field leaves the unit block")
+        else:
+            errors.check(isinstance(offset, int) and not isinstance(offset, bool),
+                         f"{prefix}: a fixed section has a fixed offset")
+            if isinstance(offset, int) and isinstance(width_words, int):
+                errors.check(offset + width_words <= ERZEUGER_FEST, f"{prefix}: fixed field reaches into the unit blocks")
+        if isinstance(width_words, int):
+            errors.check(point.get("width_bits") == width_words * 16, f"{prefix}: Registerbild width_bits mismatch")
     else:
         errors.check(False, f"{prefix}: {source_kind} may not have a register address")
 

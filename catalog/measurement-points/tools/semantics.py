@@ -127,6 +127,12 @@ ZAEHLER_OHNE_ANZEIGE_EINHEIT: dict[str, tuple[str, str]] = {
         for art in ("active", "reactive") for richtung in ("export", "import")
     },
     **{
+        f"erzeuger.{abschnitt}.{key}": ("keine_energie",
+                                        f"Registerbild Erzeuger v1 `{key}` zählt die Vorgaben des {wer} seit "
+                                        f"Programmstart (läuft 65535 → 0, EZ-1 A2)")
+        for abschnitt, key, wer in (("nb", "n_zaehler", "Netzbetreibers"), ("dv", "d_zaehler", "Direktvermarkters"))
+    },
+    **{
         f"wago.pm494.karte[*].{key}": ("faktor_zu_erheben",
                                        f"WAGO 750-494 `{key}`: die Messwert-Tabelle ist nur für die 750-495 "
                                        f"belegt — Datentyp und Energie-Faktor erhebt Pilotschritt 1/2")
@@ -139,6 +145,7 @@ SUNSPEC_INVERTER = r"sunspec\.model_1(0[1-3]|1[1-3])"
 DEYE = r"(hybrid_1p|hybrid_3p|micro|string)"
 SHELLY_ENERGY = r"shelly\.gen2plus\.(cover|light_rgb_rgbw|pm1|switch)\[\*\]"
 WAGO = r"wago\.pm49[45]"
+ERZEUGER = r"voltpilot\.erzeuger_registerbild_v1"
 
 # (Familie, Punktschlüssel, Größe oder None = aus der Einheit, Richtung, Beleg).
 # Beide Muster sind reguläre Ausdrücke über den GANZEN Wert; die erste passende Regel gewinnt.
@@ -311,6 +318,20 @@ RULES: tuple[tuple[str, str, str | None, str | None, str], ...] = (
      "Registerbild WAGO v1 §4.3 Nr. 9–11 „Strom L1–L3“"),
     (WAGO, WAGO + r"\.karte\[\*\]\.frequency", "frequency", "none",
      "Registerbild WAGO v1 §4.3 Nr. 12 „Netzfrequenz“"),
+    # --- VoltPilot-Registerbild Erzeuger v1 (schlanke Fassung, Konzept §3.7, UEMS EZ-6): das Vorzeichen legt
+    # das Bild fest (EZ-1 Lesart 11); Grenzen, Sollwerte und Nennleistungen sind kein Fluss.
+    (ERZEUGER, r"erzeuger\.a\.p_nvp_w", "active_power", "import_export",
+     "Registerbild Erzeuger v1 `p_nvp_w` „Leistung am Netzpunkt, + Bezug / − Einspeisung“"),
+    (ERZEUGER, r"erzeuger\.a\.p_erzeugung_w", "active_power", "generation",
+     "Registerbild Erzeuger v1 `p_erzeugung_w` „Summe aller Einheiten, + Erzeugung“"),
+    (ERZEUGER, r"erzeuger\.te\[\*\]\.t_p_ist_w", "active_power", "generation",
+     "Registerbild Erzeuger v1 `t_p_ist_w` „Leistung der Einheit“, Vorzeichen wie p_erzeugung_w (EZ-1 Lesart 11)"),
+    (ERZEUGER, r"erzeuger\.te\[\*\]\.t_e", "active_energy", "generation",
+     "Registerbild Erzeuger v1 `t_e` „Zählerstand Erzeugung“ der Einheit"),
+    (ERZEUGER, r"erzeuger\.(a\.p_installiert_kw|dv\.d_soll_w|wirkung\.p_grenze_w|te\[\*\]\.(t_p_soll_w|t_nenn_kw))",
+     "active_power", None,
+     "Registerbild Erzeuger v1: installierte/Nennleistung, Sollwert des Direktvermarkters, wirksame Grenze, "
+     "Sollwert der Einheit — eine Grenze, kein Fluss"),
 )
 
 _COMPILED = tuple(

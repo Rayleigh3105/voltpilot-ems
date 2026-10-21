@@ -54,7 +54,7 @@ class MeasurementCatalogFamiliesTest {
     @Test
     void aWagoCardFamilyPassesLiterallyNowThatTheBoxReadsIt() {
         MeasurementCatalog catalog = new MeasurementCatalog(new ObjectMapper());
-        assertThat(catalog.familienNochNichtAnDerBox()).isEmpty();
+        assertThat(catalog.familienNochNichtAnDerBox()).containsExactly("voltpilot.erzeuger_registerbild_v1");
         assertThat(MeasurementCatalogFamilies.expand(Set.of("wago.pm494", "wago.pm495"), catalog.families()))
                 .containsExactlyInAnyOrder("wago.pm494", "wago.pm495");
         assertThat(MeasurementCatalogFamilies.expand(Set.of("wago.pm495"), Set.of("wago.pm495")))
