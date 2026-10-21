@@ -1,6 +1,7 @@
 import { useRef, type KeyboardEvent, type PointerEvent } from 'react';
 import { chartTheme } from '../chartTheme';
 import { useContainerWidth } from '../useContainerWidth';
+import type { VorgabeSpur } from '../erzeuger';
 import type { Betrieb } from '../leitungsplan';
 import { uhrzeit, type Tag } from '../tagesleiste';
 
@@ -14,6 +15,9 @@ import { uhrzeit, type Tag } from '../tagesleiste';
  * - Marktoptimierung: Börsenpreis je Viertelstunde (grün Laden, rot Verkaufen
  *   laut Plan), darunter Speicher laden und abgeben.
  * - Lastspitzenkappung: Netzbezug, Ziel als Linie.
+ *
+ * Bei einer Erzeugeranlage (EZ-8) kommen darunter die Spuren der Vorgaben dazu - Netzbetreiber und
+ * Direktvermarkter (bzw. „Anlage selbst“), je Viertelstunde, in der die Vorgabe galt.
  *
  * Bedienung (Konzept b1, 20.10.2026): ein Finger wählt nur durch einen Tipp -
  * wer über die Leiste wischt, scrollt die Seite (`touch-action: pan-y`), statt
@@ -29,6 +33,7 @@ export function Tagesleiste({
   q,
   heute,
   zielKw = null,
+  vorgaben = null,
   onQ,
 }: {
   tag: Tag;
@@ -37,6 +42,8 @@ export function Tagesleiste({
   /** „Heute · kWh“: rechts von jetzt gibt es nichts zu wählen. */
   heute: boolean;
   zielKw?: number | null;
+  /** Erzeugeranlage: je Urheber eine Spur unter dem Bild (`erzeuger.ts` `vorgabeSpuren`). */
+  vorgaben?: VorgabeSpur[] | null;
   onQ: (q: number) => void;
 }) {
   const [ref, breite] = useContainerWidth<HTMLDivElement>();
@@ -46,8 +53,13 @@ export function Tagesleiste({
   const T = chartTheme();
   const N = tag.viertel.length;
   const w = Math.max(240, Math.round(breite || 320));
-  const h = 88;
-  const base = 70;
+  const SPUR = 18;
+  const zusatz = (vorgaben?.length ?? 0) * SPUR;
+  // Mit Vorgaben (Erzeugeranlage) steht oben nur der Börsenpreis als schmales Band, darunter die Spuren.
+  const base = zusatz ? 30 : 70;
+  const h = 18 + base + zusatz;
+  // Die Achse rückt unter die Spuren der Vorgaben.
+  const achse = base + zusatz;
   const top = 6;
   const X = (i: number) => ((i + 0.5) * w) / N;
   const jetztX = ((tag.jetzt + 1) * w) / N;
@@ -109,7 +121,23 @@ export function Tagesleiste({
   let spuren: JSX.Element | null = null;
   let beschriftung = 'PV und Verbrauch';
 
-  if (betrieb === 'markt') {
+  if (zusatz) {
+    // Erzeugeranlage: kein Speicher, kein Plan der Anlage - nur der Preis je Viertelstunde (wie im Bild des Konzepts).
+    const preise = V.map((v, i) => (i <= tag.jetzt ? v.preisCt ?? v.planPreisCt : v.planPreisCt ?? v.preisCt));
+    const pMax = Math.max(0.1, ...preise.map((p) => (p == null ? 0 : p)));
+    const bw = Math.max(1, w / N - 1);
+    const pH = base - top - 12;
+    beschriftung = preise.some((p) => p != null) ? 'Börsenpreis' : '';
+    spuren = (
+      <>
+        {preise.map((p, i) => {
+          if (p == null || i > ende) return null;
+          const hh = Math.max(1.5, (pH * Math.max(0, p)) / pMax);
+          return <rect key={`p${i}`} x={X(i) - bw / 2} y={top + 12 + pH - hh} width={bw} height={hh} fill={T.neutral} opacity={i > tag.jetzt ? 0.35 : 0.7} />;
+        })}
+      </>
+    );
+  } else if (betrieb === 'markt') {
     beschriftung = 'Börsenpreis';
     const preise = V.map((v, i) => (i <= tag.jetzt ? v.preisCt ?? v.planPreisCt : v.planPreisCt ?? v.preisCt));
     const pMax = Math.max(0.1, ...preise.map((p) => (p == null ? 0 : p)));
@@ -171,18 +199,22 @@ export function Tagesleiste({
 
   const kopfX = heute ? ((q + 1) * w) / N : ((q + (q === tag.jetzt ? 0.95 : 0.5)) * w) / N;
   const text = `${uhrzeit(V[q]?.start ?? tag.beginn)} Uhr, ${heute ? 'Energie bis dahin' : q > tag.jetzt ? 'Plan und Prognose' : q === tag.jetzt ? 'jetzt' : 'gemessen'}`;
+  // Was in der gewählten Viertelstunde vorgegeben war, liest der Bildschirmleser mit.
+  const vorgabeText = (vorgaben ?? []).filter((sp) => q <= tag.jetzt && sp.an[q]).map((sp) => sp.name).join(', ');
+  const wertText = vorgabeText ? `${text}, Vorgabe: ${vorgabeText}` : text;
 
   return (
     <div
       ref={ref}
       className="vp-tl"
+      style={zusatz ? { height: h } : undefined}
       role="slider"
       tabIndex={0}
       aria-label="Tageszeit"
       aria-valuemin={0}
       aria-valuemax={max}
       aria-valuenow={q}
-      aria-valuetext={text}
+      aria-valuetext={wertText}
       onKeyDown={onKey}
       onPointerDown={(e) => {
         if (e.pointerType !== 'mouse') {
@@ -203,22 +235,34 @@ export function Tagesleiste({
       onPointerCancel={() => { ziehen.current = false; tipp.current = null; }}
     >
       <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} aria-hidden="true">
-        {!heute && <rect x={jetztX} y={0} width={Math.max(0, w - jetztX)} height={base + 2} rx={6} className="vp-tl-plan" />}
+        {!heute && <rect x={jetztX} y={0} width={Math.max(0, w - jetztX)} height={achse + 2} rx={6} className="vp-tl-plan" />}
         {spuren}
-        <text x={2} y={top + 9} className="vp-tl-lbl">{beschriftung}</text>
+        {vorgaben?.map((sp, k) => {
+          const y = base + 2 + k * SPUR;
+          const farbe = sp.farbe === 'netz' ? T.flowGrid : sp.farbe === 'markt' ? T.cPrice : T.cPv;
+          const bw = w / N;
+          return (
+            <g key={sp.key} className={`vp-tl-vorgabe is-${sp.key}`}>
+              <text x={2} y={y + 8} className="vp-tl-lbl">{sp.kurz}</text>
+              <rect x={0} y={y + 10} width={w} height={6} rx={3} fill={T.grid} />
+              {sp.an.map((an, i) => (an && i <= tag.jetzt ? <rect key={i} x={i * bw} y={y + 10} width={bw + 0.5} height={6} fill={farbe} /> : null))}
+            </g>
+          );
+        })}
+        {beschriftung && <text x={2} y={top + 9} className="vp-tl-lbl">{beschriftung}</text>}
         {[0, 6, 12, 18, 24].map((hr) => {
           const x = (hr * w) / 24;
           return (
             <g key={hr}>
-              <line x1={x} x2={x} y1={base + 2} y2={base + 5} stroke={T.axisLine} />
+              <line x1={x} x2={x} y1={achse + 2} y2={achse + 5} stroke={T.axisLine} />
               <text x={Math.min(w - 6, Math.max(6, x))} y={h - 2} textAnchor={hr === 0 ? 'start' : hr === 24 ? 'end' : 'middle'} className="vp-tl-ax">
                 {hr === 24 ? '24 Uhr' : hr}
               </text>
             </g>
           );
         })}
-        <path d={`M${jetztX - 4},${base + 1} L${jetztX},${base + 6} L${jetztX + 4},${base + 1} Z`} className="vp-tl-jetzt" />
-        {!heute && jetztX + 60 < w && <text x={w - 4} y={base - 3} textAnchor="end" className="vp-tl-lbl">Plan</text>}
+        <path d={`M${jetztX - 4},${achse + 1} L${jetztX},${achse + 6} L${jetztX + 4},${achse + 1} Z`} className="vp-tl-jetzt" />
+        {!heute && !zusatz && jetztX + 60 < w && <text x={w - 4} y={base - 3} textAnchor="end" className="vp-tl-lbl">Plan</text>}
       </svg>
       <span className="vp-tl-kopf" style={{ left: kopfX }} aria-hidden="true">
         <span className="vp-tl-knauf" />

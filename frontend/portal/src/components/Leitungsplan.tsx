@@ -43,6 +43,7 @@ export function Leitungsplan({
   zielKw = null,
   reserveProzent = null,
   stale = false,
+  symbol = 'sonne',
   onKnoten,
 }: {
   /** Herkunft je Weg (kW bzw. kWh); null = unvollständig, dann keine Spuren. */
@@ -60,6 +61,8 @@ export function Leitungsplan({
   zielKw?: number | null;
   reserveProzent?: number | null;
   stale?: boolean;
+  /** Das Symbol am oberen Knoten: Sonne, bei einer BHKW-Anlage der Motor (Erzeuger-Cockpit EZ-8). */
+  symbol?: 'sonne' | 'motor';
   onKnoten: (rolle: Rolle, ausloeser: HTMLElement) => void;
 }) {
   const [ref, breite] = useContainerWidth<HTMLDivElement>();
@@ -125,7 +128,7 @@ export function Leitungsplan({
             style={{ left: g.cx, top: g.sonneY, width: 2 * g.r, height: 2 * g.r, ['--k' as string]: texte.pv.ruhig ? 0 : 1 }}
           />
           <Knoten rolle="pv" text={texte.pv} style={pos(g.cx, g.sonneY, 2 * g.r, 2 * g.r)} ruhig={texte.pv.ruhig} onKnoten={onKnoten}>
-            <Icon name="sun" size={g.stufe === 'breit' ? 26 : 20} />
+            <Icon name={symbol === 'motor' ? 'flame' : 'sun'} size={g.stufe === 'breit' ? 26 : 20} />
           </Knoten>
           <Beschriftung text={texte.pv} klasse="r" style={{ left: g.cx + g.r + g.abstand, top: g.sonneY }} />
         </>

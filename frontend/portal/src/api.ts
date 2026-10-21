@@ -6637,6 +6637,41 @@ export type ExecutionMode =
 /** `deepen` = Entladung angehoben, `reduce` = Entladung begrenzt. */
 export type ExecutionDirection = 'deepen' | 'reduce';
 
+/**
+ * Erzeuger am Wago-Modbus-Server (Konzept „Erzeuger am WAGO-Modbus-Server“ §4.2/§4.5, EZ-8): was das
+ * Cockpit von einer Anlage mit Anlagensteuerung liest. `GET /api/v1/sites/{siteId}/erzeuger/jetzt` ist
+ * ein additiver Wunsch an EZ-6 (Cloud-Modell); 204 = die Anlage hat keine Anlagensteuerung, 404 = älteres
+ * Backend - beides heißt „kein Erzeuger-Cockpit“, die Seite bleibt wie heute. Ableitung: `erzeuger.ts`.
+ */
+export type ErzeugerQualitaet = 'good' | 'uncertain' | 'invalid' | 'stale' | 'device_error';
+
+/** Ein Messpunkt `erzeuger.*` im aktuellen Stand - Zahl in der Einheit des Punkts (W, %, kW, s; Bitfeld als Ganzzahl). */
+export interface ErzeugerWert {
+  wert: number | null;
+  gelesenAm: string | null;
+  qualitaet: ErzeugerQualitaet | null;
+}
+
+/** Ein Zustandswechsel eines Punkts: ab wann der Wert gilt. Die Liste beginnt mit dem Wert um Mitternacht. */
+export interface ErzeugerWechsel {
+  ab: string;
+  wert: number | null;
+}
+
+export interface ErzeugerJetzt {
+  /** Das Gerät „Anlagensteuerung“ (z. B. WAGO PFC200). */
+  steuerung: { geraetId: string; name: string };
+  /** Namen aus dem Bild (§3.10) oder den Stammdaten; null = nicht bekannt bzw. keiner. */
+  netzbetreiber: string | null;
+  direktvermarkter: string | null;
+  /** Teile `erzeugungseinheit` (Identität = Steuerung + TE-Nr.). */
+  einheiten: { teNr: number; art: 'pv' | 'bhkw' | null; typName: string | null; nennKw: number | null }[];
+  /** Aktueller Wert je Punktname (`erzeuger.nb.bits`, `erzeuger.te2.p_ist_w`, …). */
+  werte: Record<string, ErzeugerWert>;
+  /** Heutige Wechsel von `erzeuger.wirkung.quelle_p`, `erzeuger.nb.bits`, `erzeuger.dv.bits`. */
+  wechselHeute: Record<string, ErzeugerWechsel[]>;
+}
+
 export interface ControlStatus {
   deviceId: string;
   /**
@@ -10209,6 +10244,12 @@ export const api = {
     request<CurtailmentStatus | undefined>(
       `/api/v1/sites/${siteId}/curtailment-status`,
     ).then((v) => v ?? null),
+  /** Erzeuger-Cockpit (EZ-8): null = keine Anlagensteuerung (204) oder älteres Backend (404). */
+  erzeugerJetzt: (siteId: string) =>
+    request<ErzeugerJetzt | undefined>(`/api/v1/sites/${siteId}/erzeuger/jetzt`).then(
+      (v) => v ?? null,
+      (e: unknown) => (e instanceof ApiError && e.status === 404 ? null : Promise.reject(e)),
+    ),
   /**
    * Der KOMMANDO-VERLAUF (Kommando-Transparenz V1): der Zeitraum EINER
    * Komponente - oder der ganzen Anlage, wenn keine gewählt ist. Ein älteres

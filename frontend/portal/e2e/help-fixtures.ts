@@ -8,6 +8,7 @@ import { entitiesApi } from '../src/entitiesApi';
 import { consumersApi } from '../src/consumers/consumersApi';
 import { keycloak } from '../src/auth';
 import { derive } from '../src/topology';
+import { erzeugerBeispiel, type ErzeugerFall } from '../src/test/erzeugerFixtures';
 
 export const NOW = '2026-09-10T10:00:00.000Z';
 const DAY = '2026-09-09T22:00:00.000Z';
@@ -171,6 +172,19 @@ export function installHelpFixtures() {
   // Auftrag 0,3 kW ab (Folge-Modus, nach Solar verbleibender Verbrauch 0,8 kW), die Einspeisegrenze ist
   // 75 kW, im Wechselrichter stehen 70 kW - dieselbe Lage wie im Screenshot des Captains vom 20.10.2026.
   const abweichung = params.get('steuerung') === 'abweichung';
+  // Eine Erzeugeranlage an einer Anlagensteuerung (EZ-8, `cockpit-erzeuger.spec.ts`): `buettner` =
+  // Biogas mit zwei Motoren, Netzbetreiber 60 %, Direktvermarkter ruft ab, kein Netzpunkt (EW-16 C);
+  // `gore` = PV mit drei Wechselrichtern, Nulleinspeisung, Leitstelle getrennt. Ohne Speicher und Plan.
+  const erzParam = params.get('erzeuger');
+  const erzFall: ErzeugerFall | null = erzParam === 'buettner' || erzParam === 'gore' ? erzParam : null;
+  if (erzFall) {
+    Object.assign(site, erzFall === 'buettner'
+      ? { name: 'Biogas Lindenhof', plantKind: 'direktvermarktung', maxFeedInKw: 99, netzladenErlaubt: false }
+      : { name: 'Solarpark Talweg', plantKind: 'eigenverbrauch', maxFeedInKw: null, netzladenErlaubt: false });
+    Object.assign(sites[0], site);
+  }
+  const ohneBilanz = <T extends object>(b: T) => ({ ...b, pvKwh: null, loadKwh: null, gridImportKwh: null, gridExportKwh: null,
+    batteryChargeKwh: null, batteryDischargeKwh: null, socMinPct: null, socMaxPct: null, socLastPct: null });
   Object.assign(keycloak, { token: 'help-fixture-token', authenticated: true, updateToken: async () => false,
     tokenParsed: { name: 'Alex Beispiel', email: 'alex@example.test', tenant_id: 'help-tenant', realm_access: { roles: [admin ? 'platform-admin' : 'operator'] } } });
   // All API methods are isolated, including mutation buttons in captured screens.
@@ -198,12 +212,21 @@ export function installHelpFixtures() {
     listSites: error ? async () => { throw new Error('Demo data unavailable'); } : result(sichtbareListe(empty || admin ? [] : single ? [site] : sites)),
     listDevices: result(sichtbareListe(empty || admin ? [] : single ? [devices[0]] : devices)),
     tenantContext: result({ tenantId: 'help-tenant', name: 'Beispielbetrieb', betriebsart: single || empty ? 'endkunde' : 'betreiber' }),
-    overview: result(overview), earnings: result({ range: 'month', from: DAY, to: NOW, sites: sites.map((s) => ({ ...money, id: s.id, siteId: s.id, name: s.name })), totals: { ...money, coveredSlots: 98 } }),
-    siteEarnings: result(money), history: result(history), schedule: result(plan), siteAssets: result([asset, { ...asset, id: 'help-pv', type: 'pv', capacityKwh: null, pvCapacityKwp: 10, moduleCount: 25 }]),
-    siteEntities: result({ registry: { revision: '1', composedAt: NOW, deviceId: 'help-box', reportedRevision: '1', reportedAt: NOW }, entities, localSetup, staleOnDevice: [] }),
+    overview: result(erzFall ? { ...overview, sites: overview.sites.map((o, i) => (i === 0 ? { ...o, ...site, batteryWithoutDevice: false, anwendungen: ['monitoring'],
+      live: { ts: NOW, pvKw: null, loadKw: null, gridKw: null, socPct: null } } : o)) } : overview), earnings: result({ range: 'month', from: DAY, to: NOW, sites: sites.map((s) => ({ ...money, id: s.id, siteId: s.id, name: s.name })), totals: { ...money, coveredSlots: 98 } }),
+    // Erzeugeranlagen haben in der ersten Fassung keine Erlöse (EW-7 A); Biogas zeigt „—“ bis EZ-12.
+    siteEarnings: erzFall ? async () => { throw new Error('Noch keine Erlöse für diese Anlage'); } : result(money),
+    // Die Werte der Erzeugeranlage gehen nicht in die Hausbilanz (Konzept §4.2): der Tag trägt nur Preise.
+    history: result(erzFall ? { ...history, buckets: history.buckets.map(ohneBilanz) } : history),
+    schedule: erzFall ? async () => { throw new Error('Diese Anlage hat keinen Fahrplan'); } : result(plan),
+    // Jeder Abruf eine frische Lesung (sonst altert die Bühne nach zwei Minuten in „veraltet“).
+    erzeugerJetzt: async () => (erzFall ? erzeugerBeispiel(erzFall, new Date()) : null), siteAssets: result([asset, { ...asset, id: 'help-pv', type: 'pv', capacityKwh: null, pvCapacityKwp: 10, moduleCount: 25 }]),
+    siteEntities: result({ registry: { revision: '1', composedAt: NOW, deviceId: 'help-box', reportedRevision: '1', reportedAt: NOW }, entities: erzFall ? entities.filter((e) => e.id === 'help-grid') : entities, localSetup, staleOnDevice: [] }),
     topology: result(topology), usageProfile: result({ usageProfile: 'private', derivedProfile: 'private', override: null,
       emphasis: { money: 'prominent', peak: 'visible', flow: 'prominent', devices: 'prominent' },
-      signals: { hasStorage: true, hasPv: true, hasControllableConsumer: true, hasEvCharger: true, activeStrategyNodeTypes: ['strategy_peak_shaving'], plantKind: site.plantKind, hasLeistungspreis: true } }),
+      signals: erzFall
+        ? { hasStorage: false, hasPv: erzFall === 'gore', hasControllableConsumer: false, hasEvCharger: false, activeStrategyNodeTypes: [], plantKind: site.plantKind, hasLeistungspreis: false }
+        : { hasStorage: true, hasPv: true, hasControllableConsumer: true, hasEvCharger: true, activeStrategyNodeTypes: ['strategy_peak_shaving'], plantKind: site.plantKind, hasLeistungspreis: true } }),
     entityStrategies: result({}), cockpitLayout: result({ vorgabe: null, eigen: null }), tenantCockpitLayout: result({ vorgabe: null, eigen: null }),
     siteInterventions: result({ batteryOverride: null, automationPaused: false, interventions: [] }), suggestionStates: result({ states: {} }),
     siteRuleEvents: result([]),
@@ -226,15 +249,15 @@ export function installHelpFixtures() {
     siteComponents: result({ componentAuthority: 'portal', sollRevision: '1', appliedRevision: '1', appliedAt: NOW, components: [{ id: 'help-battery', role: 'battery-hybrid', entityType: 'battery-hybrid', label: 'Speicher Scheune', brand: 'deye', model: 'sun-12k', family: 'deye-sg04lp3',
       communication: 'solarman_v5', connection: { ip: '192.0.2.10', port: 8899, serial: '1234567890' }, sourceKind: 'builtin', templateRef: 'builtin:deye:sun-12k', templateVersion: 1, definitionVersion: 1, syncStatus: 'in_sync' }] }),
     siteSources: result([]), edgeVersions: result(sichtbareListe([])), registerWriteHistory: result([]), registerKnowledge: result([]), registerWriteTargets: result([]),
-    controlStatus: result(abweichung
+    controlStatus: result(erzFall ? null : abweichung
       ? { deviceId: 'help-box', commandedKw: -0.3, confirmedKw: -0.3, allMatch: true, controlEnabled: true, certified: true, mismatchRoles: null, slotStart: NOW, checkedAt: NOW, controlSource: 'schedule', executionMode: 'deficit_cover', executionPlannedKw: 0, executionTargetKw: 0.8 }
       : { deviceId: 'help-box', commandedKw: 2.2, confirmedKw: 2.2, allMatch: true, controlEnabled: true, certified: true, mismatchRoles: null, slotStart: NOW, checkedAt: NOW, controlSource: 'schedule', executionMode: 'plan', executionPlannedKw: 2.2 }),
-    curtailmentStatus: result(abweichung
+    curtailmentStatus: result(erzFall ? null : abweichung
       ? { deviceId: 'help-box', units: 1, certifiedUnits: 1, controlEnabled: true, active: false, appliedCapKw: null, allMatch: null, possibleOverride: false, checkedAt: NOW,
         exportGuard: { limitKw: 75, state: 'ueberwacht', reason: 'Die Einspeisung liegt bei 0,0 kW von 75,0 kW.', capKw: null, limiting: false, blind: false, effective: true, reach: null },
         deviceExportLimit: { limitKw: 70, register: '0x00e7', readAt: NOW } }
       : null), eigeneAuswertung: result(null), autoStart: result(null),
-    siteChargers: result(charging), chargingConfig: result({ siteId: site.id, gridLimitKw: 22, marginPct: 10, surplusPolicy: 'sonne_zuerst', storagePriority: 'speicher_vor_auto', priorityChargePointIds: ['CP-CARPORT'], chargePoints: [] }),
+    siteChargers: erzFall ? async () => { throw new Error('Keine Ladepunkte an dieser Anlage'); } : result(charging), chargingConfig: result({ siteId: site.id, gridLimitKw: 22, marginPct: 10, surplusPolicy: 'sonne_zuerst', storagePriority: 'speicher_vor_auto', priorityChargePointIds: ['CP-CARPORT'], chargePoints: [] }),
     siteVerbraucher: result({
       verbraucher: charging.chargers.map((c) => ({ entityId: c.chargePointId, name: c.label, typ: 'ev-charger', typLabel: 'Ladepunkt',
         ladepunkt: true, chargePointId: c.chargePointId, steuerart: { quelle: 'ueberschuss', herkunft: 'standard', ueberschussModus: 'pausieren' }, regeln: 0 })),
@@ -263,8 +286,8 @@ export function installHelpFixtures() {
     siteForecastModels: result({ kinds: [], history: [] }), supplyPrice: result({ tarifArt: 'dynamisch', fixedPriceCtKwh: null, spotMarkupCtKwh: 4.5, gridFeeCtKwh: 8, taxesCtKwh: 2, vatPct: 19, source: 'manual' }),
     consumerSchedule: result({ planId: null, generatedAt: null, slotMinutes: 15, entities: [] }),
     siteProfiles: result({ profiles: [
-      ['marktvermarktung','Marktoptimierung',!eigen && !location.hash.includes('lastspitzen')], ['lastspitzenkappung','Lastspitzenkappung',location.hash.includes('lastspitzen')],
-      ['atypische-netznutzung','Atypische Netznutzung',false], ['lastmanagement','Ladepark-Lastmanagement',true],
+      ['marktvermarktung','Marktoptimierung',!eigen && !erzFall && !location.hash.includes('lastspitzen')], ['lastspitzenkappung','Lastspitzenkappung',location.hash.includes('lastspitzen')],
+      ['atypische-netznutzung','Atypische Netznutzung',false], ['lastmanagement','Ladepark-Lastmanagement',!erzFall],
     ].map(([id,label,active]) => ({ id,label,active, state: active ? 'an' : 'aus', derivedActive: active,
       unlocks: { views: [], widgets: [], moneyStream: null }, requirements: [], blockedReason: null, origin: 'masterdata',
       flowRef: null, gatedNodeTypes: [], gatedNodesEnabled: true, exklusivGruppe: id === 'lastmanagement' ? null : 'speicher', seit: '2026-08-01T10:00:00Z' })), weitere: [] }),

@@ -12,6 +12,7 @@ export type IconName =
   | 'zap'
   | 'euro'
   | 'sun'
+  | 'flame'
   | 'battery-charging'
   | 'battery'
   | 'history'

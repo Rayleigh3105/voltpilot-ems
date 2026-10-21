@@ -15,7 +15,7 @@ import { rollenStand, rollenView, teilSummeText } from './pvRolle';
 import type { VerbrauchGruppeId, VerbrauchKomposition } from './verbrauchKomposition';
 import { kw, kwh, TOTBAND_KW } from './leitungsplan';
 
-export type ZeilenIcon = 'car' | 'heatpump' | 'plug' | 'home' | 'panel' | 'plus';
+export type ZeilenIcon = 'car' | 'heatpump' | 'plug' | 'home' | 'panel' | 'plus' | 'flame' | 'sun';
 
 export interface ListenZeile {
   key: string;

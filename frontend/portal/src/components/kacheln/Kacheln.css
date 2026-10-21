@@ -478,3 +478,63 @@ button.vp-k-kopf:focus-visible {
   background: var(--vp-c-card, #fff);
   font: 700 0.875rem var(--vp-c-font, var(--vp-font-heading));
 }
+
+/* Erzeugeranlage (EZ-8): je Einheit eine Zeile, „Wer hat heute geregelt?“, Gasspeicher als Balken. */
+.vp-k-ez {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+}
+.vp-k-ez li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 10px;
+  min-width: 0;
+  font-size: 0.875rem;
+}
+.vp-k-ez b {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vp-k-ez-name {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: 6px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vp-k-ez-name.mit-punkt {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+}
+.vp-k-ez-name small {
+  grid-column: 1 / -1;
+  font-size: 0.75rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-k-ez-punkt {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.vp-k-ez-punkt.is-nb { background: var(--vp-flow-grid, #0ea5a3); }
+.vp-k-ez-punkt.is-dv { background: var(--vp-c-chart-price, #2563eb); }
+.vp-k-ez-punkt.is-eigen { background: var(--vp-flow-pv, #f97316); }
+.vp-k-ez-balken {
+  grid-column: 1 / -1;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--vp-c-muted, #e9eff8);
+  overflow: hidden;
+}
+.vp-k-ez-balken i {
+  display: block;
+  height: 100%;
+  background: var(--vp-flow-batt, #16a34a);
+}

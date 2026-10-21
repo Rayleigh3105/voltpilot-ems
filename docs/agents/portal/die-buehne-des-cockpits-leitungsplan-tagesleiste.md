@@ -63,6 +63,18 @@ Umsetzung des abgenommenen Konzepts [`docs/konzepte/cockpit-tagesfilm`](../../ko
   „Ihr Verbrauch“. Beweis: `e2e/cockpit-steuerzeile.spec.ts` (`help.html?steuerung=abweichung`). Keine Bestätigungszeile am
   Speicher-Knoten, kein Plan-Satz in der Leiste; der Zustand lässt Steuerungs- und Plan-Befunde weg, die in
   Steuerzeile bzw. Fahrplan-Kachel stehen. Börsenpreis im Satz nur abseits von „jetzt“.
+- **Erzeugeranlage an einer Anlagensteuerung (EZ-8, Konzept „Erzeuger am WAGO-Modbus-Server“, EW-11 A):**
+  kein Reiter, dieselben Flächen. Quelle `api.erzeugerJetzt` (`GET …/sites/{id}/erzeuger/jetzt`, 204/404 =
+  Cockpit wie bisher), Ableitung `erzeuger.ts` als eigenes Stück (lädt erst mit Anlagensteuerung,
+  Einstiegs-Budget). Kopf: Vorgaben als Abzeichen; Bühne: Moment aus dem Bild der Steuerung (nicht aus der
+  Hausbilanz), oberer Knoten „Erzeugung“ mit Motor/Sonne, „Hof“ = Erzeugung + Netzpunkt, ohne Netzpunkt
+  (EW-16 C) Netz und Hof „—“; Steuerzeile = Kette Netzbetreiber › Direktvermarkter › (eigene Grenze) ›
+  Anlage nur, wenn kein Speicher gesteuert wird (`!batteryLinked && controlStatus == null`), sonst bleibt
+  die Speicher-Zeile; Tagesleiste mit Spuren der Vorgaben; Kacheln „Motoren“/„Wechselrichter“ und
+  „Wer hat heute geregelt?“ (aus den Wechseln von `quelle_p`, `nb.bits`, `dv.bits`), Biogas „Unterm
+  Strich“ „—“. Gültigkeitsbit = 0 ist unbekannt, nie 0. Beweis: `erzeuger.test.ts`,
+  `ControlStrip.erzeuger.test.tsx`, `EnergieBuehne.erzeuger.test.tsx`, `e2e/cockpit-erzeuger.spec.ts`
+  (`help.html?erzeuger=buettner|gore`).
 - **Kachelgrößen:** `LayoutDocument.groessen` (Kachel-Id → `klein`|`breit`), Katalog-Liste `kacheln`
   (beide Kopien; Sonne Standard breit, Handel/Lastspitze nur breit), Server-Prüfung in
   `CockpitLayoutService.validateGroessen`. Wählbar im Anpassen-Modus unter der Kachel (`GroessenWahl`).
