@@ -884,7 +884,7 @@ export function AnlageSeite({
     let aktiv = true;
     api.anlagensteuerungen(site.id).then(
       (l) => {
-        if (aktiv) setErzProgrammstand(l.steuerungen.find((s) => s.geraet_id === erzSteuerungId)?.programmstand ?? null);
+        if (aktiv) setErzProgrammstand(l?.steuerungen.find((s) => s.geraet_id === erzSteuerungId)?.programmstand ?? null);
       },
       () => {},
     );

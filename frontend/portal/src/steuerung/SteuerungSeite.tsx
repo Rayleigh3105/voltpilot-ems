@@ -565,6 +565,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
     inhalt = (
       <GeraeteReiter
         bild={bild}
+        siteId={site.id}
         oeffne={setBlatt}
         onUebernehmen={(g) => void uebernehmen(g)}
         onNurMessen={(g) => void aktionen.nurMessen(g)}

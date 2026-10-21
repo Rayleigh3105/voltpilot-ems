@@ -32,6 +32,8 @@
  * Seite rendert nur, was hier entschieden wird.
  */
 import type {
+  Anlagensteuerung,
+  AnlagensteuerungWerte,
   ControlStatus,
   CurtailmentStatus,
   CurtailmentStatus as Curtailment,
@@ -52,7 +54,8 @@ import { NO_DATA } from './nodata';
 import type { ComponentHealth, PlantComponent, PlantModel } from './komponenten';
 import { deviceState } from './komponenten';
 import { isPrivateHost } from './selbstbau';
-import { chargePointIdOf, ioVerbraucherIdOf } from './geraetAdresse';
+import { anlagensteuerungIdOf, chargePointIdOf, ioVerbraucherIdOf } from './geraetAdresse';
+import { juengsteLesung, werteJe } from './anlagensteuerung';
 import { AUFBAU_REITER } from './ebenenNav';
 
 /** Welche ART von Gerät die Seite zeigt. */
@@ -203,6 +206,12 @@ export interface GeraetSeiteInput {
   strategies: Record<string, EntityStrategy[]> | null;
   /** Das SCHON berechnete Anlagen-Modell (eine Wahrheit, keine zweite). */
   model: PlantModel | null;
+  /**
+   * UEMS EZ-10: an der Seite `as-<Entität>` die Anlagensteuerung (Gerät, Datenquelle) und ihre jüngsten Werte -
+   * sie trägt die Verbindung und den Zustand, die eine Box-Quelle sonst meldet. `null` = (noch) nicht geladen.
+   */
+  anlagensteuerung?: Anlagensteuerung | null;
+  anlagensteuerungWerte?: AnlagensteuerungWerte | null;
   now?: number;
 }
 
@@ -614,6 +623,22 @@ function pflegeOrtWort(authority: string | null | undefined): string | null {
 }
 
 /**
+ * Der Zustand einer Anlagensteuerung im Kopf (EZ-10): ob ihre Box Werte liefert - aus der jüngsten Lesung,
+ * mit derselben Frist wie `werte` (120 s). Ohne Wert „noch keine Daten“, nie „verbunden“.
+ */
+function anlagensteuerungZustand(
+  werte: AnlagensteuerungWerte | null,
+  now: number,
+): { wort: string; ton: GeraetTon; detail: string | null } {
+  const juengst = werte ? juengsteLesung(werteJe(werte)) : null;
+  if (!juengst) return { wort: 'noch keine Daten', ton: 'off', detail: null };
+  const rel = alter(juengst, now);
+  return Date.parse(juengst) >= now - 120_000
+    ? { wort: 'liefert Daten', ton: 'ok', detail: rel }
+    : { wort: 'meldet sich gerade nicht', ton: 'warn', detail: rel ? `zuletzt ${rel}` : null };
+}
+
+/**
  * Die Geräteseite - EIN Aufruf, EIN Ergebnis. Alles Fehlende wird BENANNT,
  * nie weggelassen und nie erfunden.
  */
@@ -682,9 +707,15 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
     ? (model?.components.filter((c) => c.entityId === ioEntity && c.io) ?? [])
     : [];
   const ioAusgang = ioKomponenten[0]?.io ?? null;
-  if (!setup && !charger && !ioAusgang) {
+  // EZ-10: eine Anlagensteuerung liest die Box über eine Datenquelle - erkannt über `plantModel`, nie geraten.
+  const asEntity = !setup && !charger && !ioAusgang ? anlagensteuerungIdOf(input.geraetId) : null;
+  const asKomponenten = asEntity ? (model?.components.filter((c) => c.entityId === asEntity) ?? []) : [];
+  const anlagensteuerung = asKomponenten.length > 0 ? input.anlagensteuerung ?? null : null;
+  if (!setup && !charger && !ioAusgang && asKomponenten.length === 0) {
     return leer(
-      ioEntity
+      asEntity
+        ? 'Diese Anlagensteuerung ist an dieser Anlage nicht mehr eingebaut.'
+        : ioEntity
         ? 'Dieser Verbraucher hängt an keinem Ausgang eines I/O-Moduls mehr.'
         : 'Dieses Gerät meldet sich an Ihrer Box gerade nicht. Sobald es wieder Daten liefert, erscheint hier seine Seite.',
     );
@@ -717,6 +748,8 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
         : [])
     : ioAusgang
       ? ioKomponenten
+      : asKomponenten.length > 0
+      ? asKomponenten
       : (input.geraetId
         ? (model?.devices.find((d) => d.id === input.geraetId)?.componentIds
             .map((cid) => model?.components.find((c) => c.id === cid))
@@ -743,6 +776,8 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
       // Am Ausgang eines Moduls ist der Verbraucher selbst das Gerät - sein
       // Name ist der seiner Komponente, nie der des Moduls.
       ? komponenten[0].label
+      : asKomponenten.length > 0
+      ? (anlagensteuerung?.bezeichnung ?? komponenten[0].label)
       : (technicalDeviceName({
           edgeLabel: setup?.label ?? null,
           brand: setup?.brand ?? null,
@@ -754,6 +789,8 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
 
   const artWort = ioAusgang
     ? ROLLEN_WORT.consumer
+    : asKomponenten.length > 0
+    ? 'Anlagensteuerung'
     : geraeteArtWort(art, setup?.role ?? null, komponenten);
   const unterzeile = ioAusgang
     ? `${artWort} am Ausgang DO${ioAusgang.kanal} von ${modulName} an Ihrer VoltPilot-Box ${boxLabel}`
@@ -765,6 +802,8 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
         ton: (charger.connected ? 'ok' : 'warn') as GeraetTon,
         detail: alter(charger.lastSeen, now),
       }
+    : asKomponenten.length > 0
+    ? anlagensteuerungZustand(input.anlagensteuerungWerte ?? null, now)
     : quellenZustand(src, now);
 
   // K4: die Verbraucher an den Relais eines Moduls werden gesteuert, das
@@ -787,7 +826,9 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
     kennung: charger ? charger.chargePointId : input.geraetId,
     zustand,
     steuerAbzeichen,
-    modell: kopfModell(titel, technicalTitle, charger || ioAusgang ? null : setup ?? null),
+    modell: asKomponenten.length > 0
+      ? ([anlagensteuerung?.hersteller, anlagensteuerung?.typ].filter(Boolean).join(' ') || null)
+      : kopfModell(titel, technicalTitle, charger || ioAusgang ? null : setup ?? null),
     anschluss: ioAusgang ? `Ausgang DO${ioAusgang.kanal} · ${modulName}` : null,
     boxName: boxLabel,
   };
@@ -807,6 +848,23 @@ export function geraetSeite(input: GeraetSeiteInput): GeraetSeiteView {
     // S6/V1: Zustand, letzte Meldung und Kennung stehen NICHT mehr hier - der
     // Live-Punkt im Kopf trägt Zustand und Datenalter, die Kennung wohnt in
     // Technik › Rohdaten. Dieselbe Aussage dreimal war der Befund.
+  } else if (asKomponenten.length > 0) {
+    // EZ-10: der Weg steht an der Datenquelle der Steuerung (Modbus TCP, Geräte-ID), nicht an einer Box-Quelle.
+    const dq = anlagensteuerung?.datenquelle ?? null;
+    if (dq) {
+      verbindung.push({ label: 'Anbindung', wert: 'Modbus TCP · Registerbild Erzeuger' });
+      verbindung.push({
+        label: 'Adresse',
+        wert: dq.adresse ?? NO_DATA,
+        detail: [dq.unit_id != null ? `Geräte-ID ${dq.unit_id}` : null, `Datenquelle ${dq.kennzeichen}`]
+          .filter(Boolean).join(' · '),
+        mono: true,
+      });
+    } else {
+      verbindungLeer = anlagensteuerung
+        ? 'Dieser Steuerung ist keine Datenquelle zugeordnet.'
+        : 'Die Verbindung dieser Steuerung wird geladen …';
+    }
   } else {
     if (ioAusgang) {
       verbindung.push({ label: 'Geschaltet über', wert: `${modulName} · Ausgang DO${ioAusgang.kanal}` });

@@ -6,13 +6,16 @@ import com.voltpilot.api.zugriff.Recht;
 import com.voltpilot.api.zugriff.RechtZiel;
 import jakarta.validation.Valid;
 import java.security.Principal;
+import java.time.LocalDate;
 import java.util.UUID;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -58,6 +61,17 @@ public class AnlagensteuerungController {
     @GetMapping("/api/v1/sites/{siteId}/anlagensteuerungen/{geraetId}/werte")
     public AnlagensteuerungDto.Werte werte(@PathVariable UUID siteId, @PathVariable UUID geraetId) {
         return service.werte(siteId, geraetId);
+    }
+
+    /**
+     * Recht: {@code messwerte.ansehen}. Die Kurven des Bilds für Verlauf › Messwerte (UEMS EZ-10) über das Fenster
+     * der Historie; ein Eimer ohne Wert fehlt, nie 0.
+     */
+    @GetMapping("/api/v1/sites/{siteId}/anlagensteuerungen/{geraetId}/verlauf")
+    public AnlagensteuerungDto.Verlauf verlauf(@PathVariable UUID siteId, @PathVariable UUID geraetId,
+            @RequestParam(defaultValue = "day") String range,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate at) {
+        return service.verlauf(siteId, geraetId, range, at);
     }
 
     /** Recht: {@code geraet.einrichten}. Umbenennen ändert nur die Anzeige; Nummer und Messreihe bleiben. */

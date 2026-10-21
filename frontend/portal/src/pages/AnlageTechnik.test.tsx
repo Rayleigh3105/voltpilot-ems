@@ -4,6 +4,7 @@ import { BatteryControlSection, StammdatenEditForm, TechnikSection } from './Anl
 import { api, type Device, type Site, type SiteAsset, type SupplyPrice } from '../api';
 import { setSelbstauskunft } from '../rollen';
 import { rechteSeed } from '../test/rollenFixtures';
+import { buettner, buettnerNv } from '../test/anlagensteuerungFixtures';
 
 // Leaflet (pulled in via LocationMap) needs real layout that jsdom lacks -
 // mock it like LocationMap.test.tsx does; the map itself is not under test.
@@ -889,5 +890,41 @@ describe('AP-03 IP-12 · Rechte an der kurzen Liste', () => {
     // Das Profil ist die Betriebsweise - ein eigenes Recht, das diese Person behält.
     expect(within(gruppe).getByRole('button', { name: /Profil/ })).toBeInTheDocument();
     spies.forEach((m) => m.mockRestore());
+  });
+});
+
+describe('Einstellungen · Strom & Geld an einer Erzeugeranlage (UEMS EZ-10)', () => {
+  it('ohne Anlagensteuerung keine neuen Zeilen', async () => {
+    const ohne = vi.spyOn(api, 'anlagensteuerungen').mockResolvedValue(null);
+    const nv = vi.spyOn(api, 'netzVermarktung').mockResolvedValue(buettnerNv());
+    const { restore } = await renderEinstellungen();
+    await waitFor(() => expect(ohne).toHaveBeenCalled());
+    expect(screen.queryByRole('button', { name: /^Direktvermarkter/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Netzbetreiber/ })).toBeNull();
+    restore();
+    [ohne, nv].forEach((m) => m.mockRestore());
+  });
+
+  it('Netzbetreiber, Direktvermarkter, Einspeisemanagement und je Einheit die MaStR-Nummer; das Blatt speichert', async () => {
+    const liste = vi.spyOn(api, 'anlagensteuerungen').mockResolvedValue({
+      einrichtung: { moeglich: true, grund: null, boxen: [] },
+      steuerungen: [buettner()],
+    });
+    const nv = vi.spyOn(api, 'netzVermarktung').mockResolvedValue(buettnerNv());
+    const put = vi.spyOn(api, 'netzVermarktungAendern').mockResolvedValue({ ...buettnerNv(), direktvermarkter_kanal: 'modbus', revision: 2 });
+    const { restore } = await renderEinstellungen();
+    const gruppe = document.getElementById('technik-geld')!;
+    expect(await within(gruppe).findByRole('button', { name: /^Direktvermarkter/ })).toHaveTextContent('WVV · über Relais und 4–20 mA');
+    expect(within(gruppe).getByRole('button', { name: /^Direktvermarkter/ })).toHaveTextContent('angezeigt wird Ihr Name');
+    expect(within(gruppe).getByRole('button', { name: /^Netzbetreiber/ })).toHaveTextContent('nicht eingetragen');
+    expect(within(gruppe).getByRole('button', { name: /^Einspeisemanagement/ })).toHaveTextContent('Stufen (Rundsteuerempfänger)');
+    expect(within(gruppe).getByRole('button', { name: /^Motor 1/ })).toHaveTextContent('MaStR-Nummer nicht erfasst');
+    const dialog = await blatt('Direktvermarkter');
+    expect(within(dialog).getByLabelText('Direktvermarkter')).toHaveValue('WVV');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Speichern' }));
+    await waitFor(() => expect(put).toHaveBeenCalledWith(eegSite.id, expect.objectContaining({ expected_revision: 1, direktvermarkter: 'WVV' })));
+    await waitFor(() => expect(within(gruppe).getByRole('button', { name: /^Direktvermarkter/ })).toHaveTextContent('WVV · über Modbus'));
+    restore();
+    [liste, nv, put].forEach((m) => m.mockRestore());
   });
 });

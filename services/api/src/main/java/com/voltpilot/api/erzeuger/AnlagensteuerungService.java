@@ -7,6 +7,7 @@ import com.voltpilot.api.erzeuger.AnlagensteuerungRepository.Jungster;
 import com.voltpilot.api.erzeuger.AnlagensteuerungRepository.Quelle;
 import com.voltpilot.api.erzeuger.AnlagensteuerungRepository.Stammdaten;
 import com.voltpilot.api.erzeuger.AnlagensteuerungRepository.Steuerung;
+import com.voltpilot.api.history.HistoryRange;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.BoxFaehigkeiten;
 import com.voltpilot.api.uems.GeraetRepository;
@@ -106,6 +107,40 @@ public class AnlagensteuerungService {
         boolean daten = werte.stream().anyMatch(w -> w.gemessenAm() != null);
         return new AnlagensteuerungDto.Werte(geraetId, s.entityId(), daten ? "daten" : "noch_keine_daten",
                 zeit(jetzt), werte);
+    }
+
+    /**
+     * Die Kurven des Bilds (UEMS EZ-10) über das Fenster der Historie: dieselben Tage und Eimer wie die übrigen
+     * Kurven in Verlauf › Messwerte (Tag 15 min, Woche 1 h, Monat und Jahr je Berliner Tag).
+     */
+    @Transactional(readOnly = true)
+    public AnlagensteuerungDto.Verlauf verlauf(UUID siteId, UUID geraetId, String range, LocalDate at) {
+        HistoryRange zeitraum = HistoryRange.parse(range);
+        if (zeitraum == null) {
+            throw bad("range ist eines von day · week · month · year.");
+        }
+        sichtbar(siteId);
+        Steuerung s = repo.steuerung(geraetId).filter(x -> x.siteId().equals(siteId))
+                .orElseThrow(() -> nichtGefunden("Anlagensteuerung nicht gefunden."));
+        int teAnzahl = repo.fassung(geraetId).map(AnlagensteuerungRepository.Fassung::teAnzahl)
+                .orElseGet(() -> Math.max(1, repo.einheiten(geraetId).size()));
+        HistoryRange.Window fenster = zeitraum.window(at != null ? at : LocalDate.now(uhr.withZone(ZONE)));
+        List<String> kurven = ErzeugerRegisterbild.kurven(teAnzahl);
+        java.util.Map<String, List<AnlagensteuerungDto.Eimer>> je = new java.util.LinkedHashMap<>();
+        kurven.forEach(k -> je.put(k, new ArrayList<>()));
+        for (AnlagensteuerungRepository.Eimer e : repo.verlauf(TenantContext.get(), s.entityId(), kurven,
+                fenster.from(), fenster.to(), zeitraum.bucketMinutes(), zeitraum.dailyBuckets())) {
+            je.get(e.pointKey()).add(new AnlagensteuerungDto.Eimer(zeit(e.start()), e.avg(), e.min(), e.max(),
+                    e.last(), e.n()));
+        }
+        List<AnlagensteuerungDto.Kurve> out = new ArrayList<>();
+        je.forEach((k, eimer) -> {
+            ErzeugerRegisterbild.Feld feld = ErzeugerRegisterbild.feld(k).orElseThrow();
+            out.add(new AnlagensteuerungDto.Kurve(k, feld.abschnitt(), feld.feld(),
+                    ErzeugerRegisterbild.teNr(k).orElse(null), feld.einheit(), List.copyOf(eimer)));
+        });
+        return new AnlagensteuerungDto.Verlauf(geraetId, s.entityId(), zeitraum.name().toLowerCase(Locale.ROOT),
+                zeit(fenster.from()), zeit(fenster.to()), zeitraum.bucketMinutes(), out);
     }
 
     /** Ein jüngster Wert in der Sprache des Bilds: Zustand mit Wort, Bitfeld mit gesetzten Bits, nie 0 statt nichts. */

@@ -18,6 +18,7 @@ import type {
   EinstellungEingetragen,
   EinstellungFassung,
   EinstellungNeu,
+  Erzeugungseinheit,
   GeraetEinstellungen,
   Messkanal,
   MesskanalSpeist,
@@ -72,6 +73,11 @@ export interface GeraetKarte {
   zeilen: Zeile[];
   /** Die Energiekarten eines Controllers, nach Steckplatz. */
   karten: Zeile[];
+  /**
+   * Die Erzeugungseinheiten einer Anlagensteuerung (UEMS EZ-6/EZ-10), nach TE-Nr. - die Seite zeigt sie mit
+   * ihren Werten (`AnlagensteuerungEinheiten`); nie als Energiekarte.
+   */
+  einheiten: Erzeugungseinheit[];
   /** Die früheren Einbauten, der jüngste zuerst — leer heißt: keine Sektion. */
   vorgaenger: Zeile[];
 }
@@ -115,8 +121,23 @@ export function geraetKarte(g: UemsGeraet, namen: GeraetNamen): GeraetKarte {
   const messstellen = [...new Set(namen.messstellen)].sort((a, b) => a.localeCompare(b, 'de', { numeric: true }));
   if (messstellen.length > 0) zeilen.push({ label: 'Messstellen', wert: aufzaehlung(messstellen) });
 
-  const karten = (g.teile ?? [])
-    .filter((t) => t.ausgebaut_am === null)
+  const eingebaut = (g.teile ?? []).filter((t) => t.ausgebaut_am === null);
+  const einheiten: Erzeugungseinheit[] = eingebaut
+    .filter((t) => t.teilart === 'erzeugungseinheit' && t.te_nr != null)
+    .map((t) => ({
+      teil_id: t.id,
+      te_nr: t.te_nr as number,
+      einheit_art: t.einheit_art ?? null,
+      bezeichnung: t.bezeichnung,
+      typ: t.typ,
+      typ_bild: t.typ_bild ?? null,
+      nennleistung_kw: t.nennleistung_kw ?? null,
+      registry_unit_id: t.registry_unit_id ?? null,
+      eingebaut_am: t.eingebaut_am,
+    }))
+    .sort((a, b) => a.te_nr - b.te_nr);
+  const karten = eingebaut
+    .filter((t) => t.teilart !== 'erzeugungseinheit')
     .sort((a, b) => (a.steckplatz ?? Number.MAX_SAFE_INTEGER) - (b.steckplatz ?? Number.MAX_SAFE_INTEGER))
     .map((t) => {
       const detail = [t.bezeichnung ? t.typ : null, t.seriennummer ? `Seriennr. ${t.seriennummer}` : null]
@@ -149,6 +170,7 @@ export function geraetKarte(g: UemsGeraet, namen: GeraetNamen): GeraetKarte {
     kennzeichen: g.kennzeichen !== g.einbau_kennzeichen ? g.kennzeichen : null,
     zeilen,
     karten,
+    einheiten,
     vorgaenger,
   };
 }
