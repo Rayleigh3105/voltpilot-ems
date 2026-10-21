@@ -8,7 +8,11 @@ import com.voltpilot.api.measurement.ErzeugerRegisterbilder;
 import com.voltpilot.api.measurement.MeasurementPlan;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.GeraetRepository;
+import com.voltpilot.api.uems.RechteAbleitung.Konto;
 import com.voltpilot.api.web.dto.AnlagensteuerungDto;
+import com.voltpilot.api.zugriff.ZugriffContext;
+import com.voltpilot.api.zugriff.ZugriffContext.Zugang;
+import com.voltpilot.api.zugriff.ZugriffContext.Zugriff;
 import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -64,6 +68,7 @@ class AnlagensteuerungDbTest {
     @Autowired AnlagensteuerungService service;
     @Autowired ErzeugerRegisterbilder registerbilder;
     @Autowired GeraetRepository geraete;
+    @Autowired AnlagensteuerungRepository repo;
     static JdbcTemplate root;
 
     @BeforeAll static void start() {
@@ -94,6 +99,15 @@ class AnlagensteuerungDbTest {
             return was.get();
         } finally {
             TenantContext.clear();
+        }
+    }
+
+    private static <T> T alsMit(Zugriff zugriff, Supplier<T> was) {
+        ZugriffContext.set(zugriff);
+        try {
+            return als(zugriff.kundenbereich(), was);
+        } finally {
+            ZugriffContext.clear();
         }
     }
 
@@ -221,6 +235,38 @@ class AnlagensteuerungDbTest {
         assertThat(je.get("erzeuger.te[2].t_zustand").wort()).as("außerhalb des Vokabulars: roh, ohne Wort").isNull();
         assertThat(je.get("erzeuger.a.p_erzeugung_w").zustand()).isEqualTo("veraltet");
         assertThat(je.get("erzeuger.te[1].t_p_ist_w").wert()).isNull();
+    }
+
+    /**
+     * {@code juengste} liest {@code device_measurement_sample} ohne {@code site} (SiteScopeArchitekturTest,
+     * UEBER_MESSKOMPONENTE): die Reihe trägt nur den Mandanten-Zaun, den Standort-Zaun bringt die Quelle der
+     * {@code entity_id}.
+     */
+    @Test
+    void dieJuengstenWerteGibtEsNurUeberEineSichtbareSteuerung() {
+        Welt w = welt("Erzeuger-Zaun");
+        root.update("UPDATE device SET supports = '[\"erzeuger_registerbild\"]'::jsonb, supports_reported_at = now() "
+                + "WHERE id = ?", w.box());
+        AnlagensteuerungDto.Anlagensteuerung s = als(w.tenant(), () -> service.anlegen(w.site(), gore(w),
+                "sub-einrichter"));
+        probe(w, s.entityId(), "erzeuger.a.p_nvp_w", -41230, "good", Instant.now().truncatedTo(ChronoUnit.SECONDS), 1);
+        List<String> punkt = List.of("erzeuger.a.p_nvp_w");
+
+        Welt fremd = welt("Erzeuger-Zaun-Fremd");
+        assertThat(als(fremd.tenant(), () -> repo.juengste(w.tenant(), s.entityId(), punkt))).singleElement()
+                .as("fremder Mandant, selbst mit der richtigen tenant_id und entity_id: RLS")
+                .extracting(AnlagensteuerungRepository.Jungster::zeit).isNull();
+
+        Zugriff ohneStandort = new Zugriff("sub-zaun", Konto.BENUTZER, w.tenant(), Zugang.KONTO, List.of(),
+                Instant.now());
+        assertThat(alsMit(ohneStandort, () -> repo.steuerungen(w.site()))).isEmpty();
+        assertThat(alsMit(ohneStandort, () -> repo.steuerung(s.geraetId()))).isEmpty();
+        assertThatThrownBy(() -> alsMit(ohneStandort, () -> service.werte(w.site(), s.geraetId())))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        e -> assertThat(e.getStatusCode().value()).isEqualTo(404));
+        assertThat(alsMit(ohneStandort, () -> repo.juengste(w.tenant(), s.entityId(), punkt))).singleElement()
+                .as("die Reihe selbst hat keinen Standort-Zaun: deshalb nur eine entity_id aus STEUERUNG")
+                .extracting(AnlagensteuerungRepository.Jungster::zeit).isNotNull();
     }
 
     @Test
