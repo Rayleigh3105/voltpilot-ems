@@ -10,6 +10,7 @@ import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import type { ControlStripView } from '../control';
 import type { ExportGuardView } from '../curtailment';
+import type { ErzeugerBlatt, ErzeugerKette } from '../erzeuger';
 import type { SteuerSpalte } from '../kacheln';
 import type { AnlagenSub } from '../nav';
 import { tonAus } from './steuerTon';
@@ -30,6 +31,16 @@ const SteuerWarum = lazy(() => import('./SteuerWarum').then((m) => ({ default: m
  *           standen dort bis zu drei Absätze Fließtext unter den drei Spalten.
  */
 export type ControlStripVariant = 'card' | 'zeile';
+
+/**
+ * Die Soll-Kette einer Erzeugeranlage, die VoltPilot nur liest (Konzept „Erzeuger am WAGO-Modbus-Server“,
+ * EZ-8, Entscheid EW-11 A): „Netzbetreiber 60 % › Direktvermarkter 80 kW › ✓ Anlage 58,9 kW“ in derselben
+ * Zeile und mit derselben Geste wie beim Speicher; das Blatt zeigt die ganze Kette, „Warum“ und „Grenze“.
+ */
+export interface ErzeugerZeile {
+  kette: ErzeugerKette;
+  blatt: ErzeugerBlatt;
+}
 
 /**
  * Der Einspeisewächter („Grenzen & Wächter" Stufe 0) — eine STEHENDE Aussage
@@ -62,6 +73,7 @@ export function ControlStrip({
   spalten = null,
   isPhone = false,
   onOpenSub,
+  erzeuger = null,
 }: {
   view: ControlStripView | null;
   variant?: ControlStripVariant;
@@ -75,10 +87,12 @@ export function ControlStrip({
   isPhone?: boolean;
   /** `zeile`: die Wege aus dem Blatt („Zur Steuerung“, „Prüfen“ in die Einstellungen). */
   onOpenSub?: (sub: AnlagenSub) => void;
+  /** `zeile`: Erzeugeranlage - die Kette ersetzt Auftrag › Gerät › Wirkung. */
+  erzeuger?: ErzeugerZeile | null;
 }) {
-  if (!view && !guard) return null;
+  if (!view && !guard && !(variant === 'zeile' && erzeuger)) return null;
   if (variant === 'zeile') {
-    return <Steuerzeile view={view} guard={guard} spalten={spalten} isPhone={isPhone} onOpenSub={onOpenSub} />;
+    return <Steuerzeile view={view} guard={guard} spalten={spalten} isPhone={isPhone} onOpenSub={onOpenSub} erzeuger={erzeuger} />;
   }
   return (
     <section className="vp-section" aria-label="Steuerung">
@@ -116,8 +130,18 @@ function TonZeichen({ ton }: { ton: 'ok' | 'warn' | 'ruhig' }) {
   return null;
 }
 
-/** Die Glieder der Zeile: Auftrag › Gerät › Wirkung, sonst der eine Satz, sonst die Einspeisegrenze. */
-function glieder(view: ControlStripView | null, guard: ExportGuardView | null, spalten: SteuerSpalte[] | null) {
+interface Glied {
+  key: string;
+  titel: string | null;
+  text: string;
+  /** Am Telefon sichtbar statt `text` („NB 60 %“); `text` bleibt für den Bildschirmleser. */
+  kurz?: string | null;
+  ton: 'ok' | 'warn' | 'ruhig';
+}
+
+/** Die Glieder der Zeile: die Soll-Kette des Erzeugers, Auftrag › Gerät › Wirkung, sonst der eine Satz, sonst die Einspeisegrenze. */
+function glieder(view: ControlStripView | null, guard: ExportGuardView | null, spalten: SteuerSpalte[] | null, erzeuger: ErzeugerZeile | null): Glied[] {
+  if (erzeuger) return erzeuger.kette.glieder.map((g) => ({ key: g.key, titel: g.titel, text: g.text, kurz: g.kurz, ton: g.ton }));
   if (view && spalten && spalten.length > 0) {
     return spalten.map((sp) => ({ key: sp.titel, titel: sp.titel, text: sp.text, ton: tonAus(sp.ton) }));
   }
@@ -131,19 +155,26 @@ function Steuerzeile({
   spalten,
   isPhone,
   onOpenSub,
+  erzeuger,
 }: {
   view: ControlStripView | null;
   guard: ExportGuardView | null;
   spalten: SteuerSpalte[] | null;
   isPhone: boolean;
   onOpenSub?: (sub: AnlagenSub) => void;
+  erzeuger: ErzeugerZeile | null;
 }) {
   const [offen, setOffen] = useState(false);
   // Einmal geöffnet, bleibt das Blatt montiert - so schließt es mit seiner Bewegung statt zu verschwinden.
   const [geladen, setGeladen] = useState(false);
-  const kette = glieder(view, guard, spalten);
+  const kette = glieder(view, guard, spalten, erzeuger);
   // Was eine Prüfung verdient, zählt die Zeile nur - lesen lässt es sich im Blatt (und als Befund im Zustand).
   const hinweise = (guard?.deviceLimitLine ? 1 : 0) + (guard?.tone === 'warn' ? 1 : 0);
+  // Beim Erzeuger sagt die Pille, wer strenger ist - oder sie zählt die Hinweise der Kette.
+  const pille = erzeuger
+    ? erzeuger.kette.pille
+    : hinweise > 0 ? { text: hinweise === 1 ? '1 Hinweis' : `${hinweise} Hinweise`, ton: 'warn' as const } : null;
+  const alter = erzeuger ? erzeuger.kette.alter : !spalten?.length ? view?.agoNote ?? null : null;
   const weiter = (sub: AnlagenSub) => {
     setOffen(false);
     onOpenSub?.(sub);
@@ -159,7 +190,7 @@ function Steuerzeile({
         <span className="vp-steuer-kopf">
           <Icon name="zap" size={14} />
           <span className="vp-steuer-titel">Steuerung</span>
-          {hinweise > 0 && <span className="vp-steuer-hinweis">{hinweise === 1 ? '1 Hinweis' : `${hinweise} Hinweise`}</span>}
+          {pille && <span className={`vp-steuer-hinweis${pille.ton === 'info' ? ' is-info' : ''}`}>{pille.text}</span>}
           <span className="vp-steuer-warum">
             Warum?
             <Icon name="chevron-right" size={14} />
@@ -170,14 +201,21 @@ function Steuerzeile({
           {kette.map((g, i) => (
             <span key={g.key} className="vp-steuer-teil">
               <span className={`vp-steuer-glied tone-${g.ton}`}>
-                {g.titel && <span className="vp-sr-only">{g.titel}: </span>}
+                {g.titel && !g.text.startsWith(g.titel) && <span className="vp-sr-only">{g.titel}: </span>}
                 <TonZeichen ton={g.ton} />
-                {g.text}
+                {isPhone && g.kurz ? (
+                  <>
+                    <span aria-hidden="true">{g.kurz}</span>
+                    <span className="vp-sr-only">{g.text}</span>
+                  </>
+                ) : (
+                  g.text
+                )}
               </span>
               {i < kette.length - 1 && <span className="vp-steuer-pfeil" aria-hidden="true">›</span>}
             </span>
           ))}
-          {!spalten?.length && view?.agoNote && <span className="vp-steuer-alter">{view.agoNote}</span>}
+          {alter && <span className="vp-steuer-alter">{alter}</span>}
         </span>
       </button>
       {geladen && (
@@ -189,6 +227,7 @@ function Steuerzeile({
             view={view}
             guard={guard}
             spalten={spalten}
+            erzeuger={erzeuger?.blatt ?? null}
             onWeiter={onOpenSub ? weiter : undefined}
           />
         </Suspense>

@@ -8,6 +8,7 @@ import { flowHasValues } from '../liveDetail';
 import type { ChargingNodeOpts } from '../adaptiveFlow';
 import { cockpitRollenTopologie } from '../pvRolle';
 import { pvComposition } from '../pvComposition';
+import type { ErzeugerBuehne } from '../erzeuger';
 import { jetztFluss } from '../flussJetzt';
 import type { Betrieb, Rolle } from '../leitungsplan';
 import type { PlanWordingKind } from '../schedule';
@@ -148,6 +149,11 @@ export function CockpitHero({
     now: Date;
     /** Ein Knoten-Blatt geht auf/zu (z. B. um die Tagessummen je Gerät zu holen). */
     onBlatt?: (art: Rolle | null) => void;
+    /**
+     * Erzeugeranlage an einer Anlagensteuerung (EZ-8): der Moment kommt aus dem Bild der Steuerung,
+     * nicht aus der Hausbilanz der Box (die Werte gehen in V1 nicht in die Energiebilanz, Konzept §4.2).
+     */
+    erzeuger?: ErzeugerBuehne | null;
   } | null;
   /**
    * Der kanonische PV-ROLLEN-Wert der Anlage (`GET …/rollen/pv`, vp-agg §2.4/B). Existiert eine
@@ -160,7 +166,8 @@ export function CockpitHero({
   netzRollen?: RollenKanonischerWert | null;
 }) {
   const rollenTopologie = cockpitRollenTopologie(topology, [pvRollen, verbrauchRollen, netzRollen]);
-  const hasFlow = flowHasValues(rollenTopologie, snapshot);
+  const erzeuger = buehne?.erzeuger ?? null;
+  const hasFlow = erzeuger != null || flowHasValues(rollenTopologie, snapshot);
   // Existiert eine kanonische PV-Zuordnung, ist SIE die Herkunft der Cockpit-Zahl - dann tritt die
   // rohe Quellen-Aufteilung (`PvBreakdownLine`) zurück, sie erklärte sonst eine andere Zahl.
   const pvRolleAktiv = pvRollen?.zuordnung_vorhanden === true;
@@ -184,7 +191,7 @@ export function CockpitHero({
         {hasFlow ? (
           <Suspense fallback={<div className="vp-eb-warten" aria-hidden="true" />}>
           <EnergieBuehne
-            jetzt={jetztFluss(rollenTopologie, snapshot, {
+            jetzt={erzeuger ? erzeuger.jetzt : jetztFluss(rollenTopologie, snapshot, {
               pvTotalKw: composition?.totalKw ?? null,
               loadKanonisch: verbrauchRollen?.zuordnung_vorhanden ? { wert: verbrauchRollen.wert } : null,
             })}
@@ -200,6 +207,7 @@ export function CockpitHero({
             now={buehne?.now ?? new Date()}
             onBlatt={buehne?.onBlatt}
             onOpenSub={onOpenSub}
+            erzeuger={erzeuger}
           />
           </Suspense>
         ) : (

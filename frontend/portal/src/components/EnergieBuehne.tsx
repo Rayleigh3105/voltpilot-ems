@@ -5,6 +5,7 @@ import { KNOWN_ROLES, roleLabel, type SlotRole } from '../fahrplanWhy';
 import type { PlanWordingKind } from '../schedule';
 import type { RollenKanonischerWert } from '../api';
 import type { AnlagenSub } from '../nav';
+import type { ErzeugerBuehne } from '../erzeuger';
 import type { JetztFluss } from '../flussJetzt';
 import { erzeugungListe, ohneAufteilung, rollenListe, verbrauchListe, type Liste } from '../flussListen';
 import {
@@ -69,6 +70,7 @@ export function EnergieBuehne({
   now = new Date(),
   onBlatt,
   onOpenSub,
+  erzeuger = null,
 }: {
   jetzt: JetztFluss;
   stale?: boolean;
@@ -88,6 +90,13 @@ export function EnergieBuehne({
   onBlatt?: (art: Rolle | null) => void;
   /** Absprung aus dem Blatt (Energie-Verlauf, Ihre Geräte). */
   onOpenSub?: (sub: AnlagenSub) => void;
+  /**
+   * Erzeugeranlage an einer Anlagensteuerung (Konzept „Erzeuger am WAGO-Modbus-Server“, EZ-8): der
+   * Moment „jetzt“ kommt dann aus dem Bild der Steuerung (`jetzt` ist schon daraus gebildet), der Satz
+   * nennt die Vorgabe, der obere Knoten heißt „Erzeugung“ mit Motor oder Sonne, der untere „Hof“ bzw.
+   * „Verbrauch“ (= Erzeugung + Netzpunkt). Ohne Netzpunkt (EW-16 C) stehen Netz und Hof als „—“, nie 0.
+   */
+  erzeuger?: ErzeugerBuehne | null;
 }) {
   const [ansicht, setAnsicht] = useState<Ansicht>('jetzt');
   const [gewaehlt, setGewaehlt] = useState<number | null>(null);
@@ -154,9 +163,18 @@ export function EnergieBuehne({
     socPct,
     zielKw: betrieb === 'spitze' ? zielKw : null,
   });
+  if (erzeuger) {
+    // Die Knoten tragen die Wörter der Erzeugeranlage; die Werte bleiben die des gewählten Moments.
+    const k = erzeuger.knoten;
+    const live = zeit === 'live' && !heute;
+    const pvZeilen = live ? [k.erzeugungZeile] : texte.pv.zeilen;
+    const lastZeilen = heute ? texte.load.zeilen : [k.lastName];
+    texte.pv = { ...texte.pv, zeilen: pvZeilen, aria: `Erzeugung: ${texte.pv.wert}, ${pvZeilen.join(', ')}` };
+    texte.load = { ...texte.load, zeilen: lastZeilen, aria: `${k.lastName}: ${texte.load.wert}, ${lastZeilen.join(', ')}` };
+    if (live && k.netzZeile) texte.grid = { ...texte.grid, zeilen: [k.netzZeile], aria: `Netz: ${texte.grid.wert}, ${k.netzZeile}` };
+  }
   const uhr = !tag || (q === jetztQ && !heute) ? uhrText(now) : heute && q === jetztQ ? uhrText(now) : uhrzeit(v?.start ?? now.getTime());
-  const satzText =
-    satz({
+  const satzText = erzeuger && zeit === 'live' && !heute ? erzeuger.satz : satz({
       betrieb,
       ansicht,
       zeit,
@@ -187,8 +205,10 @@ export function EnergieBuehne({
   const max = isPhone ? 4 : 6;
   // Unter dem Fluss steht nur der Verbrauch; die Erzeugung je Gerät öffnet
   // sich im Blatt des Sonnen-Knotens (dieselbe Listenform).
-  const vListe: Liste | null =
-    heute || zeit === 'live'
+  // Bei einer Erzeugeranlage steht hier die Erzeugung je Einheit (Motor, Wechselrichter) - nur jetzt.
+  const vListe: Liste | null = erzeuger
+    ? (zeit === 'live' && !heute ? erzeuger.liste : null)
+    : heute || zeit === 'live'
       ? verbrauchListe(verbrauch, { heute, max, hausKw: heute ? null : werte.load })
       : verbrauch
         ? ohneAufteilung('Verbrauch im Detail', kw(werte.load), zeit === 'plan')
@@ -247,7 +267,8 @@ export function EnergieBuehne({
         gridKw={werte.grid}
         zielKw={betrieb === 'spitze' ? zielKw : null}
         reserveProzent={reserveProzent}
-        stale={stale}
+        stale={stale || (erzeuger?.veraltet ?? false)}
+        symbol={erzeuger?.knoten.symbol === 'motor' ? 'motor' : 'sonne'}
         onKnoten={(r, el) => oeffne(r, el)}
       />
 
@@ -259,6 +280,7 @@ export function EnergieBuehne({
             q={q}
             heute={heute}
             zielKw={betrieb === 'spitze' ? zielKw : null}
+            vorgaben={erzeuger?.vorgaben ?? null}
             onQ={waehle}
           />
           {/* Ein Tipp trifft am Telefon nur auf etwa ± 45 Minuten genau; ‹ › gehen je eine Viertelstunde. */}
@@ -293,16 +315,25 @@ export function EnergieBuehne({
 
       {vListe && (
         <div className="vp-eb-listen">
-          <ListeBlock liste={vListe} onOpen={(el) => oeffne('load', el)} />
+          <ListeBlock liste={vListe} onOpen={(el) => oeffne(erzeuger ? 'pv' : 'load', el)} />
         </div>
       )}
 
-      <ZahlenAlsListe werte={werte} heute={heute} zeit={zeit} uhr={uhr} tag={tag} jetztUhr={uhrText(now)} />
+      <ZahlenAlsListe
+        werte={werte}
+        heute={heute}
+        zeit={zeit}
+        uhr={uhr}
+        tag={tag}
+        jetztUhr={uhrText(now)}
+        hatSpeicher={!erzeuger}
+        lastName={erzeuger?.knoten.lastName}
+      />
 
       <Blatt
         offen={blatt != null}
         isPhone={isPhone}
-        titel={blatt ? BLATT_TITEL[blatt.art] : ''}
+        titel={blatt ? (erzeuger && blatt.art === 'load' ? erzeuger.knoten.lastName : BLATT_TITEL[blatt.art]) : ''}
         onClose={schliesse}
       >
         {blatt && (
@@ -320,6 +351,7 @@ export function EnergieBuehne({
             rollen={rollen}
             zielKw={zielKw}
             rolle={rolle}
+            erzeuger={erzeuger}
             onOpenSub={onOpenSub ? (sub) => { schliesse(); onOpenSub(sub); } : undefined}
           />
         )}
@@ -347,6 +379,8 @@ function ZahlenAlsListe({
   uhr,
   tag,
   jetztUhr,
+  hatSpeicher = true,
+  lastName = 'Verbrauch',
 }: {
   werte: FlussWerte;
   heute: boolean;
@@ -354,6 +388,10 @@ function ZahlenAlsListe({
   uhr: string;
   tag: Tag | null;
   jetztUhr: string;
+  /** Ohne Speicher keine Speicher-Zeilen (sonst stünde dort eine erfundene 0). */
+  hatSpeicher?: boolean;
+  /** „Hof“ bei einer Biogasanlage (EZ-8). */
+  lastName?: string;
 }) {
   const f = heute ? kwh : kw;
   const b = werte.batt;
@@ -363,9 +401,10 @@ function ZahlenAlsListe({
   const e = tag ? energieBis(tag, tag.jetzt).energie : null;
   const zeilen: [string, number | null, number | null][] = [
     ['Erzeugung', werte.pv, e?.pv ?? null],
-    ['Verbrauch', werte.load, e?.load ?? null],
-    ['Speicher laden', pos(b), e?.laden ?? null],
-    ['Speicher abgeben', neg(b), e?.abgeben ?? null],
+    [lastName, werte.load, e?.load ?? null],
+    ...(hatSpeicher
+      ? ([['Speicher laden', pos(b), e?.laden ?? null], ['Speicher abgeben', neg(b), e?.abgeben ?? null]] as [string, number | null, number | null][])
+      : []),
     ['Netzbezug', pos(g), e?.bezug ?? null],
     ['Einspeisung', neg(g), e?.einspeisung ?? null],
   ];
@@ -522,6 +561,7 @@ function BlattInhalt({
   rollen,
   zielKw,
   rolle,
+  erzeuger = null,
   onOpenSub,
 }: {
   art: Rolle;
@@ -537,6 +577,7 @@ function BlattInhalt({
   rollen: { pv: RollenKanonischerWert | null; load: RollenKanonischerWert | null; grid: RollenKanonischerWert | null } | null;
   zielKw: number | null;
   rolle: string | null;
+  erzeuger?: ErzeugerBuehne | null;
   onOpenSub?: (sub: AnlagenSub) => void;
 }) {
   const f = heute ? kwh : kw;
@@ -571,7 +612,7 @@ function BlattInhalt({
         {wegZeilen(wege((p) => p.startsWith('pv>')))}
         {!heute && zeit === 'live' && (() => {
           // Dieselbe Listenform wie unter dem Fluss, hier vollständig.
-          const liste = rollenListe(rollen?.pv) ?? erzeugungListe(pv, { max: Number.MAX_SAFE_INTEGER });
+          const liste = erzeuger ? erzeuger.liste : rollenListe(rollen?.pv) ?? erzeugungListe(pv, { max: Number.MAX_SAFE_INTEGER });
           return liste ? <ListeBlock liste={liste} className="vp-rolle-pv" /> : null;
         })()}
         {zeit === 'plan' && <p className="vp-eb-note">Die Prognose gilt für die ganze Anlage, nicht je Fläche.</p>}
@@ -582,8 +623,24 @@ function BlattInhalt({
   }
   if (art === 'load') {
     const teile: [string, number, string][] = herkunft
-      ? [['Sonne', herkunft['pv>load'], 'pv'], ['Speicher', herkunft['batt>load'], 'batt'], ['Netz', herkunft['grid>load'], 'grid']]
+      ? [[erzeuger ? 'Erzeugung' : 'Sonne', herkunft['pv>load'], 'pv'], ['Speicher', herkunft['batt>load'], 'batt'], ['Netz', herkunft['grid>load'], 'grid']]
       : [];
+    if (erzeuger) {
+      // Der Hof ist gerechnet (Erzeugung + Netzpunkt), kein eigener Zähler; ohne Netzpunkt gibt es ihn nicht.
+      return (
+        <>
+          <div className="vp-eb-kpis">{kpi(`${erzeuger.knoten.lastName} ${wann}`, f(werte.load))}</div>
+          {teile.length > 0 && <p className="vp-eb-zw-titel">Herkunft {heute ? 'heute' : wann}</p>}
+          <Herkunftsbalken teile={teile} />
+          <p className="vp-eb-note">
+            {werte.load == null
+              ? 'Ohne Messung am Netzpunkt lässt sich der Verbrauch hinter dem Netzanschluss nicht ausrechnen.'
+              : 'Gerechnet aus Erzeugung und Netzpunkt - kein eigener Zähler.'}
+          </p>
+          {weiter}
+        </>
+      );
+    }
     return (
       <>
         <div className="vp-eb-kpis">{kpi(`Verbrauch ${wann}`, f(werte.load))}</div>
@@ -634,7 +691,11 @@ function BlattInhalt({
         const liste = rollenListe(rollen?.grid);
         return liste ? <ListeBlock liste={liste} className="vp-rolle-grid" /> : null;
       })()}
-      <p className="vp-eb-note">Eingespeist ist, was den Netzanschluss verlässt, nicht was den Speicher verlässt.</p>
+      <p className="vp-eb-note">
+        {erzeuger && g == null
+          ? 'An dieser Anlage wird am Netzpunkt nicht gemessen; Einspeisung und Bezug sind deshalb unbekannt.'
+          : 'Eingespeist ist, was den Netzanschluss verlässt, nicht was den Speicher verlässt.'}
+      </p>
       {weiter}
     </>
   );

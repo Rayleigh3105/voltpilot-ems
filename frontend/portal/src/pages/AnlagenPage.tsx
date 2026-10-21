@@ -96,6 +96,7 @@ import { GroessenWahl, type RasterGroesse } from '../components/kacheln/Kachel';
 import type { KachelAuftrag } from '../components/kacheln/CockpitKacheln';
 import { jetztFluss } from '../flussJetzt';
 import { steuerSpalten } from '../kacheln';
+import type { ErzeugerJetzt } from '../api';
 import type { WeatherPoint } from '../api';
 import {
   LEER_SATZ as EIGEN_LEER_SATZ,
@@ -853,6 +854,25 @@ export function AnlageSeite({
   // wirklich um? Eigener Abruf (der Herzschlag-Block kommt unabhängig vom
   // Rücklese-Block), fail-soft - null = kein Beleg = Plan-Wortlaut.
   const [curtailStatus, setCurtailStatus] = useState<CurtailmentStatus | null>(null);
+  // Erzeugeranlage an einer Anlagensteuerung (EZ-8): das Bild der Steuerung - fail-soft, null = keine
+  // Anlagensteuerung oder älteres Backend; dann bleibt das Cockpit wie bisher.
+  const [erzeugerJetzt, setErzeugerJetzt] = useState<ErzeugerJetzt | null>(null);
+  // Die Ableitung (`erzeuger.ts`) ist ein eigenes Stück: sie lädt erst, wenn die Anlage eine
+  // Anlagensteuerung hat - das erste Bild jeder anderen Anlage trägt sie nicht (Einstiegs-Budget).
+  const [erzModul, setErzModul] = useState<typeof import('../erzeuger') | null>(null);
+  useEffect(() => {
+    if (!erzeugerJetzt || erzModul) return undefined;
+    let aktiv = true;
+    import('../erzeuger').then(
+      (m) => {
+        if (aktiv) setErzModul(m);
+      },
+      () => {},
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [erzeugerJetzt, erzModul]);
   // Die Ladepunkte (Lastmanagement Stufe 3) - fail-soft wie jeder additive
   // Abruf hier: ein älteres Backend kennt die Route nicht, dann gibt es die
   // Kachel schlicht nicht.
@@ -994,6 +1014,14 @@ export function AnlageSeite({
         if (active) setCurtailStatus(null);
       },
     );
+    api.erzeugerJetzt(site.id).then(
+      (e) => {
+        if (active) setErzeugerJetzt(e);
+      },
+      () => {
+        if (active) setErzeugerJetzt(null);
+      },
+    );
     api.siteChargers(site.id).then(
       (c) => {
         if (active) setCharging(c);
@@ -1120,6 +1148,11 @@ export function AnlageSeite({
     // danach gestartete Ladung landete ganz im „übrigen Haushalt", bis die
     // Seite neu geladen wurde. Ein Fehler behält den letzten Stand.
     const id = site.id;
+    // Das Bild der Anlagensteuerung (EZ-8): ein Fehler behält den letzten Stand - sein Alter sagt dann selbst, dass er veraltet.
+    api.erzeugerJetzt(id).then(
+      (e) => id === siteIdRef.current && setErzeugerJetzt(e),
+      () => {},
+    );
     api.siteChargers(id).then(
       (c) => id === siteIdRef.current && setCharging(c),
       () => {},
@@ -1603,7 +1636,8 @@ export function AnlageSeite({
     // Karte) rendert auch ohne Erlös-Komposition ehrlich - nur ihr
     // Zeitraum-Segment hängt an dem Block, genau wie vor dieser Stufe.
     const out: BausteinId[] = ['status', 'energiefluss', 'geld'];
-    if (controlView || guardView) out.push('steuerung');
+    // Eine Erzeugeranlage hat ihre Steuerzeile auch ohne Speicher-Auftrag: die Soll-Kette (EZ-8).
+    if (controlView || guardView || erzeugerJetzt) out.push('steuerung');
     if (fahrplanVerfuegbar) out.push('fahrplan');
     if (strompreisVerfuegbar) out.push('strompreis');
     // Die Kachel „Laden" erscheint, sobald ein Ladepunkt EXISTIERT - nicht
@@ -1617,7 +1651,7 @@ export function AnlageSeite({
     // UEMS AP-01 IP-8, Geld-Regel je Anlage: eine geldfreie Anlage hat weder
     // Geld-Held noch Steuerungs-Karte noch Marktpreise (`anlageGeld`).
     return bausteineOhneGeld(out, surface);
-  }, [blocks, controlView, guardView, fahrplanVerfuegbar, strompreisVerfuegbar, ovSite, health, ladenView, surface]);
+  }, [blocks, controlView, guardView, erzeugerJetzt, fahrplanVerfuegbar, strompreisVerfuegbar, ovSite, health, ladenView, surface]);
   // ⚠ Steuerung Stufe 8: es gibt hier KEIN Tor mehr. „Eigene Auswertung" ist
   // die Katalog-Klasse `cockpit` und hat keinen Schalter — der Weg zu einer
   // eigenen Kachel ist der Anpassen-Modus, und wer dort eine anlegt, hat seine
@@ -1799,6 +1833,22 @@ export function AnlageSeite({
     [dayHistoryEffective, plan, now],
   );
   const buehneBetrieb: Betrieb = betriebAus(blocks);
+  // Erzeugeranlage an einer Anlagensteuerung (Konzept „Erzeuger am WAGO-Modbus-Server“, EZ-8, EW-11 A):
+  // Status oben, Bühne, Soll-Kette in der Steuerzeile, Spuren der Vorgaben und zwei Kacheln - kein Reiter.
+  const E = erzModul;
+  const erzLage = erzeugerJetzt && E ? E.erzeugerLage(erzeugerJetzt, now) : null;
+  const erzStatus = erzLage && E ? E.erzeugerStatus(erzLage) : [];
+  const erzTagesbeginn = new Date(now);
+  erzTagesbeginn.setHours(0, 0, 0, 0);
+  const erzGeregelt = erzeugerJetzt && erzLage && E ? E.werHatGeregelt(erzeugerJetzt, erzLage, erzTagesbeginn.getTime(), now.getTime()) : null;
+  const erzBuehne = erzeugerJetzt && erzLage && E ? E.erzeugerBuehne(erzeugerJetzt, erzLage, buehneTag, now) : null;
+  // Die Kette gilt für Anlagen, die VoltPilot nur liest; eine Speicheranlage behält ihre Steuerzeile.
+  const erzZeile =
+    erzLage && E && !batteryLinked && controlStatus == null
+      ? { kette: E.erzeugerKette(erzLage, now), blatt: E.erzeugerBlatt(erzLage, now, erzGeregelt) }
+      : null;
+  // Biogas hat bis EZ-12 keine Erlöse: „Unterm Strich“ zeigt „—“ statt einer Zahl ohne Grundlage.
+  const erzGeldStrich = erzLage?.art === 'bhkw';
   // Das Blatt „Verbrauch“: woraus sich der Verbrauch zusammensetzt. Zwei
   // Durchläufe mit Absicht (wie früher im Komponenten-Board): der erste sagt,
   // WELCHE Geräte eine Tagessumme brauchen, der zweite trägt sie. Die
@@ -1861,7 +1911,8 @@ export function AnlageSeite({
   // Kachel. Marktoptimierung führt mit dem Börsenpreis, Lastspitzenkappung
   // mit der Lastspitze, sonst „Unterm Strich“.
   const leitArt: 'strompreis' | 'lastspitze' | 'geld' | null =
-    buehneBetrieb === 'markt' && zeigt('strompreis') && strompreisVerfuegbar
+    // Eine Erzeugeranlage führt wie im Bild des Konzepts mit dem Börsenpreis, wo es ihn gibt.
+    (buehneBetrieb === 'markt' || erzLage != null) && zeigt('strompreis') && strompreisVerfuegbar
       ? 'strompreis'
       : effektiverLead === 'peak-band' && peakView != null && zeigt('kacheln')
         ? 'lastspitze'
@@ -1870,7 +1921,9 @@ export function AnlageSeite({
           : null;
   const inSeite = (art: string) => !isPhone && leitArt === art;
   const geldKachel = (seite: boolean) =>
-    zeigt('geld') && geldDa ? (
+    erzGeldStrich ? (
+      zeigt('geld') ? <KachelSpaet art="erzeuger-geld" groesse="klein" onOpen={() => onOpenSub('erloese')} /> : null
+    ) : zeigt('geld') && geldDa ? (
       <KachelSpaet
         art="geld"
         money={heroView.money}
@@ -1940,12 +1993,16 @@ export function AnlageSeite({
     markt: ['sonne', 'speicher', 'handel', '@geld', 'netz', 'wetter', 'waermepumpe', 'automatik'],
     spitze: ['lastspitze', 'sonne', '@geld', 'netz', 'speicher', 'handel', 'waermepumpe', 'automatik', 'wetter'],
   };
+  // Eine Erzeugeranlage zeigt ihre Einheiten und wer heute geregelt hat (Bild Cockpit des Konzepts);
+  // Speicher-, Autarkie- und Handelskacheln haben dort keine Grundlage.
+  // Bei Biogas steht „Unterm Strich“ („—“) als dritte Kachel hinter den Einheiten, wie im Bild.
+  const kachelReihe = erzLage ? (erzGeldStrich ? ['einheiten', 'geregelt', '@geld'] : ['einheiten', 'geregelt']) : KACHEL_REIHE[buehneBetrieb];
   const reihe = layout.resolved.order;
   const geldImRaster =
     !layout.anpassen &&
     !inSeite('geld') &&
-    KACHEL_REIHE[buehneBetrieb].includes('@geld') &&
-    reihe.indexOf('geld') === reihe.indexOf('kacheln') + 1 &&
+    kachelReihe.includes('@geld') &&
+    (erzGeldStrich || reihe.indexOf('geld') === reihe.indexOf('kacheln') + 1) &&
     reihe.includes('kacheln');
   const kachelKnoten = (id: string): ReactNode => {
     const basis = { groesse: groesseVon(id), fuss: groessenFuss(id, kachelDef(id)?.label ?? id) };
@@ -1991,6 +2048,12 @@ export function AnlageSeite({
       case 'automatik':
       case 'wetter':
         return wertWidget(id);
+      case 'einheiten':
+        return erzLage && erzLage.einheiten.length > 0 ? (
+          <KachelSpaet art="einheiten" groesse={isPhone ? 'breit' : 'klein'} lage={erzLage} onOpen={() => onOpenSub('steuerung')} />
+        ) : null;
+      case 'geregelt':
+        return erzLage ? <KachelSpaet art="geregelt" groesse={isPhone ? 'breit' : 'klein'} zeilen={erzGeregelt} onOpen={() => onOpenSub('messwerte')} /> : null;
       default:
         return null;
     }
@@ -2010,11 +2073,14 @@ export function AnlageSeite({
           gemessenKw: jetztWerte?.werte.batt ?? null,
         })
       : null;
-  const steuerzeileSichtbar = zeigt('steuerung') && (controlView != null || guardView != null);
+  const steuerzeileSichtbar = zeigt('steuerung') && (controlView != null || guardView != null || erzZeile != null);
   // Der Zustand nennt nur, was nicht schon an seinem eigenen Ort steht: die
   // Steuerung steht in der Steuerzeile, der Plan in der Fahrplan-Kachel.
+  // Eine Erzeugeranlage, die VoltPilot nur liest, hat keinen Fahrplan - „noch keiner erstellt“ wäre kein Befund.
   const healthOhneDoppel = health.filter(
-    (h) => !(h.key === 'control' && steuerzeileSichtbar) && !(h.key === 'plan' && zeigt('fahrplan') && fahrplanVerfuegbar),
+    (h) =>
+      !(h.key === 'control' && steuerzeileSichtbar) &&
+      !(h.key === 'plan' && ((zeigt('fahrplan') && fahrplanVerfuegbar) || erzZeile != null)),
   );
 
   const bausteinNodes: Partial<Record<BausteinId, ReactNode>> = {
@@ -2041,6 +2107,7 @@ export function AnlageSeite({
             isPhone,
             now,
             onBlatt: (art) => { if (art === 'load') setVerbrauchBlattOffen(true); },
+            erzeuger: erzBuehne,
           }}
           /* Rechts neben dem Fluss: die Leitkachel (am Rechner). */
           showRail={!isPhone}
@@ -2079,6 +2146,7 @@ export function AnlageSeite({
                 spalten={steuerSpaltenView}
                 isPhone={isPhone}
                 onOpenSub={onOpenSub}
+                erzeuger={erzZeile}
               />
             ) : null
           }
@@ -2111,7 +2179,7 @@ export function AnlageSeite({
     ) : null,
     kacheln: (
       <div className={layout.anpassen ? 'vp-kraster' : 'vp-k-gruppe'}>
-        {KACHEL_REIHE[buehneBetrieb].map((id) => (
+        {kachelReihe.map((id) => (
           <Fragment key={id}>{id === '@geld' ? (geldImRaster ? geldKachel(false) : null) : kachelKnoten(id)}</Fragment>
         ))}
       </div>
@@ -2137,6 +2205,13 @@ export function AnlageSeite({
   };
 
   const ausfallText = anlageAusfallSatz(ausfall, site.id);
+  // Was Netzbetreiber, Direktvermarkter und Leitstelle gerade tun (EZ-8): Zeilen im Kopf „Status &
+  // Warnungen“, nur solange es gilt - am Telefon in der Statuszeile neben dem Frische-Chip.
+  const vorgabeBadges = erzStatus.map((st) => (
+    <Badge key={st.key} variant={st.ton === 'warn' ? 'warn' : 'tint'} dot={st.ton === 'warn'} data-testid={`erzeuger-status-${st.key}`}>
+      {st.text}
+    </Badge>
+  ));
 
   return (
     <>
@@ -2224,18 +2299,23 @@ export function AnlageSeite({
                   &nbsp;
                 </Badge>
               )}
+              {vorgabeBadges}
             </span>
           ) : (
-            chip && (
-              <Badge variant={chip.tone} dot>
-                {chip.label}
-              </Badge>
-            )
+            <>
+              {chip && (
+                <Badge variant={chip.tone} dot>
+                  {chip.label}
+                </Badge>
+              )}
+              {!showSetup && vorgabeBadges}
+            </>
           )}
           {/* Stammdaten-Abzeichen: sie ändern sich nie und beantworten keine
               Tagesfrage — am Telefon wohnen sie in den Einstellungen. */}
           {!isPhone && <Badge variant="tint">{plantKindLabel(site.plantKind)}</Badge>}
-          {!isPhone && <NetzladenBadge erlaubt={site.netzladenErlaubt} small />}
+          {/* Netzladen betrifft einen Speicher - eine Erzeugeranlage, die VoltPilot nur liest, hat keinen. */}
+          {!isPhone && !erzZeile && <NetzladenBadge erlaubt={site.netzladenErlaubt} small />}
           <div className="vp-anlage-actions">
             {/* Anwendungs-Programm Stufe 3 (E4): der Einstieg in den
                 Anpassen-Modus wohnt in der Cockpit-Kopfzeile - dort, wo der

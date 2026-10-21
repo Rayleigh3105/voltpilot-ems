@@ -24,6 +24,7 @@ import { roleMark } from '../FahrplanWhy';
 import { LadenKachel as Laden } from '../LadenKachel';
 import { StrompreisStrip as Strompreis } from '../StrompreisStrip';
 import { Gross, Kachel, Marke, type RasterGroesse } from './Kachel';
+import { EinheitenKachel, ErzeugerGeldKachel, GeregeltKachel } from './ErzeugerKacheln';
 
 /**
  * **Die Kacheln des Cockpits** (Konzept `docs/konzepte/cockpit-tagesfilm`,
@@ -601,7 +602,10 @@ export type KachelAuftrag =
   | ({ art: 'waermepumpe' } & ComponentProps<typeof WaermepumpeKachel>)
   | ({ art: 'wert' } & ComponentProps<typeof WertKachel>)
   | ({ art: 'strompreis' } & ComponentProps<typeof Strompreis>)
-  | ({ art: 'laden' } & ComponentProps<typeof Laden>);
+  | ({ art: 'laden' } & ComponentProps<typeof Laden>)
+  | ({ art: 'einheiten' } & ComponentProps<typeof EinheitenKachel>)
+  | ({ art: 'geregelt' } & ComponentProps<typeof GeregeltKachel>)
+  | ({ art: 'erzeuger-geld' } & ComponentProps<typeof ErzeugerGeldKachel>);
 
 /** Der eine Einstieg des nachgeladenen Stücks (React.lazy braucht einen Standard-Export). */
 export default function KachelSchalter(a: KachelAuftrag) {
@@ -619,6 +623,9 @@ export default function KachelSchalter(a: KachelAuftrag) {
     case 'wert': return <WertKachel {...a} />;
     case 'strompreis': return <Strompreis {...a} />;
     case 'laden': return <Laden {...a} />;
+    case 'einheiten': return <EinheitenKachel {...a} />;
+    case 'geregelt': return <GeregeltKachel {...a} />;
+    case 'erzeuger-geld': return <ErzeugerGeldKachel {...a} />;
     default: return null;
   }
 }

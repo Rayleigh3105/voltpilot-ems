@@ -664,6 +664,119 @@
   }
 }
 
+/* Die Pille „NB strenger“: eine Auskunft, kein Befund - ruhiges Blau statt Bernstein. */
+.vp-steuer-hinweis.is-info {
+  background: var(--vp-c-muted, #e9eff8);
+  color: var(--vp-c-primary, #2563eb);
+}
+.vp-steuer-hinweis.is-info::before {
+  content: none;
+}
+
+/* „Steuerung jetzt“ einer Erzeugeranlage (EZ-8): die ganze Kette, darunter der Balken. */
+.vp-ez-kette {
+  border: 1px solid var(--vp-c-border, #e2e8f0);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.vp-ez-zeilen {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.vp-ez-zeilen li {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+  padding: 10px 12px;
+}
+.vp-ez-zeilen li + li {
+  border-top: 1px solid var(--vp-c-border, #e2e8f0);
+}
+.vp-ez-punkt {
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  border-radius: 50%;
+}
+.vp-ez-punkt.is-netz { background: var(--vp-flow-grid, #0ea5a3); }
+.vp-ez-punkt.is-markt { background: var(--vp-c-chart-price, #2563eb); }
+.vp-ez-punkt.is-erzeugung { background: var(--vp-flow-pv, #f97316); }
+.vp-ez-name {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.vp-ez-name b {
+  font-weight: 600;
+}
+.vp-ez-name small {
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  color: var(--vp-c-muted-fg, #475569);
+  overflow-wrap: anywhere;
+}
+.vp-ez-zeilen .tone-ok small { color: var(--vp-flow-batt-ink, #166534); }
+.vp-ez-zeilen .tone-warn small { color: var(--vp-c-warn-fg, #9a3412); }
+.vp-ez-wert {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vp-ez-balken {
+  display: grid;
+  gap: 4px;
+  padding: 6px 12px 12px;
+}
+.vp-ez-max {
+  justify-self: end;
+  font-size: 0.75rem;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ez-spur {
+  position: relative;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--vp-c-muted, #e9eff8);
+}
+.vp-ez-ist {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 5px;
+  background: var(--vp-flow-pv, #f97316);
+}
+.vp-ez-marke {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 0;
+  margin-left: -1px;
+  border-left: 2px solid var(--vp-flow-grid, #0ea5a3);
+}
+.vp-ez-marke.is-markt {
+  border-left: 2px dashed var(--vp-c-chart-price, #2563eb);
+}
+.vp-ez-achse {
+  position: relative;
+  height: 1.1em;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--vp-c-muted-fg, #475569);
+}
+.vp-ez-achse span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.vp-ez-achse span:first-child {
+  left: 0;
+  transform: none;
+}
+.vp-ez-achse .is-netz { color: var(--vp-flow-grid-ink, var(--vp-c-chart-grid, #036672)); }
+.vp-ez-achse .is-markt { color: var(--vp-c-chart-price, #2563eb); }
+
 .vp-hero-fresh {
   margin: var(--vp-space-2, 8px) 0 0;
 }
@@ -953,6 +1066,9 @@
 .vp-anlage-head.is-phone .vp-anlage-chipzeile {
   flex: 0 0 100%;
   display: flex;
+  /* Neben dem Chip stehen bei einer Erzeugeranlage die Vorgaben („Netzbetreiber begrenzt 60 %“). */
+  flex-wrap: wrap;
+  gap: 6px;
   min-width: 0;
 }
 .vp-anlage-actions {
