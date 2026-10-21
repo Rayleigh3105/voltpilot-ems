@@ -35625,17 +35625,26 @@ components:
         gueltig_bis: { type: string, format: date-time, nullable: true }
     GeraetTeil:
       type: object
-      description: "Eine Energiekarte im Steckplatz eines Controllers (AP-05 E4: Identität = Gerät + Steckplatz)."
-      required: [id, teilart, steckplatz, bezeichnung, typ, seriennummer, eingebaut_am, ausgebaut_am]
+      description: >
+        Ein Teil eines Controllers: eine Energiekarte im Steckplatz (AP-05 E4: Identität = Gerät + Steckplatz)
+        oder eine Erzeugungseinheit (Wechselrichter, BHKW-Motor) einer Anlagensteuerung (UEMS EZ-6: Identität =
+        Gerät + TE-Nr.). Die Einheiten-Angaben sind an einer Karte null; an einer Einheit heißt null „nicht erhoben“.
+      required: [id, teilart, steckplatz, bezeichnung, typ, seriennummer, eingebaut_am, ausgebaut_am, te_nr,
+        einheit_art, nennleistung_kw, registry_unit_id, typ_bild]
       properties:
         id: { type: string, format: uuid }
-        teilart: { type: string, enum: [energiekarte] }
-        steckplatz: { type: integer, minimum: 0, nullable: true, description: "null = nicht erhoben." }
+        teilart: { type: string, enum: [energiekarte, erzeugungseinheit] }
+        steckplatz: { type: integer, minimum: 0, nullable: true, description: "null = nicht erhoben (an einer Einheit immer null)." }
         bezeichnung: { type: string, nullable: true }
-        typ: { type: string, nullable: true }
+        typ: { type: string, nullable: true, description: "Kartentyp bzw. Hersteller und Typ der Einheit (Anzeige; Umbenennen ändert nur sie)." }
         seriennummer: { type: string, nullable: true }
         eingebaut_am: { type: string, format: date-time }
         ausgebaut_am: { type: string, format: date-time, nullable: true }
+        te_nr: { type: integer, minimum: 1, maximum: 10, nullable: true, description: "TE-Nr. der Erzeugungseinheit im Registerbild; null an einer Karte." }
+        einheit_art: { type: string, nullable: true, enum: [pv_wechselrichter, bhkw_motor, null] }
+        nennleistung_kw: { type: number, nullable: true }
+        registry_unit_id: { type: string, nullable: true, pattern: "^SEE[0-9]{12}$", description: "MaStR-Einheitennummer (SEE) der Einheit." }
+        typ_bild: { type: string, nullable: true, maxLength: 32, description: "Hersteller und Typ, wie das Registerbild sie nennt (Vorbelegung, Konzept §3.10)." }
     GeraetVorgaenger:
       type: object
       description: "Ein früherer Einbau desselben Geräts."

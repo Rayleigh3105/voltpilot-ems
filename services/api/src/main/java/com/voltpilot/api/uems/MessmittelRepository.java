@@ -83,7 +83,8 @@ public class MessmittelRepository {
                 + "g.typ AS modell, 0 AS sortierung FROM geraet g WHERE g.id = ? AND g.typ IS NOT NULL UNION ALL "
                 + "SELECT 'teil', t.id, COALESCE(t.bezeichnung, 'Steckplatz ' || t.steckplatz::text), "
                 + "g.hersteller, t.typ, 1 FROM geraet_teil t JOIN geraet g ON g.id = t.geraet_id "
-                + "WHERE t.geraet_id = ? AND t.ausgebaut_am IS NULL AND t.typ IS NOT NULL "
+                + "WHERE t.geraet_id = ? AND t.teilart = 'energiekarte' AND t.ausgebaut_am IS NULL "
+                + "AND t.typ IS NOT NULL "
                 + "ORDER BY sortierung, bezeichnung",
                 (rs, n) -> new KatalogZiel(rs.getString("art"), rs.getObject("id", UUID.class),
                         rs.getString("bezeichnung"), rs.getString("hersteller"), rs.getString("modell")),

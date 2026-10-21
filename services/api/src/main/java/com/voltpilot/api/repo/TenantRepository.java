@@ -469,6 +469,10 @@ public class TenantRepository {
                         // The Geräte-Rückfall (V20260921150000) holds only the tenant (RESTRICT).
                         "komponente_geraete_rueckfall",
                         "quelle_kadenz", "messstelle_quelle", "quelle_einstellung",
+                        // The Erzeuger-Steuerung (V20261021193000): the Registerbild-Fassung hangs at
+                        // its Gerät, the Netz-und-Vermarktung master data at the site; both hold the
+                        // tenant (RESTRICT).
+                        "registerbild_fassung", "anlage_netz_vermarktung",
                         "geraet_komponente", "geraet_teil", "geraet", "geraet_kennzeichen_seq",
                         "device_data_source_status", "data_source_assignment", "data_source",
                         "data_source_kennzeichen_seq",
