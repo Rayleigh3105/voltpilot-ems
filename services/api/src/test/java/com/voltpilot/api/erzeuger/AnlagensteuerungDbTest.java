@@ -311,6 +311,64 @@ class AnlagensteuerungDbTest {
     }
 
     @Test
+    void verlaufNenntJedeKurveDerFassungUndZaehltNurGuteWerteInIhremEimer() {
+        Welt w = welt("Erzeuger-Verlauf");
+        root.update("UPDATE device SET supports = '[\"erzeuger_registerbild\"]'::jsonb, supports_reported_at = now() "
+                + "WHERE id = ?", w.box());
+        AnlagensteuerungDto.Anlagensteuerung s = als(w.tenant(), () -> service.anlegen(w.site(), gore(w),
+                "sub-einrichter"));
+        java.time.LocalDate tag = java.time.LocalDate.of(2026, 10, 20);
+        Instant mittag = tag.atTime(12, 0).atZone(AnlagensteuerungService.ZONE).toInstant();
+        probe(w, s.entityId(), "erzeuger.te[2].t_p_ist_w", 40000, "good", mittag.plusSeconds(60), 1);
+        probe(w, s.entityId(), "erzeuger.te[2].t_p_ist_w", 42000, "good", mittag.plusSeconds(120), 2);
+        probe(w, s.entityId(), "erzeuger.te[2].t_p_ist_w", 99999, "invalid", mittag.plusSeconds(180), 3);
+        probe(w, s.entityId(), "erzeuger.nb.n_p_prozent", 60, "good", mittag.plusSeconds(1200), 4);
+        // Der Tag davor und ein Zustand gehören nicht in diese Kurven.
+        probe(w, s.entityId(), "erzeuger.te[2].t_p_ist_w", 1, "good", mittag.minus(1, ChronoUnit.DAYS), 5);
+        probe(w, s.entityId(), "erzeuger.te[2].t_zustand", 2, "good", mittag.plusSeconds(60), 6);
+
+        AnlagensteuerungDto.Verlauf v = als(w.tenant(), () -> service.verlauf(w.site(), s.geraetId(), "day", tag));
+        assertThat(v.range()).isEqualTo("day");
+        assertThat(v.bucketMinutes()).isEqualTo(15);
+        assertThat(v.kurven()).extracting(AnlagensteuerungDto.Kurve::pointKey)
+                .as("jede Kurve der Fassung, auch ohne Eimer; kein Zustand, kein Alter")
+                .containsExactlyElementsOf(ErzeugerRegisterbild.kurven(3))
+                .contains("erzeuger.a.p_nvp_w", "erzeuger.a.speicher_fuellstand", "erzeuger.nb.n_p_prozent",
+                        "erzeuger.dv.d_soll_w", "erzeuger.te[3].t_p_soll_w")
+                .doesNotContain("erzeuger.te[2].t_zustand", "erzeuger.a.a_alter_s", "erzeuger.nb.n_cosphi");
+        Map<String, AnlagensteuerungDto.Kurve> je = new java.util.HashMap<>();
+        v.kurven().forEach(k -> je.put(k.pointKey(), k));
+        AnlagensteuerungDto.Kurve ist = je.get("erzeuger.te[2].t_p_ist_w");
+        assertThat(ist.teNr()).isEqualTo(2);
+        assertThat(ist.einheit()).isEqualTo("W");
+        assertThat(ist.eimer()).singleElement().satisfies(e -> {
+            assertThat(e.start().toInstant()).isEqualTo(mittag);
+            assertThat(e.avg()).isEqualByComparingTo("41000");
+            assertThat(e.max()).as("der ungültige Wert zählt nicht").isEqualByComparingTo("42000");
+            assertThat(e.last()).isEqualByComparingTo("42000");
+            assertThat(e.n()).isEqualTo(2);
+        });
+        assertThat(je.get("erzeuger.nb.n_p_prozent").eimer()).singleElement()
+                .satisfies(e -> assertThat(e.start().toInstant()).isEqualTo(mittag.plusSeconds(900)));
+        assertThat(je.get("erzeuger.a.p_nvp_w").eimer()).as("ohne Wert kein Eimer, nie 0").isEmpty();
+
+        AnlagensteuerungDto.Verlauf monat = als(w.tenant(), () -> service.verlauf(w.site(), s.geraetId(), "month",
+                tag));
+        assertThat(monat.from().toInstant()).isEqualTo(java.time.LocalDate.of(2026, 10, 1)
+                .atStartOfDay(AnlagensteuerungService.ZONE).toInstant());
+        assertThat(monat.kurven().stream().filter(k -> k.pointKey().equals("erzeuger.te[2].t_p_ist_w")).findFirst()
+                .orElseThrow().eimer()).as("Berliner Tage").hasSize(2);
+
+        assertThatThrownBy(() -> als(w.tenant(), () -> service.verlauf(w.site(), s.geraetId(), "quartal", tag)))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        e -> assertThat(e.getStatusCode().value()).isEqualTo(400));
+        UUID fremd = welt("Erzeuger-Verlauf-fremd").tenant();
+        assertThatThrownBy(() -> als(fremd, () -> service.verlauf(w.site(), s.geraetId(), "day", tag)))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        e -> assertThat(e.getStatusCode().value()).isEqualTo(404));
+    }
+
+    @Test
     void namenAusDemBildBelegenNurLeeresVorUndDerNetzbetreiberWirdGemeldet() {
         Welt w = welt("Erzeuger-Namen");
         root.update("UPDATE device SET supports = '[\"erzeuger_registerbild\"]'::jsonb, supports_reported_at = now() "

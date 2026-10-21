@@ -54,6 +54,9 @@ class AnlagensteuerungSchnittstelleVertragTest {
                 {"AnlagensteuerungWerte", AnlagensteuerungDto.Werte.class},
                 {"AnlagensteuerungWert", AnlagensteuerungDto.Wert.class},
                 {"AnlagensteuerungBit", AnlagensteuerungDto.Bit.class},
+                {"AnlagensteuerungVerlauf", AnlagensteuerungDto.Verlauf.class},
+                {"AnlagensteuerungKurve", AnlagensteuerungDto.Kurve.class},
+                {"AnlagensteuerungEimer", AnlagensteuerungDto.Eimer.class},
                 {"NetzVermarktung", AnlagensteuerungDto.NetzVermarktung.class},
                 {"NamenImBild", AnlagensteuerungDto.NamenImBild.class},
                 {"NetzVermarktungHinweis", AnlagensteuerungDto.Hinweis.class}}) {
@@ -78,6 +81,7 @@ class AnlagensteuerungSchnittstelleVertragTest {
         }
         assertThat(paths).containsKeys("/api/v1/sites/{siteId}/anlagensteuerungen",
                 "/api/v1/sites/{siteId}/anlagensteuerungen/{geraetId}/werte",
+                "/api/v1/sites/{siteId}/anlagensteuerungen/{geraetId}/verlauf",
                 "/api/v1/geraete/{id}/anlagensteuerung/einheiten/{teNr}",
                 "/api/v1/geraete/{id}/anlagensteuerung/namen",
                 "/api/v1/sites/{siteId}/netz-vermarktung");

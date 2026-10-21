@@ -48,6 +48,10 @@ public class AnlagensteuerungRepository {
     /** Der jüngste Wert eines Punkts der Komponente; {@code zeit == null} = keiner. */
     public record Jungster(String pointKey, Instant zeit, BigDecimal zahl, String qualitaet) {}
 
+    /** Ein Eimer einer Kurve (UEMS EZ-10): Mittel, kleinster, größter und letzter guter Wert und ihre Zahl. */
+    public record Eimer(String pointKey, Instant start, BigDecimal avg, BigDecimal min, BigDecimal max,
+            BigDecimal last, int n) {}
+
     private static final String STEUERUNG = "SELECT g.id, g.site_id, g.kennzeichen, g.einbau_kennzeichen, "
             + "g.bezeichnung, g.hersteller, g.typ, g.eingebaut_am, v.entity_id, g.data_source_id, "
             + "q.kennzeichen AS quelle_kennzeichen, q.adresse, g.geraete_id "
@@ -179,6 +183,32 @@ public class AnlagensteuerungRepository {
     // ---------------------------------------------------------------- schreiben
 
     /** Der Controller „Anlagensteuerung“ — eingebaut ab {@code ab}, mit Datenquelle und Geräte-ID. */
+    /**
+     * Die Kurven der Komponente über [von, bis) in Eimern (UEMS EZ-10) — über denselben Reihen-Index wie
+     * {@link #juengste}. Nur gute Werte zählen; ein Eimer ohne Wert fehlt (nie 0). {@code tagesEimer} schneidet
+     * die Tage an der Berliner Mitternacht wie die übrige Historie.
+     */
+    public List<Eimer> verlauf(UUID tenantId, UUID entityId, List<String> pointKeys, Instant von, Instant bis,
+            int eimerMinuten, boolean tagesEimer) {
+        String eimer = tagesEimer ? "time_bucket(CAST('1 day' AS interval), d.time, 'Europe/Berlin')"
+                : "time_bucket(CAST(? AS interval), d.time)";
+        String sql = "SELECT d.point_key, " + eimer + " AS start, avg(z) AS avg, min(z) AS min, max(z) AS max, "
+                + "last(z, d.time) AS last, count(*) AS n FROM device_measurement_sample d "
+                + "CROSS JOIN LATERAL (SELECT coalesce(d.decoded_numeric, d.raw_numeric) AS z) w "
+                + "WHERE d.tenant_id = ? AND d.entity_id = ? AND d.point_key = ANY(?::text[]) AND d.time >= ? "
+                + "AND d.time < ? AND d.quality = 'good' AND d.role IS DISTINCT FROM 'spiegel' AND z IS NOT NULL "
+                + "GROUP BY 1, 2 ORDER BY 1, 2";
+        List<Object> args = new java.util.ArrayList<>();
+        if (!tagesEimer) {
+            args.add(eimerMinuten + " minutes");
+        }
+        args.addAll(List.of(tenantId, entityId, pointKeys.toArray(String[]::new), Timestamp.from(von),
+                Timestamp.from(bis)));
+        return jdbc.query(sql, (rs, n) -> new Eimer(rs.getString("point_key"), rs.getTimestamp("start").toInstant(),
+                rs.getBigDecimal("avg"), rs.getBigDecimal("min"), rs.getBigDecimal("max"), rs.getBigDecimal("last"),
+                rs.getInt("n")), args.toArray());
+    }
+
     public Steuerung geraetAnlegen(UUID tenant, UUID siteId, String bezeichnung, String hersteller, String typ,
             UUID dataSourceId, int unitId, Instant ab, String subject) {
         return jdbc.queryForObject("INSERT INTO geraet (tenant_id, site_id, kennzeichen, einbau_kennzeichen, "

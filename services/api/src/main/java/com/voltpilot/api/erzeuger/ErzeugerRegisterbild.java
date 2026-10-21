@@ -141,6 +141,20 @@ public final class ErzeugerRegisterbild {
         return List.copyOf(out);
     }
 
+    /**
+     * Die Punkte, die als Kurve taugen (UEMS EZ-10, Verlauf › Messwerte): jeder Momentanwert in W oder % —
+     * Netzpunkt, Erzeugung, Gasspeicher, Vorgaben von Netzbetreiber und Direktvermarkter, wirksame Grenze und je
+     * Einheit Ist und Soll. Alter, „seit“ und cos φ sind keine Kurve.
+     */
+    public static List<String> kurven(int teAnzahl) {
+        return punkte(teAnzahl).stream().filter(k -> feld(k).filter(ErzeugerRegisterbild::kurve).isPresent())
+                .toList();
+    }
+
+    private static boolean kurve(Feld f) {
+        return "gauge".equals(f.art()) && ("W".equals(f.einheit()) || "%".equals(f.einheit()));
+    }
+
     /** Das Feld eines konkreten Punktschlüssels — leer für jeden fremden Schlüssel. */
     public static Optional<Feld> feld(String pointKey) {
         Matcher m = pointKey == null ? null : SCHLUESSEL.matcher(pointKey);

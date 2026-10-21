@@ -205,6 +205,31 @@ public final class AnlagensteuerungDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Bit(int bit, String wort, String text) {}
 
+    /**
+     * {@code GET /api/v1/sites/{siteId}/anlagensteuerungen/{geraetId}/verlauf} (UEMS EZ-10): die Kurven des Bilds
+     * für Verlauf › Messwerte über das Fenster der Historie ({@code range} day · week · month · year, Berliner
+     * Kalender). Jede Kurve der Fassung steht da, auch ohne Eimer — ein leerer Eimer fehlt, nie 0. Gelesen wird
+     * aus den Rohwerten der Box (Frist 90 Tage).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Verlauf(
+            UUID geraetId,
+            UUID entityId,
+            String range,
+            OffsetDateTime from,
+            OffsetDateTime to,
+            int bucketMinutes,
+            List<Kurve> kurven) {}
+
+    /** Eine Kurve: der Punkt in der Sprache des Bilds und seine Eimer (Einheit des Punkts: W oder %). */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Kurve(String pointKey, String abschnitt, String feld, Integer teNr, String einheit,
+            List<Eimer> eimer) {}
+
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Eimer(OffsetDateTime start, BigDecimal avg, BigDecimal min, BigDecimal max, BigDecimal last,
+            int n) {}
+
     /** {@code GET/PUT /api/v1/sites/{siteId}/netz-vermarktung}: Stammdaten Netz und Vermarktung der Anlage. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record NetzVermarktung(

@@ -11291,6 +11291,30 @@ paths:
               schema: { $ref: "#/components/schemas/AnlagensteuerungWerte" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/sites/{siteId}/anlagensteuerungen/{geraetId}/verlauf:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: geraetId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: range, in: query, required: false, schema: { type: string, enum: [day, week, month, year], default: day } }
+      - { name: at, in: query, required: false, schema: { type: string, format: date } }
+    get:
+      tags: [geraete]
+      summary: Die Kurven des Erzeuger-Registerbilds für Verlauf › Messwerte (UEMS EZ-10).
+      description: >
+        Recht `messwerte.ansehen`. Je Kurve der laufenden Fassung (Netzpunkt, Erzeugung, Gasspeicher, Vorgaben
+        von Netzbetreiber und Direktvermarkter, wirksame Grenze, je Einheit Ist und Soll - jeder Momentanwert in
+        W oder %) die Eimer des Fensters, das auch die übrige Historie nutzt (`range` day 15 min · week 1 h ·
+        month/year je Berliner Tag, `at` ein Tag im Fenster, ohne ihn heute). Nur gute Werte zählen; ein Eimer
+        ohne Wert fehlt, nie 0. Gelesen wird aus den Rohwerten der Box (Frist 90 Tage).
+      responses:
+        "200":
+          description: Die Kurven.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnlagensteuerungVerlauf" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/geraete/{id}/anlagensteuerung/einheiten/{teNr}:
     parameters:
       - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -36127,6 +36151,43 @@ components:
         bit: { type: integer, minimum: 0, maximum: 15 }
         wort: { type: string }
         text: { type: string }
+    AnlagensteuerungVerlauf:
+      type: object
+      description: "Die Kurven des Erzeuger-Registerbilds über ein Fenster der Historie (UEMS EZ-10)."
+      required: [geraet_id, entity_id, range, from, to, bucket_minutes, kurven]
+      properties:
+        geraet_id: { type: string, format: uuid }
+        entity_id: { type: string, format: uuid }
+        range: { type: string, enum: [day, week, month, year] }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        bucket_minutes: { type: integer }
+        kurven:
+          type: array
+          items: { $ref: "#/components/schemas/AnlagensteuerungKurve" }
+    AnlagensteuerungKurve:
+      type: object
+      description: "Eine Kurve; jede Kurve der Fassung steht da, auch ohne Eimer."
+      required: [point_key, abschnitt, feld, te_nr, einheit, eimer]
+      properties:
+        point_key: { type: string, example: "erzeuger.te[2].t_p_ist_w" }
+        abschnitt: { type: string }
+        feld: { type: string }
+        te_nr: { type: integer, minimum: 1, maximum: 10, nullable: true }
+        einheit: { type: string, enum: [W, "%"] }
+        eimer:
+          type: array
+          items: { $ref: "#/components/schemas/AnlagensteuerungEimer" }
+    AnlagensteuerungEimer:
+      type: object
+      required: [start, avg, min, max, last, n]
+      properties:
+        start: { type: string, format: date-time }
+        avg: { type: number }
+        min: { type: number }
+        max: { type: number }
+        last: { type: number }
+        n: { type: integer, minimum: 1 }
     NetzVermarktung:
       type: object
       description: "Stammdaten Netz und Vermarktung einer Anlage (UEMS EZ-6); nicht erhoben = null."
