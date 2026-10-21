@@ -395,4 +395,82 @@ class UeberwachungAnlegenServiceIT {
         ds.setPassword(password);
         return ds;
     }
+
+    // ------------------------------------------------------------------ UEMS EZ-11: Erzeuger-Vorlagen
+
+    private static UeberwachungAnlegenService dienstMitErzeuger(boolean hatSteuerung) {
+        UeberwachungAnlegenService dienst = dienst();
+        ErzeugerWerteLeser erzeuger = org.mockito.Mockito.mock(ErzeugerWerteLeser.class);
+        org.mockito.Mockito.when(erzeuger.hatAnlagensteuerung(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(hatSteuerung);
+        dienst.setErzeugerLeser(erzeuger);
+        return dienst;
+    }
+
+    @Test
+    void eineErzeugerVorlageGibtEsNurAnEinerAnlageMitAnlagensteuerung() {
+        Welt w = welt("Ohne Steuerung GmbH");
+        Benutzer leser = benutzerMitRolle(w.tenant(), "sub-leser-ez11-ohne", "leser", w.st1());
+        TenantContext.set(w.tenant());
+        try {
+            UeberwachungDto.Anlegen anfrage = new UeberwachungDto.Anlegen("erzeuger.anlage_folgt_nicht",
+                    new UeberwachungDto.BezugEintrag(w.anlage1().toString(), null, null),
+                    json("{\"art\":\"zustand\"}"), "warnung", null, null);
+
+            assertThatThrownBy(() -> dienstMitErzeuger(false).anlegen(anfrage, leser, Instant.now()))
+                    .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                    .hasMessageContaining("409");
+            assertThat(app.queryForObject("SELECT count(*) FROM ueberwachung WHERE wertart = ?", Integer.class,
+                    "erzeuger.anlage_folgt_nicht")).isZero();
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    @Test
+    void eineErzeugerVorlageIstVorbelegtSofortScharfUndBehaeltEigeneSchwellen() {
+        Welt w = welt("Gore GbR");
+        Benutzer leser = benutzerMitRolle(w.tenant(), "sub-leser-ez11", "leser", w.st1());
+        TenantContext.set(w.tenant());
+        try {
+            UeberwachungDto.Anlegen anfrage = new UeberwachungDto.Anlegen("erzeuger.anlage_folgt_nicht",
+                    new UeberwachungDto.BezugEintrag(w.anlage1().toString(), null, null),
+                    json("{\"art\":\"zustand\",\"toleranz_kw\":12}"), "warnung", null, null);
+
+            UeberwachungDto neu = dienstMitErzeuger(true).anlegen(anfrage, leser, Instant.now());
+
+            assertThat(neu.name()).isEqualTo("Anlage folgt nicht");
+            Map<String, Object> zeile = app.queryForMap("SELECT name, bedingung::text AS bedingung, probelauf_bis "
+                    + "FROM ueberwachung WHERE id = ?::uuid", neu.id());
+            assertThat(zeile.get("name")).isEqualTo("Anlage folgt nicht");
+            // EW-9 A: ohne Rückschau kein 30-Tage-Probelauf - die Vorlage meldet ab dem Anlegen
+            assertThat(zeile.get("probelauf_bis")).isNull();
+            JsonNode bedingung = json((String) zeile.get("bedingung"));
+            assertThat(bedingung.path("ziel").get(0).asText()).isEqualTo("folgt_nicht");
+            assertThat(bedingung.path("dauer_s").asInt()).isEqualTo(300);
+            assertThat(bedingung.path("erholen_s").asInt()).isEqualTo(300);
+            assertThat(bedingung.path("toleranz_prozent").asDouble()).isEqualTo(5.0);
+            assertThat(bedingung.path("toleranz_kw").asDouble()).isEqualTo(12.0); // je Anlage angepasst
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    @Test
+    void eineNegativeSchwelleDerVorlageWirdAbgelehnt() {
+        Welt w = welt("Negativ GbR");
+        Benutzer leser = benutzerMitRolle(w.tenant(), "sub-leser-ez11-neg", "leser", w.st1());
+        TenantContext.set(w.tenant());
+        try {
+            UeberwachungDto.Anlegen anfrage = new UeberwachungDto.Anlegen("erzeuger.anlage_folgt_nicht",
+                    new UeberwachungDto.BezugEintrag(w.anlage1().toString(), null, null),
+                    json("{\"art\":\"zustand\",\"toleranz_prozent\":-1}"), "warnung", null, null);
+
+            assertThatThrownBy(() -> dienstMitErzeuger(true).anlegen(anfrage, leser, Instant.now()))
+                    .isInstanceOf(org.springframework.web.server.ResponseStatusException.class)
+                    .hasMessageContaining("400");
+        } finally {
+            TenantContext.clear();
+        }
+    }
 }

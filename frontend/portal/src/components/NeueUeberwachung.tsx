@@ -11,6 +11,7 @@ import {
   ortOptionen,
   ortWert,
   WERT_GRUPPE_TITEL,
+  WERT_GRUPPEN,
   type UeberwachungOrt,
   type WertGruppe,
   type WertWahl,
@@ -102,7 +103,7 @@ export function NeueUeberwachung({
           ) : werte.length === 0 ? (
             <p className="vp-nu-hinweis">An diesem Ort lässt sich noch nichts überwachen.</p>
           ) : (
-            (['live', 'geraet', 'ort'] as const).map((g) => {
+            WERT_GRUPPEN.map((g) => {
               const zeilen = werte.filter((w) => w.gruppe === g);
               if (zeilen.length === 0) return null;
               return (
@@ -190,6 +191,7 @@ const LIVE_ICON: [string, IconName][] = [
 
 function iconFuer(w: WertWahl, g: WertGruppe): IconName {
   if (g === 'geraet') return 'cpu';
+  if (g === 'erzeuger') return 'bell';
   if (g === 'ort') return w.wertart.startsWith('kennzahl.') ? 'chart' : w.wertart.startsWith('energieziel.') ? 'target' : 'activity';
   return LIVE_ICON.find(([p]) => w.wertart.startsWith(p))?.[1] ?? 'activity';
 }

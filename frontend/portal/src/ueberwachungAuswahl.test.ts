@@ -32,6 +32,23 @@ describe('Konzept b1 · „+ Überwachung“: Ort und Wert wählen', () => {
     expect(werte[1].name).toBe('Zähler Halle · Netzleistung');
   });
 
+  it('stellt die Alarm-Vorlagen einer Erzeugeranlage als eigene Gruppe vor die Geräte-Kanäle, den Zustand in Kundenworten', () => {
+    const werte = anlageWerte([
+      wv({ wertart: 'geraet.messwert', name: 'PFC200 · grid_power_kw', bezugJson: '{"komponente":"c1","kanal":"grid_power_kw"}', zahlenwert: 2.5 }),
+      wv({ wertart: 'erzeuger.anlage_folgt_nicht', name: 'Anlage folgt nicht', bezugJson: '{"anlage":"a1"}', bedingungen: ['zustand'], zustandswort: 'folgt_nicht', einheit: null }),
+      wv({ wertart: 'erzeuger.fernsteuerung_nicht_bereit', name: 'Fernsteuerung nicht bereit', bezugJson: '{"anlage":"a1"}', bedingungen: ['zustand'], bekannt: false, einheit: null }),
+      wv({ wertart: 'anlage.pv.leistung', name: 'Erzeugung', bezugJson: '{"anlage":"a1"}', zahlenwert: 42 }),
+    ]);
+    expect(werte.map((w) => [w.gruppe, w.wertart])).toEqual([
+      ['live', 'anlage.pv.leistung'],
+      ['erzeuger', 'erzeuger.anlage_folgt_nicht'],
+      ['erzeuger', 'erzeuger.fernsteuerung_nicht_bereit'],
+      ['geraet', 'geraet.messwert'],
+    ]);
+    expect(werte[1]).toMatchObject({ bezug: { anlage: 'a1' }, wertText: 'folgt nicht', titelZusatz: 'Anlage folgt nicht' });
+    expect(werte[2].wertText).toBeNull();
+  });
+
   it('erfindet keinen Wert: unbekannt ist kein Text und kein Vorschlag, ein kaputter Bezug fällt weg', () => {
     const werte = anlageWerte([
       wv({ wertart: 'anlage.pv.leistung', name: 'Erzeugung', bezugJson: '{"anlage":"a1"}', bekannt: false, zahlenwert: 0 }),

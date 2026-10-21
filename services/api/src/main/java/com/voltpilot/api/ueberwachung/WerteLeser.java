@@ -41,9 +41,21 @@ public interface WerteLeser {
             return new Bezug("energieziel", id, null);
         }
 
+        /**
+         * Eine Erzeugungseinheit (UEMS EZ-11): die Anlagensteuerung (Gerät) mit der TE-Nr. der Einheit. Nie in einer
+         * gespeicherten Regel - eine Vorlage je Einheit hängt an der Anlage, der Takt fächert sie jedes Mal frisch in
+         * ihre Einheiten auf (wie eine Auswahl, §6.4 Nr. 6), damit jede Einheit ihre eigene Meldung bekommt.
+         */
+        public static Bezug einheit(UUID steuerung, int teNr) {
+            return new Bezug("einheit", steuerung, Integer.toString(teNr));
+        }
+
         /** Die Einheiten-Kennung für {@code ueberwachung_instanz.bezug_kennung} (§6.7 Skizze, §6.3 Wertverweis-Syntax). */
         public String kennung() {
-            return parameter == null ? art + ":" + id : art + ":" + id + ";kanal=" + parameter;
+            if (parameter == null) {
+                return art + ":" + id;
+            }
+            return art + ":" + id + ("einheit".equals(art) ? ";te=" : ";kanal=") + parameter;
         }
     }
 
@@ -51,19 +63,26 @@ public interface WerteLeser {
      * Das Ergebnis eines Lesevorgangs. {@code bekannt = false} heißt: der Wert ist (noch) nicht
      * vorhanden - UNBEKANNT IST KEINE NULL (Konzept §6.1 Nr. 4) - keine Schwellen-Bedingung wertet
      * das als erfüllt. Ein Leser füllt ENTWEDER {@code zustandswort} (Scheibe 1: zustand, ereignis)
-     * ODER {@code zahlenwert} (Scheibe 2: anlagenfluss, messreihe) - nie beide.
+     * ODER {@code zahlenwert} (Scheibe 2: anlagenfluss, messreihe) - nie beide. {@code text} (UEMS EZ-11) ist ein
+     * fertiger Satz in Kundensprache, den eine Meldung statt „… meldet: ‹Wert›“ trägt; nur der Erzeuger-Leser setzt ihn.
      */
-    record Lesung(boolean bekannt, String zustandswort, Double zahlenwert, String einheit, Instant messzeit) {
+    record Lesung(boolean bekannt, String zustandswort, Double zahlenwert, String einheit, Instant messzeit,
+            String text) {
         public static Lesung unbekannt() {
-            return new Lesung(false, null, null, null, null);
+            return new Lesung(false, null, null, null, null, null);
         }
 
         public static Lesung zustand(String wort, Instant messzeit) {
-            return new Lesung(true, wort, null, null, messzeit);
+            return new Lesung(true, wort, null, null, messzeit, null);
+        }
+
+        /** Ein Zustand mit seinem Satz in Kundensprache (UEMS EZ-11). */
+        public static Lesung zustand(String wort, Instant messzeit, String text) {
+            return new Lesung(true, wort, null, null, messzeit, text);
         }
 
         public static Lesung zahl(double wert, String einheit, Instant messzeit) {
-            return new Lesung(true, null, wert, einheit, messzeit);
+            return new Lesung(true, null, wert, einheit, messzeit, null);
         }
     }
 

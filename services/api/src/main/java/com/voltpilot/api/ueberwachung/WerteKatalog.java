@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,14 +27,19 @@ import org.springframework.stereotype.Component;
  * (Kennzahl gegen ihre Bezugsbasis, Energieziel-Kurs) und {@code zaehlung} (Messstelle: Menge je
  * Monat, Beobachtung, "Monat unvollständig") additiv hinzu - beide eigene, isolierte Leser, damit
  * keine bestehende, ab Werk gesäte Wertart (Entscheid 9A) berührt wird.
+ *
+ * <p>UEMS EZ-11 (Konzept vp-erzeuger-wago-konzept §4.8, EW-9 A) fügt die Leserart {@code erzeuger} hinzu: die
+ * Messpunkte der Familie {@code voltpilot.erzeuger_registerbild_v1} einer Anlagensteuerung, ausgewertet zu fünf
+ * Zuständen ({@link ErzeugerWerteLeser}). Ihre Einträge tragen statt eines Vorschlags ab Werk eine
+ * {@link Vorlage}: nie gesät, je Anlage wählbar, die Wertart ist die stabile Kennung der Vorlage.
  */
 @Component
 public class WerteKatalog {
 
     /** Die Leserarten, die der Code heute kennt (Scheibe 1: zustand, ereignis; Scheibe 2: anlagenfluss,
-     * messreihe; Scheibe 4: menge, geld; Scheibe 5: kennzahl, zaehlung). */
-    static final List<String> LESERARTEN =
-            List.of("zustand", "ereignis", "anlagenfluss", "messreihe", "menge", "geld", "kennzahl", "zaehlung");
+     * messreihe; Scheibe 4: menge, geld; Scheibe 5: kennzahl, zaehlung; EZ-11: erzeuger). */
+    static final List<String> LESERARTEN = List.of("zustand", "ereignis", "anlagenfluss", "messreihe", "menge", "geld",
+            "kennzahl", "zaehlung", "erzeuger");
 
     /** Wie ein Eintrag seinen Wert liest (§6.3): Scheibe 1 nutzt {@code feld} ODER {@code arten}+{@code bezugsfeld}. */
     public record LeserVerweis(String art, String feld, List<String> arten, String bezugsfeld) {}
@@ -41,10 +47,19 @@ public class WerteKatalog {
     /** Die Vorgabe eines Vorschlags ab Werk (§6.4 Nr. 2/3, §9) - nur bei einem seedbaren Eintrag gesetzt. */
     public record Vorschlag(int dauerS, int erholenS, String schwere, List<String> ziel) {}
 
+    /**
+     * Eine Alarm-Vorlage (EZ-11): die Vorbelegung, mit der das Blatt „Überwachen“ und der Anlege-Schritt (EZ-15)
+     * eine Überwachung dieser Wertart anbieten - Dauer, Erholdauer, Schwere, Ziel-Zustand und die eigenen
+     * Schwellen der Vorlage ({@code schwellen}, Name → Vorgabe). Anders als ein {@link Vorschlag} wird sie NIE
+     * gesät; {@code nurMitAnlagensteuerung} heißt: nur an einer Anlage mit Anlagensteuerung wählbar.
+     */
+    public record Vorlage(int dauerS, int erholenS, String schwere, List<String> ziel, Map<String, Double> schwellen,
+            boolean nurMitAnlagensteuerung) {}
+
     /** Ein Eintrag des Katalogs: Wertart + Bezug + wie er gelesen wird (§6.3). */
     public record Eintrag(String wertart, String name, String satzname, String bezug, String form,
             LeserVerweis leser, String recht, List<String> zustaende, List<String> bedingungen,
-            Vorschlag vorschlag) {}
+            Vorschlag vorschlag, Vorlage vorlage) {}
 
     private final Map<String, Eintrag> eintraege;
 
@@ -75,7 +90,7 @@ public class WerteKatalog {
                 throw new IllegalStateException("Werte-Katalog: Wertart '" + e.wertart() + "' doppelt");
             }
         }
-        return Map.copyOf(ergebnis);
+        return Collections.unmodifiableMap(ergebnis); // Reihenfolge des Katalogs (Map.copyOf verlöre sie)
     }
 
     private static Eintrag eintrag(JsonNode n) {
@@ -88,7 +103,18 @@ public class WerteKatalog {
                         text(v, "schwere"), textListe(v, "ziel"));
         return new Eintrag(text(n, "wertart"), text(n, "name"), text(n, "satzname"), text(n, "bezug"),
                 text(n, "form"), leser, text(n, "recht"), textListe(n, "zustaende"),
-                textListe(n, "bedingungen"), vorschlag);
+                textListe(n, "bedingungen"), vorschlag, vorlage(n.path("vorlage")));
+    }
+
+    private static Vorlage vorlage(JsonNode v) {
+        if (v.isMissingNode()) {
+            return null;
+        }
+        Map<String, Double> schwellen = new LinkedHashMap<>();
+        v.path("schwellen").fields().forEachRemaining(f -> schwellen.put(f.getKey(), f.getValue().asDouble()));
+        return new Vorlage(v.path("dauer_s").asInt(), v.path("erholen_s").asInt(300), text(v, "schwere"),
+                textListe(v, "ziel"), Collections.unmodifiableMap(schwellen),
+                v.path("nur_mit_anlagensteuerung").asBoolean(false));
     }
 
     private static String text(JsonNode n, String feld) {
@@ -114,6 +140,11 @@ public class WerteKatalog {
     /** Alle Einträge, in der Reihenfolge des Katalogs. */
     public List<Eintrag> alle() {
         return List.copyOf(eintraege.values());
+    }
+
+    /** Die Alarm-Vorlagen (EZ-11), in der Reihenfolge des Katalogs - die Wertart ist ihre stabile Kennung. */
+    public List<Eintrag> vorlagen() {
+        return alle().stream().filter(e -> e.vorlage() != null).toList();
     }
 
     /** Die Einträge mit einem Vorschlag ab Werk (§6.4 Nr. 2) - die Aussaat-Grundlage des Läufers. */

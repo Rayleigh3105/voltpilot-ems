@@ -4,6 +4,7 @@ import com.voltpilot.api.topology.TopologyService;
 import com.voltpilot.api.topology.TopologyService.CapabilityDto;
 import com.voltpilot.api.topology.TopologyService.EntityTopologyDto;
 import com.voltpilot.api.ueberwachung.AnlagenflussWerteLeser;
+import com.voltpilot.api.ueberwachung.ErzeugerWerteLeser;
 import com.voltpilot.api.ueberwachung.WerteKatalog;
 import com.voltpilot.api.ueberwachung.WerteLeser;
 import com.voltpilot.api.web.dto.WertverweisDto;
@@ -12,6 +13,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -30,6 +32,9 @@ import org.springframework.web.server.ResponseStatusException;
  * Messkanal jeder v2-Komponente der Anlage, aus derselben {@link TopologyService#topology(UUID)},
  * die auch "Anlage › Aufbau" zeigt (§6.1 Nr. 3 "dieselbe Zahl wie die Fläche"); ihr Live-Wert kommt
  * direkt aus der Topologie-Antwort, ohne zweiten Lesevorgang.
+ *
+ * <p>UEMS EZ-11: dazu die Alarm-Vorlagen der Leserart {@code erzeuger} - nur an einer Anlage mit Anlagensteuerung,
+ * mit ihrem aktuellen Zustand (die Vorlage je Einheit hat an der Anlage keinen einzelnen Zustand).
  */
 @RestController
 @RequestMapping("/api/v1/werte")
@@ -39,6 +44,7 @@ public class WerteController {
     private final AnlagenflussWerteLeser anlagenfluss;
     private final TopologyService topologie;
     private final Geltungsbereich geltungsbereich;
+    private ErzeugerWerteLeser erzeuger;
 
     public WerteController(WerteKatalog katalog, AnlagenflussWerteLeser anlagenfluss, TopologyService topologie,
             Geltungsbereich geltungsbereich) {
@@ -46,6 +52,11 @@ public class WerteController {
         this.anlagenfluss = anlagenfluss;
         this.topologie = topologie;
         this.geltungsbereich = geltungsbereich;
+    }
+
+    @Autowired(required = false)
+    void setErzeuger(ErzeugerWerteLeser erzeuger) {
+        this.erzeuger = erzeuger;
     }
 
     @GetMapping
@@ -67,6 +78,7 @@ public class WerteController {
         geltungsbereich.requireSite(anlageId);
         List<WertverweisDto> werte = new ArrayList<>(anlagenflussWerte(anlageId));
         werte.addAll(messreiheWerte(anlageId));
+        werte.addAll(erzeugerWerte(anlageId));
         return new WertverweisDto.Liste(werte);
     }
 
@@ -78,6 +90,25 @@ public class WerteController {
                 .filter(e -> "anlagenfluss".equals(e.leser().art()))
                 .map(e -> {
                     WerteLeser.Lesung l = anlagenfluss.lese(e, leserBezug, jetzt);
+                    return new WertverweisDto(e.wertart(), e.name(), e.satzname(), e.bedingungen(), bezugJson,
+                            l.bekannt(), l.zahlenwert(), l.zustandswort(), l.einheit());
+                })
+                .toList();
+    }
+
+    /** Die Erzeuger-Vorlagen (EZ-11) - nur, wo die Anlage eine Anlagensteuerung hat. */
+    private List<WertverweisDto> erzeugerWerte(UUID anlageId) {
+        if (erzeuger == null || !erzeuger.hatAnlagensteuerung(anlageId)) {
+            return List.of();
+        }
+        WerteLeser.Bezug leserBezug = WerteLeser.Bezug.anlage(anlageId);
+        Instant jetzt = Instant.now();
+        String bezugJson = "{\"anlage\":\"" + anlageId + "\"}";
+        return katalog.vorlagen().stream()
+                .filter(e -> "erzeuger".equals(e.leser().art()))
+                .map(e -> {
+                    WerteLeser.Lesung l = erzeuger.jeEinheit(e) ? WerteLeser.Lesung.unbekannt()
+                            : erzeuger.lese(e, leserBezug, jetzt);
                     return new WertverweisDto(e.wertart(), e.name(), e.satzname(), e.bedingungen(), bezugJson,
                             l.bekannt(), l.zahlenwert(), l.zustandswort(), l.einheit());
                 })

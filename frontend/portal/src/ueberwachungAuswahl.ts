@@ -10,6 +10,8 @@
  *   dort, kein eigener Ort „Gerät“).
  * - Messstelle, Kennzahl, Energieziel: die Einträge des Werte-Katalogs mit diesem Bezug (der Zwilling
  *   `werteKatalog.ts`); ihr Wert ist periodisch oder ein Zustand, einen Live-Wert gibt es nicht.
+ * - Erzeugeranlage (UEMS EZ-11): dieselbe Route liefert an einer Anlage mit Anlagensteuerung die fünf
+ *   Alarm-Vorlagen (`erzeuger.*`) mit ihrem Zustand - eine eigene Gruppe vor den Geräte-Kanälen.
  */
 import { channelLabel } from './channels';
 import type { UeberwachenBezug } from './components/UeberwachenBlatt';
@@ -17,6 +19,7 @@ import { fmtNum } from './format';
 import { UEMS_ENERGIEZIELE, UEMS_KENNZAHLEN, UEMS_MESSSTELLE } from './glossar';
 import type { VpGruppe, VpOption } from './picker/optionen';
 import type { Wertverweis } from './ueberwachungApi';
+import { zustandswortAnzeige } from './ueberwachungSatz';
 import { WERTE_KATALOG } from './werteKatalog';
 
 export type OrtArt = 'anlage' | 'messstelle' | 'kennzahl' | 'energieziel';
@@ -46,7 +49,10 @@ export interface WertWahl {
   titelZusatz: string;
 }
 
-export type WertGruppe = 'live' | 'geraet' | 'ort';
+export type WertGruppe = 'live' | 'erzeuger' | 'geraet' | 'ort';
+
+/** Die Reihenfolge der Gruppen unter „Welcher Wert?“. */
+export const WERT_GRUPPEN: readonly WertGruppe[] = ['live', 'erzeuger', 'geraet', 'ort'];
 
 /** Die Gruppen des Ortsfelds, in dieser Reihenfolge. */
 export const ORT_GRUPPEN: VpGruppe[] = [
@@ -59,6 +65,7 @@ export const ORT_GRUPPEN: VpGruppe[] = [
 /** Die Überschriften über den Wert-Zeilen. */
 export const WERT_GRUPPE_TITEL: Record<WertGruppe, string> = {
   live: 'Live-Werte der Anlage',
+  erzeuger: 'Alarme der Erzeugeranlage',
   geraet: 'Messwerte der Geräte',
   ort: 'Werte',
 };
@@ -103,27 +110,29 @@ function geraeteName(name: string, bezug: { kanal: string }): string {
   return `${geraet} · ${channelLabel(bezug.kanal)}`;
 }
 
-/** Die Werte einer Anlage aus `GET /api/v1/werte` - zuerst die Live-Werte, dann die Geräte-Kanäle. */
+/** Die Werte einer Anlage aus `GET /api/v1/werte` - Live-Werte, Erzeuger-Alarme, dann die Geräte-Kanäle. */
 export function anlageWerte(werte: readonly Wertverweis[]): WertWahl[] {
   const out: WertWahl[] = [];
   for (const w of werte) {
     const bezug = bezugAus(w.bezugJson);
     if (!bezug) continue;
     const geraet = 'komponente' in bezug;
+    const erzeuger = w.wertart.startsWith('erzeuger.');
     const name = geraet ? geraeteName(w.name, bezug) : w.name;
     out.push({
       schluessel: `${w.wertart}:${w.bezugJson}`,
       wertart: w.wertart,
       bezug,
       name,
-      wertText: wertText(w),
-      gruppe: geraet ? 'geraet' : 'live',
+      // Ein Erzeuger-Zustand in Kundenworten („folgt nicht“), nie das Maschinenwort.
+      wertText: erzeuger ? (w.zustandswort ? zustandswortAnzeige(w.zustandswort) : null) : wertText(w),
+      gruppe: geraet ? 'geraet' : erzeuger ? 'erzeuger' : 'live',
       aktuellerWert: w.bekannt === false ? null : w.zahlenwert,
       einheit: w.einheit ?? undefined,
       titelZusatz: name,
     });
   }
-  return [...out.filter((w) => w.gruppe === 'live'), ...out.filter((w) => w.gruppe === 'geraet')];
+  return WERT_GRUPPEN.flatMap((g) => out.filter((w) => w.gruppe === g));
 }
 
 /** Die Werte einer Messstelle, Kennzahl oder eines Energieziels aus dem Werte-Katalog. */

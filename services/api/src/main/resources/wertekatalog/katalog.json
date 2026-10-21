@@ -228,6 +228,66 @@
       "recht": "messwerte.ansehen",
       "zustaende": ["vollstaendig", "unvollstaendig"],
       "bedingungen": ["zustand"]
+    },
+    {
+      "wertart": "erzeuger.fernsteuerung_nicht_bereit",
+      "name": "Fernsteuerung nicht bereit",
+      "satzname": "eine Erzeugungseinheit",
+      "bezug": "anlage",
+      "form": "zustand",
+      "leser": { "art": "erzeuger", "feld": "fernsteuerung" },
+      "recht": "messwerte.ansehen",
+      "zustaende": ["bereit", "nicht_bereit", "kein_direktvermarkter"],
+      "bedingungen": ["zustand"],
+      "vorlage": { "dauer_s": 300, "erholen_s": 300, "schwere": "warnung", "ziel": ["nicht_bereit"], "nur_mit_anlagensteuerung": true }
+    },
+    {
+      "wertart": "erzeuger.daten_veraltet",
+      "name": "Daten veraltet",
+      "satzname": "das Bild der Anlagensteuerung",
+      "bezug": "anlage",
+      "form": "zustand",
+      "leser": { "art": "erzeuger", "feld": "datenlage" },
+      "recht": "messwerte.ansehen",
+      "zustaende": ["aktuell", "veraltet"],
+      "bedingungen": ["zustand"],
+      "vorlage": { "dauer_s": 300, "erholen_s": 300, "schwere": "warnung", "ziel": ["veraltet"], "nur_mit_anlagensteuerung": true }
+    },
+    {
+      "wertart": "erzeuger.anlage_folgt_nicht",
+      "name": "Anlage folgt nicht",
+      "satzname": "die Anlage",
+      "bezug": "anlage",
+      "form": "zustand",
+      "leser": { "art": "erzeuger", "feld": "folgen" },
+      "recht": "messwerte.ansehen",
+      "zustaende": ["folgt", "folgt_nicht", "nicht_begrenzt"],
+      "bedingungen": ["zustand"],
+      "vorlage": { "dauer_s": 300, "erholen_s": 300, "schwere": "warnung", "ziel": ["folgt_nicht"], "schwellen": { "toleranz_prozent": 5, "toleranz_kw": 5 }, "nur_mit_anlagensteuerung": true }
+    },
+    {
+      "wertart": "erzeuger.netzbetreiber_abgeschaltet",
+      "name": "Netzbetreiber hat abgeschaltet",
+      "satzname": "die Anlage",
+      "bezug": "anlage",
+      "form": "zustand",
+      "leser": { "art": "erzeuger", "feld": "abschaltung" },
+      "recht": "messwerte.ansehen",
+      "zustaende": ["abgeschaltet", "nicht_abgeschaltet"],
+      "bedingungen": ["zustand"],
+      "vorlage": { "dauer_s": 0, "erholen_s": 300, "schwere": "warnung", "ziel": ["abgeschaltet"], "nur_mit_anlagensteuerung": true }
+    },
+    {
+      "wertart": "erzeuger.fernwirk_verbindung_weg",
+      "name": "Fernwirk-Verbindung weg",
+      "satzname": "die Fernwirk-Verbindung",
+      "bezug": "anlage",
+      "form": "zustand",
+      "leser": { "art": "erzeuger", "feld": "fernwirk" },
+      "recht": "messwerte.ansehen",
+      "zustaende": ["verbunden", "getrennt", "keine_fernwirktechnik"],
+      "bedingungen": ["zustand"],
+      "vorlage": { "dauer_s": 600, "erholen_s": 300, "schwere": "warnung", "ziel": ["getrennt"], "nur_mit_anlagensteuerung": true }
     }
   ]
 }

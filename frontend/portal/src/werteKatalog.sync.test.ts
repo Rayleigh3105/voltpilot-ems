@@ -23,6 +23,7 @@ interface RohEintrag {
   bedingungen: string[];
   zustaende?: string[];
   vorschlag?: { dauer_s?: number; erholen_s?: number; schwere?: string; ziel?: string[] };
+  vorlage?: { dauer_s: number; erholen_s: number; schwere: string; ziel: string[]; schwellen?: Record<string, number> };
 }
 
 function sortiert<T extends { wertart: string }>(eintraege: readonly T[]): T[] {

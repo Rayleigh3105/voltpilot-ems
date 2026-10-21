@@ -26,6 +26,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -62,6 +63,13 @@ public class UeberwachungAnlegenService {
     private final KennzahlRepository messstellenOrte;
     private final KennzahlService kennzahlen;
     private final EnergiezielService energieziele;
+    /** UEMS EZ-11: prüft „nur mit Anlagensteuerung“; ohne Spring (reine Tests) {@code null} - dann keine Prüfung. */
+    private ErzeugerWerteLeser erzeugerLeser;
+
+    @Autowired(required = false)
+    void setErzeugerLeser(ErzeugerWerteLeser erzeugerLeser) {
+        this.erzeugerLeser = erzeugerLeser;
+    }
 
     public UeberwachungAnlegenService(UeberwachungRepository repo, WerteKatalog katalog,
             ZugriffRepository zugriffe, KennzahlRepository messstellenOrte, KennzahlService kennzahlen,
@@ -113,6 +121,11 @@ public class UeberwachungAnlegenService {
             WerteLeser.Bezug bezug = bezugAus(eintrag, anfrage.bezug());
             standortId = standortDesBezugs(bezug, jetzt);
             bezugJson = bezugJson(bezug);
+            if (eintrag.vorlage() != null && eintrag.vorlage().nurMitAnlagensteuerung() && erzeugerLeser != null
+                    && !erzeugerLeser.hatAnlagensteuerung(bezug.id())) {
+                throw new ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,
+                        "Die Vorlage '" + eintrag.wertart() + "' gilt nur für Anlagen mit Anlagensteuerung");
+            }
         }
 
         List<UeberwachungDto.EmpfaengerEintrag> empfaenger = anfrage.empfaenger() == null || anfrage.empfaenger().isEmpty()
@@ -133,13 +146,52 @@ public class UeberwachungAnlegenService {
             throw new RechtFehlt(benoetigtesRecht, darf);
         }
 
-        ObjectNode bedingung = vorgabenAnwenden((ObjectNode) anfrage.bedingung());
+        ObjectNode bedingung = vorgabenAnwenden(vorlageAnwenden(eintrag, (ObjectNode) anfrage.bedingung()));
         String empfaengerJson = empfaengerJson(empfaenger);
-        Instant probelaufBis = jetzt.plus(Duration.ofDays(PROBELAUF_TAGE));
-        UUID id = repo.erstelleSelbstAngelegt(standortId, anfrage.name(), anfrage.wertart(), bezugJson,
+        // Eine Alarm-Vorlage (EZ-11) ist ab dem Anlegen scharf: ihre Werte haben keine Rückschau, die ein
+        // Probelauf nachspielen könnte (EW-9 A „alle Zustellwege sofort“) - 30 Tage stumm wären 30 Tage ohne Alarm.
+        Instant probelaufBis = eintrag.vorlage() != null ? null : jetzt.plus(Duration.ofDays(PROBELAUF_TAGE));
+        String name = anfrage.name() == null && eintrag.vorlage() != null ? eintrag.name() : anfrage.name();
+        UUID id = repo.erstelleSelbstAngelegt(standortId, name, anfrage.wertart(), bezugJson,
                 bedingung.toString(), anfrage.schwere(), empfaengerJson, herkunft, aufrufer.kennung(), probelaufBis);
-        return new UeberwachungDto(id.toString(), anfrage.name(), anfrage.wertart(), anfrage.schwere(), herkunft,
+        return new UeberwachungDto(id.toString(), name, anfrage.wertart(), anfrage.schwere(), herkunft,
                 true, probelaufBis, bezugJson);
+    }
+
+    /**
+     * Die Vorbelegung einer Alarm-Vorlage (EZ-11): Ziel-Zustand, Dauer, Erholdauer und die eigenen Schwellen der
+     * Vorlage, soweit die Anfrage sie nicht selbst mitbringt - jede Schwelle bleibt je Anlage änderbar. Ohne
+     * Vorlage unverändert.
+     */
+    static ObjectNode vorlageAnwenden(WerteKatalog.Eintrag eintrag, ObjectNode bedingung) {
+        WerteKatalog.Vorlage v = eintrag.vorlage();
+        if (v == null) {
+            return bedingung;
+        }
+        if (!bedingung.has("ziel")) {
+            ArrayNode ziel = bedingung.putArray("ziel");
+            v.ziel().forEach(ziel::add);
+        }
+        if (!bedingung.has("dauer_s")) {
+            bedingung.put("dauer_s", v.dauerS());
+        }
+        if (!bedingung.has("erholen_s")) {
+            bedingung.put("erholen_s", v.erholenS());
+        }
+        v.schwellen().forEach((name, vorgabe) -> {
+            if (!bedingung.has(name)) {
+                bedingung.put(name, vorgabe);
+            }
+            if (!bedingung.path(name).isNumber() || bedingung.path(name).asDouble() < 0) {
+                throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                        "Schwelle '" + name + "' muss eine Zahl ab 0 sein");
+            }
+        });
+        if (bedingung.path("dauer_s").asLong(0) < 0 || bedingung.path("erholen_s").asLong(0) < 0) {
+            throw new ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "Dauer und Erholdauer dürfen nicht negativ sein");
+        }
+        return bedingung;
     }
 
     /** {@code {"standort":"<id>","alle":"anlage"}} oder {@code {"alle":"box"}} (§6.4 "Gilt für", §6.7 Skizze). */

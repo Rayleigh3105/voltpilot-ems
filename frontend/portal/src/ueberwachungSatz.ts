@@ -148,7 +148,70 @@ const ZUSTANDSWORT: Record<string, string> = {
   // Scheibe 5 (§6.3): Monat unvollständig (`messstelle.monat_unvollstaendig`).
   vollstaendig: 'vollständig',
   unvollstaendig: 'unvollständig',
+  // UEMS EZ-11: die fünf Erzeuger-Vorlagen (`erzeuger.*`).
+  bereit: 'bereit',
+  nicht_bereit: 'nicht bereit',
+  kein_direktvermarkter: 'ohne Direktvermarkter',
+  aktuell: 'aktuell',
+  veraltet: 'veraltet',
+  folgt: 'folgt',
+  folgt_nicht: 'folgt nicht',
+  nicht_begrenzt: 'nicht begrenzt',
+  abgeschaltet: 'abgeschaltet',
+  nicht_abgeschaltet: 'nicht abgeschaltet',
+  verbunden: 'verbunden',
+  getrennt: 'getrennt',
+  keine_fernwirktechnik: 'ohne Fernwirktechnik',
 };
+
+/** Die Schwellen der Erzeuger-Vorlagen als Felder (EZ-11): Beschriftung und Einheit je Schwelle. */
+export const VORLAGE_SCHWELLE: Record<string, { label: string; einheit: string }> = {
+  toleranz_prozent: { label: 'Toleranz (% der installierten Leistung)', einheit: '%' },
+  toleranz_kw: { label: 'Toleranz mindestens (kW)', einheit: 'kW' },
+};
+
+/**
+ * Der Satz einer Erzeuger-Vorlage (EZ-11, Konzept vp-erzeuger-wago-konzept §4.8): dieselbe Form „Sag mir Bescheid,
+ * wenn … · Schwere“, aber je Vorlage in eigenen Worten - die Zustandsform „‹Wert› länger als ‹Dauer› ‹Zustand› ist“
+ * trägt die Bedingungen der Vorlagen nicht (Toleranz, nur mit Direktvermarkter-Kanal, nur bei Fernwirktechnik).
+ */
+function schwelleText(x: number): string {
+  return zahlText(x, Number.isInteger(x) ? 0 : 1);
+}
+
+export function vorlageSatz(
+  wertart: string,
+  dauer_s: number,
+  schwellen: Record<string, number>,
+  schwere: Schwere,
+): string {
+  const laenger = dauer_s > 0 ? ` länger als ${dauerText(dauer_s)}` : '';
+  let kern: string;
+  switch (wertart) {
+    case 'erzeuger.fernsteuerung_nicht_bereit':
+      kern = `eine Erzeugungseinheit${laenger} nicht bereit für den Direktvermarkter ist (nur mit Direktvermarkter-Kanal)`;
+      break;
+    case 'erzeuger.daten_veraltet':
+      kern = `die Anlagensteuerung${laenger} keine aktuellen Werte liefert`;
+      break;
+    case 'erzeuger.anlage_folgt_nicht':
+      kern = `die Anlage${laenger} mehr erzeugt, als die wirksame Grenze erlaubt (Toleranz `
+        + `${schwelleText(schwellen.toleranz_prozent ?? 5)}${NBSP}% der installierten Leistung, mindestens `
+        + `${schwelleText(schwellen.toleranz_kw ?? 5)}${NBSP}kW), oder die Steuerung meldet, dass sie nicht folgt`;
+      break;
+    case 'erzeuger.netzbetreiber_abgeschaltet':
+      kern = dauer_s > 0
+        ? `der Netzbetreiber die Anlage${laenger} abgeschaltet hat (Not-Aus)`
+        : 'der Netzbetreiber die Anlage abschaltet (Not-Aus)';
+      break;
+    case 'erzeuger.fernwirk_verbindung_weg':
+      kern = `die Fernwirk-Verbindung zum Netzbetreiber${laenger} nicht steht (nur bei Fernwirktechnik)`;
+      break;
+    default:
+      kern = `${wertart}${laenger} gemeldet wird`;
+  }
+  return `Sag mir Bescheid, ${dauer_s > 0 ? 'wenn' : 'sobald'} ${kern}. · ${SCHWERE_WORT[schwere]}`;
+}
 
 /** Das Kundenwort EINES Zustands (für die Chips des Blatts, `UeberwachenBlatt.tsx`) - dieselbe
  * Wahrheit wie der Satz selbst, nie eine zweite Übersetzung. */
