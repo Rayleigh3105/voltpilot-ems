@@ -19,7 +19,7 @@ class MeasurementCatalogTest {
         var result = catalog.search("Batteriestrom", Set.of("hybrid_1p"), null, null,
                 null, false, false, Set.of(), Map.of(), Set.of(), Map.of(), 0, 20);
 
-        assertThat(result.catalogVersion()).isEqualTo("2026.09.23.3");
+        assertThat(result.catalogVersion()).isEqualTo("2026.10.21.1");
         assertThat(result.customPointActionLabel()).isEqualTo("Eigenen Messwert hinzufügen");
         assertThat(result.points()).isNotEmpty();
         assertThat(result.points()).allSatisfy(p -> {
@@ -118,8 +118,9 @@ class MeasurementCatalogTest {
      */
     @Test
     void theBoxKeepsItsRuntimeVersionWhileTheContentVersionCarriesQuantityAndDirection() {
-        assertThat(catalog.version()).isEqualTo("2026.09.23.3");
-        // UEMS EZ-6: der Inhaltsstand führt das Erzeuger-Registerbild, das noch an keine Box geht.
+        // EZ-5: Laufzeit- und Inhaltsstand sind gleich - das Erzeuger-Registerbild ging mit seinem
+        // Box-Leser an die Box (wirksam mit dem Box-Release, das diese Palette trägt).
+        assertThat(catalog.version()).isEqualTo("2026.10.21.1");
         assertThat(catalog.inhaltsstand()).isEqualTo("2026.10.21.1");
 
         assertThat(catalog.semantik("sunspec.model_203.totwhimp"))
@@ -151,7 +152,7 @@ class MeasurementCatalogTest {
         assertThat(zaehler.klasse()).isEqualTo("MID");
         assertThat(catalog.herstellerGenauigkeit("WAGO", "879-3100")).isNull();
         assertThat(catalog.herstellerGenauigkeit("anderer Hersteller", "750-494")).isNull();
-        assertThat(catalog.version()).isEqualTo("2026.09.23.3");
+        assertThat(catalog.version()).isEqualTo("2026.10.21.1");
     }
 
     /**
@@ -201,12 +202,12 @@ class MeasurementCatalogTest {
         }
         assertThat(wago).as("27 Punkte je Karte im Inhaltsstand").isEqualTo(54);
 
-        assertThat(catalog.familienNochNichtAnDerBox()).containsExactly("voltpilot.erzeuger_registerbild_v1");
-        assertThat(catalog.families()).contains("wago.pm494", "wago.pm495");
+        assertThat(catalog.familienNochNichtAnDerBox()).isEmpty();
+        assertThat(catalog.families()).contains("wago.pm494", "wago.pm495", "voltpilot.erzeuger_registerbild_v1");
         assertThat(catalog.resolve("wago.pm495.karte[*].energy_import_total")).isNotNull();
         assertThat(catalog.search("", Set.of("wago.pm494", "wago.pm495"), null, null, null, false, false,
                 Set.of("wago.pm494", "wago.pm495"), Map.of(), Set.of(), Map.of(), 0, 250).total()).isPositive();
-        assertThat(catalog.version()).isEqualTo("2026.09.23.3");
+        assertThat(catalog.version()).isEqualTo("2026.10.21.1");
     }
 
     @Test void missingOrUnknownFamilyIsNamedInsteadOfAnUnexplainedEmptyCatalog() {

@@ -94,6 +94,16 @@
         </span>
         <p>Zuerst den Wechselrichter verbinden. Sobald er Daten liefert, erscheint hier Ihre Referenz-ID für das Portal.</p>
       </div>
+      <!-- EZ-5: a box beside a plant controller (SPS) has no inverter to prove
+           itself with - its controller is connected in the portal AFTER the
+           claim. The explicit choice opens the gate (POST
+           /api/onboarding/anlagensteuerung); nothing on this box reads or
+           writes differently because of it. Shown exactly while pairLocked is. -->
+      <div class="pair-plc" id="pairPlc" hidden>
+        <p>Kein Wechselrichter, sondern eine Anlagensteuerung (SPS) mit VoltPilot-Registerbild? Dann wird die Steuerung nach der Kopplung im Portal verbunden.</p>
+        <button type="button" class="btn-ghost" id="plcBtn">Diese Box liest eine Anlagensteuerung – Referenz anzeigen</button>
+        <p class="pairing-error" id="plcError" hidden></p>
+      </div>
 
       <div id="pairUnlocked" hidden>
         <div class="ref-block" id="refBlock">
@@ -112,6 +122,7 @@
           Portal öffnen und unter <strong>Geräte → ＋ Gerät hinzufügen</strong> diese
           Referenz eintragen. Das Gerät wird danach automatisch freigeschaltet.
         </p>
+        <button type="button" class="btn-ghost" id="plcUndoBtn" hidden>Doch keine Anlagensteuerung – zurück zum Wechselrichter</button>
       </div>
 
       <p class="pairing-error" id="pairingError" hidden></p>

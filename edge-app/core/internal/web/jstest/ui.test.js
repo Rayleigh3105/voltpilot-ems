@@ -2451,6 +2451,24 @@ test("commissioning: ohne Ladepunkte ändert sich KEIN Wort", () => {
   assert.strictEqual(both.steps[0].title, "Wechselrichter verbinden");
 });
 
+test("commissioning: eine Box neben einer Anlagensteuerung (SPS) - Schritt 1 ist die Wahl, sonst kein Wort anders (EZ-5)", () => {
+  const base = {
+    pairing_state: "warte_auf_beanspruchung", cloud_connected: false,
+    inverter: { configured: false }, claim_unlocked: false
+  };
+  const ohne = JSON.parse(JSON.stringify(stepsFor(base, 0).steps));
+  assert.strictEqual(ohne[0].title, "Wechselrichter verbinden");
+  // Ein ausdrückliches false ändert nichts gegenüber einer älteren Box ohne das Feld.
+  assert.deepStrictEqual(JSON.parse(JSON.stringify(stepsFor({ ...base, anlagensteuerung: false }, 0).steps)), ohne);
+  const sps = stepsFor({ ...base, anlagensteuerung: true, claim_unlocked: true }, 0).steps;
+  assert.strictEqual(sps[0].title, "Anlagensteuerung (SPS)");
+  assert.strictEqual(sps[0].state, "done");
+  assert.strictEqual(sps[2].state, "active");
+  // Mit einem ausgewählten Wechselrichter bleibt es eine Wechselrichter-Anlage.
+  const mitWr = stepsFor({ ...base, anlagensteuerung: true, inverter: { configured: true, label: "Deye" } }, 0).steps;
+  assert.strictEqual(mitWr[0].title, "Wechselrichter verbinden");
+});
+
 /* ============ katalogwege.js: der Verbindungsweg gehört dem MODELL ============ */
 //
 // Katalog-Neustruktur (Konzept data/vp-anlegen-rework/konzept.md, Stufe 1):

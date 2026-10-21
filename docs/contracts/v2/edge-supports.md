@@ -1,7 +1,7 @@
 # Fähigkeiten im Box-Herzschlag (AP-06 IP-18)
 
 `ems/{tenant}/{site}/{device}/status` bleibt bei `schema_version: "1.0"`.
-`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe"]` steht unabhängig neben
+`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component", "erzeuger_registerbild"]` steht unabhängig neben
 `data_sources`. [Schema](edge-supports.schema.json), [Vokabular und Vektoren](edge-supports-vectors.json).
 Der Core sendet ausschließlich die dort als gebaut belegten Fähigkeiten. Neue Namen
 brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
@@ -56,9 +56,13 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
   (`x-erzeuger-registerbilder-rule`). Die Cloud fragt das Wort an zwei Stellen: `MeasurementConfigPublisher`
   sendet das Feld nur an eine Box, die es meldet (ein älterer Core verwürfe sonst das ganze Dokument), und
   die Anlagensteuerung wird nur angelegt bzw. im Portal angeboten, wenn die zuständige Box es meldet
-  ([Anlagensteuerung](../../agents/root/erzeuger-anlagensteuerung.md)). **Bekannt, noch nicht gesendet**:
-  Leser und Meldung bringt EZ-5 mit einem Edge-Release (dann `advertised: true` und `BuiltSupports`). Keine
-  Zeile in `edge-capabilities.json` (Begründung wie `plan_quittung`).
+  ([Anlagensteuerung](../../agents/root/erzeuger-anlagensteuerung.md)). **Gemeldet seit EZ-5** (`advertised: true`,
+  `BuiltSupports`), wirksam mit dem Box-Release, das den Laufzeitkatalog 2026.10.21.1 trägt: die Box liest das Bild
+  alle 5 s (bis 8 Einheiten eine Anfrage), prüft Kopf und Soll, sendet die Punkte mit Qualität (`stale`,
+  `uncertain`) und meldet `frozen_source`/`device_restart`; dazu die Probe-Art `erzeuger_kopf`
+  ([Probe-Vertrag](../mqtt-probe.schema.json), [Box-Leser](../../agents/root/uems-erzeuger-registerbild-box.md)).
+  Beleg `edge-app/nodered/measurements/erzeuger-laufzeit.test.js`. Keine Zeile in `edge-capabilities.json`
+  (Begründung wie `plan_quittung`).
 - `assignment_effective_at` bleibt bekannt, wird aber **nicht gesendet**: die gebaute
   Übergabe zum Zeitpunkt arbeitet ausschließlich im Cloud-Zeitgeber (`37205f8f`,
   `QuellenUebergabe`, [Ausführungsweg](../../agents/root/uems-quellen-uebergabe.md)).

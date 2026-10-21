@@ -352,7 +352,7 @@
       "template_count": 0
     },
     {
-      "an_der_box": false,
+      "an_der_box": true,
       "family": "voltpilot.erzeuger_registerbild_v1",
       "point_count": 33,
       "rueckfall_ohne_box": null,
@@ -119141,7 +119141,7 @@
       "width_bits": 32
     }
   ],
-  "runtime_catalog_version": "2026.09.23.3",
+  "runtime_catalog_version": "2026.10.21.1",
   "schema_version": "1.0",
   "source_manifest_sha256": "3c65f929a8fff3f0037822dad46943b901cc3cab81b3f5376b036f15289c68a3"
 }

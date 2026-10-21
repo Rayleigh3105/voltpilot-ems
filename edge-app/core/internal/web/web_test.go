@@ -4538,3 +4538,81 @@ func TestNativePilotRoutesAreOpenToReadAndGuardedToAct(t *testing.T) {
 		t.Fatalf("abbrechen: %d", resp.StatusCode)
 	}
 }
+
+// fakeAnlagensteuerung is a fakeInverter that also takes the local
+// "Anlagensteuerung" choice, the way the agent does: persisted elsewhere,
+// mirrored into the snapshot.
+type fakeAnlagensteuerung struct {
+	*fakeInverter
+	st  *state.Store
+	err error
+}
+
+func (f *fakeAnlagensteuerung) SetAnlagensteuerung(aktiv bool) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.st.Update(func(s *state.Snapshot) { s.Anlagensteuerung = aktiv })
+	return nil
+}
+
+func postAnlagensteuerung(t *testing.T, srv *httptest.Server, body string) (int, gateBody) {
+	t.Helper()
+	resp, err := http.Post(srv.URL+"/api/onboarding/anlagensteuerung", "application/json", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var b gateBody
+	_ = json.NewDecoder(resp.Body).Decode(&b)
+	return resp.StatusCode, b
+}
+
+// EZ-5 (finding of the Erzeuger concept): a box beside a plant controller reads
+// nothing before the portal configures it AFTER the claim - neither inverter nor
+// charge point can ever prove itself. The explicit local choice opens the gate
+// and reveals the reference; without it the gate stays exactly as before.
+func TestOnboardingGateOpensForAPlantControllerBox(t *testing.T) {
+	st := state.New("VP-7K3M-Q2", "test")
+	inv := &fakeAnlagensteuerung{fakeInverter: &fakeInverter{cat: inverter.DefaultCatalog()}, st: st}
+	srv := httptest.NewServer(Handler(st, inv, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}, &fakeMirror{}, &fakeOta{}, &fakeInstallerWrite{}, &fakeOcpp{}))
+	defer srv.Close()
+
+	if b := getState(t, srv); b.ClaimUnlocked || b.Ref != "" || b.OnboardingStep != "inverter" {
+		t.Fatalf("without the choice the gate stays shut: %+v", b)
+	}
+	code, b := postAnlagensteuerung(t, srv, `{"aktiv":true}`)
+	if code != http.StatusOK || !b.ClaimUnlocked || b.OnboardingStep != "claim" || b.Ref != "VP-7K3M-Q2" {
+		t.Fatalf("choice must open the gate and reveal the reference: %d %+v", code, b)
+	}
+	if b := getState(t, srv); !b.ClaimUnlocked || b.InverterConnected || b.ChargePointConnected {
+		t.Fatalf("the choice is no inverter and no charge point: %+v", b)
+	}
+	// Taking it back closes the gate again.
+	if code, b := postAnlagensteuerung(t, srv, `{"aktiv":false}`); code != http.StatusOK || b.ClaimUnlocked || b.Ref != "" {
+		t.Fatalf("taken back: %d %+v", code, b)
+	}
+	for _, body := range []string{`{}`, `{"aktiv":"ja"}`, `{"aktiv":true,"x":1}`, `nicht json`} {
+		if code, _ := postAnlagensteuerung(t, srv, body); code != http.StatusBadRequest {
+			t.Fatalf("%s: code %d", body, code)
+		}
+	}
+	inv.err = errors.New("platte voll")
+	if code, _ := postAnlagensteuerung(t, srv, `{"aktiv":true}`); code != http.StatusInternalServerError {
+		t.Fatalf("a failed save must not report success: %d", code)
+	}
+	if getState(t, srv).ClaimUnlocked {
+		t.Fatal("a failed save must not open the gate")
+	}
+}
+
+// A runtime whose controller does not offer the choice answers 501 - never a
+// silent success that leaves the page waiting.
+func TestAnlagensteuerungChoiceWithoutSetterIsNotImplemented(t *testing.T) {
+	st := state.New("edge-x", "test")
+	srv := httptest.NewServer(Handler(st, &fakeInverter{cat: inverter.DefaultCatalog()}, &fakePurge{}, &fakeDespike{}, history.New(10), &fakePlan{}, &fakeSources{}, &fakeTopology{}, &fakeActiveControl{}, &fakeCalibration{}, &fakeMirror{}, &fakeOta{}, &fakeInstallerWrite{}, &fakeOcpp{}))
+	defer srv.Close()
+	if code, _ := postAnlagensteuerung(t, srv, `{"aktiv":true}`); code != http.StatusNotImplemented {
+		t.Fatalf("code %d", code)
+	}
+}

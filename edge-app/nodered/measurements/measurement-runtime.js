@@ -4,15 +4,19 @@ const { buildPlan, Scheduler } = require('./measurement-planner');
 const { resolvePoint, decodeRegisters, decodeDerived, derivedAddresses,
   decodeJSONSamples, decodeOcppSampledValue, templateKey } = require('./measurement-driver');
 const { LIMITS, COST_MS, discoveryFor, byteOrderFor, geteiltePunkte, ablehnungenVon,
-  leseSchluessel, registerbildFor, registerbilderJeZiel } = require('./measurement-planner');
+  leseSchluessel, registerbildFor, registerbilderJeZiel, erzeugerbildFor,
+  erzeugerbilderJeZiel } = require('./measurement-planner');
 const wago = require('./wago-registerbild');
 const wagoKopf = require('./wago-kopf');
 const { WagoEreignisse } = require('./wago-ereignisse');
+const erzeuger = require('./erzeuger-registerbild');
+const { ErzeugerStufe, FINDING_ERROR_CLASS:ERZEUGER_BEFUND } = require('./erzeuger-ereignisse');
+const { ErzeugerMeldung, meldeSchluessel } = require('./erzeuger-meldung');
 const { TARGET_PRIMARY } = require('./measurement-binding');
 const sourceStatus = require('./data-source-status');
 const RESERVATION_MS = Object.freeze({ modbus_holding:4000, modbus_input:4000,
   sunspec_model:4000, http_api_key:4000, rest_json:4000, rpc_json:4000,
-  ocpp_sampled_value:0 });
+  erzeuger_registerbild:4000, ocpp_sampled_value:0 });
 
 /** The target key one planned selection/block belongs to (default: primary). */
 function targetKeyOf(selected) {
@@ -41,6 +45,15 @@ function leseSchluesselVon(selected) {
   return leseSchluessel(targetKeyOf(selected), selected.point.point_key);
 }
 
+/**
+ * How often a planned selection is READ and judged. An Erzeuger point is read at
+ * the family's 5 s (EW-5 A) whatever it asks for; its `cadence_s` is the longest
+ * gap between two samples (erzeuger-meldung.js). Every other point as before.
+ */
+function lesetaktVon(selected) {
+  return erzeuger.istErzeugerPunkt(selected.point) ? erzeuger.LESETAKT_S : selected.cadence_s;
+}
+
 /** One component's sample timer; equals the read timer at a simple point. */
 function probenSchluesselVon(selected) {
   return `${leseSchluesselVon(selected)}\u0000${selected.entity_id || ''}`;
@@ -67,6 +80,10 @@ class MeasurementRuntime {
     // (IP-7), and an event is reported once per change of state (IP-8).
     this.herzschlagWacht = new wagoKopf.HerzschlagWacht();
     this.wagoEreignisse = new WagoEreignisse();
+    // Erzeuger images (EZ-5): heartbeat, quality and events per controller and
+    // the send rule per value.
+    this.erzeugerStufe = new ErzeugerStufe();
+    this.erzeugerMeldung = new ErzeugerMeldung();
   }
 
   apply(config, options) {
@@ -78,6 +95,11 @@ class MeasurementRuntime {
     // target only. Without them every card point is refused, never read at address 0.
     if (!planning.registerbilder) {
       planning.registerbilder = registerbilderJeZiel(config && config.registerbilder,
+        planning.binding);
+    }
+    // The same for an Erzeuger image (`erzeuger_registerbilder`, EZ-6/EZ-5).
+    if (!planning.erzeugerbilder) {
+      planning.erzeugerbilder = erzeugerbilderJeZiel(config && config.erzeuger_registerbilder,
         planning.binding);
     }
     const candidate = buildPlan(config, planning);
@@ -140,12 +162,15 @@ class MeasurementRuntime {
     const lesetakt = new Map();
     for (const s of candidate.selections) {
       const key = leseSchluesselVon(s);
-      if (!lesetakt.has(key) || s.cadence_s < lesetakt.get(key)) lesetakt.set(key, s.cadence_s);
+      const takt = lesetaktVon(s);
+      if (!lesetakt.has(key) || takt < lesetakt.get(key)) lesetakt.set(key, takt);
     }
     const due = new Map([...lesetakt.keys()].map((key) => [key, 0]));
     this.active = candidate; this.due = due; this.lesetakt = lesetakt;
     this.probenDue = new Map(candidate.selections.map((s) => [probenSchluesselVon(s), 0]));
     this.decoderState = { previous:new Map(), values:new Map() };
+    // A new plan starts every Erzeuger value afresh.
+    this.erzeugerMeldung.vergissAlles();
   }
 
   publishStatus(config, candidate) {
@@ -182,7 +207,7 @@ class MeasurementRuntime {
     // Claim due work before the first await. Concurrent/re-entrant ticks can
     // now only join this run and can never issue a second physical read.
     for (const key of dueKeys) this.due.set(key, ms + (lesetakt.get(key) || 1) * 1000);
-    for (const s of dueProben) this.probenDue.set(probenSchluesselVon(s), ms + s.cadence_s * 1000);
+    for (const s of dueProben) this.probenDue.set(probenSchluesselVon(s), ms + lesetaktVon(s) * 1000);
     const blocks = plan.blocks.filter((b) => b.points.some((p) =>
       dueKeys.has(leseSchluessel(targetKeyOf(b), p))));
     for (const block of blocks) this.scheduler.enqueuePoll({ kind: 'modbus', block });
@@ -191,6 +216,7 @@ class MeasurementRuntime {
     // register 616 of the primary Deye are different facts; one flat map would
     // decode one device's words with the other's point.
     const samples = []; const wireWords = new Map(); const bilder = new Map();
+    const erzeugerBilder = new Map();
     for (let task; (task = this.scheduler.next());) {
       if (task.kind === 'control') { await task.run(); continue; }
       if (task.kind === 'modbus') await this.readBlock(task.block, dueKeys, wireWords);
@@ -211,6 +237,14 @@ class MeasurementRuntime {
     const dekodiert = new Map();
     for (const selected of plan.selections) {
       if (!dueProben.has(selected)) continue;
+      // An Erzeuger value is judged per component by the send rule, so it never
+      // shares one decoded sample across the occurrences of a point.
+      if (erzeuger.istErzeugerPunkt(selected.point)) {
+        const sample = this.erzeugerSample(selected, wordsOf(wireWords, targetKeyOf(selected)),
+          plan, erzeugerBilder, now);
+        if (sample) samples.push(withEntity(sample, selected));
+        continue;
+      }
       const leseKey = leseSchluesselVon(selected);
       if (dekodiert.has(leseKey)) {
         const sample = dekodiert.get(leseKey);
@@ -302,6 +336,56 @@ class MeasurementRuntime {
       }
     }
     bilder.set(target.key, gelesen);
+    return gelesen;
+  }
+
+  /**
+   * One value of an Erzeuger image (EZ-5). The image is judged ONCE per controller
+   * and tick (`erzeugerLesung`: head, Soll, heartbeat, events); a value is sent
+   * only when the send rule says so.
+   */
+  erzeugerSample(selected, words, plan, erzeugerBilder, now) {
+    const target = selected.target || { key:TARGET_PRIMARY, sourceId:null };
+    const gelesen = this.erzeugerLesung(target, words, plan, erzeugerBilder, now);
+    if (!gelesen || gelesen.ergebnis !== 'erkannt') return null;
+    const wert = gelesen.werte.find((w) => w.punkt === selected.point.point_key);
+    if (!wert) return null;
+    const schluessel = meldeSchluessel(target.key, selected.entity_id, selected.point.point_key);
+    if (!this.erzeugerMeldung.soll(schluessel, wert, selected.cadence_s, now.getTime())) return null;
+    if (wert.wert === null) return { point_key:selected.point.point_key, raw:wert.roh, quality:wert.qualitaet };
+    return { point_key:selected.point.point_key, raw:wert.roh, decoded:wert.wert, quality:wert.qualitaet };
+  }
+
+  erzeugerLesung(target, words, plan, erzeugerBilder, now) {
+    if (erzeugerBilder.has(target.key)) return erzeugerBilder.get(target.key);
+    const parameter = erzeugerbildFor(plan, target.key);
+    let gelesen = null;
+    if (parameter) {
+      const addresses = Array.from({ length:erzeuger.laengeBild(parameter.te_anzahl) },
+        (_, i) => parameter.basisadresse + i);
+      if (addresses.every((address) => words.has(address))) {
+        try {
+          gelesen = this.erzeugerStufe.lesung(addresses.map((address) => words.get(address)),
+            { steuerung:target.key, parameter, soll:parameter.soll, datenquelle:target.dataSourceId,
+              komponente:parameter.entity_id, zeitpunkt:now });
+        } catch (_) { gelesen = null; }
+        // Findings path of the data source: every reason the image is not ours or does not
+        // match its Soll is `layout_changed` - nothing was re-attached. The read itself was
+        // already counted by readBlock.
+        if (gelesen && gelesen.ergebnis !== 'erkannt') {
+          this.reportSource(target, { failed:true, error_class:ERZEUGER_BEFUND });
+        }
+        if (gelesen) {
+          for (const nachricht of gelesen.ereignisse) {
+            try { this.publish(nachricht.topic, nachricht.payload, false); } catch (_) { /* an event never costs the samples */ }
+          }
+        }
+      }
+      // No image this tick (read failed, foreign or Soll mismatch): the next value is the
+      // first again. The gap itself is the source status and the writer's data_gap.
+      if (!gelesen || gelesen.ergebnis !== 'erkannt') this.erzeugerMeldung.vergissZiel(target.key);
+    }
+    erzeugerBilder.set(target.key, gelesen);
     return gelesen;
   }
 

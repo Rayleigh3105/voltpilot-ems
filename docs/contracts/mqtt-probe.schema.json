@@ -93,6 +93,9 @@
                 "$ref": "#/$defs/op_wago_kopf"
               },
               {
+                "$ref": "#/$defs/op_erzeuger_kopf"
+              },
+              {
                 "$ref": "#/$defs/op_switch_set"
               }
             ]
@@ -471,6 +474,72 @@
         }
       }
     },
+    "op_erzeuger_kopf": {
+      "type": "object",
+      "title": "op 'erzeuger_kopf' - den KOPF und die NAMEN eines VoltPilot-Registerbilds Erzeuger v1 lesen (EZ-5)",
+      "description": "Der Verbindungstest einer Anlagensteuerung (SPS) mit dem VoltPilot-Registerbild Erzeuger v1 (Konzept Erzeuger am WAGO-Modbus-Server, schlanke Fassung 1.0, EW-17 A) fuer den Anlege-Schritt „Steuerung verbinden“. Er liest den Kopf (Woerter 0-11: Signatur „VP“ „EZ“, Wortfolge-Pruefwert, Version, Zahl der Einheiten, Herzschlag, Programmstand, Steuerungs-Kennung, Anlagenart, beschreibung_ab), je Einheit Art und Nennleistung (Woerter 38 + (n-1)·10 + 2 und + 3) und - wenn das Bild sie traegt - die Namen ab beschreibung_ab: Netzbetreiber, Direktvermarkter und Typ je Einheit. KEINEN Messwert.\n\nBasisadresse, Registerart und Wortfolge sind Parameter je Anlage (Vorgabe des Bilds: Eingangsregister ab 0, hoeherwertiges Wort zuerst). Steht unter der Basisadresse ein FREMDES Bild (Signatur oder Hauptversion abweichend - auch ein WAGO-Registerbild „VP“ „RB“), antwortet die Box mit ok=false, error_code 'invalid_response' und einem 'finding' mit channel 'erzeuger_kopf' und der Regel 'registerbild_unbekannt'; der Block 'erzeuger_kopf' sagt daneben, was tatsaechlich dastand.\n\nEine Box, die diesen Op-Typ nicht ausfuehrt (aelterer Stand), antwortet wie bei jedem unbekannten Op ehrlich mit 'not_supported' - eine Aussage ueber die Box, nie ueber die Steuerung.",
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "id",
+        "transport",
+        "host",
+        "register_kind",
+        "address"
+      ],
+      "properties": {
+        "op": {
+          "const": "erzeuger_kopf"
+        },
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9_-]{0,31}$"
+        },
+        "transport": {
+          "const": "modbus_tcp",
+          "description": "Das Bild ist ein Modbus-TCP-Wortbereich; eine andere Verbindungsart wird mit 'not_supported' beantwortet."
+        },
+        "host": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 253,
+          "description": "IP oder Name im KUNDEN-LAN, mit derselben Beweispflicht wie bei 'read': die Box akzeptiert nur ein belegbar privates Ziel."
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535,
+          "default": 502
+        },
+        "unit_id": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255,
+          "default": 1
+        },
+        "register_kind": {
+          "enum": [
+            "holding",
+            "input"
+          ],
+          "description": "holding = Modbus FC3, input = FC4. Das Bild steht laut Vorlage in Eingangsregistern (EW-2 A); der Funktionscode bleibt ein Parameter je Anlage."
+        },
+        "address": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 65535,
+          "description": "Die BASISADRESSE des Bilds, 0-basiert (Vorgabe 0). Der Kopf beginnt genau hier; die Namen stehen bei Basisadresse + beschreibung_ab."
+        },
+        "word_order": {
+          "enum": [
+            "big",
+            "little"
+          ],
+          "default": "big",
+          "description": "Die Wortfolge der 32-Bit-Felder. Stimmt sie nicht, ist der Grund 'wortfolge_abweichend'."
+        }
+      }
+    },
     "op_switch_set": {
       "type": "object",
       "title": "op 'switch_set' - einen FREIEN Ausgang eines I/O-Moduls dauerhaft ein- oder ausschalten",
@@ -795,6 +864,127 @@
             }
           }
         },
+        "erzeuger_kopf": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "signatur_ok",
+            "erkannt"
+          ],
+          "description": "Nur bei op 'erzeuger_kopf': was die Box aus Kopf, Einheiten und Namen gelesen hat. EIGENER Block wie 'wago_kopf' - kein Messwert. Er steht AUCH bei ok=false, wenn die Box wirklich gelesen hat.\n\nLuecke statt Null: ein Feld, das DIESE Lesung nicht ergeben hat, FEHLT. Bei fremder Signatur steht nur 'signatur_ok: false' da; bei fremder Hauptversion oder falscher Wortfolge nur die Version. Ein gelesener leerer Name ist \"\" („keiner“), ein nicht gelesener (beschreibung_ab 0, Lesung gescheitert) FEHLT.",
+          "properties": {
+            "signatur_ok": {
+              "type": "boolean",
+              "description": "Ob an der Basisadresse die Signatur 0x5650 0x455A („VP“ „EZ“) steht. Sie ist von der Wortfolge unberuehrt."
+            },
+            "erkannt": {
+              "type": "boolean",
+              "description": "Ob Kopf und Einheiten als VoltPilot-Registerbild Erzeuger v1 gelesen werden konnten."
+            },
+            "grund": {
+              "enum": [
+                "zu_wenig_woerter",
+                "signatur_fremd",
+                "version_fremd",
+                "wortfolge_falsch",
+                "te_anzahl_ungueltig"
+              ],
+              "description": "Warum das Bild nicht gelesen werden konnte - das Vokabular des Registerbild-Vertrags Erzeuger in seiner Pruefreihenfolge. 'te_anzahl_ungueltig' = der Kopf nennt 0, mehr als 10 oder 0xFFFF Einheiten; 'zu_wenig_woerter' = die Antwort ist kuerzer als der Kopf, oder die Einheiten-Bloecke waren nicht lesbar. Fehlt bei erkannt=true. Die Soll-Gruende des laufenden Betriebs (te_anzahl_abweichend, steuerung_id_abweichend, anlagenart_abweichend) kommen hier nicht vor: ein Verbindungstest hat kein Soll."
+            },
+            "hauptversion": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255,
+              "description": "Hoeherwertiges Byte von 'version'. Steht auch bei grund „version_fremd“."
+            },
+            "nebenversion": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            },
+            "te_anzahl": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535,
+              "description": "Wie viele Einheiten (Wechselrichter oder Motoren) das Bild meldet."
+            },
+            "herzschlag": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535,
+              "description": "Die Herzschlag-Zahl dieser EINEN Lesung; ein Verbindungstest leitet daraus nichts ab."
+            },
+            "programmstand": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535,
+              "description": "Stand des eingespielten SPS-Programms (JJMM)."
+            },
+            "steuerung_id": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 4294967295,
+              "description": "Die Kennung der Steuerung, von VoltPilot vergeben. KEIN Identitaetsbeweis."
+            },
+            "anlagenart": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535,
+              "description": "1 PV · 2 BHKW · 3 gemischt - so, wie die Steuerung es meldet."
+            },
+            "beschreibung_ab": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65535,
+              "description": "Wo die Namen beginnen, relativ zur Basisadresse; 0 = keine Namen."
+            },
+            "einheiten": {
+              "type": "array",
+              "maxItems": 10,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "einheit"
+                ],
+                "properties": {
+                  "einheit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 10
+                  },
+                  "art": {
+                    "enum": [
+                      1,
+                      2
+                    ],
+                    "description": "1 PV-Wechselrichter · 2 BHKW-Motor. Fehlt bei einem Wert ausserhalb."
+                  },
+                  "nenn_kw": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 65534,
+                    "description": "Nennleistung der Einheit in kW. Fehlt beim Ungueltig-Wert."
+                  },
+                  "typ_name": {
+                    "type": "string",
+                    "maxLength": 32,
+                    "description": "Hersteller und Typ der Einheit aus dem Bild."
+                  }
+                }
+              }
+            },
+            "netzbetreiber_name": {
+              "type": "string",
+              "maxLength": 32
+            },
+            "direktvermarkter_name": {
+              "type": "string",
+              "maxLength": 32,
+              "description": "\"\" = die Steuerung nennt keinen Direktvermarkter."
+            }
+          }
+        },
         "finding": {
           "type": "object",
           "additionalProperties": false,
@@ -802,14 +992,15 @@
             "channel",
             "rule"
           ],
-          "description": "Bei op 'test_connection' mit error_code 'implausible' und bei op 'wago_kopf' mit error_code 'invalid_response': WELCHER Kanal die Plausibilitaetsregel verletzt hat und WARUM - maschinenlesbar, damit keine Oberflaeche einen deutschen Satz nach Stichworten durchsuchen muss (die Haus-Regel 'target_verdict NEBEN state'). Der deutsche Satz gehoert dem Portal; hier steht die Tatsache. Ein Wort ausserhalb des Vokabulars wird von der Cloud VERWORFEN statt weitergereicht.",
+          "description": "Bei op 'test_connection' mit error_code 'implausible' und bei op 'wago_kopf' oder 'erzeuger_kopf' mit error_code 'invalid_response': WELCHER Kanal die Plausibilitaetsregel verletzt hat und WARUM - maschinenlesbar, damit keine Oberflaeche einen deutschen Satz nach Stichworten durchsuchen muss (die Haus-Regel 'target_verdict NEBEN state'). Der deutsche Satz gehoert dem Portal; hier steht die Tatsache. Ein Wort ausserhalb des Vokabulars wird von der Cloud VERWORFEN statt weitergereicht.",
           "properties": {
             "channel": {
               "enum": [
                 "soc_pct",
-                "wago_kopf"
+                "wago_kopf",
+                "erzeuger_kopf"
               ],
-              "description": "Der betroffene Kanal. 'soc_pct' = der Ladestand, der einzige Messwert, dessen Plausibilitaet die Box gegen eine feste Regel (0 < soc <= 100) prueft. 'wago_kopf' = nicht ein Messwert, sondern der KOPF des WAGO-Registerbilds: die Steuerung hat geantwortet, aber nicht mit unserem Registerbild (AP-05 IP-7)."
+              "description": "Der betroffene Kanal. 'soc_pct' = der Ladestand, der einzige Messwert, dessen Plausibilitaet die Box gegen eine feste Regel (0 < soc <= 100) prueft. 'wago_kopf' = nicht ein Messwert, sondern der KOPF des WAGO-Registerbilds: die Steuerung hat geantwortet, aber nicht mit unserem Registerbild (AP-05 IP-7). 'erzeuger_kopf' = dasselbe fuer das Registerbild Erzeuger v1 (EZ-5)."
             },
             "rule": {
               "enum": [
@@ -818,7 +1009,7 @@
                 "no_answer",
                 "registerbild_unbekannt"
               ],
-              "description": "WARUM der Kanal verworfen wurde. 'missing' = der Registerblock LEBT (andere Register haben sich bewegt) und nur dieser Kanal liest exakt 0 - typisch eine Batterie, deren BMS nicht am Wechselrichter haengt; das ist der EINZIGE Fall, in dem ein Betreiber die Anlage bewusst ohne diesen Kanal betreiben darf. 'out_of_range' = ein Wert ausserhalb des gueltigen Bereichs, also ein kaputter/verschobener Rahmen. 'no_answer' = der ganze Block ist 0, die dokumentierte Leerantwort des Loggers. Die letzten beiden sind KEINE Aussage ueber ein fehlendes BMS und duerfen nie uebergangen werden. 'registerbild_unbekannt' (nur mit channel 'wago_kopf') = unter der Basisadresse steht nicht das VoltPilot-Registerbild WAGO v1 - Signatur oder Hauptversion sind fremd. Es wird dann kein einziger Kartenwert uebernommen; im laufenden Betrieb meldet die Box denselben Befund als Fehlerklasse 'layout_changed' des Quellenvertrags („Aufbau geaendert - nichts wurde umgehaengt“)."
+              "description": "WARUM der Kanal verworfen wurde. 'missing' = der Registerblock LEBT (andere Register haben sich bewegt) und nur dieser Kanal liest exakt 0 - typisch eine Batterie, deren BMS nicht am Wechselrichter haengt; das ist der EINZIGE Fall, in dem ein Betreiber die Anlage bewusst ohne diesen Kanal betreiben darf. 'out_of_range' = ein Wert ausserhalb des gueltigen Bereichs, also ein kaputter/verschobener Rahmen. 'no_answer' = der ganze Block ist 0, die dokumentierte Leerantwort des Loggers. Die letzten beiden sind KEINE Aussage ueber ein fehlendes BMS und duerfen nie uebergangen werden. 'registerbild_unbekannt' (nur mit channel 'wago_kopf' oder 'erzeuger_kopf') = unter der Basisadresse steht nicht das VoltPilot-Registerbild WAGO v1 - Signatur oder Hauptversion sind fremd. Es wird dann kein einziger Kartenwert uebernommen; im laufenden Betrieb meldet die Box denselben Befund als Fehlerklasse 'layout_changed' des Quellenvertrags („Aufbau geaendert - nichts wurde umgehaengt“)."
             },
             "raw": {
               "type": "number",

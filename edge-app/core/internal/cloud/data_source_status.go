@@ -33,7 +33,13 @@ type StatusExtension struct {
 // exist in the cloud - point state, per-component status, revision push and the
 // summing guard at Bilanz, formula and Kennzahl, visible in the portal
 // (decision firstmate 23.09.2026 A, "Summen-Waechter komplett").
+// erzeuger_registerbild (EZ-5): the core carries erzeugerbilder and the probe
+// op erzeuger_kopf, and the palette reads the Erzeuger image every 5 s and
+// sends its points with quality and events (measurements/erzeuger-*.js;
+// evidence measurements/erzeuger-laufzeit.test.js). The points themselves come
+// with the runtime catalog of the release that carries this reader.
 func BuiltSupports() []string {
 	return []string{"data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked",
-		"plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component"}
+		"plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component",
+		"erzeuger_registerbild"}
 }

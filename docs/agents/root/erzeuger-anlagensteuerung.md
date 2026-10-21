@@ -21,15 +21,16 @@ ist ein Gerät wie heute die WAGO-Steuerung der Energiekarten, Wechselrichter un
   `POST /api/v1/geraete/{id}/anlagensteuerung/namen`, `GET/PUT /api/v1/sites/{siteId}/netz-vermarktung`.
 - **Publisher:** `mqtt-measurement-config` Feld `erzeuger_registerbilder` (`ErzeugerRegisterbilder`,
   Vektoren `docs/contracts/v2/erzeuger-registerbilder-vectors.json`).
-- **Fähigkeitswort** `erzeuger_registerbild` (bekannt, `advertised: false`) und **Anwendung**
+- **Fähigkeitswort** `erzeuger_registerbild` (seit EZ-5 gemeldet, `advertised: true`) und **Anwendung**
   `netz-und-vermarktung` (Klasse `basis`, `nav_gruppe: false`, abgeleitet aktiv mit einer Anlagensteuerung).
 
 ## Fallen
 
-- ⚠ **Inhaltsstand, nicht Laufzeitstand.** Die Familie steht in `NOCH_NICHT_AN_DER_BOX`: Palette und
-  Metadaten-Migration bleiben byte-gleich, die api lädt die Punkte nicht (keine Suche, keine Auswahl). Den
-  Laufzeitstand hebt erst das Edge-Release mit dem Leser (EZ-5) — sonst lehnte ab dem api-Deploy jede ältere
-  Box jede Mess-Konfiguration ab.
+- ⚠ **Seit EZ-5 an der Box (Laufzeitstand 2026.10.21.1).** Die Familie kam als Inhaltsstand mit
+  `NOCH_NICHT_AN_DER_BOX`; mit dem Box-Leser fiel der Eintrag, Palette und Metadaten-Migration
+  (`V20261021234700`) führen die 33 Punkte, die api bietet sie an. Wirksam mit dem Box-Release: ab dem
+  api-Deploy lehnt eine Box mit älterer Palette jede Mess-Konfiguration ab (`unsupported_catalog`) — api-Deploy
+  und Box-Release gehören zusammen · [Box-Leser](uems-erzeuger-registerbild-box.md).
 - ⚠ **Mischbetrieb über das Fähigkeitswort, zweimal.** Angelegt wird nur, wenn die Box, die die Datenquelle
   liest, `erzeuger_registerbild` meldet (sonst 409; `GET` sagt `einrichtung.moeglich`). Der Publisher sendet
   `erzeuger_registerbilder` nur an so eine Box: der Go-Core liest mit `DisallowUnknownFields` und verwürfe das
@@ -62,6 +63,6 @@ ist ein Gerät wie heute die WAGO-Steuerung der Energiekarten, Wechselrichter un
 
 ## Nachfolger
 
-EZ-5 (Box-Leser, Edge-Release: Laufzeitstand, `advertised: true`, Budget-Klasse in
-`measurement-budget-vectors.json`, Go-`Config.ErzeugerRegisterbilder`), EZ-7 (`erzeuger_vorgabe`), EZ-8/EZ-10
+EZ-5 (Box-Leser, gebaut: Laufzeitstand 2026.10.21.1, `advertised: true`, Budget-Klasse in
+`measurement-budget-vectors.json`, Go-`Config.Erzeugerbilder` für `erzeuger_registerbilder`), EZ-7 (`erzeuger_vorgabe`), EZ-8/EZ-10
 (Portal-Ansichten auf diesen Routen), EZ-15 (Anlege-Schritt mit Probe `erzeuger_kopf`), EZ-16 (Programmstand).

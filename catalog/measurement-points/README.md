@@ -278,14 +278,19 @@ und zeigt deshalb den Laufzeitstand (`MeasurementCatalog.version()`).
   Laufzeitstand ziehen die festgenagelten Konfig-Beispiele
   `docs/contracts/v2/examples/mqtt-measurement-config.valid*.json` mit, die die Palette als „heutige
   Cloud-Konfiguration“ annehmen muss.
+  Danach 2026.09.23.3 → **2026.10.21.1**: das Erzeuger-Registerbild (`voltpilot.erzeuger_registerbild_v1`,
+  33 Punkte) geht mit seinem Box-Leser an die Box (EZ-5, Metadaten
+  `V20261021234700__measurement_catalog_metadata_runtime_2026_10_21_1.sql`, wirksam mit dem Box-Release, das
+  diese Palette trägt). Laufzeit- und Inhaltsstand sind wieder gleich; die Kernspiegel führen den Stand in
+  `runtime_catalog_versions`.
 
 ### Familien noch nicht an der Box
 
 Eine neue Quelle, deren Punkte keine ausgelieferte Box lesen kann, gehört in den Inhaltsstand, nicht in
 den Laufzeitstand. `NOCH_NICHT_AN_DER_BOX` in `tools/cataloglib.py` nennt solche Familien mit Grund
-(heute `voltpilot.erzeuger_registerbild_v1` seit dem Inhaltsstand 2026.10.21.1, UEMS EZ-6; `wago.pm494`/`wago.pm495`
-standen dort, bis sie mit dem Laufzeitstand 2026.09.23.3 an die Box gingen — UEMS AP-05 IP-6b, wirksam mit dem
-Box-Release):
+(heute keine; `wago.pm494`/`wago.pm495` standen dort, bis sie mit dem Laufzeitstand 2026.09.23.3 an die Box
+gingen — UEMS AP-05 IP-6b —, `voltpilot.erzeuger_registerbild_v1` vom Inhaltsstand 2026.10.21.1 (UEMS EZ-6) bis
+zum Laufzeitstand 2026.10.21.1 mit dem Box-Leser aus EZ-5; beide wirksam mit dem Box-Release):
 
 - Ihre Punkte stehen im Artefakt (`families[].an_der_box: false`), fehlen aber in der Box-Sicht
   (`runtime_projection`), in der Palette-`catalog.json` und in der Metadaten-Migration — `validate.py` und

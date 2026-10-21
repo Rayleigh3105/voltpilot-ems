@@ -117,11 +117,12 @@ async function discoverSunSpec(read) {
 
 /**
  * The Modbus function code of one planned read. A WAGO register image names its own
- * (`registerbilder[].funktionscode`, 3 or 4 - a parameter of the plant, AP-05 Befund 9); every
- * other source keeps the rule it always had. Anything else is refused, never read as FC 3.
+ * (`registerbilder[].funktionscode`, 3 or 4 - a parameter of the plant, AP-05 Befund 9), and so
+ * does an Erzeuger image (`erzeugerbilder[].funktionscode`, EZ-5); every other source keeps the
+ * rule it always had. Anything else is refused, never read as FC 3.
  */
 function modbusFunktionscode(sourceKind, funktionscode) {
-  if (sourceKind === 'wago_registerbild') {
+  if (sourceKind === 'wago_registerbild' || sourceKind === 'erzeuger_registerbild') {
     if (funktionscode === 3 || funktionscode === 4) return funktionscode;
     throw new Error('Registerbild ohne Funktionscode');
   }

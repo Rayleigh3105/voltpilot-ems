@@ -28,13 +28,15 @@ class MeasurementBudgetVectorsTest {
     @Test
     void releasedRuntimeCatalogKeepsEveryCloudCostAndVersion() throws Exception {
         var catalog = new ObjectMapper().readTree(Path.of("../../edge-app/nodered/measurements/catalog.json").toFile());
-        assertThat(catalog.required("catalog_version").asText()).isEqualTo("2026.09.23.3");
+        assertThat(catalog.required("catalog_version").asText()).isEqualTo("2026.10.21.1");
         for (var p : catalog.required("points")) {
             String kind = p.required("source_kind").asText();
-            // Die WAGO-Karten kamen mit 2026.09.23.3 an die Box (UEMS AP-05 IP-6b): kein früherer Preis,
-            // der gemeinsame Vertrag nennt ihn.
+            // Die WAGO-Karten kamen mit 2026.09.23.3 an die Box (UEMS AP-05 IP-6b), das Erzeuger-Registerbild
+            // mit 2026.10.21.1 (EZ-5): kein früherer Preis, der gemeinsame Vertrag nennt ihn.
             int before = "wago_registerbild".equals(kind)
                     ? new ObjectMapper().readTree(CONTRACT.toFile()).at("/families/wago_registerbild/request_cost_ms").asInt()
+                    : "erzeuger_registerbild".equals(kind)
+                    ? new ObjectMapper().readTree(CONTRACT.toFile()).at("/families/erzeuger_registerbild/request_cost_ms").asInt()
                     : "ocpp_sampled_value".equals(kind) ? 1
                     : kind.startsWith("modbus") || "sunspec_model".equals(kind) ? 400 : 250;
             assertThat(MeasurementBudget.requestCostMs(kind, p.required("family").asText()))

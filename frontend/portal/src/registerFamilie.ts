@@ -50,7 +50,8 @@
  * also genau der leere Kasten, den der Schnitt verhindern soll. Der Test liest
  * `an_der_box` aus derselben Datei. `wago.pm494`/`wago.pm495` waren solche
  * Familien, bis sie mit dem Laufzeitstand 2026.09.23.3 an die Box gingen (UEMS
- * AP-05 IP-6b).
+ * AP-05 IP-6b), `voltpilot.erzeuger_registerbild_v1` bis zum Laufzeitstand
+ * 2026.10.21.1 (EZ-5).
  */
 export const KATALOG_FAMILIEN: readonly string[] = [
   'fronius_solar_api',
@@ -84,6 +85,7 @@ export const KATALOG_FAMILIEN: readonly string[] = [
   'sunspec.model_211',
   'sunspec.model_212',
   'sunspec.model_213',
+  'voltpilot.erzeuger_registerbild_v1',
   'wago.pm494',
   'wago.pm495',
 ];

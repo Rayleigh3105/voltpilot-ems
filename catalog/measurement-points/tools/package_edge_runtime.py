@@ -36,6 +36,8 @@ SQL_BY_RUNTIME_VERSION = {
     "2026.09.23.2": "V20260924021500__measurement_catalog_metadata_runtime_2026_09_23_2.sql",
     # UEMS AP-05 IP-6b: die WAGO-Karten gehen an die Box (wirksam mit dem Box-Release).
     "2026.09.23.3": "V20260924030000__measurement_catalog_metadata_runtime_2026_09_23_3.sql",
+    # EZ-5: das Erzeuger-Registerbild geht an die Box (wirksam mit dem Box-Release).
+    "2026.10.21.1": "V20261021234700__measurement_catalog_metadata_runtime_2026_10_21_1.sql",
 }
 
 
