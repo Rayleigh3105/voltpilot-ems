@@ -162,6 +162,12 @@ class SiteScopeArchitekturTest {
                     Grund.UEBER_MESSKOMPONENTE, "uems/MessstelleFormelWerteRepository.java", "FROM measurement_point mp"),
             new Erlaubt("uems/QuelleAnteilWerte.java", "device_measurement_sample", 1, Grund.UEBER_MESSKOMPONENTE,
                     "uems/QuelleAnteilWerte.java", "measurement_point"),
+            // EZ-6 juengste(): die jüngsten Werte EINER Anlagensteuerung. Die entity_id kommt nur aus STEUERUNG
+            // (geraet und measurement_point, beide mit Standort-Policy) - Werte-Fläche, Geräte-Form und der
+            // erzeuger-Leser der Überwachung reichen nur die dort gelesene Komponente weiter.
+            new Erlaubt("erzeuger/AnlagensteuerungRepository.java", "device_measurement_sample", 1,
+                    Grund.UEBER_MESSKOMPONENTE, "erzeuger/AnlagensteuerungRepository.java",
+                    "JOIN measurement_point m ON m.id = v.entity_id"),
 
             // --- liest je Anlage, zeigt nur sichtbare (Teilansicht der Summen: IP-10)
             new Erlaubt("repo/OverviewRepository.java", "telemetry_rollup_15m", 1, Grund.ZEIGT_NUR_SICHTBARE,
