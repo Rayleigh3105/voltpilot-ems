@@ -168,6 +168,11 @@ class SiteScopeArchitekturTest {
             new Erlaubt("erzeuger/AnlagensteuerungRepository.java", "device_measurement_sample", 1,
                     Grund.UEBER_MESSKOMPONENTE, "erzeuger/AnlagensteuerungRepository.java",
                     "JOIN measurement_point m ON m.id = v.entity_id"),
+            // EZ-10 verlauf(): die Kurven EINER Anlagensteuerung für Verlauf › Messwerte. Der Dienst prüft vorher die
+            // Anlage (404) und nimmt die entity_id nur aus einer Steuerung dieser Anlage (STEUERUNG wie oben).
+            new Erlaubt("erzeuger/AnlagensteuerungRepository.java", "device_measurement_sample", 1,
+                    Grund.ANLAGE_GEPRUEFT, "erzeuger/AnlagensteuerungService.java",
+                    "filter(x -> x.siteId().equals(siteId))"),
 
             // --- liest je Anlage, zeigt nur sichtbare (Teilansicht der Summen: IP-10)
             new Erlaubt("repo/OverviewRepository.java", "telemetry_rollup_15m", 1, Grund.ZEIGT_NUR_SICHTBARE,
