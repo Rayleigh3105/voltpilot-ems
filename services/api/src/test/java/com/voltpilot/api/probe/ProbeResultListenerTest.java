@@ -112,6 +112,45 @@ class ProbeResultListenerTest {
     }
 
     /**
+     * EZ-15: der Erzeuger-Kopf reist wie der WAGO-Kopf als eigener Block, auch neben einer Ablehnung;
+     * Lücke statt Null (ein leerer Name bleibt "", ein fehlender fehlt), fremde Wörter fallen weg.
+     */
+    @Test
+    void anErzeugerHeadTravelsWithUnitsAndNamesAlsoBesideARefusal() throws Exception {
+        CompletableFuture<ProbeResult> f = arm();
+        listener.handle(topic(TENANT, SITE, DEVICE), body(envelope(
+                "{\"id\":\"erreichbarkeit\",\"ok\":true,\"erzeuger_kopf\":{\"signatur_ok\":true,\"erkannt\":true,"
+                        + "\"hauptversion\":1,\"nebenversion\":0,\"te_anzahl\":2,\"herzschlag\":500,"
+                        + "\"programmstand\":2611,\"steuerung_id\":4712,\"anlagenart\":2,\"beschreibung_ab\":140,"
+                        + "\"einheiten\":[{\"einheit\":1,\"art\":2,\"nenn_kw\":66,\"typ_name\":\"MAN E0836LE\"},"
+                        + "{\"einheit\":2,\"art\":7},{\"einheit\":11,\"art\":1}],"
+                        + "\"netzbetreiber_name\":\"N-ERGIE Netz GmbH\",\"direktvermarkter_name\":\"\"}},"
+                        + "{\"id\":\"fremd\",\"ok\":false,\"error_code\":\"invalid_response\",\"message\":\"x\","
+                        + "\"erzeuger_kopf\":{\"signatur_ok\":false,\"erkannt\":false,\"grund\":\"signatur_fremd\"},"
+                        + "\"finding\":{\"channel\":\"erzeuger_kopf\",\"rule\":\"registerbild_unbekannt\"}},"
+                        + "{\"id\":\"halb\",\"ok\":true,\"erzeuger_kopf\":{\"te_anzahl\":2}}")));
+
+        List<ProbeResult.OpResult> zeilen = get(f).results();
+        ProbeResult.ErzeugerKopf kopf = zeilen.get(0).erzeugerKopf();
+        assertThat(zeilen.get(0).ok()).isTrue();
+        assertThat(kopf.teAnzahl()).isEqualTo(2);
+        assertThat(kopf.steuerungId()).isEqualTo(4712L);
+        assertThat(kopf.einheiten()).containsExactly(new ProbeResult.ErzeugerEinheit(1, 2, 66, "MAN E0836LE"),
+                new ProbeResult.ErzeugerEinheit(2, null, null, null));
+        assertThat(kopf.direktvermarkterName()).isEmpty();
+        assertThat(zeilen.get(1).ok()).isFalse();
+        assertThat(zeilen.get(1).errorCode()).isEqualTo("invalid_response");
+        assertThat(zeilen.get(1).erzeugerKopf().grund()).isEqualTo("signatur_fremd");
+        assertThat(zeilen.get(1).erzeugerKopf().teAnzahl()).isNull();
+        assertThat(zeilen.get(2).ok()).isFalse();
+        assertThat(zeilen.get(2).erzeugerKopf()).isNull();
+        assertThat(new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(zeilen.get(0)))
+                .contains("\"erzeuger_kopf\":{\"signatur_ok\":true,\"erkannt\":true", "\"te_anzahl\":2",
+                        "\"typ_name\":\"MAN E0836LE\"", "\"direktvermarkter_name\":\"\"")
+                .doesNotContain("wago_kopf");
+    }
+
+    /**
      * The identity rule of every listener on the device topics: a device may
      * not answer for another one. Both halves are checked - a foreign TOPIC and
      * a payload that disagrees with its own topic.

@@ -32,7 +32,7 @@ import type { AdoptableSource } from './rollen';
 
 export type KatalogKategorie = 'wr' | 'laden' | 'schalten' | 'batterie' | 'zaehler' | 'selbst' | 'weitere';
 export type KatalogChip = 'alle' | KatalogKategorie;
-export type KatalogWeg = 'ocpp' | 'bms' | 'modbus';
+export type KatalogWeg = 'ocpp' | 'bms' | 'modbus' | 'anlagensteuerung';
 
 export const KATEGORIE_LABEL: Record<KatalogKategorie, string> = {
   wr: 'Wechselrichter',
@@ -55,7 +55,7 @@ export const KATEGORIE_SYMBOL: Record<KatalogKategorie, { kategorie: AufbauKateg
   weitere: { kategorie: 'grid', icon: 'cpu' },
 };
 
-/** Die drei Wege ohne Vorlage - im Katalog gewöhnliche Einträge. */
+/** Die Wege ohne Vorlage - im Katalog gewöhnliche Einträge. */
 export const WEGE: Record<
   KatalogWeg,
   { titel: string; zusatz: string; kategorie: KatalogKategorie; stichworte: string }
@@ -79,6 +79,14 @@ export const WEGE: Record<
     zusatz: 'Selbst beschreiben: Adresse, Register, Messwerte',
     kategorie: 'selbst',
     stichworte: 'modbus tcp register eigenbau selbst sensor gerät',
+  },
+  // UEMS EZ-15 (EW-14 A): die Steuerung einer Erzeugeranlage, die das VoltPilot-Registerbild Erzeuger trägt -
+  // das Bild beschreibt die Anlage selbst, darum kein Register von Hand.
+  anlagensteuerung: {
+    titel: 'Anlagensteuerung (SPS mit VoltPilot-Bild)',
+    zusatz: 'BHKW oder PV mit WAGO oder anderem Controller',
+    kategorie: 'weitere',
+    stichworte: 'anlagensteuerung sps wago pfc200 controller bhkw biogas erzeuger',
   },
 };
 

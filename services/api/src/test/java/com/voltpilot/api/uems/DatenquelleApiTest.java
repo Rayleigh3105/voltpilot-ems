@@ -941,6 +941,58 @@ class DatenquelleApiTest {
         verify(probes, never()).probeBox(any(), any(ProbePublisher.WagoKopfOp.class), anyList(), any());
     }
 
+    /**
+     * UEMS EZ-15: der Anlege-Schritt „Steuerung verbinden“ prüft über denselben Weg mit {@code op: erzeuger_kopf}.
+     * Die Cloud schickt den Kopf-Schritt (Registerart ohne Angabe FC4, EW-2 A), wertet nur die Erreichbarkeit und
+     * reicht den gelesenen Block unverändert in {@code antwort} durch — ohne WAGO-Block, ohne Lese-Schritt.
+     */
+    @Test
+    void dieErzeugerPruefungSchicktDenKopfUndReichtDenBlockDurch() throws Exception {
+        Welt w = new Welt("Ahrenberg Erzeuger-Prüfung");
+        UUID dq4 = w.quelleAusReferenz("DQ-4", OffsetDateTime.parse("2027-04-09T09:00:00+02:00").toInstant());
+        UUID halle2 = w.anlage("AN-2");
+        UUID e2neu = w.box("E-2′");
+        Wer jonas = kunde(w.mandant, "Jonas Wendlinger");
+        String pfad = basis(halle2) + "/" + dq4;
+        UHR.stelle("2027-04-09T09:00:00+02:00");
+        Map<String, Object> erzeuger = Map.of("device_id", e2neu, "op", "erzeuger_kopf", "unit_id", 1, "register", 0,
+                "word_order", "big");
+        when(probes.probeBox(eq(e2neu), any(ProbePublisher.ErzeugerKopfOp.class), anyList(), any()))
+                .thenReturn(Optional.of(new ProbeResult("e25a0b9c3e77d301", null, null, List.of(
+                        OpResult.ausErzeugerKopf("erreichbarkeit", true, null, null, null, new ProbeResult.ErzeugerKopf(
+                                true, true, null, 1, 0, 2, 500, 2611, 4712L, 2, 140, List.of(
+                                        new ProbeResult.ErzeugerEinheit(1, 2, 66, "MAN E0836LE"),
+                                        new ProbeResult.ErzeugerEinheit(2, 2, 33, "KW Energie Smartblock 33")),
+                                "N-ERGIE Netz GmbH", "WVV (Stadtwerke Würzburg)"))))));
+
+        Antwort erkannt = ruf(jonas, HttpMethod.POST, pfad + "/reachability-check", erzeuger);
+        assertThat(erkannt.status()).isEqualTo(200);
+        assertThat(erkannt.body().get("ergebnis").asText()).isEqualTo("ok");
+        assertThat(erkannt.body().get("gewertet").asBoolean()).isTrue();
+        assertThat(erkannt.body().has("wago")).isFalse();
+        JsonNode block = erkannt.body().get("antwort").get("results").get(0).get("erzeuger_kopf");
+        assertThat(block.get("te_anzahl").asInt()).isEqualTo(2);
+        assertThat(block.get("steuerung_id").asLong()).isEqualTo(4712L);
+        assertThat(block.get("einheiten").get(1).get("typ_name").asText()).isEqualTo("KW Energie Smartblock 33");
+        assertThat(block.get("netzbetreiber_name").asText()).isEqualTo("N-ERGIE Netz GmbH");
+
+        ArgumentCaptor<ProbePublisher.KopfOp> kopf = ArgumentCaptor.forClass(ProbePublisher.KopfOp.class);
+        verify(probes).probeBox(eq(e2neu), kopf.capture(), anyList(), eq("sub-jonas-wendlinger"));
+        assertThat(kopf.getValue()).isEqualTo(new ProbePublisher.ErzeugerKopfOp("erreichbarkeit", "192.168.20.10",
+                502, 1, "input", 0, "big"));
+        verify(probes, never()).probeBox(any(), anyList(), any());
+        JsonNode eintrag = ruf(jonas, HttpMethod.GET, pfad + "/history", null).body().get("eintraege").get(0);
+        assertThat(eintrag.get("art").asText()).isEqualTo("erreichbarkeit_geprueft");
+        assertThat(eintrag.get("neu").get("op").asText()).isEqualTo("erzeuger_kopf");
+
+        // Kein Datentyp am Kopf - benannt statt geraten.
+        Map<String, Object> mitTyp = new LinkedHashMap<>(erzeuger);
+        mitTyp.put("data_type", "u16");
+        Antwort typ = ruf(jonas, HttpMethod.POST, pfad + "/reachability-check", mitTyp);
+        assertThat(typ.status()).isEqualTo(400);
+        assertThat(typ.body().get("feld").asText()).isEqualTo("data_type");
+    }
+
     // ============================================================ Bearbeiten · Urheber
 
     /**

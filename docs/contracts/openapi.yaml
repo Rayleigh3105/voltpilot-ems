@@ -10408,6 +10408,11 @@ paths:
         gemeldeter Karte Steckplatz, Kartentyp und Variante (u16-Lesungen, zwei Karten
         je Probe, höchstens 32 Karten). Gewertet wird allein der Kopf; die Antwort trägt
         dann zusätzlich `wago`. Eine Lese-Prüfung antwortet unverändert.
+        `op: erzeuger_kopf` (UEMS EZ-15, nur Modbus TCP): die Box liest Kopf, Einheiten
+        und Namen eines VoltPilot-Registerbilds Erzeuger v1 an der Basisadresse `register`
+        (ohne `data_type`, `register_kind` ohne Angabe `input`); der Block `erzeuger_kopf`
+        steht unverändert in `antwort.results[]` - das Portal deutet ihn (Anlege-Schritt
+        „Steuerung verbinden“).
       requestBody:
         required: true
         content:
@@ -23955,6 +23960,14 @@ components:
           type: string
           enum: [invalid_request, unreachable, no_answer, invalid_response, implausible, timeout, not_supported, rate_limited]
         message: { type: string }
+        erzeuger_kopf:
+          type: object
+          additionalProperties: true
+          description: >
+            Nur bei op erzeuger_kopf (UEMS EZ-5/EZ-15): Kopf, Einheiten und Namen eines
+            VoltPilot-Registerbilds Erzeuger v1, wie die Box sie gelesen hat - Form
+            `op_result.erzeuger_kopf` in docs/contracts/mqtt-probe.schema.json; steht auch bei
+            ok=false, wenn die Box wirklich gelesen hat.
         samples:
           type: array
           maxItems: 16
@@ -35352,12 +35365,12 @@ components:
           type: string
           enum: [u16, s16, u32, s32, float32, uint16, int16, uint32, int32]
           description: "Das Wort des Probe-Vertrags oder die Katalog-Schreibweise (uint16 → u16, int16 → s16, uint32 → u32, int32 → s32); zur Box geht immer das Vertragswort. Bei op wago_kopf nicht erlaubt (400)."
-        word_order: { type: string, enum: [big, little], description: "Bei op wago_kopf mit Vorgabe big." }
+        word_order: { type: string, enum: [big, little], description: "Bei op wago_kopf und erzeuger_kopf mit Vorgabe big." }
         op:
           type: string
-          enum: [read, wago_kopf]
+          enum: [read, wago_kopf, erzeuger_kopf]
           default: read
-          description: "read = EIN Lese-Schritt; wago_kopf = der Kopf eines VoltPilot-Registerbilds WAGO v1 an der Basisadresse register (AP-05)."
+          description: "read = EIN Lese-Schritt; wago_kopf = der Kopf eines VoltPilot-Registerbilds WAGO v1 an der Basisadresse register (AP-05); erzeuger_kopf = Kopf, Einheiten und Namen eines VoltPilot-Registerbilds Erzeuger v1 (UEMS EZ-15)."
     DatenquellePruefergebnis:
       type: object
       required: [box, adresse, ergebnis, gewertet, text, zeitpunkt, dauer_ms, antwort]
@@ -36083,6 +36096,21 @@ components:
         veraltet_netzpunkt_s: { type: integer, minimum: 1, maximum: 65534, nullable: true, description: "Vorgabe 30." }
         programmstand_soll: { type: integer, minimum: 1, maximum: 9912, nullable: true, description: "Erwarteter Programmstand JJMM (UEMS EZ-16); leer = folgt der VoltPilot-Bibliothek." }
         einheiten: { type: array, minItems: 1, maxItems: 10, items: { $ref: "#/components/schemas/ErzeugungseinheitNeu" } }
+        netz_vermarktung:
+          allOf: [{ $ref: "#/components/schemas/NetzVermarktungVorbelegen" }]
+          nullable: true
+          description: "UEMS EZ-15: Erstbelegung Netz und Vermarktung aus dem Anlege-Schritt; belegt nur Felder, die an der Anlage noch leer sind."
+    NetzVermarktungVorbelegen:
+      type: object
+      description: >
+        Netz und Vermarktung aus dem Anlege-Schritt „Steuerung verbinden“ (UEMS EZ-15, Recht
+        geraet.einrichten): je Feld nur, wenn es an der Anlage noch leer ist - ein gepflegter
+        Eintrag wird nie überschrieben (ändern über PUT …/netz-vermarktung, anlage.verwalten).
+      properties:
+        direktvermarkter: { type: string, maxLength: 120, nullable: true }
+        direktvermarkter_kanal: { type: string, enum: [keiner, relais_ma, modbus, null], nullable: true }
+        einspeisemanagement: { type: string, enum: [statisch, stufen, fernwirk, null], nullable: true }
+        einspeisemanagement_prozent: { type: number, minimum: 0, maximum: 100, nullable: true, description: "Nur zum statischen Einspeisemanagement." }
     ErzeugungseinheitNeu:
       type: object
       required: [te_nr]

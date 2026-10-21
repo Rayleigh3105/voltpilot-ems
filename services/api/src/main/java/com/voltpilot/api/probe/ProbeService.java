@@ -247,10 +247,11 @@ public class ProbeService {
     }
 
     /**
-     * Wie oben, mit dem Op {@code wago_kopf} als erstem Schritt (AP-05, Soll-Lesung am
-     * WAGO-Gerät). Dieselbe Box-Auflösung, derselbe Umschlag, dieselbe kurze Wartezeit.
+     * Wie oben, mit einem Kopf-Schritt ({@code wago_kopf}, AP-05, Soll-Lesung am WAGO-Gerät, oder
+     * {@code erzeuger_kopf}, EZ-15) als erstem Schritt. Dieselbe Box-Auflösung, derselbe Umschlag,
+     * dieselbe kurze Wartezeit.
      */
-    public Optional<ProbeResult> probeBox(UUID boxId, ProbePublisher.WagoKopfOp kopf,
+    public Optional<ProbeResult> probeBox(UUID boxId, ProbePublisher.KopfOp kopf,
             List<ProbeRequest.Op> ops, String requestedBy) {
         UUID tenantId = TenantContext.get();
         if (tenantId == null) {

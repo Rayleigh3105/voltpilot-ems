@@ -128,7 +128,7 @@ class VorgabenDbTest {
         }
         AnlagensteuerungDto.Anlagensteuerung s = als(w.tenant(), () -> anlagen.anlegen(w.site(),
                 new AnlagensteuerungDto.Anlegen(w.quelle(), 1, "Anlagensteuerung Gore", "WAGO", "PFC200 750-8212",
-                        null, null, null, "pv", null, null, null, null, einheiten), "sub-einrichter"));
+                        null, null, null, "pv", null, null, null, null, einheiten, null), "sub-einrichter"));
         // Die Wechselgrenze (uems_wechsel_grenze) lässt nur künftige Wechsel berichtigen; der Test datiert die
         // Bindung zurück, damit es schon gespeicherte Werte gibt — ohne Trigger, in derselben Sitzung.
         root.execute("SET session_replication_role = replica; UPDATE geraet_komponente "

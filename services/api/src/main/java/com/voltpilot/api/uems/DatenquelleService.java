@@ -95,6 +95,8 @@ public class DatenquelleService {
 
     /** Der Prüf-Schritt einer WAGO-Steuerung ({@code op: wago_kopf} des Probe-Vertrags, AP-05 IP-7). */
     static final String WAGO_KOPF = "wago_kopf";
+    /** Der Prüf-Schritt einer Anlagensteuerung mit Erzeuger-Bild ({@code op: erzeuger_kopf}, UEMS EZ-15). */
+    static final String ERZEUGER_KOPF = "erzeuger_kopf";
 
     /**
      * Höchstens so viele Karten liest die WAGO-Prüfung nach dem Kopf (zwei je Probe) — eine
@@ -293,6 +295,11 @@ public class DatenquelleService {
      * <p>Bei {@code op: wago_kopf} (AP-05) ist der Schritt der Kopf des WAGO-Registerbilds — über
      * denselben Probe-Weg wie die Soll-Lesung ({@link WagoSollLesung}); nur hinter einem erkannten
      * v1-Kopf liest die Box danach je Karte die drei Kennwörter. Gewertet wird allein der Kopf.
+     *
+     * <p>Bei {@code op: erzeuger_kopf} (UEMS EZ-15, Anlege-Schritt „Steuerung verbinden“) liest die Box Kopf,
+     * Einheiten und Namen eines VoltPilot-Registerbilds Erzeuger v1; die Antwort trägt den Block
+     * {@code erzeuger_kopf} unverändert in {@code antwort} — das Portal deutet ihn, die Cloud wertet nur
+     * die Erreichbarkeit.
      */
     public DatenquelleDto.Pruefergebnis pruefen(UUID siteId, UUID id, DatenquelleDto.Pruefen p,
             ProtokollAkteur wer) {
@@ -301,16 +308,17 @@ public class DatenquelleService {
         if (p.deviceId() == null) {
             throw DatenquelleAbgelehnt.anfrage("device_id", "Welche Box soll die Quelle prüfen?");
         }
-        if (p.op() != null && !p.op().equals("read") && !p.op().equals(WAGO_KOPF)) {
-            throw DatenquelleAbgelehnt.anfrage("op", "Der Prüf-Schritt ist „read“ oder „wago_kopf“.");
+        if (p.op() != null && !p.op().equals("read") && !p.op().equals(WAGO_KOPF) && !p.op().equals(ERZEUGER_KOPF)) {
+            throw DatenquelleAbgelehnt.anfrage("op", "Der Prüf-Schritt ist „read“, „wago_kopf“ oder „erzeuger_kopf“.");
         }
         boolean wago = WAGO_KOPF.equals(p.op());
+        boolean mitKopf = wago || ERZEUGER_KOPF.equals(p.op());
         UUID mandant = mandant();
         Box box = boxImZaun(p.deviceId(), boxen());
-        ProbeRequest.Op schritt = wago ? null : leseSchritt(q, p);
-        ProbePublisher.WagoKopfOp kopf = wago ? kopfSchritt(q, p) : null;
+        ProbeRequest.Op schritt = mitKopf ? null : leseSchritt(q, p);
+        ProbePublisher.KopfOp kopf = mitKopf ? kopfSchritt(q, p) : null;
         long start = System.nanoTime();
-        Optional<ProbeResult> antwort = wago
+        Optional<ProbeResult> antwort = mitKopf
                 ? probes.probeBox(box.id(), kopf, List.of(), wer.sub())
                 : probes.probeBox(box.id(), List.of(schritt), wer.sub());
         long dauerMs = (System.nanoTime() - start) / 1_000_000;
@@ -321,13 +329,14 @@ public class DatenquelleService {
             neu.put("protokoll", q.protokoll());
             neu.put("adresse", q.adresse());
             neu.put("dauer_ms", dauerMs);
-            if (wago) {
-                neu.put("op", WAGO_KOPF);
+            if (mitKopf) {
+                neu.put("op", kopf.op());
             }
             eintragen(mandant, q.id(), "erreichbarkeit_geprueft", box.id(), b.ergebnis(), null, neu,
                     minute(jetzt), wer);
         }
-        DatenquelleDto.WagoPruefung wagoErgebnis = wago ? wagoKopfUndKarten(box.id(), kopf, antwort, wer) : null;
+        DatenquelleDto.WagoPruefung wagoErgebnis = wago
+                ? wagoKopfUndKarten(box.id(), (ProbePublisher.WagoKopfOp) kopf, antwort, wer) : null;
         return new DatenquelleDto.Pruefergebnis(dto(box.id(), Map.of(box.id(), box)), q.adresse(),
                 b.ergebnis(), b.gewertet(), b.text(), jetzt, dauerMs, antwort.orElse(null), wagoErgebnis);
     }
@@ -793,15 +802,18 @@ public class DatenquelleService {
     }
 
     /**
-     * Der Kopf-Schritt der WAGO-Prüfung ({@code op: wago_kopf}): Host und Port von der Quelle,
-     * Basisadresse ({@code register}), Registerart und Wortfolge sind Parameter je Anlage
-     * (Registerbild-Vertrag §2). Das Registerbild ist ein Modbus-TCP-Wortbereich mit festem
-     * Aufbau — darum weder SunSpec noch ein Datentyp.
+     * Der Kopf-Schritt der WAGO-Prüfung ({@code op: wago_kopf}) oder der Anlagensteuerung
+     * ({@code op: erzeuger_kopf}, EZ-15): Host und Port von der Quelle, Basisadresse ({@code register}),
+     * Registerart und Wortfolge sind Parameter je Anlage (Registerbild-Vertrag §2). Das Registerbild ist
+     * ein Modbus-TCP-Wortbereich mit festem Aufbau — darum weder SunSpec noch ein Datentyp. Ohne Angabe
+     * gilt beim WAGO-Bild FC3, beim Erzeuger-Bild FC4 (EW-2 A).
      */
-    private static ProbePublisher.WagoKopfOp kopfSchritt(Datenquelle q, DatenquelleDto.Pruefen p) {
+    private static ProbePublisher.KopfOp kopfSchritt(Datenquelle q, DatenquelleDto.Pruefen p) {
+        boolean erzeuger = ERZEUGER_KOPF.equals(p.op());
+        String bild = erzeuger ? "Erzeuger-Registerbilds" : "WAGO-Registerbilds";
         Protokoll proto = Protokoll.vonCode(q.protokoll()).orElseThrow();
         if (proto == Protokoll.SUNSPEC_MODBUS) {
-            throw DatenquelleAbgelehnt.anfrage("op", "Den Kopf eines WAGO-Registerbilds liest die Box nur über Modbus TCP.");
+            throw DatenquelleAbgelehnt.anfrage("op", "Den Kopf eines " + bild + " liest die Box nur über Modbus TCP.");
         }
         if (proto != Protokoll.MODBUS_TCP) {
             leseSchritt(q, p); // derselbe benannte Ausgang (422) wie bei jeder Quelle ohne Prüf-Schritt
@@ -812,7 +824,7 @@ public class DatenquelleService {
         if (p.register() == null || p.register() < 0 || p.register() > 65_535) {
             throw DatenquelleAbgelehnt.anfrage("register", "Unter welcher Basisadresse (0 bis 65535) beginnt das Registerbild?");
         }
-        String art = p.registerKind() == null ? "holding" : p.registerKind();
+        String art = p.registerKind() == null ? erzeuger ? "input" : "holding" : p.registerKind();
         if (!art.equals("holding") && !art.equals("input")) {
             throw DatenquelleAbgelehnt.anfrage("register_kind", "Die Registerart ist „holding“ oder „input“.");
         }
@@ -824,8 +836,11 @@ public class DatenquelleService {
             throw DatenquelleAbgelehnt.anfrage("word_order", "Die Wortfolge ist „big“ oder „little“.");
         }
         DatenquelleAdresse.HostPort hp = DatenquelleAdresse.hostPort(q.adresse());
-        return new ProbePublisher.WagoKopfOp(PRUEF_SCHRITT, hp.host(), hp.port(), p.unitId(), art, p.register(),
-                wortfolge);
+        return erzeuger
+                ? new ProbePublisher.ErzeugerKopfOp(PRUEF_SCHRITT, hp.host(), hp.port(), p.unitId(), art,
+                        p.register(), wortfolge)
+                : new ProbePublisher.WagoKopfOp(PRUEF_SCHRITT, hp.host(), hp.port(), p.unitId(), art, p.register(),
+                        wortfolge);
     }
 
     // ------------------------------------------------------------------ Gerüst

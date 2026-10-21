@@ -91,9 +91,12 @@ public class ProbePublisher {
         publish(tenantId, siteId, deviceId, requestId, requestedAt, requestedBy, null, ops);
     }
 
-    /** Wie oben, mit dem WAGO-Kopf als ERSTEM Schritt (AP-05 IP-7, Soll-Lesung am Gerät). */
+    /**
+     * Wie oben, mit einem Kopf-Schritt als ERSTEM Schritt: dem WAGO-Kopf (AP-05 IP-7, Soll-Lesung am
+     * Gerät) oder dem Kopf des Erzeuger-Bilds (EZ-15, Anlege-Schritt „Steuerung verbinden“).
+     */
     public synchronized void publish(UUID tenantId, UUID siteId, UUID deviceId,
-            String requestId, Instant requestedAt, String requestedBy, WagoKopfOp kopf,
+            String requestId, Instant requestedAt, String requestedBy, KopfOp kopf,
             List<ProbeRequest.Op> ops) throws Exception {
         String topic = probeTopic(tenantId, siteId, deviceId);
         MqttMessage message = new MqttMessage(
@@ -152,12 +155,52 @@ public class ProbePublisher {
     }
 
     /**
+     * Ein Kopf-Schritt vor den Lese-Schritten: {@code wago_kopf} oder {@code erzeuger_kopf}. Beide
+     * tragen dieselben Parameter (Basisadresse, Registerart, Wortfolge je Anlage) und keinen Datentyp.
+     */
+    public sealed interface KopfOp permits WagoKopfOp, ErzeugerKopfOp {
+        /** Das Vertragswort des Ops. */
+        String op();
+
+        String id();
+
+        String host();
+
+        Integer port();
+
+        Integer unitId();
+
+        String registerKind();
+
+        int address();
+
+        String wordOrder();
+    }
+
+    /**
      * Der Op {@code wago_kopf} (Vertrag {@code op_wago_kopf}): liest NUR die zwölf Kopfwörter
      * eines VoltPilot-Registerbilds WAGO v1. Basisadresse, Registerart und Wortfolge sind
      * Parameter der Anlage; das Typenschild wird nie erfragt — es ist nie ein Identitätsbeweis.
      */
     public record WagoKopfOp(String id, String host, Integer port, Integer unitId,
-            String registerKind, int address, String wordOrder) {
+            String registerKind, int address, String wordOrder) implements KopfOp {
+        @Override
+        public String op() {
+            return "wago_kopf";
+        }
+    }
+
+    /**
+     * Der Op {@code erzeuger_kopf} (Vertrag {@code op_erzeuger_kopf}, UEMS EZ-5/EZ-15): liest Kopf,
+     * Art und Nennleistung je Einheit und die Namen eines VoltPilot-Registerbilds Erzeuger v1 —
+     * keinen Messwert. Der Anlege-Schritt „Steuerung verbinden“ fragt ihn über die Datenquellen-Prüfung.
+     */
+    public record ErzeugerKopfOp(String id, String host, Integer port, Integer unitId,
+            String registerKind, int address, String wordOrder) implements KopfOp {
+        @Override
+        public String op() {
+            return "erzeuger_kopf";
+        }
     }
 
     /**
@@ -293,11 +336,11 @@ public class ProbePublisher {
     }
 
     static byte[] envelope(UUID tenantId, UUID siteId, UUID deviceId, String requestId,
-            Instant requestedAt, String requestedBy, WagoKopfOp kopf, List<ProbeRequest.Op> ops) {
+            Instant requestedAt, String requestedBy, KopfOp kopf, List<ProbeRequest.Op> ops) {
         StringBuilder sb = header(tenantId, siteId, deviceId, requestId, requestedAt, requestedBy);
         sb.append(",\"ops\":[");
         if (kopf != null) {
-            sb.append("{\"op\":\"wago_kopf\",\"transport\":\"modbus_tcp\"")
+            sb.append("{\"op\":\"").append(kopf.op()).append("\",\"transport\":\"modbus_tcp\"")
                     .append(",\"id\":\"").append(esc(kopf.id())).append('"')
                     .append(",\"host\":\"").append(esc(kopf.host().trim())).append('"')
                     .append(",\"port\":").append(kopf.port() == null ? 502 : kopf.port())

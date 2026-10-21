@@ -72,6 +72,7 @@ class AnlagensteuerungSchnittstelleVertragTest {
     void jedeAnfrageformIstDieDerOpenApi() {
         for (Object[] paar : new Object[][] {
                 {"AnlagensteuerungAnlegen", AnlagensteuerungDto.Anlegen.class},
+                {"NetzVermarktungVorbelegen", AnlagensteuerungDto.NetzVermarktungVorbelegen.class},
                 {"ErzeugungseinheitNeu", AnlagensteuerungDto.NeueEinheit.class},
                 {"ErzeugungseinheitAendern", AnlagensteuerungDto.EinheitAendern.class},
                 {"ErzeugerNamenAusBild", AnlagensteuerungDto.NamenAusBild.class},

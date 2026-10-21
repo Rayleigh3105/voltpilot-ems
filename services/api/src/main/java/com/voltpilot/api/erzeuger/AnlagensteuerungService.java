@@ -214,6 +214,14 @@ public class AnlagensteuerungService {
         if (in.programmstandSoll() != null && !Programmstand.gueltig(in.programmstandSoll())) {
             throw bad("programmstand_soll ist ein Stand JJMM (2610 = Oktober 2026).");
         }
+        AnlagensteuerungDto.NetzVermarktungVorbelegen nv = in.netzVermarktung();
+        String nvKanal = nv == null || nv.direktvermarkterKanal() == null ? null
+                : wort(nv.direktvermarkterKanal(), DV_KANAELE, "direktvermarkter_kanal");
+        String nvEm = nv == null || nv.einspeisemanagement() == null ? null
+                : wort(nv.einspeisemanagement(), EINSPEISEMANAGEMENT, "einspeisemanagement");
+        if (nv != null && nv.einspeisemanagementProzent() != null && !"statisch".equals(nvEm)) {
+            throw bad("Eine Prozentgrenze gehört nur zum statischen Einspeisemanagement.");
+        }
 
         Quelle q = repo.quelle(in.dataSourceId()).filter(x -> x.siteId().equals(siteId))
                 .orElseThrow(() -> nichtGefunden("Datenquelle an dieser Anlage nicht gefunden."));
@@ -256,6 +264,10 @@ public class AnlagensteuerungService {
                 anlagenart, in.steuerungKennung(), in.rseStufen(),
                 in.veraltetNetzpunktS() == null ? 30 : in.veraltetNetzpunktS(), in.programmstandSoll(), ab, subject);
         repo.stammdatenSicherstellen(tenant, siteId, subject);
+        if (nv != null) {
+            repo.stammdatenVorbelegen(siteId, leer(nv.direktvermarkter()), nvKanal, nvEm,
+                    nv.einspeisemanagementProzent(), subject);
+        }
         return dto(repo.steuerung(g.geraetId()).orElseThrow());
     }
 
