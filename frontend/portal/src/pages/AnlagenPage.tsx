@@ -96,7 +96,7 @@ import { GroessenWahl, type RasterGroesse } from '../components/kacheln/Kachel';
 import type { KachelAuftrag } from '../components/kacheln/CockpitKacheln';
 import { jetztFluss } from '../flussJetzt';
 import { steuerSpalten } from '../kacheln';
-import type { ErzeugerJetzt } from '../api';
+import type { ErzeugerJetzt, ErzeugerVorgabenHeute } from '../api';
 import type { Programmstand } from '../programmstand';
 import type { WeatherPoint } from '../api';
 import {
@@ -890,6 +890,25 @@ export function AnlageSeite({
     );
     return () => {
       aktiv = false;
+    };
+  }, [site.id, erzSteuerungId]);
+  // „Wer hat heute geregelt?“ (EZ-9): die heutigen Vorgaben vom Server (EZ-7) statt der Zustandswechsel im Portal -
+  // im Listentakt, aus einem eigenen Stück (nur Anlagen mit Anlagensteuerung laden es).
+  const [erzHeute, setErzHeute] = useState<ErzeugerVorgabenHeute | null>(null);
+  useEffect(() => {
+    setErzHeute(null);
+    if (!erzSteuerungId) return undefined;
+    let ab: (() => void) | null = null;
+    let aktiv = true;
+    import('../erzeugerVorgabenApi').then(
+      (m) => {
+        if (aktiv) ab = m.heuteAbonnieren(site.id, setErzHeute, LIST_POLL_MS);
+      },
+      () => {},
+    );
+    return () => {
+      aktiv = false;
+      ab?.();
     };
   }, [site.id, erzSteuerungId]);
   // Die Ladepunkte (Lastmanagement Stufe 3) - fail-soft wie jeder additive
@@ -1859,7 +1878,7 @@ export function AnlageSeite({
   const erzStatus = erzLage && E ? E.erzeugerStatus(erzLage) : [];
   const erzTagesbeginn = new Date(now);
   erzTagesbeginn.setHours(0, 0, 0, 0);
-  const erzGeregelt = erzeugerJetzt && erzLage && E ? E.werHatGeregelt(erzeugerJetzt, erzLage, erzTagesbeginn.getTime(), now.getTime()) : null;
+  const erzGeregelt = erzLage && E ? E.geregeltHeute(erzHeute, erzLage, erzTagesbeginn.getTime()) : null;
   const erzBuehne = erzeugerJetzt && erzLage && E ? E.erzeugerBuehne(erzeugerJetzt, erzLage, buehneTag, now) : null;
   // Die Kette gilt für Anlagen, die VoltPilot nur liest; eine Speicheranlage behält ihre Steuerzeile.
   const erzZeile =

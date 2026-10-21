@@ -1,6 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { ladeCsv } from '../ladeCsv';
 import type { HistoryRange, Site } from '../api';
+import { erzeugerVorgabenApi, ladeVorgabenCsv } from '../erzeugerVorgabenApi';
 import { isoDate, periodLabel } from '../periodNav';
 import { parseVerlaufParams } from '../verlauf';
 import {
@@ -301,6 +302,28 @@ export function MesswerteSection({
     [bilanz, zeigeZeitraum],
   );
 
+  // Die Vorgaben einer Erzeugeranlage (EZ-9): ihr Detail je Zeile und „Vorgaben als CSV“ für den Zeitraum der Ansicht.
+  const ladeVorgabe = useCallback((id: string) => erzeugerVorgabenApi.detail(site.id, id), [site.id]);
+  const vorgabenCsv = history?.vorgaben
+    ? () => ladeVorgabenCsv(site.id, history.from, history.to, csvDateiname('vorgaben', site.name, range, at))
+    : undefined;
+  const ereignisKarte = spur && (
+    <EreignisKarte
+      key={`${range}-${at}`}
+      spur={spur}
+      gruppen={chronik}
+      range={range}
+      streifenZellen={streifenZellen}
+      filter={ereignisFilter}
+      onFilter={setEreignisFilter}
+      fokus={ereignisFokus}
+      onFokus={setEreignisFokus}
+      onOeffnen={range === 'day' ? undefined : oeffneEreignis}
+      ladeVorgabe={ladeVorgabe}
+      onVorgabenCsv={vorgabenCsv}
+    />
+  );
+
   const t = chartTheme();
   const abdeckung = abdeckungView(history && !stale ? history.coverage : null);
   const stand = laeuft ? standTime(history?.coverage?.lastDataAt ?? null, now) : null;
@@ -385,14 +408,18 @@ export function MesswerteSection({
             </VrKarte>
           ) : null
         ) : leer ? (
-          <VrKarte titel={TITEL[range]}>
-            <VerlaufLeer
-              label="Keine Messwerte in diesem Zeitraum"
-              satz={`Für ${label} liegen keine Messwerte vor.`}
-              weg={letzterTag ? 'Zum letzten Tag mit Daten ›' : undefined}
-              onWeg={letzterTag ? () => oeffneTag(letzterTag) : undefined}
-            />
-          </VrKarte>
+          <>
+            <VrKarte titel={TITEL[range]}>
+              <VerlaufLeer
+                label="Keine Messwerte in diesem Zeitraum"
+                satz={`Für ${label} liegen keine Messwerte vor.`}
+                weg={letzterTag ? 'Zum letzten Tag mit Daten ›' : undefined}
+                onWeg={letzterTag ? () => oeffneTag(letzterTag) : undefined}
+              />
+            </VrKarte>
+            {/* Eine Erzeugeranlage hat keine Hausbilanz, aber Vorgaben (EZ-9): die Karte steht trotzdem. */}
+            {history.vorgaben && ereignisKarte}
+          </>
         ) : (
           <>
             {err && stale && <PeriodeFehlgeschlagen periode={label} onRetry={retry} />}
@@ -501,20 +528,7 @@ export function MesswerteSection({
                     )
                   )}
                 </VrKarte>
-                {spur && (
-                  <EreignisKarte
-                    key={`${range}-${at}`}
-                    spur={spur}
-                    gruppen={chronik}
-                    range={range}
-                    streifenZellen={streifenZellen}
-                    filter={ereignisFilter}
-                    onFilter={setEreignisFilter}
-                    fokus={ereignisFokus}
-                    onFokus={setEreignisFokus}
-                    onOeffnen={range === 'day' ? undefined : oeffneEreignis}
-                  />
-                )}
+                {ereignisKarte}
               </div>
               <div className="vp-vr-col">
                 <QuotenKarte quoten={quoten} />

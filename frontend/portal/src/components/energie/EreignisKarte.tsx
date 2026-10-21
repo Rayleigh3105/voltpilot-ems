@@ -1,19 +1,22 @@
 import { useMemo, useState, type CSSProperties } from 'react';
-import type { HistoryRange } from '../../api';
+import type { ErzeugerVorgabeDetail, HistoryRange } from '../../api';
 import {
   EREIGNIS_ARTEN,
   SPUR_HINWEIS_KURZ,
   ereignisArten,
+  vorgabenTeile,
   type ChronikGruppe,
   type ChronikZeile,
   type EreignisArt,
   type EreignisSpurView,
   type EreignisZelle,
+  type VorgabenTeil,
 } from '../../historieEreignisse';
 import { useIsPhone } from '../../useIsPhone';
 import { VrKarte, VrUmschalter } from '../VerlaufRahmen';
 import type { EreignisFokus } from './EreignisSpurRahmen';
 import { EreignisSymbol } from './EreignisSymbol';
+import { VorgabeDetail } from './VorgabeDetail';
 
 /**
  * **Die Ereignisse des Zeitraums** (Konzept `data/vp-verlauf-ereignisse-k1`)
@@ -29,6 +32,12 @@ import { EreignisSymbol } from './EreignisSymbol';
  *
  * Ab der Woche öffnet eine Zeile ihren Tag (im Jahr ihren Monat). Am Tag gibt
  * es nichts Feineres zu öffnen; dort klappt der Abendverkauf seine Fakten auf.
+ *
+ * **Vorgaben einer Erzeugeranlage** (UEMS EZ-9, EW-12 A): Netzbetreiber,
+ * Direktvermarkter und „nicht bereit“ sind Arten wie die anderen. Am Tag klappt
+ * eine Vorgabe ihr Detail mit Rohsignalen und Zählerständen auf; „Nach Art“
+ * zählt sie über den Zeitraum (je Einheit aufklappbar, im Jahr je Monat), und
+ * „Vorgaben als CSV“ lädt die Chronik der Vorgaben des Zeitraums.
  */
 
 type Ansicht = 'liste' | 'art';
@@ -70,6 +79,8 @@ export function EreignisKarte({
   fokus,
   onFokus,
   onOeffnen,
+  ladeVorgabe,
+  onVorgabenCsv,
 }: {
   spur: EreignisSpurView;
   /** `ereignisChronik(spur, range)` — dieselben Gruppen wie die Spur. */
@@ -83,12 +94,19 @@ export function EreignisKarte({
   onFokus: (f: EreignisFokus | null) => void;
   /** Der Sprung in den Tag bzw. Monat — fehlt er, sind die Zeilen ruhige Information. */
   onOeffnen?: (sprung: NonNullable<ChronikGruppe['sprung']>) => void;
+  /** Das Detail einer Vorgabe (EZ-7) — fehlt es, bleibt die Zeile ruhige Information. */
+  ladeVorgabe?: (id: string) => Promise<ErzeugerVorgabeDetail>;
+  /** „Vorgaben als CSV“ für den Zeitraum der Ansicht — nur bei einer Anlage mit Anlagensteuerung. */
+  onVorgabenCsv?: () => Promise<void>;
 }) {
   const [ansicht, setAnsicht] = useState<Ansicht>('liste');
   const [alle, setAlle] = useState(false);
   const [offen, setOffen] = useState<string | null>(null);
+  const [jeEinheit, setJeEinheit] = useState(false);
+  const [csv, setCsv] = useState<'bereit' | 'laedt' | 'fehler'>('bereit');
   const phone = useIsPhone();
   const arten = useMemo(() => ereignisArten(spur, range, streifenZellen), [spur, range, streifenZellen]);
+  const teile = useMemo(() => vorgabenTeile(spur), [spur]);
   const leer = spur.chips.length === 0;
 
   const erklaerung = {
@@ -125,21 +143,25 @@ export function EreignisKarte({
   const mehrWort = range === 'year' ? 'Monate' : range === 'day' ? 'Ereignisse' : 'Tage';
 
   const zeile = (g: ChronikGruppe, z: ChronikZeile) => {
-    const aufklappbar = !g.sprung && z.fakten.length > 0;
+    const vorgabeId = !g.sprung && ladeVorgabe ? (z.vorgabe?.id ?? null) : null;
+    const aufklappbar = !g.sprung && (z.fakten.length > 0 || vorgabeId != null);
     const istOffen = offen === z.key;
     const an = !!fokus && fokus.key === g.key && (!fokus.art || fokus.art === z.art);
     const inhalt = (
       <>
         <Symbol art={z.art} />
         <span className="vp-vr-zeile-mitte">
-          <span className="vp-vr-zeile-titel">{z.info.label}</span>
+          <span className="vp-vr-zeile-titel">{z.titel ?? z.info.label}</span>
           {/* „geplant" steht vor der Meta-Zeile: am Telefon bleibt der Titel einzeilig. */}
           <span className="vp-vr-zeile-meta">
             {z.geplant && <Plan />}
             {z.meta}
           </span>
         </span>
-        <span className="vp-vr-zeile-zahl">{z.zahl}</span>
+        <span className="vp-vr-zeile-zahl">
+          {z.zahl}
+          {z.zahlUnter && <small>{z.zahlUnter}</small>}
+        </span>
       </>
     );
     const hover = {
@@ -169,6 +191,7 @@ export function EreignisKarte({
             className={`vp-vr-zeile${an ? ' is-fokus' : ''}`}
             title={z.satz}
             aria-expanded={istOffen}
+            aria-label={vorgabeId ? `${z.titel ?? z.info.label}, ${z.meta}, ${z.zahl} — Rohsignale und Zählerstände` : undefined}
             onClick={() => setOffen(istOffen ? null : z.key)}
             {...hover}
           >
@@ -180,7 +203,8 @@ export function EreignisKarte({
             {inhalt}
           </div>
         )}
-        {aufklappbar && istOffen && (
+        {aufklappbar && istOffen && vorgabeId && ladeVorgabe && <VorgabeDetail id={vorgabeId} laden={ladeVorgabe} />}
+        {aufklappbar && istOffen && !vorgabeId && (
           <dl className="vp-vr-fakten">
             {z.fakten.map((f) => (
               <div key={f.label}>
@@ -250,7 +274,10 @@ export function EreignisKarte({
                   {a.geplant && <Plan />}
                 </span>
                 <span className="vp-vr-art-anzahl">{a.anzahl}</span>
-                <span className="vp-vr-art-zahl">{a.zahl}</span>
+                <span className="vp-vr-art-zahl">
+                  {a.zahl}
+                  {a.zusatz && <small>{a.zusatz}</small>}
+                </span>
                 <span
                   className="vp-vr-streifen"
                   style={{ '--n': a.streifen.length } as CSSProperties}
@@ -263,6 +290,22 @@ export function EreignisKarte({
               </button>
             ))}
           </div>
+          {teile.monate.length > 0 && (
+            <VorgabenTeile titel="Vorgaben je Monat" teile={teile.monate} />
+          )}
+          {teile.einheiten.length > 0 && (
+            <div className="vp-vr-vorgaben-teile">
+              <button
+                type="button"
+                className="vp-vr-textbtn"
+                aria-expanded={jeEinheit}
+                onClick={() => setJeEinheit((x) => !x)}
+              >
+                {jeEinheit ? 'Je Einheit ausblenden' : `Je Einheit (${teile.einheiten.length})`}
+              </button>
+              {jeEinheit && <VorgabenTeile titel="Vorgaben je Einheit" teile={teile.einheiten} />}
+            </div>
+          )}
           {hinweisChip && <div className="vp-vr-ereignis-chips">{hinweisChip}</div>}
         </>
       ) : (
@@ -284,6 +327,7 @@ export function EreignisKarte({
             ))}
             {hinweisChip}
           </div>
+          {spur.vorgabenHinweis && <p className="vp-vr-vorgabe-hinweis">{spur.vorgabenHinweis}.</p>}
           <ul className="vp-vr-chronik">
             {gezeigt.map((g) => (
               <li key={g.key} className={`vp-vr-chronik-gruppe${range === 'day' ? ' is-zeit' : ''}`}>
@@ -304,6 +348,49 @@ export function EreignisKarte({
           )}
         </>
       )}
+      {onVorgabenCsv && (
+        <div className="vp-vr-vorgaben-csv">
+          <button
+            type="button"
+            className="vp-vr-textbtn"
+            disabled={csv === 'laedt'}
+            onClick={() => {
+              setCsv('laedt');
+              onVorgabenCsv().then(
+                () => setCsv('bereit'),
+                () => setCsv('fehler'),
+              );
+            }}
+          >
+            {csv === 'laedt' ? 'Vorgaben werden geladen …' : 'Vorgaben als CSV'}
+          </button>
+          {csv === 'fehler' && (
+            <span className="vp-vr-vorgabe-hinweis" role="status">
+              Die Vorgaben konnten nicht geladen werden.
+            </span>
+          )}
+        </div>
+      )}
     </VrKarte>
+  );
+}
+
+/** „Vorgaben je Monat“ bzw. „je Einheit“: je Teil eine Zeile, darin Anzahl und Dauer je Urheber. */
+function VorgabenTeile({ titel, teile }: { titel: string; teile: readonly VorgabenTeil[] }) {
+  return (
+    <ul className="vp-vr-vorgaben-liste" aria-label={titel}>
+      {teile.map((t) => (
+        <li key={t.key}>
+          <b>{t.label}</b>
+          <span>
+            {t.zeilen.map((z) => (
+              <span key={z.art} className={`is-${EREIGNIS_ARTEN[z.art].farbe}`}>
+                {z.text}
+              </span>
+            ))}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }

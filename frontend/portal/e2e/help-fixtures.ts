@@ -8,7 +8,14 @@ import { entitiesApi } from '../src/entitiesApi';
 import { consumersApi } from '../src/consumers/consumersApi';
 import { keycloak } from '../src/auth';
 import { derive } from '../src/topology';
-import { erzeugerBeispiel, type ErzeugerFall } from '../src/test/erzeugerFixtures';
+import {
+  erzeugerBeispiel,
+  vorgabeDetailBeispiel,
+  vorgabenHeuteBeispiel,
+  vorgabenVerlaufBeispiel,
+  type ErzeugerFall,
+} from '../src/test/erzeugerFixtures';
+import type { HistoryRange } from '../src/api';
 
 export const NOW = '2026-09-10T10:00:00.000Z';
 const DAY = '2026-09-09T22:00:00.000Z';
@@ -216,8 +223,12 @@ export function installHelpFixtures() {
       live: { ts: NOW, pvKw: null, loadKw: null, gridKw: null, socPct: null } } : o)) } : overview), earnings: result({ range: 'month', from: DAY, to: NOW, sites: sites.map((s) => ({ ...money, id: s.id, siteId: s.id, name: s.name })), totals: { ...money, coveredSlots: 98 } }),
     // Erzeugeranlagen haben in der ersten Fassung keine Erlöse (EW-7 A); Biogas zeigt „—“ bis EZ-12.
     siteEarnings: erzFall ? async () => { throw new Error('Noch keine Erlöse für diese Anlage'); } : result(money),
-    // Die Werte der Erzeugeranlage gehen nicht in die Hausbilanz (Konzept §4.2): der Tag trägt nur Preise.
-    history: result(erzFall ? { ...history, buckets: history.buckets.map(ohneBilanz) } : history),
+    // Die Werte der Erzeugeranlage gehen nicht in die Hausbilanz (Konzept §4.2): der Tag trägt nur Preise -
+    // dafür die Vorgaben als Ereignisse und ihre Zählung (EZ-9).
+    history: erzFall
+      ? async (_siteId: string, range: HistoryRange) => structuredClone({ ...history, range, buckets: history.buckets.map(ohneBilanz),
+        ...vorgabenVerlaufBeispiel(erzFall, range, new Date()) })
+      : result(history),
     schedule: erzFall ? async () => { throw new Error('Diese Anlage hat keinen Fahrplan'); } : result(plan),
     // Jeder Abruf eine frische Lesung (sonst altert die Bühne nach zwei Minuten in „veraltet“).
     erzeugerJetzt: async () => (erzFall ? erzeugerBeispiel(erzFall, new Date()) : null), siteAssets: result([asset, { ...asset, id: 'help-pv', type: 'pv', capacityKwh: null, pvCapacityKwp: 10, moduleCount: 25 }]),
@@ -310,6 +321,10 @@ export function installHelpFixtures() {
     if (url.pathname.endsWith('/flow-node-governance')) data = { gatedNodes: [] };
     if (url.pathname.endsWith('/flow-node-status')) data = { nodes: [], reportedAt: NOW };
     if (url.pathname.endsWith('/v2-entities')) data = [];
+    // Die Vorgaben einer Erzeugeranlage (EZ-7/EZ-9) kommen aus einem eigenen Stück über `request`.
+    const vorgabe = /\/erzeuger\/vorgaben\/([^/]+)$/.exec(url.pathname)?.[1];
+    if (erzFall && vorgabe === 'heute') data = vorgabenHeuteBeispiel(erzFall, new Date());
+    else if (erzFall && vorgabe) data = vorgabeDetailBeispiel(vorgabe, new Date());
     return new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } });
   };
 }

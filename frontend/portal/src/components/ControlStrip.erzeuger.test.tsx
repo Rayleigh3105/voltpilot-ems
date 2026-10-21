@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { ControlStrip, type ErzeugerZeile } from './ControlStrip';
-import { erzeugerBlatt, erzeugerKette, erzeugerLage, werHatGeregelt } from '../erzeuger';
-import { erzeugerBeispiel, type ErzeugerFall } from '../test/erzeugerFixtures';
+import { erzeugerBlatt, erzeugerKette, erzeugerLage, geregeltHeute } from '../erzeuger';
+import { erzeugerBeispiel, vorgabenHeuteBeispiel, type ErzeugerFall } from '../test/erzeugerFixtures';
 import type { ExportGuardView } from '../curtailment';
 
 /**
@@ -17,7 +17,7 @@ function zeile(fall: ErzeugerFall): ErzeugerZeile {
   const l = erzeugerLage(j, NOW);
   const mitternacht = new Date(NOW);
   mitternacht.setHours(0, 0, 0, 0);
-  return { kette: erzeugerKette(l, NOW), blatt: erzeugerBlatt(l, NOW, werHatGeregelt(j, l, mitternacht.getTime(), NOW.getTime())) };
+  return { kette: erzeugerKette(l, NOW), blatt: erzeugerBlatt(l, NOW, geregeltHeute(vorgabenHeuteBeispiel(fall, NOW), l, mitternacht.getTime())) };
 }
 
 describe('ControlStrip · Erzeugeranlage', () => {
