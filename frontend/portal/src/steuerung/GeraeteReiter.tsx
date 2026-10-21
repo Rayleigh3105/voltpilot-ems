@@ -24,6 +24,7 @@ import {
 } from './bild';
 import { Ic } from './Ic';
 import { messBild, type MessTeil } from './messen';
+import { AnlagensteuerungKarten } from './AnlagensteuerungKarte';
 import { vorschlag } from './neu';
 import type { BlattZustand, SeitenBild } from './seite';
 import { useBreite, zeitband } from './Zeitband';
@@ -43,6 +44,8 @@ import {
 
 export interface GeraeteReiterProps {
   bild: SeitenBild;
+  /** Die Anlage - die Messen-Ansicht liest an ihr die Anlagensteuerung (UEMS EZ-10). */
+  siteId: string;
   oeffne: (b: BlattZustand) => void;
   /** Neu in der Anlage: den Vorschlag übernehmen. */
   onUebernehmen: (g: GeraetBild) => void;
@@ -73,7 +76,7 @@ export function GeraeteReiter(p: GeraeteReiterProps) {
     });
   }, [p.reoStart]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (bild.funktion.ohneTeilnahme) return <MessenAnsicht bild={bild} oeffne={p.oeffne} />;
+  if (bild.funktion.ohneTeilnahme) return <MessenAnsicht bild={bild} siteId={p.siteId} oeffne={p.oeffne} />;
   const t = sel ?? bild.raster.jetzt;
   return (
     <>
@@ -500,7 +503,7 @@ function Tagesbild({ bild, tag, setTag, sel, setSel, oeffne }: {
 // Messen-Ansicht (UEMS SZ-1 A): nur Gemessenes, die Geräte als ruhige Liste
 // ---------------------------------------------------------------------------
 
-function MessenAnsicht({ bild, oeffne }: { bild: SeitenBild; oeffne: (b: BlattZustand) => void }) {
+function MessenAnsicht({ bild, siteId, oeffne }: { bild: SeitenBild; siteId: string; oeffne: (b: BlattZustand) => void }) {
   const m = messBild({ raster: bild.raster, jetzt: bild.jetztGemessen, geraete: bild.geraete, speicher: bild.speicher });
   const auf = (id: string) => oeffne(id === SPEICHER ? { art: 'speicher' } : { art: 'geraet', id });
   return (
@@ -520,6 +523,8 @@ function MessenAnsicht({ bild, oeffne }: { bild: SeitenBild; oeffne: (b: BlattZu
         )}
         {m.teile.length > 0 && <Messleiste teile={m.teile} auf={auf} />}
       </section>
+      {/* UEMS EZ-10: an einer Erzeugeranlage mit Anlagensteuerung - wer steuert, je Einheit. */}
+      <AnlagensteuerungKarten siteId={siteId} />
       <section aria-label="Gemessene Geräte" className="devs rechts" id="devs">
         <div className="card-h" style={{ margin: '4px 2px 0' }}>
           <h2>

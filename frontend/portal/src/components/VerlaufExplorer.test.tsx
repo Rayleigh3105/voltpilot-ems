@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { VerlaufExplorer } from './VerlaufExplorer';
+import { GERAET_GORE, gore, goreVerlauf } from '../test/anlagensteuerungFixtures';
 import {
   api,
   type EntityHistory,
@@ -282,5 +283,27 @@ describe('VerlaufExplorer — B1-c multi-select (up to 3)', () => {
     );
     // The one that HAS values is still charted with its stats.
     expect(screen.getByLabelText(/Kennzahlen im Zeitraum: Batteriespeicher · Ladestand/)).toBeInTheDocument();
+  });
+});
+
+describe('VerlaufExplorer — Anlagensteuerung (UEMS EZ-10)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('je Anlagensteuerung ein Ast; eine Kurve je Einheit liest die Route der Anlagensteuerung, nie die Komponenten-Historie', async () => {
+    vi.spyOn(api, 'siteEntities').mockResolvedValue(fullPlant);
+    vi.spyOn(api, 'topology').mockResolvedValue(fullTopology);
+    const eh = vi.spyOn(api, 'entityHistory').mockResolvedValue(emptyHistory);
+    vi.spyOn(api, 'anlagensteuerungen').mockResolvedValue({
+      einrichtung: { moeglich: true, grund: null, boxen: [] },
+      steuerungen: [gore()],
+    });
+    const verlauf = vi.spyOn(api, 'anlagensteuerungVerlauf').mockResolvedValue(goreVerlauf());
+    const ziel = { entityId: `erzeuger-${GERAET_GORE}`, channel: 'erzeuger.te[1].t_p_ist_w' };
+    render(<VerlaufExplorer site={site} range="day" anchor={anchor} initialTargets={[ziel]} />);
+    expect(await screen.findByText('Anlagensteuerung Gore', undefined, { timeout: 5000 })).toBeInTheDocument();
+    expect(screen.getAllByText('WR Dach Nord · Leistung').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Vorgabe Netzbetreiber').length).toBeGreaterThan(0);
+    await waitFor(() => expect(verlauf).toHaveBeenCalledWith('s-1', GERAET_GORE, 'day', expect.any(String)), { timeout: 5000 });
+    expect(eh).not.toHaveBeenCalledWith('s-1', `erzeuger-${GERAET_GORE}`, expect.anything(), expect.anything());
   });
 });

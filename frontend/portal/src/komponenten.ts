@@ -77,6 +77,7 @@ import { deviceLiveStatus } from './api';
 import { channelLabel } from './channels';
 import { deviceName } from './entityLabel';
 import { fmtNum } from './format';
+import { anlagensteuerungGeraetId } from './geraetAdresse';
 import { EV_CHARGER } from './ladepunkte';
 import { reconcileProducerPv } from './pvReconcile';
 import { adoptableSources, suggestEntityType, type AdoptableSource } from './rollen';
@@ -366,6 +367,9 @@ function inferCategory(entityType: string): string {
       return 'consumer';
   }
 }
+
+/** Die Anlagensteuerung einer Erzeugeranlage (UEMS EZ-6): nur messen, ein Gerät für sich (EZ-10). */
+export const ANLAGENSTEUERUNG_TYPE = 'anlagensteuerung';
 
 /** Der Typ, den die Selbstbau-Tür für ein freigegebenes Schalt-Gerät vergibt. */
 const SELF_BUILT_SWITCH_TYPE = 'modbus-load';
@@ -1318,6 +1322,16 @@ export function plantModel(
   for (const c of components) {
     if (assigned.has(c.id)) continue;
     if (entities.find((e) => e.id === c.entityId)?.entityType === EV_CHARGER) assigned.add(c.id);
+  }
+
+  // EZ-10. Eine ANLAGENSTEUERUNG (Erzeuger-Registerbild, UEMS EZ-6) ist ein Gerät für sich: die Box liest
+  //    sie über eine Datenquelle, nicht über eine eigene Quelle, und sie ist kein Teil des Wechselrichters
+  //    (ohne diesen Schritt nähme sie 2.). Ihre Seite heißt `as-<Entität>` (`geraetAdresse.ts`).
+  for (const e of entities) {
+    if (e.entityType !== ANLAGENSTEUERUNG_TYPE || e.edgeSourceId != null) continue;
+    const comps = componentsOfEntity(e.id).filter((c) => !assigned.has(c.id));
+    if (comps.length === 0) continue;
+    linkDevice(anlagensteuerungGeraetId(e.id), e.label?.trim() || 'Anlagensteuerung', null, comps.map((c) => c.id));
   }
 
   // 2. The inverter (gateway) feeds the composed entities — those not adopted

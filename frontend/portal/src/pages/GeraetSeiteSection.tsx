@@ -170,6 +170,8 @@ import '../components/AnlagenModell.css';
 import './Befehle.css';
 import './GeraetSeite.css';
 import { AUFBAU_REITER } from '../ebenenNav';
+import { anlagensteuerungIdOf } from '../geraetAdresse';
+import { useAnlagensteuerung, useAnlagensteuerungWerte } from '../useAnlagensteuerung';
 
 /**
  * Die GERÄTE-DETAILSEITE der Anlagen-Zentrale
@@ -456,6 +458,16 @@ export function GeraetSeiteSection({
     [data, topology, sources, ioBindungen],
   );
 
+  // UEMS EZ-10: die Seite `as-<Entität>` einer Anlagensteuerung - Gerät, Datenquelle und Werte kommen von ihren
+  // Routen (EZ-6); jede andere Seite fragt nichts davon.
+  const asEntity = anlagensteuerungIdOf(geraetId);
+  const asStand = useAnlagensteuerung(asEntity ? site.id : null, false);
+  const anlagensteuerung = useMemo(
+    () => (asEntity ? asStand.liste?.steuerungen.find((x) => x.entity_id === asEntity) ?? null : null),
+    [asEntity, asStand.liste],
+  );
+  const anlagensteuerungWerte = useAnlagensteuerungWerte(asEntity ? site.id : null, anlagensteuerung?.geraet_id ?? null);
+
   const view: GeraetSeiteView | null = useMemo(() => {
     if (!data) return null;
     return geraetSeite({
@@ -473,11 +485,14 @@ export function GeraetSeiteSection({
       charging,
       strategies,
       model,
+      anlagensteuerung,
+      anlagensteuerungWerte,
       now,
     });
   }, [
     data, geraeteRef, geraetId, site.name, site.id, devices, devicesFetchedAt,
-    sources, components, control, curtailment, charging, strategies, model, now,
+    sources, components, control, curtailment, charging, strategies, model, anlagensteuerung,
+    anlagensteuerungWerte, now,
   ]);
 
   const box = boxDevice;

@@ -10,6 +10,7 @@ import {
   api,
   ApiError,
   type Device,
+  type Erzeugungseinheit,
   type PlantKind,
   type Site,
   type SiteAsset,
@@ -53,6 +54,23 @@ import { GemeinsameSteuerungKarte, useGemeinsameSteuerung, type GemeinsameSteuer
 import type { VerlustVariante } from '../gemeinsameSteuerungFlaeche';
 import { showTechnicalLayer, useRollen } from '../rollen';
 import { FLAECHE } from '../uemsGemeinsameSteuerung';
+import {
+  direktvermarkterHinweis,
+  direktvermarkterWert,
+  einheitName,
+  einheitNummer,
+  einheitTyp,
+  einspeisemanagementWert,
+  sortiert,
+  typHinweis,
+} from '../anlagensteuerung';
+import { useAnlagensteuerung } from '../useAnlagensteuerung';
+import {
+  DirektvermarkterForm,
+  EinheitForm,
+  EinspeisemanagementForm,
+  NetzbetreiberBlatt,
+} from '../components/NetzVermarktungFormen';
 import '../components/Profile.css';
 import './Einstellungen.css';
 
@@ -103,7 +121,12 @@ type BlattArt =
   | { art: 'voltpilot'; setting: ModeSettingDef }
   | { art: 'speicher'; bearbeiten: boolean }
   | { art: 'registrierung' }
-  | { art: 'loeschen' };
+  | { art: 'loeschen' }
+  // UEMS EZ-10: Stammdaten Netz und Vermarktung einer Anlage mit Anlagensteuerung.
+  | { art: 'netzbetreiber' }
+  | { art: 'direktvermarkter' }
+  | { art: 'einspeisemanagement' }
+  | { art: 'einheit'; geraetId: string; einheit: Erzeugungseinheit };
 
 interface Folge {
   key: 'netzladen' | 'speicherschonung';
@@ -219,6 +242,11 @@ export function TechnikSection({
   const { anlageStandort, antwort: standortAntwort, neuLaden: standortNeuLaden } = useAnlageStandort(site.id);
   // UEMS AP-15 IP-23: die Karte „Gemeinsame Steuerung“ - sichtbar nur an steuernden Anlagen mit mehreren Boxen.
   const gemeinsam = useGemeinsameSteuerung(site.id, siteDevices);
+  // UEMS EZ-10: nur an einer Anlage mit Anlagensteuerung stehen Netzbetreiber, Direktvermarkter,
+  // Einspeisemanagement und die Einheiten unter „Strom & Geld“ (EW-3 A: kein neuer Reiter).
+  const erzeuger = useAnlagensteuerung(site.id, false);
+  const steuerungen = erzeuger.liste?.steuerungen ?? [];
+  const nv = steuerungen.length > 0 ? erzeuger.netzVermarktung : null;
 
   useEffect(() => {
     setBlatt(null);
@@ -487,6 +515,53 @@ export function TechnikSection({
               {folgeZeile('netzladen')}
             </li>
           )}
+          {nv && (
+            <>
+              <Zeile
+                id="technik-netzbetreiber"
+                icon="pole"
+                kat="grid"
+                label="Netzbetreiber"
+                wert={nv.netzbetreiber ?? 'nicht eingetragen'}
+                sub={nv.hinweise[0]?.text ?? null}
+                warn={nv.hinweise.length > 0}
+                onClick={() => oeffne({ art: 'netzbetreiber' })}
+              />
+              <Zeile
+                id="technik-direktvermarkter"
+                icon="trending-up"
+                kat="dynamic"
+                label="Direktvermarkter"
+                wert={direktvermarkterWert(nv)}
+                sub={direktvermarkterHinweis(nv)}
+                recht="anlage.verwalten"
+                onClick={() => oeffne({ art: 'direktvermarkter' })}
+              />
+              <Zeile
+                id="technik-einspeisemanagement"
+                icon="sliders"
+                kat="grid"
+                label="Einspeisemanagement"
+                wert={einspeisemanagementWert(nv)}
+                recht="anlage.verwalten"
+                onClick={() => oeffne({ art: 'einspeisemanagement' })}
+              />
+              {steuerungen.flatMap((st) =>
+                sortiert(st.einheiten).map((e) => (
+                  <Zeile
+                    key={e.teil_id}
+                    icon={e.einheit_art === 'bhkw_motor' ? 'zap' : 'sun'}
+                    kat="home"
+                    label={einheitName(e)}
+                    wert={e.registry_unit_id ?? 'MaStR-Nummer nicht erfasst'}
+                    sub={typHinweis(e) ?? ([e.bezeichnung ? einheitNummer(e) : null, einheitTyp(e)].filter(Boolean).join(' · ') || null)}
+                    recht="geraet.einrichten"
+                    onClick={() => oeffne({ art: 'einheit', geraetId: st.geraet_id, einheit: e })}
+                  />
+                )),
+              )}
+            </>
+          )}
           {vpGeld.map((s) => (
             <Zeile
               key={s.id}
@@ -689,6 +764,41 @@ export function TechnikSection({
               }}
             />
           ))}
+        {blattInhalt?.art === 'netzbetreiber' && nv && <NetzbetreiberBlatt nv={nv} />}
+        {blattInhalt?.art === 'direktvermarkter' && nv && (
+          <DirektvermarkterForm
+            siteId={site.id}
+            nv={nv}
+            onCancel={schliesse}
+            onSaved={(neu) => {
+              erzeuger.setzeNetzVermarktung(neu);
+              schliesse();
+            }}
+          />
+        )}
+        {blattInhalt?.art === 'einspeisemanagement' && nv && (
+          <EinspeisemanagementForm
+            siteId={site.id}
+            nv={nv}
+            onCancel={schliesse}
+            onSaved={(neu) => {
+              erzeuger.setzeNetzVermarktung(neu);
+              schliesse();
+            }}
+          />
+        )}
+        {blattInhalt?.art === 'einheit' && (
+          <EinheitForm
+            key={blattInhalt.einheit.teil_id}
+            geraetId={blattInhalt.geraetId}
+            einheit={blattInhalt.einheit}
+            onCancel={schliesse}
+            onSaved={() => {
+              erzeuger.neuLaden();
+              schliesse();
+            }}
+          />
+        )}
         {blattInhalt?.art === 'loeschen' && (
           <DangerZone
             recht="anlage.verwalten"
@@ -728,6 +838,14 @@ function blattTitel(b: BlattArt | null, battery: SiteAsset | null): string {
       return 'Registrierung (MaStR)';
     case 'loeschen':
       return 'Anlage löschen';
+    case 'netzbetreiber':
+      return 'Netzbetreiber';
+    case 'direktvermarkter':
+      return 'Direktvermarkter';
+    case 'einspeisemanagement':
+      return 'Einspeisemanagement';
+    case 'einheit':
+      return einheitName(b.einheit);
     default:
       return '';
   }

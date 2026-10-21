@@ -49,6 +49,7 @@ import { ZaehlerwechselDialog } from './ZaehlerwechselDialog';
 import { ControllerwechselDialog } from './ControllerwechselDialog';
 import { QuelleBindenDialog, type QuelleBindenZiel } from './QuelleBindenDialog';
 import { MessmittelBlatt } from './MessmittelBlatt';
+import { AnlagensteuerungEinheiten } from './AnlagensteuerungEinheiten';
 import './GeraetHerkunft.css';
 
 export interface HerkunftKomponente {
@@ -122,7 +123,7 @@ export function GeraetHerkunft({
     if (!geraetId || !istController) return () => undefined;
     api
       .anlagensteuerungen(siteId)
-      .then((l) => aktiv && setProgrammstand(l.steuerungen.find((s) => s.geraet_id === geraetId)?.programmstand ?? null))
+      .then((l) => aktiv && setProgrammstand(l?.steuerungen.find((s) => s.geraet_id === geraetId)?.programmstand ?? null))
       .catch(() => aktiv && setProgrammstand(null));
     return () => {
       aktiv = false;
@@ -195,6 +196,10 @@ export function GeraetHerkunft({
             <h4 className="vp-gh-unter">Energiekarten</h4>
             <Zeilen zeilen={karte.karten} />
           </>
+        )}
+        {/* UEMS EZ-10: die Einheiten einer Anlagensteuerung - wie die Energiekarten, mit ihren Werten. */}
+        {karte.einheiten.length > 0 && (
+          <AnlagensteuerungEinheiten siteId={siteId} geraetId={geraet.id} einheiten={karte.einheiten} jetzt={jetzt} />
         )}
         {geraet.geraeteart === 'zaehler' && <ZaehlerwechselVerlauf anlageId={siteId} komponenten={komponenten.map(k => k.entityId)} stand={stand} />}
         {karte.vorgaenger.length > 0 && (

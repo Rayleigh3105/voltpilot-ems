@@ -63,3 +63,18 @@ export function ioVerbraucherIdOf(geraetId: string | null): string | null {
   const id = geraetId.slice(3);
   return id ? id : null;
 }
+
+/**
+ * Die Kennung einer Anlagensteuerung im Pfad: `as-<Entität>` (UEMS EZ-10). Die Box liest sie über eine
+ * Datenquelle (Erzeuger-Registerbild), nicht über eine eigene Quelle - sie bekommt trotzdem ihre eigene Seite.
+ */
+export function anlagensteuerungGeraetId(entityId: string): string {
+  return `as-${entityId}`;
+}
+
+/** Rückrichtung: `as-…` → die Entität der Anlagensteuerung; null sonst. */
+export function anlagensteuerungIdOf(geraetId: string | null): string | null {
+  if (!geraetId || !geraetId.startsWith('as-')) return null;
+  const id = geraetId.slice(3);
+  return id ? id : null;
+}

@@ -8222,7 +8222,7 @@ export interface UemsGeraet {
 
 /**
  * Eine Anlagensteuerung (`GET /api/v1/sites/{siteId}/anlagensteuerungen`, UEMS EZ-6) — hier nur mit den Feldern,
- * die die Geräteseite für den Programmstand braucht (EZ-16); die übrigen Felder kommen mit EZ-8/EZ-10.
+ * die die Geräteseite für den Programmstand braucht (EZ-16); die volle Form ist `Anlagensteuerung` (EZ-10).
  */
 export interface AnlagensteuerungKurz {
   geraet_id: string;
@@ -8230,7 +8230,11 @@ export interface AnlagensteuerungKurz {
   programmstand: Programmstand;
 }
 
-/** Eine Energiekarte im Steckplatz eines Controllers; `steckplatz` null = nicht erhoben. */
+/**
+ * Ein Teil eines Controllers: eine Energiekarte im Steckplatz (`steckplatz` null = nicht erhoben) oder -
+ * seit UEMS EZ-6 - eine Erzeugungseinheit (`teilart` `erzeugungseinheit`) mit TE-Nr. an einer
+ * Anlagensteuerung. Die Einheiten-Felder fehlen an einem älteren Backend und sind an einer Karte null.
+ */
 export interface UemsGeraetTeil {
   id: string;
   teilart: string;
@@ -8240,6 +8244,149 @@ export interface UemsGeraetTeil {
   seriennummer: string | null;
   eingebaut_am: string;
   ausgebaut_am: string | null;
+  te_nr?: number | null;
+  einheit_art?: ErzeugungseinheitArt | null;
+  nennleistung_kw?: number | null;
+  registry_unit_id?: string | null;
+  typ_bild?: string | null;
+}
+
+// ---- Anlagensteuerung einer Erzeugeranlage (UEMS EZ-6, Konzept „Erzeuger am WAGO-Modbus-Server“ §4.2) ----
+// Die Formen von `AnlagensteuerungDto` - `snake_case` wie das Backend; „nicht erhoben“ ist null, nie 0.
+// Die Ableitungen für Steuerung, Geräteseite und Einstellungen stehen in `anlagensteuerung.ts` (EZ-10).
+
+export type ErzeugungseinheitArt = 'pv_wechselrichter' | 'bhkw_motor';
+export type DirektvermarkterKanal = 'keiner' | 'relais_ma' | 'modbus';
+export type Einspeisemanagement = 'statisch' | 'stufen' | 'fernwirk';
+
+/** Eine Erzeugungseinheit (Wechselrichter oder BHKW-Motor) mit ihrer TE-Nr. im Registerbild. */
+export interface Erzeugungseinheit {
+  teil_id: string;
+  te_nr: number;
+  einheit_art: ErzeugungseinheitArt | null;
+  /** Die Anzeige; Umbenennen ändert nur sie - Nummer und Messreihe bleiben. */
+  bezeichnung: string | null;
+  typ: string | null;
+  /** Der Typname, den das Bild nennt (Konzept §3.10); null = nicht gelesen oder leer. */
+  typ_bild: string | null;
+  nennleistung_kw: number | null;
+  /** MaStR-Einheitennummer (SEE…). */
+  registry_unit_id: string | null;
+  eingebaut_am: string;
+}
+
+export interface Anlagensteuerung {
+  geraet_id: string;
+  kennzeichen: string;
+  einbau_kennzeichen: string;
+  bezeichnung: string | null;
+  hersteller: string | null;
+  typ: string | null;
+  eingebaut_am: string;
+  /** Die Komponente vom Typ `anlagensteuerung`, an der die Punkte `erzeuger.*` hängen. */
+  entity_id: string;
+  datenquelle: { id: string; kennzeichen: string; adresse: string | null; unit_id: number | null; box_id: string | null } | null;
+  fassung: {
+    id: string;
+    bildart: string;
+    basisadresse: number;
+    funktionscode: number;
+    wortfolge: string;
+    te_anzahl: number;
+    anlagenart: 'pv' | 'bhkw' | 'gemischt';
+    steuerung_kennung: number | null;
+    rse_stufen: { stufe: number; prozent: number }[] | null;
+    veraltet_netzpunkt_s: number;
+    /** Soll des Programmstands (JJMM) aus der Fassung; null = es gilt die Bibliothek (EZ-16). */
+    programmstand_soll: number | null;
+    gueltig_ab: string;
+  } | null;
+  einheiten: Erzeugungseinheit[];
+  /** Programmstand Ist gegen Soll (UEMS EZ-16). */
+  programmstand: Programmstand;
+}
+
+export interface AnlagensteuerungListe {
+  einrichtung: { moeglich: boolean; grund: 'keine_box' | 'box_ohne_faehigkeit' | null; boxen: { device_id: string; faehig: boolean }[] };
+  steuerungen: Anlagensteuerung[];
+}
+
+/**
+ * Der jüngste Wert eines Punkts `erzeuger.*`. `zustand`: `keine_daten` (`wert` null, nie 0) · `aktuell`
+ * (Qualität gut, höchstens 120 s alt) · `veraltet`. Zustände tragen `wort`/`text`, Bitfelder die gesetzten
+ * `bits`; außerhalb des Vokabulars bleibt der Rohwert ohne Wort.
+ */
+export interface AnlagensteuerungWert {
+  point_key: string;
+  abschnitt: string;
+  feld: string;
+  te_nr: number | null;
+  art: string;
+  einheit: string | null;
+  wert: number | null;
+  gemessen_am: string | null;
+  qualitaet: string | null;
+  zustand: 'keine_daten' | 'aktuell' | 'veraltet';
+  wort: string | null;
+  text: string | null;
+  bits: { bit: number; wort: string; text: string }[] | null;
+}
+
+export interface AnlagensteuerungWerte {
+  geraet_id: string;
+  entity_id: string;
+  stand: 'noch_keine_daten' | 'daten';
+  abgerufen_am: string;
+  werte: AnlagensteuerungWert[];
+}
+
+/** Stammdaten Netz und Vermarktung; `revision` 0 = noch nie gespeichert. */
+export interface NetzVermarktung {
+  site_id: string;
+  /** Vom Netzanschluss, an den die Anlage heute gebunden ist - hier nur gelesen. */
+  netzbetreiber: string | null;
+  direktvermarkter: string | null;
+  direktvermarkter_kanal: DirektvermarkterKanal | null;
+  einspeisemanagement: Einspeisemanagement | null;
+  einspeisemanagement_prozent: number | null;
+  namen_aus_bild: { netzbetreiber: string | null; direktvermarkter: string | null; gelesen_am: string | null } | null;
+  hinweise: { art: 'netzbetreiber_abweichung' | 'netzbetreiber_nicht_eingetragen' | string; text: string; bild: string | null; eintrag: string | null }[];
+  revision: number;
+}
+
+export interface NetzVermarktungAendern {
+  expected_revision: number;
+  direktvermarkter: string | null;
+  direktvermarkter_kanal: DirektvermarkterKanal | null;
+  einspeisemanagement: Einspeisemanagement | null;
+  einspeisemanagement_prozent: number | null;
+}
+
+/** Die Kurven des Bilds über ein Fenster der Historie (UEMS EZ-10); ein Eimer ohne Wert fehlt, nie 0. */
+export interface AnlagensteuerungVerlauf {
+  geraet_id: string;
+  entity_id: string;
+  range: HistoryRange;
+  from: string;
+  to: string;
+  bucket_minutes: number;
+  kurven: {
+    point_key: string;
+    abschnitt: string;
+    feld: string;
+    te_nr: number | null;
+    einheit: 'W' | '%';
+    eimer: { start: string; avg: number; min: number; max: number; last: number; n: number }[];
+  }[];
+}
+
+/** Ersetzt ALLE Angaben der Einheit - wer eine ändert, schickt die übrigen unverändert mit. */
+export interface ErzeugungseinheitAendern {
+  einheit_art: ErzeugungseinheitArt | null;
+  bezeichnung: string | null;
+  typ: string | null;
+  nennleistung_kw: number | null;
+  registry_unit_id: string | null;
 }
 
 /** Ein früherer Einbau desselben Geräts — „Z-5a · ausgebaut am 18.11.2026, 10:40 Uhr“. */
@@ -10909,9 +11056,36 @@ export const api = {
   uemsGeraete: (siteId: string) =>
     request<{ geraete: UemsGeraet[] }>(`/api/v1/sites/${siteId}/geraete`),
 
-  /** Die Anlagensteuerungen einer Erzeugeranlage (UEMS EZ-6); hier nur mit dem Programmstand (EZ-16). */
+  /**
+   * Die Anlagensteuerungen einer Erzeugeranlage (UEMS EZ-6). `null` = älteres Backend (404) - die Seiten
+   * zeigen dann, was sie heute zeigen.
+   */
   anlagensteuerungen: (siteId: string) =>
-    request<{ steuerungen: AnlagensteuerungKurz[] }>(`/api/v1/sites/${siteId}/anlagensteuerungen`),
+    request<AnlagensteuerungListe>(`/api/v1/sites/${siteId}/anlagensteuerungen`).catch((e: unknown) =>
+      e instanceof ApiError && e.status === 404 ? null : Promise.reject(e),
+    ),
+  /** Der jüngste Wert je Punkt `erzeuger.*`; ohne Wert `keine_daten`, nie 0. */
+  anlagensteuerungWerte: (siteId: string, geraetId: string) =>
+    request<AnlagensteuerungWerte>(`/api/v1/sites/${siteId}/anlagensteuerungen/${geraetId}/werte`),
+  /** Die Kurven des Bilds für Verlauf › Messwerte (UEMS EZ-10), im Fenster der Historie. */
+  anlagensteuerungVerlauf: (siteId: string, geraetId: string, range: HistoryRange, at?: string) => {
+    const q = new URLSearchParams({ range });
+    if (at) q.set('at', at);
+    return request<AnlagensteuerungVerlauf>(`/api/v1/sites/${siteId}/anlagensteuerungen/${geraetId}/verlauf?${q.toString()}`);
+  },
+  /** Stammdaten Netz und Vermarktung; `null` = älteres Backend (404). */
+  netzVermarktung: (siteId: string) =>
+    request<NetzVermarktung>(`/api/v1/sites/${siteId}/netz-vermarktung`).catch((e: unknown) =>
+      e instanceof ApiError && e.status === 404 ? null : Promise.reject(e),
+    ),
+  netzVermarktungAendern: (siteId: string, body: NetzVermarktungAendern) =>
+    request<NetzVermarktung>(`/api/v1/sites/${siteId}/netz-vermarktung`, { method: 'PUT', body: JSON.stringify(body) }),
+  /** Ersetzt die Angaben einer Erzeugungseinheit; Umbenennen ändert nur die Anzeige. */
+  erzeugungseinheitAendern: (geraetId: string, teNr: number, body: ErzeugungseinheitAendern) =>
+    request<Erzeugungseinheit>(`/api/v1/geraete/${geraetId}/anlagensteuerung/einheiten/${teNr}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
 
   /** AP-05 IP-9/IP-10: Kartendaten dokumentieren; Steckplatz kommt aus der physischen Zuordnung. */
   wagoKarteEintragen: (siteId: string, entityId: string, body: {

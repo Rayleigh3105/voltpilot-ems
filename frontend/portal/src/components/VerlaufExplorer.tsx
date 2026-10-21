@@ -6,6 +6,7 @@ import { IconTile } from '../../designsystem/components/core/IconTile';
 import {
   api,
   ApiError,
+  type AnlagensteuerungVerlauf,
   type EntityHistory,
   type History,
   type HistoryRange,
@@ -16,6 +17,7 @@ import {
 import { fmtNum } from '../format';
 import { SUMMENWERT } from '../glossar';
 import { ladeSiteGesamtwerte } from '../gesamtwertQuelle';
+import { erzeugerGeraetId, erzeugerGruppe, istErzeugerZiel, seriesFromErzeugerVerlauf } from '../anlagensteuerung';
 import type { ComponentRole } from '../komponenten';
 import { isoDate } from '../periodNav';
 import {
@@ -202,7 +204,14 @@ export function VerlaufExplorer({
   initialTargets: VerlaufTarget[];
 }) {
   // The tree: entities+topology → measurementTree; else the v1 site-level tree.
-  const [groups, setGroups] = useState<VerlaufGroup[] | null>(null);
+  const [baum, setGroups] = useState<VerlaufGroup[] | null>(null);
+  // UEMS EZ-10: die Äste der Anlagensteuerungen in einem eigenen Stand - EIN Wert, nie ein Anhängen an den Baum,
+  // damit die Auswahl `groups` nur dann eine neue Identität bekommt, wenn sich wirklich ein Ast ändert.
+  const [erzAeste, setErzAeste] = useState<VerlaufGroup[]>([]);
+  const groups = useMemo(
+    () => (baum && erzAeste.length > 0 ? [...baum, ...erzAeste] : baum),
+    [baum, erzAeste],
+  );
   const [isV1, setIsV1] = useState(false);
   const [treeErr, setTreeErr] = useState<string | null>(null);
   const [targets, setTargets] = useState<VerlaufTarget[]>(initialTargets);
@@ -213,6 +222,7 @@ export function VerlaufExplorer({
   useEffect(() => {
     let active = true;
     setGroups(null);
+    setErzAeste([]);
     setTreeErr(null);
     Promise.all([api.siteEntities(site.id), api.topology(site.id).catch(() => null)])
       .then(([entities, topology]) => {
@@ -236,6 +246,15 @@ export function VerlaufExplorer({
                 })),
               );
               if (gruppe) setGroups((g) => (g ? [...g, gruppe] : [gruppe]));
+            })
+            .catch(() => undefined);
+          // UEMS EZ-10: je Anlagensteuerung ein Ast mit den Kurven ihres Registerbilds (Einheiten, Netzpunkt,
+          // Gasspeicher, Vorgaben) - die Punkte `erzeuger.*` sind keine Kanäle der Komponente.
+          api
+            .anlagensteuerungen(site.id)
+            .then((liste) => {
+              if (!active || !liste) return;
+              setErzAeste(liste.steuerungen.map(erzeugerGruppe));
             })
             .catch(() => undefined);
         } else {
@@ -300,6 +319,7 @@ export function VerlaufExplorer({
 
   const [entHist, setEntHist] = useState<Record<string, EntityHistory>>({});
   const [compHist, setCompHist] = useState<Record<string, MessstelleVerlauf>>({});
+  const [erzHist, setErzHist] = useState<Record<string, AnlagensteuerungVerlauf>>({});
   const [siteHist, setSiteHist] = useState<History | null>(null);
   const [loading, setLoading] = useState(false);
   const [dataErr, setDataErr] = useState<string | null>(null);
@@ -312,14 +332,16 @@ export function VerlaufExplorer({
     // Ein berechneter Wert (Gesamtwert) liest seinen Verlauf über die Messstelle,
     // ein gemessener über die Komponenten-Historie — beide fließen in dieselbe
     // Auswahl.
-    const realIds = entityIds.filter((id) => !istBerechnet(id));
+    const realIds = entityIds.filter((id) => !istBerechnet(id) && !istErzeugerZiel(id));
     const compIds = entityIds.filter(istBerechnet).map(berechneteMessstelleId);
+    const erzIds = entityIds.filter(istErzeugerZiel).map(erzeugerGeraetId);
     const p = isV1
       ? api.history(site.id, range, at).then((h) => {
           if (!active) return;
           setSiteHist(h);
           setEntHist({});
           setCompHist({});
+          setErzHist({});
         })
       : Promise.all([
           Promise.all(
@@ -330,10 +352,14 @@ export function VerlaufExplorer({
           Promise.all(
             compIds.map((id) => api.messstelleVerlauf(id, range).then((v) => [id, v] as const)),
           ),
-        ]).then(([entPairs, compPairs]) => {
+          Promise.all(
+            erzIds.map((id) => api.anlagensteuerungVerlauf(site.id, id, range, at).then((v) => [id, v] as const)),
+          ),
+        ]).then(([entPairs, compPairs, erzPairs]) => {
           if (!active) return;
           setEntHist(Object.fromEntries(entPairs));
           setCompHist(Object.fromEntries(compPairs));
+          setErzHist(Object.fromEntries(erzPairs));
           setSiteHist(null);
         });
     p.catch((e) => active && setDataErr(e instanceof ApiError ? e.message : 'Fehler')).finally(
@@ -359,6 +385,9 @@ export function VerlaufExplorer({
       if (istBerechnet(it.entityId)) {
         const v = compHist[berechneteMessstelleId(it.entityId)];
         series = v ? seriesFromMessstelleVerlauf(v, range) : null;
+      } else if (istErzeugerZiel(it.entityId)) {
+        const v = erzHist[erzeugerGeraetId(it.entityId)];
+        series = v ? seriesFromErzeugerVerlauf(v, it.channel) : null;
       } else if (isV1) {
         series = siteHist ? v1SeriesFromHistory(siteHist, it.channel) : null;
       } else {
@@ -375,7 +404,7 @@ export function VerlaufExplorer({
       });
     }
     return out;
-  }, [groups, items, ambiguous, isV1, siteHist, entHist, compHist, range]);
+  }, [groups, items, ambiguous, isV1, siteHist, entHist, compHist, erzHist, range]);
 
   const withData = selections?.filter((s) => !s.series.empty) ?? [];
   const empty = selections != null && withData.length === 0;
