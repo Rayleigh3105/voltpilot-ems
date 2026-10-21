@@ -5,12 +5,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.forecast.ForecastModelService;
+import com.voltpilot.api.history.Ereignisse;
+import com.voltpilot.api.history.HistoryRange;
+import com.voltpilot.api.history.HistoryService;
 import com.voltpilot.api.optimizer.OptimizerDiagnosticsService;
 import com.voltpilot.api.repo.HistoryRepository;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.AnteilVerlustRepository;
 import com.voltpilot.api.web.dto.AnlagensteuerungDto;
 import com.voltpilot.api.web.dto.ErzeugerVorgabenDto;
+import com.voltpilot.api.web.dto.HistoryDto;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
@@ -79,6 +83,7 @@ class VorgabenDbTest {
     @Autowired AnteilVerlustRepository prognosen;
     @Autowired OptimizerDiagnosticsService preise;
     @Autowired HistoryRepository boerse;
+    @Autowired HistoryService historie;
     @Autowired @Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc;
     @Autowired JdbcTemplate appJdbc;
     static JdbcTemplate root;
@@ -327,6 +332,50 @@ class VorgabenDbTest {
                         e -> assertThat(e.getStatusCode().value()).isEqualTo(404));
         assertThat(appJdbc.queryForObject("SELECT count(*) FROM erzeuger_vorgabe", Integer.class)).isZero();
         assertThat(appJdbc.queryForObject("SELECT count(*) FROM erzeuger_vorgabe_lauf", Integer.class)).isZero();
+    }
+
+    /**
+     * UEMS EZ-9: der Verlauf liest dieselben Vorgaben als Ereignisse und zählt sie „Nach Art“ - als
+     * {@code voltpilot_app} unter RLS. Eine Anlage ohne Anlagensteuerung bekommt nichts davon.
+     */
+    @Test
+    void derVerlaufZeigtDieVorgabenAlsEreignisseUndZaehltSieNachArt() {
+        Welt w = welt("Vorgaben-Verlauf");
+        UUID entity = gore(w).entityId();
+        Instant t0 = Instant.now().truncatedTo(ChronoUnit.MINUTES).minus(30, ChronoUnit.MINUTES);
+        Map<String, Number> frei = mit(goreBild(), "erzeuger.nb.n_bits", 3, "erzeuger.nb.n_p_prozent", 100.0,
+                "erzeuger.nb.n_zaehler", 18, "erzeuger.wirkung.quelle_p", 0, "erzeuger.a.p_erzeugung_w", 162000);
+        for (int sek = 0; sek < 600; sek += 5) {
+            lesung(w, entity, t0.plusSeconds(sek), sek < 300 ? mit(goreBild(), "erzeuger.nb.n_seit_s", 340 + sek)
+                    : mit(frei, "erzeuger.nb.n_seit_s", sek - 300));
+        }
+        laeufer().lauf(Instant.now());
+
+        LocalDate tag = t0.atZone(VorgabenAbleitung.ZONE).toLocalDate();
+        HistoryDto h = als(w.tenant(), () -> historie.history(w.site(), "DE-LU", HistoryRange.DAY, tag));
+        assertThat(h.events()).filteredOn(e -> "netzbetreiber".equals(e.type())).singleElement().satisfies(e -> {
+            assertThat(e.vorgabe().id()).isNotNull();
+            assertThat(e.vorgabe().vorgabeProzent()).isEqualByComparingTo("60");
+            assertThat(e.vorgabe().bindung()).isEqualTo("bindend");
+            assertThat(e.text()).startsWith("Netzbetreiber begrenzt auf 60 %");
+        });
+        assertThat(h.vorgaben()).isNotNull();
+        assertThat(h.vorgaben().verarbeitetBis()).isEqualTo(t0.plusSeconds(595));
+        assertThat(h.vorgaben().zaehlung()).singleElement().satisfies(z -> {
+            assertThat(z.type()).isEqualTo("netzbetreiber");
+            assertThat(z.anzahl()).isEqualTo(1);
+            // Diese Anlage hat keine PV-Prognose: keine Grundlage, also keine Schätzung - nie 0.
+            assertThat(z.energyKwh()).isNull();
+            assertThat(z.ohneSchaetzung()).isEqualTo(1);
+        });
+
+        Welt ohne = welt("Vorgaben-ohne-Steuerung");
+        HistoryDto o = als(ohne.tenant(), () -> historie.history(ohne.site(), "DE-LU", HistoryRange.DAY, tag));
+        assertThat(o.vorgaben()).isNull();
+        assertThat(o.events()).noneMatch(e -> Ereignisse.VORGABEN_ARTEN.contains(e.type()));
+        // Fremder Mandant: die Anlage mit Steuerung liefert ihm keine Vorgabe.
+        HistoryDto fremd = als(ohne.tenant(), () -> historie.history(w.site(), "DE-LU", HistoryRange.DAY, tag));
+        assertThat(fremd.vorgaben()).isNull();
     }
 
     /** Σ je 5-s-Stück: Energie × Börsenpreis seiner Viertelstunde (ct/kWh = €/MWh ÷ 10), in Euro. */
