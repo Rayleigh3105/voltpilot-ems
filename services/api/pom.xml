@@ -431,6 +431,10 @@
                              @Scheduled-Falle, im Testlauf aus, in PRODUKTION an (application.yml,
                              matchIfMissing). Wer ihn prueft, ruft SteuerungVorsprungLaeufer.lauf() selbst. -->
                         <voltpilot.steuerung-vorsprung.enabled>false</voltpilot.steuerung-vorsprung.enabled>
+                        <!-- UEMS EZ-7: der VorgabenLaeufer-Takt (com.voltpilot.api.erzeuger.VorgabenLaeufer) -
+                             dieselbe @Scheduled-Falle, im Testlauf aus, in PRODUKTION an (application.yml,
+                             matchIfMissing). Wer ihn prueft, ruft VorgabenLaeufer.lauf() selbst. -->
+                        <voltpilot.erzeuger.vorgaben.enabled>false</voltpilot.erzeuger.vorgaben.enabled>
                         <!-- The AP-06 per-data-source status listener is ON in production.
                              Unit tests drive handle() without opening a broker connection. -->
                         <voltpilot.uems.data-source-status.mqtt-listener-enabled>false</voltpilot.uems.data-source-status.mqtt-listener-enabled>

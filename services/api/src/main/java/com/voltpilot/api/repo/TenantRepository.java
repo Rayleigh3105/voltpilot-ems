@@ -473,6 +473,9 @@ public class TenantRepository {
                         // its Gerät, the Netz-und-Vermarktung master data at the site; both hold the
                         // tenant (RESTRICT).
                         "registerbild_fassung", "anlage_netz_vermarktung",
+                        // Its Vorgaben, their Lücken and the Läufer's Stand (V20261022013700, UEMS EZ-7)
+                        // hang at the same Gerät and hold the tenant (RESTRICT).
+                        "erzeuger_vorgabe", "erzeuger_vorgabe_luecke", "erzeuger_vorgabe_lauf",
                         "geraet_komponente", "geraet_teil", "geraet", "geraet_kennzeichen_seq",
                         "device_data_source_status", "data_source_assignment", "data_source",
                         "data_source_kennzeichen_seq",

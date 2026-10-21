@@ -11389,6 +11389,125 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
           description: Die Stammdaten wurden inzwischen geändert.
+  /api/v1/sites/{siteId}/erzeuger/vorgaben:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [geraete]
+      summary: Die Chronik der Vorgaben einer Erzeugeranlage (UEMS EZ-7).
+      description: >
+        Recht `messwerte.ansehen`. Die Vorgaben (wer wann wie lange die Anlage begrenzt oder gesteuert hat,
+        Konzept vp-erzeuger-wago-konzept §4.6), die `[von, bis)` berühren — eine laufende (`ende` null) bis zur
+        letzten Lesung, in der sie galt (`gesehen_bis`) —, nach Beginn; dazu die Datenlücken, über die ein Zähler
+        mehr Vorgaben zählt, als gesehen wurden („n weitere Wechsel während einer Datenlücke“, ohne erfundene
+        Zeiten; `weitere_wechsel` null = unbekannt nach einem Neustart der Steuerung). Ohne `von`/`bis` die
+        letzten sieben Tage bis jetzt, höchstens 400 Tage. `urheber` grenzt auf einen Urheber ein, `te_nr` auf eine
+        Einheit (0 = nur die ganze Anlage; dann ohne Lücken). Abgeleitet hat sie der Vorgaben-Läufer bis
+        `verarbeitet_bis` (null = noch nie).
+      parameters:
+        - { name: von, in: query, required: false, schema: { type: string, format: date-time } }
+        - { name: bis, in: query, required: false, schema: { type: string, format: date-time } }
+        - name: urheber
+          in: query
+          required: false
+          schema: { type: string, enum: [netzbetreiber, direktvermarkter, anlage, hand, ersatzwert, schutz] }
+        - { name: te_nr, in: query, required: false, schema: { type: integer, minimum: 0, maximum: 10 } }
+      responses:
+        "200":
+          description: Die Chronik.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErzeugerVorgabenChronik" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/sites/{siteId}/erzeuger/vorgaben/zaehlung:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [geraete]
+      summary: Die Vorgaben „Nach Art“ je Tag oder Monat (UEMS EZ-7).
+      description: >
+        Recht `messwerte.ansehen`. Je Tag (`raster=tag`, `von`/`bis` als Datum) oder Monat (`raster=monat`,
+        Vorgabe; `JJJJ-MM`) in Europe/Berlin, beide Grenzen eingeschlossen: je Urheber, Art und Einheit die Anzahl
+        der Vorgaben, die den Abschnitt berühren (über Mitternacht an beiden Tagen), ihre Dauer mit dem Anteil darin
+        und die Summe der geschätzt nicht erzeugten Energie samt Euro-Schätzung (null, wenn keine Schätzung bekannt
+        ist; `ohne_schaetzung` zählt die ohne). `je_urheber` fasst die Vorgaben der ganzen Anlage je Urheber
+        zusammen, die Dauer als Vereinigung. Ohne Angabe der laufende Monat (Tage) bzw. die letzten zwölf Monate;
+        höchstens 400 Tage bzw. 120 Monate.
+      parameters:
+        - { name: raster, in: query, required: false, schema: { type: string, enum: [tag, monat] } }
+        - { name: von, in: query, required: false, schema: { type: string, example: "2026-10" } }
+        - { name: bis, in: query, required: false, schema: { type: string, example: "2026-10" } }
+      responses:
+        "200":
+          description: Die Zählung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErzeugerVorgabenZaehlung" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/sites/{siteId}/erzeuger/vorgaben/heute:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [geraete]
+      summary: Wer hat heute geregelt? (UEMS EZ-7)
+      description: >
+        Recht `messwerte.ansehen`. Der heutige Tag (Europe/Berlin) bis jetzt in der Form der Zählung — die
+        Grundlage der Kachel „Wer hat heute geregelt?“ (`je_urheber`: Anzahl und Dauer je Urheber) — und die
+        laufenden Vorgaben.
+      responses:
+        "200":
+          description: Heute.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErzeugerVorgabenHeute" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/sites/{siteId}/erzeuger/vorgaben/{vorgabeId}:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: vorgabeId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [geraete]
+      summary: Eine Vorgabe mit Rohsignalen und Zählerständen (UEMS EZ-7).
+      description: >
+        Recht `messwerte.ansehen`. Die Vorgabe, die Rohsignale, die sie erklären, am Beginn und am Ende (in der
+        Sprache des Bilds: Zustand mit Wort, Bitfeld mit gesetzten Bits) und die Proben dieser Signale in ihrem
+        Zeitraum ± 60 s — nur, solange die Messwerte aufbewahrt sind, höchstens 500 (`signale_gekuerzt`).
+      responses:
+        "200":
+          description: Die Vorgabe.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErzeugerVorgabeDetail" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/sites/{siteId}/erzeuger/vorgaben.csv:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [geraete]
+      summary: Vorgaben als CSV (UEMS EZ-7, EW-12 A).
+      description: >
+        Recht `messwerte.ansehen`. Die Vorgaben und Datenlücken der Chronik in `[von, bis)` (ohne Angabe die letzten
+        sieben Tage) als CSV: Spalten und Wörter deutsch, Zahlen im de-DE-Format (Dezimalkomma, ungerundet),
+        Trenner Semikolon, UTF-8 mit BOM, Zeiten ISO 8601 in Ortszeit mit Versatz; unbekannt ist leer, nie 0. Die
+        Euro-Spalte ist eine Schätzung zu den Preisen der Anlage, ohne Aussage über eine Erstattung (EW-8 A).
+      parameters:
+        - { name: von, in: query, required: false, schema: { type: string, format: date-time } }
+        - { name: bis, in: query, required: false, schema: { type: string, format: date-time } }
+      responses:
+        "200":
+          description: Die CSV.
+          content:
+            text/csv:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/sites/{siteId}/wago/karten:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -36047,6 +36166,168 @@ components:
         direktvermarkter_kanal: { type: string, enum: [keiner, relais_ma, modbus, null], nullable: true }
         einspeisemanagement: { type: string, enum: [statisch, stufen, fernwirk, null], nullable: true }
         einspeisemanagement_prozent: { type: number, minimum: 0, maximum: 100, nullable: true }
+    ErzeugerVorgabe:
+      type: object
+      description: >
+        Eine Vorgabe (UEMS EZ-7): ein Zeitraum, in dem ein Urheber die Erzeugeranlage begrenzt oder steuert. `te_nr`
+        null = die ganze Anlage; `ende` null = läuft, belegt bis `gesehen_bis`; `dauer_s` bis zum Ende bzw. bis
+        `gesehen_bis`. `beginn_genau`/`ende_genau`: aus „seit“ der Steuerung datiert, sonst die Lesung (beim Beginn
+        spätestens, beim Ende in einer Lücke die letzte Lesung, in der sie galt). `vorgabe_prozent`/`vorgabe_w` die
+        kleinste Vorgabe. `energie_kwh` ist die geschätzt nicht erzeugte Energie, ∫ max(0, verfügbar − Ist) solange
+        der Urheber bindet, nach `methode` — null ohne Grundlage, 0 nur bei `nicht_bindend`; `wert_eur` ihre
+        Euro-Schätzung zu den Preisen der Anlage (null ohne Preisgrundlage; Biogas erst mit EZ-12). `bindung` null =
+        unbekannt oder für die Art ohne Belang (`q_vorgabe`, `nicht_bereit`). `unvollstaendig`: Datenlücke oder
+        unbekannter Zustand während der Vorgabe. `neustart`: die Steuerung lief währenddessen neu an, die
+        Zählerstände sind nicht vergleichbar.
+      required: [id, geraet_id, te_nr, einheit_name, urheber, art, beginn, beginn_genau, ende, ende_genau,
+        gesehen_bis, dauer_s, vorgabe_prozent, vorgabe_w, ist_mittel_w, verfuegbar_mittel_w, energie_kwh, methode,
+        wert_eur, kanal, bindung, unvollstaendig, neustart, zaehler_beginn, zaehler_ende, gruende]
+      properties:
+        id: { type: string, format: uuid }
+        geraet_id: { type: string, format: uuid }
+        te_nr: { type: integer, minimum: 1, maximum: 10, nullable: true }
+        einheit_name: { type: string, nullable: true }
+        urheber: { type: string, enum: [netzbetreiber, direktvermarkter, anlage, hand, ersatzwert, schutz] }
+        art:
+          type: string
+          enum: [p_begrenzung, abschaltung, q_vorgabe, dv_aktivierung, dv_stopp, nicht_bereit, automatik, ersatzwert]
+        beginn: { type: string, format: date-time }
+        beginn_genau: { type: boolean }
+        ende: { type: string, format: date-time, nullable: true }
+        ende_genau: { type: boolean }
+        gesehen_bis: { type: string, format: date-time }
+        dauer_s: { type: integer, format: int64 }
+        vorgabe_prozent: { type: number, nullable: true }
+        vorgabe_w: { type: number, nullable: true }
+        ist_mittel_w: { type: number, nullable: true }
+        verfuegbar_mittel_w: { type: number, nullable: true }
+        energie_kwh: { type: number, nullable: true }
+        methode:
+          type: string
+          nullable: true
+          enum: [pv_prognose, nennleistung_bereite_motoren, dv_sollwert_davor, null]
+        wert_eur: { type: number, nullable: true }
+        kanal:
+          type: string
+          nullable: true
+          enum: [keiner, feste_grenze, stufen, fernwirktechnik, relais_ma, modbus, null]
+        bindung: { type: string, nullable: true, enum: [bindend, nicht_bindend, null] }
+        unvollstaendig: { type: boolean }
+        neustart: { type: boolean }
+        zaehler_beginn: { type: integer, nullable: true }
+        zaehler_ende: { type: integer, nullable: true }
+        gruende:
+          type: array
+          description: "Gründe für „nicht bereit“ (t_bits Bit 4–9), Wörter des Bilds."
+          items: { type: string }
+    ErzeugerVorgabeLuecke:
+      type: object
+      description: >
+        Eine Datenlücke (letzte Lesung davor bis erste danach), über die `n_zaehler` (Netzbetreiber) oder
+        `d_zaehler` (Direktvermarkter) mehr Vorgaben zählt, als gesehen wurden: (nachher − vorher) mod 65536 minus
+        die gesehenen Wechsel. `weitere_wechsel` null = unbekannt (Neustart der Steuerung).
+      required: [id, geraet_id, urheber, beginn, ende, weitere_wechsel, neustart, zaehler_vorher, zaehler_nachher]
+      properties:
+        id: { type: string, format: uuid }
+        geraet_id: { type: string, format: uuid }
+        urheber: { type: string, enum: [netzbetreiber, direktvermarkter] }
+        beginn: { type: string, format: date-time }
+        ende: { type: string, format: date-time }
+        weitere_wechsel: { type: integer, minimum: 1, nullable: true }
+        neustart: { type: boolean }
+        zaehler_vorher: { type: integer, nullable: true }
+        zaehler_nachher: { type: integer, nullable: true }
+    ErzeugerVorgabenChronik:
+      type: object
+      required: [site_id, von, bis, verarbeitet_bis, vorgaben, luecken]
+      properties:
+        site_id: { type: string, format: uuid }
+        von: { type: string, format: date-time }
+        bis: { type: string, format: date-time }
+        verarbeitet_bis: { type: string, format: date-time, nullable: true }
+        vorgaben: { type: array, items: { $ref: "#/components/schemas/ErzeugerVorgabe" } }
+        luecken: { type: array, items: { $ref: "#/components/schemas/ErzeugerVorgabeLuecke" } }
+    ErzeugerVorgabeRohwert:
+      type: object
+      description: "Ein Rohsignal am Beginn oder Ende einer Vorgabe; Zustände mit Wort, Bitfelder mit gesetzten Bits."
+      required: [point_key, feld, te_nr, wert, wort, text, bits]
+      properties:
+        point_key: { type: string, example: "erzeuger.nb.n_bits" }
+        feld: { type: string }
+        te_nr: { type: integer, nullable: true }
+        wert: { type: number }
+        wort: { type: string, nullable: true }
+        text: { type: string, nullable: true }
+        bits: { type: array, nullable: true, items: { $ref: "#/components/schemas/AnlagensteuerungBit" } }
+    ErzeugerVorgabeSignal:
+      type: object
+      required: [point_key, gemessen_am, wert, qualitaet]
+      properties:
+        point_key: { type: string }
+        gemessen_am: { type: string, format: date-time }
+        wert: { type: number, nullable: true }
+        qualitaet: { type: string, nullable: true }
+    ErzeugerVorgabeDetail:
+      type: object
+      required: [vorgabe, roh_beginn, roh_ende, signale, signale_gekuerzt]
+      properties:
+        vorgabe: { $ref: "#/components/schemas/ErzeugerVorgabe" }
+        roh_beginn: { type: array, items: { $ref: "#/components/schemas/ErzeugerVorgabeRohwert" } }
+        roh_ende: { type: array, items: { $ref: "#/components/schemas/ErzeugerVorgabeRohwert" } }
+        signale: { type: array, items: { $ref: "#/components/schemas/ErzeugerVorgabeSignal" } }
+        signale_gekuerzt: { type: boolean }
+    ErzeugerVorgabenGruppe:
+      type: object
+      required: [urheber, art, te_nr, anzahl, dauer_s, energie_kwh, wert_eur, ohne_schaetzung, unvollstaendig]
+      properties:
+        urheber: { type: string }
+        art: { type: string }
+        te_nr: { type: integer, nullable: true }
+        anzahl: { type: integer }
+        dauer_s: { type: integer, format: int64 }
+        energie_kwh: { type: number, nullable: true }
+        wert_eur: { type: number, nullable: true }
+        ohne_schaetzung: { type: integer }
+        unvollstaendig: { type: integer }
+    ErzeugerVorgabenJeUrheber:
+      type: object
+      required: [urheber, anzahl, dauer_s, energie_kwh, wert_eur]
+      properties:
+        urheber: { type: string }
+        anzahl: { type: integer }
+        dauer_s: { type: integer, format: int64 }
+        energie_kwh: { type: number, nullable: true }
+        wert_eur: { type: number, nullable: true }
+    ErzeugerVorgabenAbschnitt:
+      type: object
+      required: [periode, beginn, ende, gruppen, je_urheber]
+      properties:
+        periode: { type: string, example: "2026-10" }
+        beginn: { type: string, format: date-time }
+        ende: { type: string, format: date-time }
+        gruppen: { type: array, items: { $ref: "#/components/schemas/ErzeugerVorgabenGruppe" } }
+        je_urheber: { type: array, items: { $ref: "#/components/schemas/ErzeugerVorgabenJeUrheber" } }
+    ErzeugerVorgabenZaehlung:
+      type: object
+      required: [site_id, raster, von, bis, verarbeitet_bis, abschnitte]
+      properties:
+        site_id: { type: string, format: uuid }
+        raster: { type: string, enum: [tag, monat] }
+        von: { type: string }
+        bis: { type: string }
+        verarbeitet_bis: { type: string, format: date-time, nullable: true }
+        abschnitte: { type: array, items: { $ref: "#/components/schemas/ErzeugerVorgabenAbschnitt" } }
+    ErzeugerVorgabenHeute:
+      type: object
+      required: [site_id, tag, abgerufen_am, verarbeitet_bis, gruppen, je_urheber, laufend]
+      properties:
+        site_id: { type: string, format: uuid }
+        tag: { type: string, format: date }
+        abgerufen_am: { type: string, format: date-time }
+        verarbeitet_bis: { type: string, format: date-time, nullable: true }
+        gruppen: { type: array, items: { $ref: "#/components/schemas/ErzeugerVorgabenGruppe" } }
+        je_urheber: { type: array, items: { $ref: "#/components/schemas/ErzeugerVorgabenJeUrheber" } }
+        laufend: { type: array, items: { $ref: "#/components/schemas/ErzeugerVorgabe" } }
     GeraetVorgaenger:
       type: object
       description: "Ein früherer Einbau desselben Geräts."

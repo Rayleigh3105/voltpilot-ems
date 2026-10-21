@@ -76,6 +76,10 @@ class SiteScopeArchitekturTest {
             new Erlaubt("measurement/MeasurementHistoryService.java", "device_measurement_rollup_15m", 1,
                     Grund.ANLAGE_GEPRUEFT, "measurement/MeasurementHistoryService.java",
                     "geltungsbereich.requireSite(scope.siteId())"),
+            // UEMS EZ-6: die jüngsten Werte einer Anlagensteuerung — der Dienst prüft vorher die Anlage
+            // (404) und nimmt nur eine Steuerung dieser Anlage.
+            new Erlaubt("erzeuger/AnlagensteuerungRepository.java", "device_measurement_sample", 1,
+                    Grund.ANLAGE_GEPRUEFT, "erzeuger/AnlagensteuerungService.java", "sichtbar(siteId);"),
             new Erlaubt("uems/KanalbindungService.java", "device_measurement_sample", 1,
                     Grund.ANLAGE_GEPRUEFT, "uems/KanalbindungService.java",
                     "geltung.siteVisible(anlagen.getFirst())"),
@@ -186,6 +190,9 @@ class SiteScopeArchitekturTest {
                     "uems/ViertelstundeLaeufer.java", "@Scheduled"),
             new Erlaubt("uems/KanalbindungLauf.java", "device_measurement_sample", 3, Grund.OHNE_ANFRAGE,
                     "uems/EndgueltigkeitLaeufer.java", "@Scheduled"),
+            // UEMS EZ-7: der Vorgaben-Läufer liest die Werte je Anlagensteuerung unter dem Mandanten des Takts.
+            new Erlaubt("erzeuger/VorgabenLaufRepository.java", "device_measurement_sample", 3, Grund.OHNE_ANFRAGE,
+                    "erzeuger/VorgabenLaeufer.java", "@Scheduled"),
             new Erlaubt("repo/FleetMetricsRepository.java", "telemetry", 1, Grund.OHNE_ANFRAGE,
                     "metrics/FleetMetricsCollector.java", "@Scheduled"),
             // AP-07 IP-16: systemweiter, taeglich gecachter Speicher-Waechter
