@@ -46,7 +46,7 @@ class AnwendungDerivationTest {
                 in.path("has_leistungspreis").asBoolean(), in.path("has_grid_limit").asBoolean(),
                 nodeTypes, in.path("has_customer_rule").asBoolean(),
                 in.path("plant_kind").asText(null), in.path("tarif_art").asText(null),
-                in.path("netzladen_erlaubt").asBoolean());
+                in.path("netzladen_erlaubt").asBoolean(), in.path("has_anlagensteuerung").asBoolean(false));
     }
 
     @TestFactory

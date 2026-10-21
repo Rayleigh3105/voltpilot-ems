@@ -1,5 +1,6 @@
 package com.voltpilot.api.uems;
 
+import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
@@ -47,10 +48,25 @@ public class GeraetRepository {
     public record Speisung(UUID geraetId, UUID entityId, UUID teilId, Integer steckplatz,
             Instant gueltigAb, Instant gueltigBis) {}
 
-    /** Eine Energiekarte im Steckplatz eines Controllers. */
+    /**
+     * Ein Teil eines Controllers: eine Energiekarte im Steckplatz (AP-05 E4) oder eine Erzeugungseinheit mit
+     * ihrer TE-Nr. an einer Anlagensteuerung (UEMS EZ-6). Die Einheiten-Angaben sind an einer Karte null.
+     */
     public record Teil(UUID id, UUID geraetId, String teilart, Integer steckplatz,
             String bezeichnung, String typ, String seriennummer, Instant eingebautAm,
-            Instant ausgebautAm) {}
+            Instant ausgebautAm, Integer teNr, String einheitArt, BigDecimal nennleistungKw,
+            String registryUnitId, String typBild) {
+        public static final String ENERGIEKARTE = "energiekarte";
+        public static final String ERZEUGUNGSEINHEIT = "erzeugungseinheit";
+
+        public boolean istKarte() {
+            return ENERGIEKARTE.equals(teilart);
+        }
+    }
+
+    private static final String TEIL_SPALTEN = "t.id, t.geraet_id, t.teilart, t.steckplatz, t.bezeichnung, t.typ, "
+            + "t.seriennummer, t.eingebaut_am, t.ausgebaut_am, t.te_nr, t.einheit_art, t.nennleistung_kw, "
+            + "t.registry_unit_id, t.typ_bild";
 
     public Optional<Einbau> eines(UUID id) {
         return jdbc.query("SELECT " + SPALTEN + " FROM geraet g WHERE g.id = ?", GeraetRepository::einbau,
@@ -118,10 +134,9 @@ public class GeraetRepository {
     /** Die Karten, die zum Zeitpunkt in diesem Einbau stecken — über sie entscheidet erst IP-19. */
     public List<Teil> teileAm(UUID geraetId, Instant zeitpunkt) {
         Timestamp t = Timestamp.from(zeitpunkt);
-        return jdbc.query("SELECT t.id, t.geraet_id, t.teilart, t.steckplatz, t.bezeichnung, t.typ, "
-                + "t.seriennummer, t.eingebaut_am, t.ausgebaut_am FROM geraet_teil t "
+        return jdbc.query("SELECT " + TEIL_SPALTEN + " FROM geraet_teil t "
                 + "WHERE t.geraet_id = ? AND t.eingebaut_am <= ? AND (t.ausgebaut_am IS NULL OR t.ausgebaut_am > ?) "
-                + "ORDER BY t.steckplatz NULLS LAST, t.eingebaut_am, t.id",
+                + "ORDER BY t.steckplatz NULLS LAST, t.te_nr NULLS LAST, t.eingebaut_am, t.id",
                 GeraetRepository::teil, geraetId, t, t);
     }
 
@@ -181,16 +196,21 @@ public class GeraetRepository {
                 + "VALUES (?,?,?,?,?)", tenantId, geraetId, entityId, teilId, Timestamp.from(ab));
     }
 
-    /** Eine Karten-Zeile ist ihr Einbau im Controller. Der alte Einbau bleibt samt Seriennummer erhalten. */
+    /**
+     * Eine Teil-Zeile ist ihr Einbau im Controller. Der alte Einbau bleibt samt Seriennummer erhalten. Eine
+     * Erzeugungseinheit zieht mit allen Angaben (TE-Nr., Art, Nennleistung, MaStR-SEE, Typname aus dem Bild) um.
+     */
     public UUID karteWechseln(UUID tenant, Teil alt, UUID neu, Instant am, boolean uebernommen) {
         if (jdbc.update("UPDATE geraet_teil SET ausgebaut_am = ? WHERE id = ? AND ausgebaut_am IS NULL",
                 Timestamp.from(am), alt.id()) != 1) {
             throw new IllegalStateException("Karten-Einbau wurde inzwischen verändert");
         }
         return jdbc.queryForObject("INSERT INTO geraet_teil (tenant_id, geraet_id, teilart, steckplatz, "
-                + "bezeichnung, typ, seriennummer, eingebaut_am) VALUES (?,?,?,?,?,?,?,?) RETURNING id",
+                + "bezeichnung, typ, seriennummer, eingebaut_am, te_nr, einheit_art, nennleistung_kw, "
+                + "registry_unit_id, typ_bild) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id",
                 UUID.class, tenant, neu, alt.teilart(), alt.steckplatz(), alt.bezeichnung(), alt.typ(),
-                uebernommen ? alt.seriennummer() : null, Timestamp.from(am));
+                uebernommen ? alt.seriennummer() : null, Timestamp.from(am), alt.teNr(), alt.einheitArt(),
+                alt.nennleistungKw(), alt.registryUnitId(), alt.typBild());
     }
 
     /** Jedes Einbau-Kennzeichen des Kundenbereichs — Vorlage für ein freies (IP-17). */
@@ -217,10 +237,9 @@ public class GeraetRepository {
     }
 
     private List<Teil> teile(String bedingung, UUID wert) {
-        return jdbc.query("SELECT t.id, t.geraet_id, t.teilart, t.steckplatz, t.bezeichnung, t.typ, "
-                + "t.seriennummer, t.eingebaut_am, t.ausgebaut_am FROM geraet_teil t "
+        return jdbc.query("SELECT " + TEIL_SPALTEN + " FROM geraet_teil t "
                 + "JOIN geraet g ON g.id = t.geraet_id WHERE " + bedingung
-                + " ORDER BY t.steckplatz NULLS LAST, t.eingebaut_am, t.id",
+                + " ORDER BY t.steckplatz NULLS LAST, t.te_nr NULLS LAST, t.eingebaut_am, t.id",
                 GeraetRepository::teil, wert);
     }
 
@@ -234,7 +253,8 @@ public class GeraetRepository {
         return new Teil(rs.getObject("id", UUID.class), rs.getObject("geraet_id", UUID.class),
                 rs.getString("teilart"), (Integer) rs.getObject("steckplatz"), rs.getString("bezeichnung"),
                 rs.getString("typ"), rs.getString("seriennummer"), zeit(rs, "eingebaut_am"),
-                zeit(rs, "ausgebaut_am"));
+                zeit(rs, "ausgebaut_am"), (Integer) rs.getObject("te_nr"), rs.getString("einheit_art"),
+                rs.getBigDecimal("nennleistung_kw"), rs.getString("registry_unit_id"), rs.getString("typ_bild"));
     }
 
     private static Einbau einbau(ResultSet rs, int n) throws SQLException {

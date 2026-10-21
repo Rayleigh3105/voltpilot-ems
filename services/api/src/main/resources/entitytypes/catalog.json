@@ -385,6 +385,17 @@
           "command": "on_off"
         }
       ]
+    },
+    {
+      "type": "anlagensteuerung",
+      "label": "Anlagensteuerung (SPS mit VoltPilot-Bild)",
+      "category": "meter",
+      "controllable": false,
+      "composed": false,
+      "default_failsafe": "measure-only",
+      "_comment": "UEMS EZ-6 (Konzept Erzeuger am Wago-Modbus-Server, EW-3 A): die Steuerung einer Erzeugeranlage (PV oder Biogas-BHKW), deren SPS das VoltPilot-Registerbild Erzeuger traegt. EINE Komponente bindet die Messpunkte der Familie voltpilot.erzeuger_registerbild_v1 an die Datenquelle der Steuerung; Wechselrichter und Motoren sind Teile ihres Geraets (geraet_teil erzeugungseinheit). Nur messen, nie gesteuert. Keine Standard-Messkanaele: die Werte gehen weder in die Energiebilanz der Box noch in die Topologie (wie ein Selbstbau-Geraet), bis ein eigener Schritt (EZ-17) das ausdruecklich koppelt.",
+      "default_measure": [],
+      "default_actuate": []
     }
   ]
 }

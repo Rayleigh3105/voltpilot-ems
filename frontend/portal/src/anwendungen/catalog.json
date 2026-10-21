@@ -1,5 +1,5 @@
 {
-  "catalog_version": "1.5.0",
+  "catalog_version": "1.6.0",
   "_comment": [
     "Der EINE Anwendungs-Katalog (Zielbild 'Portal fuer viele Kunden, viele",
     "Anwendungen', Scout vp-portal-zielbild-anwendungen §3.2/§4.1, Stufe 1).",
@@ -980,6 +980,48 @@
         "nav_gruppe": true
       },
       "unlock_chips": [],
+      "einstellungen": [],
+      "einstellungen_verweis": null,
+      "preset": { "privat": "abgeleitet", "gewerbe": "abgeleitet" }
+    },
+    {
+      "id": "netz-und-vermarktung",
+      "label": "Netz und Vermarktung",
+      "kategorie": "basis",
+      "klasse": "basis",
+      "rang": 65,
+      "nutzen": "Sie sehen, was Netzbetreiber und Direktvermarkter Ihrer Anlage gerade vorgeben und was die Anlage umsetzt - und im Verlauf, wie oft sie regeln.",
+      "abschaltbar": false,
+      "sichtbar": true,
+      "regal": false,
+      "exklusiv_gruppe": null,
+      "strategie_knoten": null,
+      "starter": null,
+      "bedarf": {
+        "rollen": [],
+        "actuate": [],
+        "messung": ["Anlagensteuerung mit VoltPilot-Registerbild"]
+      },
+      "voraussetzungen": [
+        {
+          "id": "anlagensteuerung",
+          "label": "Anlagensteuerung verbunden",
+          "blocked_reason": "An Ihrer Anlage ist noch keine Anlagensteuerung mit VoltPilot-Registerbild verbunden. Sobald sie eingerichtet ist, zeigt VoltPilot die Vorgaben von Netzbetreiber und Direktvermarkter.",
+          "art": "hardware",
+          "behebung": null
+        }
+      ],
+      "blocked_reason_immer": null,
+      "leer_zustand": null,
+      "bausteine": {
+        "cockpit": [],
+        "ansichten": [],
+        "portfolio": [],
+        "geldstrom": null,
+        "steuerungskarte": false,
+        "nav_gruppe": false
+      },
+      "unlock_chips": ["Kette Netzbetreiber › Direktvermarkter › Anlage in der Steuerzeile", "Vorgaben im Verlauf", "Einheiten an der Anlagensteuerung"],
       "einstellungen": [],
       "einstellungen_verweis": null,
       "preset": { "privat": "abgeleitet", "gewerbe": "abgeleitet" }

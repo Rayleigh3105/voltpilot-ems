@@ -144,6 +144,15 @@
       "source_revision": "voltpilot-wago-registerbild-v1.0-2026-09-16",
       "source_sha256": "45b5911165c96cc024843d3a496a6011cf10dda62ed9999a3b17471f7f480fc0",
       "source_url": "https://codeberg.org/voltpilot/voltpilot-ems"
+    },
+    {
+      "adapter": "erzeuger",
+      "family": "voltpilot.erzeuger_registerbild_v1",
+      "id": "voltpilot.erzeuger_registerbild_v1",
+      "path": "sources/voltpilot/erzeuger-registerbild-v1.json",
+      "source_revision": "voltpilot-erzeuger-registerbild-v1.0-schlank-2026-10-21",
+      "source_sha256": "dadd6ba7d9647619f566511dd92c6016e27880292a7cd59cb84749e474d6b4f8",
+      "source_url": "https://codeberg.org/voltpilot/voltpilot-ems"
     }
   ]
 }

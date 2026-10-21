@@ -1,0 +1,55 @@
+# Erzeuger: Anlagensteuerung als Gerät mit Erzeugungseinheiten (EZ-6 „Cloud-Modell“)
+
+Neu am 21.10.2026, Paket EZ-6 aus dem Konzept „Erzeuger am Wago-Modbus-Server“ (Fassung 12, §4.2/§4.4/§4.11,
+Entscheide EW-3 A, EW-11 A, EW-17 A). Eine PV- oder Biogas-BHKW-Anlage, deren Steuerung (z. B. WAGO PFC200) das
+VoltPilot-Registerbild Erzeuger trägt, ist **keine neue Anlagenart und bekommt keinen Reiter**: die Steuerung
+ist ein Gerät wie heute die WAGO-Steuerung der Energiekarten, Wechselrichter und Motoren sind ihre Teile.
+
+## Was es gibt
+
+- **Migration `V20261021193000__erzeuger_anlagensteuerung.sql`:** `geraet_teil.teilart` `erzeugungseinheit`
+  (Identität Gerät + `te_nr` 1 … 10, `einheit_art`, `nennleistung_kw`, `registry_unit_id` = MaStR-SEE, `typ_bild`);
+  `registerbild_fassung` (Soll je Steuerung, zeitgültig, Bildart `erzeuger`: Basis, FC, Wortfolge, `te_anzahl`,
+  `anlagenart`, `steuerung_kennung`, `rse_stufen`, `veraltet_netzpunkt_s`); `anlage_netz_vermarktung`
+  (Direktvermarkter + Kanal, Einspeisemanagement, Namen aus dem Bild). Je RLS, FORCE RLS, Standortzaun, Offboarding.
+- **Komponententyp `anlagensteuerung`** (`entitytypes/catalog.json`): nur messen, nicht composed, ohne
+  Standardkanäle — EINE Komponente bindet die Punkte an die Datenquelle (`measurement_point.data_source_id`).
+- **Katalog:** Familie `voltpilot.erzeuger_registerbild_v1`, Quelle `sources/voltpilot/erzeuger-registerbild-v1.json`
+  (Katalog-README „Erzeuger-Registerbild“); Java-Zwilling des Vokabulars `erzeuger/ErzeugerRegisterbild`.
+- **Routen** (`AnlagensteuerungController`, openapi): `GET/POST /api/v1/sites/{siteId}/anlagensteuerungen`,
+  `GET …/{geraetId}/werte`, `PUT /api/v1/geraete/{id}/anlagensteuerung/einheiten/{teNr}`,
+  `POST /api/v1/geraete/{id}/anlagensteuerung/namen`, `GET/PUT /api/v1/sites/{siteId}/netz-vermarktung`.
+- **Publisher:** `mqtt-measurement-config` Feld `erzeuger_registerbilder` (`ErzeugerRegisterbilder`,
+  Vektoren `docs/contracts/v2/erzeuger-registerbilder-vectors.json`).
+- **Fähigkeitswort** `erzeuger_registerbild` (bekannt, `advertised: false`) und **Anwendung**
+  `netz-und-vermarktung` (Klasse `basis`, `nav_gruppe: false`, abgeleitet aktiv mit einer Anlagensteuerung).
+
+## Fallen
+
+- ⚠ **Inhaltsstand, nicht Laufzeitstand.** Die Familie steht in `NOCH_NICHT_AN_DER_BOX`: Palette und
+  Metadaten-Migration bleiben byte-gleich, die api lädt die Punkte nicht (keine Suche, keine Auswahl). Den
+  Laufzeitstand hebt erst das Edge-Release mit dem Leser (EZ-5) — sonst lehnte ab dem api-Deploy jede ältere
+  Box jede Mess-Konfiguration ab.
+- ⚠ **Mischbetrieb über das Fähigkeitswort, zweimal.** Angelegt wird nur, wenn die Box, die die Datenquelle
+  liest, `erzeuger_registerbild` meldet (sonst 409; `GET` sagt `einrichtung.moeglich`). Der Publisher sendet
+  `erzeuger_registerbilder` nur an so eine Box: der Go-Core liest mit `DisallowUnknownFields` und verwürfe das
+  ganze Dokument. Darum liegt das Beispiel-Dokument in der Vektor-Datei, NICHT unter
+  `examples/mqtt-measurement-config.valid*.json` (die liest `geteilter_punkt_test.go`).
+- ⚠ **`erzeuger.te[*]` mit index = TE-Nr. (1-basiert).** Offset `28+index*10+feld` = 38 + (TE-Nr. − 1) · 10.
+  Konkrete Schlüssel `erzeuger.te[2].t_p_ist_w`; die Feldnamen sind die der Vorlage, unverändert.
+- ⚠ **Kopf ist kein Messwert** außer `te_anzahl`, `programmstand`, `steuerung_id`, `anlagenart`; Signatur,
+  Prüfwert, Version, Herzschlag prüft die Box. Namen ab `beschreibung_ab` sind keine Messpunkte.
+- ⚠ **Vorbelegung, nie Überschreiben.** Namen aus dem Bild landen in `typ_bild` bzw. `*_bild`; nur eine leere
+  Anzeige wird gefüllt. Der Netzbetreiber bleibt am Netzanschluss — eine Abweichung ist ein Hinweis
+  (`netzbetreiber_abweichung`, `netzbetreiber_nicht_eingetragen`), keine Schreibung.
+- ⚠ **Controllerwechsel:** Karten brauchen die Entscheidung `karten_uebernommen`, Erzeugungseinheiten ziehen
+  ohne sie mit allen Angaben um (`ZaehlerwechselService`, `GeraetRepository.karteWechseln`).
+- ⚠ **Nicht in die Energiebilanz:** der Typ hat keine Kanäle; die Werte gehen weder in Topologie noch Hausbilanz
+  (wie ein Selbstbau-Gerät), bis EZ-17 das ausdrücklich koppelt.
+- ⚠ **`werte` ohne Wert = `keine_daten`, nie 0;** `aktuell` nur mit Qualität `good` und höchstens 120 s alt.
+
+## Nachfolger
+
+EZ-5 (Box-Leser, Edge-Release: Laufzeitstand, `advertised: true`, Budget-Klasse in
+`measurement-budget-vectors.json`, Go-`Config.ErzeugerRegisterbilder`), EZ-7 (`erzeuger_vorgabe`), EZ-8/EZ-10
+(Portal-Ansichten auf diesen Routen), EZ-15 (Anlege-Schritt mit Probe `erzeuger_kopf`), EZ-16 (Programmstand).

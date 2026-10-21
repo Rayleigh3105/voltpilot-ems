@@ -560,6 +560,9 @@ class CounterRangeTest(unittest.TestCase):
         document = self.mutated(declare)
         validate_json_schema(document, self.schema)
         counters = sum(point["aggregation_kind"] == "counter" for point in document["points"])
+        # Schon deklariert aus der Quelle: die zwei Vorgaben-Zähler des Erzeuger-Registerbilds (EZ-1 A2).
+        schon = sum("wertebereich_modul" in point for point in self.catalog["points"])
+        self.assertEqual(schon, 2)
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "catalog.json"
             path.write_bytes(canonical_json_bytes(document))
@@ -572,11 +575,11 @@ class CounterRangeTest(unittest.TestCase):
         lines = result.stdout.splitlines()
         self.assertEqual(
             lines[-1],
-            f"{counters - 2} of {counters} counter points without wertebereich_modul "
+            f"{counters - 2 - schon} of {counters} counter points without wertebereich_modul "
             f"in catalog {document['catalog_version']}",
         )
         rows = [line.split("\t") for line in lines[:-1]]
-        self.assertEqual(len(rows), counters - 2)
+        self.assertEqual(len(rows), counters - 2 - schon)
         self.assertEqual(rows, sorted(rows, key=lambda row: (row[0], row[1])))
         listed = {row[1] for row in rows}
         self.assertNotIn(self.COUNTER, listed)
@@ -803,8 +806,9 @@ class WagoQuelleTest(unittest.TestCase):
         # von 2026.09.23.2 auf 2026.09.23.3 — wirksam mit dem Box-Release, das diese Palette trägt.
         families = {f["family"]: f["an_der_box"] for f in self.catalog["families"]}
         self.assertEqual({name: families[name] for name in self.KARTEN}, {"wago.pm494": True, "wago.pm495": True})
-        self.assertTrue(all(families.values()))
-        self.assertEqual(cataloglib.NOCH_NICHT_AN_DER_BOX, {})
+        # Zurückgehalten ist seit UEMS EZ-6 nur das Erzeuger-Registerbild (Leser kommt mit EZ-5).
+        self.assertEqual({name for name, an in families.items() if not an}, {"voltpilot.erzeuger_registerbild_v1"})
+        self.assertEqual(set(cataloglib.NOCH_NICHT_AN_DER_BOX), {"voltpilot.erzeuger_registerbild_v1"})
         self.assertEqual(self.catalog["runtime_catalog_version"], "2026.09.23.3")
         karten = [p for p in runtime_projection(self.catalog, "2026.09.23.3") if p["family"].startswith("wago.")]
         self.assertEqual(len(karten), 54)
@@ -906,6 +910,121 @@ class WagoQuelleTest(unittest.TestCase):
         with self.assertRaisesRegex(SchemaValidationError, re.escape("required property 'invalid'")):
             validate_json_schema(self.mutated(bereich_ohne_invalid), self.schema)
         self.assertIn(f"{holding}: range leaves the uint16 value space", self.validation_error(bereich_zu_gross))
+
+
+class ErzeugerQuelleTest(unittest.TestCase):
+    """UEMS EZ-6: Quelle `erzeuger` — das VoltPilot-Registerbild Erzeuger v1, schlanke Fassung (Konzept §3.7).
+
+    Feste Abschnitte lückenlos in 12 … 37, je Einheit ein Block von 10 Wörtern ab 38; Gore (3 Einheiten) liest
+    68 Wörter, Büttner (2) 58. Die Familie ist noch an keiner Box (Leser: EZ-5).
+    """
+
+    FAMILIE = "voltpilot.erzeuger_registerbild_v1"
+    QUELLE = ROOT / "sources" / "voltpilot" / "erzeuger-registerbild-v1.json"
+    TYP_MAX = {"uint16": 0xFFFF, "bitfield16": 0xFFFF, "int16": 0x7FFF, "uint32": 0xFFFFFFFF, "int32": 0x7FFFFFFF}
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.catalog = json.loads(ARTIFACT.read_text(encoding="utf-8"))
+        cls.quelle = json.loads(cls.QUELLE.read_text(encoding="utf-8"))
+        cls.punkte = [point for point in cls.catalog["points"] if point["family"] == cls.FAMILIE]
+        cls.by_key = {point["point_key"]: point for point in cls.punkte}
+
+    def mutated_error(self, mutate) -> str:
+        document = copy.deepcopy(self.catalog)
+        mutate({point["point_key"]: point for point in document["points"]})
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "catalog.json"
+            path.write_bytes(canonical_json_bytes(document))
+            with self.assertRaises(ValueError) as raised:
+                validate_catalog(path)
+        return str(raised.exception)
+
+    def woerter(self, punkte) -> list[int]:
+        belegt = []
+        for point in punkte:
+            offset = point["address"]["offset_words"]
+            start = int(offset.rsplit("+", 1)[1]) if isinstance(offset, str) else offset
+            belegt.extend(range(start, start + point["address"]["width_words"]))
+        return sorted(belegt)
+
+    def test_feste_abschnitte_und_einheiten_block_sind_lueckenlos(self) -> None:
+        fest = [p for p in self.punkte if not p.get("dynamic")]
+        einheit = [p for p in self.punkte if p.get("dynamic")]
+        self.assertEqual((len(self.punkte), len(fest), len(einheit)), (33, 26, 7))
+        kopf = [p for p in fest if p["point_key"].startswith("erzeuger.kopf.")]
+        self.assertEqual(self.woerter(kopf), [5, 7, 8, 9, 10])
+        self.assertEqual(self.woerter([p for p in fest if p not in kopf]), list(range(12, 38)))
+        self.assertEqual(self.woerter(einheit), list(range(10)))
+        self.assertTrue(all(p["address"]["offset_words"].startswith("28+index*10+") for p in einheit))
+        self.assertTrue(all(".te[*]." in p["point_key"] and p["point_key_template"] for p in einheit))
+        bild = self.quelle["registerbild"]
+        laenge = lambda n: bild["einheit_ab"] + n * bild["einheitsblock"]  # noqa: E731
+        self.assertEqual((laenge(3), laenge(2), bild["max_einheiten"]), (68, 58, 10))  # Gore, Büttner, EZ-1 A1
+
+    def test_schluessel_folgen_dem_abschnitt_und_dem_feldnamen_der_vorlage(self) -> None:
+        praefix = {"kopf": "erzeuger.kopf.", "a": "erzeuger.a.", "nb": "erzeuger.nb.", "dv": "erzeuger.dv.",
+                   "wirkung": "erzeuger.wirkung.", "te[*]": "erzeuger.te[*]."}
+        erwartet = {praefix[f["abschnitt"]] + f["feld"] for f in self.quelle["felder"]}
+        self.assertEqual(set(self.by_key), erwartet)
+        for point in self.punkte:
+            with self.subTest(point=point["point_key"]):
+                self.assertEqual(point["source_kind"], "erzeuger_registerbild")
+                self.assertEqual(point["address"]["base"], "parameter")
+                self.assertIsNone(point["endian"])
+                self.assertEqual(point["poll_group"], "erzeuger:registerbild")
+
+    def test_ungueltig_ist_das_typ_maximum_ausser_an_den_zaehlern_mit_ueberlauf(self) -> None:
+        for point in self.punkte:
+            with self.subTest(point=point["point_key"]):
+                if point["point_key"] in {"erzeuger.nb.n_zaehler", "erzeuger.dv.d_zaehler"}:
+                    self.assertNotIn("range", point)
+                    self.assertEqual((point["wertebereich_modul"], point["laeuft_ueber"]), (65536, True))
+                else:
+                    self.assertEqual(point["range"]["invalid"], self.TYP_MAX[point["value_type"]])
+
+    def test_zustaende_und_bitfelder_tragen_ihr_vokabular_nur_in_der_quelle(self) -> None:
+        felder = {f["feld"]: f for f in self.quelle["felder"]}
+        for feld in felder.values():
+            with self.subTest(feld=feld["feld"]):
+                self.assertEqual("vokabular" in feld, feld["aggregation_kind"] == "state"
+                                 and feld["feld"] not in {"te_anzahl", "programmstand", "steuerung_id",
+                                                          "p_installiert_kw", "t_nenn_kw"})
+                self.assertEqual("bits" in feld, feld["aggregation_kind"] == "bitfield")
+                if "gueltig_wenn" in feld:
+                    deckend = felder[feld["gueltig_wenn"]["feld"]]
+                    self.assertIn(feld["gueltig_wenn"]["bit"], [b["bit"] for b in deckend["bits"]])
+        self.assertEqual([b["bit"] for b in felder["t_bits"]["bits"]], list(range(10)))  # EZ-1 Lesart 7
+        for point in self.punkte:
+            self.assertFalse({"vokabular", "bits", "gueltig_wenn"} & set(point), point["point_key"])
+
+    def test_die_familie_ist_noch_an_keiner_box(self) -> None:
+        (familie,) = [f for f in self.catalog["families"] if f["family"] == self.FAMILIE]
+        self.assertEqual((familie["an_der_box"], familie["point_count"], familie["template_count"]), (False, 33, 7))
+        box = runtime_projection(self.catalog, self.catalog["runtime_catalog_version"])
+        self.assertFalse([p for p in box if p["family"] == self.FAMILIE])
+        palette = json.loads((REPO / "edge-app" / "nodered" / "measurements" / "catalog.json").read_bytes())
+        self.assertFalse([p for p in palette["points"] if p["family"] == self.FAMILIE])
+
+    def test_validator_haelt_feste_abschnitte_und_einheiten_bloecke_getrennt(self) -> None:
+        def fest_im_block(points):
+            points["erzeuger.wirkung.p_grenze_w"]["address"]["offset_words"] = 37
+        self.assertIn("erzeuger.wirkung.p_grenze_w: fixed field reaches into the unit blocks",
+                      self.mutated_error(fest_im_block))
+
+        def block_verlassen(points):
+            points["erzeuger.te[*].t_e"]["address"]["offset_words"] = "28+index*10+9"
+        self.assertIn("erzeuger.te[*].t_e: field leaves the unit block", self.mutated_error(block_verlassen))
+
+        def einheit_fest(points):
+            points["erzeuger.te[*].t_zustand"]["address"]["offset_words"] = 38
+        self.assertIn("erzeuger.te[*].t_zustand: a unit offset must be 28+index*10+<offset in the unit block>",
+                      self.mutated_error(einheit_fest))
+
+        def wortfolge_im_katalog(points):
+            points["erzeuger.a.p_nvp_w"]["endian"] = "big"
+        self.assertIn("erzeuger.a.p_nvp_w: the Registerbild word order is a parameter per installation",
+                      self.mutated_error(wortfolge_im_katalog))
 
 
 if __name__ == "__main__":

@@ -191,8 +191,11 @@ class SiteProfileApiTest {
         // Kopf des Ladepunkt-Abschnitts ein.
         assertThat(ids(shelf)).containsExactly("marktvermarktung", "lastspitzenkappung",
                 "atypische-netznutzung");
+        // UEMS EZ-6: „Netz und Vermarktung“ steht ebenfalls in "weitere" - ohne Schalter, ohne Reiter, und
+        // ohne Anlagensteuerung nie abgeleitet aktiv.
         assertThat(weitereIds(shelf)).containsExactly("monitoring", "speicher-fahrplan",
-                "ueberschuss", "verbraucher", "lastmanagement", "eigene-auswertung");
+                "ueberschuss", "verbraucher", "lastmanagement", "netz-und-vermarktung", "eigene-auswertung");
+        assertThat(card(shelf, "netz-und-vermarktung").path("derivedActive").asBoolean()).isFalse();
         assertThat(shelf.toString()).doesNotContain("berichte");
         // Und der Phantom-Verweis auf eine Seite, die es nicht gibt, ist weg.
         assertThat(shelf.toString()).doesNotContain("Komponenten & Regeln");

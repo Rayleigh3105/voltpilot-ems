@@ -1,0 +1,139 @@
+{
+  "schema_version": "1.0",
+  "_comment": [
+    "UEMS EZ-6: Publisher-Vektoren fuer das Feld erzeuger_registerbilder in mqtt-measurement-config",
+    "(x-erzeuger-registerbilder-rule). Je Fall: der Plan (selections), die laufenden Registerbild-Fassungen der",
+    "Anlagensteuerungen, ob die Box erzeuger_registerbild meldet - und was die Cloud sendet (erwartet = null:",
+    "das Feld fehlt, das Dokument bleibt Byte fuer Byte wie ohne Erzeuger). datenbank_gefragt = false: ein Plan",
+    "ohne Erzeuger-Punkt fragt die Datenbank nicht einmal. Java: ErzeugerRegisterbilderVektorenTest.",
+    "dokument ist das vollstaendige Gore-Dokument (Fall gore-pv-drei-wechselrichter). Es liegt bewusst NICHT unter",
+    "examples/mqtt-measurement-config.valid*.json: der Go-Core liest jene Dateien mit DisallowUnknownFields und",
+    "kennt das Feld erst mit EZ-5 (Box-Leser); EZ-5 uebernimmt es dorthin, wenn Config das Feld traegt."
+  ],
+  "vertrag": "docs/contracts/v2/mqtt-measurement-config.schema.json",
+  "faelle": [
+    {
+      "name": "gore-pv-drei-wechselrichter",
+      "beschreibung": "Gore (PV, 3 Wechselrichter): Basis 0, FC4, Wortfolge big, keine Steuerung-Kennung vergeben - sie fehlt, nie 0.",
+      "box_faehig": true,
+      "plan": [
+        {"point_key": "erzeuger.a.p_nvp_w", "cadence_s": 5, "entity_id": "00000000-0000-0000-0000-0000000e2001"},
+        {"point_key": "erzeuger.te[3].t_p_ist_w", "cadence_s": 5, "entity_id": "00000000-0000-0000-0000-0000000e2001"},
+        {"point_key": "deye.hybrid_1p.battery.battery", "cadence_s": 10}
+      ],
+      "fassungen": [
+        {"entity_id": "00000000-0000-0000-0000-0000000e2001", "basisadresse": 0, "funktionscode": 4, "wortfolge": "big",
+         "te_anzahl": 3, "anlagenart": "pv", "steuerung_kennung": null, "veraltet_netzpunkt_s": 30}
+      ],
+      "datenbank_gefragt": true,
+      "erwartet": [
+        {"entity_id": "00000000-0000-0000-0000-0000000e2001", "basisadresse": 0, "funktionscode": 4, "wortfolge": "big",
+         "te_anzahl": 3, "anlagenart": "pv", "veraltet_netzpunkt_s": 30}
+      ]
+    },
+    {
+      "name": "buettner-bhkw-zwei-motoren",
+      "beschreibung": "Buettner (Biogas-BHKW, 2 Motoren) mit vergebener Steuerung-Kennung: sie geht mit und wird geprueft.",
+      "box_faehig": true,
+      "plan": [
+        {"point_key": "erzeuger.wirkung.quelle_p", "cadence_s": 5, "entity_id": "00000000-0000-0000-0000-0000000b2002"},
+        {"point_key": "erzeuger.te[2].t_zustand", "cadence_s": 5, "entity_id": "00000000-0000-0000-0000-0000000b2002"}
+      ],
+      "fassungen": [
+        {"entity_id": "00000000-0000-0000-0000-0000000b2002", "basisadresse": 0, "funktionscode": 4, "wortfolge": "big",
+         "te_anzahl": 2, "anlagenart": "bhkw", "steuerung_kennung": 4711, "veraltet_netzpunkt_s": 30}
+      ],
+      "datenbank_gefragt": true,
+      "erwartet": [
+        {"entity_id": "00000000-0000-0000-0000-0000000b2002", "basisadresse": 0, "funktionscode": 4, "wortfolge": "big",
+         "te_anzahl": 2, "anlagenart": "bhkw", "steuerung_kennung": 4711, "veraltet_netzpunkt_s": 30}
+      ]
+    },
+    {
+      "name": "zwei-steuerungen-nach-entity-id",
+      "beschreibung": "Zwei Anlagensteuerungen einer Box: je eine Zeile, nach entity_id sortiert (deterministisch).",
+      "box_faehig": true,
+      "plan": [
+        {"point_key": "erzeuger.a.p_erzeugung_w", "cadence_s": 5, "entity_id": "00000000-0000-0000-0000-0000000e2009"},
+        {"point_key": "erzeuger.a.p_erzeugung_w", "cadence_s": 5, "entity_id": "00000000-0000-0000-0000-0000000e2001"}
+      ],
+      "fassungen": [
+        {"entity_id": "00000000-0000-0000-0000-0000000e2009", "basisadresse": 1000, "funktionscode": 3, "wortfolge": "little",
+         "te_anzahl": 10, "anlagenart": "gemischt", "steuerung_kennung": 0, "veraltet_netzpunkt_s": 120},
+        {"entity_id": "00000000-0000-0000-0000-0000000e2001", "basisadresse": 0, "funktionscode": 4, "wortfolge": "big",
+         "te_anzahl": 1, "anlagenart": "pv", "steuerung_kennung": null, "veraltet_netzpunkt_s": 30}
+      ],
+      "datenbank_gefragt": true,
+      "erwartet": [
+        {"entity_id": "00000000-0000-0000-0000-0000000e2001", "basisadresse": 0, "funktionscode": 4, "wortfolge": "big",
+         "te_anzahl": 1, "anlagenart": "pv", "veraltet_netzpunkt_s": 30},
+        {"entity_id": "00000000-0000-0000-0000-0000000e2009", "basisadresse": 1000, "funktionscode": 3, "wortfolge": "little",
+         "te_anzahl": 10, "anlagenart": "gemischt", "steuerung_kennung": 0, "veraltet_netzpunkt_s": 120}
+      ]
+    },
+    {
+      "name": "plan-ohne-erzeuger-punkt",
+      "beschreibung": "Kein Punkt erzeuger.*: kein Feld, keine Abfrage - das Dokument bleibt wie vor EZ-6.",
+      "box_faehig": true,
+      "plan": [
+        {"point_key": "deye.hybrid_1p.battery.battery", "cadence_s": 10}
+      ],
+      "fassungen": [],
+      "datenbank_gefragt": false,
+      "erwartet": null
+    },
+    {
+      "name": "box-ohne-faehigkeit",
+      "beschreibung": "Mischbetrieb: die Box meldet erzeuger_registerbild nicht - das Feld fehlt, sonst verwuerfe ihr Core das ganze Dokument.",
+      "box_faehig": false,
+      "plan": [
+        {"point_key": "erzeuger.a.p_nvp_w", "cadence_s": 5, "entity_id": "00000000-0000-0000-0000-0000000e2001"}
+      ],
+      "fassungen": [
+        {"entity_id": "00000000-0000-0000-0000-0000000e2001", "basisadresse": 0, "funktionscode": 4, "wortfolge": "big",
+         "te_anzahl": 3, "anlagenart": "pv", "steuerung_kennung": null, "veraltet_netzpunkt_s": 30}
+      ],
+      "datenbank_gefragt": true,
+      "erwartet": null
+    },
+    {
+      "name": "ohne-laufende-fassung",
+      "beschreibung": "Erzeuger-Punkte, aber keine laufende Fassung: kein Eintrag - die Punkte bleiben ungelesen, nie an Adresse 0.",
+      "box_faehig": true,
+      "plan": [
+        {"point_key": "erzeuger.a.p_nvp_w", "cadence_s": 5, "entity_id": "00000000-0000-0000-0000-0000000e2001"}
+      ],
+      "fassungen": [],
+      "datenbank_gefragt": true,
+      "erwartet": null
+    },
+    {
+      "name": "punkt-ohne-komponente",
+      "beschreibung": "Ein Erzeuger-Punkt ohne entity_id (mehrdeutig zusammengelegt) nennt keine Steuerung - kein Feld, keine Abfrage.",
+      "box_faehig": true,
+      "plan": [
+        {"point_key": "erzeuger.a.p_nvp_w", "cadence_s": 5}
+      ],
+      "fassungen": [],
+      "datenbank_gefragt": false,
+      "erwartet": null
+    }
+  ],
+  "dokument": {
+    "schema_version": "2.0",
+    "tenant_id": "00000000-0000-0000-0000-000000000001",
+    "site_id": "00000000-0000-0000-0000-000000000002",
+    "device_id": "00000000-0000-0000-0000-000000000003",
+    "revision": 12,
+    "catalog_version": "2026.09.23.3",
+    "selections": [
+      {"point_key": "erzeuger.a.p_nvp_w", "cadence_s": 5, "entity_id": "00000000-0000-0000-0000-0000000e2001"},
+      {"point_key": "erzeuger.te[3].t_p_ist_w", "cadence_s": 5, "entity_id": "00000000-0000-0000-0000-0000000e2001"},
+      {"point_key": "deye.hybrid_1p.battery.battery", "cadence_s": 10}
+    ],
+    "erzeuger_registerbilder": [
+      {"entity_id": "00000000-0000-0000-0000-0000000e2001", "basisadresse": 0, "funktionscode": 4, "wortfolge": "big",
+       "te_anzahl": 3, "anlagenart": "pv", "veraltet_netzpunkt_s": 30}
+    ]
+  }
+}

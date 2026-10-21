@@ -35,7 +35,8 @@ describe('KATALOG_FAMILIEN ist eine geprüfte Kopie, keine zweite Wahrheit', () 
   });
 
   it('lässt die Familien weg, die noch an keine Box gehen - sonst stünde dort ein leerer Kasten', () => {
-    expect(nochNichtAnDerBox).toEqual([]);
+    // UEMS EZ-6: das Erzeuger-Registerbild steht im Inhaltsstand, den Leser bringt EZ-5 mit einem Edge-Release.
+    expect(nochNichtAnDerBox).toEqual(['voltpilot.erzeuger_registerbild_v1']);
     expect(KATALOG_FAMILIEN.filter((f) => nochNichtAnDerBox.includes(f))).toEqual([]);
   });
 

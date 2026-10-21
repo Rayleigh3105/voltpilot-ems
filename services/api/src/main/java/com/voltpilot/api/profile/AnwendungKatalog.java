@@ -60,6 +60,8 @@ public class AnwendungKatalog {
     public static final String LASTSPITZENKAPPUNG = "lastspitzenkappung";
     public static final String ATYPISCHE_NETZNUTZUNG = "atypische-netznutzung";
     public static final String LASTMANAGEMENT = "lastmanagement";
+    /** UEMS EZ-6: Vorgaben von Netzbetreiber und Direktvermarkter an einer Erzeugeranlage, ohne eigenen Reiter. */
+    public static final String NETZ_UND_VERMARKTUNG = "netz-und-vermarktung";
     public static final String EIGENE_AUSWERTUNG = "eigene-auswertung";
     public static final String BERICHTE = "berichte";
 

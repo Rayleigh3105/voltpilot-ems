@@ -12,7 +12,7 @@ flowchart LR
 ```
 
 Das aktuelle, kanonische Artefakt ist
-[`dist/measurement-point-catalog-2026.09.23.3.json`](dist/measurement-point-catalog-2026.09.23.3.json).
+[`dist/measurement-point-catalog-2026.10.21.1.json`](dist/measurement-point-catalog-2026.10.21.1.json).
 Es wird ohne Netz- oder Gerätezugriff ausschließlich aus den unter `sources/`
 eingecheckten Snapshots erzeugt. `sources/manifest.json` pinnt Commit bzw.
 Dokumentationsstand und SHA-256. Das Artefakt enthält keinen Erzeugungszeitstempel;
@@ -194,6 +194,28 @@ und darum weder `address.base` noch `source_kind` noch `endian`.
   keinen dekodierten Wert. Das Vorzeichen der Wirkleistung ist zu erheben — sie trägt keine Richtung.
 - Beide Familien sind noch an keiner Box (nächster Abschnitt).
 
+## Erzeuger-Registerbild (UEMS EZ-6)
+
+`sources/voltpilot/erzeuger-registerbild-v1.json` ist die Normalform der schlanken Fassung des
+VoltPilot-Registerbilds Erzeuger v1 (Konzept „Erzeuger am Wago-Modbus-Server“ §3.7, Entscheid EW-17 A, mit
+dem EZ-1-Abgleich): Familie `voltpilot.erzeuger_registerbild_v1`, Quellenart `erzeuger_registerbild`, Adresse
+`registerbild_relative` mit `base: parameter` und `endian: null` — Basisadresse, Funktionscode und Wortfolge
+stehen in der Registerbild-Fassung der Anlagensteuerung (api), nicht im Katalog.
+
+- **Feste Abschnitte** mit festem Offset: `erzeuger.kopf.*` (nur `te_anzahl`, `programmstand`, `steuerung_id`,
+  `anlagenart` — Signatur, Prüfwert, Version und Herzschlag prüft die Box), `erzeuger.a.*` (Anlage und
+  Netzpunkt), `erzeuger.nb.*` (Netzbetreiber), `erzeuger.dv.*` (Direktvermarkter), `erzeuger.wirkung.*`.
+  Die Feldnamen sind die der Vorlage, unverändert (`erzeuger.nb.n_p_prozent`).
+- **Je Einheit** eine Vorlage `erzeuger.te[*].<feld>`, konkret `erzeuger.te[2].t_p_ist_w`; index = TE-Nr. 1 … 10,
+  Offset `28+index*10+<feld>` = 38 + (TE-Nr. − 1) · 10 + Feld. `validate.py` lässt keinen festen Punkt in die
+  Einheiten-Blöcke und keinen Einheiten-Punkt aus seinem Block.
+- **Ungültig = Typ-Maximum** (`range.invalid`, auch an Bitfeldern) — außer `n_zaehler`/`d_zaehler`: sie laufen
+  65535 → 0 (`wertebereich_modul` 65536, `laeuft_ueber`), 0xFFFF ist dort ein Wert (EZ-1 A2).
+- Zustände (`state`) und Bitfelder (`bitfield`) tragen ihr Vokabular nur in der Quelle (`vokabular`, `bits`,
+  `gueltig_wenn` = welches Gültigkeitsbit den Wert deckt). Das ist Cloud-Wissen für die Anzeige
+  (`uems/ErzeugerVokabular`, Test gegen diese Datei) und geht nicht in den Punkt — die Box reicht Rohwerte.
+- Noch an keiner Box (nächster Abschnitt): den Leser bringt EZ-5 mit einem Edge-Release.
+
 ## Zähler ohne Anzeige-Einheit
 
 `unit` nennt die Einheit des **dekodierten** Werts (nach `scale`); gerechnet und gespeichert wird
@@ -261,8 +283,9 @@ und zeigt deshalb den Laufzeitstand (`MeasurementCatalog.version()`).
 
 Eine neue Quelle, deren Punkte keine ausgelieferte Box lesen kann, gehört in den Inhaltsstand, nicht in
 den Laufzeitstand. `NOCH_NICHT_AN_DER_BOX` in `tools/cataloglib.py` nennt solche Familien mit Grund
-(heute keine; `wago.pm494`/`wago.pm495` standen dort, bis sie mit dem Laufzeitstand 2026.09.23.3 an die Box
-gingen — UEMS AP-05 IP-6b, wirksam mit dem Box-Release):
+(heute `voltpilot.erzeuger_registerbild_v1` seit dem Inhaltsstand 2026.10.21.1, UEMS EZ-6; `wago.pm494`/`wago.pm495`
+standen dort, bis sie mit dem Laufzeitstand 2026.09.23.3 an die Box gingen — UEMS AP-05 IP-6b, wirksam mit dem
+Box-Release):
 
 - Ihre Punkte stehen im Artefakt (`families[].an_der_box: false`), fehlen aber in der Box-Sicht
   (`runtime_projection`), in der Palette-`catalog.json` und in der Metadaten-Migration — `validate.py` und
@@ -329,6 +352,8 @@ unter `API_KEYS_FIRMWARE/`.
 - WAGO: VoltPilot-Registerbild WAGO v1 für die Energiekarten 750-494 und 750-495, 54 Vorlagen mit
   Herkunft je Zahl (Handbuch 750-495 Version 1.3.0, 750-494 Version 1.5.0, 750-362 Version 1.1.1,
   abgerufen 10.09.2026) — noch an keiner Box.
+- Erzeuger: VoltPilot-Registerbild Erzeuger v1, schlanke Fassung (Konzept-Fassung 12, 21.10.2026), 26 feste
+  Punkte und 7 Vorlagen je Einheit — noch an keiner Box.
 
 Die mitkopierten Lizenzdateien gelten für Deye, SunSpec und OCPP. go-e- und
 Shelly-Dateien werden als unveränderte bzw. quellennahe Fakten-Snapshots mit URL,
