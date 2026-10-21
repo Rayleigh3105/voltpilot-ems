@@ -53,7 +53,9 @@ for (const breite of BREITEN) {
     await expect(einheiten).toContainText('WR Dach Nord');
     await expect(einheiten).toContainText('läuft begrenzt');
     await expect(sektion.getByText('Energiekarten')).toHaveCount(0);
-    await expect(sektion.getByTestId('geraet-anlagensteuerung')).toContainText('2610 · Oktober 2026');
+    await expect(sektion.getByTestId('geraet-anlagensteuerung')).toContainText('speist 41,2');
+    // Den Programmstand zeigt EZ-16 an derselben Karte.
+    await expect(sektion.getByTestId('geraet-programmstand')).toContainText('26.10');
     await ohneQuerlauf(page, breite);
     expect(fehler).toEqual([]);
   });
