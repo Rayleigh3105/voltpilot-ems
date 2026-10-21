@@ -207,9 +207,10 @@ export function VerlaufExplorer({
   const [baum, setGroups] = useState<VerlaufGroup[] | null>(null);
   // UEMS EZ-10: die Äste der Anlagensteuerungen in einem eigenen Stand - EIN Wert, nie ein Anhängen an den Baum,
   // damit die Auswahl `groups` nur dann eine neue Identität bekommt, wenn sich wirklich ein Ast ändert.
-  const [erzAeste, setErzAeste] = useState<VerlaufGroup[]>([]);
+  // `null` = ihre Antwort steht noch aus: bis dahin behält die Auswahl einen Deep-Link auf eine ihrer Kurven.
+  const [erzAeste, setErzAeste] = useState<VerlaufGroup[] | null>(null);
   const groups = useMemo(
-    () => (baum && erzAeste.length > 0 ? [...baum, ...erzAeste] : baum),
+    () => (baum && erzAeste && erzAeste.length > 0 ? [...baum, ...erzAeste] : baum),
     [baum, erzAeste],
   );
   const [isV1, setIsV1] = useState(false);
@@ -222,8 +223,15 @@ export function VerlaufExplorer({
   useEffect(() => {
     let active = true;
     setGroups(null);
-    setErzAeste([]);
+    setErzAeste(null);
     setTreeErr(null);
+    // UEMS EZ-10: je Anlagensteuerung ein Ast mit den Kurven ihres Registerbilds (Einheiten, Netzpunkt,
+    // Gasspeicher, Vorgaben) - die Punkte `erzeuger.*` sind keine Kanäle der Komponente. Auch neben dem
+    // v1-Baum: eine reine Erzeugeranlage hat oft keine gemessene Komponente sonst.
+    api
+      .anlagensteuerungen(site.id)
+      .then((liste) => active && setErzAeste(liste?.steuerungen.map(erzeugerGruppe) ?? []))
+      .catch(() => active && setErzAeste([]));
     Promise.all([api.siteEntities(site.id), api.topology(site.id).catch(() => null)])
       .then(([entities, topology]) => {
         if (!active) return;
@@ -248,15 +256,6 @@ export function VerlaufExplorer({
               if (gruppe) setGroups((g) => (g ? [...g, gruppe] : [gruppe]));
             })
             .catch(() => undefined);
-          // UEMS EZ-10: je Anlagensteuerung ein Ast mit den Kurven ihres Registerbilds (Einheiten, Netzpunkt,
-          // Gasspeicher, Vorgaben) - die Punkte `erzeuger.*` sind keine Kanäle der Komponente.
-          api
-            .anlagensteuerungen(site.id)
-            .then((liste) => {
-              if (!active || !liste) return;
-              setErzAeste(liste.steuerungen.map(erzeugerGruppe));
-            })
-            .catch(() => undefined);
         } else {
           setGroups(v1FallbackTree());
           setIsV1(true);
@@ -279,12 +278,14 @@ export function VerlaufExplorer({
   useEffect(() => {
     if (!groups) return;
     setTargets((prev) => {
-      const kept = prev.filter((t) => findItem(groups, t) != null);
+      const kept = prev.filter(
+        (t) => findItem(groups, t) != null || (erzAeste === null && istErzeugerZiel(t.entityId)),
+      );
       if (kept.length > 0) return kept.length === prev.length ? prev : kept;
       const first = firstTarget(groups);
       return first ? [first] : [];
     });
-  }, [groups]);
+  }, [groups, erzAeste]);
 
   // Keep the URL reflecting (measurements, range, anchor) - shareable/bookmarkable
   // via replaceState (no history spam, no reload).
@@ -335,13 +336,16 @@ export function VerlaufExplorer({
     const realIds = entityIds.filter((id) => !istBerechnet(id) && !istErzeugerZiel(id));
     const compIds = entityIds.filter(istBerechnet).map(berechneteMessstelleId);
     const erzIds = entityIds.filter(istErzeugerZiel).map(erzeugerGeraetId);
+    const erzP = Promise.all(
+      erzIds.map((id) => api.anlagensteuerungVerlauf(site.id, id, range, at).then((v) => [id, v] as const)),
+    );
     const p = isV1
-      ? api.history(site.id, range, at).then((h) => {
+      ? Promise.all([api.history(site.id, range, at), erzP]).then(([h, erzPairs]) => {
           if (!active) return;
           setSiteHist(h);
           setEntHist({});
           setCompHist({});
-          setErzHist({});
+          setErzHist(Object.fromEntries(erzPairs));
         })
       : Promise.all([
           Promise.all(
@@ -352,9 +356,7 @@ export function VerlaufExplorer({
           Promise.all(
             compIds.map((id) => api.messstelleVerlauf(id, range).then((v) => [id, v] as const)),
           ),
-          Promise.all(
-            erzIds.map((id) => api.anlagensteuerungVerlauf(site.id, id, range, at).then((v) => [id, v] as const)),
-          ),
+          erzP,
         ]).then(([entPairs, compPairs, erzPairs]) => {
           if (!active) return;
           setEntHist(Object.fromEntries(entPairs));

@@ -537,8 +537,9 @@
 :is(.stn, .stn-blatt) .erz .j-say{margin-top:0;font-size:17px}
 :is(.stn, .stn-blatt) .erz-folgt{margin-top:6px}
 :is(.stn, .stn-blatt) .erz-liste{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:8px}
-:is(.stn, .stn-blatt) .erz-zeile{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 12px;align-items:start;padding:12px;border-radius:16px;border:1px solid var(--c-border);background:var(--c-card);min-width:0}
+:is(.stn, .stn-blatt) .erz-zeile{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;align-items:start;padding:12px;border-radius:16px;border:1px solid var(--c-border);background:var(--c-card);min-width:0}
 :is(.stn, .stn-blatt) .erz-zeile .ico{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;background:var(--pv-soft);color:var(--pv)}
+:is(.stn, .stn-blatt) .erz-kopf{justify-content:space-between;flex-wrap:wrap;row-gap:4px}
 :is(.stn, .stn-blatt) .erz-werte{display:flex;flex-wrap:wrap;gap:2px 14px;font:500 14px/1.4 var(--font);color:var(--c-muted-fg);font-variant-numeric:tabular-nums}
 :is(.stn, .stn-blatt) .erz-werte b{font-weight:800;color:var(--c-fg);white-space:nowrap}
 :is(.stn, .stn-blatt) .erz-dv{font:600 13px/1.4 var(--font);overflow-wrap:anywhere}

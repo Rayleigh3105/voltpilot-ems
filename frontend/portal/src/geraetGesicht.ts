@@ -41,7 +41,7 @@
  * Rein + framework-frei (der `komponenten.ts`/`geraetSeite.ts`-Präzedenzfall).
  */
 import type {
-  ControlStatus, CurtailmentStatus, SiteEntity, SiteSource, TopologyEntity,
+  AnlagensteuerungWerte, ControlStatus, CurtailmentStatus, SiteEntity, SiteSource, TopologyEntity,
 } from './api';
 import { ladestandVon } from './ladestandVon';
 import { channelLabel } from './channels';
@@ -51,6 +51,8 @@ import { netzKwText, regeltNetzanschluss } from './curtailment';
 import { fmtNum } from './format';
 import type { GeraetArt, GeraetTon } from './geraetSeite';
 import type { PlantComponent } from './komponenten';
+import { anlagensteuerungIdOf } from './geraetAdresse';
+import { bitVon, kwText, PUNKT, wertVon, werteJe } from './anlagensteuerung';
 import type { ChargeConnector, ChargePoint } from './ladepunkte';
 import { NO_DATA } from './nodata';
 import type { FlowNode } from './topology';
@@ -191,6 +193,8 @@ export interface Gesicht {
    * dieses Modul spricht (`ebyte_modbus_tcp`), nie geraten.
    */
   ioModul: boolean;
+  /** UEMS EZ-10: die Seite einer Anlagensteuerung (`as-…`) - sie nennt sich so, nie „Verbraucher“. */
+  anlagensteuerung?: boolean;
   held: Held;
   /**
    * Was dieses Blatt HAT - fehlt ein Fach, fällt es still weg (S5: kein Kasten
@@ -273,6 +277,8 @@ export interface GesichtInput {
    * erst, wenn der Verbraucher selbst weder Leistung noch Relais meldet.
    */
   ioAusgangAn?: boolean | null;
+  /** UEMS EZ-10: die jüngsten Werte der Anlagensteuerung an ihrer Seite `as-…`. */
+  anlagensteuerungWerte?: AnlagensteuerungWerte | null;
   now?: number;
 }
 
@@ -356,8 +362,9 @@ export const TYP_WORT: Record<Gattung, string> = {
 };
 
 /** Der Typ dieses Blatts - ein I/O-Modul und ein Eigenbau sagen, was sie sind. */
-export function typWort(g: Pick<Gesicht, 'gattung' | 'eigenbau' | 'ioModul'>): string {
+export function typWort(g: Pick<Gesicht, 'gattung' | 'eigenbau' | 'ioModul' | 'anlagensteuerung'>): string {
   if (g.ioModul) return 'I/O-Modul';
+  if (g.anlagensteuerung) return 'Anlagensteuerung';
   const basis = TYP_WORT[g.gattung];
   return g.eigenbau ? `${basis} (selbst beschrieben)` : basis;
 }
@@ -367,8 +374,11 @@ export function gattungVon(input: {
   art: GeraetArt;
   rolle: string | null;
   komponenten: PlantComponent[];
+  geraetId?: string;
 }): Gattung {
   if (input.art === 'ladepunkt') return 'ladepunkt';
+  // EZ-10: die Komponente einer Anlagensteuerung hat keine Rolle der Energiebilanz - kein Zähler, kein Verbraucher.
+  if (anlagensteuerungIdOf(input.geraetId ?? null)) return 'geraet';
   if (input.art === 'hauptgeraet') {
     return input.komponenten.some((c) => c.role === 'storage')
       ? 'wechselrichter-speicher'
@@ -1107,6 +1117,45 @@ function heldGeraet(input: GesichtInput, eigenbau: boolean): Held {
 }
 
 /**
+ * Der Held einer Anlagensteuerung (UEMS EZ-10): Erzeugung, Netzpunkt und die wirksame Grenze aus den Punkten
+ * `erzeuger.*` - jede nur mit ihrem Gültigkeitsbit, sonst „—“ (nie 0). Ohne Messung am Netzpunkt (EW-16 C)
+ * steht dort „—“ mit dem Wort „keine Messung“.
+ */
+function heldAnlagensteuerung(werte: AnlagensteuerungWerte | null): Held {
+  const je = werteJe(werte);
+  const erzeugung = bitVon(je, PUNKT.aGueltig, 3) === false ? null : wertVon(je, PUNKT.erzeugung);
+  const nvpGueltig = bitVon(je, PUNKT.aGueltig, 0);
+  const ohneMessung = nvpGueltig === false && bitVon(je, PUNKT.aGueltig, 1) === false && bitVon(je, PUNKT.aGueltig, 2) === false;
+  const nvp = nvpGueltig ? wertVon(je, PUNKT.nvp) : null;
+  const grenze = bitVon(je, PUNKT.sBits, 0) === true ? wertVon(je, PUNKT.grenze) : null;
+  const kacheln: HeldKachel[] = [
+    { key: 'erzeugung', label: 'Erzeugung', wert: kwText(erzeugung), wort: null, gross: true },
+    {
+      key: 'netz',
+      label: 'Netzpunkt',
+      wert: kwText(nvp == null ? null : Math.abs(nvp)),
+      wort: nvp == null ? (ohneMessung ? 'keine Messung' : null) : nvp < -50 ? 'Einspeisung' : nvp > 50 ? 'Bezug' : null,
+    },
+    { key: 'grenze', label: 'Wirksame Grenze', wert: kwText(grenze), wort: null },
+  ];
+  const daten = kacheln.some((k) => k.wert !== NO_DATA && k.wert !== '—');
+  return {
+    titel: 'Jetzt',
+    kacheln,
+    satz: erzeugung != null ? `Die Anlage erzeugt gerade ${kwText(erzeugung)}.` : null,
+    satzTon: daten ? 'ok' : 'off',
+    hinweis: werte?.stand === 'noch_keine_daten'
+      ? 'Von dieser Steuerung liegen noch keine Daten vor.'
+      : werte && !daten
+        ? 'Die Steuerung meldet gerade keine gültige Leistung - die Einheiten stehen unter „Gerät & Verbindung“.'
+        : null,
+    zeilen: [],
+    balken: null,
+    werte: KEINE_WERTE,
+  };
+}
+
+/**
  * Das Gesicht dieser Seite - EIN Aufruf, EIN Ergebnis.
  *
  * Die Gattung entscheidet den Held und die Sektions-Folge; die Sektionen selbst
@@ -1125,8 +1174,11 @@ export function gesicht(input: GesichtInput): Gesicht {
   // Menge, mit der auch der Freigabe-Assistent gattert.
   const eigenbau = input.komponenten.some((c) => c.freigabeFaehig);
   const sektionen = sektionenVon({ gattung, registerMoeglich, eigenbau });
+  const anlagensteuerung = anlagensteuerungIdOf(input.geraetId) != null;
   const held = ioModul
     ? heldIoModul()
+    : anlagensteuerung
+    ? heldAnlagensteuerung(input.anlagensteuerungWerte ?? null)
     : gattung === 'wechselrichter-speicher'
     ? heldWechselrichter(input, true)
     : gattung === 'wechselrichter'
@@ -1147,7 +1199,7 @@ export function gesicht(input: GesichtInput): Gesicht {
     ? { ...held, hinweis: KEINE_MESSWERTE }
     : held;
 
-  return { gattung, eigenbau, ioModul, held: ehrlich, sektionen };
+  return { gattung, eigenbau, ioModul, anlagensteuerung, held: ehrlich, sektionen };
 }
 
 /**

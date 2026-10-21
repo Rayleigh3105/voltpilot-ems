@@ -301,7 +301,7 @@ describe('VerlaufExplorer — Anlagensteuerung (UEMS EZ-10)', () => {
     const ziel = { entityId: `erzeuger-${GERAET_GORE}`, channel: 'erzeuger.te[1].t_p_ist_w' };
     render(<VerlaufExplorer site={site} range="day" anchor={anchor} initialTargets={[ziel]} />);
     expect(await screen.findByText('Anlagensteuerung Gore', undefined, { timeout: 5000 })).toBeInTheDocument();
-    expect(screen.getAllByText('WR Dach Nord · Leistung').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('WR Dach Nord · Ist').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Vorgabe Netzbetreiber').length).toBeGreaterThan(0);
     await waitFor(() => expect(verlauf).toHaveBeenCalledWith('s-1', GERAET_GORE, 'day', expect.any(String)), { timeout: 5000 });
     expect(eh).not.toHaveBeenCalledWith('s-1', `erzeuger-${GERAET_GORE}`, expect.anything(), expect.anything());

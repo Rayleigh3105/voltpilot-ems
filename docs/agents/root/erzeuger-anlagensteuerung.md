@@ -100,9 +100,27 @@ läuft), `erzeuger_vorgabe_luecke` („n weitere Wechsel während einer Datenlü
   liegen offene Vorgaben und getragene Werte als JSON im Stand. Eine Probe, die nach dem Lauf über ihre Zeit kommt,
   bleibt eine Lücke.
 
+## Portal-Ansichten (EZ-10)
+
+- **Steuerung › Geräte (nur messen):** `steuerung/AnlagensteuerungKarte.tsx` — Satz „VoltPilot liest diese Anlage
+  nur …“, je Einheit Soll/Ist, „folgt“ (`s_bits` der Anlage; folgt sie nicht, heißt die Einheit mit Ist > Soll
+  „folgt nicht“), Bereitschaft für den Direktvermarkter mit Grund aus `t_bits` Bit 4–9 — nur mit Direktvermarkter
+  (`d_kanal` ≠ 0, sonst Stammdaten).
+- **Geräteseite `as-<Entität>`** (`geraetAdresse.ts`): `plantModel` gibt der Komponente ein eigenes Gerät, bevor der
+  erste Wechselrichter die unverankerten Komponenten nimmt; `geraetSeite` liest Weg und Zustand aus der
+  Anlagensteuerung, `geraetGesicht` nennt sie „Anlagensteuerung“ (Gattung `geraet`). Die Einheiten stehen an der
+  Karte „Gerät“ (`AnlagensteuerungEinheiten`), `geraetKarte` zählt sie nie als Energiekarten.
+- **Strom & Geld** (`NetzVermarktungFormen.tsx`): beide PUT ersetzen alles — jedes Formular schickt das Übrige
+  unverändert mit.
+- **Verlauf › Messwerte:** `GET …/anlagensteuerungen/{geraetId}/verlauf` (Rohwerte, Frist 90 Tage, Eimer der
+  Historie); Ast `erzeuger-<geraetId>` im Explorer, Kanal = Punktschlüssel.
+- ⚠ **Kein funktionales Anhängen an den Explorer-Baum aus einem Promise:** im vollen Testlauf wurde
+  `setGroups((g) => [...g, …])` bei jedem Render neu angewendet (neue Identität → Abruf-Effekt ohne Ende). Die Äste
+  stehen in eigenem Zustand; bis ihre Antwort da ist, behält die Auswahl einen Deep-Link auf eine ihrer Kurven.
+
 ## Nachfolger
 
 EZ-5 (Box-Leser, gebaut: Laufzeitstand 2026.10.21.1, `advertised: true`, Budget-Klasse in
-`measurement-budget-vectors.json`, Go-`Config.Erzeugerbilder` für `erzeuger_registerbilder`), EZ-8/EZ-10
-(Portal-Ansichten auf diesen Routen), EZ-9 (Vorgaben im Verlauf auf den EZ-7-Routen), EZ-15 (Anlege-Schritt mit
+`measurement-budget-vectors.json`, Go-`Config.Erzeugerbilder` für `erzeuger_registerbilder`), EZ-8
+(Cockpit auf diesen Routen), EZ-9 (Vorgaben im Verlauf auf den EZ-7-Routen), EZ-15 (Anlege-Schritt mit
 Probe `erzeuger_kopf`).

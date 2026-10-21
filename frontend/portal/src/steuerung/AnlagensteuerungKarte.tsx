@@ -84,8 +84,9 @@ function EinheitEintrag({ z }: { z: EinheitZeile }) {
         <Ic n={z.symbol} s={21} />
       </span>
       <span className="d-mid">
-        <span className="d-name">
+        <span className="d-name erz-kopf">
           <b>{z.name}</b>
+          <Folgt z={z} />
         </span>
         {(z.unter || z.zustand) && (
           <span className="d-satz">{[z.unter, z.zustand].filter(Boolean).join(' · ')}</span>
@@ -101,24 +102,34 @@ function EinheitEintrag({ z }: { z: EinheitZeile }) {
         {z.dv && <span className={`erz-dv ${z.dv.bereit ? 'is-bereit' : 'is-nicht'}`}>{z.dv.text}</span>}
         {z.veraltet && <span className="erz-alt">{z.veraltet}</span>}
       </span>
-      <span className="d-right">
-        {z.ohneDaten ? (
-          <span className="pill stale">
-            <i />
-            noch keine Daten
-          </span>
-        ) : z.folgt === 'folgt' ? (
-          <span className="pill on">
-            <i />
-            folgt
-          </span>
-        ) : z.folgt === 'folgt_nicht' ? (
-          <span className="pill wait">
-            <i />
-            folgt nicht
-          </span>
-        ) : null}
-      </span>
     </li>
   );
+}
+
+function Folgt({ z }: { z: EinheitZeile }) {
+  if (z.ohneDaten) {
+    return (
+      <span className="pill stale">
+        <i />
+        noch keine Daten
+      </span>
+    );
+  }
+  if (z.folgt === 'folgt') {
+    return (
+      <span className="pill on">
+        <i />
+        folgt
+      </span>
+    );
+  }
+  if (z.folgt === 'folgt_nicht') {
+    return (
+      <span className="pill wait">
+        <i />
+        folgt nicht
+      </span>
+    );
+  }
+  return null;
 }

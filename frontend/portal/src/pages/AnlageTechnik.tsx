@@ -550,7 +550,7 @@ export function TechnikSection({
                 sortiert(st.einheiten).map((e) => (
                   <Zeile
                     key={e.teil_id}
-                    icon={e.einheit_art === 'bhkw_motor' ? 'zap' : 'sun'}
+                    icon={e.einheit_art === 'bhkw_motor' ? 'zap' : e.einheit_art === 'pv_wechselrichter' ? 'sun' : 'cpu'}
                     kat="home"
                     label={einheitName(e)}
                     wert={e.registry_unit_id ?? 'MaStR-Nummer nicht erfasst'}

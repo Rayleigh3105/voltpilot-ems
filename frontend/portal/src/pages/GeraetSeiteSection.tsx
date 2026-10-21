@@ -681,11 +681,12 @@ export function GeraetSeiteSection({
       gemessen: eigenerVerbraucher ? consumerHasMeasurement(eigenerVerbraucher) : null,
       nachweis: eigenerVerbraucher ? consumerNachweis(eigenerVerbraucher) : null,
       ioAusgangAn,
+      anlagensteuerungWerte,
       now,
     });
   }, [view, data, sources, charging, control, curtailment, strategies, topology, fulfilment,
     eigenerVerbraucher, geraetId, geraeteRef, box?.id, now, setupHier, kommunikation,
-    eigeneKomponenten, ioAusgangAn]);
+    eigeneKomponenten, ioAusgangAn, anlagensteuerungWerte]);
 
   /**
    * Die Katalog-Familien DIESES Geräts - der Filter der Messbibliothek.

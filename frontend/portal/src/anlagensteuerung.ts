@@ -497,8 +497,8 @@ export function erzeugerGruppe(s: Anlagensteuerung): VerlaufGroup {
     producer: false,
   });
   const einheiten = sortiert(s.einheiten).flatMap((e) => [
-    item(einheitPunkt(e.te_nr, 't_p_ist_w'), `${einheitName(e)} · Leistung`, 'kW', 'pv' as const),
-    item(einheitPunkt(e.te_nr, 't_p_soll_w'), `${einheitName(e)} · Sollwert`, 'kW', 'pv' as const),
+    item(einheitPunkt(e.te_nr, 't_p_ist_w'), `${einheitName(e)} · Ist`, 'kW', 'pv' as const),
+    item(einheitPunkt(e.te_nr, 't_p_soll_w'), `${einheitName(e)} · Soll`, 'kW', 'pv' as const),
   ]);
   const gas = s.fassung?.anlagenart === 'pv' ? [] : [item(PUNKT.speicher, 'Gasspeicher', '%', 'storage')];
   return {
@@ -516,7 +516,7 @@ export function erzeugerGruppe(s: Anlagensteuerung): VerlaufGroup {
       item(PUNKT.nvp, 'Netzpunkt', 'kW', 'grid'),
       ...gas,
       item(PUNKT.nbProzent, 'Vorgabe Netzbetreiber', '%', 'grid'),
-      item(PUNKT.dvSoll, 'Sollwert Direktvermarkter', 'kW', 'grid'),
+      item(PUNKT.dvSoll, 'Direktvermarkter · Soll', 'kW', 'grid'),
       item(PUNKT.grenze, 'Wirksame Grenze', 'kW', 'grid'),
     ],
   };

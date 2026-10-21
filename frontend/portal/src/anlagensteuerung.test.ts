@@ -155,14 +155,14 @@ describe('Strom & Geld: Stammdaten (EZ-10 (3))', () => {
 });
 
 describe('Verlauf › Messwerte: Kurven je Einheit (EZ-10 (4))', () => {
-  it('ein Ast je Anlagensteuerung: je Einheit Leistung und Sollwert, dazu Anlage und Vorgaben; Gasspeicher nur ohne reine PV', () => {
+  it('ein Ast je Anlagensteuerung: je Einheit Ist und Soll, dazu Anlage und Vorgaben; Gasspeicher nur ohne reine PV', () => {
     const g = erzeugerGruppe(gore());
     expect(g.label).toBe('Anlagensteuerung Gore');
     expect(g.items.map((i) => i.label)).toEqual([
-      'WR Dach Nord · Leistung', 'WR Dach Nord · Sollwert',
-      'Wechselrichter 2 · Leistung', 'Wechselrichter 2 · Sollwert',
-      'Wechselrichter 3 · Leistung', 'Wechselrichter 3 · Sollwert',
-      'Erzeugung gesamt', 'Netzpunkt', 'Vorgabe Netzbetreiber', 'Sollwert Direktvermarkter', 'Wirksame Grenze',
+      'WR Dach Nord · Ist', 'WR Dach Nord · Soll',
+      'Wechselrichter 2 · Ist', 'Wechselrichter 2 · Soll',
+      'Wechselrichter 3 · Ist', 'Wechselrichter 3 · Soll',
+      'Erzeugung gesamt', 'Netzpunkt', 'Vorgabe Netzbetreiber', 'Direktvermarkter · Soll', 'Wirksame Grenze',
     ]);
     expect(g.items[0]).toMatchObject({ channel: 'erzeuger.te[1].t_p_ist_w', unit: 'kW' });
     expect(istErzeugerZiel(g.items[0].entityId)).toBe(true);
