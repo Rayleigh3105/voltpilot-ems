@@ -108,8 +108,10 @@ public class AnlagenflussWerteLeser implements WerteLeser {
         // JOIN site (Standort-Zaun-Architekturtest, AGENTS.md "Datenbank und Mandanten"): telemetry
         // trägt nur den Mandanten-Zaun; der Join über site macht diese Abfrage für JEDEN Aufrufer
         // dicht, ob Läufer (ohne Zugriffs-Kontext, unternehmensweit) oder menschliche Anfrage.
+        // power_kw ist NUMERIC, avg() also auch: pgjdbc liefert numeric nicht als Double, daher der Cast.
         List<Double> rows = jdbc.query(
-                "SELECT avg(GREATEST(t.power_kw, 0)) FROM telemetry t JOIN site s ON s.id = t.site_id "
+                "SELECT avg(GREATEST(t.power_kw, 0))::double precision "
+                        + "FROM telemetry t JOIN site s ON s.id = t.site_id "
                         + "WHERE t.site_id = ? AND t.time >= ? AND t.time <= ?",
                 (rs, n) -> rs.getObject(1, Double.class), anlageId, java.sql.Timestamp.from(quartalStart),
                 java.sql.Timestamp.from(jetzt));
