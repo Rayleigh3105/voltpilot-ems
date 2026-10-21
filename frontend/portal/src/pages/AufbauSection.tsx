@@ -1,5 +1,5 @@
 import { Recht } from '../components/Recht';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import {
@@ -91,6 +91,7 @@ import { entitiesApi, type EntityTypeDef } from '../entitiesApi';
 import { AnlegenFlow } from '../components/AnlegenFlow';
 import { AddDeviceDrawer, DeviceDetailDrawer } from '../components/DeviceDrawers';
 import { AnlageAnlegenDrawerLazy } from '../components/AnlageAnlegenDrawerLazy';
+import { LazyBoundary } from '../components/Lazy';
 import { replaceCurrentNavigation } from '../navigationBlocker';
 import { useMessenEinstieg } from '../messenEinstieg';
 import { browserSpeicher, entwurfLesen, messenEinstieg } from '../messenAssistent';
@@ -98,6 +99,11 @@ import { ablehnungText, haltGrund, ohneMesswertHinweis, sollIstText, sollIstTon,
 import { useFreshnessPoll } from '../useFreshnessPoll';
 import { LIST_POLL_MS } from '../pollCadence';
 import '../components/Aufbau.css';
+
+/** UEMS EZ-15: der Anlege-Schritt „Steuerung verbinden“ - nachgeladen, erst wenn ihn jemand im Katalog wählt. */
+const AnlagensteuerungAssistent = lazy(() =>
+  import('../components/AnlagensteuerungAssistent').then((m) => ({ default: m.AnlagensteuerungAssistent })),
+);
 
 /**
  * Der Reiter **„Aufbau"** (Konzept „Anlage – neu gedacht", Entscheide E1–E6 = A
@@ -178,6 +184,7 @@ export function AufbauSection({
   const [boxAnmelden, setBoxAnmelden] = useState(false);
   const [boxVerwalten, setBoxVerwalten] = useState<string | null>(null);
   const [anlageAnlegen, setAnlageAnlegen] = useState(false);
+  const [steuerungVerbinden, setSteuerungVerbinden] = useState(false);
   const [assign, setAssign] = useState<AdoptableSource | null>(null);
   const [rename, setRename] = useState<PlantComponent | null>(null);
   const [renameEntry, setRenameEntry] = useState<string | null>(() =>
@@ -505,7 +512,9 @@ export function AufbauSection({
     setVorlage(null);
   };
 
-  const WEG_TYP: Record<KatalogWeg, TypId> = { ocpp: 'ladesaeule', bms: 'batterie', modbus: 'eigenbau' };
+  const WEG_TYP: Record<Exclude<KatalogWeg, 'anlagensteuerung'>, TypId> = {
+    ocpp: 'ladesaeule', bms: 'batterie', modbus: 'eigenbau',
+  };
 
   /** Was im Katalog gewählt wurde, öffnet den passenden Weg - die Box reist mit. */
   const katalogWahl = (wahl: KatalogWahl) => {
@@ -520,6 +529,11 @@ export function AufbauSection({
         setAddOpen(true);
         return;
       case 'weg':
+        // Die Anlagensteuerung (EZ-15) hat ihren eigenen Assistenten: das Bild beschreibt die Anlage selbst.
+        if (wahl.weg === 'anlagensteuerung') {
+          setSteuerungVerbinden(true);
+          return;
+        }
         setAddTyp(WEG_TYP[wahl.weg]);
         setAddOpen(true);
         return;
@@ -821,6 +835,23 @@ export function AufbauSection({
             reload();
           }}
         />
+      )}
+
+      {steuerungVerbinden && (
+        <LazyBoundary fallback={null}>
+          <AnlagensteuerungAssistent
+            site={site}
+            boxen={eigeneBoxen}
+            onClose={() => setSteuerungVerbinden(false)}
+            onFertig={(info) => {
+              setSteuerungVerbinden(false);
+              setErfolg(`${info.titel} angelegt.`);
+              reload();
+              // Auf die Geräteseite der neuen Steuerung (EZ-10).
+              window.location.hash = info.ziel;
+            }}
+          />
+        </LazyBoundary>
       )}
 
       <AddDeviceDrawer

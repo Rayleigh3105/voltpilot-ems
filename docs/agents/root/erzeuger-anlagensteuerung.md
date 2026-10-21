@@ -118,9 +118,27 @@ läuft), `erzeuger_vorgabe_luecke` („n weitere Wechsel während einer Datenlü
   `setGroups((g) => [...g, …])` bei jedem Render neu angewendet (neue Identität → Abruf-Effekt ohne Ende). Die Äste
   stehen in eigenem Zustand; bis ihre Antwort da ist, behält die Auswahl einen Deep-Link auf eine ihrer Kurven.
 
+## Anlege-Schritt „Steuerung verbinden“ (EZ-15, EW-14 A)
+
+- **Ort:** Aufbau › Gerät hinzufügen › Katalog-Weg `anlagensteuerung` (`geraeteKatalog.ts`, Gruppe „Weitere Geräte“)
+  öffnet `components/AnlagensteuerungAssistent.tsx` (nachgeladen); Regeln rein in `anlagensteuerungAssistent.ts`,
+  schreibende Routen in `anlagensteuerungApi.ts` (nicht in `api`, Einstiegs-Bündel), lesend `api.anlagensteuerungen`/
+  `api.netzVermarktung` (EZ-10); Wahl-Zeilen `EINSPEISEMANAGEMENT_OPTIONEN`/`KANAL_OPTIONEN` teilt er mit
+  `NetzVermarktungFormen`. Bühne `e2e/anlagensteuerung-verbinden.html`.
+- **Kopfprüfung:** `POST …/data-sources/{id}/reachability-check` mit `op: erzeuger_kopf` (Registerart ohne Angabe
+  `input`); die Cloud reicht den Block `erzeuger_kopf` unverändert in `antwort` durch, gewertet wird nur die
+  Erreichbarkeit. Weiter erst, wenn der Herzschlag zwischen ZWEI Lesungen läuft (Überlauf 65535 → 0 zählt als Lauf).
+- ⚠ **Angelegt wird erst am Ende** über `POST …/anlagensteuerungen`; Netz und Vermarktung reisen dort als
+  `netz_vermarktung` mit (Recht `geraet.einrichten`) und belegen NUR leere Felder — `PUT …/netz-vermarktung` verlangt
+  `anlage.verwalten`, das ein Unterstützer mit „einrichten“ nicht hat. Danach Namen (`…/anlagensteuerung/namen`) und
+  Alarme; scheitert eines davon, bleibt die Steuerung angelegt und der Grund steht im Abschluss.
+- ⚠ **Alarme nur mit `ueberwachung.verwalten`** (gemeldet an die Rolle Kundenadministrator): ein Unterstützer sieht
+  die Vorlagen nur als Vorschlag. Die Liste sind die Katalog-Vorlagen mit `nur_mit_anlagensteuerung`.
+- Offen: `n_kanal`/`d_kanal` stehen nicht in der Probe — Einspeisemanagement und Direktvermarkter-Weg trägt man ein;
+  „Betrieb“ im Anlage-anlegen-Fluss entfällt nur im Modus „nur messen“ (der auch die Veräußerungsform streicht).
+
 ## Nachfolger
 
 EZ-5 (Box-Leser, gebaut: Laufzeitstand 2026.10.21.1, `advertised: true`, Budget-Klasse in
 `measurement-budget-vectors.json`, Go-`Config.Erzeugerbilder` für `erzeuger_registerbilder`), EZ-8
-(Cockpit auf diesen Routen), EZ-9 (Vorgaben im Verlauf auf den EZ-7-Routen), EZ-15 (Anlege-Schritt mit
-Probe `erzeuger_kopf`).
+(Cockpit auf diesen Routen), EZ-9 (Vorgaben im Verlauf auf den EZ-7-Routen), EZ-15 (Anlege-Schritt, gebaut).

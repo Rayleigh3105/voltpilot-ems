@@ -282,6 +282,20 @@ public class AnlagensteuerungRepository {
     }
 
     /**
+     * Die Erstbelegung aus dem Anlege-Schritt (EZ-15): je Feld nur, wenn es noch leer ist — nie ein Überschreiben.
+     * Die Prozentgrenze gehört zum Einspeisemanagement und wird nur mit ihm zusammen belegt.
+     */
+    public void stammdatenVorbelegen(UUID siteId, String direktvermarkter, String kanal, String einspeisemanagement,
+            BigDecimal prozent, String subject) {
+        jdbc.update("UPDATE anlage_netz_vermarktung SET direktvermarkter = COALESCE(direktvermarkter, ?), "
+                + "direktvermarkter_kanal = COALESCE(direktvermarkter_kanal, ?), "
+                + "einspeisemanagement_prozent = CASE WHEN einspeisemanagement IS NULL THEN ? "
+                + "ELSE einspeisemanagement_prozent END, einspeisemanagement = COALESCE(einspeisemanagement, ?), "
+                + "revision = revision + 1, updated_at = now(), updated_by = ? WHERE site_id = ?", direktvermarkter,
+                kanal, prozent, einspeisemanagement, subject, siteId);
+    }
+
+    /**
      * Die Namen aus dem Bild: unverändert gespeichert; eine leere Anzeige des Direktvermarkters wird vorbelegt,
      * eine vorhandene nie überschrieben.
      */

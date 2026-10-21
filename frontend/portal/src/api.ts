@@ -8311,6 +8311,37 @@ export interface AnlagensteuerungListe {
   steuerungen: Anlagensteuerung[];
 }
 
+/** `POST /api/v1/sites/{siteId}/anlagensteuerungen` (UEMS EZ-6/EZ-15): Steuerung, Fassung und Einheiten in einem Schritt. */
+export interface AnlagensteuerungAnlegen {
+  data_source_id: string;
+  unit_id: number;
+  bezeichnung: string | null;
+  hersteller: string | null;
+  typ: string | null;
+  basisadresse: number;
+  funktionscode: 3 | 4;
+  wortfolge: 'big' | 'little';
+  anlagenart: 'pv' | 'bhkw' | 'gemischt';
+  steuerung_kennung: number | null;
+  rse_stufen: { stufe: number; prozent: number }[] | null;
+  einheiten: {
+    te_nr: number;
+    einheit_art: ErzeugungseinheitArt | null;
+    bezeichnung: string | null;
+    typ: string | null;
+    typ_bild: string | null;
+    nennleistung_kw: number | null;
+    registry_unit_id: string | null;
+  }[];
+  /** Erstbelegung Netz und Vermarktung (EZ-15): belegt nur, was an der Anlage noch leer ist. */
+  netz_vermarktung: {
+    direktvermarkter: string | null;
+    direktvermarkter_kanal: DirektvermarkterKanal | null;
+    einspeisemanagement: Einspeisemanagement | null;
+    einspeisemanagement_prozent: number | null;
+  } | null;
+}
+
 /**
  * Der jüngste Wert eines Punkts `erzeuger.*`. `zustand`: `keine_daten` (`wert` null, nie 0) · `aktuell`
  * (Qualität gut, höchstens 120 s alt) · `veraltet`. Zustände tragen `wort`/`text`, Bitfelder die gesetzten
@@ -11087,6 +11118,7 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+
   /** AP-05 IP-9/IP-10: Kartendaten dokumentieren; Steckplatz kommt aus der physischen Zuordnung. */
   wagoKarteEintragen: (siteId: string, entityId: string, body: {
     // Der Name der Schnittstelle ist `expectedRevision` (WagoMetadataService.KartenEintrag);
@@ -11226,7 +11258,8 @@ export const api = {
     device_id: string; unit_id: number; register: number;
     register_kind?: string; data_type?: string; word_order?: string;
     /** `wago_kopf`: der Kopf eines WAGO-Registerbilds an der Basisadresse `register` (ohne `data_type`). */
-    op?: 'read' | 'wago_kopf';
+    /** `erzeuger_kopf` (EZ-15): Kopf, Einheiten und Namen eines Erzeuger-Registerbilds; der Block steht in `antwort`. */
+    op?: 'read' | 'wago_kopf' | 'erzeuger_kopf';
   }) => request<UemsDatenquellePruefergebnis>(
     `/api/v1/sites/${siteId}/data-sources/${id}/reachability-check`,
     { method: 'POST', body: JSON.stringify(body) },

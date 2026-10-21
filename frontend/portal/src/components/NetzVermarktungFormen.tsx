@@ -23,7 +23,8 @@ import {
   einheitName,
   einheitNummer,
   einheitTyp,
-  EINSPEISEMANAGEMENT_WORT,
+  EINSPEISEMANAGEMENT_OPTIONEN,
+  KANAL_OPTIONEN,
   SEE_MUSTER,
   typHinweis,
 } from '../anlagensteuerung';
@@ -145,12 +146,7 @@ export function DirektvermarkterForm({
         <VpPicker
           id="nv-kanal"
           label="Weg der Vorgaben"
-          options={[
-            { value: 'relais_ma', label: 'Relais und 4–20 mA', sub: 'z. B. Poolbox mit Kontakten und Sollwert-Signal' },
-            { value: 'modbus', label: 'Modbus', sub: 'Der Direktvermarkter schreibt in die Steuerung' },
-            { value: 'keiner', label: 'Kein Signal an die Steuerung', sub: 'Vermarktung ohne Fernsteuerung' },
-            { value: NICHT_ERFASST, label: 'Nicht erfasst' },
-          ]}
+          options={[...KANAL_OPTIONEN, { value: NICHT_ERFASST, label: 'Nicht erfasst' }]}
           value={kanal}
           onChange={setKanal}
         />
@@ -217,12 +213,7 @@ export function EinspeisemanagementForm({
         <VpPicker
           id="nv-einspeisemanagement"
           label="Einspeisemanagement"
-          options={[
-            { value: 'statisch', label: EINSPEISEMANAGEMENT_WORT.statisch, sub: 'Eine feste Wirkleistungsgrenze in Prozent' },
-            { value: 'stufen', label: EINSPEISEMANAGEMENT_WORT.stufen, sub: 'Der Netzbetreiber schaltet Stufen, z. B. 60 % / 30 % / 0 %' },
-            { value: 'fernwirk', label: EINSPEISEMANAGEMENT_WORT.fernwirk, sub: 'Vorgaben über eine Fernwirkanlage, z. B. IEC 60870-5-101' },
-            { value: NICHT_ERFASST, label: 'Nicht erfasst' },
-          ]}
+          options={[...EINSPEISEMANAGEMENT_OPTIONEN, { value: NICHT_ERFASST, label: 'Nicht erfasst' }]}
           value={art}
           onChange={setArt}
         />

@@ -132,7 +132,20 @@ public final class AnlagensteuerungDto {
             @Min(1) @Max(65534) Integer veraltetNetzpunktS,
             /* UEMS EZ-16: JJMM; leer = folgt der VoltPilot-Bibliothek. */
             @Min(1) @Max(9912) Integer programmstandSoll,
-            @NotEmpty @Size(max = 10) List<@NotNull @Valid NeueEinheit> einheiten) {}
+            @NotEmpty @Size(max = 10) List<@NotNull @Valid NeueEinheit> einheiten,
+            /* UEMS EZ-15: Erstbelegung Netz und Vermarktung im Anlege-Schritt; füllt nur Leeres. */
+            @Valid NetzVermarktungVorbelegen netzVermarktung) {}
+
+    /**
+     * Netz und Vermarktung aus dem Anlege-Schritt „Steuerung verbinden“ (UEMS EZ-15): belegt nur Felder, die an der
+     * Anlage noch leer sind — ein gepflegter Eintrag wird nie überschrieben (ändern über {@code PUT …/netz-vermarktung}).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record NetzVermarktungVorbelegen(
+            @Size(max = 120) String direktvermarkter,
+            String direktvermarkterKanal,
+            String einspeisemanagement,
+            @DecimalMin("0") @DecimalMax("100") BigDecimal einspeisemanagementProzent) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record NeueEinheit(

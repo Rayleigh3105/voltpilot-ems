@@ -120,7 +120,7 @@ class AnlagensteuerungDbTest {
                 new AnlagensteuerungDto.NeueEinheit(2, "pv_wechselrichter", "WR 2", null, null, null, null));
         return new AnlagensteuerungDto.Anlegen(w.quelle(), 1, "Anlagensteuerung Gore", "WAGO", "PFC200 750-8212",
                 null, null, null, "pv", null, List.of(new AnlagensteuerungDto.RseStufe(1, new BigDecimal("60"))),
-                null, null, einheiten);
+                null, null, einheiten, null);
     }
 
     @Test
@@ -169,7 +169,7 @@ class AnlagensteuerungDbTest {
         AnlagensteuerungDto.Anlegen luecke = new AnlagensteuerungDto.Anlegen(w.quelle(), 1, null, null, null, null,
                 null, null, "bhkw", null, null, null, null, List.of(
                         new AnlagensteuerungDto.NeueEinheit(1, null, null, null, null, null, null),
-                        new AnlagensteuerungDto.NeueEinheit(3, null, null, null, null, null, null)));
+                        new AnlagensteuerungDto.NeueEinheit(3, null, null, null, null, null, null)), null);
         assertThatThrownBy(() -> als(w.tenant(), () -> service.anlegen(w.site(), luecke, "sub-einrichter")))
                 .isInstanceOfSatisfying(ResponseStatusException.class,
                         e -> assertThat(e.getStatusCode().value()).isEqualTo(400));
@@ -450,6 +450,40 @@ class AnlagensteuerungDbTest {
                 + "FROM geraet_teil WHERE id = ?", kopie)).containsEntry("teilart", "erzeugungseinheit")
                 .containsEntry("te_nr", 1).containsEntry("einheit_art", "pv_wechselrichter")
                 .containsEntry("registry_unit_id", "SEE912345678901");
+    }
+
+    @Test
+    void netzUndVermarktungAusDemAnlegeSchrittBelegtNurLeeres() {
+        Welt w = welt("Erzeuger-Erstbelegung");
+        root.update("UPDATE device SET supports = '[\"erzeuger_registerbild\"]'::jsonb, supports_reported_at = now() "
+                + "WHERE id = ?", w.box());
+        // Der Kunde hat den Direktvermarkter schon gepflegt; das Einspeisemanagement ist noch leer.
+        als(w.tenant(), () -> service.netzVermarktungAendern(w.site(),
+                new AnlagensteuerungDto.NetzVermarktungAendern(0, "Next Kraftwerke", "modbus", null, null), "sub"));
+        AnlagensteuerungDto.Anlegen basis = gore(w);
+        AnlagensteuerungDto.Anlegen schief = mitNetz(basis, new AnlagensteuerungDto.NetzVermarktungVorbelegen(
+                "WVV", "relais_ma", "stufen", new BigDecimal("70")));
+        // Eine Prozentgrenze nur zum statischen Einspeisemanagement - geprüft, bevor etwas entsteht.
+        assertThatThrownBy(() -> als(w.tenant(), () -> service.anlegen(w.site(), schief, "sub-einrichter")))
+                .isInstanceOfSatisfying(ResponseStatusException.class,
+                        e -> assertThat(e.getStatusCode().value()).isEqualTo(400));
+        assertThat(als(w.tenant(), () -> service.liste(w.site())).steuerungen()).isEmpty();
+
+        als(w.tenant(), () -> service.anlegen(w.site(), mitNetz(basis, new AnlagensteuerungDto.NetzVermarktungVorbelegen(
+                "WVV (Stadtwerke Würzburg)", "relais_ma", "stufen", null)), "sub-einrichter"));
+        AnlagensteuerungDto.NetzVermarktung nv = als(w.tenant(), () -> service.netzVermarktung(w.site()));
+        assertThat(nv.direktvermarkter()).isEqualTo("Next Kraftwerke");
+        assertThat(nv.direktvermarkterKanal()).isEqualTo("modbus");
+        assertThat(nv.einspeisemanagement()).isEqualTo("stufen");
+        assertThat(nv.einspeisemanagementProzent()).isNull();
+        assertThat(nv.revision()).isEqualTo(3);
+    }
+
+    private static AnlagensteuerungDto.Anlegen mitNetz(AnlagensteuerungDto.Anlegen a,
+            AnlagensteuerungDto.NetzVermarktungVorbelegen nv) {
+        return new AnlagensteuerungDto.Anlegen(a.dataSourceId(), a.unitId(), a.bezeichnung(), a.hersteller(), a.typ(),
+                a.basisadresse(), a.funktionscode(), a.wortfolge(), a.anlagenart(), a.steuerungKennung(), a.rseStufen(),
+                a.veraltetNetzpunktS(), a.programmstandSoll(), a.einheiten(), nv);
     }
 
     private static void probe(Welt w, UUID entity, String key, long zahl, String qualitaet, Instant zeit, int seq) {

@@ -117,6 +117,7 @@ describe('katalogAnsicht — blättern', () => {
       'Schalten: Ebyte M31-AXAX8080G-U (8 Eingänge, 8 Relais), Shelly Relais / Schaltaktor',
       'Batterie: Batterie mit eigenem BMS',
       'Selbst beschreiben: Modbus-TCP-Gerät, Wärmepumpe Keller',
+      'Weitere Geräte: Anlagensteuerung (SPS mit VoltPilot-Bild)',
     ]);
     expect(a.gruppen[1].rechts).toBe('5 Modelle');
     // Kein Hinweis-Kasten über allem - das Ehrliche zum Zähler steht unter „Zähler".
@@ -179,11 +180,11 @@ describe('katalogAnsicht — Suche', () => {
   it('schlägt ohne Treffer die Wege vor - nie ein stiller leerer Bereich', () => {
     const a = ansicht({ q: 'keba' });
     expect(a.leer).toMatch(/Kein Eintrag passt zu „keba"/);
-    expect(gruppen(a)).toEqual(['Passende Wege: Ladesäule mit OCPP 1.6, Batterie mit eigenem BMS, Modbus-TCP-Gerät']);
+    expect(gruppen(a)).toEqual(['Passende Wege: Ladesäule mit OCPP 1.6, Batterie mit eigenem BMS, Modbus-TCP-Gerät, Anlagensteuerung (SPS mit VoltPilot-Bild)']);
   });
 
   it('bleibt in der gewählten Art', () => {
-    expect(gruppen(ansicht({ q: 'go-e', chip: 'wr' }))).toEqual(['Passende Wege: Ladesäule mit OCPP 1.6, Batterie mit eigenem BMS, Modbus-TCP-Gerät']);
+    expect(gruppen(ansicht({ q: 'go-e', chip: 'wr' }))).toEqual(['Passende Wege: Ladesäule mit OCPP 1.6, Batterie mit eigenem BMS, Modbus-TCP-Gerät, Anlagensteuerung (SPS mit VoltPilot-Bild)']);
     expect(gruppen(ansicht({ q: 'go-e', chip: 'laden' }))).toEqual(['Laden: go-e Charger']);
   });
 
@@ -210,6 +211,22 @@ describe('wahlFuer', () => {
     expect(wahlFuer(a.gruppen[0].eintraege[0], 'alle')).toMatchObject({ art: 'fund' });
     expect(wahlFuer(a.gruppen[2].eintraege[1], 'alle')).toEqual({ art: 'weg', weg: 'ocpp' });
     expect(wahlFuer(a.gruppen[5].eintraege[1], 'alle')).toMatchObject({ art: 'vorlage' });
+  });
+});
+
+describe('Anlagensteuerung (UEMS EZ-15)', () => {
+  it('steht als letzter Weg unter „Weitere Geräte“ und öffnet den eigenen Assistenten', () => {
+    const a = ansicht();
+    const weitere = a.gruppen.find((g) => g.key === 'weitere');
+    expect(weitere?.eintraege.map((e) => e.titel)).toEqual(['Anlagensteuerung (SPS mit VoltPilot-Bild)']);
+    expect(wahlFuer(weitere!.eintraege[0], 'alle')).toEqual({ art: 'weg', weg: 'anlagensteuerung' });
+    expect(WEGE.anlagensteuerung.zusatz).toBe('BHKW oder PV mit WAGO oder anderem Controller');
+  });
+
+  it('findet sich über BHKW, SPS oder WAGO', () => {
+    for (const q of ['bhkw', 'SPS', 'pfc200', 'Anlagensteuerung']) {
+      expect(gruppen(ansicht({ q }))).toContain('Weitere Geräte: Anlagensteuerung (SPS mit VoltPilot-Bild)');
+    }
   });
 });
 

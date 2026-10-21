@@ -136,6 +136,9 @@ public final class DatenquelleDto {
      * <p>{@code op} (AP-05): {@code read} (Vorgabe, EIN Lese-Schritt) oder {@code wago_kopf} — der
      * Kopf eines VoltPilot-Registerbilds WAGO v1 an der Basisadresse {@code register} (nur Modbus
      * TCP, ohne {@code data_type}), danach je gemeldeter Karte Steckplatz, Kartentyp und Variante.
+     * {@code erzeuger_kopf} (UEMS EZ-15): Kopf, Einheiten und Namen eines VoltPilot-Registerbilds Erzeuger v1
+     * an der Basisadresse {@code register} (nur Modbus TCP, ohne {@code data_type}, Registerart ohne Angabe
+     * {@code input}); der Block steht unverändert in {@code antwort}.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Pruefen(

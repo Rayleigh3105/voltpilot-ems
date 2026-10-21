@@ -238,6 +238,16 @@ public class ProbeResultListener extends Rueckmeldeweg {
                             ok ? null : text(line), samples));
                     continue;
                 }
+                JsonNode erzeugerNode = line.get("erzeuger_kopf");
+                if (erzeugerNode != null && erzeugerNode.isObject()) {
+                    // EZ-15: der Kopf eines Erzeuger-Registerbilds — wie beim WAGO-Kopf AUCH bei ok=false
+                    // (was stand denn dort?); ohne beide Pflichtfelder ist er keine Aussage.
+                    ProbeResult.ErzeugerKopf kopf = erzeugerKopf(erzeugerNode);
+                    boolean gut = ok && kopf != null;
+                    results.add(ProbeResult.OpResult.ausErzeugerKopf(id, gut, gut ? null : code(line),
+                            gut ? null : text(line), null, kopf));
+                    continue;
+                }
                 JsonNode kopfNode = line.get("wago_kopf");
                 if (kopfNode != null && kopfNode.isObject()) {
                     // AP-05 IP-7: der Kopf eines WAGO-Registerbilds. Er steht AUCH bei ok=false
@@ -331,6 +341,58 @@ public class ProbeResultListener extends Rueckmeldeweg {
                 optInt(n, "hauptversion"), optInt(n, "nebenversion"), optInt(n, "kopflaenge"),
                 optInt(n, "kartenblocklaenge"), optInt(n, "kartenzahl"), optInt(n, "herzschlag"),
                 controller, text(n, "typenschild"));
+    }
+
+    private static final Set<String> ERZEUGER_GRUENDE = Set.of("zu_wenig_woerter", "signatur_fremd",
+            "version_fremd", "wortfolge_falsch", "te_anzahl_ungueltig");
+
+    /**
+     * Der Erzeuger-Kopf (Vertrag {@code op_result.erzeuger_kopf}) — oder {@code null}, wenn
+     * {@code signatur_ok}/{@code erkannt} fehlen. Ein Grund außerhalb des Vokabulars, eine Einheit
+     * ohne gültige Nummer und eine Zahl außerhalb ihres Bereichs werden weggelassen, nie geraten.
+     */
+    private static ProbeResult.ErzeugerKopf erzeugerKopf(JsonNode n) {
+        JsonNode sig = n.get("signatur_ok");
+        JsonNode erkannt = n.get("erkannt");
+        if (sig == null || !sig.isBoolean() || erkannt == null || !erkannt.isBoolean()) {
+            return null;
+        }
+        String grund = n.path("grund").asText("");
+        if (!ERZEUGER_GRUENDE.contains(grund)) {
+            grund = null;
+        }
+        JsonNode kennung = n.get("steuerung_id");
+        Long steuerung = kennung != null && kennung.isIntegralNumber() && kennung.canConvertToLong()
+                && kennung.asLong() >= 0 && kennung.asLong() <= 4_294_967_295L ? kennung.asLong() : null;
+        List<ProbeResult.ErzeugerEinheit> einheiten = null;
+        JsonNode liste = n.get("einheiten");
+        if (liste != null && liste.isArray()) {
+            einheiten = new ArrayList<>();
+            for (JsonNode e : liste) {
+                Integer nr = optInt(e, "einheit");
+                if (nr == null || nr < 1 || nr > 10) {
+                    continue;
+                }
+                Integer art = optInt(e, "art");
+                Integer nenn = optInt(e, "nenn_kw");
+                einheiten.add(new ProbeResult.ErzeugerEinheit(nr, art != null && (art == 1 || art == 2) ? art : null,
+                        nenn != null && nenn >= 0 && nenn <= 65_534 ? nenn : null, name(e, "typ_name")));
+            }
+        }
+        return new ProbeResult.ErzeugerKopf(sig.asBoolean(), erkannt.asBoolean(), grund,
+                optInt(n, "hauptversion"), optInt(n, "nebenversion"), optInt(n, "te_anzahl"), optInt(n, "herzschlag"),
+                optInt(n, "programmstand"), steuerung, optInt(n, "anlagenart"), optInt(n, "beschreibung_ab"),
+                einheiten, name(n, "netzbetreiber_name"), name(n, "direktvermarkter_name"));
+    }
+
+    /** Ein Name aus dem Bild: ein gelesener leerer Name bleibt {@code ""} („keiner“), ein fehlender fehlt. */
+    private static String name(JsonNode node, String field) {
+        JsonNode v = node.get(field);
+        if (v == null || !v.isTextual()) {
+            return null;
+        }
+        String t = v.asText();
+        return t.length() > 32 ? t.substring(0, 32) : t;
     }
 
     private static Integer optInt(JsonNode node, String field) {

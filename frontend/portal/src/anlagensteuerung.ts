@@ -431,6 +431,20 @@ export const EINSPEISEMANAGEMENT_WORT: Record<Einspeisemanagement, string> = {
   fernwirk: 'Fernwirktechnik',
 };
 
+/** Die Wahl des Einspeisemanagements - dieselben Zeilen in Anlage › Einstellungen und im Anlege-Schritt (EZ-15). */
+export const EINSPEISEMANAGEMENT_OPTIONEN: { value: Einspeisemanagement; label: string; sub: string }[] = [
+  { value: 'statisch', label: EINSPEISEMANAGEMENT_WORT.statisch, sub: 'Eine feste Wirkleistungsgrenze in Prozent' },
+  { value: 'stufen', label: EINSPEISEMANAGEMENT_WORT.stufen, sub: 'Der Netzbetreiber schaltet Stufen, z. B. 60 % / 30 % / 0 %' },
+  { value: 'fernwirk', label: EINSPEISEMANAGEMENT_WORT.fernwirk, sub: 'Vorgaben über eine Fernwirkanlage, z. B. IEC 60870-5-101' },
+];
+
+/** Die Wahl des Wegs, auf dem der Direktvermarkter seine Vorgaben schickt - wie oben an beiden Orten. */
+export const KANAL_OPTIONEN: { value: DirektvermarkterKanal; label: string; sub: string }[] = [
+  { value: 'relais_ma', label: 'Relais und 4–20 mA', sub: 'z. B. Poolbox mit Kontakten und Sollwert-Signal' },
+  { value: 'modbus', label: 'Modbus', sub: 'Der Direktvermarkter schreibt in die Steuerung' },
+  { value: 'keiner', label: 'Kein Signal an die Steuerung', sub: 'Vermarktung ohne Fernsteuerung' },
+];
+
 export function direktvermarkterWert(nv: NetzVermarktung): string {
   const name = nv.direktvermarkter ?? 'keiner erfasst';
   return nv.direktvermarkter_kanal ? `${name} · ${KANAL_WORT[nv.direktvermarkter_kanal]}` : name;
