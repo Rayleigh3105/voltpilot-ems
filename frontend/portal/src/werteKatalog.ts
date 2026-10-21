@@ -386,6 +386,18 @@ export const WERTE_KATALOG: WerteKatalogEintrag[] = [
     bedingungen: ['zustand'],
     vorlage: { dauer_s: 600, erholen_s: 300, schwere: 'warnung', ziel: ['getrennt'], nur_mit_anlagensteuerung: true },
   },
+  {
+    wertart: 'erzeuger.programmstand_veraltet',
+    name: 'Programmstand veraltet',
+    satzname: 'der Programmstand der Anlagensteuerung',
+    bezug: 'anlage',
+    form: 'zustand',
+    leser: { art: 'erzeuger', feld: 'programmstand' },
+    recht: 'messwerte.ansehen',
+    zustaende: ['aktuell', 'aelter'],
+    bedingungen: ['zustand'],
+    vorlage: { dauer_s: 86400, erholen_s: 300, schwere: 'warnung', ziel: ['aelter'], nur_mit_anlagensteuerung: true },
+  },
 ];
 
 const WERTART_ZU_EINTRAG: Record<string, WerteKatalogEintrag> = Object.fromEntries(

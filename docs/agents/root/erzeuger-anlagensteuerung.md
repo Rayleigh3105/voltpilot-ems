@@ -65,9 +65,10 @@ ist ein Gerät wie heute die WAGO-Steuerung der Energiekarten, Wechselrichter un
 
 - **Leserart `erzeuger`** im Werte-Katalog (`ueberwachung/ErzeugerWerteLeser`, Auswertung rein in `ErzeugerAlarme`):
   liest nur Messpunkte und ihre Frische (`juengste`, „aktuell“ = `good` und ≤ `AKTUELL_BIS_S`), nie `erzeuger_vorgabe`.
-- **Fünf Vorlagen, Kennung = Wertart** (Katalog-Block `vorlage`, nie gesät): `erzeuger.fernsteuerung_nicht_bereit`,
+- **Sechs Vorlagen, Kennung = Wertart** (Katalog-Block `vorlage`, nie gesät): `erzeuger.fernsteuerung_nicht_bereit`,
   `erzeuger.daten_veraltet`, `erzeuger.anlage_folgt_nicht` (Schwellen `toleranz_prozent`, `toleranz_kw`),
-  `erzeuger.netzbetreiber_abgeschaltet`, `erzeuger.fernwirk_verbindung_weg`. Anlegen nur an einer Anlage mit
+  `erzeuger.netzbetreiber_abgeschaltet`, `erzeuger.fernwirk_verbindung_weg`, `erzeuger.programmstand_veraltet`
+  (EZ-11b: Vergleich aus EZ-16 steht 24 h auf `aelter`, Soll der Fassung vor der Bibliothek). Anlegen nur an einer Anlage mit
   Anlagensteuerung (sonst 409), ohne 30-Tage-Probelauf.
 - ⚠ **„Fernsteuerung nicht bereit“ gilt je Einheit:** die Regel hängt an der Anlage, der Takt fächert sie in
   `einheit:<Steuerung>;te=<n>` auf und bündelt wie eine Auswahl.

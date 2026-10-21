@@ -162,6 +162,8 @@ const ZUSTANDSWORT: Record<string, string> = {
   verbunden: 'verbunden',
   getrennt: 'getrennt',
   keine_fernwirktechnik: 'ohne Fernwirktechnik',
+  // UEMS EZ-11b: „Programmstand veraltet“ (Vergleich aus EZ-16).
+  aelter: 'älter als erwartet',
 };
 
 /** Die Schwellen der Erzeuger-Vorlagen als Felder (EZ-11): Beschriftung und Einheit je Schwelle. */
@@ -206,6 +208,9 @@ export function vorlageSatz(
       break;
     case 'erzeuger.fernwirk_verbindung_weg':
       kern = `die Fernwirk-Verbindung zum Netzbetreiber${laenger} nicht steht (nur bei Fernwirktechnik)`;
+      break;
+    case 'erzeuger.programmstand_veraltet':
+      kern = `die Anlagensteuerung${laenger} einen älteren Programmstand fährt als erwartet`;
       break;
     default:
       kern = `${wertart}${laenger} gemeldet wird`;
