@@ -1,0 +1,464 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://voltpilot.de/contracts/v2/erzeuger-registerbild.schema.json",
+  "title": "VoltPilot-Registerbild Erzeuger v1: Aufbau, Lesarten und Lese-Fälle",
+  "description": "Schema der Vektor-Datei erzeuger-registerbild-vectors.json (EZ-1). Prosa: erzeuger-registerbild.md. Teilmenge des UEMS-Schema-Läufers (frontend/portal/src/test/uemsSchemaLaeufer.ts).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["_comment", "schema_version", "$schema_datei", "vertrag", "herkunft", "zwillinge", "pruefer", "registerbild", "parameter", "typen", "abschnitte", "einheit", "felder", "namen", "lesen", "faelle"],
+  "properties": {
+    "_comment": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+    "schema_version": { "const": "1.0" },
+    "$schema_datei": { "const": "./erzeuger-registerbild.schema.json" },
+    "vertrag": { "const": "./erzeuger-registerbild.md" },
+    "herkunft": { "type": "string", "minLength": 1 },
+    "zwillinge": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "pruefer": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+    "registerbild": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signatur", "hauptversion", "nebenversion", "version_wort"],
+      "properties": {
+        "signatur": { "const": "VP EZ" },
+        "hauptversion": { "const": 1 },
+        "nebenversion": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "version_wort": { "$ref": "#/$defs/wort" }
+      }
+    },
+    "parameter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["funktionscode", "basisadresse", "wortfolge", "takt_s", "unit_id"],
+      "properties": {
+        "funktionscode": { "$ref": "#/$defs/festlegung" },
+        "basisadresse": { "$ref": "#/$defs/festlegung" },
+        "wortfolge": { "$ref": "#/$defs/festlegung" },
+        "takt_s": { "$ref": "#/$defs/festlegung" },
+        "unit_id": { "$ref": "#/$defs/festlegung" }
+      }
+    },
+    "typen": {
+      "type": "array",
+      "minItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["typ", "woerter", "ungueltig", "vorzeichen"],
+        "properties": {
+          "typ": { "$ref": "#/$defs/typ" },
+          "woerter": { "enum": [1, 2] },
+          "ungueltig": { "$ref": "#/$defs/u32" },
+          "vorzeichen": { "type": "boolean" }
+        }
+      }
+    },
+    "abschnitte": {
+      "type": "array",
+      "minItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kurz", "titel", "start", "woerter"],
+        "properties": {
+          "kurz": { "enum": ["K", "A", "N", "D", "S", "T"] },
+          "titel": { "type": "string", "minLength": 1 },
+          "start": { "$ref": "#/$defs/wort" },
+          "woerter": { "type": "integer", "minimum": 1 },
+          "je_einheit": { "const": true },
+          "adresse_einheit_n": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "einheit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["basis", "laenge", "max_einheiten", "adresse", "gore_woerter", "buettner_woerter"],
+      "properties": {
+        "basis": { "const": 38 },
+        "laenge": { "const": 10 },
+        "max_einheiten": { "const": 10 },
+        "adresse": { "type": "string", "minLength": 1 },
+        "gore_woerter": { "const": 68 },
+        "buettner_woerter": { "const": 58 }
+      }
+    },
+    "felder": { "type": "array", "minItems": 38, "items": { "$ref": "#/$defs/feld" } },
+    "namen": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ab_feld", "vorgabe_ab", "keine_namen", "woerter_je_text", "zeichen_je_text", "zeichensatz", "byte_folge", "ende", "leer", "bereich", "gelesen", "texte"],
+      "properties": {
+        "ab_feld": { "const": "beschreibung_ab" },
+        "vorgabe_ab": { "const": 140 },
+        "keine_namen": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/wort" } },
+        "woerter_je_text": { "const": 16 },
+        "zeichen_je_text": { "const": 32 },
+        "zeichensatz": { "const": "ISO-8859-1" },
+        "byte_folge": { "type": "string", "minLength": 1 },
+        "ende": { "type": "string", "minLength": 1 },
+        "leer": { "type": "string", "minLength": 1 },
+        "bereich": { "type": "string", "minLength": 1 },
+        "gelesen": { "type": "string", "minLength": 1 },
+        "texte": {
+          "type": "array",
+          "minItems": 3,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["feld", "versatz", "woerter", "bedeutung"],
+            "properties": {
+              "feld": { "enum": ["netzbetreiber_name", "direktvermarkter_name", "t_typ_name"] },
+              "versatz": { "type": "integer", "minimum": 0 },
+              "woerter": { "const": 16 },
+              "bedeutung": { "type": "string", "minLength": 1 },
+              "je_einheit": { "const": 16 }
+            }
+          }
+        }
+      }
+    },
+    "lesen": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_woerter_je_anfrage", "block_nie_teilen", "einheiten_in_einer_anfrage", "pruefreihenfolge", "leer_gruende", "herzschlag", "zaehler_modul", "namen_texte_je_anfrage"],
+      "properties": {
+        "max_woerter_je_anfrage": { "$ref": "#/$defs/repo" },
+        "block_nie_teilen": { "$ref": "#/$defs/festlegung" },
+        "einheiten_in_einer_anfrage": { "$ref": "#/$defs/festlegung" },
+        "pruefreihenfolge": { "$ref": "#/$defs/festlegung" },
+        "leer_gruende": { "$ref": "#/$defs/festlegung" },
+        "herzschlag": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["steht_ab_lesung", "schrittgrenze", "urteile"],
+          "properties": {
+            "steht_ab_lesung": { "$ref": "#/$defs/festlegung" },
+            "schrittgrenze": { "$ref": "#/$defs/repo" },
+            "urteile": { "$ref": "#/$defs/festlegung" }
+          }
+        },
+        "zaehler_modul": { "$ref": "#/$defs/festlegung" },
+        "namen_texte_je_anfrage": { "$ref": "#/$defs/festlegung" }
+      }
+    },
+    "faelle": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/fall" } }
+  },
+  "$defs": {
+    "wort": { "type": "integer", "minimum": 0, "maximum": 65535 },
+    "u32": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+    "typ": { "enum": ["U16", "S16", "U32", "S32"] },
+    "schluessel": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+    "wertOderNull": { "type": ["integer", "null"], "minimum": -2147483648, "maximum": 4294967295 },
+    "flaggeOderNull": { "type": ["boolean", "null"] },
+    "festlegung": {
+      "type": "object",
+      "description": "Dieser Vertrag, die Vorlage oder ein Entscheid bestimmt den Wert. Keine Aussage über Hardware.",
+      "additionalProperties": false,
+      "required": ["art", "wert", "fundstelle"],
+      "properties": {
+        "art": { "const": "festlegung" },
+        "wert": {
+          "anyOf": [
+            { "type": "integer" },
+            { "type": "string", "minLength": 1 },
+            { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+          ]
+        },
+        "fundstelle": { "type": "string", "minLength": 1 }
+      }
+    },
+    "repo": {
+      "type": "object",
+      "description": "Steht so im Repository (Datei:Zeile); der Test liest die Zeile nach.",
+      "additionalProperties": false,
+      "required": ["art", "wert", "fundstelle"],
+      "properties": {
+        "art": { "const": "repo" },
+        "wert": { "anyOf": [{ "type": "integer" }, { "type": "string", "minLength": 1 }] },
+        "fundstelle": { "type": "string", "pattern": "^[a-z][^ ]*:[0-9]+$" }
+      }
+    },
+    "feld": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["abschnitt", "feld", "adresse", "woerter", "typ", "art", "ungueltig", "einheit", "bedeutung"],
+      "properties": {
+        "abschnitt": { "enum": ["K", "A", "N", "D", "S", "T"] },
+        "feld": { "$ref": "#/$defs/schluessel" },
+        "adresse": { "type": "integer", "minimum": 0, "maximum": 47, "description": "Protokolladresse; bei Abschnitt T die Adresse in Einheit 1" },
+        "woerter": { "enum": [1, 2] },
+        "typ": { "$ref": "#/$defs/typ" },
+        "art": { "enum": ["pruefwert", "version", "anzahl", "zaehler", "wert", "aufzaehlung", "bitfeld", "adresse"] },
+        "ungueltig": { "anyOf": [{ "$ref": "#/$defs/u32" }, { "type": "null" }] },
+        "ungueltig_in_der_vorlage": { "type": "string", "pattern": "^0x[0-9A-F]+$" },
+        "ueberlauf": { "type": "string", "minLength": 1 },
+        "einheit": { "type": "string", "minLength": 1 },
+        "bedeutung": { "type": "string", "minLength": 1 },
+        "skala": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["faktor", "einheit"],
+          "properties": { "faktor": { "type": "number" }, "einheit": { "type": "string", "minLength": 1 } }
+        },
+        "vorzeichen": { "type": "string", "minLength": 1 },
+        "hoechstens": { "$ref": "#/$defs/wort" },
+        "gedeckt_von": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["feld", "bit"],
+          "properties": { "feld": { "$ref": "#/$defs/schluessel" }, "bit": { "$ref": "#/$defs/schluessel" } }
+        },
+        "vokabular": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["code", "name", "bedeutung"],
+            "properties": {
+              "code": { "$ref": "#/$defs/wort" },
+              "name": { "$ref": "#/$defs/schluessel" },
+              "bedeutung": { "type": "string", "minLength": 1 }
+            }
+          }
+        },
+        "bits": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["bit", "name", "bedeutung"],
+            "properties": {
+              "bit": { "type": "integer", "minimum": 0, "maximum": 15 },
+              "name": { "$ref": "#/$defs/schluessel" },
+              "bedeutung": { "type": "string", "minLength": 1 },
+              "deckt": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/schluessel" } },
+              "deckt_bits": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/schluessel" } }
+            }
+          }
+        },
+        "frei_ab_bit": { "type": "integer", "minimum": 1, "maximum": 15 },
+        "soll": {
+          "anyOf": [
+            { "$ref": "#/$defs/u32" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["hauptversion", "nebenversion", "wort"],
+              "properties": {
+                "hauptversion": { "type": "integer", "minimum": 0, "maximum": 255 },
+                "nebenversion": { "type": "integer", "minimum": 0, "maximum": 255 },
+                "wort": { "$ref": "#/$defs/wort" }
+              }
+            }
+          ]
+        },
+        "soll_woerter": { "type": "array", "minItems": 2, "items": { "$ref": "#/$defs/wort" } },
+        "gueltig": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["von", "bis"],
+          "properties": { "von": { "$ref": "#/$defs/wort" }, "bis": { "$ref": "#/$defs/wort" } }
+        },
+        "keine_namen": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/wort" } }
+      }
+    },
+    "fall": {
+      "type": "object",
+      "description": "Belegt ist nur, was an einer Steuerung mit Nachweis gemessen wurde. Vertrag und Simulator dienen dem Bauen, nie dem Beleg.",
+      "additionalProperties": false,
+      "required": ["name", "why", "herkunft", "belegt", "input", "expected"],
+      "properties": {
+        "name": { "type": "string", "pattern": "^E[0-9]+ [a-z0-9-]+$" },
+        "why": { "type": "string", "minLength": 1 },
+        "herkunft": { "enum": ["vertrag", "simulator"] },
+        "belegt": { "const": false },
+        "input": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["lesungen", "namen"],
+          "properties": {
+            "lesungen": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["woerter"],
+                "properties": { "woerter": { "type": "array", "items": { "$ref": "#/$defs/wort" } } }
+              }
+            },
+            "namen": {
+              "anyOf": [
+                { "type": "null" },
+                {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["ab", "woerter"],
+                  "properties": {
+                    "ab": { "$ref": "#/$defs/wort" },
+                    "woerter": { "type": "array", "minItems": 48, "items": { "$ref": "#/$defs/wort" } }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "expected": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["lesungen", "namen"],
+          "properties": {
+            "lesungen": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/lesung" } },
+            "namen": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/namenErwartet" }] }
+          }
+        }
+      }
+    },
+    "lesung": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ergebnis", "grund", "kopf", "anfragen", "herzschlag_urteil", "veraltet", "zaehler_differenz", "werte", "bits", "einheiten", "leer"],
+      "properties": {
+        "ergebnis": { "enum": ["lesbar", "nicht_lesbar"] },
+        "grund": { "type": ["string", "null"], "enum": ["zu_wenig_woerter", "signatur_fremd", "version_fremd", "wortfolge_falsch", "te_anzahl_ungueltig"] },
+        "kopf": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/kopf" }] },
+        "anfragen": { "type": ["integer", "null"], "minimum": 1, "maximum": 2 },
+        "herzschlag_urteil": { "type": ["string", "null"], "enum": ["laeuft", "steht", "ueberlauf", "rueckwaerts"] },
+        "veraltet": { "type": ["boolean", "null"] },
+        "zaehler_differenz": {
+          "anyOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["n_zaehler", "d_zaehler"],
+              "properties": {
+                "n_zaehler": { "type": ["integer", "null"], "minimum": 0, "maximum": 65535 },
+                "d_zaehler": { "type": ["integer", "null"], "minimum": 0, "maximum": 65535 }
+              }
+            }
+          ]
+        },
+        "werte": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/anlageWerte" }] },
+        "bits": {
+          "anyOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["a_gueltig", "a_bits", "n_bits", "d_bits", "s_bits"],
+              "properties": {
+                "a_gueltig": { "$ref": "#/$defs/flaggen" },
+                "a_bits": { "$ref": "#/$defs/flaggen" },
+                "n_bits": { "$ref": "#/$defs/flaggen" },
+                "d_bits": { "$ref": "#/$defs/flaggen" },
+                "s_bits": { "$ref": "#/$defs/flaggen" }
+              }
+            }
+          ]
+        },
+        "einheiten": { "type": "array", "items": { "$ref": "#/$defs/einheitErwartet" } },
+        "leer": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/leer" }] }
+      }
+    },
+    "kopf": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version_haupt", "version_neben", "te_anzahl", "herzschlag", "programmstand", "steuerung_id", "anlagenart", "beschreibung_ab"],
+      "properties": {
+        "version_haupt": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "version_neben": { "type": "integer", "minimum": 0, "maximum": 255 },
+        "te_anzahl": { "$ref": "#/$defs/wort" },
+        "herzschlag": { "$ref": "#/$defs/wort" },
+        "programmstand": { "type": ["integer", "null"], "minimum": 0, "maximum": 65534 },
+        "steuerung_id": { "type": ["integer", "null"], "minimum": 0, "maximum": 4294967294 },
+        "anlagenart": { "type": ["integer", "null"], "enum": [1, 2, 3] },
+        "beschreibung_ab": { "type": ["integer", "null"], "minimum": 0, "maximum": 65534 }
+      }
+    },
+    "anlageWerte": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["a_gueltig", "a_alter_s", "p_nvp_w", "p_erzeugung_w", "anlage_zustand", "a_bits", "speicher_fuellstand", "p_installiert_kw", "n_kanal", "n_bits", "n_p_prozent", "n_cosphi", "n_seit_s", "n_zaehler", "d_kanal", "d_bits", "d_soll_w", "d_seit_s", "d_zaehler", "quelle_p", "s_bits", "p_grenze_w"],
+      "properties": {
+        "a_gueltig": { "$ref": "#/$defs/wertOderNull" },
+        "a_alter_s": { "$ref": "#/$defs/wertOderNull" },
+        "p_nvp_w": { "$ref": "#/$defs/wertOderNull" },
+        "p_erzeugung_w": { "$ref": "#/$defs/wertOderNull" },
+        "anlage_zustand": { "$ref": "#/$defs/wertOderNull" },
+        "a_bits": { "$ref": "#/$defs/wertOderNull" },
+        "speicher_fuellstand": { "$ref": "#/$defs/wertOderNull" },
+        "p_installiert_kw": { "$ref": "#/$defs/wertOderNull" },
+        "n_kanal": { "$ref": "#/$defs/wertOderNull" },
+        "n_bits": { "$ref": "#/$defs/wertOderNull" },
+        "n_p_prozent": { "$ref": "#/$defs/wertOderNull" },
+        "n_cosphi": { "$ref": "#/$defs/wertOderNull" },
+        "n_seit_s": { "$ref": "#/$defs/wertOderNull" },
+        "n_zaehler": { "$ref": "#/$defs/wertOderNull" },
+        "d_kanal": { "$ref": "#/$defs/wertOderNull" },
+        "d_bits": { "$ref": "#/$defs/wertOderNull" },
+        "d_soll_w": { "$ref": "#/$defs/wertOderNull" },
+        "d_seit_s": { "$ref": "#/$defs/wertOderNull" },
+        "d_zaehler": { "$ref": "#/$defs/wertOderNull" },
+        "quelle_p": { "$ref": "#/$defs/wertOderNull" },
+        "s_bits": { "$ref": "#/$defs/wertOderNull" },
+        "p_grenze_w": { "$ref": "#/$defs/wertOderNull" }
+      }
+    },
+    "einheitErwartet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["n", "adresse", "werte", "bits", "leer"],
+      "properties": {
+        "n": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "adresse": { "type": "integer", "minimum": 38, "maximum": 128 },
+        "werte": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["t_zustand", "t_bits", "t_art", "t_nenn_kw", "t_p_ist_w", "t_p_soll_w", "t_e"],
+          "properties": {
+            "t_zustand": { "$ref": "#/$defs/wertOderNull" },
+            "t_bits": { "$ref": "#/$defs/wertOderNull" },
+            "t_art": { "$ref": "#/$defs/wertOderNull" },
+            "t_nenn_kw": { "$ref": "#/$defs/wertOderNull" },
+            "t_p_ist_w": { "$ref": "#/$defs/wertOderNull" },
+            "t_p_soll_w": { "$ref": "#/$defs/wertOderNull" },
+            "t_e": { "$ref": "#/$defs/wertOderNull" }
+          }
+        },
+        "bits": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["t_bits"],
+          "properties": { "t_bits": { "$ref": "#/$defs/flaggen" } }
+        },
+        "leer": { "$ref": "#/$defs/leer" }
+      }
+    },
+    "flaggen": {
+      "anyOf": [
+        { "type": "null" },
+        { "type": "object", "additionalProperties": { "$ref": "#/$defs/flaggeOderNull" } }
+      ]
+    },
+    "leer": {
+      "type": "object",
+      "description": "Warum ein Wert fehlt: gueltigkeit (deckendes Gültigkeitsbit nicht gesetzt), ungueltig (Typ-Maximum), fremd (außerhalb des Vokabulars).",
+      "additionalProperties": { "enum": ["gueltigkeit", "ungueltig", "fremd"] }
+    },
+    "namenErwartet": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ergebnis", "anfragen", "netzbetreiber_name", "direktvermarkter_name", "t_typ_name"],
+      "properties": {
+        "ergebnis": { "enum": ["gelesen", "keine_namen", "bereich_ungueltig", "zu_wenig_woerter"] },
+        "anfragen": { "type": ["integer", "null"], "minimum": 1, "maximum": 2 },
+        "netzbetreiber_name": { "type": ["string", "null"], "minLength": 1, "maxLength": 32 },
+        "direktvermarkter_name": { "type": ["string", "null"], "minLength": 1, "maxLength": 32 },
+        "t_typ_name": { "type": "array", "items": { "type": ["string", "null"], "minLength": 1, "maxLength": 32 } }
+      }
+    }
+  }
+}
