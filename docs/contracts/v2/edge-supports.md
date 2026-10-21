@@ -50,6 +50,15 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
   (Bilanz, Formel, Kennzahl, sichtbar im Portal) gebaut waren; Beleg
   `cloud/geteilter_punkt_gemeldet_test.go`. Eine Box ohne das Wort bekommt weiter den
   zusammengelegten Plan. Keine Zeile in `edge-capabilities.json` (Begründung wie `plan_quittung`).
+- `erzeuger_registerbild` (UEMS EZ-6): die Box liest das VoltPilot-Registerbild Erzeuger v1
+  (Katalogfamilie `voltpilot.erzeuger_registerbild_v1`) mit den Parametern aus
+  [`mqtt-measurement-config`](mqtt-measurement-config.schema.json) `erzeuger_registerbilder`
+  (`x-erzeuger-registerbilder-rule`). Die Cloud fragt das Wort an zwei Stellen: `MeasurementConfigPublisher`
+  sendet das Feld nur an eine Box, die es meldet (ein älterer Core verwürfe sonst das ganze Dokument), und
+  die Anlagensteuerung wird nur angelegt bzw. im Portal angeboten, wenn die zuständige Box es meldet
+  ([Anlagensteuerung](../../agents/root/erzeuger-anlagensteuerung.md)). **Bekannt, noch nicht gesendet**:
+  Leser und Meldung bringt EZ-5 mit einem Edge-Release (dann `advertised: true` und `BuiltSupports`). Keine
+  Zeile in `edge-capabilities.json` (Begründung wie `plan_quittung`).
 - `assignment_effective_at` bleibt bekannt, wird aber **nicht gesendet**: die gebaute
   Übergabe zum Zeitpunkt arbeitet ausschließlich im Cloud-Zeitgeber (`37205f8f`,
   `QuellenUebergabe`, [Ausführungsweg](../../agents/root/uems-quellen-uebergabe.md)).

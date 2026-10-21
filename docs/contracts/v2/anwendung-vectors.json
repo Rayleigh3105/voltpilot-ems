@@ -64,6 +64,7 @@
     "lastspitzenkappung",
     "atypische-netznutzung",
     "lastmanagement",
+    "netz-und-vermarktung",
     "eigene-auswertung",
     "berichte"
   ],
@@ -76,7 +77,8 @@
     "leistungspreis",
     "leistungsmessung",
     "ladepunkt",
-    "anschlussgrenze"
+    "anschlussgrenze",
+    "anlagensteuerung"
   ],
   "mode_kinds": [
     "marktvermarktung",
@@ -320,6 +322,44 @@
         "messwert": true, "speicher": true, "pv": true, "steuerbares-geraet": true,
         "marktzugang": true, "leistungspreis": true, "leistungsmessung": true,
         "ladepunkt": true, "anschlussgrenze": true
+      }
+    },
+    {
+      "name": "erzeugeranlage-mit-anlagensteuerung",
+      "note": "UEMS EZ-6: eine PV-Anlage ohne Speicher, deren SPS das VoltPilot-Registerbild traegt (Gore). Netz und Vermarktung ist abgeleitet aktiv, ohne Schalter und ohne Reiter; has_anlagensteuerung fehlt in jedem aelteren Fall = false.",
+      "input": {
+        "has_storage": false, "has_pv": false, "has_controllable_consumer": false,
+        "has_charge_point": false, "has_measurement": false, "has_leistungspreis": false,
+        "has_grid_limit": false,
+        "active_node_types": [],
+        "has_customer_rule": false,
+        "plant_kind": "eigenverbrauch", "tarif_art": "ohne", "netzladen_erlaubt": false,
+        "has_anlagensteuerung": true
+      },
+      "expected_derived_active": ["monitoring", "netz-und-vermarktung"],
+      "expected_requirements": {
+        "messwert": false, "speicher": false, "pv": false, "steuerbares-geraet": false,
+        "marktzugang": false, "leistungspreis": false, "leistungsmessung": false,
+        "ladepunkt": false, "anschlussgrenze": false, "anlagensteuerung": true
+      }
+    },
+    {
+      "name": "biogas-direktvermarktung-mit-anlagensteuerung",
+      "note": "UEMS EZ-6: Biogas-BHKW in der Direktvermarktung (Buettner). Marktvermarktung folgt wie bisher der Veraeusserungsform, Netz und Vermarktung der Anlagensteuerung.",
+      "input": {
+        "has_storage": false, "has_pv": false, "has_controllable_consumer": false,
+        "has_charge_point": false, "has_measurement": false, "has_leistungspreis": false,
+        "has_grid_limit": false,
+        "active_node_types": [],
+        "has_customer_rule": false,
+        "plant_kind": "direktvermarktung", "tarif_art": "ohne", "netzladen_erlaubt": false,
+        "has_anlagensteuerung": true
+      },
+      "expected_derived_active": ["monitoring", "marktvermarktung", "netz-und-vermarktung"],
+      "expected_requirements": {
+        "messwert": false, "speicher": false, "pv": false, "steuerbares-geraet": false,
+        "marktzugang": true, "leistungspreis": false, "leistungsmessung": false,
+        "ladepunkt": false, "anschlussgrenze": false, "anlagensteuerung": true
       }
     }
   ]

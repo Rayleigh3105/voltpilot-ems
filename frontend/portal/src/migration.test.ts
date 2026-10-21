@@ -660,6 +660,7 @@ describe('Abbau-Invarianten (M6)', () => {
       'ueberschuss',
       'verbraucher',
       'lastmanagement',
+      'netz-und-vermarktung',
       'eigene-auswertung',
     ]);
     //  3. das WILLENS-Overlay liest weiterhin JEDE Karte - ein gespeichertes
@@ -1338,8 +1339,11 @@ describe('Steuerung Stufen 8+9: Umzüge und Datenbereinigung', () => {
       .filter((a) => a.klasse === 'basis' || a.klasse === 'regel')
       .map((a) => a.id)
       .sort();
+    // `netz-und-vermarktung` (UEMS EZ-6) kam NEU als `basis` dazu: nicht abschaltbar, also lehnt der
+    // Server jeden Schreibweg ab (SiteProfileService) - es gibt keine Zeile, die eine Migration räumen müsste.
     expect(geloescht).toEqual(
-      ['monitoring', 'speicher-fahrplan', 'ueberschuss', 'verbraucher', 'lastmanagement'].sort(),
+      ['monitoring', 'speicher-fahrplan', 'ueberschuss', 'verbraucher', 'lastmanagement',
+        'netz-und-vermarktung'].sort(),
     );
     // Was BLEIBT: die vier Betriebsmodelle und die cockpit-Anwendung. Ihre
     // Zeilen tragen eine Entscheidung, die der Kunde wirklich getroffen hat.

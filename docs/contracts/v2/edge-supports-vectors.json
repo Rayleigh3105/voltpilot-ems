@@ -54,6 +54,12 @@
       "meaning": "Die Box nimmt den Mess-Plan mit geteiltem Punkt an (derselbe point_key einmal je Komponente, jede mit entity_id, mqtt-measurement-config 2.0 x-point-key-rule), liest ihn je Ziel einmal und sendet je Komponente ein Sample mit ihrer entity_id (measurement-samples 2.1); eine Ablehnung nur einer Komponente nennt deren entity_id (mqtt-measurement-config-status x-rejection-entity-rule). Ohne dieses Wort bekommt die Box den zusammengelegten Plan wie bisher (AP-07 IP-18b Teil 2).",
       "advertised": true,
       "evidence": "edge-app/core/internal/measurements/geteilter_punkt_test.go"
+    },
+    {
+      "name": "erzeuger_registerbild",
+      "meaning": "Die Box liest das VoltPilot-Registerbild Erzeuger v1 (Katalogfamilie voltpilot.erzeuger_registerbild_v1) mit den Parametern aus mqtt-measurement-config erzeuger_registerbilder (UEMS EZ-6/EZ-5). Erst dann bietet das Portal die Anlagensteuerung an und die Cloud sendet das Feld.",
+      "advertised": false,
+      "evidence": "docs/agents/root/erzeuger-anlagensteuerung.md (Cloud-Seite EZ-6; Box-Leser und Meldung kommen mit EZ-5)"
     }
   ],
   "cases": [
@@ -170,6 +176,16 @@
         "measurement_sample_provenance",
         "events",
         "automation_paused_until_revoked"
+      ]
+    },
+    {
+      "name": "reported_erzeuger_registerbild_is_recognized",
+      "supports": [
+        "erzeuger_registerbild"
+      ],
+      "table": [],
+      "expected": [
+        "erzeuger_registerbild"
       ]
     }
   ]

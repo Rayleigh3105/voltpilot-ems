@@ -3,6 +3,7 @@ package com.voltpilot.api.measurement;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.erzeuger.ErzeugerRegisterbild;
 import com.voltpilot.api.measurement.MeasurementSelectionRepository.DeviceScope;
 import com.voltpilot.api.measurement.MeasurementSelectionService.State;
 import com.voltpilot.api.provisioning.BrokerVerbindung;
@@ -41,6 +42,7 @@ public class MeasurementConfigPublisher {
     private final ErwarteteKadenz kadenzen;
     private BoxFaehigkeiten faehigkeiten;
     private WagoRegisterbilder registerbilder;
+    private ErzeugerRegisterbilder erzeugerRegisterbilder;
     /**
      * Ein Client, einmal gebaut, nie verworfen; eindeutige ID mit sauberer Sitzung - ein Sender hat
      * keine Sitzung zu bewahren, und die feste ID ließ im Rollout zwei Pods einander trennen.
@@ -82,6 +84,12 @@ public class MeasurementConfigPublisher {
     @Autowired(required = false)
     void setRegisterbilder(WagoRegisterbilder registerbilder) {
         this.registerbilder = registerbilder;
+    }
+
+    /** Ohne Quelle (Testaufbau) trägt kein Plan {@code erzeuger_registerbilder} — Zeichen für Zeichen wie bisher. */
+    @Autowired(required = false)
+    void setErzeugerRegisterbilder(ErzeugerRegisterbilder erzeugerRegisterbilder) {
+        this.erzeugerRegisterbilder = erzeugerRegisterbilder;
     }
 
     public static String topic(UUID tenantId, UUID siteId, UUID deviceId) {
@@ -164,17 +172,29 @@ public class MeasurementConfigPublisher {
         List<Map<String, Object>> bilder = registerbilder == null ? List.of()
                 : registerbilder.fuer(scope.siteId(), plan);
         if (!bilder.isEmpty()) payload.put("registerbilder", bilder);
+        // UEMS EZ-6: die Parameter je Anlagensteuerung, NUR an einem Plan mit Erzeuger-Punkten UND nur an eine
+        // Box, die erzeuger_registerbild meldet - ein älterer Core liest mit DisallowUnknownFields und verwürfe
+        // sonst das ganze Dokument (x-erzeuger-registerbilder-rule).
+        List<Map<String, Object>> erzeuger = erzeugerRegisterbilder == null ? List.of()
+                : erzeugerRegisterbilder.fuer(scope.siteId(), plan);
+        if (!erzeuger.isEmpty() && kann(scope, ErzeugerRegisterbild.FAEHIGKEIT)) {
+            payload.put("erzeuger_registerbilder", erzeuger);
+        }
         return mapper.writeValueAsBytes(payload);
     }
 
     /** Eine fehlgeschlagene Abfrage ist ein Nein: der Bestandsplan, nie ein verlorener Versand. */
     private boolean jeKomponente(DeviceScope scope) {
+        return kann(scope, FAEHIGKEIT_JE_KOMPONENTE);
+    }
+
+    private boolean kann(DeviceScope scope, String faehigkeit) {
         if (faehigkeiten == null) return false;
         try {
-            return faehigkeiten.kann(scope.deviceId(), FAEHIGKEIT_JE_KOMPONENTE);
+            return faehigkeiten.kann(scope.deviceId(), faehigkeit);
         } catch (RuntimeException e) {
-            log.warn("capability lookup for device {} failed, publishing the merged plan: {}",
-                    scope.deviceId(), e.getMessage());
+            log.warn("capability {} lookup for device {} failed, publishing without it: {}",
+                    faehigkeit, scope.deviceId(), e.getMessage());
             return false;
         }
     }

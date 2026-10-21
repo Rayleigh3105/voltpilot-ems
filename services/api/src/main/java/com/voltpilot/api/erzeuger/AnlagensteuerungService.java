@@ -25,6 +25,7 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.IntStream;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -60,6 +61,7 @@ public class AnlagensteuerungService {
     private final ObjectMapper json;
     private final Clock uhr;
 
+    @Autowired
     public AnlagensteuerungService(AnlagensteuerungRepository repo, EntityRegistryService entities,
             BoxFaehigkeiten faehigkeiten, ObjectMapper json) {
         this(repo, entities, faehigkeiten, json, Clock.systemUTC());

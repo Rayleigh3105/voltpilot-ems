@@ -79,6 +79,7 @@ interface VectorInput {
   plant_kind: string;
   tarif_art: string;
   netzladen_erlaubt: boolean;
+  has_anlagensteuerung?: boolean;
 }
 
 interface Vector {
@@ -109,6 +110,7 @@ function signalsOf(v: VectorInput): AnwendungSignals {
     plantKind: v.plant_kind,
     tarifArt: v.tarif_art,
     netzladenErlaubt: v.netzladen_erlaubt,
+    hasAnlagensteuerung: v.has_anlagensteuerung ?? false,
   };
 }
 
@@ -324,6 +326,7 @@ describe('Katalog-Regeln', () => {
       'ueberschuss',
       'verbraucher',
       'lastmanagement',
+      'netz-und-vermarktung',
       'eigene-auswertung',
     ]);
     expect([...REGAL, ...AUSSERHALB_REGAL].map((a) => a.id).sort()).toEqual(

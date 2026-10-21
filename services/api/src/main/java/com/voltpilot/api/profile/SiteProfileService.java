@@ -391,7 +391,8 @@ public class SiteProfileService {
                 signals.hasControllableConsumer(), signals.hasChargePoint(), plant.hasMeasurement(),
                 signals.hasLeistungspreis(),
                 chargingConfigs.forSite(site.id()).gridLimitKw() != null, activeNodeTypes,
-                index.hasCustomerRule, site.plantKind(), site.tarifArt(), site.netzladenErlaubt());
+                index.hasCustomerRule, site.plantKind(), site.tarifArt(), site.netzladenErlaubt(),
+                plant.hasAnlagensteuerung());
     }
 
     /** Market access = a dynamic tariff and/or Direktvermarktung (see OPEN(O1)). */
