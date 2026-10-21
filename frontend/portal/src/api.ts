@@ -76,7 +76,7 @@ export interface ErsatzwertVorschau {
   perioden: KorrekturPeriode[]; auswirkungen: KorrekturAuswirkungen; vieraugen: boolean; freigabe_noetig: boolean;
 }
 
-const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8090';
+export const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:8090';
 
 /**
  * Anlagentyp of a site: steers the money wording ("mehr verdient" for
@@ -846,7 +846,72 @@ export type HistoryEventType =
   | 'netzladen'
   | 'abendverkauf'
   | 'datenluecke'
-  | 'geraet-still';
+  | 'geraet-still'
+  | 'netzbetreiber'
+  | 'direktvermarkter'
+  | 'nicht-bereit';
+
+/**
+ * Die Vorgabe hinter einem Ereignis `netzbetreiber`, `direktvermarkter` oder `nicht-bereit` (UEMS EZ-9, EW-12 A) —
+ * abgeleitet von EZ-7, keine neue Messung. Im Tag genau eine Vorgabe (`id` öffnet das Detail) oder eine Datenlücke
+ * mit weiteren Wechseln (`luecken` 1), ab der Woche das Bündel eines Tages bzw. Monats (ohne `id`). Unbekannt ist
+ * `null`, nie 0.
+ */
+export interface HistoryVorgabe {
+  id: string | null;
+  urheber: 'netzbetreiber' | 'direktvermarkter' | 'anlage';
+  art: 'p_begrenzung' | 'abschaltung' | 'q_vorgabe' | 'dv_aktivierung' | 'dv_stopp' | 'nicht_bereit' | null;
+  teNr: number | null;
+  einheitName: string | null;
+  /** Der wirkliche Beginn (kann vor dem Zeitraum liegen); im Bündel `null`. */
+  beginn: string | null;
+  beginnGenau: boolean;
+  /** Das wirkliche Ende; `null` = läuft oder Bündel. */
+  ende: string | null;
+  laeuft: boolean;
+  vorgabeProzent: number | null;
+  /** Die kleinste Vorgabe in W — beim Direktvermarkter der Abruf. */
+  vorgabeW: number | null;
+  /** `bindend` = die Anlage folgte ihr (sie war die wirksame Grenze), `nicht_bindend` = eine andere war strenger. */
+  bindung: 'bindend' | 'nicht_bindend' | null;
+  /** Euro-Schätzung der nicht erzeugten Energie; `null` ohne Preisgrundlage (Biogas bis EZ-12). */
+  wertEur: number | null;
+  unvollstaendig: number;
+  luecken: number;
+  /** Weitere Wechsel in den Datenlücken; `null` = unbekannt (Neustart) oder keine Lücke. */
+  weitereWechsel: number | null;
+  /** Die Gründe für „nicht bereit“ als Text des Bilds. */
+  gruende: string[];
+}
+
+/**
+ * Eine Zeile der Zählung „Nach Art“ (UEMS EZ-9): `periode` null = der ganze Zeitraum (mit den Einheiten),
+ * `JJJJ-MM` = ein Monat (nur im Jahr). Gezählt hat EZ-7 über EINEN Abschnitt — eine Vorgabe über Mitternacht
+ * zählt einmal.
+ */
+export interface HistoryVorgabenZaehlung {
+  periode: string | null;
+  type: 'netzbetreiber' | 'direktvermarkter' | 'nicht-bereit';
+  /** `null` = die ganze Anlage bzw. bei „nicht bereit“ alle Einheiten zusammen. */
+  teNr: number | null;
+  einheitName: string | null;
+  anzahl: number;
+  minutes: number;
+  energyKwh: number | null;
+  wertEur: number | null;
+  ohneSchaetzung: number;
+  unvollstaendig: number;
+  arten: Record<string, number>;
+  luecken: number;
+  weitereWechsel: number | null;
+}
+
+/** Die Vorgaben einer Anlage mit Anlagensteuerung im Zeitraum (EZ-9); fehlt bei jeder anderen Anlage. */
+export interface HistoryVorgaben {
+  /** Bis wohin der Vorgaben-Läufer die Anlage ausgewertet hat; `null` = noch nie. */
+  verarbeitetBis: string | null;
+  zaehlung: HistoryVorgabenZaehlung[];
+}
 
 /**
  * Ein Ereignis im Verlauf (F6) — das Auffällige, das einen Ausreißer im
@@ -879,6 +944,8 @@ export interface HistoryEvent {
   days?: number;
   /** Die Fakten des Abendverkaufs als Zeilen; sonst leer. */
   facts?: { label: string; value: string }[];
+  /** Die Vorgabe hinter `netzbetreiber`, `direktvermarkter` und `nicht-bereit` (EZ-9); sonst nicht da. */
+  vorgabe?: HistoryVorgabe;
 }
 
 /**
@@ -936,6 +1003,11 @@ export interface History {
    * niemand geprüft hat.
    */
   events?: HistoryEvent[];
+  /**
+   * Die Vorgaben einer Erzeugeranlage „Nach Art“ (UEMS EZ-9) — nur bei einer Anlage mit Anlagensteuerung; ihr
+   * Dasein sagt der Karte, dass sie „noch keine Vorgaben“ statt „Nichts Auffälliges“ sagen darf.
+   */
+  vorgaben?: HistoryVorgaben;
 }
 
 /**
@@ -6673,6 +6745,80 @@ export interface ErzeugerJetzt {
   wechselHeute: Record<string, ErzeugerWechsel[]>;
 }
 
+/**
+ * Die Vorgaben einer Erzeugeranlage aus EZ-7 (`/api/v1/sites/{siteId}/erzeuger/vorgaben…`, Snake-Case wie die
+ * Route): wer wann wie lange die Anlage begrenzt oder gesteuert hat. Unbekannt ist `null`, nie 0.
+ */
+export type ErzeugerUrheber = 'netzbetreiber' | 'direktvermarkter' | 'anlage' | 'hand' | 'ersatzwert' | 'schutz';
+
+export interface ErzeugerVorgabe {
+  id: string;
+  geraet_id: string;
+  te_nr: number | null;
+  einheit_name: string | null;
+  urheber: ErzeugerUrheber;
+  art: string;
+  beginn: string;
+  beginn_genau: boolean;
+  ende: string | null;
+  ende_genau: boolean;
+  gesehen_bis: string;
+  dauer_s: number;
+  vorgabe_prozent: number | null;
+  vorgabe_w: number | null;
+  ist_mittel_w: number | null;
+  verfuegbar_mittel_w: number | null;
+  energie_kwh: number | null;
+  methode: 'pv_prognose' | 'nennleistung_bereite_motoren' | 'dv_sollwert_davor' | null;
+  wert_eur: number | null;
+  kanal: string | null;
+  bindung: 'bindend' | 'nicht_bindend' | null;
+  unvollstaendig: boolean;
+  neustart: boolean;
+  zaehler_beginn: number | null;
+  zaehler_ende: number | null;
+  gruende: string[];
+}
+
+/** Ein Rohwert am Beginn oder Ende einer Vorgabe, in der Sprache des Bilds. */
+export interface ErzeugerVorgabeRohwert {
+  point_key: string;
+  feld: string;
+  te_nr: number | null;
+  wert: number;
+  wort: string | null;
+  text: string | null;
+  bits: { bit: number; wort: string; text: string }[] | null;
+}
+
+/** `GET …/erzeuger/vorgaben/{vorgabeId}`: die Vorgabe mit ihren Rohsignalen und den Proben ihres Zeitraums. */
+export interface ErzeugerVorgabeDetail {
+  vorgabe: ErzeugerVorgabe;
+  roh_beginn: ErzeugerVorgabeRohwert[];
+  roh_ende: ErzeugerVorgabeRohwert[];
+  signale: { point_key: string; gemessen_am: string; wert: number | null; qualitaet: string | null }[];
+  signale_gekuerzt: boolean;
+}
+
+/** Je Urheber über alle Arten (ganze Anlage), die Dauer vereinigt — die Zahl der Kachel „Wer hat heute geregelt?“. */
+export interface ErzeugerJeUrheber {
+  urheber: ErzeugerUrheber;
+  anzahl: number;
+  dauer_s: number;
+  energie_kwh: number | null;
+  wert_eur: number | null;
+}
+
+/** `GET …/erzeuger/vorgaben/heute`: der heutige Tag (Europe/Berlin) bis jetzt. */
+export interface ErzeugerVorgabenHeute {
+  site_id: string;
+  tag: string;
+  abgerufen_am: string;
+  verarbeitet_bis: string | null;
+  je_urheber: ErzeugerJeUrheber[];
+  laufend: ErzeugerVorgabe[];
+}
+
 export interface ControlStatus {
   deviceId: string;
   /**
@@ -7910,7 +8056,7 @@ export function vergissGemerkte(): void {
  * sonst der Plattform-Umschalter `X-Tenant-Id`. Jeder Abruf trägt ihn gleich - auch die Datei-Abrufe (CSV, PDF, ICS);
  * ohne ihn lief der CSV-Abruf des Verzeichnisses in einem fremden Kundenbereich ohne Wahl (Konzept Nachweisen n1, A16).
  */
-function bereichKopf(path: string, bereich = kundenbereich, mandant = tenantOverride): Record<string, string> {
+export function bereichKopf(path: string, bereich = kundenbereich, mandant = tenantOverride): Record<string, string> {
   return bereich && !path.startsWith('/api/v1/admin/') ? { 'X-Kundenbereich': bereich }
     : mandant ? { 'X-Tenant-Id': mandant } : {};
 }

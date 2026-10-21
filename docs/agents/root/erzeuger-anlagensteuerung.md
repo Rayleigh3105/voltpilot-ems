@@ -137,8 +137,28 @@ läuft), `erzeuger_vorgabe_luecke` („n weitere Wechsel während einer Datenlü
 - Offen: `n_kanal`/`d_kanal` stehen nicht in der Probe — Einspeisemanagement und Direktvermarkter-Weg trägt man ein;
   „Betrieb“ im Anlage-anlegen-Fluss entfällt nur im Modus „nur messen“ (der auch die Veräußerungsform streicht).
 
+## Verlauf: Vorgaben als Ereignisse (EZ-9)
+
+`HistoryService` hängt bei einer Anlage mit Anlagensteuerung (`VorgabenRepository.hatSteuerung`) die Vorgaben als
+Ereignisarten `netzbetreiber`, `direktvermarkter`, `nicht-bereit` an (`Ereignisse.vorgaben`, Feld `vorgabe` je
+Ereignis) und zählt sie „Nach Art“ (`HistoryDto.vorgaben`). Portal: `historieEreignisse.ts` (Chronik-Zeile, „Nach
+Art“, je Einheit/Monat), Detail `VorgabeDetail.tsx`, Routen und CSV in `erzeugerVorgabenApi.ts`.
+
+- ⚠ **Bytegleich für alle anderen:** `vorgabe` und `vorgaben` stehen nur bei Erzeugeranlagen in der Antwort
+  (`@JsonInclude(NON_NULL)`, `UemsVerbrauchBestandsschutzTest`).
+- ⚠ **Zählen nur über die Zählung:** „Nach Art“ liest `vorgaben.zaehlung` (`VorgabenZaehlung` über EINEN Abschnitt);
+  die Ereignisse ab der Woche sind Tagesbündel — ihre Summe zählte eine Vorgabe über Mitternacht doppelt.
+- ⚠ **Was in die Spur kommt:** Netzbetreiber und Direktvermarkter der ganzen Anlage, „nicht bereit“ je Einheit; die
+  Abrufe je Einheit nur unter „je Einheit“, Automatik/Hand/Ersatzwert/Schutz nur in Chronik-Route und CSV.
+- ⚠ **Zwilling:** `Ereignisse.VORGABEN_ARTEN` ↔ `historieEreignisse.ts` `VORGABEN_ARTEN`; der Client verwirft eine
+  unbekannte Art still — `historieEreignisse.test.ts` liest die Arten aus `openapi.yaml`.
+- ⚠ **Ohne Hausbilanz:** eine Erzeugeranlage hat meist keine Messreihe für Verlauf › Energie; `MesswerteSection`
+  zeigt die Karte „Ereignisse“ trotzdem unter „Keine Messwerte“.
+- ⚠ **Einstiegs-Bündel:** die Vorgaben-Routen liegen in `erzeugerVorgabenApi.ts` (lazy); die Kachel „Wer hat heute
+  geregelt?“ abonniert `…/heute` über das Erzeuger-Stück (`erzeuger.ts` `heuteAbonnieren`).
+
 ## Nachfolger
 
 EZ-5 (Box-Leser, gebaut: Laufzeitstand 2026.10.21.1, `advertised: true`, Budget-Klasse in
 `measurement-budget-vectors.json`, Go-`Config.Erzeugerbilder` für `erzeuger_registerbilder`), EZ-8
-(Cockpit auf diesen Routen), EZ-9 (Vorgaben im Verlauf auf den EZ-7-Routen), EZ-15 (Anlege-Schritt, gebaut).
+(Cockpit auf diesen Routen), EZ-9 (Vorgaben im Verlauf, gebaut), EZ-15 (Anlege-Schritt, gebaut).

@@ -10,11 +10,11 @@ import {
   erzeugerLage,
   erzeugerSatz,
   erzeugerStatus,
+  geregeltHeute,
   vorgabeSpuren,
-  werHatGeregelt,
   type ErzeugerJetzt,
 } from './erzeuger';
-import { erzeugerBeispiel } from './test/erzeugerFixtures';
+import { erzeugerBeispiel, vorgabenHeuteBeispiel } from './test/erzeugerFixtures';
 
 const NOW = new Date(2026, 9, 21, 15, 44, 0);
 const sp = (s: string) => s.replace(/ /g, ' ');
@@ -151,7 +151,7 @@ describe('Blatt „Steuerung jetzt“', () => {
   it('Büttner: die ganze Kette mit Namen, Warum und Grenze', () => {
     const j = erzeugerBeispiel('buettner', NOW);
     const l = erzeugerLage(j, NOW);
-    const b = erzeugerBlatt(l, NOW, werHatGeregelt(j, l, mitternacht, NOW.getTime()));
+    const b = erzeugerBlatt(l, NOW, geregeltHeute(vorgabenHeuteBeispiel('buettner', NOW), l, mitternacht));
     expect(b.zeilen.map((z) => [z.titel, sp(z.unter), sp(z.wert)])).toEqual([
       ['Netzbetreiber', 'Netz Musterstadt GmbH · Stufe 60 % · seit 14:32', '59,4 kW'],
       ['Direktvermarkter', 'Stadtwerke Beispiel · Abruf seit 13:05 · bereit ✓', '80,0 kW'],
@@ -202,23 +202,29 @@ describe('Bühne', () => {
 });
 
 describe('Heute: Wer hat geregelt, Spuren', () => {
-  it('zählt Anzahl und Dauer je Urheber aus den Zustandswechseln', () => {
+  it('liest Anzahl und Dauer je Urheber aus den Vorgaben des Servers (EZ-7 „heute“)', () => {
     const j = erzeugerBeispiel('buettner', NOW);
-    const z = werHatGeregelt(j, erzeugerLage(j, NOW), mitternacht, NOW.getTime());
-    expect(z?.map((x) => [x.urheber, x.anzahl, sp(dauer(x.dauerMs))])).toEqual([
-      ['Netzbetreiber', 2, '2 h 27 min'],
-      ['Direktvermarkter', 1, '2 h 39 min'],
+    const z = geregeltHeute(vorgabenHeuteBeispiel('buettner', NOW), erzeugerLage(j, NOW), mitternacht);
+    expect(z?.map((x) => [x.key, x.urheber, x.anzahl, sp(dauer(x.dauerMs))])).toEqual([
+      ['nb', 'Netzbetreiber', 2, '2 h 27 min'],
+      ['dv', 'Direktvermarkter', 1, '2 h 39 min'],
     ]);
     const g = erzeugerBeispiel('gore', NOW);
     // Die getrennte Leitstelle ist keine Begrenzung; die Anlage selbst regelt seit 5 h.
-    expect(werHatGeregelt(g, erzeugerLage(g, NOW), mitternacht, NOW.getTime())?.map((x) => [x.urheber, x.anzahl, x.dauerMs])).toEqual([
+    expect(geregeltHeute(vorgabenHeuteBeispiel('gore', NOW), erzeugerLage(g, NOW), mitternacht)?.map((x) => [x.urheber, x.anzahl, x.dauerMs])).toEqual([
       ['Netzbetreiber', 0, 0],
       ['Anlage selbst', 1, 300 * 60_000],
     ]);
   });
-  it('ohne Wechsel keine Zählung (nie „0×“ erfunden)', () => {
-    const j = mit('buettner', (x) => { x.wechselHeute = {}; });
-    expect(werHatGeregelt(j, erzeugerLage(j, NOW), mitternacht, NOW.getTime())).toBeNull();
+  it('ohne Antwort oder ohne ausgewerteten heutigen Tag keine Zählung (nie „heute nicht“ erfunden)', () => {
+    const j = erzeugerBeispiel('buettner', NOW);
+    const l = erzeugerLage(j, NOW);
+    expect(geregeltHeute(null, l, mitternacht)).toBeNull();
+    expect(geregeltHeute({ ...vorgabenHeuteBeispiel('buettner', NOW), verarbeitet_bis: null }, l, mitternacht)).toBeNull();
+    const gestern = new Date(mitternacht - 120_000).toISOString();
+    expect(geregeltHeute({ ...vorgabenHeuteBeispiel('buettner', NOW), verarbeitet_bis: gestern }, l, mitternacht)).toBeNull();
+    // Ausgewertet, aber heute ohne Vorgabe: „heute nicht“ ist dann eine Aussage.
+    expect(geregeltHeute({ ...vorgabenHeuteBeispiel('buettner', NOW), je_urheber: [] }, l, mitternacht)?.map((x) => x.anzahl)).toEqual([0, 0]);
   });
   it('Abschnitte beginnen frühestens um Mitternacht und laufen bis jetzt', () => {
     const a = abschnitte([{ ab: new Date(mitternacht - 3_600_000).toISOString(), wert: 1 }, { ab: new Date(mitternacht + 600_000).toISOString(), wert: 0 }], (w) => w === 1, mitternacht, NOW.getTime());

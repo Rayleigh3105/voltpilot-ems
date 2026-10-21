@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { History, HistoryEvent, HistoryRange } from '../../api';
-import { ereignisChronik, ereignisSpur, type EreignisZelle } from '../../historieEreignisse';
+import { ereignisChronik, ereignisSpur, stundenZellen, type EreignisZelle } from '../../historieEreignisse';
+import { vorgabeDetailBeispiel, vorgabenVerlaufBeispiel } from '../../test/erzeugerFixtures';
 import { EreignisKarte } from './EreignisKarte';
 
 /** Render-only: Wörter, Zahlen und Bündel entscheidet `historieEreignisse.ts`. */
@@ -156,5 +157,123 @@ describe('EreignisKarte — Nach Art', () => {
     expect(onFilter).toHaveBeenLastCalledWith('negativpreis');
     // Zurück in der Chronik.
     expect(screen.getByRole('button', { name: 'Nach Tag' })).toHaveAttribute('aria-pressed', 'true');
+  });
+});
+
+describe('EreignisKarte — Vorgaben einer Erzeugeranlage (EZ-9)', () => {
+  const NOW = new Date(2026, 9, 21, 15, 44);
+  const sp = (t: string | null | undefined) => (t ?? '').replace(/[\u00a0\u202f]/g, ' ');
+
+  function vorgabenKarte(o: { fall?: 'buettner' | 'gore'; range?: HistoryRange; leer?: boolean; csv?: () => Promise<void> } = {}) {
+    const range = o.range ?? 'day';
+    const beispiel = vorgabenVerlaufBeispiel(o.fall ?? 'buettner', range, NOW);
+    const history = { ...verlauf(o.leer ? [] : beispiel.events, range), vorgaben: o.leer ? { ...beispiel.vorgaben, zaehlung: [] } : beispiel.vorgaben };
+    const spur = ereignisSpur(history)!;
+    const ladeVorgabe = vi.fn((id: string) => Promise.resolve(vorgabeDetailBeispiel(id, NOW)));
+    const onVorgabenCsv = vi.fn(o.csv ?? (() => Promise.resolve()));
+    render(
+      <EreignisKarte
+        spur={spur}
+        gruppen={ereignisChronik(spur, range)}
+        range={range}
+        streifenZellen={range === 'day' ? stundenZellen(new Date(2026, 9, 21, 12), NOW) : oktober}
+        filter={null}
+        onFilter={vi.fn()}
+        fokus={null}
+        onFokus={vi.fn()}
+        onOeffnen={range === 'day' ? undefined : vi.fn()}
+        ladeVorgabe={ladeVorgabe}
+        onVorgabenCsv={onVorgabenCsv}
+      />,
+    );
+    return { ladeVorgabe, onVorgabenCsv };
+  }
+
+  it('die Chronik-Zeile sagt Urheber und Vorgabe, ob die Anlage folgte, und die geschätzte Energie', () => {
+    vorgabenKarte();
+    const zeile = screen.getByRole('button', { name: /^Netzbetreiber · 60\s%, 1\sStd 11\sMin · folgt ✓/ });
+    expect(sp(zeile.textContent)).toContain('Netzbetreiber · 60 %1 Std 11 Min · folgt ✓≈ 25,0 kWh');
+    expect(screen.getByRole('button', { name: /^Direktvermarkter · Abruf 80,0\skW/ })).toHaveTextContent(/nicht bindend/);
+    // Die Lücke ist keine Vorgabe: kein Detail, aber ihre weiteren Wechsel stehen da.
+    expect(screen.getByText('1 weiterer Wechsel während einer Datenlücke').closest('button')).toBeNull();
+    // Filter-Chips zählen Vorgaben, nicht Lücken.
+    expect(within(screen.getByRole('group', { name: 'Nach Art filtern' })).getByRole('button', { name: /Netzbetreiber/ })).toHaveTextContent(/Netzbetreiber2$/);
+  });
+
+  it('ein Tipp öffnet das Detail mit Rohsignalen und Zählerständen', async () => {
+    const { ladeVorgabe } = vorgabenKarte();
+    const zeile = screen.getByRole('button', { name: /^Netzbetreiber · 60\s%/ });
+    expect(zeile).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(zeile);
+    expect(zeile).toHaveAttribute('aria-expanded', 'true');
+    expect(ladeVorgabe).toHaveBeenCalledWith('vg-bue-2');
+    expect(await screen.findByText('Rohsignale am Beginn')).toBeInTheDocument();
+    expect(screen.getByText('Zählerstand').nextSibling).toHaveTextContent('41 → 42');
+    expect(screen.getByText('n_bits').nextSibling).toHaveTextContent('Vorgabe gültig, Verbindung steht, Wirkleistung begrenzt (7)');
+    expect(screen.getByText(/37 Proben der Rohsignale/)).toBeInTheDocument();
+    expect(ladeVorgabe).toHaveBeenCalledTimes(1);
+  });
+
+  it('kann das Detail nicht geladen werden, sagt es das und lädt auf Wunsch erneut', async () => {
+    vorgabenKarte();
+    const ladeVorgabe = vi.fn().mockRejectedValueOnce(new Error('500')).mockResolvedValue(vorgabeDetailBeispiel('vg-bue-1', NOW));
+    // Eine eigene Karte mit dem scheiternden Abruf.
+    document.body.innerHTML = '';
+    const spur = ereignisSpur({ ...verlauf(vorgabenVerlaufBeispiel('buettner', 'day', NOW).events, 'day'), vorgaben: vorgabenVerlaufBeispiel('buettner', 'day', NOW).vorgaben })!;
+    render(
+      <EreignisKarte spur={spur} gruppen={ereignisChronik(spur, 'day')} range="day" streifenZellen={[]} filter={null}
+        onFilter={vi.fn()} fokus={null} onFokus={vi.fn()} ladeVorgabe={ladeVorgabe} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Netzbetreiber · 30\s%/ }));
+    expect(await screen.findByText('Das Detail dieser Vorgabe konnte nicht geladen werden.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Erneut laden' }));
+    expect(await screen.findByText('Rohsignale am Beginn')).toBeInTheDocument();
+  });
+
+  it('Gore: die Euro-Schätzung steht nur, weil EZ-7 sie liefert', () => {
+    vorgabenKarte({ fall: 'gore' });
+    expect(sp(screen.getByRole('button', { name: /^Netzbetreiber · 60\s%/ }).textContent)).toContain('≈ 18,4 kWh≈ 1,47 €');
+  });
+
+  it('„Nach Art“: Anzahl, Dauer und Energie je Urheber, je Einheit aufklappbar', () => {
+    vorgabenKarte();
+    fireEvent.click(screen.getByRole('button', { name: 'Nach Art' }));
+    const nb = screen.getByRole('button', { name: /^Netzbetreiber: 2×/ });
+    expect(sp(nb.textContent)).toContain('2 Std 26 Min · ≈ 76,0 kWh nicht erzeugt');
+    expect(sp(nb.textContent)).toContain('1 weiterer Wechsel während einer Datenlücke');
+    const knopf = screen.getByRole('button', { name: 'Je Einheit (2)' });
+    expect(knopf).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByRole('list', { name: 'Vorgaben je Einheit' })).not.toBeInTheDocument();
+    fireEvent.click(knopf);
+    const liste = screen.getByRole('list', { name: 'Vorgaben je Einheit' });
+    expect(sp(liste.textContent)).toBe('Motor 1Direktvermarkter 1× · 2 Std 38 MinMotor 2Direktvermarkter 1× · 1 Std 53 Minnicht bereit 1× · 45 Min');
+  });
+
+  it('„Vorgaben als CSV“ lädt den Zeitraum der Ansicht und sagt, wenn es nicht ging', async () => {
+    let fertig: () => void = () => {};
+    const { onVorgabenCsv } = vorgabenKarte({ csv: () => new Promise<void>((r) => { fertig = r; }) });
+    const knopf = screen.getByRole('button', { name: 'Vorgaben als CSV' });
+    fireEvent.click(knopf);
+    expect(onVorgabenCsv).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('button', { name: 'Vorgaben werden geladen …' })).toBeDisabled();
+    await act(async () => fertig());
+    expect(screen.getByRole('button', { name: 'Vorgaben als CSV' })).toBeEnabled();
+
+    document.body.innerHTML = '';
+    vorgabenKarte({ csv: () => Promise.reject(new Error('403')) });
+    fireEvent.click(screen.getByRole('button', { name: 'Vorgaben als CSV' }));
+    await waitFor(() => expect(screen.getByText('Die Vorgaben konnten nicht geladen werden.')).toBeInTheDocument());
+  });
+
+  it('ohne Vorgaben im Zeitraum „noch keine Vorgaben“ statt einer leeren Karte — der CSV-Knopf bleibt', () => {
+    vorgabenKarte({ leer: true });
+    expect(screen.getByText('Noch keine Vorgaben in diesem Zeitraum')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Vorgaben als CSV' })).toBeInTheDocument();
+  });
+
+  it('ohne Anlagensteuerung gibt es keinen CSV-Knopf und kein „Vorgaben“-Wort', () => {
+    karte();
+    expect(screen.queryByRole('button', { name: 'Vorgaben als CSV' })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Vorgaben/)).not.toBeInTheDocument();
   });
 });

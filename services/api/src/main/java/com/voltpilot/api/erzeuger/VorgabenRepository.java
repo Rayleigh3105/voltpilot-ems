@@ -64,6 +64,18 @@ public class VorgabenRepository {
         this.json = json;
     }
 
+    /**
+     * Hat oder hatte die Anlage eine Anlagensteuerung (EZ-6)? Dann gehören ihre Vorgaben in den Verlauf (EZ-9) -
+     * auch nach dem Ausbau, die Vorgaben von damals bleiben.
+     */
+    public boolean hatSteuerung(UUID siteId) {
+        return Boolean.TRUE.equals(jdbc.queryForObject("SELECT EXISTS (SELECT 1 FROM geraet g "
+                + "JOIN site s ON s.id = g.site_id JOIN geraet_komponente k ON k.geraet_id = g.id "
+                + "JOIN measurement_point m ON m.id = k.entity_id AND m.entity_type = ? "
+                + "WHERE g.site_id = ? AND g.geraeteart = 'controller')", Boolean.class,
+                AnlagensteuerungRepository.ENTITY_TYPE, siteId));
+    }
+
     public boolean anlageSichtbar(UUID siteId) {
         return !jdbc.queryForList("SELECT s.id FROM site s WHERE s.id = ?", UUID.class, siteId).isEmpty();
     }

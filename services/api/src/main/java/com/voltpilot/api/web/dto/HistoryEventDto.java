@@ -1,9 +1,11 @@
 package com.voltpilot.api.web.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * <b>Ein Ereignis im Verlauf</b> (Feature F6 des Historie-Konzepts
@@ -34,6 +36,12 @@ import java.util.List;
  *   <li>{@code datenluecke} - eine Fehlstelle in der Messreihe.</li>
  *   <li>{@code geraet-still} - die Messreihe bricht ab und es kam nichts mehr
  *       nach: das Gerät meldet sich nicht.</li>
+ *   <li>{@code netzbetreiber}, {@code direktvermarkter}, {@code nicht-bereit} -
+ *       die Vorgaben einer Erzeugeranlage (UEMS EZ-9, EW-12 A): wer die Anlage
+ *       begrenzt oder gesteuert hat und wann eine Einheit für den
+ *       Direktvermarkter nicht bereit war. Quelle sind die abgeleiteten
+ *       Vorgaben aus {@code erzeuger_vorgabe} (EZ-7), keine neue Messung; die
+ *       Einzelheiten stehen in {@link Vorgabe}.</li>
  * </ul>
  *
  * <p><b>{@code text} ist die Aussage ohne Zeitangabe</b> (deutsch,
@@ -63,6 +71,9 @@ import java.util.List;
  * @param count   Zahl der Fenster (1 im Tag)
  * @param days    Zahl der Tage mit einem Fenster (1 im Tag)
  * @param facts   die Fakten des Abendverkaufs als Liste; sonst leer
+ * @param vorgabe die Vorgabe hinter einem Ereignis der Arten {@code netzbetreiber},
+ *                {@code direktvermarkter} und {@code nicht-bereit}; sonst {@code null}
+ *                und dann nicht in der Antwort (die anderen Arten bleiben bytegleich)
  */
 public record HistoryEventDto(
         String type,
@@ -75,7 +86,14 @@ public record HistoryEventDto(
         long minutes,
         int count,
         int days,
-        List<Fact> facts) {
+        List<Fact> facts,
+        @JsonInclude(JsonInclude.Include.NON_NULL) Vorgabe vorgabe) {
+
+    /** Ein Ereignis ohne Vorgabe (alle Arten vor EZ-9). */
+    public HistoryEventDto(String type, Instant start, Instant end, String text, BigDecimal value,
+            String unit, boolean planned, long minutes, int count, int days, List<Fact> facts) {
+        this(type, start, end, text, value, unit, planned, minutes, count, days, facts, null);
+    }
 
     /** Ein einzelnes Fenster ohne eigene Zahl (Lücke, stilles Gerät). */
     public HistoryEventDto(String type, Instant start, Instant end, String text) {
@@ -85,5 +103,57 @@ public record HistoryEventDto(
 
     /** Ein Fakt mit Bezeichnung und fertig formatiertem Wert, z. B. „Speicher leer" / „02:45". */
     public record Fact(String label, String value) {
+    }
+
+    /**
+     * <b>Die Vorgabe hinter einem Ereignis</b> (UEMS EZ-9) - im Tag genau eine
+     * Vorgabe oder eine Datenlücke mit weiteren Wechseln, ab der Woche das
+     * Bündel eines Tages bzw. Monats. {@code start}/{@code end} des Ereignisses
+     * sind auf den Zeitraum geschnitten; den wirklichen Beginn und das Ende
+     * trägt dieses Feld. Unbekannt ist {@code null}, nie 0.
+     *
+     * @param id             die Vorgabe ({@code GET …/erzeuger/vorgaben/{id}}); {@code null} bei
+     *                       einer Lücke und im Bündel
+     * @param urheber        {@code netzbetreiber}, {@code direktvermarkter} bzw. {@code anlage}
+     *                       („nicht bereit“ meldet die Einheit selbst)
+     * @param art            die Art aus EZ-7 ({@code p_begrenzung}, {@code abschaltung},
+     *                       {@code q_vorgabe}, {@code dv_aktivierung}, {@code dv_stopp},
+     *                       {@code nicht_bereit}); {@code null} bei Lücke und Bündel
+     * @param teNr           die Einheit; {@code null} = die ganze Anlage
+     * @param einheitName    ihr Name aus dem Aufbau
+     * @param beginn         der wirkliche Beginn (kann vor dem Zeitraum liegen); im Bündel {@code null}
+     * @param beginnGenau    über „seit“ genau datiert
+     * @param ende           das wirkliche Ende; {@code null} = läuft oder Bündel
+     * @param laeuft         die Vorgabe läuft noch (belegt bis zur letzten Lesung, in der sie galt)
+     * @param vorgabeProzent die kleinste Vorgabe in % der installierten Leistung
+     * @param vorgabeW       die kleinste Vorgabe in W (beim Direktvermarkter der Abruf)
+     * @param bindung        {@code bindend} (die Anlage folgte ihr: sie war die wirksame Grenze),
+     *                       {@code nicht_bindend} (eine andere Grenze war strenger) oder {@code null}
+     * @param wertEur        die Euro-Schätzung der nicht erzeugten Energie im Zeitraum; {@code null}
+     *                       ohne Preisgrundlage
+     * @param unvollstaendig wie viele davon Datenlücken haben (im Tag 0 oder 1)
+     * @param luecken        wie viele Datenlücken mit weiteren Wechseln darin liegen
+     * @param weitereWechsel deren weitere Wechsel zusammen; {@code null} = unbekannt (Neustart) oder
+     *                       keine Lücke
+     * @param gruende        die Gründe für „nicht bereit“ ({@code stoerung}, {@code gasspeicher_leer}, …)
+     */
+    public record Vorgabe(
+            UUID id,
+            String urheber,
+            String art,
+            Integer teNr,
+            String einheitName,
+            Instant beginn,
+            boolean beginnGenau,
+            Instant ende,
+            boolean laeuft,
+            BigDecimal vorgabeProzent,
+            BigDecimal vorgabeW,
+            String bindung,
+            BigDecimal wertEur,
+            int unvollstaendig,
+            int luecken,
+            Integer weitereWechsel,
+            List<String> gruende) {
     }
 }

@@ -96,7 +96,7 @@ import { GroessenWahl, type RasterGroesse } from '../components/kacheln/Kachel';
 import type { KachelAuftrag } from '../components/kacheln/CockpitKacheln';
 import { jetztFluss } from '../flussJetzt';
 import { steuerSpalten } from '../kacheln';
-import type { ErzeugerJetzt } from '../api';
+import type { ErzeugerJetzt, ErzeugerVorgabenHeute } from '../api';
 import type { Programmstand } from '../programmstand';
 import type { WeatherPoint } from '../api';
 import {
@@ -892,6 +892,13 @@ export function AnlageSeite({
       aktiv = false;
     };
   }, [site.id, erzSteuerungId]);
+  // „Wer hat heute geregelt?“ (EZ-9): die heutigen Vorgaben vom Server (EZ-7) statt der Zustandswechsel im Portal -
+  // im Listentakt, über das Erzeuger-Stück (nur Anlagen mit Anlagensteuerung laden es).
+  const [erzHeute, setErzHeute] = useState<ErzeugerVorgabenHeute | null>(null);
+  useEffect(() => {
+    setErzHeute(null);
+    return erzSteuerungId && erzModul ? erzModul.heuteAbonnieren(site.id, setErzHeute, LIST_POLL_MS) : undefined;
+  }, [site.id, erzSteuerungId, erzModul]);
   // Die Ladepunkte (Lastmanagement Stufe 3) - fail-soft wie jeder additive
   // Abruf hier: ein älteres Backend kennt die Route nicht, dann gibt es die
   // Kachel schlicht nicht.
@@ -1859,7 +1866,7 @@ export function AnlageSeite({
   const erzStatus = erzLage && E ? E.erzeugerStatus(erzLage) : [];
   const erzTagesbeginn = new Date(now);
   erzTagesbeginn.setHours(0, 0, 0, 0);
-  const erzGeregelt = erzeugerJetzt && erzLage && E ? E.werHatGeregelt(erzeugerJetzt, erzLage, erzTagesbeginn.getTime(), now.getTime()) : null;
+  const erzGeregelt = erzLage && E ? E.geregeltHeute(erzHeute, erzLage, erzTagesbeginn.getTime()) : null;
   const erzBuehne = erzeugerJetzt && erzLage && E ? E.erzeugerBuehne(erzeugerJetzt, erzLage, buehneTag, now) : null;
   // Die Kette gilt für Anlagen, die VoltPilot nur liest; eine Speicheranlage behält ihre Steuerzeile.
   const erzZeile =

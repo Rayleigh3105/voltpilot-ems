@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import type { History, HistoryBucket, HistoryEvent, HistoryRange } from './api';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import type { History, HistoryBucket, HistoryEvent, HistoryRange, HistoryVorgaben } from './api';
 import {
   ART_ORDER,
   EREIGNIS_ARTEN,
+  KANAL_TEXT,
+  VORGABEN_ARTEN,
+  energieText,
+  euroText,
+  rohwertText,
+  vorgabeFakten,
+  vorgabenTeile,
   SPUR_HINWEIS_KURZ,
   bandSpanne,
   centText,
@@ -19,6 +28,7 @@ import {
   zellenSpanne,
   type EreignisZelle,
 } from './historieEreignisse';
+import { vorgabeDetailBeispiel, vorgabenVerlaufBeispiel } from './test/erzeugerFixtures';
 
 /**
  * Die Ereignis-Spur (F6) und der Tagesdrilldown (F5) als reine Einheiten -
@@ -281,6 +291,9 @@ describe('Bereiche — vier Farben statt sieben, das Symbol unterscheidet', () =
       netzgrenze: 'netz',
       netzladen: 'netz',
       abendverkauf: 'markt',
+      netzbetreiber: 'netz',
+      direktvermarkter: 'markt',
+      'nicht-bereit': 'daten',
       datenluecke: 'daten',
       'geraet-still': 'daten',
     });
@@ -473,5 +486,143 @@ describe('ereignisArten — „Nach Art"', () => {
     const [a] = ereignisArten(spur, 'day', stunden);
     expect(a.anzahl).toBe('1×');
     expect(a.streifen.map((z, h) => (z.an ? h : -1)).filter((h) => h >= 0)).toEqual([10, 11, 12, 13, 14, 15]);
+  });
+});
+
+// ===========================================================================
+// UEMS EZ-9: Vorgaben einer Erzeugeranlage als Ereignisse (EW-12 A)
+// ===========================================================================
+
+describe('Vorgaben — Netzbetreiber, Direktvermarkter, nicht bereit (EZ-9)', () => {
+  const NOW = new Date(2026, 9, 21, 15, 44);
+  const sp = (t: string | null | undefined) => (t ?? '').replace(/[\u00a0\u202f]/g, ' ');
+  const mitVorgaben = (fall: 'buettner' | 'gore', range: HistoryRange): History => ({
+    ...hist([local(2026, 10, 21)], undefined, range),
+    ...vorgabenVerlaufBeispiel(fall, range, NOW),
+  });
+
+  it('kennt jede Ereignisart des Vertrags — eine unbekannte verwürfe der Client still', () => {
+    const vertrag = readFileSync(resolve(process.cwd(), '../../docs/contracts/openapi.yaml'), 'utf8');
+    const zeile = vertrag.split('\n').find((z) => z.includes('enum: [negativpreis, abregelung'));
+    const arten = /\[(.*)\]/.exec(zeile ?? '')![1].split(',').map((x) => x.trim());
+    expect(arten.filter((a) => !(a in EREIGNIS_ARTEN))).toEqual([]);
+    expect(arten.slice(-VORGABEN_ARTEN.length)).toEqual([...VORGABEN_ARTEN]);
+    // Die Kanäle der Vorgaben haben ein Wort (Zwilling von VorgabenCsv.KANAL).
+    const kanal = vertrag.slice(vertrag.indexOf('    ErzeugerVorgabe:')).split('\n').find((z) => z.includes('enum: [keiner'));
+    const kanaele = /\[(.*)\]/.exec(kanal ?? '')![1].split(',').map((x) => x.trim()).filter((x) => x !== 'null');
+    expect(kanaele.filter((k) => !KANAL_TEXT[k])).toEqual([]);
+  });
+
+  it('Tag: je Vorgabe eine Zeile — Urheber und Vorgabe, ob die Anlage folgte, die geschätzte Energie', () => {
+    const spur = ereignisSpur(mitVorgaben('buettner', 'day'))!;
+    const gruppen = ereignisChronik(spur, 'day');
+    expect(gruppen.map((g) => [g.gross, sp(g.klein), ...g.zeilen.map((z) => [sp(z.titel), sp(z.meta), sp(z.zahl), z.zahlUnter ?? null])])).toEqual([
+      ['05:44', 'bis 05:58', ['Netzbetreiber', '1 weiterer Wechsel während einer Datenlücke', '14 Min', null]],
+      ['07:24', 'bis 08:09', ['nicht bereit · Motor 2', 'Gasspeicher leer', '45 Min', null]],
+      ['10:04', 'bis 11:19', ['Netzbetreiber · 30 %', '1 Std 15 Min · folgt ✓', '≈ 51,0 kWh', null]],
+      ['13:05', 'läuft', ['Direktvermarkter · Abruf 80,0 kW', '2 Std 38 Min · nicht bindend', '0 kWh', null]],
+      ['14:32', 'läuft', ['Netzbetreiber · 60 %', '1 Std 11 Min · folgt ✓', '≈ 25,0 kWh', null]],
+    ]);
+    expect(gruppen[4].label).toBe('ab 14:32 Uhr, läuft');
+    expect(gruppen[4].zeilen[0].vorgabe?.id).toBe('vg-bue-2');
+    // Gore (PV): die Euro-Schätzung steht unter der Zahl, nur weil EZ-7 sie liefert.
+    const gore = ereignisChronik(ereignisSpur(mitVorgaben('gore', 'day'))!, 'day');
+    expect(sp(gore[0].zeilen[0].zahlUnter)).toBe('≈ 1,47 €');
+  });
+
+  it('eine Vorgabe von früher nennt ihren wirklichen Beginn, unvollständig steht dabei', () => {
+    const tag = local(2026, 10, 21);
+    const spur = ereignisSpur({
+      ...hist([tag], [{
+        type: 'netzbetreiber', start: tag, end: local(2026, 10, 21, 15, 43), text: 'Netzbetreiber begrenzt auf 70 % (nicht bindend)',
+        value: 0, unit: 'kWh', minutes: 943, count: 1, days: 1, facts: [],
+        vorgabe: { id: 'fest', urheber: 'netzbetreiber', art: 'p_begrenzung', teNr: null, einheitName: null, beginn: local(2025, 1, 1),
+          beginnGenau: true, ende: null, laeuft: true, vorgabeProzent: 70, vorgabeW: null, bindung: 'nicht_bindend', wertEur: null,
+          unvollstaendig: 1, luecken: 0, weitereWechsel: null, gruende: [] },
+      }], 'day'),
+    })!;
+    const z = ereignisChronik(spur, 'day')[0].zeilen[0];
+    expect([sp(z.titel), sp(z.meta)]).toEqual(['Netzbetreiber · 70 %', 'seit 01.01.2025 00:00 · nicht bindend · unvollständig']);
+  });
+
+  it('Monat: je Tag eine Zeile je Urheber, Anzahl und Dauer vom Server', () => {
+    const spur = ereignisSpur(mitVorgaben('buettner', 'month'))!;
+    const gruppen = ereignisChronik(spur, 'month');
+    const zeilen = (tag: string) => gruppen.find((g) => g.gross === tag)!.zeilen.map((z) => [sp(z.titel), sp(z.meta), sp(z.zahl)]);
+    expect(zeilen('01')).toEqual([['Netzbetreiber', '10:00–11:30', '≈ 40,0 kWh']]);
+    expect(zeilen('02')).toEqual([['Direktvermarkter', '2× · 4 Std 5 Min', '0 kWh']]);
+    expect(zeilen('08')).toEqual([
+      ['Direktvermarkter', '2× · 4 Std 5 Min', '0 kWh'],
+      ['nicht bereit', '06:00–06:45 · 1 unvollständig', '45 Min'],
+    ]);
+  });
+
+  it('„Nach Art“ zählt aus der Zählung des Servers — einmal je Vorgabe, mit Stopps und Datenlücken', () => {
+    const spur = ereignisSpur(mitVorgaben('buettner', 'day'))!;
+    const arten = ereignisArten(spur, 'day', stundenZellen(new Date(2026, 9, 21, 12), NOW));
+    expect(arten.map((a) => [a.art, a.n, a.anzahl, sp(a.zahl), sp(a.zusatz)])).toEqual([
+      ['netzbetreiber', 2, '2×', '2 Std 26 Min · ≈ 76,0 kWh nicht erzeugt', '1 weiterer Wechsel während einer Datenlücke'],
+      ['direktvermarkter', 1, '1×', '2 Std 38 Min', ''],
+      ['nicht-bereit', 1, '1×', '45 Min', ''],
+    ]);
+    const monat = ereignisArten(ereignisSpur(mitVorgaben('buettner', 'month'))!, 'month', []);
+    expect(sp(monat.find((a) => a.art === 'direktvermarkter')!.zusatz)).toBe('4 Stopps');
+    expect(sp(monat.find((a) => a.art === 'netzbetreiber')!.zusatz)).toBe('1 Abschaltung');
+  });
+
+  it('je Einheit aufklappbar, im Jahr je Monat', () => {
+    const tag = vorgabenTeile(ereignisSpur(mitVorgaben('buettner', 'day'))!);
+    expect(tag.einheiten.map((t) => [t.label, t.zeilen.map((z) => sp(z.text))])).toEqual([
+      ['Motor 1', ['Direktvermarkter 1× · 2 Std 38 Min']],
+      ['Motor 2', ['Direktvermarkter 1× · 1 Std 53 Min', 'nicht bereit 1× · 45 Min']],
+    ]);
+    expect(tag.monate).toEqual([]);
+    const z = (periode: string, type: 'netzbetreiber' | 'direktvermarkter', anzahl: number, minutes: number) => ({
+      periode, type, teNr: null, einheitName: null, anzahl, minutes, energyKwh: null, wertEur: null, ohneSchaetzung: 0,
+      unvollstaendig: 0, arten: {}, luecken: 0, weitereWechsel: null,
+    });
+    const vorgaben: HistoryVorgaben = { verarbeitetBis: NOW.toISOString(), zaehlung: [z('2026-03', 'direktvermarkter', 1, 60), z('2026-10', 'netzbetreiber', 7, 680), z('2026-10', 'direktvermarkter', 23, 1865)] };
+    const jahr = vorgabenTeile(ereignisSpur({ ...hist([], [], 'year'), vorgaben })!);
+    expect(jahr.monate.map((t) => [t.label, t.zeilen.map((x) => sp(x.text))])).toEqual([
+      ['März 2026', ['Direktvermarkter 1× · 1 Std']],
+      ['Oktober 2026', ['Netzbetreiber 7× · 11 Std 20 Min', 'Direktvermarkter 23× · 1 Tag 7 Std']],
+    ]);
+  });
+
+  it('ohne Vorgaben „noch keine Vorgaben“ statt einer leeren Karte — und nie ohne Prüfung', () => {
+    const leer: HistoryVorgaben = { verarbeitetBis: NOW.toISOString(), zaehlung: [] };
+    expect(ereignisSpur({ ...hist([], [], 'day'), vorgaben: leer })!.leerText).toBe('Noch keine Vorgaben in diesem Zeitraum');
+    expect(ereignisSpur({ ...hist([], [], 'day'), vorgaben: { ...leer, verarbeitetBis: null } })!.leerText)
+      .toBe('Die Vorgaben dieser Anlage werden noch ausgewertet');
+    expect(ereignisSpur(hist([], [], 'day'))!.leerText).toBe('Nichts Auffälliges');
+    const andere = ereignisSpur({ ...hist([local(2026, 7, 15)], [ereignis()]), vorgaben: leer })!;
+    expect(andere.vorgabenHinweis).toBe('Noch keine Vorgaben in diesem Zeitraum');
+    expect(ereignisSpur({ ...hist([local(2026, 7, 15)], [ereignis()]) })!.vorgabenHinweis).toBeNull();
+  });
+
+  it('das Detail sagt, was EZ-7 belegt: Beginn, Ende, Vorgabe, Ist, Schätzung, Zähler und die Rohsignale', () => {
+    const d = vorgabeDetailBeispiel('vg-bue-2', NOW);
+    expect(Object.fromEntries(vorgabeFakten(d.vorgabe).map((f) => [f.label, sp(f.value)]))).toEqual({
+      Beginn: '21.10. 14:32',
+      Ende: 'läuft, zuletzt gesehen 21.10. 15:43',
+      Dauer: '1 Std 11 Min',
+      Vorgabe: '60 % · 59,4 kW',
+      'Ist im Mittel': '58,9 kW',
+      'Verfügbar im Mittel': '79,6 kW',
+      'Geschätzt nicht erzeugt': '≈ 25,0 kWh (aus der Nennleistung der bereiten Motoren)',
+      'Euro (Schätzung)': '—',
+      'Anlage folgte': 'ja, sie war die wirksame Grenze',
+      Kanal: 'Stufen',
+      Zählerstand: '41 → 42',
+    });
+    expect(d.roh_beginn.map(rohwertText)).toEqual(['Vorgabe gültig, Verbindung steht, Wirkleistung begrenzt (7)', '60', 'Stufen (2)']);
+  });
+
+  it('spricht Energie und Euro ehrlich: unbekannt „—“, eine bekannte Null 0', () => {
+    expect(energieText(null)).toBe('—');
+    expect(sp(energieText(0))).toBe('0 kWh');
+    expect(sp(energieText(410.4))).toBe('≈ 410 kWh');
+    expect(euroText(null)).toBeNull();
+    expect(sp(euroText(1234.5))).toBe('≈ 1.234,50 €');
   });
 });

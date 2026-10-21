@@ -1,5 +1,6 @@
 package com.voltpilot.api.history;
 
+import com.voltpilot.api.erzeuger.VorgabenRepository;
 import com.voltpilot.api.optimizer.OptimizerDiagnosticsService;
 import com.voltpilot.api.optimizer.SlotEconomics;
 import com.voltpilot.api.repo.EarningsRepository;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Function;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
@@ -54,12 +56,25 @@ public class HistoryService {
      */
     private final EarningsRepository earnings;
 
+    /**
+     * Die Vorgaben einer Erzeugeranlage (UEMS EZ-7), nur LESEND: der Verlauf zeigt sie als Ereignisse und zählt sie
+     * „Nach Art“ (EZ-9). {@code null} = ohne Vorgaben (Unit-Tests der Bilanz).
+     */
+    private final VorgabenRepository vorgaben;
+
     public HistoryService(HistoryRepository repo, OptimizerDiagnosticsService diagnostics,
-            EarningsRepository earnings,
+            EarningsRepository earnings, boolean ungeklemmteQuoten) {
+        this(repo, diagnostics, earnings, null, ungeklemmteQuoten);
+    }
+
+    @Autowired
+    public HistoryService(HistoryRepository repo, OptimizerDiagnosticsService diagnostics,
+            EarningsRepository earnings, VorgabenRepository vorgaben,
             @Value("${voltpilot.uems.historie.ungeklemmte-quoten-enabled:true}") boolean ungeklemmteQuoten) {
         this.repo = repo;
         this.diagnostics = diagnostics;
         this.earnings = earnings;
+        this.vorgaben = vorgaben;
         this.ungeklemmteQuoten = ungeklemmteQuoten;
     }
 
@@ -96,10 +111,37 @@ public class HistoryService {
                 repo.coverage(siteId, window.from(), window.to());
         HistoryCoverageDto coverage = coverage(coverageRow, window, Instant.now());
 
+        // Die Vorgaben werden EINMAL gelesen: als Ereignisse in der Spur und als Zählung „Nach Art“.
+        Vorgaben v = vorgaben(siteId, window);
+        List<HistoryEventDto> events = events(siteId, biddingZone, range, window, coverageRow, coverage,
+                at, cutover);
+        if (v != null) {
+            events = new java.util.ArrayList<>(events);
+            events.addAll(Ereignisse.vorgaben(range, window, v.zeilen(), v.luecken()));
+            events.sort(java.util.Comparator.comparing(HistoryEventDto::start));
+        }
         return new HistoryDto(range.name().toLowerCase(java.util.Locale.ROOT),
                 window.from(), window.to(), range.bucketMinutes(), buckets, totals, protocol, plan,
-                coverage, events(siteId, biddingZone, range, window, coverageRow, coverage,
-                        at, cutover));
+                coverage, events, v == null ? null
+                        : Ereignisse.vorgabenZaehlung(range, window, v.zeilen(), v.luecken(), v.verarbeitetBis()));
+    }
+
+    /** Die Vorgaben einer Erzeugeranlage im Zeitraum (EZ-7). */
+    private record Vorgaben(List<VorgabenRepository.Zeile> zeilen, List<VorgabenRepository.LueckeZeile> luecken,
+            Instant verarbeitetBis) {
+    }
+
+    /**
+     * Die Vorgaben im Zeitraum - {@code null} für jede Anlage ohne Anlagensteuerung: dann gibt es weder die neuen
+     * Ereignisarten noch die Zählung, und die Antwort ist wie vor EZ-9.
+     */
+    private Vorgaben vorgaben(UUID siteId, HistoryRange.Window window) {
+        if (vorgaben == null || !vorgaben.hatSteuerung(siteId)) {
+            return null;
+        }
+        return new Vorgaben(vorgaben.vorgaben(siteId, window.from(), window.to(), null, null),
+                vorgaben.luecken(siteId, window.from(), window.to(), null),
+                vorgaben.verarbeitetBis(siteId).orElse(null));
     }
 
     /**

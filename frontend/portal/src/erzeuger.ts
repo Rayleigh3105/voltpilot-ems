@@ -14,11 +14,14 @@
  * Wörter (§4.1): „Vorgabe“ für das Signal von außen, „Abruf“ beim Direktvermarkter - nie „Eingriff“,
  * das ist im Portal der Handeingriff.
  */
-import type { ErzeugerJetzt, ErzeugerQualitaet, ErzeugerWechsel, ErzeugerWert } from './api';
+import type { ErzeugerJetzt, ErzeugerQualitaet, ErzeugerVorgabenHeute, ErzeugerWechsel, ErzeugerWert } from './api';
 import type { Liste } from './flussListen';
 import { NBSP } from './format';
 import { kw, prozent, type FlussWerte } from './leitungsplan';
 import { uhrzeit, VIERTEL_MS, type Tag } from './tagesleiste';
+
+// „Wer hat heute geregelt?“ holt das Cockpit über dieses Stück (EZ-9), damit der Abruf nicht im Einstieg liegt.
+export { heuteAbonnieren } from './erzeugerVorgabenApi';
 
 /* ---------------------------------------------------------------- Punkte */
 
@@ -55,9 +58,6 @@ export type EinheitFeld = 'zustand' | 'bits' | 'art' | 'nenn_kw' | 'p_ist_w' | '
 export function einheitPunkt(teNr: number, feld: EinheitFeld): string {
   return `erzeuger.te${teNr}.${feld}`;
 }
-
-/** Deren Zustandswechsel zählt „Wer hat heute geregelt?“ (bis das Protokoll EZ-7/EZ-9 kommt). */
-export const WECHSEL_PUNKTE = [ERZEUGER_PUNKT.quelleP, ERZEUGER_PUNKT.nbBits, ERZEUGER_PUNKT.dvBits] as const;
 
 /* ------------------------------------------------------------- Eingabe */
 
@@ -616,21 +616,24 @@ export interface GeregeltZeile {
 }
 
 /**
- * „Wer hat heute geregelt?“: Anzahl und Dauer je Urheber seit Mitternacht, aus den Zustandswechseln von
- * `erzeuger.nb.bits` (Bit 2 begrenzt, Bit 3 Not-Aus), `erzeuger.dv.bits` (Bit 1 Abruf) und
- * `erzeuger.wirkung.quelle_p` (3 = die Anlage selbst am Netzpunkt). null = keine Wechsel geliefert.
+ * „Wer hat heute geregelt?“: Anzahl und Dauer je Urheber seit Mitternacht — aus den Vorgaben des Servers
+ * (`GET …/erzeuger/vorgaben/heute`, EZ-7: je Urheber über alle Arten, die Dauer vereinigt; EZ-9 löst damit die
+ * Zählung aus Zustandswechseln ab). Welche Zeilen stehen, sagt wie bisher die Lage: Netzbetreiber und
+ * Direktvermarkter, wenn ihr Kanal eingerichtet ist, „Anlage selbst“, wenn sie heute regelte oder kein
+ * Direktvermarkter da ist. null = noch nicht geladen, oder der Vorgaben-Läufer hat den heutigen Tag noch nicht
+ * ausgewertet — dann wird kein „heute nicht“ behauptet.
  */
-export function werHatGeregelt(j: ErzeugerJetzt, l: ErzeugerLage, beginn: number, now: number): GeregeltZeile[] | null {
-  const w = j.wechselHeute;
-  if (!w || !WECHSEL_PUNKTE.some((k) => w[k]?.length)) return null;
-  const zeile = (key: GeregeltZeile['key'], urheber: string, a: Abschnitt[]): GeregeltZeile => ({
-    key, urheber, anzahl: a.length, dauerMs: a.reduce((s, x) => s + x.bis - x.von, 0),
+export function geregeltHeute(heute: ErzeugerVorgabenHeute | null, l: ErzeugerLage, beginn: number): GeregeltZeile[] | null {
+  if (!heute || heute.verarbeitet_bis == null || Date.parse(heute.verarbeitet_bis) < beginn) return null;
+  const zeile = (key: GeregeltZeile['key'], urheber: string, x: ErzeugerVorgabenHeute['je_urheber'][number] | undefined): GeregeltZeile => ({
+    key, urheber, anzahl: x?.anzahl ?? 0, dauerMs: (x?.dauer_s ?? 0) * 1000,
   });
+  const je = (u: ErzeugerVorgabenHeute['je_urheber'][number]['urheber']) => heute.je_urheber.find((x) => x.urheber === u);
   const z: GeregeltZeile[] = [];
-  if (hatNb(l)) z.push(zeile('nb', 'Netzbetreiber', abschnitte(w[ERZEUGER_PUNKT.nbBits], nbAn, beginn, now)));
-  if (hatDv(l)) z.push(zeile('dv', 'Direktvermarkter', abschnitte(w[ERZEUGER_PUNKT.dvBits], dvAn, beginn, now)));
-  const eigen = abschnitte(w[ERZEUGER_PUNKT.quelleP], eigenAn, beginn, now);
-  if (eigen.length || !hatDv(l)) z.push(zeile('eigen', 'Anlage selbst', eigen));
+  if (hatNb(l)) z.push(zeile('nb', 'Netzbetreiber', je('netzbetreiber')));
+  if (hatDv(l)) z.push(zeile('dv', 'Direktvermarkter', je('direktvermarkter')));
+  const eigen = je('anlage');
+  if ((eigen?.anzahl ?? 0) > 0 || !hatDv(l)) z.push(zeile('eigen', 'Anlage selbst', eigen));
   return z;
 }
 
