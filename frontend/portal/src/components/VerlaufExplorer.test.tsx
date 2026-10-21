@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { VerlaufExplorer } from './VerlaufExplorer';
 import { GERAET_GORE, gore, goreVerlauf } from '../test/anlagensteuerungFixtures';
@@ -13,6 +13,11 @@ import {
 
 // The chart uses useEChart (canvas); jsdom has neither, so stub it.
 vi.mock('../useEChart', () => ({ useEChart: () => ({ current: null }) }));
+
+// UEMS EZ-10: der Explorer fragt je Anlage nach Anlagensteuerungen - ohne Belegung keine (nie ein echter Abruf).
+beforeEach(() => {
+  vi.spyOn(api, 'anlagensteuerungen').mockResolvedValue(null);
+});
 
 const site: Site = {
   id: 's-1',
@@ -162,9 +167,10 @@ describe('VerlaufExplorer — F2a producer empty state', () => {
 
     render(<VerlaufExplorer site={site} range="day" anchor={anchor} initialTargets={[]} />);
 
+    // Unter Volllast des Gesamtlaufs dauert der erste Abruf länger als die 1-s-Vorgabe (wie „lands on …“).
     await waitFor(() =>
       expect(screen.getByText('Wird über den Wechselrichter gemessen')).toBeInTheDocument(),
-    );
+    { timeout: 5000 });
     // The generic "Keine Werte" empty state must NOT be what a producer shows.
     expect(screen.queryByText('Keine Werte in diesem Zeitraum')).toBeNull();
   });
