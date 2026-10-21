@@ -76,10 +76,6 @@ class SiteScopeArchitekturTest {
             new Erlaubt("measurement/MeasurementHistoryService.java", "device_measurement_rollup_15m", 1,
                     Grund.ANLAGE_GEPRUEFT, "measurement/MeasurementHistoryService.java",
                     "geltungsbereich.requireSite(scope.siteId())"),
-            // UEMS EZ-6: die jüngsten Werte einer Anlagensteuerung — der Dienst prüft vorher die Anlage
-            // (404) und nimmt nur eine Steuerung dieser Anlage.
-            new Erlaubt("erzeuger/AnlagensteuerungRepository.java", "device_measurement_sample", 1,
-                    Grund.ANLAGE_GEPRUEFT, "erzeuger/AnlagensteuerungService.java", "sichtbar(siteId);"),
             new Erlaubt("uems/KanalbindungService.java", "device_measurement_sample", 1,
                     Grund.ANLAGE_GEPRUEFT, "uems/KanalbindungService.java",
                     "geltung.siteVisible(anlagen.getFirst())"),
