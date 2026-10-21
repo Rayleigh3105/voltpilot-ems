@@ -64,8 +64,11 @@ public final class VorgabenZaehlung {
         return out;
     }
 
-    /** Berührt die Vorgabe {@code [beginn, ende)}? Eine ohne Dauer zählt, wenn sie darin beginnt. */
-    static boolean beruehrt(Zeile z, Instant beginn, Instant ende) {
+    /**
+     * Berührt die Vorgabe {@code [beginn, ende)}? Eine ohne Dauer zählt, wenn sie darin beginnt. Der Verlauf (EZ-9)
+     * schneidet seine Ereignisse nach derselben Regel.
+     */
+    public static boolean beruehrt(Zeile z, Instant beginn, Instant ende) {
         boolean beginntDarin = !z.beginn().isBefore(beginn) && z.beginn().isBefore(ende);
         return beginntDarin || (z.beginn().isBefore(ende) && z.belegtBis().isAfter(beginn));
     }

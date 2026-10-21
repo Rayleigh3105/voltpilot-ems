@@ -28692,12 +28692,26 @@ components:
             measured load, an empty battery, the night's grid import). Every
             sentence is a persisted fact - a fact that is missing DROPS ITS
             SENTENCE instead of being estimated.
+
+            netzbetreiber, direktvermarkter and nicht-bereit (UEMS EZ-9, EW-12 A)
+            exist only for a site with an Anlagensteuerung: the Vorgaben derived
+            by EZ-7 (`erzeuger_vorgabe`), not a new measurement - netzbetreiber
+            and direktvermarkter for the whole plant, nicht-bereit per unit.
+            range=day sends every Vorgabe on its own (no cap) plus every data gap
+            in which the counter of netzbetreiber/direktvermarkter counted further
+            changes (`count` 0, `vorgabe.luecken` 1); from range=week on one event
+            bundles a type per day (year: per month), counted by EZ-7's
+            VorgabenZaehlung (`count` = Vorgaben touching it, `minutes` their
+            share, per Urheber as union). `start`/`end` are cut to the period; a
+            running Vorgabe ends at its last reading, never in the future. `value`
+            is the estimated non-generated energy share (kWh), null without a
+            basis.
           items:
             type: object
             properties:
               type:
                 type: string
-                enum: [negativpreis, abregelung, netzgrenze, netzladen, abendverkauf, datenluecke, geraet-still]
+                enum: [negativpreis, abregelung, netzgrenze, netzladen, abendverkauf, datenluecke, geraet-still, netzbetreiber, direktvermarkter, nicht-bereit]
               start: { type: string, format: date-time }
               end: { type: string, format: date-time, description: Exclusive. }
               text: { type: string, description: Plain-German statement without a time. }
@@ -28722,6 +28736,73 @@ components:
                   properties:
                     label: { type: string, example: Speicher leer }
                     value: { type: string, example: '02:45' }
+              vorgabe:
+                type: object
+                nullable: true
+                description: >
+                  The Vorgabe behind a netzbetreiber, direktvermarkter or
+                  nicht-bereit event (UEMS EZ-9); null for every other type. At
+                  range=day one Vorgabe (`id` opens
+                  /api/v1/sites/{siteId}/erzeuger/vorgaben/{vorgabeId}) or one data
+                  gap with further changes; from range=week the bundle (no `id`).
+                  Unknown is null, never 0. Absent on every other type, so their
+                  events stay byte-identical.
+                properties:
+                  id: { type: string, format: uuid, nullable: true, description: The Vorgabe; null for a data gap and a bundle. }
+                  urheber: { type: string, enum: [netzbetreiber, direktvermarkter, anlage], description: "anlage for nicht-bereit (the unit reports it itself)." }
+                  art: { type: string, nullable: true, enum: [p_begrenzung, abschaltung, q_vorgabe, dv_aktivierung, dv_stopp, nicht_bereit], description: The EZ-7 art; null for a data gap and a bundle. }
+                  teNr: { type: integer, nullable: true, description: The unit; null = the whole plant. }
+                  einheitName: { type: string, nullable: true }
+                  beginn: { type: string, format: date-time, nullable: true, description: The real start (may lie before the period); null in a bundle. }
+                  beginnGenau: { type: boolean, description: Dated exactly via "seit". }
+                  ende: { type: string, format: date-time, nullable: true, description: The real end; null = running or bundle. }
+                  laeuft: { type: boolean, description: Still running (covered up to its last reading). }
+                  vorgabeProzent: { type: number, nullable: true, description: The smallest Vorgabe in % of the installed power. }
+                  vorgabeW: { type: number, nullable: true, description: "The smallest Vorgabe in W (direktvermarkter: the Abruf)." }
+                  bindung: { type: string, nullable: true, enum: [bindend, nicht_bindend], description: "bindend = the plant followed it (it was the effective limit); nicht_bindend = another limit was stricter." }
+                  wertEur: { type: number, nullable: true, description: Euro estimate of the non-generated energy in the period at the site's prices; null without a price basis (biogas until EZ-12). }
+                  unvollstaendig: { type: integer, description: How many of the Vorgaben have data gaps (0 or 1 at range=day). }
+                  luecken: { type: integer, description: Data gaps with further changes in it. }
+                  weitereWechsel: { type: integer, nullable: true, description: Their further changes together; null = unknown (controller restart) or no gap. }
+                  gruende:
+                    type: array
+                    items: { type: string }
+                    description: The reasons for nicht-bereit in the words of the image (German text, t_bits bit 4-9).
+        vorgaben:
+          type: object
+          nullable: true
+          description: >
+            UEMS EZ-9: the Vorgaben of a site with an Anlagensteuerung counted
+            for the period ("Nach Art") - how often and how long netzbetreiber and
+            direktvermarkter regulated, how often a unit was not ready. Counted by
+            EZ-7's VorgabenZaehlung over ONE section, so a Vorgabe across midnight
+            counts once (summing the day bundles of `events` would count it
+            twice). Absent for every site without an Anlagensteuerung (its
+            response stays byte-identical).
+          properties:
+            verarbeitetBis: { type: string, format: date-time, nullable: true, description: How far the Vorgaben-Läufer has evaluated the site; null = never. }
+            zaehlung:
+              type: array
+              description: Per type the whole period (`periode` null) with its units; for range=year additionally per month.
+              items:
+                type: object
+                properties:
+                  periode: { type: string, nullable: true, example: "2026-10", description: "null = the whole period; YYYY-MM = one month (range=year only)." }
+                  type: { type: string, enum: [netzbetreiber, direktvermarkter, nicht-bereit] }
+                  teNr: { type: integer, nullable: true, description: "null = the whole plant (netzbetreiber, direktvermarkter) or all units together (nicht-bereit)." }
+                  einheitName: { type: string, nullable: true }
+                  anzahl: { type: integer, description: Vorgaben touching the section. }
+                  minutes: { type: integer, format: int64, description: "Their duration in it; per Urheber as union, nicht-bereit summed over the units." }
+                  energyKwh: { type: number, nullable: true, description: Estimated non-generated energy in it; null = no estimate known. }
+                  wertEur: { type: number, nullable: true, description: Its Euro estimate; null without a price basis. }
+                  ohneSchaetzung: { type: integer, description: Vorgaben without an energy estimate. }
+                  unvollstaendig: { type: integer, description: Vorgaben with data gaps. }
+                  arten:
+                    type: object
+                    additionalProperties: { type: integer }
+                    description: Count per EZ-7 art (p_begrenzung, abschaltung, q_vorgabe, dv_aktivierung, dv_stopp, nicht_bereit).
+                  luecken: { type: integer, description: Data gaps with further changes starting in the section. }
+                  weitereWechsel: { type: integer, nullable: true, description: Their further changes together; null = no gap or one number unknown. }
     ForecastModelChoice:
       type: object
       description: >

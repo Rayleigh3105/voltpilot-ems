@@ -1,11 +1,19 @@
 package com.voltpilot.api.history;
 
+import com.voltpilot.api.erzeuger.ErzeugerRegisterbild;
+import com.voltpilot.api.erzeuger.VorgabenAbleitung;
+import com.voltpilot.api.erzeuger.VorgabenRepository.LueckeZeile;
+import com.voltpilot.api.erzeuger.VorgabenRepository.Zeile;
+import com.voltpilot.api.erzeuger.VorgabenZaehlung;
 import com.voltpilot.api.repo.HistoryRepository.CoverageRow;
 import com.voltpilot.api.repo.HistoryRepository.GapRun;
 import com.voltpilot.api.repo.HistoryRepository.ValueSlot;
 import com.voltpilot.api.web.dto.HistoryCoverageDto;
+import com.voltpilot.api.web.dto.ErzeugerVorgabenDto;
 import com.voltpilot.api.web.dto.HistoryEventDto;
+import com.voltpilot.api.web.dto.HistoryVorgabenDto;
 import java.math.BigDecimal;
+import java.math.MathContext;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -19,7 +27,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
+import java.util.TreeMap;
 
 /**
  * <b>Die Ereignis-Spur des Verlaufs</b> (Feature F6 des Historie-Konzepts
@@ -485,6 +495,387 @@ public final class Ereignisse {
     }
 
     private static final DateTimeFormatter UHR = DateTimeFormatter.ofPattern("HH:mm");
+
+    // ---- Vorgaben einer Erzeugeranlage (UEMS EZ-9, Konzept vp-erzeuger-wago-konzept §4.5, EW-12 A)
+
+    /**
+     * Die Arten der Vorgaben in Spur, Chronik und „Nach Art“ - in dieser Reihenfolge. Der Zwilling ist
+     * {@code frontend/portal/src/historieEreignisse.ts} ({@code VORGABEN_ARTEN}); beide zusammen ändern.
+     */
+    public static final List<String> VORGABEN_ARTEN =
+            List.of("netzbetreiber", "direktvermarkter", "nicht-bereit");
+
+    /**
+     * Die Art einer Vorgabe im Verlauf, oder {@code null}: Netzbetreiber und Direktvermarkter für die ganze Anlage
+     * (je Einheit stehen ihre Vorgaben nur in der Zählung, sonst stünde ein Abruf dreimal in der Chronik),
+     * „nicht bereit“ je Einheit. Was die Anlage selbst, die Hand, ein Ersatzwert oder der Schutz begrenzt, nennt
+     * die Chronik der Vorgaben samt CSV; §4.5 bringt in den Verlauf die drei Arten von außen.
+     */
+    static String vorgabenArt(Zeile z) {
+        if ("nicht_bereit".equals(z.art())) {
+            return "nicht-bereit";
+        }
+        if (z.teNr() != null) {
+            return null;
+        }
+        return switch (z.urheber()) {
+            case "netzbetreiber" -> "netzbetreiber";
+            case "direktvermarkter" -> "direktvermarkter";
+            default -> null;
+        };
+    }
+
+    /** Die Art einer Lücke mit weiteren Wechseln: der Urheber, dessen Zähler sprang. */
+    private static String lueckenArt(LueckeZeile l) {
+        return "netzbetreiber".equals(l.urheber()) || "direktvermarkter".equals(l.urheber()) ? l.urheber() : null;
+    }
+
+    /**
+     * <b>Die Vorgaben als Ereignisse</b> - Quelle sind die abgeleiteten Vorgaben aus EZ-7, keine neue Messung.
+     *
+     * <p><b>Im Tag</b> ist jede Vorgabe ein Ereignis (ohne Kappung: eine Vorgabe ist ein Wechsel an der Steuerung,
+     * kein Rauschen, und das Protokoll soll vollständig sein), dazu jede Datenlücke, in der der Zähler eines Urhebers
+     * weitere Wechsel zählt ({@code count} 0 - sie ist keine Vorgabe). <b>Ab der Woche</b> bündelt ein Ereignis je Art
+     * die Vorgaben eines Tages (im Jahr eines Monats); Anzahl, Dauer und Energie zählt dafür {@link VorgabenZaehlung}
+     * - dieselben Zahlen wie die Route „Nach Art“ und die Kachel „Wer hat heute geregelt?“.
+     *
+     * <p>{@code start}/{@code end} sind auf den Zeitraum bzw. den Tag geschnitten (eine Grenze, die seit Jahren
+     * gilt, liegt sonst vor dem Diagramm); eine laufende Vorgabe endet bei der letzten Lesung, in der sie galt - nie
+     * in der Zukunft. Die Energie ist ihr Anteil im Abschnitt ({@code energie_je_tag}), {@code null} ohne Grundlage.
+     */
+    public static List<HistoryEventDto> vorgaben(HistoryRange range, HistoryRange.Window window,
+            List<Zeile> zeilen, List<LueckeZeile> luecken) {
+        List<HistoryEventDto> out = new ArrayList<>();
+        if (range == HistoryRange.DAY) {
+            LocalDate tag = window.from().atZone(HistoryRange.ZONE).toLocalDate();
+            for (Zeile z : zeilen) {
+                String art = vorgabenArt(z);
+                if (art == null || !VorgabenZaehlung.beruehrt(z, window.from(), window.to())) {
+                    continue;
+                }
+                out.add(vorgabe(art, z, window.from(), window.to(), tag));
+            }
+            for (LueckeZeile l : luecken) {
+                String art = lueckenArt(l);
+                if (art != null && l.beginn().isBefore(window.to()) && !l.ende().isBefore(window.from())) {
+                    out.add(luecke(art, l, window.from(), window.to()));
+                }
+            }
+        } else {
+            for (LocalDate[] p : abschnitte(range, window)) {
+                Instant b = max(p[0].atStartOfDay(HistoryRange.ZONE).toInstant(), window.from());
+                Instant e = min(p[1].plusDays(1).atStartOfDay(HistoryRange.ZONE).toInstant(), window.to());
+                for (String art : VORGABEN_ARTEN) {
+                    HistoryEventDto ereignis = buendel(range, art, zeilen, luecken, b, e, p[0], p[1]);
+                    if (ereignis != null) {
+                        out.add(ereignis);
+                    }
+                }
+            }
+        }
+        out.sort(Comparator.comparing(HistoryEventDto::start));
+        return out;
+    }
+
+    /** Die Tage (Woche, Monat) bzw. Monate (Jahr) eines Zeitraums als erster/letzter Tag. */
+    private static List<LocalDate[]> abschnitte(HistoryRange range, HistoryRange.Window window) {
+        LocalDate erster = window.from().atZone(HistoryRange.ZONE).toLocalDate();
+        LocalDate letzter = window.to().minusNanos(1).atZone(HistoryRange.ZONE).toLocalDate();
+        List<LocalDate[]> out = new ArrayList<>();
+        if (range == HistoryRange.YEAR) {
+            for (YearMonth m = YearMonth.from(erster); !m.isAfter(YearMonth.from(letzter)); m = m.plusMonths(1)) {
+                out.add(new LocalDate[] {m.atDay(1), m.atEndOfMonth()});
+            }
+        } else {
+            for (LocalDate t = erster; !t.isAfter(letzter); t = t.plusDays(1)) {
+                out.add(new LocalDate[] {t, t});
+            }
+        }
+        return out;
+    }
+
+    /** Eine Vorgabe im Tag: ihr Anteil am Tag, wie ihn die Zählung rechnet. */
+    private static HistoryEventDto vorgabe(String art, Zeile z, Instant von, Instant bis, LocalDate tag) {
+        ErzeugerVorgabenDto.Gruppe anteil = VorgabenZaehlung.gruppen(List.of(z), von, bis, tag, tag).get(0);
+        Instant start = max(z.beginn(), von);
+        Instant end = max(start, min(z.belegtBis(), bis));
+        BigDecimal energie = anteil.energieKwh();
+        return new HistoryEventDto(art, start, end, vorgabeSatz(art, z, energie), energie,
+                energie == null ? null : "kWh", false, anteil.dauerS() / 60, 1, 1, List.of(),
+                new HistoryEventDto.Vorgabe(z.id(), z.urheber(), z.art(), z.teNr(), z.einheitName(), z.beginn(),
+                        z.beginnGenau(), z.ende(), z.ende() == null, z.vorgabeProzent(), z.vorgabeW(), z.bindung(),
+                        anteil.wertEur(), z.unvollstaendig() ? 1 : 0, 0, null, gruende(z.gruende())));
+    }
+
+    /** Eine Datenlücke, in der der Zähler eines Urhebers weitere Wechsel zählt - ohne erfundene Zeiten. */
+    private static HistoryEventDto luecke(String art, LueckeZeile l, Instant von, Instant bis) {
+        Instant start = max(l.beginn(), von);
+        Instant end = max(start, min(l.ende(), bis));
+        return new HistoryEventDto(art, start, end, urheberWort(art) + ": " + weitereText(l.weitereWechsel()), null,
+                null, false, Duration.between(start, end).toMinutes(), 0, 1, List.of(),
+                new HistoryEventDto.Vorgabe(null, l.urheber(), null, null, null, l.beginn(), false, l.ende(), false,
+                        null, null, null, null, 0, 1, l.weitereWechsel(), List.of()));
+    }
+
+    /** Die Vorgaben einer Art an einem Tag (Woche, Monat) bzw. in einem Monat (Jahr) - oder null. */
+    private static HistoryEventDto buendel(HistoryRange range, String art, List<Zeile> zeilen,
+            List<LueckeZeile> luecken, Instant b, Instant e, LocalDate ersterTag, LocalDate letzterTag) {
+        List<Zeile> eigene = zeilen.stream()
+                .filter(z -> art.equals(vorgabenArt(z)) && VorgabenZaehlung.beruehrt(z, b, e)).toList();
+        List<LueckeZeile> eigeneLuecken = luecken.stream()
+                .filter(l -> art.equals(lueckenArt(l)) && !l.beginn().isBefore(b) && l.beginn().isBefore(e))
+                .toList();
+        if (eigene.isEmpty() && eigeneLuecken.isEmpty()) {
+            return null;
+        }
+        Summe s = summe(art, eigene, b, e, ersterTag, letzterTag);
+        Instant start = null;
+        Instant end = null;
+        Set<LocalDate> tage = new HashSet<>();
+        boolean laeuft = false;
+        for (Zeile z : eigene) {
+            Instant von = max(z.beginn(), b);
+            Instant bis = max(von, min(z.belegtBis(), e));
+            start = start == null ? von : min(start, von);
+            end = end == null ? bis : max(end, bis);
+            tage.addAll(tageIn(von, bis));
+            // „läuft“ trägt nur das Bündel, in dem sie zuletzt gesehen wurde - nicht jeder Tag seit ihrem Beginn.
+            laeuft |= z.ende() == null && !z.belegtBis().isBefore(b) && !z.belegtBis().isAfter(e);
+        }
+        for (LueckeZeile l : eigeneLuecken) {
+            Instant von = max(l.beginn(), b);
+            Instant bis = max(von, min(l.ende(), e));
+            start = start == null ? von : min(start, von);
+            end = end == null ? bis : max(end, bis);
+        }
+        Integer weitere = weitere(eigeneLuecken);
+        List<String> teile = new ArrayList<>();
+        if (s.anzahl > 0) {
+            teile.add(s.anzahl == 1 ? dauer(Duration.ofSeconds(s.dauerS))
+                    : s.anzahl + "×, zusammen " + dauer(Duration.ofSeconds(s.dauerS)));
+        }
+        if (s.energie != null && s.energie.signum() > 0) {
+            teile.add(String.format(Locale.GERMANY, "geschätzt %.1f kWh nicht erzeugt", s.energie));
+        }
+        if (!eigeneLuecken.isEmpty()) {
+            teile.add(eigeneLuecken.size() == 1 ? weitereText(weitere)
+                    : weitere == null ? "weitere Wechsel während Datenlücken (Zahl unbekannt)"
+                    : weitere + (weitere == 1 ? " weiterer Wechsel" : " weitere Wechsel") + " während Datenlücken");
+        }
+        String text = urheberWort(art) + ": " + String.join("; ", teile);
+        return new HistoryEventDto(art, start, end, text, s.energie, s.energie == null ? null : "kWh",
+                false, s.dauerS / 60, s.anzahl, range == HistoryRange.YEAR ? Math.max(1, tage.size()) : 1, List.of(),
+                new HistoryEventDto.Vorgabe(null, urheber(art), null, null, null, null, false, null, laeuft, null,
+                        null, null, s.wert, s.unvollstaendig, eigeneLuecken.size(), weitere, List.of()));
+    }
+
+    /**
+     * <b>„Nach Art“</b>: je Art der ganze Zeitraum samt seinen Einheiten, im Jahr dazu je Monat - gezählt von
+     * {@link VorgabenZaehlung} über EINEN Abschnitt, damit eine Vorgabe über Mitternacht einmal zählt.
+     */
+    public static HistoryVorgabenDto vorgabenZaehlung(HistoryRange range, HistoryRange.Window window,
+            List<Zeile> zeilen, List<LueckeZeile> luecken, Instant verarbeitetBis) {
+        List<HistoryVorgabenDto.Zaehlung> out = new ArrayList<>(zaehlung(null, window.from(), window.to(),
+                zeilen, luecken, true));
+        if (range == HistoryRange.YEAR) {
+            for (LocalDate[] m : abschnitte(range, window)) {
+                Instant b = max(m[0].atStartOfDay(HistoryRange.ZONE).toInstant(), window.from());
+                Instant e = min(m[1].plusDays(1).atStartOfDay(HistoryRange.ZONE).toInstant(), window.to());
+                out.addAll(zaehlung(YearMonth.from(m[0]).toString(), b, e, zeilen, luecken, false));
+            }
+        }
+        return new HistoryVorgabenDto(verarbeitetBis, List.copyOf(out));
+    }
+
+    private static List<HistoryVorgabenDto.Zaehlung> zaehlung(String periode, Instant b, Instant e,
+            List<Zeile> zeilen, List<LueckeZeile> luecken, boolean jeEinheit) {
+        LocalDate erster = b.atZone(HistoryRange.ZONE).toLocalDate();
+        LocalDate letzter = e.minusNanos(1).atZone(HistoryRange.ZONE).toLocalDate();
+        List<HistoryVorgabenDto.Zaehlung> out = new ArrayList<>();
+        for (String art : VORGABEN_ARTEN) {
+            List<Zeile> eigene = zeilen.stream()
+                    .filter(z -> art.equals(vorgabenArt(z)) && VorgabenZaehlung.beruehrt(z, b, e)).toList();
+            List<LueckeZeile> eigeneLuecken = luecken.stream()
+                    .filter(l -> art.equals(lueckenArt(l)) && !l.beginn().isBefore(b) && l.beginn().isBefore(e))
+                    .toList();
+            if (!eigene.isEmpty() || !eigeneLuecken.isEmpty()) {
+                out.add(zeile(periode, art, null, null, summe(art, eigene, b, e, erster, letzter),
+                        eigeneLuecken));
+            }
+            if (!jeEinheit) {
+                continue;
+            }
+            // Je Einheit: beim Direktvermarkter seine Abrufe je Motor/WR, bei „nicht bereit“ jede Einheit.
+            List<Zeile> jeTe = zeilen.stream()
+                    .filter(z -> z.teNr() != null && VorgabenZaehlung.beruehrt(z, b, e)
+                            && ("nicht-bereit".equals(art) ? "nicht_bereit".equals(z.art())
+                                    : urheber(art).equals(z.urheber()) && !"nicht_bereit".equals(z.art())))
+                    .toList();
+            Map<Integer, List<Zeile>> nachTe = new TreeMap<>();
+            jeTe.forEach(z -> nachTe.computeIfAbsent(z.teNr(), k -> new ArrayList<>()).add(z));
+            nachTe.forEach((te, liste) -> out.add(zeile(periode, art, te,
+                    liste.stream().map(Zeile::einheitName).filter(Objects::nonNull).findFirst().orElse(null),
+                    summeGruppen(VorgabenZaehlung.gruppen(liste, b, e, erster, letzter)), List.of())));
+        }
+        return out;
+    }
+
+    private static HistoryVorgabenDto.Zaehlung zeile(String periode, String art, Integer teNr, String name,
+            Summe s, List<LueckeZeile> luecken) {
+        return new HistoryVorgabenDto.Zaehlung(periode, art, teNr, name, s.anzahl, s.dauerS / 60, s.energie, s.wert,
+                s.ohneSchaetzung, s.unvollstaendig, Map.copyOf(s.arten), luecken.size(), weitere(luecken));
+    }
+
+    /** Die Zahlen einer Art: je Urheber vereinigt (ganze Anlage), „nicht bereit“ über die Einheiten summiert. */
+    private static Summe summe(String art, List<Zeile> eigene, Instant b, Instant e, LocalDate ersterTag,
+            LocalDate letzterTag) {
+        List<ErzeugerVorgabenDto.Gruppe> gruppen = VorgabenZaehlung.gruppen(eigene, b, e, ersterTag, letzterTag);
+        Summe s = summeGruppen(gruppen);
+        if (!"nicht-bereit".equals(art)) {
+            VorgabenZaehlung.jeUrheber(eigene, b, e, ersterTag, letzterTag).stream()
+                    .filter(j -> j.urheber().equals(urheber(art))).findFirst().ifPresent(j -> {
+                        s.anzahl = j.anzahl();
+                        s.dauerS = j.dauerS();
+                        s.energie = j.energieKwh();
+                        s.wert = j.wertEur();
+                    });
+        }
+        return s;
+    }
+
+    private static Summe summeGruppen(List<ErzeugerVorgabenDto.Gruppe> gruppen) {
+        Summe s = new Summe();
+        for (ErzeugerVorgabenDto.Gruppe g : gruppen) {
+            s.anzahl += g.anzahl();
+            s.dauerS += g.dauerS();
+            s.energie = plus(s.energie, g.energieKwh());
+            s.wert = plus(s.wert, g.wertEur());
+            s.ohneSchaetzung += g.ohneSchaetzung();
+            s.unvollstaendig += g.unvollstaendig();
+            s.arten.merge(g.art(), g.anzahl(), Integer::sum);
+        }
+        return s;
+    }
+
+    /** Die Summen einer Art in einem Abschnitt. */
+    private static final class Summe {
+        int anzahl;
+        long dauerS;
+        BigDecimal energie;
+        BigDecimal wert;
+        int ohneSchaetzung;
+        int unvollstaendig;
+        final Map<String, Integer> arten = new TreeMap<>();
+    }
+
+    private static BigDecimal plus(BigDecimal a, BigDecimal b) {
+        return a == null ? b : b == null ? a : a.add(b);
+    }
+
+    /** Die weiteren Wechsel mehrerer Lücken zusammen; {@code null}, wenn keine oder eine Zahl unbekannt ist. */
+    private static Integer weitere(List<LueckeZeile> luecken) {
+        if (luecken.isEmpty() || luecken.stream().anyMatch(l -> l.weitereWechsel() == null)) {
+            return null;
+        }
+        return luecken.stream().mapToInt(LueckeZeile::weitereWechsel).sum();
+    }
+
+    private static String weitereText(Integer n) {
+        if (n == null) {
+            return "weitere Wechsel während einer Datenlücke (Zahl unbekannt, die Steuerung startete neu)";
+        }
+        return n + (n == 1 ? " weiterer Wechsel" : " weitere Wechsel") + " während einer Datenlücke";
+    }
+
+    /** Die Tage (Berliner Zeit), die {@code [von, bis)} berührt; ein Zeitpunkt ohne Dauer seinen Tag. */
+    private static Set<LocalDate> tageIn(Instant von, Instant bis) {
+        Set<LocalDate> out = new HashSet<>();
+        LocalDate erster = von.atZone(HistoryRange.ZONE).toLocalDate();
+        LocalDate letzter = bis.isAfter(von) ? bis.minusNanos(1).atZone(HistoryRange.ZONE).toLocalDate() : erster;
+        for (LocalDate t = erster; !t.isAfter(letzter); t = t.plusDays(1)) {
+            out.add(t);
+        }
+        return out;
+    }
+
+    /** Der Urheber einer Art; „nicht bereit“ meldet die Einheit selbst (Urheber {@code anlage} in EZ-7). */
+    private static String urheber(String art) {
+        return "nicht-bereit".equals(art) ? "anlage" : art;
+    }
+
+    private static String urheberWort(String art) {
+        return switch (art) {
+            case "netzbetreiber" -> "Netzbetreiber";
+            case "direktvermarkter" -> "Direktvermarkter";
+            default -> "Nicht bereit";
+        };
+    }
+
+    /**
+     * Der Satz einer Vorgabe - „Vorgabe“, beim Direktvermarkter „Abruf“, nie „Eingriff“ (§4.1: das Wort meint im
+     * Portal den Handeingriff).
+     */
+    static String vorgabeSatz(String art, Zeile z, BigDecimal energie) {
+        StringBuilder s = new StringBuilder();
+        switch (art) {
+            case "netzbetreiber" -> {
+                switch (z.art()) {
+                    case "abschaltung" -> s.append("Netzbetreiber schaltet die Anlage ab");
+                    case "q_vorgabe" -> s.append("Netzbetreiber gibt den cos φ vor");
+                    default -> s.append(z.vorgabeProzent() != null
+                            ? String.format(Locale.GERMANY, "Netzbetreiber begrenzt auf %.0f %%", z.vorgabeProzent())
+                            : z.vorgabeW() != null ? String.format(Locale.GERMANY, "Netzbetreiber begrenzt auf %.1f kW",
+                                    kw(z.vorgabeW()))
+                            : "Netzbetreiber begrenzt die Anlage");
+                }
+            }
+            case "direktvermarkter" -> s.append("dv_stopp".equals(z.art()) ? "Direktvermarkter stoppt die Anlage"
+                    : z.vorgabeW() != null ? String.format(Locale.GERMANY, "Direktvermarkter ruft %.1f kW ab",
+                            kw(z.vorgabeW()))
+                    : "Direktvermarkter ruft ab");
+            default -> {
+                s.append(z.einheitName() != null ? z.einheitName() : "Einheit " + z.teNr())
+                        .append(" nicht bereit für den Direktvermarkter");
+                List<String> gruende = gruende(z.gruende());
+                if (!gruende.isEmpty()) {
+                    s.append(": ").append(String.join(", ", gruende));
+                }
+            }
+        }
+        if ("nicht_bindend".equals(z.bindung())) {
+            s.append(" (nicht bindend)");
+        }
+        if (energie != null && energie.signum() > 0) {
+            s.append(String.format(Locale.GERMANY, ", geschätzt %.1f kWh nicht erzeugt", energie));
+        }
+        if (z.unvollstaendig()) {
+            s.append(" - unvollständig");
+        }
+        return s.toString();
+    }
+
+    /** Die Gründe für „nicht bereit“ in den Worten des Bilds ({@code t_bits} Bit 4-9); ein fremdes Wort bleibt roh. */
+    static List<String> gruende(List<String> woerter) {
+        if (woerter == null || woerter.isEmpty()) {
+            return List.of();
+        }
+        List<ErzeugerRegisterbild.Bit> bits = ErzeugerRegisterbild.feld(VorgabenAbleitung.einheit(1, "t_bits"))
+                .map(ErzeugerRegisterbild.Feld::bits).orElse(List.of());
+        return woerter.stream().map(w -> bits.stream().filter(b -> b.wort().equals(w))
+                .map(ErzeugerRegisterbild.Bit::text).findFirst().orElse(w)).toList();
+    }
+
+    private static BigDecimal kw(BigDecimal w) {
+        return w.divide(BigDecimal.valueOf(1000), MathContext.DECIMAL64);
+    }
+
+    private static Instant max(Instant a, Instant b) {
+        return a.isAfter(b) ? a : b;
+    }
+
+    private static Instant min(Instant a, Instant b) {
+        return a.isBefore(b) ? a : b;
+    }
 
     // ---- Fehlstellen ----------------------------------------------------------
 

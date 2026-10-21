@@ -1,5 +1,6 @@
 package com.voltpilot.api.web.dto;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import java.time.Instant;
 import java.util.List;
 
@@ -18,6 +19,12 @@ import java.util.List;
  * Auffällige, das einen Ausreißer im Diagramm erklärt. Anders als
  * {@code protocol} gibt es sie in JEDEM Zeitraum; siehe
  * {@link HistoryEventDto} und {@link com.voltpilot.api.history.Ereignisse}.
+ *
+ * <p>{@code vorgaben} ist additiv (UEMS EZ-9): bei einer Anlage mit
+ * Anlagensteuerung die Zählung ihrer Vorgaben im Zeitraum („Nach Art“) - sonst
+ * null und dann gar nicht in der Antwort: die Historie jeder anderen Anlage
+ * bleibt bytegleich ({@code UemsVerbrauchBestandsschutzTest}); siehe
+ * {@link HistoryVorgabenDto}.
  */
 public record HistoryDto(
         String range,
@@ -29,5 +36,6 @@ public record HistoryDto(
         List<ProtocolEventDto> protocol,
         List<HistoryPlanPointDto> plan,
         HistoryCoverageDto coverage,
-        List<HistoryEventDto> events) {
+        List<HistoryEventDto> events,
+        @JsonInclude(JsonInclude.Include.NON_NULL) HistoryVorgabenDto vorgaben) {
 }
