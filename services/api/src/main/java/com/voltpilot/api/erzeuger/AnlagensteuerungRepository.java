@@ -97,7 +97,7 @@ public class AnlagensteuerungRepository {
 
     /** Gibt es an dieser Datenquelle und Geräte-ID schon eine eingebaute Anlagensteuerung? */
     public boolean steuerungAnQuelle(UUID dataSourceId, int unitId) {
-        return !jdbc.queryForList(STEUERUNG + "AND g.data_source_id = ? AND g.geraete_id = ?", Object.class,
+        return !jdbc.query(STEUERUNG + "AND g.data_source_id = ? AND g.geraete_id = ?", (rs, n) -> true,
                 dataSourceId, unitId).isEmpty();
     }
 

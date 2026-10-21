@@ -11220,6 +11220,175 @@ paths:
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/EinstellungAbgelehnt" }
         "422": { $ref: "#/components/responses/EinstellungAbgelehnt" }
+  /api/v1/sites/{siteId}/anlagensteuerungen:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [geraete]
+      summary: Die Anlagensteuerungen einer Erzeugeranlage (UEMS EZ-6).
+      description: >
+        Recht `messwerte.ansehen`. Je Anlagensteuerung (Gerät mit Geräteart `controller`, dessen Komponente
+        vom Typ `anlagensteuerung` die Messpunkte `erzeuger.*` an die Datenquelle bindet): Datenquelle mit
+        Geräte-ID und lesender Box, die laufende Registerbild-Fassung (Bildart `erzeuger`) und die
+        Erzeugungseinheiten nach TE-Nr. `einrichtung` sagt, ob das Portal den Weg „Steuerung verbinden“
+        anbieten darf: erst, wenn eine Box der Anlage `erzeuger_registerbild` meldet (Mischbetrieb).
+        Keine neue Anlagenart, kein eigener Reiter (EW-3 A, EW-11 A).
+      responses:
+        "200":
+          description: Einrichtung und Anlagensteuerungen; ohne Steuerung eine leere Liste.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnlagensteuerungListe" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    post:
+      tags: [geraete]
+      summary: Eine Anlagensteuerung samt Einheiten und Registerbild-Fassung anlegen (UEMS EZ-6).
+      description: >
+        Recht `geraet.einrichten` an der Anlage. Legt in EINER Transaktion ab der laufenden vollen Minute an:
+        die Komponente vom Typ `anlagensteuerung` (gebunden an die Datenquelle), das Gerät (`controller`,
+        Datenquelle + Geräte-ID), je Einheit ein `geraet_teil` der Teilart `erzeugungseinheit` (TE-Nr. genau
+        1 … n) und die Registerbild-Fassung (`te_anzahl` = Zahl der Einheiten; Vorgaben Basisadresse 0,
+        Funktionscode 4, Wortfolge big, Netzpunkt veraltet ab 30 s). Die Datenquelle gehört zur Anlage, spricht
+        Modbus TCP und trägt die Geräte-ID. 409, solange die Box, die die Datenquelle liest, `erzeuger_registerbild`
+        nicht meldet, keine Box sie liest, sie archiviert ist oder an ihr mit dieser Geräte-ID schon eine
+        Anlagensteuerung eingebaut ist.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AnlagensteuerungAnlegen" }
+      responses:
+        "201":
+          description: Die angelegte Anlagensteuerung.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Anlagensteuerung" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Die Box kann das Erzeuger-Registerbild noch nicht lesen, keine Box liest die Datenquelle, sie ist archiviert, oder dort steckt schon eine Anlagensteuerung.
+  /api/v1/sites/{siteId}/anlagensteuerungen/{geraetId}/werte:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: geraetId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [geraete]
+      summary: Der jüngste Wert je Punkt des Erzeuger-Registerbilds (UEMS EZ-6).
+      description: >
+        Recht `messwerte.ansehen`. Je Punkt der laufenden Fassung (feste Abschnitte, dann je Einheit 1 …
+        te_anzahl) der jüngste Wert der Komponente. `zustand`: `keine_daten` (kein Wert - `wert` null, nie 0) ·
+        `aktuell` (Qualität good, höchstens 120 s alt) · `veraltet`. Zustände tragen `wort`/`text` aus dem
+        Vokabular des Bilds, Bitfelder die gesetzten `bits`; ein Rohwert außerhalb des Vokabulars bleibt ohne
+        Wort. `stand` ist `noch_keine_daten`, solange kein einziger Wert da ist.
+      responses:
+        "200":
+          description: Die jüngsten Werte.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AnlagensteuerungWerte" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/geraete/{id}/anlagensteuerung/einheiten/{teNr}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: teNr, in: path, required: true, schema: { type: integer, minimum: 1, maximum: 10 } }
+    put:
+      tags: [geraete]
+      summary: Die Angaben einer Erzeugungseinheit ersetzen (UEMS EZ-6).
+      description: >
+        Recht `geraet.einrichten` am Gerät. Ersetzt Art, Bezeichnung, Hersteller/Typ, Nennleistung und
+        MaStR-SEE der eingebauten Einheit. Umbenennen ändert nur die Anzeige - TE-Nr. und Messreihe bleiben
+        dieselben; der Typname aus dem Bild (`typ_bild`) bleibt unberührt.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ErzeugungseinheitAendern" }
+      responses:
+        "200":
+          description: Die Einheit.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erzeugungseinheit" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/geraete/{id}/anlagensteuerung/namen:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [geraete]
+      summary: Die Namen, die das Registerbild nennt, als Vorbelegung speichern (UEMS EZ-6, Konzept §3.10).
+      description: >
+        Recht `geraet.einrichten` am Gerät. Netzbetreiber, Direktvermarkter und Typ je Einheit aus einer Lesung
+        des Bilds (ab `beschreibung_ab`): gespeichert wie gelesen; eine leere Anzeige (Typ der Einheit,
+        Direktvermarkter) wird vorbelegt, eine vorhandene nie überschrieben. Der Netzbetreiber bleibt am
+        Netzanschluss - weicht das Bild ab, nennt die Antwort einen Hinweis. 409 für eine Einheit, die die
+        Steuerung nicht trägt (nie still umgehängt).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ErzeugerNamenAusBild" }
+      responses:
+        "200":
+          description: Die Stammdaten Netz und Vermarktung samt Hinweisen.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NetzVermarktung" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Das Bild nennt eine Einheit, die die Steuerung nicht trägt.
+  /api/v1/sites/{siteId}/netz-vermarktung:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [geraete]
+      summary: Stammdaten Netz und Vermarktung der Anlage (UEMS EZ-6).
+      description: >
+        Recht `messwerte.ansehen`. Netzbetreiber (vom Netzanschluss, an den die Anlage heute gebunden ist -
+        nur gelesen), Direktvermarkter mit Kanal, Einspeisemanagement, die Namen aus dem Bild und Hinweise
+        (`netzbetreiber_abweichung`, `netzbetreiber_nicht_eingetragen`). Nicht erhoben ist null; `revision` 0
+        heißt „noch nie gespeichert“.
+      responses:
+        "200":
+          description: Die Stammdaten.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NetzVermarktung" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+    put:
+      tags: [geraete]
+      summary: Direktvermarkter und Einspeisemanagement ersetzen (UEMS EZ-6).
+      description: >
+        Recht `anlage.verwalten` an der Anlage. Ersetzt Direktvermarkter (Freitext), Kanal (`keiner` ·
+        `relais_ma` · `modbus`), Einspeisemanagement (`statisch` · `stufen` · `fernwirk`) und - nur bei
+        `statisch` - die Prozentgrenze, bei passender `expected_revision` (sonst 409).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NetzVermarktungAendern" }
+      responses:
+        "200":
+          description: Die Stammdaten.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NetzVermarktung" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409":
+          description: Die Stammdaten wurden inzwischen geändert.
   /api/v1/sites/{siteId}/wago/karten:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -35645,6 +35814,218 @@ components:
         nennleistung_kw: { type: number, nullable: true }
         registry_unit_id: { type: string, nullable: true, pattern: "^SEE[0-9]{12}$", description: "MaStR-Einheitennummer (SEE) der Einheit." }
         typ_bild: { type: string, nullable: true, maxLength: 32, description: "Hersteller und Typ, wie das Registerbild sie nennt (Vorbelegung, Konzept §3.10)." }
+    AnlagensteuerungListe:
+      type: object
+      description: "Die Anlagensteuerungen der Anlage und ob das Portal die Einrichtung anbieten darf (UEMS EZ-6)."
+      required: [einrichtung, steuerungen]
+      properties:
+        einrichtung: { $ref: "#/components/schemas/AnlagensteuerungEinrichtung" }
+        steuerungen: { type: array, items: { $ref: "#/components/schemas/Anlagensteuerung" } }
+    AnlagensteuerungEinrichtung:
+      type: object
+      description: "Mischbetrieb: möglich erst, wenn eine Box der Anlage erzeuger_registerbild meldet."
+      required: [moeglich, grund, boxen]
+      properties:
+        moeglich: { type: boolean }
+        grund: { type: string, nullable: true, enum: [keine_box, box_ohne_faehigkeit, null] }
+        boxen: { type: array, items: { $ref: "#/components/schemas/AnlagensteuerungBox" } }
+    AnlagensteuerungBox:
+      type: object
+      required: [device_id, faehig]
+      properties:
+        device_id: { type: string, format: uuid }
+        faehig: { type: boolean }
+    Anlagensteuerung:
+      type: object
+      description: >
+        Die Steuerung einer Erzeugeranlage als Gerät (Geräteart controller) mit der Komponente vom Typ
+        anlagensteuerung, ihrer Datenquelle, der laufenden Registerbild-Fassung (null = keine) und den
+        Erzeugungseinheiten nach TE-Nr.
+      required: [geraet_id, kennzeichen, einbau_kennzeichen, bezeichnung, hersteller, typ, eingebaut_am, entity_id,
+        datenquelle, fassung, einheiten]
+      properties:
+        geraet_id: { type: string, format: uuid }
+        kennzeichen: { type: string }
+        einbau_kennzeichen: { type: string }
+        bezeichnung: { type: string, nullable: true }
+        hersteller: { type: string, nullable: true }
+        typ: { type: string, nullable: true }
+        eingebaut_am: { type: string, format: date-time }
+        entity_id: { type: string, format: uuid }
+        datenquelle: { allOf: [{ $ref: "#/components/schemas/AnlagensteuerungDatenquelle" }], nullable: true }
+        fassung: { allOf: [{ $ref: "#/components/schemas/RegisterbildFassung" }], nullable: true }
+        einheiten: { type: array, items: { $ref: "#/components/schemas/Erzeugungseinheit" } }
+    AnlagensteuerungDatenquelle:
+      type: object
+      required: [id, kennzeichen, adresse, unit_id, box_id]
+      properties:
+        id: { type: string, format: uuid }
+        kennzeichen: { type: string, nullable: true }
+        adresse: { type: string, nullable: true, description: "host:port" }
+        unit_id: { type: integer, nullable: true, description: "Modbus-Geräte-ID der Steuerung." }
+        box_id: { type: string, format: uuid, nullable: true, description: "Die Box, die die Datenquelle jetzt liest; null = keine." }
+    RegisterbildFassung:
+      type: object
+      description: "Das Soll des Registerbilds ab gueltig_ab (Bildart erzeuger)."
+      required: [id, bildart, basisadresse, funktionscode, wortfolge, te_anzahl, anlagenart, steuerung_kennung,
+        rse_stufen, veraltet_netzpunkt_s, gueltig_ab]
+      properties:
+        id: { type: string, format: uuid }
+        bildart: { type: string, enum: [erzeuger] }
+        basisadresse: { type: integer, minimum: 0, maximum: 65535 }
+        funktionscode: { type: integer, enum: [3, 4] }
+        wortfolge: { type: string, enum: [big, little] }
+        te_anzahl: { type: integer, minimum: 1, maximum: 10 }
+        anlagenart: { type: string, enum: [pv, bhkw, gemischt] }
+        steuerung_kennung: { type: integer, format: int64, nullable: true, description: "null = nicht vergeben, nie 0." }
+        rse_stufen: { type: array, nullable: true, items: { $ref: "#/components/schemas/RseStufe" } }
+        veraltet_netzpunkt_s: { type: integer, minimum: 1, maximum: 65534 }
+        gueltig_ab: { type: string, format: date-time }
+    RseStufe:
+      type: object
+      description: "Bedeutung einer Rundsteuer-Stufe: Stufe n heißt prozent % Wirkleistung."
+      required: [stufe, prozent]
+      properties:
+        stufe: { type: integer, minimum: 1, maximum: 16 }
+        prozent: { type: number, minimum: 0, maximum: 100 }
+    Erzeugungseinheit:
+      type: object
+      description: "Ein Wechselrichter oder BHKW-Motor der Anlagensteuerung; Identität = Gerät + TE-Nr."
+      required: [teil_id, te_nr, einheit_art, bezeichnung, typ, typ_bild, nennleistung_kw, registry_unit_id, eingebaut_am]
+      properties:
+        teil_id: { type: string, format: uuid }
+        te_nr: { type: integer, minimum: 1, maximum: 10 }
+        einheit_art: { type: string, nullable: true, enum: [pv_wechselrichter, bhkw_motor, null] }
+        bezeichnung: { type: string, nullable: true }
+        typ: { type: string, nullable: true, description: "Hersteller und Typ (Anzeige)." }
+        typ_bild: { type: string, nullable: true, description: "Hersteller und Typ, wie das Bild sie nennt." }
+        nennleistung_kw: { type: number, nullable: true }
+        registry_unit_id: { type: string, nullable: true, pattern: "^SEE[0-9]{12}$" }
+        eingebaut_am: { type: string, format: date-time }
+    AnlagensteuerungAnlegen:
+      type: object
+      required: [data_source_id, unit_id, anlagenart, einheiten]
+      properties:
+        data_source_id: { type: string, format: uuid }
+        unit_id: { type: integer, minimum: 0, maximum: 255 }
+        bezeichnung: { type: string, maxLength: 120, nullable: true }
+        hersteller: { type: string, maxLength: 200, nullable: true, example: "WAGO" }
+        typ: { type: string, maxLength: 200, nullable: true, example: "PFC200 750-8212" }
+        basisadresse: { type: integer, minimum: 0, maximum: 65535, nullable: true, description: "Vorgabe 0." }
+        funktionscode: { type: integer, enum: [3, 4, null], nullable: true, description: "Vorgabe 4 (Eingangsregister, EW-2)." }
+        wortfolge: { type: string, enum: [big, little, null], nullable: true, description: "Vorgabe big." }
+        anlagenart: { type: string, enum: [pv, bhkw, gemischt] }
+        steuerung_kennung: { type: integer, format: int64, minimum: 0, maximum: 4294967295, nullable: true }
+        rse_stufen: { type: array, maxItems: 16, nullable: true, items: { $ref: "#/components/schemas/RseStufe" } }
+        veraltet_netzpunkt_s: { type: integer, minimum: 1, maximum: 65534, nullable: true, description: "Vorgabe 30." }
+        einheiten: { type: array, minItems: 1, maxItems: 10, items: { $ref: "#/components/schemas/ErzeugungseinheitNeu" } }
+    ErzeugungseinheitNeu:
+      type: object
+      required: [te_nr]
+      properties:
+        te_nr: { type: integer, minimum: 1, maximum: 10 }
+        einheit_art: { type: string, enum: [pv_wechselrichter, bhkw_motor, null], nullable: true }
+        bezeichnung: { type: string, maxLength: 120, nullable: true }
+        typ: { type: string, maxLength: 200, nullable: true }
+        typ_bild: { type: string, maxLength: 32, nullable: true }
+        nennleistung_kw: { type: number, exclusiveMinimum: 0, nullable: true }
+        registry_unit_id: { type: string, pattern: "^SEE[0-9]{12}$", nullable: true }
+    ErzeugungseinheitAendern:
+      type: object
+      properties:
+        einheit_art: { type: string, enum: [pv_wechselrichter, bhkw_motor, null], nullable: true }
+        bezeichnung: { type: string, maxLength: 120, nullable: true }
+        typ: { type: string, maxLength: 200, nullable: true }
+        nennleistung_kw: { type: number, exclusiveMinimum: 0, nullable: true }
+        registry_unit_id: { type: string, pattern: "^SEE[0-9]{12}$", nullable: true }
+    ErzeugerNamenAusBild:
+      type: object
+      properties:
+        netzbetreiber: { type: string, maxLength: 32, nullable: true }
+        direktvermarkter: { type: string, maxLength: 32, nullable: true }
+        einheiten:
+          type: array
+          maxItems: 10
+          nullable: true
+          items:
+            type: object
+            required: [te_nr]
+            properties:
+              te_nr: { type: integer, minimum: 1, maximum: 10 }
+              typ: { type: string, maxLength: 32, nullable: true }
+    AnlagensteuerungWerte:
+      type: object
+      required: [geraet_id, entity_id, stand, abgerufen_am, werte]
+      properties:
+        geraet_id: { type: string, format: uuid }
+        entity_id: { type: string, format: uuid }
+        stand: { type: string, enum: [noch_keine_daten, daten] }
+        abgerufen_am: { type: string, format: date-time }
+        werte: { type: array, items: { $ref: "#/components/schemas/AnlagensteuerungWert" } }
+    AnlagensteuerungWert:
+      type: object
+      description: "Der jüngste Wert eines Punkts erzeuger.*; ohne Wert ist wert null und zustand keine_daten - nie 0."
+      required: [point_key, abschnitt, feld, te_nr, art, einheit, wert, gemessen_am, qualitaet, zustand, wort, text, bits]
+      properties:
+        point_key: { type: string, example: "erzeuger.te[2].t_p_ist_w" }
+        abschnitt: { type: string, enum: [kopf, a, nb, dv, wirkung, "te[*]"] }
+        feld: { type: string, example: "t_p_ist_w" }
+        te_nr: { type: integer, nullable: true }
+        art: { type: string, enum: [gauge, counter, state, bitfield] }
+        einheit: { type: string, nullable: true }
+        wert: { type: number, nullable: true }
+        gemessen_am: { type: string, format: date-time, nullable: true }
+        qualitaet: { type: string, nullable: true }
+        zustand: { type: string, enum: [keine_daten, aktuell, veraltet] }
+        wort: { type: string, nullable: true }
+        text: { type: string, nullable: true }
+        bits: { type: array, nullable: true, items: { $ref: "#/components/schemas/AnlagensteuerungBit" } }
+    AnlagensteuerungBit:
+      type: object
+      required: [bit, wort, text]
+      properties:
+        bit: { type: integer, minimum: 0, maximum: 15 }
+        wort: { type: string }
+        text: { type: string }
+    NetzVermarktung:
+      type: object
+      description: "Stammdaten Netz und Vermarktung einer Anlage (UEMS EZ-6); nicht erhoben = null."
+      required: [site_id, netzbetreiber, direktvermarkter, direktvermarkter_kanal, einspeisemanagement,
+        einspeisemanagement_prozent, namen_aus_bild, hinweise, revision]
+      properties:
+        site_id: { type: string, format: uuid }
+        netzbetreiber: { type: string, nullable: true, description: "Vom Netzanschluss, an den die Anlage heute gebunden ist." }
+        direktvermarkter: { type: string, nullable: true }
+        direktvermarkter_kanal: { type: string, nullable: true, enum: [keiner, relais_ma, modbus, null] }
+        einspeisemanagement: { type: string, nullable: true, enum: [statisch, stufen, fernwirk, null] }
+        einspeisemanagement_prozent: { type: number, nullable: true }
+        namen_aus_bild: { $ref: "#/components/schemas/NamenImBild" }
+        hinweise: { type: array, items: { $ref: "#/components/schemas/NetzVermarktungHinweis" } }
+        revision: { type: integer, minimum: 0 }
+    NamenImBild:
+      type: object
+      required: [netzbetreiber, direktvermarkter, gelesen_am]
+      properties:
+        netzbetreiber: { type: string, nullable: true }
+        direktvermarkter: { type: string, nullable: true }
+        gelesen_am: { type: string, format: date-time, nullable: true }
+    NetzVermarktungHinweis:
+      type: object
+      required: [art, text, bild, eintrag]
+      properties:
+        art: { type: string, enum: [netzbetreiber_abweichung, netzbetreiber_nicht_eingetragen] }
+        text: { type: string }
+        bild: { type: string, nullable: true }
+        eintrag: { type: string, nullable: true }
+    NetzVermarktungAendern:
+      type: object
+      required: [expected_revision]
+      properties:
+        expected_revision: { type: integer, minimum: 0 }
+        direktvermarkter: { type: string, maxLength: 120, nullable: true }
+        direktvermarkter_kanal: { type: string, enum: [keiner, relais_ma, modbus, null], nullable: true }
+        einspeisemanagement: { type: string, enum: [statisch, stufen, fernwirk, null], nullable: true }
+        einspeisemanagement_prozent: { type: number, minimum: 0, maximum: 100, nullable: true }
     GeraetVorgaenger:
       type: object
       description: "Ein früherer Einbau desselben Geräts."

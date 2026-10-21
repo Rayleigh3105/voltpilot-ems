@@ -151,27 +151,7 @@ public class AnlagensteuerungService {
     @Transactional
     public AnlagensteuerungDto.Anlagensteuerung anlegen(UUID siteId, AnlagensteuerungDto.Anlegen in, String subject) {
         sichtbar(siteId);
-        Quelle q = repo.quelle(in.dataSourceId()).filter(x -> x.siteId().equals(siteId))
-                .orElseThrow(() -> nichtGefunden("Datenquelle an dieser Anlage nicht gefunden."));
-        if (!"modbus_tcp".equals(q.protokoll())) {
-            throw bad("Die Steuerung wird über eine Datenquelle mit Modbus TCP gelesen (host:port).");
-        }
-        if (q.archiviert()) {
-            throw konflikt("Die Datenquelle " + q.kennzeichen() + " ist archiviert.");
-        }
-        if (!q.geraeteIds().contains(in.unitId())) {
-            throw bad("Die Geräte-ID " + in.unitId() + " gehört nicht zur Datenquelle " + q.kennzeichen() + ".");
-        }
-        UUID box = repo.leser(q.id()).orElseThrow(() -> konflikt("Keine Box liest die Datenquelle "
-                + q.kennzeichen() + " — erst die zuständige Box festlegen."));
-        if (!faehigkeiten.kann(box, ErzeugerRegisterbild.FAEHIGKEIT)) {
-            throw konflikt("Die zuständige Box liest das VoltPilot-Registerbild Erzeuger noch nicht "
-                    + "(Fähigkeit " + ErzeugerRegisterbild.FAEHIGKEIT + " fehlt) — erst nach einem Box-Update.");
-        }
-        if (repo.steuerungAnQuelle(q.id(), in.unitId())) {
-            throw konflikt("An " + q.kennzeichen() + " mit Geräte-ID " + in.unitId()
-                    + " ist schon eine Anlagensteuerung eingebaut.");
-        }
+        // Erst die Form der Anfrage (400), dann der Zustand der Anlage (404/409).
         String anlagenart = wort(in.anlagenart(), ANLAGENARTEN, "anlagenart");
         int funktionscode = in.funktionscode() == null ? 4 : in.funktionscode();
         if (funktionscode != 3 && funktionscode != 4) {
@@ -195,6 +175,28 @@ public class AnlagensteuerungService {
         in.einheiten().forEach(e -> {
             if (e.einheitArt() != null) wort(e.einheitArt(), EINHEIT_ARTEN, "einheit_art");
         });
+
+        Quelle q = repo.quelle(in.dataSourceId()).filter(x -> x.siteId().equals(siteId))
+                .orElseThrow(() -> nichtGefunden("Datenquelle an dieser Anlage nicht gefunden."));
+        if (!"modbus_tcp".equals(q.protokoll())) {
+            throw bad("Die Steuerung wird über eine Datenquelle mit Modbus TCP gelesen (host:port).");
+        }
+        if (!q.geraeteIds().contains(in.unitId())) {
+            throw bad("Die Geräte-ID " + in.unitId() + " gehört nicht zur Datenquelle " + q.kennzeichen() + ".");
+        }
+        if (q.archiviert()) {
+            throw konflikt("Die Datenquelle " + q.kennzeichen() + " ist archiviert.");
+        }
+        UUID box = repo.leser(q.id()).orElseThrow(() -> konflikt("Keine Box liest die Datenquelle "
+                + q.kennzeichen() + " — erst die zuständige Box festlegen."));
+        if (!faehigkeiten.kann(box, ErzeugerRegisterbild.FAEHIGKEIT)) {
+            throw konflikt("Die zuständige Box liest das VoltPilot-Registerbild Erzeuger noch nicht "
+                    + "(Fähigkeit " + ErzeugerRegisterbild.FAEHIGKEIT + " fehlt) — erst nach einem Box-Update.");
+        }
+        if (repo.steuerungAnQuelle(q.id(), in.unitId())) {
+            throw konflikt("An " + q.kennzeichen() + " mit Geräte-ID " + in.unitId()
+                    + " ist schon eine Anlagensteuerung eingebaut.");
+        }
 
         UUID tenant = TenantContext.get();
         Instant ab = uhr.instant().truncatedTo(ChronoUnit.MINUTES);
@@ -269,8 +271,11 @@ public class AnlagensteuerungService {
         if (in.einspeisemanagementProzent() != null && !"statisch".equals(em)) {
             throw bad("Eine Prozentgrenze gehört nur zum statischen Einspeisemanagement.");
         }
+        // Noch nie gespeichert heißt Revision 0 (GET); die erste Zeile beginnt mit Revision 1.
+        boolean neu = repo.stammdaten(siteId).isEmpty();
         repo.stammdatenSicherstellen(TenantContext.get(), siteId, subject);
-        if (!repo.stammdatenAendern(siteId, in.expectedRevision(), leer(in.direktvermarkter()), kanal, em,
+        int erwartet = neu && in.expectedRevision() == 0 ? 1 : in.expectedRevision();
+        if (!repo.stammdatenAendern(siteId, erwartet, leer(in.direktvermarkter()), kanal, em,
                 in.einspeisemanagementProzent(), subject)) {
             throw konflikt("Die Stammdaten wurden inzwischen geändert. Bitte neu laden.");
         }
