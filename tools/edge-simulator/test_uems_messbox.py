@@ -50,7 +50,7 @@ def _auswahl(revision: int = 1, *punkte: dict) -> dict:
         "site_id": SITE,
         "device_id": DEVICE,
         "revision": revision,
-        "catalog_version": "2026.09.23.3",
+        "catalog_version": "2026.10.21.1",
         "selections": list(punkte) or [{"point_key": SCHLUESSEL, "cadence_s": 300, "definition": _definition(),
                                         "entity_id": "2364973a-367d-428e-a648-97cc8f93de09"}],
     }

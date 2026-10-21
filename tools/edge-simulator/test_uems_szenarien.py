@@ -14,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from uems_szenarien import VERTRAEGE, Szenario, szenarien
+from uems_szenarien import KATALOGSTAND, VERTRAEGE, Szenario, szenarien
 
 jsonschema = pytest.importorskip("jsonschema", reason="Vertragsprüfung braucht jsonschema")
 
@@ -55,6 +55,13 @@ def _pruefe_umschlag(zustellung) -> None:
     assert segmente[1:4] == [nutzlast["tenant_id"], nutzlast["site_id"], nutzlast["device_id"]]
     assert segmente[4] == "v2"
     assert zustellung.qos == 1 and zustellung.retain is False
+
+
+def test_der_simulator_spricht_den_laufzeitstand_der_box():
+    # Die Palette lehnt jede fremde catalog_version ab; hebt der Katalog RUNTIME_VERSION, zieht der
+    # Simulator mit (danach `make abnahme`), sonst gehen seine Fälle nicht mehr als echte Box durch.
+    laufzeitstand = (VERTRAEGE.parents[2] / "catalog/measurement-points/RUNTIME_VERSION").read_text(encoding="utf-8")
+    assert KATALOGSTAND == laufzeitstand.strip()
 
 
 @pytest.mark.parametrize("schluessel", sorted(ALLE))
