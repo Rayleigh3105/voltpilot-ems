@@ -11,6 +11,7 @@ import { Icon } from '../../designsystem/components/core/Icon';
 import type { ControlStripView } from '../control';
 import type { ExportGuardView } from '../curtailment';
 import type { ErzeugerBlatt, ErzeugerKette } from '../erzeuger';
+import type { Programmstand } from '../programmstand';
 import type { SteuerSpalte } from '../kacheln';
 import type { AnlagenSub } from '../nav';
 import { tonAus } from './steuerTon';
@@ -40,6 +41,8 @@ export type ControlStripVariant = 'card' | 'zeile';
 export interface ErzeugerZeile {
   kette: ErzeugerKette;
   blatt: ErzeugerBlatt;
+  /** UEMS EZ-16: der Programmstand der Anlagensteuerung; ein alter Stand steht im Blatt unter „Warum“. */
+  programmstand?: Programmstand | null;
 }
 
 /**
@@ -228,6 +231,7 @@ function Steuerzeile({
             guard={guard}
             spalten={spalten}
             erzeuger={erzeuger?.blatt ?? null}
+            programmstand={erzeuger?.programmstand ?? null}
             onWeiter={onOpenSub ? weiter : undefined}
           />
         </Suspense>

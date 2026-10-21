@@ -97,6 +97,7 @@ import type { KachelAuftrag } from '../components/kacheln/CockpitKacheln';
 import { jetztFluss } from '../flussJetzt';
 import { steuerSpalten } from '../kacheln';
 import type { ErzeugerJetzt } from '../api';
+import type { Programmstand } from '../programmstand';
 import type { WeatherPoint } from '../api';
 import {
   LEER_SATZ as EIGEN_LEER_SATZ,
@@ -873,6 +874,24 @@ export function AnlageSeite({
       aktiv = false;
     };
   }, [erzeugerJetzt, erzModul]);
+  // UEMS EZ-16: der Programmstand der Anlagensteuerung - einmal je Steuerung, nicht im Takt (er wechselt nur
+  // mit einem neuen SPS-Programm). Fail-soft: ohne ihn steht im Blatt kein Grund „Programm“.
+  const erzSteuerungId = erzeugerJetzt?.steuerung.geraetId ?? null;
+  const [erzProgrammstand, setErzProgrammstand] = useState<Programmstand | null>(null);
+  useEffect(() => {
+    setErzProgrammstand(null);
+    if (!erzSteuerungId) return undefined;
+    let aktiv = true;
+    api.anlagensteuerungen(site.id).then(
+      (l) => {
+        if (aktiv) setErzProgrammstand(l.steuerungen.find((s) => s.geraet_id === erzSteuerungId)?.programmstand ?? null);
+      },
+      () => {},
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [site.id, erzSteuerungId]);
   // Die Ladepunkte (Lastmanagement Stufe 3) - fail-soft wie jeder additive
   // Abruf hier: ein älteres Backend kennt die Route nicht, dann gibt es die
   // Kachel schlicht nicht.
@@ -1845,7 +1864,7 @@ export function AnlageSeite({
   // Die Kette gilt für Anlagen, die VoltPilot nur liest; eine Speicheranlage behält ihre Steuerzeile.
   const erzZeile =
     erzLage && E && !batteryLinked && controlStatus == null
-      ? { kette: E.erzeugerKette(erzLage, now), blatt: E.erzeugerBlatt(erzLage, now, erzGeregelt) }
+      ? { kette: E.erzeugerKette(erzLage, now), blatt: E.erzeugerBlatt(erzLage, now, erzGeregelt), programmstand: erzProgrammstand }
       : null;
   // Biogas hat bis EZ-12 keine Erlöse: „Unterm Strich“ zeigt „—“ statt einer Zahl ohne Grundlage.
   const erzGeldStrich = erzLage?.art === 'bhkw';

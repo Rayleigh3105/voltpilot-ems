@@ -49,6 +49,7 @@ class AnlagensteuerungSchnittstelleVertragTest {
                 {"AnlagensteuerungDatenquelle", AnlagensteuerungDto.Datenquelle.class},
                 {"RegisterbildFassung", AnlagensteuerungDto.Fassung.class},
                 {"RseStufe", AnlagensteuerungDto.RseStufe.class},
+                {"Programmstand", AnlagensteuerungDto.Programmstand.class},
                 {"Erzeugungseinheit", AnlagensteuerungDto.Einheit.class},
                 {"AnlagensteuerungWerte", AnlagensteuerungDto.Werte.class},
                 {"AnlagensteuerungWert", AnlagensteuerungDto.Wert.class},

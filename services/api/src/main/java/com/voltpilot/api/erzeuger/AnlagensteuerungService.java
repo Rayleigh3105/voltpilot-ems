@@ -175,6 +175,9 @@ public class AnlagensteuerungService {
         in.einheiten().forEach(e -> {
             if (e.einheitArt() != null) wort(e.einheitArt(), EINHEIT_ARTEN, "einheit_art");
         });
+        if (in.programmstandSoll() != null && !Programmstand.gueltig(in.programmstandSoll())) {
+            throw bad("programmstand_soll ist ein Stand JJMM (2610 = Oktober 2026).");
+        }
 
         Quelle q = repo.quelle(in.dataSourceId()).filter(x -> x.siteId().equals(siteId))
                 .orElseThrow(() -> nichtGefunden("Datenquelle an dieser Anlage nicht gefunden."));
@@ -215,7 +218,7 @@ public class AnlagensteuerungService {
         }
         repo.fassungAnlegen(tenant, siteId, g.geraetId(), basisadresse, funktionscode, wortfolge, teAnzahl,
                 anlagenart, in.steuerungKennung(), in.rseStufen(),
-                in.veraltetNetzpunktS() == null ? 30 : in.veraltetNetzpunktS(), ab, subject);
+                in.veraltetNetzpunktS() == null ? 30 : in.veraltetNetzpunktS(), in.programmstandSoll(), ab, subject);
         repo.stammdatenSicherstellen(tenant, siteId, subject);
         return dto(repo.steuerung(g.geraetId()).orElseThrow());
     }
@@ -285,16 +288,27 @@ public class AnlagensteuerungService {
     // --------------------------------------------------------------- Formen
 
     private AnlagensteuerungDto.Anlagensteuerung dto(Steuerung s) {
-        AnlagensteuerungDto.Fassung fassung = repo.fassung(s.geraetId()).map(f -> new AnlagensteuerungDto.Fassung(
+        var laufend = repo.fassung(s.geraetId());
+        AnlagensteuerungDto.Fassung fassung = laufend.map(f -> new AnlagensteuerungDto.Fassung(
                 f.id(), f.bildart(), f.basisadresse(), f.funktionscode(), f.wortfolge(), f.teAnzahl(), f.anlagenart(),
-                f.steuerungKennung(), stufen(f.rseStufen()), f.veraltetNetzpunktS(), zeit(f.gueltigAb())))
+                f.steuerungKennung(), stufen(f.rseStufen()), f.veraltetNetzpunktS(), f.programmstandSoll(),
+                zeit(f.gueltigAb())))
                 .orElse(null);
+        Jungster gelesen = repo.juengste(TenantContext.get(), s.entityId(), List.of(Programmstand.PUNKT)).get(0);
+        AnlagensteuerungDto.Programmstand programmstand = programmstand(Programmstand.vergleiche(gelesen.zahl(),
+                gelesen.zeit(), laufend.map(AnlagensteuerungRepository.Fassung::programmstandSoll).orElse(null)));
         UUID box = s.dataSourceId() == null ? null : repo.leser(s.dataSourceId()).orElse(null);
         return new AnlagensteuerungDto.Anlagensteuerung(s.geraetId(), s.kennzeichen(), s.einbauKennzeichen(),
                 s.bezeichnung(), s.hersteller(), s.typ(), zeit(s.eingebautAm()), s.entityId(),
                 s.dataSourceId() == null ? null : new AnlagensteuerungDto.Datenquelle(s.dataSourceId(),
                         s.quelleKennzeichen(), s.adresse(), s.unitId(), box),
-                fassung, repo.einheiten(s.geraetId()).stream().map(AnlagensteuerungService::einheit).toList());
+                fassung, repo.einheiten(s.geraetId()).stream().map(AnlagensteuerungService::einheit).toList(),
+                programmstand);
+    }
+
+    static AnlagensteuerungDto.Programmstand programmstand(Programmstand.Vergleich v) {
+        return new AnlagensteuerungDto.Programmstand(v.zustand(), v.ist(), v.istText(), v.soll(), v.sollText(),
+                v.sollAusFassung() ? "fassung" : "bibliothek", zeit(v.gemessenAm()), v.warnen());
     }
 
     private static AnlagensteuerungDto.Einheit einheit(GeraetRepository.Teil t) {

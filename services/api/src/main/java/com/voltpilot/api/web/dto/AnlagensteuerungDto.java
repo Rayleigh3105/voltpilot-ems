@@ -53,7 +53,27 @@ public final class AnlagensteuerungDto {
             UUID entityId,
             Datenquelle datenquelle,
             Fassung fassung,
-            List<Einheit> einheiten) {}
+            List<Einheit> einheiten,
+            /* UEMS EZ-16: der Stand des SPS-Programms, gelesen gegen das Soll. */
+            Programmstand programmstand) {}
+
+    /**
+     * UEMS EZ-16: welcher Stand des VoltPilot-SPS-Programms auf der Steuerung läuft (Kopf-Register 7, JJMM) gegen
+     * den erwarteten. {@code zustand}: {@code aktuell} · {@code aelter} (älter als erwartet — Kandidat für die
+     * Überwachung, {@code warnen}) · {@code unbekannt} (kein gültiger Wert; {@code ist} ist dann null, nie 0).
+     * {@code sollQuelle}: {@code fassung} (die Registerbild-Fassung nennt ihn) · {@code bibliothek} (der Stand der
+     * VoltPilot-Bibliothek). {@code gemessenAm} ist das Datenalter des Ist-Werts.
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Programmstand(
+            String zustand,
+            Integer ist,
+            String istText,
+            int soll,
+            String sollText,
+            String sollQuelle,
+            OffsetDateTime gemessenAm,
+            boolean warnen) {}
 
     /** {@code unitId} = die Modbus-Geräte-ID der Steuerung hinter der Datenquelle; {@code boxId} liest sie jetzt. */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
@@ -72,6 +92,8 @@ public final class AnlagensteuerungDto {
             Long steuerungKennung,
             List<RseStufe> rseStufen,
             int veraltetNetzpunktS,
+            /* UEMS EZ-16: der erwartete Programmstand (JJMM); null = folgt der VoltPilot-Bibliothek. */
+            Integer programmstandSoll,
             OffsetDateTime gueltigAb) {}
 
     /** Bedeutung einer Rundsteuer-Stufe: Stufe n heißt {@code prozent} % Wirkleistung. */
@@ -108,6 +130,8 @@ public final class AnlagensteuerungDto {
             @Min(0) @Max(4294967295L) Long steuerungKennung,
             @Size(max = 16) List<@NotNull @Valid RseStufe> rseStufen,
             @Min(1) @Max(65534) Integer veraltetNetzpunktS,
+            /* UEMS EZ-16: JJMM; leer = folgt der VoltPilot-Bibliothek. */
+            @Min(1) @Max(9912) Integer programmstandSoll,
             @NotEmpty @Size(max = 10) List<@NotNull @Valid NeueEinheit> einheiten) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)

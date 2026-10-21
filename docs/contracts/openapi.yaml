@@ -35840,9 +35840,9 @@ components:
       description: >
         Die Steuerung einer Erzeugeranlage als Gerät (Geräteart controller) mit der Komponente vom Typ
         anlagensteuerung, ihrer Datenquelle, der laufenden Registerbild-Fassung (null = keine) und den
-        Erzeugungseinheiten nach TE-Nr.
+        Erzeugungseinheiten nach TE-Nr.; dazu der Programmstand der Steuerung gegen das Soll (UEMS EZ-16).
       required: [geraet_id, kennzeichen, einbau_kennzeichen, bezeichnung, hersteller, typ, eingebaut_am, entity_id,
-        datenquelle, fassung, einheiten]
+        datenquelle, fassung, einheiten, programmstand]
       properties:
         geraet_id: { type: string, format: uuid }
         kennzeichen: { type: string }
@@ -35855,6 +35855,25 @@ components:
         datenquelle: { allOf: [{ $ref: "#/components/schemas/AnlagensteuerungDatenquelle" }], nullable: true }
         fassung: { allOf: [{ $ref: "#/components/schemas/RegisterbildFassung" }], nullable: true }
         einheiten: { type: array, items: { $ref: "#/components/schemas/Erzeugungseinheit" } }
+        programmstand: { $ref: "#/components/schemas/Programmstand" }
+    Programmstand:
+      type: object
+      description: >
+        UEMS EZ-16: welcher Stand des VoltPilot-SPS-Programms auf der Steuerung läuft (Kopf-Register 7
+        `programmstand`, Messpunkt erzeuger.kopf.programmstand, JJMM: 2610 = Oktober 2026) gegen den erwarteten.
+        Soll ist programmstand_soll der laufenden Fassung, sonst der Stand der VoltPilot-Bibliothek. Kein Wert,
+        die Ungültig-Marke 0xFFFF oder ein Wert außerhalb von JJMM sind `unbekannt` — ist ist dann null, nie 0.
+        `warnen` = älter als erwartet (Kandidat für die Überwachung, EZ-11).
+      required: [zustand, ist, ist_text, soll, soll_text, soll_quelle, gemessen_am, warnen]
+      properties:
+        zustand: { type: string, enum: [aktuell, aelter, unbekannt] }
+        ist: { type: integer, nullable: true, description: "JJMM, wie gelesen; null = kein gültiger Wert." }
+        ist_text: { type: string, nullable: true, example: "26.05" }
+        soll: { type: integer, example: 2610 }
+        soll_text: { type: string, example: "26.10" }
+        soll_quelle: { type: string, enum: [fassung, bibliothek] }
+        gemessen_am: { type: string, format: date-time, nullable: true, description: "Datenalter des Ist-Werts." }
+        warnen: { type: boolean }
     AnlagensteuerungDatenquelle:
       type: object
       required: [id, kennzeichen, adresse, unit_id, box_id]
@@ -35868,7 +35887,7 @@ components:
       type: object
       description: "Das Soll des Registerbilds ab gueltig_ab (Bildart erzeuger)."
       required: [id, bildart, basisadresse, funktionscode, wortfolge, te_anzahl, anlagenart, steuerung_kennung,
-        rse_stufen, veraltet_netzpunkt_s, gueltig_ab]
+        rse_stufen, veraltet_netzpunkt_s, programmstand_soll, gueltig_ab]
       properties:
         id: { type: string, format: uuid }
         bildart: { type: string, enum: [erzeuger] }
@@ -35880,6 +35899,7 @@ components:
         steuerung_kennung: { type: integer, format: int64, nullable: true, description: "null = nicht vergeben, nie 0." }
         rse_stufen: { type: array, nullable: true, items: { $ref: "#/components/schemas/RseStufe" } }
         veraltet_netzpunkt_s: { type: integer, minimum: 1, maximum: 65534 }
+        programmstand_soll: { type: integer, nullable: true, minimum: 1, maximum: 9912, description: "JJMM (UEMS EZ-16); null = folgt der VoltPilot-Bibliothek." }
         gueltig_ab: { type: string, format: date-time }
     RseStufe:
       type: object
@@ -35918,6 +35938,7 @@ components:
         steuerung_kennung: { type: integer, format: int64, minimum: 0, maximum: 4294967295, nullable: true }
         rse_stufen: { type: array, maxItems: 16, nullable: true, items: { $ref: "#/components/schemas/RseStufe" } }
         veraltet_netzpunkt_s: { type: integer, minimum: 1, maximum: 65534, nullable: true, description: "Vorgabe 30." }
+        programmstand_soll: { type: integer, minimum: 1, maximum: 9912, nullable: true, description: "Erwarteter Programmstand JJMM (UEMS EZ-16); leer = folgt der VoltPilot-Bibliothek." }
         einheiten: { type: array, minItems: 1, maxItems: 10, items: { $ref: "#/components/schemas/ErzeugungseinheitNeu" } }
     ErzeugungseinheitNeu:
       type: object

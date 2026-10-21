@@ -106,7 +106,7 @@ class AnlagensteuerungDbTest {
                 new AnlagensteuerungDto.NeueEinheit(2, "pv_wechselrichter", "WR 2", null, null, null, null));
         return new AnlagensteuerungDto.Anlegen(w.quelle(), 1, "Anlagensteuerung Gore", "WAGO", "PFC200 750-8212",
                 null, null, null, "pv", null, List.of(new AnlagensteuerungDto.RseStufe(1, new BigDecimal("60"))),
-                null, einheiten);
+                null, null, einheiten);
     }
 
     @Test
@@ -153,7 +153,7 @@ class AnlagensteuerungDbTest {
                 .isInstanceOfSatisfying(ResponseStatusException.class,
                         e -> assertThat(e.getStatusCode().value()).isEqualTo(409));
         AnlagensteuerungDto.Anlegen luecke = new AnlagensteuerungDto.Anlegen(w.quelle(), 1, null, null, null, null,
-                null, null, "bhkw", null, null, null, List.of(
+                null, null, "bhkw", null, null, null, null, List.of(
                         new AnlagensteuerungDto.NeueEinheit(1, null, null, null, null, null, null),
                         new AnlagensteuerungDto.NeueEinheit(3, null, null, null, null, null, null)));
         assertThatThrownBy(() -> als(w.tenant(), () -> service.anlegen(w.site(), luecke, "sub-einrichter")))
@@ -221,6 +221,47 @@ class AnlagensteuerungDbTest {
         assertThat(je.get("erzeuger.te[2].t_zustand").wort()).as("außerhalb des Vokabulars: roh, ohne Wort").isNull();
         assertThat(je.get("erzeuger.a.p_erzeugung_w").zustand()).isEqualTo("veraltet");
         assertThat(je.get("erzeuger.te[1].t_p_ist_w").wert()).isNull();
+    }
+
+    @Test
+    void programmstandOhneWertUnbekanntUndAelterAlsDieBibliothekWarnt() {
+        Welt w = welt("Erzeuger-Programmstand");
+        root.update("UPDATE device SET supports = '[\"erzeuger_registerbild\"]'::jsonb, supports_reported_at = now() "
+                + "WHERE id = ?", w.box());
+        AnlagensteuerungDto.Anlagensteuerung s = als(w.tenant(), () -> service.anlegen(w.site(), gore(w),
+                "sub-einrichter"));
+        assertThat(s.fassung().programmstandSoll()).as("folgt der Bibliothek").isNull();
+        assertThat(s.programmstand().zustand()).isEqualTo("unbekannt");
+        assertThat(s.programmstand().ist()).as("kein Wert, nie 0").isNull();
+        assertThat(s.programmstand().soll()).isEqualTo(Programmstand.BIBLIOTHEK);
+        assertThat(s.programmstand().sollQuelle()).isEqualTo("bibliothek");
+        assertThat(s.programmstand().warnen()).isFalse();
+
+        Instant jetzt = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+        probe(w, s.entityId(), Programmstand.PUNKT, 2605, "good", jetzt.minusSeconds(60), 1);
+        AnlagensteuerungDto.Programmstand alt = als(w.tenant(), () -> service.liste(w.site())).steuerungen().get(0)
+                .programmstand();
+        assertThat(alt.zustand()).isEqualTo("aelter");
+        assertThat(alt.istText()).isEqualTo("26.05");
+        assertThat(alt.warnen()).isTrue();
+        assertThat(alt.gemessenAm().toInstant()).isEqualTo(jetzt.minusSeconds(60));
+
+        // Der jüngste Wert zählt: nach dem Einspielen ist die Anlage aktuell.
+        probe(w, s.entityId(), Programmstand.PUNKT, Programmstand.BIBLIOTHEK, "good", jetzt, 2);
+        AnlagensteuerungDto.Programmstand neu = als(w.tenant(), () -> service.liste(w.site())).steuerungen().get(0)
+                .programmstand();
+        assertThat(neu.zustand()).isEqualTo("aktuell");
+        assertThat(neu.warnen()).isFalse();
+
+        // Ein Soll in der Fassung gilt vor der Bibliothek; ungültig ist 400 vor jedem Schreiben.
+        root.update("UPDATE registerbild_fassung SET programmstand_soll = 2701 WHERE geraet_id = ?", s.geraetId());
+        AnlagensteuerungDto.Programmstand fassung = als(w.tenant(), () -> service.liste(w.site())).steuerungen()
+                .get(0).programmstand();
+        assertThat(fassung.zustand()).isEqualTo("aelter");
+        assertThat(fassung.sollText()).isEqualTo("27.01");
+        assertThat(fassung.sollQuelle()).isEqualTo("fassung");
+        assertThatThrownBy(() -> root.update("UPDATE registerbild_fassung SET programmstand_soll = 2613 "
+                + "WHERE geraet_id = ?", s.geraetId())).hasMessageContaining("registerbild_fassung_programmstand_chk");
     }
 
     @Test
