@@ -227,7 +227,7 @@ export function installHelpFixtures() {
     // dafür die Vorgaben als Ereignisse und ihre Zählung (EZ-9).
     history: erzFall
       ? async (_siteId: string, range: HistoryRange) => structuredClone({ ...history, range, buckets: history.buckets.map(ohneBilanz),
-        ...vorgabenVerlaufBeispiel(erzFall, range, new Date()) })
+        coverage: null, ...vorgabenVerlaufBeispiel(erzFall, range, new Date()) })
       : result(history),
     schedule: erzFall ? async () => { throw new Error('Diese Anlage hat keinen Fahrplan'); } : result(plan),
     // Jeder Abruf eine frische Lesung (sonst altert die Bühne nach zwei Minuten in „veraltet“).

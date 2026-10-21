@@ -93,7 +93,7 @@ export function EreignisSpurRahmen({
           zelleX: lage.x,
           zelleW: Math.max(3, lage.w),
           label: g.label,
-          text: `${z.info.label} · ${z.meta} · ${z.zahl}`,
+          text: `${z.titel ?? z.info.label} · ${z.meta} · ${z.zahl}`,
           sprung: g.sprung,
         });
         proArt.set(z.art, liste);

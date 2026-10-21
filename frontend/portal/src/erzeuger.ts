@@ -20,6 +20,9 @@ import { NBSP } from './format';
 import { kw, prozent, type FlussWerte } from './leitungsplan';
 import { uhrzeit, VIERTEL_MS, type Tag } from './tagesleiste';
 
+// „Wer hat heute geregelt?“ holt das Cockpit über dieses Stück (EZ-9), damit der Abruf nicht im Einstieg liegt.
+export { heuteAbonnieren } from './erzeugerVorgabenApi';
+
 /* ---------------------------------------------------------------- Punkte */
 
 /** Die Punktnamen der Anlagen-Abschnitte (Kopf, Anlage, Netzbetreiber, Direktvermarkter, Wirkung). */

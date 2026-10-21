@@ -893,24 +893,12 @@ export function AnlageSeite({
     };
   }, [site.id, erzSteuerungId]);
   // „Wer hat heute geregelt?“ (EZ-9): die heutigen Vorgaben vom Server (EZ-7) statt der Zustandswechsel im Portal -
-  // im Listentakt, aus einem eigenen Stück (nur Anlagen mit Anlagensteuerung laden es).
+  // im Listentakt, über das Erzeuger-Stück (nur Anlagen mit Anlagensteuerung laden es).
   const [erzHeute, setErzHeute] = useState<ErzeugerVorgabenHeute | null>(null);
   useEffect(() => {
     setErzHeute(null);
-    if (!erzSteuerungId) return undefined;
-    let ab: (() => void) | null = null;
-    let aktiv = true;
-    import('../erzeugerVorgabenApi').then(
-      (m) => {
-        if (aktiv) ab = m.heuteAbonnieren(site.id, setErzHeute, LIST_POLL_MS);
-      },
-      () => {},
-    );
-    return () => {
-      aktiv = false;
-      ab?.();
-    };
-  }, [site.id, erzSteuerungId]);
+    return erzSteuerungId && erzModul ? erzModul.heuteAbonnieren(site.id, setErzHeute, LIST_POLL_MS) : undefined;
+  }, [site.id, erzSteuerungId, erzModul]);
   // Die Ladepunkte (Lastmanagement Stufe 3) - fail-soft wie jeder additive
   // Abruf hier: ein älteres Backend kennt die Route nicht, dann gibt es die
   // Kachel schlicht nicht.

@@ -653,6 +653,10 @@ button.vp-vr-zeile:hover,
   color: var(--vp-text-gray);
   font-variant-numeric: tabular-nums;
 }
+.vp-vr-vorgaben-liste > li > span > span + span::before {
+  content: '·';
+  margin-right: var(--vp-c-space-3);
+}
 .vp-vr-vorgaben-csv {
   display: flex;
   flex-wrap: wrap;

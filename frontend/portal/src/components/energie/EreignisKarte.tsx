@@ -147,15 +147,17 @@ export function EreignisKarte({
     const aufklappbar = !g.sprung && (z.fakten.length > 0 || vorgabeId != null);
     const istOffen = offen === z.key;
     const an = !!fokus && fokus.key === g.key && (!fokus.art || fokus.art === z.art);
+    // Am Telefon steht die Vorgabe vorn in der Unterzeile (Kontoauszug), der Titel bleibt der Urheber.
+    const kurz = phone && !!z.titelWert;
     const inhalt = (
       <>
         <Symbol art={z.art} />
         <span className="vp-vr-zeile-mitte">
-          <span className="vp-vr-zeile-titel">{z.titel ?? z.info.label}</span>
+          <span className="vp-vr-zeile-titel">{kurz ? z.info.label : (z.titel ?? z.info.label)}</span>
           {/* „geplant" steht vor der Meta-Zeile: am Telefon bleibt der Titel einzeilig. */}
           <span className="vp-vr-zeile-meta">
             {z.geplant && <Plan />}
-            {z.meta}
+            {kurz ? `${z.titelWert} · ${z.meta}` : z.meta}
           </span>
         </span>
         <span className="vp-vr-zeile-zahl">

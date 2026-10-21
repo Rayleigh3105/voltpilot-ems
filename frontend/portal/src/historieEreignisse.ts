@@ -501,6 +501,11 @@ export interface ChronikZeile {
   info: EreignisArtInfo;
   /** Das Wort der Zeile, wenn es mehr als die Art sagt: „Netzbetreiber · 60 %“ (EZ-9); sonst das Wort der Art. */
   titel?: string;
+  /**
+   * Der Teil des Titels nach dem Urheber („60 %“, „Abruf 80,0 kW“, „Motor 2“) — am Telefon steht er vorn in der
+   * Unterzeile statt im Titel (Kontoauszug), sonst bräche „Netzbetreiber · 60 %“ mitten im Wort um.
+   */
+  titelWert?: string | null;
   /** Unter der Zahl: die Euro-Schätzung einer Vorgabe, nur wenn EZ-7 sie liefert. */
   zahlUnter?: string | null;
   /** Die Vorgabe hinter der Zeile (EZ-9) — mit `id` öffnet ein Tipp ihr Detail mit Rohsignalen und Zählerständen. */
@@ -757,17 +762,22 @@ function kwText(w: number): string {
 
 /** Das Wort der Zeile: Urheber und Vorgabe. */
 export function vorgabeTitel(art: VorgabenArt, v: HistoryVorgabe | null): string {
-  const label = EREIGNIS_ARTEN[art].label;
-  if (!v || v.luecken > 0 || v.id == null) return label;
-  if (art === 'nicht-bereit') return `${label} · ${v.einheitName ?? `Einheit ${v.teNr ?? '?'}`}`;
+  const wert = vorgabeWert(art, v);
+  return wert ? `${EREIGNIS_ARTEN[art].label} · ${wert}` : EREIGNIS_ARTEN[art].label;
+}
+
+/** Die Vorgabe selbst: „60 %“, „Abruf 80,0 kW“, „Stopp“, bei „nicht bereit“ die Einheit — oder null. */
+function vorgabeWert(art: VorgabenArt, v: HistoryVorgabe | null): string | null {
+  if (!v || v.luecken > 0 || v.id == null) return null;
+  if (art === 'nicht-bereit') return v.einheitName ?? `Einheit ${v.teNr ?? '?'}`;
   if (art === 'direktvermarkter') {
-    if (v.art === 'dv_stopp') return `${label} · Stopp`;
-    return v.vorgabeW != null ? `${label} · Abruf ${kwText(v.vorgabeW)}` : `${label} · Abruf`;
+    if (v.art === 'dv_stopp') return 'Stopp';
+    return v.vorgabeW != null ? `Abruf ${kwText(v.vorgabeW)}` : 'Abruf';
   }
-  if (v.art === 'abschaltung') return `${label} · Abschaltung`;
-  if (v.art === 'q_vorgabe') return `${label} · cos${NB}φ`;
-  if (v.vorgabeProzent != null) return `${label} · ${zahlDe(v.vorgabeProzent, 0)}${NB}%`;
-  return v.vorgabeW != null ? `${label} · ≤${NB}${kwText(v.vorgabeW)}` : label;
+  if (v.art === 'abschaltung') return 'Abschaltung';
+  if (v.art === 'q_vorgabe') return `cos${NB}φ`;
+  if (v.vorgabeProzent != null) return `${zahlDe(v.vorgabeProzent, 0)}${NB}%`;
+  return v.vorgabeW != null ? `≤${NB}${kwText(v.vorgabeW)}` : null;
 }
 
 /** „3 weitere Wechsel während einer Datenlücke“ — unbekannt nach einem Neustart, nie 0. */
@@ -819,6 +829,7 @@ function vorgabenZeileTag(c: EreignisChip): ChronikZeile {
     art,
     info: c.info,
     titel: vorgabeTitel(art, v),
+    titelWert: vorgabeWert(art, v),
     meta: meta.join(' · '),
     zahl,
     zahlUnter: art === 'nicht-bereit' ? null : euroText(v?.wertEur),
