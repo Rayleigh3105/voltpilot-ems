@@ -90,6 +90,8 @@ public class UeberwachungsService {
     /** Alerting Scheibe 6, Entscheid 11B: ohne Spring (reine Tests) bleibt es {@code null} - keine externen
      * Empfänger werden benachrichtigt. */
     private ExterneEmpfaengerService externeEmpfaenger;
+    /** UEMS EZ-11: die Wertequelle „Erzeuger“; ohne Spring (reine Tests) {@code null} - ihre Vorlagen ruhen dann. */
+    private ErzeugerWerteLeser erzeugerLeser;
 
     public UeberwachungsService(UeberwachungRepository repo, WerteKatalog katalog,
             ZustandWerteLeser zustandLeser, EreignisWerteLeser ereignisLeser,
@@ -127,6 +129,7 @@ public class UeberwachungsService {
             case "geld" -> geldLeser;
             case "kennzahl" -> kennzahlLeser;
             case "zaehlung" -> zaehlungLeser;
+            case "erzeuger" -> erzeugerLeser;
             default -> null;
         };
     }
@@ -150,6 +153,11 @@ public class UeberwachungsService {
         this.externeEmpfaenger = externeEmpfaenger;
     }
 
+    @Autowired(required = false)
+    public void setErzeugerLeser(ErzeugerWerteLeser erzeugerLeser) {
+        this.erzeugerLeser = erzeugerLeser;
+    }
+
     public Lauf lauf(Instant jetzt) {
         int gesaet = aussaat();
         int ausgeloest = 0;
@@ -161,7 +169,14 @@ public class UeberwachungsService {
                 continue; // unbekannte/entfernte Wertart oder Leserart
             }
             boolean auswahl = regel.bezug().has("alle");
-            for (WerteLeser.Bezug bezug : bezuegeAus(regel.bezug())) {
+            List<WerteLeser.Bezug> bezuege = bezuegeAus(regel.bezug());
+            if (leser == erzeugerLeser && erzeugerLeser.jeEinheit(eintrag)) {
+                // EZ-11: je Einheit eine eigene Meldung - wie eine Auswahl gebündelt, damit drei Wechselrichter,
+                // die zugleich ausfallen, in EINER Nachricht ankommen.
+                bezuege = bezuege.stream().flatMap(b -> erzeugerLeser.einheiten(b.id()).stream()).toList();
+                auswahl = true;
+            }
+            for (WerteLeser.Bezug bezug : bezuege) {
                 UUID anlageId = anlageFuerBezug(bezug);
                 if (anlageId == null && brauchtAnlage(bezug.art())) {
                     continue; // Bezug zeigt auf nichts (mehr) Sichtbares - Instanz bleibt unverändert liegen
@@ -244,6 +259,7 @@ public class UeberwachungsService {
         return switch (bezug.art()) {
             case "anlage" -> bezug.id();
             case "komponente" -> repo.anlageDerKomponente(bezug.id());
+            case "einheit" -> erzeugerLeser == null ? null : erzeugerLeser.anlageDerSteuerung(bezug.id());
             default -> null;
         };
     }
@@ -251,7 +267,7 @@ public class UeberwachungsService {
     /** Ob ein Bezug OHNE Anlage ein fehlendes Ziel ist (dann überspringt {@link #lauf} ihn) oder normal
      * (Scheibe 5: Messstelle, Kennzahl, Energieziel haben nie eine Anlage). */
     private static boolean brauchtAnlage(String bezugArt) {
-        return "anlage".equals(bezugArt) || "komponente".equals(bezugArt);
+        return "anlage".equals(bezugArt) || "komponente".equals(bezugArt) || "einheit".equals(bezugArt);
     }
 
     // --------------------------------------------------------------------- Aussaat (§7 Nr. 7, Entscheid 2A)
@@ -383,6 +399,15 @@ public class UeberwachungsService {
             boolean nurEndgueltig = bedingung.path("endgueltig").asBoolean(false);
             lesung = leser.lesePeriode(eintrag, bezug, periode, nurEndgueltig, jetzt);
             erfuellung = BedingungsPruefung.pruefen(bedingung, lesung);
+        } else if (leser == erzeugerLeser) {
+            lesung = erzeugerLeser.lese(eintrag, bezug, bedingung, jetzt);
+            erfuellung = BedingungsPruefung.pruefen(bedingung, lesung);
+            if (!lesung.bekannt()) {
+                // EZ-11: veraltete Werte der Steuerung sagen nicht, dass die Anlage wieder bereit ist oder folgt -
+                // ein ausgelöster Erzeuger-Alarm HÄLT, bis ein aktueller Wert zurückkommt (das Veralten selbst
+                // meldet die Vorlage „Daten veraltet“); auslösen kann Unbekannt weiterhin nie.
+                erfuellung = new BedingungsPruefung.Erfuellung(false, true);
+            }
         } else {
             lesung = leser.lese(eintrag, bezug, jetzt);
             erfuellung = BedingungsPruefung.pruefen(bedingung, lesung);
@@ -488,8 +513,9 @@ public class UeberwachungsService {
                 : repo.aktiverAlarmAufAnlage(anlageId, GATENDE_WERTARTEN).orElse(null);
         UUID alarmId = repo.alarmErzeugen(regel, bezug.kennung(), regel.standortId() != null
                 ? regel.standortId() : repo.standortHeute(anlageId), jetzt, wertJson, probelauf, unterdrueckDurch);
-        repo.alarmVerlauf(alarmId, "ausgeloest", null, satzname(regel) + " " + anzeige.praeposition() + " "
-                + anzeige.name() + (probelauf ? " (Probelauf - hätte gemeldet)" : ""), wertJson);
+        repo.alarmVerlauf(alarmId, "ausgeloest", null, (lesung.text() != null ? satzMitAnlage(anlageId, lesung)
+                : satzname(regel) + " " + anzeige.praeposition() + " " + anzeige.name())
+                + (probelauf ? " (Probelauf - hätte gemeldet)" : ""), wertJson);
         if (unterdrueckDurch != null) {
             String kennzeichenEltern = repo.alarm(unterdrueckDurch).map(AlarmZeile::kennzeichen).orElse("?");
             repo.alarmVerlauf(alarmId, "versand", null,
@@ -499,11 +525,12 @@ public class UeberwachungsService {
         // Probelauf (§6.4, §6.8 Entwurf 1): ausgewertet und im Verlauf nachweisbar, aber OHNE
         // Versand - "was sie gemeldet hätte", nicht was sie wirklich gemeldet hat.
         if (!probelauf && !"hinweis".equals(regel.schwere())) {
+            String kennzeichen = repo.alarm(alarmId).map(AlarmZeile::kennzeichen).orElse("?");
             versenden(regel, alarmId, "ausgeloest",
-                    schwereWort(regel.schwere()) + ": " + regel.name(),
-                    satzname(regel) + " " + anzeige.praeposition() + " " + anzeige.name() + " meldet: "
-                            + wertText(lesung) + ". Kennzeichen "
-                            + repo.alarm(alarmId).map(AlarmZeile::kennzeichen).orElse("?") + ".", auswahl, jetzt);
+                    schwereWort(regel.schwere()) + ": " + titel(regel),
+                    lesung.text() != null ? satzMitAnlage(anlageId, lesung) + " Kennzeichen " + kennzeichen + "."
+                            : satzname(regel) + " " + anzeige.praeposition() + " " + anzeige.name() + " meldet: "
+                                    + wertText(lesung) + ". Kennzeichen " + kennzeichen + ".", auswahl, jetzt);
         }
         repo.alarmVerlauf(alarmId, "versand", null, probelauf ? "Probelauf - kein Versand" : "Versand eingereiht",
                 null);
@@ -528,11 +555,19 @@ public class UeberwachungsService {
         if (!probelauf && !unterdrueckt && !"hinweis".equals(regel.schwere())) {
             BezugAnzeige anzeige = anzeige(bezug, anlageId);
             versenden(regel, alarmId, "wieder_normal",
-                    "Wieder normal: " + regel.name(),
-                    satzname(regel) + " " + anzeige.praeposition() + " " + anzeige.name() + " ist seit " + jetzt
-                            + " wieder normal.",
+                    "Wieder normal: " + titel(regel),
+                    lesung.text() != null
+                            ? satzMitAnlage(anlageId, lesung) + " Wieder normal seit "
+                                    + ErzeugerAlarme.Anzeige.zeit(jetzt) + "."
+                            : satzname(regel) + " " + anzeige.praeposition() + " " + anzeige.name() + " ist seit "
+                                    + jetzt + " wieder normal.",
                     auswahl, jetzt);
         }
+    }
+
+    /** „Anlage Gore: ‹Satz des Lesers›“ (EZ-11) - der Leser kennt den Zustand, die Überwachung den Anlagennamen. */
+    private String satzMitAnlage(UUID anlageId, WerteLeser.Lesung lesung) {
+        return anlageId == null ? lesung.text() : "Anlage " + anlageNameOder(anlageId) + ": " + lesung.text();
     }
 
     private String anlageNameOder(UUID anlageId) {
@@ -573,6 +608,15 @@ public class UeberwachungsService {
         } catch (VerbesserungAbgelehnt e) {
             return id.toString();
         }
+    }
+
+    /** Der Betreff-Name einer Regel: ihr eigener Name, sonst der Name ihrer Wertart im Katalog - nie „null“. */
+    private String titel(UeberwachungZeile regel) {
+        if (regel.name() != null) {
+            return regel.name();
+        }
+        WerteKatalog.Eintrag eintrag = katalog.eintrag(regel.wertart());
+        return eintrag != null ? eintrag.name() : regel.wertart();
     }
 
     private static String satzname(UeberwachungZeile regel) {

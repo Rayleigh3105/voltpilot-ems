@@ -14,6 +14,9 @@
  * hinzu - keiner ihrer Einträge trägt einen Vorschlag ab Werk, Entscheid 9A). Ein neuer Eintrag
  * derselben Leserart ist ein weiterer Katalog-Eintrag, kein neuer Code (§6.3 Nr. 2); `geraet.messwert`
  * ist eine FAMILIE (Bezug `komponente` + Parameter `kanal`), kein Eintrag je Kanal.
+ *
+ * UEMS EZ-11 fügt die Leserart `erzeuger` mit fünf Alarm-Vorlagen hinzu (`vorlage` statt `vorschlag`: nie
+ * gesät, je Anlage mit Anlagensteuerung wählbar; die Wertart ist die stabile Kennung der Vorlage).
  */
 
 export type LeserArt =
@@ -24,7 +27,8 @@ export type LeserArt =
   | 'geld'
   | 'zustand'
   | 'ereignis'
-  | 'zaehlung';
+  | 'zaehlung'
+  | 'erzeuger';
 
 /** Geschlossenes Vokabular der Bedingungsarten (§6.4). `periode` und `aenderung` (Scheibe 4) gelten
  * nur für periodische Einträge (an ihren `bedingungen`, nicht an der Leserart zu erkennen - Scheibe 5
@@ -58,6 +62,16 @@ export interface WerteKatalogVorschlag {
   ziel?: string[];
 }
 
+/** Eine Alarm-Vorlage (EZ-11): Vorbelegung des Blatts „Überwachen“, `schwellen` sind je Anlage änderbar. */
+export interface WerteKatalogVorlage {
+  dauer_s: number;
+  erholen_s: number;
+  schwere: Schwere;
+  ziel: string[];
+  schwellen?: Record<string, number>;
+  nur_mit_anlagensteuerung?: boolean;
+}
+
 export interface WerteKatalogEintrag {
   wertart: string;
   name: string;
@@ -69,6 +83,7 @@ export interface WerteKatalogEintrag {
   bedingungen: Bedingungsart[];
   zustaende?: string[];
   vorschlag?: WerteKatalogVorschlag;
+  vorlage?: WerteKatalogVorlage;
 }
 
 /**
@@ -303,6 +318,73 @@ export const WERTE_KATALOG: WerteKatalogEintrag[] = [
     recht: 'messwerte.ansehen',
     zustaende: ['vollstaendig', 'unvollstaendig'],
     bedingungen: ['zustand'],
+  },
+  {
+    wertart: 'erzeuger.fernsteuerung_nicht_bereit',
+    name: 'Fernsteuerung nicht bereit',
+    satzname: 'eine Erzeugungseinheit',
+    bezug: 'anlage',
+    form: 'zustand',
+    leser: { art: 'erzeuger', feld: 'fernsteuerung' },
+    recht: 'messwerte.ansehen',
+    zustaende: ['bereit', 'nicht_bereit', 'kein_direktvermarkter'],
+    bedingungen: ['zustand'],
+    vorlage: { dauer_s: 300, erholen_s: 300, schwere: 'warnung', ziel: ['nicht_bereit'], nur_mit_anlagensteuerung: true },
+  },
+  {
+    wertart: 'erzeuger.daten_veraltet',
+    name: 'Daten veraltet',
+    satzname: 'das Bild der Anlagensteuerung',
+    bezug: 'anlage',
+    form: 'zustand',
+    leser: { art: 'erzeuger', feld: 'datenlage' },
+    recht: 'messwerte.ansehen',
+    zustaende: ['aktuell', 'veraltet'],
+    bedingungen: ['zustand'],
+    vorlage: { dauer_s: 300, erholen_s: 300, schwere: 'warnung', ziel: ['veraltet'], nur_mit_anlagensteuerung: true },
+  },
+  {
+    wertart: 'erzeuger.anlage_folgt_nicht',
+    name: 'Anlage folgt nicht',
+    satzname: 'die Anlage',
+    bezug: 'anlage',
+    form: 'zustand',
+    leser: { art: 'erzeuger', feld: 'folgen' },
+    recht: 'messwerte.ansehen',
+    zustaende: ['folgt', 'folgt_nicht', 'nicht_begrenzt'],
+    bedingungen: ['zustand'],
+    vorlage: {
+      dauer_s: 300,
+      erholen_s: 300,
+      schwere: 'warnung',
+      ziel: ['folgt_nicht'],
+      schwellen: { toleranz_prozent: 5, toleranz_kw: 5 },
+      nur_mit_anlagensteuerung: true,
+    },
+  },
+  {
+    wertart: 'erzeuger.netzbetreiber_abgeschaltet',
+    name: 'Netzbetreiber hat abgeschaltet',
+    satzname: 'die Anlage',
+    bezug: 'anlage',
+    form: 'zustand',
+    leser: { art: 'erzeuger', feld: 'abschaltung' },
+    recht: 'messwerte.ansehen',
+    zustaende: ['abgeschaltet', 'nicht_abgeschaltet'],
+    bedingungen: ['zustand'],
+    vorlage: { dauer_s: 0, erholen_s: 300, schwere: 'warnung', ziel: ['abgeschaltet'], nur_mit_anlagensteuerung: true },
+  },
+  {
+    wertart: 'erzeuger.fernwirk_verbindung_weg',
+    name: 'Fernwirk-Verbindung weg',
+    satzname: 'die Fernwirk-Verbindung',
+    bezug: 'anlage',
+    form: 'zustand',
+    leser: { art: 'erzeuger', feld: 'fernwirk' },
+    recht: 'messwerte.ansehen',
+    zustaende: ['verbunden', 'getrennt', 'keine_fernwirktechnik'],
+    bedingungen: ['zustand'],
+    vorlage: { dauer_s: 600, erholen_s: 300, schwere: 'warnung', ziel: ['getrennt'], nur_mit_anlagensteuerung: true },
   },
 ];
 

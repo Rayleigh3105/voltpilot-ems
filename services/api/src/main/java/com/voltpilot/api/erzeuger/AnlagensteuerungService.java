@@ -46,8 +46,9 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class AnlagensteuerungService {
 
-    /** Ein Wert gilt als aktuell, solange er gut und jünger als zwei Herzschläge der Box (2 × 60 s) ist. */
-    static final long AKTUELL_BIS_S = 120;
+    /** Ein Wert gilt als aktuell, solange er gut und jünger als zwei Herzschläge der Box (2 × 60 s) ist. Die Überwachung
+     * (EZ-11, {@code ErzeugerWerteLeser}) liest mit derselben Grenze. */
+    public static final long AKTUELL_BIS_S = 120;
     static final ZoneId ZONE = ZoneId.of("Europe/Berlin");
     private static final Set<String> ANLAGENARTEN = Set.of("pv", "bhkw", "gemischt");
     private static final Set<String> EINHEIT_ARTEN = Set.of("pv_wechselrichter", "bhkw_motor");

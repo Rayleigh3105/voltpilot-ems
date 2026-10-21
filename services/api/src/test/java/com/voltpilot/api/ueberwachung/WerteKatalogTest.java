@@ -150,4 +150,25 @@ class WerteKatalogTest {
         assertThat(katalog.mitVorschlagAbWerk()).extracting(WerteKatalog.Eintrag::wertart)
                 .containsExactlyInAnyOrder("box.erreichbar", "datenquelle.liefert_daten");
     }
+
+    @Test
+    void dieFuenfErzeugerVorlagenHabenStabileKennungenUndWerdenNieGesaet() {
+        // EZ-11: die Wertart IST die Kennung, unter der EZ-15 (Anlege-Schritt) die Vorlagen anbietet - umbenennen
+        // bricht gespeicherte Regeln und den Anlege-Schritt.
+        assertThat(katalog.vorlagen()).extracting(WerteKatalog.Eintrag::wertart).containsExactly(
+                "erzeuger.fernsteuerung_nicht_bereit", "erzeuger.daten_veraltet", "erzeuger.anlage_folgt_nicht",
+                "erzeuger.netzbetreiber_abgeschaltet", "erzeuger.fernwirk_verbindung_weg");
+        for (WerteKatalog.Eintrag e : katalog.vorlagen()) {
+            assertThat(e.leser().art()).as(e.wertart()).isEqualTo("erzeuger");
+            assertThat(e.vorschlag()).as(e.wertart() + ": nie ab Werk gesät").isNull();
+            assertThat(e.vorlage().nurMitAnlagensteuerung()).as(e.wertart()).isTrue();
+            assertThat(e.zustaende()).as(e.wertart()).containsAll(e.vorlage().ziel());
+            assertThat(e.bedingungen()).as(e.wertart()).containsExactly("zustand");
+        }
+        WerteKatalog.Vorlage folgt = katalog.eintrag("erzeuger.anlage_folgt_nicht").vorlage();
+        assertThat(folgt.schwellen()).containsEntry("toleranz_prozent", 5.0).containsEntry("toleranz_kw", 5.0);
+        assertThat(folgt.dauerS()).isEqualTo(300);
+        assertThat(katalog.eintrag("erzeuger.fernwirk_verbindung_weg").vorlage().dauerS()).isEqualTo(600);
+        assertThat(katalog.eintrag("erzeuger.netzbetreiber_abgeschaltet").vorlage().dauerS()).isZero();
+    }
 }

@@ -14,7 +14,9 @@ import {
 import {
   PERIODE_WORT,
   ueberwachungSatz,
+  VORLAGE_SCHWELLE,
   vorgabenFuerBedingung,
+  vorlageSatz,
   zustandswortAnzeige,
   type BedingungEingabe,
 } from '../ueberwachungSatz';
@@ -50,6 +52,10 @@ const PERIODEN: readonly Periode[] = ['tag', 'woche', 'monat', 'abrechnungszeitr
  * „Gilt für" (§6.4 "Gilt für", nur am Anlagen-Bezug - eine Auswahl ergibt serverseitig je Anlage
  * eine eigene Meldung, §6.4 Nr. 6/7): „Diese Anlage" (Vorgabe) oder „Alle Anlagen" - toddler-simple
  * zwei Chips, kein eigener Standort-Schritt in dieser Scheibe.
+ *
+ * Alarm-Vorlagen (UEMS EZ-11, Katalog `vorlage`, z. B. „Anlage folgt nicht“): Ziel-Zustand, Dauer, Erholdauer,
+ * Schwere und die eigenen Schwellen der Vorlage sind vorbelegt; die Schwellen stehen als Felder im Blatt. Keine
+ * Probelauf-Vorschau - ihre Werte haben keine Rückschau -, darum meldet eine Vorlage ab dem Anlegen.
  *
  * Seit der Nachbesserung 3/3 zeigt das Blatt die Probelauf-Vorschau (§6.8 Entwurf 1, „was diese
  * Regel in den letzten 30 Tagen gemeldet hätte"): ein einfacher Debounce (~400 ms), damit nicht
@@ -89,17 +95,20 @@ export function UeberwachenBlatt({
   // ab Werk gesät (box.erreichbar/datenquelle.liefert_daten, Entscheid 9A nie über dieses Blatt),
   // Scheibe 5 bringt die ersten SELBST angelegten Zustands-Regeln (Energieziel-Kurs, Beobachtung,
   // Monat unvollständig).
-  const istZustandsform = !istPeriodisch && (eintrag?.bedingungen.includes('zustand') ?? false);
+  const vorlage = eintrag?.vorlage ?? null;
+  const istVorlage = vorlage != null;
+  const istZustandsform = !istVorlage && !istPeriodisch && (eintrag?.bedingungen.includes('zustand') ?? false);
+  const [schwellen, setSchwellen] = useState<Record<string, number>>(() => ({ ...(vorlage?.schwellen ?? {}) }));
   const [ziel, setZiel] = useState<string[]>([]);
   const kannAuswahl = 'anlage' in bezug;
 
   const vorschlag = vorschlagSchwelle(aktuellerWert);
   const [schwelle, setSchwelle] = useState(vorschlag);
   const vorgaben = vorgabenFuerBedingung('ueber', vorschlag);
-  const [dauerMinuten, setDauerMinuten] = useState(vorgaben.dauer_s / 60);
-  const [erholdauerMinuten, setErholdauerMinuten] = useState(vorgaben.erholen_s / 60);
+  const [dauerMinuten, setDauerMinuten] = useState((vorlage?.dauer_s ?? vorgaben.dauer_s) / 60);
+  const [erholdauerMinuten, setErholdauerMinuten] = useState((vorlage?.erholen_s ?? vorgaben.erholen_s) / 60);
   const [rueckkehr, setRueckkehr] = useState(vorgaben.rueckkehr ?? vorschlag);
-  const [schwere, setSchwere] = useState<Schwere>('warnung');
+  const [schwere, setSchwere] = useState<Schwere>(vorlage?.schwere ?? 'warnung');
   const [busy, setBusy] = useState(false);
   const [fehler, setFehler] = useState('');
   const [probelauf, setProbelauf] = useState<ProbelaufVorschau | null>(null);
@@ -115,7 +124,10 @@ export function UeberwachenBlatt({
   // „Gilt für" (§6.4): nur am Anlagen-Bezug wählbar - eine Auswahl ersetzt den konkreten Bezug.
   const [giltFuer, setGiltFuer] = useState<'diese' | 'alle'>('diese');
 
-  const gueltig = istPeriodisch
+  const gueltig = istVorlage
+    ? Number.isFinite(dauerMinuten) && dauerMinuten >= 0 && erholdauerMinuten > 0
+      && Object.values(schwellen).every((x) => Number.isFinite(x) && x >= 0)
+    : istPeriodisch
     ? periodenform === 'periode'
       ? Number.isFinite(schwelle)
       : Number.isFinite(schwelleProzent) && schwelleProzent > 0
@@ -133,6 +145,15 @@ export function UeberwachenBlatt({
           : `energieziel:${bezug.energieziel}`;
 
   function bedingungFuerAnfrage(): UeberwachungBedingungEingabe {
+    if (vorlage) {
+      const b: UeberwachungBedingungEingabe = {
+        art: 'zustand',
+        ziel: vorlage.ziel,
+        dauer_s: Math.round(dauerMinuten * 60),
+        erholen_s: Math.round(erholdauerMinuten * 60),
+      };
+      return Object.assign(b, schwellen);
+    }
     if (istZustandsform) {
       return { art: 'zustand', ziel, dauer_s: Math.round(dauerMinuten * 60), erholen_s: Math.round(erholdauerMinuten * 60) };
     }
@@ -173,7 +194,7 @@ export function UeberwachenBlatt({
   // Dauer oder Rückkehrschwelle sofort einen eigenen Abruf auslöst. Eine Auswahl ("alle Anlagen")
   // hat keine eigene Vorschau (der Probelauf braucht EINEN konkreten Bezug) - sie bleibt aus.
   useEffect(() => {
-    if (!offen || !gueltig || giltFuer === 'alle') {
+    if (!offen || !gueltig || giltFuer === 'alle' || istVorlage) {
       setProbelauf(null);
       return undefined;
     }
@@ -191,7 +212,7 @@ export function UeberwachenBlatt({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     offen, gueltig, wertart, bezugKey, giltFuer, schwelle, rueckkehr, dauerMinuten, erholdauerMinuten, schwere,
-    periodenform, periode, richtungPeriode, richtungAenderung, schwelleProzent,
+    periodenform, periode, richtungPeriode, richtungAenderung, schwelleProzent, istVorlage, schwellen,
   ]);
 
   if (!eintrag) return null;
@@ -203,7 +224,9 @@ export function UeberwachenBlatt({
         ? { art: 'aenderung', richtung: richtungAenderung, schwelleProzent, periode }
         : { art: 'periode', richtung: richtungPeriode, schwelle, periode }
       : { art: 'ueber', schwelle, rueckkehr, dauer_s: dauerMinuten * 60 };
-  const satz = ueberwachungSatz(eintrag, satzBedingung, schwere, istPeriodisch && periodenform === 'aenderung' ? '' : einheit);
+  const satz = istVorlage
+    ? vorlageSatz(wertart, Math.round(dauerMinuten * 60), schwellen, schwere)
+    : ueberwachungSatz(eintrag, satzBedingung, schwere, istPeriodisch && periodenform === 'aenderung' ? '' : einheit);
   const probelaufText = probelauf == null
     ? null
     : probelauf.ausgeloest === 0
@@ -236,6 +259,9 @@ export function UeberwachenBlatt({
       <p className="vp-ueberwachen-satz" aria-live="polite">
         {satz}
       </p>
+      {istVorlage && (
+        <p className="vp-ueberwachen-probelauf">Meldet ab dem Start, ohne Probelauf.</p>
+      )}
       {probelaufText && (
         <p className="vp-ueberwachen-probelauf" aria-live="polite">
           {probelaufText}
@@ -366,7 +392,22 @@ export function UeberwachenBlatt({
       )}
       {!istPeriodisch && (
         <div className="vp-ueberwachen-felder">
-          {!istZustandsform && (
+          {istVorlage && Object.keys(schwellen).map((name) => (
+            <Input
+              key={name}
+              id={`${feldId}-${name}`}
+              label={VORLAGE_SCHWELLE[name]?.label ?? name}
+              type="number"
+              step="0.5"
+              min="0"
+              value={schwellen[name]}
+              onChange={(e) => {
+                const wert = Number(e.target.value);
+                setSchwellen((vorher) => ({ ...vorher, [name]: wert }));
+              }}
+            />
+          ))}
+          {!istZustandsform && !istVorlage && (
             <>
               <Input
                 id={`${feldId}-schwelle`}
@@ -388,10 +429,10 @@ export function UeberwachenBlatt({
           )}
           <Input
             id={`${feldId}-dauer`}
-            label="Länger als (Minuten)"
+            label={istVorlage && vorlage.dauer_s === 0 ? 'Länger als (Minuten, 0 = sofort)' : 'Länger als (Minuten)'}
             type="number"
             step="1"
-            min="1"
+            min={istVorlage ? '0' : '1'}
             value={dauerMinuten}
             onChange={(e) => setDauerMinuten(Number(e.target.value))}
           />

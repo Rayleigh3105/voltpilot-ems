@@ -61,6 +61,20 @@ ist ein Gerät wie heute die WAGO-Steuerung der Energiekarten, Wechselrichter un
   Stand spricht dort nicht; beim Erzeuger hinter „Daten“). `AnlagenPage` lädt ihn einmal je Steuerung
   (`erzProgrammstand`, nicht im Takt) und reicht ihn über `ErzeugerZeile.programmstand` durch.
 
+## Alarme (EZ-11, EW-9 A)
+
+- **Leserart `erzeuger`** im Werte-Katalog (`ueberwachung/ErzeugerWerteLeser`, Auswertung rein in `ErzeugerAlarme`):
+  liest nur Messpunkte und ihre Frische (`juengste`, „aktuell“ = `good` und ≤ `AKTUELL_BIS_S`), nie `erzeuger_vorgabe`.
+- **Fünf Vorlagen, Kennung = Wertart** (Katalog-Block `vorlage`, nie gesät): `erzeuger.fernsteuerung_nicht_bereit`,
+  `erzeuger.daten_veraltet`, `erzeuger.anlage_folgt_nicht` (Schwellen `toleranz_prozent`, `toleranz_kw`),
+  `erzeuger.netzbetreiber_abgeschaltet`, `erzeuger.fernwirk_verbindung_weg`. Anlegen nur an einer Anlage mit
+  Anlagensteuerung (sonst 409), ohne 30-Tage-Probelauf.
+- ⚠ **„Fernsteuerung nicht bereit“ gilt je Einheit:** die Regel hängt an der Anlage, der Takt fächert sie in
+  `einheit:<Steuerung>;te=<n>` auf und bündelt wie eine Auswahl.
+- ⚠ **Unbekannt hält:** ein ausgelöster Erzeuger-Alarm entwarnt nicht, solange die Werte veraltet sind.
+- ⚠ **„Anlage folgt nicht“ zählt nur das Überschreiten** der wirksamen Grenze (plus das SPS-Urteil `s_bits`), nie
+  weniger Erzeugung unter der Grenze.
+
 ## Nachfolger
 
 EZ-5 (Box-Leser, gebaut: Laufzeitstand 2026.10.21.1, `advertised: true`, Budget-Klasse in

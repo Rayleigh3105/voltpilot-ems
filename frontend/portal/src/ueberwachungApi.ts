@@ -70,6 +70,9 @@ export interface UeberwachungBedingungEingabe {
   endgueltig?: boolean;
   richtung?: 'ueber' | 'unter' | 'hoeher' | 'niedriger' | 'beide';
   schwelle_prozent?: number;
+  /** UEMS EZ-11, Vorlage „Anlage folgt nicht“: Toleranz in % der installierten Leistung und mindestens in kW. */
+  toleranz_prozent?: number;
+  toleranz_kw?: number;
 }
 
 /** Der Anfragekörper von `POST /api/v1/meldungen/regeln` (§6.8). */
