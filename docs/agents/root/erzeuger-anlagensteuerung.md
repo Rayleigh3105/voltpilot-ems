@@ -76,8 +76,33 @@ ist ein Gerät wie heute die WAGO-Steuerung der Energiekarten, Wechselrichter un
 - ⚠ **„Anlage folgt nicht“ zählt nur das Überschreiten** der wirksamen Grenze (plus das SPS-Urteil `s_bits`), nie
   weniger Erzeugung unter der Grenze.
 
+## Vorgaben (EZ-7)
+
+Der `VorgabenLaeufer` (`erzeuger/`, Schalter `voltpilot.erzeuger.vorgaben.enabled`, Minutentakt) leitet je
+Anlagensteuerung aus den Proben `erzeuger.*` die Vorgaben ab (Konzept §4.6 auf die schlanke Fassung übersetzt; Regeln
+und Wörter in `VorgabenAbleitung`): `erzeuger_vorgabe` (Urheber, Art, `te_nr` leer = ganze Anlage, Ende leer =
+läuft), `erzeuger_vorgabe_luecke` („n weitere Wechsel während einer Datenlücke“) und der Stand
+`erzeuger_vorgabe_lauf` (Migration `V20261022013700`, zehn Jahre, RLS + FORCE + Standortzaun). Routen
+(`ErzeugerVorgabenController`, openapi): `GET /api/v1/sites/{siteId}/erzeuger/vorgaben` (Chronik), `…/{vorgabeId}`
+(Detail mit Rohsignalen), `…/zaehlung?raster=tag|monat`, `…/heute` (Kachel „Wer hat heute geregelt?“: `je_urheber`),
+`…/vorgaben.csv`.
+
+- ⚠ **Die Box sendet nur Änderungen** (spätestens alle 60 s, „seit“ und Zähler nur im 60-s-Takt): Werte werden
+  getragen, höchstens 90 s — ein ungültiger Wert kommt nie wieder. „Seit“ datiert einen Wechsel nur, wenn das
+  Ergebnis zwischen der letzten und dieser Lesung liegt; nach einem Neustart nie (es zählt ab Programmstart).
+- ⚠ **Nie erfundene Zeiten:** ohne „seit“ beginnt eine Vorgabe in der Lesung, in der sie zuerst galt, und endet in
+  einer Lücke bei der letzten, in der sie galt — dann `unvollstaendig`. Ein Zählerrücksprung über mehr als 120 Schritte
+  ist ein Neustart: die Zahl der Wechsel ist dann unbekannt (null), nie 0.
+- ⚠ **Energie nur mit Grundlage:** PV aus der Prognose (30 Tage aufbewahrt — ein Nachlauf über ältere Werte schätzt
+  nichts), BHKW aus der Nennleistung der bereiten Motoren bzw. dem DV-Sollwert davor; fehlt „verfügbar“ für einen Teil
+  der bindenden Zeit, bleibt die Zahl leer. Euro nur für PV über `SlotEconomics` (Biogas mit EZ-12).
+- ⚠ **Stand statt Neuberechnung:** eine Vorgabe kann Jahre laufen (feste 70-%-Grenze), Proben halten 90 Tage — darum
+  liegen offene Vorgaben und getragene Werte als JSON im Stand. Eine Probe, die nach dem Lauf über ihre Zeit kommt,
+  bleibt eine Lücke.
+
 ## Nachfolger
 
 EZ-5 (Box-Leser, gebaut: Laufzeitstand 2026.10.21.1, `advertised: true`, Budget-Klasse in
-`measurement-budget-vectors.json`, Go-`Config.Erzeugerbilder` für `erzeuger_registerbilder`), EZ-7 (`erzeuger_vorgabe`), EZ-8/EZ-10
-(Portal-Ansichten auf diesen Routen), EZ-15 (Anlege-Schritt mit Probe `erzeuger_kopf`), EZ-16 (Programmstand).
+`measurement-budget-vectors.json`, Go-`Config.Erzeugerbilder` für `erzeuger_registerbilder`), EZ-8/EZ-10
+(Portal-Ansichten auf diesen Routen), EZ-9 (Vorgaben im Verlauf auf den EZ-7-Routen), EZ-15 (Anlege-Schritt mit
+Probe `erzeuger_kopf`).

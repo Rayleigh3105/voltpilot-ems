@@ -269,6 +269,15 @@ voltpilot:
     enabled: ${VOLTPILOT_STEUERUNG_VORSPRUNG_ENABLED:true}
     interval-ms: ${VOLTPILOT_STEUERUNG_VORSPRUNG_INTERVAL_MS:300000}
     initial-delay-ms: ${VOLTPILOT_STEUERUNG_VORSPRUNG_INITIAL_DELAY_MS:90000}
+  # Vorgaben einer Erzeugeranlage (UEMS EZ-7, com.voltpilot.api.erzeuger.VorgabenLaeufer): je
+  # Anlagensteuerung aus den Werten des Erzeuger-Registerbilds die Zeiträume, in denen Netzbetreiber,
+  # Direktvermarkter oder die Anlage selbst begrenzt haben, nach erzeuger_vorgabe. Vorgabe AN
+  # (Hausregel), im Testlauf AUS (surefire); wer ihn prüft, ruft VorgabenLaeufer.lauf() selbst.
+  erzeuger:
+    vorgaben:
+      enabled: ${VOLTPILOT_ERZEUGER_VORGABEN_ENABLED:true}
+      interval-ms: ${VOLTPILOT_ERZEUGER_VORGABEN_INTERVAL_MS:60000}
+      initial-delay-ms: ${VOLTPILOT_ERZEUGER_VORGABEN_INITIAL_DELAY_MS:120000}
   # Alerting Scheibe 3 (Konzept vp-alerting-konzept-m1 §7, Entscheid 1A): Web-Push als dritter
   # Zustellweg. Werte bleiben LEER - niemals einen echten Schlüssel hier committen. Das PRIVATE
   # Schlüsselpaar kommt wie das SMTP-Passwort aus der sops-Geheimnisdatei des GitOps-Repos

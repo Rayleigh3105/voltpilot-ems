@@ -492,6 +492,22 @@ public class HistoryRepository {
     }
 
     /**
+     * Der Börsenpreis jeder Viertelstunde im Fenster - dieselbe materialisierte
+     * Preisreihe ({@link PriceSlots}); die Vorgaben einer Erzeugeranlage
+     * (UEMS EZ-7) bewerten damit ihre Euro-Schätzung zu den Preisen der Anlage.
+     */
+    public List<ValueSlot> priceSlots(String biddingZone, Instant from, Instant to) {
+        return jdbc.query(
+                "WITH " + PRICE_SLOT_CTE
+                        + "SELECT slot, price_eur_mwh FROM price_slot"
+                        + " WHERE slot >= ? AND slot < ? ORDER BY slot",
+                (rs, i) -> new ValueSlot(rs.getTimestamp("slot").toInstant(),
+                        rs.getBigDecimal("price_eur_mwh")),
+                biddingZone, Timestamp.from(from), Timestamp.from(to),
+                Timestamp.from(from), Timestamp.from(to));
+    }
+
+    /**
      * Die GEPLANTE PV-Abregelung je Viertelstunde ({@code schedule.curtail_kw}),
      * je Slot aus dem NEUESTEN Lauf, der ihn geplant hat - dieselbe
      * {@code DISTINCT ON}-Regel wie {@link #savings} und
