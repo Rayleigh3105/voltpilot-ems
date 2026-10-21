@@ -48,6 +48,18 @@ ist ein Gerät wie heute die WAGO-Steuerung der Energiekarten, Wechselrichter un
   (wie ein Selbstbau-Gerät), bis EZ-17 das ausdrücklich koppelt.
 - ⚠ **`werte` ohne Wert = `keine_daten`, nie 0;** `aktuell` nur mit Qualität `good` und höchstens 120 s alt.
 
+## Programmstand (EZ-16)
+
+- Ist = Messpunkt `erzeuger.kopf.programmstand` (Kopf-Register 7, JJMM), Soll = `registerbild_fassung.programmstand_soll`
+  (Migration `V20261021233000`); NULL heißt „folgt der Bibliothek“ = `erzeuger/Programmstand.BIBLIOTHEK`. Diese
+  Konstante bei jeder freigegebenen Fassung der SPS-Bibliothek anheben, bis EZ-3 (eigenes Repository, EW-13 B) sie liefert.
+- Vergleich nur im Server (`Programmstand.vergleiche`): `aktuell` · `aelter` · `unbekannt` (kein Wert, `0xFFFF`,
+  kein JJMM — nie 0). Route: Feld `programmstand` an jeder `Anlagensteuerung`; `warnen` ist der Kandidat für EZ-11.
+- Portal: `src/programmstand.ts` (nur Sätze), Zeile in der Karte „Gerät“ (`GeraetHerkunft`, nur Controller, die
+  in `…/anlagensteuerungen` stehen) und Grund „Programm“ in `SteuerWarum` (Prop `programmstand`; ein aktueller
+  Stand spricht dort nicht; beim Erzeuger hinter „Daten“). `AnlagenPage` lädt ihn einmal je Steuerung
+  (`erzProgrammstand`, nicht im Takt) und reicht ihn über `ErzeugerZeile.programmstand` durch.
+
 ## Nachfolger
 
 EZ-5 (Box-Leser, Edge-Release: Laufzeitstand, `advertised: true`, Budget-Klasse in

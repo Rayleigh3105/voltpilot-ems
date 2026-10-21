@@ -13,6 +13,7 @@ import type {
   Flaeche as CockpitLayoutFlaeche,
 } from './cockpitLayout';
 import type { Profil } from './anwendungen';
+import type { Programmstand } from './programmstand';
 import type { BezugsgroesseLesart } from './bezugsgroesse';
 import type { EigeneAuswertungWerte } from './eigeneAuswertung';
 import type {
@@ -8219,6 +8220,16 @@ export interface UemsGeraet {
   vorgaenger?: UemsGeraetVorgaenger[];
 }
 
+/**
+ * Eine Anlagensteuerung (`GET /api/v1/sites/{siteId}/anlagensteuerungen`, UEMS EZ-6) — hier nur mit den Feldern,
+ * die die Geräteseite für den Programmstand braucht (EZ-16); die übrigen Felder kommen mit EZ-8/EZ-10.
+ */
+export interface AnlagensteuerungKurz {
+  geraet_id: string;
+  entity_id: string;
+  programmstand: Programmstand;
+}
+
 /** Eine Energiekarte im Steckplatz eines Controllers; `steckplatz` null = nicht erhoben. */
 export interface UemsGeraetTeil {
   id: string;
@@ -10897,6 +10908,10 @@ export const api = {
   /** Die UEMS-Geräte einer Anlage (AP-04 IP-10) — der Weg von der Komponente zum Gerät. */
   uemsGeraete: (siteId: string) =>
     request<{ geraete: UemsGeraet[] }>(`/api/v1/sites/${siteId}/geraete`),
+
+  /** Die Anlagensteuerungen einer Erzeugeranlage (UEMS EZ-6); hier nur mit dem Programmstand (EZ-16). */
+  anlagensteuerungen: (siteId: string) =>
+    request<{ steuerungen: AnlagensteuerungKurz[] }>(`/api/v1/sites/${siteId}/anlagensteuerungen`),
 
   /** AP-05 IP-9/IP-10: Kartendaten dokumentieren; Steckplatz kommt aus der physischen Zuordnung. */
   wagoKarteEintragen: (siteId: string, entityId: string, body: {

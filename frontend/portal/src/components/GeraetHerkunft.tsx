@@ -39,6 +39,8 @@ import {
   type EinstellungGruppe,
   type Zeile,
 } from '../geraetEinstellungen';
+import { programmstandZeile, type Programmstand } from '../programmstand';
+import { zeitpunktText } from '../uemsEinstellung';
 import { ALS_MESSSTELLE_VERWENDEN } from '../quelleBinden';
 import { geraetZuKomponenten } from '../uemsProtokoll';
 import { EinstellungAendernDialog, type AenderungZiel } from './EinstellungAendernDialog';
@@ -109,6 +111,23 @@ export function GeraetHerkunft({
 
   const geraet = geraetZuKomponenten(geraete, komponenten.map((k) => k.entityId)) ?? wechsel;
   const geraetId = geraet?.id ?? null;
+  const istController = geraet?.geraeteart === 'controller';
+
+  // UEMS EZ-16: eine Anlagensteuerung (Controller mit VoltPilot-Registerbild) nennt ihren Programmstand. Ein
+  // anderer Controller steht nicht in der Liste — dann keine Zeile, nie eine geratene.
+  const [programmstand, setProgrammstand] = useState<Programmstand | null>(null);
+  useEffect(() => {
+    let aktiv = true;
+    setProgrammstand(null);
+    if (!geraetId || !istController) return () => undefined;
+    api
+      .anlagensteuerungen(siteId)
+      .then((l) => aktiv && setProgrammstand(l.steuerungen.find((s) => s.geraet_id === geraetId)?.programmstand ?? null))
+      .catch(() => aktiv && setProgrammstand(null));
+    return () => {
+      aktiv = false;
+    };
+  }, [siteId, geraetId, istController, stand]);
 
   useEffect(() => {
     let aktiv = true;
@@ -164,6 +183,7 @@ export function GeraetHerkunft({
           {karte.kennzeichen && <span className="vp-pill vp-pill-info">{karte.kennzeichen}</span>}
         </p>
         <Zeilen zeilen={karte.zeilen} />
+        {programmstand && <ProgrammstandAnzeige programmstand={programmstand} />}
         {geraet.geraeteart === 'zaehler' && !geraet.teile?.length && (
           <Recht aktion="geraet.einrichten"><Recht aktion="messstelle.quelle"><Button variant="ghost" size="sm" onClick={event => { event.currentTarget.focus(); setWechsel(geraet); }}>{(geraet.ausgebaut_am && Date.parse(geraet.ausgebaut_am) > Date.parse(uhr)) || (geraet.eingebaut_am && Date.parse(geraet.eingebaut_am) > Date.parse(uhr) && geraet.vorgaenger?.length) ? 'Zeitpunkt berichtigen' : 'Zähler wechseln'}</Button></Recht></Recht>
         )}
@@ -321,6 +341,27 @@ export function GeraetHerkunft({
         onEingetragen={eingetragen}
       />
     </>
+  );
+}
+
+/** „Programmstand 26.10 · aktuell“ — und der Hinweis, wenn die Anlage einen alten Stand fährt (UEMS EZ-16). */
+function ProgrammstandAnzeige({ programmstand }: { programmstand: Programmstand }) {
+  const z = programmstandZeile(programmstand);
+  const detail =
+    programmstand.zustand === 'unbekannt'
+      ? 'Die Steuerung meldet keinen gültigen Stand.'
+      : programmstand.gemessen_am
+        ? `gelesen ${zeitpunktText(programmstand.gemessen_am)}`
+        : undefined;
+  return (
+    <div data-testid="geraet-programmstand">
+      <Zeilen zeilen={[{ label: 'Programmstand', wert: z.wert, ...(detail ? { detail } : {}) }]} />
+      {z.hinweis && (
+        <p className="vp-alert vp-alert-warn" role="note">
+          {z.hinweis}
+        </p>
+      )}
+    </div>
   );
 }
 

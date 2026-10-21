@@ -7,6 +7,7 @@ import { kw, zahl } from '../leitungsplan';
 import type { ErzeugerBlatt } from '../erzeuger';
 import type { SteuerSpalte } from '../kacheln';
 import type { AnlagenSub } from '../nav';
+import { programmstandGrund, type Programmstand } from '../programmstand';
 import { BottomSheet } from './BottomSheet';
 import { tonAus } from './steuerTon';
 
@@ -22,6 +23,7 @@ export function SteuerWarum({
   guard,
   spalten,
   erzeuger = null,
+  programmstand = null,
   onWeiter,
 }: {
   offen: boolean;
@@ -32,14 +34,16 @@ export function SteuerWarum({
   spalten: SteuerSpalte[] | null;
   /** Erzeugeranlage (EZ-8): die ganze Soll-Kette statt Auftrag › Gerät › Wirkung. */
   erzeuger?: ErzeugerBlatt | null;
+  /** UEMS EZ-16: der Programmstand der Anlagensteuerung; nur ein alter Stand spricht im Abschnitt „Warum“. */
+  programmstand?: Programmstand | null;
   onWeiter?: (sub: AnlagenSub) => void;
 }) {
   return (
     <SteuerBlatt offen={offen} isPhone={isPhone} onClose={onClose}>
       {erzeuger ? (
-        <ErzeugerDetails blatt={erzeuger} guard={guard} onWeiter={onWeiter} />
+        <ErzeugerDetails blatt={erzeuger} guard={guard} programmstand={programmstand} onWeiter={onWeiter} />
       ) : (
-        <SteuerDetails view={view} guard={guard} spalten={spalten} onWeiter={onWeiter} />
+        <SteuerDetails view={view} guard={guard} spalten={spalten} programmstand={programmstand} onWeiter={onWeiter} />
       )}
     </SteuerBlatt>
   );
@@ -53,12 +57,17 @@ export function SteuerWarum({
 function ErzeugerDetails({
   blatt,
   guard,
+  programmstand,
   onWeiter,
 }: {
   blatt: ErzeugerBlatt;
   guard: ExportGuardView | null;
+  programmstand: Programmstand | null;
   onWeiter?: (sub: AnlagenSub) => void;
 }) {
+  // UEMS EZ-16: ein alter Programmstand steht hinter „Daten“ als weiterer Grund.
+  const programm = programmstandGrund(programmstand);
+  const warum: [string, string][] = programm ? [...blatt.warum, programm] : blatt.warum;
   const b = blatt.balken;
   const pos = (x: number) => `${Math.min(100, Math.max(0, (100 * x) / (b?.maxKw || 1))).toFixed(1)}%`;
   // Die Beschriftungen bleiben im Kasten, auch wenn eine Marke nahe am Rand steht.
@@ -97,7 +106,7 @@ function ErzeugerDetails({
       </div>
       <p className="vp-steuer-abschnitt">Warum</p>
       <dl className="vp-steuer-gruende">
-        {blatt.warum.map(([wer, satz]) => (
+        {warum.map(([wer, satz]) => (
           <div key={wer}>
             <dt>{wer}</dt>
             <dd>{satz}</dd>
@@ -148,21 +157,27 @@ function SteuerDetails({
   view,
   guard,
   spalten,
+  programmstand,
   onWeiter,
 }: {
   view: ControlStripView | null;
   guard: ExportGuardView | null;
   spalten: SteuerSpalte[] | null;
+  programmstand: Programmstand | null;
   onWeiter?: (sub: AnlagenSub) => void;
 }) {
-  const gruende: [string, string][] = view
-    ? ([
-        ['Plan', view.reason],
-        ['Gerät', view.execution],
-        ['Einspeisung', view.curtailment],
-        ['Als Nächstes', view.outlook],
-      ].filter((g): g is [string, string] => Boolean(g[1])))
-    : [];
+  const programm = programmstandGrund(programmstand);
+  const gruende: [string, string][] = [
+    ...(view
+      ? [
+          ['Plan', view.reason],
+          ['Gerät', view.execution],
+          ['Einspeisung', view.curtailment],
+          ['Als Nächstes', view.outlook],
+        ].filter((g): g is [string, string] => Boolean(g[1]))
+      : []),
+    ...(programm ? [programm] : []),
+  ];
   return (
     <div className="vp-steuer-blatt">
       {view && (

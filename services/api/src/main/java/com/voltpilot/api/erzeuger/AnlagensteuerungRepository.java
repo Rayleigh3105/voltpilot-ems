@@ -38,7 +38,7 @@ public class AnlagensteuerungRepository {
     /** Die Fassung, wie sie in der Tabelle steht ({@code rseStufen} als JSON-Text). */
     public record Fassung(UUID id, String bildart, int basisadresse, int funktionscode, String wortfolge,
             int teAnzahl, String anlagenart, Long steuerungKennung, String rseStufen, int veraltetNetzpunktS,
-            Instant gueltigAb) {}
+            Integer programmstandSoll, Instant gueltigAb) {}
 
     /** Die Stammdaten Netz und Vermarktung einer Anlage. */
     public record Stammdaten(String direktvermarkter, String direktvermarkterKanal, String einspeisemanagement,
@@ -114,14 +114,14 @@ public class AnlagensteuerungRepository {
     /** Die laufende Fassung der Steuerung — leer ohne eine. */
     public Optional<Fassung> fassung(UUID geraetId) {
         return jdbc.query("SELECT id, bildart, basisadresse, funktionscode, wortfolge, te_anzahl, anlagenart, "
-                + "steuerung_kennung, rse_stufen::text AS rse_stufen, veraltet_netzpunkt_s, gueltig_ab "
+                + "steuerung_kennung, rse_stufen::text AS rse_stufen, veraltet_netzpunkt_s, programmstand_soll, gueltig_ab "
                 + "FROM registerbild_fassung WHERE geraet_id = ? AND gueltig_ab <= now() "
                 + "AND (gueltig_bis IS NULL OR gueltig_bis > now())",
                 (rs, n) -> new Fassung(rs.getObject("id", UUID.class), rs.getString("bildart"),
                         rs.getInt("basisadresse"), rs.getInt("funktionscode"), rs.getString("wortfolge"),
                         rs.getInt("te_anzahl"), rs.getString("anlagenart"), (Long) rs.getObject("steuerung_kennung"),
                         rs.getString("rse_stufen"), rs.getInt("veraltet_netzpunkt_s"),
-                        rs.getTimestamp("gueltig_ab").toInstant()), geraetId).stream().findFirst();
+                        (Integer) rs.getObject("programmstand_soll"), rs.getTimestamp("gueltig_ab").toInstant()), geraetId).stream().findFirst();
     }
 
     /** Die Erzeugungseinheiten, die jetzt an der Steuerung stecken, nach TE-Nr. */
@@ -211,13 +211,14 @@ public class AnlagensteuerungRepository {
 
     public void fassungAnlegen(UUID tenant, UUID siteId, UUID geraetId, int basisadresse, int funktionscode,
             String wortfolge, int teAnzahl, String anlagenart, Long steuerungKennung, Object rseStufen,
-            int veraltetNetzpunktS, Instant ab, String subject) {
+            int veraltetNetzpunktS, Integer programmstandSoll, Instant ab, String subject) {
         jdbc.update("INSERT INTO registerbild_fassung (tenant_id, site_id, geraet_id, bildart, basisadresse, "
                 + "funktionscode, wortfolge, te_anzahl, anlagenart, steuerung_kennung, rse_stufen, "
-                + "veraltet_netzpunkt_s, gueltig_ab, created_by) VALUES (?,?,?,?,?,?,?,?,?,?,?::jsonb,?,?,?)",
+                + "veraltet_netzpunkt_s, programmstand_soll, gueltig_ab, created_by) "
+                + "VALUES (?,?,?,?,?,?,?,?,?,?,?::jsonb,?,?,?,?)",
                 tenant, siteId, geraetId, ErzeugerRegisterbild.BILDART, basisadresse, funktionscode, wortfolge,
                 teAnzahl, anlagenart, steuerungKennung, rseStufen == null ? null : text(rseStufen),
-                veraltetNetzpunktS, Timestamp.from(ab), subject);
+                veraltetNetzpunktS, programmstandSoll, Timestamp.from(ab), subject);
     }
 
     /** Ersetzt die Angaben einer eingebauten Einheit; false, wenn es sie nicht (mehr) gibt. */
