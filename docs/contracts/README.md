@@ -27,6 +27,7 @@ flowchart LR
 | OCPP-Ereignisse und Befehle | [Ereignis](mqtt-ocpp-events.schema.json), [Command](mqtt-ocpp-command.schema.json) |
 | OTA | [Manifest](ota-release-manifest.schema.json) mit [Vektoren je Box-Art](ota-release-manifest-vectors.json), [Signatur](ota-signature.schema.json), [Ziel](mqtt-ota-target.schema.json) |
 | Ladepark | [Konfiguration](mqtt-charging-config.schema.json), [Boost](mqtt-charging-boost.schema.json) |
+| Registerbild Erzeuger: Steuerung einer PV- oder BHKW-Anlage → Box (Modbus, nur lesen) | [Vertrag](v2/erzeuger-registerbild.md), [Vektoren](v2/erzeuger-registerbild-vectors.json), [Schema](v2/erzeuger-registerbild.schema.json); Energiekarten: [WAGO-Registerbild](v2/wago-registerbild.md) |
 | Diagnose / Eingriff | [Probe](mqtt-probe.schema.json), [Registerauftrag](mqtt-register-write.schema.json), [Datenbereinigung](mqtt-data-purge.schema.json) |
 | Fernwartung | [Soll-Stand des Tunnel-Dienstes](fernwartung-soll-v1.example.json), Routen im OpenAPI-Tag `fernwartung`; [Schlüsselausgabe an die Box](fernwartung-schluessel-v1.md) mit [Vektor](fernwartung-schluessel-v1.example.txt); [Rückmeldung des Tunnel-Dienstes ans Portal](fernwartung-rueckmeldung-v1.md) mit [Vektor](fernwartung-rueckmeldung-v1.example.json) |
 | Beispiele | [v1-Fixtures](examples/README.md), [v2-Fixtures](v2/examples/README.md) |

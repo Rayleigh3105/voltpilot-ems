@@ -1,0 +1,2055 @@
+{
+  "_comment": [
+    "VoltPilot-Registerbild Erzeuger v1 (EZ-1). Die Prosa steht in erzeuger-registerbild.md, der Aufbau und die",
+    "Lese-Fälle stehen HIER. Quelle: register-vorlage-schlank.json (Konzept vp-erzeuger-wago-konzept, Fassung 12,",
+    "EW-17 A); Feldnamen, Adressen, Typen und Ungültig-Werte unverändert, mit zwei Entscheiden von firstmate",
+    "(A1 = A: ab 9 Einheiten zwei Anfragen; A2 = A: herzschlag, n_zaehler, d_zaehler laufen 65535 → 0 und haben",
+    "keinen Ungültig-Wert). Bitnamen, Vokabular-Namen und was ein Gültigkeitsbit deckt sind Festlegungen dieses",
+    "Vertrags (Lesarten 1–12). Alle Fälle sind herkunft vertrag, belegt false: ihre Werte sind ausgedacht und",
+    "zeigen nur, wie ein Leser das Bild liest. Erzeugt per Skript (Wörter kodiert aus den Absichten, Erwartung aus",
+    "den Absichten); geprüft von einem unabhängigen Leser im Test. Zwillinge (Box-Leser EZ-5, Simulator EZ-2,",
+    "Bild-Baustein der SPS-Bibliothek EZ-3) lesen diese Datei; wer den Aufbau ändert, ändert Datei, Vertrag und Test gemeinsam."
+  ],
+  "schema_version": "1.0",
+  "$schema_datei": "./erzeuger-registerbild.schema.json",
+  "vertrag": "./erzeuger-registerbild.md",
+  "herkunft": "Konzept vp-erzeuger-wago-konzept Fassung 12 §3.1, §3.7, §3.9, §3.10 (register-vorlage-schlank.json); Entscheide EW-1, EW-2, EW-5, EW-16, EW-17 vom 21.10.2026; firstmate A1 = A, A2 = A und Lesarten 1–12 vom 21.10.2026",
+  "zwillinge": [],
+  "pruefer": ["frontend/portal/src/erzeugerRegisterbild.test.ts"],
+  "registerbild": {"signatur": "VP EZ", "hauptversion": 1, "nebenversion": 0, "version_wort": 256},
+  "parameter": {
+    "funktionscode": {"art": "festlegung", "wert": 4, "fundstelle": "EW-2 A: eigene Eingangsregister (FC4)"},
+    "basisadresse": {"art": "festlegung", "wert": 0, "fundstelle": "EW-2 A: ab Adresse 0"},
+    "wortfolge": {"art": "festlegung", "wert": "big", "fundstelle": "register-vorlage-schlank.json regeln.wortfolge: höherwertiges Wort zuerst"},
+    "takt_s": {"art": "festlegung", "wert": 5, "fundstelle": "EW-5 A"},
+    "unit_id": {"art": "festlegung", "wert": "gehört zur Datenquelle, nie zum Bild", "fundstelle": "Konzept §3.1 (wie WAGO-Registerbild v1 §2)"}
+  },
+  "typen": [
+    {"typ": "U16", "woerter": 1, "ungueltig": 65535, "vorzeichen": false},
+    {"typ": "S16", "woerter": 1, "ungueltig": 32767, "vorzeichen": true},
+    {"typ": "U32", "woerter": 2, "ungueltig": 4294967295, "vorzeichen": false},
+    {"typ": "S32", "woerter": 2, "ungueltig": 2147483647, "vorzeichen": true}
+  ],
+  "abschnitte": [
+    {"kurz": "K", "titel": "Kopf", "start": 0, "woerter": 12},
+    {"kurz": "A", "titel": "Anlage und Netzpunkt", "start": 12, "woerter": 10},
+    {"kurz": "N", "titel": "Netzbetreiber", "start": 22, "woerter": 6},
+    {"kurz": "D", "titel": "Direktvermarkter", "start": 28, "woerter": 6},
+    {"kurz": "S", "titel": "Wirkung", "start": 34, "woerter": 4},
+    {"kurz": "T", "titel": "je Einheit", "start": 38, "woerter": 10, "je_einheit": true, "adresse_einheit_n": "38 + (n − 1) · 10"}
+  ],
+  "einheit": {"basis": 38, "laenge": 10, "max_einheiten": 10, "adresse": "basis + (n − 1) · laenge + versatz", "gore_woerter": 68, "buettner_woerter": 58},
+  "felder": [
+    {
+      "abschnitt": "K",
+      "feld": "signatur",
+      "adresse": 0,
+      "woerter": 2,
+      "typ": "U32",
+      "art": "pruefwert",
+      "ungueltig": 4294967295,
+      "einheit": "0x5650 0x455A",
+      "bedeutung": "„VP“ „EZ“: das ist ein Erzeuger-Bild",
+      "soll": 1448101210,
+      "soll_woerter": [22096, 17754]
+    },
+    {
+      "abschnitt": "K",
+      "feld": "wortfolge",
+      "adresse": 2,
+      "woerter": 2,
+      "typ": "U32",
+      "art": "pruefwert",
+      "ungueltig": 4294967295,
+      "einheit": "0x01020304",
+      "bedeutung": "Prüfwert: höherwertiges Wort zuerst",
+      "soll": 16909060,
+      "soll_woerter": [258, 772]
+    },
+    {
+      "abschnitt": "K",
+      "feld": "version",
+      "adresse": 4,
+      "woerter": 1,
+      "typ": "U16",
+      "art": "version",
+      "ungueltig": 65535,
+      "einheit": "0x0100",
+      "bedeutung": "Bildfassung 1.0 (schlank)",
+      "soll": {"hauptversion": 1, "nebenversion": 0, "wort": 256}
+    },
+    {
+      "abschnitt": "K",
+      "feld": "te_anzahl",
+      "adresse": 5,
+      "woerter": 1,
+      "typ": "U16",
+      "art": "anzahl",
+      "ungueltig": 65535,
+      "einheit": "Anzahl",
+      "bedeutung": "Einheiten im Bild (Wechselrichter oder Motoren)",
+      "gueltig": {"von": 1, "bis": 10}
+    },
+    {"abschnitt": "K", "feld": "herzschlag", "adresse": 6, "woerter": 1, "typ": "U16", "art": "zaehler", "ungueltig": null, "einheit": "+1 je s", "bedeutung": "steht er dreimal still, gilt alles als veraltet", "ungueltig_in_der_vorlage": "0xFFFF", "ueberlauf": "65535 → 0, 0xFFFF ist ein Wert (firstmate A2 = A); Differenz mod 65536"},
+    {"abschnitt": "K", "feld": "programmstand", "adresse": 7, "woerter": 1, "typ": "U16", "art": "wert", "ungueltig": 65535, "einheit": "JJMM", "bedeutung": "Stand des eingespielten Programms"},
+    {"abschnitt": "K", "feld": "steuerung_id", "adresse": 8, "woerter": 2, "typ": "U32", "art": "wert", "ungueltig": 4294967295, "einheit": "Nummer", "bedeutung": "Kennung der Steuerung, von VoltPilot vergeben"},
+    {
+      "abschnitt": "K",
+      "feld": "anlagenart",
+      "adresse": 10,
+      "woerter": 1,
+      "typ": "U16",
+      "art": "aufzaehlung",
+      "ungueltig": 65535,
+      "einheit": "1 PV · 2 BHKW · 3 gemischt",
+      "bedeutung": "Art der Anlage",
+      "vokabular": [
+        {"code": 1, "name": "pv", "bedeutung": "PV"},
+        {"code": 2, "name": "bhkw", "bedeutung": "BHKW"},
+        {"code": 3, "name": "gemischt", "bedeutung": "gemischt"}
+      ]
+    },
+    {
+      "abschnitt": "K",
+      "feld": "beschreibung_ab",
+      "adresse": 11,
+      "woerter": 1,
+      "typ": "U16",
+      "art": "adresse",
+      "ungueltig": 65535,
+      "einheit": "Adresse, 0 = keine Namen",
+      "bedeutung": "wo die Namen beginnen (140)",
+      "keine_namen": [0, 65535]
+    },
+    {
+      "abschnitt": "A",
+      "feld": "a_gueltig",
+      "adresse": 12,
+      "woerter": 1,
+      "typ": "U16",
+      "art": "bitfeld",
+      "ungueltig": 65535,
+      "einheit": "Bitfeld",
+      "bedeutung": "Bit 0 Netzpunkt gültig · 1 Netzpunkt berechnet · 2 Netzpunkt-Messung tot · 3 Erzeugung gültig · 4 Gasspeicher gültig",
+      "bits": [
+        {"bit": 0, "name": "netzpunkt_gueltig", "bedeutung": "Netzpunkt gültig", "deckt": ["p_nvp_w"]},
+        {"bit": 1, "name": "netzpunkt_berechnet", "bedeutung": "Netzpunkt berechnet"},
+        {"bit": 2, "name": "netzpunkt_tot", "bedeutung": "Netzpunkt-Messung tot"},
+        {"bit": 3, "name": "erzeugung_gueltig", "bedeutung": "Erzeugung gültig", "deckt": ["p_erzeugung_w"]},
+        {"bit": 4, "name": "gasspeicher_gueltig", "bedeutung": "Gasspeicher gültig", "deckt": ["speicher_fuellstand"]}
+      ],
+      "frei_ab_bit": 5
+    },
+    {
+      "abschnitt": "A",
+      "feld": "a_alter_s",
+      "adresse": 13,
+      "woerter": 1,
+      "typ": "U16",
+      "art": "wert",
+      "ungueltig": 65535,
+      "einheit": "s",
+      "bedeutung": "Alter der Netzpunkt-Messung",
+      "skala": {"faktor": 1, "einheit": "s"}
+    },
+    {
+      "abschnitt": "A",
+      "feld": "p_nvp_w",
+      "adresse": 14,
+      "woerter": 2,
+      "typ": "S32",
+      "art": "wert",
+      "ungueltig": 2147483647,
+      "einheit": "W · + Bezug / − Einspeisung",
+      "bedeutung": "Leistung am Netzpunkt",
+      "skala": {"faktor": 1, "einheit": "W"},
+      "vorzeichen": "+ Bezug / − Einspeisung",
+      "gedeckt_von": {"feld": "a_gueltig", "bit": "netzpunkt_gueltig"}
+    },
+    {
+      "abschnitt": "A",
+      "feld": "p_erzeugung_w",
+      "adresse": 16,
+      "woerter": 2,
+      "typ": "S32",
+      "art": "wert",
+      "ungueltig": 2147483647,
+      "einheit": "W · + Erzeugung",
+      "bedeutung": "Summe aller Einheiten",
+      "skala": {"faktor": 1, "einheit": "W"},
+      "vorzeichen": "+ Erzeugung",
+      "gedeckt_von": {"feld": "a_gueltig", "bit": "erzeugung_gueltig"}
+    },
+    {
+      "abschnitt": "A",
+      "feld": "anlage_zustand",
+      "adresse": 18,
+      "woerter": 1,
+      "typ": "U16",
+      "art": "aufzaehlung",
+      "ungueltig": 65535,
+      "einheit": "0 aus · 1 bereit · 2 läuft · 3 läuft begrenzt · 4 Störung · 5 Hand/Wartung · 6 Not-Aus",
+      "bedeutung": "Zustand der ganzen Anlage",
+      "vokabular": [
+        {"code": 0, "name": "aus", "bedeutung": "aus"},
+        {"code": 1, "name": "bereit", "bedeutung": "bereit"},
+        {"code": 2, "name": "laeuft", "bedeutung": "läuft"},
+        {"code": 3, "name": "laeuft_begrenzt", "bedeutung": "läuft begrenzt"},
+        {"code": 4, "name": "stoerung", "bedeutung": "Störung"},
+        {"code": 5, "name": "hand_wartung", "bedeutung": "Hand/Wartung"},
+        {"code": 6, "name": "not_aus", "bedeutung": "Not-Aus"}
+      ]
+    },
+    {
+      "abschnitt": "A",
+      "feld": "a_bits",
+      "adresse": 19,
+      "woerter": 1,
+      "typ": "U16",
+      "art": "bitfeld",
+      "ungueltig": 65535,
+      "einheit": "Bitfeld",
+      "bedeutung": "Bit 0 Not-Aus vor Ort · 1 NA-Schutz · 2 Sammelstörung · 3 Hand/Ort · 4 Wartung",
+      "bits": [
+        {"bit": 0, "name": "not_aus", "bedeutung": "Not-Aus vor Ort"},
+        {"bit": 1, "name": "na_schutz", "bedeutung": "NA-Schutz"},
+        {"bit": 2, "name": "sammelstoerung", "bedeutung": "Sammelstörung"},
+        {"bit": 3, "name": "hand_ort", "bedeutung": "Hand/Ort"},
+        {"bit": 4, "name": "wartung", "bedeutung": "Wartung"}
+      ],
+      "frei_ab_bit": 5
+    },
+    {
+      "abschnitt": "A",
+      "feld": "speicher_fuellstand",
+      "adresse": 20,
+      "woerter": 1,
+      "typ": "U16",
+      "art": "wert",
+      "ungueltig": 65535,
+      "einheit": "0,1 %",
+      "bedeutung": "Gasspeicher (Gassack)",
+      "skala": {"faktor": 0.1, "einheit": "%"},
+      "gedeckt_von": {"feld": "a_gueltig", "bit": "gasspeicher_gueltig"}
+    },
+    {
+      "abschnitt": "A",
+      "feld": "p_installiert_kw",
+      "adresse": 21,
+      "woerter": 1,
+      "typ": "U16",
+      "art": "wert",
+      "ungueltig": 65535,
+      "einheit": "kW",
+      "bedeutung": "installierte Leistung",
+      "skala": {"faktor": 1, "einheit": "kW"}
+    },
+    {
+      "abschnitt": "N",
+      "feld": "n_kanal",
+      "adresse": 22,
+      "woerter": 1,
+      "typ": "U16",
+      "art": "aufzaehlung",
+      "ungueltig": 65535,
+      "einheit": "0 keiner · 1 feste Grenze · 2 Stufen · 3 Fernwirktechnik",
+      "bedeutung": "Weg der Vorgabe",
+      "vokabular": [
+        {"code": 0, "name": "keiner", "bedeutung": "keiner"},
+        {"code": 1, "name": "feste_grenze", "bedeutung": "feste Grenze"},
+        {"code": 2, "name": "stufen", "bedeutung": "Stufen"},
+        {"code": 3, "name": "fernwirktechnik", "bedeutung": "Fernwirktechnik"}
+      ]
+    },
+    {
+      "abschnitt": "N",
+      "feld": "n_bits",
+      "adresse": 23,
+      "woerter": 1,
+      "typ": "U16",
+      "art": "bitfeld",
+      "ungueltig": 65535,
+      "einheit": "Bitfeld",
+      "bedeutung": "Bit 0 Vorgabe gültig · 1 Verbindung steht · 2 Wirkleistung begrenzt · 3 Not-Aus · 4 cos-φ-Vorgabe · 5 Kennlinie",
+      "bits": [
+        {"bit": 0, "name": "vorgabe_gueltig", "bedeutung": "Vorgabe gültig", "deckt": ["n_p_prozent", "n_cosphi"]},
+        {"bit": 1, "name": "verbindung_steht", "bedeutung": "Verbindung steht"},
+        {"bit": 2, "name": "wirkleistung_begrenzt", "bedeutung": "Wirkleistung begrenzt"},
+        {"bit": 3, "name": "not_aus", "bedeutung": "Not-Aus"},
+        {"bit": 4, "name": "cosphi_vorgabe", "bedeutung": "cos-φ-Vorgabe"},
+        {"bit": 5, "name": "kennlinie", "bedeutung": "Kennlinie"}
+      ],
+      "frei_ab_bit": 6
+    },
+    {
+      "abschnitt": "N",
+      "feld": "n_p_prozent",
+      "adresse": 24,
+      "woerter": 1,
+      "typ": "U16",
+      "art": "wert",
+      "ungueltig": 65535,
+      "einheit": "0,1 %",
+      "bedeutung": "Wirkleistungsgrenze",
+      "skala": {"faktor": 0.1, "einheit": "%"},
+      "gedeckt_von": {"feld": "n_bits", "bit": "vorgabe_gueltig"}
+    },
+    {
+      "abschnitt": "N",
+      "feld": "n_cosphi",
+      "adresse": 25,
+      "woerter": 1,
+      "typ": "S16",
+      "art": "wert",
+      "ungueltig": 32767,
+      "einheit": "0,001 · + über- / − untererregt",
+      "bedeutung": "cos-φ-Vorgabe",
+      "skala": {"faktor": 0.001, "einheit": "1"},
+      "vorzeichen": "+ übererregt / − untererregt",
+      "gedeckt_von": {"feld": "n_bits", "bit": "vorgabe_gueltig"}
+    },
+    {
+      "abschnitt": "N",
+      "feld": "n_seit_s",
+      "adresse": 26,
+      "woerter": 1,
+      "typ": "U16",
+      "art": "wert",
+      "ungueltig": 65535,
+      "einheit": "s, höchstens 65534",
+      "bedeutung": "seit der letzten Vorgabe",
+      "skala": {"faktor": 1, "einheit": "s"},
+      "hoechstens": 65534
+    },
+    {"abschnitt": "N", "feld": "n_zaehler", "adresse": 27, "woerter": 1, "typ": "U16", "art": "zaehler", "ungueltig": null, "einheit": "Anzahl, läuft über", "bedeutung": "Vorgaben seit Programmstart", "ungueltig_in_der_vorlage": "0xFFFF", "ueberlauf": "65535 → 0, 0xFFFF ist ein Wert (firstmate A2 = A); Differenz mod 65536"},
+    {
+      "abschnitt": "D",
+      "feld": "d_kanal",
+      "adresse": 28,
+      "woerter": 1,
+      "typ": "U16",
+      "art": "aufzaehlung",
+      "ungueltig": 65535,
+      "einheit": "0 keiner · 1 Relais und mA · 2 Modbus",
+      "bedeutung": "Weg des Direktvermarkters",
+      "vokabular": [
+        {"code": 0, "name": "keiner", "bedeutung": "keiner"},
+        {"code": 1, "name": "relais_und_ma", "bedeutung": "Relais und mA"},
+        {"code": 2, "name": "modbus", "bedeutung": "Modbus"}
+      ]
+    },
+    {
+      "abschnitt": "D",
+      "feld": "d_bits",
+      "adresse": 29,
+      "woerter": 1,
+      "typ": "U16",
+      "art": "bitfeld",
+      "ungueltig": 65535,
+      "einheit": "Bitfeld",
+      "bedeutung": "Bit 0 Abschnitt gültig · 1 Aktivierung · 2 Stopp · 3 bereit gemeldet · 4 aktiv gemeldet",
+      "bits": [
+        {
+          "bit": 0,
+          "name": "abschnitt_gueltig",
+          "bedeutung": "Abschnitt gültig",
+          "deckt": ["d_soll_w", "d_seit_s", "d_zaehler"],
+          "deckt_bits": ["aktivierung", "stopp", "bereit_gemeldet", "aktiv_gemeldet"]
+        },
+        {"bit": 1, "name": "aktivierung", "bedeutung": "Aktivierung"},
+        {"bit": 2, "name": "stopp", "bedeutung": "Stopp"},
+        {"bit": 3, "name": "bereit_gemeldet", "bedeutung": "bereit gemeldet"},
+        {"bit": 4, "name": "aktiv_gemeldet", "bedeutung": "aktiv gemeldet"}
+      ],
+      "frei_ab_bit": 5
+    },
+    {
+      "abschnitt": "D",
+      "feld": "d_soll_w",
+      "adresse": 30,
+      "woerter": 2,
+      "typ": "U32",
+      "art": "wert",
+      "ungueltig": 4294967295,
+      "einheit": "W",
+      "bedeutung": "Sollwert des Direktvermarkters",
+      "skala": {"faktor": 1, "einheit": "W"},
+      "gedeckt_von": {"feld": "d_bits", "bit": "abschnitt_gueltig"}
+    },
+    {
+      "abschnitt": "D",
+      "feld": "d_seit_s",
+      "adresse": 32,
+      "woerter": 1,
+      "typ": "U16",
+      "art": "wert",
+      "ungueltig": 65535,
+      "einheit": "s, höchstens 65534",
+      "bedeutung": "seit der letzten Änderung",
+      "skala": {"faktor": 1, "einheit": "s"},
+      "hoechstens": 65534,
+      "gedeckt_von": {"feld": "d_bits", "bit": "abschnitt_gueltig"}
+    },
+    {
+      "abschnitt": "D",
+      "feld": "d_zaehler",
+      "adresse": 33,
+      "woerter": 1,
+      "typ": "U16",
+      "art": "zaehler",
+      "ungueltig": null,
+      "einheit": "Anzahl, läuft über",
+      "bedeutung": "Abrufe seit Programmstart",
+      "ungueltig_in_der_vorlage": "0xFFFF",
+      "ueberlauf": "65535 → 0, 0xFFFF ist ein Wert (firstmate A2 = A); Differenz mod 65536",
+      "gedeckt_von": {"feld": "d_bits", "bit": "abschnitt_gueltig"}
+    },
+    {
+      "abschnitt": "S",
+      "feld": "quelle_p",
+      "adresse": 34,
+      "woerter": 1,
+      "typ": "U16",
+      "art": "aufzaehlung",
+      "ungueltig": 65535,
+      "einheit": "0 keine Grenze · 1 Netzbetreiber · 2 Direktvermarkter · 3 Netzpunkt-Regelung · 4 Hand · 5 Not-Aus · 6 Ersatzwert",
+      "bedeutung": "wer gerade begrenzt",
+      "gedeckt_von": {"feld": "s_bits", "bit": "gueltig"},
+      "vokabular": [
+        {"code": 0, "name": "keine_grenze", "bedeutung": "keine Grenze"},
+        {"code": 1, "name": "netzbetreiber", "bedeutung": "Netzbetreiber"},
+        {"code": 2, "name": "direktvermarkter", "bedeutung": "Direktvermarkter"},
+        {"code": 3, "name": "netzpunkt_regelung", "bedeutung": "Netzpunkt-Regelung"},
+        {"code": 4, "name": "hand", "bedeutung": "Hand"},
+        {"code": 5, "name": "not_aus", "bedeutung": "Not-Aus"},
+        {"code": 6, "name": "ersatzwert", "bedeutung": "Ersatzwert"}
+      ]
+    },
+    {
+      "abschnitt": "S",
+      "feld": "s_bits",
+      "adresse": 35,
+      "woerter": 1,
+      "typ": "U16",
+      "art": "bitfeld",
+      "ungueltig": 65535,
+      "einheit": "Bitfeld",
+      "bedeutung": "Bit 0 gültig · 1 Anlage folgt",
+      "bits": [
+        {
+          "bit": 0,
+          "name": "gueltig",
+          "bedeutung": "gültig",
+          "deckt": ["quelle_p", "p_grenze_w"],
+          "deckt_bits": ["anlage_folgt"]
+        },
+        {"bit": 1, "name": "anlage_folgt", "bedeutung": "Anlage folgt"}
+      ],
+      "frei_ab_bit": 2
+    },
+    {
+      "abschnitt": "S",
+      "feld": "p_grenze_w",
+      "adresse": 36,
+      "woerter": 2,
+      "typ": "U32",
+      "art": "wert",
+      "ungueltig": 4294967295,
+      "einheit": "W",
+      "bedeutung": "wirksame Grenze",
+      "skala": {"faktor": 1, "einheit": "W"},
+      "gedeckt_von": {"feld": "s_bits", "bit": "gueltig"}
+    },
+    {
+      "abschnitt": "T",
+      "feld": "t_zustand",
+      "adresse": 38,
+      "woerter": 1,
+      "typ": "U16",
+      "art": "aufzaehlung",
+      "ungueltig": 65535,
+      "einheit": "wie anlage_zustand",
+      "bedeutung": "Zustand der Einheit",
+      "gedeckt_von": {"feld": "t_bits", "bit": "werte_gueltig"},
+      "vokabular": [
+        {"code": 0, "name": "aus", "bedeutung": "aus"},
+        {"code": 1, "name": "bereit", "bedeutung": "bereit"},
+        {"code": 2, "name": "laeuft", "bedeutung": "läuft"},
+        {"code": 3, "name": "laeuft_begrenzt", "bedeutung": "läuft begrenzt"},
+        {"code": 4, "name": "stoerung", "bedeutung": "Störung"},
+        {"code": 5, "name": "hand_wartung", "bedeutung": "Hand/Wartung"},
+        {"code": 6, "name": "not_aus", "bedeutung": "Not-Aus"}
+      ]
+    },
+    {
+      "abschnitt": "T",
+      "feld": "t_bits",
+      "adresse": 39,
+      "woerter": 1,
+      "typ": "U16",
+      "art": "bitfeld",
+      "ungueltig": 65535,
+      "einheit": "Bitfeld",
+      "bedeutung": "Bit 0 Werte gültig · 1 Sollwert gültig · 2 DV bereit · 3 DV aktiv · 4–9 Gründe für „nicht bereit“",
+      "bits": [
+        {"bit": 0, "name": "werte_gueltig", "bedeutung": "Werte gültig", "deckt": ["t_zustand", "t_p_ist_w", "t_e"]},
+        {"bit": 1, "name": "sollwert_gueltig", "bedeutung": "Sollwert gültig", "deckt": ["t_p_soll_w"]},
+        {"bit": 2, "name": "dv_bereit", "bedeutung": "DV bereit"},
+        {"bit": 3, "name": "dv_aktiv", "bedeutung": "DV aktiv"},
+        {"bit": 4, "name": "grund_stoerung", "bedeutung": "nicht bereit: Störung"},
+        {"bit": 5, "name": "grund_netzbetreiber", "bedeutung": "nicht bereit: Vorgabe des Netzbetreibers (§ 9 EEG)"},
+        {"bit": 6, "name": "grund_hand_ort", "bedeutung": "nicht bereit: Hand/Ort"},
+        {"bit": 7, "name": "grund_wartung", "bedeutung": "nicht bereit: Wartung"},
+        {"bit": 8, "name": "grund_gasspeicher_leer", "bedeutung": "nicht bereit: Gasspeicher leer"},
+        {"bit": 9, "name": "grund_sonstiger", "bedeutung": "nicht bereit: sonstiger"}
+      ],
+      "frei_ab_bit": 10
+    },
+    {
+      "abschnitt": "T",
+      "feld": "t_art",
+      "adresse": 40,
+      "woerter": 1,
+      "typ": "U16",
+      "art": "aufzaehlung",
+      "ungueltig": 65535,
+      "einheit": "1 PV-Wechselrichter · 2 BHKW-Motor",
+      "bedeutung": "Art der Einheit (erklärt die Anlage)",
+      "vokabular": [
+        {"code": 1, "name": "pv_wechselrichter", "bedeutung": "PV-Wechselrichter"},
+        {"code": 2, "name": "bhkw_motor", "bedeutung": "BHKW-Motor"}
+      ]
+    },
+    {
+      "abschnitt": "T",
+      "feld": "t_nenn_kw",
+      "adresse": 41,
+      "woerter": 1,
+      "typ": "U16",
+      "art": "wert",
+      "ungueltig": 65535,
+      "einheit": "kW",
+      "bedeutung": "Nennleistung der Einheit (erklärt die Anlage)",
+      "skala": {"faktor": 1, "einheit": "kW"}
+    },
+    {
+      "abschnitt": "T",
+      "feld": "t_p_ist_w",
+      "adresse": 42,
+      "woerter": 2,
+      "typ": "S32",
+      "art": "wert",
+      "ungueltig": 2147483647,
+      "einheit": "W",
+      "bedeutung": "Leistung der Einheit",
+      "skala": {"faktor": 1, "einheit": "W"},
+      "vorzeichen": "+ Erzeugung (wie p_erzeugung_w, das die Summe der Einheiten ist)",
+      "gedeckt_von": {"feld": "t_bits", "bit": "werte_gueltig"}
+    },
+    {
+      "abschnitt": "T",
+      "feld": "t_p_soll_w",
+      "adresse": 44,
+      "woerter": 2,
+      "typ": "U32",
+      "art": "wert",
+      "ungueltig": 4294967295,
+      "einheit": "W",
+      "bedeutung": "wirksamer Sollwert der Einheit",
+      "skala": {"faktor": 1, "einheit": "W"},
+      "gedeckt_von": {"feld": "t_bits", "bit": "sollwert_gueltig"}
+    },
+    {
+      "abschnitt": "T",
+      "feld": "t_e",
+      "adresse": 46,
+      "woerter": 2,
+      "typ": "U32",
+      "art": "wert",
+      "ungueltig": 4294967295,
+      "einheit": "0,1 kWh",
+      "bedeutung": "Zählerstand Erzeugung",
+      "skala": {"faktor": 0.1, "einheit": "kWh"},
+      "gedeckt_von": {"feld": "t_bits", "bit": "werte_gueltig"}
+    }
+  ],
+  "namen": {
+    "ab_feld": "beschreibung_ab",
+    "vorgabe_ab": 140,
+    "keine_namen": [0, 65535],
+    "woerter_je_text": 16,
+    "zeichen_je_text": 32,
+    "zeichensatz": "ISO-8859-1",
+    "byte_folge": "höherwertiges Byte zuerst",
+    "ende": "erstes 0-Byte; 32 Zeichen ohne 0 sind erlaubt",
+    "leer": "keiner (null)",
+    "bereich": "beschreibung_ab ≥ 38 + 10 · te_anzahl und beschreibung_ab + 32 + 16 · te_anzahl ≤ 65536",
+    "gelesen": "beim Start, bei neuem programmstand und einmal am Tag",
+    "texte": [
+      {"feld": "netzbetreiber_name", "versatz": 0, "woerter": 16, "bedeutung": "Name des Netzbetreibers"},
+      {"feld": "direktvermarkter_name", "versatz": 16, "woerter": 16, "bedeutung": "Name des Direktvermarkters, leer = keiner"},
+      {"feld": "t_typ_name", "versatz": 32, "woerter": 16, "bedeutung": "Hersteller und Typ der Einheit n", "je_einheit": 16}
+    ]
+  },
+  "lesen": {
+    "max_woerter_je_anfrage": {"art": "repo", "wert": 120, "fundstelle": "docs/contracts/v2/measurement-budget-vectors.json:34"},
+    "block_nie_teilen": {"art": "festlegung", "wert": "ein Einheiten-Block und ein Text werden nie auf zwei Anfragen verteilt", "fundstelle": "erzeuger-registerbild.md §9 (wie WAGO-Registerbild v1 §7)"},
+    "einheiten_in_einer_anfrage": {"art": "festlegung", "wert": 8, "fundstelle": "firstmate A1 = A: (120 − 38) / 10"},
+    "pruefreihenfolge": {
+      "art": "festlegung",
+      "wert": [
+        "zu_wenig_woerter",
+        "signatur_fremd",
+        "version_fremd",
+        "wortfolge_falsch",
+        "te_anzahl_ungueltig",
+        "zu_wenig_woerter"
+      ],
+      "fundstelle": "erzeuger-registerbild.md §7"
+    },
+    "leer_gruende": {"art": "festlegung", "wert": ["gueltigkeit", "ungueltig", "fremd"], "fundstelle": "erzeuger-registerbild.md §7"},
+    "herzschlag": {
+      "steht_ab_lesung": {"art": "festlegung", "wert": 3, "fundstelle": "register-vorlage-schlank.json herzschlag: steht er dreimal still"},
+      "schrittgrenze": {"art": "repo", "wert": "schrittgrenze = 120", "fundstelle": "edge-app/nodered/measurements/wago-registerbild.js:307"},
+      "urteile": {
+        "art": "festlegung",
+        "wert": ["laeuft", "steht", "ueberlauf", "rueckwaerts"],
+        "fundstelle": "erzeuger-registerbild.md §8 (Wörter wie herzschlagUrteil des WAGO-Lesers)"
+      }
+    },
+    "zaehler_modul": {"art": "festlegung", "wert": 65536, "fundstelle": "firstmate A2 = A"},
+    "namen_texte_je_anfrage": {"art": "festlegung", "wert": 7, "fundstelle": "erzeuger-registerbild.md §9: floor(120 / 16)"}
+  },
+  "faelle": [
+    {
+      "name": "E1 gore-pv-drei-wechselrichter",
+      "why": "Gore (PV): anlagenart 1, drei Wechselrichter je 125 kW, p_installiert_kw 265, Netzbetreiber über Fernwirktechnik (n_kanal 3) mit gültiger Vorgabe 100,0 % und cos φ 0,950 untererregt (S16 −950), Nulleinspeisung begrenzt (quelle_p 3), am Netzpunkt kurz −2 140 W = Einspeisung (S32 negativ). Kein Direktvermarkter: d_kanal 0, d_bits 0 → Abschnitt D unbekannt. Gasspeicher Typ-Maximum (PV). Namen gefüllt, Direktvermarkter leer = keiner. 68 Wörter, eine Anfrage; Namen 80 Wörter, eine Anfrage.",
+      "herkunft": "vertrag",
+      "belegt": false,
+      "input": {
+        "lesungen": [
+          {
+            "woerter": [22096, 17754, 258, 772, 256, 3, 41230, 2610, 1, 34465, 1, 140, 9, 1, 65535, 63396, 1, 34664, 3, 0, 65535, 265, 3, 19, 1000, 64586, 3412, 1873, 0, 0, 65535, 65535, 65535, 0, 3, 3, 1, 37964, 3, 3, 1, 125, 0, 34200, 0, 34500, 71, 65177, 3, 3, 1, 125, 0, 33900, 0, 34500, 71, 49062, 3, 3, 1, 125, 0, 32100, 0, 34500, 71, 2851]
+          }
+        ],
+        "namen": {
+          "ab": 140,
+          "woerter": [20013, 17746, 18249, 17696, 20069, 29818, 8263, 28002, 18432, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 18290, 28535, 24948, 29728, 22354, 12576, 10324, 31088, 8303, 26214, 25966, 10496, 0, 0, 0, 0, 18290, 28535, 24948, 29728, 22354, 12832, 10324, 31088, 8303, 26214, 25966, 10496, 0, 0, 0, 0, 18290, 28535, 24948, 29728, 22354, 13088, 10324, 31088, 8303, 26214, 25966, 10496, 0, 0, 0, 0]
+        }
+      },
+      "expected": {
+        "lesungen": [
+          {
+            "ergebnis": "lesbar",
+            "grund": null,
+            "kopf": {"version_haupt": 1, "version_neben": 0, "te_anzahl": 3, "herzschlag": 41230, "programmstand": 2610, "steuerung_id": 100001, "anlagenart": 1, "beschreibung_ab": 140},
+            "anfragen": 1,
+            "herzschlag_urteil": null,
+            "veraltet": false,
+            "zaehler_differenz": null,
+            "werte": {"a_gueltig": 9, "a_alter_s": 1, "p_nvp_w": -2140, "p_erzeugung_w": 100200, "anlage_zustand": 3, "a_bits": 0, "speicher_fuellstand": null, "p_installiert_kw": 265, "n_kanal": 3, "n_bits": 19, "n_p_prozent": 1000, "n_cosphi": -950, "n_seit_s": 3412, "n_zaehler": 1873, "d_kanal": 0, "d_bits": 0, "d_soll_w": null, "d_seit_s": null, "d_zaehler": null, "quelle_p": 3, "s_bits": 3, "p_grenze_w": 103500},
+            "bits": {
+              "a_gueltig": {"netzpunkt_gueltig": true, "netzpunkt_berechnet": false, "netzpunkt_tot": false, "erzeugung_gueltig": true, "gasspeicher_gueltig": false},
+              "a_bits": {"not_aus": false, "na_schutz": false, "sammelstoerung": false, "hand_ort": false, "wartung": false},
+              "n_bits": {"vorgabe_gueltig": true, "verbindung_steht": true, "wirkleistung_begrenzt": false, "not_aus": false, "cosphi_vorgabe": true, "kennlinie": false},
+              "d_bits": {"abschnitt_gueltig": false, "aktivierung": null, "stopp": null, "bereit_gemeldet": null, "aktiv_gemeldet": null},
+              "s_bits": {"gueltig": true, "anlage_folgt": true}
+            },
+            "einheiten": [
+              {
+                "n": 1,
+                "adresse": 38,
+                "werte": {"t_zustand": 3, "t_bits": 3, "t_art": 1, "t_nenn_kw": 125, "t_p_ist_w": 34200, "t_p_soll_w": 34500, "t_e": 4718233},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 2,
+                "adresse": 48,
+                "werte": {"t_zustand": 3, "t_bits": 3, "t_art": 1, "t_nenn_kw": 125, "t_p_ist_w": 33900, "t_p_soll_w": 34500, "t_e": 4702118},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 3,
+                "adresse": 58,
+                "werte": {"t_zustand": 3, "t_bits": 3, "t_art": 1, "t_nenn_kw": 125, "t_p_ist_w": 32100, "t_p_soll_w": 34500, "t_e": 4655907},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              }
+            ],
+            "leer": {"speicher_fuellstand": "gueltigkeit", "d_soll_w": "gueltigkeit", "d_seit_s": "gueltigkeit", "d_zaehler": "gueltigkeit"}
+          }
+        ],
+        "namen": {
+          "ergebnis": "gelesen",
+          "anfragen": 1,
+          "netzbetreiber_name": "N-ERGIE Netz GmbH",
+          "direktvermarkter_name": null,
+          "t_typ_name": ["Growatt WR1 (Typ offen)", "Growatt WR2 (Typ offen)", "Growatt WR3 (Typ offen)"]
+        }
+      }
+    },
+    {
+      "name": "E2 buettner-bhkw-zwei-motoren",
+      "why": "Büttner (Biogas-BHKW): anlagenart 2, Motor 66 kW und 33 kW, p_installiert_kw 99, feste 70-%-Grenze des Netzbetreibers (n_kanal 1, n_seit_s 65534 = höchstens), Direktvermarkter über Relais und 4–20 mA (d_kanal 1, Sollwert 64 000 W begrenzt, quelle_p 2), Gasspeicher 73,4 %. Kein Netzpunkt (EW-16 C): a_gueltig Bit 0/1/2 = 0, p_nvp_w und a_alter_s Typ-Maximum. Zählerstand Motor 2 ungültig. Namen mit Umlaut (ü = 0xFC). 58 Wörter, eine Anfrage.",
+      "herkunft": "vertrag",
+      "belegt": false,
+      "input": {
+        "lesungen": [
+          {
+            "woerter": [22096, 17754, 258, 772, 256, 2, 7315, 2612, 1, 34466, 2, 140, 24, 65535, 32767, 65535, 0, 63600, 3, 0, 734, 99, 1, 5, 700, 32767, 65534, 0, 1, 27, 0, 64000, 742, 318, 2, 3, 0, 64000, 3, 15, 2, 66, 0, 42500, 0, 42700, 285, 56796, 3, 15, 2, 33, 0, 21100, 0, 21300, 65535, 65535]
+          }
+        ],
+        "namen": {
+          "ab": 140,
+          "woerter": [20013, 17746, 18249, 17696, 20069, 29818, 8263, 28002, 18432, 0, 0, 0, 0, 0, 0, 0, 22358, 22048, 10323, 29793, 25716, 30565, 29291, 25888, 22524, 29306, 25205, 29287, 10496, 0, 0, 0, 19777, 20000, 17712, 14387, 13900, 17664, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 19287, 8261, 28261, 29287, 26981, 8275, 28001, 29300, 25196, 28515, 27424, 13107, 0, 0, 0, 0]
+        }
+      },
+      "expected": {
+        "lesungen": [
+          {
+            "ergebnis": "lesbar",
+            "grund": null,
+            "kopf": {"version_haupt": 1, "version_neben": 0, "te_anzahl": 2, "herzschlag": 7315, "programmstand": 2612, "steuerung_id": 100002, "anlagenart": 2, "beschreibung_ab": 140},
+            "anfragen": 1,
+            "herzschlag_urteil": null,
+            "veraltet": false,
+            "zaehler_differenz": null,
+            "werte": {"a_gueltig": 24, "a_alter_s": null, "p_nvp_w": null, "p_erzeugung_w": 63600, "anlage_zustand": 3, "a_bits": 0, "speicher_fuellstand": 734, "p_installiert_kw": 99, "n_kanal": 1, "n_bits": 5, "n_p_prozent": 700, "n_cosphi": null, "n_seit_s": 65534, "n_zaehler": 0, "d_kanal": 1, "d_bits": 27, "d_soll_w": 64000, "d_seit_s": 742, "d_zaehler": 318, "quelle_p": 2, "s_bits": 3, "p_grenze_w": 64000},
+            "bits": {
+              "a_gueltig": {"netzpunkt_gueltig": false, "netzpunkt_berechnet": false, "netzpunkt_tot": false, "erzeugung_gueltig": true, "gasspeicher_gueltig": true},
+              "a_bits": {"not_aus": false, "na_schutz": false, "sammelstoerung": false, "hand_ort": false, "wartung": false},
+              "n_bits": {"vorgabe_gueltig": true, "verbindung_steht": false, "wirkleistung_begrenzt": true, "not_aus": false, "cosphi_vorgabe": false, "kennlinie": false},
+              "d_bits": {"abschnitt_gueltig": true, "aktivierung": true, "stopp": false, "bereit_gemeldet": true, "aktiv_gemeldet": true},
+              "s_bits": {"gueltig": true, "anlage_folgt": true}
+            },
+            "einheiten": [
+              {
+                "n": 1,
+                "adresse": 38,
+                "werte": {"t_zustand": 3, "t_bits": 15, "t_art": 2, "t_nenn_kw": 66, "t_p_ist_w": 42500, "t_p_soll_w": 42700, "t_e": 18734556},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": true, "dv_aktiv": true, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 2,
+                "adresse": 48,
+                "werte": {"t_zustand": 3, "t_bits": 15, "t_art": 2, "t_nenn_kw": 33, "t_p_ist_w": 21100, "t_p_soll_w": 21300, "t_e": null},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": true, "dv_aktiv": true, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {"t_e": "ungueltig"}
+              }
+            ],
+            "leer": {"a_alter_s": "ungueltig", "p_nvp_w": "gueltigkeit", "n_cosphi": "ungueltig"}
+          }
+        ],
+        "namen": {
+          "ergebnis": "gelesen",
+          "anfragen": 1,
+          "netzbetreiber_name": "N-ERGIE Netz GmbH",
+          "direktvermarkter_name": "WVV (Stadtwerke Würzburg)",
+          "t_typ_name": ["MAN E0836LE", "KW Energie Smartblock 33"]
+        }
+      }
+    },
+    {
+      "name": "E3 wago-energiekarten-bild",
+      "why": "Unter der Adresse steht ein WAGO-Energiekarten-Registerbild v1 (0x5650 0x5242 „VP“ „RB“): zweites Signaturwort fremd → kein einziger Wert. Die Bildarten lehnen sich gegenseitig ab.",
+      "herkunft": "vertrag",
+      "belegt": false,
+      "input": {
+        "lesungen": [
+          {
+            "woerter": [22096, 21058, 1, 0, 12, 42, 4, 1731, 258, 772, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+          }
+        ],
+        "namen": null
+      },
+      "expected": {
+        "lesungen": [
+          {
+            "ergebnis": "nicht_lesbar",
+            "grund": "signatur_fremd",
+            "kopf": null,
+            "anfragen": null,
+            "herzschlag_urteil": null,
+            "veraltet": null,
+            "zaehler_differenz": null,
+            "werte": null,
+            "bits": null,
+            "einheiten": [],
+            "leer": null
+          }
+        ],
+        "namen": null
+      }
+    },
+    {
+      "name": "E4 leeres-bild-nullen",
+      "why": "Der Modbus-Server liefert nur Nullen (Abbild nicht auf GVL_VP.aBild gelegt, Befund G1): Signatur fremd, kein Wert, nie 0 W.",
+      "herkunft": "vertrag",
+      "belegt": false,
+      "input": {
+        "lesungen": [
+          {
+            "woerter": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+          }
+        ],
+        "namen": null
+      },
+      "expected": {
+        "lesungen": [
+          {
+            "ergebnis": "nicht_lesbar",
+            "grund": "signatur_fremd",
+            "kopf": null,
+            "anfragen": null,
+            "herzschlag_urteil": null,
+            "veraltet": null,
+            "zaehler_differenz": null,
+            "werte": null,
+            "bits": null,
+            "einheiten": [],
+            "leer": null
+          }
+        ],
+        "namen": null
+      }
+    },
+    {
+      "name": "E5 wortfolge-falsch",
+      "why": "Das Programm packt 32-bit-Werte mit dem niederwertigen Wort zuerst — auch den Prüfwert, weil er über dieselbe Routine geht (0x0304 0x0102). Signatur und Version sind einzelne Wörter und stimmen; trotzdem kein einziger Wert.",
+      "herkunft": "vertrag",
+      "belegt": false,
+      "input": {
+        "lesungen": [
+          {
+            "woerter": [22096, 17754, 772, 258, 256, 3, 41230, 2610, 34465, 1, 1, 140, 9, 1, 63396, 65535, 34664, 1, 3, 0, 65535, 265, 3, 19, 1000, 64586, 3412, 1873, 0, 0, 65535, 65535, 65535, 0, 3, 3, 37964, 1, 3, 3, 1, 125, 34200, 0, 34500, 0, 65177, 71, 3, 3, 1, 125, 33900, 0, 34500, 0, 49062, 71, 3, 3, 1, 125, 32100, 0, 34500, 0, 2851, 71]
+          }
+        ],
+        "namen": null
+      },
+      "expected": {
+        "lesungen": [
+          {
+            "ergebnis": "nicht_lesbar",
+            "grund": "wortfolge_falsch",
+            "kopf": null,
+            "anfragen": null,
+            "herzschlag_urteil": null,
+            "veraltet": null,
+            "zaehler_differenz": null,
+            "werte": null,
+            "bits": null,
+            "einheiten": [],
+            "leer": null
+          }
+        ],
+        "namen": null
+      }
+    },
+    {
+      "name": "E6 version-fremd",
+      "why": "Bildfassung 0x0200 (Hauptversion 2): ein 1.0-Leser liest nichts davon.",
+      "herkunft": "vertrag",
+      "belegt": false,
+      "input": {
+        "lesungen": [
+          {
+            "woerter": [22096, 17754, 258, 772, 512, 3, 41230, 2610, 1, 34465, 1, 140, 9, 1, 65535, 63396, 1, 34664, 3, 0, 65535, 265, 3, 19, 1000, 64586, 3412, 1873, 0, 0, 65535, 65535, 65535, 0, 3, 3, 1, 37964, 3, 3, 1, 125, 0, 34200, 0, 34500, 71, 65177, 3, 3, 1, 125, 0, 33900, 0, 34500, 71, 49062, 3, 3, 1, 125, 0, 32100, 0, 34500, 71, 2851]
+          }
+        ],
+        "namen": null
+      },
+      "expected": {
+        "lesungen": [
+          {
+            "ergebnis": "nicht_lesbar",
+            "grund": "version_fremd",
+            "kopf": null,
+            "anfragen": null,
+            "herzschlag_urteil": null,
+            "veraltet": null,
+            "zaehler_differenz": null,
+            "werte": null,
+            "bits": null,
+            "einheiten": [],
+            "leer": null
+          }
+        ],
+        "namen": null
+      }
+    },
+    {
+      "name": "E7 nebenversion-liest-weiter",
+      "why": "Bildfassung 0x0101 (1.1): additiv. Ein 1.0-Leser liest weiter, nennt Nebenversion 1 und übergeht Bits, die er nicht kennt (a_gueltig Bit 5, t_bits Bit 12) — sie ändern keinen Wert.",
+      "herkunft": "vertrag",
+      "belegt": false,
+      "input": {
+        "lesungen": [
+          {
+            "woerter": [22096, 17754, 258, 772, 257, 2, 7315, 2612, 1, 34466, 2, 140, 56, 65535, 32767, 65535, 0, 63600, 3, 0, 734, 99, 1, 5, 700, 32767, 65534, 0, 1, 27, 0, 64000, 742, 318, 2, 3, 0, 64000, 3, 4111, 2, 66, 0, 42500, 0, 42700, 285, 56796, 3, 15, 2, 33, 0, 21100, 0, 21300, 65535, 65535]
+          }
+        ],
+        "namen": {
+          "ab": 140,
+          "woerter": [20013, 17746, 18249, 17696, 20069, 29818, 8263, 28002, 18432, 0, 0, 0, 0, 0, 0, 0, 22358, 22048, 10323, 29793, 25716, 30565, 29291, 25888, 22524, 29306, 25205, 29287, 10496, 0, 0, 0, 19777, 20000, 17712, 14387, 13900, 17664, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 19287, 8261, 28261, 29287, 26981, 8275, 28001, 29300, 25196, 28515, 27424, 13107, 0, 0, 0, 0]
+        }
+      },
+      "expected": {
+        "lesungen": [
+          {
+            "ergebnis": "lesbar",
+            "grund": null,
+            "kopf": {"version_haupt": 1, "version_neben": 1, "te_anzahl": 2, "herzschlag": 7315, "programmstand": 2612, "steuerung_id": 100002, "anlagenart": 2, "beschreibung_ab": 140},
+            "anfragen": 1,
+            "herzschlag_urteil": null,
+            "veraltet": false,
+            "zaehler_differenz": null,
+            "werte": {"a_gueltig": 56, "a_alter_s": null, "p_nvp_w": null, "p_erzeugung_w": 63600, "anlage_zustand": 3, "a_bits": 0, "speicher_fuellstand": 734, "p_installiert_kw": 99, "n_kanal": 1, "n_bits": 5, "n_p_prozent": 700, "n_cosphi": null, "n_seit_s": 65534, "n_zaehler": 0, "d_kanal": 1, "d_bits": 27, "d_soll_w": 64000, "d_seit_s": 742, "d_zaehler": 318, "quelle_p": 2, "s_bits": 3, "p_grenze_w": 64000},
+            "bits": {
+              "a_gueltig": {"netzpunkt_gueltig": false, "netzpunkt_berechnet": false, "netzpunkt_tot": false, "erzeugung_gueltig": true, "gasspeicher_gueltig": true},
+              "a_bits": {"not_aus": false, "na_schutz": false, "sammelstoerung": false, "hand_ort": false, "wartung": false},
+              "n_bits": {"vorgabe_gueltig": true, "verbindung_steht": false, "wirkleistung_begrenzt": true, "not_aus": false, "cosphi_vorgabe": false, "kennlinie": false},
+              "d_bits": {"abschnitt_gueltig": true, "aktivierung": true, "stopp": false, "bereit_gemeldet": true, "aktiv_gemeldet": true},
+              "s_bits": {"gueltig": true, "anlage_folgt": true}
+            },
+            "einheiten": [
+              {
+                "n": 1,
+                "adresse": 38,
+                "werte": {"t_zustand": 3, "t_bits": 4111, "t_art": 2, "t_nenn_kw": 66, "t_p_ist_w": 42500, "t_p_soll_w": 42700, "t_e": 18734556},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": true, "dv_aktiv": true, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 2,
+                "adresse": 48,
+                "werte": {"t_zustand": 3, "t_bits": 15, "t_art": 2, "t_nenn_kw": 33, "t_p_ist_w": 21100, "t_p_soll_w": 21300, "t_e": null},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": true, "dv_aktiv": true, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {"t_e": "ungueltig"}
+              }
+            ],
+            "leer": {"a_alter_s": "ungueltig", "p_nvp_w": "gueltigkeit", "n_cosphi": "ungueltig"}
+          }
+        ],
+        "namen": {
+          "ergebnis": "gelesen",
+          "anfragen": 1,
+          "netzbetreiber_name": "N-ERGIE Netz GmbH",
+          "direktvermarkter_name": "WVV (Stadtwerke Würzburg)",
+          "t_typ_name": ["MAN E0836LE", "KW Energie Smartblock 33"]
+        }
+      }
+    },
+    {
+      "name": "E8 herzschlag-steht",
+      "why": "Herzschlag 7315 in drei lesbaren Lesungen (5-s-Takt) → ab der dritten veraltet; eine leere Antwort dazwischen ist keine Beobachtung und unterbricht die Folge nicht. Danach 7320: läuft wieder. Werte bleiben lesbar, nur veraltet. d_zaehler 318 → 319: eine Aktivierung seit der letzten Lesung.",
+      "herkunft": "vertrag",
+      "belegt": false,
+      "input": {
+        "lesungen": [
+          {
+            "woerter": [22096, 17754, 258, 772, 256, 2, 7315, 2612, 1, 34466, 2, 140, 24, 65535, 32767, 65535, 0, 63600, 3, 0, 734, 99, 1, 5, 700, 32767, 65534, 0, 1, 27, 0, 64000, 742, 318, 2, 3, 0, 64000, 3, 15, 2, 66, 0, 42500, 0, 42700, 285, 56796, 3, 15, 2, 33, 0, 21100, 0, 21300, 65535, 65535]
+          },
+          {
+            "woerter": [22096, 17754, 258, 772, 256, 2, 7315, 2612, 1, 34466, 2, 140, 24, 65535, 32767, 65535, 0, 63600, 3, 0, 734, 99, 1, 5, 700, 32767, 65534, 0, 1, 27, 0, 64000, 742, 318, 2, 3, 0, 64000, 3, 15, 2, 66, 0, 42500, 0, 42700, 285, 56796, 3, 15, 2, 33, 0, 21100, 0, 21300, 65535, 65535]
+          },
+          {"woerter": []},
+          {
+            "woerter": [22096, 17754, 258, 772, 256, 2, 7315, 2612, 1, 34466, 2, 140, 24, 65535, 32767, 65535, 0, 63600, 3, 0, 734, 99, 1, 5, 700, 32767, 65534, 0, 1, 27, 0, 64000, 742, 318, 2, 3, 0, 64000, 3, 15, 2, 66, 0, 42500, 0, 42700, 285, 56796, 3, 15, 2, 33, 0, 21100, 0, 21300, 65535, 65535]
+          },
+          {
+            "woerter": [22096, 17754, 258, 772, 256, 2, 7320, 2612, 1, 34466, 2, 140, 24, 65535, 32767, 65535, 0, 63600, 3, 0, 734, 99, 1, 5, 700, 32767, 65534, 0, 1, 27, 0, 64000, 742, 319, 2, 3, 0, 64000, 3, 15, 2, 66, 0, 42500, 0, 42700, 285, 56796, 3, 15, 2, 33, 0, 21100, 0, 21300, 65535, 65535]
+          }
+        ],
+        "namen": {
+          "ab": 140,
+          "woerter": [20013, 17746, 18249, 17696, 20069, 29818, 8263, 28002, 18432, 0, 0, 0, 0, 0, 0, 0, 22358, 22048, 10323, 29793, 25716, 30565, 29291, 25888, 22524, 29306, 25205, 29287, 10496, 0, 0, 0, 19777, 20000, 17712, 14387, 13900, 17664, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 19287, 8261, 28261, 29287, 26981, 8275, 28001, 29300, 25196, 28515, 27424, 13107, 0, 0, 0, 0]
+        }
+      },
+      "expected": {
+        "lesungen": [
+          {
+            "ergebnis": "lesbar",
+            "grund": null,
+            "kopf": {"version_haupt": 1, "version_neben": 0, "te_anzahl": 2, "herzschlag": 7315, "programmstand": 2612, "steuerung_id": 100002, "anlagenart": 2, "beschreibung_ab": 140},
+            "anfragen": 1,
+            "herzschlag_urteil": null,
+            "veraltet": false,
+            "zaehler_differenz": null,
+            "werte": {"a_gueltig": 24, "a_alter_s": null, "p_nvp_w": null, "p_erzeugung_w": 63600, "anlage_zustand": 3, "a_bits": 0, "speicher_fuellstand": 734, "p_installiert_kw": 99, "n_kanal": 1, "n_bits": 5, "n_p_prozent": 700, "n_cosphi": null, "n_seit_s": 65534, "n_zaehler": 0, "d_kanal": 1, "d_bits": 27, "d_soll_w": 64000, "d_seit_s": 742, "d_zaehler": 318, "quelle_p": 2, "s_bits": 3, "p_grenze_w": 64000},
+            "bits": {
+              "a_gueltig": {"netzpunkt_gueltig": false, "netzpunkt_berechnet": false, "netzpunkt_tot": false, "erzeugung_gueltig": true, "gasspeicher_gueltig": true},
+              "a_bits": {"not_aus": false, "na_schutz": false, "sammelstoerung": false, "hand_ort": false, "wartung": false},
+              "n_bits": {"vorgabe_gueltig": true, "verbindung_steht": false, "wirkleistung_begrenzt": true, "not_aus": false, "cosphi_vorgabe": false, "kennlinie": false},
+              "d_bits": {"abschnitt_gueltig": true, "aktivierung": true, "stopp": false, "bereit_gemeldet": true, "aktiv_gemeldet": true},
+              "s_bits": {"gueltig": true, "anlage_folgt": true}
+            },
+            "einheiten": [
+              {
+                "n": 1,
+                "adresse": 38,
+                "werte": {"t_zustand": 3, "t_bits": 15, "t_art": 2, "t_nenn_kw": 66, "t_p_ist_w": 42500, "t_p_soll_w": 42700, "t_e": 18734556},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": true, "dv_aktiv": true, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 2,
+                "adresse": 48,
+                "werte": {"t_zustand": 3, "t_bits": 15, "t_art": 2, "t_nenn_kw": 33, "t_p_ist_w": 21100, "t_p_soll_w": 21300, "t_e": null},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": true, "dv_aktiv": true, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {"t_e": "ungueltig"}
+              }
+            ],
+            "leer": {"a_alter_s": "ungueltig", "p_nvp_w": "gueltigkeit", "n_cosphi": "ungueltig"}
+          },
+          {
+            "ergebnis": "lesbar",
+            "grund": null,
+            "kopf": {"version_haupt": 1, "version_neben": 0, "te_anzahl": 2, "herzschlag": 7315, "programmstand": 2612, "steuerung_id": 100002, "anlagenart": 2, "beschreibung_ab": 140},
+            "anfragen": 1,
+            "herzschlag_urteil": "steht",
+            "veraltet": false,
+            "zaehler_differenz": {"n_zaehler": 0, "d_zaehler": 0},
+            "werte": {"a_gueltig": 24, "a_alter_s": null, "p_nvp_w": null, "p_erzeugung_w": 63600, "anlage_zustand": 3, "a_bits": 0, "speicher_fuellstand": 734, "p_installiert_kw": 99, "n_kanal": 1, "n_bits": 5, "n_p_prozent": 700, "n_cosphi": null, "n_seit_s": 65534, "n_zaehler": 0, "d_kanal": 1, "d_bits": 27, "d_soll_w": 64000, "d_seit_s": 742, "d_zaehler": 318, "quelle_p": 2, "s_bits": 3, "p_grenze_w": 64000},
+            "bits": {
+              "a_gueltig": {"netzpunkt_gueltig": false, "netzpunkt_berechnet": false, "netzpunkt_tot": false, "erzeugung_gueltig": true, "gasspeicher_gueltig": true},
+              "a_bits": {"not_aus": false, "na_schutz": false, "sammelstoerung": false, "hand_ort": false, "wartung": false},
+              "n_bits": {"vorgabe_gueltig": true, "verbindung_steht": false, "wirkleistung_begrenzt": true, "not_aus": false, "cosphi_vorgabe": false, "kennlinie": false},
+              "d_bits": {"abschnitt_gueltig": true, "aktivierung": true, "stopp": false, "bereit_gemeldet": true, "aktiv_gemeldet": true},
+              "s_bits": {"gueltig": true, "anlage_folgt": true}
+            },
+            "einheiten": [
+              {
+                "n": 1,
+                "adresse": 38,
+                "werte": {"t_zustand": 3, "t_bits": 15, "t_art": 2, "t_nenn_kw": 66, "t_p_ist_w": 42500, "t_p_soll_w": 42700, "t_e": 18734556},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": true, "dv_aktiv": true, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 2,
+                "adresse": 48,
+                "werte": {"t_zustand": 3, "t_bits": 15, "t_art": 2, "t_nenn_kw": 33, "t_p_ist_w": 21100, "t_p_soll_w": 21300, "t_e": null},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": true, "dv_aktiv": true, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {"t_e": "ungueltig"}
+              }
+            ],
+            "leer": {"a_alter_s": "ungueltig", "p_nvp_w": "gueltigkeit", "n_cosphi": "ungueltig"}
+          },
+          {
+            "ergebnis": "nicht_lesbar",
+            "grund": "zu_wenig_woerter",
+            "kopf": null,
+            "anfragen": null,
+            "herzschlag_urteil": null,
+            "veraltet": null,
+            "zaehler_differenz": null,
+            "werte": null,
+            "bits": null,
+            "einheiten": [],
+            "leer": null
+          },
+          {
+            "ergebnis": "lesbar",
+            "grund": null,
+            "kopf": {"version_haupt": 1, "version_neben": 0, "te_anzahl": 2, "herzschlag": 7315, "programmstand": 2612, "steuerung_id": 100002, "anlagenart": 2, "beschreibung_ab": 140},
+            "anfragen": 1,
+            "herzschlag_urteil": "steht",
+            "veraltet": true,
+            "zaehler_differenz": {"n_zaehler": 0, "d_zaehler": 0},
+            "werte": {"a_gueltig": 24, "a_alter_s": null, "p_nvp_w": null, "p_erzeugung_w": 63600, "anlage_zustand": 3, "a_bits": 0, "speicher_fuellstand": 734, "p_installiert_kw": 99, "n_kanal": 1, "n_bits": 5, "n_p_prozent": 700, "n_cosphi": null, "n_seit_s": 65534, "n_zaehler": 0, "d_kanal": 1, "d_bits": 27, "d_soll_w": 64000, "d_seit_s": 742, "d_zaehler": 318, "quelle_p": 2, "s_bits": 3, "p_grenze_w": 64000},
+            "bits": {
+              "a_gueltig": {"netzpunkt_gueltig": false, "netzpunkt_berechnet": false, "netzpunkt_tot": false, "erzeugung_gueltig": true, "gasspeicher_gueltig": true},
+              "a_bits": {"not_aus": false, "na_schutz": false, "sammelstoerung": false, "hand_ort": false, "wartung": false},
+              "n_bits": {"vorgabe_gueltig": true, "verbindung_steht": false, "wirkleistung_begrenzt": true, "not_aus": false, "cosphi_vorgabe": false, "kennlinie": false},
+              "d_bits": {"abschnitt_gueltig": true, "aktivierung": true, "stopp": false, "bereit_gemeldet": true, "aktiv_gemeldet": true},
+              "s_bits": {"gueltig": true, "anlage_folgt": true}
+            },
+            "einheiten": [
+              {
+                "n": 1,
+                "adresse": 38,
+                "werte": {"t_zustand": 3, "t_bits": 15, "t_art": 2, "t_nenn_kw": 66, "t_p_ist_w": 42500, "t_p_soll_w": 42700, "t_e": 18734556},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": true, "dv_aktiv": true, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 2,
+                "adresse": 48,
+                "werte": {"t_zustand": 3, "t_bits": 15, "t_art": 2, "t_nenn_kw": 33, "t_p_ist_w": 21100, "t_p_soll_w": 21300, "t_e": null},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": true, "dv_aktiv": true, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {"t_e": "ungueltig"}
+              }
+            ],
+            "leer": {"a_alter_s": "ungueltig", "p_nvp_w": "gueltigkeit", "n_cosphi": "ungueltig"}
+          },
+          {
+            "ergebnis": "lesbar",
+            "grund": null,
+            "kopf": {"version_haupt": 1, "version_neben": 0, "te_anzahl": 2, "herzschlag": 7320, "programmstand": 2612, "steuerung_id": 100002, "anlagenart": 2, "beschreibung_ab": 140},
+            "anfragen": 1,
+            "herzschlag_urteil": "laeuft",
+            "veraltet": false,
+            "zaehler_differenz": {"n_zaehler": 0, "d_zaehler": 1},
+            "werte": {"a_gueltig": 24, "a_alter_s": null, "p_nvp_w": null, "p_erzeugung_w": 63600, "anlage_zustand": 3, "a_bits": 0, "speicher_fuellstand": 734, "p_installiert_kw": 99, "n_kanal": 1, "n_bits": 5, "n_p_prozent": 700, "n_cosphi": null, "n_seit_s": 65534, "n_zaehler": 0, "d_kanal": 1, "d_bits": 27, "d_soll_w": 64000, "d_seit_s": 742, "d_zaehler": 319, "quelle_p": 2, "s_bits": 3, "p_grenze_w": 64000},
+            "bits": {
+              "a_gueltig": {"netzpunkt_gueltig": false, "netzpunkt_berechnet": false, "netzpunkt_tot": false, "erzeugung_gueltig": true, "gasspeicher_gueltig": true},
+              "a_bits": {"not_aus": false, "na_schutz": false, "sammelstoerung": false, "hand_ort": false, "wartung": false},
+              "n_bits": {"vorgabe_gueltig": true, "verbindung_steht": false, "wirkleistung_begrenzt": true, "not_aus": false, "cosphi_vorgabe": false, "kennlinie": false},
+              "d_bits": {"abschnitt_gueltig": true, "aktivierung": true, "stopp": false, "bereit_gemeldet": true, "aktiv_gemeldet": true},
+              "s_bits": {"gueltig": true, "anlage_folgt": true}
+            },
+            "einheiten": [
+              {
+                "n": 1,
+                "adresse": 38,
+                "werte": {"t_zustand": 3, "t_bits": 15, "t_art": 2, "t_nenn_kw": 66, "t_p_ist_w": 42500, "t_p_soll_w": 42700, "t_e": 18734556},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": true, "dv_aktiv": true, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 2,
+                "adresse": 48,
+                "werte": {"t_zustand": 3, "t_bits": 15, "t_art": 2, "t_nenn_kw": 33, "t_p_ist_w": 21100, "t_p_soll_w": 21300, "t_e": null},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": true, "dv_aktiv": true, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {"t_e": "ungueltig"}
+              }
+            ],
+            "leer": {"a_alter_s": "ungueltig", "p_nvp_w": "gueltigkeit", "n_cosphi": "ungueltig"}
+          }
+        ],
+        "namen": {
+          "ergebnis": "gelesen",
+          "anfragen": 1,
+          "netzbetreiber_name": "N-ERGIE Netz GmbH",
+          "direktvermarkter_name": "WVV (Stadtwerke Würzburg)",
+          "t_typ_name": ["MAN E0836LE", "KW Energie Smartblock 33"]
+        }
+      }
+    },
+    {
+      "name": "E9 herzschlag-ueberlauf-und-neustart",
+      "why": "Herzschlag 65535 ist ein Wert (firstmate A2 = A), 65535 → 4 ist ein Überlauf (4 + 65536 − 65535 = 5 ≤ 120), 4 → 9 läuft, 9 → 2 ist ein Programmneustart (rückwärts). n_zaehler 65533 → 65535 → 1: je 2 Vorgaben (Differenz mod 65536, 0xFFFF ist ein Wert); nach dem Neustart ist die Zahl seit der letzten Lesung unbekannt.",
+      "herkunft": "vertrag",
+      "belegt": false,
+      "input": {
+        "lesungen": [
+          {
+            "woerter": [22096, 17754, 258, 772, 256, 3, 65535, 2610, 1, 34465, 1, 140, 9, 1, 65535, 63396, 1, 34664, 3, 0, 65535, 265, 3, 19, 1000, 64586, 3412, 65533, 0, 0, 65535, 65535, 65535, 0, 3, 3, 1, 37964, 3, 3, 1, 125, 0, 34200, 0, 34500, 71, 65177, 3, 3, 1, 125, 0, 33900, 0, 34500, 71, 49062, 3, 3, 1, 125, 0, 32100, 0, 34500, 71, 2851]
+          },
+          {
+            "woerter": [22096, 17754, 258, 772, 256, 3, 4, 2610, 1, 34465, 1, 140, 9, 1, 65535, 63396, 1, 34664, 3, 0, 65535, 265, 3, 19, 1000, 64586, 3412, 65535, 0, 0, 65535, 65535, 65535, 0, 3, 3, 1, 37964, 3, 3, 1, 125, 0, 34200, 0, 34500, 71, 65177, 3, 3, 1, 125, 0, 33900, 0, 34500, 71, 49062, 3, 3, 1, 125, 0, 32100, 0, 34500, 71, 2851]
+          },
+          {
+            "woerter": [22096, 17754, 258, 772, 256, 3, 9, 2610, 1, 34465, 1, 140, 9, 1, 65535, 63396, 1, 34664, 3, 0, 65535, 265, 3, 19, 1000, 64586, 3412, 1, 0, 0, 65535, 65535, 65535, 0, 3, 3, 1, 37964, 3, 3, 1, 125, 0, 34200, 0, 34500, 71, 65177, 3, 3, 1, 125, 0, 33900, 0, 34500, 71, 49062, 3, 3, 1, 125, 0, 32100, 0, 34500, 71, 2851]
+          },
+          {
+            "woerter": [22096, 17754, 258, 772, 256, 3, 2, 2610, 1, 34465, 1, 140, 9, 1, 65535, 63396, 1, 34664, 3, 0, 65535, 265, 3, 19, 1000, 64586, 3412, 0, 0, 0, 65535, 65535, 65535, 0, 3, 3, 1, 37964, 3, 3, 1, 125, 0, 34200, 0, 34500, 71, 65177, 3, 3, 1, 125, 0, 33900, 0, 34500, 71, 49062, 3, 3, 1, 125, 0, 32100, 0, 34500, 71, 2851]
+          }
+        ],
+        "namen": {
+          "ab": 140,
+          "woerter": [20013, 17746, 18249, 17696, 20069, 29818, 8263, 28002, 18432, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 18290, 28535, 24948, 29728, 22354, 12576, 10324, 31088, 8303, 26214, 25966, 10496, 0, 0, 0, 0, 18290, 28535, 24948, 29728, 22354, 12832, 10324, 31088, 8303, 26214, 25966, 10496, 0, 0, 0, 0, 18290, 28535, 24948, 29728, 22354, 13088, 10324, 31088, 8303, 26214, 25966, 10496, 0, 0, 0, 0]
+        }
+      },
+      "expected": {
+        "lesungen": [
+          {
+            "ergebnis": "lesbar",
+            "grund": null,
+            "kopf": {"version_haupt": 1, "version_neben": 0, "te_anzahl": 3, "herzschlag": 65535, "programmstand": 2610, "steuerung_id": 100001, "anlagenart": 1, "beschreibung_ab": 140},
+            "anfragen": 1,
+            "herzschlag_urteil": null,
+            "veraltet": false,
+            "zaehler_differenz": null,
+            "werte": {"a_gueltig": 9, "a_alter_s": 1, "p_nvp_w": -2140, "p_erzeugung_w": 100200, "anlage_zustand": 3, "a_bits": 0, "speicher_fuellstand": null, "p_installiert_kw": 265, "n_kanal": 3, "n_bits": 19, "n_p_prozent": 1000, "n_cosphi": -950, "n_seit_s": 3412, "n_zaehler": 65533, "d_kanal": 0, "d_bits": 0, "d_soll_w": null, "d_seit_s": null, "d_zaehler": null, "quelle_p": 3, "s_bits": 3, "p_grenze_w": 103500},
+            "bits": {
+              "a_gueltig": {"netzpunkt_gueltig": true, "netzpunkt_berechnet": false, "netzpunkt_tot": false, "erzeugung_gueltig": true, "gasspeicher_gueltig": false},
+              "a_bits": {"not_aus": false, "na_schutz": false, "sammelstoerung": false, "hand_ort": false, "wartung": false},
+              "n_bits": {"vorgabe_gueltig": true, "verbindung_steht": true, "wirkleistung_begrenzt": false, "not_aus": false, "cosphi_vorgabe": true, "kennlinie": false},
+              "d_bits": {"abschnitt_gueltig": false, "aktivierung": null, "stopp": null, "bereit_gemeldet": null, "aktiv_gemeldet": null},
+              "s_bits": {"gueltig": true, "anlage_folgt": true}
+            },
+            "einheiten": [
+              {
+                "n": 1,
+                "adresse": 38,
+                "werte": {"t_zustand": 3, "t_bits": 3, "t_art": 1, "t_nenn_kw": 125, "t_p_ist_w": 34200, "t_p_soll_w": 34500, "t_e": 4718233},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 2,
+                "adresse": 48,
+                "werte": {"t_zustand": 3, "t_bits": 3, "t_art": 1, "t_nenn_kw": 125, "t_p_ist_w": 33900, "t_p_soll_w": 34500, "t_e": 4702118},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 3,
+                "adresse": 58,
+                "werte": {"t_zustand": 3, "t_bits": 3, "t_art": 1, "t_nenn_kw": 125, "t_p_ist_w": 32100, "t_p_soll_w": 34500, "t_e": 4655907},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              }
+            ],
+            "leer": {"speicher_fuellstand": "gueltigkeit", "d_soll_w": "gueltigkeit", "d_seit_s": "gueltigkeit", "d_zaehler": "gueltigkeit"}
+          },
+          {
+            "ergebnis": "lesbar",
+            "grund": null,
+            "kopf": {"version_haupt": 1, "version_neben": 0, "te_anzahl": 3, "herzschlag": 4, "programmstand": 2610, "steuerung_id": 100001, "anlagenart": 1, "beschreibung_ab": 140},
+            "anfragen": 1,
+            "herzschlag_urteil": "ueberlauf",
+            "veraltet": false,
+            "zaehler_differenz": {"n_zaehler": 2, "d_zaehler": null},
+            "werte": {"a_gueltig": 9, "a_alter_s": 1, "p_nvp_w": -2140, "p_erzeugung_w": 100200, "anlage_zustand": 3, "a_bits": 0, "speicher_fuellstand": null, "p_installiert_kw": 265, "n_kanal": 3, "n_bits": 19, "n_p_prozent": 1000, "n_cosphi": -950, "n_seit_s": 3412, "n_zaehler": 65535, "d_kanal": 0, "d_bits": 0, "d_soll_w": null, "d_seit_s": null, "d_zaehler": null, "quelle_p": 3, "s_bits": 3, "p_grenze_w": 103500},
+            "bits": {
+              "a_gueltig": {"netzpunkt_gueltig": true, "netzpunkt_berechnet": false, "netzpunkt_tot": false, "erzeugung_gueltig": true, "gasspeicher_gueltig": false},
+              "a_bits": {"not_aus": false, "na_schutz": false, "sammelstoerung": false, "hand_ort": false, "wartung": false},
+              "n_bits": {"vorgabe_gueltig": true, "verbindung_steht": true, "wirkleistung_begrenzt": false, "not_aus": false, "cosphi_vorgabe": true, "kennlinie": false},
+              "d_bits": {"abschnitt_gueltig": false, "aktivierung": null, "stopp": null, "bereit_gemeldet": null, "aktiv_gemeldet": null},
+              "s_bits": {"gueltig": true, "anlage_folgt": true}
+            },
+            "einheiten": [
+              {
+                "n": 1,
+                "adresse": 38,
+                "werte": {"t_zustand": 3, "t_bits": 3, "t_art": 1, "t_nenn_kw": 125, "t_p_ist_w": 34200, "t_p_soll_w": 34500, "t_e": 4718233},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 2,
+                "adresse": 48,
+                "werte": {"t_zustand": 3, "t_bits": 3, "t_art": 1, "t_nenn_kw": 125, "t_p_ist_w": 33900, "t_p_soll_w": 34500, "t_e": 4702118},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 3,
+                "adresse": 58,
+                "werte": {"t_zustand": 3, "t_bits": 3, "t_art": 1, "t_nenn_kw": 125, "t_p_ist_w": 32100, "t_p_soll_w": 34500, "t_e": 4655907},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              }
+            ],
+            "leer": {"speicher_fuellstand": "gueltigkeit", "d_soll_w": "gueltigkeit", "d_seit_s": "gueltigkeit", "d_zaehler": "gueltigkeit"}
+          },
+          {
+            "ergebnis": "lesbar",
+            "grund": null,
+            "kopf": {"version_haupt": 1, "version_neben": 0, "te_anzahl": 3, "herzschlag": 9, "programmstand": 2610, "steuerung_id": 100001, "anlagenart": 1, "beschreibung_ab": 140},
+            "anfragen": 1,
+            "herzschlag_urteil": "laeuft",
+            "veraltet": false,
+            "zaehler_differenz": {"n_zaehler": 2, "d_zaehler": null},
+            "werte": {"a_gueltig": 9, "a_alter_s": 1, "p_nvp_w": -2140, "p_erzeugung_w": 100200, "anlage_zustand": 3, "a_bits": 0, "speicher_fuellstand": null, "p_installiert_kw": 265, "n_kanal": 3, "n_bits": 19, "n_p_prozent": 1000, "n_cosphi": -950, "n_seit_s": 3412, "n_zaehler": 1, "d_kanal": 0, "d_bits": 0, "d_soll_w": null, "d_seit_s": null, "d_zaehler": null, "quelle_p": 3, "s_bits": 3, "p_grenze_w": 103500},
+            "bits": {
+              "a_gueltig": {"netzpunkt_gueltig": true, "netzpunkt_berechnet": false, "netzpunkt_tot": false, "erzeugung_gueltig": true, "gasspeicher_gueltig": false},
+              "a_bits": {"not_aus": false, "na_schutz": false, "sammelstoerung": false, "hand_ort": false, "wartung": false},
+              "n_bits": {"vorgabe_gueltig": true, "verbindung_steht": true, "wirkleistung_begrenzt": false, "not_aus": false, "cosphi_vorgabe": true, "kennlinie": false},
+              "d_bits": {"abschnitt_gueltig": false, "aktivierung": null, "stopp": null, "bereit_gemeldet": null, "aktiv_gemeldet": null},
+              "s_bits": {"gueltig": true, "anlage_folgt": true}
+            },
+            "einheiten": [
+              {
+                "n": 1,
+                "adresse": 38,
+                "werte": {"t_zustand": 3, "t_bits": 3, "t_art": 1, "t_nenn_kw": 125, "t_p_ist_w": 34200, "t_p_soll_w": 34500, "t_e": 4718233},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 2,
+                "adresse": 48,
+                "werte": {"t_zustand": 3, "t_bits": 3, "t_art": 1, "t_nenn_kw": 125, "t_p_ist_w": 33900, "t_p_soll_w": 34500, "t_e": 4702118},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 3,
+                "adresse": 58,
+                "werte": {"t_zustand": 3, "t_bits": 3, "t_art": 1, "t_nenn_kw": 125, "t_p_ist_w": 32100, "t_p_soll_w": 34500, "t_e": 4655907},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              }
+            ],
+            "leer": {"speicher_fuellstand": "gueltigkeit", "d_soll_w": "gueltigkeit", "d_seit_s": "gueltigkeit", "d_zaehler": "gueltigkeit"}
+          },
+          {
+            "ergebnis": "lesbar",
+            "grund": null,
+            "kopf": {"version_haupt": 1, "version_neben": 0, "te_anzahl": 3, "herzschlag": 2, "programmstand": 2610, "steuerung_id": 100001, "anlagenart": 1, "beschreibung_ab": 140},
+            "anfragen": 1,
+            "herzschlag_urteil": "rueckwaerts",
+            "veraltet": false,
+            "zaehler_differenz": {"n_zaehler": null, "d_zaehler": null},
+            "werte": {"a_gueltig": 9, "a_alter_s": 1, "p_nvp_w": -2140, "p_erzeugung_w": 100200, "anlage_zustand": 3, "a_bits": 0, "speicher_fuellstand": null, "p_installiert_kw": 265, "n_kanal": 3, "n_bits": 19, "n_p_prozent": 1000, "n_cosphi": -950, "n_seit_s": 3412, "n_zaehler": 0, "d_kanal": 0, "d_bits": 0, "d_soll_w": null, "d_seit_s": null, "d_zaehler": null, "quelle_p": 3, "s_bits": 3, "p_grenze_w": 103500},
+            "bits": {
+              "a_gueltig": {"netzpunkt_gueltig": true, "netzpunkt_berechnet": false, "netzpunkt_tot": false, "erzeugung_gueltig": true, "gasspeicher_gueltig": false},
+              "a_bits": {"not_aus": false, "na_schutz": false, "sammelstoerung": false, "hand_ort": false, "wartung": false},
+              "n_bits": {"vorgabe_gueltig": true, "verbindung_steht": true, "wirkleistung_begrenzt": false, "not_aus": false, "cosphi_vorgabe": true, "kennlinie": false},
+              "d_bits": {"abschnitt_gueltig": false, "aktivierung": null, "stopp": null, "bereit_gemeldet": null, "aktiv_gemeldet": null},
+              "s_bits": {"gueltig": true, "anlage_folgt": true}
+            },
+            "einheiten": [
+              {
+                "n": 1,
+                "adresse": 38,
+                "werte": {"t_zustand": 3, "t_bits": 3, "t_art": 1, "t_nenn_kw": 125, "t_p_ist_w": 34200, "t_p_soll_w": 34500, "t_e": 4718233},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 2,
+                "adresse": 48,
+                "werte": {"t_zustand": 3, "t_bits": 3, "t_art": 1, "t_nenn_kw": 125, "t_p_ist_w": 33900, "t_p_soll_w": 34500, "t_e": 4702118},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 3,
+                "adresse": 58,
+                "werte": {"t_zustand": 3, "t_bits": 3, "t_art": 1, "t_nenn_kw": 125, "t_p_ist_w": 32100, "t_p_soll_w": 34500, "t_e": 4655907},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              }
+            ],
+            "leer": {"speicher_fuellstand": "gueltigkeit", "d_soll_w": "gueltigkeit", "d_seit_s": "gueltigkeit", "d_zaehler": "gueltigkeit"}
+          }
+        ],
+        "namen": {
+          "ergebnis": "gelesen",
+          "anfragen": 1,
+          "netzbetreiber_name": "N-ERGIE Netz GmbH",
+          "direktvermarkter_name": null,
+          "t_typ_name": ["Growatt WR1 (Typ offen)", "Growatt WR2 (Typ offen)", "Growatt WR3 (Typ offen)"]
+        }
+      }
+    },
+    {
+      "name": "E10 abschnitte-ungueltig",
+      "why": "Gültigkeitsbits aus: a_gueltig 0 (Erzeugung, Gasspeicher unbekannt), n_bits Bit 0 = 0 (Vorgabe unbekannt, obwohl 700 im Wort steht; „Wirkleistung begrenzt“ bleibt lesbar), d_bits 0 (ganzer Abschnitt D unbekannt außer d_kanal), s_bits 0 (wer begrenzt und Grenze unbekannt), Motor 2 t_bits 0b10 (Werte unbekannt, Sollwert gültig). Unbekannt ist nie 0.",
+      "herkunft": "vertrag",
+      "belegt": false,
+      "input": {
+        "lesungen": [
+          {
+            "woerter": [22096, 17754, 258, 772, 256, 2, 7315, 2612, 1, 34466, 2, 140, 0, 65535, 32767, 65535, 0, 63600, 3, 0, 734, 99, 1, 4, 700, 32767, 65534, 0, 1, 0, 0, 64000, 742, 318, 2, 0, 0, 64000, 3, 15, 2, 66, 0, 42500, 0, 42700, 285, 56796, 3, 2, 2, 33, 0, 21100, 0, 21300, 65535, 65535]
+          }
+        ],
+        "namen": {
+          "ab": 140,
+          "woerter": [20013, 17746, 18249, 17696, 20069, 29818, 8263, 28002, 18432, 0, 0, 0, 0, 0, 0, 0, 22358, 22048, 10323, 29793, 25716, 30565, 29291, 25888, 22524, 29306, 25205, 29287, 10496, 0, 0, 0, 19777, 20000, 17712, 14387, 13900, 17664, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 19287, 8261, 28261, 29287, 26981, 8275, 28001, 29300, 25196, 28515, 27424, 13107, 0, 0, 0, 0]
+        }
+      },
+      "expected": {
+        "lesungen": [
+          {
+            "ergebnis": "lesbar",
+            "grund": null,
+            "kopf": {"version_haupt": 1, "version_neben": 0, "te_anzahl": 2, "herzschlag": 7315, "programmstand": 2612, "steuerung_id": 100002, "anlagenart": 2, "beschreibung_ab": 140},
+            "anfragen": 1,
+            "herzschlag_urteil": null,
+            "veraltet": false,
+            "zaehler_differenz": null,
+            "werte": {"a_gueltig": 0, "a_alter_s": null, "p_nvp_w": null, "p_erzeugung_w": null, "anlage_zustand": 3, "a_bits": 0, "speicher_fuellstand": null, "p_installiert_kw": 99, "n_kanal": 1, "n_bits": 4, "n_p_prozent": null, "n_cosphi": null, "n_seit_s": 65534, "n_zaehler": 0, "d_kanal": 1, "d_bits": 0, "d_soll_w": null, "d_seit_s": null, "d_zaehler": null, "quelle_p": null, "s_bits": 0, "p_grenze_w": null},
+            "bits": {
+              "a_gueltig": {"netzpunkt_gueltig": false, "netzpunkt_berechnet": false, "netzpunkt_tot": false, "erzeugung_gueltig": false, "gasspeicher_gueltig": false},
+              "a_bits": {"not_aus": false, "na_schutz": false, "sammelstoerung": false, "hand_ort": false, "wartung": false},
+              "n_bits": {"vorgabe_gueltig": false, "verbindung_steht": false, "wirkleistung_begrenzt": true, "not_aus": false, "cosphi_vorgabe": false, "kennlinie": false},
+              "d_bits": {"abschnitt_gueltig": false, "aktivierung": null, "stopp": null, "bereit_gemeldet": null, "aktiv_gemeldet": null},
+              "s_bits": {"gueltig": false, "anlage_folgt": null}
+            },
+            "einheiten": [
+              {
+                "n": 1,
+                "adresse": 38,
+                "werte": {"t_zustand": 3, "t_bits": 15, "t_art": 2, "t_nenn_kw": 66, "t_p_ist_w": 42500, "t_p_soll_w": 42700, "t_e": 18734556},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": true, "dv_aktiv": true, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 2,
+                "adresse": 48,
+                "werte": {"t_zustand": null, "t_bits": 2, "t_art": 2, "t_nenn_kw": 33, "t_p_ist_w": null, "t_p_soll_w": 21300, "t_e": null},
+                "bits": {
+                  "t_bits": {"werte_gueltig": false, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {"t_zustand": "gueltigkeit", "t_p_ist_w": "gueltigkeit", "t_e": "gueltigkeit"}
+              }
+            ],
+            "leer": {"a_alter_s": "ungueltig", "p_nvp_w": "gueltigkeit", "p_erzeugung_w": "gueltigkeit", "speicher_fuellstand": "gueltigkeit", "n_p_prozent": "gueltigkeit", "n_cosphi": "gueltigkeit", "d_soll_w": "gueltigkeit", "d_seit_s": "gueltigkeit", "d_zaehler": "gueltigkeit", "quelle_p": "gueltigkeit", "p_grenze_w": "gueltigkeit"}
+          }
+        ],
+        "namen": {
+          "ergebnis": "gelesen",
+          "anfragen": 1,
+          "netzbetreiber_name": "N-ERGIE Netz GmbH",
+          "direktvermarkter_name": "WVV (Stadtwerke Würzburg)",
+          "t_typ_name": ["MAN E0836LE", "KW Energie Smartblock 33"]
+        }
+      }
+    },
+    {
+      "name": "E11 ungueltig-werte",
+      "why": "Typ-Maximum heißt kein Wert: programmstand 0xFFFF, steuerung_id 0xFFFFFFFF, p_nvp_w 0x7FFFFFFF (obwohl Bit 0 gesetzt), n_cosphi 0x7FFF, n_seit_s 0xFFFF, a_bits 0xFFFF (Bitfeld unbekannt), p_grenze_w, t_p_soll_w, t_e. Kein Typ-Maximum, also ein Wert: a_alter_s 32767 (U16), p_erzeugung_w und t_p_ist_w 0xFFFF 0xFFFF = −1 W (S32), herzschlag und n_zaehler 65535 (Zähler, firstmate A2 = A). Außerhalb des Vokabulars: anlage_zustand 9, t_art 7.",
+      "herkunft": "vertrag",
+      "belegt": false,
+      "input": {
+        "lesungen": [
+          {
+            "woerter": [22096, 17754, 258, 772, 256, 3, 65535, 65535, 65535, 65535, 1, 140, 9, 32767, 32767, 65535, 65535, 65535, 9, 65535, 65535, 265, 3, 19, 1000, 32767, 65535, 65535, 0, 0, 65535, 65535, 65535, 0, 0, 3, 65535, 65535, 0, 3, 1, 125, 65535, 65535, 0, 34500, 71, 65177, 0, 3, 1, 125, 0, 0, 65535, 65535, 71, 49062, 0, 3, 7, 125, 0, 0, 0, 34500, 65535, 65535]
+          }
+        ],
+        "namen": {
+          "ab": 140,
+          "woerter": [20013, 17746, 18249, 17696, 20069, 29818, 8263, 28002, 18432, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 18290, 28535, 24948, 29728, 22354, 12576, 10324, 31088, 8303, 26214, 25966, 10496, 0, 0, 0, 0, 18290, 28535, 24948, 29728, 22354, 12832, 10324, 31088, 8303, 26214, 25966, 10496, 0, 0, 0, 0, 18290, 28535, 24948, 29728, 22354, 13088, 10324, 31088, 8303, 26214, 25966, 10496, 0, 0, 0, 0]
+        }
+      },
+      "expected": {
+        "lesungen": [
+          {
+            "ergebnis": "lesbar",
+            "grund": null,
+            "kopf": {"version_haupt": 1, "version_neben": 0, "te_anzahl": 3, "herzschlag": 65535, "programmstand": null, "steuerung_id": null, "anlagenart": 1, "beschreibung_ab": 140},
+            "anfragen": 1,
+            "herzschlag_urteil": null,
+            "veraltet": false,
+            "zaehler_differenz": null,
+            "werte": {
+              "a_gueltig": 9,
+              "a_alter_s": 32767,
+              "p_nvp_w": null,
+              "p_erzeugung_w": -1,
+              "anlage_zustand": null,
+              "a_bits": null,
+              "speicher_fuellstand": null,
+              "p_installiert_kw": 265,
+              "n_kanal": 3,
+              "n_bits": 19,
+              "n_p_prozent": 1000,
+              "n_cosphi": null,
+              "n_seit_s": null,
+              "n_zaehler": 65535,
+              "d_kanal": 0,
+              "d_bits": 0,
+              "d_soll_w": null,
+              "d_seit_s": null,
+              "d_zaehler": null,
+              "quelle_p": 0,
+              "s_bits": 3,
+              "p_grenze_w": null
+            },
+            "bits": {
+              "a_gueltig": {"netzpunkt_gueltig": true, "netzpunkt_berechnet": false, "netzpunkt_tot": false, "erzeugung_gueltig": true, "gasspeicher_gueltig": false},
+              "a_bits": null,
+              "n_bits": {"vorgabe_gueltig": true, "verbindung_steht": true, "wirkleistung_begrenzt": false, "not_aus": false, "cosphi_vorgabe": true, "kennlinie": false},
+              "d_bits": {"abschnitt_gueltig": false, "aktivierung": null, "stopp": null, "bereit_gemeldet": null, "aktiv_gemeldet": null},
+              "s_bits": {"gueltig": true, "anlage_folgt": true}
+            },
+            "einheiten": [
+              {
+                "n": 1,
+                "adresse": 38,
+                "werte": {"t_zustand": 0, "t_bits": 3, "t_art": 1, "t_nenn_kw": 125, "t_p_ist_w": -1, "t_p_soll_w": 34500, "t_e": 4718233},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 2,
+                "adresse": 48,
+                "werte": {"t_zustand": 0, "t_bits": 3, "t_art": 1, "t_nenn_kw": 125, "t_p_ist_w": 0, "t_p_soll_w": null, "t_e": 4702118},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {"t_p_soll_w": "ungueltig"}
+              },
+              {
+                "n": 3,
+                "adresse": 58,
+                "werte": {"t_zustand": 0, "t_bits": 3, "t_art": null, "t_nenn_kw": 125, "t_p_ist_w": 0, "t_p_soll_w": 34500, "t_e": null},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {"t_art": "fremd", "t_e": "ungueltig"}
+              }
+            ],
+            "leer": {"programmstand": "ungueltig", "steuerung_id": "ungueltig", "p_nvp_w": "ungueltig", "anlage_zustand": "fremd", "a_bits": "ungueltig", "speicher_fuellstand": "gueltigkeit", "n_cosphi": "ungueltig", "n_seit_s": "ungueltig", "d_soll_w": "gueltigkeit", "d_seit_s": "gueltigkeit", "d_zaehler": "gueltigkeit", "p_grenze_w": "ungueltig"}
+          }
+        ],
+        "namen": {
+          "ergebnis": "gelesen",
+          "anfragen": 1,
+          "netzbetreiber_name": "N-ERGIE Netz GmbH",
+          "direktvermarkter_name": null,
+          "t_typ_name": ["Growatt WR1 (Typ offen)", "Growatt WR2 (Typ offen)", "Growatt WR3 (Typ offen)"]
+        }
+      }
+    },
+    {
+      "name": "E12 te-anzahl-null",
+      "why": "te_anzahl 0: kein Erzeuger-Bild (gültig ist 1 … 10) → nicht lesbar; der Kopf ist lesbar und darf angezeigt werden.",
+      "herkunft": "vertrag",
+      "belegt": false,
+      "input": {
+        "lesungen": [
+          {
+            "woerter": [22096, 17754, 258, 772, 256, 0, 41230, 2610, 1, 34465, 1, 140, 9, 1, 65535, 63396, 1, 34664, 3, 0, 65535, 265, 3, 19, 1000, 64586, 3412, 1873, 0, 0, 65535, 65535, 65535, 0, 3, 3, 1, 37964]
+          }
+        ],
+        "namen": null
+      },
+      "expected": {
+        "lesungen": [
+          {
+            "ergebnis": "nicht_lesbar",
+            "grund": "te_anzahl_ungueltig",
+            "kopf": {"version_haupt": 1, "version_neben": 0, "te_anzahl": 0, "herzschlag": 41230, "programmstand": 2610, "steuerung_id": 100001, "anlagenart": 1, "beschreibung_ab": 140},
+            "anfragen": null,
+            "herzschlag_urteil": null,
+            "veraltet": null,
+            "zaehler_differenz": null,
+            "werte": null,
+            "bits": null,
+            "einheiten": [],
+            "leer": null
+          }
+        ],
+        "namen": null
+      }
+    },
+    {
+      "name": "E13 te-anzahl-zehn-zwei-anfragen",
+      "why": "Höchstzahl 10 Einheiten (gemischt, anlagenart 3: sechs PV-Wechselrichter, vier BHKW-Motoren): 138 Wörter, zwei Anfragen (0–117 mit Einheit 1–8, 118–137 mit Einheit 9–10; firstmate A1 = A). Namen 192 Wörter, zwei Anfragen; der Typname von Einheit 10 hat genau 32 Zeichen und keine abschließende 0.",
+      "herkunft": "vertrag",
+      "belegt": false,
+      "input": {
+        "lesungen": [
+          {
+            "woerter": [22096, 17754, 258, 772, 256, 10, 500, 2610, 1, 34467, 3, 140, 9, 1, 65533, 16608, 7, 3348, 2, 0, 65535, 600, 3, 19, 1000, 64586, 3412, 1873, 0, 0, 65535, 65535, 65535, 0, 0, 3, 65535, 65535, 2, 3, 1, 50, 0, 30100, 0, 50000, 15, 16967, 2, 3, 1, 50, 0, 30200, 0, 50000, 30, 33927, 2, 3, 1, 50, 0, 30300, 0, 50000, 45, 50887, 2, 3, 1, 50, 0, 30400, 0, 50000, 61, 2311, 2, 3, 1, 50, 0, 30500, 0, 50000, 76, 19271, 2, 3, 1, 50, 0, 30600, 0, 50000, 91, 36231, 2, 3, 2, 75, 1, 4464, 1, 9464, 106, 53191, 2, 3, 2, 75, 1, 4464, 1, 9464, 122, 4615, 2, 3, 2, 75, 1, 4464, 1, 9464, 137, 21575, 2, 3, 2, 75, 1, 4464, 1, 9464, 152, 38535]
+          }
+        ],
+        "namen": {
+          "ab": 140,
+          "woerter": [20013, 17746, 18249, 17696, 20069, 29818, 8263, 28002, 18432, 0, 0, 0, 0, 0, 0, 0, 16997, 26995, 28777, 25964, 11588, 26994, 25963, 29814, 25970, 28001, 29291, 29813, 28263, 0, 0, 0, 20566, 11607, 25955, 26739, 25964, 29289, 25448, 29797, 29216, 12544, 0, 0, 0, 0, 0, 0, 20566, 11607, 25955, 26739, 25964, 29289, 25448, 29797, 29216, 12800, 0, 0, 0, 0, 0, 0, 20566, 11607, 25955, 26739, 25964, 29289, 25448, 29797, 29216, 13056, 0, 0, 0, 0, 0, 0, 20566, 11607, 25955, 26739, 25964, 29289, 25448, 29797, 29216, 13312, 0, 0, 0, 0, 0, 0, 20566, 11607, 25955, 26739, 25964, 29289, 25448, 29797, 29216, 13568, 0, 0, 0, 0, 0, 0, 20566, 11607, 25955, 26739, 25964, 29289, 25448, 29797, 29216, 13824, 0, 0, 0, 0, 0, 0, 16968, 19287, 11597, 28532, 28530, 8247, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16968, 19287, 11597, 28532, 28530, 8248, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16968, 19287, 11597, 28532, 28530, 8249, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 16968, 19287, 11597, 28532, 28530, 8241, 12332, 8295, 25966, 24949, 8243, 12832, 23141, 26979, 26725, 28193]
+        }
+      },
+      "expected": {
+        "lesungen": [
+          {
+            "ergebnis": "lesbar",
+            "grund": null,
+            "kopf": {"version_haupt": 1, "version_neben": 0, "te_anzahl": 10, "herzschlag": 500, "programmstand": 2610, "steuerung_id": 100003, "anlagenart": 3, "beschreibung_ab": 140},
+            "anfragen": 2,
+            "herzschlag_urteil": null,
+            "veraltet": false,
+            "zaehler_differenz": null,
+            "werte": {"a_gueltig": 9, "a_alter_s": 1, "p_nvp_w": -180000, "p_erzeugung_w": 462100, "anlage_zustand": 2, "a_bits": 0, "speicher_fuellstand": null, "p_installiert_kw": 600, "n_kanal": 3, "n_bits": 19, "n_p_prozent": 1000, "n_cosphi": -950, "n_seit_s": 3412, "n_zaehler": 1873, "d_kanal": 0, "d_bits": 0, "d_soll_w": null, "d_seit_s": null, "d_zaehler": null, "quelle_p": 0, "s_bits": 3, "p_grenze_w": null},
+            "bits": {
+              "a_gueltig": {"netzpunkt_gueltig": true, "netzpunkt_berechnet": false, "netzpunkt_tot": false, "erzeugung_gueltig": true, "gasspeicher_gueltig": false},
+              "a_bits": {"not_aus": false, "na_schutz": false, "sammelstoerung": false, "hand_ort": false, "wartung": false},
+              "n_bits": {"vorgabe_gueltig": true, "verbindung_steht": true, "wirkleistung_begrenzt": false, "not_aus": false, "cosphi_vorgabe": true, "kennlinie": false},
+              "d_bits": {"abschnitt_gueltig": false, "aktivierung": null, "stopp": null, "bereit_gemeldet": null, "aktiv_gemeldet": null},
+              "s_bits": {"gueltig": true, "anlage_folgt": true}
+            },
+            "einheiten": [
+              {
+                "n": 1,
+                "adresse": 38,
+                "werte": {"t_zustand": 2, "t_bits": 3, "t_art": 1, "t_nenn_kw": 50, "t_p_ist_w": 30100, "t_p_soll_w": 50000, "t_e": 1000007},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 2,
+                "adresse": 48,
+                "werte": {"t_zustand": 2, "t_bits": 3, "t_art": 1, "t_nenn_kw": 50, "t_p_ist_w": 30200, "t_p_soll_w": 50000, "t_e": 2000007},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 3,
+                "adresse": 58,
+                "werte": {"t_zustand": 2, "t_bits": 3, "t_art": 1, "t_nenn_kw": 50, "t_p_ist_w": 30300, "t_p_soll_w": 50000, "t_e": 3000007},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 4,
+                "adresse": 68,
+                "werte": {"t_zustand": 2, "t_bits": 3, "t_art": 1, "t_nenn_kw": 50, "t_p_ist_w": 30400, "t_p_soll_w": 50000, "t_e": 4000007},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 5,
+                "adresse": 78,
+                "werte": {"t_zustand": 2, "t_bits": 3, "t_art": 1, "t_nenn_kw": 50, "t_p_ist_w": 30500, "t_p_soll_w": 50000, "t_e": 5000007},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 6,
+                "adresse": 88,
+                "werte": {"t_zustand": 2, "t_bits": 3, "t_art": 1, "t_nenn_kw": 50, "t_p_ist_w": 30600, "t_p_soll_w": 50000, "t_e": 6000007},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 7,
+                "adresse": 98,
+                "werte": {"t_zustand": 2, "t_bits": 3, "t_art": 2, "t_nenn_kw": 75, "t_p_ist_w": 70000, "t_p_soll_w": 75000, "t_e": 7000007},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 8,
+                "adresse": 108,
+                "werte": {"t_zustand": 2, "t_bits": 3, "t_art": 2, "t_nenn_kw": 75, "t_p_ist_w": 70000, "t_p_soll_w": 75000, "t_e": 8000007},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 9,
+                "adresse": 118,
+                "werte": {"t_zustand": 2, "t_bits": 3, "t_art": 2, "t_nenn_kw": 75, "t_p_ist_w": 70000, "t_p_soll_w": 75000, "t_e": 9000007},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 10,
+                "adresse": 128,
+                "werte": {"t_zustand": 2, "t_bits": 3, "t_art": 2, "t_nenn_kw": 75, "t_p_ist_w": 70000, "t_p_soll_w": 75000, "t_e": 10000007},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              }
+            ],
+            "leer": {"speicher_fuellstand": "gueltigkeit", "d_soll_w": "gueltigkeit", "d_seit_s": "gueltigkeit", "d_zaehler": "gueltigkeit", "p_grenze_w": "ungueltig"}
+          }
+        ],
+        "namen": {
+          "ergebnis": "gelesen",
+          "anfragen": 2,
+          "netzbetreiber_name": "N-ERGIE Netz GmbH",
+          "direktvermarkter_name": "Beispiel-Direktvermarktung",
+          "t_typ_name": [
+            "PV-Wechselrichter 1",
+            "PV-Wechselrichter 2",
+            "PV-Wechselrichter 3",
+            "PV-Wechselrichter 4",
+            "PV-Wechselrichter 5",
+            "PV-Wechselrichter 6",
+            "BHKW-Motor 7",
+            "BHKW-Motor 8",
+            "BHKW-Motor 9",
+            "BHKW-Motor 10, genau 32 Zeichen!"
+          ]
+        }
+      }
+    },
+    {
+      "name": "E14 te-anzahl-elf",
+      "why": "te_anzahl 11 liegt über der Höchstzahl 10 → nicht lesbar, Kopf lesbar.",
+      "herkunft": "vertrag",
+      "belegt": false,
+      "input": {
+        "lesungen": [
+          {
+            "woerter": [22096, 17754, 258, 772, 256, 11, 41230, 2610, 1, 34465, 1, 140, 9, 1, 65535, 63396, 1, 34664, 3, 0, 65535, 265, 3, 19, 1000, 64586, 3412, 1873, 0, 0, 65535, 65535, 65535, 0, 3, 3, 1, 37964, 3, 3, 1, 125, 0, 34200, 0, 34500, 71, 65177, 3, 3, 1, 125, 0, 33900, 0, 34500, 71, 49062, 3, 3, 1, 125, 0, 32100, 0, 34500, 71, 2851, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+          }
+        ],
+        "namen": null
+      },
+      "expected": {
+        "lesungen": [
+          {
+            "ergebnis": "nicht_lesbar",
+            "grund": "te_anzahl_ungueltig",
+            "kopf": {"version_haupt": 1, "version_neben": 0, "te_anzahl": 11, "herzschlag": 41230, "programmstand": 2610, "steuerung_id": 100001, "anlagenart": 1, "beschreibung_ab": 140},
+            "anfragen": null,
+            "herzschlag_urteil": null,
+            "veraltet": null,
+            "zaehler_differenz": null,
+            "werte": null,
+            "bits": null,
+            "einheiten": [],
+            "leer": null
+          }
+        ],
+        "namen": null
+      }
+    },
+    {
+      "name": "E15 te-anzahl-typmaximum",
+      "why": "te_anzahl 0xFFFF (Typ-Maximum) → nicht lesbar, Kopf lesbar.",
+      "herkunft": "vertrag",
+      "belegt": false,
+      "input": {
+        "lesungen": [
+          {
+            "woerter": [22096, 17754, 258, 772, 256, 65535, 41230, 2610, 1, 34465, 1, 140, 9, 1, 65535, 63396, 1, 34664, 3, 0, 65535, 265, 3, 19, 1000, 64586, 3412, 1873, 0, 0, 65535, 65535, 65535, 0, 3, 3, 1, 37964, 3, 3, 1, 125, 0, 34200, 0, 34500, 71, 65177, 3, 3, 1, 125, 0, 33900, 0, 34500, 71, 49062, 3, 3, 1, 125, 0, 32100, 0, 34500, 71, 2851]
+          }
+        ],
+        "namen": null
+      },
+      "expected": {
+        "lesungen": [
+          {
+            "ergebnis": "nicht_lesbar",
+            "grund": "te_anzahl_ungueltig",
+            "kopf": {"version_haupt": 1, "version_neben": 0, "te_anzahl": 65535, "herzschlag": 41230, "programmstand": 2610, "steuerung_id": 100001, "anlagenart": 1, "beschreibung_ab": 140},
+            "anfragen": null,
+            "herzschlag_urteil": null,
+            "veraltet": null,
+            "zaehler_differenz": null,
+            "werte": null,
+            "bits": null,
+            "einheiten": [],
+            "leer": null
+          }
+        ],
+        "namen": null
+      }
+    },
+    {
+      "name": "E16 einheit-dazu-zu-wenig-woerter",
+      "why": "Die Steuerung meldet jetzt 3 Einheiten, die Box hat für 2 geplant und 58 Wörter gelesen: zu wenige Wörter → nicht lesbar (kein halbes Bild); der Kopf zeigt te_anzahl 3, die Box plant neu.",
+      "herkunft": "vertrag",
+      "belegt": false,
+      "input": {
+        "lesungen": [
+          {
+            "woerter": [22096, 17754, 258, 772, 256, 3, 7315, 2612, 1, 34466, 2, 140, 24, 65535, 32767, 65535, 0, 63600, 3, 0, 734, 99, 1, 5, 700, 32767, 65534, 0, 1, 27, 0, 64000, 742, 318, 2, 3, 0, 64000, 3, 15, 2, 66, 0, 42500, 0, 42700, 285, 56796, 3, 15, 2, 33, 0, 21100, 0, 21300, 65535, 65535]
+          }
+        ],
+        "namen": null
+      },
+      "expected": {
+        "lesungen": [
+          {
+            "ergebnis": "nicht_lesbar",
+            "grund": "zu_wenig_woerter",
+            "kopf": {"version_haupt": 1, "version_neben": 0, "te_anzahl": 3, "herzschlag": 7315, "programmstand": 2612, "steuerung_id": 100002, "anlagenart": 2, "beschreibung_ab": 140},
+            "anfragen": null,
+            "herzschlag_urteil": null,
+            "veraltet": null,
+            "zaehler_differenz": null,
+            "werte": null,
+            "bits": null,
+            "einheiten": [],
+            "leer": null
+          }
+        ],
+        "namen": null
+      }
+    },
+    {
+      "name": "E17 kopf-unvollstaendig",
+      "why": "Die Antwort hat nur 4 Wörter: der Kopf (12 Wörter) ist nicht vollständig → nicht lesbar, kein Kopf.",
+      "herkunft": "vertrag",
+      "belegt": false,
+      "input": {"lesungen": [{"woerter": [22096, 17754, 258, 772]}], "namen": null},
+      "expected": {
+        "lesungen": [
+          {
+            "ergebnis": "nicht_lesbar",
+            "grund": "zu_wenig_woerter",
+            "kopf": null,
+            "anfragen": null,
+            "herzschlag_urteil": null,
+            "veraltet": null,
+            "zaehler_differenz": null,
+            "werte": null,
+            "bits": null,
+            "einheiten": [],
+            "leer": null
+          }
+        ],
+        "namen": null
+      }
+    },
+    {
+      "name": "E18 beschreibung-ab-null",
+      "why": "beschreibung_ab 0: keine Namen in der Steuerung — das Bild ist voll lesbar, die Namen trägt man im Portal ein.",
+      "herkunft": "vertrag",
+      "belegt": false,
+      "input": {
+        "lesungen": [
+          {
+            "woerter": [22096, 17754, 258, 772, 256, 2, 7315, 2612, 1, 34466, 2, 0, 24, 65535, 32767, 65535, 0, 63600, 3, 0, 734, 99, 1, 5, 700, 32767, 65534, 0, 1, 27, 0, 64000, 742, 318, 2, 3, 0, 64000, 3, 15, 2, 66, 0, 42500, 0, 42700, 285, 56796, 3, 15, 2, 33, 0, 21100, 0, 21300, 65535, 65535]
+          }
+        ],
+        "namen": null
+      },
+      "expected": {
+        "lesungen": [
+          {
+            "ergebnis": "lesbar",
+            "grund": null,
+            "kopf": {"version_haupt": 1, "version_neben": 0, "te_anzahl": 2, "herzschlag": 7315, "programmstand": 2612, "steuerung_id": 100002, "anlagenart": 2, "beschreibung_ab": 0},
+            "anfragen": 1,
+            "herzschlag_urteil": null,
+            "veraltet": false,
+            "zaehler_differenz": null,
+            "werte": {"a_gueltig": 24, "a_alter_s": null, "p_nvp_w": null, "p_erzeugung_w": 63600, "anlage_zustand": 3, "a_bits": 0, "speicher_fuellstand": 734, "p_installiert_kw": 99, "n_kanal": 1, "n_bits": 5, "n_p_prozent": 700, "n_cosphi": null, "n_seit_s": 65534, "n_zaehler": 0, "d_kanal": 1, "d_bits": 27, "d_soll_w": 64000, "d_seit_s": 742, "d_zaehler": 318, "quelle_p": 2, "s_bits": 3, "p_grenze_w": 64000},
+            "bits": {
+              "a_gueltig": {"netzpunkt_gueltig": false, "netzpunkt_berechnet": false, "netzpunkt_tot": false, "erzeugung_gueltig": true, "gasspeicher_gueltig": true},
+              "a_bits": {"not_aus": false, "na_schutz": false, "sammelstoerung": false, "hand_ort": false, "wartung": false},
+              "n_bits": {"vorgabe_gueltig": true, "verbindung_steht": false, "wirkleistung_begrenzt": true, "not_aus": false, "cosphi_vorgabe": false, "kennlinie": false},
+              "d_bits": {"abschnitt_gueltig": true, "aktivierung": true, "stopp": false, "bereit_gemeldet": true, "aktiv_gemeldet": true},
+              "s_bits": {"gueltig": true, "anlage_folgt": true}
+            },
+            "einheiten": [
+              {
+                "n": 1,
+                "adresse": 38,
+                "werte": {"t_zustand": 3, "t_bits": 15, "t_art": 2, "t_nenn_kw": 66, "t_p_ist_w": 42500, "t_p_soll_w": 42700, "t_e": 18734556},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": true, "dv_aktiv": true, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 2,
+                "adresse": 48,
+                "werte": {"t_zustand": 3, "t_bits": 15, "t_art": 2, "t_nenn_kw": 33, "t_p_ist_w": 21100, "t_p_soll_w": 21300, "t_e": null},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": true, "dv_aktiv": true, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {"t_e": "ungueltig"}
+              }
+            ],
+            "leer": {"a_alter_s": "ungueltig", "p_nvp_w": "gueltigkeit", "n_cosphi": "ungueltig"}
+          }
+        ],
+        "namen": {
+          "ergebnis": "keine_namen",
+          "anfragen": null,
+          "netzbetreiber_name": null,
+          "direktvermarkter_name": null,
+          "t_typ_name": []
+        }
+      }
+    },
+    {
+      "name": "E19 namen-bereich-im-bild",
+      "why": "beschreibung_ab 60 liegt in den laufenden Wörtern (Gore 0–67): keine Namen, das Bild bleibt lesbar.",
+      "herkunft": "vertrag",
+      "belegt": false,
+      "input": {
+        "lesungen": [
+          {
+            "woerter": [22096, 17754, 258, 772, 256, 3, 41230, 2610, 1, 34465, 1, 60, 9, 1, 65535, 63396, 1, 34664, 3, 0, 65535, 265, 3, 19, 1000, 64586, 3412, 1873, 0, 0, 65535, 65535, 65535, 0, 3, 3, 1, 37964, 3, 3, 1, 125, 0, 34200, 0, 34500, 71, 65177, 3, 3, 1, 125, 0, 33900, 0, 34500, 71, 49062, 3, 3, 1, 125, 0, 32100, 0, 34500, 71, 2851]
+          }
+        ],
+        "namen": null
+      },
+      "expected": {
+        "lesungen": [
+          {
+            "ergebnis": "lesbar",
+            "grund": null,
+            "kopf": {"version_haupt": 1, "version_neben": 0, "te_anzahl": 3, "herzschlag": 41230, "programmstand": 2610, "steuerung_id": 100001, "anlagenart": 1, "beschreibung_ab": 60},
+            "anfragen": 1,
+            "herzschlag_urteil": null,
+            "veraltet": false,
+            "zaehler_differenz": null,
+            "werte": {"a_gueltig": 9, "a_alter_s": 1, "p_nvp_w": -2140, "p_erzeugung_w": 100200, "anlage_zustand": 3, "a_bits": 0, "speicher_fuellstand": null, "p_installiert_kw": 265, "n_kanal": 3, "n_bits": 19, "n_p_prozent": 1000, "n_cosphi": -950, "n_seit_s": 3412, "n_zaehler": 1873, "d_kanal": 0, "d_bits": 0, "d_soll_w": null, "d_seit_s": null, "d_zaehler": null, "quelle_p": 3, "s_bits": 3, "p_grenze_w": 103500},
+            "bits": {
+              "a_gueltig": {"netzpunkt_gueltig": true, "netzpunkt_berechnet": false, "netzpunkt_tot": false, "erzeugung_gueltig": true, "gasspeicher_gueltig": false},
+              "a_bits": {"not_aus": false, "na_schutz": false, "sammelstoerung": false, "hand_ort": false, "wartung": false},
+              "n_bits": {"vorgabe_gueltig": true, "verbindung_steht": true, "wirkleistung_begrenzt": false, "not_aus": false, "cosphi_vorgabe": true, "kennlinie": false},
+              "d_bits": {"abschnitt_gueltig": false, "aktivierung": null, "stopp": null, "bereit_gemeldet": null, "aktiv_gemeldet": null},
+              "s_bits": {"gueltig": true, "anlage_folgt": true}
+            },
+            "einheiten": [
+              {
+                "n": 1,
+                "adresse": 38,
+                "werte": {"t_zustand": 3, "t_bits": 3, "t_art": 1, "t_nenn_kw": 125, "t_p_ist_w": 34200, "t_p_soll_w": 34500, "t_e": 4718233},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 2,
+                "adresse": 48,
+                "werte": {"t_zustand": 3, "t_bits": 3, "t_art": 1, "t_nenn_kw": 125, "t_p_ist_w": 33900, "t_p_soll_w": 34500, "t_e": 4702118},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 3,
+                "adresse": 58,
+                "werte": {"t_zustand": 3, "t_bits": 3, "t_art": 1, "t_nenn_kw": 125, "t_p_ist_w": 32100, "t_p_soll_w": 34500, "t_e": 4655907},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              }
+            ],
+            "leer": {"speicher_fuellstand": "gueltigkeit", "d_soll_w": "gueltigkeit", "d_seit_s": "gueltigkeit", "d_zaehler": "gueltigkeit"}
+          }
+        ],
+        "namen": {
+          "ergebnis": "bereich_ungueltig",
+          "anfragen": null,
+          "netzbetreiber_name": null,
+          "direktvermarkter_name": null,
+          "t_typ_name": []
+        }
+      }
+    },
+    {
+      "name": "E20 namen-grenzfaelle",
+      "why": "Namen: genau 32 Zeichen mit Umlauten und Mittelpunkt (ISO 8859-1, keine abschließende 0); Text endet am ersten 0-Byte, was dahinter steht, zählt nicht („WVV“); leerer Typname = keiner (null); ä ö ü ß Ä Ö Ü.",
+      "herkunft": "vertrag",
+      "belegt": false,
+      "input": {
+        "lesungen": [
+          {
+            "woerter": [22096, 17754, 258, 772, 256, 2, 7315, 2612, 1, 34466, 2, 140, 24, 65535, 32767, 65535, 0, 63600, 3, 0, 734, 99, 1, 5, 700, 32767, 65534, 0, 1, 27, 0, 64000, 742, 318, 2, 3, 0, 64000, 3, 15, 2, 66, 0, 42500, 0, 42700, 285, 56796, 3, 15, 2, 33, 0, 21100, 0, 21300, 65535, 65535]
+          }
+        ],
+        "namen": {
+          "ab": 140,
+          "woerter": [20013, 17746, 18249, 17696, 20069, 29818, 8263, 28002, 18464, 46880, 20220, 29294, 25189, 29287, 8275, 64612, 22358, 22016, 21093, 29556, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 21357, 24946, 29794, 27759, 25451, 8243, 13088, 58614, 64735, 8388, 55004, 0, 0, 0, 0, 0]
+        }
+      },
+      "expected": {
+        "lesungen": [
+          {
+            "ergebnis": "lesbar",
+            "grund": null,
+            "kopf": {"version_haupt": 1, "version_neben": 0, "te_anzahl": 2, "herzschlag": 7315, "programmstand": 2612, "steuerung_id": 100002, "anlagenart": 2, "beschreibung_ab": 140},
+            "anfragen": 1,
+            "herzschlag_urteil": null,
+            "veraltet": false,
+            "zaehler_differenz": null,
+            "werte": {"a_gueltig": 24, "a_alter_s": null, "p_nvp_w": null, "p_erzeugung_w": 63600, "anlage_zustand": 3, "a_bits": 0, "speicher_fuellstand": 734, "p_installiert_kw": 99, "n_kanal": 1, "n_bits": 5, "n_p_prozent": 700, "n_cosphi": null, "n_seit_s": 65534, "n_zaehler": 0, "d_kanal": 1, "d_bits": 27, "d_soll_w": 64000, "d_seit_s": 742, "d_zaehler": 318, "quelle_p": 2, "s_bits": 3, "p_grenze_w": 64000},
+            "bits": {
+              "a_gueltig": {"netzpunkt_gueltig": false, "netzpunkt_berechnet": false, "netzpunkt_tot": false, "erzeugung_gueltig": true, "gasspeicher_gueltig": true},
+              "a_bits": {"not_aus": false, "na_schutz": false, "sammelstoerung": false, "hand_ort": false, "wartung": false},
+              "n_bits": {"vorgabe_gueltig": true, "verbindung_steht": false, "wirkleistung_begrenzt": true, "not_aus": false, "cosphi_vorgabe": false, "kennlinie": false},
+              "d_bits": {"abschnitt_gueltig": true, "aktivierung": true, "stopp": false, "bereit_gemeldet": true, "aktiv_gemeldet": true},
+              "s_bits": {"gueltig": true, "anlage_folgt": true}
+            },
+            "einheiten": [
+              {
+                "n": 1,
+                "adresse": 38,
+                "werte": {"t_zustand": 3, "t_bits": 15, "t_art": 2, "t_nenn_kw": 66, "t_p_ist_w": 42500, "t_p_soll_w": 42700, "t_e": 18734556},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": true, "dv_aktiv": true, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 2,
+                "adresse": 48,
+                "werte": {"t_zustand": 3, "t_bits": 15, "t_art": 2, "t_nenn_kw": 33, "t_p_ist_w": 21100, "t_p_soll_w": 21300, "t_e": null},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": true, "dv_aktiv": true, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {"t_e": "ungueltig"}
+              }
+            ],
+            "leer": {"a_alter_s": "ungueltig", "p_nvp_w": "gueltigkeit", "n_cosphi": "ungueltig"}
+          }
+        ],
+        "namen": {
+          "ergebnis": "gelesen",
+          "anfragen": 1,
+          "netzbetreiber_name": "N-ERGIE Netz GmbH · Nürnberg Süd",
+          "direktvermarkter_name": "WVV",
+          "t_typ_name": [null, "Smartblock 33 äöüß ÄÖÜ"]
+        }
+      }
+    }
+  ]
+}
