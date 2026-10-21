@@ -2,6 +2,7 @@ package com.voltpilot.api.ueberwachung;
 
 import com.voltpilot.api.erzeuger.AnlagensteuerungService;
 import com.voltpilot.api.erzeuger.ErzeugerRegisterbild;
+import com.voltpilot.api.erzeuger.Programmstand;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -11,7 +12,8 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * Die fünf Alarm-Vorlagen für Erzeugeranlagen (UEMS EZ-11, Konzept vp-erzeuger-wago-konzept §4.8, EW-9 A) als
+ * Die Alarm-Vorlagen für Erzeugeranlagen (UEMS EZ-11, Konzept vp-erzeuger-wago-konzept §4.8, EW-9 A; EZ-11b
+ * „Programmstand veraltet“) als
  * reine Auswertung eines Registerbilds: kein Datenbankzugriff, keine Uhr - {@link ErzeugerWerteLeser} liefert die
  * jüngsten Werte der Anlagensteuerung, diese Klasse macht daraus EINEN Zustand mit einem Satz in Kundensprache.
  * Dauer, Erholdauer, Hysterese und Versand bleiben beim Zustandsautomaten der Überwachung
@@ -273,6 +275,30 @@ final class ErzeugerAlarme {
                 ? new Urteil("verbunden", "Die Fernwirk-Verbindung zum Netzbetreiber steht.", bild.zeit("erzeuger.nb.n_bits"))
                 : new Urteil("getrennt", "Die Fernwirk-Verbindung zum Netzbetreiber steht nicht.",
                         bild.zeit("erzeuger.nb.n_bits"));
+    }
+
+    // ------------------------------------------------------------------ Programmstand veraltet
+
+    /**
+     * „Programmstand veraltet“ (EZ-11b): der Vergleich aus EZ-16 ({@link Programmstand#vergleiche}) - Kopf-Register
+     * {@value Programmstand#PUNKT} gegen den Soll der laufenden Fassung ({@code sollDerFassung}, null = Stand der
+     * Bibliothek). Nur ein aktueller Ist-Wert zählt; ein fehlender, veralteter oder ungültiger Stand bleibt unbekannt.
+     */
+    static Urteil programmstand(Bild bild, Integer sollDerFassung) {
+        Wert w = bild.werte().get(Programmstand.PUNKT);
+        if (!aktuell(w, bild.jetzt())) {
+            return Urteil.UNBEKANNT;
+        }
+        Programmstand.Vergleich v = Programmstand.vergleiche(w.zahl(), w.zeit(), sollDerFassung);
+        if (Programmstand.UNBEKANNT.equals(v.zustand())) {
+            return Urteil.UNBEKANNT;
+        }
+        String soll = v.sollText() + (v.sollAusFassung() ? " (Vorgabe der Fassung)" : " (Stand der VoltPilot-Bibliothek)");
+        return v.warnen()
+                ? new Urteil(Programmstand.AELTER, "Die Anlagensteuerung fährt den Programmstand " + v.istText()
+                        + ", erwartet ist " + soll + ".", v.gemessenAm())
+                : new Urteil(Programmstand.AKTUELL, "Die Anlagensteuerung fährt den Programmstand " + v.istText()
+                        + ", erwartet ist " + soll + " - der Stand ist aktuell.", v.gemessenAm());
     }
 
     // ------------------------------------------------------------------ Hilfen

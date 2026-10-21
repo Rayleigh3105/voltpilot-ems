@@ -102,4 +102,29 @@ describe('UeberwachenBlatt · Erzeuger-Vorlagen', () => {
         + '(nur bei Fernwirktechnik). · Warnung',
     );
   });
+
+  it('belegt „Programmstand veraltet“ mit 24 Stunden vor und schickt Ziel „älter als erwartet“ (EZ-11b)', async () => {
+    anlegen.mockResolvedValue({ id: 'r3' });
+    blatt('erzeuger.programmstand_veraltet');
+
+    expect(sp(screen.getByText(/Sag mir Bescheid/).textContent)).toBe(
+      'Sag mir Bescheid, wenn die Anlagensteuerung länger als 24 Stunden einen älteren Programmstand fährt als '
+        + 'erwartet. · Warnung',
+    );
+    expect(screen.getByText('Meldet ab dem Start, ohne Probelauf.')).toBeTruthy();
+    const dauer = screen.getByLabelText('Länger als (Minuten)') as HTMLInputElement;
+    expect(dauer.value).toBe('1440');
+    fireEvent.change(dauer, { target: { value: '2880' } });
+    expect(sp(screen.getByText(/Sag mir Bescheid/).textContent)).toContain('länger als 48 Stunden');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Überwachung starten' }));
+    await waitFor(() => expect(anlegen).toHaveBeenCalledTimes(1));
+    expect(anlegen.mock.calls[0][0]).toEqual({
+      wertart: 'erzeuger.programmstand_veraltet',
+      bezug: { anlage: 'a1' },
+      bedingung: { art: 'zustand', ziel: ['aelter'], dauer_s: 172800, erholen_s: 300 },
+      schwere: 'warnung',
+    });
+    expect(probelauf).not.toHaveBeenCalled();
+  });
 });

@@ -5,6 +5,7 @@ import com.voltpilot.api.erzeuger.AnlagensteuerungRepository;
 import com.voltpilot.api.erzeuger.AnlagensteuerungRepository.Jungster;
 import com.voltpilot.api.erzeuger.AnlagensteuerungRepository.Steuerung;
 import com.voltpilot.api.erzeuger.ErzeugerRegisterbild;
+import com.voltpilot.api.erzeuger.Programmstand;
 import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.uems.GeraetRepository.Teil;
 import java.time.Instant;
@@ -20,7 +21,7 @@ import org.springframework.stereotype.Component;
  * „Erzeuger“ der Überwachung. Er liest die jüngsten Werte der Familie {@value ErzeugerRegisterbild#FAMILIE} einer
  * Anlagensteuerung GENAU SO wie ihre Werte-Fläche ({@code AnlagensteuerungService#werte}: derselbe
  * {@link AnlagensteuerungRepository#juengste}, dieselbe Grenze für „aktuell“) und lässt {@link ErzeugerAlarme}
- * daraus den Zustand einer der fünf Vorlagen bilden. Nie die Tabelle {@code erzeuger_vorgabe} (EZ-7) - nur
+ * daraus den Zustand einer der Vorlagen bilden. Nie die Tabelle {@code erzeuger_vorgabe} (EZ-7) - nur
  * Messpunkte und ihre Frische.
  *
  * <p>Bezug: die Anlage. „Fernsteuerung nicht bereit“ gilt je Einheit ({@link #jeEinheit}); der Takt fächert die
@@ -35,10 +36,11 @@ public class ErzeugerWerteLeser implements WerteLeser {
     static final String FELD_FOLGEN = "folgen";
     static final String FELD_ABSCHALTUNG = "abschaltung";
     static final String FELD_FERNWIRK = "fernwirk";
+    static final String FELD_PROGRAMMSTAND = "programmstand";
 
     /** Die Zustände, die bei mehreren Steuerungen an einer Anlage den Ausschlag geben (der Ziel-Zustand der Vorlage). */
     private static final Map<String, String> SCHLECHT = Map.of(FELD_DATENLAGE, "veraltet", FELD_FOLGEN, "folgt_nicht",
-            FELD_ABSCHALTUNG, "abgeschaltet", FELD_FERNWIRK, "getrennt");
+            FELD_ABSCHALTUNG, "abgeschaltet", FELD_FERNWIRK, "getrennt", FELD_PROGRAMMSTAND, Programmstand.AELTER);
 
     static final double VORGABE_TOLERANZ_PROZENT = 5;
     static final double VORGABE_TOLERANZ_KW = 5;
@@ -100,7 +102,9 @@ public class ErzeugerWerteLeser implements WerteLeser {
         List<Steuerung> alle = steuerungen.steuerungen(bezug.id());
         List<ErzeugerAlarme.Urteil> urteile = new ArrayList<>();
         for (Steuerung s : alle) {
-            ErzeugerAlarme.Urteil u = urteil(feld, bild(s, jetzt), bedingung);
+            ErzeugerAlarme.Urteil u = FELD_PROGRAMMSTAND.equals(feld)
+                    ? ErzeugerAlarme.programmstand(bild(s, jetzt), programmstandSoll(s.geraetId()))
+                    : urteil(feld, bild(s, jetzt), bedingung);
             urteile.add(alle.size() > 1 && u.bekannt() ? benannt(s, u) : u);
         }
         return lesung(zusammen(feld, urteile));
@@ -154,6 +158,11 @@ public class ErzeugerWerteLeser implements WerteLeser {
             werte.put(j.pointKey(), new ErzeugerAlarme.Wert(j.zahl(), j.zeit(), j.qualitaet()));
         }
         return new ErzeugerAlarme.Bild(werte, teAnzahl, jetzt);
+    }
+
+    /** Der Soll der laufenden Fassung (EZ-16); null = der Stand der Bibliothek. */
+    private Integer programmstandSoll(UUID geraetId) {
+        return steuerungen.fassung(geraetId).map(AnlagensteuerungRepository.Fassung::programmstandSoll).orElse(null);
     }
 
     private int teAnzahl(UUID geraetId) {

@@ -299,6 +299,53 @@ class ErzeugerUeberwachungTest {
     }
 
     @Test
+    void programmstandVeraltetMeldetErstNach24StundenHaeltBeiVeraltetenWertenUndEntwarnt() {
+        vorlage("erzeuger.programmstand_veraltet");
+        bild.put("erzeuger.kopf.programmstand", 2608L); // Soll: Bibliothek 26.10 (die Fassung nennt keinen)
+
+        lauf(0); // aelter → ausstehend
+        lauf(86_385); // die 24 h laufen noch
+        assertThat(alarme).isEmpty();
+        lauf(86_400);
+        assertThat(alarme).hasSize(1);
+        verifyVersand("ausgeloest", 1);
+        ArgumentCaptor<String> betreff = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> inhalt = ArgumentCaptor.forClass(String.class);
+        verify(ausgang).email(eq("alarm"), any(), any(), eq("ausgeloest"), anyInt(), betreff.capture(),
+                inhalt.capture(), any(), any(), isNull());
+        assertThat(betreff.getValue()).isEqualTo("Warnung: Programmstand veraltet");
+        assertThat(inhalt.getValue()).isEqualTo("Anlage Gore: Die Anlagensteuerung fährt den Programmstand 26.08, "
+                + "erwartet ist 26.10 (Stand der VoltPilot-Bibliothek). Kennzeichen A-2026-1.");
+
+        liefertBis = takt; // die Box liefert nicht mehr
+        lauf(87_000);
+        assertThat(instanzen.get("anlage:" + ANLAGE).zustand()).isEqualTo("aktiv"); // Unbekannt entwarnt nicht
+
+        liefertBis = null;
+        bild.put("erzeuger.kopf.programmstand", 2610L); // SPS-Programm aktualisiert
+        lauf(87_015); // aktiv → erholend
+        verify(repo, never()).alarmWiederNormal(any(), any(), anyBoolean());
+        lauf(87_315);
+        verify(repo).alarmWiederNormal(alarme.get(0), T0.plusSeconds(87_315), true);
+        verifyVersand("wieder_normal", 1);
+        verify(ausgang).email(eq("alarm"), any(), any(), eq("wieder_normal"), anyInt(), betreff.capture(),
+                inhalt.capture(), any(), any(), isNull());
+        assertThat(betreff.getValue()).isEqualTo("Wieder normal: Programmstand veraltet");
+        assertThat(inhalt.getValue()).startsWith("Anlage Gore: Die Anlagensteuerung fährt den Programmstand 26.10, "
+                + "erwartet ist 26.10 (Stand der VoltPilot-Bibliothek) - der Stand ist aktuell. Wieder normal seit ");
+        assertThat(alarme).hasSize(1);
+    }
+
+    @Test
+    void einAktuellerProgrammstandMeldetNichts() {
+        vorlage("erzeuger.programmstand_veraltet");
+        bild.put("erzeuger.kopf.programmstand", 2610L);
+        lauf(0);
+        lauf(90_000);
+        assertThat(alarme).isEmpty();
+    }
+
+    @Test
     void ohneAnlagensteuerungRuhtDieVorlage() {
         vorlage("erzeuger.anlage_folgt_nicht");
         when(steuerungen.steuerungen(ANLAGE)).thenReturn(List.of());

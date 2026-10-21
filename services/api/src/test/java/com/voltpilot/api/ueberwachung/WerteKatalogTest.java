@@ -152,12 +152,13 @@ class WerteKatalogTest {
     }
 
     @Test
-    void dieFuenfErzeugerVorlagenHabenStabileKennungenUndWerdenNieGesaet() {
+    void dieErzeugerVorlagenHabenStabileKennungenUndWerdenNieGesaet() {
         // EZ-11: die Wertart IST die Kennung, unter der EZ-15 (Anlege-Schritt) die Vorlagen anbietet - umbenennen
         // bricht gespeicherte Regeln und den Anlege-Schritt.
         assertThat(katalog.vorlagen()).extracting(WerteKatalog.Eintrag::wertart).containsExactly(
                 "erzeuger.fernsteuerung_nicht_bereit", "erzeuger.daten_veraltet", "erzeuger.anlage_folgt_nicht",
-                "erzeuger.netzbetreiber_abgeschaltet", "erzeuger.fernwirk_verbindung_weg");
+                "erzeuger.netzbetreiber_abgeschaltet", "erzeuger.fernwirk_verbindung_weg",
+                "erzeuger.programmstand_veraltet");
         for (WerteKatalog.Eintrag e : katalog.vorlagen()) {
             assertThat(e.leser().art()).as(e.wertart()).isEqualTo("erzeuger");
             assertThat(e.vorschlag()).as(e.wertart() + ": nie ab Werk gesät").isNull();
@@ -170,5 +171,6 @@ class WerteKatalogTest {
         assertThat(folgt.dauerS()).isEqualTo(300);
         assertThat(katalog.eintrag("erzeuger.fernwirk_verbindung_weg").vorlage().dauerS()).isEqualTo(600);
         assertThat(katalog.eintrag("erzeuger.netzbetreiber_abgeschaltet").vorlage().dauerS()).isZero();
+        assertThat(katalog.eintrag("erzeuger.programmstand_veraltet").vorlage().dauerS()).isEqualTo(86_400); // EZ-11b: 24 h
     }
 }

@@ -221,4 +221,42 @@ class ErzeugerAlarmeTest {
                 .zustand()).isEqualTo("keine_fernwirktechnik");
         assertThat(ErzeugerAlarme.fernwirk(new Werte().setze("nb.n_kanal", 3).bild(1)).bekannt()).isFalse();
     }
+
+    // ------------------------------------------------------------------ Programmstand veraltet (EZ-11b)
+
+    @Test
+    void einAeltererStandAlsDieBibliothekIstAelterMitIstUndSoll() {
+        ErzeugerAlarme.Urteil u = ErzeugerAlarme.programmstand(new Werte().setze("kopf.programmstand", 2608).bild(1),
+                null);
+        assertThat(u.zustand()).isEqualTo("aelter");
+        assertThat(u.text()).isEqualTo(
+                "Die Anlagensteuerung fährt den Programmstand 26.08, erwartet ist 26.10 (Stand der VoltPilot-Bibliothek).");
+        assertThat(u.messzeit()).isEqualTo(JETZT.minusSeconds(5));
+    }
+
+    @Test
+    void derSollDerFassungGehtDerBibliothekVor() {
+        ErzeugerAlarme.Urteil u = ErzeugerAlarme.programmstand(new Werte().setze("kopf.programmstand", 2610).bild(1),
+                2701);
+        assertThat(u.zustand()).isEqualTo("aelter");
+        assertThat(u.text()).endsWith("erwartet ist 27.01 (Vorgabe der Fassung).");
+        ErzeugerAlarme.Urteil neuer = ErzeugerAlarme.programmstand(
+                new Werte().setze("kopf.programmstand", 2611).bild(1), null);
+        assertThat(neuer.zustand()).isEqualTo("aktuell");
+        assertThat(neuer.text()).isEqualTo("Die Anlagensteuerung fährt den Programmstand 26.11, erwartet ist 26.10 "
+                + "(Stand der VoltPilot-Bibliothek) - der Stand ist aktuell.");
+    }
+
+    @Test
+    void einUngueltigerFehlenderOderVeralteterStandBleibtUnbekannt() {
+        assertThat(ErzeugerAlarme.programmstand(new Werte().bild(1), null).bekannt()).isFalse();
+        assertThat(ErzeugerAlarme.programmstand(new Werte().setze("kopf.programmstand", 0xFFFF).bild(1), null)
+                .bekannt()).isFalse();
+        assertThat(ErzeugerAlarme.programmstand(new Werte().setze("kopf.programmstand", 2613).bild(1), null)
+                .bekannt()).isFalse();
+        assertThat(ErzeugerAlarme.programmstand(new Werte().alt("kopf.programmstand", 2608, 600).bild(1), null)
+                .bekannt()).isFalse();
+        assertThat(ErzeugerAlarme.programmstand(new Werte().stale("kopf.programmstand", 2608).bild(1), null)
+                .bekannt()).isFalse();
+    }
 }
