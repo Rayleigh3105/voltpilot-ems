@@ -15,6 +15,7 @@ import { entitiesApi } from '../entitiesApi';
 import { requestNavigation } from '../navigationBlocker';
 import {
   api,
+  ApiError,
   type CommandHistory,
   type Device,
   type RegisterWriteTarget,
@@ -26,6 +27,7 @@ import {
   type SiteTopology,
 } from '../api';
 import { gr4Einstellungen, gr4Z5b, k5Kanaele } from '../test/geraetHerkunftFixtures';
+import { ENTITY_GORE, gore, goreNv, goreWerte } from '../test/anlagensteuerungFixtures';
 
 const site: Site = {
   id: 's-1',
@@ -1948,5 +1950,78 @@ describe('K4 · I/O-Modul und Verbraucher am Ausgang', () => {
     const aktivitaet = await screen.findByTestId('baustein-aktivitaet');
     expect(within(aktivitaet).getByRole('link', { name: /Alle/ }).getAttribute('href'))
       .toBe('#/anlage/s-1/befehle?komponente=heiz');
+  });
+});
+
+/**
+ * EZ-10 · die Seite `as-<Entität>` einer Anlagensteuerung. Die Box liest sie über eine Datenquelle, nicht
+ * über eine eigene Quelle - der Server kennt `as-…` darum nicht als Gerät (`DeviceScopes`) und antwortete
+ * auf `?device=as-…` mit 404 „Gerät nicht gefunden.“. Ihre Aktivität fragt die Seite über ihre Komponente,
+ * wie beim Verbraucher am Ausgang (K4).
+ */
+describe('EZ-10 · Aktivität der Anlagensteuerung', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    window.location.hash = '';
+  });
+
+  const asSeite = `as-${ENTITY_GORE}`;
+  const steuerungEntities: SiteEntities = {
+    ...entities,
+    entities: [
+      ...entities.entities,
+      {
+        id: ENTITY_GORE, entityType: 'anlagensteuerung', typeLabel: 'Anlagensteuerung', role: null,
+        label: 'Anlagensteuerung Gore', control: false, deviceId: null,
+        capabilities: { measure: [] }, guards: null, syncStatus: 'in_sync', observed: null, edgeSourceId: null,
+      } as unknown as SiteEntities['entities'][number],
+    ],
+  };
+
+  /** Der Verlauf wie der Server ihn beantwortet: ein `as-…` als Gerät ist ihm unbekannt. */
+  function stubSteuerung(antwort: CommandHistory) {
+    stub({ entities: () => Promise.resolve(steuerungEntities) });
+    vi.spyOn(api, 'anlagensteuerungen').mockResolvedValue({
+      einrichtung: { moeglich: true, grund: null, boxen: [{ device_id: 'gw', faehig: true }] },
+      steuerungen: [gore()],
+    });
+    vi.spyOn(api, 'netzVermarktung').mockResolvedValue(goreNv());
+    vi.spyOn(api, 'anlagensteuerungWerte').mockResolvedValue(goreWerte());
+    vi.spyOn(api, 'commandHistory').mockImplementation((_site, q) => (
+      q.device?.startsWith('as-')
+        ? Promise.reject(new ApiError(404, 'Gerät nicht gefunden.'))
+        : Promise.resolve(antwort)
+    ));
+  }
+
+  it('fragt über die Komponente - ohne Aufzeichnung derselbe Leerzustand wie an der Box, kein Fehler', async () => {
+    stubSteuerung(commands({
+      recordingSince: null, deviceRef: null, deviceIsBox: null, entityId: ENTITY_GORE,
+      entityLabel: 'Anlagensteuerung Gore', writes: false, entries: [],
+    }));
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId={asSeite} devices={[box]} />);
+    expect(await screen.findByRole('heading', { name: 'Anlagensteuerung Gore' })).toBeInTheDocument();
+    await waitFor(() => expect(api.commandHistory).toHaveBeenCalledWith('s-1', expect.objectContaining({
+      entity: ENTITY_GORE,
+    })));
+    for (const call of vi.mocked(api.commandHistory).mock.calls) {
+      expect(call[1].device ?? null).toBeNull();
+    }
+    const aktivitaet = await screen.findByTestId('baustein-aktivitaet');
+    expect(await within(aktivitaet).findByText(/Für diesen Zeitraum liegt uns nichts vor/)).toBeInTheDocument();
+    expect(within(aktivitaet).queryByText(/Gerät nicht gefunden/)).toBeNull();
+    expect(within(aktivitaet).queryByRole('button', { name: /Erneut versuchen/ })).toBeNull();
+    expect(within(aktivitaet).getByRole('link', { name: /Alle/ }).getAttribute('href'))
+      .toBe(`#/anlage/s-1/befehle?komponente=${ENTITY_GORE}`);
+  });
+
+  it('zeigt die Einträge, die der Server für ihre Komponente liefert', async () => {
+    const mitEintrag = commands({ deviceRef: null, deviceIsBox: null, entityId: ENTITY_GORE });
+    stubSteuerung(mitEintrag);
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId={asSeite} devices={[box]} />);
+    const aktivitaet = await screen.findByTestId('baustein-aktivitaet');
+    await waitFor(() => expect(aktivitaet.querySelectorAll('li.vp-befehl').length).toBe(mitEintrag.entries.length));
+    expect(within(aktivitaet).queryByText(/liegt uns nichts vor|kein Befehl geschickt/)).toBeNull();
+    expect(within(aktivitaet).queryByText(/Gerät nicht gefunden/)).toBeNull();
   });
 });

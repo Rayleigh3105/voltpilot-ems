@@ -47,6 +47,10 @@ for (const breite of BREITEN) {
     const fehler = await oeffne(page, breite, 'fall=gore&flaeche=geraet');
     await expect(page.getByRole('heading', { name: 'Anlagensteuerung Gore' }).first()).toBeVisible();
     await expect(page.getByText('Die Anlage erzeugt gerade 158,9', { exact: false })).toBeVisible();
+    // Die Aktivität fragt über die Komponente - nie „Gerät nicht gefunden.“ (EZ-19).
+    const aktivitaet = page.getByTestId('baustein-aktivitaet');
+    await expect(aktivitaet).toContainText('Für diesen Zeitraum liegt uns nichts vor');
+    await expect(aktivitaet).not.toContainText('Gerät nicht gefunden');
     const sektion = page.getByTestId('baustein-details');
     if (!(await sektion.evaluate((el) => (el as HTMLDetailsElement).open))) await sektion.locator(':scope > summary').click();
     const einheiten = sektion.getByTestId('geraet-einheiten');

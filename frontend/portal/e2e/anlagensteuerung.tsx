@@ -2,7 +2,7 @@ import { sichtbareListe } from '../src/test/rollenFixtures';
 import './rollen-fixture';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { api, type Device, type Site, type SiteEntity } from '../src/api';
+import { api, ApiError, type Device, type Site, type SiteEntity } from '../src/api';
 import { keycloak } from '../src/auth';
 import { consumersApi } from '../src/consumers/consumersApi';
 import { anlagensteuerungGeraetId } from '../src/geraetAdresse';
@@ -146,10 +146,14 @@ const belegt: Record<string, (...args: never[]) => Promise<unknown>> = {
   entityHistory: ok({ range: 'day', from: '', to: '', bucketMinutes: 15, channels: {} }),
   siteAssets: ok([]),
   history: ok({ range: 'day', from: '', to: '', bucketMinutes: 15, buckets: [] }),
-  commandHistory: ok({
-    recordingSince: null, accuracySeconds: 60, from: new Date(jetzt - 86_400_000).toISOString(), to: new Date(jetzt).toISOString(),
-    entityId: F.entity, entityLabel: F.s.bezeichnung, writes: false, truncated: false, total: 0, entries: [],
-  }),
+  // Wie der Server: `as-…` ist ihm kein Gerät (`DeviceScopes`), die Seite fragt über die Komponente.
+  commandHistory: (async (_s: string, q: { device?: string | null }) => {
+    if (q.device?.startsWith('as-')) throw new ApiError(404, 'Gerät nicht gefunden.');
+    return {
+      recordingSince: null, accuracySeconds: 60, from: new Date(jetzt - 86_400_000).toISOString(), to: new Date(jetzt).toISOString(),
+      entityId: F.entity, entityLabel: F.s.bezeichnung, writes: false, truncated: false, total: 0, entries: [],
+    };
+  }) as never,
 };
 const offen = api as unknown as Record<string, unknown>;
 for (const [name, wert] of Object.entries(offen)) {

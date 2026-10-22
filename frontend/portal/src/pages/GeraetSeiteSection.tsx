@@ -773,11 +773,13 @@ export function GeraetSeiteSection({
   // ------------------------------------------------------------------
   // K4: ein Verbraucher am Relais eines Moduls ist KEINE Quelle der Box - der
   // Server kennt `io-…` nicht als Gerät. Seine Befehle hängen an seiner
-  // Komponente, also fragt die Seite nach ihr.
-  const ioVerbraucherEntity = ioVerbraucherIdOf(geraetId);
+  // Komponente, also fragt die Seite nach ihr. Dasselbe gilt für eine
+  // Anlagensteuerung (EZ-10): die Box liest sie über eine Datenquelle, und
+  // `?device=as-…` beantwortet der Server mit 404 „Gerät nicht gefunden.“.
+  const verlaufEntity = ioVerbraucherIdOf(geraetId) ?? asEntity;
   const verlauf = useBefehleVerlauf({
     siteId: site.id,
-    entityId: ioVerbraucherEntity,
+    entityId: verlaufEntity,
     geraetRef: geraetId ?? geraeteRef,
   });
 
@@ -1335,8 +1337,8 @@ export function GeraetSeiteSection({
               </>
             ),
             kopfRechts: (
-              <a href={ioVerbraucherEntity
-                ? befehleHash(site.id, ioVerbraucherEntity)
+              <a href={verlaufEntity
+                ? befehleHash(site.id, verlaufEntity)
                 : befehleGeraetHash(site.id, geraetId ?? geraeteRef)}
               >
                 Alle <Icon name="chevron-right" size={14} />
