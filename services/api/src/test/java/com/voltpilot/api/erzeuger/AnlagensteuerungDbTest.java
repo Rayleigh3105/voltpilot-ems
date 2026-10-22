@@ -3,10 +3,17 @@ package com.voltpilot.api.erzeuger;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.measurement.ErzeugerRegisterbilder;
 import com.voltpilot.api.measurement.MeasurementPlan;
+import com.voltpilot.api.measurement.MeasurementSelectionRepository;
+import com.voltpilot.api.measurement.MeasurementSelectionService;
+import com.voltpilot.api.measurement.ZustellungOhneBroker;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.uems.AenderungSatz;
+import com.voltpilot.api.uems.BoxFaehigkeiten;
+import com.voltpilot.api.uems.ErwarteteKadenz;
 import com.voltpilot.api.uems.GeraetRepository;
 import com.voltpilot.api.uems.RechteAbleitung.Konto;
 import com.voltpilot.api.web.dto.AnlagensteuerungDto;
@@ -21,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.function.Supplier;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -69,7 +77,13 @@ class AnlagensteuerungDbTest {
     @Autowired ErzeugerRegisterbilder registerbilder;
     @Autowired GeraetRepository geraete;
     @Autowired AnlagensteuerungRepository repo;
+    @Autowired AnlagensteuerungMessplan messplan;
+    @Autowired MeasurementSelectionService auswahl;
+    @Autowired MeasurementSelectionRepository auswahlRepo;
+    @Autowired BoxFaehigkeiten faehigkeiten;
+    @Autowired ErwarteteKadenz kadenzen;
     static JdbcTemplate root;
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     @BeforeAll static void start() {
         root = new JdbcTemplate(new DriverManagerDataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(),
@@ -477,6 +491,180 @@ class AnlagensteuerungDbTest {
         assertThat(nv.einspeisemanagement()).isEqualTo("stufen");
         assertThat(nv.einspeisemanagementProzent()).isNull();
         assertThat(nv.revision()).isEqualTo(3);
+    }
+
+    // ------------------------------------------------------------- EZ-18 Messplan automatisch
+
+    private static void faehig(UUID box) {
+        root.update("UPDATE device SET supports = '[\"erzeuger_registerbild\"]'::jsonb, supports_reported_at = now() "
+                + "WHERE id = ?", box);
+    }
+
+    private static List<Map<String, Object>> zeilen(UUID box, UUID entity) {
+        return root.queryForList("SELECT point_key, enabled, cadence_s, desired_revision, changed_by "
+                + "FROM device_measurement_selection WHERE device_id = ? AND entity_id = ? ORDER BY desired_revision",
+                box, entity);
+    }
+
+    private static List<JsonNode> protokoll(Welt w, UUID box) {
+        return root.queryForList("SELECT neu::text FROM data_source_aenderung WHERE data_source_id = ? "
+                + "AND art = 'messwerte_ausgewaehlt' AND device_id = ? ORDER BY id", String.class, w.quelle(), box)
+                .stream().map(t -> {
+                    try {
+                        return MAPPER.readTree(t);
+                    } catch (Exception e) {
+                        throw new IllegalStateException(e);
+                    }
+                }).toList();
+    }
+
+    @Test
+    void nachDemAnlegenLiestDieZustaendigeBoxDieSteuerungVonAllein() throws Exception {
+        Welt w = welt("Erzeuger-Messplan");
+        faehig(w.box());
+        AnlagensteuerungDto.Anlagensteuerung s = als(w.tenant(), () -> service.anlegen(w.site(), gore(w),
+                "sub-einrichter"));
+
+        // Jeder Punkt des Bilds für die zuständige Box, an der Komponente, mit dem Takt des Katalogs, je Punkt eine
+        // Revision — niemand hat etwas angehakt.
+        List<Map<String, Object>> zeilen = zeilen(w.box(), s.entityId());
+        assertThat(zeilen).extracting(z -> (String) z.get("point_key"))
+                .containsExactlyElementsOf(ErzeugerRegisterbild.punkte(3));
+        assertThat(zeilen).allSatisfy(z -> {
+            assertThat(z.get("enabled")).isEqualTo(true);
+            assertThat(z.get("changed_by")).isEqualTo(MeasurementSelectionService.AUTOMATIK_AKTEUR);
+        });
+        Map<String, Object> takt = new java.util.HashMap<>();
+        zeilen.forEach(z -> takt.put((String) z.get("point_key"), z.get("cadence_s")));
+        assertThat(takt.get("erzeuger.a.p_erzeugung_w")).isEqualTo(5);
+        assertThat(takt.get("erzeuger.te[2].t_p_ist_w")).isEqualTo(5);
+        assertThat(takt.get("erzeuger.te[2].t_e")).isEqualTo(60);
+        assertThat(takt.get("erzeuger.kopf.programmstand")).isEqualTo(60);
+        assertThat(root.queryForObject("SELECT count(*) FROM device_measurement_selection_event WHERE device_id = ? "
+                + "AND event_kind = 'selection_requested'", Integer.class, w.box())).isEqualTo(47);
+        MeasurementSelectionService.State stand = als(w.tenant(), () -> auswahl.state(w.box()));
+        assertThat(stand.desiredRevision()).isEqualTo(47);
+        assertThat(stand.status()).as("wartet auf die Quittung der Box").isEqualTo("pending_edge");
+        assertThat(stand.volumeEstimate().hardRejected()).isFalse();
+
+        // Das Dokument, das der Publisher der Box zustellt: Revision 47, jeder Punkt mit seiner Komponente, und die
+        // Parameter des Bilds — ohne sie bliebe jeder Erzeuger-Punkt ungelesen.
+        JsonNode dokument = MAPPER.readTree(ZustellungOhneBroker.dokument(auswahlRepo, auswahl, kadenzen, MAPPER,
+                w.tenant(), w.box(), faehigkeiten, registerbilder));
+        assertThat(dokument.path("revision").asLong()).isEqualTo(47);
+        assertThat(dokument.path("selections")).hasSize(47)
+                .allSatisfy(e -> assertThat(e.path("entity_id").asText()).isEqualTo(s.entityId().toString()));
+        assertThat(dokument.path("erzeuger_registerbilder")).hasSize(1);
+        assertThat(dokument.path("erzeuger_registerbilder").get(0).path("entity_id").asText())
+                .isEqualTo(s.entityId().toString());
+        assertThat(dokument.path("erzeuger_registerbilder").get(0).path("te_anzahl").asInt()).isEqualTo(3);
+
+        // Das Protokoll der Datenquelle nennt es, einmal, mit der Box.
+        List<JsonNode> eintraege = protokoll(w, w.box());
+        assertThat(eintraege).hasSize(1);
+        JsonNode neu = eintraege.get(0);
+        assertThat(neu.path("anlass").asText()).isEqualTo("anlegen");
+        assertThat(neu.path("gewaehlt").asInt()).isEqualTo(47);
+        assertThat(neu.path("ausgelassen")).isEmpty();
+        assertThat(AenderungSatz.satz("datenquelle", "messwerte_ausgewaehlt", null, neu, null))
+                .isEqualTo("Messwerte für die Box ausgewählt: 47 von 47");
+        assertThat(root.queryForObject("SELECT actor_name FROM data_source_aenderung WHERE data_source_id = ? "
+                + "AND art = 'messwerte_ausgewaehlt'", String.class, w.quelle())).isEqualTo("Messplan");
+
+        // Eine versorgte Steuerung findet das Nachholen nicht.
+        assertThat(messplan.nachholen()).doesNotContain(w.box());
+        assertThat(zeilen(w.box(), s.entityId())).hasSize(47);
+    }
+
+    @Test
+    void nachholenVersorgtEineSteuerungOhneAuswahlEinmalAchtetDieAbwahlUndFolgtDemBoxwechsel() {
+        Welt w = welt("Erzeuger-Nachholen");
+        faehig(w.box());
+        UUID zuweisung = root.queryForObject("SELECT id FROM data_source_assignment WHERE data_source_id = ?",
+                UUID.class, w.quelle());
+        // Beim Anlegen ist die Übergabe der Quelle offen, es gibt keine ausführende Box — so steht die Steuerung da
+        // wie eine, die vor EZ-18 angelegt wurde (Gore): ohne jede Auswahl.
+        root.update("INSERT INTO data_source_handover (tenant_id, data_source_id, site_id, assignment_id, reader_id, "
+                + "target_id, phase, due_at, event_id) VALUES (?, ?, ?, ?, ?, ?, 'removing', now(), gen_random_uuid())",
+                w.tenant(), w.quelle(), w.site(), zuweisung, w.box(), w.box());
+        AnlagensteuerungDto.Anlagensteuerung s = als(w.tenant(), () -> service.anlegen(w.site(), gore(w),
+                "sub-einrichter"));
+        assertThat(zeilen(w.box(), s.entityId())).isEmpty();
+        assertThat(messplan.nachholen()).as("Übergabe offen: wartet auf den nächsten Takt").doesNotContain(w.box());
+        assertThat(zeilen(w.box(), s.entityId())).isEmpty();
+        assertThat(protokoll(w, w.box())).isEmpty();
+
+        // Die Übergabe ist durch: das Nachholen wählt alle Punkte, genau einmal.
+        root.update("UPDATE data_source_handover SET phase = 'active' WHERE data_source_id = ?", w.quelle());
+        assertThat(messplan.nachholen()).containsOnlyOnce(w.box());
+        assertThat(zeilen(w.box(), s.entityId())).hasSize(47);
+        assertThat(protokoll(w, w.box())).singleElement()
+                .satisfies(n -> assertThat(n.path("anlass").asText()).isEqualTo("nachholen"));
+        assertThat(messplan.nachholen()).doesNotContain(w.box());
+        assertThat(root.queryForObject("SELECT count(*) FROM device_measurement_selection_event WHERE device_id = ?",
+                Integer.class, w.box())).isEqualTo(47);
+
+        // Eine Abwahl von Hand bleibt stehen: die Box hat eine Auswahl, das Nachholen fasst sie nicht an.
+        als(w.tenant(), () -> auswahl.change(w.box(), s.entityId(), "erzeuger.nb.n_cosphi",
+                new MeasurementSelectionService.Change(47, UUID.randomUUID(), false, null),
+                new MeasurementSelectionService.Actor("sub-einrichter", "Ines")));
+        assertThat(messplan.nachholen()).doesNotContain(w.box());
+        assertThat(root.queryForObject("SELECT enabled FROM device_measurement_selection WHERE device_id = ? "
+                + "AND entity_id = ? AND point_key = 'erzeuger.nb.n_cosphi'", Boolean.class, w.box(), s.entityId()))
+                .isFalse();
+
+        // „Zuständige Box wechseln“: die neue Box hat für die Steuerung keine Auswahl — das Nachholen versorgt sie,
+        // sobald sie die Quelle ausführt.
+        UUID neueBox = root.queryForObject("INSERT INTO device (tenant_id, site_id, external_ref) VALUES (?, ?, ?) "
+                + "RETURNING id", UUID.class, w.tenant(), w.site(), "edge-erzeugernachholenneu");
+        faehig(neueBox);
+        root.update("UPDATE data_source_assignment SET effective_to = date_trunc('minute', now()) WHERE id = ?",
+                zuweisung);
+        UUID zweite = root.queryForObject("INSERT INTO data_source_assignment (tenant_id, data_source_id, device_id, "
+                + "protokoll, adresse, effective_from) SELECT d.tenant_id, d.id, ?, d.protokoll, d.adresse, "
+                + "date_trunc('minute', now()) FROM data_source d WHERE d.id = ? RETURNING id", UUID.class, neueBox,
+                w.quelle());
+        root.update("UPDATE data_source_handover SET assignment_id = ?, reader_id = ?, target_id = ? "
+                + "WHERE data_source_id = ?", zweite, neueBox, neueBox, w.quelle());
+        assertThat(messplan.nachholen()).containsOnlyOnce(neueBox).doesNotContain(w.box());
+        assertThat(zeilen(neueBox, s.entityId())).hasSize(47);
+        assertThat(protokoll(w, neueBox)).singleElement()
+                .satisfies(n -> assertThat(n.path("anlass").asText()).isEqualTo("nachholen"));
+        assertThat(messplan.nachholen()).doesNotContain(neueBox);
+    }
+
+    @Test
+    void reichtDasBudgetNichtWirdNachBildreihenfolgeGewaehltUndDasAusgelasseneProtokolliert() {
+        Welt w = welt("Erzeuger-Budget");
+        faehig(w.box());
+        // Zehn Einheiten: 26 + 10 × 7 Punkte wären 723 Messwerte je Minute, die Grenze ist 600.
+        List<AnlagensteuerungDto.NeueEinheit> zehn = IntStream.rangeClosed(1, 10)
+                .mapToObj(n -> new AnlagensteuerungDto.NeueEinheit(n, "pv_wechselrichter", "WR " + n, null, null, null,
+                        null)).toList();
+        AnlagensteuerungDto.Anlegen gross = new AnlagensteuerungDto.Anlegen(w.quelle(), 1, "Große Anlage", null, null,
+                null, null, null, "pv", null, null, null, null, zehn, null);
+        AnlagensteuerungDto.Anlagensteuerung s = als(w.tenant(), () -> service.anlegen(w.site(), gross,
+                "sub-einrichter"));
+
+        List<String> gewaehlt = zeilen(w.box(), s.entityId()).stream().map(z -> (String) z.get("point_key")).toList();
+        // Bildreihenfolge: alle festen Abschnitte (mit der Erzeugung der Anlage) und die Einheiten 1 … 7 ganz.
+        assertThat(gewaehlt).containsAll(ErzeugerRegisterbild.punkte(7)).hasSize(83);
+        MeasurementSelectionService.State stand = als(w.tenant(), () -> auswahl.state(w.box()));
+        assertThat(stand.volumeEstimate().hardRejected()).isFalse();
+        assertThat(stand.volumeEstimate().samplesPerMinute()).isEqualTo(600.0);
+
+        // Nie still nichts: das Protokoll nennt jeden ausgelassenen Punkt mit seinem Grund.
+        JsonNode neu = protokoll(w, w.box()).get(0);
+        assertThat(neu.path("angefragt").asInt()).isEqualTo(96);
+        assertThat(neu.path("gewaehlt").asInt()).isEqualTo(83);
+        assertThat(neu.path("ausgelassen")).hasSize(13)
+                .allSatisfy(a -> assertThat(a.path("grund").asText()).isEqualTo("budget"));
+        assertThat(neu.path("ausgelassen").get(0).path("point_key").asText()).isEqualTo("erzeuger.te[8].t_p_ist_w");
+        assertThat(AenderungSatz.satz("datenquelle", "messwerte_ausgewaehlt", null, neu, null))
+                .isEqualTo("Messwerte für die Box ausgewählt: 83 von 96, 13 ausgelassen (Messwertbudget)");
+        // Und nur einmal: das Nachholen versucht es für diese Box nicht wieder.
+        assertThat(messplan.nachholen()).doesNotContain(w.box());
+        assertThat(protokoll(w, w.box())).hasSize(1);
     }
 
     private static AnlagensteuerungDto.Anlegen mitNetz(AnlagensteuerungDto.Anlegen a,

@@ -2,6 +2,7 @@ package com.voltpilot.api.measurement;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.uems.BoxFaehigkeiten;
 import com.voltpilot.api.uems.ErwarteteKadenz;
 import java.util.UUID;
 
@@ -18,11 +19,24 @@ public final class ZustellungOhneBroker {
 
     public static byte[] dokument(MeasurementSelectionRepository repository, MeasurementSelectionService auswahl,
             ErwarteteKadenz kadenzen, ObjectMapper mapper, UUID tenant, UUID box) throws Exception {
+        return dokument(repository, auswahl, kadenzen, mapper, tenant, box, null, null);
+    }
+
+    /**
+     * Dasselbe mit den Fähigkeiten der Box und den Erzeuger-Bildern aus der Datenbank (UEMS EZ-18): so trägt das
+     * Dokument {@code erzeuger_registerbilder}, wie der Publisher im Betrieb es schreibt.
+     */
+    public static byte[] dokument(MeasurementSelectionRepository repository, MeasurementSelectionService auswahl,
+            ErwarteteKadenz kadenzen, ObjectMapper mapper, UUID tenant, UUID box, BoxFaehigkeiten faehigkeiten,
+            ErzeugerRegisterbilder erzeuger) throws Exception {
         TenantContext.set(tenant);
         try {
             MeasurementSelectionRepository.DeviceScope scope = repository.aktiverDeviceScope(box);
-            return new MeasurementConfigPublisher("tcp://127.0.0.1:9", "", "", mapper, kadenzen)
-                    .payload(scope, auswahl.forPublishing(box));
+            MeasurementConfigPublisher publisher = new MeasurementConfigPublisher("tcp://127.0.0.1:9", "", "", mapper,
+                    kadenzen);
+            if (faehigkeiten != null) publisher.setFaehigkeiten(faehigkeiten);
+            if (erzeuger != null) publisher.setErzeugerRegisterbilder(erzeuger);
+            return publisher.payload(scope, auswahl.forPublishing(box));
         } finally {
             TenantContext.clear();
         }

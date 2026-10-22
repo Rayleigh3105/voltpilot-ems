@@ -60,20 +60,22 @@ public class AnlagensteuerungService {
     private final AnlagensteuerungRepository repo;
     private final EntityRegistryService entities;
     private final BoxFaehigkeiten faehigkeiten;
+    private final AnlagensteuerungMessplan messplan;
     private final ObjectMapper json;
     private final Clock uhr;
 
     @Autowired
     public AnlagensteuerungService(AnlagensteuerungRepository repo, EntityRegistryService entities,
-            BoxFaehigkeiten faehigkeiten, ObjectMapper json) {
-        this(repo, entities, faehigkeiten, json, Clock.systemUTC());
+            BoxFaehigkeiten faehigkeiten, AnlagensteuerungMessplan messplan, ObjectMapper json) {
+        this(repo, entities, faehigkeiten, messplan, json, Clock.systemUTC());
     }
 
     AnlagensteuerungService(AnlagensteuerungRepository repo, EntityRegistryService entities,
-            BoxFaehigkeiten faehigkeiten, ObjectMapper json, Clock uhr) {
+            BoxFaehigkeiten faehigkeiten, AnlagensteuerungMessplan messplan, ObjectMapper json, Clock uhr) {
         this.repo = repo;
         this.entities = entities;
         this.faehigkeiten = faehigkeiten;
+        this.messplan = messplan;
         this.json = json;
         this.uhr = uhr;
     }
@@ -182,7 +184,9 @@ public class AnlagensteuerungService {
 
     /**
      * Steuerung, Komponente, Einheiten und Fassung in EINER Transaktion, eingebaut ab der laufenden vollen Minute.
-     * Der Anlege-Trigger legt für die Komponente kein zweites Gerät an (sie hat ihre Speisung schon).
+     * Der Anlege-Trigger legt für die Komponente kein zweites Gerät an (sie hat ihre Speisung schon). In derselben
+     * Transaktion wählt {@link AnlagensteuerungMessplan} alle Punkte des Bilds für die zuständige Box aus (UEMS
+     * EZ-18): die Box liest die Steuerung von allein, niemand hakt Messwerte an.
      */
     @Transactional
     public AnlagensteuerungDto.Anlagensteuerung anlegen(UUID siteId, AnlagensteuerungDto.Anlegen in, String subject) {
@@ -268,6 +272,7 @@ public class AnlagensteuerungService {
             repo.stammdatenVorbelegen(siteId, leer(nv.direktvermarkter()), nvKanal, nvEm,
                     nv.einspeisemanagementProzent(), subject);
         }
+        messplan.auswaehlen(siteId, entityId, q.id(), teAnzahl, "anlegen");
         return dto(repo.steuerung(g.geraetId()).orElseThrow());
     }
 

@@ -1,5 +1,6 @@
 package com.voltpilot.api.web;
 
+import com.voltpilot.api.erzeuger.AnlagensteuerungMessplan;
 import com.voltpilot.api.erzeuger.AnlagensteuerungService;
 import com.voltpilot.api.web.dto.AnlagensteuerungDto;
 import com.voltpilot.api.zugriff.Recht;
@@ -29,9 +30,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class AnlagensteuerungController {
 
     private final AnlagensteuerungService service;
+    private final AnlagensteuerungMessplan messplan;
 
-    public AnlagensteuerungController(AnlagensteuerungService service) {
+    public AnlagensteuerungController(AnlagensteuerungService service, AnlagensteuerungMessplan messplan) {
         this.service = service;
+        this.messplan = messplan;
     }
 
     /**
@@ -45,14 +48,17 @@ public class AnlagensteuerungController {
 
     /**
      * Recht: {@code geraet.einrichten}. Steuerung, Komponente, Einheiten und Fassung in einem Schritt; 409, solange
-     * die zuständige Box das Erzeuger-Registerbild nicht lesen kann.
+     * die zuständige Box das Erzeuger-Registerbild nicht lesen kann. Der Messplan (alle Punkte des Bilds, UEMS
+     * EZ-18) geht nach dem Commit sofort an die Box; scheitert das, liefert der Abgleich binnen 30 s.
      */
     @PostMapping("/api/v1/sites/{siteId}/anlagensteuerungen")
     @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
     @ResponseStatus(HttpStatus.CREATED)
     public AnlagensteuerungDto.Anlagensteuerung anlegen(@PathVariable UUID siteId,
             @Valid @RequestBody AnlagensteuerungDto.Anlegen in, Principal actor) {
-        return service.anlegen(siteId, in, actor.getName());
+        AnlagensteuerungDto.Anlagensteuerung angelegt = service.anlegen(siteId, in, actor.getName());
+        messplan.zustellen(siteId, angelegt.entityId());
+        return angelegt;
     }
 
     /**

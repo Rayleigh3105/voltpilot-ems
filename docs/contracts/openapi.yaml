@@ -10520,7 +10520,10 @@ paths:
         (Box, Ergebnis) · zustaendigkeit_begonnen · zustaendigkeit_gewechselt (alt:
         die bisherige Box) · zustaendigkeit_zurueckgenommen · aus_bestand_uebernommen
         (IP-4: neu = Kennzeichen, Weg,
-        Takt, Box, Beginn, Komponenten; `gilt_ab` = Reihenbeginn), jeder Eintrag mit Urheber (Kundenbenutzer =
+        Takt, Box, Beginn, Komponenten; `gilt_ab` = Reihenbeginn) · messwerte_ausgewaehlt (UEMS EZ-18: die
+        Cloud hat die Punkte einer Anlagensteuerung von allein für die Box ausgewählt; neu = entity_id, anlass
+        anlegen|nachholen, angefragt, gewaehlt, revision, ausgelassen[] mit point_key und grund
+        budget|nicht_im_katalog; Urheber „Messplan“), jeder Eintrag mit Urheber (Kundenbenutzer =
         kundenadministrator/kunde, Plattform-Admin = voltpilot_betrieb/voltpilot).
       responses:
         "200":
@@ -35499,7 +35502,7 @@ components:
       required: [id, art, box, ergebnis, alt, neu, gilt_ab, urheber, zeitpunkt]
       properties:
         id: { type: integer, format: int64 }
-        art: { type: string, enum: [angelegt, bearbeitet, erreichbarkeit_geprueft, zustaendigkeit_begonnen, zustaendigkeit_gewechselt, aus_bestand_uebernommen] }
+        art: { type: string, enum: [angelegt, bearbeitet, erreichbarkeit_geprueft, zustaendigkeit_begonnen, zustaendigkeit_gewechselt, aus_bestand_uebernommen, messwerte_ausgewaehlt] }
         box:
           allOf: [{ $ref: "#/components/schemas/DatenquelleBox" }]
           nullable: true

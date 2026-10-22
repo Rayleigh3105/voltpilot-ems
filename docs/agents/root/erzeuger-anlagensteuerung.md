@@ -137,6 +137,27 @@ läuft), `erzeuger_vorgabe_luecke` („n weitere Wechsel während einer Datenlü
 - Offen: `n_kanal`/`d_kanal` stehen nicht in der Probe — Einspeisemanagement und Direktvermarkter-Weg trägt man ein;
   „Betrieb“ im Anlage-anlegen-Fluss entfällt nur im Modus „nur messen“ (der auch die Veräußerungsform streicht).
 
+## Messplan automatisch (EZ-18)
+
+Ohne Mess-Auswahl kein Plan an die Box (`MeasurementConfigPublisher` liest nur `device_measurement_selection`) —
+darum wählt `AnlagensteuerungMessplan` alle Punkte des Bilds (`ErzeugerRegisterbild.punkte`) für die Box, die die
+Komponente ausführt (`EinmalAuftragZiel.komponente`, dieselbe Box wie `forPublishing`), mit dem Katalog-Takt und gegen
+das harte Budget (`MeasurementSelectionService.automatischAuswaehlen`, Akteur `system:messplan-automatisch`).
+
+- **Zwei Wege:** beim Anlegen in dessen Transaktion (der Controller stößt danach die Zustellung an) und im Takt des
+  `MeasurementConfigReconciler` (`nachholen`, Start + 30 s, nur mit `voltpilot.provisioning.enabled`) für jede
+  Steuerung, deren gerade zuständige Box für sie keine Auswahl hat — so liefern vor EZ-18 angelegte Steuerungen
+  (Gore) nach dem Deploy, und nach „Zuständige Box wechseln“ bekommt die neue Box den Plan. Box-Tausch trägt die
+  Zeilen selbst mit (`BoxTauschService`).
+- ⚠ **Nur ohne jede Zeile:** hat die Box für die Komponente eine Auswahl (auch eine abgewählte), bleibt sie, wie
+  sie ist. Je Box und Steuerung einmal: der Eintrag `messwerte_ausgewaehlt` im Protokoll der Datenquelle
+  (V20261022160000) nennt gewählt/angefragt und jeden ausgelassenen Punkt mit Grund (`budget`, `nicht_im_katalog`)
+  und hält das Nachholen für diese Box an.
+- ⚠ **Budget knapp:** gewählt wird in Bildreihenfolge (Kopf, Anlage/Netzpunkt, NB, DV, Wirkung, Einheit 1 … n); ein
+  Punkt, der das Budget überschritte, fällt aus, spätere werden weiter geprüft (10 Einheiten: 83 von 96, 600/min).
+- Ohne ausführende Box (offene Übergabe) oder ohne `erzeuger_registerbild` geschieht nichts; der nächste Takt holt nach.
+  Die Auswahl der bisherigen Box nach einem Wechsel bleibt stehen; `forPublishing` lässt sie dort nicht mehr durch.
+
 ## Verlauf: Vorgaben als Ereignisse (EZ-9)
 
 `HistoryService` hängt bei einer Anlage mit Anlagensteuerung (`VorgabenRepository.hatSteuerung`) die Vorgaben als
@@ -161,4 +182,5 @@ Art“, je Einheit/Monat), Detail `VorgabeDetail.tsx`, Routen und CSV in `erzeug
 
 EZ-5 (Box-Leser, gebaut: Laufzeitstand 2026.10.21.1, `advertised: true`, Budget-Klasse in
 `measurement-budget-vectors.json`, Go-`Config.Erzeugerbilder` für `erzeuger_registerbilder`), EZ-8
-(Cockpit auf diesen Routen), EZ-9 (Vorgaben im Verlauf, gebaut), EZ-15 (Anlege-Schritt, gebaut).
+(Cockpit auf diesen Routen), EZ-9 (Vorgaben im Verlauf, gebaut), EZ-15 (Anlege-Schritt, gebaut), EZ-18 (Messplan
+automatisch, gebaut).

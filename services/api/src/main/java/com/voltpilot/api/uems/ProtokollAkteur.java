@@ -70,6 +70,14 @@ public record ProtokollAkteur(String sub, String name, String rolle, String art)
     }
 
     /**
+     * VoltPilot selbst, ohne Person: der Messplan einer Anlagensteuerung, den die Cloud beim Anlegen oder beim
+     * Nachholen von allein für die zuständige Box auswählt (UEMS EZ-18).
+     */
+    public static ProtokollAkteur messplan() {
+        return new ProtokollAkteur(null, "Messplan", Rolle.VOLTPILOT_BETRIEB.code(), ART_VOLTPILOT);
+    }
+
+    /**
      * VoltPilot selbst, ohne Person: der tägliche Lauf des Vorbehalts aus Messwerten (AP-15 IP-13), der den Vorbehalt
      * der Bezugsseite selbsttätig ERHÖHT (verengt nur) und Vorschläge zum Senken anlegt.
      */

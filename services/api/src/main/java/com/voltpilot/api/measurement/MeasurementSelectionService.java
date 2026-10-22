@@ -244,6 +244,78 @@ public class MeasurementSelectionService {
         return next;
     }
 
+    /** Wer die Punkte einer Komponente von allein auswählt (UEMS EZ-18, Anlagensteuerung). */
+    public static final String AUTOMATIK_AKTEUR = "system:messplan-automatisch";
+
+    /** Ein ausgelassener Punkt und sein Grund: {@code budget} oder {@code nicht_im_katalog}. */
+    public record Auslassung(String pointKey, String grund) {}
+
+    /**
+     * Das Ergebnis von {@link #automatischAuswaehlen}: {@code ausgefuehrt} ist falsch, wenn die Box für die
+     * Komponente schon eine Auswahl hat (oder Box/Komponente nicht passen) — dann ist nichts geschrieben.
+     */
+    public record Automatik(boolean ausgefuehrt, long revision, List<String> gewaehlt,
+            List<Auslassung> ausgelassen) {
+        static final Automatik NICHTS = new Automatik(false, 0, List.of(), List.of());
+    }
+
+    /**
+     * UEMS EZ-18: wählt die Punkte einer Komponente für die Box aus, die sie ausführt — nur, wenn diese Box für die
+     * Komponente noch GAR KEINE Auswahlzeile hat. Eine Abwahl von Hand ist eine Zeile und bleibt also stehen.
+     *
+     * <p>Jeder Punkt mit dem Takt des Katalogs ({@code default_cadence_s}), geprüft gegen dasselbe harte Budget
+     * wie die Handauswahl, in der gegebenen Reihenfolge: ein Punkt, der das Budget überschritte, wird ausgelassen,
+     * die übrigen werden weiter geprüft. Je Punkt eine Revision mit ihrem Ereignis wie bei der Handauswahl — der
+     * Schlüssel {@code (device_id, desired_revision, event_kind)} erlaubt eines je Revision, und der Box-Tausch
+     * trägt die Zeilen so mit. Wirft für keinen erwarteten Zustand: der Aufruf kann in einer fremden Transaktion
+     * stehen (Anlegen der Anlagensteuerung), die eine Ausnahme sonst mitrisse.
+     */
+    @Transactional
+    public Automatik automatischAuswaehlen(UUID deviceId, UUID entityId, List<String> pointKeys) {
+        DeviceScope scope = repository.lockDevice(deviceId);
+        if (scope == null || entityId == null || !scope.siteId().equals(repository.entitySiteId(entityId))) {
+            return Automatik.NICHTS;
+        }
+        List<Row> current = repository.current(deviceId);
+        if (current.stream().anyMatch(r -> entityId.equals(r.entityId()))) {
+            return Automatik.NICHTS;
+        }
+        List<MeasurementBudget.Candidate> candidates = candidates(current);
+        Map<String, Resolved> gewaehlt = new java.util.LinkedHashMap<>();
+        List<Auslassung> ausgelassen = new ArrayList<>();
+        for (String pointKey : pointKeys) {
+            Resolved resolved;
+            try {
+                resolved = resolveCatalog(pointKey, null);
+            } catch (ResponseStatusException e) {
+                ausgelassen.add(new Auslassung(pointKey, "nicht_im_katalog"));
+                continue;
+            }
+            MeasurementBudget.Candidate candidate = resolved.candidate(candidateKey(entityId, pointKey), true,
+                    resolved.cadenceS());
+            candidates.add(candidate);
+            if (estimate(candidates).hardRejected()) {
+                candidates.remove(candidate);
+                ausgelassen.add(new Auslassung(pointKey, "budget"));
+                continue;
+            }
+            gewaehlt.put(pointKey, resolved);
+        }
+        long revision = repository.revision(deviceId);
+        for (Map.Entry<String, Resolved> e : gewaehlt.entrySet()) {
+            revision++;
+            Resolved r = e.getValue();
+            Row saved = repository.save(scope, entityId, e.getKey(), true, r.cadenceS(), revision, catalog.version(),
+                    AUTOMATIK_AKTEUR, ANSTOSS_NAME, PENDING_REASON, null, r.retention());
+            repository.appendEvent(scope, entityId, e.getKey(), revision,
+                    UUID.nameUUIDFromBytes(("messplan-automatisch:" + deviceId + ":" + revision)
+                            .getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                    true, r.cadenceS(), saved.enabledAt(), saved.disabledAt(), catalog.version(), AUTOMATIK_AKTEUR,
+                    ANSTOSS_NAME, PENDING_REASON, null, r.retention());
+        }
+        return new Automatik(true, revision, List.copyOf(gewaehlt.keySet()), List.copyOf(ausgelassen));
+    }
+
     public static State notDelivered(State state, String reason) {
         return new State(state.deviceId(), state.siteId(), state.entityId(), state.desiredRevision(),
                 state.catalogVersion(), state.status(), reason, state.activationNotice(),

@@ -179,6 +179,22 @@ class AenderungSatzTest {
                 .isEqualTo("Datenquelle aus dem Bestand übernommen");
     }
 
+    /** UEMS EZ-18: der automatische Messplan einer Anlagensteuerung nennt, was gewählt und was ausgelassen wurde. */
+    @Test
+    void derAutomatischeMessplanNenntGewaehltesUndAusgelassenes() throws Exception {
+        assertThat(satz("datenquelle", "messwerte_ausgewaehlt", null,
+                "{\"gewaehlt\":47,\"angefragt\":47,\"ausgelassen\":[]}"))
+                .isEqualTo("Messwerte für die Box ausgewählt: 47 von 47");
+        assertThat(satz("datenquelle", "messwerte_ausgewaehlt", null,
+                "{\"gewaehlt\":45,\"angefragt\":48,\"ausgelassen\":[{\"point_key\":\"a\",\"grund\":\"budget\"},"
+                        + "{\"point_key\":\"b\",\"grund\":\"budget\"},{\"point_key\":\"c\",\"grund\":\"nicht_im_katalog\"}]}"))
+                .isEqualTo("Messwerte für die Box ausgewählt: 45 von 48, 2 ausgelassen (Messwertbudget), "
+                        + "1 ausgelassen (nicht im Katalog)");
+        // Ohne Zahlen wird keine erfunden.
+        assertThat(satz("datenquelle", "messwerte_ausgewaehlt", null, null))
+                .isEqualTo("Messwerte für die Box ausgewählt");
+    }
+
     /** AP-10 IP-3: eine eingetragene Formel-Fassung nennt ihre Nummer. */
     @Test
     void eineNeueFormelFassungNenntIhreNummer() throws Exception {
@@ -231,7 +247,8 @@ class AenderungSatzTest {
                 "flaeche_geaendert", "archiviert", "wiederhergestellt", "geloescht",
                 "zugriff_zugewiesen", "zugriff_entzogen");
         List<String> quelle = List.of("angelegt", "bearbeitet", "erreichbarkeit_geprueft",
-                "zustaendigkeit_begonnen", "zustaendigkeit_gewechselt", "aus_bestand_uebernommen");
+                "zustaendigkeit_begonnen", "zustaendigkeit_gewechselt", "aus_bestand_uebernommen",
+                "messwerte_ausgewaehlt");
         for (String art : messstelle) {
             assertThat(satz("messstelle", art, null, null)).as(art).isNotEqualTo(art);
         }
@@ -263,6 +280,12 @@ class AenderungSatzTest {
         assertThat(arten("V20260911270000__uems_datenquelle_bestand.sql", "data_source_aenderung_art_chk"))
                 .containsExactlyInAnyOrder("angelegt", "bearbeitet", "erreichbarkeit_geprueft",
                         "zustaendigkeit_begonnen", "zustaendigkeit_gewechselt", "aus_bestand_uebernommen");
+        // UEMS EZ-18 baut auf dem Stand der Rücknahme (V20260917109000) auf und fügt genau ein Wort hinzu.
+        assertThat(arten("V20261022160000__messplan_automatisch_protokoll.sql", "data_source_aenderung_art_chk"))
+                .containsExactlyInAnyOrderElementsOf(java.util.stream.Stream.concat(arten(
+                        "V20260917109000__uems_geplante_zustaendigkeit_zuruecknehmen.sql",
+                        "data_source_aenderung_art_chk").stream(), java.util.stream.Stream.of("messwerte_ausgewaehlt"))
+                        .toList());
     }
 
     /** Die Wörter des LETZTEN {@code art IN (…)} jenes CHECKs in jener Migration. */
