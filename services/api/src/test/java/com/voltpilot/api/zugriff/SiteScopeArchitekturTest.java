@@ -173,6 +173,11 @@ class SiteScopeArchitekturTest {
             new Erlaubt("erzeuger/AnlagensteuerungRepository.java", "device_measurement_sample", 1,
                     Grund.ANLAGE_GEPRUEFT, "erzeuger/AnlagensteuerungService.java",
                     "filter(x -> x.siteId().equals(siteId))"),
+            // EZ-23 wechsel(): die Zustandswechsel des Tages für das Erzeuger-Cockpit. Der Dienst prüft vorher die
+            // Anlage (anlageSichtbar über site, sonst 404) und nimmt die entity_id nur aus steuerungen(siteId).
+            new Erlaubt("erzeuger/AnlagensteuerungRepository.java", "device_measurement_sample", 1,
+                    Grund.ANLAGE_GEPRUEFT, "erzeuger/ErzeugerJetztService.java",
+                    "List<Steuerung> steuerungen = repo.steuerungen(siteId);"),
 
             // --- liest je Anlage, zeigt nur sichtbare (Teilansicht der Summen: IP-10)
             new Erlaubt("repo/OverviewRepository.java", "telemetry_rollup_15m", 1, Grund.ZEIGT_NUR_SICHTBARE,
