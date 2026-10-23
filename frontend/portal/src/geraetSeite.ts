@@ -93,16 +93,6 @@ export interface LiveKachel {
   wort: string | null;
 }
 
-/** Ein Gerät AN der Box - die Sektion B der Box-Seite. */
-export interface BoxGeraet {
-  /** Die Kennung im Pfad (`inverter`, `src-…`, `cp-…`). */
-  geraetId: string;
-  name: string;
-  art: string;
-  zustand: string;
-  ton: GeraetTon;
-}
-
 /** Der Kopf der Seite. */
 export interface GeraetKopf {
   /** Der TECHNISCHE Gerätename - nie ein Kundenalias (Regel 1). */

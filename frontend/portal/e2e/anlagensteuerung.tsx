@@ -7,6 +7,7 @@ import { keycloak } from '../src/auth';
 import { consumersApi } from '../src/consumers/consumersApi';
 import { anlagensteuerungGeraetId } from '../src/geraetAdresse';
 import { AufbauSection } from '../src/pages/AufbauSection';
+import { BoxSeiteSection } from '../src/pages/BoxSeiteSection';
 import { GeraetSeiteSection } from '../src/pages/GeraetSeiteSection';
 import { TechnikSection } from '../src/pages/AnlageTechnik';
 import { AnlagensteuerungKarten } from '../src/steuerung/AnlagensteuerungKarte';
@@ -42,7 +43,8 @@ import '../src/steuerung/steuerung.css';
  * Anlagensteuerung, belegt mit den fiktiven Anlagen Gore (PV) und Büttner (BHKW) aus
  * `src/test/anlagensteuerungFixtures.ts`. `?fall=gore|buettner`, `&flaeche=steuerung|geraet|einstellungen|verlauf|aufbau`.
  * `flaeche=aufbau` (GE-1 „je Kasten ein Eintrag“): der Aufbau mit der Steuerung und ihrem Weg DQ-1; `&form=gateway`
- * stellt eine zweite Steuerung (Unit 2) an denselben Weg und einen angefangenen Anschluss DQ-2 dazu.
+ * stellt eine zweite Steuerung (Unit 2) an denselben Weg und einen angefangenen Anschluss DQ-2 dazu. `flaeche=box` (GE-4)
+ * ist die Box-Seite mit denselben Daten: „Geräte an dieser Box" aus derselben Zuordnung wie der Aufbau.
  * Belegt ist, was die Flächen fragen; alles Übrige antwortet „nichts da“ - die Bühne ruft nie eine Cloud.
  */
 const frage = new URLSearchParams(window.location.search);
@@ -160,7 +162,7 @@ const belegt: Record<string, (...args: never[]) => Promise<unknown>> = {
   // Der Aufbau liest die Lebendigkeit der Steuerung aus der Topologie (EZ-22); die übrigen Flächen brauchen sie nicht.
   topology: ok({
     schemaVersion: '1.0',
-    entities: flaeche === 'aufbau' ? [lebendig(F.entity), ...(gatewayForm ? [lebendig(ZWEITE)] : [])] : [],
+    entities: flaeche === 'aufbau' || flaeche === 'box' ? [lebendig(F.entity), ...(gatewayForm ? [lebendig(ZWEITE)] : [])] : [],
     topology: { schema_version: '1.0', nodes: [] },
   }),
   datenquellen: ok({ datenquellen }),
@@ -202,6 +204,9 @@ Object.assign(consumersApi, { list: ok([]), overrides: ok([]), status: ok([]) })
 function Flaeche() {
   if (flaeche === 'aufbau') {
     return <AufbauSection site={site} sites={[site]} devices={[box]} devicesFetchedAt={jetzt} />;
+  }
+  if (flaeche === 'box') {
+    return <BoxSeiteSection site={site} boxRef={box.externalRef} devices={[box]} devicesFetchedAt={jetzt} />;
   }
   if (flaeche === 'geraet') {
     return <GeraetSeiteSection site={site} boxRef={box.externalRef} geraetId={anlagensteuerungGeraetId(F.entity)} devices={[box]} />;

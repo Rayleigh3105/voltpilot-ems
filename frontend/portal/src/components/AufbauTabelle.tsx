@@ -507,6 +507,7 @@ function BoxZeile({
             </span>
             {' · '}
             {kastenSatz(b.geraete, b.wege)}
+            {b.last && ` · ${b.last}`}
           </small>
         </span>
       </span>

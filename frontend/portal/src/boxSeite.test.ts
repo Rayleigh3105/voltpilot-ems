@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
-  boxGeraeteListe,
   boxSeite,
   grenzenZeilen,
+  KEINE_GERAETE,
   softwareKachel,
   type BoxSeiteInput,
 } from './boxSeite';
+import { aufbauDerAnlage, type AnlageDaten } from './boxGeraete';
+import { lastText } from './boxUebersicht';
+import { kastenSatz } from './aufbauTabelle';
 import { LAN_UNBEKANNT } from './geraetSeite';
+import { dq, gatewayForm, goreDq1, goreForm, hsWege, liefert } from './test/boxGeraeteFixtures';
 import type {
   ControlStatus,
   CurtailmentStatus,
@@ -217,6 +221,23 @@ const EDGE: EdgeVersion[] = [
 ];
 
 
+/** Pilsting durch DIESELBE Kette wie Anlage › Aufbau (`aufbauDerAnlage`); Katalog-Geräte tragen keinen Weg. */
+function pilsting(over: Partial<AnlageDaten> = {}): AnlageDaten {
+  return {
+    siteId: 'site-1',
+    siteName: 'Pilsting',
+    entities: { registry: null, entities: [HYBRID, PRODUCER], localSetup: LOCAL_SETUP, staleOnDevice: [] },
+    topology: TOPOLOGY,
+    sources: SOURCES,
+    devices: [BOX],
+    devicesFetchedAt: NOW,
+    datenquellen: [],
+    uemsGeraete: [],
+    now: NOW,
+    ...over,
+  };
+}
+
 function input(over: Partial<BoxSeiteInput> = {}): BoxSeiteInput {
   return {
     ref: 'edge-45gz7da',
@@ -227,10 +248,31 @@ function input(over: Partial<BoxSeiteInput> = {}): BoxSeiteInput {
     edgeVersions: EDGE,
     control: CONTROL,
     curtailment: null,
-    geraete: boxGeraeteListe(LOCAL_SETUP, SOURCES, null, NOW),
+    anlage: aufbauDerAnlage(pilsting()),
+    zuordnung: true,
+    datenquellen: [],
     now: NOW,
     ...over,
   };
+}
+
+/** Die Box-Seite einer Form: dieselben Daten für den Aufbau der Anlage und für die Seite. */
+function seiteVon(d: AnlageDaten, ref: string) {
+  return boxSeite({
+    ref,
+    siteName: d.siteName,
+    siteId: d.siteId,
+    devices: [...d.devices],
+    devicesFetchedAt: d.devicesFetchedAt,
+    edgeVersions: [],
+    control: null,
+    curtailment: null,
+    anlage: aufbauDerAnlage(d),
+    zuordnung: d.uemsGeraete != null,
+    datenquellen: d.datenquellen ? [...d.datenquellen] : null,
+    anlagenNamen: new Map([['site-2', 'Halle 2']]),
+    now: d.now,
+  });
 }
 
 const kachel = (v: ReturnType<typeof boxSeite>, key: string) =>
@@ -392,60 +434,171 @@ describe('boxSeite · der Software-Stand', () => {
 });
 
 describe('boxSeite · die Geräte an ihr', () => {
-  it('listet jedes gemeldete Gerät mit seiner Art und seinem Zustand', () => {
+  it('listet jedes Gerät aus dem Aufbau mit seiner Art, seinem Zustand und dem Weg auf seine Seite', () => {
     const v = boxSeite(input());
-    expect(v.geraete.map((g) => g.geraetId)).toEqual(['inverter', 'src-7c1e9a2b']);
-    expect(v.geraete[0].name).toBe('Deye SUN-30K');
-    expect(v.geraete[0].art).toBe('Hauptgerät');
-    expect(v.geraete[1].art).toBe('PV-Wechselrichter');
+    const g = v.geraete!;
+    expect(g.eintraege.map((e) => e.id)).toEqual(['inverter', 'src-7c1e9a2b']);
+    expect(g.eintraege.map((e) => e.href)).toEqual([
+      '#/anlage/site-1/geraet/edge-45gz7da/inverter',
+      '#/anlage/site-1/geraet/edge-45gz7da/src-7c1e9a2b',
+    ]);
+    // Katalog-Geräte tragen keinen gespeicherten Weg: keine Anbindung, keine Last — und keine geratene.
+    expect(g.eintraege.map((e) => e.anbindung)).toEqual([null, null]);
+    expect([g.summe, g.summeLeer, g.gateways, g.offen]).toEqual([null, null, [], []]);
+    expect(v.buehneSatz).toBe('2 von 2 Geräten liefern Daten.');
     expect(v.geraeteLeer).toBeNull();
   });
 
   it('reiht eine OCPP-Säule ein', () => {
-    const geraete = boxGeraeteListe(LOCAL_SETUP, SOURCES, [{
-      deviceId: 'dev-box', chargePointId: 'CARPORT-1', label: 'Ladepunkt „Carport"',
-      priority: false, connected: true, vendor: 'ABL', model: 'eMH2', firmware: '1.4.2',
-      ready: true, lastSeen: FRISCH, reportedAt: FRISCH, connectors: [],
-    }], NOW);
-    expect(geraete.map((g) => g.geraetId)).toContain('cp-CARPORT-1');
+    const charging = {
+      budget: null,
+      chargers: [{
+        deviceId: 'dev-box', chargePointId: 'CARPORT-1', label: 'Ladepunkt „Carport"',
+        priority: false, connected: true, vendor: 'ABL', model: 'eMH2', firmware: '1.4.2',
+        ready: true, lastSeen: FRISCH, reportedAt: FRISCH, connectors: [],
+      }],
+    } as unknown as SiteCharging;
+    const v = boxSeite(input({ anlage: aufbauDerAnlage(pilsting({ charging })) }));
+    expect(v.geraete!.eintraege.map((e) => e.id)).toContain('cp-CARPORT-1');
+  });
+
+  it('ein von der Box gemeldetes, nicht übernommenes Gerät zählt nicht als Gerät — wie im Aufbau', () => {
+    const fund = { id: 'src-neu', kind: 'source', role: 'grid-meter', brand: 'eastron', model: 'SDM630', label: null,
+      reportedAt: FRISCH, adoptedEntityId: null } as EntityLocalSetup;
+    const d = pilsting({ entities: { registry: null, entities: [HYBRID, PRODUCER], localSetup: [...LOCAL_SETUP, fund], staleOnDevice: [] } });
+    const v = boxSeite(input({ anlage: aufbauDerAnlage(d) }));
+    expect(v.geraete!.anzahl).toBe(2);
+    expect(v.geraete!.gemeldet).toBe(1);
+    expect(v.buehneSatz).toBe('2 von 2 Geräten liefern Daten.');
   });
 
   /**
-   * EZ-22, Gore nach EZ-21: die Box meldet für die Anlagensteuerung eine Quelle der Rolle `plant-controller` (ihr
-   * Pin). Die Zeile hieß „Anlagensteuerung · Gerät · noch keine Daten" und führte auf eine Zähler-Seite. Jetzt
-   * führt sie auf die Seite der Steuerung, und ihr Zustand ist der, den der Server aus der Lesung der Steuerung
-   * in `/sources` schreibt.
+   * GE-4, Gore (Neue Halle): vorher stand die Steuerung hier zweimal — als „DQ-1" in der Liste der Datenquellen und
+   * als Gerät, ohne Bezug. Jetzt ist DQ-1 ihre Anbindung, über den gespeicherten Verweis `geraet.data_source_id`.
    */
-  it('die Quelle einer Anlagensteuerung führt auf `as-…` und sagt, was ihre Lesung sagt', () => {
-    const pin = 'src-as-192.168.4.165-503-1';
-    const local = [{
-      id: pin, kind: 'source', role: 'plant-controller', brand: null, model: null, label: 'Anlagensteuerung',
-      reportedAt: FRISCH, adoptedEntityId: null,
-    } as EntityLocalSetup];
-    const steuerung = {
-      id: 'e-as', entityType: 'anlagensteuerung', typeLabel: 'Anlagensteuerung', role: null, label: 'Anlagensteuerung',
-      control: false, deviceId: null, capabilities: { measure: [] }, guards: null, syncStatus: 'in_sync', observed: null,
-      edgeSourceId: pin,
-    } as unknown as SiteEntity;
-    const quelle = (health: string, readAt: string | null): SiteSource[] => [{
-      deviceId: 'dev-box', sourceId: pin, kind: 'source', role: 'plant-controller', label: 'Anlagensteuerung',
-      brand: null, model: null, pvKw: null, powerKw: null, loadKw: null, health, readAt, reportedAt: FRISCH,
-    } as SiteSource];
-
-    const liest = boxGeraeteListe(local, quelle('ok', FRISCH), null, NOW, [steuerung]);
-    expect(liest).toEqual([{
-      geraetId: 'as-e-as', name: 'Anlagensteuerung', art: 'Anlagensteuerung', zustand: expect.stringMatching(/^liefert Daten · vor 12/),
+  it('Gore: EIN Gerät „Anlagensteuerung" mit Anbindung und Last, keine Zeile für DQ-1, Summe darüber', () => {
+    const d = goreForm(NOW);
+    const v = seiteVon(d, 'edge-5mz8bdd');
+    const g = v.geraete!;
+    expect(g.eintraege).toEqual([{
+      id: 'as-e-as',
+      titel: 'Anlagensteuerung',
+      typ: 'WAGO PFC200',
+      anbindung: 'Modbus TCP · 192.168.4.165:503 · Last 51\u00a0%',
+      zustand: 'Liefert Daten',
       ton: 'ok',
+      href: '#/anlage/site-gore/geraet/edge-5mz8bdd/as-e-as',
+      quelleId: 'dq-1',
     }]);
-    expect(boxGeraeteListe(local, quelle('never', null), null, NOW, [steuerung])[0])
-      .toMatchObject({ geraetId: 'as-e-as', zustand: 'noch keine Daten', ton: 'off' });
-    // Ohne die Komponente bleibt die Quelle, was die Box meldet.
-    expect(boxGeraeteListe(local, quelle('ok', FRISCH), null, NOW)[0]).toMatchObject({ geraetId: pin, art: 'Gerät' });
+    expect([g.gateways, g.offen]).toEqual([[], []]);
+    expect(g.summe).toBe('Zusammen 12 von 30 Anfragen/min · 305 von 600 Messwerten/min · Last 51\u00a0%');
+    // Bühne, Liste und Aufbau zählen dieselben Geräte.
+    expect(v.buehneSatz).toBe('1 von 1 Gerät liefert Daten.');
+    const ast = aufbauDerAnlage(d)!.boxen[0];
+    expect(kastenSatz(ast.geraete, ast.wege)).toBe('1 Gerät');
+    expect(g.kurz).toBe('1 Gerät · Last 51\u00a0%');
+  });
+
+  it('Gore mit gestörtem Weg: das Gerät steht auf Achtung und liefert nicht — ein Zustand für Bühne und Liste', () => {
+    const gestoert = goreDq1(NOW, {
+      rueckmeldung: { ...liefert(NOW, 12, 305)!, zustand: 'liefert_nicht', fehlerklasse: 'unreachable', seit: new Date(NOW - 60_000).toISOString() },
+    });
+    const v = seiteVon(goreForm(NOW, { datenquellen: [gestoert] }), 'edge-5mz8bdd');
+    expect(v.geraete!.eintraege.map((e) => [e.ton, e.zustand.split(' · ')[0]])).toEqual([['warn', 'Liefert keine Daten']]);
+    expect(v.buehneSatz).toBe('0 von 1 Gerät liefert Daten.');
+  });
+
+  it('meldet die Box keine Zahlen, steht keine Last da — nie „0 %"', () => {
+    const v = seiteVon(goreForm(NOW, { datenquellen: [goreDq1(NOW, { rueckmeldung: null })] }), 'edge-5mz8bdd');
+    const g = v.geraete!;
+    expect(g.eintraege[0].anbindung).toBe('Modbus TCP · 192.168.4.165:503');
+    expect(g.summe).toBeNull();
+    expect(g.summeLeer).toBe('Ihre Last meldet die Box noch nicht je Anschluss.');
+    expect(g.kurz).toBe('1 Gerät · Last nicht gemeldet');
+    expect(lastText(0.2)).toBe('Last unter 1\u00a0%');
+    expect(lastText(0)).toBe('Last 0\u00a0%');
+  });
+
+  it('ohne `…/geraete` bleibt die Zuordnung unbekannt: keine Anbindung, die Last zählt trotzdem', () => {
+    const v = seiteVon(goreForm(NOW, { uemsGeraete: null }), 'edge-5mz8bdd');
+    const g = v.geraete!;
+    expect(g.eintraege.map((e) => [e.id, e.anbindung])).toEqual([['as-e-as', null]]);
+    expect(g.offen).toEqual([]);
+    expect(g.zuordnungUnbekannt).toBe(true);
+    expect(g.summe).toContain('Last 51');
+  });
+
+  it('Gateway-Form: ein Gerät direkt, das Gateway mit vier Geräten darunter, ein offener Anschluss — Last je Weg und Summe', () => {
+    const d = gatewayForm(NOW);
+    const v = seiteVon(d, 'VP-HS-0001');
+    const g = v.geraete!;
+    expect(g.eintraege.map((e) => [e.titel, e.anbindung])).toEqual([
+      ['Wechselrichter Dach', 'SunSpec-Modbus · 192.168.10.20:502 · Last 13\u00a0%'],
+    ]);
+    expect(g.gateways.map((w) => [w.titel, w.weg, w.zeile, w.geraete.map((e) => e.anbindung)])).toEqual([[
+      'Zählergateway Halle',
+      'Modbus TCP · 192.168.10.31:502 · Geräte-IDs 1–4 · Kennung DQ-3',
+      '4 Geräte · Last 23\u00a0%',
+      ['Geräte-ID 1', 'Geräte-ID 2', 'Geräte-ID 3', 'Geräte-ID 4'],
+    ]]);
+    // Hinter dem Gateway wechselt niemand die Box für EIN Gerät: der Weg gehört dem Gateway.
+    expect(g.gateways[0].geraete.every((e) => e.quelleId === null && e.href != null)).toBe(true);
+    expect(g.offen.map((w) => [w.titel, w.weg])).toEqual([
+      ['Anschluss ohne Gerät', 'Modbus TCP · 192.168.10.40:502 · Geräte-ID 1 · Kennung DQ-5 · Last 3\u00a0%'],
+    ]);
+    expect(g.summe).toBe('Zusammen 12 von 30 Anfragen/min · 186 von 600 Messwerten/min · Last 40\u00a0%');
+    expect([g.anzahl, g.liefern]).toEqual([5, 5]);
+    expect(v.buehneSatz).toBe('5 von 5 Geräten liefern Daten.');
+    const ast = aufbauDerAnlage(d)!.boxen[0];
+    expect(kastenSatz(ast.geraete, ast.wege)).toBe('5 Geräte · 1 Gateway · 1 Anschluss offen');
+  });
+
+  it('ein Weg ohne Meldung wird in der Summe genannt, nicht als Null gezählt', () => {
+    const [wr, gw, offen] = hsWege(NOW);
+    const g = seiteVon(gatewayForm(NOW, { datenquellen: [wr, gw, { ...offen, rueckmeldung: null }] }), 'VP-HS-0001').geraete!;
+    expect(g.summe).toBe('Zusammen 11 von 30 Anfragen/min · 176 von 600 Messwerten/min · Last 37\u00a0% · ohne Meldung: DQ-5');
+    expect(g.offen[0].weg).not.toContain('Last');
+  });
+
+  it('zwei Boxen: das Gerät steht an der Box, die seinen Weg liest — und nur dort', () => {
+    const hof: Device = { ...BOX, id: 'box-hof', siteId: 'site-hs', externalRef: 'VP-HS-0002', name: 'Box Hof' };
+    const [wr, gw, offen] = hsWege(NOW);
+    const d = gatewayForm(NOW, {
+      devices: [...gatewayForm(NOW).devices, hof],
+      datenquellen: [{ ...wr, zustaendige_box: { id: 'box-hof', name: 'Box Hof', heimat_anlage: 'site-hs' } }, gw, offen],
+    });
+    const halle = seiteVon(d, 'VP-HS-0001').geraete!;
+    const hofSeite = seiteVon(d, 'VP-HS-0002').geraete!;
+    expect(halle.eintraege.map((e) => e.id)).toEqual([]);
+    expect(hofSeite.eintraege.map((e) => [e.id, e.href])).toEqual([['src-wr', '#/anlage/site-hs/geraet/VP-HS-0002/src-wr']]);
+    expect(hofSeite.summe).toContain('Last 13');
+    expect([halle.anzahl, hofSeite.anzahl]).toEqual([4, 1]);
+  });
+
+  it('liest die Box einen Weg einer anderen Anlage, zählt er in die Last und wird genannt', () => {
+    const fremd = dq({ id: 'dq-7', kennzeichen: 'DQ-7', anlage: 'site-2', rueckmeldung: liefert(NOW, 3, 60) }, { id: 'box-gore', name: null });
+    const g = seiteVon(goreForm(NOW, { datenquellen: [goreDq1(NOW), fremd] }), 'edge-5mz8bdd').geraete!;
+    expect(g.fremd).toBe('Außerdem liest diese Box für Halle 2: DQ-7 — dort im Aufbau.');
+    expect(g.summe).toBe('Zusammen 15 von 30 Anfragen/min · 365 von 600 Messwerten/min · Last 61\u00a0%');
+    expect(g.eintraege).toHaveLength(1);
+  });
+
+  it('nur angefangene Anschlüsse: die Bühne sagt, worauf sie warten', () => {
+    const [, , offen] = hsWege(NOW);
+    const v = seiteVon(gatewayForm(NOW, {
+      entities: { registry: null, entities: [], localSetup: [], staleOnDevice: [] }, datenquellen: [offen], uemsGeraete: [],
+    }), 'VP-HS-0001');
+    expect(v.geraete!.offen).toHaveLength(1);
+    expect(v.buehneSatz).toBe('Noch kein Gerät — 1 Anschluss wartet auf ein Gerät.');
+    expect(v.geraeteLeer).toBeNull();
   });
 
   it('sagt es, wenn sich noch kein Gerät gemeldet hat', () => {
-    const v = boxSeite(input({ geraete: [] }));
-    expect(v.geraeteLeer).toMatch(/noch kein Gerät/);
+    const v = boxSeite(input({
+      anlage: aufbauDerAnlage(pilsting({ entities: { registry: null, entities: [], localSetup: [], staleOnDevice: [] } })),
+    }));
+    expect(v.geraeteLeer).toBe(KEINE_GERAETE);
+    expect(v.buehneSatz).toBe(KEINE_GERAETE);
   });
 });
 

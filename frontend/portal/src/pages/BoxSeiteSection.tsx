@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import {
@@ -11,20 +11,24 @@ import {
   type Site,
   type SiteEntities,
   type SiteSource,
+  type SiteTopology,
   type StandorteAmStichtag,
   type UemsDatenquelle,
   type UemsGemeinsameSteuerungZustand,
+  type UemsGeraet,
 } from '../api';
 import { gemeinsameSteuerungAendern, wegDesWechsels } from '../uemsDatenquelle';
 import type { SiteCharging } from '../ladepunkte';
 import {
   BOX_ROLLE,
-  boxGeraeteListe,
   boxSeite,
   GERAETE_HINWEIS,
   type BoxSeiteView,
 } from '../boxSeite';
-import type { BoxGeraet, Zeile } from '../geraetSeite';
+import { aufbauDerAnlage, type BoxEintrag } from '../boxGeraete';
+import { consumersApi } from '../consumers/consumersApi';
+import type { Consumer } from '../consumers/types';
+import type { Zeile } from '../geraetSeite';
 import { GeraetBrotkrume } from '../components/GeraetBrotkrume';
 import {
   GeraetRahmen,
@@ -39,7 +43,7 @@ import { DatenquelleWechselDialog } from '../components/DatenquelleWechselDialog
 import { DatenquelleAnlegen } from '../components/DatenquelleAnlegen';
 import { Recht } from '../components/Recht';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
-import { anlageRoute, boxSeiteHash, geraetSeiteHash, hashForRoute, pageRoute } from '../nav';
+import { anlageRoute, aufbauHash, boxSeiteHash, hashForRoute, pageRoute } from '../nav';
 import { einstellungenHash } from '../settingsNav';
 import { UEMS_GATEWAY_ANBINDEN } from '../glossar';
 import {
@@ -104,6 +108,11 @@ export function BoxSeiteSection({
 
   const [data, setData] = useState<SiteEntities | null>(null);
   const [sources, setSources] = useState<SiteSource[] | null>(null);
+  // Dieselben Abrufe wie Anlage › Aufbau (GE-4): die Geräte an der Box kommen aus DERSELBEN Zuordnung.
+  const [topology, setTopology] = useState<SiteTopology | null>(null);
+  const [consumers, setConsumers] = useState<Consumer[] | null>(null);
+  // Die UEMS-Geräte: ihr `data_source_id` ist der einzige Verweis Weg → Gerät (GE-1); undefined = lädt, null = unbekannt.
+  const [uemsGeraete, setUemsGeraete] = useState<UemsGeraet[] | null | undefined>(undefined);
   const [control, setControl] = useState<ControlStatus | null>(null);
   const [curtailment, setCurtailment] = useState<CurtailmentStatus | null>(null);
   const [edgeVersions, setEdgeVersions] = useState<EdgeVersion[] | null>(null);
@@ -145,11 +154,17 @@ export function BoxSeiteSection({
       );
     };
     soft(api.siteSources(site.id), setSources);
+    soft(api.topology(site.id), setTopology);
+    soft(consumersApi.list(site.id), setConsumers);
+    setUemsGeraete(undefined);
+    void api.uemsGeraete(site.id).then(
+      (a) => active && setUemsGeraete(a.geraete),
+      () => active && setUemsGeraete(null),
+    );
     soft(api.controlStatus(site.id), setControl);
     soft(api.curtailmentStatus(site.id), setCurtailment);
     soft(api.edgeVersions().then((antwort) => antwort.eintraege), setEdgeVersions);
     soft(api.siteChargers(site.id), setCharging);
-    soft(api.datenquellen(site.id).then((a) => a.datenquellen), setDatenquellen);
     soft(api.gemeinsameSteuerung(site.id), setGemeinsameSteuerung);
     soft(api.standorte(), setStandorte);
     setNow(Date.now());
@@ -181,6 +196,20 @@ export function BoxSeiteSection({
     };
   }, [site.id, boxDevice?.id, boxDevice?.externalRef, reloadKey]);
 
+  // Die Wege aller Anlagen am Standort (wie im Aufbau): die Last einer Box zählt alles, was sie liest — auch für eine
+  // Nachbaranlage. Bis die Standorte da sind, nur die eigene Anlage.
+  const standortDerAnlage = standorte?.standorte.find((st) => st.anlagen.some((a) => a.id === site.id)) ?? null;
+  const anlagenIds = (standortDerAnlage ? standortDerAnlage.anlagen.map((a) => a.id) : [site.id]).join(',');
+  useEffect(() => {
+    let active = true;
+    // Wie im Aufbau: fehlt die Antwort einer Anlage, fehlen genau ihre Wege, nie die der anderen.
+    Promise.all(anlagenIds.split(',').map((id) => api.datenquellen(id).then((a) => a.datenquellen, () => [] as UemsDatenquelle[])))
+      .then((listen) => active && setDatenquellen(listen.flat()));
+    return () => {
+      active = false;
+    };
+  }, [anlagenIds, reloadKey]);
+
   async function adminAktion(fn: () => Promise<unknown>) {
     setAdminBusy(true);
     setAdminFehler(null);
@@ -202,8 +231,10 @@ export function BoxSeiteSection({
       api.controlStatus(site.id).catch(() => null),
       api.curtailmentStatus(site.id).catch(() => null),
       api.siteChargers(site.id).catch(() => null),
-    ]).then(([s, c, cu, ch]) => {
+      api.topology(site.id).catch(() => null),
+    ]).then(([s, c, cu, ch, t]) => {
       if (s !== null) setSources(s);
+      if (t !== null) setTopology(t);
       setControl(c);
       setCurtailment(cu);
       if (ch !== null) setCharging(ch);
@@ -211,9 +242,26 @@ export function BoxSeiteSection({
     });
   }, LIVE_POLL_MS);
 
-  const standortDerAnlage = standorte?.standorte.find((st) => st.anlagen.some((a) => a.id === site.id)) ?? null;
+  const anlagenNamen = useMemo(
+    () => new Map((standortDerAnlage?.anlagen ?? []).map((a) => [a.id, a.name])),
+    [standortDerAnlage],
+  );
   const view: BoxSeiteView | null = useMemo(() => {
     if (!data) return null;
+    const anlage = aufbauDerAnlage({
+      siteId: site.id,
+      siteName: site.name,
+      entities: data,
+      topology,
+      sources,
+      charging,
+      consumers,
+      devices: devices ?? [],
+      devicesFetchedAt,
+      datenquellen,
+      uemsGeraete,
+      now,
+    });
     return boxSeite({
       ref: boxRef,
       siteName: site.name,
@@ -223,14 +271,16 @@ export function BoxSeiteSection({
       edgeVersions,
       control,
       curtailment,
-      geraete: boxGeraeteListe(data.localSetup, sources, charging?.chargers ?? null, now, data.entities),
+      anlage,
+      zuordnung: uemsGeraete != null,
       localSetup: data.localSetup,
       datenquellen,
+      anlagenNamen,
       now,
     });
   }, [
     data, boxRef, site.name, site.id, devices, devicesFetchedAt, edgeVersions, control,
-    curtailment, sources, charging, datenquellen, now,
+    curtailment, topology, sources, charging, consumers, datenquellen, uemsGeraete, anlagenNamen, now,
   ]);
 
   // DERSELBE Verlauf wie überall - der Server entscheidet weiterhin, was der
@@ -287,9 +337,9 @@ export function BoxSeiteSection({
         </Card>
       )}
 
-      {view && view.gefunden && (() => {
+      {view && view.gefunden && view.geraete && (() => {
         const verbunden = view.zustand.ton === 'ok';
-        const liefern = view.geraete.filter((g) => g.ton === 'ok').length;
+        const block = view.geraete;
         const verbindung = view.kacheln.find((k) => k.key === 'verbindung');
         const software = view.kacheln.find((k) => k.key === 'software');
         const notAus = view.grenzen.find((z) => z.label === 'Not-Aus' && z.ton === 'warn') ?? null;
@@ -305,13 +355,9 @@ export function BoxSeiteSection({
                 ton: view.zustand.ton,
                 key: 'verbindung',
               }}
-              satz={view.geraete.length > 0
-                ? `${liefern} von ${view.geraete.length} ${view.geraete.length === 1 ? 'Gerät liefert' : 'Geräten liefern'} Daten.`
-                : view.quellen.length > 0 && view.quellenSatz
-                  ? `${view.quellenSatz}.`
-                  : view.geraeteLeer}
+              satz={view.buehneSatz}
               satzTon={view.zustand.ton}
-              grafik={{ art: 'box', verbunden, geraete: view.geraete.length }}
+              grafik={{ art: 'box', verbunden, geraete: block.anzahl ?? 0 }}
               // Die Software-Version steht in „Gerät & Verbindung" (auch im
               // Kurztext) - nur eine WARNUNG zu ihr gehört auf die Bühne.
               chips={software && software.ton === 'warn' ? [{
@@ -323,75 +369,107 @@ export function BoxSeiteSection({
           ),
         };
 
-        // --- Zusatz: zuerst die Quellen der Box (UEMS AP-06 IP-16), dann ihre Geräte ---
+        // --- Zusatz: „Geräte an dieser Box" (GE-4) — dieselben Kästen wie im Aufbau unter dieser Box ---------
+        // Der Weg (AP-06-Datenquelle) ist keine eigene Zeile mehr: er steht am Gerät (Anbindung und Last), als
+        // Gateway mit den Geräten dahinter oder als „Anschluss ohne Gerät". Den Box-Wechsel trägt die Zeile, deren
+        // Weg es ist — beim Gateway gilt er für alle Geräte dahinter.
+        const wegAktion = (quelleId: string | null, name: string) => {
+          const q = quelleId ? datenquellen?.find((d) => d.id === quelleId) : undefined;
+          if (!q) return null;
+          // AP-15 IP-26: der Weg zu einem Mitglied — vor dem Scharfschalten bleibt der Knopf, der Server urteilt je
+          // Ziel-Box; scharf oder angehalten nur „Gemeinsame Steuerung ändern“.
+          if (q.steuerquelle && steuerquelleWeg !== 'innerhalb_der_gemeinsamen_steuerung') {
+            return steuerquelleWeg === 'gemeinsame_steuerung_aendern'
+              ? <small data-testid="steuerquelle-weg">
+                <a href={einstellungenHash(site.id, 'gemeinsam')}>{gemeinsameSteuerungAendern(q.kennzeichen)}</a>
+              </small>
+              : <small>Diese Quelle steuert — ihre Box kann erst mit der gemeinsamen Optimierung mehrerer Boxen wechseln.</small>;
+          }
+          return (
+            <Recht aktion="datenquelle.zustaendigkeit"><button type="button" className="vp-box-quellen-aktion"
+              aria-label={`Zuständige Box wechseln für ${name}`} onClick={() => setWechselQuelle(q)}>
+              Zuständige Box wechseln
+            </button></Recht>
+          );
+        };
+        const liste = block.eintraege.length + block.gateways.length + block.offen.length > 0;
         const modul: BausteinInhalt = {
-          titel: 'Datenquellen und Geräte',
+          titel: 'Geräte an dieser Box',
           inhalt: (
-            <>
-              {view.quellenSatz && (
-                <div className="vp-box-quellen" data-testid="box-quellen">
-                  <div className="vp-box-quellen-kopf">
-                    <h3>{view.quellenSatz}</h3>
-                    {view.budgetSumme && <span>{view.budgetSumme}</span>}
-                  </div>
-                  {view.quellen.length === 0 ? <p className="vp-note">Diese Box liest noch keine Datenquelle.</p> : (
-                    <ul>
-                      {view.quellen.map((q) => (
-                        <li key={q.id}>
-                          <span className={`vp-health-dot vp-health-${q.ton}`} />
-                          <div>
-                            <b>{q.titel}</b>
-                            <span>{q.weg}</span>
-                            <span>{[q.zustand, q.fehlerklasse, q.seit].filter(Boolean).join(' · ')}</span>
-                            <small>{q.budget}</small>
-                            {/* AP-15 IP-26: der Weg zu einem Mitglied — vor dem Scharfschalten bleibt der Knopf, der Server
-                                urteilt je Ziel-Box; scharf oder angehalten nur „Gemeinsame Steuerung ändern“. */}
-                            {datenquellen?.find((d) => d.id === q.id)?.steuerquelle
-                              && steuerquelleWeg !== 'innerhalb_der_gemeinsamen_steuerung' ? (
-                              steuerquelleWeg === 'gemeinsame_steuerung_aendern'
-                                ? <small data-testid="steuerquelle-weg">
-                                  <a href={einstellungenHash(site.id, 'gemeinsam')}>{gemeinsameSteuerungAendern(q.kennzeichen)}</a>
-                                </small>
-                                : <small>Diese Quelle steuert — ihre Box kann erst mit der gemeinsamen Optimierung mehrerer Boxen wechseln.</small>
-                            ) : (
-                              <Recht aktion="datenquelle.zustaendigkeit"><button type="button" className="vp-box-quellen-aktion"
-                                onClick={() => setWechselQuelle(datenquellen?.find((d) => d.id === q.id) ?? null)}>
-                                Zuständige Box wechseln
-                              </button></Recht>
-                            )}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  {/* Datenquellen entstehen hier, an der Box, die sie liest — nicht mehr nur im Messen-Assistenten.
-                      GE-6 (GD-5): von Hand ist das ein Gateway oder Logger; ein einzelnes Gerät kommt über „Gerät hinzufügen“. */}
-                  {standortDerAnlage && (
-                    <Recht aktion="datenquelle.bearbeiten"><button type="button" className="vp-box-quellen-aktion" onClick={() => setQuelleAnlegen(true)}>
-                      <Icon name="plus" size={14} /> {UEMS_GATEWAY_ANBINDEN}
-                    </button></Recht>
-                  )}
-                </div>
+            <div className="vp-box-geraete-block" data-testid="box-geraete-block">
+              {block.summe && <p className="vp-box-last" data-testid="box-last">{block.summe}</p>}
+              {block.summeLeer && <p className="vp-note">{block.summeLeer}</p>}
+              {view.geraeteLeer && <p className="vp-note">{view.geraeteLeer}</p>}
+              {liste && (
+                <ul className="vp-geraet-liste vp-box-liste" data-testid="box-geraete">
+                  {block.eintraege.map((e) => (
+                    <BoxEintragZeile key={e.id} eintrag={e} aktion={wegAktion(e.quelleId, e.titel)} />
+                  ))}
+                  {block.gateways.map((w) => (
+                    <li key={w.id} className="vp-box-weg is-gateway" data-box-weg={w.kennzeichen}>
+                      <div className="vp-geraet-zeile vp-box-geraet">
+                        <span className={`vp-health-dot vp-health-${w.ton}`} />
+                        <span className="tx">
+                          <span className="nm">{w.titel}</span>
+                          <span className="ty">Gateway</span>
+                          <span className="an">{w.weg}</span>
+                          <span className="an">{w.zeile}</span>
+                          <span className="st">{w.zustand}</span>
+                        </span>
+                      </div>
+                      <div className="vp-box-zeile-aktion">{wegAktion(w.id, w.titel)}</div>
+                      <ul className="vp-box-gateway-geraete" aria-label={`Geräte hinter ${w.titel}`}>
+                        {w.geraete.map((e) => <BoxEintragZeile key={e.id} eintrag={e} aktion={null} />)}
+                      </ul>
+                    </li>
+                  ))}
+                  {block.offen.map((w) => (
+                    <li key={w.id} className="vp-box-weg is-offen" data-box-weg={w.kennzeichen}>
+                      <div className="vp-geraet-zeile vp-box-geraet">
+                        <span className={`vp-health-dot vp-health-${w.ton}`} />
+                        <span className="tx">
+                          <span className="nm">{w.titel}</span>
+                          <span className="an">{w.weg}</span>
+                          <span className="st">{w.zustand}</span>
+                        </span>
+                      </div>
+                      <div className="vp-box-zeile-aktion">
+                        {/* Ein Ort zum Anlegen: das Gerät entsteht im Aufbau (`?neu=geraet`). */}
+                        <Recht aktion="geraet.einrichten">
+                          <a className="vp-box-quellen-aktion" href={aufbauHash(site.id, 'geraet')}
+                            aria-label={`Gerät an Anschluss ${w.kennzeichen} hinzufügen`}>
+                            Gerät hinzufügen
+                          </a>
+                        </Recht>
+                        {wegAktion(w.id, `Anschluss ${w.kennzeichen}`)}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               )}
-              {view.geraeteLeer && (
-                <p className="vp-note">{view.quellen.length > 0 ? KEINE_GERAETE_ABER_QUELLEN : view.geraeteLeer}</p>
+              {block.gemeldet > 0 && (
+                <p className="vp-note">
+                  {block.gemeldet === 1
+                    ? 'Die Box meldet ein weiteres Gerät, das noch nicht übernommen ist.'
+                    : `Die Box meldet ${block.gemeldet} weitere Geräte, die noch nicht übernommen sind.`}{' '}
+                  <a href={aufbauHash(site.id)}>Im Aufbau übernehmen</a>
+                </p>
               )}
-              {view.geraete.length > 0 && (
-                <>
-                  <ul className="vp-geraet-liste" data-testid="box-geraete">
-                    {view.geraete.map((g) => (
-                      <BoxGeraetZeile
-                        key={g.geraetId}
-                        geraet={g}
-                        siteId={site.id}
-                        ref_={view.kennung}
-                      />
-                    ))}
-                  </ul>
-                  <p className="vp-note">{GERAETE_HINWEIS}</p>
-                </>
+              {block.zuordnungUnbekannt && (
+                <p className="vp-note">
+                  Welches Gerät hinter den Anschlüssen dieser Box steht, ist gerade nicht bekannt — ihre Last zählt oben mit.
+                </p>
               )}
-            </>
+              {block.fremd && <p className="vp-note">{block.fremd}</p>}
+              {liste && <p className="vp-note">{GERAETE_HINWEIS}</p>}
+              {/* Datenquellen entstehen hier, an der Box, die sie liest — nicht mehr nur im Messen-Assistenten.
+                  GE-6 (GD-5): von Hand ist das ein Gateway oder Logger; ein einzelnes Gerät kommt über „Gerät hinzufügen“. */}
+              {standortDerAnlage && (
+                <Recht aktion="datenquelle.bearbeiten"><button type="button" className="vp-box-quellen-aktion" onClick={() => setQuelleAnlegen(true)}>
+                  <Icon name="plus" size={14} /> {UEMS_GATEWAY_ANBINDEN}
+                </button></Recht>
+              )}
+            </div>
           ),
         };
 
@@ -549,30 +627,34 @@ export function BoxSeiteSection({
   );
 }
 
-/** Eine Box, die über Datenquellen liest, ist nicht „ohne Gerät“ — sie hat nur keine angelegten Geräte-Karten. */
-const KEINE_GERAETE_ABER_QUELLEN = 'Keine Geräte angelegt — die Box liest über die Datenquellen oben.';
-
-/** Ein Gerät AN der Box - eine Zeile mit dem Weg auf seine eigene Seite. */
-function BoxGeraetZeile({
-  geraet,
-  siteId,
-  ref_,
-}: {
-  geraet: BoxGeraet;
-  siteId: string;
-  ref_: string;
-}) {
+/**
+ * Ein Gerät AN der Box - eine Zeile mit dem Weg auf seine eigene Seite, darunter Anbindung und Last (GE-4). Ein
+ * Gerät ohne eigene Seite (Ersatzgerät) steht ohne Pfeil da; die Handlung zu seinem Weg steht neben der Zeile, nie
+ * im Link.
+ */
+function BoxEintragZeile({ eintrag, aktion }: { eintrag: BoxEintrag; aktion: ReactNode }) {
+  const inhalt = (
+    <>
+      <span className={`vp-health-dot vp-health-${eintrag.ton}`} />
+      <span className="tx">
+        <span className="nm">{eintrag.titel}</span>
+        <span className="ty">{eintrag.typ}</span>
+        {eintrag.anbindung && <span className="an">{eintrag.anbindung}</span>}
+        <span className="st">{eintrag.zustand}</span>
+      </span>
+    </>
+  );
   return (
     <li>
-      <a className="vp-geraet-zeile vp-box-geraet" href={geraetSeiteHash(siteId, ref_, geraet.geraetId)}>
-        <span className={`vp-health-dot vp-health-${geraet.ton}`} />
-        <span className="tx">
-          <span className="nm">{geraet.name}</span>
-          <span className="ty">{geraet.art}</span>
-          <span className="st">{geraet.zustand}</span>
-        </span>
-        <Icon name="chevron-right" size={16} />
-      </a>
+      {eintrag.href ? (
+        <a className="vp-geraet-zeile vp-box-geraet" href={eintrag.href}>
+          {inhalt}
+          <Icon name="chevron-right" size={16} />
+        </a>
+      ) : (
+        <div className="vp-geraet-zeile vp-box-geraet">{inhalt}</div>
+      )}
+      {aktion && <div className="vp-box-zeile-aktion">{aktion}</div>}
     </li>
   );
 }

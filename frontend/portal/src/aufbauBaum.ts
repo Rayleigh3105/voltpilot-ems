@@ -48,7 +48,7 @@ import type {
   UemsDatenquelle,
   UemsGeraet,
 } from './api';
-import { protokollName, quellWeg, quellZeile } from './boxUebersicht';
+import { boxLast, protokollName, quellWeg, quellZeile } from './boxUebersicht';
 import { technicalDeviceName } from './entityLabel';
 import { siteLiveFresh } from './fleet';
 import { fmtNum } from './format';
@@ -174,6 +174,8 @@ export interface AufbauBox {
   geraete: AufbauGeraet[];
   /** Gateways und Anschlüsse ohne Gerät unter dieser Box; leer = keine (oder unbekannt). */
   wege: AufbauWeg[];
+  /** GE-4: „Last 51 %" der Wege, die diese Box liest — dieselbe Rechnung wie die Box-Seite; null = sie liest keinen. */
+  last: string | null;
 }
 
 /** Wie aktuell die Live-Werte einer Anlage sind. */
@@ -753,6 +755,7 @@ function anlageKnoten(
         href: boxSeiteHash(id, b.externalRef),
         geraete: jeBox.get(b.id) ?? [],
         wege: wegeJeBox.get(b.id) ?? [],
+        last: boxLast(b.id, input.datenquellen).kurz,
       };
     }),
     ohneBox,

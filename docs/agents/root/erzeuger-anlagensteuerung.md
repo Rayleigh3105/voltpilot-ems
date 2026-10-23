@@ -199,7 +199,8 @@ Spiegel) mit der Frist `AKTUELL_BIS_S` (120 s, dieselbe wie `werte` und der Kopf
 `readAt` ihrer Quelle in `/sources` (Box-Seite).
 
 - ⚠ **Ein Gerät, eine Seite:** auch mit Pin bleibt die Steuerung das Gerät `as-<Entität>` — `plantModel` macht die
-  gemeldete Quelle nicht zum Gerät, `boxGeraeteListe` verweist auf `as-…`, `GeraetSeiteSection` leitet eine Adresse
+  gemeldete Quelle nicht zum Gerät, die Box-Seite zählt über dieselbe Kette (`boxGeraete.aufbauDerAnlage`, GE-4),
+  `GeraetSeiteSection` leitet eine Adresse
   auf den Pin um. Sonst trug die Quelle das Gesicht eines Zählers (Katalog-Kategorie `meter`).
 - **Gesicht:** Erzeugung, Netzpunkt, Anlage (`a.anlage_zustand`), wirksame Grenze mit ihrer Quelle (`wirkung.quelle_p`).
 

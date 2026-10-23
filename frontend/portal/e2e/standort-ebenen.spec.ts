@@ -145,6 +145,8 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
       // die Adresse wird nichts.
       await expect(flaeche).toContainText('Box Halle 1');
       await expect(flaeche).toContainText('0 Geräte · 3 Anschlüsse offen');
+      // GE-4: die Box-Zeile nennt die Last ihrer Wege — dieselbe Rechnung wie „Geräte an dieser Box“ auf der Box-Seite.
+      await expect(flaeche.locator('.vp-auf-t-zeile.is-box').first()).toContainText(/0 Geräte · 3 Anschlüsse offen · Last \d+\s%/);
       await expect(flaeche).not.toContainText('Datenquelle');
       const anschluesse = flaeche.locator('.vp-auf-t-zeile.is-anschluss');
       await expect(anschluesse).toHaveCount(3);
@@ -176,14 +178,22 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
     }
   });
 
-  test('AP-06 IP-16 · Box-Seite bei 1440 und 375 px: Datenquellen ersetzen die alte reine Geräteliste', async ({ page }) => {
+  test('GE-4 · Box-Seite bei 1440 und 375 px: „Geräte an dieser Box“ zeigt dieselben Kästen wie der Aufbau', async ({ page }) => {
     for (const breite of [1440, 375]) {
       await oeffne(page, 'bild=unternehmen&ansicht=box-halle1', breite);
       await expect(page.getByRole('heading', { name: 'Box Halle 1', level: 1 })).toBeVisible();
-      await expect(page.getByRole('heading', { name: 'Datenquellen und Geräte' })).toBeVisible(); // seit main d1b97ac39 eine offene Karte
-      await expect(page.locator('.vp-box-quellen')).toContainText('DQ-1');
-      await expect(page.locator('.vp-box-quellen')).toContainText('Liefert Daten');
-      await expect(page.locator('.vp-box-quellen')).toContainText('Budget-Anteil');
+      await expect(page.getByRole('heading', { name: 'Geräte an dieser Box' })).toBeVisible(); // seit main d1b97ac39 eine offene Karte
+      // Wie im Aufbau („0 Geräte · 3 Anschlüsse offen“): keiner der drei Wege ist über einen gespeicherten Verweis
+      // mit einem Gerät verknüpft — sie stehen als „Anschluss ohne Gerät“ da, mit Weg, Zustand und Last.
+      const geraete = page.getByTestId('box-geraete');
+      await expect(geraete.locator('[data-box-weg]')).toHaveCount(3);
+      const dq1 = page.locator('[data-box-weg="DQ-1"]');
+      await expect(dq1).toContainText('Anschluss ohne Gerät');
+      await expect(dq1).toContainText('Kennung DQ-1');
+      await expect(dq1).toContainText('Liefert Daten');
+      await expect(page.getByTestId('box-last')).toContainText('Zusammen');
+      await expect(page.getByTestId('geraet-heldsatz')).toHaveText('Noch kein Gerät — 3 Anschlüsse warten auf ein Gerät.');
+      await expect(page.getByTestId('baustein-modul')).not.toContainText('Datenquellen und Geräte');
       // „Update planen“ steht seit main d1b97ac39 in „Gerät & Verbindung“ — am Telefon zugeklappt.
       const details = page.getByTestId('baustein-details');
       if (!(await details.evaluate((el) => (el as HTMLDetailsElement).open))) await details.locator(':scope > summary').click();
@@ -198,7 +208,7 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
   test('AP-06 IP-12 · Quellenübergabe: Prüfung, Folgen, geplanter Wechsel und Rücknahme bei 375/1440', async ({ page }) => {
     for (const breite of [375, 1440]) {
       await oeffne(page, 'bild=unternehmen&ansicht=box-halle1', breite);
-      await expect(page.getByRole('heading', { name: 'Datenquellen und Geräte' })).toBeVisible(); // seit main d1b97ac39 eine offene Karte
+      await expect(page.getByRole('heading', { name: 'Geräte an dieser Box' })).toBeVisible(); // seit main d1b97ac39 eine offene Karte
       await page.getByRole('button', { name: 'Zuständige Box wechseln' }).first().click();
       const dialog = page.getByRole('dialog', { name: 'Zuständige Box wechseln' });
       await expect(dialog).toBeVisible();

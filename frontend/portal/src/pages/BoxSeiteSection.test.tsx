@@ -16,7 +16,11 @@ import {
   type SiteEntities,
   type SiteSource,
   type SiteTopology,
+  type UemsDatenquelle,
+  type UemsGeraet,
 } from '../api';
+import { consumersApi } from '../consumers/consumersApi';
+import { gatewayForm, goreForm } from '../test/boxGeraeteFixtures';
 
 const site: Site = {
   id: 's-1',
@@ -232,12 +236,24 @@ function stub(over: {
   commands?: CommandHistory;
   targets?: RegisterWriteTarget[];
   writes?: RegisterWriteEvent[];
+  topology?: SiteTopology | null;
+  sources?: SiteSource[];
+  datenquellen?: readonly UemsDatenquelle[] | null;
+  uemsGeraete?: readonly UemsGeraet[] | null;
 } = {}) {
   vi.spyOn(api, 'siteEntities').mockImplementation(
     over.entities ?? (() => Promise.resolve(entities)),
   );
-  vi.spyOn(api, 'topology').mockResolvedValue(topology);
-  vi.spyOn(api, 'siteSources').mockResolvedValue(sources);
+  vi.spyOn(api, 'topology').mockResolvedValue((over.topology === undefined ? topology : over.topology) as SiteTopology);
+  vi.spyOn(api, 'siteSources').mockResolvedValue(over.sources ?? sources);
+  // GE-4: dieselben Abrufe wie Anlage › Aufbau — Wege, ihre Verweise auf Geräte und die Verbraucher.
+  vi.spyOn(api, 'datenquellen').mockResolvedValue({ datenquellen: [...(over.datenquellen ?? [])] } as never);
+  vi.spyOn(api, 'uemsGeraete').mockImplementation(() => over.uemsGeraete === null
+    ? Promise.reject(new Error('down'))
+    : Promise.resolve({ geraete: [...(over.uemsGeraete ?? [])] }));
+  vi.spyOn(consumersApi, 'list').mockResolvedValue([]);
+  vi.spyOn(api, 'gemeinsameSteuerung').mockRejectedValue(new Error('nicht gebraucht'));
+  vi.spyOn(api, 'standorte').mockRejectedValue(new Error('nicht gebraucht'));
   vi.spyOn(api, 'siteComponents').mockResolvedValue({
     componentAuthority: 'portal',
     components: [
@@ -535,11 +551,103 @@ describe('BoxSeiteSection · Kern', () => {
     expect(ids).not.toContain('steuerung');
     expect(ids).not.toContain('heute');
     expect(ids).toEqual(['buehne', 'aktivitaet', 'details']);
-    // Die Quellen und Geräte an der Box stehen als eigener Baustein direkt neben
-    // der Bühne (UEMS AP-06 IP-16: „Datenquellen und Geräte").
-    expect(screen.getByTestId('baustein-modul')).toHaveTextContent('Datenquellen und Geräte');
+    // Die Geräte an der Box stehen als eigener Baustein direkt neben der Bühne (GE-4: „Geräte an dieser Box“ —
+    // vorher „Datenquellen und Geräte“, UEMS AP-06 IP-16).
+    expect(screen.getByTestId('baustein-modul')).toHaveTextContent('Geräte an dieser Box');
+    expect(screen.getByTestId('baustein-modul')).not.toHaveTextContent('Datenquellen und Geräte');
     // Register hat ein Rechner nicht - Technik & Diagnose führt nur Rohdaten.
     expect(screen.getByTestId('geraet-technik-oeffnen')).toHaveTextContent('Rohdaten');
     expect(screen.getByTestId('geraet-technik-oeffnen')).not.toHaveTextContent('Register');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GE-4 (Konzept „Ein Gerät, ein Eintrag"): „Geräte an dieser Box" aus DERSELBEN Zuordnung wie der Aufbau
+// ---------------------------------------------------------------------------
+
+describe('BoxSeiteSection · Geräte an dieser Box (GE-4)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const amOrt = (id: string, name: string): Site => ({ ...site, id, name });
+
+  /**
+   * Gore (Neue Halle): vorher stand die Steuerung hier zweimal — als „DQ-1" in „Datenquellen und Geräte" und als Gerät
+   * darunter, ohne Bezug. Jetzt EINE Zeile mit ihrer Anbindung und Last; die Summe steht über der Liste.
+   */
+  it('Gore: die Steuerung EINMAL — mit Anbindung, Last, Box-Wechsel und der Summe, ohne Zeile für DQ-1', async () => {
+    const d = goreForm(Date.now());
+    stub({
+      entities: () => Promise.resolve(d.entities!),
+      topology: d.topology,
+      sources: [],
+      datenquellen: d.datenquellen,
+      uemsGeraete: d.uemsGeraete,
+    });
+    render(<BoxSeiteSection site={amOrt('site-gore', 'Neue Halle')} boxRef="edge-5mz8bdd" devices={[...d.devices]} />);
+
+    const liste = await screen.findByTestId('box-geraete');
+    await waitFor(() => expect(liste).toHaveTextContent('Modbus TCP · 192.168.4.165:503 · Last 51 %'));
+    expect(within(liste).getAllByRole('link').map((a) => a.getAttribute('href')))
+      .toEqual(['#/anlage/site-gore/geraet/edge-5mz8bdd/as-e-as']);
+    expect(liste).toHaveTextContent('Anlagensteuerung');
+    expect(liste).toHaveTextContent('WAGO PFC200');
+    expect(screen.getByTestId('box-last'))
+      .toHaveTextContent('Zusammen 12 von 30 Anfragen/min · 305 von 600 Messwerten/min · Last 51 %');
+    const modul = screen.getByTestId('baustein-modul');
+    expect(modul).not.toHaveTextContent('DQ-1');
+    expect(modul).not.toHaveTextContent('Datenquellen und Geräte');
+    // Bühne und Liste zählen dieselben Geräte.
+    expect(screen.getByTestId('geraet-heldsatz')).toHaveTextContent('1 von 1 Gerät liefert Daten.');
+    // Der Box-Wechsel steht an der Zeile, deren Weg es ist.
+    expect(within(modul).getByRole('button', { name: 'Zuständige Box wechseln für Anlagensteuerung' })).toBeInTheDocument();
+  });
+
+  it('Gateway-Form: das Gateway mit seinen vier Geräten darunter, ein offener Anschluss mit „Gerät hinzufügen"', async () => {
+    const d = gatewayForm(Date.now());
+    stub({
+      entities: () => Promise.resolve(d.entities!),
+      topology: d.topology,
+      sources: d.sources ?? [],
+      datenquellen: d.datenquellen,
+      uemsGeraete: d.uemsGeraete,
+    });
+    render(<BoxSeiteSection site={amOrt('site-hs', 'Halle Süd')} boxRef="VP-HS-0001" devices={[...d.devices]} />);
+
+    const liste = await screen.findByTestId('box-geraete');
+    await waitFor(() => expect(within(liste).getByText('Zählergateway Halle')).toBeInTheDocument());
+    const gateway = liste.querySelector('[data-box-weg="DQ-3"]') as HTMLElement;
+    expect(gateway).toHaveTextContent('4 Geräte · Last 23 %');
+    const dahinter = within(gateway).getByRole('list', { name: 'Geräte hinter Zählergateway Halle' });
+    expect(within(dahinter).getAllByRole('link')).toHaveLength(4);
+    expect(within(dahinter).getAllByRole('link')[1]).toHaveTextContent('Geräte-ID 2');
+    // Den Box-Wechsel trägt das Gateway — für alle vier; die Geräte dahinter haben keinen eigenen.
+    expect(within(gateway).getAllByRole('button', { name: /Zuständige Box wechseln/ })).toHaveLength(1);
+
+    const offen = liste.querySelector('[data-box-weg="DQ-5"]') as HTMLElement;
+    expect(offen).toHaveTextContent('Anschluss ohne Gerät');
+    expect(offen).toHaveTextContent('Kennung DQ-5');
+    expect(within(offen).getByRole('link', { name: 'Gerät an Anschluss DQ-5 hinzufügen' }))
+      .toHaveAttribute('href', '#/anlage/site-hs/modell?neu=geraet');
+
+    expect(screen.getByTestId('box-last'))
+      .toHaveTextContent('Zusammen 12 von 30 Anfragen/min · 186 von 600 Messwerten/min · Last 40 %');
+    expect(screen.getByTestId('geraet-heldsatz')).toHaveTextContent('5 von 5 Geräten liefern Daten.');
+  });
+
+  it('ohne `…/geraete` zeigt sie keinen geratenen Anschluss — und sagt, dass die Zuordnung fehlt', async () => {
+    const d = goreForm(Date.now());
+    stub({
+      entities: () => Promise.resolve(d.entities!),
+      topology: d.topology,
+      sources: [],
+      datenquellen: d.datenquellen,
+      uemsGeraete: null,
+    });
+    render(<BoxSeiteSection site={amOrt('site-gore', 'Neue Halle')} boxRef="edge-5mz8bdd" devices={[...d.devices]} />);
+    const modul = await screen.findByTestId('baustein-modul');
+    await waitFor(() => expect(modul).toHaveTextContent('ist gerade nicht bekannt'));
+    expect(modul).not.toHaveTextContent('Anschluss ohne Gerät');
+    expect(modul).not.toHaveTextContent('192.168.4.165');
+    expect(screen.getByTestId('box-last')).toHaveTextContent('Last 51 %');
   });
 });

@@ -7,8 +7,65 @@ import {
 import { fmtRelative } from './format';
 import { faehigkeiten, fehlerklasse, PROTOKOLLE, type TabellenEintrag } from './uemsDatenquelle';
 
-const ANFRAGEN_GRENZE = 30;
-const MESSWERTE_GRENZE = 600;
+/** Das Lesebudget einer Box (AP-06): Anfragen und Messwerte je Minute. */
+export const ANFRAGEN_GRENZE = 30;
+export const MESSWERTE_GRENZE = 600;
+
+/** Die gemeldete Last eines oder mehrerer Wege; null-Teile = nicht gemeldet. */
+export interface WegLast {
+  anfragen: number | null;
+  messwerte: number | null;
+  /** max(Anfragen/30, Messwerte/600) in Prozent; null = keine der beiden Zahlen gemeldet. */
+  prozent: number | null;
+  /** Wege ohne gemeldete Zahl (Kennzeichen) — nur in einer Summe. */
+  ohneMeldung: string[];
+}
+
+/** Die Last über Wege: Summe der gemeldeten Zahlen; ein Weg ohne Meldung zählt nicht als Null, er wird genannt. */
+export function wegLast(quellen: readonly UemsDatenquelle[]): WegLast {
+  let anfragen: number | null = null;
+  let messwerte: number | null = null;
+  const ohneMeldung: string[] = [];
+  for (const q of quellen) {
+    const a = q.rueckmeldung?.anfragen_pro_minute ?? null;
+    const m = q.rueckmeldung?.messwerte_pro_minute ?? null;
+    if (a == null && m == null) ohneMeldung.push(q.kennzeichen);
+    if (a != null) anfragen = (anfragen ?? 0) + a;
+    if (m != null) messwerte = (messwerte ?? 0) + m;
+  }
+  const prozent = anfragen == null && messwerte == null
+    ? null
+    : Math.max((anfragen ?? 0) / ANFRAGEN_GRENZE, (messwerte ?? 0) / MESSWERTE_GRENZE) * 100;
+  return { anfragen, messwerte, prozent, ohneMeldung };
+}
+
+/** „Last 51 %" (Prozent ohne Stelle, AP-08 E11); eine kleine, aber gemeldete Last ist „unter 1 %", nie „0 %". */
+export function lastText(prozent: number): string {
+  if (prozent > 0 && prozent < 0.5) return 'Last unter 1\u00a0%';
+  return `Last ${Math.round(prozent).toLocaleString('de-DE')}\u00a0%`;
+}
+
+/** Die Last, die EINE Box trägt: alle nicht archivierten Wege, deren zuständige Box sie ist. */
+export interface BoxLast {
+  quellen: UemsDatenquelle[];
+  last: WegLast;
+  /** „Last 51 %"; „Last nicht gemeldet", wenn die Box Wege liest, aber keine Zahl meldet; null = sie liest keinen. */
+  kurz: string | null;
+}
+
+/**
+ * Die EINE Rechnung der Box-Last (GE-4): Box-Seite („Geräte an dieser Box", `boxGeraete`) und die Box-Zeile im
+ * Aufbau (`aufbauBaum`) rufen beide diese Funktion — nie eine zweite Zählweise.
+ */
+export function boxLast(boxId: string, datenquellen: readonly UemsDatenquelle[] | null | undefined): BoxLast {
+  const quellen = (datenquellen ?? []).filter((q) => q.archiviert_am == null && q.zustaendige_box?.id === boxId);
+  const last = wegLast(quellen);
+  return {
+    quellen,
+    last,
+    kurz: last.prozent != null ? lastText(last.prozent) : quellen.length > 0 ? 'Last nicht gemeldet' : null,
+  };
+}
 
 /** Runtime copy of the reviewed capability table; its vector test pins names and order. */
 export const BOX_FAEHIGKEITEN: TabellenEintrag[] = [
@@ -42,9 +99,6 @@ export interface BoxUebersichtKarte {
   verbindungDetail: string | null;
   verbindungTon: 'ok' | 'warn' | 'off';
   rolle: string;
-  quellen: BoxQuelleZeile[];
-  quellenSatz: string;
-  budgetSumme: string | null;
   software: string;
   faehigkeiten: string;
   updateNoetig: boolean;
@@ -136,22 +190,21 @@ function faehigkeitenText(edge: EdgeVersion | undefined): { text: string; update
   return { text: f.text, update: f.faehigkeiten.some((x) => x.status === 'fehlt') };
 }
 
+/**
+ * Je Box Verbindung, Rolle und Software. Was an ihr hängt, zählt der Aufbau (GE-1) — Box-Zeile „n Geräte · Last
+ * p %" — und die Box-Seite („Geräte an dieser Box", `boxGeraete`); diese Karte zählt keine Datenquellen mehr.
+ */
 export function boxUebersicht(
   devices: readonly Device[],
   versionen: readonly EdgeVersion[],
-  quellen: readonly UemsDatenquelle[],
   anlagenNamen: ReadonlyMap<string, string>,
   jetzt = new Date(),
 ): BoxUebersichtKarte[] {
   const version = new Map(versionen.map((v) => [v.deviceId, v]));
   return devices.map((d): BoxUebersichtKarte => {
-    const qs = quellen.filter((q) => q.zustaendige_box?.id === d.id).map(quellZeile);
     const status = deviceLiveStatus(d, jetzt);
     const f = faehigkeitenText(version.get(d.id));
     const anlage = anlagenNamen.get(d.siteId) ?? 'diese Anlage';
-    const summe = qs.length === 0 ? null : quellen
-      .filter((q) => q.zustaendige_box?.id === d.id)
-      .reduce((n, q) => n + (q.rueckmeldung?.anfragen_pro_minute ?? 0), 0);
     return {
       id: d.id,
       siteId: d.siteId,
@@ -161,9 +214,6 @@ export function boxUebersicht(
       verbindungDetail: d.lastSeenAt ? `Letzte Meldung ${fmtRelative(d.lastSeenAt, jetzt)}` : null,
       verbindungTon: status === 'online' ? 'ok' : status === 'stale' ? 'warn' : 'off',
       rolle: d.fuehrtAnlage === true ? `Führt ${anlage}` : `Führt ${anlage} nicht`,
-      quellen: qs,
-      quellenSatz: qs.length === 0 ? 'Liest noch keine Datenquelle' : `Liest ${qs.length} ${qs.length === 1 ? 'Datenquelle' : 'Datenquellen'}`,
-      budgetSumme: summe && summe > 0 ? `Zusammen ${zahl(summe)} von ${ANFRAGEN_GRENZE} Anfragen/min` : null,
       software: version.get(d.id)?.coreVersion ? `Software ${version.get(d.id)!.coreVersion}` : 'Software-Stand unbekannt',
       faehigkeiten: f.text,
       updateNoetig: f.update,

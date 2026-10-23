@@ -32,25 +32,20 @@ import type { ControlStatus, CurtailmentStatus, Device, EdgeVersion, UemsDatenqu
 import { fmtRelative } from './format';
 import { NO_DATA } from './nodata';
 import { versionLabel } from './edgeVersionLabel';
-import type { EntityLocalSetup, SiteEntity, SiteSource } from './api';
-import { anlagensteuerungGeraetId } from './geraetAdresse';
-import { ANLAGENSTEUERUNG_TYPE } from './komponenten';
-import type { BoxGeraet, GeraetTon, Zeile } from './geraetSeite';
+import type { EntityLocalSetup } from './api';
+import type { AufbauAnlage } from './aufbauBaum';
+import type { GeraetTon, Zeile } from './geraetSeite';
 import {
   ART_WORT,
-  ROLLEN_WORT,
   boxZustand,
-  chargerGeraetId,
-  istIoModul,
   lanZeile,
   lokaleBoxUrl,
   privateLanAddress,
-  quellenZustand,
 } from './geraetSeite';
 import { technicalDeviceName } from './entityLabel';
 import { abregelZiel, releaseNote } from './curtailment';
-import { chargerName, type ChargePoint } from './ladepunkte';
-import { boxUebersicht, type BoxQuelleZeile } from './boxUebersicht';
+import { boxGeraeteBlock, type BoxGeraeteBlock } from './boxGeraete';
+import { boxUebersicht } from './boxUebersicht';
 
 /** Eine der drei Kacheln des Kopfes. */
 export interface BoxKachel {
@@ -78,8 +73,15 @@ export interface BoxSeiteView {
   kennung: string;
   zustand: { wort: string; ton: GeraetTon; detail: string | null };
   kacheln: BoxKachel[];
-  /** Die Geräte AN der Box - die Absprungliste, die die Seite AUSMACHT. */
-  geraete: BoxGeraet[];
+  /**
+   * „Geräte an dieser Box" - die Absprungliste, die die Seite AUSMACHT (GE-4): aus derselben Zuordnung Weg → Gerät
+   * wie der Aufbau, mit Anbindung und Last je Gerät, Gateways, offenen Anschlüssen und der Last-Summe; null = keine
+   * Box gefunden.
+   */
+  geraete: BoxGeraeteBlock | null;
+  /** Der Satz der Bühne: „1 von 1 Gerät liefert Daten." - er zählt dieselben Geräte wie die Liste. */
+  buehneSatz: string;
+  /** Der Satz unter einer leeren Liste; null = sie ist nicht leer. */
   geraeteLeer: string | null;
   /** „Schutz & Grenzen Ihrer Anlage". */
   grenzen: Zeile[];
@@ -87,9 +89,6 @@ export interface BoxSeiteView {
   /** Technik-Aufklapper. */
   technik: Zeile[];
   auswahl: { ref: string; name: string }[];
-  quellen: BoxQuelleZeile[];
-  quellenSatz: string | null;
-  budgetSumme: string | null;
   faehigkeiten: string | null;
   updateNoetig: boolean;
 }
@@ -105,14 +104,21 @@ export interface BoxSeiteInput {
   edgeVersions: EdgeVersion[] | null;
   control: ControlStatus | null;
   curtailment: CurtailmentStatus | null;
-  /** Die Geräte AN der Box, schon abgeleitet (dieselbe Liste wie bisher). */
-  geraete: BoxGeraet[];
+  /**
+   * Der Aufbau der Anlage (`boxGeraete.aufbauDerAnlage`) - DIESELBE Zuordnung wie Anlage › Aufbau; die Seite nimmt
+   * den Ast ihrer Box. null = Geräte nicht geladen.
+   */
+  anlage: AufbauAnlage | null;
+  /** Ist die Zuordnung Weg → Gerät bekannt (`GET …/geraete` geladen)? */
+  zuordnung?: boolean;
   /**
    * Der gemeldete Einrichtungs-Stand - hier NUR als Namensbildner für die
-   * Abregel-Ziele (R4a). Die Geräte-Liste selbst kommt fertig als `geraete`.
+   * Abregel-Ziele (R4a). Die Geräte kommen aus `anlage`.
    */
   localSetup?: EntityLocalSetup[] | null;
+  /** Die Wege der Anlagen am Standort - ihre Last zählt an der Box, die sie liest. */
   datenquellen?: UemsDatenquelle[] | null;
+  anlagenNamen?: ReadonlyMap<string, string>;
   now?: number;
 }
 
@@ -122,6 +128,18 @@ export const BOX_WAEHLEN = 'Wählen Sie die VoltPilot-Box, deren Seite Sie öffn
 
 /** Der Satz unter der Geräte-Liste, solange sich nichts gemeldet hat. */
 export const KEINE_GERAETE = 'An dieser Box meldet sich noch kein Gerät.';
+
+/** Bühne und Liste zählen dieselben Geräte: „3 von 4 Geräten liefern Daten." - ohne Gerät, was stattdessen dasteht. */
+export function buehneSatz(block: BoxGeraeteBlock): string {
+  const n = block.anzahl;
+  if (n == null) return 'Die Geräte an dieser Box werden geladen.';
+  if (n > 0) return `${block.liefern} von ${n} ${n === 1 ? 'Gerät liefert' : 'Geräten liefern'} Daten.`;
+  const offen = block.offen.length;
+  if (offen > 0) {
+    return `Noch kein Gerät — ${offen} ${offen === 1 ? 'Anschluss wartet' : 'Anschlüsse warten'} auf ein Gerät.`;
+  }
+  return KEINE_GERAETE;
+}
 
 /**
  * Der Satz, der die Box als TOR beschreibt - er steht im Kopf.
@@ -311,50 +329,6 @@ export function grenzenZeilen(
   return out;
 }
 
-/**
- * Die GERÄTE an der Box - die Absprungliste, die die Seite AUSMACHT.
- *
- * Sie ist bewusst die einzige Liste dieser Fläche: was ein Gerät MISST und was
- * VoltPilot ihm schickt, steht auf SEINER Seite - die Box überbringt es nur.
- */
-export function boxGeraeteListe(
-  localSetup: EntityLocalSetup[] | null,
-  sources: SiteSource[] | null,
-  chargers: ChargePoint[] | null,
-  now: number,
-  entities: SiteEntity[] | null = null,
-): BoxGeraet[] {
-  const out: BoxGeraet[] = [];
-  for (const l of localSetup ?? []) {
-    const s = (sources ?? []).find((x) => x.sourceId === l.id);
-    const z = quellenZustand(s, now);
-    // EZ-22: die Quelle einer Anlagensteuerung (ihr Pin, EZ-21) führt auf die Seite der Steuerung (`as-…`, EZ-10),
-    // dieselbe, die Aufbau und Assistent öffnen. Ihr Zustand kommt mit `/sources` aus der Lesung der Steuerung.
-    const steuerung = (entities ?? []).find((e) => e.entityType === ANLAGENSTEUERUNG_TYPE && e.edgeSourceId === l.id);
-    out.push({
-      geraetId: steuerung ? anlagensteuerungGeraetId(steuerung.id) : l.id,
-      name: technicalDeviceName({ edgeLabel: l.label, brand: l.brand, model: l.model }) ?? 'Gerät',
-      art: steuerung
-        ? 'Anlagensteuerung'
-        : l.kind === 'inverter'
-        ? 'Hauptgerät'
-        : istIoModul(l.communication) ? 'I/O-Modul' : (ROLLEN_WORT[l.role ?? ''] ?? 'Gerät'),
-      zustand: z.detail ? `${z.wort} · ${z.detail}` : z.wort,
-      ton: z.ton,
-    });
-  }
-  for (const c of chargers ?? []) {
-    out.push({
-      geraetId: chargerGeraetId(c.chargePointId),
-      name: chargerName(c),
-      art: 'Ladesäule',
-      zustand: c.connected ? 'verbunden' : 'getrennt',
-      ton: c.connected ? 'ok' : 'warn',
-    });
-  }
-  return out;
-}
-
 /** Die Box-Seite. */
 export function boxSeite(input: BoxSeiteInput): BoxSeiteView {
   const now = input.now ?? Date.now();
@@ -374,15 +348,13 @@ export function boxSeite(input: BoxSeiteInput): BoxSeiteView {
       kennung: input.ref ?? NO_DATA,
       zustand: { wort: 'nicht verbunden', ton: 'off', detail: null },
       kacheln: [],
-      geraete: [],
+      geraete: null,
+      buehneSatz: KEINE_GERAETE,
       geraeteLeer: null,
       grenzen: [],
       grenzenLeer: null,
       technik: [],
       auswahl: eigene.map((d) => ({ ref: d.externalRef, name: d.name?.trim() || d.externalRef })),
-      quellen: [],
-      quellenSatz: null,
-      budgetSumme: null,
       faehigkeiten: null,
       updateNoetig: false,
     };
@@ -411,8 +383,17 @@ export function boxSeite(input: BoxSeiteInput): BoxSeiteView {
   // zweite Lesehöhe zu sein.
 
   const grenzen = grenzenZeilen(input.control, input.curtailment, box.id, input.localSetup);
+  const geraete = boxGeraeteBlock({
+    boxId: box.id,
+    boxRef: box.externalRef,
+    siteId: input.siteId,
+    box: input.anlage?.boxen.find((b) => b.id === box.id) ?? null,
+    datenquellen: input.datenquellen ?? null,
+    zuordnung: input.zuordnung ?? false,
+    anlagenNamen: input.anlagenNamen,
+  });
   const uebersicht = boxUebersicht(
-    [box], input.edgeVersions ?? [], input.datenquellen ?? [], new Map([[box.siteId, input.siteName]]),
+    [box], input.edgeVersions ?? [], new Map([[box.siteId, input.siteName]]),
     new Date(now),
   )[0];
   return {
@@ -423,17 +404,16 @@ export function boxSeite(input: BoxSeiteInput): BoxSeiteView {
     kennung: box.externalRef,
     zustand,
     kacheln: boxKacheln(box, edge, zustand, now),
-    geraete: input.geraete,
-    geraeteLeer: input.geraete.length === 0 ? KEINE_GERAETE : null,
+    geraete,
+    buehneSatz: buehneSatz(geraete),
+    geraeteLeer:
+      geraete.anzahl === 0 && geraete.gateways.length === 0 && geraete.offen.length === 0 ? KEINE_GERAETE : null,
     grenzen,
     grenzenLeer: grenzen.length === 0
       ? 'Zu den Grenzen Ihrer Anlage meldet die Box gerade nichts.'
       : null,
     technik,
     auswahl: [],
-    quellen: uebersicht?.quellen ?? [],
-    quellenSatz: uebersicht?.quellenSatz ?? null,
-    budgetSumme: uebersicht?.budgetSumme ?? null,
     faehigkeiten: uebersicht?.faehigkeiten ?? null,
     updateNoetig: uebersicht?.updateNoetig ?? false,
   };
