@@ -316,9 +316,12 @@ class SteuerartApiTest {
                     .isEqualTo("mindestleistung");
             assertThat(zeile.path("optionen").path("schreibbar").asBoolean()).isTrue();
 
-            // (2) Günstige Stunden -> die Bahn wird FREIGEGEBEN (schnell) und
-            // die Preisgrenze wandert in die Policy. Ohne das Freigeben könnte
-            // die Regel nie greifen: die Bahn deckelt unabhängig von ihr.
+            // (2) Günstige Stunden -> die Preisgrenze wandert in die Policy,
+            // deren Fenster der PLAN ausführt (er befreit die Säule im
+            // günstigen Slot aus der Bahn und deckelt sie im teuren auf 0).
+            // Die Bahn selbst wird „nur_sonne", NICHT „schnell": sie gilt nur
+            // ohne frischen Plan, und dort hiesse „schnell" Netzstrom zu jedem
+            // Preis - der Fehler aus vp-wallbox-modi-konzept §3.4.
             tarifDynamisch(customer, site);
             ResponseEntity<String> guenstig = putRaw(pfad(site, saeule), customer,
                     Map.of("quelle", "guenstig", "preisgrenzeCtKwh", 12));
@@ -326,8 +329,16 @@ class SteuerartApiTest {
                     .isEqualTo(HttpStatus.OK);
             cfg = getJson("/api/v1/sites/" + site + "/charging-config", customer);
             assertThat(cfg.path("chargePoints").get(0).path("source").asText())
-                    .isEqualTo("schnell");
+                    .isEqualTo("nur_sonne");
+            assertThat(cfg.path("chargePoints").get(0).path("storageRelease").asBoolean())
+                    .as("Günstig gibt keinen Speicher frei").isFalse();
             assertThat(policyFassungen(site, saeule)).isPositive();
+            // Die Bahn allein wäre „Nur Sonne" - gelesen wird aber die Policy:
+            // die Zeile sagt weiter „Günstig" mit ihrer Grenze.
+            zeile = eintrag(getJson(zone(site), customer), "Stellplatz 1");
+            assertThat(zeile.path("steuerart").path("quelle").asText()).isEqualTo("guenstig");
+            assertThat(zeile.path("steuerart").path("preisgrenzeCtKwh").asDouble())
+                    .isEqualTo(12.0);
         } finally {
             deleteSite(site);
         }
