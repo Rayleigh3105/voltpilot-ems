@@ -22,7 +22,10 @@ import java.util.Set;
  *   <li>Ein Kundenbereich, der schon VORSCHLÄGE hat, bleibt auf dem Vorschau-Weg: nur eine
  *       Anlage ohne Vorschlag bekommt ihren, nie einen Standort — auch wenn nur noch eine
  *       Anlage übrig ist (über die Vorschau entscheidet der Kunde, IP-10).</li>
- *   <li>GENAU EINE Anlage: ein Standort mit ihrem Namen, Zustand Entwurf, es fehlt: Adresse —
+ *   <li>GENAU EINE Anlage: ein Standort „Standort“ (nie mit dem Namen der Anlage, Anlage-Flow a1
+ *       D9: sonst sah jede weitere Anlage dort aus wie „in der anderen Anlage“; mit seiner ersten
+ *       Adresse heißt er nach Straße oder Ort, {@code StandortService#bearbeiten}), Zustand Entwurf,
+ *       es fehlt: Adresse —
  *       nie eine erfundene (E10) —, in der Zeitzone des Unternehmens (so belegt auch das
  *       Anlegen vor, V20260911100000), und die Zuordnung ab dem TAG ihres Anlegens in
  *       dieser Zeitzone (E9; A5: ab 12.03.2024, bei der Einführung rückwirkend).</li>
@@ -31,7 +34,7 @@ import java.util.Set;
  *       (E5, A6).</li>
  * </ol>
  *
- * <p>Der Name folgt der Namensregel des Standorts ({@link OrtFelder#NAME_HOECHSTENS}): ohne
+ * <p>Der Name eines Vorschlags folgt der Namensregel des Standorts ({@link OrtFelder#NAME_HOECHSTENS}): ohne
  * Randleerzeichen, höchstens 120 Zeichen (gezählt und gekürzt nach Unicode-Zeichen, damit
  * kein Ersatzpaar zerbricht); ein leerer Anlagenname — über die API unmöglich — wird das
  * Kundenwort „Standort“ statt einer Ablehnung (dasselbe Muster wie das Unternehmen,
@@ -45,7 +48,10 @@ import java.util.Set;
  */
 public final class BestandsuebernahmeAbleitung {
 
-    /** Das Kundenwort, wenn die Anlage keinen Namen hat — nie eine Ablehnung. */
+    /**
+     * Das Kundenwort für einen Standort ohne eigenen Namen: der automatische Standort bis zu seiner
+     * Adresse (D9) und der Vorschlag einer Anlage ohne Namen — nie eine Ablehnung.
+     */
     public static final String NAME_OHNE_ANLAGENNAME = "Standort";
 
     private BestandsuebernahmeAbleitung() {}
@@ -146,7 +152,7 @@ public final class BestandsuebernahmeAbleitung {
         if (e.anlagen().size() == 1) {
             Anlage a = e.anlagen().get(0);
             return new Plan(Art.STANDORT_ANLEGEN, Grund.EINE_ANLAGE,
-                    new NeuerStandort(standortName(a.name()), StandortService.ENTWURF,
+                    new NeuerStandort(NAME_OHNE_ANLAGENNAME, StandortService.ENTWURF,
                             List.of(StandortLesemodell.ES_FEHLT_ADRESSE), zone.getId()),
                     new Zuordnung(a.kennzeichen(), tag(a.angelegtUm(), zone)), List.of());
         }

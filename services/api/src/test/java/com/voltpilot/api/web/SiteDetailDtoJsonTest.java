@@ -48,14 +48,15 @@ class SiteDetailDtoJsonTest {
     }
 
     @Test
-    void mitStandortTraegtEsGenauDieVierFelder() throws Exception {
+    void mitStandortTraegtEsGenauDieFuenfFelder() throws Exception {
         StandortBezug bezug = new StandortBezug(UUID.fromString(
                 "3f3e1c6e-0000-0000-0000-000000000001"), "Werk Ahrenberg", "ST-1",
-                LocalDate.of(2024, 3, 12));
+                LocalDate.of(2024, 3, 12), false);
         JsonNode detail = JSON.readTree(JSON.writeValueAsString(new SiteDetailDto(SITE, bezug)));
 
         assertThat(feldnamen(detail.path("standort")))
-                .containsExactly("id", "name", "kurzzeichen", "gueltigAb");
+                .containsExactly("id", "name", "kurzzeichen", "gueltigAb", "adresseFehlt");
+        assertThat(detail.path("standort").path("adresseFehlt").asBoolean()).isFalse();
         assertThat(detail.path("standort").path("gueltigAb").asText()).isEqualTo("2024-03-12");
         assertThat(detail.path("standort").path("kurzzeichen").asText()).isEqualTo("ST-1");
         assertThat(detail.has("site")).as("flach, nie verschachtelt").isFalse();

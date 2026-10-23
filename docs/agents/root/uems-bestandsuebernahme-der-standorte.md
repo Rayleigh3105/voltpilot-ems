@@ -17,13 +17,18 @@ A6 für `demo`, zweiter Lauf, `POST`/`DELETE /api/v1/sites`, Zaun, Rücknahme),
 1. kein Unternehmen · keine Anlage · **schon ein Standort — auch ein archivierter** → nichts.
 2. schon Vorschläge → der Vorschau-Weg bleibt: nur eine Anlage OHNE Vorschlag bekommt ihren,
    nie ein automatischer Standort (auch dann nicht, wenn nur noch eine Anlage übrig ist).
-3. **genau eine Anlage** → Standort mit ihrem Namen, Zustand `entwurf`, „es fehlt: Adresse“
+3. **genau eine Anlage** → Standort „Standort“ (Anlage-Flow a1, D9 = A: nie mit dem Namen der Anlage), Zustand `entwurf`, „es fehlt: Adresse“
    (nie eine erfundene), Zeitzone des Unternehmens, Zuordnung ab dem TAG von
    `site.created_at` in dieser Zeitzone.
 4. **mehrere Anlagen** → je Anlage eine Zeile `standort_vorschlag`, KEINE Zuordnung.
 
-Der Name folgt der Namensregel des Standorts: ohne Randleerzeichen, höchstens 120 Zeichen
+Der Name eines Vorschlags folgt der Namensregel des Standorts: ohne Randleerzeichen, höchstens 120 Zeichen
 (nach Unicode-Zeichen), leer → das Kundenwort „Standort“.
+Bekommt ein automatischer Standort seine erste vollständige Adresse (`PUT /api/v1/standorte/{id}` mit unverändertem
+Namen), heißt er nach der Straße, ist sie vergeben „Straße, Ort“ (`StandortService#bearbeiten`, D9).
+„Automatisch“ liest der Server aus dem Protokoll (`StandortRepository#nameAutomatisch`: angelegt von der
+Bestandsübernahme mit genau diesem Namen, nie umbenannt) - keine eigene Spalte.
+Das Portal fragt mit der Karte „Wo steht …?“ über dem Cockpit nach der Adresse.
 
 ## ⚠ Die Fallen
 

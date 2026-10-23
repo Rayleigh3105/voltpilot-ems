@@ -29897,12 +29897,15 @@ components:
       type: object
       description: >
         Der Standort, dem eine Anlage heute zugeordnet ist (UEMS AP-02 IP-3);
-        `gueltigAb` ist der Beginn der laufenden Zuordnung.
+        `gueltigAb` ist der Beginn der laufenden Zuordnung. `adresseFehlt` (additiv,
+        Anlage-Flow a1 D9): der Standort hat noch keine vollständige Adresse (Straße,
+        Ort, Land) - das Portal fragt dann mit der Karte „Wo steht …?“.
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
         kurzzeichen: { type: string }
         gueltigAb: { type: string, format: date }
+        adresseFehlt: { type: boolean }
     SiteDetail:
       description: GET /api/v1/sites/{siteId} - the Site fields unchanged, plus `standort`.
       allOf:
