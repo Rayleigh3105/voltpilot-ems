@@ -32,7 +32,8 @@ import {
   type OrtWahl,
 } from '../anlageOrt';
 import { zoneForCountry } from '../anlageFlow';
-import { ctFehler, einspeisegrenzeFehler, parseFeedInCapInput, parsePremiumInput } from '../fleet';
+import { parseFeedInCapInput, parsePremiumInput } from '../fleet';
+import { ctFehler, einspeisegrenzeFehler } from '../zahlFehler';
 import { VERAEUSSERUNGSFORM_FRAGE, VERAEUSSERUNGSFORM_LABEL } from '../glossar';
 import { alsOrtFehler } from '../standorte';
 import {

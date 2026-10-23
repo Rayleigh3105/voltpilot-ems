@@ -1250,6 +1250,55 @@
   },
   "fortschreibungen": [
     {
+      "datei": "App.tsx",
+      "vorher": "205d0bf899dc70fbf26c650d0ed118f533ee3f0d8c66b04cc217f2412b6a4339",
+      "verschoben_nach": "Registrierung.tsx",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026): „Konto erstellen“ ist ein eigenes, nachgeladenes Stück (Bündel-Wächter, main lag über 258 kB); das Bedienelement steht Zeichen für Zeichen in Registrierung.tsx."
+    },
+    {
+      "datei": "App.tsx",
+      "vorher": "41dc3d43214e5f78b83ed3babcb41afffa304a658e4a34f0c44ef1ef95c52cfd",
+      "verschoben_nach": "Registrierung.tsx",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026): „Konto erstellen“ ist ein eigenes, nachgeladenes Stück (Bündel-Wächter, main lag über 258 kB); das Bedienelement steht Zeichen für Zeichen in Registrierung.tsx."
+    },
+    {
+      "datei": "App.tsx",
+      "vorher": "7fcaaff78cacbb6cde4e156ebb6a5ea5739266b3f889a8530348bf90250d7ccb",
+      "verschoben_nach": "Registrierung.tsx",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026): „Konto erstellen“ ist ein eigenes, nachgeladenes Stück (Bündel-Wächter, main lag über 258 kB); das Bedienelement steht Zeichen für Zeichen in Registrierung.tsx."
+    },
+    {
+      "datei": "App.tsx",
+      "vorher": "11445cd203c708dd3dfa158068192cd382353ed35b115d587d6e6743a2e0505a",
+      "verschoben_nach": "Registrierung.tsx",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026): „Konto erstellen“ ist ein eigenes, nachgeladenes Stück (Bündel-Wächter, main lag über 258 kB); das Bedienelement steht Zeichen für Zeichen in Registrierung.tsx."
+    },
+    {
+      "datei": "App.tsx",
+      "vorher": "8f1f2cb5fc471743695a7def4442e37cf157b3354ad9d327988be79b9da396d9",
+      "verschoben_nach": "Registrierung.tsx",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026): „Konto erstellen“ ist ein eigenes, nachgeladenes Stück (Bündel-Wächter, main lag über 258 kB); das Bedienelement steht Zeichen für Zeichen in Registrierung.tsx."
+    },
+    {
+      "datei": "App.tsx",
+      "vorher": "ca1646baa5439b52d12c8161aaff8cff903a36f223373e73ec749473ca348366",
+      "verschoben_nach": "Registrierung.tsx",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026): „Konto erstellen“ ist ein eigenes, nachgeladenes Stück (Bündel-Wächter, main lag über 258 kB); das Bedienelement steht Zeichen für Zeichen in Registrierung.tsx."
+    },
+    {
+      "datei": "App.tsx",
+      "vorher": "5094b7aaa6968220ae96a9dfb899d699325c82ffeb59e2cc6fa5e74450f703b5",
+      "verschoben_nach": "Registrierung.tsx",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026): „Konto erstellen“ ist ein eigenes, nachgeladenes Stück (Bündel-Wächter, main lag über 258 kB); das Bedienelement steht Zeichen für Zeichen in Registrierung.tsx."
+    },
+    {
       "datei": "components/DeviceDrawers.tsx",
       "vorher": "2d5ec8650dd88aac39505656c950d03e4a5ef043e437a8050e94390eebb1238e",
       "nachher": null,

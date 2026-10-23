@@ -15,7 +15,7 @@ vi.mock('./auth', async (importOriginal) => ({
   loginWithCredentials,
 }));
 
-import { RegisterForm } from './App';
+import { RegisterForm } from './Registrierung';
 import { passwortFehler } from './passwortRegel';
 
 // AP-20 E12: mindestens 12 Zeichen, nicht der Benutzername (= E-Mail).

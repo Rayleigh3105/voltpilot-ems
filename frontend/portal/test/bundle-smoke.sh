@@ -158,6 +158,12 @@ cd "$(dirname "$0")/.."
 # `nav.ts` raus, `commit` = nacktes `setRoute`) liegt bei 230,28 kB — immer noch
 # über 230, weil der Kopfraum von main (158 Byte) kleiner war als die reine
 # Vorlade-Grenze `pageChunks.ts` plus die `view-transition-name`-Attribute.
+#
+# NACHTRAG 23.10.2026 (Anlage-Flow a1, Paket 0+1): main stand bei 258,53 kB, schon über der
+#   Grenze. Das Formular „Konto erstellen“ liegt jetzt in einem eigenen Stück
+#   (`Registrierung.tsx`, ein `lazy` in `App.tsx`, 2,3 kB gz) - es braucht nur, wer sich
+#   registriert; die Sätze der Zahlenfelder des Anlege-Schritts stehen in `zahlFehler.ts`.
+#   Gemessen mit B1/B2/B3/F6 im Einstieg: 257,97 kB - die Grenze bleibt 258.
 LIMIT_KB="${LIMIT_KB:-258}"
 
 OUT="dist-bundle-smoke"

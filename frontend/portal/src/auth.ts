@@ -390,8 +390,7 @@ export function currentUser(): UserInfo {
  */
 export class VerbindungUnterbrochen extends Error {
   constructor() {
-    super('Keine Verbindung zur Anmeldung - bitte gleich noch einmal versuchen.');
-    this.name = 'VerbindungUnterbrochen';
+    super('Keine Verbindung zur Anmeldung.');
   }
 }
 

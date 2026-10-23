@@ -8090,17 +8090,13 @@ export const WIEDERHOLEN_NACH_MS = 1000;
 
 /** Eine neue Anfrage-Kennung - je Formular EINE, für jeden Versuch dieselbe (B3). */
 export function neueAnfrageKennung(): string {
-  const zufall = typeof crypto !== 'undefined' && 'randomUUID' in crypto
-    ? crypto.randomUUID()
-    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
-  return `portal-${zufall}`;
+  // `randomUUID` gibt es nur im sicheren Kontext (https, localhost) - sonst Zeit und Zufall.
+  return `portal-${crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`;
 }
 
 function hatAnfrageKennung(headers: HeadersInit | undefined): boolean {
-  if (!headers) return false;
-  if (headers instanceof Headers) return headers.has(ANFRAGE_KENNUNG_KOPF);
-  if (Array.isArray(headers)) return headers.some(([k]) => k.toLowerCase() === ANFRAGE_KENNUNG_KOPF.toLowerCase());
-  return Object.keys(headers).some((k) => k.toLowerCase() === ANFRAGE_KENNUNG_KOPF.toLowerCase());
+  // `mitKennung` setzt den Kopf immer als Objekt.
+  return !!headers && !Array.isArray(headers) && !(headers instanceof Headers) && ANFRAGE_KENNUNG_KOPF in headers;
 }
 
 function mitKennung(kennung: string | undefined): RequestInit {
