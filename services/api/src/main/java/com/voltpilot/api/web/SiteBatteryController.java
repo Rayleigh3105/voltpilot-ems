@@ -11,6 +11,7 @@ import com.voltpilot.api.uems.BelegeImWeg;
 import com.voltpilot.api.uems.BerichtsBelege;
 import com.voltpilot.api.web.dto.DeviceDto;
 import com.voltpilot.api.web.dto.SaveBatteryRequest;
+import com.voltpilot.api.web.dto.SavePvRequest;
 import com.voltpilot.api.web.dto.SiteAssetDto;
 import com.voltpilot.api.zugriff.Recht;
 import com.voltpilot.api.zugriff.RechtZiel;
@@ -31,7 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Maintain a site's battery master data by hand ("Ihr Wechselrichter steuert
+ * Maintain a site's battery master data - and the module power of its PV - by hand ("Ihr Wechselrichter steuert
  * diesen Speicher"): capacity/power/efficiency plus the controlling-device
  * link. This is the surface for plants NOT in the Marktstammdatenregister (the
  * long-standing gap - such a plant could not keep its battery data in the app
@@ -114,6 +115,20 @@ public class SiteBatteryController {
         // Transaktion - eine Ausnahme im Modell-Aufbau darf den Speicher-
         // Schreibvorgang niemals zurückrollen.
         autoCompose.ensureComposed(siteId);
+        return assets.findForSite(siteId);
+    }
+
+    /**
+     * Die Leistung der Solarmodule von Hand (Anlage-Flow a1, Paket 2): ohne MaStR-Nummer reicht die
+     * Zahl für die Prognose. Setzt die PV-Summe der Anlage wie {@code mastr-apply}; ein später
+     * übernommener Erzeuger bucht seine eigenen kWp dazu. Antwortet mit allen Assets der Anlage.
+     */
+    @Transactional
+    @PutMapping("/pv")
+    @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
+    public List<SiteAssetDto> savePv(@PathVariable UUID siteId, @Valid @RequestBody SavePvRequest request) {
+        requireSite(siteId);
+        assets.savePv(TenantContext.get(), siteId, request.capacityKwp());
         return assets.findForSite(siteId);
     }
 

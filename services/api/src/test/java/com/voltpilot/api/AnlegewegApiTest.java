@@ -316,6 +316,42 @@ class AnlegewegApiTest {
         assertThat(anzahl("SELECT count(*) FROM anfrage_kennung WHERE kennung = 'formular-9:box2'")).isZero();
     }
 
+    /**
+     * „Was gehört zu Ihrer Anlage?“ ohne MaStR-Nummer: die Leistung der Solarmodule von Hand. Sie setzt die
+     * PV-Summe wie das Register, ein Handwert trägt keine Register-Herkunft; eine falsche Zahl steht am Feld.
+     */
+    @Test
+    void modulleistungVonHand() {
+        String t = registrieren("Dach Fischer", "zuhause");
+        Object site = post(t, "/api/v1/sites", Map.of("name", "Zuhause"), null).getBody().get("id");
+        ResponseEntity<String> ok = rest.exchange(url("/api/v1/sites/" + site + "/pv"), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("capacityKwp", 9.8), bearer(t)), String.class);
+        assertThat(ok.getStatusCode()).as(ok.getBody()).isEqualTo(HttpStatus.OK);
+        assertThat(ok.getBody()).contains("\"type\":\"pv\"").contains("\"pvCapacityKwp\":9.8")
+                .contains("\"registry\":null");
+        exec("UPDATE asset SET registry = 'mastr', registry_unit_id = 'SEE966831669444' WHERE site_id = '" + site
+                + "' AND type = 'pv'");
+        rest.exchange(url("/api/v1/sites/" + site + "/pv"), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("capacityKwp", 9.8), bearer(t)), String.class);
+        assertThat(anzahl("SELECT count(*) FROM asset WHERE site_id = ?::uuid AND registry = 'mastr'", site))
+                .as("derselbe Wert behält die Herkunft").isEqualTo(1);
+        rest.exchange(url("/api/v1/sites/" + site + "/pv"), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("capacityKwp", 10.2), bearer(t)), String.class);
+        assertThat(anzahl("SELECT count(*) FROM asset WHERE site_id = ?::uuid AND registry IS NULL "
+                + "AND registry_unit_id IS NULL AND pv_capacity_kwp = 10.2", site))
+                .as("ein anderer Handwert ist kein Registerwert").isEqualTo(1);
+
+        ResponseEntity<Map<String, Object>> falsch = rest.exchange(url("/api/v1/sites/" + site + "/pv"),
+                HttpMethod.PUT, new HttpEntity<>(Map.of("capacityKwp", 9.875), bearer(t)), MAP);
+        assertThat(falsch.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(falsch.getBody()).containsEntry("code", "anfrage_ungueltig").containsEntry("feld", "capacityKwp")
+                .containsEntry("message", "Höchstens zwei Nachkommastellen, z. B. 9,8 kWp.");
+        ResponseEntity<Map<String, Object>> speicher = rest.exchange(url("/api/v1/sites/" + site + "/battery"),
+                HttpMethod.PUT, new HttpEntity<>(Map.of("capacityKwh", 10, "maxChargeKw", 0, "maxDischargeKw", 5),
+                        bearer(t)), MAP);
+        assertThat(speicher.getBody()).containsEntry("feld", "maxChargeKw");
+    }
+
     // ---- F4: Fehler am Feld -------------------------------------------------------------------
 
     /** „29,995“ kW hieß „Bitte prüfen Sie den Namen“ - jetzt nennt die Antwort das Feld. */

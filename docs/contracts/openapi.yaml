@@ -5361,6 +5361,41 @@ paths:
         "400": { description: Neither pv nor storage present, or values out of range. }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant (RLS). }
+  /api/v1/sites/{siteId}/pv:
+    put:
+      tags: [registry]
+      summary: Die Leistung der Solarmodule von Hand (ohne MaStR-Nummer).
+      description: >
+        Anlage-Flow a1, Paket 2 („Was gehört zu Ihrer Anlage?“): sets the site's
+        PV sum (`asset.pv_capacity_kwp` of the primary `pv` row) like
+        `mastr-apply`, without a register number. Alignment and module count stay
+        as they are; the registry provenance is cleared when the value changes (a
+        hand value is no register value). An adopted Erzeuger books its own kWp
+        on top later.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [capacityKwp]
+              properties:
+                capacityKwp:
+                  type: number
+                  description: "Module power (kWp), > 0, at most 100000 and two decimals."
+      responses:
+        "200":
+          description: The site's asset rows after the save.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SiteAsset" }
+        "400": { description: "Missing/invalid value - `{code: anfrage_ungueltig, feld, message}`." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant (RLS). }
   /api/v1/sites/{siteId}/battery:
     put:
       tags: [registry]
