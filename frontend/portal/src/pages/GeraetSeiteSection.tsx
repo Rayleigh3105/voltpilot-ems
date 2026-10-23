@@ -179,16 +179,29 @@ import { anbindungen as anbindungenVon, anbindungKurz, geraetImAufbau, kopfZusta
 import { AnbindungAbschnitt, AnbindungVerlauf } from '../components/GeraetAnbindung';
 import { DatenquelleWechselDialog } from '../components/DatenquelleWechselDialog';
 import { useAnlagensteuerung, useAnlagensteuerungWerte } from '../useAnlagensteuerung';
-import { einheitAdresseOf } from '../geraetAdresse';
+import { einheitAdresseOf, gatewayKennzeichenOf } from '../geraetAdresse';
 import { EinheitSeiteSection } from './EinheitSeiteSection';
+import { GatewaySeiteSection } from './GatewaySeiteSection';
 
 /**
  * Die Geräteseite einer Adresse: eine Erzeugungseinheit hinter einer Anlagensteuerung (`as-<Entität>~te-<n>`, GE-3)
  * hat ihre eigene Seite im selben Rahmen ({@link EinheitSeiteSection}) — sie liest nur die Routen der Steuerung;
- * jede andere Kennung ist ein Gerät der Box.
+ * ein Gateway (`dq-<n>`, GE-5) ebenso ({@link GatewaySeiteSection}); jede andere Kennung ist ein Gerät der Box.
  */
 export function GeraetSeiteSection(props: Parameters<typeof GeraetSeiteKern>[0]) {
   const einheit = einheitAdresseOf(props.geraetId);
+  const gateway = gatewayKennzeichenOf(props.geraetId);
+  if (gateway) {
+    return (
+      <GatewaySeiteSection
+        site={props.site}
+        boxRef={props.boxRef}
+        kennzeichen={gateway}
+        devices={props.devices ?? null}
+        devicesFetchedAt={props.devicesFetchedAt}
+      />
+    );
+  }
   return einheit ? (
     <EinheitSeiteSection
       site={props.site}

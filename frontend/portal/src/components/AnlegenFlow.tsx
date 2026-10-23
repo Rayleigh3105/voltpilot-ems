@@ -122,6 +122,7 @@ export function AnlegenFlow({
   geraetKennung,
   startTemplate = null,
   startRolle = null,
+  startVerbindung = null,
   onZurueck = null,
   onFertig,
   onClose,
@@ -166,6 +167,11 @@ export function AnlegenFlow({
   startTemplate?: ComponentTemplate | null;
   /** Über „Zähler" gewählt: das Gerät misst den Hausanschluss (Netz-Zähler). */
   startRolle?: KomponentenRolle | null;
+  /**
+   * Ein bekannter Weg, an dem das Gerät hinzukommt („Gerät an diesem Gateway hinzufügen", GE-5): Adresse, Port und
+   * freie Geräte-ID je Feld der Vorlage vorbelegt — der Kunde ändert sie, der Verbindungstest prüft sie wie immer.
+   */
+  startVerbindung?: Readonly<Record<string, unknown>> | null;
   /** Zurück in den Katalog (Pfeil im Kopf, Hebel „Anderes Modell"). */
   onZurueck?: (() => void) | null;
   /** Nach dem Anlegen: was entstanden ist - der Wirt springt darauf und sagt es. */
@@ -194,7 +200,7 @@ export function AnlegenFlow({
     edit?.templateVersion ?? startTemplate?.version ?? null,
   );
   const [verbindung, setVerbindung] = useState<Record<string, unknown>>(
-    () => (edit ? { ...(edit.connection ?? {}) } : startTemplate ? initialeVerbindung(startTemplate) : {}),
+    () => (edit ? { ...(edit.connection ?? {}) } : startTemplate ? initialeVerbindung(startTemplate, startVerbindung) : {}),
   );
   const [erweitertOffen, setErweitertOffen] = useState(false);
   const [technikOffen, setTechnikOffen] = useState(false);
@@ -426,7 +432,7 @@ export function AnlegenFlow({
     setTemplate(t);
     setTemplateVersion(t.version);
     const istBisherige = edit?.templateRef === t.templateRef;
-    setVerbindung(istBisherige ? { ...(edit.connection ?? {}) } : initialeVerbindung(t));
+    setVerbindung(istBisherige ? { ...(edit.connection ?? {}) } : initialeVerbindung(t, startVerbindung));
     setSocVolt(socSchaetzung.leereEingabe());
     setSocAngeboten(false);
     // ⚠ NICHT mit dem Modellnamen vorbefüllen (Alias-Kontinuität, Live-Fall

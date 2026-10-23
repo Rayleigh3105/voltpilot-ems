@@ -9,6 +9,7 @@
  * Regel „welche Box führt diese Anlage" lebt weiterhin genau einmal - hier.
  */
 import type { Device } from './api';
+import { geraetSeiteHash } from './nav';
 
 /**
  * Die Referenz der führenden VoltPilot-Box dieser Anlage - sonst null.
@@ -94,4 +95,39 @@ export function einheitGeraetId(entityId: string, teNr: number): string {
 export function einheitAdresseOf(geraetId: string | null): { entityId: string; teNr: number } | null {
   const m = geraetId ? /^as-([A-Za-z0-9][A-Za-z0-9._-]{0,63})~te-([1-9]|10)$/.exec(geraetId) : null;
   return m ? { entityId: m[1], teNr: Number(m[2]) } : null;
+}
+
+/**
+ * Die Kennung eines Gateways oder Loggers im Pfad: `dq-<n>` aus seinem Kennzeichen `DQ-<n>` (Konzept „Ein Gerät,
+ * ein Eintrag", GE-5). Ein Weg mit mehreren Geräten ist selbst ein Kasten (GD-3 A) und bekommt eine Seite im
+ * Geräteseiten-Rahmen. Das Kennzeichen ist seine stabile Kennung (je Kundenbereich eindeutig, Vertrag
+ * data-source-assignment §3) — nie die Adresse, die sich ändern darf.
+ */
+export function gatewayGeraetId(kennzeichen: string): string {
+  return `dq-${kennzeichen.trim().replace(/^DQ-/i, '')}`;
+}
+
+/**
+ * Rückrichtung: `dq-3` → das Kennzeichen `DQ-3`; null sonst. Nur Ziffern: die Datenbank vergibt `DQ-<n>` — so
+ * bleibt eine Entität, die zufällig mit „dq-" beginnt, ein Gerät.
+ */
+export function gatewayKennzeichenOf(geraetId: string | null): string | null {
+  const m = geraetId ? /^dq-(\d+)$/.exec(geraetId) : null;
+  return m ? `DQ-${m[1]}` : null;
+}
+
+/**
+ * Die Adresse der Gateway-Seite (GE-5) — über die Box, die es liest; liest es keine bekannte Box, über die führende
+ * Box der Anlage (wie jedes Gerät). Die Box ist nur das Tor der Adresse: die Seite findet ihr Gateway über das
+ * Kennzeichen, auch nach einem Box-Wechsel. null = die Anlage hat keine Box — dann gibt es, wie bei einem Gerät
+ * ohne Box, keine Adresse.
+ */
+export function gatewaySeiteHash(
+  siteId: string,
+  quelle: { kennzeichen: string; zustaendige_box: { id: string } | null },
+  devices: readonly Device[] | null | undefined,
+): string | null {
+  const lesend = quelle.zustaendige_box ? (devices ?? []).find((d) => d.id === quelle.zustaendige_box?.id) : undefined;
+  const ref = lesend?.externalRef ?? boxRefOf(devices ? [...devices] : null, siteId);
+  return ref ? geraetSeiteHash(siteId, ref, gatewayGeraetId(quelle.kennzeichen)) : null;
 }

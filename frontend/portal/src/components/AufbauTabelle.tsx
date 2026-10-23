@@ -700,7 +700,7 @@ function TeilZeile({ z, begriffe }: { z: Extract<TabellenZeile, { typ: 'teil' }>
 
 /**
  * Ein Gateway (GE-1, GD-3 A): ein Kasten, hinter dem mehrere Geräte antworten — eine Zeile mit Weg und
- * Box-Rückmeldung, die Geräte eine Ebene tiefer. Eine eigene Seite bekommt es erst mit GE-5.
+ * Box-Rückmeldung, die Geräte eine Ebene tiefer. Der Name und der Pfeil führen auf seine Seite (GE-5).
  */
 function GatewayZeile({
   z,
@@ -713,18 +713,30 @@ function GatewayZeile({
 }) {
   const w = z.weg;
   const n = w.geraete.length;
+  // Wie die Gerätezeile: die ganze Zeile ist ein Ziel für die Maus, Tastatur und Vorlesesoftware nehmen den Namen.
+  const zeilenKlick = (e: MouseEvent<HTMLDivElement>) => {
+    if (!w.href || (e.target as HTMLElement).closest('button, a, input')) return;
+    window.location.hash = w.href;
+  };
+  const titel = (
+    <>
+      <span className={`vp-health-dot vp-auf-nur-mobil ${TON_PUNKT[w.ton]}`} />
+      <span className="vp-auf-t-kuerze">
+        <Treffer text={w.titel} begriffe={begriffe} />
+      </span>
+    </>
+  );
   return (
-    <div className={`vp-auf-t-zeile is-gateway is-${w.ton}${ebeneKlasse(z.ebene)}`} role="row" style={ebene(z.ebene)} data-aufbau-weg={w.id}>
+    <div className={`vp-auf-t-zeile is-gateway is-${w.ton}${ebeneKlasse(z.ebene)}`} role="row" style={ebene(z.ebene)} data-aufbau-weg={w.id} onClick={zeilenKlick}>
       <span role="cell" className="vp-auf-t-name">
         <Auf offen={z.offen} label={`Geräte hinter ${w.titel} ${z.offen ? 'zuklappen' : 'aufklappen'}`} onClick={() => p.onGatewayUmschalten(w.id)} />
         <AufbauSymbol kategorie="navy" icon="link" />
         <span className="vp-auf-t-text">
-          <b className="vp-auf-t-titel">
-            <span className={`vp-health-dot vp-auf-nur-mobil ${TON_PUNKT[w.ton]}`} />
-            <span className="vp-auf-t-kuerze">
-              <Treffer text={w.titel} begriffe={begriffe} />
-            </span>
-          </b>
+          {w.href ? (
+            <a className="vp-auf-t-titel" href={w.href}>{titel}</a>
+          ) : (
+            <b className="vp-auf-t-titel">{titel}</b>
+          )}
           <small>
             <span className="vp-auf-t-kuerze">
               <Treffer text={w.weg} begriffe={begriffe} />
@@ -743,7 +755,9 @@ function GatewayZeile({
       <span role="cell" className="vp-auf-t-wert">
         {n} {n === 1 ? 'Gerät' : 'Geräte'}
       </span>
-      <span role="cell" />
+      <span role="cell" className="vp-auf-t-pfeil" aria-hidden="true">
+        {w.href && <Icon name="chevron-right" size={16} />}
+      </span>
     </div>
   );
 }

@@ -63,7 +63,7 @@ import { siteLiveFresh } from './fleet';
 import { fmtNum } from './format';
 import type { GeraetTon } from './geraetSeite';
 import type { ComponentRole, PlantComponent } from './komponenten';
-import { anlagensteuerungGeraetId, chargerGeraetId, fuehrendeBoxOf } from './geraetAdresse';
+import { anlagensteuerungGeraetId, chargerGeraetId, fuehrendeBoxOf, gatewaySeiteHash } from './geraetAdresse';
 import type { ChargePoint, SiteCharging } from './ladepunkte';
 import { gridState } from './live';
 import { einheitHref, einheitStand, UEBER_DIE_STEUERUNG } from './erzeugungseinheit';
@@ -172,6 +172,8 @@ export interface AufbauWeg {
   zustandZeit: string | null;
   /** Nur am Gateway: die Geräte dahinter — dieselben Objekte, die in `AufbauBox.geraete` gezählt werden. */
   geraete: AufbauGeraet[];
+  /** Nur am Gateway: seine Seite (GE-5, `…/dq-<n>`); null = keine (Anschluss ohne Gerät, Anlage ohne Box). */
+  href: string | null;
 }
 
 export interface AufbauBox {
@@ -659,6 +661,7 @@ function wegZeile(q: UemsDatenquelle, art: AufbauWeg['art'], geraete: AufbauGera
       .join(' · '),
     ...wegZustand(q, art),
     geraete,
+    href: art === 'gateway' ? gatewaySeiteHash(q.anlage, q, boxen) : null,
   };
 }
 

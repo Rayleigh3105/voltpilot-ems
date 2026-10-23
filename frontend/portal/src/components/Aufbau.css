@@ -553,13 +553,15 @@
   min-height: 38px;
   color: var(--vp-text-gray);
 }
-/* Ein Gateway (GE-1): ein Kasten ohne eigene Seite — die Geräte dahinter stehen eine Ebene tiefer. */
+/* Ein Gateway (GE-1): ein Kasten mit eigener Seite (GE-5) — die Geräte dahinter stehen eine Ebene tiefer. */
 .vp-auf-t-zeile.is-gateway {
   min-height: 46px;
+  cursor: pointer;
 }
 .vp-auf-t-zeile.is-geraet:not(.is-lesend) {
   cursor: pointer;
 }
+.vp-auf-t-zeile.is-gateway:hover,
 .vp-auf-t-zeile.is-geraet:not(.is-lesend):hover {
   background: color-mix(in srgb, var(--vp-bg-light) 70%, var(--vp-surface));
 }

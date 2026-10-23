@@ -121,8 +121,8 @@ describe('GE-2 · der Abschnitt „Anbindung"', () => {
       datenquellen: [q], devices: [halle1], siteId: 's-1', gemeinsamZustand: null,
     });
     expect(wert(a, 'Weg')?.wert).toBe('Modbus TCP · 192.168.10.31:502 · Geräte-ID 2');
-    // Die Gateway-Seite kommt mit GE-5 - bis dahin führt der Weg auf die Box, die das Gateway liest.
-    expect(wert(a, 'Gelesen über')).toMatchObject({ wert: 'Gateway DQ-3 (4 Geräte)', href: '#/anlage/s-1/box/edge-5mz8bdd' });
+    // GE-5: der Weg führt auf die Seite des Gateways — über die Box, die es liest.
+    expect(wert(a, 'Gelesen über')).toMatchObject({ wert: 'Gateway DQ-3 (4 Geräte)', href: '#/anlage/s-1/geraet/edge-5mz8bdd/dq-3' });
     expect(wert(a, 'Last an der Box')).toBeUndefined();
     expect(a.wechsel).toBeNull();
     expect(a.hinweis).toBe('Box und Last gelten für alle 4 Geräte an diesem Gateway — ein Wechsel der Box nimmt alle mit.');

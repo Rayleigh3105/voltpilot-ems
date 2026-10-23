@@ -73,11 +73,13 @@ import {
   modellBearbeitenKomponente,
   ohneAufbauNeu,
   ohneModellBearbeiten,
+  parseAufbauAn,
   parseAufbauNeu,
   parseKomponente,
   type AufbauNeu,
 } from '../nav';
 import { abschlussTitel, type TypId } from '../anlegenFlow';
+import { gatewayAnhaengen, gatewayAnhaengenSatz, gatewayVorbelegung } from '../gatewaySeite';
 import { katalogFunde, type KatalogWahl, type KatalogWeg } from '../geraeteKatalog';
 import { GeraeteKatalog } from '../components/GeraeteKatalog';
 import {
@@ -179,6 +181,8 @@ export function AufbauSection({
   const [kurzblickId, setKurzblickId] = useState<string | null>(null);
   const [addOpen, setAddOpen] = useState(false);
   const [addBox, setAddBox] = useState<Device | null>(null);
+  // GE-5: das Kennzeichen des Gateways, an dem das Gerät hinzukommt (`?neu=geraet&an=DQ-3`); null = kein Weg vorgegeben.
+  const [addAn, setAddAn] = useState<string | null>(null);
   const [addTyp, setAddTyp] = useState<TypId | null>(null);
   const [vorlage, setVorlage] = useState<SiteComponentTemplate | null>(null);
   // Der Katalog vor jedem Anlegen, das dort gewählte Modell und - nach dem
@@ -520,11 +524,38 @@ export function AufbauSection({
   if (kurzblick) letzterKurzblick.current = kurzblick;
   const kurzblickInhalt = kurzblick ?? letzterKurzblick.current;
 
-  /** „Gerät hinzufügen" (allgemein oder an einer Box) beginnt im Katalog. */
-  const oeffneAnlegen = (box: Device | null) => {
+  /** „Gerät hinzufügen" (allgemein, an einer Box oder an einem Gateway) beginnt im Katalog. */
+  const oeffneAnlegen = (box: Device | null, an: string | null = null) => {
     setAddBox(box);
+    setAddAn(an);
     setErfolg(null);
     setKatalogOffen(true);
+  };
+  // Der Weg des Gateways, an dem das Gerät hinzukommt — aus den geladenen Wegen dieser Anlage, nie geraten.
+  const addWeg = addAn
+    ? (datenquellen ?? []).find((q) => q.kennzeichen === addAn && q.anlage === site.id && q.archiviert_am == null) ?? null
+    : null;
+
+  /**
+   * GE-5: das neue Gerät an sein Gateway hängen — der Weg „Zu DQ-3 hinzufügen" der Vorschlagsliste (AP-06 IP-4,
+   * Vertrag §3.2: dieselbe Adresse an derselben Box ist ein Gerät DIESER Quelle), kein zweiter. Zeigt der Server
+   * das Gerät dort nicht, hängt nichts — der Satz sagt es.
+   */
+  const anGatewayHaengen = (q: UemsDatenquelle, komponenteId: string, satz: string) => {
+    void api.datenquellenVorschlag(site.id)
+      .then((liste) => {
+        const bestaetigt = gatewayAnhaengen(liste, q.id, komponenteId);
+        return bestaetigt.length > 0
+          ? api.datenquellenVorschlagUebernehmen(site.id, bestaetigt).then(() => true)
+          : false;
+      })
+      .then(
+        (ok) => {
+          setErfolg(`${satz} ${gatewayAnhaengenSatz(q.kennzeichen, ok)}`);
+          if (ok) reload();
+        },
+        () => setErfolg(`${satz} ${gatewayAnhaengenSatz(q.kennzeichen, false)}`),
+      );
   };
 
   const schliesseAnlegen = () => {
@@ -578,11 +609,17 @@ export function AufbauSection({
   const [neu, setNeu] = useState<AufbauNeu | null>(() =>
     typeof window === 'undefined' ? null : parseAufbauNeu(window.location.hash),
   );
+  const [neuAn, setNeuAn] = useState<string | null>(() =>
+    typeof window === 'undefined' ? null : parseAufbauAn(window.location.hash),
+  );
   const [neuHinweis, setNeuHinweis] = useState<string | null>(null);
   useEffect(() => {
     const onHash = () => {
       const n = parseAufbauNeu(window.location.hash);
-      if (n) setNeu(n);
+      if (n) {
+        setNeu(n);
+        setNeuAn(parseAufbauAn(window.location.hash));
+      }
     };
     window.addEventListener('hashchange', onHash);
     return () => window.removeEventListener('hashchange', onHash);
@@ -592,10 +629,14 @@ export function AufbauSection({
     if (neu === 'geraet' && (!data || !componentsDa)) return;
     replaceCurrentNavigation(ohneAufbauNeu(window.location.hash));
     setNeu(null);
+    setNeuAn(null);
     if (neu === 'box') setBoxAnmelden(true);
     else if (neu === 'anlage') setAnlageAnlegen(true);
-    else if (portalManaged) oeffneAnlegen(fuehrendeBoxOf(devices, site.id));
-    else
+    else if (portalManaged) {
+      // „Gerät an diesem Gateway hinzufügen" (GE-5): an der Box, die das Gateway liest.
+      const gwBox = neuAn ? (datenquellen ?? []).find((q) => q.kennzeichen === neuAn)?.zustaendige_box ?? null : null;
+      oeffneAnlegen(eigeneBoxen.find((d) => d.id === gwBox?.id) ?? fuehrendeBoxOf(devices, site.id), neuAn);
+    } else
       setNeuHinweis(
         components?.componentAuthority === 'box'
           ? 'Geräte dieser Anlage verwalten Sie an Ihrer VoltPilot-Box.'
@@ -841,18 +882,22 @@ export function AufbauSection({
           initialTyp={vorlage || start ? null : addTyp}
           startTemplate={start?.template ?? null}
           startRolle={start?.rolle ?? null}
+          startVerbindung={addWeg ? gatewayVorbelegung(addWeg) : null}
           onZurueck={() => {
             schliesseAnlegen();
             setKatalogOffen(true);
           }}
           onFertig={(info) => {
-            setErfolg([abschlussTitel(info.titel, info.uebernommen), info.hinweis].filter(Boolean).join(' '));
+            const satz = [abschlussTitel(info.titel, info.uebernommen), info.hinweis].filter(Boolean).join(' ');
+            setErfolg(satz);
+            if (addWeg && info.id) anGatewayHaengen(addWeg, info.id, satz);
             // Auf das neue Gerät springen - die Zeile leuchtet kurz auf.
             if (info.id) window.location.hash = komponenteHash(site.id, info.id);
           }}
           onClose={() => {
             schliesseAnlegen();
             setAddBox(null);
+            setAddAn(null);
           }}
           onSaved={(result) => {
             setComponents(result);

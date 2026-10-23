@@ -228,11 +228,19 @@ export function felder(template: ComponentTemplate | null): TemplateField[] {
   return template.transportSchema.filter((f) => f && typeof f.key === 'string' && f.key !== '');
 }
 
-/** Die Vorbelegung eines Formulars aus den Feld-Vorgaben der Vorlage. */
-export function initialeVerbindung(template: ComponentTemplate | null): Record<string, unknown> {
+/**
+ * Die Vorbelegung eines Formulars aus den Feld-Vorgaben der Vorlage. `weg` legt einen bekannten Weg darüber
+ * („Gerät an diesem Gateway hinzufügen", GE-5: Adresse, Port, freie Geräte-ID) — nur für Felder, die die Vorlage
+ * wirklich fragt; ein Wert für ein fremdes Feld ginge sonst unbemerkt mit.
+ */
+export function initialeVerbindung(
+  template: ComponentTemplate | null,
+  weg?: Readonly<Record<string, unknown>> | null,
+): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const f of felder(template)) {
-    if (f.default !== undefined && f.default !== null) out[f.key] = f.default;
+    if (weg && weg[f.key] !== undefined && weg[f.key] !== null) out[f.key] = weg[f.key];
+    else if (f.default !== undefined && f.default !== null) out[f.key] = f.default;
   }
   return out;
 }

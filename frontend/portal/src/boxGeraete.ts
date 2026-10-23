@@ -133,6 +133,8 @@ export interface BoxGateway {
   zustand: string;
   ton: GeraetTon;
   geraete: BoxEintrag[];
+  /** Die Seite des Gateways (GE-5); null = keine (Anlage ohne Box). */
+  href: string | null;
 }
 
 /** Ein Anschluss ohne Gerät (1 : 0, angefangen). */
@@ -229,6 +231,7 @@ export function boxGeraeteBlock(e: BoxGeraeteEingabe): BoxGeraeteBlock {
     zustand: [w.zustandWort, w.zustandZeit].filter(Boolean).join(' · '),
     ton: w.ton,
     geraete: mitEinheiten(w.geraete).map(eintrag),
+    href: w.href,
   }));
   const offen = wege.filter((w) => w.art === 'offen').map((w): BoxAnschluss => ({
     id: w.id,

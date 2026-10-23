@@ -617,6 +617,8 @@ describe('BoxSeiteSection · Geräte an dieser Box (GE-4)', () => {
     await waitFor(() => expect(within(liste).getByText('Zählergateway Halle')).toBeInTheDocument());
     const gateway = liste.querySelector('[data-box-weg="DQ-3"]') as HTMLElement;
     expect(gateway).toHaveTextContent('4 Geräte · Last 23 %');
+    // GE-5: die Gateway-Zeile führt auf die Seite des Gateways.
+    expect(gateway.querySelector(':scope > a.vp-geraet-zeile')).toHaveAttribute('href', '#/anlage/site-hs/geraet/VP-HS-0001/dq-3');
     const dahinter = within(gateway).getByRole('list', { name: 'Geräte hinter Zählergateway Halle' });
     expect(within(dahinter).getAllByRole('link')).toHaveLength(4);
     expect(within(dahinter).getAllByRole('link')[1]).toHaveTextContent('Geräte-ID 2');

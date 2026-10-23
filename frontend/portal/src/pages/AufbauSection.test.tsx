@@ -515,6 +515,72 @@ const datenquelle = (o: Partial<UemsDatenquelle> & Pick<UemsDatenquelle, 'id' | 
   ...o,
 });
 
+describe('AufbauSection · Gerät an einem Gateway hinzufügen (GE-5)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  const ZAEHLER = {
+    templateRef: 'builtin:janitza:umg-604',
+    kind: 'builtin',
+    version: 1,
+    brand: 'janitza',
+    brandLabel: 'Janitza',
+    model: 'umg-604',
+    modelLabel: 'UMG 604',
+    deviceType: 'meter',
+    communication: 'modbus_tcp',
+    communicationLabel: 'Modbus TCP',
+    transportSchema: [
+      { key: 'ip', label: 'IP-Adresse', type: 'text', required: true },
+      { key: 'port', label: 'Port', type: 'number', default: 502 },
+      { key: 'unit_id', label: 'Geräte-ID', type: 'number', default: 1 },
+    ],
+  };
+
+  it('die Gateway-Zeile führt auf die Seite des Gateways — Name und Zeile', async () => {
+    stub();
+    vi.spyOn(api, 'datenquellen').mockResolvedValue({
+      datenquellen: [datenquelle({ id: 'dq-3', kennzeichen: 'DQ-3', name: 'Zählergateway', protokoll: 'modbus_tcp', geraete_ids: [1, 2] })],
+    });
+    const gr = (id: string, entity: string, nr: number) => ({
+      id, kennzeichen: id.toUpperCase(), einbau_kennzeichen: id.toUpperCase(), ausgebaut_am: null, data_source_id: 'dq-3', geraete_id: nr,
+      komponenten: [{ entity_id: entity, gueltig_ab: '2026-09-01T00:00:00Z', gueltig_bis: null }],
+    });
+    vi.spyOn(api, 'uemsGeraete').mockResolvedValue({ geraete: [gr('gr-batt', 'batt', 1), gr('gr-fr1', 'fr1', 2)] });
+    const { container } = rendere();
+    const gateway = await waitFor(() => {
+      const el = container.querySelector('[data-aufbau-weg="dq-3"]');
+      if (!el) throw new Error('keine Gateway-Zeile');
+      return el as HTMLElement;
+    });
+    expect(within(gateway).getByRole('link', { name: 'Zählergateway' }))
+      .toHaveAttribute('href', '#/anlage/s-1/geraet/VP-ABC123/dq-3');
+    fireEvent.click(within(gateway).getByText('2 Geräte'));
+    expect(window.location.hash).toBe('#/anlage/s-1/geraet/VP-ABC123/dq-3');
+  });
+
+  it('`?neu=geraet&an=DQ-3` öffnet den Katalog; das Modell kommt mit Adresse, Port und freier Geräte-ID des Gateways', async () => {
+    stub(`#/anlage/${site.id}/modell?neu=geraet&an=DQ-3`);
+    portalVerwaltet();
+    vi.mocked(api.componentTemplates).mockResolvedValue([ZAEHLER] as never);
+    vi.spyOn(api, 'datenquellen').mockResolvedValue({
+      datenquellen: [datenquelle({ id: 'dq-3', kennzeichen: 'DQ-3', protokoll: 'modbus_tcp', adresse: '192.168.10.31:502', geraete_ids: [1, 2] })],
+    });
+    vi.spyOn(api, 'uemsGeraete').mockResolvedValue({ geraete: [] });
+    rendere();
+
+    const katalog = await screen.findByRole('dialog', { name: 'Gerät hinzufügen' });
+    // Einmal je Adresse: der Parameter ist verbraucht, ein Neuladen öffnet nichts erneut.
+    expect(window.location.hash).toBe(`#/anlage/${site.id}/modell`);
+    fireEvent.change(within(katalog).getByRole('searchbox', { name: 'Katalog durchsuchen' }), { target: { value: 'umg' } });
+    fireEvent.click(await within(katalog).findByRole('button', { name: /UMG\s*604/ }));
+
+    const seite = await screen.findByRole('dialog', { name: 'Gerät einrichten' });
+    await waitFor(() => expect((within(seite).getByLabelText(/IP-Adresse/) as HTMLInputElement).value).toBe('192.168.10.31'));
+    expect((within(seite).getByLabelText(/Geräte-ID/) as HTMLInputElement).value).toBe('3');
+    expect((within(seite).getByLabelText(/^Port/) as HTMLInputElement).value).toBe('502');
+  });
+});
+
 describe('AufbauSection · ein Eintrag je Kasten (GE-1)', () => {
   afterEach(() => vi.restoreAllMocks());
 

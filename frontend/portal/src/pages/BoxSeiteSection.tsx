@@ -25,7 +25,7 @@ import {
   GERAETE_HINWEIS,
   type BoxSeiteView,
 } from '../boxSeite';
-import { aufbauDerAnlage, type BoxEintrag } from '../boxGeraete';
+import { aufbauDerAnlage, type BoxEintrag, type BoxGateway } from '../boxGeraete';
 import { consumersApi } from '../consumers/consumersApi';
 import type { Consumer } from '../consumers/types';
 import type { Zeile } from '../geraetSeite';
@@ -412,16 +412,7 @@ export function BoxSeiteSection({
                   ))}
                   {block.gateways.map((w) => (
                     <li key={w.id} className="vp-box-weg is-gateway" data-box-weg={w.kennzeichen}>
-                      <div className="vp-geraet-zeile vp-box-geraet">
-                        <span className={`vp-health-dot vp-health-${w.ton}`} />
-                        <span className="tx">
-                          <span className="nm">{w.titel}</span>
-                          <span className="ty">Gateway</span>
-                          <span className="an">{w.weg}</span>
-                          <span className="an">{w.zeile}</span>
-                          <span className="st">{w.zustand}</span>
-                        </span>
-                      </div>
+                      <BoxGatewayZeile gateway={w} />
                       <div className="vp-box-zeile-aktion">{wegAktion(w.id, w.titel)}</div>
                       <ul className="vp-box-gateway-geraete" aria-label={`Geräte hinter ${w.titel}`}>
                         {w.geraete.map((e) => <BoxEintragZeile key={e.id} eintrag={e} aktion={null} />)}
@@ -637,6 +628,30 @@ export function BoxSeiteSection({
  * Gerät ohne eigene Seite (Ersatzgerät) steht ohne Pfeil da; die Handlung zu seinem Weg steht neben der Zeile, nie
  * im Link.
  */
+/** Die Zeile eines Gateways (GE-4) — GE-5: ein Kasten mit eigener Seite, die Zeile führt dorthin. */
+function BoxGatewayZeile({ gateway: w }: { gateway: BoxGateway }) {
+  const inhalt = (
+    <>
+      <span className={`vp-health-dot vp-health-${w.ton}`} />
+      <span className="tx">
+        <span className="nm">{w.titel}</span>
+        <span className="ty">Gateway</span>
+        <span className="an">{w.weg}</span>
+        <span className="an">{w.zeile}</span>
+        <span className="st">{w.zustand}</span>
+      </span>
+    </>
+  );
+  return w.href ? (
+    <a className="vp-geraet-zeile vp-box-geraet" href={w.href}>
+      {inhalt}
+      <Icon name="chevron-right" size={16} />
+    </a>
+  ) : (
+    <div className="vp-geraet-zeile vp-box-geraet">{inhalt}</div>
+  );
+}
+
 function BoxEintragZeile({ eintrag, aktion }: { eintrag: BoxEintrag; aktion: ReactNode }) {
   const inhalt = (
     <>

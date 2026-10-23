@@ -983,10 +983,15 @@ const AUFBAU_NEU: ReadonlySet<string> = new Set<AufbauNeu>(['box', 'geraet', 'an
 
 /**
  * Der Aufbau einer Anlage, optional mit einer Handlung, die er beim Öffnen gleich anbietet:
- * `#/anlage/{id}/modell?neu=box|geraet|anlage`.
+ * `#/anlage/{id}/modell?neu=box|geraet|anlage`. `an` nennt beim Gerät den Weg, an dem es hinzukommt
+ * (`?neu=geraet&an=DQ-3`, „Gerät an diesem Gateway hinzufügen", GE-5) — sein Kennzeichen, nie eine Adresse.
  */
-export function aufbauHash(siteId: string, neu?: AufbauNeu | null): string {
-  return `#/anlage/${siteId}/modell${neu ? `?neu=${neu}` : ''}`;
+export function aufbauHash(siteId: string, neu?: AufbauNeu | null, opts: { an?: string | null } = {}): string {
+  const params = new URLSearchParams();
+  if (neu) params.set('neu', neu);
+  if (neu === 'geraet' && opts.an) params.set('an', opts.an);
+  const q = params.toString();
+  return `#/anlage/${siteId}/modell${q ? `?${q}` : ''}`;
 }
 
 /**
@@ -1007,17 +1012,23 @@ export function parseAufbauNeu(hash: string): AufbauNeu | null {
   return wert && AUFBAU_NEU.has(wert) ? (wert as AufbauNeu) : null;
 }
 
+/** Der Weg aus `?an=` (das Kennzeichen „DQ-3"), an dem ein neues Gerät hinzukommt; sonst null. */
+export function parseAufbauAn(hash: string): string | null {
+  return befehleParam(hash, 'an');
+}
+
 /** Die Anlage aus `?anlage=` des Standort-Aufbaus, sonst null. */
 export function parseAufbauAnlage(hash: string): string | null {
   return befehleParam(hash, 'anlage');
 }
 
-/** Dieselbe Adresse ohne `?neu=` — nach dem Öffnen des Dialogs, damit ein Neuladen ihn nicht erneut öffnet. */
+/** Dieselbe Adresse ohne `?neu=` (und sein `an=`) — nach dem Öffnen des Dialogs, damit ein Neuladen ihn nicht erneut öffnet. */
 export function ohneAufbauNeu(hash: string): string {
   const [path, ...rest] = hash.split('?');
   if (rest.length === 0) return hash;
   const params = new URLSearchParams(rest.join('?'));
   params.delete('neu');
+  params.delete('an');
   const query = params.toString();
   return `${path}${query ? `?${query}` : ''}`;
 }

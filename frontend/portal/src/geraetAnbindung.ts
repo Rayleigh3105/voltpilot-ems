@@ -16,6 +16,7 @@ import { wegStoerung, type AufbauBaum, type AufbauGeraet, type AufbauWeg } from 
 import { lastProzent, lastTeile, protokollName, quellWeg, quellZeile, wegLast, zeitpunkt } from './boxUebersicht';
 import { NBSP } from './format';
 import { UEMS_ANBINDUNG } from './glossar';
+import { gatewaySeiteHash } from './geraetAdresse';
 import type { GeraetTon } from './geraetSeite';
 import { boxSeiteHash } from './nav';
 import { einstellungenHash } from './settingsNav';
@@ -103,6 +104,56 @@ const zeile = (label: string, wert: string, o: Partial<Omit<AnbindungZeile, 'lab
 });
 
 /**
+ * Die Zeilen EINES Wegs nach dem Weg selbst: lesende Box, Empfang, Last an der Box, laufende Übergabe, Lesetakt —
+ * an Gerät und Gateway dieselben (GE-2, GE-5). Hinter einem Gateway fehlt am Gerät die Last: sie gilt für alle
+ * Geräte daran und steht auf der Seite des Gateways.
+ */
+function wegZeilen(q: UemsDatenquelle, devices: readonly Device[], mitLast: boolean): AnbindungZeile[] {
+  const zeilen: AnbindungZeile[] = [];
+  const box = q.zustaendige_box ? boxWort(q.zustaendige_box, devices) : null;
+  if (box) {
+    zeilen.push(zeile('Gelesen von', box.wert, { href: box.href }));
+    const z = quellZeile(q);
+    zeilen.push(zeile('Empfang', z.zustand, {
+      detail: [z.fehlerklasse, z.seit].filter(Boolean).join(' · ') || null,
+      ton: z.ton,
+    }));
+    if (mitLast) {
+      // Dieselbe Rechnung wie Box-Seite und Box-Zeile (GE-4, `wegLast`): nicht gemeldet ist keine Null.
+      const last = wegLast([q]);
+      zeilen.push(last.prozent != null
+        ? zeile('Last an der Box', lastProzent(last.prozent), { detail: lastTeile(last).join(' · ') })
+        : zeile('Last an der Box', 'von der Box nicht gemeldet'));
+    }
+  } else {
+    zeilen.push(zeile('Gelesen von', 'Von keiner Box gelesen', { ton: 'off' }));
+  }
+  const u = q.uebergabe;
+  if (u) {
+    const neu = u.box_neu ? boxWort(u.box_neu, devices).wert : 'eine andere Box';
+    const alt = u.box_alt ? boxWort(u.box_alt, devices).wert : null;
+    zeilen.push(zeile('Übergabe', `Wechselt zu ${neu}`, {
+      detail: [zeitpunkt(u.seit) ? `seit ${zeitpunkt(u.seit)}` : null, alt ? `bisher ${alt}` : null]
+        .filter(Boolean).join(' · ') || null,
+      ton: 'warn',
+    }));
+  }
+  const takt = lesetakt(q.kadenz_s);
+  if (takt) zeilen.push(zeile('Lesetakt', takt));
+  return zeilen;
+}
+
+/** „Gateway DQ-3 (4 Geräte)" — wie Gerät und Box-Seite ein Gateway nennen. */
+export function gatewayWort(kennzeichen: string, geraete: number): string {
+  return `Gateway ${kennzeichen} (${geraete} ${geraete === 1 ? 'Gerät' : 'Geräte'})`;
+}
+
+/** Dass Box und Last für alle Geräte an einem Gateway gelten — am Gerät dahinter und auf der Gateway-Seite derselbe Satz. */
+export function gatewayHinweis(geraete: number): string {
+  return `Box und Last gelten für alle ${geraete} Geräte an diesem Gateway — ein Wechsel der Box nimmt alle mit.`;
+}
+
+/**
  * Die Anbindungen der Seite, in der Reihenfolge des Aufbaus (nach Kennzeichen). Leer = das Gerät hat keinen
  * gespeicherten Weg — dann bleibt der Abschnitt weg.
  *
@@ -130,56 +181,46 @@ export function anbindungen(input: {
     zeilen.push(zeile('Weg', amGateway
       ? [protokollName(q.protokoll), q.adresse, geraet.anbindungText].filter(Boolean).join(' · ')
       : quellWeg(q)));
-    const box = q.zustaendige_box ? boxWort(q.zustaendige_box, devices) : null;
     if (amGateway && gateway) {
-      const n = gateway.geraete.length;
-      // Die Gateway-Seite kommt mit GE-5; bis dahin führt der Weg auf die Box, die das Gateway liest.
-      zeilen.push(zeile('Gelesen über', `Gateway ${q.kennzeichen} (${n} ${n === 1 ? 'Gerät' : 'Geräte'})`, {
-        href: box?.href ?? null,
+      // GE-5: der Weg führt auf die Seite des Gateways — dort stehen Box-Wechsel und Last für alle Geräte daran.
+      zeilen.push(zeile('Gelesen über', gatewayWort(q.kennzeichen, gateway.geraete.length), {
+        href: gatewaySeiteHash(input.siteId, q, devices),
       }));
     }
-    if (box) {
-      zeilen.push(zeile('Gelesen von', box.wert, { href: box.href }));
-      const z = quellZeile(q);
-      zeilen.push(zeile('Empfang', z.zustand, {
-        detail: [z.fehlerklasse, z.seit].filter(Boolean).join(' · ') || null,
-        ton: z.ton,
-      }));
-      if (!amGateway) {
-        // Dieselbe Rechnung wie Box-Seite und Box-Zeile (GE-4, `wegLast`): nicht gemeldet ist keine Null.
-        const last = wegLast([q]);
-        zeilen.push(last.prozent != null
-          ? zeile('Last an der Box', lastProzent(last.prozent), { detail: lastTeile(last).join(' · ') })
-          : zeile('Last an der Box', 'von der Box nicht gemeldet'));
-      }
-    } else {
-      zeilen.push(zeile('Gelesen von', 'Von keiner Box gelesen', { ton: 'off' }));
-    }
-    const u = q.uebergabe;
-    if (u) {
-      const neu = u.box_neu ? boxWort(u.box_neu, devices).wert : 'eine andere Box';
-      const alt = u.box_alt ? boxWort(u.box_alt, devices).wert : null;
-      zeilen.push(zeile('Übergabe', `Wechselt zu ${neu}`, {
-        detail: [zeitpunkt(u.seit) ? `seit ${zeitpunkt(u.seit)}` : null, alt ? `bisher ${alt}` : null]
-          .filter(Boolean).join(' · ') || null,
-        ton: 'warn',
-      }));
-    }
-    const takt = lesetakt(q.kadenz_s);
-    if (takt) zeilen.push(zeile('Lesetakt', takt));
+    zeilen.push(...wegZeilen(q, devices, !amGateway));
 
     out.push({
       quelle: q,
       titel: out.length === 0 ? UEMS_ANBINDUNG : `Weitere ${UEMS_ANBINDUNG}`,
       zeilen,
-      hinweis: amGateway && gateway
-        ? `Box und Last gelten für alle ${gateway.geraete.length} Geräte an diesem Gateway — ein Wechsel der Box nimmt alle mit.`
-        : null,
+      hinweis: amGateway && gateway ? gatewayHinweis(gateway.geraete.length) : null,
       wechsel: amGateway ? null : wechselAngebot(q, input.siteId, input.gemeinsamZustand),
       kennung: `Kennung ${q.kennzeichen}`,
     });
   }
   return out;
+}
+
+/**
+ * Die Anbindung eines GATEWAYS (GE-5) — dieselben Zeilen wie am Gerät, aber mit allen Geräte-IDs des Wegs und mit
+ * Last und Box-Wechsel: sie gelten hier für alle Geräte dahinter (GD-3 A, GD-4 A).
+ */
+export function gatewayAnbindung(input: {
+  quelle: UemsDatenquelle;
+  geraete: number;
+  devices: readonly Device[];
+  siteId: string;
+  gemeinsamZustand: string | null;
+}): Anbindung {
+  const q = input.quelle;
+  return {
+    quelle: q,
+    titel: UEMS_ANBINDUNG,
+    zeilen: [zeile('Weg', quellWeg(q)), ...wegZeilen(q, input.devices, true)],
+    hinweis: gatewayHinweis(input.geraete),
+    wechsel: wechselAngebot(q, input.siteId, input.gemeinsamZustand),
+    kennung: `Kennung ${q.kennzeichen}`,
+  };
 }
 
 /** Die Weiche der Box-Seite (BoxSeiteSection, AP-15 IP-26) für EINEN Weg dieses Geräts. */

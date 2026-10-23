@@ -48,9 +48,18 @@ keine Migration.**
   `aufbauBaum` (`geraetAnbindung.geraetImAufbau`), nie über die Adresse; die Bestandszeilen Anbindung/
   Adresse/Lesetakt/Gelesen über gehen dann im Abschnitt auf. Der Kopf zeigt EINEN Zustand: eine
   gemeldete Störung des Wegs gewinnt (`aufbauBaum.wegStoerung`, dieselbe Regel wie die Aufbau-Zeile).
-  Hinter einem Gateway: „Gelesen über Gateway DQ-n (k Geräte) ›“ (bis GE-5 auf die Box-Seite), Box-Wechsel
+  Hinter einem Gateway: „Gelesen über Gateway DQ-n (k Geräte) ›“ führt auf die Gateway-Seite; Box-Wechsel
   und Last stehen am Gateway. Technik › „Verlauf der Anbindung“ liest `GET …/data-sources/{id}/history`
   mit dem Satz des Änderungsprotokolls (`text`); das Geräte-Protokoll führt dieselben Einträge.
+- **Gateway-Seite (GE-5):** ein Weg mit mehreren Geräten (1 : N, nur über gespeicherte Verweise) hat die
+  Seite `…/geraet/{ref}/dq-<n>` (`geraetAdresse.gatewayGeraetId`, nur Ziffern) im selben Rahmen:
+  „Geräte an diesem Gateway“ mit Geräte-ID und Seite je Gerät, „Gerät & Verbindung“ mit derselben
+  Anbindung (`geraetAnbindung.gatewayAnbindung`: alle Geräte-IDs, Last und Box-Wechsel für alle),
+  Technik › „Verlauf der Anbindung“. Ein Weg mit einem oder keinem Gerät hat keine Seite — die Adresse
+  nennt dann sein Gerät bzw. den Aufbau (`gatewaySeite.ts`). „Gerät an diesem Gateway hinzufügen“ führt
+  mit `?neu=geraet&an=DQ-n` in den Gerätekatalog, belegt `ip`/`port`/`unit_id` vor (`gatewayVorbelegung`)
+  und hängt das neue Gerät danach über den Vorschlag „Zu DQ-n hinzufügen“ an (`gatewayAnhaengen`) — zeigt
+  der Server es dort nicht, hängt nichts.
 - **K4 · I/O-Modul:** ein Verbraucher am Relais eines Moduls hat die Seite `io-<Entität>`
   (`geraetAdresse`), gebunden über `plantModel(…, ioBindungenAus(consumers))`. Die Modul-Seite
   zeigt den Klemmenplan (belegter Ausgang führt zu seinem Verbraucher, freier Ausgang schaltbar);

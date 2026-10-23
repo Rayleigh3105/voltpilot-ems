@@ -2208,9 +2208,9 @@ describe('GE-2 · Anbindung an der Geräteseite', () => {
     );
     const anbindung = await screen.findByTestId('geraet-anbindung');
     expect(anbindung).toHaveTextContent('Modbus TCP · 192.168.10.31:502 · Geräte-ID 2');
-    // Die Gateway-Seite kommt mit GE-5; bis dahin führt der Weg auf die Box, die das Gateway liest.
+    // GE-5: der Weg führt auf die Seite des Gateways, über die Box, die es liest.
     expect(within(anbindung).getByRole('link', { name: /Gateway DQ-3 \(2 Geräte\)/ }))
-      .toHaveAttribute('href', '#/anlage/s-1/box/edge-45gz7da');
+      .toHaveAttribute('href', '#/anlage/s-1/geraet/edge-45gz7da/dq-3');
     expect(anbindung).not.toHaveTextContent('Last an der Box');
     expect(within(anbindung).queryByRole('button', { name: 'Zuständige Box wechseln' })).toBeNull();
     expect(anbindung).toHaveTextContent('Box und Last gelten für alle 2 Geräte an diesem Gateway');
