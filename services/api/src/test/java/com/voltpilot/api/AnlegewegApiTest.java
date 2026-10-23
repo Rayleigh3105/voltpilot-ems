@@ -124,6 +124,24 @@ class AnlegewegApiTest {
         assertThat(r.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     }
 
+    // ---- D2: eine Frage bei der Registrierung -------------------------------------------------
+
+    /** „Für mein Zuhause“ / „Für ein Unternehmen“ setzt Segment und Betriebsart; ohne Antwort wie bisher. */
+    @Test
+    void registrierungSetztSegmentUndBetriebsartAusDerFrage() {
+        String zuhause = registrieren("Erika Kaiser", "zuhause");
+        assertThat(kontext(zuhause)).containsEntry("segment", "B2C").containsEntry("betriebsart", "endkunde");
+        String firma = registrieren("Sonnenhof Kaiser GmbH", "unternehmen");
+        assertThat(kontext(firma)).containsEntry("segment", "CI").containsEntry("betriebsart", "betreiber");
+        String ohne = registrieren("Ohne Frage", null);
+        assertThat(kontext(ohne)).containsEntry("segment", "B2C").containsEntry("betriebsart", null);
+
+        ResponseEntity<String> falsch = rest.exchange(url("/api/v1/registration"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "X", "email", "x-" + System.nanoTime() + "@beispiel.test",
+                        "password", "ein-langes-passwort", "zweck", "garage"), json()), String.class);
+        assertThat(falsch.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+    }
+
     // ---- B3: dieselbe Anfrage-Kennung legt nie doppelt an -----------------------------------
 
     /**
