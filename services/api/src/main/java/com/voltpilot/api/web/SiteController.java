@@ -92,6 +92,8 @@ public class SiteController {
     private final TeilansichtDienst teilansicht;
 
     private static final int MAX_POINTS = 5000;
+    /** Die Route der Anfrage-Kennung beim Anlegen (Tabelle {@code anfrage_kennung}). */
+    static final String ROUTE_ANLEGEN = "POST /api/v1/sites";
     private static final int MAX_PRICE_POINTS = 1000;
 
     private final SiteRepository sites;
@@ -115,6 +117,7 @@ public class SiteController {
     private final MessreihenBelege belege;
     private final NetzanschlussService netzanschluesse;
     private final BerichtsBelege berichtsBelege;
+    private final AnfrageKennungen anfrageKennungen;
 
     public SiteController(
             SiteRepository sites,
@@ -137,8 +140,10 @@ public class SiteController {
             MessreihenBelege belege,
             NetzanschlussService netzanschluesse,
             BerichtsBelege berichtsBelege,
-            Geltungsbereich geltungsbereich, TeilansichtDienst teilansicht) {
+            Geltungsbereich geltungsbereich, TeilansichtDienst teilansicht,
+            AnfrageKennungen anfrageKennungen) {
         this.sites = sites;
+        this.anfrageKennungen = anfrageKennungen;
         this.teilansicht = teilansicht;
         this.geltungsbereich = geltungsbereich;
         this.devices = devices;
@@ -201,11 +206,25 @@ public class SiteController {
     @PostMapping
     @Recht(value = "anlage.verwalten", ziel = RechtZiel.UNTERNEHMEN)
     @Transactional
-    public ResponseEntity<SiteDto> createSite(@Valid @RequestBody CreateSiteRequest request,
-            Authentication auth) {
+    public ResponseEntity<?> createSite(@Valid @RequestBody CreateSiteRequest request,
+            Authentication auth,
+            @org.springframework.web.bind.annotation.RequestHeader(value = AnfrageKennungen.KOPF,
+                    required = false) String anfrageKopf) {
         UUID tenantId = TenantContext.get();
         if (tenantId == null) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No tenant in token");
+        }
+        // B3 (Anlage-Flow a1): dieselbe Anfrage-Kennung legt nie ein zweites Mal an - die Antwort
+        // der ersten kommt zurück (gesperrt bis zum Ende dieser Transaktion, gemerkt 24 h).
+        String kennung = AnfrageKennungen.kennung(anfrageKopf);
+        String fingerabdruck = kennung == null ? null : anfrageKennungen.fingerabdruck(request);
+        if (kennung != null) {
+            anfrageKennungen.sperren(ROUTE_ANLEGEN, kennung);
+            Optional<AnfrageKennungen.Gemerkt> gemerkt = anfrageKennungen.gemerkt(ROUTE_ANLEGEN, kennung,
+                    fingerabdruck);
+            if (gemerkt.isPresent()) {
+                return AnfrageKennungen.antwort(gemerkt.get());
+            }
         }
         Optional<StandortRepository.Standort> standort = anlageStandort.zielBeimAnlegen(request.standortId());
         ProtokollAkteur wer = standort.isPresent() ? OrtAnfrage.akteur(auth) : null;
@@ -215,6 +234,9 @@ public class SiteController {
                 request.tarifArtOrDefault(), request.tarifParamOrNull(), request.netzladenErlaubt(),
                 request.maxFeedInKw());
         standort.ifPresent(s -> anlageStandort.beimAnlegen(created.id(), s, wer));
+        if (kennung != null) {
+            anfrageKennungen.merken(ROUTE_ANLEGEN, kennung, fingerabdruck, HttpStatus.CREATED, created);
+        }
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 

@@ -43,6 +43,8 @@ class AnlegewegApiTest {
 
     private static final String APP_USER = "voltpilot_app";
     private static final String APP_PW = "voltpilot_app_test_pw";
+    private static final String ADMIN_USER = "voltpilot_admin";
+    private static final String ADMIN_PW = "voltpilot_admin_test_pw";
     private static final String TENANT_A = "00000000-0000-0000-0000-000000000001";
     private static final String BERLIN_SITE = "00000000-0000-0000-0000-000000000002";
 
@@ -68,6 +70,16 @@ class AnlegewegApiTest {
         registry.add("spring.flyway.password", POSTGRES::getPassword);
         registry.add("spring.flyway.placeholders.appDbUser", () -> APP_USER);
         registry.add("spring.flyway.placeholders.appDbPassword", () -> APP_PW);
+        registry.add("voltpilot.admin-datasource.url", POSTGRES::getJdbcUrl);
+        registry.add("voltpilot.admin-datasource.username", () -> ADMIN_USER);
+        registry.add("voltpilot.admin-datasource.password", () -> ADMIN_PW);
+        registry.add("spring.flyway.placeholders.adminDbUser", () -> ADMIN_USER);
+        registry.add("spring.flyway.placeholders.adminDbPassword", () -> ADMIN_PW);
+        registry.add("voltpilot.keycloak.admin.base-url", KEYCLOAK::getAuthServerUrl);
+        registry.add("voltpilot.keycloak.admin.realm", () -> "voltpilot");
+        registry.add("voltpilot.keycloak.admin.client-id", () -> "voltpilot-api");
+        registry.add("voltpilot.keycloak.admin.client-secret", () -> "voltpilot-api-dev-secret");
+        registry.add("voltpilot.registration.rate-limit.per-client-max", () -> "100");
         String realm = KEYCLOAK.getAuthServerUrl() + "/realms/voltpilot";
         registry.add("voltpilot.security.oidc.enabled", () -> "true");
         registry.add("spring.security.oauth2.resourceserver.jwt.issuer-uri", () -> realm);
@@ -112,7 +124,134 @@ class AnlegewegApiTest {
         assertThat(r.getStatusCode()).isEqualTo(HttpStatus.CREATED);
     }
 
+    // ---- B3: dieselbe Anfrage-Kennung legt nie doppelt an -----------------------------------
+
+    /**
+     * Die Nachstellung aus {@code belege/fehler-1440}: der Server legt an, die Antwort geht verloren,
+     * das Portal wiederholt - mit derselben Kennung ist es dieselbe Anlage.
+     */
+    @Test
+    void gleicherSchluesselEineAnlage() {
+        String t = registrieren("Garagen Meier", "zuhause");
+        ResponseEntity<Map<String, Object>> erste = post(t, "/api/v1/sites", Map.of("name", "Garage"), "anlage-7f3c-0001");
+        ResponseEntity<Map<String, Object>> zweite = post(t, "/api/v1/sites", Map.of("name", "Garage"), "anlage-7f3c-0001");
+        assertThat(erste.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(zweite.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(zweite.getHeaders().getFirst("Idempotent-Replayed")).isEqualTo("true");
+        assertThat(zweite.getBody().get("id")).isEqualTo(erste.getBody().get("id"));
+        assertThat(anlagen(t)).isEqualTo(1);
+
+        // Andere Angaben unter derselben Kennung: ein Fehler, nie eine fremde Antwort.
+        ResponseEntity<String> anders = rest.exchange(url("/api/v1/sites"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("name", "Garage 2"), kopf(t, "anlage-7f3c-0001")), String.class);
+        assertThat(anders.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(anders.getBody()).contains("\"code\":\"anfrage_kennung_anders\"");
+        // Ohne Kennung wie bisher: ein zweites Anlegen ist ein zweites Anlegen.
+        post(t, "/api/v1/sites", Map.of("name", "Garage"), null);
+        assertThat(anlagen(t)).isEqualTo(2);
+        // Eine andere Kundin mit derselben Kennung: ihre eigene Anlage (je Kundenbereich).
+        String andere = registrieren("Garagen Schulz", "zuhause");
+        assertThat(post(andere, "/api/v1/sites", Map.of("name", "Garage"), "anlage-7f3c-0001").getBody().get("id"))
+                .isNotEqualTo(erste.getBody().get("id"));
+        assertThat(anlagen(andere)).isEqualTo(1);
+    }
+
+    /** Zwei Anfragen mit derselben Kennung gleichzeitig: eine Anlage (Sperre bis zum Ende der Transaktion). */
+    @Test
+    void gleichzeitigMitDemselbenSchluesselEineAnlage() throws Exception {
+        String t = registrieren("Paralleler Weg", "zuhause");
+        var pool = java.util.concurrent.Executors.newFixedThreadPool(4);
+        try {
+            var antworten = new java.util.ArrayList<java.util.concurrent.Future<ResponseEntity<Map<String, Object>>>>();
+            for (int i = 0; i < 4; i++) {
+                antworten.add(pool.submit(() -> post(t, "/api/v1/sites", Map.of("name", "Dach"), "gleichzeitig-0001")));
+            }
+            java.util.Set<Object> ids = new java.util.HashSet<>();
+            for (var a : antworten) {
+                ResponseEntity<Map<String, Object>> r = a.get();
+                assertThat(r.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+                ids.add(r.getBody().get("id"));
+            }
+            assertThat(ids).hasSize(1);
+        } finally {
+            pool.shutdownNow();
+        }
+        assertThat(anlagen(t)).isEqualTo(1);
+    }
+
+    /** Der Standort aus demselben Formular: dieselbe Kennung, derselbe Standort statt 409. */
+    @Test
+    void gleicherSchluesselEinStandort() {
+        String t = registrieren("Hof Lindner", "zuhause");
+        Map<String, Object> body = Map.of("name", "Zuhause",
+                "adresse", Map.of("strasse", "Dorfstraße 1", "ort", "Treuchtlingen", "land", "DE"));
+        ResponseEntity<Map<String, Object>> erste = post(t, "/api/v1/standorte", body, "formular-1:standort");
+        ResponseEntity<Map<String, Object>> zweite = post(t, "/api/v1/standorte", body, "formular-1:standort");
+        assertThat(erste.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(zweite.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(zweite.getBody().get("id")).isEqualTo(erste.getBody().get("id"));
+        ResponseEntity<String> kaputt = rest.exchange(url("/api/v1/standorte"), HttpMethod.POST,
+                new HttpEntity<>(body, kopf(t, "x")), String.class);
+        assertThat(kaputt.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(kaputt.getBody()).contains("anfrage_kennung_ungueltig");
+    }
+
     // ---- Rahmen --------------------------------------------------------------------------------
+
+    private static final ParameterizedTypeReference<Map<String, Object>> MAP = new ParameterizedTypeReference<>() {};
+
+    /** Ein neuer Kundenbereich über die Selbstregistrierung - das Token seiner Kundin. */
+    private String registrieren(String name, String zweck) {
+        String email = "kundin-" + System.nanoTime() + "@beispiel.test";
+        Map<String, Object> body = new java.util.HashMap<>(Map.of("name", name, "email", email,
+                "password", "ein-langes-passwort"));
+        if (zweck != null) {
+            body.put("zweck", zweck);
+        }
+        ResponseEntity<String> r = rest.exchange(url("/api/v1/registration"), HttpMethod.POST,
+                new HttpEntity<>(body, json()), String.class);
+        assertThat(r.getStatusCode()).as(r.getBody()).isEqualTo(HttpStatus.CREATED);
+        return grant(email, "ein-langes-passwort", "voltpilot-frontend", null);
+    }
+
+    private Map<String, Object> kontext(String token) {
+        return rest.exchange(url("/api/v1/tenant-context"), HttpMethod.GET, new HttpEntity<>(bearer(token)), MAP)
+                .getBody();
+    }
+
+    private ResponseEntity<Map<String, Object>> post(String token, String pfad, Object body, String kennung) {
+        return rest.exchange(url(pfad), HttpMethod.POST, new HttpEntity<>(body, kopf(token, kennung)), MAP);
+    }
+
+    private static HttpHeaders kopf(String token, String kennung) {
+        HttpHeaders h = bearer(token);
+        if (kennung != null) {
+            h.set("Idempotency-Key", kennung);
+        }
+        return h;
+    }
+
+    private long anlagen(String token) {
+        return com.voltpilot.api.SichtbareListenTestLeser.lesen(rest, url("/api/v1/sites"), HttpMethod.GET,
+                new HttpEntity<>(bearer(token)), new ParameterizedTypeReference<java.util.List<Map<String, Object>>>() {})
+                .getBody().size();
+    }
+
+    private static HttpHeaders json() {
+        HttpHeaders h = new HttpHeaders();
+        h.setContentType(MediaType.APPLICATION_JSON);
+        return h;
+    }
+
+    private static void exec(String sql) {
+        try (Connection c = DriverManager.getConnection(
+                POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
+                java.sql.Statement st = c.createStatement()) {
+            st.execute(sql);
+        } catch (Exception e) {
+            throw new IllegalStateException(sql, e);
+        }
+    }
 
     private ResponseEntity<String> claim(HttpHeaders headers, String kennung) {
         return rest.exchange(url("/api/v1/devices/claim"), HttpMethod.POST,
@@ -147,10 +286,16 @@ class AnlegewegApiTest {
     }
 
     private String token(String username, String password) {
+        return grant(username, password, "voltpilot-api", "voltpilot-api-dev-secret");
+    }
+
+    private String grant(String username, String password, String clientId, String secret) {
         MultiValueMap<String, String> form = new LinkedMultiValueMap<>();
         form.add("grant_type", "password");
-        form.add("client_id", "voltpilot-api");
-        form.add("client_secret", "voltpilot-api-dev-secret");
+        form.add("client_id", clientId);
+        if (secret != null) {
+            form.add("client_secret", secret);
+        }
         form.add("username", username);
         form.add("password", password);
         form.add("scope", "openid");
@@ -162,7 +307,4 @@ class AnlegewegApiTest {
         assertThat(body).as("token response").containsKey("access_token");
         return (String) body.get("access_token");
     }
-
-    @SuppressWarnings("unused")
-    private static final ParameterizedTypeReference<Map<String, Object>> MAP = new ParameterizedTypeReference<>() {};
 }

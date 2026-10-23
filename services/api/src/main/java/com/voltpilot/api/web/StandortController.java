@@ -61,10 +61,16 @@ public class StandortController {
     private final VersorgungService versorgung;
     private final StandortAusfallService ausfaelle;
     private final RechtPruefung rechte;
+    private final AnfrageKennungen anfrageKennungen;
+
+    /** Die Route der Anfrage-Kennung beim Anlegen (Tabelle {@code anfrage_kennung}). */
+    static final String ROUTE_ANLEGEN = "POST /api/v1/standorte";
 
     public StandortController(StandortLesemodellService lesemodell, StandortService standorte,
             OrtAnfrage anfrage, TeilansichtDienst teilansicht, StandortVorschlagService vorschlaege,
-            VersorgungService versorgung, StandortAusfallService ausfaelle, RechtPruefung rechte) {
+            VersorgungService versorgung, StandortAusfallService ausfaelle, RechtPruefung rechte,
+            AnfrageKennungen anfrageKennungen) {
+        this.anfrageKennungen = anfrageKennungen;
         this.lesemodell = lesemodell;
         this.standorte = standorte;
         this.anfrage = anfrage;
@@ -136,10 +142,26 @@ public class StandortController {
     // Rechte: `standort.verwalten`.
     @PostMapping
     @Recht(value = "standort.verwalten", ziel = RechtZiel.UNTERNEHMEN)
-    public ResponseEntity<StandortAmStichtag> anlegen(@RequestBody(required = false) JsonNode body,
-            Authentication auth) {
+    public ResponseEntity<?> anlegen(@RequestBody(required = false) JsonNode body,
+            Authentication auth,
+            @org.springframework.web.bind.annotation.RequestHeader(value = AnfrageKennungen.KOPF,
+                    required = false) String anfrageKopf) {
+        // B3 (Anlage-Flow a1): Standort und Anlage entstehen aus EINEM Formular - eine verlorene Antwort
+        // legt mit derselben Kennung nichts zweimal an. Ohne gemeinsame Transaktion (der Service schreibt
+        // selbst); gleichzeitige Doppel hält die Namensregel ab (409 name_belegt).
+        String kennung = AnfrageKennungen.kennung(anfrageKopf);
+        String fingerabdruck = kennung == null ? null : anfrageKennungen.fingerabdruck(body);
+        if (kennung != null) {
+            var gemerkt = anfrageKennungen.gemerkt(ROUTE_ANLEGEN, kennung, fingerabdruck);
+            if (gemerkt.isPresent()) {
+                return AnfrageKennungen.antwort(gemerkt.get());
+            }
+        }
         StandortAmStichtag neu = standorte.anlegen(anfrage.lies(body, StandortDto.Stammdaten.class, false),
                 OrtAnfrage.akteur(auth));
+        if (kennung != null) {
+            anfrageKennungen.merken(ROUTE_ANLEGEN, kennung, fingerabdruck, HttpStatus.CREATED, neu);
+        }
         return ResponseEntity.created(URI.create("/api/v1/standorte/" + neu.id())).body(neu);
     }
 
