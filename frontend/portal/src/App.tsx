@@ -420,12 +420,19 @@ function LoginScreen({
   );
 }
 
+/** Die eine Frage der Registrierung (D2): sie wählt den Weg beim Anlegen - Privat oder Unternehmen. */
+const ZWECKE = [
+  { wert: 'zuhause', titel: 'Für mein Zuhause', zeile: 'PV-Anlage, Speicher, Wallbox' },
+  { wert: 'unternehmen', titel: 'Für ein Unternehmen', zeile: 'Standorte, Messstellen, Berichte' },
+] as const;
+
 export function RegisterForm({ onBack }: { onBack: () => void }) {
+  const [zweck, setZweck] = useState<'zuhause' | 'unternehmen' | null>(null);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [touched, setTouched] = useState({ name: false, email: false, password: false });
+  const [touched, setTouched] = useState({ zweck: false, name: false, email: false, password: false });
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -437,7 +444,7 @@ export function RegisterForm({ onBack }: { onBack: () => void }) {
   const emailOk = /\S+@\S+\.\S+/.test(email.trim());
   const passwordFehler = passwortFehler(password, email, name);
   const passwordOk = passwordFehler === null;
-  const valid = nameOk && emailOk && passwordOk;
+  const valid = zweck !== null && nameOk && emailOk && passwordOk;
 
   function touch(field: keyof typeof touched) {
     setTouched((t) => ({ ...t, [field]: true }));
@@ -447,14 +454,18 @@ export function RegisterForm({ onBack }: { onBack: () => void }) {
     if (busy) return;
     if (!valid) {
       // Point at what's missing instead of silently refusing.
-      setTouched({ name: true, email: true, password: true });
+      setTouched({ zweck: true, name: true, email: true, password: true });
+      if (zweck === null) {
+        document.getElementById('reg-zweck-zuhause')?.focus();
+        return;
+      }
       (!nameOk ? nameRef : !emailOk ? emailRef : passwordRef).current?.focus();
       return;
     }
     setBusy(true);
     setErr(null);
     try {
-      await register({ name: name.trim(), email: email.trim(), password });
+      await register({ name: name.trim(), email: email.trim(), password, ...(zweck ? { zweck } : {}) });
       // Sign the fresh customer straight in with the credentials they just
       // typed (reloads the SPA into the onboarding wizard). If the direct
       // grant is unavailable (e.g. older realm config), fall back to the
@@ -509,12 +520,37 @@ export function RegisterForm({ onBack }: { onBack: () => void }) {
     >
       <h1>Konto erstellen</h1>
       <p className="vp-auth-hint">
-        In einer Minute startklar: Konto anlegen, Anlage benennen, Gerät verbinden.
+        In einer Minute startklar: Konto anlegen, Adresse eintragen, Box verbinden.
       </p>
       <div style={{ display: 'grid', gap: 12, textAlign: 'left' }}>
+        <fieldset className="vp-zweck" aria-describedby={touched.zweck && !zweck ? 'reg-zweck-fehler' : undefined}>
+          <legend className="vp-field-label">Wofür nutzen Sie VoltPilot?</legend>
+          <div className="vp-zweck-wahl">
+            {ZWECKE.map((z) => (
+              <label key={z.wert} className={`vp-zweck-karte${zweck === z.wert ? ' is-an' : ''}`}>
+                <input
+                  id={`reg-zweck-${z.wert}`}
+                  type="radio"
+                  name="reg-zweck"
+                  checked={zweck === z.wert}
+                  onChange={() => setZweck(z.wert)}
+                />
+                <span>
+                  <strong>{z.titel}</strong>
+                  <span className="vp-zweck-zeile">{z.zeile}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+          {touched.zweck && !zweck && (
+            <span id="reg-zweck-fehler" className="vp-zweck-fehler" role="alert">
+              Bitte wählen Sie, wofür Sie VoltPilot nutzen.
+            </span>
+          )}
+        </fieldset>
         <Input
           ref={nameRef}
-          label="Ihr Name oder Firmenname"
+          label={zweck === 'zuhause' ? 'Ihr Name' : zweck === 'unternehmen' ? 'Name Ihres Unternehmens' : 'Ihr Name oder Firmenname'}
           placeholder="z. B. Erika Kaiser"
           autoComplete="name"
           autoFocus
