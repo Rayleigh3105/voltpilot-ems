@@ -312,9 +312,19 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     expect(onDone).toHaveBeenCalled();
   });
 
-  it('resumes a customer who already has an Anlage at the Register step (wizard restart)', () => {
+  it('resumes a customer who already has an Anlage at the Register step (wizard restart)', async () => {
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
     render(<AnlageFlow sites={[site]} waitForFirstData onDone={() => {}} />);
-    expect(screen.getByText('PV & Speicher aus dem Register')).toBeInTheDocument();
+    expect(await screen.findByText('PV & Speicher aus dem Register')).toBeInTheDocument();
+  });
+
+  // F6 (Anlage-Flow a1): nach jedem Neuladen fragte der Assistent die MaStR-Nummer erneut.
+  it('resumes at the Box step once the Anlage carries register or battery data', async () => {
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
+    render(<AnlageFlow sites={[site]} waitForFirstData onDone={() => {}} />);
+    expect(screen.getByText('Der nächste Schritt wird vorbereitet …')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Ihre VoltPilot-Box' })).toBeInTheDocument();
+    expect(screen.queryByText('PV & Speicher aus dem Register')).toBeNull();
   });
 
   it('maps the 422 claim refusal to the shared unknown-ID message', async () => {
@@ -431,9 +441,14 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
 });
 
 describe('Schritt Betrieb - Preset + EIN Betriebsmodell (Steuerung Stufe 0)', () => {
-  /** Bis zum vierten Schritt durchklicken (Register + Gerät überspringen). */
+  /**
+   * Bis zum vierten Schritt durchklicken (Register, falls er kommt, und Box überspringen). Trägt die
+   * Anlage schon Speicherdaten, beginnt der Wiedereinstieg bei der Box (F6).
+   */
   async function bisZumSchritt() {
-    fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
+    await waitFor(() => expect(screen.queryByText('Der nächste Schritt wird vorbereitet …')).toBeNull());
+    const register = screen.queryByRole('button', { name: 'Überspringen - später nachtragen' });
+    if (register) fireEvent.click(register);
     fireEvent.click(await screen.findByRole('button', { name: 'Box ist noch nicht da - später verbinden' }));
     expect(await screen.findByText('Wofür ist diese Anlage?')).toBeInTheDocument();
   }

@@ -6,6 +6,7 @@ import { Icon } from '../designsystem/components/core/Icon';
 import { Input } from '../designsystem/components/forms/Input';
 import { ANMELDE_TEXT, AuthScreen, TrustRow } from './components/AuthScreen';
 import { currentRoles, isPlatformAdmin, login, loginWithCredentials } from './auth';
+import { einrichtungSpaeter, merkeEinrichtungSpaeter } from './einrichtungSpaeter';
 import { PASSWORT_MIN_ZEICHEN, passwortFehler } from './passwortRegel';
 import {
   api,
@@ -655,7 +656,17 @@ function UnifiedPortal() {
   const [selectedSite, setSelectedSite] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+  // F6 (Anlage-Flow a1): „Später einrichten" gilt je Kundenbereich über Neuladen und neue Anmeldung -
+  // vorher kam der Vollbild-Assistent nach jedem Laden wieder, beim Register mit leeren Feldern.
+  const [onboardingDismissed, setOnboardingDismissedState] = useState(() => einrichtungSpaeter(isAdmin));
+  const setOnboardingDismissed = useCallback((spaeter: boolean) => {
+    setOnboardingDismissedState(spaeter);
+    merkeEinrichtungSpaeter(spaeter);
+  }, []);
+  // B1: einmal offen, beendet den Assistenten nur der Kunde - nicht die Geräte-Abfrage, die nach dem
+  // Verbinden der Box ein Gerät findet (vorher kippte er 30 s nach „Ihre Anlage ist verbunden" auf
+  // „Noch keine Anlage").
+  const [onboardingOffen, setOnboardingOffen] = useState(false);
   // The shell's "＋ Anlage hinzufügen" one-flow drawer (single-Anlage customers).
   const [addAnlageOpen, setAddAnlageOpen] = useState(false);
   // AP-01 E5 = A: Ziel des offenen Messen-Assistenten (`null` = zu), Zahl der Schließungen, Avatar → Karte.
@@ -1413,8 +1424,12 @@ function UnifiedPortal() {
   // First-run journey: until the customer has a device sending data, the whole
   // portal IS the onboarding. No empty dashboard with disconnected forms.
   // Customers only - an admin browsing an empty tenant keeps the normal pages.
-  const showOnboarding =
+  const onboardingGewollt =
     !isAdmin && loaded && !error && devices.length === 0 && !onboardingDismissed && darf('anlage.verwalten');
+  useEffect(() => {
+    if (onboardingGewollt) setOnboardingOffen(true);
+  }, [onboardingGewollt]);
+  const showOnboarding = !isAdmin && !onboardingDismissed && (onboardingGewollt || onboardingOffen);
 
   // The always-visible shell action for the one case with no obvious entry
   // point: a customer with exactly one Anlage (no Übersicht, no Anlagen-Liste).
@@ -1428,6 +1443,7 @@ function UnifiedPortal() {
 
   function finishOnboarding(ziel?: Route) {
     setOnboardingDismissed(true);
+    setOnboardingOffen(false);
     void reload();
     // Modus „nur messen“ (`anlegeNurMessen.ts`): das Ende nennt „Standort › Messstellen“ als Ziel.
     if (ziel) navigate(ziel);
@@ -1614,7 +1630,13 @@ function UnifiedPortal() {
         </Card>
       ) : showOnboarding ? (
         <LazyBoundary fallback={null}>
-          <OnboardingWizard sites={sites} onDone={(ziel) => finishOnboarding(ziel)} onSkip={() => finishOnboarding()} />
+          <OnboardingWizard
+            sites={sites}
+            // B1: die neue Anlage steht sofort in der Liste - nie „Noch keine Anlage" neben einer angelegten.
+            onSiteCreated={(s) => void reload(s.id, { background: true })}
+            onDone={(ziel) => finishOnboarding(ziel)}
+            onSkip={() => finishOnboarding()}
+          />
         </LazyBoundary>
       ) : !showPageTree ? (
         // Shell-Boot läuft (`!loaded`) und es ist eine mandantengebundene Seite:

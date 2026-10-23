@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { SiteAsset } from './api';
 import { describe, expect, it } from 'vitest';
 import {
   buildMastrApply,
@@ -97,6 +98,12 @@ describe('the register-first "Anlage anlegen" flow (captain 2026-07-09)', () => 
 
   it('resumes a customer who already created an Anlage at the Register step', () => {
     expect(initialFlowStep(true)).toBe(2);
+    // F6 (Anlage-Flow a1): mit Register- oder Speicherdaten weiter bei der Box, nie wieder beim Register.
+    const asset = { type: 'pv', registry: null, pvCapacityKwp: null, capacityKwh: null } as unknown as SiteAsset;
+    expect(initialFlowStep(true, [asset])).toBe(2);
+    expect(initialFlowStep(true, [{ ...asset, pvCapacityKwp: 6.05 }])).toBe(3);
+    expect(initialFlowStep(true, [{ ...asset, registry: 'mastr' }])).toBe(3);
+    expect(initialFlowStep(true, [{ ...asset, type: 'battery', capacityKwh: 10 }])).toBe(3);
   });
 });
 

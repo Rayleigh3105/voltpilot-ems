@@ -307,6 +307,28 @@ export function AnlageFlow({
   // Welche Anwendungen der Assistent eingeschaltet hat (für die Zusammenfassung).
   const [eingeschaltet, setEingeschaltet] = useState<string[]>([]);
   const [step, setStep] = useState<number>(initialFlowStep(sites.length > 0));
+  // F6: beim Wiedereinstieg erst die Anlagen-Daten lesen - mit Register- oder Speicherdaten geht es
+  // bei der Box weiter, nie wieder beim Register. Bis dahin steht kein Schritt (kein Aufblitzen).
+  const [wiedereinstiegBereit, setWiedereinstiegBereit] = useState(sites.length === 0);
+  useEffect(() => {
+    if (sites.length === 0) return;
+    let aktiv = true;
+    api.siteAssets(sites[0].id).then(
+      (assets) => {
+        if (!aktiv) return;
+        setStep(initialFlowStep(true, assets));
+        setWiedereinstiegBereit(true);
+      },
+      () => {
+        if (aktiv) setWiedereinstiegBereit(true);
+      },
+    );
+    return () => {
+      aktiv = false;
+    };
+    // Nur beim Öffnen: der Wiedereinstieg entscheidet einmal.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Steuern-Regel im Anlege-Fluss (`anlegeNurMessen.ts`): die Funktionen IN der
   // Entscheidung laden — `undefined`, solange sie unterwegs sind (dann fehlen
   // Geld-Block und „Betrieb“, statt aufzublitzen); bei einem Fehler bleibt die
@@ -385,7 +407,10 @@ export function AnlageFlow({
               : 'Der nächste Schritt konnte nicht geladen werden.'}
           </p>
         )}
-        {step === 2 && site && (
+        {!wiedereinstiegBereit && (
+          <p className="vp-note" aria-busy="true">Der nächste Schritt wird vorbereitet …</p>
+        )}
+        {wiedereinstiegBereit && step === 2 && site && (
           <RegisterStep
             site={site}
             onApplied={(pv, storage) => {
@@ -400,7 +425,7 @@ export function AnlageFlow({
             onSkip={() => setStep(3)}
           />
         )}
-        {step === 3 && site && (
+        {wiedereinstiegBereit && step === 3 && site && (
           <GeraetStep
             sites={createdHere ? [site] : locationSites}
             site={site}

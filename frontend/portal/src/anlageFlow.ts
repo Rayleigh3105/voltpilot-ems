@@ -1,5 +1,5 @@
 import { parseDecimal } from './zahl';
-import type { MastrApplyInput, MastrPreview, SaveBatteryInput } from './api';
+import type { MastrApplyInput, MastrPreview, SaveBatteryInput, SiteAsset } from './api';
 import { fmtNum } from './format';
 import { FLOW_STEPS } from './anlageFlowSchritte';
 
@@ -48,11 +48,20 @@ export function startklarSatz(anzahl: number): string {
 /**
  * Where the flow starts: a customer who already created an Anlage (but has no
  * device yet - wizard restart, "Später einrichten") resumes at the Register
- * step. Register is skippable, so nothing is forced on them, but the
- * register-first value stays offered on the way back to the Gerät step.
+ * step - unless the Anlage already carries register or hand-entered data
+ * (Anlage-Flow a1, F6: nach jedem Neuladen fragte der Assistent die
+ * MaStR-Nummer erneut); then the Box step is next.
  */
-export function initialFlowStep(hasSite: boolean): FlowStep {
-  return hasSite ? 2 : 1;
+export function initialFlowStep(hasSite: boolean, assets: readonly SiteAsset[] | null = null): FlowStep {
+  if (!hasSite) return 1;
+  return hatAnlagendaten(assets) ? 3 : 2;
+}
+
+/** Trägt die Anlage schon Register- oder Speicherdaten (aus dem Register-Schritt)? */
+export function hatAnlagendaten(assets: readonly SiteAsset[] | null): boolean {
+  return (assets ?? []).some(
+    (a) => a.registry != null || (a.type === 'pv' && a.pvCapacityKwp != null) || (a.type === 'battery' && a.capacityKwh != null),
+  );
 }
 
 /** Bidding zone from the address' country; everything else defaults to DE-LU. */
