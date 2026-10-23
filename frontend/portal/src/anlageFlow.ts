@@ -80,24 +80,29 @@ export function normalizeDeviceIdInput(value: string): string {
 }
 
 /**
- * Shared claim-field copy so the flow and the Geräte drawer speak with ONE
- * voice about where the Geräte-ID comes from - the device shows it in its
- * own app, and some devices also carry a sticker. The path and labels are the
+ * Shared claim-field copy so the flow and the Box dialog speak with ONE voice
+ * about where the Kennung comes from - the box shows it in its own app; there
+ * is no sticker (Captain, Anlage-Flow a1 Runde 1: „Wir haben keinen Aufkleber,
+ * sag einfach das man die Kennung eintragen soll“). The path and labels are the
  * box web app's (edge-app/core/internal/web/static/einrichten.html, card
  * #portal); the box withholds the reference until data arrives
- * (commissioning.js, claim_unlocked).
+ * (commissioning.js, claim_unlocked). The check itself lives in `edgeRef.ts`.
  */
 export const DEVICE_ID_FIELD = {
-  label: 'Geräte-ID',
+  label: 'Kennung',
   placeholder: 'z. B. edge-k7m2xq3',
   // Die Einrichtungsseite der Box nennt sie „Referenz-ID dieses Geräts“ (edge-app `web/static/einrichten.html`,
   // Karte #portal); einen Menüpunkt „Gerät verbinden“ gibt es dort nicht.
-  help: 'Die Geräte-ID zeigt Ihre VoltPilot-Box in ihrer App unter „Einrichten" → „Kopplung mit dem VoltPilot-Portal" als „Referenz-ID dieses Geräts" an. Sie erscheint dort, sobald ein Wechselrichter oder eine Ladesäule Daten liefert. Manche Boxen tragen sie zusätzlich auf einem Aufkleber.',
+  help: 'Die Kennung zeigt Ihre Box in ihrer App unter „Einrichten" → „Kopplung mit dem VoltPilot-Portal" als „Referenz-ID dieses Geräts". Sie erscheint dort, sobald ein Wechselrichter oder eine Ladesäule Daten liefert.',
 } as const;
 
-/** One 422 message for both gates (unknown sticker OR mistyped edge reference). */
+/** One 422 message for both gates (unknown register ID OR a ref that is no box Kennung). */
 export const DEVICE_ID_UNKNOWN_MSG =
-  'Diese Geräte-ID kennen wir nicht. Bitte vergleichen Sie Ihre Eingabe Zeichen für Zeichen mit der ID, die Ihr Gerät anzeigt - schon ein Tippfehler verhindert die Verbindung.';
+  'Diese Kennung kennen wir nicht. Bitte vergleichen Sie sie Zeichen für Zeichen mit der App Ihrer Box - schon ein Tippfehler verhindert die Verbindung.';
+
+/** 409: die Kennung gehört schon einem anderen Konto. */
+export const DEVICE_ID_TAKEN_MSG =
+  'Diese Box ist bereits mit einem anderen Konto verbunden. Bitte prüfen Sie die Kennung - oder kontaktieren Sie unseren Support.';
 
 export { parseDecimal } from './zahl';
 

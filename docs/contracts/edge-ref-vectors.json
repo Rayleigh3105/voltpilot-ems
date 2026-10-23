@@ -1,0 +1,38 @@
+{
+  "vertrag": "Kennung einer VoltPilot-Box (edge-Referenz) mit Prüfzeichen",
+  "beschreibung": "Die Box erzeugt ihre Kennung selbst und zeigt sie in ihrer App unter „Einrichten“: Präfix + sechs Zeichen + ein Prüfzeichen (positionsgewichtete Summe mod 31 über die sechs Zeichen). Erzeuger: edge-app/core/internal/agent/agent.go (refCheckChar); Prüfung: services/api …/web/EdgeRef.java (isValid) und frontend/portal/src/edgeRef.ts (pruefeKennung). Alle drei lesen diese Datei; Algorithmus und Vektoren nur gemeinsam ändern.",
+  "alphabet": "abcdefghjkmnpqrstuvwxyz23456789",
+  "praefix": "edge-",
+  "koerper_laenge": 6,
+  "gueltig": [
+    "edge-abcdefj",
+    "edge-k7m2xq3",
+    "edge-mnpqrsb",
+    "edge-zz9988g",
+    "edge-h4n7wp7"
+  ],
+  "ungueltig": [
+    { "kennung": "edge-k7m2xqz", "grund": "pruefzeichen", "warum": "richtige Form, falsches Prüfzeichen" },
+    { "kennung": "edge-k7m2qx3", "grund": "pruefzeichen", "warum": "zwei Nachbarn vertauscht" },
+    { "kennung": "edge-k7m2xq1", "grund": "zeichen", "warum": "„1“ statt „l“ - die 1 gibt es in keiner Kennung" },
+    { "kennung": "edge-abcde0j", "grund": "zeichen", "warum": "„0“ steht nicht im Alphabet" },
+    { "kennung": "edge-abcdef", "grund": "laenge", "warum": "ein Zeichen vergessen" },
+    { "kennung": "edge-abcdefjk", "grund": "laenge", "warum": "ein Zeichen zu viel" },
+    { "kennung": "k7m2xq3", "grund": "praefix", "warum": "ohne „edge-“ - nur der Server sieht das so, das Portal ergänzt den Präfix" },
+    { "kennung": "edgek7m2xq3", "grund": "praefix", "warum": "Bindestrich vergessen - nur der Server sieht das so, das Portal ergänzt ihn" },
+    { "kennung": "edge-fresh-01", "grund": "zeichen", "warum": "freie Kennung (Entwicklung, Integration) - für ein Kundenkonto keine Box" }
+  ],
+  "eingabe": {
+    "beschreibung": "Nur das Portal: was der Kunde tippt oder einfügt, und welche Kennung es daraus sendet. Groß-/Kleinschreibung, Leerzeichen und ein fehlender Präfix oder Bindestrich spielen keine Rolle; VP-Kennungen aus dem Herstellregister bleiben groß.",
+    "faelle": [
+      { "getippt": "edge-k7m2xq3", "kennung": "edge-k7m2xq3" },
+      { "getippt": "k7m2xq3", "kennung": "edge-k7m2xq3" },
+      { "getippt": "edgek7m2xq3", "kennung": "edge-k7m2xq3" },
+      { "getippt": "EDGE-K7M2XQ3", "kennung": "edge-k7m2xq3" },
+      { "getippt": " edge k7m2 xq3 ", "kennung": "edge-k7m2xq3" },
+      { "getippt": "Edge - K7M2-XQ3", "kennung": "edge-k7m2xq3" },
+      { "getippt": "K7M2XQ3", "kennung": "edge-k7m2xq3" },
+      { "getippt": "vp-1234-abcd", "kennung": "VP-1234-ABCD" }
+    ]
+  }
+}

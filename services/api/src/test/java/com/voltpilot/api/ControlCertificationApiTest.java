@@ -272,7 +272,7 @@ class ControlCertificationApiTest {
     private UUID claim(String customerToken, String ref) {
         ResponseEntity<Map<String, Object>> claim = rest.exchange(url("/api/v1/devices/claim"),
                 HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", ref),
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", TestKennung.box(ref)),
                         bearer(customerToken)),
                 new ParameterizedTypeReference<>() {});
         assertThat(claim.getStatusCode()).isEqualTo(HttpStatus.CREATED);

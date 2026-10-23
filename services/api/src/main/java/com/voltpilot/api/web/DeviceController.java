@@ -147,7 +147,8 @@ public class DeviceController {
     @PostMapping("/claim")
     @Recht(value = "geraet.einrichten", ziel = RechtZiel.DIENST)
     @Transactional
-    public ResponseEntity<DeviceDto> claim(@Valid @RequestBody DeviceClaimRequest request) {
+    public ResponseEntity<DeviceDto> claim(@Valid @RequestBody DeviceClaimRequest request,
+            org.springframework.security.core.Authentication auth) {
         UUID tenantId = TenantContext.get();
         if (tenantId == null) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No tenant in token");
@@ -181,7 +182,15 @@ public class DeviceController {
         //   - Self-generated edge refs (edge-...) must carry a valid check
         //     character (the format the shipping Edge-App shows on its :8484 web
         //     app). A single-character typo breaks the checksum (see EdgeRef).
-        // Other free-form refs (dev seeds, integrations) stay ungated.
+        // A customer account (KONTO_benutzer) knows only these two forms: a free
+        // ref from a customer is a typo of one of them ("k7m2xq3" without "edge-",
+        // "edgek7m2xq3", "edge-k7m2xq1" with a "1" for an "l") and would become a
+        // ghost device (Anlage-Flow a1, B4). Other free-form refs (dev seeds,
+        // integrations) stay open to the platform and to service accounts.
+        if (kundenkonto(auth) && !externalRef.startsWith(STICKER_PREFIX) && !EdgeRef.isValid(externalRef)) {
+            throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                    "Unknown Geräte-ID '" + externalRef + "' - keine Kennung einer VoltPilot-Box");
+        }
         String kind = request.kind();
         if (externalRef.startsWith(STICKER_PREFIX)) {
             Optional<String> provisionedKind = provisioned.findKind(externalRef);
@@ -352,6 +361,12 @@ public class DeviceController {
     @ExceptionHandler(BelegeImWeg.class)
     public ResponseEntity<java.util.Map<String, Object>> belegeImWeg(BelegeImWeg e) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(e.koerper());
+    }
+
+    /** Ein Kundenkonto (UEMS AP-03 IP-3, Kontoart {@code benutzer}) - weder Plattform noch Servicekonto. */
+    private static boolean kundenkonto(org.springframework.security.core.Authentication auth) {
+        return auth != null && auth.getAuthorities().stream().anyMatch(a ->
+                com.voltpilot.api.config.KeycloakRealmRoleConverter.KONTO_BENUTZER.equals(a.getAuthority()));
     }
 
     /**

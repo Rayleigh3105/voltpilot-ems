@@ -666,7 +666,7 @@ class SelfBuildComponentApiTest {
     private UUID createSiteWithDevice(String customerToken, String name, String ref) {
         UUID site = createSite(customerToken, name);
         ResponseEntity<String> res = post("/api/v1/devices/claim", customerToken,
-                Map.of("externalRef", ref, "siteId", site.toString(), "kind", "inverter"));
+                Map.of("externalRef", TestKennung.box(ref), "siteId", site.toString(), "kind", "inverter"));
         assertThat(res.getStatusCode()).isIn(HttpStatus.OK, HttpStatus.CREATED);
         return site;
     }

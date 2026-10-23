@@ -5,6 +5,8 @@ package agent
 // EdgeRefTest.java exercises the same vectors from the Java side.
 
 import (
+	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 )
@@ -88,5 +90,42 @@ func TestWrongLengthRejected(t *testing.T) {
 	}
 	if refValid("edge-abcdefgh") {
 		t.Fatal("8-char body should be rejected")
+	}
+}
+
+// TestSharedVectors reads docs/contracts/edge-ref-vectors.json - the same file
+// EdgeRefTest.java and the portal twin (frontend/portal/src/edgeRef.test.ts)
+// read, so the three can never drift apart silently.
+func TestSharedVectors(t *testing.T) {
+	raw, err := os.ReadFile("../../../../docs/contracts/edge-ref-vectors.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v struct {
+		Alphabet  string   `json:"alphabet"`
+		Praefix   string   `json:"praefix"`
+		Gueltig   []string `json:"gueltig"`
+		Ungueltig []struct {
+			Kennung string `json:"kennung"`
+		} `json:"ungueltig"`
+	}
+	if err := json.Unmarshal(raw, &v); err != nil {
+		t.Fatal(err)
+	}
+	if v.Alphabet != refAlphabet || v.Praefix != generatedRefPrefix {
+		t.Fatalf("alphabet/prefix drifted: %q %q", v.Alphabet, v.Praefix)
+	}
+	if len(v.Gueltig) == 0 || len(v.Ungueltig) == 0 {
+		t.Fatal("vectors are empty")
+	}
+	for _, ref := range v.Gueltig {
+		if !refValid(ref) {
+			t.Fatalf("shared valid vector %q rejected", ref)
+		}
+	}
+	for _, u := range v.Ungueltig {
+		if refValid(u.Kennung) {
+			t.Fatalf("shared invalid vector %q accepted", u.Kennung)
+		}
 	}
 }

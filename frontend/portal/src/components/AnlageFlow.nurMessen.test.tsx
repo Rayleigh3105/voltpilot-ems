@@ -118,7 +118,7 @@ async function anlegenUndRegisterUeberspringen(name = 'Halle 3') {
   fireEvent.change(screen.getByLabelText('Name der Anlage'), { target: { value: name } });
   fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
-  expect(await screen.findByText('Verbinden Sie Ihre VoltPilot-Box')).toBeInTheDocument();
+  expect(await screen.findByText('Ihre VoltPilot-Box')).toBeInTheDocument();
 }
 
 afterEach(() => {
@@ -173,13 +173,13 @@ describe('Modus „nur messen": der Anlege-Fluss spricht kein Wort über Steuern
     fireEvent.click(screen.getByRole('button', { name: 'Übernehmen & weiter' }));
 
     // Schritt 3: Gerät — auch der Fehlersatz.
-    expect(await screen.findByText('Verbinden Sie Ihre VoltPilot-Box')).toBeInTheDocument();
+    expect(await screen.findByText('Ihre VoltPilot-Box')).toBeInTheDocument();
     claimDevice.mockRejectedValueOnce(new ApiError(422, 'unbekannt'));
-    fireEvent.change(screen.getByLabelText('Geräte-ID'), { target: { value: 'vp-demo-0001' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Anlage anlegen' }));
-    expect(await screen.findByText(/Diese Geräte-ID kennen wir nicht/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'vp-demo-0001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
+    expect(await screen.findByText(/Diese Kennung kennen wir nicht/)).toBeInTheDocument();
     schweigt('Schritt 3 · Gerät');
-    fireEvent.click(screen.getByRole('button', { name: 'Anlage anlegen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
 
     // Fertig — ohne Schritt „Betrieb", mit dem Weg zu den Messstellen.
     expect(await screen.findByText(/„Halle 3“ ist da/)).toBeInTheDocument();
@@ -196,8 +196,8 @@ describe('Modus „nur messen": der Anlege-Fluss spricht kein Wort über Steuern
     render(<AnlageFlow sites={[]} waitForFirstData onDone={() => {}} onSkipAll={() => {}} />);
     await ruhe();
     await anlegenUndRegisterUeberspringen();
-    fireEvent.change(screen.getByLabelText('Geräte-ID'), { target: { value: 'vp-demo-0001' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Anlage anlegen' }));
+    fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'vp-demo-0001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
     expect(await screen.findByText('Ihr Gerät meldet sich…')).toBeInTheDocument();
     schweigt('Warten auf die ersten Daten');
   });
@@ -208,8 +208,8 @@ describe('Modus „nur messen": der Anlege-Fluss spricht kein Wort über Steuern
     render(<AnlageFlow sites={[]} waitForFirstData onDone={onDone} onSkipAll={() => {}} />);
     await ruhe();
     await anlegenUndRegisterUeberspringen();
-    fireEvent.change(screen.getByLabelText('Geräte-ID'), { target: { value: 'vp-demo-0001' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Anlage anlegen' }));
+    fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'vp-demo-0001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
     expect(await screen.findByText('Ihre Anlage ist verbunden')).toBeInTheDocument();
     expect(screen.getByText(ERSTE_DATEN_NUR_MESSEN)).toBeInTheDocument();
     schweigt('Erste Daten');
@@ -228,7 +228,7 @@ describe('Modus „nur messen": der Anlege-Fluss spricht kein Wort über Steuern
     await ruhe();
     expect(leiste()).toEqual(['Anlage', 'Register', 'Gerät']);
     fireEvent.click(screen.getByRole('button', { name: 'Überspringen - später nachtragen' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Box habe ich noch nicht - später' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Box ist noch nicht da - später verbinden' }));
     expect(await screen.findByText(/„Werk Lindach“ ist da/)).toBeInTheDocument();
     schweigt('Fertig nach dem Wiedereinstieg');
     fireEvent.click(screen.getByRole('button', { name: ZU_DEN_MESSSTELLEN }));
@@ -368,8 +368,8 @@ describe('Gegenprobe: derselbe Abtaster beißt beim Kunden mit Steuern', () => {
     expect(steuerGeldWoerter(lesbar())).toEqual(expect.arrayContaining(['veräußerung', 'vergüt', 'netzladen']));
 
     await anlegenUndRegisterUeberspringen();
-    fireEvent.change(screen.getByLabelText('Geräte-ID'), { target: { value: 'vp-demo-0001' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Anlage anlegen' }));
+    fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'vp-demo-0001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
     expect(await screen.findByText('Wofür ist diese Anlage?')).toBeInTheDocument();
     await ruhe();
     expect(steuerGeldWoerter(lesbar()).length).toBeGreaterThan(0);
@@ -384,7 +384,7 @@ describe('„Anlage anlegen" als Drawer: nach „Zu den Messstellen" dorthin, so
   async function bisFertig() {
     await ruhe();
     await anlegenUndRegisterUeberspringen();
-    fireEvent.click(screen.getByRole('button', { name: 'Box habe ich noch nicht - später' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Box ist noch nicht da - später verbinden' }));
     expect(await screen.findByText(/„Halle 3“ ist da/)).toBeInTheDocument();
   }
 

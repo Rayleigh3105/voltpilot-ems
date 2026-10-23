@@ -942,7 +942,7 @@ class QuelleEinstellungApiTest {
 
     private void claim(String token, UUID site, String ref) {
         ResponseEntity<Map<String, Object>> r = rest.exchange("http://localhost:" + port + "/api/v1/devices/claim",
-                HttpMethod.POST, new HttpEntity<>(Map.of("externalRef", ref, "siteId", site.toString(),
+                HttpMethod.POST, new HttpEntity<>(Map.of("externalRef", com.voltpilot.api.TestKennung.box(ref), "siteId", site.toString(),
                         "kind", "inverter"), bearer(token)), new ParameterizedTypeReference<>() {});
         assertThat(r.getStatusCode().value()).isIn(200, 201);
     }

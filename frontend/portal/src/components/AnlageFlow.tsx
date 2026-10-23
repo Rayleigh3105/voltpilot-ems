@@ -21,6 +21,9 @@ import { VERAEUSSERUNGSFORM_FRAGE, VERAEUSSERUNGSFORM_LABEL } from '../glossar';
 import { standortWaehlenSatz, standortWahl, standortWahlHinweis, type StandortWahl } from '../anlageStandort';
 import { alsOrtFehler } from '../standorte';
 import { showTechnicalLayer } from '../rollen';
+import { isPlatformAdmin } from '../auth';
+import { kennungSendbar, pruefeKennung } from '../edgeRef';
+import { KennungFeld } from './KennungFeld';
 import { entitiesApi, type EntityTypeDef } from '../entitiesApi';
 import {
   creatableConsumerTypes,
@@ -50,13 +53,13 @@ import {
 import {
   buildMastrApply,
   DEVICE_ID_FIELD,
+  DEVICE_ID_TAKEN_MSG,
   DEVICE_ID_UNKNOWN_MSG,
   FLOW_STEPS,
   initialFlowStep,
   mastrLocationLabel,
   mastrPvSummary,
   mastrStorageSummary,
-  normalizeDeviceIdInput,
   normalizeSeeNummer,
   parseBatteryForm,
   pickStorageNumber,
@@ -1808,7 +1811,7 @@ function ConsumerAddRow({
 }
 
 /**
- * Step 4 · Gerät: connect the VoltPilot device by its Geräte-ID. Skippable -
+ * Step 3 · Box: connect the VoltPilot-Box by its Kennung (`KennungFeld`). Skippable -
  * the Anlage exists either way and the resume banner keeps the way back in.
  */
 function GeraetStep({
@@ -1825,37 +1828,41 @@ function GeraetStep({
   onSkip: () => void;
 }) {
   const [deviceId, setDeviceId] = useState('');
-  const [touched, setTouched] = useState(false);
+  const [abgeschickt, setAbgeschickt] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Die Plattform verbindet auch freie Kennungen (der Server erlaubt sie nur ihr).
+  const frei = isPlatformAdmin();
 
   // A returning multi-Anlagen customer must be able to pick the target
   // Anlage instead of being pinned to sites[0].
   const multiSite = sites.length > 1;
-  const valid = deviceId.trim().length > 0;
 
   async function submit() {
     if (busy) return;
-    if (!valid) {
-      // Keep the button live, point at the empty field.
-      setTouched(true);
+    const pruefung = pruefeKennung(deviceId);
+    const kennung = frei ? deviceId.trim() : pruefung.kennung;
+    if (frei ? !kennung : !kennungSendbar(pruefung)) {
+      // Keep the button live, point at the field (B4: a typo never becomes a device).
+      setAbgeschickt(true);
       inputRef.current?.focus();
       return;
     }
     setBusy(true);
     setErr(null);
     try {
-      const device = await api.claimDevice(site.id, deviceId.trim());
+      const device = await api.claimDevice(site.id, kennung);
       onClaimed(device);
     } catch (e) {
       setErr(
         e instanceof ApiError && e.status === 422
           ? DEVICE_ID_UNKNOWN_MSG
           : e instanceof ApiError && e.status === 409
-            ? 'Dieses Gerät ist bereits mit einem anderen Konto verbunden. Bitte prüfen Sie die Geräte-ID - oder kontaktieren Sie unseren Support.'
-            : 'Das Verbinden hat gerade nicht geklappt. Bitte prüfen Sie die Geräte-ID und versuchen Sie es noch einmal.',
+            ? DEVICE_ID_TAKEN_MSG
+            : 'Das Verbinden hat gerade nicht geklappt. Bitte versuchen Sie es noch einmal.',
       );
+      inputRef.current?.focus();
     } finally {
       setBusy(false);
     }
@@ -1863,14 +1870,10 @@ function GeraetStep({
 
   return (
     <div className="vp-onboarding-step">
-      <h3>Verbinden Sie Ihre VoltPilot-Box</h3>
+      <h3>Ihre VoltPilot-Box</h3>
       <p className="vp-muted">
-        {DEVICE_ID_FIELD.help}
-        {!multiSite && ` Die Box wird mit der Anlage „${site.name}“ verbunden.`}
-      </p>
-      <p className="vp-note">
-        Hier verbinden Sie nur die Box mit Ihrem Konto. Wechselrichter, Zähler und Verbraucher
-        kommen danach im Aufbau der Anlage dazu.
+        Tragen Sie die Kennung Ihrer Box ein.
+        {!multiSite && ` Die Box gehört dann zur Anlage „${site.name}“.`}
       </p>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 16 }}>
         {multiSite && (
@@ -1886,24 +1889,20 @@ function GeraetStep({
             searchPlaceholder="Anlage suchen …"
           />
         )}
-        <Input
+        <KennungFeld
           ref={inputRef}
-          label={DEVICE_ID_FIELD.label}
-          placeholder={DEVICE_ID_FIELD.placeholder}
-          value={deviceId}
-          autoComplete="off"
-          autoCapitalize="characters"
-          spellCheck={false}
-          onChange={(e) => {
-            setDeviceId(normalizeDeviceIdInput((e.target as HTMLInputElement).value));
-            if (touched) setTouched(false);
+          id="flow-kennung"
+          wert={deviceId}
+          onWert={(w) => {
+            setDeviceId(w);
+            setErr(null);
           }}
-          onBlur={() => setTouched(true)}
-          error={touched && !valid ? 'Bitte geben Sie die Geräte-ID ein.' : null}
-          onKeyDown={(e: React.KeyboardEvent) => {
-            if (e.key === 'Enter') void submit();
-          }}
+          abgeschickt={abgeschickt}
+          serverFehler={err}
+          frei={frei}
+          onEnter={() => void submit()}
         />
+        <p className="vp-note" style={{ margin: 0 }}>{DEVICE_ID_FIELD.help}</p>
       </div>
       <Recht aktion="geraet.einrichten"><Button
         variant="primary"
@@ -1913,14 +1912,13 @@ function GeraetStep({
         disabled={busy}
         style={{ marginTop: 20 }}
       >
-        {busy ? 'Verbinde…' : 'Anlage anlegen'}
+        {busy ? 'Verbinde…' : 'Box verbinden'}
       </Button></Recht>
       <p className="vp-note" style={{ marginTop: 8, textAlign: 'center' }}>
         <button type="button" className="vp-linklike" onClick={onSkip}>
-          Box habe ich noch nicht - später
+          Box ist noch nicht da - später verbinden
         </button>
       </p>
-      {err && <div className="vp-alert vp-alert-err">{err}</div>}
     </div>
   );
 }

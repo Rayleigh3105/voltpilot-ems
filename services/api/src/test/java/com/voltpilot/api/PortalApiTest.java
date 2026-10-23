@@ -404,7 +404,7 @@ class PortalApiTest {
         // Tenant A claims a brand-new device into its own site -> 201.
         ResponseEntity<Map<String, Object>> ok = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "edge-fresh-01"),
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", TestKennung.box("edge-fresh-01")),
                         bearer(token("demo", "demo"))),
                 new ParameterizedTypeReference<>() {});
         assertThat(ok.getStatusCode()).isEqualTo(HttpStatus.CREATED);
@@ -423,7 +423,7 @@ class PortalApiTest {
                 new ParameterizedTypeReference<>() {});
         assertThat(devices.getStatusCode()).isEqualTo(HttpStatus.OK);
         Map<String, Object> fresh = devices.getBody().stream()
-                .filter(d -> "edge-fresh-01".equals(d.get("externalRef"))).findFirst().orElseThrow();
+                .filter(d -> TestKennung.box("edge-fresh-01").equals(d.get("externalRef"))).findFirst().orElseThrow();
         assertThat(fresh.get("lastSeenAt")).isNull();
         Map<String, Object> seeded = devices.getBody().stream()
                 .filter(d -> "demo-inverter-01".equals(d.get("externalRef"))).findFirst().orElseThrow();
@@ -432,7 +432,7 @@ class PortalApiTest {
         // Tenant B tries to claim tenant A's already-claimed device -> 409.
         ResponseEntity<String> conflict = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", HAMBURG_SITE, "externalRef", "demo-inverter-01"),
+                new HttpEntity<>(Map.of("siteId", HAMBURG_SITE, "externalRef", TestKennung.box("edge-fresh-01")),
                         bearer(token("demo2", "demo2"))),
                 String.class);
         assertThat(conflict.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
@@ -577,7 +577,7 @@ class PortalApiTest {
         // A fresh claim has never reported -> lastSeenAt is null.
         ResponseEntity<Map<String, Object>> claimed = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "edge-lastseen-01"),
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", TestKennung.box("edge-lastseen-01")),
                         bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         assertThat(claimed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
@@ -596,7 +596,7 @@ class PortalApiTest {
                 new ParameterizedTypeReference<>() {});
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
         Map<String, Object> mine = res.getBody().stream()
-                .filter(d -> "edge-lastseen-01".equals(d.get("externalRef")))
+                .filter(d -> TestKennung.box("edge-lastseen-01").equals(d.get("externalRef")))
                 .findFirst().orElseThrow();
         String lastSeenAt = (String) mine.get("lastSeenAt");
         assertThat(lastSeenAt).isNotNull();
@@ -619,7 +619,7 @@ class PortalApiTest {
         String demo = token("demo", "demo");
         ResponseEntity<Map<String, Object>> claimed = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "edge-v2only-01"),
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", TestKennung.box("edge-v2only-01")),
                         bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         assertThat(claimed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
@@ -635,7 +635,7 @@ class PortalApiTest {
                 url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         Map<String, Object> mine = res.getBody().stream()
-                .filter(d -> "edge-v2only-01".equals(d.get("externalRef")))
+                .filter(d -> TestKennung.box("edge-v2only-01").equals(d.get("externalRef")))
                 .findFirst().orElseThrow();
         assertThat((String) mine.get("lastSeenAt")).isNotNull();
         assertThat(java.time.Instant.parse((String) mine.get("lastSeenAt")))
@@ -654,7 +654,7 @@ class PortalApiTest {
         // online indicator).
         ResponseEntity<Map<String, Object>> claimed = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "edge-backlog-01"),
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", TestKennung.box("edge-backlog-01")),
                         bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         assertThat(claimed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
@@ -670,7 +670,7 @@ class PortalApiTest {
                 url("/api/v1/devices"), HttpMethod.GET, new HttpEntity<>(bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         Map<String, Object> mine = res.getBody().stream()
-                .filter(d -> "edge-backlog-01".equals(d.get("externalRef")))
+                .filter(d -> TestKennung.box("edge-backlog-01").equals(d.get("externalRef")))
                 .findFirst().orElseThrow();
         String lastSeenAt = (String) mine.get("lastSeenAt");
         assertThat(lastSeenAt).isNotNull();
@@ -737,7 +737,7 @@ class PortalApiTest {
         String siteId = (String) siteRes.getBody().get("id");
         ResponseEntity<Map<String, Object>> claimed = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", "edge-chatty-01"), bearer(demo)),
+                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", TestKennung.box("edge-chatty-01")), bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         assertThat(claimed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         String deviceId = (String) claimed.getBody().get("id");
@@ -804,7 +804,7 @@ class PortalApiTest {
         // And the freshly-created site can immediately host a device claim.
         ResponseEntity<Map<String, Object>> claim = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", newSiteId, "externalRef", "edge-spandau-01"),
+                new HttpEntity<>(Map.of("siteId", newSiteId, "externalRef", TestKennung.box("edge-spandau-01")),
                         bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         assertThat(claim.getStatusCode()).isEqualTo(HttpStatus.CREATED);
@@ -899,7 +899,7 @@ class PortalApiTest {
         String siteId = (String) created.getBody().get("id");
         ResponseEntity<Map<String, Object>> claim = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", "edge-wegwerf-01"),
+                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", TestKennung.box("edge-wegwerf-01")),
                         bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         String deviceId = (String) claim.getBody().get("id");
@@ -966,7 +966,7 @@ class PortalApiTest {
 
         ResponseEntity<Map<String, Object>> claim = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "edge-unclaim-01"),
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", TestKennung.box("edge-unclaim-01")),
                         bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         String deviceId = (String) claim.getBody().get("id");
@@ -983,7 +983,7 @@ class PortalApiTest {
         assertThat(updated.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(updated.getBody()).containsEntry("kind", "battery");
         assertThat(updated.getBody()).containsEntry("name", "Speicher Keller");
-        assertThat(updated.getBody()).containsEntry("externalRef", "edge-unclaim-01");
+        assertThat(updated.getBody()).containsEntry("externalRef", TestKennung.box("edge-unclaim-01"));
 
         // Ein Standortwechsel ist kein Geräte-Feature mehr: weder Vorprüfung,
         // Mutation noch ein Hintergrundstatus bleiben als Route erreichbar.
@@ -1029,7 +1029,7 @@ class PortalApiTest {
         // The ref is claimable again (fresh row, fresh id) - the ausgebaut row keeps it as provenance.
         ResponseEntity<Map<String, Object>> reclaimed = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", "edge-unclaim-01"),
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", TestKennung.box("edge-unclaim-01")),
                         bearer(demo)),
                 new ParameterizedTypeReference<>() {});
         assertThat(reclaimed.getStatusCode()).isEqualTo(HttpStatus.CREATED);
@@ -1246,7 +1246,7 @@ class PortalApiTest {
     private String claimDevice(String token, String externalRef) {
         ResponseEntity<Map<String, Object>> claim = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", externalRef),
+                new HttpEntity<>(Map.of("siteId", BERLIN_SITE, "externalRef", TestKennung.box(externalRef)),
                         bearer(token)),
                 new ParameterizedTypeReference<>() {});
         assertThat(claim.getStatusCode()).isIn(HttpStatus.CREATED, HttpStatus.OK);
@@ -5779,7 +5779,7 @@ class PortalApiTest {
     private String claimDeviceInto(String token, String siteId, String externalRef) {
         ResponseEntity<Map<String, Object>> claim = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", externalRef),
+                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", TestKennung.box(externalRef)),
                         bearer(token)),
                 new ParameterizedTypeReference<>() {});
         assertThat(claim.getStatusCode()).isIn(HttpStatus.CREATED, HttpStatus.OK);

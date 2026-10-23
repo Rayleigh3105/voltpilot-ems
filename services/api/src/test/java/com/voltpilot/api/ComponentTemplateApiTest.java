@@ -479,7 +479,7 @@ class ComponentTemplateApiTest {
     private void claim(String customerToken, UUID siteId, String ref) {
         ResponseEntity<Map<String, Object>> res = rest.exchange(url("/api/v1/devices/claim"),
                 HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", siteId.toString(), "externalRef", ref),
+                new HttpEntity<>(Map.of("siteId", siteId.toString(), "externalRef", TestKennung.box(ref)),
                         bearer(customerToken)),
                 new org.springframework.core.ParameterizedTypeReference<>() {});
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.CREATED);

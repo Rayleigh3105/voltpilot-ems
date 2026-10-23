@@ -1218,7 +1218,7 @@ class ComponentAdoptionApiTest {
     private UUID claim(String customerToken, UUID siteId, String ref) {
         ResponseEntity<Map<String, Object>> res = rest.exchange(url("/api/v1/devices/claim"),
                 HttpMethod.POST,
-                new HttpEntity<>(Map.of("externalRef", ref, "siteId", siteId.toString(),
+                new HttpEntity<>(Map.of("externalRef", TestKennung.box(ref), "siteId", siteId.toString(),
                         "kind", "inverter"), bearer(customerToken)),
                 new ParameterizedTypeReference<>() {});
         assertThat(res.getStatusCode()).isIn(HttpStatus.OK, HttpStatus.CREATED);

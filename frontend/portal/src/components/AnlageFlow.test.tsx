@@ -233,9 +233,9 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     expect(applied.storage?.mastrNummer).toBe('SEE900000067890');
 
     // Step 3: Gerät (AE5: the device now comes BEFORE the adaptive step).
-    expect(await screen.findByText('Verbinden Sie Ihre VoltPilot-Box')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Geräte-ID'), { target: { value: 'vp-demo-0001' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Anlage anlegen' }));
+    expect(await screen.findByText('Ihre VoltPilot-Box')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'vp-demo-0001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
     await waitFor(() => expect(claimDevice).toHaveBeenCalledWith('s-1', 'VP-DEMO-0001'));
 
     // Schritt 4: Anwendungen - Geräte + Profil-Preset + Regal + Speicher.
@@ -280,7 +280,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     expect(mastrLookup).not.toHaveBeenCalled();
 
     // Step 3 (Gerät) then step 4 (Nutzung) - skip both, honest summary.
-    fireEvent.click(await screen.findByRole('button', { name: 'Box habe ich noch nicht - später' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Box ist noch nicht da - später verbinden' }));
     await skipNutzung();
     expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
     expect(screen.getByText('manuell hinterlegt')).toBeInTheDocument();
@@ -301,7 +301,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
 
     // Skip the Register step, the Gerät step, then the Nutzung step.
     fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Box habe ich noch nicht - später' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Box ist noch nicht da - später verbinden' }));
     await skipNutzung();
 
     expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
@@ -327,11 +327,39 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
     // Register skipped -> the Gerät step is now next (before Nutzung).
     fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
-    fireEvent.change(await screen.findByLabelText('Geräte-ID'), {
-      target: { value: 'edge-tippfehla' },
+    fireEvent.change(await screen.findByLabelText('Kennung'), {
+      target: { value: 'edge-k7m2xq3' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Anlage anlegen' }));
-    expect(await screen.findByText(/Diese Geräte-ID kennen wir nicht/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
+    expect(await screen.findByText(/Diese Kennung kennen wir nicht/)).toBeInTheDocument();
+  });
+
+  // B4 (Anlage-Flow a1): ein Tippfehler in der Kennung wird nie gesendet - früher legte der
+  // Server „edge-k7m2xq1" („1" statt „l") als Gerät an, das sich nie meldete.
+  it('sends no Kennung with a typo - the field says why, nothing is claimed', async () => {
+    vi.spyOn(api, 'createSite').mockResolvedValue(site);
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
+    const claim = vi.spyOn(api, 'claimDevice');
+    render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
+
+    fireEvent.change(await screen.findByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
+    const feld = await screen.findByLabelText('Kennung');
+    fireEvent.change(feld, { target: { value: 'edge-k7m2xq1' } });
+    expect(screen.getByText('Diese Kennung stimmt nicht. Eine Kennung enthält kein 0, 1, i, l oder o.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
+    fireEvent.change(feld, { target: { value: 'edge-k7m2xqz' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
+    expect(screen.getByText(/^Diese Kennung stimmt nicht\. Bitte vergleichen/)).toBeInTheDocument();
+    expect(claim).not.toHaveBeenCalled();
+
+    // Ohne „edge-“ getippt: das Feld ergänzt ihn, gesendet wird die Kennung.
+    claim.mockResolvedValue({ id: 'd1', siteId: site.id, externalRef: 'edge-k7m2xq3' } as never);
+    fireEvent.change(feld, { target: { value: 'K7M2XQ3' } });
+    expect(screen.getByText('Kennung stimmt: edge-k7m2xq3')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
+    await waitFor(() => expect(claim).toHaveBeenCalledWith(site.id, 'edge-k7m2xq3'));
   });
 
   it('surfaces the backend German MaStR error on a failed lookup', async () => {
@@ -406,7 +434,7 @@ describe('Schritt Betrieb - Preset + EIN Betriebsmodell (Steuerung Stufe 0)', ()
   /** Bis zum vierten Schritt durchklicken (Register + Gerät überspringen). */
   async function bisZumSchritt() {
     fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Box habe ich noch nicht - später' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Box ist noch nicht da - später verbinden' }));
     expect(await screen.findByText('Wofür ist diese Anlage?')).toBeInTheDocument();
   }
 
