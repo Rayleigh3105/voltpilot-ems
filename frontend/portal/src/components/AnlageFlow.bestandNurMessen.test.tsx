@@ -51,7 +51,7 @@ function messkunde() {
 }
 
 async function bisZumGeraet() {
-  fireEvent.change(screen.getByLabelText('Name der Anlage'), { target: { value: 'Halle 3' } });
+  fireEvent.change(screen.getByLabelText('Name der neuen Anlage'), { target: { value: 'Halle 3' } });
   fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
   expect(await screen.findByText('PV & Speicher aus dem Register')).toBeInTheDocument();
   await ruhe();

@@ -211,8 +211,8 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={onDone} />);
 
     // Step 1: Anlage - name only (the register brings the specs).
-    expect(await screen.findByText('Wie heißt Ihre Anlage?')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
+    expect(await screen.findByText('Wo steht die neue Anlage?')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
     await waitFor(() => expect(createSite).toHaveBeenCalled());
 
@@ -262,7 +262,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     const onDone = vi.fn();
 
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={onDone} />);
-    fireEvent.change(await screen.findByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
+    fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
 
     // Drop into the manual hand-entry path from the register step.
@@ -296,7 +296,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     const onDone = vi.fn();
 
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={onDone} />);
-    fireEvent.change(await screen.findByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
+    fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
 
     // Skip the Register step, the Gerät step, then the Nutzung step.
@@ -333,7 +333,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     vi.spyOn(api, 'claimDevice').mockRejectedValue(new ApiError(422, 'unknown'));
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
 
-    fireEvent.change(await screen.findByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
+    fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
     // Register skipped -> the Gerät step is now next (before Nutzung).
     fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
@@ -352,7 +352,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     const claim = vi.spyOn(api, 'claimDevice');
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
 
-    fireEvent.change(await screen.findByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
+    fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
     const feld = await screen.findByLabelText('Kennung');
@@ -378,7 +378,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
       new ApiError(404, 'Diese Nummer ist im Register nicht auffindbar.'),
     );
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
-    fireEvent.change(await screen.findByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
+    fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
     fireEvent.change(await screen.findByLabelText('MaStR-Nummer der PV-Anlage'), {
       target: { value: 'SEE900000012345' },
@@ -403,7 +403,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     const createSite = vi.spyOn(api, 'createSite').mockResolvedValue(site);
     const updateSupply = vi.spyOn(api, 'updateSupplyPrice').mockResolvedValue(null as never);
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
-    fireEvent.change(await screen.findByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
+    fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
     // Der Geld-Block steht erst, wenn feststeht, dass der Fluss wie heute spricht (anlegeNurMessen.ts).
     fireEvent.click(await screen.findByText(/Feineinstellungen/));
     // Der Tarif steht auf „Ohne Angabe", die Wahl auf „Schnell" - beides unberührt.
@@ -419,7 +419,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     const createSite = vi.spyOn(api, 'createSite').mockResolvedValue(site);
     const updateSupply = vi.spyOn(api, 'updateSupplyPrice').mockResolvedValue(null as never);
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
-    fireEvent.change(await screen.findByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
+    fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
     // Der Geld-Block steht erst, wenn feststeht, dass der Fluss wie heute spricht (anlegeNurMessen.ts).
     fireEvent.click(await screen.findByText(/Feineinstellungen/));
     fireEvent.click(screen.getByRole('radio', { name: /Genau/ }));
@@ -435,7 +435,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
 
   it('speaks "Anlage", never "Standort", as the entity name (wording decision 3)', async () => {
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
-    expect(await screen.findByLabelText('Name der Anlage')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Name der neuen Anlage')).toBeInTheDocument();
     expect(screen.queryByText(/Name des Standorts/)).not.toBeInTheDocument();
   });
 });

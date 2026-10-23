@@ -52,6 +52,7 @@ export function TariffFields({
   priceMode,
   onPriceMode,
   storedPriceMode,
+  paramError = null,
 }: {
   tarifArt: TarifArt;
   onTarifArt: (art: TarifArt) => void;
@@ -70,6 +71,8 @@ export function TariffFields({
   onPriceMode?: (mode: PriceMode) => void;
   /** Der GESPEICHERTE Weg — für den Spiegel und die Folgen-Ansage. */
   storedPriceMode?: PriceMode;
+  /** Der Satz am Preis-Feld (eigene Prüfung oder Ablehnung des Servers, Anlage-Flow a1 F4). */
+  paramError?: string | null;
 }) {
   // Die Entwürfe der jeweils anderen Tarifart. Bewusst lokal: sie sind reine
   // Eingabe-Ergonomie, gespeichert wird immer nur der Wert der aktuellen Art.
@@ -176,6 +179,7 @@ export function TariffFields({
             placeholder={field.placeholder}
             inputMode="decimal"
             value={param}
+            error={paramError}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
               // Wer tippt, hat die Ansage gelesen - „bitte neu eintragen" darf
               // nicht über einem gefüllten Feld stehen bleiben.

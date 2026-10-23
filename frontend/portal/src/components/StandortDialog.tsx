@@ -29,6 +29,9 @@ import {
 } from '../standorte';
 import { VpPicker } from './VpPicker';
 import { VpDatePicker } from './VpDatePicker';
+import { AdressSuche } from './AdressSuche';
+import { ZEITZONE_DES_LANDES } from '../anlageOrt';
+import { VerwerfenFrage } from './VerwerfenFrage';
 import './StandortDialog.css';
 
 /**
@@ -92,6 +95,13 @@ export function StandortDialog({
   const [allgemein, setAllgemein] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [kurzzeichen, setKurzzeichen] = useState<string | null>(null);
+  // Anlage-Flow a1: die Adresssuche füllt Straße, PLZ, Ort, Land - und den Punkt auf der Karte.
+  const [suche, setSuche] = useState('');
+  const [lageAusSuche, setLageAusSuche] = useState(false);
+  // F8 (Anlage-Flow a1): Escape oder ein Klick daneben verwarf alles ohne Rückfrage.
+  const [anfang] = useState(() => JSON.stringify(form));
+  const [frage, setFrage] = useState(false);
+  const geaendert = JSON.stringify(form) !== anfang || suche.trim() !== '';
 
   useEffect(() => {
     if (!open || fassung !== 'anlegen') return;
@@ -113,7 +123,10 @@ export function StandortDialog({
   const amFeld = sichtbareFehler(fehler);
 
   function setze<K extends keyof StandortFormular>(feld: K, wert: StandortFormular[K]) {
-    setForm((f) => ({ ...f, [feld]: wert }));
+    // Wer die Adresse von Hand ändert, meint einen anderen Ort - der Punkt aus der Suche gilt dann nicht mehr.
+    const adressFeld = feld === 'strasse' || feld === 'plz' || feld === 'ort' || feld === 'land';
+    setForm((f) => ({ ...f, [feld]: wert, ...(adressFeld && lageAusSuche ? { lage: standort?.lage ?? null } : {}) }));
+    if (adressFeld) setLageAusSuche(false);
     setServerFehler((s) => {
       if (!(feld in s)) return s;
       const rest = { ...s };
@@ -168,9 +181,10 @@ export function StandortDialog({
   const firmenZone = unternehmen?.zeitzone ?? null;
 
   return (
+    <>
     <Modal
       open={open}
-      onClose={onClose}
+      onClose={() => (geaendert ? setFrage(true) : onClose())}
       title={DIALOG_TITEL[fassung]}
       footer={
         <>
@@ -212,6 +226,33 @@ export function StandortDialog({
             error={amFeld.kurzzeichen}
           />
         )}
+
+        <AdressSuche
+          id={`${basis}-suche`}
+          label="Adresse suchen"
+          ohneHand
+          suche={suche}
+          onSuche={setSuche}
+          gewaehlt={null}
+          hinweis="Füllt Straße, PLZ, Ort und Land aus - und den Punkt auf der Karte."
+          onWahl={(w) => {
+            if (!w) return;
+            const { strasse, plz, ort, land } = w.adresse;
+            setForm((f) => ({
+              ...f,
+              strasse,
+              plz: plz ?? '',
+              ort,
+              land,
+              // Die Zeitzone folgt einem anderen Land; im eigenen Land bleibt die gewählte.
+              zeitzone: f.land === land ? f.zeitzone : ZEITZONE_DES_LANDES[land],
+              lage: w.punkt,
+            }));
+            setLageAusSuche(true);
+            setSuche('');
+            setServerFehler({});
+          }}
+        />
 
         <Input
           id={feldId('strasse')}
@@ -322,5 +363,15 @@ export function StandortDialog({
         )}
       </form>
     </Modal>
+    <VerwerfenFrage
+      open={frage}
+      satz="Name und Adresse gehen verloren."
+      onVerwerfen={() => {
+        setFrage(false);
+        onClose();
+      }}
+      onWeiter={() => setFrage(false)}
+    />
+    </>
   );
 }

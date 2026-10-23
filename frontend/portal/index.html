@@ -62,8 +62,8 @@
         (`designsystem/tokens/fonts.css`) - `fonts.googleapis.com` und
         `fonts.gstatic.com` sind samt ihrer CSP-Eintraege entfallen.
       - Alles Uebrige ist NICHT der Boot: die OSM-Kacheln haengen an Leaflet
-        (nachgeladen), die Adress-Suche `geocoding-api.open-meteo.com` am
-        Anlege-Assistenten.
+        (nachgeladen); die Adress-Suche des Anlege-Assistenten fragt die eigene
+        API (`/api/v1/orte/suche`).
 
       Wer hier eine fremde Origin einfuehrt (ein CDN, ein Karten-Host, eine
       getrennte Auth-Domain), traegt ihren Preconnect NACH - und erweitert im

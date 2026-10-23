@@ -59,7 +59,7 @@ function kundeMitSteuern() {
 }
 
 async function bisZumGeraet() {
-  fireEvent.change(screen.getByLabelText('Name der Anlage'), { target: { value: 'Halle 3' } });
+  fireEvent.change(screen.getByLabelText('Name der neuen Anlage'), { target: { value: 'Halle 3' } });
   fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
   expect(await screen.findByText('PV & Speicher aus dem Register')).toBeInTheDocument();
   await ruhe();
@@ -88,11 +88,9 @@ describe('Anlege-Fluss eines Kunden mit Steuern — Zeichen für Zeichen wie vor
     await expect(flussHtml()).toMatchFileSnapshot('./__snapshots__/anlage-bestand-schritt1-fein.html');
 
     const { register, geraet } = await bisZumGeraet();
+    // Lage und Gebotszone übernimmt die Anlage von ihrem Standort (Anlage-Flow a1).
     expect(createSite.mock.calls[0][0]).toStrictEqual({
       name: 'Halle 3',
-      biddingZone: 'DE-LU',
-      latitude: null,
-      longitude: null,
       plantKind: 'eigenverbrauch',
       anzulegenderWertCtKwh: null,
       tarifArt: 'ohne',
