@@ -138,10 +138,20 @@ function dayPlan(): SchedulePlan {
  * Nur `Date` steht still - die Timer von `waitFor` bleiben echt.
  */
 function zurTagesmitte() {
-  const mittag = new Date();
-  mittag.setHours(12, 0, 0, 0);
+  zurStunde(12);
+}
+
+/**
+ * Stellt nur `Date` auf die volle Stunde von heute; die Timer von `waitFor`
+ * bleiben echt. Die Kachel „Heute Abend" gibt es nur, wenn der Plan über
+ * 16 Uhr reicht (`ABEND_AB_MIN`) - ein Fall, der sie erwartet, darf darum
+ * nicht an der Wanduhr des Testlaufs hängen.
+ */
+function zurStunde(stunde: number) {
+  const t = new Date();
+  t.setHours(stunde, 0, 0, 0);
   vi.useFakeTimers({ toFake: ['Date'] });
-  vi.setSystemTime(mittag);
+  vi.setSystemTime(t);
 }
 
 const CONTROL: ControlStatus = {
@@ -189,6 +199,14 @@ afterEach(() => {
 
 describe('FahrplanSection · das Seitengerüst', () => {
   it('beantwortet „was macht meine Batterie gerade" ganz oben, dann Uhr, Kacheln und eingeklappt der Rest', async () => {
+    // Um 17 Uhr reicht der Plan (zwei Stunden ab jetzt) in den Abend: die
+    // Kachel „Heute Abend" steht. Vor 14:15 stünde sie nie (siehe unten,
+    // „Mittags … keine Kacheln") - der Fall war darum vormittags rot.
+    // Plan, Rücklesen und Messwerte entstehen erst nach dem Stellen der Uhr.
+    zurStunde(17);
+    schedule.mockResolvedValue(plan());
+    controlStatus.mockResolvedValue({ ...CONTROL, checkedAt: new Date().toISOString() });
+    telemetry.mockResolvedValue(POINTS.map((p) => ({ ...p, ts: new Date().toISOString() })));
     const { container } = render(<FahrplanSection site={SITE} />);
     await waitFor(() => expect(container.querySelector('.vp-tb .vp-tb-status')).toBeTruthy());
     expect(container.querySelector('.vp-kompakt')).toBeNull();
