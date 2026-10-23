@@ -1,0 +1,39 @@
+{
+  "$comment": "Echo der Ladequelle je Säule im Status-Herzschlag (Konzept k1 „Gewählt ist nicht geladen“, Regel 4, 23.10.2026). Vertrag: ladepunkt-quelle-echo.md. DREI Seiten lesen diese Datei PER PFAD: die Box schreibt die Felder an `chargers[]` (edge-app/core/internal/agent/ocpp_quelle_echo_test.go, Abschnitt `box`), die API speichert sie und vergleicht sie mit der Wahl des Kunden (services/api .../chargers/QuellenEchoTest.java, Abschnitt `vergleich`), das Portal zeigt den Schritt „Box hat übernommen“ (frontend/portal/src/steuerung/rueckmeldung.test.ts, Abschnitt `portal`). Wer ein Wort oder eine Regel ändert, ändert alle drei Seiten und diese Datei zusammen.",
+
+  "$regel": "source ist die Bahn, die die Box für die Säule FÄHRT: ihre eigene Wahl, sonst die der Anlage; ein fehlendes oder unbekanntes Wort fährt als `schnell` (lastmgmt.NormalizePolicy). Mit source reist IMMER storage_release (ausdrücklich false); min_kw nur neben `sonne_zuerst` mit eigener Mindestleistung. Fehlt source, ist die Box älter: nicht bestätigt, nie bestätigt.",
+
+  "box": [
+    {"name": "eigene Wahl Sonne + Speicher", "site_policy": "sonne_zuerst", "station": {"source": "nur_sonne", "storage_release": true},
+     "heartbeat": {"source": "nur_sonne", "storage_release": true}},
+    {"name": "Sonne + Minimum mit eigener Mindestleistung", "site_policy": "nur_sonne", "station": {"source": "sonne_zuerst", "min_kw": 4.2},
+     "heartbeat": {"source": "sonne_zuerst", "min_kw": 4.2, "storage_release": false}},
+    {"name": "ohne eigene Wahl folgt die Säule der Anlage", "site_policy": "sonne_zuerst", "station": {},
+     "heartbeat": {"source": "sonne_zuerst", "storage_release": false}},
+    {"name": "ohne jede Wahl fährt die Box schnell", "site_policy": "", "station": {},
+     "heartbeat": {"source": "schnell", "storage_release": false}},
+    {"name": "Schnell fährt die Bahn schnell, eine Mindestleistung nur neben sonne_zuerst", "site_policy": "nur_sonne", "station": {"source": "schnell", "min_kw": 3},
+     "heartbeat": {"source": "schnell", "storage_release": false}}
+  ],
+
+  "vergleich": [
+    {"name": "Sonne + Speicher übernommen", "wunsch": {"source": "nur_sonne", "storage_release": true}, "echo": {"source": "nur_sonne", "storage_release": true}, "uebernommen": true},
+    {"name": "Nur Sonne übernommen (Freigabe ohne Wahl = false)", "wunsch": {"source": "nur_sonne"}, "echo": {"source": "nur_sonne", "storage_release": false}, "uebernommen": true},
+    {"name": "Speicherfreigabe noch an", "wunsch": {"source": "nur_sonne", "storage_release": false}, "echo": {"source": "nur_sonne", "storage_release": true}, "uebernommen": false},
+    {"name": "Mindestleistung übernommen", "wunsch": {"source": "sonne_zuerst", "min_kw": 4.2}, "echo": {"source": "sonne_zuerst", "min_kw": 4.2, "storage_release": false}, "uebernommen": true},
+    {"name": "Mindestleistung fehlt im Echo", "wunsch": {"source": "sonne_zuerst", "min_kw": 4.2}, "echo": {"source": "sonne_zuerst", "storage_release": false}, "uebernommen": false},
+    {"name": "Mindestleistung ohne eigene Wahl ist egal", "wunsch": {"source": "sonne_zuerst"}, "echo": {"source": "sonne_zuerst", "min_kw": 3, "storage_release": false}, "uebernommen": true},
+    {"name": "andere Bahn", "wunsch": {"source": "schnell"}, "echo": {"source": "nur_sonne", "storage_release": false}, "uebernommen": false},
+    {"name": "ältere Box meldet nichts", "wunsch": {"source": "nur_sonne"}, "echo": null, "uebernommen": null},
+    {"name": "keine Wahl je Säule gespeichert", "wunsch": null, "echo": {"source": "nur_sonne", "storage_release": false}, "uebernommen": null},
+    {"name": "unbekanntes Wort im Echo wird verworfen", "wunsch": {"source": "nur_sonne"}, "echo": {"source": "turbo", "storage_release": false}, "uebernommen": null}
+  ],
+
+  "portal": [
+    {"name": "Echo passt und ist jünger als das Senden", "uebernommen": true, "gemeldet_nach_senden": true, "schritt": "bestaetigt"},
+    {"name": "Echo passt, ist aber älter als das Senden", "uebernommen": true, "gemeldet_nach_senden": false, "schritt": "wartet"},
+    {"name": "Echo weicht ab, kurz nach dem Senden", "uebernommen": false, "gemeldet_nach_senden": true, "sekunden_seit_senden": 20, "schritt": "wartet"},
+    {"name": "Echo weicht auch nach zwei Minuten ab", "uebernommen": false, "gemeldet_nach_senden": true, "sekunden_seit_senden": 150, "schritt": "abweichend"},
+    {"name": "ältere Box", "uebernommen": null, "gemeldet_nach_senden": true, "schritt": "unbekannt"}
+  ]
+}

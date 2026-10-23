@@ -176,6 +176,48 @@ class ChargerApiTest {
         } finally { deleteSite(site); }
     }
 
+    /**
+     * Konzept k1 Regel 4 („Gewählt ist nicht geladen"): die Box meldet je Säule
+     * die Bahn, die sie fährt; die API vergleicht sie mit der Wahl je Säule und
+     * sagt dem Portal „übernommen", „weicht ab" oder - bei einer älteren Box -
+     * „unbekannt", nie eine erfundene Bestätigung.
+     */
+    @Test
+    void theBoxEchoesTheLaneAndTheViewComparesItWithTheWish() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Ladepark-Echo");
+        try {
+            UUID device = claim(customer, site, "edge-ladepark-echo");
+            postJson("/api/v1/sites/" + site + "/charging-config/charge-points", customer,
+                    Map.of("chargePointId", "saeule-1"));
+            putJson("/api/v1/sites/" + site + "/charging-config/charge-points/saeule-1/source", customer,
+                    Map.of("source", "sonne_zuerst", "minKw", 4.2));
+
+            // 1 · Eine ältere Box meldet keine Bahn: unbekannt, nicht übernommen.
+            heartbeat(site, device, oneStation());
+            JsonNode alt = getJson("/api/v1/sites/" + site + "/chargers", customer).get("chargers").get(0);
+            assertThat(alt.get("quelle").isNull()).isTrue();
+            assertThat(alt.get("quelleUebernommen").isNull()).isTrue();
+
+            // 2 · Die Box fährt noch die alte Bahn: weicht ab.
+            heartbeat(site, device, oneStation().replace("\"id\":\"saeule-1\",",
+                    "\"id\":\"saeule-1\",\"source\":\"nur_sonne\",\"storage_release\":false,"));
+            JsonNode vorher = getJson("/api/v1/sites/" + site + "/chargers", customer).get("chargers").get(0);
+            assertThat(vorher.get("quelle").get("source").asText()).isEqualTo("nur_sonne");
+            assertThat(vorher.get("quelleUebernommen").asBoolean()).isFalse();
+
+            // 3 · Die Box hat übernommen - Bahn und Mindestleistung.
+            heartbeat(site, device, oneStation().replace("\"id\":\"saeule-1\",",
+                    "\"id\":\"saeule-1\",\"source\":\"sonne_zuerst\",\"min_kw\":4.2,\"storage_release\":false,"));
+            JsonNode danach = getJson("/api/v1/sites/" + site + "/chargers", customer).get("chargers").get(0);
+            assertThat(danach.get("quelle").get("minKw").asDouble()).isEqualTo(4.2);
+            assertThat(danach.get("quelle").get("storageRelease").asBoolean()).isFalse();
+            assertThat(danach.get("quelleUebernommen").asBoolean()).isTrue();
+        } finally {
+            deleteSite(site);
+        }
+    }
+
     @Test
     void theChargePointsReachTheCloudAndBecomeComponentsWithoutASingleClick() throws Exception {
         String customer = token("demo", "demo");

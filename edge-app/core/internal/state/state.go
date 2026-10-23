@@ -1038,8 +1038,16 @@ type OcppCharger struct {
 	// Connection is WHERE this station hangs: "haus" (behind the house
 	// connection) or "eigen" (its own grid connection). Always one of the two -
 	// the resolved value, never the raw absence.
-	Connection string          `json:"connection,omitempty"`
-	Connectors []OcppConnector `json:"connectors,omitempty"`
+	Connection string `json:"connection,omitempty"`
+	// Source / MinKw / StorageRelease are the lane this box APPLIES to the
+	// station (Konzept k1 „Gewählt ist nicht geladen", Regel 4): its own choice
+	// or the site's, resolved like the decision (an unknown word runs as
+	// "schnell"). StorageRelease is only ever true next to
+	// "nur_sonne", MinKw only next to "sonne_zuerst" (0 = the frame's minimum).
+	Source         string          `json:"source,omitempty"`
+	MinKw          float64         `json:"min_kw,omitempty"`
+	StorageRelease bool            `json:"storage_release,omitempty"`
+	Connectors     []OcppConnector `json:"connectors,omitempty"`
 }
 
 // OcppConnector is one plug.

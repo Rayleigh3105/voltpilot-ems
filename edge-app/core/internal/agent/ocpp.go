@@ -1051,6 +1051,15 @@ func (a *Agent) ocppInfo() *state.OcppInfo {
 			// der Herzschlag sollen nicht beide dieselbe Vorgabe-Regel führen.
 			Connection: c.ConnectionOrHaus(),
 		}
+		// Konzept k1 Regel 4: die Bahn, die die Box für diese Säule FÄHRT -
+		// aufgelöst wie die Entscheidung (eigene Wahl, sonst die der Anlage,
+		// ein unbekanntes Wort als „schnell"; lastmgmt.sessionPolicy).
+		lane := lastmgmt.NormalizePolicy(lastmgmt.SurplusPolicy(c.SourceOrSite(string(set.SurplusPolicy))))
+		oc.Source = string(lane)
+		if lane == lastmgmt.PolicySolarFirst {
+			oc.MinKw = c.MinKw
+		}
+		oc.StorageRelease = lane == lastmgmt.PolicySolarOnly && c.StorageRelease
 		if !c.LastSeen.IsZero() {
 			oc.LastSeenMs = c.LastSeen.UnixMilli()
 		}
