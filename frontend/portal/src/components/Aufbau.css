@@ -553,12 +553,9 @@
   min-height: 38px;
   color: var(--vp-text-gray);
 }
-/* Eine Datenquelle der Box (UEMS AP-06): ein Weg, kein Gerät — ruhiger als eine Gerätezeile. */
-.vp-auf-t-zeile.is-quelle {
-  min-height: 42px;
-}
-.vp-auf-t-zeile.is-quelle .vp-auf-t-titel {
-  font-weight: var(--vp-weight-medium, 500);
+/* Ein Gateway (GE-1): ein Kasten ohne eigene Seite — die Geräte dahinter stehen eine Ebene tiefer. */
+.vp-auf-t-zeile.is-gateway {
+  min-height: 46px;
 }
 .vp-auf-t-zeile.is-geraet:not(.is-lesend) {
   cursor: pointer;
@@ -566,7 +563,8 @@
 .vp-auf-t-zeile.is-geraet:not(.is-lesend):hover {
   background: color-mix(in srgb, var(--vp-bg-light) 70%, var(--vp-surface));
 }
-.vp-auf-t-zeile.is-fund {
+.vp-auf-t-zeile.is-fund,
+.vp-auf-t-zeile.is-anschluss {
   background: repeating-linear-gradient(
     135deg,
     var(--vp-surface) 0 9px,
@@ -717,6 +715,18 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
   min-width: 0;
   font-size: var(--vp-text-meta);
   color: var(--vp-text-gray);
+}
+/* GE-1: die Anbindung eines Geräts („Modbus TCP · 192.168.4.165:503") — rückt als Ganzes in die nächste Zeile,
+   wenn sie neben dem Modell keinen Platz hat. */
+.vp-auf-t-anbindung {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+.vp-auf-t-anbindung > svg {
+  flex: none;
 }
 .vp-auf-t-text small .is-warn,
 .vp-auf-t-name .is-warn {
@@ -899,6 +909,15 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
   }
+  /* GE-1: die zweite Zeile trägt Modell UND Weg („WAGO PFC200 · Modbus TCP · 192.168.4.165:503") — am Telefon
+     bricht sie um wie der Titel, statt abgeschnitten über den Rand zu laufen. */
+  .vp-auf-t-text small .vp-auf-t-kuerze {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
   .vp-auf-t-auf-platz {
     display: none;
   }
@@ -946,18 +965,24 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
   .vp-auf-t-zeile.is-teil > .vp-auf-t-name {
     padding-left: 30px;
   }
+  /* GE-1: die Geräte hinter einem Gateway rücken auch am Telefon ein — sonst stünden sie wie seine Geschwister da. */
+  .vp-auf-t-zeile.is-geraet.is-e3 > .vp-auf-t-name {
+    padding-left: 22px;
+  }
   .vp-auf-t-zeile.is-teil > .vp-auf-t-wert {
     align-self: center;
     padding: 0;
   }
   .vp-auf-t-zeile.is-anlage,
   .vp-auf-t-zeile.is-box,
-  .vp-auf-t-zeile.is-fund {
+  .vp-auf-t-zeile.is-fund,
+  .vp-auf-t-zeile.is-anschluss {
     grid-template-areas: 'name aktion';
   }
   .vp-auf-t-zeile.is-anlage > .vp-auf-t-summe,
   .vp-auf-t-zeile.is-box > .vp-auf-t-zustand,
-  .vp-auf-t-zeile.is-fund > .vp-auf-t-zustand {
+  .vp-auf-t-zeile.is-fund > .vp-auf-t-zustand,
+  .vp-auf-t-zeile.is-anschluss > .vp-auf-t-zustand {
     display: none;
   }
   .vp-auf-t-zeile > .vp-auf-t-aktion,

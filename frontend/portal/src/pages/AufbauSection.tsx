@@ -17,6 +17,7 @@ import {
   type SiteTopology,
   type StandorteAmStichtag,
   type UemsDatenquelle,
+  type UemsGeraet,
 } from '../api';
 import {
   CONTROL_BADGE,
@@ -165,6 +166,9 @@ export function AufbauSection({
   // Die Datenquellen der Anlagen im Baum (UEMS AP-06): WAS jede Box liest. Fail-soft — ohne sie fehlen genau
   // diese Zeilen, nie der Baum.
   const [datenquellen, setDatenquellen] = useState<UemsDatenquelle[] | null>(null);
+  // Die UEMS-Geräte je Anlage: ihr `data_source_id` ist der einzige Verweis Weg → Gerät (GE-1). Ohne Antwort
+  // bleibt die Zuordnung einer Anlage unbekannt (null) — dann steht dort keine Anbindung, nie eine geratene.
+  const [uemsGeraete, setUemsGeraete] = useState<Record<string, UemsGeraet[] | null>>({});
   const [overview, setOverview] = useState<Overview | null>(null);
   const [error, setError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -255,6 +259,10 @@ export function AufbauSection({
       (listen) => active && setDatenquellen(listen.flat()),
       () => active && setDatenquellen(null),
     );
+    Promise.all(ids.map((id) => api.uemsGeraete(id).then((a) => a.geraete, () => null))).then(
+      (listen) => active && setUemsGeraete(Object.fromEntries(ids.map((id, i) => [id, listen[i]]))),
+      () => active && setUemsGeraete({}),
+    );
     return () => {
       active = false;
     };
@@ -322,9 +330,10 @@ export function AufbauSection({
         overview: overview?.sites ?? null,
         nachbarKarten,
         datenquellen,
+        uemsGeraete,
         now,
       }),
-    [site.id, site.name, standorte, devices, devicesFetchedAt, karten, data, charging, overview, nachbarKarten, datenquellen, now],
+    [site.id, site.name, standorte, devices, devicesFetchedAt, karten, data, charging, overview, nachbarKarten, datenquellen, uemsGeraete, now],
   );
 
   const satz = useMemo(() => (karten ? zentraleSatz(karten) : null), [karten]);
@@ -692,6 +701,7 @@ export function AufbauSection({
           onFilter={setFilter}
           onAnlageUmschalten={(a) => umschalten(a, a.id, a.aktuell)}
           onBoxUmschalten={(b) => umschalten(null, b.id, true)}
+          onGatewayUmschalten={(id) => umschalten(null, id, true)}
           onGeraetUmschalten={(id) =>
             setGeraetOffen((alt) => {
               const neu = new Set(alt);
@@ -1061,6 +1071,8 @@ function Kurzblick({
     <div className="vp-auf-kb">
       <p className="vp-auf-kb-sub">
         {geraet.unterzeile}
+        {/* GE-1: der Weg steht am Gerät — der Kurzblick nennt ihn und die Box, die ihn liest. */}
+        {geraet.anbindungText ? ` · ${geraet.anbindungText}` : ''}
         {box ? ` · an ${box.name}` : ''}
       </p>
       <p className="vp-auf-kb-zustand">

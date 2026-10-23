@@ -21,10 +21,22 @@
  * einer geratenen Box.
  *
  * Was eine Box LIEST, weiß das Portal dagegen sicher: die Datenquellen (UEMS
- * AP-06) tragen ihre zuständige Box. Sie stehen deshalb als eigene Zeilen unter
- * ihrer Box (`AufbauBox.quellen`) — so zeigt der EINE Aufbau bei mehreren Boxen,
- * welche Box welchen Zähler-Weg liest, statt „0 Geräte" an einer Box, die längst
- * Daten liefert.
+ * AP-06) tragen ihre zuständige Box. Konzept „Ein Gerät, ein Eintrag" (GE-1,
+ * entschieden 23.10.2026): **je Kasten ein Eintrag.** Eine Datenquelle ist der
+ * WEG zu einem Gerät, kein Kasten — sie steht nicht als eigene Zeile da:
+ *
+ * - **1 : 1** — der Weg trägt genau ein Gerät: er ist dessen Anbindung
+ *   (`AufbauGeraet.anbindungen`, zweite Textzeile), und das Gerät steht unter
+ *   der Box, die den Weg liest.
+ * - **1 : N** — ein Gateway: eigene Zeile, die Geräte darunter (`AufbauWeg`).
+ * - **1 : 0** — angefangen, noch kein Gerät: „Anschluss ohne Gerät" (`AufbauWeg`),
+ *   auch ohne zuständige Box.
+ *
+ * Weg und Gerät verbinden NUR gespeicherte Verweise: `geraet.data_source_id` am
+ * UEMS-Gerät, das eine Komponente des Aufbau-Geräts speist (`GET …/geraete`).
+ * Gleiche Adresse, gleicher Port oder gleicher Pin beweisen nichts (AGENTS.md
+ * „Verträge und Identitäten") — was sich so nicht zuordnen lässt, bleibt als
+ * „Anschluss ohne Gerät" sichtbar. Ein gestörter Weg macht sein Gerät gestört.
  */
 import type { IconName } from '../designsystem/components/core/Icon';
 import type {
@@ -34,8 +46,9 @@ import type {
   StandortAdresse,
   StandorteAmStichtag,
   UemsDatenquelle,
+  UemsGeraet,
 } from './api';
-import { quellZeile } from './boxUebersicht';
+import { protokollName, quellWeg, quellZeile } from './boxUebersicht';
 import { technicalDeviceName } from './entityLabel';
 import { siteLiveFresh } from './fleet';
 import { fmtNum } from './format';
@@ -95,22 +108,54 @@ export interface AufbauGeraet {
   kategorie: AufbauKategorie;
   icon: IconName;
   karte: GeraeteKarte;
+  /**
+   * Die Wege, über die eine Box dieses Gerät liest (GE-1) — nur aus gespeicherten Verweisen, der erste nach
+   * Kennzeichen zuerst; leer = keiner bekannt (Katalog-Gerät ohne Weg, oder `GET …/geraete` nicht geladen).
+   */
+  anbindungen: AufbauAnbindung[];
+  /** Was unter dem Modell steht: „Modbus TCP · 192.168.4.165:503“, hinter einem Gateway „Geräte-ID 2“; null = nichts. */
+  anbindungText: string | null;
+  /** Das Gateway, hinter dem es antwortet (1 : N); null = keins. */
+  gateway: { id: string; titel: string } | null;
 }
 
 /**
- * Eine DATENQUELLE im Baum (UEMS AP-06): ein Weg, den diese Box liest — Adresse plus Protokoll, hinter dem ein
- * oder mehrere Zähler antworten. Mit ihr zeigt der Aufbau bei mehreren Boxen, WELCHE Box WAS liest; die
- * Zuständigkeit ist am Server je Quelle geführt (`zustaendige_box`), nicht geraten.
+ * Die ANBINDUNG eines Geräts (Konzept „Ein Gerät, ein Eintrag", GE-1): der Weg — eine Datenquelle aus UEMS
+ * AP-06 —, über den eine Box es liest. Kein eigener Kasten, sondern Teil dessen, an dem er endet.
  */
-export interface AufbauQuelle {
+export interface AufbauAnbindung {
+  quelleId: string;
+  /** „DQ-1“ — klein, zum Suchen und für den Support (GD-5 A). */
+  kennzeichen: string;
+  /** Protokoll und Adresse: „Modbus TCP · 192.168.4.165:503“. */
+  weg: string;
+  /** Die Box, die den Weg heute liest; `name` null = sie hat keinen mehr. null = keine Box zuständig. */
+  box: { id: string; name: string | null } | null;
+  /**
+   * Meldet die zuständige Box, dass über diesen Weg nichts kommt: das Wort und der Grund. null = keine Störung
+   * gemeldet — auch „Box meldet noch nicht je Quelle" ist keine (`boxUebersicht.quellZeile`).
+   */
+  stoerung: { wort: string; grund: string | null } | null;
+}
+
+/**
+ * Ein Weg mit eigener Zeile (GE-1): ein GATEWAY, hinter dem mehrere Geräte antworten (1 : N, GD-3 A — das
+ * Gateway ist ein Kasten), oder ein ANSCHLUSS OHNE GERÄT (1 : 0, angefangen). Die Zuständigkeit ist am Server
+ * je Datenquelle geführt (`zustaendige_box`), nie geraten.
+ */
+export interface AufbauWeg {
   id: string;
-  /** „DQ-3 · Unterzähler Halle 1“ bzw. „DQ-3 · Modbus TCP 192.168.10.31“. */
+  kennzeichen: string;
+  art: 'gateway' | 'offen';
+  /** Gateway: sein Name, sonst „Gateway“; offen: „Anschluss ohne Gerät“. */
   titel: string;
-  /** „Modbus TCP · 192.168.10.31 · Geräte-IDs 1–5“. */
+  /** „Modbus TCP · 192.168.10.31:502 · Geräte-IDs 1–4 · Kennung DQ-3“. */
   weg: string;
   ton: GeraetTon;
   zustandWort: string;
   zustandZeit: string | null;
+  /** Nur am Gateway: die Geräte dahinter — dieselben Objekte, die in `AufbauBox.geraete` gezählt werden. */
+  geraete: AufbauGeraet[];
 }
 
 export interface AufbauBox {
@@ -125,9 +170,10 @@ export interface AufbauBox {
   /** Nur ab zwei Boxen: die Box, an die die Geräteliste der Anlage geht. */
   fuehrend: boolean;
   href: string;
+  /** Alle Geräte unter dieser Box — auch die hinter einem Gateway (sie zählen als Geräte). */
   geraete: AufbauGeraet[];
-  /** Die Datenquellen, für die diese Box heute zuständig ist; leer = keine (oder unbekannt). */
-  quellen: AufbauQuelle[];
+  /** Gateways und Anschlüsse ohne Gerät unter dieser Box; leer = keine (oder unbekannt). */
+  wege: AufbauWeg[];
 }
 
 /** Wie aktuell die Live-Werte einer Anlage sind. */
@@ -143,6 +189,8 @@ export interface AufbauAnlage {
   boxen: AufbauBox[];
   /** Geräte, deren Box das Portal nicht sicher kennt (siehe Modulkopf). */
   ohneBox: AufbauGeraet[];
+  /** Gateways und Anschlüsse ohne Gerät an einer Anlage ohne Box. */
+  wegeOhneBox: AufbauWeg[];
   /** Angelegte Geräte (ohne Funde); null = für diese Anlage noch nicht geladen. */
   geraeteZahl: number | null;
 }
@@ -186,6 +234,12 @@ export interface AufbauEingabe {
   nachbarKarten?: Record<string, GeraeteKarte[] | undefined>;
   /** Die Datenquellen der Anlagen im Baum (UEMS AP-06); null/fehlend = unbekannt, dann trägt keine Box welche. */
   datenquellen?: readonly UemsDatenquelle[] | null;
+  /**
+   * Die UEMS-Geräte je Anlage (`GET …/geraete`): ihr `data_source_id` ist der einzige Verweis Weg → Gerät
+   * (GE-1). Fehlt eine Anlage oder ist sie null, ist die Zuordnung unbekannt — dann stehen dort weder
+   * Anbindungen noch Gateways noch Anschlüsse, nie ein geratener „Anschluss ohne Gerät".
+   */
+  uemsGeraete?: Readonly<Record<string, readonly UemsGeraet[] | null | undefined>>;
   now: number;
 }
 
@@ -381,6 +435,9 @@ export function aufbauGeraet(
     kategorie: kachel.kategorie,
     icon: kachel.icon,
     karte,
+    anbindungen: [],
+    anbindungText: null,
+    gateway: null,
   };
 }
 
@@ -411,46 +468,162 @@ function boxName(box: Device): string {
 }
 
 /**
- * Die Geräte einer Anlage auf ihre Boxen verteilen (Regeln im Modulkopf).
- * Gibt die Geräte je Box-Id und die ohne sichere Box zurück.
+ * Wohin ein Kasten gehört (Regeln im Modulkopf): unter die Box DIESER Anlage, die seinen Weg liest (GE-1, Regel
+ * 6). Liest ihn keine von ihnen, gilt die frühere Regel — eine Box: diese; mehrere: eine Säule unter ihre eigene,
+ * alles andere unter die führende, ein Fund unter keine geratene. null = ohne sichere Box.
  */
-function verteilen(
-  geraete: AufbauGeraet[],
-  boxen: Device[],
-  registryBoxId: string | null,
-  charging: SiteCharging | null,
-): { jeBox: Map<string, AufbauGeraet[]>; ohneBox: AufbauGeraet[] } {
-  const jeBox = new Map<string, AufbauGeraet[]>(boxen.map((b) => [b.id, []]));
-  const ohneBox: AufbauGeraet[] = [];
-  const einzige = boxen.length === 1 ? boxen[0].id : null;
-  const fuehrende = boxen.some((b) => b.id === registryBoxId) ? registryBoxId : null;
-  for (const g of geraete) {
-    let ziel: string | null = einzige;
-    if (!ziel && boxen.length > 1) {
-      if (g.art === 'ladepunkt') {
-        const saeule = (charging?.chargers ?? []).find(
-          (c) => chargerGeraetId(c.chargePointId) === g.id,
-        );
-        ziel = saeule && jeBox.has(saeule.deviceId) ? saeule.deviceId : fuehrende;
-      } else if (g.art !== 'neu') {
-        ziel = fuehrende;
-      }
-    }
-    if (ziel && jeBox.has(ziel)) jeBox.get(ziel)!.push(g);
-    else ohneBox.push(g);
-  }
-  return { jeBox, ohneBox };
+function zielBox(
+  art: AufbauGeraet['art'],
+  lesend: string | null,
+  saeule: string | null,
+  boxen: readonly Device[],
+  fuehrende: string | null,
+): string | null {
+  const hier = (box: string | null): box is string => box != null && boxen.some((b) => b.id === box);
+  if (hier(lesend)) return lesend;
+  if (boxen.length === 1) return boxen[0].id;
+  if (boxen.length === 0 || art === 'neu') return null;
+  if (art === 'ladepunkt' && hier(saeule)) return saeule;
+  return fuehrende;
 }
 
-/** Die Datenquellen, für die eine Box heute zuständig ist — archivierte zählen nicht. */
-function quellenDerBox(datenquellen: readonly UemsDatenquelle[] | null | undefined, boxId: string): AufbauQuelle[] {
-  return (datenquellen ?? [])
-    .filter((q) => q.archiviert_am == null && q.zustaendige_box?.id === boxId)
-    .map((q) => {
-      const z = quellZeile(q);
-      return { id: q.id, titel: z.titel, weg: z.weg, ton: z.ton, zustandWort: z.zustand, zustandZeit: z.seit };
-    })
-    .sort((a, b) => a.titel.localeCompare(b.titel, 'de', { numeric: true }));
+const nachKennzeichen = (a: { kennzeichen: string }, b: { kennzeichen: string }) =>
+  a.kennzeichen.localeCompare(b.kennzeichen, 'de', { numeric: true });
+
+/** Ein gespeicherter Verweis Gerät → Weg: das UEMS-Gerät, dessen `data_source_id` auf die Datenquelle zeigt. */
+interface Verweis {
+  quelle: UemsDatenquelle;
+  uems: UemsGeraet;
+}
+
+/** Die Säule hinter einer Ladepunkt-Zeile; null = keine (oder kein Ladepunkt). */
+function saeuleVon(g: AufbauGeraet, charging: SiteCharging | null): ChargePoint | null {
+  if (g.art !== 'ladepunkt') return null;
+  return (charging?.chargers ?? []).find((c) => chargerGeraetId(c.chargePointId) === g.id) ?? null;
+}
+
+/**
+ * Weg → Gerät NUR über gespeicherte Verweise: eine Datenquelle gehört zu einem Aufbau-Gerät, wenn ein eingebautes
+ * UEMS-Gerät mit dieser `data_source_id` eine seiner Komponenten speist (bis auf Weiteres). Adresse, Port und Pin
+ * kommen hier gar nicht vor — dieselbe Verbindung beweist keine Gerätegleichheit (AGENTS.md „Verträge und
+ * Identitäten"). Gibt je Aufbau-Gerät seine Verweise zurück, nach Kennzeichen.
+ */
+function verweise(
+  geraete: readonly AufbauGeraet[],
+  quellen: readonly UemsDatenquelle[],
+  uems: readonly UemsGeraet[],
+  charging: SiteCharging | null,
+  now: number,
+): Map<string, Verweis[]> {
+  const quelle = new Map(quellen.map((q) => [q.id, q]));
+  const laeuft = (ende: string | null | undefined) => ende == null || Date.parse(ende) > now;
+  const jeEntitaet = new Map<string, Verweis[]>();
+  for (const u of uems) {
+    const q = u.data_source_id ? quelle.get(u.data_source_id) : undefined;
+    if (!q || !laeuft(u.ausgebaut_am)) continue;
+    for (const k of u.komponenten ?? []) {
+      if (!laeuft(k.gueltig_bis)) continue;
+      jeEntitaet.set(k.entity_id, [...(jeEntitaet.get(k.entity_id) ?? []), { quelle: q, uems: u }]);
+    }
+  }
+  const out = new Map<string, Verweis[]>();
+  for (const g of geraete) {
+    if (g.art !== 'geraet' && g.art !== 'ladepunkt') continue;
+    const entitaeten = [...g.karte.komponenten.map((c) => c.entityId), saeuleVon(g, charging)?.entityId];
+    const je = new Map<string, Verweis>();
+    for (const e of entitaeten) {
+      for (const v of (e && jeEntitaet.get(e)) || []) if (!je.has(v.quelle.id)) je.set(v.quelle.id, v);
+    }
+    if (je.size > 0) out.set(g.id, [...je.values()].sort((a, b) => nachKennzeichen(a.quelle, b.quelle)));
+  }
+  return out;
+}
+
+/** Der Name einer Box für einen Satz: aus der Boxenliste, sonst wie der Server sie nennt; null = keiner. */
+function boxNameVon(boxId: string, boxen: readonly Device[], serverName: string | null): string | null {
+  const d = boxen.find((b) => b.id === boxId);
+  return d ? boxName(d) : serverName?.trim() || null;
+}
+
+function anbindungVon(q: UemsDatenquelle, boxen: readonly Device[]): AufbauAnbindung {
+  const zust = q.zustaendige_box;
+  let stoerung: AufbauAnbindung['stoerung'] = null;
+  if (q.rueckmeldung?.zustand === 'liefert_nicht') {
+    const z = quellZeile(q);
+    stoerung = { wort: z.zustand, grund: [z.fehlerklasse, z.seit].filter(Boolean).join(' · ') || null };
+  }
+  return {
+    quelleId: q.id,
+    kennzeichen: q.kennzeichen,
+    // GD-5 A: unter dem Gerätenamen nur Protokoll und Adresse — die Geräte-ID ist hier kein Kundenwort.
+    weg: [protokollName(q.protokoll), q.adresse].filter(Boolean).join(' · '),
+    box: zust ? { id: zust.id, name: boxNameVon(zust.id, boxen, zust.name) } : null,
+    stoerung,
+  };
+}
+
+/**
+ * Wer liest, als Satzteil — nur, wenn es NICHT die Box ist, unter der der Eintrag steht: „gelesen von Box Halle 2".
+ * Ohne zuständige Box „von keiner Box gelesen" (nur wo kein Zustand es schon sagt).
+ */
+function leseHinweis(box: AufbauAnbindung['box'], ziel: string | null, ohneBoxSagen: boolean): string | null {
+  if (!box) return ohneBoxSagen ? 'von keiner Box gelesen' : null;
+  return box.id !== ziel && box.name ? `gelesen von ${box.name}` : null;
+}
+
+/** Ein eigener Name der Datenquelle — nie das Kennzeichen noch einmal. */
+function eigenerName(q: UemsDatenquelle): string | null {
+  const n = q.name?.trim();
+  return n && n !== q.kennzeichen ? n : null;
+}
+
+/** Der Zustand einer Weg-Zeile: was die Box zu ihm meldet; ein Anschluss ohne Gerät ist „angefangen". */
+function wegZustand(q: UemsDatenquelle, art: AufbauWeg['art']): Pick<AufbauWeg, 'ton' | 'zustandWort' | 'zustandZeit'> {
+  const z = quellZeile(q);
+  const r = q.rueckmeldung?.zustand;
+  if (r === 'liefert') return { ton: z.ton, zustandWort: z.zustand, zustandZeit: z.seit };
+  if (r === 'liefert_nicht') {
+    return { ton: z.ton, zustandWort: z.zustand, zustandZeit: [z.fehlerklasse, z.seit].filter(Boolean).join(' · ') || null };
+  }
+  const gelesen = q.zustaendige_box != null;
+  if (art === 'offen') return { ton: 'off', zustandWort: 'Angefangen', zustandZeit: gelesen ? null : 'von keiner Box gelesen' };
+  return gelesen
+    ? { ton: z.ton, zustandWort: z.zustand, zustandZeit: null }
+    : { ton: 'off', zustandWort: 'Von keiner Box gelesen', zustandZeit: null };
+}
+
+/**
+ * EIN Zustand je Gerät (GE-1, Regel 5): der schlechtere aus Gerätewerten und Box-Rückmeldung zu seinem Weg, mit
+ * Grund. Eine gemeldete Störung ist immer „Achtung" und gewinnt — auch gegen eigene Achtung der Werte, weil sie
+ * die Ursache nennt. „Box meldet noch nicht je Quelle" ist keine Störung und ändert nichts.
+ */
+function mitWegZustand(g: AufbauGeraet, anbindungen: readonly AufbauAnbindung[]): AufbauGeraet {
+  const s = anbindungen.find((a) => a.stoerung)?.stoerung;
+  if (!s) return g;
+  return {
+    ...g,
+    ton: 'warn',
+    zustand: s.grund ? `${s.wort} · ${s.grund}` : s.wort,
+    zustandWort: s.wort,
+    zustandZeit: s.grund,
+  };
+}
+
+/** Ein Weg mit eigener Zeile unter seinem Ziel (Gateway oder Anschluss ohne Gerät). */
+function wegZeile(q: UemsDatenquelle, art: AufbauWeg['art'], geraete: AufbauGeraet[], ziel: string | null, boxen: readonly Device[]): AufbauWeg {
+  const name = eigenerName(q);
+  const box = anbindungVon(q, boxen).box;
+  return {
+    id: q.id,
+    kennzeichen: q.kennzeichen,
+    art,
+    titel: art === 'gateway' ? name ?? 'Gateway' : 'Anschluss ohne Gerät',
+    weg: [art === 'offen' ? name : null, quellWeg(q), `Kennung ${q.kennzeichen}`, leseHinweis(box, ziel, false)]
+      .filter(Boolean)
+      .join(' · '),
+    ...wegZustand(q, art),
+    geraete,
+  };
 }
 
 function anlageKnoten(
@@ -470,17 +643,94 @@ function anlageKnoten(
   const boxenSortiert = [...boxenRoh].sort(
     (a, b) => Number(b.id === fuehrendeId) - Number(a.id === fuehrendeId),
   );
+  const fuehrende = boxenSortiert.some((b) => b.id === registryBoxId) ? registryBoxId : null;
+  const charging = aktuell ? input.charging : null;
+  const alleBoxen = input.devices ?? [];
   const karten = aktuell ? input.karten : input.nachbarKarten?.[id] ?? null;
   const kontext = aktuell ? { localSetup: input.localSetup, charging: input.charging } : {};
-  const geraete = (karten ?? [])
+  const roh = (karten ?? [])
     .filter((k) => k.art !== 'box')
     .map((k) => aufbauGeraet(k, kontext));
-  const { jeBox, ohneBox } = verteilen(
-    geraete,
-    boxenSortiert,
-    registryBoxId,
-    aktuell ? input.charging : null,
-  );
+
+  // Die Wege dieser Anlage — nur, wenn Geräte UND Verweise bekannt sind: sonst wäre jeder Weg ein geratener
+  // „Anschluss ohne Gerät".
+  const uems = input.uemsGeraete?.[id];
+  const quellen =
+    karten != null && uems != null
+      ? (input.datenquellen ?? []).filter((q) => q.anlage === id && q.archiviert_am == null).sort(nachKennzeichen)
+      : [];
+  const zuGeraet = verweise(roh, quellen, uems ?? [], charging, input.now);
+  const hinter = new Map<string, AufbauGeraet[]>(quellen.map((q) => [q.id, []]));
+  for (const g of roh) for (const v of zuGeraet.get(g.id) ?? []) hinter.get(v.quelle.id)?.push(g);
+  // 1 : N — ein Gerät steht hinter höchstens EINEM Gateway, dem ersten nach Kennzeichen.
+  const gatewayVon = new Map<string, UemsDatenquelle>();
+  for (const q of quellen) {
+    const dahinter = hinter.get(q.id) ?? [];
+    if (dahinter.length > 1) for (const g of dahinter) if (!gatewayVon.has(g.id)) gatewayVon.set(g.id, q);
+  }
+  const wegZiel = (q: UemsDatenquelle) =>
+    zielBox('geraet', q.zustaendige_box?.id ?? null, null, boxenSortiert, fuehrende);
+
+  const platziert = roh.map((g0): { g: AufbauGeraet; ziel: string | null } => {
+    const vs = zuGeraet.get(g0.id) ?? [];
+    const saeule = saeuleVon(g0, charging)?.deviceId ?? null;
+    if (vs.length === 0) return { g: g0, ziel: zielBox(g0.art, null, saeule, boxenSortiert, fuehrende) };
+    const anbindungen = vs.map((v) => anbindungVon(v.quelle, alleBoxen));
+    const gw = gatewayVon.get(g0.id);
+    const ziel = gw ? wegZiel(gw) : zielBox(g0.art, anbindungen[0].box?.id ?? null, saeule, boxenSortiert, fuehrende);
+    // Das Modell vom UEMS-Gerät, wo die Box keins meldet („WAGO PFC200" statt der Art noch einmal).
+    const modell = vs
+      .map((v) => technicalDeviceName({ brand: v.uems.hersteller ?? null, model: v.uems.typ ?? null }))
+      .find((m): m is string => Boolean(m));
+    const unterzeile = g0.unterzeile === g0.karte.untertitel && modell ? modell : g0.unterzeile;
+    let anbindungText: string | null;
+    if (gw) {
+      const nr = vs.find((v) => v.quelle.id === gw.id)?.uems.geraete_id;
+      anbindungText = nr != null ? `Geräte-ID ${nr}` : null;
+    } else {
+      const weitere = vs.length - 1;
+      anbindungText = [
+        anbindungen[0].weg,
+        leseHinweis(anbindungen[0].box, ziel, true),
+        weitere > 0 ? `+${weitere} ${weitere === 1 ? 'weitere Anbindung' : 'weitere Anbindungen'}` : null,
+      ]
+        .filter(Boolean)
+        .join(' · ');
+    }
+    const g = mitWegZustand(
+      {
+        ...g0,
+        unterzeile,
+        artWort: gw ? `${g0.artWort} · über das Gateway` : g0.artWort,
+        anbindungen,
+        anbindungText,
+        gateway: gw ? { id: gw.id, titel: eigenerName(gw) ?? 'Gateway' } : null,
+      },
+      anbindungen,
+    );
+    return { g, ziel };
+  });
+  const geraete = platziert.map((x) => x.g);
+
+  const jeBox = new Map<string, AufbauGeraet[]>(boxenSortiert.map((b) => [b.id, []]));
+  const ohneBox: AufbauGeraet[] = [];
+  for (const { g, ziel } of platziert) {
+    if (ziel != null && jeBox.has(ziel)) jeBox.get(ziel)!.push(g);
+    else ohneBox.push(g);
+  }
+  const wegeJeBox = new Map<string, AufbauWeg[]>(boxenSortiert.map((b) => [b.id, []]));
+  const wegeOhneBox: AufbauWeg[] = [];
+  for (const q of quellen) {
+    const kinder = geraete.filter((g) => g.gateway?.id === q.id);
+    // 1 : 1 steht am Gerät; ein Weg, dessen Geräte alle schon hinter einem anderen Gateway stehen, auch.
+    const art: AufbauWeg['art'] | null = kinder.length > 0 ? 'gateway' : (hinter.get(q.id) ?? []).length === 0 ? 'offen' : null;
+    if (!art) continue;
+    const ziel = wegZiel(q);
+    const weg = wegZeile(q, art, kinder, ziel, alleBoxen);
+    if (ziel != null && wegeJeBox.has(ziel)) wegeJeBox.get(ziel)!.push(weg);
+    else wegeOhneBox.push(weg);
+  }
+
   const site = (input.overview ?? []).find((s) => s.id === id);
   const live = anlagenWerte(site, input.now);
   return {
@@ -502,10 +752,11 @@ function anlageKnoten(
         fuehrend: mehrere && b.id === fuehrendeId,
         href: boxSeiteHash(id, b.externalRef),
         geraete: jeBox.get(b.id) ?? [],
-        quellen: quellenDerBox(input.datenquellen, b.id),
+        wege: wegeJeBox.get(b.id) ?? [],
       };
     }),
     ohneBox,
+    wegeOhneBox,
     geraeteZahl:
       karten == null
         ? null

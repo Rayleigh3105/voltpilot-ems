@@ -2,10 +2,11 @@ import { sichtbareListe } from '../src/test/rollenFixtures';
 import './rollen-fixture';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { api, ApiError, type Device, type Site, type SiteEntity } from '../src/api';
+import { api, ApiError, type Device, type Site, type SiteEntity, type UemsDatenquelle, type UemsGeraet } from '../src/api';
 import { keycloak } from '../src/auth';
 import { consumersApi } from '../src/consumers/consumersApi';
 import { anlagensteuerungGeraetId } from '../src/geraetAdresse';
+import { AufbauSection } from '../src/pages/AufbauSection';
 import { GeraetSeiteSection } from '../src/pages/GeraetSeiteSection';
 import { TechnikSection } from '../src/pages/AnlageTechnik';
 import { AnlagensteuerungKarten } from '../src/steuerung/AnlagensteuerungKarte';
@@ -39,12 +40,15 @@ import '../src/steuerung/steuerung.css';
 /**
  * E2E-Bühne UEMS EZ-10 „Steuerung, Anlage, Messwerte“: die vier Flächen einer Erzeugeranlage mit
  * Anlagensteuerung, belegt mit den fiktiven Anlagen Gore (PV) und Büttner (BHKW) aus
- * `src/test/anlagensteuerungFixtures.ts`. `?fall=gore|buettner`, `&flaeche=steuerung|geraet|einstellungen|verlauf`.
+ * `src/test/anlagensteuerungFixtures.ts`. `?fall=gore|buettner`, `&flaeche=steuerung|geraet|einstellungen|verlauf|aufbau`.
+ * `flaeche=aufbau` (GE-1 „je Kasten ein Eintrag“): der Aufbau mit der Steuerung und ihrem Weg DQ-1; `&form=gateway`
+ * stellt eine zweite Steuerung (Unit 2) an denselben Weg und einen angefangenen Anschluss DQ-2 dazu.
  * Belegt ist, was die Flächen fragen; alles Übrige antwortet „nichts da“ - die Bühne ruft nie eine Cloud.
  */
 const frage = new URLSearchParams(window.location.search);
 const fall = frage.get('fall') === 'buettner' ? 'buettner' : 'gore';
 const flaeche = frage.get('flaeche') ?? 'steuerung';
+const gatewayForm = frage.get('form') === 'gateway';
 
 const F = fall === 'gore'
   ? { s: gore(), w: goreWerte(), nv: goreNv(), entity: ENTITY_GORE, name: 'Gore' }
@@ -114,6 +118,31 @@ const geraet = fall === 'gore'
       })),
     };
 
+// GE-1: der Weg der Steuerung, gelesen von der Box der Bühne; am Gateway trägt er zwei Steuerungen (Unit 1 und 2).
+const liefert = {
+  zustand: 'liefert', fehlerklasse: null, seit: null, gelesen_am: new Date(jetzt - 5_000).toISOString(),
+  anfragen_pro_minute: 12, messwerte_pro_minute: 305, gemeldet_am: new Date(jetzt).toISOString(), text: 'Liefert Daten',
+} as const;
+const weg = (id: string, kennzeichen: string, o: Partial<UemsDatenquelle> = {}): UemsDatenquelle => ({
+  id, kennzeichen, name: 'Anlagensteuerung', anlage: site.id, protokoll: 'modbus_tcp', adresse: F.s.datenquelle.adresse,
+  geraete_ids: gatewayForm ? [1, 2] : [1], netz: null, mehrere_leser: false, steuerquelle: false, vergleichsquelle: false,
+  kadenz_s: 5, archiviert_am: null, zustaendige_box: { id: box.id, name: box.name, heimat_anlage: site.id },
+  zeitraeume: [], rueckmeldung: liefert, ...o,
+});
+const ZWEITE = `${F.entity}-unit2`;
+const zweiteSteuerung = { ...steuerungEntity, id: ZWEITE, label: 'Anlagensteuerung Unit 2' } as SiteEntity;
+const datenquellen = gatewayForm
+  ? [weg(F.s.datenquelle.id, 'DQ-1', { name: 'Steuerungen Halle' }), weg('dq-entwurf', 'DQ-2', { name: null, adresse: '192.168.1.60:502', rueckmeldung: null })]
+  : [weg(F.s.datenquelle.id, 'DQ-1')];
+const uemsGeraete: UemsGeraet[] = gatewayForm
+  ? [
+      { ...geraet, geraete_id: 1 },
+      { ...geraet, id: `${geraet.id}-2`, kennzeichen: 'G-8', einbau_kennzeichen: 'G-8', geraete_id: 2, teile: [],
+        komponenten: [{ entity_id: ZWEITE, gueltig_ab: geraet.komponenten[0].gueltig_ab, gueltig_bis: null }] },
+    ]
+  : [geraet];
+const lebendig = (id: string) => ({ id, entityType: 'anlagensteuerung', typeLabel: 'Anlagensteuerung', label: null, category: 'meter', health: 'ok', capabilities: [] });
+
 const ok = <T,>(wert: T) => () => Promise.resolve(structuredClone(wert));
 let nv = F.nv;
 const belegt: Record<string, (...args: never[]) => Promise<unknown>> = {
@@ -125,8 +154,16 @@ const belegt: Record<string, (...args: never[]) => Promise<unknown>> = {
     structuredClone((nv = { ...nv, ...b, revision: nv.revision + 1 } as typeof nv))) as never,
   erzeugungseinheitAendern: (async (_g: string, n: number, b: Record<string, unknown>) =>
     ({ ...F.s.einheiten.find((e) => e.te_nr === n), ...b })) as never,
-  siteEntities: ok({ registry: null, entities: [steuerungEntity], localSetup: [], staleOnDevice: [] }),
-  topology: ok({ schemaVersion: '1.0', entities: [], topology: { schema_version: '1.0', nodes: [] } }),
+  siteEntities: ok({
+    registry: null, entities: gatewayForm ? [steuerungEntity, zweiteSteuerung] : [steuerungEntity], localSetup: [], staleOnDevice: [],
+  }),
+  // Der Aufbau liest die Lebendigkeit der Steuerung aus der Topologie (EZ-22); die übrigen Flächen brauchen sie nicht.
+  topology: ok({
+    schemaVersion: '1.0',
+    entities: flaeche === 'aufbau' ? [lebendig(F.entity), ...(gatewayForm ? [lebendig(ZWEITE)] : [])] : [],
+    topology: { schema_version: '1.0', nodes: [] },
+  }),
+  datenquellen: ok({ datenquellen }),
   siteSources: ok([]),
   siteComponents: ok({ componentAuthority: 'portal', components: [] }),
   controlStatus: ok(null),
@@ -139,7 +176,7 @@ const belegt: Record<string, (...args: never[]) => Promise<unknown>> = {
   registerWriteTargets: ok([]),
   registerWriteHistory: ok([]),
   registerKnowledge: ok([]),
-  uemsGeraete: ok({ geraete: [geraet] }),
+  uemsGeraete: ok({ geraete: uemsGeraete }),
   komponenteMesskanaele: ok({ messkanaele: [] }),
   geraetEinstellungen: ok({ gueltig: [], historie: [] }),
   geraetAenderungen: ok({ eintraege: [], achse: 'wirkung', von: null, bis: null, weiter: null }),
@@ -163,6 +200,9 @@ for (const [name, wert] of Object.entries(offen)) {
 Object.assign(consumersApi, { list: ok([]), overrides: ok([]), status: ok([]) });
 
 function Flaeche() {
+  if (flaeche === 'aufbau') {
+    return <AufbauSection site={site} sites={[site]} devices={[box]} devicesFetchedAt={jetzt} />;
+  }
   if (flaeche === 'geraet') {
     return <GeraetSeiteSection site={site} boxRef={box.externalRef} geraetId={anlagensteuerungGeraetId(F.entity)} devices={[box]} />;
   }

@@ -10,6 +10,7 @@ import {
   type SiteSource,
   type SiteTopology,
   type StandorteAmStichtag,
+  type UemsDatenquelle,
 } from '../api';
 import * as auth from '../auth';
 import { entitiesApi } from '../entitiesApi';
@@ -499,6 +500,65 @@ describe('AufbauSection · der Baum', () => {
     expect(FORBIDDEN.test(container.textContent ?? '')).toBe(false);
     const dialog = await kurzblick(zeile('inv'));
     expect(FORBIDDEN.test(dialog.textContent ?? '')).toBe(false);
+  });
+});
+
+/** Eine Datenquelle der Testanlage, gelesen von der Box `gw`, die Daten liefert. */
+const datenquelle = (o: Partial<UemsDatenquelle> & Pick<UemsDatenquelle, 'id' | 'kennzeichen'>): UemsDatenquelle => ({
+  name: null, anlage: 's-1', protokoll: 'sunspec_modbus', adresse: '192.168.10.20:502', geraete_ids: [1], netz: null,
+  mehrere_leser: false, steuerquelle: false, vergleichsquelle: false, kadenz_s: 10, archiviert_am: null,
+  zustaendige_box: { id: 'gw', name: null, heimat_anlage: 's-1' }, zeitraeume: [],
+  rueckmeldung: {
+    zustand: 'liefert', fehlerklasse: null, seit: null, gelesen_am: new Date().toISOString(), anfragen_pro_minute: 6,
+    messwerte_pro_minute: 30, gemeldet_am: new Date().toISOString(), text: 'Liefert Daten',
+  },
+  ...o,
+});
+
+describe('AufbauSection · ein Eintrag je Kasten (GE-1)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('liest die Verweise der Anlage: der Fronius trägt seinen Weg, ein Weg ohne Gerät steht als Anschluss da — keine Datenquellen-Zeile', async () => {
+    stub();
+    portalVerwaltet();
+    vi.spyOn(api, 'datenquellen').mockResolvedValue({
+      datenquellen: [
+        datenquelle({ id: 'dq-1', kennzeichen: 'DQ-1' }),
+        datenquelle({ id: 'dq-2', kennzeichen: 'DQ-2', protokoll: 'modbus_tcp', adresse: '192.168.10.40:502', rueckmeldung: null }),
+      ],
+    });
+    const uems = vi.spyOn(api, 'uemsGeraete').mockResolvedValue({
+      geraete: [{
+        id: 'gr-fr1', kennzeichen: 'GR-2', einbau_kennzeichen: 'GR-2', ausgebaut_am: null, data_source_id: 'dq-1',
+        komponenten: [{ entity_id: 'fr1', gueltig_ab: '2026-09-01T00:00:00Z', gueltig_bis: null }],
+      }],
+    });
+    const { container } = rendere();
+    const fronius = await zeile('src-1');
+    await waitFor(() => expect(fronius).toHaveTextContent('SunSpec-Modbus · 192.168.10.20:502'));
+    expect(uems).toHaveBeenCalledWith('s-1');
+    const anschluss = container.querySelector('[data-aufbau-weg="dq-2"]') as HTMLElement;
+    expect(anschluss).toHaveTextContent('Anschluss ohne Gerät');
+    expect(anschluss).toHaveTextContent('Kennung DQ-2');
+    expect(within(anschluss).getByRole('button', { name: 'Gerät an Anschluss DQ-2 hinzufügen' })).toBeInTheDocument();
+    expect(container.querySelector('[data-aufbau-weg="dq-1"]')).toBeNull();
+    expect(container.querySelector('.vp-auf-t-zeile.is-box')).toHaveTextContent('2 Geräte · 1 Anschluss offen');
+    expect(container.textContent).not.toMatch(/Datenquelle/);
+    // Der Kurzblick nennt Weg und Box.
+    const dialog = await kurzblick(fronius);
+    expect(dialog).toHaveTextContent('SunSpec-Modbus · 192.168.10.20:502 · an VoltPilot-Box');
+  });
+
+  it('ohne Antwort von `…/geraete` bleibt es fail-soft: die Geräte wie vorher, kein geratener Anschluss', async () => {
+    stub();
+    vi.spyOn(api, 'datenquellen').mockResolvedValue({ datenquellen: [datenquelle({ id: 'dq-1', kennzeichen: 'DQ-1' })] });
+    vi.spyOn(api, 'uemsGeraete').mockRejectedValue(new ApiError(503, 'Unavailable'));
+    const { container } = rendere();
+    const fronius = await zeile('src-1');
+    await waitFor(() => expect(api.uemsGeraete).toHaveBeenCalled());
+    expect(fronius).not.toHaveTextContent('192.168.10.20');
+    expect(container.querySelector('[data-aufbau-weg]')).toBeNull();
+    expect(container.querySelector('.vp-auf-t-zeile.is-box')).toHaveTextContent('2 Geräte');
   });
 });
 

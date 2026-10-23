@@ -8403,6 +8403,8 @@ export interface UemsGeraet {
    * nicht erhoben; dann steht kein Box-Satz, nie eine geratene Box.
    */
   data_source_id?: string | null;
+  /** Die Geräte-ID dieses Einbaus hinter seiner Datenquelle (Modbus-Unit); `null` = nicht erhoben. */
+  geraete_id?: number | null;
   /*
    * Die übrigen Felder von `GeraetDto.Geraet` — die Geräteseite (AP-04 IP-12)
    * braucht sie für die Karte „Gerät“. Optional, weil das Protokoll und seine

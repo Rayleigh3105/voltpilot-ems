@@ -7,6 +7,7 @@ import type {
   SiteTopology,
   StandorteAmStichtag,
   UemsDatenquelle,
+  UemsGeraet,
 } from './api';
 import {
   OHNE_STANDORT,
@@ -17,7 +18,7 @@ import {
   ladeWert,
   type AufbauEingabe,
 } from './aufbauBaum';
-import { aufbauZahlen, LEERER_FILTER } from './aufbauTabelle';
+import { aufbauZahlen, kastenSatz, LEERER_FILTER, tabellenZeilen, type TabellenZeile } from './aufbauTabelle';
 import { plantModel, type PlantComponent } from './komponenten';
 import type { ChargePoint, SiteCharging } from './ladepunkte';
 import { zentraleListe, zentraleSatz, type GeraeteKarte } from './zentraleListe';
@@ -27,6 +28,8 @@ const plain = (s: string) => s.replace(/\u00a0/g, ' ');
 const texte = (werte: { text: string }[]) => werte.map((w) => plain(w.text));
 
 const NOW = Date.parse('2026-09-10T10:00:00Z');
+/** Jede Anlage, Box und jedes Gateway offen, kein Gerät aufgeklappt. */
+const ALLES_OFFEN = { offen: () => true, geraete: new Set<string>() };
 const FRISCH = new Date(NOW - 12_000).toISOString();
 
 const box = (o: Partial<Device> & Pick<Device, 'id' | 'externalRef'>): Device => ({
@@ -461,8 +464,19 @@ describe('aufbauBaum — reine Erzeugeranlage (EZ-20)', () => {
     vergleichsquelle: false, kadenz_s: 5, archiviert_am: null,
     zustaendige_box: { id: 'box-gore', name: null, heimat_anlage: 'site-gore' }, zeitraeume: [], rueckmeldung: null,
   } as unknown as UemsDatenquelle;
+  // Der gespeicherte Verweis Weg → Gerät (GE-1): das UEMS-Gerät der Steuerung trägt `data_source_id` = DQ-1.
+  const GR_STEUERUNG: UemsGeraet = {
+    id: 'gr-as', kennzeichen: 'GR-1', einbau_kennzeichen: 'GR-1', ausgebaut_am: null, data_source_id: 'dq-1',
+    geraeteart: 'controller', hersteller: 'WAGO', typ: 'PFC200',
+    komponenten: [{ entity_id: 'e-as', gueltig_ab: '2026-10-21T08:00:00Z', gueltig_bis: null }],
+  };
 
-  const gore = (entities: SiteEntity[], localSetup: EntityLocalSetup[] = [], topology: SiteTopology | null = null) => {
+  const gore = (
+    entities: SiteEntity[],
+    localSetup: EntityLocalSetup[] = [],
+    topology: SiteTopology | null = null,
+    uemsGeraete: UemsGeraet[] | null = [GR_STEUERUNG],
+  ) => {
     const model = plantModel(entities, topology, localSetup, []);
     const karten = zentraleListe({
       siteId: 'site-gore', model, devices: [GORE_BOX], devicesFetchedAt: NOW, boxRef: 'edge-5mz8bdd',
@@ -470,17 +484,29 @@ describe('aufbauBaum — reine Erzeugeranlage (EZ-20)', () => {
     });
     const baum = aufbauBaum({
       siteId: 'site-gore', siteName: 'Neue Halle', standorte: null, devices: [GORE_BOX], devicesFetchedAt: NOW,
-      karten, localSetup, charging: null, registryBoxId: 'box-gore', overview: null, datenquellen: [DQ1], now: NOW,
+      karten, localSetup, charging: null, registryBoxId: 'box-gore', overview: null, datenquellen: [DQ1],
+      uemsGeraete: { 'site-gore': uemsGeraete }, now: NOW,
     });
     return { model, karten, baum, box: baum.anlagen[0].boxen[0] };
   };
   const zeilen = (b: { geraete: { titel: string; artWort: string }[] }) => b.geraete.map((g) => `${g.titel} · ${g.artWort}`);
 
-  it('zeigt nur die Anlagensteuerung: 1 Gerät an der Anlage, 1 Gerät und 1 Datenquelle an der Box', () => {
+  /**
+   * GE-1 (Konzept „Ein Gerät, ein Eintrag", Captain 23.10.2026): vorher stand DQ-1 als zweite Zeile
+   * „DQ-1 · Datenquelle" neben der Steuerung, und die Box sagte „1 Gerät · liest 1 Datenquelle". Jetzt ist DQ-1
+   * die Anbindung der Steuerung — über den gespeicherten Verweis `geraet.data_source_id`, nie über die Adresse.
+   */
+  it('zeigt nur die Anlagensteuerung: EINE Zeile mit ihrer Anbindung, keine Zeile für DQ-1, Box „1 Gerät"', () => {
     const { model, karten, baum, box: b } = gore([NETZ, HAUS, STEUERUNG]);
     expect(zeilen(b)).toEqual(['Anlagensteuerung · Gerät an Ihrer Box']);
     expect(b.geraete[0].id).toBe('as-e-as');
-    expect(b.quellen.map((q) => q.id)).toEqual(['dq-1']);
+    expect(b.wege).toEqual([]);
+    expect(b.geraete[0].anbindungen.map((a) => [a.kennzeichen, a.weg, a.box?.id])).toEqual([
+      ['DQ-1', 'Modbus TCP · 192.168.4.165:503', 'box-gore'],
+    ]);
+    expect([b.geraete[0].unterzeile, b.geraete[0].anbindungText]).toEqual(['WAGO PFC200', 'Modbus TCP · 192.168.4.165:503']);
+    expect(kastenSatz(b.geraete, b.wege)).toBe('1 Gerät');
+    expect(tabellenZeilen(baum, LEERER_FILTER, ALLES_OFFEN).map((z) => z.typ)).toEqual(['anlage', 'box', 'geraet']);
     expect(baum.anlagen[0].geraeteZahl).toBe(1);
     expect(aufbauZahlen(baum, LEERER_FILTER).geraete).toBe(1);
     expect(karten.find((k) => k.art === 'box')?.zusatz).toBe('Vermittelt zwischen Ihren Geräten und VoltPilot — 1 Gerät angebunden.');
@@ -553,3 +579,245 @@ describe('aufbauBaum — reine Erzeugeranlage (EZ-20)', () => {
     expect(gore([NETZ, HAUS, MIT_PIN], [QUELLE]).box.geraete[0].zustandWort).toBe('Noch keine Rückmeldung');
   });
 });
+
+/**
+ * GE-1 — „Der Aufbau zeigt, was man anfassen kann — je Kasten ein Eintrag" (Konzept „Ein Gerät, ein Eintrag",
+ * §7/§9, entschieden 23.10.2026). Eine Datenquelle ist der WEG zu einem Gerät: 1 : 1 steht sie an der
+ * Gerätezeile, 1 : N als Gateway mit den Geräten darunter, 1 : 0 als „Anschluss ohne Gerät".
+ */
+describe('aufbauBaum — ein Eintrag je Kasten (GE-1)', () => {
+  const BOX_A = box({ id: 'box-a', externalRef: 'VP-HS-0001', name: 'Box Halle' });
+  const BOX_B = box({ id: 'box-b', externalRef: 'VP-HS-0002', name: 'Box Hof' });
+  const geraet = (id: string, titel: string, untertitel = 'Zähler') =>
+    karte({ id, art: 'geraet', titel, untertitel, komponenten: [komp({ id: `k-${id}`, role: 'grid' })] });
+  const LIEFERT = {
+    zustand: 'liefert', fehlerklasse: null, seit: null, gelesen_am: FRISCH, anfragen_pro_minute: 6,
+    messwerte_pro_minute: 30, gemeldet_am: FRISCH, text: 'Liefert Daten',
+  } as const;
+  const dq = (o: Partial<UemsDatenquelle> & Pick<UemsDatenquelle, 'id' | 'kennzeichen'>): UemsDatenquelle => ({
+    name: null, anlage: 's-1', protokoll: 'modbus_tcp', adresse: '192.168.10.31:502', geraete_ids: [1], netz: null,
+    mehrere_leser: false, steuerquelle: false, vergleichsquelle: false, kadenz_s: 10, archiviert_am: null,
+    zustaendige_box: { id: 'box-a', name: 'Box Halle', heimat_anlage: 's-1' }, zeitraeume: [], rueckmeldung: LIEFERT,
+    ...o,
+  });
+  /** Ein UEMS-Gerät, das die Komponente `k-<karte>` speist und (vielleicht) auf einen Weg zeigt. */
+  const gr = (karteId: string, dataSource: string | null, o: Partial<UemsGeraet> = {}): UemsGeraet => ({
+    id: `gr-${karteId}`, kennzeichen: `GR-${karteId}`, einbau_kennzeichen: `GR-${karteId}`, ausgebaut_am: null,
+    data_source_id: dataSource, komponenten: [{ entity_id: `k-${karteId}`, gueltig_ab: '2026-09-01T00:00:00Z', gueltig_bis: null }],
+    ...o,
+  });
+  const mit = (o: Partial<AufbauEingabe>): AufbauEingabe =>
+    eingabe({
+      devices: [BOX_A], karten: [], localSetup: null, charging: null, registryBoxId: 'box-a', overview: null,
+      datenquellen: [], uemsGeraete: { 's-1': [] }, ...o,
+    });
+  const typen = (zeilen: TabellenZeile[]) =>
+    zeilen.map((z) => `${z.typ}@${z.ebene}${'geraet' in z ? `:${z.geraet.id}` : 'weg' in z ? `:${z.weg.kennzeichen}` : ''}`);
+
+  describe('Gateway (1 : N)', () => {
+    const GW = dq({ id: 'dq-3', kennzeichen: 'DQ-3', name: 'Zählergateway Halle', geraete_ids: [1, 2, 3, 4] });
+    const WR = dq({ id: 'dq-1', kennzeichen: 'DQ-1', protokoll: 'sunspec_modbus', adresse: '192.168.10.20:502' });
+    const zaehler = ['haupt', 'kompressor', 'licht', 'buero'];
+    const eingabeGateway = () =>
+      mit({
+        karten: [geraet('wr', 'Wechselrichter Dach', 'PV-Wechselrichter'), ...zaehler.map((z) => geraet(z, z))],
+        datenquellen: [GW, WR],
+        uemsGeraete: { 's-1': [gr('wr', 'dq-1'), ...zaehler.map((z, i) => gr(z, 'dq-3', { geraete_id: i + 1 }))] },
+      });
+
+    it('eine Zeile „Gateway", die vier Geräte eine Ebene tiefer; Box „5 Geräte · 1 Gateway"', () => {
+      const baum = aufbauBaum(eingabeGateway());
+      const b = baum.anlagen[0].boxen[0];
+      expect(b.wege.map((w) => [w.art, w.titel, w.weg, w.geraete.map((g) => g.id)])).toEqual([
+        ['gateway', 'Zählergateway Halle', 'Modbus TCP · 192.168.10.31:502 · Geräte-IDs 1–4 · Kennung DQ-3', zaehler],
+      ]);
+      expect(typen(tabellenZeilen(baum, LEERER_FILTER, ALLES_OFFEN))).toEqual([
+        'anlage@0', 'box@1', 'geraet@2:wr', 'gateway@2:DQ-3',
+        'geraet@3:haupt', 'geraet@3:kompressor', 'geraet@3:licht', 'geraet@3:buero',
+      ]);
+      expect(kastenSatz(b.geraete, b.wege)).toBe('5 Geräte · 1 Gateway');
+      expect(aufbauZahlen(baum, LEERER_FILTER)).toMatchObject({ geraete: 5, gateways: 1, achtung: 0 });
+    });
+
+    it('nur das Gateway und seine vier Zähler: „4 Geräte · 1 Gateway" (Abnahme §9)', () => {
+      const e = eingabeGateway();
+      const b = aufbauBaum({ ...e, karten: e.karten!.slice(1), datenquellen: [GW] }).anlagen[0].boxen[0];
+      expect(kastenSatz(b.geraete, b.wege)).toBe('4 Geräte · 1 Gateway');
+    });
+
+    it('ein Gerät hinter dem Gateway nennt seine Geräte-ID und „über das Gateway"; der 1 : 1-Weg steht am Gerät', () => {
+      const b = aufbauBaum(eingabeGateway()).anlagen[0].boxen[0];
+      const kompressor = b.geraete.find((g) => g.id === 'kompressor')!;
+      expect([kompressor.anbindungText, kompressor.artWort, kompressor.gateway]).toEqual([
+        'Geräte-ID 2', 'Zähler · über das Gateway', { id: 'dq-3', titel: 'Zählergateway Halle' },
+      ]);
+      const wr = b.geraete.find((g) => g.id === 'wr')!;
+      expect([wr.anbindungText, wr.gateway]).toEqual(['SunSpec-Modbus · 192.168.10.20:502', null]);
+    });
+
+    it('zugeklappt verschwinden seine Geräte; mit Suche steht es nur mit dem Treffer da', () => {
+      const baum = aufbauBaum(eingabeGateway());
+      const zu = { offen: (id: string) => id !== 'dq-3', geraete: new Set<string>() };
+      expect(typen(tabellenZeilen(baum, LEERER_FILTER, zu))).toEqual(['anlage@0', 'box@1', 'geraet@2:wr', 'gateway@2:DQ-3']);
+      expect(typen(tabellenZeilen(baum, { ...LEERER_FILTER, q: 'licht' }, ALLES_OFFEN))).toEqual([
+        'anlage@0', 'box@1', 'gateway@2:DQ-3', 'geraet@3:licht',
+      ]);
+      // Die Kennung des Weges findet ihre Geräte — DQ-3 bleibt das Suchwort des Supports (GD-5 A).
+      expect(typen(tabellenZeilen(baum, { ...LEERER_FILTER, q: 'DQ-1' }, ALLES_OFFEN))).toEqual(['anlage@0', 'box@1', 'geraet@2:wr']);
+    });
+  });
+
+  describe('Anschluss ohne Gerät (1 : 0)', () => {
+    const ENTWURF = dq({ id: 'dq-5', kennzeichen: 'DQ-5', adresse: '192.168.10.40:502', rueckmeldung: null });
+
+    it('ein Weg ohne Gerät steht als „Anschluss ohne Gerät" da — Box „1 Gerät · 1 Anschluss offen"', () => {
+      const baum = aufbauBaum(mit({ karten: [geraet('wr', 'Wechselrichter')], datenquellen: [ENTWURF] }));
+      const b = baum.anlagen[0].boxen[0];
+      expect(b.wege.map((w) => [w.art, w.titel, w.weg, w.zustandWort, w.zustandZeit])).toEqual([
+        ['offen', 'Anschluss ohne Gerät', 'Modbus TCP · 192.168.10.40:502 · Geräte-ID 1 · Kennung DQ-5', 'Angefangen', null],
+      ]);
+      expect(typen(tabellenZeilen(baum, LEERER_FILTER, ALLES_OFFEN))).toEqual(['anlage@0', 'box@1', 'geraet@2:wr', 'anschluss@2:DQ-5']);
+      expect(kastenSatz(b.geraete, b.wege)).toBe('1 Gerät · 1 Anschluss offen');
+      // Ein Anschluss ist kein Gerät: er zählt weder als Gerät noch in „brauchen Aufmerksamkeit".
+      expect(aufbauZahlen(baum, LEERER_FILTER)).toMatchObject({ geraete: 1, gateways: 0, achtung: 0 });
+    });
+
+    it('auch ohne zuständige Box sichtbar (vorher unsichtbar) — „von keiner Box gelesen"', () => {
+      const ohneBox = { ...ENTWURF, zustaendige_box: null };
+      const b = aufbauBaum(mit({ datenquellen: [ohneBox] })).anlagen[0].boxen[0];
+      expect(b.wege.map((w) => [w.titel, w.zustandWort, w.zustandZeit])).toEqual([
+        ['Anschluss ohne Gerät', 'Angefangen', 'von keiner Box gelesen'],
+      ]);
+      // An einer Anlage ganz ohne Box steht er direkt unter der Anlage.
+      const baum = aufbauBaum(mit({ devices: [], datenquellen: [ohneBox] }));
+      expect(baum.anlagen[0].wegeOhneBox.map((w) => w.kennzeichen)).toEqual(['DQ-5']);
+      expect(typen(tabellenZeilen(baum, LEERER_FILTER, ALLES_OFFEN))).toEqual(['anlage@0', 'anschluss@1:DQ-5', 'leer@1']);
+    });
+
+    it('ein archivierter Weg steht nirgends; ohne `GET …/geraete` rät der Aufbau keinen Anschluss', () => {
+      expect(aufbauBaum(mit({ datenquellen: [{ ...ENTWURF, archiviert_am: FRISCH }] })).anlagen[0].boxen[0].wege).toEqual([]);
+      const unbekannt = aufbauBaum(mit({ karten: [geraet('wr', 'Wechselrichter')], datenquellen: [ENTWURF], uemsGeraete: {} }));
+      expect(unbekannt.anlagen[0].boxen[0].wege).toEqual([]);
+      expect(unbekannt.anlagen[0].boxen[0].geraete[0].anbindungen).toEqual([]);
+    });
+  });
+
+  describe('Zustand: der schlechtere aus Gerätewerten und Box-Rückmeldung', () => {
+    const GESTOERT = dq({
+      id: 'dq-1', kennzeichen: 'DQ-1',
+      rueckmeldung: { ...LIEFERT, zustand: 'liefert_nicht', fehlerklasse: 'no_answer', seit: '2026-09-10T09:12:00Z', text: 'Liefert keine Daten' },
+    });
+
+    it('ein Weg „liefert nicht" stellt sein Gerät auf Achtung, mit Grund, und es zählt in „brauchen Aufmerksamkeit"', () => {
+      const baum = aufbauBaum(mit({ karten: [geraet('z', 'Hauptzähler')], datenquellen: [GESTOERT], uemsGeraete: { 's-1': [gr('z', 'dq-1')] } }));
+      const g = baum.anlagen[0].boxen[0].geraete[0];
+      expect([g.ton, g.zustandWort]).toEqual(['warn', 'Liefert keine Daten']);
+      expect(g.zustandZeit).toMatch(/^Zeitüberschreitung · Seit /);
+      expect(aufbauZahlen(baum, LEERER_FILTER).achtung).toBe(1);
+      expect(typen(tabellenZeilen(baum, { ...LEERER_FILTER, zustand: ['achtung'] }, ALLES_OFFEN))).toEqual(['anlage@0', 'box@1', 'geraet@2:z']);
+    });
+
+    it('„Box meldet noch nicht je Quelle" ist keine Störung — das Gerät bleibt, wie seine Werte es sagen', () => {
+      const noch = { ...GESTOERT, rueckmeldung: { ...LIEFERT, zustand: 'meldet_noch_nicht_je_quelle' as const } };
+      for (const q of [noch, { ...GESTOERT, rueckmeldung: null }]) {
+        const baum = aufbauBaum(mit({ karten: [geraet('z', 'Hauptzähler')], datenquellen: [q], uemsGeraete: { 's-1': [gr('z', 'dq-1')] } }));
+        const g = baum.anlagen[0].boxen[0].geraete[0];
+        expect([g.ton, g.zustandWort]).toEqual(['ok', 'liefert Daten · vor 12 Sek.']);
+        expect(aufbauZahlen(baum, LEERER_FILTER).achtung).toBe(0);
+      }
+    });
+
+    it('hinter einem gestörten Gateway steht jedes Gerät auf Achtung', () => {
+      const gw = { ...GESTOERT, geraete_ids: [1, 2] };
+      const baum = aufbauBaum(mit({
+        karten: [geraet('a', 'Zähler A'), geraet('b', 'Zähler B')],
+        datenquellen: [gw],
+        uemsGeraete: { 's-1': [gr('a', 'dq-1'), gr('b', 'dq-1')] },
+      }));
+      const [w] = baum.anlagen[0].boxen[0].wege;
+      expect([w.art, w.ton, w.zustandWort]).toEqual(['gateway', 'warn', 'Liefert keine Daten']);
+      expect(aufbauZahlen(baum, LEERER_FILTER)).toMatchObject({ geraete: 2, achtung: 2 });
+    });
+  });
+
+  describe('Identität: nur gespeicherte Verweise', () => {
+    // Zwei Box-Quellen an DERSELBEN Adresse wie DQ-1 (Unit 1 und 2) — aber ohne gespeicherten Verweis.
+    const PIN_1 = karte({ id: 'src-192.168.4.165-503-1', art: 'geraet', titel: 'Zähler 1', komponenten: [komp({ id: 'k-1', role: 'grid' })] });
+    const PIN_2 = karte({ id: 'src-192.168.4.165-503-2', art: 'geraet', titel: 'Zähler 2', komponenten: [komp({ id: 'k-2', role: 'grid' })] });
+    const DQ_GLEICH = dq({ id: 'dq-1', kennzeichen: 'DQ-1', adresse: '192.168.4.165:503', geraete_ids: [1, 2] });
+
+    it('Gegenprobe: gleiche Adresse ohne Verweis legt NICHTS zusammen — kein Gateway, keine Anbindung, der Weg bleibt offen', () => {
+      const ohneVerweis = [{ ...gr('x', null), komponenten: [{ entity_id: 'k-1', gueltig_ab: '2026-09-01T00:00:00Z', gueltig_bis: null }] }];
+      const baum = aufbauBaum(mit({ karten: [PIN_1, PIN_2], datenquellen: [DQ_GLEICH], uemsGeraete: { 's-1': ohneVerweis } }));
+      const b = baum.anlagen[0].boxen[0];
+      expect(b.geraete.map((g) => [g.id, g.anbindungen.length, g.gateway])).toEqual([
+        ['src-192.168.4.165-503-1', 0, null],
+        ['src-192.168.4.165-503-2', 0, null],
+      ]);
+      expect(b.wege.map((w) => [w.art, w.kennzeichen])).toEqual([['offen', 'DQ-1']]);
+    });
+
+    it('nur das Gerät mit Verweis trägt den Weg — der Nachbar an derselben Adresse nicht', () => {
+      const v = (id: string, entity: string, ds: string | null): UemsGeraet => ({
+        ...gr(id, ds), komponenten: [{ entity_id: entity, gueltig_ab: '2026-09-01T00:00:00Z', gueltig_bis: null }],
+      });
+      const b = aufbauBaum(mit({
+        karten: [PIN_1, PIN_2], datenquellen: [DQ_GLEICH], uemsGeraete: { 's-1': [v('a', 'k-1', 'dq-1'), v('b', 'k-2', null)] },
+      })).anlagen[0].boxen[0];
+      expect(b.geraete.map((g) => g.anbindungen.map((a) => a.kennzeichen))).toEqual([['DQ-1'], []]);
+      expect(b.wege).toEqual([]);
+    });
+
+    it('ein ausgebautes Gerät oder eine beendete Zuordnung trägt keinen Weg mehr', () => {
+      for (const alt of [
+        gr('z', 'dq-1', { ausgebaut_am: '2026-09-09T00:00:00Z' }),
+        gr('z', 'dq-1', { komponenten: [{ entity_id: 'k-z', gueltig_ab: '2026-09-01T00:00:00Z', gueltig_bis: '2026-09-09T00:00:00Z' }] }),
+      ]) {
+        const b = aufbauBaum(mit({ karten: [geraet('z', 'Zähler')], datenquellen: [dq({ id: 'dq-1', kennzeichen: 'DQ-1' })], uemsGeraete: { 's-1': [alt] } })).anlagen[0].boxen[0];
+        expect(b.geraete[0].anbindungen).toEqual([]);
+        expect(b.wege.map((w) => w.art)).toEqual(['offen']);
+      }
+    });
+  });
+
+  describe('zwei Boxen: das Gerät steht unter der Box, die seinen Weg liest', () => {
+    const WEG_B = dq({ id: 'dq-2', kennzeichen: 'DQ-2', zustaendige_box: { id: 'box-b', name: 'Box Hof', heimat_anlage: 's-1' } });
+    const zwei = (o: Partial<AufbauEingabe> = {}) =>
+      mit({
+        devices: [BOX_A, BOX_B],
+        karten: [geraet('wr', 'Wechselrichter'), geraet('z', 'Zähler Hof')],
+        datenquellen: [WEG_B],
+        uemsGeraete: { 's-1': [gr('z', 'dq-2')] },
+        ...o,
+      });
+
+    it('der Zähler hängt unter Box Hof (sie liest DQ-2), nicht unter der führenden Box Halle', () => {
+      const [a, b] = aufbauBaum(zwei()).anlagen[0].boxen;
+      expect([a.name, a.fuehrend, a.geraete.map((g) => g.id)]).toEqual(['Box Halle', true, ['wr']]);
+      expect([b.name, b.geraete.map((g) => g.id)]).toEqual(['Box Hof', ['z']]);
+      expect(b.geraete[0].anbindungText).toBe('Modbus TCP · 192.168.10.31:502');
+    });
+
+    it('liest eine Box einer anderen Anlage den Weg, bleibt das Gerät in seiner Anlage und sagt, wer liest', () => {
+      const fremd = { ...WEG_B, zustaendige_box: { id: 'box-x', name: 'Box Nachbarhalle', heimat_anlage: 's-2' } };
+      const boxX = box({ id: 'box-x', externalRef: 'VP-NB-0001', name: 'Box Nachbarhalle', siteId: 's-2' });
+      const [a] = aufbauBaum(zwei({ devices: [BOX_A, BOX_B, boxX], datenquellen: [fremd] })).anlagen[0].boxen;
+      expect(a.geraete.find((g) => g.id === 'z')?.anbindungText).toBe('Modbus TCP · 192.168.10.31:502 · gelesen von Box Nachbarhalle');
+    });
+
+    it('am Standort: jeder Weg bleibt bei seiner Anlage — die Nachbar-Anlage zeigt ihren erst mit ihren Geräten', () => {
+      const standort = mit({
+        standorte: STANDORTE([{ id: 's-1', name: 'Halle 1' }, { id: 's-2', name: 'Halle 2' }]),
+        devices: [BOX_A, box({ id: 'box-n', externalRef: 'VP-N-1', name: 'Box Halle 2', siteId: 's-2' })],
+        datenquellen: [dq({ id: 'dq-9', kennzeichen: 'DQ-9', anlage: 's-2', zustaendige_box: { id: 'box-n', name: 'Box Halle 2', heimat_anlage: 's-2' } })],
+        uemsGeraete: { 's-1': [], 's-2': [gr('n', 'dq-9')] },
+      });
+      const vorher = aufbauBaum(standort);
+      expect(vorher.anlagen.map((x) => x.boxen.map((b) => b.wege.length))).toEqual([[0], [0]]);
+      const nachher = aufbauBaum({ ...standort, nachbarKarten: { 's-2': [geraet('n', 'Zähler Halle 2')] } });
+      expect(nachher.anlagen[1].boxen[0].geraete.map((g) => [g.id, g.anbindungen[0]?.kennzeichen])).toEqual([['n', 'DQ-9']]);
+      expect(nachher.anlagen[0].boxen[0].wege).toEqual([]);
+    });
+  });
+});
+

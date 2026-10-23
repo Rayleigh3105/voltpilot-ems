@@ -139,14 +139,30 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
       await expect(anlagen.nth(1)).toContainText('Werk Ahrenberg – Halle 2');
       await expect(flaeche).not.toContainText('Lindach');
       await expect(flaeche).not.toContainText('Sie sind hier');
-      // Die Box nennt ihre Datenquellen (AP-06) — sie stehen im Baum unter ihr, mit Weg und Rückmeldung.
+      // GE-1 „je Kasten ein Eintrag“: ein Weg (AP-06-Datenquelle) ist keine eigene Zeile mehr — er steht am Gerät, als
+      // Gateway oder als „Anschluss ohne Gerät“. Die Bühne verknüpft keinen der drei Wege der Box Halle 1 über einen
+      // gespeicherten Verweis mit einem Gerät im Aufbau (Halle 1 trägt dort keine Gerätezeile); zusammengelegt über
+      // die Adresse wird nichts.
       await expect(flaeche).toContainText('Box Halle 1');
-      await expect(flaeche).toContainText('liest 3 Datenquellen');
-      const quellen = flaeche.locator('.vp-auf-t-zeile.is-quelle');
-      await expect(quellen).toHaveCount(3);
-      await expect(quellen.first()).toContainText('DQ-1');
-      await expect(quellen.first()).toContainText('Modbus TCP · 192.168.10.21');
-      await expect(quellen.first()).toContainText('Liefert Daten');
+      await expect(flaeche).toContainText('0 Geräte · 3 Anschlüsse offen');
+      await expect(flaeche).not.toContainText('Datenquelle');
+      const anschluesse = flaeche.locator('.vp-auf-t-zeile.is-anschluss');
+      await expect(anschluesse).toHaveCount(3);
+      await expect(anschluesse.first()).toContainText('Anschluss ohne Gerät');
+      await expect(anschluesse.first()).toContainText('Modbus TCP · 192.168.10.21 · Geräte-ID 1 · Kennung DQ-1');
+      await expect(anschluesse.first()).toContainText('Liefert Daten');
+      // Zwei Boxen am Standort: jeder Weg steht unter der Box, die ihn liest — DQ-4 und DQ-5 unter Box Halle 2,
+      // sobald Halle 2 aufgeklappt ist (dieselbe `AufbauSection` wie Anlage › Aufbau).
+      await anlagen.nth(1).getByRole('button', { name: /Werk Ahrenberg – Halle 2/ }).click();
+      await expect(flaeche.locator('.vp-auf-t-zeile.is-anschluss')).toHaveCount(5);
+      const reihe = await flaeche.locator('.vp-auf-t-zeile').evaluateAll((zeilen) =>
+        zeilen
+          .map((z) => z.classList.contains('is-box') ? `Box:${z.querySelector('.vp-auf-t-kuerze')?.textContent}`
+            : z.classList.contains('is-anschluss') ? `${z.textContent?.match(/Kennung (DQ-\d)/)?.[1]}` : null)
+          .filter(Boolean),
+      );
+      expect(reihe).toEqual(['Box:Box Halle 1', 'DQ-1', 'DQ-2', 'DQ-3', 'Box:Box Halle 2', 'DQ-4', 'DQ-5']);
+      ohneQuerlauf(await messe(page), `aufbau-${breite}-halle2`);
       // Die andere Anlage öffnet sich hier, im Standort — nicht in der Anlage.
       await expect(anlagen.nth(1).getByRole('link', { name: /öffnen/i })).toHaveAttribute('href', /^#\/standort\/[^/]+\/aufbau\?anlage=/);
       // EIN Ort zum Hinzufügen: Gerät, VoltPilot-Box und Anlage stehen hier — und nur hier.

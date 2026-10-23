@@ -10,6 +10,8 @@ import {
   FILTER_LABEL,
   LEERER_FILTER,
   aktiveFilter,
+  gatewaySatz,
+  kastenSatz,
   kurzfilter,
   mitFilter,
   type AufbauFilter,
@@ -114,6 +116,8 @@ export interface AufbauTabelleProps {
   onFilter: (f: AufbauFilter) => void;
   onAnlageUmschalten: (a: AufbauAnlage) => void;
   onBoxUmschalten: (b: AufbauBox) => void;
+  /** Ein Gateway (GE-1) klappt seine Geräte zu und auf. */
+  onGatewayUmschalten: (id: string) => void;
   onGeraetUmschalten: (id: string) => void;
   onKurzblick: (id: string) => void;
   onUebernehmen: (q: AdoptableSource) => void;
@@ -215,6 +219,7 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
           ) : (
             <span>
               <b>{n.geraete}</b> {n.geraete === 1 ? 'Gerät' : 'Geräte'}
+              {n.gateways > 0 && ` · ${n.gateways} ${n.gateways === 1 ? 'Gateway' : 'Gateways'}`}
               <span className="vp-auf-breit">
                 {p.standortSicht?.anlageName ? ` an ${p.standortSicht.anlageName}` : ' an dieser Anlage'}
               </span>
@@ -380,8 +385,10 @@ function Zeile({ z, begriffe, p }: { z: TabellenZeile; begriffe: string[]; p: Au
       return <GeraetZeile z={z} begriffe={begriffe} p={p} />;
     case 'teil':
       return <TeilZeile z={z} begriffe={begriffe} />;
-    case 'quelle':
-      return <QuelleZeile z={z} begriffe={begriffe} />;
+    case 'gateway':
+      return <GatewayZeile z={z} begriffe={begriffe} p={p} />;
+    case 'anschluss':
+      return <AnschlussZeile z={z} begriffe={begriffe} p={p} />;
     case 'fund':
       return <FundZeile z={z} begriffe={begriffe} p={p} />;
     default:
@@ -428,6 +435,7 @@ function AnlageZeile({ z, p }: { z: Extract<TabellenZeile, { typ: 'anlage' }>; p
             <small>
               {a.boxen.length} {a.boxen.length === 1 ? 'Box' : 'Boxen'}
               {a.geraeteZahl != null && ` · ${a.geraeteZahl} ${a.geraeteZahl === 1 ? 'Gerät' : 'Geräte'}`}
+              {gatewayText(a) && ` · ${gatewayText(a)}`}
               {!a.aktuell && !p.standortSicht && ' · am selben Standort'}
               {a.wertStand === 'veraltet' && <span className="is-warn"> · keine aktuellen Werte</span>}
             </small>
@@ -466,15 +474,8 @@ function AnlageZeile({ z, p }: { z: Extract<TabellenZeile, { typ: 'anlage' }>; p
   );
 }
 
-/** Was an einer Box hängt: „3 Geräte“, „liest 2 Datenquellen“ oder beides — eine lesende Box ist nie „0 Geräte“. */
-function boxInhalt(b: AufbauBox): string {
-  const n = b.geraete.filter((g) => g.art !== 'neu').length;
-  const geraete = `${n} ${n === 1 ? 'Gerät' : 'Geräte'}`;
-  const q = b.quellen.length;
-  if (q === 0) return geraete;
-  const quellen = `liest ${q} ${q === 1 ? 'Datenquelle' : 'Datenquellen'}`;
-  return n === 0 ? quellen : `${geraete} · ${quellen}`;
-}
+/** Die Gateways einer Anlage in ihrer Kopfzeile („1 Gateway“); null = keins. */
+const gatewayText = (a: AufbauAnlage) => gatewaySatz([...a.boxen.flatMap((b) => b.wege), ...a.wegeOhneBox]);
 
 function BoxZeile({
   z,
@@ -505,7 +506,7 @@ function BoxZeile({
               <Treffer text={b.ref} begriffe={begriffe} />
             </span>
             {' · '}
-            {boxInhalt(b)}
+            {kastenSatz(b.geraete, b.wege)}
           </small>
         </span>
       </span>
@@ -613,6 +614,17 @@ function GeraetZeile({
             <span className="vp-auf-t-kuerze">
               <Treffer text={g.unterzeile} begriffe={begriffe} />
             </span>
+            {/* GE-1: der Weg steht am Gerät — ein eigenes Stück der Zeile, das als Ganzes umbricht, nie abgeschnitten
+                hinter dem Modell. */}
+            {g.anbindungText && (
+              <span className="vp-auf-t-anbindung">
+                <Icon name="link" size={12} aria-hidden="true" />
+                <span className="vp-auf-t-kuerze">
+                  <span className="vp-sr-only">Anbindung: </span>
+                  <Treffer text={g.anbindungText} begriffe={begriffe} />
+                </span>
+              </span>
+            )}
             {hinweis && <span className="is-warn">{hinweis}</span>}
           </small>
         </span>
@@ -681,38 +693,105 @@ function TeilZeile({ z, begriffe }: { z: Extract<TabellenZeile, { typ: 'teil' }>
 }
 
 /**
- * Eine Datenquelle, die die Box liest (UEMS AP-06): Kennzeichen und Weg, ihr Zustand, und der Weg auf die
- * Box-Seite, wo sie verwaltet wird (zuständige Box wechseln, neue anlegen).
+ * Ein Gateway (GE-1, GD-3 A): ein Kasten, hinter dem mehrere Geräte antworten — eine Zeile mit Weg und
+ * Box-Rückmeldung, die Geräte eine Ebene tiefer. Eine eigene Seite bekommt es erst mit GE-5.
  */
-function QuelleZeile({ z, begriffe }: { z: Extract<TabellenZeile, { typ: 'quelle' }>; begriffe: string[] }) {
-  const q = z.quelle;
+function GatewayZeile({
+  z,
+  begriffe,
+  p,
+}: {
+  z: Extract<TabellenZeile, { typ: 'gateway' }>;
+  begriffe: string[];
+  p: AufbauTabelleProps;
+}) {
+  const w = z.weg;
+  const n = w.geraete.length;
   return (
-    <div className={`vp-auf-t-zeile is-quelle${ebeneKlasse(z.ebene)}`} role="row" style={ebene(z.ebene)} data-quelle-zeile={q.id}>
+    <div className={`vp-auf-t-zeile is-gateway is-${w.ton}${ebeneKlasse(z.ebene)}`} role="row" style={ebene(z.ebene)} data-aufbau-weg={w.id}>
       <span role="cell" className="vp-auf-t-name">
-        <span className="vp-auf-t-auf-platz" />
+        <Auf offen={z.offen} label={`Geräte hinter ${w.titel} ${z.offen ? 'zuklappen' : 'aufklappen'}`} onClick={() => p.onGatewayUmschalten(w.id)} />
         <AufbauSymbol kategorie="navy" icon="link" />
         <span className="vp-auf-t-text">
-          <span className="vp-auf-t-titel">
-            <span className={`vp-health-dot vp-auf-nur-mobil ${TON_PUNKT[q.ton]}`} />
-            <a className="vp-auf-t-kuerze" href={z.box.href}>
-              <Treffer text={q.titel} begriffe={begriffe} />
-            </a>
-          </span>
+          <b className="vp-auf-t-titel">
+            <span className={`vp-health-dot vp-auf-nur-mobil ${TON_PUNKT[w.ton]}`} />
+            <span className="vp-auf-t-kuerze">
+              <Treffer text={w.titel} begriffe={begriffe} />
+            </span>
+          </b>
           <small>
-            <Treffer text={q.weg} begriffe={begriffe} />
+            <span className="vp-auf-t-kuerze">
+              <Treffer text={w.weg} begriffe={begriffe} />
+            </span>
           </small>
         </span>
       </span>
       <span role="cell" className="vp-auf-t-art">
-        Datenquelle
+        Gateway
       </span>
       <span role="cell" className="vp-auf-t-zustand">
-        <span className={`vp-health-dot ${TON_PUNKT[q.ton]}`} />
-        <span className="w">{gross(q.zustandWort)}</span>
-        {q.zustandZeit && <small>{q.zustandZeit}</small>}
+        <span className={`vp-health-dot ${TON_PUNKT[w.ton]}`} />
+        <span className="w">{gross(w.zustandWort)}</span>
+        {w.zustandZeit && <small>{w.zustandZeit}</small>}
       </span>
-      <span role="cell" className="vp-auf-t-wert" />
+      <span role="cell" className="vp-auf-t-wert">
+        {n} {n === 1 ? 'Gerät' : 'Geräte'}
+      </span>
       <span role="cell" />
+    </div>
+  );
+}
+
+/**
+ * Ein Anschluss ohne Gerät (GE-1, 1 : 0): ein Weg ist angelegt, aber kein Gerät dahinter bekannt — sichtbar,
+ * auch ohne zuständige Box, mit dem Weg zum Hinzufügen.
+ */
+function AnschlussZeile({
+  z,
+  begriffe,
+  p,
+}: {
+  z: Extract<TabellenZeile, { typ: 'anschluss' }>;
+  begriffe: string[];
+  p: AufbauTabelleProps;
+}) {
+  const w = z.weg;
+  return (
+    <div className={`vp-auf-t-zeile is-anschluss is-${w.ton}${ebeneKlasse(z.ebene)}`} role="row" style={ebene(z.ebene)} data-aufbau-weg={w.id}>
+      <span role="cell" className="vp-auf-t-name">
+        <span className="vp-auf-t-auf-platz" />
+        <AufbauSymbol kategorie="fund" icon="plug" />
+        <span className="vp-auf-t-text">
+          <b className="vp-auf-t-titel">
+            <span className="vp-auf-t-kuerze">{w.titel}</span>
+          </b>
+          <small>
+            <span className="vp-auf-t-kuerze">
+              <Treffer text={w.weg} begriffe={begriffe} />
+            </span>
+          </small>
+        </span>
+      </span>
+      <span role="cell" className="vp-auf-t-art">
+        Anschluss
+      </span>
+      <span role="cell" className="vp-auf-t-zustand">
+        <span className={`vp-health-dot ${TON_PUNKT[w.ton]}`} />
+        <span className="w">{gross(w.zustandWort)}</span>
+        {w.zustandZeit && <small>{w.zustandZeit}</small>}
+      </span>
+      <span role="cell" className="vp-auf-t-aktion is-breit">
+        {z.anlage.aktuell && p.onGeraetHinzufuegen && (
+          <Recht aktion="geraet.einrichten"><button
+            type="button"
+            className="vp-btn vp-btn--outline vp-btn--sm"
+            onClick={() => p.onGeraetHinzufuegen?.(z.box)}
+            aria-label={`Gerät an Anschluss ${w.kennzeichen} hinzufügen`}
+          >
+            Gerät hinzufügen
+          </button></Recht>
+        )}
+      </span>
     </div>
   );
 }

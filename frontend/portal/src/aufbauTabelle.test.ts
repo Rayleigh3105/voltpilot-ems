@@ -316,7 +316,7 @@ describe('filterOptionen, aktiveFilter, aufbauZahlen', () => {
 
   it('zählt Geräte, Treffer, Aufmerksamkeit und Gemeldetes der geöffneten Anlage', () => {
     const baum = aufbauBaum(eingabe());
-    expect(aufbauZahlen(baum, LEERER_FILTER)).toEqual({ geraete: 3, treffer: 3, achtung: 1, gemeldet: 1, aktiv: false });
+    expect(aufbauZahlen(baum, LEERER_FILTER)).toEqual({ geraete: 3, gateways: 0, treffer: 3, achtung: 1, gemeldet: 1, aktiv: false });
     expect(aufbauZahlen(baum, { ...LEERER_FILTER, q: 'deye' })).toMatchObject({ treffer: 1, aktiv: true });
   });
 
