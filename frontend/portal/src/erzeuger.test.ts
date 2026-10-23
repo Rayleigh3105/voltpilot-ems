@@ -179,6 +179,42 @@ describe('Blatt „Steuerung jetzt“', () => {
   });
 });
 
+describe('Gore, erste Lesung: Vorgabe ungültig, Wort 24 = Ersatzwert (EZ-1 §3, Fall E21)', () => {
+  // Das Bild vom 22.10.2026: n_bits 0x0002 (Verbindung steht, Bit 0 = 0), Wort 24 = 1000 → 100 %, cos φ 0x7FFF,
+  // quelle_p 6 Ersatzwert, Grenze 265,5 kW. Auch wenn die 100 % ankämen, sind sie keine Vorgabe des Netzbetreibers.
+  const gore = () => mit('gore', (x) => {
+    const t = x.werte[P.nbBits].gelesenAm;
+    const s = (k: string, wert: number | null) => { x.werte[k] = { wert, gelesenAm: t, qualitaet: wert == null ? 'invalid' : 'good' }; };
+    s(P.nbBits, 0b010); s(P.nbProzent, 100); s(P.nbCosphi, null); s(P.quelleP, 6); s(P.sBits, 0b11); s(P.pGrenzeW, 265_500);
+  });
+
+  it('die Lage kennt keine Vorgabe, die Wirkung kommt vom Ersatzwert', () => {
+    const l = erzeugerLage(gore(), NOW);
+    expect([l.nb.gueltig, l.nb.prozent, l.nb.begrenzt, l.nb.cosphi, l.quelle, l.grenzeKw]).toEqual([false, null, false, null, 'ersatzwert', 265.5]);
+    expect(erzeugerStatus(l)).toEqual([]);
+  });
+
+  it('Soll-Kette, Blatt und Satz sagen „keine gültige Vorgabe“ und den Ersatzwert, nie „begrenzt auf 100 %“', () => {
+    const l = erzeugerLage(gore(), NOW);
+    const k = erzeugerKette(l, NOW);
+    expect(k.glieder.map((g) => [g.key, sp(g.text), g.bindet])).toEqual([
+      ['nb', 'Netzbetreiber keine gültige Vorgabe', false],
+      ['eigen', 'Ersatzwert 265,5 kW', true],
+      ['anlage', 'Anlage 41,0 kW', false],
+    ]);
+    const b = erzeugerBlatt(l, NOW, null);
+    expect(sp(b.zeilen[0].unter)).toBe('Netz Musterstadt GmbH · Leitstelle keine gültige Vorgabe · seit 15:32');
+    expect(b.zeilen[0].wert).toBe('—');
+    expect(b.zeilen.map((z) => z.titel)).toEqual(['Netzbetreiber', 'Ersatzwert', 'Anlage']);
+    expect(sp(b.warum[0][1])).toBe('265,5 kW – Ersatzwert der Steuerung');
+    expect(b.balken?.nbKw).toBeNull();
+    const satz = sp(erzeugerSatz(l));
+    expect(satz).toBe('Vom Netzbetreiber liegt keine gültige Vorgabe vor; die Steuerung fährt einen Ersatzwert von 265,5 kW. Sie erzeugt 41,0 kW.');
+    const alles = [satz, ...k.glieder.map((g) => sp(g.text)), ...b.zeilen.flatMap((z) => [sp(z.unter), z.wert])].join(' | ');
+    expect(alles).not.toMatch(/100\s?%/);
+  });
+});
+
 describe('Bühne', () => {
   it('Satz zur Vorgabe: Büttner ohne Netzpunkt nennt die Erzeugung, Gore die Nulleinspeisung', () => {
     expect(sp(erzeugerSatz(erzeugerLage(erzeugerBeispiel('buettner', NOW), NOW)))).toBe(

@@ -254,10 +254,13 @@ describe('VoltPilot-Registerbild Erzeuger v1: Schema und Aufbau', () => {
     expect(schemaVerstoesse(vektoren, schema)).toEqual([]);
   });
 
-  it('Gegenprobe: kein Fall ist belegt, und ein Feld ohne Typ fällt auf', () => {
+  it('Gegenprobe: belegt ist nur ein Fall von der Steuerung, und ein Feld ohne Typ fällt auf', () => {
     const daten = structuredClone(vektoren);
     daten.faelle[0].belegt = true;
-    expect(schemaVerstoesse(daten, schema)).toEqual(['$.faelle[0].belegt: true ist nicht false']);
+    expect(schemaVerstoesse(daten, schema)).toEqual([`$.faelle[0]: ${JSON.stringify(daten.faelle[0])} passt zu keinem Zweig von anyOf`]);
+    daten.faelle[0].herkunft = 'steuerung';
+    expect(schemaVerstoesse(daten, schema)).toEqual([]);
+    daten.faelle[0].herkunft = 'vertrag';
     delete daten.faelle[0].belegt;
     delete daten.felder[0].typ;
     expect(schemaVerstoesse(daten, schema)).toEqual(['$.felder[0]: Pflichtfeld typ fehlt', '$.faelle[0]: Pflichtfeld belegt fehlt']);
@@ -412,8 +415,9 @@ describe('VoltPilot-Registerbild Erzeuger v1: Vertrag ⟷ Datei', () => {
 });
 
 describe('VoltPilot-Registerbild Erzeuger v1: Lese-Fälle', () => {
-  it('alle Fälle sind Vertrags-Fälle ohne Beleg und haben eindeutige Nummern', () => {
-    expect(vektoren.faelle.every((f: Json) => f.herkunft === 'vertrag' && f.belegt === false)).toBe(true);
+  it('belegt sind nur Fälle von der Steuerung, alle anderen sind Vertrags-Fälle; die Nummern sind eindeutig', () => {
+    expect(vektoren.faelle.filter((f: Json) => f.belegt).map((f: Json) => f.name)).toEqual(['E21 gore-erste-lesung-ersatzwert']);
+    expect(vektoren.faelle.every((f: Json) => (f.belegt ? f.herkunft === 'steuerung' : f.herkunft === 'vertrag'))).toBe(true);
     const nummern = vektoren.faelle.map((f: Json) => f.name.split(' ')[0]);
     expect(nummern).toEqual(nummern.map((_: string, i: number) => `E${i + 1}`));
   });
@@ -430,6 +434,18 @@ describe('VoltPilot-Registerbild Erzeuger v1: Lese-Fälle', () => {
     expect(fall('E1').input.lesungen[0].woerter).toHaveLength(68);
     expect(fall('E1').expected.namen.netzbetreiber_name).toBe('N-ERGIE Netz GmbH');
     expect(fall('E1').expected.namen.direktvermarkter_name).toBeNull();
+  });
+
+  it('Gore, erste Lesung (E21): ohne gültige Vorgabe trägt Wort 24 den Ersatzwert, gelesen wird er nicht als Vorgabe', () => {
+    const woerter = fall('E21').input.lesungen[0].woerter;
+    expect([woerter[23], woerter[24], woerter[25], woerter[34]]).toEqual([0x0002, 1000, 0x7fff, 6]);
+    const [l] = liesFall(fall('E21').input).lesungen;
+    expect(l.bits.n_bits.vorgabe_gueltig).toBe(false);
+    expect([l.werte.n_p_prozent, l.leer.n_p_prozent, l.werte.n_cosphi, l.leer.n_cosphi]).toEqual([null, 'gueltigkeit', null, 'gueltigkeit']);
+    // Was wirkt, sagt S: der Ersatzwert der Steuerung, 265,5 kW = Σ Sollwert der drei Wechselrichter.
+    expect([l.werte.quelle_p, l.bits.s_bits.gueltig, l.werte.p_grenze_w]).toEqual([6, true, 265_500]);
+    expect(l.einheiten.reduce((s: number, e: Json) => s + e.werte.t_p_soll_w, 0)).toBe(265_500);
+    expect(FELD.quelle_p.vokabular.find((c: Json) => c.code === 6).name).toBe('ersatzwert');
   });
 
   it('Büttner (E2): BHKW, Motoren 66 und 33 kW, Direktvermarkter-Kanal 1, Gasspeicher, Netzpunkt unbekannt (EW-16 C)', () => {

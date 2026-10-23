@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
@@ -220,6 +221,27 @@ class ErzeugerAlarmeTest {
         assertThat(ErzeugerAlarme.fernwirk(new Werte().setze("nb.n_kanal", 2).setze("nb.n_bits", 0).bild(1))
                 .zustand()).isEqualTo("keine_fernwirktechnik");
         assertThat(ErzeugerAlarme.fernwirk(new Werte().setze("nb.n_kanal", 3).bild(1)).bekannt()).isFalse();
+    }
+
+    // ------------------------------------------------------------------ Gore, erste Lesung (EZ-1 Fall E21)
+
+    @Test
+    void ohneGueltigeVorgabeSprechenDieAlarmeVomErsatzwertNieVomNetzbetreiber() {
+        // 22.10.2026: n_bits 0x0002 (Verbindung steht, Vorgabe ungültig), Wort 24 = 1000 (100 %), quelle_p 6.
+        ErzeugerAlarme.Bild bild = new Werte().setze("nb.n_kanal", 3).setze("nb.n_bits", 0b0010)
+                .setze("nb.n_p_prozent", 100).setze("wirkung.quelle_p", 6).setze("wirkung.s_bits", 0b11)
+                .setze("wirkung.p_grenze_w", 265_500).setze("a.p_erzeugung_w", 25_935).setze("a.p_installiert_kw", 265)
+                .bild(3);
+        ErzeugerAlarme.Urteil folgen = ErzeugerAlarme.folgen(bild, 5, 5);
+        assertThat(folgen.zustand()).isEqualTo("folgt");
+        assertThat(folgen.text()).isEqualTo("Die Anlage hält die wirksame Grenze ein. Erzeugung 25,9\u00a0kW, wirksame "
+                + "Grenze 265,5\u00a0kW (Ersatzwert).");
+        assertThat(ErzeugerAlarme.abschaltung(bild).zustand()).isEqualTo("nicht_abgeschaltet");
+        assertThat(ErzeugerAlarme.fernwirk(bild).zustand()).isEqualTo("verbunden");
+        for (ErzeugerAlarme.Urteil u : List.of(folgen, ErzeugerAlarme.abschaltung(bild),
+                ErzeugerAlarme.fernwirk(bild))) {
+            assertThat(u.text()).doesNotContain("100").doesNotContain("begrenzt auf");
+        }
     }
 
     // ------------------------------------------------------------------ Programmstand veraltet (EZ-11b)

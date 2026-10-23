@@ -119,6 +119,8 @@ export interface ErzeugerLage {
     /** 0 keiner · 1 feste Grenze · 2 Stufen · 3 Fernwirktechnik. */
     kanal: number | null;
     verbunden: boolean | null;
+    /** `n_bits` Bit 0: ohne gültige Vorgabe trägt Wort 24 den Ersatzwert der Steuerung, keine Vorgabe (EZ-1 §3). */
+    gueltig: boolean | null;
     begrenzt: boolean;
     notAus: boolean;
     prozent: number | null;
@@ -194,6 +196,7 @@ export function erzeugerLage(j: ErzeugerJetzt, now: Date): ErzeugerLage {
   const nb = {
     kanal: nbKanal,
     verbunden,
+    gueltig: bit(nbBits, 0),
     begrenzt: bit(nbBits, 2) === true || (nbProzent != null && nbProzent < 100),
     notAus: bit(nbBits, 3) === true,
     prozent: nbProzent,
@@ -293,6 +296,8 @@ export function erzeugerLage(j: ErzeugerJetzt, now: Date): ErzeugerLage {
 /* -------------------------------------------------------- Wörter, kurz */
 
 const hatNb = (l: ErzeugerLage) => (l.nb.kanal ?? 0) > 0;
+/** `n_bits` Bit 0 = 0: Wort 24 ist der Ersatzwert der Steuerung, nie „der Netzbetreiber begrenzt auf 100 %“. */
+const OHNE_VORGABE = 'keine gültige Vorgabe';
 const hatDv = (l: ErzeugerLage) => (l.dv.kanal ?? 0) > 0;
 /** Leistung, die die Grenze des Netzbetreibers bedeutet (% der installierten Leistung). */
 export function nbKw(l: ErzeugerLage): number | null {
@@ -378,7 +383,7 @@ export function erzeugerKette(l: ErzeugerLage, now: Date): ErzeugerKette {
   const g: KettenGlied[] = [];
   const ruhig = l.veraltet;
   if (hatNb(l)) {
-    const wert = l.nb.notAus ? 'schaltet ab' : prozent(l.nb.prozent);
+    const wert = l.nb.notAus ? 'schaltet ab' : l.nb.gueltig === false ? OHNE_VORGABE : prozent(l.nb.prozent);
     const zusatz = l.nb.gehalten ? ' (gehalten)' : '';
     g.push({
       key: 'nb',
@@ -476,12 +481,12 @@ export function erzeugerBlatt(l: ErzeugerLage, now: Date, heute: GeregeltZeile[]
   const seit = (t: number | null) => (t == null ? null : `seit ${uhrzeit(t)}`);
   if (hatNb(l)) {
     const kanal = KANAL_NB[l.nb.kanal ?? 0] ?? '';
-    const vorgabe = l.nb.notAus ? 'Abschaltung' : `${kanal}${kanal ? ' ' : ''}${prozent(l.nb.prozent)}`;
+    const vorgabe = l.nb.notAus ? 'Abschaltung' : `${kanal}${kanal ? ' ' : ''}${l.nb.gueltig === false ? OHNE_VORGABE : prozent(l.nb.prozent)}`;
     const teile = [l.netzbetreiberName, vorgabe, l.nb.gehalten ? 'getrennt, Wert gehalten' : seit(l.nb.seit)];
     zeilen.push({
       key: 'nb', titel: 'Netzbetreiber', farbe: 'netz', unter: teile.filter(Boolean).join(' · '),
       // 100 % ist keine Grenze - dann steht dort keine Leistung, die nach einer aussähe.
-      wert: l.nb.notAus ? kw(0) : l.nb.begrenzt ? kw(nbKw(l)) : 'keine Grenze',
+      wert: l.nb.notAus ? kw(0) : l.nb.begrenzt ? kw(nbKw(l)) : l.nb.gueltig === false ? '—' : 'keine Grenze',
       ton: l.nb.gehalten || l.nb.notAus ? 'warn' : 'ruhig',
     });
   }
@@ -552,7 +557,9 @@ export function erzeugerSatz(l: ErzeugerLage): string {
     case 'not_aus':
       return 'Not-Aus: Die Anlage ist abgeschaltet.';
     case 'ersatzwert':
-      return `Die Steuerung fährt einen Ersatzwert von ${kw(l.grenzeKw)}.${fluss}`;
+      return hatNb(l) && l.nb.gueltig === false
+        ? `Vom Netzbetreiber liegt keine gültige Vorgabe vor; die Steuerung fährt einen Ersatzwert von ${kw(l.grenzeKw)}.${fluss}`
+        : `Die Steuerung fährt einen Ersatzwert von ${kw(l.grenzeKw)}.${fluss}`;
     case 'keine':
       return `Keine Vorgabe begrenzt die Anlage.${fluss}`;
     default:

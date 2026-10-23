@@ -187,6 +187,26 @@ describe('Anlagensteuerung mit Pin: ein Gerät, ihr eigenes Gesicht (EZ-22)', ()
     expect(g.held.satz).toBe(`Die Anlage erzeugt gerade 312,4${NB}kW.`);
   });
 
+  it('Gore, erste Lesung (EZ-1 E21): ohne gültige Vorgabe nennt die Grenze den Ersatzwert, nie den Netzbetreiber', () => {
+    // n_bits Bit 0 = 0, Wort 24 = 1000 (100 %), quelle_p 6 - die 100 % sind keine Vorgabe des Netzbetreibers.
+    const ersterLauf = werte(GERAET_GORE, {
+      'erzeuger.a.a_gueltig': 0b01001,
+      'erzeuger.a.p_nvp_w': 848329,
+      'erzeuger.a.p_erzeugung_w': 25935,
+      'erzeuger.a.anlage_zustand': { wert: 3, text: 'läuft begrenzt' },
+      'erzeuger.nb.n_kanal': { wert: 3, text: 'Fernwirktechnik' },
+      'erzeuger.nb.n_bits': 0b010,
+      'erzeuger.nb.n_p_prozent': 100,
+      'erzeuger.wirkung.s_bits': 0b11,
+      'erzeuger.wirkung.quelle_p': { wert: 6, text: 'Ersatzwert' },
+      'erzeuger.wirkung.p_grenze_w': 265500,
+    });
+    const g = gesichtMit(ersterLauf);
+    expect(g.held.kacheln.find((k) => k.key === 'grenze')).toMatchObject({ wert: `265,5${NB}kW`, wort: 'Ersatzwert' });
+    const alles = [g.held.satz, g.held.hinweis, ...g.held.kacheln.flatMap((k) => [k.wert, k.wort])].join(' | ');
+    expect(alles).not.toMatch(/Netzbetreiber|100\s?%/);
+  });
+
   it('eine Störung braucht Aufmerksamkeit; ohne Werte bleibt es ehrlich leer', () => {
     const stoerung = werte(GERAET_GORE, { 'erzeuger.a.anlage_zustand': { wert: 4, text: 'Störung' } });
     expect(gesichtMit(stoerung).held.kacheln.find((k) => k.key === 'zustand')).toMatchObject({ wert: 'Störung', ton: 'warn' });

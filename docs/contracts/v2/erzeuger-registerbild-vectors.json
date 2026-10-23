@@ -5,8 +5,10 @@
     "EW-17 A); Feldnamen, Adressen, Typen und Ungültig-Werte unverändert, mit zwei Entscheiden von firstmate",
     "(A1 = A: ab 9 Einheiten zwei Anfragen; A2 = A: herzschlag, n_zaehler, d_zaehler laufen 65535 → 0 und haben",
     "keinen Ungültig-Wert). Bitnamen, Vokabular-Namen und was ein Gültigkeitsbit deckt sind Festlegungen dieses",
-    "Vertrags (Lesarten 1–12). Alle Fälle sind herkunft vertrag, belegt false: ihre Werte sind ausgedacht und",
-    "zeigen nur, wie ein Leser das Bild liest. Erzeugt per Skript (Wörter kodiert aus den Absichten, Erwartung aus",
+    "Vertrags (Lesarten 1–12). E1–E20 sind herkunft vertrag, belegt false: ihre Werte sind ausgedacht und",
+    "zeigen nur, wie ein Leser das Bild liest. E21 ist die erste Lesung bei Gore (22.10.2026, herkunft steuerung,",
+    "belegt true; Wort 24 ohne gültige Vorgabe = Ersatzwert, Captain A vom 23.10.2026).",
+    "Erzeugt per Skript (Wörter kodiert aus den Absichten, Erwartung aus",
     "den Absichten); geprüft von einem unabhängigen Leser im Test. Zwillinge (Box-Leser EZ-5, Simulator EZ-2,",
     "Bild-Baustein der SPS-Bibliothek EZ-3) lesen diese Datei; wer den Aufbau ändert, ändert Datei, Vertrag und Test gemeinsam."
   ],
@@ -592,7 +594,7 @@
     ]
   },
   "lesen": {
-    "max_woerter_je_anfrage": {"art": "repo", "wert": 120, "fundstelle": "docs/contracts/v2/measurement-budget-vectors.json:34"},
+    "max_woerter_je_anfrage": {"art": "repo", "wert": 120, "fundstelle": "docs/contracts/v2/measurement-budget-vectors.json:36"},
     "block_nie_teilen": {"art": "festlegung", "wert": "ein Einheiten-Block und ein Text werden nie auf zwei Anfragen verteilt", "fundstelle": "erzeuger-registerbild.md §9 (wie WAGO-Registerbild v1 §7)"},
     "einheiten_in_einer_anfrage": {"art": "festlegung", "wert": 8, "fundstelle": "firstmate A1 = A: (120 − 38) / 10"},
     "pruefreihenfolge": {
@@ -2048,6 +2050,85 @@
           "netzbetreiber_name": "N-ERGIE Netz GmbH · Nürnberg Süd",
           "direktvermarkter_name": "WVV",
           "t_typ_name": [null, "Smartblock 33 äöüß ÄÖÜ"]
+        }
+      }
+    },
+    {
+      "name": "E21 gore-erste-lesung-ersatzwert",
+      "why": "Gore, erste Lesung von der Box am 22.10.2026 14:19 (Programmstand 2610, Erstanlauf ohne Telegramm der Leitstelle): n_bits 0x0002 — Verbindung steht, Vorgabe NICHT gültig (Bit 0 = 0). Wort 24 trägt den wirksamen Ersatzwert 1000 (100,0 %), nicht 0xFFFF (§3, Captain-Antwort A vom 23.10.2026); der Leser liest ihn nicht als Vorgabe (Grund gueltigkeit), n_cosphi 0x7FFF ebenso. Was wirkt, steht in S: quelle_p 6 Ersatzwert, p_grenze_w 265 500 W = Σ t_p_soll_w. Am Netzpunkt +848 329 W Bezug. Rohwörter aus data/vp-ez4-gore-xml-registerbild/erstes-bild-2026-10-22.md; die Namen sind aus den dort gelesenen Texten kodiert.",
+      "herkunft": "steuerung",
+      "belegt": true,
+      "input": {
+        "lesungen": [
+          {
+            "woerter": [22096, 17754, 258, 772, 256, 3, 197, 2610, 0, 1, 1, 140, 9, 0, 12, 61897, 0, 25935, 3, 0, 65535, 265, 3, 2, 1000, 32767, 218, 0, 0, 0, 65535, 65535, 65535, 0, 6, 3, 4, 3356, 3, 3, 1, 125, 0, 6765, 1, 7364, 7, 5713, 3, 3, 1, 125, 0, 8858, 1, 26264, 10, 7230, 3, 3, 1, 125, 0, 10312, 1, 35264, 4, 61197]
+          }
+        ],
+        "namen": {
+          "ab": 140,
+          "woerter": [20013, 17746, 18249, 17696, 20069, 29818, 8263, 28002, 18432, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 18290, 28535, 24948, 29696, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 18290, 28535, 24948, 29696, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 18290, 28535, 24948, 29696, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        }
+      },
+      "expected": {
+        "lesungen": [
+          {
+            "ergebnis": "lesbar",
+            "grund": null,
+            "kopf": {"version_haupt": 1, "version_neben": 0, "te_anzahl": 3, "herzschlag": 197, "programmstand": 2610, "steuerung_id": 1, "anlagenart": 1, "beschreibung_ab": 140},
+            "anfragen": 1,
+            "herzschlag_urteil": null,
+            "veraltet": false,
+            "zaehler_differenz": null,
+            "werte": {"a_gueltig": 9, "a_alter_s": 0, "p_nvp_w": 848329, "p_erzeugung_w": 25935, "anlage_zustand": 3, "a_bits": 0, "speicher_fuellstand": null, "p_installiert_kw": 265, "n_kanal": 3, "n_bits": 2, "n_p_prozent": null, "n_cosphi": null, "n_seit_s": 218, "n_zaehler": 0, "d_kanal": 0, "d_bits": 0, "d_soll_w": null, "d_seit_s": null, "d_zaehler": null, "quelle_p": 6, "s_bits": 3, "p_grenze_w": 265500},
+            "bits": {
+              "a_gueltig": {"netzpunkt_gueltig": true, "netzpunkt_berechnet": false, "netzpunkt_tot": false, "erzeugung_gueltig": true, "gasspeicher_gueltig": false},
+              "a_bits": {"not_aus": false, "na_schutz": false, "sammelstoerung": false, "hand_ort": false, "wartung": false},
+              "n_bits": {"vorgabe_gueltig": false, "verbindung_steht": true, "wirkleistung_begrenzt": false, "not_aus": false, "cosphi_vorgabe": false, "kennlinie": false},
+              "d_bits": {"abschnitt_gueltig": false, "aktivierung": null, "stopp": null, "bereit_gemeldet": null, "aktiv_gemeldet": null},
+              "s_bits": {"gueltig": true, "anlage_folgt": true}
+            },
+            "einheiten": [
+              {
+                "n": 1,
+                "adresse": 38,
+                "werte": {"t_zustand": 3, "t_bits": 3, "t_art": 1, "t_nenn_kw": 125, "t_p_ist_w": 6765, "t_p_soll_w": 72900, "t_e": 464465},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 2,
+                "adresse": 48,
+                "werte": {"t_zustand": 3, "t_bits": 3, "t_art": 1, "t_nenn_kw": 125, "t_p_ist_w": 8858, "t_p_soll_w": 91800, "t_e": 662590},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              },
+              {
+                "n": 3,
+                "adresse": 58,
+                "werte": {"t_zustand": 3, "t_bits": 3, "t_art": 1, "t_nenn_kw": 125, "t_p_ist_w": 10312, "t_p_soll_w": 100800, "t_e": 323341},
+                "bits": {
+                  "t_bits": {"werte_gueltig": true, "sollwert_gueltig": true, "dv_bereit": false, "dv_aktiv": false, "grund_stoerung": false, "grund_netzbetreiber": false, "grund_hand_ort": false, "grund_wartung": false, "grund_gasspeicher_leer": false, "grund_sonstiger": false}
+                },
+                "leer": {}
+              }
+            ],
+            "leer": {"speicher_fuellstand": "gueltigkeit", "n_p_prozent": "gueltigkeit", "n_cosphi": "gueltigkeit", "d_soll_w": "gueltigkeit", "d_seit_s": "gueltigkeit", "d_zaehler": "gueltigkeit"}
+          }
+        ],
+        "namen": {
+          "ergebnis": "gelesen",
+          "anfragen": 1,
+          "netzbetreiber_name": "N-ERGIE Netz GmbH",
+          "direktvermarkter_name": null,
+          "t_typ_name": [
+            "Growatt",
+            "Growatt",
+            "Growatt"
+          ]
         }
       }
     }

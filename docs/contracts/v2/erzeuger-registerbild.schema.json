@@ -266,14 +266,18 @@
     },
     "fall": {
       "type": "object",
-      "description": "Belegt ist nur, was an einer Steuerung mit Nachweis gemessen wurde. Vertrag und Simulator dienen dem Bauen, nie dem Beleg.",
+      "description": "Belegt ist nur, was an einer Steuerung mit Nachweis gemessen wurde (herkunft steuerung). Vertrag und Simulator dienen dem Bauen, nie dem Beleg.",
       "additionalProperties": false,
+      "anyOf": [
+        { "properties": { "herkunft": { "enum": ["vertrag", "simulator"] }, "belegt": { "const": false } } },
+        { "properties": { "herkunft": { "const": "steuerung" }, "belegt": { "const": true } } }
+      ],
       "required": ["name", "why", "herkunft", "belegt", "input", "expected"],
       "properties": {
         "name": { "type": "string", "pattern": "^E[0-9]+ [a-z0-9-]+$" },
         "why": { "type": "string", "minLength": 1 },
-        "herkunft": { "enum": ["vertrag", "simulator"] },
-        "belegt": { "const": false },
+        "herkunft": { "enum": ["vertrag", "simulator", "steuerung"] },
+        "belegt": { "type": "boolean" },
         "input": {
           "type": "object",
           "additionalProperties": false,

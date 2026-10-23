@@ -2,7 +2,8 @@
 
 Stand 21.10.2026 · Vertrag 1.0 · Registerbild 1.0 (Wort 0x0100, schlanke Fassung) · Konzept
 `data/vp-erzeuger-wago-konzept` Fassung 12 §3.1, §3.7, §3.9, §3.10 (`register-vorlage-schlank.json`) ·
-Entscheide EW-1, EW-2, EW-5, EW-16, EW-17 vom 21.10.2026 · firstmate A1 = A, A2 = A und Lesarten 1–12 vom 21.10.2026.
+Entscheide EW-1, EW-2, EW-5, EW-16, EW-17 vom 21.10.2026 · firstmate A1 = A, A2 = A und Lesarten 1–12 vom 21.10.2026 ·
+Wort 24 ohne gültige Vorgabe: Antwort A des Captains vom 23.10.2026 (§3).
 
 Das Registerbild ist die **Vereinbarung zwischen der Steuerung einer Erzeugungsanlage und der Box.** Die
 Steuerung (WAGO PFC200 oder ein anderer Controller mit Modbus-TCP-Server) führt die Werte der Anlage zusammen:
@@ -13,14 +14,14 @@ verschieden ist, erklärt das Bild selbst (Anlagenart, Zahl, Art und Nennleistun
 Das SPS-Programm, das das Bild füllt, schreibt VoltPilot (SPS-Bibliothek, EW-13 B); gelesen wird es von der
 Lese-Familie `erzeuger_registerbild` der Box (EW-4 A).
 
-**Stand vor dem Pilot.** Nichts hier ist an einer Steuerung belegt: Gore hat das Programm noch nicht (Entwurf
-`gore-umbau/PRG_VP_Bild.st`, nicht übersetzt), bei Büttner fehlt die Hardware. Alle Lese-Fälle sind ausgedacht
-(`herkunft: vertrag`, `belegt: false`).
+**Stand vor dem Pilot.** An einer Steuerung belegt ist nur die erste Lesung bei Gore vom 22.10.2026 (Programmstand
+2610, Fall E21, `herkunft: steuerung`, `belegt: true`); bei Büttner fehlt die Hardware. Alle anderen Lese-Fälle sind
+ausgedacht (`herkunft: vertrag`, `belegt: false`).
 
 | Datei | Rolle |
 |---|---|
 | [`erzeuger-registerbild.md`](./erzeuger-registerbild.md) | dieser Vertrag |
-| [`erzeuger-registerbild-vectors.json`](./erzeuger-registerbild-vectors.json) | Aufbau (Felder, Bits, Vokabular, Namen, Leseregeln) und 20 Lese-Fälle E1–E20 mit rohen Wörtern und vollständiger Erwartung |
+| [`erzeuger-registerbild-vectors.json`](./erzeuger-registerbild-vectors.json) | Aufbau (Felder, Bits, Vokabular, Namen, Leseregeln) und 21 Lese-Fälle E1–E21 mit rohen Wörtern und vollständiger Erwartung |
 | [`erzeuger-registerbild.schema.json`](./erzeuger-registerbild.schema.json) | Schema der Vektor-Datei (Teilmenge des UEMS-Schema-Läufers) |
 | `frontend/portal/src/erzeugerRegisterbild.test.ts` | Prüfer: Schema, lückenloser Aufbau, Vertrag ⟷ Datei, Rechenbeispiele, ein unabhängiger Leser über alle Fälle |
 
@@ -92,7 +93,7 @@ Adressen der Einheit gelten für Einheit 1; Einheit n liegt bei Adresse + (n −
 | 21 | 1 | `p_installiert_kw` | U16 | 0xFFFF | kW | installierte Leistung |
 | 22 | 1 | `n_kanal` | U16 | 0xFFFF | Vokabular (§5) | Weg der Vorgabe des Netzbetreibers |
 | 23 | 1 | `n_bits` | U16 | 0xFFFF | Bitfeld (§4) | Vorgabe gültig, Verbindung, begrenzt, Not-Aus, cos φ, Kennlinie |
-| 24 | 1 | `n_p_prozent` | U16 | 0xFFFF | 0,1 % | Wirkleistungsgrenze des Netzbetreibers |
+| 24 | 1 | `n_p_prozent` | U16 | 0xFFFF | 0,1 % | Wirkleistungsgrenze des Netzbetreibers; ohne gültige Vorgabe der wirksame Ersatzwert, nie 0xFFFF, solange einer wirkt |
 | 25 | 1 | `n_cosphi` | S16 | 0x7FFF | 0,001 · + über- / − untererregt | cos-φ-Vorgabe |
 | 26 | 1 | `n_seit_s` | U16 | 0xFFFF | s, höchstens 65534 | seit der letzten Vorgabe |
 | 27 | 1 | `n_zaehler` | U16 | — | Anzahl, 65535 → 0 | Vorgaben seit Programmstart (§8) |
@@ -122,6 +123,14 @@ Adressen der Einheit gelten für Einheit 1; Einheit n liegt bei Adresse + (n −
   gegen 3 × 125 kW Wechselrichter-Nennleistung). Der Leser prüft keine Summe.
 - **Grenze ohne Wert.** Begrenzt niemand (`quelle_p` 0), trägt `p_grenze_w` das Typ-Maximum: kein Wert, nie 0 W.
   Ebenso `d_soll_w` ohne Direktvermarkter.
+- **Wort 24 ohne gültige Vorgabe** (Antwort A des Captains vom 23.10.2026). Ist `n_bits` Bit 0 `vorgabe_gueltig` = 0
+  (Erstanlauf, Telegramm ungültig oder ausgeblieben), schreibt die Steuerung in `n_p_prozent` den **wirksamen
+  Ersatzwert**, mit dem sie die Anlage fährt — bei Gore im Erstanlauf 1000 = 100,0 %. 0xFFFF steht dort nur, wenn gar
+  kein Wert wirkt. Ob das eine Vorgabe des Netzbetreibers ist, sagen nur Bit 0 und `quelle_p`: Bit 0 = 0 heißt
+  „keine gültige Vorgabe“, `quelle_p` 6 `ersatzwert` heißt „die Anlage fährt mit dem Ersatzwert“, die Grenze selbst
+  steht in `p_grenze_w`. Die Deckung bleibt (§4): der Leser liest Wort 24 bei Bit 0 = 0 nicht als Vorgabe (Grund
+  `gueltigkeit`) — nie „der Netzbetreiber begrenzt auf 100 %“. `n_cosphi` bleibt ohne Vorgabe 0x7FFF. Für alle
+  anderen Felder gilt die Ungültig-Regel aus §1 unverändert (Fall E21).
 
 ## 4. Bitfelder und was sie decken
 
@@ -392,6 +401,7 @@ Namen (zwei Zeichen je Wort, höherwertiges Byte zuerst, ISO 8859-1):
 | E11 | Ungültig-Werte je Typ, −1 als Wert, 32 767 in U16, Zähler 65535, Werte außerhalb des Vokabulars |
 | E12–E17 | `te_anzahl` 0, 10 (zwei Anfragen, Typname mit genau 32 Zeichen), 11, 0xFFFF; zu wenige Wörter; Kopf unvollständig |
 | E18–E20 | keine Namen (`beschreibung_ab` 0), Namenbereich im Bild, Namen-Grenzfälle |
+| E21 | Gore, erste Lesung 22.10.2026 (belegt): Vorgabe ungültig, Wort 24 = 1000 Ersatzwert, `quelle_p` 6, Grenze 265,5 kW = Σ Sollwerte |
 
 ## 13. Offen und Befunde
 
