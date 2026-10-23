@@ -159,6 +159,14 @@ voltpilot:
   # Public self-service registration (tenant + login in one step). On by default;
   # closed platforms set VOLTPILOT_REGISTRATION_ENABLED=false to remove the
   # endpoint entirely.
+  # Adresssuche beim Anlegen (Anlage-Flow a1, Entscheid D4): GET /api/v1/orte/suche fragt einen
+  # Photon-Geocoder mit OpenStreetMap-Adressen (Vorgabe: der oeffentliche Dienst von komoot, fair use
+  # ohne Zusage). Fuer Produktion einen eigenen Photon mit OSM-Auszug DE/AT/CH betreiben und hier
+  # eintragen; die api braucht dorthin ausgehenden Zugang. Namensnennung zeigt das Portal.
+  orte:
+    suche:
+      url: ${VOLTPILOT_ORTE_SUCHE_URL:https://photon.komoot.io/api}
+      timeout: ${VOLTPILOT_ORTE_SUCHE_TIMEOUT:PT3S}
   registration:
     enabled: ${VOLTPILOT_REGISTRATION_ENABLED:true}
     # Abuse guard for the public endpoint: sliding-window limits per client
