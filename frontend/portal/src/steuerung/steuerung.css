@@ -95,6 +95,8 @@
 
 .stn-main { padding: 14px 0 28px; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-content: start; }
 .stn-main > * { min-width: 0; }
+/* Am Rechner nebeneinander: keine Karte streckt sich auf die Höhe ihrer Nachbarin (Netzanschluss neben dem Ladepunkt). */
+.stn-main.laden { align-items: start; }
 /* Hinweisbänder (Pause, Szene) stehen VOR dem Raster - sonst verdrängt ein
    Band über die volle Breite die rechte Spalte, die in Zeile 1 beginnt. */
 .stn-baender { display: grid; gap: 8px; padding-top: 14px; }
@@ -382,6 +384,8 @@
 :is(.stn, .stn-blatt) .bed-r .x svg{width:17px;height:17px}
 :is(.stn, .stn-blatt) .dauer{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
 :is(.stn, .stn-blatt) .dauer button{min-height:44px;border-radius:12px;border:1px solid var(--c-border);background:var(--c-card);font:700 14px var(--font);cursor:pointer}
+/* „bis Abstecken“ ist länger als „30 Min“: eine eigene volle Zeile statt Text über den Rand (Konzept k1, 3.5). */
+:is(.stn, .stn-blatt) .dauer .ganz{grid-column:1 / -1}
 :is(.stn, .stn-blatt) .dauer button[aria-pressed="true"]{background:var(--st-hand-soft);border-color:var(--st-hand);color:var(--st-hand)}
 :is(.stn, .stn-blatt) .dauer button:disabled,:is(.stn, .stn-blatt) .bif:disabled{opacity:.5;cursor:default}
 /* „Steuerung anhalten“ (UEMS SZ-2 A): die Dauern, „oder“, „Bis ich fortsetze“. */
@@ -499,6 +503,9 @@
 :is(.stn, .stn-blatt) .lmodes button{display:grid;justify-items:center;gap:3px;min-height:60px;padding:6px 2px;border:0;border-radius:11px;background:transparent;font:700 12.5px/1.15 var(--font);color:var(--c-muted-fg);cursor:pointer;text-align:center}
 :is(.stn, .stn-blatt) .lmodes button svg{width:20px;height:20px}
 :is(.stn, .stn-blatt) .lmodes button:disabled{opacity:.4;cursor:default}
+/* Gedrückt bleibt gedrückt, auch wenn er gerade nicht wählbar ist (Konzept k1: „Schnell · immer“ ohne Auto). */
+:is(.stn, .stn-blatt) .lmodes button[aria-pressed="true"]:disabled{opacity:1}
+:is(.stn, .stn-blatt) .lmodes button small{display:block;font:600 11px/1.15 var(--font);color:var(--c-muted-fg)}
 :is(.stn, .stn-blatt) .lmodes button[aria-pressed="true"]{background:var(--c-card);color:var(--c-fg);box-shadow:0 1px 3px color-mix(in srgb,var(--c-fg) 16%,transparent)}
 :is(.stn, .stn-blatt) .lmodes button[aria-pressed="true"] svg{color:var(--pv)}
 :is(.stn, .stn-blatt) .lmodes button[data-m="schnell"][aria-pressed="true"] svg{color:var(--grid-line)}
@@ -523,6 +530,89 @@
 
 
 
+
+/* ================= „Womit laden?“ (Konzept k1 „Jede Wahl zeigt ihren Tag“) ================= */
+/* Das Zeichen einer Ladequelle: Sonne, Sonne + Mast, Sonne + Speicher, Euro. */
+:is(.stn, .stn-blatt) .lq-zeichen{position:relative;width:44px;height:44px;border-radius:13px;display:grid;place-items:center;background:var(--pv-soft);color:var(--pv);flex:none}
+:is(.stn, .stn-blatt) .lq-zeichen.klein{width:38px;height:38px;border-radius:11px}
+:is(.stn, .stn-blatt) .lq-zeichen.guenstig{background:var(--price-soft);color:var(--price)}
+:is(.stn, .stn-blatt) .lq-zeichen .zwei{position:absolute;right:-4px;bottom:-4px;width:20px;height:20px;border-radius:999px;display:grid;place-items:center;background:var(--c-card);box-shadow:0 0 0 2px var(--c-card);color:var(--grid-line)}
+:is(.stn, .stn-blatt) .lq-zeichen.speicher .zwei{color:var(--batt)}
+:is(.stn, .stn-blatt) .lq-t{min-width:0;display:block}
+:is(.stn, .stn-blatt) .lq-t b{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font:800 15px/1.25 var(--font)}
+:is(.stn, .stn-blatt) .lq-t small{display:block;font:500 13px/1.35 var(--font);color:var(--c-muted-fg)}
+:is(.stn, .stn-blatt) .lq-empf{font:700 11px/1 var(--font);padding:3px 7px;border-radius:999px;background:var(--st-on-soft);color:var(--st-on);letter-spacing:0}
+/* Die Zeile auf der Karte: Name, Versprechen, Tagesband, zwei kurze Sätze. */
+:is(.stn, .stn-blatt) .lq-zeile{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px 12px;align-items:center;width:100%;padding:12px;border-radius:14px;border:1px solid var(--c-border);background:var(--c-bg);text-align:left;font:inherit;color:inherit}
+:is(.stn, .stn-blatt) button.lq-zeile{cursor:pointer}
+:is(.stn, .stn-blatt) button.lq-zeile:hover{border-color:color-mix(in srgb,var(--action) 40%,var(--c-border))}
+:is(.stn, .stn-blatt) .lq-chev{color:var(--c-muted-fg);display:grid}
+:is(.stn, .stn-blatt) .lq-mini,:is(.stn, .stn-blatt) .lq-zeile>.lq-satz{grid-column:1 / -1}
+:is(.stn, .stn-blatt) .lq-satz{display:block;margin:0;font:700 13.5px/1.35 var(--font);color:var(--c-fg)}
+:is(.stn, .stn-blatt) .lq-satz small{display:block;font:500 12.5px/1.35 var(--font);color:var(--c-muted-fg)}
+:is(.stn, .stn-blatt) .lq-zustand{display:flex;align-items:center;gap:8px;margin:0;font:700 15px/1.3 var(--font)}
+:is(.stn, .stn-blatt) .lq-zustand i{width:9px;height:9px;border-radius:999px;background:var(--grid);flex:none}
+:is(.stn, .stn-blatt) .lq-einstellen{width:100%}
+/* Das Tagesband: Ladeleistung je Viertelstunde nach Herkunft, bis zur Abfahrt. */
+:is(.stn, .stn-blatt) .vb-w{display:block;min-width:0}
+:is(.stn, .stn-blatt) svg.vb{display:block;width:100%;overflow:visible}
+:is(.stn, .stn-blatt) .vb-preise{position:relative;display:block;height:3px;margin-top:1px}
+:is(.stn, .stn-blatt) .vb-preise i{position:absolute;top:0;height:3px;background:var(--price)}
+:is(.stn, .stn-blatt) .vb-ticks{position:relative;display:block;height:16px;margin-top:2px;font:700 12px/16px var(--font);color:var(--c-muted-fg);font-variant-numeric:tabular-nums}
+:is(.stn, .stn-blatt) .vb-ticks span{position:absolute;top:0;white-space:nowrap}
+:is(.stn, .stn-blatt) .vb-ticks .middle{transform:translateX(-50%)}
+:is(.stn, .stn-blatt) .vb-ticks .end{transform:translateX(-100%)}
+:is(.stn, .stn-blatt) .vb-nacht{fill:var(--c-muted)}
+:is(.stn, .stn-blatt) .vb-fehlt{fill:var(--st-off-soft);opacity:.7}
+:is(.stn, .stn-blatt) .vb-sonne{fill:var(--pv-fill)}
+:is(.stn, .stn-blatt) .vb-speicher{fill:var(--batt-fill)}
+:is(.stn, .stn-blatt) .vb-netz{fill:var(--grid)}
+:is(.stn, .stn-blatt) .vb-achse{stroke:var(--c-border)}
+:is(.stn, .stn-blatt) .vb-jetzt{stroke:var(--c-fg);stroke-width:1.5}
+:is(.stn, .stn-blatt) .vb-fertig{stroke:var(--st-done);stroke-width:1.5;stroke-dasharray:3 2}
+/* Die drei Zahlen. */
+:is(.stn, .stn-blatt) .lq-zahlen{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+:is(.stn, .stn-blatt) .lq-zahlen div{padding:8px 10px;border-radius:12px;background:var(--c-card);border:1px solid var(--c-border);min-width:0}
+:is(.stn, .stn-blatt) .lq-zahlen b{display:block;font:800 16px/1.2 var(--font);font-variant-numeric:tabular-nums;white-space:nowrap}
+:is(.stn, .stn-blatt) .lq-zahlen small{display:block;font:600 11.5px/1.3 var(--font);color:var(--c-muted-fg)}
+/* Das Blatt am Telefon: vier Zeilen, darunter EINE Vorschau. */
+:is(.stn, .stn-blatt) .lq-opts{display:grid;gap:6px}
+:is(.stn, .stn-blatt) .lq-opt{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 12px;border-radius:14px;border:1.5px solid var(--c-border);background:var(--c-card);cursor:pointer}
+:is(.stn, .stn-blatt) :is(.lq-opt,.lq-spalte) input{position:absolute;opacity:0;width:1px;height:1px;pointer-events:none}
+:is(.stn, .stn-blatt) :is(.lq-opt,.lq-spalte):has(input:checked){border-color:var(--action);background:color-mix(in srgb,var(--action) 5%,var(--c-card))}
+:is(.stn, .stn-blatt) :is(.lq-opt,.lq-spalte):has(input:focus-visible){outline:2px solid var(--c-primary);outline-offset:2px}
+:is(.stn, .stn-blatt) :is(.lq-opt,.lq-spalte).zu{cursor:default;opacity:.6}
+:is(.stn, .stn-blatt) .lq-haken{width:22px;height:22px;border-radius:999px;border:1.5px solid var(--c-border);display:grid;place-items:center;color:transparent}
+:is(.stn, .stn-blatt) .lq-opt:has(input:checked) .lq-haken{background:var(--action);border-color:var(--action);color:#fff}
+:is(.stn, .stn-blatt) .lq-vorschau{display:grid;gap:10px;padding:12px;border-radius:16px;background:var(--c-bg)}
+:is(.stn, .stn-blatt) .lq-schaetzung{text-align:right;font-size:12px}
+:is(.stn, .stn-blatt) .lq-grenze{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:8px 10px;border-radius:12px;background:var(--c-card);border:1px solid var(--c-border);font:700 14px var(--font)}
+:is(.stn, .stn-blatt) .lq-grenze small{display:block;font:500 12.5px/1.35 var(--font);color:var(--c-muted-fg)}
+:is(.stn, .stn-blatt) .lq-grenze>span:first-child{min-width:0;flex:1 1 120px}
+:is(.stn, .stn-blatt) .lq-zielsatz{margin:0;font:700 13.5px/1.35 var(--font);color:var(--st-on)}
+:is(.stn, .stn-blatt) .lq-zielsatz.nein{color:var(--st-wait)}
+/* Das Fenster am Rechner: vier Spalten nebeneinander. */
+:is(.stn, .stn-blatt) .lq-vergleich{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+@media (min-width: 1100px) {
+  :is(.stn, .stn-blatt) .lq-vergleich{grid-template-columns:repeat(var(--lq-spalten, 4),minmax(0,1fr))}
+}
+:is(.stn, .stn-blatt) .lq-spalte{position:relative;display:grid;gap:10px;align-content:start;padding:12px;border-radius:16px;border:1.5px solid var(--c-border);background:var(--c-card);cursor:pointer;min-width:0}
+:is(.stn, .stn-blatt) .lq-k1{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;align-items:start}
+:is(.stn, .stn-blatt) .lq-spalte .lq-zahlen{gap:4px}
+:is(.stn, .stn-blatt) .lq-spalte .lq-zahlen div{padding:6px 7px}
+:is(.stn, .stn-blatt) .lq-spalte .lq-zahlen b{font-size:14px}
+/* Nach der Wahl: gesendet › Box hat übernommen › Wirkung gemessen. */
+:is(.stn, .stn-blatt) .lq-rm{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+:is(.stn, .stn-blatt) .lq-rm li{display:grid;grid-template-columns:22px minmax(0,1fr);gap:10px;align-items:start;font:700 13.5px/1.35 var(--font)}
+:is(.stn, .stn-blatt) .lq-rm small{display:block;font:500 12.5px/1.35 var(--font);color:var(--c-muted-fg)}
+:is(.stn, .stn-blatt) .lq-rm .pk{width:22px;height:22px;border-radius:999px;display:grid;place-items:center;background:var(--c-muted)}
+:is(.stn, .stn-blatt) .lq-rm .fertig .pk{background:var(--st-on-soft);color:var(--st-on)}
+:is(.stn, .stn-blatt) .lq-rm .laeuft .pk{background:var(--st-wait-soft);color:var(--st-wait);font:800 11px/1 var(--font)}
+:is(.stn, .stn-blatt) .lq-rm .warn .pk{background:var(--st-wait-soft);color:var(--st-wait)}
+:is(.stn, .stn-blatt) .lq-rm .offen{color:var(--c-muted-fg)}
+@media (min-width: 721px) {
+  .stn-blatt .sheet.breit { width: min(1180px, 100%); }
+}
 
 /* ================= Rechner: dieselbe Seite, zweispaltig ================= */
 @container stn (min-width: 900px) {

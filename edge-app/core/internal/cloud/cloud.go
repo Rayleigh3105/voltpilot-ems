@@ -840,8 +840,19 @@ type ChargerEntry struct {
 	// ⚠ EMPTY means "an older box said nothing", NOT "haus": only a box that
 	// knows the field reports it, and a cloud that resolved silence to "haus"
 	// would claim a plant is house-side that nobody ever asked about.
-	Connection string                  `json:"connection,omitempty"`
-	Connectors []ChargerConnectorEntry `json:"connectors,omitempty"`
+	Connection string `json:"connection,omitempty"`
+	// Source / MinKw / StorageRelease ECHO the lane the box applies to this
+	// station (Konzept k1 „Gewählt ist nicht geladen", Regel 4; contract
+	// docs/contracts/ladepunkt-quelle-echo.md, additive). The cloud compares
+	// them with the customer's wish to say „Box hat übernommen".
+	//
+	// ⚠ ABSENT Source = an older box (or no known lane): "not confirmed",
+	// never "confirmed". With a Source, StorageRelease is always present
+	// (explicit false); MinKw only next to "sonne_zuerst" with an own minimum.
+	Source         string                  `json:"source,omitempty"`
+	MinKw          *float64                `json:"min_kw,omitempty"`
+	StorageRelease *bool                   `json:"storage_release,omitempty"`
+	Connectors     []ChargerConnectorEntry `json:"connectors,omitempty"`
 }
 
 // ChargerConnectorEntry is one plug: one vehicle, one claimant on the budget.

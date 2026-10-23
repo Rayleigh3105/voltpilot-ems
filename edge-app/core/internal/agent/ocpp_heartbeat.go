@@ -91,6 +91,17 @@ func chargerEntry(c state.OcppCharger) cloud.ChargerEntry {
 		LastSeen:   msTime(c.LastSeenMs),
 		Connection: c.Connection,
 	}
+	// Das Echo der Bahn (Konzept k1 Regel 4): mit einer Bahn IMMER auch die
+	// Speicherfreigabe, ausdrücklich false - abwesend heißt „ältere Box".
+	if c.Source != "" {
+		e.Source = c.Source
+		if c.MinKw > 0 {
+			kw := c.MinKw
+			e.MinKw = &kw
+		}
+		rel := c.StorageRelease
+		e.StorageRelease = &rel
+	}
 	for _, con := range c.Connectors {
 		if len(e.Connectors) >= cloudMaxConnectors {
 			break

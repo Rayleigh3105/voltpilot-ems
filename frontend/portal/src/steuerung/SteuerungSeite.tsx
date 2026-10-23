@@ -66,7 +66,10 @@ import { SPEICHER, reihenfolgeRumpf, type GeraetBild } from './bild';
 import { GeraeteReiter } from './GeraeteReiter';
 import { Ic } from './Ic';
 import { FahrzeugBlatt, LadenReiter, RahmenBlatt, ZielBlatt } from './LadenReiter';
-import { UEBERSCHUSS_MODUS, smartSchritte, type LadeQuelle } from './laden';
+import { quelleAusWunsch, smartSchritte } from './laden';
+import { LadeWahlBlatt } from './LadeWahl';
+import { vorschauAnlage, type VorschauAnlage } from './ladeVorschau';
+import type { Gesendet } from './rueckmeldung';
 import { nurMessenKey, vorschlag } from './neu';
 import { RegelBlatt, RegelnReiter } from './RegelnReiter';
 import { bezugAus, greift, neuerEntwurf, regelKarten, regelZiele, VORLAGEN, zuGuided, type RegelEntwurf, type RegelKarte } from './regeln';
@@ -104,6 +107,8 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
   const [blatt, setBlatt] = useState<BlattZustand | null>(null);
   const [umwandelnKarte, setUmwandelnKarte] = useState<RegelKarte | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  /** Je Ladepunkt die zuletzt gesendete Wahl dieser Sitzung (Rückmeldung in drei Schritten, Konzept k1). */
+  const [gesendet, setGesendet] = useState<Record<string, Gesendet>>({});
   const [toast, setToast] = useState<{ text: string; warn?: boolean } | null>(null);
   const [reoStart, setReoStart] = useState<string | null>(null);
   const toastTimer = useRef<number>(0);
@@ -199,10 +204,21 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
     let ok = false;
     await lauf(g.id, async () => {
       try {
+        const lp = g.ladepunkt;
+        const modus = lp ? quelleAusWunsch(w) : null;
         const res = await api.setzeSteuerart(site.id, g.id, w);
         if (res.aktiv === false && res.nachricht) meldung(res.nachricht, true);
-        else meldung(`${g.name}: ${res.steuerart ? 'übernommen' : 'gespeichert'}. Gilt ab jetzt; Gemessenes bleibt.`);
+        // „Gesendet“ statt „Gilt ab jetzt“ (Konzept k1): gespeichert heißt nicht, dass die Box übernommen hat.
+        else if (lp && modus) meldung(`${g.name}: gesendet. Ob die Box übernimmt, steht an der Karte.`);
+        else meldung(`${g.name}: gesendet. Gemessenes bleibt.`);
         ok = true;
+        if (lp && modus) {
+          setGesendet((x) => ({ ...x, [g.id]: { modus, ms: Date.now(), vorherGemeldet: lp.gemeldetAm, vorherGemessen: lp.gemessenAm } }));
+          // Der Herzschlag der Box kommt alle 15 s; die Ladepunkte nicht erst mit dem nächsten Takt lesen.
+          for (const ms of [4000, 12_000, 25_000]) {
+            window.setTimeout(() => void api.siteChargers(site.id).then((c) => setze('charging', c), () => {}), ms);
+          }
+        }
         // „Nur messen“ ist damit zurückgenommen (bestmöglich; die Karte folgt dem Auftrag).
         if (liste(daten.vorschlaege?.states).some((x) => x.key === nurMessenKey(g.id))) {
           void api.clearSuggestionState(site.id, nurMessenKey(g.id)).then(
@@ -366,23 +382,6 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
     await steuerart(g, v.wunsch);
   };
 
-  const ladeQuelle = async (g: GeraetBild, q: LadeQuelle) => {
-    const s = g.steuerart;
-    const v = g.eintrag.optionen?.vorgaben;
-    const ziel = s?.ziel === 'bis_uhrzeit'
-      ? { ziel: 'bis_uhrzeit', zielEnergieKwh: s.zielEnergieKwh ?? null, zielFenster: s.zielFenster ?? null }
-      : {};
-    const w: SteuerartWunsch = q === 'guenstig'
-      ? { quelle: 'guenstig', preisgrenzeCtKwh: s?.preisgrenzeCtKwh ?? v?.preisgrenzeCtKwh ?? null, ...ziel }
-      : {
-          quelle: 'ueberschuss',
-          ueberschussModus: UEBERSCHUSS_MODUS[q],
-          ...(q === 'min' ? { mindestleistungKw: s?.mindestleistungKw ?? daten.verbraucher?.ladepunkte.rahmen?.mindestleistungKw ?? 1.4 } : {}),
-          ...ziel,
-        };
-    await steuerart(g, w);
-  };
-
   const regelAktivieren = async (e: RegelEntwurf): Promise<boolean> => {
     const g = bild.geraete.find((x) => x.id === e.dann.g) ?? null;
     const regel = zuGuided(e, bezug, g);
@@ -490,6 +489,13 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
   };
 
   const rahmen = daten.verbraucher?.ladepunkte.rahmen ?? null;
+  const anlage = useMemo(() => vorschauAnlage(daten.assets, daten.plan, daten.chargingConfig, rahmen?.mindestleistungKw),
+    [daten.assets, daten.plan, daten.chargingConfig, rahmen?.mindestleistungKw]);
+  /** „So laden“: läuft ein Eingriff, endet er zuerst - dann geht die ganze Steuerart an den Server. */
+  const soLaden = async (g: GeraetBild, w: SteuerartWunsch): Promise<boolean> => {
+    if (g.eingriff && !(await eingriff(g, 'smart', null))) return false;
+    return steuerart(g, w);
+  };
   const zahlen: Record<string, number> = {
     steuerung: bild.geraete.filter((g) => g.an === true).length,
     laden: bild.ladepunkte.filter((g) => g.ladepunkt?.angesteckt).length,
@@ -515,12 +521,13 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
         fahrzeuge={daten.fahrzeuge}
         busy={busy}
         oeffne={setBlatt}
-        onSmart={(g) => void (async () => {
+        onSmart={(g) => {
           const s = smartSchritte(g);
-          if (s.eingriffBeenden) await eingriff(g, 'smart', null);
-          if (s.steuerart) await ladeQuelle(g, s.steuerart);
-        })()}
-        onQuelle={(g, q) => void ladeQuelle(g, q)}
+          if (s.eingriffBeenden) void eingriff(g, 'smart', null);
+          if (s.blattOeffnen) setBlatt({ art: 'womit', id: g.id });
+        }}
+        anlage={anlage}
+        gesendet={gesendet}
         onVorrang={(zuerst) => void lauf('vorrang', async () => {
           try {
             const c = await api.saveChargingConfig(site.id, { storagePriority: zuerst ? 'speicher_vor_auto' : 'auto_vor_speicher' });
@@ -684,7 +691,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
       <main className={`stn-main ${reiter}`}>
         {inhalt}
       </main>
-      {blatt && <BlattWahl blatt={blatt} k={k} siteId={site.id} ziele={ziele} karten={karten} bezug={bezug} rahmen={rahmen} daten={daten} onRegel={regelAktivieren} onLoeschen={regelLoeschen} onSteuerart={steuerart} onGrenze={async (kw, vereinbartKw) => {
+      {blatt && <BlattWahl blatt={blatt} k={k} siteId={site.id} ziele={ziele} karten={karten} bezug={bezug} rahmen={rahmen} daten={daten} anlage={anlage} onSoLaden={soLaden} onRegel={regelAktivieren} onLoeschen={regelLoeschen} onSteuerart={steuerart} onGrenze={async (kw, vereinbartKw) => {
         let ok = false;
         await lauf('rahmen', async () => {
           try {
@@ -756,7 +763,7 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
   );
 }
 
-function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, onRegel, onLoeschen, onSteuerart, onGrenze, onFahrzeug }: {
+function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, anlage, onSoLaden, onRegel, onLoeschen, onSteuerart, onGrenze, onFahrzeug }: {
   blatt: BlattZustand;
   k: BlattKontext;
   siteId: string;
@@ -765,11 +772,13 @@ function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, onRe
   bezug: ReturnType<typeof bezugAus>;
   rahmen: import('../verbraucherZone').LadeparkRahmen | null;
   daten: import('./useSteuerungDaten').SteuerungDaten;
+  anlage: VorschauAnlage;
+  onSoLaden: (g: GeraetBild, w: SteuerartWunsch) => Promise<boolean>;
   onRegel: (e: RegelEntwurf) => Promise<boolean>;
   onLoeschen: (flowId: string) => Promise<boolean>;
   onSteuerart: (g: GeraetBild, w: SteuerartWunsch) => Promise<boolean>;
   onGrenze: (kw: number, vereinbartKw?: number) => Promise<boolean>;
-  onFahrzeug: (tagRef: string, w: { name?: string; quelle?: 'sofort' | 'ueberschuss' | '' }) => Promise<boolean>;
+  onFahrzeug: (tagRef: string, w: import('../fahrzeugProfile').FahrzeugWunsch) => Promise<boolean>;
 }) {
   switch (blatt.art) {
     case 'geraet':
@@ -795,7 +804,9 @@ function BlattWahl({ blatt, k, siteId, ziele, karten, bezug, rahmen, daten, onRe
     case 'rahmen':
       return <RahmenBlatt k={k} siteId={siteId} rahmen={rahmen} config={daten.chargingConfig} onGrenze={onGrenze} />;
     case 'ziel':
-      return <ZielBlatt k={k} id={blatt.id} onSpeichern={onSteuerart} />;
+      return <ZielBlatt k={k} id={blatt.id} anlage={anlage} rahmenMinKw={rahmen?.mindestleistungKw ?? null} onSpeichern={onSteuerart} />;
+    case 'womit':
+      return <LadeWahlBlatt k={k} id={blatt.id} anlage={anlage} rahmenMinKw={rahmen?.mindestleistungKw ?? null} onSoLaden={onSoLaden} />;
     case 'fahrzeug':
       return <FahrzeugBlatt k={k} tagRef={blatt.tagRef} fahrzeuge={daten.fahrzeuge} onSetzen={onFahrzeug} />;
     case 'regel': {

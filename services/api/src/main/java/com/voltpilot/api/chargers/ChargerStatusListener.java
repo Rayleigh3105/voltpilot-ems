@@ -274,7 +274,7 @@ public class ChargerStatusListener extends Rueckmeldeweg {
                     textOrNull(c, "vendor"), textOrNull(c, "model"), textOrNull(c, "firmware"),
                     c.path("ready").asBoolean(false), textOrNull(c, "note"),
                     optInstant(c, "last_seen"), vocabulary(c, "connection", CONNECTIONS),
-                    connectors(c.get("connectors"))));
+                    quelleEcho(c), connectors(c.get("connectors"))));
         }
         TenantContext.set(tenantId);
         try {
@@ -489,6 +489,21 @@ public class ChargerStatusListener extends Rueckmeldeweg {
      * Wort wird verworfen statt gespeichert - der Stecker behält damit "kein
      * Zustand gemeldet" statt einen erfundenen zu bekommen.
      */
+    /**
+     * Das Echo der Bahn einer Säule (Konzept k1 Regel 4, Vertrag
+     * {@code ladepunkt-quelle-echo.md}). Ohne bekanntes Bahn-Wort KEIN Echo -
+     * dann sagt das Portal „noch nicht bestätigt", nie eine geratene Bahn.
+     */
+    static QuellenEcho.Echo quelleEcho(JsonNode c) {
+        String source = vocabulary(c, "source", POLICIES);
+        if (source == null) {
+            return null;
+        }
+        Double minKw = optDouble(c, "min_kw");
+        return new QuellenEcho.Echo(source, minKw != null && minKw > 0 ? minKw : null,
+                optBool(c, "storage_release"));
+    }
+
     private static String vocabulary(JsonNode node, String field, Set<String> allowed) {
         String v = node.path(field).asText("");
         return allowed.contains(v) ? v : null;

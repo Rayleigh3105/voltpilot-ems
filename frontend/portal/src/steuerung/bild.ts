@@ -82,6 +82,14 @@ export interface Reihen {
   soc: (number | null)[];
   /** Börsenpreis (ct/kWh). */
   preis: (number | null)[];
+  /**
+   * Bezugspreis (ct/kWh): was eine kWh aus dem Netz diese Anlage kostet - der
+   * Preis, mit dem der Optimierer plant und gegen den „Günstig“ seine Grenze
+   * prüft (`importPriceCtKwh` des Fahrplans). Nur, wo der Fahrplan ihn trägt.
+   */
+  bezug: (number | null)[];
+  /** Einspeisewert (ct/kWh): was eine eingespeiste kWh bringt (`exportValueCtKwh`). */
+  einspeise: (number | null)[];
   /** Außentemperatur (°C). */
   temp: (number | null)[];
   /** Laut Plan abgeregelte PV (kW). */
@@ -114,6 +122,7 @@ export function reihen(i: ReihenInput): Reihen {
   const r = i.raster;
   const out: Reihen = {
     pv: leer(), last: leer(), netz: leer(), bat: leer(), soc: leer(), preis: leer(),
+    bezug: leer(), einspeise: leer(),
     temp: leer(), abgeregelt: leer(), gemessenBis: r.jetzt, morgenBekannt: false,
   };
   // Zukunft: der jüngste Fahrplan.
@@ -130,6 +139,8 @@ export function reihen(i: ReihenInput): Reihen {
     if (grenze != null) (out.speicherGrenze ??= leer<number>())[t] = grenze;
     const p = num(s.priceEurMwh);
     if (p != null) out.preis[t] = p / 10;
+    out.bezug[t] = num(s.importPriceCtKwh);
+    out.einspeise[t] = num(s.exportValueCtKwh);
   }
   // Vergangenheit: die gemessenen Viertelstunden des Tages (kWh → kW).
   for (const b of liste(i.verlauf?.buckets)) {
@@ -251,6 +262,16 @@ export interface LadepunktBezug {
   sitzungKwh: number | null;
   karte: string | null;
   laedt: boolean;
+  /** Gemessene Leistung des Steckers (kW); null = nicht gemeldet. */
+  leistungKw: number | null;
+  /** Wann der Stecker zuletzt gemessen hat (ISO). */
+  gemessenAm: string | null;
+  /** Der Satz der Box zum Stecker („wartet auf Sonne“). */
+  grund: string | null;
+  /** Hat die Box die Wahl übernommen? (Server-Vergleich; null = unbekannt) */
+  uebernommen: boolean | null;
+  /** Wann die Box die Säule zuletzt gemeldet hat (ISO). */
+  gemeldetAm: string | null;
 }
 
 export interface GeraetBild {
@@ -360,8 +381,9 @@ export function auftragSatz(s: Steuerart | null | undefined, g: { form: Form; la
     case 'freigabe_ueberschuss':
       if (freigabe || s.quelle === 'freigabe_ueberschuss') satz = 'Anheben bei Sonne';
       else if (g.ladepunkt) {
-        satz = s.ueberschussModus === 'mindestleistung' ? 'Sonne + Mindestleistung'
-          : s.ueberschussModus === 'speicher' ? LADEQUELLE.speicher : 'Nur Sonnenstrom';
+        // Dieselben Namen wie „Womit laden?“ (Konzept k1, E2=A).
+        satz = s.ueberschussModus === 'mindestleistung' ? LADEQUELLE.min
+          : s.ueberschussModus === 'speicher' ? LADEQUELLE.speicher : LADEQUELLE.sonne;
       }
       else satz = typeof s.schwelleKw === 'number' ? `Mit Sonnenstrom ab ${fKw(s.schwelleKw)}` : 'Mit Sonnenstrom';
       break;
@@ -369,7 +391,8 @@ export function auftragSatz(s: Steuerart | null | undefined, g: { form: Form; la
     case 'freigabe_guenstig': {
       const grenze = typeof s.preisgrenzeCtKwh === 'number' ? `${zahl1(s.preisgrenzeCtKwh)} ct` : null;
       const anheben = freigabe || s.quelle === 'freigabe_guenstig';
-      satz = grenze ? `${anheben ? 'Anheben unter' : 'Unter'} ${grenze}` : anheben ? 'Anheben, wenn günstig' : 'Günstige Stunden';
+      satz = g.ladepunkt ? (grenze ? `${LADEQUELLE.guenstig} unter ${grenze}` : LADEQUELLE.guenstig)
+        : grenze ? `${anheben ? 'Anheben unter' : 'Unter'} ${grenze}` : anheben ? 'Anheben, wenn günstig' : 'Günstige Stunden';
       break;
     }
     case 'feste_zeiten': {
@@ -378,7 +401,7 @@ export function auftragSatz(s: Steuerart | null | undefined, g: { form: Form; la
       break;
     }
     case 'sofort':
-      satz = g.ladepunkt ? 'Sofort laden' : 'Ohne Steuerung';
+      satz = g.ladepunkt ? 'Schnell · immer sofort voll' : 'Ohne Steuerung';
       break;
     default:
       satz = 'Eigene Regel';
@@ -582,6 +605,11 @@ export function geraete(i: GeraeteInput): GeraetBild[] {
             sitzungKwh: num(lp.con?.sessionKwh),
             karte: lp.con?.tagRef ?? null,
             laedt: lp.con?.charging === true,
+            leistungKw: num(lp.con?.powerKw),
+            gemessenAm: lp.con?.meteredAt ?? null,
+            grund: ladepunktPausenGrund(s?.quelle, lp.con?.reason) ?? lp.con?.reasonText ?? null,
+            uebernommen: lp.cp.quelleUebernommen ?? null,
+            gemeldetAm: lp.cp.reportedAt ?? null,
           }
         : null,
       gemessen,
@@ -629,6 +657,16 @@ interface ZustandInput {
   an: boolean | null;
 }
 
+/**
+ * Der Pausengrund einer Säule im Wort des Kunden. An einer „Günstig“-Säule ohne
+ * frischen Plan fährt die Box die Bahn `nur_sonne` (#1569) und meldet als Grund
+ * `kein_ueberschuss` - gemeint ist dort: der Strom ist gerade nicht billig.
+ * `null` = der Satz der Box gilt unverändert.
+ */
+export function ladepunktPausenGrund(quelle: string | null | undefined, reasonCode: string | null | undefined): string | null {
+  return quelle === 'guenstig' && reasonCode === 'kein_ueberschuss' ? 'Wartet auf günstigen Preis' : null;
+}
+
 /** Pille und Satz eines Geräts - nur aus Gemeldetem. */
 function zustandVon(z: ZustandInput): { pill: [PillArt, string]; kurz: string; lang: string } {
   const bis = z.eingriff?.bisMs != null ? uhrVon(z.r, z.eingriff.bisMs) : null;
@@ -643,7 +681,7 @@ function zustandVon(z: ZustandInput): { pill: [PillArt, string]; kurz: string; l
     if (!z.lp.cp.connected) return { pill: ['stale', 'keine Verbindung'], kurz: 'Ladepunkt meldet sich nicht', lang: 'Der Ladepunkt meldet sich gerade nicht bei der Box.' };
     if (!z.lp.con) return { pill: ['stale', 'unbekannt'], kurz: STATUS_UNKNOWN_TEXT, lang: STATUS_UNKNOWN_TEXT };
     const lz = ladeZustand(z.lp.con, z.lp.cp, z.r.nowMs);
-    const grund = lz.reason ?? z.lp.con.reasonText ?? null;
+    const grund = ladepunktPausenGrund(z.e.steuerart?.quelle, lz.reasonCode ?? z.lp.con.reason) ?? lz.reason ?? z.lp.con.reasonText ?? null;
     const kurz = grund && grund !== lz.word ? `${lz.word} · ${grund}` : lz.word;
     const pill: [PillArt, string] =
       lz.kind === 'laedt' || lz.kind === 'laedt_ohne_messung' || lz.kind === 'startet' ? ['on', 'lädt']
@@ -705,7 +743,10 @@ function zustandVon(z: ZustandInput): { pill: [PillArt, string]; kurz: string; l
 /**
  * Wann das Gerät nach seinem Auftrag voraussichtlich läuft - aus Prognose und
  * Preis. Sonnenstrom: wo der Plan mindestens die Nennleistung einspeisen
- * würde. Günstig: wo der Börsenpreis unter der Grenze liegt. Feste Zeiten:
+ * würde. Günstig: wo der BEZUGSPREIS unter der Grenze liegt - dieselbe Zahl,
+ * die der Server vergleicht (`market.import_price_ct_kwh`); ohne Bezugspreis
+ * erwartet die Viertelstunde nichts (der Börsenpreis läge systematisch zu
+ * tief, Konzept k1 Befund 6). Feste Zeiten:
  * im Fenster. Eine Frist ohne Plan erwartet nichts (die Box entscheidet).
  */
 export function erwarteteLaeufe(
@@ -732,7 +773,7 @@ export function erwarteteLaeufe(
       }
       case 'guenstig':
       case 'freigabe_guenstig': {
-        const p = rh.preis[t];
+        const p = rh.bezug[t];
         const g2 = num(s.preisgrenzeCtKwh);
         bits[t] = p != null && g2 != null && p < g2;
         break;

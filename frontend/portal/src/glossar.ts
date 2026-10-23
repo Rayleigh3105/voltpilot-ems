@@ -202,6 +202,37 @@ export const LADEQUELLE = {
 } as const;
 
 /**
+ * Das VERSPRECHEN je Ladequelle (Konzept k1, Captain-Entscheid E2=A vom
+ * 23.10.2026): die Namen bleiben, darunter steht ÜBERALL dasselbe Versprechen
+ * in höchstens fünf Wörtern - auf der Karte, im Blatt „Womit laden?“, in der
+ * Fahrzeugliste, im Gerätblatt und in der Hilfe. `copy.test.ts` hält die Länge.
+ */
+export const LADEQUELLE_VERSPRECHEN: Record<keyof typeof LADEQUELLE, string> = {
+  sonne: 'Nur Überschuss, sonst Pause',
+  min: 'Immer etwas, Sonne obendrauf',
+  speicher: 'Sonne, dazu der Speicher-Rest',
+  guenstig: 'Netzstrom, wenn er billig ist',
+};
+
+/** Wann eine Ladequelle passt (Konzept k1, Abschnitt 4) - die Vergleichszeile am Rechner. */
+export const LADEQUELLE_GUT_WENN: Record<keyof typeof LADEQUELLE, string> = {
+  sonne: 'das Auto tagsüber steht',
+  min: 'es sicher vorangehen soll',
+  speicher: 'Sie abends heimkommen',
+  guenstig: 'der Tarif stündlich wechselt',
+};
+
+/**
+ * Der Anlagen-Standard eines Ladepunkts, dessen Kunde nie gewählt hat
+ * (Steuerart `sofort`, Konzept k1 E5=A): ehrlich gesagt, was er tut.
+ */
+export const LADEPUNKT_UNGESTEUERT = {
+  satz: 'Lädt immer sofort voll',
+  folge: 'VoltPilot steuert diesen Ladepunkt noch nicht. Netzstrom zu jedem Preis.',
+  knopf: 'Womit laden einstellen',
+} as const;
+
+/**
  * Die SZENEN der Steuerung (Konzept „Steuerung neu", E6; Glossar-Nachtrag
  * „Szene"): ein Tipp pausiert mehrere Geräte, bis der Kunde die Szene beendet.
  * Das Vokabular ist geschlossen - dieselben Schlüssel hält der Server

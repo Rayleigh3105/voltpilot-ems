@@ -45,16 +45,16 @@ describe('die Karte hat einen Namen, den ein Mensch wiedererkennt', () => {
 describe('die Steuerart einer Karte', () => {
   it('nennt die Quelle, und den Boden nur wo er gilt', () => {
     expect(steuerartChip(f({ steuerart: { quelle: 'sofort', herkunft: 'policy' } })))
-      .toBe('Sofort laden');
+      .toBe('Schnell');
     expect(steuerartChip(f({
       steuerart: { quelle: 'ueberschuss', herkunft: 'policy', ueberschussModus: 'pausieren' },
-    }))).toBe('Solar-Überschuss');
+    }))).toBe('Nur Sonne');
     expect(steuerartChip(f({
       steuerart: {
         quelle: 'ueberschuss', herkunft: 'policy',
         ueberschussModus: 'mindestleistung', mindestleistungKw: 4.2,
       },
-    }))).toBe('Solar-Überschuss (mind. 4,2 kW)');
+    }))).toBe('Sonne + Minimum (mind. 4,2 kW)');
   });
 
   // ⚠ Ohne Profil wird KEINE Steuerart behauptet: die Karte faehrt die Bahn
@@ -193,7 +193,7 @@ describe('verlaufFahrzeug', () => {
     const v = verlaufFahrzeug(CARD, {
       fahrzeuge: [f({ name: 'Dienstwagen', steuerart: { quelle: 'sofort' } })],
     });
-    expect(v?.text).toBe('Dienstwagen · Sofort laden');
+    expect(v?.text).toBe('Dienstwagen · Schnell');
     expect(v?.aktion).toBe(VERLAUF_AENDERN);
     expect(v?.zeile.tagRef).toBe(CARD);
     expect(v?.fahrzeug?.name).toBe('Dienstwagen');

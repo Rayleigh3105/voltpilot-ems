@@ -9,6 +9,8 @@
 import { liste } from './liste';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Recht } from '../components/Recht';
+import { LADEQUELLE, LADEQUELLE_VERSPRECHEN } from '../glossar';
+import { ladeQuelle } from './laden';
 import { useRollen } from '../rollen';
 import { RUHE_VERBINDUNG_HINWEIS } from '../ruheHinweis';
 import type { SiteProfile } from '../profiles';
@@ -141,9 +143,9 @@ function DreiSchalter({ g, bild, eingriff, busy, start, onWahl, folge }: {
           <div className="param">
             <div className="blk">
               <h3>Wie lange?</h3>
-              <div className="dauer" style={{ gridTemplateColumns: `repeat(${dauern.length},minmax(0,1fr))` }}>
+              <div className="dauer">
                 {dauern.map(([v, l]) => (
-                  <button type="button" key={l} aria-pressed={minuten === v} onClick={() => setMinuten(v)}>
+                  <button type="button" key={l} className={v == null ? 'ganz' : undefined} aria-pressed={minuten === v} onClick={() => setMinuten(v)}>
                     {l}
                   </button>
                 ))}
@@ -170,20 +172,23 @@ function DreiSchalter({ g, bild, eingriff, busy, start, onWahl, folge }: {
 }
 
 /** Energie, Netzanteil und Kosten einer Laufzeit - anteilig aus dem Plan. */
-function laufFolge(rh: Reihen, von: number, bis: number, kw: number): { kwh: number; netzKwh: number; eur: number } {
+function laufFolge(rh: Reihen, von: number, bis: number, kw: number): { kwh: number; netzKwh: number; eur: number | null } {
   let kwh = 0;
   let netzKwh = 0;
   let eur = 0;
+  let fehlt = false;
   for (let t = von; t < Math.min(bis, N); t++) {
     const e = kw / 4;
     const a = quellenAnteil(rh, t);
     const netz = e * (a?.netz ?? 0);
     kwh += e;
     netzKwh += netz;
-    const p = rh.preis[t];
+    // Netzstrom kostet den Bezugspreis; ohne ihn kein Euro-Betrag (unbekannt ist keine Null).
+    const p = rh.bezug[t];
     if (p != null) eur += (netz * p) / 100;
+    else if (netz > 0.001) fehlt = true;
   }
-  return { kwh, netzKwh, eur };
+  return { kwh, netzKwh, eur: fehlt ? null : eur };
 }
 
 // ---------------------------------------------------------------------------
@@ -203,6 +208,7 @@ function GeraetBlattInhalt({ k, g, modus }: { k: BlattKontext; g: GeraetBild; mo
   const basis = useMemo(() => entwurfAus(g.eintrag), [g.eintrag]);
   const geaendert = JSON.stringify(entwurf) !== JSON.stringify(basis);
   const lp = !!g.eintrag.ladepunkt;
+  const lq = lp ? ladeQuelle(g) : null;
   const busy = k.busy === g.id;
 
   const folge = (art: 'aus' | 'an', minuten: number | null): string => {
@@ -211,7 +217,7 @@ function GeraetBlattInhalt({ k, g, modus }: { k: BlattKontext; g: GeraetBild; mo
       const kw = g.nennKw;
       if (kw == null) return `Läuft bis ${minuten == null ? 'zum Abstecken' : uhrVon(r, r.nowMs + minuten * 60_000)}.`;
       const f = laufFolge(bild.reihen, r.jetzt, bis, kw);
-      return `Läuft bis ${minuten == null ? 'zum Abstecken' : uhrVon(r, r.nowMs + minuten * 60_000)}: ≈ ${fKwh(f.kwh)}, davon aus dem Netz ≈ ${fKwh(f.netzKwh)}${f.eur > 0.005 ? ` (≈ ${fEur(f.eur)})` : ''}.`;
+      return `Läuft bis ${minuten == null ? 'zum Abstecken' : uhrVon(r, r.nowMs + minuten * 60_000)}: ≈ ${fKwh(f.kwh)}, davon aus dem Netz ≈ ${fKwh(f.netzKwh)}${f.eur != null && f.eur > 0.005 ? ` (≈ ${fEur(f.eur)})` : ''}.`;
     }
     let entfaellt = 0;
     for (let t = r.jetzt; t < bis; t++) entfaellt += (g.kw[t] ?? 0) / 4;
@@ -330,7 +336,7 @@ function GeraetBlattInhalt({ k, g, modus }: { k: BlattKontext; g: GeraetBild; mo
       {lp ? (
         <div className="blk">
           <h3>Smart heißt hier</h3>
-          <p>{g.auftrag}. Ladeziel und Quelle stellen Sie im Reiter Laden ein.</p>
+          <p>{lq ? `${LADEQUELLE[lq]}: ${LADEQUELLE_VERSPRECHEN[lq]}` : g.auftrag}. Womit geladen wird und das Ladeziel stellen Sie im Reiter Laden ein.</p>
           <button type="button" className="btn sek" onClick={() => { k.zu(); a.zuReiter('laden'); }}>
             <Ic n="car" s={18} />
             Zum Reiter Laden
@@ -587,11 +593,12 @@ export function ArtenWahl({ g, bild, entwurf, setEntwurf }: {
   } else if (aktiv === 'guenstig' || aktiv === 'freigabe_guenstig') {
     const grenze = entwurf.preisgrenzeCtKwh;
     let n = 0;
-    if (grenze != null) for (let t = r.jetzt; t < TAG; t++) { const p = bild.reihen.preis[t]; if (p != null && p < grenze) n++; }
+    // Die Grenze gilt für den BEZUGSPREIS (`market.import_price_ct_kwh`), nicht für den Börsenpreis.
+    if (grenze != null) for (let t = r.jetzt; t < TAG; t++) { const p = bild.reihen.bezug[t]; if (p != null && p < grenze) n++; }
     panel = (
       <div className="param">
         <div className="prow">
-          <span>Preisgrenze<small>{grenze != null ? `heute ab jetzt ${dauer(n)} darunter` : 'Börsenpreis, unter dem das Gerät läuft'}</small></span>
+          <span>Preisgrenze<small>{grenze != null ? `heute ab jetzt ${dauer(n)} darunter` : 'Bezugspreis, unter dem das Gerät läuft'}</small></span>
           <Stepper
             wert={grenze != null ? fCt(grenze) : '—'}
             minus="niedriger"

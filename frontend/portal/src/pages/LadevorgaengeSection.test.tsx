@@ -241,7 +241,7 @@ describe('LadevorgaengeSection', () => {
         fahrzeuge: [{ tagRef: CARD, name: 'Dienstwagen', steuerart: { quelle: 'sofort' } }],
       });
       render(<LadevorgaengeSection site={site} />);
-      expect(await screen.findByText('Dienstwagen · Sofort laden')).toBeTruthy();
+      expect(await screen.findByText('Dienstwagen · Schnell')).toBeTruthy();
       expect(screen.getByRole('button', { name: 'Fahrzeug' })).toBeTruthy();
     });
 

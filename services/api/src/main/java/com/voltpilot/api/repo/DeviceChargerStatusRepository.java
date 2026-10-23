@@ -1,5 +1,6 @@
 package com.voltpilot.api.repo;
 
+import com.voltpilot.api.chargers.QuellenEcho;
 import com.voltpilot.api.web.dto.SiteChargingDto;
 import com.voltpilot.api.web.dto.SiteChargingDto.ChargeConnectorDto;
 import com.voltpilot.api.web.dto.SiteChargingDto.ChargePointDto;
@@ -63,6 +64,12 @@ public class DeviceChargerStatusRepository {
              * dass die Unterscheidung dort angekommen ist.
              */
             String connection,
+            /*
+             * Das ECHO der Bahn, die die Box fuer diese Saeule faehrt (Konzept
+             * k1 Regel 4, Vertrag ladepunkt-quelle-echo.md). null = eine aeltere
+             * Box meldet es nicht - nie eine geratene Bahn.
+             */
+            QuellenEcho.Echo quelle,
             List<ConnectorRow> connectors) {}
 
     /** Ein gemeldeter Stecker. */
@@ -156,12 +163,16 @@ public class DeviceChargerStatusRepository {
             jdbc.update(
                     "INSERT INTO device_charge_point (device_id, charge_point_id, tenant_id, "
                             + "site_id, label, priority, connected, vendor, model, firmware, "
-                            + "ready, note, last_seen, connection, entity_id, reported_at) "
-                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                            + "ready, note, last_seen, connection, entity_id, reported_at, "
+                            + "applied_source, applied_min_kw, applied_storage_release) "
+                            + "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     deviceId, c.chargePointId(), tenantId, siteId, c.label(), c.priority(),
                     c.connected(), c.vendor(), c.model(), c.firmware(), c.ready(), c.note(),
                     ts(c.lastSeen()), c.connection(), entityIds.get(c.chargePointId()),
-                    Timestamp.from(reportedAt));
+                    Timestamp.from(reportedAt),
+                    c.quelle() == null ? null : c.quelle().source(),
+                    c.quelle() == null ? null : c.quelle().minKw(),
+                    c.quelle() == null ? null : c.quelle().storageRelease());
             for (ConnectorRow con : c.connectors()) {
                 jdbc.update(
                         "INSERT INTO device_charge_connector (device_id, charge_point_id, "
@@ -262,9 +273,16 @@ public class DeviceChargerStatusRepository {
         jdbc.query("SELECT cp.device_id, cp.charge_point_id, "
                 + "CASE WHEN cp.entity_id IS NULL THEN cp.label ELSE mp.label END AS display_label, "
                 + "cp.priority, cp.connected, cp.vendor, cp.model, cp.firmware, cp.ready, cp.note, "
-                + "cp.last_seen, cp.connection, cp.entity_id, cp.reported_at "
+                + "cp.last_seen, cp.connection, cp.entity_id, cp.reported_at, "
+                + "cp.applied_source, cp.applied_min_kw, cp.applied_storage_release, "
+                + "al.source AS wunsch_source, al.min_kw AS wunsch_min_kw, "
+                + "al.storage_release AS wunsch_storage_release "
                 + "FROM device_charge_point cp "
                 + "LEFT JOIN measurement_point mp ON mp.id = cp.entity_id "
+                // Die WAHL je Säule (Soll) neben dem ECHO der Box (Ist) - erst der
+                // Vergleich sagt „Box hat übernommen" (QuellenEcho).
+                + "LEFT JOIN site_charge_point_allowlist al ON al.site_id = cp.site_id "
+                + "AND al.charge_point_id = cp.charge_point_id "
                 + "WHERE cp.site_id = ? AND EXISTS (SELECT 1 FROM device d WHERE d.id = cp.device_id "
                 + "AND d.ausgebaut_am IS NULL) ORDER BY cp.device_id, cp.charge_point_id", rs -> {
                     UUID deviceId = rs.getObject("device_id", UUID.class);
@@ -277,6 +295,7 @@ public class DeviceChargerStatusRepository {
                             rs.getString("connection"),
                             rs.getObject("entity_id", UUID.class),
                             instant(rs.getTimestamp("reported_at")),
+                            quelleEcho(rs), uebernommen(rs),
                             byPoint.getOrDefault(key(deviceId, id), List.of())));
                 }, siteId);
         List<ChargingBudgetDto> budgets = jdbc.query(
@@ -284,6 +303,24 @@ public class DeviceChargerStatusRepository {
                         + " ORDER BY s.device_id",
                 DeviceChargerStatusRepository::mapBudget, siteId);
         return new SiteChargingDto(budgets.isEmpty() ? null : budgets.get(0), points, budgets);
+    }
+
+    /** Das gespeicherte Echo der Box; null, wenn sie keine Bahn gemeldet hat. */
+    static QuellenEcho.Echo quelleEcho(ResultSet rs) throws SQLException {
+        String source = rs.getString("applied_source");
+        if (source == null) {
+            return null;
+        }
+        return new QuellenEcho.Echo(source, dbl(rs.getObject("applied_min_kw")),
+                (Boolean) rs.getObject("applied_storage_release"));
+    }
+
+    private static Boolean uebernommen(ResultSet rs) throws SQLException {
+        String source = rs.getString("wunsch_source");
+        QuellenEcho.Wunsch wunsch = source == null ? null
+                : new QuellenEcho.Wunsch(source, dbl(rs.getObject("wunsch_min_kw")),
+                        Boolean.TRUE.equals(rs.getObject("wunsch_storage_release")));
+        return QuellenEcho.uebernommen(wunsch, quelleEcho(rs));
     }
 
     private static String key(UUID deviceId, String chargePointId) {

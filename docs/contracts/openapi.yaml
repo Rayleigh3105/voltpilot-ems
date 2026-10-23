@@ -28153,6 +28153,15 @@ components:
         connection: { type: string, nullable: true, enum: [haus, eigen], description: "WO die Säule laut BOX hängt (Cockpit Phase 1 / C1) - das IST. null = eine ältere Box meldet es nicht; das ist weder \"haus\" noch \"eigen\", denn erst eine Meldung belegt, dass die Unterscheidung dort angekommen ist. Was der KUNDE gewählt hat, steht in der Allowlist (charging-config) - Soll und Ist sind zwei Aussagen." }
         entityId: { type: string, format: uuid, nullable: true, description: "Die Komponente, die die Plattform für diese Säule komponiert hat." }
         reportedAt: { type: string, format: date-time }
+        quelle:
+          type: object
+          nullable: true
+          description: "Die Bahn, die die BOX für diese Säule fährt (Echo im Herzschlag, Konzept k1 Regel 4, docs/contracts/ladepunkt-quelle-echo.md). null = eine ältere Box meldet es nicht."
+          properties:
+            source: { type: string, enum: [nur_sonne, sonne_zuerst, schnell] }
+            minKw: { type: number, nullable: true }
+            storageRelease: { type: boolean, nullable: true }
+        quelleUebernommen: { type: boolean, nullable: true, description: "Hat die Box die Wahl je Säule übernommen? Vergleich von site_charge_point_allowlist (Wahl) und Echo. null = unbekannt (ältere Box oder keine Wahl je Säule) - nie „übernommen“." }
         connectors:
           type: array
           items: { $ref: "#/components/schemas/ChargeConnector" }

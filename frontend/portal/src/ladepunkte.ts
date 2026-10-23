@@ -106,7 +106,26 @@ export interface ChargePoint {
   connection?: ChargerConnection | null;
   entityId?: string | null;
   reportedAt?: string | null;
+  /**
+   * Die Bahn, die die BOX für diese Säule fährt (Echo im Herzschlag, Konzept k1
+   * Regel 4, `docs/contracts/ladepunkt-quelle-echo.md`). `null` = eine ältere
+   * Box meldet es nicht.
+   */
+  quelle?: QuellenEcho | null;
+  /**
+   * Hat die Box die Wahl je Säule übernommen? Der Server vergleicht Wahl und
+   * Echo. DREIWERTIG: `null` = unbekannt (ältere Box, keine Wahl je Säule) -
+   * nie „übernommen".
+   */
+  quelleUebernommen?: boolean | null;
   connectors?: ChargeConnector[] | null;
+}
+
+/** Das Echo der Bahn einer Säule. */
+export interface QuellenEcho {
+  source: SurplusPolicy;
+  minKw: number | null;
+  storageRelease: boolean | null;
 }
 
 /** Die drei QUELLEN-Prioritäten des Kunden (Stufe 4, Mockups §2b). */

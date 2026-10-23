@@ -4,12 +4,13 @@
  * Womit laden, Ladeziel, Ladeplan, Vorrang vor dem Speicher, Fahrzeuge.
  */
 import { liste } from './liste';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { api, type ChargingConfig } from '../api';
 import { Recht } from '../components/Recht';
-import { LADEQUELLE } from '../glossar';
+import { LADEPUNKT_UNGESTEUERT, LADEQUELLE, LADEQUELLE_VERSPRECHEN } from '../glossar';
+import { useRollen } from '../rollen';
 import type { SpeicherFreigabe } from '../ladepunkte';
-import type { SiteFahrzeuge } from '../fahrzeugProfile';
+import type { FahrzeugWunsch, SiteFahrzeuge } from '../fahrzeugProfile';
 import { fahrzeugName, fahrzeugZeilen, kartenKurz } from '../fahrzeugProfile';
 import type { LadeparkRahmen } from '../verbraucherZone';
 import type { SteuerartWunsch } from '../steuerartDialog';
@@ -19,12 +20,14 @@ import type { BlattKontext } from './Blaetter';
 import { quellenAnteil, type GeraetBild } from './bild';
 import { Ic } from './Ic';
 import {
-  OPTION_SONNE_SPEICHER, band, grenzePruefung, hatSpeicherGrenze, heutigerAnschluss, kwVereinbart, ladebudgetKw,
-  ladeQuelle, ladeWahl, ladeplan, lokalesDatum, naechsteUhrzeit, speicherZeile, type AnschlussStand, type LadeQuelle,
+  OPTION_SONNE_SPEICHER, band, grenzePruefung, heutigerAnschluss, kwVereinbart, ladebudgetKw,
+  ladeQuelle, ladeWahl, lokalesDatum, naechsteUhrzeit, speicherZeile, type AnschlussStand,
 } from './laden';
+import { DreiZahlen, QuelleZeichen, VorschauBand, startEntwurf, wunschAus } from './LadeWahl';
+import { kwhText, mitAuto, uhrKurz, vorschauFuer, vorschauSaetze, type VorschauAnlage } from './ladeVorschau';
+import { rueckmeldung, type Gesendet } from './rueckmeldung';
 import type { BlattZustand, SeitenBild } from './seite';
-import { Zeitband } from './Zeitband';
-import { N, TAG, fCt, fKw, fKwh, fPct, uhrTag, uhrVon, zahl0 } from './zeit';
+import { TAG, fCt, fKw, fKwh, fPct, uhrTag, uhrVon, zahl0 } from './zeit';
 
 export interface LadenReiterProps {
   bild: SeitenBild;
@@ -34,7 +37,6 @@ export interface LadenReiterProps {
   busy: string | null;
   oeffne: (b: BlattZustand) => void;
   onSmart: (g: GeraetBild) => void;
-  onQuelle: (g: GeraetBild, q: LadeQuelle) => void;
   onVorrang: (speicherZuerst: boolean) => void;
   onLadevorgaenge: () => void;
   zuGeraete: () => void;
@@ -44,6 +46,10 @@ export interface LadenReiterProps {
   releaseGemeldet?: string | null;
   /** „Sonne + Speicher“: die Reserve der Anlage setzen (null = Vorgabe). */
   onReserve?: (kwh: number | null) => void;
+  /** Was die Vorschau von der Anlage braucht (Speicher, Vorrang, Startleistung). */
+  anlage: VorschauAnlage;
+  /** Je Ladepunkt die zuletzt gesendete Wahl dieser Sitzung (Rückmeldung in drei Schritten). */
+  gesendet: Record<string, Gesendet>;
 }
 
 export function LadenReiter(p: LadenReiterProps) {
@@ -53,7 +59,7 @@ export function LadenReiter(p: LadenReiterProps) {
     <>
       <BudgetKarte bild={bild} rahmen={p.rahmen} oeffne={p.oeffne} />
       {lp.map((g) => (
-        <LadeKarte key={g.id} g={g} bild={bild} fahrzeuge={p.fahrzeuge} busy={p.busy === g.id} oeffne={p.oeffne} onSmart={p.onSmart} onQuelle={p.onQuelle} release={p.release ?? null} releaseGemeldet={p.releaseGemeldet ?? null} />
+        <LadeKarte key={g.id} g={g} bild={bild} fahrzeuge={p.fahrzeuge} busy={p.busy === g.id} oeffne={p.oeffne} onSmart={p.onSmart} release={p.release ?? null} releaseGemeldet={p.releaseGemeldet ?? null} anlage={p.anlage} gesendet={p.gesendet[g.id] ?? null} />
       ))}
       {!lp.length && (
         <section className="card">
@@ -114,16 +120,20 @@ function BudgetKarte({ bild, rahmen, oeffne }: { bild: SeitenBild; rahmen: Ladep
   );
 }
 
-function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, release, releaseGemeldet }: {
+function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, release, releaseGemeldet, anlage, gesendet }: {
   g: GeraetBild; bild: SeitenBild; fahrzeuge: SiteFahrzeuge | null; busy: boolean;
-  oeffne: (b: BlattZustand) => void; onSmart: (g: GeraetBild) => void; onQuelle: (g: GeraetBild, q: LadeQuelle) => void;
+  oeffne: (b: BlattZustand) => void; onSmart: (g: GeraetBild) => void;
   release: SpeicherFreigabe | null; releaseGemeldet: string | null;
+  anlage: VorschauAnlage; gesendet: Gesendet | null;
 }) {
+  const rollen = useRollen();
   const r = bild.raster;
   const l = g.ladepunkt;
   const wahl = ladeWahl(g);
   const q = ladeQuelle(g);
   const an = g.an === true;
+  // Der Anlagen-Standard eines Ladepunkts, dessen Kunde nie gewählt hat (E5=A): ehrlich „immer sofort voll“.
+  const ungesteuert = !g.eingriff && g.steuerart?.quelle === 'sofort';
   const karte = l?.karte ? liste(fahrzeuge?.fahrzeuge).find((f) => f.tagRef === l.karte) ?? null : null;
   let sub: string;
   if (l?.angesteckt) {
@@ -134,55 +144,33 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, releas
   const platz = bild.rang.indexOf(g.id) + 1;
   const ansage = wahl === 'aus'
     ? `Pausiert${g.eingriff?.bisMs != null ? ` bis ${uhrVon(r, g.eingriff.bisMs)}` : ' bis zum Abstecken'}. Danach wieder Smart.`
-    : wahl === 'schnell'
+    : wahl === 'schnell' && !ungesteuert
       ? 'Lädt so schnell es geht, nur für diese Ladung. Netzstrom erlaubt.'
-      : an && g.sonnig && platz > 0 && !g.steuerart?.ziel
-        ? `Sonnenstrom · Platz ${platz}`
-        : g.warum;
-  const quellen: [LadeQuelle, string, string][] = [
-    ['sonne', LADEQUELLE.sonne, 'ueberschuss'], ['min', LADEQUELLE.min, 'ueberschuss'],
-    ['speicher', LADEQUELLE.speicher, OPTION_SONNE_SPEICHER], ['guenstig', LADEQUELLE.guenstig, 'guenstig'],
-  ];
-  const frei = new Set(liste(g.eintrag.optionen?.quellen).filter((x) => !x.gesperrt).map((x) => x.id));
-  // „Sonne + Speicher“ zeigt auch GESPERRT seinen Grund (die Haus-Disziplin der
-  // gesperrten Karte) - eine Wahl, die verschwindet, erklärt nichts. Nur neben
-  // einer wählbaren Sonnen-Quelle: ohne sie fehlt die ganze Gruppe aus einem
-  // Grund, den die Karte schon nennt.
-  const speicherSperre = frei.has('ueberschuss')
-    ? liste(g.eintrag.optionen?.quellen).find((x) => x.id === OPTION_SONNE_SPEICHER && x.gesperrt) ?? null
-    : null;
+      : null;
   const s = g.steuerart;
   const zielAn = s?.ziel === 'bis_uhrzeit' && typeof s.zielEnergieKwh === 'number';
   const zielMoeglich = liste(g.eintrag.optionen?.ziele).some((z) => z.id === 'bis_uhrzeit' && !z.gesperrt);
-  const kw = g.nennKw ?? 11;
-  let zielSub = 'Tippen, um eine Menge bis zu einer Uhrzeit festzulegen';
-  let planKw: (number | null)[] | null = null;
+  let zielSub = 'Ziel setzen';
   let zielBis: number | null = null;
   if (zielAn && s?.zielFenster?.bis) {
     const bis = naechsteUhrzeit(r.jetzt, s.zielFenster.bis);
     zielBis = bis;
-    const art = s.quelle === 'guenstig' ? 'In den günstigsten Stunden'
-      : q === 'speicher' ? 'Sonne und freigegebener Speicher zuerst, Rest in den günstigsten Stunden'
-        : 'Sonne zuerst, Rest in den günstigsten Stunden';
+  }
+  const entwurf = q ? startEntwurf(g) : null;
+  const vor = entwurf ? vorschauFuer(bild, g, anlage, entwurf) : null;
+  if (zielAn && zielBis != null) {
     // Der Fahrplan hat Vorrang; die Schätzung nur, wo er fehlt und ein Auto steckt.
     const geplant = g.herkunft.some((h, t) => h === 'plan' && t > r.jetzt);
     let fertig: number | null = null;
     if (geplant) {
-      for (let t = r.jetzt; t < bis; t++) if ((g.kw[t] ?? 0) > 0.02) fertig = t + 1;
-    } else if (l?.angesteckt) {
-      const plan = ladeplan(bild.reihen, r.jetzt, bis, s.zielEnergieKwh ?? 0, kw, s.quelle === 'guenstig');
-      planKw = plan.kw;
-      fertig = plan.fertig;
-    }
-    zielSub = `${art}${fertig != null ? ` · fertig voraussichtlich ${uhrTag(fertig)}` : !l?.angesteckt ? ' · sobald ein Auto ansteckt' : ''}`;
+      for (let t = r.jetzt; t < zielBis; t++) if ((g.kw[t] ?? 0) > 0.02) fertig = t + 1;
+    } else if (l?.angesteckt && vor?.vorschau.schafft) fertig = vor.vorschau.fertig;
+    zielSub = fertig != null ? `fertig voraussichtlich ${uhrTag(fertig)}` : !l?.angesteckt ? 'sobald ein Auto ansteckt' : 'reicht laut Schätzung nicht ganz';
   }
-  const zeile = planKw ? { g, h: 18, kw: mitGemessen(g, planKw, r.jetzt) } : { g, h: 18 };
-  const t1 = Math.min(N, r.jetzt + TAG);
-  // „Sonne + Speicher“: das Ladestand-Band mit der Untergrenze des Fahrplans -
-  // nur, wenn der Plan im Fenster überhaupt eine trägt (belegte Zahlen).
-  const grenzeBand = q === 'speicher' && hatSpeicherGrenze(bild.reihen.speicherGrenze, r.jetzt, t1);
-  const ticks: number[] = [];
-  for (let k = 0; k <= t1 - r.jetzt; k++) if ((r.jetzt + k) % 24 === 0) ticks.push(k);
+  const saetze = vor ? vorschauSaetze(vor.vorschau, vor.abfahrt) : null;
+  const darf = rollen.darf('betriebsweise.aendern');
+  const oeffneWahl = (e: { currentTarget: HTMLElement }) => { e.currentTarget.focus(); oeffne({ art: 'womit', id: g.id }); };
+  const zeilen = gesendet ? rueckmeldung(l, gesendet, r.nowMs, (ms) => uhrVon(r, ms)) : null;
   return (
     <section className={`card lp-card${bild.funktion.angehalten ? ' matt' : ''}`} aria-label={g.name}>
       <div className="lp-h">
@@ -193,7 +181,7 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, releas
         </span>
         <span className="lp-kw">
           {an && g.jetztKw != null ? fKw(g.jetztKw) : '—'}
-          <small>{an ? herkunftWort(bild, r.jetzt) : g.pill[1]}</small>
+          <small>{an ? herkunftWort(bild, r.jetzt) : l?.angesteckt ? g.pill[1] : 'kein Auto'}</small>
         </span>
       </div>
       <Recht aktion="handeingriff.setzen"><div className="lmodes" role="group" aria-label="Lademodus" style={{ gridTemplateColumns: 'repeat(3,minmax(0,1fr))' }}>
@@ -205,18 +193,30 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, releas
             aria-pressed={wahl === k}
             disabled={busy || (k !== 'smart' && (!l?.angesteckt || bild.funktion.sperre != null))}
             onClick={(e) => {
-              if (k === 'smart') { if (wahl !== 'smart') onSmart(g); return; }
               e.currentTarget.focus();
+              if (k === 'smart') { if (wahl !== 'smart') onSmart(g); return; }
               oeffne({ art: 'geraet', id: g.id, modus: k === 'aus' ? 'aus' : 'an' });
             }}
           >
             <Ic n={i} s={20} />
             {label}
+            {k === 'schnell' && <small>{ungesteuert ? 'immer' : 'für diese Ladung'}</small>}
           </button>
         ))}
       </div></Recht>
       {bild.funktion.sperre && <p className="leise" role="note">{bild.funktion.sperre}</p>}
-      <p className="leise" style={{ color: 'var(--c-fg)', fontWeight: 600 }}>{ansage}</p>
+      {ansage && <p className="leise" style={{ color: 'var(--c-fg)', fontWeight: 600 }}>{ansage}</p>}
+      {ungesteuert && (
+        <>
+          <p className="lq-zustand"><i aria-hidden="true" />{LADEPUNKT_UNGESTEUERT.satz}</p>
+          <p className="leise">{LADEPUNKT_UNGESTEUERT.folge}</p>
+          <Recht aktion="betriebsweise.aendern">
+            <button type="button" className="btn lq-einstellen" disabled={busy} onClick={oeffneWahl}>
+              <Ic n="sun" s={18} />{LADEPUNKT_UNGESTEUERT.knopf}
+            </button>
+          </Recht>
+        </>
+      )}
       {l?.sitzungKwh != null && l.sitzungKwh > 0.05 && (
         <div className="soc">
           <div className="soc-row">
@@ -231,51 +231,61 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, onQuelle, releas
       {wahl === 'smart' && (
         <>
           <div className="blk">
-            <h3>Womit laden?</h3>
-            <Recht aktion="betriebsweise.aendern"><div className="chips" role="group" aria-label="Womit laden">
-              {quellen.filter(([, , id]) => frei.has(id)).map(([k, label]) => (
-                <button type="button" key={k} aria-pressed={q === k} disabled={busy} onClick={() => onQuelle(g, k)}>{label}</button>
-              ))}
-              {speicherSperre && (
-                <button type="button" key="speicher-gesperrt" aria-pressed={false} disabled title={speicherSperre.grund ?? undefined}>{LADEQUELLE.speicher}</button>
-              )}
-            </div></Recht>
-            {speicherSperre?.grund && <p className="leise">{LADEQUELLE.speicher}: {speicherSperre.grund}</p>}
+            <h3>Womit laden{platz > 0 && <span className="meta">Platz {platz}</span>}</h3>
+            {q && vor && saetze ? (
+              <WahlZeile darf={darf} label={`Womit laden: ${LADEQUELLE[q]}. Ändern`} onClick={oeffneWahl}>
+                <QuelleZeichen q={q} klein />
+                <span className="lq-t"><b>{LADEQUELLE[q]}</b><small>{LADEQUELLE_VERSPRECHEN[q]}</small></span>
+                {darf && <span className="lq-chev" aria-hidden="true"><Ic n="chevR" s={18} /></span>}
+                <span className="lq-mini">
+                  <VorschauBand v={vor.vorschau} abfahrt={vor.abfahrt} maxKw={g.nennKw ?? 11} h={36} preis={q === 'guenstig'}
+                    label={`${LADEQUELLE[q]}: geschätzte Ladeleistung bis ${uhrKurz(vor.abfahrt)} Uhr nach Herkunft`} />
+                </span>
+                <span className="lq-satz">
+                  {mitAuto(saetze.jetzt, !!l?.angesteckt)}
+                  {saetze.dann && <small>{saetze.dann} · Schätzung</small>}
+                </span>
+              </WahlZeile>
+            ) : (
+              <WahlZeile darf={darf} label="Womit laden: noch nicht gewählt. Wählen" onClick={oeffneWahl}>
+                <span className="lq-t"><b>Noch nicht gewählt</b><small>Tippen, um zu wählen</small></span>
+                {darf && <span className="lq-chev" aria-hidden="true"><Ic n="chevR" s={18} /></span>}
+              </WahlZeile>
+            )}
+            {!darf && <Recht aktion="betriebsweise.aendern"><span /></Recht>}
             {q === 'speicher' && <p className="leise">{speicherZeile(release, bild.reihen.speicherGrenze?.[r.jetzt] ?? null, releaseGemeldet)}</p>}
-            {q === 'guenstig' && !zielAn && s?.preisgrenzeCtKwh != null && <p className="leise">Lädt, solange der Börsenpreis unter {fCt(s.preisgrenzeCtKwh)} liegt.</p>}
-            {q === 'min' && <p className="leise">Lädt immer mit mindestens {fKw(s?.mindestleistungKw ?? 1.4)}; was die Sonne mehr liefert, kommt dazu.</p>}
+            {q === 'guenstig' && s?.preisgrenzeCtKwh != null && <p className="leise">Lädt, solange der Bezugspreis unter {fCt(s.preisgrenzeCtKwh)} liegt.</p>}
           </div>
           {zielMoeglich && (
             <button type="button" className="lziel" onClick={(e) => { e.currentTarget.focus(); oeffne({ art: 'ziel', id: g.id }); }}>
               <Ic n="flag" s={20} />
               <span>
-                <b>{zielAn ? `+${zahl0(s?.zielEnergieKwh ?? 0)} kWh bis ${zielBis != null ? uhrTag(zielBis) : s?.zielFenster?.bis ?? ''}` : 'Kein Ziel · lädt, wenn es passt'}</b>
+                <b>{zielAn ? `+${zahl0(s?.zielEnergieKwh ?? 0)} kWh bis ${zielBis != null ? uhrTag(zielBis) : s?.zielFenster?.bis ?? ''}` : 'Kein Ziel'}</b>
                 <small>{zielSub}</small>
               </span>
               <Ic n="chevR" s={18} />
             </button>
           )}
-          <Zeitband
-            id={`lade-${g.id}`}
-            t0={r.jetzt}
-            t1={t1}
-            reihen={bild.reihen}
-            jetzt={r.jetzt}
-            padT={22}
-            tage
-            label="Ladeplan der nächsten 24 Stunden"
-            bands={grenzeBand
-              ? [{ art: 'pv', h: 20, gap: 4 }, { art: 'soc', h: 22, gap: 4, grenze: bild.reihen.speicherGrenze, label: 'Ladestand und Untergrenze für „Sonne + Speicher“' }, { art: 'preis', h: 22, gap: 6 }]
-              : [{ art: 'pv', h: 20, gap: 4 }, { art: 'preis', h: 22, gap: 6 }]}
-            rows={[zeile]}
-            ticks={ticks}
-            namen={false}
-          />
-          {grenzeBand && <p className="leise">Gestrichelt: bis dorthin darf der Speicher für das Auto entladen. Fehlt die Linie, nutzt der Fahrplan den Speicher selbst oder es gibt keine Freigabe.</p>}
         </>
+      )}
+      {zeilen && (
+        <ol className="lq-rm" aria-live="polite" aria-label="Rückmeldung">
+          {zeilen.map((z, i) => (
+            <li key={i} className={z.zustand}>
+              <span className="pk" aria-hidden="true">{z.zustand === 'fertig' ? <Ic n="check" s={12} /> : z.zustand === 'warn' ? <Ic n="alert" s={12} /> : z.zustand === 'laeuft' ? '…' : null}</span>
+              <span>{z.text}{z.unter && <small>{z.unter}</small>}</span>
+            </li>
+          ))}
+        </ol>
       )}
     </section>
   );
+}
+
+/** Die Zeile „Womit laden“: ein Knopf ins Blatt - ohne das Recht nur die Anzeige. */
+function WahlZeile({ darf, label, onClick, children }: { darf: boolean; label: string; onClick: (e: { currentTarget: HTMLElement }) => void; children: ReactNode }) {
+  if (!darf) return <div className="lq-zeile">{children}</div>;
+  return <button type="button" className="lq-zeile" aria-label={label} onClick={onClick}>{children}</button>;
 }
 
 function herkunftWort(bild: SeitenBild, t: number): string {
@@ -283,10 +293,6 @@ function herkunftWort(bild: SeitenBild, t: number): string {
   if (!a) return 'lädt';
   if (a.pv >= a.sp && a.pv >= a.netz) return 'mit Sonne';
   return a.sp >= a.netz ? 'aus dem Speicher' : 'aus dem Netz';
-}
-
-function mitGemessen(g: GeraetBild, plan: (number | null)[], jetzt: number): (number | null)[] {
-  return plan.map((v, t) => (t <= jetzt ? g.kw[t] : v));
 }
 
 /** Bietet ein Ladepunkt der Anlage „Sonne + Speicher“ überhaupt an? */
@@ -378,46 +384,44 @@ function FahrzeugKarte({ fahrzeuge, oeffne, bild }: { fahrzeuge: SiteFahrzeuge |
 
 const ZIEL_ZEITEN = ['06:00', '07:00', '08:00', '16:00', '18:00'];
 
-export function ZielBlatt({ k, id, onSpeichern }: { k: BlattKontext; id: string; onSpeichern: (g: GeraetBild, w: SteuerartWunsch) => Promise<boolean> }) {
+/**
+ * Das Ladeziel: Menge und Uhrzeit (Konzept k1, E4=A). Es fragt kein zweites
+ * „Womit?“ mehr - geladen wird mit der Ladequelle der Karte, und „Ziel
+ * übernehmen“ schickt sie unverändert mit (vorher überschrieb das Blatt sie
+ * still, aus „Günstig“ wurde „Nur Sonne“, Befund 11).
+ */
+export function ZielBlatt({ k, id, anlage, rahmenMinKw, onSpeichern }: {
+  k: BlattKontext; id: string; anlage: VorschauAnlage; rahmenMinKw: number | null;
+  onSpeichern: (g: GeraetBild, w: SteuerartWunsch) => Promise<boolean>;
+}) {
   const g = k.bild.geraete.find((x) => x.id === id);
   const s = g?.steuerart;
   const [kwh, setKwh] = useState<number>(typeof s?.zielEnergieKwh === 'number' ? s.zielEnergieKwh : 20);
   const [bis, setBis] = useState<string>(s?.zielFenster?.bis ?? '07:00');
-  const [quelle, setQuelle] = useState<'ueberschuss' | 'guenstig'>(s?.quelle === 'guenstig' ? 'guenstig' : 'ueberschuss');
   if (!g) return null;
   const r = k.bild.raster;
-  const bisT = naechsteUhrzeit(r.jetzt, bis);
-  const kw = g.nennKw ?? 11;
-  const plan = ladeplan(k.bild.reihen, r.jetzt, bisT, kwh, kw, quelle === 'guenstig');
-  const t1 = Math.min(N, Math.max(bisT + 4, r.jetzt + 24));
-  const schritt = t1 - r.jetzt <= 48 ? 8 : 16;
-  const ticks: number[] = [];
-  for (let x = 0; x <= t1 - r.jetzt; x++) if ((r.jetzt + x) % schritt === 0) ticks.push(x);
-  const vorlaeufig = bisT >= TAG && !k.bild.reihen.morgenBekannt;
+  const basis = startEntwurf(g);
+  const w = { ...basis, zielKwh: kwh, zielBis: bis };
+  const { vorschau, abfahrt } = vorschauFuer(k.bild, g, anlage, w);
+  const vorlaeufig = abfahrt >= TAG && !k.bild.reihen.morgenBekannt;
   const busy = k.busy === g.id;
-  const wunsch = (mitZiel: boolean): SteuerartWunsch => ({
-    quelle,
-    ...(quelle === 'ueberschuss' ? { ueberschussModus: s?.ueberschussModus ?? 'pausieren' } : {}),
-    ...(quelle === 'guenstig' && s?.preisgrenzeCtKwh != null ? { preisgrenzeCtKwh: s.preisgrenzeCtKwh } : {}),
-    ...(mitZiel ? { ziel: 'bis_uhrzeit', zielEnergieKwh: kwh, zielFenster: { tage: 'daily', von: '', bis } } : {}),
-  });
   return (
     <Blatt
       symbol="flag"
       titel="Ladeziel"
-      unter={g.name}
+      unter={`${g.name} · ${LADEQUELLE[basis.modus]}`}
       voll
       onClose={k.zu}
       fuss={
         <Recht aktion="betriebsweise.aendern">
           {s?.ziel ? (
-            <button type="button" className="btn sek" disabled={busy} onClick={async () => { if (await onSpeichern(g, wunsch(false))) k.zu(); }}>Kein Ziel</button>
+            <button type="button" className="btn sek" disabled={busy} onClick={async () => { if (await onSpeichern(g, wunschAus(g, { ...basis, zielKwh: 0 }, rahmenMinKw))) k.zu(); }}>Kein Ziel</button>
           ) : (
             <button type="button" className="btn sek" onClick={k.zu}>Abbrechen</button>
           )}
-          <button type="button" className="btn" disabled={busy} onClick={async () => { if (await onSpeichern(g, wunsch(true))) k.zu(); }}>
+          <button type="button" className="btn" disabled={busy} onClick={async () => { if (await onSpeichern(g, wunschAus(g, w, rahmenMinKw))) k.zu(); }}>
             <Ic n="check" s={18} />
-            {busy ? 'Speichere …' : 'Ziel übernehmen'}
+            {busy ? 'Wird gesendet …' : 'Ziel übernehmen'}
           </button>
         </Recht>
       }
@@ -438,13 +442,7 @@ export function ZielBlatt({ k, id, onSpeichern }: { k: BlattKontext; id: string;
             <button type="button" key={z} aria-pressed={bis === z} onClick={() => setBis(z)}>{naechsteUhrzeit(r.jetzt, z) >= TAG ? 'morgen ' : 'heute '}{z}</button>
           ))}
         </div>
-      </div>
-      <div className="blk">
-        <h3>Womit?</h3>
-        <div className="chips">
-          <button type="button" aria-pressed={quelle === 'ueberschuss'} onClick={() => setQuelle('ueberschuss')}>Sonne zuerst, dann günstig</button>
-          <button type="button" aria-pressed={quelle === 'guenstig'} onClick={() => setQuelle('guenstig')}>nur günstige Stunden</button>
-        </div>
+        <p>Geladen wird mit „{LADEQUELLE[basis.modus]}“, bis das Ziel erreicht ist; fehlt dann etwas, kommt der Rest in den günstigsten Stunden aus dem Netz. Ändern lässt sich das unter „Womit laden“.</p>
       </div>
       {!g.ladepunkt?.angesteckt ? (
         <div className="blk">
@@ -452,35 +450,19 @@ export function ZielBlatt({ k, id, onSpeichern }: { k: BlattKontext; id: string;
           <div className="warum">Kein Auto angesteckt. Das Ziel gilt ab der nächsten Ladung; VoltPilot plant sie, sobald ein Auto ansteckt.</div>
         </div>
       ) : (
-      <div className="blk">
-        <h3>Plan <span className="meta" style={{ textTransform: 'none', letterSpacing: 0 }}>Schätzung</span></h3>
-        <Zeitband
-          id={`z-${g.id}`}
-          t0={r.jetzt}
-          t1={t1}
-          reihen={k.bild.reihen}
-          jetzt={r.jetzt}
-          padT={22}
-          tage
-          label="Ladeplan bis zum Ziel"
-          bands={[{ art: 'pv', h: 18, gap: 4 }, { art: 'preis', h: 26, gap: 6 }]}
-          rows={[{ g, h: 20, kw: plan.kw }]}
-          ticks={ticks}
-          namen={false}
-        />
-        <div className="prev-sum">
-          <div><b>{plan.fertig != null ? uhrTag(plan.fertig) : '—'}</b><small>voraussichtlich fertig</small></div>
-          <div><b>{fKwh(plan.kwh)}</b><small>{plan.kwh ? `${fPct((plan.pvKwh / plan.kwh) * 100)} Sonne` : ''}</small></div>
-          <div><b>{plan.netzKwh > 0.05 ? fCt((plan.eur * 100) / plan.netzKwh) : '—'}</b><small>Ø Börse im Netzanteil</small></div>
+        <div className="blk">
+          <h3>Plan <span className="meta" style={{ textTransform: 'none', letterSpacing: 0 }}>Schätzung</span></h3>
+          <VorschauBand v={vorschau} abfahrt={abfahrt} maxKw={g.nennKw ?? 11} h={46} preis={basis.modus === 'guenstig'}
+            label={`Ladeziel: geschätzte Ladeleistung bis ${uhrKurz(abfahrt)} Uhr nach Herkunft`} />
+          <DreiZahlen v={vorschau} abfahrt={abfahrt} />
+          {vorschau.schafft === false && (
+            <div className="konflikt"><Ic n="alert" s={18} /><span>Das reicht nicht ganz: bis {uhrTag(abfahrt)} passen {kwhText(vorschau.kwh)}. Früher anstecken oder später abfahren hilft.</span></div>
+          )}
+          {vorlaeufig && (
+            <div className="konflikt"><Ic n="info" s={18} /><span>Vorläufig: Die Börsenpreise für morgen kommen gegen 13 Uhr. Dann plant VoltPilot neu.</span></div>
+          )}
+          <p className="leise">Die Box plant die Ladung selbst; das Bild ist eine Schätzung aus Prognose und Preis. Kommt das Auto später oder fährt früher, gilt das Ziel für die nächste Ladung.</p>
         </div>
-        {!plan.schafft && (
-          <div className="konflikt"><Ic n="alert" s={18} /><span>Das reicht nicht ganz: bis {uhrTag(bisT)} passen {fKwh(plan.kwh)}. Früher anstecken oder später abfahren hilft.</span></div>
-        )}
-        {vorlaeufig && (
-          <div className="konflikt"><Ic n="info" s={18} /><span>Vorläufig: Die Börsenpreise für morgen kommen gegen 13 Uhr. Dann plant VoltPilot neu.</span></div>
-        )}
-        <p className="leise">Die Box plant die Ladung selbst; das Bild ist eine Schätzung aus Prognose und Preis. Kommt das Auto später oder fährt früher, gilt das Ziel für die nächste Ladung.</p>
-      </div>
       )}
     </Blatt>
   );
@@ -639,12 +621,14 @@ function useAnschluss(siteId: string): AnschlussStand {
 
 export function FahrzeugBlatt({ k, tagRef, fahrzeuge, onSetzen }: {
   k: BlattKontext; tagRef: string; fahrzeuge: SiteFahrzeuge | null;
-  onSetzen: (tagRef: string, w: { name?: string; quelle?: 'sofort' | 'ueberschuss' | '' }) => Promise<boolean>;
+  onSetzen: (tagRef: string, w: FahrzeugWunsch) => Promise<boolean>;
 }) {
   const f = liste(fahrzeuge?.fahrzeuge).find((x) => x.tagRef === tagRef);
   const [name, setName] = useState(f?.name ?? '');
   if (!f) return null;
   const q = f.steuerart?.quelle ?? null;
+  const modus = f.steuerart?.ueberschussModus === 'mindestleistung' ? 'min' : 'sonne';
+  const minKw = f.steuerart?.mindestleistungKw ?? k.bild.ladepunkte[0]?.steuerart?.mindestleistungKw ?? 1.4;
   const busy = k.busy === `fz:${tagRef}`;
   return (
     <Blatt
@@ -674,10 +658,11 @@ export function FahrzeugBlatt({ k, tagRef, fahrzeuge, onSetzen }: {
         <h3>Wenn diese Karte lädt</h3>
         <Recht aktion="ladepunkt.betrieb"><div className="chips">
           <button type="button" aria-pressed={q == null} disabled={busy} onClick={() => void onSetzen(tagRef, { quelle: '' })}>wie der Ladepunkt</button>
-          <button type="button" aria-pressed={q === 'ueberschuss'} disabled={busy} onClick={() => void onSetzen(tagRef, { quelle: 'ueberschuss' })}>Smart</button>
+          <button type="button" aria-pressed={q === 'ueberschuss' && modus === 'sonne'} disabled={busy} onClick={() => void onSetzen(tagRef, { quelle: 'ueberschuss', ueberschussModus: 'pausieren' })}>{LADEQUELLE.sonne}</button>
+          <button type="button" aria-pressed={q === 'ueberschuss' && modus === 'min'} disabled={busy} onClick={() => void onSetzen(tagRef, { quelle: 'ueberschuss', ueberschussModus: 'mindestleistung', mindestleistungKw: minKw })}>{LADEQUELLE.min}</button>
           <button type="button" aria-pressed={q === 'sofort'} disabled={busy} onClick={() => void onSetzen(tagRef, { quelle: 'sofort' })}>Schnell</button>
         </div></Recht>
-        <p>„Smart“ lädt mit Sonnenstrom, „Schnell“ sofort mit voller Leistung. Ohne Wahl gilt die Einstellung des Ladepunkts.</p>
+        <p>{LADEQUELLE.sonne}: {LADEQUELLE_VERSPRECHEN.sonne}. {LADEQUELLE.min}: {LADEQUELLE_VERSPRECHEN.min}. Schnell: sofort voll. Ohne Wahl gilt die Einstellung des Ladepunkts.</p>
       </div>
     </Blatt>
   );

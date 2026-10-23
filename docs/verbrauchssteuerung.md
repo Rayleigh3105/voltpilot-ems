@@ -116,6 +116,14 @@ Die Kundenoberfläche trennt Gerät anlegen, Betriebsregel erstellen und Ausfüh
 
 Geräte-/Typfreigabe, Verbindungsprüfung und globale Flags sind verschiedene Voraussetzungen. Herstelleradapter für go-e und Shelly sowie OCPP sind vorhanden; ihre Existenz bedeutet keine pauschale Freigabe jedes realen Modells.
 
+**Womit laden? (Konzept k1, 23.10.2026).** Die vier Ladequellen tragen überall Namen und Versprechen aus `glossar.ts` (`LADEQUELLE`, `LADEQUELLE_VERSPRECHEN`).
+Das Blatt „Womit laden?“ zeigt je Quelle eine SCHÄTZUNG bis zur Abfahrt (`steuerung/ladeVorschau.ts`): Ladeleistung je Viertelstunde nach Sonne, Speicher und Netz, die mögliche Menge, den Netzanteil und Ø ct/kWh (Netz zum Bezugspreis `importPriceCtKwh`, Sonne und Speicher zum Einspeisewert `exportValueCtKwh`; fehlt ein gebrauchter Preis, gibt es keinen Schnitt).
+Annahmen: Abfahrt ohne Ziel ist der nächste Morgen 7:00 (mindestens vier Stunden hin), mit Ziel dessen Uhrzeit; der Ladepunkt wird allein mit dem Überschuss der Anlage gerechnet (die Karte nennt seinen Platz); die Untergrenze von „Sonne + Speicher“ kommt aus dem Fahrplan, wo er eine trägt, sonst rechnet das Portal sie grob nach.
+Antippen ändert nur die Vorschau, erst „So laden“ schreibt die ganze Steuerart; das Ladeziel wohnt im selben Blatt, das Ziel-Blatt fragt kein zweites „Womit?“.
+Ein Ladepunkt auf dem Anlagen-Standard `sofort` sagt „Lädt immer sofort voll“; „Smart“ öffnet dann das Blatt mit der Vorauswahl „Sonne + Minimum“ und setzt nichts still.
+Nach „So laden“ zeigt die Karte drei Schritte: gesendet › Box hat übernommen › Wirkung gemessen.
+Den zweiten belegt das Echo der Bahn je Säule im Herzschlag ([Vertrag](contracts/ladepunkt-quelle-echo.md)), verglichen mit der Wahl je Säule; eine ältere Box ohne Echo bleibt „noch nicht bestätigt“.
+
 ## Betrieb und Tests
 
 [Betriebshandbuch](verbrauchssteuerung-betrieb.md) für Flags, Freigabe und Rücknahme. Belege: API-`ConsumerApiTest`, Policy-Compiler-/Broker-Tests, Co-Solver-Szenarien, Edge-Arbitration-/Deadline-/Zyklenschutztests und Portal-Regeltests.
