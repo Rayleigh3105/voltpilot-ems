@@ -15,6 +15,11 @@ import { ahrenbergHeute, ahrenbergUnternehmen, FIXTURE_IDS, werkAhrenberg, werkL
  * Veräußerungsform und „Betrieb" wie heute. Ohne Querlauf — GEMESSEN am Dokument, am
  * Rumpf und an jedem Element des Dialogs.
  *
+ * Seit Anlage-Flow a1 (Paket 0+1): die Ortswahl ist eine ausdrückliche Frage („Wo steht die neue
+ * Anlage?“, D8), ein Privatkunde trägt die Adresse EINMAL ein (Standort und Anlage aus einem Formular,
+ * Vorschläge über `GET /api/v1/orte/suche`), die Box wird mit ihrer Kennung verbunden, und Escape mit
+ * Eingaben fragt nach (F8).
+ *
  * Mit `ANLAGE_ANLEGEN_BILDER=<Ordner>` legt der Lauf je Fall Bild, ganzes Bild und Messung ab.
  */
 
@@ -27,9 +32,37 @@ interface Cloud {
   standorte: StandorteAmStichtag;
   funktionen: Funktionen;
   unternehmen?: Unternehmen;
+  /** Die Antwort der Registrierung (D2); ohne sie wie ein Bestandskunde. */
+  betriebsart?: 'endkunde' | 'betreiber' | null;
   /** Jeder Körper von `POST /api/v1/sites`. */
   angelegt: Record<string, unknown>[];
+  /** Jeder Körper von `POST /api/v1/standorte`. */
+  standorteAngelegt?: Record<string, unknown>[];
+  /** Der Kopf `Idempotency-Key` jeder Anlege-Anfrage (B3). */
+  kennungen?: string[];
 }
+
+/** Ein Adressvorschlag wie `GET /api/v1/orte/suche` ihn liefert (OpenStreetMap-Adressen). */
+const HAUS = {
+  text: 'Hauptstraße 12, 91710 Gunzenhausen',
+  strasse: 'Hauptstraße',
+  hausnummer: '12',
+  plz: '91710',
+  ort: 'Gunzenhausen',
+  land: 'DE',
+  breitengrad: 49.1159,
+  laengengrad: 10.7155,
+  genau: 'haus',
+};
+
+const neuerPrivatkunde = (): Cloud => ({
+  standorte: { ...ahrenbergHeute(), standorte: [], nichtGezeigt: [], nochNichtZugeordnet: null },
+  funktionen: ahrenbergFunktionen({ standorte: [] }),
+  betriebsart: 'endkunde',
+  angelegt: [],
+  standorteAngelegt: [],
+  kennungen: [],
+});
 
 const messkunde = (): Cloud => ({
   standorte: { ...ahrenbergHeute(), standorte: [werkLindach()] },
@@ -66,18 +99,29 @@ async function verdrahte(page: Page, cloud: Cloud) {
     const json = (body: unknown, status = 200) =>
       r.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
     if (pfad === '/api/v1/standorte' && methode === 'GET') return json(cloud.standorte);
+    if (pfad === '/api/v1/tenant-context') {
+      return json({ tenantId: 'kb', name: 'Kundin', segment: 'CI', betriebsart: cloud.betriebsart ?? null });
+    }
+    if (pfad === '/api/v1/orte/suche') {
+      const q = url.searchParams.get('q') ?? '';
+      return json({ treffer: q.length >= 3 ? [HAUS] : [], quelle: '© OpenStreetMap-Mitwirkende' });
+    }
     if (pfad === '/api/v1/unternehmen') return json(cloud.unternehmen ?? ahrenbergUnternehmen());
     if (pfad === '/api/v1/standorte/kurzzeichen-vorschlag') return json({ kurzzeichen: 'ST-2' });
     if (pfad === '/api/v1/standorte' && methode === 'POST') {
       const body = r.request().postDataJSON() as {
         name: string;
-        adresse: { strasse: string; plz: string | null; ort: string; land: string };
+        adresse: { strasse: string; plz: string | null; ort: string; land: 'DE' | 'AT' | 'CH' };
         zeitzone: string;
+        lage?: { breitengrad: number; laengengrad: number } | null;
       };
+      cloud.standorteAngelegt?.push(body);
+      cloud.kennungen?.push(r.request().headers()['idempotency-key'] ?? '');
       const standort: StandortAmStichtag = werkLindach({
         name: body.name,
         adresse: body.adresse,
         zeitzone: body.zeitzone,
+        lage: body.lage ?? null,
         anlagen: [],
         anlagenZahl: 0,
       });
@@ -89,6 +133,7 @@ async function verdrahte(page: Page, cloud: Cloud) {
     if (pfad === '/api/v1/sites' && methode === 'POST') {
       const body = r.request().postDataJSON() as Record<string, unknown>;
       cloud.angelegt.push(body);
+      cloud.kennungen?.push(r.request().headers()['idempotency-key'] ?? '');
       return json({
         id: NEU,
         name: body.name,
@@ -107,7 +152,7 @@ async function verdrahte(page: Page, cloud: Cloud) {
       return json({
         id: 'd-neu',
         siteId: NEU,
-        externalRef: 'VP-DEMO-0001',
+        externalRef: 'edge-k7m2xq3',
         kind: 'inverter',
         name: null,
         status: 'active',
@@ -122,7 +167,7 @@ async function verdrahte(page: Page, cloud: Cloud) {
   });
 }
 
-async function oeffne(page: Page, breite: number, suche = '', titel = 'Wie heißt Ihre Anlage?') {
+async function oeffne(page: Page, breite: number, suche = '', titel = 'Wo steht die neue Anlage?') {
   await page.setViewportSize({ width: breite, height: breite < 720 ? 812 : 900 });
   await page.goto(`/e2e/anlage-anlegen.html${suche}`);
   await expect(page.getByRole('heading', { name: titel })).toBeVisible();
@@ -203,14 +248,16 @@ for (const breite of BREITEN) {
     await standort.getByLabel('Ort *').fill('Lindach');
     await standort.getByRole('button', { name: 'Standort anlegen' }).click();
 
-    await expect(page.getByRole('heading', { name: 'Wie heißt Ihre Anlage?' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Wo steht die neue Anlage?' })).toBeVisible();
     const anlage = page.getByRole('dialog', { name: 'Anlage anlegen' });
-    await expect(anlage.getByRole('combobox', { name: 'Standort *' })).toContainText('Werk Lindach');
-    await expect(anlage.locator('.vp-step-label')).toHaveText(['Anlage', 'Register', 'Gerät']);
+    await expect(anlage.getByRole('radio', { name: /Am selben Ort wie „Werk Lindach“/ })).toBeChecked();
+    // F7: der erledigte Standort bleibt in der Leiste - abgehakt, nicht verschwunden.
+    await expect(anlage.locator('.vp-step-label')).toHaveText(['Standort', 'Anlage', 'Register', 'Gerät']);
+    await expect(anlage.locator('.vp-step-done .vp-step-label')).toHaveText(['Standort']);
     await schweigt(page, 'Anlage nach dem Standort');
     await messeUndFotografiere(page, breite, 'neu-1-anlage');
 
-    await anlage.getByLabel('Name der Anlage').fill('Messung Halle 1');
+    await anlage.getByLabel('Name der neuen Anlage').fill('Messung Halle 1');
     await anlage.getByRole('button', { name: 'Weiter', exact: true }).click();
     await expect(anlage.getByRole('heading', { name: 'PV & Speicher aus dem Register' })).toBeVisible();
     expect(cloud.angelegt).toEqual([
@@ -255,25 +302,26 @@ for (const breite of BREITEN) {
     await verdrahte(page, cloud);
     await oeffne(page, breite);
     const dialog = page.getByRole('dialog', { name: 'Anlage anlegen' });
-    await expect(dialog.getByRole('combobox', { name: 'Standort *' })).toContainText('Werk Lindach');
+    await expect(dialog.getByRole('radio', { name: /Am selben Ort wie „Werk Lindach“/ })).toBeChecked();
     await expect(dialog.locator('.vp-step-label')).toHaveText(['Anlage', 'Register', 'Gerät']);
     await expect(dialog.getByText(/Feineinstellungen/)).toHaveCount(0);
     await schweigt(page, 'Schritt 1 · Anlage');
     await messeUndFotografiere(page, breite, 'messen-1-anlage');
 
-    await dialog.getByLabel('Name der Anlage').fill('Halle 3');
+    await dialog.getByLabel('Name der neuen Anlage').fill('Halle 3');
     await dialog.getByRole('button', { name: 'Weiter', exact: true }).click();
     await expect(dialog.getByRole('heading', { name: 'PV & Speicher aus dem Register' })).toBeVisible();
     await schweigt(page, 'Schritt 2 · Register');
     await messeUndFotografiere(page, breite, 'messen-2-register');
 
     await dialog.getByRole('button', { name: 'Überspringen - später nachtragen' }).click();
-    await expect(dialog.getByRole('heading', { name: 'Verbinden Sie Ihre VoltPilot-Box' })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: 'Ihre VoltPilot-Box' })).toBeVisible();
     await schweigt(page, 'Schritt 3 · Gerät');
     await messeUndFotografiere(page, breite, 'messen-3-geraet');
 
-    await dialog.getByLabel('Geräte-ID').fill('vp-demo-0001');
-    await dialog.getByRole('button', { name: 'Anlage anlegen', exact: true }).click();
+    await dialog.getByLabel('Kennung').fill('k7m2xq3');
+    await expect(dialog.getByText('Kennung stimmt: edge-k7m2xq3')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Box verbinden', exact: true }).click();
     await expect(dialog.getByRole('heading', { name: 'Anlage „Halle 3“ ist da' })).toBeVisible();
     await expect(dialog.getByRole('button', { name: 'Zu den Messstellen' })).toBeVisible();
     // Still heißt nicht Sackgasse: die Anlage (mit ihrem Bereich „Steuerung") bleibt einen Tipp entfernt.
@@ -300,21 +348,22 @@ for (const breite of BREITEN) {
     await verdrahte(page, cloud);
     await oeffne(page, breite);
     const dialog = page.getByRole('dialog', { name: 'Anlage anlegen' });
-    await expect(dialog.getByRole('combobox', { name: 'Standort *' })).toContainText('Werk Ahrenberg');
+    await expect(dialog.getByRole('radio', { name: /Am selben Ort wie „Werk Ahrenberg“/ })).toBeChecked();
     await expect(dialog.locator('.vp-step-label')).toHaveText(['Anlage', 'Register', 'Gerät', 'Betrieb']);
     await expect(dialog.getByRole('combobox', { name: 'Veräußerungsform' })).toBeVisible();
     // Gegenprobe im Browser: derselbe Abtaster findet die Wörter.
     expect(await woerter(page)).toEqual(expect.arrayContaining(['veräußerung', 'vergüt', 'netzladen']));
     await messeUndFotografiere(page, breite, 'steuern-1-anlage');
 
-    await dialog.getByLabel('Name der Anlage').fill('Halle 3');
+    await dialog.getByLabel('Name der neuen Anlage').fill('Halle 3');
     await dialog.getByRole('button', { name: 'Weiter', exact: true }).click();
     await dialog.getByRole('button', { name: 'Überspringen - später nachtragen' }).click();
-    await expect(dialog.getByRole('heading', { name: 'Verbinden Sie Ihre VoltPilot-Box' })).toBeVisible();
+    await expect(dialog.getByRole('heading', { name: 'Ihre VoltPilot-Box' })).toBeVisible();
     await messeUndFotografiere(page, breite, 'steuern-3-geraet');
 
-    await dialog.getByLabel('Geräte-ID').fill('vp-demo-0001');
-    await dialog.getByRole('button', { name: 'Anlage anlegen', exact: true }).click();
+    await dialog.getByLabel('Kennung').fill('k7m2xq3');
+    await expect(dialog.getByText('Kennung stimmt: edge-k7m2xq3')).toBeVisible();
+    await dialog.getByRole('button', { name: 'Box verbinden', exact: true }).click();
     await expect(dialog.getByText('Wofür ist diese Anlage?')).toBeVisible();
     await messeUndFotografiere(page, breite, 'steuern-4-betrieb');
 
@@ -332,6 +381,58 @@ for (const breite of BREITEN) {
     await expect(page.getByText('In drei Schritten ist Ihre Anlage startklar.')).toBeVisible();
     await schweigt(page, 'Willkommen');
     await messeUndFotografiere(page, breite, 'assistent-messen');
+  });
+
+  test(`Privatkunde · ${breite} px: die Adresse einmal - Standort und Anlage aus einem Formular`, async ({ page }) => {
+    const cloud = neuerPrivatkunde();
+    await verdrahte(page, cloud);
+    await oeffne(page, breite, '?wirt=assistent', 'Wo steht Ihre Anlage?');
+    // F2: ein Privatkunde läuft wie heute (mit „Betrieb“), nie „nur messen“ - und ohne Standort-Dialog vorab.
+    await expect(page.locator('.vp-step-label')).toHaveText(['Anlage', 'Register', 'Gerät', 'Betrieb']);
+    await expect(page.getByText('Zuerst den Standort')).toHaveCount(0);
+    await messeUndFotografiere(page, breite, 'privat-1-adresse');
+
+    await page.getByLabel('Adresse').fill('Hauptstr 12 gun');
+    const vorschlag = page.getByRole('option', { name: 'Hauptstraße 12, 91710 Gunzenhausen' });
+    await expect(vorschlag).toBeVisible();
+    await expect(page.getByText('Adressen: © OpenStreetMap-Mitwirkende')).toBeVisible();
+    await messeUndFotografiere(page, breite, 'privat-2-vorschlaege');
+    await vorschlag.click();
+    await expect(page.getByText(/Adresse gefunden/)).toBeVisible();
+    await messeUndFotografiere(page, breite, 'privat-3-gewaehlt');
+
+    await page.getByRole('button', { name: 'Weiter', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'PV & Speicher aus dem Register' })).toBeVisible();
+    expect(cloud.standorteAngelegt).toEqual([
+      {
+        name: 'Zuhause',
+        adresse: { strasse: 'Hauptstraße 12', plz: '91710', ort: 'Gunzenhausen', land: 'DE' },
+        zeitzone: 'Europe/Berlin',
+        lage: { breitengrad: 49.1159, laengengrad: 10.7155 },
+      },
+    ]);
+    expect(cloud.angelegt).toEqual([expect.objectContaining({ name: 'Zuhause', standortId: FIXTURE_IDS.st2 })]);
+    expect(cloud.angelegt[0]).not.toHaveProperty('latitude');
+    // B3: beide Anfragen tragen die Kennung desselben Formulars.
+    expect(cloud.kennungen).toEqual([expect.stringMatching(/:standort0$/), expect.stringMatching(/:anlage$/)]);
+  });
+
+  test(`Verwerfen-Frage · ${breite} px: Escape mit Eingaben fragt nach (F8)`, async ({ page }) => {
+    await verdrahte(page, kundeMitSteuern());
+    await oeffne(page, breite);
+    const dialog = page.getByRole('dialog', { name: 'Anlage anlegen' });
+    await dialog.getByLabel('Name der neuen Anlage').fill('Garage');
+    await page.keyboard.press('Escape');
+    const frage = page.getByRole('dialog', { name: 'Eingaben verwerfen?' });
+    await expect(frage).toBeVisible();
+    await messeUndFotografiere(page, breite, 'verwerfen-frage');
+    // Escape heißt „weiter ausfüllen“ - die Eingabe bleibt.
+    await page.keyboard.press('Escape');
+    await expect(frage).toHaveCount(0);
+    await expect(dialog.getByLabel('Name der neuen Anlage')).toHaveValue('Garage');
+    await page.keyboard.press('Escape');
+    await frage.getByRole('button', { name: 'Verwerfen' }).click();
+    await expect(page.getByTestId('gemeldet')).toHaveText('geschlossen');
   });
 
   test(`Einrichtungs-Assistent · ${breite} px: „In vier Schritten" mit Steuern`, async ({ page }) => {

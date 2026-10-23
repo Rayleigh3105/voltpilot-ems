@@ -702,7 +702,7 @@ class AdminApiTest {
         String siteId = (String) site.getBody().get("id");
         ResponseEntity<Map<String, Object>> claim = rest.exchange(
                 url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", "edge-weg-01"),
+                new HttpEntity<>(Map.of("siteId", siteId, "externalRef", TestKennung.box("edge-weg-01")),
                         bearer(customer)),
                 new ParameterizedTypeReference<>() {});
         String deviceId = (String) claim.getBody().get("id");
@@ -2108,7 +2108,7 @@ class AdminApiTest {
                 .as("vor dem Gerät gibt es ehrlich nichts zu zeigen").isEmpty();
 
         rest.exchange(url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", claimSite, "externalRef", "selbstbau-deye-01"),
+                new HttpEntity<>(Map.of("siteId", claimSite, "externalRef", TestKennung.box("selbstbau-deye-01")),
                         kunde),
                 new ParameterizedTypeReference<Map<String, Object>>() {});
 
@@ -2157,7 +2157,7 @@ class AdminApiTest {
                         kunde),
                 new ParameterizedTypeReference<Map<String, Object>>() {}).getBody().get("id");
         rest.exchange(url("/api/v1/devices/claim"), HttpMethod.POST,
-                new HttpEntity<>(Map.of("siteId", spaeter, "externalRef", "selbstbau-deye-02"),
+                new HttpEntity<>(Map.of("siteId", spaeter, "externalRef", TestKennung.box("selbstbau-deye-02")),
                         kunde),
                 new ParameterizedTypeReference<Map<String, Object>>() {});
         assertThat(customerEntities(kunde, spaeter))

@@ -540,7 +540,7 @@ class ComponentTemplateAdminApiTest {
     private UUID createSiteWithDevice(String customerToken, String name, String ref) {
         UUID site = createSite(customerToken, name);
         assertThat(post("/api/v1/devices/claim", customerToken,
-                Map.of("externalRef", ref, "siteId", site.toString(), "kind", "inverter"))
+                Map.of("externalRef", TestKennung.box(ref), "siteId", site.toString(), "kind", "inverter"))
                 .getStatusCode()).isIn(HttpStatus.OK, HttpStatus.CREATED);
         return site;
     }

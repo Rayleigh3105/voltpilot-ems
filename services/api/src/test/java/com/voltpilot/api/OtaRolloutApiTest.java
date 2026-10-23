@@ -165,8 +165,8 @@ class OtaRolloutApiTest {
         String admin = token("admin", "admin");
         String customer = token("demo", "demo");
 
-        String refA = "ota-a-" + UUID.randomUUID().toString().substring(0, 8);
-        String refB = "ota-b-" + UUID.randomUUID().toString().substring(0, 8);
+        String refA = TestKennung.box("ota-a-" + UUID.randomUUID().toString().substring(0, 8));
+        String refB = TestKennung.box("ota-b-" + UUID.randomUUID().toString().substring(0, 8));
         UUID a = claim(customer, refA);
         UUID b = claim(customer, refB);
 
@@ -280,8 +280,8 @@ class OtaRolloutApiTest {
                 MANIFEST.replace("edge-2026.08.0", "edge-2026.09.1").replace(":12", ":31"),
                 SIGNATURE);
 
-        UUID one = claim(customer, "ota-x-" + UUID.randomUUID().toString().substring(0, 8));
-        UUID two = claim(customer, "ota-y-" + UUID.randomUUID().toString().substring(0, 8));
+        UUID one = claim(customer, TestKennung.box("ota-x-" + UUID.randomUUID().toString().substring(0, 8)));
+        UUID two = claim(customer, TestKennung.box("ota-y-" + UUID.randomUUID().toString().substring(0, 8)));
 
         assertThat(post("/api/v1/admin/rollouts", admin,
                 Map.of("releaseSeq", 30, "devices", List.of(one.toString())))
@@ -316,9 +316,9 @@ class OtaRolloutApiTest {
     void theTrustIdentityReachesTheFleetMatrixAndAbsenceIsNeverAFinding() throws Exception {
         String admin = token("admin", "admin");
         String customer = token("demo", "demo");
-        UUID crossed = claim(customer, "ota-t1-" + UUID.randomUUID().toString().substring(0, 8));
-        UUID open = claim(customer, "ota-t2-" + UUID.randomUUID().toString().substring(0, 8));
-        UUID silent = claim(customer, "ota-t3-" + UUID.randomUUID().toString().substring(0, 8));
+        UUID crossed = claim(customer, TestKennung.box("ota-t1-" + UUID.randomUUID().toString().substring(0, 8)));
+        UUID open = claim(customer, TestKennung.box("ota-t2-" + UUID.randomUUID().toString().substring(0, 8)));
+        UUID silent = claim(customer, TestKennung.box("ota-t3-" + UUID.randomUUID().toString().substring(0, 8)));
 
         reportTrust(crossed, "root-2026-a", "rel-2026-a,rel-2026-b", "2026-08-04T10:00:00Z", null);
         reportTrust(open, "", "", null, null);
@@ -348,7 +348,7 @@ class OtaRolloutApiTest {
     void theDeviceInventoryUnitesTheStickerRegistryWithTheRealFleet() throws Exception {
         String admin = token("admin", "admin");
         String customer = token("demo", "demo");
-        String edgeRef = "ota-inv-" + UUID.randomUUID().toString().substring(0, 8);
+        String edgeRef = TestKennung.box("ota-inv-" + UUID.randomUUID().toString().substring(0, 8));
         UUID device = claim(customer, edgeRef);
         String printed = "VP-INV-" + UUID.randomUUID().toString().substring(0, 4).toUpperCase();
         assertThat(post("/api/v1/admin/provisioned-devices", admin,
@@ -402,9 +402,9 @@ class OtaRolloutApiTest {
     void aReleaseOnlyReachesBoxesOfItsOwnKind() throws Exception {
         String admin = token("admin", "admin");
         String customer = token("demo", "demo");
-        UUID docker = claim(customer, "ota-bd-" + UUID.randomUUID().toString().substring(0, 8));
-        UUID light = claim(customer, "ota-bl-" + UUID.randomUUID().toString().substring(0, 8));
-        UUID silent = claim(customer, "ota-bs-" + UUID.randomUUID().toString().substring(0, 8));
+        UUID docker = claim(customer, TestKennung.box("ota-bd-" + UUID.randomUUID().toString().substring(0, 8)));
+        UUID light = claim(customer, TestKennung.box("ota-bl-" + UUID.randomUUID().toString().substring(0, 8)));
+        UUID silent = claim(customer, TestKennung.box("ota-bs-" + UUID.randomUUID().toString().substring(0, 8)));
         reportBox(docker, "compose", "edge-2026.09.1-3bf8c038a1b2");
         // Die Pilot-Box heute: der Core meldet noch fest `compose`, erkennbar
         // ist Edge Light nur am Stempel.

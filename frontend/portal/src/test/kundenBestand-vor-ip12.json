@@ -1250,6 +1250,167 @@
   },
   "fortschreibungen": [
     {
+      "datei": "App.tsx",
+      "vorher": "205d0bf899dc70fbf26c650d0ed118f533ee3f0d8c66b04cc217f2412b6a4339",
+      "verschoben_nach": "Registrierung.tsx",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026): „Konto erstellen“ ist ein eigenes, nachgeladenes Stück (Bündel-Wächter, main lag über 258 kB); das Bedienelement steht Zeichen für Zeichen in Registrierung.tsx."
+    },
+    {
+      "datei": "App.tsx",
+      "vorher": "41dc3d43214e5f78b83ed3babcb41afffa304a658e4a34f0c44ef1ef95c52cfd",
+      "verschoben_nach": "Registrierung.tsx",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026): „Konto erstellen“ ist ein eigenes, nachgeladenes Stück (Bündel-Wächter, main lag über 258 kB); das Bedienelement steht Zeichen für Zeichen in Registrierung.tsx."
+    },
+    {
+      "datei": "App.tsx",
+      "vorher": "7fcaaff78cacbb6cde4e156ebb6a5ea5739266b3f889a8530348bf90250d7ccb",
+      "verschoben_nach": "Registrierung.tsx",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026): „Konto erstellen“ ist ein eigenes, nachgeladenes Stück (Bündel-Wächter, main lag über 258 kB); das Bedienelement steht Zeichen für Zeichen in Registrierung.tsx."
+    },
+    {
+      "datei": "App.tsx",
+      "vorher": "11445cd203c708dd3dfa158068192cd382353ed35b115d587d6e6743a2e0505a",
+      "verschoben_nach": "Registrierung.tsx",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026): „Konto erstellen“ ist ein eigenes, nachgeladenes Stück (Bündel-Wächter, main lag über 258 kB); das Bedienelement steht Zeichen für Zeichen in Registrierung.tsx."
+    },
+    {
+      "datei": "App.tsx",
+      "vorher": "8f1f2cb5fc471743695a7def4442e37cf157b3354ad9d327988be79b9da396d9",
+      "verschoben_nach": "Registrierung.tsx",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026): „Konto erstellen“ ist ein eigenes, nachgeladenes Stück (Bündel-Wächter, main lag über 258 kB); das Bedienelement steht Zeichen für Zeichen in Registrierung.tsx."
+    },
+    {
+      "datei": "App.tsx",
+      "vorher": "ca1646baa5439b52d12c8161aaff8cff903a36f223373e73ec749473ca348366",
+      "verschoben_nach": "Registrierung.tsx",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026): „Konto erstellen“ ist ein eigenes, nachgeladenes Stück (Bündel-Wächter, main lag über 258 kB); das Bedienelement steht Zeichen für Zeichen in Registrierung.tsx."
+    },
+    {
+      "datei": "App.tsx",
+      "vorher": "5094b7aaa6968220ae96a9dfb899d699325c82ffeb59e2cc6fa5e74450f703b5",
+      "verschoben_nach": "Registrierung.tsx",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026): „Konto erstellen“ ist ein eigenes, nachgeladenes Stück (Bündel-Wächter, main lag über 258 kB); das Bedienelement steht Zeichen für Zeichen in Registrierung.tsx."
+    },
+    {
+      "datei": "components/DeviceDrawers.tsx",
+      "vorher": "2d5ec8650dd88aac39505656c950d03e4a5ef043e437a8050e94390eebb1238e",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), B4: die main-Fassung des Felds der Box-Kennung ist das gemeinsame KennungFeld (components/KennungFeld.tsx, ergänzt edge- und prüft das Prüfzeichen); dieselbe Beschriftung „Kennung“, derselbe Ref und Enter sendet."
+    },
+    {
+      "datei": "App.tsx",
+      "vorher": "41dc3d43214e5f78b83ed3babcb41afffa304a658e4a34f0c44ef1ef95c52cfd",
+      "nachher": "91d8e18ce8b0c4787c1659db620891b08fd1a4d669d7bc862aee340e6de0dd40",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), D2: das Namensfeld der Registrierung nennt nach der Frage „Für mein Zuhause / Für ein Unternehmen“ „Ihr Name“ bzw. „Name Ihres Unternehmens“; Wert, Prüfung und Fokus bleiben."
+    },
+    {
+      "datei": "components/TariffFields.tsx",
+      "vorher": "8d6e2fe0d030334c6470b71f940a4214db961a95b51fb7cd29f53870fc14fcee",
+      "nachher": "20ca3ef57ec1004ac39a220c8b3382263306c7c223f93dfaa468cdc81e917a91",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), F4: das Preis-Feld zeigt seinen Satz am Feld (eigene Prüfung oder Ablehnung des Servers); Beschriftung, Wert und Handler bleiben."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "bbcd95b7eab4a29ed774fb5c9d495d51677b93d1a581fe43dee01989f1554349",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), D4/F3: die Ortssuche im Browser (Open-Meteo, „Ändern“ am gewählten Ort) entfällt; die Adresse sucht components/AdressSuche.tsx über GET /api/v1/orte/suche."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "7cd614dea94a71e5b71785dd2bfaed3ca4781a94a37fbb457fb0c63f3cb22a19",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), D4/F1/F3: das Feld „Standort“ der Ortssuche entfällt - die Adresse wird einmal erfasst (components/AdressSuche.tsx, Feld „Adresse“)."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "d3b9f57c1ff4527cbea41db20f07b9a56196ab64e26ff574401208307a2f36f6",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), D4/F5: „Suchen“ entfällt - Vorschläge kommen beim Tippen, „Weiter“ nimmt den ersten Vorschlag (components/AdressSuche.tsx, AnlageSchritt.tsx)."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "e3c2abc2cfe8756039a6e39579fd497bd17883892e17448dee3d5c0a36c3143d",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), D4: die Trefferliste der Ortssuche entfällt; Vorschläge sind die Optionen der Liste in components/AdressSuche.tsx."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "007f579bcd61d54f5e8514c0d14f6550c41c70f23911322836d8653c26bc75a9",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), Paket 1: Schritt 1 wohnt in components/AnlageSchritt.tsx; das Namensfeld heißt dort „Name der neuen Anlage“ (erste Anlage: „Name“, vorbelegt „Zuhause“) mit Satz am Feld."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "4645bf3370b43f66594b1049bbea7c7e79bfd244c245fb96dc3a3e57b23d84e4",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), Paket 1: „Gleicher Standort wie …“ steht in components/AnlageSchritt.tsx, nur noch für Anlagen ohne Standort-Objekt; sonst ist der Ort die ausdrückliche Wahl „Am selben Ort wie …“ (D8)."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "9ce95ada5c56d3e6b4fac9068656a69546da19103d39f584ad4b1a42975d6a99",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), Paket 1: „Feineinstellungen“ stehen unverändert im Geld-Teil von components/AnlageSchritt.tsx."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "526164856eea8d639087d70a74946f66d8fc584358dbb517f704f3649ff2ea86",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), Paket 1/F4: „Anzulegender Wert“ steht im Geld-Teil von components/AnlageSchritt.tsx, mit Satz am Feld."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "9966d7c4fa3c2297896663b500e78876d9207c1ad092a55117de4f9b337c407d",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), Paket 1/F4: „Maximale Einspeiseleistung“ steht im Geld-Teil von components/AnlageSchritt.tsx, mit Satz am Feld."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "47aa36169ea2c20b751e2c086805610e44d628d53c2e7c78f45094bc3352ce57",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), Paket 1: „Weiter“ von Schritt 1 steht in components/AnlageSchritt.tsx (Standort und Anlage in einem Zug, mit Anfrage-Kennung, B3)."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "8926e62651f36125996f6d03ba966f426f6ebb7e7579109a2be8337a6824b0fd",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), B4: das Feld der Box-Kennung ist das gemeinsame KennungFeld (components/KennungFeld.tsx)."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "32c87c3d0ca92813e2716a06eb751529c219d96f8aab24f8aeebf9201682342a",
+      "nachher": "491a8d3bef59ec48d2c271cb33066c479a87dc8bdbd1e21e5e8d0bf7956f054f",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), F10: der Knopf des Box-Schritts heißt „Box verbinden“ - die Anlage gibt es schon; Handler und Recht bleiben."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "6ea6d22ecac7d517ea52442046e776a9d6af1036cfcf44fac30f544a65ad01f9",
+      "nachher": "2f469ef86a651834e3c2671fd60980d925e49aebbceb6c62e73f2d68b76d8d2c",
+      "commit": "fm/vp-anlage-flow-umsetzung",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, D1 = B, D2-D9 = A), D5: „Box ist noch nicht da - später verbinden“ statt „Box habe ich noch nicht - später“; derselbe Weg weiter."
+    },
+    {
       "datei": "components/StandortVorschau.tsx",
       "vorher": "60e1d0cdcb423982005d8418e981aac1af72dcb44c070b56c4c278ab30514820",
       "nachher": "18b82d5d7bf36b30a9a74f2379a4949dee238f2bbe182d61af3c95c8269e0629",

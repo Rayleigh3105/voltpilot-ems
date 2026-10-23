@@ -727,6 +727,11 @@ paths:
         schreibung und Randleerzeichen; ein archivierter gibt seinen Namen frei).
         Standort, Kurzzeichen und genau ein Protokolleintrag "angelegt" entstehen
         in EINER Transaktion. Rechte: `standort.verwalten`.
+        Mit `lage` übernehmen die Anlagen, die am Standort ohne eigenen
+        Kartenpunkt stehen, diesen Punkt (auch beim Bearbeiten, „Adresse
+        nachtragen“, Anlage-Flow a1).
+      parameters:
+        - $ref: "#/components/parameters/AnfrageKennung"
       requestBody:
         required: true
         content:
@@ -1522,6 +1527,51 @@ paths:
             Ein genannter Standort ist fuer diese Anfrage nicht sichtbar (AP-03
             IP-10) - nie 403, die Existenz wird nicht bestaetigt (A14).
         "401": { $ref: "#/components/responses/Unauthorized" }
+  /api/v1/orte/suche:
+    get:
+      tags: [ortsstruktur]
+      summary: Adressvorschläge beim Anlegen (Anlage-Flow a1, D4).
+      description: >
+        Ein Proxy der api auf einen Photon-Geocoder mit OpenStreetMap-Adressen
+        (`voltpilot.orte.suche.url`, Vorgabe photon.komoot.io): Straße und
+        Hausnummer genügen, Treffer nur in Deutschland, Österreich und der
+        Schweiz, Häuser vor Straßen vor Orten, ohne Doppel, höchstens fünf.
+        Unter drei Zeichen geht nichts hinaus (leere Liste); jede Antwort wird
+        24 h gemerkt, die Anfrage nie protokolliert. Jede Antwort trägt die
+        Namensnennung `quelle`. Recht: keines (öffentliche Adressdaten).
+      parameters:
+        - name: q
+          in: query
+          required: false
+          schema: { type: string, maxLength: 200, example: "Hauptstr 12 gun" }
+      responses:
+        "200":
+          description: Die Vorschläge.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [treffer, quelle]
+                properties:
+                  quelle: { type: string, example: "© OpenStreetMap-Mitwirkende" }
+                  treffer:
+                    type: array
+                    items:
+                      type: object
+                      required: [text, land, breitengrad, laengengrad, genau]
+                      properties:
+                        text: { type: string, example: "Hauptstraße 12, 91710 Gunzenhausen" }
+                        strasse: { type: string, nullable: true }
+                        hausnummer: { type: string, nullable: true }
+                        plz: { type: string, nullable: true }
+                        ort: { type: string, nullable: true }
+                        land: { type: string, enum: [DE, AT, CH] }
+                        breitengrad: { type: number }
+                        laengengrad: { type: number }
+                        genau: { type: string, enum: [haus, strasse, ort] }
+        "400": { description: "`anfrage_ungueltig` - mehr als 200 Zeichen." }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "503": { description: "`adresssuche_nicht_erreichbar` - die Datenquelle antwortet nicht; der Satz nennt den Weg (Punkt auf der Karte)." }
   /api/v1/sites:
     get:
       tags: [sites]
@@ -1564,6 +1614,12 @@ paths:
         (422 `standort_waehlen`). The response is the unchanged `Site`; `GET
         /sites/{siteId}` shows the Standort. Today several Standorte can only
         come from the Standort API (`POST /api/v1/standorte`).
+        Anlage-Flow a1: with a Standort and without own coordinates the site takes
+        the Standort's `lage` and, without `biddingZone`, the zone of its country
+        (AT, CH, else DE-LU). A rejected field answers `{code: anfrage_ungueltig,
+        feld, message}` with a German sentence (F4).
+      parameters:
+        - $ref: "#/components/parameters/AnfrageKennung"
       requestBody:
         required: true
         content:
@@ -2310,7 +2366,11 @@ paths:
         validate against the provisioned-device registry (manufactured IDs,
         maintained via the admin API): an unknown sticker ID yields 422 instead
         of creating a ghost device, and the claimed device inherits the
-        registry's `kind`. Non-sticker refs stay ungated. The claim is idempotent
+        registry's `kind`. Self-generated box refs (`edge-` + six characters +
+        check character, docs/contracts/edge-ref-vectors.json) must carry a valid
+        check character. A customer account accepts ONLY these two forms - any
+        other ref is 422 (Anlage-Flow a1, B4); the platform and service accounts
+        keep free refs (development, integrations). The claim is idempotent
         within the tenant: re-claiming a ref the caller already owns returns 200
         with the existing device (at its original site) instead of a conflict.
         `externalRef` is globally unique, so a device claimed by ANOTHER tenant -
@@ -18844,6 +18904,19 @@ components:
         customer's access; an admin without the header sees zero rows
         (default-deny).
   parameters:
+    AnfrageKennung:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: >
+        Anfrage-Kennung (Anlage-Flow a1, B3): 8 bis 200 Zeichen aus Buchstaben,
+        Ziffern und `: . _ -`. Dieselbe Kennung im selben Kundenbereich und an
+        derselben Route gibt 24 h lang dieselbe Antwort zurück (Kopf
+        `Idempotent-Replayed: true`), statt ein zweites Mal anzulegen; mit
+        anderen Angaben ist sie 422 `anfrage_kennung_anders`, eine falsche Form
+        400 `anfrage_kennung_ungueltig`. Gemerkt wird nur der Erfolg. Ohne den
+        Kopf wie bisher.
+      schema: { type: string, minLength: 8, maxLength: 200, pattern: "^[A-Za-z0-9:._-]+$" }
     Kundenbereich:
       name: X-Kundenbereich
       in: header
@@ -24578,6 +24651,14 @@ components:
           minLength: 12
           maxLength: 128
           description: At least 12 characters; must not equal the email or the name (case-insensitive).
+        zweck:
+          type: string
+          enum: [zuhause, unternehmen]
+          description: >
+            Anlage-Flow a1, D2: „Für mein Zuhause“ (Segment B2C, Betriebsart
+            endkunde) oder „Für ein Unternehmen“ (Segment CI, Betriebsart
+            betreiber). Ohne Angabe wie bisher B2C ohne Betriebsart. Der
+            Anlege-Weg liest die Antwort über `/api/v1/tenant-context`.
     RegistrationResponse:
       type: object
       properties:

@@ -1026,6 +1026,67 @@ svg [tabindex]:focus-visible {
   margin: 0 0 26px;
   font-size: 0.95rem;
 }
+/* Die eine Frage der Registrierung (Anlage-Flow a1, D2): zwei Karten, am Telefon untereinander. */
+.vp-zweck {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.vp-zweck > legend {
+  padding: 0;
+  margin-bottom: 6px;
+}
+.vp-zweck-wahl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+.vp-zweck-karte {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--vp-field-border);
+  border-radius: var(--vp-radius-btn);
+  background: var(--vp-surface);
+  cursor: pointer;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+  transition: var(--vp-motion-chrome);
+}
+.vp-zweck-karte:hover {
+  border-color: var(--vp-action);
+}
+.vp-zweck-karte.is-an {
+  border-color: var(--vp-action);
+  background: var(--vp-paleblue-start);
+  box-shadow: 0 0 0 1px var(--vp-action);
+}
+.vp-zweck-karte input {
+  flex-shrink: 0;
+  margin: 2px 0 0;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--vp-action);
+}
+.vp-zweck-karte strong {
+  display: block;
+  color: var(--vp-text-dark);
+}
+.vp-zweck-zeile {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.8rem;
+  color: var(--vp-text-gray);
+}
+.vp-zweck-fehler {
+  font-size: 0.82rem;
+  color: var(--vp-industry-end);
+}
 .vp-auth-note {
   margin-top: 18px;
   text-align: center;

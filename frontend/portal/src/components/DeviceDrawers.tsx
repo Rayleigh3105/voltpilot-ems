@@ -21,7 +21,10 @@ import { deviceKindLabel, fmtRelative } from '../format';
 import { DangerZone } from './DangerZone';
 import { VpPicker } from './VpPicker';
 import { HelpLink } from '../help/HelpProvider';
-import { normalizeDeviceIdInput, DEVICE_ID_FIELD, DEVICE_ID_UNKNOWN_MSG } from '../anlageFlow';
+import { DEVICE_ID_FIELD, DEVICE_ID_TAKEN_MSG, DEVICE_ID_UNKNOWN_MSG } from '../anlageFlow';
+import { isPlatformAdmin } from '../auth';
+import { kennungSendbar, pruefeKennung } from '../edgeRef';
+import { KennungFeld } from './KennungFeld';
 import { tauschFehler, tauschFolgen } from '../boxDialoge';
 
 /** Status badge for a device row/detail (zero-touch onboarding states). */
@@ -78,12 +81,14 @@ export function AddDeviceDrawer({
 }) {
   const [externalRef, setExternalRef] = useState('');
   const [siteId, setSiteId] = useState('');
-  const [refTouched, setRefTouched] = useState(false);
+  const [abgeschickt, setAbgeschickt] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [claimed, setClaimed] = useState<Device | null>(null);
   const [tausch, setTausch] = useState<BoxTauschAntwort | null>(null);
   const refInput = useRef<HTMLInputElement>(null);
+  // Die Plattform verbindet auch freie Kennungen (der Server erlaubt sie nur ihr, B4).
+  const frei = isPlatformAdmin();
 
   useEffect(() => {
     if (!siteId && sites[0]) setSiteId(sites[0].id);
@@ -93,25 +98,28 @@ export function AddDeviceDrawer({
 
   async function claim() {
     if (busy || !siteId) return;
-    if (!externalRef.trim()) {
-      // Mirror RegisterForm: keep the button live, point at the empty field (m6).
-      setRefTouched(true);
+    const pruefung = pruefeKennung(externalRef);
+    const kennung = frei ? externalRef.trim() : pruefung.kennung;
+    if (frei ? !kennung : !kennungSendbar(pruefung)) {
+      // Mirror RegisterForm: keep the button live, point at the field (m6).
+      setAbgeschickt(true);
       refInput.current?.focus();
       return;
     }
     setBusy(true);
     setError(null);
     try {
-      const device = await api.claimDevice(siteId, externalRef.trim());
+      const device = await api.claimDevice(siteId, kennung);
       setClaimed(device);
       setExternalRef('');
+      setAbgeschickt(false);
       onClaimed(device);
     } catch (e) {
       setError(
         e instanceof ApiError && e.status === 422
           ? DEVICE_ID_UNKNOWN_MSG
           : e instanceof ApiError && e.status === 409
-            ? 'Diese Geräte-ID ist bereits mit einem anderen Konto verbunden. Bitte prüfen Sie die Schreibweise - oder kontaktieren Sie unseren Support.'
+            ? DEVICE_ID_TAKEN_MSG
             : e instanceof ApiError && e.status === 404
               ? 'Die gewählte Anlage wurde nicht gefunden. Bitte laden Sie die Seite neu.'
               : 'Die Box konnte nicht hinzugefügt werden. Bitte versuchen Sie es erneut.',
@@ -249,25 +257,20 @@ export function AddDeviceDrawer({
         <>
           <p className="vp-note" style={{ marginTop: 0 }}>
             {nachfolgerVon
-              ? `Verbinden Sie die neue Box mit ihrer Geräte-ID als Nachfolger von ${nachfolgerVon.name || nachfolgerVon.externalRef}. Die bisherige Box bleibt bis zur zweiten Bestätigung unverändert.`
+              ? `Verbinden Sie die neue Box mit ihrer Kennung als Nachfolger von ${nachfolgerVon.name || nachfolgerVon.externalRef}. Die bisherige Box bleibt bis zur zweiten Bestätigung unverändert.`
               : <>{DEVICE_ID_FIELD.help} Die Box verbindet sich selbst - Sie müssen keine IDs übertragen.</>}
           </p>
           <HelpLink article="box-verbinden">Hilfe beim Verbinden</HelpLink>
           <div className="vp-form-stack">
-            <Input
+            <KennungFeld
               ref={refInput}
-              label={`${DEVICE_ID_FIELD.label} *`}
-              placeholder={DEVICE_ID_FIELD.placeholder}
-              value={externalRef}
-              autoComplete="off"
-              autoCapitalize="characters"
-              spellCheck={false}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-                setExternalRef(normalizeDeviceIdInput(e.target.value));
-                if (refTouched) setRefTouched(false);
-              }}
-              onBlur={() => setRefTouched(true)}
-              error={refTouched && !externalRef.trim() ? 'Bitte geben Sie die Geräte-ID ein.' : null}
+              id="claim-kennung"
+              pflicht
+              wert={externalRef}
+              onWert={setExternalRef}
+              abgeschickt={abgeschickt}
+              frei={frei}
+              onEnter={() => void claim()}
             />
             <VpPicker
               id="claim-site"

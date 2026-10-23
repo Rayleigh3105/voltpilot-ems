@@ -49,9 +49,6 @@ public class RegistrationController {
 
     private static final Logger log = LoggerFactory.getLogger(RegistrationController.class);
 
-    /** Self-registered customers are private/small-business accounts. */
-    private static final String SELF_SERVICE_SEGMENT = "B2C";
-
     private final TenantRepository tenants;
     private final KeycloakAdminClient keycloak;
     private final RegistrationRateLimiter rateLimiter;
@@ -73,7 +70,9 @@ public class RegistrationController {
                     "Too many registration attempts, please try again later");
         }
         String email = request.email().trim().toLowerCase(Locale.ROOT);
-        TenantDto tenant = tenants.create(request.name().trim(), SELF_SERVICE_SEGMENT);
+        // D2 (Anlage-Flow a1): die Antwort auf „Für mein Zuhause / Für ein Unternehmen“ setzt Segment
+        // und Betriebsart; ohne Antwort wie bisher B2C ohne Betriebsart.
+        TenantDto tenant = tenants.create(request.name().trim(), request.segment(), request.betriebsart());
         KeycloakUser user;
         try {
             // The email is the login username; the account is enabled immediately.

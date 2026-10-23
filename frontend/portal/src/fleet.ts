@@ -363,8 +363,18 @@ function ctAmount(value: number): string {
 export function parsePremiumInput(text: string): number | null | undefined {
   const trimmed = text.trim();
   if (!trimmed) return null;
-  const value = Number(trimmed.replace(',', '.'));
-  return Number.isFinite(value) && value >= 0 ? value : undefined;
+  return zahlInGrenzen(trimmed, 3, 100_000, false) ? Number(trimmed.replace(',', '.')) : undefined;
+}
+
+/**
+ * Passt eine getippte Zahl in die Grenzen des Servers (`CreateSiteRequest`: `@Digits`, Untergrenze)?
+ * Die Sätze dazu stehen in `zahlFehler.ts` (Anlage-Flow a1, F4) - sie braucht nur der Anlege-Schritt.
+ */
+export function zahlInGrenzen(text: string, stellen: number, unter: number, groesserNull: boolean): boolean {
+  const t = text.trim().replace(',', '.');
+  const value = Number(t);
+  if (!t || !Number.isFinite(value) || (groesserNull ? value <= 0 : value < 0) || value >= unter) return false;
+  return (t.split('.')[1]?.length ?? 0) <= stellen;
 }
 
 /** The stored anzulegender Wert as form text (German comma), '' when unset. */
@@ -382,8 +392,7 @@ export function premiumInputText(anzulegenderWertCtKwh: number | null): string {
 export function parseFeedInCapInput(text: string): number | null | undefined {
   const trimmed = text.trim();
   if (!trimmed) return null;
-  const value = Number(trimmed.replace(',', '.'));
-  return Number.isFinite(value) && value > 0 ? value : undefined;
+  return zahlInGrenzen(trimmed, 2, 1_000_000, true) ? Number(trimmed.replace(',', '.')) : undefined;
 }
 
 /**

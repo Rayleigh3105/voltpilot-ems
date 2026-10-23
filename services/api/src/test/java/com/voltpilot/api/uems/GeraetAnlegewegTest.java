@@ -547,7 +547,7 @@ class GeraetAnlegewegTest {
 
     private void claim(Kunde k) {
         ResponseEntity<JsonNode> r = post("/api/v1/devices/claim", Map.of("siteId", k.site().toString(),
-                "externalRef", "anlegeweg-" + UUID.randomUUID(), "kind", "inverter"), k);
+                "externalRef", com.voltpilot.api.TestKennung.box("anlegeweg-" + UUID.randomUUID()), "kind", "inverter"), k);
         assertThat(r.getStatusCode().is2xxSuccessful()).as(String.valueOf(r.getBody())).isTrue();
     }
 

@@ -1,0 +1,72 @@
+/* Das Adressfeld des Anlege-Flusses (AdressSuche.tsx). Die Liste steht im Fluss unter dem Feld - im
+   Dialog und am Telefon wird nichts abgeschnitten, der Schritt wächst nur um die Vorschläge. */
+.vp-adr {
+  display: grid;
+  gap: var(--vp-space-2);
+  min-width: 0;
+}
+.vp-adr-liste-rahmen {
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-md);
+  background: var(--vp-surface);
+  box-shadow: var(--vp-shadow-md);
+  overflow: hidden;
+}
+.vp-adr-liste {
+  list-style: none;
+  margin: 0;
+  padding: var(--vp-space-1) 0;
+}
+.vp-adr-treffer {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-2);
+  padding: var(--vp-space-3) var(--vp-space-4);
+  min-height: 44px;
+  box-sizing: border-box;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-dark);
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+.vp-adr-treffer > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--vp-text-muted);
+}
+.vp-adr-treffer.is-aktiv,
+.vp-adr-treffer:hover {
+  background: var(--vp-paleblue-start);
+}
+.vp-adr-treffer.is-aktiv > svg {
+  color: var(--vp-action);
+}
+.vp-adr-quelle {
+  margin: 0;
+  padding: var(--vp-space-2) var(--vp-space-4);
+  border-top: 1px solid var(--vp-border);
+  font-size: 0.75rem;
+  color: var(--vp-text-gray);
+}
+.vp-adr-status {
+  margin: 0;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-gray);
+}
+.vp-adr-hand {
+  justify-self: start;
+  font-size: var(--vp-text-sm);
+}
+.vp-adr-reihe {
+  display: flex;
+  gap: var(--vp-space-3);
+  min-width: 0;
+}
+.vp-adr-plz {
+  flex: 0 0 7.5rem;
+  min-width: 0;
+}
+.vp-adr-ort {
+  flex: 1 1 auto;
+  min-width: 0;
+}

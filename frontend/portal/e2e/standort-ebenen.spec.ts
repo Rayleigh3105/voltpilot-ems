@@ -215,7 +215,7 @@ test.describe('AP-13 IP-2 · Ebenen-Seiten am Standort', () => {
     await page.getByRole('button', { name: 'Weitere Aktionen' }).click();
     await page.getByRole('menuitem', { name: 'Box tauschen' }).click();
     const dialog = page.getByRole('dialog', { name: 'Box tauschen' });
-    await dialog.getByLabel('Geräte-ID *').fill('VP-BOX-2027-0090');
+    await dialog.getByLabel('Kennung *').fill('VP-BOX-2027-0090');
     await dialog.getByRole('button', { name: 'VoltPilot-Box hinzufügen' }).click();
     await expect(dialog).toContainText('Der Tausch ist noch nicht bestätigt.');
     await expect(dialog).toContainText('Heimat-Anlage, Rolle führende Box');

@@ -4,6 +4,7 @@ import type {
   OrtFehler,
   StandortAmStichtag,
   StandorteAmStichtag,
+  StandortLage,
   StandortStammdaten,
   Unternehmen,
 } from './api';
@@ -146,6 +147,11 @@ export interface StandortFormular {
   notiz: string;
   flaeche: string;
   gueltigAb: string;
+  /**
+   * Der Punkt auf der Karte (Anlage-Flow a1): aus der Adresssuche des Dialogs, sonst der gespeicherte.
+   * Die Anlagen des Standorts ohne eigenen Kartenpunkt übernehmen ihn (Wetter, Sonnenprognose).
+   */
+  lage: StandortLage | null;
 }
 
 /** Die Zeitzone, die ein neuer Standort vorbelegt bekommt: die des Unternehmens, sonst die Vorgabe. */
@@ -168,6 +174,7 @@ export function leeresFormular(unternehmen: Unternehmen | null, heute = ''): Sta
     notiz: '',
     flaeche: '',
     gueltigAb: heute,
+    lage: null,
   };
 }
 
@@ -185,6 +192,7 @@ export function formularAus(s: StandortAmStichtag, heute = ''): StandortFormular
     notiz: s.notiz ?? '',
     flaeche: s.flaecheQuelle === 'eigen' && s.flaecheM2 != null ? String(s.flaecheM2) : '',
     gueltigAb: heute,
+    lage: s.lage ?? null,
   };
 }
 
@@ -330,9 +338,9 @@ function leerIstNull(t: string): string | null {
 }
 
 /**
- * Die Anfrage. POST: ohne Kurzzeichen (der Server vergibt ST-n). PUT ist die
- * GANZE Menge — die Lage auf der Karte, die der Dialog nicht zeigt, reist
- * unverändert mit, sonst wäre sie danach leer.
+ * Die Anfrage. POST: ohne Kurzzeichen (der Server vergibt ST-n), mit der Lage aus der Adresssuche.
+ * PUT ist die GANZE Menge — die Lage reist mit (aus der Suche oder unverändert), sonst wäre sie
+ * danach leer.
  */
 export function anfrage(
   f: StandortFormular,
@@ -351,8 +359,8 @@ export function anfrage(
     nutzung: f.nutzung.length > 0 ? [...f.nutzung] : null,
     notiz: leerIstNull(f.notiz),
   };
-  if (fassung === 'anlegen') return basis;
-  return { ...basis, kurzzeichen: f.kurzzeichen.trim(), lage: standort?.lage ?? null };
+  if (fassung === 'anlegen') return f.lage ? { ...basis, lage: f.lage } : basis;
+  return { ...basis, kurzzeichen: f.kurzzeichen.trim(), lage: f.lage ?? standort?.lage ?? null };
 }
 
 /** Das Feld des Dialogs zu `feld` einer Ablehnung (`adresse.plz`, `nutzung[1]`, …); sonst `null`. */

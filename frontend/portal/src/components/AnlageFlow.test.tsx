@@ -211,8 +211,8 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={onDone} />);
 
     // Step 1: Anlage - name only (the register brings the specs).
-    expect(await screen.findByText('Wie heißt Ihre Anlage?')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
+    expect(await screen.findByText('Wo steht die neue Anlage?')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
     await waitFor(() => expect(createSite).toHaveBeenCalled());
 
@@ -233,9 +233,9 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     expect(applied.storage?.mastrNummer).toBe('SEE900000067890');
 
     // Step 3: Gerät (AE5: the device now comes BEFORE the adaptive step).
-    expect(await screen.findByText('Verbinden Sie Ihre VoltPilot-Box')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Geräte-ID'), { target: { value: 'vp-demo-0001' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Anlage anlegen' }));
+    expect(await screen.findByText('Ihre VoltPilot-Box')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'vp-demo-0001' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
     await waitFor(() => expect(claimDevice).toHaveBeenCalledWith('s-1', 'VP-DEMO-0001'));
 
     // Schritt 4: Anwendungen - Geräte + Profil-Preset + Regal + Speicher.
@@ -262,7 +262,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     const onDone = vi.fn();
 
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={onDone} />);
-    fireEvent.change(await screen.findByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
+    fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
 
     // Drop into the manual hand-entry path from the register step.
@@ -280,7 +280,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     expect(mastrLookup).not.toHaveBeenCalled();
 
     // Step 3 (Gerät) then step 4 (Nutzung) - skip both, honest summary.
-    fireEvent.click(await screen.findByRole('button', { name: 'Box habe ich noch nicht - später' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Box ist noch nicht da - später verbinden' }));
     await skipNutzung();
     expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
     expect(screen.getByText('manuell hinterlegt')).toBeInTheDocument();
@@ -296,12 +296,12 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     const onDone = vi.fn();
 
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={onDone} />);
-    fireEvent.change(await screen.findByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
+    fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
 
     // Skip the Register step, the Gerät step, then the Nutzung step.
     fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Box habe ich noch nicht - später' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Box ist noch nicht da - später verbinden' }));
     await skipNutzung();
 
     expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
@@ -312,9 +312,19 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     expect(onDone).toHaveBeenCalled();
   });
 
-  it('resumes a customer who already has an Anlage at the Register step (wizard restart)', () => {
+  it('resumes a customer who already has an Anlage at the Register step (wizard restart)', async () => {
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
     render(<AnlageFlow sites={[site]} waitForFirstData onDone={() => {}} />);
-    expect(screen.getByText('PV & Speicher aus dem Register')).toBeInTheDocument();
+    expect(await screen.findByText('PV & Speicher aus dem Register')).toBeInTheDocument();
+  });
+
+  // F6 (Anlage-Flow a1): nach jedem Neuladen fragte der Assistent die MaStR-Nummer erneut.
+  it('resumes at the Box step once the Anlage carries register or battery data', async () => {
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
+    render(<AnlageFlow sites={[site]} waitForFirstData onDone={() => {}} />);
+    expect(screen.getByText('Der nächste Schritt wird vorbereitet …')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Ihre VoltPilot-Box' })).toBeInTheDocument();
+    expect(screen.queryByText('PV & Speicher aus dem Register')).toBeNull();
   });
 
   it('maps the 422 claim refusal to the shared unknown-ID message', async () => {
@@ -323,15 +333,43 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     vi.spyOn(api, 'claimDevice').mockRejectedValue(new ApiError(422, 'unknown'));
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
 
-    fireEvent.change(await screen.findByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
+    fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
     // Register skipped -> the Gerät step is now next (before Nutzung).
     fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
-    fireEvent.change(await screen.findByLabelText('Geräte-ID'), {
-      target: { value: 'edge-tippfehla' },
+    fireEvent.change(await screen.findByLabelText('Kennung'), {
+      target: { value: 'edge-k7m2xq3' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Anlage anlegen' }));
-    expect(await screen.findByText(/Diese Geräte-ID kennen wir nicht/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
+    expect(await screen.findByText(/Diese Kennung kennen wir nicht/)).toBeInTheDocument();
+  });
+
+  // B4 (Anlage-Flow a1): ein Tippfehler in der Kennung wird nie gesendet - früher legte der
+  // Server „edge-k7m2xq1" („1" statt „l") als Gerät an, das sich nie meldete.
+  it('sends no Kennung with a typo - the field says why, nothing is claimed', async () => {
+    vi.spyOn(api, 'createSite').mockResolvedValue(site);
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
+    const claim = vi.spyOn(api, 'claimDevice');
+    render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
+
+    fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
+    const feld = await screen.findByLabelText('Kennung');
+    fireEvent.change(feld, { target: { value: 'edge-k7m2xq1' } });
+    expect(screen.getByText('Diese Kennung stimmt nicht. Eine Kennung enthält kein 0, 1, i, l oder o.')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
+    fireEvent.change(feld, { target: { value: 'edge-k7m2xqz' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
+    expect(screen.getByText(/^Diese Kennung stimmt nicht\. Bitte vergleichen/)).toBeInTheDocument();
+    expect(claim).not.toHaveBeenCalled();
+
+    // Ohne „edge-“ getippt: das Feld ergänzt ihn, gesendet wird die Kennung.
+    claim.mockResolvedValue({ id: 'd1', siteId: site.id, externalRef: 'edge-k7m2xq3' } as never);
+    fireEvent.change(feld, { target: { value: 'K7M2XQ3' } });
+    expect(screen.getByText('Kennung stimmt: edge-k7m2xq3')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
+    await waitFor(() => expect(claim).toHaveBeenCalledWith(site.id, 'edge-k7m2xq3'));
   });
 
   it('surfaces the backend German MaStR error on a failed lookup', async () => {
@@ -340,7 +378,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
       new ApiError(404, 'Diese Nummer ist im Register nicht auffindbar.'),
     );
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
-    fireEvent.change(await screen.findByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
+    fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
     fireEvent.change(await screen.findByLabelText('MaStR-Nummer der PV-Anlage'), {
       target: { value: 'SEE900000012345' },
@@ -365,7 +403,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     const createSite = vi.spyOn(api, 'createSite').mockResolvedValue(site);
     const updateSupply = vi.spyOn(api, 'updateSupplyPrice').mockResolvedValue(null as never);
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
-    fireEvent.change(await screen.findByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
+    fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
     // Der Geld-Block steht erst, wenn feststeht, dass der Fluss wie heute spricht (anlegeNurMessen.ts).
     fireEvent.click(await screen.findByText(/Feineinstellungen/));
     // Der Tarif steht auf „Ohne Angabe", die Wahl auf „Schnell" - beides unberührt.
@@ -381,7 +419,7 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     const createSite = vi.spyOn(api, 'createSite').mockResolvedValue(site);
     const updateSupply = vi.spyOn(api, 'updateSupplyPrice').mockResolvedValue(null as never);
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
-    fireEvent.change(await screen.findByLabelText('Name der Anlage'), { target: { value: 'Zuhause' } });
+    fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
     // Der Geld-Block steht erst, wenn feststeht, dass der Fluss wie heute spricht (anlegeNurMessen.ts).
     fireEvent.click(await screen.findByText(/Feineinstellungen/));
     fireEvent.click(screen.getByRole('radio', { name: /Genau/ }));
@@ -397,16 +435,21 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
 
   it('speaks "Anlage", never "Standort", as the entity name (wording decision 3)', async () => {
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
-    expect(await screen.findByLabelText('Name der Anlage')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Name der neuen Anlage')).toBeInTheDocument();
     expect(screen.queryByText(/Name des Standorts/)).not.toBeInTheDocument();
   });
 });
 
 describe('Schritt Betrieb - Preset + EIN Betriebsmodell (Steuerung Stufe 0)', () => {
-  /** Bis zum vierten Schritt durchklicken (Register + Gerät überspringen). */
+  /**
+   * Bis zum vierten Schritt durchklicken (Register, falls er kommt, und Box überspringen). Trägt die
+   * Anlage schon Speicherdaten, beginnt der Wiedereinstieg bei der Box (F6).
+   */
   async function bisZumSchritt() {
-    fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Box habe ich noch nicht - später' }));
+    await waitFor(() => expect(screen.queryByText('Der nächste Schritt wird vorbereitet …')).toBeNull());
+    const register = screen.queryByRole('button', { name: 'Überspringen - später nachtragen' });
+    if (register) fireEvent.click(register);
+    fireEvent.click(await screen.findByRole('button', { name: 'Box ist noch nicht da - später verbinden' }));
     expect(await screen.findByText('Wofür ist diese Anlage?')).toBeInTheDocument();
   }
 

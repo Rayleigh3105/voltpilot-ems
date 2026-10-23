@@ -51,16 +51,16 @@ function messkunde() {
 }
 
 async function bisZumGeraet() {
-  fireEvent.change(screen.getByLabelText('Name der Anlage'), { target: { value: 'Halle 3' } });
+  fireEvent.change(screen.getByLabelText('Name der neuen Anlage'), { target: { value: 'Halle 3' } });
   fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
   expect(await screen.findByText('PV & Speicher aus dem Register')).toBeInTheDocument();
   await ruhe();
   const register = flussHtml();
   fireEvent.click(screen.getByRole('button', { name: 'Überspringen - später nachtragen' }));
-  expect(await screen.findByText('Verbinden Sie Ihre VoltPilot-Box')).toBeInTheDocument();
+  expect(await screen.findByText('Ihre VoltPilot-Box')).toBeInTheDocument();
   const geraet = flussHtml();
-  fireEvent.change(screen.getByLabelText('Geräte-ID'), { target: { value: 'vp-demo-0001' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Anlage anlegen' }));
+  fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'vp-demo-0001' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
   return { register, geraet };
 }
 

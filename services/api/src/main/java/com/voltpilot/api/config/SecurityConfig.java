@@ -194,9 +194,10 @@ public class SecurityConfig {
         cfg.setAllowedOrigins(allowedOrigins);
         cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         // X-Tenant-Id is the Portal-Admin tenant switcher (see TenantFilter);
-        // X-Kundenbereich the partner/platform choice against an Unterstützung (ZugriffFilter).
+        // X-Kundenbereich the partner/platform choice against an Unterstützung (ZugriffFilter);
+        // Idempotency-Key the Anfrage-Kennung of the create routes (Anlage-Flow a1, B3).
         cfg.setAllowedHeaders(List.of("Authorization", "Content-Type", "X-Tenant-Id",
-                ZugriffKontextLader.KUNDENBEREICH_HEADER));
+                ZugriffKontextLader.KUNDENBEREICH_HEADER, com.voltpilot.api.web.AnfrageKennungen.KOPF));
         cfg.setAllowCredentials(true);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", cfg);

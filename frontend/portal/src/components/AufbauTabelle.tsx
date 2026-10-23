@@ -103,6 +103,8 @@ export interface AufbauTabelleProps {
    */
   standortSicht?: { wechselHref: (anlageId: string) => string; anlageName?: string } | null;
   wurzel: AufbauWurzel | null;
+  /** F16 (Anlage-Flow a1): „Adresse nachtragen“ direkt an der Standort-Zeile, wenn sie fehlt. */
+  onAdresseNachtragen?: () => void;
   anlagenZahl: number;
   boxZahl: number;
   zeilen: TabellenZeile[];
@@ -142,7 +144,7 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
 
   return (
     <>
-      <Ort wurzel={p.wurzel} anlagenZahl={p.anlagenZahl} boxZahl={p.boxZahl} />
+      <Ort wurzel={p.wurzel} anlagenZahl={p.anlagenZahl} boxZahl={p.boxZahl} onAdresseNachtragen={p.onAdresseNachtragen} />
 
       <div className={`vp-auf-werkzeug${filterOffen ? ' is-filter-offen' : ''}`}>
         <label className="vp-auf-suche">
@@ -320,7 +322,21 @@ export function AufbauTabelle(p: AufbauTabelleProps) {
   );
 }
 
-function Ort({ wurzel, anlagenZahl, boxZahl }: { wurzel: AufbauWurzel | null; anlagenZahl: number; boxZahl: number }) {
+/**
+ * Die Standort-Zeile über dem Baum - auch am Telefon (F16: dort fehlte sie, und eine Anlage desselben
+ * Standorts stand ohne Erklärung in der Tabelle). Fehlt die Adresse, steht der Weg dorthin an ihr.
+ */
+function Ort({
+  wurzel,
+  anlagenZahl,
+  boxZahl,
+  onAdresseNachtragen,
+}: {
+  wurzel: AufbauWurzel | null;
+  anlagenZahl: number;
+  boxZahl: number;
+  onAdresseNachtragen?: () => void;
+}) {
   return (
     <p className="vp-auf-ort" aria-label={wurzel ? `Standort ${wurzel.name}` : 'Standort'}>
       <span>
@@ -335,7 +351,18 @@ function Ort({ wurzel, anlagenZahl, boxZahl }: { wurzel: AufbauWurzel | null; an
           <>Ihre Anlage</>
         )}
       </span>
-      {wurzel?.art === 'standort' && <span>{wurzel.adresse ?? 'Adresse noch nicht hinterlegt'}</span>}
+      {wurzel?.art === 'standort' && (
+        <span>
+          {wurzel.adresse ?? 'Adresse noch nicht hinterlegt'}
+          {!wurzel.adresse && onAdresseNachtragen && (
+            <Recht aktion="standort.verwalten">
+              <button type="button" className="vp-auf-linkbtn" onClick={onAdresseNachtragen}>
+                Adresse nachtragen
+              </button>
+            </Recht>
+          )}
+        </span>
+      )}
       <span>
         {anlagenZahl} {anlagenZahl === 1 ? 'Anlage' : 'Anlagen'} · {boxZahl} {boxZahl === 1 ? 'Box' : 'Boxen'}
       </span>
@@ -401,7 +428,7 @@ function AnlageZeile({ z, p }: { z: Extract<TabellenZeile, { typ: 'anlage' }>; p
             <small>
               {a.boxen.length} {a.boxen.length === 1 ? 'Box' : 'Boxen'}
               {a.geraeteZahl != null && ` · ${a.geraeteZahl} ${a.geraeteZahl === 1 ? 'Gerät' : 'Geräte'}`}
-              {!a.aktuell && !p.standortSicht && ' · nur lesend'}
+              {!a.aktuell && !p.standortSicht && ' · am selben Standort'}
               {a.wertStand === 'veraltet' && <span className="is-warn"> · keine aktuellen Werte</span>}
             </small>
           </span>

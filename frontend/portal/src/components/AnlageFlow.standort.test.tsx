@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AnlageFlow } from './AnlageFlow';
 import { api, ApiError, type Site, type StandorteAmStichtag } from '../api';
-import { standortWaehlenSatz } from '../anlageStandort';
 import { ahrenbergHeute, bestandEineAnlage, FIXTURE_IDS } from '../test/standorteFixtures';
 import { ahrenbergFunktionen } from '../test/funktionenFixtures';
 
@@ -88,7 +87,7 @@ async function schrittEins(existingSites: Site[] | undefined, standorte: () => P
   // Das Anlegen bleibt offen: verglichen wird nur, was gesendet wird.
   const createSite = vi.spyOn(api, 'createSite').mockReturnValue(new Promise<Site>(() => {}));
   render(<AnlageFlow sites={[]} existingSites={existingSites} waitForFirstData={false} onDone={() => {}} />);
-  await screen.findByText(existingSites?.length ? 'Wie heißt Ihre Anlage?' : 'Zuerst den Standort');
+  await screen.findByText(existingSites?.length ? 'Wo steht die neue Anlage?' : 'Zuerst den Standort');
   for (let i = 0; i < 3; i++) {
     await act(async () => {
       await new Promise((r) => setTimeout(r, 0));
@@ -119,49 +118,59 @@ describe('Anlage-Assistent Schritt 1 ohne Standort — zuerst der Standort, Best
   }
 });
 
-describe('Anlage-Assistent Schritt 1 · der Standort-Picker (AP-02 IP-8)', () => {
+/** Der Satz des Servers bei mehreren Standorten ohne Wahl (422 `standort_waehlen`, `AnlageStandortService`). */
+const STANDORT_WAEHLEN = 'Ihr Unternehmen hat 2 Standorte. Bitte wählen Sie, zu welchem Standort die neue Anlage gehört.';
+
+describe('Anlage-Assistent Schritt 1 · „Wo steht die neue Anlage?" (D8, F16)', () => {
   async function schritt(standorte: () => Promise<StandorteAmStichtag>, anlegen?: () => Promise<Site>) {
     const lesen = vi.spyOn(api, 'standorte').mockImplementation(standorte);
+    vi.spyOn(api, 'unternehmen').mockResolvedValue(null as never);
     vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen());
     const createSite = vi
       .spyOn(api, 'createSite')
       .mockImplementation(anlegen ?? (() => new Promise<Site>(() => {})));
     render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
-    fireEvent.change(await screen.findByLabelText('Name der Anlage'), { target: { value: 'Halle 3' } });
+    fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Halle 3' } });
     return { lesen, createSite };
   }
 
-  it('genau ein Standort: vorbelegt, und POST trägt seine standortId', async () => {
+  it('genau ein Standort: vorgewählt mit seiner Folge, und POST trägt seine standortId - ohne eigene Lage', async () => {
     const { createSite } = await schritt(async () => bestandEineAnlage());
-    const picker = await screen.findByRole('combobox', { name: 'Standort *' });
-    expect(picker).toHaveTextContent('Werk Ahrenberg – Halle 1 (ST-1)');
+    const karte = await screen.findByRole('radio', { name: /Am selben Ort wie „Werk Ahrenberg – Halle 1“/ });
+    expect(karte).toBeChecked();
     expect(
-      screen.getByText('Ihr einziger Standort ist vorbelegt: die neue Anlage gehört ab heute zu Werk Ahrenberg – Halle 1 (ST-1).'),
+      screen.getByText('Die neue Anlage gehört ab heute zu Werk Ahrenberg – Halle 1. Bilanz und Netzanschluss des Standorts zählen sie mit.'),
     ).toBeInTheDocument();
+    // Ein Weg zu einem neuen Ort steht immer daneben (F16: die Auswahl hatte genau diese eine Zeile).
+    expect(screen.getByRole('radio', { name: /An einer anderen Adresse/ })).not.toBeChecked();
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-    expect(createSite).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(createSite).toHaveBeenCalledTimes(1));
     expect(createSite.mock.calls[0][0]).toMatchObject({ name: 'Halle 3', standortId: FIXTURE_IDS.st1 });
+    expect(createSite.mock.calls[0][0]).not.toHaveProperty('latitude');
+    // B3: die Anfrage trägt die Kennung des Formulars.
+    expect(createSite.mock.calls[0][1]).toMatch(/^portal-.+:anlage$/);
   });
 
-  it('mehrere Standorte: zur Wahl — ohne Wahl der Satz des Servers und kein POST, gewählt mit standortId', async () => {
+  it('mehrere Standorte: nichts vorgewählt - ohne Wahl der Satz am Feld und kein POST, gewählt mit standortId', async () => {
     const { createSite } = await schritt(async () => ahrenbergHeute());
-    const picker = await screen.findByRole('combobox', { name: 'Standort *' });
-    expect(picker).toHaveTextContent('Standort wählen');
+    await screen.findByRole('radio', { name: /Werk Lindach/ });
+    expect(screen.getAllByRole('radio').filter((r) => (r as HTMLInputElement).checked)).toHaveLength(0);
 
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-    expect(screen.getByText(standortWaehlenSatz(2))).toBeInTheDocument();
+    expect(await screen.findByText('Bitte wählen Sie, wo die neue Anlage steht.')).toBeInTheDocument();
     expect(createSite).not.toHaveBeenCalled();
 
-    fireEvent.click(picker);
-    fireEvent.click(screen.getByRole('option', { name: /Werk Lindach \(ST-2\)/ }));
-    expect(screen.queryByText(standortWaehlenSatz(2))).toBeNull();
-    expect(screen.getByText('Die neue Anlage gehört ab heute zu Werk Lindach (ST-2).')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('radio', { name: /Am selben Ort wie „Werk Lindach“/ }));
+    expect(screen.queryByText('Bitte wählen Sie, wo die neue Anlage steht.')).toBeNull();
+    expect(screen.getByText(/^Die neue Anlage gehört ab heute zu Werk Lindach\./)).toBeInTheDocument();
+    // Werk Lindach hat eine Adresse, aber keinen Punkt auf der Karte: ohne ihn kein Wetter - der Weg steht an der Wahl.
+    expect(screen.getByRole('button', { name: 'Punkt auf der Karte setzen' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    await waitFor(() => expect(createSite).toHaveBeenCalled());
     expect(createSite.mock.calls[0][0]).toMatchObject({ standortId: FIXTURE_IDS.st2 });
   });
 
-  it('unlesbare Standorte und 422 standort_waehlen: der Satz des Servers am Picker, die Auswahl neu gelesen', async () => {
-    const satz = standortWaehlenSatz(2);
+  it('unlesbare Standorte und 422 standort_waehlen: der Satz des Servers an der Wahl, die Standorte neu gelesen', async () => {
     let runde = 0;
     const { lesen } = await schritt(
       async () => {
@@ -170,14 +179,14 @@ describe('Anlage-Assistent Schritt 1 · der Standort-Picker (AP-02 IP-8)', () =>
         return ahrenbergHeute();
       },
       async () => {
-        throw new ApiError(422, satz, { code: 'standort_waehlen', message: satz });
+        throw new ApiError(422, STANDORT_WAEHLEN, { code: 'standort_waehlen', message: STANDORT_WAEHLEN });
       },
     );
     await waitFor(() => expect(lesen).toHaveBeenCalledTimes(1));
-    expect(screen.queryByRole('combobox', { name: 'Standort *' })).toBeNull();
+    expect(screen.queryByRole('radio')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-    expect(await screen.findByRole('combobox', { name: 'Standort *' })).toBeInTheDocument();
-    expect(screen.getByText(satz)).toBeInTheDocument();
+    expect(await screen.findByRole('radio', { name: /Werk Lindach/ })).toBeInTheDocument();
+    expect(screen.getByText(STANDORT_WAEHLEN)).toBeInTheDocument();
     expect(lesen).toHaveBeenCalledTimes(2);
   });
 });

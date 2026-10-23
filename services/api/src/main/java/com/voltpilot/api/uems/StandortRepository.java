@@ -141,6 +141,20 @@ public class StandortRepository {
         }) == 1;
     }
 
+    /**
+     * Anlage-Flow a1: die Anlagen, die am Tag {@code heute} zu diesem Standort gehören und noch
+     * keinen eigenen Kartenpunkt haben, übernehmen seine Lage (Wetter und Sonnenprognose). Ein
+     * eigener Kartenpunkt bleibt unberührt. Die Zahl der übernehmenden Anlagen.
+     */
+    public int lageAnAnlagenOhneLage(UUID standortId, java.time.LocalDate heute, BigDecimal breite,
+            BigDecimal laenge) {
+        return jdbc.update("UPDATE site SET latitude = ?, longitude = ? "
+                + "WHERE latitude IS NULL AND longitude IS NULL AND id IN ("
+                + "SELECT site_id FROM anlage_standort WHERE standort_id = ? AND aufgehoben_am IS NULL "
+                + "AND gueltig_ab <= ? AND (gueltig_bis IS NULL OR gueltig_bis >= ?))",
+                breite, laenge, standortId, heute, heute);
+    }
+
     /** Archiviert zum Zeitpunkt {@code am}; {@code false}: schon archiviert oder nicht da. */
     public boolean archivieren(UUID id, Instant am, String von) {
         return jdbc.update("UPDATE standort SET zustand = 'archiviert', archiviert_am = ?, "

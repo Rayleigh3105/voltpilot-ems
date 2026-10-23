@@ -5348,6 +5348,25 @@ export type Nutzung =
   | 'sonstiges';
 
 /** Die Lage auf der Karte — beide Koordinaten oder keine. */
+/** Ein Adressvorschlag (`GET /api/v1/orte/suche`); `genau`: so fein ist der Treffer. */
+export interface OrtTreffer {
+  text: string;
+  strasse: string | null;
+  hausnummer: string | null;
+  plz: string | null;
+  ort: string | null;
+  land: 'DE' | 'AT' | 'CH';
+  breitengrad: number;
+  laengengrad: number;
+  genau: 'haus' | 'strasse' | 'ort';
+}
+
+export interface OrteSuchAntwort {
+  treffer: OrtTreffer[];
+  /** Die Namensnennung der Daten („© OpenStreetMap-Mitwirkende“) - sie steht unter den Vorschlägen. */
+  quelle: string;
+}
+
 export interface StandortLage {
   breitengrad: number;
   laengengrad: number;
@@ -8064,6 +8083,26 @@ export function bereichKopf(path: string, bereich = kundenbereich, mandant = ten
     : mandant ? { 'X-Tenant-Id': mandant } : {};
 }
 
+/** Der Kopf der Anfrage-Kennung (`AnfrageKennungen.KOPF` in der API). */
+export const ANFRAGE_KENNUNG_KOPF = 'Idempotency-Key';
+/** Wie lange eine Anfrage mit Kennung nach einem Netzfehler wartet, bevor sie es noch einmal versucht. */
+export const WIEDERHOLEN_NACH_MS = 1000;
+
+/** Eine neue Anfrage-Kennung - je Formular EINE, für jeden Versuch dieselbe (B3). */
+export function neueAnfrageKennung(): string {
+  // `randomUUID` gibt es nur im sicheren Kontext (https, localhost) - sonst Zeit und Zufall.
+  return `portal-${crypto.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`}`;
+}
+
+function hatAnfrageKennung(headers: HeadersInit | undefined): boolean {
+  // `mitKennung` setzt den Kopf immer als Objekt.
+  return !!headers && !Array.isArray(headers) && !(headers instanceof Headers) && ANFRAGE_KENNUNG_KOPF in headers;
+}
+
+function mitKennung(kennung: string | undefined): RequestInit {
+  return kennung ? { headers: { [ANFRAGE_KENNUNG_KOPF]: kennung } } : {};
+}
+
 async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Promise<T> {
   const angefragterMandant = tenantOverride;
   const angefragterKundenbereich = kundenbereich;
@@ -8077,7 +8116,7 @@ async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Prom
     if (e instanceof AuthRedirectError) return new Promise<never>(() => {});
     throw e;
   }
-  const res = await fetch(`${API_BASE}${path}`, {
+  const anfrage: RequestInit = {
     ...init,
     headers: {
       ...(init.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
@@ -8085,7 +8124,18 @@ async function requestUncoalesced<T>(path: string, init: RequestInit = {}): Prom
       ...bereichKopf(path, angefragterKundenbereich, angefragterMandant),
       ...(init.headers ?? {}),
     },
-  });
+  };
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, anfrage);
+  } catch (e) {
+    // B3 (Anlage-Flow a1): ging die Antwort verloren, wiederholt eine Anfrage MIT Anfrage-Kennung
+    // einmal von selbst - der Server kennt die Kennung und gibt dieselbe Anlage zurück, statt sie ein
+    // zweites Mal anzulegen. Ohne Kennung nie: ob geschrieben wurde, weiß nur der Server.
+    if (!(e instanceof TypeError) || !hatAnfrageKennung(init.headers)) throw e;
+    await new Promise((r) => setTimeout(r, WIEDERHOLEN_NACH_MS));
+    res = await fetch(`${API_BASE}${path}`, anfrage);
+  }
   if (!res.ok) {
     // Never leak a raw HTTP status/statusText into customer-facing copy (m4):
     // default to a plain-German message and let a server-provided German
@@ -8206,6 +8256,8 @@ export interface RegisterInput {
   name: string;
   email: string;
   password: string;
+  /** D2 (Anlage-Flow a1): „Für mein Zuhause“ / „Für ein Unternehmen“ - setzt Segment und Betriebsart. */
+  zweck?: 'zuhause' | 'unternehmen';
 }
 
 export interface RegistrationResult {
@@ -10653,10 +10705,12 @@ export const api = {
   tenantContext: () => request<TenantContext>('/api/v1/tenant-context'),
   listSites: () => request<SichtbareListe<Site>>('/api/v1/sites'),
   siteDetail: (siteId: string) => request<SiteDetail>(`/api/v1/sites/${siteId}`),
-  createSite: (input: NeueAnlageInput) =>
+  /** `anfrageKennung`: dieselbe Kennung legt nie doppelt an (B3, Anlage-Flow a1). */
+  createSite: (input: NeueAnlageInput, anfrageKennung?: string) =>
     request<Site>('/api/v1/sites', {
       method: 'POST',
       body: JSON.stringify(input),
+      ...mitKennung(anfrageKennung),
     }),
   updateSite: (siteId: string, input: CreateSiteInput) =>
     request<Site>(`/api/v1/sites/${siteId}`, {
@@ -11714,8 +11768,19 @@ export const api = {
     request<StandortKurzzeichenVorschlag>('/api/v1/standorte/kurzzeichen-vorschlag'),
 
   /** Legt einen Standort an; eine Ablehnung trägt {@link OrtFehler} in `ApiError.body`. */
-  standortAnlegen: (body: StandortStammdaten) =>
-    request<StandortAmStichtag>('/api/v1/standorte', { method: 'POST', body: JSON.stringify(body) }),
+  standortAnlegen: (body: StandortStammdaten, anfrageKennung?: string) =>
+    request<StandortAmStichtag>('/api/v1/standorte', {
+      method: 'POST',
+      body: JSON.stringify(body),
+      ...mitKennung(anfrageKennung),
+    }),
+
+  /**
+   * Adressvorschläge beim Anlegen (`GET /api/v1/orte/suche`, Anlage-Flow a1 D4): Straße und
+   * Hausnummer genügen, nur Deutschland, Österreich und die Schweiz; 503, wenn die Datenquelle fehlt.
+   */
+  orteSuche: (q: string, signal?: AbortSignal) =>
+    request<OrteSuchAntwort>(`/api/v1/orte/suche?q=${encodeURIComponent(q)}`, signal ? { signal } : {}),
 
   /** Schreibt die Stammdaten eines Standorts — die GANZE Menge, ein fehlendes Feld ist leer. */
   standortBearbeiten: (id: string, body: StandortStammdaten) =>

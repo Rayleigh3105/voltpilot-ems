@@ -17,10 +17,13 @@ import { AnlageFlow } from './components/AnlageFlow';
  */
 export function OnboardingWizard({
   sites,
+  onSiteCreated,
   onDone,
   onSkip,
 }: {
   sites: Site[];
+  /** B1 (Anlage-Flow a1): die neue Anlage steht sofort in der Anlagenliste des Wirts. */
+  onSiteCreated?: (site: Site) => void;
   /** Modus „nur messen“ (`anlegeNurMessen.ts`): mit dem Ziel „Standort › Messstellen“. */
   onDone: (ziel?: Route) => void;
   onSkip: () => void;
@@ -31,6 +34,7 @@ export function OnboardingWizard({
         <h2 style={{ marginBottom: 4 }}>Willkommen bei VoltPilot</h2>
         <AnlageFlow
           sites={sites}
+          onSiteCreated={onSiteCreated}
           waitForFirstData
           onDone={onDone}
           onSkipAll={onSkip}

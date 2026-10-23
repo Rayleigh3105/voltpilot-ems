@@ -127,12 +127,12 @@ describe('MessenAssistent — „Messanlage anlegen" öffnet den Anlege-Fluss im
 
     // Schritt 1: vorbelegt ist der Standort aus dem Assistenten — obwohl Ahrenberg steuert,
     // spricht der Fluss an Werk Lindach von Anfang an still (derselbe Fakt, kein Schalter).
-    expect(within(fluss).getByRole('combobox', { name: 'Standort *' })).toHaveTextContent('Werk Lindach (ST-2)');
+    expect(within(fluss).getByRole('radio', { name: /„Werk Lindach“/ })).toBeChecked();
     expect(leiste()).toEqual(['Anlage', 'Register', 'Gerät']);
     expect(within(fluss).queryByRole('combobox', { name: 'Veräußerungsform' })).toBeNull();
     expect(within(fluss).queryByText(/Feineinstellungen/)).toBeNull();
     schweigt('Schritt 1 · Anlage');
-    fireEvent.change(within(fluss).getByLabelText('Name der Anlage'), { target: { value: 'Halle 3' } });
+    fireEvent.change(within(fluss).getByLabelText('Name der neuen Anlage'), { target: { value: 'Halle 3' } });
     fireEvent.click(within(fluss).getByRole('button', { name: 'Weiter' }));
     await waitFor(() => expect(createSite).toHaveBeenCalledTimes(1));
     expect(createSite.mock.calls[0][0]).toMatchObject({ name: 'Halle 3', standortId: LINDACH, netzladenErlaubt: false, maxFeedInKw: null });
@@ -140,10 +140,10 @@ describe('MessenAssistent — „Messanlage anlegen" öffnet den Anlege-Fluss im
     // Schritt 2: Register.
     fireEvent.click(await within(fluss).findByRole('button', { name: 'Überspringen - später nachtragen' }));
     // Schritt 3: Gerät.
-    expect(await within(fluss).findByText('Verbinden Sie Ihre VoltPilot-Box')).toBeInTheDocument();
+    expect(await within(fluss).findByText('Ihre VoltPilot-Box')).toBeInTheDocument();
     schweigt('Schritt 3 · Gerät');
-    fireEvent.change(within(fluss).getByLabelText('Geräte-ID'), { target: { value: 'vp-demo-0001' } });
-    fireEvent.click(within(fluss).getByRole('button', { name: 'Anlage anlegen' }));
+    fireEvent.change(within(fluss).getByLabelText('Kennung'), { target: { value: 'vp-demo-0001' } });
+    fireEvent.click(within(fluss).getByRole('button', { name: 'Box verbinden' }));
     await waitFor(() => expect(claimDevice).toHaveBeenCalledTimes(1));
 
     // Fertig: EIN Knopf zurück — weder „Zu den Messstellen" noch „Zur Anlage", kein „Betrieb".

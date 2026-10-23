@@ -381,12 +381,43 @@ export function currentUser(): UserInfo {
   };
 }
 
+/**
+ * Die Token-Erneuerung scheiterte an der Verbindung, nicht an der Sitzung
+ * (Anlage-Flow a1, B2): WLAN-Wechsel, Rechner aus dem Ruhezustand, Funkloch.
+ * Die Anfrage scheitert wie bei einem verlorenen `fetch` - die Fläche meldet
+ * „nicht erreichbar“ und behält ihre Eingaben, die nächste Anfrage versucht es
+ * neu. Keine Umleitung zur Anmeldung.
+ */
+export class VerbindungUnterbrochen extends Error {
+  constructor() {
+    super('Keine Verbindung zur Anmeldung.');
+  }
+}
+
+/**
+ * Hat die gescheiterte Erneuerung die Sitzung beendet? Nur wenn Keycloak
+ * geantwortet und abgelehnt hat (400 `invalid_grant`, 401) - keycloak-js räumt
+ * die Tokens dann selbst ab, darum zählt auch ein fehlendes Refresh-Token.
+ * Ein Netzfehler (`TypeError`), ein 5xx oder ein 429 beendet keine Sitzung.
+ */
+export function sitzungBeendet(fehler: unknown): boolean {
+  if (!keycloak.refreshToken) return true;
+  const status = (fehler as { response?: { status?: unknown } } | null | undefined)?.response?.status;
+  return status === 400 || status === 401;
+}
+
 /** A valid access token, refreshed if it expires within 30s. */
 export async function freshToken(): Promise<string | undefined> {
   try {
     await keycloak.updateToken(30);
-  } catch {
-    // Refresh failed (session gone) - redirect to a fresh login and ABORT the
+  } catch (fehler) {
+    if (!sitzungBeendet(fehler)) {
+      // B2: ein Netzaussetzer ist keine beendete Sitzung. Ein noch gültiges
+      // Token trägt die Anfrage weiter; sonst scheitert nur diese Anfrage.
+      if (keycloak.token && !keycloak.isTokenExpired(0)) return keycloak.token;
+      throw new VerbindungUnterbrochen();
+    }
+    // Refresh refused (session gone) - redirect to a fresh login and ABORT the
     // pending request via AuthRedirectError, so it never fires an
     // unauthenticated call that would 401 and flash a raw status at the user.
     login();

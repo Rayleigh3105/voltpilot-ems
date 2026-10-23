@@ -34,9 +34,10 @@ test('search, article navigation, section links, back and unknown links work', a
 
 test('contextual help preserves the actual first onboarding step and focus', async ({ page }) => {
   await page.goto('/e2e/help.html?state=empty#/uebersicht');
-  const firstStep = page.getByTestId('standort-zuerst');
-  await expect(firstStep).toBeVisible();
-  await expect(firstStep.getByRole('button', { name: 'Standort anlegen' })).toBeEnabled();
+  // Ein Endkunde beginnt mit dem Ort der Anlage (Anlage-Flow a1, Paket 1) - die Eingabe muss die Hilfe überstehen.
+  const firstStep = page.locator('.vp-anlage-ort');
+  await expect(firstStep.getByRole('heading', { name: /^Wo steht/ })).toBeVisible();
+  await firstStep.getByLabel('Name der neuen Anlage').fill('Garage');
   const trigger = page.getByRole('link', { name: 'Hilfe zu diesem Schritt' });
   await trigger.focus();
   await trigger.press('Enter');
@@ -63,6 +64,7 @@ test('contextual help preserves the actual first onboarding step and focus', asy
   await panel.getByRole('button', { name: 'Schließen', exact: true }).click();
   await expect(trigger).toBeFocused();
   await expect(firstStep).toBeVisible();
+  await expect(firstStep.getByLabel('Name der neuen Anlage')).toHaveValue('Garage');
 });
 
 test('nested screenshot viewing closes independently and keeps the form behind help', async ({ page }) => {

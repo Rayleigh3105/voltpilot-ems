@@ -270,6 +270,10 @@ public class StandortService {
                     lage == null ? null : lage.breitengrad(), lage == null ? null : lage.laengengrad(), zustand))) {
                 throw archiviert(finde(id));
             }
+            // Anlage-Flow a1 („Adresse nachtragen“): Anlagen ohne eigenen Kartenpunkt übernehmen die Lage.
+            if (lage != null) {
+                standorte.lageAnAnlagenOhneLage(id, heute, lage.breitengrad(), lage.laengengrad());
+            }
             protokoll.eintragen(tenant, OBJEKT, id, "bearbeitet", alt, neu, heute, zone, jetzt, wer);
             return id;
         }));

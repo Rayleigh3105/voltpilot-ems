@@ -1,5 +1,5 @@
 import { parseDecimal } from './zahl';
-import type { MastrApplyInput, MastrPreview, SaveBatteryInput } from './api';
+import type { MastrApplyInput, MastrPreview, SaveBatteryInput, SiteAsset } from './api';
 import { fmtNum } from './format';
 import { FLOW_STEPS } from './anlageFlowSchritte';
 
@@ -48,11 +48,20 @@ export function startklarSatz(anzahl: number): string {
 /**
  * Where the flow starts: a customer who already created an Anlage (but has no
  * device yet - wizard restart, "Später einrichten") resumes at the Register
- * step. Register is skippable, so nothing is forced on them, but the
- * register-first value stays offered on the way back to the Gerät step.
+ * step - unless the Anlage already carries register or hand-entered data
+ * (Anlage-Flow a1, F6: nach jedem Neuladen fragte der Assistent die
+ * MaStR-Nummer erneut); then the Box step is next.
  */
-export function initialFlowStep(hasSite: boolean): FlowStep {
-  return hasSite ? 2 : 1;
+export function initialFlowStep(hasSite: boolean, assets: readonly SiteAsset[] | null = null): FlowStep {
+  if (!hasSite) return 1;
+  return hatAnlagendaten(assets) ? 3 : 2;
+}
+
+/** Trägt die Anlage schon Register- oder Speicherdaten (aus dem Register-Schritt)? */
+export function hatAnlagendaten(assets: readonly SiteAsset[] | null): boolean {
+  return (assets ?? []).some(
+    (a) => a.registry != null || (a.type === 'pv' && a.pvCapacityKwp != null) || (a.type === 'battery' && a.capacityKwh != null),
+  );
 }
 
 /** Bidding zone from the address' country; everything else defaults to DE-LU. */
@@ -80,24 +89,29 @@ export function normalizeDeviceIdInput(value: string): string {
 }
 
 /**
- * Shared claim-field copy so the flow and the Geräte drawer speak with ONE
- * voice about where the Geräte-ID comes from - the device shows it in its
- * own app, and some devices also carry a sticker. The path and labels are the
+ * Shared claim-field copy so the flow and the Box dialog speak with ONE voice
+ * about where the Kennung comes from - the box shows it in its own app; there
+ * is no sticker (Captain, Anlage-Flow a1 Runde 1: „Wir haben keinen Aufkleber,
+ * sag einfach das man die Kennung eintragen soll“). The path and labels are the
  * box web app's (edge-app/core/internal/web/static/einrichten.html, card
  * #portal); the box withholds the reference until data arrives
- * (commissioning.js, claim_unlocked).
+ * (commissioning.js, claim_unlocked). The check itself lives in `edgeRef.ts`.
  */
 export const DEVICE_ID_FIELD = {
-  label: 'Geräte-ID',
+  label: 'Kennung',
   placeholder: 'z. B. edge-k7m2xq3',
   // Die Einrichtungsseite der Box nennt sie „Referenz-ID dieses Geräts“ (edge-app `web/static/einrichten.html`,
   // Karte #portal); einen Menüpunkt „Gerät verbinden“ gibt es dort nicht.
-  help: 'Die Geräte-ID zeigt Ihre VoltPilot-Box in ihrer App unter „Einrichten" → „Kopplung mit dem VoltPilot-Portal" als „Referenz-ID dieses Geräts" an. Sie erscheint dort, sobald ein Wechselrichter oder eine Ladesäule Daten liefert. Manche Boxen tragen sie zusätzlich auf einem Aufkleber.',
+  help: 'Die Kennung zeigt Ihre Box in ihrer App unter „Einrichten" → „Kopplung mit dem VoltPilot-Portal" als „Referenz-ID dieses Geräts". Sie erscheint dort, sobald ein Wechselrichter oder eine Ladesäule Daten liefert.',
 } as const;
 
-/** One 422 message for both gates (unknown sticker OR mistyped edge reference). */
+/** One 422 message for both gates (unknown register ID OR a ref that is no box Kennung). */
 export const DEVICE_ID_UNKNOWN_MSG =
-  'Diese Geräte-ID kennen wir nicht. Bitte vergleichen Sie Ihre Eingabe Zeichen für Zeichen mit der ID, die Ihr Gerät anzeigt - schon ein Tippfehler verhindert die Verbindung.';
+  'Diese Kennung kennen wir nicht. Bitte vergleichen Sie sie Zeichen für Zeichen mit der App Ihrer Box - schon ein Tippfehler verhindert die Verbindung.';
+
+/** 409: die Kennung gehört schon einem anderen Konto. */
+export const DEVICE_ID_TAKEN_MSG =
+  'Diese Box ist bereits mit einem anderen Konto verbunden. Bitte prüfen Sie die Kennung - oder kontaktieren Sie unseren Support.';
 
 export { parseDecimal } from './zahl';
 

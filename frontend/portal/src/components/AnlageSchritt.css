@@ -1,0 +1,81 @@
+/* Schritt 1 des Anlege-Flusses (AnlageSchritt.tsx): Ortswahl als Karten, Name, Adresse und Karte. */
+.vp-anlage-ort-felder {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--vp-space-4);
+}
+.vp-ort-wahl {
+  display: grid;
+  gap: var(--vp-space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.vp-ort-wahl-titel {
+  padding: 0;
+  margin-bottom: var(--vp-space-1);
+  font-family: var(--vp-font-body);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--vp-text-dark);
+}
+.vp-ort-karte {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-3);
+  padding: var(--vp-space-3) var(--vp-space-4);
+  min-height: 44px;
+  box-sizing: border-box;
+  border: 1px solid var(--vp-field-border);
+  border-radius: var(--vp-radius-btn);
+  background: var(--vp-surface);
+  cursor: pointer;
+  min-width: 0;
+  transition: var(--vp-motion-chrome);
+}
+.vp-ort-karte:hover {
+  border-color: var(--vp-action);
+}
+.vp-ort-karte.is-an {
+  border-color: var(--vp-action);
+  background: var(--vp-paleblue-start);
+  box-shadow: 0 0 0 1px var(--vp-action);
+}
+.vp-ort-karte input {
+  flex-shrink: 0;
+  margin: 3px 0 0;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--vp-action);
+}
+.vp-ort-karte-text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--vp-text-sm);
+}
+.vp-ort-karte-text strong {
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-text-dark);
+}
+.vp-ort-karte-fehlt {
+  color: var(--vp-warn-ink, var(--vp-text-gray));
+}
+.vp-ort-wahl-fehler {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--vp-industry-end);
+}
+.vp-ort-folge {
+  margin: 0;
+}
+.vp-anlage-name-zeile {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--vp-space-2);
+  margin: 0;
+  font-size: var(--vp-text-sm);
+}
