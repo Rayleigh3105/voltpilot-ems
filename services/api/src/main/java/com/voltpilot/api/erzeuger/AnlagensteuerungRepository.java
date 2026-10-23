@@ -242,6 +242,25 @@ public class AnlagensteuerungRepository {
                 lueckeS + " seconds");
     }
 
+    /** Die jüngste Lesung einer Steuerungs-Komponente der Anlage und ihr Pin; {@code juengst == null} = keine. */
+    public record Lesung(UUID entityId, String edgeSourceId, Instant juengst) {}
+
+    /**
+     * UEMS EZ-22: je Komponente {@value #ENTITY_TYPE} der Anlage die jüngste Lesung unter {@code pointKeys} — über
+     * {@code site} und denselben Reihen-Index wie {@link #juengste}, ein Schlüssel nach dem anderen.
+     */
+    public List<Lesung> lesungen(UUID siteId, List<String> pointKeys) {
+        return jdbc.query("SELECT m.id, m.edge_source_id, (SELECT max(l.time) FROM unnest(?::text[]) AS k(key) "
+                + "CROSS JOIN LATERAL (SELECT d.time FROM device_measurement_sample d WHERE d.tenant_id = m.tenant_id "
+                + "AND d.entity_id = m.id AND d.point_key = k.key AND d.role IS DISTINCT FROM 'spiegel' "
+                + "ORDER BY d.time DESC LIMIT 1) l) AS juengst "
+                + "FROM site s JOIN measurement_point m ON m.site_id = s.id AND m.entity_type = '" + ENTITY_TYPE + "' "
+                + "WHERE s.id = ? ORDER BY m.id",
+                (rs, n) -> new Lesung(rs.getObject("id", UUID.class), rs.getString("edge_source_id"),
+                        rs.getTimestamp("juengst") == null ? null : rs.getTimestamp("juengst").toInstant()),
+                pointKeys.toArray(String[]::new), siteId);
+    }
+
     // ---------------------------------------------------------------- schreiben
 
     /** Der Controller „Anlagensteuerung“ — eingebaut ab {@code ab}, mit Datenquelle und Geräte-ID. */

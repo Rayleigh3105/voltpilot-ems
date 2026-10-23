@@ -6,6 +6,8 @@ import com.voltpilot.api.entities.EntityRegistryRepository;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.entities.EntityTypeCatalog;
+import com.voltpilot.api.erzeuger.AnlagensteuerungLesung;
+import com.voltpilot.api.erzeuger.AnlagensteuerungRepository;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
 import com.voltpilot.api.topology.TopologyRepository.LiveValue;
 import com.voltpilot.api.topology.TopologyRepository.RoleOverride;
@@ -23,6 +25,7 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -88,6 +91,14 @@ public class TopologyService {
         this.chargers = chargers;
         this.push = push;
         this.rollen = rollen;
+    }
+
+    private AnlagensteuerungLesung steuerungen;
+
+    /** UEMS EZ-22: die Lebendigkeit einer Anlagensteuerung kommt aus ihrer Lesung, nicht aus telemetry_v2. */
+    @Autowired(required = false)
+    void setAnlagensteuerungLesung(AnlagensteuerungLesung steuerungen) {
+        this.steuerungen = steuerungen;
     }
 
     /**
@@ -220,6 +231,11 @@ public class TopologyService {
         Map<UUID, String> connections = chargers.connectionsByEntity(siteId);
         Instant now = Instant.now();
         Set<String> firstSeen = new HashSet<>();
+        // EZ-22: eine Anlagensteuerung hat keinen Messkanal in telemetry_v2 (Katalog default_measure: []) - ihre
+        // Lebendigkeit ist die jüngste Lesung ihres Erzeuger-Bilds; sonst stünde sie für immer auf „never“.
+        Map<UUID, AnlagensteuerungRepository.Lesung> lesungen = steuerungen != null
+                && rows.stream().anyMatch(r -> AnlagensteuerungRepository.ENTITY_TYPE.equals(r.entityType()))
+                ? steuerungen.fuerAnlage(siteId) : Map.of();
 
         List<EntityTopologyDto> entities = new ArrayList<>();
         List<TopologyDeriver.EntityInput> derivIn = new ArrayList<>();
@@ -259,7 +275,10 @@ public class TopologyService {
                         value));
                 derivCaps.add(new TopologyDeriver.CapabilityInput(channel, role, primary, value));
             }
-            String health = health(newest, now);
+            AnlagensteuerungRepository.Lesung lesung = lesungen.get(row.id());
+            String health = AnlagensteuerungRepository.ENTITY_TYPE.equals(row.entityType()) && steuerungen != null
+                    ? AnlagensteuerungLesung.health(lesung == null ? null : lesung.juengst(), now)
+                    : health(newest, now);
             entities.add(new EntityTopologyDto(row.id(), row.entityType(),
                     catalog.labelFor(row.entityType()), row.label(), category, health, connection,
                     caps));

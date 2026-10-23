@@ -1283,6 +1283,8 @@ export function plantModel(
     if (l.kind !== 'source') continue;
     const entityId = pinnedEntityBySource.get(l.id) ?? l.adoptedEntityId;
     if (entityId == null) continue;
+    // EZ-22: die Quelle einer Anlagensteuerung ist nur ihr Transport (EZ-21) - das Gerät ist die Steuerung (EZ-10).
+    if (entities.some((e) => e.id === entityId && e.entityType === ANLAGENSTEUERUNG_TYPE)) continue;
     const comps = componentsOfEntity(entityId);
     linkDevice(
       l.id,
@@ -1325,10 +1327,12 @@ export function plantModel(
   }
 
   // EZ-10. Eine ANLAGENSTEUERUNG (Erzeuger-Registerbild, UEMS EZ-6) ist ein Gerät für sich: die Box liest
-  //    sie über eine Datenquelle, nicht über eine eigene Quelle, und sie ist kein Teil des Wechselrichters
-  //    (ohne diesen Schritt nähme sie 2.). Ihre Seite heißt `as-<Entität>` (`geraetAdresse.ts`).
+  //    sie über eine Datenquelle, und sie ist kein Teil des Wechselrichters (ohne diesen Schritt nähme sie 2.).
+  //    Ihre Seite heißt `as-<Entität>` (`geraetAdresse.ts`) - auch mit Pin (EZ-22): die Quelle, die die Box seit
+  //    EZ-21 für sie meldet, ist ihr Transport, kein zweites Gerät. Über den Pin landete sie sonst auf einer
+  //    gewöhnlichen Quellen-Seite und trug dort das Gesicht eines Zählers (Gore, Neue Halle).
   for (const e of entities) {
-    if (e.entityType !== ANLAGENSTEUERUNG_TYPE || e.edgeSourceId != null) continue;
+    if (e.entityType !== ANLAGENSTEUERUNG_TYPE) continue;
     const comps = componentsOfEntity(e.id).filter((c) => !assigned.has(c.id));
     if (comps.length === 0) continue;
     linkDevice(anlagensteuerungGeraetId(e.id), e.label?.trim() || 'Anlagensteuerung', null, comps.map((c) => c.id));

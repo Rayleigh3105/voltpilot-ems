@@ -189,6 +189,20 @@ liest sie.
 - ⚠ **Nur portal-verwaltete Anlagen:** eine box-verwaltete Anlage wendet keinen Portal-Plan an
   (`componentapply.IsPortalManaged`) — dort braucht es erst die Übernahme.
 
+## Zustand „liefert Daten“ (EZ-22)
+
+Eine Steuerung hat keinen Kanal in `telemetry_v2` (`default_measure: []`), und ihre Quelle `plant-controller` liest
+keine Selbstverdrahtung: die Lebendigkeit der Topologie und der Quellstatus der Box sagten deshalb immer `never`,
+während die Werte ankamen. `AnlagensteuerungLesung` nimmt die jüngste Lesung der festen Abschnitte des Bilds (ohne
+Spiegel) mit der Frist `AKTUELL_BIS_S` (120 s, dieselbe wie `werte` und der Kopf der Geräteseite) und setzt damit
+`health` der Komponente in `TopologyService` (Aufbau, Zentrale, Kopfsatz, „braucht Aufmerksamkeit“) und `health`/
+`readAt` ihrer Quelle in `/sources` (Box-Seite).
+
+- ⚠ **Ein Gerät, eine Seite:** auch mit Pin bleibt die Steuerung das Gerät `as-<Entität>` — `plantModel` macht die
+  gemeldete Quelle nicht zum Gerät, `boxGeraeteListe` verweist auf `as-…`, `GeraetSeiteSection` leitet eine Adresse
+  auf den Pin um. Sonst trug die Quelle das Gesicht eines Zählers (Katalog-Kategorie `meter`).
+- **Gesicht:** Erzeugung, Netzpunkt, Anlage (`a.anlage_zustand`), wirksame Grenze mit ihrer Quelle (`wirkung.quelle_p`).
+
 ## Verlauf: Vorgaben als Ereignisse (EZ-9)
 
 `HistoryService` hängt bei einer Anlage mit Anlagensteuerung (`VorgabenRepository.hatSteuerung`) die Vorgaben als

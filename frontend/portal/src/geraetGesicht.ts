@@ -52,7 +52,7 @@ import { fmtNum } from './format';
 import type { GeraetArt, GeraetTon } from './geraetSeite';
 import type { PlantComponent } from './komponenten';
 import { anlagensteuerungIdOf } from './geraetAdresse';
-import { bitVon, kwText, PUNKT, wertVon, werteJe } from './anlagensteuerung';
+import { anlageZustand, bitVon, kwText, PUNKT, wertVon, werteJe } from './anlagensteuerung';
 import type { ChargeConnector, ChargePoint } from './ladepunkte';
 import { NO_DATA } from './nodata';
 import type { FlowNode } from './topology';
@@ -1119,8 +1119,12 @@ function heldGeraet(input: GesichtInput, eigenbau: boolean): Held {
 /**
  * Der Held einer Anlagensteuerung (UEMS EZ-10): Erzeugung, Netzpunkt und die wirksame Grenze aus den Punkten
  * `erzeuger.*` - jede nur mit ihrem Gültigkeitsbit, sonst „—“ (nie 0). Ohne Messung am Netzpunkt (EW-16 C)
- * steht dort „—“ mit dem Wort „keine Messung“.
+ * steht dort „—“ mit dem Wort „keine Messung“. EZ-22: dazu der Zustand der Anlage („läuft begrenzt“) und, wer
+ * die Grenze setzt („Netzbetreiber“) - beides aus dem Bild, ohne Wert nichts.
  */
+/** Die Zustände einer Anlage, die Aufmerksamkeit brauchen. */
+const STOERUNG = new Set(['Störung', 'Not-Aus']);
+
 function heldAnlagensteuerung(werte: AnlagensteuerungWerte | null): Held {
   const je = werteJe(werte);
   const erzeugung = bitVon(je, PUNKT.aGueltig, 3) === false ? null : wertVon(je, PUNKT.erzeugung);
@@ -1128,7 +1132,9 @@ function heldAnlagensteuerung(werte: AnlagensteuerungWerte | null): Held {
   const ohneMessung = nvpGueltig === false && bitVon(je, PUNKT.aGueltig, 1) === false && bitVon(je, PUNKT.aGueltig, 2) === false;
   const nvp = nvpGueltig ? wertVon(je, PUNKT.nvp) : null;
   const grenze = bitVon(je, PUNKT.sBits, 0) === true ? wertVon(je, PUNKT.grenze) : null;
-  const kacheln: HeldKachel[] = [
+  const grenzeVon = grenze != null && wertVon(je, PUNKT.quelleP) !== 0 ? je.get(PUNKT.quelleP)?.text ?? null : null;
+  const zustand = anlageZustand(je);
+  const leistung: HeldKachel[] = [
     { key: 'erzeugung', label: 'Erzeugung', wert: kwText(erzeugung), wort: null, gross: true },
     {
       key: 'netz',
@@ -1136,9 +1142,20 @@ function heldAnlagensteuerung(werte: AnlagensteuerungWerte | null): Held {
       wert: kwText(nvp == null ? null : Math.abs(nvp)),
       wort: nvp == null ? (ohneMessung ? 'keine Messung' : null) : nvp < -50 ? 'Einspeisung' : nvp > 50 ? 'Bezug' : null,
     },
-    { key: 'grenze', label: 'Wirksame Grenze', wert: kwText(grenze), wort: null },
+    { key: 'grenze', label: 'Wirksame Grenze', wert: kwText(grenze), wort: grenzeVon },
   ];
-  const daten = kacheln.some((k) => k.wert !== NO_DATA && k.wert !== '—');
+  const daten = leistung.some((k) => k.wert !== NO_DATA && k.wert !== '—');
+  const kacheln: HeldKachel[] = [
+    ...leistung.slice(0, 2),
+    {
+      key: 'zustand',
+      label: 'Anlage',
+      wert: zustand ?? '—',
+      wort: null,
+      ton: zustand == null ? null : STOERUNG.has(zustand) ? 'warn' : zustand.startsWith('läuft') ? 'ok' : null,
+    },
+    leistung[2],
+  ];
   return {
     titel: 'Jetzt',
     kacheln,

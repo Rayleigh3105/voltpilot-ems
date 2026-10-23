@@ -410,6 +410,39 @@ describe('boxSeite · die Geräte an ihr', () => {
     expect(geraete.map((g) => g.geraetId)).toContain('cp-CARPORT-1');
   });
 
+  /**
+   * EZ-22, Gore nach EZ-21: die Box meldet für die Anlagensteuerung eine Quelle der Rolle `plant-controller` (ihr
+   * Pin). Die Zeile hieß „Anlagensteuerung · Gerät · noch keine Daten" und führte auf eine Zähler-Seite. Jetzt
+   * führt sie auf die Seite der Steuerung, und ihr Zustand ist der, den der Server aus der Lesung der Steuerung
+   * in `/sources` schreibt.
+   */
+  it('die Quelle einer Anlagensteuerung führt auf `as-…` und sagt, was ihre Lesung sagt', () => {
+    const pin = 'src-as-192.168.4.165-503-1';
+    const local = [{
+      id: pin, kind: 'source', role: 'plant-controller', brand: null, model: null, label: 'Anlagensteuerung',
+      reportedAt: FRISCH, adoptedEntityId: null,
+    } as EntityLocalSetup];
+    const steuerung = {
+      id: 'e-as', entityType: 'anlagensteuerung', typeLabel: 'Anlagensteuerung', role: null, label: 'Anlagensteuerung',
+      control: false, deviceId: null, capabilities: { measure: [] }, guards: null, syncStatus: 'in_sync', observed: null,
+      edgeSourceId: pin,
+    } as unknown as SiteEntity;
+    const quelle = (health: string, readAt: string | null): SiteSource[] => [{
+      deviceId: 'dev-box', sourceId: pin, kind: 'source', role: 'plant-controller', label: 'Anlagensteuerung',
+      brand: null, model: null, pvKw: null, powerKw: null, loadKw: null, health, readAt, reportedAt: FRISCH,
+    } as SiteSource];
+
+    const liest = boxGeraeteListe(local, quelle('ok', FRISCH), null, NOW, [steuerung]);
+    expect(liest).toEqual([{
+      geraetId: 'as-e-as', name: 'Anlagensteuerung', art: 'Anlagensteuerung', zustand: expect.stringMatching(/^liefert Daten · vor 12/),
+      ton: 'ok',
+    }]);
+    expect(boxGeraeteListe(local, quelle('never', null), null, NOW, [steuerung])[0])
+      .toMatchObject({ geraetId: 'as-e-as', zustand: 'noch keine Daten', ton: 'off' });
+    // Ohne die Komponente bleibt die Quelle, was die Box meldet.
+    expect(boxGeraeteListe(local, quelle('ok', FRISCH), null, NOW)[0]).toMatchObject({ geraetId: pin, art: 'Gerät' });
+  });
+
   it('sagt es, wenn sich noch kein Gerät gemeldet hat', () => {
     const v = boxSeite(input({ geraete: [] }));
     expect(v.geraeteLeer).toMatch(/noch kein Gerät/);

@@ -46,7 +46,7 @@ import {
   typWort,
   type Gesicht,
 } from '../geraetGesicht';
-import { ioBindungenAus, plantModel, type PlantComponent } from '../komponenten';
+import { ANLAGENSTEUERUNG_TYPE, ioBindungenAus, plantModel, type PlantComponent } from '../komponenten';
 import { fmtNum } from '../format';
 import { deviceLimitLine, exportGuardView, WAECHTER_LABEL } from '../curtailment';
 import type { IconName } from '../../designsystem/components/core/Icon';
@@ -170,7 +170,7 @@ import '../components/AnlagenModell.css';
 import './Befehle.css';
 import './GeraetSeite.css';
 import { AUFBAU_REITER } from '../ebenenNav';
-import { anlagensteuerungIdOf } from '../geraetAdresse';
+import { anlagensteuerungGeraetId, anlagensteuerungIdOf } from '../geraetAdresse';
 import { useAnlagensteuerung, useAnlagensteuerungWerte } from '../useAnlagensteuerung';
 
 /**
@@ -457,6 +457,19 @@ export function GeraetSeiteSection({
     () => (data ? plantModel(data.entities, topology, data.localSetup, sources, ioBindungen) : null),
     [data, topology, sources, ioBindungen],
   );
+
+  // EZ-22: die Quelle, die die Box für eine Anlagensteuerung meldet (ihr Pin, EZ-21), ist kein eigenes Gerät -
+  // eine Adresse auf sie führt auf die Seite der Steuerung, mit ihren Parametern.
+  const steuerungDesPins = geraetId
+    ? data?.entities.find((e) => e.entityType === ANLAGENSTEUERUNG_TYPE && e.edgeSourceId === geraetId)?.id ?? null
+    : null;
+  useEffect(() => {
+    if (!steuerungDesPins) return;
+    const query = window.location.hash.split('?').slice(1).join('?');
+    window.location.replace(
+      `${geraetSeiteHash(site.id, geraeteRef, anlagensteuerungGeraetId(steuerungDesPins))}${query ? `?${query}` : ''}`,
+    );
+  }, [steuerungDesPins, site.id, geraeteRef]);
 
   // UEMS EZ-10: die Seite `as-<Entität>` einer Anlagensteuerung - Gerät, Datenquelle und Werte kommen von ihren
   // Routen (EZ-6); jede andere Seite fragt nichts davon.

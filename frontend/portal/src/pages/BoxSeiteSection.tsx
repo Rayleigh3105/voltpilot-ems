@@ -222,7 +222,7 @@ export function BoxSeiteSection({
       edgeVersions,
       control,
       curtailment,
-      geraete: boxGeraeteListe(data.localSetup, sources, charging?.chargers ?? null, now),
+      geraete: boxGeraeteListe(data.localSetup, sources, charging?.chargers ?? null, now, data.entities),
       localSetup: data.localSetup,
       datenquellen,
       now,

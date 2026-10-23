@@ -1979,8 +1979,8 @@ describe('EZ-10 · Aktivität der Anlagensteuerung', () => {
   };
 
   /** Der Verlauf wie der Server ihn beantwortet: ein `as-…` als Gerät ist ihm unbekannt. */
-  function stubSteuerung(antwort: CommandHistory) {
-    stub({ entities: () => Promise.resolve(steuerungEntities) });
+  function stubSteuerung(antwort: CommandHistory, mitEntities: SiteEntities = steuerungEntities) {
+    stub({ entities: () => Promise.resolve(mitEntities) });
     vi.spyOn(api, 'anlagensteuerungen').mockResolvedValue({
       einrichtung: { moeglich: true, grund: null, boxen: [{ device_id: 'gw', faehig: true }] },
       steuerungen: [gore()],
@@ -2013,6 +2013,26 @@ describe('EZ-10 · Aktivität der Anlagensteuerung', () => {
     expect(within(aktivitaet).queryByRole('button', { name: /Erneut versuchen/ })).toBeNull();
     expect(within(aktivitaet).getByRole('link', { name: /Alle/ }).getAttribute('href'))
       .toBe(`#/anlage/s-1/befehle?komponente=${ENTITY_GORE}`);
+  });
+
+  it('EZ-22: die Adresse ihres Pins (die Quelle aus EZ-21) führt auf die Seite der Steuerung, mit ihren Parametern', async () => {
+    const pin = 'src-as-192.168.1.50-503-1';
+    const mitPin: SiteEntities = {
+      ...steuerungEntities,
+      entities: steuerungEntities.entities.map((e) => (e.id === ENTITY_GORE ? { ...e, edgeSourceId: pin } : e)),
+      localSetup: [
+        ...steuerungEntities.localSetup,
+        {
+          id: pin, kind: 'source', role: 'plant-controller', brand: null, model: null, label: 'Anlagensteuerung',
+          reportedAt: '2026-10-23T08:40:00Z', adoptedEntityId: null,
+        } as SiteEntities['localSetup'][number],
+      ],
+    };
+    stubSteuerung(commands({ deviceRef: null, deviceIsBox: null, entityId: ENTITY_GORE, entries: [] }), mitPin);
+    window.location.hash = `#/anlage/s-1/geraet/edge-45gz7da/${pin}?abschnitt=jetzt`;
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId={pin} devices={[box]} />);
+    await waitFor(() => expect(window.location.hash)
+      .toBe(`#/anlage/s-1/geraet/edge-45gz7da/${asSeite}?abschnitt=jetzt`));
   });
 
   it('zeigt die Einträge, die der Server für ihre Komponente liefert', async () => {

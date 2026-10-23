@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import type { Device, EntityLocalSetup, OverviewSite, SiteEntity, StandorteAmStichtag, UemsDatenquelle } from './api';
+import type {
+  Device,
+  EntityLocalSetup,
+  OverviewSite,
+  SiteEntity,
+  SiteTopology,
+  StandorteAmStichtag,
+  UemsDatenquelle,
+} from './api';
 import {
   OHNE_STANDORT,
   anlagenWerte,
@@ -12,7 +20,7 @@ import {
 import { aufbauZahlen, LEERER_FILTER } from './aufbauTabelle';
 import { plantModel, type PlantComponent } from './komponenten';
 import type { ChargePoint, SiteCharging } from './ladepunkte';
-import { zentraleListe, type GeraeteKarte } from './zentraleListe';
+import { zentraleListe, zentraleSatz, type GeraeteKarte } from './zentraleListe';
 
 /** `fmtNum` trennt Zahl und Einheit mit einem geschützten Leerzeichen. */
 const plain = (s: string) => s.replace(/\u00a0/g, ' ');
@@ -454,8 +462,8 @@ describe('aufbauBaum — reine Erzeugeranlage (EZ-20)', () => {
     zustaendige_box: { id: 'box-gore', name: null, heimat_anlage: 'site-gore' }, zeitraeume: [], rueckmeldung: null,
   } as unknown as UemsDatenquelle;
 
-  const gore = (entities: SiteEntity[], localSetup: EntityLocalSetup[] = []) => {
-    const model = plantModel(entities, null, localSetup, []);
+  const gore = (entities: SiteEntity[], localSetup: EntityLocalSetup[] = [], topology: SiteTopology | null = null) => {
+    const model = plantModel(entities, topology, localSetup, []);
     const karten = zentraleListe({
       siteId: 'site-gore', model, devices: [GORE_BOX], devicesFetchedAt: NOW, boxRef: 'edge-5mz8bdd',
       localSetup, sources: [], charging: null, now: NOW,
@@ -502,5 +510,46 @@ describe('aufbauBaum — reine Erzeugeranlage (EZ-20)', () => {
   it('ohne Anlagensteuerung bleibt das Ersatzgerät für Netz und Haus wie heute', () => {
     const { box: b } = gore([NETZ, HAUS]);
     expect(zeilen(b)).toEqual(['Wechselrichter · Gerät an Ihrer Box']);
+  });
+
+  /**
+   * EZ-22, Gore nach EZ-21: die Steuerung trägt ihren Pin, die Box meldet dafür eine Quelle der Rolle
+   * `plant-controller`, und die Werte kommen an. Der Aufbau sagte trotzdem „Wartet auf die ersten Daten" und
+   * „1 braucht Aufmerksamkeit": die Lebendigkeit der Topologie war für eine Steuerung immer `never` (kein
+   * telemetry_v2-Kanal), und über den Pin wurde die Quelle zum Gerät mit Zähler-Gesicht. Jetzt liefert der
+   * Server die Lebendigkeit aus der jüngsten Lesung des Erzeuger-Bilds, und das Gerät bleibt `as-…`.
+   */
+  const PIN = 'src-as-192.168.4.165-503-1';
+  const MIT_PIN = { ...STEUERUNG, edgeSourceId: PIN } as SiteEntity;
+  const QUELLE: EntityLocalSetup = {
+    id: PIN, kind: 'source', role: 'plant-controller', brand: null, model: null, label: 'Anlagensteuerung',
+    reportedAt: FRISCH, adoptedEntityId: null,
+  } as EntityLocalSetup;
+  const lebendig = (health: string): SiteTopology => ({
+    schemaVersion: '1.0',
+    entities: [
+      { id: 'e-netz', entityType: 'grid-meter', typeLabel: 'Netz', label: null, category: 'meter', health: 'never', capabilities: [] },
+      { id: 'e-as', entityType: 'anlagensteuerung', typeLabel: 'Anlagensteuerung', label: 'Anlagensteuerung', category: 'meter', health, capabilities: [] },
+    ],
+    topology: { schema_version: '1.0', nodes: [] },
+  } as unknown as SiteTopology);
+
+  it('liest die Steuerung, sagen Aufbau-Zeile, Kopfsatz und Zähler „liefert Daten" - ein Gerät `as-…`, keine Quelle', () => {
+    const { model, karten, baum, box: b } = gore([NETZ, HAUS, MIT_PIN], [QUELLE], lebendig('ok'));
+    expect(b.geraete.map((g) => g.id)).toEqual(['as-e-as']);
+    expect(b.geraete[0].zustandWort).toBe('Liefert Daten');
+    expect(b.geraete[0].ton).toBe('ok');
+    expect(model.devices.some((d) => d.id === PIN)).toBe(false);
+    expect(model.newlyReported).toEqual([]);
+    expect(zentraleSatz(karten).text).toBe('Box verbunden · Ihr Gerät liefert Daten.');
+    expect(aufbauZahlen(baum, LEERER_FILTER)).toMatchObject({ geraete: 1, achtung: 0, gemeldet: 0 });
+  });
+
+  it('ohne Lesung bleibt es ehrlich: „Wartet auf die ersten Daten", ohne Topologie „Noch keine Rückmeldung"', () => {
+    const nie = gore([NETZ, HAUS, MIT_PIN], [QUELLE], lebendig('never'));
+    expect(nie.box.geraete.map((g) => [g.id, g.zustandWort])).toEqual([['as-e-as', 'Wartet auf die ersten Daten']]);
+    expect(zentraleSatz(nie.karten).text).toBe('Box verbunden · „Anlagensteuerung" Wartet auf die ersten Daten.');
+    expect(aufbauZahlen(nie.baum, LEERER_FILTER).achtung).toBe(1);
+    expect(gore([NETZ, HAUS, MIT_PIN], [QUELLE]).box.geraete[0].zustandWort).toBe('Noch keine Rückmeldung');
   });
 });

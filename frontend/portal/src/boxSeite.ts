@@ -32,7 +32,9 @@ import type { ControlStatus, CurtailmentStatus, Device, EdgeVersion, UemsDatenqu
 import { fmtRelative } from './format';
 import { NO_DATA } from './nodata';
 import { versionLabel } from './edgeVersionLabel';
-import type { EntityLocalSetup, SiteSource } from './api';
+import type { EntityLocalSetup, SiteEntity, SiteSource } from './api';
+import { anlagensteuerungGeraetId } from './geraetAdresse';
+import { ANLAGENSTEUERUNG_TYPE } from './komponenten';
 import type { BoxGeraet, GeraetTon, Zeile } from './geraetSeite';
 import {
   ART_WORT,
@@ -320,15 +322,21 @@ export function boxGeraeteListe(
   sources: SiteSource[] | null,
   chargers: ChargePoint[] | null,
   now: number,
+  entities: SiteEntity[] | null = null,
 ): BoxGeraet[] {
   const out: BoxGeraet[] = [];
   for (const l of localSetup ?? []) {
     const s = (sources ?? []).find((x) => x.sourceId === l.id);
     const z = quellenZustand(s, now);
+    // EZ-22: die Quelle einer Anlagensteuerung (ihr Pin, EZ-21) führt auf die Seite der Steuerung (`as-…`, EZ-10),
+    // dieselbe, die Aufbau und Assistent öffnen. Ihr Zustand kommt mit `/sources` aus der Lesung der Steuerung.
+    const steuerung = (entities ?? []).find((e) => e.entityType === ANLAGENSTEUERUNG_TYPE && e.edgeSourceId === l.id);
     out.push({
-      geraetId: l.id,
+      geraetId: steuerung ? anlagensteuerungGeraetId(steuerung.id) : l.id,
       name: technicalDeviceName({ edgeLabel: l.label, brand: l.brand, model: l.model }) ?? 'Gerät',
-      art: l.kind === 'inverter'
+      art: steuerung
+        ? 'Anlagensteuerung'
+        : l.kind === 'inverter'
         ? 'Hauptgerät'
         : istIoModul(l.communication) ? 'I/O-Modul' : (ROLLEN_WORT[l.role ?? ''] ?? 'Gerät'),
       zustand: z.detail ? `${z.wort} · ${z.detail}` : z.wort,

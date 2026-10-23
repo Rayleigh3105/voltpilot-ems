@@ -16,12 +16,15 @@ import com.voltpilot.api.measurement.MeasurementSelectionRepository;
 import com.voltpilot.api.measurement.MeasurementSelectionService;
 import com.voltpilot.api.measurement.ZustellungOhneBroker;
 import com.voltpilot.api.tenant.TenantContext;
+import com.voltpilot.api.topology.TopologyService;
 import com.voltpilot.api.uems.AenderungSatz;
 import com.voltpilot.api.uems.BoxFaehigkeiten;
 import com.voltpilot.api.uems.ErwarteteKadenz;
 import com.voltpilot.api.uems.GeraetRepository;
 import com.voltpilot.api.uems.RechteAbleitung.Konto;
+import com.voltpilot.api.web.SiteController;
 import com.voltpilot.api.web.dto.AnlagensteuerungDto;
+import com.voltpilot.api.web.dto.SiteSourceDto;
 import com.voltpilot.api.zugriff.ZugriffContext;
 import com.voltpilot.api.zugriff.ZugriffContext.Zugang;
 import com.voltpilot.api.zugriff.ZugriffContext.Zugriff;
@@ -90,6 +93,8 @@ class AnlagensteuerungDbTest {
     @Autowired BoxFaehigkeiten faehigkeiten;
     @Autowired ErwarteteKadenz kadenzen;
     @Autowired AnlagensteuerungQuelle quelle;
+    @Autowired TopologyService topologie;
+    @Autowired SiteController anlagen;
     @MockBean EntityRegistryPublisher registryPublisher;
     static JdbcTemplate root;
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -827,6 +832,61 @@ class AnlagensteuerungDbTest {
         assertThat(an.driver().path("connection").path("ip").asText()).isEqualTo("192.168.1.51");
         assertThat(als(w.tenant(), () -> quelle.pinsSetzen(w.site(), w.box())))
                 .as("die alte Box liest die Quelle nicht mehr").isFalse();
+    }
+
+    /**
+     * UEMS EZ-22 (Gore, Neue Halle): die Werte kamen an, Aufbau und Box-Seite sagten trotzdem „Wartet auf die ersten
+     * Daten“. Die Topologie las die Lebendigkeit aus telemetry_v2 (eine Steuerung hat keinen Kanal dort), der
+     * Quellstatus war der der Selbstverdrahtung (die die Quelle plant-controller nie liest). Beide folgen jetzt der
+     * jüngsten Lesung des Erzeuger-Bilds, mit der Frist der Werte-Fläche.
+     */
+    @Test
+    void topologieUndQuellstatusFolgenDerJuengstenLesungDerSteuerung() {
+        Welt w = welt("Erzeuger-Lesung-Gore");
+        meldet(w.box(), ErzeugerRegisterbild.FAEHIGKEIT, AnlagensteuerungQuelle.FAEHIGKEIT);
+        AnlagensteuerungDto.Anlagensteuerung s = als(w.tenant(), () -> service.anlegen(w.site(), gore(w),
+                "sub-einrichter"));
+        String pin = pin(s.entityId());
+        assertThat(pin).isNotNull();
+        // So meldet die Box die Quelle der Steuerung: die Selbstverdrahtung liest sie nie.
+        root.update("INSERT INTO device_source_status (device_id, source_id, tenant_id, site_id, kind, role, label, "
+                + "health, reported_at) VALUES (?, ?, ?, ?, 'source', 'plant-controller', 'Anlagensteuerung', 'never', "
+                + "now())", w.box(), pin, w.tenant(), w.site());
+
+        assertThat(gesundheit(w, s.entityId())).as("ohne Lesung: ehrlich nie").isEqualTo("never");
+        assertThat(quelleDerSteuerung(w, pin).health()).isEqualTo("never");
+        assertThat(quelleDerSteuerung(w, pin).readAt()).isNull();
+
+        Instant jetzt = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+        probe(w, s.entityId(), "erzeuger.a.p_erzeugung_w", 312400, "good", jetzt.minusSeconds(5), 1);
+        probe(w, s.entityId(), "erzeuger.a.p_nvp_w", 877100, "good", jetzt, 2);
+        assertThat(gesundheit(w, s.entityId())).isEqualTo("ok");
+        SiteSourceDto liefert = quelleDerSteuerung(w, pin);
+        assertThat(liefert.health()).isEqualTo("ok");
+        assertThat(liefert.readAt()).as("die jüngste Lesung, nicht die erste").isEqualTo(jetzt);
+        assertThat(liefert.label()).as("sonst bleibt die Meldung der Box").isEqualTo("Anlagensteuerung");
+
+        // Eine Lesung jenseits der Frist der Werte-Fläche: die Steuerung meldet sich gerade nicht.
+        root.update("DELETE FROM device_measurement_sample WHERE entity_id = ?", s.entityId());
+        probe(w, s.entityId(), "erzeuger.kopf.programmstand", 2610, "good", jetzt.minusSeconds(600), 3);
+        assertThat(gesundheit(w, s.entityId())).isEqualTo("stale");
+        assertThat(quelleDerSteuerung(w, pin).health()).isEqualTo("stale");
+
+        // Ein Spiegel ist keine Lesung der Steuerung.
+        root.update("DELETE FROM device_measurement_sample WHERE entity_id = ?", s.entityId());
+        probe(w, s.entityId(), "erzeuger.a.p_nvp_w", 877100, "good", jetzt, 4);
+        root.update("UPDATE device_measurement_sample SET role = 'spiegel' WHERE entity_id = ?", s.entityId());
+        assertThat(gesundheit(w, s.entityId())).isEqualTo("never");
+    }
+
+    private String gesundheit(Welt w, UUID entity) {
+        return als(w.tenant(), () -> topologie.topology(w.site())).entities().stream()
+                .filter(e -> e.id().equals(entity)).findFirst().orElseThrow().health();
+    }
+
+    private SiteSourceDto quelleDerSteuerung(Welt w, String pin) {
+        return als(w.tenant(), () -> anlagen.siteSources(w.site())).stream()
+                .filter(q -> q.sourceId().equals(pin)).findFirst().orElseThrow();
     }
 
     private static void probe(Welt w, UUID entity, String key, long zahl, String qualitaet, Instant zeit, int seq) {

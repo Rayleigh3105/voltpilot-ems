@@ -1989,7 +1989,10 @@ export interface TopologyEntity {
   label: string | null;
   /** storage | producer | meter | consumer (steers the tile/flow semantics). */
   category: string;
-  /** ok | stale | never (5-min liveness window). */
+  /**
+   * ok | stale | never (5-min liveness window). An `anlagensteuerung` has no telemetry_v2 channel: its health is
+   * the newest reading of its Erzeuger image within 120 s (UEMS EZ-22).
+   */
   health: string;
   /**
    * WO eine Säule hängt (`haus` | `eigen`, Cockpit Phase 1 / C1) - nur bei

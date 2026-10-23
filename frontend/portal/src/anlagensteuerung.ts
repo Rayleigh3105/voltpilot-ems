@@ -58,11 +58,13 @@ export const PUNKT = {
   aAlter: 'erzeuger.a.a_alter_s',
   nvp: 'erzeuger.a.p_nvp_w',
   erzeugung: 'erzeuger.a.p_erzeugung_w',
+  anlageZustand: 'erzeuger.a.anlage_zustand',
   speicher: 'erzeuger.a.speicher_fuellstand',
   nbProzent: 'erzeuger.nb.n_p_prozent',
   dvKanal: 'erzeuger.dv.d_kanal',
   dvSoll: 'erzeuger.dv.d_soll_w',
   grenze: 'erzeuger.wirkung.p_grenze_w',
+  quelleP: 'erzeuger.wirkung.quelle_p',
   sBits: 'erzeuger.wirkung.s_bits',
 } as const;
 
@@ -190,6 +192,13 @@ export function einheitZustand(je: WerteJe, teNr: number): string | null {
   const roh = wertVon(je, einheitPunkt(teNr, 't_zustand'));
   if (roh == null) return null;
   return je.get(einheitPunkt(teNr, 't_zustand'))?.text ?? ZUSTAND_TEXT[roh] ?? null;
+}
+
+/** Der Zustand der ganzen Anlage (`erzeuger.a.anlage_zustand`, dasselbe Vokabular wie je Einheit); `null` ohne Wert. */
+export function anlageZustand(je: WerteJe): string | null {
+  const roh = wertVon(je, PUNKT.anlageZustand);
+  if (roh == null) return null;
+  return je.get(PUNKT.anlageZustand)?.text ?? ZUSTAND_TEXT[roh] ?? null;
 }
 
 // ---------------------------------------------------------------------------

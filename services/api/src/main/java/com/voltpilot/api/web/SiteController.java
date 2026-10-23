@@ -3,6 +3,7 @@ package com.voltpilot.api.web;
 import com.voltpilot.api.web.dto.SichtbareListe;
 import com.voltpilot.api.zugriff.TeilansichtDienst;
 
+import com.voltpilot.api.erzeuger.AnlagensteuerungLesung;
 import com.voltpilot.api.forecast.ForecastModelService;
 import com.voltpilot.api.forecast.ForecastModels;
 import com.voltpilot.api.history.HistoryRange;
@@ -58,6 +59,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -586,6 +588,15 @@ public class SiteController {
     @GetMapping("/{siteId}/sources")
     public List<SiteSourceDto> siteSources(@PathVariable UUID siteId) {
         geltungsbereich.requireSite(siteId);
-        return sourceStatus.forSite(siteId);
+        List<SiteSourceDto> quellen = sourceStatus.forSite(siteId);
+        return steuerungen == null ? quellen : steuerungen.inQuellen(siteId, quellen, Instant.now());
+    }
+
+    private AnlagensteuerungLesung steuerungen;
+
+    /** UEMS EZ-22: die Quelle einer Anlagensteuerung meldet sich mit der Lesung der Steuerung. */
+    @Autowired(required = false)
+    void setAnlagensteuerungLesung(AnlagensteuerungLesung steuerungen) {
+        this.steuerungen = steuerungen;
     }
 }
