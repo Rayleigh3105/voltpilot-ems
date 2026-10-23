@@ -1,0 +1,107 @@
+/* Die Karten über dem Cockpit (AnlageHinweise.tsx): „Ihre Anlage ist live“ und „Wo steht …?“. */
+.vp-anlage-hinweise {
+  display: grid;
+  gap: var(--vp-space-3);
+  margin-bottom: var(--vp-space-4);
+}
+.vp-anlage-hinweise:empty {
+  display: none;
+}
+.vp-hinweis {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-3);
+  padding: var(--vp-space-4);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-card, 16px);
+  background: var(--vp-surface);
+  box-shadow: var(--vp-shadow-sm, none);
+  min-width: 0;
+}
+.vp-hinweis-live {
+  padding-right: calc(var(--vp-space-4) + 36px);
+  border-color: var(--vp-ok-ink);
+  background: linear-gradient(135deg, var(--vp-mint-start), var(--vp-surface) 70%);
+}
+.vp-hinweis-symbol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--vp-paleblue-start);
+  color: var(--vp-action);
+}
+.vp-hinweis-live .vp-hinweis-symbol {
+  background: var(--vp-ok-ink);
+  color: #fff;
+}
+.vp-hinweis-text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.vp-hinweis-text h3 {
+  margin: 0 0 2px;
+  font-size: 1.05rem;
+  color: var(--vp-text-dark);
+}
+.vp-hinweis-text p {
+  margin: 0;
+  font-size: var(--vp-text-sm);
+  color: var(--vp-text-muted);
+}
+.vp-hinweis-knoepfe {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-2);
+  flex-shrink: 0;
+}
+.vp-hinweis-zu {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--vp-text-muted);
+  cursor: pointer;
+}
+.vp-hinweis-zu:hover {
+  background: var(--vp-bg-light);
+  color: var(--vp-text-dark);
+}
+.vp-hinweis-zu:focus-visible {
+  outline: 2px solid var(--vp-action);
+  outline-offset: 2px;
+}
+.vp-hinweis-form {
+  display: grid;
+  gap: var(--vp-space-3);
+  margin-top: var(--vp-space-3);
+}
+.vp-hinweis-form > :last-child {
+  justify-self: start;
+}
+@media (max-width: 560px) {
+  .vp-hinweis {
+    flex-wrap: wrap;
+  }
+  .vp-hinweis-text {
+    flex-basis: calc(100% - 36px - var(--vp-space-3));
+  }
+  .vp-hinweis-knoepfe {
+    margin-left: calc(36px + var(--vp-space-3));
+  }
+  .vp-hinweis-form > :last-child {
+    justify-self: stretch;
+  }
+}

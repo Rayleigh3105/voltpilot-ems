@@ -1,9 +1,9 @@
+import { loescheEntwurf, meinEntwurfSchluessel } from '../anlageEntwurf';
 import { useEffect, useRef, useState } from 'react';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { IconTile } from '../../designsystem/components/core/IconTile';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import type { Site } from '../api';
-import type { AnlegeRueckkehr } from '../anlegeNurMessen';
 import { hashForRoute, type Route } from '../nav';
 import { AnlageFlow } from './AnlageFlow';
 import { VerwerfenFrage } from './VerwerfenFrage';
@@ -22,7 +22,7 @@ export function AnlageAnlegenDrawer({
   onChanged,
   existingSites,
   standortId,
-  rueckkehr,
+  zurueck = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -45,7 +45,7 @@ export function AnlageAnlegenDrawer({
    */
   standortId?: string | null;
   /** Das Ende im Modus „nur messen“: ein Knopf zurück zum Wirt statt „Zu den Messstellen“. */
-  rueckkehr?: AnlegeRueckkehr | null;
+  zurueck?: boolean;
 }) {
   // The reload is DEFERRED to close: reloading the host's site list mid-flow
   // would re-render an empty-state host into the full page and unmount this
@@ -68,6 +68,8 @@ export function AnlageAnlegenDrawer({
 
   function close(ziel?: Route) {
     setFrage(false);
+    // Schließen ist ein bewusstes Ende: kein Entwurf (F9) wartet beim nächsten „Anlage anlegen“.
+    loescheEntwurf(meinEntwurfSchluessel());
     const created = createdSiteId.current;
     createdSiteId.current = null;
     onClose();
@@ -93,13 +95,13 @@ export function AnlageAnlegenDrawer({
         // Jede Eingabe in einem Schritt (auch in einem Dialog darüber) zählt als „noch nicht gespeichert“.
         <div onInput={() => setEingaben(true)}>
         <AnlageFlow
+          wirt="dialog"
           // Always a NEW Anlage here (never the wizard's resume-at-Gerät):
           // existing customers add their next Anlage with this drawer.
           sites={[]}
           existingSites={existingSites}
           standortId={standortId}
-          rueckkehr={rueckkehr}
-          waitForFirstData={false}
+          zurueck={zurueck}
           onSiteCreated={(s: Site) => {
             createdSiteId.current = s.id;
             // Was bis hier getippt war, ist gespeichert.

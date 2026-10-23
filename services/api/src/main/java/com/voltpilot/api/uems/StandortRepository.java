@@ -174,6 +174,23 @@ public class StandortRepository {
     }
 
     /** Der Standort im Zaun — leer, wenn es ihn nicht gibt ODER er einem anderen Mandanten gehört. */
+    /**
+     * Trägt der Standort noch den Namen, den ihm VoltPilot gab (Bestandsübernahme Regel 3), und hat ihn
+     * niemand umbenannt? Abgeleitet aus dem Protokoll (Anlage-Flow a1, D9: „Der Name folgt der Adresse,
+     * solange der Kunde ihn nicht selbst gesetzt hat“) - keine eigene Spalte, eine Wahrheit.
+     */
+    public boolean nameAutomatisch(UUID id, String name) {
+        Boolean ja = jdbc.queryForObject("""
+                SELECT EXISTS (SELECT 1 FROM ort_aenderung a
+                                WHERE a.objekt_art = 'standort' AND a.objekt_id = ? AND a.art = 'angelegt'
+                                  AND a.actor_sub IS NULL AND a.actor_name = ? AND a.neu ->> 'name' = ?)
+                   AND NOT EXISTS (SELECT 1 FROM ort_aenderung b
+                                    WHERE b.objekt_art = 'standort' AND b.objekt_id = ? AND b.art = 'bearbeitet'
+                                      AND jsonb_exists(b.neu, 'name'))""",
+                Boolean.class, id, OrtProtokoll.akteurName(ProtokollAkteur.bestandsuebernahme()), name, id);
+        return Boolean.TRUE.equals(ja);
+    }
+
     public Optional<Standort> finde(UUID id) {
         return jdbc.query("SELECT " + SPALTEN + " FROM standort WHERE id = ?",
                 StandortRepository::map, id).stream().findFirst();

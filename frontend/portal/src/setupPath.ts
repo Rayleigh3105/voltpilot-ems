@@ -114,16 +114,6 @@ export const SETUP_STATUS_LINE =
 
 export const SETUP_TITLE = 'Ihr Weg zum fertigen EMS';
 
-/**
- * Der Übergabe-Satz des AE5-Assistenten in den Einrichtungspfad (M5): der
- * Assistent legt die ANLAGE an, die Anlagen-Seite führt die KETTE zu Ende.
- * Er nennt die zwei verbleibenden Schritte und wirbt für KEINEN Modus (die
- * Profil-Vorauswahl bleibt reiner Vorlagen-Wähler, F5).
- */
-export const SETUP_NEXT_HINT =
-  'So geht es weiter: Auf Ihrer Anlagen-Seite übernehmen Sie die gemeldeten Geräte '
-  + 'und wählen danach Ihre Steuerung - wir führen Sie Schritt für Schritt.';
-
 export const SETUP_FOOT_NOTE =
   'Sobald Geräte und eine Steuerung da sind, baut sich diese Seite von selbst - '
   + 'aus genau dem, was Sie gewählt haben.';

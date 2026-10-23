@@ -5,6 +5,7 @@ import { Card } from '../designsystem/components/core/Card';
 import { Icon } from '../designsystem/components/core/Icon';
 import { ANMELDE_TEXT, AuthScreen, TrustRow } from './components/AuthScreen';
 import { currentRoles, isPlatformAdmin, login } from './auth';
+import { leseEntwurf, meinEntwurfSchluessel } from './anlageEntwurf';
 import { einrichtungSpaeter, merkeEinrichtungSpaeter } from './einrichtungSpaeter';
 import {
   api,
@@ -1232,14 +1233,31 @@ function UnifiedPortal() {
   const loadFailed =
     error != null && loaded && tenantReady && sites.length === 0 && devices.length === 0;
 
-  // First-run journey: until the customer has a device sending data, the whole
-  // portal IS the onboarding. No empty dashboard with disconnected forms.
+  // First-run journey: a customer without any Anlage gets the full-page assistant ONCE. Once an Anlage
+  // exists, what is still open (Box, Geräte, Steuerung) is the Einrichtungs-Karte in its cockpit - never
+  // the full page again (Anlage-Flow a1, D7; R7: vorher Banner, Einrichtungspfad und Kopfknopf zugleich).
   // Customers only - an admin browsing an empty tenant keeps the normal pages.
   const onboardingGewollt =
-    !isAdmin && loaded && !error && devices.length === 0 && !onboardingDismissed && darf('anlage.verwalten');
+    !isAdmin && loaded && !error && sites.length === 0 && devices.length === 0 && !onboardingDismissed
+    && darf('anlage.verwalten');
   useEffect(() => {
     if (onboardingGewollt) setOnboardingOffen(true);
   }, [onboardingGewollt]);
+  // F9 (Anlage-Flow a1, Paket 3): ein offener Anlege-Fluss dieses Tabs kommt nach Neuladen oder Anmeldung
+  // zurück - am selben Schritt, mit denselben Eingaben (`anlageEntwurf.ts`). Einmal je Laden geprüft.
+  const entwurfGeprueft = useRef(false);
+  useEffect(() => {
+    if (entwurfGeprueft.current || isAdmin || !loaded || error || !tenantReady) return;
+    entwurfGeprueft.current = true;
+    const entwurf = leseEntwurf(meinEntwurfSchluessel());
+    if (!entwurf || !darf('anlage.verwalten')) return;
+    if (entwurf.wirt === 'assistent') {
+      setOnboardingDismissed(false);
+      setOnboardingOffen(true);
+    } else {
+      setAddAnlageOpen(true);
+    }
+  }, [isAdmin, loaded, error, tenantReady, darf, setOnboardingDismissed]);
   const showOnboarding = !isAdmin && !onboardingDismissed && (onboardingGewollt || onboardingOffen);
 
   // The always-visible shell action for the one case with no obvious entry
@@ -1463,14 +1481,16 @@ function UnifiedPortal() {
             !isAdmin &&
             loaded &&
             !error &&
+            sites.length === 0 &&
             devices.length === 0 && darf('anlage.verwalten') && (
-              // The customer skipped the guided setup ("Später einrichten"):
-              // keep one clear way back in, instead of a dead-end dashboard.
+              // The customer skipped the guided setup ("Später einrichten") before the first
+              // Anlage: keep one clear way back in. With an Anlage the Einrichtungs-Karte in
+              // its cockpit is that way (D7) - no second prompt.
               <Card padding="lg" radius="lg" accent="primary" className="vp-resume-banner">
                 <div style={{ flex: '1 1 360px', minWidth: 0 }}>
-                  <h4 style={{ marginBottom: 4 }}>Ihre Anlage ist noch nicht verbunden</h4>
+                  <h4 style={{ marginBottom: 4 }}>Noch keine Anlage eingerichtet</h4>
                   <p className="vp-muted" style={{ margin: 0 }}>
-                    In wenigen Minuten startklar: Anlage anlegen, Gerät verbinden -
+                    In wenigen Minuten startklar: Adresse, Box, Anlage -
                     wir führen Sie Schritt für Schritt durch.
                   </p>
                 </div>

@@ -1,67 +1,25 @@
-import { parseDecimal } from './zahl';
-import type { MastrApplyInput, MastrPreview, SaveBatteryInput, SiteAsset } from './api';
-import { fmtNum } from './format';
+import type { MastrApplyInput, MastrPreview } from './api';
 import { FLOW_STEPS } from './anlageFlowSchritte';
 
 /**
- * Pure logic of the REGISTER-FIRST "Anlage anlegen" flow (captain
- * 2026-07-09): instead of typing PV and battery specs by hand, the customer
- * enters their MaStR number(s) and VoltPilot pulls the data from the
- * Marktstammdatenregister. Steps: 1 · Anlage (Name + Standort) ->
- * 2 · Register (PV + Speicher aus dem Register, Vorschau, Übernehmen; manual
- * entry is the always-reachable fallback) -> 3 · Anwendungen ("Wie soll Ihr
- * Speicher arbeiten?" - Speicherschonung + Optimierungs-Nutzungen, captain
- * design update 2026-07-16; changeable later on the Optimierung subpage) ->
- * 4 · Gerät (Geräte-ID verbinden) -> Fertig. Both hosts - the first-run
- * onboarding wizard and the "Anlage anlegen" drawer - render the same
- * `components/AnlageFlow.tsx`, which derives everything word- and step-related
- * from this module so it stays unit-testable without a DOM.
+ * Die reine Logik des Anlege-Flusses (Anlage-Flow a1): Schrittleiste und Satz darüber, Kennung der Box,
+ * Gebotszone, MaStR-Hilfen für „Aus dem Register holen“ (Schritt 3, `components/RegisterHolen.tsx`). Beide
+ * Einstiege - der Einrichtungs-Assistent und „Anlage anlegen“ - rendern `components/AnlageFlow.tsx`, das
+ * alles Wort- und Schrittbezogene von hier bezieht, damit es ohne DOM prüfbar bleibt.
  */
 
 /** Die Schrittleiste wohnt in `anlageFlowSchritte.ts` (Einstiegs-Bündel). */
 export { FLOW_STEPS };
 
-export type FlowStep = 1 | 2 | 3 | 4;
-
 /** Zahlwörter für die Schrittzahl - so weit, wie ein Assistent je reichen kann. */
 const ZAHLWORT = ['null', 'einem', 'zwei', 'drei', 'vier', 'fünf', 'sechs'] as const;
 
-/**
- * „In vier Schritten ist Ihre Anlage startklar." — ABGELEITET aus
- * {@link FLOW_STEPS}, nicht getippt.
- *
- * Die Copy sagte „In drei Schritten" über VIER Schritt-Punkten: seit AE5 den
- * Gerät-Schritt vorzog und den vierten Schritt ergänzte, war sie falsch, und niemand
- * bemerkte es, weil Satz und Schrittleiste keine gemeinsame Quelle hatten.
- * Jetzt haben sie eine — ein fünfter Schritt korrigiert den Satz von selbst.
- */
+/** „In drei Schritten ist Ihre Anlage startklar." — ABGELEITET aus {@link FLOW_STEPS}, nicht getippt. */
 export const STARTKLAR_SATZ = startklarSatz(FLOW_STEPS.length);
 
-/**
- * Derselbe Satz für die Schritte, die der Fluss wirklich zeigt — der Modus „nur messen“
- * hat ohne „Betrieb“ drei (`anlegeNurMessen.ts`).
- */
+/** Derselbe Satz für die Schritte, die der Fluss wirklich zeigt (mit Standort-Schritt vier). */
 export function startklarSatz(anzahl: number): string {
   return `In ${ZAHLWORT[anzahl] ?? anzahl} Schritten ist Ihre Anlage startklar.`;
-}
-
-/**
- * Where the flow starts: a customer who already created an Anlage (but has no
- * device yet - wizard restart, "Später einrichten") resumes at the Register
- * step - unless the Anlage already carries register or hand-entered data
- * (Anlage-Flow a1, F6: nach jedem Neuladen fragte der Assistent die
- * MaStR-Nummer erneut); then the Box step is next.
- */
-export function initialFlowStep(hasSite: boolean, assets: readonly SiteAsset[] | null = null): FlowStep {
-  if (!hasSite) return 1;
-  return hatAnlagendaten(assets) ? 3 : 2;
-}
-
-/** Trägt die Anlage schon Register- oder Speicherdaten (aus dem Register-Schritt)? */
-export function hatAnlagendaten(assets: readonly SiteAsset[] | null): boolean {
-  return (assets ?? []).some(
-    (a) => a.registry != null || (a.type === 'pv' && a.pvCapacityKwp != null) || (a.type === 'battery' && a.capacityKwh != null),
-  );
 }
 
 /** Bidding zone from the address' country; everything else defaults to DE-LU. */
@@ -114,36 +72,6 @@ export const DEVICE_ID_TAKEN_MSG =
   'Diese Box ist bereits mit einem anderen Konto verbunden. Bitte prüfen Sie die Kennung - oder kontaktieren Sie unseren Support.';
 
 export { parseDecimal } from './zahl';
-
-export type BatteryFormResult =
-  | { ok: true; value: SaveBatteryInput }
-  | { ok: false; error: string };
-
-/**
- * Validate the manual Speicher fallback's three fields (German comma decimals
- * accepted). The controlling device is deliberately NOT part of the result:
- * omitting `deviceId` lets the backend auto-link the Anlage's single device -
- * the claimed inverter controls the battery without any extra wiring.
- */
-export function parseBatteryForm(input: {
-  capacity: string;
-  maxCharge: string;
-  maxDischarge: string;
-}): BatteryFormResult {
-  const cap = parseDecimal(input.capacity);
-  const chg = parseDecimal(input.maxCharge);
-  const dis = parseDecimal(input.maxDischarge);
-  if (cap == null || cap <= 0 || chg == null || chg <= 0 || dis == null || dis <= 0) {
-    return {
-      ok: false,
-      error: 'Bitte geben Sie Kapazität, Lade- und Entladeleistung als positive Zahlen an.',
-    };
-  }
-  return {
-    ok: true,
-    value: { capacityKwh: cap, maxChargeKw: chg, maxDischargeKw: dis },
-  };
-}
 
 // --- MaStR (Marktstammdaten) helpers: the register-first heart of the flow ---
 
@@ -222,24 +150,6 @@ export function buildMastrApply(previews: MastrPreview[]): MastrApplyInput {
     }
   }
   return input;
-}
-
-/** One-line PV recap for the Fertig screen, e.g. "9,8 kWp · Süd 30°". */
-export function mastrPvSummary(p: MastrPreview): string {
-  const parts: string[] = [];
-  if (p.powerKw != null) parts.push(fmtNum(p.powerKw, 'kWp', 2));
-  const orient = [p.azimuthLabel, p.tiltLabel].filter(Boolean).join(' ');
-  if (orient) parts.push(orient);
-  return parts.join(' · ') || 'aus dem Register';
-}
-
-/** One-line Speicher recap for the Fertig screen, e.g. "10 kWh · 5 kW". */
-export function mastrStorageSummary(p: MastrPreview): string {
-  const parts: string[] = [];
-  if (p.storageCapacityKwh != null) parts.push(fmtNum(p.storageCapacityKwh, 'kWh', 1));
-  if (p.powerKw != null) parts.push(fmtNum(p.powerKw, 'kW', 2));
-  if (p.batteryTechnology) parts.push(p.batteryTechnology);
-  return parts.join(' · ') || 'aus dem Register';
 }
 
 /** The register plausibility line, e.g. "89551 Königsbronn". Null when absent. */

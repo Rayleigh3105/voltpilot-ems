@@ -1607,8 +1607,12 @@ paths:
         site, then claims devices into it. Implemented in services/api.
         Additively (UEMS AP-02 IP-9) the new site is assigned to its Standort in
         the SAME transaction, from the day of its `created_at` in the Standort's
-        time zone: `standortId` if given; without it the one Standort of the
-        Kundenbereich when there is exactly one; none when there is none (as
+        time zone: `standortId` if given; without it - for the platform and
+        service accounts only, as a transition - the one Standort of the
+        Kundenbereich when there is exactly one (a customer account must choose
+        already with one Standort, 422 `standort_waehlen`, Anlage-Flow a1 F16:
+        never silently at the Standort of another Anlage; the portal always
+        sends the choice); none when there is none (as
         before - the site stays "noch nicht zugeordnet" until the
         Bestandsübernahme or the Vorschau); with several the choice is required
         (422 `standort_waehlen`). The response is the unchanged `Site`; `GET
@@ -2375,7 +2379,11 @@ paths:
         with the existing device (at its original site) instead of a conflict.
         `externalRef` is globally unique, so a device claimed by ANOTHER tenant -
         which RLS hides - yields 409. The target site must belong to the caller's
-        tenant, else 404.
+        tenant, else 404. With `Idempotency-Key` (Anlage-Flow a1, Paket 2) a
+        retry after a lost answer gets exactly the first answer back; the same
+        key with another box or site is 422 `anfrage_kennung_anders`.
+      parameters:
+        - $ref: "#/components/parameters/AnfrageKennung"
       requestBody:
         required: true
         content:
@@ -5351,6 +5359,41 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/SiteAsset" }
         "400": { description: Neither pv nor storage present, or values out of range. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { description: Site not found for this tenant (RLS). }
+  /api/v1/sites/{siteId}/pv:
+    put:
+      tags: [registry]
+      summary: Die Leistung der Solarmodule von Hand (ohne MaStR-Nummer).
+      description: >
+        Anlage-Flow a1, Paket 2 („Was gehört zu Ihrer Anlage?“): sets the site's
+        PV sum (`asset.pv_capacity_kwp` of the primary `pv` row) like
+        `mastr-apply`, without a register number. Alignment and module count stay
+        as they are; the registry provenance is cleared when the value changes (a
+        hand value is no register value). An adopted Erzeuger books its own kWp
+        on top later.
+      parameters:
+        - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [capacityKwp]
+              properties:
+                capacityKwp:
+                  type: number
+                  description: "Module power (kWp), > 0, at most 100000 and two decimals."
+      responses:
+        "200":
+          description: The site's asset rows after the save.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SiteAsset" }
+        "400": { description: "Missing/invalid value - `{code: anfrage_ungueltig, feld, message}`." }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { description: Site not found for this tenant (RLS). }
   /api/v1/sites/{siteId}/battery:
@@ -29854,12 +29897,15 @@ components:
       type: object
       description: >
         Der Standort, dem eine Anlage heute zugeordnet ist (UEMS AP-02 IP-3);
-        `gueltigAb` ist der Beginn der laufenden Zuordnung.
+        `gueltigAb` ist der Beginn der laufenden Zuordnung. `adresseFehlt` (additiv,
+        Anlage-Flow a1 D9): der Standort hat noch keine vollständige Adresse (Straße,
+        Ort, Land) - das Portal fragt dann mit der Karte „Wo steht …?“.
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
         kurzzeichen: { type: string }
         gueltigAb: { type: string, format: date }
+        adresseFehlt: { type: boolean }
     SiteDetail:
       description: GET /api/v1/sites/{siteId} - the Site fields unchanged, plus `standort`.
       allOf:

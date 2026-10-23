@@ -46,7 +46,6 @@ import {
   keineAnlageSatz,
   keineAnlageWeg,
   MESSANLAGE_ANLEGEN,
-  MESSANLAGE_RUECKKEHR,
   komponentenSatz,
   MESSEN_SCHRITTE,
   MESSEN_TITEL,
@@ -1014,7 +1013,7 @@ export function MessenAssistent({
         <AnlageAnlegenDrawerLazy
           open
           standortId={unterfluss.standortId}
-          rueckkehr={MESSANLAGE_RUECKKEHR}
+          zurueck
           existingSites={sites ?? undefined}
           onClose={() => setUnterfluss(null)}
           // Die neue Anlage steht erst nach dem Nachlesen an diesem Standort; Schritt 2 bleibt.

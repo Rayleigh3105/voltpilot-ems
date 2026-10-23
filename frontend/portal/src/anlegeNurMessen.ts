@@ -9,7 +9,7 @@
  * (`uebersicht.steuernSpricht`, Steuern-Regel aus PR 779): die neue Anlage entsteht
  * an einem Standort. Spricht dieser Standort von Steuern — nimmt mindestens eine
  * seiner Anlagen teil —, läuft der Fluss Zeichen für Zeichen wie heute. Sonst spricht
- * er kein Wort von Steuern, Geld oder Erlösen: kein Schritt „Betrieb", keine
+ * er kein Wort von Steuern, Geld oder Erlösen: keine
  * Veräußerungsform, keine Feineinstellungen, und am Ende geht es ohne Umweg zu den
  * Messstellen. Nicht ausgegraut — nicht vorhanden.
  *
@@ -77,14 +77,12 @@ export function anlegeArt(funktionen: Funktionen | null, ort: AnlegeOrt = {}): A
 }
 
 /**
- * Die Schritte der Leiste. „Betrieb" fragt nach Betriebsmodell und Speicherschonung —
- * er gehört zum Steuern. Er steht nur, wenn der Fluss wie heute spricht; solange das
- * noch nicht feststeht (`null`), fehlt er (sonst stünde er einen Augenblick da und
- * verschwände, dieselbe Falle wie beim Geld, `uems-leerzustaende.md` Falle 4).
+ * Die Schritte der Leiste: immer die drei des Anlege-Flusses (Anlage-Flow a1, D6: „Betrieb" ist entfallen,
+ * die Leiste ändert sich nie); begann der Fluss mit dem Standort (Unternehmen ohne Standort), steht er
+ * davor - abgehakt, nicht verschwunden (F7).
  */
 export function anlegeSchritte(art: AnlegeArt | null): readonly string[] {
-  if (art === 'standort_zuerst') return ['Standort', ...FLOW_STEPS.filter((s) => s !== 'Betrieb')];
-  return art === 'wie_heute' ? FLOW_STEPS : FLOW_STEPS.filter((s) => s !== 'Betrieb');
+  return art === 'standort_zuerst' ? ['Standort', ...FLOW_STEPS] : FLOW_STEPS;
 }
 
 /**
@@ -101,16 +99,6 @@ export function anlageLeertext(
   return art === 'nur_messen' ? nurMessen : wieHeute;
 }
 
-/**
- * Kommt der Fluss aus einem Assistenten, der danach weitergeht („Messen & Auswerten“,
- * Knopf „Messanlage anlegen“), endet der Modus „nur messen“ mit EINEM Knopf zurück
- * dorthin — ohne Ziel, der Wirt nimmt den Kunden wieder auf. Der Wirt nennt Satz und Knopf.
- */
-export interface AnlegeRueckkehr {
-  satz: string;
-  knopf: string;
-}
-
 /** Der Knopf am Ende des Modus „nur messen". */
 export const ZU_DEN_MESSSTELLEN = 'Zu den Messstellen';
 
@@ -118,18 +106,6 @@ export const ZU_DEN_MESSSTELLEN = 'Zu den Messstellen';
 export function messstellenZiel(standort: FunktionStandort | null): Route {
   return standort ? standortMessstellenRoute(standort.id) : pageRoute('portfolio-messstellen');
 }
-
-/**
- * Der Übergabe-Satz am Ende — statt `SETUP_NEXT_HINT`, der „… wählen danach Ihre
- * Steuerung" sagt.
- */
-export function nurMessenWeiterSatz(standort: FunktionStandort | null): string {
-  const wo = standort ? `„Messstellen“ von ${standort.name}` : '„Messstellen“';
-  return `So geht es weiter: Unter ${wo} legen Sie fest, was gemessen wird.`;
-}
-
-/** Die Bestätigung nach den ersten Daten (Einrichtungs-Assistent) — ohne „optimierten Speicher-Fahrplan". */
-export const ERSTE_DATEN_NUR_MESSEN = 'Ihr Gerät sendet Daten. Im Portal sehen Sie ab jetzt die Messwerte Ihrer Anlage.';
 
 /**
  * DIE WORTLISTE des Modus „nur messen": Wortstämme über Steuern, Geld und Erlöse,

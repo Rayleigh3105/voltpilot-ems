@@ -1,6 +1,5 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { SiteAsset } from './api';
 import { describe, expect, it } from 'vitest';
 import {
   buildMastrApply,
@@ -8,13 +7,9 @@ import {
   DEVICE_ID_UNKNOWN_MSG,
   FLOW_STEPS,
   STARTKLAR_SATZ,
-  initialFlowStep,
   mastrLocationLabel,
-  mastrPvSummary,
-  mastrStorageSummary,
   normalizeDeviceIdInput,
   normalizeSeeNummer,
-  parseBatteryForm,
   parseDecimal,
   pickStorageNumber,
   validateSeeNummer,
@@ -75,35 +70,16 @@ function storagePreview(overrides: Partial<MastrPreview> = {}): MastrPreview {
   };
 }
 
-describe('the register-first "Anlage anlegen" flow (captain 2026-07-09)', () => {
-  it('has exactly the four steps, Anlage -> Register -> Gerät -> Betrieb (AE5: device before the adaptive step)', () => {
-    // Der vierte Schritt heisst seit Steuerung Stufe 0 „Betrieb": „Anwendung"
-    // ist kein Kundenwort mehr (Captain 25.08.2026), und der Schritt fragt
-    // nach dem BETRIEB der Anlage - Profil, EIN Betriebsmodell, Speicher.
-    expect(FLOW_STEPS).toEqual(['Anlage', 'Register', 'Gerät', 'Betrieb']);
+describe('der Anlege-Fluss (Anlage-Flow a1, Konzept §5.3)', () => {
+  it('hat drei feste Schritte - Adresse, Box, Anlage; „Register“ und „Betrieb“ sind keine Schritte mehr (R4, D6)', () => {
+    expect(FLOW_STEPS).toEqual(['Adresse', 'Box', 'Anlage']);
   });
 
   it('sagt die Schrittzahl ABGELEITET - die Copy kann nicht mehr veralten', () => {
-    // Der behobene Fehler: „In drei Schritten" ueber VIER Schritt-Punkten,
-    // seit AE5 den Nutzung-Schritt ergaenzte (Mobil-Umbau Stufe 4).
-    expect(STARTKLAR_SATZ).toBe('In vier Schritten ist Ihre Anlage startklar.');
+    expect(STARTKLAR_SATZ).toBe('In drei Schritten ist Ihre Anlage startklar.');
     expect(STARTKLAR_SATZ).toContain(
       ['null', 'einem', 'zwei', 'drei', 'vier', 'fünf', 'sechs'][FLOW_STEPS.length],
     );
-  });
-
-  it('starts fresh customers at the Anlage step', () => {
-    expect(initialFlowStep(false)).toBe(1);
-  });
-
-  it('resumes a customer who already created an Anlage at the Register step', () => {
-    expect(initialFlowStep(true)).toBe(2);
-    // F6 (Anlage-Flow a1): mit Register- oder Speicherdaten weiter bei der Box, nie wieder beim Register.
-    const asset = { type: 'pv', registry: null, pvCapacityKwp: null, capacityKwh: null } as unknown as SiteAsset;
-    expect(initialFlowStep(true, [asset])).toBe(2);
-    expect(initialFlowStep(true, [{ ...asset, pvCapacityKwp: 6.05 }])).toBe(3);
-    expect(initialFlowStep(true, [{ ...asset, registry: 'mastr' }])).toBe(3);
-    expect(initialFlowStep(true, [{ ...asset, type: 'battery', capacityKwh: 10 }])).toBe(3);
   });
 });
 
@@ -142,33 +118,6 @@ describe('parseDecimal (German comma accepted)', () => {
   it('is null for empty or garbage', () => {
     expect(parseDecimal('')).toBeNull();
     expect(parseDecimal('abc')).toBeNull();
-  });
-});
-
-describe('parseBatteryForm (manual Speicher fallback, optional by design)', () => {
-  it('accepts the three positive values incl. German commas', () => {
-    const r = parseBatteryForm({ capacity: '10,5', maxCharge: '5', maxDischarge: '4,6' });
-    expect(r).toEqual({
-      ok: true,
-      value: { capacityKwh: 10.5, maxChargeKw: 5, maxDischargeKw: 4.6 },
-    });
-  });
-
-  it('never includes a deviceId - the claimed inverter auto-links backend-side', () => {
-    const r = parseBatteryForm({ capacity: '10', maxCharge: '5', maxDischarge: '5' });
-    expect(r.ok).toBe(true);
-    if (r.ok) expect('deviceId' in r.value).toBe(false);
-  });
-
-  it.each([
-    { capacity: '', maxCharge: '5', maxDischarge: '5' },
-    { capacity: '0', maxCharge: '5', maxDischarge: '5' },
-    { capacity: '10', maxCharge: '-1', maxDischarge: '5' },
-    { capacity: '10', maxCharge: '5', maxDischarge: 'abc' },
-  ])('refuses non-positive/garbage input with one German message (%o)', (input) => {
-    const r = parseBatteryForm(input);
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.error).toMatch(/positive Zahlen/);
   });
 });
 
@@ -244,18 +193,7 @@ describe('buildMastrApply (maps confirmed previews onto the apply payload)', () 
   });
 });
 
-describe('MaStR summary + plausibility helpers (Fertig screen)', () => {
-  it('summarizes PV and storage as one line each', () => {
-    expect(mastrPvSummary(pvPreview())).toBe('9,80 kWp · Süd 30°');
-    expect(mastrStorageSummary(storagePreview())).toBe('10,0 kWh · 5,00 kW · Lithium');
-  });
-
-  it('falls back to "aus dem Register" when the record is bare', () => {
-    expect(mastrPvSummary(pvPreview({ powerKw: null, azimuthLabel: null, tiltLabel: null }))).toBe(
-      'aus dem Register',
-    );
-  });
-
+describe('MaStR plausibility helper („Aus dem Register holen“)', () => {
   it('reads the plz/ort plausibility label, null when absent', () => {
     expect(mastrLocationLabel(pvPreview())).toBe('89551 Königsbronn');
     expect(mastrLocationLabel(pvPreview({ plz: null, ort: null }))).toBeNull();

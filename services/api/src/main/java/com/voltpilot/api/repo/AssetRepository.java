@@ -115,6 +115,26 @@ public class AssetRepository {
     }
 
     /**
+     * Create-or-update the site's PV asset from a customer-entered module power (the manual,
+     * non-MaStR path of the Anlage-Flow a1, Paket 2). Like {@link #applyPv} it sets the site's PV
+     * sum; the registry provenance is cleared when the value changes - a hand value is no register
+     * value - and ausrichtung/module stay as they are.
+     */
+    public void savePv(UUID tenantId, UUID siteId, BigDecimal capacityKwp) {
+        jdbc.update(
+                "INSERT INTO asset (tenant_id, site_id, type, pv_capacity_kwp) VALUES (?, ?, 'pv', ?) "
+                        + "ON CONFLICT (site_id, type) WHERE is_primary DO UPDATE SET "
+                        + "registry = CASE WHEN asset.pv_capacity_kwp IS DISTINCT FROM EXCLUDED.pv_capacity_kwp "
+                        + "THEN NULL ELSE asset.registry END, "
+                        + "registry_unit_id = CASE WHEN asset.pv_capacity_kwp IS DISTINCT FROM "
+                        + "EXCLUDED.pv_capacity_kwp THEN NULL ELSE asset.registry_unit_id END, "
+                        + "registry_fetched_at = CASE WHEN asset.pv_capacity_kwp IS DISTINCT FROM "
+                        + "EXCLUDED.pv_capacity_kwp THEN NULL ELSE asset.registry_fetched_at END, "
+                        + "pv_capacity_kwp = EXCLUDED.pv_capacity_kwp",
+                tenantId, siteId, capacityKwp);
+    }
+
+    /**
      * Set the battery's wear cost from a customer Speicherschonung preset (FK4).
      * Deliberately touches ONLY {@code wear_cost_ct_per_kwh} - the other admin
      * optimizer overrides on the same row ({@code soc_min_pct}/{@code

@@ -241,7 +241,15 @@ public class StandortService {
         Instant jetzt = uhr.instant();
         ZoneId zone = ZoneId.of(w.zeitzone());
         LocalDate heute = tag(jetzt, zone);
-        nameFrei(baum(), w.name(), heute, s.kurzzeichen());
+        Baum baum = baum();
+        // Anlage-Flow a1, D9: ein automatisch angelegter Standort heißt nach seiner Adresse, sobald er eine
+        // bekommt - solange der Kunde den Namen nicht selbst gesetzt hat (er schickt ihn unverändert mit).
+        if (AKTIV.equals(zustand) && entwurf && w.name().equals(s.name())
+                && standorte.nameAutomatisch(id, s.name())) {
+            w = new Werte(nameAusAdresse(baum, w.adresse(), heute, s), w.kurzzeichen(), w.adresse(), w.zeitzone(),
+                    w.nutzung(), w.notiz(), w.lage());
+        }
+        nameFrei(baum, w.name(), heute, s.kurzzeichen());
         if (!w.kurzzeichen().equals(s.kurzzeichen())) {
             kurzzeichen.pruefeFrei(w.kurzzeichen(), id);
         }
@@ -262,11 +270,12 @@ public class StandortService {
             return lesen(id, heute);
         }
         UUID tenant = TenantContext.get();
-        schreibe(w.name(), w.kurzzeichen(), id, heute, () -> transaktion.execute(tx -> {
-            Adresse ad = w.adresse();
-            Lage lage = w.lage();
-            if (!standorte.bearbeiten(id, new Stammdaten(w.name(), w.kurzzeichen(), ad.strasse(), ad.plz(),
-                    ad.ort(), ad.land(), w.zeitzone(), w.nutzung(), w.notiz(),
+        Werte wf = w;
+        schreibe(wf.name(), wf.kurzzeichen(), id, heute, () -> transaktion.execute(tx -> {
+            Adresse ad = wf.adresse();
+            Lage lage = wf.lage();
+            if (!standorte.bearbeiten(id, new Stammdaten(wf.name(), wf.kurzzeichen(), ad.strasse(), ad.plz(),
+                    ad.ort(), ad.land(), wf.zeitzone(), wf.nutzung(), wf.notiz(),
                     lage == null ? null : lage.breitengrad(), lage == null ? null : lage.laengengrad(), zustand))) {
                 throw archiviert(finde(id));
             }
@@ -396,6 +405,31 @@ public class StandortService {
     }
 
     // ------------------------------------------------------------ Urteile
+
+    /**
+     * Der Name aus der Adresse (D9): die Straße mit Hausnummer, ist sie unter den Standorten schon
+     * vergeben, Straße und Ort - wie das Portal einen Standort an einer anderen Adresse benennt
+     * ({@code anlageOrt.ts standortNamen}). Ist beides belegt, bleibt der bisherige Name.
+     */
+    private static String nameAusAdresse(Baum b, Adresse a, LocalDate heute, StandortRepository.Standort s) {
+        List<String> kandidaten = new ArrayList<>();
+        if (a.strasse() != null && !a.strasse().isBlank()) {
+            kandidaten.add(a.strasse().strip());
+            if (a.ort() != null && !a.ort().isBlank()) {
+                kandidaten.add(a.strasse().strip() + ", " + a.ort().strip());
+            }
+        } else if (a.ort() != null && !a.ort().isBlank()) {
+            kandidaten.add(a.ort().strip());
+        }
+        for (String k : kandidaten) {
+            String name = k.length() > OrtFelder.NAME_HOECHSTENS ? k.substring(0, OrtFelder.NAME_HOECHSTENS) : k;
+            if (OrtsbaumAbleitung.nameBelegt(b.baum(), OrtArt.STANDORT, null, name, heute, s.kurzzeichen())
+                    .isEmpty()) {
+                return name;
+            }
+        }
+        return s.name();
+    }
 
     private void nameFrei(Baum b, String name, LocalDate heute, String ausser) {
         Optional<OrtsbaumAbleitung.Ort> belegt =

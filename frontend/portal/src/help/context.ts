@@ -18,6 +18,7 @@ export function helpForRoute(route: Route): HelpArticleId | null {
   return null;
 }
 
+/** Hilfe je Schritt des Anlege-Flusses: Adresse und Anlage erklärt „Eine Anlage anlegen“, die Box ihr Artikel. */
 export function helpForSetupStep(step: number): HelpArticleId {
-  return step <= 2 ? 'anlage-anlegen' : step === 4 ? 'betriebsmodelle' : 'box-verbinden';
+  return step === 2 ? 'box-verbinden' : 'anlage-anlegen';
 }

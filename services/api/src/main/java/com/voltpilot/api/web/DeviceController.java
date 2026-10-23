@@ -88,6 +88,16 @@ public class DeviceController {
         this.leadDevices = service;
     }
 
+    /** Die Route des Verbindens für die Anfrage-Kennung (Anlage-Flow a1, Paket 2). */
+    static final String ROUTE_VERBINDEN = "POST /api/v1/devices/claim";
+
+    private AnfrageKennungen anfrageKennungen;
+
+    @org.springframework.beans.factory.annotation.Autowired
+    void anfrageKennungen(AnfrageKennungen kennungen) {
+        this.anfrageKennungen = kennungen;
+    }
+
     /** UEMS AP-15 §5.5: eine abgemeldete Mitglieds-Box scheidet aus der Gemeinsamen Steuerung aus. */
     private com.voltpilot.api.uems.GemeinsameSteuerungAusscheiden verbundAusscheiden;
 
@@ -147,12 +157,38 @@ public class DeviceController {
     @PostMapping("/claim")
     @Recht(value = "geraet.einrichten", ziel = RechtZiel.DIENST)
     @Transactional
-    public ResponseEntity<DeviceDto> claim(@Valid @RequestBody DeviceClaimRequest request,
-            org.springframework.security.core.Authentication auth) {
+    public ResponseEntity<?> claim(@Valid @RequestBody DeviceClaimRequest request,
+            org.springframework.security.core.Authentication auth,
+            @org.springframework.web.bind.annotation.RequestHeader(value = AnfrageKennungen.KOPF,
+                    required = false) String anfrageKopf) {
         UUID tenantId = TenantContext.get();
         if (tenantId == null) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "No tenant in token");
         }
+        // Anlage-Flow a1 (Paket 2): dieselbe Anfrage-Kennung wie an POST /sites und /standorte. Das
+        // Verbinden war schon über die Kennung der Box idempotent; die Anfrage-Kennung gibt beim
+        // Wiederholen nach einer verlorenen Antwort genau die erste Antwort zurück und lehnt dieselbe
+        // Kennung mit einer anderen Box oder Anlage ab (422 anfrage_kennung_anders).
+        String kennung = anfrageKennungen == null ? null : AnfrageKennungen.kennung(anfrageKopf);
+        String fingerabdruck = kennung == null ? null : anfrageKennungen.fingerabdruck(request);
+        if (kennung != null) {
+            anfrageKennungen.sperren(ROUTE_VERBINDEN, kennung);
+            Optional<AnfrageKennungen.Gemerkt> gemerkt = anfrageKennungen.gemerkt(ROUTE_VERBINDEN, kennung,
+                    fingerabdruck);
+            if (gemerkt.isPresent()) {
+                return AnfrageKennungen.antwort(gemerkt.get());
+            }
+        }
+        ResponseEntity<DeviceDto> antwort = verbinden(request, auth, tenantId);
+        if (kennung != null) {
+            anfrageKennungen.merken(ROUTE_VERBINDEN, kennung, fingerabdruck,
+                    HttpStatus.valueOf(antwort.getStatusCode().value()), antwort.getBody());
+        }
+        return antwort;
+    }
+
+    private ResponseEntity<DeviceDto> verbinden(DeviceClaimRequest request,
+            org.springframework.security.core.Authentication auth, UUID tenantId) {
         // The target site must belong to the caller's tenant (RLS-checked).
         if (!geltungsbereich.siteVisible(request.siteId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Site not found");
@@ -365,8 +401,7 @@ public class DeviceController {
 
     /** Ein Kundenkonto (UEMS AP-03 IP-3, Kontoart {@code benutzer}) - weder Plattform noch Servicekonto. */
     private static boolean kundenkonto(org.springframework.security.core.Authentication auth) {
-        return auth != null && auth.getAuthorities().stream().anyMatch(a ->
-                com.voltpilot.api.config.KeycloakRealmRoleConverter.KONTO_BENUTZER.equals(a.getAuthority()));
+        return Kundenkonto.ist(auth);
     }
 
     /**

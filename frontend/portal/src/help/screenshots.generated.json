@@ -85,23 +85,23 @@
     "title": "Eine Anlage einrichten",
     "file": "anlage-anlegen.png",
     "width": 1192,
-    "height": 1400,
+    "height": 1263,
     "alt": "Eine Anlage einrichten. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
         "x": 31.63,
-        "y": 35.76,
-        "text": "Geben Sie der Anlage einen wiedererkennbaren Namen."
+        "y": 35.26,
+        "text": "Wo steht die Anlage? Am selben Ort oder an einer anderen Adresse - die Wahl nennt ihre Folge."
       },
       {
         "x": 31.63,
-        "y": 46.72,
-        "text": "Der Standort hilft bei der Zuordnung der Wettervorhersage."
+        "y": 61.91,
+        "text": "Ein Name, unter dem Sie die Anlage wiederfinden."
       },
       {
         "x": 31.63,
-        "y": 92.2,
-        "text": "Mit Weiter speichern Sie diesen Schritt und gelangen zu den Registerdaten."
+        "y": 87.09,
+        "text": "Mit Weiter entsteht die Anlage, und es geht zur Box."
       }
     ]
   },
@@ -109,22 +109,22 @@
     "title": "Die Geräte-ID zuordnen",
     "file": "box-verbinden.png",
     "width": 640,
-    "height": 544,
+    "height": 566,
     "alt": "Die Geräte-ID zuordnen. Aufnahme des VoltPilot-Portals mit fiktiven Daten. Die nummerierten Stellen werden unter dem Bild erklärt.",
     "callouts": [
       {
         "x": 8.28,
-        "y": 54.37,
+        "y": 56.12,
         "text": "Übertragen Sie die vollständige VoltPilot-Geräte-ID."
       },
       {
         "x": 8.28,
-        "y": 71.15,
+        "y": 72.26,
         "text": "Prüfen Sie die Anlage, der die Box zugeordnet werden soll."
       },
       {
-        "x": 59.91,
-        "y": 90.06,
+        "x": 59.92,
+        "y": 90.44,
         "text": "Das Hinzufügen ordnet die Box zu; die Datenverbindung prüfen Sie anschließend."
       }
     ]
@@ -138,12 +138,12 @@
     "callouts": [
       {
         "x": 13.33,
-        "y": 40.14,
+        "y": 42.72,
         "text": "Die Geräte-ID bleibt während der Eingabe sichtbar."
       },
       {
         "x": 13.33,
-        "y": 50.97,
+        "y": 53.55,
         "text": "Die gewählte Anlage bestimmt den Standort der Zuordnung."
       },
       {

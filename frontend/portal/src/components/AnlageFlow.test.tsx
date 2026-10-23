@@ -8,10 +8,11 @@ import {
   type MastrPreview,
   type Site,
   type SiteAsset,
+  type EntityLocalSetup,
   type SiteEntities,
 } from '../api';
-import type { SiteProfile } from '../profiles';
-import { anwendungLabel } from '../anwendungen';
+import { entitiesApi } from '../entitiesApi';
+import { anlageRoute } from '../nav';
 import { ahrenbergFunktionen } from '../test/funktionenFixtures';
 
 // The adaptive Nutzung step reads isPlatformAdmin() (admin: bootstrap +
@@ -154,194 +155,271 @@ const emptyEntities: SiteEntities = {
   staleOnDevice: [],
 };
 
-/**
- * Eine Regal-Karte, wie der Server sie liefert (Anwendungs-Programm Stufe 2).
- * `requirements` entscheidet, ob die Preset-Vorauswahl sie wirklich anhakt.
- */
-function karte(id: string, over: Partial<SiteProfile> = {}): SiteProfile {
+/** Was eine Box meldet (`/entities` → `localSetup`). */
+function gemeldet(over: Partial<EntityLocalSetup>): EntityLocalSetup {
   return {
-    id,
-    // Der Server schickt das Label aus DERSELBEN Katalog-Datei - eine
-    // erfundene Beschriftung würde etwas prüfen, das es nie gibt.
-    label: anwendungLabel(id),
-    state: null,
-    derivedActive: false,
-    active: false,
-    unlocks: { views: [], widgets: [], moneyStream: null },
-    requirements: [],
-    blockedReason: null,
-    origin: null,
-    flowRef: null,
-    gatedNodeTypes: [],
-    gatedNodesEnabled: true,
+    id: 'src-1',
+    kind: 'source',
+    role: 'pv-generation',
+    brand: 'Fronius',
+    model: 'Symo 10.0',
+    label: null,
+    reportedAt: '2026-10-23T10:00:00Z',
+    adoptedEntityId: null,
     ...over,
   };
 }
 
-/** Die Abrufe, die der Anwendungen-Schritt beim Mounten macht (Kundenpfad). */
-function mockAdaptiveReads(profiles: SiteProfile[] = []) {
-  vi.spyOn(api, 'siteEntities').mockResolvedValue(emptyEntities);
-  vi.spyOn(api, 'siteProfiles').mockResolvedValue({ profiles });
+function mitFund(localSetup: EntityLocalSetup[]): SiteEntities {
+  return { ...emptyEntities, localSetup };
 }
 
-/** Pass the adaptive Anwendungen step without changing anything. */
-async function skipNutzung() {
-  fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später festlegen' }));
+/** Schritt 1 (Bestand ohne Standort-Objekt) und Schritt 2 durchlaufen - mit Box oder ohne. */
+async function bisSchritt3(box: 'verbinden' | 'spaeter') {
+  fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+  expect(await screen.findByRole('heading', { name: 'Ihre VoltPilot-Box' })).toBeInTheDocument();
+  if (box === 'spaeter') {
+    fireEvent.click(screen.getByRole('button', { name: 'Box ist noch nicht da - später verbinden' }));
+    return;
+  }
+  fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'edge-k7m2xq3' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
 }
 
 beforeEach(() => {
   vi.restoreAllMocks();
+  sessionStorage.clear();
+  localStorage.clear();
   vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen());
 });
 
-describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07-09)', () => {
-  it('walks Anlage -> Register (PV + linked Speicher) -> Gerät -> Anwendungen and finishes on the summary', async () => {
-    const createSite = vi.spyOn(api, 'createSite').mockResolvedValue(site);
-    const mastrLookup = vi
-      .spyOn(api, 'mastrLookup')
-      .mockImplementation(async (_siteId: string, nummer: string) =>
-        nummer === 'SEE900000012345' ? pvPreview() : storagePreview(),
-      );
-    const mastrApply = vi.spyOn(api, 'mastrApply').mockResolvedValue([]);
-    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
-    const claimDevice = vi.spyOn(api, 'claimDevice').mockResolvedValue(device);
-    mockAdaptiveReads();
+describe('AnlageFlow - Adresse · Box · Anlage (Anlage-Flow a1, Paket 2)', () => {
+  it('mit Box: verbinden, die gefundenen Geräte bestätigen, die kWp gehen EINMAL an den Erzeuger - und ab ins Cockpit', async () => {
+    vi.spyOn(api, 'createSite').mockResolvedValue(site);
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
+    const claimDevice = vi.spyOn(api, 'claimDevice').mockResolvedValue({ ...device, externalRef: 'edge-k7m2xq3' });
+    vi.spyOn(api, 'siteEntities').mockResolvedValue(
+      mitFund([
+        gemeldet({ id: 'wr', kind: 'inverter', role: null, brand: 'Deye', model: 'SUN-10K' }),
+        gemeldet({ id: 'pv-1' }),
+        gemeldet({ id: 'zaehler', role: 'grid-meter', brand: 'Eastron', model: 'SDM630' }),
+      ]),
+    );
+    const adopt = vi.spyOn(entitiesApi, 'adopt').mockResolvedValue({} as never);
+    const savePv = vi.spyOn(api, 'savePv');
     const onDone = vi.fn();
 
-    render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={onDone} />);
+    render(<AnlageFlow sites={[]} wirt="dialog" onDone={onDone} />);
+    await bisSchritt3('verbinden');
+    // Das Verbinden trägt eine Anfrage-Kennung - ein Wiederholen verbindet nie doppelt (Paket 2).
+    await waitFor(() =>
+      expect(claimDevice).toHaveBeenCalledWith('s-1', 'edge-k7m2xq3', expect.stringMatching(/:box:edge-k7m2xq3$/)),
+    );
 
-    // Step 1: Anlage - name only (the register brings the specs).
-    expect(await screen.findByText('Wo steht die neue Anlage?')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-    await waitFor(() => expect(createSite).toHaveBeenCalled());
+    // Kein Warte-Bildschirm (D7): Schritt 3 zeigt, was die Box gefunden hat.
+    expect(await screen.findByRole('heading', { name: 'Das hat Ihre Box gefunden' })).toBeInTheDocument();
+    expect(screen.getByText('Wechselrichter')).toBeInTheDocument();
+    expect(screen.getByText('PV-Erzeuger')).toBeInTheDocument();
+    expect(screen.getByText('Netz-Zähler')).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Leistung der Solarmodule (kWp)'), { target: { value: '9,8' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Stimmt so' }));
 
-    // Step 2: Register - enter ONLY the PV number; the storage is auto-adopted
-    // from the record's linkedUnitNumber.
-    expect(await screen.findByText('PV & Speicher aus dem Register')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('MaStR-Nummer der PV-Anlage'), {
-      target: { value: 'SEE900000012345' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /Im Register suchen/ }));
-    await waitFor(() => expect(mastrLookup).toHaveBeenCalledTimes(2));
-
-    expect(await screen.findByText('Im Register gefunden')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Übernehmen & weiter' }));
-    await waitFor(() => expect(mastrApply).toHaveBeenCalled());
-    const applied = mastrApply.mock.calls[0][1];
-    expect(applied.pv?.mastrNummer).toBe('SEE900000012345');
-    expect(applied.storage?.mastrNummer).toBe('SEE900000067890');
-
-    // Step 3: Gerät (AE5: the device now comes BEFORE the adaptive step).
-    expect(await screen.findByText('Ihre VoltPilot-Box')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'vp-demo-0001' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
-    await waitFor(() => expect(claimDevice).toHaveBeenCalledWith('s-1', 'VP-DEMO-0001'));
-
-    // Schritt 4: Anwendungen - Geräte + Profil-Preset + Regal + Speicher.
-    expect(await screen.findByText('Wofür ist diese Anlage?')).toBeInTheDocument();
-    // Stufe 2: die Preset-Karten stehen statt des früheren AE7-Vorwahl-Blocks.
-    expect(screen.getByRole('heading', { name: 'Profil' })).toBeInTheDocument();
-    expect(screen.getByRole('radio', { name: /Privat/ })).toBeInTheDocument();
-    await skipNutzung();
-
-    // Fertig: the summary names PV, Speicher, Gerät and the source.
-    expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
-    expect(screen.getByText('Marktstammdaten')).toBeInTheDocument();
-    expect(screen.getByText('VP-DEMO-0001')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Zur Anlage' }));
-    expect(onDone).toHaveBeenCalled();
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith(anlageRoute('s-1')));
+    expect(adopt).toHaveBeenCalledWith('s-1', { sourceId: 'pv-1', entityType: 'producer', capacityKwp: 9.8, registryUnitId: undefined });
+    expect(adopt).toHaveBeenCalledWith('s-1', { sourceId: 'zaehler', entityType: 'grid-meter', capacityKwp: undefined, registryUnitId: undefined });
+    expect(adopt).toHaveBeenCalledTimes(2);
+    // Die kWp stehen genau einmal in der Summe: mit gemeldetem Erzeuger über ihn, nie zusätzlich an der Anlage.
+    expect(savePv).not.toHaveBeenCalled();
+    // Die Karte „Ihre Anlage ist live“ steht an (D7), der Entwurf ist weg (F9).
+    expect(localStorage.getItem('vp.erste-werte.s-1')).toBe('1');
+    expect(Object.keys(sessionStorage)).toEqual([]);
   });
 
-  it('keeps the manual fallback fully functional (Balkonkraftwerk / no number)', async () => {
-    vi.spyOn(api, 'createSite').mockResolvedValue(site);
-    const saveBattery = vi.spyOn(api, 'saveBattery').mockResolvedValue([]);
-    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
-    mockAdaptiveReads();
-    const mastrLookup = vi.spyOn(api, 'mastrLookup');
-    const onDone = vi.fn();
+  it('die Box meldet sich im Hintergrund: erst „wird gesucht“, dann die Liste - ohne zu warten', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      vi.spyOn(api, 'createSite').mockResolvedValue(site);
+      vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
+      vi.spyOn(api, 'claimDevice').mockResolvedValue({ ...device, externalRef: 'edge-k7m2xq3' });
+      const entities = vi.spyOn(api, 'siteEntities').mockResolvedValue(emptyEntities);
+      render(<AnlageFlow sites={[]} wirt="dialog" onDone={() => {}} />);
+      await bisSchritt3('verbinden');
+      expect(await screen.findByRole('heading', { name: /^Ihre Box meldet gerade ihre Geräte/ })).toBeInTheDocument();
+      expect(screen.getByText('werden gesucht')).toBeInTheDocument();
+      // Weiter geht es trotzdem: der Knopf steht.
+      expect(screen.getByRole('button', { name: 'Stimmt so' })).toBeEnabled();
 
-    render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={onDone} />);
-    fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+      entities.mockResolvedValue(mitFund([gemeldet({ id: 'pv-1' })]));
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(await screen.findByRole('heading', { name: 'Das hat Ihre Box gefunden' })).toBeInTheDocument();
+      expect(screen.getByText('Fronius Symo 10.0')).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 
-    // Drop into the manual hand-entry path from the register step.
-    fireEvent.click(await screen.findByRole('button', { name: 'Keine Nummer? Daten manuell eingeben' }));
-    expect(await screen.findByText('Daten manuell eingeben')).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Kapazität (kWh)'), { target: { value: '10' } });
-    fireEvent.change(screen.getByLabelText('Max. Ladeleistung (kW)'), { target: { value: '5' } });
-    fireEvent.change(screen.getByLabelText('Max. Entladeleistung (kW)'), { target: { value: '5' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Speicher speichern' }));
-    await waitFor(() => expect(saveBattery).toHaveBeenCalled());
-    expect(saveBattery.mock.calls[0]).toEqual([
-      's-1',
-      { capacityKwh: 10, maxChargeKw: 5, maxDischargeKw: 5 },
+  it('F17: kennt die Anlage die kWp schon (Register), steht sie als Tatsache da - der Erzeuger kommt ohne zweite Buchung', async () => {
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([
+      batteryAsset({ id: 'pv', type: 'pv', pvCapacityKwp: 9.8, capacityKwh: null, registry: 'mastr', registryUnitId: 'SEE900000012345' }),
+      batteryAsset(),
     ]);
-    expect(mastrLookup).not.toHaveBeenCalled();
+    vi.spyOn(api, 'listDevices').mockResolvedValue({ eintraege: [device], teilansicht: null } as never);
+    vi.spyOn(api, 'siteEntities').mockResolvedValue(mitFund([gemeldet({ id: 'pv-1' })]));
+    const adopt = vi.spyOn(entitiesApi, 'adopt').mockResolvedValue({} as never);
+    const onDone = vi.fn();
+    render(<AnlageFlow sites={[site]} wirt="assistent" onDone={onDone} />);
 
-    // Step 3 (Gerät) then step 4 (Nutzung) - skip both, honest summary.
-    fireEvent.click(await screen.findByRole('button', { name: 'Box ist noch nicht da - später verbinden' }));
-    await skipNutzung();
-    expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
-    expect(screen.getByText('manuell hinterlegt')).toBeInTheDocument();
-    expect(screen.getByText('später verbinden')).toBeInTheDocument();
+    expect(await screen.findByText('9,8 kWp')).toBeInTheDocument();
+    expect(screen.getByText('aus dem Register')).toBeInTheDocument();
+    expect(screen.getByText('10 kWh')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Leistung der Solarmodule (kWp)')).toBeNull();
+    // Was die Anlagen-Daten wissen, fragt der Schritt nicht - der Register-Link entfällt.
+    expect(screen.queryByRole('button', { name: 'Aus dem Register holen' })).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: 'Stimmt so' }));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(adopt).toHaveBeenCalledWith('s-1', {
+      sourceId: 'pv-1',
+      entityType: 'producer',
+      capacityKwp: undefined,
+      registryUnitId: 'SEE900000012345',
+    });
   });
 
-  it('keeps every step past the first skippable and dead-end-free', async () => {
+  it('ohne Box: „Was haben Sie?“ - Solar und Speicher als Zahlen, die kWp an die Anlage (PUT /pv)', async () => {
     vi.spyOn(api, 'createSite').mockResolvedValue(site);
     vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
-    mockAdaptiveReads();
-    const claimDevice = vi.spyOn(api, 'claimDevice');
-    const mastrApply = vi.spyOn(api, 'mastrApply');
+    const entities = vi.spyOn(api, 'siteEntities');
+    const savePv = vi.spyOn(api, 'savePv').mockResolvedValue([]);
+    const saveBattery = vi.spyOn(api, 'saveBattery').mockResolvedValue([]);
+    const claim = vi.spyOn(api, 'claimDevice');
     const onDone = vi.fn();
+    render(<AnlageFlow sites={[]} wirt="dialog" onDone={onDone} />);
+    await bisSchritt3('spaeter');
 
-    render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={onDone} />);
-    fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
+    expect(await screen.findByRole('heading', { name: 'Was haben Sie?' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Solar' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.change(screen.getByLabelText('Leistung der Solarmodule (kWp)'), { target: { value: '6,05' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Speicher' }));
+    fireEvent.change(screen.getByLabelText('Kapazität (kWh)'), { target: { value: '10' } });
+    fireEvent.change(screen.getByLabelText('Lade- und Entladeleistung (kW)'), { target: { value: '5' } });
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
 
-    // Skip the Register step, the Gerät step, then the Nutzung step.
-    fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Box ist noch nicht da - später verbinden' }));
-    await skipNutzung();
-
-    expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
-    expect(claimDevice).not.toHaveBeenCalled();
-    expect(mastrApply).not.toHaveBeenCalled();
-    expect(screen.queryByText('Marktstammdaten')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Zur Anlage' }));
-    expect(onDone).toHaveBeenCalled();
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith(anlageRoute('s-1')));
+    expect(savePv).toHaveBeenCalledWith('s-1', 6.05);
+    expect(saveBattery).toHaveBeenCalledWith('s-1', { capacityKwh: 10, maxChargeKw: 5, maxDischargeKw: 5 });
+    expect(claim).not.toHaveBeenCalled();
+    // Ohne Box fragt der Schritt keine Geräte ab.
+    expect(entities).not.toHaveBeenCalled();
   });
 
-  it('resumes a customer who already has an Anlage at the Register step (wizard restart)', async () => {
+  it('„Später ergänzen“ lässt alles offen und erfindet nichts', async () => {
+    vi.spyOn(api, 'createSite').mockResolvedValue(site);
     vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
-    render(<AnlageFlow sites={[site]} waitForFirstData onDone={() => {}} />);
-    expect(await screen.findByText('PV & Speicher aus dem Register')).toBeInTheDocument();
+    const savePv = vi.spyOn(api, 'savePv');
+    const saveBattery = vi.spyOn(api, 'saveBattery');
+    const onDone = vi.fn();
+    render(<AnlageFlow sites={[]} wirt="dialog" onDone={onDone} />);
+    await bisSchritt3('spaeter');
+    fireEvent.change(await screen.findByLabelText('Leistung der Solarmodule (kWp)'), { target: { value: '6,05' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Später ergänzen' }));
+    expect(onDone).toHaveBeenCalledWith(anlageRoute('s-1'));
+    expect(savePv).not.toHaveBeenCalled();
+    expect(saveBattery).not.toHaveBeenCalled();
   });
 
-  // F6 (Anlage-Flow a1): nach jedem Neuladen fragte der Assistent die MaStR-Nummer erneut.
-  it('resumes at the Box step once the Anlage carries register or battery data', async () => {
-    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
-    render(<AnlageFlow sites={[site]} waitForFirstData onDone={() => {}} />);
+  it('Fehler am Feld: eine falsche Zahl wird nicht gesendet, eine Ablehnung des Servers steht am Feld, das sie meint', async () => {
+    vi.spyOn(api, 'createSite').mockResolvedValue(site);
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
+    const savePv = vi.spyOn(api, 'savePv').mockRejectedValue(
+      new ApiError(400, 'Bad Request', { code: 'anfrage_ungueltig', feld: 'capacityKwp', message: 'Höchstens zwei Nachkommastellen, z. B. 9,8 kWp.' }),
+    );
+    const onDone = vi.fn();
+    render(<AnlageFlow sites={[]} wirt="dialog" onDone={onDone} />);
+    await bisSchritt3('spaeter');
+    const feld = await screen.findByLabelText('Leistung der Solarmodule (kWp)');
+    fireEvent.change(feld, { target: { value: '9,875' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    expect(await screen.findByText('Höchstens zwei Nachkommastellen, z. B. 9,8 kWp.')).toBeInTheDocument();
+    expect(savePv).not.toHaveBeenCalled();
+    await waitFor(() => expect(feld).toHaveFocus());
+
+    fireEvent.change(feld, { target: { value: '9,8' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    await waitFor(() => expect(savePv).toHaveBeenCalledWith('s-1', 9.8));
+    expect(await screen.findByText('Höchstens zwei Nachkommastellen, z. B. 9,8 kWp.')).toBeInTheDocument();
+    expect(onDone).not.toHaveBeenCalled();
+
+    // Speicher gewählt, aber ohne Zahlen: beide Sätze am Feld, nichts gesendet.
+    fireEvent.click(screen.getByRole('button', { name: 'Speicher' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
+    expect(await screen.findByText(/Kapazität des Speichers als Zahl/)).toBeInTheDocument();
+    expect(screen.getByText(/Leistung des Speichers als Zahl/)).toBeInTheDocument();
+  });
+
+  it('R4: „Aus dem Register holen“ - der Ort aus dem Register wird gegen die Adresse geprüft, die Werte stehen danach als Tatsache', async () => {
+    vi.spyOn(api, 'createSite').mockResolvedValue(site);
+    const assets = vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
+    vi.spyOn(api, 'mastrLookup').mockImplementation(async (_s: string, nummer: string) =>
+      nummer === 'SEE900000012345' ? pvPreview() : storagePreview(),
+    );
+    const mastrApply = vi.spyOn(api, 'mastrApply').mockResolvedValue([
+      batteryAsset({ id: 'pv', type: 'pv', pvCapacityKwp: 9.8, capacityKwh: null, registry: 'mastr', registryUnitId: 'SEE900000012345' }),
+      batteryAsset({ registry: 'mastr' }),
+    ]);
+    render(<AnlageFlow sites={[]} wirt="dialog" onDone={() => {}} />);
+    await bisSchritt3('spaeter');
+    fireEvent.click(await screen.findByRole('button', { name: 'Aus dem Register holen' }));
+    fireEvent.change(screen.getByLabelText('MaStR-Nummer der PV-Anlage'), { target: { value: 'SEE900000012345' } });
+    fireEvent.click(screen.getByRole('button', { name: /Im Register suchen/ }));
+    expect(await screen.findByText('Im Register gefunden')).toBeInTheDocument();
+    // Ohne bekannte Adresse (Bestand ohne Standort-Objekt) fragt die Zeile nur.
+    expect(screen.getByText('89551 Königsbronn - stimmt das?')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Übernehmen' }));
+    await waitFor(() => expect(mastrApply).toHaveBeenCalled());
+    expect(mastrApply.mock.calls[0][1].storage?.mastrNummer).toBe('SEE900000067890');
+    expect(await screen.findByText('9,8 kWp')).toBeInTheDocument();
+    expect(screen.getByText('aus dem Register')).toBeInTheDocument();
+    expect(assets).toHaveBeenCalledTimes(1);
+  });
+
+  it('surfaces the backend German MaStR error on a failed lookup', async () => {
+    vi.spyOn(api, 'createSite').mockResolvedValue(site);
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
+    vi.spyOn(api, 'mastrLookup').mockRejectedValue(new ApiError(404, 'Diese Nummer ist im Register nicht auffindbar.'));
+    render(<AnlageFlow sites={[]} wirt="dialog" onDone={() => {}} />);
+    await bisSchritt3('spaeter');
+    fireEvent.click(await screen.findByRole('button', { name: 'Aus dem Register holen' }));
+    fireEvent.change(screen.getByLabelText('MaStR-Nummer der PV-Anlage'), { target: { value: 'SEE900000012345' } });
+    fireEvent.click(screen.getByRole('button', { name: /Im Register suchen/ }));
+    expect(await screen.findByText(/nicht auffindbar/)).toBeInTheDocument();
+    // Zurück ohne Register: der Schritt steht wieder.
+    fireEvent.click(screen.getByRole('button', { name: 'Ohne Register weiter' }));
+    expect(await screen.findByRole('heading', { name: 'Was haben Sie?' })).toBeInTheDocument();
+  });
+
+  it('Wiedereinstieg: eine Anlage ohne Box setzt bei der Box fort, eine mit Box bei „Anlage“', async () => {
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
+    vi.spyOn(api, 'siteEntities').mockResolvedValue(emptyEntities);
+    const devices = vi.spyOn(api, 'listDevices').mockResolvedValue({ eintraege: [], teilansicht: null } as never);
+    const { unmount } = render(<AnlageFlow sites={[site]} wirt="assistent" onDone={() => {}} />);
     expect(screen.getByText('Der nächste Schritt wird vorbereitet …')).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: 'Ihre VoltPilot-Box' })).toBeInTheDocument();
-    expect(screen.queryByText('PV & Speicher aus dem Register')).toBeNull();
+    unmount();
+    // Ein neuer Tab ohne Entwurf (F9) - sonst ginge es am Schritt des Entwurfs weiter.
+    sessionStorage.clear();
+    devices.mockResolvedValue({ eintraege: [device], teilansicht: null } as never);
+    render(<AnlageFlow sites={[site]} wirt="assistent" onDone={() => {}} />);
+    expect(await screen.findByRole('heading', { name: /^Ihre Box meldet gerade ihre Geräte/ })).toBeInTheDocument();
   });
 
   it('maps the 422 claim refusal to the shared unknown-ID message', async () => {
     vi.spyOn(api, 'createSite').mockResolvedValue(site);
-    vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
     vi.spyOn(api, 'claimDevice').mockRejectedValue(new ApiError(422, 'unknown'));
-    render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
-
-    fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-    // Register skipped -> the Gerät step is now next (before Nutzung).
-    fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
-    fireEvent.change(await screen.findByLabelText('Kennung'), {
-      target: { value: 'edge-k7m2xq3' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
+    render(<AnlageFlow sites={[]} wirt="dialog" onDone={() => {}} />);
+    await bisSchritt3('verbinden');
     expect(await screen.findByText(/Diese Kennung kennen wir nicht/)).toBeInTheDocument();
+    expect(screen.getByLabelText('Kennung')).toHaveFocus();
   });
 
   // B4 (Anlage-Flow a1): ein Tippfehler in der Kennung wird nie gesendet - früher legte der
@@ -349,12 +427,12 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
   it('sends no Kennung with a typo - the field says why, nothing is claimed', async () => {
     vi.spyOn(api, 'createSite').mockResolvedValue(site);
     vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
+    vi.spyOn(api, 'siteEntities').mockResolvedValue(emptyEntities);
     const claim = vi.spyOn(api, 'claimDevice');
-    render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
+    render(<AnlageFlow sites={[]} wirt="dialog" onDone={() => {}} />);
 
     fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
     const feld = await screen.findByLabelText('Kennung');
     fireEvent.change(feld, { target: { value: 'edge-k7m2xq1' } });
     expect(screen.getByText('Diese Kennung stimmt nicht. Eine Kennung enthält kein 0, 1, i, l oder o.')).toBeInTheDocument();
@@ -369,58 +447,35 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
     fireEvent.change(feld, { target: { value: 'K7M2XQ3' } });
     expect(screen.getByText('Kennung stimmt: edge-k7m2xq3')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
-    await waitFor(() => expect(claim).toHaveBeenCalledWith(site.id, 'edge-k7m2xq3'));
-  });
-
-  it('surfaces the backend German MaStR error on a failed lookup', async () => {
-    vi.spyOn(api, 'createSite').mockResolvedValue(site);
-    vi.spyOn(api, 'mastrLookup').mockRejectedValue(
-      new ApiError(404, 'Diese Nummer ist im Register nicht auffindbar.'),
-    );
-    render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
-    fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-    fireEvent.change(await screen.findByLabelText('MaStR-Nummer der PV-Anlage'), {
-      target: { value: 'SEE900000012345' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: /Im Register suchen/ }));
-    expect(await screen.findByText(/nicht auffindbar/)).toBeInTheDocument();
+    await waitFor(() => expect(claim).toHaveBeenCalledWith(site.id, 'edge-k7m2xq3', expect.any(String)));
   });
 
   it('offers a "gleicher Standort wie …" reuse chip for an existing placed Anlage', async () => {
     const placed: Site = { ...site, id: 's-9', name: 'Ferienhaus', latitude: 52.5, longitude: 13.4 };
-    render(
-      <AnlageFlow sites={[]} existingSites={[placed]} waitForFirstData={false} onDone={() => {}} />,
-    );
+    render(<AnlageFlow sites={[]} existingSites={[placed]} wirt="dialog" onDone={() => {}} />);
     expect(await screen.findByText('Gleicher Standort wie')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Ferienhaus/ })).toBeInTheDocument();
   });
 
   // E2/D3: das Preisblatt wird erst zur Wahrheit, wenn der Betreiber „Genau"
-  // WÄHLT - die Vorschlagswerte bleiben sonst ein Prefill (frühere Fassung:
-  // ein stilles „berührt"-Flag).
+  // WÄHLT - die Vorschlagswerte bleiben sonst ein Prefill.
   it('legt ohne die Wahl „Genau" kein Preisblatt an', async () => {
     const createSite = vi.spyOn(api, 'createSite').mockResolvedValue(site);
     const updateSupply = vi.spyOn(api, 'updateSupplyPrice').mockResolvedValue(null as never);
-    render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
+    render(<AnlageFlow sites={[]} wirt="dialog" onDone={() => {}} />);
     fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
-    // Der Geld-Block steht erst, wenn feststeht, dass der Fluss wie heute spricht (anlegeNurMessen.ts).
     fireEvent.click(await screen.findByText(/Feineinstellungen/));
-    // Der Tarif steht auf „Ohne Angabe", die Wahl auf „Schnell" - beides unberührt.
     expect(screen.getByRole('radio', { name: /Schnell/ })).toBeChecked();
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
     await waitFor(() => expect(createSite).toHaveBeenCalled());
     expect(updateSupply).not.toHaveBeenCalled();
-    createSite.mockRestore();
-    updateSupply.mockRestore();
   });
 
   it('legt das Preisblatt an, sobald „Genau" gewählt ist', async () => {
-    const createSite = vi.spyOn(api, 'createSite').mockResolvedValue(site);
+    vi.spyOn(api, 'createSite').mockResolvedValue(site);
     const updateSupply = vi.spyOn(api, 'updateSupplyPrice').mockResolvedValue(null as never);
-    render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
+    render(<AnlageFlow sites={[]} wirt="dialog" onDone={() => {}} />);
     fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Zuhause' } });
-    // Der Geld-Block steht erst, wenn feststeht, dass der Fluss wie heute spricht (anlegeNurMessen.ts).
     fireEvent.click(await screen.findByText(/Feineinstellungen/));
     fireEvent.click(screen.getByRole('radio', { name: /Genau/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
@@ -429,352 +484,70 @@ describe('AnlageFlow - the register-first "Anlage anlegen" flow (captain 2026-07
       's-1',
       expect.objectContaining({ netzentgeltArbeitspreisCt: 7.6, vertriebsaufschlagCt: 1.5 }),
     );
-    createSite.mockRestore();
-    updateSupply.mockRestore();
   });
 
   it('speaks "Anlage", never "Standort", as the entity name (wording decision 3)', async () => {
-    render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
+    render(<AnlageFlow sites={[]} wirt="dialog" onDone={() => {}} />);
     expect(await screen.findByLabelText('Name der neuen Anlage')).toBeInTheDocument();
     expect(screen.queryByText(/Name des Standorts/)).not.toBeInTheDocument();
   });
 });
 
-describe('Schritt Betrieb - Preset + EIN Betriebsmodell (Steuerung Stufe 0)', () => {
-  /**
-   * Bis zum vierten Schritt durchklicken (Register, falls er kommt, und Box überspringen). Trägt die
-   * Anlage schon Speicherdaten, beginnt der Wiedereinstieg bei der Box (F6).
-   */
-  async function bisZumSchritt() {
-    await waitFor(() => expect(screen.queryByText('Der nächste Schritt wird vorbereitet …')).toBeNull());
-    const register = screen.queryByRole('button', { name: 'Überspringen - später nachtragen' });
-    if (register) fireEvent.click(register);
-    fireEvent.click(await screen.findByRole('button', { name: 'Box ist noch nicht da - später verbinden' }));
-    expect(await screen.findByText('Wofür ist diese Anlage?')).toBeInTheDocument();
-  }
+describe('F9: der Entwurf je Schritt (Anlage-Flow a1, Paket 3)', () => {
+  it('Neuladen mitten in Schritt 1: die Eingaben stehen wieder da - mit dem Satz, dass sie wiederhergestellt sind', async () => {
+    const erst = render(<AnlageFlow sites={[]} wirt="dialog" onDone={() => {}} />);
+    fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Garage' } });
+    fireEvent.change(screen.getByLabelText('Adresse'), { target: { value: 'Marktplatz 2 Pappenheim' } });
+    erst.unmount();
 
-  it('Privat schlägt KEIN Betriebsmodell vor - und schaltet nichts', async () => {
-    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
-    // Der Befund der Stufe 0 an dieser Stelle: der Assistent wiederholte das
-    // neunzeilige Regal und setzte für einen Haushalt zwei Absichts-Schalter,
-    // die nichts auslösten. Jetzt fährt sein Speicher den Eigenverbrauchs-
-    // Fahrplan, und das steht als Satz da - nicht als Schalter.
-    mockAdaptiveReads([
-      karte('monitoring', { active: true }),
-      karte('ueberschuss', {
-        requirements: [
-          { label: 'PV-Erzeugung', met: true },
-          { label: 'Steuerbares Gerät', met: true },
-        ],
-      }),
-      karte('verbraucher', { requirements: [{ label: 'Steuerbares Gerät', met: true }] }),
-      karte('marktvermarktung', { requirements: [{ label: 'Marktzugang', met: true }] }),
-    ]);
-    const preset = vi.spyOn(api, 'setAnwendungsPreset').mockResolvedValue(site);
-    const toggle = vi.spyOn(api, 'setSiteProfile').mockResolvedValue({ profiles: [] });
-    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
-    await bisZumSchritt();
-
-    fireEvent.click(await screen.findByRole('radio', { name: /Privat/ }));
-    expect(await screen.findByText(/Eigenverbrauchs-Fahrplan/)).toBeInTheDocument();
-    expect(screen.queryByRole('switch', { name: /Überschuss nutzen/ })).toBeNull();
-    expect(screen.queryByRole('switch', { name: /Verbraucher steuern/ })).toBeNull();
-    // Der Satz, der den Schritt schliesst: Regeln entstehen später.
-    expect(screen.getByText(/Regeln legen Sie später in der Steuerung an/)).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-    await waitFor(() => expect(preset).toHaveBeenCalledWith('s-1', 'privat'));
-    expect(toggle).not.toHaveBeenCalled();
-    expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
+    render(<AnlageFlow sites={[]} wirt="dialog" onDone={() => {}} />);
+    expect(await screen.findByText('Ihre Eingaben sind wiederhergestellt.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Name der neuen Anlage')).toHaveValue('Garage');
+    expect(screen.getByLabelText('Adresse')).toHaveValue('Marktplatz 2 Pappenheim');
   });
 
-  it('Gewerbe schlägt GENAU EINES vor und schaltet genau dieses ein', async () => {
-    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
-    // Beide könnten laufen - vorgeschlagen wird das Startmodell des Profils.
-    mockAdaptiveReads([
-      karte('marktvermarktung', { requirements: [{ label: 'Marktzugang', met: true }] }),
-      karte('lastspitzenkappung', {
-        requirements: [{ label: 'Leistungspreis hinterlegt', met: true }],
-      }),
-    ]);
-    const preset = vi.spyOn(api, 'setAnwendungsPreset').mockResolvedValue(site);
-    const toggle = vi.spyOn(api, 'setSiteProfile').mockResolvedValue({ profiles: [] });
-    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
-    await bisZumSchritt();
-
-    fireEvent.click(await screen.findByRole('radio', { name: /Gewerbe/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-
-    await waitFor(() => expect(preset).toHaveBeenCalledWith('s-1', 'gewerbe'));
-    await waitFor(() =>
-      expect(toggle.mock.calls.map((c) => [c[1], c[2]])).toEqual([
-        ['lastspitzenkappung', 'an'],
-      ]),
-    );
-    expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
-    expect(screen.getByText(/Eingeschaltet: Lastspitzenkappung\./)).toBeInTheDocument();
-  });
-
-  it('ohne Leistungspreis springt die Marktoptimierung ein - nie beide', async () => {
-    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
-    mockAdaptiveReads([
-      karte('marktvermarktung', { requirements: [{ label: 'Marktzugang', met: true }] }),
-      karte('lastspitzenkappung', {
-        requirements: [{ label: 'Leistungspreis hinterlegt', met: false }],
-      }),
-    ]);
-    vi.spyOn(api, 'setAnwendungsPreset').mockResolvedValue(site);
-    const toggle = vi.spyOn(api, 'setSiteProfile').mockResolvedValue({ profiles: [] });
-    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
-    await bisZumSchritt();
-
-    fireEvent.click(await screen.findByRole('radio', { name: /Gewerbe/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-    await waitFor(() =>
-      expect(toggle.mock.calls.map((c) => [c[1], c[2]])).toEqual([
-        ['marktvermarktung', 'an'],
-      ]),
-    );
-  });
-
-  it('kann keins laufen, wird das GEMEINTE genannt und nichts geschaltet', async () => {
-    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
-    mockAdaptiveReads([
-      karte('marktvermarktung', { requirements: [{ label: 'Marktzugang', met: false }] }),
-      karte('lastspitzenkappung', {
-        requirements: [{ label: 'Leistungspreis hinterlegt', met: false }],
-      }),
-    ]);
-    const preset = vi.spyOn(api, 'setAnwendungsPreset').mockResolvedValue(site);
-    const toggle = vi.spyOn(api, 'setSiteProfile').mockResolvedValue({ profiles: [] });
-    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
-    await bisZumSchritt();
-
-    fireEvent.click(await screen.findByRole('radio', { name: /Gewerbe/ }));
-    expect(
-      await screen.findByText(
-        /Lastspitzenkappung schlagen wir noch nicht vor: Leistungspreis hinterlegt fehlt\./,
-      ),
-    ).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-    await waitFor(() => expect(preset).toHaveBeenCalledWith('s-1', 'gewerbe'));
-    expect(toggle).not.toHaveBeenCalled();
-  });
-
-  it('schaltet eine schon LAUFENDE Anwendung nie ab und zeigt sie immer', async () => {
+  it('Anmeldung in Schritt 3: zurück am selben Schritt der angelegten Anlage, mit den getippten Zahlen', async () => {
+    vi.spyOn(api, 'createSite').mockResolvedValue(site);
     vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
-    // Ein laufendes Betriebsmodell auf einer Privat-Anlage: abgeleitet aktiv,
-    // vom Privat-Preset nicht vorgeschlagen - es darf weder eingeklappt noch
-    // abgeschaltet werden.
-    mockAdaptiveReads([
-      karte('marktvermarktung', { derivedActive: true, active: true }),
-      karte('ueberschuss', { requirements: [{ label: 'PV-Erzeugung', met: false }] }),
-    ]);
-    vi.spyOn(api, 'setAnwendungsPreset').mockResolvedValue(site);
-    const toggle = vi.spyOn(api, 'setSiteProfile').mockResolvedValue({ profiles: [] });
-    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
-    await bisZumSchritt();
+    const createSite = vi.spyOn(api, 'createSite').mockResolvedValue(site);
+    const erst = render(<AnlageFlow sites={[]} wirt="assistent" onDone={() => {}} />);
+    await bisSchritt3('spaeter');
+    fireEvent.change(await screen.findByLabelText('Leistung der Solarmodule (kWp)'), { target: { value: '6,05' } });
+    erst.unmount();
 
-    fireEvent.click(await screen.findByRole('radio', { name: /Privat/ }));
-    expect(
-      await screen.findByRole('radio', { name: 'Marktoptimierung' }),
-    ).toHaveAttribute('aria-checked', 'true');
-    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-    await waitFor(() => expect(screen.getByText(/„Zuhause“ ist da/)).toBeInTheDocument());
-    // Kein `aus` auf etwas, das läuft - und kein `an` auf etwas, das schon an ist.
-    expect(toggle).not.toHaveBeenCalled();
+    // Nach der Anmeldung lädt die Seite neu - die Anlage steht jetzt in der Liste.
+    render(<AnlageFlow sites={[site]} wirt="assistent" onDone={() => {}} />);
+    expect(await screen.findByRole('heading', { name: 'Was haben Sie?' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Leistung der Solarmodule (kWp)')).toHaveValue('6,05');
+    expect(createSite).toHaveBeenCalledTimes(1);
   });
 
-  it('eine BASIS-Anwendung erscheint gar nicht mehr - auch nicht als immer-an-Zeile', async () => {
-    // Stufe 0: die ruhige Zeile ist mit dem Regal aus dem Assistenten
-    // verschwunden. Was ohnehin läuft, braucht keine Zeile in einem Schritt,
-    // der nach der BETRIEBSWEISE fragt.
+  it('kein Geisterzustand: ein anderer Wirt, eine verschwundene Anlage oder „Später einrichten“ - der Entwurf gilt nicht', async () => {
+    vi.spyOn(api, 'createSite').mockResolvedValue(site);
     vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
-    mockAdaptiveReads([karte('monitoring', { derivedActive: true, active: true })]);
-    const toggle = vi.spyOn(api, 'setSiteProfile').mockResolvedValue({ profiles: [] });
-    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
-    await bisZumSchritt();
+    const erst = render(<AnlageFlow sites={[]} wirt="assistent" onDone={() => {}} />);
+    await bisSchritt3('spaeter');
+    await screen.findByRole('heading', { name: 'Was haben Sie?' });
+    erst.unmount();
 
-    expect(screen.queryByText('immer an')).toBeNull();
-    expect(screen.getByText(/Eigenverbrauchs-Fahrplan/)).toBeInTheDocument();
-    expect(screen.queryByRole('switch', { name: /Anlage beobachten/ })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-    await waitFor(() => expect(screen.getByText(/„Zuhause“ ist da/)).toBeInTheDocument());
-    expect(toggle).not.toHaveBeenCalled();
-  });
+    // Der Dialog nimmt den Entwurf des Assistenten nicht.
+    const dialog = render(<AnlageFlow sites={[]} wirt="dialog" onDone={() => {}} />);
+    expect(await screen.findByLabelText('Name der neuen Anlage')).toBeInTheDocument();
+    expect(screen.queryByText('Ihre Eingaben sind wiederhergestellt.')).toBeNull();
+    dialog.unmount();
 
-  it('Stufe 5: der Schritt „Betrieb" ist eine RADIOGRUPPE - genau eines, oder keins', async () => {
-    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
-    mockAdaptiveReads([
-      karte('marktvermarktung', { requirements: [{ label: 'Marktzugang', met: true }] }),
-      karte('lastspitzenkappung', {
-        requirements: [{ label: 'Leistungspreis hinterlegt', met: true }],
-      }),
-    ]);
-    vi.spyOn(api, 'setAnwendungsPreset').mockResolvedValue(site);
-    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
-    await bisZumSchritt();
-    fireEvent.click(await screen.findByRole('radio', { name: /Gewerbe/ }));
+    // Die Anlage gibt es nicht mehr: der Entwurf gilt nicht, der Assistent beginnt vorn.
+    vi.spyOn(api, 'standorte').mockRejectedValue(new Error('offline'));
+    const weg = render(<AnlageFlow sites={[]} wirt="assistent" onDone={() => {}} />);
+    expect(await screen.findByRole('heading', { name: /Wo steht/ })).toBeInTheDocument();
+    expect(screen.queryByText('Ihre Eingaben sind wiederhergestellt.')).toBeNull();
+    weg.unmount();
 
-    const gruppe = await screen.findByRole('radiogroup', { name: 'Ihr Betriebsmodell' });
-    // ⚠ Ein Radio, KEIN Schalter - „beliebig viele" wäre die falsche Aussage,
-    // und der Server schaltete danach still eines ab.
-    expect(within(gruppe).queryByRole('switch')).toBeNull();
-    expect(within(gruppe).getByRole('radio', { name: 'Lastspitzenkappung' }))
-      .toHaveAttribute('aria-checked', 'true');
-    // Der Grundmodus IST der Weg zurück - ein Radio kann sich nicht selbst
-    // abwählen, ohne diese Zeile wäre die Vorauswahl eine Einbahnstraße.
-    expect(within(gruppe).getByRole('radio', { name: 'Kein Betriebsmodell' }))
-      .toHaveAttribute('aria-checked', 'false');
-    // Und der Assistent bietet nur an, was er wirklich vorschlägt - ein zweiter
-    // Radio-Knopf ohne Vorschlag wäre ein toter Knopf (Stufe 0).
-    expect(within(gruppe).getAllByRole('radio')).toHaveLength(2);
-  });
-
-  it('⚠ ein zweites sichtbares Modell HAKT das erste AB - nie zwei zugleich', async () => {
-    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
-    // Der Altbestands-Fall im Assistenten: die Marktoptimierung LÄUFT schon
-    // (sie zu verschweigen hiesse, den Funktionsumfang zu verbergen), und das
-    // Gewerbe-Preset schlägt zusätzlich die Lastspitzenkappung vor.
-    mockAdaptiveReads([
-      karte('marktvermarktung', {
-        active: true,
-        requirements: [{ label: 'Marktzugang', met: true }],
-      }),
-      karte('lastspitzenkappung', {
-        requirements: [{ label: 'Leistungspreis hinterlegt', met: true }],
-      }),
-    ]);
-    vi.spyOn(api, 'setAnwendungsPreset').mockResolvedValue(site);
-    const toggle = vi.spyOn(api, 'setSiteProfile').mockResolvedValue({ profiles: [] });
-    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
-    await bisZumSchritt();
-    fireEvent.click(await screen.findByRole('radio', { name: /Gewerbe/ }));
-
-    const gruppe = await screen.findByRole('radiogroup', { name: 'Ihr Betriebsmodell' });
-    fireEvent.click(within(gruppe).getByRole('radio', { name: /^Marktoptimierung/ }));
-    expect(within(gruppe).getByRole('radio', { name: 'Lastspitzenkappung' }))
-      .toHaveAttribute('aria-checked', 'false');
-    expect(within(gruppe).getByRole('radio', { name: /^Marktoptimierung/ }))
-      .toHaveAttribute('aria-checked', 'true');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-    // Die Marktoptimierung LIEF schon - es wird nichts geschrieben, und schon
-    // gar kein `an` auf etwas, das nie gewählt wurde.
-    await waitFor(() => expect(screen.getByText(/„Zuhause“ ist da/)).toBeInTheDocument());
-    expect(toggle.mock.calls.map((c) => [c[1], c[2]]))
-      .not.toContainEqual(['lastspitzenkappung', 'an']);
-  });
-
-  it('„Kein Betriebsmodell" nimmt die Vorauswahl zurück - und schaltet dann nichts', async () => {
-    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
-    mockAdaptiveReads([
-      karte('lastspitzenkappung', {
-        requirements: [{ label: 'Leistungspreis hinterlegt', met: true }],
-      }),
-    ]);
-    const preset = vi.spyOn(api, 'setAnwendungsPreset').mockResolvedValue(site);
-    const toggle = vi.spyOn(api, 'setSiteProfile').mockResolvedValue({ profiles: [] });
-    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
-    await bisZumSchritt();
-    fireEvent.click(await screen.findByRole('radio', { name: /Gewerbe/ }));
-
-    const gruppe = await screen.findByRole('radiogroup', { name: 'Ihr Betriebsmodell' });
-    fireEvent.click(within(gruppe).getByRole('radio', { name: 'Kein Betriebsmodell' }));
-    expect(within(gruppe).getByRole('radio', { name: 'Kein Betriebsmodell' }))
-      .toHaveAttribute('aria-checked', 'true');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-    await waitFor(() => expect(preset).toHaveBeenCalledWith('s-1', 'gewerbe'));
-    // Wer nichts will, bekommt auch keinen Schreibvorgang.
-    expect(toggle).not.toHaveBeenCalled();
-  });
-
-  it('das Ladepark-Lastmanagement steht gar nicht mehr im Schritt', async () => {
-    // ⚠ Verbrauchsmanagement v1: es ist SCHUTZ und läuft immer - es ist kein
-    // Betriebsmodell mehr und hat deshalb weder Schalter noch Radio. Der
-    // Assistent fragt nach der BETRIEBSWEISE des Speichers; der Ladepark
-    // gehört in den Ladepark-Rahmen der Verbraucher-Zone.
-    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
-    mockAdaptiveReads([
-      karte('lastspitzenkappung', {
-        requirements: [{ label: 'Leistungspreis hinterlegt', met: true }],
-      }),
-      karte('lastmanagement', { derivedActive: true, active: true }),
-    ]);
-    vi.spyOn(api, 'setAnwendungsPreset').mockResolvedValue(site);
-    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
-    await bisZumSchritt();
-    fireEvent.click(await screen.findByRole('radio', { name: /Gewerbe/ }));
-
-    const gruppe = await screen.findByRole('radiogroup', { name: 'Ihr Betriebsmodell' });
-    expect(within(gruppe).getByRole('radio', { name: 'Lastspitzenkappung' })).toBeInTheDocument();
-    expect(screen.queryByRole('switch', { name: /Ladepark-Lastmanagement/ })).toBeNull();
-    expect(screen.queryByRole('radio', { name: /Ladepark-Lastmanagement/ })).toBeNull();
-  });
-
-  it('saves a changed Speicherschonung preset carrying the battery master data through', async () => {
-    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
-    mockAdaptiveReads();
-    const saveBattery = vi.spyOn(api, 'saveBattery').mockResolvedValue([]);
-    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
-    await bisZumSchritt();
-
-    // The battery exists, so the Umgang choice is offered; pick Schonend.
-    fireEvent.click(await screen.findByRole('radio', { name: /Schonend/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-    await waitFor(() =>
-      expect(saveBattery).toHaveBeenCalledWith(
-        's-1',
-        expect.objectContaining({
-          capacityKwh: 10,
-          maxChargeKw: 5,
-          maxDischargeKw: 5,
-          speicherschonung: 'schonend',
-        }),
-      ),
-    );
-    expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
-  });
-
-  it('writes nothing when untouched', async () => {
-    vi.spyOn(api, 'siteAssets').mockResolvedValue([batteryAsset()]);
-    mockAdaptiveReads([karte('marktvermarktung')]);
-    const saveBattery = vi.spyOn(api, 'saveBattery');
-    const preset = vi.spyOn(api, 'setAnwendungsPreset');
-    const toggle = vi.spyOn(api, 'setSiteProfile');
-    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
-    await bisZumSchritt();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-    expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
-    expect(saveBattery).not.toHaveBeenCalled();
-    expect(preset).not.toHaveBeenCalled();
-    expect(toggle).not.toHaveBeenCalled();
-  });
-
-  it('hides the Umgang choice when the Anlage has no battery', async () => {
-    vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
-    mockAdaptiveReads();
-    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
-    await bisZumSchritt();
-    expect(screen.queryByText('Umgang mit dem Speicher')).not.toBeInTheDocument();
-  });
-
-  it('bleibt ohne Regal-Antwort bedienbar (älteres Backend / Ladefehler)', async () => {
-    vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
-    vi.spyOn(api, 'siteEntities').mockResolvedValue(emptyEntities);
-    vi.spyOn(api, 'siteProfiles').mockRejectedValue(new Error('down'));
-    const toggle = vi.spyOn(api, 'setSiteProfile');
-    render(<AnlageFlow sites={[site]} waitForFirstData={false} onDone={() => {}} />);
-    await bisZumSchritt();
-
-    // Kein Regal, aber die Profil-Wahl und der Weg nach vorn stehen.
-    expect(screen.getByRole('radio', { name: /Privat/ })).toBeInTheDocument();
-    expect(screen.queryByText('Ihre Anwendungen')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-    expect(await screen.findByText(/„Zuhause“ ist da/)).toBeInTheDocument();
-    expect(toggle).not.toHaveBeenCalled();
+    // „Später einrichten“ räumt ab.
+    const onSkip = vi.fn();
+    render(<AnlageFlow sites={[site]} wirt="assistent" onDone={() => {}} onSkipAll={onSkip} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Später einrichten - direkt zum Portal' }));
+    expect(onSkip).toHaveBeenCalled();
+    expect(Object.keys(sessionStorage)).toEqual([]);
   });
 });

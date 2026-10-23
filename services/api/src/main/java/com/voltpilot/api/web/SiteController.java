@@ -196,10 +196,12 @@ public class SiteController {
      * makes a site here, then claims devices into it.
  *
      * <p>Additively (Bestandsübernahme der Standorte, AP-02 IP-9) the new site
-     * gets its Standort in the SAME transaction: the given {@code standortId}, or
-     * the one Standort of the Kundenbereich when there is exactly one; none when
+     * gets its Standort in the SAME transaction: the given {@code standortId}; none when
      * there is none (unchanged); with several the choice is required (422
-     * {@code standort_waehlen}) - judged BEFORE the site is written. The response
+     * {@code standort_waehlen}) - judged BEFORE the site is written. A customer account
+     * must choose already with ONE Standort (Anlage-Flow a1, F16: never silently at the
+     * Standort of another Anlage); the platform and service accounts keep the old default
+     * of the one Standort as a transition. The response
      * stays the plain {@link SiteDto}; {@code GET /sites/{id}} shows the Standort.
      */
     // Recht: `anlage.verwalten` (die Anlage anlegen); die Zuordnung dazu `anlage.zuordnen`.
@@ -226,7 +228,8 @@ public class SiteController {
                 return AnfrageKennungen.antwort(gemerkt.get());
             }
         }
-        Optional<StandortRepository.Standort> standort = anlageStandort.zielBeimAnlegen(request.standortId());
+        Optional<StandortRepository.Standort> standort = anlageStandort.zielBeimAnlegen(request.standortId(),
+                Kundenkonto.ist(auth));
         ProtokollAkteur wer = standort.isPresent() ? OrtAnfrage.akteur(auth) : null;
         // Anlage-Flow a1: die Anlage übernimmt Lage und Gebotszone ihres Standorts, solange sie keine
         // eigenen nennt - die Adresse wird einmal erfasst, nicht je Anlage noch einmal.

@@ -7,6 +7,8 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
  * B1: 30 s nach „Ihre Anlage ist verbunden“ stand „Noch keine Anlage“ - die Geräte-Abfrage fand die
  * eben verbundene Box, `showOnboarding` kippte und hängte den Assistenten aus (`belege/erstedaten-*`).
  * F6: „Später einrichten“ lebte nur im Speicher; nach jedem Neuladen kam der Assistent zurück.
+ * D7 (Paket 2): das Vollbild einmal - mit einer Anlage ist der Weg die Einrichtungs-Karte im Cockpit.
+ * F9 (Paket 3): nach Neuladen oder Anmeldung geht der Fluss am selben Schritt weiter.
  */
 const { kunde, liste, geraete } = vi.hoisted(() => ({
   kunde: vi.fn(),
@@ -40,8 +42,8 @@ vi.mock('./api', async (importOriginal) => {
     tenantContext: async () => ({ id: 'kb-erika', name: 'Erika Kaiser', segment: 'B2C', betriebsart: 'endkunde' }),
     standorte: async () => ({ stichtag: '2026-10-23', standorte: [] }),
     funktionen: async () => ({ standorte: [] }),
-    // Die Anlage trägt schon Registerdaten (F6): es geht bei der Box weiter.
-    siteAssets: async () => [{ id: 'pv', type: 'pv', registry: 'mastr', pvCapacityKwp: 6.05 }],
+    siteAssets: async () => [],
+    siteEntities: async () => ({ registry: null, entities: [], localSetup: [], staleOnDevice: [] }),
   };
   const api = new Proxy(echt.api as Record<string, unknown>, {
     get: (_ziel, name: string) => antworten[name] ?? (() => Promise.reject(new Error(`nicht gemockt: ${name}`))),
@@ -81,11 +83,12 @@ const BOX = {
   createdAt: '2026-10-23T08:00:00Z',
 };
 
-describe('Einrichtungs-Assistent (B1, F6)', () => {
+describe('Einrichtungs-Assistent (B1, F6, D7, F9)', () => {
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
     kunde.mockReset().mockResolvedValue(KUNDE_ME);
-    liste.mockReset().mockResolvedValue({ eintraege: [ANLAGE], teilansicht: null });
+    liste.mockReset().mockResolvedValue({ eintraege: [], teilansicht: null });
     geraete.mockReset().mockResolvedValue({ eintraege: [], teilansicht: null });
   });
   afterEach(() => {
@@ -93,14 +96,13 @@ describe('Einrichtungs-Assistent (B1, F6)', () => {
     window.location.hash = '';
   });
 
-  it('B1: die Geräte-Abfrage findet die verbundene Box - der Assistent bleibt stehen', async () => {
+  it('B1: einmal offen, beendet den Assistenten nur der Kunde - auch wenn Anlage und Box inzwischen da sind', async () => {
     render(<App initialAuth />);
     expect(await screen.findByRole('heading', { name: 'Willkommen bei VoltPilot' }, { timeout: 5000 })).toBeInTheDocument();
-    // F6: Registerdaten sind da - weiter bei der Box, nicht wieder beim Register.
-    expect(await screen.findByRole('heading', { name: 'Ihre VoltPilot-Box' })).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'PV & Speicher aus dem Register' })).toBeNull();
+    expect(await screen.findByRole('heading', { name: 'Wo steht Ihre Anlage?' })).toBeInTheDocument();
 
-    // Die Box ist verbunden; die nächste Geräte-Abfrage (alle 30 s, hier über die Rückkehr zum Tab) findet sie.
+    // Anlage und Box sind da; die nächste Abfrage (über die Rückkehr zum Tab) findet beide.
+    liste.mockResolvedValue({ eintraege: [ANLAGE], teilansicht: null });
     geraete.mockResolvedValue({ eintraege: [BOX], teilansicht: null });
     await act(async () => {
       document.dispatchEvent(new Event('visibilitychange'));
@@ -108,8 +110,18 @@ describe('Einrichtungs-Assistent (B1, F6)', () => {
     });
     expect(geraete.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(screen.getByRole('heading', { name: 'Willkommen bei VoltPilot' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Ihre VoltPilot-Box' })).toBeInTheDocument();
     expect(screen.queryByText('Noch keine Anlage')).toBeNull();
+  });
+
+  it('D7: mit einer Anlage kein Vollbild und kein zweiter Aufruf - der Weg ist die Einrichtungs-Karte im Cockpit', async () => {
+    liste.mockResolvedValue({ eintraege: [ANLAGE], teilansicht: null });
+    render(<App initialAuth />);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 300));
+    });
+    expect(kunde).toHaveBeenCalled();
+    expect(screen.queryByRole('heading', { name: 'Willkommen bei VoltPilot' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Einrichtung fortsetzen' })).toBeNull();
   });
 
   it('F6: „Später einrichten" gilt auch nach dem Neuladen - das Banner führt zurück', async () => {
@@ -124,5 +136,30 @@ describe('Einrichtungs-Assistent (B1, F6)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Einrichtung fortsetzen' }));
     expect(await screen.findByRole('heading', { name: 'Willkommen bei VoltPilot' })).toBeInTheDocument();
     expect(localStorage.getItem('vp.einrichtung.spaeter.kb-erika')).toBeNull();
+  });
+
+  it('F9: nach der Anmeldung zurück am Schritt - der Assistent öffnet wieder, mit den Eingaben', async () => {
+    liste.mockResolvedValue({ eintraege: [ANLAGE], teilansicht: null });
+    sessionStorage.setItem(
+      'vp.anlage-entwurf.kb-erika.erika@beispiel.test',
+      JSON.stringify({
+        v: 1,
+        wirt: 'assistent',
+        schritt: 3,
+        siteId: 'anlage-1',
+        standortId: null,
+        art: 'wie_heute',
+        mitBox: false,
+        ort: null,
+        adresse: null,
+        kennung: '',
+        teile: { solarAn: true, speicherAn: false, kwp: '6,05', kwh: '', kw: '' },
+      }),
+    );
+    render(<App initialAuth />);
+    expect(await screen.findByRole('heading', { name: 'Willkommen bei VoltPilot' }, { timeout: 5000 })).toBeInTheDocument();
+    expect(await screen.findByText('Ihre Eingaben sind wiederhergestellt.')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Was haben Sie?' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Leistung der Solarmodule (kWp)')).toHaveValue('6,05');
   });
 });

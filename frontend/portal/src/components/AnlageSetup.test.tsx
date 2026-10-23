@@ -136,3 +136,47 @@ describe('AnlageSetup - die Anlege-Kette', () => {
     await waitFor(() => expect(container.querySelectorAll('.vp-setup-step')).toHaveLength(3));
   });
 });
+
+describe('AnlageSetup - F17: was die Anlagen-Daten wissen, fragt die Übernahme nicht neu (Anlage-Flow a1)', () => {
+  const FRONIUS: SiteEntities['localSetup'][number] = {
+    id: 'pv-1',
+    kind: 'source',
+    role: 'pv-generation',
+    brand: 'Fronius',
+    model: 'Symo 10.0',
+    label: null,
+    reportedAt: '2026-10-23T10:00:00Z',
+    adoptedEntityId: null,
+  };
+
+  it('kWp und MaStR-Nummer aus dem Register stehen da - und werden nie ein zweites Mal gebucht', async () => {
+    vi.spyOn(api, 'siteEntities').mockResolvedValue(entitiesWith([FRONIUS]));
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([
+      {
+        id: 'pv', type: 'pv', deviceId: null, capacityKwh: null, maxChargeKw: null, maxDischargeKw: null,
+        roundtripEfficiencyPct: null, speicherschonung: null, pvCapacityKwp: 9.8, moduleCount: 24, azimuthDeg: 180,
+        tiltDeg: 30, commissionedOn: null, registry: 'mastr', registryUnitId: 'SEE900000012345', registryFetchedAt: null,
+      },
+    ]);
+    const adopt = vi.spyOn(entitiesApi, 'adopt').mockResolvedValue({} as never);
+    renderSetup();
+    fireEvent.click(await screen.findByText('Als PV-Erzeuger übernehmen'));
+    expect(await screen.findByText('9,8 kWp')).toBeInTheDocument();
+    expect(screen.getByText(/aus dem Register \(SEE900000012345\)/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('Anlagenleistung (kWp)')).toBeNull();
+    expect(screen.queryByLabelText('MaStR-Nummer (optional)')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Übernehmen' }));
+    await waitFor(() => expect(adopt).toHaveBeenCalled());
+    expect(adopt.mock.calls[0][1]).toMatchObject({ sourceId: 'pv-1', entityType: 'producer', registryUnitId: 'SEE900000012345' });
+    expect(adopt.mock.calls[0][1].capacityKwp).toBeUndefined();
+  });
+
+  it('ohne Anlagen-Daten fragt sie wie bisher', async () => {
+    vi.spyOn(api, 'siteEntities').mockResolvedValue(entitiesWith([FRONIUS]));
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
+    renderSetup();
+    fireEvent.click(await screen.findByText('Als PV-Erzeuger übernehmen'));
+    expect(await screen.findByLabelText('Anlagenleistung (kWp)')).toBeInTheDocument();
+    expect(screen.getByLabelText('MaStR-Nummer (optional)')).toBeInTheDocument();
+  });
+});

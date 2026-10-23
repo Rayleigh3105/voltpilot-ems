@@ -22,9 +22,9 @@ export const captures = [
     point('.vp-bottombar', 'Die verfügbaren Bereiche bleiben unten erreichbar.'),
   ] },
   { id: 'anlage-anlegen', title: 'Eine Anlage einrichten', query: 'state=empty', hash: '#/uebersicht', root: 'main', maxHeight: 1400, points: [
-    point('.vp-anlage-flow input', 'Geben Sie der Anlage einen wiedererkennbaren Namen.'),
-    point('.leaflet-container', 'Der Standort hilft bei der Zuordnung der Wettervorhersage.'),
-    point('button:has-text("Weiter")', 'Mit Weiter speichern Sie diesen Schritt und gelangen zu den Registerdaten.'),
+    point('.vp-ort-wahl', 'Wo steht die Anlage? Am selben Ort oder an einer anderen Adresse - die Wahl nennt ihre Folge.'),
+    point('#flow-name', 'Ein Name, unter dem Sie die Anlage wiederfinden.'),
+    point('button:has-text("Weiter")', 'Mit Weiter entsteht die Anlage, und es geht zur Box.'),
   ] },
   { id: 'box-verbinden', title: 'Die Geräte-ID zuordnen', query: 'scene=claim', root: '.vp-modal', points: [
     point('input', 'Übertragen Sie die vollständige VoltPilot-Geräte-ID.'),

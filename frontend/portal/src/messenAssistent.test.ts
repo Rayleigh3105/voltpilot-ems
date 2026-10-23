@@ -10,7 +10,6 @@ import {
   keineAnlageSatz,
   keineAnlageWeg,
   MESSANLAGE_ANLEGEN,
-  MESSANLAGE_RUECKKEHR,
   komponentenSatz,
   MESSEN_SCHRITTE,
   messenEinstieg,
@@ -277,12 +276,7 @@ describe('messenAssistent — Schritt 1 und Schritt 2', () => {
       'Legen Sie hier eine Messanlage an. Sie gehört dann zu Werk Lindach, und die Einrichtung geht hier weiter.',
     );
     expect(MESSANLAGE_ANLEGEN).toBe('Messanlage anlegen');
-    // Das Ende des Anlage-Assistenten führt hierher zurück — Satz und Knopf schweigen über Steuern und Geld.
-    expect(MESSANLAGE_RUECKKEHR).toEqual({
-      satz: 'So geht es weiter: In „Messen & Auswerten“ wählen Sie, womit an dieser Anlage gemessen wird.',
-      knopf: 'Weiter mit „Messen & Auswerten“',
-    });
-    for (const text of [keineAnlageWeg('Werk Lindach'), MESSANLAGE_ANLEGEN, MESSANLAGE_RUECKKEHR.satz, MESSANLAGE_RUECKKEHR.knopf]) {
+    for (const text of [keineAnlageWeg('Werk Lindach'), MESSANLAGE_ANLEGEN]) {
       expect(steuerGeldWoerter(text), text).toEqual([]);
     }
   });

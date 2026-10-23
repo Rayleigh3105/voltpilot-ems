@@ -281,7 +281,8 @@ class StandortLesemodellApiTest {
         assertThat(un.path("nochNichtZugeordnetZahl").asInt()).isZero();
 
         JsonNode bezug = overviewZeile(adminToken, tenant, site).path("standort");
-        assertThat(feldnamen(bezug)).containsExactly("id", "name", "kurzzeichen", "gueltigAb");
+        assertThat(feldnamen(bezug)).containsExactly("id", "name", "kurzzeichen", "gueltigAb", "adresseFehlt");
+        assertThat(bezug.path("adresseFehlt").asBoolean()).as("ein Entwurf ohne Adresse (D9)").isTrue();
         assertThat(bezug.path("id").asText()).isEqualTo(standort.toString());
         assertThat(bezug.path("name").asText()).isEqualTo("Werk Ahrenberg – Halle 1");
         assertThat(bezug.path("kurzzeichen").asText()).isEqualTo("ST-1");

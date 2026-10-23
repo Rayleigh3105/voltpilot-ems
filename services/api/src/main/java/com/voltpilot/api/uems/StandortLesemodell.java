@@ -277,8 +277,13 @@ public final class StandortLesemodell {
         }
     }
 
-    /** Das additive Feld {@code standort} an {@code /overview} und {@code /sites/{id}}. */
-    public record StandortBezug(UUID id, String name, String kurzzeichen, LocalDate gueltigAb) {}
+    /**
+     * Das additive Feld {@code standort} an {@code /overview} und {@code /sites/{id}}. {@code adresseFehlt}
+     * (additiv, Anlage-Flow a1 D9): der Standort hat noch keine vollständige Adresse - das Cockpit fragt
+     * dann mit der Karte „Wo steht …?“, ohne einen eigenen Abruf.
+     */
+    public record StandortBezug(UUID id, String name, String kurzzeichen, LocalDate gueltigAb,
+            boolean adresseFehlt) {}
 
     // --------------------------------------------------------------- Ableitung
 
@@ -341,7 +346,7 @@ public final class StandortLesemodell {
             StandortRepository.Standort s = jeId.get(UUID.fromString(st));
             AnlageStandortRepository.Zuordnung iv = intervallAm(z, an.id(), s.id(), tag);
             out.put(an.id(), new StandortBezug(s.id(), s.name(), s.kurzzeichen(),
-                    iv == null ? null : iv.gueltigAb()));
+                    iv == null ? null : iv.gueltigAb(), !adresseVollstaendig(s.strasse(), s.ort(), s.land())));
         }
         return out;
     }
