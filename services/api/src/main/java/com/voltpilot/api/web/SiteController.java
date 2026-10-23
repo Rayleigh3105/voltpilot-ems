@@ -228,8 +228,19 @@ public class SiteController {
         }
         Optional<StandortRepository.Standort> standort = anlageStandort.zielBeimAnlegen(request.standortId());
         ProtokollAkteur wer = standort.isPresent() ? OrtAnfrage.akteur(auth) : null;
+        // Anlage-Flow a1: die Anlage übernimmt Lage und Gebotszone ihres Standorts, solange sie keine
+        // eigenen nennt - die Adresse wird einmal erfasst, nicht je Anlage noch einmal.
+        java.math.BigDecimal breite = request.latitude();
+        java.math.BigDecimal laenge = request.longitude();
+        if (breite == null && laenge == null && standort.isPresent()) {
+            breite = standort.get().lageBreitengrad();
+            laenge = standort.get().lageLaengengrad();
+        }
+        String zone = request.biddingZone() == null || request.biddingZone().isBlank()
+                ? standort.map(s -> gebotszone(s.land())).orElse(request.biddingZoneOrDefault())
+                : request.biddingZoneOrDefault();
         SiteDto created = sites.create(tenantId, request.name().trim(),
-                request.biddingZoneOrDefault(), request.latitude(), request.longitude(),
+                zone, breite, laenge,
                 request.plantKindOrDefault(), request.anzulegenderWertCtKwh(),
                 request.tarifArtOrDefault(), request.tarifParamOrNull(), request.netzladenErlaubt(),
                 request.maxFeedInKw());
@@ -238,6 +249,11 @@ public class SiteController {
             anfrageKennungen.merken(ROUTE_ANLEGEN, kennung, fingerabdruck, HttpStatus.CREATED, created);
         }
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+
+    /** Die Gebotszone aus dem Land des Standorts (wie {@code zoneForCountry} im Portal). */
+    static String gebotszone(String land) {
+        return "AT".equals(land) ? "AT" : "CH".equals(land) ? "CH" : "DE-LU";
     }
 
     /**

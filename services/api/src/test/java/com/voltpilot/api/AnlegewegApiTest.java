@@ -142,6 +142,55 @@ class AnlegewegApiTest {
         assertThat(falsch.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
     }
 
+    // ---- Paket 1: Standort und Anlage aus EINEM Adressformular ------------------------------
+
+    /**
+     * Der Privat-Weg: die Adresse legt den Standort mit Lage an, die Anlage übernimmt Lage und
+     * Gebotszone des Standorts, solange sie keine eigenen nennt (F1: der Ort wurde zweimal erfasst).
+     */
+    @Test
+    void anlageUebernimmtLageUndGebotszoneDesStandorts() {
+        String t = registrieren("Familie Huber", "zuhause");
+        Map<String, Object> standort = post(t, "/api/v1/standorte", Map.of("name", "Zuhause",
+                "adresse", Map.of("strasse", "Hauptstraße 12", "plz", "6020", "ort", "Innsbruck", "land", "AT"),
+                "zeitzone", "Europe/Vienna",
+                "lage", Map.of("breitengrad", 47.2692, "laengengrad", 11.4041)), null).getBody();
+        Map<String, Object> anlage = post(t, "/api/v1/sites",
+                Map.of("name", "Zuhause", "standortId", standort.get("id")), null).getBody();
+        assertThat(((Number) anlage.get("latitude")).doubleValue()).isEqualTo(47.2692);
+        assertThat(((Number) anlage.get("longitude")).doubleValue()).isEqualTo(11.4041);
+        assertThat(anlage.get("biddingZone")).isEqualTo("AT");
+
+        // Eine eigene Lage bleibt die eigene.
+        Map<String, Object> eigen = post(t, "/api/v1/sites", Map.of("name", "Garage",
+                "standortId", standort.get("id"), "latitude", 47.3, "longitude", 11.5), null).getBody();
+        assertThat(((Number) eigen.get("latitude")).doubleValue()).isEqualTo(47.3);
+    }
+
+    /** „Adresse nachtragen“: Anlagen ohne Kartenpunkt übernehmen die Lage, eine eigene bleibt. */
+    @Test
+    void adresseNachtragenGibtAnlagenOhneLageDenKartenpunkt() {
+        String t = registrieren("Werkstatt Bauer", "zuhause");
+        Map<String, Object> ohne = post(t, "/api/v1/sites", Map.of("name", "Werkstatt"), null).getBody();
+        // Wie die Bestandsübernahme (Regel 3): ein Standort im Entwurf, ohne Adresse, mit der Anlage.
+        Map<String, Object> standort = post(t, "/api/v1/standorte", Map.of("name", "Standort",
+                "adresse", Map.of("strasse", "Ringstraße 3", "ort", "Ansbach", "land", "DE"),
+                "zeitzone", "Europe/Berlin"), null).getBody();
+        exec("INSERT INTO anlage_standort (tenant_id, site_id, standort_id, gueltig_ab) "
+                + "SELECT tenant_id, id, '" + standort.get("id") + "', current_date FROM site WHERE id = '"
+                + ohne.get("id") + "'");
+        ResponseEntity<String> put = rest.exchange(url("/api/v1/standorte/" + standort.get("id")), HttpMethod.PUT,
+                new HttpEntity<>(Map.of("name", "Standort", "kurzzeichen", standort.get("kurzzeichen"),
+                        "adresse", Map.of("strasse", "Ringstraße 3", "plz", "91522", "ort", "Ansbach", "land", "DE"),
+                        "zeitzone", "Europe/Berlin", "lage", Map.of("breitengrad", 49.30, "laengengrad", 10.57)),
+                        bearer(t)), String.class);
+        assertThat(put.getStatusCode()).as(put.getBody()).isEqualTo(HttpStatus.OK);
+        Map<String, Object> danach = rest.exchange(url("/api/v1/sites/" + ohne.get("id")), HttpMethod.GET,
+                new HttpEntity<>(bearer(t)), MAP).getBody();
+        assertThat(((Number) danach.get("latitude")).doubleValue()).isEqualTo(49.30);
+        assertThat(((Number) danach.get("longitude")).doubleValue()).isEqualTo(10.57);
+    }
+
     // ---- B3: dieselbe Anfrage-Kennung legt nie doppelt an -----------------------------------
 
     /**
