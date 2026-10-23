@@ -564,7 +564,7 @@
     {
       "id": "privat",
       "label": "Privat",
-      "satz": "Ein Haushalt mit eigener Erzeugung - wir starten damit, Ihren eigenen Strom im Haus zu halten und Ihre Geraete danach laufen zu lassen.",
+      "satz": "Ein Haushalt mit eigener Erzeugung - wir starten damit, Ihren eigenen Strom im Haus zu halten und Ihre Geräte danach laufen zu lassen.",
       "tonalitaet": "sparen",
       "layouts": {
         "cockpit": { "order": [], "hidden": [], "shown": [], "lead": "energiefluss" },
