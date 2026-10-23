@@ -36477,7 +36477,7 @@ components:
         abschnitt: { type: string }
         feld: { type: string }
         te_nr: { type: integer, minimum: 1, maximum: 10, nullable: true }
-        einheit: { type: string, enum: [W, "%"] }
+        einheit: { type: string, enum: [W, "%", kWh], description: "kWh nur am Zählerstand Erzeugung t_e je Einheit (GE-3, additiv)." }
         eimer:
           type: array
           items: { $ref: "#/components/schemas/AnlagensteuerungEimer" }
@@ -36717,12 +36717,13 @@ components:
         name: { type: string }
     ErzeugerJetztEinheit:
       type: object
-      required: [teNr, art, typName, nennKw]
+      required: [teNr, art, typName, nennKw, bezeichnung]
       properties:
         teNr: { type: integer, minimum: 1, maximum: 10 }
         art: { type: string, enum: [pv, bhkw], nullable: true }
         typName: { type: string, nullable: true }
         nennKw: { type: number, nullable: true }
+        bezeichnung: { type: string, nullable: true, description: "Der Name der Einheit (GE-3, additiv); null = keiner, dann steht die Nummer." }
     ErzeugerJetztWert:
       type: object
       description: "Zahl in der Einheit des Punkts (W, %, kW, s; Zustand und Bitfeld als Ganzzahl); ohne Lesung alles null, mit Qualität invalid oder device_error wert null."

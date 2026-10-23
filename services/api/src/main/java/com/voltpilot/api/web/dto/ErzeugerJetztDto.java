@@ -25,8 +25,11 @@ public final class ErzeugerJetztDto {
     /** Das Gerät „Anlagensteuerung“. */
     public record Steuerung(UUID geraetId, String name) {}
 
-    /** Ein Teil {@code erzeugungseinheit}: {@code art} ist {@code pv} · {@code bhkw} · null. */
-    public record Einheit(int teNr, String art, String typName, BigDecimal nennKw) {}
+    /**
+     * Ein Teil {@code erzeugungseinheit}: {@code art} ist {@code pv} · {@code bhkw} · null. {@code bezeichnung} ist
+     * der Name, den der Kunde der Einheit gab (GE-3, additiv); null = keiner, dann nennt das Portal die Nummer.
+     */
+    public record Einheit(int teNr, String art, String typName, BigDecimal nennKw, String bezeichnung) {}
 
     /**
      * Der jüngste Wert eines Punkts: Zahl in der Einheit des Punkts (W, %, kW, s; Zustand und Bitfeld als

@@ -234,7 +234,10 @@ public final class AnlagensteuerungDto {
             int bucketMinutes,
             List<Kurve> kurven) {}
 
-    /** Eine Kurve: der Punkt in der Sprache des Bilds und seine Eimer (Einheit des Punkts: W oder %). */
+    /**
+     * Eine Kurve: der Punkt in der Sprache des Bilds und seine Eimer (Einheit des Punkts: W oder %, am Zählerstand
+     * {@code t_e} kWh).
+     */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Kurve(String pointKey, String abschnitt, String feld, Integer teNr, String einheit,
             List<Eimer> eimer) {}

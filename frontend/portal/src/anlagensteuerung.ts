@@ -36,11 +36,17 @@ const MINUS = '−';
 const NF1 = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const NF0 = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 });
 
+/** Leistung in W → „41,2“ in kW (eine Stelle, echtes Minus); `null` → `null` (nie eine Null). */
+export function kwZahl(watt: number | null): string | null {
+  if (watt == null) return null;
+  const kw = Math.abs(watt) < 50 ? 0 : watt / 1000;
+  return `${kw < 0 ? MINUS : ''}${NF1.format(Math.abs(kw))}`;
+}
+
 /** Leistung in W → „41,2 kW“ (eine Stelle, echtes Minus); `null` → „—“. */
 export function kwText(watt: number | null): string {
-  if (watt == null) return STRICH;
-  const kw = Math.abs(watt) < 50 ? 0 : watt / 1000;
-  return `${kw < 0 ? MINUS : ''}${NF1.format(Math.abs(kw))}${NBSP}kW`;
+  const zahl = kwZahl(watt);
+  return zahl == null ? STRICH : `${zahl}${NBSP}kW`;
 }
 
 /** Prozent → „60 %“ (ohne Stelle); `null` → „—“. */
@@ -507,8 +513,11 @@ export function erzeugerGeraetId(entityId: string): string {
   return entityId.slice(ERZEUGER_PREFIX.length);
 }
 
-/** Der Ast einer Anlagensteuerung: je Einheit Ist und Soll, dazu Netzpunkt, Erzeugung, Gasspeicher und Vorgaben. */
-export function erzeugerGruppe(s: Anlagensteuerung): VerlaufGroup {
+/**
+ * Der Ast einer Anlagensteuerung: je Einheit Ist und Soll, dazu Netzpunkt, Erzeugung, Gasspeicher und Vorgaben. Mit
+ * `einheitHref` (GE-3) springt der Ast je Einheit auf ihre Seite.
+ */
+export function erzeugerGruppe(s: Anlagensteuerung, einheitHref?: (teNr: number) => string | null): VerlaufGroup {
   const entityId = ERZEUGER_PREFIX + s.geraet_id;
   const item = (channel: string, label: string, unit: string, role: ComponentRole) => ({
     entityId,
@@ -524,6 +533,10 @@ export function erzeugerGruppe(s: Anlagensteuerung): VerlaufGroup {
     item(einheitPunkt(e.te_nr, 't_p_soll_w'), `${einheitName(e)} · Soll`, 'kW', 'pv' as const),
   ]);
   const gas = s.fassung?.anlagenart === 'pv' ? [] : [item(PUNKT.speicher, 'Gasspeicher', '%', 'storage')];
+  const sprunge = sortiert(s.einheiten).flatMap((e) => {
+    const href = einheitHref?.(e.te_nr) ?? null;
+    return href ? [{ label: einheitName(e), href }] : [];
+  });
   return {
     entityId,
     label: s.bezeichnung ?? 'Anlagensteuerung',
@@ -542,6 +555,7 @@ export function erzeugerGruppe(s: Anlagensteuerung): VerlaufGroup {
       item(PUNKT.dvSoll, 'Direktvermarkter · Soll', 'kW', 'grid'),
       item(PUNKT.grenze, 'Wirksame Grenze', 'kW', 'grid'),
     ],
+    ...(sprunge.length > 0 ? { sprunge } : {}),
   };
 }
 

@@ -144,7 +144,8 @@ public final class ErzeugerRegisterbild {
     /**
      * Die Punkte, die als Kurve taugen (UEMS EZ-10, Verlauf › Messwerte): jeder Momentanwert in W oder % —
      * Netzpunkt, Erzeugung, Gasspeicher, Vorgaben von Netzbetreiber und Direktvermarkter, wirksame Grenze und je
-     * Einheit Ist und Soll. Alter, „seit“ und cos φ sind keine Kurve.
+     * Einheit Ist und Soll. Alter, „seit“ und cos φ sind keine Kurve. Dazu je Einheit der Zählerstand Erzeugung
+     * {@code t_e} in kWh (GE-3, additiv): aus ihm liest die Seite der Einheit die Energie heute.
      */
     public static List<String> kurven(int teAnzahl) {
         return punkte(teAnzahl).stream().filter(k -> feld(k).filter(ErzeugerRegisterbild::kurve).isPresent())
@@ -152,7 +153,8 @@ public final class ErzeugerRegisterbild {
     }
 
     private static boolean kurve(Feld f) {
-        return "gauge".equals(f.art()) && ("W".equals(f.einheit()) || "%".equals(f.einheit()));
+        return "gauge".equals(f.art()) && ("W".equals(f.einheit()) || "%".equals(f.einheit()))
+                || "counter".equals(f.art()) && "kWh".equals(f.einheit());
     }
 
     /** Das Feld eines konkreten Punktschlüssels — leer für jeden fremden Schlüssel. */

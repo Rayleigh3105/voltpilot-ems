@@ -4,7 +4,9 @@ import {
   dauer,
   einheitPunkt,
   ERZEUGER_PUNKT as P,
+  einheitenListe,
   erzeugerBlatt,
+  erzeugerBuehne,
   erzeugerKette,
   erzeugerKnoten,
   erzeugerLage,
@@ -278,5 +280,31 @@ describe('Heute: Wer hat geregelt, Spuren', () => {
     expect(s[0].an[63]).toBe(false);
     const g = erzeugerBeispiel('gore', NOW);
     expect(vorgabeSpuren(g, erzeugerLage(g, NOW), viertel, NOW.getTime(), 900_000).map((x) => x.name)).toEqual(['Netzbetreiber', 'Anlage selbst']);
+  });
+});
+
+describe('Erzeugung im Detail — je Einheit auf ihre Seite (GE-3)', () => {
+  const href = (teNr: number) => `#/anlage/site-gore/geraet/edge-gore/as-ent~te-${teNr}`;
+
+  it('der Name ist die Bezeichnung der Einheit (additiv in der Antwort), sonst „Wechselrichter n“', () => {
+    const j = mit('gore', (x) => {
+      x.einheiten[0] = { ...x.einheiten[0], bezeichnung: 'WR Dach Nord' };
+    });
+    expect(erzeugerLage(j, NOW).einheiten.map((e) => e.name)).toEqual(['WR Dach Nord', 'Wechselrichter 2', 'Wechselrichter 3']);
+  });
+
+  it('im Blatt führt jede eingetragene Einheit auf ihre Seite; eine nur im Bild gezählte hat keine', () => {
+    const j = mit('gore', (x) => {
+      x.einheiten = x.einheiten.filter((e) => e.teNr !== 3);
+    });
+    const liste = einheitenListe(erzeugerLage(j, NOW), href)!;
+    expect(liste.zeilen.map((z) => [z.key, z.href])).toEqual([
+      ['te1', href(1)],
+      ['te2', href(2)],
+      ['te3', null],
+    ]);
+    expect(erzeugerBuehne(j, erzeugerLage(j, NOW), null, NOW, href).liste?.zeilen[0].href).toBe(href(1));
+    // Ohne Weg (keine Box, noch keine Entität) bleibt die Liste, wie sie war.
+    expect(einheitenListe(erzeugerLage(j, NOW))!.zeilen.every((z) => z.href == null)).toBe(true);
   });
 });

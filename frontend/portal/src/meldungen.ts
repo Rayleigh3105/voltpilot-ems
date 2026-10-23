@@ -18,9 +18,11 @@
  * Nur das Lazy-Stück `pages/MeldungenPage.tsx` importiert dieses Modul - die Glocke und die
  * Zustands-Anzeige im Einstiegs-Bündel nutzen das schlankere `meldungenApi.ts` direkt.
  */
+import type { Anlagensteuerung } from './api';
+import { einheitGeraetId } from './geraetAdresse';
 import { meldungenApi } from './meldungenApi';
 import type { Meldung, Schwere } from './meldungenApi';
-import { energiezielRoute, hashForRoute, kennzahlRoute, messstelleRoute } from './nav';
+import { energiezielRoute, geraetSeiteHash, hashForRoute, kennzahlRoute, messstelleRoute } from './nav';
 import { katalogEintrag } from './werteKatalog';
 
 export { meldungenApi };
@@ -121,6 +123,31 @@ export function meldungQuelleLink(m: Meldung): { label: string; hash: string } |
     default:
       return null;
   }
+}
+
+/** Die Einheit eines Alarms je Einheit (EZ-11): `einheit:<Steuerung>;te=<n>` → Steuerung und TE-Nr.; null sonst. */
+export function einheitAusBezug(bezugKennung: string | null): { geraetId: string; teNr: number } | null {
+  const m = bezugKennung ? /^einheit:([^;:]+);te=(\d+)$/.exec(bezugKennung) : null;
+  return m ? { geraetId: m[1], teNr: Number(m[2]) } : null;
+}
+
+/**
+ * „Zum Wechselrichter“ (GE-3): ein Alarm je Einheit führt auf die Seite DIESER Einheit (`as-<Entität>~te-<n>`). Die
+ * Meldung nennt nur die Steuerung (Gerät) — die Entität kommt aus `…/anlagensteuerungen` der Anlage, die Box aus
+ * derselben Regel wie überall (`boxRefOf`). Fehlt eines davon oder ist die Einheit nicht eingetragen: kein Weg.
+ */
+export function meldungEinheitLink(
+  m: Meldung,
+  steuerungen: readonly Anlagensteuerung[] | undefined,
+  boxRef: string | null,
+): { label: string; hash: string } | null {
+  const bezug = einheitAusBezug(m.bezugKennung);
+  if (!bezug || !m.anlageId || !boxRef) return null;
+  const s = steuerungen?.find((x) => x.geraet_id === bezug.geraetId);
+  const e = s?.einheiten.find((x) => x.te_nr === bezug.teNr);
+  if (!s || !e) return null;
+  const label = e.einheit_art === 'bhkw_motor' ? 'Zum Motor' : e.einheit_art === 'pv_wechselrichter' ? 'Zum Wechselrichter' : 'Zur Einheit';
+  return { label, hash: geraetSeiteHash(m.anlageId, boxRef, einheitGeraetId(s.entity_id, bezug.teNr)) };
 }
 
 /** `?anlage=<id>` aus der rohen Adresse - die Seite liest ihre Filter selbst (kein Routen-Feld, §6.2). */

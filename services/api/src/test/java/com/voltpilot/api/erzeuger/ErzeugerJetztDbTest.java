@@ -163,10 +163,10 @@ class ErzeugerJetztDbTest {
         assertThat(j.netzbetreiber()).isNull();
         assertThat(j.direktvermarkter()).isNull();
         assertThat(j.einheiten()).extracting(ErzeugerJetztDto.Einheit::teNr, ErzeugerJetztDto.Einheit::art,
-                ErzeugerJetztDto.Einheit::typName).containsExactly(
-                        org.assertj.core.groups.Tuple.tuple(1, "pv", "Growatt MAX 125KTL3-X LV"),
-                        org.assertj.core.groups.Tuple.tuple(2, "pv", null),
-                        org.assertj.core.groups.Tuple.tuple(3, "pv", "Growatt MAX 125KTL3-X"));
+                ErzeugerJetztDto.Einheit::typName, ErzeugerJetztDto.Einheit::bezeichnung).containsExactly(
+                        org.assertj.core.groups.Tuple.tuple(1, "pv", "Growatt MAX 125KTL3-X LV", "WR 1"),
+                        org.assertj.core.groups.Tuple.tuple(2, "pv", null, "WR 2"),
+                        org.assertj.core.groups.Tuple.tuple(3, "pv", "Growatt MAX 125KTL3-X", "WR 3"));
         assertThat(j.einheiten().get(1).nennKw()).as("nicht erhoben, nie 0").isNull();
         assertThat(j.werte()).as("22 Punkte der Anlage + 3 × 6 je Einheit").hasSize(22 + 3 * 6)
                 .containsKeys("erzeuger.anlage.p_nvp_w", "erzeuger.nb.bits", "erzeuger.te3.p_ist_w")

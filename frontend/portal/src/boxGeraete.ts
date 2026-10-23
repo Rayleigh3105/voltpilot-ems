@@ -13,7 +13,7 @@
  * Rein + framework-frei; die Seiten rendern nur.
  */
 import type { Device, SiteEntities, SiteSource, SiteTopology, UemsDatenquelle, UemsGeraet } from './api';
-import { aufbauBaum, type AufbauAnlage, type AufbauBox, type AufbauGeraet, type AufbauWeg } from './aufbauBaum';
+import { aufbauBaum, type AufbauAnlage, type AufbauBox, type AufbauEingabe, type AufbauGeraet, type AufbauWeg } from './aufbauBaum';
 import { kastenSatz } from './aufbauTabelle';
 import { ANFRAGEN_GRENZE, boxLast, lastText, MESSWERTE_GRENZE, wegLast, type WegLast } from './boxUebersicht';
 import { boxRefOf } from './geraetAdresse';
@@ -39,6 +39,8 @@ export interface AnlageDaten {
   datenquellen: readonly UemsDatenquelle[] | null;
   /** `GET …/geraete`; null/undefined = unbekannt — dann stehen weder Anbindungen noch Anschlüsse da (GE-1). */
   uemsGeraete: readonly UemsGeraet[] | null | undefined;
+  /** Die Anlagensteuerungen mit ihren Werten (GE-3): ihre Einheiten zählen als Geräte an der Box wie im Aufbau. */
+  anlagensteuerungen?: NonNullable<AufbauEingabe['anlagensteuerungen']>[string];
   now: number;
 }
 
@@ -80,6 +82,7 @@ export function aufbauDerAnlage(d: AnlageDaten): AufbauAnlage | null {
     overview: null,
     datenquellen: d.datenquellen,
     uemsGeraete: { [d.siteId]: d.uemsGeraete },
+    anlagensteuerungen: d.anlagensteuerungen ? { [d.siteId]: d.anlagensteuerungen } : undefined,
     now: d.now,
   }).anlagen[0];
 }
@@ -214,6 +217,9 @@ export function boxGeraeteBlock(e: BoxGeraeteEingabe): BoxGeraeteBlock {
   const box = e.box;
   const geraete = (box?.geraete ?? []).filter((g) => g.art !== 'neu');
   const wege = box?.wege ?? [];
+  // GE-3: die Einheiten einer Anlagensteuerung stehen direkt hinter ihr — auch hinter einem Gateway, wo die Steuerung steht.
+  const mitEinheiten = (liste: readonly AufbauGeraet[]) =>
+    liste.flatMap((g) => [g, ...geraete.filter((u) => u.einheit?.steuerungId === g.id)]);
   const gateways = wege.filter((w): w is AufbauWeg => w.art === 'gateway').map((w): BoxGateway => ({
     id: w.id,
     kennzeichen: w.kennzeichen,
@@ -222,7 +228,7 @@ export function boxGeraeteBlock(e: BoxGeraeteEingabe): BoxGeraeteBlock {
     zeile: [mehrzahl(w.geraete.length, 'Gerät', 'Geräte'), lastVon([w.id])].filter(Boolean).join(' · '),
     zustand: [w.zustandWort, w.zustandZeit].filter(Boolean).join(' · '),
     ton: w.ton,
-    geraete: w.geraete.map(eintrag),
+    geraete: mitEinheiten(w.geraete).map(eintrag),
   }));
   const offen = wege.filter((w) => w.art === 'offen').map((w): BoxAnschluss => ({
     id: w.id,
@@ -244,7 +250,7 @@ export function boxGeraeteBlock(e: BoxGeraeteEingabe): BoxGeraeteBlock {
       + `${fremde.map((q) => q.kennzeichen).join(', ')} — dort im Aufbau.`;
 
   return {
-    eintraege: geraete.filter((g) => !g.gateway).map(eintrag),
+    eintraege: mitEinheiten(geraete.filter((g) => !g.gateway && !g.einheit)).map(eintrag),
     gateways,
     offen,
     anzahl: box ? geraete.length : null,

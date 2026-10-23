@@ -5,6 +5,7 @@ import {
   bereichKopf,
   request,
   type ErzeugerVorgabeDetail,
+  type ErzeugerVorgabenChronik,
   type ErzeugerVorgabenHeute,
 } from './api';
 
@@ -16,6 +17,8 @@ import {
 export const erzeugerVorgabenApi = {
   /** „Wer hat heute geregelt?“: der heutige Tag (Europe/Berlin) je Urheber. 404 = keine Anlage/älteres Backend. */
   heute: (siteId: string) => request<ErzeugerVorgabenHeute>(`/api/v1/sites/${siteId}/erzeuger/vorgaben/heute`),
+  /** Die Chronik der letzten sieben Tage (EZ-7) — die Seite einer Einheit (GE-3) liest daraus ihre Vorgaben. */
+  chronik: (siteId: string) => request<ErzeugerVorgabenChronik>(`/api/v1/sites/${siteId}/erzeuger/vorgaben`),
   /** Eine Vorgabe mit Rohsignalen am Beginn und Ende und den Zählerständen — das Detail der Chronik-Zeile. */
   detail: (siteId: string, vorgabeId: string) =>
     request<ErzeugerVorgabeDetail>(`/api/v1/sites/${siteId}/erzeuger/vorgaben/${vorgabeId}`),

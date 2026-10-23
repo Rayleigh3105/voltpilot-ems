@@ -573,7 +573,7 @@ function GeraetZeile({
   const titel = <Treffer text={g.titel} begriffe={begriffe} />;
   return (
     <div
-      className={`vp-auf-t-zeile is-geraet is-${g.ton}${nurLesend ? ' is-lesend' : ''}${ebeneKlasse(z.ebene)}`}
+      className={`vp-auf-t-zeile is-geraet is-${g.ton}${g.einheit ? ' is-einheit' : ''}${nurLesend ? ' is-lesend' : ''}${ebeneKlasse(z.ebene)}`}
       role="row"
       style={ebene(z.ebene)}
       data-aufbau-geraet={g.id}
@@ -641,6 +641,11 @@ function GeraetZeile({
       <span role="cell" className="vp-auf-t-wert">
         {wert ? (
           <span title={wert.label}>{wert.text}</span>
+        ) : g.einheit ? (
+          // GE-3: eine Einheit ohne gültige Lesung — „—“ wie auf ihrer Seite, nie 0.
+          <span className="is-leer" aria-label="Ist-Leistung unbekannt">
+            —
+          </span>
         ) : (
           <span className="is-leer" aria-label="kein Messwert">
             –

@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
+import { buettner, gore, GERAET_GORE, ENTITY_GORE } from './test/anlagensteuerungFixtures';
 import {
   anlageAusHash,
+  einheitAusBezug,
   istEigeneUeberwachung,
+  meldungEinheitLink,
   meldungQuelleLink,
   reiterAusHash,
   type Meldung,
@@ -98,5 +101,28 @@ describe('meldungQuelleLink — „Zur Auffälligkeit zur Quelle“ (§6.4 Nr. 7
 
   it('liefert null für jede andere Wertart', () => {
     expect(meldungQuelleLink(meldung({ wertart: 'box.erreichbar', bezugKennung: 'anlage:an-1' }))).toBeNull();
+  });
+});
+
+describe('Alarm je Einheit → Seite der Einheit (GE-3)', () => {
+  const m = meldung({ wertart: 'erzeuger.fernsteuerung_nicht_bereit', anlageId: 'site-gore', bezugKennung: `einheit:${GERAET_GORE};te=2` });
+
+  it('liest die Kennung, wie der Server sie baut', () => {
+    expect(einheitAusBezug(`einheit:${GERAET_GORE};te=2`)).toEqual({ geraetId: GERAET_GORE, teNr: 2 });
+    expect(einheitAusBezug('anlage:site-gore')).toBeNull();
+    expect(einheitAusBezug(`messreihe:x;kanal=y`)).toBeNull();
+    expect(einheitAusBezug(null)).toBeNull();
+  });
+
+  it('führt mit Steuerung und Box auf `as-<Entität>~te-<n>`; ohne eines davon kein Weg', () => {
+    expect(meldungEinheitLink(m, [buettner(), gore()], 'edge-gore')).toEqual({
+      label: 'Zum Wechselrichter',
+      hash: `#/anlage/site-gore/geraet/edge-gore/as-${ENTITY_GORE}~te-2`,
+    });
+    expect(meldungEinheitLink(m, [gore()], null)).toBeNull();
+    expect(meldungEinheitLink(m, undefined, 'edge-gore')).toBeNull();
+    expect(meldungEinheitLink({ ...m, bezugKennung: `einheit:${GERAET_GORE};te=9` }, [gore()], 'edge-gore')).toBeNull();
+    // Die übrigen Meldungen bleiben, wie sie sind.
+    expect(meldungQuelleLink(m)).toBeNull();
   });
 });

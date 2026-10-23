@@ -6,6 +6,7 @@ import { IconTile } from '../../designsystem/components/core/IconTile';
 import {
   api,
   ApiError,
+  type Anlagensteuerung,
   type AnlagensteuerungVerlauf,
   type EntityHistory,
   type History,
@@ -18,6 +19,8 @@ import { fmtNum } from '../format';
 import { SUMMENWERT } from '../glossar';
 import { ladeSiteGesamtwerte } from '../gesamtwertQuelle';
 import { erzeugerGeraetId, erzeugerGruppe, istErzeugerZiel, seriesFromErzeugerVerlauf } from '../anlagensteuerung';
+import { einheitHref } from '../erzeugungseinheit';
+import { useBoxRef } from '../useBoxRef';
 import type { ComponentRole } from '../komponenten';
 import { isoDate } from '../periodNav';
 import {
@@ -150,6 +153,19 @@ function GroupList({
             ) : (
               g.deviceLine && <p className="vp-vg-device">{g.deviceLine}</p>
             )}
+            {/* GE-3: die Geräte hinter dem Ast (Wechselrichter einer Anlagensteuerung) mit eigener Seite. */}
+            {g.sprunge && (
+              <p className="vp-vg-device vp-vg-sprunge" data-testid="verlauf-sprunge">
+                {g.sprunge.map((sp, i) => (
+                  <span key={sp.href}>
+                    {i > 0 && ' · '}
+                    <a href={sp.href}>
+                      {sp.label} <Icon name="chevron-right" size={12} />
+                    </a>
+                  </span>
+                ))}
+              </p>
+            )}
             {g.items.map((it) => {
               const t = { entityId: it.entityId, channel: it.channel };
               const selected = isSelected(targets, t);
@@ -208,7 +224,15 @@ export function VerlaufExplorer({
   // UEMS EZ-10: die Äste der Anlagensteuerungen in einem eigenen Stand - EIN Wert, nie ein Anhängen an den Baum,
   // damit die Auswahl `groups` nur dann eine neue Identität bekommt, wenn sich wirklich ein Ast ändert.
   // `null` = ihre Antwort steht noch aus: bis dahin behält die Auswahl einen Deep-Link auf eine ihrer Kurven.
-  const [erzAeste, setErzAeste] = useState<VerlaufGroup[] | null>(null);
+  // UEMS EZ-10: die Steuerungen der Anlage; ihre Äste entstehen unten (GE-3: mit Sprung je Einheit, sobald die Box
+  // bekannt ist, unter deren Referenz die Seiten stehen).
+  const [erzSteuerungen, setErzSteuerungen] = useState<Anlagensteuerung[] | null>(null);
+  const erzBoxRef = useBoxRef(site.id, (erzSteuerungen?.length ?? 0) > 0);
+  const erzAeste = useMemo<VerlaufGroup[] | null>(
+    () =>
+      erzSteuerungen?.map((s) => erzeugerGruppe(s, (teNr) => einheitHref(site.id, erzBoxRef, s.entity_id, teNr))) ?? null,
+    [erzSteuerungen, erzBoxRef, site.id],
+  );
   const groups = useMemo(
     () => (baum && erzAeste && erzAeste.length > 0 ? [...baum, ...erzAeste] : baum),
     [baum, erzAeste],
@@ -223,15 +247,15 @@ export function VerlaufExplorer({
   useEffect(() => {
     let active = true;
     setGroups(null);
-    setErzAeste(null);
+    setErzSteuerungen(null);
     setTreeErr(null);
     // UEMS EZ-10: je Anlagensteuerung ein Ast mit den Kurven ihres Registerbilds (Einheiten, Netzpunkt,
     // Gasspeicher, Vorgaben) - die Punkte `erzeuger.*` sind keine Kanäle der Komponente. Auch neben dem
     // v1-Baum: eine reine Erzeugeranlage hat oft keine gemessene Komponente sonst.
     api
       .anlagensteuerungen(site.id)
-      .then((liste) => active && setErzAeste(liste?.steuerungen.map(erzeugerGruppe) ?? []))
-      .catch(() => active && setErzAeste([]));
+      .then((liste) => active && setErzSteuerungen(liste?.steuerungen ?? []))
+      .catch(() => active && setErzSteuerungen([]));
     Promise.all([api.siteEntities(site.id), api.topology(site.id).catch(() => null)])
       .then(([entities, topology]) => {
         if (!active) return;

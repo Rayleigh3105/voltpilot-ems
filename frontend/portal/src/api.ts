@@ -6764,8 +6764,8 @@ export interface ErzeugerJetzt {
   /** Namen aus dem Bild (§3.10) oder den Stammdaten; null = nicht bekannt bzw. keiner. */
   netzbetreiber: string | null;
   direktvermarkter: string | null;
-  /** Teile `erzeugungseinheit` (Identität = Steuerung + TE-Nr.). */
-  einheiten: { teNr: number; art: 'pv' | 'bhkw' | null; typName: string | null; nennKw: number | null }[];
+  /** Teile `erzeugungseinheit` (Identität = Steuerung + TE-Nr.); `bezeichnung` = Name der Einheit (GE-3), null = keiner. */
+  einheiten: { teNr: number; art: 'pv' | 'bhkw' | null; typName: string | null; nennKw: number | null; bezeichnung: string | null }[];
   /** Aktueller Wert je Punktname (`erzeuger.nb.bits`, `erzeuger.te2.p_ist_w`, …). */
   werte: Record<string, ErzeugerWert>;
   /** Heutige Wechsel von `erzeuger.wirkung.quelle_p`, `erzeuger.nb.bits`, `erzeuger.dv.bits`. */
@@ -6816,6 +6816,29 @@ export interface ErzeugerVorgabeRohwert {
   wort: string | null;
   text: string | null;
   bits: { bit: number; wort: string; text: string }[] | null;
+}
+
+/**
+ * `GET …/erzeuger/vorgaben` (EZ-7): die Vorgaben, die `[von, bis)` berühren (ohne Zeitraum die letzten sieben Tage),
+ * und die Datenlücken mit weiteren Wechseln. Gelesen von der Seite einer Einheit (GE-3).
+ */
+export interface ErzeugerVorgabenChronik {
+  site_id: string;
+  von: string;
+  bis: string;
+  verarbeitet_bis: string | null;
+  vorgaben: ErzeugerVorgabe[];
+  luecken: {
+    id: string;
+    geraet_id: string;
+    urheber: 'netzbetreiber' | 'direktvermarkter';
+    beginn: string;
+    ende: string;
+    weitere_wechsel: number | null;
+    neustart: boolean;
+    zaehler_vorher: number | null;
+    zaehler_nachher: number | null;
+  }[];
 }
 
 /** `GET …/erzeuger/vorgaben/{vorgabeId}`: die Vorgabe mit ihren Rohsignalen und den Proben ihres Zeitraums. */
@@ -8600,7 +8623,10 @@ export interface NetzVermarktungAendern {
   einspeisemanagement_prozent: number | null;
 }
 
-/** Die Kurven des Bilds über ein Fenster der Historie (UEMS EZ-10); ein Eimer ohne Wert fehlt, nie 0. */
+/**
+ * Die Kurven des Bilds über ein Fenster der Historie (UEMS EZ-10); ein Eimer ohne Wert fehlt, nie 0. Seit GE-3
+ * steht je Einheit auch der Zählerstand Erzeugung `t_e` da (Einheit kWh) — die Energie heute der Einheiten-Seite.
+ */
 export interface AnlagensteuerungVerlauf {
   geraet_id: string;
   entity_id: string;
@@ -8613,7 +8639,7 @@ export interface AnlagensteuerungVerlauf {
     abschnitt: string;
     feld: string;
     te_nr: number | null;
-    einheit: 'W' | '%';
+    einheit: 'W' | '%' | 'kWh';
     eimer: { start: string; avg: number; min: number; max: number; last: number; n: number }[];
   }[];
 }

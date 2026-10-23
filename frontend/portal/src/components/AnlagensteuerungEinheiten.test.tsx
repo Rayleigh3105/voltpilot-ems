@@ -40,3 +40,20 @@ describe('AnlagensteuerungEinheiten', () => {
     expect(within(anlage).getByText('Datenstand')).toBeInTheDocument();
   });
 });
+
+describe('AnlagensteuerungEinheiten — je Einheit auf ihre Seite (GE-3)', () => {
+  afterEach(() => {
+    window.location.hash = '';
+  });
+
+  it('auf der Seite der Steuerung führt jede Einheit auf `as-<Entität>~te-<n>` unter derselben Box', async () => {
+    window.location.hash = `#/anlage/${SITE_GORE}/geraet/edge-5mz8bdd/as-${ENTITY_GORE}`;
+    gore();
+    const einheiten = await screen.findByTestId('geraet-einheiten');
+    const links = within(einheiten).getAllByTestId('geraet-einheit-link');
+    expect(links.map((a) => a.getAttribute('href'))).toEqual([1, 2, 3].map(
+      (n) => `#/anlage/${SITE_GORE}/geraet/edge-5mz8bdd/as-${ENTITY_GORE}~te-${n}`,
+    ));
+    expect(links[0].textContent).toContain('Wechselrichter 1');
+  });
+});

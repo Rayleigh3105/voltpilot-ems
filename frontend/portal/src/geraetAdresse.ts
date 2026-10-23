@@ -72,9 +72,26 @@ export function anlagensteuerungGeraetId(entityId: string): string {
   return `as-${entityId}`;
 }
 
-/** Rückrichtung: `as-…` → die Entität der Anlagensteuerung; null sonst. */
+/** Rückrichtung: `as-…` → die Entität der Anlagensteuerung; null sonst (auch für eine Einheit `as-…~te-n`). */
 export function anlagensteuerungIdOf(geraetId: string | null): string | null {
-  if (!geraetId || !geraetId.startsWith('as-')) return null;
+  if (!geraetId || !geraetId.startsWith('as-') || geraetId.includes('~')) return null;
   const id = geraetId.slice(3);
   return id ? id : null;
+}
+
+/**
+ * Die Kennung einer Erzeugungseinheit hinter einer Anlagensteuerung im Pfad: `as-<Entität>~te-<n>` (GE-3, d1). Die
+ * Einheit hat keine eigene Komponente — ihre Messreihen `erzeuger.te[n].*` hängen an der Komponente der Steuerung,
+ * nicht am Einbau; darum trägt die Adresse deren Entität (wie `as-…`) und die TE-Nr. Ohne „/“: der Pfad trennt
+ * `…/geraet/{ref}/{geraetId}` am Schrägstrich. „~“ kommt in einer Entitäts-Kennung nie vor
+ * (`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`) und bleibt in `encodeURIComponent` stehen.
+ */
+export function einheitGeraetId(entityId: string, teNr: number): string {
+  return `as-${entityId}~te-${teNr}`;
+}
+
+/** Rückrichtung: `as-<Entität>~te-<n>` → Entität und TE-Nr. (1 … 10); null sonst. */
+export function einheitAdresseOf(geraetId: string | null): { entityId: string; teNr: number } | null {
+  const m = geraetId ? /^as-([A-Za-z0-9][A-Za-z0-9._-]{0,63})~te-([1-9]|10)$/.exec(geraetId) : null;
+  return m ? { entityId: m[1], teNr: Number(m[2]) } : null;
 }

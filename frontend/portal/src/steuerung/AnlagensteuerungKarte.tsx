@@ -2,7 +2,8 @@
  * Steuerung › Geräte, Ansicht „nur messen“, an einer Anlage mit Anlagensteuerung (UEMS EZ-10, EW-3 A): wer die
  * Anlage steuert - Netzbetreiber und Direktvermarkter, VoltPilot liest nur - und je Einheit Soll, Ist, ob sie
  * folgt und ob sie für den Direktvermarkter bereit ist. Kein neuer Reiter; ohne Anlagensteuerung (oder an einem
- * älteren Backend) rendert die Karte nichts. Die Ableitungen stehen in `anlagensteuerung.ts`.
+ * älteren Backend) rendert die Karte nichts. Die Ableitungen stehen in `anlagensteuerung.ts`. Seit GE-3 führt der
+ * Name jeder Einheit auf ihre eigene Seite (`einheitSeite.ts`).
  */
 import type { Anlagensteuerung, AnlagensteuerungWerte, NetzVermarktung } from '../api';
 import {
@@ -13,12 +14,15 @@ import {
   werteJe,
   type EinheitZeile,
 } from '../anlagensteuerung';
+import { einheitHref } from '../erzeugungseinheit';
 import { useAnlagensteuerung } from '../useAnlagensteuerung';
+import { useBoxRef } from '../useBoxRef';
 import { Ic } from './Ic';
 
 export function AnlagensteuerungKarten({ siteId, now }: { siteId: string; now?: Date }) {
   const stand = useAnlagensteuerung(siteId);
   const steuerungen = stand.liste?.steuerungen ?? [];
+  const ref = useBoxRef(siteId, steuerungen.length > 0);
   if (steuerungen.length === 0) return null;
   return (
     <>
@@ -29,6 +33,7 @@ export function AnlagensteuerungKarten({ siteId, now }: { siteId: string; now?: 
           werte={stand.werte[s.geraet_id] ?? null}
           nv={stand.netzVermarktung}
           now={now}
+          einheitHref={(teNr) => einheitHref(siteId, ref, s.entity_id, teNr)}
         />
       ))}
     </>
@@ -40,12 +45,15 @@ export function AnlagensteuerungKarte({
   werte,
   nv,
   now = new Date(),
+  einheitHref,
 }: {
   steuerung: Anlagensteuerung;
   /** `null` = noch nicht geladen. */
   werte: AnlagensteuerungWerte | null;
   nv: NetzVermarktung | null;
   now?: Date;
+  /** Die Seite einer Einheit (GE-3); fehlt sie oder gibt sie null, steht der Name ohne Weg. */
+  einheitHref?: (teNr: number) => string | null;
 }) {
   const je = werteJe(werte);
   const zeilen = einheitZeilen(s, werte, nv, now);
@@ -69,7 +77,7 @@ export function AnlagensteuerungKarte({
       ) : (
         <ul className="erz-liste" aria-label="Einheiten">
           {zeilen.map((z) => (
-            <EinheitEintrag key={z.teNr} z={z} />
+            <EinheitEintrag key={z.teNr} z={z} href={einheitHref?.(z.teNr) ?? null} />
           ))}
         </ul>
       )}
@@ -77,7 +85,7 @@ export function AnlagensteuerungKarte({
   );
 }
 
-function EinheitEintrag({ z }: { z: EinheitZeile }) {
+function EinheitEintrag({ z, href }: { z: EinheitZeile; href: string | null }) {
   return (
     <li className="erz-zeile" data-testid="erz-einheit">
       <span className="ico">
@@ -85,7 +93,13 @@ function EinheitEintrag({ z }: { z: EinheitZeile }) {
       </span>
       <span className="d-mid">
         <span className="d-name erz-kopf">
-          <b>{z.name}</b>
+          {href ? (
+            <a href={href} className="erz-name" data-testid="erz-einheit-link">
+              <b>{z.name}</b>
+            </a>
+          ) : (
+            <b>{z.name}</b>
+          )}
           <Folgt z={z} />
         </span>
         {(z.unter || z.zustand) && (

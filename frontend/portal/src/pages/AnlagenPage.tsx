@@ -41,7 +41,7 @@ import {
   komponenteHash,
 } from '../nav';
 import { useStaffel, mitStaffel } from '../staffel';
-import { boxRefOf, chargerGeraetId } from '../geraetAdresse';
+import { boxRefOf, chargerGeraetId, einheitGeraetId } from '../geraetAdresse';
 import { tagAus } from '../tagesleiste';
 import type { Betrieb } from '../leitungsplan';
 import { verbrauchKomposition } from '../verbrauchKomposition';
@@ -886,13 +886,18 @@ export function AnlageSeite({
   // mit einem neuen SPS-Programm). Fail-soft: ohne ihn steht im Blatt kein Grund „Programm“.
   const erzSteuerungId = erzeugerJetzt?.steuerung.geraetId ?? null;
   const [erzProgrammstand, setErzProgrammstand] = useState<Programmstand | null>(null);
+  // GE-3: die Entität der Steuerung — die Seiten ihrer Einheiten heißen `as-<Entität>~te-<n>`.
+  const [erzEntity, setErzEntity] = useState<string | null>(null);
   useEffect(() => {
     setErzProgrammstand(null);
+    setErzEntity(null);
     if (!erzSteuerungId) return undefined;
     let aktiv = true;
     api.anlagensteuerungen(site.id).then(
       (l) => {
-        if (aktiv) setErzProgrammstand(l?.steuerungen.find((s) => s.geraet_id === erzSteuerungId)?.programmstand ?? null);
+        const s = l?.steuerungen.find((x) => x.geraet_id === erzSteuerungId);
+        if (aktiv) setErzProgrammstand(s?.programmstand ?? null);
+        if (aktiv) setErzEntity(s?.entity_id ?? null);
       },
       () => {},
     );
@@ -1879,7 +1884,11 @@ export function AnlageSeite({
   const erzTagesbeginn = new Date(now);
   erzTagesbeginn.setHours(0, 0, 0, 0);
   const erzGeregelt = erzLage && E ? E.geregeltHeute(erzHeute, erzLage, erzTagesbeginn.getTime()) : null;
-  const erzBuehne = erzeugerJetzt && erzLage && E ? E.erzeugerBuehne(erzeugerJetzt, erzLage, buehneTag, now) : null;
+  const erzBoxRef = boxRefOf(devices, site.id);
+  const erzBuehne = erzeugerJetzt && erzLage && E
+    ? E.erzeugerBuehne(erzeugerJetzt, erzLage, buehneTag, now, (teNr) =>
+        erzEntity && erzBoxRef ? geraetSeiteHash(site.id, erzBoxRef, einheitGeraetId(erzEntity, teNr)) : null)
+    : null;
   // Die Kette gilt für Anlagen, die VoltPilot nur liest; eine Speicheranlage behält ihre Steuerzeile.
   const erzZeile =
     erzLage && E && !batteryLinked && controlStatus == null

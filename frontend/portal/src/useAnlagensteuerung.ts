@@ -23,7 +23,11 @@ export interface AnlagensteuerungStand {
   setzeNetzVermarktung: (nv: NetzVermarktung) => void;
 }
 
-export function useAnlagensteuerung(siteId: string | null, mitWerten = true): AnlagensteuerungStand {
+/**
+ * `mitNetzVermarktung = false` (Aufbau, GE-3): nur Steuerungen und Werte — die Stammdaten Netz und Vermarktung braucht
+ * dort niemand, und jede Anlage ohne Steuerung fragte sie sonst umsonst.
+ */
+export function useAnlagensteuerung(siteId: string | null, mitWerten = true, mitNetzVermarktung = true): AnlagensteuerungStand {
   const [liste, setListe] = useState<AnlagensteuerungListe | null>(null);
   const [nv, setNv] = useState<NetzVermarktung | null>(null);
   const [werte, setWerte] = useState<Record<string, AnlagensteuerungWerte>>({});
@@ -38,11 +42,12 @@ export function useAnlagensteuerung(siteId: string | null, mitWerten = true): An
       (l) => siteRef.current === id && setListe(l),
       () => undefined,
     );
+    if (!mitNetzVermarktung) return;
     api.netzVermarktung(id).then(
       (v) => siteRef.current === id && setNv(v),
       () => undefined,
     );
-  }, [siteId]);
+  }, [siteId, mitNetzVermarktung]);
 
   const geraete = (liste?.steuerungen ?? []).map((s) => s.geraet_id).join(',');
   const ladeWerte = useCallback(() => {

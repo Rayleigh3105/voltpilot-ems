@@ -5,8 +5,9 @@ import { expect, test, type Page } from '@playwright/test';
 /**
  * GE-4 „Box-Seite und Standort › Boxen" (Konzept „Ein Gerät, ein Eintrag“, entschieden 23.10.2026) bei 375 und
  * 1440 px auf der Bühne `e2e/anlagensteuerung.html?flaeche=box`: der Baustein „Geräte an dieser Box“ zählt dieselben
- * Kästen wie der Aufbau (GE-1) — Gore (Box + Anlagensteuerung + DQ-1) als EIN Gerät mit Anbindung und Last, die
- * Gateway-Form als Gateway mit zwei Steuerungen darunter und einem offenen Anschluss. Die Box-Zeile im Aufbau
+ * Kästen wie der Aufbau (GE-1) — Gore (Box + Anlagensteuerung + DQ-1) als EIN Eintrag mit Anbindung und Last, seit GE-3
+ * mit ihren drei Wechselrichtern dahinter, die Gateway-Form als Gateway mit zwei Steuerungen darunter und einem offenen
+ * Anschluss. Die Box-Zeile im Aufbau
  * (`flaeche=aufbau`, dort ist „Standort › Boxen“ seit 28.09.2026 aufgegangen) sagt „n Geräte · Last p %“ mit derselben
  * Last wie die Box-Seite. Kein Querlauf der Seite oder eines Elements, keine Fehler in der Konsole. Mit `BOX_SEITE_BILDER=<Ordner>` legt der Lauf je Form und Breite ein
  * Bild ab. Die Spec importiert keine Fixtures (sie laden `api.ts`, dem im Node-Lauf `import.meta.env` fehlt).
@@ -49,14 +50,18 @@ for (const breite of BREITEN) {
   test(`Gore: die Steuerung EINMAL — mit Anbindung, Last und Summe, keine Zeile für DQ-1 (${breite} px)`, async ({ page }) => {
     const fehler = await oeffne(page, breite, 'fall=gore&flaeche=box');
     const liste = page.getByTestId('box-geraete');
-    await expect(liste.locator(':scope > li')).toHaveCount(1);
-    await expect(liste.getByRole('link')).toHaveAttribute('href', `#/anlage/site-gore/geraet/edge-gore/as-${STEUERUNG}`);
+    // Die Steuerung und dahinter ihre drei Wechselrichter (GE-3) — jeder mit eigener Seite.
+    await expect(liste.locator(':scope > li')).toHaveCount(4);
+    expect(await liste.getByRole('link').evaluateAll((a) => a.map((x) => x.getAttribute('href')))).toEqual([
+      `#/anlage/site-gore/geraet/edge-gore/as-${STEUERUNG}`,
+      ...[1, 2, 3].map((n) => `#/anlage/site-gore/geraet/edge-gore/as-${STEUERUNG}~te-${n}`),
+    ]);
     await expect(liste).toContainText('Anlagensteuerung Gore');
     await expect(liste).toContainText('WAGO PFC200 750-8212');
     await expect(liste).toContainText('Modbus TCP · 192.168.1.50:503 · Last 51 %');
     await expect(page.getByTestId('box-last')).toHaveText('Zusammen 12 von 30 Anfragen/min · 305 von 600 Messwerten/min · Last 51 %');
-    // Bühne und Liste zählen dieselben Geräte — wie die Box-Zeile im Aufbau („1 Gerät“).
-    await expect(page.getByTestId('geraet-heldsatz')).toHaveText('1 von 1 Gerät liefert Daten.');
+    // Bühne und Liste zählen dieselben Geräte — wie die Box-Zeile im Aufbau („4 Geräte“); WR 3 meldet „Werte ungültig“.
+    await expect(page.getByTestId('geraet-heldsatz')).toHaveText('3 von 4 Geräten liefern Daten.');
     const modul = page.getByTestId('baustein-modul');
     await expect(modul).not.toContainText('DQ-1');
     await expect(modul).not.toContainText('Datenquellen und Geräte');
@@ -73,8 +78,10 @@ for (const breite of BREITEN) {
     await expect(gateway).toContainText('Modbus TCP · 192.168.1.50:503 · Geräte-IDs 1–2 · Kennung DQ-1');
     await expect(gateway).toContainText('2 Geräte · Last 51 %');
     const dahinter = gateway.getByRole('list', { name: 'Geräte hinter Steuerungen Halle' });
-    await expect(dahinter.getByRole('link')).toHaveCount(2);
-    await expect(dahinter.getByRole('link').nth(1)).toContainText('Geräte-ID 2');
+    // Zwei Steuerungen; die Wechselrichter der ersten (GE-3) stehen direkt hinter ihr.
+    await expect(dahinter.getByRole('link')).toHaveCount(5);
+    await expect(dahinter.getByRole('link').nth(1)).toContainText('WR Dach Nord');
+    await expect(dahinter.getByRole('link').nth(4)).toContainText('Geräte-ID 2');
     // Den Box-Wechsel trägt das Gateway — er gilt für beide Steuerungen dahinter.
     await expect(gateway.getByRole('button', { name: /Zuständige Box wechseln/ })).toHaveCount(1);
     const offen = page.locator('[data-box-weg="DQ-2"]');
@@ -85,7 +92,7 @@ for (const breite of BREITEN) {
     await expect(page.getByTestId('box-last')).toHaveText(
       'Zusammen 12 von 30 Anfragen/min · 305 von 600 Messwerten/min · Last 51 % · ohne Meldung: DQ-2',
     );
-    await expect(page.getByTestId('geraet-heldsatz')).toHaveText('2 von 2 Geräten liefern Daten.');
+    await expect(page.getByTestId('geraet-heldsatz')).toHaveText('4 von 5 Geräten liefern Daten.');
     await ohneQuerlauf(page, breite);
     expect(fehler).toEqual([]);
     await ablegen(page, `gateway-${breite}`);
@@ -93,10 +100,10 @@ for (const breite of BREITEN) {
 
   test(`Aufbau: die Box-Zeile sagt „n Geräte · Last p %“ — dieselbe Last wie die Box-Seite (${breite} px)`, async ({ page }) => {
     const fehler = await oeffne(page, breite, 'fall=gore&flaeche=aufbau');
-    await expect(page.locator('.vp-auf-t-zeile.is-box')).toContainText('edge-gore · 1 Gerät · Last 51 %');
+    await expect(page.locator('.vp-auf-t-zeile.is-box')).toContainText('edge-gore · 4 Geräte · Last 51 %');
     await ohneQuerlauf(page, breite);
     const gateway = await oeffne(page, breite, 'fall=gore&flaeche=aufbau&form=gateway');
-    await expect(page.locator('.vp-auf-t-zeile.is-box')).toContainText('2 Geräte · 1 Gateway · 1 Anschluss offen · Last 51 %');
+    await expect(page.locator('.vp-auf-t-zeile.is-box')).toContainText('5 Geräte · 1 Gateway · 1 Anschluss offen · Last 51 %');
     await ohneQuerlauf(page, breite);
     expect([...fehler, ...gateway]).toEqual([]);
     if (BILDER) {

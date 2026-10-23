@@ -91,6 +91,10 @@ export interface VerlaufGroup {
    */
   measuredVia: string | null;
   items: VerlaufItem[];
+  /**
+   * GE-3: Sprünge auf die Seiten der Geräte hinter diesem Ast (die Wechselrichter einer Anlagensteuerung); fehlt = keine.
+   */
+  sprunge?: { label: string; href: string }[];
 }
 
 // --- Rail cleanup (B1-c) -----------------------------------------------------

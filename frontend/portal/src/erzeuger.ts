@@ -89,8 +89,10 @@ const NICHT_BEREIT_GRUND = ['Störung', 'Vorgabe des Netzbetreibers', 'Hand/Ort'
 export interface Einheit {
   teNr: number;
   art: 'pv' | 'bhkw' | null;
-  /** „Motor 1“ bzw. „Wechselrichter 1“. */
+  /** Die Bezeichnung der Einheit (GE-3), sonst „Motor 1“ bzw. „Wechselrichter 1“. */
   name: string;
+  /** Als Teil an der Steuerung eingetragen (`einheiten` der Antwort) — nur dann hat sie eine eigene Seite (GE-3). */
+  eingetragen: boolean;
   typName: string | null;
   nennKw: number | null;
   istKw: number | null;
@@ -237,7 +239,8 @@ export function erzeugerLage(j: ErzeugerJetzt, now: Date): ErzeugerLage {
     return {
       teNr,
       art,
-      name: `${art === 'pv' ? 'Wechselrichter' : art === 'bhkw' ? 'Motor' : 'Einheit'} ${teNr}`,
+      name: stamm?.bezeichnung?.trim() || `${art === 'pv' ? 'Wechselrichter' : art === 'bhkw' ? 'Motor' : 'Einheit'} ${teNr}`,
+      eingetragen: stamm != null,
       typName: stamm?.typName ?? null,
       nennKw: stamm?.nennKw ?? zahl(einheitPunkt(teNr, 'nenn_kw')),
       istKw: ist == null ? null : ist / 1000,
@@ -678,8 +681,11 @@ export function einheitUnter(e: Einheit): string {
   return teile.filter(Boolean).join(' · ') || 'ohne Zustand';
 }
 
-/** „Erzeugung im Detail“ unter dem Fluss und im Blatt des Erzeugungs-Knotens: je Einheit Ist, Soll, Zustand. */
-export function einheitenListe(l: ErzeugerLage): Liste | null {
+/**
+ * „Erzeugung im Detail“ unter dem Fluss und im Blatt des Erzeugungs-Knotens: je Einheit Ist, Soll, Zustand. Im Blatt
+ * führt jede eingetragene Einheit auf ihre Seite (GE-3, `einheitHref`); eine nur im Bild gezählte hat keine.
+ */
+export function einheitenListe(l: ErzeugerLage, einheitHref?: (teNr: number) => string | null): Liste | null {
   if (!l.einheiten.length) return null;
   const summe = l.einheiten.reduce((s, e) => s + Math.max(0, e.istKw ?? 0), 0);
   return {
@@ -696,6 +702,7 @@ export function einheitenListe(l: ErzeugerLage): Liste | null {
       art: e.zustand === 'aus' || e.zustand === 'stoerung' ? 'still' : 'normal',
       icon: e.art === 'pv' ? 'sun' : 'flame',
       title: e.nennKw != null ? `${e.name}: Nennleistung ${kw(e.nennKw)}` : null,
+      href: e.eingetragen ? einheitHref?.(e.teNr) ?? null : null,
     })),
   };
 }
@@ -713,12 +720,18 @@ export interface ErzeugerBuehne {
   veraltet: boolean;
 }
 
-export function erzeugerBuehne(j: ErzeugerJetzt, l: ErzeugerLage, tag: Tag | null, now: Date): ErzeugerBuehne {
+export function erzeugerBuehne(
+  j: ErzeugerJetzt,
+  l: ErzeugerLage,
+  tag: Tag | null,
+  now: Date,
+  einheitHref?: (teNr: number) => string | null,
+): ErzeugerBuehne {
   return {
     jetzt: { werte: { pv: l.erzeugungKw, load: l.hofKw, batt: 0, grid: l.netzKw }, socPct: null, hat: { pv: true, batt: false } },
     satz: erzeugerSatz(l),
     knoten: erzeugerKnoten(l),
-    liste: einheitenListe(l),
+    liste: einheitenListe(l, einheitHref),
     vorgaben: tag ? vorgabeSpuren(j, l, tag.viertel, now.getTime(), VIERTEL_MS) : [],
     veraltet: l.veraltet,
   };

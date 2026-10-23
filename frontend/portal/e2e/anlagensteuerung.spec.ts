@@ -103,16 +103,17 @@ for (const breite of BREITEN) {
 
   // GE-1 „je Kasten ein Eintrag“ (Konzept „Ein Gerät, ein Eintrag“, entschieden 23.10.2026): die Steuerung und ihr
   // Weg DQ-1 sind EINE Zeile — der Weg steht als zweite Textzeile darunter, keine Zeile „DQ-1 · Datenquelle“ mehr.
+  // Seit GE-3 stehen ihre drei Wechselrichter darunter (eigene Spec `anlagensteuerung-einheiten.spec.ts`).
   test(`Aufbau: die Anlagensteuerung ist EIN Eintrag mit ihrer Anbindung (${breite} px)`, async ({ page }) => {
     const fehler = await oeffne(page, breite, 'fall=gore&flaeche=aufbau');
-    const geraete = page.locator('.vp-auf-t-zeile.is-geraet');
+    const geraete = page.locator('.vp-auf-t-zeile.is-geraet:not(.is-einheit)');
     await expect(geraete).toHaveCount(1);
     await expect(geraete.first()).toContainText('Anlagensteuerung Gore');
     await expect(geraete.first()).toContainText('WAGO PFC200 750-8212');
     await expect(geraete.first().locator('.vp-auf-t-anbindung')).toHaveText('Anbindung: Modbus TCP · 192.168.1.50:503');
     await expect(geraete.first()).toContainText('Liefert Daten');
     await expect(page.locator('[data-aufbau-weg]')).toHaveCount(0);
-    await expect(page.locator('.vp-auf-t-zeile.is-box')).toContainText('· 1 Gerät');
+    await expect(page.locator('.vp-auf-t-zeile.is-box')).toContainText('· 4 Geräte');
     await expect(page.locator('.vp-auf-t')).not.toContainText('Datenquelle');
     await ohneQuerlauf(page, breite);
     expect(fehler).toEqual([]);
@@ -125,17 +126,21 @@ for (const breite of BREITEN) {
     await expect(gateway).toContainText('Steuerungen Halle');
     await expect(gateway).toContainText('Geräte-IDs 1–2');
     await expect(gateway).toContainText('2 Geräte');
-    // Die Geräte stehen eine Ebene unter dem Gateway, in Lese-Reihenfolge direkt danach.
+    // Die Geräte stehen eine Ebene unter dem Gateway, in Lese-Reihenfolge direkt danach; die Wechselrichter der
+    // ersten Steuerung (GE-3) eine Ebene unter ihr.
     const reihe = await page.locator('.vp-auf-t-zeile').evaluateAll((zeilen) =>
-      zeilen.map((z) => (z.classList.contains('is-gateway') ? 'gateway' : z.classList.contains('is-geraet') ? `geraet:${z.className.match(/is-e(\d)/)?.[1]}` : null)).filter(Boolean),
+      zeilen
+        .map((z) => (z.classList.contains('is-gateway') ? 'gateway' : z.classList.contains('is-geraet')
+          ? `${z.classList.contains('is-einheit') ? 'einheit' : 'geraet'}:${(z as HTMLElement).style.getPropertyValue('--ebene')}` : null))
+        .filter(Boolean),
     );
-    expect(reihe).toEqual(['gateway', 'geraet:3', 'geraet:3']);
-    await expect(page.locator('.vp-auf-t-zeile.is-geraet').nth(1)).toContainText('Geräte-ID 2');
+    expect(reihe).toEqual(['gateway', 'geraet:3', 'einheit:4', 'einheit:4', 'einheit:4', 'geraet:3']);
+    await expect(page.locator('.vp-auf-t-zeile.is-geraet:not(.is-einheit)').nth(1)).toContainText('Geräte-ID 2');
     const anschluss = page.locator('.vp-auf-t-zeile.is-anschluss');
     await expect(anschluss).toContainText('Anschluss ohne Gerät');
     await expect(anschluss).toContainText('Kennung DQ-2');
     await expect(anschluss.getByRole('button', { name: 'Gerät an Anschluss DQ-2 hinzufügen' })).toBeVisible();
-    await expect(page.locator('.vp-auf-t-zeile.is-box')).toContainText('2 Geräte · 1 Gateway · 1 Anschluss offen');
+    await expect(page.locator('.vp-auf-t-zeile.is-box')).toContainText('5 Geräte · 1 Gateway · 1 Anschluss offen');
     await ohneQuerlauf(page, breite);
     expect(fehler).toEqual([]);
   });

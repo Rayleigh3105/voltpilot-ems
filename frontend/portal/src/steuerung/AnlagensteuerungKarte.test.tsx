@@ -84,3 +84,26 @@ describe('AnlagensteuerungKarte', () => {
     expect(await screen.findByText('Die Anlage folgt der wirksamen Grenze.')).toBeInTheDocument();
   });
 });
+
+describe('AnlagensteuerungKarte — je Einheit auf ihre Seite (GE-3)', () => {
+  it('der Name jeder Einheit ist ein Weg auf ihre Seite; ohne Weg bleibt er Text', () => {
+    const { unmount } = render(
+      <AnlagensteuerungKarte
+        steuerung={gore()}
+        werte={goreWerte()}
+        nv={goreNv()}
+        now={now}
+        einheitHref={(teNr) => (teNr === 3 ? null : `#/einheit/${teNr}`)}
+      />,
+    );
+    const links = screen.getAllByTestId('erz-einheit-link');
+    expect(links.map((a) => [a.textContent, a.getAttribute('href')])).toEqual([
+      ['WR Dach Nord', '#/einheit/1'],
+      ['Wechselrichter 2', '#/einheit/2'],
+    ]);
+    expect(within(screen.getAllByTestId('erz-einheit')[2]).getByText('Wechselrichter 3').closest('a')).toBeNull();
+    unmount();
+    render(<AnlagensteuerungKarte steuerung={gore()} werte={goreWerte()} nv={goreNv()} now={now} />);
+    expect(screen.queryByTestId('erz-einheit-link')).not.toBeInTheDocument();
+  });
+});

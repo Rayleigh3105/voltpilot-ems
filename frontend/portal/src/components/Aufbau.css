@@ -969,6 +969,10 @@ a.vp-auf-t-titel:hover .vp-auf-t-kuerze,
   .vp-auf-t-zeile.is-geraet.is-e3 > .vp-auf-t-name {
     padding-left: 22px;
   }
+  /* GE-3: die Wechselrichter unter ihrer Steuerung — hinter einem Gateway eine Stufe tiefer als die Steuerung. */
+  .vp-auf-t-zeile.is-einheit > .vp-auf-t-name {
+    padding-left: calc((var(--ebene, 3) - 2) * 22px);
+  }
   .vp-auf-t-zeile.is-teil > .vp-auf-t-wert {
     align-self: center;
     padding: 0;

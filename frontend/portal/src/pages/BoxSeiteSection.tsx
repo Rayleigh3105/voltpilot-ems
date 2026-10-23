@@ -53,6 +53,7 @@ import {
 } from '../befehle';
 import { BefehleVerlauf, useBefehleVerlauf } from '../components/BefehleVerlauf';
 import { useFreshnessPoll } from '../useFreshnessPoll';
+import { useAnlagensteuerung } from '../useAnlagensteuerung';
 // LIVE: die Box-Seite zeigt gemessene Ist-Werte und Steuer-Rückmeldungen.
 import { LIVE_POLL_MS } from '../pollCadence';
 import { showTechnicalLayer } from '../rollen';
@@ -246,6 +247,8 @@ export function BoxSeiteSection({
     () => new Map((standortDerAnlage?.anlagen ?? []).map((a) => [a.id, a.name])),
     [standortDerAnlage],
   );
+  // GE-3: die Wechselrichter hinter einer Anlagensteuerung zählen hier wie im Aufbau (dieselbe Zählweise).
+  const steuerungen = useAnlagensteuerung(site.id, true, false);
   const view: BoxSeiteView | null = useMemo(() => {
     if (!data) return null;
     const anlage = aufbauDerAnlage({
@@ -260,6 +263,7 @@ export function BoxSeiteSection({
       devicesFetchedAt,
       datenquellen,
       uemsGeraete,
+      anlagensteuerungen: { liste: steuerungen.liste, werte: steuerungen.werte },
       now,
     });
     return boxSeite({
@@ -281,6 +285,7 @@ export function BoxSeiteSection({
   }, [
     data, boxRef, site.name, site.id, devices, devicesFetchedAt, edgeVersions, control,
     curtailment, topology, sources, charging, consumers, datenquellen, uemsGeraete, anlagenNamen, now,
+    steuerungen.liste, steuerungen.werte,
   ]);
 
   // DERSELBE Verlauf wie überall - der Server entscheidet weiterhin, was der

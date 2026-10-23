@@ -16,6 +16,10 @@
  * - **GE-1 · je Kasten ein Eintrag.** Ein Weg ist keine Zeile; nur ein Gateway
  *   (mit seinen Geräten darunter) und ein Anschluss ohne Gerät stehen da. Die
  *   Kennung („DQ-1") und die Adresse findet die Suche am Gerät.
+ * - **GE-3 · Einheiten hinter der Steuerung.** Die Wechselrichter einer
+ *   Anlagensteuerung stehen immer sichtbar eine Ebene unter ihr (keine
+ *   Aufklapp-Zeile: sie sind Geräte, keine Messwerte). Trifft nur eine Einheit,
+ *   steht ihre Steuerung als Ort mit da.
  *
  * Rein + deterministisch: kein React, kein Netz, keine Uhr. Die Fläche
  * (`components/AufbauTabelle.tsx`) rendert nur, was hier entschieden wird.
@@ -177,6 +181,7 @@ function geraeteZeilen(
   geraete: AufbauGeraet[],
   ebene: number,
   z: Aufklappzustand,
+  einheiten: ReadonlyMap<string, AufbauGeraet[]> = new Map(),
 ): void {
   for (const g of geraete) {
     if (g.art === 'neu') {
@@ -186,9 +191,14 @@ function geraeteZeilen(
     const teilbar = g.karte.komponenten.length > 1;
     const offen = teilbar && z.geraete.has(g.id);
     out.push({ typ: 'geraet', key: g.id, ebene, anlage, box, geraet: g, teilbar, offen });
-    if (!offen) continue;
-    for (const c of g.karte.komponenten) {
-      out.push({ typ: 'teil', key: `${g.id}::${c.id}`, ebene: ebene + 1, anlage, geraet: g, komponente: c });
+    if (offen) {
+      for (const c of g.karte.komponenten) {
+        out.push({ typ: 'teil', key: `${g.id}::${c.id}`, ebene: ebene + 1, anlage, geraet: g, komponente: c });
+      }
+    }
+    // GE-3: die Einheiten hinter einer Steuerung — Geräte, eine Ebene tiefer, immer sichtbar.
+    for (const u of einheiten.get(g.id) ?? []) {
+      out.push({ typ: 'geraet', key: u.id, ebene: ebene + 1, anlage, box, geraet: u, teilbar: false, offen: false });
     }
   }
 }
@@ -211,22 +221,31 @@ function ortZeilen(
 ): number {
   const aktiv = filterAktiv(f);
   const trifftHier = (g: AufbauGeraet) => trifft(g, box, anlage, f, begriffe);
+  // GE-3: die Einheiten stehen unter ihrer Steuerung, nie für sich — und eine treffende Einheit trägt ihre Steuerung mit.
+  const einheiten = new Map<string, AufbauGeraet[]>();
+  for (const g of geraete) {
+    if (g.einheit && trifftHier(g)) einheiten.set(g.einheit.steuerungId, [...(einheiten.get(g.einheit.steuerungId) ?? []), g]);
+  }
+  const traegt = (g: AufbauGeraet) => !g.einheit && (trifftHier(g) || einheiten.has(g.id));
   const gateways = wege.filter((w) => w.art === 'gateway');
   const amGateway = new Set(gateways.flatMap((w) => w.geraete.map((g) => g.id)));
-  const direkt = geraete.filter((g) => !amGateway.has(g.id) && trifftHier(g));
+  const direkt = geraete.filter((g) => !amGateway.has(g.id) && traegt(g));
   const sichtbar = gateways
-    .map((w) => ({ w, geraete: w.geraete.filter(trifftHier) }))
+    .map((w) => ({ w, geraete: w.geraete.filter(traegt) }))
     .filter(({ w, geraete: g }) => !aktiv || g.length > 0 || wegTrifft(w, box, f, begriffe));
   const offene = wege.filter((w) => w.art === 'offen' && (!aktiv || wegTrifft(w, box, f, begriffe)));
-  geraeteZeilen(out, anlage, box, direkt, ebene, z);
+  geraeteZeilen(out, anlage, box, direkt, ebene, z, einheiten);
   const ort = box?.id ?? `${anlage.id}::ohne-box`;
   for (const { w, geraete: dahinter } of sichtbar) {
     const offen = aktiv || z.offen(w.id, true);
     out.push({ typ: 'gateway', key: `${ort}::gateway::${w.id}`, ebene, anlage, box, weg: w, offen });
-    if (offen) geraeteZeilen(out, anlage, box, dahinter, ebene + 1, z);
+    if (offen) geraeteZeilen(out, anlage, box, dahinter, ebene + 1, z, einheiten);
   }
   for (const w of offene) out.push({ typ: 'anschluss', key: `${ort}::anschluss::${w.id}`, ebene, anlage, box, weg: w });
-  return direkt.length + sichtbar.reduce((n, x) => n + 1 + x.geraete.length, 0) + offene.length;
+  const unter = (liste: AufbauGeraet[]) => liste.reduce((n, g) => n + (einheiten.get(g.id)?.length ?? 0), 0);
+  return (
+    direkt.length + unter(direkt) + sichtbar.reduce((n, x) => n + 1 + x.geraete.length + unter(x.geraete), 0) + offene.length
+  );
 }
 
 /** Der Ort ohne Zeilen — nur zum Zählen der Treffer, bevor die Gruppe entschieden ist. */

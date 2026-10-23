@@ -1,14 +1,18 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '../../designsystem/components/core/Button';
 import { Icon } from '../../designsystem/components/core/Icon';
-import { ladeMeldungenVerlaufCsv } from '../api';
+import { api, ladeMeldungenVerlaufCsv, type Anlagensteuerung } from '../api';
+import { boxRefOf } from '../geraetAdresse';
+import { useBoxen } from '../useBoxRef';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { NeueUeberwachung } from '../components/NeueUeberwachung';
 import { UeberwachenBlatt } from '../components/UeberwachenBlatt';
 import { VpPicker } from '../components/VpPicker';
 import {
   anlageAusHash,
+  einheitAusBezug,
   istEigeneUeberwachung,
+  meldungEinheitLink,
   meldungenApi,
   meldungQuelleLink,
   reiterAusHash,
@@ -124,6 +128,29 @@ export function MeldungenPage() {
 
   const gefiltert = (meldungen ?? []).filter((m) => !anlageFilter || m.anlageId === anlageFilter);
   const liste = reiter === 'verlauf' ? sortiereVerlauf(gefiltert) : sortiereJetzt(gefiltert);
+
+  // GE-3: ein Alarm je Einheit führt auf die Seite der Einheit — dafür die Steuerungen ihrer Anlage und die Boxen,
+  // nur wenn es solche Meldungen gibt. Fail-soft: ohne Antwort steht die Meldung ohne Weg da.
+  const einheitAnlagen = useMemo(
+    () => [...new Set((meldungen ?? []).filter((m) => einheitAusBezug(m.bezugKennung) && m.anlageId).map((m) => m.anlageId as string))].sort().join(','),
+    [meldungen],
+  );
+  const [steuerungenJe, setSteuerungenJe] = useState<Record<string, Anlagensteuerung[]>>({});
+  useEffect(() => {
+    let aktiv = true;
+    for (const id of einheitAnlagen.split(',').filter(Boolean)) {
+      api.anlagensteuerungen(id).then(
+        (l) => aktiv && setSteuerungenJe((alt) => ({ ...alt, [id]: l?.steuerungen ?? [] })),
+        () => undefined,
+      );
+    }
+    return () => {
+      aktiv = false;
+    };
+  }, [einheitAnlagen]);
+  const boxen = useBoxen(einheitAnlagen !== '');
+  const einheitLink = (m: Meldung) =>
+    m.anlageId ? meldungEinheitLink(m, steuerungenJe[m.anlageId], boxRefOf(boxen, m.anlageId)) : null;
 
   async function gesehen(id: string) {
     if (busy) return;
@@ -250,6 +277,7 @@ export function MeldungenPage() {
           reiter={reiter}
           busy={busy}
           onGesehen={gesehen}
+          einheitLink={einheitLink}
         />
       )}
 
@@ -300,11 +328,14 @@ function MeldungListe({
   reiter,
   busy,
   onGesehen,
+  einheitLink,
 }: {
   meldungen: Meldung[] | null;
   reiter: Reiter;
   busy: string | null;
   onGesehen: (id: string) => void;
+  /** Der Weg eines Alarms je Einheit auf ihre Seite (GE-3); null = keiner. */
+  einheitLink?: (m: Meldung) => { label: string; hash: string } | null;
 }) {
   if (meldungen === null) return <p>Wird geladen …</p>;
   if (meldungen.length === 0) {
@@ -317,7 +348,7 @@ function MeldungListe({
   return (
     <ul className="vp-meldungen-liste">
       {meldungen.map((m) => {
-        const quelle = meldungQuelleLink(m);
+        const quelle = meldungQuelleLink(m) ?? einheitLink?.(m) ?? null;
         return (
         <li key={m.id} className={`vp-meldung schwere-${m.schwere}`}>
           <span className="vp-meldung-dot" aria-hidden="true" />

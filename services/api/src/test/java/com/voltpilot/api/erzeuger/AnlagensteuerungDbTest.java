@@ -351,6 +351,9 @@ class AnlagensteuerungDbTest {
         probe(w, s.entityId(), "erzeuger.te[2].t_p_ist_w", 42000, "good", mittag.plusSeconds(120), 2);
         probe(w, s.entityId(), "erzeuger.te[2].t_p_ist_w", 99999, "invalid", mittag.plusSeconds(180), 3);
         probe(w, s.entityId(), "erzeuger.nb.n_p_prozent", 60, "good", mittag.plusSeconds(1200), 4);
+        // GE-3: der Zählerstand Erzeugung je Einheit - die Seite der Einheit liest daraus die Energie heute.
+        probe(w, s.entityId(), "erzeuger.te[2].t_e", 471820, "good", mittag.plusSeconds(60), 7);
+        probe(w, s.entityId(), "erzeuger.te[2].t_e", 471823, "good", mittag.plusSeconds(600), 8);
         // Der Tag davor und ein Zustand gehören nicht in diese Kurven.
         probe(w, s.entityId(), "erzeuger.te[2].t_p_ist_w", 1, "good", mittag.minus(1, ChronoUnit.DAYS), 5);
         probe(w, s.entityId(), "erzeuger.te[2].t_zustand", 2, "good", mittag.plusSeconds(60), 6);
@@ -362,8 +365,9 @@ class AnlagensteuerungDbTest {
                 .as("jede Kurve der Fassung, auch ohne Eimer; kein Zustand, kein Alter")
                 .containsExactlyElementsOf(ErzeugerRegisterbild.kurven(3))
                 .contains("erzeuger.a.p_nvp_w", "erzeuger.a.speicher_fuellstand", "erzeuger.nb.n_p_prozent",
-                        "erzeuger.dv.d_soll_w", "erzeuger.te[3].t_p_soll_w")
-                .doesNotContain("erzeuger.te[2].t_zustand", "erzeuger.a.a_alter_s", "erzeuger.nb.n_cosphi");
+                        "erzeuger.dv.d_soll_w", "erzeuger.te[3].t_p_soll_w", "erzeuger.te[3].t_e")
+                .doesNotContain("erzeuger.te[2].t_zustand", "erzeuger.a.a_alter_s", "erzeuger.nb.n_cosphi",
+                        "erzeuger.nb.n_zaehler");
         Map<String, AnlagensteuerungDto.Kurve> je = new java.util.HashMap<>();
         v.kurven().forEach(k -> je.put(k.pointKey(), k));
         AnlagensteuerungDto.Kurve ist = je.get("erzeuger.te[2].t_p_ist_w");
@@ -379,6 +383,12 @@ class AnlagensteuerungDbTest {
         assertThat(je.get("erzeuger.nb.n_p_prozent").eimer()).singleElement()
                 .satisfies(e -> assertThat(e.start().toInstant()).isEqualTo(mittag.plusSeconds(900)));
         assertThat(je.get("erzeuger.a.p_nvp_w").eimer()).as("ohne Wert kein Eimer, nie 0").isEmpty();
+        AnlagensteuerungDto.Kurve zaehler = je.get("erzeuger.te[2].t_e");
+        assertThat(zaehler.einheit()).isEqualTo("kWh");
+        assertThat(zaehler.eimer()).singleElement().satisfies(e -> {
+            assertThat(e.min()).as("erste Lesung im Eimer").isEqualByComparingTo("471820");
+            assertThat(e.last()).isEqualByComparingTo("471823");
+        });
 
         AnlagensteuerungDto.Verlauf monat = als(w.tenant(), () -> service.verlauf(w.site(), s.geraetId(), "month",
                 tag));

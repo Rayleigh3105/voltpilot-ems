@@ -37,9 +37,18 @@
  * Gleiche Adresse, gleicher Port oder gleicher Pin beweisen nichts (AGENTS.md
  * „Verträge und Identitäten") — was sich so nicht zuordnen lässt, bleibt als
  * „Anschluss ohne Gerät" sichtbar. Ein gestörter Weg macht sein Gerät gestört.
+ *
+ * **Einheiten hinter einer Steuerung sind Kästen** (GE-3, Regel 7, Variante d1):
+ * jede Erzeugungseinheit einer Anlagensteuerung (`GET …/anlagensteuerungen`)
+ * steht als eigenes Gerät direkt unter ihr (`AufbauGeraet.einheit`), mit Ist-
+ * Leistung und Zustand aus den Werten der Steuerung, und zählt als Gerät. Die
+ * Box liest sie nicht selbst — „über die Steuerung“; ihre Seite ist
+ * `as-<Entität>~te-<n>` (`einheitSeite.ts`).
  */
 import type { IconName } from '../designsystem/components/core/Icon';
 import type {
+  AnlagensteuerungListe,
+  AnlagensteuerungWerte,
   Device,
   EntityLocalSetup,
   OverviewSite,
@@ -54,9 +63,11 @@ import { siteLiveFresh } from './fleet';
 import { fmtNum } from './format';
 import type { GeraetTon } from './geraetSeite';
 import type { ComponentRole, PlantComponent } from './komponenten';
-import { chargerGeraetId, fuehrendeBoxOf } from './geraetAdresse';
+import { anlagensteuerungGeraetId, chargerGeraetId, fuehrendeBoxOf } from './geraetAdresse';
 import type { ChargePoint, SiteCharging } from './ladepunkte';
 import { gridState } from './live';
+import { einheitHref, einheitStand, UEBER_DIE_STEUERUNG } from './erzeugungseinheit';
+import { kwText } from './anlagensteuerung';
 import { boxSeiteHash } from './nav';
 import { sanitizeSoc } from './plausible';
 import { boxLage, type GeraeteKarte, type KartenArt } from './zentraleListe';
@@ -117,6 +128,11 @@ export interface AufbauGeraet {
   anbindungText: string | null;
   /** Das Gateway, hinter dem es antwortet (1 : N); null = keins. */
   gateway: { id: string; titel: string } | null;
+  /**
+   * Eine Erzeugungseinheit hinter einer Anlagensteuerung (GE-3): die Zeile der Steuerung (`steuerungId`), unter der
+   * sie steht, und ihre TE-Nr.; null = ein gewöhnliches Gerät. Ohne eigene Komponente — ihre Werte sind die der Steuerung.
+   */
+  einheit: { steuerungId: string; teNr: number } | null;
 }
 
 /**
@@ -242,6 +258,13 @@ export interface AufbauEingabe {
    * Anbindungen noch Gateways noch Anschlüsse, nie ein geratener „Anschluss ohne Gerät".
    */
   uemsGeraete?: Readonly<Record<string, readonly UemsGeraet[] | null | undefined>>;
+  /**
+   * Die Anlagensteuerungen je Anlage mit ihren jüngsten Werten (GE-3): ihre Erzeugungseinheiten stehen als Geräte
+   * unter der Steuerung. Fehlt eine Anlage, stehen dort keine Einheiten — nie geratene.
+   */
+  anlagensteuerungen?: Readonly<
+    Record<string, { liste: AnlagensteuerungListe | null; werte: Readonly<Record<string, AnlagensteuerungWerte>> } | undefined>
+  >;
   now: number;
 }
 
@@ -440,6 +463,7 @@ export function aufbauGeraet(
     anbindungen: [],
     anbindungText: null,
     gateway: null,
+    einheit: null,
   };
 }
 
@@ -462,6 +486,11 @@ function neuTitel(karte: GeraeteKarte): string {
   const q = karte.quelle;
   const name = q ? technicalDeviceName({ brand: q.brand, model: null }) : null;
   return name ? `${name} gefunden` : 'Neues Gerät gefunden';
+}
+
+/** Die Referenz der Box, unter der die Geräteseiten einer Anlage stehen — dieselbe Regel wie `boxRefOf`. */
+function boxRefDer(boxen: readonly Device[], siteId: string): string | null {
+  return fuehrendeBoxOf([...boxen], siteId)?.externalRef ?? null;
 }
 
 function boxName(box: Device): string {
@@ -633,6 +662,63 @@ function wegZeile(q: UemsDatenquelle, art: AufbauWeg['art'], geraete: AufbauGera
   };
 }
 
+/**
+ * Die Erzeugungseinheiten einer Anlagensteuerung als Geräte unter ihrer Zeile (GE-3, d1): Name oder „Wechselrichter
+ * n“, Typ · Nennleistung, Ist-Leistung und Zustand je Einheit aus den Werten der Steuerung — ohne Lesung „—“ und
+ * „noch keine Daten“, nie 0. Ohne Werte (noch nicht geladen) „unbekannt“, nie geraten.
+ */
+function einheitenUnter(
+  steuerung: AufbauGeraet,
+  s: NonNullable<AnlagensteuerungListe>['steuerungen'][number],
+  werte: AnlagensteuerungWerte | null,
+  siteId: string,
+  ref: string | null,
+  now: number,
+): AufbauGeraet[] {
+  return [...s.einheiten]
+    .sort((a, b) => a.te_nr - b.te_nr)
+    .map((e) => {
+      const st = einheitStand(e, werte, new Date(now));
+      const id = `${steuerung.id}~te-${e.te_nr}`;
+      const ist = st.istW != null ? kwText(st.istW) : null;
+      const zustand = st.zustandZeit ? `${st.zustandWort} · ${st.zustandZeit}` : st.zustandWort;
+      return {
+        id,
+        art: 'geraet' as const,
+        titel: st.name,
+        unterzeile: st.unter,
+        ton: st.ton,
+        zustand,
+        zustandWort: st.zustandWort,
+        zustandZeit: st.zustandZeit,
+        artWort: `${st.artWort} · ${UEBER_DIE_STEUERUNG}`,
+        marke: null,
+        kennung: e.registry_unit_id,
+        werte: ist ? [{ art: 'pv' as const, text: ist, label: `Ist-Leistung ${ist}` }] : [],
+        kategorie: 'solar' as const,
+        icon: st.symbol,
+        karte: {
+          id,
+          art: 'geraet' as const,
+          titel: st.name,
+          untertitel: st.artWort,
+          zustand,
+          zustandWort: st.zustandWort,
+          zustandZeit: st.zustandZeit,
+          ton: st.ton,
+          href: einheitHref(siteId, ref, s.entity_id, e.te_nr),
+          komponenten: [],
+          zusatz: null,
+        },
+        anbindungen: [],
+        anbindungText: `gelesen über ${steuerung.titel}`,
+        // Hinter einem Gateway steht die Steuerung — die Einheit steht hinter der Steuerung, nicht am Gateway.
+        gateway: null,
+        einheit: { steuerungId: steuerung.id, teNr: e.te_nr },
+      };
+    });
+}
+
 function anlageKnoten(
   input: AufbauEingabe,
   id: string,
@@ -717,6 +803,16 @@ function anlageKnoten(
     );
     return { g, ziel };
   });
+  // GE-3: die Einheiten jeder Anlagensteuerung direkt hinter ihrer Zeile, am selben Ort (Box bzw. Gateway).
+  const steuerungen = input.anlagensteuerungen?.[id];
+  const ref = boxRefDer(boxenRoh, id);
+  for (let i = platziert.length - 1; i >= 0; i -= 1) {
+    const { g, ziel } = platziert[i];
+    const s = (steuerungen?.liste?.steuerungen ?? []).find((x) => anlagensteuerungGeraetId(x.entity_id) === g.id);
+    if (!s || s.einheiten.length === 0) continue;
+    const einheiten = einheitenUnter(g, s, steuerungen?.werte[s.geraet_id] ?? null, id, ref, input.now);
+    platziert.splice(i + 1, 0, ...einheiten.map((e) => ({ g: e, ziel })));
+  }
   const geraete = platziert.map((x) => x.g);
 
   const jeBox = new Map<string, AufbauGeraet[]>(boxenSortiert.map((b) => [b.id, []]));

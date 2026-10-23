@@ -183,3 +183,14 @@ describe('Verlauf › Messwerte: Kurven je Einheit (EZ-10 (4))', () => {
     expect(seriesFromErzeugerVerlauf(v, 'erzeuger.a.p_nvp_w').empty).toBe(true);
   });
 });
+
+describe('Verlauf-Ast: je Einheit ein Sprung auf ihre Seite (GE-3)', () => {
+  it('mit einem Weg je Einheit trägt der Ast die Sprünge nach TE-Nr.; ohne Weg keine', () => {
+    const g = erzeugerGruppe(gore(), (teNr) => (teNr === 3 ? null : `#/einheit/${teNr}`));
+    expect(g.sprunge).toEqual([
+      { label: 'WR Dach Nord', href: '#/einheit/1' },
+      { label: 'Wechselrichter 2', href: '#/einheit/2' },
+    ]);
+    expect(erzeugerGruppe(gore()).sprunge).toBeUndefined();
+  });
+});

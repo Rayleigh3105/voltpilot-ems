@@ -123,6 +123,28 @@ läuft), `erzeuger_vorgabe_luecke` („n weitere Wechsel während einer Datenlü
   `setGroups((g) => [...g, …])` bei jedem Render neu angewendet (neue Identität → Abruf-Effekt ohne Ende). Die Äste
   stehen in eigenem Zustand; bis ihre Antwort da ist, behält die Auswahl einen Deep-Link auf eine ihrer Kurven.
 
+## Einheiten als Geräte (GE-3, Konzept „Ein Gerät, ein Eintrag“, GD-2 A)
+
+Jede Erzeugungseinheit (`geraet_teil`, `GET …/anlagensteuerungen`) steht im Aufbau als Gerät unter ihrer Steuerung
+(`aufbauBaum` `einheitenUnter`, `AufbauGeraet.einheit`) und hat eine Seite im Geräteseiten-Rahmen
+(`pages/EinheitSeiteSection.tsx`, Ableitung `einheitSeite.ts`, Adresse und Zustand `erzeugungseinheit.ts`). Darstellung,
+kein Modell: keine Komponente, keine Messpunkte, keine Migration — die Werte kommen über die Routen der Steuerung.
+
+- **Adresse `as-<Entität>~te-<n>`** (`geraetAdresse.einheitGeraetId`): ohne „/“, weil der Pfad am Schrägstrich trennt;
+  „~“ kommt in keiner Entitäts-Kennung vor und bleibt in `encodeURIComponent` stehen. Die Entität, nicht `geraet_id`:
+  die Messreihen hängen an der Komponente, nicht am Einbau. ⚠ `anlagensteuerungIdOf` gibt für eine Einheit `null`.
+- **Zustand je Einheit** aus `…/werte`: ohne Antwort „unbekannt“, ohne Lesung „noch keine Daten“ und „—“ (nie 0),
+  älter als 120 s „meldet sich gerade nicht“, ohne `t_bits` Bit 0 „Werte ungültig“. „aus“/„bereit“ ist in Ordnung —
+  nachts stehen PV-Wechselrichter so; nur Störung, Hand/Wartung und Not-Aus brauchen Aufmerksamkeit.
+- **Energie heute** aus `t_e` (Zähler, kWh): seit GE-3 liefert `…/verlauf` die Kurve additiv mit (`einheit` kWh);
+  letzte minus erste Lesung des Tages, „seit HH:MM“ bei spätem Beginn, ein Rücksprung macht sie unbekannt.
+- **Verweise:** Cockpit „Erzeugung im Detail“ (Blatt, `ErzeugerJetzt.einheiten[].bezeichnung` additiv),
+  Steuerung › Geräte, Alarm „Fernsteuerung nicht bereit“ (`einheit:<Steuerung>;te=<n>` → `meldungEinheitLink`),
+  Verlauf-Ast (`VerlaufGroup.sprunge`) und der Abschnitt Einheiten der Steuerungsseite. Wo die Fläche keine
+  Geräteliste hat, holt `useBoxRef` die Box-Referenz (dieselbe Regel wie `boxRefOf`).
+- ⚠ **Grenzen (GE-7, nicht beauftragt):** Tausch eines einzelnen Wechselrichters schneidet die Historie nicht (sie hängt
+  an der TE-Nr.); Einheiten nachtragen oder entfernen hat keine Route.
+
 ## Anlege-Schritt „Steuerung verbinden“ (EZ-15, EW-14 A)
 
 - **Ort:** Aufbau › Gerät hinzufügen › Katalog-Weg `anlagensteuerung` (`geraeteKatalog.ts`, Gruppe „Weitere Geräte“)

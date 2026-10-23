@@ -99,6 +99,7 @@ import { useMessenEinstieg } from '../messenEinstieg';
 import { browserSpeicher, entwurfLesen, messenEinstieg } from '../messenAssistent';
 import { ablehnungText, haltGrund, ohneMesswertHinweis, sollIstText, sollIstTon, verwaltungsHinweis } from '../komponentenAssistent';
 import { useFreshnessPoll } from '../useFreshnessPoll';
+import { useAnlagensteuerung } from '../useAnlagensteuerung';
 import { LIST_POLL_MS } from '../pollCadence';
 import '../components/Aufbau.css';
 
@@ -315,6 +316,14 @@ export function AufbauSection({
     [model, site.id, eigeneBoxen, devicesFetchedAt, boxRef, data, sources, charging, now],
   );
 
+  // GE-3: die Erzeugungseinheiten jeder Anlagensteuerung stehen als Geräte unter ihr — mit Ist und Zustand aus den
+  // jüngsten Werten der Steuerung (Takt wie die Geräteseite). Fail-soft: ohne Antwort stehen keine Einheiten da.
+  const steuerungen = useAnlagensteuerung(site.id, true, false);
+  const anlagensteuerungen = useMemo(
+    () => ({ [site.id]: { liste: steuerungen.liste, werte: steuerungen.werte } }),
+    [site.id, steuerungen.liste, steuerungen.werte],
+  );
+
   const baum = useMemo(
     () =>
       aufbauBaum({
@@ -331,9 +340,10 @@ export function AufbauSection({
         nachbarKarten,
         datenquellen,
         uemsGeraete,
+        anlagensteuerungen,
         now,
       }),
-    [site.id, site.name, standorte, devices, devicesFetchedAt, karten, data, charging, overview, nachbarKarten, datenquellen, uemsGeraete, now],
+    [site.id, site.name, standorte, devices, devicesFetchedAt, karten, data, charging, overview, nachbarKarten, datenquellen, uemsGeraete, anlagensteuerungen, now],
   );
 
   const satz = useMemo(() => (karten ? zentraleSatz(karten) : null), [karten]);
@@ -1124,7 +1134,7 @@ function KurzblickFuss({ geraet, editHref }: { geraet: AufbauGeraet; editHref: s
   const href = geraet.karte.href;
   return (
     <div className="vp-auf-kb-fuss">
-      {href ? (
+      {href && !geraet.einheit ? (
         <p className="vp-auf-kb-register">Register lesen und schreiben Sie auf der Geräteseite.</p>
       ) : null}
       <div className="vp-auf-kb-knoepfe">

@@ -156,7 +156,8 @@ public class ErzeugerJetztService {
 
         List<ErzeugerJetztDto.Einheit> einheiten = teile.stream().filter(t -> t.teNr() != null)
                 .map(t -> new ErzeugerJetztDto.Einheit(t.teNr(), art(t.einheitArt()),
-                        leer(t.typ()) != null ? leer(t.typ()) : leer(t.typBild()), t.nennleistungKw()))
+                        leer(t.typ()) != null ? leer(t.typ()) : leer(t.typBild()), t.nennleistungKw(),
+                        leer(t.bezeichnung())))
                 .toList();
         return Optional.of(new ErzeugerJetztDto.Jetzt(new ErzeugerJetztDto.Steuerung(s.geraetId(), name(s)),
                 netzbetreiber, direktvermarkter, einheiten, werte, wechselHeute));

@@ -179,6 +179,28 @@ import { anbindungen as anbindungenVon, anbindungKurz, geraetImAufbau, kopfZusta
 import { AnbindungAbschnitt, AnbindungVerlauf } from '../components/GeraetAnbindung';
 import { DatenquelleWechselDialog } from '../components/DatenquelleWechselDialog';
 import { useAnlagensteuerung, useAnlagensteuerungWerte } from '../useAnlagensteuerung';
+import { einheitAdresseOf } from '../geraetAdresse';
+import { EinheitSeiteSection } from './EinheitSeiteSection';
+
+/**
+ * Die Geräteseite einer Adresse: eine Erzeugungseinheit hinter einer Anlagensteuerung (`as-<Entität>~te-<n>`, GE-3)
+ * hat ihre eigene Seite im selben Rahmen ({@link EinheitSeiteSection}) — sie liest nur die Routen der Steuerung;
+ * jede andere Kennung ist ein Gerät der Box.
+ */
+export function GeraetSeiteSection(props: Parameters<typeof GeraetSeiteKern>[0]) {
+  const einheit = einheitAdresseOf(props.geraetId);
+  return einheit ? (
+    <EinheitSeiteSection
+      site={props.site}
+      boxRef={props.boxRef}
+      entityId={einheit.entityId}
+      teNr={einheit.teNr}
+      devices={props.devices}
+    />
+  ) : (
+    <GeraetSeiteKern {...props} />
+  );
+}
 
 /**
  * Die Zeilen aus dem gemeldeten Bestand, die der Abschnitt „Anbindung" (GE-2) übernimmt, sobald ein gespeicherter
@@ -208,7 +230,7 @@ const ANBINDUNG_TRAEGT = new Set(['Anbindung', 'Adresse', 'Lesetakt', 'Gelesen �
  * still weg, statt die Seite unbenutzbar zu machen - nur der Entitäts-Abruf
  * trägt die Seite.
  */
-export function GeraetSeiteSection({
+function GeraetSeiteKern({
   site,
   boxRef: geraeteRef,
   geraetId,

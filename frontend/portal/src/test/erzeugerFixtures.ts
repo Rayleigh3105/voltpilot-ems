@@ -66,8 +66,8 @@ export function erzeugerBeispiel(fall: ErzeugerFall, now: Date): ErzeugerJetzt {
       netzbetreiber: 'Netz Musterstadt GmbH',
       direktvermarkter: 'Stadtwerke Beispiel',
       einheiten: [
-        { teNr: 1, art: 'bhkw', typName: 'MAN E0836LE', nennKw: 66 },
-        { teNr: 2, art: 'bhkw', typName: 'Smartblock 33', nennKw: 33 },
+        { teNr: 1, art: 'bhkw', typName: 'MAN E0836LE', nennKw: 66, bezeichnung: null },
+        { teNr: 2, art: 'bhkw', typName: 'Smartblock 33', nennKw: 33, bezeichnung: null },
       ],
       werte,
       wechselHeute: {
@@ -105,7 +105,7 @@ export function erzeugerBeispiel(fall: ErzeugerFall, now: Date): ErzeugerJetzt {
     steuerung: { geraetId: 'help-wago', name: 'Wago' },
     netzbetreiber: 'Netz Musterstadt GmbH',
     direktvermarkter: null,
-    einheiten: [1, 2, 3].map((teNr) => ({ teNr, art: 'pv' as const, typName: 'Growatt', nennKw: 125 })),
+    einheiten: [1, 2, 3].map((teNr) => ({ teNr, art: 'pv' as const, typName: 'Growatt', nennKw: 125, bezeichnung: null })),
     werte,
     wechselHeute: {
       [P.nbBits]: [{ ab: mitternacht.toISOString(), wert: 0b011 }, { ab: vor(12), wert: 0b001 }],
