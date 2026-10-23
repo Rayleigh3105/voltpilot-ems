@@ -196,6 +196,26 @@ class AnlegewegApiTest {
         assertThat(kaputt.getBody()).contains("anfrage_kennung_ungueltig");
     }
 
+    // ---- F4: Fehler am Feld -------------------------------------------------------------------
+
+    /** „29,995“ kW hieß „Bitte prüfen Sie den Namen“ - jetzt nennt die Antwort das Feld. */
+    @Test
+    void ablehnungNenntDasFeld() {
+        String t = registrieren("Carport Ost", "zuhause");
+        ResponseEntity<Map<String, Object>> r = post(t, "/api/v1/sites",
+                Map.of("name", "Carport Ost", "maxFeedInKw", 29.995), null);
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(r.getBody()).containsEntry("code", "anfrage_ungueltig").containsEntry("feld", "maxFeedInKw")
+                .containsEntry("message", "Höchstens zwei Nachkommastellen und unter 1.000.000 kW, z. B. 29,99.");
+        ResponseEntity<Map<String, Object>> preis = post(t, "/api/v1/sites",
+                Map.of("name", "Carport Ost", "tarifArt", "fest", "tarifParamCtKwh", 32.1234), null);
+        assertThat(preis.getBody()).containsEntry("feld", "tarifParamCtKwh");
+        ResponseEntity<Map<String, Object>> name = post(t, "/api/v1/sites", Map.of("name", " "), null);
+        assertThat(name.getBody()).containsEntry("feld", "name")
+                .containsEntry("message", "Bitte geben Sie einen Namen für Ihre Anlage ein.");
+        assertThat(anlagen(t)).isZero();
+    }
+
     // ---- Rahmen --------------------------------------------------------------------------------
 
     private static final ParameterizedTypeReference<Map<String, Object>> MAP = new ParameterizedTypeReference<>() {};
