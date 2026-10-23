@@ -49,7 +49,7 @@ Referenz), `DatenquelleSchnittstelleVertragTest`; der ganze Portal-Weg des Messk
   derselben Anlage mit demselben Weg und nicht beendeter Zuständigkeit an ihrer Box (Geräte-IDs ⊆,
   Steuerquelle passend), nennt das GET sie als `ziel`; die Bestätigung MIT `datenquelle_id` hängt die
   Komponenten daran (`angehaengt`, Protokoll `aus_bestand_uebernommen` + `angehaengt: true`, gilt ab
-  jetzt). Das ist der Weg nach „Datenquelle anlegen“ von Hand — vorher 409, 0 Komponenten. Ohne
+  jetzt). Das ist der Weg nach „Gateway oder Logger anbinden“ (früher „Datenquelle anlegen“) von Hand — vorher 409, 0 Komponenten. Ohne
   `datenquelle_id` bleibt es 409; `DatenquelleRegeln` und die Vektoren sind unverändert.
 - **Eine Zuweisung „ab jetzt“ beginnt an der nächsten vollen Minute** — wer „liest die Box JETZT“ prüft,
   verliert eine frische Handquelle für bis zu 60 s; das Ziel verlangt darum nur „nicht beendet“.

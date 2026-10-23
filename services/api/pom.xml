@@ -301,6 +301,12 @@
                              prueft ComponentAdoptionWiringTest an der echten
                              application.yml. -->
                         <voltpilot.components.adoption.reconcile-enabled>false</voltpilot.components.adoption.reconcile-enabled>
+                        <!-- Der WAGO-Anschluss-Nachtrag (Konzept „Ein Geraet, ein
+                             Eintrag“, GE-6) ist ein START-Lauf wie die
+                             Bestandsuebernahme: im Testlauf aus, in PRODUKTION an
+                             (application.yml). Wer ihn prueft, ruft
+                             WagoAnschlussNachtragLaeufer.lauf() selbst. -->
+                        <voltpilot.components.wago-anschluss-nachtrag.enabled>false</voltpilot.components.wago-anschluss-nachtrag.enabled>
                         <!-- Der Erneuerungs-Takt der Handeingriffe (Steuerung
                              Stufe 4, B6) ist in PRODUKTION an (application.yml,
                              matchIfMissing) - im Testlauf aus, aus demselben

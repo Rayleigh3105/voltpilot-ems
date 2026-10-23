@@ -8397,9 +8397,8 @@ export interface UemsGeraet {
   ausgebaut_am: string | null;
   komponenten: Array<{ entity_id: string; gueltig_ab: string; gueltig_bis: string | null }>;
   /**
-   * Die Datenquelle, aus der die Box dieses Gerät liest (`geraet.data_source_id`) — der EINZIGE
-   * Weg von einer Komponente zu ihrer Datenquelle, den die Schnittstellen heute anbieten
-   * (AP-13 IP-12, Befund: `…/data-sources` nennt ihre Geräte und Komponenten nicht). `null` =
+   * Die Datenquelle, aus der die Box dieses Gerät liest (`geraet.data_source_id`). Denselben Verweis
+   * liefert seit GE-6 auch `…/data-sources` von der anderen Seite (`UemsDatenquelle.geraete`). `null` =
    * nicht erhoben; dann steht kein Box-Satz, nie eine geratene Box.
    */
   data_source_id?: string | null;
@@ -8987,6 +8986,24 @@ export interface UemsDatenquelle {
     box_alt: UemsDatenquelleBox | null;
     box_neu: UemsDatenquelleBox | null;
   } | null;
+  /**
+   * Die eingebauten Geräte, die über diesen Weg antworten (Konzept „Ein Gerät, ein Eintrag“, GE-6) — allein
+   * aus `geraet.data_source_id`, nie aus einer gleichen Adresse. Leer = Anschluss ohne Gerät, mehrere =
+   * Gateway oder Logger. Fehlt an einem älteren Backend.
+   */
+  geraete?: UemsDatenquelleGeraet[];
+}
+
+/** Ein eingebautes Gerät an einer Datenquelle (`Datenquelle.geraete[]`, GE-6). */
+export interface UemsDatenquelleGeraet {
+  id: string;
+  kennzeichen: string;
+  bezeichnung: string | null;
+  geraeteart: 'zaehler' | 'wechselrichter' | 'controller' | 'ladestation' | 'speicher' | 'sonstiges';
+  /** Die Geräte-ID auf dem Weg; `null` = nicht erhoben. */
+  geraete_id: number | null;
+  /** Die Komponenten, die das Gerät jetzt speist. */
+  komponenten: string[];
 }
 
 export interface UemsDatenquelleRueckmeldung {
@@ -11353,6 +11370,8 @@ export const api = {
    */
   wagoKartenAnlegen: (siteId: string, body: {
     karten: { steckplatz: number; kartentyp: number | null; komponente: SaveComponentBody }[];
+    /** Der Anschluss der Steuerung (GE-6): der Controller verweist darauf. */
+    dataSourceId?: string | null;
   }) => request<WagoKartenAnlage>(`/api/v1/sites/${siteId}/wago/karten`, {
     method: 'POST', body: JSON.stringify(body),
   }),

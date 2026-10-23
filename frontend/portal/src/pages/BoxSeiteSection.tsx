@@ -41,6 +41,7 @@ import { Recht } from '../components/Recht';
 import { EmptyState, ErrorState, TextSkeleton } from '../components/States';
 import { anlageRoute, boxSeiteHash, geraetSeiteHash, hashForRoute, pageRoute } from '../nav';
 import { einstellungenHash } from '../settingsNav';
+import { UEMS_GATEWAY_ANBINDEN } from '../glossar';
 import {
   aufzeichnungSeit,
   genauigkeitsSatz,
@@ -363,10 +364,11 @@ export function BoxSeiteSection({
                       ))}
                     </ul>
                   )}
-                  {/* Datenquellen entstehen hier, an der Box, die sie liest — nicht mehr nur im Messen-Assistenten. */}
+                  {/* Datenquellen entstehen hier, an der Box, die sie liest — nicht mehr nur im Messen-Assistenten.
+                      GE-6 (GD-5): von Hand ist das ein Gateway oder Logger; ein einzelnes Gerät kommt über „Gerät hinzufügen“. */}
                   {standortDerAnlage && (
                     <Recht aktion="datenquelle.bearbeiten"><button type="button" className="vp-box-quellen-aktion" onClick={() => setQuelleAnlegen(true)}>
-                      <Icon name="plus" size={14} /> Datenquelle anlegen
+                      <Icon name="plus" size={14} /> {UEMS_GATEWAY_ANBINDEN}
                     </button></Recht>
                   )}
                 </div>

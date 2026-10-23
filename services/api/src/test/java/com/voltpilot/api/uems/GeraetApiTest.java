@@ -777,8 +777,27 @@ class GeraetApiTest {
             karten.add(karte);
         }
         String anlegen = "/api/v1/sites/" + site + "/wago/karten";
-        JsonNode angelegt = ok(schreibeWago(anlegen, Map.of("karten", karten), ahrenbergAdmin, HttpMethod.POST));
+        // GE-6: der Anschluss, den der Assistent für die Steuerung angelegt hat. Die Adresse ist nur die
+        // Gegenprobe: ein Anschluss mit anderer Adresse ist 400, einer an fremder Anlage 404.
+        UUID anschluss = root.queryForObject("INSERT INTO data_source (tenant_id, site_id, kennzeichen, name, protokoll, "
+                + "adresse, geraete_ids, kadenz_s) VALUES (?, ?, 'DQ-WA1', 'WAGO-Steuerung Halle 2', 'modbus_tcp', "
+                + "'192.168.20.11:502', '{1}', 60) RETURNING id", UUID.class, ahrenberg, site);
+        UUID andererWeg = root.queryForObject("INSERT INTO data_source (tenant_id, site_id, kennzeichen, protokoll, "
+                + "adresse, geraete_ids, kadenz_s) VALUES (?, ?, 'DQ-WA2', 'modbus_tcp', '192.168.20.12:502', '{1}', 60) "
+                + "RETURNING id", UUID.class, ahrenberg, site);
+        assertThat(schreibeWago(anlegen, Map.of("karten", karten, "dataSourceId", andererWeg), ahrenbergAdmin,
+                HttpMethod.POST).getStatusCode().value()).isEqualTo(400);
+        assertThat(schreibeWago(anlegen, Map.of("karten", karten, "dataSourceId", UUID.randomUUID()), ahrenbergAdmin,
+                HttpMethod.POST).getStatusCode().value()).isEqualTo(404);
+        assertThat(root.queryForObject("SELECT count(*) FROM geraet WHERE site_id=?", Integer.class, site))
+                .as("ein abgelehnter Anschluss legt nichts an").isZero();
+        JsonNode angelegt = ok(schreibeWago(anlegen, Map.of("karten", karten, "dataSourceId", anschluss),
+                ahrenbergAdmin, HttpMethod.POST));
         UUID controller = UUID.fromString(angelegt.path("geraetId").asText());
+        assertThat(root.queryForObject("SELECT data_source_id FROM geraet WHERE id=?", UUID.class, controller))
+                .as("Gerät und Weg sind verknüpft").isEqualTo(anschluss);
+        assertThat(root.queryForObject("SELECT bezeichnung FROM geraet WHERE id=?", String.class, controller))
+                .as("der Weg heißt wie das Gerät").isEqualTo("WAGO-Steuerung Halle 2");
         assertThat(angelegt.path("karten").findValuesAsText("steckplatz")).containsExactly("2", "5");
         assertThat(angelegt.path("karten").findValuesAsText("index")).containsExactly("1", "2");
         UUID ek2 = UUID.fromString(angelegt.path("karten").get(0).path("entityId").asText());

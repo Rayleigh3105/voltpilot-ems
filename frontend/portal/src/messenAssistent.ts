@@ -16,7 +16,7 @@ import {
 } from './api';
 import type { AnlegeRueckkehr } from './anlegeNurMessen';
 import { fortschritt } from './anlegenFlow';
-import { UEMS_HAUPTZAEHLER, UEMS_UNTERZAEHLER_VON } from './glossar';
+import { UEMS_ANBINDUNG, UEMS_GATEWAY_ANBINDEN, UEMS_HAUPTZAEHLER, UEMS_UNTERZAEHLER_VON } from './glossar';
 import { ortWahlen, type OrtWahl } from './messstelleDialog';
 import { FUNKTIONEN } from './uemsFunktion';
 
@@ -37,7 +37,8 @@ import { FUNKTIONEN } from './uemsFunktion';
  * sich nur, WELCHER Standort gewählt war und wie weit der Kunde danach war.
  */
 
-export const MESSEN_SCHRITTE = ['Standort', 'Datenquelle', 'Messstellen', 'Prüfen', 'Fertig'] as const;
+// GE-6 (GD-5): Schritt 2 heißt wie der Abschnitt am Gerät — „Datenquelle“ bleibt allein beim Gateway-Anbinden.
+export const MESSEN_SCHRITTE = ['Standort', UEMS_ANBINDUNG, 'Messstellen', 'Prüfen', 'Fertig'] as const;
 
 export type MessenSchritt = 1 | 2 | 3 | 4 | 5;
 
@@ -275,6 +276,9 @@ export const SCHRITT2_SATZ =
 export const GERAET_VERBINDEN = 'VoltPilot-Box hinzufügen';
 export const GERAET_VERBINDEN_SATZ = 'Mit ihrer Geräte-ID — im Aufbau der Anlage';
 export const GERAET_ANBINDEN = 'Gerät hinzufügen';
+/** Der Weg von Hand: ein Gateway oder Logger, hinter dem mehrere Geräte antworten (GE-6). */
+export const GATEWAY_ANBINDEN = UEMS_GATEWAY_ANBINDEN;
+export const GATEWAY_ANBINDEN_SATZ = 'Adresse, Netzlage und zuständige Box festlegen';
 export const GERAET_ANBINDEN_SATZ = 'Zähler oder Controller an der Box — im Aufbau der Anlage';
 export const SPAETER_FORTSETZEN = 'Später fortsetzen';
 export const SPAETER_SATZ = 'Ihre Angaben bleiben erhalten. Sie setzen die Einrichtung dort fort, wo Sie aufgehört haben.';
@@ -342,7 +346,7 @@ export const UEBERNEHMEN_FEHLER = 'Die Messstellen konnten nicht übernommen wer
 export const UEBERNEHMEN = 'Übernehmen';
 export const KENNZEICHEN_AUTOMATISCH = 'automatisch';
 export const NICHT_VORGESCHLAGEN = 'Nicht vorgeschlagen';
-export const ZUR_DATENQUELLE = 'Zur Datenquelle';
+export const ZUR_DATENQUELLE = `Zur ${UEMS_ANBINDUNG}`;
 export const ZU_DEN_MESSSTELLEN = 'Zu den Messstellen';
 
 /** Woran der Server eine Zeile wiedererkennt: Komponente und Messwert (`MessstelleVorschlagService`). */

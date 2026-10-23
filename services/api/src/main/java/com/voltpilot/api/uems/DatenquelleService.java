@@ -584,7 +584,8 @@ public class DatenquelleService {
 
     /** Alles, woraus ein Urteil entsteht — einmal gelesen, unter RLS. */
     private record Lage(Instant jetzt, List<Datenquelle> quellen,
-            Map<UUID, List<ZustaendigkeitRepository.Zeitraum>> zeitraeume, Map<UUID, Box> boxen) {
+            Map<UUID, List<ZustaendigkeitRepository.Zeitraum>> zeitraeume, Map<UUID, Box> boxen,
+            Map<UUID, List<DatenquelleDto.Geraet>> geraete) {
 
         List<ZustaendigkeitRepository.Zeitraum> von(UUID quelle) {
             return zeitraeume.getOrDefault(quelle, List.of());
@@ -603,7 +604,8 @@ public class DatenquelleService {
         for (ZustaendigkeitRepository.Zeitraum z : zustaendigkeiten.alle()) {
             je.computeIfAbsent(z.dataSourceId(), k -> new ArrayList<>()).add(z);
         }
-        return new Lage(uhr.instant(), quellen.alle(), je, boxen());
+        Instant jetzt = uhr.instant();
+        return new Lage(jetzt, quellen.alle(), je, boxen(), quellen.geraeteJeQuelle(jetzt));
     }
 
     private Map<UUID, Box> boxen() {
@@ -638,7 +640,7 @@ public class DatenquelleService {
                 q.kadenzS(), q.archiviertAm(), box == null ? null : dto(box, lage.boxen()),
                 zs.stream().map(z -> new DatenquelleDto.Zeitraum(z.id(), dto(z.deviceId(), lage.boxen()),
                         z.effectiveFrom(), z.effectiveTo())).toList(), uebergabe(q.id(), lage),
-                rueckmeldung(box, q.id()));
+                rueckmeldung(box, q.id()), lage.geraete().getOrDefault(q.id(), List.of()));
     }
 
     private DatenquelleDto.Rueckmeldung rueckmeldung(UUID box, UUID quelle) {

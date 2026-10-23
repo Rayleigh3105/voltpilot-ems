@@ -83,6 +83,8 @@ describe('WAGO-Assistent — Karten aus den Kennwörtern, slot = Steckplatz', ()
     const karten = kartenAnlegen.mock.calls[0][1].karten;
     expect(karten.map((k) => [k.steckplatz, (k.komponente.connection as { slot?: number }).slot, k.kartentyp]))
       .toEqual([[2, 2, 494], [5, 5, 495]]);
+    // GE-6: der Controller verweist auf den Anschluss aus Schritt 1 — ein Gerät, ein Eintrag.
+    expect(kartenAnlegen.mock.calls[0][1].dataSourceId).toBe('dq-1');
   });
 
   it('geht ohne gelesenen Steckplatz nicht weiter und nimmt keine Position an', async () => {
@@ -95,6 +97,9 @@ describe('WAGO-Assistent — Karten aus den Kennwörtern, slot = Steckplatz', ()
     fireEvent.change(screen.getByLabelText('Adresse'), { target: { value: '192.168.20.10' } });
     fireEvent.click(screen.getByRole('button', { name: 'Kopf prüfen' }));
     await screen.findByText('Kopf erkannt');
+    // GD-5: der Zwischenstand spricht vom Anschluss, die Kennung steht nur dabei.
+    expect(screen.getByText('Anschluss gespeichert (Kennung DQ-1). Das Gerät entsteht erst mit „Komponenten anlegen“.'))
+      .toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /^(Weiter|Karten auslesen und weiter)$/ }));
     await screen.findByRole('heading', { name: 'Ausgelesene Energiekarten ergänzen' });
     expect(screen.getByText('Unbekannt — Lesung unvollständig')).toBeTruthy();

@@ -158,7 +158,7 @@ describe('MessenAssistent — „Messanlage anlegen" öffnet den Anlege-Fluss im
     // Zurück im Assistenten auf Schritt 2 — die neue Anlage steht da, keine Adresse gewechselt.
     await schritt2();
     expect(screen.queryByRole('dialog', { name: 'Anlage anlegen' })).toBeNull();
-    expect(await screen.findByRole('button', { name: 'Datenquelle anlegen für Halle 3' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Gateway oder Logger anbinden für Halle 3' })).toBeInTheDocument();
     expect(screen.queryByTestId('messen-keine-anlage')).toBeNull();
     expect(window.location.hash).toBe('#/messen-start');
   });

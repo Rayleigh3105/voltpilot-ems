@@ -212,7 +212,7 @@ describe('MessenAssistent — Schritt 4 · Prüfen und Schritt 5 · Fertig', () 
   it('der Weg einer roten Zeile führt in ihren Schritt', async () => {
     zeige(4);
     await schritt4();
-    klick(await within(assistent()).findByRole('button', { name: 'Zur Datenquelle' }).then((b) => b.textContent ?? ''));
+    klick(await within(assistent()).findByRole('button', { name: 'Zur Anbindung' }).then((b) => b.textContent ?? ''));
     expect(await screen.findByRole('heading', { name: 'Womit wird gemessen?' })).toBeInTheDocument();
   });
 

@@ -13,6 +13,7 @@ import {
   type UemsDatenquelleBearbeiten,
   type UemsDatenquellePruefergebnis,
 } from '../api';
+import { UEMS_ANSCHLUSS, UEMS_GATEWAY_ANBINDEN } from '../glossar';
 import { budgetAblehnungAnzeige, PROTOKOLLE, type Protokoll } from '../uemsDatenquelle';
 import { datenquelleBoxen, folgenSaetze, pruefungText } from '../datenquelle';
 import { Recht } from './Recht';
@@ -178,7 +179,7 @@ export function DatenquelleAnlegen({
   );
 
   return (
-    <Modal open onClose={onClose} title="Datenquelle anlegen" footer={fuss}>
+    <Modal open onClose={onClose} title={UEMS_GATEWAY_ANBINDEN} footer={fuss}>
       <form id={`${basis}-form`} className="vp-dqa" noValidate onSubmit={(e) => void entwurfAnlegen(e)}>
         <p className="vp-dqa-einleitung">Die Box liest die Quelle in ihrem Netz. VoltPilot prüft die Erreichbarkeit und das Lesebudget vor der Einrichtung.</p>
         <div className="vp-dqa-felder">
@@ -206,7 +207,7 @@ export function DatenquelleAnlegen({
           ))}
         </fieldset>
 
-        {quelle && <p className="vp-dqa-entwurf">{quelle.kennzeichen} ist als Entwurf angelegt. Prüfen Sie jetzt die Verbindung von der gewählten Box.</p>}
+        {quelle && <p className="vp-dqa-entwurf">{`${UEMS_ANSCHLUSS} ${quelle.kennzeichen} ist als Entwurf gespeichert. Prüfen Sie jetzt die Verbindung von der gewählten Box; die Geräte dahinter fügen Sie danach im Aufbau hinzu.`}</p>}
         {pruefung && <p className={`vp-dqa-pruefung ${pruefung.ergebnis === 'ok' ? 'ist-ok' : 'ist-fehler'}`} role="status">
           <strong>Prüfung von {pruefung.box.name ?? box?.name ?? 'der Box'}:</strong> {pruefungText(pruefung)}
         </p>}

@@ -11655,7 +11655,7 @@ paths:
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409":
-          description: Die Anlage wird noch auf der Box verwaltet, oder eine Karte wurde nicht als eigene Komponente angelegt.
+          description: Die Anlage wird noch auf der Box verwaltet, eine Karte wurde nicht als eigene Komponente angelegt, oder der genannte Anschluss ist archiviert.
         "422":
           description: Die Verbindung einer Karte ist nicht geprüft.
   /api/v1/sites/{siteId}/wago/karten/nachtragen:
@@ -11670,7 +11670,8 @@ paths:
         vollen Minute. Die bisherige, abgeleitete Speisung endet dort (nichts wird gelöscht oder
         umgeschrieben); ihr Gerät wird ausgebaut, wenn es danach nichts mehr speist und keine Karte
         trägt. Eine Komponente, die schon in einer Karte steckt, bleibt unberührt (409 - ein Tausch
-        ist ein Kartenwechsel).
+        ist ein Kartenwechsel). Tragen die Komponenten der Karten genau EINEN Anschluss
+        (measurement_point.data_source_id), verweist der Controller darauf (GE-6) - nie über eine Adresse.
       requestBody:
         required: true
         content:
@@ -35443,7 +35444,7 @@ components:
       type: object
       required: [id, kennzeichen, name, anlage, protokoll, adresse, geraete_ids, netz, mehrere_leser,
         steuerquelle, vergleichsquelle, kadenz_s, archiviert_am, zustaendige_box, zeitraeume, uebergabe,
-        rueckmeldung]
+        rueckmeldung, geraete]
       properties:
         id: { type: string, format: uuid }
         kennzeichen: { type: string, pattern: "^[A-Z0-9./-]{2,16}$", example: DQ-6 }
@@ -35473,6 +35474,26 @@ components:
           description: >
             Jüngste Rückmeldung der zuständigen Box; null nur ohne zuständige Box. Eine
             Bestandsbox ohne Quellblock meldet den ehrlichen Zustand meldet_noch_nicht_je_quelle.
+        geraete:
+          type: array
+          items: { $ref: "#/components/schemas/DatenquelleGeraet" }
+          description: >
+            Additiv (Konzept „Ein Gerät, ein Eintrag“, GE-6): die eingebauten Geräte, die über diesen
+            Weg antworten - allein aus dem gespeicherten Verweis geraet.data_source_id, nie aus einer
+            gleichen Adresse. Leer = Anschluss ohne Gerät; mehrere = Gateway oder Logger.
+    DatenquelleGeraet:
+      type: object
+      required: [id, kennzeichen, bezeichnung, geraeteart, geraete_id, komponenten]
+      properties:
+        id: { type: string, format: uuid, description: Der Einbau (geraet.id). }
+        kennzeichen: { type: string, example: GR-7 }
+        bezeichnung: { type: string, nullable: true }
+        geraeteart: { type: string, enum: [zaehler, wechselrichter, controller, ladestation, speicher, sonstiges] }
+        geraete_id: { type: integer, minimum: 0, nullable: true, description: "Die Geräte-ID, unter der es auf dem Weg antwortet; null = nicht erhoben." }
+        komponenten:
+          type: array
+          items: { type: string, format: uuid }
+          description: Die Komponenten, die das Gerät jetzt (oder ab einer angekündigten Speisung) speist.
     DatenquelleRueckmeldung:
       type: object
       required: [zustand, fehlerklasse, seit, gelesen_am, anfragen_pro_minute,
@@ -35845,6 +35866,16 @@ components:
               steckplatz: { type: integer, minimum: 1, maximum: 65535 }
               kartentyp: { type: integer, nullable: true, enum: [493, 494, 495], description: "Aus der Kartenlesung; null = nicht gelesen." }
               komponente: { $ref: "#/components/schemas/SaveComponentRequest" }
+        dataSourceId:
+          type: string
+          format: uuid
+          nullable: true
+          description: >
+            Additiv (Konzept „Ein Gerät, ein Eintrag“, GE-6): der Anschluss, den der Assistent für diese Steuerung
+            angelegt hat. Der Controller verweist darauf (geraet.data_source_id) und trägt seinen Namen. Er muss an
+            dieser Anlage liegen (sonst 404), darf nicht archiviert sein (409) und muss - als Gegenprobe, nie als
+            Identität - derselbe Weg sein wie die Karten: Modbus TCP an ihrer Adresse mit ihrer Geräte-ID (sonst
+            400). Fehlt er, bleibt der Controller unverknüpft wie bisher.
     WagoKartenNachtragen:
       type: object
       required: [karten]

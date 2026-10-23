@@ -50,6 +50,12 @@ import org.springframework.web.server.ResponseStatusException;
  * genau diesen einen Kopf gelesen). Dieselbe Verbindung beweist keine Gerätegleichheit — sie ist
  * hier nur die Gegenprobe: Karten mit verschiedener Verbindung können nicht ein Registerbild sein.
  * Der Kartentyp kommt aus der Kartenlesung; ungelesen bleibt er leer, nie geraten.
+ *
+ * <p><b>Gerät und Weg</b> (Konzept „Ein Gerät, ein Eintrag“, GE-6): der Assistent nennt den Anschluss
+ * ({@code data_source}), den er für genau diese Steuerung angelegt hat; der Controller verweist darauf
+ * ({@code geraet.data_source_id}) und heißt wie er. Die Adresse ist auch hier nur die Gegenprobe. Für den Bestand holt
+ * {@link #quellenNachholen} den Verweis nach — allein über die {@code data_source_id}, die die Komponenten
+ * der Karten schon tragen, nie über eine gleiche Adresse.
  */
 @Service
 public class WagoKartenAnlage {
@@ -62,7 +68,8 @@ public class WagoKartenAnlage {
     /** Eine Karte, die der Assistent gelesen hat, samt der Komponente, die sie speist. */
     public record NeueKarte(@NotNull @Min(1) @Max(65535) Integer steckplatz,
             Integer kartentyp, @NotNull @Valid SaveComponentRequest komponente) {}
-    public record Anlegen(@NotEmpty @Size(max = 64) List<@NotNull @Valid NeueKarte> karten) {}
+    /** {@code dataSourceId}: der Anschluss der Steuerung (GE-6); ohne bleibt der Controller unverknüpft. */
+    public record Anlegen(@NotEmpty @Size(max = 64) List<@NotNull @Valid NeueKarte> karten, UUID dataSourceId) {}
     /** Eine bestehende WAGO-Komponente und die Karte, die sie speist. */
     public record Zuordnung(@NotNull UUID entityId, @NotNull @Min(1) @Max(65535) Integer steckplatz,
             Integer kartentyp) {}
@@ -97,6 +104,8 @@ public class WagoKartenAnlage {
             verbindungen.add(v);
         }
         Integer unitId = gemeinsameVerbindung(verbindungen);
+        Anschluss quelle = in.dataSourceId() == null ? null
+                : anschluss(siteId, in.dataSourceId(), verbindungen.getFirst(), unitId);
         Instant ab = Instant.now().truncatedTo(ChronoUnit.MINUTES);
         List<UUID> entities = new ArrayList<>();
         for (NeueKarte k : in.karten()) {
@@ -111,7 +120,7 @@ public class WagoKartenAnlage {
             entities.add(neu.iterator().next());
         }
         List<Integer> typen = in.karten().stream().map(NeueKarte::kartentyp).toList();
-        return controller(siteId, entities, steckplaetze, typen, unitId, ab, subject);
+        return controller(siteId, entities, steckplaetze, typen, unitId, quelle, ab, subject);
     }
 
     /**
@@ -168,18 +177,82 @@ public class WagoKartenAnlage {
                     Timestamp.from(ab), alt, Timestamp.from(ab));
         }
         List<Integer> typen = in.karten().stream().map(Zuordnung::kartentyp).toList();
-        return controller(siteId, entities, steckplaetze, typen, unitId, ab, subject);
+        Ergebnis e = controller(siteId, entities, steckplaetze, typen, unitId, null, ab, subject);
+        nachholen("g.id = ?", e.geraetId());
+        return e;
     }
 
+    /**
+     * Bestand (GE-6): ein WAGO-Controller ohne Anschluss bekommt den Anschluss, den die Komponenten
+     * seiner Karten schon tragen ({@code measurement_point.data_source_id}) — nur wenn sie genau EINEN
+     * nennen, er an derselben Anlage liegt und nicht archiviert ist. Nennen sie keinen oder zwei
+     * verschiedene, bleibt der Controller unverknüpft; eine gleiche Adresse zählt nie. Idempotent: ein
+     * Controller mit Anschluss bleibt, wie er ist. Läuft unter RLS je Kundenbereich.
+     *
+     * @return wie viele Controller jetzt verknüpft wurden
+     */
+    @Transactional
+    public int quellenNachholen() {
+        return nachholen("TRUE");
+    }
+
+    private int nachholen(String auswahl, Object... argumente) {
+        return jdbc.update("UPDATE geraet g SET data_source_id = q.quelle "
+                + "FROM (SELECT v.geraet_id, (array_agg(DISTINCT m.data_source_id) "
+                + "FILTER (WHERE m.data_source_id IS NOT NULL))[1] AS quelle "
+                + "FROM geraet_komponente v JOIN geraet_teil t ON t.id = v.teil_id AND t.teilart = 'energiekarte' "
+                + "JOIN measurement_point m ON m.id = v.entity_id "
+                + "WHERE v.gueltig_bis IS NULL OR v.gueltig_bis > now() "
+                + "GROUP BY v.geraet_id HAVING count(DISTINCT m.data_source_id) = 1) q "
+                + "JOIN data_source d ON d.id = q.quelle "
+                + "WHERE g.id = q.geraet_id AND g.data_source_id IS NULL AND g.ausgebaut_am IS NULL "
+                + "AND g.geraeteart = 'controller' AND d.site_id = g.site_id AND d.archiviert_am IS NULL "
+                + "AND " + auswahl, argumente);
+    }
+
+    /**
+     * Der Anschluss, den der Assistent nennt: an dieser Anlage (sonst 404), nicht archiviert (409) und
+     * — als Gegenprobe, nie als Identität — derselbe Weg wie die Karten: Modbus TCP an ihrer Adresse mit
+     * ihrer Geräte-ID (400).
+     */
+    private Anschluss anschluss(UUID siteId, UUID id, Map<String, Object> verbindung, Integer unitId) {
+        record Weg(String kennzeichen, String name, String protokoll, String adresse, List<Integer> geraeteIds,
+                boolean archiviert) {}
+        List<Weg> weg = jdbc.query("SELECT kennzeichen, name, protokoll, adresse, geraete_ids, "
+                + "archiviert_am IS NOT NULL AS archiviert FROM data_source WHERE id=? AND site_id=?", (rs, n) -> new Weg(
+                        rs.getString("kennzeichen"), rs.getString("name"), rs.getString("protokoll"),
+                        rs.getString("adresse"), List.of((Integer[]) rs.getArray("geraete_ids").getArray()),
+                        rs.getBoolean("archiviert")), id, siteId);
+        if (weg.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Anschluss an dieser Anlage nicht gefunden.");
+        }
+        Weg w = weg.getFirst();
+        if (w.archiviert()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Der Anschluss " + w.kennzeichen()
+                    + " ist archiviert.");
+        }
+        String adresse = verbindung.get("ip") + ":" + verbindung.get("port");
+        if (!"modbus_tcp".equals(w.protokoll()) || !adresse.equals(w.adresse())
+                || unitId == null || !w.geraeteIds().contains(unitId)) {
+            throw bad("Die Karten antworten nicht über den Anschluss " + w.kennzeichen() + " (" + w.adresse()
+                    + ", Geräte-ID " + w.geraeteIds() + ").");
+        }
+        return new Anschluss(id, w.name() == null || w.name().isBlank() ? null : w.name().trim());
+    }
+
+    /** Der Anschluss der Steuerung: der Controller verweist darauf und trägt seinen Namen (der Weg heißt wie das Gerät). */
+    private record Anschluss(UUID id, String name) {}
+
     private Ergebnis controller(UUID siteId, List<UUID> entities, List<Integer> steckplaetze,
-            List<Integer> typen, Integer unitId, Instant ab, String subject) {
+            List<Integer> typen, Integer unitId, Anschluss quelle, Instant ab, String subject) {
         UUID tenant = TenantContext.get();
         Timestamp am = Timestamp.from(ab);
         Map<String, Object> geraet = jdbc.queryForMap("INSERT INTO geraet (tenant_id, site_id, kennzeichen, "
-                + "einbau_kennzeichen, geraeteart, hersteller, geraete_id, eingebaut_am, aus_bestand, created_by) "
-                + "SELECT ?, ?, n.k, n.k, 'controller', 'WAGO', ?, ?, false, ? "
+                + "einbau_kennzeichen, geraeteart, hersteller, bezeichnung, data_source_id, geraete_id, eingebaut_am, "
+                + "aus_bestand, created_by) SELECT ?, ?, n.k, n.k, 'controller', 'WAGO', ?, ?, ?, ?, false, ? "
                 + "FROM (SELECT uems_geraet_kennzeichen(?) AS k) n RETURNING id, kennzeichen",
-                tenant, siteId, unitId, am, subject, tenant);
+                tenant, siteId, quelle == null ? null : quelle.name(), quelle == null ? null : quelle.id(), unitId, am,
+                subject, tenant);
         UUID geraetId = (UUID) geraet.get("id");
         List<Integer> reihenfolge = steckplaetze.stream().sorted(Comparator.naturalOrder()).toList();
         List<KarteErgebnis> karten = new ArrayList<>();

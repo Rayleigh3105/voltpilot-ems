@@ -62,7 +62,7 @@ const mitLindach = (lindach = lindachEntwurf()) =>
 
 describe('messenAssistent — Schrittfolge', () => {
   it('nennt die fünf Schritte des Konzepts und zählt „Schritt n von 5"', () => {
-    expect(MESSEN_SCHRITTE).toEqual(['Standort', 'Datenquelle', 'Messstellen', 'Prüfen', 'Fertig']);
+    expect(MESSEN_SCHRITTE).toEqual(['Standort', 'Anbindung', 'Messstellen', 'Prüfen', 'Fertig']);
     expect(ALLE.map(schrittZaehler)).toEqual([
       'Schritt 1 von 5',
       'Schritt 2 von 5',

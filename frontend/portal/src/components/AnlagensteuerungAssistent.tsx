@@ -49,6 +49,7 @@ import {
 } from '../anlagensteuerung';
 import { anlagensteuerungApi } from '../anlagensteuerungApi';
 import { anlagensteuerungGeraetId } from '../geraetAdresse';
+import { anschlussGespeichert } from '../glossar';
 import { geraetSeiteHash, komponenteHash } from '../nav';
 import { ueberwachungApi } from '../ueberwachungApi';
 import { useRollen } from '../rollen';
@@ -164,6 +165,14 @@ export function AnlagensteuerungAssistent({
     setAnschluss((a) => ({ ...a, ...neu }));
     setErste(null); setZweite(null); setVorab(null);
   };
+  // Der Anschluss heißt wie das Gerät (Konzept „Ein Gerät, ein Eintrag“, GE-6) — nicht fest „Anlagensteuerung“.
+  const steuerungsName = bezeichnung.trim() || 'Anlagensteuerung';
+  const quelleDaten = (name: string) => ({
+    name, protokoll: 'modbus_tcp',
+    adresse: `${anschluss.host.trim()}:${Number(anschluss.port)}`,
+    geraete_ids: [Number(anschluss.unitId)], netz: anschluss.netz.trim(),
+    mehrere_leser: false, steuerquelle: false, kadenz_s: 5,
+  });
 
   async function pruefeEinmal(q: UemsDatenquelle): Promise<UemsDatenquellePruefergebnis> {
     return api.datenquellePruefen(site.id, q.id, {
@@ -183,12 +192,7 @@ export function AnlagensteuerungAssistent({
     if (einrichtung && !faehig.has(boxId)) { setVorab(boxUpdateUrteil()); return; }
     setBusy('Kopf wird gelesen …');
     try {
-      const daten = {
-        name: 'Anlagensteuerung', protokoll: 'modbus_tcp',
-        adresse: `${anschluss.host.trim()}:${Number(anschluss.port)}`,
-        geraete_ids: [Number(anschluss.unitId)], netz: anschluss.netz.trim(),
-        mehrere_leser: false, steuerquelle: false, kadenz_s: 5,
-      };
+      const daten = quelleDaten(quelle?.name ?? steuerungsName);
       const schluessel = quellenSchluessel(anschluss);
       let q = quelle;
       if (!q) {
@@ -230,7 +234,7 @@ export function AnlagensteuerungAssistent({
       }
       setSchritt(2);
     } catch (e) {
-      setFehler(fehlerText(e, 'Die Box konnte der Datenquelle nicht zugewiesen werden.'));
+      setFehler(fehlerText(e, 'Die Box konnte dem Anschluss nicht zugewiesen werden.'));
     } finally { setBusy(null); }
   }
 
@@ -264,6 +268,10 @@ export function AnlagensteuerungAssistent({
     if (!darfEinrichten) { setFehler(rollen.grund); return; }
     setBusy('Wird angelegt …'); setFehler(null);
     try {
+      if ((quelle.name ?? steuerungsName) !== steuerungsName) {
+        // Umbenannt in Schritt 4: der Anschluss zieht den Namen nach, Weg und Box bleiben.
+        setQuelle(await api.datenquelleBearbeiten(site.id, quelle.id, quelleDaten(steuerungsName)));
+      }
       const steuerung = await anlagensteuerungApi.anlegen(site.id, anlegenAnfrage({
         dataSourceId: quelle.id, anschluss: { ...anschluss, boxId }, kopf, anlagenart, bezeichnung, hersteller, typ,
         einheiten, netz,
@@ -337,7 +345,7 @@ export function AnlagensteuerungAssistent({
           {busy ?? (urteil ? 'Kopf erneut prüfen' : 'Kopf prüfen')}
         </Button>
       </div>
-      {quelle && <p className="vp-anst-hinweis">{`Datenquelle ${quelle.kennzeichen} ist als Entwurf angelegt.`}</p>}
+      {quelle && <p className="vp-anst-hinweis">{anschlussGespeichert(quelle.kennzeichen, 'Anlegen')}</p>}
       {urteil && <div ref={urteilRef} className={`vp-anst-kasten ist-${urteil.art}`} role="status" data-testid="anst-kopf">
         <strong>{urteil.art === 'erkannt' ? `✓ ${urteil.titel}` : urteil.titel}</strong>
         {urteil.satz && <span>{urteil.satz}</span>}
@@ -444,8 +452,8 @@ export function AnlagensteuerungAssistent({
         </li>;
       })}</ul>
       {darfAlarme && <p className="vp-anst-hinweis">Gemeldet an: Kundenadministrator.</p>}
-      <p className="vp-anst-hinweis">{`Angelegt werden: das Gerät „${bezeichnung.trim() || 'Anlagensteuerung'}“ an der Datenquelle `
-        + `${quelle?.kennzeichen ?? ''}, die Registerbild-Fassung (Soll für den Abgleich), `
+      <p className="vp-anst-hinweis">{`Angelegt werden: das Gerät „${steuerungsName}“ mit seinem Anschluss `
+        + `(Modbus TCP ${quelle?.adresse ?? ''} · Kennung ${quelle?.kennzeichen ?? ''}), die Registerbild-Fassung (Soll für den Abgleich), `
         + `${einheiten.length === 1 ? '1 Einheit' : `${einheiten.length} Einheiten`} und die Komponente.`}</p>
     </section>;
   }

@@ -450,7 +450,7 @@ for (const breite of BREITEN) {
 
       await page.getByRole('button', { name: 'Weiter', exact: true }).click();
       await schritt2(page);
-      await zaehlerIst(page, breite, 2, 'Datenquelle');
+      await zaehlerIst(page, breite, 2, 'Anbindung');
       await expect(page.getByText('3 Komponenten angebunden')).toBeVisible();
       await messeUndFotografiere(page, breite, 'schritt2');
 
@@ -469,7 +469,7 @@ for (const breite of BREITEN) {
       // … und nach einem Neuladen OHNE Vorwahl steht er wieder auf Schritt 2 — ohne zweites Einrichten.
       await oeffne(page, breite);
       await schritt2(page);
-      await zaehlerIst(page, breite, 2, 'Datenquelle');
+      await zaehlerIst(page, breite, 2, 'Anbindung');
       await expect(page.getByText('Werk Lindach (ST-2)')).toBeVisible();
       await messeUndFotografiere(page, breite, 'wiedereinstieg');
       expect(einrichten).toEqual([LINDACH]);
@@ -519,8 +519,8 @@ for (const breite of BREITEN) {
       const vorher = page.url();
       await zurueck.click();
       await schritt2(page);
-      await zaehlerIst(page, breite, 2, 'Datenquelle');
-      await expect(page.getByRole('button', { name: 'Datenquelle anlegen für Halle 3', exact: true })).toBeVisible();
+      await zaehlerIst(page, breite, 2, 'Anbindung');
+      await expect(page.getByRole('button', { name: 'Gateway oder Logger anbinden für Halle 3', exact: true })).toBeVisible();
       await expect(page.getByTestId('messen-keine-anlage')).toHaveCount(0);
       expect(page.url()).toBe(vorher);
       await messeUndFotografiere(page, breite, 'messanlage-zurueck');
@@ -541,7 +541,7 @@ for (const breite of BREITEN) {
       }
     });
 
-    test('Datenquelle anlegen: Box-Wahl, Prüfung und Budget-Ablehnung mit zwei Auswegen', async ({ page }) => {
+    test('Gateway oder Logger anbinden: Box-Wahl, Prüfung und Budget-Ablehnung mit zwei Auswegen', async ({ page }) => {
       const cloud: Cloud = {
         standorte: ahrenbergHeute(),
         funktionen: ahrenbergFunktionen({
@@ -552,8 +552,8 @@ for (const breite of BREITEN) {
       await verdrahte(page, cloud);
       await oeffne(page, breite, `?standort=${FIXTURE_IDS.st1}`);
       await schritt2(page);
-      await page.getByRole('button', { name: 'Datenquelle anlegen für Werk Ahrenberg – Halle 2', exact: true }).click();
-      const dialog = page.getByRole('dialog', { name: 'Datenquelle anlegen' });
+      await page.getByRole('button', { name: 'Gateway oder Logger anbinden für Werk Ahrenberg – Halle 2', exact: true }).click();
+      const dialog = page.getByRole('dialog', { name: 'Gateway oder Logger anbinden' });
       await expect(dialog).toBeVisible();
       await expect(page.getByRole('dialog', { name: /^Messen & Auswerten/ })).toHaveCount(0);
       await dialog.getByLabel('Name').fill('WAGO-Steuerung Halle 2');
@@ -565,7 +565,7 @@ for (const breite of BREITEN) {
       await expect(dialog.getByText('Software 2.8.0')).toHaveCount(2);
       await expect(dialog.getByText('Freies Lesebudget: wird beim Einrichten geprüft')).toHaveCount(2);
       await dialog.getByRole('button', { name: 'Entwurf anlegen' }).click();
-      await expect(dialog.getByText(/DQ-4 ist als Entwurf angelegt/)).toBeVisible();
+      await expect(dialog.getByText(/Anschluss DQ-4 ist als Entwurf gespeichert/)).toBeVisible();
       await dialog.getByRole('button', { name: 'Von Box Halle 1 prüfen' }).click();
       await expect(dialog.getByText(/Erreichbar · 184 ms/)).toBeVisible();
       await dialog.getByRole('button', { name: 'Einrichtung abschließen' }).click();

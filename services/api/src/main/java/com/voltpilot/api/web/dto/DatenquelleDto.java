@@ -48,7 +48,9 @@ public final class DatenquelleDto {
      * {@code rueckmeldung} ist die jüngste Beobachtung der zuständigen Box aus dem Herzschlag
      * (IP-14), nie aus Lebenszyklus oder Messwerten geraten. {@code kadenz_s} ist {@code null}, wo
      * der Takt nicht erhoben ist — eine aus dem Bestand übernommene Quelle, deren Komponenten
-     * keinen nennen (IP-4).
+     * keinen nennen (IP-4). {@code geraete} sind die eingebauten Geräte, die über diesen Weg
+     * antworten (Konzept „Ein Gerät, ein Eintrag“, GE-6) — allein aus dem gespeicherten Verweis
+     * {@code geraet.data_source_id}, nie aus einer gleichen Adresse; leer heißt „Anschluss ohne Gerät“.
      */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Datenquelle(
@@ -68,7 +70,17 @@ public final class DatenquelleDto {
             Box zustaendigeBox,
             List<Zeitraum> zeitraeume,
             Uebergabe uebergabe,
-            Rueckmeldung rueckmeldung) {}
+            Rueckmeldung rueckmeldung,
+            List<Geraet> geraete) {}
+
+    /**
+     * Ein eingebautes Gerät an einer Datenquelle: {@code geraete_id} ist die Geräte-ID, unter der es
+     * auf dem Weg antwortet ({@code null} = nicht erhoben), {@code komponenten} die Komponenten, die
+     * es jetzt speist (laufende oder angekündigte Speisung).
+     */
+    @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
+    public record Geraet(UUID id, String kennzeichen, String bezeichnung, String geraeteart, Integer geraeteId,
+            List<UUID> komponenten) {}
 
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Uebergabe(String zustand, Instant seit, Box boxAlt, Box boxNeu) {}

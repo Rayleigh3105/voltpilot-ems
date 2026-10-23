@@ -171,10 +171,40 @@ class UeberwachungSiteScopeIT {
                     WerteLeser.Bezug.anlage(w.anlage1()), jetzt);
             assertThat(l.bekannt()).isTrue();
             assertThat(l.zustandswort()).isEqualTo("stale");
+            // GE-6: ohne verknüpftes Gerät ist der Weg ein Anschluss — nie ein Gerät mit gleicher Adresse.
+            assertThat(l.text()).isEqualTo("Anschluss Wechselrichter liefert keine Daten (Kennung DQ-1).");
 
             WerteLeser.Lesung ohne = leser.lese(katalog.eintrag("datenquelle.liefert_daten"),
                     WerteLeser.Bezug.anlage(w.anlage2()), jetzt);
             assertThat(ohne.bekannt()).isFalse();
+        } finally {
+            TenantContext.clear();
+        }
+
+        // Mit dem gespeicherten Verweis geraet.data_source_id nennt der Satz das Gerät und den Grund der Box.
+        adminJdbc.update("INSERT INTO geraet (tenant_id, site_id, kennzeichen, einbau_kennzeichen, geraeteart, "
+                + "bezeichnung, data_source_id, geraete_id, eingebaut_am) VALUES (?, ?, 'GR-90', 'GR-90', "
+                + "'wechselrichter', 'Wechselrichter Dach', ?, 1, date_trunc('minute', now()))", w.tenant(), w.anlage1(), datenquelle);
+        adminJdbc.update("UPDATE device_data_source_status SET error_class = 'unreachable' WHERE data_source_id = ?",
+                datenquelle);
+        TenantContext.set(w.tenant());
+        try {
+            WerteLeser.Lesung l = leser.lese(katalog.eintrag("datenquelle.liefert_daten"),
+                    WerteLeser.Bezug.anlage(w.anlage1()), jetzt);
+            assertThat(l.zustandswort()).isEqualTo("stale");
+            assertThat(l.text())
+                    .isEqualTo("Wechselrichter Dach liefert keine Daten — nicht erreichbar (Kennung DQ-1).");
+        } finally {
+            TenantContext.clear();
+        }
+        adminJdbc.update("UPDATE device_data_source_status SET health = 'ok', error_class = NULL, since_at = NULL "
+                + "WHERE data_source_id = ?", datenquelle);
+        TenantContext.set(w.tenant());
+        try {
+            WerteLeser.Lesung l = leser.lese(katalog.eintrag("datenquelle.liefert_daten"),
+                    WerteLeser.Bezug.anlage(w.anlage1()), jetzt);
+            assertThat(l.zustandswort()).isEqualTo("ok");
+            assertThat(l.text()).isEqualTo("Wechselrichter Dach liefert Daten.");
         } finally {
             TenantContext.clear();
         }

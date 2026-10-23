@@ -64,7 +64,8 @@ public interface WerteLeser {
      * vorhanden - UNBEKANNT IST KEINE NULL (Konzept §6.1 Nr. 4) - keine Schwellen-Bedingung wertet
      * das als erfüllt. Ein Leser füllt ENTWEDER {@code zustandswort} (Scheibe 1: zustand, ereignis)
      * ODER {@code zahlenwert} (Scheibe 2: anlagenfluss, messreihe) - nie beide. {@code text} (UEMS EZ-11) ist ein
-     * fertiger Satz in Kundensprache, den eine Meldung statt „… meldet: ‹Wert›“ trägt; nur der Erzeuger-Leser setzt ihn.
+     * fertiger Satz in Kundensprache, den eine Meldung statt „… meldet: ‹Wert›“ trägt; ihn setzen der Erzeuger-Leser
+     * und der Zustand-Leser für {@code datenquelle_status} (der Satz nennt das Gerät, GE-6).
      */
     record Lesung(boolean bekannt, String zustandswort, Double zahlenwert, String einheit, Instant messzeit,
             String text) {

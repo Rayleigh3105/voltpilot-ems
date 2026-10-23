@@ -197,6 +197,34 @@ describe('Anlagensteuerung verbinden - Vorbelegung und Anlegen', () => {
       ziel: `#/anlage/${SITE.id}/geraet/VP-7Q4K/as-e-1` });
   });
 
+  it('nennt den Anschluss statt der Datenquelle und benennt ihn wie das Gerät (GE-6)', async () => {
+    quelleAnlegen.mockResolvedValue({ id: 'dq-1', kennzeichen: 'DQ-1', name: 'Anlagensteuerung', adresse: '192.168.4.165:502' } as UemsDatenquelle);
+    const bearbeiten = vi.spyOn(api, 'datenquelleBearbeiten')
+      .mockResolvedValue({ id: 'dq-1', kennzeichen: 'DQ-1', name: 'BHKW-Steuerung', adresse: '192.168.4.165:502' } as UemsDatenquelle);
+    zeige();
+    await kopfErkannt();
+    expect(screen.getByText('Anschluss gespeichert (Kennung DQ-1). Das Gerät entsteht erst mit „Anlegen“.')).toBeTruthy();
+    expect(screen.queryByText(/Datenquelle/)).toBeNull();
+    expect(quelleAnlegen.mock.calls[0][1]).toMatchObject({ name: 'Anlagensteuerung' });
+    fireEvent.click(weiter());
+    await screen.findByRole('heading', { name: 'Einheiten aus dem Bild' });
+    fireEvent.click(weiter());
+    await screen.findByRole('heading', { name: 'Netzbetreiber' });
+    await waehle('Einspeisemanagement', /^Stufen \(Rundsteuerempfänger\)/);
+    await waehle('Weg der Vorgaben', /^Relais und 4–20 mA/);
+    fireEvent.click(weiter());
+    await screen.findByRole('heading', { name: 'Alarme vorschlagen' });
+    fireEvent.change(screen.getByLabelText('Name der Steuerung'), { target: { value: 'BHKW-Steuerung' } });
+    expect(screen.getByText(/Angelegt werden: das Gerät „BHKW-Steuerung“ mit seinem Anschluss \(Modbus TCP 192\.168\.4\.165:502 · Kennung DQ-1\)/))
+      .toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Anlegen' }));
+    await screen.findByText('Anlagensteuerung angelegt');
+    // Der Weg heißt wie das Gerät: nur der Name zieht nach, Adresse und Geräte-ID bleiben.
+    expect(bearbeiten).toHaveBeenCalledTimes(1);
+    expect(bearbeiten.mock.calls[0][2]).toMatchObject({ name: 'BHKW-Steuerung', protokoll: 'modbus_tcp', geraete_ids: [1] });
+    expect(bearbeiten.mock.invocationCallOrder[0]).toBeLessThan(anlegen.mock.invocationCallOrder[0]);
+  });
+
   it('belegt neu vor, wenn nach „Zurück“ eine andere Steuerung gelesen wird', async () => {
     const pv: ErzeugerKopf = { ...BUETTNER, te_anzahl: 2, anlagenart: 1, steuerung_id: 0x1c4, direktvermarkter_name: '',
       einheiten: [1, 2].map((n) => ({ einheit: n, art: 1 as const, nenn_kw: 125, typ_name: 'Growatt MAX 125KTL3-X' })) };

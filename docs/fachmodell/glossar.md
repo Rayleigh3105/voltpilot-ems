@@ -280,7 +280,7 @@ Die Datenquelle ist der technische Zugang (Modbus TCP Host/Port/Geräte-ID, MQTT
 
 **Beispiel (Referenzunternehmen Ahrenberg).** DQ-3: Modbus TCP 192.168.10.31, Geräte-IDs 1–4 — vier Unterzähler hinter einer Adresse, zuständig Box E-1. DQ-5: OCPP-Station AHR-LP-01, die sich selbst zur Box E-2 verbindet.
 
-**Heute im Code.** Kein Objekt. Transport-Wahrheit je Komponente in `measurement_point.communication/family/connection_json` (MIG/V20260709000000__measurement_point.sql:38-43), historisiert in `component_definition.connection_json` (MIG/V20260817000000__component_authority_and_definitions.sql:82-93); „Sein Leseplan reist im Flow“ (docs/agents/edge/ein-selbstbau-geraet-darf-den-registry-p.md:18-20); Lesetypen `vp.modbus.read`, `vp.mqtt.read`, `vp.http.read` sind Flow-Knoten (services/api/src/main/resources/flowcatalog/catalog.json:769,904,1046). Ist-Rückmeldung je Quelle `device_source_status.health` ok|stale|never (MIG/V20260721000000__device_source_status.sql:24-41). Zuständige Box = `measurement_point.device_id` bzw. `entity_registry_state.device_id` je Anlage (MIG/V20260709000000:48; MIG/V20260719030000__entity_sync_state.sql:24-27). Im Portal ist „Datenquelle“ heute nur die MaStR-Herkunft (PORTAL/components/MastrDrawer.tsx:276).
+**Heute im Code.** Eigenes Objekt seit AP-06: `data_source` mit Kennzeichen DQ-n, Protokoll, Adresse, Geräte-IDs, Netzlage und Lesetakt (MIG/V20260911150000__uems_datenquelle_zustaendigkeit.sql:82), die zeitgültige Zuständigkeit `data_source_assignment` (MIG/V20260911150000__uems_datenquelle_zustaendigkeit.sql:210) und die Rückmeldung je Box und Quelle `device_data_source_status` (MIG/V20260916220000__uems_datenquellen_status.sql:5). Verweise auf den Weg tragen das Gerät (`geraet.data_source_id` mit `geraete_id`, MIG/V20260911200000__uems_geraet.sql:141) und die Komponente (`measurement_point.data_source_id`, MIG/V20260911150000__uems_datenquelle_zustaendigkeit.sql:322); `GET …/data-sources` nennt je Weg seine Geräte (`geraete[]`, docs/contracts/openapi.yaml:35483). Im Portal heißt der Weg am Gerät „Anbindung“ und im Anlege-Assistenten „Anschluss“ (PORTAL/glossar.ts:880); „Datenquelle“ steht nur noch beim Anbinden eines Gateways oder Loggers (PORTAL/glossar.ts:882).
 
 **Abgrenzung.** Nicht das Gerät (was antwortet), nicht der Messkanal (was gelesen wird), nicht die Box (wer liest).
 
@@ -291,6 +291,14 @@ Die Datenquelle ist der technische Zugang (Modbus TCP Host/Port/Geräte-ID, MQTT
 > **Verfeinert durch AP-06 E1/E2/E5/E12:** Identität, Zuständigkeitszeiträume (halboffen auf die Minute, nie überlappend, nie rückwirkend, beendet statt überschrieben), Doppel-Lesen, Fehlerklassen je Quelle und die Tabelle „Software-Stand → Fähigkeiten“ sind Vertrag: `docs/contracts/v2/data-source-assignment.md` mit `data-source-vectors.json` und `edge-capabilities.json` (AP-06 IP-1, Zwillinge `uems/DatenquelleRegeln` ⟷ `uemsDatenquelle.ts`).
 
 > **Verfeinert durch AP-04 E4 · AP-05 E5:** Wandlerfaktor und Einstellungen hängen an der QUELLE (Gerät bzw. Gerät + Kanal), zeitgültig als Fassung; die Messstelle bleibt hardwarefrei.
+
+**Anbindung statt Datenquelle (Konzept „Ein Gerät, ein Eintrag“, Captain 23.10.2026, GD-5 A).**
+Der Aufbau zeigt, was man anfassen kann — je Kasten ein Eintrag; der Weg zu einem Gerät ist Teil seiner Seite und heißt dort „Anbindung“ (Adresse, lesende Box, Empfang, Last, Verlauf).
+Die Kennung DQ-n bleibt die stabile Kennung im Box-Verkehr, im Protokoll und im Support; der Kunde sieht sie klein neben der Anbindung („Kennung DQ-1“).
+In den Anlege-Assistenten („Steuerung verbinden“, WAGO-Steuerung) heißt der Schritt „Anschluss“; der Zwischenstand sagt „Anschluss gespeichert (Kennung DQ-1). Das Gerät entsteht erst mit „Anlegen“.“, und der Anschluss heißt wie das Gerät.
+„Datenquelle“ steht nur noch, wo ein Weg ohne ein einzelnes Gerät entsteht: „Gateway oder Logger anbinden“ (Box-Seite, Messen-Assistent), hinter dem mehrere Geräte antworten; ein Weg ohne Gerät ist ein „Anschluss ohne Gerät“.
+Welches Gerät hinter einem Weg steht, sagt allein der gespeicherte Verweis `geraet.data_source_id` — nie eine gleiche Adresse; die Meldung „Datenquelle liefert Daten“ nennt deshalb das Gerät („Anlagensteuerung liefert keine Daten — nicht erreichbar (Kennung DQ-1).“), ihr Bezug bleibt die Anlage.
+Kundenwörter: `UEMS_ANBINDUNG`, `UEMS_ANSCHLUSS`, `UEMS_GATEWAY_ANBINDEN` (PORTAL/glossar.ts).
 
 ## Gerät (physisches Messgerät, Controller, Energiekarte)
 

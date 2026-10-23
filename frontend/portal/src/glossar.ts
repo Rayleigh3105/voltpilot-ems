@@ -871,6 +871,21 @@ export const UEMS_VERANTWORTUNG =
 export { LADEN_BEI_BEZUG_WOLKE } from './glossarEinstieg';
 export { LADEN_BEI_BEZUG_FAHRPLAN } from './glossarEinstieg';
 
+/**
+ * Konzept „Ein Gerät, ein Eintrag“ (Captain 23.10.2026, GD-5 A; Bau GE-6): der Weg zu einem Gerät heißt am Gerät
+ * „Anbindung“, im Anlege-Assistenten ist er der Schritt „Anschluss“; die Kennung DQ-x steht nur klein daneben.
+ * „Datenquelle“ bleibt allein beim Anbinden eines Gateways oder Loggers, hinter dem mehrere Geräte antworten.
+ * Glossar: `docs/fachmodell/glossar.md` › Datenquelle (Abschnitt „Anbindung statt Datenquelle“).
+ */
+export const UEMS_ANBINDUNG = 'Anbindung';
+export const UEMS_ANSCHLUSS = 'Anschluss';
+export const UEMS_GATEWAY_ANBINDEN = 'Gateway oder Logger anbinden';
+
+/** Der Zwischenstand im Schritt „Anschluss“: der Weg ist gespeichert, das Gerät entsteht erst am Ende. */
+export function anschlussGespeichert(kennzeichen: string, abschluss: string): string {
+  return `${UEMS_ANSCHLUSS} gespeichert (Kennung ${kennzeichen}). Das Gerät entsteht erst mit „${abschluss}“.`;
+}
+
 // ---------------------------------------------------------------------------
 // 3 · Die Suchwörter der Einstellungen
 // ---------------------------------------------------------------------------

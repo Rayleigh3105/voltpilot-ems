@@ -38,6 +38,8 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { GRUENDE, KENNZEICHEN, TAGESDAUER, VORGESEHEN, ZUSTAENDE } from './uemsErgebnis';
 import { UEMS_FUEHREND, UEMS_LEBENSZYKLUS, UEMS_MESSSTELLE, UEMS_QUELLE, UEMS_VERGLEICH } from './glossar';
+import { anschlussGespeichert, UEMS_ANBINDUNG, UEMS_ANSCHLUSS, UEMS_GATEWAY_ANBINDEN } from './glossar';
+import { GATEWAY_ANBINDEN, MESSEN_SCHRITTE, ZUR_DATENQUELLE } from './messenAssistent';
 import {
   UEMS_ABWEICHUNG,
   UEMS_ABWEICHUNG_ERGEBNISSE,
@@ -963,13 +965,37 @@ describe('AP-01 IP-13 · Kundenwörter im Grenze-Schritt', () => {
 describe('AP-06 IP-11 · Datenquelle anlegen spricht mit Kundenwörtern in Sie-Form', () => {
   it('nennt Box, Netzlage, Prüfung und Lesebudget — keine internen Transportwörter', () => {
     const quelle = readFileSync(join(process.cwd(), 'src/components/DatenquelleAnlegen.tsx'), 'utf8');
-    for (const wort of ['Datenquelle anlegen', 'Netzlage', 'Zuständige Box', 'Lesebudget', 'Was danach gilt']) {
+    // Seit GE-6 heißt der Dialog „Gateway oder Logger anbinden“ (die Konstante steht im Glossar).
+    for (const wort of ['UEMS_GATEWAY_ANBINDEN', 'Netzlage', 'Zuständige Box', 'Lesebudget', 'Was danach gilt']) {
       expect(quelle).toContain(wort);
     }
     expect(`${budgetFreiText(null)} ${folgenSaetze('Halle 2', 'Box Halle 2').join(' ')}`)
       .toContain('Liegt die Quelle in einem anderen Netz, brauchen Sie eine Box dort oder eine Route der Kunden-IT.');
     expect(quelle).not.toMatch(/\b(?:Gateway-ID|Device-ID|Duty Cycle|Payload|Topic)\b/);
     expect(quelle).not.toMatch(/\b(?:du|dein(?:e|en|em|er|es)?|euch)\b/i);
+  });
+});
+
+describe('GE-6 · Anschluss statt Datenquelle (Konzept „Ein Gerät, ein Eintrag“, GD-5 A)', () => {
+  const lies = (datei: string) => readFileSync(join(process.cwd(), datei), 'utf8');
+
+  it('„Steuerung verbinden“ und der WAGO-Assistent zeigen kein „Datenquelle“ — der Schritt heißt „Anschluss“', () => {
+    for (const datei of ['src/components/AnlagensteuerungAssistent.tsx', 'src/components/WagoAssistent.tsx']) {
+      expect(visibleTexts(lies(datei)).filter((t) => /Datenquelle/.test(t)), datei).toEqual([]);
+    }
+    expect(lies('src/components/WagoAssistent.tsx')).toContain('[UEMS_ANSCHLUSS,');
+    expect(anschlussGespeichert('DQ-1', 'Anlegen'))
+      .toBe(`${UEMS_ANSCHLUSS} gespeichert (Kennung DQ-1). Das Gerät entsteht erst mit „Anlegen“.`);
+  });
+
+  it('„Datenquelle anlegen“ heißt an Box-Seite, Messen-Assistent und im Dialog „Gateway oder Logger anbinden“', () => {
+    for (const datei of ['src/components/DatenquelleAnlegen.tsx', 'src/pages/BoxSeiteSection.tsx',
+      'src/components/MessenAssistent.tsx']) {
+      expect(visibleTexts(lies(datei)).filter((t) => /Datenquelle anlegen/.test(t)), datei).toEqual([]);
+    }
+    expect(GATEWAY_ANBINDEN).toBe(UEMS_GATEWAY_ANBINDEN);
+    expect(MESSEN_SCHRITTE[1]).toBe(UEMS_ANBINDUNG);
+    expect(ZUR_DATENQUELLE).toBe(`Zur ${UEMS_ANBINDUNG}`);
   });
 });
 

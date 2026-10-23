@@ -32,11 +32,16 @@ export const plantArticles: HelpArticle[] = [
   {
     id: 'geraete', category: 'anlage', title: 'Box, Geräte und Befehle prüfen',
     summary: 'Verbindung, Konfiguration und die tatsächliche Wirkung einer Aktion auseinanderhalten.',
-    keywords: ['Offline', 'Online', 'Wechselrichter', 'Gerät', 'Box', 'Befehl', 'Verbindung', 'Synchronisation', 'Rückmeldung'],
+    keywords: ['Offline', 'Online', 'Wechselrichter', 'Gerät', 'Box', 'Befehl', 'Verbindung', 'Synchronisation', 'Rückmeldung',
+      'Anbindung', 'Anschluss', 'Gateway', 'Logger', 'Datenquelle', 'Kennung'],
     sections: [
       { id: 'box', title: 'Die Box ist der Verbindungsweg', paragraphs: [
         "Prüfen Sie auf der Box-Seite letzten Kontakt und Verbindung. Eine erreichbare Box garantiert keine Messung von jedem angeschlossenen Gerät. Öffnen Sie für Details die jeweilige Geräteseite.",
       ], figure: 'box' },
+      { id: 'anbindung', title: 'Die Anbindung eines Geräts', paragraphs: [
+        "Wie VoltPilot ein Gerät erreicht, steht auf seiner Geräteseite unter „Gerät & Verbindung“ als „Anbindung“: Protokoll und Adresse im Netz der Anlage und die VoltPilot-Box, die es liest. Die Anbindung gehört zum Gerät — tauschen Sie die Box, liest die neue Box über denselben Weg weiter. Die kleine Kennung daneben (etwa „DQ-1“) brauchen Sie nur für Rückfragen an den Support.",
+        "Beim Verbinden einer Steuerung heißt dieser Schritt „Anschluss“: Sie tragen Adresse und Geräte-ID ein, die Box prüft den Weg, und der Anschluss heißt danach wie das Gerät. Antworten hinter einer Adresse mehrere Geräte, etwa vier Zähler hinter einem Zählergateway, binden Sie zuerst das Gateway an („Gateway oder Logger anbinden“ auf der Box-Seite) und fügen danach die Geräte hinzu.",
+      ] },
       { id: 'aenderung', title: 'Gespeichert, übertragen, wirksam', paragraphs: [
         "Gespeichert, übertragen und wirksam sind unterschiedliche Zustände. Prüfen Sie Synchronisation und Rückmeldung. Verbindungsdaten müssen zur Installation passen; beim Entfernen zählt der im Dialog beschriebene Umfang.",
       ], diagram: 'proof', figure: 'geraete' },

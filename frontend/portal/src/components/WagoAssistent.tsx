@@ -10,6 +10,7 @@ import {
   type UemsDatenquellePruefergebnis,
   type WagoSollLesung,
 } from '../api';
+import { anschlussGespeichert, UEMS_ANSCHLUSS } from '../glossar';
 import { useRollen } from '../rollen';
 import { useIsPhone } from '../useIsPhone';
 import {
@@ -25,7 +26,7 @@ import { AnlegenDialog } from './AnlegenDialog';
 import { VpPicker } from './VpPicker';
 import './WagoAssistent.css';
 
-const SCHRITTE = ['Verbindung', 'Karten', 'Komponenten'] as const;
+const SCHRITTE = [UEMS_ANSCHLUSS, 'Karten', 'Komponenten'] as const;
 type Schritt = 1 | 2 | 3;
 
 interface Verbindung {
@@ -114,7 +115,7 @@ export function WagoAssistent({
   });
 
   function verbindungFehler(): string | null {
-    if (!verbindung.name.trim()) return 'Geben Sie der Datenquelle einen Namen.';
+    if (!verbindung.name.trim()) return 'Geben Sie der Steuerung einen Namen.';
     if (!verbindung.host.trim()) return 'Geben Sie die Adresse der Steuerung ein.';
     if (!boxId) return 'Für diese Anlage ist keine passende VoltPilot-Box verfügbar.';
     for (const [wert, name, min, max] of [
@@ -171,7 +172,7 @@ export function WagoAssistent({
       setWerte({});
       setSchritt(2);
     } catch (e) {
-      setFehler(e instanceof Error ? e.message : 'Die Datenquelle konnte nicht zugewiesen werden.');
+      setFehler(e instanceof Error ? e.message : 'Die Box konnte dem Anschluss nicht zugewiesen werden.');
     } finally { setBusy(false); }
   }
 
@@ -210,8 +211,9 @@ export function WagoAssistent({
     setBusy(true); setFehler(null);
     try {
       // EIN Aufruf: die Karten-Komponenten und ihr Controller mit je einer Karte am Steckplatz
-      // entstehen in einer Transaktion — ohne Karte gäbe es weder Registerbild noch Soll-Lesung.
-      const anlage = await api.wagoKartenAnlegen(site.id, { karten: gesteckt.map(({ karte, steckplatz }) => ({
+      // entstehen in einer Transaktion — ohne Karte gäbe es weder Registerbild noch Soll-Lesung. Der
+      // Controller verweist auf den Anschluss aus Schritt 1 (GE-6): ein Gerät, ein Eintrag.
+      const anlage = await api.wagoKartenAnlegen(site.id, { dataSourceId: quelle?.id ?? null, karten: gesteckt.map(({ karte, steckplatz }) => ({
         steckplatz,
         kartentyp: karte.typ ? Number(karte.typ.slice(4)) : null,
         komponente: {
@@ -260,7 +262,7 @@ export function WagoAssistent({
       <h3>Verbindung zur WAGO-Steuerung prüfen</h3>
       <p className="vp-wago-hinweis">Der Test liest den Kopf des Registerbilds und je Energiekarte Steckplatz, Kartentyp und Variante — keinen Messwert.</p>
       <div className="vp-wago-felder">
-        <Input label="Name" value={verbindung.name} onChange={(e) => setVerbindung((v) => ({ ...v, name: e.target.value }))} />
+        <Input label="Name der Steuerung" value={verbindung.name} onChange={(e) => setVerbindung((v) => ({ ...v, name: e.target.value }))} />
         <Input label="Adresse" value={verbindung.host} placeholder="192.168.20.10" onChange={(e) => setVerbindung((v) => ({ ...v, host: e.target.value }))} />
         <Input label="Port" inputMode="numeric" value={verbindung.port} onChange={(e) => setVerbindung((v) => ({ ...v, port: e.target.value }))} />
         <Input label="Netzlage" value={verbindung.netz} placeholder="VLAN 20 „Produktion“" onChange={(e) => setVerbindung((v) => ({ ...v, netz: e.target.value }))} />
@@ -274,7 +276,7 @@ export function WagoAssistent({
           onChange={(wert) => setVerbindung((v) => ({ ...v, boxId: wert }))} />
       </div>
       <div><Button variant="outline" onClick={() => void kopfPruefen()} disabled={busy}>{busy ? 'Kopf wird geprüft …' : pruefung ? 'Kopf erneut prüfen' : 'Kopf prüfen'}</Button></div>
-      {quelle && <p className="vp-wago-zwischenstand">{`${quelle.kennzeichen} ist als Entwurf angelegt.`}</p>}
+      {quelle && <p className="vp-wago-zwischenstand">{anschlussGespeichert(quelle.kennzeichen, 'Komponenten anlegen')}</p>}
       {kopf && <div className={`vp-wago-kopf ist-${kopf.art}`} role="status"><strong>{kopf.titel}</strong>
         {kopf.details.length > 0 && <ul>{kopf.details.map((d) => <li key={d}>{d}</li>)}</ul>}
         {kopf.karten.length > 0 && <ul className="vp-wago-kopf-karten" aria-label="Gelesene Energiekarten">

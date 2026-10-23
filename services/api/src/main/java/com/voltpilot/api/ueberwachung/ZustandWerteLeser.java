@@ -1,7 +1,9 @@
 package com.voltpilot.api.ueberwachung;
 
 import com.voltpilot.api.repo.DeviceRepository;
+import com.voltpilot.api.uems.DatenquelleRegeln;
 import com.voltpilot.api.uems.DeviceDataSourceStatusRepository;
+import com.voltpilot.api.uems.DeviceDataSourceStatusRepository.Benannt;
 import com.voltpilot.api.uems.DeviceDataSourceStatusRepository.Status;
 import com.voltpilot.api.uems.ZustandAbleitung;
 import com.voltpilot.api.web.dto.DeviceDto;
@@ -19,6 +21,10 @@ import org.springframework.stereotype.Component;
  * Datenquellen-Meldung liefert {@link WerteLeser.Lesung#unbekannt()} - keine Schwellen-Bedingung
  * wertet das als erfüllt, und die Aussaat der Vorschläge ab Werk überspringt eine solche Anlage
  * ohnehin ("nur wo Gerät/Funktion existiert", §7 Scheibe 1 Punkt 7).
+ *
+ * <p>Der Satz zu {@code datenquelle_status} nennt das GERÄT (Konzept „Ein Gerät, ein Eintrag“, GE-6): „Anlage
+ * Gore: Anlagensteuerung liefert keine Daten — nicht erreichbar (Kennung DQ-1).“ Den Bezug behält die Regel —
+ * die Anlage; welches Gerät hinter einem Weg steht, sagt allein {@code geraet.data_source_id}.
  */
 @Component
 public class ZustandWerteLeser implements WerteLeser {
@@ -89,15 +95,53 @@ public class ZustandWerteLeser implements WerteLeser {
         if (status.isEmpty()) {
             return Lesung.unbekannt();
         }
+        String satz = satz(datenquellen.benanntFuerSite(anlageId));
         if (status.stream().anyMatch(s -> "never".equals(s.health()))) {
-            return Lesung.zustand("never", fruehestesSeit(status, "never"));
+            return Lesung.zustand("never", fruehestesSeit(status, "never"), satz);
         }
         if (status.stream().anyMatch(s -> "stale".equals(s.health()))) {
-            return Lesung.zustand("stale", fruehestesSeit(status, "stale"));
+            return Lesung.zustand("stale", fruehestesSeit(status, "stale"), satz);
         }
         Instant juengstesLesen = status.stream().map(Status::readAt).filter(java.util.Objects::nonNull)
                 .max(Instant::compareTo).orElse(null);
-        return Lesung.zustand("ok", juengstesLesen);
+        return Lesung.zustand("ok", juengstesLesen, satz);
+    }
+
+    /**
+     * Der Satz der Meldung: je Weg, der nicht liefert, sein Gerät mit Grund und Kennung; liefern alle, die
+     * Geräte, die liefern. {@code null} ohne Zeile (dann bleibt der Satz der Regel).
+     */
+    static String satz(List<Benannt> wege) {
+        List<Benannt> stumm = wege.stream().filter(w -> !"ok".equals(w.health())).toList();
+        if (!stumm.isEmpty()) {
+            return String.join("; ", stumm.stream().map(w -> {
+                String grund = DatenquelleRegeln.fehlerklasse(w.errorClass(), DatenquelleRegeln.Herkunft.BOX)
+                        .map(DatenquelleRegeln.Fehlerklasse::kundenwort).orElse(null);
+                return wer(w) + ("never".equals(w.health()) ? " liefert noch keine Daten" : " liefert keine Daten")
+                        + (grund == null ? "" : " — " + grund) + " (Kennung " + w.kennzeichen() + ")";
+            }).toList()) + ".";
+        }
+        List<String> alle = wege.stream().map(ZustandWerteLeser::wer).distinct().toList();
+        if (alle.isEmpty()) {
+            return null;
+        }
+        return aufzaehlung(alle) + (alle.size() == 1 ? " liefert Daten." : " liefern Daten.");
+    }
+
+    /** Ein Gerät heißt wie das Gerät; ein Weg ohne Gerät ist ein Anschluss, einer mit mehreren ein Gateway. */
+    private static String wer(Benannt w) {
+        String weg = w.name() != null && !w.name().isBlank() ? w.name() : w.kennzeichen();
+        if (w.geraete().size() == 1) {
+            return w.geraete().getFirst();
+        }
+        return w.geraete().isEmpty() ? "Anschluss " + weg : "Gateway " + weg + " (" + w.geraete().size() + " Geräte)";
+    }
+
+    private static String aufzaehlung(List<String> teile) {
+        if (teile.size() == 1) {
+            return teile.getFirst();
+        }
+        return String.join(", ", teile.subList(0, teile.size() - 1)) + " und " + teile.getLast();
     }
 
     private static Instant fruehestesSeit(List<Status> status, String health) {
