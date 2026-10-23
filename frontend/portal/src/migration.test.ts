@@ -1623,8 +1623,14 @@ describe('AP-03 IP-12 · Kundenadministrator byte-identisch zu heute', () => {
         // Der ausgelieferte Neubau ist geschützt: jedes Bedienelement der main-Fassung steht unverändert im Merge.
         const rest = [...jetzt];
         for (const fingerabdruck of nz.main) {
-          // Auch ein Bedienelement der main-Fassung ändert sich nur mit einzeln belegter Fortschreibung.
-          const stelle = rest.indexOf(kette(pfad, fingerabdruck) ?? fingerabdruck);
+          // Auch ein Bedienelement der main-Fassung ändert sich nur mit einzeln belegter Fortschreibung - oder
+          // entfällt mit belegtem Wegfall (`nachher: null`, wie im Bestand unten): dann steht es nicht mehr da.
+          const ziel = kette(pfad, fingerabdruck);
+          if (ziel === null) {
+            expect(rest, `${pfad}: von main ${nz.nachzug} als entfallen belegt, steht aber noch da`).not.toContain(fingerabdruck);
+            continue;
+          }
+          const stelle = rest.indexOf(ziel);
           expect(stelle, `${pfad}: Bedienelement von main ${nz.nachzug}`).toBeGreaterThanOrEqual(0);
           rest.splice(stelle, 1);
         }
