@@ -72,22 +72,24 @@ export const startArticles: HelpArticle[] = [
   },
   {
     id: 'anlage-anlegen', category: 'start', title: 'Eine Anlage anlegen',
-    summary: 'Standort, Registerdaten, Gerät und Betrieb Schritt für Schritt einrichten.',
-    keywords: ['Standort', 'Einrichten', 'Onboarding', 'MaStR', 'Register', 'Adresse', 'PV', 'Speicher'],
+    summary: 'Adresse, Box und Anlage in drei Schritten - danach geht es ins Cockpit.',
+    keywords: ['Standort', 'Adresse', 'Einrichten', 'Onboarding', 'Kennung', 'Box', 'MaStR', 'Register', 'PV', 'Speicher', 'Entwurf'],
     sections: [
-      { id: 'starten', title: 'Mit dem richtigen Standort beginnen', paragraphs: [
-        "Beim ersten Besuch startet die Einrichtung; weitere Standorte legen Sie über Anlage hinzufügen an. Wählen Sie einen eindeutigen Namen und den richtigen Standort für Wetter und PV-Prognose.",
+      { id: 'starten', title: 'Mit der Adresse beginnen', paragraphs: [
+        "Die Einrichtung beginnt mit der Adresse: ein Feld mit Vorschlägen, Straße und Hausnummer genügen. Daraus folgen Standort, Kartenpunkt und Zeitzone - und damit Wetter und Sonnenprognose. Für eine weitere Anlage wählen Sie „Am selben Ort wie …“ oder „An einer anderen Adresse“; an einer anderen Adresse entsteht der Standort gleich mit.",
       ], figure: 'anlage-anlegen' },
-      { id: 'schritte', title: 'Die Einrichtung durchlaufen', paragraphs: [
-        "Der Assistent zeigt den offenen Schritt. Übersprungene Angaben können später für einzelne Funktionen nötig sein.",
+      { id: 'schritte', title: 'Die drei Schritte', paragraphs: [
+        "Die Leiste oben zeigt immer dieselben drei Schritte. Was Sie überspringen, ergänzen Sie später unter Anlage › Aufbau oder Einstellungen.",
       ], steps: [
-        'Anlage: Namen und Standort erfassen und die Anlage anlegen.',
-        'Register: PV- und Speicherdaten über die passende MaStR-Nummer suchen. Die Vorschau prüfen, bevor Sie Werte übernehmen. Falls nötig, den angebotenen manuellen Weg verwenden.',
-        'Gerät: die richtige VoltPilot-Geräte-ID mit dieser Anlage verbinden.',
-        'Betrieb: den passenden Einsatzzweck und die angebotenen Betriebsmodelle prüfen. Fehlende Voraussetzungen werden direkt angezeigt.',
+        'Adresse: die Adresse wählen, den Pin bei Bedarf aufs Dach ziehen und den Namen prüfen.',
+        'Box: die Kennung Ihrer VoltPilot-Box eintragen. Das Feld ergänzt „edge-“ und prüft jedes Zeichen. Ist die Box noch nicht da, verbinden Sie sie später im Aufbau.',
+        'Anlage: bestätigen, was die Box gefunden hat, und die Leistung der Solarmodule ergänzen. Ohne Box tragen Sie Solar und Speicher als Zahlen ein. Mit der MaStR-Nummer holen Sie die Werte aus dem Register.',
+      ], note: 'Was die Box meldet, ist noch nicht übernommen - erst „Stimmt so“ übernimmt es. Ob ein Gerät danach misst, zeigt das Cockpit an seinen Werten.' },
+      { id: 'unterbrechen', title: 'Wenn etwas dazwischenkommt', paragraphs: [
+        "Ihre Eingaben bleiben in diesem Browser-Tab erhalten: nach dem Neuladen oder einer neuen Anmeldung geht es am selben Schritt weiter. Eine verlorene Antwort legt nichts doppelt an. „Später einrichten“ oder das Schließen des Dialogs verwirft den Entwurf; was schon gespeichert ist, bleibt.",
       ] },
       { id: 'pruefen', title: 'Woran Sie den erfolgreichen Abschluss erkennen', paragraphs: [
-        "Prüfen Sie unter Anlage Geräte, Kapazität, Leistungsgrenzen und Tarif. Nach dem Verbinden müssen erste Messwerte eintreffen. Eine angelegte Anlage allein bestätigt weder Datenverbindung noch Steuerfreigabe.",
+        "Nach dem letzten Schritt öffnet das Cockpit Ihrer Anlage. Sobald die ersten Werte da sind, erscheint einmal die Karte „Ihre Anlage ist live.“ mit einem nächsten Schritt. Solange noch etwas fehlt, zeigt das Cockpit „Ihr Weg zum fertigen EMS“; hat ein Standort noch keine Adresse, fragt die Karte „Wo steht …?“ danach. Eine angelegte Anlage allein bestätigt weder Datenverbindung noch Steuerfreigabe.",
       ] },
     ],
     related: ['box-verbinden', 'einstellungen', 'betriebsmodelle'],
@@ -95,19 +97,19 @@ export const startArticles: HelpArticle[] = [
   {
     id: 'box-verbinden', category: 'start', title: 'Die Box verbinden und erste Daten prüfen',
     summary: 'Die Geräte-ID zuordnen und erkennen, ob Messwerte wirklich ankommen.',
-    keywords: ['Geräte-ID', 'edge', 'VP', 'Aufkleber', 'Claim', 'Verbinden', 'Erste Daten', 'Unbekannt'],
+    keywords: ['Kennung', 'Geräte-ID', 'edge', 'VP', 'Aufkleber', 'Claim', 'Verbinden', 'Erste Daten', 'Unbekannt'],
     prerequisite: 'Eine eingerichtete VoltPilot Box und eine Anlage im Portal.',
     sections: [
       { id: 'vorbereiten', title: 'Die richtige Geräte-ID verwenden', paragraphs: [
-        "Die VoltPilot-Geräte-ID steht auf dem Aufkleber oder in der lokalen Web-App der Box. Verwenden Sie diese ID, nicht die Seriennummer des Wechselrichters. Schließen Sie zuerst die lokale Einrichtung ab.",
+        "Die Kennung zeigt Ihre Box in ihrer App unter „Einrichten“ (Referenz-ID dieses Geräts), sobald ein Wechselrichter oder eine Ladesäule Daten liefert. Verwenden Sie diese Kennung, nicht die Seriennummer des Wechselrichters. Schließen Sie zuerst die lokale Einrichtung ab.",
       ], figure: 'box-verbinden' },
       { id: 'verbinden', title: 'Verbinden und den Eingang kontrollieren', paragraphs: [], steps: [
         'Im Aufbau der Anlage „VoltPilot-Box hinzufügen“ wählen (beim Anlegen einer Anlage fragt der Assistent danach) und die gewünschte Anlage prüfen.',
-        'Die Geräte-ID vollständig übertragen und verbinden. Beachten Sie die Hinweise direkt am Eingabefeld.',
+        'Die Kennung vollständig übertragen und verbinden. Das Feld ergänzt „edge-“ und prüft jedes Zeichen; beachten Sie die Hinweise direkt am Eingabefeld.',
         'Auf die Rückmeldung warten. Anschließend Geräteverbindung, Zeitpunkt des letzten Kontakts und erste Messwerte prüfen.',
       ], figure: 'box-verbinden-mobil', note: 'Eine bestätigte Zuordnung und eine aktive Datenverbindung sind zwei verschiedene Schritte. „Wartet auf Daten“ ist noch kein gemessener Betriebszustand.' },
       { id: 'fehler', title: 'Wenn die ID nicht angenommen wird', paragraphs: [
-        "Bei unbekannter ID vergleichen Sie alle Zeichen mit dem Original. Prüfen Sie bei einer bereits verbundenen Box den angezeigten Standort. Gehört sie zu einem anderen Konto, hilft VoltPilot. Verändern Sie die ID nicht, um die Meldung zu umgehen.",
+        "Bei unbekannter Kennung vergleichen Sie alle Zeichen mit der App Ihrer Box. Prüfen Sie bei einer bereits verbundenen Box den angezeigten Standort. Gehört sie zu einem anderen Konto, hilft VoltPilot. Verändern Sie die ID nicht, um die Meldung zu umgehen.",
       ] },
     ],
     related: ['geraete', 'probleme', 'kontakt'],
