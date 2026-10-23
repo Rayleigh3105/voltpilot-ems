@@ -357,7 +357,7 @@ func (a *Agent) runPlanExecutors(now time.Time) {
 			if !ok {
 				continue
 			}
-			cmds = planCommandsFor(*ent, cmds)
+			cmds = consumerCommandsFor(*ent, cmds)
 			ttl := v2.ReceivedAt.Add(plan2.StaleAfter).Sub(now)
 			if ttl < time.Second {
 				continue
@@ -400,23 +400,25 @@ func (a *Agent) runPlanExecutors(now time.Time) {
 	a.arbMu.Unlock()
 }
 
-// planCommandsFor puts a plan slot into the vocabulary of the entity it
-// commands. Rein: kein Zustand, keine Uhr.
+// consumerCommandsFor puts a cloud-planned run into the vocabulary of the
+// entity it commands. Rein: kein Zustand, keine Uhr. Zwei Aufrufer: der
+// Plan-Ausführer (v2-Slot) und der Deadline-Fallback (flex_requirements).
 //
-// The plan speaks the GENERIC consumer word `setpoint_kw` (schedule 2.0: + =
-// consume, 0 = off) - the optimizer does not know which commands a component
+// Both speak the GENERIC consumer word `setpoint_kw` (schedule 2.0: + =
+// consume, 0 = off) - the cloud does not know which commands a component
 // declared. A consumer that can only be LIMITED (an OCPP `ev-charger`
 // declares exactly `limit_kw`) would refuse that word at the capability gate,
-// and the plan would then hold nothing at all: no cap in the off slots, so the
+// and the wish would then hold nothing at all: no cap in the off slots, so the
 // station's source lane alone decided - „Günstig" charged at full power at any
-// price (Bericht vp-wallbox-modi-konzept §3.4). For such a consumer the planned
+// price (Bericht vp-wallbox-modi-konzept §3.4), and neither a plan slot nor the
+// fallback ever served a charging deadline. For such a consumer the planned
 // consumption IS its limit: the vehicle draws at most that, 0 = it pauses.
 //
 // ⚠ Restrict-only by construction: a limit can only lower what the device
 // would do on its own, and every guard behind the arbiter binds it exactly
-// like a setpoint. A consumer that declares `setpoint_kw` keeps the plan word
+// like a setpoint. A consumer that declares `setpoint_kw` keeps the word
 // unchanged, and nothing else is ever rewritten.
-func planCommandsFor(e entities.Entity, c entities.Commands) entities.Commands {
+func consumerCommandsFor(e entities.Entity, c entities.Commands) entities.Commands {
 	if c.SetpointKw == nil || c.LimitKw != nil || e.Category() != "consumer" ||
 		e.Supports(entities.CmdSetpointKw) || !e.Supports(entities.CmdLimitKw) {
 		return c

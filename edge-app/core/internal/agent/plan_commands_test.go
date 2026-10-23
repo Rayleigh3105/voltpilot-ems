@@ -8,9 +8,9 @@ import (
 	"git.tecmaxx.de/mamotec/voltpilot-ems/edge-app/core/internal/entities"
 )
 
-// Der Plan spricht das Verbraucher-Wort `setpoint_kw`; eine OCPP-Säule kennt
-// nur `limit_kw` (Bericht vp-wallbox-modi-konzept §3.4). planCommandsFor
-// übersetzt genau diesen Fall und keinen anderen.
+// Plan und Deadline-Fallback sprechen das Verbraucher-Wort `setpoint_kw`; eine
+// OCPP-Säule kennt nur `limit_kw` (Bericht vp-wallbox-modi-konzept §3.4).
+// consumerCommandsFor übersetzt genau diesen Fall und keinen anderen.
 
 func ocppChargerEntity() entities.Entity {
 	return entities.Entity{
@@ -21,10 +21,10 @@ func ocppChargerEntity() entities.Entity {
 	}
 }
 
-func TestPlanCommandsForALimitOnlyConsumerBecomeItsLimit(t *testing.T) {
+func TestConsumerCommandsForALimitOnlyConsumerBecomeItsLimit(t *testing.T) {
 	for _, kw := range []float64{0, 11} {
 		v := kw
-		got := planCommandsFor(ocppChargerEntity(), entities.Commands{SetpointKw: &v})
+		got := consumerCommandsFor(ocppChargerEntity(), entities.Commands{SetpointKw: &v})
 		if got.SetpointKw != nil {
 			t.Fatalf("setpoint_kw %v bleibt stehen - die Säule würde den Plan abweisen", kw)
 		}
@@ -34,7 +34,7 @@ func TestPlanCommandsForALimitOnlyConsumerBecomeItsLimit(t *testing.T) {
 	}
 }
 
-func TestPlanCommandsForKeepEveryOtherWordUnchanged(t *testing.T) {
+func TestConsumerCommandsForKeepEveryOtherWordUnchanged(t *testing.T) {
 	sp := 3.5
 	on := true
 	limit := 7.0
@@ -57,7 +57,7 @@ func TestPlanCommandsForKeepEveryOtherWordUnchanged(t *testing.T) {
 		{"Säule mit einem Plan-Deckel", ocppChargerEntity(), entities.Commands{LimitKw: &limit}},
 	}
 	for _, tc := range cases {
-		got := planCommandsFor(tc.e, tc.c)
+		got := consumerCommandsFor(tc.e, tc.c)
 		want, _ := json.Marshal(tc.c)
 		have, _ := json.Marshal(got)
 		if string(want) != string(have) {
@@ -111,5 +111,38 @@ func TestPlanSlotsHoldAnOcppStationThroughTheBridge(t *testing.T) {
 	}
 	if h, _ := ocppBridgeDecision(a.arb.DecisionFor("lp-1")); h.reason != "plan" {
 		t.Fatalf("eine Pause des Plans heisst „plan\", nicht %q", h.reason)
+	}
+}
+
+// Ohne frischen Plan startet der Deadline-Fallback ein Ladeziel selbst - an
+// einer OCPP-Säule bis hierher nie: sein setpoint_kw fiel ebenso an der
+// Fähigkeitsprüfung durch, und „Günstig + bis 7 Uhr" blieb ohne Wolke leer.
+func TestTheDeadlineFallbackReachesAnOcppStation(t *testing.T) {
+	a := newFlexTestAgent(t, t.TempDir())
+	now := time.Now().UTC()
+	from, to := windowAround(now, 2*time.Hour, 3*time.Hour)
+	lp := ocppChargerEntity()
+	lp.Capabilities.Measure = []entities.MeasureCap{{Channel: "power_kw", Unit: "kW"}}
+	energy := 200.0 // mehr, als das Fenster hergibt: die Frist ist fällig
+	lp.FlexRequirements = []entities.FlexRequirement{{
+		ID: "bis_uhrzeit", Timezone: "Europe/Berlin", Days: "daily", From: from, To: to,
+		EnergyKwh: &energy, PowerKw: 11, Command: entities.CmdSetpointKw,
+	}}
+	a.setEntityIdentity("t", "s", "d")
+	a.applyEntityRegistry(entities.Registry{Revision: "lp-flex", Entities: []entities.Entity{lp}})
+	payload, _ := json.Marshal(map[string]any{
+		"schema_version": "1.0", "entity_id": "lp-1",
+		"channels": map[string]float64{"power_kw": 0},
+	})
+	a.onEntityTelemetry("edge/entities/lp-1/telemetry", payload)
+
+	a.runFlexFallback(now)
+	dec, ok := a.arb.DecisionFor("lp-1")
+	if !ok || dec.HolderKind != "deadline-fallback" {
+		t.Fatalf("die fällige Frist muss die Säule halten: %+v (ok=%v)", dec, ok)
+	}
+	h, ok := ocppBridgeDecision(dec, ok)
+	if !ok || !h.exempt || h.capKw == nil || *h.capKw != 11 {
+		t.Fatalf("die Brücke muss befreien und auf 11 kW deckeln: %+v", h)
 	}
 }
