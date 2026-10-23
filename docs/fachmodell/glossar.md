@@ -2,7 +2,7 @@
 
 # Glossar des Unternehmens-Energiemanagements
 
-Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 62 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
+Alle 23 Begriffs-Einträge aus AP-00 §4.1, dazu 65 NACHTRÄGE späterer Pakete (am Begriff als „Nachtrag <Paket>“ ausgewiesen — dasselbe Muster wie die `nachtrag`-Zeilen der Rechte-Matrix). Ein Nachtrag ergänzt einen FEHLENDEN Begriff; ein bestehender AP-00-Text wird nie umgeschrieben. **Definition · Erläuterung · Beispiel** sind die Kundensprache; **Heute im Code** ist die einzige Spalte, in der interne Namen (`tenant`, `site`, `measurement_point` …) vorkommen dürfen. **Abgrenzung** sagt, was der Begriff NICHT ist.
 
 Belege sind `datei:zeile` am Stand `origin/main` 36f3e7e8 (10.09.2026); `MIG` = `services/api/src/main/resources/db/migration`, `PORTAL` = `frontend/portal/src`, `DATA` = die Konzept-Ablage des Programms (nicht in diesem Repo). `tools/check_belege.sh` prüft die Pfade.
 
@@ -91,6 +91,9 @@ Ein Kasten **Verfeinert durch** nennt, was ein späteres Konzeptpaket geschärft
 - [Tätigkeit des Speichers](#tätigkeit-des-speichers) — Sicht Betrieb · Nachtrag Fahrplan „Tagesuhr und Bildfahrplan“ E8 (24.09.2026)
 - [Szene](#szene) — Sicht Betrieb · Nachtrag Steuerung neu E6 (29.09.2026)
 - [Sonne + Speicher](#sonne--speicher) — Sicht Betrieb · Nachtrag Ladequelle (06.10.2026)
+- [Nur Sonne](#nur-sonne) — Sicht Betrieb · Nachtrag Ladequelle, Konzept k1 „Jede Wahl zeigt ihren Tag“ (23.10.2026)
+- [Sonne + Minimum](#sonne--minimum) — Sicht Betrieb · Nachtrag Ladequelle, Konzept k1 „Jede Wahl zeigt ihren Tag“ (23.10.2026)
+- [Günstig (Ladequelle)](#günstig-ladequelle) — Sicht Betrieb · Nachtrag Ladequelle, Konzept k1 „Jede Wahl zeigt ihren Tag“ (23.10.2026)
 - [Überwachung](#überwachung) — Sicht Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Entscheid 6A/9A/10A (15.10.2026)
 - [Meldung](#meldung) — Sicht Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Entscheid 6A (15.10.2026)
 - [Zustellweg](#zustellweg) — Sicht Betrieb · Nachtrag Alerting-Konzept vp-alerting-konzept-m1, Scheibe 3/6 (15.10.2026)
@@ -1538,6 +1541,48 @@ Wie tief der Speicher dafür entladen werden darf (seine Untergrenze), rechnet d
 **Heute im Code.** Steuerart `ueberschussModus=speicher` mit der Karte `ueberschuss_speicher` (services/api/src/main/java/com/voltpilot/api/verbraucher/SteuerartSatz.java:132), Untergrenze im Optimierer (services/optimization/voltpilot_optimization/storage_release.py:390), Steuerstand der Box im Herzschlag (`docs/contracts/speicher-steuerstand.md`, MIG/V20261007120000__device_battery_control.sql:33), Freigabe auf der Box (`edge-app/core/internal/lastmgmt/release.go`), Reserve je Anlage (MIG/V20261006120000__sonne_speicher.sql:40), Wort als `LADEQUELLE` (PORTAL/glossar.ts:157).
 
 **Abgrenzung.** Nicht „Smart“ (die Moduswahl), nicht der Vorrang „Speicher vor Auto“ (der ordnet den Überschuss), nicht die Notstrom- und Schutzreserve des Speichers (die bleibt immer unberührt).
+
+## Nur Sonne
+
+*Sicht: Betrieb · Nachtrag Ladequelle, Konzept k1 „Jede Wahl zeigt ihren Tag“ (23.10.2026)*
+
+**Eine Ladequelle unter „Womit laden?“ mit dem Versprechen „Nur Überschuss, sonst Pause“: das Auto lädt nur mit dem Sonnenstrom, den Haus und (bei „Speicher zuerst“) der Speicher übrig lassen.**
+
+Reicht der Überschuss nicht für die Startleistung des Autos, pausiert das Laden; ohne frische Messung am Netzanschluss ebenfalls. Netzstrom gibt es in dieser Quelle nie - es sei denn, ein Ladeziel braucht ihn: dann kommt der Rest in den günstigsten Stunden aus dem Netz. Die Box fährt dafür die Bahn `nur_sonne`. Gut, wenn das Auto tagsüber steht.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Wallbox Werkstatt an einem sonnigen Septembertag: von 13:00 bis 17:30 lädt das Auto mit dem Überschuss, danach Pause bis zur nächsten Sonne.
+
+**Heute im Code.** Steuerart `quelle=ueberschuss`, `ueberschussModus=pausieren` (services/api/src/main/java/com/voltpilot/api/verbraucher/SteuerartProjektion.java), Bahn `nur_sonne` (`edge-app/core/internal/lastmgmt/surplus.go`), Name und Versprechen als `LADEQUELLE`/`LADEQUELLE_VERSPRECHEN` (PORTAL/glossar.ts), Vorschau in PORTAL/steuerung/ladeVorschau.ts.
+
+**Abgrenzung.** Nicht „Smart“ (die Moduswahl), nicht „Sonne + Speicher“ (gibt zusätzlich Speicherenergie frei).
+
+## Sonne + Minimum
+
+*Sicht: Betrieb · Nachtrag Ladequelle, Konzept k1 „Jede Wahl zeigt ihren Tag“ (23.10.2026)*
+
+**Eine Ladequelle unter „Womit laden?“ mit dem Versprechen „Immer etwas, Sonne obendrauf“: das Auto lädt immer mit mindestens der Mindestleistung, Fehlendes kommt aus dem Netz, Überschuss obendrauf.**
+
+Die Mindestleistung ist die der Steuerart oder die des Ladepark-Rahmens (Vorgabe 1,4 kW); ein Auto, das erst bei mehr Leistung startet, lädt entsprechend höher. Ohne frische Messung kappt die Box nicht und lädt voll. Die Box fährt dafür die Bahn `sonne_zuerst`. Beim ersten Besuch ist „Sonne + Minimum“ im Blatt vorausgewählt; gesetzt wird es erst mit „So laden“. Gut, wenn es sicher vorangehen soll.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Wallbox Werkstatt, 13:10 bis morgen 7:00: tagsüber Sonne, nachts 1,4 kW aus dem Netz - zusammen etwa 43 kWh, davon 19 kWh Netzstrom (Schätzung).
+
+**Heute im Code.** Steuerart `ueberschussModus=mindestleistung` mit `mindestleistungKw` (services/api/src/main/java/com/voltpilot/api/verbraucher/SteuerartProjektion.java), Bahn `sonne_zuerst` mit `min_kw` (`docs/contracts/mqtt-charging-config.schema.json`), Wort als `LADEQUELLE.min` (PORTAL/glossar.ts).
+
+**Abgrenzung.** Nicht „Schnell“ (volle Leistung zu jedem Preis), nicht die Startschwelle eines Autos (die kennt nur die Box).
+
+## Günstig (Ladequelle)
+
+*Sicht: Betrieb · Nachtrag Ladequelle, Konzept k1 „Jede Wahl zeigt ihren Tag“ (23.10.2026)*
+
+**Eine Ladequelle unter „Womit laden?“ mit dem Versprechen „Netzstrom, wenn er billig ist“: das Auto lädt mit voller Leistung, solange der Bezugspreis unter der Preisgrenze liegt.**
+
+Verglichen wird der BEZUGSPREIS der Anlage (was eine kWh aus dem Netz kostet), nie der Börsenpreis. Die Preisgrenze steht sichtbar im Blatt und lässt sich mit − / + ändern; ihre Vorgabe ist das billigste Viertel des Bezugspreises der letzten 7 Tage. Das Preisfenster führt der Fahrplan aus; ohne frischen Plan fährt die Box die Bahn `nur_sonne`, und die Karte sagt „Wartet auf günstigen Preis“. Gut, wenn der Tarif stündlich wechselt.
+
+**Beispiel (Referenzunternehmen Ahrenberg).** Wallbox Werkstatt mit Grenze 30 ct/kWh: von 13:00 bis 16:00 voll, danach Pause, weil der Abendpreis darüber liegt - 33 kWh bis 7:00, davon 14 kWh Netzstrom, Ø 14 ct/kWh (Schätzung).
+
+**Heute im Code.** Steuerart `quelle=guenstig` mit `preisgrenzeCtKwh`, Vorgabe aus `SteuerartPreisVorgabe` (services/api/src/main/java/com/voltpilot/api/verbraucher/SteuerartPreisVorgabe.java), Bahn `nur_sonne` seit #1569 (`SteuerartProjektion.bahnAus`), Wort als `LADEQUELLE.guenstig` (PORTAL/glossar.ts).
+
+**Abgrenzung.** Nicht „Günstige Stunden“ eines anderen Verbrauchers (gleiche Regel, anderes Gerät), nicht der Börsenpreis.
 
 ## Überwachung
 
