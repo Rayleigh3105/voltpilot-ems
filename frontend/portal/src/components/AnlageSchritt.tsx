@@ -133,6 +133,8 @@ export function AnlageStep({
   const [lon, setLon] = useState<number | null>(null);
   // Bestand ohne Standort-Objekt: „Gleicher Standort wie …“ übernimmt Kartenpunkt und Gebotszone einer Anlage.
   const [zoneDerAnlage, setZoneDerAnlage] = useState<string | null>(null);
+  // Jede gewählte Adresse holt die Karte aufs Haus (LocationMap `fokus`).
+  const [kartenFokus, setKartenFokus] = useState(0);
   const [plantKind, setPlantKind] = useState<PlantKind>('eigenverbrauch');
   const [advanced, setAdvanced] = useState(false);
   const [netzladen, setNetzladen] = useState(false);
@@ -206,6 +208,7 @@ export function AnlageStep({
     if (w?.punkt) {
       setLat(w.punkt.breitengrad);
       setLon(w.punkt.laengengrad);
+      setKartenFokus((n) => n + 1);
     }
   }
 
@@ -505,6 +508,7 @@ export function AnlageStep({
             <LocationMap
               lat={lat}
               lon={lon}
+              fokus={kartenFokus}
               onChange={(la, lo) => {
                 setLat(la);
                 setLon(lo);

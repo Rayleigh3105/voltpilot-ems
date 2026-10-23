@@ -14,6 +14,9 @@ import {
   syncFromFields,
 } from './geo';
 
+/** Hausgenau - so nah, dass der Pin aufs Dach gezogen werden kann. */
+const HAUS_ZOOM = 18;
+
 /** Does a manual field string already represent this (rounded) coordinate? */
 function fieldMatches(str: string, num: number | null): boolean {
   const parsed = parseCoordInput(str);
@@ -44,10 +47,16 @@ export function LocationMap({
   lon,
   onChange,
   readonly = false,
+  fokus = 0,
 }: {
   lat: number | null;
   lon: number | null;
   onChange: (lat: number | null, lon: number | null) => void;
+  /**
+   * Anlage-Flow a1: jeder neue Wert (eine gewählte Hausadresse) holt die Karte aufs Haus
+   * ({@link HAUS_ZOOM}), damit der Pin aufs Dach gezogen werden kann. 0 = nie.
+   */
+  fokus?: number;
   /**
    * Display-only preview (the Technik "Meine Anlage" read-first view): the pin
    * is not draggable, the map does not accept clicks, and the coordinate
@@ -160,6 +169,15 @@ export function LocationMap({
       }
     }
   }, [lat, lon]);
+
+  // Eine gewählte Adresse: aufs Haus, nicht nur auf den Ort.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !fokus || lat == null || lon == null) return;
+    map.setView(L.latLng(lat, lon), HAUS_ZOOM);
+    // Nur der Anstoß zählt, nicht jeder gezogene Pin.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fokus]);
 
   // Keep the manual fields in step with external changes (pin drag, search,
   // clear). We only rewrite a field when its text no longer represents the
