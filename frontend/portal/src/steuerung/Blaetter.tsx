@@ -143,9 +143,9 @@ function DreiSchalter({ g, bild, eingriff, busy, start, onWahl, folge }: {
           <div className="param">
             <div className="blk">
               <h3>Wie lange?</h3>
-              <div className="dauer" style={{ gridTemplateColumns: `repeat(${dauern.length},minmax(0,1fr))` }}>
+              <div className="dauer">
                 {dauern.map(([v, l]) => (
-                  <button type="button" key={l} aria-pressed={minuten === v} onClick={() => setMinuten(v)}>
+                  <button type="button" key={l} className={v == null ? 'ganz' : undefined} aria-pressed={minuten === v} onClick={() => setMinuten(v)}>
                     {l}
                   </button>
                 ))}

@@ -95,6 +95,8 @@
 
 .stn-main { padding: 14px 0 28px; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-content: start; }
 .stn-main > * { min-width: 0; }
+/* Am Rechner nebeneinander: keine Karte streckt sich auf die Höhe ihrer Nachbarin (Netzanschluss neben dem Ladepunkt). */
+.stn-main.laden { align-items: start; }
 /* Hinweisbänder (Pause, Szene) stehen VOR dem Raster - sonst verdrängt ein
    Band über die volle Breite die rechte Spalte, die in Zeile 1 beginnt. */
 .stn-baender { display: grid; gap: 8px; padding-top: 14px; }
@@ -382,6 +384,8 @@
 :is(.stn, .stn-blatt) .bed-r .x svg{width:17px;height:17px}
 :is(.stn, .stn-blatt) .dauer{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
 :is(.stn, .stn-blatt) .dauer button{min-height:44px;border-radius:12px;border:1px solid var(--c-border);background:var(--c-card);font:700 14px var(--font);cursor:pointer}
+/* „bis Abstecken“ ist länger als „30 Min“: eine eigene volle Zeile statt Text über den Rand (Konzept k1, 3.5). */
+:is(.stn, .stn-blatt) .dauer .ganz{grid-column:1 / -1}
 :is(.stn, .stn-blatt) .dauer button[aria-pressed="true"]{background:var(--st-hand-soft);border-color:var(--st-hand);color:var(--st-hand)}
 :is(.stn, .stn-blatt) .dauer button:disabled,:is(.stn, .stn-blatt) .bif:disabled{opacity:.5;cursor:default}
 /* „Steuerung anhalten“ (UEMS SZ-2 A): die Dauern, „oder“, „Bis ich fortsetze“. */
@@ -499,6 +503,8 @@
 :is(.stn, .stn-blatt) .lmodes button{display:grid;justify-items:center;gap:3px;min-height:60px;padding:6px 2px;border:0;border-radius:11px;background:transparent;font:700 12.5px/1.15 var(--font);color:var(--c-muted-fg);cursor:pointer;text-align:center}
 :is(.stn, .stn-blatt) .lmodes button svg{width:20px;height:20px}
 :is(.stn, .stn-blatt) .lmodes button:disabled{opacity:.4;cursor:default}
+/* Gedrückt bleibt gedrückt, auch wenn er gerade nicht wählbar ist (Konzept k1: „Schnell · immer“ ohne Auto). */
+:is(.stn, .stn-blatt) .lmodes button[aria-pressed="true"]:disabled{opacity:1}
 :is(.stn, .stn-blatt) .lmodes button small{display:block;font:600 11px/1.15 var(--font);color:var(--c-muted-fg)}
 :is(.stn, .stn-blatt) .lmodes button[aria-pressed="true"]{background:var(--c-card);color:var(--c-fg);box-shadow:0 1px 3px color-mix(in srgb,var(--c-fg) 16%,transparent)}
 :is(.stn, .stn-blatt) .lmodes button[aria-pressed="true"] svg{color:var(--pv)}
