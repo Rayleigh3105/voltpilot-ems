@@ -212,6 +212,36 @@ public class AnlagensteuerungRepository {
                 pointKeys.toArray(String[]::new), tenantId, entityId);
     }
 
+    /**
+     * Eine gute Lesung, die etwas Neues sagt (UEMS EZ-23): ein anderer Wert als die vorige, die erste nach einer
+     * Lücke oder die letzte im Fenster. {@code vorherZeit} ist die vorige gute Lesung im Fenster (null = keine).
+     */
+    public record Wechselzeile(String pointKey, Instant zeit, BigDecimal wert, Instant vorherZeit, boolean letzte) {}
+
+    /**
+     * Die Zustandswechsel der Punkte in {@code (von, bis]} — gerechnet in der Datenbank über denselben Reihen-Index
+     * wie {@link #juengste}, damit nicht jede Lesung des Tages ins API kommt. Nur gute Werte zählen; liegen zwischen
+     * zwei Lesungen mehr als {@code lueckeS} Sekunden, kommt die spätere als Zeile mit, auch ohne neuen Wert.
+     */
+    public List<Wechselzeile> wechsel(UUID tenantId, UUID entityId, List<String> pointKeys, Instant von, Instant bis,
+            long lueckeS) {
+        return jdbc.query("SELECT point_key, time, wert, vorher_zeit, letzte FROM (SELECT d.point_key, d.time, "
+                + "w.z AS wert, lag(w.z) OVER r AS vorher, lag(d.time) OVER r AS vorher_zeit, "
+                + "lead(d.time) OVER r IS NULL AS letzte FROM device_measurement_sample d "
+                + "CROSS JOIN LATERAL (SELECT coalesce(d.decoded_numeric, d.raw_numeric) AS z) w "
+                + "WHERE d.tenant_id = ? AND d.entity_id = ? AND d.point_key = ANY(?::text[]) AND d.time > ? "
+                + "AND d.time <= ? AND d.quality = 'good' AND d.role IS DISTINCT FROM 'spiegel' AND w.z IS NOT NULL "
+                + "WINDOW r AS (PARTITION BY d.point_key ORDER BY d.time)) x "
+                + "WHERE vorher IS NULL OR vorher <> wert OR time > vorher_zeit + CAST(? AS interval) OR letzte "
+                + "ORDER BY point_key, time",
+                (rs, n) -> new Wechselzeile(rs.getString("point_key"), rs.getTimestamp("time").toInstant(),
+                        rs.getBigDecimal("wert"),
+                        rs.getTimestamp("vorher_zeit") == null ? null : rs.getTimestamp("vorher_zeit").toInstant(),
+                        rs.getBoolean("letzte")),
+                tenantId, entityId, pointKeys.toArray(String[]::new), Timestamp.from(von), Timestamp.from(bis),
+                lueckeS + " seconds");
+    }
+
     // ---------------------------------------------------------------- schreiben
 
     /** Der Controller „Anlagensteuerung“ — eingebaut ab {@code ab}, mit Datenquelle und Geräte-ID. */

@@ -11480,6 +11480,30 @@ paths:
         "400": { $ref: "#/components/responses/BadRequest" }
         "401": { $ref: "#/components/responses/Unauthorized" }
         "404": { $ref: "#/components/responses/NotFound" }
+  /api/v1/sites/{siteId}/erzeuger/jetzt:
+    parameters:
+      - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [geraete]
+      summary: Das Erzeuger-Cockpit (UEMS EZ-23 zu EZ-8).
+      description: >
+        Recht `messwerte.ansehen`. Was das Cockpit einer Anlage mit Anlagensteuerung liest: die Steuerung, Namen
+        von Netzbetreiber (Netzanschluss, sonst Bild) und Direktvermarkter (Stammdaten, sonst Bild), die Einheiten
+        und je Punkt der jüngste Wert - aus derselben Quelle wie `…/anlagensteuerungen/{geraetId}/werte`, aber unter
+        den Punktnamen des Portals (`erzeuger.anlage.p_nvp_w`, `erzeuger.nb.bits`, `erzeuger.te2.p_ist_w`, …).
+        `wechselHeute` trägt die Zustandswechsel seit Mitternacht (Europe/Berlin) von `erzeuger.wirkung.quelle_p`,
+        `erzeuger.nb.bits` und `erzeuger.dv.bits`; der erste Eintrag ist der Wert um Mitternacht, null heißt
+        unbekannt (keine gute Lesung, auch nach mehr als 120 s Schweigen). camelCase wie das Portal.
+      responses:
+        "200":
+          description: Die Anlage hat eine Anlagensteuerung - auch ohne Werte (dann null, nie 0).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErzeugerJetzt" }
+        "204":
+          description: Die Anlage hat keine Anlagensteuerung.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /api/v1/sites/{siteId}/erzeuger/vorgaben/heute:
     parameters:
       - { name: siteId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -36501,6 +36525,51 @@ components:
         gruppen: { type: array, items: { $ref: "#/components/schemas/ErzeugerVorgabenGruppe" } }
         je_urheber: { type: array, items: { $ref: "#/components/schemas/ErzeugerVorgabenJeUrheber" } }
         laufend: { type: array, items: { $ref: "#/components/schemas/ErzeugerVorgabe" } }
+    ErzeugerJetzt:
+      type: object
+      description: "Das Erzeuger-Cockpit (UEMS EZ-23, Form aus EZ-8, camelCase); nicht erhoben ist null, nie 0."
+      required: [steuerung, netzbetreiber, direktvermarkter, einheiten, werte, wechselHeute]
+      properties:
+        steuerung: { $ref: "#/components/schemas/ErzeugerJetztSteuerung" }
+        netzbetreiber: { type: string, nullable: true }
+        direktvermarkter: { type: string, nullable: true }
+        einheiten: { type: array, items: { $ref: "#/components/schemas/ErzeugerJetztEinheit" } }
+        werte:
+          type: object
+          description: "Je Punktname des Portals der jüngste Wert; feste Abschnitte und je Einheit 1 … te_anzahl."
+          additionalProperties: { $ref: "#/components/schemas/ErzeugerJetztWert" }
+        wechselHeute:
+          type: object
+          description: "Je Punktname (quelle_p, nb.bits, dv.bits) die Wechsel seit Mitternacht, beginnend mit dem Wert um Mitternacht."
+          additionalProperties: { type: array, items: { $ref: "#/components/schemas/ErzeugerJetztWechsel" } }
+    ErzeugerJetztSteuerung:
+      type: object
+      required: [geraetId, name]
+      properties:
+        geraetId: { type: string, format: uuid }
+        name: { type: string }
+    ErzeugerJetztEinheit:
+      type: object
+      required: [teNr, art, typName, nennKw]
+      properties:
+        teNr: { type: integer, minimum: 1, maximum: 10 }
+        art: { type: string, enum: [pv, bhkw], nullable: true }
+        typName: { type: string, nullable: true }
+        nennKw: { type: number, nullable: true }
+    ErzeugerJetztWert:
+      type: object
+      description: "Zahl in der Einheit des Punkts (W, %, kW, s; Zustand und Bitfeld als Ganzzahl); ohne Lesung alles null, mit Qualität invalid oder device_error wert null."
+      required: [wert, gelesenAm, qualitaet]
+      properties:
+        wert: { type: number, nullable: true }
+        gelesenAm: { type: string, format: date-time, nullable: true }
+        qualitaet: { type: string, enum: [good, uncertain, invalid, stale, device_error], nullable: true }
+    ErzeugerJetztWechsel:
+      type: object
+      required: [ab, wert]
+      properties:
+        ab: { type: string, format: date-time }
+        wert: { type: number, nullable: true }
     GeraetVorgaenger:
       type: object
       description: "Ein früherer Einbau desselben Geräts."
