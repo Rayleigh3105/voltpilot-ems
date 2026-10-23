@@ -254,7 +254,8 @@ class LoadRequirement:
     def mandatory(self) -> bool:
         """Both compiled enforcements are obligations whose shortfall is a
         stage-1 slack (a Pflichtlauf immediately, a flexible task by its
-        deadline); opportunistic requirements never reach the solver."""
+        deadline); an opportunistic requirement reaches the solver only as a
+        compiled pure-price window (D1, Steuerart „Günstig")."""
         return True
 
 
