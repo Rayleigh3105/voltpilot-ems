@@ -11251,7 +11251,10 @@ paths:
         Recht `aenderungsprotokoll.lesen`. Ein Geraet hat kein eigenes Journal: seine
         Eintraege haengen an den Messstellen, die es speist, und nennen es ueber sein
         Einbau-Kennzeichen. Ein Zaehlerwechsel steht deshalb in BEIDEN
-        Geraete-Protokollen - beim ausgebauten und beim eingebauten. Zeitachsen,
+        Geraete-Protokollen - beim ausgebauten und beim eingebauten. Liest die Box das
+        Geraet ueber eine Datenquelle (`data_source_id`), stehen die Eintraege dieses Wegs
+        (`quelle` = `datenquelle`, Bezug die Datenquelle) mit darin (GE-2) - ueber den
+        gespeicherten Verweis, nie ueber eine gleiche Adresse. Zeitachsen,
         Zeitraum und Seitenweise wie bei der Messstelle. Ein fremdes Geraet ist 404,
         nie 403.
       responses:
@@ -35671,10 +35674,16 @@ components:
               variante: { type: integer, nullable: true, minimum: 0, maximum: 65535 }
     DatenquelleProtokollEintrag:
       type: object
-      required: [id, art, box, ergebnis, alt, neu, gilt_ab, urheber, zeitpunkt]
+      required: [id, art, text, box, ergebnis, alt, neu, gilt_ab, urheber, zeitpunkt]
       properties:
         id: { type: integer, format: int64 }
         art: { type: string, enum: [angelegt, bearbeitet, erreichbarkeit_geprueft, zustaendigkeit_begonnen, zustaendigkeit_gewechselt, aus_bestand_uebernommen, messwerte_ausgewaehlt] }
+        text:
+          type: string
+          description: >
+            Derselbe Satz, den das Aenderungsprotokoll zu diesem Eintrag sagt (additiv, GE-2) -
+            die Geraeteseite zeigt ihn im "Verlauf der Anbindung".
+          example: Zuständigkeit gewechselt
         box:
           allOf: [{ $ref: "#/components/schemas/DatenquelleBox" }]
           nullable: true

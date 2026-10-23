@@ -39,10 +39,23 @@ export function wegLast(quellen: readonly UemsDatenquelle[]): WegLast {
   return { anfragen, messwerte, prozent, ohneMeldung };
 }
 
-/** „Last 51 %" (Prozent ohne Stelle, AP-08 E11); eine kleine, aber gemeldete Last ist „unter 1 %", nie „0 %". */
+/** „51 %" (Prozent ohne Stelle, AP-08 E11); eine kleine, aber gemeldete Last ist „unter 1 %", nie „0 %". */
+export function lastProzent(prozent: number): string {
+  if (prozent > 0 && prozent < 0.5) return 'unter 1\u00a0%';
+  return `${Math.round(prozent).toLocaleString('de-DE')}\u00a0%`;
+}
+
+/** „Last 51 %". */
 export function lastText(prozent: number): string {
-  if (prozent > 0 && prozent < 0.5) return 'Last unter 1\u00a0%';
-  return `Last ${Math.round(prozent).toLocaleString('de-DE')}\u00a0%`;
+  return `Last ${lastProzent(prozent)}`;
+}
+
+/** Die gemeldeten Zahlen einer Last: „12 von 30 Anfragen/min“, „305 von 600 Messwerten/min“ (Anbindung, GE-2). */
+export function lastTeile(l: WegLast): string[] {
+  return [
+    l.anfragen == null ? null : `${zahl(l.anfragen)} von ${ANFRAGEN_GRENZE} Anfragen/min`,
+    l.messwerte == null ? null : `${zahl(l.messwerte)} von ${MESSWERTE_GRENZE} Messwerten/min`,
+  ].filter((s): s is string => s != null);
 }
 
 /** Die Last, die EINE Box trägt: alle nicht archivierten Wege, deren zuständige Box sie ist. */
@@ -106,7 +119,8 @@ export interface BoxUebersichtKarte {
 
 const zahl = (wert: number) => wert.toLocaleString('de-DE', { maximumFractionDigits: 1 });
 
-function zeitpunkt(iso: string | null | undefined): string | null {
+/** Ein Zeitpunkt, wie die Box-Seite ihn nennt („23.10.2026, 11:42“); null = keiner. */
+export function zeitpunkt(iso: string | null | undefined): string | null {
   if (!iso || !Number.isFinite(Date.parse(iso))) return null;
   return new Date(iso).toLocaleString('de-DE', {
     day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit',

@@ -581,6 +581,10 @@ class DatenquelleApiTest {
                 "erreichbarkeit_geprueft", "erreichbarkeit_geprueft");
         assertThat(eintraege).extracting(e -> textOderNull(e.get("ergebnis")))
                 .containsExactly(null, "ok", null, "ok", "unreachable");
+        // GE-2: der Satz des Änderungsprotokolls reist mit — der „Verlauf der Anbindung“ formuliert nichts selbst.
+        assertThat(eintraege).extracting(e -> e.get("text").asText()).containsExactly(
+                "Zuständigkeit gewechselt", "Erreichbarkeit geprüft: ok", "Zuständigkeit gewechselt",
+                "Erreichbarkeit geprüft: ok", "Erreichbarkeit geprüft: unreachable");
         JsonNode zweiter = eintraege.get(0);
         assertThat(zweiter.at("/alt/box_name").asText()).isEqualTo("Box Halle 2 (neu)");
         assertThat(zweiter.at("/neu/box_name").asText()).isEqualTo("Box Halle 1");

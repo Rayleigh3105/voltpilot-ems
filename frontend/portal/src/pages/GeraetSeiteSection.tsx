@@ -24,6 +24,8 @@ import {
   type SiteEntity,
   type SiteSource,
   type SiteTopology,
+  type UemsDatenquelle,
+  type UemsGeraet,
 } from '../api';
 import { ausfallSchutz, type SiteCharging } from '../ladepunkte';
 import {
@@ -129,7 +131,7 @@ import { heuteKanal } from '../geraetHeute';
 import { verlaufHash } from '../verlauf';
 import { useFreshnessPoll } from '../useFreshnessPoll';
 // LIVE: die Geräteseite zeigt gemessene Ist-Werte und Steuer-Rückmeldungen.
-import { LIVE_POLL_MS } from '../pollCadence';
+import { LIST_POLL_MS, LIVE_POLL_MS } from '../pollCadence';
 import { showTechnicalLayer } from '../rollen';
 import { AdminGeraetKarten } from '../components/AdminGeraetKarten';
 import { AnlegenFlow } from '../components/AnlegenFlow';
@@ -170,8 +172,19 @@ import '../components/AnlagenModell.css';
 import './Befehle.css';
 import './GeraetSeite.css';
 import { AUFBAU_REITER } from '../ebenenNav';
-import { anlagensteuerungGeraetId, anlagensteuerungIdOf } from '../geraetAdresse';
+import { anlagensteuerungGeraetId, anlagensteuerungIdOf, boxRefOf } from '../geraetAdresse';
+import { aufbauBaum } from '../aufbauBaum';
+import { zentraleListe } from '../zentraleListe';
+import { anbindungen as anbindungenVon, anbindungKurz, geraetImAufbau, kopfZustand } from '../geraetAnbindung';
+import { AnbindungAbschnitt, AnbindungVerlauf } from '../components/GeraetAnbindung';
+import { DatenquelleWechselDialog } from '../components/DatenquelleWechselDialog';
 import { useAnlagensteuerung, useAnlagensteuerungWerte } from '../useAnlagensteuerung';
+
+/**
+ * Die Zeilen aus dem gemeldeten Bestand, die der Abschnitt „Anbindung" (GE-2) übernimmt, sobald ein gespeicherter
+ * Weg da ist: Weg, Adresse, lesende Box und Takt stehen dann genau einmal - dort.
+ */
+const ANBINDUNG_TRAEGT = new Set(['Anbindung', 'Adresse', 'Lesetakt', 'Gelesen über']);
 
 /**
  * Die GERÄTE-DETAILSEITE der Anlagen-Zentrale
@@ -278,6 +291,12 @@ export function GeraetSeiteSection({
   const [adminView, setAdminView] = useState<GeraetView | null>(null);
   const [adminBusy, setAdminBusy] = useState(false);
   const [adminFehler, setAdminFehler] = useState<string | null>(null);
+  // GE-2 „Anbindung": die Wege der Anlage und die UEMS-Geräte, deren `data_source_id` der einzige Verweis
+  // Weg → Gerät ist (dieselbe Zuordnung wie der Aufbau, GE-1). null = nicht geladen — dann kein Abschnitt.
+  const [datenquellen, setDatenquellen] = useState<UemsDatenquelle[] | null>(null);
+  const [uemsGeraete, setUemsGeraete] = useState<UemsGeraet[] | null>(null);
+  const [gemeinsamZustand, setGemeinsamZustand] = useState<string | null>(null);
+  const [wechselQuelle, setWechselQuelle] = useState<UemsDatenquelle | null>(null);
   const [error, setError] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -292,6 +311,7 @@ export function GeraetSeiteSection({
     setEditError(null);
     setEntfernenOffen(false);
     setHeuteAusfall(false);
+    setWechselQuelle(null);
   }, [site.id, geraeteRef, geraetId]);
 
   useEffect(() => {
@@ -331,6 +351,10 @@ export function GeraetSeiteSection({
     };
     soft(api.topology(site.id), setTopology);
     soft(api.siteSources(site.id), setSources);
+    setDatenquellen(null);
+    setUemsGeraete(null);
+    soft(api.datenquellen(site.id).then((a) => a.datenquellen), setDatenquellen);
+    soft(api.uemsGeraete(site.id).then((a) => a.geraete), setUemsGeraete);
     void api.siteComponents(site.id).then(
       (value) => {
         if (!active) return;
@@ -449,6 +473,11 @@ export function GeraetSeiteSection({
       setNow(Date.now());
     });
   }, LIVE_POLL_MS);
+  // GE-2: die Box-Rückmeldung je Weg trägt den Zustand im Kopf mit. Sie kommt mit dem Herzschlag der Box, nicht
+  // im Takt der Messwerte - darum der ruhigere Listen-Takt; ein Fehlschlag lässt den letzten Stand stehen.
+  useFreshnessPoll(() => {
+    api.datenquellen(site.id).then((a) => setDatenquellen(a.datenquellen), () => {});
+  }, LIST_POLL_MS);
 
   /** K4: welche Verbraucher an welchem I/O-Ausgang hängen - aus ihren Profilen. */
   const ioBindungen = useMemo(() => ioBindungenAus(consumers), [consumers]);
@@ -507,6 +536,62 @@ export function GeraetSeiteSection({
     sources, components, control, curtailment, charging, strategies, model, anlagensteuerung,
     anlagensteuerungWerte, now,
   ]);
+
+  /**
+   * GE-2: das Gerät dieser Seite im AUFBAU — dieselbe Ableitung, die die Aufbau-Zeile zeichnet (GE-1). Von dort
+   * kommen seine Wege (nur über gespeicherte Verweise), das Gateway, hinter dem es antwortet, und die Regel für
+   * den einen Zustand im Kopf. Diese Seite ordnet nichts selbst zu.
+   */
+  const imAufbau = useMemo(() => {
+    if (!model || !data || !view?.gefunden || uemsGeraete == null || datenquellen == null) return null;
+    const eigeneBoxen = (devices ?? []).filter((d) => d.siteId === site.id);
+    const karten = zentraleListe({
+      siteId: site.id,
+      model,
+      devices: eigeneBoxen,
+      devicesFetchedAt,
+      boxRef: boxRefOf(devices, site.id),
+      localSetup: data.localSetup,
+      sources,
+      charging,
+      now,
+    });
+    const baum = aufbauBaum({
+      siteId: site.id,
+      siteName: site.name,
+      standorte: null,
+      devices: devices ?? [],
+      devicesFetchedAt,
+      karten,
+      localSetup: data.localSetup,
+      charging,
+      registryBoxId: data.registry?.deviceId ?? null,
+      overview: null,
+      datenquellen,
+      uemsGeraete: { [site.id]: uemsGeraete },
+      now,
+    });
+    return geraetImAufbau(baum, view.komponenten.map((c) => c.entityId));
+  }, [model, data, view, uemsGeraete, datenquellen, devices, site.id, site.name, devicesFetchedAt, sources, charging, now]);
+  const steuerquelleDa = Boolean(imAufbau?.geraet.anbindungen
+    .some((a) => datenquellen?.find((q) => q.id === a.quelleId)?.steuerquelle));
+  useEffect(() => {
+    let aktiv = true;
+    setGemeinsamZustand(null);
+    // Nur eine Steuerquelle fragt die Gemeinsame Steuerung (die Weiche der Box-Seite, AP-15 T6).
+    if (!steuerquelleDa) return;
+    api.gemeinsameSteuerung(site.id).then(
+      (z) => aktiv && setGemeinsamZustand(z?.zustand ?? null),
+      () => aktiv && setGemeinsamZustand(null),
+    );
+    return () => {
+      aktiv = false;
+    };
+  }, [site.id, steuerquelleDa]);
+  const anbindung = useMemo(
+    () => anbindungenVon({ imAufbau, datenquellen, devices: devices ?? [], siteId: site.id, gemeinsamZustand }),
+    [imAufbau, datenquellen, devices, site.id, gemeinsamZustand],
+  );
 
   const box = boxDevice;
   /** K4: diese Seite ist die eines Verbrauchers am Ausgang eines I/O-Moduls. */
@@ -1370,6 +1455,10 @@ export function GeraetSeiteSection({
           }
           : null;
 
+        // GE-2: EIN Zustand im Kopf - der eigene (bei der Steuerung das Werte-Alter, EZ-22) und die Box-Rückmeldung
+        // zu ihrem Weg nach der Regel der Aufbau-Zeile; der schlechtere gewinnt, mit Grund.
+        const kopfJetzt = kopfZustand(view.kopf.zustand, imAufbau);
+
         // --- Gerät & Verbindung --------------------------------------------
         const bezuege = view.steuerung.filter(
           (z) => z.label !== NOT_AUS_LABEL
@@ -1386,9 +1475,15 @@ export function GeraetSeiteSection({
         const schaltet = view.komponenten
           .filter((c) => c.io && !ioVerbraucherSeite)
           .map((c) => `${c.label} (DO${c.io?.kanal})`);
+        // GE-2: mit einem gespeicherten Weg trägt der Abschnitt „Anbindung" Weg, Box und Takt - die Zeilen aus
+        // dem gemeldeten Bestand stünden sonst ein zweites Mal (und mit dem Wort „Datenquelle") daneben.
+        const mitAnbindung = anbindung.length > 0;
+        const verbindungZeilen = mitAnbindung
+          ? view.verbindung.filter((z) => !ANBINDUNG_TRAEGT.has(z.label))
+          : view.verbindung;
         const detailZeilen: Zeile[] = [
           ...(view.kopf.modell ? [{ label: 'Modell', wert: view.kopf.modell }] : []),
-          ...view.verbindung,
+          ...verbindungZeilen,
           ...(misst.length > 0
             ? [{ label: 'Misst', wert: Array.from(new Set(misst)).join(' · ') }]
             : []),
@@ -1397,15 +1492,19 @@ export function GeraetSeiteSection({
           ...bezuege,
         ];
         const details = {
-          kurz: [view.verbindung.find((z) => z.label === 'Anbindung')?.wert,
-            view.verbindung.find((z) => z.label === 'Lesetakt')?.wert]
-            .filter(Boolean).join(' · ') || null,
+          kurz: (mitAnbindung ? anbindungKurz(anbindung) : null)
+            ?? ([view.verbindung.find((z) => z.label === 'Anbindung')?.wert,
+              view.verbindung.find((z) => z.label === 'Lesetakt')?.wert]
+              .filter(Boolean).join(' · ') || null),
           inhalt: (
             <>
               {hinweisSatz && <p className="vp-note">{hinweisSatz}</p>}
-              {view.verbindungLeer && <p className="vp-note">{view.verbindungLeer}</p>}
+              {view.verbindungLeer && !mitAnbindung && <p className="vp-note">{view.verbindungLeer}</p>}
               {view.komponentenLeer && <p className="vp-note">{view.komponentenLeer}</p>}
               <ZeilenListe zeilen={detailZeilen} />
+              {anbindung.map((a) => (
+                <AnbindungAbschnitt key={a.quelle.id} anbindung={a} onWechseln={() => setWechselQuelle(a.quelle)} />
+              ))}
               {/* Gerät, Einstellungen und Messkanäle (UEMS AP-04 IP-12): die
                   Herkunftskette von der Technik-Seite — welches Gerät eingebaut
                   ist, womit es misst und welche Messstelle ein Kanal speist. Ohne
@@ -1477,6 +1576,12 @@ export function GeraetSeiteSection({
                 )}
               </>
             ),
+          });
+        }
+        if (mitAnbindung) {
+          technik.push({
+            id: 'anbindung',
+            inhalt: <AnbindungVerlauf siteId={site.id} quellen={anbindung.map((a) => a.quelle)} devices={devices ?? []} />,
           });
         }
         const summenwert = summenwertEinstieg(view);
@@ -1588,7 +1693,7 @@ export function GeraetSeiteSection({
               typ: typWort(gesichtView),
               modell: view.kopf.anschluss ?? view.kopf.modell,
               symbol: kopfSymbol(gesichtView),
-              zustand: view.kopf.zustand,
+              zustand: kopfJetzt,
               frische: src?.readAt ?? null,
               hinweis,
               abzeichen: (
@@ -1619,7 +1724,7 @@ export function GeraetSeiteSection({
                 <Icon name="pencil" size={15} /> Bearbeiten
               </button></Recht>
             ) : null}
-            veraltet={view.kopf.zustand.ton === 'warn'}
+            veraltet={kopfJetzt.ton === 'warn'}
             bausteine={{
               buehne,
               steuerung: steuerungBaustein,
@@ -1659,6 +1764,18 @@ export function GeraetSeiteSection({
               : 'Die Komponente wurde entfernt.');
             setData(null);
             setReloadKey((key) => key + 1);
+          }}
+        />
+      )}
+      {/* GE-2: „Zuständige Box wechseln" an der Anbindung - der Dialog der Box-Seite, kein zweiter. */}
+      {wechselQuelle && (
+        <DatenquelleWechselDialog
+          quelle={wechselQuelle}
+          devices={devices ?? []}
+          onClose={() => setWechselQuelle(null)}
+          onChanged={(neu) => {
+            setDatenquellen((alt) => alt?.map((q) => (q.id === neu.id ? neu : q)) ?? [neu]);
+            setWechselQuelle(neu);
           }}
         />
       )}

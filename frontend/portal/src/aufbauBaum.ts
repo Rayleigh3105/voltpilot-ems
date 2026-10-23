@@ -597,10 +597,15 @@ function wegZustand(q: UemsDatenquelle, art: AufbauWeg['art']): Pick<AufbauWeg, 
 /**
  * EIN Zustand je Gerät (GE-1, Regel 5): der schlechtere aus Gerätewerten und Box-Rückmeldung zu seinem Weg, mit
  * Grund. Eine gemeldete Störung ist immer „Achtung" und gewinnt — auch gegen eigene Achtung der Werte, weil sie
- * die Ursache nennt. „Box meldet noch nicht je Quelle" ist keine Störung und ändert nichts.
+ * die Ursache nennt. „Box meldet noch nicht je Quelle" ist keine Störung und ändert nichts. Die Geräteseite
+ * (GE-2) setzt ihren Kopf mit derselben Regel (`wegStoerung`).
  */
+export function wegStoerung(anbindungen: readonly AufbauAnbindung[]): AufbauAnbindung['stoerung'] {
+  return anbindungen.find((a) => a.stoerung)?.stoerung ?? null;
+}
+
 function mitWegZustand(g: AufbauGeraet, anbindungen: readonly AufbauAnbindung[]): AufbauGeraet {
-  const s = anbindungen.find((a) => a.stoerung)?.stoerung;
+  const s = wegStoerung(anbindungen);
   if (!s) return g;
   return {
     ...g,

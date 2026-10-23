@@ -25,7 +25,10 @@ import {
   type SiteInterventions,
   type SiteSource,
   type SiteTopology,
+  type UemsDatenquelle,
+  type UemsGeraet,
 } from '../api';
+import { anbindungApi } from '../geraetAnbindung';
 import { gr4Einstellungen, gr4Z5b, k5Kanaele } from '../test/geraetHerkunftFixtures';
 import { ENTITY_GORE, gore, goreNv, goreWerte } from '../test/anlagensteuerungFixtures';
 
@@ -355,6 +358,8 @@ function stub(over: {
     },
   ]));
   vi.spyOn(api, 'siteChargers').mockResolvedValue({ budget: null, chargers: [] });
+  // GE-2: ohne eigene Angabe kennt die Anlage keinen Weg - dann gibt es keinen Abschnitt „Anbindung“.
+  vi.spyOn(api, 'datenquellen').mockResolvedValue({ datenquellen: [] });
   vi.spyOn(api, 'entityStrategies').mockResolvedValue({});
   vi.spyOn(api, 'commandHistory').mockResolvedValue(over.commands ?? commands());
   // Die Aktionszeile (Stufe 2 §6.2) - was ein Blatt ABSETZEN kann. Alle drei
@@ -2035,6 +2040,46 @@ describe('EZ-10 · Aktivität der Anlagensteuerung', () => {
       .toBe(`#/anlage/s-1/geraet/edge-45gz7da/${asSeite}?abschnitt=jetzt`));
   });
 
+  /** GE-2: der Weg der Steuerung, DQ-1, mit dem gespeicherten Verweis am UEMS-Gerät (die Gore-Form). */
+  function mitWeg(rueckmeldung: Partial<NonNullable<UemsDatenquelle['rueckmeldung']>> = {}) {
+    const g = gore();
+    vi.spyOn(api, 'datenquellen').mockResolvedValue({ datenquellen: [anbindungsWeg({
+      id: g.datenquelle.id, kennzeichen: g.datenquelle.kennzeichen, name: 'Anlagensteuerung',
+      adresse: g.datenquelle.adresse, kadenz_s: 5,
+      rueckmeldung: { ...LIEFERT, ...rueckmeldung },
+    })] });
+    vi.spyOn(api, 'uemsGeraete').mockResolvedValue({ geraete: [einbau('g-as', ENTITY_GORE, g.datenquelle.id)] });
+    vi.spyOn(anbindungApi, 'verlauf').mockResolvedValue({ eintraege: [] });
+  }
+
+  it('GE-2: „Gerät & Verbindung“ trägt die Anbindung der Steuerung - der Weg steht genau einmal, ohne „Datenquelle“', async () => {
+    stubSteuerung(commands({ deviceRef: null, deviceIsBox: null, entityId: ENTITY_GORE, entries: [] }));
+    mitWeg();
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId={asSeite} devices={[box]} />);
+    const sektion = await screen.findByTestId('baustein-details');
+    const anbindung = await within(sektion).findByTestId('geraet-anbindung');
+    expect(anbindung).toHaveTextContent('Modbus TCP · 192.168.1.50:503 · Geräte-ID 1');
+    expect(within(anbindung).getByRole('link', { name: /VoltPilot-Box Pilsting/ }))
+      .toHaveAttribute('href', '#/anlage/s-1/box/edge-45gz7da');
+    expect(anbindung).toHaveTextContent('Liefert Daten');
+    expect(anbindung).toHaveTextContent(/Last an der Box51\s%/);
+    expect(anbindung).toHaveTextContent('12 von 30 Anfragen/min · 305 von 600 Messwerten/min');
+    expect(anbindung).toHaveTextContent('Kennung DQ-1');
+    // GD-5 A: „Datenquelle“ steht nicht mehr am Gerät; die alten Bestandszeilen sind im Abschnitt aufgegangen.
+    expect(sektion).not.toHaveTextContent('Datenquelle DQ-1');
+    expect(within(sektion).queryByText('Modbus TCP · Registerbild Erzeuger')).toBeNull();
+    expect(within(screen.getByTestId('geraet-kopf')).getByTestId('geraet-zustand')).not.toHaveTextContent('Liefert keine Daten');
+  });
+
+  it('GE-2: meldet die Box „liefert keine Daten“, sagt der Kopf es mit Grund - EIN Zustand', async () => {
+    stubSteuerung(commands({ deviceRef: null, deviceIsBox: null, entityId: ENTITY_GORE, entries: [] }));
+    mitWeg({ zustand: 'liefert_nicht', fehlerklasse: 'timeout', seit: '2026-10-23T08:00:00Z', gelesen_am: null });
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId={asSeite} devices={[box]} />);
+    const kopf = await screen.findByTestId('geraet-kopf');
+    await waitFor(() => expect(within(kopf).getByTestId('geraet-zustand')).toHaveTextContent('Liefert keine Daten'));
+    expect(within(kopf).getByTestId('geraet-zustand')).toHaveTextContent(/Seit 23\.10\.2026/);
+  });
+
   it('zeigt die Einträge, die der Server für ihre Komponente liefert', async () => {
     const mitEintrag = commands({ deviceRef: null, deviceIsBox: null, entityId: ENTITY_GORE });
     stubSteuerung(mitEintrag);
@@ -2043,5 +2088,131 @@ describe('EZ-10 · Aktivität der Anlagensteuerung', () => {
     await waitFor(() => expect(aktivitaet.querySelectorAll('li.vp-befehl').length).toBe(mitEintrag.entries.length));
     expect(within(aktivitaet).queryByText(/liegt uns nichts vor|kein Befehl geschickt/)).toBeNull();
     expect(within(aktivitaet).queryByText(/Gerät nicht gefunden/)).toBeNull();
+  });
+});
+
+// ---- GE-2 „Anbindung“ (Konzept „Ein Gerät, ein Eintrag“) -----------------------------------------------------
+
+const LIEFERT: NonNullable<UemsDatenquelle['rueckmeldung']> = {
+  zustand: 'liefert', fehlerklasse: null, seit: null, gelesen_am: FRISCH,
+  anfragen_pro_minute: 12, messwerte_pro_minute: 305, gemeldet_am: FRISCH, text: 'Liefert Daten',
+};
+
+/** Ein Weg der Anlage, gelesen von der Box der Tests. */
+function anbindungsWeg(o: Partial<UemsDatenquelle> = {}): UemsDatenquelle {
+  return {
+    id: 'dq-2', kennzeichen: 'DQ-2', name: null, anlage: 's-1', protokoll: 'modbus_tcp', adresse: '192.168.254.30:502',
+    geraete_ids: [1], netz: null, mehrere_leser: false, steuerquelle: false, vergleichsquelle: false, kadenz_s: 10,
+    archiviert_am: null, zustaendige_box: { id: 'gw', name: 'Pilsting', heimat_anlage: 's-1' }, zeitraeume: [],
+    rueckmeldung: LIEFERT, ...o,
+  };
+}
+
+/** Ein eingebautes UEMS-Gerät, das eine Komponente speist - sein `data_source_id` ist der EINE Verweis auf den Weg. */
+function einbau(id: string, entity: string, dataSourceId: string | null, geraeteId = 1): UemsGeraet {
+  return {
+    id, kennzeichen: `GR-${id}`, einbau_kennzeichen: `Z-${id}`, ausgebaut_am: null,
+    komponenten: [{ entity_id: entity, gueltig_ab: '2026-10-01T00:00:00Z', gueltig_bis: null }],
+    data_source_id: dataSourceId, geraete_id: geraeteId,
+  };
+}
+
+describe('GE-2 · Anbindung an der Geräteseite', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    window.history.replaceState(null, '', '#/');
+  });
+
+  /** Der Zähler aus „⚠ an einen ZÄHLER …“: die Quelle `src-7c1e9a2b` (Komponente `fr1`) als Netzzähler. */
+  function zaehler(quellen: UemsDatenquelle[], geraete: UemsGeraet[]) {
+    stub({
+      entities: () => Promise.resolve({
+        ...entities,
+        localSetup: [entities.localSetup[0], { ...entities.localSetup[1], role: 'grid-meter' }],
+      }),
+    });
+    vi.spyOn(api, 'datenquellen').mockResolvedValue({ datenquellen: quellen });
+    vi.spyOn(api, 'uemsGeraete').mockResolvedValue({ geraete });
+    vi.spyOn(anbindungApi, 'verlauf').mockResolvedValue({
+      eintraege: [{
+        id: 3, art: 'zustaendigkeit_begonnen', text: 'Zuständigkeit begonnen',
+        box: { id: 'gw', name: 'Pilsting', heimat_anlage: 's-1' }, ergebnis: null,
+        gilt_ab: '2026-10-01T08:00:00Z', urheber: { name: 'Ines Kaltenbach', rolle: 'kundenadministrator', art: 'kunde' },
+        zeitpunkt: '2026-10-01T08:00:00Z',
+      }],
+    });
+    render(<GeraetSeiteSection site={site} boxRef="edge-45gz7da" geraetId="src-7c1e9a2b" devices={[box]} />);
+  }
+
+  it('Zähler mit Weg: Weg, lesende Box ›, Empfang, Last, Takt, Kennung - und der Weg steht nur hier', async () => {
+    zaehler([anbindungsWeg()], [einbau('g-1', 'fr1', 'dq-2')]);
+    const sektion = await screen.findByTestId('baustein-details');
+    const anbindung = await within(sektion).findByTestId('geraet-anbindung');
+    expect(within(anbindung).getByRole('heading', { name: 'Anbindung' })).toBeInTheDocument();
+    expect(anbindung).toHaveTextContent('Modbus TCP · 192.168.254.30:502 · Geräte-ID 1');
+    expect(within(anbindung).getByRole('link', { name: /VoltPilot-Box Pilsting/ }))
+      .toHaveAttribute('href', '#/anlage/s-1/box/edge-45gz7da');
+    expect(anbindung).toHaveTextContent('Liefert Daten');
+    expect(anbindung).toHaveTextContent(/Zuletzt gelesen/);
+    expect(anbindung).toHaveTextContent('Last an der Box');
+    expect(anbindung).toHaveTextContent(/Lesetaktalle 10\ss/);
+    expect(anbindung).toHaveTextContent('Kennung DQ-2');
+    // Die Zeilen aus dem gemeldeten Bestand stehen nicht ein zweites Mal daneben.
+    expect(within(sektion).queryByText('192.168.254.30 : 502')).toBeNull();
+    expect(within(sektion).queryByText('Modbus-Adresse 1')).toBeNull();
+  });
+
+  it('„Zuständige Box wechseln“ öffnet den vorhandenen Dialog; eine laufende Übergabe steht sichtbar da', async () => {
+    vi.spyOn(api, 'standorte').mockResolvedValue({ standorte: [] } as unknown as Awaited<ReturnType<typeof api.standorte>>);
+    zaehler([anbindungsWeg({
+      uebergabe: {
+        zustand: 'Übergabe ausstehend', seit: '2026-10-23T10:05:00Z',
+        box_alt: { id: 'gw', name: 'Pilsting', heimat_anlage: 's-1' },
+        box_neu: { id: 'gw-2', name: 'Halle 2', heimat_anlage: 's-1' },
+      },
+    })], [einbau('g-1', 'fr1', 'dq-2')]);
+    const anbindung = await screen.findByTestId('geraet-anbindung');
+    expect(anbindung).toHaveTextContent('Wechselt zu VoltPilot-Box Halle 2');
+    expect(anbindung).toHaveTextContent('bisher VoltPilot-Box Pilsting');
+    fireEvent.click(within(anbindung).getByRole('button', { name: 'Zuständige Box wechseln' }));
+    expect(await screen.findByRole('dialog', { name: 'Zuständige Box wechseln' })).toBeInTheDocument();
+  });
+
+  it('Technik & Diagnose › „Verlauf der Anbindung“ liest das Protokoll des eigenen Wegs', async () => {
+    zaehler([anbindungsWeg()], [einbau('g-1', 'fr1', 'dq-2')]);
+    await screen.findByTestId('geraet-anbindung');
+    const verlauf = await technikTeil('anbindung');
+    expect(within(verlauf).getByRole('heading', { name: 'Verlauf der Anbindung' })).toBeInTheDocument();
+    expect(await within(verlauf).findByText('Zuständigkeit begonnen')).toBeInTheDocument();
+    expect(within(verlauf).getByText('VoltPilot-Box Pilsting · Ines Kaltenbach')).toBeInTheDocument();
+    expect(anbindungApi.verlauf).toHaveBeenCalledWith('s-1', 'dq-2');
+  });
+
+  it('Gerät ohne Weg: kein Abschnitt, kein Verlauf - die Verbindung aus dem Bestand bleibt', async () => {
+    zaehler([anbindungsWeg()], [einbau('g-1', 'fr1', null)]);
+    const sektion = await screen.findByTestId('baustein-details');
+    await waitFor(() => expect(api.uemsGeraete).toHaveBeenCalled());
+    await act(async () => {});
+    expect(await within(sektion).findByText('192.168.254.30 : 502')).toBeInTheDocument();
+    expect(within(sektion).queryByTestId('geraet-anbindung')).toBeNull();
+    const technik = await technikOeffnen();
+    expect(technik.querySelector('[data-technik="anbindung"]')).toBeNull();
+    // Ein Weg mit derselben Adresse, aber ohne gespeicherten Verweis, wird NICHT zugeordnet.
+    expect(anbindungApi.verlauf).not.toHaveBeenCalled();
+  });
+
+  it('Gerät hinter einem Gateway: „Gelesen über Gateway DQ-3 (2 Geräte) ›“, eigene Geräte-ID, Wechsel und Last am Gateway', async () => {
+    zaehler(
+      [anbindungsWeg({ id: 'dq-3', kennzeichen: 'DQ-3', name: 'Zählergateway', adresse: '192.168.10.31:502', geraete_ids: [1, 2] })],
+      [einbau('g-1', 'fr1', 'dq-3', 2), einbau('g-2', 'batt', 'dq-3', 1)],
+    );
+    const anbindung = await screen.findByTestId('geraet-anbindung');
+    expect(anbindung).toHaveTextContent('Modbus TCP · 192.168.10.31:502 · Geräte-ID 2');
+    // Die Gateway-Seite kommt mit GE-5; bis dahin führt der Weg auf die Box, die das Gateway liest.
+    expect(within(anbindung).getByRole('link', { name: /Gateway DQ-3 \(2 Geräte\)/ }))
+      .toHaveAttribute('href', '#/anlage/s-1/box/edge-45gz7da');
+    expect(anbindung).not.toHaveTextContent('Last an der Box');
+    expect(within(anbindung).queryByRole('button', { name: 'Zuständige Box wechseln' })).toBeNull();
+    expect(anbindung).toHaveTextContent('Box und Last gelten für alle 2 Geräte an diesem Gateway');
   });
 });

@@ -491,6 +491,59 @@ class AenderungsprotokollApiTest {
                 .containsExactly("zaehler_gewechselt");
     }
 
+    /**
+     * GE-2 (Konzept „Ein Gerät, ein Eintrag“): das Geräte-Protokoll trägt die Einträge seines WEGS — der
+     * Datenquelle, auf die {@code geraet.data_source_id} zeigt. Der gespeicherte Verweis entscheidet: eine zweite
+     * Quelle mit derselben Adresse bleibt draußen, und ein Gerät ohne Verweis zeigt keinen Weg.
+     */
+    @Test
+    void dasGeraeteProtokollTraegtDieEintraegeSeinesWegs() {
+        Werk w = ahrenberg("Weg");
+        UUID z5a = einbau(w, "Z-5a");
+        UUID eigen = datenquelleMitEintrag(w, "DQ-9", "WAGO Halle 2", "2026-11-17T14:00:00+01:00");
+        UUID fremd = datenquelleMitEintrag(w, "DQ-8", "WAGO Halle 3", "2026-11-17T15:00:00+01:00");
+        assertThat(fremd).isNotEqualTo(eigen);
+        root.update("UPDATE geraet SET data_source_id = ? WHERE id = ?", eigen, z5a);
+
+        JsonNode protokoll = protokollDesGeraets(w, z5a, "");
+        List<JsonNode> wege = new ArrayList<>();
+        for (JsonNode e : protokoll.get("eintraege")) {
+            if ("datenquelle".equals(e.get("quelle").asText())) {
+                wege.add(e);
+            }
+        }
+        assertThat(wege).as(protokoll.toString()).hasSize(1);
+        JsonNode weg = wege.get(0);
+        assertThat(weg.get("art").asText()).isEqualTo("angelegt");
+        assertThat(weg.at("/bezug/art").asText()).isEqualTo("datenquelle");
+        assertThat(weg.at("/bezug/kennzeichen").asText()).isEqualTo("DQ-9");
+        assertThat(weg.get("text").asText()).isEqualTo(
+                AenderungSatz.satz("datenquelle", "angelegt", null, MAPPER.createObjectNode().put("name", "WAGO Halle 2"),
+                        null));
+        // Der Zeitraum wirkt auch auf den Weg: vor seinem Eintrag steht er nicht da.
+        assertThat(arten(protokollDesGeraets(w, z5a, "?bis=" + url("2026-11-17T13:00:00+01:00"))))
+                .doesNotContain("angelegt");
+
+        UUID ohneWeg = root.queryForObject("SELECT id FROM geraet WHERE tenant_id = ? AND id <> ? "
+                + "AND data_source_id IS NULL ORDER BY einbau_kennzeichen LIMIT 1", UUID.class, w.tenant(), z5a);
+        for (JsonNode e : protokollDesGeraets(w, ohneWeg, "").get("eintraege")) {
+            assertThat(e.get("quelle").asText()).as("ohne Verweis kein Weg").isNotEqualTo("datenquelle");
+        }
+    }
+
+    /** Eine Datenquelle der Anlage mit ihrem Eintrag „angelegt“, unmittelbar eingetragen (siehe {@link #dieNachbarJournale}). */
+    private UUID datenquelleMitEintrag(Werk w, String kennzeichen, String name, String zeitpunkt) {
+        UUID quelle = root.queryForObject("INSERT INTO data_source (tenant_id, site_id, kennzeichen, name, "
+                + "protokoll, adresse, kadenz_s) VALUES (?, ?, ?, ?, 'modbus_tcp', '10.20.3.7:502', 60) RETURNING id",
+                UUID.class, w.tenant(), w.an1(), kennzeichen, name);
+        root.update("INSERT INTO data_source_aenderung (tenant_id, data_source_id, art, neu, gilt_ab, "
+                + "actor_sub, actor_name, actor_rolle, actor_art, created_at) VALUES (?, ?, 'angelegt', "
+                + "?::jsonb, ?, 'sub-1', 'Ines Kaltenbach', 'kundenadministrator', 'kunde', ?)",
+                w.tenant(), quelle, "{\"name\": \"" + name + "\"}",
+                Timestamp.from(zeitpunkt(zeitpunkt)), Timestamp.from(zeitpunkt(zeitpunkt)));
+        return quelle;
+    }
+
     // ---- Der UNTERNEHMENS-Weg -----------------------------------------------------------------
 
     /**

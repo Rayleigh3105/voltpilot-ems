@@ -665,9 +665,11 @@ public class DatenquelleService {
     }
 
     private DatenquelleDto.ProtokollEintrag eintrag(Eintrag e, Map<UUID, Box> boxen) {
+        JsonNode alt = e.altJson() == null ? null : lies(e.altJson());
+        JsonNode neu = e.neuJson() == null ? null : lies(e.neuJson());
         return new DatenquelleDto.ProtokollEintrag(e.id(), e.art(),
-                e.deviceId() == null ? null : dto(e.deviceId(), boxen), e.ergebnis(),
-                e.altJson() == null ? null : lies(e.altJson()), e.neuJson() == null ? null : lies(e.neuJson()),
+                AenderungSatz.satz("datenquelle", e.art(), alt, neu, e.ergebnis()),
+                e.deviceId() == null ? null : dto(e.deviceId(), boxen), e.ergebnis(), alt, neu,
                 e.giltAb(), new DatenquelleDto.Urheber(e.actorName(), e.actorRolle(), e.actorArt()),
                 e.createdAt());
     }

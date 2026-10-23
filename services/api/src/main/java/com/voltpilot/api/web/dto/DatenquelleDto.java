@@ -213,11 +213,16 @@ public final class DatenquelleDto {
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record Urheber(String name, String rolle, String art) {}
 
-    /** Ein Eintrag des Protokolls der Quelle, jüngster zuerst. */
+    /**
+     * Ein Eintrag des Protokolls der Quelle, jüngster zuerst. {@code text} ist derselbe Satz, den das
+     * Änderungsprotokoll zu diesem Eintrag sagt ({@code AenderungSatz}) — die Geräteseite zeigt ihn im
+     * „Verlauf der Anbindung“ (Konzept „Ein Gerät, ein Eintrag“, GE-2), nie eine zweite Formulierung.
+     */
     @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
     public record ProtokollEintrag(
             long id,
             String art,
+            String text,
             Box box,
             String ergebnis,
             JsonNode alt,

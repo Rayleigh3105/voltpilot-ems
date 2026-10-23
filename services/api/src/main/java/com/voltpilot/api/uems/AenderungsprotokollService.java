@@ -103,12 +103,13 @@ public class AenderungsprotokollService {
      * Das Protokoll EINES Geräts. Seine Einträge hängen an den Messstellen, die es speist, und
      * nennen es über ihr Einbau-Kennzeichen (die Überbrückung steht in
      * {@link AenderungsprotokollRepository#fuerEinbau}); nur die Messmittel-Angaben (AP-16 IP-15)
-     * stehen im eigenen Journal des Einbaus. Ein fremdes Gerät ist 404.
+     * stehen im eigenen Journal des Einbaus. Dazu das Protokoll seines Wegs, der Datenquelle, aus der
+     * die Box es liest (GE-2). Ein fremdes Gerät ist 404.
      */
     public ProtokollDto.Protokoll geraet(UUID id, Anfrage a) {
         GeraetRepository.Einbau g = geraete.eines(id).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Gerät nicht gefunden."));
-        return antwort(protokolle.fuerEinbau(g.einbauKennzeichen(), filter(a)), a);
+        return antwort(protokolle.fuerEinbau(g.einbauKennzeichen(), g.dataSourceId(), filter(a)), a);
     }
 
     /**

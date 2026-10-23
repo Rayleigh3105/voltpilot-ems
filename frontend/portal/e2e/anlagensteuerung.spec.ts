@@ -2,7 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 
 /**
  * UEMS EZ-10 „Steuerung, Anlage, Messwerte“ bei 375 und 1440 px auf der Bühne `e2e/anlagensteuerung.html`:
- * die Karte in Steuerung › Geräte (nur messen), die Geräteseite der Anlagensteuerung, „Strom & Geld“ und der
+ * die Karte in Steuerung › Geräte (nur messen), die Geräteseite der Anlagensteuerung (mit ihrer Anbindung, GE-2), „Strom & Geld“ und der
  * Ast im Verlauf - mit den fiktiven Anlagen Gore (PV) und Büttner (BHKW). Kein Querlauf der Seite oder eines
  * Elements, keine Fehler in der Konsole - GEMESSEN, nicht behauptet.
  */
@@ -60,6 +60,30 @@ for (const breite of BREITEN) {
     await expect(sektion.getByTestId('geraet-anlagensteuerung')).toContainText('speist 41,2');
     // Den Programmstand zeigt EZ-16 an derselben Karte.
     await expect(sektion.getByTestId('geraet-programmstand')).toContainText('26.10');
+    await ohneQuerlauf(page, breite);
+    expect(fehler).toEqual([]);
+  });
+
+  test(`Geräteseite: die Anbindung der Steuerung - Weg, lesende Box, Empfang, Last, Verlauf (${breite} px)`, async ({ page }) => {
+    const fehler = await oeffne(page, breite, 'fall=gore&flaeche=geraet');
+    await expect(page.getByRole('heading', { name: 'Anlagensteuerung Gore' }).first()).toBeVisible();
+    const sektion = page.getByTestId('baustein-details');
+    if (!(await sektion.evaluate((el) => (el as HTMLDetailsElement).open))) await sektion.locator(':scope > summary').click();
+    // GE-2: der Weg ist Teil der Seite des Kastens, an dem er endet - genau einmal, „Datenquelle“ nur noch klein als Kennung.
+    const anbindung = sektion.getByTestId('geraet-anbindung');
+    await expect(anbindung).toContainText('Modbus TCP · 192.168.1.50:503 · Geräte-ID 1');
+    await expect(anbindung.getByRole('link', { name: /VoltPilot-Box Box Gore/ })).toHaveAttribute('href', '#/anlage/site-gore/box/edge-gore');
+    await expect(anbindung).toContainText('Liefert Daten');
+    await expect(anbindung).toContainText('12 von 30 Anfragen/min · 305 von 600 Messwerten/min');
+    await expect(anbindung).toContainText('Kennung DQ-1');
+    await expect(anbindung.getByRole('button', { name: 'Zuständige Box wechseln' })).toBeVisible();
+    await expect(sektion).not.toContainText('Datenquelle DQ-1');
+    await expect(page.getByTestId('geraet-zustand')).not.toContainText('Liefert keine Daten');
+    await ohneQuerlauf(page, breite);
+    await page.getByTestId('geraet-technik-oeffnen').click();
+    const verlauf = page.getByTestId('anbindung-verlauf');
+    await expect(verlauf).toContainText('Zuständigkeit begonnen');
+    await expect(verlauf).toContainText('Box Gore · Ines Kaltenbach');
     await ohneQuerlauf(page, breite);
     expect(fehler).toEqual([]);
   });

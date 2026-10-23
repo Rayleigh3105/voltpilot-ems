@@ -1,0 +1,91 @@
+/* Der Abschnitt „Anbindung" der Geräteseite (GE-2). Die Zeilen sind die `vp-geraet-kv` der Seite. */
+
+.vp-anbindung .vp-geraet-kv dd > a {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.vp-anbindung .vp-geraet-kv dd > a svg {
+  flex: none;
+}
+
+.vp-anbindung-fuss {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  margin-top: 12px;
+  min-width: 0;
+}
+
+.vp-anbindung-fuss small {
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.8rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Die Kennung steht klein und am Ende — zum Suchen, nicht zum Lesen (GD-5 A). */
+.vp-anbindung-kennung {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-anbindung-verlauf h4 {
+  margin: 0 0 6px;
+  font-size: 0.85rem;
+  color: var(--vp-text-muted, #4a5568);
+}
+
+.vp-anbindung-verlauf section + section {
+  margin-top: 14px;
+}
+
+.vp-anbindung-verlauf ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vp-anbindung-verlauf li {
+  display: grid;
+  grid-template-columns: minmax(120px, 30%) 1fr;
+  gap: 2px 14px;
+  min-width: 0;
+  font-size: 0.92rem;
+}
+
+.vp-anbindung-verlauf li time {
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.vp-anbindung-verlauf li span,
+.vp-anbindung-verlauf li small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.vp-anbindung-verlauf li small {
+  grid-column: 2;
+  color: var(--vp-text-muted, #4a5568);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 720px) {
+  .vp-anbindung-verlauf li {
+    grid-template-columns: 1fr;
+  }
+
+  .vp-anbindung-verlauf li small {
+    grid-column: 1;
+  }
+}

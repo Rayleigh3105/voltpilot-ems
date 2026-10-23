@@ -6,6 +6,7 @@ import { api, ApiError, type Device, type Site, type SiteEntity, type UemsDatenq
 import { keycloak } from '../src/auth';
 import { consumersApi } from '../src/consumers/consumersApi';
 import { anlagensteuerungGeraetId } from '../src/geraetAdresse';
+import { anbindungApi } from '../src/geraetAnbindung';
 import { AufbauSection } from '../src/pages/AufbauSection';
 import { BoxSeiteSection } from '../src/pages/BoxSeiteSection';
 import { GeraetSeiteSection } from '../src/pages/GeraetSeiteSection';
@@ -200,6 +201,18 @@ for (const [name, wert] of Object.entries(offen)) {
   offen[name] = belegt[name] ?? (() => Promise.reject(new Error(`E2E-Bühne: ${name} ist nicht belegt`)));
 }
 Object.assign(consumersApi, { list: ok([]), overrides: ok([]), status: ok([]) });
+// GE-2: Technik › „Verlauf der Anbindung“ liest das Protokoll des Wegs DQ-1.
+const urheber = { name: 'Ines Kaltenbach', rolle: 'kundenadministrator', art: 'kunde' };
+Object.assign(anbindungApi, {
+  verlauf: ok({
+    eintraege: [
+      { id: 2, art: 'zustaendigkeit_begonnen', text: 'Zuständigkeit begonnen', box: { id: box.id, name: box.name, heimat_anlage: site.id },
+        ergebnis: null, gilt_ab: new Date(jetzt - 3_600_000).toISOString(), urheber, zeitpunkt: new Date(jetzt - 3_600_000).toISOString() },
+      { id: 1, art: 'angelegt', text: 'Datenquelle angelegt: Anlagensteuerung', box: null, ergebnis: null,
+        gilt_ab: new Date(jetzt - 7_200_000).toISOString(), urheber, zeitpunkt: new Date(jetzt - 7_200_000).toISOString() },
+    ],
+  }),
+});
 
 function Flaeche() {
   if (flaeche === 'aufbau') {
