@@ -263,6 +263,59 @@ class AnlegewegApiTest {
         assertThat(kaputt.getBody()).contains("anfrage_kennung_ungueltig");
     }
 
+    // ---- Paket 2: die Wahl des Standorts und das Verbinden ohne Doppel ---------------------
+
+    /**
+     * F16: ein Kundenkonto mit EINEM Standort nennt die Wahl ausdrücklich - vorher landete jede neue
+     * Anlage ohne {@code standortId} still an ihm (Standort einer anderen Anlage).
+     */
+    @Test
+    void kundenkontoWaehltDenStandortAusdruecklich() {
+        String t = registrieren("Familie Wagner", "zuhause");
+        Map<String, Object> standort = post(t, "/api/v1/standorte", Map.of("name", "Zuhause",
+                "adresse", Map.of("strasse", "Hauptstraße 12", "plz", "91710", "ort", "Gunzenhausen", "land", "DE"),
+                "zeitzone", "Europe/Berlin"), null).getBody();
+        ResponseEntity<Map<String, Object>> ohne = post(t, "/api/v1/sites", Map.of("name", "Lokal Testing"), null);
+        assertThat(ohne.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(ohne.getBody()).containsEntry("code", "standort_waehlen").containsEntry("feld", "standortId");
+        assertThat(anlagen(t)).isZero();
+        ResponseEntity<Map<String, Object>> mit = post(t, "/api/v1/sites",
+                Map.of("name", "Lokal Testing", "standortId", standort.get("id")), null);
+        assertThat(mit.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(anlagen(t)).isEqualTo(1);
+    }
+
+    /**
+     * Verbinden mit Anfrage-Kennung: die verlorene Antwort kommt beim Wiederholen genau so zurück; dieselbe
+     * Kennung mit einer anderen Box ist ein Fehler, nie eine fremde Antwort und nie ein zweites Gerät.
+     */
+    @Test
+    void gleicherSchluesselEineBox() {
+        String t = registrieren("Box Becker", "zuhause");
+        Object site = post(t, "/api/v1/sites", Map.of("name", "Zuhause"), null).getBody().get("id");
+        String box = TestKennung.box("becker-box");
+        Map<String, Object> body = Map.of("siteId", site, "externalRef", box);
+        ResponseEntity<Map<String, Object>> erste = post(t, "/api/v1/devices/claim", body, "formular-9:box");
+        ResponseEntity<Map<String, Object>> zweite = post(t, "/api/v1/devices/claim", body, "formular-9:box");
+        assertThat(erste.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(zweite.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(zweite.getHeaders().getFirst("Idempotent-Replayed")).isEqualTo("true");
+        assertThat(zweite.getBody().get("id")).isEqualTo(erste.getBody().get("id"));
+
+        ResponseEntity<String> anders = rest.exchange(url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", site, "externalRef", TestKennung.box("becker-zwei")),
+                        kopf(t, "formular-9:box")), String.class);
+        assertThat(anders.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(anders.getBody()).contains("\"code\":\"anfrage_kennung_anders\"");
+        assertThat(anzahl("SELECT count(*) FROM device WHERE site_id = ?::uuid", site)).isEqualTo(1);
+        // Eine Ablehnung wird nicht gemerkt: die korrigierte Kennung geht mit einer neuen Anfrage-Kennung.
+        ResponseEntity<String> tippfehler = rest.exchange(url("/api/v1/devices/claim"), HttpMethod.POST,
+                new HttpEntity<>(Map.of("siteId", site, "externalRef", "edge-k7m2xq1"), kopf(t, "formular-9:box2")),
+                String.class);
+        assertThat(tippfehler.getStatusCode()).isEqualTo(HttpStatus.UNPROCESSABLE_ENTITY);
+        assertThat(anzahl("SELECT count(*) FROM anfrage_kennung WHERE kennung = 'formular-9:box2'")).isZero();
+    }
+
     // ---- F4: Fehler am Feld -------------------------------------------------------------------
 
     /** „29,995“ kW hieß „Bitte prüfen Sie den Namen“ - jetzt nennt die Antwort das Feld. */

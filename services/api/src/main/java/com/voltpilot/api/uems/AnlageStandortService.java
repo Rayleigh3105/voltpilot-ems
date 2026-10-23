@@ -81,6 +81,17 @@ public class AnlageStandortService {
      * keinen). Schreibt nichts; eine Ablehnung fliegt, bevor die Anlage entsteht.
      */
     public Optional<StandortRepository.Standort> zielBeimAnlegen(UUID standortId) {
+        return zielBeimAnlegen(standortId, false);
+    }
+
+    /**
+     * Wie {@link #zielBeimAnlegen(UUID)}; mit {@code wahlPflicht} ist die Wahl schon bei EINEM
+     * Standort Pflicht (422 {@code standort_waehlen}): eine neue Anlage landet nie still am Standort
+     * einer anderen (Anlage-Flow a1, F16). Das gilt für Kundenkonten - das Portal nennt den Standort
+     * seit Paket 1 immer ausdrücklich; Plattform und Servicekonten behalten die Vorbelegung als
+     * Übergang (`docs/agents/root/uems-bestandsuebernahme-der-standorte.md`).
+     */
+    public Optional<StandortRepository.Standort> zielBeimAnlegen(UUID standortId, boolean wahlPflicht) {
         if (standortId != null) {
             StandortRepository.Standort s = standorte.finde(standortId).orElseThrow(() ->
                     OrtAbgelehnt.anfrage("standortId", "Diesen Standort gibt es nicht."));
@@ -94,7 +105,7 @@ public class AnlageStandortService {
         }
         List<StandortRepository.Standort> offen = standorte.alle().stream()
                 .filter(s -> s.archiviertAm() == null).toList();
-        if (offen.size() > 1) {
+        if (offen.size() > 1 || (wahlPflicht && offen.size() == 1)) {
             List<Map<String, Object>> liste = new ArrayList<>();
             for (StandortRepository.Standort s : offen) {
                 Map<String, Object> m = new LinkedHashMap<>();
@@ -106,9 +117,11 @@ public class AnlageStandortService {
             Map<String, Object> fakten = new LinkedHashMap<>();
             fakten.put("feld", "standortId");
             fakten.put("standorte", liste);
-            throw OrtAbgelehnt.von(OrtAbgelehnt.Grund.STANDORT_WAEHLEN, "Ihr Unternehmen hat "
-                    + offen.size() + " Standorte. Bitte wählen Sie, zu welchem Standort die neue Anlage "
-                    + "gehört.", fakten);
+            throw OrtAbgelehnt.von(OrtAbgelehnt.Grund.STANDORT_WAEHLEN, offen.size() == 1
+                    ? "Bitte wählen Sie, ob die neue Anlage zu " + offen.get(0).name()
+                            + " gehört oder an einen anderen Ort kommt."
+                    : "Ihr Unternehmen hat " + offen.size() + " Standorte. Bitte wählen Sie, zu welchem "
+                            + "Standort die neue Anlage gehört.", fakten);
         }
         return offen.stream().findFirst();
     }

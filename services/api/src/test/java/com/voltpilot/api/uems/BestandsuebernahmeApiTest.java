@@ -73,7 +73,8 @@ import org.testcontainers.utility.DockerImageName;
  *       einen zugeordneten Anlage, und KEINE andere Tabelle ändert sich (Kommando-Journal,
  *       Fahrpläne, Komponenten, Registry eingeschlossen).</li>
  *   <li><b>{@code POST /api/v1/sites}</b> — ohne Standort wie heute, bei genau einem
- *       vorbelegt, bei mehreren 422 mit der Auswahl, ein archivierter 409, ein fremder
+ *       muss ein Kundenkonto wählen (F16), die Plattform bekommt ihn vorbelegt, bei mehreren 422
+ *       mit der Auswahl, ein archivierter 409, ein fremder
  *       400; und das Anlagen-Löschen bleibt unverändert (W5: die Zuordnung bleibt als
  *       beendetes Intervall mit Protokolleintrag).</li>
  *   <li><b>Zaun</b> — ein Kundenbereich sieht die Vorschläge und Standorte des anderen
@@ -474,15 +475,30 @@ class BestandsuebernahmeApiTest {
     // ---- (3) POST /api/v1/sites ---------------------------------------------
 
     /**
-     * Der heutige Anlege-Weg des Portals (ohne {@code standortId}): bei genau einem Standort
-     * vorbelegt — und das Löschen bleibt unverändert, die Zuordnung bleibt als Grabstein (W5).
+     * Bei genau einem Standort wählt ein Kundenkonto ausdrücklich (Anlage-Flow a1, F16: vorher landete
+     * jede neue Anlage still am Standort einer anderen): ohne {@code standortId} 422 mit der Auswahl,
+     * mit ihr die Zuordnung ab heute. Die Plattform behält als Übergang die Vorbelegung. Und das Löschen
+     * bleibt unverändert, die Zuordnung bleibt als Grabstein (W5).
      */
     @Test
     @Order(3)
-    void beiGenauEinemStandortIstErVorbelegtUndDasLoeschenLaesstDenGrabsteinStehen() {
+    void beiGenauEinemStandortWaehltDasKundenkontoUndDasLoeschenLaesstDenGrabsteinStehen() {
         String token = token("demo2", "demo2");
+        long anlagenVorher = anzahl("SELECT count(*) FROM site WHERE tenant_id = ?::uuid", NORDWIND);
+        ResponseEntity<JsonNode> ohneWahl = exchange("/api/v1/sites", HttpMethod.POST, token, null,
+                Map.of("name", "Nordwind Cuxhaven"));
+        assertThat(ohneWahl.getStatusCode().value()).isEqualTo(422);
+        assertThat(ohneWahl.getBody().path("code").asText()).isEqualTo("standort_waehlen");
+        assertThat(ohneWahl.getBody().path("feld").asText()).isEqualTo("standortId");
+        assertThat(ohneWahl.getBody().path("message").asText())
+                .isEqualTo("Bitte wählen Sie, ob die neue Anlage zu Nordwind Hamburg gehört oder an einen anderen Ort kommt.");
+        assertThat(ohneWahl.getBody().path("standorte")).hasSize(1);
+        String standortId = ohneWahl.getBody().path("standorte").get(0).path("id").asText();
+        assertThat(anzahl("SELECT count(*) FROM site WHERE tenant_id = ?::uuid", NORDWIND))
+                .as("eine abgelehnte Anfrage legt keine Anlage an").isEqualTo(anlagenVorher);
+
         String site = ok201(exchange("/api/v1/sites", HttpMethod.POST, token, null,
-                Map.of("name", "Nordwind Cuxhaven"))).path("id").asText();
+                Map.of("name", "Nordwind Cuxhaven", "standortId", standortId))).path("id").asText();
         LocalDate heute = LocalDate.now(BERLIN);
 
         JsonNode neu = ok(get("/api/v1/sites/" + site, token, null));
@@ -494,6 +510,15 @@ class BestandsuebernahmeApiTest {
         assertThat(eintrag.get("actor_name")).as("die Person, nicht VoltPilot").isEqualTo("demo2");
         assertThat(eintrag.get("actor_sub")).isNotNull();
         assertThat(eintrag.get("rueckwirkend")).isEqualTo(false);
+
+        // Übergang: die Plattform (und Servicekonten) bekommen den einen Standort weiter vorbelegt.
+        String adminToken = token("admin", "admin");
+        String plattform = ok201(exchange("/api/v1/sites", HttpMethod.POST, adminToken, NORDWIND,
+                Map.of("name", "Nordwind Plattform"))).path("id").asText();
+        assertThat(ok(get("/api/v1/sites/" + plattform, adminToken, NORDWIND)).path("standort")
+                .path("kurzzeichen").asText()).isEqualTo("ST-1");
+        assertThat(exchange("/api/v1/sites/" + plattform, HttpMethod.DELETE, adminToken, NORDWIND, null)
+                .getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
 
         // W5: löschen geht wie bisher — und die Zuordnung bleibt als beendetes Intervall.
         ResponseEntity<JsonNode> geloescht = exchange("/api/v1/sites/" + site, HttpMethod.DELETE, token,

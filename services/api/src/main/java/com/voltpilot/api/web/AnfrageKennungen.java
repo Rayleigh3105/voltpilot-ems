@@ -21,7 +21,8 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 /**
- * Die Anfrage-Kennung ({@value #KOPF}) für das Anlegen (Anlage-Flow a1, Befund B3): ging die Antwort
+ * Die Anfrage-Kennung ({@value #KOPF}) für das Anlegen und Verbinden (Anlage-Flow a1, Befund B3;
+ * {@code POST /sites}, {@code /standorte}, {@code /devices/claim}): ging die Antwort
  * auf „Weiter“ verloren, legte das Wiederholen die Anlage doppelt an. Das Portal sendet je Formular
  * eine feste Kennung; die api merkt sich Kennung, Fingerabdruck der Anfrage und Antwort je
  * Kundenbereich und Route (Tabelle {@code anfrage_kennung}, 24 h) und antwortet bei derselben
@@ -150,7 +151,8 @@ public class AnfrageKennungen {
     }
 
     /** Die Antwort-Form der Ablehnung an den Routen, die eine Kennung annehmen. */
-    @RestControllerAdvice(assignableTypes = {SiteController.class, StandortController.class})
+    @RestControllerAdvice(assignableTypes = {SiteController.class, StandortController.class,
+            DeviceController.class})
     public static class AbgelehntHandler {
         @ExceptionHandler(Abgelehnt.class)
         public ResponseEntity<Map<String, Object>> abgelehnt(Abgelehnt e) {
