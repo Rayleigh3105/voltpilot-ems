@@ -9,6 +9,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.voltpilot.api.config.KeycloakRealmRoleConverter;
+import com.voltpilot.api.ueberwachung.ExterneEmpfaengerApiTest;
 import com.voltpilot.api.uems.GesamtabzugApiTest;
 import jakarta.servlet.ServletException;
 import java.net.URI;
@@ -321,14 +322,18 @@ class ZugriffZaunApiTest {
 
     /**
      * AP-03 IP-13 (Einfuehrung 83e3820e): Benutzerliste und Protokoll der Benutzerverwaltung. AP-20 IP-17: der
-     * Gesamtabzug — nur der Kundenadministrator, erkannt am Zugriffs-Kontext.
+     * Gesamtabzug — nur der Kundenadministrator, erkannt am Zugriffs-Kontext. Alerting Scheibe 6: die externen
+     * Empfaenger einer Ueberwachung — ihr Dienst prueft {@code ueberwachung.verwalten} am Aufrufer, ohne Kontext 403;
+     * mit Kontext ist eine unbekannte Regel 404.
      */
     private static final List<NachIp4> NACH_IP4 = List.of(
             new NachIp4("/api/v1/benutzer", "/api/v1/benutzer", BenutzerVerwaltungApiTest.class),
             new NachIp4("/api/v1/benutzer/protokoll",
                     "/api/v1/benutzer/protokoll?von=2024-01-01T00:00:00Z&bis=2024-12-31T00:00:00Z",
                     BenutzerVerwaltungApiTest.class),
-            new NachIp4("/api/v1/unternehmen/abzug", "/api/v1/unternehmen/abzug", GesamtabzugApiTest.class));
+            new NachIp4("/api/v1/unternehmen/abzug", "/api/v1/unternehmen/abzug", GesamtabzugApiTest.class),
+            new NachIp4("/api/v1/meldungen/regeln/{id}/externe-empfaenger", ExterneEmpfaengerApiTest.PROBE,
+                    ExterneEmpfaengerApiTest.class));
 
     private static final Set<String> AUSGENOMMEN =
             NACH_IP4.stream().map(NachIp4::muster).collect(Collectors.toCollection(TreeSet::new));
@@ -1479,6 +1484,12 @@ class ZugriffZaunApiTest {
                 + "grund, actor_sub, actor_name, actor_rolle, actor_art) VALUES (?, ?, 'bearbeitet', '{}'::jsonb, "
                 + "'{\"name\":\"Zaun-Zähler\"}'::jsonb, '2026-09-01T00:00:00Z', false, 'Zaun-Protokoll', ?, 'Zaun', "
                 + "'kundenadministrator', 'kunde')", DEMO, messstelle, KUNDE_KA);
+        // Die Regel der Probe von ExterneEmpfaengerApiTest (NACH_IP4): eine Ueberwachung am Demo-Standort.
+        root.update("INSERT INTO ueberwachung (id, tenant_id, standort_id, name, wertart, bezug, bedingung, schwere, "
+                + "empfaenger, herkunft, aktiv, angelegt_von) VALUES (?, ?, ?, 'Zaun-Netzbezug', "
+                + "'anlage.netz.leistung', ?::jsonb, '{\"art\":\"ueber\",\"schwelle\":120}'::jsonb, 'warnung', "
+                + "'[]'::jsonb, 'eigen', true, ?)",
+                ExterneEmpfaengerApiTest.REGEL, DEMO, demoStandort, "{\"anlage\":\"" + BERLIN_SITE + "\"}", KUNDE_KA);
         buehne = new Buehne(messstelle, quelle, box, wago, komponente, ort, kostenstelle, prozess);
         String standort = "/api/v1/standorte/" + demoStandort;
         PROBEN.put(BEZUGSGROESSE_SELBST, "/api/v1/bezugsgroessen/" + bezugsgroesse);
