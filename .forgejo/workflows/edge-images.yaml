@@ -296,6 +296,23 @@ jobs:
       - name: OCPP system rig
         run: bash edge-app/test/e2e-ocpp.sh
 
+      - name: Set up Python (Günstig rig)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Günstig rig (optimizer plan -> core -> OCPP simulator)
+        # „Günstig" ohne Ziel über die GANZE Kette (Bericht
+        # vp-wallbox-modi-konzept §3.4): der echte Optimierer rechnet den Plan,
+        # der echte Kern verteilt ihn an eine simulierte Säule. Er braucht das
+        # Optimierer-Paket samt Solver - in einer eigenen venv, damit der Rest
+        # des Jobs davon nichts sieht.
+        run: |
+          venv="$(mktemp -d)/opt"
+          python -m venv "$venv"
+          "$venv/bin/pip" install -q -e 'services/optimization[solver]' -e services/forecast
+          OPT_PYTHON="$venv/bin/python" bash edge-app/test/e2e-guenstig.sh
+
       - name: Edge compose system rig
         run: bash edge-app/test/e2e-compose.sh
 
