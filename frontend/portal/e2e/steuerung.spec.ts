@@ -111,25 +111,94 @@ test('Laden: Ladepunkte, Womit laden und Ladeziel ohne Überlauf', async ({ page
   await expect(page.getByRole('region', { name: 'Netzanschluss' })).toContainText('Netzanschluss 22,0 kW');
   const wb = page.getByRole('region', { name: 'Wallbox Werkstatt' });
   await expect(wb.getByRole('button', { name: /Smart/ })).toHaveAttribute('aria-pressed', 'true');
-  await expect(wb.getByRole('group', { name: 'Womit laden' })).toBeVisible();
+  // Konzept k1: der gewählte Modus als eine Zeile mit Versprechen, Tagesband und zwei kurzen Sätzen.
+  const zeile = wb.getByRole('button', { name: 'Womit laden: Nur Sonne. Ändern' });
+  await expect(zeile).toContainText('Nur Überschuss, sonst Pause');
+  await expect(zeile.getByRole('img', { name: /geschätzte Ladeleistung bis 7:00 Uhr/ })).toBeVisible();
+  // Das Ziel-Blatt fragt kein zweites „Womit?“ und nennt die Quelle der Karte.
   await page.getByRole('region', { name: 'Ladepunkt Carport' }).locator('.lziel').click();
   const ziel = page.getByRole('dialog', { name: /Ladeziel/ });
   await expect(ziel).toContainText('Kein Auto angesteckt');
+  await expect(ziel).toContainText('Geladen wird mit „Günstig“');
+  await expect(ziel.getByText('Womit?', { exact: true })).toHaveCount(0);
   await page.keyboard.press('Escape');
   expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
+  expect(await ueberstehend(page)).toEqual([]);
   expect(fehler).toEqual([]);
 });
 
-test('Laden: Sonne + Speicher mit Erklärzeile, Untergrenze im Ladeplan und Reserve ohne Überlauf', async ({ page }) => {
+test('Laden: Womit laden? - Antippen zeigt, „So laden“ sendet, die Karte zeigt gesendet › übernommen › gemessen', async ({ page }, testInfo) => {
   const fehler = await oeffnen(page, LADEN);
   const wb = page.getByRole('region', { name: 'Wallbox Werkstatt' });
-  const womit = wb.getByRole('group', { name: 'Womit laden' });
-  await expect(womit.getByRole('button')).toHaveText(['Nur Sonne', 'Sonne + Minimum', 'Sonne + Speicher', 'Günstig']);
-  await womit.getByRole('button', { name: 'Sonne + Speicher' }).click();
-  await expect(page.getByRole('status')).toContainText('übernommen');
-  await expect(womit.getByRole('button', { name: 'Sonne + Speicher' })).toHaveAttribute('aria-pressed', 'true');
+  const zeile = wb.getByRole('button', { name: /^Womit laden: / });
+  await zeile.click();
+  const blatt = page.getByRole('dialog', { name: /Womit laden/ });
+  await expect(blatt.getByRole('radio')).toHaveCount(4);
+  if (testInfo.project.name.startsWith('desktop')) {
+    // Am Rechner: vier Spalten nebeneinander, jede mit eigener Vorschau.
+    await expect(blatt.getByRole('img', { name: /Ladeleistung bis/ })).toHaveCount(4);
+  }
+  await blatt.getByText('Günstig', { exact: true }).first().click();
+  await expect(blatt).toContainText('Preisgrenze');
+  await expect(blatt).toContainText('Vorgabe: billigstes Viertel der letzten 7 Tage');
+  await blatt.getByRole('button', { name: 'Preisgrenze anheben' }).click();
+  await expect(blatt).toContainText(/31\sct/);
+  // Antippen hat nichts gesendet.
+  await expect(wb).toContainText('Nur Sonne');
+  const box = await blatt.boundingBox();
+  expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width + 0.5);
+  await blatt.getByRole('button', { name: /So laden/ }).click();
+  await expect(page.getByRole('status')).toContainText('gesendet');
+  await expect(page.getByRole('status')).not.toContainText('Gilt ab jetzt');
+  await expect(blatt).toBeHidden();
+  await expect(zeile).toBeFocused();
+  const rm = wb.getByRole('list', { name: 'Rückmeldung' });
+  await expect(rm).toContainText('Gesendet: Günstig');
+  await expect(rm).toContainText('Box hat übernommen', { timeout: 15_000 });
+  await expect(rm).toContainText('Lädt mit 3,2 kW');
+  await expect(wb).toContainText('Lädt, solange der Bezugspreis unter 31,0 ct/kWh liegt.');
+  expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
+  expect(await ueberstehend(page)).toEqual([]);
+  expect(fehler).toEqual([]);
+});
+
+test('Laden: erster Besuch - „Lädt immer sofort voll“, nichts wird still gesetzt', async ({ page }) => {
+  const fehler = await oeffnen(page, '/e2e/steuerung.html?erstnutzer=1#/anlage/help-site/laden');
+  const lp = page.getByRole('region', { name: 'Ladepunkt Carport' });
+  await expect(lp).toContainText('Lädt immer sofort voll');
+  await expect(lp).toContainText('VoltPilot steuert diesen Ladepunkt noch nicht');
+  const schnell = lp.getByRole('button', { name: /Schnell/ });
+  await expect(schnell).toHaveAttribute('aria-pressed', 'true');
+  await expect(schnell).toContainText('immer');
+  // Gedrückt bleibt erkennbar, auch ohne Auto (gesperrt, aber nicht blass).
+  expect(await schnell.evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
+  // „Smart“ öffnet das Blatt mit Vorauswahl - und setzt nichts.
+  await lp.getByRole('button', { name: 'Smart' }).click();
+  const blatt = page.getByRole('dialog', { name: /Womit laden/ });
+  await expect(blatt.getByRole('radio', { name: /Sonne \+ Minimum/ })).toBeChecked();
+  await expect(blatt).toContainText('Empfohlen');
+  await blatt.getByRole('button', { name: 'Abbrechen' }).click();
+  await expect(blatt).toBeHidden();
+  await expect(lp).toContainText('Lädt immer sofort voll');
+  await lp.getByRole('button', { name: 'Womit laden einstellen' }).click();
+  await page.getByRole('dialog', { name: /Womit laden/ }).getByRole('button', { name: /So laden/ }).click();
+  await expect(lp.getByRole('button', { name: /^Womit laden: Sonne \+ Minimum/ })).toBeVisible();
+  expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
+  expect(await ueberstehend(page)).toEqual([]);
+  expect(fehler).toEqual([]);
+});
+
+test('Laden: Sonne + Speicher mit Erklärzeile und Reserve ohne Überlauf', async ({ page }) => {
+  const fehler = await oeffnen(page, LADEN);
+  const wb = page.getByRole('region', { name: 'Wallbox Werkstatt' });
+  await wb.getByRole('button', { name: /^Womit laden: / }).click();
+  const blatt = page.getByRole('dialog', { name: /Womit laden/ });
+  await expect(blatt.getByRole('radio')).toHaveCount(4);
+  await blatt.getByText('Sonne + Speicher', { exact: true }).first().click();
+  await blatt.getByRole('button', { name: /So laden/ }).click();
+  await expect(page.getByRole('status')).toContainText('gesendet');
+  await expect(wb.getByRole('button', { name: /^Womit laden: Sonne \+ Speicher/ })).toBeVisible();
   await expect(wb).toContainText('Der Speicher gibt gerade bis 2,4 kW frei und darf bis 15 % entladen');
-  await expect(wb).toContainText('Gestrichelt: bis dorthin darf der Speicher für das Auto entladen.');
   const reserve = page.getByRole('region', { name: 'Reserve für Sonne + Speicher' });
   await expect(reserve.getByRole('button', { name: '1 kWh · Vorgabe' })).toHaveAttribute('aria-pressed', 'true');
   await reserve.getByRole('button', { name: '2 kWh' }).click();
@@ -143,14 +212,26 @@ test('Laden: Sonne + Speicher mit Erklärzeile, Untergrenze im Ladeplan und Rese
 test('Laden: Sonne + Speicher mit einem Speicher, den VoltPilot nur beobachtet', async ({ page }) => {
   const fehler = await oeffnen(page, LADEN_BEOBACHTET);
   const wb = page.getByRole('region', { name: 'Wallbox Werkstatt' });
-  await wb.getByRole('group', { name: 'Womit laden' }).getByRole('button', { name: 'Sonne + Speicher' }).click();
-  await expect(page.getByRole('status')).toContainText('übernommen');
+  await wb.getByRole('button', { name: /^Womit laden: / }).click();
+  const blatt = page.getByRole('dialog', { name: /Womit laden/ });
+  await blatt.getByText('Sonne + Speicher', { exact: true }).first().click();
+  await blatt.getByRole('button', { name: /So laden/ }).click();
+  await expect(page.getByRole('status')).toContainText('gesendet');
   await expect(wb).toContainText('Die Box gibt gerade bis 2,4 kW aus dem Speicher frei, bis er bei 15 % steht');
   await expect(wb).toContainText('VoltPilot steuert den Speicher dabei nicht, sondern beobachtet ihn');
   await expect(wb).not.toContainText('darf bis 15 % entladen');
   expect(await ueberlauf(page)).toBeLessThanOrEqual(0);
   expect(await ueberstehend(page)).toEqual([]);
   expect(fehler).toEqual([]);
+});
+
+test('Laden: „bis Abstecken“ bleibt im Knopf (Schnell-Blatt)', async ({ page }) => {
+  await oeffnen(page, LADEN);
+  await page.getByRole('region', { name: 'Wallbox Werkstatt' }).getByRole('button', { name: /^Schnell/ }).click();
+  const knopf = page.getByRole('dialog').getByRole('button', { name: 'bis Abstecken' });
+  await expect(knopf).toBeVisible();
+  const ragt = await knopf.evaluate((el) => el.scrollWidth - el.clientWidth);
+  expect(ragt).toBeLessThanOrEqual(0);
 });
 
 test('Regeln: Satzbaukasten mit Probelauf, Folgen und Aktivieren', async ({ page }) => {

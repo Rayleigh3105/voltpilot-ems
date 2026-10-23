@@ -2,9 +2,8 @@
  * Reiter „Laden“ - die reinen Ableitungen (Prototyp `ui-laden.js`).
  *
  * Das Netzanschluss-Band liest den Ladepark-Rahmen der Box (gemessene Hauslast,
- * Grenze, Sicherheitsabstand); der Ladeplan eines Ziels ist eine SCHÄTZUNG aus
- * Prognose und Preis - Sonne zuerst, dann die günstigsten Viertelstunden bis
- * zur Uhrzeit - und heißt auch so.
+ * Grenze, Sicherheitsabstand). Die Vorschau je Ladequelle samt Ladeziel - eine
+ * SCHÄTZUNG aus Prognose und Preis - rechnet `ladeVorschau.ts`.
  *
  * Die Anschlussgrenze prüft das Rahmen-Blatt wie der Server (`PUT
  * /charging-frame`, AP-01 IP-13) gegen den heute gebundenen Netzanschluss,
@@ -15,7 +14,6 @@ import { KW, zahl as ergebnisZahl } from '../uemsErgebnis';
 import { messwertAlter, type SpeicherFreigabe } from '../ladepunkte';
 import type { LadeparkRahmen } from '../verbraucherZone';
 import { quellenAnteil, type GeraetBild, type Reihen } from './bild';
-import { N } from './zeit';
 
 export type LadeWahl = 'aus' | 'smart' | 'schnell';
 export type LadeQuelle = 'sonne' | 'min' | 'speicher' | 'guenstig';
@@ -48,21 +46,28 @@ export function ladeWahl(g: GeraetBild): LadeWahl {
  * {@link ladeWahl}): ein laufender Eingriff („Jetzt voll laden“/Pause) oder die
  * Steuerart `sofort` - der Anlagen-Standard „schnell“ einer Anlage, deren Kunde
  * nie gewählt hat (API `SteuerartProjektion.anlagenStandard`). Ein Eingriff
- * endet; steht die Steuerart auf `sofort`, wird „Smart“ zur Steuerart „Sonne
- * zuerst“, der Vorgabe innerhalb der Karte. Beides in EINEM Klick.
- *
- * Vorher beendete „Smart“ nur einen Eingriff: die Karte blieb bei `sofort` auf
- * „Schnell“, und „Nur Sonne“ (die Chips erscheinen nur unter „Smart“) war nie
- * erreichbar (Produktion, 04.10.2026).
+ * endet sofort; steht die Steuerart auf `sofort`, öffnet „Smart“ das Blatt
+ * „Womit laden?“ mit der sichtbaren Vorauswahl „Sonne + Minimum“ - gesetzt
+ * wird erst mit „So laden“ (Konzept k1, E5=A; vorher setzte der Tipp still
+ * „Sonne + Minimum“, Befund 10).
  */
 export function smartSchritte(g: Pick<GeraetBild, 'eingriff' | 'steuerart'>): {
   eingriffBeenden: boolean;
-  steuerart: LadeQuelle | null;
+  blattOeffnen: boolean;
 } {
+  const sofort = g.steuerart?.quelle === 'sofort';
   return {
-    eingriffBeenden: g.eingriff != null,
-    steuerart: g.steuerart?.quelle === 'sofort' ? 'min' : null,
+    // Mit `sofort` beendet erst „So laden“ den Eingriff - Abbrechen lässt alles, wie es war.
+    eingriffBeenden: g.eingriff != null && !sofort,
+    blattOeffnen: sofort,
   };
+}
+
+/** Die Ladequelle eines Auftrags an den Server (für die Rückmeldung). */
+export function quelleAusWunsch(w: { quelle: string; ueberschussModus?: string | null }): LadeQuelle | null {
+  if (w.quelle === 'guenstig') return 'guenstig';
+  if (w.quelle !== 'ueberschuss') return null;
+  return w.ueberschussModus === 'mindestleistung' ? 'min' : w.ueberschussModus === 'speicher' ? 'speicher' : 'sonne';
 }
 
 export function ladeQuelle(g: GeraetBild): LadeQuelle | null {
@@ -199,54 +204,6 @@ export function band(rahmen: LadeparkRahmen | null | undefined, lp: GeraetBild[]
     freiKw: frei,
     ladenKw: laden,
   };
-}
-
-export interface Ladeplan {
-  kw: (number | null)[];
-  kwh: number;
-  pvKwh: number;
-  netzKwh: number;
-  eur: number;
-  fertig: number | null;
-  schafft: boolean;
-}
-
-/**
- * Wie ein Ladeziel voraussichtlich erfüllt wird: mit der Ladeleistung `kw`
- * zuerst in Viertelstunden mit Überschuss (höchster zuerst), dann - wenn
- * erlaubt - in den günstigsten. Eine Schätzung; die Box plant selbst.
- */
-export function ladeplan(rh: Reihen, von: number, bis: number, zielKwh: number, kw: number, nurGuenstig: boolean): Ladeplan {
-  const ende = Math.min(bis, N);
-  const kandidaten: { t: number; sonne: number; preis: number }[] = [];
-  for (let t = von; t < ende; t++) {
-    kandidaten.push({ t, sonne: Math.max(0, -(rh.netz[t] ?? 0)), preis: rh.preis[t] ?? Number.POSITIVE_INFINITY });
-  }
-  const reihe = nurGuenstig
-    ? [...kandidaten].sort((a, b) => a.preis - b.preis)
-    : [
-        ...kandidaten.filter((k) => k.sonne > 0.5).sort((a, b) => b.sonne - a.sonne),
-        ...kandidaten.filter((k) => k.sonne <= 0.5).sort((a, b) => a.preis - b.preis),
-      ];
-  const out: (number | null)[] = Array.from({ length: N }, () => null);
-  let rest = zielKwh;
-  let pvKwh = 0;
-  let netzKwh = 0;
-  let eur = 0;
-  let fertig: number | null = null;
-  for (const k of reihe) {
-    if (rest <= 0.01) break;
-    if (!Number.isFinite(k.preis) && k.sonne <= 0.5) continue;
-    const e = Math.min(rest, kw / 4);
-    out[k.t] = e * 4;
-    const sonne = Math.min(e, k.sonne / 4);
-    pvKwh += sonne;
-    netzKwh += e - sonne;
-    if (Number.isFinite(k.preis)) eur += ((e - sonne) * k.preis) / 100;
-    rest -= e;
-    fertig = fertig == null ? k.t + 1 : Math.max(fertig, k.t + 1);
-  }
-  return { kw: out, kwh: zielKwh - Math.max(0, rest), pvKwh, netzKwh, eur, fertig, schafft: rest <= 0.3 };
 }
 
 /** Die nächste Viertelstunde, an der es eine Uhrzeit ist („morgen 07:00“, falls heute vorbei). */

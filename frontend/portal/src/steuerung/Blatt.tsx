@@ -24,6 +24,8 @@ export interface BlattProps {
   kopf?: ReactNode;
   fuss?: ReactNode;
   voll?: boolean;
+  /** Am Rechner ein breites Fenster (Vergleich in Spalten, „Womit laden?“). */
+  breit?: boolean;
   onClose: () => void;
   children: ReactNode;
 }
@@ -37,7 +39,7 @@ const AUSBLENDEN_MS = 280;
  */
 const offeneBlaetter: object[] = [];
 
-export function Blatt({ symbol, titel, unter, kopf, fuss, voll, onClose, children }: BlattProps) {
+export function Blatt({ symbol, titel, unter, kopf, fuss, voll, breit, onClose, children }: BlattProps) {
   const [offen, setOffen] = useState(false);
   const titelId = useId();
   const blattRef = useRef<HTMLDivElement>(null);
@@ -108,7 +110,7 @@ export function Blatt({ symbol, titel, unter, kopf, fuss, voll, onClose, childre
       <div className="sheet-scrim" onClick={schliessen} aria-hidden="true" />
       <div
         ref={blattRef}
-        className={`sheet${voll ? ' voll' : ''}`}
+        className={`sheet${voll ? ' voll' : ''}${breit ? ' breit' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titelId}

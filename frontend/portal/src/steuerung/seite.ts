@@ -143,6 +143,8 @@ export type BlattZustand =
   | { art: 'neu'; id: string }
   | { art: 'rahmen' }
   | { art: 'ziel'; id: string }
+  /** „Womit laden?“ - das Vorschau-Blatt eines Ladepunkts (Konzept k1, E1=B). */
+  | { art: 'womit'; id: string }
   | { art: 'fahrzeug'; tagRef: string }
   | { art: 'regel'; flowId?: string; geraet?: string; vorlage?: string }
   | { art: 'szene'; id: string };

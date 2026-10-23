@@ -45,7 +45,7 @@ interface Def {
 const Q_LAST = ['ueberschuss', 'guenstig', 'feste_zeiten', 'sofort'];
 const DEFS: Def[] = [
   { id: 'wb', typ: 'ev-charger', typLabel: 'Ladepunkt', name: 'Wallbox Werkstatt', nenn: 11, gemessen: true, steuerart: { quelle: 'ueberschuss', herkunft: 'saeule', ueberschussModus: 'pausieren' }, quellen: ['ueberschuss', 'ueberschuss_speicher', 'guenstig', 'sofort'], ziele: ['bis_uhrzeit'] },
-  { id: 'lp', typ: 'ev-charger', typLabel: 'Ladepunkt', name: 'Ladepunkt Carport', nenn: 11, gemessen: true, steuerart: { quelle: 'guenstig', herkunft: 'saeule', preisgrenzeCtKwh: 9, ziel: 'bis_uhrzeit', zielEnergieKwh: 30, zielFenster: { tage: 'daily', von: '', bis: '07:00' } }, quellen: ['ueberschuss', 'guenstig', 'sofort'], ziele: ['bis_uhrzeit'] },
+  { id: 'lp', typ: 'ev-charger', typLabel: 'Ladepunkt', name: 'Ladepunkt Carport', nenn: 11, gemessen: true, steuerart: { quelle: 'guenstig', herkunft: 'saeule', preisgrenzeCtKwh: 28, ziel: 'bis_uhrzeit', zielEnergieKwh: 30, zielFenster: { tage: 'daily', von: '', bis: '07:00' } }, quellen: ['ueberschuss', 'guenstig', 'sofort'], ziele: ['bis_uhrzeit'] },
   { id: 'hs', typ: 'heating-rod', typLabel: 'Heizstab', name: 'Heizstab Warmwasser', nenn: 3, gemessen: true, steuerart: { quelle: 'ueberschuss', herkunft: 'policy', schwelleKw: 1 }, quellen: Q_LAST, ziele: ['laufzeit_bis'], levels: [1, 2, 3], hilft: false },
   { id: 'wp', typ: 'heat-pump-sgready', typLabel: 'Wärmepumpe (SG-Ready)', name: 'Wärmepumpe', nenn: 1.5, gemessen: false, steuerart: { quelle: 'freigabe_ueberschuss', herkunft: 'policy', schwelleKw: 2 }, quellen: ['freigabe_ueberschuss', 'freigabe_guenstig', 'sofort'], ziele: [] },
   { id: 'pool', typ: 'pump', typLabel: 'Pumpe', name: 'Poolpumpe', nenn: 0.75, gemessen: true, steuerart: { quelle: 'ueberschuss', herkunft: 'policy', schwelleKw: 0.75, ziel: 'laufzeit_bis', zielLaufzeitMinuten: 360, zielFenster: { tage: 'daily', von: '', bis: '20:00' } }, quellen: Q_LAST, ziele: ['laufzeit_bis'], hilft: true },
@@ -64,9 +64,32 @@ const GESTEUERT = DEFS.filter((d) => d.id in KW) as (Def & { id: Id })[];
 
 const summe = (t: number) => GESTEUERT.reduce((s, d) => s + (KW[d.id][t] ?? 0), 0);
 const gesamtLast = (t: number) => (D.last[t] ?? 0) + summe(t);
+/** Die Last des Fahrplans: ohne die Ladepunkte - die plant er selbst (Ko-Optimierer, `base_load_kw`). */
+const planLast = (t: number) => gesamtLast(t) - LADE.reduce((s, id) => s + (KW[id][t] ?? 0), 0);
+/** Bezugspreis des Beispiels: Börse + Netzentgelte/Abgaben, mit MwSt. (Konzept k1, Abschnitt 2). */
+const bezugspreis = (spotCt: number) => Math.round((spotCt + 17) * 1.19 * 100) / 100;
+
+/**
+ * `?erstnutzer=1`: beide Ladepunkte stehen auf dem Anlagen-Standard `sofort` - der erste Besuch
+ * (Konzept k1, E5=A). `?speicher=beobachtet` siehe unten.
+ */
+const ERSTNUTZER = new URLSearchParams(location.search).get('erstnutzer') === '1';
+if (ERSTNUTZER) {
+  for (const d of DEFS) if (d.id === 'wb' || d.id === 'lp') d.steuerart = { quelle: 'sofort', herkunft: 'standard' };
+}
+
+/** Die Bahn, die die Box für eine Steuerart fährt (`SteuerartProjektion.bahnAus`, seit #1569 Günstig = nur_sonne). */
+function bahn(st: Record<string, unknown>): { source: string; minKw: number | null; storageRelease: boolean } {
+  if (st.quelle === 'ueberschuss') {
+    if (st.ueberschussModus === 'mindestleistung') return { source: 'sonne_zuerst', minKw: (st.mindestleistungKw as number) ?? null, storageRelease: false };
+    return { source: 'nur_sonne', minKw: null, storageRelease: st.ueberschussModus === 'speicher' };
+  }
+  return { source: st.quelle === 'guenstig' ? 'nur_sonne' : 'schnell', minKw: null, storageRelease: false };
+}
 
 function optionen(d: Def) {
-  const v: Record<string, unknown> = { schwelleKw: d.nenn, preisgrenzeCtKwh: 10, mindestlaufzeitMinuten: 10 };
+  // Die Vorgabe der Preisgrenze ist das billigste Viertel des BEZUGSPREISES (`SteuerartPreisVorgabe`).
+  const v: Record<string, unknown> = { schwelleKw: d.nenn, preisgrenzeCtKwh: 30, mindestlaufzeitMinuten: 10 };
   if (d.typ === 'heat-pump-sgready') Object.assign(v, { mindestlaufzeitMinuten: 30, sperrzeitMinuten: 20 });
   return {
     schreibbar: d.schreibbar !== false,
@@ -112,10 +135,10 @@ export function installSteuerungFixtures() {
   const slots = Array.from({ length: 192 - J }, (_, k) => {
     const i = J + k;
     return {
-      start: ts(i), pvKw: pv[i], loadKw: gesamtLast(i), gridKw: netz[i], batteryKw: sp[i], socPct: soc[i],
+      start: ts(i), pvKw: pv[i], loadKw: planLast(i), gridKw: netz[i], batteryKw: sp[i], socPct: soc[i],
       priceEurMwh: preis[i] * 10, curtailKw: D.abgeregelt[i] ?? 0, costEur: 0, baselineCostEur: 0,
       slotRole: null, slotFlags: null, storedValueCtKwh: null, gridValueCtKwh: null, peakPressureEurKw: null,
-      importPriceCtKwh: null, exportValueCtKwh: null, importPriceSource: null,
+      importPriceCtKwh: bezugspreis(preis[i]), exportValueCtKwh: 7.9, importPriceSource: 'sammelaufschlag',
       // „Sonne + Speicher“: die Untergrenze je Viertelstunde - keine, wo der
       // Plan Netzstrom bezieht (dort handelt er); abends steigt sie für die Nacht.
       evReleaseFloorSocPct: netz[i] > 0.05 ? null : untergrenze(i),
@@ -181,8 +204,11 @@ export function installSteuerungFixtures() {
       mode: new URLSearchParams(location.search).get('speicher') === 'beobachtet' ? 'frei_beobachtet' : 'frei',
       note: 'Der Speicher gibt bis 2,4 kW für das Auto frei und darf bis 15 % entladen.' } },
   chargers: [
-    { deviceId: 'help-box', chargePointId: 'CP-WERKSTATT', entityId: eid('wb'), label: 'Wallbox Werkstatt', priority: true, connected: true, ready: true, vendor: 'go-e', model: 'Charger', lastSeen: JETZT, reportedAt: JETZT, connectors: [connector('wb', true)] },
-    { deviceId: 'help-box', chargePointId: 'CP-CARPORT', entityId: eid('lp'), label: 'Ladepunkt Carport', priority: false, connected: true, ready: true, vendor: 'KEBA', model: 'P30', lastSeen: JETZT, reportedAt: JETZT, connectors: [connector('lp', false)] },
+    // Das Echo der Bahn (Konzept k1 Regel 4): die Box fährt, was gewählt ist.
+    { deviceId: 'help-box', chargePointId: 'CP-WERKSTATT', entityId: eid('wb'), label: 'Wallbox Werkstatt', priority: true, connected: true, ready: true, vendor: 'go-e', model: 'Charger', lastSeen: JETZT, reportedAt: JETZT,
+      quelle: bahn(DEFS[0].steuerart), quelleUebernommen: true as boolean | null, connectors: [connector('wb', true)] },
+    { deviceId: 'help-box', chargePointId: 'CP-CARPORT', entityId: eid('lp'), label: 'Ladepunkt Carport', priority: false, connected: true, ready: true, vendor: 'KEBA', model: 'P30', lastSeen: JETZT, reportedAt: JETZT,
+      quelle: bahn(DEFS[1].steuerart), quelleUebernommen: true as boolean | null, connectors: [connector('lp', false)] },
   ] };
   const consumerPlan = { planId: 'st-plan', generatedAt: JETZT, slotMinutes: 15,
     entities: GESTEUERT.map((d) => ({ entityId: eid(d.id), name: d.name,
@@ -264,6 +290,19 @@ export function installSteuerungFixtures() {
       // Wie der Server: die Steuerart gilt danach (die Seite liest die Liste neu).
       const e = verbraucher.find((v) => v.entityId === entityId);
       if (e) e.steuerart = { ...w, herkunft: e.ladepunkt ? 'saeule' : 'policy' } as typeof e.steuerart;
+      // Die Box: der nächste Herzschlag (eine Sekunde später) meldet noch die alte Bahn, der danach
+      // die neue - mit neuer Meldezeit und frischer Messung des Steckers (gesendet › übernommen › gemessen).
+      const cp = charging.chargers.find((c) => c.entityId === entityId);
+      if (cp) {
+        cp.quelleUebernommen = false;
+        cp.reportedAt = '2026-09-29T11:10:05.000Z';
+        window.setTimeout(() => {
+          cp.quelle = bahn(w);
+          cp.quelleUebernommen = true;
+          cp.reportedAt = '2026-09-29T11:10:20.000Z';
+          for (const con of cp.connectors) con.meteredAt = '2026-09-29T11:10:30.000Z';
+        }, 1000);
+      }
       return { steuerart: { ...w, herkunft: 'policy' }, aktiv: true, entityId };
     },
     setSuggestionState: async (_s: string, key: string, state: string) => ({ key, state, mutedUntil: state === 'nur_messen' ? null : '2099-01-01T00:00:00Z', updatedAt: JETZT }),

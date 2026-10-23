@@ -16,12 +16,12 @@ import {
   zuGuided,
   type RegelEntwurf,
 } from './regeln';
-import { band, ladeplan, naechsteUhrzeit } from './laden';
+import { band, naechsteUhrzeit } from './laden';
 import { N } from './zeit';
 
 function leereReihen(): Reihen {
   const n = () => Array.from({ length: N }, () => null as number | null);
-  return { pv: n(), last: n(), netz: n(), bat: n(), soc: n(), preis: n(), temp: n(), abgeregelt: n(), gemessenBis: 52, morgenBekannt: false };
+  return { pv: n(), last: n(), netz: n(), bat: n(), soc: n(), preis: n(), bezug: n(), einspeise: n(), temp: n(), abgeregelt: n(), gemessenBis: 52, morgenBekannt: false };
 }
 
 const geraet = (o: Partial<GeraetBild> = {}): GeraetBild => ({
@@ -159,14 +159,11 @@ describe('Neu in der Anlage', () => {
 });
 
 describe('Laden', () => {
-  it('teilt den Netzanschluss auf und plant ein Ziel Sonne zuerst', () => {
+  it('teilt den Netzanschluss auf und findet die nächste Uhrzeit', () => {
     const rh = leereReihen();
     for (let t = 52; t < 70; t++) { rh.preis[t] = 20; rh.netz[t] = t < 56 ? -4 : 0.5; rh.last[t] = 1; }
     const b = band({ netzanschlussKw: 22, effektivGrenzeKw: 22, sicherheitsabstandPct: 10, hausLastKw: 1 }, [], rh, 52)!;
     expect(b.freiKw).toBeCloseTo(18.8);
-    const p = ladeplan(rh, 52, 70, 6, 4, false);
-    expect(p.schafft).toBe(true);
-    expect(p.pvKwh).toBeCloseTo(4);
     expect(naechsteUhrzeit(52, '07:00')).toBe(124);
     expect(naechsteUhrzeit(52, '16:00')).toBe(64);
   });

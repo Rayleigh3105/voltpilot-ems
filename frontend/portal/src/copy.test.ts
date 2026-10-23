@@ -4730,3 +4730,34 @@ describe('Konzept Messen m1 · Kostenstellen, Prozesse, Bezugsgrößen: „Antwo
     }
   });
 });
+
+describe('Konzept k1 · Womit laden? - ein Modus, ein Name, ein Versprechen', () => {
+  it('jedes Versprechen hat höchstens fünf Wörter, und jede Ladequelle hat eines', async () => {
+    const { LADEQUELLE, LADEQUELLE_VERSPRECHEN, LADEQUELLE_GUT_WENN } = await import('./glossar');
+    for (const k of Object.keys(LADEQUELLE) as (keyof typeof LADEQUELLE)[]) {
+      expect(LADEQUELLE_VERSPRECHEN[k].split(/\s+/).length, k).toBeLessThanOrEqual(5);
+      expect(LADEQUELLE_GUT_WENN[k], k).toBeTruthy();
+    }
+  });
+
+  it('Karte, Blatt, Ziel-Blatt, Fahrzeuge, Gerätblatt und Hilfe sprechen dieselben Namen - und nie vom Börsenpreis als Grenze', () => {
+    const lesen = (datei: string) => stripComments(readFileSync(join(SRC, datei), 'utf8'));
+    for (const datei of ['steuerung/LadenReiter.tsx', 'steuerung/LadeWahl.tsx']) {
+      const q = lesen(datei);
+      expect(q, datei).toContain('LADEQUELLE_VERSPRECHEN');
+      expect(q, datei).not.toMatch(/Börsenpreis unter|Ø Börse|Smart heißt hier/);
+    }
+    // Das Ziel-Blatt fragt kein zweites „Womit?“ (E4=A).
+    expect(lesen('steuerung/LadenReiter.tsx')).not.toMatch(/Sonne zuerst, dann günstig|nur günstige Stunden|<h3>Womit\?<\/h3>/);
+    // Fahrzeuge und Gerätblatt: die Namen aus dem Glossar, kein „Solar-Überschuss“ mehr.
+    expect(lesen('fahrzeugProfile.ts')).toContain('LADEQUELLE');
+    expect(lesen('fahrzeugProfile.ts')).not.toContain('Solar-Überschuss');
+    expect(lesen('steuerung/Blaetter.tsx')).toContain('LADEQUELLE_VERSPRECHEN');
+    // Nach dem Senden: „gesendet“, nicht „Gilt ab jetzt“ (Regel 4).
+    expect(lesen('steuerung/SteuerungSeite.tsx')).not.toContain('Gilt ab jetzt; Gemessenes bleibt');
+    const hilfe = readFileSync(join(SRC, 'help/content/steuerung.ts'), 'utf8');
+    for (const v of ['Nur Überschuss, sonst Pause', 'Immer etwas, Sonne obendrauf', 'Sonne, dazu der Speicher-Rest', 'Netzstrom, wenn er billig ist', 'So laden']) {
+      expect(hilfe).toContain(v);
+    }
+  });
+});

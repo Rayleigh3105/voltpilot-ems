@@ -69,24 +69,24 @@ describe('Smart an einem Ladepunkt', () => {
   it('macht aus dem Anlagen-Standard „sofort“ die Steuerart Sonne zuerst - sonst bliebe die Karte auf Schnell', () => {
     const g = stand(null, 'sofort');
     expect(ladeWahl(g as GeraetBild)).toBe('schnell');
-    expect(smartSchritte(g)).toEqual({ eingriffBeenden: false, steuerart: 'min' });
+    expect(smartSchritte(g)).toEqual({ eingriffBeenden: false, blattOeffnen: true });
   });
 
   it('beendet „Jetzt voll laden“ und lässt eine gewählte Sonnen-Steuerart stehen', () => {
     const g = stand({ art: 'an', bisMs: null }, 'ueberschuss');
     expect(ladeWahl(g as GeraetBild)).toBe('schnell');
-    expect(smartSchritte(g)).toEqual({ eingriffBeenden: true, steuerart: null });
+    expect(smartSchritte(g)).toEqual({ eingriffBeenden: true, blattOeffnen: false });
   });
 
-  it('erledigt Eingriff UND Steuerart in einem Klick', () => {
-    expect(smartSchritte(stand({ art: 'aus', bisMs: null }, 'sofort'))).toEqual({ eingriffBeenden: true, steuerart: 'min' });
+  it('setzt nichts still: mit „sofort“ öffnet Smart das Blatt, erst „So laden“ beendet den Eingriff (E5=A)', () => {
+    expect(smartSchritte(stand({ art: 'aus', bisMs: null }, 'sofort'))).toEqual({ eingriffBeenden: false, blattOeffnen: true });
   });
 
   it('tut nichts, wenn der Ladepunkt schon smart lädt', () => {
     const g = stand(null, 'ueberschuss');
     expect(ladeWahl(g as GeraetBild)).toBe('smart');
-    expect(smartSchritte(g)).toEqual({ eingriffBeenden: false, steuerart: null });
-    expect(smartSchritte(stand(null, null))).toEqual({ eingriffBeenden: false, steuerart: null });
+    expect(smartSchritte(g)).toEqual({ eingriffBeenden: false, blattOeffnen: false });
+    expect(smartSchritte(stand(null, null))).toEqual({ eingriffBeenden: false, blattOeffnen: false });
   });
 });
 
