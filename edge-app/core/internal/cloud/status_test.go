@@ -354,14 +354,25 @@ func TestHeartbeatCarriesTheBoxNetworkBlockOnlyWhenItKnowsSomething(t *testing.T
 // Portal behaelt seinen ehrlichen Satz statt einer leeren Behauptung.
 func TestHeartbeatOmitsTheNetworkBlockWhenTheBoxKnowsNothing(t *testing.T) {
 	sink := startStatusSink(t)
-	for _, fn := range []func() *NetworkSummary{nil, func() *NetworkSummary { return nil }} {
-		link := connectedLinkWith(t, sink, "edge-2026.08.10", fn)
-		if err := link.PublishStatus("default", nil, nil, nil, nil, nil, nil, nil,
-			nil, nil, nil, nil); err != nil {
-			t.Fatal(err)
-		}
-		if _, ok := sink.last(t)["network"]; ok {
-			t.Fatal("a box that knows nothing must send NO network block")
-		}
+	cases := map[string]func() *NetworkSummary{
+		"ohne Quelle":        nil,
+		"Quelle ohne Wissen": func() *NetworkSummary { return nil },
+	}
+	for name, fn := range cases {
+		// ⚠ Ein Subtest je Fall: beide Links tragen DIESELBE Client-ID, und erst
+		// das Cleanup des Subtests schliesst den ersten, bevor der zweite sich
+		// verbindet. Lebten beide, nähme der Broker dem einen die Sitzung, sein
+		// Reconnect dem anderen - und PublishStatus lief unter Last in eine
+		// geschlossene Verbindung („broken pipe").
+		t.Run(name, func(t *testing.T) {
+			link := connectedLinkWith(t, sink, "edge-2026.08.10", fn)
+			if err := link.PublishStatus("default", nil, nil, nil, nil, nil, nil, nil,
+				nil, nil, nil, nil); err != nil {
+				t.Fatal(err)
+			}
+			if _, ok := sink.last(t)["network"]; ok {
+				t.Fatal("a box that knows nothing must send NO network block")
+			}
+		})
 	}
 }

@@ -208,6 +208,13 @@ func (a *Agent) runFlexFallback(now time.Time) {
 
 		if active != nil {
 			a.logFlexTransition(entityID, flexfallback.ReasonRun, active.ID, activeVerdict)
+			cmds := active.Commands()
+			a.entMu.Lock()
+			if ent := a.entRegistry.Find(entityID); ent != nil {
+				// Eine OCPP-Säule kennt nur limit_kw (consumerCommandsFor).
+				cmds = consumerCommandsFor(*ent, cmds)
+			}
+			a.entMu.Unlock()
 			a.arb.SubmitInternal(&desired.Desired{
 				EntityID:  entityID,
 				RequestID: "flex-fallback:" + activeVerdict.Instance.Key,
@@ -215,7 +222,7 @@ func (a *Agent) runFlexFallback(now time.Time) {
 				Priority:  desired.ClassDeadlineFallback,
 				TTL:       flexFallbackTTL,
 				IssuedAt:  now,
-				Commands:  active.Commands(),
+				Commands:  cmds,
 			})
 			a.flexMu.Lock()
 			if a.flexHeld == nil {

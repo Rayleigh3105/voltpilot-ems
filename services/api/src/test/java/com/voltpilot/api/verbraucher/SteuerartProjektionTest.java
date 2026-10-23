@@ -310,4 +310,41 @@ class SteuerartProjektionTest {
         Steuerart sonst = SteuerartProjektion.projiziere(nurFrist, false, null);
         assertThat(sonst.quelle()).isEqualTo(SteuerartProjektion.QUELLE_GUENSTIG);
     }
+
+    /**
+     * ⚠ „Günstig" fährt an der Säule die Bahn {@code nur_sonne}: sie gilt nur,
+     * wo kein frischer Plan die Säule hält, und dort darf kein Netzstrom zu
+     * einem unbekannten Preis fliessen (Bericht vp-wallbox-modi-konzept §3.4;
+     * bis dahin {@code schnell} = jederzeit voll).
+     */
+    @Test
+    void guenstigFaehrtOhnePlanNurSonneNieSchnell() {
+        assertThat(SteuerartProjektion.bahnAus(SteuerartProjektion.QUELLE_GUENSTIG, null))
+                .isEqualTo(SteuerartProjektion.POLICY_NUR_SONNE);
+        assertThat(SteuerartProjektion.speicherFreigabeAus(SteuerartProjektion.QUELLE_GUENSTIG,
+                null)).isFalse();
+        // Die anderen Quellen bleiben, wie sie waren.
+        assertThat(SteuerartProjektion.bahnAus(SteuerartProjektion.QUELLE_SOFORT, null))
+                .isEqualTo(SteuerartProjektion.POLICY_SCHNELL);
+        assertThat(SteuerartProjektion.bahnAus(SteuerartProjektion.QUELLE_UEBERSCHUSS,
+                SteuerartProjektion.MODUS_PAUSIEREN)).isEqualTo(SteuerartProjektion.POLICY_NUR_SONNE);
+        assertThat(SteuerartProjektion.bahnAus(SteuerartProjektion.QUELLE_UEBERSCHUSS,
+                SteuerartProjektion.MODUS_MINDESTLEISTUNG))
+                .isEqualTo(SteuerartProjektion.POLICY_SONNE_ZUERST);
+    }
+
+    /** Die Bahn {@code nur_sonne} allein hiesse „Nur Sonne" - die Policy entscheidet. */
+    @Test
+    void guenstigAnDerSaeuleLiestSichAusDerPolicyNichtAusDerBahn() {
+        JsonNode guenstig = doc("""
+                [{"id":"guenstig","kind":"reactive","enforcement":"opportunistic",
+                  "condition":{"signal":"market.import_price_ct_kwh","operator":"lt","value":12},
+                  "target":{"kind":"kw","value":11}}]""");
+        Steuerart bahn = SteuerartProjektion.saeulenSteuerart(
+                SteuerartProjektion.bahnAus(SteuerartProjektion.QUELLE_GUENSTIG, null), null,
+                SteuerartProjektion.anlagenStandard("schnell", null));
+        Steuerart s = SteuerartProjektion.projiziere(guenstig, true, bahn);
+        assertThat(s.quelle()).isEqualTo(SteuerartProjektion.QUELLE_GUENSTIG);
+        assertThat(s.preisgrenzeCtKwh()).isEqualByComparingTo("12");
+    }
 }

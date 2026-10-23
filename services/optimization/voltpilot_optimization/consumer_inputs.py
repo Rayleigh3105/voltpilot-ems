@@ -25,9 +25,15 @@ Compilation rules (all deterministic, all unit-tested offline):
   requirement with reason ``price_below_threshold``. A tree touching ANY
   local signal (SoC, PV surplus, availability, ...) is edge work
   (Inkrement 4) and is SKIPPED here - never half-compiled.
-- **Skipped honestly, never guessed:** ``opportunistic`` requirements
-  (§5.5, later increment), ``mode`` targets (not plannable), off-targets and
-  inactive requirements compile to nothing.
+- **Opportunistic price windows (Steuerart „Günstig"):** an ``opportunistic``
+  reactive requirement with a PURE cloud condition has no other executor
+  (the edge compiler builds no artifact for it), so it compiles the same way:
+  the slots where the price holds become its window. Where the price does
+  not hold - or no slot of the horizon qualifies at all - the consumer is
+  planned OFF, explicitly: a missing price is never "go".
+- **Skipped honestly, never guessed:** every other ``opportunistic``
+  requirement (§5.5, later increment), ``mode`` targets (not plannable),
+  off-targets and inactive requirements compile to nothing.
 - **Flexible tasks split per INSTANCE:** a recurring demand yields one
   requirement per recurrence instance inside the horizon (id suffixed with
   the instance date), each owing its full demand within its remaining
@@ -223,6 +229,33 @@ def _slots_per_minute_ceil(seconds: int | None, slot_minutes: int) -> int:
     return math.ceil(seconds / (slot_minutes * 60))
 
 
+def _price_window(
+    req: dict,
+    window: tuple[int, ...],
+    target_kw: float,
+    profile: ConsumerProfileRow,
+) -> LoadRequirement:
+    """The compiled window of an OPPORTUNISTIC pure-price requirement (D1):
+    the target holds wherever the price condition is true. It is never a
+    Pflichtlauf, so the grid policy stays the requirement's / consumer's own
+    (the window itself is the customer's "Netzstrom, wenn er billig ist")."""
+    return LoadRequirement(
+        requirement_id=req["id"],
+        kind="fixed_window",
+        window_slots=window,
+        target_kw=target_kw,
+        enforcement="required_by_deadline",
+        service_rank=(
+            req.get("service_rank")
+            if req.get("service_rank") is not None
+            else profile.default_service_rank
+        ),
+        allow_storage_discharge=req.get("allow_storage_discharge"),
+        grid_energy_policy=req.get("grid_energy_policy"),
+        reason_code=REASON_PRICE_WINDOW,
+    )
+
+
 def compile_consumer(
     profile: ConsumerProfileRow,
     document: dict,
@@ -233,13 +266,20 @@ def compile_consumer(
 ) -> ControllableLoadEntity | None:
     """Compile one active policy document into a solver entity, or ``None``
     when nothing in it is solver-relevant for this horizon (empty windows,
-    only local-reactive/opportunistic requirements, ...)."""
+    only local-reactive/opportunistic requirements, ...). A pure-price
+    opportunistic requirement whose window is empty still yields the entity,
+    with no requirement: the solver then plans it off for the whole horizon."""
     timezone = document.get("timezone") or DEFAULT_TIMEZONE
     requirements: list[LoadRequirement] = []
     # K2 (P5): merken, ob dieses Dokument eine Anforderung traegt, deren
     # Bedingung ein LOKALES Signal ist - nur der Edge kann sie auswerten, und
     # der Publisher darf den Plan dort nicht ueber sie legen.
     has_local_source = False
+    # Eine reine Preisbedingung „nur, solange der Preis passt" (Steuerart
+    # „Günstig") regiert das Geraet auch dann, wenn ihr Fenster in diesem
+    # Horizont LEER ist: dann ist es ausdruecklich AUS geplant, nie
+    # ungeplant (ungeplant hiesse an einer OCPP-Saeule „lade voll").
+    price_governed = False
     for req in document.get("requirements", []):
         if req.get("active") is False:
             continue
@@ -248,14 +288,29 @@ def compile_consumer(
         if kind == "opportunistic" or enforcement == "opportunistic":
             # ⚠ K2: eine OPPORTUNISTISCHE Anforderung mit lokaler Bedingung
             # laeuft ebenfalls am Edge (der Compiler baut ihr ein Artefakt) -
-            # sie zaehlt also genauso als lokale Quelle. Nur die
-            # SOLVER-Relevanz bleibt unveraendert null (§5.5).
+            # sie zaehlt also genauso als lokale Quelle.
+            window = None
             if kind == "reactive" or req.get("condition") is not None:
-                if compile_condition_slots(
+                window = compile_condition_slots(
                     req.get("condition") or {}, spot_ct_kwh, import_ct_kwh
-                ) is None:
+                )
+                if window is None:
                     has_local_source = True
-            continue  # §5.5: a later, explicitly opted-in feature
+            # ⚠ D1, die EINE Ausnahme von §5.5: eine reaktive Anforderung mit
+            # REINER Preisbedingung hat ausser dem Marktplan keinen Ausfuehrer
+            # (der Edge-Compiler baut ihr bewusst kein Artefakt). Sie wird
+            # deshalb das Preisfenster, das sie verspricht - wie
+            # price_below_threshold fuer eine Pflichtregel. Ohne das lief
+            # „Günstig" ohne Ziel an einer OCPP-Saeule jederzeit voll.
+            if kind == "reactive" and window is not None:
+                target_kw = _resolve_target_kw(req.get("target", {}), profile)
+                if target_kw is not None:
+                    price_governed = True
+                    if window:
+                        requirements.append(
+                            _price_window(req, window, target_kw, profile)
+                        )
+            continue  # sonst §5.5: a later, explicitly opted-in feature
         target_kw = _resolve_target_kw(req.get("target", {}), profile)
         rank = (
             req.get("service_rank")
@@ -356,7 +411,7 @@ def compile_consumer(
                 "consumer.unknown_requirement_kind",
                 extra={"context": {"kind": kind, "id": req.get("id")}},
             )
-    if not requirements:
+    if not requirements and not price_governed:
         return None
     return ControllableLoadEntity(
         entity_id=profile.entity_id,

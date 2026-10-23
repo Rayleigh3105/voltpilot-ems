@@ -62,9 +62,11 @@ import org.springframework.web.server.ResponseStatusException;
  *       IST die Steuerart, und sie zusaetzlich als
  *       {@code site.pv_surplus_kw}-Regel zu schreiben waere dieselbe Aussage
  *       zweimal.</li>
- *   <li>{@code guenstig} → Bahn {@code schnell} (die Quelle sagt ausdruecklich
- *       „Netzstrom, wenn er billig ist" - eine Sonnen-Bahn daneben liesse sie
- *       nie greifen) + die Preis-Policy.</li>
+ *   <li>{@code guenstig} → die Preis-Policy, deren Fenster der PLAN ausfuehrt
+ *       (er befreit die Saeule im guenstigen Slot aus der Bahn und deckelt sie
+ *       im teuren auf 0), + Bahn {@code nur_sonne} fuer die Zeit OHNE frischen
+ *       Plan: dann nie Netzstrom zu einem unbekannten Preis
+ *       ({@link SteuerartProjektion#bahnAus}).</li>
  * </ul>
  *
  * <p>Ein ZIEL kommt in jedem Fall aus der Policy - die Bahn kennt keine Frist.
@@ -257,9 +259,9 @@ public class SteuerartService {
      * Quelle damit trägt.
      *
      * <p><b>⚠ Die Bahn wird IMMER geschrieben</b>, auch für „Günstige Stunden"
-     * und „Sofort" - dort auf {@code schnell}. Ohne das behielte eine Säule,
-     * die vorher auf „Nur Sonnenstrom" stand, ihre Sonnen-Bahn, und die neue
-     * Quelle könnte nie greifen: die Bahn deckelt unabhängig von jeder Policy.
+     * (dort {@code nur_sonne}) und „Sofort" (dort {@code schnell}). Ohne das
+     * behielte eine Säule die Bahn ihrer vorigen Wahl: die Bahn gilt überall,
+     * wo kein Halter die Säule aus ihr befreit.
      *
      * @return true, wenn die Bahn die Quelle trägt (dann schreibt das Dokument
      *         sie nicht noch einmal) - false bei „Günstige Stunden", deren

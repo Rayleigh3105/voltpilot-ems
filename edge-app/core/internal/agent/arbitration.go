@@ -346,7 +346,8 @@ func (a *Agent) runPlanExecutors(now time.Time) {
 			if held[pe.ID] != "" {
 				continue
 			}
-			if reg.Find(pe.ID) == nil {
+			ent := reg.Find(pe.ID)
+			if ent == nil {
 				continue // unknown entity: logged-and-skipped territory
 			}
 			if reg.Claimed(pe.ID) {
@@ -356,6 +357,7 @@ func (a *Agent) runPlanExecutors(now time.Time) {
 			if !ok {
 				continue
 			}
+			cmds = consumerCommandsFor(*ent, cmds)
 			ttl := v2.ReceivedAt.Add(plan2.StaleAfter).Sub(now)
 			if ttl < time.Second {
 				continue
@@ -396,6 +398,35 @@ func (a *Agent) runPlanExecutors(now time.Time) {
 	a.planHeld = held
 	a.planV1 = v1
 	a.arbMu.Unlock()
+}
+
+// consumerCommandsFor puts a cloud-planned run into the vocabulary of the
+// entity it commands. Rein: kein Zustand, keine Uhr. Zwei Aufrufer: der
+// Plan-Ausführer (v2-Slot) und der Deadline-Fallback (flex_requirements).
+//
+// Both speak the GENERIC consumer word `setpoint_kw` (schedule 2.0: + =
+// consume, 0 = off) - the cloud does not know which commands a component
+// declared. A consumer that can only be LIMITED (an OCPP `ev-charger`
+// declares exactly `limit_kw`) would refuse that word at the capability gate,
+// and the wish would then hold nothing at all: no cap in the off slots, so the
+// station's source lane alone decided - „Günstig" charged at full power at any
+// price (Bericht vp-wallbox-modi-konzept §3.4), and neither a plan slot nor the
+// fallback ever served a charging deadline. For such a consumer the planned
+// consumption IS its limit: the vehicle draws at most that, 0 = it pauses.
+//
+// ⚠ Restrict-only by construction: a limit can only lower what the device
+// would do on its own, and every guard behind the arbiter binds it exactly
+// like a setpoint. A consumer that declares `setpoint_kw` keeps the word
+// unchanged, and nothing else is ever rewritten.
+func consumerCommandsFor(e entities.Entity, c entities.Commands) entities.Commands {
+	if c.SetpointKw == nil || c.LimitKw != nil || e.Category() != "consumer" ||
+		e.Supports(entities.CmdSetpointKw) || !e.Supports(entities.CmdLimitKw) {
+		return c
+	}
+	v := *c.SetpointKw
+	c.LimitKw = &v
+	c.SetpointKw = nil
+	return c
 }
 
 // v1Injection names what the v1 plan executor last injected for the battery

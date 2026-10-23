@@ -146,8 +146,8 @@ public final class SteuerartDokument {
                 c.put("value", w.preisgrenzeCtKwh() != null ? w.preisgrenzeCtKwh()
                         : v.preisgrenzeCtKwh());
                 // ⚠ KEINE Hysterese und KEIN max_age_s: das ist ein
-                // Cloud-Signal, die Fenster rechnet der Compiler vor
-                // (D1 - der Validator lehnt beides dort ab).
+                // Cloud-Signal, sein Fenster rechnet der Optimierer
+                // (consumer_inputs, D1 - der Validator lehnt beides dort ab).
             }
             case SteuerartProjektion.QUELLE_FESTE_ZEITEN -> {
                 r.put("name", "Feste Zeiten");
