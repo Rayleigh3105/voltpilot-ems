@@ -14,7 +14,6 @@ import {
   type StandortAmStichtag,
   type StandorteAmStichtag,
 } from './api';
-import type { AnlegeRueckkehr } from './anlegeNurMessen';
 import { fortschritt } from './anlegenFlow';
 import { UEMS_ANBINDUNG, UEMS_GATEWAY_ANBINDEN, UEMS_HAUPTZAEHLER, UEMS_UNTERZAEHLER_VON } from './glossar';
 import { ortWahlen, type OrtWahl } from './messstelleDialog';
@@ -303,16 +302,6 @@ export function keineAnlageWeg(standortName: string): string {
 
 /** Der Knopf unter dem Satz. */
 export const MESSANLAGE_ANLEGEN = 'Messanlage anlegen';
-
-/**
- * Das Ende des Anlage-Assistenten, wenn er aus „Messen & Auswerten“ kommt: EIN Knopf
- * zurück in diesen Assistenten statt „Zu den Messstellen“ und „Zur Anlage“ — der
- * Kunde ist mitten in der Einrichtung und soll nicht woanders landen.
- */
-export const MESSANLAGE_RUECKKEHR: AnlegeRueckkehr = {
-  satz: `So geht es weiter: In „${FUNKTIONEN.messen}“ wählen Sie, womit an dieser Anlage gemessen wird.`,
-  knopf: `Weiter mit „${FUNKTIONEN.messen}“`,
-};
 
 /** Die Anlagen, die heute am Standort hängen — an ihnen bindet Schritt 2 an. */
 export function anlagenAmStandort(st: StandortAmStichtag | null): { id: string; name: string }[] {

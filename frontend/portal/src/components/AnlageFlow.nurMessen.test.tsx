@@ -4,14 +4,9 @@ import { AnlageFlow } from './AnlageFlow';
 import { AnlageAnlegenDrawer } from './AnlageAnlegenDrawer';
 import { OnboardingWizard } from '../Onboarding';
 import { STARTKLAR_SATZ } from '../anlageFlow';
-import { api, ApiError, type Funktionen, type MastrPreview, type TelemetryPoint } from '../api';
-import {
-  ERSTE_DATEN_NUR_MESSEN,
-  nurMessenWeiterSatz,
-  steuerGeldWoerter,
-  ZU_DEN_MESSSTELLEN,
-} from '../anlegeNurMessen';
-import { hashForRoute, standortMessstellenRoute } from '../nav';
+import { api, ApiError, type Funktionen, type MastrPreview } from '../api';
+import { steuerGeldWoerter } from '../anlegeNurMessen';
+import { anlageRoute, hashForRoute, standortMessstellenRoute } from '../nav';
 import { ahrenbergFunktionen, funktionWerkLindach } from '../test/funktionenFixtures';
 import { ahrenbergHeute, bestandEineAnlage, FIXTURE_IDS, werkLindach } from '../test/standorteFixtures';
 import { anlageLindach, leereKomponenten, neueAnlage, neueBox, ruhe } from '../test/anlegeFlussFixtures';
@@ -21,9 +16,11 @@ import { anlageLindach, leereKomponenten, neueAnlage, neueBox, ruhe } from '../t
  * Messen eigentlich noch nicht die Rede sein. Ebenso eine Frage, darf ich ohne Anlage
  * auch einfach Messstellen anlegen?"). Geprüft wird gegen die WORTLISTE
  * (`STEUER_GELD_WOERTER`), nicht gegen einzelne Sätze — über allen lesbaren Text der
- * Seite samt Beschriftungen und Platzhaltern, in jedem Schritt bis „Fertig". Dazu: der
+ * Seite samt Beschriftungen und Platzhaltern, in jedem Schritt bis zum Ende. Dazu: der
  * Standort entscheidet, Verborgenes wird nicht gesendet, und der Weg führt ohne Umweg
- * zu den Messstellen, ohne dass die Anlage (und ihr Bereich „Steuerung") verloren geht.
+ * zu den Messstellen. Seit Anlage-Flow a1 Paket 2 hat die Leiste in jeder Art dieselben
+ * drei Schritte (Adresse · Box · Anlage); die Art zeigt sich am Geld-Teil von Schritt 1
+ * und am Ziel des Endes.
  */
 
 vi.mock('../auth', () => ({ isPlatformAdmin: () => false }));
@@ -55,7 +52,6 @@ vi.mock('leaflet', () => {
 });
 
 const MESSSTELLEN_LINDACH = standortMessstellenRoute(FIXTURE_IDS.st2);
-const ERSTER_PUNKT = { ts: '2026-10-20T08:15:00Z' } as unknown as TelemetryPoint;
 
 const pvAusDemRegister: MastrPreview = {
   mastrNummer: 'SEE900000012345',
@@ -81,7 +77,7 @@ const pvAusDemRegister: MastrPreview = {
 };
 
 /** Ein Kunde, der nur misst: sein einziger Standort Werk Lindach spricht nicht von Steuern. */
-function messkunde(opts: { telemetrie?: TelemetryPoint[] } = {}) {
+function messkunde() {
   vi.spyOn(api, 'standorte').mockResolvedValue({ ...ahrenbergHeute(), standorte: [werkLindach()] });
   vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen({ standorte: [funktionWerkLindach()] }));
   const createSite = vi.spyOn(api, 'createSite').mockResolvedValue(neueAnlage);
@@ -89,10 +85,10 @@ function messkunde(opts: { telemetrie?: TelemetryPoint[] } = {}) {
   vi.spyOn(api, 'mastrApply').mockResolvedValue([]);
   const claimDevice = vi.spyOn(api, 'claimDevice').mockResolvedValue(neueBox);
   vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
-  vi.spyOn(api, 'telemetry').mockResolvedValue(opts.telemetrie ?? []);
-  // Die Abrufe und Schreibwege des Schritts „Betrieb" — im Modus „nur messen" nie.
+  vi.spyOn(api, 'siteEntities').mockResolvedValue(leereKomponenten);
+  vi.spyOn(api, 'listDevices').mockResolvedValue({ eintraege: [], teilansicht: null } as never);
+  // Die Schreibwege des früheren Schritts „Betrieb" (D6) — nie mehr aus dem Anlege-Fluss.
   const betrieb = [
-    vi.spyOn(api, 'siteEntities').mockResolvedValue(leereKomponenten),
     vi.spyOn(api, 'siteProfiles').mockResolvedValue({ profiles: [] }),
     vi.spyOn(api, 'setSiteProfile').mockResolvedValue(undefined as never),
     vi.spyOn(api, 'setAnwendungsPreset').mockResolvedValue(undefined as never),
@@ -114,32 +110,33 @@ function schweigt(stelle: string) {
 
 const leiste = () => [...document.querySelectorAll('.vp-step-label')].map((l) => l.textContent);
 
-async function anlegenUndRegisterUeberspringen(name = 'Halle 3') {
+async function anlegenBisZurBox(name = 'Halle 3') {
   fireEvent.change(screen.getByLabelText('Name der neuen Anlage'), { target: { value: name } });
   fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Überspringen - später nachtragen' }));
   expect(await screen.findByText('Ihre VoltPilot-Box')).toBeInTheDocument();
 }
 
 afterEach(() => {
   vi.restoreAllMocks();
+  sessionStorage.clear();
+  localStorage.clear();
 });
 
 describe('Modus „nur messen": der Anlege-Fluss spricht kein Wort über Steuern, Geld oder Erlöse', () => {
-  it('gegen die Wortliste — in jedem Schritt, Hinweis, Knopf und Fehlersatz bis „Fertig"', async () => {
+  it('gegen die Wortliste — in jedem Schritt, Hinweis, Knopf und Fehlersatz bis zum Ende', async () => {
     const { createSite, claimDevice, betrieb } = messkunde();
     const onDone = vi.fn();
-    render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={onDone} />);
+    render(<AnlageFlow sites={[]} wirt="dialog" onDone={onDone} />);
     await ruhe();
 
-    // Schritt 1: Werk Lindach vorbelegt — keine Veräußerungsform, keine Feineinstellungen, kein „Betrieb".
+    // Schritt 1: Werk Lindach vorbelegt — keine Veräußerungsform, keine Feineinstellungen.
     expect(screen.getByRole('radio', { name: /„Werk Lindach“/ })).toBeChecked();
-    expect(leiste()).toEqual(['Anlage', 'Register', 'Gerät']);
+    expect(leiste()).toEqual(['Adresse', 'Box', 'Anlage']);
     expect(screen.queryByRole('combobox', { name: 'Veräußerungsform' })).toBeNull();
     expect(screen.queryByText(/Feineinstellungen/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
     expect(screen.getByText('Bitte geben Sie einen Namen für Ihre Anlage ein.')).toBeInTheDocument();
-    schweigt('Schritt 1 · Anlage');
+    schweigt('Schritt 1 · Adresse');
 
     fireEvent.change(screen.getByLabelText('Name der neuen Anlage'), { target: { value: 'Halle 3' } });
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
@@ -157,107 +154,91 @@ describe('Modus „nur messen": der Anlege-Fluss spricht kein Wort über Steuern
       standortId: FIXTURE_IDS.st2,
     });
 
-    // Schritt 2: Register — Eingabe, Handeingabe und Vorschau.
-    expect(await screen.findByText('PV & Speicher aus dem Register')).toBeInTheDocument();
-    schweigt('Schritt 2 · Register');
-    fireEvent.click(screen.getByRole('button', { name: 'Keine Nummer? Daten manuell eingeben' }));
-    expect(screen.getByText('Daten manuell eingeben')).toBeInTheDocument();
-    schweigt('Schritt 2 · Handeingabe');
-    fireEvent.click(screen.getByRole('button', { name: 'Zurück zur Registersuche' }));
+    // Schritt 2: Box — auch der Fehlersatz.
+    expect(await screen.findByText('Ihre VoltPilot-Box')).toBeInTheDocument();
+    schweigt('Schritt 2 · Box');
+    claimDevice.mockRejectedValueOnce(new ApiError(422, 'unbekannt'));
+    fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'edge-k7m2xq3' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
+    expect(await screen.findByText(/Diese Kennung kennen wir nicht/)).toBeInTheDocument();
+    schweigt('Schritt 2 · Box, abgelehnt');
+    fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
+
+    // Schritt 3: Anlage — die Box sucht, Solar und Speicher, das Register mit Vorschau.
+    expect(await screen.findByText('Ihre Box meldet gerade ihre Geräte …')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Speicher' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Stimmt so' }));
+    expect(await screen.findByText(/Kapazität des Speichers als Zahl/)).toBeInTheDocument();
+    schweigt('Schritt 3 · Anlage');
+    fireEvent.click(screen.getByRole('button', { name: 'Speicher' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Aus dem Register holen' }));
+    schweigt('Schritt 3 · Register');
     fireEvent.change(screen.getByLabelText('MaStR-Nummer der PV-Anlage'), { target: { value: 'SEE900000012345' } });
     fireEvent.click(screen.getByRole('button', { name: /Im Register suchen/ }));
     expect(await screen.findByText('Im Register gefunden')).toBeInTheDocument();
-    schweigt('Schritt 2 · Vorschau aus dem Register');
-    fireEvent.click(screen.getByRole('button', { name: 'Übernehmen & weiter' }));
+    schweigt('Schritt 3 · Vorschau aus dem Register');
+    fireEvent.click(screen.getByRole('button', { name: 'Andere Nummer' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ohne Register weiter' }));
 
-    // Schritt 3: Gerät — auch der Fehlersatz.
-    expect(await screen.findByText('Ihre VoltPilot-Box')).toBeInTheDocument();
-    claimDevice.mockRejectedValueOnce(new ApiError(422, 'unbekannt'));
-    fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'vp-demo-0001' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
-    expect(await screen.findByText(/Diese Kennung kennen wir nicht/)).toBeInTheDocument();
-    schweigt('Schritt 3 · Gerät');
-    fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
-
-    // Fertig — ohne Schritt „Betrieb", mit dem Weg zu den Messstellen.
-    expect(await screen.findByText(/„Halle 3“ ist da/)).toBeInTheDocument();
-    expect(screen.getByText(nurMessenWeiterSatz(funktionWerkLindach()))).toBeInTheDocument();
-    expect(screen.queryByText('Wofür ist diese Anlage?')).toBeNull();
-    schweigt('Fertig');
+    // Das Ende: ohne Umweg zu den Messstellen - kein „Betrieb", kein Fertig-Bildschirm (D6, D7).
+    fireEvent.click(await screen.findByRole('button', { name: 'Stimmt so' }));
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith(MESSSTELLEN_LINDACH));
     for (const abruf of betrieb) expect(abruf).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: ZU_DEN_MESSSTELLEN }));
-    expect(onDone).toHaveBeenCalledWith(MESSSTELLEN_LINDACH);
+    // Die Karte „Ihre Anlage ist live“ spricht vom Strompreis - ein Messkunde bekommt sie nicht.
+    expect(localStorage.getItem(`vp.erste-werte.${neueAnlage.id}`)).toBeNull();
   });
 
-  it('Einrichtungs-Assistent: auch das Warten auf die ersten Daten schweigt', async () => {
+  it('ohne Box: „Was haben Sie?" schweigt, „Später ergänzen" führt zu den Messstellen', async () => {
     messkunde();
-    render(<AnlageFlow sites={[]} waitForFirstData onDone={() => {}} onSkipAll={() => {}} />);
-    await ruhe();
-    await anlegenUndRegisterUeberspringen();
-    fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'vp-demo-0001' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
-    expect(await screen.findByText('Ihr Gerät meldet sich…')).toBeInTheDocument();
-    schweigt('Warten auf die ersten Daten');
-  });
-
-  it('Einrichtungs-Assistent: die ersten Daten — „Zu den Messstellen", und die Anlage bleibt einen Tipp entfernt', async () => {
-    messkunde({ telemetrie: [ERSTER_PUNKT] });
     const onDone = vi.fn();
-    render(<AnlageFlow sites={[]} waitForFirstData onDone={onDone} onSkipAll={() => {}} />);
+    render(<AnlageFlow sites={[]} wirt="assistent" onDone={onDone} onSkipAll={() => {}} />);
     await ruhe();
-    await anlegenUndRegisterUeberspringen();
-    fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'vp-demo-0001' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
-    expect(await screen.findByText('Ihre Anlage ist verbunden')).toBeInTheDocument();
-    expect(screen.getByText(ERSTE_DATEN_NUR_MESSEN)).toBeInTheDocument();
-    schweigt('Erste Daten');
-
-    // Erreichbarkeit: „Zur Anlage" führt ohne Ziel dorthin, wo der Bereich „Steuerung" still bleibt.
-    fireEvent.click(screen.getByRole('button', { name: 'Zur Anlage' }));
-    expect(onDone).toHaveBeenLastCalledWith();
-    fireEvent.click(screen.getByRole('button', { name: ZU_DEN_MESSSTELLEN }));
-    expect(onDone).toHaveBeenLastCalledWith(MESSSTELLEN_LINDACH);
+    await anlegenBisZurBox();
+    fireEvent.click(screen.getByRole('button', { name: 'Box ist noch nicht da - später verbinden' }));
+    expect(await screen.findByRole('heading', { name: 'Was haben Sie?' })).toBeInTheDocument();
+    schweigt('Schritt 3 ohne Box');
+    fireEvent.click(screen.getByRole('button', { name: 'Später ergänzen' }));
+    expect(onDone).toHaveBeenCalledWith(MESSSTELLEN_LINDACH);
   });
 
   it('Wiedereinstieg im Einrichtungs-Assistenten: die bestehende Anlage an Werk Lindach misst nur', async () => {
     messkunde();
     const onDone = vi.fn();
-    render(<AnlageFlow sites={[anlageLindach]} waitForFirstData onDone={onDone} onSkipAll={() => {}} />);
+    render(<AnlageFlow sites={[anlageLindach]} wirt="assistent" onDone={onDone} onSkipAll={() => {}} />);
     await ruhe();
-    expect(leiste()).toEqual(['Anlage', 'Register', 'Gerät']);
-    fireEvent.click(screen.getByRole('button', { name: 'Überspringen - später nachtragen' }));
+    expect(leiste()).toEqual(['Adresse', 'Box', 'Anlage']);
     fireEvent.click(await screen.findByRole('button', { name: 'Box ist noch nicht da - später verbinden' }));
-    expect(await screen.findByText(/„Werk Lindach“ ist da/)).toBeInTheDocument();
-    schweigt('Fertig nach dem Wiedereinstieg');
-    fireEvent.click(screen.getByRole('button', { name: ZU_DEN_MESSSTELLEN }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Später ergänzen' }));
+    schweigt('Ende nach dem Wiedereinstieg');
     expect(onDone).toHaveBeenCalledWith(MESSSTELLEN_LINDACH);
   });
 });
 
 describe('der Standort entscheidet — derselbe Fakt wie auf der Übersicht (Steuern-Regel, PR 779)', () => {
+  const geldTeil = () => screen.queryByRole('combobox', { name: 'Veräußerungsform' });
+
   it('Ahrenberg: vor der Wahl wie heute, Werk Lindach nur messen, Werk Ahrenberg wie heute — Verborgenes wird nicht gesendet', async () => {
     vi.spyOn(api, 'standorte').mockResolvedValue(ahrenbergHeute());
     vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen());
     const createSite = vi.spyOn(api, 'createSite').mockReturnValue(new Promise(() => {}));
-    render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
+    render(<AnlageFlow sites={[]} wirt="dialog" onDone={() => {}} />);
     await ruhe();
     const waehle = (name: RegExp) => fireEvent.click(screen.getByRole('radio', { name }));
 
-    // Vor der Wahl spricht das Unternehmen — Halle 1 steuert.
-    expect(leiste()).toEqual(['Anlage', 'Register', 'Gerät', 'Betrieb']);
+    // Vor der Wahl spricht das Unternehmen — Halle 1 steuert. Die Leiste ist in jeder Art dieselbe.
+    expect(leiste()).toEqual(['Adresse', 'Box', 'Anlage']);
     fireEvent.click(screen.getByText(/Feineinstellungen/));
     fireEvent.change(screen.getByLabelText('Maximale Einspeiseleistung am Netzanschlusspunkt (kW)'), {
       target: { value: '75' },
     });
 
     waehle(/„Werk Lindach“/);
-    expect(leiste()).toEqual(['Anlage', 'Register', 'Gerät']);
-    expect(screen.queryByRole('combobox', { name: 'Veräußerungsform' })).toBeNull();
+    expect(geldTeil()).toBeNull();
     expect(screen.queryByText(/Feineinstellungen/)).toBeNull();
 
     waehle(/„Werk Ahrenberg“/);
-    expect(leiste()).toEqual(['Anlage', 'Register', 'Gerät', 'Betrieb']);
-    expect(screen.getByRole('combobox', { name: 'Veräußerungsform' })).toBeInTheDocument();
+    expect(geldTeil()).toBeInTheDocument();
+    expect(leiste()).toEqual(['Adresse', 'Box', 'Anlage']);
 
     waehle(/„Werk Lindach“/);
     fireEvent.change(screen.getByLabelText('Name der neuen Anlage'), { target: { value: 'Halle 3' } });
@@ -276,31 +257,30 @@ describe('der Standort entscheidet — derselbe Fakt wie auf der Übersicht (Ste
     vi.spyOn(api, 'standorte').mockResolvedValue(ahrenbergHeute());
     vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen());
     const lindach = render(
-      <AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} standortId={FIXTURE_IDS.st2} />,
+      <AnlageFlow sites={[]} wirt="dialog" onDone={() => {}} standortId={FIXTURE_IDS.st2} />,
     );
     await ruhe();
     expect(screen.getByRole('radio', { name: /„Werk Lindach“/ })).toBeChecked();
-    expect(leiste()).toEqual(['Anlage', 'Register', 'Gerät']);
+    expect(geldTeil()).toBeNull();
     expect(screen.queryByText(/Feineinstellungen/)).toBeNull();
     lindach.unmount();
 
     // Dieselbe Vorbelegung an einem Standort, der steuert: der Fakt entscheidet, nicht der Einstieg.
-    render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} standortId={FIXTURE_IDS.st1} />);
+    render(<AnlageFlow sites={[]} wirt="dialog" onDone={() => {}} standortId={FIXTURE_IDS.st1} />);
     await ruhe();
     expect(screen.getByRole('radio', { name: /„Werk Ahrenberg“/ })).toBeChecked();
-    expect(leiste()).toEqual(['Anlage', 'Register', 'Gerät', 'Betrieb']);
-    expect(screen.getByRole('combobox', { name: 'Veräußerungsform' })).toBeInTheDocument();
+    expect(geldTeil()).toBeInTheDocument();
   });
 
   it('eine Vorbelegung, die nicht zur Wahl steht, gilt nicht — der Kunde wählt wie heute', async () => {
     vi.spyOn(api, 'standorte').mockResolvedValue(ahrenbergHeute());
     vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen());
-    render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} standortId="st-archiviert" />);
+    render(<AnlageFlow sites={[]} wirt="dialog" onDone={() => {}} standortId="st-archiviert" />);
     await ruhe();
     expect(screen.getAllByRole('radio').filter((r) => (r as HTMLInputElement).checked)).toHaveLength(0);
   });
 
-  it('solange die Funktionen unterwegs sind: kein Geld-Block, kein „Betrieb" — danach wie heute', async () => {
+  it('solange die Funktionen unterwegs sind: kein Geld-Block — danach wie heute', async () => {
     let antworten: (f: Funktionen) => void = () => {};
     vi.spyOn(api, 'standorte').mockResolvedValue(bestandEineAnlage());
     vi.spyOn(api, 'funktionen').mockReturnValue(
@@ -308,20 +288,19 @@ describe('der Standort entscheidet — derselbe Fakt wie auf der Übersicht (Ste
         antworten = r;
       }),
     );
-    render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
+    render(<AnlageFlow sites={[]} wirt="dialog" onDone={() => {}} />);
     await ruhe();
-    expect(leiste()).toEqual(['Anlage', 'Register', 'Gerät']);
+    expect(leiste()).toEqual(['Adresse', 'Box', 'Anlage']);
     expect(screen.queryByText(/Feineinstellungen/)).toBeNull();
 
     await act(async () => antworten(ahrenbergFunktionen()));
     expect(await screen.findByText(/Feineinstellungen/)).toBeInTheDocument();
-    expect(leiste()).toEqual(['Anlage', 'Register', 'Gerät', 'Betrieb']);
   });
 
   it('Funktionen nicht lesbar: keine der beiden Fassungen wird behauptet', async () => {
     vi.spyOn(api, 'standorte').mockResolvedValue({ ...ahrenbergHeute(), standorte: [werkLindach()] });
     vi.spyOn(api, 'funktionen').mockRejectedValue(new ApiError(503, 'kurz weg'));
-    render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
+    render(<AnlageFlow sites={[]} wirt="dialog" onDone={() => {}} />);
     await ruhe();
     expect(screen.getByText('Der nächste Schritt konnte nicht geladen werden.')).toBeInTheDocument();
     expect(screen.queryByText('Zuerst den Standort')).toBeNull();
@@ -330,7 +309,7 @@ describe('der Standort entscheidet — derselbe Fakt wie auf der Übersicht (Ste
 });
 
 describe('Einrichtungs-Assistent: die Schrittzahl folgt dem Fluss', () => {
-  it('Messkunde „In drei Schritten“ — Kunde mit Steuern „In vier Schritten“ wie heute, beides erst nach der Entscheidung', async () => {
+  it('„In drei Schritten“ — für Messkunden wie für Kunden mit Steuern, erst nach der Entscheidung', async () => {
     messkunde();
     const erster = render(<OnboardingWizard sites={[]} onDone={() => {}} onSkip={() => {}} />);
     await ruhe();
@@ -349,75 +328,62 @@ describe('Einrichtungs-Assistent: die Schrittzahl folgt dem Fluss', () => {
 });
 
 describe('Gegenprobe: derselbe Abtaster beißt beim Kunden mit Steuern', () => {
-  it('Werk Ahrenberg: Schritt 1 nennt Veräußerung, Vergütung und Netzladen, „Betrieb“ und Fertig sprechen vom Steuern', async () => {
+  it('Werk Ahrenberg: Schritt 1 nennt Veräußerung, Vergütung und Netzladen; das Ende führt ins Cockpit', async () => {
     vi.spyOn(api, 'standorte').mockResolvedValue(bestandEineAnlage());
     vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen());
     vi.spyOn(api, 'createSite').mockResolvedValue(neueAnlage);
-    vi.spyOn(api, 'claimDevice').mockResolvedValue(neueBox);
     vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
-    vi.spyOn(api, 'siteEntities').mockResolvedValue(leereKomponenten);
-    vi.spyOn(api, 'siteProfiles').mockResolvedValue({ profiles: [] });
-    render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
+    const onDone = vi.fn();
+    render(<AnlageFlow sites={[]} wirt="dialog" onDone={onDone} />);
     await ruhe();
     expect(steuerGeldWoerter(lesbar())).toEqual(expect.arrayContaining(['veräußerung', 'vergüt', 'netzladen']));
 
-    await anlegenUndRegisterUeberspringen();
-    fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'vp-demo-0001' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
-    expect(await screen.findByText('Wofür ist diese Anlage?')).toBeInTheDocument();
-    await ruhe();
-    expect(steuerGeldWoerter(lesbar()).length).toBeGreaterThan(0);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Überspringen - später festlegen' }));
-    expect(await screen.findByText(/„Halle 3“ ist da/)).toBeInTheDocument();
-    expect(steuerGeldWoerter(lesbar())).toContain('steuer');
+    await anlegenBisZurBox();
+    fireEvent.click(screen.getByRole('button', { name: 'Box ist noch nicht da - später verbinden' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Später ergänzen' }));
+    expect(onDone).toHaveBeenCalledWith(anlageRoute(neueAnlage.id));
   });
 });
 
-describe('„Anlage anlegen" als Drawer: nach „Zu den Messstellen" dorthin, sonst wie heute', () => {
-  async function bisFertig() {
+describe('„Anlage anlegen" als Drawer: das Ende führt zu den Messstellen, ins Cockpit oder zurück zum Wirt', () => {
+  async function bisZumEnde() {
     await ruhe();
-    await anlegenUndRegisterUeberspringen();
+    await anlegenBisZurBox();
     fireEvent.click(screen.getByRole('button', { name: 'Box ist noch nicht da - später verbinden' }));
-    expect(await screen.findByText(/„Halle 3“ ist da/)).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Später ergänzen' }));
   }
 
-  it('„Zu den Messstellen": der Wirt erfährt Anlage und Ziel, die Adresse zeigt auf die Messstellen', async () => {
+  it('Messkunde: der Wirt erfährt Anlage und Ziel, die Adresse zeigt auf die Messstellen', async () => {
     messkunde();
     window.location.hash = '#/portfolio';
     const onClose = vi.fn();
     const onChanged = vi.fn();
     render(<AnlageAnlegenDrawer open onClose={onClose} onChanged={onChanged} />);
-    await bisFertig();
-    fireEvent.click(screen.getByRole('button', { name: ZU_DEN_MESSSTELLEN }));
+    await bisZumEnde();
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(onChanged).toHaveBeenCalledWith(neueAnlage.id, MESSSTELLEN_LINDACH);
     expect(window.location.hash).toBe(hashForRoute(MESSSTELLEN_LINDACH));
   });
 
-  it('„Zur Anlage": ohne Ziel — der Wirt landet wie heute auf der neuen Anlage', async () => {
-    messkunde();
+  it('Kunde mit Steuern: ins Cockpit der neuen Anlage (D7)', async () => {
+    vi.spyOn(api, 'standorte').mockResolvedValue(bestandEineAnlage());
+    vi.spyOn(api, 'funktionen').mockResolvedValue(ahrenbergFunktionen());
+    vi.spyOn(api, 'createSite').mockResolvedValue(neueAnlage);
+    vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
     window.location.hash = '#/portfolio';
     const onChanged = vi.fn();
     render(<AnlageAnlegenDrawer open onClose={() => {}} onChanged={onChanged} />);
-    await bisFertig();
-    fireEvent.click(screen.getByRole('button', { name: 'Zur Anlage' }));
-    expect(onChanged).toHaveBeenCalledWith(neueAnlage.id, undefined);
-    expect(window.location.hash).toBe('#/portfolio');
+    await bisZumEnde();
+    expect(onChanged).toHaveBeenCalledWith(neueAnlage.id, anlageRoute(neueAnlage.id));
+    expect(window.location.hash).toBe(hashForRoute(anlageRoute(neueAnlage.id)));
   });
 
-  it('mit Rückkehr (Assistent „Messen & Auswerten“): EIN Knopf zurück, ohne Ziel und ohne Adresswechsel', async () => {
+  it('mit Rückkehr (Assistent „Messen & Auswerten“): zurück zum Wirt, ohne Ziel und ohne Adresswechsel', async () => {
     messkunde();
     window.location.hash = '#/portfolio';
     const onChanged = vi.fn();
-    const rueckkehr = { satz: 'So geht es weiter: zurück zum Wirt.', knopf: 'Zurück zum Wirt' };
-    render(<AnlageAnlegenDrawer open onClose={() => {}} onChanged={onChanged} standortId={FIXTURE_IDS.st2} rueckkehr={rueckkehr} />);
-    await bisFertig();
-    expect(screen.getByText(rueckkehr.satz)).toBeInTheDocument();
-    expect(screen.queryByText(nurMessenWeiterSatz(funktionWerkLindach()))).toBeNull();
-    expect(screen.queryByRole('button', { name: ZU_DEN_MESSSTELLEN })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Zur Anlage' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: rueckkehr.knopf }));
+    render(<AnlageAnlegenDrawer open onClose={() => {}} onChanged={onChanged} standortId={FIXTURE_IDS.st2} zurueck />);
+    await bisZumEnde();
     expect(onChanged).toHaveBeenCalledWith(neueAnlage.id, undefined);
     expect(window.location.hash).toBe('#/portfolio');
   });

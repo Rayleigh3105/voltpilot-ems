@@ -710,11 +710,10 @@ describe('Abbau-Invarianten (M6)', () => {
     const schreiber = sourceFiles().filter((f) =>
       /setAnwendungsPreset/.test(ohneKommentare(readFileSync(f, 'utf8'))),
     );
-    // api.ts = die Route selbst, AnlageFlow.tsx = der Assistent,
-    // AnlageTechnik.tsx = „Profil ändern" in den Einstellungen.
+    // api.ts = die Route selbst, AnlageTechnik.tsx = „Profil ändern" in den Einstellungen. Der Anlege-Fluss
+    // schreibt das Preset nicht mehr: sein Schritt „Betrieb" ist entfallen (Anlage-Flow a1, D6).
     expect(schreiber.map((f) => f.slice(SRC.length)).sort()).toEqual([
       'api.ts',
-      'components/AnlageFlow.tsx',
       'pages/AnlageTechnik.tsx',
     ]);
   });

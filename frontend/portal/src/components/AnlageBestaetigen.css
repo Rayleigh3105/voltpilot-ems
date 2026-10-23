@@ -1,0 +1,214 @@
+/* Schritt 3 des Anlege-Flusses (AnlageBestaetigen.tsx): was die Box gefunden hat, Solar und Speicher. */
+
+/* ---- Die Liste „Das hat Ihre Box gefunden“ ---- */
+.vp-fund {
+  display: grid;
+  gap: var(--vp-space-2);
+  margin: 0 0 var(--vp-space-5);
+  padding: 0;
+  list-style: none;
+}
+.vp-fund-zeile {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--vp-space-3);
+  padding: var(--vp-space-3) var(--vp-space-4);
+  border: 1px solid var(--vp-border);
+  border-radius: var(--vp-radius-btn);
+  background: var(--vp-surface);
+  min-width: 0;
+}
+.vp-fund-symbol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--vp-flow-pv-soft);
+  color: var(--vp-flow-pv);
+}
+.vp-fund-zeile.rolle-netz .vp-fund-symbol {
+  background: var(--vp-flow-grid-soft);
+  color: var(--vp-flow-grid);
+}
+.vp-fund-zeile.rolle-last .vp-fund-symbol {
+  background: var(--vp-flow-load-soft);
+  color: var(--vp-flow-load);
+}
+.vp-fund-zeile.is-sucht .vp-fund-symbol {
+  background: var(--vp-paleblue-start);
+  color: var(--vp-action);
+}
+/* „wird gesucht“: der Laufpunkt der Zustandszeile (`.vp-ustate-busy .vp-ustate-dot` in index.css) - derselbe
+   gezählte Dauer-Loop, derselbe Schalter für reduzierte Bewegung; hier kein eigener. */
+.vp-fund-text {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--vp-text-sm);
+}
+.vp-fund-text strong {
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-text-dark);
+}
+.vp-fund-text .vp-note {
+  margin: 2px 0 0;
+}
+.vp-fund-fehler {
+  margin-top: 4px;
+  font-size: 0.82rem;
+  color: var(--vp-industry-end);
+}
+.vp-fund-marke {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  align-self: center;
+  font-size: 0.78rem;
+  font-weight: var(--vp-weight-semibold);
+  color: var(--vp-ok-ink);
+}
+
+/* ---- Solar und Speicher ---- */
+.vp-anlage-teile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--vp-space-3);
+}
+.vp-anlage-teil {
+  --teil-farbe: var(--vp-flow-pv);
+  --teil-flaeche: var(--vp-flow-pv-soft);
+  border: 1px solid var(--vp-field-border);
+  border-radius: var(--vp-radius-btn);
+  background: var(--vp-surface);
+  min-width: 0;
+  transition: var(--vp-motion-chrome);
+}
+.vp-anlage-teil.is-batt {
+  --teil-farbe: var(--vp-flow-batt);
+  --teil-flaeche: var(--vp-flow-batt-soft);
+}
+.vp-anlage-teil.is-an {
+  border-color: var(--teil-farbe);
+  box-shadow: 0 0 0 1px var(--teil-farbe);
+}
+.vp-anlage-teil.is-bekannt {
+  border-color: var(--vp-border);
+  box-shadow: none;
+}
+.vp-anlage-teil-kopf {
+  display: flex;
+  align-items: center;
+  gap: var(--vp-space-3);
+  width: 100%;
+  min-height: 52px;
+  padding: var(--vp-space-2) var(--vp-space-4);
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  color: var(--vp-text-dark);
+  cursor: pointer;
+  border-radius: var(--vp-radius-btn);
+  box-sizing: border-box;
+}
+.vp-anlage-teil.is-bekannt .vp-anlage-teil-kopf {
+  cursor: default;
+}
+.vp-anlage-teil-kopf:focus-visible {
+  outline: 2px solid var(--vp-action);
+  outline-offset: 2px;
+}
+.vp-anlage-teil-symbol {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--teil-flaeche);
+  color: var(--teil-farbe);
+}
+.vp-anlage-teil-titel {
+  flex: 1;
+  min-width: 0;
+  font-weight: var(--vp-weight-semibold);
+  overflow-wrap: anywhere;
+}
+.vp-anlage-teil-titel strong {
+  margin-left: var(--vp-space-1);
+  font-variant-numeric: tabular-nums;
+}
+.vp-anlage-teil-quelle {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  color: var(--vp-text-muted);
+}
+.vp-anlage-teil-haken {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid var(--vp-field-border);
+  color: #fff;
+}
+.vp-anlage-teil.is-an .vp-anlage-teil-haken {
+  border-color: var(--teil-farbe);
+  background: var(--teil-farbe);
+}
+.vp-anlage-teil-inhalt {
+  padding: 0 var(--vp-space-4) var(--vp-space-4);
+}
+.vp-anlage-teil-felder {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--vp-space-3);
+}
+
+/* ---- „Aus dem Register holen“ ---- */
+.vp-onboarding-step > .vp-register-link {
+  margin: var(--vp-space-4) 0 0;
+}
+.vp-register-link .vp-linklike {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.vp-register-holen {
+  display: grid;
+  gap: var(--vp-space-2);
+}
+.vp-register-holen .vp-onb-block-title {
+  margin: 0;
+}
+@media (max-width: 480px) {
+  .vp-anlage-teil.is-bekannt .vp-anlage-teil-kopf {
+    flex-wrap: wrap;
+    row-gap: 0;
+  }
+  .vp-anlage-teil-quelle {
+    flex-basis: 100%;
+    padding-left: calc(34px + var(--vp-space-3));
+    padding-bottom: var(--vp-space-1);
+  }
+}
+
+/* F9: „Ihre Eingaben sind wiederhergestellt.“ über dem Schritt (AnlageFlow.tsx). */
+.vp-entwurf-zurueck {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--vp-space-2);
+  margin: 0 0 var(--vp-space-4);
+}

@@ -5,7 +5,8 @@ import { Card } from '../../designsystem/components/core/Card';
 import { Icon } from '../../designsystem/components/core/Icon';
 import { Modal } from '../../designsystem/components/shell/Modal';
 import { Input } from '../../designsystem/components/forms/Input';
-import { api, ApiError, type Site, type SiteEntities } from '../api';
+import { api, ApiError, type Site, type SiteAsset, type SiteEntities } from '../api';
+import { kwpText, pvLage } from '../pvLage';
 import { aufbauHash } from '../nav';
 import { entitiesApi } from '../entitiesApi';
 import { adoptableSources } from '../rollen';
@@ -65,6 +66,18 @@ export function AnlageSetup({
   const [reloadKey, setReloadKey] = useState(0);
   const [adopting, setAdopting] = useState<AdoptionPlan | null>(null);
   const [bridge, setBridge] = useState<AdoptedBridge | null>(null);
+  // F17 (Anlage-Flow a1): was die Anlagen-Daten schon wissen (kWp, MaStR-Nummer), fragt die Übernahme nicht neu.
+  const [assets, setAssets] = useState<SiteAsset[] | null>(null);
+  useEffect(() => {
+    let active = true;
+    api.siteAssets(site.id).then(
+      (a) => active && setAssets(a),
+      () => active && setAssets([]),
+    );
+    return () => {
+      active = false;
+    };
+  }, [site.id, reloadKey]);
 
   useEffect(() => {
     let active = true;
@@ -208,6 +221,7 @@ export function AnlageSetup({
         <GuidedAdoptDrawer
           siteId={site.id}
           plan={adopting}
+          assets={assets}
           onClose={() => setAdopting(null)}
           onAdopted={(label) => {
             setAdopting(null);
@@ -233,16 +247,23 @@ export function AnlageSetup({
 function GuidedAdoptDrawer({
   siteId,
   plan,
+  assets,
   onClose,
   onAdopted,
 }: {
   siteId: string;
   plan: AdoptionPlan;
+  /** Die Anlagen-Daten: kennen sie die kWp schon, stehen sie als Tatsache da und werden nie doppelt gebucht. */
+  assets: SiteAsset[] | null;
   onClose: () => void;
   onAdopted: (label: string) => void;
 }) {
   const [label, setLabel] = useState('');
   const [values, setValues] = useState<Record<string, string>>({});
+  const pv = plan.entityType === 'producer' ? pvLage(assets, [plan]) : null;
+  const bekannt = pv?.art === 'bekannt' ? pv : null;
+  // Bekannte kWp sind schon in der Summe der Anlage: nicht noch einmal fragen, nicht noch einmal buchen (F17).
+  const felder = bekannt ? plan.fields.filter((f) => f.id !== 'kwp' && !(f.id === 'mastr' && bekannt.mastrNummer)) : plan.fields;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -268,8 +289,8 @@ function GuidedAdoptDrawer({
         entityType: plan.entityType,
         label: label.trim() || undefined,
         maxPowerKw: leistung,
-        capacityKwp: kwp,
-        registryUnitId: (values.mastr ?? '').trim() || undefined,
+        capacityKwp: bekannt ? undefined : kwp,
+        registryUnitId: (values.mastr ?? '').trim() || bekannt?.mastrNummer || undefined,
       });
       onAdopted(label.trim() || plan.typeLabel);
     } catch (e) {
@@ -307,7 +328,14 @@ function GuidedAdoptDrawer({
           onChange={(e) => setLabel(e.target.value)}
           placeholder={plan.typeLabel}
         />
-        {plan.fields.map((f) => (
+        {bekannt && (
+          <p className="vp-note" style={{ margin: 0 }}>
+            Leistung der Solarmodule: <strong>{kwpText(bekannt.kwp)}</strong>{' '}
+            {bekannt.ausRegister ? 'aus dem Register' : 'aus Ihren Angaben'}
+            {bekannt.mastrNummer ? ` (${bekannt.mastrNummer})` : ''}.
+          </p>
+        )}
+        {felder.map((f) => (
           <Input
             key={f.id}
             label={f.label}

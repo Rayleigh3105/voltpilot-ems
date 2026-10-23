@@ -132,14 +132,15 @@ import { CockpitHero } from '../components/CockpitHero';
 import { MobileStickyHead } from '../components/CockpitBlocks';
 import { ZustandCard } from '../components/ZustandCard';
 import { gateStrompreis } from '../strompreis';
-import { AnlageSetup } from '../components/AnlageSetup';
 import { SETUP_STATUS_LINE, setupPathActive } from '../setupPath';
+import { ersteWerteOffen } from '../ersteWerte';
 import { peakBand, serverQuarterHourMean } from '../peakBand';
 import { FleetSiteCard } from '../components/FleetOverview';
 import { PeriodTabs } from '../components/MoneyView';
 import { NetzladenBadge } from '../components/NetzladenBadge';
 import { ErrorState, Skeleton } from '../components/States';
 import { LazyBoundary } from '../components/Lazy';
+import { Fehlergrenze } from '../components/Fehlergrenze';
 import { BereichTabs } from '../components/BereichTabs';
 import { anlageSidebar, bereichLabel, tabsFor } from '../ebenenNav';
 import { useSiteEarnings } from '../useSiteEarnings';
@@ -152,6 +153,12 @@ import { isoDate } from '../periodNav';
 const FahrplanSection = lazy(() =>
   SUB_CHUNK.daten().then((m) => ({ default: m.FahrplanSection })),
 );
+// Anlage-Flow a1 (D7, D9): die Karten „Ihre Anlage ist live“ und „Wo steht …?“ über dem Cockpit - ein
+// eigenes Stück, das nur lädt, wenn eine Karte ansteht (die Entscheidung kostet hier nichts).
+const AnlageHinweise = lazy(() => import('../components/AnlageHinweise'));
+// Die Einrichtungs-Karte („Ihr Weg zum fertigen EMS“) steht nur an einer neuen, noch leeren Anlage - sie kommt
+// nachgeladen, das erste Bild jeder laufenden Anlage trägt sie nicht (Einstiegs-Budget, Anlage-Flow a1 Paket 2).
+const AnlageSetup = lazy(() => import('../components/AnlageSetup').then((m) => ({ default: m.AnlageSetup })));
 const WetterSection = lazy(() =>
   SUB_CHUNK.daten().then((m) => ({ default: m.WetterSection })),
 );
@@ -818,6 +825,7 @@ export function AnlageSeite({
   site,
   sites,
   devices,
+  onReload,
   onOpenSub,
   onHealthFacts,
   misstHier = false,
@@ -1260,6 +1268,10 @@ export function AnlageSeite({
   // Einrichtungspfad, UND `projectionActive` (in `decision` verrechnet) wirklich
   // zutrifft - sonst ist es der ehrliche „nicht zugeordnet"-Endzustand.
   const showStack = decided && !showSetup && decision === 'stack';
+  // Anlage-Flow a1: die einmalige Karte „Ihre Anlage ist live“ (D7) steht, sobald die neue Anlage Werte
+  // zeigt; „Wo steht …?“ (D9), solange ihr Standort keine Adresse hat. Beide über dem Cockpit, nie an seiner Stelle.
+  const ersteWerteSteht = ersteWerteOffen(site.id) && (ovSite?.live != null || ovSite?.lastSeenAt != null);
+  const ortOhneAdresse = ovSite?.standort?.adresseFehlt === true ? ovSite.standort : null;
 
   // B1 · Welle 3 startet MIT Welle 2 (Perf-Review `vp-cockpit-perf-p7` §3).
   // `/history` und `/telemetry` hingen an `showStack`/`isPeakLead` und damit
@@ -2377,6 +2389,23 @@ export function AnlageSeite({
         </div>
       )}
 
+      {decided && (ersteWerteSteht || ortOhneAdresse) && (
+        <Fehlergrenze>
+          <Suspense fallback={null}>
+          <AnlageHinweise
+            key={site.id}
+            site={site}
+            ersteWerte={ersteWerteSteht}
+            standort={ortOhneAdresse}
+            onGespeichert={() => {
+              setReloadKey((k) => k + 1);
+              onReload(site.id);
+            }}
+          />
+          </Suspense>
+        </Fehlergrenze>
+      )}
+
       {decision === 'pending' ? (
         /* ===== Zwischenzustand: die Entscheidungs-Eingaben laufen noch =====
            Der eigentliche Fix (Captain-Nachtrag 06.08.2026): solange
@@ -2399,13 +2428,17 @@ export function AnlageSeite({
            Ausprägung "Neu / leer" (report §3): keine Entitäten, keine Modi,
            noch nie Daten - also keine Platzhalter-Karten, sondern die drei
            Schritte zum fertigen EMS. */
-        <AnlageSetup
-          site={site}
-          deviceCount={ovSite?.deviceCount ?? 0}
-          onOpenSteuerung={() => onOpenSub('steuerung')}
-          onOpenGeraete={() => onOpenSub('modell')}
-          onStay={setSetupPinned}
-        />
+        <Fehlergrenze>
+          <Suspense fallback={<AnlagePending />}>
+            <AnlageSetup
+              site={site}
+              deviceCount={ovSite?.deviceCount ?? 0}
+              onOpenSteuerung={() => onOpenSub('steuerung')}
+              onOpenGeraete={() => onOpenSub('modell')}
+              onStay={setSetupPinned}
+            />
+          </Suspense>
+        </Fehlergrenze>
       ) : showStack ? (
         /* ===== v3 M2 · Das Live-Cockpit ==================================
            Der Hero trägt das BESTEHENDE Energiefluss-Diagramm groß und

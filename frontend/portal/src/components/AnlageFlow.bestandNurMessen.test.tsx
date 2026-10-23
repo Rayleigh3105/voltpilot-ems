@@ -1,20 +1,21 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AnlageFlow } from './AnlageFlow';
-import { api, type TelemetryPoint } from '../api';
+import { api } from '../api';
+import { standortMessstellenRoute } from '../nav';
 import { ahrenbergFunktionen, funktionWerkLindach } from '../test/funktionenFixtures';
 import { ahrenbergHeute, werkLindach } from '../test/standorteFixtures';
-import { flussHtml, neueAnlage, neueBox, ruhe } from '../test/anlegeFlussFixtures';
+import { flussHtml, leereKomponenten, neueAnlage, neueBox, ruhe } from '../test/anlegeFlussFixtures';
 
 /**
  * Bestandsschutz des Modus „nur messen" (PR 806) für den Knopf „Messanlage anlegen"
  * im Assistenten „Messen & Auswerten": wer den Anlege-Fluss wie bisher öffnet — ohne
  * vorbelegten Standort und ohne Rückkehr —, sieht Zeichen für Zeichen denselben Fluss:
- * Schritt 1, Register, Gerät, Fertig mit „Zu den Messstellen" + „Zur Anlage" und die
- * Bestätigung der ersten Daten.
+ * Schritt 1, Box, Anlage, und am Ende geht es ohne Umweg zu den Messstellen.
  *
- * Die Dateien `__snapshots__/anlage-nur-messen-bestand-*.html` wurden auf dem Stand VOR
- * dem Knopf aufgenommen (eigener Commit).
+ * Anlage-Flow a1, Paket 2 hat die Stände BEWUSST neu aufgenommen (Leiste Adresse · Box · Anlage, kein
+ * Register-Schritt, kein Fertig- und kein Warte-Bildschirm); `register`, `fertig` und `erste-daten` gibt
+ * es nicht mehr.
  */
 
 vi.mock('../auth', () => ({ isPlatformAdmin: () => false }));
@@ -47,47 +48,41 @@ function messkunde() {
   vi.spyOn(api, 'createSite').mockResolvedValue(neueAnlage);
   vi.spyOn(api, 'claimDevice').mockResolvedValue(neueBox);
   vi.spyOn(api, 'siteAssets').mockResolvedValue([]);
-  vi.spyOn(api, 'telemetry').mockResolvedValue([{ ts: '2026-10-20T08:15:00Z' } as unknown as TelemetryPoint]);
+  vi.spyOn(api, 'siteEntities').mockResolvedValue(leereKomponenten);
 }
 
-async function bisZumGeraet() {
+async function bisZurAnlage() {
   fireEvent.change(screen.getByLabelText('Name der neuen Anlage'), { target: { value: 'Halle 3' } });
   fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
-  expect(await screen.findByText('PV & Speicher aus dem Register')).toBeInTheDocument();
-  await ruhe();
-  const register = flussHtml();
-  fireEvent.click(screen.getByRole('button', { name: 'Überspringen - später nachtragen' }));
   expect(await screen.findByText('Ihre VoltPilot-Box')).toBeInTheDocument();
-  const geraet = flussHtml();
-  fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'vp-demo-0001' } });
+  await ruhe();
+  const box = flussHtml();
+  fireEvent.change(screen.getByLabelText('Kennung'), { target: { value: 'edge-k7m2xq3' } });
   fireEvent.click(screen.getByRole('button', { name: 'Box verbinden' }));
-  return { register, geraet };
+  expect(await screen.findByText('Ihre Box meldet gerade ihre Geräte …')).toBeInTheDocument();
+  await ruhe();
+  return { box, anlage: flussHtml() };
 }
 
 afterEach(() => {
   vi.restoreAllMocks();
+  localStorage.clear();
+  sessionStorage.clear();
 });
 
-describe('Anlege-Fluss eines Messkunden ohne Vorbelegung — Zeichen für Zeichen wie vor dem Knopf „Messanlage anlegen"', () => {
-  it('Schritt 1, Register, Gerät und Fertig mit „Zu den Messstellen"', async () => {
+describe('Anlege-Fluss eines Messkunden ohne Vorbelegung — Zeichen für Zeichen (Stand Paket 2)', () => {
+  it('Schritt 1, Box, Anlage - und am Ende zu den Messstellen', async () => {
     messkunde();
-    render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
+    const onDone = vi.fn();
+    render(<AnlageFlow sites={[]} wirt="dialog" onDone={onDone} />);
     await ruhe();
     await expect(flussHtml()).toMatchFileSnapshot('./__snapshots__/anlage-nur-messen-bestand-schritt1.html');
-    const { register, geraet } = await bisZumGeraet();
-    await expect(register).toMatchFileSnapshot('./__snapshots__/anlage-nur-messen-bestand-register.html');
-    await expect(geraet).toMatchFileSnapshot('./__snapshots__/anlage-nur-messen-bestand-geraet.html');
-    expect(await screen.findByText(/„Halle 3“ ist da/)).toBeInTheDocument();
-    await ruhe();
-    await expect(flussHtml()).toMatchFileSnapshot('./__snapshots__/anlage-nur-messen-bestand-fertig.html');
-  });
-
-  it('Einrichtungs-Assistent: die Bestätigung der ersten Daten', async () => {
-    messkunde();
-    render(<AnlageFlow sites={[]} waitForFirstData onDone={() => {}} onSkipAll={() => {}} />);
-    await ruhe();
-    await bisZumGeraet();
-    expect(await screen.findByText('Ihre Anlage ist verbunden')).toBeInTheDocument();
-    await expect(flussHtml()).toMatchFileSnapshot('./__snapshots__/anlage-nur-messen-bestand-erste-daten.html');
+    const { box, anlage } = await bisZurAnlage();
+    await expect(box).toMatchFileSnapshot('./__snapshots__/anlage-nur-messen-bestand-geraet.html');
+    await expect(anlage).toMatchFileSnapshot('./__snapshots__/anlage-nur-messen-bestand-anlage.html');
+    fireEvent.click(screen.getByRole('button', { name: 'Stimmt so' }));
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith(standortMessstellenRoute(werkLindach().id)));
+    // Die Karte „Ihre Anlage ist live“ spricht von Ersparnis - ein Messkunde bekommt sie nicht.
+    expect(localStorage.getItem('vp.erste-werte.s-neu')).toBeNull();
   });
 });

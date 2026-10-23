@@ -6,16 +6,13 @@ import {
   anlageLeertext,
   anlegeSchritte,
   anlegeStandort,
-  ERSTE_DATEN_NUR_MESSEN,
   messstellenZiel,
-  nurMessenWeiterSatz,
   steuerGeldWoerter,
   STEUER_GELD_WOERTER,
   ZU_DEN_MESSSTELLEN,
 } from './anlegeNurMessen';
 import { VERAEUSSERUNGSFORM_FRAGE } from './glossar';
 import { pageRoute, standortMessstellenRoute } from './nav';
-import { SETUP_NEXT_HINT } from './setupPath';
 import { ahrenbergFunktionen, funktionWerkAhrenberg, funktionWerkLindach } from './test/funktionenFixtures';
 import { FIXTURE_IDS } from './test/standorteFixtures';
 
@@ -99,11 +96,11 @@ describe('anlegeStandort, Schritte und Ziel', () => {
     expect(anlegeStandort(ahrenbergFunktionen(), {})).toBeNull();
   });
 
-  it('„Betrieb“ steht nur wie heute — nicht im Modus „nur messen“ und nicht, solange die Art offen ist', () => {
+  it('die Leiste ändert sich nie - drei Schritte in jeder Art, der Standort-Schritt davor (D6, F7)', () => {
     expect(anlegeSchritte('wie_heute')).toEqual([...FLOW_STEPS]);
-    expect(anlegeSchritte('nur_messen')).toEqual(['Anlage', 'Register', 'Gerät']);
-    expect(anlegeSchritte('standort_zuerst')).toEqual(['Standort', 'Anlage', 'Register', 'Gerät']);
-    expect(anlegeSchritte(null)).toEqual(['Anlage', 'Register', 'Gerät']);
+    expect(anlegeSchritte('nur_messen')).toEqual(['Adresse', 'Box', 'Anlage']);
+    expect(anlegeSchritte('standort_zuerst')).toEqual(['Standort', 'Adresse', 'Box', 'Anlage']);
+    expect(anlegeSchritte(null)).toEqual(['Adresse', 'Box', 'Anlage']);
   });
 
   it('Leerzustand: nur der Mess-Standort verliert Fahrplan und Erlöse; offen zeigt keinen Satz', () => {
@@ -123,26 +120,17 @@ describe('anlegeStandort, Schritte und Ziel', () => {
   it('„Zu den Messstellen“ führt zu „Standort › Messstellen“, ohne Standort zu „Unternehmen › Messstellen“', () => {
     expect(messstellenZiel(funktionWerkLindach())).toEqual(standortMessstellenRoute(FIXTURE_IDS.st2));
     expect(messstellenZiel(null)).toEqual(pageRoute('portfolio-messstellen'));
-    expect(nurMessenWeiterSatz(funktionWerkLindach())).toBe(
-      'So geht es weiter: Unter „Messstellen“ von Werk Lindach legen Sie fest, was gemessen wird.',
-    );
   });
 });
 
 describe('die Wortliste', () => {
   it('die Sätze des Modus schweigen über Steuern und Geld', () => {
-    for (const satz of [
-      nurMessenWeiterSatz(funktionWerkLindach()),
-      nurMessenWeiterSatz(null),
-      ERSTE_DATEN_NUR_MESSEN,
-      ZU_DEN_MESSSTELLEN,
-    ]) {
+    for (const satz of [ZU_DEN_MESSSTELLEN]) {
       expect(steuerGeldWoerter(satz), satz).toEqual([]);
     }
   });
 
   it('beißt an den Sätzen, die der Modus ersetzt oder weglässt', () => {
-    expect(steuerGeldWoerter(SETUP_NEXT_HINT)).toEqual(['steuer']);
     expect(steuerGeldWoerter('den optimierten Speicher-Fahrplan Ihrer Anlage')).toEqual(['optimier', 'fahrplan']);
     expect(steuerGeldWoerter(VERAEUSSERUNGSFORM_FRAGE)).toEqual(['vergüt']);
     expect(steuerGeldWoerter('Stromtarif, Vergütung, Netzladen und Einspeisegrenze')).toEqual([

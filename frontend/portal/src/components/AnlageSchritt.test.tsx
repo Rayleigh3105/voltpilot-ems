@@ -94,14 +94,18 @@ describe('Erste Anlage eines Privatkunden: „Wo steht Ihre Anlage?"', () => {
     const suche = vi.spyOn(api, 'orteSuche').mockResolvedValue({ treffer: [HAUS, ORT], quelle: '© OpenStreetMap-Mitwirkende' });
     const standortAnlegen = vi.spyOn(api, 'standortAnlegen').mockResolvedValue(neuerStandort('Zuhause'));
     const createSite = vi.spyOn(api, 'createSite').mockResolvedValue(anlage);
-    render(<AnlageFlow sites={[]} waitForFirstData onDone={() => {}} />);
+    render(<AnlageFlow sites={[]} wirt="assistent" onDone={() => {}} />);
 
     expect(await screen.findByRole('heading', { name: 'Wo steht Ihre Anlage?' })).toBeInTheDocument();
     // Kein Standort-Dialog vorab (F1/R1), und der Name ist vorbelegt (R2).
     expect(screen.queryByText('Zuerst den Standort')).toBeNull();
     expect(screen.getByText('Zuhause')).toBeInTheDocument();
-    // F2: ein Privatkunde läuft wie heute, mit „Betrieb“ in der Leiste - nie „nur messen“.
-    expect(screen.getByText('Betrieb')).toBeInTheDocument();
+    // Die Leiste hat drei feste Schritte (Konzept §5.3) - „Betrieb“ ist entfallen (D6).
+    expect(Array.from(document.querySelectorAll('.vp-step-label')).map((e) => e.textContent)).toEqual([
+      'Adresse',
+      'Box',
+      'Anlage',
+    ]);
 
     await tippe(screen.getByLabelText('Adresse'), 'Hauptstr 12 gun');
     expect(suche).toHaveBeenCalledWith('Hauptstr 12 gun', expect.anything());
@@ -125,14 +129,15 @@ describe('Erste Anlage eines Privatkunden: „Wo steht Ihre Anlage?"', () => {
     // Die Anlage übernimmt Lage und Gebotszone des Standorts (die API) - der Ort wird nicht zweimal gesendet.
     expect(eingabe).not.toHaveProperty('latitude');
     expect(kennung).toBe(standortAnlegen.mock.calls[0][1]!.replace(':standort0', ':anlage'));
-    expect(await screen.findByText('PV & Speicher aus dem Register')).toBeInTheDocument();
+    // Weiter geht es mit der Box (Schritt 2) - das Register ist kein eigener Schritt mehr (R4).
+    expect(await screen.findByRole('heading', { name: 'Ihre VoltPilot-Box' })).toBeInTheDocument();
   });
 
   it('F5: getippt, aber nicht gewählt - der erste Vorschlag gilt, mit Pin zur Kontrolle, erst dann wird angelegt', async () => {
     vi.spyOn(api, 'orteSuche').mockResolvedValue({ treffer: [ORT, HAUS], quelle: '© OpenStreetMap-Mitwirkende' });
     const standortAnlegen = vi.spyOn(api, 'standortAnlegen').mockResolvedValue(neuerStandort('Zuhause'));
     vi.spyOn(api, 'createSite').mockResolvedValue(anlage);
-    render(<AnlageFlow sites={[]} waitForFirstData onDone={() => {}} />);
+    render(<AnlageFlow sites={[]} wirt="assistent" onDone={() => {}} />);
     fireEvent.change(await screen.findByLabelText('Adresse'), { target: { value: 'Hauptstraße 12 Gunzenhausen' } });
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
     // Der erste Vorschlag MIT Straße - ein Ort allein ist keine Adresse.
@@ -144,7 +149,7 @@ describe('Erste Anlage eines Privatkunden: „Wo steht Ihre Anlage?"', () => {
 
   it('ohne Adresse: der Satz am Feld, nichts wird angelegt', async () => {
     const standortAnlegen = vi.spyOn(api, 'standortAnlegen');
-    render(<AnlageFlow sites={[]} waitForFirstData onDone={() => {}} />);
+    render(<AnlageFlow sites={[]} wirt="assistent" onDone={() => {}} />);
     await screen.findByLabelText('Adresse');
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
     expect(await screen.findByText('Bitte geben Sie die Adresse Ihrer Anlage an.')).toBeInTheDocument();
@@ -158,7 +163,7 @@ describe('Erste Anlage eines Privatkunden: „Wo steht Ihre Anlage?"', () => {
       .spyOn(api, 'createSite')
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
       .mockResolvedValueOnce(anlage);
-    render(<AnlageFlow sites={[]} waitForFirstData onDone={() => {}} />);
+    render(<AnlageFlow sites={[]} wirt="assistent" onDone={() => {}} />);
     await tippe(await screen.findByLabelText('Adresse'), 'Hauptstr 12');
     fireEvent.mouseDown(screen.getByRole('option', { name: HAUS.text }));
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
@@ -183,7 +188,7 @@ describe('Weitere Anlage an einer anderen Adresse (D8)', () => {
       .mockRejectedValueOnce(new ApiError(409, 'vergeben', { code: 'name_belegt', message: 'vergeben' }))
       .mockResolvedValueOnce(neuerStandort('Hauptstraße 12, Gunzenhausen'));
     const createSite = vi.spyOn(api, 'createSite').mockResolvedValue(anlage);
-    render(<AnlageFlow sites={[]} existingSites={[anlage]} waitForFirstData={false} onDone={() => {}} />);
+    render(<AnlageFlow sites={[]} existingSites={[anlage]} wirt="dialog" onDone={() => {}} />);
     fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Garage' } });
     // Der einzige Standort ist vorgewählt - die andere Adresse ist eine ausdrückliche Wahl.
     expect(screen.getByRole('radio', { name: /Am selben Ort/ })).toBeChecked();
@@ -202,7 +207,7 @@ describe('Weitere Anlage an einer anderen Adresse (D8)', () => {
     vi.spyOn(api, 'createSite').mockRejectedValue(
       new ApiError(400, satz, { code: 'anfrage_ungueltig', feld: 'maxFeedInKw', message: satz }),
     );
-    render(<AnlageFlow sites={[]} existingSites={[anlage]} waitForFirstData={false} onDone={() => {}} />);
+    render(<AnlageFlow sites={[]} existingSites={[anlage]} wirt="dialog" onDone={() => {}} />);
     fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Carport Ost' } });
     await screen.findByRole('radio', { name: /Am selben Ort/ });
     fireEvent.click(screen.getByRole('button', { name: 'Weiter' }));
@@ -214,7 +219,7 @@ describe('Weitere Anlage an einer anderen Adresse (D8)', () => {
 
   it('F4: das Portal prüft die Nachkommastellen wie der Server - „29,995“ wird gar nicht erst gesendet', async () => {
     const createSite = vi.spyOn(api, 'createSite');
-    render(<AnlageFlow sites={[]} existingSites={[anlage]} waitForFirstData={false} onDone={() => {}} />);
+    render(<AnlageFlow sites={[]} existingSites={[anlage]} wirt="dialog" onDone={() => {}} />);
     fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Carport Ost' } });
     await screen.findByRole('radio', { name: /Am selben Ort/ });
     fireEvent.click(screen.getByText(/Feineinstellungen/));
@@ -229,13 +234,13 @@ describe('Unternehmen (D2): der Standort-Dialog bleibt', () => {
   it('ohne Standort: zuerst der Standort - die Leiste behält ihn nach dem Speichern (F7)', async () => {
     vi.spyOn(api, 'tenantContext').mockResolvedValue({ tenantId: 'kb', name: 'Sonnenhof GmbH', segment: 'CI', betriebsart: 'betreiber' });
     vi.spyOn(api, 'standorte').mockResolvedValue({ stichtag: '2026-10-23', standorte: [], nichtGezeigt: [], nochNichtZugeordnet: null } as never);
-    render(<AnlageFlow sites={[]} waitForFirstData onDone={() => {}} />);
+    render(<AnlageFlow sites={[]} wirt="assistent" onDone={() => {}} />);
     expect(await screen.findByText('Zuerst den Standort')).toBeInTheDocument();
     expect(Array.from(document.querySelectorAll('.vp-step-label')).map((e) => e.textContent)).toEqual([
       'Standort',
+      'Adresse',
+      'Box',
       'Anlage',
-      'Register',
-      'Gerät',
     ]);
   });
 
@@ -243,7 +248,7 @@ describe('Unternehmen (D2): der Standort-Dialog bleibt', () => {
     vi.spyOn(api, 'tenantContext').mockResolvedValue({ tenantId: 'kb', name: 'Sonnenhof GmbH', segment: 'CI', betriebsart: 'betreiber' });
     vi.spyOn(api, 'standorte').mockResolvedValue(bestandEineAnlage());
     vi.spyOn(api, 'standortKurzzeichenVorschlag').mockResolvedValue({ kurzzeichen: 'ST-2' });
-    render(<AnlageFlow sites={[]} existingSites={[anlage]} waitForFirstData={false} onDone={() => {}} />);
+    render(<AnlageFlow sites={[]} existingSites={[anlage]} wirt="dialog" onDone={() => {}} />);
     fireEvent.click(await screen.findByRole('radio', { name: /Neuen Standort anlegen/ }));
     expect(await screen.findByRole('dialog', { name: 'Standort anlegen' })).toBeInTheDocument();
     // Die bisherige Wahl gilt, bis der Dialog speichert.

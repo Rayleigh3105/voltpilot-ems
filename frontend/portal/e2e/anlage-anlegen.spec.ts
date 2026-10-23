@@ -11,14 +11,15 @@ import { ahrenbergHeute, ahrenbergUnternehmen, FIXTURE_IDS, werkAhrenberg, werkL
  * Lindach), und ein Kunde mit Steuern (Werk Ahrenberg) gehen denselben Drawer „Anlage
  * anlegen" durch. Im Modus „nur messen" steht auf der ganzen Seite kein Wort der
  * Wortliste (`STEUER_GELD_WOERTER`, im Browser gegen das echte Modul geprüft), und
- * „Fertig" führt ohne Umweg zu den Messstellen; der Kunde mit Steuern sieht
- * Veräußerungsform und „Betrieb" wie heute. Ohne Querlauf — GEMESSEN am Dokument, am
- * Rumpf und an jedem Element des Dialogs.
+ * das Ende führt ohne Umweg zu den Messstellen; der Kunde mit Steuern sieht die
+ * Veräußerungsform und endet im Cockpit seiner neuen Anlage. Ohne Querlauf — GEMESSEN am
+ * Dokument, am Rumpf und an jedem Element des Dialogs.
  *
  * Seit Anlage-Flow a1 (Paket 0+1): die Ortswahl ist eine ausdrückliche Frage („Wo steht die neue
  * Anlage?“, D8), ein Privatkunde trägt die Adresse EINMAL ein (Standort und Anlage aus einem Formular,
  * Vorschläge über `GET /api/v1/orte/suche`), die Box wird mit ihrer Kennung verbunden, und Escape mit
- * Eingaben fragt nach (F8).
+ * Eingaben fragt nach (F8). Seit Paket 2 hat die Leiste in jeder Art dieselben drei Schritte
+ * Adresse · Box · Anlage (R4, D6) und endet ohne Zusammenfassung (D7).
  *
  * Mit `ANLAGE_ANLEGEN_BILDER=<Ordner>` legt der Lauf je Fall Bild, ganzes Bild und Messung ab.
  */
@@ -162,7 +163,7 @@ async function verdrahte(page: Page, cloud: Cloud) {
     }
     if (pfad === `/api/v1/sites/${NEU}/assets`) return json([]);
     if (pfad === `/api/v1/sites/${NEU}/entities`) return json({ registry: null, entities: [], localSetup: [], staleOnDevice: [] });
-    if (pfad === `/api/v1/sites/${NEU}/profiles`) return json({ profiles: [] });
+    if (pfad === '/api/v1/devices') return json({ eintraege: [], teilansicht: null });
     return json({ code: 'nicht_gefunden', message: 'Nicht gefunden.' }, 404);
   });
 }
@@ -205,7 +206,10 @@ async function messeUndFotografiere(page: Page, breite: number, name: string) {
   if (await page.locator('.vp-modal').count()) {
     await expect(page.locator('.vp-modal').last()).toHaveCSS('opacity', '1');
   }
-  await page.waitForFunction(() => document.getAnimations().every((a) => a.playState !== 'running'));
+  // Endlos-Loops (der Laufpunkt „wird gesucht“) laufen immer - gewartet wird nur auf die endlichen.
+  await page.waitForFunction(() =>
+    document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity),
+  );
   const m = await ueberlauf(page, breite);
   expect(m.dokument, `${name} ${breite}: Dokument`).toBe(0);
   expect(m.rumpf, `${name} ${breite}: Rumpf`).toBe(0);
@@ -236,7 +240,7 @@ for (const breite of BREITEN) {
     const cloud = neuerMesskunde();
     await verdrahte(page, cloud);
     await oeffne(page, breite, '', 'Zuerst den Standort');
-    await expect(page.locator('.vp-step-label')).toHaveText(['Standort', 'Anlage', 'Register', 'Gerät']);
+    await expect(page.locator('.vp-step-label')).toHaveText(['Standort', 'Adresse', 'Box', 'Anlage']);
     await expect(page.getByText('Jede Anlage gehört zu einem Standort.')).toBeVisible();
     await schweigt(page, 'Zuerst den Standort');
     await messeUndFotografiere(page, breite, 'neu-0-standort-zuerst');
@@ -252,14 +256,14 @@ for (const breite of BREITEN) {
     const anlage = page.getByRole('dialog', { name: 'Anlage anlegen' });
     await expect(anlage.getByRole('radio', { name: /Am selben Ort wie „Werk Lindach“/ })).toBeChecked();
     // F7: der erledigte Standort bleibt in der Leiste - abgehakt, nicht verschwunden.
-    await expect(anlage.locator('.vp-step-label')).toHaveText(['Standort', 'Anlage', 'Register', 'Gerät']);
+    await expect(anlage.locator('.vp-step-label')).toHaveText(['Standort', 'Adresse', 'Box', 'Anlage']);
     await expect(anlage.locator('.vp-step-done .vp-step-label')).toHaveText(['Standort']);
     await schweigt(page, 'Anlage nach dem Standort');
     await messeUndFotografiere(page, breite, 'neu-1-anlage');
 
     await anlage.getByLabel('Name der neuen Anlage').fill('Messung Halle 1');
     await anlage.getByRole('button', { name: 'Weiter', exact: true }).click();
-    await expect(anlage.getByRole('heading', { name: 'PV & Speicher aus dem Register' })).toBeVisible();
+    await expect(anlage.getByRole('heading', { name: 'Ihre VoltPilot-Box' })).toBeVisible();
     expect(cloud.angelegt).toEqual([
       expect.objectContaining({ standortId: FIXTURE_IDS.st2, plantKind: 'eigenverbrauch', tarifArt: 'ohne' }),
     ]);
@@ -269,7 +273,7 @@ for (const breite of BREITEN) {
     await verdrahte(page, bestandskundeOhneStandort());
     await oeffne(page, breite, '?wirt=bestand-ohne-standort');
     const dialog = page.getByRole('dialog', { name: 'Anlage anlegen' });
-    await expect(dialog.locator('.vp-step-label')).toHaveText(['Anlage', 'Register', 'Gerät', 'Betrieb']);
+    await expect(dialog.locator('.vp-step-label')).toHaveText(['Adresse', 'Box', 'Anlage']);
     await expect(dialog.getByRole('combobox', { name: 'Veräußerungsform' })).toBeVisible();
     await expect(dialog.getByText(/Feineinstellungen/)).toBeVisible();
     await expect(dialog.getByText('Zuerst den Standort')).toHaveCount(0);
@@ -297,37 +301,29 @@ for (const breite of BREITEN) {
     await messeUndFotografiere(page, breite, 'leer-wie-heute-vorher');
   });
 
-  test(`nur messen · ${breite} px: Werk Lindach — drei Schritte, kein Wort der Wortliste, „Zu den Messstellen"`, async ({ page }) => {
+  test(`nur messen · ${breite} px: Werk Lindach — drei Schritte, kein Wort der Wortliste, ab zu den Messstellen`, async ({ page }) => {
     const cloud = messkunde();
     await verdrahte(page, cloud);
     await oeffne(page, breite);
     const dialog = page.getByRole('dialog', { name: 'Anlage anlegen' });
     await expect(dialog.getByRole('radio', { name: /Am selben Ort wie „Werk Lindach“/ })).toBeChecked();
-    await expect(dialog.locator('.vp-step-label')).toHaveText(['Anlage', 'Register', 'Gerät']);
+    await expect(dialog.locator('.vp-step-label')).toHaveText(['Adresse', 'Box', 'Anlage']);
     await expect(dialog.getByText(/Feineinstellungen/)).toHaveCount(0);
-    await schweigt(page, 'Schritt 1 · Anlage');
+    await schweigt(page, 'Schritt 1 · Adresse');
     await messeUndFotografiere(page, breite, 'messen-1-anlage');
 
     await dialog.getByLabel('Name der neuen Anlage').fill('Halle 3');
     await dialog.getByRole('button', { name: 'Weiter', exact: true }).click();
-    await expect(dialog.getByRole('heading', { name: 'PV & Speicher aus dem Register' })).toBeVisible();
-    await schweigt(page, 'Schritt 2 · Register');
-    await messeUndFotografiere(page, breite, 'messen-2-register');
-
-    await dialog.getByRole('button', { name: 'Überspringen - später nachtragen' }).click();
     await expect(dialog.getByRole('heading', { name: 'Ihre VoltPilot-Box' })).toBeVisible();
-    await schweigt(page, 'Schritt 3 · Gerät');
-    await messeUndFotografiere(page, breite, 'messen-3-geraet');
+    await schweigt(page, 'Schritt 2 · Box');
+    await messeUndFotografiere(page, breite, 'messen-2-box');
 
     await dialog.getByLabel('Kennung').fill('k7m2xq3');
     await expect(dialog.getByText('Kennung stimmt: edge-k7m2xq3')).toBeVisible();
     await dialog.getByRole('button', { name: 'Box verbinden', exact: true }).click();
-    await expect(dialog.getByRole('heading', { name: 'Anlage „Halle 3“ ist da' })).toBeVisible();
-    await expect(dialog.getByRole('button', { name: 'Zu den Messstellen' })).toBeVisible();
-    // Still heißt nicht Sackgasse: die Anlage (mit ihrem Bereich „Steuerung") bleibt einen Tipp entfernt.
-    await expect(dialog.getByRole('button', { name: 'Zur Anlage' })).toBeVisible();
-    await schweigt(page, 'Fertig');
-    await messeUndFotografiere(page, breite, 'messen-4-fertig');
+    await expect(dialog.getByRole('heading', { name: /^Ihre Box meldet gerade ihre Geräte/ })).toBeVisible();
+    await schweigt(page, 'Schritt 3 · Anlage');
+    await messeUndFotografiere(page, breite, 'messen-3-anlage');
     expect(cloud.angelegt).toEqual([
       expect.objectContaining({
         standortId: FIXTURE_IDS.st2,
@@ -338,18 +334,19 @@ for (const breite of BREITEN) {
       }),
     ]);
 
-    await dialog.getByRole('button', { name: 'Zu den Messstellen' }).click();
+    // Kein Fertig-Bildschirm (D7): „Stimmt so“ führt ohne Umweg zu den Messstellen.
+    await dialog.getByRole('button', { name: 'Stimmt so', exact: true }).click();
     await expect(page.getByTestId('gemeldet')).toHaveText(`${NEU} → ${MESSSTELLEN_LINDACH}`);
     expect(new URL(page.url()).hash).toBe(MESSSTELLEN_LINDACH);
   });
 
-  test(`Kunde mit Steuern · ${breite} px: Werk Ahrenberg — wie heute, mit Veräußerungsform und „Betrieb"`, async ({ page }) => {
+  test(`Kunde mit Steuern · ${breite} px: Werk Ahrenberg — mit Veräußerungsform, Ende im Cockpit der neuen Anlage`, async ({ page }) => {
     const cloud = kundeMitSteuern();
     await verdrahte(page, cloud);
     await oeffne(page, breite);
     const dialog = page.getByRole('dialog', { name: 'Anlage anlegen' });
     await expect(dialog.getByRole('radio', { name: /Am selben Ort wie „Werk Ahrenberg“/ })).toBeChecked();
-    await expect(dialog.locator('.vp-step-label')).toHaveText(['Anlage', 'Register', 'Gerät', 'Betrieb']);
+    await expect(dialog.locator('.vp-step-label')).toHaveText(['Adresse', 'Box', 'Anlage']);
     await expect(dialog.getByRole('combobox', { name: 'Veräußerungsform' })).toBeVisible();
     // Gegenprobe im Browser: derselbe Abtaster findet die Wörter.
     expect(await woerter(page)).toEqual(expect.arrayContaining(['veräußerung', 'vergüt', 'netzladen']));
@@ -357,22 +354,18 @@ for (const breite of BREITEN) {
 
     await dialog.getByLabel('Name der neuen Anlage').fill('Halle 3');
     await dialog.getByRole('button', { name: 'Weiter', exact: true }).click();
-    await dialog.getByRole('button', { name: 'Überspringen - später nachtragen' }).click();
     await expect(dialog.getByRole('heading', { name: 'Ihre VoltPilot-Box' })).toBeVisible();
-    await messeUndFotografiere(page, breite, 'steuern-3-geraet');
+    await messeUndFotografiere(page, breite, 'steuern-2-box');
 
-    await dialog.getByLabel('Kennung').fill('k7m2xq3');
-    await expect(dialog.getByText('Kennung stimmt: edge-k7m2xq3')).toBeVisible();
-    await dialog.getByRole('button', { name: 'Box verbinden', exact: true }).click();
-    await expect(dialog.getByText('Wofür ist diese Anlage?')).toBeVisible();
-    await messeUndFotografiere(page, breite, 'steuern-4-betrieb');
-
-    await dialog.getByRole('button', { name: 'Überspringen - später festlegen' }).click();
-    await expect(dialog.getByRole('heading', { name: 'Anlage „Halle 3“ ist da' })).toBeVisible();
-    await expect(dialog.getByRole('button', { name: 'Zu den Messstellen' })).toHaveCount(0);
-    await messeUndFotografiere(page, breite, 'steuern-5-fertig');
-    await dialog.getByRole('button', { name: 'Zur Anlage' }).click();
-    await expect(page.getByTestId('gemeldet')).toHaveText(`${NEU} → Anlage`);
+    // Ohne Box: „Was haben Sie?“ - Solar und Speicher als Zahlen (Paket 2).
+    await dialog.getByRole('button', { name: 'Box ist noch nicht da - später verbinden' }).click();
+    await expect(dialog.getByRole('heading', { name: 'Was haben Sie?' })).toBeVisible();
+    await dialog.getByRole('button', { name: 'Speicher' }).click();
+    await messeUndFotografiere(page, breite, 'steuern-3-anlage');
+    await dialog.getByRole('button', { name: 'Speicher' }).click();
+    // Kein Fertig-Bildschirm (D7): ins Cockpit der neuen Anlage.
+    await dialog.getByRole('button', { name: 'Später ergänzen' }).click();
+    await expect(page.getByTestId('gemeldet')).toHaveText(`${NEU} → #/anlage/${NEU}`);
   });
 
   test(`Einrichtungs-Assistent · ${breite} px: „In drei Schritten" beim Messkunden`, async ({ page }) => {
@@ -387,8 +380,8 @@ for (const breite of BREITEN) {
     const cloud = neuerPrivatkunde();
     await verdrahte(page, cloud);
     await oeffne(page, breite, '?wirt=assistent', 'Wo steht Ihre Anlage?');
-    // F2: ein Privatkunde läuft wie heute (mit „Betrieb“), nie „nur messen“ - und ohne Standort-Dialog vorab.
-    await expect(page.locator('.vp-step-label')).toHaveText(['Anlage', 'Register', 'Gerät', 'Betrieb']);
+    // Drei feste Schritte und kein Standort-Dialog vorab.
+    await expect(page.locator('.vp-step-label')).toHaveText(['Adresse', 'Box', 'Anlage']);
     await expect(page.getByText('Zuerst den Standort')).toHaveCount(0);
     await messeUndFotografiere(page, breite, 'privat-1-adresse');
 
@@ -402,7 +395,7 @@ for (const breite of BREITEN) {
     await messeUndFotografiere(page, breite, 'privat-3-gewaehlt');
 
     await page.getByRole('button', { name: 'Weiter', exact: true }).click();
-    await expect(page.getByRole('heading', { name: 'PV & Speicher aus dem Register' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Ihre VoltPilot-Box' })).toBeVisible();
     expect(cloud.standorteAngelegt).toEqual([
       {
         name: 'Zuhause',
@@ -435,10 +428,10 @@ for (const breite of BREITEN) {
     await expect(page.getByTestId('gemeldet')).toHaveText('geschlossen');
   });
 
-  test(`Einrichtungs-Assistent · ${breite} px: „In vier Schritten" mit Steuern`, async ({ page }) => {
+  test(`Einrichtungs-Assistent · ${breite} px: „In drei Schritten" auch mit Steuern`, async ({ page }) => {
     await verdrahte(page, kundeMitSteuern());
     await oeffne(page, breite, '?wirt=assistent');
-    await expect(page.getByText('In vier Schritten ist Ihre Anlage startklar.')).toBeVisible();
+    await expect(page.getByText('In drei Schritten ist Ihre Anlage startklar.')).toBeVisible();
     await messeUndFotografiere(page, breite, 'assistent-steuern');
   });
 }

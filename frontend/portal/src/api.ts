@@ -5074,6 +5074,11 @@ export interface StandortBezug {
   name: string;
   kurzzeichen: string;
   gueltigAb: string;
+  /**
+   * Der Standort hat noch keine vollständige Adresse (Anlage-Flow a1, D9) - das Cockpit fragt mit der Karte
+   * „Wo steht …?“. Optional: ein älterer Server lässt das Feld weg, dann fragt niemand.
+   */
+  adresseFehlt?: boolean;
 }
 
 /**
@@ -10751,10 +10756,12 @@ export const api = {
   siteDeletionPreview: (siteId: string) =>
     request<SiteDeletionPreview>(`/api/v1/sites/${siteId}/deletion-preview`),
   listDevices: () => request<SichtbareListe<Device>>('/api/v1/devices'),
-  claimDevice: (siteId: string, externalRef: string) =>
+  /** `anfrageKennung`: ein Wiederholen nach verlorener Antwort bekommt die erste Antwort (Anlage-Flow a1, Paket 2). */
+  claimDevice: (siteId: string, externalRef: string, anfrageKennung?: string) =>
     request<Device>('/api/v1/devices/claim', {
       method: 'POST',
       body: JSON.stringify({ siteId, externalRef }),
+      ...mitKennung(anfrageKennung),
     }),
   boxTauschen: (newId: string, oldId: string) =>
     request<BoxTauschAntwort>(`/api/v1/devices/${newId}/succeed/${oldId}`, { method: 'POST' }),
@@ -11188,6 +11195,15 @@ export const api = {
    * to auto-link the site's single device; pass it to pick on a multi-device
    * site. Returns the site's assets after the save.
    */
+  /**
+   * Die Leistung der Solarmodule von Hand (ohne MaStR-Nummer, Anlage-Flow a1 Paket 2): setzt die PV-Summe
+   * der Anlage wie das Register; ein später übernommener Erzeuger bucht seine eigenen kWp dazu.
+   */
+  savePv: (siteId: string, capacityKwp: number) =>
+    request<SiteAsset[]>(`/api/v1/sites/${siteId}/pv`, {
+      method: 'PUT',
+      body: JSON.stringify({ capacityKwp }),
+    }),
   saveBattery: (siteId: string, input: SaveBatteryInput) =>
     request<SiteAsset[]>(`/api/v1/sites/${siteId}/battery`, {
       method: 'PUT',

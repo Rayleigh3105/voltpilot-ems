@@ -86,7 +86,7 @@ async function schrittEins(existingSites: Site[] | undefined, standorte: () => P
   vi.spyOn(api, 'unternehmen').mockResolvedValue(null as never);
   // Das Anlegen bleibt offen: verglichen wird nur, was gesendet wird.
   const createSite = vi.spyOn(api, 'createSite').mockReturnValue(new Promise<Site>(() => {}));
-  render(<AnlageFlow sites={[]} existingSites={existingSites} waitForFirstData={false} onDone={() => {}} />);
+  render(<AnlageFlow sites={[]} existingSites={existingSites} wirt="dialog" onDone={() => {}} />);
   await screen.findByText(existingSites?.length ? 'Wo steht die neue Anlage?' : 'Zuerst den Standort');
   for (let i = 0; i < 3; i++) {
     await act(async () => {
@@ -129,7 +129,7 @@ describe('Anlage-Assistent Schritt 1 · „Wo steht die neue Anlage?" (D8, F16)'
     const createSite = vi
       .spyOn(api, 'createSite')
       .mockImplementation(anlegen ?? (() => new Promise<Site>(() => {})));
-    render(<AnlageFlow sites={[]} waitForFirstData={false} onDone={() => {}} />);
+    render(<AnlageFlow sites={[]} wirt="dialog" onDone={() => {}} />);
     fireEvent.change(await screen.findByLabelText('Name der neuen Anlage'), { target: { value: 'Halle 3' } });
     return { lesen, createSite };
   }

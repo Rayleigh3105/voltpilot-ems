@@ -46,10 +46,17 @@ import type { PriceMode } from '../tariffInput';
 import { AdressSuche, type AdressWahl } from './AdressSuche';
 import { LocationMap } from './LocationMap';
 import { Recht } from './Recht';
+import type { AdressEntwurf } from '../anlageEntwurf';
 import { StandortDialog } from './StandortDialog';
 import { TariffFields } from './TariffFields';
 import { VpPicker } from './VpPicker';
 import './AnlageSchritt.css';
+
+/** Postleitzahl und Ort der neuen Anlage - Schritt 3 gleicht damit den Ort aus dem Register ab (R4). */
+export interface OrtDerAnlage {
+  plz: string | null;
+  ort: string | null;
+}
 
 /** Die Felder des Schritts, an denen ein Satz stehen kann (eigene Prüfung oder Ablehnung des Servers, F4). */
 type Feld = 'name' | 'ort' | 'adresse' | 'praemie' | 'tarifParam' | 'maxFeedIn';
@@ -98,6 +105,8 @@ export function AnlageStep({
   vorwahl,
   onStandort,
   onCreated,
+  entwurf = null,
+  onEntwurf,
 }: {
   locationSites: Site[];
   /**
@@ -111,13 +120,17 @@ export function AnlageStep({
   vorwahl: string | null;
   /** Der gewählte Standort — an ihm entscheidet der Fluss (`anlegeArt`). */
   onStandort: (standortId: string | null) => void;
-  onCreated: (site: Site) => void;
+  onCreated: (site: Site, ort: OrtDerAnlage | null) => void;
+  /** F9: der Entwurf dieses Schritts nach Neuladen oder Anmeldung - die Felder stehen wieder da. */
+  entwurf?: AdressEntwurf | null;
+  /** Jede Änderung der Felder geht in den Entwurf des Flusses. */
+  onEntwurf?: (e: AdressEntwurf) => void;
 }) {
   const [standorte, setStandorte] = useState<StandortAmStichtag[] | null | undefined>(undefined);
   const [stichtag, setStichtag] = useState<string>('');
   const [unternehmen, setUnternehmen] = useState<Unternehmen | null>(null);
   const [standorteRunde, setStandorteRunde] = useState(0);
-  const [wahl, setWahl] = useState<OrtWahl | null>(null);
+  const [wahl, setWahl] = useState<OrtWahl | null>(entwurf?.wahl ?? null);
   const wahlRef = useRef(wahl);
   wahlRef.current = wahl;
   const [dialog, setDialog] = useState<{ standort: StandortAmStichtag | null } | null>(null);
@@ -125,23 +138,23 @@ export function AnlageStep({
   // Unlesbare Standorte: wie ohne Standort-Objekt - nie ein Standort, der vielleicht schon existiert.
   const modus = standorte === undefined ? null : standorte === null ? 'nur_lage' : ortModus(standorte, locationSites.length > 0);
   const erste = modus === 'erste';
-  const [name, setName] = useState('');
-  const [nameOffen, setNameOffen] = useState(false);
-  const [suche, setSuche] = useState('');
-  const [adresse, setAdresse] = useState<AdressWahl | null>(null);
-  const [lat, setLat] = useState<number | null>(null);
-  const [lon, setLon] = useState<number | null>(null);
+  const [name, setName] = useState(entwurf?.name ?? '');
+  const [nameOffen, setNameOffen] = useState(entwurf?.nameOffen ?? false);
+  const [suche, setSuche] = useState(entwurf?.suche ?? '');
+  const [adresse, setAdresse] = useState<AdressWahl | null>(entwurf?.adresse ?? null);
+  const [lat, setLat] = useState<number | null>(entwurf?.lat ?? null);
+  const [lon, setLon] = useState<number | null>(entwurf?.lon ?? null);
   // Bestand ohne Standort-Objekt: „Gleicher Standort wie …“ übernimmt Kartenpunkt und Gebotszone einer Anlage.
   const [zoneDerAnlage, setZoneDerAnlage] = useState<string | null>(null);
-  // Jede gewählte Adresse holt die Karte aufs Haus (LocationMap `fokus`).
-  const [kartenFokus, setKartenFokus] = useState(0);
-  const [plantKind, setPlantKind] = useState<PlantKind>('eigenverbrauch');
+  // Jede gewählte Adresse holt die Karte aufs Haus (LocationMap `fokus`) - auch die aus dem Entwurf.
+  const [kartenFokus, setKartenFokus] = useState(entwurf?.adresse ? 1 : 0);
+  const [plantKind, setPlantKind] = useState<PlantKind>(entwurf?.plantKind ?? 'eigenverbrauch');
   const [advanced, setAdvanced] = useState(false);
-  const [netzladen, setNetzladen] = useState(false);
-  const [praemie, setPraemie] = useState('');
-  const [tarifArt, setTarifArt] = useState<TarifArt>('ohne');
-  const [tarifParam, setTarifParam] = useState('');
-  const [maxFeedIn, setMaxFeedIn] = useState('');
+  const [netzladen, setNetzladen] = useState(entwurf?.netzladen ?? false);
+  const [praemie, setPraemie] = useState(entwurf?.praemie ?? '');
+  const [tarifArt, setTarifArt] = useState<TarifArt>(entwurf?.tarifArt ?? 'ohne');
+  const [tarifParam, setTarifParam] = useState(entwurf?.tarifParam ?? '');
+  const [maxFeedIn, setMaxFeedIn] = useState(entwurf?.maxFeedIn ?? '');
   // Strukturierte Bezugspreis-Komponenten: nur gespeichert, wenn der Betreiber „Genau“ WÄHLT.
   const [supply, setSupply] = useState<SupplyPriceFormValues>(() => supplyPriceFormValues(null));
   const [priceMode, setPriceMode] = useState<PriceMode>('schnell');
@@ -151,6 +164,15 @@ export function AnlageStep({
   const [err, setErr] = useState<string | null>(null);
   // B3: EINE Kennung je Formular - jeder Versuch dieses Formulars trägt sie, der Server legt nie doppelt an.
   const kennung = useRef(neueAnfrageKennung());
+
+  // F9: jede Änderung geht in den Entwurf des Flusses (Neuladen, Anmeldung - die Felder bleiben).
+  const onEntwurfRef = useRef(onEntwurf);
+  onEntwurfRef.current = onEntwurf;
+  useEffect(() => {
+    onEntwurfRef.current?.({
+      name, nameOffen, suche, adresse, lat, lon, wahl, plantKind, tarifArt, tarifParam, praemie, maxFeedIn, netzladen,
+    });
+  }, [name, nameOffen, suche, adresse, lat, lon, wahl, plantKind, tarifArt, tarifParam, praemie, maxFeedIn, netzladen]);
 
   useEffect(() => {
     let aktiv = true;
@@ -312,7 +334,8 @@ export function AnlageStep({
           setErr('Die Anlage ist angelegt, das Preisblatt aber nicht gespeichert. Sie tragen es unter „Einstellungen“ nach.');
         }
       }
-      onCreated(site);
+      const ad = adresse?.adresse ?? gewaehlt?.adresse ?? null;
+      onCreated(site, ad ? { plz: ad.plz ?? null, ort: ad.ort ?? null } : null);
     } catch (e) {
       const abgelehnt = e instanceof ApiError ? alsOrtFehler(e.body) : null;
       // Der Server kennt mehrere Standorte, die Wahl hier (noch) nicht: sein Satz an die Wahl, neu lesen.
@@ -367,7 +390,7 @@ export function AnlageStep({
       <h3>{erste ? 'Wo steht Ihre Anlage?' : 'Wo steht die neue Anlage?'}</h3>
       <p className="vp-muted">
         {erste
-          ? 'Daraus kommen Wetter und Sonnenprognose. Leistung, Speicher & Co. holen wir gleich aus dem Register.'
+          ? 'Daraus kommen Wetter und Sonnenprognose.'
           : 'Ein Name, unter dem Sie sie wiederfinden - und wo sie steht.'}
       </p>
       <div className="vp-anlage-ort-felder">

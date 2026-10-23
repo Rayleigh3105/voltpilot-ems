@@ -1718,6 +1718,230 @@
       "nachher": "bd397680846bbb8e0530668a39aaacaff0c8a6d15b7e590a5805e5728dda6dc6",
       "commit": "uems · Nachweisen PR0 (Konzept n1, Befund 1)",
       "grund": "PDF und CSV hängen an jedem Stand: die Seite ruft die Datei selbst ab (abrufen statt der nie gereichten Prop onAbruf) und sperrt den Knopf, solange ein Abruf läuft. Wortlaut und Ziel (GET …/staende/{nr}/pdf bzw. csv) unverändert."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "263739f47f208055304202a7bb7d2d7b657b7d7d514772ba275fcb9faf41b132",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), R4: der Schritt „Register“ ist entfallen - das Register ist der Link „Aus dem Register holen“ in Schritt 3 (components/RegisterHolen.tsx, mit Abgleich des Registerorts gegen die Adresse)."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "f0a09b0dbe00c7be9d0fcbc3e88519aecd03fe884f251495b4586fc8b9c81889",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), R4: der Schritt „Register“ ist entfallen - das Register ist der Link „Aus dem Register holen“ in Schritt 3 (components/RegisterHolen.tsx, mit Abgleich des Registerorts gegen die Adresse)."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "0f5156e41789a5f6da1efb9f116889ad472601b67d9ee49f4cb49f5636d4c7c8",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), R4: der Schritt „Register“ ist entfallen - das Register ist der Link „Aus dem Register holen“ in Schritt 3 (components/RegisterHolen.tsx, mit Abgleich des Registerorts gegen die Adresse)."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "eef9cea35741e1aed2818ec73eb00ef82f708cddc05f9d8a21e3b6afa1a12279",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), R4: der Schritt „Register“ ist entfallen - das Register ist der Link „Aus dem Register holen“ in Schritt 3 (components/RegisterHolen.tsx, mit Abgleich des Registerorts gegen die Adresse)."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "f13573d0d3a0d0158164a7914809a7d50e91a61afb2f6d14abb94dc9d9647f73",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), R4: der Schritt „Register“ ist entfallen - das Register ist der Link „Aus dem Register holen“ in Schritt 3 (components/RegisterHolen.tsx, mit Abgleich des Registerorts gegen die Adresse)."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "4052d64c43d59fba91bffb0f25da784e88d50f09829823a77b70f3859c24a409",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), R4: der Schritt „Register“ ist entfallen - das Register ist der Link „Aus dem Register holen“ in Schritt 3 (components/RegisterHolen.tsx, mit Abgleich des Registerorts gegen die Adresse)."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "329b2bfc3a8e39153bcb8f7c409b36b0fb6fa5134fc8df9ec6524fed824acc21",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), R4: der Schritt „Register“ ist entfallen - das Register ist der Link „Aus dem Register holen“ in Schritt 3 (components/RegisterHolen.tsx, mit Abgleich des Registerorts gegen die Adresse)."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "3cb8af33492e8b008b7184f1778ef100495695f18a68a01db31bbb48bff66e03",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), Paket 2: die Handeingabe des Speichers ist die Kachel „Speicher“ in Schritt 3 (components/AnlageBestaetigen.tsx: Kapazität und Lade- und Entladeleistung, Satz am Feld); „Kein Speicher“ ist die nicht gewählte Kachel."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "3a3c33fabbae6b6eeb93394856fb1cd9bad0133733a31568c5e79172ababb31a",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), Paket 2: die Handeingabe des Speichers ist die Kachel „Speicher“ in Schritt 3 (components/AnlageBestaetigen.tsx: Kapazität und Lade- und Entladeleistung, Satz am Feld); „Kein Speicher“ ist die nicht gewählte Kachel."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "7bedfa5081218c99d6be66763125672398056741038709ad53fbf1b52a6d7fad",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), Paket 2: die Handeingabe des Speichers ist die Kachel „Speicher“ in Schritt 3 (components/AnlageBestaetigen.tsx: Kapazität und Lade- und Entladeleistung, Satz am Feld); „Kein Speicher“ ist die nicht gewählte Kachel."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "5bb7e80eb4749d221492fff8c535fe917614eda8fbc4f50daca5049de5519b70",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), Paket 2: die Handeingabe des Speichers ist die Kachel „Speicher“ in Schritt 3 (components/AnlageBestaetigen.tsx: Kapazität und Lade- und Entladeleistung, Satz am Feld); „Kein Speicher“ ist die nicht gewählte Kachel."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "8c67ad12ef0fcee25c7e765268324cb61dc637976071fbe6ead579ea5ac3b16a",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), Paket 2: die Handeingabe des Speichers ist die Kachel „Speicher“ in Schritt 3 (components/AnlageBestaetigen.tsx: Kapazität und Lade- und Entladeleistung, Satz am Feld); „Kein Speicher“ ist die nicht gewählte Kachel."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "349be9f69f19f5e38b27e7de7b6142a50de53cfbb99b02ca4dceb42407c7e7b4",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), Paket 2: die Handeingabe des Speichers ist die Kachel „Speicher“ in Schritt 3 (components/AnlageBestaetigen.tsx: Kapazität und Lade- und Entladeleistung, Satz am Feld); „Kein Speicher“ ist die nicht gewählte Kachel."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "ec7a900fd298bed3d788170e841f1058c919c8ad5f644fb8163022e84159321b",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D6/R14: der Schritt „Betrieb“ ist aus dem Anlegen entfallen - Profil, Betriebsmodell und Speicherschonung schlägt die Steuerung später vor (Einrichtungs-Karte „Steuerung wählen“, Einstellungen); Verbraucher entstehen im Aufbau."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "692b2e1be4f6b763ea8eed95615ef107c16786aa3801ced4bc529c6809c88ca2",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D6/R14: der Schritt „Betrieb“ ist aus dem Anlegen entfallen - Profil, Betriebsmodell und Speicherschonung schlägt die Steuerung später vor (Einrichtungs-Karte „Steuerung wählen“, Einstellungen); Verbraucher entstehen im Aufbau."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "d5b0c0801d460f5d3ad85b541e49863bb0c016ef8865c085bcdfb38872c1dca2",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D6/R14: der Schritt „Betrieb“ ist aus dem Anlegen entfallen - Profil, Betriebsmodell und Speicherschonung schlägt die Steuerung später vor (Einrichtungs-Karte „Steuerung wählen“, Einstellungen); Verbraucher entstehen im Aufbau."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "6b620e5c7a66fbd07c56300b9ee533e2d325d1252cde62689a77aea04da76691",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D6/R14: der Schritt „Betrieb“ ist aus dem Anlegen entfallen - Profil, Betriebsmodell und Speicherschonung schlägt die Steuerung später vor (Einrichtungs-Karte „Steuerung wählen“, Einstellungen); Verbraucher entstehen im Aufbau."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "c545eb037a302c1926a2c3b2c9497489694fed8859f10ad033c33e7248186607",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D6/R14: der Schritt „Betrieb“ ist aus dem Anlegen entfallen - Profil, Betriebsmodell und Speicherschonung schlägt die Steuerung später vor (Einrichtungs-Karte „Steuerung wählen“, Einstellungen); Verbraucher entstehen im Aufbau."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "b12eb1ab2d8408735d56c7397b7de4d66c388723ba71b2de308c2d5359e8b55f",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D6/R14: der Schritt „Betrieb“ ist aus dem Anlegen entfallen - Profil, Betriebsmodell und Speicherschonung schlägt die Steuerung später vor (Einrichtungs-Karte „Steuerung wählen“, Einstellungen); Verbraucher entstehen im Aufbau."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "b26b9b171a6a708f62cc84b02ebc377964fc3bdb35b0bd6779d540e71550bc22",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D6/R14: der Schritt „Betrieb“ ist aus dem Anlegen entfallen - Profil, Betriebsmodell und Speicherschonung schlägt die Steuerung später vor (Einrichtungs-Karte „Steuerung wählen“, Einstellungen); Verbraucher entstehen im Aufbau."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "c51628cc4961abd464749d5528dabada91ae04ebbc3a5b981d3c5b965f109d9b",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D6/R14: der Schritt „Betrieb“ ist aus dem Anlegen entfallen - Profil, Betriebsmodell und Speicherschonung schlägt die Steuerung später vor (Einrichtungs-Karte „Steuerung wählen“, Einstellungen); Verbraucher entstehen im Aufbau."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "7fcabd1ba358b6e7c10b1226205f0a5838b040a07005644c13f5ef493ad117b3",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D6/R14: der Schritt „Betrieb“ ist aus dem Anlegen entfallen - Profil, Betriebsmodell und Speicherschonung schlägt die Steuerung später vor (Einrichtungs-Karte „Steuerung wählen“, Einstellungen); Verbraucher entstehen im Aufbau."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "a9b109e44d49e749214d253111d37eb83118e9601cbb5b46c9d1347ad040c525",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D6/R14: der Schritt „Betrieb“ ist aus dem Anlegen entfallen - Profil, Betriebsmodell und Speicherschonung schlägt die Steuerung später vor (Einrichtungs-Karte „Steuerung wählen“, Einstellungen); Verbraucher entstehen im Aufbau."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "cedbf26c878a1568d8250d96b9e4b6c37be164f9dfcedaf8e5939441a311331b",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D6/R14: der Schritt „Betrieb“ ist aus dem Anlegen entfallen - Profil, Betriebsmodell und Speicherschonung schlägt die Steuerung später vor (Einrichtungs-Karte „Steuerung wählen“, Einstellungen); Verbraucher entstehen im Aufbau."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "9de4355f8aa09ca05119c7c7fdddbd3a78de663a9352ebe1e8c5a973231aa225",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D6/R14: der Schritt „Betrieb“ ist aus dem Anlegen entfallen - Profil, Betriebsmodell und Speicherschonung schlägt die Steuerung später vor (Einrichtungs-Karte „Steuerung wählen“, Einstellungen); Verbraucher entstehen im Aufbau."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "de6f0f9ca17bf155313498f80aa353195e50559fd6623f48c13da36c2f0c63e7",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D6/R14: der Schritt „Betrieb“ ist aus dem Anlegen entfallen - Profil, Betriebsmodell und Speicherschonung schlägt die Steuerung später vor (Einrichtungs-Karte „Steuerung wählen“, Einstellungen); Verbraucher entstehen im Aufbau."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "03314b89b6710d70272f699d5d86c60c6cc15f81960b2341562e8baf05db1858",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D7: kein Warte- und kein Zusammenfassungs-Bildschirm - der Fluss endet nach Schritt 3 im unveränderten Cockpit der neuen Anlage (einmalige Karte „Ihre Anlage ist live.“), im Modus „nur messen“ bei ihren Messstellen."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "2358beb8e2caaad3888595d8745bdd122409a41be50e5560490931d54c9b6197",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D7: kein Warte- und kein Zusammenfassungs-Bildschirm - der Fluss endet nach Schritt 3 im unveränderten Cockpit der neuen Anlage (einmalige Karte „Ihre Anlage ist live.“), im Modus „nur messen“ bei ihren Messstellen."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "2c5a004ce46bf44fd600db725a2e12684a1e4964b6a952cc5afd016584b408dd",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D7: kein Warte- und kein Zusammenfassungs-Bildschirm - der Fluss endet nach Schritt 3 im unveränderten Cockpit der neuen Anlage (einmalige Karte „Ihre Anlage ist live.“), im Modus „nur messen“ bei ihren Messstellen."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "987614fc5d2f8ff76eeeecb09b3c0c9016b8cde6be18240a285704214fb7c1b3",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D7: kein Warte- und kein Zusammenfassungs-Bildschirm - der Fluss endet nach Schritt 3 im unveränderten Cockpit der neuen Anlage (einmalige Karte „Ihre Anlage ist live.“), im Modus „nur messen“ bei ihren Messstellen."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "b5b8969419de4ab9d1a98e7706380a5238cf601b2f1ac8dcb9353ac37e444415",
+      "nachher": null,
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), D7: kein Warte- und kein Zusammenfassungs-Bildschirm - der Fluss endet nach Schritt 3 im unveränderten Cockpit der neuen Anlage (einmalige Karte „Ihre Anlage ist live.“), im Modus „nur messen“ bei ihren Messstellen."
+    },
+    {
+      "datei": "components/AnlageFlow.tsx",
+      "vorher": "1d9414153320d9f1bfd5db2e39de2f739510e1c38c6c796990e846aaddde3c7c",
+      "nachher": "8dcc705a16021d82cac5f5301bcf3c3ae9e22210391310ec2e2760ea6a1ed7f4",
+      "commit": "fm/vp-anlage-flow-paket2-3",
+      "grund": "Konzept Anlage-Flow a1 (Captain 23.10.2026, alle Empfehlungen), F9: „Später einrichten“ räumt den Entwurf des Flusses ab (anlageEntwurf.ts) - nichts bleibt als Geisterzustand; Text und Ziel unverändert."
     }
   ],
   "assistentZusammenfuehrung": {
