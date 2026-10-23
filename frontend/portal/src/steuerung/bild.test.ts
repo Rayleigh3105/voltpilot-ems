@@ -27,7 +27,7 @@ const iso = (t: number) => new Date(r.start + t * 900_000).toISOString();
 
 function leereReihen(): Reihen {
   const n = () => Array.from({ length: N }, () => null as number | null);
-  return { pv: n(), last: n(), netz: n(), bat: n(), soc: n(), preis: n(), temp: n(), abgeregelt: n(), gemessenBis: r.jetzt, morgenBekannt: false };
+  return { pv: n(), last: n(), netz: n(), bat: n(), soc: n(), preis: n(), bezug: n(), einspeise: n(), temp: n(), abgeregelt: n(), gemessenBis: r.jetzt, morgenBekannt: false };
 }
 
 const eintrag = (o: Partial<VerbraucherEintrag> & { entityId: string }): VerbraucherEintrag => ({
@@ -152,9 +152,11 @@ describe('Wörter', () => {
     expect(auftragSatz({ quelle: 'guenstig', herkunft: 'policy', preisgrenzeCtKwh: 8.5 }, g)).toBe('Unter 8,5 ct');
     expect(auftragSatz({ quelle: 'feste_zeiten', herkunft: 'policy', fenster: { tage: 'weekdays', von: '06:30', bis: '08:30' } }, g)).toBe('06:30–08:30 werktags');
     expect(auftragSatz({ quelle: 'ueberschuss', herkunft: 'policy', ziel: 'laufzeit_bis', zielLaufzeitMinuten: 360, zielFenster: { tage: 'daily', von: '', bis: '20:00' } }, g)).toBe('6 Std bis 20:00, Sonne zuerst');
-    expect(auftragSatz({ quelle: 'ueberschuss', herkunft: 'saeule', ueberschussModus: 'pausieren' }, { form: 'stufenlos', ladepunkt: true })).toBe('Nur Sonnenstrom');
+    expect(auftragSatz({ quelle: 'ueberschuss', herkunft: 'saeule', ueberschussModus: 'pausieren' }, { form: 'stufenlos', ladepunkt: true })).toBe('Nur Sonne');
     expect(auftragSatz({ quelle: 'ueberschuss', herkunft: 'saeule', ueberschussModus: 'speicher' }, { form: 'stufenlos', ladepunkt: true })).toBe('Sonne + Speicher');
-    expect(auftragSatz({ quelle: 'ueberschuss', herkunft: 'saeule', ueberschussModus: 'mindestleistung' }, { form: 'stufenlos', ladepunkt: true })).toBe('Sonne + Mindestleistung');
+    expect(auftragSatz({ quelle: 'ueberschuss', herkunft: 'saeule', ueberschussModus: 'mindestleistung' }, { form: 'stufenlos', ladepunkt: true })).toBe('Sonne + Minimum');
+    expect(auftragSatz({ quelle: 'guenstig', herkunft: 'saeule', preisgrenzeCtKwh: 30 }, { form: 'stufenlos', ladepunkt: true })).toBe('Günstig unter 30,0 ct');
+    expect(auftragSatz({ quelle: 'sofort', herkunft: 'standard' }, { form: 'stufenlos', ladepunkt: true })).toBe('Schnell · immer sofort voll');
     expect(auftragSatz({ quelle: 'freigabe_ueberschuss', herkunft: 'policy' }, { form: 'freigabe', ladepunkt: false })).toBe('Anheben bei Sonne');
   });
 
@@ -176,6 +178,10 @@ describe('Erwartung', () => {
     expect(bits[61]).toBe(false);
     expect(imFenster(90, '22:00', '07:00')).toBe(true);
     expect(imFenster(40, '22:00', '07:00')).toBe(false);
+    // „Günstig“ vergleicht den BEZUGSPREIS (wie der Server), nie den Börsenpreis; ohne ihn keine Erwartung.
+    rh.preis[70] = 5; rh.bezug[70] = 31; rh.bezug[71] = 29;
+    const guenstig = erwarteteLaeufe({ quelle: 'guenstig', herkunft: 'policy', preisgrenzeCtKwh: 30 }, { form: 'schalten', nennKw: 2, ladepunkt: false }, rh);
+    expect([guenstig[70], guenstig[71], guenstig[72]]).toEqual([false, true, false]);
     // Ohne Auftrag keine Erwartung.
     expect(erwarteteLaeufe({ quelle: 'ueberschuss', herkunft: 'ohne' }, { form: 'schalten', nennKw: 2, ladepunkt: false }, rh).some(Boolean)).toBe(false);
   });

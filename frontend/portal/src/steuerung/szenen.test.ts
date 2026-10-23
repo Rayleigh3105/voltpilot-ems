@@ -10,7 +10,7 @@ const r = raster(NOW);
 
 function leereReihen(): Reihen {
   const n = () => Array.from({ length: N }, () => null as number | null);
-  return { pv: n(), last: n(), netz: n(), bat: n(), soc: n(), preis: n(), temp: n(), abgeregelt: n(), gemessenBis: r.jetzt, morgenBekannt: false };
+  return { pv: n(), last: n(), netz: n(), bat: n(), soc: n(), preis: n(), bezug: n(), einspeise: n(), temp: n(), abgeregelt: n(), gemessenBis: r.jetzt, morgenBekannt: false };
 }
 
 const eintrag = (entityId: string, name: string, quelle = 'ueberschuss'): VerbraucherEintrag => ({
