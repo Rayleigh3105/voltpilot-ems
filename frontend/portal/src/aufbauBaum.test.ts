@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { Device, EntityLocalSetup, OverviewSite, StandorteAmStichtag } from './api';
+import type { Device, EntityLocalSetup, OverviewSite, SiteEntity, StandorteAmStichtag, UemsDatenquelle } from './api';
 import {
   OHNE_STANDORT,
   anlagenWerte,
@@ -9,9 +9,10 @@ import {
   ladeWert,
   type AufbauEingabe,
 } from './aufbauBaum';
-import type { PlantComponent } from './komponenten';
+import { aufbauZahlen, LEERER_FILTER } from './aufbauTabelle';
+import { plantModel, type PlantComponent } from './komponenten';
 import type { ChargePoint, SiteCharging } from './ladepunkte';
-import type { GeraeteKarte } from './zentraleListe';
+import { zentraleListe, type GeraeteKarte } from './zentraleListe';
 
 /** `fmtNum` trennt Zahl und Einheit mit einem geschützten Leerzeichen. */
 const plain = (s: string) => s.replace(/\u00a0/g, ' ');
@@ -415,5 +416,91 @@ describe('Chips einzeln', () => {
     expect(ladeWert(saeule({ connectors: [{ connectorId: 1, charging: true, powerKw: null }] }))?.text).toBe(
       'lädt',
     );
+  });
+});
+
+/**
+ * EZ-20, Gore Pleinfeld „Neue Halle“: eine reine Erzeugeranlage — Box + Anlagensteuerung (WAGO, drei
+ * Growatt-Einheiten über DQ-1), kein Speicher, kein eigener Wechselrichter. In der Datenbank liegen nur die beim
+ * Verbinden der Box zusammengesetzten Netz und Haus (über die Box) und die Steuerung
+ * (`AnlagensteuerungAnlegewegDbTest`). Der Aufbau zeigte daraus ein zweites Gerät „Wechselrichter“ — das
+ * Ersatzgerät, das `plantModel` den übrigen Komponenten der Box gab. Echte Kette: Entitäten → `plantModel` →
+ * `zentraleListe` → `aufbauBaum`.
+ */
+describe('aufbauBaum — reine Erzeugeranlage (EZ-20)', () => {
+  const GORE_BOX = box({ id: 'box-gore', siteId: 'site-gore', externalRef: 'edge-5mz8bdd' });
+  const ent = (o: Partial<SiteEntity> & Pick<SiteEntity, 'id' | 'entityType'>): SiteEntity =>
+    ({
+      typeLabel: o.entityType,
+      role: o.entityType,
+      label: null,
+      control: false,
+      deviceId: null,
+      capabilities: { measure: [] },
+      guards: null,
+      syncStatus: 'in_sync',
+      observed: null,
+      edgeSourceId: null,
+      ...o,
+    }) as unknown as SiteEntity;
+  const NETZ = ent({ id: 'e-netz', entityType: 'grid-meter', deviceId: 'box-gore', sourceKind: 'composed' });
+  const HAUS = ent({ id: 'e-haus', entityType: 'house-load', deviceId: 'box-gore', sourceKind: 'composed' });
+  const STEUERUNG = ent({ id: 'e-as', entityType: 'anlagensteuerung', typeLabel: 'Anlagensteuerung', label: 'Anlagensteuerung' });
+  const SPEICHER = ent({ id: 'e-batt', entityType: 'battery-hybrid', role: 'battery-hybrid', deviceId: 'box-gore' });
+  const DQ1 = {
+    id: 'dq-1', kennzeichen: 'DQ-1', name: null, anlage: 'site-gore', protokoll: 'modbus_tcp',
+    adresse: '192.168.4.165:503', geraete_ids: [1], netz: null, mehrere_leser: false, steuerquelle: false,
+    vergleichsquelle: false, kadenz_s: 5, archiviert_am: null,
+    zustaendige_box: { id: 'box-gore', name: null, heimat_anlage: 'site-gore' }, zeitraeume: [], rueckmeldung: null,
+  } as unknown as UemsDatenquelle;
+
+  const gore = (entities: SiteEntity[], localSetup: EntityLocalSetup[] = []) => {
+    const model = plantModel(entities, null, localSetup, []);
+    const karten = zentraleListe({
+      siteId: 'site-gore', model, devices: [GORE_BOX], devicesFetchedAt: NOW, boxRef: 'edge-5mz8bdd',
+      localSetup, sources: [], charging: null, now: NOW,
+    });
+    const baum = aufbauBaum({
+      siteId: 'site-gore', siteName: 'Neue Halle', standorte: null, devices: [GORE_BOX], devicesFetchedAt: NOW,
+      karten, localSetup, charging: null, registryBoxId: 'box-gore', overview: null, datenquellen: [DQ1], now: NOW,
+    });
+    return { model, karten, baum, box: baum.anlagen[0].boxen[0] };
+  };
+  const zeilen = (b: { geraete: { titel: string; artWort: string }[] }) => b.geraete.map((g) => `${g.titel} · ${g.artWort}`);
+
+  it('zeigt nur die Anlagensteuerung: 1 Gerät an der Anlage, 1 Gerät und 1 Datenquelle an der Box', () => {
+    const { model, karten, baum, box: b } = gore([NETZ, HAUS, STEUERUNG]);
+    expect(zeilen(b)).toEqual(['Anlagensteuerung · Gerät an Ihrer Box']);
+    expect(b.geraete[0].id).toBe('as-e-as');
+    expect(b.quellen.map((q) => q.id)).toEqual(['dq-1']);
+    expect(baum.anlagen[0].geraeteZahl).toBe(1);
+    expect(aufbauZahlen(baum, LEERER_FILTER).geraete).toBe(1);
+    expect(karten.find((k) => k.art === 'box')?.zusatz).toBe('Vermittelt zwischen Ihren Geräten und VoltPilot — 1 Gerät angebunden.');
+    // Netz und Haus bleiben Komponenten der Anlage (Energiefluss, Cockpit) — nur ohne erfundenes Gerät.
+    const grund = model.components.filter((c) => c.role === 'grid' || c.role === 'house');
+    expect(grund.map((c) => [c.entityId, c.deviceIds, c.provenance])).toEqual([
+      ['e-netz', [], null],
+      ['e-haus', [], null],
+    ]);
+  });
+
+  it('mit Speicher bleibt der Wechselrichter mit Speicher, Netz und Haus wie heute', () => {
+    const { box: b } = gore([SPEICHER, NETZ, HAUS, STEUERUNG]);
+    expect(zeilen(b)).toEqual(['Anlagensteuerung · Gerät an Ihrer Box', 'Wechselrichter · Gerät an Ihrer Box']);
+    expect(b.geraete[1].karte.komponenten.map((c) => c.entityId)).toEqual(['e-batt', 'e-netz', 'e-haus']);
+  });
+
+  it('mit eigenem, von der Box gemeldetem Wechselrichter bleibt er das Hauptgerät für Netz und Haus', () => {
+    const LOCAL: EntityLocalSetup[] = [
+      { id: 'inverter', kind: 'inverter', role: null, brand: 'Deye', model: 'SUN-12K', label: null, reportedAt: FRISCH, adoptedEntityId: null } as EntityLocalSetup,
+    ];
+    const { box: b } = gore([NETZ, HAUS, STEUERUNG], LOCAL);
+    expect(b.geraete.map((g) => g.id)).toEqual(['inverter', 'as-e-as']);
+    expect(b.geraete[0].karte.komponenten.map((c) => c.entityId)).toEqual(['e-netz', 'e-haus']);
+  });
+
+  it('ohne Anlagensteuerung bleibt das Ersatzgerät für Netz und Haus wie heute', () => {
+    const { box: b } = gore([NETZ, HAUS]);
+    expect(zeilen(b)).toEqual(['Wechselrichter · Gerät an Ihrer Box']);
   });
 });

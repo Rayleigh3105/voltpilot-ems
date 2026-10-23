@@ -110,6 +110,11 @@ läuft), `erzeuger_vorgabe_luecke` („n weitere Wechsel während einer Datenlü
   erste Wechselrichter die unverankerten Komponenten nimmt; `geraetSeite` liest Weg und Zustand aus der
   Anlagensteuerung, `geraetGesicht` nennt sie „Anlagensteuerung“ (Gattung `geraet`). Die Einheiten stehen an der
   Karte „Gerät“ (`AnlagensteuerungEinheiten`), `geraetKarte` zählt sie nie als Energiekarten.
+- ⚠ **Kein Ersatzgerät „Wechselrichter“ (EZ-20):** an einer Anlage mit Anlagensteuerung bekommen die über die Box
+  zusammengesetzten Netz und Haus (`grid-meter`/`house-load` ohne Pin) in `plantModel` kein Gerät `dev:<Box>`, wenn
+  die Box keinen Wechselrichter meldet und kein Speicher daran hängt — der Aufbau zeigt dann nur die Steuerung.
+  Die Komponenten bleiben (Energiefluss, Cockpit), ebenso ihre UEMS-Geräte `zaehler`/`sonstiges`
+  (`AnlagensteuerungAnlegewegDbTest`).
 - **Strom & Geld** (`NetzVermarktungFormen.tsx`): beide PUT ersetzen alles — jedes Formular schickt das Übrige
   unverändert mit.
 - **Verlauf › Messwerte:** `GET …/anlagensteuerungen/{geraetId}/verlauf` (Rohwerte, Frist 90 Tage, Eimer der

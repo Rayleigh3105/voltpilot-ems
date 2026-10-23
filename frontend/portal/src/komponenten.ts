@@ -1364,7 +1364,19 @@ export function plantModel(
     list.push(c);
     byDeviceId.set(deviceId, list);
   }
+  // EZ-20. An einer Anlage mit Anlagensteuerung ist der Rest aus NUR der Grundausstattung (Netz + Haus, über die
+  //    Box zusammengesetzt) kein Gerät: die Box meldet keinen Wechselrichter, die Wechselrichter sind Einheiten der
+  //    Steuerung. Das Ersatzgerät hieße „Wechselrichter“ (Gore Pleinfeld) - ein Gerät, das es nicht gibt. Netz und
+  //    Haus bleiben Komponenten (Energiefluss, Cockpit), sie stehen nur an keiner Karte.
+  const mitSteuerung = entities.some((e) => e.entityType === ANLAGENSTEUERUNG_TYPE);
+  const nurGrundausstattung = (comps: PlantComponent[]): boolean =>
+    comps.every((c) => {
+      const e = entities.find((x) => x.id === c.entityId);
+      return e != null && e.edgeSourceId == null &&
+        (COMPOSED_BASE_TYPES as readonly string[]).includes(e.entityType);
+    });
   for (const [deviceId, comps] of byDeviceId) {
+    if (mitSteuerung && nurGrundausstattung(comps)) continue;
     linkDevice(`dev:${deviceId}`, fallbackDeviceLabel(comps), null, comps.map((c) => c.id));
   }
 
