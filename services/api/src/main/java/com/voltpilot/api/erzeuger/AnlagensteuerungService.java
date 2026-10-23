@@ -61,21 +61,25 @@ public class AnlagensteuerungService {
     private final EntityRegistryService entities;
     private final BoxFaehigkeiten faehigkeiten;
     private final AnlagensteuerungMessplan messplan;
+    private final AnlagensteuerungQuelle quelle;
     private final ObjectMapper json;
     private final Clock uhr;
 
     @Autowired
     public AnlagensteuerungService(AnlagensteuerungRepository repo, EntityRegistryService entities,
-            BoxFaehigkeiten faehigkeiten, AnlagensteuerungMessplan messplan, ObjectMapper json) {
-        this(repo, entities, faehigkeiten, messplan, json, Clock.systemUTC());
+            BoxFaehigkeiten faehigkeiten, AnlagensteuerungMessplan messplan, AnlagensteuerungQuelle quelle,
+            ObjectMapper json) {
+        this(repo, entities, faehigkeiten, messplan, quelle, json, Clock.systemUTC());
     }
 
     AnlagensteuerungService(AnlagensteuerungRepository repo, EntityRegistryService entities,
-            BoxFaehigkeiten faehigkeiten, AnlagensteuerungMessplan messplan, ObjectMapper json, Clock uhr) {
+            BoxFaehigkeiten faehigkeiten, AnlagensteuerungMessplan messplan, AnlagensteuerungQuelle quelle,
+            ObjectMapper json, Clock uhr) {
         this.repo = repo;
         this.entities = entities;
         this.faehigkeiten = faehigkeiten;
         this.messplan = messplan;
+        this.quelle = quelle;
         this.json = json;
         this.uhr = uhr;
     }
@@ -186,7 +190,10 @@ public class AnlagensteuerungService {
      * Steuerung, Komponente, Einheiten und Fassung in EINER Transaktion, eingebaut ab der laufenden vollen Minute.
      * Der Anlege-Trigger legt für die Komponente kein zweites Gerät an (sie hat ihre Speisung schon). In derselben
      * Transaktion wählt {@link AnlagensteuerungMessplan} alle Punkte des Bilds für die zuständige Box aus (UEMS
-     * EZ-18): die Box liest die Steuerung von allein, niemand hakt Messwerte an.
+     * EZ-18), und meldet die Box {@value AnlagensteuerungQuelle#FAEHIGKEIT}, bekommt die Komponente ihren Pin
+     * ({@link AnlagensteuerungQuelle}, EZ-21): die Box liest die Steuerung von allein, niemand hakt Messwerte an. Den
+     * Registry-Push mit Treiber und Pin stellt der Aufrufer nach dem Commit zu
+     * ({@link AnlagensteuerungQuelle#zustellen}).
      */
     @Transactional
     public AnlagensteuerungDto.Anlagensteuerung anlegen(UUID siteId, AnlagensteuerungDto.Anlegen in, String subject) {
@@ -273,6 +280,7 @@ public class AnlagensteuerungService {
                     nv.einspeisemanagementProzent(), subject);
         }
         messplan.auswaehlen(siteId, entityId, q.id(), teAnzahl, "anlegen");
+        quelle.pinsSetzen(siteId, box);
         return dto(repo.steuerung(g.geraetId()).orElseThrow());
     }
 

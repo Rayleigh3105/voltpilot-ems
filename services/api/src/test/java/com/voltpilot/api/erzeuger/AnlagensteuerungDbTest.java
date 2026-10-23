@@ -2,9 +2,14 @@ package com.voltpilot.api.erzeuger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.entities.EntityRegistryPublisher;
 import com.voltpilot.api.measurement.ErzeugerRegisterbilder;
 import com.voltpilot.api.measurement.MeasurementPlan;
 import com.voltpilot.api.measurement.MeasurementSelectionRepository;
@@ -31,8 +36,10 @@ import java.util.function.Supplier;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.test.context.ActiveProfiles;
@@ -82,6 +89,8 @@ class AnlagensteuerungDbTest {
     @Autowired MeasurementSelectionRepository auswahlRepo;
     @Autowired BoxFaehigkeiten faehigkeiten;
     @Autowired ErwarteteKadenz kadenzen;
+    @Autowired AnlagensteuerungQuelle quelle;
+    @MockBean EntityRegistryPublisher registryPublisher;
     static JdbcTemplate root;
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -672,6 +681,152 @@ class AnlagensteuerungDbTest {
         return new AnlagensteuerungDto.Anlegen(a.dataSourceId(), a.unitId(), a.bezeichnung(), a.hersteller(), a.typ(),
                 a.basisadresse(), a.funktionscode(), a.wortfolge(), a.anlagenart(), a.steuerungKennung(), a.rseStufen(),
                 a.veraltetNetzpunktS(), a.programmstandSoll(), a.einheiten(), nv);
+    }
+
+    // ------------------------------------------------------------- EZ-21 Box-Quelle der Anlagensteuerung
+
+    private static void meldet(UUID box, String... woerter) {
+        root.update("UPDATE device SET supports = ?::jsonb, supports_reported_at = now() WHERE id = ?",
+                MAPPER.valueToTree(List.of(woerter)).toString(), box);
+    }
+
+    private static String pin(UUID entity) {
+        return root.queryForObject("SELECT edge_source_id FROM measurement_point WHERE id = ?", String.class, entity);
+    }
+
+    /** Der Registry-Push, wie ihn die Cloud der Box zuletzt zugestellt hat — die Steuerung darin. */
+    private JsonNode steuerungImPush(Welt w, UUID box) throws Exception {
+        ArgumentCaptor<byte[]> nutzlast = ArgumentCaptor.forClass(byte[].class);
+        verify(registryPublisher, atLeastOnce()).publishRegistry(eq(w.tenant()), eq(w.site()), eq(box),
+                nutzlast.capture());
+        JsonNode push = MAPPER.readTree(nutzlast.getValue());
+        assertThat(push.path("device_id").asText()).isEqualTo(box.toString());
+        for (JsonNode e : push.path("entities")) {
+            if (AnlagensteuerungRepository.ENTITY_TYPE.equals(e.path("entity_type").asText())) return e;
+        }
+        throw new AssertionError("keine Anlagensteuerung im Push: " + push);
+    }
+
+    @Test
+    void nachDemAnlegenTraegtDerPushAnEineBoxMitDemWortTreiberUndPin() throws Exception {
+        Welt w = welt("Erzeuger-Quelle");
+        meldet(w.box(), ErzeugerRegisterbild.FAEHIGKEIT, AnlagensteuerungQuelle.FAEHIGKEIT);
+        clearInvocations(registryPublisher);
+        AnlagensteuerungDto.Anlagensteuerung s = als(w.tenant(), () -> service.anlegen(w.site(), gore(w),
+                "sub-einrichter"));
+        // Wie der Controller nach dem Commit.
+        als(w.tenant(), () -> {
+            quelle.zustellen(w.site());
+            return null;
+        });
+
+        AnlagensteuerungQuelle.Transport t = new AnlagensteuerungQuelle.Transport("192.168.1.50", 503, 1);
+        String erwartet = AnlagensteuerungQuelle.kennung(t);
+        assertThat(pin(s.entityId())).as("der Pin steht an der Komponente").isEqualTo(erwartet);
+        JsonNode e = steuerungImPush(w, w.box());
+        assertThat(e.path("entity_id").asText()).isEqualTo(s.entityId().toString());
+        assertThat(e.path("edge_source_id").asText()).isEqualTo(erwartet);
+        assertThat(e.path("driver")).isEqualTo(MAPPER.readTree("""
+                {"communication":"modbus_tcp","interval_s":5,
+                 "connection":{"ip":"192.168.1.50","port":503,"unit_id":1},"data_source_id":"DQ-1"}"""));
+        // Keine Marke, kein Modell, keine Rolle: die Box schlägt für eine SPS nichts im Katalog nach.
+        assertThat(e.path("driver").has("brand")).isFalse();
+        assertThat(e.path("driver").has("role")).isFalse();
+
+        // Eine versorgte Steuerung findet das Nachholen nicht.
+        assertThat(quelle.nachholen()).doesNotContain(w.site());
+    }
+
+    @Test
+    void eineAlteBoxOhneDasWortBekommtDieSteuerungWieHeute() throws Exception {
+        Welt w = welt("Erzeuger-Quelle-Alt");
+        meldet(w.box(), ErzeugerRegisterbild.FAEHIGKEIT);
+        clearInvocations(registryPublisher);
+        AnlagensteuerungDto.Anlagensteuerung s = als(w.tenant(), () -> service.anlegen(w.site(), gore(w),
+                "sub-einrichter"));
+        als(w.tenant(), () -> {
+            quelle.zustellen(w.site());
+            return null;
+        });
+
+        assertThat(pin(s.entityId())).as("kein Pin, solange die Box ihn nicht versteht").isNull();
+        JsonNode e = steuerungImPush(w, w.box());
+        assertThat(e.has("edge_source_id")).isFalse();
+        assertThat(e.path("driver")).as("höchstens das Kennzeichen der Datenquelle, wie vor EZ-21")
+                .isEqualTo(MAPPER.readTree("{\"data_source_id\":\"DQ-1\"}"));
+        assertThat(quelle.nachholen()).as("die Box kann es nicht: nichts nachzuholen").doesNotContain(w.site());
+
+        // Selbst ein gespeicherter Pin reist nicht an eine Box, die ihn nicht versteht (etwa nach einem Wechsel
+        // auf eine ältere Box): ihr Push bleibt Byte für Byte der von vorher.
+        root.update("UPDATE measurement_point SET edge_source_id = 'src-2hv35pcn' WHERE id = ?", s.entityId());
+        clearInvocations(registryPublisher);
+        als(w.tenant(), () -> {
+            quelle.zustellen(w.site());
+            return null;
+        });
+        JsonNode wieder = steuerungImPush(w, w.box());
+        assertThat(wieder.has("edge_source_id")).isFalse();
+        assertThat(wieder.path("driver").has("connection")).isFalse();
+    }
+
+    @Test
+    void nachholenVersorgtGoreNachDemBoxUpdateEinmalUndFolgtAdresseUndBox() throws Exception {
+        Welt w = welt("Erzeuger-Quelle-Gore");
+        // So steht Gore da: angelegt an einer Box, die das Erzeuger-Bild liest, aber die Quelle nicht kennt.
+        meldet(w.box(), ErzeugerRegisterbild.FAEHIGKEIT);
+        AnlagensteuerungDto.Anlagensteuerung s = als(w.tenant(), () -> service.anlegen(w.site(), gore(w),
+                "sub-einrichter"));
+        assertThat(pin(s.entityId())).isNull();
+        assertThat(quelle.nachholen()).doesNotContain(w.site());
+
+        // Das Box-Update: die Meldung der Box stößt Pin und Push sofort an (nach dem Commit der Meldung).
+        clearInvocations(registryPublisher);
+        als(w.tenant(), () -> {
+            faehigkeiten.record(w.box(), Instant.now(), List.of(ErzeugerRegisterbild.FAEHIGKEIT,
+                    AnlagensteuerungQuelle.FAEHIGKEIT));
+            return null;
+        });
+        String erwartet = AnlagensteuerungQuelle.kennung(new AnlagensteuerungQuelle.Transport("192.168.1.50", 503, 1));
+        assertThat(pin(s.entityId())).isEqualTo(erwartet);
+        assertThat(steuerungImPush(w, w.box()).path("edge_source_id").asText()).isEqualTo(erwartet);
+        assertThat(quelle.nachholen()).as("versorgt: nichts mehr nachzuholen").doesNotContain(w.site());
+
+        // Ohne den Anstoß (Deploy NACH dem Box-Update): das Nachholen findet den fehlenden Pin, genau einmal.
+        root.update("UPDATE measurement_point SET edge_source_id = NULL WHERE id = ?", s.entityId());
+        clearInvocations(registryPublisher);
+        assertThat(quelle.nachholen()).containsOnlyOnce(w.site());
+        assertThat(pin(s.entityId())).isEqualTo(erwartet);
+        assertThat(steuerungImPush(w, w.box()).path("driver").path("connection").path("ip").asText())
+                .isEqualTo("192.168.1.50");
+        assertThat(quelle.nachholen()).doesNotContain(w.site());
+
+        // Eine geänderte Adresse der Datenquelle: Pin und Treiber folgen ihr.
+        root.update("UPDATE data_source SET adresse = '192.168.1.51:502' WHERE id = ?", w.quelle());
+        clearInvocations(registryPublisher);
+        assertThat(quelle.nachholen()).containsOnlyOnce(w.site());
+        String neu = AnlagensteuerungQuelle.kennung(new AnlagensteuerungQuelle.Transport("192.168.1.51", 502, 1));
+        assertThat(pin(s.entityId())).isEqualTo(neu);
+        JsonNode e = steuerungImPush(w, w.box());
+        assertThat(e.path("edge_source_id").asText()).isEqualTo(neu);
+        assertThat(e.path("driver").path("connection").path("port").asInt()).isEqualTo(502);
+
+        // „Zuständige Box wechseln“: Treiber und Pin hängen an der Box, die die Quelle JETZT liest — eine ältere
+        // neue Box bekommt sie nicht, eine mit dem Wort schon.
+        UUID neueBox = root.queryForObject("INSERT INTO device (tenant_id, site_id, external_ref) VALUES (?, ?, ?) "
+                + "RETURNING id", UUID.class, w.tenant(), w.site(), "edge-erzeugerquelleneu");
+        root.update("UPDATE data_source_assignment SET effective_to = date_trunc('minute', now()) "
+                + "WHERE data_source_id = ?", w.quelle());
+        root.update("INSERT INTO data_source_assignment (tenant_id, data_source_id, device_id, protokoll, adresse, "
+                + "effective_from) SELECT d.tenant_id, d.id, ?, d.protokoll, d.adresse, date_trunc('minute', now()) "
+                + "FROM data_source d WHERE d.id = ?", neueBox, w.quelle());
+        meldet(neueBox, ErzeugerRegisterbild.FAEHIGKEIT);
+        assertThat(als(w.tenant(), () -> quelle.fuerBox(w.site(), neueBox)).get(s.entityId()).driver()).isNull();
+        meldet(neueBox, ErzeugerRegisterbild.FAEHIGKEIT, AnlagensteuerungQuelle.FAEHIGKEIT);
+        var an = als(w.tenant(), () -> quelle.fuerBox(w.site(), neueBox)).get(s.entityId());
+        assertThat(an.edgeSourceId()).isEqualTo(neu);
+        assertThat(an.driver().path("connection").path("ip").asText()).isEqualTo("192.168.1.51");
+        assertThat(als(w.tenant(), () -> quelle.pinsSetzen(w.site(), w.box())))
+                .as("die alte Box liest die Quelle nicht mehr").isFalse();
     }
 
     private static void probe(Welt w, UUID entity, String key, long zahl, String qualitaet, Instant zeit, int seq) {

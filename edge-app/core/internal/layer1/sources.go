@@ -90,6 +90,13 @@ func parseSourcesConfig(payload []byte) (plans []sourcePlan, notes []sourceNote,
 		entries++
 		// --- the store node (role, then the transport) ---
 		role, _ := s["role"].(string)
+		// Die Adresse einer Anlagensteuerung (EZ-21) liest der Messplan, nicht
+		// die Selbstverdrahtung - benannt wie im Flow, nicht gewarnt.
+		if role == sources.RolePlantController {
+			notes = append(notes, sourceNote{false, "Quelle " + id + " (" + role +
+				"): Anlagensteuerung, liest der Messplan (Erzeuger-Bild) - keine Selbstverdrahtung"})
+			continue
+		}
 		if role != sources.RoleErzeuger && role != sources.RoleNetz && role != sources.RoleConsumer {
 			notes = append(notes, sourceNote{true, "Quelle " + id + " NICHT VERDRAHTET: unbekannte Rolle \"" + role + "\""})
 			continue

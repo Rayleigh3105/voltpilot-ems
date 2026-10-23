@@ -38,6 +38,11 @@ const (
 	TypeWallbox       = "wallbox"
 	TypeHeatingRod    = "heating-rod"
 	TypeGenericLoad   = "generic-load"
+	// TypeAnlagensteuerung is the plant controller of an Erzeugeranlage (UEMS
+	// EZ-6): a SPS whose VoltPilot-Registerbild Erzeuger the palette reads. It
+	// is no inverter and no PV source - componentapply turns its driver into a
+	// plant-controller source the measurement binding resolves (EZ-21).
+	TypeAnlagensteuerung = "anlagensteuerung"
 )
 
 // The D-14 command vocabulary, shared with edge-desired and mqtt-schedule-2.0.

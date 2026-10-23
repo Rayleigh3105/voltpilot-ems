@@ -1,6 +1,7 @@
 package com.voltpilot.api.measurement;
 
 import com.voltpilot.api.erzeuger.AnlagensteuerungMessplan;
+import com.voltpilot.api.erzeuger.AnlagensteuerungQuelle;
 import com.voltpilot.api.kundenbereich.BeendeteKundenbereiche;
 import com.voltpilot.api.measurement.MeasurementSelectionRepository.DeviceScope;
 import com.voltpilot.api.tenant.TenantContext;
@@ -42,6 +43,14 @@ public class MeasurementConfigReconciler {
         this.anlagensteuerungen = anlagensteuerungen;
     }
 
+    /** UEMS EZ-21: Pin und Registry-Push schon angelegter Anlagensteuerungen; ohne Spring keiner. */
+    private AnlagensteuerungQuelle anlagensteuerungQuellen;
+
+    @Autowired(required = false)
+    void setAnlagensteuerungQuelle(AnlagensteuerungQuelle anlagensteuerungQuellen) {
+        this.anlagensteuerungQuellen = anlagensteuerungQuellen;
+    }
+
     public MeasurementConfigReconciler(@Qualifier("adminJdbcTemplate") JdbcTemplate adminJdbc,
             MeasurementSelectionService selections, MeasurementConfigPublisher publisher) {
         this.adminJdbc = adminJdbc;
@@ -59,6 +68,7 @@ public class MeasurementConfigReconciler {
     public void reconcile() {
         katalogstandNachliefern();
         anlagensteuerungenNachholen();
+        anlagensteuerungQuellenNachholen();
         for (DeviceScope scope : pending()) {
             if (beendete.beendet(scope.tenantId())) continue; // Kundenbereich beendet: der Läufer lässt ihn aus
             TenantContext.set(scope.tenantId());
@@ -123,6 +133,24 @@ public class MeasurementConfigReconciler {
             }
         } catch (RuntimeException e) {
             log.warn("automatic plant controller measurement selection failed: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * UEMS EZ-21: eine Anlagensteuerung, deren zuständige Box {@code anlagensteuerung_quelle} meldet und deren Pin
+     * fehlt oder veraltet ist, bekommt ihn hier ({@link AnlagensteuerungQuelle#nachholen}) samt Registry-Push mit
+     * Treiber - so liest auch eine vor EZ-21 angelegte Steuerung (Gore), sobald ihre Box das Update hat.
+     */
+    void anlagensteuerungQuellenNachholen() {
+        if (anlagensteuerungQuellen == null) return;
+        try {
+            List<UUID> anlagen = anlagensteuerungQuellen.nachholen();
+            if (!anlagen.isEmpty()) {
+                log.info("plant controller source pinned and registry pushed for {} site(s): {}", anlagen.size(),
+                        anlagen);
+            }
+        } catch (RuntimeException e) {
+            log.warn("plant controller source catch-up failed: {}", e.getMessage());
         }
     }
 

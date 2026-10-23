@@ -1,7 +1,7 @@
 # Fähigkeiten im Box-Herzschlag (AP-06 IP-18)
 
 `ems/{tenant}/{site}/{device}/status` bleibt bei `schema_version: "1.0"`.
-`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component", "erzeuger_registerbild"]` steht unabhängig neben
+`supports: ["data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked", "plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component", "erzeuger_registerbild", "anlagensteuerung_quelle"]` steht unabhängig neben
 `data_sources`. [Schema](edge-supports.schema.json), [Vokabular und Vektoren](edge-supports-vectors.json).
 Der Core sendet ausschließlich die dort als gebaut belegten Fähigkeiten. Neue Namen
 brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
@@ -63,6 +63,19 @@ brauchen einen Vertragseintrag, Codebeleg und gemeinsame Go-/Java-/TS-Nachweise.
   ([Probe-Vertrag](../mqtt-probe.schema.json), [Box-Leser](../../agents/root/uems-erzeuger-registerbild-box.md)).
   Beleg `edge-app/nodered/measurements/erzeuger-laufzeit.test.js`. Keine Zeile in `edge-capabilities.json`
   (Begründung wie `plan_quittung`).
+- `anlagensteuerung_quelle` (UEMS EZ-21): der Applier (`componentapply`) leitet aus dem Registry-Treiber einer
+  Entität vom Typ `anlagensteuerung` (`communication: modbus_tcp`, `connection` = Adresse, Port und Geräte-ID der
+  Datenquelle, Lesetakt 5 s, keine Marke) eine Quelle der Rolle `plant-controller` in `edge/sources/config` ab —
+  ohne Wechselrichter-Katalog, ohne dass Core oder Selbstverdrahtung sie pollen —, und die Palette bindet die
+  Komponente über ihren Pin `edge_source_id` daran ([Treiber-Regel](edge-entity.schema.json)
+  `x-anlagensteuerung-driver-rule`, [Vektoren](anlagensteuerung-quelle-vectors.json)). Die Cloud fragt das Wort
+  in `EntityRegistryService.composePush` je Box: nur eine Box, die es meldet, bekommt Treiber und Pin; jede andere
+  den Push Byte für Byte wie vorher. Ein älterer Applier sähe einen Treiber mit Verbindung und ohne Marke und
+  verweigerte den GANZEN Push. **Gemeldet seit EZ-21** (`BuiltSupports`), wirksam mit dem Box-Release, das diesen
+  Applier trägt. Beleg `edge-app/core/internal/componentapply/plant_controller_test.go`. Keine Zeile in
+  `edge-capabilities.json`: eine Zeile gälte für jeden Stand ab einem Release-Tag, und ein Tag, das diesen Applier
+  doch nicht trägt, bekäme den Treiber und verweigerte damit jede Konfiguration der Anlage — nur die eigene Meldung
+  der Box ist dafür sicher.
 - `assignment_effective_at` bleibt bekannt, wird aber **nicht gesendet**: die gebaute
   Übergabe zum Zeitpunkt arbeitet ausschließlich im Cloud-Zeitgeber (`37205f8f`,
   `QuellenUebergabe`, [Ausführungsweg](../../agents/root/uems-quellen-uebergabe.md)).

@@ -163,6 +163,32 @@ das harte Budget (`MeasurementSelectionService.automatischAuswaehlen`, Akteur `s
 - Ohne ausführende Box (offene Übergabe) oder ohne `erzeuger_registerbild` geschieht nichts; der nächste Takt holt nach.
   Die Auswahl der bisherigen Box nach einem Wechsel bleibt stehen; `forPublishing` lässt sie dort nicht mehr durch.
 
+## Box-Quelle der Anlagensteuerung (EZ-21)
+
+Ohne Quelle auf der Box bindet die Palette die Komponente nicht (`binding_unavailable`, `measurement-binding.js`),
+und ein Plan aus EZ-18 greift ins Leere. Darum trägt der Registry-Push an eine Box mit `anlagensteuerung_quelle` je
+Steuerung einen Treiber mit dem Transport ihrer Datenquelle und den Pin `edge_source_id`
+([Vertrag](../../contracts/v2/edge-entity.schema.json) `x-anlagensteuerung-driver-rule`,
+[Vektoren](../../contracts/v2/anlagensteuerung-quelle-vectors.json)); `componentapply` leitet daraus eine Quelle der
+Rolle `plant-controller` in `edge/sources/config` ab, ohne Katalog, und keine Bilanz, Hülle oder Selbstverdrahtung
+liest sie.
+
+- **Beim Push entstanden:** `AnlagensteuerungQuelle.fuerBox` (hinter `PushAnbindungen`, von `composePush` je Box
+  gefragt) rechnet Treiber und Pin aus `data_source.adresse` und `geraet.geraete_id` — sie folgen damit einer neuen
+  Adresse und der Box, die die Quelle gerade liest.
+- ⚠ **Nur mit dem Wort:** eine Box ohne `anlagensteuerung_quelle` bekommt die Steuerung ohne Pin, der Treiber höchstens
+  mit `data_source_id` — ein älterer Applier verweigerte sonst den GANZEN Push („nennt keine Marke“). Keine Zeile in
+  `edge-capabilities.json`; nur die eigene Meldung der Box zählt.
+- **Pin an der Komponente:** sonst stünde die von der Box gemeldete Quelle als „Neues Gerät gefunden“ da
+  (`komponenten.ts`). Gesetzt beim Anlegen (`pinsSetzen`), nachgeholt im Takt des `MeasurementConfigReconciler`
+  (`nachholen`, nur fehlende oder veraltete Pins) und sofort, wenn eine Box das Wort neu meldet
+  (`nachFaehigkeitsmeldung`); danach geht der Push an die Box. Der Controller stellt nach „Steuerung verbinden“ den
+  Push zu (`createEntity` pushte vor der Bindung an die Datenquelle).
+- ⚠ **Zwilling des Pins:** `AnlagensteuerungQuelle.kennung` ↔ `sources.DeterministicID`; die Box setzt keinen Port und
+  keine Geräte-ID ein, sonst passte die Kennung nicht mehr zum Pin.
+- ⚠ **Nur portal-verwaltete Anlagen:** eine box-verwaltete Anlage wendet keinen Portal-Plan an
+  (`componentapply.IsPortalManaged`) — dort braucht es erst die Übernahme.
+
 ## Verlauf: Vorgaben als Ereignisse (EZ-9)
 
 `HistoryService` hängt bei einer Anlage mit Anlagensteuerung (`VorgabenRepository.hatSteuerung`) die Vorgaben als
@@ -188,4 +214,4 @@ Art“, je Einheit/Monat), Detail `VorgabeDetail.tsx`, Routen und CSV in `erzeug
 EZ-5 (Box-Leser, gebaut: Laufzeitstand 2026.10.21.1, `advertised: true`, Budget-Klasse in
 `measurement-budget-vectors.json`, Go-`Config.Erzeugerbilder` für `erzeuger_registerbilder`), EZ-8
 (Cockpit auf diesen Routen), EZ-9 (Vorgaben im Verlauf, gebaut), EZ-15 (Anlege-Schritt, gebaut), EZ-18 (Messplan
-automatisch, gebaut).
+automatisch, gebaut), EZ-21 (Box-Quelle, gebaut; wirkt erst mit dem Box-Release, das `anlagensteuerung_quelle` meldet).

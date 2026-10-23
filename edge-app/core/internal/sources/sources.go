@@ -57,7 +57,20 @@ const (
 	// house balance / a consumer entity is topology-layer work; here it is a
 	// first-class source role so it can be added, read and published.
 	RoleConsumer = "consumer"
+	// RolePlantController is the transport of an Anlagensteuerung (UEMS EZ-21):
+	// the address the palette reads the Erzeuger register image over, bound to
+	// the component through its pin (edge_source_id). It only ever comes from a
+	// portal plan (componentapply) - never from the local add path, which is why
+	// isKnownRole does not list it. No fold reads it: it adds nothing to the PV
+	// sum, the grid value, the envelope or the export backstop (each of those
+	// asks for its own role), and the self-wiring tab does not poll it.
+	RolePlantController = "plant-controller"
 )
+
+// FamilyErzeugerRegisterbild is the family a plant-controller source carries:
+// the catalog family the palette reads over it. It is a label, not a register
+// profile - nothing on the box looks it up.
+const FamilyErzeugerRegisterbild = "voltpilot.erzeuger_registerbild_v1"
 
 // isKnownRole reports whether role is one of the read-only source roles the edge
 // can configure today. A meter (RoleNetz) and a consumer (RoleConsumer) carry no

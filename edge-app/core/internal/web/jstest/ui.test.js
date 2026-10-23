@@ -1056,6 +1056,16 @@ test("groups: die Kopfzeile ZÄHLT eigene Geräte, lässt sie aber aus dem Liefe
   assert.ok(!/eigene?s? Gerät/.test(vorher.text), vorher.text);
 });
 
+test("groups: die Adresse einer Anlagensteuerung ist kein Erzeuger und wartet auf nichts (EZ-21)", () => {
+  const G = groupsApi();
+  const steuerung = { id: "src-2hv35pcn", role: "plant-controller", label: "Anlagensteuerung", capacity_kwp: 0 };
+  // Sie liefert nie über die Quellen-Lesung (ihr Bild liest der Messplan), ihr Status bleibt also "pending".
+  const sum = G.anlageSummary(G_STATE, G_SOURCES.concat([steuerung]), { ...G_OK, "src-2hv35pcn": "pending" }, NOW);
+  assert.strictEqual(sum.text, G.anlageSummary(G_STATE, G_SOURCES, G_OK, NOW).text);
+  assert.strictEqual(sum.tone, "ok");
+  assert.match(sum.text, /2 Erzeuger/);
+});
+
 test("groups: a source that stops delivering turns Anlage amber and opens it ONCE", () => {
   const G = groupsApi();
   const warn = G.anlageSummary(G_STATE, G_SOURCES, { s1: "ok", s2: "warn" }, NOW);

@@ -1,6 +1,7 @@
 package com.voltpilot.api.web;
 
 import com.voltpilot.api.erzeuger.AnlagensteuerungMessplan;
+import com.voltpilot.api.erzeuger.AnlagensteuerungQuelle;
 import com.voltpilot.api.erzeuger.AnlagensteuerungService;
 import com.voltpilot.api.web.dto.AnlagensteuerungDto;
 import com.voltpilot.api.zugriff.Recht;
@@ -31,10 +32,13 @@ public class AnlagensteuerungController {
 
     private final AnlagensteuerungService service;
     private final AnlagensteuerungMessplan messplan;
+    private final AnlagensteuerungQuelle quelle;
 
-    public AnlagensteuerungController(AnlagensteuerungService service, AnlagensteuerungMessplan messplan) {
+    public AnlagensteuerungController(AnlagensteuerungService service, AnlagensteuerungMessplan messplan,
+            AnlagensteuerungQuelle quelle) {
         this.service = service;
         this.messplan = messplan;
+        this.quelle = quelle;
     }
 
     /**
@@ -49,7 +53,9 @@ public class AnlagensteuerungController {
     /**
      * Recht: {@code geraet.einrichten}. Steuerung, Komponente, Einheiten und Fassung in einem Schritt; 409, solange
      * die zuständige Box das Erzeuger-Registerbild nicht lesen kann. Der Messplan (alle Punkte des Bilds, UEMS
-     * EZ-18) geht nach dem Commit sofort an die Box; scheitert das, liefert der Abgleich binnen 30 s.
+     * EZ-18) geht nach dem Commit sofort an die Box; scheitert das, liefert der Abgleich binnen 30 s. Ebenso der
+     * Registry-Push, der die Steuerung erst mit ihrer Datenquelle trägt — an eine Box mit
+     * {@code anlagensteuerung_quelle} samt Treiber und Pin (EZ-21).
      */
     @PostMapping("/api/v1/sites/{siteId}/anlagensteuerungen")
     @Recht(value = "geraet.einrichten", ziel = RechtZiel.ANLAGE)
@@ -58,6 +64,7 @@ public class AnlagensteuerungController {
             @Valid @RequestBody AnlagensteuerungDto.Anlegen in, Principal actor) {
         AnlagensteuerungDto.Anlagensteuerung angelegt = service.anlegen(siteId, in, actor.getName());
         messplan.zustellen(siteId, angelegt.entityId());
+        quelle.zustellen(siteId);
         return angelegt;
     }
 

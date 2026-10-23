@@ -247,6 +247,14 @@ func ParseDriver(e entities.Entity) (Driver, bool, error) {
 	if isSelfRead(d.Communication) {
 		return Driver{}, false, nil
 	}
+	// A plant controller (UEMS EZ-21) carries no brand by construction: a SPS
+	// is in no inverter catalog. Its transport is checked in Derive instead
+	// (plantControllerSource). The cloud only sends this driver to a box that
+	// reports the capability `anlagensteuerung_quelle` - an older box would
+	// stop at the brand check below and refuse the whole push.
+	if e.Type == entities.TypeAnlagensteuerung {
+		return d, true, nil
+	}
 	if strings.TrimSpace(d.Brand) == "" {
 		return Driver{}, false, fmt.Errorf("Anbindung von %q nennt keine Marke", e.ID)
 	}
@@ -270,6 +278,15 @@ func (d Driver) connection() (inverter.Connection, error) {
 // unambiguous. Anything else is refused by name - a device read into the wrong
 // role would silently land in the wrong side of the energy balance.
 func roleFor(e entities.Entity, d Driver) (string, error) {
+	// A plant controller has exactly one role. Any other explicit role would
+	// put a SPS into the energy balance or the inverter slot, so it is refused.
+	if e.Type == entities.TypeAnlagensteuerung {
+		if r := strings.TrimSpace(d.Role); r != "" && r != sources.RolePlantController {
+			return "", fmt.Errorf("Anlagensteuerung %q nennt die Rolle %q - sie ist nur %q",
+				e.ID, d.Role, sources.RolePlantController)
+		}
+		return sources.RolePlantController, nil
+	}
 	switch strings.TrimSpace(d.Role) {
 	case RoleInverter, sources.RoleErzeuger, sources.RoleNetz, sources.RoleConsumer:
 		return strings.TrimSpace(d.Role), nil
@@ -367,19 +384,27 @@ func Derive(reg entities.Registry, cat inverter.Catalog, current []sources.Sourc
 			continue
 		}
 
-		src, err := sources.Normalize(cat, sources.Request{
-			Role:           role,
-			Label:          e.Label,
-			Brand:          d.Brand,
-			Model:          d.Model,
-			Family:         d.Family,
-			Connection:     conn,
-			IntervalS:      d.IntervalS,
-			CapacityKwp:    d.CapacityKwp,
-			RegistryUnitID: d.RegistryUnitID,
-		}, now)
-		if err != nil {
-			return Plan{}, fmt.Errorf("Gerät %q: %s", e.ID, message(err))
+		var src sources.Source
+		if role == sources.RolePlantController {
+			src, err = plantControllerSource(e, d, conn, now)
+			if err != nil {
+				return Plan{}, err
+			}
+		} else {
+			src, err = sources.Normalize(cat, sources.Request{
+				Role:           role,
+				Label:          e.Label,
+				Brand:          d.Brand,
+				Model:          d.Model,
+				Family:         d.Family,
+				Connection:     conn,
+				IntervalS:      d.IntervalS,
+				CapacityKwp:    d.CapacityKwp,
+				RegistryUnitID: d.RegistryUnitID,
+			}, now)
+			if err != nil {
+				return Plan{}, fmt.Errorf("Gerät %q: %s", e.ID, message(err))
+			}
 		}
 		// The clash check keys on the TRANSPORT IDENTITY, not on the final id:
 		// two entities describing the same physical device are ambiguous even
@@ -415,6 +440,66 @@ func Derive(reg entities.Registry, cat inverter.Catalog, current []sources.Sourc
 	}
 	return plan, nil
 }
+
+// plantControllerSource turns the driver of an Anlagensteuerung (UEMS EZ-21)
+// into the source the measurement binding resolves its pin to: the transport
+// of its data source (Modbus TCP host:port and the controller's unit id), and
+// nothing else.
+//
+// Deliberately WITHOUT cat.Normalize: a SPS has no brand and no model in the
+// inverter catalog, and the catalog's Modbus profile would turn it into a
+// device the self-wiring tab polls as an inverter. The values are taken as the
+// cloud sent them - no default unit, no default port - because the cloud mints
+// the pin from exactly these values (AnlagensteuerungQuelle.kennung, the Java
+// twin of sources.DeterministicID). Defaulting one of them here would give the
+// source a different id than the pin and leave the component unbound.
+func plantControllerSource(e entities.Entity, d Driver, conn inverter.Connection,
+	now time.Time) (sources.Source, error) {
+	comm := strings.TrimSpace(d.Communication)
+	if comm != inverter.CommModbusTCP {
+		return sources.Source{}, fmt.Errorf(
+			"Anlagensteuerung %q: die Box liest eine Steuerung nur über Modbus TCP, nicht über %q",
+			e.ID, d.Communication)
+	}
+	ip := strings.TrimSpace(conn.IP)
+	if ip == "" || strings.ContainsAny(ip, " \t") {
+		return sources.Source{}, fmt.Errorf("Anlagensteuerung %q: die Adresse der Steuerung fehlt", e.ID)
+	}
+	if conn.Port < 1 || conn.Port > 65535 {
+		return sources.Source{}, fmt.Errorf(
+			"Anlagensteuerung %q: der Port %d liegt nicht zwischen 1 und 65535", e.ID, conn.Port)
+	}
+	if conn.UnitID < 0 || conn.UnitID > 255 {
+		return sources.Source{}, fmt.Errorf(
+			"Anlagensteuerung %q: die Geräte-ID %d liegt nicht zwischen 0 und 255", e.ID, conn.UnitID)
+	}
+	interval := d.IntervalS
+	if interval == 0 {
+		interval = plantControllerIntervalS
+	}
+	if interval < 1 || interval > 3600 {
+		return sources.Source{}, fmt.Errorf(
+			"Anlagensteuerung %q: der Lesetakt %d s liegt nicht zwischen 1 und 3600", e.ID, interval)
+	}
+	label := strings.TrimSpace(e.Label)
+	if label == "" {
+		label = "Anlagensteuerung"
+	}
+	return sources.Source{
+		Role:          sources.RolePlantController,
+		Label:         label,
+		Family:        sources.FamilyErzeugerRegisterbild,
+		Communication: inverter.CommModbusTCP,
+		Connection:    inverter.Connection{IP: ip, Port: conn.Port, UnitID: conn.UnitID},
+		IntervalS:     interval,
+		CreatedAt:     now.UTC(),
+	}, nil
+}
+
+// plantControllerIntervalS is the read cadence of the Erzeuger image (EW-5 A).
+// The palette reads the image at its own cadence anyway; the value only keeps
+// the source's freshness window honest.
+const plantControllerIntervalS = 5
 
 // keepLocalIDs maps the transport identity of every CURRENTLY configured source
 // onto the id it runs under, so a derivation can recognise a device instead of

@@ -38,8 +38,14 @@ type StatusExtension struct {
 // sends its points with quality and events (measurements/erzeuger-*.js;
 // evidence measurements/erzeuger-laufzeit.test.js). The points themselves come
 // with the runtime catalog of the release that carries this reader.
+// anlagensteuerung_quelle (EZ-21): componentapply derives a plant-controller
+// source from the driver of an anlagensteuerung entity (no brand, no catalog)
+// and the palette binds the component to it through its pin
+// (componentapply/plant_controller_test.go). The cloud sends that driver only
+// to a box reporting this word - an older applier refuses a driver without a
+// brand and with it the whole push.
 func BuiltSupports() []string {
 	return []string{"data_sources", "measurement_sample_provenance", "events", "automation_paused_until_revoked",
 		"plan_quittung", "steuerungsverbund_anteil", "sprungprobe", "measurement_config_per_component",
-		"erzeuger_registerbild"}
+		"erzeuger_registerbild", "anlagensteuerung_quelle"}
 }

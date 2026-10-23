@@ -15,6 +15,7 @@
     "charge_from_grid_allowed": "Storage guard posture per decision D-8: false OR ABSENT = the entity must never charge from the grid (commanded charge clamped to measured available PV; unknown PV blocks charge entirely). Only an explicit true releases the clamp.",
     "signs": "Shared with mqtt-telemetry-2.0 and the command vocabulary: storage setpoint_kw/battery_power_kw + = charge, - = discharge; grid power_kw + = import, - = export; generation is only ever capped (limit_kw/limit_pct reduce-only), never commanded to produce; consumer setpoint_kw + = consume (never negative - V2G out of scope)."
   },
+  "x-anlagensteuerung-driver-rule": "UEMS EZ-21: eine Entitaet vom Typ `anlagensteuerung` traegt im Registry-Push den Treiber $defs/anlagensteuerung_driver (Transport ihrer Datenquelle: communication modbus_tcp, connection ip/port/unit_id, interval_s 5, data_source_id = Kennzeichen der Datenquelle; KEINE brand/model/family/role) und den Pin `edge_source_id` = sources.DeterministicID der Quelle, die die Box daraus ableitet (Rolle plant-controller; Rechenweg und Faelle: anlagensteuerung-quelle-vectors.json). Die Box (componentapply) leitet daraus eine Quelle in edge/sources/config ab, ohne Wechselrichter-Katalog und ohne sie selbst zu pollen; die Palette bindet die Komponente ueber den Pin daran und liest das Erzeuger-Bild. Gesendet NUR an eine Box, die `anlagensteuerung_quelle` meldet (edge-supports.md): ein aelterer Applier lehnt einen Treiber mit Verbindung und ohne Marke ab und verweigert damit den GANZEN Push. Jede andere Box bekommt den Push Byte fuer Byte wie vorher (die Steuerung dann hoechstens mit driver.data_source_id und ohne Pin).",
   "oneOf": [
     {
       "$ref": "#/$defs/config"
@@ -290,6 +291,58 @@
           ]
         }
       ]
+    },
+    "anlagensteuerung_driver": {
+      "type": "object",
+      "description": "Der Treiber einer Anlagensteuerung (x-anlagensteuerung-driver-rule, UEMS EZ-21). Die Werte sind die der Datenquelle, unveraendert: die Box setzt keinen Port und keine Geraete-ID ein, weil der Pin aus genau diesen Werten gerechnet ist.",
+      "required": [
+        "communication",
+        "connection",
+        "interval_s"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "communication": {
+          "type": "string",
+          "const": "modbus_tcp"
+        },
+        "interval_s": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600
+        },
+        "data_source_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "connection": {
+          "type": "object",
+          "required": [
+            "ip",
+            "port",
+            "unit_id"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "ip": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 253
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "unit_id": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 255
+            }
+          }
+        }
+      }
     },
     "descriptor": {
       "type": "object",

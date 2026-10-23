@@ -37,9 +37,14 @@
      tone: "ok" | "warn" | "off"; problemKey: non-null ONLY for a state that
      should open the group by itself (something stopped delivering).
      ------------------------------------------------------------------ */
+  var ROLE_PLANT_CONTROLLER = "plant-controller";
+
   function anlageSummary(s, sources, statuses, nowMs, custom) {
     s = s || {};
-    sources = sources || [];
+    // Die Adresse einer Anlagensteuerung (EZ-21, Rolle plant-controller) ist
+    // kein Erzeuger: ihr Bild liest der Messplan, nicht die Quellen-Lesung -
+    // ihr „wartet auf Daten" hier wäre ein Warten, das niemand tut.
+    sources = (sources || []).filter(function (src) { return src.role !== ROLE_PLANT_CONTROLLER; });
     statuses = statuses || {};
     custom = custom || [];
     if (nowMs == null) nowMs = s.server_now_ms || Date.now();

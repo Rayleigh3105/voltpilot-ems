@@ -1,0 +1,108 @@
+{
+  "_comment": [
+    "Die Quelle einer Anlagensteuerung auf der Box (UEMS EZ-21). Der Registry-Push trägt für eine",
+    "Entität vom Typ `anlagensteuerung` einen Treiber mit dem Transport ihrer Datenquelle und den Pin",
+    "`edge_source_id`; die Box leitet daraus eine Quelle der Rolle `plant-controller` ab (ohne Marke,",
+    "ohne Wechselrichter-Katalog), an die sich die Palette über den Pin bindet und über die sie das",
+    "VoltPilot-Registerbild Erzeuger liest. Vertrag: edge-entity.schema.json `x-anlagensteuerung-driver-rule`.",
+    "",
+    "Der Pin ist `sources.DeterministicID` der Quelle: sha256 über Rolle, Kommunikation, Adresse, Port und",
+    "Geräte-ID (je durch einen Zeilenumbruch getrennt), die ersten acht Bytes je modulo 31 in das Alphabet",
+    "`abcdefghjkmnpqrstuvwxyz23456789`, davor `src-`. Die Cloud rechnet ihn selbst",
+    "(AnlagensteuerungQuelle.kennung), weil sie ihn vor der Box kennen muss.",
+    "",
+    "Zwillinge, die diese Fälle lesen: Go edge-app/core/internal/componentapply/plant_controller_test.go",
+    "(Derive aus dem Treiber ergibt genau `bus_eintrag` und den Pin als Kennung), Java",
+    "services/api .../erzeuger/AnlagensteuerungQuelleTest (Treiber und Pin aus `adresse` und `unit_id`),",
+    "JS edge-app/nodered/measurements/anlagensteuerung-quelle.test.js (Bindung und Lesegerät aus",
+    "`bus_eintrag` und der Entität).",
+    "",
+    "Gesendet wird der Treiber nur an eine Box, die das Fähigkeitswort meldet (edge-supports.md)."
+  ],
+  "schema_version": "1.0",
+  "faehigkeit": "anlagensteuerung_quelle",
+  "rolle": "plant-controller",
+  "kommunikation": "modbus_tcp",
+  "familie": "voltpilot.erzeuger_registerbild_v1",
+  "lesetakt_s": 5,
+  "faelle": [
+    {
+      "name": "gore_neue_halle",
+      "adresse": "192.168.4.165:503",
+      "unit_id": 1,
+      "kennzeichen": "DQ-1",
+      "label": "Anlagensteuerung",
+      "edge_source_id": "src-2hv35pcn",
+      "driver": {
+        "communication": "modbus_tcp",
+        "interval_s": 5,
+        "connection": { "ip": "192.168.4.165", "port": 503, "unit_id": 1 },
+        "data_source_id": "DQ-1"
+      },
+      "bus_eintrag": {
+        "id": "src-2hv35pcn",
+        "role": "plant-controller",
+        "brand": "",
+        "model": "",
+        "family": "voltpilot.erzeuger_registerbild_v1",
+        "communication": "modbus_tcp",
+        "connection": { "ip": "192.168.4.165", "port": 503, "unit_id": 1, "profile": "" },
+        "interval_s": 5,
+        "capacity_kwp": 0,
+        "data_source_id": "DQ-1"
+      }
+    },
+    {
+      "name": "zweite_steuerung_an_derselben_quelle",
+      "adresse": "192.168.4.165:503",
+      "unit_id": 2,
+      "kennzeichen": "DQ-1",
+      "label": "Steuerung Halle 2",
+      "edge_source_id": "src-jqfvnbvh",
+      "driver": {
+        "communication": "modbus_tcp",
+        "interval_s": 5,
+        "connection": { "ip": "192.168.4.165", "port": 503, "unit_id": 2 },
+        "data_source_id": "DQ-1"
+      },
+      "bus_eintrag": {
+        "id": "src-jqfvnbvh",
+        "role": "plant-controller",
+        "brand": "",
+        "model": "",
+        "family": "voltpilot.erzeuger_registerbild_v1",
+        "communication": "modbus_tcp",
+        "connection": { "ip": "192.168.4.165", "port": 503, "unit_id": 2, "profile": "" },
+        "interval_s": 5,
+        "capacity_kwp": 0,
+        "data_source_id": "DQ-1"
+      }
+    },
+    {
+      "name": "ipv6_ohne_port_und_geraete_id_null",
+      "adresse": "[fd00::10]",
+      "unit_id": 0,
+      "kennzeichen": "DQ-7",
+      "label": "Anlagensteuerung",
+      "edge_source_id": "src-wk237xuq",
+      "driver": {
+        "communication": "modbus_tcp",
+        "interval_s": 5,
+        "connection": { "ip": "fd00::10", "port": 502, "unit_id": 0 },
+        "data_source_id": "DQ-7"
+      },
+      "bus_eintrag": {
+        "id": "src-wk237xuq",
+        "role": "plant-controller",
+        "brand": "",
+        "model": "",
+        "family": "voltpilot.erzeuger_registerbild_v1",
+        "communication": "modbus_tcp",
+        "connection": { "ip": "fd00::10", "port": 502, "unit_id": 0, "profile": "" },
+        "interval_s": 5,
+        "capacity_kwp": 0,
+        "data_source_id": "DQ-7"
+      }
+    }
+  ]
+}

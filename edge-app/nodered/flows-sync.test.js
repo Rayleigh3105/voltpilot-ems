@@ -1130,6 +1130,32 @@ test('flow sources-store matches sources-routing.planSources for modbus + solarm
   );
 });
 
+// UEMS EZ-21: the address of an Anlagensteuerung rides edge/sources/config only
+// so the measurement binding can resolve the controller's pin; the palette
+// reads the Erzeuger image over it. The store must not plan it (no second poll
+// of the SPS) and must NAME it instead of warning NICHT VERDRAHTET - exactly
+// like sources-routing.planSources, which leaves it out.
+test('flow sources-store names a plant-controller source and plans no poll for it', () => {
+  const payload = [
+    { id: 'src-a', role: 'pv-generation', brand: 'generic_modbus', model: 'sunspec', family: 'sunspec',
+      communication: 'modbus_tcp', connection: { ip: '192.168.0.70', port: 502, unit_id: 2 } },
+    { id: 'src-2hv35pcn', role: 'plant-controller', brand: '', model: '',
+      family: 'voltpilot.erzeuger_registerbild_v1', communication: 'modbus_tcp',
+      connection: { ip: '192.168.4.165', port: 503, unit_id: 1, profile: '' }, interval_s: 5,
+      data_source_id: 'DQ-1' },
+  ];
+  const flow = {};
+  const context = {};
+  runFunctionNode(byId['sources-store'].func, { msg: { payload }, flow, context });
+  const plans = JSON.parse(JSON.stringify(flow.source_plans));
+  assert.deepStrictEqual(plans.map((p) => p.id), ['src-a']);
+  const notes = JSON.parse(context.src_store_sig);
+  assert.ok(notes.some((t) => t.includes('src-2hv35pcn (plant-controller)') && t.includes('liest der Messplan')));
+  assert.ok(!notes.some((t) => t.includes('NICHT VERDRAHTET')), notes.join(' | '));
+  const routed = sourcesRouting.planSources(sourcesRouting.parseSourcesConfig({ schema_version: '1.0', sources: payload }));
+  assert.deepStrictEqual(routed.map((r) => r.id), ['src-a']);
+});
+
 // The "Quellen uebernehmen" node must ALSO plan a fronius_solar_api source (a
 // Fronius read over its Solar API v1 HTTP endpoint), matching the module.
 test('flow sources-store plans a fronius_solar_api source like the module', () => {

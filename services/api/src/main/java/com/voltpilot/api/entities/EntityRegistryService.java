@@ -155,6 +155,14 @@ public class EntityRegistryService {
         this.uebergabe = uebergabe;
     }
 
+    /** UEMS EZ-21: Treiber und Pin, die erst je Box entstehen; ohne Spring (Tests mit {@code new …}) keine. */
+    private PushAnbindungen anbindungen;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void anbindungen(PushAnbindungen anbindungen) {
+        this.anbindungen = anbindungen;
+    }
+
     /**
      * The @Autowired is LOAD-BEARING (the BrokerAuthzReloader two-constructor
      * footgun): with the package-private test-seam constructor below and no
@@ -1243,9 +1251,24 @@ public class EntityRegistryService {
         // The existing opaque driver object is extensible even in old registry schemas.
         // Never derive this identity from an address or from edge_source_id.
         var sourceLabels = repo.datenquellenKennzeichen(siteId);
+        // UEMS EZ-21: eine Anlagensteuerung bekommt Treiber (Transport ihrer
+        // Datenquelle) und Pin nur im Push an eine Box, die sie versteht
+        // (Fähigkeit anlagensteuerung_quelle) - eine ältere Box sähe einen
+        // Treiber mit Verbindung und ohne Marke und verweigerte den GANZEN
+        // Push. Jede andere Box bekommt die Steuerung wie vorher: ohne Pin,
+        // der Treiber höchstens mit data_source_id.
+        Map<UUID, PushAnbindungen.Anbindung> angebunden = anbindungen == null ? Map.of()
+                : anbindungen.fuerBox(siteId, deviceId);
         ArrayNode entities = push.putArray("entities");
         for (EntityRow row : rows) {
             ObjectNode d = descriptor(row);
+            PushAnbindungen.Anbindung an = angebunden.get(row.id());
+            if (an != null && an.driver() == null) {
+                d.remove("edge_source_id");
+            } else if (an != null) {
+                d.put("edge_source_id", an.edgeSourceId());
+                d.set("driver", an.driver().deepCopy());
+            }
             EntityRegistryRepository.ConsumerIoBinding io = ioBindings.get(row.id());
             if (io != null && !d.has("driver")) {
                 d.set("driver", ioChannelDriver(io));

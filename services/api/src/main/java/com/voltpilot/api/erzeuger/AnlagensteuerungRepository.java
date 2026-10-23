@@ -115,6 +115,38 @@ public class AnlagensteuerungRepository {
                 .stream().findFirst();
     }
 
+    /**
+     * Der Transport einer eingebauten Steuerung (UEMS EZ-21): ihre Komponente, Protokoll, Adresse und Kennzeichen
+     * ihrer Datenquelle, die Geräte-ID, der gespeicherte Pin und die Box, die die Datenquelle JETZT liest
+     * ({@code null} ohne laufende Zuständigkeit).
+     */
+    public record Transport(UUID entityId, String kennzeichen, String protokoll, String adresse, Integer unitId,
+            String edgeSourceId, UUID box) {}
+
+    /** Die Transporte der eingebauten Steuerungen der Anlage, deren Datenquelle nicht archiviert ist. */
+    public List<Transport> transporte(UUID siteId) {
+        return jdbc.query("SELECT v.entity_id, q.kennzeichen, q.protokoll, q.adresse, g.geraete_id, m.edge_source_id, "
+                + "(SELECT a.device_id FROM data_source_assignment a WHERE a.data_source_id = q.id "
+                + "AND a.zurueckgenommen_am IS NULL AND a.effective_from <= now() "
+                + "AND (a.effective_to IS NULL OR a.effective_to > now()) ORDER BY a.effective_from DESC LIMIT 1) AS box "
+                + "FROM geraet g "
+                + "JOIN geraet_komponente v ON v.geraet_id = g.id AND v.gueltig_ab <= now() "
+                + "AND (v.gueltig_bis IS NULL OR v.gueltig_bis > now()) "
+                + "JOIN measurement_point m ON m.id = v.entity_id AND m.entity_type = '" + ENTITY_TYPE + "' "
+                + "JOIN data_source q ON q.id = g.data_source_id AND q.archiviert_am IS NULL "
+                + "WHERE g.geraeteart = 'controller' AND g.ausgebaut_am IS NULL AND g.site_id = ? "
+                + "ORDER BY v.entity_id",
+                (rs, n) -> new Transport(rs.getObject("entity_id", UUID.class), rs.getString("kennzeichen"),
+                        rs.getString("protokoll"), rs.getString("adresse"), (Integer) rs.getObject("geraete_id"),
+                        rs.getString("edge_source_id"), rs.getObject("box", UUID.class)), siteId);
+    }
+
+    /** Speichert den Pin der Komponente einer Steuerung (UEMS EZ-21); {@code true}, wenn er sich geändert hat. */
+    public boolean pinSetzen(UUID entityId, String edgeSourceId) {
+        return jdbc.update("UPDATE measurement_point SET edge_source_id = ? WHERE id = ? AND entity_type = '"
+                + ENTITY_TYPE + "' AND edge_source_id IS DISTINCT FROM ?", edgeSourceId, entityId, edgeSourceId) == 1;
+    }
+
     /** Die laufende Fassung der Steuerung — leer ohne eine. */
     public Optional<Fassung> fassung(UUID geraetId) {
         return jdbc.query("SELECT id, bildart, basisadresse, funktionscode, wortfolge, te_anzahl, anlagenart, "
