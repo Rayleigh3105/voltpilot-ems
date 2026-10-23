@@ -91,6 +91,7 @@ import { entitiesApi, type EntityTypeDef } from '../entitiesApi';
 import { AnlegenFlow } from '../components/AnlegenFlow';
 import { AddDeviceDrawer, DeviceDetailDrawer } from '../components/DeviceDrawers';
 import { AnlageAnlegenDrawerLazy } from '../components/AnlageAnlegenDrawerLazy';
+import { StandortDialog } from '../components/StandortDialog';
 import { LazyBoundary } from '../components/Lazy';
 import { replaceCurrentNavigation } from '../navigationBlocker';
 import { useMessenEinstieg } from '../messenEinstieg';
@@ -184,6 +185,7 @@ export function AufbauSection({
   const [boxAnmelden, setBoxAnmelden] = useState(false);
   const [boxVerwalten, setBoxVerwalten] = useState<string | null>(null);
   const [anlageAnlegen, setAnlageAnlegen] = useState(false);
+  const [adresseNachtragen, setAdresseNachtragen] = useState(false);
   const [steuerungVerbinden, setSteuerungVerbinden] = useState(false);
   const [assign, setAssign] = useState<AdoptableSource | null>(null);
   const [rename, setRename] = useState<PlantComponent | null>(null);
@@ -331,6 +333,7 @@ export function AufbauSection({
   // lässt seinen Entwurf liegen. Solange die Funktion an diesem Standort ein Entwurf ist, steht hier sein Knopf.
   const messen = useMessenEinstieg();
   const standortDesBaums = baum.wurzel?.art === 'standort' ? baum.wurzel.id : null;
+  const standortDesBaumsObjekt = standorte?.standorte.find((x) => x.id === standortDesBaums) ?? null;
   const [fortsetzen, setFortsetzen] = useState<{ text: string; standortId: string } | null>(null);
   useEffect(() => {
     const entwurf = entwurfLesen(browserSpeicher());
@@ -679,6 +682,7 @@ export function AufbauSection({
         <AufbauTabelle
           standortSicht={standortSicht ? { ...standortSicht, anlageName: site.name } : null}
           wurzel={baum.wurzel}
+          onAdresseNachtragen={standortDesBaumsObjekt ? () => setAdresseNachtragen(true) : undefined}
           anlagenZahl={baum.anlagen.length}
           boxZahl={baum.boxZahl}
           zeilen={zeilen}
@@ -871,6 +875,24 @@ export function AufbauSection({
         onClose={() => setBoxVerwalten(null)}
         onChanged={() => onReload?.(site.id)}
       />
+
+      {adresseNachtragen && standortDesBaumsObjekt && standorte && (
+        // F16 (Anlage-Flow a1): die Adresse eines automatisch angelegten Standorts direkt am Aufbau -
+        // vorher nur versteckt unter Anlage › Einstellungen. Die Anlagen ohne Kartenpunkt übernehmen ihn.
+        <StandortDialog
+          open
+          standort={standortDesBaumsObjekt}
+          unternehmen={null}
+          standorte={standorte.standorte}
+          heute={standorte.stichtag}
+          onClose={() => setAdresseNachtragen(false)}
+          onGespeichert={() => {
+            setAdresseNachtragen(false);
+            reload();
+            onReload?.(site.id);
+          }}
+        />
+      )}
 
       <AnlageAnlegenDrawerLazy
         open={anlageAnlegen}

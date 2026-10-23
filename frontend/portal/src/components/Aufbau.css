@@ -352,16 +352,19 @@
 }
 
 /*
- * AM TELEFON steht über der Tabelle nur, was man zum Finden braucht: die Suche
- * (mit dem Filter-Knopf darin), die Zahl der Geräte und „+ Gerät". Der Standort
- * steht schon oben im Seitenkopf und als Anlage in der Tabelle, die vier Filter
- * klappen erst auf Wunsch auf, und die Kurzfilter zeigen nur Symbol und Zahl -
- * ihre Wörter bleiben für Screenreader lesbar.
+ * AM TELEFON steht über der Tabelle nur, was man zum Finden braucht: die Zeile
+ * des Standorts, die Suche (mit dem Filter-Knopf darin), die Zahl der Geräte und
+ * „+ Gerät". Die vier Filter klappen erst auf Wunsch auf, und die Kurzfilter
+ * zeigen nur Symbol und Zahl - ihre Wörter bleiben für Screenreader lesbar.
  */
 @container vp-auf (max-width: 719px) {
-  .vp-auf-ort,
   .vp-auf-breit {
     display: none;
+  }
+  /* F16 (Anlage-Flow a1): die Standort-Zeile bleibt - ohne sie stand eine Anlage desselben Standorts
+     ohne Erklärung in der Tabelle. Sie bricht in Zeilen um, statt die Seite zu verbreitern. */
+  .vp-auf-ort {
+    font-size: 0.8rem;
   }
   .vp-auf-filter-auf {
     display: inline-flex;
