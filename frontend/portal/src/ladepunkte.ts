@@ -1128,20 +1128,36 @@ export const LADEPUNKT_LABEL: Record<LadepunktAktion, string> = {
 };
 
 /**
- * Der Deckel der Box für einen Ladepunkt-Eingriff (Vertrag
+ * Der Deckel der Box für einen Ladepunkt-Eingriff OHNE Dauer (Vertrag
  * `mqtt-charging-boost.schema.json`, `minutes`: ABWESEND = 240 Minuten, jeder
- * größere Wunsch wird geklemmt). „Bis Abstecken" endet also spätestens hier -
- * jede Fläche sagt das, statt ein Ende beim Abstecken zu versprechen (Audit
- * W-10). Trägt der Vertrag einmal einen längeren Deckel (`until_unplug`),
- * ändert sich NUR diese Zahl.
+ * größere Wunsch wird geklemmt). Er gilt jedem Aufruf ohne Minuten, der NICHT
+ * „bis Abstecken" sagt - etwa „Jetzt voll laden" auf *Fahrplan › Ladevorgänge*.
  */
 export const LADEPUNKT_DECKEL_MIN = 240;
 
-/** „4 Std" - der Deckel im Wort der Dauer-Chips. */
-export const LADEPUNKT_DECKEL_TEXT = `${LADEPUNKT_DECKEL_MIN / 60} Std`;
+/**
+ * Der Deckel der Box für die Wahl „bis Abstecken" (Vertrag, `until_unplug`:
+ * „14 Stunden statt 4"). Die Fläche sendet dafür `untilUnplug: true`, die Box
+ * hält bis zum Ende der Sitzung und begrenzt nur eine Sitzung, die niemand
+ * beendet - jede Fläche sagt diesen Deckel, statt ein Ende allein beim
+ * Abstecken zu versprechen (Audit W-10).
+ */
+export const LADEPUNKT_ABSTECKEN_DECKEL_MIN = 14 * 60;
+
+/** „14 Std" - der Deckel von „bis Abstecken" im Wort der Dauer-Chips. */
+export const LADEPUNKT_ABSTECKEN_DECKEL_TEXT = `${LADEPUNKT_ABSTECKEN_DECKEL_MIN / 60} Std`;
 
 /** Die Wahl „bis Abstecken" - mit ihrem Deckel, nie ohne. */
-export const BIS_ABSTECKEN = `bis Abstecken, höchstens ${LADEPUNKT_DECKEL_TEXT}`;
+export const BIS_ABSTECKEN = `bis Abstecken, höchstens ${LADEPUNKT_ABSTECKEN_DECKEL_TEXT}`;
+
+/**
+ * Der Rumpf-Teil einer Dauer-Wahl für `POST /charging-boost`: Minuten ODER
+ * „bis Abstecken" (`untilUnplug`), nie beides. Ohne das Feld klemmte die Box
+ * „bis Abstecken" auf 4 Stunden.
+ */
+export function boostDauer(minutes: number | null): { minutes: number } | { untilUnplug: true } {
+  return minutes == null ? { untilUnplug: true } : { minutes };
+}
 
 /** Das Ende eines Eingriffs ohne Dauer: „zum Abstecken, spätestens 15:10". */
 export function bisAbsteckenSatz(spaetestens: string): string {
@@ -1150,17 +1166,17 @@ export function bisAbsteckenSatz(spaetestens: string): string {
 
 /** Die zweite Zeile je Menü-Eintrag - sie sagt die FOLGE, nicht die Tatsache. */
 export const LADEPUNKT_HINWEIS: Record<LadepunktAktion, string> = {
-  voll_laden: `Netzstrom erlaubt. Endet beim Abstecken, spätestens nach ${LADEPUNKT_DECKEL_TEXT}.`,
-  laden_pausieren: `Bis Sie fortsetzen oder das Auto absteckt, höchstens ${LADEPUNKT_DECKEL_TEXT}.`,
+  voll_laden: `Netzstrom erlaubt. Endet beim Abstecken, spätestens nach ${LADEPUNKT_ABSTECKEN_DECKEL_TEXT}.`,
+  laden_pausieren: `Bis Sie fortsetzen oder das Auto absteckt, höchstens ${LADEPUNKT_ABSTECKEN_DECKEL_TEXT}.`,
   resume: 'Für diese Ladung gilt danach wieder Ihre Priorität.',
 };
 
 /**
  * Die angebotenen Dauern (Konzept §4.6, Mockup-Chips WÖRTLICH).
  *
- * ⚠ `minutes: null` heisst „bis Abstecken" und wird als FEHLENDE Dauer
- * gesendet: der Vertrags-Deckel der Box (4 h) gilt dann, und die Bindung an die
- * Transaktion beendet den Eingriff ohnehin beim Abstecken. Eine ausgerechnete
+ * ⚠ `minutes: null` heisst „bis Abstecken" und wird als `untilUnplug: true`
+ * gesendet (`boostDauer`): der Deckel der Box für diesen Fall (14 h) gilt dann,
+ * und die Bindung an die Transaktion beendet den Eingriff beim Abstecken. Eine ausgerechnete
  * Minutenzahl wäre an dieser Stelle eine erfundene Zusage über ein Fahrzeug,
  * dessen Abfahrt niemand kennt.
  */
@@ -1282,7 +1298,7 @@ export function ladepunktBanner(name: string, eingriff: LadepunktEingriff): stri
   const was = eingriff === 'pausiert'
     ? 'pausiert (nur diese Ladung)'
     : 'lädt voll (nur diese Ladung)';
-  return `Handeingriff läuft: ${name} ${was} · endet beim Abstecken, spätestens nach ${LADEPUNKT_DECKEL_TEXT}`;
+  return `Handeingriff läuft: ${name} ${was} · endet beim Abstecken, spätestens nach ${LADEPUNKT_ABSTECKEN_DECKEL_TEXT}`;
 }
 
 // --- Die Folgen-Karte ------------------------------------------------------
@@ -1352,10 +1368,10 @@ export function boostFolgenKarte(
         titel: 'Ende / Rücknahme',
         zeilen: [
           // ⚠ „bis Abstecken" bekommt KEINE Minutenzahl in den Satz - dort
-          // gilt allein der Vertrags-Deckel der Box (4 Stunden), und eine
-          // Zahl daneben wäre eine zweite, erfundene Frist.
+          // gilt allein der Deckel der Box für diesen Fall (14 Stunden), und
+          // eine Zahl daneben wäre eine zweite, erfundene Frist.
           dauer.minutes == null
-            ? `Endet beim Abstecken, längstens nach ${LADEPUNKT_DECKEL_MIN / 60} Stunden - danach gilt wieder Ihre Priorität.`
+            ? `Endet beim Abstecken, längstens nach ${LADEPUNKT_ABSTECKEN_DECKEL_MIN / 60} Stunden - danach gilt wieder Ihre Priorität.`
             : `Endet beim Abstecken, längstens nach ${dauer.label} - danach gilt wieder Ihre Priorität.`,
           'Sie können jederzeit früher „Automatik fortsetzen" wählen.',
         ],
@@ -1403,7 +1419,7 @@ export function pauseFolgenKarte(dauer: LadepunktDauer): LadepunktFolgen {
         titel: 'Ende / Rücknahme',
         zeilen: [
           dauer.minutes == null
-            ? `Endet beim Abstecken, längstens nach ${LADEPUNKT_DECKEL_MIN / 60} Stunden - danach lädt dieser Ladevorgang wieder nach Ihrer Priorität.`
+            ? `Endet beim Abstecken, längstens nach ${LADEPUNKT_ABSTECKEN_DECKEL_MIN / 60} Stunden - danach lädt dieser Ladevorgang wieder nach Ihrer Priorität.`
             : `Endet beim Abstecken, längstens nach ${dauer.label} - danach lädt dieser Ladevorgang wieder nach Ihrer Priorität.`,
           'Sie können jederzeit früher „Automatik fortsetzen" wählen.',
         ],

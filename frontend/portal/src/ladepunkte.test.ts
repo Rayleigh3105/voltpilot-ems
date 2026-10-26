@@ -46,6 +46,8 @@ import {
   budgetFuer,
   einspeisungKw,
   LADEPUNKT_DECKEL_MIN,
+  LADEPUNKT_ABSTECKEN_DECKEL_MIN,
+  boostDauer,
   ladepunktSperre,
   type ChargePoint,
   type ChargingBudget,
@@ -917,7 +919,7 @@ describe('Ladepunkt-Handeingriff (P3a)', () => {
 
   it('führt genau die Dauern des Mockups, Vorauswahl 2 h', () => {
     expect(LADEPUNKT_DAUERN.map((d) => d.label))
-      .toEqual(['30 min', '1 h', '2 h', '4 h', 'bis Abstecken, höchstens 4 Std']);
+      .toEqual(['30 min', '1 h', '2 h', '4 h', 'bis Abstecken, höchstens 14 Std']);
     // ⚠ „bis Abstecken" hat KEINE Minutenzahl: sie wäre eine Zusage über eine
     // Abfahrt, die niemand kennt.
     expect(LADEPUNKT_DAUERN[4].minutes).toBeNull();
@@ -927,11 +929,11 @@ describe('Ladepunkt-Handeingriff (P3a)', () => {
   it('beschriftet die Einträge wörtlich wie das abgenommene Mockup', () => {
     expect(LADEPUNKT_LABEL.voll_laden).toBe('Jetzt voll laden (nur diese Ladung)');
     expect(LADEPUNKT_LABEL.resume).toBe('Automatik fortsetzen');
-    // ⚠ Die Box klemmt jeden Eingriff auf 4 Stunden (Vertrag
-    // `mqtt-charging-boost`) - „bis Abstecken" ohne Deckel wäre eine Zusage,
-    // die nachts um zehn bricht (Audit W-10).
+    // ⚠ „Bis Abstecken" deckelt die Box mit 14 Stunden (Vertrag
+    // `mqtt-charging-boost`, `until_unplug`) - ohne Deckel wäre es eine
+    // Zusage über eine Sitzung, die niemand beendet (Audit W-10).
     expect(LADEPUNKT_HINWEIS.voll_laden)
-      .toBe('Netzstrom erlaubt. Endet beim Abstecken, spätestens nach 4 Std.');
+      .toBe('Netzstrom erlaubt. Endet beim Abstecken, spätestens nach 14 Std.');
   });
 
   it('trägt in der Folgen-Karte die vier Blöcke des Haus-Musters', () => {
@@ -944,7 +946,7 @@ describe('Ladepunkt-Handeingriff (P3a)', () => {
     // ⚠ „bis Abstecken" trägt KEINE Minutenzahl - dort gilt nur der Deckel.
     const bis = boostFolgenKarte(budget({ gridLimitKw: 32 }), LADEPUNKT_DAUERN[4]);
     expect(bis.bloecke[3].zeilen[0])
-      .toBe('Endet beim Abstecken, längstens nach 4 Stunden - danach gilt wieder Ihre Priorität.');
+      .toBe('Endet beim Abstecken, längstens nach 14 Stunden - danach gilt wieder Ihre Priorität.');
   });
 
   it('nennt die Anschlussgrenze nur, wenn die Box sie meldet', () => {
@@ -969,7 +971,7 @@ describe('Ladepunkt-Handeingriff (P3a)', () => {
     const t = boostBanner('Chef-Parkplatz');
     expect(t).toBe(
       'Handeingriff läuft: Chef-Parkplatz lädt voll (nur diese Ladung) · '
-      + 'endet beim Abstecken, spätestens nach 4 Std',
+      + 'endet beim Abstecken, spätestens nach 14 Std',
     );
     // ⚠ Der Herzschlag meldet je Stecker nur `boost: true|false`, kein Ende -
     // „noch 1:12 h" wäre erfunden.
@@ -1056,13 +1058,13 @@ describe('Ladepunkt pausieren (P3b)', () => {
 
   it('beschriftet den Eintrag wörtlich wie das abgenommene Mockup', () => {
     expect(LADEPUNKT_LABEL.laden_pausieren).toBe('Laden pausieren');
-    expect(LADEPUNKT_HINWEIS.laden_pausieren).toBe('Bis Sie fortsetzen oder das Auto absteckt, höchstens 4 Std.');
+    expect(LADEPUNKT_HINWEIS.laden_pausieren).toBe('Bis Sie fortsetzen oder das Auto absteckt, höchstens 14 Std.');
   });
 
   it('sagt im Banner, WELCHE Richtung läuft', () => {
     expect(ladepunktBanner('Wallbox Garage', 'pausiert'))
       .toBe('Handeingriff läuft: Wallbox Garage pausiert (nur diese Ladung) · '
-        + 'endet beim Abstecken, spätestens nach 4 Std');
+        + 'endet beim Abstecken, spätestens nach 14 Std');
     // Der Boost-Banner bleibt Zeichen für Zeichen der von vorher.
     expect(boostBanner('Wallbox Garage')).toBe(ladepunktBanner('Wallbox Garage', 'voll_laden'));
   });
@@ -1076,8 +1078,8 @@ describe('Ladepunkt pausieren (P3b)', () => {
     // Vertrags-Deckel der Box.
     const offen = pauseFolgenKarte(LADEPUNKT_DAUERN[4]);
     expect(offen.bloecke.find((b) => b.key === 'ende')?.zeilen[0])
-      .toContain('längstens nach 4 Stunden');
-    expect(offen.bestaetigen).toBe('Laden pausieren - bis Abstecken, höchstens 4 Std');
+      .toContain('längstens nach 14 Stunden');
+    expect(offen.bestaetigen).toBe('Laden pausieren - bis Abstecken, höchstens 14 Std');
   });
 
   it('beschreibt die RÜCKNAHME je Richtung verschieden', () => {
@@ -1204,9 +1206,10 @@ describe('budgetBand · Audit W-14 (Einspeisung ist keine negative Hauslast)', (
 });
 
 describe('Der Deckel eines Ladepunkt-Eingriffs · Audit W-10', () => {
-  it('⚠ „bis Abstecken" nennt seinen Deckel - der Vertrag klemmt auf 240 Minuten', () => {
+  it('⚠ „bis Abstecken" nennt seinen Deckel - 14 Stunden mit `until_unplug`, sonst 240 Minuten', () => {
     expect(LADEPUNKT_DECKEL_MIN).toBe(240);
-    expect(BIS_ABSTECKEN).toBe('bis Abstecken, höchstens 4 Std');
+    expect(LADEPUNKT_ABSTECKEN_DECKEL_MIN).toBe(14 * 60);
+    expect(BIS_ABSTECKEN).toBe('bis Abstecken, höchstens 14 Std');
     expect(LADEPUNKT_DAUERN.find((d) => d.minutes == null)?.label).toBe(BIS_ABSTECKEN);
     expect(bisAbsteckenSatz('15:10')).toBe('zum Abstecken, spätestens 15:10');
     // Kein Satz verspricht mehr ein Ende allein beim Abstecken.
@@ -1217,5 +1220,15 @@ describe('Der Deckel eines Ladepunkt-Eingriffs · Audit W-10', () => {
     const vertrag = JSON.parse(readFileSync(resolve(process.cwd(), '../../docs/contracts/mqtt-charging-boost.schema.json'), 'utf8'));
     const minutes = JSON.stringify(vertrag).match(/"minutes":\{[^}]*"maximum":(\d+)/);
     expect(Number(minutes?.[1])).toBe(LADEPUNKT_DECKEL_MIN);
+    // Der Deckel von „bis Abstecken" steht im Vertrag beim Feld `until_unplug`.
+    const bis = String(vertrag.properties.until_unplug.description).match(/\((\d+) Stunden statt (\d+)\)/);
+    expect(Number(bis?.[1]) * 60).toBe(LADEPUNKT_ABSTECKEN_DECKEL_MIN);
+    expect(Number(bis?.[2]) * 60).toBe(LADEPUNKT_DECKEL_MIN);
+  });
+
+  it('sendet „bis Abstecken" als `untilUnplug`, eine Minuten-Wahl als Minuten', () => {
+    expect(boostDauer(null)).toEqual({ untilUnplug: true });
+    expect(boostDauer(120)).toEqual({ minutes: 120 });
+    expect(boostDauer(240)).not.toHaveProperty('untilUnplug');
   });
 });

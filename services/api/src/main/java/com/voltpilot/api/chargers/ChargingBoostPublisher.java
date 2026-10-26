@@ -75,11 +75,11 @@ public class ChargingBoostPublisher {
      *         Freigabe, und der Aufrufer sagt das
      */
     public synchronized boolean publish(UUID tenantId, UUID siteId, UUID deviceId,
-            String chargePointId, int connectorId, Integer minutes, boolean cancel,
-            boolean pause, String actor, Instant requestedAt) {
+            String chargePointId, int connectorId, Integer minutes, boolean untilUnplug,
+            boolean cancel, boolean pause, String actor, Instant requestedAt) {
         String topic = boostTopic(tenantId, siteId, deviceId);
         byte[] payload = document(tenantId, siteId, deviceId, chargePointId, connectorId, minutes,
-                cancel, pause, actor, requestedAt);
+                untilUnplug, cancel, pause, actor, requestedAt);
         try {
             MqttMessage message = new MqttMessage(payload);
             message.setQos(1);
@@ -96,8 +96,8 @@ public class ChargingBoostPublisher {
 
     /** Baut den Umschlag von Hand - dieselbe Klasse Nachricht wie die OTA-Freigabe. */
     static byte[] document(UUID tenantId, UUID siteId, UUID deviceId, String chargePointId,
-            int connectorId, Integer minutes, boolean cancel, boolean pause, String actor,
-            Instant requestedAt) {
+            int connectorId, Integer minutes, boolean untilUnplug, boolean cancel, boolean pause,
+            String actor, Instant requestedAt) {
         StringBuilder sb = new StringBuilder(256);
         sb.append("{\"schema_version\":\"1.0\"")
                 .append(",\"tenant_id\":\"").append(tenantId).append('"')
@@ -114,6 +114,12 @@ public class ChargingBoostPublisher {
         }
         if (minutes != null) {
             sb.append(",\"minutes\":").append(minutes.intValue());
+        }
+        // ⚠ `until_unplug` reist NUR für die Wahl „bis Abstecken" (Audit W-10):
+        // ohne das Feld bleibt das Dokument zeichengleich wie vorher, und ein
+        // Aufrufer ohne Minuten meint weiter den 4-Stunden-Deckel.
+        if (untilUnplug) {
+            sb.append(",\"until_unplug\":true");
         }
         if (cancel) {
             sb.append(",\"cancel\":true");

@@ -563,6 +563,15 @@ class ChargerApiTest {
                     String.class);
             assertThat(pause.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
 
+            // 6c · Audit W-10: „bis Abstecken" (`untilUnplug`) ist ein angenommenes
+            //      Feld des Rumpfs - es geht denselben Weg, ohne Broker also 503.
+            ResponseEntity<String> bisAbstecken = rest.exchange(
+                    url("/api/v1/sites/" + site + "/charging-boost"), HttpMethod.POST,
+                    new HttpEntity<>(Map.of("chargePointId", "saeule-1", "connectorId", 1,
+                            "action", "pause", "untilUnplug", true), bearer(customer)),
+                    String.class);
+            assertThat(bisAbstecken.getStatusCode()).isEqualTo(HttpStatus.SERVICE_UNAVAILABLE);
+
             ResponseEntity<String> badAction = rest.exchange(
                     url("/api/v1/sites/" + site + "/charging-boost"), HttpMethod.POST,
                     new HttpEntity<>(Map.of("chargePointId", "saeule-1", "connectorId", 1,

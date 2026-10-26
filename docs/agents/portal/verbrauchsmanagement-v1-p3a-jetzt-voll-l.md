@@ -24,17 +24,18 @@ schreibt den Beleg seit je in den Kommando-Strom `ladepunkt`).
   Ladevorgang hängt an einem STECKER, nicht an einer Komponente).
 - **⚠ KEIN Countdown, und das ist die Ehrlichkeitsregel dieser Runde.** Der Herzschlag meldet je
   Stecker nur `boost: true|false`, **kein Ende** — „noch 1:12 h" (so im Mockup) wäre erfunden.
-  Zeile und Banner sagen stattdessen, was wirklich gilt: „endet beim Abstecken, spätestens nach 4 Std"
-  (der Deckel der Box steht als `LADEPUNKT_DECKEL_MIN` einmal im Portal, Audit W-10).
+  Zeile und Banner sagen stattdessen, was wirklich gilt: „endet beim Abstecken, spätestens nach 14 Std"
+  (der Deckel der Box für „bis Abstecken" steht als `LADEPUNKT_ABSTECKEN_DECKEL_MIN` einmal im Portal,
+  ein Test liest ihn aus dem Vertrag; ohne Minuten und ohne `untilUnplug` bleibt `LADEPUNKT_DECKEL_MIN` = 4 h, Audit W-10).
 - **⚠ Der Urheber steht EINMAL.** Ein laufender Boost macht aus dem Zustands-Wort „Lädt voll auf
   Ihren Wunsch"; die Zeile nennt ihn schon als QUELLE, also zeigt sie das BASIS-Wort
   (`LadeZustand.basisWort`/`LadevorgangRow.basisWort`, additiv) — „lädt 22,0 kW · Jetzt voll laden",
   der Mockup-Wortlaut. Dieselbe Regel lässt `ladepunktKeinEingriff` schweigen, wo der Zustand schon
   „kein Auto eingesteckt" sagt (im Browser-Beweis aufgefallen, nicht im Unit-Test).
-- **⚠ „bis Abstecken" reist als FEHLENDE Dauer** (`LADEPUNKT_DAUERN[4].minutes === null`): dann gilt
-  der Vertrags-Deckel der Box (4 h), und die Bindung an die Transaktion beendet den Eingriff ohnehin
-  beim Abstecken. Der Ende-Satz nennt dort deshalb die 4 Stunden statt einer zweiten, erfundenen
-  Frist.
+- **⚠ „bis Abstecken" reist als `untilUnplug: true`** (`LADEPUNKT_DAUERN[4].minutes === null`,
+  `boostDauer`), die API schreibt `until_unplug` ins Boost-Dokument: dann gilt der Deckel der Box für
+  diesen Fall (14 h), und die Bindung an die Transaktion beendet den Eingriff beim Abstecken. Der
+  Ende-Satz nennt dort deshalb die 14 Stunden statt einer zweiten, erfundenen Frist.
 - **Die Folgen-Karte ist der BESTEHENDE `HandeingriffDialog`** — vier Blöcke wie am Speicher, damit
   die Zone EINE Grammatik hat. Er bekam dafür genau eine additive Prop `dauern` (Vorgabe die
   Speicher-Dauern); es gibt keinen zweiten Dialog, der abdriften könnte. **Die einzige Zahl darin

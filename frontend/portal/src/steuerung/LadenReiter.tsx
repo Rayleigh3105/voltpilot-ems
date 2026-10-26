@@ -9,7 +9,7 @@ import { api, type ChargingConfig } from '../api';
 import { Recht } from '../components/Recht';
 import { LADEPUNKT_UNGESTEUERT, LADEQUELLE, LADEQUELLE_VERSPRECHEN } from '../glossar';
 import { useRollen } from '../rollen';
-import { LADEPUNKT_DECKEL_TEXT, type LadepunktSperre, type SpeicherFreigabe } from '../ladepunkte';
+import { LADEPUNKT_ABSTECKEN_DECKEL_TEXT, type LadepunktSperre, type SpeicherFreigabe } from '../ladepunkte';
 import type { FahrzeugWunsch, SiteFahrzeuge } from '../fahrzeugProfile';
 import { fahrzeugName, fahrzeugZeilen, kartenKurz } from '../fahrzeugProfile';
 import type { LadeparkRahmen } from '../verbraucherZone';
@@ -152,7 +152,7 @@ function LadeKarte({ g, bild, fahrzeuge, busy, oeffne, onSmart, release, release
   } else sub = 'Kein Auto angesteckt';
   const platz = bild.rang.indexOf(g.id) + 1;
   const ansage = wahl === 'aus'
-    ? `Pausiert${g.eingriff?.bisMs != null ? ` bis ${uhrVon(r, g.eingriff.bisMs)}` : ` bis zum Abstecken, höchstens ${LADEPUNKT_DECKEL_TEXT}`}. Danach wieder Smart.`
+    ? `Pausiert${g.eingriff?.bisMs != null ? ` bis ${uhrVon(r, g.eingriff.bisMs)}` : ` bis zum Abstecken, höchstens ${LADEPUNKT_ABSTECKEN_DECKEL_TEXT}`}. Danach wieder Smart.`
     : wahl === 'schnell' && !ungesteuert
       ? 'Lädt so schnell es geht, nur für diese Ladung. Netzstrom erlaubt.'
       : null;
