@@ -3,6 +3,7 @@ package com.voltpilot.api.consumers;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.chargers.ChargerComponentComposer;
 import com.voltpilot.api.consumers.ConsumerRepository.ConsumerRow;
 import com.voltpilot.api.consumers.ConsumerRepository.PolicyRow;
 import com.voltpilot.api.consumers.ConsumerRepository.ReportedSource;
@@ -572,6 +573,11 @@ public class ConsumerService {
      * Komponente ({@code null} bleibt {@code null}, nie eine 0); der
      * D3-Nachweiskanal folgt derselben Ableitung wie beim Anlegen.
      *
+     * <p>Eine OCPP-Säule ({@code ev-charger}) trägt keine {@code capacity_kwp}:
+     * ihre Nennleistung je Stecker steht im Ladesäulen-Dokument der Anlage
+     * ({@link ConsumerRepository#ladepunktNennleistung}). Ohne sie würde ein
+     * Ziel zur Ein/Aus-Anforderung, die nie zur Box geht (Audit W-02).
+     *
      * @return die Profilzeile - die vorhandene, wenn es schon eine gab
      */
     @Transactional
@@ -589,14 +595,25 @@ public class ConsumerService {
         if (entity.edgeSourceId() != null && !entity.edgeSourceId().isBlank()) {
             confirmationChannel = confirmationChannelFor(siteId, entity.entityType(),
                     entity.edgeSourceId());
+        } else if (ChargerComponentComposer.TYPE_EV_CHARGER.equals(entity.entityType())) {
+            // Audit W-02: eine OCPP-Säule hat keine gebundene Quelle, misst aber -
+            // ihre Box veröffentlicht power_kw/energy_kwh je Komponente über die
+            // Bindung device_charge_point (edge-app agent/ocpp_entities.go). Ohne
+            // Kanal wäre jedes kWh-Ziel gesperrt („Ohne Messung …"); ohne
+            // Telemetrie stuft das Ledger ehrlich auf „angenommen" herab.
+            confirmationChannel = "power_kw";
         } else {
             // Ohne gebundene Quelle entscheidet nur der TYP (SG-Ready) - sonst
             // bleibt der Kanal NULL, und das Erfuellungs-Ledger behauptet
             // niemals „fertig" (D3 Stufe 4).
             confirmationChannel = SgReady.confirmationChannel(entity.entityType());
         }
+        BigDecimal rated = entity.capacityKwp();
+        if (rated == null && ChargerComponentComposer.TYPE_EV_CHARGER.equals(entity.entityType())) {
+            rated = repo.ladepunktNennleistung(siteId, entity.id());
+        }
         repo.insertProfile(entity.id(), TenantContext.get(), siteId, defaultControlKind(type),
-                entity.capacityKwp(), null, null, null, null, "consumer_first", "allow", false,
+                rated, null, null, null, null, "consumer_first", "allow", false,
                 type.defaultFailsafe(), null, null, null, confirmationChannel);
         return repo.findForSite(siteId, entity.id());
     }
@@ -730,7 +747,7 @@ public class ConsumerService {
     }
 
     /** control kind => the actuate commands that back it (the §16 capability map). */
-    private List<String> allowedControlKinds(EntityType type) {
+    public static List<String> allowedControlKinds(EntityType type) {
         Set<String> actuate = new java.util.HashSet<>();
         for (JsonNode a : type.defaultActuate()) {
             actuate.add(a.path("command").asText(""));
@@ -744,13 +761,23 @@ public class ConsumerService {
             kinds.add("stepped");
             kinds.add("continuous");
         }
+        // Audit W-02: a consumer that can ONLY be limited (the OCPP charge
+        // point, catalog `limit_kw` alone) is planned as a power. The box
+        // carries a planned setpoint_kw as its limit - but only while the
+        // entity declares limit_kw WITHOUT setpoint_kw (consumerCommandsFor,
+        // edge-app/core/internal/agent/arbitration.go), so the catalog stays as
+        // it is. The old fallback on_off was a word the box refuses there.
+        if (kinds.isEmpty() && "consumer".equals(type.category())
+                && actuate.contains("limit_kw")) {
+            kinds.add("continuous");
+        }
         if (kinds.isEmpty()) {
             kinds.add("on_off");
         }
         return kinds;
     }
 
-    private String defaultControlKind(EntityType type) {
+    public static String defaultControlKind(EntityType type) {
         List<String> allowed = allowedControlKinds(type);
         return allowed.contains("on_off") ? "on_off" : allowed.get(0);
     }

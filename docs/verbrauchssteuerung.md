@@ -107,6 +107,7 @@ Warum der ganze Plan und nicht nur die Untergrenze (Entscheid 07.10.2026, [Konze
 „Günstig“ (`reactive` + `opportunistic` mit reiner Preisbedingung, auch die SG-Ready-Freigabe bei günstigem Strom) hat keinen Edge-Ausführer; der Optimierer macht daraus das Preisfenster (`consumer_inputs`, Grund `price_below_threshold`).
 In jedem Slot mit Bezugspreis unter der Grenze plant er die Zielleistung, in jedem anderen ausdrücklich aus; liegt im Horizont kein Slot darunter, bleibt der Verbraucher trotzdem im Plan und ist überall aus.
 Eine Säule, die nur `limit_kw` kennt, bekommt Plan-Slot und Deadline-Fallback als Grenze (`consumerCommandsFor` im Core); der Rig `edge-app/test/e2e-guenstig.sh` belegt die Kette am OCPP-Simulator.
+Ihr Steuerprofil hat deshalb die Regelart `continuous`, nie `on_off` (das Wort verwirft die Box an der Säule), und die Nennleistung je Stecker aus dem Ladesäulen-Dokument (`rated_kw` beim Anbinden; ein Profil ohne sie bekommt sie beim nächsten Herzschlag der Box). Ohne Nennleistung plant der Optimierer die Säule nicht und protokolliert den Grund (`consumer.compile_failed`). Profil und Dokument, wie die API sie anlegt: [Vektoren](contracts/v2/ladepunkt-profil-vectors.json).
 
 Der Deadline-Fallback nutzt `flex_requirements` aus dem Registry-Push und beginnt erst am berechneten spätesten Startpunkt. Er ist intern zwischen `flow` und `market` eingeordnet, durchläuft dieselben Guards und weicht einem frischen Plan. Unbekannter Fortschritt startet keine Aufgabe; nach Fristende wird ein verpasster Bedarf als solcher ausgewiesen.
 

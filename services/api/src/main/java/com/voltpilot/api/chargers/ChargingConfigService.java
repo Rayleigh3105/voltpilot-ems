@@ -1,5 +1,11 @@
 package com.voltpilot.api.chargers;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.voltpilot.api.consumers.ConsumerRepository;
+import com.voltpilot.api.ocpp.OcppControlValidator;
 import com.voltpilot.api.verbraucher.SteuerartProjektion;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
 import com.voltpilot.api.uems.AnlageGrenzen;
@@ -95,6 +101,11 @@ public class ChargingConfigService {
 
     private static final int MAX_CONNECTORS = 32;
 
+    private static final ObjectMapper JSON = new ObjectMapper();
+
+    /** Derselbe Prüfer wie am Technik-Panel ({@code SiteOcppControlController}). */
+    private static final OcppControlValidator OCPP_CONTROL = new OcppControlValidator();
+
     private final Geltungsbereich geltungsbereich;
     private final ChargingConfigRepository configs;
     private final DeviceChargerStatusRepository chargers;
@@ -103,6 +114,8 @@ public class ChargingConfigService {
     private volatile AnlageGrenzen grenzen;
     /** AP-15 IP-3 Folgepaket: der zuletzt zugestellte Bezugswert; ohne (Einzeltests) wird nichts verglichen. */
     private volatile LadeparkNetzgrenzeRepository zugestellt;
+    /** Audit W-02: die Steuerprofile, in die die Nennleistung des Anbindens reist; ohne (Einzeltests) nichts. */
+    private volatile ConsumerRepository consumers;
     /** UEMS AP-15 IP-16: die Boxen einer Anlage mit scharfer oder angehaltener Gemeinsamer Steuerung. */
     private volatile LadeparkJeBox verbund;
     /** Die Uhr, an der „heute am Standort“ hängt — nur Tests stellen sie ({@link #uhrStellen}). */
@@ -339,6 +352,12 @@ public class ChargingConfigService {
     @Autowired(required = false)
     void grenzenLesen(AnlageGrenzen grenzen) {
         this.grenzen = grenzen;
+    }
+
+    /** Audit W-02: wie {@link #grenzenLesen} - ein Setter, damit Einzeltests den Dienst unverändert bauen. */
+    @Autowired(required = false)
+    void profileLesen(ConsumerRepository consumers) {
+        this.consumers = consumers;
     }
 
     /**
@@ -732,6 +751,8 @@ public class ChargingConfigService {
         String name = label == null || label.isBlank() ? null : label.trim();
         configs.admitChargePoint(tenantId, siteId, id, name, ratedKw, connectors, src, minKw, conn,
                 actor);
+        ocppFreigabeBeimAnbinden(tenantId, siteId, actor);
+        nennleistungInsProfil(siteId, ratedKw);
         ChargingConfigDto saved = configs.forSite(siteId);
         // Vor der ersten Meldung gibt es noch keinen device_charge_point-Beleg.
         // Genau dieser explizite Assistenten-Schritt darf deshalb an die
@@ -746,6 +767,77 @@ public class ChargingConfigService {
             push(tenantId, siteId, saved, List.of(zielBox));
         }
         return saved;
+    }
+
+    /**
+     * Die Nennleistung des Anbindens geht auch ins Steuerprofil (Audit W-02): hat die Säule
+     * schon eine Komponente mit einem Profil OHNE Nennleistung, bekommt es sie sofort - nicht
+     * erst beim nächsten Herzschlag ({@link ChargerComponentComposer} zieht dasselbe nach).
+     * Ein Profil, das später entsteht, nimmt sie aus dem Ladesäulen-Dokument
+     * ({@code ConsumerService.ensureProfile}). Eine gepflegte Nennleistung bleibt stehen.
+     */
+    private void nennleistungInsProfil(UUID siteId, Double ratedKw) {
+        ConsumerRepository c = consumers;
+        if (c == null || ratedKw == null || !(ratedKw > 0)) {
+            return;
+        }
+        int n = c.ladepunktNennleistungNachziehen(siteId, null);
+        if (n > 0) {
+            log.info("Nennleistung für {} Ladepunkt-Profil(e) der Anlage {} beim Anbinden übernommen",
+                    n, siteId);
+        }
+    }
+
+    /**
+     * Die OCPP-Freigabe beim Anbinden (Audit W-01): Wer eine Säule anbindet, will, dass
+     * VoltPilot sie regelt. Die Box schreibt Ladegrenzen aber nur mit der Freigabe
+     * {@code ocpp_control.enabled} oder ihrem eigenen {@code VP_CONSUMER_CONTROL_ENABLED}
+     * (Vorgabe false) - und die Freigabe entstand bisher nur im Technik-Panel. Ohne sie lädt
+     * das Auto immer sofort mit voller Leistung, während das Portal „Nur Sonne" zeigt.
+     *
+     * <p>Sie entsteht hier nur, solange niemand entschieden hat: ohne Dokument ein freies
+     * (Karten frei, keine Verdrahtung, keine Grenzen - genau das Verhalten ohne Dokument)
+     * mit {@code enabled=true}; ein Dokument ohne {@code enabled} bekommt es mit der nächsten
+     * Revision. Ein ausdrückliches {@code enabled} - auch das {@code false} des
+     * Technik-Panels - bleibt stehen. Idempotent: das zweite Anbinden ändert nichts.
+     * Zugestellt wird mit dem Ladepark-Dokument des Anbindens ({@link #push}).
+     *
+     * <p>⚠ Nie werfend: das Anbinden selbst zählt; scheitert die Freigabe (eine
+     * gleichzeitige Änderung im Technik-Panel), bleibt sie dort zu setzen.
+     */
+    private void ocppFreigabeBeimAnbinden(UUID tenantId, UUID siteId, String actor) {
+        try {
+            String raw = configs.ocppControl(siteId);
+            ObjectNode next;
+            if (raw == null) {
+                next = JSON.createObjectNode();
+                next.put("revision", 0);
+                next.putObject("authorization").put("mode", "free").putArray("allowed_tags");
+                next.putArray("electrical");
+                next.putArray("phase_limits_a");
+                next.putArray("limits");
+            } else {
+                JsonNode current = JSON.readTree(raw);
+                if (current.hasNonNull("enabled")) {
+                    return;
+                }
+                next = (ObjectNode) current.deepCopy();
+            }
+            long expected = next.path("revision").asLong(0);
+            next.put("revision", expected + 1);
+            next.put("enabled", true);
+            OCPP_CONTROL.validate(next);
+            if (!configs.saveOcppControl(tenantId, siteId, next.toString(), expected, actor)) {
+                log.warn("OCPP-Freigabe der Anlage {} beim Anbinden nicht gesetzt: gleichzeitig geändert",
+                        siteId);
+                return;
+            }
+            log.info("OCPP-Freigabe der Anlage {} beim Anbinden gesetzt (Revision {})", siteId,
+                    expected + 1);
+        } catch (JsonProcessingException | IllegalArgumentException | ClassCastException e) {
+            log.warn("OCPP-Freigabe der Anlage {} beim Anbinden nicht gesetzt: {}", siteId,
+                    e.getMessage());
+        }
     }
 
     /**

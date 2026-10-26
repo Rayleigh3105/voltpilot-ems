@@ -1,9 +1,12 @@
 package com.voltpilot.api.chargers;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.voltpilot.api.consumers.ConsumerRepository;
 import com.voltpilot.api.entities.EntityRegistryRepository.EntityRow;
 import com.voltpilot.api.entities.EntityRegistryService;
 import com.voltpilot.api.repo.DeviceChargerStatusRepository;
@@ -28,7 +31,8 @@ class ChargerComponentComposerTest {
         when(registry.createEntity(siteId, "ev-charger", null, null, null, null))
                 .thenReturn(row(entityId, null));
 
-        new ChargerComponentComposer(status, registry).ensureComposed(siteId, deviceId);
+        new ChargerComponentComposer(status, registry, mock(ConsumerRepository.class))
+                .ensureComposed(siteId, deviceId);
 
         verify(registry).createEntity(siteId, "ev-charger", null, null, null, null);
         verify(status).bindEntity(deviceId, "CP-TECHNICAL-1", entityId);
@@ -46,10 +50,48 @@ class ChargerComponentComposerTest {
         when(registry.createEntity(siteId, "ev-charger", "Hof Nord", null, null, null))
                 .thenReturn(row(entityId, "Hof Nord"));
 
-        new ChargerComponentComposer(status, registry).ensureComposed(siteId, deviceId);
+        new ChargerComponentComposer(status, registry, mock(ConsumerRepository.class))
+                .ensureComposed(siteId, deviceId);
 
         verify(registry).createEntity(siteId, "ev-charger", "Hof Nord", null, null, null);
         verify(status).bindEntity(deviceId, "CP-1", entityId);
+    }
+
+    /**
+     * Audit W-02: jeder Lauf zieht die Nennleistung der Säulen DIESER Box ins
+     * Steuerprofil nach - auch für Säulen, die längst eine Komponente sind.
+     */
+    @Test
+    void jederLaufZiehtDieNennleistungDerBoxNach() {
+        UUID siteId = UUID.randomUUID();
+        UUID deviceId = UUID.randomUUID();
+        DeviceChargerStatusRepository status = mock(DeviceChargerStatusRepository.class);
+        EntityRegistryService registry = mock(EntityRegistryService.class);
+        ConsumerRepository consumers = mock(ConsumerRepository.class);
+        when(status.unbound(siteId)).thenReturn(List.of());
+        when(consumers.ladepunktNennleistungNachziehen(siteId, deviceId)).thenReturn(1);
+
+        new ChargerComponentComposer(status, registry, consumers).ensureComposed(siteId, deviceId);
+
+        verify(consumers).ladepunktNennleistungNachziehen(siteId, deviceId);
+        verify(registry, never()).createEntity(any(), any(), any(), any(), any(), any());
+    }
+
+    /** Nie werfend: ein gescheiterter Nachzug nimmt dem Herzschlag nichts. */
+    @Test
+    void einGescheiterterNachzugWirftNicht() {
+        UUID siteId = UUID.randomUUID();
+        UUID deviceId = UUID.randomUUID();
+        DeviceChargerStatusRepository status = mock(DeviceChargerStatusRepository.class);
+        ConsumerRepository consumers = mock(ConsumerRepository.class);
+        when(status.unbound(siteId)).thenReturn(List.of());
+        when(consumers.ladepunktNennleistungNachziehen(siteId, deviceId))
+                .thenThrow(new IllegalStateException("db weg"));
+
+        new ChargerComponentComposer(status, mock(EntityRegistryService.class), consumers)
+                .ensureComposed(siteId, deviceId);
+
+        verify(consumers).ladepunktNennleistungNachziehen(siteId, deviceId);
     }
 
     private static EntityRow row(UUID id, String label) {

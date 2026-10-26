@@ -145,6 +145,47 @@ public class ConsumerRepository {
     }
 
     /**
+     * Die Nennleistung je Stecker einer OCPP-Säule (Audit W-02): der
+     * {@code rated_kw} des Ladesäulen-Dokuments der Anlage
+     * ({@code site_charge_point_allowlist}, reist als {@code rated_kw} zur Box),
+     * gefunden über die Bindung {@code device_charge_point.entity_id}.
+     * {@code null} = unbekannt, nie eine 0.
+     */
+    public BigDecimal ladepunktNennleistung(UUID siteId, UUID entityId) {
+        List<BigDecimal> rows = jdbc.query(
+                "SELECT round(a.rated_kw::numeric, 3) FROM device_charge_point d "
+                        + "JOIN site_charge_point_allowlist a ON a.site_id = d.site_id "
+                        + "AND a.charge_point_id = d.charge_point_id AND a.removed_at IS NULL "
+                        + "WHERE d.site_id = ? AND d.entity_id = ? "
+                        + "AND round(a.rated_kw::numeric, 3) > 0 "
+                        + "ORDER BY d.reported_at DESC LIMIT 1",
+                (rs, n) -> rs.getBigDecimal(1), siteId, entityId);
+        return rows.isEmpty() ? null : rows.get(0);
+    }
+
+    /**
+     * Der Nachzug zu {@link #ladepunktNennleistung}: ein Profil einer Säule ohne
+     * Nennleistung bekommt die des Ladesäulen-Dokuments. Eine gepflegte
+     * Nennleistung wird nie überschrieben. Unter RLS des Aufrufers.
+     *
+     * @param deviceId nur die Säulen dieser Box (der Spiegel-Lauf ihres
+     *                 Herzschlags); {@code null} = alle Säulen der Anlage (das Anbinden)
+     * @return wie viele Profile eine Nennleistung bekommen haben
+     */
+    public int ladepunktNennleistungNachziehen(UUID siteId, UUID deviceId) {
+        return jdbc.update(
+                "UPDATE consumer_profile cp SET rated_power_kw = round(a.rated_kw::numeric, 3), "
+                        + "version = cp.version + 1, updated_at = now() "
+                        + "FROM device_charge_point d JOIN site_charge_point_allowlist a "
+                        + "ON a.site_id = d.site_id AND a.charge_point_id = d.charge_point_id "
+                        + "AND a.removed_at IS NULL "
+                        + "WHERE d.site_id = ? AND (?::uuid IS NULL OR d.device_id = ?::uuid) "
+                        + "AND d.entity_id = cp.entity_id AND cp.site_id = d.site_id "
+                        + "AND cp.rated_power_kw IS NULL AND round(a.rated_kw::numeric, 3) > 0",
+                siteId, deviceId, deviceId);
+    }
+
+    /**
      * Optimistic update: bumps {@code version} only when {@code expectedVersion}
      * still matches. Returns the new version, or -1 on a version conflict.
      */

@@ -177,6 +177,65 @@ class ChargerApiTest {
     }
 
     /**
+     * Audit W-01: Wer eine Säule über den Kundenweg „Ladesäule anbinden" einträgt, gibt der
+     * Box damit die OCPP-Regelung frei ({@code ocpp_control.enabled=true}) - ohne sie schreibt
+     * eine Box mit Werkseinstellung keine einzige Ladegrenze. Das Dokument reist mit dem
+     * Ladepark-Dokument des Anbindens. Idempotent, und ein ausdrückliches Abschalten im
+     * Technik-Panel bleibt auch beim nächsten Anbinden stehen.
+     */
+    @Test
+    void anbindenGibtDieOcppRegelungFreiUndLaesstEinAbschaltenStehen() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "OCPP-Freigabe beim Anbinden");
+        String control = "/api/v1/sites/" + site + "/ocpp/control";
+        String anbinden = "/api/v1/sites/" + site + "/charging-config/charge-points";
+        try {
+            UUID device = claim(customer, site, "edge-freigabe-anbinden");
+            assertThat(getJson(control, customer).path("desired").isNull()).isTrue();
+            org.mockito.Mockito.clearInvocations(chargingConfigPublisher);
+
+            postJson(anbinden, customer, Map.of("chargePointId", "WALLBOX-GARAGE", "deviceId",
+                    device.toString()));
+            JsonNode desired = getJson(control, customer).path("desired");
+            assertThat(desired.path("enabled").asBoolean()).isTrue();
+            assertThat(desired.path("revision").asLong()).isEqualTo(1);
+            assertThat(desired.path("authorization").path("mode").asText())
+                    .as("Karten bleiben frei - wie ohne Dokument").isEqualTo("free");
+            assertThat(desired.path("phase_limits_a")).isEmpty();
+            // Zugestellt wie vom Technik-Panel: im Ladepark-Dokument an die Box des Anbindens.
+            List<String> zugestellt = org.mockito.Mockito.mockingDetails(chargingConfigPublisher)
+                    .getInvocations().stream()
+                    .filter(i -> i.getMethod().getName().equals("publish")
+                            && i.getArguments().length == 15)
+                    .filter(i -> device.equals(i.getArgument(2)))
+                    .map(i -> i.<String>getArgument(13))
+                    .toList();
+            assertThat(zugestellt).isNotEmpty();
+            assertThat(json.readTree(zugestellt.get(zugestellt.size() - 1)).path("enabled").asBoolean())
+                    .isTrue();
+
+            // Idempotent: ein zweites Anbinden ändert die Freigabe nicht.
+            postJson(anbinden, customer, Map.of("chargePointId", "WALLBOX-GARAGE", "deviceId",
+                    device.toString()));
+            assertThat(getJson(control, customer).path("desired").path("revision").asLong()).isEqualTo(1);
+
+            // Das Technik-Panel schaltet ab - und das nächste Anbinden lässt das stehen.
+            var aus = (com.fasterxml.jackson.databind.node.ObjectNode) desired.deepCopy();
+            aus.put("enabled", false);
+            var saved = rest.exchange(url(control), HttpMethod.PUT, new HttpEntity<>(aus, bearer(customer)),
+                    String.class);
+            assertThat(saved.getStatusCode()).as("%s", saved.getBody()).isEqualTo(HttpStatus.OK);
+            postJson(anbinden, customer, Map.of("chargePointId", "WALLBOX-HOF", "deviceId",
+                    device.toString()));
+            desired = getJson(control, customer).path("desired");
+            assertThat(desired.path("enabled").asBoolean()).isFalse();
+            assertThat(desired.path("revision").asLong()).isEqualTo(2);
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /**
      * Konzept k1 Regel 4 („Gewählt ist nicht geladen"): die Box meldet je Säule
      * die Bahn, die sie fährt; die API vergleicht sie mit der Wahl je Säule und
      * sagt dem Portal „übernommen", „weicht ab" oder - bei einer älteren Box -

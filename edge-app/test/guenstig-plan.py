@@ -1,10 +1,11 @@
 """Der v2-Plan, den die Wolke einer Säule auf „Günstig" OHNE Ziel schickt.
 
-Rig-Helfer von `e2e-guenstig.sh`. Er erfindet nichts: das Dokument ist
-wörtlich die Projektion `SteuerartDokument` der API für einen OCPP-Ladepunkt
-mit Quelle `guenstig` (Pfad `SteuerartService.schreibeBahn` gibt dort `false`
-zurück, also bleibt die Quelle im Dokument), und daraus entsteht der Plan
-über genau die Funktionen, die der Optimierer im Takt aufruft:
+Rig-Helfer von `e2e-guenstig.sh`. Er erfindet nichts: Profil und Dokument
+sind die eines OCPP-Ladepunkts, wie die API sie anlegt - Fall `guenstig` in
+`docs/contracts/v2/ladepunkt-profil-vectors.json` (Regelart und Nennleistung
+aus `ConsumerService.ensureProfile`, das Dokument aus `SteuerartDokument`;
+die API pinnt beides). Daraus entsteht der Plan über genau die Funktionen,
+die der Optimierer im Takt aufruft:
 `compile_consumer` -> `co_optimize` -> `build_plan_v2_payload`.
 
 Nur die Preise sind gestellt, damit der Rig die beiden Seiten der Grenze
@@ -21,6 +22,7 @@ import argparse
 import json
 import sys
 from datetime import datetime, timezone
+from pathlib import Path
 from uuid import UUID, uuid4
 
 from voltpilot_optimization.co_solver import co_optimize
@@ -32,6 +34,8 @@ from voltpilot_optimization.publisher_v2 import build_plan_v2_payload
 SLOTS = 96
 TEUER_CT = 32.0
 BILLIG_CT = 22.0
+VECTORS = (Path(__file__).resolve().parents[2]
+           / "docs" / "contracts" / "v2" / "ladepunkt-profil-vectors.json")
 
 
 def main() -> int:
@@ -41,8 +45,6 @@ def main() -> int:
     ap.add_argument("--site", required=True)
     ap.add_argument("--device", required=True)
     ap.add_argument("--entity", required=True)
-    ap.add_argument("--rated-kw", type=float, default=11.0)
-    ap.add_argument("--grenze-ct", type=float, default=28.0)
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
 
@@ -57,24 +59,19 @@ def main() -> int:
               for t in range(SLOTS)]
     spot_ct = [p - 20.0 for p in imp_ct]
 
-    # Wörtlich SteuerartDokument.quelle(QUELLE_GUENSTIG) + zielwert() eines
-    # Ladepunkts mit gepflegter Nennleistung (SteuerartApiTest pinnt die Form).
-    document = {
-        "schema_version": "1.0",
-        "entity_id": a.entity,
-        "timezone": "Europe/Berlin",
-        "requirements": [{
-            "id": "guenstig",
-            "name": "Günstige Stunden",
-            "kind": "reactive",
-            "enforcement": "opportunistic",
-            "condition": {"signal": "market.import_price_ct_kwh", "operator": "lt",
-                          "value": a.grenze_ct},
-            "target": {"kind": "kw", "value": a.rated_kw},
-        }],
-    }
-    profile = ConsumerProfileRow(entity_id=a.entity, control_kind="continuous",
-                                 rated_power_kw=a.rated_kw)
+    # Profil und Dokument, wie die API sie für „Günstig" anlegt (Audit W-02:
+    # vorher stand hier ein Profil `continuous`, das die API nie anlegte).
+    vektoren = json.loads(VECTORS.read_text(encoding="utf-8"))
+    (fall,) = [f for f in vektoren["faelle"] if f["name"] == "guenstig"]
+    document = dict(fall["dokument"], entity_id=a.entity)
+    grenze = document["requirements"][0]["condition"]["value"]
+    if not BILLIG_CT < grenze < TEUER_CT:
+        print(f"guenstig-plan: die Rig-Preise schließen die Grenze {grenze} ct nicht ein",
+              file=sys.stderr)
+        return 2
+    profile = ConsumerProfileRow(entity_id=a.entity,
+                                 control_kind=fall["profil"]["control_kind"],
+                                 rated_power_kw=float(fall["profil"]["rated_power_kw"]))
     load = compile_consumer(profile, document, slots, 15, spot_ct, imp_ct)
     print(f"guenstig-plan: Verbraucher im Plan: {'ja' if load else 'NEIN'}",
           file=sys.stderr)

@@ -273,32 +273,31 @@ def test_compiled_price_window_activates_deterministically():
 
 def _guenstig_payload(import_ct: list[float]):
     """Steuerart „Günstig" ohne Ziel an einer 11-kW-Säule, durch die echte
-    Kette: Policy der API -> compile_consumer -> co_optimize -> Nutzlast."""
+    Kette: Policy der API -> compile_consumer -> co_optimize -> Nutzlast.
+
+    Profil und Dokument sind die der API (Audit W-02): Regelart und
+    Nennleistung legt ``ConsumerService.ensureProfile`` an, das Dokument
+    ``SteuerartDokument`` - beide gepinnt in
+    ``docs/contracts/v2/ladepunkt-profil-vectors.json``. Vorher stand hier ein
+    Profil ``continuous``, das die API nie anlegte."""
+    import json
+    from pathlib import Path
+
     from voltpilot_optimization.consumer_inputs import (
         ConsumerProfileRow,
         compile_consumer,
     )
     from voltpilot_optimization.publisher_v2 import build_plan_v2_payload
 
+    vektoren = json.loads((Path(__file__).resolve().parents[3] / "docs" / "contracts"
+                           / "v2" / "ladepunkt-profil-vectors.json").read_text("utf-8"))
+    (fall,) = [f for f in vektoren["faelle"] if f["name"] == "guenstig"]
     n = len(import_ct)
-    document = {
-        "schema_version": "1.0",
-        "entity_id": "lp-1",
-        "timezone": "Europe/Berlin",
-        "requirements": [{
-            "id": "guenstig",
-            "name": "Günstige Stunden",
-            "kind": "reactive",
-            "enforcement": "opportunistic",
-            "condition": {"signal": "market.import_price_ct_kwh", "operator": "lt",
-                          "value": 28},
-            "target": {"kind": "kw", "value": 11},
-        }],
-    }
     load = compile_consumer(
-        ConsumerProfileRow(entity_id="lp-1", control_kind="continuous",
-                           rated_power_kw=11.0),
-        document, horizon_slot_starts(T0, n), 15,
+        ConsumerProfileRow(entity_id=vektoren["entity_id"],
+                           control_kind=fall["profil"]["control_kind"],
+                           rated_power_kw=float(fall["profil"]["rated_power_kw"])),
+        fall["dokument"], horizon_slot_starts(T0, n), 15,
         [p - 20.0 for p in import_ct], import_ct,
     )
     inp = make_input(
@@ -306,7 +305,7 @@ def _guenstig_payload(import_ct: list[float]):
         import_price_eur_mwh=[p * 10.0 for p in import_ct],
     )
     payload = build_plan_v2_payload(solve(inp))
-    (entity,) = [e for e in payload["entities"] if e["entity_id"] == "lp-1"]
+    (entity,) = [e for e in payload["entities"] if e["entity_id"] == vektoren["entity_id"]]
     return [s["commands"]["setpoint_kw"] for s in entity["slots"]]
 
 

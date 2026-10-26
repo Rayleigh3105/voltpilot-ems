@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.voltpilot.api.chargers.ChargerComponentComposer;
 import com.voltpilot.api.flows.FlowDeploymentPublisher;
+import com.voltpilot.api.tenant.TenantContext;
 import com.voltpilot.api.verbraucher.SteuerartService;
 import dasniko.testcontainers.keycloak.KeycloakContainer;
 import java.sql.Connection;
@@ -143,6 +145,9 @@ class SteuerartApiTest {
 
     @Autowired
     TestRestTemplate rest;
+
+    @Autowired
+    ChargerComponentComposer composer;
 
     private final ObjectMapper json = new ObjectMapper();
 
@@ -339,6 +344,102 @@ class SteuerartApiTest {
             assertThat(zeile.path("steuerart").path("quelle").asText()).isEqualTo("guenstig");
             assertThat(zeile.path("steuerart").path("preisgrenzeCtKwh").asDouble())
                     .isEqualTo(12.0);
+        } finally {
+            deleteSite(site);
+        }
+    }
+
+    /**
+     * Audit W-02: „Günstig" und „Ziel bis Uhrzeit" an einer OCPP-Säule kommen nur an, wenn die
+     * API ein Profil anlegt, das der Optimierer planen und die Box ausführen kann - Regelart
+     * {@code continuous} (nie der Rückfall {@code on_off}) und die Nennleistung aus dem
+     * Ladesäulen-Dokument. Profil und gespeicherte Policy sind wörtlich die aus
+     * {@code docs/contracts/v2/ladepunkt-profil-vectors.json}, aus denen die Optimierer-Tests
+     * rechnen. Dazu der Nachzug für eine Säule, deren Nennleistung erst später eingetragen wird.
+     */
+    @Test
+    void einZielAnDerOcppSaeuleWirdEineGrenzeMitNennleistung() throws Exception {
+        String customer = token("demo", "demo");
+        UUID site = createSite(customer, "Steuerart OCPP-Ziel");
+        try {
+            erzeugerAnlegen(site);
+            tarifDynamisch(customer, site);
+            UUID device = claim(customer, site, "edge-steuerart-ziel");
+            JsonNode vektoren = json.readTree(java.nio.file.Path.of("..", "..", "docs", "contracts",
+                    "v2", "ladepunkt-profil-vectors.json").toFile());
+            JsonNode fall = null;
+            for (JsonNode f : vektoren.path("faelle")) {
+                if ("guenstig-mit-ziel".equals(f.path("name").asText())) {
+                    fall = f;
+                }
+            }
+            assertThat(fall).isNotNull();
+
+            // (1) Die Nennleistung steht im Ladesäulen-Dokument, BEVOR der Kunde wählt:
+            // das Profil entsteht gleich mit ihr.
+            UUID garage = ocppKomponente(site, "Garage");
+            bindeSaeule(site, device, garage, "WALLBOX-GARAGE");
+            assertThat(postRaw("/api/v1/sites/" + site + "/charging-config/charge-points", customer,
+                    Map.of("chargePointId", "WALLBOX-GARAGE", "ratedKw", 11)).getStatusCode())
+                    .isEqualTo(HttpStatus.OK);
+            ResponseEntity<String> res = putRaw(pfad(site, garage), customer,
+                    json.convertValue(fall.path("wunsch"), Map.class));
+            assertThat(res.getStatusCode()).as("%s", res.getBody()).isEqualTo(HttpStatus.OK);
+            assertThat(einWert("SELECT control_kind FROM consumer_profile WHERE entity_id = '"
+                    + garage + "'")).isEqualTo(fall.path("profil").path("control_kind").asText());
+            assertThat(einWert("SELECT confirmation_channel FROM consumer_profile WHERE entity_id = '"
+                    + garage + "'")).isEqualTo(fall.path("profil").path("confirmation_channel").asText());
+            assertThat(new java.math.BigDecimal(einWert("SELECT rated_power_kw FROM consumer_profile "
+                    + "WHERE entity_id = '" + garage + "'")))
+                    .isEqualByComparingTo(fall.path("profil").path("rated_power_kw").decimalValue());
+            JsonNode dokument = json.readTree(einWert("SELECT document::text FROM consumer_policy "
+                    + "WHERE entity_id = '" + garage + "' AND lifecycle = 'active'"));
+            com.fasterxml.jackson.databind.node.ObjectNode erwartet =
+                    (com.fasterxml.jackson.databind.node.ObjectNode) fall.path("dokument").deepCopy();
+            erwartet.put("entity_id", garage.toString());
+            // Gleich bis auf die Zahl-Form: die Nennleistung kommt als NUMERIC(10,3) zurück.
+            java.util.Comparator<JsonNode> zahlGleich = (a, b) -> a.isNumber() && b.isNumber()
+                    ? Double.compare(a.asDouble(), b.asDouble()) : (a.equals(b) ? 0 : 1);
+            assertThat(dokument.equals(zahlGleich, erwartet))
+                    .as("gespeicherte Policy%n%s", dokument).isTrue();
+
+            // (2) Ohne Nennleistung wählt der Kunde trotzdem - das Profil bleibt ehrlich
+            // ohne, nie mit einer 0. Trägt jemand sie beim Anbinden nach, geht sie sofort
+            // ins Profil.
+            UUID hof = ocppKomponente(site, "Hof");
+            bindeSaeule(site, device, hof, "WALLBOX-HOF");
+            postRaw("/api/v1/sites/" + site + "/charging-config/charge-points", customer,
+                    Map.of("chargePointId", "WALLBOX-HOF"));
+            assertThat(putRaw(pfad(site, hof), customer,
+                    Map.of("quelle", "guenstig", "preisgrenzeCtKwh", 28)).getStatusCode())
+                    .isEqualTo(HttpStatus.OK);
+            assertThat(einWert("SELECT control_kind FROM consumer_profile WHERE entity_id = '" + hof
+                    + "'")).isEqualTo("continuous");
+            assertThat(einWert("SELECT coalesce(rated_power_kw::text, 'null') FROM consumer_profile "
+                    + "WHERE entity_id = '" + hof + "'")).isEqualTo("null");
+            int vorher = zahl("SELECT version FROM consumer_profile WHERE entity_id = '" + hof + "'");
+            postRaw("/api/v1/sites/" + site + "/charging-config/charge-points", customer,
+                    Map.of("chargePointId", "WALLBOX-HOF", "ratedKw", 7.4));
+            assertThat(new java.math.BigDecimal(einWert("SELECT rated_power_kw FROM consumer_profile "
+                    + "WHERE entity_id = '" + hof + "'"))).isEqualByComparingTo("7.4");
+            assertThat(zahl("SELECT version FROM consumer_profile WHERE entity_id = '" + hof + "'"))
+                    .isEqualTo(vorher + 1);
+
+            // (3) Ein Profil ohne Nennleistung, dessen Säule sie im Dokument trägt (ein Profil
+            // von vor dieser Änderung): der nächste Spiegel-Lauf der Box zieht sie nach - und
+            // ein zweiter Lauf ändert nichts mehr.
+            exec("UPDATE consumer_profile SET rated_power_kw = NULL WHERE entity_id = '" + hof + "'");
+            vorher = zahl("SELECT version FROM consumer_profile WHERE entity_id = '" + hof + "'");
+            spiegelLauf(site, device);
+            assertThat(new java.math.BigDecimal(einWert("SELECT rated_power_kw FROM consumer_profile "
+                    + "WHERE entity_id = '" + hof + "'"))).isEqualByComparingTo("7.4");
+            assertThat(zahl("SELECT version FROM consumer_profile WHERE entity_id = '" + hof + "'"))
+                    .isEqualTo(vorher + 1);
+            spiegelLauf(site, device);
+            assertThat(zahl("SELECT version FROM consumer_profile WHERE entity_id = '" + hof + "'"))
+                    .isEqualTo(vorher + 1);
+            assertThat(new java.math.BigDecimal(einWert("SELECT rated_power_kw FROM consumer_profile "
+                    + "WHERE entity_id = '" + garage + "'"))).isEqualByComparingTo("11");
         } finally {
             deleteSite(site);
         }
@@ -607,6 +708,25 @@ class SteuerartApiTest {
     private int minOnSeconds(UUID site, UUID entity) {
         return zahl("SELECT coalesce(min_on_seconds, -1) FROM consumer_profile WHERE site_id = '"
                 + site + "' AND entity_id = '" + entity + "'");
+    }
+
+    /** Der Komponenten-Lauf, den sonst der Herzschlag der Box anstößt (unter ihrem Mandanten). */
+    private void spiegelLauf(UUID site, UUID device) {
+        TenantContext.set(UUID.fromString(TENANT_A));
+        try {
+            composer.ensureComposed(site, device);
+        } finally {
+            TenantContext.clear();
+        }
+    }
+
+    private String einWert(String sql) {
+        try (Connection c = superuser(); Statement st = c.createStatement()) {
+            var rs = st.executeQuery(sql);
+            return rs.next() ? rs.getString(1) : null;
+        } catch (SQLException e) {
+            throw new IllegalStateException(e);
+        }
     }
 
     private int zahl(String sql) {
