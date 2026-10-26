@@ -916,6 +916,10 @@ type ChargerConnectorEntry struct {
 	// SAYS so - a full charge nobody asked for would be a silent break of the
 	// customer's own priority.
 	Boost bool `json:"boost,omitempty"`
+	// HandPaused is true while this plug's „Laden pausieren" holds (W-10,
+	// additive): the pause outlives a box restart now, and the cloud learns it
+	// from the box instead of guessing it from the reason word.
+	HandPaused bool `json:"hand_paused,omitempty"`
 }
 
 // ConsumersSummary is the additive status-heartbeat block reporting the edge

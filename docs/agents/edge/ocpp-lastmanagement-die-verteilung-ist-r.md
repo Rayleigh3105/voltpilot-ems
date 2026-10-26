@@ -24,6 +24,15 @@ Websocket, Station oder Container beweisbar.
   Zeile trägt ihren geschätzten Termin (`NextTurnAt` — aus derselben Rotation
   abgeleitet, nie erfunden; `0` heißt „der Termin käme nie" und die Fläche sagt
   dann nichts).
+- **⚠ Unter 6 A lädt kein Auto (W-11):** `Session.FloorKw` =
+  `ChargeFloorKw(Phasen, Spannung)` (dreiphasig 4,14 kW, einphasig 1,38 kW)
+  bindet ÜBER der gepflegten Mindestleistung und wird nie geklemmt. Die Box
+  leitet die Phasen aus der Verdrahtung (`ocppcontrol.Electrical`) ab, sonst
+  gilt dreiphasig, außer die Nennleistung liegt unter 4,14 kW
+  (`agent.ocppFloorKw`). Eine Obergrenze darunter ist eine Pause mit dem Wort
+  ihres Urhebers. Reicht etwas Sonne nicht, bleibt das Wort `kein_ueberschuss`,
+  der Satz nennt den Bedarf (`Allocation.NeedKw`, `AllocationText`, Vektor
+  `wartet_sonne_reicht_nicht`). Im Ladepark (30 kW) ändert sie nichts.
 - **⚠ Die site-weite Mindestleistung wird auf die Steckdose GEKLEMMT.** 30 kW
   (eine DC-Park-Zahl) darf eine 11-kW-AC-Box nicht unbedienbar machen — 11 kW
   IST ihre volle Leistung. Ein Gerät-eigenes Minimum steht auf der `Session`
@@ -51,6 +60,13 @@ Websocket, Station oder Container beweisbar.
   Fortsetzen) geht sofort durch — sie schützt den Anschluss, und ein
   aufgeschobener Schutz ist keiner. Der Halt erneuert sich nicht selbst
   (`ChangedAt` wandert mit), sonst hinge eine kleine Erhöhung für immer fest.
+  **Einzige Ausnahme ist die Quellen-Bahn selbst (W-11):** eine Ladung, die
+  die Bahn gestartet hat, behält 5 min ihre Mindestleistung (`Pacing.MinRun`,
+  das Minimum darf dann aus dem Netz kommen), eine Ladung, die die fehlende
+  Sonne nach einem Lauf gestoppt hat, startet frühestens nach 2 min wieder
+  (`MinPause`), getragen über `Allocation.HoldUntil`. Budget, §14a, Deckel,
+  Handeingriff und Ausfall-Profil wirken weiter sofort; ein Boost oder ein
+  K3-Halter hinterlässt keine Haltezeit.
 - **Einstellungen** in `lastmgmt.json` (das `despike.json`/`balance.json`-Muster,
   tmp+rename, PATCH-Semantik: ein abwesendes Feld BEHÄLT den Wert). Ohne
   hinterlegte Anschlussgrenze ist das Budget 0 und es lädt nichts — der

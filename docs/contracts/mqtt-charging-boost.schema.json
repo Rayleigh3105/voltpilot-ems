@@ -48,7 +48,11 @@
       "type": "integer",
       "minimum": 1,
       "maximum": 240,
-      "description": "Wie lange sie gelten soll. ABWESEND = der Deckel von 240 Minuten (4 Stunden). Ein groesserer Wunsch wird GEKLEMMT, nie abgelehnt - der Deckel ist eine Zusage, keine Falle. Sie endet ausserdem, sobald die Sitzung endet („bis das Fahrzeug voll ist“)."
+      "description": "Wie lange sie gelten soll. ABWESEND = der Deckel von 240 Minuten (4 Stunden) - ausser mit `until_unplug: true`, dann zaehlt `minutes` nicht. Ein groesserer Wunsch wird GEKLEMMT, nie abgelehnt - der Deckel ist eine Zusage, keine Falle. Sie endet ausserdem, sobald die Sitzung endet („bis das Fahrzeug voll ist“)."
+    },
+    "until_unplug": {
+      "type": "boolean",
+      "description": "ADDITIV (W-10, Audit vp-ocpp-haushalt-audit): true = „bis Abstecken“ - die Uebersteuerung gilt wirklich bis zum Ende DIESER Sitzung, gleich welcher Richtung; `minutes` wird dann ignoriert. Das Geraet deckelt sie nur noch mit seinem eigenen Deckel fuer diesen Fall (14 Stunden statt 4), der allein eine Sitzung begrenzt, die niemand beendet. Eine Pause (`action: pause`) haelt das Geraet zusaetzlich ueber einen Neustart hinweg, an dieselbe Transaktion gebunden; „Jetzt voll laden“ bleibt bewusst fluechtig (nach einem Neustart gilt wieder die Prioritaet des Kunden).\n\nABWESEND oder false = genau das Verhalten von vorher (`minutes`, abwesend 240). Ein Geraet, das das Feld nicht kennt, ueberliest es und klemmt auf 240 Minuten - die Cloud sendet es deshalb nur, wenn der Kunde „bis Abstecken“ gewaehlt hat."
     },
     "action": {
       "enum": ["voll", "pause"],

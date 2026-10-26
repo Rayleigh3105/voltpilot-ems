@@ -381,6 +381,13 @@ func surplusReason(v SurplusVerdict) string {
 // clamped, never refused.
 const BoostMaxDuration = 4 * time.Hour
 
+// BoostUntilUnplugMaxDuration is the cap of an override „bis Abstecken"
+// (BoostRequest.UntilUnplug, W-10): it really lasts until the session ends -
+// the 4 h above ended „Schnell bis zum Abstecken" in the evening and left the
+// car half full in the morning - and this cap only bounds a session nobody
+// ever ends (a car that stays plugged in for days).
+const BoostUntilUnplugMaxDuration = 14 * time.Hour
+
 // BoostRequest is „Jetzt voll laden" for ONE charging session.
 type BoostRequest struct {
 	// ChargePointID + Connector name the session. Both are required: a boost
@@ -398,6 +405,11 @@ type BoostRequest struct {
 	// only the effect is a 0 kW cap instead of the source exemption. false =
 	// „Jetzt voll laden", so an older caller is byte-for-byte unchanged.
 	Pause bool `json:"pause,omitempty"`
+	// UntilUnplug = „bis Abstecken" (W-10, contract field `until_unplug`):
+	// the override lasts until this session ends, capped at
+	// BoostUntilUnplugMaxDuration instead of BoostMaxDuration; Minutes is
+	// then ignored. false = byte-for-byte the behaviour before.
+	UntilUnplug bool `json:"until_unplug,omitempty"`
 }
 
 // BoostResult is what the surface renders back.
@@ -410,4 +422,6 @@ type BoostResult struct {
 	UntilMs  int64  `json:"until_ms,omitempty"`
 	Note     string `json:"note"`
 	Duration int    `json:"minutes,omitempty"`
+	// UntilUnplug echoes „bis Abstecken": UntilMs is then only the cap.
+	UntilUnplug bool `json:"until_unplug,omitempty"`
 }

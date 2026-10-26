@@ -21,8 +21,10 @@ Mechanismus** hinzu: er ruft `Agent.OcppBoost` — genau das, was die
   gelaufene Uhr ist sonst strukturell unsichtbar.
 - **Die POLITIK bleibt auf der Box:** ob es diesen Stecker gibt, ob dort eine
   Sitzung läuft und wie lange die Freigabe höchstens gilt
-  (`lastmgmt.BoostMaxDuration`, 4 h), entscheidet `Agent.OcppBoost` — die Cloud
-  nennt nur Stecker, Wunsch und Dauer. `cancel: true` nimmt sie zurück.
+  (`lastmgmt.BoostMaxDuration`, 4 h; mit `until_unplug: true` bis zum
+  Sitzungsende, Deckel `BoostUntilUnplugMaxDuration` = 14 h, W-10), entscheidet
+  `Agent.OcppBoost` — die Cloud nennt nur Stecker, Wunsch und Dauer.
+  `cancel: true` nimmt sie zurück.
 - **⚠ SEIT P3b TRÄGT DERSELBE UMSCHLAG ZWEI RICHTUNGEN** (`action: voll|pause`,
   Entscheid E5): `pause` = „Laden pausieren", der Session-Deckel 0. Es ist
   KEIN zweiter Mechanismus - dieselbe `Agent.OcppBoost`, dieselbe
@@ -44,6 +46,11 @@ Mechanismus** hinzu: er ruft `Agent.OcppBoost` — genau das, was die
     Zustands-Satz kommt aus dem durchgereichten `reason_text`). Pausieren ist
     eine Portal-Handlung - eine zweite lokale Tür bräuchte eine zweite
     Folgen-Karte und einen zweiten Bestätigungs-Text.
+  - **⚠ Die PAUSE überlebt einen Neustart, der Boost nicht (W-10):**
+    `boostStore` schreibt nur Pausen nach `ocpp-pauses.json`, an ihre
+    Transaktion gebunden; `endSessions` räumt eine beendete Sitzung ab (eine
+    noch abgleichende nach dem Neustart nicht). Der Herzschlag meldet sie als
+    `hand_paused` (additiv).
 - Beweise: `internal/chargingboost` (die Form + die drei Kontrakt-Fixtures per
   PFAD) · `agent/charging_boost_test.go` (der Durchlauf durch den GETEILTEN
   Kern, die vier Ablehnungen, die Rücknahme; P3b: pausiert und gibt zurück,

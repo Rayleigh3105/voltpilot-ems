@@ -122,6 +122,7 @@ func chargerEntry(c state.OcppCharger) cloud.ChargerEntry {
 			MeteredAt:     msTime(con.MeteredAtMs),
 			TagRef:        con.TagRef,
 			Boost:         con.Boost,
+			HandPaused:    con.HandPaused,
 		})
 	}
 	return e

@@ -180,6 +180,27 @@
       "kind": "laedt",
       "wort": "Lädt voll auf Ihren Wunsch",
       "ton": "laedt"
+    },
+    {
+      "name": "wartet_sonne_reicht_nicht",
+      "beschreibung": "W-11 (Audit vp-ocpp-haushalt-audit): Sonne ist da, aber weniger, als die Wallbox mindestens braucht (6 A je Phase, dreiphasig 4,14 kW). Die Box gibt keine Grenze unter 6 A vor, sondern teilt 0 kW zu und nennt den Bedarf im Grund. Das Maschinenwort bleibt `kein_ueberschuss`, nur der Satz sagt mehr; ohne jede Sonne bleibt es bei „wartet — kein Überschuss (Ihre Priorität: …)“. Box-Seite: `lastmgmt.AllocationText` (Go-Test `TestTheVectorCarriesTheBoxSentence`).",
+      "sim": null,
+      "edge": { "id": 1, "status": "SuspendedEVSE", "charging": true, "allocated_kw": 0.0, "reason": "kein_ueberschuss", "reason_text": "wartet — für die Wallbox reicht die Sonne gerade nicht (braucht 4,1 kW)" },
+      "portal": { "connectorId": 1, "status": "SuspendedEVSE", "charging": true, "allocatedKw": 0.0, "reason": "kein_ueberschuss", "reasonText": "wartet — für die Wallbox reicht die Sonne gerade nicht (braucht 4,1 kW)" },
+      "kind": "wartet",
+      "wort": "Eingesteckt · wartet",
+      "ton": "ruhig",
+      "grund": "wartet — für die Wallbox reicht die Sonne gerade nicht (braucht 4,1 kW)"
+    },
+    {
+      "name": "handeingriff_pause",
+      "beschreibung": "„Laden pausieren“ (P3b) - WIR halten die Ladung auf Wunsch des Kunden an. Seit W-10 meldet die Box das zusaetzlich ausdruecklich im Herzschlag (`hand_paused`, additiv), weil die Pause einen Neustart der Box ueberlebt. Die Cloud bildet das Feld noch nicht ab; die portal-Form traegt es deshalb nicht, das Wort kommt wie bisher aus dem Maschinenwort `handeingriff`.",
+      "sim": null,
+      "edge": { "id": 1, "status": "SuspendedEVSE", "charging": true, "allocated_kw": 0.0, "reason": "handeingriff", "reason_text": "pausiert — Handeingriff", "hand_paused": true },
+      "portal": { "connectorId": 1, "status": "SuspendedEVSE", "charging": true, "allocatedKw": 0.0, "reason": "handeingriff", "reasonText": "pausiert — Handeingriff" },
+      "kind": "wartet",
+      "wort": "Laden pausiert auf Ihren Wunsch",
+      "ton": "ruhig"
     }
   ]
 }

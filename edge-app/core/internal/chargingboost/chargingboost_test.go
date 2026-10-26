@@ -54,6 +54,24 @@ func TestTheContractFixturesParse(t *testing.T) {
 	}
 }
 
+// W-10: „bis Abstecken" reist als eigenes Feld; ohne es bleibt alles, wie es war.
+func TestUntilUnplugIsAnAdditiveField(t *testing.T) {
+	req, err := Parse(read(t, "mqtt-charging-boost.valid.bis-abstecken.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !req.UntilUnplug || !req.Pause() || req.Minutes != 0 {
+		t.Fatalf("bis Abstecken = %+v", req)
+	}
+	for _, name := range []string{"mqtt-charging-boost.valid.jetzt-voll-laden.json",
+		"mqtt-charging-boost.valid.laden-pausieren.json", "mqtt-charging-boost.valid.zuruecknehmen.json"} {
+		old, err := Parse(read(t, name))
+		if err != nil || old.UntilUnplug {
+			t.Fatalf("%s: until_unplug=%v err=%v - ein Umschlag ohne das Feld gilt wie vorher", name, old.UntilUnplug, err)
+		}
+	}
+}
+
 func TestEveryMalformedRequestIsRefusedByName(t *testing.T) {
 	base := `{"schema_version":"1.0","tenant_id":"t","site_id":"s","device_id":"d",
 	          "charge_point_id":"SAEULE-1","connector_id":1,"requested_at":"2026-08-20T13:24:00Z"}`
