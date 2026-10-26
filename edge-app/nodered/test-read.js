@@ -21,7 +21,8 @@
  * `makeReadOnce(deps)` takes its dependencies injected so the same code runs in
  * a unit test (real `net`/`http` + in-process servers) and in the flow node
  * (`global.get('net')` etc. + the embedded decode modules):
- *   deps = { deye, modbus, fronius, solarman, sunspec, discovery, goe, net, http, https }
+ *   deps = { deye, modbus, fronius, solarman, sunspec, discovery, goe, kostal, kaco,
+ *            aiswei, kacoSerial, huawei, net, http, https }
  * (`sunspec` = sunspec/sunspec-live.js, `discovery` = sunspec/model-discovery.js,
  * both used for the real SunSpec-Modbus read path; `goe` = goe/goe-api.js, the
  * go-e Charger HTTP API v2 read path)
@@ -80,6 +81,7 @@ function makeReadOnce(deps) {
   const kaco = deps.kaco;
   const aiswei = deps.aiswei;
   const kacoSerial = deps.kacoSerial;
+  const huawei = deps.huawei;
   const net = deps.net;
   const http = deps.http;
   const https = deps.https;
@@ -166,6 +168,12 @@ function makeReadOnce(deps) {
       const address = num(conn.address, 1);
       if (address < 1 || address > 32) return { adapter: 'idle', reason: 'RS485-Adresse muss zwischen 1 und 32 liegen' };
       return { adapter: 'kaco_serial', ip, port: num(conn.port, 8899), address };
+    }
+    if (sel.communication === 'huawei_modbus') {
+      return {
+        adapter: 'huawei_modbus', ip, port: num(conn.port, 502), unitId: num(conn.unit_id, 0),
+        invert_grid_sign: !!conn.invert_grid_sign, invert_batt_sign: !!conn.invert_batt_sign,
+      };
     }
     return { adapter: 'idle', reason: 'unbekannte Kommunikationsmethode' };
   }
@@ -419,6 +427,34 @@ function makeReadOnce(deps) {
     });
   }
 
+  // readHuawei reads the Huawei SUN2000 + LUNA2000 once via the embedded
+  // huawei/huawei-decode.js reader (the readKostal pattern: a connect probe
+  // classifies unreachable; the module reader then owns the four FC3 block
+  // reads/decode over its own connection - null or an empty decode =
+  // invalid_response). Read-only; the forced-setpoint control path stays
+  // hard-locked regardless of this test.
+  function readHuawei(plan, role) {
+    return new Promise((resolve) => {
+      const probe = new net.Socket();
+      probe.setNoDelay(true);
+      let settled = false;
+      const done = (res) => { if (settled) return; settled = true; try { probe.destroy(); } catch (e) { /* ignore */ } resolve(res); };
+      const t = setTimeout(() => done({ ok: false, error_code: ERR_UNREACHABLE }), CONNECT_TIMEOUT_MS);
+      probe.once('error', () => { clearTimeout(t); done({ ok: false, error_code: ERR_UNREACHABLE }); });
+      probe.connect(plan.port, plan.ip, () => {
+        clearTimeout(t);
+        try { probe.destroy(); } catch (e) { /* ignore */ }
+        const read = huawei.makeHuaweiReader({ net, connectTimeoutMs: CONNECT_TIMEOUT_MS, readTimeoutMs: READ_TIMEOUT_MS });
+        read({ ip: plan.ip, port: plan.port, unitId: plan.unitId, invertGridSign: plan.invert_grid_sign, invertBattSign: plan.invert_batt_sign })
+          .then((out) => {
+            if (out && out.reading) return done({ ok: true, reading: toReading(out.reading, role) });
+            done({ ok: false, error_code: ERR_INVALID_RESPONSE });
+          })
+          .catch(() => done({ ok: false, error_code: ERR_INVALID_RESPONSE }));
+      });
+    });
+  }
+
   // readKaco runs ONE cycle over the KACO/AISWEI HTTP interface (embedded
   // kaco/kaco-http.js): inventory (when no serial is given - it is NEVER
   // guessed), then inverter / meter / battery. Classifies: connect/transport
@@ -493,6 +529,7 @@ function makeReadOnce(deps) {
     if (plan.adapter === 'kaco_http') return readKaco(plan, role);
     if (plan.adapter === 'kaco_modbus') return readAiswei(plan, role);
     if (plan.adapter === 'kaco_serial') return readKacoSerial(plan, role);
+    if (plan.adapter === 'huawei_modbus') return readHuawei(plan, role);
     return Promise.resolve({ ok: false, error_code: ERR_INVALID_REQUEST });
   };
 }
