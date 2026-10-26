@@ -67,7 +67,7 @@ import { GeraeteReiter } from './GeraeteReiter';
 import { Ic } from './Ic';
 import { FahrzeugBlatt, LadenReiter, RahmenBlatt, ZielBlatt } from './LadenReiter';
 import { quelleAusWunsch, smartSchritte } from './laden';
-import { LADEPUNKT_DECKEL_MIN, bisAbsteckenSatz } from '../ladepunkte';
+import { LADEPUNKT_ABSTECKEN_DECKEL_MIN, boostDauer, bisAbsteckenSatz } from '../ladepunkte';
 import { LadeWahlBlatt } from './LadeWahl';
 import { vorschauAnlage, type VorschauAnlage } from './ladeVorschau';
 import type { Gesendet } from './rueckmeldung';
@@ -165,12 +165,12 @@ export function SteuerungSeite({ site, reiter, tabs, onOpenSub }: SteuerungSeite
       try {
         const [a, , c] = dreiWorte(g);
         const bis = minuten == null
-          ? bisAbsteckenSatz(uhrVon(bild.raster, Date.now() + LADEPUNKT_DECKEL_MIN * 60_000))
+          ? bisAbsteckenSatz(uhrVon(bild.raster, Date.now() + LADEPUNKT_ABSTECKEN_DECKEL_MIN * 60_000))
           : uhrVon(bild.raster, Date.now() + minuten * 60_000);
         if (g.ladepunkt) {
           const lp = g.ladepunkt;
           if (art === 'smart') await api.chargingBoost(site.id, { chargePointId: lp.chargePointId, connectorId: lp.connectorId, cancel: true });
-          else await api.chargingBoost(site.id, { chargePointId: lp.chargePointId, connectorId: lp.connectorId, action: art === 'aus' ? 'pause' : 'voll', ...(minuten != null ? { minutes: minuten } : {}) });
+          else await api.chargingBoost(site.id, { chargePointId: lp.chargePointId, connectorId: lp.connectorId, action: art === 'aus' ? 'pause' : 'voll', ...boostDauer(minuten) });
         } else if (art === 'smart') {
           await consumersApi.clearOverride(site.id, g.id);
         } else {

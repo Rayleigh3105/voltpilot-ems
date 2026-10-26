@@ -10661,6 +10661,12 @@ export const api = {
        * Feld zeichengleich wie vorher.
        */
       action?: 'voll' | 'pause';
+      /**
+       * „Bis Abstecken" (Audit W-10): `minutes` zählt dann nicht, die Box hält
+       * bis zum Ende der Sitzung mit ihrem Deckel für diesen Fall (14 h).
+       * Abwesend = das Verhalten von vorher (ohne Minuten 4 h).
+       */
+      untilUnplug?: boolean;
     },
   ) =>
     request<ChargingBoostResult>(`/api/v1/sites/${siteId}/charging-boost`, {

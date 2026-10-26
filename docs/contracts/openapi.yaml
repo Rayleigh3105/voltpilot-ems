@@ -3248,7 +3248,8 @@ paths:
         Mindestleistung, Vorrang und das in der Säule hinterlegte Ausfall-Profil
         binden ihn unverändert, und die Priorität ALLER ANDEREN Ladevorgänge
         bleibt, wie sie ist. Sie gilt bis das Fahrzeug voll ist, längstens 4
-        Stunden, und endet mit der Sitzung.
+        Stunden (mit `untilUnplug: true` bis zum Abstecken, längstens 14
+        Stunden), und endet mit der Sitzung.
 
 
         `action` wählt die RICHTUNG (Verbrauchsmanagement v1 / P3b, Entscheid
@@ -3279,6 +3280,7 @@ paths:
                 minutes: { type: integer, minimum: 1, maximum: 240, nullable: true, description: "Dauer; abwesend = der 4-Stunden-Deckel. Ein größerer Wert wird geklemmt." }
                 cancel: { type: boolean, description: "true nimmt eine laufende Übersteuerung zurück - gleich welcher Richtung." }
                 action: { type: string, enum: [voll, pause], description: "Die Richtung; abwesend = voll." }
+                untilUnplug: { type: boolean, description: "true = „bis Abstecken“ (Audit W-10): minutes zählt dann nicht, die Box hält bis zum Ende der Sitzung, höchstens mit ihrem Deckel für diesen Fall (14 Stunden statt 4). Abwesend oder false = das Verhalten von vorher; geht als until_unplug an die Box (mqtt-charging-boost.schema.json)." }
       responses:
         "200":
           description: Die erteilte (oder zurückgenommene) Übersteuerung, mit ihrem deutschen Satz.

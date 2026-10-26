@@ -229,13 +229,14 @@ test('Laden: „bis Abstecken“ bleibt im Knopf und nennt seinen Deckel (Schnel
   await oeffnen(page, LADEN);
   await page.getByRole('region', { name: 'Wallbox Werkstatt' }).getByRole('button', { name: /^Schnell/ }).click();
   const dialog = page.getByRole('dialog');
-  const knopf = dialog.getByRole('button', { name: 'bis Abstecken, höchstens 4 Std' });
+  const knopf = dialog.getByRole('button', { name: 'bis Abstecken, höchstens 14 Std' });
   await expect(knopf).toBeVisible();
   const ragt = await knopf.evaluate((el) => el.scrollWidth - el.clientWidth);
   expect(ragt).toBeLessThanOrEqual(0);
-  // ⚠ Die Box beendet den Eingriff nach 240 Minuten - die Folge sagt es (13:10 + 4 h).
+  // ⚠ Mit `untilUnplug` deckelt die Box „bis Abstecken" erst nach 14 Stunden - die Folge sagt es (13:10 + 14 h).
   await knopf.click();
-  await expect(dialog).toContainText('Läuft bis zum Abstecken, spätestens 17:10');
+  await expect(dialog).toContainText('Läuft bis zum Abstecken, spätestens morgen 03:10');
+  await expect(dialog.getByRole('button', { name: /bis zum Abstecken, spätestens morgen 03:10/ })).toBeVisible();
   await expect(dialog).not.toContainText('Läuft bis zum Abstecken.');
 });
 

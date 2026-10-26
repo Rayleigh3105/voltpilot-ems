@@ -105,9 +105,12 @@ public class ChargingBoostService {
      *
      * @param minutes gewünschte Dauer; null = der Deckel. Ein größerer Wert wird
      *                geklemmt - der Deckel ist eine Zusage, keine Falle.
+     * @param untilUnplug „bis Abstecken" (Audit W-10): {@code minutes} zählt dann
+     *                nicht, die Box hält bis zum Sitzungsende mit ihrem eigenen
+     *                Deckel (14 h). Eine Rücknahme trägt es nie.
      */
     public BoostResult boost(UUID siteId, String chargePointId, int connectorId, Integer minutes,
-            boolean cancel, Action action, String actor) {
+            boolean untilUnplug, boolean cancel, Action action, String actor) {
         geltungsbereich.requireSite(siteId);
         ChargePointDto point = point(siteId, chargePointId);
         ChargeConnectorDto connector = connector(point, connectorId);
@@ -120,7 +123,9 @@ public class ChargingBoostService {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "An diesem Stecker läuft gerade kein Ladevorgang.");
         }
-        Integer wanted = minutes == null ? null : Math.min(Math.max(minutes, 1), MAX_MINUTES);
+        boolean bisAbstecken = untilUnplug && !cancel;
+        Integer wanted = minutes == null || bisAbstecken ? null
+                : Math.min(Math.max(minutes, 1), MAX_MINUTES);
 
         ChargingBoostPublisher pub = publisher.getIfAvailable();
         if (pub == null) {
@@ -131,7 +136,7 @@ public class ChargingBoostService {
         UUID tenantId = TenantContext.get();
         Instant now = Instant.now();
         if (!pub.publish(tenantId, siteId, point.deviceId(), point.chargePointId(), connectorId,
-                wanted, cancel, action == Action.PAUSE, actor, now)) {
+                wanted, bisAbstecken, cancel, action == Action.PAUSE, actor, now)) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "VoltPilot kann Ihre Ladesäule gerade nicht erreichen. Bitte gleich noch "
                             + "einmal versuchen - an Ihrer Anlage ändert sich dadurch nichts.");

@@ -10,7 +10,7 @@ import { liste } from './liste';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Recht } from '../components/Recht';
 import { LADEQUELLE, LADEQUELLE_VERSPRECHEN } from '../glossar';
-import { BIS_ABSTECKEN, LADEPUNKT_DECKEL_MIN, bisAbsteckenSatz } from '../ladepunkte';
+import { BIS_ABSTECKEN, LADEPUNKT_ABSTECKEN_DECKEL_MIN, bisAbsteckenSatz } from '../ladepunkte';
 import { ladeQuelle } from './laden';
 import { useRollen } from '../rollen';
 import { RUHE_VERBINDUNG_HINWEIS } from '../ruheHinweis';
@@ -133,7 +133,7 @@ function DreiSchalter({ g, bild, eingriff, busy, start, onWahl, folge }: {
   if (lp) dauern.push([null, BIS_ABSTECKEN]);
   const bisMs = minuten == null ? null : bild.raster.nowMs + minuten * 60_000;
   const bisText = bisMs == null
-    ? bisAbsteckenSatz(uhrVon(bild.raster, bild.raster.nowMs + LADEPUNKT_DECKEL_MIN * 60_000))
+    ? bisAbsteckenSatz(uhrVon(bild.raster, bild.raster.nowMs + LADEPUNKT_ABSTECKEN_DECKEL_MIN * 60_000))
     : uhrVon(bild.raster, bisMs);
   // Die Ruhe sperrt für alle und sagt ihren Grund; die Knöpfe selbst folgen dem Recht (AP-03 IP-12).
   return (
@@ -218,7 +218,7 @@ function GeraetBlattInhalt({ k, g, modus }: { k: BlattKontext; g: GeraetBild; mo
 
   const folge = (art: 'aus' | 'an', minuten: number | null): string => {
     // „bis Abstecken" rechnet bis zum Deckel der Box - länger läuft der Eingriff nie.
-    const dauer = minuten ?? LADEPUNKT_DECKEL_MIN;
+    const dauer = minuten ?? LADEPUNKT_ABSTECKEN_DECKEL_MIN;
     const bis = Math.min(N, r.jetzt + Math.ceil(dauer / 15));
     const ende = minuten == null ? bisAbsteckenSatz(uhrVon(r, r.nowMs + dauer * 60_000)) : uhrVon(r, r.nowMs + dauer * 60_000);
     if (art === 'an') {

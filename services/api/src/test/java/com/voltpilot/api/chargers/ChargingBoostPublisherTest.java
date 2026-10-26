@@ -33,7 +33,55 @@ class ChargingBoostPublisherTest {
     private JsonNode doc(Integer minutes, boolean cancel, boolean pause, int connector,
             String actor) throws Exception {
         return json.readTree(new String(ChargingBoostPublisher.document(TENANT, SITE, DEVICE,
-                "saeule-1", connector, minutes, cancel, pause, actor, AT), StandardCharsets.UTF_8));
+                "saeule-1", connector, minutes, false, cancel, pause, actor, AT),
+                StandardCharsets.UTF_8));
+    }
+
+    private JsonNode untilUnplug(boolean pause) throws Exception {
+        return json.readTree(new String(ChargingBoostPublisher.document(TENANT, SITE, DEVICE,
+                "saeule-1", 1, null, true, false, pause, "9b1c7a2e-0000-4000-8000-000000000abc", AT),
+                StandardCharsets.UTF_8));
+    }
+
+    private static final Path CONTRACTS = Path.of("..", "..", "docs", "contracts");
+
+    /**
+     * Ein Dokument gegen den eingecheckten Vertrag: Pflichtfelder da, kein Feld
+     * außerhalb von {@code properties} ({@code additionalProperties: false}), und
+     * jedes Feld trägt Typ, Konstante, Aufzählung und Grenzen seines Schemas.
+     */
+    private void assertMatchesSchema(JsonNode d) throws Exception {
+        JsonNode schema = json.readTree(
+                Files.readString(CONTRACTS.resolve("mqtt-charging-boost.schema.json")));
+        for (JsonNode req : schema.get("required")) {
+            assertThat(d.has(req.asText())).as("Pflichtfeld " + req.asText()).isTrue();
+        }
+        JsonNode props = schema.get("properties");
+        d.fieldNames().forEachRemaining(f -> {
+            JsonNode p = props.get(f);
+            assertThat(p).as("Feld " + f + " steht im Vertrag").isNotNull();
+            JsonNode v = d.get(f);
+            if (p.has("const")) {
+                assertThat(v).as(f).isEqualTo(p.get("const"));
+            }
+            if (p.has("enum")) {
+                assertThat(p.get("enum")).as(f).contains(v);
+            }
+            switch (p.path("type").asText()) {
+                case "string" -> assertThat(v.isTextual()).as(f + " ist Text").isTrue();
+                case "boolean" -> assertThat(v.isBoolean()).as(f + " ist boolean").isTrue();
+                case "integer" -> {
+                    assertThat(v.isInt()).as(f + " ist ganzzahlig").isTrue();
+                    if (p.has("minimum")) {
+                        assertThat(v.asInt()).as(f).isGreaterThanOrEqualTo(p.get("minimum").asInt());
+                    }
+                    if (p.has("maximum")) {
+                        assertThat(v.asInt()).as(f).isLessThanOrEqualTo(p.get("maximum").asInt());
+                    }
+                }
+                default -> { }
+            }
+        });
     }
 
     @Test
@@ -82,7 +130,7 @@ class ChargingBoostPublisherTest {
     @Test
     void aChargePointIdCannotBreakOutOfTheDocument() throws Exception {
         JsonNode d = json.readTree(new String(ChargingBoostPublisher.document(TENANT, SITE, DEVICE,
-                "sae\"ule\n1", 2, null, false, false, null, AT), StandardCharsets.UTF_8));
+                "sae\"ule\n1", 2, null, false, false, false, null, AT), StandardCharsets.UTF_8));
         assertThat(d.get("charge_point_id").asText()).isEqualTo("sae\"ule\n1");
     }
 
@@ -110,6 +158,39 @@ class ChargingBoostPublisherTest {
                 "charge_point_id", "connector_id", "action", "minutes", "requested_at", "actor"}) {
             assertThat(builtPause.get(field)).as(field).isEqualTo(pause.get(field));
         }
+    }
+
+    /**
+     * „Bis Abstecken" (Audit W-10): NUR diese Wahl trägt {@code until_unplug} -
+     * ohne sie bleibt jedes Dokument zeichengleich wie vorher, und ein Aufrufer
+     * ohne Minuten meint weiter den 4-Stunden-Deckel der Box.
+     */
+    @Test
+    void untilUnplugTravelsOnlyForThatChoiceAndBothShapesMatchTheContract() throws Exception {
+        JsonNode bis = untilUnplug(true);
+        assertThat(bis.get("until_unplug").asBoolean()).isTrue();
+        assertThat(bis.has("minutes")).as("„bis Abstecken\" trägt keine Minuten").isFalse();
+        assertMatchesSchema(bis);
+        assertMatchesSchema(untilUnplug(false));
+
+        JsonNode ohne = doc(null, false, true, 1, "9b1c7a2e-0000-4000-8000-000000000abc");
+        assertThat(ohne.has("until_unplug")).as("ohne die Wahl kein Feld").isFalse();
+        assertThat(ohne.has("minutes")).isFalse();
+        assertMatchesSchema(ohne);
+        assertMatchesSchema(doc(240, false, "9b1c7a2e-0000-4000-8000-000000000abc"));
+        assertMatchesSchema(doc(null, true, null));
+
+        // Byte-gleich wie vor W-10: dieselbe Zeichenfolge, Feld für Feld in derselben Reihe.
+        assertThat(new String(ChargingBoostPublisher.document(TENANT, SITE, DEVICE, "saeule-1", 1,
+                null, false, false, true, null, AT), StandardCharsets.UTF_8))
+                .isEqualTo("{\"schema_version\":\"1.0\",\"tenant_id\":\"" + TENANT
+                        + "\",\"site_id\":\"" + SITE + "\",\"device_id\":\"" + DEVICE
+                        + "\",\"charge_point_id\":\"saeule-1\",\"connector_id\":1"
+                        + ",\"action\":\"pause\",\"requested_at\":\"2026-08-20T13:24:00Z\"}");
+
+        JsonNode fixture = json.readTree(Files.readString(CONTRACTS.resolve("examples")
+                .resolve("mqtt-charging-boost.valid.bis-abstecken.json")));
+        assertThat(bis).isEqualTo(fixture);
     }
 
     /** Das Wort der Papier-Spur folgt der GESENDETEN Richtung, auch bei der Rücknahme. */

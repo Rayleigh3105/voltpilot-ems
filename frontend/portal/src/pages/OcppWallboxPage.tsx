@@ -22,6 +22,7 @@ import { VpPicker } from '../components/VpPicker';
 import { OcppControlPanel } from '../components/OcppControlPanel';
 import {
   boostEndeKarte,
+  boostDauer,
   boostFolgenKarte,
   LADEPUNKT_DAUER_VORGABE,
   LADEPUNKT_DAUERN,
@@ -177,9 +178,9 @@ export function OcppWallboxPage({
       await api.chargingBoost(siteId, {
         chargePointId: lade.adresse.chargePointId,
         connectorId: lade.adresse.connectorId,
-        // ⚠ „bis Abstecken" reist als FEHLENDE Dauer - dann gilt der
-        // Vertrags-Deckel der Box (dieselbe Regel wie in der Jetzt-Zone).
-        ...(lade.aktion !== 'resume' && d.minutes != null ? { minutes: d.minutes } : {}),
+        // ⚠ „bis Abstecken" reist als `untilUnplug` - dann gilt der Deckel der
+        // Box für diesen Fall (dieselbe Regel wie in der Jetzt-Zone).
+        ...(lade.aktion !== 'resume' ? boostDauer(d.minutes) : {}),
         cancel: lade.aktion === 'resume',
         action:
           lade.aktion === 'laden_pausieren'

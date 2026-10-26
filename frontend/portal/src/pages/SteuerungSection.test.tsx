@@ -355,6 +355,38 @@ describe('Steuerung · Reiter Laden', () => {
     expect(await screen.findByText(/gesendet\. Ob die Box übernimmt/)).toBeInTheDocument();
     expect(within(karte).getByRole('list', { name: 'Rückmeldung' })).toHaveTextContent('Gesendet: Günstig');
   });
+
+  // Audit W-10: „bis Abstecken" reist als `untilUnplug` - sonst klemmte die Box auf 4 Stunden.
+  async function schnellSenden(dauer: string | RegExp) {
+    const boost = vi.spyOn(api, 'chargingBoost').mockResolvedValue({ chargePointId: 'CP-WERKSTATT', connectorId: 1, active: true, requestedAt: '2026-10-26T12:00:00Z', note: 'ok' });
+    zeige('laden');
+    const karte = await screen.findByRole('region', { name: 'Wallbox Werkstatt' });
+    fireEvent.click(within(karte).getByRole('button', { name: /^Schnell/ }));
+    const blatt = await screen.findByRole('dialog');
+    fireEvent.click(within(blatt).getByRole('button', { name: dauer }));
+    return { boost, blatt };
+  }
+
+  it('W-10 · Schnell „bis Abstecken“ sendet untilUnplug und nennt den Deckel von 14 Std', async () => {
+    const { boost, blatt } = await schnellSenden('bis Abstecken, höchstens 14 Std');
+    expect(blatt).toHaveTextContent(/Läuft bis zum Abstecken, spätestens (morgen )?\d\d:\d\d/);
+    fireEvent.click(within(blatt).getByRole('button', { name: /bis zum Abstecken, spätestens/ }));
+    await waitFor(() => expect(boost).toHaveBeenCalledTimes(1));
+    const body = boost.mock.calls[0][1];
+    expect(body).toEqual(expect.objectContaining({ action: 'voll', untilUnplug: true }));
+    expect(body).not.toHaveProperty('minutes');
+    // Die Meldung nach dem Senden nennt denselben Deckel wie der Knopf.
+    await waitFor(() => expect(document.body.textContent).toMatch(/Wallbox Werkstatt: .* bis zum Abstecken, spätestens (morgen )?\d\d:\d\d\. Danach wieder Smart\./));
+  });
+
+  it('W-10 · Gegenprobe: eine Minuten-Wahl sendet ihre Minuten und kein untilUnplug', async () => {
+    const { boost, blatt } = await schnellSenden('2 Std');
+    fireEvent.click(within(blatt).getByRole('button', { name: /bis (morgen )?\d\d:\d\d$/ }));
+    await waitFor(() => expect(boost).toHaveBeenCalledTimes(1));
+    const body = boost.mock.calls[0][1];
+    expect(body).toEqual(expect.objectContaining({ action: 'voll', minutes: 120 }));
+    expect(body).not.toHaveProperty('untilUnplug');
+  });
 });
 
 describe('Steuerung · Rechte (AP-03 IP-12)', () => {
