@@ -226,8 +226,13 @@ func TestOnlyTheLanesOwnSwitchingIsHeld(t *testing.T) {
 		t.Fatalf("der Boost lädt und hinterlässt keine Haltezeit: %+v", a)
 	}
 	after := sunOnly(s, 0, base.Add(20*time.Second), &p)
-	if a := alloc(t, after, s.Key); !a.Paused || a.Reason != ReasonNoSurplus {
-		t.Fatalf("nach dem Boost ohne Sonne: sofort Pause, war %+v", a)
+	if a := alloc(t, after, s.Key); !a.Paused || a.Reason != ReasonNoSurplus || !a.HoldUntil.IsZero() {
+		t.Fatalf("nach dem Boost ohne Sonne: sofort Pause ohne Mindestpause, war %+v", a)
+	}
+	// Dieser Stopp war nicht das Flattern der Bahn: kommt die Sonne, startet sie.
+	back := sunOnly(s, 6, base.Add(40*time.Second), &after)
+	if a := alloc(t, back, s.Key); a.Paused {
+		t.Fatalf("nach einem Lauf, den die Bahn nicht gestartet hat, keine Mindestpause: %+v", a)
 	}
 
 	blind := sunOnly(s, 0, base, nil) // eingesteckt, noch keine Sonne

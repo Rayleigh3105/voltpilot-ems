@@ -495,9 +495,9 @@ type Allocation struct {
 	ChangedAt time.Time `json:"changed_at,omitzero"`
 	// HoldUntil is the instant before which the SOURCE lane may not switch
 	// this session (W-11, Pacing.MinRun / MinPause): set when the lane starts
-	// a charge (+MinRun) or stops a running one (+MinPause), carried while
-	// that state lasts. Zero = nothing held - an exempt session, a pause with
-	// another reason, a site without a lane.
+	// a charge (+MinRun) or stops a run it started (+MinPause), carried while
+	// that state lasts - also once it passed. Zero = nothing held - an exempt
+	// session, a pause with another reason, a site without a lane.
 	HoldUntil time.Time `json:"hold_until,omitzero"`
 	// NeedKw is the minimum a session paused for ReasonNoSurplus would need
 	// while SOME surplus is there, just not enough (W-11). 0 = no sun at
@@ -787,7 +787,11 @@ func Decide(in Input) Plan {
 	// is held: a boost, a K3 holder or „Schnell laden" (exempt) never leave a
 	// hold behind, so „Automatik fortsetzen" after a boost pauses at once, and
 	// a vehicle that never ran (just plugged in, the lane still blind) starts
-	// the moment the sun is there.
+	// the moment the sun is there. A run the lane started keeps its HoldUntil
+	// after it passed - that past stamp is what marks the run as the lane's
+	// own, so only ITS stop earns a Mindestpause; a run of „Schnell laden"
+	// that a newly chosen „Nur Sonne" stops (or a blind lane) restarts as soon
+	// as the sun allows.
 	holdOf := func(s Session, a Allocation, exempt bool) time.Time {
 		if !srcActive || exempt || s.Ranges.Any() {
 			return time.Time{}
@@ -801,7 +805,7 @@ func Decide(in Input) Plan {
 			return old.HoldUntil
 		case !a.Paused:
 			return in.Now.Add(pacing.MinRun)
-		case a.Reason == ReasonNoSurplus && ok && !old.Paused:
+		case a.Reason == ReasonNoSurplus && ok && !old.Paused && !old.HoldUntil.IsZero() && !in.SourceBlind:
 			return in.Now.Add(pacing.MinPause)
 		}
 		return time.Time{}
